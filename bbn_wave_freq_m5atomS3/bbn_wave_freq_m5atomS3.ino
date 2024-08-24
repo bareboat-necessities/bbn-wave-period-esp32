@@ -25,7 +25,7 @@ M5Timer M5timer;
 
 const int sample_freq_Hz = 100;
 
-unsigned long now = 0UL, last_refresh = 0UL;
+unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL;
 int got_samples = 0;
 
 double omega_up = 10.0 * (2 * PI);  // upper frequency Hz * 2 * PI
@@ -51,6 +51,12 @@ void repeatMe() {
     M5.Imu.getAccel(&accel.x, &accel.y, &accel.z);
     got_samples++;
 
+    now = millis();
+    if (last_update != 0UL) {
+      delta_t = ((now - last_update) / 1000.0f);
+    }
+    last_update = now;
+    
     y = accel.z - 1.0 /* since it includes g */;
     x1_dot = - a * x1 + b * y;
     sigma_dot = - k * x1 * x1 * theta - k * a * x1 * x1_dot - k * b * x1_dot * y;
@@ -62,7 +68,6 @@ void repeatMe() {
     sigma = sigma + sigma_dot * delta_t;
     t = t + delta_t;
 
-    now = millis();
     if (now - last_refresh >= 200) {
       M5.Lcd.setCursor(0, 10);
       M5.Lcd.clear();  // Delay 100ms
