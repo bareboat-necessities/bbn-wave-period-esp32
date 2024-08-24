@@ -22,3 +22,9 @@ jobs:
         sketch-names-find-start: bbn_*/*
         extra-arduino-cli-args: "--warnings default"
         set-build-path: true
+
+    - name: Make zip
+      run: |
+        ls /home/runner/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/build/*.bin | zip bbn_m5tough_active_boat_bin-$(date +%Y-%m-%d).zip -j -@
+        pwd
+        ls *.zip
