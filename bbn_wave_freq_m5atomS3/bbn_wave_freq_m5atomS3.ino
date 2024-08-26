@@ -19,23 +19,18 @@ The New Algorithm of Sinusoidal Signal Frequency Estimation.
 
 #include <M5Unified.h>
 #include <utility/imu/MPU6886_Class.hpp>
-#include "utility/M5Timer.h"
-
-M5Timer M5timer;
-
-const int sample_freq_Hz = 100;
 
 unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL;
 int got_samples = 0;
 
-double omega_up = 10.0 * (2 * PI);  // upper frequency Hz * 2 * PI
-double a = 1.0;
-double b = 1.0;
-double k = 1.0;
+double omega_up = 1.0 * (2 * PI);  // upper frequency Hz * 2 * PI
+double a = omega_up;
+double b = a;
+double k = 2.0;
 double theta_0 = - omega_up * omega_up / 4.0;
 double x1_0 = 0.0;
 double sigma_0 = theta_0;
-double delta_t = 1.0/sample_freq_Hz;  // time step sec
+double delta_t;  // time step sec
 
 // initialize variables
 double t = 0.0;
@@ -52,12 +47,11 @@ void repeatMe() {
     got_samples++;
 
     now = millis();
-    if (last_update != 0UL) {
-      delta_t = ((now - last_update) / 1000.0f);
-    }
+    delta_t = ((now - last_update) / 1000.0f);
     last_update = now;
-    
+
     y = accel.z - 1.0 /* since it includes g */;
+    //y = sin(2*PI*t*0.25); // dummy test data
     x1_dot = - a * x1 + b * y;
     sigma_dot = - k * x1 * x1 * theta - k * a * x1 * x1_dot - k * b * x1_dot * y;
     theta = sigma + k * b * x1 * y;
@@ -89,11 +83,12 @@ void setup(void) {
   M5.begin(cfg);
   //auto imu6886 = ((m5::MPU6886_Class*) &M5.Imu);
   //imu6886->enableFIFO(imu6886->ODR_1kHz); 
-  //imu6886->setAccelFsr(imu6886->AFS_2G); 
-  M5timer.setInterval(1000/sample_freq_Hz, repeatMe);
+  //imu6886->setAccelFsr(imu6886->AFS_2G);
+  last_update = millis();
 }
 
 void loop(void) {
-  M5timer.run();
+  M5.update();
+  delay(2);
+  repeatMe();
 }
-
