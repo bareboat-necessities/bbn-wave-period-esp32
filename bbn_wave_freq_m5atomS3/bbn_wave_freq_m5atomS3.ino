@@ -42,8 +42,8 @@ void repeatMe() {
     M5.Imu.getAccelData(&accel.x, &accel.y, &accel.z);
     got_samples++;
 
-    now = millis();
-    delta_t = ((now - last_update) / 1000.0f);
+    now = micros();
+    delta_t = ((now - last_update) / 1000000.0);
     last_update = now;
 
     double y = accel.z - 1.0 /* since it includes g */;
@@ -51,12 +51,12 @@ void repeatMe() {
 
     aranovskiy_update(&params, &state, y, delta_t);
 
-    if (now - last_refresh >= 200) {
+    if (now - last_refresh >= 1000000) {
       M5.Lcd.setCursor(0, 10);
       M5.Lcd.clear();  // Delay 100ms
 
       M5.Lcd.printf("IMU:\n\n");
-      M5.Lcd.printf("sec: %d\n\n", now / 1000);
+      M5.Lcd.printf("sec: %d\n\n", now / 1000000);
       M5.Lcd.printf("period sec: %0.4f\n\n", (state.f > 0 ? 1.0 / state.f : 9999.0));
       M5.Lcd.printf("samples: %d\n\n", got_samples);
       M5.Lcd.printf("%0.3f %0.3f %0.3f\n\n", accel.x, accel.y, accel.z - 1.0);
@@ -74,11 +74,11 @@ void setup(void) {
   aranovskiy_default_params(&params, omega_up, k_gain);
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
 
-  last_update = millis();
+  last_update = micros();
 }
 
 void loop(void) {
   M5.update();
-  delay(2);
+  delay(3);
   repeatMe();
 }
