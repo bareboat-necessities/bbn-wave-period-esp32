@@ -47,7 +47,7 @@ void repeatMe() {
     last_update = now;
 
     double y = accel.z - 1.0 /* since it includes g */;
-    //double y = sin(2*PI*t*0.25); // dummy test data
+    //double y = sin(2 * PI * state.t * 0.25); // dummy test data
 
     aranovskiy_update(&params, &state, y, delta_t);
 
@@ -70,10 +70,6 @@ void repeatMe() {
 void setup(void) {
   auto cfg = M5.config();
   M5.begin(cfg);
-  //imu6886.Init();
-  //auto imu6886 = ((m5::MPU6886_Class*) &M5.Imu);
-  //imu6886->enableFIFO(imu6886->ODR_1kHz);
-  //imu6886->setAccelFsr(imu6886->AFS_2G);
 
   aranovskiy_default_params(&params, omega_up, k_gain);
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
