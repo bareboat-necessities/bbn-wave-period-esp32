@@ -26,7 +26,7 @@ int got_samples = 0;
 AranovskiyParams params;
 AranovskiyState  state;
 
-double omega_up = 1.0 * (2 * PI);  // upper frequency Hz * 2 * PI
+double omega_up = 5.0 * (2 * PI);  // upper frequency Hz * 2 * PI
 double k_gain = 2.0;
 
 double t_0 = 0.0;
@@ -51,8 +51,8 @@ void repeatMe() {
     delta_t = ((now - last_update) / 1000000.0);
     last_update = now;
 
-    double y = accel.z - 1.0 /* since it includes g */;
-    //double y = sin(2 * PI * state.t * 0.25); // dummy test data
+    //double y = accel.z - 1.0 /* since it includes g */;
+    double y = sin(2 * PI * state.t * 0.25); // dummy test data
 
     aranovskiy_update(&params, &state, y, delta_t);
 
@@ -85,7 +85,7 @@ void setup(void) {
 
   aranovskiy_default_params(&params, omega_up, k_gain);
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
-  kalman_smoother_init(&kalman, 0.003, 5.0, 100.0);
+  kalman_smoother_init(&kalman, 0.003, 10.0, 100.0);
 
   last_update = micros();
 }
@@ -95,3 +95,4 @@ void loop(void) {
   delay(3);
   repeatMe();
 }
+
