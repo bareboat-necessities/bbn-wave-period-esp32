@@ -26,7 +26,7 @@ int got_samples = 0;
 AranovskiyParams params;
 AranovskiyState  state;
 
-double omega_up = 5.0 * (2 * PI);  // upper frequency Hz * 2 * PI
+double omega_up = 2.5 * (2 * PI);  // upper frequency Hz * 2 * PI
 double k_gain = 2.0;
 
 double t_0 = 0.0;
