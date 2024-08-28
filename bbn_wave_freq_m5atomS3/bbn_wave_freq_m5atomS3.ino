@@ -51,8 +51,8 @@ void repeatMe() {
     delta_t = ((now - last_update) / 1000000.0);
     last_update = now;
 
-    //double y = accel.z - 1.0 /* since it includes g */;
-    double y = sin(2 * PI * state.t * 0.25); // dummy test data
+    double y = accel.z - 1.0 /* since it includes g */;
+    //double y = sin(2 * PI * state.t * 0.25); // dummy test data
 
     aranovskiy_update(&params, &state, y, delta_t);
 
