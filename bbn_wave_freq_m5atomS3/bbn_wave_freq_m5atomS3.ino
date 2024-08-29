@@ -17,7 +17,7 @@
 */
 
 #include <M5Unified.h>
-#include "M5AtomS3.h"
+#include <M5AtomS3.h>
 #include "AranovskiyFilter.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
@@ -30,7 +30,7 @@ static constexpr const uint8_t calib_value = 64;
 // This sample code performs calibration by clicking on a button or screen.
 // After 10 seconds of calibration, the results are stored in NVS.
 // The saved calibration values are loaded at the next startup.
-// 
+//
 // === How to calibration ===
 // ※ Calibration method for Accelerometer
 //    Change the direction of the main unit by 90 degrees
@@ -40,11 +40,11 @@ static constexpr const uint8_t calib_value = 64;
 // ※ Calibration method for Gyro
 //    Simply place the unit on a quiet desk and hold it still.
 //    It is recommended that this be done after the accelerometer calibration.
-// 
+//
 // ※ Calibration method for geomagnetic sensors
 //    Rotate the main unit slowly in multiple directions.
 //    It is recommended that as many surfaces as possible be oriented to the north.
-// 
+//
 // Values for extremely large attitude changes are ignored.
 // During calibration, it is desirable to move the device as gently as possible.
 
@@ -60,7 +60,6 @@ static constexpr const float coefficient_tbl[3] = { 0.5f, (1.0f / 256.0f), (1.0f
 static uint8_t calib_countdown = 0;
 
 static auto &dsp = (M5.Display);
-static rect_t rect_graph_area;
 static rect_t rect_text_area;
 
 static int prev_xpos[18];
@@ -123,13 +122,12 @@ void updateCalibration(uint32_t c, bool clear = false) {
       M5.Imu.saveOffsetToNVS();
     }
   }
-  auto backcolor = TFT_BLACK; //(c == 0) ? TFT_BLACK : TFT_BLUE;
-  dsp.fillRect(rect_text_area.x, rect_text_area.y, rect_text_area.w, rect_text_area.h, backcolor);
+  dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
 
   if (c) {
-    dsp.setCursor(rect_text_area.x + 2, rect_text_area.y + 1);
+    dsp.setCursor(2, rect_text_area.h + 1);
     dsp.setTextColor(TFT_WHITE, TFT_BLACK);
-    dsp.printf("Countdown:%d ", c);
+    dsp.printf("Countdown: %2.2d", c);
   }
 }
 
@@ -138,9 +136,8 @@ void startCalibration(void) {
 }
 
 void repeatMe() {
-  static uint32_t frame_count = 0;
   static uint32_t prev_sec = 0;
-  
+
   auto imu_update = M5.Imu.update();
   if (imu_update) {
     m5::imu_3d_t accel;
@@ -169,7 +166,7 @@ void repeatMe() {
 
     if (now - last_refresh >= 1000000) {
       M5.Lcd.setCursor(0, 10);
-      M5.Lcd.clear();  // Delay 100ms
+      dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
 
       M5.Lcd.printf("imu: %s\n", name);
       M5.Lcd.printf("sec: %d\n", now / 1000000);
@@ -183,10 +180,8 @@ void repeatMe() {
       last_refresh = now;
       got_samples = 0;
     }
-    ++frame_count;
   }
   else {
-    //M5.update();
     AtomS3.update();
     // Calibration is initiated when ascreen is clicked.
     if (AtomS3.BtnA.isPressed()) {
@@ -196,8 +191,6 @@ void repeatMe() {
   int32_t sec = millis() / 1000;
   if (prev_sec != sec) {
     prev_sec = sec;
-    //M5_LOGI("sec:%d  frame:%d", sec, frame_count);
-    frame_count = 0;
     if (calib_countdown) {
       updateCalibration(calib_countdown - 1);
     }
@@ -223,7 +216,8 @@ void setup(void) {
     default:                  name = "unknown";     break;
   };
   M5.Lcd.setCursor(0, 10);
-  M5.Lcd.clear();  // Delay 100ms
+  auto backcolor = TFT_BLACK;
+  dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, backcolor);
   M5.Lcd.printf("imu: %s\n", name);
 
   if (imu_type == m5::imu_none) {
@@ -239,12 +233,9 @@ void setup(void) {
     w = dsp.width();
     h = dsp.height();
   }
-  int32_t graph_area_h = ((h - 8) / 18) * 18;
-  int32_t text_area_h = h - graph_area_h;
+  int32_t text_area_h = ((h - 8) / 18) * 18;
+  rect_text_area = {0, 0, w, text_area_h };
 
-  rect_graph_area = { 0, 0, w, graph_area_h };
-  rect_text_area = {0, graph_area_h, w, text_area_h };
-  
   // Read calibration values from NVS.
   if (!M5.Imu.loadOffsetFromNVS()) {
     startCalibration();
@@ -258,7 +249,6 @@ void setup(void) {
 }
 
 void loop(void) {
-  //M5.update();
   AtomS3.update();
   delay(3);
   repeatMe();
