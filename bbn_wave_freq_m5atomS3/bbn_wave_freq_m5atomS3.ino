@@ -170,11 +170,11 @@ void repeatMe() {
       M5.Lcd.setCursor(0, 2);
       M5.Lcd.printf("imu: %s\n", name);
       M5.Lcd.printf("sec: %d\n", now / 1000000);
+      M5.Lcd.printf("samples: %d\n", got_samples);
       M5.Lcd.printf("period sec: %0.4f\n", (state.f > 0 ? 1.0 / state.f : 9999.0));
       M5.Lcd.printf("period adj: %0.4f\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
-      M5.Lcd.printf("samples: %d\n", got_samples);
-      M5.Lcd.printf("wave len: %0.4f\n", wave_length);
-      M5.Lcd.printf("heave: %0.4f\n", heave);
+      M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
+      M5.Lcd.printf("heave:      %0.4f\n", heave);
       M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
 
       last_refresh = now;
