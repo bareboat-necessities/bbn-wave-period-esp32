@@ -8,5 +8,5 @@ The method for estimating wave height and heave from a moving boat implemented h
 1. Calculate observed wave period and calculate wave length using trochoidal wave model. 
 1. In trochoidal model horizontal wave displacement would be simply proportional to measured vertical acceleration. Doppler effect has no impact on displacement (amplitude). Although though it does on observed wave frequency and vertical acceleration in it. 
 1. Calculate the coefficient for previous step using known wave length in trochoidal model. 
-1. This gives a simple formula to produce vertical displacement from measured vertical acceleration. Valid in the considered models even from observations from a moving vessel (assuming speed doesn’t change much)
+1. This gives a simple formula to produce vertical displacement from measured vertical acceleration. Valid in the considered models even by observations from a moving vessel (assuming speed doesn’t change much)
 
