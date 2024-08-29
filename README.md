@@ -1,5 +1,5 @@
 # bbn-wave-period-esp32
-Estimate ocean wave period using IMU on esp32
+Estimate ocean wave displacement using IMU on esp32
 
 The method for estimating wave height and heave from a moving boat implemented here is using the following algorithm:
 
