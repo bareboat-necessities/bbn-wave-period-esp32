@@ -189,7 +189,7 @@ void repeatMe() {
     //M5.update();
     AtomS3.update();
     // Calibration is initiated when ascreen is clicked.
-    if (AtomS3.BtnA.wasPressed()) {
+    if (AtomS3.BtnA.isPressed()) {
       startCalibration();
     }
   }
