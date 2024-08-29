@@ -127,7 +127,7 @@ void updateCalibration(uint32_t c, bool clear = false) {
   if (c) {
     dsp.setCursor(2, rect_text_area.h + 1);
     dsp.setTextColor(TFT_WHITE, TFT_BLACK);
-    dsp.printf("Countdown: %2.2d", c);
+    dsp.printf("Countdown:%3d", c);
   }
 }
 
@@ -165,15 +165,15 @@ void repeatMe() {
     double heave = - a * wave_length / (2 * PI);
 
     if (now - last_refresh >= 1000000) {
-      M5.Lcd.setCursor(0, 10);
       dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
 
+      M5.Lcd.setCursor(0, 2);
       M5.Lcd.printf("imu: %s\n", name);
       M5.Lcd.printf("sec: %d\n", now / 1000000);
       M5.Lcd.printf("period sec: %0.4f\n", (state.f > 0 ? 1.0 / state.f : 9999.0));
       M5.Lcd.printf("period adj: %0.4f\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
       M5.Lcd.printf("samples: %d\n", got_samples);
-      M5.Lcd.printf("wave length: %0.4f\n", wave_length);
+      M5.Lcd.printf("wave len: %0.4f\n", wave_length);
       M5.Lcd.printf("heave: %0.4f\n", heave);
       M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
 
@@ -215,9 +215,8 @@ void setup(void) {
     case m5::imu_bmi270:      name = "bmi270";      break;
     default:                  name = "unknown";     break;
   };
-  M5.Lcd.setCursor(0, 10);
-  auto backcolor = TFT_BLACK;
-  dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, backcolor);
+  dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+  M5.Lcd.setCursor(0, 2);
   M5.Lcd.printf("imu: %s\n", name);
 
   if (imu_type == m5::imu_none) {
