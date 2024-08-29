@@ -19,6 +19,7 @@
 #include <M5Unified.h>
 #include "AranovskiyFilter.h"
 #include "KalmanSmoother.h"
+#include "TrochoidalWave.h"
 
 unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL;
 int got_samples = 0;
@@ -62,15 +63,19 @@ void repeatMe() {
     }
     double freq_adj = kalman_smoother_update(&kalman, state.f);
 
+    double a = y;  // acceleration in fractions of g
+    double period = (state.f > 0 ? 1.0 / state.f : 9999.0);    // or use freq_adj
+    double heave = - a * trochoid_wave_length(period) / (2 * PI);
+
     if (now - last_refresh >= 1000000) {
       M5.Lcd.setCursor(0, 10);
       M5.Lcd.clear();  // Delay 100ms
 
-      M5.Lcd.printf("IMU:\n\n");
       M5.Lcd.printf("sec: %d\n\n", now / 1000000);
       M5.Lcd.printf("period sec: %0.4f\n\n", (state.f > 0 ? 1.0 / state.f : 9999.0));
       M5.Lcd.printf("period adj: %0.4f\n\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
       M5.Lcd.printf("samples: %d\n\n", got_samples);
+      M5.Lcd.printf("heave: %0.4f\n\n", heave);
       M5.Lcd.printf("%0.3f %0.3f %0.3f\n\n", accel.x, accel.y, accel.z - 1.0);
 
       last_refresh = now;
