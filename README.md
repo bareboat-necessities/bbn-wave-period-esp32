@@ -1,4 +1,6 @@
 # bbn-wave-period-esp32
+
+## Estimating Wave Height using IMU
 Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32
 
 The method for estimating wave height and heave from a moving boat implemented here is using the following algorithm:
@@ -23,4 +25,5 @@ from Daniel Lemire paper
 
 * Implement Kalman alorithm for wave estimation (the one mentioned here: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html) And compare with trochoidal model results.
 
+* Generate some reference data, test cases with it and produce some graphical charts
   
