@@ -10,3 +10,7 @@ The method for estimating wave height and heave from a moving boat implemented h
 1. Calculate the coefficient for previous step using known wave length in trochoidal model. 
 1. This gives a simple formula to produce vertical displacement from measured vertical acceleration. Valid in the considered models even by observations from a moving vessel (assuming speed doesn’t change much)
 
+## TODO
+
+* Tilt compensation. No magnetometer needed as we only need vertical projection of acceleation. Mahony algorithm using accel and gyro (without mag) should be enough. Existing github MahonyAHRS implementations need to be modified to take delta_t in update(), instead of assuming fixed sample frequency in integration.
+  
