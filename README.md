@@ -11,6 +11,8 @@ The method for estimating wave height and heave from a moving boat implemented h
 1. In trochoidal model horizontal wave displacement would be simply proportional to measured vertical acceleration. Doppler effect has no impact on displacement (amplitude). Although though it does on observed wave frequency and vertical acceleration in it. 
 1. Calculate the coefficient for previous step using known wave length in trochoidal model. 
 1. This gives a simple formula to produce vertical displacement from measured vertical acceleration. Valid in the considered models even by observations from a moving vessel (assuming speed doesn’t change much)
+1. So this method avoids double integration of acceleration. It approximates a wave with trochoidal wave parameterized by two variables (frequency and max vertical acceleration in it) by observations from IMU on a moving boat. There is another way to use Kalman filter (with drift correction) which I might add later. See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
+However due to high accelerometer noise and low sample frequency I do not have high hopes for that Kalman filter. 
 
 ## TODO
 
