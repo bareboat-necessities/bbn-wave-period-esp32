@@ -20,4 +20,7 @@ Algorithm: https://github.com/lemire/runningmaxmin
 from Daniel Lemire paper
 
 * Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
+
+* Implement Kalman alorithm for wave estimation (the one mentioned here: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html) And compare with trochoidal model results.
+
   
