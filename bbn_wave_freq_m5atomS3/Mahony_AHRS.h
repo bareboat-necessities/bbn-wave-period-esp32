@@ -26,8 +26,8 @@ typedef struct mahony_AHRS_vars {
 } Mahony_AHRS_Vars;
 
 void mahony_AHRS_update(Mahony_AHRS_Vars* m,
-                        float gx, float gy, float gz, float ax, float ay,
-                        float az, float *pitch, float *roll, float *yaw, float delta_t_sec);
+                        float gx, float gy, float gz, float ax, float ay, float az, 
+                        float *pitch, float *roll, float *yaw, float delta_t_sec);
 float invSqrt(float x);
 
 // IMU algorithm update (without magnetometer)
