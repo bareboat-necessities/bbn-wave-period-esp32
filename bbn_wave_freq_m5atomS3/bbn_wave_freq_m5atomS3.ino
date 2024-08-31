@@ -71,15 +71,15 @@ int got_samples = 0;
 AranovskiyParams params;
 AranovskiyState  state;
 
-double omega_up = 2.5 * (2 * PI);  // upper frequency Hz * 2 * PI
-double k_gain = 2.0;
+float omega_up = 2.5 * (2 * PI);  // upper frequency Hz * 2 * PI
+float k_gain = 2.0;
 
-double t_0 = 0.0;
-double x1_0 = 0.0;
-double theta_0 = - (omega_up * omega_up / 4.0);
-double sigma_0 = theta_0;
+float t_0 = 0.0;
+float x1_0 = 0.0;
+float theta_0 = - (omega_up * omega_up / 4.0);
+float sigma_0 = theta_0;
 
-double delta_t;  // time step sec
+float delta_t;  // time step sec
 
 KalmanSmootherVars kalman;
 
@@ -156,9 +156,10 @@ void repeatMe() {
     last_update = now;
 
     float pitch, roll, yaw;
-    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD, accel.x, accel.y, accel.z, &pitch, &roll, &yaw, 
-    double y = (accel.z - 1.0) /* since it includes g */;
-    //double y = sin(2 * PI * state.t * 0.25); // dummy test data
+    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD, accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+
+    float y = (accel.z - 1.0) /* since it includes g */;
+    //float y = sin(2 * PI * state.t * 0.25); // dummy test data
 
     aranovskiy_update(&params, &state, y, delta_t);
 
@@ -166,19 +167,19 @@ void repeatMe() {
       kalman_smoother_set_initial(&kalman, state.f);
       first = 0;
     }
-    double freq_adj = kalman_smoother_update(&kalman, state.f);
+    float freq_adj = kalman_smoother_update(&kalman, state.f);
 
-    double a = y;  // acceleration in fractions of g
-    double period = (state.f > 0 ? 1.0 / state.f : 9999.0);    // or use freq_adj
-    double wave_length = trochoid_wave_length(period);
-    double heave = - a * wave_length / (2 * PI);
+    float a = y;  // acceleration in fractions of g
+    float period = (state.f > 0 ? 1.0 / state.f : 9999.0);    // or use freq_adj
+    float wave_length = trochoid_wave_length(period);
+    float heave = - a * wave_length / (2 * PI);
 
-    if (now - last_refresh >= 1000000) {
+    if (now - last_refresh >= 200000) {
       dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
 
       M5.Lcd.setCursor(0, 2);
       M5.Lcd.printf("imu: %s\n", name);
-      M5.Lcd.printf("sec: %d\n", now / 200000);
+      M5.Lcd.printf("sec: %d\n", now / 1000000);
       M5.Lcd.printf("samples: %d\n", got_samples);
       M5.Lcd.printf("period sec: %0.4f\n", (state.f > 0 ? 1.0 / state.f : 9999.0));
       M5.Lcd.printf("period adj: %0.4f\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
@@ -254,9 +255,9 @@ void setup(void) {
   aranovskiy_default_params(&params, omega_up, k_gain);
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
 
-  double process_noise_covariance = 0.003;
-  double measurement_uncertainty = 10.0;
-  double estimation_uncertainty = 100.0;
+  float process_noise_covariance = 0.003;
+  float measurement_uncertainty = 10.0;
+  float estimation_uncertainty = 100.0;
   kalman_smoother_init(&kalman, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
 
   last_update = micros();
