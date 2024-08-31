@@ -32,6 +32,11 @@ void mahony_AHRS_update(Mahony_AHRS_Vars* m,
                         float *pitch, float *roll, float *yaw, float delta_t_sec);
 float invSqrt(float x);
 
+/*
+  The gain is the Kp term in a PID controller, tune it as you would any PID controller (missing the I and D terms).
+  If Kp is too low, the filter will respond slowly to changes in sensor orientation. 
+  If too high, the filter output will oscillate.
+*/
 void mahony_AHRS_init(Mahony_AHRS_Vars* m, float twoKp, float twoKi) {
   m->twoKp = twoKp;
   m->twoKi = twoKi;
