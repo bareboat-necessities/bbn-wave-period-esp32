@@ -254,7 +254,11 @@ void setup(void) {
 
   aranovskiy_default_params(&params, omega_up, k_gain);
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
-  kalman_smoother_init(&kalman, 0.003, 10.0, 100.0);
+
+  double process_noise_covariance = 0.003;
+  double measurement_uncertainty = 10.0;
+  double estimation_uncertainty = 100.0;
+  kalman_smoother_init(&kalman, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
 
   last_update = micros();
 }
