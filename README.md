@@ -27,6 +27,7 @@ from Daniel Lemire paper
 
 * Implement Kalman alorithm for wave estimation (the one mentioned here: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html) And compare with trochoidal model results.
 
-* Generate some reference data, test cases with it and produce some graphical charts
+* Generate some reference data, test cases with it and produce some graphical charts. There are many parameterized filters used and gains and coefficients
+need to be fine tuned for better results.
 
 * Produce NMEA 0183 XDR sentences for heave, wave height, etc to serial port of m5atomS3
