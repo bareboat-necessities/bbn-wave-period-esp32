@@ -15,13 +15,13 @@
 
   Usage example:
   
-  double omega_up = 1.0 * (2 * PI);  // upper frequency Hz * 2 * PI
-  double k_gain = 2.0;
-  double t_0 = 0.0;
-  double x1_0 = 0.0;
-  double theta_0 = - (omega_up * omega_up / 4.0);
-  double sigma_0 = theta_0;
-  double delta_t;  // time step sec
+  float omega_up = 1.0 * (2 * PI);  // upper frequency Hz * 2 * PI
+  float k_gain = 2.0;
+  float t_0 = 0.0;
+  float x1_0 = 0.0;
+  float theta_0 = - (omega_up * omega_up / 4.0);
+  float sigma_0 = theta_0;
+  float delta_t;  // time step sec
 
   AranovskiyParams params;
   AranovskiyState  state;
@@ -36,7 +36,7 @@
     delay(4);
     
     // measure
-    double y = getAccelZfrom(imu) - 1.0;  // remove G acceration
+    float y = getAccelZfrom(imu) - 1.0;  // remove G acceration
 
     now = millis();
     delta_t = ((now - last_update) / 1000.0);
@@ -49,42 +49,44 @@
 
 */
 
+#define PI 3.1415926535897932384626433832795
+
 typedef struct aranovskiy_params {
-  double a = 1.0;
-  double b = a;
-  double k = 1.0;           // gain
+  float a = 1.0;
+  float b = a;
+  float k = 1.0;           // gain
 } AranovskiyParams;
 
 typedef struct aranovskiy_state {
-  double t = 0.0;           // time
-  double y;                 // signal measurement
-  double x1 = 0.0;
-  double theta = -0.25;
-  double sigma = -0.25;
-  double x1_dot;
-  double sigma_dot;
-  double omega;             // frequency * 2 * pi
-  double f;                 // frequency
+  float t = 0.0;           // time
+  float y;                 // signal measurement
+  float x1 = 0.0;
+  float theta = -0.25;
+  float sigma = -0.25;
+  float x1_dot;
+  float sigma_dot;
+  float omega;             // frequency * 2 * pi
+  float f;                 // frequency
 } AranovskiyState;
 
-void aranovskiy_default_params(AranovskiyParams* p, double omega_up, double k_gain);
-void aranovskiy_init_state(AranovskiyState* s, double t_0, double x1_0, double theta_0, double sigma_0);
-void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double delta_t);
+void aranovskiy_default_params(AranovskiyParams* p, float omega_up, float k_gain);
+void aranovskiy_init_state(AranovskiyState* s, float t_0, float x1_0, float theta_0, float sigma_0);
+void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, float y, float delta_t);
 
-void aranovskiy_default_params(AranovskiyParams* p, double omega_up, double k_gain) {
+void aranovskiy_default_params(AranovskiyParams* p, float omega_up, float k_gain) {
   p->a = omega_up;
   p->b = p->a;
   p->k = k_gain;
 }
 
-void aranovskiy_init_state(AranovskiyState* s, double t_0, double x1_0, double theta_0, double sigma_0) {
+void aranovskiy_init_state(AranovskiyState* s, float t_0, float x1_0, float theta_0, float sigma_0) {
   s->t = t_0;
   s->x1 = x1_0;
   s->theta = theta_0;
   s->sigma = sigma_0;
 }
 
-void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double delta_t) {
+void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, float y, float delta_t) {
   s->x1_dot = - p->a * s->x1 + p->b * y;
   s->sigma_dot = - p->k * s->x1 * s->x1 * s->theta - p->k * p->a * s->x1 * s->x1_dot - p->k * p->b * s->x1_dot * y;
   s->theta = s->sigma + p->k * p->b * s->x1 * y;
@@ -97,4 +99,5 @@ void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double
 }
 
 #endif
+
 
