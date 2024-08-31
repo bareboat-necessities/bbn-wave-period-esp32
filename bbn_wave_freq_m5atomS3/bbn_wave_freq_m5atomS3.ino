@@ -18,9 +18,11 @@
 
 #include <M5Unified.h>
 #include <M5AtomS3.h>
+#include <Arduino.h>
 #include "AranovskiyFilter.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
+#include "Mahony_AHRS.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -48,8 +50,7 @@ static constexpr const uint8_t calib_value = 64;
 // Values for extremely large attitude changes are ignored.
 // During calibration, it is desirable to move the device as gently as possible.
 
-struct rect_t
-{
+struct rect_t {
   int32_t x;
   int32_t y;
   int32_t w;
@@ -83,6 +84,8 @@ double delta_t;  // time step sec
 KalmanSmootherVars kalman;
 
 int first = 1;
+
+Mahony_AHRS_Vars mahony;
 
 const char* name;
 
@@ -132,7 +135,7 @@ void updateCalibration(uint32_t c, bool clear = false) {
 }
 
 void startCalibration(void) {
-  updateCalibration(10, true);
+  updateCalibration(30, true);
 }
 
 void repeatMe() {
@@ -142,13 +145,20 @@ void repeatMe() {
   if (imu_update) {
     m5::imu_3d_t accel;
     M5.Imu.getAccelData(&accel.x, &accel.y, &accel.z);
+
+    m5::imu_3d_t gyro;
+    M5.Imu.getAccelData(&gyro.x, &gyro.y, &gyro.z);
+    
     got_samples++;
 
     now = micros();
     delta_t = ((now - last_update) / 1000000.0);
     last_update = now;
 
-    double y = accel.z - 1.0 /* since it includes g */;
+    float pitch, roll, yaw;
+    mahony_AHRS_update(&mahony, gyro.x, gyro.y, gyro.z, accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+
+    double y = (accel.z - 1.0) /* since it includes g */;
     //double y = sin(2 * PI * state.t * 0.25); // dummy test data
 
     aranovskiy_update(&params, &state, y, delta_t);
@@ -169,13 +179,15 @@ void repeatMe() {
 
       M5.Lcd.setCursor(0, 2);
       M5.Lcd.printf("imu: %s\n", name);
-      M5.Lcd.printf("sec: %d\n", now / 1000000);
+      M5.Lcd.printf("sec: %d\n", now / 200000);
       M5.Lcd.printf("samples: %d\n", got_samples);
       M5.Lcd.printf("period sec: %0.4f\n", (state.f > 0 ? 1.0 / state.f : 9999.0));
       M5.Lcd.printf("period adj: %0.4f\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
       M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
       M5.Lcd.printf("heave:      %0.4f\n", heave);
       M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
+      M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+      M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
 
       last_refresh = now;
       got_samples = 0;
