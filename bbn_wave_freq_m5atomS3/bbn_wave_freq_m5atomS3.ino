@@ -156,8 +156,7 @@ void repeatMe() {
     last_update = now;
 
     float pitch, roll, yaw;
-    mahony_AHRS_update(&mahony, gyro.x, gyro.y, gyro.z, accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
-
+    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD, accel.x, accel.y, accel.z, &pitch, &roll, &yaw, 
     double y = (accel.z - 1.0) /* since it includes g */;
     //double y = sin(2 * PI * state.t * 0.25); // dummy test data
 
