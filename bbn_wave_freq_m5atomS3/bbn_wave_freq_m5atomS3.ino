@@ -148,7 +148,7 @@ void repeatMe() {
 
     m5::imu_3d_t gyro;
     M5.Imu.getGyroData(&gyro.x, &gyro.y, &gyro.z);
-    
+
     got_samples++;
 
     now = micros();
@@ -156,7 +156,8 @@ void repeatMe() {
     last_update = now;
 
     float pitch, roll, yaw;
-    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD, accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD, 
+                       accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
 
     float y = (accel.z - 1.0) /* since it includes g */;
     //float y = sin(2 * PI * state.t * 0.25); // dummy test data
@@ -174,7 +175,7 @@ void repeatMe() {
     float wave_length = trochoid_wave_length(period);
     float heave = - a * wave_length / (2 * PI);
 
-    if (now - last_refresh >= 200000) {
+    if (now - last_refresh >= 1000000) {
       dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
 
       M5.Lcd.setCursor(0, 2);
