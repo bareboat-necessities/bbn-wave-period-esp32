@@ -1,140 +1,275 @@
-#ifndef Mahony_AHRS_h
-#define Mahony_AHRS_h
-
-//
-// Madgwick's implementation of Mahony's AHRS algorithm.
-// See: http://www.x-io.co.uk/node/8#open_source_ahrs_and_imu_algorithms
-//
-
-#include <math.h>
-
-#define RAD_TO_DEG 57.295779513082320876798154814105
-
-#define twoKpDef   (2.0f * 1.0f)  // 2 * proportional gain
-#define twoKiDef   (2.0f * 0.0f)  // 2 * integral gain
-
-typedef struct mahony_AHRS_vars {
-  float twoKp = twoKpDef;  // 2 * proportional gain (Kp)
-  float twoKi = twoKiDef;  // 2 * integral gain (Ki)
-  float q0 = 1.0;
-  float q1 = 0.0;
-  float q2 = 0.0;
-  float q3 = 0.0;  // quaternion of sensor frame relative to auxiliary frame
-  float integralFBx = 0.0f;
-  float integralFBy = 0.0f;
-  float integralFBz = 0.0f;  // integral error terms scaled by Ki
-} Mahony_AHRS_Vars;
-
-void mahony_AHRS_init(Mahony_AHRS_Vars* m, float twoKp, float twoKi);
-
-void mahony_AHRS_update(Mahony_AHRS_Vars* m,
-                        float gx, float gy, float gz, float ax, float ay, float az, 
-                        float *pitch, float *roll, float *yaw, float delta_t_sec);
-float invSqrt(float x);
-
 /*
-  The gain is the Kp term in a PID controller, tune it as you would any PID controller (missing the I and D terms).
-  If Kp is too low, the filter will respond slowly to changes in sensor orientation. 
-  If too high, the filter output will oscillate.
+
+  Ocean wave frequency estimator using esp32 (m5atomS3)
+
+  See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
+
+  Instead of FFT method for finding main wave frequency we could use Aranovskiy frequency estimator which is a simple on-line filter.
+
+  Ref:
+
+  Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul, Stanislav V. Aranovskiy
+
+  The New Algorithm of Sinusoidal Signal Frequency Estimation.
+
+  11th IFAC International Workshop on Adaptation and Learning in Control and Signal Processing July 3-5, 2013. Caen, France
+
 */
-void mahony_AHRS_init(Mahony_AHRS_Vars* m, float twoKp, float twoKi) {
-  m->twoKp = twoKp;
-  m->twoKi = twoKi;
-}
 
-// IMU algorithm update (without magnetometer)
-void mahony_AHRS_update(Mahony_AHRS_Vars* m,
-                        float gx, float gy, float gz, float ax, float ay, float az,
-                        float *pitch, float *roll, float *yaw, float delta_t_sec) {
-  float recipNorm;
-  float halfvx, halfvy, halfvz;
-  float halfex, halfey, halfez;
-  float qa, qb, qc;
+#include <M5Unified.h>
+#include <M5AtomS3.h>
+#include <Arduino.h>
+#include "AranovskiyFilter.h"
+#include "KalmanSmoother.h"
+#include "TrochoidalWave.h"
+#include "Mahony_AHRS.h"
 
-  // Compute feedback only if accelerometer measurement valid (avoids NaN in
-  // accelerometer normalisation)
-  if (!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
-    // Normalise accelerometer measurement
-    recipNorm = invSqrt(ax * ax + ay * ay + az * az);
-    ax *= recipNorm;
-    ay *= recipNorm;
-    az *= recipNorm;
+// Strength of the calibration operation;
+// 0: disables calibration.
+// 1 is weakest and 255 is strongest.
+static constexpr const uint8_t calib_value = 64;
 
-    // Estimated direction of gravity and vector perpendicular to magnetic flux
-    halfvx = m->q1 * m->q3 - m->q0 * m->q2;
-    halfvy = m->q0 * m->q1 + m->q2 * m->q3;
-    halfvz = m->q0 * m->q0 - 0.5f + m->q3 * m->q3;
+// This sample code performs calibration by clicking on a button or screen.
+// After 10 seconds of calibration, the results are stored in NVS.
+// The saved calibration values are loaded at the next startup.
+//
+// === How to calibration ===
+// ※ Calibration method for Accelerometer
+//    Change the direction of the main unit by 90 degrees
+//     and hold it still for 2 seconds. Repeat multiple times.
+//     It is recommended that as many surfaces as possible be on the bottom.
+//
+// ※ Calibration method for Gyro
+//    Simply place the unit on a quiet desk and hold it still.
+//    It is recommended that this be done after the accelerometer calibration.
+//
+// ※ Calibration method for geomagnetic sensors
+//    Rotate the main unit slowly in multiple directions.
+//    It is recommended that as many surfaces as possible be oriented to the north.
+//
+// Values for extremely large attitude changes are ignored.
+// During calibration, it is desirable to move the device as gently as possible.
 
-    // Error is sum of cross product between estimated and measured direction of gravity
-    halfex = (ay * halfvz - az * halfvy);
-    halfey = (az * halfvx - ax * halfvz);
-    halfez = (ax * halfvy - ay * halfvx);
+struct rect_t {
+  int32_t x;
+  int32_t y;
+  int32_t w;
+  int32_t h;
+};
 
-    // Compute and apply integral feedback if enabled
-    if (m->twoKi > 0.0f) {
-      m->integralFBx += m->twoKi * halfex * delta_t_sec;  // integral error scaled by Ki
-      m->integralFBy += m->twoKi * halfey * delta_t_sec;
-      m->integralFBz += m->twoKi * halfez * delta_t_sec;
-      gx += m->integralFBx;  // apply integral feedback
-      gy += m->integralFBy;
-      gz += m->integralFBz;
-    } else {
-      m->integralFBx = 0.0f;  // prevent integral windup
-      m->integralFBy = 0.0f;
-      m->integralFBz = 0.0f;
-    }
+static constexpr const float coefficient_tbl[3] = { 0.5f, (1.0f / 256.0f), (1.0f / 1024.0f) };
+static uint8_t calib_countdown = 0;
 
-    // Apply proportional feedback
-    gx += m->twoKp * halfex;
-    gy += m->twoKp * halfey;
-    gz += m->twoKp * halfez;
+static auto &dsp = (M5.Display);
+static rect_t rect_text_area;
+
+static int prev_xpos[18];
+
+unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL;
+int got_samples = 0;
+
+AranovskiyParams params;
+AranovskiyState  state;
+
+float omega_up = 2.5 * (2 * PI);  // upper frequency Hz * 2 * PI
+float k_gain = 2.0;
+
+float t_0 = 0.0;
+float x1_0 = 0.0;
+float theta_0 = - (omega_up * omega_up / 4.0);
+float sigma_0 = theta_0;
+
+float delta_t;  // time step sec
+
+KalmanSmootherVars kalman;
+
+int first = 1;
+
+Mahony_AHRS_Vars mahony;
+
+const char* name;
+
+void updateCalibration(uint32_t c, bool clear = false) {
+  calib_countdown = c;
+
+  if (c == 0) {
+    clear = true;
   }
 
-  // Integrate rate of change of quaternion
-  gx *= (0.5f * delta_t_sec);  // pre-multiply common factors
-  gy *= (0.5f * delta_t_sec);
-  gz *= (0.5f * delta_t_sec);
-  qa = m->q0;
-  qb = m->q1;
-  qc = m->q2;
-  m->q0 += (-qb * gx - qc * gy - m->q3 * gz);
-  m->q1 += (qa * gx + qc * gz - m->q3 * gy);
-  m->q2 += (qa * gy - qb * gz + m->q3 * gx);
-  m->q3 += (qa * gz + qb * gy - qc * gx);
+  if (clear) {
+    memset(prev_xpos, 0, sizeof(prev_xpos));
+    dsp.fillScreen(TFT_BLACK);
+    if (c) {
+      // Start calibration.
+      M5.Imu.setCalibration(calib_value, calib_value, calib_value);
+      // The actual calibration operation is performed each time during M5.Imu.update.
+      //
+      // There are three arguments, which can be specified in the order of Accelerometer, gyro, and geomagnetic.
+      // If you want to calibrate only the Accelerometer, do the following.
+      // M5.Imu.setCalibration(100, 0, 0);
+      //
+      // If you want to calibrate only the gyro, do the following.
+      // M5.Imu.setCalibration(0, 100, 0);
+      //
+      // If you want to calibrate only the geomagnetism, do the following.
+      // M5.Imu.setCalibration(0, 0, 100);
+    }
+    else {
+      // Stop calibration. (Continue calibration only for the geomagnetic sensor)
+      M5.Imu.setCalibration(0, 0, calib_value);
 
-  // Normalise quaternion
-  recipNorm = invSqrt(m->q0 * m->q0 + m->q1 * m->q1 + m->q2 * m->q2 + m->q3 * m->q3);
-  m->q0 *= recipNorm;
-  m->q1 *= recipNorm;
-  m->q2 *= recipNorm;
-  m->q3 *= recipNorm;
+      // If you want to stop all calibration, write this.
+      // M5.Imu.setCalibration(0, 0, 0);
 
-  *pitch = asin(-2 * m->q1 * m->q3 + 2 * m->q0 * m->q2);  // pitch
-  *roll  = atan2(2 * m->q2 * m->q3 + 2 * m->q0 * m->q1,
-                 -2 * m->q1 * m->q1 - 2 * m->q2 * m->q2 + 1);  // roll
-  *yaw   = atan2(2 * (m->q1 * m->q2 + m->q0 * m->q3),
-                 m->q0 * m->q0 + m->q1 * m->q1 - m->q2 * m->q2 - m->q3 * m->q3);  // yaw
+      // save calibration values.
+      M5.Imu.saveOffsetToNVS();
+    }
+  }
+  dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
 
-  *pitch *= RAD_TO_DEG;
-  *yaw *= RAD_TO_DEG;
-  *roll *= RAD_TO_DEG;
+  if (c) {
+    dsp.setCursor(2, rect_text_area.h + 1);
+    dsp.setTextColor(TFT_WHITE, TFT_BLACK);
+    dsp.printf("Countdown:%3d", c);
+  }
 }
 
-// Fast inverse square-root
-// See: http://en.wikipedia.org/wiki/Fast_inverse_square_root
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-float invSqrt(float x) {
-  float halfx = 0.5f * x;
-  float y     = x;
-  long i      = *(long *)&y;
-  i           = 0x5f3759df - (i >> 1);
-  y           = *(float *)&i;
-  y           = y * (1.5f - (halfx * y * y));
-  return y;
+void startCalibration(void) {
+  updateCalibration(30, true);
 }
-#pragma GCC diagnostic pop
 
-#endif
+void repeatMe() {
+  static uint32_t prev_sec = 0;
 
+  auto imu_update = M5.Imu.update();
+  if (imu_update) {
+    m5::imu_3d_t accel;
+    M5.Imu.getAccelData(&accel.x, &accel.y, &accel.z);
+
+    m5::imu_3d_t gyro;
+    M5.Imu.getGyroData(&gyro.x, &gyro.y, &gyro.z);
+
+    got_samples++;
+
+    now = micros();
+    delta_t = ((now - last_update) / 1000000.0);
+    last_update = now;
+
+    float pitch, roll, yaw;
+    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD, 
+                       accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+
+    float y = (accel.z - 1.0) /* since it includes g */;
+    //float y = sin(2 * PI * state.t * 0.25); // dummy test data
+
+    aranovskiy_update(&params, &state, y, delta_t);
+
+    if (first) {
+      kalman_smoother_set_initial(&kalman, state.f);
+      first = 0;
+    }
+    float freq_adj = kalman_smoother_update(&kalman, state.f);
+
+    float a = y;  // acceleration in fractions of g
+    float period = (state.f > 0 ? 1.0 / state.f : 9999.0);    // or use freq_adj
+    float wave_length = trochoid_wave_length(period);
+    float heave = - a * wave_length / (2 * PI);
+
+    if (now - last_refresh >= 1000000) {
+      dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+
+      M5.Lcd.setCursor(0, 2);
+      M5.Lcd.printf("imu: %s\n", name);
+      M5.Lcd.printf("sec: %d\n", now / 1000000);
+      M5.Lcd.printf("samples: %d\n", got_samples);
+      M5.Lcd.printf("period sec: %0.4f\n", (state.f > 0 ? 1.0 / state.f : 9999.0));
+      M5.Lcd.printf("period adj: %0.4f\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
+      M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
+      M5.Lcd.printf("heave:      %0.4f\n", heave);
+      M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
+      M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+      M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
+
+      last_refresh = now;
+      got_samples = 0;
+    }
+  }
+  else {
+    AtomS3.update();
+    // Calibration is initiated when ascreen is clicked.
+    if (AtomS3.BtnA.isPressed()) {
+      startCalibration();
+    }
+  }
+  int32_t sec = millis() / 1000;
+  if (prev_sec != sec) {
+    prev_sec = sec;
+    if (calib_countdown) {
+      updateCalibration(calib_countdown - 1);
+    }
+    if ((sec & 7) == 0) {
+      // prevent WDT.
+      vTaskDelay(1);
+    }
+  }
+}
+
+void setup(void) {
+  auto cfg = M5.config();
+  AtomS3.begin(cfg);
+
+  auto imu_type = M5.Imu.getType();
+  switch (imu_type) {
+    case m5::imu_none:        name = "not found";   break;
+    case m5::imu_sh200q:      name = "sh200q";      break;
+    case m5::imu_mpu6050:     name = "mpu6050";     break;
+    case m5::imu_mpu6886:     name = "mpu6886";     break;
+    case m5::imu_mpu9250:     name = "mpu9250";     break;
+    case m5::imu_bmi270:      name = "bmi270";      break;
+    default:                  name = "unknown";     break;
+  };
+  dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+  M5.Lcd.setCursor(0, 2);
+  M5.Lcd.printf("imu: %s\n", name);
+
+  if (imu_type == m5::imu_none) {
+    for (;;) {
+      delay(1);
+    }
+  }
+
+  int32_t w = dsp.width();
+  int32_t h = dsp.height();
+  if (w < h) {
+    dsp.setRotation(dsp.getRotation() ^ 1);
+    w = dsp.width();
+    h = dsp.height();
+  }
+  int32_t text_area_h = ((h - 8) / 18) * 18;
+  rect_text_area = {0, 0, w, text_area_h };
+
+  // Read calibration values from NVS.
+  if (!M5.Imu.loadOffsetFromNVS()) {
+    startCalibration();
+  }
+
+  float twoKp = (2.0f * 1.0f);
+  float twoKi = (2.0f * 0.0001f);
+  mahony_AHRS_init(&mahony, twoKp, twoKi);
+
+  aranovskiy_default_params(&params, omega_up, k_gain);
+  aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
+
+  float process_noise_covariance = 0.003;
+  float measurement_uncertainty = 10.0;
+  float estimation_uncertainty = 100.0;
+  kalman_smoother_init(&kalman, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
+
+  last_update = micros();
+}
+
+void loop(void) {
+  AtomS3.update();
+  delay(3);
+  repeatMe();
+}
