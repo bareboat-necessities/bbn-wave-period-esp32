@@ -25,10 +25,17 @@ typedef struct mahony_AHRS_vars {
   float integralFBz = 0.0f;  // integral error terms scaled by Ki
 } Mahony_AHRS_Vars;
 
+void mahony_AHRS_init(Mahony_AHRS_Vars* m, float twoKp, float twoKi);
+
 void mahony_AHRS_update(Mahony_AHRS_Vars* m,
                         float gx, float gy, float gz, float ax, float ay, float az, 
                         float *pitch, float *roll, float *yaw, float delta_t_sec);
 float invSqrt(float x);
+
+void mahony_AHRS_init(Mahony_AHRS_Vars* m, float twoKp, float twoKi) {
+  m->twoKp = twoKp;
+  m->twoKi = twoKi;
+}
 
 // IMU algorithm update (without magnetometer)
 void mahony_AHRS_update(Mahony_AHRS_Vars* m,
@@ -125,3 +132,4 @@ float invSqrt(float x) {
 #pragma GCC diagnostic pop
 
 #endif
+
