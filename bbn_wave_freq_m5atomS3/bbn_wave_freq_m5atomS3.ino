@@ -147,7 +147,7 @@ void repeatMe() {
     M5.Imu.getAccelData(&accel.x, &accel.y, &accel.z);
 
     m5::imu_3d_t gyro;
-    M5.Imu.getAccelData(&gyro.x, &gyro.y, &gyro.z);
+    M5.Imu.getGyroData(&gyro.x, &gyro.y, &gyro.z);
     
     got_samples++;
 
