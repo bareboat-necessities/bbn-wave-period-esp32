@@ -184,7 +184,7 @@ void repeatMe() {
     float freq_adj = kalman_smoother_update(&kalman, state.f);
 
     float a = y;  // acceleration in fractions of g
-    float period = (state.f > 0 ? 1.0 / state.f : 9999.0);    // or use freq_adj
+    float period = (freq_adj > 0 ? 1.0 / freq_adj : 9999.0);
     float wave_length = trochoid_wave_length(period);
     float heave = - a * wave_length / (2 * PI);
 
