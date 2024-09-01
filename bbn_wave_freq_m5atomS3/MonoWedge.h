@@ -51,7 +51,7 @@
     The wedge must be monotonic at all times with respect to Compare,
     EG. by only modifying the structure with wedge_update and pop_front.
 
-    Adopted from; https://github.com/EvanBalster/STL_mono_wedge
+    Adopted from: https://github.com/EvanBalster/STL_mono_wedge
 
 */
 
