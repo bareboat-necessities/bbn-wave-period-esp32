@@ -18,7 +18,8 @@ However due to high accelerometer noise and low sample frequency I do not have h
 
 * Tilt compensation. No magnetometer needed as we only need vertical projection of acceleation. Mahony algorithm using accel and gyro (without mag) is enough. Quaternion rotation is done for esimating vertical acceleration
 * Rolling min/max algorithm with window of about three wave periods samples to produce wave height measurement.
-Algorithm: https://github.com/lemire/runningmaxmin from Daniel Lemire paper
+Algorithm:
+https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvements from: https://github.com/EvanBalster/STL_mono_wedge
 
 ## TODO
 
