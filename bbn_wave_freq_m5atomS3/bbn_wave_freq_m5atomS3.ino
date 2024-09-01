@@ -23,6 +23,7 @@
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "Mahony_AHRS.h"
+#include "Quaternion.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -156,10 +157,21 @@ void repeatMe() {
     last_update = now;
 
     float pitch, roll, yaw;
-    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD, 
+    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
                        accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
 
-    float y = (accel.z - 1.0) /* since it includes g */;
+    Quaternion quaternion;
+    Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
+    float v[3] = {accel.x, accel.y, accel.z};
+    float rotated_a[3];
+    Quaternion_rotate(&quaternion, v, rotated_a);
+
+    m5::imu_3d_t accel_rotated;
+    accel_rotated.x = rotated_a[0];
+    accel_rotated.y = rotated_a[1];
+    accel_rotated.z = rotated_a[2];
+
+    float y = (accel_rotated.z - 1.0) /* since it includes g */;
     //float y = sin(2 * PI * state.t * 0.25); // dummy test data
 
     aranovskiy_update(&params, &state, y, delta_t);
@@ -188,6 +200,7 @@ void repeatMe() {
       M5.Lcd.printf("heave:      %0.4f\n", heave);
       M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
       M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+      M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
       M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
 
       last_refresh = now;
