@@ -24,6 +24,7 @@
 #include "TrochoidalWave.h"
 #include "Mahony_AHRS.h"
 #include "Quaternion.h"
+#include "MonoWedge.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
