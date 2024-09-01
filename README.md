@@ -14,13 +14,13 @@ The method for estimating wave height and heave from a moving boat implemented h
 1. So this method avoids double integration of acceleration. It approximates a wave with trochoidal wave parameterized by two variables (frequency and max vertical acceleration in it) by observations from IMU on a moving boat. There is another way to use Kalman filter (with drift correction) which I might add later. See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
 However due to high accelerometer noise and low sample frequency I do not have high hopes for that Kalman filter. 
 
-## TODO
+## Implementation Notes
 
-* Tilt compensation. No magnetometer needed as we only need vertical projection of acceleation. Mahony algorithm using accel and gyro (without mag) is enough. Test implemented quaternion rotation for esimating vertical acceleration
-* Rolling min/max algorithm with window
-of about three wave periods samples to produce wave height measurement
-Algorithm: https://github.com/lemire/runningmaxmin
-from Daniel Lemire paper
+* Tilt compensation. No magnetometer needed as we only need vertical projection of acceleation. Mahony algorithm using accel and gyro (without mag) is enough. Quaternion rotation is done for esimating vertical acceleration
+* Rolling min/max algorithm with window of about three wave periods samples to produce wave height measurement.
+Algorithm: https://github.com/lemire/runningmaxmin from Daniel Lemire paper
+
+## TODO
 
 * Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
 
