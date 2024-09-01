@@ -24,7 +24,7 @@
 #include "TrochoidalWave.h"
 #include "Mahony_AHRS.h"
 #include "Quaternion.h"
-#include "MonoWedge.h"
+#include "MinMaxLemire.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -69,6 +69,8 @@ static int prev_xpos[18];
 
 unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL;
 int got_samples = 0;
+
+MinMaxLemire min_max;
 
 AranovskiyParams params;
 AranovskiyState  state;
@@ -188,6 +190,16 @@ void repeatMe() {
     float wave_length = trochoid_wave_length(period);
     float heave = - a * wave_length / (2 * PI);
 
+    if (period < 120.0) {
+      SampleType sample;
+      sample.timeMicroSec = now;
+      sample.value = heave;
+      uint32_t windowMicros = 10 * period * 1000000;
+      min_max_lemire_update(&min_max, sample, windowMicros);
+    }
+
+    float wave_height = min_max.max.value - min_max.min.value;
+
     if (now - last_refresh >= 1000000) {
       dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
 
@@ -199,6 +211,8 @@ void repeatMe() {
       M5.Lcd.printf("period adj: %0.4f\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
       M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
       M5.Lcd.printf("heave:      %0.4f\n", heave);
+      M5.Lcd.printf("wave height:%0.4f\n", wave_height);
+      M5.Lcd.printf("range %0.4f %0.4f\n", min_max.min.value, min_max.max.value);
       M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
       M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
       M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
