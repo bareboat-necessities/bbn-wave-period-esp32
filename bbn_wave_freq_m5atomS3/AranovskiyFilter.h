@@ -90,7 +90,7 @@ void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, float y, float d
   s->x1_dot = - p->a * s->x1 + p->b * y;
   s->sigma_dot = - p->k * s->x1 * s->x1 * s->theta - p->k * p->a * s->x1 * s->x1_dot - p->k * p->b * s->x1_dot * y;
   s->theta = s->sigma + p->k * p->b * s->x1 * y;
-  s->omega = sqrt(abs(s->theta));
+  s->omega = sqrt(fabs(s->theta));
   s->f = s->omega / (2.0 * PI);
   // step
   s->x1 = s->x1 + s->x1_dot * delta_t;
@@ -99,5 +99,3 @@ void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, float y, float d
 }
 
 #endif
-
-
