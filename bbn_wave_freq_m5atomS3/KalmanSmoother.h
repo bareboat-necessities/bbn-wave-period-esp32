@@ -69,7 +69,7 @@ float kalman_smoother_update(KalmanSmootherVars* s, float measurement) {
   // measurement update
   s->k = s->p / (s->p + s->r);
   float current_estimate = s->x + s->k * (measurement - s->x);
-  s->p = (1.0 - s->k) * s->p + abs(s->x - current_estimate) * s->q;
+  s->p = (1.0 - s->k) * s->p + fabs(s->x - current_estimate) * s->q;
   s->x = current_estimate;
   return s->x;
 }
