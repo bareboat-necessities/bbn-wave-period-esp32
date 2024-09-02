@@ -1,5 +1,6 @@
 /*
-
+  Copyright 2024, Mikhail Grushinskiy
+  
   Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32 (m5atomS3)
 
   See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
