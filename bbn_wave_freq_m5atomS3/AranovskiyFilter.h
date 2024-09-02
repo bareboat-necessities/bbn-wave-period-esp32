@@ -2,7 +2,7 @@
 #define AranovskiyFilter_h
 
 /*
-  Copyright 2024, mgrouch
+  Copyright 2024, Mikhail Grushinskiy
 
   Aranovskiy frequency estimator which is a simple on-line filter.
 
