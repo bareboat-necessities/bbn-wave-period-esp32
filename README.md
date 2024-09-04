@@ -28,7 +28,7 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 
 * Frequency estimation right now is very bad. Need to fix it somehow
   
-* Implement Kalman alorithm for wave estimation (the one mentioned here: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html) And compare with trochoidal model results.
+* Implement Kalman alorithm for wave estimation (the one mentioned here: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html) And fuse together with trochoidal model results.
 
 * Generate some reference data, test cases with it and produce some graphical charts. There are many parameterized filters used and gains and coefficients
 need to be fine tuned for better results.
