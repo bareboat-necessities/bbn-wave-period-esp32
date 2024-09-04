@@ -63,7 +63,7 @@ struct rect_t {
 static constexpr const float coefficient_tbl[3] = { 0.5f, (1.0f / 256.0f), (1.0f / 1024.0f) };
 static uint8_t calib_countdown = 0;
 
-static auto &dsp = (M5.Display);
+static auto &disp = (M5.Display);
 static rect_t rect_text_area;
 
 static int prev_xpos[18];
@@ -74,7 +74,7 @@ int got_samples = 0;
 MinMaxLemire min_max;
 
 AranovskiyParams params;
-AranovskiyState  state;
+AranovskiyState state;
 
 float omega_up = 2.5 * (2 * PI);  // upper frequency Hz * 2 * PI
 float k_gain = 2.0;
@@ -86,7 +86,8 @@ float sigma_0 = theta_0;
 
 float delta_t;  // time step sec
 
-KalmanSmootherVars kalman;
+KalmanSmootherVars kalman_freq;
+KalmanSmootherVars kalman_heave;
 
 int first = 1;
 
@@ -103,7 +104,7 @@ void updateCalibration(uint32_t c, bool clear = false) {
 
   if (clear) {
     memset(prev_xpos, 0, sizeof(prev_xpos));
-    dsp.fillScreen(TFT_BLACK);
+    disp.fillScreen(TFT_BLACK);
     if (c) {
       // Start calibration.
       M5.Imu.setCalibration(calib_value, calib_value, calib_value);
@@ -130,12 +131,12 @@ void updateCalibration(uint32_t c, bool clear = false) {
       M5.Imu.saveOffsetToNVS();
     }
   }
-  dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+  disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
 
   if (c) {
-    dsp.setCursor(2, rect_text_area.h + 1);
-    dsp.setTextColor(TFT_WHITE, TFT_BLACK);
-    dsp.printf("Countdown:%3d", c);
+    disp.setCursor(2, rect_text_area.h + 1);
+    disp.setTextColor(TFT_WHITE, TFT_BLACK);
+    disp.printf("Countdown:%3d", c);
   }
 }
 
@@ -180,44 +181,54 @@ void repeatMe() {
 
     aranovskiy_update(&params, &state, y, delta_t);
 
-    if (first) {
-      kalman_smoother_set_initial(&kalman, state.f);
-      first = 0;
-    }
-    float freq_adj = kalman_smoother_update(&kalman, state.f);
-
+    float freq = state.f;
     float a = y;  // acceleration in fractions of g
-    float period = (freq_adj > 0 ? 1.0 / freq_adj : 9999.0);
+    float period = (freq > 0 ? 1.0 / freq : 9999.0);
     float wave_length = trochoid_wave_length(period);
     float heave = - a * wave_length / (2 * PI);
+    
+    if (first) {
+      kalman_smoother_set_initial(&kalman_freq, state.f);
+      kalman_smoother_set_initial(&kalman_heave, heave);
+      first = 0;
+    }
+    float freq_adj = kalman_smoother_update(&kalman_freq, state.f);
+    float heave_adj = kalman_smoother_update(&kalman_heave, heave);
 
     if (period < 120.0) {
       SampleType sample;
       sample.timeMicroSec = now;
-      sample.value = heave;
+      sample.value = heave_adj;
       uint32_t windowMicros = 10 * period * 1000000;
       min_max_lemire_update(&min_max, sample, windowMicros);
     }
 
     float wave_height = min_max.max.value - min_max.min.value;
 
-    if (now - last_refresh >= 1000000) {
-      dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+    if (now - last_refresh >= 100000) {
+      disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
 
       M5.Lcd.setCursor(0, 2);
       M5.Lcd.printf("imu: %s\n", name);
       M5.Lcd.printf("sec: %d\n", now / 1000000);
       M5.Lcd.printf("samples: %d\n", got_samples);
-      M5.Lcd.printf("period sec: %0.4f\n", (state.f > 0 ? 1.0 / state.f : 9999.0));
+      M5.Lcd.printf("period sec: %0.4f\n", (freq > 0 ? 1.0 / freq : 9999.0));
       M5.Lcd.printf("period adj: %0.4f\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
       M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
-      M5.Lcd.printf("heave:      %0.4f\n", heave);
+      M5.Lcd.printf("heave:      %0.4f\n", heave_adj);
       M5.Lcd.printf("wave height:%0.4f\n", wave_height);
       M5.Lcd.printf("range %0.4f %0.4f\n", min_max.min.value, min_max.max.value);
       M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
       M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
       M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
       M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
+
+      if (1) {
+        Serial.printf("heave:%.4f", heave_adj*100);
+        Serial.printf(",height:%.4f", wave_height*100);
+        Serial.printf(",period:%.4f", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0) * 10);
+        Serial.println();
+      }
 
       last_refresh = now;
       got_samples = 0;
@@ -246,7 +257,8 @@ void repeatMe() {
 void setup(void) {
   auto cfg = M5.config();
   AtomS3.begin(cfg);
-
+  Serial.begin(115200);
+  
   auto imu_type = M5.Imu.getType();
   switch (imu_type) {
     case m5::imu_none:        name = "not found";   break;
@@ -257,7 +269,7 @@ void setup(void) {
     case m5::imu_bmi270:      name = "bmi270";      break;
     default:                  name = "unknown";     break;
   };
-  dsp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+  disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
   M5.Lcd.setCursor(0, 2);
   M5.Lcd.printf("imu: %s\n", name);
 
@@ -267,12 +279,12 @@ void setup(void) {
     }
   }
 
-  int32_t w = dsp.width();
-  int32_t h = dsp.height();
+  int32_t w = disp.width();
+  int32_t h = disp.height();
   if (w < h) {
-    dsp.setRotation(dsp.getRotation() ^ 1);
-    w = dsp.width();
-    h = dsp.height();
+    disp.setRotation(disp.getRotation() ^ 1);
+    w = disp.width();
+    h = disp.height();
   }
   int32_t text_area_h = ((h - 8) / 18) * 18;
   rect_text_area = {0, 0, w, text_area_h };
@@ -292,7 +304,8 @@ void setup(void) {
   float process_noise_covariance = 0.003;
   float measurement_uncertainty = 10.0;
   float estimation_uncertainty = 100.0;
-  kalman_smoother_init(&kalman, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
+  kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
+  kalman_smoother_init(&kalman_heave, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
 
   last_update = micros();
 }
