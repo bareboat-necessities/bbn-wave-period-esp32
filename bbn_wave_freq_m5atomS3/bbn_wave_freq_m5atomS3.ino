@@ -193,7 +193,7 @@ void repeatMe() {
       first = 0;
     }
     float freq_adj = kalman_smoother_update(&kalman_freq, state.f);
-    float heave_adj = kalman_smoother_update(&kalman_heave, heave);
+    float heave_adj = heave; // kalman_smoother_update(&kalman_heave, heave);
 
     if (period < 120.0) {
       SampleType sample;
@@ -301,11 +301,18 @@ void setup(void) {
   aranovskiy_default_params(&params, omega_up, k_gain);
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
 
-  float process_noise_covariance = 0.003;
-  float measurement_uncertainty = 10.0;
-  float estimation_uncertainty = 100.0;
-  kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
-  kalman_smoother_init(&kalman_heave, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
+  {
+    float process_noise_covariance = 0.003;
+    float measurement_uncertainty = 10.0;
+    float estimation_uncertainty = 100.0;
+    kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
+  }
+  {
+    float process_noise_covariance = 0.01;
+    float measurement_uncertainty = 10.0;
+    float estimation_uncertainty = 10.0;
+    kalman_smoother_init(&kalman_heave, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
+  }
 
   last_update = micros();
 }
