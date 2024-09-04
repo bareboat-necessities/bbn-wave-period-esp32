@@ -11,8 +11,9 @@ The method for estimating wave height and heave from a moving boat implemented h
 1. In trochoidal model horizontal wave displacement would be simply proportional to measured vertical acceleration. Doppler effect has no impact on displacement (amplitude). Although though it does on observed wave frequency and vertical acceleration in it. 
 1. Calculate the coefficient for previous step using known wave length in trochoidal model. 
 1. This gives a simple formula to produce vertical displacement from measured vertical acceleration. Valid in the considered models even by observations from a moving vessel (assuming speed doesn’t change much)
-1. So this method avoids double integration of acceleration. It approximates a wave with trochoidal wave parameterized by two variables (frequency and max vertical acceleration in it) by observations from IMU on a moving boat. There is another way to use Kalman filter (with drift correction) which I might add later. See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
-However due to high accelerometer noise and low sample frequency I do not have high hopes for that Kalman filter. 
+1. So this method avoids double integration of acceleration. It approximates a wave with trochoidal wave parameterized by two variables (frequency and max vertical acceleration in it) by observations from IMU on a moving boat.
+1. There is another way to use Kalman filter (with drift correction) which I might add later. See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
+However due to high accelerometer noise and low sample frequency scaling of heave is an issue. Plugging in some values periodically from trochoidal model to create sensor fusion will make it more accurate. 
 
 ## Implementation Notes
 
@@ -25,6 +26,8 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 
 * Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
 
+* Frequency estimation right now is very bad. Need to fix it somehow
+  
 * Implement Kalman alorithm for wave estimation (the one mentioned here: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html) And compare with trochoidal model results.
 
 * Generate some reference data, test cases with it and produce some graphical charts. There are many parameterized filters used and gains and coefficients
