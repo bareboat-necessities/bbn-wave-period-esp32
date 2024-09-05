@@ -195,9 +195,9 @@ void repeatMe() {
         if (produce_serial_data) {
           //Serial.printf("heave_cm:%.4f", heave * 100);
           //Serial.printf(",height_cm:%.4f", wave_height * 100);
-          //Serial.printf(",freq:%.4f", freq * 100);
-          //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-          Serial.printf(",period_decisec:%.4f", period * 10);
+          Serial.printf(",freq:%.4f", freq * 100);
+          Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+          //Serial.printf(",period_decisec:%.4f", period * 10);
           Serial.println();
         }
         else {
@@ -287,7 +287,7 @@ void setup(void) {
   mahony_AHRS_init(&mahony, twoKp, twoKi);
 
   float omega_init = 0.02 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  float k_gain = 1000.0; // Aranovskiy gain
+  float k_gain = 2000.0; // Aranovskiy gain
   float t_0 = 0.0;
   float x1_0 = 0.0;
   float theta_0 = - (omega_init * omega_init / 4.0);
@@ -297,8 +297,8 @@ void setup(void) {
 
   {
     float process_noise_covariance = 0.6;
-    float measurement_uncertainty = 50.0;
-    float estimation_uncertainty = 200.0;
+    float measurement_uncertainty = 2.0;
+    float estimation_uncertainty = 10.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
 
