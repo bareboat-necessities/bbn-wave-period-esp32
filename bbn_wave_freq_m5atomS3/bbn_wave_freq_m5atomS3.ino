@@ -193,8 +193,10 @@ void repeatMe() {
 
     if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
       if (produce_serial_data) {
-        Serial.printf("heave_cm:%.4f", heave * 100);
-        Serial.printf(",height_cm:%.4f", wave_height * 100);
+        //Serial.printf("heave_cm:%.4f", heave * 100);
+        //Serial.printf(",height_cm:%.4f", wave_height * 100);
+        //Serial.printf(",freq:%.4f", freq * 100);
+        //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
         Serial.printf(",period_decisec:%.4f", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0) * 10);
         Serial.println();
       }
@@ -284,18 +286,18 @@ void setup(void) {
   float twoKi = (2.0f * 0.0001f);
   mahony_AHRS_init(&mahony, twoKp, twoKi);
 
-  float omega_up = 1.0 * (2 * PI);  // upper frequency Hz * 2 * PI (will start from omega_up/2)
+  float omega_init = 0.05 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
   float k_gain = 300.0; // Aranovskiy gain
   float t_0 = 0.0;
   float x1_0 = 0.0;
-  float theta_0 = - (omega_up * omega_up / 4.0);
+  float theta_0 = - (omega_init * omega_init / 4.0);
   float sigma_0 = theta_0;
-  aranovskiy_default_params(&params, omega_up, k_gain);
+  aranovskiy_default_params(&params, omega_init, k_gain);
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
 
   {
-    float process_noise_covariance = 0.002;
-    float measurement_uncertainty = 30.0;
+    float process_noise_covariance = 0.1;
+    float measurement_uncertainty = 1000.0;
     float estimation_uncertainty = 2000.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
