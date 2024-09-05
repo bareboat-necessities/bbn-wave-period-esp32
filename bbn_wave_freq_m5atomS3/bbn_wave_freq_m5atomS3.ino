@@ -177,15 +177,17 @@ void repeatMe() {
     float freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
     float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-    float period = freq_adj > 0 ? (1.0 / freq_adj) : 9999.0;
+    if (freq_adj > 0) {
+      float period = 1.0 / freq_adj;      
+    }
     float wave_length = trochoid_wave_length(period);
     float heave = - a * wave_length / (2 * PI);
 
-    if (period < 120.0) {
+    if (period < 60.0) {
       SampleType sample;
       sample.timeMicroSec = now;
       sample.value = heave;
-      uint32_t windowMicros = 10 * period * 1000000;
+      uint32_t windowMicros = 5 * period * 1000000;
       min_max_lemire_update(&min_max, sample, windowMicros);
     }
 
