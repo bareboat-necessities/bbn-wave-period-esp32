@@ -1,6 +1,6 @@
 /*
   Copyright 2024, Mikhail Grushinskiy
-  
+
   Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32 (m5atomS3)
 
   See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
@@ -178,50 +178,48 @@ void repeatMe() {
 
     float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
     if (freq_adj > 0) {
-      float period = 1.0 / freq_adj;      
-    }
-    float wave_length = trochoid_wave_length(period);
-    float heave = - a * wave_length / (2 * PI);
-
-    if (period < 60.0) {
-      SampleType sample;
-      sample.timeMicroSec = now;
-      sample.value = heave;
-      uint32_t windowMicros = 5 * period * 1000000;
-      min_max_lemire_update(&min_max, sample, windowMicros);
-    }
-
-    float wave_height = min_max.max.value - min_max.min.value;
-
-    if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
-      if (produce_serial_data) {
-        //Serial.printf("heave_cm:%.4f", heave * 100);
-        //Serial.printf(",height_cm:%.4f", wave_height * 100);
-        //Serial.printf(",freq:%.4f", freq * 100);
-        //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-        Serial.printf(",period_decisec:%.4f", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0) * 10);
-        Serial.println();
+      float period = 1.0 / freq_adj;
+      float wave_length = trochoid_wave_length(period);
+      float heave = - a * wave_length / (2 * PI);
+      if (period < 60.0) {
+        SampleType sample;
+        sample.timeMicroSec = now;
+        sample.value = heave;
+        uint32_t windowMicros = 5 * period * 1000000;
+        min_max_lemire_update(&min_max, sample, windowMicros);
       }
-      else {
-        disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-        M5.Lcd.setCursor(0, 2);
-        M5.Lcd.printf("imu: %s\n", imu_name);
-        M5.Lcd.printf("sec: %d\n", now / 1000000);
-        M5.Lcd.printf("samples: %d\n", got_samples);
-        M5.Lcd.printf("period sec: %0.4f\n", (freq > 0 ? 1.0 / freq : 9999.0));
-        M5.Lcd.printf("period adj: %0.4f\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
-        M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
-        M5.Lcd.printf("heave:      %0.4f\n", heave);
-        M5.Lcd.printf("wave height:%0.4f\n", wave_height);
-        M5.Lcd.printf("range %0.4f %0.4f\n", min_max.min.value, min_max.max.value);
-        M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
-        M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-        M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
-        M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
+
+      float wave_height = min_max.max.value - min_max.min.value;
+
+      if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
+        if (produce_serial_data) {
+          //Serial.printf("heave_cm:%.4f", heave * 100);
+          //Serial.printf(",height_cm:%.4f", wave_height * 100);
+          //Serial.printf(",freq:%.4f", freq * 100);
+          //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+          Serial.printf(",period_decisec:%.4f", period * 10);
+          Serial.println();
+        }
+        else {
+          disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+          M5.Lcd.setCursor(0, 2);
+          M5.Lcd.printf("imu: %s\n", imu_name);
+          M5.Lcd.printf("sec: %d\n", now / 1000000);
+          M5.Lcd.printf("samples: %d\n", got_samples);
+          M5.Lcd.printf("period sec: %0.4f\n", period);
+          M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
+          M5.Lcd.printf("heave:      %0.4f\n", heave);
+          M5.Lcd.printf("wave height:%0.4f\n", wave_height);
+          M5.Lcd.printf("range %0.4f %0.4f\n", min_max.min.value, min_max.max.value);
+          M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
+          M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+          M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
+          M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
+        }
+
+        last_refresh = now;
+        got_samples = 0;
       }
-      
-      last_refresh = now;
-      got_samples = 0;
     }
   }
   else {
@@ -248,7 +246,7 @@ void setup(void) {
   auto cfg = M5.config();
   AtomS3.begin(cfg);
   Serial.begin(115200);
-  
+
   auto imu_type = M5.Imu.getType();
   switch (imu_type) {
     case m5::imu_none:        imu_name = "not found";   break;
