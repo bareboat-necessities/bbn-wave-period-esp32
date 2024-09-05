@@ -165,7 +165,7 @@ void repeatMe() {
     accel_rotated.y = rotated_a[1];
     accel_rotated.z = rotated_a[2];
 
-    float y = (accel.z - 1.0) /* since it includes g */;
+    float y = (accel_rotated.z - 1.0) /* since it includes g */;
     //float y = sin(2 * PI * state.t * 0.25); // dummy test data
     aranovskiy_update(&params, &state, y, delta_t);
     float freq = state.f;
@@ -296,9 +296,9 @@ void setup(void) {
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
 
   {
-    float process_noise_covariance = 0.5;
-    float measurement_uncertainty = 100.0;
-    float estimation_uncertainty = 500.0;
+    float process_noise_covariance = 0.6;
+    float measurement_uncertainty = 50.0;
+    float estimation_uncertainty = 200.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
 
