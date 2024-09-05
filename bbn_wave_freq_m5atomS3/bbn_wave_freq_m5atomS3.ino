@@ -70,29 +70,17 @@ static int prev_xpos[18];
 
 unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL;
 int got_samples = 0;
-
-MinMaxLemire min_max;
-
-AranovskiyParams params;
-AranovskiyState state;
-
-float omega_up = 5 * (2 * PI);  // upper frequency Hz * 2 * PI
-float k_gain = 50.0; // Aranovskiy gain
-float t_0 = 0.0;
-float x1_0 = 0.0;
-float theta_0 = - (omega_up * omega_up / 4.0);
-float sigma_0 = theta_0;
+int first = 1;
 
 float delta_t;  // time step sec
 
+MinMaxLemire min_max;
+AranovskiyParams params;
+AranovskiyState state;
 KalmanSmootherVars kalman_freq;
-KalmanSmootherVars kalman_heave;
-
-int first = 1;
-
 Mahony_AHRS_Vars mahony;
 
-const char* name;
+const char* imu_name;
 
 void updateCalibration(uint32_t c, bool clear = false) {
   calib_countdown = c;
@@ -180,25 +168,23 @@ void repeatMe() {
     float y = (accel.z - 1.0) /* since it includes g */;
     //float y = sin(2 * PI * state.t * 0.25); // dummy test data
     aranovskiy_update(&params, &state, y, delta_t);
+    float freq = state.f;
 
     if (first) {
-      kalman_smoother_set_initial(&kalman_freq, state.f);
-      kalman_smoother_set_initial(&kalman_heave, 0.0);
+      kalman_smoother_set_initial(&kalman_freq, freq);
       first = 0;
     }
-    float freq = state.f;
-    float freq_adj = kalman_smoother_update(&kalman_freq, state.f);
+    float freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
     float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
     float period = freq_adj > 0 ? (1.0 / freq_adj) : 9999.0;
     float wave_length = trochoid_wave_length(period);
     float heave = - a * wave_length / (2 * PI);
-    float heave_adj = heave; //kalman_smoother_update(&kalman_heave, heave);
 
     if (period < 120.0) {
       SampleType sample;
       sample.timeMicroSec = now;
-      sample.value = heave_adj;
+      sample.value = heave;
       uint32_t windowMicros = 10 * period * 1000000;
       min_max_lemire_update(&min_max, sample, windowMicros);
     }
@@ -207,21 +193,21 @@ void repeatMe() {
 
     if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
       if (produce_serial_data) {
-        Serial.printf("heave:%.4f", heave_adj*100);
-        Serial.printf(",height:%.4f", wave_height*100);
-        Serial.printf(",period:%.4f", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0) * 10);
+        Serial.printf("heave_cm:%.4f", heave * 100);
+        Serial.printf(",height_cm:%.4f", wave_height * 100);
+        Serial.printf(",period_decisec:%.4f", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0) * 10);
         Serial.println();
       }
       else {
         disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
         M5.Lcd.setCursor(0, 2);
-        M5.Lcd.printf("imu: %s\n", name);
+        M5.Lcd.printf("imu: %s\n", imu_name);
         M5.Lcd.printf("sec: %d\n", now / 1000000);
         M5.Lcd.printf("samples: %d\n", got_samples);
         M5.Lcd.printf("period sec: %0.4f\n", (freq > 0 ? 1.0 / freq : 9999.0));
         M5.Lcd.printf("period adj: %0.4f\n", (freq_adj > 0 ? 1.0 / freq_adj : 9999.0));
         M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
-        M5.Lcd.printf("heave:      %0.4f\n", heave_adj);
+        M5.Lcd.printf("heave:      %0.4f\n", heave);
         M5.Lcd.printf("wave height:%0.4f\n", wave_height);
         M5.Lcd.printf("range %0.4f %0.4f\n", min_max.min.value, min_max.max.value);
         M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
@@ -236,7 +222,7 @@ void repeatMe() {
   }
   else {
     AtomS3.update();
-    // Calibration is initiated when ascreen is clicked.
+    // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
     if (AtomS3.BtnA.isPressed()) {
       startCalibration();
     }
@@ -261,17 +247,17 @@ void setup(void) {
   
   auto imu_type = M5.Imu.getType();
   switch (imu_type) {
-    case m5::imu_none:        name = "not found";   break;
-    case m5::imu_sh200q:      name = "sh200q";      break;
-    case m5::imu_mpu6050:     name = "mpu6050";     break;
-    case m5::imu_mpu6886:     name = "mpu6886";     break;
-    case m5::imu_mpu9250:     name = "mpu9250";     break;
-    case m5::imu_bmi270:      name = "bmi270";      break;
-    default:                  name = "unknown";     break;
+    case m5::imu_none:        imu_name = "not found";   break;
+    case m5::imu_sh200q:      imu_name = "sh200q";      break;
+    case m5::imu_mpu6050:     imu_name = "mpu6050";     break;
+    case m5::imu_mpu6886:     imu_name = "mpu6886";     break;
+    case m5::imu_mpu9250:     imu_name = "mpu9250";     break;
+    case m5::imu_bmi270:      imu_name = "bmi270";      break;
+    default:                  imu_name = "unknown";     break;
   };
   disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
   M5.Lcd.setCursor(0, 2);
-  M5.Lcd.printf("imu: %s\n", name);
+  M5.Lcd.printf("imu: %s\n", imu_name);
 
   if (imu_type == m5::imu_none) {
     for (;;) {
@@ -298,6 +284,12 @@ void setup(void) {
   float twoKi = (2.0f * 0.0001f);
   mahony_AHRS_init(&mahony, twoKp, twoKi);
 
+  float omega_up = 1.0 * (2 * PI);  // upper frequency Hz * 2 * PI (will start from omega_up/2)
+  float k_gain = 300.0; // Aranovskiy gain
+  float t_0 = 0.0;
+  float x1_0 = 0.0;
+  float theta_0 = - (omega_up * omega_up / 4.0);
+  float sigma_0 = theta_0;
   aranovskiy_default_params(&params, omega_up, k_gain);
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
 
@@ -306,12 +298,6 @@ void setup(void) {
     float measurement_uncertainty = 30.0;
     float estimation_uncertainty = 2000.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
-  }
-  {
-    float process_noise_covariance = 0.01;
-    float measurement_uncertainty = 20.0;
-    float estimation_uncertainty = 100.0;
-    kalman_smoother_init(&kalman_heave, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
 
   last_update = micros();
