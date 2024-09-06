@@ -85,10 +85,10 @@
 #error KALMAN_NUM_MEASUREMENTS must be a positive integer or zero if no inputs are used
 #endif
 
-#pragma message("** Instantiating Kalman filter \"" STRINGIFY(KALMAN_NAME) "\" measurement \"" STRINGIFY(KALMAN_MEASUREMENT_NAME) "\" with " STRINGIFY(KALMAN_NUM_MEASUREMENTS) " measured outputs")
+//#pragma message("** Instantiating Kalman filter \"" STRINGIFY(KALMAN_NAME) "\" measurement \"" STRINGIFY(KALMAN_MEASUREMENT_NAME) "\" with " STRINGIFY(KALMAN_NUM_MEASUREMENTS) " measured outputs")
 
 #if MEASUREMENT_FORCE_NEW_BUFFERS
-#pragma message("MEASUREMENT_FORCE_NEW_BUFFERS was set. Forcing separate auxiliary buffers.")
+//#pragma message("MEASUREMENT_FORCE_NEW_BUFFERS was set. Forcing separate auxiliary buffers.")
 #endif
 
 /************************************************************************/
@@ -175,22 +175,22 @@
 #define __KALMAN_BUFFER_S   KALMAN_MEASUREMENT_BUFFER_NAME(S)
 #define __KALMAN_BUFFER_y   KALMAN_MEASUREMENT_BUFFER_NAME(y)
 
-#pragma message("Creating Kalman measurement H buffer: " STRINGIFY(__KALMAN_BUFFER_H))
+//#pragma message("Creating Kalman measurement H buffer: " STRINGIFY(__KALMAN_BUFFER_H))
 static matrix_data_t __KALMAN_BUFFER_H[__KALMAN_H_ROWS * __KALMAN_H_COLS];
 
-#pragma message("Creating Kalman measurement R buffer: " STRINGIFY(__KALMAN_BUFFER_R))
+//#pragma message("Creating Kalman measurement R buffer: " STRINGIFY(__KALMAN_BUFFER_R))
 static matrix_data_t __KALMAN_BUFFER_R[__KALMAN_R_ROWS * __KALMAN_R_COLS];
 
-#pragma message("Creating Kalman measurement z buffer: " STRINGIFY(__KALMAN_BUFFER_z))
+//#pragma message("Creating Kalman measurement z buffer: " STRINGIFY(__KALMAN_BUFFER_z))
 static matrix_data_t __KALMAN_BUFFER_z[__KALMAN_z_ROWS * __KALMAN_z_COLS];
 
-#pragma message("Creating Kalman measurement K buffer: " STRINGIFY(__KALMAN_BUFFER_K))
+//#pragma message("Creating Kalman measurement K buffer: " STRINGIFY(__KALMAN_BUFFER_K))
 static matrix_data_t __KALMAN_BUFFER_K[__KALMAN_K_ROWS * __KALMAN_K_COLS];
 
-#pragma message("Creating Kalman measurement S buffer: " STRINGIFY(__KALMAN_BUFFER_S))
+//#pragma message("Creating Kalman measurement S buffer: " STRINGIFY(__KALMAN_BUFFER_S))
 static matrix_data_t __KALMAN_BUFFER_S[__KALMAN_S_ROWS * __KALMAN_S_COLS];
 
-#pragma message("Creating Kalman measurement y buffer: " STRINGIFY(__KALMAN_BUFFER_y))
+//#pragma message("Creating Kalman measurement y buffer: " STRINGIFY(__KALMAN_BUFFER_y))
 static matrix_data_t __KALMAN_BUFFER_y[__KALMAN_y_ROWS * __KALMAN_y_COLS];
 
 /************************************************************************/
@@ -201,14 +201,14 @@ static matrix_data_t __KALMAN_BUFFER_y[__KALMAN_y_ROWS * __KALMAN_y_COLS];
 #if __USE_BUFFER_AUX && !MEASUREMENT_FORCE_NEW_BUFFERS
 
 #define __KALMAN_BUFFER_maux     __KALMAN_BUFFER_aux
-#pragma message("Re-using Kalman aux buffer for measurement aux buffer: " STRINGIFY(__KALMAN_BUFFER_maux))
+//#pragma message("Re-using Kalman aux buffer for measurement aux buffer: " STRINGIFY(__KALMAN_BUFFER_maux))
 
 #else
 
 #define __KALMAN_BUFFER_maux     KALMAN_MEASUREMENT_BUFFER_NAME(aux)
 #define __KALMAN_maux_size       (__KALMAN_maux_ROWS * __KALMAN_maux_COLS)
 
-#pragma message("Creating Kalman measurement aux buffer: " STRINGIFY(__KALMAN_BUFFER_maux))
+//#pragma message("Creating Kalman measurement aux buffer: " STRINGIFY(__KALMAN_BUFFER_maux))
 static matrix_data_t __KALMAN_BUFFER_maux[__KALMAN_maux_size];
 
 #endif
@@ -219,12 +219,12 @@ static matrix_data_t __KALMAN_BUFFER_maux[__KALMAN_maux_size];
 #if __KALMAN_Sinv_size <= __KALMAN_tempPBQ_size && !MEASUREMENT_FORCE_NEW_BUFFERS
 
 #define __KALMAN_BUFFER_Sinv  __KALMAN_BUFFER_tempPBQ
-#pragma message("Re-using Kalman filter temporary P/BQ buffer for temporary S-inverted buffer: " STRINGIFY(__KALMAN_BUFFER_Sinv))
+//#pragma message("Re-using Kalman filter temporary P/BQ buffer for temporary S-inverted buffer: " STRINGIFY(__KALMAN_BUFFER_Sinv))
 
 #else
 
 #define __KALMAN_BUFFER_Sinv     KALMAN_MEASUREMENT_BUFFER_NAME(Sinv)
-#pragma message("Creating Kalman measurement temporary S-inverted buffer: " STRINGIFY(__KALMAN_BUFFER_Sinv))
+//#pragma message("Creating Kalman measurement temporary S-inverted buffer: " STRINGIFY(__KALMAN_BUFFER_Sinv))
 static matrix_data_t __KALMAN_BUFFER_Sinv[__KALMAN_Sinv_size];
 
 #endif
@@ -233,7 +233,7 @@ static matrix_data_t __KALMAN_BUFFER_Sinv[__KALMAN_Sinv_size];
 #define __KALMAN_tempHP_size    (__KALMAN_tempHP_ROWS * __KALMAN_tempHP_COLS)
 
 #define __KALMAN_BUFFER_tempHP  KALMAN_MEASUREMENT_BUFFER_NAME(tempHP)
-#pragma message("Creating Kalman measurement temporary HxP buffer: " STRINGIFY(__KALMAN_BUFFER_tempHP))
+//#pragma message("Creating Kalman measurement temporary HxP buffer: " STRINGIFY(__KALMAN_BUFFER_tempHP))
 static matrix_data_t __KALMAN_BUFFER_tempHP[__KALMAN_tempHP_size];
 
 // create buffer for PxH'
@@ -242,12 +242,12 @@ static matrix_data_t __KALMAN_BUFFER_tempHP[__KALMAN_tempHP_size];
 #if !MEASUREMENT_FORCE_NEW_BUFFERS
 
 #define __KALMAN_BUFFER_tempPHt  __KALMAN_BUFFER_tempHP
-#pragma message("Re-using Kalman measurement temporary HxP for temporary PxH' buffer: " STRINGIFY(__KALMAN_BUFFER_tempPHt))
+//#pragma message("Re-using Kalman measurement temporary HxP for temporary PxH' buffer: " STRINGIFY(__KALMAN_BUFFER_tempPHt))
 
 #else
 
 #define __KALMAN_BUFFER_tempPHt  KALMAN_MEASUREMENT_BUFFER_NAME(tempPHt)
-#pragma message("Creating Kalman measurement temporary PxH' buffer: " STRINGIFY(__KALMAN_BUFFER_tempPHt))    // TODO: reuse HxP buffer!
+//#pragma message("Creating Kalman measurement temporary PxH' buffer: " STRINGIFY(__KALMAN_BUFFER_tempPHt))    // TODO: reuse HxP buffer!
 static matrix_data_t __KALMAN_BUFFER_tempPHt[__KALMAN_tempPHt_size];
 
 #endif
@@ -258,12 +258,12 @@ static matrix_data_t __KALMAN_BUFFER_tempPHt[__KALMAN_tempPHt_size];
 #if (__KALMAN_tempKHP_size <= __KALMAN_tempPBQ_size) && !MEASUREMENT_FORCE_NEW_BUFFERS
 
 #define __KALMAN_BUFFER_tempKHP     __KALMAN_BUFFER_tempPBQ
-#pragma message("Re-using Kalman filter temporary P/BQ buffer for measurement temporary Kx(HxP)  buffer: " STRINGIFY(__KALMAN_BUFFER_tempKHP))
+//#pragma message("Re-using Kalman filter temporary P/BQ buffer for measurement temporary Kx(HxP)  buffer: " STRINGIFY(__KALMAN_BUFFER_tempKHP))
 
 #else
 
 #define __KALMAN_BUFFER_tempKHP  KALMAN_MEASUREMENT_BUFFER_NAME(tempKHP)
-#pragma message("Creating Kalman measurement temporary Kx(HxP) buffer: " STRINGIFY(__KALMAN_BUFFER_tempKHP))
+//#pragma message("Creating Kalman measurement temporary Kx(HxP) buffer: " STRINGIFY(__KALMAN_BUFFER_tempKHP))
 static matrix_data_t __KALMAN_BUFFER_tempKHP[__KALMAN_tempKHP_size];
 
 #endif
@@ -272,10 +272,10 @@ static matrix_data_t __KALMAN_BUFFER_tempKHP[__KALMAN_tempKHP_size];
 /* Construct Kalman filter measurement                                  */
 /************************************************************************/
 
-#pragma message("Creating Kalman measurement structure: " STRINGIFY(KALMAN_MEASUREMENT_BASENAME))
+//#pragma message("Creating Kalman measurement structure: " STRINGIFY(KALMAN_MEASUREMENT_BASENAME))
 static kalman_measurement_t KALMAN_MEASUREMENT_BASENAME;
 
-#pragma message ("Creating Kalman measurement initialization function: " STRINGIFY(KALMAN_MEASUREMENT_FUNCTION_NAME(init()) ))
+//#pragma message ("Creating Kalman measurement initialization function: " STRINGIFY(KALMAN_MEASUREMENT_FUNCTION_NAME(init()) ))
 
 /*!
 * \brief Initializes the Kalman Filter measurement
