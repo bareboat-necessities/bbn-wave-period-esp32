@@ -21,7 +21,7 @@
 * After that, this file must be included
 *
 * \code{.c}
-* #include "kalman_factory_filter_init.h"
+* #include "KalmanFactoryFilterInit.h"
 * \endcode
 *
 * At this point, the structure \c kalman_filter_acceleration will be created (statically) along with
@@ -32,10 +32,10 @@
 * be created which you will need to call manually in order to set up the filter.
 *
 * To clean up the defined macros (e.g. in order to be able to create another named Kalman filter),
-* you will have to include kalman_factory_cleanup.h:
+* you will have to include KalmanFactoryCleanup.h:
 *
 * \code{.c}
-* #include "kalman_factory_cleanup.h"
+* #include "KalmanFactoryCleanup.h"
 * \endcode
 *
 * A full example would be
@@ -45,9 +45,9 @@
 * #define KALMAN_NUM_STATES 4
 * #define KALMAN_NUM_INPUTS 0
 
-* #include "kalman_factory_filter.h"
+* #include "KalmanFactoryFilter.h"
 * // NOTE that this is the point to create measurement buffers
-* #include "kalman_factory_cleanup.h"
+* #include "KalmanFactoryCleanup.h"
 
 * void test_kalman()
 * {
@@ -143,9 +143,8 @@
 /* Construct Kalman filter buffers: State                               */
 /************************************************************************/
 
-#include "compiler.h"
-#include "matrix.h"
-#include "kalman.h"
+#include "Matrix.h"
+#include "Kalman.h"
 
 #define __KALMAN_BUFFER_A   KALMAN_BUFFER_NAME(A)
 #define __KALMAN_BUFFER_P   KALMAN_BUFFER_NAME(P)
