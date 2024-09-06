@@ -66,7 +66,7 @@
 /************************************************************************/
 
 #ifndef KALMAN_NAME
-#error KALMAN_NAME needs to be defined prior to inclusion of this file. Did you include kalman_factory_filter.h?
+#error KALMAN_NAME needs to be defined prior to inclusion of this file. Did you include KalmanFactoryFilter.h?
 #endif
 
 #ifndef KALMAN_MEASUREMENT_NAME
