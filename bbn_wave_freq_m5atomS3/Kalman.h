@@ -311,6 +311,33 @@ inline void kalman_predict(kalman_t *kf) {
   kalman_predict_P(kf);
 }
 
+/*!
+ * \brief Performs the time update / prediction step.
+ * \param[in] kf The Kalman Filter structure to predict with.
+ * \param[in] lambda Lambda factor (\c 0 < {\ref lambda} <= \c 1) to forcibly
+ * reduce prediction certainty. Smaller values mean larger uncertainty.
+ *
+ * This call assumes that the input covariance and variables are already set in
+ * the filter structure.
+ *
+ * \see kalman_predict_x
+ * \see kalman_predict_P_tuned
+ */
+void kalman_predict_tuned(kalman_t *kf, matrix_data_t lambda) {
+  /************************************************************************/
+  /* Predict next state using system dynamics                             */
+  /* x = F*x                                                              */
+  /************************************************************************/
+
+  kalman_predict_x(kf);
+
+  /************************************************************************/
+  /* Predict next covariance using system dynamics and input              */
+  /* P = A*P*A' * 1/lambda^2 + B*Q*B'                                     */
+  /************************************************************************/
+
+  kalman_predict_P_tuned(kf, lambda);
+}
 
 /*!
  * \brief Performs the measurement update step.
