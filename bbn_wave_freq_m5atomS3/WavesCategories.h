@@ -3,7 +3,7 @@
 
 /*
   WMO Sea State codes
-  Height (in meters_):
+  Height (in meters):
   Calm (glassy)   0    -  0.05  No waves breaking on beach                                                  0
   Calm (rippled)  0.05 -  0.1   No waves breaking on beach                                                  1
   Smooth          0.1  -  0.5   Slight waves breaking on beach                                              2
