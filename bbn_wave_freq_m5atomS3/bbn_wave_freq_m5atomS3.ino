@@ -178,8 +178,8 @@ void repeatMe() {
     }
     float freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-    //float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-    float a = - 0.25 * PI * PI * sin(2 * PI * state.t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m)
+    float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+    //float a = - 0.25 * PI * PI * sin(2 * PI * state.t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m)
 
     kalman_wave_step(&waveState, a * g_std, delta_t);
     float heave = waveState.heave; // in meters
