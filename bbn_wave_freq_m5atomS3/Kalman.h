@@ -1,92 +1,93 @@
-#ifndef Kalman_h
+  // P += Q
+  matrix_add_inplace(P, &kf->Q);    #ifndef Kalman_h
 #define Kalman_h
 
 /*
- * Adopted from https://github.com/cepekLP/kalman-clib
- */
+   Adopted from https://github.com/cepekLP/kalman-clib
+*/
 
 #include <stdint.h>
 
 #include "Cholesky.h"
 
 /*!
- * \brief Kalman Filter structure
- * \see kalman_measurement_t
- */
+   \brief Kalman Filter structure
+   \see kalman_measurement_t
+*/
 typedef struct {
   /*!
-   * \brief State vector
-   */
+     \brief State vector
+  */
   matrix_t x;
 
   /*!
-   * \brief State-transition matrix
-   * \see P
-   */
+     \brief State-transition matrix
+     \see P
+  */
   matrix_t F;
 
   /*!
-   * \brief System covariance matrix
-   * \see A
-   */
+     \brief System covariance matrix
+     \see A
+  */
   matrix_t P;
 
   /*!
-   * \brief Input vector
-   */
+     \brief Input vector
+  */
   matrix_t u;
 
   /*!
-   * \brief Input matrix
-   * \see Q
-   */
+     \brief Input matrix
+     \see Q
+  */
   matrix_t B;
 
   /*!
-   * \brief Process noise covariance matrix
-   */
+     \brief Process noise covariance matrix
+  */
   matrix_t Q;
 
   /*!
-   * \brief Temporary variables.
-   */
+     \brief Temporary variables.
+  */
   struct {
     /*!
-     * \brief Auxiliary array for matrix multiplication, needs to be MAX(num
-     * states, num inputs)
-     *
-     * This auxiliary field can also be used as a backing field for the
-     * predicted x vector, however it MUST NOT be aliased with either
-     * temporary P or temporary BQ.
-     */
+       \brief Auxiliary array for matrix multiplication, needs to be MAX(num
+       states, num inputs)
+
+       This auxiliary field can also be used as a backing field for the
+       predicted x vector, however it MUST NOT be aliased with either
+       temporary P or temporary BQ.
+    */
     matrix_data_t *aux;
 
     /*!
-     * \brief x-sized temporary vector
-     * \see x
-     */
+       \brief x-sized temporary vector
+       \see x
+    */
     matrix_t predicted_x;
 
     /*!
-     * \brief P-Sized temporary matrix  (number of states x number of
-     * states)
-     *
-     * The backing field for this temporary MAY be aliased with temporary
-     * BQ.
-     *
-     * \see P
-     */
+       \brief P-Sized temporary matrix  (number of states x number of
+       states)
+
+       The backing field for this temporary MAY be aliased with temporary
+       BQ.
+
+       \see P
+    */
     matrix_t P;
 
     /*!
-     * \brief BxQ-sized temporary matrix (number of states x number of
-     * inputs)
-     *
-     * The backing field for this temporary MAY be aliased with temporary P.
-     *
-     * \see B
-     * \see Q
-     */
+       \brief BxQ-sized temporary matrix (number of states x number of
+       inputs)
+
+       The backing field for this temporary MAY be aliased with temporary P.
+
+       \see B
+       \see Q
+    */
     matrix_t BQ;
 
   } temporary;
@@ -94,101 +95,101 @@ typedef struct {
 } kalman_t;
 
 /*!
- * \brief Kalman Filter measurement structure
- * \see kalman_t
- */
+   \brief Kalman Filter measurement structure
+   \see kalman_t
+*/
 typedef struct {
   /*!
-   * \brief Measurement vector
-   */
+     \brief Measurement vector
+  */
   matrix_t z;
 
   /*!
-   * \brief Measurement transformation matrix
-   * \see R
-   */
+     \brief Measurement transformation matrix
+     \see R
+  */
   matrix_t H;
 
   /*!
-   * \brief Meausurement noise matrix
-   * \see H
-   */
+     \brief Meausurement noise matrix
+     \see H
+  */
   matrix_t R;
 
   /*!
-   * \brief Innovation vector
-   */
+     \brief Innovation vector
+  */
   matrix_t y;
 
   /*!
-   * \brief Residual covariance matrix
-   * \see A
-   */
+     \brief Residual covariance matrix
+     \see A
+  */
   matrix_t S;
 
   /*!
-   * \brief Kalman gain matrix
-   */
+     \brief Kalman gain matrix
+  */
   matrix_t K;
 
   /*!
-   * \brief Temporary variables.
-   */
+     \brief Temporary variables.
+  */
   struct {
     /*!
-     * \brief Auxiliary array for matrix multiplication, needs to be MAX(num
-     * states, num measurements)
-     *
-     * This auxiliary field MUST NOT be aliased with either temporary HP,
-     * KHP, HPt or S_inverted.
-     */
+       \brief Auxiliary array for matrix multiplication, needs to be MAX(num
+       states, num measurements)
+
+       This auxiliary field MUST NOT be aliased with either temporary HP,
+       KHP, HPt or S_inverted.
+    */
     matrix_data_t *aux;
 
     /*!
-     * \brief S-Sized temporary matrix  (number of measurements x number of
-     * measurements)
-     *
-     * The backing field for this temporary MAY be aliased with temporary
-     * temp_KHP. The backing field for this temporary MAY be aliased with
-     * temporary temp_HP (if it is not aliased with temp_PHt). The backing
-     * field for this temporary MUST NOT be aliased with temporary temp_PHt.
-     * The backing field for this temporary MUST NOT be aliased with aux.
-     *
-     * \see S
-     */
+       \brief S-Sized temporary matrix  (number of measurements x number of
+       measurements)
+
+       The backing field for this temporary MAY be aliased with temporary
+       temp_KHP. The backing field for this temporary MAY be aliased with
+       temporary temp_HP (if it is not aliased with temp_PHt). The backing
+       field for this temporary MUST NOT be aliased with temporary temp_PHt.
+       The backing field for this temporary MUST NOT be aliased with aux.
+
+       \see S
+    */
     matrix_t S_inv;
 
     /*!
-     * \brief H-Sized temporary matrix  (number of measurements x number of
-     * states)
-     *
-     * The backing field for this temporary MAY be aliased with temporary
-     * S_inv. The backing field for this temporary MAY be aliased with
-     * temporary temp_PHt. The backing field for this temporary MUST NOT be
-     * aliased with temporary temp_KHP.
-     */
+       \brief H-Sized temporary matrix  (number of measurements x number of
+       states)
+
+       The backing field for this temporary MAY be aliased with temporary
+       S_inv. The backing field for this temporary MAY be aliased with
+       temporary temp_PHt. The backing field for this temporary MUST NOT be
+       aliased with temporary temp_KHP.
+    */
     matrix_t HP;
 
     /*!
-     * \brief P-Sized temporary matrix  (number of states x number of
-     * states)
-     *
-     * The backing field for this temporary MAY be aliased with temporary
-     * S_inv. The backing field for this temporary MAY be aliased with
-     * temporary temp_PHt. The backing field for this temporary MUST NOT be
-     * aliased with temporary temp_HP.
-     */
+       \brief P-Sized temporary matrix  (number of states x number of
+       states)
+
+       The backing field for this temporary MAY be aliased with temporary
+       S_inv. The backing field for this temporary MAY be aliased with
+       temporary temp_PHt. The backing field for this temporary MUST NOT be
+       aliased with temporary temp_HP.
+    */
     matrix_t KHP;
 
     /*!
-     * \brief PxH'-Sized (H'-Sized) temporary matrix  (number of states x
-     * number of measurements)
-     *
-     * The backing field for this temporary MAY be aliased with temporary
-     * temp_HP. The backing field for this temporary MAY be aliased with
-     * temporary temp_KHP. The backing field for this temporary MUST NOT be
-     * aliased with temporary S_inv.
-     */
+       \brief PxH'-Sized (H'-Sized) temporary matrix  (number of states x
+       number of measurements)
+
+       The backing field for this temporary MAY be aliased with temporary
+       temp_HP. The backing field for this temporary MAY be aliased with
+       temporary temp_KHP. The backing field for this temporary MUST NOT be
+       aliased with temporary S_inv.
+    */
     matrix_t PHt;
 
   } temporary;
@@ -196,23 +197,23 @@ typedef struct {
 } kalman_measurement_t;
 
 /*!
- * \brief Initializes the Kalman Filter
- * \param[in] kf The Kalman Filter structure to initialize
- * \param[in] num_states The number of state variables
- * \param[in] num_inputs The number of input variables
- * \param[in] A The state transition matrix ({\ref num_states} x {\ref
- * num_states}) \param[in] x The state vector ({\ref num_states} x \c 1)
- * \param[in] B The input transition matrix ({\ref num_states} x {\ref
- * num_inputs}) \param[in] u The input vector ({\ref num_inputs} x \c 1)
- * \param[in] P The state covariance matrix ({\ref num_states} x {\ref
- * num_states}) \param[in] Q The input covariance matrix ({\ref num_inputs} x
- * {\ref num_inputs}) \param[in] aux The auxiliary buffer (length {\ref
- * num_states} or {\ref num_inputs}, whichever is greater) \param[in] predictedX
- * The temporary vector for predicted X ({\ref num_states} x \c 1) \param[in]
- * temp_P The temporary matrix for P calculation ({\ref num_states} x {\ref
- * num_states}) \param[in] temp_BQ The temporary matrix for BQ calculation
- * ({\ref num_states} x {\ref num_inputs})
- */
+   \brief Initializes the Kalman Filter
+   \param[in] kf The Kalman Filter structure to initialize
+   \param[in] num_states The number of state variables
+   \param[in] num_inputs The number of input variables
+   \param[in] A The state transition matrix ({\ref num_states} x {\ref
+   num_states}) \param[in] x The state vector ({\ref num_states} x \c 1)
+   \param[in] B The input transition matrix ({\ref num_states} x {\ref
+   num_inputs}) \param[in] u The input vector ({\ref num_inputs} x \c 1)
+   \param[in] P The state covariance matrix ({\ref num_states} x {\ref
+   num_states}) \param[in] Q The input covariance matrix ({\ref num_inputs} x
+   {\ref num_inputs}) \param[in] aux The auxiliary buffer (length {\ref
+   num_states} or {\ref num_inputs}, whichever is greater) \param[in] predictedX
+   The temporary vector for predicted X ({\ref num_states} x \c 1) \param[in]
+   temp_P The temporary matrix for P calculation ({\ref num_states} x {\ref
+   num_states}) \param[in] temp_BQ The temporary matrix for BQ calculation
+   ({\ref num_states} x {\ref num_inputs})
+*/
 void kalman_filter_initialize(kalman_t *kf, uint_fast8_t num_states,
                               uint_fast8_t num_inputs, matrix_data_t *F,
                               matrix_data_t *x, matrix_data_t *B,
@@ -222,79 +223,79 @@ void kalman_filter_initialize(kalman_t *kf, uint_fast8_t num_states,
                               matrix_data_t *temp_BQ);
 
 /*!
- * \brief Sets the measurement vector
- * \param[in] kfm The Kalman Filter measurement structure to initialize
- * \param[in] num_states The number of states
- * \param[in] num_measurements The number of measurements
- * \param[in] H The measurement transformation matrix ({\ref num_measurements} x
- * {\ref num_states}) \param[in] z The measurement vector ({\ref
- * num_measurements} x \c 1) \param[in] R The process noise / measurement
- * uncertainty ({\ref num_measurements} x {\ref num_measurements}) \param[in] y
- * The innovation ({\ref num_measurements} x \c 1) \param[in] S The residual
- * covariance ({\ref num_measurements} x {\ref num_measurements}) \param[in] K
- * The Kalman gain ({\ref num_states} x {\ref num_measurements}) \param[in] aux
- * The auxiliary buffer (length {\ref num_states} or {\ref num_measurements},
- * whichever is greater) \param[in] S_inv The temporary matrix for the inverted
- * residual covariance  ({\ref num_measurements} x {\ref num_measurements})
- * \param[in] temp_HP The temporary matrix for HxP ({\ref num_measurements} x
- * {\ref num_states}) \param[in] temp_PHt The temporary matrix for PxH' ({\ref
- * num_states} x {\ref num_measurements}) \param[in] temp_KHP The temporary
- * matrix for KxHxP ({\ref num_states} x {\ref num_states})
- */
+   \brief Sets the measurement vector
+   \param[in] kfm The Kalman Filter measurement structure to initialize
+   \param[in] num_states The number of states
+   \param[in] num_measurements The number of measurements
+   \param[in] H The measurement transformation matrix ({\ref num_measurements} x
+   {\ref num_states}) \param[in] z The measurement vector ({\ref
+   num_measurements} x \c 1) \param[in] R The process noise / measurement
+   uncertainty ({\ref num_measurements} x {\ref num_measurements}) \param[in] y
+   The innovation ({\ref num_measurements} x \c 1) \param[in] S The residual
+   covariance ({\ref num_measurements} x {\ref num_measurements}) \param[in] K
+   The Kalman gain ({\ref num_states} x {\ref num_measurements}) \param[in] aux
+   The auxiliary buffer (length {\ref num_states} or {\ref num_measurements},
+   whichever is greater) \param[in] S_inv The temporary matrix for the inverted
+   residual covariance  ({\ref num_measurements} x {\ref num_measurements})
+   \param[in] temp_HP The temporary matrix for HxP ({\ref num_measurements} x
+   {\ref num_states}) \param[in] temp_PHt The temporary matrix for PxH' ({\ref
+   num_states} x {\ref num_measurements}) \param[in] temp_KHP The temporary
+   matrix for KxHxP ({\ref num_states} x {\ref num_states})
+*/
 void kalman_measurement_initialize(
-    kalman_measurement_t *kfm, uint_fast8_t num_states,
-    uint_fast8_t num_measurements, matrix_data_t *H, matrix_data_t *z,
-    matrix_data_t *R, matrix_data_t *y, matrix_data_t *S, matrix_data_t *K,
-    matrix_data_t *aux, matrix_data_t *S_inv, matrix_data_t *temp_HP,
-    matrix_data_t *temp_PHt, matrix_data_t *temp_KHP);
+  kalman_measurement_t *kfm, uint_fast8_t num_states,
+  uint_fast8_t num_measurements, matrix_data_t *H, matrix_data_t *z,
+  matrix_data_t *R, matrix_data_t *y, matrix_data_t *S, matrix_data_t *K,
+  matrix_data_t *aux, matrix_data_t *S_inv, matrix_data_t *temp_HP,
+  matrix_data_t *temp_PHt, matrix_data_t *temp_KHP);
 
 /*!
- * \brief Initializes the process noise matrix Q
- * \param[in] kf The Kalman Filter structure to initialize
- * \param[in] size The size of the process noise matrix
- * \param[in] dt The time step
- * \param[in] variance The variance of the process noise
- */
+   \brief Initializes the process noise matrix Q
+   \param[in] kf The Kalman Filter structure to initialize
+   \param[in] size The size of the process noise matrix
+   \param[in] dt The time step
+   \param[in] variance The variance of the process noise
+*/
 void kalman_init_process_noise(const matrix_t *Q, float dt, float variance);
 
 /*!
- * \brief Performs the time update / prediction step of only the state vector
- * \param[in] kf The Kalman Filter structure to predict with.
- *
- * \see kalman_predict
- * \see kalman_predict_tuned
- */
+   \brief Performs the time update / prediction step of only the state vector
+   \param[in] kf The Kalman Filter structure to predict with.
+
+   \see kalman_predict
+   \see kalman_predict_tuned
+*/
 void kalman_predict_x(register kalman_t *const kf);
 
 /*!
- * \brief Performs the time update / prediction step of only the state
- * covariance matrix \param[in] kf The Kalman Filter structure to predict with.
- *
- * \see kalman_predict
- * \see kalman_predict_P_tuned
- */
+   \brief Performs the time update / prediction step of only the state
+   covariance matrix \param[in] kf The Kalman Filter structure to predict with.
+
+   \see kalman_predict
+   \see kalman_predict_P_tuned
+*/
 void kalman_predict_P(register kalman_t *const kf);
 
 /*!
- * \brief Performs the time update / prediction step of only the state
- * covariance matrix \param[in] kf The Kalman Filter structure to predict with.
- *
- * \see kalman_predict_tuned
- */
+   \brief Performs the time update / prediction step of only the state
+   covariance matrix \param[in] kf The Kalman Filter structure to predict with.
+
+   \see kalman_predict_tuned
+*/
 void kalman_predict_P_tuned(register kalman_t *const kf,
                             matrix_data_t lambda);
 
 /*!
- * \brief Performs the time update / prediction step.
- * \param[in] kf The Kalman Filter structure to predict with.
- * \param[in] lambda Lambda factor (\c 0 < {\ref lambda} <= \c 1) to forcibly
- * reduce prediction certainty. Smaller values mean larger uncertainty.
- *
- * This call assumes that the input covariance and variables are already set in
- * the filter structure.
- *
- * \see kalman_predict_x
- */
+   \brief Performs the time update / prediction step.
+   \param[in] kf The Kalman Filter structure to predict with.
+   \param[in] lambda Lambda factor (\c 0 < {\ref lambda} <= \c 1) to forcibly
+   reduce prediction certainty. Smaller values mean larger uncertainty.
+
+   This call assumes that the input covariance and variables are already set in
+   the filter structure.
+
+   \see kalman_predict_x
+*/
 inline void kalman_predict(kalman_t *kf) {
   /************************************************************************/
   /* Predict next state using system dynamics                             */
@@ -312,17 +313,17 @@ inline void kalman_predict(kalman_t *kf) {
 }
 
 /*!
- * \brief Performs the time update / prediction step.
- * \param[in] kf The Kalman Filter structure to predict with.
- * \param[in] lambda Lambda factor (\c 0 < {\ref lambda} <= \c 1) to forcibly
- * reduce prediction certainty. Smaller values mean larger uncertainty.
- *
- * This call assumes that the input covariance and variables are already set in
- * the filter structure.
- *
- * \see kalman_predict_x
- * \see kalman_predict_P_tuned
- */
+   \brief Performs the time update / prediction step.
+   \param[in] kf The Kalman Filter structure to predict with.
+   \param[in] lambda Lambda factor (\c 0 < {\ref lambda} <= \c 1) to forcibly
+   reduce prediction certainty. Smaller values mean larger uncertainty.
+
+   This call assumes that the input covariance and variables are already set in
+   the filter structure.
+
+   \see kalman_predict_x
+   \see kalman_predict_P_tuned
+*/
 void kalman_predict_tuned(kalman_t *kf, matrix_data_t lambda) {
   /************************************************************************/
   /* Predict next state using system dynamics                             */
@@ -340,101 +341,111 @@ void kalman_predict_tuned(kalman_t *kf, matrix_data_t lambda) {
 }
 
 /*!
- * \brief Performs the measurement update step.
- * \param[in] kf The Kalman Filter structure to correct.
- */
+   \brief Performs the measurement update step.
+   \param[in] kf The Kalman Filter structure to correct.
+*/
 void kalman_correct(kalman_t *kf, kalman_measurement_t *kfm);
 
 /*!
- * \brief Gets a pointer to the state vector x.
- * \param[in] kf The Kalman Filter structure
- * \return The state vector x.
- */
-inline matrix_t *kalman_get_state_vector(kalman_t *kf) { return &(kf->x); }
+   \brief Gets a pointer to the state vector x.
+   \param[in] kf The Kalman Filter structure
+   \return The state vector x.
+*/
+inline matrix_t *kalman_get_state_vector(kalman_t *kf) {
+  return &(kf->x);
+}
 
 /*!
- * \brief Gets a pointer to the state transition matrix A.
- * \param[in] kf The Kalman Filter structure
- * \return The state transition matrix A.
- */
-inline matrix_t *kalman_get_state_transition(kalman_t *kf) { return &(kf->F); }
+   \brief Gets a pointer to the state transition matrix A.
+   \param[in] kf The Kalman Filter structure
+   \return The state transition matrix A.
+*/
+inline matrix_t *kalman_get_state_transition(kalman_t *kf) {
+  return &(kf->F);
+}
 
 /*!
- * \brief Gets a pointer to the system covariance matrix P.
- * \param[in] kf The Kalman Filter structure
- * \return The system covariance matrix.
- */
+   \brief Gets a pointer to the system covariance matrix P.
+   \param[in] kf The Kalman Filter structure
+   \return The system covariance matrix.
+*/
 inline matrix_t *kalman_get_system_covariance(kalman_t *kf) {
   return &(kf->P);
 }
 
 /*!
- * \brief Gets a pointer to the input vector u.
- * \param[in] kf The Kalman Filter structure
- * \return The input vector u.
- */
-inline matrix_t *kalman_get_input_vector(kalman_t *kf) { return &(kf->u); }
+   \brief Gets a pointer to the input vector u.
+   \param[in] kf The Kalman Filter structure
+   \return The input vector u.
+*/
+inline matrix_t *kalman_get_input_vector(kalman_t *kf) {
+  return &(kf->u);
+}
 
 /*!
- * \brief Gets a pointer to the input transition matrix B.
- * \param[in] kf The Kalman Filter structure
- * \return The input transition matrix B.
- */
-inline matrix_t *kalman_get_input_transition(kalman_t *kf) { return &(kf->B); }
+   \brief Gets a pointer to the input transition matrix B.
+   \param[in] kf The Kalman Filter structure
+   \return The input transition matrix B.
+*/
+inline matrix_t *kalman_get_input_transition(kalman_t *kf) {
+  return &(kf->B);
+}
 
 /*!
- * \brief Gets a pointer to the process noise matrix Q.
- * \param[in] kf The Kalman Filter structure
- * \return The input covariance matrix.
- */
-inline matrix_t *kalman_get_process_noise(kalman_t *kf) { return &(kf->Q); }
+   \brief Gets a pointer to the process noise matrix Q.
+   \param[in] kf The Kalman Filter structure
+   \return The input covariance matrix.
+*/
+inline matrix_t *kalman_get_process_noise(kalman_t *kf) {
+  return &(kf->Q);
+}
 
 /*!
- * \brief Gets a pointer to the measurement vector z.
- * \param[in] kfm The Kalman Filter measurement structure.
- * \return The measurement vector z.
- */
+   \brief Gets a pointer to the measurement vector z.
+   \param[in] kfm The Kalman Filter measurement structure.
+   \return The measurement vector z.
+*/
 inline matrix_t *kalman_get_measurement_vector(kalman_measurement_t *kfm) {
   return &(kfm->z);
 }
 
 /*!
- * \brief Gets a pointer to the measurement transformation matrix H.
- * \param[in] kfm The Kalman Filter measurement structure.
- * \return The measurement transformation matrix H.
- */
+   \brief Gets a pointer to the measurement transformation matrix H.
+   \param[in] kfm The Kalman Filter measurement structure.
+   \return The measurement transformation matrix H.
+*/
 inline matrix_t *kalman_get_measurement_transformation(
-    kalman_measurement_t *kfm) {
+  kalman_measurement_t *kfm) {
   return &(kfm->H);
 }
 
 /*!
- * \brief Gets a pointer to the process noise matrix R.
- * \param[in] kfm The Kalman Filter measurement structure.
- * \return The process noise matrix R.
- */
+   \brief Gets a pointer to the process noise matrix R.
+   \param[in] kfm The Kalman Filter measurement structure.
+   \return The process noise matrix R.
+*/
 inline matrix_t *kalman_get_observation_noise(kalman_measurement_t *kfm) {
   return &(kfm->R);
 }
 
 /*!
- * \brief Initializes the Kalman Filter
- * \param[in] kf The Kalman Filter structure to initialize
- * \param[in] num_states The number of state variables
- * \param[in] num_inputs The number of input variables
- * \param[in] A The state transition matrix ({\ref num_states} x {\ref
- * num_states}) \param[in] x The state vector ({\ref num_states} x \c 1)
- * \param[in] B The input transition matrix ({\ref num_states} x {\ref
- * num_inputs}) \param[in] u The input vector ({\ref num_inputs} x \c 1)
- * \param[in] P The state covariance matrix ({\ref num_states} x {\ref
- * num_states}) \param[in] Q The input covariance matrix ({\ref num_inputs} x
- * {\ref num_inputs}) \param[in] aux The auxiliary buffer (length {\ref
- * num_states} or {\ref num_inputs}, whichever is greater) \param[in] predictedX
- * The temporary vector for predicted X ({\ref num_states} x \c 1) \param[in]
- * temp_P The temporary matrix for P calculation ({\ref num_states} x {\ref
- * num_states}) \param[in] temp_BQ The temporary matrix for BQ calculation
- * ({\ref num_states} x {\ref num_inputs})
- */
+   \brief Initializes the Kalman Filter
+   \param[in] kf The Kalman Filter structure to initialize
+   \param[in] num_states The number of state variables
+   \param[in] num_inputs The number of input variables
+   \param[in] A The state transition matrix ({\ref num_states} x {\ref
+   num_states}) \param[in] x The state vector ({\ref num_states} x \c 1)
+   \param[in] B The input transition matrix ({\ref num_states} x {\ref
+   num_inputs}) \param[in] u The input vector ({\ref num_inputs} x \c 1)
+   \param[in] P The state covariance matrix ({\ref num_states} x {\ref
+   num_states}) \param[in] Q The input covariance matrix ({\ref num_inputs} x
+   {\ref num_inputs}) \param[in] aux The auxiliary buffer (length {\ref
+   num_states} or {\ref num_inputs}, whichever is greater) \param[in] predictedX
+   The temporary vector for predicted X ({\ref num_states} x \c 1) \param[in]
+   temp_P The temporary matrix for P calculation ({\ref num_states} x {\ref
+   num_states}) \param[in] temp_BQ The temporary matrix for BQ calculation
+   ({\ref num_states} x {\ref num_inputs})
+*/
 void kalman_filter_initialize(kalman_t *kf, uint_fast8_t num_states,
                               uint_fast8_t num_inputs, matrix_data_t *F,
                               matrix_data_t *x, matrix_data_t *B,
@@ -464,31 +475,31 @@ void kalman_filter_initialize(kalman_t *kf, uint_fast8_t num_states,
 }
 
 /*!
- * \brief Sets the measurement vector
- * \param[in] kfm The Kalman Filter measurement structure to initialize
- * \param[in] num_states The number of states
- * \param[in] num_measurements The number of measurements
- * \param[in] H The measurement transformation matrix ({\ref num_measurements} x
- * {\ref num_states}) \param[in] z The measurement vector ({\ref
- * num_measurements} x \c 1) \param[in] R The process noise / measurement
- * uncertainty ({\ref num_measurements} x {\ref num_measurements}) \param[in] y
- * The innovation ({\ref num_measurements} x \c 1) \param[in] S The residual
- * covariance ({\ref num_measurements} x {\ref num_measurements}) \param[in] K
- * The Kalman gain ({\ref num_states} x {\ref num_measurements}) \param[in] aux
- * The auxiliary buffer (length {\ref num_states} or {\ref num_measurements},
- * whichever is greater) \param[in] S_inv The temporary matrix for the inverted
- * residual covariance  ({\ref num_measurements} x {\ref num_measurements})
- * \param[in] temp_HP The temporary matrix for HxP ({\ref num_measurements} x
- * {\ref num_states}) \param[in] temp_PHt The temporary matrix for PxH' ({\ref
- * num_states} x {\ref num_measurements}) \param[in] temp_KHP The temporary
- * matrix for KxHxP ({\ref num_states} x {\ref num_states})
- */
+   \brief Sets the measurement vector
+   \param[in] kfm The Kalman Filter measurement structure to initialize
+   \param[in] num_states The number of states
+   \param[in] num_measurements The number of measurements
+   \param[in] H The measurement transformation matrix ({\ref num_measurements} x
+   {\ref num_states}) \param[in] z The measurement vector ({\ref
+   num_measurements} x \c 1) \param[in] R The process noise / measurement
+   uncertainty ({\ref num_measurements} x {\ref num_measurements}) \param[in] y
+   The innovation ({\ref num_measurements} x \c 1) \param[in] S The residual
+   covariance ({\ref num_measurements} x {\ref num_measurements}) \param[in] K
+   The Kalman gain ({\ref num_states} x {\ref num_measurements}) \param[in] aux
+   The auxiliary buffer (length {\ref num_states} or {\ref num_measurements},
+   whichever is greater) \param[in] S_inv The temporary matrix for the inverted
+   residual covariance  ({\ref num_measurements} x {\ref num_measurements})
+   \param[in] temp_HP The temporary matrix for HxP ({\ref num_measurements} x
+   {\ref num_states}) \param[in] temp_PHt The temporary matrix for PxH' ({\ref
+   num_states} x {\ref num_measurements}) \param[in] temp_KHP The temporary
+   matrix for KxHxP ({\ref num_states} x {\ref num_states})
+*/
 void kalman_measurement_initialize(
-    kalman_measurement_t *kfm, uint_fast8_t num_states,
-    uint_fast8_t num_measurements, matrix_data_t *H, matrix_data_t *z,
-    matrix_data_t *R, matrix_data_t *y, matrix_data_t *S, matrix_data_t *K,
-    matrix_data_t *aux, matrix_data_t *S_inv, matrix_data_t *temp_HP,
-    matrix_data_t *temp_PHt, matrix_data_t *temp_KHP) {
+  kalman_measurement_t *kfm, uint_fast8_t num_states,
+  uint_fast8_t num_measurements, matrix_data_t *H, matrix_data_t *z,
+  matrix_data_t *R, matrix_data_t *y, matrix_data_t *S, matrix_data_t *K,
+  matrix_data_t *aux, matrix_data_t *S_inv, matrix_data_t *temp_HP,
+  matrix_data_t *temp_PHt, matrix_data_t *temp_KHP) {
   matrix_init(&kfm->H, num_measurements, num_states, H);
   matrix_init(&kfm->R, num_measurements, num_measurements, R);
   matrix_init(&kfm->z, num_measurements, 1, z);
@@ -542,9 +553,9 @@ void kalman_init_process_noise(matrix_t *Q, float dt, float variance) {
 }
 
 /*!
- * \brief Performs the time update / prediction step of only the state vector
- * \param[in] kf The Kalman Filter structure to predict with.
- */
+   \brief Performs the time update / prediction step of only the state vector
+   \param[in] kf The Kalman Filter structure to predict with.
+*/
 void kalman_predict_x(register kalman_t *const kf) {
   // matrices and vectors
   const matrix_t *const A = &kf->F;
@@ -564,9 +575,9 @@ void kalman_predict_x(register kalman_t *const kf) {
 }
 
 /*!
- * \brief Performs the time update / prediction step of only the state
- * covariance matrix \param[in] kf The Kalman Filter structure to predict with.
- */
+   \brief Performs the time update / prediction step of only the state
+   covariance matrix \param[in] kf The Kalman Filter structure to predict with.
+*/
 void kalman_predict_P(register kalman_t *const kf) {
   // matrices and vectors
   const matrix_t *const A = &kf->F;
@@ -586,13 +597,15 @@ void kalman_predict_P(register kalman_t *const kf) {
   // P = A*P*A'
   matrix_mult(A, P, P_temp, aux);    // temp = A*P
   matrix_mult_transb(P_temp, A, P);  // P = temp*A'
-  matrix_add_inplace(P, &kf->Q);     // P += Q
+
+  // P += Q
+  matrix_add_inplace(P, &kf->Q);
 }
 
 /*!
- * \brief Performs the time update / prediction step of only the state
- * covariance matrix \param[in] kf The Kalman Filter structure to predict with.
- */
+   \brief Performs the time update / prediction step of only the state
+   covariance matrix \param[in] kf The Kalman Filter structure to predict with.
+*/
 void kalman_predict_P_tuned(register kalman_t *const kf, matrix_data_t lambda) {
   // matrices and vectors
   const matrix_t *const A = &kf->F;
@@ -612,23 +625,20 @@ void kalman_predict_P_tuned(register kalman_t *const kf, matrix_data_t lambda) {
   // lambda = 1/lambda^2
   lambda = (matrix_data_t)1.0 /
            (lambda * lambda);  // TODO: This should be precalculated, e.g.
-                               // using kalman_set_lambda(...);
+  // using kalman_set_lambda(...);
 
   // P = A*P*A'
   matrix_mult(A, P, P_temp, aux);                 // temp = A*P
   matrix_multscale_transb(P_temp, A, lambda, P);  // P = temp*A' * 1/(lambda^2)
 
-  // P = P + B*Q*B'
-  if (kf->B.rows > 0) {
-    matrix_mult(B, &kf->Q, BQ_temp, aux);  // temp = B*Q
-    matrix_multadd_transb(BQ_temp, B, P);  // P += temp*B'
-  }
+  // P += Q
+  matrix_add_inplace(P, &kf->Q);
 }
 
 /*!
- * \brief Performs the measurement update step.
- * \param[in] kf The Kalman Filter structure to correct.
- */
+   \brief Performs the measurement update step.
+   \param[in] kf The Kalman Filter structure to correct.
+*/
 void kalman_correct(kalman_t *kf, kalman_measurement_t *kfm) {
   matrix_t *const P = &kf->P;
   const matrix_t *const H = &kfm->H;
