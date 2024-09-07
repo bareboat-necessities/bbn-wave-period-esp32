@@ -26,6 +26,7 @@
 #include "Mahony_AHRS.h"
 #include "Quaternion.h"
 #include "MinMaxLemire.h"
+#include "KalmanForWave.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -79,6 +80,7 @@ AranovskiyParams params;
 AranovskiyState state;
 KalmanSmootherVars kalman_freq;
 Mahony_AHRS_Vars mahony;
+KalmanWaveState waveState;
 
 const char* imu_name;
 
@@ -176,11 +178,16 @@ void repeatMe() {
     }
     float freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-    float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+    //float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+    float a = - 0.25 * PI * PI * sin(2 * PI * state.t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m)
+
+    kalman_wave_step(&waveState, a * g_std, delta_t);
+    float heave = waveState.heave; // in meters
+    
     if (freq_adj > 0) {
       float period = 1.0 / freq_adj;
       float wave_length = trochoid_wave_length(period);
-      float heave = - a * wave_length / (2 * PI);
+      //float heave = - a * wave_length / (2 * PI);
       if (period < 60.0) {
         SampleType sample;
         sample.timeMicroSec = now;
@@ -193,10 +200,10 @@ void repeatMe() {
 
       if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
         if (produce_serial_data) {
-          //Serial.printf("heave_cm:%.4f", heave * 100);
+          Serial.printf("heave_cm:%.4f", heave * 100);
           //Serial.printf(",height_cm:%.4f", wave_height * 100);
-          Serial.printf(",freq:%.4f", freq * 100);
-          Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+          //Serial.printf(",freq:%.4f", freq * 100);
+          //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
           //Serial.printf(",period_decisec:%.4f", period * 10);
           Serial.println();
         }
@@ -301,6 +308,8 @@ void setup(void) {
     float estimation_uncertainty = 10.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
+  
+  kalman_wave_init_defaults();
 
   last_update = micros();
 }
