@@ -183,7 +183,7 @@ void repeatMe() {
     }
     float freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-    if (freq_adj > 0.001) {
+    if (freq_adj > 0.001 && freq_adj < 10000) {
       float period = 1.0 / freq_adj;
       float wave_length = trochoid_wave_length(period);
       //float heave = - a * wave_length / (2 * PI);
@@ -192,6 +192,9 @@ void repeatMe() {
         sample.timeMicroSec = now;
         sample.value = heave;
         uint32_t windowMicros = 5 * period * 1000000;
+        if (windowMicros <= 15 * 1000000) {
+          windowMicros = 15 * 1000000;
+        }
         min_max_lemire_update(&min_max, sample, windowMicros);
       }
 
