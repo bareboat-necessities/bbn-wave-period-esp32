@@ -618,7 +618,7 @@ void kalman_predict_P_tuned(register kalman_t *const kf, matrix_data_t lambda) {
 
   /************************************************************************/
   /* Predict next covariance using system dynamics and input              */
-  /* P = A*P*A' * 1/lambda^2 + B*Q*B'                                     */
+  /* P = F*P*F' * 1/lambda^2 + Q                                          */
   /************************************************************************/
 
   // lambda = 1/lambda^2
