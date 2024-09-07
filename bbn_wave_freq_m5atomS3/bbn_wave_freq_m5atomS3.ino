@@ -167,8 +167,8 @@ void repeatMe() {
     accel_rotated.y = rotated_a[1];
     accel_rotated.z = rotated_a[2];
 
-    float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-    //float a = - 0.25 * PI * PI * sin(2 * PI * state.t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m)
+    //float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+    float a = - 0.25 * PI * PI * sin(2 * PI * state.t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
 
     kalman_wave_step(&waveState, a * g_std, delta_t);
     float heave = waveState.heave; // in meters
@@ -183,10 +183,10 @@ void repeatMe() {
     }
     float freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-    if (freq_adj > 0.001 && freq_adj < 10000) {
+    if (freq_adj > 0.001 && freq_adj < 1000.0) {
       float period = 1.0 / freq_adj;
       float wave_length = trochoid_wave_length(period);
-      //float heave = - a * wave_length / (2 * PI);
+      //float heave = - a * wave_length / (2 * PI); // in trochoid model
       if (period < 30.0) {
         SampleType sample;
         sample.timeMicroSec = now;
@@ -296,7 +296,7 @@ void setup(void) {
   mahony_AHRS_init(&mahony, twoKp, twoKi);
 
   float omega_init = 0.02 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  float k_gain = 2000.0; // Aranovskiy gain
+  float k_gain = 1000.0; // Aranovskiy gain
   float t_0 = 0.0;
   float x1_0 = 0.0;
   float theta_0 = - (omega_init * omega_init / 4.0);
