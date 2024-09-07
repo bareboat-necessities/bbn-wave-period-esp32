@@ -17,6 +17,11 @@
 // clean up
 #include "KalmanFactoryCleanup.h"
 
+typedef struct kalman_wave_state {
+  float heave;                 // vertical displacement
+  float vert_speed;            // vertical velocity
+} KalmanWaveState;
+
 matrix_t *kalman_wave_get_state_transition(kalman_t *kf, matrix_data_t delta_t) {
   // transition matrix [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *F = kalman_get_state_transition(kf);
@@ -44,7 +49,7 @@ matrix_t *kalman_wave_get_transition_offset(kalman_t *kf, matrix_data_t delta_t)
   return B;
 }
 
-void kalman_wave_init() {
+void kalman_wave_init_defaults() {
 
   kalman_t *kf = kalman_filter_wave_init();
   kalman_measurement_t *kfm = kalman_filter_wave_measurement_displacement_integral_init();
@@ -84,7 +89,7 @@ void kalman_wave_init() {
   matrix_set_symmetric(Q, 2, 2, (matrix_data_t)0.1);
 }
 
-void kalman_wave_step(float accel, float delta_t) {
+void kalman_wave_step(KalmanWaveState* state, float accel, float delta_t) {
   kalman_t *kf = &kalman_filter_wave;
   kalman_measurement_t *kfm = &kalman_filter_wave_measurement_displacement_integral;
 
@@ -107,6 +112,9 @@ void kalman_wave_step(float accel, float delta_t) {
 
   // update
   kalman_correct(kf, kfm);
+
+  state->heave = x->data[1];
+  state->vert_speed = x->data[2];
 }
 
 #endif
