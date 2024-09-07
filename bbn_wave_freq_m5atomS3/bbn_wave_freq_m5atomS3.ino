@@ -167,8 +167,13 @@ void repeatMe() {
     accel_rotated.y = rotated_a[1];
     accel_rotated.z = rotated_a[2];
 
-    float y = (accel_rotated.z - 1.0) /* since it includes g */;
-    //float y = sin(2 * PI * state.t * 0.25); // dummy test data
+    float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+    //float a = - 0.25 * PI * PI * sin(2 * PI * state.t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m)
+
+    kalman_wave_step(&waveState, a * g_std, delta_t);
+    float heave = waveState.heave; // in meters
+    
+    float y = heave;
     aranovskiy_update(&params, &state, y, delta_t);
     float freq = state.f;
 
@@ -178,17 +183,11 @@ void repeatMe() {
     }
     float freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-    float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-    //float a = - 0.25 * PI * PI * sin(2 * PI * state.t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m)
-
-    kalman_wave_step(&waveState, a * g_std, delta_t);
-    float heave = waveState.heave; // in meters
-    
-    if (freq_adj > 0) {
+    if (freq_adj > 0.001) {
       float period = 1.0 / freq_adj;
       float wave_length = trochoid_wave_length(period);
       //float heave = - a * wave_length / (2 * PI);
-      if (period < 60.0) {
+      if (period < 30.0) {
         SampleType sample;
         sample.timeMicroSec = now;
         sample.value = heave;
@@ -200,11 +199,11 @@ void repeatMe() {
 
       if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
         if (produce_serial_data) {
-          Serial.printf("heave_cm:%.4f", heave * 100);
+          //Serial.printf("heave_cm:%.4f", heave * 100);
           //Serial.printf(",height_cm:%.4f", wave_height * 100);
           //Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-          //Serial.printf(",period_decisec:%.4f", period * 10);
+          Serial.printf(",period_decisec:%.4f", period * 10);
           Serial.println();
         }
         else {
