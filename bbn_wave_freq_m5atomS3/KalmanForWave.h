@@ -35,12 +35,12 @@ matrix_t *kalman_wave_get_state_transition(kalman_t *kf, matrix_data_t delta_t) 
   return F;
 }
 
-matrix_t *kalman_wave_get_transition_offset(kalman_t *kf, matrix_data_t delta_t, matrix_data_t accel) {
+matrix_t *kalman_wave_get_transition_offset(kalman_t *kf, matrix_data_t delta_t) {
   // transition offset [KALMAN_NUM_STATES * KALMAN_NUM_INPUTS]
   matrix_t *B = kalman_get_input_transition(kf);
-  matrix_set(B, 0, 0, (matrix_data_t)(1.0 / 6.0) * delta_t * delta_t * delta_t * accel);
-  matrix_set(B, 1, 0, (matrix_data_t)0.5 * delta_t * delta_t * accel);
-  matrix_set(B, 2, 0, (matrix_data_t)delta_t * accel);
+  matrix_set(B, 0, 0, (matrix_data_t)(1.0 / 6.0) * delta_t * delta_t * delta_t);
+  matrix_set(B, 1, 0, (matrix_data_t)0.5 * delta_t * delta_t);
+  matrix_set(B, 2, 0, (matrix_data_t)delta_t);
   return B;
 }
 
@@ -92,8 +92,12 @@ void kalman_wave_step(float accel, float delta_t) {
   matrix_t *z = kalman_get_measurement_vector(kfm);
 
   matrix_t *F = kalman_wave_get_state_transition(kf, delta_t);
-  matrix_t *B = kalman_wave_get_transition_offset(kf, delta_t, accel);
-  
+  matrix_t *B = kalman_wave_get_transition_offset(kf, delta_t);
+
+  // input vector [KALMAN_NUM_INPUTS * 1]
+  matrix_t *u = kalman_get_input_vector(kf);
+  matrix_set(u, 0, 0, (matrix_data_t)accel);
+
   // prediction.
   kalman_predict(kf);
 
@@ -103,7 +107,6 @@ void kalman_wave_step(float accel, float delta_t) {
 
   // update
   kalman_correct(kf, kfm);
-
 }
 
 #endif
