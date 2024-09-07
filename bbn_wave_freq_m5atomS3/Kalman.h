@@ -558,19 +558,27 @@ void kalman_init_process_noise(matrix_t *Q, float dt, float variance) {
 void kalman_predict_x(register kalman_t *const kf) {
   // matrices and vectors
   const matrix_t *const A = &kf->F;
+  const matrix_t *const B = &kf->B;
   matrix_t *const x = &kf->x;
-
+  matrix_t *const u = &kf->u;
+  
   // temporaries
   matrix_t *const xpredicted = &kf->temporary.predicted_x;
 
   /************************************************************************/
   /* Predict next state using system dynamics                             */
-  /* x = A*x                                                              */
+  /* x = A*x + B*u                                                        */
   /************************************************************************/
 
   // x = A*x
   matrix_mult_rowvector(A, x, xpredicted);
   matrix_copy(xpredicted, x);
+
+  // x += B*u
+  if (kf->B.rows > 0) {
+    matrix_mult_rowvector(B, u, xpredicted);    
+    matrix_add_inplace(x, xpredicted);
+  }
 }
 
 /*!
