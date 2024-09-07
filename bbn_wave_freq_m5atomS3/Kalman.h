@@ -1,5 +1,4 @@
-  // P += Q
-  matrix_add_inplace(P, &kf->Q);    #ifndef Kalman_h
+#ifndef Kalman_h
 #define Kalman_h
 
 /*
