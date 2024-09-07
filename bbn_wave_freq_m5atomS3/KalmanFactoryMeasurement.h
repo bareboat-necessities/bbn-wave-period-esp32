@@ -1,60 +1,60 @@
 /*!
-* \brief Initializes a named Kalman filter measurement structure.
-*
-* This include requires the two defines {\ref KALMAN_MEASUREMENT_NAME} and {\ref KALMAN_NUM_MEASUREMENTS}
-* to be set to the base name of the Kalman Filter measurement and to the number of measured outputs,
-* as well as all defines from \ref {KalmanFactoryFilter.h}
-*
-* It then will instantiate the buffers required for H, R, z and all helper matrices and vectors, 
-* as well as the structure for the Kalman filter measurement and the initialization method.
-*
-* Suppose a Kalman filter named "direction" for which a measurement named "gyroscope" shall be crated 
-* which has three measured outputs. You would start by defining the required macros
-*
-* \code{.c}
-* #define KALMAN_MEASUREMENT_NAME gyroscope
-* #define KALMAN_NUM_MEASUREMENTS 3
-* \endcode
-*
-* After that, this file must be included
-*
-* \code{.c}
-* #include "KalmanFactoryMeasurement.h"
-* \endcode
-*
-* At this point, the structure \c kalman_filter_direction_measurement_gyroscope will be created (statically) along with
-* all the required buffers (i.e. \c kalman_filter_direction_measurement_gyroscope_H_buffer, etc.) and the matrices
-* will be initialized and set with the correct dimensions.
-*
-* In addition, a parameterless static initialization function \code {kalman_filter_direction_measurement_gyroscope_init()} will
-* be created which you will need to call manually in order to set up the measurement.
-*
-* A full example would be
+  \brief Initializes a named Kalman filter measurement structure.
 
-* \code{.c}
-* #define KALMAN_NAME example
-* #define KALMAN_NUM_STATES 4
-* #define KALMAN_NUM_INPUTS 0
-* #include "KalmanFactoryFilter.h"
-*
-* #define KALMAN_MEASUREMENT_NAME gyroscope
-* #define KALMAN_NUM_MEASUREMENTS 3
-* #include "KalmanFactoryMeasurement.h"
+  This include requires the two defines {\ref KALMAN_MEASUREMENT_NAME} and {\ref KALMAN_NUM_MEASUREMENTS}
+  to be set to the base name of the Kalman Filter measurement and to the number of measured outputs,
+  as well as all defines from \ref {KalmanFactoryFilter.h}
 
-* #include "KalmanFactoryCleanup.h"
+  It then will instantiate the buffers required for H, R, z and all helper matrices and vectors,
+  as well as the structure for the Kalman filter measurement and the initialization method.
 
-* void test_kalman()
-* {
-*   kalman_filter_example_init();
-*   kalman_filter_example_measurement_gyroscope_init();
-*
-*   kalman_filter_example.x.data[0] = 1;
-*   kalman_filter_example_measurement_gyroscope.z.data[0] = 1;
-* }
-* \endcode
-*
-* In order to force creation of separate auxiliary buffers (thus preventing buffer reuse), MEASUREMENT_FORCE_NEW_BUFFERS can be defined
-* prior to inclusion of this file.
+  Suppose a Kalman filter named "direction" for which a measurement named "gyroscope" shall be crated
+  which has three measured outputs. You would start by defining the required macros
+
+  \code{.c}
+  #define KALMAN_MEASUREMENT_NAME gyroscope
+  #define KALMAN_NUM_MEASUREMENTS 3
+  \endcode
+
+  After that, this file must be included
+
+  \code{.c}
+  #include "KalmanFactoryMeasurement.h"
+  \endcode
+
+  At this point, the structure \c kalman_filter_direction_measurement_gyroscope will be created (statically) along with
+  all the required buffers (i.e. \c kalman_filter_direction_measurement_gyroscope_H_buffer, etc.) and the matrices
+  will be initialized and set with the correct dimensions.
+
+  In addition, a parameterless static initialization function \code {kalman_filter_direction_measurement_gyroscope_init()} will
+  be created which you will need to call manually in order to set up the measurement.
+
+  A full example would be
+
+  \code{.c}
+  #define KALMAN_NAME example
+  #define KALMAN_NUM_STATES 4
+  #define KALMAN_NUM_INPUTS 0
+  #include "KalmanFactoryFilter.h"
+
+  #define KALMAN_MEASUREMENT_NAME gyroscope
+  #define KALMAN_NUM_MEASUREMENTS 3
+  #include "KalmanFactoryMeasurement.h"
+
+  #include "KalmanFactoryCleanup.h"
+
+  void test_kalman()
+  {
+    kalman_filter_example_init();
+    kalman_filter_example_measurement_gyroscope_init();
+
+    kalman_filter_example.x.data[0] = 1;
+    kalman_filter_example_measurement_gyroscope.z.data[0] = 1;
+  }
+  \endcode
+
+  In order to force creation of separate auxiliary buffers (thus preventing buffer reuse), MEASUREMENT_FORCE_NEW_BUFFERS can be defined
+  prior to inclusion of this file.
 */
 
 #ifndef MEASUREMENT_FORCE_NEW_BUFFERS
@@ -278,17 +278,29 @@ static kalman_measurement_t KALMAN_MEASUREMENT_BASENAME;
 //#pragma message ("Creating Kalman measurement initialization function: " STRINGIFY(KALMAN_MEASUREMENT_FUNCTION_NAME(init()) ))
 
 /*!
-* \brief Initializes the Kalman Filter measurement
-* \return Pointer to the measurement.
+  \brief Initializes the Kalman Filter measurement
+  \return Pointer to the measurement.
 */
 static kalman_measurement_t* KALMAN_MEASUREMENT_FUNCTION_NAME(init)() {
   int i;
-  for (i = 0; i < __KALMAN_z_ROWS * __KALMAN_z_COLS; ++i) { __KALMAN_BUFFER_z[i] = 0; }
-  for (i = 0; i < __KALMAN_H_ROWS * __KALMAN_H_COLS; ++i) { __KALMAN_BUFFER_H[i] = 0; }
-  for (i = 0; i < __KALMAN_R_ROWS * __KALMAN_R_COLS; ++i) { __KALMAN_BUFFER_R[i] = 0; }
-  for (i = 0; i < __KALMAN_y_ROWS * __KALMAN_y_COLS; ++i) { __KALMAN_BUFFER_y[i] = 0; }
-  for (i = 0; i < __KALMAN_S_ROWS * __KALMAN_S_COLS; ++i) { __KALMAN_BUFFER_S[i] = 0; }
-  for (i = 0; i < __KALMAN_K_ROWS * __KALMAN_K_COLS; ++i) { __KALMAN_BUFFER_K[i] = 0; }
+  for (i = 0; i < __KALMAN_z_ROWS * __KALMAN_z_COLS; ++i) {
+    __KALMAN_BUFFER_z[i] = 0;
+  }
+  for (i = 0; i < __KALMAN_H_ROWS * __KALMAN_H_COLS; ++i) {
+    __KALMAN_BUFFER_H[i] = 0;
+  }
+  for (i = 0; i < __KALMAN_R_ROWS * __KALMAN_R_COLS; ++i) {
+    __KALMAN_BUFFER_R[i] = 0;
+  }
+  for (i = 0; i < __KALMAN_y_ROWS * __KALMAN_y_COLS; ++i) {
+    __KALMAN_BUFFER_y[i] = 0;
+  }
+  for (i = 0; i < __KALMAN_S_ROWS * __KALMAN_S_COLS; ++i) {
+    __KALMAN_BUFFER_S[i] = 0;
+  }
+  for (i = 0; i < __KALMAN_K_ROWS * __KALMAN_K_COLS; ++i) {
+    __KALMAN_BUFFER_K[i] = 0;
+  }
 
   kalman_measurement_initialize(&KALMAN_MEASUREMENT_BASENAME, KALMAN_NUM_STATES, KALMAN_NUM_MEASUREMENTS,
                                 __KALMAN_BUFFER_H, __KALMAN_BUFFER_z, __KALMAN_BUFFER_R,
