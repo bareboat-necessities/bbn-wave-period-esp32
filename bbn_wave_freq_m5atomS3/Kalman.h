@@ -580,7 +580,7 @@ void kalman_predict_P(register kalman_t *const kf) {
 
   /************************************************************************/
   /* Predict next covariance using system dynamics and input              */
-  /* P = F*P*F' + Q*                                                  */
+  /* P = F*P*F' + Q                                                       */
   /************************************************************************/
 
   // P = A*P*A'
