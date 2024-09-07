@@ -59,8 +59,8 @@ void kalman_wave_init() {
   // observation matrix [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_STATES]
   matrix_t *H = kalman_get_measurement_transformation(kfm);
   matrix_set(H, 0, 0, (matrix_data_t)1.0);
-  matrix_set(H, 0, 1, (matrix_data_t)0.0);
-  matrix_set(H, 0, 2, (matrix_data_t)0.0);
+  matrix_set(H, 1, 0, (matrix_data_t)0.0);
+  matrix_set(H, 2, 0, (matrix_data_t)0.0);
 
   // observation covariance [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_MEASUREMENTS]
   matrix_t *R = kalman_get_process_noise(kf);
