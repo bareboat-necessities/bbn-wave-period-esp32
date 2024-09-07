@@ -27,7 +27,7 @@ typedef struct {
 
   /*!
      \brief System covariance matrix
-     \see A
+     \see F
   */
   matrix_t P;
 
