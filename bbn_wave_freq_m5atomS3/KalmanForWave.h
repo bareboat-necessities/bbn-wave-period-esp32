@@ -18,6 +18,7 @@
 #include "KalmanFactoryCleanup.h"
 
 matrix_t *kalman_wave_get_state_transition(kalman_t *kf, matrix_data_t delta_t) {
+  // transition matrix [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *F = kalman_get_state_transition(kf);
 
   matrix_set(F, 0, 0, (matrix_data_t)1.0);                     // 1
@@ -35,10 +36,11 @@ matrix_t *kalman_wave_get_state_transition(kalman_t *kf, matrix_data_t delta_t) 
 }
 
 matrix_t *kalman_wave_get_transition_offset(kalman_t *kf, matrix_data_t delta_t) {
+  // transition offset [KALMAN_NUM_STATES * KALMAN_NUM_INPUTS]
   matrix_t *B = kalman_get_input_transition(kf);
   matrix_set(B, 0, 0, (matrix_data_t)(1.0 / 6.0) * delta_t * delta_t * delta_t);
-  matrix_set(B, 0, 1, (matrix_data_t)0.5 * delta_t * delta_t);
-  matrix_set(B, 0, 2, (matrix_data_t)delta_t);
+  matrix_set(B, 1, 0, (matrix_data_t)0.5 * delta_t * delta_t);
+  matrix_set(B, 2, 0, (matrix_data_t)delta_t);
   return B;
 }
 
@@ -53,21 +55,15 @@ void kalman_wave_init() {
   x->data[1] = 0.0; // vertical displacement
   x->data[2] = 0.0; // vertical velocity
 
-  // transition matrix [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
-  //matrix_t *F = kalman_wave_get_state_transition(kf, delta_t);
-
   // observation matrix [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_STATES]
   matrix_t *H = kalman_get_measurement_transformation(kfm);
   matrix_set(H, 0, 0, (matrix_data_t)1.0);
-  matrix_set(H, 1, 0, (matrix_data_t)0.0);
-  matrix_set(H, 2, 0, (matrix_data_t)0.0);
+  matrix_set(H, 0, 1, (matrix_data_t)0.0);
+  matrix_set(H, 0, 2, (matrix_data_t)0.0);
 
   // observation covariance [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_MEASUREMENTS]
   matrix_t *R = kalman_get_process_noise(kf);
   matrix_set(R, 0, 0, (matrix_data_t)1.0);
-
-  // transition offset [KALMAN_NUM_STATES * KALMAN_NUM_INPUTS]
-  //kalman_wave_get_transition_offset(kf, delta_t);
 
   // initial state covariance [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *P = kalman_get_system_covariance(kf);
@@ -86,6 +82,30 @@ void kalman_wave_init() {
   matrix_set_symmetric(Q, 1, 1, (matrix_data_t)0.2);
   matrix_set_symmetric(Q, 1, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 2, 2, (matrix_data_t)0.1);
+}
+
+void kalman_wave_update(float accel, float delta_t) {
+  kalman_t *kf = &kalman_filter_wave;
+  kalman_measurement_t *kfm = &kalman_filter_wave_measurement_displacement_integral;
+
+  matrix_t *x = kalman_get_state_vector(kf);
+  matrix_t *z = kalman_get_measurement_vector(kfm);
+
+  matrix_t *F = kalman_wave_get_state_transition(kf, delta_t);
+  matrix_t *B = kalman_wave_get_transition_offset(kf, delta_t);
+
+  // TODO: B = B * accel ? 
+  
+  // prediction.
+  kalman_predict(kf);
+
+  // measure ...
+  matrix_data_t measurement = 0.0f;
+  matrix_set(z, 0, 0, measurement);
+
+  // update
+  kalman_correct(kf, kfm);
+
 }
 
 #endif
