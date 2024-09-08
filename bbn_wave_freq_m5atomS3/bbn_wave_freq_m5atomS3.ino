@@ -135,6 +135,8 @@ void startCalibration(void) {
 
 int produce_serial_data = 1;
 
+float heave_bias = 0.0;
+
 void repeatMe() {
   static uint32_t prev_sec = 0;
 
@@ -173,7 +175,7 @@ void repeatMe() {
     kalman_wave_step(&waveState, a * g_std, delta_t);
     float heave = waveState.heave; // in meters
     
-    float y = heave;
+    float y = heave - heave_bias;
     aranovskiy_update(&params, &state, y, delta_t);
     float freq = state.f;
 
@@ -199,6 +201,7 @@ void repeatMe() {
       }
 
       float wave_height = min_max.max.value - min_max.min.value;
+      heave_bias = (min_max.max.value + min_max.min.value) / 2.0;
 
       if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
         if (produce_serial_data) {
@@ -206,6 +209,7 @@ void repeatMe() {
           Serial.printf(",height_cm:%.4f", wave_height * 100);
           Serial.printf(",max_cm:%.4f", min_max.max.value * 100);
           Serial.printf(",min_cm:%.4f", min_max.min.value * 100);
+          Serial.printf(",heave_bias_cm:%.4f", heave_bias * 100);
           //Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
           Serial.printf(",period_decisec:%.4f", period * 10);
