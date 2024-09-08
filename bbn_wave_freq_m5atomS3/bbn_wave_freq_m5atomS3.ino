@@ -295,8 +295,8 @@ void setup(void) {
   float twoKi = (2.0f * 0.0001f);
   mahony_AHRS_init(&mahony, twoKp, twoKi);
 
-  float omega_init = 0.02 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  float k_gain = 1000.0; // Aranovskiy gain
+  float omega_init = 0.03 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
+  float k_gain = 200.0; // Aranovskiy gain
   float t_0 = 0.0;
   float x1_0 = 0.0;
   float theta_0 = - (omega_init * omega_init / 4.0);
@@ -305,9 +305,9 @@ void setup(void) {
   aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
 
   {
-    float process_noise_covariance = 0.6;
+    float process_noise_covariance = 0.1;
     float measurement_uncertainty = 2.0;
-    float estimation_uncertainty = 10.0;
+    float estimation_uncertainty = 100.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
   
