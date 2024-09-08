@@ -75,7 +75,8 @@ int first = 1;
 
 float delta_t;  // time step sec
 
-MinMaxLemire min_max;
+MinMaxLemire min_max_h;
+MinMaxLemire min_max_a;
 AranovskiyParams params;
 AranovskiyState state;
 KalmanSmootherVars kalman_freq;
@@ -174,8 +175,8 @@ void repeatMe() {
 
     kalman_wave_step(&waveState, a * g_std, delta_t);
     float heave = waveState.heave; // in meters
-    
-    float y = heave - heave_bias;
+
+    float y = heave;
     aranovskiy_update(&params, &state, y, delta_t);
     float freq = state.f;
 
@@ -185,34 +186,54 @@ void repeatMe() {
     }
     float freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
+    float period_trochoid = 0.0;
     if (freq_adj > 0.001 && freq_adj < 1000.0) {
       float period = 1.0 / freq_adj;
       float wave_length = trochoid_wave_length(period);
-      //float heave = - a * wave_length / (2 * PI); // in trochoid model
+      float heave_trochoid = - a * wave_length / (2 * PI); // in trochoid model
       if (period < 30.0) {
-        SampleType sample;
-        sample.timeMicroSec = now;
-        sample.value = heave;
         uint32_t windowMicros = 3 * period * 1000000;
+        if (period_trochoid > 0.0001) {
+          windowMicros = 3 * period_trochoid * 1000000;
+        }
         if (windowMicros <= 10 * 1000000) {
           windowMicros = 10 * 1000000;
         }
-        min_max_lemire_update(&min_max, sample, windowMicros);
+        {
+          SampleType sample;
+          sample.timeMicroSec = now;
+          sample.value = heave;
+          min_max_lemire_update(&min_max_h, sample, windowMicros);
+        }
+        {
+          SampleType sample;
+          sample.timeMicroSec = now;
+          sample.value = a * g_std;
+          min_max_lemire_update(&min_max_a, sample, windowMicros);
+        }
       }
 
-      float wave_height = min_max.max.value - min_max.min.value;
-      heave_bias = (min_max.max.value + min_max.min.value) / 2.0;
+      float wave_height = min_max_h.max.value - min_max_h.min.value;
+      heave_bias = (min_max_h.max.value + min_max_h.min.value) / 2.0;
+
+      float amp_range = min_max_a.max.value - min_max_a.min.value;
+
+      if (amp_range > 0.0001) {
+        period_trochoid = 2.0 * PI * sqrt(fabs(wave_height / amp_range));
+      }
 
       if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
         if (produce_serial_data) {
           Serial.printf("heave_cm:%.4f", heave * 100);
+          //Serial.printf(",heave_trochoid:%.4f", heave_trochoid * 100);
           Serial.printf(",height_cm:%.4f", wave_height * 100);
-          Serial.printf(",max_cm:%.4f", min_max.max.value * 100);
-          Serial.printf(",min_cm:%.4f", min_max.min.value * 100);
+          Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
+          Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
           Serial.printf(",heave_bias_cm:%.4f", heave_bias * 100);
           //Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
           Serial.printf(",period_decisec:%.4f", period * 10);
+          Serial.printf(",period_trochoid_decisec:%.4f", period_trochoid * 10);
           Serial.println();
         }
         else {
@@ -225,7 +246,7 @@ void repeatMe() {
           M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
           M5.Lcd.printf("heave:      %0.4f\n", heave);
           M5.Lcd.printf("wave height:%0.4f\n", wave_height);
-          M5.Lcd.printf("range %0.4f %0.4f\n", min_max.min.value, min_max.max.value);
+          M5.Lcd.printf("range %0.4f %0.4f\n", min_max_h.min.value, min_max_h.max.value);
           M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
           M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
           M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
@@ -302,12 +323,12 @@ void setup(void) {
   mahony_AHRS_init(&mahony, twoKp, twoKi);
 
   /*
-     Accelerometer bias creates heave bias and Aranovskiy filter gives 
+     Accelerometer bias creates heave bias and Aranovskiy filter gives
      lower frequency (i. e. higher period).
      Even 2cm bias in heave is too much to affect frequency a lot
-   */
+  */
   float omega_init = 0.04 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  float k_gain = 200.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will overflow float 
+  float k_gain = 200.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will overflow float
   float t_0 = 0.0;
   float x1_0 = 0.0;
   float theta_0 = - (omega_init * omega_init / 4.0);
@@ -321,7 +342,7 @@ void setup(void) {
     float estimation_uncertainty = 100.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
-  
+
   kalman_wave_init_defaults();
 
   last_update = micros();
