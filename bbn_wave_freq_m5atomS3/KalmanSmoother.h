@@ -61,8 +61,8 @@ void kalman_smoother_init(KalmanSmootherVars* s, float process_noise, float sens
   s->p = estimated_error;
 }
 
-void kalman_smoother_set_initial(KalmanSmootherVars* s, float intial_value) {
-  s->x = intial_value;
+void kalman_smoother_set_initial(KalmanSmootherVars* s, float initial_value) {
+  s->x = initial_value;
 }
 
 float kalman_smoother_update(KalmanSmootherVars* s, float measurement) {
