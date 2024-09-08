@@ -208,7 +208,7 @@ void repeatMe() {
           Serial.printf(",min_cm:%.4f", min_max.min.value * 100);
           //Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-          //Serial.printf(",period_decisec:%.4f", period * 10);
+          Serial.printf(",period_decisec:%.4f", period * 10);
           Serial.println();
         }
         else {
@@ -297,6 +297,10 @@ void setup(void) {
   float twoKi = (2.0f * 0.0001f);
   mahony_AHRS_init(&mahony, twoKp, twoKi);
 
+  /*
+     Accelerometer bias creates heave bias and Aranovskiy filter gives 
+     lower frequency (i. e. higher period)
+   */
   float omega_init = 0.04 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
   float k_gain = 200.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will overflow float 
   float t_0 = 0.0;
