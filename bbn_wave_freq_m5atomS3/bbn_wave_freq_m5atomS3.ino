@@ -189,8 +189,6 @@ void repeatMe() {
     float period_trochoid = 0.0;
     if (freq_adj > 0.001 && freq_adj < 1000.0) {
       float period = 1.0 / freq_adj;
-      float wave_length = trochoid_wave_length(period);
-      float heave_trochoid = - a * wave_length / (2 * PI); // in trochoid model
       if (period < 30.0) {
         uint32_t windowMicros = 3 * period * 1000000;
         if (period_trochoid > 0.0001) {
@@ -219,20 +217,23 @@ void repeatMe() {
       float amp_range = min_max_a.max.value - min_max_a.min.value;
 
       if (amp_range > 0.0001) {
-        period_trochoid = 2.0 * PI * sqrt(fabs(wave_height / amp_range));
+        period_trochoid = trochoid_wave_period(wave_height, amp_range);
       }
+
+      float wave_length = trochoid_wave_length(period_trochoid);
+      float heave_trochoid = - a * wave_length / (2 * PI); // in trochoid model
 
       if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
         if (produce_serial_data) {
           Serial.printf("heave_cm:%.4f", heave * 100);
-          //Serial.printf(",heave_trochoid:%.4f", heave_trochoid * 100);
+          Serial.printf(",heave_trochoid:%.4f", heave_trochoid * 100);
           Serial.printf(",height_cm:%.4f", wave_height * 100);
           Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
           Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
-          Serial.printf(",heave_bias_cm:%.4f", heave_bias * 100);
+          //Serial.printf(",heave_bias_cm:%.4f", heave_bias * 100);
           //Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-          Serial.printf(",period_decisec:%.4f", period * 10);
+          //Serial.printf(",period_decisec:%.4f", period * 10);
           Serial.printf(",period_trochoid_decisec:%.4f", period_trochoid * 10);
           Serial.println();
         }
