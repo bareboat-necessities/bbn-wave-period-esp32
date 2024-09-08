@@ -296,7 +296,7 @@ void setup(void) {
   mahony_AHRS_init(&mahony, twoKp, twoKi);
 
   float omega_init = 0.03 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  float k_gain = 200.0; // Aranovskiy gain
+  float k_gain = 200.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will overflow float 
   float t_0 = 0.0;
   float x1_0 = 0.0;
   float theta_0 = - (omega_init * omega_init / 4.0);
