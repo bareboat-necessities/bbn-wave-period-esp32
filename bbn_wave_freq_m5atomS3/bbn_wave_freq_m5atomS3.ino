@@ -70,7 +70,7 @@ static rect_t rect_text_area;
 static int prev_xpos[18];
 
 unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL;
-int got_samples = 0;
+unsigned long got_samples = 0;
 int first = 1;
 
 float delta_t;  // time step sec
@@ -191,9 +191,9 @@ void repeatMe() {
         SampleType sample;
         sample.timeMicroSec = now;
         sample.value = heave;
-        uint32_t windowMicros = 5 * period * 1000000;
-        if (windowMicros <= 15 * 1000000) {
-          windowMicros = 15 * 1000000;
+        uint32_t windowMicros = 3 * period * 1000000;
+        if (windowMicros <= 10 * 1000000) {
+          windowMicros = 10 * 1000000;
         }
         min_max_lemire_update(&min_max, sample, windowMicros);
       }
@@ -202,11 +202,13 @@ void repeatMe() {
 
       if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
         if (produce_serial_data) {
-          //Serial.printf("heave_cm:%.4f", heave * 100);
-          //Serial.printf(",height_cm:%.4f", wave_height * 100);
+          Serial.printf("heave_cm:%.4f", heave * 100);
+          Serial.printf(",height_cm:%.4f", wave_height * 100);
+          Serial.printf(",max_cm:%.4f", min_max.max.value * 100);
+          Serial.printf(",min_cm:%.4f", min_max.min.value * 100);
           //Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-          Serial.printf(",period_decisec:%.4f", period * 10);
+          //Serial.printf(",period_decisec:%.4f", period * 10);
           Serial.println();
         }
         else {
