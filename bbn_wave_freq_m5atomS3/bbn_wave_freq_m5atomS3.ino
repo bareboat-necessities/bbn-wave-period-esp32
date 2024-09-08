@@ -299,7 +299,8 @@ void setup(void) {
 
   /*
      Accelerometer bias creates heave bias and Aranovskiy filter gives 
-     lower frequency (i. e. higher period)
+     lower frequency (i. e. higher period).
+     Even 2cm bias in heave is too much to affect frequency a lot
    */
   float omega_init = 0.04 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
   float k_gain = 200.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will overflow float 
