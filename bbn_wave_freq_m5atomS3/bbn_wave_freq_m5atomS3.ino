@@ -181,7 +181,8 @@ void repeatMe() {
     //float a = - 0.25 * PI * PI * sin(2 * PI * state.t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
 
     kalman_wave_step(&waveState, a * g_std, delta_t);
-    float heave = waveState.heave; // in meters
+    float heave = waveState.heave;            // in meters
+    float accel_bias = waveState.accel_bias;  // in meters/sec^2
 
     float y = heave;
     aranovskiy_update(&params, &state, y, delta_t);
@@ -212,8 +213,9 @@ void repeatMe() {
       float wave_height = min_max_h.max.value - min_max_h.min.value;
       heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
-      if (fabs(heave) > 0.0001 && fabs(a) > 0.0001) {
-        wave_freq_trochoid = trochoid_wave_freq(heave, a * g_std);
+      float accel_est = a * g_std - accel_bias;
+      if (fabs(heave) > 0.0001 && fabs(accel_est) > 0.0001) {
+        wave_freq_trochoid = trochoid_wave_freq(heave, accel_est);
         wave_freq_trochoid_adj = kalman_smoother_update(&kalman_freq_tr, wave_freq_trochoid);
         if (fabs(wave_freq_trochoid_adj) > 0.0001) {
           period_trochoid = 1.0 / wave_freq_trochoid_adj;        
@@ -221,14 +223,14 @@ void repeatMe() {
       }
       if (fabs(period_trochoid) > 0.0001) {
         wave_length = trochoid_wave_length(period_trochoid);
-        heave_trochoid = - a * wave_length / (2 * PI); // in trochoid model
+        heave_trochoid = -  wave_length * accel_est / g_std / (2 * PI); // in trochoid model
         heave_trochoid_adj = kalman_smoother_update(&kalman_heave_tr, heave_trochoid);
       }
 
       if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
         if (produce_serial_data) {
-          Serial.printf("heave_cm:%.4f", heave * 100);
-          Serial.printf(",heave_trochoid_adj:%.4f", heave_trochoid_adj * 100);
+          //Serial.printf("heave_cm:%.4f", heave * 100);
+          //Serial.printf(",heave_trochoid_adj:%.4f", heave_trochoid_adj * 100);
           //Serial.printf(",height_cm:%.4f", wave_height * 100);
           //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
           //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
@@ -239,6 +241,8 @@ void repeatMe() {
           //Serial.printf(",wave_freq_trochoid_adj:%.4f", wave_freq_trochoid_adj * 100);
           //Serial.printf(",period_decisec:%.4f", period * 10);
           //Serial.printf(",period_trochoid_decisec:%.4f", period_trochoid * 10);
+          Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+          Serial.printf(",accel bias:%0.4f", accel_bias);
           Serial.println();
         }
         else {
@@ -348,15 +352,15 @@ void setup(void) {
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
   {
-    float process_noise_covariance = 0.01;
+    float process_noise_covariance = 0.05;
     float measurement_uncertainty = 2.0;
     float estimation_uncertainty = 100.0;
     kalman_smoother_init(&kalman_freq_tr, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
   {
-    float process_noise_covariance = 0.2;
-    float measurement_uncertainty = 2.0;
-    float estimation_uncertainty = 100.0;
+    float process_noise_covariance = 0.1;
+    float measurement_uncertainty = 0.15;
+    float estimation_uncertainty = 0.2;
     kalman_smoother_init(&kalman_heave_tr, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
   }
 
