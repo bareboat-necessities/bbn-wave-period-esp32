@@ -8,7 +8,8 @@
  */
 
 float trochoid_wave_length(float periodSec);
-float trochoid_wave_period(float wave_height, float amp_range);
+float trochoid_wave_period(float height, float accel);
+float trochoid_wave_freq(float height, float accel);
 
 const float g_std = 9.80665; // standard gravity acceleration m/s2
 
@@ -17,9 +18,14 @@ float trochoid_wave_length(float periodSec) {
   return lengthMeters;
 }
 
-float trochoid_wave_period(float wave_height, float amp_range) {
-  float wave_period = 2.0 * PI * sqrt(fabs(wave_height / amp_range));
+float trochoid_wave_period(float height, float accel) {
+  float wave_period = 2.0 * PI * sqrt(fabs(height / accel));
   return wave_period;
+}
+
+float trochoid_wave_freq(float height, float accel) {
+  float wave_freq = sqrt(fabs(accel / height)) / (2.0 * PI);
+  return wave_freq;
 }
 
 
