@@ -11,7 +11,7 @@ int nmea0183_checksum(char *nmea_data_before_asterisk) {
     int crc = 0;
     int i;
     // the first $ sign 
-    for (i = 1; i < strlen(nmea_data); i ++) {
+    for (i = 1; i < strlen(nmea_data_before_asterisk); i ++) {
         crc ^= nmea_data[i];
     }
     return crc;
