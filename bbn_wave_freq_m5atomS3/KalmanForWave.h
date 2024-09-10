@@ -6,9 +6,9 @@
 
   Kalman filter to double integrate vertical acceleration in wave
   into vertical displacement, correct for accelerometer bias,
-  estimate accelerometer bias, correct integral for zero average displacement
-  (thus third integral is taken as measurement of zero, responsible 
-  for zero average vertical displacement).
+  estimate accelerometer bias, correct integral for zero average displacement.
+  The third integral (responsible for zero average vertical displacement)
+  is taken as a measurement of zero.
 
   Process model:
 
