@@ -32,6 +32,7 @@
 
   unsigned long now = 0UL, last_update = 0UL;
 
+  double t = t_0;
   last_update = millis();
   while(1) {
     delay(4);
@@ -46,6 +47,8 @@
     aranovskiy_update(&params, &state, y, delta_t);
 
     // state.f contains estimated frequency
+
+    t = t + delta_t;
   }
 
   Use double instead of float to avoid float overflows with higher Aranovskiy gain values
