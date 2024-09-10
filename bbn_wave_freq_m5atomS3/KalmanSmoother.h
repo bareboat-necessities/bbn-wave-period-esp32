@@ -41,7 +41,7 @@
    }
 
    Used also with results of Aranovskiy filter. So use double instead of float to 
-   avoid float overflows with higher Aranovskiy gain values.
+   avoid decimal overflows with higher Aranovskiy gain values.
    
 */
 
