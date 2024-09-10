@@ -12,7 +12,7 @@ int nmea0183_checksum(char *nmea_data_before_asterisk) {
     int i;
     // the first $ sign 
     for (i = 1; i < strlen(nmea_data_before_asterisk); i ++) {
-        crc ^= nmea_data[i];
+        crc ^= nmea_data_before_asterisk[i];
     }
     return crc;
 }
