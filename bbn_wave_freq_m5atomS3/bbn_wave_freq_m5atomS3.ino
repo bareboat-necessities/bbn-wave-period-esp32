@@ -176,9 +176,9 @@ void repeatMe() {
     accel_rotated.y = rotated_a[1];
     accel_rotated.z = rotated_a[2];
 
-    //float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-    float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
-    float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25);
+    float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+    //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
+    //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25);
 
     float speed_prev = waveState.vert_speed;
     kalman_wave_step(&waveState, a * g_std, delta_t);
@@ -187,8 +187,8 @@ void repeatMe() {
     float speed = waveState.vert_speed;
 
     float y = heave;
-    //aranovskiy_update(&params, &state, y, delta_t);
-    double freq = 1.0; //state.f;
+    aranovskiy_update(&params, &state, y, delta_t);
+    double freq = state.f;
 
     if (first) {
       kalman_smoother_set_initial(&kalman_freq, freq);
@@ -232,12 +232,13 @@ void repeatMe() {
         if (produce_serial_data) {
           Serial.printf("heave_cm:%.4f", heave * 100);
           Serial.printf(",heave_trochoid:%.4f", heave_trochoid * 100);
-          Serial.printf(",h_cm:%.4f", h * 100);
+          //Serial.printf(",h_cm:%.4f", h * 100);
           Serial.printf(",height_cm:%.4f", wave_height * 100);
           //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
           //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
           //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+          Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",freq_troch:%.4f", wave_freq_trochoid * 100);
           //Serial.printf(",freq_troch_adj:%.4f", wave_freq_trochoid_adj * 100);
           //Serial.printf(",period_decisec:%.4f", period * 10);
