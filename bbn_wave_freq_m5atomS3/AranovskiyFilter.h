@@ -51,7 +51,7 @@
     t = t + delta_t;
   }
 
-  Use double instead of float to avoid float overflows with higher Aranovskiy gain values
+  Use double instead of float to avoid decimal overflows with higher Aranovskiy gain values
 */
 
 #define PI 3.1415926535897932384626433832795
