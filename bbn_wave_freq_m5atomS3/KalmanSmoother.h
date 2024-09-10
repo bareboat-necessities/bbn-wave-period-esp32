@@ -36,39 +36,42 @@
    kalman_smoother_init(&kalman, 0.002, 30.0, 2000.0);
    kalman_smoother_set_initial(&kalman, 1.0);
    while(1) {
-     float measure = getSensorValue();
-     float measure_adjusted = kalman_smoother_update(&kalman, measure);
+     double measure = getSensorValue();
+     double measure_adjusted = kalman_smoother_update(&kalman, measure);
    }
+
+   Used also with results of Aranovskiy filter. So use double instead of float to 
+   avoid float overflows with higher Aranovskiy gain values.
    
 */
 
 typedef struct kalman_smoother_vars {
   /* Kalman filter variables */
-  float q; // process noise covariance
-  float r; // measurement uncertainty
-  float p; // estimation uncertainty
-  float k; // kalman gain
-  float x; // value
+  double q; // process noise covariance
+  double r; // measurement uncertainty
+  double p; // estimation uncertainty
+  double k; // kalman gain
+  double x; // value
 } KalmanSmootherVars;
 
-void kalman_smoother_init(KalmanSmootherVars* s, float process_noise, float sensor_noise, float estimated_error);
-void kalman_smoother_set_initial(KalmanSmootherVars* s, float intial_value);
-float kalman_smoother_update(KalmanSmootherVars* s, float measurement);
+void kalman_smoother_init(KalmanSmootherVars* s, double process_noise, double sensor_noise, double estimated_error);
+void kalman_smoother_set_initial(KalmanSmootherVars* s, double intial_value);
+double kalman_smoother_update(KalmanSmootherVars* s, double measurement);
 
-void kalman_smoother_init(KalmanSmootherVars* s, float process_noise, float sensor_noise, float estimated_error) {
+void kalman_smoother_init(KalmanSmootherVars* s, double process_noise, double sensor_noise, double estimated_error) {
   s->q = process_noise;
   s->r = sensor_noise;
   s->p = estimated_error;
 }
 
-void kalman_smoother_set_initial(KalmanSmootherVars* s, float initial_value) {
+void kalman_smoother_set_initial(KalmanSmootherVars* s, double initial_value) {
   s->x = initial_value;
 }
 
-float kalman_smoother_update(KalmanSmootherVars* s, float measurement) {
+double kalman_smoother_update(KalmanSmootherVars* s, double measurement) {
   // measurement update
   s->k = s->p / (s->p + s->r);
-  float current_estimate = s->x + s->k * (measurement - s->x);
+  double current_estimate = s->x + s->k * (measurement - s->x);
   s->p = (1.0 - s->k) * s->p + fabs(s->x - current_estimate) * s->q;
   s->x = current_estimate;
   return s->x;
