@@ -31,6 +31,8 @@
         v,
         a_hat ]
 
+  Process model in matrix form:
+  
   x(k) = F*x(k-1) + B*u(k) + w(k)
 
   w(k) - zero mean noise,
