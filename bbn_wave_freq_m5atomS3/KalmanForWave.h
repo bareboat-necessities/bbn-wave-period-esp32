@@ -3,6 +3,54 @@
 
 /*
   Copyright 2024, Mikhail Grushinskiy
+
+  Process model:
+
+  velocity:
+  v(k) = v(k-1) + a*T - a_hat*T
+
+  displacement:
+  y(k) = y(k-1) + v(k-1)*T + 1/2*a*T^2 - 1/2*a_hat*t^2
+
+  displacement_integral:
+  z(k) = z(k-1) + y(k-1)*T + 1/2*v(k-1)*T^2 + 1/6*a*T^3 - 1/6*a_hat*T^3
+
+  accelerometer bias:
+  a_hat(k) = a_hat(k-1)
+
+  State vector:
+  
+  x = [ z, 
+        y,
+        v,
+        a_hat ]
+
+  x(k) = F*x(k-1) + B*u(k) + w(k)
+
+  w(k) - zero mean noise,
+  u(k) = a - a_hat 
+
+  Input a - vertical acceleration from accelerometer
+
+  Measurement - z = 0 (displacement integral)
+
+  Observation matrix:
+  H = [ 1, 
+        0,
+        0,
+        0 ]  
+
+  F = [[ 1,  T,  1/2*T^2, -1/6*T^3 ],
+       [ 0,  1,  T,       -1/2*T^2 ],
+       [ 0,  0,  1,       -T       ],
+       [ 0,  0,  0,        1       ]]
+
+  B = [  1/6*T^3,
+         1/2*T^2,
+         T,
+         0       ]
+
+         
 */
 
 #include <assert.h>
