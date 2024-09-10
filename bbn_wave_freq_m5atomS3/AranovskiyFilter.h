@@ -60,7 +60,6 @@ typedef struct aranovskiy_params {
 } AranovskiyParams;
 
 typedef struct aranovskiy_state {
-  double t = 0.0;           // time
   double y;                 // signal measurement
   double x1 = 0.0;
   double theta = -0.25;
@@ -82,7 +81,6 @@ void aranovskiy_default_params(AranovskiyParams* p, double omega_up, double k_ga
 }
 
 void aranovskiy_init_state(AranovskiyState* s, double t_0, double x1_0, double theta_0, double sigma_0) {
-  s->t = t_0;
   s->x1 = x1_0;
   s->theta = theta_0;
   s->sigma = sigma_0;
@@ -97,7 +95,6 @@ void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double
   // step
   s->x1 = s->x1 + s->x1_dot * delta_t;
   s->sigma = s->sigma + s->sigma_dot * delta_t;
-  s->t = s->t + delta_t;
 }
 
 #endif
