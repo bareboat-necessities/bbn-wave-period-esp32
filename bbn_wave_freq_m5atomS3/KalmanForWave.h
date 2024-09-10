@@ -158,16 +158,16 @@ void kalman_wave_init_defaults() {
 
   // transition covariance [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *Q = kalman_get_process_noise(kf);
-  matrix_set_symmetric(Q, 0, 0, (matrix_data_t)0.04);
+  matrix_set_symmetric(Q, 0, 0, (matrix_data_t)1.0);
   matrix_set_symmetric(Q, 0, 1, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 0, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 0, 3, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 1, 1, (matrix_data_t)0.2);
   matrix_set_symmetric(Q, 1, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 1, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 2, 2, (matrix_data_t)1.0);
+  matrix_set_symmetric(Q, 2, 2, (matrix_data_t)0.04);
   matrix_set_symmetric(Q, 2, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 3, 3, (matrix_data_t)0.04);
+  matrix_set_symmetric(Q, 3, 3, (matrix_data_t)0.008);
 }
 
 void kalman_wave_step(KalmanWaveState* state, float accel, float delta_t) {
