@@ -187,7 +187,10 @@ void repeatMe() {
     float speed = waveState.vert_speed;
 
     float y = heave;
-    aranovskiy_update(&params, &state, y, delta_t);
+    if (t > 5.0 /* sec */) {
+      // give some time for other filters to settle first
+      aranovskiy_update(&params, &state, y, delta_t);
+    }
     double freq = state.f;
 
     if (first) {
