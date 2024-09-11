@@ -64,10 +64,10 @@
         1,
         0 ]  
 
-  F = [[ 1,      T,  1/2*T^2, -1/2*T^2 ],
-       [ 0,      1,  T,       -T       ],
-       [ k_hat,  0,  0,        0       ],
-       [ 0,      0,  0,        1       ]]
+  F = [[ 1,      T,    1/2*T^2, -1/2*T^2 ],
+       [ 0,      1,    T,       -T       ],
+       [ k_hat,  0,    0,        0       ],
+       [ 0,      0,    0,        1       ]]
          
 */
 
@@ -94,7 +94,7 @@ typedef struct kalman_wave_alt_state {
   float accel_bias;            // accel bias
 } KalmanWaveAltState;
 
-matrix_t *kalman_wave_alt_get_state_transition(kalman_t *kf, matrix_data_t k, matrix_data_t delta_t) {
+matrix_t *kalman_wave_alt_get_state_transition(kalman_t *kf, matrix_data_t k_hat, matrix_data_t delta_t) {
   // transition matrix [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *F = kalman_get_state_transition(kf);
 
@@ -108,7 +108,7 @@ matrix_t *kalman_wave_alt_get_state_transition(kalman_t *kf, matrix_data_t k, ma
   matrix_set(F, 1, 2, (matrix_data_t)delta_t);                     // T
   matrix_set(F, 1, 3, (matrix_data_t)-delta_t);                    // -T
 
-  matrix_set(F, 2, 0, (matrix_data_t)k);                // k
+  matrix_set(F, 2, 0, (matrix_data_t)k_hat);                // k
   matrix_set(F, 2, 1, (matrix_data_t)0.0);              // 0
   matrix_set(F, 2, 2, (matrix_data_t)0.0);              // 0
   matrix_set(F, 2, 3, (matrix_data_t)0.0);              // 0
@@ -181,14 +181,14 @@ matrix_t *kalman_wave_alt_get_transition_offset(kalman_t *kf, matrix_data_t delt
   return B;
 }
 
-void kalman_wave_alt_step(KalmanWaveAltState* state, float accel, float k, float delta_t) {
+void kalman_wave_alt_step(KalmanWaveAltState* state, float accel, float k_hat, float delta_t) {
   kalman_t *kf = &kalman_filter_wave_alt;
   kalman_measurement_t *kfm = &kalman_filter_wave_alt_measurement_vert_accel;
 
   matrix_t *x = kalman_get_state_vector(kf);
   matrix_t *z = kalman_get_measurement_vector(kfm);
 
-  matrix_t *F = kalman_wave_alt_get_state_transition(kf, k, delta_t);
+  matrix_t *F = kalman_wave_alt_get_state_transition(kf, k_hat, delta_t);
   matrix_t *B = kalman_wave_alt_get_transition_offset(kf, delta_t);
 
   // input vector [KALMAN_NUM_INPUTS * 1]
