@@ -575,7 +575,7 @@ void kalman_predict_x(register kalman_t *const kf) {
   matrix_copy(xpredicted, x);
 
   // x += B*u
-  if (kf->B.rows > 0) {
+  if (kf->B.rows > 0 && kf->B.cols > 0) {
     matrix_mult_rowvector(B, u, xpredicted);    
     matrix_add_inplace(x, xpredicted);
   }
