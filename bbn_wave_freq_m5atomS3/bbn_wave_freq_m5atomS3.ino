@@ -157,118 +157,122 @@ void repeatMe() {
 
     got_samples++;
 
-    now = micros();
-    delta_t = ((now - last_update) / 1000000.0);
-    last_update = now;
+    if (fabs(accel.x) < 50.0 && fabs(accel.y) < 50.0 && fabs(accel.z) < 50.0) {
+      // ignore noise with unreasonably high Gs
+      
+      now = micros();
+      delta_t = ((now - last_update) / 1000000.0);
+      last_update = now;
+  
+      float pitch, roll, yaw;
+      mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
+                         accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+  
+      Quaternion quaternion;
+      Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
+      float v[3] = {accel.x, accel.y, accel.z};
+      float rotated_a[3];
+      Quaternion_rotate(&quaternion, v, rotated_a);
+  
+      m5::imu_3d_t accel_rotated;
+      accel_rotated.x = rotated_a[0];
+      accel_rotated.y = rotated_a[1];
+      accel_rotated.z = rotated_a[2];
+  
+      float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+      //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
+      //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25);
 
-    float pitch, roll, yaw;
-    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
-                       accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+      float speed_prev = waveState.vert_speed;
+      kalman_wave_step(&waveState, a * g_std, delta_t);
+      float heave = waveState.heave;            // in meters
+      float accel_bias = waveState.accel_bias;  // in meters/sec^2
+      float speed = waveState.vert_speed;
 
-    Quaternion quaternion;
-    Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
-    float v[3] = {accel.x, accel.y, accel.z};
-    float rotated_a[3];
-    Quaternion_rotate(&quaternion, v, rotated_a);
-
-    m5::imu_3d_t accel_rotated;
-    accel_rotated.x = rotated_a[0];
-    accel_rotated.y = rotated_a[1];
-    accel_rotated.z = rotated_a[2];
-
-    float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-    //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
-    //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25);
-
-    float speed_prev = waveState.vert_speed;
-    kalman_wave_step(&waveState, a * g_std, delta_t);
-    float heave = waveState.heave;            // in meters
-    float accel_bias = waveState.accel_bias;  // in meters/sec^2
-    float speed = waveState.vert_speed;
-
-    float y = heave;
-    if (t > 5.0 /* sec */) {
-      // give some time for other filters to settle first
-      aranovskiy_update(&params, &state, y, delta_t);
-    }
-    double freq = state.f;
-
-    if (first) {
-      kalman_smoother_set_initial(&kalman_freq, freq);
-      first = 0;
-    }
-    double freq_adj = kalman_smoother_update(&kalman_freq, freq);
-
-    if (freq_adj > 0.001 && freq_adj < 1000.0) {
-      float period = 1.0 / freq_adj;
-      if (period < 30.0) {
-        uint32_t windowMicros = 3 * period * 1000000;
-        if (period_trochoid > 0.1) {
-          windowMicros = 3 * period_trochoid * 1000000;
-        }
-        if (windowMicros <= 10 * 1000000) {
-          windowMicros = 10 * 1000000;
-        }
-        SampleType sample;
-        sample.timeMicroSec = now;
-        sample.value = heave;
-        min_max_lemire_update(&min_max_h, sample, windowMicros);
+      float y = heave;
+      if (t > 5.0 /* sec */) {
+        // give some time for other filters to settle first
+        aranovskiy_update(&params, &state, y, delta_t);
       }
+      double freq = state.f;
 
-      float wave_height = min_max_h.max.value - min_max_h.min.value;
-      heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
-
-      float accel_est = (speed - speed_prev) / delta_t;
-      if (fabs(heave) > 0.05 && fabs(accel_est) > 0.5) {
-        wave_freq_trochoid = trochoid_wave_freq(heave, accel_est);
-        wave_freq_trochoid_adj = kalman_smoother_update(&kalman_freq_tr, wave_freq_trochoid);
-        if (fabs(wave_freq_trochoid_adj) > 0.001) {
-          period_trochoid = 1.0 / wave_freq_trochoid_adj;        
-        }       
+      if (first) {
+        kalman_smoother_set_initial(&kalman_freq, freq);
+        first = 0;
       }
-      if (fabs(period_trochoid) > 0.001) {
-        wave_length = trochoid_wave_length(period_trochoid);
-        heave_trochoid = -  wave_length * accel_est / g_std / (2 * PI); // in trochoid model
-      }
+      double freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-      if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
-        if (produce_serial_data) {
-          Serial.printf("heave_cm:%.4f", heave * 100);
-          Serial.printf(",heave_trochoid:%.4f", heave_trochoid * 100);
-          //Serial.printf(",h_cm:%.4f", h * 100);
-          Serial.printf(",height_cm:%.4f", wave_height * 100);
-          //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
-          //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
-          //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
-          //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-          Serial.printf(",freq:%.4f", freq * 100);
-          //Serial.printf(",freq_troch:%.4f", wave_freq_trochoid * 100);
-          //Serial.printf(",freq_troch_adj:%.4f", wave_freq_trochoid_adj * 100);
-          //Serial.printf(",period_decisec:%.4f", period * 10);
-          //Serial.printf(",period_troch_decisec:%.4f", period_trochoid * 10);
-          //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-          //Serial.printf(",accel bias:%0.4f", accel_bias);
-          Serial.println();
-        }
-        else {
-          disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-          M5.Lcd.setCursor(0, 2);
-          M5.Lcd.printf("imu: %s\n", imu_name);
-          M5.Lcd.printf("sec: %d\n", now / 1000000);
-          M5.Lcd.printf("samples: %d\n", got_samples);
-          M5.Lcd.printf("period sec: %0.4f\n", period);
-          M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
-          M5.Lcd.printf("heave:      %0.4f\n", heave);
-          M5.Lcd.printf("wave height:%0.4f\n", wave_height);
-          M5.Lcd.printf("range %0.4f %0.4f\n", min_max_h.min.value, min_max_h.max.value);
-          M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
-          M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-          M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
-          M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
+      if (freq_adj > 0.001 && freq_adj < 1000.0) {
+        float period = 1.0 / freq_adj;
+        if (period < 30.0) {
+          uint32_t windowMicros = 3 * period * 1000000;
+          if (period_trochoid > 0.1) {
+            windowMicros = 3 * period_trochoid * 1000000;
+          }
+          if (windowMicros <= 10 * 1000000) {
+            windowMicros = 10 * 1000000;
+          }
+          SampleType sample;
+          sample.timeMicroSec = now;
+          sample.value = heave;
+          min_max_lemire_update(&min_max_h, sample, windowMicros);
         }
 
-        last_refresh = now;
-        got_samples = 0;
+        float wave_height = min_max_h.max.value - min_max_h.min.value;
+        heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
+
+        float accel_est = (speed - speed_prev) / delta_t;
+        if (fabs(heave) > 0.05 && fabs(accel_est) > 0.5) {
+          wave_freq_trochoid = trochoid_wave_freq(heave, accel_est);
+          wave_freq_trochoid_adj = kalman_smoother_update(&kalman_freq_tr, wave_freq_trochoid);
+          if (fabs(wave_freq_trochoid_adj) > 0.001) {
+            period_trochoid = 1.0 / wave_freq_trochoid_adj;
+          }
+        }
+        if (fabs(period_trochoid) > 0.001) {
+          wave_length = trochoid_wave_length(period_trochoid);
+          heave_trochoid = -  wave_length * accel_est / g_std / (2 * PI); // in trochoid model
+        }
+
+        if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
+          if (produce_serial_data) {
+            Serial.printf("heave_cm:%.4f", heave * 100);
+            Serial.printf(",heave_trochoid:%.4f", heave_trochoid * 100);
+            //Serial.printf(",h_cm:%.4f", h * 100);
+            Serial.printf(",height_cm:%.4f", wave_height * 100);
+            //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
+            //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
+            //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
+            //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+            Serial.printf(",freq:%.4f", freq * 100);
+            //Serial.printf(",freq_troch:%.4f", wave_freq_trochoid * 100);
+            //Serial.printf(",freq_troch_adj:%.4f", wave_freq_trochoid_adj * 100);
+            //Serial.printf(",period_decisec:%.4f", period * 10);
+            //Serial.printf(",period_troch_decisec:%.4f", period_trochoid * 10);
+            //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+            //Serial.printf(",accel bias:%0.4f", accel_bias);
+            Serial.println();
+          }
+          else {
+            disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+            M5.Lcd.setCursor(0, 2);
+            M5.Lcd.printf("imu: %s\n", imu_name);
+            M5.Lcd.printf("sec: %d\n", now / 1000000);
+            M5.Lcd.printf("samples: %d\n", got_samples);
+            M5.Lcd.printf("period sec: %0.4f\n", period);
+            M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
+            M5.Lcd.printf("heave:      %0.4f\n", heave);
+            M5.Lcd.printf("wave height:%0.4f\n", wave_height);
+            M5.Lcd.printf("range %0.4f %0.4f\n", min_max_h.min.value, min_max_h.max.value);
+            M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
+            M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+            M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
+            M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
+          }
+
+          last_refresh = now;
+          got_samples = 0;
+        }
       }
     }
     t = t + delta_t;
