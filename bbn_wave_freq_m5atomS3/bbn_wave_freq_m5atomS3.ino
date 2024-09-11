@@ -238,7 +238,7 @@ void repeatMe() {
           if (produce_serial_data) {
             Serial.printf("heave_cm:%.4f", heave * 100);
             Serial.printf(",heave_trochoid:%.4f", heave_trochoid * 100);
-            Serial.printf(",h_cm:%.4f", h * 100);
+            //Serial.printf(",h_cm:%.4f", h * 100);
             Serial.printf(",height_cm:%.4f", wave_height * 100);
             //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
             //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
