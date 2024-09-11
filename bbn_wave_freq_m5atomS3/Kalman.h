@@ -298,14 +298,14 @@ void kalman_predict_P_tuned(register kalman_t *const kf,
 inline void kalman_predict(kalman_t *kf) {
   /************************************************************************/
   /* Predict next state using system dynamics                             */
-  /* x = F*x                                                              */
+  /* x = F*x + B*u + w                                                    */
   /************************************************************************/
 
   kalman_predict_x(kf);
 
   /************************************************************************/
   /* Predict next covariance using system dynamics and input              */
-  /* P = A*P*A' + Q                                                       */
+  /* P = F*P*F' + Q                                                       */
   /************************************************************************/
 
   kalman_predict_P(kf);
@@ -326,14 +326,14 @@ inline void kalman_predict(kalman_t *kf) {
 void kalman_predict_tuned(kalman_t *kf, matrix_data_t lambda) {
   /************************************************************************/
   /* Predict next state using system dynamics                             */
-  /* x = F*x                                                              */
+  /* x = F*x + B*u + w                                                    */
   /************************************************************************/
 
   kalman_predict_x(kf);
 
   /************************************************************************/
   /* Predict next covariance using system dynamics and input              */
-  /* P = A*P*A' * 1/lambda^2 + B*Q*B'                                     */
+  /* P = F*P*F' * 1/lambda^2 + B*Q*B'                                     */
   /************************************************************************/
 
   kalman_predict_P_tuned(kf, lambda);
@@ -567,7 +567,7 @@ void kalman_predict_x(register kalman_t *const kf) {
 
   /************************************************************************/
   /* Predict next state using system dynamics                             */
-  /* x = A*x + B*u                                                        */
+  /* x = F*x + B*u + w                                                    */
   /************************************************************************/
 
   // x = A*x
