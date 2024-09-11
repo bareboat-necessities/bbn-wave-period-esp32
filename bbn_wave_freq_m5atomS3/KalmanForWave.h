@@ -36,7 +36,7 @@
   x(k) = F*x(k-1) + B*u(k) + w(k)
 
   w(k) - zero mean noise,
-  u(k) = a - a_hat 
+  u(k) = a 
 
   Input a - vertical acceleration from accelerometer
 
