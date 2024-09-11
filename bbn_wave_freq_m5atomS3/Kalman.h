@@ -616,13 +616,11 @@ void kalman_predict_P(register kalman_t *const kf) {
 void kalman_predict_P_tuned(register kalman_t *const kf, matrix_data_t lambda) {
   // matrices and vectors
   const matrix_t *const A = &kf->F;
-  const matrix_t *const B = &kf->B;
   matrix_t *const P = &kf->P;
 
   // temporaries
   matrix_data_t *const aux = kf->temporary.aux;
   matrix_t *const P_temp = &kf->temporary.P;
-  matrix_t *const BQ_temp = &kf->temporary.BQ;
 
   /************************************************************************/
   /* Predict next covariance using system dynamics and input              */
