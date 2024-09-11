@@ -24,7 +24,7 @@
   a = - (2 * pi * f)^2 * y
 
   let
-  k = - (2 * pi * f)^2
+  k_hat = - (2 * pi * f)^2
 
   Process model:
 
@@ -35,7 +35,7 @@
   v(k) = v(k-1) + a(k-1)*T - a_hat*T
 
   acceleration (from trochoidal wave model):
-  a(k) = k * y(k-1)
+  a(k) = k_hat * y(k-1)
 
   accelerometer bias:
   a_hat(k) = a_hat(k-1)
@@ -64,10 +64,10 @@
         1,
         0 ]  
 
-  F = [[ 1,  T,  1/2*T^2, -1/2*T^2 ],
-       [ 0,  1,  T,       -T       ],
-       [ k,  0,  0,        0       ],
-       [ 0,  0,  0,        1       ]]
+  F = [[ 1,      T,  1/2*T^2, -1/2*T^2 ],
+       [ 0,      1,  T,       -T       ],
+       [ k_hat,  0,  0,        0       ],
+       [ 0,      0,  0,        1       ]]
          
 */
 
