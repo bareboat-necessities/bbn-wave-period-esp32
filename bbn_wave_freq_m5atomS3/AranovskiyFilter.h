@@ -28,7 +28,7 @@
   AranovskiyState  state;
 
   aranovskiy_default_params(&params, omega_up, k_gain);
-  aranovskiy_init_state(&state, t_0, x1_0, theta_0, sigma_0);
+  aranovskiy_init_state(&state, x1_0, theta_0, sigma_0);
 
   unsigned long now = 0UL, last_update = 0UL;
 
@@ -80,7 +80,7 @@ typedef struct aranovskiy_state {
 } AranovskiyState;
 
 void aranovskiy_default_params(AranovskiyParams* p, double omega_up, double k_gain);
-void aranovskiy_init_state(AranovskiyState* s, double t_0, double x1_0, double theta_0, double sigma_0);
+void aranovskiy_init_state(AranovskiyState* s, double x1_0, double theta_0, double sigma_0);
 void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double delta_t);
 
 void aranovskiy_default_params(AranovskiyParams* p, double omega_up, double k_gain) {
@@ -89,7 +89,7 @@ void aranovskiy_default_params(AranovskiyParams* p, double omega_up, double k_ga
   p->k = k_gain;
 }
 
-void aranovskiy_init_state(AranovskiyState* s, double t_0, double x1_0, double theta_0, double sigma_0) {
+void aranovskiy_init_state(AranovskiyState* s, double x1_0, double theta_0, double sigma_0) {
   s->x1 = x1_0;
   s->theta = theta_0;
   s->sigma = sigma_0;
