@@ -27,6 +27,7 @@
 #include "Quaternion.h"
 #include "MinMaxLemire.h"
 #include "KalmanForWave.h"
+#include "KalmanForWaveAlt.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -82,6 +83,7 @@ KalmanSmootherVars kalman_freq;
 KalmanSmootherVars kalman_freq_tr;
 Mahony_AHRS_Vars mahony;
 KalmanWaveState waveState;
+KalmanWaveAltState waveAltState;
 
 const char* imu_name;
 
@@ -179,9 +181,9 @@ void repeatMe() {
       accel_rotated.y = rotated_a[1];
       accel_rotated.z = rotated_a[2];
   
-      float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-      //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
-      //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25);
+      //float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+      float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
+      float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25);
 
       float speed_prev = waveState.vert_speed;
       kalman_wave_step(&waveState, a * g_std, delta_t);
@@ -202,7 +204,7 @@ void repeatMe() {
       }
       double freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-      if (freq_adj > 0.001 && freq_adj < 1000.0) {
+      if (freq_adj > 0.001 && freq_adj < 10.0) {
         float period = 1.0 / freq_adj;
         if (period < 30.0) {
           uint32_t windowMicros = 3 * period * 1000000;
@@ -216,6 +218,9 @@ void repeatMe() {
           sample.timeMicroSec = now;
           sample.value = heave;
           min_max_lemire_update(&min_max_h, sample, windowMicros);
+
+          float k = - (2.0 * PI * freq_adj) * (2.0 * PI * freq_adj);
+          kalman_wave_alt_step(&waveAltState, a * g_std, k, delta_t);
         }
 
         float wave_height = min_max_h.max.value - min_max_h.min.value;
@@ -238,13 +243,14 @@ void repeatMe() {
           if (produce_serial_data) {
             Serial.printf("heave_cm:%.4f", heave * 100);
             Serial.printf(",heave_trochoid:%.4f", heave_trochoid * 100);
-            //Serial.printf(",h_cm:%.4f", h * 100);
+            Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+            Serial.printf(",h_cm:%.4f", h * 100);
             Serial.printf(",height_cm:%.4f", wave_height * 100);
             //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
             //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
             //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
             //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-            Serial.printf(",freq:%.4f", freq * 100);
+            //Serial.printf(",freq:%.4f", freq * 100);
             //Serial.printf(",freq_troch:%.4f", wave_freq_trochoid * 100);
             //Serial.printf(",freq_troch_adj:%.4f", wave_freq_trochoid_adj * 100);
             //Serial.printf(",period_decisec:%.4f", period * 10);
@@ -369,6 +375,7 @@ void setup(void) {
   }
 
   kalman_wave_init_defaults();
+  kalman_wave_alt_init_defaults();
 
   last_update = micros();
 }
