@@ -50,8 +50,14 @@
 
     t = t + delta_t;
   }
+  
+  Use double instead of float to avoid decimal overflows with higher Aranovskiy gain values.
 
-  Use double instead of float to avoid decimal overflows with higher Aranovskiy gain values
+  When Aranovskiy filter is used to estimate frequency of a signal averaged by Kalman filter
+  and you look for faster convergence, then Kalman filter will produce a steep function with high gain
+  and Aranovskiy filter with high gain will estimate frequency as really high which can cause
+  decimal overflows.
+  
 */
 
 #define PI 3.1415926535897932384626433832795
