@@ -148,7 +148,7 @@ void kalman_wave_init_defaults() {
 
   // observation covariance [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_MEASUREMENTS]
   matrix_t *R = kalman_get_process_noise(kf);
-  matrix_set(R, 0, 0, (matrix_data_t)1.0);
+  matrix_set(R, 0, 0, (matrix_data_t)0.01);
 
   // initial state covariance [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *P = kalman_get_system_covariance(kf);
