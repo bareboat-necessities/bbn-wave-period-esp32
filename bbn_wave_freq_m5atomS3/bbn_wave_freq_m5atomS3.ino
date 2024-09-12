@@ -204,7 +204,7 @@ void repeatMe() {
       }
       double freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-      if (freq_adj > 0.001 && freq_adj < 10.0) {
+      if (freq_adj > 0.01 && freq_adj < 10.0) {
         float period = 1.0 / freq_adj;
         if (period < 30.0) {
           uint32_t windowMicros = 3 * period * 1000000;
