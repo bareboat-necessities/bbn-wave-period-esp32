@@ -28,6 +28,9 @@
 
   Process model:
 
+  displacement_integral:
+  z(k) = z(k-1) + y(k-1)*T + 1/2*v(k-1)*T^2 + 1/6*a*T^3 - 1/6*a_hat*T^3
+  
   displacement:
   y(k) = y(k-1) + v(k-1)*T + 1/2*a(k-1)*T^2 - 1/2*a_hat*t^2
 
@@ -49,25 +52,29 @@
   
   State vector:
   
-  x = [ y,
+  x = [ z,
+        y,
         v,
         a,
         a_hat ]
 
   Input a - vertical acceleration from accelerometer
 
-  Measurement - a (vertical acceleration)
+  Measurements:
+    a (vertical acceleration), z = 0
 
   Observation matrix:
-  H = [ 0, 
+  H = [ 1,
+        0, 
         0,
         1,
         0 ]  
 
-  F = [[ 1,      T,    1/2*T^2, -1/2*T^2 ],
-       [ 0,      1,    T,       -T       ],
-       [ k_hat,  0,    0,        0       ],
-       [ 0,      0,    0,        1       ]]
+  F = [[ 1,      T,    1/2*T^2, 1/6*T^3, -1/6*T^3 ],
+       [ 0,      1,    T,       1/2*T^2, -1/2*T^2 ],
+       [ 0,      0,    1,       T,       -T       ],
+       [ 0,  k_hat,    0,       0,       0        ],
+       [ 0,      0,    0,       0,       1        ]]
          
 */
 
@@ -75,19 +82,20 @@
 
 // create the filter structure
 #define KALMAN_NAME wave_alt
-#define KALMAN_NUM_STATES 4
-#define KALMAN_NUM_INPUTS 1
+#define KALMAN_NUM_STATES 5
+#define KALMAN_NUM_INPUTS 0
 #include "KalmanFactoryFilter.h"
 
 // create the measurement structure
 #define KALMAN_MEASUREMENT_NAME vert_accel
-#define KALMAN_NUM_MEASUREMENTS 1
+#define KALMAN_NUM_MEASUREMENTS 2
 #include "KalmanFactoryMeasurement.h"
 
 // clean up
 #include "KalmanFactoryCleanup.h"
 
 typedef struct kalman_wave_alt_state {
+  float displacement_integral; // displacement integral
   float heave;                 // vertical displacement
   float vert_speed;            // vertical velocity
   float vert_accel;            // vertical acceleration
@@ -101,22 +109,32 @@ matrix_t *kalman_wave_alt_get_state_transition(kalman_t *kf, matrix_data_t k_hat
   matrix_set(F, 0, 0, (matrix_data_t)1.0);                                         // 1
   matrix_set(F, 0, 1, (matrix_data_t)delta_t);                                     // T
   matrix_set(F, 0, 2, (matrix_data_t)0.5 * delta_t * delta_t);                     // 0.5 * T^2
-  matrix_set(F, 0, 3, (matrix_data_t)-0.5 * delta_t * delta_t);                    // -0.5 * T^2
+  matrix_set(F, 0, 3, (matrix_data_t)(1.0 / 6.0) * delta_t * delta_t * delta_t);   // (1/6) * T^3
+  matrix_set(F, 0, 4, (matrix_data_t)(-1.0 / 6.0) * delta_t * delta_t * delta_t);  // -(1/6) * T^3
 
   matrix_set(F, 1, 0, (matrix_data_t)0.0);                         // 0
   matrix_set(F, 1, 1, (matrix_data_t)1.0);                         // 1
   matrix_set(F, 1, 2, (matrix_data_t)delta_t);                     // T
-  matrix_set(F, 1, 3, (matrix_data_t)-delta_t);                    // -T
+  matrix_set(F, 1, 3, (matrix_data_t)0.5 * delta_t * delta_t);     // 0.5 * T^2
+  matrix_set(F, 1, 4, (matrix_data_t)-0.5 * delta_t * delta_t);    // -0.5 * T^2
 
-  matrix_set(F, 2, 0, (matrix_data_t)k_hat);            // k_hat
-  matrix_set(F, 2, 1, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 2, 2, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 2, 3, (matrix_data_t)0.0);              // 0
+  matrix_set(F, 2, 0, (matrix_data_t)0.0);                         // 0
+  matrix_set(F, 2, 1, (matrix_data_t)0.0);                         // 0
+  matrix_set(F, 2, 2, (matrix_data_t)1.0);                         // 1
+  matrix_set(F, 2, 3, (matrix_data_t)delta_t);                     // T
+  matrix_set(F, 2, 4, (matrix_data_t)-delta_t);                    // -T
 
   matrix_set(F, 3, 0, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 3, 1, (matrix_data_t)0.0);              // 0
+  matrix_set(F, 3, 1, (matrix_data_t)k_hat);            // k_hat
   matrix_set(F, 3, 2, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 3, 3, (matrix_data_t)1.0);              // 1
+  matrix_set(F, 3, 3, (matrix_data_t)0.0);              // 0
+  matrix_set(F, 3, 4, (matrix_data_t)0.0);              // 0
+
+  matrix_set(F, 4, 0, (matrix_data_t)0.0);              // 0
+  matrix_set(F, 4, 1, (matrix_data_t)0.0);              // 0
+  matrix_set(F, 4, 2, (matrix_data_t)0.0);              // 0
+  matrix_set(F, 4, 3, (matrix_data_t)0.0);              // 0
+  matrix_set(F, 4, 4, (matrix_data_t)1.0);              // 1
   return F;
 }
 
@@ -127,34 +145,48 @@ void kalman_wave_alt_init_defaults() {
 
   // [KALMAN_NUM_STATES * 1]
   matrix_t *x = kalman_get_state_vector(kf);
-  x->data[1] = 0.0; // vertical displacement
-  x->data[2] = 0.0; // vertical velocity
-  x->data[0] = 0.0; // vertical accel
-  x->data[3] = 0.0; // accel bias
+  x->data[1] = 0.0; // displacement integral
+  x->data[2] = 0.0; // vertical displacement
+  x->data[3] = 0.0; // vertical velocity
+  x->data[4] = 0.0; // vertical accel
+  x->data[5] = 0.0; // accel bias
 
   // observation matrix [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_STATES]
   matrix_t *H = kalman_get_measurement_transformation(kfm);
-  matrix_set(H, 0, 0, (matrix_data_t)0.0);
+  matrix_set(H, 0, 0, (matrix_data_t)1.0);
   matrix_set(H, 0, 1, (matrix_data_t)0.0);
-  matrix_set(H, 0, 2, (matrix_data_t)1.0);
+  matrix_set(H, 0, 2, (matrix_data_t)0.0);
   matrix_set(H, 0, 3, (matrix_data_t)0.0);
+  matrix_set(H, 0, 4, (matrix_data_t)0.0);
+  matrix_set(H, 1, 0, (matrix_data_t)0.0);
+  matrix_set(H, 1, 1, (matrix_data_t)0.0);
+  matrix_set(H, 1, 2, (matrix_data_t)0.0);
+  matrix_set(H, 1, 3, (matrix_data_t)1.0);
+  matrix_set(H, 1, 4, (matrix_data_t)0.0);
 
   // observation covariance [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_MEASUREMENTS]
-  matrix_t *R = kalman_get_process_noise(kf);
-  matrix_set(R, 0, 0, (matrix_data_t)0.01);
-
+  matrix_t *R = kalman_get_observation_noise(kfm);
+  matrix_set_symmetric(R, 0, 0, (matrix_data_t)1.0);
+  matrix_set_symmetric(R, 0, 1, (matrix_data_t)0.0);
+  matrix_set_symmetric(R, 1, 1, (matrix_data_t)1.0);
+  
   // initial state covariance [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *P = kalman_get_system_covariance(kf);
   matrix_set_symmetric(P, 0, 0, (matrix_data_t)1.0);
   matrix_set_symmetric(P, 0, 1, (matrix_data_t)0.0);
   matrix_set_symmetric(P, 0, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(P, 0, 3, (matrix_data_t)0.0);
+  matrix_set_symmetric(P, 0, 4, (matrix_data_t)0.0);
   matrix_set_symmetric(P, 1, 1, (matrix_data_t)1.0);
   matrix_set_symmetric(P, 1, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(P, 1, 3, (matrix_data_t)0.0);
+  matrix_set_symmetric(P, 1, 4, (matrix_data_t)0.0);
   matrix_set_symmetric(P, 2, 2, (matrix_data_t)1.0);
   matrix_set_symmetric(P, 2, 3, (matrix_data_t)0.0);
+  matrix_set_symmetric(P, 2, 4, (matrix_data_t)0.0);
   matrix_set_symmetric(P, 3, 3, (matrix_data_t)1.0);
+  matrix_set_symmetric(P, 3, 4, (matrix_data_t)0.0);
+  matrix_set_symmetric(P, 4, 4, (matrix_data_t)1.0);
 
   // transition covariance [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *Q = kalman_get_process_noise(kf);
@@ -163,12 +195,17 @@ void kalman_wave_alt_init_defaults() {
   matrix_set_symmetric(Q, 0, 1, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 0, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 0, 3, (matrix_data_t)0.0);
+  matrix_set_symmetric(Q, 0, 4, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 1, 1, (matrix_data_t)0.2 * variance);
   matrix_set_symmetric(Q, 1, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 1, 3, (matrix_data_t)0.0);
+  matrix_set_symmetric(Q, 1, 4, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 2, 2, (matrix_data_t)0.04 * variance);
   matrix_set_symmetric(Q, 2, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 3, 3, (matrix_data_t)0.008 * variance);
+  matrix_set_symmetric(Q, 2, 4, (matrix_data_t)0.0);
+  matrix_set_symmetric(Q, 3, 3, (matrix_data_t)variance);
+  matrix_set_symmetric(Q, 3, 4, (matrix_data_t)0.0);
+  matrix_set_symmetric(Q, 4, 4, (matrix_data_t)0.0002 * variance);
 }
 
 void kalman_wave_alt_step(KalmanWaveAltState* state, float accel, float k_hat, float delta_t) {
@@ -183,17 +220,19 @@ void kalman_wave_alt_step(KalmanWaveAltState* state, float accel, float k_hat, f
   // prediction.
   kalman_predict(kf);
 
-  // measure ...
+  // measure ... [KALMAN_NUM_MEASUREMENTS, 1]
   matrix_data_t measurement = accel;
-  matrix_set(z, 0, 0, measurement);
+  matrix_set(z, 0, 0, 0.0);
+  matrix_set(z, 1, 0, measurement);
 
   // update
   kalman_correct(kf, kfm);
 
-  state->heave = x->data[0];
-  state->vert_speed = x->data[1];
-  state->vert_accel = x->data[2];
-  state->accel_bias = x->data[3];
+  state->displacement_integral = x->data[0];
+  state->heave = x->data[1];
+  state->vert_speed = x->data[2];
+  state->vert_accel = x->data[3];
+  state->accel_bias = x->data[4];
 }
 
 #endif
