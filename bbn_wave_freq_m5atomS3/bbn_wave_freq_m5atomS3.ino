@@ -176,9 +176,9 @@ void repeatMe() {
       accel_rotated.y = rotated_a[1];
       accel_rotated.z = rotated_a[2];
   
-      //float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-      float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
-      float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25);
+      float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+      //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
+      //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25);
 
       kalman_wave_step(&waveState, a * g_std, delta_t);
       float heave = waveState.heave;            // in meters
@@ -209,8 +209,8 @@ void repeatMe() {
           sample.value = heave;
           min_max_lemire_update(&min_max_h, sample, windowMicros);
 
-          float k = - pow(2.0 * PI * freq_adj, 2);
-          kalman_wave_alt_step(&waveAltState, a * g_std, k, delta_t);
+          float k_hat = - pow(2.0 * PI * freq_adj, 2);
+          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
         }
 
         float wave_height = min_max_h.max.value - min_max_h.min.value;
@@ -219,8 +219,8 @@ void repeatMe() {
         if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
           if (produce_serial_data) {
             Serial.printf("heave_cm:%.4f", heave * 100);
-            Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
-            Serial.printf(",h_cm:%.4f", h * 100);
+            //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+            //Serial.printf(",h_cm:%.4f", h * 100);
             Serial.printf(",height_cm:%.4f", wave_height * 100);
             //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
             //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
@@ -334,7 +334,7 @@ void setup(void) {
   aranovskiy_init_state(&state, x1_0, theta_0, sigma_0);
 
   {
-    double process_noise_covariance = 0.1;
+    double process_noise_covariance = 0.01;
     double measurement_uncertainty = 2.0;
     double estimation_uncertainty = 100.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
