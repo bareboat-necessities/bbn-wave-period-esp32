@@ -185,7 +185,7 @@ void repeatMe() {
       float accel_bias = waveState.accel_bias;  // in meters/sec^2
 
       float y = heave;
-      if (t > 10.0 /* sec */) {
+      if (t > 8.0 /* sec */) {
         // give some time for other filters to settle first
         aranovskiy_update(&params, &state, y, delta_t);
       }
@@ -197,9 +197,9 @@ void repeatMe() {
       }
       double freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-      if (freq_adj > 0.01 && freq_adj < 10.0) {
+      if (freq_adj > 0.01 && freq_adj < 5.0) {
         float period = 1.0 / freq_adj;
-        if (period < 30.0) {
+        if (period < 60.0) {
           uint32_t windowMicros = 3 * period * 1000000;
           if (windowMicros <= 10 * 1000000) {
             windowMicros = 10 * 1000000;
@@ -210,7 +210,7 @@ void repeatMe() {
           min_max_lemire_update(&min_max_h, sample, windowMicros);
 
           float k_hat = - pow(2.0 * PI * freq_adj, 2);
-          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
+          kalman_wave_alt_step(&waveAltState, a * g_std - accel_bias, k_hat, delta_t);
         }
 
         float wave_height = min_max_h.max.value - min_max_h.min.value;
@@ -219,7 +219,7 @@ void repeatMe() {
         if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
           if (produce_serial_data) {
             Serial.printf("heave_cm:%.4f", heave * 100);
-            //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+            Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
             //Serial.printf(",h_cm:%.4f", h * 100);
             Serial.printf(",height_cm:%.4f", wave_height * 100);
             //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
