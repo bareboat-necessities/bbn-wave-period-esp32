@@ -122,7 +122,7 @@ typedef struct {
 
   /*!
      \brief Residual covariance matrix
-     \see A
+     \see F
   */
   matrix_t S;
 
@@ -200,7 +200,7 @@ typedef struct {
    \param[in] kf The Kalman Filter structure to initialize
    \param[in] num_states The number of state variables
    \param[in] num_inputs The number of input variables
-   \param[in] A The state transition matrix ({\ref num_states} x {\ref
+   \param[in] F The state transition matrix ({\ref num_states} x {\ref
    num_states}) \param[in] x The state vector ({\ref num_states} x \c 1)
    \param[in] B The input transition matrix ({\ref num_states} x {\ref
    num_inputs}) \param[in] u The input vector ({\ref num_inputs} x \c 1)
@@ -355,9 +355,9 @@ inline matrix_t *kalman_get_state_vector(kalman_t *kf) {
 }
 
 /*!
-   \brief Gets a pointer to the state transition matrix A.
+   \brief Gets a pointer to the state transition matrix F.
    \param[in] kf The Kalman Filter structure
-   \return The state transition matrix A.
+   \return The state transition matrix F.
 */
 inline matrix_t *kalman_get_state_transition(kalman_t *kf) {
   return &(kf->F);
@@ -432,7 +432,7 @@ inline matrix_t *kalman_get_observation_noise(kalman_measurement_t *kfm) {
    \param[in] kf The Kalman Filter structure to initialize
    \param[in] num_states The number of state variables
    \param[in] num_inputs The number of input variables
-   \param[in] A The state transition matrix ({\ref num_states} x {\ref
+   \param[in] F The state transition matrix ({\ref num_states} x {\ref
    num_states}) \param[in] x The state vector ({\ref num_states} x \c 1)
    \param[in] B The input transition matrix ({\ref num_states} x {\ref
    num_inputs}) \param[in] u The input vector ({\ref num_inputs} x \c 1)
@@ -557,7 +557,7 @@ void kalman_init_process_noise(matrix_t *Q, float dt, float variance) {
 */
 void kalman_predict_x(register kalman_t *const kf) {
   // matrices and vectors
-  const matrix_t *const A = &kf->F;
+  const matrix_t *const F = &kf->F;
   const matrix_t *const B = &kf->B;
   matrix_t *const x = &kf->x;
   matrix_t *const u = &kf->u;
@@ -570,8 +570,8 @@ void kalman_predict_x(register kalman_t *const kf) {
   /* x = F*x + B*u + w                                                    */
   /************************************************************************/
 
-  // x = A*x
-  matrix_mult_rowvector(A, x, xpredicted);
+  // x = F*x
+  matrix_mult_rowvector(F, x, xpredicted);
   matrix_copy(xpredicted, x);
 
   // x += B*u
@@ -587,7 +587,7 @@ void kalman_predict_x(register kalman_t *const kf) {
 */
 void kalman_predict_P(register kalman_t *const kf) {
   // matrices and vectors
-  const matrix_t *const A = &kf->F;
+  const matrix_t *const F = &kf->F;
   const matrix_t *const B = &kf->B;
   matrix_t *const P = &kf->P;
 
@@ -601,9 +601,9 @@ void kalman_predict_P(register kalman_t *const kf) {
   /* P = F*P*F' + Q                                                       */
   /************************************************************************/
 
-  // P = A*P*A'
-  matrix_mult(A, P, P_temp, aux);    // temp = A*P
-  matrix_mult_transb(P_temp, A, P);  // P = temp*A'
+  // P = F*P*F'
+  matrix_mult(F, P, P_temp, aux);    // temp = F*P
+  matrix_mult_transb(P_temp, F, P);  // P = temp*F'
 
   // P += Q
   matrix_add_inplace(P, &kf->Q);
@@ -615,7 +615,7 @@ void kalman_predict_P(register kalman_t *const kf) {
 */
 void kalman_predict_P_tuned(register kalman_t *const kf, matrix_data_t lambda) {
   // matrices and vectors
-  const matrix_t *const A = &kf->F;
+  const matrix_t *const F = &kf->F;
   matrix_t *const P = &kf->P;
 
   // temporaries
@@ -632,9 +632,9 @@ void kalman_predict_P_tuned(register kalman_t *const kf, matrix_data_t lambda) {
            (lambda * lambda);  // TODO: This should be precalculated, e.g.
   // using kalman_set_lambda(...);
 
-  // P = A*P*A'
-  matrix_mult(A, P, P_temp, aux);                 // temp = A*P
-  matrix_multscale_transb(P_temp, A, lambda, P);  // P = temp*A' * 1/(lambda^2)
+  // P = F*P*F'
+  matrix_mult(F, P, P_temp, aux);                 // temp = F*P
+  matrix_multscale_transb(P_temp, F, lambda, P);  // P = temp*F' * 1/(lambda^2)
 
   // P += Q
   matrix_add_inplace(P, &kf->Q);
