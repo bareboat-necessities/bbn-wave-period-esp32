@@ -5,16 +5,17 @@
   NMEA-0183 checksum
  */
 
-int nmea0183_checksum(char *nmea_data_before_asterisk);
+uint8_t nmea0183_checksum(char *sentence);
 
-int nmea0183_checksum(char *nmea_data_before_asterisk) {
-    int crc = 0;
-    int i;
-    // the first $ sign 
-    for (i = 1; i < strlen(nmea_data_before_asterisk); i ++) {
-        crc ^= nmea_data_before_asterisk[i];
-    }
-    return crc;
+uint8_t nmea0183_checksum(const char *sentence) {
+  const char *n = sentence + 1;
+  uint8_t chk = 0;
+  /* While current char isn't '*' or sentence ending (newline) */
+  while ('*' != *n && NMEA_END_CHAR_1 != *n && '\0' != *n) {
+    chk ^= (uint8_t) *n;
+    n++;
+  }
+  return chk;
 }
 
 #endif
