@@ -7,7 +7,7 @@
   NMEA-0183 checksum
  */
 
-uint8_t nmea0183_checksum(char *sentence);
+uint8_t nmea0183_checksum(const char *sentence);
 
 uint8_t nmea0183_checksum(const char *sentence) {
   const char *n = sentence + 1;
