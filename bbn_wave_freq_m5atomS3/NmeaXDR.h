@@ -88,6 +88,12 @@
       FRT - frequency in real time
       FAV - frequency average
 
+  Sample rate:
+    Transducer type: F (Frequency)
+    Unit of measurement: H (Hertz)
+    Transducer name:
+      SRT - sample rate
+
   Examples:
 
   Accel:
