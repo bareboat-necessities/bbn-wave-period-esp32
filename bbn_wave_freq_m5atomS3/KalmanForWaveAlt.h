@@ -38,7 +38,7 @@
   v(k) = v(k-1) + a(k-1)*T - a_hat(k-1)*T
 
   acceleration (from trochoidal wave model):
-  a(k) = k_hat * y(k-1)
+  a(k) = k_hat*y(k-1) + k_hat*v(k-1)*T + k_hat*1/2*a(k-1)*T^2 - k_hat*1/2*a_hat(k-1)*t^2
 
   accelerometer bias:
   a_hat(k) = a_hat(k-1)
@@ -70,11 +70,11 @@
        [ 0, 1 ],
        [ 0, 0 ]]  
 
-  F = [[ 1,      T,    1/2*T^2, 1/6*T^3, -1/6*T^3 ],
-       [ 0,      1,    T,       1/2*T^2, -1/2*T^2 ],
-       [ 0,      0,    1,       T,       -T       ],
-       [ 0,  k_hat,    0,       0,       0        ],
-       [ 0,      0,    0,       0,       1        ]]
+  F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3         ],
+       [ 0,      1,    T,             1/2*T^2,         -1/2*T^2         ],
+       [ 0,      0,    1,             T,               -T               ],
+       [ 0,  k_hat,    k_hat*T,       1/2*k_hat*T^2,   -1/2*k_hat*T^2   ],
+       [ 0,      0,    0,             0,               1                ]]
          
 */
 
@@ -124,11 +124,11 @@ matrix_t *kalman_wave_alt_get_state_transition(kalman_t *kf, matrix_data_t k_hat
   matrix_set(F, 2, 3, (matrix_data_t)delta_t);                     // T
   matrix_set(F, 2, 4, (matrix_data_t)-delta_t);                    // -T
 
-  matrix_set(F, 3, 0, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 3, 1, (matrix_data_t)k_hat);            // k_hat
-  matrix_set(F, 3, 2, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 3, 3, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 3, 4, (matrix_data_t)0.0);              // 0
+  matrix_set(F, 3, 0, (matrix_data_t)0.0);                                 // 0
+  matrix_set(F, 3, 1, (matrix_data_t)k_hat);                               // k_hat
+  matrix_set(F, 3, 2, (matrix_data_t)k_hat * delta_t);                     // k_hat * T
+  matrix_set(F, 3, 3, (matrix_data_t)0.5 * k_hat * delta_t * delta_t);     // 0.5 * k_hat * T^2
+  matrix_set(F, 3, 4, (matrix_data_t)-0.5 * k_hat * delta_t * delta_t);    // -0.5 * k_hat * T^2
 
   matrix_set(F, 4, 0, (matrix_data_t)0.0);              // 0
   matrix_set(F, 4, 1, (matrix_data_t)0.0);              // 0
