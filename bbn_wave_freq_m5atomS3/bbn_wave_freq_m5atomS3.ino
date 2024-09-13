@@ -227,6 +227,7 @@ void repeatMe() {
               Serial.printf("$BBXDR,D,%.5f,M,DAV1*00\r\n", heave_avg);
               Serial.printf("$BBXDR,F,%.5f,H,FAV1*00\r\n", freq_adj);
               Serial.printf("$BBXDR,F,%.5f,H,FRT1*00\r\n", freq);
+              Serial.printf("$BBXDR,F,%.5f,H,SRT1*00\r\n", got_samples / ((now - last_refresh) / 1000000.0) );
               Serial.printf("$BBXDR,N,%.5f,P,ABI1*00\r\n", accel_bias * 100.0 / g_std);
             }
             else {
