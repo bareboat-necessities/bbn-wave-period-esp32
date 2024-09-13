@@ -28,6 +28,7 @@
 #include "MinMaxLemire.h"
 #include "KalmanForWave.h"
 #include "KalmanForWaveAlt.h"
+#include "NmeaXDR.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -221,14 +222,14 @@ void repeatMe() {
         if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
           if (produce_serial_data) {
             if (report_nmea) {
-              Serial.printf("$BBXDR,D,%.5f,M,DRG1*00\r\n", wave_height);
-              Serial.printf("$BBXDR,D,%.5f,M,DRT1*00\r\n", heave);
-              Serial.printf("$BBXDR,D,%.5f,M,DRT2*00\r\n", waveAltState.heave);
-              Serial.printf("$BBXDR,D,%.5f,M,DAV1*00\r\n", heave_avg);
-              Serial.printf("$BBXDR,F,%.5f,H,FAV1*00\r\n", freq_adj);
-              Serial.printf("$BBXDR,F,%.5f,H,FRT1*00\r\n", freq);
-              Serial.printf("$BBXDR,F,%.5f,H,SRT1*00\r\n", got_samples / ((now - last_refresh) / 1000000.0) );
-              Serial.printf("$BBXDR,N,%.5f,P,ABI1*00\r\n", accel_bias * 100.0 / g_std);
+              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
+              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
+              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
+              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
+              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
+              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
+              gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", accel_bias * 100.0 / g_std);
             }
             else {
               // report for Serial Plotter
