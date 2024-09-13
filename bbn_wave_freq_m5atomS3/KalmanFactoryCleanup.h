@@ -18,9 +18,9 @@
 #undef __KALMAN_BUFFER_u
 
 // remove A macros
-#undef __KALMAN_A_ROWS
-#undef __KALMAN_A_COLS
-#undef __KALMAN_BUFFER_A
+#undef __KALMAN_F_ROWS
+#undef __KALMAN_F_COLS
+#undef __KALMAN_BUFFER_F
 
 // remove P macros
 #undef __KALMAN_P_ROWS
