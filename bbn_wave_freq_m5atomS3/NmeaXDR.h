@@ -49,4 +49,49 @@
      could be more
 */
 
+/*
+  Bareboat Necessities Sensors NMEA-0183 XDR Sentences:
+
+  NMEA-0183 Sender 
+    BB
+
+  Transducer name suffix:
+    1 - method #1
+    2 - method #2
+      
+  Heave (vertical displacement)
+    Transducer type: 
+    Unit of measurement:
+    Transducer name prefix:
+      DHI - displacement max
+      DLO - displacement min
+      DAV - displacement average (bias)
+      DRT - displacement in real time
+      DRG - displacement range (wave height)
+
+  Vertical acceleration:
+    Transducer type:
+    Unit of measurement: Percent of g (accel of free fall)
+    Transducer name:
+      AHI - vertical acceleration max
+      ALO - vertical acceleration min
+      ART - vertical acceleration in real time
+      ARG - vertical acceleration range 
+      ABI - vertical acceleration sensor bias 
+      
+  Wave frequency:
+    Transducer type:
+    Unit of measurement:
+    Transducer name:
+      FHI - frequency max
+      FLO - frequency min
+      FRT - frequency in real time
+      FAV - frequency average
+
+  Examples:
+
+  $BBXDR,
+
+*/
+
 #endif
