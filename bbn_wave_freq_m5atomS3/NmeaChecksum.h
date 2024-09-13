@@ -1,6 +1,8 @@
 #ifndef NmeaChecksum_h
 #define NmeaChecksum_h
 
+#define NMEA_END_CHAR_1    '\r'
+
 /*
   NMEA-0183 checksum
  */
