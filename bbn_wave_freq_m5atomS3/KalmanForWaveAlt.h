@@ -29,13 +29,13 @@
   Process model:
 
   displacement_integral:
-  z(k) = z(k-1) + y(k-1)*T + 1/2*v(k-1)*T^2 + 1/6*a*T^3 - 1/6*a_hat*T^3
+  z(k) = z(k-1) + y(k-1)*T + 1/2*v(k-1)*T^2 + 1/6*a(k-1)*T^3 - 1/6*a_hat(k-1)*T^3
   
   displacement:
-  y(k) = y(k-1) + v(k-1)*T + 1/2*a(k-1)*T^2 - 1/2*a_hat*t^2
+  y(k) = y(k-1) + v(k-1)*T + 1/2*a(k-1)*T^2 - 1/2*a_hat(k-1)*t^2
 
   velocity:
-  v(k) = v(k-1) + a(k-1)*T - a_hat*T
+  v(k) = v(k-1) + a(k-1)*T - a_hat(k-1)*T
 
   acceleration (from trochoidal wave model):
   a(k) = k_hat * y(k-1)
