@@ -136,6 +136,7 @@ void startCalibration(void) {
 }
 
 int produce_serial_data = 1;
+int report_nmea = 1;
 
 float t = 0.0;
 float heave_avg = 0.0;
@@ -216,21 +217,34 @@ void repeatMe() {
         float wave_height = min_max_h.max.value - min_max_h.min.value;
         heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
-        if (now - last_refresh >= (produce_serial_data ? 200000 : 1000000)) {
+        int serial_report_period_micros = 125000;
+        if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
           if (produce_serial_data) {
-            Serial.printf("heave_cm:%.4f", heave * 100);
-            Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
-            //Serial.printf(",h_cm:%.4f", h * 100);
-            Serial.printf(",height_cm:%.4f", wave_height * 100);
-            //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
-            //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
-            //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
-            //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-            //Serial.printf(",freq:%.4f", freq * 100);
-            //Serial.printf(",period_decisec:%.4f", period * 10);
-            //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-            //Serial.printf(",accel bias:%0.4f", accel_bias);
-            Serial.println();
+            if (report_nmea) {
+              Serial.printf("$BBXDR,D,%.5f,M,DRG1*00\r\n", wave_height);
+              Serial.printf("$BBXDR,D,%.5f,M,DRT1*00\r\n", heave);
+              Serial.printf("$BBXDR,D,%.5f,M,DRT2*00\r\n", waveAltState.heave);
+              Serial.printf("$BBXDR,D,%.5f,M,DAV1*00\r\n", heave_avg);
+              Serial.printf("$BBXDR,F,%.5f,H,FAV1*00\r\n", freq_adj);
+              Serial.printf("$BBXDR,F,%.5f,H,FRT1*00\r\n", freq);
+              Serial.printf("$BBXDR,N,%.5f,P,ABI1*00\r\n", accel_bias * 100.0 / g_std);
+            }
+            else {
+              // report for Serial Plotter
+              Serial.printf("heave_cm:%.4f", heave * 100);
+              Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+              //Serial.printf(",h_cm:%.4f", h * 100);
+              Serial.printf(",height_cm:%.4f", wave_height * 100);
+              //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
+              //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
+              //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
+              //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+              //Serial.printf(",freq:%.4f", freq * 100);
+              //Serial.printf(",period_decisec:%.4f", period * 10);
+              //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+              //Serial.printf(",accel bias:%0.4f", accel_bias);
+              Serial.println();
+            }
           }
           else {
             disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
