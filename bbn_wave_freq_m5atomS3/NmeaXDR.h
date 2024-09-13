@@ -88,7 +88,7 @@
       FRT - frequency in real time
       FAV - frequency average
 
-  Sample rate:
+  IMU Sample rate:
     Transducer type: F (Frequency)
     Unit of measurement: H (Hertz)
     Transducer name:
