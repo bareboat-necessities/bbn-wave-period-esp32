@@ -90,7 +90,12 @@
 
   Examples:
 
-  $BBXDR,
+  Accel:
+  $BBXDR,N,100.0300,P,ARG1*NN
+
+  Freq:
+  $BBXDR,F,0.2500,P,ARG1*NN
+
 
 */
 
