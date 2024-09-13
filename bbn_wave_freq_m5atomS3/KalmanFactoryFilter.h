@@ -25,7 +25,7 @@
   \endcode
 
   At this point, the structure \c kalman_filter_acceleration will be created (statically) along with
-  all the required buffers (i.e. \c kalman_filter_acceleration_A_buffer, etc.) and the matrices
+  all the required buffers (i.e. \c kalman_filter_acceleration_F_buffer, etc.) and the matrices
   will be initialized and set with the correct dimensions.
 
   In addition, a parameterless static initialization function \c {kalman_filter_acceleration_init()} will
@@ -81,8 +81,8 @@
 /* Prepare dimensions                                                   */
 /************************************************************************/
 
-#define __KALMAN_A_ROWS     KALMAN_NUM_STATES
-#define __KALMAN_A_COLS     KALMAN_NUM_STATES
+#define __KALMAN_F_ROWS     KALMAN_NUM_STATES
+#define __KALMAN_F_COLS     KALMAN_NUM_STATES
 
 #define __KALMAN_P_ROWS     KALMAN_NUM_STATES
 #define __KALMAN_P_COLS     KALMAN_NUM_STATES
@@ -146,13 +146,13 @@
 #include "Matrix.h"
 #include "Kalman.h"
 
-#define __KALMAN_BUFFER_A   KALMAN_BUFFER_NAME(A)
+#define __KALMAN_BUFFER_F   KALMAN_BUFFER_NAME(F)
 #define __KALMAN_BUFFER_P   KALMAN_BUFFER_NAME(P)
 #define __KALMAN_BUFFER_x   KALMAN_BUFFER_NAME(x)
 #define __KALMAN_BUFFER_Q   KALMAN_BUFFER_NAME(Q)
 
-//#pragma message("Creating Kalman filter A buffer: " STRINGIFY(__KALMAN_BUFFER_A))
-static matrix_data_t __KALMAN_BUFFER_A[__KALMAN_A_ROWS * __KALMAN_A_COLS];
+//#pragma message("Creating Kalman filter A buffer: " STRINGIFY(__KALMAN_BUFFER_F))
+static matrix_data_t __KALMAN_BUFFER_F[__KALMAN_F_ROWS * __KALMAN_F_COLS];
 
 //#pragma message("Creating Kalman filter P buffer: " STRINGIFY(__KALMAN_BUFFER_P))
 static matrix_data_t __KALMAN_BUFFER_P[__KALMAN_P_ROWS * __KALMAN_P_COLS];
@@ -229,8 +229,8 @@ static kalman_t* KALMAN_FUNCTION_NAME(init)() {
   for (i = 0; i < __KALMAN_x_ROWS * __KALMAN_x_COLS; ++i) {
     __KALMAN_BUFFER_x[i] = 0;
   }
-  for (i = 0; i < __KALMAN_A_ROWS * __KALMAN_A_COLS; ++i) {
-    __KALMAN_BUFFER_A[i] = 0;
+  for (i = 0; i < __KALMAN_F_ROWS * __KALMAN_F_COLS; ++i) {
+    __KALMAN_BUFFER_F[i] = 0;
   }
   for (i = 0; i < __KALMAN_P_ROWS * __KALMAN_P_COLS; ++i) {
     __KALMAN_BUFFER_P[i] = 0;
@@ -248,7 +248,7 @@ static kalman_t* KALMAN_FUNCTION_NAME(init)() {
   }
 #endif
 
-  kalman_filter_initialize(&KALMAN_STRUCT_NAME, KALMAN_NUM_STATES, KALMAN_NUM_INPUTS, __KALMAN_BUFFER_A, __KALMAN_BUFFER_x,
+  kalman_filter_initialize(&KALMAN_STRUCT_NAME, KALMAN_NUM_STATES, KALMAN_NUM_INPUTS, __KALMAN_BUFFER_F, __KALMAN_BUFFER_x,
                            __KALMAN_BUFFER_B, __KALMAN_BUFFER_u, __KALMAN_BUFFER_P, __KALMAN_BUFFER_Q,
                            __KALMAN_BUFFER_aux, __KALMAN_BUFFER_aux, __KALMAN_BUFFER_tempPBQ, __KALMAN_BUFFER_tempPBQ);
   return &KALMAN_STRUCT_NAME;
