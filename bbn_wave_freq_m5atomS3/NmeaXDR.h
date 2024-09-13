@@ -42,7 +42,7 @@
      K - Kelvin | Density, kg/m3 kilogram per cubic metre 
      M - Meters | Cubic Meters (m3)                       
      N - Newton                                           
-     P - percent of full range | Pascal                   
+     P - Percent of full range | Pascal                   
      R - RPM                                              
      S - Parts per thousand                               
      V - Volts                                            
