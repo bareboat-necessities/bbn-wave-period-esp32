@@ -31,7 +31,22 @@
      V - Volume
      could be more
 
-  
+  Unit of measurement                                     
+     "" - could be empty!                                 
+     A - Amperes                                          
+     B - Bars | Binary                                    
+     C - Celsius                                          
+     D - Degrees                                          
+     H - Hertz                                            
+     I - liters/second                                    
+     K - Kelvin | Density, kg/m3 kilogram per cubic metre 
+     M - Meters | Cubic Meters (m3)                       
+     N - Newton                                           
+     P - percent of full range | Pascal                   
+     R - RPM                                              
+     S - Parts per thousand                               
+     V - Volts                                            
+     could be more
 */
 
 #endif
