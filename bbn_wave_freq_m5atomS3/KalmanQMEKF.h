@@ -17,6 +17,9 @@
     Markley, F. Landis. "Attitude error representations for Kalman filtering." 
     Journal of guidance, control, and dynamics 26.2 (2003): 311-317.
 
+
+    https://www.researchgate.net/profile/Landis-Markley/publication/245432681_Attitude_Error_Representations_for_Kalman_Filtering/links/557c5d4108aeea18b776a727/Attitude-Error-Representations-for-Kalman-Filtering.pdf
+
   Dependencies: Eigen3
 
  */
