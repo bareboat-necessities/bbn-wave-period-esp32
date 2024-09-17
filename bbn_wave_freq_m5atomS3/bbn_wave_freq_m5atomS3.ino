@@ -29,6 +29,7 @@
 #include "KalmanForWave.h"
 #include "KalmanForWaveAlt.h"
 #include "NmeaXDR.h"
+#include "KalmanQMEKF.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
