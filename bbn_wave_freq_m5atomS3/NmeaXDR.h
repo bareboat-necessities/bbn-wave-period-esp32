@@ -67,7 +67,7 @@
       DLO - displacement min
       DAV - displacement average (bias)
       DRT - displacement in real time
-      DRG - displacement range (wave height)
+      DRG - displacement range
 
   Vertical acceleration (from observer point of view):
     Transducer type: N (Force)
@@ -79,7 +79,7 @@
       ARG - vertical acceleration range 
       ABI - vertical acceleration sensor bias 
       
-  Wave frequency (from observer point of view):
+  Heave frequency (from observer point of view):
     Transducer type: F (Frequency)
     Unit of measurement: H (Hertz)
     Transducer name:
