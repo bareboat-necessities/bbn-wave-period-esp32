@@ -29,7 +29,7 @@
 #include "KalmanForWave.h"
 #include "KalmanForWaveAlt.h"
 #include "NmeaXDR.h"
-//#include "KalmanQMEKF.h"
+#include "KalmanQMEKF.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -200,7 +200,7 @@ void repeatMe() {
       }
       double freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-      if (freq_adj > 0.01 && freq_adj < 5.0) {
+      if (freq_adj > 0.01 && freq_adj < 2.5) {
         float period = 1.0 / freq_adj;
         if (period < 60.0) {
           uint32_t windowMicros = 3 * period * 1000000;
@@ -212,6 +212,13 @@ void repeatMe() {
           sample.value = heave;
           min_max_lemire_update(&min_max_h, sample, windowMicros);
 
+          if (waveAltState.heave == 0.0f && waveAltState.vert_speed == 0.0f && waveAltState.vert_accel == 0.0f) {
+            waveAltState.heave = heave;
+            waveAltState.vert_speed = waveState.vert_speed;
+            waveAltState.vert_accel = a * g_std;
+            waveAltState.accel_bias = 0.0f;
+            kalman_wave_alt_init_state(&waveAltState);
+          }
           float k_hat = - pow(2.0 * PI * freq_adj, 2);
           kalman_wave_alt_step(&waveAltState, a * g_std - accel_bias, k_hat, delta_t);
         }
