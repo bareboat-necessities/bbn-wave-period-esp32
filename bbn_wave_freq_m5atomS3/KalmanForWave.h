@@ -16,7 +16,7 @@
   v(k) = v(k-1) + a*T - a_hat(k-1)*T
 
   displacement:
-  y(k) = y(k-1) + v(k-1)*T + 1/2*a*T^2 - 1/2*a_hat(k-1)*t^2
+  y(k) = y(k-1) + v(k-1)*T + 1/2*a*T^2 - 1/2*a_hat(k-1)*T^2
 
   displacement_integral:
   z(k) = z(k-1) + y(k-1)*T + 1/2*v(k-1)*T^2 + 1/6*a*T^3 - 1/6*a_hat(k-1)*T^3
