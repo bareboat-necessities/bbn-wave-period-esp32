@@ -138,6 +138,18 @@ matrix_t *kalman_wave_alt_get_state_transition(kalman_t *kf, matrix_data_t k_hat
   return F;
 }
 
+void kalman_wave_alt_init_state(KalmanWaveAltState* state) {
+  kalman_t *kf = kalman_filter_wave_alt_init();
+  
+  // [KALMAN_NUM_STATES * 1]
+  matrix_t *x = kalman_get_state_vector(kf);
+  x->data[1] = state->displacement_integral; // displacement integral
+  x->data[2] = state->heave;                 // vertical displacement
+  x->data[3] = state->vert_speed;            // vertical velocity
+  x->data[4] = state->vert_accel;            // vertical accel
+  x->data[5] = state->accel_bias;            // accel bias  
+}
+
 void kalman_wave_alt_init_defaults() {
 
   kalman_t *kf = kalman_filter_wave_alt_init();
