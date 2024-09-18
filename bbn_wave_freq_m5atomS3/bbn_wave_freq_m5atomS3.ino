@@ -358,7 +358,7 @@ void setup(void) {
   aranovskiy_init_state(&state, x1_0, theta_0, sigma_0);
 
   {
-    double process_noise_covariance = 0.01;
+    double process_noise_covariance = 0.2;
     double measurement_uncertainty = 2.0;
     double estimation_uncertainty = 100.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
