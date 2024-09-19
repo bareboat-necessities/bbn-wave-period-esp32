@@ -249,7 +249,7 @@ void repeatMe() {
                   gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
                 }
               }
-              if (freq > 0.002 && freq < 10.0) {
+              if (freq > 0.002 && freq < 5.0) {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
               }
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
