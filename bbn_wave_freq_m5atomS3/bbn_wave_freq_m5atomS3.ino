@@ -89,7 +89,7 @@ KalmanWaveAltState waveAltState;
 const char* imu_name;
 
 int produce_serial_data = 1;
-int report_nmea = 1;
+int report_nmea = 0;
 
 float t = 0.0;
 float heave_avg = 0.0;
@@ -157,7 +157,7 @@ void repeatMe() {
 
     got_samples++;
 
-    if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 250.0) {
+    if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 25.0) {
       // ignore noise with unreasonably high Gs
 
       now = micros();
