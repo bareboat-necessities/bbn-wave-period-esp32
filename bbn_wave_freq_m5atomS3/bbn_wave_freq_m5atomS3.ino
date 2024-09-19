@@ -89,7 +89,7 @@ KalmanWaveAltState waveAltState;
 const char* imu_name;
 
 int produce_serial_data = 1;
-int report_nmea = 0;
+int report_nmea = 1;
 
 float t = 0.0;
 float heave_avg = 0.0;
@@ -188,7 +188,7 @@ void repeatMe() {
       float accel_bias = waveState.accel_bias;  // in meters/sec^2
 
       float y = heave;
-      if (t > 8.0 /* sec */) {
+      if (t > 10.0 /* sec */) {
         // give some time for other filters to settle first
         aranovskiy_update(&params, &state, y, delta_t);
       }
@@ -200,12 +200,12 @@ void repeatMe() {
       }
       double freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-      if (freq_adj > 0.002 && freq_adj < 10.0) { /* prevent decimal overflows */
-        float period = 1.0 / freq_adj;
+      if (freq_adj > 0.002 && freq_adj < 5.0) { /* prevent decimal overflows */
+        double period = 1.0 / freq_adj;
         uint32_t windowMicros = 3 * period * 1000000;
         if (windowMicros <= 10 * 1000000) {
           windowMicros = 10 * 1000000;
-        } 
+        }
         else if (windowMicros >= 60 * 1000000) {
           windowMicros = 60 * 1000000;
         }
@@ -213,7 +213,15 @@ void repeatMe() {
         sample.timeMicroSec = now;
         sample.value = heave;
         min_max_lemire_update(&min_max_h, sample, windowMicros);
-        if (fabs(freq - freq_adj) < 1.0 * freq_adj) { /* sanity check of convergence for freq */
+
+        if (fabs(freq - freq_adj) < 0.3 * freq_adj) { /* sanity check of convergence for freq */
+          if (waveAltState.heave == 0.0f && waveAltState.vert_speed == 0.0f && waveAltState.vert_accel == 0.0f) {
+            waveAltState.heave = heave;
+            waveAltState.vert_speed = waveState.vert_speed;
+            waveAltState.vert_accel = a * g_std;
+            waveAltState.accel_bias = 0.0f;
+            kalman_wave_alt_init_state(&waveAltState);
+          }
           float k_hat = - pow(2.0 * PI * freq_adj, 2);
           float delta_t_k = last_update_k == 0UL ? delta_t : (now - last_update_k) / 1000000.0;
           kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
@@ -227,12 +235,19 @@ void repeatMe() {
         if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
           if (produce_serial_data) {
             if (report_nmea) {
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
+              // do not report data for which filters clearly didn't converge
+              if (wave_height < 100.0) {
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
+              }
+              if (fabs(heave) < 100.0) {
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
+              }
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-              if (fabs(freq - freq_adj) < 1.0 * freq_adj) {
+              if (fabs(freq - freq_adj) < 0.1 * freq_adj) {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
+                if (fabs(waveAltState.heave) < 100.0) {
+                  gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
+                }
               }
               if (freq > 0.002 && freq < 10.0) {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
@@ -351,7 +366,7 @@ void setup(void) {
      Even 2cm bias in heave is too much to affect frequency a lot
   */
   double omega_init = 0.04 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 200.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+  double k_gain = 100.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
