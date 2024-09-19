@@ -88,6 +88,13 @@ KalmanWaveAltState waveAltState;
 
 const char* imu_name;
 
+int produce_serial_data = 1;
+int report_nmea = 1;
+
+float t = 0.0;
+float heave_avg = 0.0;
+float wave_length = 0.0;
+
 void updateCalibration(uint32_t c, bool clear = false) {
   calib_countdown = c;
 
@@ -137,13 +144,6 @@ void startCalibration(void) {
   updateCalibration(30, true);
 }
 
-int produce_serial_data = 1;
-int report_nmea = 1;
-
-float t = 0.0;
-float heave_avg = 0.0;
-float wave_length = 0.0;
-
 void repeatMe() {
   static uint32_t prev_sec = 0;
 
@@ -157,28 +157,28 @@ void repeatMe() {
 
     got_samples++;
 
-    if ((accel.x*accel.x + accel.y*accel.y + accel.z*accel.z) < 250.0) {
+    if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 250.0) {
       // ignore noise with unreasonably high Gs
-      
+
       now = micros();
       delta_t = ((now - last_update) / 1000000.0);
       last_update = now;
-  
+
       float pitch, roll, yaw;
       mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
                          accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
-  
+
       Quaternion quaternion;
       Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
       float v[3] = {accel.x, accel.y, accel.z};
       float rotated_a[3];
       Quaternion_rotate(&quaternion, v, rotated_a);
-  
+
       m5::imu_3d_t accel_rotated;
       accel_rotated.x = rotated_a[0];
       accel_rotated.y = rotated_a[1];
       accel_rotated.z = rotated_a[2];
-  
+
       float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
       //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25 - 2.0) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
       //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
@@ -200,23 +200,21 @@ void repeatMe() {
       }
       double freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-      if (freq_adj > 0.05 && freq_adj < 10.0) {
+      if (freq_adj > 0.002 && freq_adj < 10.0) { /* prevent decimal overflows */
         float period = 1.0 / freq_adj;
+        uint32_t windowMicros = 3 * period * 1000000;
         if (period < 60.0) {
-          uint32_t windowMicros = 3 * period * 1000000;
           if (windowMicros <= 10 * 1000000) {
             windowMicros = 10 * 1000000;
           }
-          SampleType sample;
-          sample.timeMicroSec = now;
-          sample.value = heave;
-          min_max_lemire_update(&min_max_h, sample, windowMicros);
-
-          if (fabs(freq - freq_adj) < 1.0 * freq_adj) {
-            // sanity check of convergence for freq_adj
-            float k_hat = - pow(2.0 * PI * freq_adj, 2);
-            kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
-          }
+        }
+        SampleType sample;
+        sample.timeMicroSec = now;
+        sample.value = heave;
+        min_max_lemire_update(&min_max_h, sample, windowMicros);
+        if (fabs(freq - freq_adj) < 1.0 * freq_adj) { /* sanity check of convergence for freq */
+          float k_hat = - pow(2.0 * PI * freq_adj, 2);
+          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
         }
 
         float wave_height = min_max_h.max.value - min_max_h.min.value;
@@ -228,9 +226,11 @@ void repeatMe() {
             if (report_nmea) {
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
+              if (fabs(freq - freq_adj) < 1.0 * freq_adj) {
+                gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
+              }
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
               gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", accel_bias * 100.0 / g_std);
@@ -238,14 +238,16 @@ void repeatMe() {
             else {
               // report for Serial Plotter
               Serial.printf("heave_cm:%.4f", heave * 100);
-              Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+              if (fabs(freq - freq_adj) < 1.0 * freq_adj) {
+                Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+                //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+              }
+              //Serial.printf(",freq:%.4f", freq * 100);
               //Serial.printf(",h_cm:%.4f", h * 100);
               Serial.printf(",height_cm:%.4f", wave_height * 100);
               //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
               //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
               //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
-              //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-              //Serial.printf(",freq:%.4f", freq * 100);
               //Serial.printf(",period_decisec:%.4f", period * 10);
               //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
               //Serial.printf(",accel bias:%0.4f", accel_bias);
