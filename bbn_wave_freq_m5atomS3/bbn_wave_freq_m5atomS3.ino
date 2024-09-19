@@ -232,17 +232,17 @@ void repeatMe() {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
               }
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+              if (freq > 0.002 && freq < 10.0) {
+                gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+              }
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
               gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", accel_bias * 100.0 / g_std);
             }
             else {
               // report for Serial Plotter
               Serial.printf("heave_cm:%.4f", heave * 100);
-              if (fabs(freq - freq_adj) < 1.0 * freq_adj) {
-                Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
-                //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-              }
+              Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+              //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
               //Serial.printf(",freq:%.4f", freq * 100);
               //Serial.printf(",h_cm:%.4f", h * 100);
               Serial.printf(",height_cm:%.4f", wave_height * 100);
