@@ -72,7 +72,7 @@ static rect_t rect_text_area;
 
 static int prev_xpos[18];
 
-unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL;
+unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
 int first = 1;
 
@@ -161,7 +161,7 @@ void repeatMe() {
       // ignore noise with unreasonably high Gs
 
       now = micros();
-      delta_t = ((now - last_update) / 1000000.0);
+      delta_t = (now - last_update) / 1000000.0;
       last_update = now;
 
       float pitch, roll, yaw;
@@ -215,7 +215,9 @@ void repeatMe() {
         min_max_lemire_update(&min_max_h, sample, windowMicros);
         if (fabs(freq - freq_adj) < 1.0 * freq_adj) { /* sanity check of convergence for freq */
           float k_hat = - pow(2.0 * PI * freq_adj, 2);
-          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
+          float delta_t_k = last_update_k == 0UL ? delta_t : (now - last_update_k) / 1000000.0;
+          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
+          last_update_k = now;
         }
 
         float wave_height = min_max_h.max.value - min_max_h.min.value;
