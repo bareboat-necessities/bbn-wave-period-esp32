@@ -157,7 +157,7 @@ void repeatMe() {
 
     got_samples++;
 
-    if (fabs(accel.x) < 50.0 && fabs(accel.y) < 50.0 && fabs(accel.z) < 50.0) {
+    if ((accel.x*accel.x + accel.y*accel.y + accel.z*accel.z) < 250.0) {
       // ignore noise with unreasonably high Gs
       
       now = micros();
@@ -180,8 +180,8 @@ void repeatMe() {
       accel_rotated.z = rotated_a[2];
   
       float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-      //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
-      //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25);
+      //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25 - 2.0) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
+      //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
 
       kalman_wave_step(&waveState, a * g_std, delta_t);
       float heave = waveState.heave;            // in meters
@@ -200,7 +200,7 @@ void repeatMe() {
       }
       double freq_adj = kalman_smoother_update(&kalman_freq, freq);
 
-      if (freq_adj > 0.01 && freq_adj < 2.5) {
+      if (freq_adj > 0.05 && freq_adj < 10.0) {
         float period = 1.0 / freq_adj;
         if (period < 60.0) {
           uint32_t windowMicros = 3 * period * 1000000;
@@ -354,7 +354,7 @@ void setup(void) {
   aranovskiy_init_state(&state, x1_0, theta_0, sigma_0);
 
   {
-    double process_noise_covariance = 0.2;
+    double process_noise_covariance = 0.25;
     double measurement_uncertainty = 2.0;
     double estimation_uncertainty = 100.0;
     kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
