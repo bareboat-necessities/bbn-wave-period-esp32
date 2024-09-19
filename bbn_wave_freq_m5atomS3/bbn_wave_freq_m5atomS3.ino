@@ -203,10 +203,11 @@ void repeatMe() {
       if (freq_adj > 0.002 && freq_adj < 10.0) { /* prevent decimal overflows */
         float period = 1.0 / freq_adj;
         uint32_t windowMicros = 3 * period * 1000000;
-        if (period < 60.0) {
-          if (windowMicros <= 10 * 1000000) {
-            windowMicros = 10 * 1000000;
-          }
+        if (windowMicros <= 10 * 1000000) {
+          windowMicros = 10 * 1000000;
+        } 
+        else if (windowMicros >= 60 * 1000000) {
+          windowMicros = 60 * 1000000;
         }
         SampleType sample;
         sample.timeMicroSec = now;
