@@ -95,18 +95,17 @@ class QuaternionMEKF {
 
 template <typename T, bool with_bias>
 QuaternionMEKF<T, with_bias>::QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0, T Pb0)
-  :
-  Q( initialize_Q(sigma_g) ),
-  Racc( sigma_a.array().square().matrix().asDiagonal()),
-  Rmag( sigma_m.array().square().matrix().asDiagonal()),
-  R( (Vector6() << sigma_a, sigma_m).finished().array().square().matrix().asDiagonal() ) {
+  : Q(initialize_Q(sigma_g)),
+  Racc(sigma_a.array().square().matrix().asDiagonal()),
+  Rmag(sigma_m.array().square().matrix().asDiagonal()),
+  R((Vector6() << sigma_a, sigma_m).finished().array().square().matrix().asDiagonal()) {
 
   qref.setIdentity();
   x.setZero();
 
   if constexpr (with_bias) {
     P << Pq0*Matrix3::Identity(), Matrix3::Zero(),
-    Matrix3::Zero(), Pb0*Matrix3::Identity();
+         Matrix3::Zero(), Pb0*Matrix3::Identity();
   }
   else {
     P = Pq0 * Matrix3::Identity();
@@ -195,7 +194,7 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
   // Slice 3x3 block from F
   if constexpr (with_bias) {
     F_a << F.block(0, 0, 3, 3), (-Matrix3::Identity()*Ts),
-        Matrix3::Zero(), Matrix3::Identity();
+           Matrix3::Zero(), Matrix3::Identity();
   }
   else {
     F_a = F.block(0, 0, 3, 3);
@@ -228,11 +227,9 @@ void QuaternionMEKF<T, with_bias>::measurement_update(Vector3 const& acc, Vector
   }
 
   Vector6 const yhat = (Vector6() << v1hat,
-                        v2hat).finished();
-
+                                     v2hat).finished();
   Vector6 const y = (Vector6() << acc,
-                     mag).finished();
-
+                                  mag).finished();
   Vector6 const inno = y - yhat;
   MatrixM const s = C * P * C.transpose() + R;
 
@@ -279,9 +276,7 @@ void QuaternionMEKF<T, with_bias>::measurement_update_partial(Eigen::Ref<Vector3
   else {
     C = C1;
   }
-
   Vector3 const inno = meas - vhat;
-
   Matrix3 const s = C * P * C.transpose() + Rm;
 
   // K = P * C.T *(s)^-1
@@ -356,8 +351,7 @@ void QuaternionMEKF<T, with_bias>::set_transition_matrix(Eigen::Ref<const Vector
     un = std::numeric_limits<T>::min();
   }
   Matrix4 const Omega = (Matrix4() << -skew_symmetric_matrix(delta_theta), delta_theta,
-                         -delta_theta.transpose(),            0          ).finished();
-
+                                      -delta_theta.transpose(),            0          ).finished();
   F = std::cos(half * un) * Matrix4::Identity() + std::sin(half * un) / un * Omega;
 }
 
@@ -365,8 +359,8 @@ template <typename T, bool with_bias>
 Matrix<T, 3, 3> QuaternionMEKF<T, with_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
   Matrix3 M;
   M << 0, -vec(2), vec(1),
-  vec(2), 0, -vec(0),
-  -vec(1), vec(0), 0;
+       vec(2), 0, -vec(0),
+      -vec(1), vec(0), 0;
   return M;
 }
 
