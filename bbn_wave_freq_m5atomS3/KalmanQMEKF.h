@@ -1,375 +1,391 @@
+#pragma once
+
 /*
-  Copyright 2024, Mikhail Grushinskiy
+  Based on: https://github.com/thomaspasser/q-mekf
+  MIT License, Copyright (c) 2023 Thomas Passer
 
-  Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32 (m5atomS3)
+  q-mekf
 
-  See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
+  C++ implementation of the Quaternion Multiplicative Extended Kalman Filter (Q-MEKF), with support 
+  for accelerometer and magnetometer measurements.
 
-  Instead of FFT method for finding main wave frequency we could use Aranovskiy frequency estimator which is a simple on-line filter.
+  Based on the following papers:
 
-  Ref:
+    Lefferts, Ern J., F. Landis Markley, and Malcolm D. Shuster. "Kalman filtering for spacecraft attitude estimation." 
+    Journal of Guidance, control, and Dynamics 5.5 (1982): 417-429.
+    
+    Markley, F. Landis. "Attitude error representations for Kalman filtering." 
+    Journal of guidance, control, and dynamics 26.2 (2003): 311-317.
 
-  Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul, Stanislav V. Aranovskiy
 
-  The New Algorithm of Sinusoidal Signal Frequency Estimation.
+    https://www.researchgate.net/profile/Landis-Markley/publication/245432681_Attitude_Error_Representations_for_Kalman_Filtering/links/557c5d4108aeea18b776a727/Attitude-Error-Representations-for-Kalman-Filtering.pdf
 
-  11th IFAC International Workshop on Adaptation and Learning in Control and Signal Processing July 3-5, 2013. Caen, France
+  Dependencies: Eigen3
 
-*/
+ */
 
-#include <M5Unified.h>
-#include <M5AtomS3.h>
-#include <Arduino.h>
-#include "AranovskiyFilter.h"
-#include "KalmanSmoother.h"
-#include "TrochoidalWave.h"
-#include "Mahony_AHRS.h"
-#include "Quaternion.h"
-#include "MinMaxLemire.h"
-#include "KalmanForWave.h"
-#include "KalmanForWaveAlt.h"
-#include "NmeaXDR.h"
-//#include "KalmanQMEKF.h"
+#include <ArduinoEigenDense.h>
 
-// Strength of the calibration operation;
-// 0: disables calibration.
-// 1 is weakest and 255 is strongest.
-static constexpr const uint8_t calib_value = 64;
+using Eigen::Matrix;
+using Eigen::Map;
 
-// This sample code performs calibration by clicking on a button or screen.
-// After 10 seconds of calibration, the results are stored in NVS.
-// The saved calibration values are loaded at the next startup.
-//
-// === How to calibration ===
-// ※ Calibration method for Accelerometer
-//    Change the direction of the main unit by 90 degrees
-//     and hold it still for 2 seconds. Repeat multiple times.
-//     It is recommended that as many surfaces as possible be on the bottom.
-//
-// ※ Calibration method for Gyro
-//    Simply place the unit on a quiet desk and hold it still.
-//    It is recommended that this be done after the accelerometer calibration.
-//
-// ※ Calibration method for geomagnetic sensors
-//    Rotate the main unit slowly in multiple directions.
-//    It is recommended that as many surfaces as possible be oriented to the north.
-//
-// Values for extremely large attitude changes are ignored.
-// During calibration, it is desirable to move the device as gently as possible.
+template <typename T = float, bool with_bias = true>
+class QuaternionMEKF {
+    // State dimension
+    static constexpr int N = with_bias ? 6 : 3;
+    // Measurement dimension
+    static const int M = 6;
 
-struct rect_t {
-  int32_t x;
-  int32_t y;
-  int32_t w;
-  int32_t h;
+    typedef Matrix<T, 3, 1> Vector3;
+    typedef Matrix<T, 4, 1> Vector4;
+    typedef Matrix<T, 6, 1> Vector6;
+    typedef Matrix<T, N, N> MatrixN;
+    typedef Matrix<T, 3, 3> Matrix3;
+    typedef Matrix<T, 4, 4> Matrix4;
+    typedef Matrix<T, M, M> MatrixM;
+    static constexpr T half = T(1) / T(2);
+
+  public:
+    QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0 = 1e-6, T Pb0 = 1e-1);
+    constexpr QuaternionMEKF(T const sigma_a[3], T const sigma_g[3], T const sigma_m[3], T Pq0 = 1e-6, T Pb0 = 1e-1);
+    void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
+    void initialize_from_acc_mag(T const acc[3], T const mag[3]);
+    void initialize_from_acc(Vector3 const& acc);
+    void initialize_from_acc(T const acc[3]);
+    static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
+    void time_update(Vector3 const& gyr, T Ts);
+    void time_update(T const gyr[3], T Ts);
+    void measurement_update(Vector3 const& acc, Vector3 const& mag);
+    void measurement_update(T const acc[3], T const mag[3]);
+    void measurement_update_acc_only(Vector3 const& acc);
+    void measurement_update_acc_only(T const acc[3]);
+    void measurement_update_mag_only(Vector3 const& mag);
+    void measurement_update_mag_only(T const mag[3]);
+    Vector4 const& quaternion() const;
+    MatrixN const& covariance() const;
+    Vector3 gyroscope_bias() const;
+
+  private:
+    Eigen::Quaternion<T> qref;
+
+    Vector3 v1ref;
+    Vector3 v2ref;
+
+    // State
+    Matrix<T, N, 1> x;
+    // State covariance
+    MatrixN P;
+
+    // Quaternion update matrix
+    Matrix4 F;
+
+    // Constant matrices
+    const Matrix3 Racc, Rmag;
+    const MatrixM R;
+    const MatrixN Q;
+
+    void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
+    void set_transition_matrix(const Eigen::Ref<const Vector3>& gyr, T Ts);
+    Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
+    Vector3 accelerometer_measurement_func() const;
+    Vector3 magnetometer_measurement_func() const;
+
+    static constexpr MatrixN initialize_Q(Vector3 sigma_g);
 };
 
-static constexpr const float coefficient_tbl[3] = { 0.5f, (1.0f / 256.0f), (1.0f / 1024.0f) };
-static uint8_t calib_countdown = 0;
+template <typename T, bool with_bias>
+QuaternionMEKF<T, with_bias>::QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0, T Pb0)
+  :
+  Q( initialize_Q(sigma_g) ),
+  Racc( sigma_a.array().square().matrix().asDiagonal()),
+  Rmag( sigma_m.array().square().matrix().asDiagonal()),
+  R( (Vector6() << sigma_a, sigma_m).finished().array().square().matrix().asDiagonal() ) {
 
-static auto &disp = (M5.Display);
-static rect_t rect_text_area;
+  qref.setIdentity();
+  x.setZero();
 
-static int prev_xpos[18];
-
-unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL;
-unsigned long got_samples = 0;
-int first = 1;
-
-float delta_t;  // time step sec
-
-MinMaxLemire min_max_h;
-AranovskiyParams params;
-AranovskiyState state;
-KalmanSmootherVars kalman_freq;
-Mahony_AHRS_Vars mahony;
-KalmanWaveState waveState;
-KalmanWaveAltState waveAltState;
-
-const char* imu_name;
-
-int produce_serial_data = 1;
-int report_nmea = 1;
-
-float t = 0.0;
-float heave_avg = 0.0;
-float wave_length = 0.0;
-
-void updateCalibration(uint32_t c, bool clear = false) {
-  calib_countdown = c;
-
-  if (c == 0) {
-    clear = true;
-  }
-
-  if (clear) {
-    memset(prev_xpos, 0, sizeof(prev_xpos));
-    disp.fillScreen(TFT_BLACK);
-    if (c) {
-      // Start calibration.
-      M5.Imu.setCalibration(calib_value, calib_value, calib_value);
-      // The actual calibration operation is performed each time during M5.Imu.update.
-      //
-      // There are three arguments, which can be specified in the order of Accelerometer, gyro, and geomagnetic.
-      // If you want to calibrate only the Accelerometer, do the following.
-      // M5.Imu.setCalibration(100, 0, 0);
-      //
-      // If you want to calibrate only the gyro, do the following.
-      // M5.Imu.setCalibration(0, 100, 0);
-      //
-      // If you want to calibrate only the geomagnetism, do the following.
-      // M5.Imu.setCalibration(0, 0, 100);
-    }
-    else {
-      // Stop calibration. (Continue calibration only for the geomagnetic sensor)
-      M5.Imu.setCalibration(0, 0, calib_value);
-
-      // If you want to stop all calibration, write this.
-      // M5.Imu.setCalibration(0, 0, 0);
-
-      // save calibration values.
-      M5.Imu.saveOffsetToNVS();
-    }
-  }
-  disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-
-  if (c) {
-    disp.setCursor(2, rect_text_area.h + 1);
-    disp.setTextColor(TFT_WHITE, TFT_BLACK);
-    disp.printf("Countdown:%3d", c);
-  }
-}
-
-void startCalibration(void) {
-  updateCalibration(30, true);
-}
-
-void repeatMe() {
-  static uint32_t prev_sec = 0;
-
-  auto imu_update = M5.Imu.update();
-  if (imu_update) {
-    m5::imu_3d_t accel;
-    M5.Imu.getAccelData(&accel.x, &accel.y, &accel.z);
-
-    m5::imu_3d_t gyro;
-    M5.Imu.getGyroData(&gyro.x, &gyro.y, &gyro.z);
-
-    got_samples++;
-
-    if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 250.0) {
-      // ignore noise with unreasonably high Gs
-
-      now = micros();
-      delta_t = ((now - last_update) / 1000000.0);
-      last_update = now;
-
-      float pitch, roll, yaw;
-      mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
-                         accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
-
-      Quaternion quaternion;
-      Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
-      float v[3] = {accel.x, accel.y, accel.z};
-      float rotated_a[3];
-      Quaternion_rotate(&quaternion, v, rotated_a);
-
-      m5::imu_3d_t accel_rotated;
-      accel_rotated.x = rotated_a[0];
-      accel_rotated.y = rotated_a[1];
-      accel_rotated.z = rotated_a[2];
-
-      float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-      //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25 - 2.0) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
-      //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
-
-      kalman_wave_step(&waveState, a * g_std, delta_t);
-      float heave = waveState.heave;            // in meters
-      float accel_bias = waveState.accel_bias;  // in meters/sec^2
-
-      float y = heave;
-      if (t > 8.0 /* sec */) {
-        // give some time for other filters to settle first
-        aranovskiy_update(&params, &state, y, delta_t);
-      }
-      double freq = state.f;
-
-      if (first) {
-        kalman_smoother_set_initial(&kalman_freq, freq);
-        first = 0;
-      }
-      double freq_adj = kalman_smoother_update(&kalman_freq, freq);
-
-      if (freq_adj > 0.002 && freq_adj < 10.0) { /* prevent decimal overflows */
-        float period = 1.0 / freq_adj;
-        uint32_t windowMicros = 3 * period * 1000000;
-        if (period < 60.0) {
-          if (windowMicros <= 10 * 1000000) {
-            windowMicros = 10 * 1000000;
-          }
-        }
-        SampleType sample;
-        sample.timeMicroSec = now;
-        sample.value = heave;
-        min_max_lemire_update(&min_max_h, sample, windowMicros);
-        if (fabs(freq - freq_adj) < 1.0 * freq_adj) { /* sanity check of convergence for freq */
-          float k_hat = - pow(2.0 * PI * freq_adj, 2);
-          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
-        }
-
-        float wave_height = min_max_h.max.value - min_max_h.min.value;
-        heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
-
-        int serial_report_period_micros = 125000;
-        if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
-          if (produce_serial_data) {
-            if (report_nmea) {
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-              if (fabs(freq - freq_adj) < 1.0 * freq_adj) {
-                gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
-              }
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
-              gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", accel_bias * 100.0 / g_std);
-            }
-            else {
-              // report for Serial Plotter
-              Serial.printf("heave_cm:%.4f", heave * 100);
-              if (fabs(freq - freq_adj) < 1.0 * freq_adj) {
-                Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
-                //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-              }
-              //Serial.printf(",freq:%.4f", freq * 100);
-              //Serial.printf(",h_cm:%.4f", h * 100);
-              Serial.printf(",height_cm:%.4f", wave_height * 100);
-              //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
-              //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
-              //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
-              //Serial.printf(",period_decisec:%.4f", period * 10);
-              //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-              //Serial.printf(",accel bias:%0.4f", accel_bias);
-              Serial.println();
-            }
-          }
-          else {
-            disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-            M5.Lcd.setCursor(0, 2);
-            M5.Lcd.printf("imu: %s\n", imu_name);
-            M5.Lcd.printf("sec: %d\n", now / 1000000);
-            M5.Lcd.printf("samples: %d\n", got_samples);
-            M5.Lcd.printf("period sec: %0.4f\n", period);
-            M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
-            M5.Lcd.printf("heave:      %0.4f\n", heave);
-            M5.Lcd.printf("wave height:%0.4f\n", wave_height);
-            M5.Lcd.printf("range %0.4f %0.4f\n", min_max_h.min.value, min_max_h.max.value);
-            M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
-            M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-            M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
-            M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
-          }
-
-          last_refresh = now;
-          got_samples = 0;
-        }
-      }
-    }
-    t = t + delta_t;
+  if constexpr (with_bias) {
+    P << Pq0*Matrix3::Identity(), Matrix3::Zero(),
+    Matrix3::Zero(), Pb0*Matrix3::Identity();
   }
   else {
-    AtomS3.update();
-    // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
-    if (AtomS3.BtnA.isPressed()) {
-      startCalibration();
-    }
-  }
-  int32_t sec = millis() / 1000;
-  if (prev_sec != sec) {
-    prev_sec = sec;
-    if (calib_countdown) {
-      updateCalibration(calib_countdown - 1);
-    }
-    if ((sec & 7) == 0) {
-      // prevent WDT.
-      vTaskDelay(1);
-    }
+    P = Pq0 * Matrix3::Identity();
   }
 }
 
-void setup(void) {
-  auto cfg = M5.config();
-  AtomS3.begin(cfg);
-  Serial.begin(115200);
-
-  auto imu_type = M5.Imu.getType();
-  switch (imu_type) {
-    case m5::imu_none:        imu_name = "not found";   break;
-    case m5::imu_sh200q:      imu_name = "sh200q";      break;
-    case m5::imu_mpu6050:     imu_name = "mpu6050";     break;
-    case m5::imu_mpu6886:     imu_name = "mpu6886";     break;
-    case m5::imu_mpu9250:     imu_name = "mpu9250";     break;
-    case m5::imu_bmi270:      imu_name = "bmi270";      break;
-    default:                  imu_name = "unknown";     break;
-  };
-  disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-  M5.Lcd.setCursor(0, 2);
-  M5.Lcd.printf("imu: %s\n", imu_name);
-
-  if (imu_type == m5::imu_none) {
-    for (;;) {
-      delay(1);
-    }
-  }
-
-  int32_t w = disp.width();
-  int32_t h = disp.height();
-  if (w < h) {
-    disp.setRotation(disp.getRotation() ^ 1);
-    w = disp.width();
-    h = disp.height();
-  }
-  int32_t text_area_h = ((h - 8) / 18) * 18;
-  rect_text_area = {0, 0, w, text_area_h };
-
-  // Read calibration values from NVS.
-  if (!M5.Imu.loadOffsetFromNVS()) {
-    startCalibration();
-  }
-
-  float twoKp = (2.0f * 1.0f);
-  float twoKi = (2.0f * 0.0001f);
-  mahony_AHRS_init(&mahony, twoKp, twoKi);
-
-  /*
-     Accelerometer bias creates heave bias and Aranovskiy filter gives
-     lower frequency (i. e. higher period).
-     Even 2cm bias in heave is too much to affect frequency a lot
-  */
-  double omega_init = 0.04 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 200.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
-  double x1_0 = 0.0;
-  double theta_0 = - (omega_init * omega_init / 4.0);
-  double sigma_0 = theta_0;
-  aranovskiy_default_params(&params, omega_init, k_gain);
-  aranovskiy_init_state(&state, x1_0, theta_0, sigma_0);
-
-  {
-    double process_noise_covariance = 0.25;
-    double measurement_uncertainty = 2.0;
-    double estimation_uncertainty = 100.0;
-    kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
-  }
-
-  kalman_wave_init_defaults();
-  kalman_wave_alt_init_defaults();
-
-  last_update = micros();
+template<typename T, bool with_bias>
+constexpr QuaternionMEKF<T, with_bias>::QuaternionMEKF(T const sigma_a[3], T const sigma_g[3], T const sigma_m[3], T Pq0, T Pb0) :
+  QuaternionMEKF(Map<Matrix<T, 3, 1>>(sigma_a), Map<Matrix<T, 3, 1>>(sigma_g), Map<Matrix<T, 3, 1>>(sigma_m), Pq0, Pb0) {
 }
 
-void loop(void) {
-  AtomS3.update();
-  delay(3);
-  repeatMe();
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag) {
+  T const anorm = acc.norm();
+  v1ref << 0, 0, -anorm;
+
+  Vector3 const acc_normalized = acc / anorm;
+  Vector3 const mag_normalized = mag.normalized();
+
+  Vector3 const Rz = -acc_normalized;
+  Vector3 const Ry = Rz.cross(mag_normalized).normalized();
+  Vector3 const Rx = Ry.cross(Rz).normalized();
+
+  // Construct the rotation matrix
+  Matrix3 const R = (Matrix3() << Rx, Ry, Rz).finished();
+
+  // Eigen can convert it to a quaternion
+  qref = R.transpose();
+
+  // Reference magnetic field vector
+  v2ref = qref * mag;
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::initialize_from_acc_mag(T const acc[3], T const mag[3]) {
+  initialize_from_acc_mag(Map<Matrix<T, 3, 1>>(acc), Map<Matrix<T, 3, 1>>(mag));
+}
+
+template<typename T, bool with_bias>
+Eigen::Quaternion<T> QuaternionMEKF<T, with_bias>::quaternion_from_acc(Vector3 const& acc) {
+  // This finds inverse of qref
+  T qx, qy, qz, qw;
+  if (acc[2] >= 0) {
+    qx = std::sqrt((1 + acc[2]) / 2);
+    qw = acc[1] / (2 * qx);
+    qy = 0;
+    qz = -acc[0] / (2 * qx);
+  }
+  else {
+    qw = std::sqrt((1 - acc[2]) / 2);
+    qx = acc[1] / (2 * qw);
+    qy = -acc[0] / (2 * qw);
+    qz = 0;
+  }
+  // Invert the quaternion
+  Eigen::Quaternion<T> qref = Eigen::Quaternion<T>(qw, -qx, -qy, -qz);
+  return qref;
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
+  T const anorm = acc.norm();
+  v1ref << 0, 0, -anorm;
+  qref = quat_from_acc(acc);
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::initialize_from_acc(T const acc[3]) {
+  initialize_from_acc(Map<Matrix<T, 3, 1>>(acc));
+}
+
+template <typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
+  if constexpr (with_bias) {
+    set_transition_matrix(gyr - x.tail(3), Ts);
+  }
+  else {
+    set_transition_matrix(gyr, Ts);
+  }
+
+  // Quaternionf.coeffs() get the components in [x,y,z,w] order
+  qref = F * qref.coeffs();
+  qref.normalize();
+
+  MatrixN F_a;
+  // Slice 3x3 block from F
+  if constexpr (with_bias) {
+    F_a << F.block(0, 0, 3, 3), (-Matrix3::Identity()*Ts),
+        Matrix3::Zero(), Matrix3::Identity();
+  }
+  else {
+    F_a = F.block(0, 0, 3, 3);
+  }
+  P = F_a * P * F_a.transpose() + Q;
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::time_update(T const gyr[3], T Ts) {
+  time_update(Map<Matrix<T, 3, 1>>(gyr), Ts);
+}
+
+template <typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag) {
+  // Predicted measurements
+  Vector3 const v1hat = accelerometer_measurement_func();
+  Vector3 const v2hat = magnetometer_measurement_func();
+
+  Matrix3 const C1 = skew_symmetric_matrix(v1hat);
+  Matrix3 const C2 = skew_symmetric_matrix(v2hat);
+
+  Matrix<T, M, N> C;
+  if constexpr (with_bias) {
+    C << C1, Matrix<T, 3, 3>::Zero(),
+    C2, Matrix<T, 3, 3>::Zero();
+  }
+  else {
+    C << C1,
+    C2;
+  }
+
+  Vector6 const yhat = (Vector6() << v1hat,
+                        v2hat).finished();
+
+  Vector6 const y = (Vector6() << acc,
+                     mag).finished();
+
+  Vector6 const inno = y - yhat;
+  MatrixM const s = C * P * C.transpose() + R;
+
+  // K = P * C.T *(s)^-1
+  // K * s = P*C.T
+
+  // This is the form
+  // x * A = b
+  // Which can be solved with the code below
+  Eigen::FullPivLU<MatrixM> lu(s);
+  if (lu.isInvertible()) {
+    Matrix<T, N, M> const K = P * C.transpose() * lu.inverse();
+
+    x += K * inno;
+
+    // Joseph form of covariance measurement update
+    MatrixN const temp = MatrixN::Identity() - K * C;
+    P = temp * P * temp.transpose() + K * R * K.transpose();
+    // Apply correction to qref
+    Eigen::Quaternion<T> corr(1, half * x(0), half * x(1), half * x(2));
+    corr.normalize();
+    qref = qref * corr;
+
+    // We only want to reset the quaternion part of the state
+    x(0) = 0;
+    x(1) = 0;
+    x(2) = 0;
+  }
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::measurement_update(T const acc[3], T const mag[3]) {
+  measurement_update(Map<Matrix<T, 3, 1>>(acc), Map<Matrix<T, 3, 1>>(mag));
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::measurement_update_partial(Eigen::Ref<Vector3 const> const& meas, Eigen::Ref<Vector3 const> const& vhat, Eigen::Ref<Matrix3 const>const& Rm) {
+  Matrix3 const C1 = skew_symmetric_matrix(vhat);
+
+  Matrix<T, 3, N> C;
+  if constexpr (with_bias) {
+    C << C1, Matrix<T, 3, 3>::Zero();
+  }
+  else {
+    C = C1;
+  }
+
+  Vector3 const inno = meas - vhat;
+
+  Matrix3 const s = C * P * C.transpose() + Rm;
+
+  // K = P * C.T *(s)^-1
+  // K * s = P*C.T
+
+  // This is the form
+  // x * A = b
+  // Which can be solved with the code below
+  Eigen::FullPivLU<Matrix3> lu(s);
+  if (lu.isInvertible()) {
+    Matrix<T, N, 3> const K = P * C.transpose() * lu.inverse();
+
+    x += K * inno;
+
+    // Joseph form of covariance measurement update
+    MatrixN const temp = MatrixN::Identity() - K * C;
+    P = temp * P * temp.transpose() + K * Racc * K.transpose();
+    // Apply correction to qref
+    Eigen::Quaternion<T> corr(1, half * x(0), half * x(1), half * x(2));
+    corr.normalize();
+    qref = qref * corr;
+
+    // We only want to reset the quaternion part of the state
+    x(0) = 0;
+    x(1) = 0;
+    x(2) = 0;
+  }
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::measurement_update_acc_only(Vector3 const& acc) {
+  Vector3 const v1hat = accelerometer_measurement_func();
+  measurement_update_partial(acc, v1hat, Racc);
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::measurement_update_acc_only(T const acc[3]) {
+  measurement_update_acc_only(Map<Matrix<T, 3, 1>>(acc));
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::measurement_update_mag_only(Vector3 const& mag) {
+  Vector3 const v2hat = magnetometer_measurement_func();
+  measurement_update_partial(mag, v2hat, Rmag);
+}
+
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::measurement_update_mag_only(T const mag[3]) {
+  measurement_update_mag_only(Map<Matrix<T, 3, 1>>(mag));
+}
+
+template<typename T, bool with_bias>
+Matrix<T, 4, 1> const& QuaternionMEKF<T, with_bias>::quaternion() const {
+  return qref.coeffs();
+}
+
+template<typename T, bool with_bias>
+typename QuaternionMEKF<T, with_bias>::MatrixN const& QuaternionMEKF<T, with_bias>::covariance() const {
+  return P;
+}
+
+template<typename T, bool with_bias>
+typename QuaternionMEKF<T, with_bias>::Vector3 QuaternionMEKF<T, with_bias>::gyroscope_bias() const {
+  return x.tail(3);
+}
+
+template <typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::set_transition_matrix(Eigen::Ref<const Vector3> const& gyr, T Ts) {
+  Vector3 const delta_theta = gyr * Ts;
+  T un = delta_theta.norm();
+  if (un == 0) {
+    un = std::numeric_limits<T>::min();
+  }
+  Matrix4 const Omega = (Matrix4() << -skew_symmetric_matrix(delta_theta), delta_theta,
+                         -delta_theta.transpose(),            0          ).finished();
+
+  F = std::cos(half * un) * Matrix4::Identity() + std::sin(half * un) / un * Omega;
+}
+
+template <typename T, bool with_bias>
+Matrix<T, 3, 3> QuaternionMEKF<T, with_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
+  Matrix3 M;
+  M << 0, -vec(2), vec(1),
+  vec(2), 0, -vec(0),
+  -vec(1), vec(0), 0;
+  return M;
+}
+
+template <typename T, bool with_bias>
+Matrix<T, 3, 1> QuaternionMEKF<T, with_bias>::accelerometer_measurement_func() const {
+  return qref.inverse() * v1ref;
+}
+
+template <typename T, bool with_bias>
+Matrix<T, 3, 1> QuaternionMEKF<T, with_bias>::magnetometer_measurement_func() const {
+  return qref.inverse() * v2ref;
+}
+
+template<typename T, bool with_bias>
+constexpr typename QuaternionMEKF<T, with_bias>::MatrixN QuaternionMEKF<T, with_bias>::initialize_Q(Vector3 sigma_g) {
+  if constexpr (with_bias) {
+    return (Vector6() << sigma_g.array().square().matrix(), 1e-12, 1e-12, 1e-12).finished().asDiagonal();
+  }
+  else {
+    return sigma_g.array().square().matrix().asDiagonal();
+  }
 }
