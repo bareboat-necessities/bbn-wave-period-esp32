@@ -7,9 +7,9 @@
  
  */
 
-float trochoid_wave_displacement(float displacement_amplitude, float frequency, float t);
-float trochoid_wave_vert_speed(float displacement_amplitude, float frequency, float t);
-float trochoid_wave_vert_accel(float displacement_amplitude, float frequency, float t);
+float trochoid_wave_displacement(float displacement_amplitude, float frequency, float phase_rad, float t);
+float trochoid_wave_vert_speed(float displacement_amplitude, float frequency, float phase_rad, float t);
+float trochoid_wave_vert_accel(float displacement_amplitude, float frequency, float phase_rad, float t);
 
 float trochoid_wave_length(float periodSec);
 float trochoid_wave_period(float displacement, float accel);
