@@ -158,7 +158,7 @@ void repeatMe() {
     got_samples++;
 
     if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 25.0) {
-      // ignore noise with unreasonably high Gs
+      // ignore noise (in unbiased way) with unreasonably high Gs
 
       now = micros();
       delta_t = (now - last_update) / 1000000.0;
@@ -237,10 +237,10 @@ void repeatMe() {
           if (produce_serial_data) {
             if (report_nmea) {
               // do not report data for which filters clearly didn't converge
-              if (wave_height < 100.0) {
+              if (wave_height < 50.0) {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
               }
-              if (fabs(heave) < 100.0) {
+              if (fabs(heave) < 25.0) {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
               }
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
