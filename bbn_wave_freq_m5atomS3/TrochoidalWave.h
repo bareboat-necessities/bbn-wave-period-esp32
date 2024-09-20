@@ -34,14 +34,17 @@ float trochoid_wave_freq(float displacement, float accel) {
 
 float trochoid_wave_displacement(float displacement_amplitude, float frequency, float phase_rad, float t) {
   float displacement = - displacement_amplitude * cos(2.0 * PI * frequency * t + phase_rad);
+  return displacement;
 }
 
 float trochoid_wave_vert_speed(float displacement_amplitude, float frequency, float phase_rad, float t) {
-  float displacement = 2.0 * PI * frequency * displacement_amplitude * sin(2.0 * PI * frequency * t + phase_rad);
+  float vert_speed = 2.0 * PI * frequency * displacement_amplitude * sin(2.0 * PI * frequency * t + phase_rad);
+  return vert_speed;
 }
 
 float trochoid_wave_vert_accel(float displacement_amplitude, float frequency, float phase_rad, float t) {
-  float displacement = pow(2.0 * PI * frequency, 2) * displacement_amplitude * cos(2.0 * PI * frequency * t + phase_rad);
+  float vert_accel = pow(2.0 * PI * frequency, 2) * displacement_amplitude * cos(2.0 * PI * frequency * t + phase_rad);
+  return vert_accel;
 }
 
 #endif
