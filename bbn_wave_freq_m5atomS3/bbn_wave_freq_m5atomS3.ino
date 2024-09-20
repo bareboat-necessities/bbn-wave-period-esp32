@@ -257,19 +257,22 @@ void repeatMe() {
               gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", accel_bias * 100.0 / g_std);
             }
             else {
-              // report for Serial Plotter
-              Serial.printf("heave_cm:%.4f", heave * 100);
-              Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+              // report for Arduino Serial Plotter
+              //Serial.printf("heave_cm:%.4f", heave * 100);
+              //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
               //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
               //Serial.printf(",freq:%.4f", freq * 100);
               //Serial.printf(",h_cm:%.4f", h * 100);
-              Serial.printf(",height_cm:%.4f", wave_height * 100);
+              //Serial.printf(",height_cm:%.4f", wave_height * 100);
               //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
               //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
               //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
               //Serial.printf(",period_decisec:%.4f", period * 10);
               //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
               //Serial.printf(",accel bias:%0.4f", accel_bias);
+
+              // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
+              Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);              
               Serial.println();
             }
           }
