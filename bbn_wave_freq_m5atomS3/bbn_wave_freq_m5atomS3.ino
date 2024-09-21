@@ -72,11 +72,9 @@ static rect_t rect_text_area;
 
 static int prev_xpos[18];
 
-unsigned long now = 0UL, last_refresh = 0UL, last_update = 0UL, last_update_k = 0UL;
+unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
 int first = 1, kalman_k_first = 1;
-
-float delta_t;  // time step sec
 
 MinMaxLemire min_max_h;
 AranovskiyParams params;
@@ -144,161 +142,165 @@ void startCalibration(void) {
   updateCalibration(30, true);
 }
 
+void read_and_processIMU_data() {
+  m5::imu_3d_t accel;
+  M5.Imu.getAccelData(&accel.x, &accel.y, &accel.z);
+
+  m5::imu_3d_t gyro;
+  M5.Imu.getGyroData(&gyro.x, &gyro.y, &gyro.z);
+
+  got_samples++;
+  now = micros();
+
+  if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 25.0) {
+    // ignore noise (in unbiased way) with unreasonably high Gs
+
+    float delta_t = (now - last_update) / 1000000.0;  // time step sec
+    last_update = now;
+
+    float pitch, roll, yaw;
+    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
+                       accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+
+    Quaternion quaternion;
+    Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
+    float v[3] = {accel.x, accel.y, accel.z};
+    float rotated_a[3];
+    Quaternion_rotate(&quaternion, v, rotated_a);
+
+    m5::imu_3d_t accel_rotated;
+    accel_rotated.x = rotated_a[0];
+    accel_rotated.y = rotated_a[1];
+    accel_rotated.z = rotated_a[2];
+
+    float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+    //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25 - 2.0) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
+    //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
+
+    kalman_wave_step(&waveState, a * g_std, delta_t);
+    float heave = waveState.heave;            // in meters
+    float accel_bias = waveState.accel_bias;  // in meters/sec^2
+
+    float y = heave;
+    if (t > 10.0 /* sec */) {
+      // give some time for other filters to settle first
+      aranovskiy_update(&params, &state, y, delta_t);
+    }
+    double freq = state.f;
+
+    if (first) {
+      kalman_smoother_set_initial(&kalman_freq, freq);
+      first = 0;
+    }
+    double freq_adj = kalman_smoother_update(&kalman_freq, freq);
+
+    if (freq_adj > 0.002 && freq_adj < 5.0) { /* prevent decimal overflows */
+      double period = 1.0 / freq_adj;
+      uint32_t windowMicros = 3 * period * 1000000;
+      if (windowMicros <= 10 * 1000000) {
+        windowMicros = 10 * 1000000;
+      }
+      else if (windowMicros >= 60 * 1000000) {
+        windowMicros = 60 * 1000000;
+      }
+      SampleType sample;
+      sample.timeMicroSec = now;
+      sample.value = heave;
+      min_max_lemire_update(&min_max_h, sample, windowMicros);
+
+      if (fabs(freq - freq_adj) < 0.3 * freq_adj) { /* sanity check of convergence for freq */
+        float k_hat = - pow(2.0 * PI * freq_adj, 2);
+        if (kalman_k_first) {
+          kalman_k_first = 0;
+          waveAltState.heave = waveState.heave;
+          waveAltState.vert_speed = waveState.vert_speed;
+          waveAltState.vert_accel = k_hat * waveState.heave; //a * g_std;
+          waveAltState.accel_bias = 0.0f;
+          kalman_wave_alt_init_state(&waveAltState);
+        }
+        float delta_t_k = last_update_k == 0UL ? delta_t : (now - last_update_k) / 1000000.0;
+        kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
+        last_update_k = now;
+      }
+
+      float wave_height = min_max_h.max.value - min_max_h.min.value;
+      heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
+
+      int serial_report_period_micros = 125000;
+      if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
+        if (produce_serial_data) {
+          if (report_nmea) {
+            // do not report data for which filters clearly didn't converge
+            if (wave_height < 50.0) {
+              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
+            }
+            if (fabs(heave) < 25.0) {
+              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
+            }
+            gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
+            if (fabs(freq - freq_adj) < 0.1 * freq_adj) {
+              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
+              if (fabs(waveAltState.heave) < 100.0) {
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
+              }
+            }
+            if (freq > 0.002 && freq < 5.0) {
+              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+            }
+            gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
+            gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", accel_bias * 100.0 / g_std);
+          }
+          else {
+            // report for Arduino Serial Plotter
+            Serial.printf("heave_cm:%.4f", heave * 100);
+            Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+            //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+            //Serial.printf(",freq:%.4f", freq * 100);
+            //Serial.printf(",h_cm:%.4f", h * 100);
+            Serial.printf(",height_cm:%.4f", wave_height * 100);
+            //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
+            //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
+            //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
+            //Serial.printf(",period_decisec:%.4f", period * 10);
+            //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+            //Serial.printf(",accel bias:%0.4f", accel_bias);
+
+            // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
+            //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
+            Serial.println();
+          }
+        }
+        else {
+          disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+          M5.Lcd.setCursor(0, 2);
+          M5.Lcd.printf("imu: %s\n", imu_name);
+          M5.Lcd.printf("sec: %d\n", now / 1000000);
+          M5.Lcd.printf("samples: %d\n", got_samples);
+          M5.Lcd.printf("period sec: %0.4f\n", period);
+          M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
+          M5.Lcd.printf("heave:      %0.4f\n", heave);
+          M5.Lcd.printf("wave height:%0.4f\n", wave_height);
+          M5.Lcd.printf("range %0.4f %0.4f\n", min_max_h.min.value, min_max_h.max.value);
+          M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
+          M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+          M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
+          M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
+        }
+
+        last_refresh = now;
+        got_samples = 0;
+      }
+    }
+  }
+  t = (now - start_time) / 1000000.0;  // time since start sec
+}
+
 void repeatMe() {
   static uint32_t prev_sec = 0;
 
   auto imu_update = M5.Imu.update();
   if (imu_update) {
-    m5::imu_3d_t accel;
-    M5.Imu.getAccelData(&accel.x, &accel.y, &accel.z);
-
-    m5::imu_3d_t gyro;
-    M5.Imu.getGyroData(&gyro.x, &gyro.y, &gyro.z);
-
-    got_samples++;
-
-    if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 25.0) {
-      // ignore noise (in unbiased way) with unreasonably high Gs
-
-      now = micros();
-      delta_t = (now - last_update) / 1000000.0;
-      last_update = now;
-
-      float pitch, roll, yaw;
-      mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
-                         accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
-
-      Quaternion quaternion;
-      Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
-      float v[3] = {accel.x, accel.y, accel.z};
-      float rotated_a[3];
-      Quaternion_rotate(&quaternion, v, rotated_a);
-
-      m5::imu_3d_t accel_rotated;
-      accel_rotated.x = rotated_a[0];
-      accel_rotated.y = rotated_a[1];
-      accel_rotated.z = rotated_a[2];
-
-      float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-      //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25 - 2.0) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
-      //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
-
-      kalman_wave_step(&waveState, a * g_std, delta_t);
-      float heave = waveState.heave;            // in meters
-      float accel_bias = waveState.accel_bias;  // in meters/sec^2
-
-      float y = heave;
-      if (t > 10.0 /* sec */) {
-        // give some time for other filters to settle first
-        aranovskiy_update(&params, &state, y, delta_t);
-      }
-      double freq = state.f;
-
-      if (first) {
-        kalman_smoother_set_initial(&kalman_freq, freq);
-        first = 0;
-      }
-      double freq_adj = kalman_smoother_update(&kalman_freq, freq);
-
-      if (freq_adj > 0.002 && freq_adj < 5.0) { /* prevent decimal overflows */
-        double period = 1.0 / freq_adj;
-        uint32_t windowMicros = 3 * period * 1000000;
-        if (windowMicros <= 10 * 1000000) {
-          windowMicros = 10 * 1000000;
-        }
-        else if (windowMicros >= 60 * 1000000) {
-          windowMicros = 60 * 1000000;
-        }
-        SampleType sample;
-        sample.timeMicroSec = now;
-        sample.value = heave;
-        min_max_lemire_update(&min_max_h, sample, windowMicros);
-
-        if (fabs(freq - freq_adj) < 0.3 * freq_adj) { /* sanity check of convergence for freq */
-          float k_hat = - pow(2.0 * PI * freq_adj, 2);
-          if (kalman_k_first) {
-            kalman_k_first = 0;
-            waveAltState.heave = waveState.heave;
-            waveAltState.vert_speed = waveState.vert_speed;
-            waveAltState.vert_accel = k_hat * waveState.heave; //a * g_std;
-            waveAltState.accel_bias = 0.0f;
-            kalman_wave_alt_init_state(&waveAltState);
-          }
-          float delta_t_k = last_update_k == 0UL ? delta_t : (now - last_update_k) / 1000000.0;
-          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
-          last_update_k = now;
-        }
-
-        float wave_height = min_max_h.max.value - min_max_h.min.value;
-        heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
-
-        int serial_report_period_micros = 125000;
-        if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
-          if (produce_serial_data) {
-            if (report_nmea) {
-              // do not report data for which filters clearly didn't converge
-              if (wave_height < 50.0) {
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
-              }
-              if (fabs(heave) < 25.0) {
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
-              }
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-              if (fabs(freq - freq_adj) < 0.1 * freq_adj) {
-                gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
-                if (fabs(waveAltState.heave) < 100.0) {
-                  gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
-                }
-              }
-              if (freq > 0.002 && freq < 5.0) {
-                gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
-              }
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
-              gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", accel_bias * 100.0 / g_std);
-            }
-            else {
-              // report for Arduino Serial Plotter
-              //Serial.printf("heave_cm:%.4f", heave * 100);
-              //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
-              //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-              //Serial.printf(",freq:%.4f", freq * 100);
-              //Serial.printf(",h_cm:%.4f", h * 100);
-              //Serial.printf(",height_cm:%.4f", wave_height * 100);
-              //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
-              //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
-              //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
-              //Serial.printf(",period_decisec:%.4f", period * 10);
-              //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-              //Serial.printf(",accel bias:%0.4f", accel_bias);
-
-              // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
-              Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);              
-              Serial.println();
-            }
-          }
-          else {
-            disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-            M5.Lcd.setCursor(0, 2);
-            M5.Lcd.printf("imu: %s\n", imu_name);
-            M5.Lcd.printf("sec: %d\n", now / 1000000);
-            M5.Lcd.printf("samples: %d\n", got_samples);
-            M5.Lcd.printf("period sec: %0.4f\n", period);
-            M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
-            M5.Lcd.printf("heave:      %0.4f\n", heave);
-            M5.Lcd.printf("wave height:%0.4f\n", wave_height);
-            M5.Lcd.printf("range %0.4f %0.4f\n", min_max_h.min.value, min_max_h.max.value);
-            M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
-            M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-            M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
-            M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
-          }
-
-          last_refresh = now;
-          got_samples = 0;
-        }
-      }
-    }
-    t = t + delta_t;
+    read_and_processIMU_data();
   }
   else {
     AtomS3.update();
@@ -387,7 +389,8 @@ void setup(void) {
   kalman_wave_init_defaults();
   kalman_wave_alt_init_defaults();
 
-  last_update = micros();
+  start_time = micros();
+  last_update = start_time;
 }
 
 void loop(void) {
