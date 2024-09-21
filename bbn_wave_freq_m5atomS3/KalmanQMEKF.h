@@ -383,3 +383,19 @@ constexpr typename QuaternionMEKF<T, with_bias>::MatrixN QuaternionMEKF<T, with_
     return sigma_g.array().square().matrix().asDiagonal();
   }
 }
+
+typedef Matrix<float, 3, 1> Vector3f;
+typedef Matrix<float, 4, 1> Vector4f;
+    
+typedef struct QMEKF_vars {
+  Vector3f sigma_a = {20.78e-3, 20.78e-3, 20.78e-3};
+  Vector3f sigma_g = {0.2020*M_PI/180, 0.2020*M_PI/180, 0.2020*M_PI/180};
+  Vector3f sigma_m = {3.2e-3, 3.2e-3, 4.1e-3};
+  QuaternionMEKF<float, true>* mekf;
+} Kalman_QMEKF_vars;
+
+void QMEKF_init(Kalman_QMEKF_vars* qmekf, Vector3f sigma_a, Vector3f sigma_g, Vector3f sigma_m) {
+  static QuaternionMEKF<float, true> mekf(sigma_a, sigma_g, sigma_m);
+  qmekf->mekf = &mekf;
+}
+
