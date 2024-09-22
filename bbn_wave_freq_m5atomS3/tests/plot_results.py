@@ -11,6 +11,8 @@ RefVelX = Data[:, [2]]
 RefPosX = Data[:, [3]]
 Heave = Data[:, [4]]
 HeaveAlt = Data[:, [5]]
+Freq = Data[:, [10]]
+FreqAdj = Data[:, [11]]
 
 f, axarr = plt.subplots(3, sharex="all")
 
@@ -19,8 +21,9 @@ axarr[0].plot(Time, AccX, label="Input AccX")
 axarr[0].grid()
 axarr[0].legend()
 
-axarr[1].set_title('Velocity X')
-axarr[1].plot(Time, RefVelX, label="Reference VelX")
+axarr[1].set_title('Freq')
+axarr[1].plot(Time, Freq, "r-", label="Freq")
+axarr[1].plot(Time, FreqAdj, "g-", label="FreqAdj")
 axarr[1].grid()
 axarr[1].legend()
 
