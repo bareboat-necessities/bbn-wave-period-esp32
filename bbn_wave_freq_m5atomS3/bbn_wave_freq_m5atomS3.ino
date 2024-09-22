@@ -29,7 +29,6 @@
 #include "KalmanForWave.h"
 #include "KalmanForWaveAlt.h"
 #include "NmeaXDR.h"
-#include "KalmanQMEKF.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -76,14 +75,11 @@ unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL
 unsigned long got_samples = 0;
 int first = 1, kalman_k_first = 1;
 
-int useMahony = 1;
-
 MinMaxLemire min_max_h;
 AranovskiyParams params;
 AranovskiyState state;
 KalmanSmootherVars kalman_freq;
 Mahony_AHRS_Vars mahony;
-Kalman_QMEKF_vars kalman_mekf;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 
@@ -163,32 +159,10 @@ void read_and_processIMU_data() {
 
     float pitch, roll, yaw;
     Quaternion quaternion;
-    if (useMahony) {
-      mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
-                         accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
-      Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
-    }
-    else {
-      Vector3f gyr = {gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD};
-      Vector3f acc = {accel.x * g_std, accel.y * g_std, accel.z * g_std};
-      //Vector3f mag = {magne.x, magne.y, magne.z};
 
-      if (first) {
-        kalman_mekf.mekf->initialize_from_acc_mag(acc, {0.0, 0.0, 0.0});
-      }
-    
-      kalman_mekf.mekf->time_update(gyr, delta_t);
-      //kalman_mekf.mekf->measurement_update(acc, mag);
-      kalman_mekf.mekf->measurement_update_acc_only(acc);
-
-      Vector4f quat = kalman_mekf.mekf->quaternion();
-      Quaternion_set(quat[0], quat[1], quat[2], quat[3], &quaternion);
-      float euler[3];
-      Quaternion_toEulerZYX(&quaternion, euler);
-      pitch = euler[0] / DEG_TO_RAD;
-      roll = euler[1] / DEG_TO_RAD;
-      yaw = euler[2] / DEG_TO_RAD;
-    }
+    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
+                       accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+    Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
 
     float v[3] = {accel.x, accel.y, accel.z};
     float rotated_a[3];
@@ -388,17 +362,9 @@ void setup(void) {
     startCalibration();
   }
 
-  if (useMahony) {
-    float twoKp = (2.0f * 1.0f);
-    float twoKi = (2.0f * 0.0001f);
-    mahony_AHRS_init(&mahony, twoKp, twoKi);    
-  }
-  else {
-    Vector3f sigma_a = {20.78e-3, 20.78e-3, 20.78e-3};
-    Vector3f sigma_g = {0.2020, 0.2020, 0.2020};
-    Vector3f sigma_m = {3.2e-3, 3.2e-3, 4.1e-3};
-    QMEKF_init(&kalman_mekf, sigma_a, sigma_g, sigma_m);
-  }
+  float twoKp = (2.0f * 1.0f);
+  float twoKi = (2.0f * 0.0001f);
+  mahony_AHRS_init(&mahony, twoKp, twoKi);    
 
   /*
      Accelerometer bias creates heave bias and Aranovskiy filter gives
