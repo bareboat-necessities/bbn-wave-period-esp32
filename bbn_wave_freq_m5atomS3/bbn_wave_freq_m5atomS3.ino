@@ -178,9 +178,9 @@ void read_and_processIMU_data() {
 
     if (first) {
       float k_hat = - pow(2.0 * PI * 0.3 /* freq guess */, 2);
-      waveState.displacement_integral = 0.0;
+      waveState.displacement_integral = 0.0f;
       waveState.heave = a * g_std / k_hat;
-      waveState.vert_speed = 0.0;               // ??
+      waveState.vert_speed = 0.0f;               // ??
       waveState.accel_bias = 0.0f;
       kalman_wave_init_state(&waveState);
     }
