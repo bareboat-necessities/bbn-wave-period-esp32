@@ -30,6 +30,14 @@ uint32_t now() {
 unsigned long last_update_k = 0UL;
 
 void run_fiters(float a, float v, float h, float delta_t) {
+  if (first) {
+    float k_hat = - pow(2.0 * PI * 0.3 /* freq guess */, 2);
+    waveState.displacement_integral = 0.0;
+    waveState.heave = a * g_std / k_hat;
+    waveState.vert_speed = 0.0;               // ??
+    waveState.accel_bias = 0.0f;
+    kalman_wave_init_state(&waveState);
+  }
   kalman_wave_step(&waveState, a * g_std, delta_t);
 
   if (t > 10.0 /* sec */) {
@@ -129,7 +137,7 @@ int main(int argc, char *argv[]) {
     float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t);
     float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
     float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
-    
+
     run_fiters(a / g_std, v, h, delta_t);
 
     t = t + delta_t;
