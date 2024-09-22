@@ -52,7 +52,7 @@ void run_fiters(float a, float v, float h, float delta_t) {
   double freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
 
   //if (1) {
-  if (freq_adj > 0.002 && freq_adj < 5.0) { /* prevent decimal overflows */
+  if (freq_adj > 0.008 && freq_adj < 4.0) { /* prevent decimal overflows */
     double period = 1.0 / freq_adj;
     uint32_t windowMicros = 3 * period * 1000000;
     if (windowMicros <= 10 * 1000000) {
@@ -65,7 +65,7 @@ void run_fiters(float a, float v, float h, float delta_t) {
     min_max_lemire_update(&min_max_h, sample, windowMicros);
 
     //if (1) {
-    if (fabs(arState.f - freq_adj) < 0.3 * freq_adj) { /* sanity check of convergence for freq */
+    if (fabs(arState.f - freq_adj) < 1.0 * freq_adj) { /* sanity check of convergence for freq */
       float k_hat = - pow(2.0 * PI * freq_adj, 2);
       if (kalman_k_first) {
         kalman_k_first = false;
@@ -104,8 +104,8 @@ void run_fiters(float a, float v, float h, float delta_t) {
 
 void init_fiters() {
 
-  double omega_init = 0.04 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 100.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+  double omega_init = 0.01 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
+  double k_gain = 10.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
@@ -127,14 +127,18 @@ int main(int argc, char *argv[]) {
 
   float sample_freq = 250.0; // Hz
   float delta_t = 1.0 / sample_freq;
-  float test_duration = 2.0 * 60.0;
+  float test_duration = 3.0 * 60.0;
 
   init_fiters();
+
+  //float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = PI / 3.0;
+  float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = PI / 3.0;
+  //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = PI / 3.0;
+  //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
 
   t = 0.0;
   while (t < test_duration) {
 
-    float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = PI / 3.0;
     float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t);
     float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
     float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
