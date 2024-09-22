@@ -197,7 +197,7 @@ void read_and_processIMU_data() {
     }
     double freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
 
-    if (freq_adj > 0.002 && freq_adj < 5.0) { /* prevent decimal overflows */
+    if (freq_adj > 0.008 && freq_adj < 4.0) { /* prevent decimal overflows */
       double period = 1.0 / freq_adj;
       uint32_t windowMicros = 3 * period * 1000000;
       if (windowMicros <= 10 * 1000000) {
@@ -209,7 +209,7 @@ void read_and_processIMU_data() {
       SampleType sample = { .value = waveState.heave, .timeMicroSec = now };
       min_max_lemire_update(&min_max_h, sample, windowMicros);
 
-      if (fabs(arState.f - freq_adj) < 0.3 * freq_adj) { /* sanity check of convergence for freq */
+      if (fabs(arState.f - freq_adj) < 1.0 * freq_adj) { /* sanity check of convergence for freq */
         float k_hat = - pow(2.0 * PI * freq_adj, 2);
         if (kalman_k_first) {
           kalman_k_first = false;
@@ -373,8 +373,8 @@ void setup(void) {
      lower frequency (i. e. higher period).
      Even 2cm bias in heave is too much to affect frequency a lot
   */
-  double omega_init = 0.04 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 100.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+  double omega_init = 0.01 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
+  double k_gain = 10.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
