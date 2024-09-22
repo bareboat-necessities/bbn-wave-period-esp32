@@ -176,6 +176,14 @@ void read_and_processIMU_data() {
     //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25 - 2.0) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
     //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
 
+    if (first) {
+      float k_hat = - pow(2.0 * PI * 0.3 /* freq guess */, 2);
+      waveState.displacement_integral = 0.0;
+      waveState.heave = a * g_std / k_hat;
+      waveState.vert_speed = 0.0;               // ??
+      waveState.accel_bias = 0.0f;
+      kalman_wave_init_state(&waveState);
+    }
     kalman_wave_step(&waveState, a * g_std, delta_t);
 
     if (t > 10.0 /* sec */) {
@@ -357,7 +365,7 @@ void setup(void) {
 
   float twoKp = (2.0f * 1.0f);
   float twoKi = (2.0f * 0.0001f);
-  mahony_AHRS_init(&mahony, twoKp, twoKi);    
+  mahony_AHRS_init(&mahony, twoKp, twoKi);
 
   /*
      Accelerometer bias creates heave bias and Aranovskiy filter gives
