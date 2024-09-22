@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS=-I.
+CFLAGS=-I..
 
 tests:	tests.o
 	$(CC) -o tests tests.o
