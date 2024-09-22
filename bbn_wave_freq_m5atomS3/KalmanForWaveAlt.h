@@ -178,7 +178,7 @@ void kalman_wave_alt_init_defaults() {
 
   // observation covariance [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_MEASUREMENTS]
   matrix_t *R = kalman_get_observation_noise(kfm);
-  matrix_set_symmetric(R, 0, 0, (matrix_data_t)0.01);
+  matrix_set_symmetric(R, 0, 0, (matrix_data_t)0.05);
   matrix_set_symmetric(R, 0, 1, (matrix_data_t)0.0);
   matrix_set_symmetric(R, 1, 1, (matrix_data_t)1.0);
   
@@ -203,7 +203,7 @@ void kalman_wave_alt_init_defaults() {
   // transition covariance [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *Q = kalman_get_process_noise(kf);
   matrix_data_t variance = (matrix_data_t) 1.0;
-  matrix_set_symmetric(Q, 0, 0, (matrix_data_t)variance);
+  matrix_set_symmetric(Q, 0, 0, (matrix_data_t)20.0 * variance);
   matrix_set_symmetric(Q, 0, 1, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 0, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 0, 3, (matrix_data_t)0.0);
