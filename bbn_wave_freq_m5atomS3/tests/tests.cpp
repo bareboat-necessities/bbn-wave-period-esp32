@@ -76,7 +76,7 @@ void run_fiters(float a, float v, float h, float delta_t) {
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
     printf("time,%.5f", t);
-    printf(",a,%.4f", a);
+    printf(",a,%.4f", a * g_std);
     printf(",v,%.4f", v);
     printf(",h,%.4f", h);
     printf(",heave,%.4f", waveState.heave);
@@ -87,8 +87,8 @@ void run_fiters(float a, float v, float h, float delta_t) {
     printf(",period,%.4f", period);
     printf(",freq:,%.4f", arState.f);
     printf(",freq_adj,%.4f", freq_adj);
-    printf(",heave_avg,%.4f", heave_avg);
-    printf(",accel_bias,%.4f", waveState.accel_bias);
+    printf(",heave_avg,%.7f", heave_avg);
+    printf(",accel_bias,%.5f", waveState.accel_bias);
     printf("\n");
   }
 }
@@ -96,7 +96,7 @@ void run_fiters(float a, float v, float h, float delta_t) {
 void init_fiters() {
 
   double omega_init = 0.04 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 10.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+  double k_gain = 100.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
     float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
     float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
     
-    run_fiters(a, v, h, delta_t);
+    run_fiters(a / g_std, v, h, delta_t);
 
     t = t + delta_t;
   }
