@@ -199,9 +199,7 @@ void read_and_processIMU_data() {
       else if (windowMicros >= 60 * 1000000) {
         windowMicros = 60 * 1000000;
       }
-      SampleType sample;
-      sample.timeMicroSec = now;
-      sample.value = waveState.heave;
+      SampleType sample = { .value = waveState.heave, .timeMicroSec = now };
       min_max_lemire_update(&min_max_h, sample, windowMicros);
 
       if (fabs(state.f - freq_adj) < 0.3 * freq_adj) { /* sanity check of convergence for freq */
