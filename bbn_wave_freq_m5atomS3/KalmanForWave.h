@@ -132,10 +132,10 @@ void kalman_wave_init_state(KalmanWaveState* state) {
   
   // [KALMAN_NUM_STATES * 1]
   matrix_t *x = kalman_get_state_vector(kf);
-  x->data[1] = state->displacement_integral; // displacement integral
-  x->data[2] = state->heave;                 // vertical displacement
-  x->data[3] = state->vert_speed;            // vertical velocity
-  x->data[4] = state->accel_bias;            // accel bias  
+  x->data[0] = state->displacement_integral; // displacement integral
+  x->data[1] = state->heave;                 // vertical displacement
+  x->data[2] = state->vert_speed;            // vertical velocity
+  x->data[3] = state->accel_bias;            // accel bias  
 }
 
 void kalman_wave_init_defaults() {
