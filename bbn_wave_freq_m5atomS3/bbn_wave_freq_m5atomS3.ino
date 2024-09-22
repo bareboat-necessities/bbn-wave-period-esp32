@@ -73,7 +73,7 @@ static int prev_xpos[18];
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
-int first = 1, kalman_k_first = 1;
+bool first = true, kalman_k_first = true;
 
 MinMaxLemire min_max_h;
 AranovskiyParams params;
@@ -85,8 +85,8 @@ KalmanWaveAltState waveAltState;
 
 const char* imu_name;
 
-int produce_serial_data = 1;
-int report_nmea = 1;
+bool produce_serial_data = true;
+bool report_nmea = true;
 
 float t = 0.0;
 float heave_avg = 0.0;
@@ -186,7 +186,7 @@ void read_and_processIMU_data() {
 
     if (first) {
       kalman_smoother_set_initial(&kalman_freq, state.f);
-      first = 0;
+      first = false;
     }
     double freq_adj = kalman_smoother_update(&kalman_freq, state.f);
 
@@ -205,7 +205,7 @@ void read_and_processIMU_data() {
       if (fabs(state.f - freq_adj) < 0.3 * freq_adj) { /* sanity check of convergence for freq */
         float k_hat = - pow(2.0 * PI * freq_adj, 2);
         if (kalman_k_first) {
-          kalman_k_first = 0;
+          kalman_k_first = false;
           waveAltState.heave = waveState.heave;
           waveAltState.vert_speed = waveState.vert_speed;
           waveAltState.vert_accel = k_hat * waveState.heave; //a * g_std;
