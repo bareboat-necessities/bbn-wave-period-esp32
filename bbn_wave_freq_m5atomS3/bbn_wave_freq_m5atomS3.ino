@@ -151,7 +151,7 @@ void read_and_processIMU_data() {
   got_samples++;
   now = micros();
 
-  if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 25.0) {
+  if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 16.0) {
     // ignore noise (in unbiased way) with unreasonably high Gs
 
     float delta_t = (now - last_update) / 1000000.0;  // time step sec
@@ -178,21 +178,17 @@ void read_and_processIMU_data() {
     //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
 
     kalman_wave_step(&waveState, a * g_std, delta_t);
-    float heave = waveState.heave;            // in meters
-    float accel_bias = waveState.accel_bias;  // in meters/sec^2
 
-    float y = heave;
     if (t > 10.0 /* sec */) {
       // give some time for other filters to settle first
-      aranovskiy_update(&params, &state, y, delta_t);
+      aranovskiy_update(&params, &state, waveState.heave, delta_t);
     }
-    double freq = state.f;
 
     if (first) {
-      kalman_smoother_set_initial(&kalman_freq, freq);
+      kalman_smoother_set_initial(&kalman_freq, state.f);
       first = 0;
     }
-    double freq_adj = kalman_smoother_update(&kalman_freq, freq);
+    double freq_adj = kalman_smoother_update(&kalman_freq, state.f);
 
     if (freq_adj > 0.002 && freq_adj < 5.0) { /* prevent decimal overflows */
       double period = 1.0 / freq_adj;
@@ -205,10 +201,10 @@ void read_and_processIMU_data() {
       }
       SampleType sample;
       sample.timeMicroSec = now;
-      sample.value = heave;
+      sample.value = waveState.heave;
       min_max_lemire_update(&min_max_h, sample, windowMicros);
 
-      if (fabs(freq - freq_adj) < 0.3 * freq_adj) { /* sanity check of convergence for freq */
+      if (fabs(state.f - freq_adj) < 0.3 * freq_adj) { /* sanity check of convergence for freq */
         float k_hat = - pow(2.0 * PI * freq_adj, 2);
         if (kalman_k_first) {
           kalman_k_first = 0;
@@ -234,28 +230,28 @@ void read_and_processIMU_data() {
             if (wave_height < 50.0) {
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
             }
-            if (fabs(heave) < 25.0) {
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
+            if (fabs(waveState.heave) < 25.0) {
+              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", waveState.heave);
             }
             gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-            if (fabs(freq - freq_adj) < 0.1 * freq_adj) {
+            if (fabs(state.f - freq_adj) < 0.1 * freq_adj) {
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
               if (fabs(waveAltState.heave) < 100.0) {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
               }
             }
-            if (freq > 0.002 && freq < 5.0) {
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+            if (state.f > 0.002 && state.f < 5.0) {
+              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", state.f);
             }
             gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
-            gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", accel_bias * 100.0 / g_std);
+            gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", waveState.accel_bias * 100.0 / g_std);
           }
           else {
             // report for Arduino Serial Plotter
-            //Serial.printf("heave_cm:%.4f", heave * 100);
+            //Serial.printf("heave_cm:%.4f", waveState.heave * 100);
             //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
             //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-            //Serial.printf(",freq:%.4f", freq * 100);
+            //Serial.printf(",freq:%.4f", state.f * 100);
             //Serial.printf(",h_cm:%.4f", h * 100);
             //Serial.printf(",height_cm:%.4f", wave_height * 100);
             //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
@@ -263,7 +259,7 @@ void read_and_processIMU_data() {
             //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
             //Serial.printf(",period_decisec:%.4f", period * 10);
             //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-            //Serial.printf(",accel bias:%0.4f", accel_bias);
+            //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
 
             // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
             Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
@@ -278,7 +274,7 @@ void read_and_processIMU_data() {
           M5.Lcd.printf("samples: %d\n", got_samples);
           M5.Lcd.printf("period sec: %0.4f\n", period);
           M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
-          M5.Lcd.printf("heave:      %0.4f\n", heave);
+          M5.Lcd.printf("heave:      %0.4f\n", waveState.heave);
           M5.Lcd.printf("wave height:%0.4f\n", wave_height);
           M5.Lcd.printf("range %0.4f %0.4f\n", min_max_h.min.value, min_max_h.max.value);
           M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
