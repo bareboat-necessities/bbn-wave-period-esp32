@@ -75,18 +75,20 @@ void run_fiters(float a, float v, float h, float delta_t) {
     float wave_height = min_max_h.max.value - min_max_h.min.value;
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
-    printf("time:%.5f", t);
-    printf(",h_cm:%.4f", h * 100);
-    printf(",heave_cm:%.4f", waveState.heave * 100);
-    printf(",heave_alt:%.4f", waveAltState.heave * 100);
-    printf(",freq_adj:%.4f", freq_adj * 100);
-    printf(",freq:%.4f", arState.f * 100);
-    printf(",height_cm:%.4f", wave_height * 100);
-    printf(",max_cm:%.4f", min_max_h.max.value * 100);
-    printf(",min_cm:%.4f", min_max_h.min.value * 100);
-    printf(",heave_avg_cm:%.4f", heave_avg * 100);
-    printf(",period_decisec:%.4f", period * 10);
-    printf(",accel bias:%0.4f", waveState.accel_bias);
+    printf("time,%.5f", t);
+    printf(",a,%.4f", a);
+    printf(",v,%.4f", v);
+    printf(",h,%.4f", h);
+    printf(",heave,%.4f", waveState.heave);
+    printf(",heave_alt,%.4f", waveAltState.heave);
+    printf(",height,%.4f", wave_height);
+    printf(",max,%.4f", min_max_h.max.value);
+    printf(",min,%.4f", min_max_h.min.value);
+    printf(",period,%.4f", period);
+    printf(",freq:,%.4f", arState.f);
+    printf(",freq_adj,%.4f", freq_adj);
+    printf(",heave_avg,%.4f", heave_avg);
+    printf(",accel_bias,%.4f", waveState.accel_bias);
     printf("\n");
   }
 }
@@ -127,14 +129,6 @@ int main(int argc, char *argv[]) {
     float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t);
     float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
     float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
-
-    /*
-    printf("time:%.5f", t);
-    printf(",h:%.4f", h * 100);
-    printf(",v:%.4f", v * 100);
-    printf(",a:%.4f", a * 100);
-    printf("\n");
-    */
     
     run_fiters(a, v, h, delta_t);
 
