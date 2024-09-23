@@ -51,8 +51,7 @@ void run_fiters(float a, float v, float h, float delta_t) {
   }
   double freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
 
-  //if (1) {
-  if (freq_adj > 0.008 && freq_adj < 4.0) { /* prevent decimal overflows */
+  if (freq_adj > 0.004 && freq_adj < 4.0) { /* prevent decimal overflows */
     double period = 1.0 / freq_adj;
     uint32_t windowMicros = 3 * period * 1000000;
     if (windowMicros <= 10 * 1000000) {
@@ -64,7 +63,6 @@ void run_fiters(float a, float v, float h, float delta_t) {
     SampleType sample = { .value = waveState.heave, .timeMicroSec = now() };
     min_max_lemire_update(&min_max_h, sample, windowMicros);
 
-    //if (1) {
     if (fabs(arState.f - freq_adj) < 1.0 * freq_adj) { /* sanity check of convergence for freq */
       float k_hat = - pow(2.0 * PI * freq_adj, 2);
       if (kalman_k_first) {
