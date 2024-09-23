@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
 
   float sample_freq = 250.0; // Hz
   float delta_t = 1.0 / sample_freq;
-  float test_duration = 3.0 * 60.0;
+  float test_duration = 5.0 * 60.0;
 
   init_fiters();
 
