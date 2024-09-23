@@ -197,7 +197,7 @@ void read_and_processIMU_data() {
     }
     double freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
 
-    if (freq_adj > 0.008 && freq_adj < 4.0) { /* prevent decimal overflows */
+    if (freq_adj > 0.004 && freq_adj < 4.0) { /* prevent decimal overflows */
       double period = 1.0 / freq_adj;
       uint32_t windowMicros = 3 * period * 1000000;
       if (windowMicros <= 10 * 1000000) {
@@ -246,7 +246,7 @@ void read_and_processIMU_data() {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
               }
             }
-            if (arState.f > 0.008 && arState.f < 4.0) {
+            if (arState.f > 0.02 && arState.f < 4.0) {
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", arState.f);
             }
             gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
