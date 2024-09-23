@@ -233,20 +233,20 @@ void read_and_processIMU_data() {
         if (produce_serial_data) {
           if (report_nmea) {
             // do not report data for which filters clearly didn't converge
-            if (wave_height < 50.0) {
+            if (wave_height < 30.0) {
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
             }
-            if (fabs(waveState.heave) < 25.0) {
+            if (fabs(waveState.heave) < 15.0) {
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", waveState.heave);
             }
             gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-            if (fabs(arState.f - freq_adj) < 0.1 * freq_adj) {
+            if (fabs(arState.f - freq_adj) < 0.07 * freq_adj) {
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
-              if (fabs(waveAltState.heave) < 100.0) {
+              if (fabs(waveAltState.heave) < 15.0) {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
               }
             }
-            if (arState.f > 0.002 && arState.f < 5.0) {
+            if (arState.f > 0.008 && arState.f < 4.0) {
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", arState.f);
             }
             gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
