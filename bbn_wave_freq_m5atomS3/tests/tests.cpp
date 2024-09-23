@@ -102,8 +102,8 @@ void run_fiters(float a, float v, float h, float delta_t) {
 
 void init_fiters() {
 
-  double omega_init = 0.02 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 40.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+  double omega_init = 0.03 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
+  double k_gain = 25.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
 
   float sample_freq = 250.0; // Hz
   float delta_t = 1.0 / sample_freq;
-  float test_duration = 15.0 * 60.0;
+  float test_duration = 10.0 * 60.0;
 
   init_fiters();
 
