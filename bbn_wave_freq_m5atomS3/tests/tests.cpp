@@ -102,8 +102,8 @@ void run_fiters(float a, float v, float h, float delta_t) {
 
 void init_fiters() {
 
-  double omega_init = 0.01 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 10.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+  double omega_init = 0.02 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
+  double k_gain = 40.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
@@ -125,16 +125,15 @@ int main(int argc, char *argv[]) {
 
   float sample_freq = 250.0; // Hz
   float delta_t = 1.0 / sample_freq;
-  float test_duration = 3.0 * 60.0;
+  float test_duration = 15.0 * 60.0;
 
   init_fiters();
 
-  float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 1.5 /* 1.5 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = PI / 3.0;
-  //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
+  float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
 
   t = 0.0;
   while (t < test_duration) {
