@@ -46,8 +46,8 @@ class QuaternionMEKF {
     static constexpr T half = T(1) / T(2);
 
   public:
-    QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0 = 1e-6, T Pb0 = 1e-1);
-    constexpr QuaternionMEKF(T const sigma_a[3], T const sigma_g[3], T const sigma_m[3], T Pq0 = 1e-6, T Pb0 = 1e-1);
+    QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0, T Pb0);
+    constexpr QuaternionMEKF(T const sigma_a[3], T const sigma_g[3], T const sigma_m[3], T Pq0, T Pb0);
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
     void initialize_from_acc_mag(T const acc[3], T const mag[3]);
     void initialize_from_acc(Vector3 const& acc);
@@ -393,9 +393,3 @@ typedef struct QMEKF_vars {
   Vector3f sigma_m = {3.2e-3, 3.2e-3, 4.1e-3};
   QuaternionMEKF<float, true>* mekf;
 } Kalman_QMEKF_vars;
-
-void QMEKF_init(Kalman_QMEKF_vars* qmekf, Vector3f sigma_a, Vector3f sigma_g, Vector3f sigma_m) {
-  static QuaternionMEKF<float, true> mekf(sigma_a, sigma_g, sigma_m);
-  qmekf->mekf = &mekf;
-}
-
