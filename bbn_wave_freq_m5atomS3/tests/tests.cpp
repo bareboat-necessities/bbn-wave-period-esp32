@@ -2,6 +2,7 @@
   Copyright 2024, Mikhail Grushinskiy
 */
 #include <cmath>
+#include <random>
 
 #include "AranovskiyFilter.h"
 #include "KalmanSmoother.h"
@@ -135,10 +136,16 @@ int main(int argc, char *argv[]) {
   //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
 
+  const float bias = 0.1;
+  const double mean = 0.0;
+  const double stddev = 0.05;
+  std::default_random_engine generator;
+  std::normal_distribution<float> dist(mean, stddev);
+
   t = 0.0;
   while (t < test_duration) {
-
-    float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t);
+    float zero_mean_gauss_noise = dist(generator);
+    float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t) + bias + zero_mean_gauss_noise;
     float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
     float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
 
