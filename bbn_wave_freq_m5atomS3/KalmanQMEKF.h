@@ -219,11 +219,11 @@ void QuaternionMEKF<T, with_bias>::measurement_update(Vector3 const& acc, Vector
   Matrix<T, M, N> C;
   if constexpr (with_bias) {
     C << C1, Matrix<T, 3, 3>::Zero(),
-    C2, Matrix<T, 3, 3>::Zero();
+         C2, Matrix<T, 3, 3>::Zero();
   }
   else {
     C << C1,
-    C2;
+         C2;
   }
 
   Vector6 const yhat = (Vector6() << v1hat,
@@ -386,10 +386,14 @@ constexpr typename QuaternionMEKF<T, with_bias>::MatrixN QuaternionMEKF<T, with_
 
 typedef Matrix<float, 3, 1> Vector3f;
 typedef Matrix<float, 4, 1> Vector4f;
-    
+
+/*
 typedef struct QMEKF_vars {
   Vector3f sigma_a = {20.78e-3, 20.78e-3, 20.78e-3};
   Vector3f sigma_g = {0.2020*M_PI/180, 0.2020*M_PI/180, 0.2020*M_PI/180};
   Vector3f sigma_m = {3.2e-3, 3.2e-3, 4.1e-3};
   QuaternionMEKF<float, true>* mekf;
 } Kalman_QMEKF_vars;
+*/
+
+
