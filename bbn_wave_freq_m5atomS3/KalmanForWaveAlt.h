@@ -217,7 +217,7 @@ void kalman_wave_alt_init_defaults() {
   matrix_set_symmetric(Q, 2, 4, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 3, 3, (matrix_data_t)100000 * variance);
   matrix_set_symmetric(Q, 3, 4, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 4, 4, (matrix_data_t)0.0001 * variance);
+  matrix_set_symmetric(Q, 4, 4, (matrix_data_t)0.0002 * variance);
 }
 
 void kalman_wave_alt_step(KalmanWaveAltState* state, float accel, float k_hat, float delta_t) {
