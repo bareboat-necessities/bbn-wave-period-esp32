@@ -186,7 +186,7 @@ void kalman_wave_init_defaults() {
   matrix_set_symmetric(Q, 1, 3, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 2, 2, (matrix_data_t)0.04 * variance);
   matrix_set_symmetric(Q, 2, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 3, 3, (matrix_data_t)0.008 * variance);
+  matrix_set_symmetric(Q, 3, 3, (matrix_data_t)0.0001 * variance);
 }
 
 void kalman_wave_step(KalmanWaveState* state, float accel, float delta_t) {
