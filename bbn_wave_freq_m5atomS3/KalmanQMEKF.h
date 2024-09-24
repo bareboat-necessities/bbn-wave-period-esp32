@@ -90,12 +90,12 @@ class QuaternionMEKF {
     Vector3 accelerometer_measurement_func() const;
     Vector3 magnetometer_measurement_func() const;
 
-    static constexpr MatrixN initialize_Q(Vector3 sigma_g);
+    static constexpr MatrixN initialize_Q(Vector3 sigma_g, T b0);
 };
 
 template <typename T, bool with_bias>
-QuaternionMEKF<T, with_bias>::QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0, T Pb0)
-  : Q(initialize_Q(sigma_g)),
+QuaternionMEKF<T, with_bias>::QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0, T Pb0, Tb0)
+  : Q(initialize_Q(sigma_g, b0)),
   Racc(sigma_a.array().square().matrix().asDiagonal()),
   Rmag(sigma_m.array().square().matrix().asDiagonal()),
   R((Vector6() << sigma_a, sigma_m).finished().array().square().matrix().asDiagonal()) {
@@ -375,9 +375,9 @@ Matrix<T, 3, 1> QuaternionMEKF<T, with_bias>::magnetometer_measurement_func() co
 }
 
 template<typename T, bool with_bias>
-constexpr typename QuaternionMEKF<T, with_bias>::MatrixN QuaternionMEKF<T, with_bias>::initialize_Q(Vector3 sigma_g) {
+constexpr typename QuaternionMEKF<T, with_bias>::MatrixN QuaternionMEKF<T, with_bias>::initialize_Q(Vector3 sigma_g, T b0) {
   if constexpr (with_bias) {
-    return (Vector6() << sigma_g.array().square().matrix(), 1e-12, 1e-12, 1e-12).finished().asDiagonal();
+    return (Vector6() << sigma_g.array().square().matrix(), b0, b0, b0).finished().asDiagonal();
   }
   else {
     return sigma_g.array().square().matrix().asDiagonal();
@@ -395,5 +395,4 @@ typedef struct QMEKF_vars {
   QuaternionMEKF<float, true>* mekf;
 } Kalman_QMEKF_vars;
 */
-
 
