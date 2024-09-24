@@ -389,5 +389,10 @@ typedef Matrix<float, 4, 1> Vector4f;
 
 typedef struct kalman_QMEKF {
   QuaternionMEKF<float, true>* mekf;
+  Vector3f gyr;
+  Vector3f acc;
+  Vector3f mag;
+  Vector3f g_bias;
+  Vector4f quat;
 } Kalman_QMEKF;
 
