@@ -148,6 +148,14 @@ void startCalibration(void) {
   updateCalibration(30, true);
 }
 
+/*
+   From experiments QMEKF somehow introduces bigger bias of vertical acceleration.
+   Longer warm up time is needed to engage Aranovskiy filter.
+ */
+int warmup_time_sec() {
+  return useMahony ? 15 : 120;
+}
+
 void read_and_processIMU_data() {
   m5::imu_3d_t accel;
   M5.Imu.getAccelData(&accel.x, &accel.y, &accel.z);
@@ -217,7 +225,7 @@ void read_and_processIMU_data() {
     }
     kalman_wave_step(&waveState, a * g_std, delta_t);
 
-    if (t > 10.0 /* sec */) {
+    if (t > warmup_time_sec()) {
       // give some time for other filters to settle first
       aranovskiy_update(&arParams, &arState, waveState.heave, delta_t);
     }
@@ -294,21 +302,21 @@ void read_and_processIMU_data() {
           }
           else {
             // report for Arduino Serial Plotter
-            //Serial.printf("heave_cm:%.4f", waveState.heave * 100);
-            //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+            Serial.printf("heave_cm:%.4f", waveState.heave * 100);
+            Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
             //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
             //Serial.printf(",freq:%.4f", arState.f * 100);
             //Serial.printf(",h_cm:%.4f", h * 100);
-            //Serial.printf(",height_cm:%.4f", wave_height * 100);
-            //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
-            //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
-            //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
+            Serial.printf(",height_cm:%.4f", wave_height * 100);
+            Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
+            Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
+            Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
             //Serial.printf(",period_decisec:%.4f", period * 10);
             //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
             //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
 
             // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
-            Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
+            //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
             Serial.println();
           }
         }
@@ -339,13 +347,11 @@ void read_and_processIMU_data() {
 
 void repeatMe() {
   static uint32_t prev_sec = 0;
-
   auto imu_update = M5.Imu.update();
-  if (imu_update) {
+  if (imu_update && !AtomS3.BtnA.isPressed()) {
     read_and_processIMU_data();
   }
   else {
-    AtomS3.update();
     // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
     if (AtomS3.BtnA.isPressed()) {
       startCalibration();
