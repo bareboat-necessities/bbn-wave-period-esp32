@@ -89,7 +89,7 @@ Kalman_QMEKF kalman_mekf;
 const char* imu_name;
 
 bool produce_serial_data = true;
-bool report_nmea = false;
+bool report_nmea = true;
 
 float t = 0.0;
 float heave_avg = 0.0;
@@ -170,7 +170,7 @@ void read_and_processIMU_data() {
     }
     else {
       kalman_mekf.gyr = {gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD};
-      kalman_mekf.acc = {accel.x, accel.y, accel.z}; // {0.0, 0.0, -1.0}; 
+      kalman_mekf.acc = {accel.x, accel.y, accel.z}; 
       //kalman_mekf.mag = {magne.x, magne.y, magne.z};
 
       if (first) {
@@ -215,7 +215,7 @@ void read_and_processIMU_data() {
 
     if (t > 10.0 /* sec */) {
       // give some time for other filters to settle first
-      aranovskiy_update(&arParams, &arState, waveState.heave / 1000.0, delta_t);
+      aranovskiy_update(&arParams, &arState, waveState.heave, delta_t);
     }
 
     if (first) {
