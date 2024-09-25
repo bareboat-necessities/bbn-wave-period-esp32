@@ -29,6 +29,7 @@
 #include "KalmanForWave.h"
 #include "KalmanForWaveAlt.h"
 #include "NmeaXDR.h"
+#include "KalmanQMEKF.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -63,6 +64,8 @@ struct rect_t {
   int32_t h;
 };
 
+bool useMahony = false;
+
 static uint8_t calib_countdown = 0;
 
 static auto &disp = (M5.Display);
@@ -81,11 +84,12 @@ KalmanSmootherVars kalman_freq;
 Mahony_AHRS_Vars mahony;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
+Kalman_QMEKF kalman_mekf;
 
 const char* imu_name;
 
 bool produce_serial_data = true;
-bool report_nmea = true;
+bool report_nmea = false;
 
 float t = 0.0;
 float heave_avg = 0.0;
@@ -159,10 +163,33 @@ void read_and_processIMU_data() {
     float pitch, roll, yaw;
     Quaternion quaternion;
 
-    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
-                       accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
-    Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
+    if (useMahony) {
+      mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
+                         accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+      Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
+    }
+    else {
+      kalman_mekf.gyr = {gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD};
+      kalman_mekf.acc = {accel.x, accel.y, accel.z}; // {0.0, 0.0, -1.0}; 
+      //kalman_mekf.mag = {magne.x, magne.y, magne.z};
 
+      if (first) {
+        //kalman_mekf.mekf->initialize_from_acc_mag(kalman_mekf.acc, kalman_mekf.mag);
+        kalman_mekf.mekf->initialize_from_acc(kalman_mekf.acc);
+      }
+
+      kalman_mekf.mekf->time_update(kalman_mekf.gyr, delta_t);
+      //kalman_mekf.mekf->measurement_update(kalman_mekf.acc, kalman_mekf.mag);
+      kalman_mekf.mekf->measurement_update_acc_only(kalman_mekf.acc);
+      kalman_mekf.quat = kalman_mekf.mekf->quaternion();
+      Quaternion_set(kalman_mekf.quat.w(), kalman_mekf.quat.x(), kalman_mekf.quat.y(), kalman_mekf.quat.z(), &quaternion);
+      float euler[3];
+      Quaternion_toEulerZYX(&quaternion, euler);
+      roll = euler[0] * RAD_TO_DEG;
+      pitch = euler[1] * RAD_TO_DEG;
+      yaw = euler[2] * RAD_TO_DEG;
+    }
+    
     float v[3] = {accel.x, accel.y, accel.z};
     float rotated_a[3];
     Quaternion_rotate(&quaternion, v, rotated_a);
@@ -188,7 +215,7 @@ void read_and_processIMU_data() {
 
     if (t > 10.0 /* sec */) {
       // give some time for other filters to settle first
-      aranovskiy_update(&arParams, &arState, waveState.heave, delta_t);
+      aranovskiy_update(&arParams, &arState, waveState.heave / 1000.0, delta_t);
     }
 
     if (first) {
@@ -364,10 +391,22 @@ void setup(void) {
     startCalibration();
   }
 
-  float twoKp = (2.0f * 1.0f);
-  float twoKi = (2.0f * 0.0001f);
-  mahony_AHRS_init(&mahony, twoKp, twoKi);
-
+  if (useMahony) {
+    float twoKp = (2.0f * 1.0f);
+    float twoKi = (2.0f * 0.0001f);
+    mahony_AHRS_init(&mahony, twoKp, twoKi);    
+  }
+  else {
+    static Vector3f sigma_a = {20.78e-3, 20.78e-3, 20.78e-3};
+    static Vector3f sigma_g = {0.2020*M_PI/180, 0.2020*M_PI/180, 0.2020*M_PI/180};
+    static Vector3f sigma_m = {3.2e-3, 3.2e-3, 4.1e-3};
+    float Pq0 = 1e-6;
+    float Pb0 = 1e-1;
+    float b0 = 1e-12;
+    static QuaternionMEKF<float, true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
+    kalman_mekf.mekf = &mekf;
+  }
+  
   /*
      Accelerometer bias creates heave bias and Aranovskiy filter gives
      lower frequency (i. e. higher period).
