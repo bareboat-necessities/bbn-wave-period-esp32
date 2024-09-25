@@ -439,11 +439,11 @@ void setup(void) {
     mahony_AHRS_init(&mahony, twoKp, twoKi);
   }
   else {
-    static Vector3f sigma_a = {20.78e-3, 20.78e-3, 20.78e-3};
+    static Vector3f sigma_a = {20.78e-2, 20.78e-2, 20.78e-2};
     static Vector3f sigma_g = {0.2020 * M_PI / 180, 0.2020 * M_PI / 180, 0.2020 * M_PI / 180};
     static Vector3f sigma_m = {3.2e-3, 3.2e-3, 3.2e-3};
     float Pq0 = 1e-2;
-    float Pb0 = 1e-1;
+    float Pb0 = 1e-2;
     float b0 = 1e-12;
     static QuaternionMEKF<float, true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
     kalman_mekf.mekf = &mekf;
