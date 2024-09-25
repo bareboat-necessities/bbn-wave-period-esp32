@@ -173,8 +173,8 @@ void read_and_processIMU_data() {
       Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
     }
     else {
-      kalman_mekf.gyr = {gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD};
-      kalman_mekf.acc = {accel.x, accel.y, accel.z};
+      kalman_mekf.gyr = {gyro.y * DEG_TO_RAD, gyro.x * DEG_TO_RAD, -gyro.z * DEG_TO_RAD};
+      kalman_mekf.acc = {accel.y, accel.x, -accel.z}; 
       //kalman_mekf.mag = {magne.x, magne.y, magne.z};
 
       if (first) {
