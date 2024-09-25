@@ -95,6 +95,10 @@ float t = 0.0;
 float heave_avg = 0.0;
 float wave_length = 0.0;
 
+void init_aranovskiy();
+void init_smoother();
+void init_filters();
+
 void updateCalibration(uint32_t c, bool clear = false) {
   calib_countdown = c;
 
@@ -170,7 +174,7 @@ void read_and_processIMU_data() {
     }
     else {
       kalman_mekf.gyr = {gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD};
-      kalman_mekf.acc = {accel.x, accel.y, accel.z}; 
+      kalman_mekf.acc = {accel.x, accel.y, accel.z}; // {0.0, 0.0, -1.0};
       //kalman_mekf.mag = {magne.x, magne.y, magne.z};
 
       if (first) {
@@ -189,7 +193,7 @@ void read_and_processIMU_data() {
       pitch = euler[1] * RAD_TO_DEG;
       yaw = euler[2] * RAD_TO_DEG;
     }
-    
+
     float v[3] = {accel.x, accel.y, accel.z};
     float rotated_a[3];
     Quaternion_rotate(&quaternion, v, rotated_a);
@@ -224,7 +228,16 @@ void read_and_processIMU_data() {
     }
     double freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
 
-    if (freq_adj > 0.004 && freq_adj < 4.0) { /* prevent decimal overflows */
+    if (isnan(freq_adj)) {
+      // reset filters
+      first = true;
+      kalman_k_first = true;
+      init_filters();
+      start_time = micros();
+      last_update = start_time;
+      t = 0.0;
+    }
+    else if (freq_adj > 0.004 && freq_adj < 4.0) { /* prevent decimal overflows */
       double period = 1.0 / freq_adj;
       uint32_t windowMicros = 3 * period * 1000000;
       if (windowMicros <= 10 * 1000000) {
@@ -351,6 +364,35 @@ void repeatMe() {
   }
 }
 
+void init_aranovskiy() {
+  /*
+    Accelerometer bias creates heave bias and Aranovskiy filter gives
+    lower frequency (i. e. higher period).
+    Even 2cm bias in heave is too much to affect frequency a lot
+  */
+  double omega_init = 0.03 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
+  double k_gain = 25.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+  double x1_0 = 0.0;
+  double theta_0 = - (omega_init * omega_init / 4.0);
+  double sigma_0 = theta_0;
+  aranovskiy_default_params(&arParams, omega_init, k_gain);
+  aranovskiy_init_state(&arState, x1_0, theta_0, sigma_0);
+}
+
+void init_smoother() {
+  double process_noise_covariance = 0.25;
+  double measurement_uncertainty = 2.0;
+  double estimation_uncertainty = 100.0;
+  kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
+}
+
+void init_filters() {
+  init_aranovskiy();
+  init_smoother();
+  kalman_wave_init_defaults();
+  kalman_wave_alt_init_defaults();
+}
+
 void setup(void) {
   auto cfg = M5.config();
   AtomS3.begin(cfg);
@@ -394,41 +436,20 @@ void setup(void) {
   if (useMahony) {
     float twoKp = (2.0f * 1.0f);
     float twoKi = (2.0f * 0.0001f);
-    mahony_AHRS_init(&mahony, twoKp, twoKi);    
+    mahony_AHRS_init(&mahony, twoKp, twoKi);
   }
   else {
     static Vector3f sigma_a = {20.78e-3, 20.78e-3, 20.78e-3};
-    static Vector3f sigma_g = {0.2020*M_PI/180, 0.2020*M_PI/180, 0.2020*M_PI/180};
-    static Vector3f sigma_m = {3.2e-3, 3.2e-3, 4.1e-3};
-    float Pq0 = 1e-6;
+    static Vector3f sigma_g = {0.2020 * M_PI / 180, 0.2020 * M_PI / 180, 0.2020 * M_PI / 180};
+    static Vector3f sigma_m = {3.2e-3, 3.2e-3, 3.2e-3};
+    float Pq0 = 1e-2;
     float Pb0 = 1e-1;
     float b0 = 1e-12;
     static QuaternionMEKF<float, true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
     kalman_mekf.mekf = &mekf;
   }
-  
-  /*
-     Accelerometer bias creates heave bias and Aranovskiy filter gives
-     lower frequency (i. e. higher period).
-     Even 2cm bias in heave is too much to affect frequency a lot
-  */
-  double omega_init = 0.03 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 25.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
-  double x1_0 = 0.0;
-  double theta_0 = - (omega_init * omega_init / 4.0);
-  double sigma_0 = theta_0;
-  aranovskiy_default_params(&arParams, omega_init, k_gain);
-  aranovskiy_init_state(&arState, x1_0, theta_0, sigma_0);
 
-  {
-    double process_noise_covariance = 0.25;
-    double measurement_uncertainty = 2.0;
-    double estimation_uncertainty = 100.0;
-    kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
-  }
-
-  kalman_wave_init_defaults();
-  kalman_wave_alt_init_defaults();
+  init_filters();
 
   start_time = micros();
   last_update = start_time;
