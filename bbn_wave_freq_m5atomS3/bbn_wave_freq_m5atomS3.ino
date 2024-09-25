@@ -64,7 +64,7 @@ struct rect_t {
   int32_t h;
 };
 
-bool useMahony = false;
+bool useMahony = true;
 
 static uint8_t calib_countdown = 0;
 
