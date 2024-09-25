@@ -174,7 +174,7 @@ void read_and_processIMU_data() {
     }
     else {
       kalman_mekf.gyr = {gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD};
-      kalman_mekf.acc = {accel.x, accel.y, accel.z}; // {0.0, 0.0, -1.0};
+      kalman_mekf.acc = {accel.x, accel.y, accel.z};
       //kalman_mekf.mag = {magne.x, magne.y, magne.z};
 
       if (first) {
