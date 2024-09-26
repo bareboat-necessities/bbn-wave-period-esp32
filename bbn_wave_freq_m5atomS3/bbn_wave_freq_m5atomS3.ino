@@ -216,7 +216,7 @@ void read_and_processIMU_data() {
 
     if (t > warmup_time_sec(useMahony)) {
       // give some time for other filters to settle first
-      aranovskiy_update(&arParams, &arState, waveState.heave, delta_t);
+      aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
     }
 
     if (first) {
