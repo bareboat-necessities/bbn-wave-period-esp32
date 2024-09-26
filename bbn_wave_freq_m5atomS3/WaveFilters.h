@@ -6,6 +6,7 @@
 #define FREQ_GUESS 0.3 /* freq guess */
 
 #define FREQ_COEF  1.0
+#define ARANOVSKIY_SCALE 10.0
 
 #define ACCEL_MAX_G_SQUARE 16.0
 
@@ -39,8 +40,8 @@ void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state) {
     lower frequency (i. e. higher period).
     Even 2cm bias in heave is too much to affect frequency a lot
   */
-  double omega_init = 0.065 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 10.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+  double omega_init = 0.3 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
+  double k_gain = 100.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
