@@ -10,6 +10,7 @@
 #include "MinMaxLemire.h"
 #include "KalmanForWave.h"
 #include "KalmanForWaveAlt.h"
+#include "WaveFilters.h"
 
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
@@ -30,9 +31,9 @@ uint32_t now() {
 
 unsigned long last_update_k = 0UL;
 
-void run_fiters(float a, float v, float h, float delta_t) {
+void run_filters(float a, float v, float h, float delta_t) {
   if (first) {
-    float k_hat = - pow(2.0 * PI * 0.3 /* freq guess */, 2);
+    float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
     waveState.displacement_integral = 0.0f;
     waveState.heave = a * g_std / k_hat;
     waveState.vert_speed = 0.0f;               // ??
@@ -41,7 +42,7 @@ void run_fiters(float a, float v, float h, float delta_t) {
   }
   kalman_wave_step(&waveState, a * g_std, delta_t);
 
-  if (t > 10.0 /* sec */) {
+  if (t > warmup_time_sec(true)) {
     // give some time for other filters to settle first
     aranovskiy_update(&arParams, &arState, waveState.heave, delta_t);
   }
@@ -52,15 +53,9 @@ void run_fiters(float a, float v, float h, float delta_t) {
   }
   double freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
 
-  if (freq_adj > 0.004 && freq_adj < 4.0) { /* prevent decimal overflows */
+  if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
     double period = 1.0 / freq_adj;
-    uint32_t windowMicros = 3 * period * 1000000;
-    if (windowMicros <= 10 * 1000000) {
-      windowMicros = 10 * 1000000;
-    }
-    else if (windowMicros >= 60 * 1000000) {
-      windowMicros = 60 * 1000000;
-    }
+    uint32_t windowMicros = getWindowMicros(period);
     SampleType sample = { .value = waveState.heave, .timeMicroSec = now() };
     min_max_lemire_update(&min_max_h, sample, windowMicros);
 
@@ -101,34 +96,13 @@ void run_fiters(float a, float v, float h, float delta_t) {
   }
 }
 
-void init_fiters() {
-
-  double omega_init = 0.03 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 25.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
-  double x1_0 = 0.0;
-  double theta_0 = - (omega_init * omega_init / 4.0);
-  double sigma_0 = theta_0;
-  aranovskiy_default_params(&arParams, omega_init, k_gain);
-  aranovskiy_init_state(&arState, x1_0, theta_0, sigma_0);
-
-  {
-    double process_noise_covariance = 0.25;
-    double measurement_uncertainty = 2.0;
-    double estimation_uncertainty = 100.0;
-    kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
-  }
-
-  kalman_wave_init_defaults();
-  kalman_wave_alt_init_defaults();
-}
-
 int main(int argc, char *argv[]) {
 
   float sample_freq = 250.0; // Hz
   float delta_t = 1.0 / sample_freq;
   float test_duration = 5.0 * 60.0;
 
-  init_fiters();
+  init_filters(&arParams, &arState, &kalman_freq);
 
   //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
   float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = PI / 3.0;
@@ -149,7 +123,7 @@ int main(int argc, char *argv[]) {
     float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
     float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
 
-    run_fiters(a / g_std, v, h, delta_t);
+    run_filters(a / g_std, v, h, delta_t);
 
     t = t + delta_t;
   }
