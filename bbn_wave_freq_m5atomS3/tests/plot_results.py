@@ -16,7 +16,7 @@ FreqAdj = Data[:, [11]]
 
 f, axarr = plt.subplots(3, sharex="all")
 
-axarr[0].set_title('Acceleration X')
+axarr[0].set_title('Acceleration')
 axarr[0].plot(Time, AccX, label="Input AccX")
 axarr[0].grid()
 axarr[0].legend()
@@ -27,7 +27,7 @@ axarr[1].plot(Time, FreqAdj, "g-", label="FreqAdj")
 axarr[1].grid()
 axarr[1].legend()
 
-axarr[2].set_title('Position X')
+axarr[2].set_title('Position')
 axarr[2].plot(Time, RefPosX, label="Reference PosX")
 axarr[2].plot(Time, Heave, "r-", label="Heave")
 axarr[2].plot(Time, HeaveAlt, "g-", label="HeaveAlt")
