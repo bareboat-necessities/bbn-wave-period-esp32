@@ -24,13 +24,4 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 
 ## TODO
 
-* Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
-
-* Frequency estimation right now is very bad. Need to fix it somehow
-  
-* Implement Kalman alorithm for wave estimation (the one mentioned here: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html) And fuse together with trochoidal model results.
-
-* Generate some reference data, test cases with it and produce some graphical charts. There are many parameterized filters used and gains and coefficients
-need to be fine tuned for better results.
-
-* Produce NMEA 0183 XDR sentences for heave, wave height, etc to serial port of m5atomS3
+* Try to find a way for mpu6886 to sample at higher (than 250Hz) 
