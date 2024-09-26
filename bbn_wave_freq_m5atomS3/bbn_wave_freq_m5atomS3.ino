@@ -155,7 +155,7 @@ void read_and_processIMU_data() {
   got_samples++;
   now = micros();
 
-  if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < 16.0) {
+  if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < ACCEL_MAX_G_SQUARE) {
     // ignore noise (in unbiased way) with unreasonably high Gs
 
     float delta_t = (now - last_update) / 1000000.0;  // time step sec
@@ -240,7 +240,7 @@ void read_and_processIMU_data() {
       SampleType sample = { .value = waveState.heave, .timeMicroSec = now };
       min_max_lemire_update(&min_max_h, sample, windowMicros);
 
-      if (fabs(arState.f - freq_adj) < 1.0 * freq_adj) { /* sanity check of convergence for freq */
+      if (fabs(arState.f - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
         float k_hat = - pow(2.0 * PI * freq_adj, 2);
         if (kalman_k_first) {
           kalman_k_first = false;
