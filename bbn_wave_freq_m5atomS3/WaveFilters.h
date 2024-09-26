@@ -5,6 +5,10 @@
 #define FREQ_UPPER 4.0
 #define FREQ_GUESS 0.3 /* freq guess */
 
+#define FREQ_COEF  1.0
+
+#define ACCEL_MAX_G_SQUARE 16.0
+
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
 void init_filters(AranovskiyState* ar_param, AranovskiyState* ar_state, KalmanSmootherVars* kalman_smoother);
