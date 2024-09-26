@@ -30,6 +30,7 @@
 #include "KalmanForWaveAlt.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
+#include "WaveFilters.h"
 
 // Strength of the calibration operation;
 // 0: disables calibration.
@@ -95,10 +96,6 @@ float t = 0.0;
 float heave_avg = 0.0;
 float wave_length = 0.0;
 
-void init_aranovskiy();
-void init_smoother();
-void init_filters();
-
 void updateCalibration(uint32_t c, bool clear = false) {
   calib_countdown = c;
 
@@ -146,14 +143,6 @@ void updateCalibration(uint32_t c, bool clear = false) {
 
 void startCalibration(void) {
   updateCalibration(30, true);
-}
-
-/*
-   From experiments QMEKF somehow introduces bigger bias of vertical acceleration.
-   Longer warm up time is needed to engage Aranovskiy filter.
- */
-int warmup_time_sec() {
-  return useMahony ? 15 : 120;
 }
 
 void read_and_processIMU_data() {
@@ -216,7 +205,7 @@ void read_and_processIMU_data() {
     //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
 
     if (first) {
-      float k_hat = - pow(2.0 * PI * 0.3 /* freq guess */, 2);
+      float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
       waveState.displacement_integral = 0.0f;
       waveState.heave = a * g_std / k_hat;
       waveState.vert_speed = 0.0f;               // ??
@@ -225,7 +214,7 @@ void read_and_processIMU_data() {
     }
     kalman_wave_step(&waveState, a * g_std, delta_t);
 
-    if (t > warmup_time_sec()) {
+    if (t > warmup_time_sec(useMahony)) {
       // give some time for other filters to settle first
       aranovskiy_update(&arParams, &arState, waveState.heave, delta_t);
     }
@@ -240,20 +229,14 @@ void read_and_processIMU_data() {
       // reset filters
       first = true;
       kalman_k_first = true;
-      init_filters();
+      init_filters(&arParams, &arState, &kalman_freq);
       start_time = micros();
       last_update = start_time;
       t = 0.0;
     }
-    else if (freq_adj > 0.004 && freq_adj < 4.0) { /* prevent decimal overflows */
+    else if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
       double period = 1.0 / freq_adj;
-      uint32_t windowMicros = 3 * period * 1000000;
-      if (windowMicros <= 10 * 1000000) {
-        windowMicros = 10 * 1000000;
-      }
-      else if (windowMicros >= 60 * 1000000) {
-        windowMicros = 60 * 1000000;
-      }
+      uint32_t windowMicros = getWindowMicros(period);
       SampleType sample = { .value = waveState.heave, .timeMicroSec = now };
       min_max_lemire_update(&min_max_h, sample, windowMicros);
 
@@ -370,35 +353,6 @@ void repeatMe() {
   }
 }
 
-void init_aranovskiy() {
-  /*
-    Accelerometer bias creates heave bias and Aranovskiy filter gives
-    lower frequency (i. e. higher period).
-    Even 2cm bias in heave is too much to affect frequency a lot
-  */
-  double omega_init = 0.03 * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 25.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
-  double x1_0 = 0.0;
-  double theta_0 = - (omega_init * omega_init / 4.0);
-  double sigma_0 = theta_0;
-  aranovskiy_default_params(&arParams, omega_init, k_gain);
-  aranovskiy_init_state(&arState, x1_0, theta_0, sigma_0);
-}
-
-void init_smoother() {
-  double process_noise_covariance = 0.25;
-  double measurement_uncertainty = 2.0;
-  double estimation_uncertainty = 100.0;
-  kalman_smoother_init(&kalman_freq, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
-}
-
-void init_filters() {
-  init_aranovskiy();
-  init_smoother();
-  kalman_wave_init_defaults();
-  kalman_wave_alt_init_defaults();
-}
-
 void setup(void) {
   auto cfg = M5.config();
   AtomS3.begin(cfg);
@@ -455,7 +409,7 @@ void setup(void) {
     kalman_mekf.mekf = &mekf;
   }
 
-  init_filters();
+  init_filters(&arParams, &arState, &kalman_freq);
 
   start_time = micros();
   last_update = start_time;
