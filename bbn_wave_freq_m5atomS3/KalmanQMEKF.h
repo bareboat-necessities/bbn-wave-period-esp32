@@ -22,6 +22,8 @@
 
   Dependencies: Eigen3
 
+  The system coordinates of this filter needs swap of X and Y and negating Z from typical accelerometer readings
+
  */
 
 #include <ArduinoEigenDense.h>
@@ -395,4 +397,3 @@ typedef struct kalman_QMEKF {
   Vector3f g_bias;
   Vector4f quat;
 } Kalman_QMEKF;
-
