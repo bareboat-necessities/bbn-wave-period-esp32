@@ -28,8 +28,8 @@ uint32_t getWindowMicros(double period) {
   if (windowMicros <= 10 * 1000000) {
     windowMicros = 10 * 1000000;
   }
-  else if (windowMicros >= 60 * 1000000) {
-    windowMicros = 60 * 1000000;
+  else if (windowMicros >= 30 * 1000000) {
+    windowMicros = 30 * 1000000;
   }
   return windowMicros;
 }
