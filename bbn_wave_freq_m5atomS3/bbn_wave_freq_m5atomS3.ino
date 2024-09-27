@@ -76,7 +76,7 @@ static int prev_xpos[18];
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
-bool first = true, kalman_k_first = true;
+bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
@@ -174,7 +174,7 @@ void read_and_processIMU_data() {
       kalman_mekf.acc = {accel.y, accel.x, -accel.z}; 
       //kalman_mekf.mag = {magne.x, magne.y, magne.z};
 
-      if (first) {
+      if (kalm_w_first) {
         //kalman_mekf.mekf->initialize_from_acc_mag(kalman_mekf.acc, kalman_mekf.mag);
         kalman_mekf.mekf->initialize_from_acc(kalman_mekf.acc);
       }
@@ -204,7 +204,8 @@ void read_and_processIMU_data() {
     //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25 - 2.0) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
     //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
 
-    if (first) {
+    if (kalm_w_first) {
+      kalm_w_first = false;
       float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
       waveState.displacement_integral = 0.0f;
       waveState.heave = a * g_std / k_hat;
@@ -214,21 +215,22 @@ void read_and_processIMU_data() {
     }
     kalman_wave_step(&waveState, a * g_std, delta_t);
 
+    double freq_adj = 0.0;
     if (t > warmup_time_sec(useMahony)) {
       // give some time for other filters to settle first
       aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
+      if (kalm_smoother_first) {
+        kalm_smoother_first = false;
+        kalman_smoother_set_initial(&kalman_freq, arState.f);
+      }
+      freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
     }
-
-    if (first) {
-      kalman_smoother_set_initial(&kalman_freq, arState.f);
-      first = false;
-    }
-    double freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
 
     if (isnan(freq_adj)) {
       // reset filters
-      first = true;
-      kalman_k_first = true;
+      kalm_w_first = true;
+      kalm_w_alt_first = true;
+      kalm_smoother_first = true;
       init_filters(&arParams, &arState, &kalman_freq);
       start_time = micros();
       last_update = start_time;
@@ -242,8 +244,8 @@ void read_and_processIMU_data() {
 
       if (fabs(arState.f - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
         float k_hat = - pow(2.0 * PI * freq_adj, 2);
-        if (kalman_k_first) {
-          kalman_k_first = false;
+        if (kalm_w_alt_first) {
+          kalm_w_alt_first = false;
           waveAltState.displacement_integral = 0.0f;
           waveAltState.heave = waveState.heave;
           waveAltState.vert_speed = waveState.vert_speed;
