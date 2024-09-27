@@ -275,7 +275,7 @@ void read_and_processIMU_data() {
             gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
             if (fabs(arState.f - freq_adj) < 0.07 * freq_adj) {
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
-              if (fabs(waveAltState.heave) < 15.0) {
+              if (fabs(waveAltState.heave - waveState.heave) < 0.2 * fabs(waveState.heave)) {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
               }
             }
