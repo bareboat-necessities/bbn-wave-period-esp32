@@ -19,7 +19,7 @@ KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 
-bool first = true, kalman_k_first = true;
+bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
 float t = 0.0;
 float heave_avg = 0.0;
@@ -32,7 +32,8 @@ uint32_t now() {
 unsigned long last_update_k = 0UL;
 
 void run_filters(float a, float v, float h, float delta_t) {
-  if (first) {
+  if (kalm_w_first) {
+    kalm_w_first = false;
     float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
     waveState.displacement_integral = 0.0f;
     waveState.heave = a * g_std / k_hat;
@@ -42,16 +43,16 @@ void run_filters(float a, float v, float h, float delta_t) {
   }
   kalman_wave_step(&waveState, a * g_std, delta_t);
 
+  double freq_adj = 0.0;
   if (t > warmup_time_sec(true)) {
     // give some time for other filters to settle first
     aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
+    if (kalm_smoother_first) {
+      kalm_smoother_first = false;
+      kalman_smoother_set_initial(&kalman_freq, arState.f);
+    }
+    freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
   }
-
-  if (first) {
-    kalman_smoother_set_initial(&kalman_freq, arState.f);
-    first = false;
-  }
-  double freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
 
   if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
     double period = 1.0 / freq_adj;
@@ -61,8 +62,8 @@ void run_filters(float a, float v, float h, float delta_t) {
 
     if (fabs(arState.f - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
       float k_hat = - pow(2.0 * PI * freq_adj, 2);
-      if (kalman_k_first) {
-        kalman_k_first = false;
+      if (kalm_w_alt_first) {
+        kalm_w_alt_first = false;
         waveAltState.displacement_integral = 0.0f;
         waveAltState.heave = waveState.heave;
         waveAltState.vert_speed = waveState.vert_speed;
@@ -104,11 +105,11 @@ int main(int argc, char *argv[]) {
 
   init_filters(&arParams, &arState, &kalman_freq);
 
-  float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
+  //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = PI / 3.0;
-  //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
+  float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
 
   const float bias = 0.1;
   const double mean = 0.0;
