@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
   const double mean = 0.0;
   const double stddev = 0.05;
   std::default_random_engine generator;
-  generator.seed(239);  // see the engine for deterministic test results
+  generator.seed(239);  // seed the engine for deterministic test results
   std::normal_distribution<float> dist(mean, stddev);
 
   t = 0.0;
