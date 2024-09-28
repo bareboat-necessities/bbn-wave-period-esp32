@@ -1,5 +1,17 @@
 # bbn-wave-period-esp32
 
+Boat Heave Sensor on m5stack atomS3.
+
+m5stack atomS3 is ESP32 microcontroller with built-in IMU MPU6886 (accelerometer and gyroscope)
+
+Use arduino IDE to compile and upload sketch to esp32
+
+Check required libraries and version in .github/workflows/build.yaml
+
+Produces NMEA-0183 XDR sentences over USB (See NmeaXDR.h). Baud rate: 115200.
+
+Mount atomS3 with LCD facing up.
+
 ## Estimating Wave Height using IMU
 Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32
 
