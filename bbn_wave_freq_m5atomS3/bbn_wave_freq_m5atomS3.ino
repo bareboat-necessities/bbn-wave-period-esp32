@@ -401,8 +401,8 @@ void setup(void) {
     mahony_AHRS_init(&mahony, twoKp, twoKi);
   }
   else {
-    static Vector3f sigma_a = {20.78e-2, 20.78e-2, 20.78e-2};
-    static Vector3f sigma_g = {0.2020 * M_PI / 180, 0.2020 * M_PI / 180, 0.2020 * M_PI / 180};
+    static Vector3f sigma_a = {6.0e-3, 3.0e-3, 6.0e-3};
+    static Vector3f sigma_g = {0.15 * M_PI / 180, 0.4 * M_PI / 180, 0.15 * M_PI / 180};
     static Vector3f sigma_m = {3.2e-3, 3.2e-3, 3.2e-3};
     float Pq0 = 1e-2;
     float Pb0 = 1e-2;
