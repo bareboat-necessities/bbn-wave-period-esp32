@@ -1,0 +1,66 @@
+gyroX
+        Count: 2500
+  Sample Rate: 248.06
+          Min: -0.1634872
+          Max: 2.3389542
+      Average: 0.8456765
+     variance: 0.0217767
+    pop stdev: 0.1475692
+ unbias stdev: 0.1475987
+ time(micros): 101391659
+=====================================
+gyroY
+        Count: 2500
+  Sample Rate: 248.03
+          Min: -3.1673694
+          Max: 1.7154431
+      Average: 0.5555643
+     variance: 0.1505933
+    pop stdev: 0.3880636
+ unbias stdev: 0.3881412
+ time(micros): 101392950
+=====================================
+gyroZ
+        Count: 2500
+  Sample Rate: 247.99
+          Min: -1.5730513
+          Max: 1.0514604
+      Average: -0.3156822
+     variance: 0.0235313
+    pop stdev: 0.1533992
+ unbias stdev: 0.1534299
+ time(micros): 101394234
+=====================================
+accelX
+        Count: 2500
+  Sample Rate: 247.96
+          Min: 0.2435603
+          Max: 0.3517146
+      Average: 0.3047836
+     variance: 0.0000327
+    pop stdev: 0.0057168
+ unbias stdev: 0.0057179
+ time(micros): 101395465
+=====================================
+accelY
+        Count: 2500
+  Sample Rate: 247.93
+          Min: 0.0182141
+          Max: 0.0509289
+      Average: 0.0331573
+     variance: 0.0000062
+    pop stdev: 0.0024973
+ unbias stdev: 0.0024978
+ time(micros): 101396668
+=====================================
+accelZ
+        Count: 2500
+  Sample Rate: 247.90
+          Min: 0.9045660
+          Max: 1.0058844
+      Average: 0.9558439
+     variance: 0.0000380
+    pop stdev: 0.0061658
+ unbias stdev: 0.0061670
+ time(micros): 101397881
+=====================================
