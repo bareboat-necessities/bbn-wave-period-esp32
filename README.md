@@ -32,4 +32,4 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 
 ## TODO
 
-* Try to find a way for mpu6886 to sample at higher (than 250Hz) 
+* Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
