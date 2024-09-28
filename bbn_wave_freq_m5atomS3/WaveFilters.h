@@ -6,7 +6,7 @@
 #define FREQ_GUESS 0.3 /* freq guess */
 
 #define FREQ_COEF  1.0
-#define ARANOVSKIY_SCALE 15.0
+#define ARANOVSKIY_SCALE 10.0
 
 #define ACCEL_MAX_G_SQUARE 16.0
 
