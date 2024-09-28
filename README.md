@@ -34,7 +34,12 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 
 ![BBN Boat Heave Sensor Results](bbn_wave_freq_m5atomS3/tests/wave_results.png?raw=true "BBN Boat Heave Sensor Results")
 
+## Integration with Bareboat Necessities (BBN) OS
+
+![BBN Boat Heave Sensor Display](bbn_wave_freq_m5atomS3/tests/bbn_heave.png?raw=true "BBN Boat Heave Sensor Display")
 
 ## TODO
 
 * Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
+
+
