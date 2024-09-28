@@ -24,6 +24,10 @@ The method for estimating wave height and heave from a moving boat implemented h
 5. Smooth frequency produced by Aranovskiy filter with Kalman smoother.
 6. Use another specially designed Kalman filter knowing the frequency and fusing model with trochoidal wave model to double integrate vertical acceleration. Assuming convergence of frequency this method would give real-time phase correction of heave compared to the first Kalman method. Doppler effect due to a boat moving relating to waves has no impact on displacement amplitude.
 
+### Results on Reference Data
+
+![BBN Boat Heave Sensor Results](bbn_wave_freq_m5atomS3/tests/wave_results.png?raw=true "BBN Boat Heave Sensor Results")
+
 ## Implementation Notes
 
 * Rolling min/max algorithm with window of about couple wave periods samples to produce wave height measurement.
