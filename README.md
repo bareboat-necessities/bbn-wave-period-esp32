@@ -1,4 +1,4 @@
-# bbn-wave-period-esp32
+# BBN Boat Heave Sensor using IMU
 
 Boat Heave Sensor on m5stack atomS3.
 
