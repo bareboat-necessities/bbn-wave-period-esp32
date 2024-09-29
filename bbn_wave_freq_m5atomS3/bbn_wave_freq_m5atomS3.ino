@@ -95,6 +95,7 @@ bool report_nmea = true;
 float t = 0.0;
 float heave_avg = 0.0;
 float wave_length = 0.0;
+float freq_good_est = 0.0;
 
 void updateCalibration(uint32_t c, bool clear = false) {
   calib_countdown = c;
@@ -242,8 +243,13 @@ void read_and_processIMU_data() {
       SampleType sample = { .value = waveState.heave, .timeMicroSec = now };
       min_max_lemire_update(&min_max_h, sample, windowMicros);
 
-      if (fabs(arState.f - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
-        float k_hat = - pow(2.0 * PI * freq_adj, 2);
+      if (fabs(arState.f - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
+        freq_good_est = freq_adj;
+      }
+
+      // use previous good estimate of frequency
+      if (fabs(arState.f - freq_good_est) < FREQ_COEF * freq_good_est) {
+        float k_hat = - pow(2.0 * PI * freq_good_est, 2);
         if (kalm_w_alt_first) {
           kalm_w_alt_first = false;
           waveAltState.displacement_integral = 0.0f;
@@ -273,8 +279,8 @@ void read_and_processIMU_data() {
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", waveState.heave);
             }
             gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-            if (fabs(arState.f - freq_adj) < 0.07 * freq_adj) {
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
+            if (fabs(arState.f - freq_good_est) < 0.07 * freq_good_est) {
+              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
               if (fabs(waveAltState.heave - waveState.heave) < 0.2 * fabs(waveState.heave)) {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
               }
@@ -289,13 +295,14 @@ void read_and_processIMU_data() {
             // report for Arduino Serial Plotter
             Serial.printf("heave_cm:%.4f", waveState.heave * 100);
             Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+            //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
             //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
             //Serial.printf(",freq:%.4f", arState.f * 100);
             //Serial.printf(",h_cm:%.4f", h * 100);
             Serial.printf(",height_cm:%.4f", wave_height * 100);
             Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
             Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
-            Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
+            //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
             //Serial.printf(",period_decisec:%.4f", period * 10);
             //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
             //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
