@@ -26,7 +26,7 @@ The method for estimating wave height and heave from a moving boat implemented h
 
 ### Implementation Notes
 
-* Rolling min/max algorithm with window of about couple wave periods samples to produce wave height measurement.
+* Rolling min/max algorithm with window of about couple wave period samples to produce wave height measurement.
 Algorithm:
 https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvements from: https://github.com/EvanBalster/STL_mono_wedge
 
