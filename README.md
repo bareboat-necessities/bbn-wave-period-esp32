@@ -22,7 +22,7 @@ The method for estimating wave height and heave from a moving boat implemented h
 3. Double integrate vertical acceleration into vertical displacement using specially designed Kalman filter which corrects for integral drift in wave and corrects for the constant accelerometer bias.
 4. Estimate observed heave frequency with Aranovskiy on-line filter. The correction for accelerometer bias is important for this step.
 5. Smooth frequency produced by Aranovskiy filter with Kalman smoother.
-6. Use another specially designed Kalman filter knowing the frequency and fusing model with trochoidal wave model to double integrate vertical acceleration. Assuming convergence of frequency this method would give real-time phase correction of heave compared to the first Kalman method. Doppler effect due to a boat moving relating to waves has no impact on displacement amplitude.
+6. Use another specially designed Kalman filter knowing the frequency and fusing model with trochoidal wave model to double integrate vertical acceleration. Assuming convergence of frequency, this method would give real-time phase correction of heave compared to the first Kalman method. Doppler effect due to a boat moving relating to waves has no impact on displacement amplitude.
 
 ### Implementation Notes
 
