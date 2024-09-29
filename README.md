@@ -15,10 +15,10 @@ Mount atomS3 with LCD facing up.
 ## Estimating Boat Heave using IMU
 Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32
 
-The method for estimating wave height and heave from a moving boat implemented here is using the following on-line algorithm:
+The method for estimating wave height and heave from a moving boat implemented here using the following on-line algorithm:
 
 1. Sample MPU6886 3D acceleration and 3D gyroscope (angular velocities) measurements at about 250 Hz.
-2. Estimate attitude and get attitude quaternion using Mahony algorithm. Using acceleration and gyroscope is enough. No magnetometer required because we only interested vertical acceleration for the next steps.
+2. Estimate attitude and get attitude quaternion using Mahony algorithm. Using acceleration and gyroscope is enough. No magnetometer is required because we are only interested in vertical acceleration for the next steps.
 3. Double integrate vertical acceleration into vertical displacement using specially designed Kalman filter which corrects for integral drift in wave and corrects for the constant accelerometer bias.
 4. Estimate observed heave frequency with Aranovskiy on-line filter. The correction for accelerometer bias is important for this step.
 5. Smooth frequency produced by Aranovskiy filter with Kalman smoother.
