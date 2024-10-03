@@ -150,7 +150,7 @@ void kalman_wave_alt_init_state(KalmanWaveAltState* state) {
   x->data[4] = state->accel_bias;            // accel bias  
 }
 
-void kalman_wave_alt_init_defaults() {
+void kalman_wave_alt_init_defaults(float q0, float q1, float q2, float q3, float q4) {
 
   kalman_t *kf = kalman_filter_wave_alt_init();
   kalman_measurement_t *kfm = kalman_filter_wave_alt_measurement_vert_accel_init();
@@ -202,22 +202,21 @@ void kalman_wave_alt_init_defaults() {
 
   // transition covariance [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *Q = kalman_get_process_noise(kf);
-  matrix_data_t variance = (matrix_data_t) 1.0;
-  matrix_set_symmetric(Q, 0, 0, (matrix_data_t)20.0 * variance);
+  matrix_set_symmetric(Q, 0, 0, (matrix_data_t)q0);
   matrix_set_symmetric(Q, 0, 1, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 0, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 0, 3, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 0, 4, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 1, 1, (matrix_data_t)0.2 * variance);
+  matrix_set_symmetric(Q, 1, 1, (matrix_data_t)q1);
   matrix_set_symmetric(Q, 1, 2, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 1, 3, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 1, 4, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 2, 2, (matrix_data_t)0.04 * variance);
+  matrix_set_symmetric(Q, 2, 2, (matrix_data_t)q2);
   matrix_set_symmetric(Q, 2, 3, (matrix_data_t)0.0);
   matrix_set_symmetric(Q, 2, 4, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 3, 3, (matrix_data_t)1000.0 * variance);
+  matrix_set_symmetric(Q, 3, 3, (matrix_data_t)q3);
   matrix_set_symmetric(Q, 3, 4, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 4, 4, (matrix_data_t)0.0002 * variance);
+  matrix_set_symmetric(Q, 4, 4, (matrix_data_t)q4);
 }
 
 void kalman_wave_alt_step(KalmanWaveAltState* state, float accel, float k_hat, float delta_t) {
