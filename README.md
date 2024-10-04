@@ -70,6 +70,7 @@ State vector:
 
 $$
 \begin{flalign}
+&
 x = 
 \begin{bmatrix}
 z \\
@@ -77,6 +78,7 @@ y \\
 v \\
 \hat {a}
 \end{bmatrix}
+&
 \end{flalign}
 $$
 
