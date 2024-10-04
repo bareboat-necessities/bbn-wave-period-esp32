@@ -48,7 +48,7 @@ $$ z_k = z_{k-1} + y_{k-1}T + {v_{k-1} \over 2}T^2 + {a \over 6}T^3 - {\hat{a}_{
 
 accelerometer bias:
 
-$$ \hat{a}_k = \hat{a}_{k-1} $$
+$$ \hat{a}_{k} = \hat{a}_{k-1} $$
 
 
 ### Implementation Notes
