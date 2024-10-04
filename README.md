@@ -36,19 +36,19 @@ Process model:
 
 velocity:
 
-$$ v_k = v_{k-1} + aT - \hat{a}_{k-1}T   $$
+$$  v_k = v_{k-1} + aT - \hat{a}_{k-1}T  $$
 
 displacement:
 
-$$ y_k = y_{k-1} + v_{k-1}T + {a \over 2}T^2 - {\hat{a}_{k-1} \over 2}T^2 $$
+$$  y_k = y_{k-1} + v_{k-1}T + {a \over 2}T^2 - {\hat{a}_{k-1} \over 2}T^2  $$
 
 displacement_integral:
 
-$$ z_k = z_{k-1} + y_{k-1}T + {v_{k-1} \over 2}T^2 + {a \over 6}T^3 - {\hat{a}_{k-1} \over 6}T^3 $$
+$$  z_k = z_{k-1} + y_{k-1}T + {v_{k-1} \over 2}T^2 + {a \over 6}T^3 - {\hat{a}_{k-1} \over 6}T^3  $$
 
 accelerometer bias:
 
-$$ \hat{a}_{k} = \hat{a}_{k-1} $$
+$$  \hat{a}_{k} = \hat{a}_{k-1}  $$
 
 
 ### Implementation Notes
