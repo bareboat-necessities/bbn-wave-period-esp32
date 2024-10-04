@@ -20,7 +20,7 @@ The method for estimating wave height and heave from a moving boat implemented h
 1. Sample MPU6886 3D acceleration and 3D gyroscope (angular velocities) measurements at about 250 Hz.
 2. Estimate attitude and get attitude quaternion using Mahony algorithm. Using acceleration and gyroscope is enough. No magnetometer is required because we are only interested in vertical acceleration for the next steps.
 3. Double integrate vertical acceleration into vertical displacement using specially designed Kalman filter which corrects for integral drift in wave and corrects for the constant accelerometer bias.
-4. Estimate observed heave frequency with Aranovskiy on-line filter. The correction for accelerometer bias is important for this step.
+4. Estimate observed heave frequency with Aranovskiy on-line filter (without need for FFT). The correction for accelerometer bias is important for this step.
 5. Smooth frequency produced by Aranovskiy filter with Kalman smoother.
 6. Use another specially designed Kalman filter knowing the frequency and fusing model with trochoidal wave model to double integrate vertical acceleration. Assuming convergence of frequency, this method would give real-time phase correction of heave compared to the first Kalman method. Doppler effect due to boat movement in waves has no impact on displacement amplitude.
 
@@ -349,6 +349,14 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 ## Integration with Bareboat Necessities (BBN) OS
 
 ![BBN Boat Heave Sensor Display](bbn_wave_freq_m5atomS3/tests/bbn_heave.png?raw=true "BBN Boat Heave Sensor Display")
+
+## Applications
+
+- Provide real-time heave data for ships with active heave compensation system (pipe laying ships, crane platforms, etc)
+- Recording sea state
+- Prediction of likelihood of sea sickness
+- Estimating risk of breaking from anchor
+- Autotuning gains of autopilots
 
 ## TODO
 
