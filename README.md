@@ -318,7 +318,24 @@ H =
 \end{flalign}
 $$
 
+Process matrix:
 
+$$
+\begin{flalign}
+& \large
+F = 
+\begin{bmatrix}
+1, & T,       & {1 \over 2}T^2, & {1 \over 6}T^3,        & -{1 \over 6}T^3\\
+0, & 1,       & T,              & {1 \over 2}T^2,        & -{1 \over 2}T^2\\
+0, & 0,       & 1,              & T,                     & -T\\
+0, & \hat{k}, & \hat{k}T,       & {1 \over 2}\hat{k}T^2, & -{1 \over 2}\hat{k}T^2\\
+0, & 0,       & 0,              & 0,                     & 1
+\end{bmatrix}
+&
+\end{flalign}
+$$
+
+       
 ### Implementation Notes
 
 * Rolling min/max algorithm with window of about a couple wave period samples to produce wave height measurements.
