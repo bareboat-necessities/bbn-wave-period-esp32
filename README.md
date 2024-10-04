@@ -120,7 +120,7 @@ H =
 \end{flalign}
 $$
 
-
+Process matrix:
 
 $$
 \begin{flalign}
@@ -136,11 +136,22 @@ F =
 \end{flalign}
 $$
 
+Transition matrix:
 
-B = [  1/6*T^3,
-1/2*T^2,
-T,
-0       ]
+$$
+\begin{flalign}
+& \Large
+B = 
+\begin{bmatrix}
+{1 \over 6}T^3
+{1 \over 2}T^2
+T
+0   
+\end{bmatrix}
+&
+\end{flalign}
+$$
+
 
 ### Implementation Notes
 
