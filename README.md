@@ -83,6 +83,18 @@ v \\
 \end{flalign}
 $$
 
+
+Process model in matrix form:
+
+$$
+\begin{flalign}
+& x_ k = Fx_ {k-1} + B u_ k + w_ k
+\end{flalign}
+$$
+
+w(k) - zero mean noise,
+u(k) = a
+
 ### Implementation Notes
 
 * Rolling min/max algorithm with window of about a couple wave period samples to produce wave height measurements.
