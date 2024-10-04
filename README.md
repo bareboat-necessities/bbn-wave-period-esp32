@@ -99,9 +99,9 @@ $w _k$ - zero mean noise,
 $u _k = a$
 
 
-Input a - vertical acceleration from accelerometer
+Input $a$ - vertical acceleration from accelerometer
 
-Measurement z = 0 (displacement integral)
+Measurement $z = 0$ (displacement integral)
 
 Observation matrix:
 
