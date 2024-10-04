@@ -163,7 +163,14 @@ In trochoidal wave model there is simple linear dependency between displacement 
 acceleration.
 
 $y$ - displacement (at any time):
-$y = - L / (2 *pi) * (a/g)$,  
+
+$$
+\begin{flalign}
+& \Large
+y = - L / (2 pi)  (a/g)
+&
+\end{flalign}
+$$
 
 $g$ - acceleration of free fall constant, 
 $a$ - vertical acceleration
