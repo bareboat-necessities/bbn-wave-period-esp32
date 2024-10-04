@@ -71,6 +71,7 @@ State vector:
 $$
 \begin{flalign}
 &
+\Large
 x = 
 \begin{bmatrix}
 z \\
