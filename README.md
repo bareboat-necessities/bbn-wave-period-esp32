@@ -180,7 +180,7 @@ wave length L:
 $$
 \begin{flalign}
 & \Large
-L = {g  period^2 \over {2 \pi}}
+L = { {period^2} g \over {2 \pi}}
 &
 \end{flalign}
 $$
