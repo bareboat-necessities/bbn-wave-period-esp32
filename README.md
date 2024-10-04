@@ -176,7 +176,15 @@ $g$ - acceleration of free fall constant,
 $a$ - vertical acceleration
 
 wave length L: 
-$L = g * period^2 / (2 *pi)$
+
+$$
+\begin{flalign}
+& \Large
+L = {g  period^2 \over {2 \pi}}
+&
+\end{flalign}
+$$
+
 
 wave period via frequency:
 $period = 1 / f$
