@@ -96,7 +96,7 @@ x _k = Fx _{k-1} + B u _k + w _k
 $$
 
 $w _k$ - zero mean noise,
-$u _k = a$
+$u _k = a - \hat{a} _k$
 
 
 Input $a$ - vertical acceleration from accelerometer
