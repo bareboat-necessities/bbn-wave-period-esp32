@@ -124,6 +124,7 @@ $$
 
 $$
 \begin{flalign}
+&
 F = 
 \begin{bmatrix}
 1 & T & 1/2*T^2 & -1/6*T^3\\
@@ -131,6 +132,8 @@ F =
 0 & 0 & 1 &       -T\\
 0 & 0 & 0 &       1
 \end{bmatrix}
+&
+\end{flalign}
 $$
 
 
