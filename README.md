@@ -66,6 +66,17 @@ $$
 \end{flalign}
 $$
 
+State vector:
+
+$$
+x = 
+\begin{bmatrix}
+z \\
+y \\
+v \\
+\hat {a}
+\end{bmatrix}
+$$
 
 ### Implementation Notes
 
