@@ -216,6 +216,16 @@ $$
 \end{flalign}
 $$
 
+Process model:
+
+displacement integral:
+
+$$
+\begin{flalign}
+& \large z _k = z _{k-1} + y _{k-1}T + {v _{k-1} \over 2}T^2 + {a _{k-1} \over 6}T^3 - {\hat{a} _{k-1} \over 6}T^3 &
+\end{flalign}
+$$
+
 ### Implementation Notes
 
 * Rolling min/max algorithm with window of about a couple wave period samples to produce wave height measurements.
