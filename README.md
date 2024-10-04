@@ -127,7 +127,7 @@ $$
 & \Large
 F = 
 \begin{bmatrix}
-1 & T & {{T^2} \over 2} & {{T^3} \over 6}\\
+1 & T & {1 \over 2}T^2 & {1 \over 6}T^3\\
 0 & 1 & T &       -{{T^2} \over 2}\\
 0 & 0 & 1 &       -T\\
 0 & 0 & 0 &       1
