@@ -88,7 +88,7 @@ Process model in matrix form:
 
 $$
 \begin{flalign}
-& x_ k = Fx_ {k-1} + B u_ k + w_ k
+& \Large x _k = Fx _{k-1} + B u _k + w _k
 \end{flalign}
 $$
 
