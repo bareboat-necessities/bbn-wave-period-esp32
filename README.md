@@ -196,6 +196,7 @@ period = {1 \over f}
 \end{flalign}
 $$
 
+acceleration:
 
 $$
 \begin{flalign}
@@ -206,7 +207,14 @@ a = - (2  \pi  f)^2  y
 $$
 
 let
-$k_hat = - (2 * pi * f)^2$
+
+$$
+\begin{flalign}
+& \Large
+\hat{k} = - (2 \pi f)^2
+&
+\end{flalign}
+$$
 
 ### Implementation Notes
 
