@@ -38,7 +38,7 @@ velocity:
 
 $$
 \begin{flalign}
-& \large v_k = v_{k-1} + aT - \hat{a}_{k-1}T &
+& \large v _k = v _{k-1} + aT - \hat{a} _{k-1}T &
 \end{flalign}
 $$
 
@@ -233,6 +233,24 @@ $$
 & \large y _k = y _{k-1} + v _{k-1}T + {a _{k-1} \over 2}T^2 - {\hat{a} _{k-1} \over 2}T^2 &
 \end{flalign}
 $$
+
+velocity:
+
+$$
+\begin{flalign}
+& \large v _k = v _{k-1} + a _{k-1}T - \hat{a} _{k-1}T &
+\end{flalign}
+$$
+
+
+acceleration (from trochoidal wave model):
+
+$$
+\begin{flalign}
+& \large  a _k = \hat{k}y _{k-1} + \hat{k} v _{k-1}T + \hat{k}{a _{k-1} \over 2}T^2 - \hat{k}{\hat{a} _{k-1} \over 2}T^2  &
+\end{flalign}
+$$
+
 
 ### Implementation Notes
 
