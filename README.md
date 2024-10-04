@@ -44,15 +44,27 @@ $$
 
 displacement:
 
-## $y _k = y _{k-1} + v _{k-1}T + {a \over 2}T^2 - {\hat{a} _{k-1} \over 2}T^2$
+$$
+\begin{flalign}
+& \Large $y _k = y _{k-1} + v _{k-1}T + {a \over 2}T^2 - {\hat{a} _{k-1} \over 2}T^2 &
+\end{flalign}
+$$
 
 displacement_integral:
 
-## $z _k = z _{k-1} + y _{k-1}T + {v _{k-1} \over 2}T^2 + {a \over 6}T^3 - {\hat{a} _{k-1} \over 6}T^3$
+$$
+\begin{flalign}
+& \Large z _k = z _{k-1} + y _{k-1}T + {v _{k-1} \over 2}T^2 + {a \over 6}T^3 - {\hat{a} _{k-1} \over 6}T^3 &
+\end{flalign}
+$$
 
 accelerometer bias:
 
-## $\hat {a} _k = \hat {a} _{k-1}$
+$$
+\begin{flalign}
+& \Large \hat {a} _k = \hat {a} _{k-1} &
+\end{flalign}
+$$
 
 
 ### Implementation Notes
