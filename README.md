@@ -143,10 +143,10 @@ $$
 & \Large
 B = 
 \begin{bmatrix}
-{1 \over 6}T^3
-{1 \over 2}T^2
-T
-0   
+{1 \over 6}T^3\\
+{1 \over 2}T^2\\
+T\\
+0
 \end{bmatrix}
 &
 \end{flalign}
