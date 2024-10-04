@@ -37,9 +37,9 @@ Process model:
 velocity:
 
 $$
-\begin{align*}
-v_k = v_{k-1} + aT - \hat{a}_{k-1}T
-\end{align*}
+\begin{flalign}
+& v_k = v_{k-1} + aT - \hat{a}_{k-1}T &
+\end{flalign}
 $$
 
 displacement:
