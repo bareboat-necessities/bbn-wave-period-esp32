@@ -275,6 +275,48 @@ $$
 $w _k$ - zero mean noise,
 $u _k = 0$
 
+State vector:
+
+$$
+\begin{flalign}
+&
+\large
+x = 
+\begin{bmatrix}
+z \\
+y \\
+v \\
+a \\
+\hat {a}
+\end{bmatrix}
+&
+\end{flalign}
+$$
+
+
+Input $a$ - vertical acceleration from accelerometer
+
+Measurements:
+    
+$a$ (vertical acceleration), $z$ = 0
+
+Observation matrix:
+
+$$
+\begin{flalign}
+&
+\large
+H = 
+\begin{bmatrix}
+1, & 0 \\
+0, & 0 \\
+0, & 0 \\
+0, & 1 \\
+0, & 0
+\end{bmatrix}
+&
+\end{flalign}
+$$
 
 
 ### Implementation Notes
