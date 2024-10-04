@@ -37,8 +37,8 @@ Process model:
 velocity:
 
 $$
-\Large
 \begin{flalign}
+\Large
 & v_k = v_{k-1} + aT - \hat{a}_{k-1}T &
 \end{flalign}
 $$
