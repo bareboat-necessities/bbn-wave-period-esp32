@@ -163,7 +163,10 @@ In trochoidal wave model there is simple linear dependency between displacement 
 acceleration.
 
 $y$ - displacement (at any time):
-$y = - L / (2 *pi) * (a/g)$,  $g$ - acceleration of free fall constant, $a$ - vertical acceleration
+$y = - L / (2 *pi) * (a/g)$,  
+
+$g$ - acceleration of free fall constant, 
+$a$ - vertical acceleration
 
 wave length L: 
 $L = g * period^2 / (2 *pi)$
