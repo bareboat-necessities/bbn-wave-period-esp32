@@ -252,6 +252,31 @@ $$
 $$
 
 
+accelerometer bias:
+
+$$
+\begin{flalign}
+& \large \hat {a} _k = \hat {a} _{k-1} &
+\end{flalign}
+$$
+
+
+Process model in matrix form:
+
+$$
+\begin{flalign}
+& 
+\large 
+x _k = Fx _{k-1} + B u _k + w _k
+&
+\end{flalign}
+$$
+
+$w _k$ - zero mean noise,
+$u _k = 0$
+
+
+
 ### Implementation Notes
 
 * Rolling min/max algorithm with window of about a couple wave period samples to produce wave height measurements.
