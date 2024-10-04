@@ -152,6 +152,29 @@ T\\
 \end{flalign}
 $$
 
+### Kalman Filter #2
+
+Kalman filter to estimate vertical displacement in wave using accelerometer, 
+correct for accelerometer bias, estimate accelerometer bias. This method
+assumes that displacement follows trochoidal model and the frequency of
+wave is known. Frequency can be estimated using another step with Aranovskiy filter.
+
+In trochoidal wave model there is simple linear dependency between displacement and 
+acceleration.
+
+$y$ - displacement (at any time):
+$y = - L / (2 *pi) * (a/g)$,  $g$ - acceleration of free fall constant, $a$ - vertical acceleration
+
+wave length L: 
+$L = g * period^2 / (2 *pi)$
+
+wave period via frequency:
+$period = 1 / f$
+
+$a = - (2 * pi * f)^2 * y$
+
+let
+$k_hat = - (2 * pi * f)^2$
 
 ### Implementation Notes
 
