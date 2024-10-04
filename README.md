@@ -88,12 +88,15 @@ Process model in matrix form:
 
 $$
 \begin{flalign}
-& \Large x _k = Fx _{k-1} + B u _k + w _k
+& 
+\Large 
+x _k = Fx _{k-1} + B u _k + w _k
+&
 \end{flalign}
 $$
 
-w(k) - zero mean noise,
-u(k) = a
+$w _k$ - zero mean noise,
+$u _k = a$
 
 ### Implementation Notes
 
