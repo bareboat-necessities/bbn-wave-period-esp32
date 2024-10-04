@@ -167,7 +167,7 @@ $y$ - displacement (at any time):
 $$
 \begin{flalign}
 & \Large
-y = - L / (2 pi)  (a/g)
+y = - {L \over {2 \pi}}  {a \over g}
 &
 \end{flalign}
 $$
