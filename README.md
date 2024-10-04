@@ -46,7 +46,7 @@ displacement:
 
 $$
 \begin{flalign}
-& \Large $y _k = y _{k-1} + v _{k-1}T + {a \over 2}T^2 - {\hat{a} _{k-1} \over 2}T^2 &
+& \Large y _k = y _{k-1} + v _{k-1}T + {a \over 2}T^2 - {\hat{a} _{k-1} \over 2}T^2 &
 \end{flalign}
 $$
 
