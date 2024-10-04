@@ -38,7 +38,7 @@ velocity:
 
 $$
 \begin{flalign}
-& \Large v_k = v_{k-1} + aT - \hat{a}_{k-1}T &
+& \large v_k = v_{k-1} + aT - \hat{a}_{k-1}T &
 \end{flalign}
 $$
 
@@ -46,7 +46,7 @@ displacement:
 
 $$
 \begin{flalign}
-& \Large y _k = y _{k-1} + v _{k-1}T + {a \over 2}T^2 - {\hat{a} _{k-1} \over 2}T^2 &
+& \large y _k = y _{k-1} + v _{k-1}T + {a \over 2}T^2 - {\hat{a} _{k-1} \over 2}T^2 &
 \end{flalign}
 $$
 
@@ -54,7 +54,7 @@ displacement integral:
 
 $$
 \begin{flalign}
-& \Large z _k = z _{k-1} + y _{k-1}T + {v _{k-1} \over 2}T^2 + {a \over 6}T^3 - {\hat{a} _{k-1} \over 6}T^3 &
+& \large z _k = z _{k-1} + y _{k-1}T + {v _{k-1} \over 2}T^2 + {a \over 6}T^3 - {\hat{a} _{k-1} \over 6}T^3 &
 \end{flalign}
 $$
 
@@ -62,7 +62,7 @@ accelerometer bias:
 
 $$
 \begin{flalign}
-& \Large \hat {a} _k = \hat {a} _{k-1} &
+& \large \hat {a} _k = \hat {a} _{k-1} &
 \end{flalign}
 $$
 
@@ -71,7 +71,7 @@ State vector:
 $$
 \begin{flalign}
 &
-\Large
+\large
 x = 
 \begin{bmatrix}
 z \\
@@ -89,7 +89,7 @@ Process model in matrix form:
 $$
 \begin{flalign}
 & 
-\Large 
+\large 
 x _k = Fx _{k-1} + B u _k + w _k
 &
 \end{flalign}
@@ -108,7 +108,7 @@ Observation matrix:
 $$
 \begin{flalign}
 &
-\Large
+\large
 H = 
 \begin{bmatrix}
 1 \\
@@ -124,7 +124,7 @@ Process matrix:
 
 $$
 \begin{flalign}
-& \Large
+& \large
 F = 
 \begin{bmatrix}
 1, & T, & {1 \over 2}T^2, & -{1 \over 6}T^3\\
@@ -140,7 +140,7 @@ Transition matrix:
 
 $$
 \begin{flalign}
-& \Large
+& \large
 B = 
 \begin{bmatrix}
 {1 \over 6}T^3\\
@@ -166,7 +166,7 @@ $y$ - displacement (at any time):
 
 $$
 \begin{flalign}
-& \Large
+& \large
 y = - {L \over {2 \pi}}  {a \over g}
 &
 \end{flalign}
@@ -179,7 +179,7 @@ wave length L:
 
 $$
 \begin{flalign}
-& \Large
+& \large
 L = { {period^2} g \over {2 \pi}}
 &
 \end{flalign}
@@ -190,7 +190,7 @@ wave period via frequency:
 
 $$
 \begin{flalign}
-& \Large
+& \large
 period = {1 \over f}
 &
 \end{flalign}
@@ -200,7 +200,7 @@ acceleration:
 
 $$
 \begin{flalign}
-& \Large
+& \large
 a = - (2  \pi  f)^2  y
 &
 \end{flalign}
@@ -210,7 +210,7 @@ let
 
 $$
 \begin{flalign}
-& \Large
+& \large
 \hat{k} = - (2 \pi f)^2
 &
 \end{flalign}
