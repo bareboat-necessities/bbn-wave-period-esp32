@@ -50,7 +50,7 @@ $$
 \end{flalign}
 $$
 
-displacement_integral:
+displacement integral:
 
 $$
 \begin{flalign}
@@ -97,6 +97,40 @@ $$
 
 $w _k$ - zero mean noise,
 $u _k = a$
+
+
+Input a - vertical acceleration from accelerometer
+
+Measurement z = 0 (displacement integral)
+
+Observation matrix:
+
+$$
+\begin{flalign}
+&
+\Large
+H = 
+\begin{bmatrix}
+1 \\
+0 \\
+0 \\
+0
+\end{bmatrix}
+&
+\end{flalign}
+$$
+
+
+
+F = [[ 1,  T,  1/2*T^2, -1/6*T^3 ],
+[ 0,  1,  T,       -1/2*T^2 ],
+[ 0,  0,  1,       -T       ],
+[ 0,  0,  0,        1       ]]
+
+B = [  1/6*T^3,
+1/2*T^2,
+T,
+0       ]
 
 ### Implementation Notes
 
