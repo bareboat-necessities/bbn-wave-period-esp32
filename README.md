@@ -187,9 +187,23 @@ $$
 
 
 wave period via frequency:
-$period = 1 / f$
 
-$a = - (2 * pi * f)^2 * y$
+$$
+\begin{flalign}
+& \Large
+period = {1 \over f}
+&
+\end{flalign}
+$$
+
+
+$$
+\begin{flalign}
+& \Large
+a = - (2  \pi  f)^2  y
+&
+\end{flalign}
+$$
 
 let
 $k_hat = - (2 * pi * f)^2$
