@@ -364,7 +364,7 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 * The method can be improved for less regular waves by splitting original signal with band pass filter into several signals
 of different frequencies bands. Then it would be possible to apply the method separately to each band and sum up the results
 received for each band. Effectively it would approximate the signal spectrum and identify main frequency within each band,
-giving possibly better results. 
+giving possibly better results. Coefficients used by filters can be tuned better for each band to give faster convergence.
 
 # References
 
