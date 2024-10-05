@@ -61,7 +61,7 @@ void init_filters(AranovskiyParams* ar_param, AranovskiyState* ar_state, KalmanS
   init_aranovskiy(ar_param, ar_state);
   init_smoother(kalman_smoother);
   kalman_wave_init_defaults(20.0, 0.2, 0.04, 0.0002);
-  kalman_wave_alt_init_defaults(20.0, 0.2, 0.04, 1000.0, 0.0002);
+  kalman_wave_alt_init_defaults(20.0, 0.2, 0.04, 1.0e6, 0.0002);
 }
 
 #endif
