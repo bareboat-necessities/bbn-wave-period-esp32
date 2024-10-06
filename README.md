@@ -366,6 +366,10 @@ of different frequencies bands. Then it would be possible to apply the method se
 received for each band. Effectively it would approximate the signal spectrum and identify main frequency within each band,
 giving possibly better results. Coefficients used by filters can be tuned better for each band to give faster convergence.
 
+## Project Home
+
+https://bareboat-necessities.github.io/
+
 # References
 
 1. Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul, Stanislav V. Aranovskiy: The New Algorithm of Sinusoidal Signal Frequency Estimation. [11th IFAC International Workshop on
