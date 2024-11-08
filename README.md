@@ -370,6 +370,12 @@ giving possibly better results. Coefficients used by filters can be tuned better
 
 https://bareboat-necessities.github.io/
 
+###
+
+Other sensors by Bareboat Necessities:
+
+https://github.com/bareboat-necessities/bbn-m5atomS3-lite
+
 # References
 
 1. Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul, Stanislav V. Aranovskiy: The New Algorithm of Sinusoidal Signal Frequency Estimation. [11th IFAC International Workshop on
