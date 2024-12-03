@@ -26,7 +26,7 @@ jobs:
     - name: Make merged .bin
       run: >
         python3 "$HOME/.arduino15/packages/esp32/tools/esptool_py/4.5.1/esptool.py" 
-        --chip esp32 merge_bin -o $HOME/work/bbn-m5stack-tough/bbn-m5stack-tough/bbn_m5tough_active_boat/build/bbn_wave_freq_m5atomS3_firmware.bin 
+        --chip esp32s3 merge_bin -o $HOME/work/bbn-m5stack-tough/bbn-m5stack-tough/bbn_m5tough_active_boat/build/bbn_wave_freq_m5atomS3_firmware.bin 
         --flash_mode dio --flash_freq 80m --flash_size 16MB 
         0x1000 "$HOME/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/build/bbn_wave_freq_m5atomS3.ino.bootloader.bin" 
         0x8000 "$HOME/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/build/bbn_wave_freq_m5atomS3.ino.partitions.bin" 
