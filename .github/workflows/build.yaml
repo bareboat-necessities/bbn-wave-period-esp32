@@ -35,7 +35,7 @@ jobs:
    
     - name: Make zip
       run: |
-        ls /home/runner/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/build/*.bin | zip bbn_wave_freq_m5atomS3_bin-$(date +%Y-%m-%d).zip -j -@
+        ls /home/runner/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/build/*.bin /home/runner/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/build/*.elf /home/runner/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/build/*.csv | zip bbn_wave_freq_m5atomS3_bin-$(date +%Y-%m-%d).zip -j -@
         pwd
         ls *.zip
 
