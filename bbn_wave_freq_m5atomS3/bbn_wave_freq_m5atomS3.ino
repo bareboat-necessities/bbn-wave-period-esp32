@@ -347,7 +347,7 @@ void repeatMe() {
   else {
     // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
     if (pressed) {
-      //startCalibration();
+      startCalibration();
     }
   }
   int32_t sec = millis() / 1000;
@@ -400,7 +400,7 @@ void setup(void) {
 
   // Read calibration values from NVS.
   if (!M5.Imu.loadOffsetFromNVS()) {
-    startCalibration();
+    //startCalibration();
   }
 
   if (useMahony) {
