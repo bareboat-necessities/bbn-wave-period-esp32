@@ -358,6 +358,14 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 - Estimating risk of breaking from anchor
 - Autotuning gains of autopilots
 
+## Flashing Firmware
+
+````
+wget https://github.com/bareboat-necessities/bbn-wave-period-esp32/releases/download/v0.9.9/bbn_wave_freq_m5atomS3_bin-2024-12-07.zip
+unzip bbn_wave_freq_m5atomS3_bin-2024-12-07.zip 
+/srv/esphome/bin/esptool.py  --chip esp32s3 --port "/dev/ttyACM0" --baud 921600  --before default_reset --after hard_reset write_flash 0x0 bbn_wave_freq_m5atomS3_firmware.bin
+````
+
 ## TODO
 
 * Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
