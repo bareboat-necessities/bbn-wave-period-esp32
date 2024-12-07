@@ -340,23 +340,24 @@ void read_and_processIMU_data() {
 void repeatMe() {
   static uint32_t prev_sec = 0;
   auto imu_update = M5.Imu.update();
-  if (imu_update && !AtomS3.BtnA.isPressed()) {
+  bool pressed = AtomS3.BtnA.wasPressed();
+  if (imu_update && !pressed) {
     read_and_processIMU_data();
   }
   else {
     // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
-    if (AtomS3.BtnA.isPressed()) {
-      startCalibration();
+    if (pressed) {
+      //startCalibration();
     }
   }
   int32_t sec = millis() / 1000;
   if (prev_sec != sec) {
     prev_sec = sec;
-    if (calib_countdown) {
+    if (calib_countdown > 0) {
       updateCalibration(calib_countdown - 1);
     }
     if ((sec & 7) == 0) {
-      // prevent WDT.
+      // prevent WDT (watch dog timer).
       vTaskDelay(1);
     }
   }
