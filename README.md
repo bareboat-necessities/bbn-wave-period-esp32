@@ -366,6 +366,14 @@ unzip bbn_wave_freq_m5atomS3_bin-2024-12-07.zip
 /srv/esphome/bin/esptool.py  --chip esp32s3 --port "/dev/ttyACM0" --baud 921600  --before default_reset --after hard_reset write_flash 0x0 bbn_wave_freq_m5atomS3_firmware.bin
 ````
 
+### On Bareboat Necessities OS
+
+````
+wget https://raw.githubusercontent.com/bareboat-necessities/my-bareboat/refs/heads/master/m5stack-tools/bbn-flash-m5-wave.sh
+chmod +x bbn-flash-m5-wave.sh
+./bbn-flash-m5-wave.sh -p /dev/ttyACM0
+````
+
 ## TODO
 
 * Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
