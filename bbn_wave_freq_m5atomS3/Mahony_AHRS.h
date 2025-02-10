@@ -120,20 +120,41 @@ void mahony_AHRS_update(Mahony_AHRS_Vars* m,
   *roll *= RAD_TO_DEG;
 }
 
-// Fast inverse square-root
-// See: http://en.wikipedia.org/wiki/Fast_inverse_square_root
-
+/**
+ * Fast inverse square root implementation. Compatible both for 32 and 8 bit microcontrollers.
+ * @see http://en.wikipedia.org/wiki/Fast_inverse_square_root
+*/
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
-float invSqrt(float x) {
-  float halfx = 0.5f * x;
-  float y     = x;
-  long i      = *(long *)&y;
-  i           = 0x5f3759df - (i >> 1);
-  y           = *(float *)&i;
-  y           = y * (1.5f - (halfx * y * y));
+
+float invSqrt(float number) {
+  union {
+    float f;
+    int32_t i;
+  } y;
+
+  y.f = number;
+  y.i = 0x5f375a86 - (y.i >> 1);
+  y.f = y.f * ( 1.5f - ( number * 0.5f * y.f * y.f ) );
+  return y.f;
+}
+
+/* Old 8bit version. Kept it here only for testing/debugging of the new code above.
+float invSqrt(float number) {
+  volatile long i;
+  volatile float x, y;
+  volatile const float f = 1.5F;
+
+  x = number * 0.5F;
+  y = number;
+  i = * ( long * ) &y;
+  i = 0x5f375a86 - ( i >> 1 );
+  y = * ( float * ) &i;
+  y = y * ( f - ( x * y * y ) );
   return y;
 }
+*/
+
 #pragma GCC diagnostic pop
 
 #endif
