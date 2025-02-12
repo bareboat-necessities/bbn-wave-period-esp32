@@ -1,5 +1,5 @@
 /*
-  Copyright 2024, Mikhail Grushinskiy
+  Copyright 2024-2025, Mikhail Grushinskiy
 
   Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32 (m5atomS3)
 
@@ -406,7 +406,7 @@ void setup(void) {
   }
 
   if (useMahony) {
-    float twoKp = (2.0f * 1.0f);
+    float twoKp = (2.0f * 4.0f);
     float twoKi = (2.0f * 0.0001f);
     mahony_AHRS_init(&mahony, twoKp, twoKi);
   }
