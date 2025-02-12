@@ -376,6 +376,8 @@ chmod +x bbn-flash-m5-wave.sh
 
 ## TODO
 
+* Instead of chaining Kalman filters
+it would probably be better to implement it as a single state one Kalman filter
 * Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
 * The method can be improved for less regular waves by splitting original signal with band pass filter into several signals
 of different frequencies bands. Then it would be possible to apply the method separately to each band and sum up the results
