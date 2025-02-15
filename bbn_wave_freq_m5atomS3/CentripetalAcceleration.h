@@ -27,6 +27,9 @@ Vector3D subtract_vectors(Vector3D a, Vector3D b) {
 }
 
 // Function to estimate centripetal acceleration
+// Note: the vectors are in the same frame so if
+// gyro is in IMU frame of coordinates then
+// velocity must br in same device body frame (not Earth xyz frame)
 Vector3D estimate_centripetal_acceleration(Vector3D velocity, Vector3D gyro_data) {
     // Centripetal acceleration: a_c = ω × v
     return cross_product(gyro_data, velocity);
