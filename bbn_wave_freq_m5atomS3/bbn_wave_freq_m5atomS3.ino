@@ -74,8 +74,6 @@ void read_and_processIMU_data() {
   got_samples++;
   now = micros();
 
-  drawCalibrGraph(rect_graph_area, data);
-
   if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < ACCEL_MAX_G_SQUARE) {
     // ignore noise (in unbiased way) with unreasonably high Gs
 
