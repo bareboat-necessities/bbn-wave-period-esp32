@@ -243,7 +243,6 @@ void read_and_processIMU_data() {
 
 void repeatMe() {
   auto imu_update = M5.Imu.update();
-  bool pressed = false;
   if (imu_update) {
     read_and_processIMU_data();
   }
