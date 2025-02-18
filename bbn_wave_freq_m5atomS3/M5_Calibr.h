@@ -46,7 +46,7 @@ static constexpr const uint32_t color_tbl[18] = {
 };
 static constexpr const float coefficient_tbl[3] = { 0.5f, (1.0f / 256.0f), (1.0f / 1024.0f) };
 
-static auto &dsp = (M5.Display);
+static auto &disp = (M5.Display);
 static rect_t rect_graph_area;
 static rect_t rect_text_area;
 
@@ -59,15 +59,15 @@ static int prev_xpos[18];
 void drawBar(int32_t ox, int32_t oy, int32_t nx, int32_t px, int32_t h, uint32_t color) {
   uint32_t bgcolor = (color >> 3) & 0x1F1F1Fu;
   if (px && ((nx < 0) != (px < 0))) {
-    dsp.fillRect(ox, oy, px, h, bgcolor);
+    disp.fillRect(ox, oy, px, h, bgcolor);
     px = 0;
   }
   if (px != nx) {
     if ((nx > px) != (nx < 0)) {
       bgcolor = color;
     }
-    dsp.setColor(bgcolor);
-    dsp.fillRect(nx + ox, oy, px - nx, h);
+    disp.setColor(bgcolor);
+    disp.fillRect(nx + ox, oy, px - nx, h);
   }
 }
 
@@ -80,7 +80,7 @@ void drawGraph(const rect_t& r, const m5::imu_data_t& data) {
   int h = (r.h / 18) * (calib_countdown ? 1 : 2);
   int bar_count = 9 * (calib_countdown ? 2 : 1);
 
-  dsp.startWrite();
+  disp.startWrite();
   for (int index = 0; index < bar_count; ++index) {
     float xval;
     if (index < 9) {
@@ -103,7 +103,7 @@ void drawGraph(const rect_t& r, const m5::imu_data_t& data) {
       prev_xpos[index] = nx;
     drawBar(ox, oy + h * index, nx, px, h - 1, color_tbl[index]);
   }
-  dsp.endWrite();
+  disp.endWrite();
 }
 
 void drawCalibrGraph(const rect_t& r, const m5::imu_data_t& data) {
@@ -143,7 +143,7 @@ void updateCalibration(uint32_t c, bool clear = false) {
 
   if (clear) {
     memset(prev_xpos, 0, sizeof(prev_xpos));
-    dsp.fillScreen(TFT_BLACK);
+    disp.fillScreen(TFT_BLACK);
 
     if (c) { // Start calibration.
       M5.Imu.setCalibration(calib_value, calib_value, 0);
@@ -172,12 +172,12 @@ void updateCalibration(uint32_t c, bool clear = false) {
   }
 
   auto backcolor = (c == 0) ? TFT_BLACK : TFT_BLUE;
-  dsp.fillRect(rect_text_area.x, rect_text_area.y, rect_text_area.w, rect_text_area.h, backcolor);
+  disp.fillRect(rect_text_area.x, rect_text_area.y, rect_text_area.w, rect_text_area.h, backcolor);
 
   if (c) {
-    dsp.setCursor(rect_text_area.x + 2, rect_text_area.y + 1);
-    dsp.setTextColor(TFT_WHITE, TFT_BLUE);
-    dsp.printf("Count:%d ", c);
+    disp.setCursor(rect_text_area.x + 2, rect_text_area.y + 1);
+    disp.setTextColor(TFT_WHITE, TFT_BLUE);
+    disp.printf("Count:%d ", c);
   }
 }
 
@@ -186,17 +186,17 @@ void startCalibration(void) {
 }
 
 void initCalibrDisplay(void) {
-  int32_t w = dsp.width();
-  int32_t h = dsp.height();
+  int32_t w = disp.width();
+  int32_t h = disp.height();
   if (w < h) {
-    dsp.setRotation(dsp.getRotation() ^ 1);
-    w = dsp.width();
-    h = dsp.height();
+    disp.setRotation(disp.getRotation() ^ 1);
+    w = disp.width();
+    h = disp.height();
   }
   int32_t graph_area_h = ((h - 8) / 18) * 18;
   int32_t text_area_h = h - graph_area_h;
   float fontsize = text_area_h / 8;
-  dsp.setTextSize(fontsize);
+  disp.setTextSize(fontsize);
 
   rect_graph_area = { 0, 0, w, graph_area_h };
   rect_text_area = {0, graph_area_h, w, text_area_h };
