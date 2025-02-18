@@ -17,7 +17,6 @@
 
 */
 
-#include <M5AtomS3.h>
 #include <M5Unified.h>
 #include <Arduino.h>
 #include "AranovskiyFilter.h"
@@ -242,7 +241,7 @@ void read_and_processIMU_data() {
 }
 
 void repeatMe() {
-  bool pressed = AtomS3.BtnA.wasPressed();
+  bool pressed = M5.BtnA.wasPressed();
   // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
   if (pressed) {
     startCalibration();
@@ -258,7 +257,7 @@ void repeatMe() {
 
 void setup(void) {
   auto cfg = M5.config();
-  AtomS3.begin(cfg);
+  M5.begin(cfg);
   Serial.begin(115200);
 
   auto imu_type = M5.Imu.getType();
@@ -311,7 +310,7 @@ void setup(void) {
 }
 
 void loop(void) {
-  AtomS3.update();
+  M5.update();
   repeatMe();
   delay(9);
 }
