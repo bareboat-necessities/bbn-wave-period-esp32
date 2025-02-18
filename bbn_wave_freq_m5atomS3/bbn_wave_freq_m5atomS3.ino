@@ -243,12 +243,15 @@ void read_and_processIMU_data() {
 
 void repeatMe() {
   auto imu_update = M5.Imu.update();
-  bool pressed = AtomS3.BtnA.wasPressed();
+  bool pressed = false;
   if (imu_update) {
     read_and_processIMU_data();
+    M5.update();
+    pressed = AtomS3.BtnA.wasPressed();
   }
   else {
     M5.update();
+    pressed = AtomS3.BtnA.wasPressed();
     // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
     if (pressed) {
       startCalibration();
