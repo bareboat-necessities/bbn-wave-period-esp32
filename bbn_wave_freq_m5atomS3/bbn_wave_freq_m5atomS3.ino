@@ -312,5 +312,5 @@ void setup(void) {
 void loop(void) {
   M5.update();
   repeatMe();
-  delay(9);
+  delay(3);
 }
