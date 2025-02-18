@@ -59,14 +59,22 @@ float wave_length = 0.0;
 float freq_good_est = 0.0;
 
 void read_and_processIMU_data() {
+  auto data = M5.Imu.getImuData();
+  
   m5::imu_3d_t accel;
-  M5.Imu.getAccelData(&accel.x, &accel.y, &accel.z);
+  accel.x = data.accel.x;
+  accel.y = data.accel.y;
+  accel.z = data.accel.z;
 
   m5::imu_3d_t gyro;
-  M5.Imu.getGyroData(&gyro.x, &gyro.y, &gyro.z);
+  gyro.x = data.gyro.x;
+  gyro.y = data.gyro.y;
+  gyro.z = data.gyro.z;
 
   got_samples++;
   now = micros();
+
+  drawCalibrGraph(rect_graph_area, data);
 
   if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < ACCEL_MAX_G_SQUARE) {
     // ignore noise (in unbiased way) with unreasonably high Gs
