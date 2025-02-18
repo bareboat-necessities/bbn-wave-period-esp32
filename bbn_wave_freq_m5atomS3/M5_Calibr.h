@@ -9,7 +9,7 @@
 static constexpr const uint8_t calib_value = 100;
 
 // This code performs calibration by clicking on a button or screen.
-// After 180 seconds of calibration, the results are stored in NVS.
+// After 120 seconds of calibration, the results are stored in NVS.
 // The saved calibration values are loaded at the next startup.
 //
 // === How to calibration ===
@@ -182,7 +182,7 @@ void updateCalibration(uint32_t c, bool clear = false) {
 }
 
 void startCalibration(void) {
-  updateCalibration(180, true);
+  updateCalibration(120, true);
 }
 
 void initCalibrDisplay(void) {
