@@ -244,7 +244,7 @@ void read_and_processIMU_data() {
 void repeatMe() {
   auto imu_update = M5.Imu.update();
   bool pressed = AtomS3.BtnA.wasPressed();
-  if (imu_update && !pressed) {
+  if (imu_update) {
     read_and_processIMU_data();
   }
   else {
