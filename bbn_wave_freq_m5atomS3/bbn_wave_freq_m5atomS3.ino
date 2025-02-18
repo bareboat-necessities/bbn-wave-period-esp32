@@ -266,7 +266,7 @@ void repeatMe() {
   else {
     M5.update();
     // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
-    bool pressed = M5.BtnA.wasClicked() || M5.BtnPWR.wasClicked() || M5.Touch.getDetail().wasClicked();
+    bool pressed = AtomS3.BtnA.wasPressed();
     if (pressed) {
       startCalibration();
     }
