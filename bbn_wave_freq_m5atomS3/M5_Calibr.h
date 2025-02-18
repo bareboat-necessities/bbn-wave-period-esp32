@@ -46,7 +46,7 @@ static constexpr const uint32_t color_tbl[18] = {
 };
 static constexpr const float coefficient_tbl[3] = { 0.5f, (1.0f / 256.0f), (1.0f / 1024.0f) };
 
-static auto &disp = (M5.Display);
+static auto &disp = (AtomS3.Display);
 static rect_t rect_graph_area;
 static rect_t rect_text_area;
 
