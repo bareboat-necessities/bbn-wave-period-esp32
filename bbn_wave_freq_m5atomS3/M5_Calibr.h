@@ -6,7 +6,7 @@
 // Strength of the calibration operation;
 // 0: disables calibration.
 // 1 is weakest and 255 is strongest.
-static constexpr const uint8_t calib_value = 64;
+static constexpr const uint8_t calib_value = 100;
 
 // This code performs calibration by clicking on a button or screen.
 // After 180 seconds of calibration, the results are stored in NVS.
@@ -215,63 +215,6 @@ void makeCalibrStep() {
       vTaskDelay(1);
     }
   }
-}
-
-void setup(void) {
-  auto cfg = M5.config();
-
-  // If you want to use external IMU, write this
-  //cfg.external_imu = true;
-
-  M5.begin(cfg);
-
-  const char* name;
-  auto imu_type = M5.Imu.getType();
-  switch (imu_type) {
-    case m5::imu_none:        name = "not found";   break;
-    case m5::imu_sh200q:      name = "sh200q";      break;
-    case m5::imu_mpu6050:     name = "mpu6050";     break;
-    case m5::imu_mpu6886:     name = "mpu6886";     break;
-    case m5::imu_mpu9250:     name = "mpu9250";     break;
-    case m5::imu_bmi270:      name = "bmi270";      break;
-    default:                  name = "unknown";     break;
-  };
-  M5_LOGI("imu:%s", name);
-  M5.Display.printf("imu:%s", name);
-
-  if (imu_type == m5::imu_none) {
-    for (;;) {
-      delay(1);
-    }
-  }
-
-  initCalibrDisplay();
-  
-  // Read calibration values from NVS.
-  if (!M5.Imu.loadOffsetFromNVS()) {
-    //startCalibration();
-  }
-}
-
-void loop(void) {
-
-  // To update the IMU value, use M5.Imu.update.
-  // If a new value is obtained, the return value is non-zero.
-  auto imu_update = M5.Imu.update();
-  if (imu_update) {
-    // Obtain data on the current value of the IMU.
-    auto data = M5.Imu.getImuData();
-    drawCalibrGraph(rect_graph_area, data);
-  }
-  else {
-    M5.update();
-    // Calibration is initiated when a button or screen is clicked.
-    if (M5.BtnA.wasClicked() || M5.BtnPWR.wasClicked() || M5.Touch.getDetail().wasClicked()) {
-      startCalibration();
-    }
-  }
-
-  makeCalibrStep();
 }
 
 #endif
