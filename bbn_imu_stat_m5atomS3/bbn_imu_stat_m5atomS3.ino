@@ -128,7 +128,7 @@ void setup() {
 }
 
 void loop(void) {
-  AtomS3.update();
+  M5.update();
   repeatMe();
   delayMicroseconds(3000);
 }
