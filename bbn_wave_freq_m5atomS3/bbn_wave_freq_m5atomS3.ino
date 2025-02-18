@@ -329,7 +329,6 @@ void setup(void) {
 }
 
 void loop(void) {
-  AtomS3.update();
-  delay(3);
   repeatMe();
+  delay(3);
 }
