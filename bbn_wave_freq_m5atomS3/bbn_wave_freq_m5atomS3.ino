@@ -31,48 +31,9 @@
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
 #include "WaveFilters.h"
-
-// Strength of the calibration operation;
-// 0: disables calibration.
-// 1 is weakest and 255 is strongest.
-static constexpr const uint8_t calib_value = 64;
-
-// This sample code performs calibration by clicking on a button or screen.
-// After 10 seconds of calibration, the results are stored in NVS.
-// The saved calibration values are loaded at the next startup.
-//
-// === How to calibration ===
-// ※ Calibration method for Accelerometer
-//    Change the direction of the main unit by 90 degrees
-//     and hold it still for 2 seconds. Repeat multiple times.
-//     It is recommended that as many surfaces as possible be on the bottom.
-//
-// ※ Calibration method for Gyro
-//    Simply place the unit on a quiet desk and hold it still.
-//    It is recommended that this be done after the accelerometer calibration.
-//
-// ※ Calibration method for geomagnetic sensors
-//    Rotate the main unit slowly in multiple directions.
-//    It is recommended that as many surfaces as possible be oriented to the north.
-//
-// Values for extremely large attitude changes are ignored.
-// During calibration, it is desirable to move the device as gently as possible.
-
-struct rect_t {
-  int32_t x;
-  int32_t y;
-  int32_t w;
-  int32_t h;
-};
+#include "M5_Calibr.h"
 
 bool useMahony = true;
-
-static uint8_t calib_countdown = 0;
-
-static auto &disp = (M5.Display);
-static rect_t rect_text_area;
-
-static int prev_xpos[18];
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
@@ -96,55 +57,6 @@ float t = 0.0;
 float heave_avg = 0.0;
 float wave_length = 0.0;
 float freq_good_est = 0.0;
-
-void updateCalibration(uint32_t c, bool clear = false) {
-  calib_countdown = c;
-
-  if (c == 0) {
-    clear = true;
-  }
-
-  if (clear) {
-    memset(prev_xpos, 0, sizeof(prev_xpos));
-    disp.fillScreen(TFT_BLACK);
-    if (c) {
-      // Start calibration.
-      M5.Imu.setCalibration(calib_value, calib_value, calib_value);
-      // The actual calibration operation is performed each time during M5.Imu.update.
-      //
-      // There are three arguments, which can be specified in the order of Accelerometer, gyro, and geomagnetic.
-      // If you want to calibrate only the Accelerometer, do the following.
-      // M5.Imu.setCalibration(100, 0, 0);
-      //
-      // If you want to calibrate only the gyro, do the following.
-      // M5.Imu.setCalibration(0, 100, 0);
-      //
-      // If you want to calibrate only the geomagnetism, do the following.
-      // M5.Imu.setCalibration(0, 0, 100);
-    }
-    else {
-      // Stop calibration. (Continue calibration only for the geomagnetic sensor)
-      M5.Imu.setCalibration(0, 0, calib_value);
-
-      // If you want to stop all calibration, write this.
-      // M5.Imu.setCalibration(0, 0, 0);
-
-      // save calibration values.
-      M5.Imu.saveOffsetToNVS();
-    }
-  }
-  disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-
-  if (c) {
-    disp.setCursor(2, rect_text_area.h + 1);
-    disp.setTextColor(TFT_WHITE, TFT_BLACK);
-    disp.printf("Countdown:%3d", c);
-  }
-}
-
-void startCalibration(void) {
-  updateCalibration(30, true);
-}
 
 void read_and_processIMU_data() {
   m5::imu_3d_t accel;
@@ -350,19 +262,7 @@ void repeatMe() {
       //startCalibration();
     }
   }
-  /*
-  int32_t sec = millis() / 1000;
-  if (prev_sec != sec) {
-    prev_sec = sec;
-    if (calib_countdown > 0) {
-      updateCalibration(calib_countdown - 1);
-    }
-    if ((sec & 7) == 0) {
-      // prevent WDT (watch dog timer).
-      vTaskDelay(1);
-    }
-  }
-  */
+  makeCalibrStep();
 }
 
 void setup(void) {
@@ -389,16 +289,8 @@ void setup(void) {
       delay(1);
     }
   }
-
-  int32_t w = disp.width();
-  int32_t h = disp.height();
-  if (w < h) {
-    disp.setRotation(disp.getRotation() ^ 1);
-    w = disp.width();
-    h = disp.height();
-  }
-  int32_t text_area_h = ((h - 8) / 18) * 18;
-  rect_text_area = {0, 0, w, text_area_h };
+  
+  initCalibrDisplay();
 
   // Read calibration values from NVS.
   if (!M5.Imu.loadOffsetFromNVS()) {
