@@ -17,7 +17,7 @@ Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32
 
 The method for estimating wave height and heave from a moving boat implemented here using the following on-line algorithm:
 
-1. Sample MPU6886 3D acceleration and 3D gyroscope (angular velocities) measurements at about 250 Hz.
+1. Sample MPU6886 3D acceleration and 3D gyroscope (angular velocities) measurements at about 100 Hz.
 2. Estimate attitude and get attitude quaternion using Mahony algorithm. Using acceleration and gyroscope is enough. No magnetometer is required because we are only interested in vertical acceleration for the next steps.
 3. Double integrate vertical acceleration into vertical displacement using specially designed Kalman filter which corrects for integral drift in wave and corrects for the constant accelerometer bias.
 4. Estimate observed heave frequency with Aranovskiy on-line filter (without need for FFT). The correction for accelerometer bias is important for this step.
@@ -361,8 +361,8 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 ## Flashing Firmware
 
 ````
-wget https://github.com/bareboat-necessities/bbn-wave-period-esp32/releases/download/v0.9.9/bbn_wave_freq_m5atomS3_bin-2024-12-07.zip
-unzip bbn_wave_freq_m5atomS3_bin-2024-12-07.zip 
+wget https://github.com/bareboat-necessities/bbn-wave-period-esp32/releases/download/v0.9.24/bbn_wave_freq_m5atomS3_bin-2025-02-18.zip
+unzip bbn_wave_freq_m5atomS3_bin-2025-02-18.zip 
 /srv/esphome/bin/esptool.py  --chip esp32s3 --port "/dev/ttyACM0" --baud 921600  --before default_reset --after hard_reset write_flash 0x0 bbn_wave_freq_m5atomS3_firmware.bin
 ````
 
