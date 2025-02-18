@@ -185,7 +185,7 @@ void startCalibration(void) {
   updateCalibration(180, true);
 }
 
-void initCalibrDisplay() {
+void initCalibrDisplay(void) {
   int32_t w = dsp.width();
   int32_t h = dsp.height();
   if (w < h) {
@@ -202,7 +202,7 @@ void initCalibrDisplay() {
   rect_text_area = {0, graph_area_h, w, text_area_h };
 }
 
-void makeCalibrStep() {
+void makeCalibrStep(void) {
   int32_t sec = millis() / 1000;
   if (prev_sec != sec) {
     prev_sec = sec;
