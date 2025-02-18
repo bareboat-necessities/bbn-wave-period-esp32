@@ -106,31 +106,30 @@ void drawGraph(const rect_t& r, const m5::imu_data_t& data) {
 }
 
 void drawCalibrGraph(const rect_t& r, const m5::imu_data_t& data) {
-    drawGraph(rect_graph_area, data);
-    /*
-        // The data obtained by getImuData can be used as follows.
-        data.accel.x;      // accel x-axis value.
-        data.accel.y;      // accel y-axis value.
-        data.accel.z;      // accel z-axis value.
-        data.accel.value;  // accel 3values array [0]=x / [1]=y / [2]=z.
+  drawGraph(rect_graph_area, data);
+  /*
+  // The data obtained by getImuData can be used as follows.
+  data.accel.x;      // accel x-axis value.
+  data.accel.y;      // accel y-axis value.
+  data.accel.z;      // accel z-axis value.
+  data.accel.value;  // accel 3values array [0]=x / [1]=y / [2]=z.
 
-        data.gyro.x;      // gyro x-axis value.
-        data.gyro.y;      // gyro y-axis value.
-        data.gyro.z;      // gyro z-axis value.
-        data.gyro.value;  // gyro 3values array [0]=x / [1]=y / [2]=z.
+  data.gyro.x;      // gyro x-axis value.
+  data.gyro.y;      // gyro y-axis value.
+  data.gyro.z;      // gyro z-axis value.
+  data.gyro.value;  // gyro 3values array [0]=x / [1]=y / [2]=z.
 
-        data.mag.x;       // mag x-axis value.
-        data.mag.y;       // mag y-axis value.
-        data.mag.z;       // mag z-axis value.
-        data.mag.value;   // mag 3values array [0]=x / [1]=y / [2]=z.
+  data.mag.x;       // mag x-axis value.
+  data.mag.y;       // mag y-axis value.
+  data.mag.z;       // mag z-axis value.
+  data.mag.value;   // mag 3values array [0]=x / [1]=y / [2]=z.
 
-        data.value;       // all sensor 9values array [0~2]=accel / [3~5]=gyro / [6~8]=mag
+  data.value;       // all sensor 9values array [0~2]=accel / [3~5]=gyro / [6~8]=mag
 
-        M5_LOGV("ax:%f  ay:%f  az:%f", data.accel.x, data.accel.y, data.accel.z);
-        M5_LOGV("gx:%f  gy:%f  gz:%f", data.gyro.x , data.gyro.y , data.gyro.z );
-        M5_LOGV("mx:%f  my:%f  mz:%f", data.mag.x  , data.mag.y  , data.mag.z  );
-      //*/
-    ++frame_count;
+  M5_LOGV("ax:%f  ay:%f  az:%f", data.accel.x, data.accel.y, data.accel.z);
+  M5_LOGV("gx:%f  gy:%f  gz:%f", data.gyro.x , data.gyro.y , data.gyro.z );
+  M5_LOGV("mx:%f  my:%f  mz:%f", data.mag.x  , data.mag.y  , data.mag.z  );
+  */
 }
 
 void updateCalibration(uint32_t c, bool clear = false) {
