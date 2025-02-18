@@ -242,7 +242,6 @@ void read_and_processIMU_data() {
 }
 
 void repeatMe() {
-  static uint32_t prev_sec = 0;
   auto imu_update = M5.Imu.update();
   if (imu_update) {
     read_and_processIMU_data();
