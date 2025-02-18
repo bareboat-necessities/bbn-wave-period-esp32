@@ -246,12 +246,10 @@ void repeatMe() {
   bool pressed = false;
   if (imu_update) {
     read_and_processIMU_data();
-    M5.update();
-    pressed = AtomS3.BtnA.wasPressed();
   }
   else {
     M5.update();
-    pressed = AtomS3.BtnA.wasPressed();
+    bool pressed = M5.BtnA.wasClicked() || M5.Touch.getDetail().wasClicked();
     // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
     if (pressed) {
       startCalibration();
