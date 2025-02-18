@@ -17,7 +17,7 @@ Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32
 
 The method for estimating wave height and heave from a moving boat implemented here using the following on-line algorithm:
 
-1. Sample MPU6886 3D acceleration and 3D gyroscope (angular velocities) measurements at about 100 Hz.
+1. Sample MPU6886 3D acceleration and 3D gyroscope (angular velocities) measurements at about 250 Hz.
 2. Estimate attitude and get attitude quaternion using Mahony algorithm. Using acceleration and gyroscope is enough. No magnetometer is required because we are only interested in vertical acceleration for the next steps.
 3. Double integrate vertical acceleration into vertical displacement using specially designed Kalman filter which corrects for integral drift in wave and corrects for the constant accelerometer bias.
 4. Estimate observed heave frequency with Aranovskiy on-line filter (without need for FFT). The correction for accelerometer bias is important for this step.
@@ -378,7 +378,7 @@ chmod +x bbn-flash-m5-wave.sh
 
 * Instead of chaining Kalman filters
 it would probably be better to implement it as a single state one Kalman filter
-* Try to find a way for mpu6886 to sample at higher (than 100Hz) frequency
+* Try to find a way for mpu6886 to sample at higher (than 250Hz) frequency
 * The method can be improved for less regular waves by splitting original signal with band pass filter into several signals
 of different frequencies bands. Then it would be possible to apply the method separately to each band and sum up the results
 received for each band. Effectively it would approximate the signal spectrum and identify main frequency within each band,
