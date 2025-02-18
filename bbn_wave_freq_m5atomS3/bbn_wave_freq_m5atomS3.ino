@@ -290,8 +290,8 @@ void setup(void) {
     default:                  imu_name = "unknown";     break;
   };
   disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-  M5.Lcd.setCursor(0, 2);
-  M5.Lcd.printf("imu: %s\n", imu_name);
+  //M5.Lcd.setCursor(0, 2);
+  //M5.Lcd.printf("imu: %s\n", imu_name);
 
   if (imu_type == m5::imu_none) {
     for (;;) {
