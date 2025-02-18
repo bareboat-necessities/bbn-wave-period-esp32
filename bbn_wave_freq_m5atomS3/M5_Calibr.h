@@ -202,6 +202,21 @@ void initCalibrDisplay() {
   rect_text_area = {0, graph_area_h, w, text_area_h };
 }
 
+void makeCalibrStep() {
+  int32_t sec = millis() / 1000;
+  if (prev_sec != sec) {
+    prev_sec = sec;
+    M5_LOGI("sec:%d  frame:%d", sec, frame_count);
+    frame_count = 0;
+    if (calib_countdown) {
+      updateCalibration(calib_countdown - 1);
+    }
+    if ((sec & 7) == 0) { // prevent WDT.
+      vTaskDelay(1);
+    }
+  }
+}
+
 void setup(void) {
   auto cfg = M5.config();
 
@@ -256,18 +271,7 @@ void loop(void) {
     }
   }
 
-  int32_t sec = millis() / 1000;
-  if (prev_sec != sec) {
-    prev_sec = sec;
-    M5_LOGI("sec:%d  frame:%d", sec, frame_count);
-    frame_count = 0;
-    if (calib_countdown) {
-      updateCalibration(calib_countdown - 1);
-    }
-    if ((sec & 7) == 0) { // prevent WDT.
-      vTaskDelay(1);
-    }
-  }
+  makeCalibrStep();
 }
 
 #endif
