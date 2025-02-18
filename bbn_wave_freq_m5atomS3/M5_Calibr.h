@@ -51,7 +51,6 @@ static rect_t rect_graph_area;
 static rect_t rect_text_area;
 
 static uint8_t calib_countdown = 0;
-static uint32_t frame_count = 0;
 static uint32_t prev_sec = 0;
 
 static int prev_xpos[18];
@@ -206,8 +205,6 @@ void makeCalibrStep(void) {
   int32_t sec = millis() / 1000;
   if (prev_sec != sec) {
     prev_sec = sec;
-    //M5_LOGI("sec:%d  frame:%d", sec, frame_count);
-    frame_count = 0;
     if (calib_countdown) {
       updateCalibration(calib_countdown - 1);
     }
