@@ -232,22 +232,6 @@ void read_and_processIMU_data() {
             Serial.println();
           }
         }
-        else {
-          disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-          M5.Lcd.setCursor(0, 2);
-          M5.Lcd.printf("imu: %s\n", imu_name);
-          M5.Lcd.printf("sec: %d\n", now / 1000000);
-          M5.Lcd.printf("samples: %d\n", got_samples);
-          M5.Lcd.printf("period sec: %0.4f\n", period);
-          M5.Lcd.printf("wave len:   %0.4f\n", wave_length);
-          M5.Lcd.printf("heave:      %0.4f\n", waveState.heave);
-          M5.Lcd.printf("wave height:%0.4f\n", wave_height);
-          M5.Lcd.printf("range %0.4f %0.4f\n", min_max_h.min.value, min_max_h.max.value);
-          M5.Lcd.printf("%0.3f %0.3f %0.3f\n", accel.x, accel.y, accel.z);
-          M5.Lcd.printf("accel abs:  %0.4f\n", sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-          M5.Lcd.printf("accel vert: %0.4f\n", (accel_rotated.z - 1.0));
-          M5.Lcd.printf("%0.1f %0.1f %0.1f\n", pitch, roll, yaw);
-        }
 
         last_refresh = now;
         got_samples = 0;
