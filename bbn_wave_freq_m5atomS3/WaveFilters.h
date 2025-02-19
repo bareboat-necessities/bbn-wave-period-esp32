@@ -9,7 +9,7 @@
 #define FREQ_COEF_TIGHT  0.05
 #define ARANOVSKIY_SCALE 10.0
 
-#define ACCEL_MAX_G_SQUARE 16.0
+#define ACCEL_MAX_G_SQUARE 4.84  // (a/g)^2
 
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
