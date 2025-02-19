@@ -361,8 +361,8 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 ## Flashing Firmware
 
 ````
-wget https://github.com/bareboat-necessities/bbn-wave-period-esp32/releases/download/v1.0.2/bbn_wave_freq_m5atomS3_bin-2025-02-18.zip
-unzip bbn_wave_freq_m5atomS3_bin-2025-02-18.zip 
+wget https://github.com/bareboat-necessities/bbn-wave-period-esp32/releases/download/v1.0.2/bbn_wave_freq_m5atomS3_bin-2025-02-19.zip
+unzip bbn_wave_freq_m5atomS3_bin-2025-02-19.zip 
 /srv/esphome/bin/esptool.py  --chip esp32s3 --port "/dev/ttyACM0" --baud 921600  --before default_reset --after hard_reset write_flash 0x0 bbn_wave_freq_m5atomS3_firmware.bin
 ````
 
