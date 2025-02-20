@@ -4,8 +4,8 @@ Boat Heave Sensor on m5stack atomS3.
 
 m5stack atomS3 is ESP32 microcontroller with built-in IMU MPU6886 (accelerometer and gyroscope)
 
-<p align="center" style="width: 50vw;" >
-<img src="./images/BBN-heave-sensor-enclosure.jpg?raw=true" alt="BBN Heave Sensor" />
+<p align="center">
+<img src="./images/BBN-heave-sensor-enclosure.jpg?raw=true" alt="BBN Heave Sensor" style="width: 50vw;" />
 </p>
 
 Use arduino IDE to compile and upload sketch to esp32
