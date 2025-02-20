@@ -369,6 +369,10 @@ unzip bbn_wave_freq_m5atomS3_bin-2025-02-19.zip
 ### On Bareboat Necessities OS
 
 ````
+# shutdown signalk
+sudo systemctl stop signalk
+
+if [ -f bbn-flash-m5-wave.sh ]; then rm bbn-flash-m5-wave.sh; fi
 wget https://raw.githubusercontent.com/bareboat-necessities/my-bareboat/refs/heads/master/m5stack-tools/bbn-flash-m5-wave.sh
 chmod +x bbn-flash-m5-wave.sh
 ./bbn-flash-m5-wave.sh -p /dev/ttyACM0
