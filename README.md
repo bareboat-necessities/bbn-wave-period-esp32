@@ -383,9 +383,9 @@ chmod +x bbn-flash-m5-wave.sh
 ./bbn-flash-m5-wave.sh -p /dev/ttyACM0
 ````
 
-## Sensors Calilbration
+## Sensors Calibration
 
-To calilbrate sensors press the middle of the m5atom screen and rotate the device in all possible directions.
+To calibrate sensors press the middle of the m5atom screen and rotate the device in all possible directions.
 Read more in the code of bbn_wave_freq_m5atomS3/M5_Calibr.h about the calibration procedure.
 
 
