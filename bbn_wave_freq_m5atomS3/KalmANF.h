@@ -24,10 +24,10 @@ typedef struct {
   float rho_sq;      // rho^2 (precomputed)
   float q;           // Process noise covariance
   float r;           // Measurement noise covariance
-} KalmanANF;
+} KalmANF;
 
 // Initialize the filter
-void kalmanANF_init(KalmanANF *f, float rho, float q, float r, float p_cov, float s_prev1, float s_prev2, float a_prev) {
+void kalmANF_init(KalmANF *f, float rho, float q, float r, float p_cov, float s_prev1, float s_prev2, float a_prev) {
   f->s_prev1 = s_prev1;
   f->s_prev2 = s_prev2;
   f->a_prev = a_prev;
@@ -39,7 +39,7 @@ void kalmanANF_init(KalmanANF *f, float rho, float q, float r, float p_cov, floa
 }
 
 // Process a single sample, return estimated frequency
-float kalmanANF_process(KalmanANF *f, float y, float delta_t, float *e_out) {
+float kalmANF_process(KalmANF *f, float y, float delta_t, float *e_out) {
   // 1. Compute intermediate variable s[n]
   float s = y + f->rho * f->s_prev1 * f->a_prev - f->rho_sq * f->s_prev2;
 
@@ -79,3 +79,4 @@ float kalmanANF_process(KalmanANF *f, float y, float delta_t, float *e_out) {
 }
 
 #endif
+
