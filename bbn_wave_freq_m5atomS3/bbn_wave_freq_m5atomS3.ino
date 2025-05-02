@@ -36,8 +36,8 @@
 bool useMahony = true;
 
 // Create a bandpass filter for 0.02-4 Hz
-// - Center frequency: 1000 Hz
-// - Bandwidth: 200 Hz
+// - Center frequency: 2.01 Hz
+// - Bandwidth: 3.98 Hz
 TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_k = 0UL;
