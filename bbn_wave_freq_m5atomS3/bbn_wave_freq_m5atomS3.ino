@@ -27,12 +27,18 @@
 #include "MinMaxLemire.h"
 #include "KalmanForWave.h"
 #include "KalmanForWaveAlt.h"
+#include "TimeAwareBandpassFilter.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
 #include "WaveFilters.h"
 #include "M5_Calibr.h"
 
 bool useMahony = true;
+
+// Create a bandpass filter for 0.02-4 Hz
+// - Center frequency: 1000 Hz
+// - Bandwidth: 200 Hz
+TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
@@ -120,9 +126,11 @@ void read_and_processIMU_data() {
     accel_rotated.y = rotated_a[1];
     accel_rotated.z = rotated_a[2];
 
-    float a = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+    float a_noisy = (accel_rotated.z - 1.0);  // acceleration in fractions of g
     //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25 - 2.0) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
     //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
+
+    float a = bpFilter.processWithDelta(a_noisy, delta_t);
 
     if (kalm_w_first) {
       kalm_w_first = false;
@@ -212,15 +220,17 @@ void read_and_processIMU_data() {
           }
           else {
             // report for Arduino Serial Plotter
-            Serial.printf("heave_cm:%.4f", waveState.heave * 100);
-            Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+            //Serial.printf(",a:%0.4f", g_std * a);
+            //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
+            Serial.printf(",heave_cm:%.4f", waveState.heave * 100);
+            //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
             //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
             //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
             //Serial.printf(",freq:%.4f", arState.f * 100);
             //Serial.printf(",h_cm:%.4f", h * 100);
-            Serial.printf(",height_cm:%.4f", wave_height * 100);
-            Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
-            Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
+            //Serial.printf(",height_cm:%.4f", wave_height * 100);
+            //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
+            //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
             //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
             //Serial.printf(",period_decisec:%.4f", period * 10);
             //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
