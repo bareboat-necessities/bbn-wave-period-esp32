@@ -143,15 +143,16 @@ void read_and_processIMU_data() {
     }
     kalman_wave_step(&waveState, a * g_std, delta_t);
 
-    double freq_adj = 0.0;
+    double freq = 0.0, freq_adj = 0.0;
     if (t > warmup_time_sec(useMahony)) {
       // give some time for other filters to settle first
       aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
+      freq = arState.f;
       if (kalm_smoother_first) {
         kalm_smoother_first = false;
-        kalman_smoother_set_initial(&kalman_freq, arState.f);
+        kalman_smoother_set_initial(&kalman_freq, freq);
       }
-      freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
+      freq_adj = kalman_smoother_update(&kalman_freq, freq);
     }
 
     if (isnan(freq_adj)) {
@@ -170,12 +171,12 @@ void read_and_processIMU_data() {
       SampleType sample = { .value = waveState.heave, .timeMicroSec = now };
       min_max_lemire_update(&min_max_h, sample, windowMicros);
 
-      if (fabs(arState.f - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
+      if (fabs(freq - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
         freq_good_est = freq_adj;
       }
 
       // use previous good estimate of frequency
-      if (fabs(arState.f - freq_good_est) < FREQ_COEF * freq_good_est) {
+      if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
         float k_hat = - pow(2.0 * PI * freq_good_est, 2);
         if (kalm_w_alt_first) {
           kalm_w_alt_first = false;
@@ -226,7 +227,7 @@ void read_and_processIMU_data() {
             //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
             //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
             //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-            //Serial.printf(",freq:%.4f", arState.f * 100);
+            //Serial.printf(",freq:%.4f", freq * 100);
             //Serial.printf(",h_cm:%.4f", h * 100);
             //Serial.printf(",height_cm:%.4f", wave_height * 100);
             //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
