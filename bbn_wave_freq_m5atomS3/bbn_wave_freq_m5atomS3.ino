@@ -42,7 +42,7 @@
 #include "M5_Calibr.h"
 
 bool useMahony = true;
-bool useAranovskiy = true;
+bool useAranovskiy = false;
 
 // Create a bandpass filter for 0.02-4 Hz
 // - Center frequency: 2.01 Hz
