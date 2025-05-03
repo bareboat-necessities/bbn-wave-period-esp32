@@ -91,7 +91,7 @@ void read_and_processIMU_data() {
 
   drawCalibrGraph(rect_graph_area, data);
   
-  if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < ACCEL_MAX_G_SQUARE) {
+  if ((accel.x * accel.x + accel.y * accel.y + (accel.z - 1) * (accel.z - 1)) < ACCEL_MAX_G_SQUARE) {
     // ignore noise (in unbiased way) with unreasonably high Gs
 
     float delta_t = (now - last_update) / 1000000.0;  // time step sec
