@@ -65,7 +65,7 @@ float kalmANF_process(KalmANF *f, float y, float delta_t, float *e_out) {
   f->p_cov = (1.0 - K * f->s_prev1) * f->p_cov;
 
   // 8. Compute frequency estimate
-  float omega_hat = acos(a / 2.0);
+  float omega_hat = acosf(a / 2.0);
   float f_est = (omega_hat / delta_t) / (2.0 * M_PI);
 
   // 9. Update state for next iteration
