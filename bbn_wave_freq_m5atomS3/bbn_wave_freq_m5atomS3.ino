@@ -5,15 +5,22 @@
 
   See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
 
-  Instead of FFT method for finding main wave frequency we could use Aranovskiy frequency estimator which is a simple on-line filter.
+  Instead of FFT method for finding main wave frequency we could use Aranovskiy or KalmANF frequency estimator which is a simple on-line filter.
 
   Ref:
 
-  Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul, Stanislav V. Aranovskiy
+  1. Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul, Stanislav V. Aranovskiy
 
   The New Algorithm of Sinusoidal Signal Frequency Estimation.
 
   11th IFAC International Workshop on Adaptation and Learning in Control and Signal Processing July 3-5, 2013. Caen, France
+
+  2. R. Ali, T. van Waterschoot
+  
+  A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter. KalmANF
+  
+  Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23), Copenhagen, Denmark, September 2023
+
 
 */
 
