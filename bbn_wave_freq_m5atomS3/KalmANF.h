@@ -57,7 +57,8 @@ float kalmANF_process(KalmANF *f, float y, float delta_t, float *e_out) {
 
   // 6. Handle coefficient bounds
   if (a > 2.0 || a < -2.0) {
-    a = 0.0;  // Reset if out of bounds for acos()
+    //a = 0.0;  // Reset if out of bounds for acos()
+    a = a > 2.0 ? 1.99999 : -1.99999;
   }
 
   // 7. Update error covariance
