@@ -160,8 +160,8 @@ void read_and_processIMU_data() {
         aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
         freq = arState.f;
       } else {
-        float e;
-        float f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t, &e);
+        double e;
+        double f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t, &e);
         freq = f_kalmanANF;
       }
       if (kalm_smoother_first) {
