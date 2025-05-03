@@ -20,6 +20,7 @@
 #include <M5Unified.h>
 #include <Arduino.h>
 #include "AranovskiyFilter.h"
+#include "KalmANF.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "Mahony_AHRS.h"
@@ -34,6 +35,7 @@
 #include "M5_Calibr.h"
 
 bool useMahony = true;
+bool useAranovskiy = true;
 
 // Create a bandpass filter for 0.02-4 Hz
 // - Center frequency: 2.01 Hz
@@ -52,6 +54,7 @@ Mahony_AHRS_Vars mahony;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 Kalman_QMEKF kalman_mekf;
+KalmANF kalmANF;
 
 const char* imu_name;
 
@@ -146,8 +149,14 @@ void read_and_processIMU_data() {
     double freq = 0.0, freq_adj = 0.0;
     if (t > warmup_time_sec(useMahony)) {
       // give some time for other filters to settle first
-      aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
-      freq = arState.f;
+      if (useAranovskiy) {
+        aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
+        freq = arState.f;
+      } else {
+        float e;
+        f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t, &e);
+        freq = f_kalmanANF;
+      }
       if (kalm_smoother_first) {
         kalm_smoother_first = false;
         kalman_smoother_set_initial(&kalman_freq, freq);
@@ -314,7 +323,11 @@ void setup(void) {
     kalman_mekf.mekf = &mekf;
   }
 
-  init_filters(&arParams, &arState, &kalman_freq);
+  if (useAranovskiy) {
+    init_filters(&arParams, &arState, &kalman_freq);
+  } else {
+    init_filters_alt(&kalmANF, &kalman_freq);
+  }
 
   start_time = micros();
   last_update = start_time;
