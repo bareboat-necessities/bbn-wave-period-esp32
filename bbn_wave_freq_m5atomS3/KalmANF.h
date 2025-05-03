@@ -14,20 +14,20 @@
 
 typedef struct {
   // Persistent state variables
-  float s_prev1;     // s[n-1]
-  float s_prev2;     // s[n-2]
-  float a_prev;      // a[n-1]
-  float p_cov;       // Error covariance
+  double s_prev1;     // s[n-1]
+  double s_prev2;     // s[n-2]
+  double a_prev;      // a[n-1]
+  double p_cov;       // Error covariance
 
   // Constants (configured at init)
-  float rho;         // Pole radius (0 < rho < 1)
-  float rho_sq;      // rho^2 (precomputed)
-  float q;           // Process noise covariance
-  float r;           // Measurement noise covariance
+  double rho;         // Pole radius (0 < rho < 1)
+  double rho_sq;      // rho^2 (precomputed)
+  double q;           // Process noise covariance
+  double r;           // Measurement noise covariance
 } KalmANF;
 
 // Initialize the filter
-void kalmANF_init(KalmANF *f, float rho, float q, float r, float p_cov, float s_prev1, float s_prev2, float a_prev) {
+void kalmANF_init(KalmANF *f, double rho, double q, double r, double p_cov, double s_prev1, double s_prev2, double a_prev) {
   f->s_prev1 = s_prev1;
   f->s_prev2 = s_prev2;
   f->a_prev = a_prev;
@@ -39,21 +39,21 @@ void kalmANF_init(KalmANF *f, float rho, float q, float r, float p_cov, float s_
 }
 
 // Process a single sample, return estimated frequency
-float kalmANF_process(KalmANF *f, float y, float delta_t, float *e_out) {
+double kalmANF_process(KalmANF *f, double y, double delta_t, double *e_out) {
   // 1. Compute intermediate variable s[n]
-  float s = y + f->rho * f->s_prev1 * f->a_prev - f->rho_sq * f->s_prev2;
+  double s = y + f->rho * f->s_prev1 * f->a_prev - f->rho_sq * f->s_prev2;
 
   // 2. Prediction update
   f->p_cov += f->q;
 
   // 3. Compute Kalman gain
-  float K = f->s_prev1 / (f->s_prev1 * f->s_prev1 + f->r / f->p_cov);
+  double K = f->s_prev1 / (f->s_prev1 * f->s_prev1 + f->r / f->p_cov);
 
   // 4. Compute output e[n]
-  float e = s - f->s_prev1 * f->a_prev + f->s_prev2;
+  double e = s - f->s_prev1 * f->a_prev + f->s_prev2;
 
   // 5. Update coefficient a[n]
-  float a = f->a_prev + K * e;
+  double a = f->a_prev + K * e;
 
   // 6. Handle coefficient bounds
   if (a > 2.0 || a < -2.0) {
@@ -65,8 +65,8 @@ float kalmANF_process(KalmANF *f, float y, float delta_t, float *e_out) {
   f->p_cov = (1.0 - K * f->s_prev1) * f->p_cov;
 
   // 8. Compute frequency estimate
-  float omega_hat = acos(a / 2.0);
-  float f_est = (omega_hat / delta_t) / (2.0 * M_PI);
+  double omega_hat = acos(a / 2.0);
+  double f_est = (omega_hat / delta_t) / (2.0 * M_PI);
 
   // 9. Update state for next iteration
   f->s_prev2 = f->s_prev1;
