@@ -24,8 +24,8 @@ The method for estimating wave height and heave from a moving boat implemented h
 1. Sample MPU6886 3D acceleration and 3D gyroscope (angular velocities) measurements at about 250 Hz.
 2. Estimate attitude and get attitude quaternion using Mahony algorithm. Using acceleration and gyroscope is enough. No magnetometer is required because we are only interested in vertical acceleration for the next steps.
 3. Double integrate vertical acceleration into vertical displacement using specially designed Kalman filter which corrects for integral drift in wave and corrects for the constant accelerometer bias.
-4. Estimate observed heave frequency with Aranovskiy on-line filter (without need for FFT). The correction for accelerometer bias is important for this step.
-5. Smooth frequency produced by Aranovskiy filter with Kalman smoother.
+4. Estimate observed heave frequency with Aranovskiy or KalmANF on-line filter (without need for FFT). The correction for accelerometer bias is important for this step.
+5. Smooth frequency produced by Aranovskiy or KalmANF filter with Kalman smoother.
 6. Use another specially designed Kalman filter knowing the frequency and fusing model with trochoidal wave model to double integrate vertical acceleration. Assuming convergence of frequency, this method would give real-time phase correction of heave compared to the first Kalman method. Doppler effect due to boat movement in waves has no impact on displacement amplitude.
 
 ### Kalman Filter #1
@@ -161,7 +161,7 @@ $$
 Kalman filter to estimate vertical displacement in wave using accelerometer, 
 correct for accelerometer bias, estimate accelerometer bias. This method
 assumes that displacement follows trochoidal model and the frequency of
-wave is known. Frequency can be estimated using another step with Aranovskiy filter.
+wave is known. Frequency can be estimated using another step with Aranovskiy or KalmANF filter.
 
 In trochoidal wave model there is simple linear dependency between displacement and 
 acceleration.
@@ -414,8 +414,11 @@ Adaptation and Learning in Control and Signal Processing, 2013](https://www.scie
 
 2. Sharkh S. M., Hendijanizadeh2 M., Moshrefi-Torbati3 M., Abusara M. A.: A Novel Kalman Filter Based Technique for Calculating the Time History of Vertical Displacement of a Boat from Measured Acceleration, [Marine Engineering Frontiers Volume 2, 2014](https://www.researchgate.net/profile/Mehdi-Hendijanizadeh/publication/264713649_A_Novel_Kalman_Filter_Based_Technique_for_Calculating_the_Time_History_of_Vertical_Displacement_of_a_Boat_from_Measured_Acceleration/links/53ec88db0cf24f241f1584c5/A-Novel-Kalman-Filter-Based-Technique-for-Calculating-the-Time-History-of-Vertical-Displacement-of-a-Boat-from-Measured-Acceleration.pdf "Marine Engineering Frontiers Volume 2, 2014")
 
-3. Daniel Lemire, [Streaming Maximum-Minimum Filter Using No More than 
+3. R. Ali, T. van Waterschoot, "A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter", 
+Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23), Copenhagen, Denmark, September 2023
+
+4. Daniel Lemire, [Streaming Maximum-Minimum Filter Using No More than 
 Three Comparisons per Element](http://arxiv.org/abs/cs.DS/0610046). Nordic Journal of Computing, 13 (4), pages 328-339, 2006.
 
-4. Trochoidal Wave [Wikipedia](https://en.wikipedia.org/wiki/Trochoidal_wave)
+5. Trochoidal Wave [Wikipedia](https://en.wikipedia.org/wiki/Trochoidal_wave)
 
