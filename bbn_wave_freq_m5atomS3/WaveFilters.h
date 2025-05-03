@@ -14,6 +14,8 @@
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
 void init_filters(AranovskiyState* ar_param, AranovskiyState* ar_state, KalmanSmootherVars* kalman_smoother);
+void init_wave_filters();
+
 int warmup_time_sec(bool use_mahony);
 
 /*
@@ -57,11 +59,15 @@ void init_smoother(KalmanSmootherVars* kalman_smoother) {
   kalman_smoother_init(kalman_smoother, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
 }
 
+void init_wave_filters() {
+  kalman_wave_init_defaults(20.0, 0.2, 0.04, 0.0002);
+  kalman_wave_alt_init_defaults(20.0, 0.2, 0.04, 1.0e6, 0.0002);  
+}
+
 void init_filters(AranovskiyParams* ar_param, AranovskiyState* ar_state, KalmanSmootherVars* kalman_smoother) {
   init_aranovskiy(ar_param, ar_state);
   init_smoother(kalman_smoother);
-  kalman_wave_init_defaults(20.0, 0.2, 0.04, 0.0002);
-  kalman_wave_alt_init_defaults(20.0, 0.2, 0.04, 1.0e6, 0.0002);
+  init_wave_filters();
 }
 
 #endif
