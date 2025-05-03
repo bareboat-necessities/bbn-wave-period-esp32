@@ -14,6 +14,7 @@
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
 void init_filters(AranovskiyState* ar_param, AranovskiyState* ar_state, KalmanSmootherVars* kalman_smoother);
+void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
 int warmup_time_sec(bool use_mahony);
@@ -66,6 +67,12 @@ void init_wave_filters() {
 
 void init_filters(AranovskiyParams* ar_param, AranovskiyState* ar_state, KalmanSmootherVars* kalman_smoother) {
   init_aranovskiy(ar_param, ar_state);
+  init_smoother(kalman_smoother);
+  init_wave_filters();
+}
+
+void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother) {
+  kalmANF_init(&kalmANF, 0.95, 1e-5, 1000000.0, 0.0, 0.0, 0.0, 1.9999);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
