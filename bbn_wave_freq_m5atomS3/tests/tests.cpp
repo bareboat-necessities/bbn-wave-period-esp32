@@ -5,6 +5,7 @@
 #include <random>
 
 #include "AranovskiyFilter.h"
+#include "KalmANF.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "MinMaxLemire.h"
@@ -18,6 +19,9 @@ AranovskiyState arState;
 KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
+KalmANF kalmANF;
+
+bool useAranovskiy = true;
 
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
@@ -44,14 +48,22 @@ void run_filters(float a, float v, float h, float delta_t) {
   kalman_wave_step(&waveState, a * g_std, delta_t);
 
   double freq_adj = 0.0;
+  double freq = 0.0;
   if (t > warmup_time_sec(true)) {
     // give some time for other filters to settle first
-    aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
+    if (useAranovskiy) {
+      aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
+      freq = arState.f;
+    } else {
+      float e;
+      float f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t, &e);
+      freq = f_kalmanANF;
+    }
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
-      kalman_smoother_set_initial(&kalman_freq, arState.f);
+      kalman_smoother_set_initial(&kalman_freq, freq);
     }
-    freq_adj = kalman_smoother_update(&kalman_freq, arState.f);
+    freq_adj = kalman_smoother_update(&kalman_freq, freq);
   }
 
   if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
@@ -60,7 +72,7 @@ void run_filters(float a, float v, float h, float delta_t) {
     SampleType sample = { .value = waveState.heave, .timeMicroSec = now() };
     min_max_lemire_update(&min_max_h, sample, windowMicros);
 
-    if (fabs(arState.f - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
+    if (fabs(freq - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
       float k_hat = - pow(2.0 * PI * freq_adj, 2);
       if (kalm_w_alt_first) {
         kalm_w_alt_first = false;
@@ -89,7 +101,7 @@ void run_filters(float a, float v, float h, float delta_t) {
     printf(",max,%.4f", min_max_h.max.value);
     printf(",min,%.4f", min_max_h.min.value);
     printf(",period,%.4f", period);
-    printf(",freq:,%.4f", arState.f);
+    printf(",freq:,%.4f", freq);
     printf(",freq_adj,%.4f", freq_adj);
     printf(",heave_avg,%.7f", heave_avg);
     printf(",accel_bias,%.5f", waveState.accel_bias);
@@ -103,7 +115,11 @@ int main(int argc, char *argv[]) {
   float delta_t = 1.0 / sample_freq;
   float test_duration = 5.0 * 60.0;
 
-  init_filters(&arParams, &arState, &kalman_freq);
+  if (useAranovskiy) {
+    init_filters(&arParams, &arState, &kalman_freq);
+  } else {
+    init_filters_alt(&kalmANF, &kalman_freq);
+  }
 
   //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
   float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = PI / 3.0;
