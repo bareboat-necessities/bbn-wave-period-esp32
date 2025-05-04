@@ -52,7 +52,7 @@ TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
 
 TimeAwareSpikeFilter spikeFilter(7, 0.001);
 
-unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_k = 0UL;
+unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_inner = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
@@ -144,9 +144,11 @@ void read_and_processIMU_data() {
     //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
 
     float a = bpFilter.processWithDelta(a_noisy, delta_t);
-    float a_no_spikes =  spikeFilter.filterWithDelta(a, delta_t);
     
     if ((a * a) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
+      float delta_t_inner = (now - last_update_inner) / 1000000.0;  // time step sec
+      last_update_inner = now;
+      float a_no_spikes =  spikeFilter.filterWithDelta(a, delta_t_inner);
       a = a_no_spikes;
       if (kalm_w_first) {
         kalm_w_first = false;
@@ -157,17 +159,17 @@ void read_and_processIMU_data() {
         waveState.accel_bias = 0.0f;
         kalman_wave_init_state(&waveState);
       }
-      kalman_wave_step(&waveState, a * g_std, delta_t);
+      kalman_wave_step(&waveState, a * g_std, delta_t_inner);
   
       double freq = 0.0, freq_adj = 0.0;
       if (t > warmup_time_sec(useMahony)) {
         // give some time for other filters to settle first
         if (useAranovskiy) {
-          aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
+          aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t_inner);
           freq = arState.f;
         } else {
           float e;
-          float f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t, &e);
+          float f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t_inner, &e);
           freq = f_kalmanANF;
         }
         if (kalm_smoother_first) {
@@ -186,6 +188,7 @@ void read_and_processIMU_data() {
         init_filters(&arParams, &arState, &kalman_freq);
         start_time = micros();
         last_update = start_time;
+        last_update_inner = start_time;
         t = 0.0;
       }
       else if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
@@ -210,8 +213,8 @@ void read_and_processIMU_data() {
             waveAltState.accel_bias = 0.0f;
             kalman_wave_alt_init_state(&waveAltState);
           }
-          float delta_t_k = last_update_k == 0UL ? delta_t : (now - last_update_k) / 1000000.0;
-          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
+          float delta_t_k = last_update_k == 0UL ? delta_t_inner : (now - last_update_k) / 1000000.0;
+          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k_inner);
           last_update_k = now;
         }
   
@@ -345,6 +348,7 @@ void setup(void) {
 
   start_time = micros();
   last_update = start_time;
+  last_update_inner = start_time;
 }
 
 void loop(void) {
