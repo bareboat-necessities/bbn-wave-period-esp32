@@ -144,11 +144,11 @@ void read_and_processIMU_data() {
     //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
 
     float a = bpFilter.processWithDelta(a_noisy, delta_t);
+    float a_no_spikes =  spikeFilter.filterWithDelta(a, delta_t);
     
     if ((a * a) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
       float delta_t_inner = (now - last_update_inner) / 1000000.0;  // time step sec
       last_update_inner = now;
-      float a_no_spikes =  spikeFilter.filterWithDelta(a, delta_t_inner);
       a = a_no_spikes;
       if (kalm_w_first) {
         kalm_w_first = false;
@@ -214,7 +214,7 @@ void read_and_processIMU_data() {
             kalman_wave_alt_init_state(&waveAltState);
           }
           float delta_t_k = last_update_k == 0UL ? delta_t_inner : (now - last_update_k) / 1000000.0;
-          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k_inner);
+          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
           last_update_k = now;
         }
   
