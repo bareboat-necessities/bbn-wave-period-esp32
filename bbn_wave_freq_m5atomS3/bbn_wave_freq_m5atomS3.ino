@@ -35,7 +35,7 @@
 #include "MinMaxLemire.h"
 #include "KalmanForWave.h"
 #include "KalmanForWaveAlt.h"
-//#include "TimeAwareSpikeFilter.h"
+#include "TimeAwareSpikeFilter.h"
 #include "TimeAwareBandpassFilter.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
@@ -49,6 +49,8 @@ bool useAranovskiy = false;
 // - Center frequency: 2.01 Hz
 // - Bandwidth: 3.98 Hz
 TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
+
+TimeAwareSpikeFilter spikeFilter(5, 0.3);
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
@@ -142,6 +144,8 @@ void read_and_processIMU_data() {
     //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
 
     float a = bpFilter.processWithDelta(a_noisy, delta_t);
+
+    a = spikeFilter.filterWithDelta(a, delta_t);
 
     if ((a * a) < ACCEL_MAX_G_SQUARE) {
       if (kalm_w_first) {
