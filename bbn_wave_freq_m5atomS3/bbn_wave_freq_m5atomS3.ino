@@ -140,16 +140,13 @@ void read_and_processIMU_data() {
     accel_rotated.z = rotated_a[2];
 
     float a_noisy = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-    //float a = - 0.25 * PI * PI * sin(2 * PI * t * 0.25 - 2.0) / g_std; // dummy test data (amplitude of heave = 1m, 4sec - period)
-    //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
-
-    float a = bpFilter.processWithDelta(a_noisy, delta_t);
-    float a_no_spikes =  spikeFilter.filterWithDelta(a, delta_t);
+    float a_band_passed = a_noisy; //bpFilter.processWithDelta(a_noisy, delta_t);
+    float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
     
-    if ((a * a) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
+    if ((a_no_spikes * a_no_spikes) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
       float delta_t_inner = (now - last_update_inner) / 1000000.0;  // time step sec
       last_update_inner = now;
-      a = a_no_spikes;
+      float a = a_no_spikes;
       if (kalm_w_first) {
         kalm_w_first = false;
         float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
@@ -247,9 +244,11 @@ void read_and_processIMU_data() {
             }
             else {
               // report for Arduino Serial Plotter
-              //Serial.printf(",a:%0.4f", g_std * a);
-              //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
-              Serial.printf(",heave_cm:%.4f", waveState.heave * 100);
+              Serial.printf(",a:%0.4f", g_std * a);
+              Serial.printf(",a_band_passed:%0.4f", g_std * a_band_passed);
+              Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
+              Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
+              //Serial.printf(",heave_cm:%.4f", waveState.heave * 100);
               //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
               //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
               //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
