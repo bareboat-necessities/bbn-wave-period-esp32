@@ -145,7 +145,7 @@ void read_and_processIMU_data() {
 
     float a = bpFilter.processWithDelta(a_noisy, delta_t);
     
-    if ((a * a) < ACCEL_MAX_G_SQUARE) {
+    if ((a * a) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
       float a_no_spikes =  spikeFilter.filterWithDelta(a, delta_t);
       a = a_no_spikes;
       if (kalm_w_first) {
