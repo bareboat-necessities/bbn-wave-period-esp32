@@ -50,7 +50,7 @@ bool useAranovskiy = false;
 // - Bandwidth: 3.98 Hz
 TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
 
-TimeAwareSpikeFilter spikeFilter(7, 0.001);
+TimeAwareSpikeFilter spikeFilter(16, 0.05);
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_inner = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
@@ -244,12 +244,12 @@ void read_and_processIMU_data() {
             }
             else {
               // report for Arduino Serial Plotter
-              Serial.printf(",a:%0.4f", g_std * a);
-              Serial.printf(",a_band_passed:%0.4f", g_std * a_band_passed);
-              Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
-              Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
-              //Serial.printf(",heave_cm:%.4f", waveState.heave * 100);
-              //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+              //Serial.printf(",a:%0.4f", g_std * a);
+              //Serial.printf(",a_band_passed:%0.4f", g_std * a_band_passed);
+              //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
+              //Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
+              Serial.printf(",heave_cm:%.4f", waveState.heave * 100);
+              Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
               //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
               //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
               //Serial.printf(",freq:%.4f", freq * 100);
