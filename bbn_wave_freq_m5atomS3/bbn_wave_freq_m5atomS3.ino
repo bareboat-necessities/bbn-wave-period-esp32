@@ -143,128 +143,128 @@ void read_and_processIMU_data() {
 
     float a = bpFilter.processWithDelta(a_noisy, delta_t);
 
-    if (kalm_w_first) {
-      kalm_w_first = false;
-      float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
-      waveState.displacement_integral = 0.0f;
-      waveState.heave = a * g_std / k_hat;
-      waveState.vert_speed = 0.0f;               // ??
-      waveState.accel_bias = 0.0f;
-      kalman_wave_init_state(&waveState);
-    }
-    kalman_wave_step(&waveState, a * g_std, delta_t);
-
-    double freq = 0.0, freq_adj = 0.0;
-    if (t > warmup_time_sec(useMahony)) {
-      // give some time for other filters to settle first
-      if (useAranovskiy) {
-        aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
-        freq = arState.f;
-      } else {
-        float e;
-        float f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t, &e);
-        freq = f_kalmanANF;
+    if ((a * a) < ACCEL_MAX_G_SQUARE) {
+      if (kalm_w_first) {
+        kalm_w_first = false;
+        float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
+        waveState.displacement_integral = 0.0f;
+        waveState.heave = a * g_std / k_hat;
+        waveState.vert_speed = 0.0f;               // ??
+        waveState.accel_bias = 0.0f;
+        kalman_wave_init_state(&waveState);
       }
-      if (kalm_smoother_first) {
-        kalm_smoother_first = false;
-        kalman_smoother_set_initial(&kalman_freq, freq);
-      }
-      if (!isnan(freq)) {
-        freq_adj = kalman_smoother_update(&kalman_freq, freq);
-      }
-    }
-
-    if (isnan(freq) || isnan(freq_adj)) {
-      // reset filters
-      kalm_w_first = true;
-      kalm_w_alt_first = true;
-      kalm_smoother_first = true;
-      init_filters(&arParams, &arState, &kalman_freq);
-      start_time = micros();
-      last_update = start_time;
-      t = 0.0;
-    }
-    else if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
-      double period = 1.0 / freq_adj;
-      uint32_t windowMicros = getWindowMicros(period);
-      SampleType sample = { .value = waveState.heave, .timeMicroSec = now };
-      min_max_lemire_update(&min_max_h, sample, windowMicros);
-
-      if (fabs(freq - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
-        freq_good_est = freq_adj;
-      }
-
-      // use previous good estimate of frequency
-      if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
-        float k_hat = - pow(2.0 * PI * freq_good_est, 2);
-        if (kalm_w_alt_first) {
-          kalm_w_alt_first = false;
-          waveAltState.displacement_integral = 0.0f;
-          waveAltState.heave = waveState.heave;
-          waveAltState.vert_speed = waveState.vert_speed;
-          waveAltState.vert_accel = k_hat * waveState.heave; //a * g_std;
-          waveAltState.accel_bias = 0.0f;
-          kalman_wave_alt_init_state(&waveAltState);
+      kalman_wave_step(&waveState, a * g_std, delta_t);
+  
+      double freq = 0.0, freq_adj = 0.0;
+      if (t > warmup_time_sec(useMahony)) {
+        // give some time for other filters to settle first
+        if (useAranovskiy) {
+          aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
+          freq = arState.f;
+        } else {
+          float e;
+          float f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t, &e);
+          freq = f_kalmanANF;
         }
-        float delta_t_k = last_update_k == 0UL ? delta_t : (now - last_update_k) / 1000000.0;
-        kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
-        last_update_k = now;
+        if (kalm_smoother_first) {
+          kalm_smoother_first = false;
+          kalman_smoother_set_initial(&kalman_freq, freq);
+        }
+        if (!isnan(freq)) {
+          freq_adj = kalman_smoother_update(&kalman_freq, freq);
+        }
       }
-
-      float wave_height = min_max_h.max.value - min_max_h.min.value;
-      heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
-
-      int serial_report_period_micros = 125000;
-      if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
-        if (produce_serial_data) {
-          if (report_nmea) {
-            // do not report data for which filters clearly didn't converge
-            if (wave_height < 30.0) {
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
-            }
-            if (fabs(waveState.heave) < 15.0) {
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", waveState.heave);
-            }
-            gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-            if (fabs(freq - freq_good_est) < 0.07 * freq_good_est) {
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
-              if (fabs(waveAltState.heave - waveState.heave) < 0.2 * fabs(waveState.heave)) {
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
+      if (isnan(freq) || isnan(freq_adj)) {
+        // reset filters
+        kalm_w_first = true;
+        kalm_w_alt_first = true;
+        kalm_smoother_first = true;
+        init_filters(&arParams, &arState, &kalman_freq);
+        start_time = micros();
+        last_update = start_time;
+        t = 0.0;
+      }
+      else if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
+        double period = 1.0 / freq_adj;
+        uint32_t windowMicros = getWindowMicros(period);
+        SampleType sample = { .value = waveState.heave, .timeMicroSec = now };
+        min_max_lemire_update(&min_max_h, sample, windowMicros);
+  
+        if (fabs(freq - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
+          freq_good_est = freq_adj;
+        }
+  
+        // use previous good estimate of frequency
+        if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
+          float k_hat = - pow(2.0 * PI * freq_good_est, 2);
+          if (kalm_w_alt_first) {
+            kalm_w_alt_first = false;
+            waveAltState.displacement_integral = 0.0f;
+            waveAltState.heave = waveState.heave;
+            waveAltState.vert_speed = waveState.vert_speed;
+            waveAltState.vert_accel = k_hat * waveState.heave; //a * g_std;
+            waveAltState.accel_bias = 0.0f;
+            kalman_wave_alt_init_state(&waveAltState);
+          }
+          float delta_t_k = last_update_k == 0UL ? delta_t : (now - last_update_k) / 1000000.0;
+          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
+          last_update_k = now;
+        }
+  
+        float wave_height = min_max_h.max.value - min_max_h.min.value;
+        heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
+  
+        int serial_report_period_micros = 125000;
+        if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
+          if (produce_serial_data) {
+            if (report_nmea) {
+              // do not report data for which filters clearly didn't converge
+              if (wave_height < 30.0) {
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
               }
+              if (fabs(waveState.heave) < 15.0) {
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", waveState.heave);
+              }
+              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
+              if (fabs(freq - freq_good_est) < 0.07 * freq_good_est) {
+                gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
+                if (fabs(waveAltState.heave - waveState.heave) < 0.2 * fabs(waveState.heave)) {
+                  gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
+                }
+              }
+              if (freq > 0.02 && freq < 4.0) {
+                gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+              }
+              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
+              gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", waveState.accel_bias * 100.0 / g_std);
             }
-            if (freq > 0.02 && freq < 4.0) {
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+            else {
+              // report for Arduino Serial Plotter
+              //Serial.printf(",a:%0.4f", g_std * a);
+              //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
+              Serial.printf(",heave_cm:%.4f", waveState.heave * 100);
+              //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+              //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
+              //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+              //Serial.printf(",freq:%.4f", freq * 100);
+              //Serial.printf(",h_cm:%.4f", h * 100);
+              //Serial.printf(",height_cm:%.4f", wave_height * 100);
+              //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
+              //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
+              //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
+              //Serial.printf(",period_decisec:%.4f", period * 10);
+              //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+              //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
+  
+              // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
+              //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
+              Serial.println();
             }
-            gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
-            gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", waveState.accel_bias * 100.0 / g_std);
           }
-          else {
-            // report for Arduino Serial Plotter
-            //Serial.printf(",a:%0.4f", g_std * a);
-            //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
-            Serial.printf(",heave_cm:%.4f", waveState.heave * 100);
-            //Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
-            //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
-            //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-            //Serial.printf(",freq:%.4f", freq * 100);
-            //Serial.printf(",h_cm:%.4f", h * 100);
-            //Serial.printf(",height_cm:%.4f", wave_height * 100);
-            //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
-            //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
-            //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
-            //Serial.printf(",period_decisec:%.4f", period * 10);
-            //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-            //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
-
-            // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
-            //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
-            Serial.println();
-          }
+          last_refresh = now;
+          got_samples = 0;
         }
-
-        last_refresh = now;
-        got_samples = 0;
-      }
+      }  
     }
   }
   t = (now - start_time) / 1000000.0;  // time since start sec
