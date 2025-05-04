@@ -14,6 +14,10 @@ class TimeAwareSpikeFilter {
     float threshold;     // Derivative threshold for spike detection
     bool initialized;    // Flag to indicate if filter is initialized
 
+    float *derivatives;
+    float *values;
+    float *temp;
+      
   public:
     /**
        @brief Construct a new Spike Filter object
@@ -22,10 +26,16 @@ class TimeAwareSpikeFilter {
     */
     TimeAwareSpikeFilter(int size, float thr) : windowSize(size), threshold(thr), initialized(false) {
       window = new Sample[windowSize];
+      values = new float[windowSize];
+      derivatives = new float[windowSize];
+      temp = new float[windowSize];
       currentIndex = 0;
     }
 
     ~TimeAwareSpikeFilter() {
+      delete[] temp;
+      delete[] derivatives;
+      delete[] values;
       delete[] window;
     }
 
@@ -52,8 +62,6 @@ class TimeAwareSpikeFilter {
       currentIndex = (currentIndex + 1) % windowSize;
 
       // Calculate time-weighted derivatives
-      float derivatives[windowSize];
-
       for (int i = 0; i < windowSize; i++) {
         int currentIdx = (currentIndex + i) % windowSize;
         int prevIdx = (currentIndex + i - 1 + windowSize) % windowSize;
@@ -73,7 +81,6 @@ class TimeAwareSpikeFilter {
 
       if (fabs(currentDerivative - medianDerivative) > threshold) {
         // Spike detected - replace with median of window values
-        float values[windowSize];
         for (int i = 0; i < windowSize; i++) {
           values[i] = window[i].value;
         }
@@ -94,7 +101,6 @@ class TimeAwareSpikeFilter {
     */
     float computeMedian(float arr[], int n) {
       // Create a copy to avoid modifying original
-      float temp[n];
       for (int i = 0; i < n; i++) {
         temp[i] = arr[i];
       }
