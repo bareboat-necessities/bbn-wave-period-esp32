@@ -99,7 +99,7 @@ class TimeAwareSpikeFilter {
        @param n Size of array
        @return Median value
     */
-    float computeMedian(float arr[], int n) {
+    float computeMedian(float *arr, int n) {
       // Create a copy to avoid modifying original
       for (int i = 0; i < n; i++) {
         temp[i] = arr[i];
