@@ -144,10 +144,10 @@ void read_and_processIMU_data() {
     //float h =  0.25 * PI * PI / (2 * PI * 0.25) / (2 * PI * 0.25) * sin(2 * PI * t * 0.25 - 2.0);
 
     float a = bpFilter.processWithDelta(a_noisy, delta_t);
-
-    a = spikeFilter.filterWithDelta(a, delta_t);
+    float a_no_spikes =  spikeFilter.filterWithDelta(a, delta_t);
 
     if ((a * a) < ACCEL_MAX_G_SQUARE) {
+      a = a_no_spikes;
       if (kalm_w_first) {
         kalm_w_first = false;
         float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
