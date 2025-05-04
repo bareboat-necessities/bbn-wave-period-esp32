@@ -50,7 +50,7 @@ bool useAranovskiy = false;
 // - Bandwidth: 3.98 Hz
 TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
 
-TimeAwareSpikeFilter spikeFilter(5, 0.001);
+TimeAwareSpikeFilter spikeFilter(7, 0.001);
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
