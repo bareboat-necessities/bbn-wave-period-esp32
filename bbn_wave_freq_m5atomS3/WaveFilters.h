@@ -10,6 +10,7 @@
 #define ARANOVSKIY_SCALE 10.0
 
 #define ACCEL_MAX_G_SQUARE 4.84  // (a/g)^2
+#define ACCEL_MAX_G_SQUARE_NO_GRAVITY 1.44  // (a/g)^2
 
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
