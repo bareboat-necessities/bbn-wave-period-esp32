@@ -162,16 +162,17 @@ void read_and_processIMU_data() {
         kalman_wave_init_state(&waveState);
       }
       kalman_wave_step(&waveState, a * g_std, delta_t_inner);
+      float heave = waveState.heave;
   
       double freq = 0.0, freq_adj = 0.0;
       if (t > warmup_time_sec(useMahony)) {
         // give some time for other filters to settle first
         if (useAranovskiy) {
-          aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t_inner);
+          aranovskiy_update(&arParams, &arState, heave / ARANOVSKIY_SCALE, delta_t_inner);
           freq = arState.f;
         } else {
           float e;
-          float f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t_inner, &e);
+          float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t_inner, &e);
           freq = f_kalmanANF;
         }
         if (kalm_smoother_first) {
@@ -196,7 +197,7 @@ void read_and_processIMU_data() {
       else if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
         double period = 1.0 / freq_adj;
         uint32_t windowMicros = getWindowMicros(period);
-        SampleType sample = { .value = waveState.heave, .timeMicroSec = now };
+        SampleType sample = { .value = heave, .timeMicroSec = now };
         min_max_lemire_update(&min_max_h, sample, windowMicros);
   
         if (fabs(freq - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
@@ -209,9 +210,9 @@ void read_and_processIMU_data() {
           if (kalm_w_alt_first) {
             kalm_w_alt_first = false;
             waveAltState.displacement_integral = 0.0f;
-            waveAltState.heave = waveState.heave;
+            waveAltState.heave = heave;
             waveAltState.vert_speed = waveState.vert_speed;
-            waveAltState.vert_accel = k_hat * waveState.heave; //a * g_std;
+            waveAltState.vert_accel = k_hat * heave; //a * g_std;
             waveAltState.accel_bias = 0.0f;
             kalman_wave_alt_init_state(&waveAltState);
           }
@@ -231,13 +232,13 @@ void read_and_processIMU_data() {
               if (wave_height < 30.0) {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
               }
-              if (fabs(waveState.heave) < 15.0) {
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", waveState.heave);
+              if (fabs(heave) < 15.0) {
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
               }
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
               if (fabs(freq - freq_good_est) < 0.07 * freq_good_est) {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
-                if (fabs(waveAltState.heave - waveState.heave) < 0.2 * fabs(waveState.heave)) {
+                if (fabs(waveAltState.heave - heave) < 0.2 * fabs(heave)) {
                   gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
                 }
               }
@@ -253,7 +254,7 @@ void read_and_processIMU_data() {
               //Serial.printf(",a_band_passed:%0.4f", g_std * a_band_passed);
               //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
               //Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
-              Serial.printf(",heave_cm:%.4f", waveState.heave * 100);
+              Serial.printf(",heave_cm:%.4f", heave * 100);
               Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
               //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
               //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
