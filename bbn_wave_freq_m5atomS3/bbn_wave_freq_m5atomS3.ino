@@ -52,11 +52,11 @@ bool useAranovskiy = false;
 // - Bandwidth: 3.98 Hz
 //TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
 
-FourthOrderLowPass lowPassFilter(4.0);
+FourthOrderLowPass lowPassFilter(2.0);
 
 TimeAwareSpikeFilter spikeFilter(8, 0.001);
 
-HighPassFirstOrderFilter highPassFilter(25.0 /* period in sec */);
+HighPassFirstOrderFilter highPassFilter(20.0 /* period in sec */);
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_inner = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
