@@ -73,6 +73,7 @@ private:
 public:
   // Constructor takes cutoff period in seconds
   HighPassSecondOrderFilter(float period) : cutoffPeriod(fabs(period)) {
+    reset();
   }
   
   // Reset filter state
