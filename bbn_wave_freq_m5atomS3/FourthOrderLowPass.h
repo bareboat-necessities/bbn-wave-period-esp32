@@ -26,7 +26,7 @@ private:
     void calculateCoefficients(float deltaTime);
 };
 
-FourthOrderLowPass::FourthOrderLowPassDT(float cutoffFreq) {
+FourthOrderLowPass::FourthOrderLowPass(float cutoffFreq) {
     this->cutoffFreq = cutoffFreq;
     reset();
 }
