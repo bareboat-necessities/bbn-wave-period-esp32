@@ -50,7 +50,7 @@ bool useAranovskiy = false;
 // Create a bandpass filter for 0.02-4 Hz
 // - Center frequency: 2.01 Hz
 // - Bandwidth: 3.98 Hz
-TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
+//TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
 
 FourthOrderLowPass lowPassFilter(4.0);
 
