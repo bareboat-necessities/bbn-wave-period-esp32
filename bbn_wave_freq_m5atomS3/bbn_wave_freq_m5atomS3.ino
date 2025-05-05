@@ -37,6 +37,7 @@
 #include "KalmanForWaveAlt.h"
 #include "TimeAwareSpikeFilter.h"
 #include "TimeAwareBandpassFilter.h"
+#include "HighPassFilters.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
 #include "WaveFilters.h"
