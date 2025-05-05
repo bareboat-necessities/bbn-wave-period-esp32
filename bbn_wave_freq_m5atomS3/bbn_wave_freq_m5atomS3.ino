@@ -56,6 +56,8 @@ FourthOrderLowPass lowPassFilter(4.0);
 
 TimeAwareSpikeFilter spikeFilter(8, 0.001);
 
+HighPassFirstOrderFilter highPassFilter(25.0 /* period in sec */);
+
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_inner = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
@@ -162,7 +164,7 @@ void read_and_processIMU_data() {
         kalman_wave_init_state(&waveState);
       }
       kalman_wave_step(&waveState, a * g_std, delta_t_inner);
-      float heave = waveState.heave;
+      float heave = highPassFilter.update(waveState.heave, delta_t_inner);
   
       double freq = 0.0, freq_adj = 0.0;
       if (t > warmup_time_sec(useMahony)) {
