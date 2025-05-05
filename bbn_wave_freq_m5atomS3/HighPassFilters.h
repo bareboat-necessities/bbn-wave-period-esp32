@@ -50,7 +50,6 @@ private:
   
   // Recalculate coefficients based on current cutoff and sample time
   void calculateCoefficients(float deltaTime) {
-    if (deltaTime <= 0) deltaTime = 1e-6f;
     
     float omega = (2 * PI) / cutoffPeriod; // Convert period to angular frequency
     float T = deltaTime;
