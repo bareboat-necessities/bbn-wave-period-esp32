@@ -38,6 +38,7 @@
 #include "TimeAwareSpikeFilter.h"
 #include "TimeAwareBandpassFilter.h"
 #include "HighPassFilters.h"
+#include "FourthOrderLowPass.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
 #include "WaveFilters.h"
