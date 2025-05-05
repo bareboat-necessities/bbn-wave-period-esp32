@@ -4,7 +4,7 @@
 #include <math.h>
 
 /*
-  Cutoff frequency needs to be less than sampleFrequency/5
+  Cutoff frequency needs to be less than sampleFrequency / 5
 */
 class FourthOrderLowPass {
 public:
