@@ -177,13 +177,16 @@ void read_and_processIMU_data() {
       double freq = 0.0, freq_adj = 0.0;
       if (t > warmup_time_sec(useMahony)) {
         // give some time for other filters to settle first
-        if (useAranovskiy) {
+        if (frequencyTracker == FrequencyTracker.Aranovskiy) {
           aranovskiy_update(&arParams, &arState, heave / ARANOVSKIY_SCALE, delta_t_inner);
           freq = arState.f;
-        } else {
+        } else if (frequencyTracker == FrequencyTracker.KalmANF) {
           float e;
           float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t_inner, &e);
           freq = f_kalmanANF;
+        } else {
+          float f_byZeroCross = freqDetector.update(heave, delta_t_inner); 
+          freq = f_byZeroCross;
         }
         if (kalm_smoother_first) {
           kalm_smoother_first = false;
