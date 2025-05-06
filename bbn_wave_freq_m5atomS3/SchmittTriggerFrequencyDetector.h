@@ -13,7 +13,7 @@ private:
 
 public:
   // Constructor: sets hysteresis threshold (default: 0.1)
-  SchmittTriggerFrequencyDetector(float hysteresis = 0.1f);
+  SchmittTriggerFrequencyDetector(float hysteresis = 0.1f, float debounceTime = 0.0f);
 
   // Update with new signal sample and time since last update (dt in seconds)
   // Returns frequency (Hz), or 0 if no crossings detected yet
