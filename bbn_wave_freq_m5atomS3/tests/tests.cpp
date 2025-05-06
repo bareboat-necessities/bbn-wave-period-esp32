@@ -54,17 +54,18 @@ void run_filters(float a, float v, float h, float delta_t) {
     kalman_wave_init_state(&waveState);
   }
   kalman_wave_step(&waveState, a * g_std, delta_t);
+  float heave = waveState.heave;
 
   double freq_adj = 0.0;
   double freq = 0.0;
   if (t > warmup_time_sec(true)) {
     // give some time for other filters to settle first
     if (useFrequencyTracker == Aranovskiy) {
-      aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
+      aranovskiy_update(&arParams, &arState, heave / ARANOVSKIY_SCALE, delta_t);
       freq = arState.f;
     } else if (useFrequencyTracker == Kalm_ANF) {
       float e;
-      float f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t, &e);
+      float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t, &e);
       freq = f_kalmanANF;
     } else {
       float f_byZeroCross = freqDetector.update(heave, delta_t_inner); 
@@ -80,7 +81,7 @@ void run_filters(float a, float v, float h, float delta_t) {
   if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
     double period = 1.0 / freq_adj;
     uint32_t windowMicros = getWindowMicros(period);
-    SampleType sample = { .value = waveState.heave, .timeMicroSec = now() };
+    SampleType sample = { .value = heave, .timeMicroSec = now() };
     min_max_lemire_update(&min_max_h, sample, windowMicros);
 
     if (fabs(freq - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
@@ -88,9 +89,9 @@ void run_filters(float a, float v, float h, float delta_t) {
       if (kalm_w_alt_first) {
         kalm_w_alt_first = false;
         waveAltState.displacement_integral = 0.0f;
-        waveAltState.heave = waveState.heave;
+        waveAltState.heave = heave;
         waveAltState.vert_speed = waveState.vert_speed;
-        waveAltState.vert_accel = k_hat * waveState.heave; //a * g_std;
+        waveAltState.vert_accel = k_hat * heave; //a * g_std;
         waveAltState.accel_bias = 0.0f;
         kalman_wave_alt_init_state(&waveAltState);
       }
@@ -106,7 +107,7 @@ void run_filters(float a, float v, float h, float delta_t) {
     printf(",a,%.4f", a * g_std);
     printf(",v,%.4f", v);
     printf(",h,%.4f", h);
-    printf(",heave,%.4f", waveState.heave);
+    printf(",heave,%.4f", heave);
     printf(",heave_alt,%.4f", waveAltState.heave);
     printf(",height,%.4f", wave_height);
     printf(",max,%.4f", min_max_h.max.value);
