@@ -27,7 +27,7 @@ KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
-SchmittTriggerFrequencyDetector freqDetector(0.0005f); // Hysteresis
+SchmittTriggerFrequencyDetector freqDetector(0.002f); // Hysteresis
 
 FrequencyTracker useFrequencyTracker = Aranovskiy;
 
