@@ -29,7 +29,7 @@ KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
 SchmittTriggerFrequencyDetector freqDetector(0.002f); // Hysteresis
 
-FrequencyTracker useFrequencyTracker = Aranovskiy;
+FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
