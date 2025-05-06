@@ -10,9 +10,6 @@ public:
   // Returns frequency (Hz), or 0 if no crossings detected yet
   float update(float signalValue, float signalMagnitude, float dt);
 
-  // Get latest computed frequency (Hz)
-  float getFrequency() const;
-
   // Reset the detector (clears history)
   void reset();
 
@@ -56,10 +53,6 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
   // Accumulate time since last crossing
   _lastCrossingTime += dt;
 
-  return _frequency;
-}
-
-float SchmittTriggerFrequencyDetector::getFrequency() const {
   return _frequency;
 }
 
