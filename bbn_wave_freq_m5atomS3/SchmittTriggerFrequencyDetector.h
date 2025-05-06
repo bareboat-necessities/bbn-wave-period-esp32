@@ -8,7 +8,7 @@ public:
 
   // Update with new signal sample and time since last update (dt in seconds)
   // Returns frequency (Hz), or 0 if no crossings detected yet
-  float update(float signalValue, float dt);
+  float update(float signalValue, float signalMagnitude, float dt);
 
   // Get latest computed frequency (Hz)
   float getFrequency() const;
@@ -45,8 +45,6 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
       // Compute time since last crossing (skip first crossing)
       if (_lastCrossingTime > 0.0f) {
         float crossingInterval = dt; // Time since last update
-        // TODO:
-        printf("%f\n", crossingInterval);
         _frequency = 1.0f / (2.0f * crossingInterval); // Frequency = 1/(2*T)
       }
       _lastCrossingTime = 0.0f; // Reset for next half-cycle
