@@ -29,7 +29,7 @@ KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
 SchmittTriggerFrequencyDetector freqDetector(0.002f); // Hysteresis
 
-FrequencyTracker useFrequencyTracker = Aranovskiy;
+FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
@@ -70,7 +70,7 @@ void run_filters(float a, float v, float h, float delta_t) {
     } else {
       float signal_a = a;
       float f_byZeroCross = freqDetector.update(signal_a, 2.0f, delta_t); 
-      freq = f_byZeroCross;
+      freq = 0.1183; // TODO f_byZeroCross;
     }
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
