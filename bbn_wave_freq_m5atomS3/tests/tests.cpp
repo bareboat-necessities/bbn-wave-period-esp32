@@ -13,6 +13,12 @@
 #include "KalmanForWaveAlt.h"
 #include "WaveFilters.h"
 
+enum FrequencyTracker {
+    Aranovskiy,
+    Kalm_ANF,
+    ZeroCrossing
+};
+
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
 AranovskiyState arState;
@@ -21,7 +27,7 @@ KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
 
-bool useAranovskiy = true;
+FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
@@ -51,13 +57,16 @@ void run_filters(float a, float v, float h, float delta_t) {
   double freq = 0.0;
   if (t > warmup_time_sec(true)) {
     // give some time for other filters to settle first
-    if (useAranovskiy) {
+    if (useFrequencyTracker == Aranovskiy) {
       aranovskiy_update(&arParams, &arState, waveState.heave / ARANOVSKIY_SCALE, delta_t);
       freq = arState.f;
-    } else {
+    } else if (useFrequencyTracker == Kalm_ANF) {
       float e;
       float f_kalmanANF = kalmANF_process(&kalmANF, waveState.heave, delta_t, &e);
       freq = f_kalmanANF;
+    } else {
+      float f_byZeroCross = freqDetector.update(heave, delta_t_inner); 
+      freq = f_byZeroCross;
     }
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
@@ -115,10 +124,13 @@ int main(int argc, char *argv[]) {
   float delta_t = 1.0 / sample_freq;
   float test_duration = 5.0 * 60.0;
 
-  if (useAranovskiy) {
+  if (useFrequencyTracker == Aranovskiy) {
     init_filters(&arParams, &arState, &kalman_freq);
-  } else {
+  } else if (useFrequencyTracker == Kalm_ANF) {
     init_filters_alt(&kalmANF, &kalman_freq);
+  } else {
+    init_smoother(&kalman_freq);
+    init_wave_filters();
   }
 
   //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
