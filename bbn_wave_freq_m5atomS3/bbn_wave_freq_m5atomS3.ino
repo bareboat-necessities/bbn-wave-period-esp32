@@ -187,9 +187,9 @@ void read_and_processIMU_data() {
         } else {
           float f_byZeroCross = freqDetector.update(a, 1.0f, delta_t_inner); 
           if (f_byZeroCross < FREQ_LOWER) {
-            freq = FREQ_LOWER;
+            freq = FREQ_LOWER * 2;
           } else if (f_byZeroCross > FREQ_UPPER) {
-            freq = FREQ_UPPER;
+            freq = FREQ_UPPER / 2;
           } else {
             freq = f_byZeroCross;
           }
