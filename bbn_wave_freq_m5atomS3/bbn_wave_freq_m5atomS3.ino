@@ -372,7 +372,7 @@ void setup(void) {
   } else if (useFrequencyTracker == Kalm_ANF) {
     init_filters_alt(&kalmANF, &kalman_freq);
   } else {
-    init_smoother(&kalman_freq);
+    kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
     init_wave_filters();
   }
 
