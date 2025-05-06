@@ -68,7 +68,8 @@ void run_filters(float a, float v, float h, float delta_t) {
       float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t, &e);
       freq = f_kalmanANF;
     } else {
-      float f_byZeroCross = freqDetector.update(a, 2.0, delta_t); 
+      float signal_a = a;
+      float f_byZeroCross = freqDetector.update(signal_a, 2.0, delta_t); 
       freq = f_byZeroCross;
     }
     if (kalm_smoother_first) {
