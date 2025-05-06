@@ -54,30 +54,31 @@ enum FrequencyTracker {
 bool useMahony = true;
 FrequencyTracker frequencyTracker = FrequencyTracker.ZeroCrossing;
 
-// Create a bandpass filter for 0.02-4 Hz
-// - Center frequency: 2.01 Hz
-// - Bandwidth: 3.98 Hz
-//TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);
-
-FourthOrderLowPass lowPassFilter(2.0);
-
-TimeAwareSpikeFilter spikeFilter(8, 0.001);
-
-HighPassFirstOrderFilter highPassFilter(20.0 /* period in sec */);
-
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_inner = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
-MinMaxLemire min_max_h;
+// Basic filters
+//TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
+FourthOrderLowPass lowPassFilter(2.0);
+HighPassFirstOrderFilter highPassFilter(20.0 /* period in sec */);
+TimeAwareSpikeFilter spikeFilter(8, 0.001);
+
+// frequency tracking
+SchmittTriggerFrequencyDetector freqDetector(0.2f); // Hysteresis = 0.2
 AranovskiyParams arParams;
 AranovskiyState arState;
+KalmANF kalmANF;
 KalmanSmootherVars kalman_freq;
+
+// AHRS
 Mahony_AHRS_Vars mahony;
+Kalman_QMEKF kalman_mekf;
+
+// Wave
+MinMaxLemire min_max_h;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
-Kalman_QMEKF kalman_mekf;
-KalmANF kalmANF;
 
 const char* imu_name;
 
