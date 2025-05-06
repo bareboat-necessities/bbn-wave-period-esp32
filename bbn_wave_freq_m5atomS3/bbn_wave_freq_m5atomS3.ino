@@ -47,12 +47,12 @@
 
 enum FrequencyTracker {
     Aranovskiy,
-    KalmANF,
+    Kalm_ANF,
     ZeroCrossing
 };
 
 bool useMahony = true;
-FrequencyTracker frequencyTracker = FrequencyTracker.ZeroCrossing;
+FrequencyTracker frequencyTracker = ZeroCrossing;
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_inner = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
@@ -180,7 +180,7 @@ void read_and_processIMU_data() {
         if (frequencyTracker == FrequencyTracker.Aranovskiy) {
           aranovskiy_update(&arParams, &arState, heave / ARANOVSKIY_SCALE, delta_t_inner);
           freq = arState.f;
-        } else if (frequencyTracker == FrequencyTracker.KalmANF) {
+        } else if (frequencyTracker == FrequencyTracker.Kalm_ANF) {
           float e;
           float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t_inner, &e);
           freq = f_kalmanANF;
@@ -360,7 +360,7 @@ void setup(void) {
 
   if (frequencyTracker == FrequencyTracker.Aranovskiy) {
     init_filters(&arParams, &arState, &kalman_freq);
-  } else if (frequencyTracker == FrequencyTracker.kalmANF) {
+  } else if (frequencyTracker == FrequencyTracker.Kalm_ANF) {
     init_filters_alt(&kalmANF, &kalman_freq);
   } else {
     init_smoother(&kalman_freq);
