@@ -65,7 +65,7 @@ HighPassFirstOrderFilter highPassFilter(20.0 /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(8, 0.001);
 
 // frequency tracking
-SchmittTriggerFrequencyDetector freqDetector(0.2f); // Hysteresis = 0.2
+SchmittTriggerFrequencyDetector freqDetector(0.015f); // Hysteresis %
 AranovskiyParams arParams;
 AranovskiyState arState;
 KalmANF kalmANF;
@@ -185,7 +185,7 @@ void read_and_processIMU_data() {
           float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t_inner, &e);
           freq = f_kalmanANF;
         } else {
-          float f_byZeroCross = freqDetector.update(a, 2.0, delta_t_inner); 
+          float f_byZeroCross = freqDetector.update(a, 1.0f, delta_t_inner); 
           freq = f_byZeroCross;
         }
         if (kalm_smoother_first) {
