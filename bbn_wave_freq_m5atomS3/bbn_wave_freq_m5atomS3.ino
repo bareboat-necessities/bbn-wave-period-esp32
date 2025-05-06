@@ -360,7 +360,8 @@ void setup(void) {
   } else if (frequencyTracker == FrequencyTracker.kalmANF) {
     init_filters_alt(&kalmANF, &kalman_freq);
   } else {
-    // TODO: 
+    init_smoother(&kalman_freq);
+    init_wave_filters();
   }
 
   start_time = micros();
