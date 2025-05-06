@@ -42,17 +42,16 @@ private:
 };
 
 SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresis, float debounceTime) 
-  : _hysteresis(std::abs(hysteresis)),
+    : _hysteresis(fabs(hysteresis)),
     _upperThreshold(_hysteresis),
     _lowerThreshold(-_hysteresis),
-    _debounceTime(std::max(0.0f, debounceTime)), // Ensure non-negative
+    _debounceTime(std::max(0.0f, debounceTime)),
     _debounceCounter(0.0f),
-    _wasAboveUpper(false),
+    _state(State::LOW),
     _lastCrossingTime(0.0f),
-    _frequency(1.0f),
-    _hasCompleteCycle(false),
-    _transitionPending(false) {
-}
+    _frequency(0.0f),
+    _hasCompleteCycle(false) {}
+
 
 float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float dt) {
   if (dt <= 0.0f || signalMagnitude <= 0.0f) {
