@@ -47,6 +47,7 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
     }
   } else {
     if (signalValue > (_upperThreshold * signalMagnitude)) {
+      printf("_wasAboveUpper\n");
       _wasAboveUpper = true;
     }
   }
