@@ -109,7 +109,7 @@ void run_filters(float a, float v, float h, float delta_t) {
     printf(",v,%.4f", v);
     printf(",h,%.4f", h);
     printf(",heave,%.4f", heave);
-    printf(",heave_alt,%.4f", (isnan(waveAltState.heave) || fabs(waveAltState.heave) > 100 ? 0.0f : waveAltState.heave));
+    //printf(",heave_alt,%.4f", waveAltState.heave);
     printf(",height,%.4f", wave_height);
     printf(",max,%.4f", min_max_h.max.value);
     printf(",min,%.4f", min_max_h.min.value);
