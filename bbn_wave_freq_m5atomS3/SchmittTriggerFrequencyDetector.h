@@ -45,6 +45,8 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float dt) {
       // Compute time since last crossing (skip first crossing)
       if (_lastCrossingTime > 0.0f) {
         float crossingInterval = dt; // Time since last update
+        // TODO:
+        printf("%f\n", crossingInterval);
         _frequency = 1.0f / (2.0f * crossingInterval); // Frequency = 1/(2*T)
       }
       _lastCrossingTime = 0.0f; // Reset for next half-cycle
