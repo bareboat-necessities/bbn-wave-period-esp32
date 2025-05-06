@@ -36,7 +36,6 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
   if (_wasAboveUpper) {
     if (signalValue < (_lowerThreshold * signalMagnitude)) {
       // Zero-crossing detected (high → low transition)
-      printf("Zero-crossing detected\n");
       _wasAboveUpper = false;
       
       // Compute time since last crossing (skip first crossing)
@@ -47,15 +46,12 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
     }
   } else {
     if (signalValue > (_upperThreshold * signalMagnitude)) {
-      printf("_wasAboveUpper\n");
       _wasAboveUpper = true;
     }
   }
 
   // Accumulate time since last crossing
   _lastCrossingTime += dt;
-
-  printf("_lastCrossingTime\n");
 
   return _frequency;
 }
