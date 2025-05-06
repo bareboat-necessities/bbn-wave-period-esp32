@@ -49,7 +49,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _debounceCounter(0.0f),
     _state(State::LOW),
     _lastCrossingTime(0.0f),
-    _frequency(0.0f),
+    _frequency(1.0f),
     _hasCompleteCycle(false) {}
 
 
