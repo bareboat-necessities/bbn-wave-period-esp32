@@ -45,8 +45,14 @@
 #include "WaveFilters.h"
 #include "M5_Calibr.h"
 
+enum FrequencyTracker {
+    Aranovskiy,
+    KalmANF,
+    ZeroCrossing
+};
+
 bool useMahony = true;
-bool useAranovskiy = true;
+FrequencyTracker frequencyTracker = FrequencyTracker.ZeroCrossing;
 
 // Create a bandpass filter for 0.02-4 Hz
 // - Center frequency: 2.01 Hz
@@ -348,10 +354,12 @@ void setup(void) {
     kalman_mekf.mekf = &mekf;
   }
 
-  if (useAranovskiy) {
+  if (frequencyTracker == FrequencyTracker.Aranovskiy) {
     init_filters(&arParams, &arState, &kalman_freq);
-  } else {
+  } else if (frequencyTracker == FrequencyTracker.kalmANF) {
     init_filters_alt(&kalmANF, &kalman_freq);
+  } else {
+    // TODO: 
   }
 
   start_time = micros();
