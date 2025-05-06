@@ -32,7 +32,6 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _wasAboveUpper(false),
     _lastCrossingTime(0.0f),
     _frequency(1.0f) {
-      reset();
     }
 
 float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float dt) {
