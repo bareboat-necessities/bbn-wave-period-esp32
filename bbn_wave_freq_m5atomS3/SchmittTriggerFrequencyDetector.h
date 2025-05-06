@@ -24,10 +24,10 @@ public:
 
 private:
   enum class State {
-        LOW,            // Below lower threshold
-        HIGH,           // Above upper threshold
-        RISING_EDGE,    // Between thresholds, coming from low
-        FALLING_EDGE    // Between thresholds, coming from high
+        _LOW,            // Below lower threshold
+        _HIGH,           // Above upper threshold
+        _RISING_EDGE,    // Between thresholds, coming from low
+        _FALLING_EDGE    // Between thresholds, coming from high
   };
 
   float _hysteresis;       // Hysteresis threshold
@@ -47,7 +47,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _lowerThreshold(-_hysteresis),
     _debounceTime(std::max(0.0f, debounceTime)),
     _debounceCounter(0.0f),
-    _state(State::LOW),
+    _state(State::_LOW),
     _lastCrossingTime(0.0f),
     _frequency(1.0f),
     _hasCompleteCycle(false) {}
@@ -63,55 +63,55 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
     _lastCrossingTime += dt;
 
     switch (_state) {
-        case State::LOW:
+        case State::_LOW:
             if (scaledValue > _upperThreshold) {
-                _state = State::HIGH;
+                _state = State::_HIGH;
                 if (_hasCompleteCycle) {
                     _frequency = 1.0f / (2.0f * _lastCrossingTime);
                 }
                 _lastCrossingTime = 0.0f;
                 _hasCompleteCycle = true;
             } else if (scaledValue > _lowerThreshold) {
-                _state = State::RISING_EDGE;
+                _state = State::_RISING_EDGE;
             }
             break;
 
-        case State::RISING_EDGE:
+        case State::_RISING_EDGE:
             if (scaledValue > _upperThreshold) {
-                _state = State::HIGH;
+                _state = State::_HIGH;
                 if (_hasCompleteCycle) {
                     _frequency = 1.0f / (2.0f * _lastCrossingTime);
                 }
                 _lastCrossingTime = 0.0f;
                 _hasCompleteCycle = true;
             } else if (scaledValue < _lowerThreshold) {
-                _state = State::LOW;
+                _state = State::_LOW;
             }
             break;
 
-        case State::HIGH:
+        case State::_HIGH:
             if (scaledValue < _lowerThreshold) {
-                _state = State::LOW;
+                _state = State::_LOW;
                 if (_hasCompleteCycle) {
                     _frequency = 1.0f / (2.0f * _lastCrossingTime);
                 }
                 _lastCrossingTime = 0.0f;
                 _hasCompleteCycle = true;
             } else if (scaledValue < _upperThreshold) {
-                _state = State::FALLING_EDGE;
+                _state = State::_FALLING_EDGE;
             }
             break;
 
-        case State::FALLING_EDGE:
+        case State::_FALLING_EDGE:
             if (scaledValue < _lowerThreshold) {
-                _state = State::LOW;
+                _state = State::_LOW;
                 if (_hasCompleteCycle) {
                     _frequency = 1.0f / (2.0f * _lastCrossingTime);
                 }
                 _lastCrossingTime = 0.0f;
                 _hasCompleteCycle = true;
             } else if (scaledValue > _upperThreshold) {
-                _state = State::HIGH;
+                _state = State::_HIGH;
             }
             break;
     }
@@ -124,7 +124,7 @@ float SchmittTriggerFrequencyDetector::getFrequency() const {
 }
 
 void SchmittTriggerFrequencyDetector::reset() {
-  _state = State::LOW;
+  _state = State::_LOW;
   _lastCrossingTime = 0.0f;
   _frequency = 1.0f;
   _hasCompleteCycle = false;
