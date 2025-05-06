@@ -62,7 +62,7 @@ bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 //TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
 FourthOrderLowPass lowPassFilter(2.0);
 HighPassFirstOrderFilter highPassFilter(20.0 /* period in sec */);
-TimeAwareSpikeFilter spikeFilter(8, 0.001);
+TimeAwareSpikeFilter spikeFilter(9, 0.001);
 
 // frequency tracking
 SchmittTriggerFrequencyDetector freqDetector(0.06f, 0.04f); 
