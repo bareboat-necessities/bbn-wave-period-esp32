@@ -23,13 +23,13 @@ public:
   void reset();
 };
 
-SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresis) 
+SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresis, float debounceTime) 
   : _hysteresis(hysteresis),
     _upperThreshold(hysteresis),
     _lowerThreshold(-hysteresis),
     _wasAboveUpper(false),
     _lastCrossingTime(0.0f),
-    _debounceTime(0.0f),
+    _debounceTime(debounceTime),
     _frequency(0.0000001f) {
     }
 
