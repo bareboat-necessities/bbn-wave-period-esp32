@@ -23,6 +23,13 @@ public:
   void setDebounceTime(float debounceTime);
 
 private:
+  enum class State {
+        LOW,            // Below lower threshold
+        HIGH,           // Above upper threshold
+        RISING_EDGE,    // Between thresholds, coming from low
+        FALLING_EDGE    // Between thresholds, coming from high
+  };
+
   float _hysteresis;       // Hysteresis threshold
   float _upperThreshold;   // Upper threshold
   float _lowerThreshold;   // Lower threshold
