@@ -246,13 +246,13 @@ void read_and_processIMU_data() {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
               }
               if (fabs(heave) < 15.0) {
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", waveAltState.heave);
               }
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
               if (fabs(freq - freq_good_est) < 0.07 * freq_good_est) {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
                 if (fabs(waveAltState.heave - heave) < 0.2 * fabs(heave)) {
-                  gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
+                  gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", heave);
                 }
               }
               if (freq > 0.02 && freq < 4.0) {
