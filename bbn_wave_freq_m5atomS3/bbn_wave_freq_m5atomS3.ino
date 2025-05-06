@@ -214,6 +214,7 @@ void read_and_processIMU_data() {
         }
   
         // use previous good estimate of frequency
+        bool usedFreq = false;
         if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
           float k_hat = - pow(2.0 * PI * freq_good_est, 2);
           if (kalm_w_alt_first) {
@@ -228,11 +229,12 @@ void read_and_processIMU_data() {
           float delta_t_k = last_update_k == 0UL ? delta_t_inner : (now - last_update_k) / 1000000.0;
           kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
           last_update_k = now;
+          usedFreq = true;
         }
 
         double period = 1.0 / freq_adj;
         uint32_t windowMicros = getWindowMicros(period);
-        SampleType sample = { .value = heave, .timeMicroSec = now };
+        SampleType sample = { .value = (usedFreq ? waveAltState.heave : heave), .timeMicroSec = now };
         min_max_lemire_update(&min_max_h, sample, windowMicros);
         
         float wave_height = min_max_h.max.value - min_max_h.min.value;
