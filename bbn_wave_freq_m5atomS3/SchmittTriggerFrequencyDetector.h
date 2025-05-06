@@ -36,7 +36,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
 float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float dt) {
   // Schmitt Trigger logic
   if (_wasAboveUpper) {
-    if (signalValue < (_lowerThreshold * signalMagnitude)) {
+    if (signalValue < (_lowerThreshold * signalMagnitude) && _lastCrossingTime < _debounceTime) {
       // Zero-crossing detected (high → low transition)
       _wasAboveUpper = false;
       
