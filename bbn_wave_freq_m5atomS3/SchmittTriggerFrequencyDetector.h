@@ -43,7 +43,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _debounceCounter(0.0f),
     _wasAboveUpper(false),
     _lastCrossingTime(0.0f),
-    _frequency(0.0f),
+    _frequency(1.0f),
     _hasCompleteCycle(false),
     _transitionPending(false) {
 }
@@ -113,7 +113,7 @@ float SchmittTriggerFrequencyDetector::getFrequency() const {
 void SchmittTriggerFrequencyDetector::reset() {
   _wasAboveUpper = false;
   _lastCrossingTime = 0.0f;
-  _frequency = 0.0f;
+  _frequency = 1.0f;
   _hasCompleteCycle = false;
   _transitionPending = false;
   _debounceCounter = 0.0f;
