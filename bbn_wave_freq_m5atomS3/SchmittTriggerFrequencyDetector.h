@@ -9,6 +9,7 @@ private:
   bool _wasAboveUpper;     // Tracks if signal was last above upper threshold
   float _lastCrossingTime; // Time (in seconds) of the last zero-crossing
   float _frequency;        // Latest frequency estimate (Hz)
+  float _debounceTime;     // Debounce time (in seconds)
 
 public:
   // Constructor: sets hysteresis threshold (default: 0.1)
@@ -28,6 +29,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _lowerThreshold(-hysteresis),
     _wasAboveUpper(false),
     _lastCrossingTime(0.0f),
+    _debounceTime(0.0f),
     _frequency(0.0000001f) {
     }
 
@@ -59,6 +61,7 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
 void SchmittTriggerFrequencyDetector::reset() {
   _wasAboveUpper = false;
   _lastCrossingTime = 0.0f;
+  _debounceTime = 0.0f;
   _frequency = 0.0000001f;
 }
 
