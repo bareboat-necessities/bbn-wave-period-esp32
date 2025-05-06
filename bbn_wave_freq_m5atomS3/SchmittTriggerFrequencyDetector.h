@@ -23,9 +23,9 @@ private:
 };
 
 SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresis) 
-  : _hysteresis(fabs(hysteresis)),
-    _upperThreshold(fabs(hysteresis)),
-    _lowerThreshold(-fabs(hysteresis)),
+  : _hysteresis(hysteresis),
+    _upperThreshold(hysteresis),
+    _lowerThreshold(-hysteresis),
     _wasAboveUpper(false),
     _lastCrossingTime(0.0f),
     _frequency(1.0f) {
