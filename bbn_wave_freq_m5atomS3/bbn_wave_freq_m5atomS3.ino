@@ -208,10 +208,6 @@ void read_and_processIMU_data() {
         t = 0.0;
       }
       else if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
-        double period = 1.0 / freq_adj;
-        uint32_t windowMicros = getWindowMicros(period);
-        SampleType sample = { .value = heave, .timeMicroSec = now };
-        min_max_lemire_update(&min_max_h, sample, windowMicros);
   
         if (fabs(freq - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
           freq_good_est = freq_adj;
@@ -233,7 +229,12 @@ void read_and_processIMU_data() {
           kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
           last_update_k = now;
         }
-  
+
+        double period = 1.0 / freq_adj;
+        uint32_t windowMicros = getWindowMicros(period);
+        SampleType sample = { .value = heave, .timeMicroSec = now };
+        min_max_lemire_update(&min_max_h, sample, windowMicros);
+        
         float wave_height = min_max_h.max.value - min_max_h.min.value;
         heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
   
