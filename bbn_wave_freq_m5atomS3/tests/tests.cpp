@@ -27,7 +27,7 @@ KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
-SchmittTriggerFrequencyDetector freqDetector(0.002f); // Hysteresis
+SchmittTriggerFrequencyDetector freqDetector(0.2f); // Hysteresis
 
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
@@ -69,8 +69,8 @@ void run_filters(float a, float v, float h, float delta_t) {
       freq = f_kalmanANF;
     } else {
       float signal_a = a;
-      float f_byZeroCross = freqDetector.update(signal_a, 2.0f, delta_t); 
-      freq = 0.1183; // TODO f_byZeroCross;
+      float f_byZeroCross = freqDetector.update(signal_a, 2.0f, delta_t);
+      freq = f_byZeroCross; // 0.1183; // TODO f_byZeroCross;
     }
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
