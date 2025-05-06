@@ -70,7 +70,13 @@ void run_filters(float a, float v, float h, float delta_t) {
     } else {
       float signal_a = a;
       float f_byZeroCross = freqDetector.update(signal_a, 1.0f, delta_t);
-      freq = f_byZeroCross; // 0.1183; // TODO f_byZeroCross;
+      if (f_byZeroCross < FREQ_LOWER) {
+        freq = FREQ_LOWER;
+      } else if (f_byZeroCross > FREQ_UPPER) {
+        freq = FREQ_UPPER;
+      } else {
+        freq = f_byZeroCross;
+      }
     }
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
