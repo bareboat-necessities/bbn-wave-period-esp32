@@ -125,9 +125,9 @@ float SchmittTriggerFrequencyDetector::getFrequency() const {
 
 void SchmittTriggerFrequencyDetector::reset() {
   _state = State::LOW;
+  _lastCrossingTime = 0.0f;
   _frequency = 1.0f;
   _hasCompleteCycle = false;
-  _transitionPending = false;
   _debounceCounter = 0.0f;
 }
 
