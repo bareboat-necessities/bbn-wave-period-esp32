@@ -28,11 +28,10 @@ private:
   float _lowerThreshold;   // Lower threshold
   float _debounceTime;     // Minimum time between valid transitions (seconds)
   float _debounceCounter;  // Time accumulated since last valid transition
-  bool _wasAboveUpper;     // Tracks if signal was last above upper threshold
+  State _state;            // Tracks states
   float _lastCrossingTime; // Accumulated time since the last zero-crossing
   float _frequency;        // Latest frequency estimate (Hz)
   bool _hasCompleteCycle;  // Tracks if we've completed at least one full cycle
-  bool _transitionPending; // Tracks if we're waiting for debounce period
 };
 
 SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresis, float debounceTime) 
