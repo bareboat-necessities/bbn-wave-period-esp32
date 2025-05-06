@@ -53,62 +53,70 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _hasCompleteCycle(false) {}
 
 
+
 float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float dt) {
-  if (dt <= 0.0f || signalMagnitude <= 0.0f) {
-    return _frequency;  // Invalid input, return last known frequency
-  }
-
-  // Update debounce counter if we're in a pending state
-  if (_transitionPending) {
-    _debounceCounter += dt;
-    if (_debounceCounter >= _debounceTime) {
-      _transitionPending = false;
-      _debounceCounter = 0.0f;
-    } else {
-      _lastCrossingTime += dt;
-      return _frequency;  // Still in debounce period
-    }
-  }
-
-  // Schmitt Trigger logic
-  if (_wasAboveUpper) {
-    if (signalValue < _lowerThreshold * signalMagnitude) {
-      // Potential zero-crossing detected (high → low transition)
-      if (!_transitionPending && _debounceTime > 0.0f) {
-        _transitionPending = true;
-        _debounceCounter = 0.0f;
-        _lastCrossingTime += dt;
+    if (dt <= 0.0f || signalMagnitude <= 0.0f) {
         return _frequency;
-      }
-      
-      _wasAboveUpper = false;
-      
-      // Compute frequency if we've completed at least one full cycle
-      if (_hasCompleteCycle) {
-        _frequency = 1.0f / (2.0f * _lastCrossingTime);
-      } else {
-        _hasCompleteCycle = true;
-      }
-      _lastCrossingTime = 0.0f; // Reset for next half-cycle
     }
-  } else {
-    if (signalValue > _upperThreshold * signalMagnitude) {
-      // Potential transition to high state
-      if (!_transitionPending && _debounceTime > 0.0f) {
-        _transitionPending = true;
-        _debounceCounter = 0.0f;
-        _lastCrossingTime += dt;
-        return _frequency;
-      }
-      
-      _wasAboveUpper = true;
+
+    const float scaledValue = signalValue / signalMagnitude;
+    _lastCrossingTime += dt;
+
+    switch (_state) {
+        case State::LOW:
+            if (scaledValue > _upperThreshold) {
+                _state = State::HIGH;
+                if (_hasCompleteCycle) {
+                    _frequency = 1.0f / (2.0f * _lastCrossingTime);
+                }
+                _lastCrossingTime = 0.0f;
+                _hasCompleteCycle = true;
+            } else if (scaledValue > _lowerThreshold) {
+                _state = State::RISING_EDGE;
+            }
+            break;
+
+        case State::RISING_EDGE:
+            if (scaledValue > _upperThreshold) {
+                _state = State::HIGH;
+                if (_hasCompleteCycle) {
+                    _frequency = 1.0f / (2.0f * _lastCrossingTime);
+                }
+                _lastCrossingTime = 0.0f;
+                _hasCompleteCycle = true;
+            } else if (scaledValue < _lowerThreshold) {
+                _state = State::LOW;
+            }
+            break;
+
+        case State::HIGH:
+            if (scaledValue < _lowerThreshold) {
+                _state = State::LOW;
+                if (_hasCompleteCycle) {
+                    _frequency = 1.0f / (2.0f * _lastCrossingTime);
+                }
+                _lastCrossingTime = 0.0f;
+                _hasCompleteCycle = true;
+            } else if (scaledValue < _upperThreshold) {
+                _state = State::FALLING_EDGE;
+            }
+            break;
+
+        case State::FALLING_EDGE:
+            if (scaledValue < _lowerThreshold) {
+                _state = State::LOW;
+                if (_hasCompleteCycle) {
+                    _frequency = 1.0f / (2.0f * _lastCrossingTime);
+                }
+                _lastCrossingTime = 0.0f;
+                _hasCompleteCycle = true;
+            } else if (scaledValue > _upperThreshold) {
+                _state = State::HIGH;
+            }
+            break;
     }
-  }
 
-  // Accumulate time since last crossing
-  _lastCrossingTime += dt;
-
-  return _frequency;
+    return _frequency;
 }
 
 float SchmittTriggerFrequencyDetector::getFrequency() const {
