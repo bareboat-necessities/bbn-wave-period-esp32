@@ -52,7 +52,7 @@ enum FrequencyTracker {
 };
 
 bool useMahony = true;
-FrequencyTracker useFrequencyTracker = Aranovskiy;
+FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_inner = 0UL, last_update_k = 0UL;
 unsigned long got_samples = 0;
