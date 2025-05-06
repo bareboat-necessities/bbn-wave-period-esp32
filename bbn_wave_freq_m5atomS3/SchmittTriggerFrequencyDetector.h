@@ -2,6 +2,14 @@
 #define SCHMITT_TRIGGER_FREQ_DETECTOR_H
 
 class SchmittTriggerFrequencyDetector {
+private:
+  float _hysteresis;       // Hysteresis threshold (e.g., 0.1 for 10% of amplitude)
+  float _upperThreshold;   // Upper threshold (must cross this first)
+  float _lowerThreshold;   // Lower threshold (must cross this next)
+  bool _wasAboveUpper;     // Tracks if signal was last above upper threshold
+  float _lastCrossingTime; // Time (in seconds) of the last zero-crossing
+  float _frequency;        // Latest frequency estimate (Hz)
+
 public:
   // Constructor: sets hysteresis threshold (default: 0.1)
   SchmittTriggerFrequencyDetector(float hysteresis = 0.1f);
@@ -12,14 +20,6 @@ public:
 
   // Reset the detector (clears history)
   void reset();
-
-private:
-  float _hysteresis;       // Hysteresis threshold (e.g., 0.1 for 10% of amplitude)
-  float _upperThreshold;   // Upper threshold (must cross this first)
-  float _lowerThreshold;   // Lower threshold (must cross this next)
-  bool _wasAboveUpper;     // Tracks if signal was last above upper threshold
-  float _lastCrossingTime; // Time (in seconds) of the last zero-crossing
-  float _frequency;        // Latest frequency estimate (Hz)
 };
 
 SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresis) 
