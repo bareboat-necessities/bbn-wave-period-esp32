@@ -12,6 +12,7 @@
 #include "KalmanForWave.h"
 #include "KalmanForWaveAlt.h"
 #include "WaveFilters.h"
+#include "SchmittTriggerFrequencyDetector.h"
 
 enum FrequencyTracker {
     Aranovskiy,
