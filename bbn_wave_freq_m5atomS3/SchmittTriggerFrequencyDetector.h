@@ -55,6 +55,8 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
   // Accumulate time since last crossing
   _lastCrossingTime += dt;
 
+  printf("_lastCrossingTime\n");
+
   return _frequency;
 }
 
