@@ -16,7 +16,7 @@ public:
 
   // Update with new signal sample and time since last update (dt in seconds)
   // Returns frequency (Hz), or 0 if no crossings detected yet
-  float update(float signalValue, float signalMagnitude, float dt);
+  float update(float signalValue, float signalMagnitude, float debounceTime, float dt);
 
   // Reset the detector (clears history)
   void reset();
@@ -31,7 +31,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _frequency(1.0f) {
     }
 
-float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float dt) {
+float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float debounceTime, float dt) {
   // Schmitt Trigger logic
   if (_wasAboveUpper) {
     if (signalValue < (_lowerThreshold * signalMagnitude)) {
@@ -39,10 +39,10 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
       _wasAboveUpper = false;
       
       // Compute time since last crossing (skip first crossing)
-      if (_lastCrossingTime > 0.0f) {
+      if (_lastCrossingTime > debounceTime) {
         _frequency = 1.0f / (2.0f * _lastCrossingTime); // Frequency = 1/(2*_lastCrossingTime)
+        _lastCrossingTime = 0.0f; // Reset for next half-cycle
       }
-      _lastCrossingTime = 0.0f; // Reset for next half-cycle
     }
   } else {
     if (signalValue > (_upperThreshold * signalMagnitude)) {
