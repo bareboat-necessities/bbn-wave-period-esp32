@@ -31,7 +31,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _lowerThreshold(-fabs(hysteresis)),
     _wasAboveUpper(false),
     _lastCrossingTime(0.0f),
-    _frequency(0.0f) {
+    _frequency(1.0f) {
       reset();
     }
 
@@ -67,7 +67,7 @@ float SchmittTriggerFrequencyDetector::getFrequency() const {
 void SchmittTriggerFrequencyDetector::reset() {
   _wasAboveUpper = false;
   _lastCrossingTime = 0.0f;
-  _frequency = 0.0f;
+  _frequency = 1.0f;
 }
 
 #endif
