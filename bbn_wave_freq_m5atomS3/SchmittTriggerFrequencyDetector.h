@@ -39,7 +39,7 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
       _wasAboveUpper = false;
       
       // Compute time since last crossing (skip first crossing)
-      if (_lastCrossingTime > debounceTime) {
+      if (_lastCrossingTime > 0) {
         _frequency = 1.0f / (2.0f * _lastCrossingTime); // Frequency = 1/(2*_lastCrossingTime)
         _lastCrossingTime = 0.0f; // Reset for next half-cycle
       }
