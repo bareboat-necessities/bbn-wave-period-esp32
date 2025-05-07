@@ -52,8 +52,6 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _frequency(1e-7f),
     _hasCompleteCycle(false) {}
 
-
-
 float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float dt) {
     if (dt <= 0.0f || signalMagnitude <= 0.0f) {
         return _frequency;
