@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 Data = np.loadtxt(fname="results.csv", delimiter=",",
-                  usecols=(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27),
+                  usecols=(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29),
                   skiprows=0)
 
 Time = Data[:, [0]]
@@ -13,6 +13,7 @@ Heave = Data[:, [4]]
 HeaveAlt = Data[:, [5]]
 Freq = Data[:, [10]]
 FreqAdj = Data[:, [11]]
+RefFreq = Data[:, [14]]
 
 f, axarr = plt.subplots(3, sharex="all")
 
@@ -24,6 +25,7 @@ axarr[0].legend()
 axarr[1].set_title('Freq')
 axarr[1].plot(Time, Freq, "r-", label="Freq")
 axarr[1].plot(Time, FreqAdj, "g-", label="FreqAdj")
+axarr[1].plot(Time, RefFreq, "b-", label="RefFreq")
 axarr[1].grid()
 axarr[1].legend()
 
