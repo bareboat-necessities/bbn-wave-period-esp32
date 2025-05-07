@@ -49,14 +49,14 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _debounceCounter(0.0f),
     _state(State::_LOW),
     _lastCrossingTime(0.0f),
-    _frequency(1.0f),
+    _frequency(1e-7f),
     _hasCompleteCycle(false) {}
 
 
 
 float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float dt) {
     if (dt <= 0.0f || signalMagnitude <= 0.0f) {
-        return _frequency;
+        return _frequency;1
     }
 
     const float scaledValue = signalValue / signalMagnitude;
@@ -126,7 +126,7 @@ float SchmittTriggerFrequencyDetector::getFrequency() const {
 void SchmittTriggerFrequencyDetector::reset() {
   _state = State::_LOW;
   _lastCrossingTime = 0.0f;
-  _frequency = 1.0f;
+  _frequency = 1e-7f;
   _hasCompleteCycle = false;
   _debounceCounter = 0.0f;
 }
