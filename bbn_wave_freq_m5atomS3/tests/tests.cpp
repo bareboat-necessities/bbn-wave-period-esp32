@@ -27,7 +27,7 @@ KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
-SchmittTriggerFrequencyDetector freqDetector(0.06f, 0.04f);
+SchmittTriggerFrequencyDetector freqDetector(0.05f, 0.05f);
 
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
 
   const float bias = 0.1;
   const double mean = 0.0;
-  const double stddev = 0.15;
+  const double stddev = 0.2;
   std::default_random_engine generator;
   generator.seed(239);  // seed the engine for deterministic test results
   std::normal_distribution<float> dist(mean, stddev);
