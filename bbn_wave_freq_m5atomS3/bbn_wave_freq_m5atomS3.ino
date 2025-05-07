@@ -240,7 +240,7 @@ void read_and_processIMU_data() {
 
         double period = 1.0 / freq_adj;
         uint32_t windowMicros = getWindowMicros(period);
-        SampleType sample = { .value = (/*usedFreq*/ false ? waveAltState.heave : heave), .timeMicroSec = now };
+        SampleType sample = { .value = (usedFreq ? waveAltState.heave : heave), .timeMicroSec = now };
         min_max_lemire_update(&min_max_h, sample, windowMicros);
         
         float wave_height = min_max_h.max.value - min_max_h.min.value;
