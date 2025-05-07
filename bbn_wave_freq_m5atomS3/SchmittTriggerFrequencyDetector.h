@@ -56,7 +56,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
 
 float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float dt) {
     if (dt <= 0.0f || signalMagnitude <= 0.0f) {
-        return _frequency;1
+        return _frequency;
     }
 
     const float scaledValue = signalValue / signalMagnitude;
