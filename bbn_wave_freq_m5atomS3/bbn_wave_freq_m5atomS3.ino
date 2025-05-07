@@ -240,7 +240,7 @@ void read_and_processIMU_data() {
 
         double period = 1.0 / freq_adj;
         uint32_t windowMicros = getWindowMicros(period);
-        SampleType sample = { .value = (usedFreq ? waveAltState.heave : heave), .timeMicroSec = now };
+        SampleType sample = { .value = (true /*usedFreq*/ ? waveAltState.heave : heave), .timeMicroSec = now };
         min_max_lemire_update(&min_max_h, sample, windowMicros);
         
         float wave_height = min_max_h.max.value - min_max_h.min.value;
@@ -255,14 +255,12 @@ void read_and_processIMU_data() {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
               }
               if (fabs(heave) < 15.0) {
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", waveAltState.heave);
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
               }
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
               if (fabs(freq - freq_good_est) < 0.07 * freq_good_est) {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
-                if (fabs(waveAltState.heave - heave) < 0.2 * fabs(heave)) {
-                  gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", heave);
-                }
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", waveAltState.heave);
               }
               if (FREQ_LOWER >= 0.02 && freq <= FREQ_UPPER) {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
