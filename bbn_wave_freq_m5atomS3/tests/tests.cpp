@@ -27,7 +27,7 @@ KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
-SchmittTriggerFrequencyDetector freqDetector(0.08f, 0.1f);
+SchmittTriggerFrequencyDetector freqDetector(0.08f, 0.05f);
 
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
