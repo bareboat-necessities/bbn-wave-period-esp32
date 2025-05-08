@@ -21,7 +21,7 @@ KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
-SchmittTriggerFrequencyDetector freqDetector(0.08f, 2);
+SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_HALF_PERIODS);
 
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
@@ -63,7 +63,7 @@ void run_filters(float a, float v, float h, float delta_t, float ref_freq_4_prin
       freq = f_kalmanANF;
     } else {
       float signal_a = a;
-      float f_byZeroCross = freqDetector.update(signal_a, 1.0f, 0.1f, delta_t);
+      float f_byZeroCross = freqDetector.update(signal_a, ZERO_CROSSINGS_SCALE, ZERO_CROSSINGS_DEBOUNCE_TIME, delta_t);
       if (f_byZeroCross < FREQ_LOWER) {
         freq = FREQ_LOWER;
       } else if (f_byZeroCross > FREQ_UPPER) {
