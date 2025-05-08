@@ -59,7 +59,7 @@ unsigned long got_samples = 0;
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
 // Basic filters
-//TimeAwareBandpassFilter bpFilter(2.01, 3.98, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
+//TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
 FourthOrderLowPass lowPassFilter(FREQ_UPPER);
 HighPassFirstOrderFilter highPassFilter(1 / FREQ_LOWER /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(6, 0.3);
