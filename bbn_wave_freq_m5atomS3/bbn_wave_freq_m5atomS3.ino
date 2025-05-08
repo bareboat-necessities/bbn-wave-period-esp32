@@ -168,7 +168,7 @@ void read_and_processIMU_data() {
       kalman_wave_step(&waveState, a * g_std, delta_t_inner);
       float heave = highPassFilter.update(waveState.heave, delta_t_inner);
   
-      double freq = FREQ_LOWER, freq_adj = FREQ_LOWER;
+      double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
       if (t > warmup_time_sec(useMahony)) {
         // give some time for other filters to settle first
         if (useFrequencyTracker == Aranovskiy) {
