@@ -50,8 +50,8 @@ void run_filters(float a, float v, float h, float delta_t, float ref_freq_4_prin
   kalman_wave_step(&waveState, a * g_std, delta_t);
   float heave = waveState.heave;
 
-  double freq_adj = 0.0;
-  double freq = 0.0;
+  double freq_adj = FREQ_GUESS;
+  double freq = FREQ_GUESS;
   if (t > warmup_time_sec(true)) {
     // give some time for other filters to settle first
     if (useFrequencyTracker == Aranovskiy) {
