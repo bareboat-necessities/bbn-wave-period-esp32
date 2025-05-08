@@ -14,12 +14,6 @@
 #include "WaveFilters.h"
 #include "SchmittTriggerFrequencyDetector.h"
 
-enum FrequencyTracker {
-    Aranovskiy,
-    Kalm_ANF,
-    ZeroCrossing
-};
-
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
 AranovskiyState arState;
