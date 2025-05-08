@@ -64,7 +64,9 @@ void run_filters(float a, float v, float h, float delta_t, float ref_freq_4_prin
     } else {
       float signal_a = a;
       float f_byZeroCross = freqDetector.update(signal_a, ZERO_CROSSINGS_SCALE, ZERO_CROSSINGS_DEBOUNCE_TIME, delta_t);
-      if (f_byZeroCross < FREQ_LOWER) {
+      if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT) {
+        freq = FREQ_GUESS;
+      } else if (f_byZeroCross < FREQ_LOWER) {
         freq = FREQ_LOWER;
       } else if (f_byZeroCross > FREQ_UPPER) {
         freq = FREQ_UPPER;
