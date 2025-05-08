@@ -1,6 +1,8 @@
 #ifndef SCHMITT_TRIGGER_FREQ_DETECTOR_H
 #define SCHMITT_TRIGGER_FREQ_DETECTOR_H
 
+#define SCHMITT_TRIGGER_FREQ_INIT  1e-7f
+
 /*
    Copyright 2025, Mikhail Grushinskiy
 
@@ -51,7 +53,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _upperThreshold(_hysteresis),
     _lowerThreshold(-_hysteresis),
     _state(State::WAS_NOT_SET),
-    _frequency(1e-7f),
+    _frequency(SCHMITT_TRIGGER_FREQ_INIT),
     _halfPeriodsInCycle(halfPeriodsInCycle),
     _timeInCycle(0.0f),
     _lastLowTime(0.0f),
@@ -144,7 +146,7 @@ float SchmittTriggerFrequencyDetector::getFrequency() const {
 
 void SchmittTriggerFrequencyDetector::reset() {
   _state = State::WAS_NOT_SET;
-  _frequency = 1e-7f;
+  _frequency = SCHMITT_TRIGGER_FREQ_INIT;
   _halfPeriodsInCycle = 2;
   _timeInCycle = 0.0f;
   _lastLowTime = 0.0f;
