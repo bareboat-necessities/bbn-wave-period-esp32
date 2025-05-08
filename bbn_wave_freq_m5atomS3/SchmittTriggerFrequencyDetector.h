@@ -100,6 +100,7 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
             _frequency = 1.0 / period;
             _crossingsCounter = 0;
             _timeInCycle = 0.0f;
+            _lastHighTime = _timeInCycle;
           }
         } else if (scaledValue < _lowerThreshold) {
           // still LOW
@@ -125,6 +126,7 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
             _frequency = 1.0 / period;
             _crossingsCounter = 0;
             _timeInCycle = 0.0f;
+            _lastLowTime = _timeInCycle;
           }
         } else if (scaledValue > _upperThreshold) {
           // still HIGH
