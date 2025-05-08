@@ -65,10 +65,10 @@ HighPassFirstOrderFilter highPassFilter((1 / FREQ_LOWER) /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(6, 0.3);
 
 // frequency tracking
-SchmittTriggerFrequencyDetector freqDetector(0.06f, 2); 
+SchmittTriggerFrequencyDetector freqDetector(0.06f /* hysteresis (fractions of signal magnitude) */, 2 /* half periods to run measures on */); 
 AranovskiyParams arParams;
 AranovskiyState arState;
-KalmANF kalmANF;
+KalmANF kalmANF; 
 KalmanSmootherVars kalman_freq;
 
 // AHRS
