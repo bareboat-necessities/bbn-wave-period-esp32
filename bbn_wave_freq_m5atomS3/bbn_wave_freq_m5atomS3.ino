@@ -179,7 +179,8 @@ void read_and_processIMU_data() {
           float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t_inner, &e);
           freq = f_kalmanANF;
         } else {
-          float f_byZeroCross = freqDetector.update(a_noisy, 1.0f /* max fractions of g */, 0.1f /* debounce time */, delta_t_inner); 
+          float f_byZeroCross = freqDetector.update(a_noisy, 
+            ZERO_CROSSINGS_SCALE /* max fractions of g */, ZERO_CROSSINGS_DEBOUNCE_TIME /* debounce time */, delta_t_inner); 
           if (f_byZeroCross < FREQ_LOWER) {
             freq = FREQ_LOWER;
           } else if (f_byZeroCross > FREQ_UPPER) {
