@@ -1,5 +1,5 @@
 /*
-  Copyright 2024, Mikhail Grushinskiy
+  Copyright 2024-2025, Mikhail Grushinskiy
 */
 #include <cmath>
 #include <random>
