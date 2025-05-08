@@ -45,12 +45,6 @@
 #include "WaveFilters.h"
 #include "M5_Calibr.h"
 
-enum FrequencyTracker {
-    Aranovskiy,
-    Kalm_ANF,
-    ZeroCrossing
-};
-
 bool useMahony = true;
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
