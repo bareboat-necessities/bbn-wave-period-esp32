@@ -115,8 +115,7 @@ void read_and_processIMU_data() {
       mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
                          accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
       Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
-    }
-    else {
+    } else {
       kalman_mekf.gyr = {gyro.y * DEG_TO_RAD, gyro.x * DEG_TO_RAD, -gyro.z * DEG_TO_RAD};
       kalman_mekf.acc = {accel.y, accel.x, -accel.z}; 
       //kalman_mekf.mag = {magne.x, magne.y, magne.z};
@@ -207,8 +206,7 @@ void read_and_processIMU_data() {
         last_update = start_time;
         last_update_inner = start_time;
         t = 0.0;
-      }
-      else if (freq_adj >= FREQ_LOWER && freq_adj <= FREQ_UPPER) { /* prevent decimal overflows */
+      } else if (freq_adj >= FREQ_LOWER && freq_adj <= FREQ_UPPER) { /* prevent decimal overflows */
   
         if (fabs(freq - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
           freq_good_est = freq_adj;
@@ -260,8 +258,7 @@ void read_and_processIMU_data() {
               }
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
               gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", waveState.accel_bias * 100.0 / g_std);
-            }
-            else {
+            } else {
               // report for Arduino Serial Plotter
               //Serial.printf(",a:%0.4f", g_std * a);
               //Serial.printf(",a_band_passed:%0.4f", g_std * a_band_passed);
@@ -300,8 +297,7 @@ void repeatMe() {
   // Calibration is initiated when screen is clicked. Screen on atomS3 is a button
   if (pressed) {
     startCalibration();
-  }
-  else {
+  } else {
     auto imu_update = M5.Imu.update();
     if (imu_update) {
       read_and_processIMU_data();
@@ -346,8 +342,7 @@ void setup(void) {
     float twoKp = (2.0f * 4.0f);
     float twoKi = (2.0f * 0.0001f);
     mahony_AHRS_init(&mahony, twoKp, twoKi);
-  }
-  else {
+  } else {
     static Vector3f sigma_a = {6.0e-3, 3.0e-3, 6.0e-3};
     static Vector3f sigma_g = {0.15 * M_PI / 180, 0.4 * M_PI / 180, 0.15 * M_PI / 180};
     static Vector3f sigma_m = {3.2e-3, 3.2e-3, 3.2e-3};
