@@ -102,7 +102,7 @@ void read_and_processIMU_data() {
 
   drawCalibrGraph(rect_graph_area, data);
   
-  if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) <= ACCEL_MAX_G_SQUARE) {
+  if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < ACCEL_MAX_G_SQUARE) {
     // ignore noise (in unbiased way) with unreasonably high Gs
 
     float delta_t = (now - last_update) / 1000000.0;  // time step sec
@@ -151,7 +151,7 @@ void read_and_processIMU_data() {
     float a_band_passed = lowPassFilter.process(a_noisy, delta_t);
     float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
     
-    if ((a_no_spikes * a_no_spikes) <= ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
+    if ((a_no_spikes * a_no_spikes) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
       float delta_t_inner = (now - last_update_inner) / 1000000.0;  // time step sec
       last_update_inner = now;
       float a = a_no_spikes;
@@ -206,7 +206,7 @@ void read_and_processIMU_data() {
         last_update = start_time;
         last_update_inner = start_time;
         t = 0.0;
-      } else if (freq_adj >= FREQ_LOWER && freq_adj <= FREQ_UPPER) { /* prevent decimal overflows */
+      } else if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
   
         if (fabs(freq - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
           freq_good_est = freq_adj;
