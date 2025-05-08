@@ -9,11 +9,12 @@
 class SchmittTriggerFrequencyDetector {
   public:
     // Constructor: sets hysteresis threshold (default: 0.1)
-    // hysteresis should be positive and typically between 0.01 and 0.5
+    // hysteresis must be positive and typically between 0.01 and 0.5
+    // halfPeriodsInCycle must be positive integer
     explicit SchmittTriggerFrequencyDetector(float hysteresis = 0.1f, unsigned int halfPeriodsInCycle = 2);
 
     // Update with new signal sample and time since last update (dt in seconds)
-    // Returns frequency (Hz), or 0 if no complete cycle detected yet
+    // Returns frequency (Hz)
     // signalMagnitude should be positive (absolute amplitude of the signal)
     // debounceTime (in seconds) should be positive
     float update(float signalValue, float signalMagnitude, float debounceTime, float dt);
