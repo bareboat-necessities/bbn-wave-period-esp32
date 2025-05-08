@@ -15,8 +15,8 @@ class SchmittTriggerFrequencyDetector {
 
     // Update with new signal sample and time since last update (dt in seconds)
     // Returns frequency (Hz)
-    // signalMagnitude should be positive (absolute amplitude of the signal)
-    // debounceTime (in seconds) should be positive
+    // signalMagnitude must be positive (absolute amplitude of the signal)
+    // debounceTime (in seconds) must be positive
     float update(float signalValue, float signalMagnitude, float debounceTime, float dt);
 
     // Get latest computed frequency (Hz)
