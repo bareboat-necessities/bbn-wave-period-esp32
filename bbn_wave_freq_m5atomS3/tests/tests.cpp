@@ -79,7 +79,7 @@ void run_filters(float a, float v, float h, float delta_t, float ref_freq_4_prin
     freq_adj = kalman_smoother_update(&kalman_freq, freq);
   }
 
-  if (freq_adj >= FREQ_LOWER && freq_adj <= FREQ_UPPER) { /* prevent decimal overflows */
+  if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
     double period = 1.0 / freq_adj;
     uint32_t windowMicros = getWindowMicros(period);
     SampleType sample = { .value = heave, .timeMicroSec = now() };
