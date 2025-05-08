@@ -12,6 +12,12 @@
 #define ACCEL_MAX_G_SQUARE 4.84  // (a/g)^2
 #define ACCEL_MAX_G_SQUARE_NO_GRAVITY 1.44  // (a/g)^2
 
+enum FrequencyTracker {
+    Aranovskiy,
+    Kalm_ANF,
+    ZeroCrossing
+};
+
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
 void init_filters(AranovskiyState* ar_param, AranovskiyState* ar_state, KalmanSmootherVars* kalman_smoother);
