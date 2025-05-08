@@ -1,16 +1,21 @@
 #ifndef WaveFilters_h
 #define WaveFilters_h
 
-#define FREQ_LOWER 0.02
-#define FREQ_UPPER 4.0
-#define FREQ_GUESS 0.3 /* freq guess */
+#define FREQ_LOWER 0.02f
+#define FREQ_UPPER 4.0f
+#define FREQ_GUESS 0.3f /* freq guess */
 
-#define FREQ_COEF        1.0
-#define FREQ_COEF_TIGHT  0.05
-#define ARANOVSKIY_SCALE 10.0
+#define ZERO_CROSSINGS_HYSTERESIS     0.06f
+#define ZERO_CROSSINGS_HALF_PERIODS   2
+#define ZERO_CROSSINGS_SCALE          1.0f
+#define ZERO_CROSSINGS_DEBOUNCE_TIME  0.1f
 
-#define ACCEL_MAX_G_SQUARE 4.84  // (a/g)^2
-#define ACCEL_MAX_G_SQUARE_NO_GRAVITY 1.44  // (a/g)^2
+#define FREQ_COEF        1.0f
+#define FREQ_COEF_TIGHT  0.05f
+#define ARANOVSKIY_SCALE 10.0f
+
+#define ACCEL_MAX_G_SQUARE 4.84f  // (a/g)^2
+#define ACCEL_MAX_G_SQUARE_NO_GRAVITY 1.44f  // (a/g)^2
 
 enum FrequencyTracker {
     Aranovskiy,
@@ -61,9 +66,9 @@ void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state) {
 }
 
 void init_smoother(KalmanSmootherVars* kalman_smoother) {
-  double process_noise_covariance = 0.25;
-  double measurement_uncertainty = 2.0;
-  double estimation_uncertainty = 100.0;
+  double process_noise_covariance = 0.25f;
+  double measurement_uncertainty = 2.0f;
+  double estimation_uncertainty = 100.0f;
   kalman_smoother_init(kalman_smoother, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
 }
 
@@ -79,7 +84,7 @@ void init_filters(AranovskiyParams* ar_param, AranovskiyState* ar_state, KalmanS
 }
 
 void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother) {
-  kalmANF_init(kalmANF, 0.95, 1e-5, 1000000.0, 0.0, 0.0, 0.0, 1.9999);
+  kalmANF_init(kalmANF, 0.95f, 1e-5f, 1000000.0f, 0.0f, 0.0f, 0.0f, 1.9999f);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
