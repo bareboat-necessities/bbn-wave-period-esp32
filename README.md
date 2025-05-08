@@ -161,7 +161,7 @@ $$
 Kalman filter to estimate vertical displacement in wave using accelerometer, 
 correct for accelerometer bias, estimate accelerometer bias. This method
 assumes that displacement follows trochoidal model and the frequency of
-wave is known. Frequency can be estimated using another step with Aranovskiy or KalmANF filter.
+wave is known. Frequency can be estimated using another step with Zero Crossing, Aranovskiy or KalmANF filter.
 
 In trochoidal wave model there is simple linear dependency between displacement and 
 acceleration.
