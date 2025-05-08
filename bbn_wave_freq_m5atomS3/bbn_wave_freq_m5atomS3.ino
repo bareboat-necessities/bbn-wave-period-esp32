@@ -65,7 +65,7 @@ HighPassFirstOrderFilter highPassFilter(20.0 /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(6, 0.3);
 
 // frequency tracking
-SchmittTriggerFrequencyDetector freqDetector(0.06f, 3); 
+SchmittTriggerFrequencyDetector freqDetector(0.06f, 1); 
 AranovskiyParams arParams;
 AranovskiyState arState;
 KalmANF kalmANF;
