@@ -5,7 +5,7 @@
 #define FREQ_UPPER 4.0f
 #define FREQ_GUESS 0.3f /* frequency guess */
 
-#define ZERO_CROSSINGS_HYSTERESIS     0.07f
+#define ZERO_CROSSINGS_HYSTERESIS     0.05f
 #define ZERO_CROSSINGS_HALF_PERIODS   3
 #define ZERO_CROSSINGS_SCALE          1.0f
 #define ZERO_CROSSINGS_DEBOUNCE_TIME  0.08f
