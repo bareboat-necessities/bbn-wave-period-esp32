@@ -25,7 +25,7 @@ KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_HALF_PERIODS);
+SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
 //TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
 //FourthOrderLowPass lowPassFilter(FREQ_UPPER);
@@ -79,7 +79,8 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
       freq = f_kalmanANF;
     } else {
       float signal_a = a_noisy;
-      float f_byZeroCross = freqDetector.update(signal_a, ZERO_CROSSINGS_SCALE, ZERO_CROSSINGS_DEBOUNCE_TIME, delta_t);
+      float f_byZeroCross = freqDetector.update(
+        signal_a, ZERO_CROSSINGS_SCALE, ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
       if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT) {
         freq = FREQ_GUESS;
       } else if (f_byZeroCross < FREQ_LOWER) {
