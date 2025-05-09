@@ -29,8 +29,8 @@ SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CRO
 
 //TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
 //FourthOrderLowPass lowPassFilter(FREQ_UPPER);
-HighPassFirstOrderFilter highPassFilter((1 / FREQ_LOWER) / 2.0f /* period in sec */);
-HighPassFirstOrderFilter highPassFilterAlt((1 / FREQ_LOWER) / 2.0f /* period in sec */);
+//HighPassFirstOrderFilter highPassFilter((1 / FREQ_LOWER) / 2.0f /* period in sec */);
+//HighPassFirstOrderFilter highPassFilterAlt((1 / FREQ_LOWER) / 2.0f /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
@@ -64,8 +64,8 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     kalman_wave_init_state(&waveState);
   }
   kalman_wave_step(&waveState, a * g_std, delta_t);
-  //float heave = waveState.heave;
-  float heave = highPassFilter.update(waveState.heave, delta_t);
+  float heave = waveState.heave;
+  //float heave = highPassFilter.update(waveState.heave, delta_t);
 
   double freq_adj = FREQ_GUESS;
   double freq = FREQ_GUESS;
@@ -115,8 +115,8 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
       }
       float delta_t_k = last_update_k == 0UL ? delta_t : (now() - last_update_k) / 1000000.0;
       kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
-      //heaveAlt = waveAltState.heave;
-      heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t_k);
+      heaveAlt = waveAltState.heave;
+      //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t_k);
       last_update_k = now();
     }
 
