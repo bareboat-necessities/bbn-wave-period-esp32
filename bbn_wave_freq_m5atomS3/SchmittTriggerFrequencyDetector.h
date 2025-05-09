@@ -109,7 +109,7 @@ float SchmittTriggerFrequencyDetector::update(
             _beginningCrossingInCycleTime = thisCrossingTime;
           }
           _crossingsCounter++;
-          if (_crossingsCounter > 1 && _frequency == SCHMITT_TRIGGER_FREQ_INIT) {
+          if (_crossingsCounter > 1 && (_frequency == SCHMITT_TRIGGER_FREQ_INIT || _frequency == SCHMITT_TRIGGER_FALLBACK_FREQ)) {
             float cycleTime = thisCrossingTime - _beginningCrossingInCycleTime;
             float period = 2.0f * cycleTime / (_crossingsCounter - 1);
             _frequency = 1.0 / period;
@@ -149,7 +149,7 @@ float SchmittTriggerFrequencyDetector::update(
             _beginningCrossingInCycleTime = thisCrossingTime;
           }
           _crossingsCounter++;
-          if (_crossingsCounter > 1 && _frequency == SCHMITT_TRIGGER_FREQ_INIT) {
+          if (_crossingsCounter > 1 && (_frequency == SCHMITT_TRIGGER_FREQ_INIT || _frequency == SCHMITT_TRIGGER_FALLBACK_FREQ)) {
             float cycleTime = thisCrossingTime - _beginningCrossingInCycleTime;
             float period = 2.0f * cycleTime / (_crossingsCounter - 1);
             _frequency = 1.0 / period;
