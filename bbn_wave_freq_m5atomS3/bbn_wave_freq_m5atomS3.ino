@@ -178,6 +178,7 @@ void read_and_processIMU_data() {
         kalman_wave_init_state(&waveState);
       }
       kalman_wave_step(&waveState, a * g_std, delta_t_inner);
+      // float heave = waveState.heave;
       float heave = highPassFilter.update(waveState.heave, delta_t_inner);
   
       double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
@@ -242,6 +243,7 @@ void read_and_processIMU_data() {
           }
           float delta_t_k = last_update_k == 0UL ? delta_t_inner : (now - last_update_k) / 1000000.0;
           kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
+          //heaveAlt = waveAltState.heave;
           heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t_k);
           last_update_k = now;
         }
