@@ -104,6 +104,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     SampleType sample = { .value = heave, .timeMicroSec = now() };
     min_max_lemire_update(&min_max_h, sample, windowMicros);
 
+    float heaveAlt = waveAltState.heave;
     if (fabs(freq - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
       float k_hat = - pow(2.0 * PI * freq_adj, 2);
       if (kalm_w_alt_first) {
@@ -117,6 +118,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
       }
       float delta_t_k = last_update_k == 0UL ? delta_t : (now() - last_update_k) / 1000000.0;
       kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
+      heaveAlt = highPassFilter.update(waveAltState.heave, delta_t_k);
       last_update_k = now();
     }
 
@@ -128,7 +130,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     printf(",v,%.4f", v);
     printf(",h,%.4f", h);
     printf(",heave,%.4f", heave);
-    printf(",heave_alt,%.4f", waveAltState.heave);
+    printf(",heave_alt,%.4f", heaveAlt);
     printf(",height,%.4f", wave_height);
     printf(",max,%.4f", min_max_h.max.value);
     printf(",min,%.4f", min_max_h.min.value);
