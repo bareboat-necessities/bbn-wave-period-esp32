@@ -54,7 +54,7 @@ bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
 // Basic filters
 //TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
-FourthOrderLowPass lowPassFilter(FREQ_UPPER);
+//FourthOrderLowPass lowPassFilter(FREQ_UPPER);
 HighPassFirstOrderFilter highPassFilter((1 / FREQ_LOWER) / 2.0f /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
@@ -149,7 +149,7 @@ void read_and_processIMU_data() {
 
     float a_noisy = (accel_rotated.z - 1.0);  // acceleration in fractions of g
     //float a_band_passed = bpFilter.processWithDelta(a_noisy, delta_t);
-    float a_band_passed = lowPassFilter.process(a_noisy, delta_t);
+    float a_band_passed = a_noisy; //lowPassFilter.process(a_noisy, delta_t);
     float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
     
     if ((a_no_spikes * a_no_spikes) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
