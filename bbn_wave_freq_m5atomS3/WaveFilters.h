@@ -12,7 +12,7 @@
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.15f
 
 #define FREQ_COEF        1.0f
-#define FREQ_COEF_TIGHT  0.05f
+#define FREQ_COEF_TIGHT  0.15f
 #define ARANOVSKIY_SCALE 10.0f
 
 #define ACCEL_MAX_G_SQUARE 4.84f  // (a/g)^2
