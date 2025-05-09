@@ -115,6 +115,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
       }
       float delta_t_k = last_update_k == 0UL ? delta_t : (now() - last_update_k) / 1000000.0;
       kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
+      //heaveAlt = waveAltState.heave;
       heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t_k);
       last_update_k = now();
     }
