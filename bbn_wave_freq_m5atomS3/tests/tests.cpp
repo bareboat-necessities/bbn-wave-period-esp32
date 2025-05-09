@@ -63,7 +63,8 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     kalman_wave_init_state(&waveState);
   }
   kalman_wave_step(&waveState, a * g_std, delta_t);
-  float heave = waveState.heave;
+  //float heave = waveState.heave;
+  float heave = highPassFilter.update(waveState.heave, delta_t);
 
   double freq_adj = FREQ_GUESS;
   double freq = FREQ_GUESS;
