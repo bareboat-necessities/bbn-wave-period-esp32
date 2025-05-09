@@ -55,8 +55,8 @@ bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 // Basic filters
 //TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
 //FourthOrderLowPass lowPassFilter(FREQ_UPPER);
-HighPassFirstOrderFilter highPassFilter((1 / FREQ_LOWER) / 2.0f /* period in sec */);
-HighPassFirstOrderFilter highPassFilterAlt((1 / FREQ_LOWER) / 2.0f /* period in sec */);
+//HighPassFirstOrderFilter highPassFilter((1 / FREQ_LOWER) / 2.0f /* period in sec */);
+//HighPassFirstOrderFilter highPassFilterAlt((1 / FREQ_LOWER) / 2.0f /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 // frequency tracking
@@ -178,8 +178,8 @@ void read_and_processIMU_data() {
         kalman_wave_init_state(&waveState);
       }
       kalman_wave_step(&waveState, a * g_std, delta_t_inner);
-      // float heave = waveState.heave;
-      float heave = highPassFilter.update(waveState.heave, delta_t_inner);
+      float heave = waveState.heave;
+      //float heave = highPassFilter.update(waveState.heave, delta_t_inner);
   
       double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
       if (t > warmup_time_sec(useMahony)) {
@@ -243,8 +243,8 @@ void read_and_processIMU_data() {
           }
           float delta_t_k = last_update_k == 0UL ? delta_t_inner : (now - last_update_k) / 1000000.0;
           kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
-          //heaveAlt = waveAltState.heave;
-          heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t_k);
+          heaveAlt = waveAltState.heave;
+          //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t_k);
           last_update_k = now;
         }
 
