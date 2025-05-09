@@ -60,7 +60,7 @@ TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THR
 
 // frequency tracking
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hysteresis (fractions of signal magnitude) */, 
-                                             ZERO_CROSSINGS_HALF_PERIODS /* half periods to run measures on */); 
+                                             ZERO_CROSSINGS_PERIODS /* periods to run measures on */); 
 AranovskiyParams arParams;
 AranovskiyState arState;
 KalmANF kalmANF; 
@@ -179,8 +179,8 @@ void read_and_processIMU_data() {
           float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t_inner, &e);
           freq = f_kalmanANF;
         } else {
-          float f_byZeroCross = freqDetector.update(a_noisy, 
-            ZERO_CROSSINGS_SCALE /* max fractions of g */, ZERO_CROSSINGS_DEBOUNCE_TIME /* debounce time */, delta_t_inner);
+          float f_byZeroCross = freqDetector.update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */, 
+            ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t_inner);
           if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT) {
             freq = FREQ_GUESS;
           } else if (f_byZeroCross < FREQ_LOWER) {
