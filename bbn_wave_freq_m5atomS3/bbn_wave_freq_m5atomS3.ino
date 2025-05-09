@@ -85,6 +85,17 @@ float heave_avg = 0.0;
 float wave_length = 0.0;
 float freq_good_est = 0.0;
 
+void initialize_filters() {
+  if (useFrequencyTracker == Aranovskiy) {
+    init_filters(&arParams, &arState, &kalman_freq);
+  } else if (useFrequencyTracker == Kalm_ANF) {
+    init_filters_alt(&kalmANF, &kalman_freq);
+  } else {
+    kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
+    init_wave_filters();
+  }
+}
+
 void read_and_processIMU_data() {
   auto data = M5.Imu.getImuData();
   
@@ -204,7 +215,7 @@ void read_and_processIMU_data() {
         kalm_w_first = true;
         kalm_w_alt_first = true;
         kalm_smoother_first = true;
-        init_filters(&arParams, &arState, &kalman_freq);
+        initialize_filters();
         start_time = micros();
         last_update = start_time;
         last_update_inner = start_time;
@@ -358,14 +369,7 @@ void setup(void) {
     kalman_mekf.mekf = &mekf;
   }
 
-  if (useFrequencyTracker == Aranovskiy) {
-    init_filters(&arParams, &arState, &kalman_freq);
-  } else if (useFrequencyTracker == Kalm_ANF) {
-    init_filters_alt(&kalmANF, &kalman_freq);
-  } else {
-    kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
-    init_wave_filters();
-  }
+  initialize_filters();
 
   start_time = micros();
   last_update = start_time;
