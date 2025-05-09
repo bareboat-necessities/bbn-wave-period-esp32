@@ -99,10 +99,6 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   }
 
   if (freq_adj >= FREQ_LOWER && freq_adj <= FREQ_UPPER) { /* prevent decimal overflows */
-    double period = 1.0 / freq_adj;
-    uint32_t windowMicros = getWindowMicros(period);
-    SampleType sample = { .value = heave, .timeMicroSec = now() };
-    min_max_lemire_update(&min_max_h, sample, windowMicros);
 
     float heaveAlt = waveAltState.heave;
     if (fabs(freq - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
@@ -121,6 +117,11 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
       heaveAlt = highPassFilter.update(waveAltState.heave, delta_t_k);
       last_update_k = now();
     }
+
+    double period = 1.0 / freq_adj;
+    uint32_t windowMicros = getWindowMicros(period);
+    SampleType sample = { .value = heaveAlt, .timeMicroSec = now() };
+    min_max_lemire_update(&min_max_h, sample, windowMicros);
 
     float wave_height = min_max_h.max.value - min_max_h.min.value;
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
