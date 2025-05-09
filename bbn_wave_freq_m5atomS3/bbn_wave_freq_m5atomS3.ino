@@ -148,8 +148,8 @@ void read_and_processIMU_data() {
     accel_rotated.z = rotated_a[2];
 
     float a_noisy = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-    //float a_band_passed = bpFilter.processWithDelta(a_noisy, delta_t);
-    float a_band_passed = a_noisy; //lowPassFilter.process(a_noisy, delta_t);
+    //float a_band_passed = lowPassFilter.process(a_noisy, delta_t);
+    float a_band_passed = a_noisy; //bpFilter.processWithDelta(a_noisy, delta_t);
     float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
     
     if ((a_no_spikes * a_no_spikes) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
