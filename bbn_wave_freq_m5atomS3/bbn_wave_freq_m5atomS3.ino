@@ -216,6 +216,7 @@ void read_and_processIMU_data() {
         }
   
         // use previous good estimate of frequency
+        float heaveAlt = waveAltState.heave;
         if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
           float k_hat = - pow(2.0 * PI * freq_good_est, 2);
           if (kalm_w_alt_first) {
@@ -229,12 +230,13 @@ void read_and_processIMU_data() {
           }
           float delta_t_k = last_update_k == 0UL ? delta_t_inner : (now - last_update_k) / 1000000.0;
           kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
+          heaveAlt = highPassFilter.update(waveAltState.heave, delta_t_k);
           last_update_k = now;
         }
 
         double period = 1.0 / freq_adj;
         uint32_t windowMicros = getWindowMicros(period);
-        SampleType sample = { .value = waveAltState.heave, .timeMicroSec = now };
+        SampleType sample = { .value = heaveAlt, .timeMicroSec = now };
         min_max_lemire_update(&min_max_h, sample, windowMicros);
         
         float wave_height = min_max_h.max.value - min_max_h.min.value;
@@ -249,7 +251,7 @@ void read_and_processIMU_data() {
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
               }
               if (fabs(heave) < 15.0) {
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", waveAltState.heave);
+                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heaveAlt);
               }
               gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
               if (fabs(freq - freq_good_est) < 0.07 * freq_good_est) {
@@ -268,7 +270,7 @@ void read_and_processIMU_data() {
               //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
               //Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
               Serial.printf(",heave_cm:%.4f", heave * 100);
-              Serial.printf(",heave_alt:%.4f", waveAltState.heave * 100);
+              Serial.printf(",heave_alt:%.4f", heaveAlt * 100);
               //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
               //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
               //Serial.printf(",freq:%.4f", freq * 100);
