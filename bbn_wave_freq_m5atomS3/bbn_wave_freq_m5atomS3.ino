@@ -226,8 +226,8 @@ void read_and_processIMU_data() {
           freq_good_est = freq_adj;
         }
   
-        // use previous good estimate of frequency
         float heaveAlt = waveAltState.heave;
+        // use previous good estimate of frequency
         if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
           float k_hat = - pow(2.0 * PI * freq_good_est, 2);
           if (kalm_w_alt_first) {
