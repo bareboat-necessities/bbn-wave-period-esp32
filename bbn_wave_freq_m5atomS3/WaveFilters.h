@@ -18,8 +18,8 @@
 #define ACCEL_MAX_G_SQUARE 4.84f  // (a/g)^2
 #define ACCEL_MAX_G_SQUARE_NO_GRAVITY 1.44f  // (a/g)^2
 
-#define ACCEL_SPIKE_FILTER_SIZE       6  
-#define ACCEL_SPIKE_FILTER_THRESHOLD  20.0f
+#define ACCEL_SPIKE_FILTER_SIZE       5  
+#define ACCEL_SPIKE_FILTER_THRESHOLD  2.0f
 
 enum FrequencyTracker {
     Aranovskiy,
