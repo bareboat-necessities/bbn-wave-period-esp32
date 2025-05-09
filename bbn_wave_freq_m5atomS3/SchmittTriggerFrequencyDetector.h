@@ -86,7 +86,7 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
     case State::WAS_LOW: {
         _timeInCycle += dt;
         float timeSinceLow = _timeInCycle - _lastLowTime;
-        if (scaledValue > _upperThreshold && timeSinceLow > debounceTime) {  // found crossing
+        if (scaledValue > _upperThreshold && fabs(timeSinceLow) > debounceTime) {  // found crossing
           _state = State::WAS_HIGH;
           _lastHighTime = _timeInCycle;
           float thisCrossingTime = _timeInCycle - timeSinceLow / 2.0f;
@@ -117,7 +117,7 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
     case State::WAS_HIGH: {
         _timeInCycle += dt;
         float timeSinceHigh = _timeInCycle - _lastHighTime;
-        if (scaledValue < _lowerThreshold && timeSinceHigh > debounceTime) {  // found crossing
+        if (scaledValue < _lowerThreshold && fabs(timeSinceHigh) > debounceTime) {  // found crossing
           _state = State::WAS_LOW;
           _lastLowTime = _timeInCycle;
           float thisCrossingTime = _timeInCycle - timeSinceHigh / 2.0f;
