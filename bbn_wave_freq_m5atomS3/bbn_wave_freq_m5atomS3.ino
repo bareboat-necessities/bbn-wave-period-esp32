@@ -256,7 +256,7 @@ void read_and_processIMU_data() {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
                 gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", heave);
               }
-              if (FREQ_LOWER >= 0.02 && freq <= FREQ_UPPER) {
+              if (freq >= FREQ_LOWER && freq <= FREQ_UPPER) {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
               }
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
