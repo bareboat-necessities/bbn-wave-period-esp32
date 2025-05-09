@@ -209,7 +209,7 @@ void read_and_processIMU_data() {
         last_update = start_time;
         last_update_inner = start_time;
         t = 0.0;
-      } else if (freq_adj > FREQ_LOWER && freq_adj < FREQ_UPPER) { /* prevent decimal overflows */
+      } else if (freq_adj >= FREQ_LOWER && freq_adj <= FREQ_UPPER) { /* prevent decimal overflows */
   
         if (fabs(freq - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
           freq_good_est = freq_adj;
