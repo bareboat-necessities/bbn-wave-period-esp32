@@ -273,7 +273,7 @@ void read_and_processIMU_data() {
                 gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
               }
               gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
-              gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", waveState.accel_bias * 100.0 / g_std);
+              gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", waveAltState.accel_bias * 100.0 / g_std);
             } else {
               // report for Arduino Serial Plotter
               //Serial.printf(",a:%0.4f", g_std * a);
