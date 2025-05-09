@@ -19,7 +19,7 @@
 #define ACCEL_MAX_G_SQUARE_NO_GRAVITY 1.44f  // (a/g)^2
 
 #define ACCEL_SPIKE_FILTER_SIZE       5  
-#define ACCEL_SPIKE_FILTER_THRESHOLD  20.0f
+#define ACCEL_SPIKE_FILTER_THRESHOLD  1.0f
 
 enum FrequencyTracker {
     Aranovskiy,
@@ -78,7 +78,7 @@ void init_smoother(KalmanSmootherVars* kalman_smoother) {
 
 void init_wave_filters() {
   kalman_wave_init_defaults(1e+1f, 1e-4f, 1e-2f, 1e-5f);
-  kalman_wave_alt_init_defaults(1e+1f, 1e-4f, 1e-2f, 5e+4, 1e-5f);
+  kalman_wave_alt_init_defaults(1e+1f, 1e-4f, 1e-2f, 1e+2, 1e-5f);
 }
 
 void init_filters(AranovskiyParams* ar_param, AranovskiyState* ar_state, KalmanSmootherVars* kalman_smoother) {
