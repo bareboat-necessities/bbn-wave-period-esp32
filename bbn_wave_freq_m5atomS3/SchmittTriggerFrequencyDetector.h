@@ -2,6 +2,7 @@
 #define SCHMITT_TRIGGER_FREQ_DETECTOR_H
 
 #define SCHMITT_TRIGGER_FREQ_INIT     1e-7f
+#define SCHMITT_TRIGGER_FALLBACK_FREQ 1e-2f
 #define SCHMITT_TRIGGER_FALLBACK_TIME 60.0f
 
 /*
@@ -128,7 +129,7 @@ float SchmittTriggerFrequencyDetector::update(
           _lastLowTime = _timeInCycle;
         }
         if ((_timeInCycle - _lastCrossingInCycleTime) > _fallbackToLowFreqTime) {
-          _frequency = SCHMITT_TRIGGER_FREQ_INIT;
+          _frequency = SCHMITT_TRIGGER_FALLBACK_FREQ;
         }
       }
       break;
@@ -168,7 +169,7 @@ float SchmittTriggerFrequencyDetector::update(
           _lastHighTime = _timeInCycle;
         }
         if ((_timeInCycle - _lastCrossingInCycleTime) > _fallbackToLowFreqTime) {
-          _frequency = SCHMITT_TRIGGER_FREQ_INIT;
+          _frequency = SCHMITT_TRIGGER_FALLBACK_FREQ;
         }
       }
       break;
