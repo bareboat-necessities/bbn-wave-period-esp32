@@ -12,14 +12,15 @@ class SchmittTriggerFrequencyDetector {
   public:
     // Constructor: sets hysteresis threshold (default: 0.1)
     // hysteresis must be positive and typically between 0.01 and 0.5
-    // halfPeriodsInCycle must be positive integer
-    explicit SchmittTriggerFrequencyDetector(float hysteresis = 0.1f, unsigned int halfPeriodsInCycle = 1);
+    // periodsInCycle must be positive integer
+    explicit SchmittTriggerFrequencyDetector(float hysteresis = 0.1f, unsigned int periodsInCycle = 1);
 
     // Update with new signal sample and time since last update (dt in seconds)
     // Returns frequency (Hz)
     // signalMagnitude must be positive (absolute amplitude of the signal)
     // debounceTime (in seconds) must be positive
-    float update(float signalValue, float signalMagnitude, float debounceTime, float dt);
+    // steepnessTime (in seconds) must be positive
+    float update(float signalValue, float signalMagnitude, float debounceTime, float steepnessTime, float dt);
 
     // Get latest computed frequency (Hz)
     float getFrequency() const;
@@ -39,30 +40,33 @@ class SchmittTriggerFrequencyDetector {
     float _lowerThreshold;   // Lower threshold
     State _state;            // Tracks states
     float _frequency;        // Latest frequency estimate (Hz)
-    unsigned int _halfPeriodsInCycle;
+    unsigned int _periodsInCycle;
 
     float _timeInCycle;
     float _lastLowTime;
     float _lastHighTime;
+    float _lastCrossingInCycleTime;
     float _beginningCrossingInCycleTime;
     unsigned int _crossingsCounter;
 };
 
-SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresis, unsigned int halfPeriodsInCycle)
+SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresis, unsigned int periodsInCycle)
   : _hysteresis(fabs(hysteresis)),
     _upperThreshold(_hysteresis),
     _lowerThreshold(-_hysteresis),
     _state(State::WAS_NOT_SET),
     _frequency(SCHMITT_TRIGGER_FREQ_INIT),
-    _halfPeriodsInCycle(halfPeriodsInCycle),
+    _periodsInCycle(periodsInCycle),
     _timeInCycle(0.0f),
     _lastLowTime(0.0f),
     _lastHighTime(0.0f),
+    _lastCrossingInCycleTime(0.0f),
     _beginningCrossingInCycleTime(0.0f),
     _crossingsCounter(0)
 {}
 
-float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMagnitude, float debounceTime, float dt) {
+float SchmittTriggerFrequencyDetector::update(
+  float signalValue, float signalMagnitude, float debounceTime, float steepnessTime, float dt) {
   if (dt <= 0.0f || fabs(signalMagnitude) <= 0.0f) {
     return _frequency;
   }
@@ -78,7 +82,8 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
         _lastLowTime = 0.0f;
         _lastHighTime = 0.0f;
         _crossingsCounter = 0;
-        _beginningCrossingInCycleTime = 0;
+        _lastCrossingInCycleTime = 0.0f;
+        _beginningCrossingInCycleTime = 0.0f;
         _timeInCycle = 0.0f;
       }
       break;
@@ -86,10 +91,14 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
     case State::WAS_LOW: {
         _timeInCycle += dt;
         float timeSinceLow = _timeInCycle - _lastLowTime;
-        if (scaledValue > _upperThreshold && fabs(timeSinceLow) > debounceTime) {  // found crossing
+        float thisCrossingTime = _timeInCycle - timeSinceLow / 2.0f; // or (_timeInCycle + _lastLowTime) / 2.0f
+
+        if (scaledValue > _upperThreshold && (timeSinceLow > steepnessTime)
+            && (_crossingsCounter == 0 || (thisCrossingTime - _lastCrossingInCycleTime) > debounceTime)) {  // found crossing
           _state = State::WAS_HIGH;
           _lastHighTime = _timeInCycle;
-          float thisCrossingTime = _timeInCycle - timeSinceLow / 2.0f;
+          _lastCrossingInCycleTime = thisCrossingTime;
+
           if (_crossingsCounter == 0) {
             _beginningCrossingInCycleTime = thisCrossingTime;
           }
@@ -99,11 +108,13 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
             float period = 2.0f * cycleTime / (_crossingsCounter - 1);
             _frequency = 1.0 / period;
           }
-          if (_crossingsCounter == (_halfPeriodsInCycle + 1)) {
+          if (_crossingsCounter == (2 * _periodsInCycle + 1)) {
             float cycleTime = thisCrossingTime - _beginningCrossingInCycleTime;
             float period = 2.0f * cycleTime / (_crossingsCounter - 1);
             _frequency = 1.0 / period;
-            _crossingsCounter = 0;
+            _crossingsCounter = 1;
+            _lastCrossingInCycleTime = - timeSinceLow / 2.0f; // negative
+            _beginningCrossingInCycleTime = _lastCrossingInCycleTime; // negative
             _timeInCycle = 0.0f;
             _lastHighTime = _timeInCycle;
           }
@@ -117,10 +128,14 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
     case State::WAS_HIGH: {
         _timeInCycle += dt;
         float timeSinceHigh = _timeInCycle - _lastHighTime;
-        if (scaledValue < _lowerThreshold && fabs(timeSinceHigh) > debounceTime) {  // found crossing
+        float thisCrossingTime = _timeInCycle - timeSinceHigh / 2.0f; // or (_timeInCycle + _lastHighTime) / 2.0f
+
+        if (scaledValue < _lowerThreshold && (timeSinceHigh > steepnessTime)
+            && (_crossingsCounter == 0 || (thisCrossingTime - _lastCrossingInCycleTime) > debounceTime)) {  // found crossing
           _state = State::WAS_LOW;
           _lastLowTime = _timeInCycle;
-          float thisCrossingTime = _timeInCycle - timeSinceHigh / 2.0f;
+          _lastCrossingInCycleTime = thisCrossingTime;
+
           if (_crossingsCounter == 0) {
             _beginningCrossingInCycleTime = thisCrossingTime;
           }
@@ -130,11 +145,13 @@ float SchmittTriggerFrequencyDetector::update(float signalValue, float signalMag
             float period = 2.0f * cycleTime / (_crossingsCounter - 1);
             _frequency = 1.0 / period;
           }
-          if (_crossingsCounter == (_halfPeriodsInCycle + 1)) {
+          if (_crossingsCounter == (2 * _periodsInCycle + 1)) {
             float cycleTime = thisCrossingTime - _beginningCrossingInCycleTime;
             float period = 2.0f * cycleTime / (_crossingsCounter - 1);
             _frequency = 1.0 / period;
-            _crossingsCounter = 0;
+            _crossingsCounter = 1;
+            _lastCrossingInCycleTime = - timeSinceHigh / 2.0f; // negative
+            _beginningCrossingInCycleTime = _lastCrossingInCycleTime; // negative
             _timeInCycle = 0.0f;
             _lastLowTime = _timeInCycle;
           }
@@ -159,13 +176,13 @@ float SchmittTriggerFrequencyDetector::getFrequency() const {
 void SchmittTriggerFrequencyDetector::reset() {
   _state = State::WAS_NOT_SET;
   _frequency = SCHMITT_TRIGGER_FREQ_INIT;
-  _halfPeriodsInCycle = 2;
+  _periodsInCycle = 1;
   _timeInCycle = 0.0f;
   _lastLowTime = 0.0f;
   _lastHighTime = 0.0f;
+  _lastCrossingInCycleTime = 0.0f;
   _beginningCrossingInCycleTime = 0.0f;
   _crossingsCounter = 0;
 }
-
 
 #endif
