@@ -13,6 +13,10 @@
 #include "KalmanForWaveAlt.h"
 #include "WaveFilters.h"
 #include "SchmittTriggerFrequencyDetector.h"
+#include "TimeAwareSpikeFilter.h"
+#include "TimeAwareBandpassFilter.h"
+#include "HighPassFilters.h"
+#include "FourthOrderLowPass.h"
 
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
@@ -22,6 +26,11 @@ KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_HALF_PERIODS);
+
+TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
+FourthOrderLowPass lowPassFilter(FREQ_UPPER);
+HighPassFirstOrderFilter highPassFilter((1 / FREQ_LOWER) / 2.0f /* period in sec */);
+TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
@@ -37,7 +46,13 @@ uint32_t now() {
 
 unsigned long last_update_k = 0UL;
 
-void run_filters(float a, float v, float h, float delta_t, float ref_freq_4_print) {
+void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_4_print) {
+  //float a_band_passed = lowPassFilter.process(a_noisy, delta_t);
+  float a_band_passed = a_noisy; //bpFilter.processWithDelta(a_noisy, delta_t);
+  float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
+
+  float a = a_no_spikes;
+
   if (kalm_w_first) {
     kalm_w_first = false;
     float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
@@ -62,7 +77,7 @@ void run_filters(float a, float v, float h, float delta_t, float ref_freq_4_prin
       float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t, &e);
       freq = f_kalmanANF;
     } else {
-      float signal_a = a;
+      float signal_a = a_noisy;
       float f_byZeroCross = freqDetector.update(signal_a, ZERO_CROSSINGS_SCALE, ZERO_CROSSINGS_DEBOUNCE_TIME, delta_t);
       if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT) {
         freq = FREQ_GUESS;
@@ -140,11 +155,11 @@ int main(int argc, char *argv[]) {
     init_wave_filters();
   }
 
-  //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
+  float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = PI / 3.0;
-  float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
+  //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
 
   const float bias = 0.1;
   const double mean = 0.0;
