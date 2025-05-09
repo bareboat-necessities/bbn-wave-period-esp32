@@ -59,7 +59,8 @@ HighPassFirstOrderFilter highPassFilter((1 / FREQ_LOWER) / 2.0f /* period in sec
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 // frequency tracking
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hysteresis (fractions of signal magnitude) */, ZERO_CROSSINGS_HALF_PERIODS /* half periods to run measures on */); 
+SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hysteresis (fractions of signal magnitude) */, 
+                                             ZERO_CROSSINGS_HALF_PERIODS /* half periods to run measures on */); 
 AranovskiyParams arParams;
 AranovskiyState arState;
 KalmANF kalmANF; 
