@@ -325,7 +325,7 @@ void repeatMe() {
 void setup(void) {
   auto cfg = M5.config();
   M5.begin(cfg);
-  Serial.begin(115200);
+  Serial.begin(38400);
 
   auto imu_type = M5.Imu.getType();
   switch (imu_type) {
