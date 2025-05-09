@@ -241,7 +241,7 @@ void read_and_processIMU_data() {
           }
           float delta_t_k = last_update_k == 0UL ? delta_t_inner : (now - last_update_k) / 1000000.0;
           kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
-          heaveAlt = waveAltState.heave; //highPassFilter.update(waveAltState.heave, delta_t_k);
+          heaveAlt = highPassFilter.update(waveAltState.heave, delta_t_k);
           last_update_k = now;
         }
 
