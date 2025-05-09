@@ -1,7 +1,8 @@
 #ifndef SCHMITT_TRIGGER_FREQ_DETECTOR_H
 #define SCHMITT_TRIGGER_FREQ_DETECTOR_H
 
-#define SCHMITT_TRIGGER_FREQ_INIT  1e-7f
+#define SCHMITT_TRIGGER_FREQ_INIT     1e-7f
+#define SCHMITT_TRIGGER_FALLBACK_TIME 60.0f
 
 /*
    Copyright 2025, Mikhail Grushinskiy
@@ -13,13 +14,14 @@ class SchmittTriggerFrequencyDetector {
     // Constructor: sets hysteresis threshold (default: 0.1)
     // hysteresis must be positive and typically between 0.01 and 0.5
     // periodsInCycle must be positive integer
-    explicit SchmittTriggerFrequencyDetector(float hysteresis = 0.1f, unsigned int periodsInCycle = 1);
+    // fallbackToLowFreqTime must be positive time in seconds
+    explicit SchmittTriggerFrequencyDetector(
+      float hysteresis = 0.1f, unsigned int periodsInCycle = 1, float fallbackToLowFreqTime = SCHMITT_TRIGGER_FALLBACK_TIME);
 
     // Update with new signal sample and time since last update (dt in seconds)
     // Returns frequency (Hz)
     // signalMagnitude must be positive (absolute amplitude of the signal)
     // debounceTime (in seconds) must be positive
-    // steepnessTime (in seconds) must be positive
     float update(float signalValue, float signalMagnitude, float debounceTime, float steepnessTime, float dt);
 
     // Get latest computed frequency (Hz)
@@ -35,13 +37,14 @@ class SchmittTriggerFrequencyDetector {
       WAS_HIGH,           // Above upper threshold
     };
 
-    float _hysteresis;       // Hysteresis threshold
-    float _upperThreshold;   // Upper threshold
-    float _lowerThreshold;   // Lower threshold
-    State _state;            // Tracks states
-    float _frequency;        // Latest frequency estimate (Hz)
-    unsigned int _periodsInCycle;
+    float _hysteresis;            // Hysteresis threshold
+    float _upperThreshold;        // Upper threshold
+    float _lowerThreshold;        // Lower threshold
+    State _state;                 // Tracks states
+    float _frequency;             // Latest frequency estimate (Hz)
+    float _fallbackToLowFreqTime; // Time to fallback if no crossing detected  
 
+    unsigned int _periodsInCycle;
     float _timeInCycle;
     float _lastLowTime;
     float _lastHighTime;
@@ -50,7 +53,8 @@ class SchmittTriggerFrequencyDetector {
     unsigned int _crossingsCounter;
 };
 
-SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresis, unsigned int periodsInCycle)
+SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(
+  float hysteresis, unsigned int periodsInCycle, float fallbackToLowFreqTime)
   : _hysteresis(fabs(hysteresis)),
     _upperThreshold(_hysteresis),
     _lowerThreshold(-_hysteresis),
@@ -62,6 +66,7 @@ SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(float hysteresi
     _lastHighTime(0.0f),
     _lastCrossingInCycleTime(0.0f),
     _beginningCrossingInCycleTime(0.0f),
+    _fallbackToLowFreqTime(SCHMITT_TRIGGER_FALLBACK_TIME),
     _crossingsCounter(0)
 {}
 
@@ -122,6 +127,9 @@ float SchmittTriggerFrequencyDetector::update(
           // still LOW
           _lastLowTime = _timeInCycle;
         }
+        if ((_timeInCycle - _lastCrossingInCycleTime) > _fallbackToLowFreqTime) {
+          _frequency = SCHMITT_TRIGGER_FREQ_INIT;
+        }
       }
       break;
 
@@ -159,6 +167,9 @@ float SchmittTriggerFrequencyDetector::update(
           // still HIGH
           _lastHighTime = _timeInCycle;
         }
+        if ((_timeInCycle - _lastCrossingInCycleTime) > _fallbackToLowFreqTime) {
+          _frequency = SCHMITT_TRIGGER_FREQ_INIT;
+        }
       }
       break;
 
@@ -176,6 +187,7 @@ float SchmittTriggerFrequencyDetector::getFrequency() const {
 void SchmittTriggerFrequencyDetector::reset() {
   _state = State::WAS_NOT_SET;
   _frequency = SCHMITT_TRIGGER_FREQ_INIT;
+  _fallbackToLowFreqTime = SCHMITT_TRIGGER_FALLBACK_TIME;
   _periodsInCycle = 1;
   _timeInCycle = 0.0f;
   _lastLowTime = 0.0f;
@@ -184,5 +196,6 @@ void SchmittTriggerFrequencyDetector::reset() {
   _beginningCrossingInCycleTime = 0.0f;
   _crossingsCounter = 0;
 }
+
 
 #endif
