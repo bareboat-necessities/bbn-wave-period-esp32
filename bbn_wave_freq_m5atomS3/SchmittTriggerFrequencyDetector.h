@@ -52,6 +52,8 @@ class SchmittTriggerFrequencyDetector {
     float _lastCrossingInCycleTime;
     float _beginningCrossingInCycleTime;
     unsigned int _crossingsCounter;
+
+    bool doNotDebounce();
 };
 
 SchmittTriggerFrequencyDetector::SchmittTriggerFrequencyDetector(
@@ -99,8 +101,8 @@ float SchmittTriggerFrequencyDetector::update(
         float timeSinceLow = _timeInCycle - _lastLowTime;
         float thisCrossingTime = _timeInCycle - timeSinceLow / 2.0f; // or (_timeInCycle + _lastLowTime) / 2.0f
 
-        if (scaledValue > _upperThreshold && (timeSinceLow > steepnessTime)
-            && (_crossingsCounter == 0 || (thisCrossingTime - _lastCrossingInCycleTime) > debounceTime)) {  // found crossing
+        if (scaledValue > _upperThreshold && (doNotDebounce() || timeSinceLow > steepnessTime)
+            && (doNotDebounce() || (thisCrossingTime - _lastCrossingInCycleTime) > debounceTime)) {  // found crossing
           _state = State::WAS_HIGH;
           _lastHighTime = _timeInCycle;
           _lastCrossingInCycleTime = thisCrossingTime;
@@ -139,8 +141,8 @@ float SchmittTriggerFrequencyDetector::update(
         float timeSinceHigh = _timeInCycle - _lastHighTime;
         float thisCrossingTime = _timeInCycle - timeSinceHigh / 2.0f; // or (_timeInCycle + _lastHighTime) / 2.0f
 
-        if (scaledValue < _lowerThreshold && (timeSinceHigh > steepnessTime)
-            && (_crossingsCounter == 0 || (thisCrossingTime - _lastCrossingInCycleTime) > debounceTime)) {  // found crossing
+        if (scaledValue < _lowerThreshold && (doNotDebounce() || timeSinceHigh > steepnessTime)
+            && (doNotDebounce() || (thisCrossingTime - _lastCrossingInCycleTime) > debounceTime)) {  // found crossing
           _state = State::WAS_LOW;
           _lastLowTime = _timeInCycle;
           _lastCrossingInCycleTime = thisCrossingTime;
@@ -179,6 +181,10 @@ float SchmittTriggerFrequencyDetector::update(
   }
 
   return _frequency;
+}
+
+bool SchmittTriggerFrequencyDetector::doNotDebouce() {
+  return _crossingsCounter == 0 || _frequency == SCHMITT_TRIGGER_FREQ_INIT || _frequency == SCHMITT_TRIGGER_FALLBACK_FREQ;
 }
 
 float SchmittTriggerFrequencyDetector::getFrequency() const {
