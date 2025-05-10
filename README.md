@@ -15,7 +15,7 @@ Check required libraries and version in .github/workflows/build.yaml
 Produces NMEA-0183 XDR sentences over USB (See NmeaXDR.h). Baud rate: 115200.
 
 Mount atomS3 with LCD facing up. Any vibrations and hits introduce noise levels comparable with usable acceleration signal.
-Mount the device on a cushion to avoid misreadings of the instrument.
+Mount the device on a cushion close to the center of gravity the boat to avoid misreadings of the instrument.
 
 ## Estimating Boat Heave using IMU
 Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32
