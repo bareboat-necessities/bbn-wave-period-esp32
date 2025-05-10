@@ -183,7 +183,7 @@ float SchmittTriggerFrequencyDetector::update(
   return _frequency;
 }
 
-bool SchmittTriggerFrequencyDetector::doNotDebouce() {
+bool SchmittTriggerFrequencyDetector::doNotDebounce() {
   return _crossingsCounter == 0 || _frequency == SCHMITT_TRIGGER_FREQ_INIT || _frequency == SCHMITT_TRIGGER_FALLBACK_FREQ;
 }
 
