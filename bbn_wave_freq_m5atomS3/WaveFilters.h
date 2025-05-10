@@ -44,7 +44,7 @@ int warmup_time_sec(bool use_mahony) {
 }
 
 uint32_t getWindowMicros(double period) {
-  uint32_t windowMicros = 3 * period * 1000000;
+  uint32_t windowMicros = period * 1000000;
   if (windowMicros <= 5 * 1000000) {
     windowMicros = 5 * 1000000;
   }
