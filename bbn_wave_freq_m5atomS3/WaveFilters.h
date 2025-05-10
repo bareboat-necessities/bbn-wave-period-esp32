@@ -1,7 +1,7 @@
 #ifndef WaveFilters_h
 #define WaveFilters_h
 
-#define FREQ_LOWER 0.02f
+#define FREQ_LOWER 0.04f
 #define FREQ_UPPER 4.0f
 #define FREQ_GUESS 0.3f /* frequency guess */
 
