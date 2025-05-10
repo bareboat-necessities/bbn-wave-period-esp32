@@ -194,7 +194,7 @@ void read_and_processIMU_data() {
         } else {
           float f_byZeroCross = freqDetector.update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */, 
             ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t_inner);
-          if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT) {
+          if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
             freq = FREQ_GUESS;
           } else if (f_byZeroCross < FREQ_LOWER) {
             freq = FREQ_LOWER;
