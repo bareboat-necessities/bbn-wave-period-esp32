@@ -157,11 +157,11 @@ void kalman_wave_alt_init_defaults(float q0, float q1, float q2, float q3, float
 
   // [KALMAN_NUM_STATES * 1]
   matrix_t *x = kalman_get_state_vector(kf);
-  x->data[1] = 0.0; // displacement integral
-  x->data[2] = 0.0; // vertical displacement
-  x->data[3] = 0.0; // vertical velocity
-  x->data[4] = 0.0; // vertical accel
-  x->data[5] = 0.0; // accel bias
+  x->data[0] = 0.0; // displacement integral
+  x->data[1] = 0.0; // vertical displacement
+  x->data[2] = 0.0; // vertical velocity
+  x->data[3] = 0.0; // vertical accel
+  x->data[4] = 0.0; // accel bias
 
   // observation matrix [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_STATES]
   matrix_t *H = kalman_get_measurement_transformation(kfm);
