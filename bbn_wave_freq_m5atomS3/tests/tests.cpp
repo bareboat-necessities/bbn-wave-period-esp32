@@ -128,24 +128,26 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
 
     float wave_height = min_max_h.max.value - min_max_h.min.value;
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
-
-    printf("time,%.5f", t);
-    printf(",a,%.4f", a * g_std);
-    printf(",v,%.4f", v);
-    printf(",h,%.4f", h);
-    printf(",heave,%.4f", heave);
-    printf(",heave_alt,%.4f", heaveAlt);
-    printf(",height,%.4f", wave_height);
-    printf(",max,%.4f", min_max_h.max.value);
-    printf(",min,%.4f", min_max_h.min.value);
-    printf(",period,%.4f", period);
-    printf(",freq:,%.4f", freq);
-    printf(",freq_adj,%.4f", freq_adj);
-    printf(",heave_avg,%.7f", heave_avg);
-    printf(",accel_bias,%.5f", waveAltState.accel_bias);
-    printf(",ref_req,%.5f", ref_freq_4_print);
-    printf(",heave_alt_err,%.5f", h - heaveAlt);
-    printf("\n");
+    
+    if (t > warm_up_time + 30.0) {
+      printf("time,%.5f", t);
+      printf(",a,%.4f", a * g_std);
+      printf(",v,%.4f", v);
+      printf(",h,%.4f", h);
+      printf(",heave,%.4f", heave);
+      printf(",heave_alt,%.4f", heaveAlt);
+      printf(",height,%.4f", wave_height);
+      printf(",max,%.4f", min_max_h.max.value);
+      printf(",min,%.4f", min_max_h.min.value);
+      printf(",period,%.4f", period);
+      printf(",freq:,%.4f", freq);
+      printf(",freq_adj,%.4f", freq_adj);
+      printf(",heave_avg,%.7f", heave_avg);
+      printf(",accel_bias,%.5f", waveAltState.accel_bias);
+      printf(",ref_req,%.5f", ref_freq_4_print);
+      printf(",heave_alt_err,%.5f", h - heaveAlt);
+      printf("\n");
+    }
   }
 }
 
