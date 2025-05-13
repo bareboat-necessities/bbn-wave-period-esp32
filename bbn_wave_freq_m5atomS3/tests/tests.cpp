@@ -29,8 +29,8 @@ SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CRO
 
 //TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.04-2 Hz
 //FourthOrderLowPass lowPassFilter(FREQ_UPPER);
-//HighPassFirstOrderFilter highPassFilter(1 / FREQ_LOWER /* period in sec */);
-//HighPassFirstOrderFilter highPassFilterAlt(1 / FREQ_LOWER /* period in sec */);
+//HighPassFirstOrderFilter highPassFilter(1.0f / FREQ_LOWER /* period in sec */);
+//HighPassFirstOrderFilter highPassFilterAlt(1.0f / FREQ_LOWER /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
