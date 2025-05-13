@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 Data = np.loadtxt(fname="results.csv", delimiter=",",
-                  usecols=(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29),
+                  usecols=(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31),
                   skiprows=0)
 
 Time = Data[:, [0]]
@@ -14,6 +14,7 @@ HeaveAlt = Data[:, [5]]
 Freq = Data[:, [10]]
 FreqAdj = Data[:, [11]]
 RefFreq = Data[:, [14]]
+HeaveAltErr = Data[:, [15]]
 
 f, axarr = plt.subplots(3, sharex="all")
 
