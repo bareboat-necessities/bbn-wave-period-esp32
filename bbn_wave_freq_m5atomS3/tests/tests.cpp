@@ -129,7 +129,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     float wave_height = min_max_h.max.value - min_max_h.min.value;
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
     
-    if (t > warm_up_time + 30.0) {
+    if (t > warm_up_time + 45.0) {
       printf("time,%.5f", t);
       printf(",a,%.4f", a * g_std);
       printf(",v,%.4f", v);
