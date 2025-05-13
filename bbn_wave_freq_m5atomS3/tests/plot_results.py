@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 Data = np.loadtxt(fname="results.csv", delimiter=",",
                   usecols=(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31),
-                  skiprows=0)
+                  skiprows=1)
 
 Time = Data[:, [0]]
 AccX = Data[:, [1]]
