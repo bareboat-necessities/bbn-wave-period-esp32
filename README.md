@@ -349,7 +349,9 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 
 ### Results on Reference Data
 
-![BBN Boat Heave Sensor Results](bbn_wave_freq_m5atomS3/tests/wave_results.png?raw=true "BBN Boat Heave Sensor Results")
+![BBN Boat Heave Sensor Results](bbn_wave_freq_m5atomS3/tests/results_1.svg?raw=true "BBN Boat Heave Sensor Results fig1")
+
+![BBN Boat Heave Sensor Results](bbn_wave_freq_m5atomS3/tests/results_5.svg?raw=true "BBN Boat Heave Sensor Results fig2")
 
 ## Integration with Bareboat Necessities (BBN) OS
 
