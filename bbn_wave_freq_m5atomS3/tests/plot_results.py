@@ -42,4 +42,7 @@ axarr[3].plot(Time, HeaveAltErr, "r-", label="HeaveAltErr")
 axarr[3].grid()
 axarr[3].legend()
 
+#f.savefig("results.png", dpi=600)
+#f.close()
+
 plt.show()
