@@ -16,7 +16,7 @@ FreqAdj = Data[:, [11]]
 RefFreq = Data[:, [14]]
 HeaveAltErr = Data[:, [15]]
 
-f, axarr = plt.subplots(3, sharex="all")
+f, axarr = plt.subplots(4, sharex="all")
 
 axarr[0].set_title('Acceleration')
 axarr[0].plot(Time, AccX, label="Input AccX")
@@ -32,9 +32,14 @@ axarr[1].legend()
 
 axarr[2].set_title('Position')
 axarr[2].plot(Time, RefPosX, label="Reference PosX")
-axarr[2].plot(Time, Heave, "r-", label="Heave")
+#axarr[2].plot(Time, Heave, "r-", label="Heave")
 axarr[2].plot(Time, HeaveAlt, "g-", label="HeaveAlt")
 axarr[2].grid()
 axarr[2].legend()
+
+axarr[3].set_title('HeaveAlt Err')
+axarr[3].plot(Time, HeaveAltErr, "r-", label="HeaveAltErr")
+axarr[3].grid()
+axarr[3].legend()
 
 plt.show()
