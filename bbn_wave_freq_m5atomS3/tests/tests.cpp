@@ -27,7 +27,7 @@ KalmanWaveAltState waveAltState;
 KalmANF kalmANF;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
-//TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
+//TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.04-2 Hz
 //FourthOrderLowPass lowPassFilter(FREQ_UPPER);
 //HighPassFirstOrderFilter highPassFilter((1 / FREQ_LOWER) / 2.0f /* period in sec */);
 //HighPassFirstOrderFilter highPassFilterAlt((1 / FREQ_LOWER) / 2.0f /* period in sec */);
