@@ -69,7 +69,8 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
 
   double freq_adj = FREQ_GUESS;
   double freq = FREQ_GUESS;
-  if (t > warmup_time_sec(true)) {
+  float warm_up_time = warmup_time_sec(true);
+  if (t > warm_up_time) {
     // give some time for other filters to settle first
     if (useFrequencyTracker == Aranovskiy) {
       aranovskiy_update(&arParams, &arState, heave / ARANOVSKIY_SCALE, delta_t);
