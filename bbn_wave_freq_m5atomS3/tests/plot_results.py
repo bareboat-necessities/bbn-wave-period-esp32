@@ -27,7 +27,7 @@ HeaveAltErr = Data[:, [15]]
 
 rms = np.sqrt(np.mean(HeaveAltErr[-250 * 60:] ** 2))
 
-fig, axarr = plt.subplots(4, sharex="all")
+fig, axarr = plt.subplots(4, sharex="all", figsize=(12, 9))
 
 axarr[0].set_title('Acceleration (m/s^2) bias=' + str(acc_bias) + ' noise_std_dev= ' + str(acc_noise_std_dev))
 axarr[0].plot(Time, AccX, label="Input Acc")
@@ -53,7 +53,6 @@ axarr[3].plot(Time, HeaveAltErr, "r-", label="HeaveAltErr")
 axarr[3].grid()
 axarr[3].legend()
 
-#fig.savefig("results.png", dpi=600)
-#fig.close()
+fig.savefig("results_1.svg", dpi=600)
 
 plt.show()
