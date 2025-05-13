@@ -16,6 +16,8 @@ FreqAdj = Data[:, [11]]
 RefFreq = Data[:, [14]]
 HeaveAltErr = Data[:, [15]]
 
+rms = np.sqrt(np.mean(HeaveAltErr[-250 * 60:] ** 2))
+
 fig, axarr = plt.subplots(4, sharex="all")
 
 axarr[0].set_title('Acceleration')
@@ -37,7 +39,7 @@ axarr[2].plot(Time, HeaveAlt, "g-", label="HeaveAlt")
 axarr[2].grid()
 axarr[2].legend()
 
-axarr[3].set_title('HeaveAlt Err')
+axarr[3].set_title('HeaveAlt Err rms=' + np.str(rms))
 axarr[3].plot(Time, HeaveAltErr, "r-", label="HeaveAltErr")
 axarr[3].grid()
 axarr[3].legend()
