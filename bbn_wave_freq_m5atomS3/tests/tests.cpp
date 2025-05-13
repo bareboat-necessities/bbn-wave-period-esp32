@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
   generator.seed(239);  // seed the engine for deterministic test results
   std::normal_distribution<float> dist(mean, stddev);
 
-  printf(",main_amp:,%.4f", displacement_amplitude);
+  printf("main_amp:,%.4f", displacement_amplitude);
   printf(",main_freq,%.4f", frequency);
   printf(",acc_bias,%.7f", bias);
   printf(",acc_noise_std_dev,%.5f", stddev);
