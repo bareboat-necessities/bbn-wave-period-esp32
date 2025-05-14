@@ -358,7 +358,7 @@ void setup(void) {
   }
 
   if (useMahony) {
-    float twoKp = (2.0f * 4.0f);
+    float twoKp = (2.0f * 2.0f);
     float twoKi = (2.0f * 0.0001f);
     mahony_AHRS_init(&mahony, twoKp, twoKi);
   } else {
