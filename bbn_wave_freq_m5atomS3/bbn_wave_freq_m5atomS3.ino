@@ -386,7 +386,12 @@ void setup(void) {
 }
 
 void loop(void) {
+  unsigned long start = micros();
   M5.update();
   repeatMe();
-  delay(4);
+  long duration = micros() - start;
+  long delay_micros = 4000 - duration;
+  if (delay_micros > 0) {
+    delayMicroseconds(delay_micros);
+  }
 }
