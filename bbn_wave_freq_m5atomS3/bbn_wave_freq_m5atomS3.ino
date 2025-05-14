@@ -119,6 +119,9 @@ void read_and_processIMU_data() {
     // ignore noise (in unbiased way) with unreasonably high Gs
 
     float delta_t = (now - last_update) / 1000000.0;  // time step sec
+    if (delta_t < 0.001) {
+      delta_t = 0.001;
+    }
     last_update = now;
 
     float pitch, roll, yaw;
@@ -166,6 +169,9 @@ void read_and_processIMU_data() {
     
     if ((a_no_spikes * a_no_spikes) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
       float delta_t_inner = (now - last_update_inner) / 1000000.0;  // time step sec
+      if (delta_t_inner < 0.001) {
+        delta_t_inner = 0.001;
+      }
       last_update_inner = now;
       float a = a_no_spikes;
       if (kalm_w_first) {
