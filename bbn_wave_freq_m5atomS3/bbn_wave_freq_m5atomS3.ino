@@ -202,12 +202,8 @@ void read_and_processIMU_data() {
             ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t_inner);
           if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
             freq = FREQ_GUESS;
-          } else if (f_byZeroCross < FREQ_LOWER) {
-            freq = FREQ_LOWER;
-          } else if (f_byZeroCross > FREQ_UPPER) {
-            freq = FREQ_UPPER;
           } else {
-            freq = f_byZeroCross;
+            freq = clamp(f_byZeroCross, (double) FREQ_LOWER, (double) FREQ_UPPER);
           }
         }
         if (kalm_smoother_first) {
