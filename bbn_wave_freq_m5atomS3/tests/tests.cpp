@@ -86,7 +86,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
       if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
         freq = FREQ_GUESS;
       } else {
-        freq = clamp(f_byZeroCross, (double) FREQ_LOWER, (double) FREQ_UPPER);
+        freq = clamp(f_byZeroCross, FREQ_LOWER, FREQ_UPPER);
       }
     }
     if (kalm_smoother_first) {
