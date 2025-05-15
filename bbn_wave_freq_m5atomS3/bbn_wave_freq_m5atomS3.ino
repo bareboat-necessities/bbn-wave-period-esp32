@@ -117,9 +117,7 @@ void read_and_processIMU_data() {
   drawCalibrGraph(rect_graph_area, data);
 
   float delta_t = (now - last_update) / 1000000.0;  // time step sec
-  if (delta_t < 0.001) {
-    delta_t = 0.001;
-  }
+  delta_t = clamp(delta_t, 0.001, 0.2);
   last_update = now;
 
   float pitch, roll, yaw;
@@ -177,9 +175,9 @@ void read_and_processIMU_data() {
     waveState.accel_bias = 0.0f;
     kalman_wave_init_state(&waveState);
   }
-  kalman_wave_step(&waveState, a * g_std, delta_t_inner);
+  kalman_wave_step(&waveState, a * g_std, delta_t);
   float heave = waveState.heave;
-  //float heave = highPassFilter.update(waveState.heave, delta_t_inner);
+  //float heave = highPassFilter.update(waveState.heave, delta_t);
 
   double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
   if (t > warmup_time_sec(useMahony)) {
