@@ -218,7 +218,7 @@ void read_and_processIMU_data() {
     last_update = start_time;
     t = 0.0;
   } else {
-
+    freq_adj = clamp(freq_adj, (double) FREQ_LOWER, (double) FREQ_UPPER);
     float heaveAlt = waveAltState.heave;
 
     float k_hat = - pow(2.0 * PI * freq_adj, 2);
