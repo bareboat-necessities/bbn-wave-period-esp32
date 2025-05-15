@@ -53,6 +53,6 @@ axarr[3].plot(Time, HeaveAltErr, "r-", label="HeaveAltErr")
 axarr[3].grid()
 axarr[3].legend()
 
-fig.savefig("results_1.svg", dpi=600)
+fig.savefig("results.svg", dpi=600)
 
 plt.show()
