@@ -83,7 +83,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
       float signal_a = a_noisy;
       float f_byZeroCross = freqDetector.update(
         signal_a, ZERO_CROSSINGS_SCALE, ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
-      if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT) {
+      if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
         freq = FREQ_GUESS;
       } else {
         freq = clamp(f_byZeroCross, (double) FREQ_LOWER, (double) FREQ_UPPER);
