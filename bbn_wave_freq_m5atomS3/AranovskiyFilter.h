@@ -93,6 +93,7 @@ void aranovskiy_init_state(AranovskiyState* s, double x1_0, double theta_0, doub
   s->x1 = x1_0;
   s->theta = theta_0;
   s->sigma = sigma_0;
+  s->y = 0.0;
 }
 
 void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double delta_t) {
