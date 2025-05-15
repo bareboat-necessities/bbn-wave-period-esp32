@@ -166,13 +166,8 @@ void read_and_processIMU_data() {
   float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
 
   a_no_spikes = clamp(a_no_spikes, -ACCEL_CLAMP, ACCEL_CLAMP);
-
-  float delta_t_inner = (now - last_update_inner) / 1000000.0;  // time step sec
-  if (delta_t_inner < 0.001) {
-    delta_t_inner = 0.001;
-  }
-  last_update_inner = now;
   float a = a_no_spikes;
+  
   if (kalm_w_first) {
     kalm_w_first = false;
     float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
