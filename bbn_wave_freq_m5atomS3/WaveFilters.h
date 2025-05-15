@@ -3,7 +3,7 @@
 
 #define FREQ_LOWER 0.04f
 #define FREQ_UPPER 2.0f
-#define FREQ_GUESS 0.3f /* frequency guess */
+#define FREQ_GUESS 0.3f   // frequency guess
 
 #define ZERO_CROSSINGS_HYSTERESIS     0.05f
 #define ZERO_CROSSINGS_PERIODS        1
@@ -12,11 +12,8 @@
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.16f
 
 #define FREQ_COEF        3.0f
-#define FREQ_COEF_TIGHT  0.30f
-#define ARANOVSKIY_SCALE 10.0f
 
-#define ACCEL_MAX_G_SQUARE 4.84f  // (a/g)^2
-#define ACCEL_MAX_G_SQUARE_NO_GRAVITY 1.44f  // (a/g)^2
+#define ACCEL_CLAMP 0.5f  // fractions of G
 
 #define ACCEL_SPIKE_FILTER_SIZE       5  
 #define ACCEL_SPIKE_FILTER_THRESHOLD  1.0f
