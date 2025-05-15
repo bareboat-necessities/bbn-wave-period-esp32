@@ -5,7 +5,8 @@
 
   See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
 
-  Instead of FFT method for finding main wave frequency we could use Aranovskiy or KalmANF frequency estimator which is a simple on-line filter.
+  Instead of FFT method for finding main wave frequency we could use Zero Crossing, Aranovskiy or KalmANF 
+  frequency estimators which is are simple on-line filters.
 
   Ref:
 
@@ -16,9 +17,9 @@
   11th IFAC International Workshop on Adaptation and Learning in Control and Signal Processing July 3-5, 2013. Caen, France
 
   2. R. Ali, T. van Waterschoot
-  
+
   A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter. KalmANF
-  
+
   Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23), Copenhagen, Denmark, September 2023
 
 
@@ -48,7 +49,7 @@
 bool useMahony = true;
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
-unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL, last_update_inner = 0UL, last_update_k = 0UL;
+unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
 unsigned long got_samples = 0;
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
@@ -60,11 +61,11 @@ bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 // frequency tracking
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hysteresis (fractions of signal magnitude) */, 
-                                             ZERO_CROSSINGS_PERIODS /* periods to run measures on */); 
+SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hysteresis (fractions of signal magnitude) */,
+    ZERO_CROSSINGS_PERIODS /* periods to run measures on */);
 AranovskiyParams arParams;
 AranovskiyState arState;
-KalmANF kalmANF; 
+KalmANF kalmANF;
 KalmanSmootherVars kalman_freq;
 
 // AHRS
@@ -99,7 +100,10 @@ void initialize_filters() {
 
 void read_and_processIMU_data() {
   auto data = M5.Imu.getImuData();
-  
+
+  now = micros();
+  got_samples++;
+
   m5::imu_3d_t accel;
   accel.x = data.accel.x;
   accel.y = data.accel.y;
@@ -110,206 +114,191 @@ void read_and_processIMU_data() {
   gyro.y = data.gyro.y;
   gyro.z = data.gyro.z;
 
-  got_samples++;
-  now = micros();
-
   drawCalibrGraph(rect_graph_area, data);
-  
-  if ((accel.x * accel.x + accel.y * accel.y + accel.z * accel.z) < ACCEL_MAX_G_SQUARE) {
-    // ignore noise (in unbiased way) with unreasonably high Gs
 
-    float delta_t = (now - last_update) / 1000000.0;  // time step sec
-    if (delta_t < 0.001) {
-      delta_t = 0.001;
+  float delta_t = (now - last_update) / 1000000.0;  // time step sec
+  if (delta_t < 0.001) {
+    delta_t = 0.001;
+  }
+  last_update = now;
+
+  float pitch, roll, yaw;
+  Quaternion quaternion;
+
+  if (useMahony) {
+    mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
+                       accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
+    Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
+  } else {
+    kalman_mekf.gyr = {gyro.y * DEG_TO_RAD, gyro.x * DEG_TO_RAD, -gyro.z * DEG_TO_RAD};
+    kalman_mekf.acc = {accel.y, accel.x, -accel.z};
+    //kalman_mekf.mag = {magne.x, magne.y, magne.z};
+
+    if (kalm_w_first) {
+      //kalman_mekf.mekf->initialize_from_acc_mag(kalman_mekf.acc, kalman_mekf.mag);
+      kalman_mekf.mekf->initialize_from_acc(kalman_mekf.acc);
     }
-    last_update = now;
 
-    float pitch, roll, yaw;
-    Quaternion quaternion;
+    kalman_mekf.mekf->time_update(kalman_mekf.gyr, delta_t);
+    //kalman_mekf.mekf->measurement_update(kalman_mekf.acc, kalman_mekf.mag);
+    kalman_mekf.mekf->measurement_update_acc_only(kalman_mekf.acc);
+    kalman_mekf.quat = kalman_mekf.mekf->quaternion();
+    Quaternion_set(kalman_mekf.quat.w(), kalman_mekf.quat.x(), kalman_mekf.quat.y(), kalman_mekf.quat.z(), &quaternion);
+    float euler[3];
+    Quaternion_toEulerZYX(&quaternion, euler);
+    roll = euler[0] * RAD_TO_DEG;
+    pitch = euler[1] * RAD_TO_DEG;
+    yaw = euler[2] * RAD_TO_DEG;
+  }
 
-    if (useMahony) {
-      mahony_AHRS_update(&mahony, gyro.x * DEG_TO_RAD, gyro.y * DEG_TO_RAD, gyro.z * DEG_TO_RAD,
-                         accel.x, accel.y, accel.z, &pitch, &roll, &yaw, delta_t);
-      Quaternion_set(mahony.q0, mahony.q1, mahony.q2, mahony.q3, &quaternion);
+  float v[3] = {accel.x, accel.y, accel.z};
+  float rotated_a[3];
+  Quaternion_rotate(&quaternion, v, rotated_a);
+
+  m5::imu_3d_t accel_rotated;
+  accel_rotated.x = rotated_a[0];
+  accel_rotated.y = rotated_a[1];
+  accel_rotated.z = rotated_a[2];
+
+  float a_noisy = (accel_rotated.z - 1.0);  // acceleration in fractions of g
+  //float a_band_passed = lowPassFilter.process(a_noisy, delta_t);
+  float a_band_passed = a_noisy; //bpFilter.processWithDelta(a_noisy, delta_t);
+  float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
+
+  a_no_spikes = clamp(a_no_spikes, -ACCEL_CLAMP, ACCEL_CLAMP);
+
+  float delta_t_inner = (now - last_update_inner) / 1000000.0;  // time step sec
+  if (delta_t_inner < 0.001) {
+    delta_t_inner = 0.001;
+  }
+  last_update_inner = now;
+  float a = a_no_spikes;
+  if (kalm_w_first) {
+    kalm_w_first = false;
+    float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
+    waveState.displacement_integral = 0.0f;
+    waveState.heave = a * g_std / k_hat;
+    waveState.vert_speed = 0.0f;               // ??
+    waveState.accel_bias = 0.0f;
+    kalman_wave_init_state(&waveState);
+  }
+  kalman_wave_step(&waveState, a * g_std, delta_t_inner);
+  float heave = waveState.heave;
+  //float heave = highPassFilter.update(waveState.heave, delta_t_inner);
+
+  double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
+  if (t > warmup_time_sec(useMahony)) {
+    // give some time for other filters to settle first
+    if (useFrequencyTracker == Aranovskiy) {
+      aranovskiy_update(&arParams, &arState, a_noisy, delta_t);
+      freq = arState.f;
+    } else if (useFrequencyTracker == Kalm_ANF) {
+      float e;
+      float f_kalmanANF = kalmANF_process(&kalmANF, a_noisy, delta_t, &e);
+      freq = f_kalmanANF;
     } else {
-      kalman_mekf.gyr = {gyro.y * DEG_TO_RAD, gyro.x * DEG_TO_RAD, -gyro.z * DEG_TO_RAD};
-      kalman_mekf.acc = {accel.y, accel.x, -accel.z}; 
-      //kalman_mekf.mag = {magne.x, magne.y, magne.z};
-
-      if (kalm_w_first) {
-        //kalman_mekf.mekf->initialize_from_acc_mag(kalman_mekf.acc, kalman_mekf.mag);
-        kalman_mekf.mekf->initialize_from_acc(kalman_mekf.acc);
+      float f_byZeroCross = freqDetector.update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
+                            ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
+      if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
+        freq = FREQ_GUESS;
+      } else {
+        freq = clamp(f_byZeroCross, FREQ_LOWER, FREQ_UPPER);
       }
-
-      kalman_mekf.mekf->time_update(kalman_mekf.gyr, delta_t);
-      //kalman_mekf.mekf->measurement_update(kalman_mekf.acc, kalman_mekf.mag);
-      kalman_mekf.mekf->measurement_update_acc_only(kalman_mekf.acc);
-      kalman_mekf.quat = kalman_mekf.mekf->quaternion();
-      Quaternion_set(kalman_mekf.quat.w(), kalman_mekf.quat.x(), kalman_mekf.quat.y(), kalman_mekf.quat.z(), &quaternion);
-      float euler[3];
-      Quaternion_toEulerZYX(&quaternion, euler);
-      roll = euler[0] * RAD_TO_DEG;
-      pitch = euler[1] * RAD_TO_DEG;
-      yaw = euler[2] * RAD_TO_DEG;
     }
-
-    float v[3] = {accel.x, accel.y, accel.z};
-    float rotated_a[3];
-    Quaternion_rotate(&quaternion, v, rotated_a);
-
-    m5::imu_3d_t accel_rotated;
-    accel_rotated.x = rotated_a[0];
-    accel_rotated.y = rotated_a[1];
-    accel_rotated.z = rotated_a[2];
-
-    float a_noisy = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-    //float a_band_passed = lowPassFilter.process(a_noisy, delta_t);
-    float a_band_passed = a_noisy; //bpFilter.processWithDelta(a_noisy, delta_t);
-    float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
-    
-    if ((a_no_spikes * a_no_spikes) < ACCEL_MAX_G_SQUARE_NO_GRAVITY) {
-      float delta_t_inner = (now - last_update_inner) / 1000000.0;  // time step sec
-      if (delta_t_inner < 0.001) {
-        delta_t_inner = 0.001;
-      }
-      last_update_inner = now;
-      float a = a_no_spikes;
-      if (kalm_w_first) {
-        kalm_w_first = false;
-        float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
-        waveState.displacement_integral = 0.0f;
-        waveState.heave = a * g_std / k_hat;
-        waveState.vert_speed = 0.0f;               // ??
-        waveState.accel_bias = 0.0f;
-        kalman_wave_init_state(&waveState);
-      }
-      kalman_wave_step(&waveState, a * g_std, delta_t_inner);
-      float heave = waveState.heave;
-      //float heave = highPassFilter.update(waveState.heave, delta_t_inner);
-  
-      double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
-      if (t > warmup_time_sec(useMahony)) {
-        // give some time for other filters to settle first
-        if (useFrequencyTracker == Aranovskiy) {
-          aranovskiy_update(&arParams, &arState, a_noisy, delta_t_inner);
-          freq = arState.f;
-        } else if (useFrequencyTracker == Kalm_ANF) {
-          float e;
-          float f_kalmanANF = kalmANF_process(&kalmANF, a_noisy, delta_t_inner, &e);
-          freq = f_kalmanANF;
-        } else {
-          float f_byZeroCross = freqDetector.update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */, 
-            ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t_inner);
-          if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
-            freq = FREQ_GUESS;
-          } else {
-            freq = clamp(f_byZeroCross, FREQ_LOWER, FREQ_UPPER);
-          }
-        }
-        if (kalm_smoother_first) {
-          kalm_smoother_first = false;
-          kalman_smoother_set_initial(&kalman_freq, freq);
-        }
-        if (!isnan(freq)) {
-          freq_adj = kalman_smoother_update(&kalman_freq, freq);
-        }
-      }
-      if (isnan(freq) || isnan(freq_adj)) {
-        // reset filters
-        kalm_w_first = true;
-        kalm_w_alt_first = true;
-        kalm_smoother_first = true;
-        initialize_filters();
-        start_time = micros();
-        last_update = start_time;
-        last_update_inner = start_time;
-        t = 0.0;
-      } else if (freq_adj >= FREQ_LOWER && freq_adj <= FREQ_UPPER) { /* prevent decimal overflows */
-  
-        if (fabs(freq - freq_adj) < FREQ_COEF_TIGHT * freq_adj) {  /* sanity check of convergence for freq */
-          freq_good_est = freq_adj;
-        }
-  
-        float heaveAlt = waveAltState.heave;
-        // use previous good estimate of frequency
-        if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
-          float k_hat = - pow(2.0 * PI * freq_good_est, 2);
-          if (kalm_w_alt_first) {
-            kalm_w_alt_first = false;
-            waveAltState.displacement_integral = 0.0f;
-            waveAltState.heave = heave;
-            waveAltState.vert_speed = waveState.vert_speed;
-            waveAltState.vert_accel = k_hat * heave; //a * g_std;
-            waveAltState.accel_bias = 0.0f;
-            kalman_wave_alt_init_state(&waveAltState);
-          }
-          float delta_t_k = last_update_k == 0UL ? delta_t_inner : (now - last_update_k) / 1000000.0;
-          kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
-          heaveAlt = waveAltState.heave;
-          //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t_k);
-          last_update_k = now;
-        }
-
-        double period = 1.0 / freq_adj;
-        uint32_t windowMicros = getWindowMicros(period);
-        SampleType sample = { .value = heaveAlt, .timeMicroSec = now };
-        min_max_lemire_update(&min_max_h, sample, windowMicros);
-        
-        float wave_height = min_max_h.max.value - min_max_h.min.value;
-        heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
-  
-        int serial_report_period_micros = 125000;
-        if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
-          if (produce_serial_data) {
-            if (report_nmea) {
-              // do not report data for which filters clearly didn't converge
-              if (wave_height < 30.0) {
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
-              }
-              if (fabs(heave) < 15.0) {
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heaveAlt);
-              }
-              gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-              if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
-                gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
-                gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", heave);
-              }
-              if (freq >= FREQ_LOWER && freq <= FREQ_UPPER) {
-                gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
-              }
-              gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
-              gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", waveAltState.accel_bias * 100.0 / g_std);
-            } else {
-              // report for Arduino Serial Plotter
-              //Serial.printf(",a:%0.4f", g_std * a);
-              //Serial.printf(",a_band_passed:%0.4f", g_std * a_band_passed);
-              //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
-              //Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
-              Serial.printf(",heave_cm:%.4f", heave * 100);
-              Serial.printf(",heave_alt:%.4f", heaveAlt * 100);
-              //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
-              //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
-              //Serial.printf(",freq:%.4f", freq * 100);
-              //Serial.printf(",h_cm:%.4f", h * 100);
-              //Serial.printf(",height_cm:%.4f", wave_height * 100);
-              //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
-              //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
-              //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
-              //Serial.printf(",period_decisec:%.4f", period * 10);
-              //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
-              //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
-  
-              // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
-              //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
-              Serial.println();
-            }
-          }
-          last_refresh = now;
-          got_samples = 0;
-        }
-      }  
+    if (kalm_smoother_first) {
+      kalm_smoother_first = false;
+      kalman_smoother_set_initial(&kalman_freq, freq);
+    }
+    if (!isnan(freq)) {
+      freq_adj = kalman_smoother_update(&kalman_freq, freq);
     }
   }
+  if (isnan(freq) || isnan(freq_adj)) {
+    // reset filters
+    kalm_w_first = true;
+    kalm_w_alt_first = true;
+    kalm_smoother_first = true;
+    initialize_filters();
+    start_time = micros();
+    last_update = start_time;
+    t = 0.0;
+  } else {
+
+    float heaveAlt = waveAltState.heave;
+
+    float k_hat = - pow(2.0 * PI * freq_adj, 2);
+    if (kalm_w_alt_first) {
+      kalm_w_alt_first = false;
+      waveAltState.displacement_integral = 0.0f;
+      waveAltState.heave = heave;
+      waveAltState.vert_speed = waveState.vert_speed;
+      waveAltState.vert_accel = k_hat * heave; //a * g_std;
+      waveAltState.accel_bias = 0.0f;
+      kalman_wave_alt_init_state(&waveAltState);
+    }
+    kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
+    heaveAlt = waveAltState.heave;
+    //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t);
+
+    double period = 1.0 / freq_adj;
+    uint32_t windowMicros = getWindowMicros(period);
+    SampleType sample = { .value = heaveAlt, .timeMicroSec = now };
+    min_max_lemire_update(&min_max_h, sample, windowMicros);
+
+    float wave_height = min_max_h.max.value - min_max_h.min.value;
+    heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
+
+    int serial_report_period_micros = 125000;
+    if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
+      if (produce_serial_data) {
+        if (report_nmea) {
+          // do not report data for which filters clearly didn't converge
+          if (wave_height < 30.0) {
+            gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
+          }
+          if (fabs(heave) < 15.0) {
+            gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heaveAlt);
+          }
+          gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
+          if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
+            gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
+            gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", heave);
+          }
+          if (freq >= FREQ_LOWER && freq <= FREQ_UPPER) {
+            gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+          }
+          gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0) );
+          gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", waveAltState.accel_bias * 100.0 / g_std);
+        } else {
+          // report for Arduino Serial Plotter
+          //Serial.printf(",a:%0.4f", g_std * a);
+          //Serial.printf(",a_band_passed:%0.4f", g_std * a_band_passed);
+          //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
+          //Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
+          Serial.printf(",heave_cm:%.4f", heave * 100);
+          Serial.printf(",heave_alt:%.4f", heaveAlt * 100);
+          //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
+          //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
+          //Serial.printf(",freq:%.4f", freq * 100);
+          //Serial.printf(",h_cm:%.4f", h * 100);
+          //Serial.printf(",height_cm:%.4f", wave_height * 100);
+          //Serial.printf(",max_cm:%.4f", min_max_h.max.value * 100);
+          //Serial.printf(",min_cm:%.4f", min_max_h.min.value * 100);
+          //Serial.printf(",heave_avg_cm:%.4f", heave_avg * 100);
+          //Serial.printf(",period_decisec:%.4f", period * 10);
+          //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+          //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
+
+          // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
+          //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
+          Serial.println();
+        }
+      }
+      last_refresh = now;
+      got_samples = 0;
+    }
+  }
+
   t = (now - start_time) / 1000000.0;  // time since start sec
 }
 
@@ -351,7 +340,7 @@ void setup(void) {
       delay(1);
     }
   }
-  
+
   initCalibrDisplay();
 
   // Read calibration values from NVS.
@@ -378,7 +367,6 @@ void setup(void) {
 
   start_time = micros();
   last_update = start_time;
-  last_update_inner = start_time;
 }
 
 void loop(void) {
