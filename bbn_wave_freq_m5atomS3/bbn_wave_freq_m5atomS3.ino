@@ -117,7 +117,7 @@ void read_and_processIMU_data() {
   drawCalibrGraph(rect_graph_area, data);
 
   float delta_t = (now - last_update) / 1000000.0;  // time step sec
-  delta_t = clamp(delta_t, 0.001, 0.2);
+  delta_t = clamp(delta_t, 0.001f, 0.2f);
   last_update = now;
 
   float pitch, roll, yaw;
