@@ -33,6 +33,10 @@ void init_filters(AranovskiyState* ar_param, AranovskiyState* ar_state, KalmanSm
 void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
+template <typename T> T clamp(T val, T min, T max) {
+  return (val < min) ? min : (val > max) ? max : val;
+}
+
 int warmup_time_sec(bool use_mahony);
 
 /*
@@ -45,7 +49,7 @@ int warmup_time_sec(bool use_mahony) {
 
 uint32_t getWindowMicros(double period) {
   uint32_t windowMicros = period * 1000000;
-  return std::clamp(windowMicros, 5 * 1000000, 30 * 1000000);
+  return clamp(windowMicros, 5 * 1000000, 30 * 1000000);
 }
 
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state) {
