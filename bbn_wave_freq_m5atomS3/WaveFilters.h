@@ -49,7 +49,7 @@ int warmup_time_sec(bool use_mahony) {
 
 uint32_t getWindowMicros(double period) {
   uint32_t windowMicros = period * 1000000;
-  return clamp(windowMicros, 5 * 1000000, 30 * 1000000);
+  return clamp(windowMicros, (uint32_t) 5 * 1000000, (uint32_t) 30 * 1000000);
 }
 
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state) {
