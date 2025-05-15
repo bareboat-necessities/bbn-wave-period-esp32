@@ -85,7 +85,6 @@ bool report_nmea = true;
 float t = 0.0;
 float heave_avg = 0.0;
 float wave_length = 0.0;
-float freq_good_est = 0.0;
 
 void initialize_filters() {
   if (useFrequencyTracker == Aranovskiy) {
@@ -253,8 +252,8 @@ void read_and_processIMU_data() {
             gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heaveAlt);
           }
           gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
-          if (fabs(freq - freq_good_est) < FREQ_COEF * freq_good_est) {
-            gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_good_est);
+          if (fabs(freq - freq_adj) < FREQ_COEF * freq_adj) {
+            gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
             gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT2", heave);
           }
           if (freq >= FREQ_LOWER && freq <= FREQ_UPPER) {
@@ -270,7 +269,6 @@ void read_and_processIMU_data() {
           //Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
           Serial.printf(",heave_cm:%.4f", heave * 100);
           Serial.printf(",heave_alt:%.4f", heaveAlt * 100);
-          //Serial.printf(",freq_good_est:%.4f", freq_good_est * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
           //Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",h_cm:%.4f", h * 100);
