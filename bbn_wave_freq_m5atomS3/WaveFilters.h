@@ -56,7 +56,7 @@ void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state) {
     Even 2cm bias in heave is too much to affect frequency a lot
   */
   double omega_init = (FREQ_GUESS * 2) * (2 * PI);  // init frequency Hz * 2 * PI (start converging from omega_init/2)
-  double k_gain = 200.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+  double k_gain = 8.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
