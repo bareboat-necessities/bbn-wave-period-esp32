@@ -98,21 +98,20 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
 
   freq_adj = clamp(freq_adj, (double) FREQ_LOWER, (double) FREQ_UPPER);
   float heaveAlt = waveAltState.heave;
-  if (fabs(freq - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
-    float k_hat = - pow(2.0 * PI * freq_adj, 2);
-    if (kalm_w_alt_first) {
-      kalm_w_alt_first = false;
-      waveAltState.displacement_integral = 0.0f;
-      waveAltState.heave = heave;
-      waveAltState.vert_speed = waveState.vert_speed;
-      waveAltState.vert_accel = k_hat * heave; //a * g_std;
-      waveAltState.accel_bias = 0.0f;
-      kalman_wave_alt_init_state(&waveAltState);
-    }
-    kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
-    heaveAlt = waveAltState.heave;
-    //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t);
+
+  float k_hat = - pow(2.0 * PI * freq_adj, 2);
+  if (kalm_w_alt_first) {
+    kalm_w_alt_first = false;
+    waveAltState.displacement_integral = 0.0f;
+    waveAltState.heave = heave;
+    waveAltState.vert_speed = waveState.vert_speed;
+    waveAltState.vert_accel = k_hat * heave; //a * g_std;
+    waveAltState.accel_bias = 0.0f;
+    kalman_wave_alt_init_state(&waveAltState);
   }
+  kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
+  heaveAlt = waveAltState.heave;
+  //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t);
 
   double period = 1.0 / freq_adj;
   uint32_t windowMicros = getWindowMicros(period);
