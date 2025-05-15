@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
   //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = PI / 3.0;
   //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
 
-  const float bias = 0.3;
+  const float bias = 0.1;
   const double mean = 0.0;
   const double stddev = 0.08;
   std::default_random_engine generator;
