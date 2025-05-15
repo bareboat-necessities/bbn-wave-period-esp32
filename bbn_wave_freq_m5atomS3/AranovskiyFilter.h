@@ -97,6 +97,7 @@ void aranovskiy_init_state(AranovskiyState* s, double x1_0, double theta_0, doub
 }
 
 void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double delta_t) {
+  if (!std::isfinite(y)) return;
   s->x1_dot = - p->a * s->x1 + p->b * y;
   s->sigma_dot = - p->k * s->x1 * s->x1 * s->theta - p->k * p->a * s->x1 * s->x1_dot - p->k * p->b * s->x1_dot * y;
   s->theta = s->sigma + p->k * p->b * s->x1 * y;
