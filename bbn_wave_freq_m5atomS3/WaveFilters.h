@@ -45,13 +45,7 @@ int warmup_time_sec(bool use_mahony) {
 
 uint32_t getWindowMicros(double period) {
   uint32_t windowMicros = period * 1000000;
-  if (windowMicros <= 5 * 1000000) {
-    windowMicros = 5 * 1000000;
-  }
-  else if (windowMicros >= 30 * 1000000) {
-    windowMicros = 30 * 1000000;
-  }
-  return windowMicros;
+  return std::clamp(windowMicros, 5 * 1000000, 30 * 1000000);
 }
 
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state) {
