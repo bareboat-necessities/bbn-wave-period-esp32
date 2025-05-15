@@ -390,7 +390,7 @@ void loop(void) {
   M5.update();
   repeatMe();
   long duration = micros() - start;
-  long delay_micros = 3500 - duration;
+  long delay_micros = 3700 - duration;
   if (delay_micros > 0) {
     delayMicroseconds(delay_micros);
   }
