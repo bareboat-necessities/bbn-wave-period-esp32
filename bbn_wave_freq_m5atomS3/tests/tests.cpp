@@ -73,11 +73,11 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   if (t > warm_up_time) {
     // give some time for other filters to settle first
     if (useFrequencyTracker == Aranovskiy) {
-      aranovskiy_update(&arParams, &arState, heave / ARANOVSKIY_SCALE, delta_t);
+      aranovskiy_update(&arParams, &arState, a_noisy, delta_t);
       freq = arState.f;
     } else if (useFrequencyTracker == Kalm_ANF) {
       float e;
-      float f_kalmanANF = kalmANF_process(&kalmANF, heave, delta_t, &e);
+      float f_kalmanANF = kalmANF_process(&kalmANF, a_noisy, delta_t, &e);
       freq = f_kalmanANF;
     } else {
       float signal_a = a_noisy;
