@@ -100,54 +100,50 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     freq_adj = kalman_smoother_update(&kalman_freq, freq);
   }
 
-  if (freq_adj >= FREQ_LOWER && freq_adj <= FREQ_UPPER) { /* prevent decimal overflows */
-
-    float heaveAlt = waveAltState.heave;
-    if (fabs(freq - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
-      float k_hat = - pow(2.0 * PI * freq_adj, 2);
-      if (kalm_w_alt_first) {
-        kalm_w_alt_first = false;
-        waveAltState.displacement_integral = 0.0f;
-        waveAltState.heave = heave;
-        waveAltState.vert_speed = waveState.vert_speed;
-        waveAltState.vert_accel = k_hat * heave; //a * g_std;
-        waveAltState.accel_bias = 0.0f;
-        kalman_wave_alt_init_state(&waveAltState);
-      }
-      float delta_t_k = last_update_k == 0UL ? delta_t : (now() - last_update_k) / 1000000.0;
-      kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t_k);
-      heaveAlt = waveAltState.heave;
-      //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t_k);
-      last_update_k = now();
+  freq_adj = clamp(freq_adj, (double) FREQ_LOWER, (double) FREQ_UPPER);
+  float heaveAlt = waveAltState.heave;
+  if (fabs(freq - freq_adj) < FREQ_COEF * freq_adj) { /* sanity check of convergence for freq */
+    float k_hat = - pow(2.0 * PI * freq_adj, 2);
+    if (kalm_w_alt_first) {
+      kalm_w_alt_first = false;
+      waveAltState.displacement_integral = 0.0f;
+      waveAltState.heave = heave;
+      waveAltState.vert_speed = waveState.vert_speed;
+      waveAltState.vert_accel = k_hat * heave; //a * g_std;
+      waveAltState.accel_bias = 0.0f;
+      kalman_wave_alt_init_state(&waveAltState);
     }
+    kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
+    heaveAlt = waveAltState.heave;
+    //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t);
+  }
 
-    double period = 1.0 / freq_adj;
-    uint32_t windowMicros = getWindowMicros(period);
-    SampleType sample = { .value = heaveAlt, .timeMicroSec = now() };
-    min_max_lemire_update(&min_max_h, sample, windowMicros);
+  double period = 1.0 / freq_adj;
+  uint32_t windowMicros = getWindowMicros(period);
+  SampleType sample = { .value = heaveAlt, .timeMicroSec = now() };
+  min_max_lemire_update(&min_max_h, sample, windowMicros);
 
-    float wave_height = min_max_h.max.value - min_max_h.min.value;
-    heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
-    
-    if (t > warm_up_time + 45.0) {
-      printf("time,%.5f", t);
-      printf(",a,%.4f", a * g_std);
-      printf(",v,%.4f", v);
-      printf(",h,%.4f", h);
-      printf(",heave,%.4f", heave);
-      printf(",heave_alt,%.4f", heaveAlt);
-      printf(",height,%.4f", wave_height);
-      printf(",max,%.4f", min_max_h.max.value);
-      printf(",min,%.4f", min_max_h.min.value);
-      printf(",period,%.4f", period);
-      printf(",freq:,%.4f", freq);
-      printf(",freq_adj,%.4f", freq_adj);
-      printf(",heave_avg,%.7f", heave_avg);
-      printf(",accel_bias,%.5f", waveAltState.accel_bias);
-      printf(",ref_req,%.5f", ref_freq_4_print);
-      printf(",heave_alt_err,%.5f", h - heaveAlt);
-      printf("\n");
-    }
+  float wave_height = min_max_h.max.value - min_max_h.min.value;
+  heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
+
+  if (t > warm_up_time + 45.0) {
+    printf("time,%.5f", t);
+    printf(",a,%.4f", a * g_std);
+    printf(",v,%.4f", v);
+    printf(",h,%.4f", h);
+    printf(",heave,%.4f", heave);
+    printf(",heave_alt,%.4f", heaveAlt);
+    printf(",height,%.4f", wave_height);
+    printf(",max,%.4f", min_max_h.max.value);
+    printf(",min,%.4f", min_max_h.min.value);
+    printf(",period,%.4f", period);
+    printf(",freq:,%.4f", freq);
+    printf(",freq_adj,%.4f", freq_adj);
+    printf(",heave_avg,%.7f", heave_avg);
+    printf(",accel_bias,%.5f", waveAltState.accel_bias);
+    printf(",ref_req,%.5f", ref_freq_4_print);
+    printf(",heave_alt_err,%.5f", h - heaveAlt);
+    printf("\n");
   }
 }
 
