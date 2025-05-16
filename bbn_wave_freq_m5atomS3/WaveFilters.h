@@ -93,11 +93,11 @@ float estimate_freq(FrequencyTracker tracker, AranovskiyParams* arParams, Aranov
   float freq = FREQ_GUESS;
   if (tracker == Aranovskiy) {
     aranovskiy_update(arParams, arState, a_no_spikes, delta_t);
-    freq = arState->f;
+    freq = clamp((float) arState->f, FREQ_LOWER, FREQ_UPPER);
   } else if (tracker == Kalm_ANF) {
     float e;
     float f_kalmanANF = kalmANF_process(kalmANF, a_noisy, delta_t, &e);
-    freq = f_kalmanANF;
+    freq = clamp(f_kalmanANF, FREQ_LOWER, FREQ_UPPER);
   } else {
     float f_byZeroCross = freqDetector->update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
                           ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
