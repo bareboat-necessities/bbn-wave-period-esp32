@@ -91,7 +91,9 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
       kalm_smoother_first = false;
       kalman_smoother_set_initial(&kalman_freq, freq);
     }
-    freq_adj = kalman_smoother_update(&kalman_freq, freq);
+    if (!isnan(freq)) {
+      freq_adj = kalman_smoother_update(&kalman_freq, freq);
+    }
   }
 
   freq_adj = clamp(freq_adj, (double) FREQ_LOWER, (double) FREQ_UPPER);
