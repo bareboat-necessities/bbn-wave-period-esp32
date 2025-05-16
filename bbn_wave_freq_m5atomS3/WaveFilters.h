@@ -88,4 +88,26 @@ void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother) {
   init_wave_filters();
 }
 
+float estimate_freq(FrequencyTracker tracker, AranovskiyParams* arParams, AranovskiyState* arState, KalmANF* kalmANF,
+                    SchmittTriggerFrequencyDetector* freqDetector, float a_noisy, float a_no_spikes, float delta_t) {
+  float freq = FREQ_GUESS;
+  if (tracker == Aranovskiy) {
+    aranovskiy_update(arParams, arState, a_no_spikes, delta_t);
+    freq = arState->f;
+  } else if (tracker == Kalm_ANF) {
+    float e;
+    float f_kalmanANF = kalmANF_process(kalmANF, a_noisy, delta_t, &e);
+    freq = f_kalmanANF;
+  } else {
+    float f_byZeroCross = freqDetector->update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
+                          ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
+    if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
+      freq = FREQ_GUESS;
+    } else {
+      freq = clamp(f_byZeroCross, FREQ_LOWER, FREQ_UPPER);
+    }
+  }
+  return freq;
+}
+
 #endif
