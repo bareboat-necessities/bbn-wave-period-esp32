@@ -79,9 +79,8 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
       float f_kalmanANF = kalmANF_process(&kalmANF, a_noisy, delta_t, &e);
       freq = f_kalmanANF;
     } else {
-      float signal_a = a_noisy;
-      float f_byZeroCross = freqDetector.update(
-        signal_a, ZERO_CROSSINGS_SCALE, ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
+      float f_byZeroCross = freqDetector.update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
+                            ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
       if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
         freq = FREQ_GUESS;
       } else {
