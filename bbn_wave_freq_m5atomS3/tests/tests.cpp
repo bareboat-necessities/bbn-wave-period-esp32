@@ -72,7 +72,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   if (t > warm_up_time) {
     // give some time for other filters to settle first
     if (useFrequencyTracker == Aranovskiy) {
-      aranovskiy_update(&arParams, &arState, a_noisy, delta_t);
+      aranovskiy_update(&arParams, &arState, a_no_spikes, delta_t);
       freq = arState.f;
     } else if (useFrequencyTracker == Kalm_ANF) {
       float e;
