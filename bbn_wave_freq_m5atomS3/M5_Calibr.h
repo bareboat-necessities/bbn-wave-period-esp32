@@ -105,8 +105,14 @@ void drawGraph(const rect_t& r, const m5::imu_data_t& data) {
   disp.endWrite();
 }
 
+unsigned long last_screen_update_millis = 0UL;
+
 void drawCalibrGraph(const rect_t& r, const m5::imu_data_t& data) {
-  drawGraph(rect_graph_area, data);
+  unsigned long now = millis();
+  if ((now - last_screen_update_millis) > 20) {
+    last_screen_update_millis = now;
+    drawGraph(rect_graph_area, data);
+  }
   /*
   // The data obtained by getImuData can be used as follows.
   data.accel.x;      // accel x-axis value.
