@@ -71,22 +71,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   float warm_up_time = warmup_time_sec(true);
   if (t > warm_up_time) {
     // give some time for other filters to settle first
-    if (useFrequencyTracker == Aranovskiy) {
-      aranovskiy_update(&arParams, &arState, a_no_spikes, delta_t);
-      freq = arState.f;
-    } else if (useFrequencyTracker == Kalm_ANF) {
-      float e;
-      float f_kalmanANF = kalmANF_process(&kalmANF, a_noisy, delta_t, &e);
-      freq = f_kalmanANF;
-    } else {
-      float f_byZeroCross = freqDetector.update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
-                            ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
-      if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
-        freq = FREQ_GUESS;
-      } else {
-        freq = clamp(f_byZeroCross, FREQ_LOWER, FREQ_UPPER);
-      }
-    }
+    freq = estimate_freq(useFrequencyTracker, &arParams, &arState, &kalmANF, &freqDetector, a_noisy, a_no_spikes, delta_t);
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
       kalman_smoother_set_initial(&kalman_freq, freq);
