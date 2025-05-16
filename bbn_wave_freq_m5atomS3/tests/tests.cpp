@@ -67,8 +67,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   float heave = waveState.heave;
   //float heave = highPassFilter.update(waveState.heave, delta_t);
 
-  double freq_adj = FREQ_GUESS;
-  double freq = FREQ_GUESS;
+  double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
   float warm_up_time = warmup_time_sec(true);
   if (t > warm_up_time) {
     // give some time for other filters to settle first
