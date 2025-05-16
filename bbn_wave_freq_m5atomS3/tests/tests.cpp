@@ -132,7 +132,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     printf(",max,%.4f", min_max_h.max.value);
     printf(",min,%.4f", min_max_h.min.value);
     printf(",period,%.4f", period);
-    printf(",freq:,%.4f", freq);
+    printf(",freq,%.4f", freq);
     printf(",freq_adj,%.4f", freq_adj);
     printf(",heave_avg,%.7f", heave_avg);
     printf(",accel_bias,%.5f", waveAltState.accel_bias);
