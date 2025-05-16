@@ -182,7 +182,7 @@ void read_and_processIMU_data() {
   if (t > warmup_time_sec(useMahony)) {
     // give some time for other filters to settle first
     if (useFrequencyTracker == Aranovskiy) {
-      aranovskiy_update(&arParams, &arState, a_noisy, delta_t);
+      aranovskiy_update(&arParams, &arState, a_no_spikes, delta_t);
       freq = arState.f;
     } else if (useFrequencyTracker == Kalm_ANF) {
       float e;
