@@ -123,6 +123,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     printf(",accel_bias,%.5f", waveAltState.accel_bias);
     printf(",ref_req,%.5f", ref_freq_4_print);
     printf(",heave_alt_err,%.5f", h - heaveAlt);
+    printf(",freq_adj_err,%.5f", ref_freq_4_print - freq_adj);
     printf("\n");
   }
 }
