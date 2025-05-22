@@ -11,7 +11,7 @@ acc_bias = Header[2]
 acc_noise_std_dev = Header[3]
 
 Data = np.loadtxt(fname="results.csv", delimiter=",",
-                  usecols=(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31),
+                  usecols=(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33),
                   skiprows=1)
 
 Time = Data[:, [0]]
@@ -24,8 +24,10 @@ Freq = Data[:, [10]]
 FreqAdj = Data[:, [11]]
 RefFreq = Data[:, [14]]
 HeaveAltErr = Data[:, [15]]
+FreqAdjErr = Data[:, [16]]
 
 rms = np.sqrt(np.mean(HeaveAltErr[-250 * 60:] ** 2))
+rms_freq = np.sqrt(np.mean(FreqAdjErr[-250 * 60:] ** 2))
 
 fig, axarr = plt.subplots(4, sharex="all", figsize=(12, 9))
 
@@ -34,7 +36,7 @@ axarr[0].plot(Time, AccX, label="Input Acc")
 axarr[0].grid()
 axarr[0].legend()
 
-axarr[1].set_title('Freq (Hz) main_freq=' + str(main_freq))
+axarr[1].set_title('Freq (Hz) main_freq=' + str(main_freq) + " err_rms=" + str(rms_freq))
 axarr[1].plot(Time, Freq, "r-", label="Freq")
 axarr[1].plot(Time, FreqAdj, "g-", label="FreqAdj")
 axarr[1].plot(Time, RefFreq, "b-", label="RefFreq")
