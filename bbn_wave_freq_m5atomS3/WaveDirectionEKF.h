@@ -30,9 +30,9 @@ class WaveDirectionEKF {
 public:
     // Constructor
     WaveDirectionEKF(float omega, const Vector5f& initial_state, 
-                         const Matrix5f& initial_covariance, 
-                         const Matrix5f& process_noise, 
-                         const Matrix2f& measurement_noise)
+                     const Matrix5f& initial_covariance, 
+                     const Matrix5f& process_noise, 
+                     const Matrix2f& measurement_noise)
         : omega_(omega), state_(initial_state), P_(initial_covariance),
           Q_(process_noise), R_(measurement_noise) {}
 
