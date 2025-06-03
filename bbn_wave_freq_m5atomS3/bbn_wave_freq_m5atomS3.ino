@@ -43,6 +43,7 @@
 #include "FourthOrderLowPass.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
+#include "WaveDirectionEKF.h"
 #include "WaveFilters.h"
 #include "M5_Calibr.h"
 
