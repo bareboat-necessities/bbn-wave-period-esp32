@@ -42,7 +42,9 @@ public:
     }
 
     // Update step
-    void update(float t, float x_meas, float y_meas) {
+    void update(float t, float omega, float x_meas, float y_meas) {
+        omega_ = omega;
+
         // Extract states
         float A = state_(0), B = state_(1), phi = state_(2), 
               bx = state_(3), by = state_(4);
@@ -144,7 +146,7 @@ void setup() {
         
         // EKF steps
         ekf.predict();
-        ekf.update(t, x_meas, y_meas);
+        ekf.update(t, omega, x_meas, y_meas);
         
         // Periodically log results
         if (i % 100 == 0) {
