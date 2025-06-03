@@ -120,8 +120,8 @@ void setup() {
 
     // Measurement noise covariance
     Matrix2f R;
-    R << 0.01f, 0.0f,   // σ_x^2 = 0.09 (std dev 0.3)
-         0.0f,  0.01f;  // σ_y^2 = 0.09
+    R << 0.09f, 0.0f,   // σ_x^2 = 0.09 (std dev 0.3)
+         0.0f,  0.09f;  // σ_y^2 = 0.09
 
     // Initialize EKF
     WaveDirectionEKF ekf(omega, initial_state, initial_covariance, Q, R);
