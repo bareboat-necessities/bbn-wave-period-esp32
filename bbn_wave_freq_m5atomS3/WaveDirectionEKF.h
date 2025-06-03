@@ -146,7 +146,7 @@ void setup() {
         
         // EKF steps
         ekf.predict();
-        ekf.update(t, omega, x_meas, y_meas);
+        ekf.update(t, omega + 0.001f * (rand() % 100 - 50) / 50.0f, x_meas, y_meas);
         
         // Periodically log results
         if (i % 100 == 0) {
