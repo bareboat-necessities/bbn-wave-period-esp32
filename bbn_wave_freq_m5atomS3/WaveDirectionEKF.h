@@ -127,8 +127,8 @@ void setup() {
     WaveDirectionEKF ekf(omega, initial_state, initial_covariance, Q, R);
 
     // Simulate measurements
-    const float true_A = 2.0f, true_B = 1.5f, true_phi = 0.5f;
-    const float true_bx = 0.3f, true_by = -0.2f;
+    const float true_A = 1.0f, true_B = 1.5f, true_phi = 0.5f;
+    const float true_bx = 0.1f, true_by = -0.2f;
     const int num_steps = 5000;
     const float dt = 0.004f;  // Time step (4ms)
 
