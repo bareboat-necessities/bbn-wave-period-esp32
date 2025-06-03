@@ -104,8 +104,8 @@ void setup() {
     Serial.begin(9600);
     delay(1000);  // Wait for serial monitor
 
-    // Known angular frequency (e.g., 0.1 Hz)
-    const float omega = 2 * M_PI * 0.1f;
+    // Known angular frequency
+    const float omega = 2 * M_PI * 0.3f; // 0.3 Hz
 
     // Initial state: [A, B, φ, b_x, b_y]
     Vector5f initial_state;
@@ -129,8 +129,8 @@ void setup() {
     // Simulate measurements
     const float true_A = 2.0f, true_B = 1.5f, true_phi = 0.5f;
     const float true_bx = 0.3f, true_by = -0.2f;
-    const int num_steps = 1000;
-    const float dt = 0.01f;  // Time step (10ms)
+    const int num_steps = 5000;
+    const float dt = 0.004f;  // Time step (10ms)
 
     for (int i = 0; i < num_steps; ++i) {
         float t = i * dt;
