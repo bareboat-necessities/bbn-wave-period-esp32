@@ -110,26 +110,26 @@ void test_setup() {
     delay(2000);  // Wait for serial monitor
 
     // System parameters
-    const float freq = 0.1f;          // Signal frequency (Hz)
+    const float freq = 0.3f;              // Signal frequency (Hz)
     const float omega = 2 * M_PI * freq;  // Angular frequency (rad/s)
     
     // True parameters (for simulation)
-    const float true_A = 2.0f;
-    const float true_B = 1.5f;
-    const float true_phi = 0.5f;  // Phase (rad)
-    const float true_bx = 0.3f;
+    const float true_A = 1.0f;
+    const float true_B = -1.5f;
+    const float true_phi = -0.5f * M_PI;  // Phase (rad)
+    const float true_bx = 0.1f;
     const float true_by = -0.2f;
     
     // Noise parameters
-    const float measurement_noise = 0.1f;  // Standard deviation
+    const float measurement_noise = 0.3f;  // Standard deviation
 
     // Initial state: [A_I, A_Q, B_I, B_Q, b_x, b_y]
     Vector6f initial_state;
     initial_state << true_A * cosf(true_phi),  // A_I
-                    true_A * sinf(true_phi),  // A_Q
-                    true_B * cosf(true_phi),  // B_I
-                    true_B * sinf(true_phi),  // B_Q
-                    0.0f, 0.0f;              // Initial bias estimates (0)
+                     true_A * sinf(true_phi),  // A_Q
+                     true_B * cosf(true_phi),  // B_I
+                     true_B * sinf(true_phi),  // B_Q
+                     0.0f, 0.0f;              // Initial bias estimates (0)
     
     // Initial covariance (high uncertainty)
     Matrix6f initial_cov = Matrix6f::Identity() * 100.0f;
