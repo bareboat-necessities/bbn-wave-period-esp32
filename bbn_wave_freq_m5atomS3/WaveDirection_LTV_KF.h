@@ -96,6 +96,9 @@ public:
     float get_bias_x() const { return state_[4]; }
     float get_bias_y() const { return state_[5]; }
 
+    // Get estimated state
+    Vector6f getState() const { return state_; }
+
 private:
     float omega_;    // Known angular frequency (rad/s)
     Vector6f state_; // [A_I, A_Q, B_I, B_Q, b_x, b_y]
