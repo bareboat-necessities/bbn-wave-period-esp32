@@ -78,6 +78,18 @@ MinMaxLemire min_max_h;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 
+// Wave direction
+const float wave_dir_omega = 2 * M_PI * FREQ_GUESS;  // Known angular frequency
+Vector5f wave_dir_initial_state; // Initial state: [A, B, φ, b_x, b_y]
+wave_dir_initial_state << 1.0f, 1.0f, 0.0f, 0.0f, 0.0f;
+Matrix5f wave_dir_initial_covariance = Matrix5f::Identity() * 100.0f; // Initial covariance (high uncertainty)
+wave_dir_initial_covariance(2, 2) = 4 * M_PI * M_PI;  // Large phase uncertainty
+Matrix5f Q = Matrix5f::Identity() * 1e-6f;  // Process noise covariance (small values)
+Matrix2f R;  // Measurement noise covariance
+R << 0.09f, 0.0f,   // σ_x^2 = 0.09 (std dev 0.3)
+     0.0f,  0.09f;  // σ_y^2 = 0.09
+WaveDirectionEKF wave_dir_ekf(omega, initial_state, initial_covariance, Q, R);  // Initialize wave direction EKF
+
 const char* imu_name;
 
 bool produce_serial_data = true;
