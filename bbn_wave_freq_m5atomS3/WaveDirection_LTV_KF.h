@@ -144,7 +144,7 @@ void test_setup() {
     Matrix2f R = Matrix2f::Identity() * (measurement_noise * measurement_noise);
     
     // Initialize Kalman filter
-    ComponentKalmanFilter kf(omega, initial_state, initial_cov, Q, R);
+    WaveDirection_LTV_KF kf(omega, initial_state, initial_cov, Q, R);
     
     // Simulation parameters
     const float dt = 0.004f;  // Time step (4 ms)
@@ -157,16 +157,16 @@ void test_setup() {
     for (int i = 0; i < steps; i++, t += dt) {
         // Generate true signals (simulation only)
         float true_angle = omega * t + true_phi;
-        float x_true = true_A * sinf(true_angle) + true_bx;
-        float y_true = true_B * sinf(true_angle) + true_by;
+        float x_true = true_A * sinf(true_angle);
+        float y_true = true_B * sinf(true_angle);
         
         // Add measurement noise
-        float x_meas = x_true + measurement_noise * (rand() % 100 - 50) / 50.0f;
-        float y_meas = y_true + measurement_noise * (rand() % 100 - 50) / 50.0f;
+        float x_meas = x_true + measurement_noise * (rand() % 100 - 50) / 50.0f + true_bx;
+        float y_meas = y_true + measurement_noise * (rand() % 100 - 50) / 50.0f + true_by;
         
         // Kalman filter steps
         kf.predict();
-        kf.update(t, omega, x_meas, y_meas);
+        kf.update(t, omega + 0.001 * (rand() % 100 - 50) / 50.0f, x_meas, y_meas);
         
         // Log results every 100 steps (1 second)
         if (i % 100 == 0) {
