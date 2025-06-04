@@ -94,7 +94,7 @@ Matrix6f wave_dir_initial_cov = [] {
 }(); // Initial covariance (high uncertainty)
 Matrix6f wave_dir_Q = Matrix6f::Identity() * 1e-6f; // Process noise (small values for constant parameters)
 Matrix2f wave_dir_R = Matrix2f::Identity() * 0.09f; // Measurement noise σ_x^2 = 0.09, σ_y^2 = 0.09 (std dev 0.3)
-WaveDirection_LTV_KF wave_dir_kf(omega, initial_state, initial_cov, Q, R);
+WaveDirection_LTV_KF wave_dir_kf(wave_dir_omega, wave_dir_initial_state, wave_dir_initial_cov, wave_dir_Q, wave_dir_R);
 
 const char* imu_name;
 
