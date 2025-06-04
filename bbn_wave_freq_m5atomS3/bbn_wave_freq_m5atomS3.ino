@@ -250,7 +250,7 @@ void read_and_processIMU_data() {
     // Wave direction EKF steps
     wave_dir_ekf.predict();
     wave_dir_ekf.update(t, freq_adj * 2 * M_PI, accel_rotated.x * g_std, accel_rotated.y * g_std);
-    // Vector5f wave_dir_state = wave_dir_ekf.getState();  // get all values of state vector
+    Vector5f wave_dir_state = wave_dir_ekf.getState();  // get all values of state vector
     float wave_dir_deg = wave_dir_ekf.getTheta() * 180 / M_PI;
 
     int serial_report_period_micros = 125000;
@@ -292,6 +292,8 @@ void read_and_processIMU_data() {
           //Serial.printf(",period_decisec:%.4f", period * 10);
           //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
           //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
+          //Serial.printf(",wave_dir_deg:%.2f", wave_dir_deg);
+          //Serial.printf(",φ:%.4f", wave_dir_state(2) * 180 / M_PI);
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
