@@ -250,8 +250,8 @@ void read_and_processIMU_data() {
     // Wave direction KF steps
     wave_dir_kf.predict();
     wave_dir_kf.update(t, freq_adj * 2 * M_PI, accel_rotated.x * g_std, accel_rotated.y * g_std);
-    Vector5f wave_dir_state = wave_dir_kf.getState();  // get all values of state vector
-    float wave_dir_deg = wave_dir_kf.getTheta() * 180 / M_PI;
+    Vector6f wave_dir_state = wave_dir_kf.getState();  // get all values of state vector
+    float wave_dir_deg = wave_dir_kf.get_abs_theta() * 180 / M_PI;
 
     int serial_report_period_micros = 125000;
     if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
