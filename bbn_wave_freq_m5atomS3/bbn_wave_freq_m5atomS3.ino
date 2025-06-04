@@ -86,7 +86,11 @@ Matrix5f wave_dir_initial_covariance = [] {
   tmp(2, 2) = 4 * M_PI * M_PI;  // Large phase uncertainty 
   return tmp;
 }(); // Initial covariance
-Matrix5f wave_dir_Q = Matrix5f::Identity() * 1e-6f;  // Process noise covariance (small values)
+Matrix5f wave_dir_Q = [] {
+  Matrix5f tmp = Matrix5f::Identity() * 1e-6f;
+  tmp(2, 2) = 0.01 * M_PI * M_PI;
+  return tmp;
+}(); // Process noise covariance (small values)
 Matrix2f wave_dir_R = [] {
   Matrix2f tmp;
   tmp << 0.09f, 0.0f,   // σ_x^2 = 0.09 (std dev 0.3)
