@@ -78,7 +78,13 @@ public:
         P_ -= K * H * P_;
         
         // Phase wrapping to [-π, π]
-        state_(2) = fmod(state_(2) + M_PI, 2 * M_PI) - M_PI;
+        float& phi_adj = state_(2);
+        phi_adj = std::fmod(phi_adj, 2 * M_PI);
+        if (phi_adj < -M_PI) {
+            phi_adj += 2 * M_PI;
+        } else if (phi_adj > M_PI) {
+            phi_adj -= 2 * M_PI;
+        }
     }
 
     // Get estimated state
