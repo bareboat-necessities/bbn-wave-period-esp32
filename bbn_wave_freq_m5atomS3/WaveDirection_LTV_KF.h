@@ -184,7 +184,7 @@ void test_setup() {
             Serial.print("\t");
             Serial.print(kf.get_phase(), 3);
             Serial.print("\t");
-            Serial.println(kf.get_theta(), 3);
+            Serial.println(kf.get_abs_theta(), 3);
         }
     }
     
@@ -193,7 +193,7 @@ void test_setup() {
     Serial.print("A: "); Serial.println(kf.get_A(), 4);
     Serial.print("B: "); Serial.println(kf.get_B(), 4);
     Serial.print("Phase: "); Serial.println(kf.get_phase(), 4);
-    Serial.print("Theta: "); Serial.println(kf.get_theta(), 4);
+    Serial.print("Theta: "); Serial.println(kf.get_abs_theta(), 4);
     Serial.print("b_x: "); Serial.println(kf.get_bias_x(), 4);
     Serial.print("b_y: "); Serial.println(kf.get_bias_y(), 4);
 }
