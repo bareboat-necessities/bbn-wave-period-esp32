@@ -144,8 +144,8 @@ void test_setup() {
     ComponentKalmanFilter kf(omega, initial_state, initial_cov, Q, R);
     
     // Simulation parameters
-    const float dt = 0.01f;  // Time step (10 ms)
-    const int steps = 1000;  // 10 seconds of data
+    const float dt = 0.004f;  // Time step (4 ms)
+    const int steps = 5000;  // 10 seconds of data
     float t = 0.0f;
     
     Serial.println("Starting Kalman Filter...");
