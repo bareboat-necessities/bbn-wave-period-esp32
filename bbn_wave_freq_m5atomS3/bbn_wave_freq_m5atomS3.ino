@@ -80,8 +80,7 @@ KalmanWaveAltState waveAltState;
 
 // Wave direction
 const float wave_dir_omega = 2 * M_PI * FREQ_GUESS;  // Known angular frequency
-Vector5f wave_dir_initial_state; // Initial state: [A, B, φ, b_x, b_y]
-wave_dir_initial_state << 1.0f, 1.0f, 0.0f, 0.0f, 0.0f;
+Vector5f wave_dir_initial_state(1.0f, 1.0f, 0.0f, 0.0f, 0.0f); // Initial state: [A, B, φ, b_x, b_y]
 Matrix5f wave_dir_initial_covariance = Matrix5f::Identity() * 100.0f; // Initial covariance (high uncertainty)
 wave_dir_initial_covariance(2, 2) = 4 * M_PI * M_PI;  // Large phase uncertainty
 Matrix5f wave_dir_Q = Matrix5f::Identity() * 1e-6f;  // Process noise covariance (small values)
