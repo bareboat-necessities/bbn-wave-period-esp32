@@ -111,26 +111,30 @@ void setup() {
     delay(1000);  // Wait for serial monitor
 
     // Known angular frequency
-    const float omega = 2 * M_PI * 0.3f; // 0.3 Hz
+    const float wave_dir_omega = 2 * M_PI * 0.3f; // 0.3 Hz
 
-    // Initial state: [A, B, φ, b_x, b_y]
-    Vector5f initial_state;
-    initial_state << 1.0f, 1.0f, 0.0f, 0.0f, 0.0f;
-
-    // Initial covariance (high uncertainty)
-    Matrix5f initial_covariance = Matrix5f::Identity() * 100.0f;
-    initial_covariance(2, 2) = 4 * M_PI * M_PI;  // Large phase uncertainty
-
-    // Process noise covariance (small values)
-    Matrix5f Q = Matrix5f::Identity() * 1e-6f;
-
-    // Measurement noise covariance
-    Matrix2f R;
-    R << 0.09f, 0.0f,   // σ_x^2 = 0.09 (std dev 0.3)
-         0.0f,  0.09f;  // σ_y^2 = 0.09
-
-    // Initialize EKF
-    WaveDirectionEKF ekf(omega, initial_state, initial_covariance, Q, R);
+    Vector5f wave_dir_initial_state(1.0f, 1.0f, 0.0f, 0.0f, 0.0f); // Initial state: [A, B, φ, b_x, b_y]
+    
+    Matrix5f wave_dir_initial_covariance = [] {
+      Matrix5f tmp = Matrix5f::Identity() * 100.0f; // Initial covariance (high uncertainty)
+      tmp(2, 2) = 4 * M_PI * M_PI;  // Large phase uncertainty 
+      return tmp;
+    }(); // Initial covariance
+    
+    Matrix5f wave_dir_Q = [] {
+      Matrix5f tmp = Matrix5f::Identity() * 1e-6f;
+      tmp(2, 2) = 0.0001 * M_PI * M_PI;
+      return tmp;
+    }(); // Process noise covariance (small values)
+    
+    Matrix2f wave_dir_R = [] {
+      Matrix2f tmp;
+      tmp << 0.09f, 0.0f,   // σ_x^2 = 0.09 (std dev 0.3)
+             0.0f,  0.09f;  // σ_y^2 = 0.09
+      return tmp;
+    }(); // Measurement noise covariance
+    
+    WaveDirectionEKF wave_dir_ekf(wave_dir_omega, wave_dir_initial_state, wave_dir_initial_covariance, wave_dir_Q, wave_dir_R);  // Initialize wave direction EKF
 
     // Simulate measurements
     const float true_A = 1.0f, true_B = 1.5f, true_phi = 0.5f;
@@ -142,26 +146,26 @@ void setup() {
         float t = i * dt;
         
         // Generate true signals
-        float arg = omega * t + true_phi;
-        float x_true = true_A * sin(arg) + true_bx;
-        float y_true = true_B * sin(arg) + true_by;
+        float arg = wave_dir_omega * t + true_phi;
+        float x_true = true_A * sin(arg);
+        float y_true = true_B * sin(arg);
         
         // Add noise (simulated measurements)
-        float x_meas = x_true + 0.1f * (rand() % 100 - 50) / 50.0f;
-        float y_meas = y_true + 0.1f * (rand() % 100 - 50) / 50.0f;
+        float x_meas = x_true + 0.1f * (rand() % 100 - 50) / 50.0f + true_bx;
+        float y_meas = y_true + 0.1f * (rand() % 100 - 50) / 50.0f + true_by;
         
         // EKF steps
-        ekf.predict();
-        ekf.update(t, omega + 0.001f * (rand() % 100 - 50) / 50.0f, x_meas, y_meas);
+        wave_dir_ekf.predict();
+        wave_dir_ekf.update(t, wave_dir_omega + 0.001f * (rand() % 100 - 50) / 50.0f, x_meas, y_meas);
         
         // Periodically log results
         if (i % 100 == 0) {
-            Vector5f state = ekf.getState();
+            Vector5f state = wave_dir_ekf.getState();
             Serial.print("t: "); Serial.print(t, 3);
             Serial.print(" | A: "); Serial.print(state(0), 3);
             Serial.print(" | B: "); Serial.print(state(1), 3);
             Serial.print(" | φ: "); Serial.print(state(2), 3);
-            Serial.print(" | θ: "); Serial.print(ekf.getTheta(), 3);
+            Serial.print(" | θ: "); Serial.print(wave_dir_ekf.getTheta(), 3);
             Serial.print(" | b_x: "); Serial.print(state(3), 3);
             Serial.print(" | b_y: "); Serial.println(state(4), 3);
         }
