@@ -81,6 +81,9 @@ KalmanWaveAltState waveAltState;
 // Wave direction
 const float wave_dir_omega = 2 * M_PI * FREQ_GUESS;  // Known angular frequency
 Vector6f wave_dir_initial_state = [] {
+  const float true_A = 0.2f;
+  const float true_B = -0.2f;
+  const float true_phi = 0.0f;
   Vector6f tmp << true_A * cosf(true_phi),  // A_I
                   true_A * sinf(true_phi),  // A_Q
                   true_B * cosf(true_phi),  // B_I
