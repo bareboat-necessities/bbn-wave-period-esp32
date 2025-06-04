@@ -88,7 +88,7 @@ Matrix5f wave_dir_initial_covariance = [] {
 }(); // Initial covariance
 Matrix5f wave_dir_Q = [] {
   Matrix5f tmp = Matrix5f::Identity() * 1e-6f;
-  tmp(2, 2) = 0.01 * M_PI * M_PI;
+  tmp(2, 2) = 0.0001 * M_PI * M_PI;
   return tmp;
 }(); // Process noise covariance (small values)
 Matrix2f wave_dir_R = [] {
