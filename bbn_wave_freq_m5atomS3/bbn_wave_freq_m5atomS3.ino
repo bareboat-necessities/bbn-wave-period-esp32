@@ -43,7 +43,6 @@
 #include "FourthOrderLowPass.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
-#include "WaveDirectionEKF.h"
 #include "WaveDirection_LTV_KF.h"
 #include "WaveFilters.h"
 #include "M5_Calibr.h"
@@ -81,24 +80,21 @@ KalmanWaveAltState waveAltState;
 
 // Wave direction
 const float wave_dir_omega = 2 * M_PI * FREQ_GUESS;  // Known angular frequency
-Vector5f wave_dir_initial_state(1.0f, 1.0f, 0.0f, 0.0f, 0.0f); // Initial state: [A, B, φ, b_x, b_y]
-Matrix5f wave_dir_initial_covariance = [] {
-  Matrix5f tmp = Matrix5f::Identity() * 100.0f; // Initial covariance (high uncertainty)
-  tmp(2, 2) = 4 * M_PI * M_PI;  // Large phase uncertainty 
+Vector6f wave_dir_initial_state = [] {
+  Vector6f tmp << true_A * cosf(true_phi),  // A_I
+                  true_A * sinf(true_phi),  // A_Q
+                  true_B * cosf(true_phi),  // B_I
+                  true_B * sinf(true_phi),  // B_Q
+                  0.0f, 0.0f;               // Initial bias estimates (0)
   return tmp;
-}(); // Initial covariance
-Matrix5f wave_dir_Q = [] {
-  Matrix5f tmp = Matrix5f::Identity() * 1e-6f;
-  tmp(2, 2) = 0.0001 * M_PI * M_PI;
+}(); // Initial state: [A_I, A_Q, B_I, B_Q, b_x, b_y]                             
+Matrix6f wave_dir_initial_cov = [] {
+  Matrix6f tmp = Matrix6f::Identity() * 100.0f;
   return tmp;
-}(); // Process noise covariance (small values)
-Matrix2f wave_dir_R = [] {
-  Matrix2f tmp;
-  tmp << 0.09f, 0.0f,   // σ_x^2 = 0.09 (std dev 0.3)
-         0.0f,  0.09f;  // σ_y^2 = 0.09
-  return tmp;
-}(); // Measurement noise covariance
-WaveDirectionEKF wave_dir_ekf(wave_dir_omega, wave_dir_initial_state, wave_dir_initial_covariance, wave_dir_Q, wave_dir_R);  // Initialize wave direction EKF
+}(); // Initial covariance (high uncertainty)
+Matrix6f wave_dir_Q = Matrix6f::Identity() * 1e-6f; // Process noise (small values for constant parameters)
+Matrix2f wave_dir_R = Matrix2f::Identity() * 0.09f; // Measurement noise σ_x^2 = 0.09, σ_y^2 = 0.09 (std dev 0.3)
+WaveDirection_LTV_KF wave_dir_kf(omega, initial_state, initial_cov, Q, R);
 
 const char* imu_name;
 
