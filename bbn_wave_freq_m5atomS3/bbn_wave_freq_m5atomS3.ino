@@ -241,6 +241,7 @@ void read_and_processIMU_data() {
     // Wave direction EKF steps
     wave_dir_ekf.predict();
     wave_dir_ekf.update(t, freq_adj * 2 * M_PI, accel_rotated.x * g_std, accel_rotated.y * g_std);
+    // Vector5f wave_dir_state = wave_dir_ekf.getState();  // get all values of state vector
     float wave_dir_deg = wave_dir_ekf.getTheta() * 180 / M_PI;
 
     int serial_report_period_micros = 125000;
