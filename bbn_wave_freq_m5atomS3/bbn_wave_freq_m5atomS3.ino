@@ -88,7 +88,7 @@ Matrix5f Q = Matrix5f::Identity() * 1e-6f;  // Process noise covariance (small v
 Matrix2f R;  // Measurement noise covariance
 R << 0.09f, 0.0f,   // σ_x^2 = 0.09 (std dev 0.3)
      0.0f,  0.09f;  // σ_y^2 = 0.09
-WaveDirectionEKF wave_dir_ekf(omega, initial_state, initial_covariance, Q, R);  // Initialize wave direction EKF
+WaveDirectionEKF wave_dir_ekf(wave_dir_omega, wave_dir_initial_state, wave_dir_initial_covariance, Q, R);  // Initialize wave direction EKF
 
 const char* imu_name;
 
