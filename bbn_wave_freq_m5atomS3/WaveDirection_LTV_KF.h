@@ -1,3 +1,5 @@
+#pragma once
+
 /*
   Copyright 2025, Mikhail Grushinskiy
 
@@ -23,12 +25,12 @@ using Matrix2f = Eigen::Matrix<float, 2, 2>;
 using Matrix26f = Eigen::Matrix<float, 2, 6>;
 using Matrix62f = Eigen::Matrix<float, 6, 2>;
 
-class ComponentKalmanFilter {
+class WaveDirection_LTV_KF {
 public:
-    ComponentKalmanFilter(float omega, const Vector6f& initial_state,
-                          const Matrix6f& initial_covariance,
-                          const Matrix6f& process_noise,
-                          const Matrix2f& measurement_noise)
+    WaveDirection_LTV_KF(float omega, const Vector6f& initial_state,
+                         const Matrix6f& initial_covariance,
+                         const Matrix6f& process_noise,
+                         const Matrix2f& measurement_noise)
         : omega_(omega), state_(initial_state), P_(initial_covariance),
           Q_(process_noise), R_(measurement_noise) {}
 
@@ -39,7 +41,10 @@ public:
     }
 
     // Update step with new measurements
-    void update(float t, float x_meas, float y_meas) {
+        P_ += Q_;
+    void update(float t, float omega, float x_meas, float y_meas) {
+        omega_ = omega;
+      
         // Precompute trig values
         const float wt = omega_ * t;
         const float cos_wt = cos(wt);
@@ -84,7 +89,7 @@ public:
         return atan2f(state_[1], state_[0]);  // φ = atan2(A_Q, A_I)
     }
 
-    float get_theta() const {
+    float get_abs_theta() const {
         return atan2f(get_A(), get_B());  // θ = atan2(A, B)
     }
 
@@ -158,7 +163,7 @@ void test_setup() {
         
         // Kalman filter steps
         kf.predict();
-        kf.update(t, x_meas, y_meas);
+        kf.update(t, omega, x_meas, y_meas);
         
         // Log results every 100 steps (1 second)
         if (i % 100 == 0) {
