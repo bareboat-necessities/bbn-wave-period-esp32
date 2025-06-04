@@ -238,6 +238,11 @@ void read_and_processIMU_data() {
     float wave_height = min_max_h.max.value - min_max_h.min.value;
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
+    // Wave direction EKF steps
+    wave_dir_ekf.predict();
+    wave_dir_ekf.update(t, freq_adj * 2 * M_PI, accel_rotated.x * g_std, accel_rotated.y * g_std);
+    wave_dir_deg = wave_dir_ekf.getTheta() * 180 / M_PI;
+
     int serial_report_period_micros = 125000;
     if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
       if (produce_serial_data) {
