@@ -123,17 +123,20 @@ void test_setup() {
     // Noise parameters
     const float measurement_noise = 0.3f;  // Standard deviation
 
-    // Initial state: [A_I, A_Q, B_I, B_Q, b_x, b_y]
-    Vector6f initial_state;
-    initial_state << true_A * cosf(true_phi),  // A_I
-                     true_A * sinf(true_phi),  // A_Q
-                     true_B * cosf(true_phi),  // B_I
-                     true_B * sinf(true_phi),  // B_Q
-                     0.0f, 0.0f;              // Initial bias estimates (0)
+    Vector6f initial_state = [] {
+      Vector6f tmp << true_A * cosf(true_phi),  // A_I
+                      true_A * sinf(true_phi),  // A_Q
+                      true_B * cosf(true_phi),  // B_I
+                      true_B * sinf(true_phi),  // B_Q
+                      0.0f, 0.0f;               // Initial bias estimates (0)
+      return tmp;
+    }(); // Initial state: [A_I, A_Q, B_I, B_Q, b_x, b_y]                             
     
-    // Initial covariance (high uncertainty)
-    Matrix6f initial_cov = Matrix6f::Identity() * 100.0f;
-    
+    Matrix6f initial_cov = [] {
+      Matrix6f tmp = Matrix6f::Identity() * 100.0f;
+      return tmp;
+    }(); // Initial covariance (high uncertainty)
+  
     // Process noise (small values for constant parameters)
     Matrix6f Q = Matrix6f::Identity() * 1e-6f;
     
