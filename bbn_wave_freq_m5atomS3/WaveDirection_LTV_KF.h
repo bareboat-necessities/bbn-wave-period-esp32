@@ -73,16 +73,16 @@ public:
         Vector2f y = z - H * x_hat;
     
         // Innovation covariance: S = H * P * H^T + R
-        Eigen::Matrix<float, 2, 2> S = H * P * H.transpose() + R;
+        Matrix2f S = H * P * H.transpose() + R;
     
         // Kalman gain: K = P * H^T * S^-1
-        Eigen::Matrix<float, 6, 2> K = P * H.transpose() * S.inverse();
+        Matrix62f K = P * H.transpose() * S.inverse();
     
         // State update: x_hat += K * y
         x_hat += K * y;
     
         // Covariance update: P = (I - K * H) * P
-        P = (Eigen::Matrix<float, 6, 6>::Identity() - K * H) * P;
+        P = (Matrix6f::Identity() - K * H) * P;
     
         // ===== Projection Step =====
         projectState();
@@ -93,7 +93,7 @@ public:
     const Eigen::Vector<float, 6>& getState() const { return x_hat; }
 
     // Get the current covariance
-    const Eigen::Matrix<float, 6, 6>& getCovariance() const { return P; }
+    const Matrix6f& getCovariance() const { return P; }
 
     const float getTheta() const { return atan2(x_hat(1), x_hat(0));  // atan2(I_y, I_x) }
 
@@ -108,7 +108,7 @@ private:
     Matrix6f Q;
 
     // Measurement noise covariance
-    Eigen::Matrix<float, 2, 2> R;
+    Matrix2f R;
 
     // Project state to enforce I_y Q_x = I_x Q_y
     void projectState() {
