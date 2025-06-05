@@ -25,6 +25,7 @@ using Matrix6f = Eigen::Matrix<float, 6, 6>;
 using Matrix2f = Eigen::Matrix<float, 2, 2>;
 using Matrix26f = Eigen::Matrix<float, 2, 6>;
 using Matrix62f = Eigen::Matrix<float, 6, 2>;
+using Matrix16f = Eigen::Matrix<float, 1, 6>;
 
 class WaveDirection_LTV_KF {
 public:
@@ -119,7 +120,7 @@ private:
         float r = I_y * Q_x - I_x * Q_y;
     
         // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
-        Eigen::Matrix<float, 1, 6> G;
+        Matrix16f G;
         G << -Q_y, Q_x, I_y, -I_x, 0, 0;
     
         // Project state: x_hat -= (G^T * r) / (G * G^T)
@@ -134,7 +135,7 @@ private:
         float Q_x = x_hat(2), Q_y = x_hat(3);
     
         // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
-        Eigen::Matrix<float, 1, 6> G;
+        Matrix16f G;
         G << -Q_y, Q_x, I_y, -I_x, 0, 0;
     
         // Projection matrix: (I - G^T (G G^T)^-1 G)
