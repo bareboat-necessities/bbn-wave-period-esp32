@@ -12,7 +12,7 @@
   True x, y accelerations without bias and noise are harmonic and have same phase (or move in counter phase). 
   Frequency is considered known and is a parameter on each step.
 
-  See details in:  https://github.com/bareboat-necessities/bbn-wave-period-esp32/issues/30
+  See details in: https://github.com/bareboat-necessities/bbn-wave-period-esp32/issues/31
 
 */
 
