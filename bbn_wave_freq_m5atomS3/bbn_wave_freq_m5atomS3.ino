@@ -84,15 +84,17 @@ Vector6f wave_dir_initial_state = [] {
   const float true_A = 0.2f;
   const float true_B = -0.2f;
   const float true_phi = 0.0f;
-  Vector6f tmp << true_A * cosf(true_phi),  // A_I
-                  true_A * sinf(true_phi),  // A_Q
-                  true_B * cosf(true_phi),  // B_I
-                  true_B * sinf(true_phi),  // B_Q
-                  0.0f, 0.0f;               // Initial bias estimates (0)
+  Vector6f tmp;
+  tmp << true_A * cosf(true_phi),  // A_I
+         true_A * sinf(true_phi),  // A_Q
+         true_B * cosf(true_phi),  // B_I
+         true_B * sinf(true_phi),  // B_Q
+         0.0f, 0.0f;               // Initial bias estimates (0)
   return tmp;
 }(); // Initial state: [A_I, A_Q, B_I, B_Q, b_x, b_y]                             
 Matrix6f wave_dir_initial_cov = [] {
-  Matrix6f tmp = Matrix6f::Identity() * 100.0f;
+  Matrix6f tmp;
+  tmp = Matrix6f::Identity() * 100.0f;
   return tmp;
 }(); // Initial covariance (high uncertainty)
 Matrix6f wave_dir_Q = Matrix6f::Identity() * 1e-6f; // Process noise (small values for constant parameters)
