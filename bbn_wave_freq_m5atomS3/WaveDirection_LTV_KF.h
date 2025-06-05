@@ -127,11 +127,12 @@ void test_setup() {
     const float measurement_noise = 0.3f;  // Standard deviation
 
     Vector6f initial_state = [] {
-      Vector6f tmp << true_A * cosf(true_phi),  // A_I
-                      true_A * sinf(true_phi),  // A_Q
-                      true_B * cosf(true_phi),  // B_I
-                      true_B * sinf(true_phi),  // B_Q
-                      0.0f, 0.0f;               // Initial bias estimates (0)
+      Vector6f tmp;
+      tmp << true_A * cosf(true_phi),  // A_I
+             true_A * sinf(true_phi),  // A_Q
+             true_B * cosf(true_phi),  // B_I
+             true_B * sinf(true_phi),  // B_Q
+             0.0f, 0.0f;               // Initial bias estimates (0)
       return tmp;
     }(); // Initial state: [A_I, A_Q, B_I, B_Q, b_x, b_y]                             
     
