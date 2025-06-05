@@ -18,37 +18,18 @@
 
 #include <ArduinoEigenDense.h>  // Eigen for matrix operations
 
-// Define matrix types for 6 states and 2 measurements
-using Vector6f = Eigen::Matrix<float, 6, 1>;
-using Vector2f = Eigen::Matrix<float, 2, 1>;
-using Matrix6f = Eigen::Matrix<float, 6, 6>;
-using Matrix2f = Eigen::Matrix<float, 2, 2>;
-using Matrix26f = Eigen::Matrix<float, 2, 6>;
-using Matrix62f = Eigen::Matrix<float, 6, 2>;
-using Matrix16f = Eigen::Matrix<float, 1, 6>;
 
 class WaveDirection_LTV_KF {
 public:
     // Constructor
-    WaveDirection_LTV_KF() {
-        // Default initialization
-        x_hat.setZero();
-        P.setIdentity();
-        Q.setIdentity();
-        R.setIdentity();
-    };
+    WaveDirection_LTV_KF();
 
     // Initialize the filter
     void init(
-        const Matrix6f& Q_init,  // Process noise
-        const Matrix2f& R_init,  // Measurement noise
-        const Matrix6f& P0       // Initial covariance
-    ) {
-        Q = Q_init;
-        R = R_init;
-        P = P0;
-        x_hat.setZero();
-    }
+        const Eigen::Matrix<float, 6, 6>& Q,  // Process noise
+        const Eigen::Matrix<float, 2, 2>& R,  // Measurement noise
+        const Eigen::Matrix<float, 6, 6>& P0  // Initial covariance
+    );
 
     // Update the filter with new measurements
     void update(
@@ -56,92 +37,114 @@ public:
         float omega,    // Oscillation frequency (rad/s)
         float x_meas,   // Measured x value
         float y_meas    // Measured y value
-    ) {
-        // Measurement matrix H(t)
-        float cos_wt = cos(omega * t);
-        float sin_wt = sin(omega * t);
-    
-        Matrix26f H;
-        H << cos_wt, 0, -sin_wt, 0, 1, 0,
-             0, cos_wt, 0, -sin_wt, 0, 1;
-    
-        // Measurement vector
-        Vector2f z;
-        z << x_meas, y_meas;
-    
-        // ===== Kalman Filter Update =====
-        // Innovation: z - H * x_hat
-        Vector2f y = z - H * x_hat;
-    
-        // Innovation covariance: S = H * P * H^T + R
-        Matrix2f S = H * P * H.transpose() + R;
-    
-        // Kalman gain: K = P * H^T * S^-1
-        Matrix62f K = P * H.transpose() * S.inverse();
-    
-        // State update: x_hat += K * y
-        x_hat += K * y;
-    
-        // Covariance update: P = (I - K * H) * P
-        P = (Matrix6f::Identity() - K * H) * P;
-    
-        // ===== Projection Step =====
-        projectState();
-        projectCovariance();
-    }
+    );
 
     // Get the current state estimate
-    const Vector6f& getState() const { return x_hat; }
+    const Eigen::Vector<float, 6>& getState() const { return x_hat; }
 
     // Get the current covariance
-    const Matrix6f& getCovariance() const { return P; }
-
-    float getTheta() const { return atan2(x_hat(1), x_hat(0)); }  // atan2(I_y, I_x)
+    const Eigen::Matrix<float, 6, 6>& getCovariance() const { return P; }
 
 private:
     // State: [I_x, I_y, Q_x, Q_y, b_x, b_y]
-    Vector6f x_hat;
+    Eigen::Vector<float, 6> x_hat;
 
     // Covariance matrix
-    Matrix6f P;
+    Eigen::Matrix<float, 6, 6> P;
 
     // Process noise covariance
-    Matrix6f Q;
+    Eigen::Matrix<float, 6, 6> Q;
 
     // Measurement noise covariance
-    Matrix2f R;
+    Eigen::Matrix<float, 2, 2> R;
 
     // Project state to enforce I_y Q_x = I_x Q_y
-    void projectState() {
-        float I_x = x_hat(0), I_y = x_hat(1);
-        float Q_x = x_hat(2), Q_y = x_hat(3);
-    
-        // Constraint residual: r = I_y Q_x - I_x Q_y
-        float r = I_y * Q_x - I_x * Q_y;
-    
-        // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
-        Matrix16f G;
-        G << -Q_y, Q_x, I_y, -I_x, 0, 0;
-    
-        // Project state: x_hat -= (G^T * r) / (G * G^T)
-        if (G.squaredNorm() > 1e-6f) {
-            x_hat -= (G.transpose() * r) / G.squaredNorm();
-        }
-    }
+    void projectState();
 
     // Project covariance to maintain consistency
-    void projectCovariance() {
-        float I_x = x_hat(0), I_y = x_hat(1);
-        float Q_x = x_hat(2), Q_y = x_hat(3);
-    
-        // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
-        Vector6f G;
-        G << -Q_y, Q_x, I_y, -I_x, 0, 0;
-    
-        // Projection matrix: (I - G^T (G G^T)^-1 G)
-        Matrix6f K_c = P * G.transpose() * (G * P * G.transpose()).inverse();
-        Matrix6f I = Matrix6f::Identity();
-        P = (I - K_c * G) * P * (I - K_c * G).transpose();
-    }
+    void projectCovariance();
 };
 
+WaveDirection_LTV_KF::WaveDirection_LTV_KF() {
+    // Default initialization
+    x_hat.setZero();
+    P.setIdentity();
+    Q.setIdentity();
+    R.setIdentity();
+}
+
+void WaveDirection_LTV_KF::init(
+    const Eigen::Matrix<float, 6, 6>& Q_init,
+    const Eigen::Matrix<float, 2, 2>& R_init,
+    const Eigen::Matrix<float, 6, 6>& P0
+) {
+    Q = Q_init;
+    R = R_init;
+    P = P0;
+    x_hat.setZero();
+}
+
+void WaveDirection_LTV_KF::update(float t, float omega, float x_meas, float y_meas) {
+    // Measurement matrix H(t)
+    float cos_wt = cos(omega * t);
+    float sin_wt = sin(omega * t);
+
+    Eigen::Matrix<float, 2, 6> H;
+    H << cos_wt, 0, -sin_wt, 0, 1, 0,
+         0, cos_wt, 0, -sin_wt, 0, 1;
+
+    // Measurement vector
+    Eigen::Vector<float, 2> z;
+    z << x_meas, y_meas;
+
+    // ===== Kalman Filter Update =====
+    // Innovation: z - H * x_hat
+    Eigen::Vector<float, 2> y = z - H * x_hat;
+
+    // Innovation covariance: S = H * P * H^T + R
+    Eigen::Matrix<float, 2, 2> S = H * P * H.transpose() + R;
+
+    // Kalman gain: K = P * H^T * S^-1
+    Eigen::Matrix<float, 6, 2> K = P * H.transpose() * S.inverse();
+
+    // State update: x_hat += K * y
+    x_hat += K * y;
+
+    // Covariance update: P = (I - K * H) * P
+    P = (Eigen::Matrix<float, 6, 6>::Identity() - K * H) * P;
+
+    // ===== Projection Step =====
+    projectState();
+    projectCovariance();
+}
+
+void WaveDirection_LTV_KF::projectState() {
+    float I_x = x_hat(0), I_y = x_hat(1);
+    float Q_x = x_hat(2), Q_y = x_hat(3);
+
+    // Constraint residual: r = I_y Q_x - I_x Q_y
+    float r = I_y * Q_x - I_x * Q_y;
+
+    // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
+    Eigen::Matrix<float, 1, 6> G;
+    G << -Q_y, Q_x, I_y, -I_x, 0, 0;
+
+    // Project state: x_hat -= (G^T * r) / (G * G^T)
+    if (G.squaredNorm() > 1e-6f) {
+        x_hat -= (G.transpose() * r) / G.squaredNorm();
+    }
+}
+
+void WaveDirection_LTV_KF::projectCovariance() {
+    float I_x = x_hat(0), I_y = x_hat(1);
+    float Q_x = x_hat(2), Q_y = x_hat(3);
+
+    // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
+    Eigen::Matrix<float, 1, 6> G;
+    G << -Q_y, Q_x, I_y, -I_x, 0, 0;
+
+    // Projection matrix: (I - G^T (G G^T)^-1 G)
+    Eigen::Matrix<float, 6, 6> K_c = P * G.transpose() * (G * P * G.transpose()).inverse();
+    Eigen::Matrix<float, 6, 6> I = Eigen::Matrix<float, 6, 6>::Identity();
+    P = (I - K_c * G) * P * (I - K_c * G).transpose();
+}
