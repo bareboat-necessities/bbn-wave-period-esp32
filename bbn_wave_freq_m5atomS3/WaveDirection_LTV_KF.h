@@ -44,6 +44,8 @@ public:
     // Get the current covariance
     const Eigen::Matrix<float, 6, 6>& getCovariance() const { return P; }
 
+    const float getTheta() const { return atan2(x_hat(1), x_hat(0));  // atan2(I_y, I_x) }
+
 private:
     // State: [I_x, I_y, Q_x, Q_y, b_x, b_y]
     Eigen::Vector<float, 6> x_hat;
