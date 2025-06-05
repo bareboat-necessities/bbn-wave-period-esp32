@@ -41,7 +41,6 @@ public:
     }
 
     // Update step with new measurements
-        P_ += Q_;
     void update(float t, float omega, float x_meas, float y_meas) {
         omega_ = omega;
       
