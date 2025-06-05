@@ -138,6 +138,7 @@ void WaveDirection_LTV_KF::projectState() {
 }
 
 void WaveDirection_LTV_KF::projectCovariance() {
+    /*
     float I_x = x_hat(0), I_y = x_hat(1);
     float Q_x = x_hat(2), Q_y = x_hat(3);
 
@@ -149,4 +150,5 @@ void WaveDirection_LTV_KF::projectCovariance() {
     Eigen::Matrix<float, 6, 6> K_c = P * G.transpose() * (G * P * G.transpose()).inverse();
     Eigen::Matrix<float, 6, 6> I = Eigen::Matrix<float, 6, 6>::Identity();
     P = (I - K_c * G) * P * (I - K_c * G).transpose();
+    */
 }
