@@ -39,9 +39,9 @@ public:
 
     // Initialize the filter
     void init(
-        const Eigen::Matrix<float, 6, 6>& Q,  // Process noise
-        const Eigen::Matrix<float, 2, 2>& R,  // Measurement noise
-        const Eigen::Matrix<float, 6, 6>& P0  // Initial covariance
+        const Matrix6f& Q,  // Process noise
+        const Matrix2f& R,  // Measurement noise
+        const Matrix6f& P0  // Initial covariance
     ) {
         Q = Q_init;
         R = R_init;
@@ -60,17 +60,17 @@ public:
         float cos_wt = cos(omega * t);
         float sin_wt = sin(omega * t);
     
-        Eigen::Matrix<float, 2, 6> H;
+        Matrix26f H;
         H << cos_wt, 0, -sin_wt, 0, 1, 0,
              0, cos_wt, 0, -sin_wt, 0, 1;
     
         // Measurement vector
-        Eigen::Vector<float, 2> z;
+        Vector2f z;
         z << x_meas, y_meas;
     
         // ===== Kalman Filter Update =====
         // Innovation: z - H * x_hat
-        Eigen::Vector<float, 2> y = z - H * x_hat;
+        Vector2f y = z - H * x_hat;
     
         // Innovation covariance: S = H * P * H^T + R
         Eigen::Matrix<float, 2, 2> S = H * P * H.transpose() + R;
