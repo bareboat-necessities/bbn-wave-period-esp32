@@ -40,9 +40,9 @@ public:
 
     // Initialize the filter
     void init(
-        const Matrix6f& Q,  // Process noise
-        const Matrix2f& R,  // Measurement noise
-        const Matrix6f& P0  // Initial covariance
+        const Matrix6f& Q_init,  // Process noise
+        const Matrix2f& R_init,  // Measurement noise
+        const Matrix6f& P0       // Initial covariance
     ) {
         Q = Q_init;
         R = R_init;
