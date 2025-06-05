@@ -138,17 +138,16 @@ void WaveDirection_LTV_KF::projectState() {
 }
 
 void WaveDirection_LTV_KF::projectCovariance() {
-    /*
     float I_x = x_hat(0), I_y = x_hat(1);
     float Q_x = x_hat(2), Q_y = x_hat(3);
 
-    // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
     Eigen::Matrix<float, 1, 6> G;
     G << -Q_y, Q_x, I_y, -I_x, 0, 0;
 
-    // Projection matrix: (I - G^T (G G^T)^-1 G)
-    Eigen::Matrix<float, 6, 6> K_c = P * G.transpose() * (G * P * G.transpose()).inverse();
+    float GPGt = (G * P * G.transpose())(0, 0);
+    if (fabs(GPGt) < 1e-6f) return;
+
+    Eigen::Matrix<float, 6, 1> K_c = P * G.transpose() / GPGt;
     Eigen::Matrix<float, 6, 6> I = Eigen::Matrix<float, 6, 6>::Identity();
     P = (I - K_c * G) * P * (I - K_c * G).transpose();
-    */
 }
