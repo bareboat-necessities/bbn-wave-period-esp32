@@ -79,7 +79,7 @@ KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 
 // Wave direction
-WaveDirection_LTV_KF wave_dir_kf();
+WaveDirection_LTV_KF wave_dir_kf;
 Eigen::Matrix<float, 6, 6> wave_dir_Q = Eigen::Matrix<float, 6, 6>::Identity() * 1e-4f;
 Eigen::Matrix<float, 2, 2> wave_dir_R = Eigen::Matrix<float, 2, 2>::Identity() * 1e-2f;
 Eigen::Matrix<float, 6, 6> wave_dir_P0 = Eigen::Matrix<float, 6, 6>::Identity() * 1.0f;
