@@ -125,7 +125,7 @@ void test_setup() {
     // Noise parameters
     const float measurement_noise = 0.3f;  // Standard deviation
 
-    Vector6f initial_state = [] {
+    Vector6f initial_state = [true_A, true_B, true_phi] {
       Vector6f tmp;
       tmp << true_A * cosf(true_phi),  // A_I
              true_A * sinf(true_phi),  // A_Q
