@@ -27,7 +27,7 @@ public:
         P.setIdentity();
         Q.setIdentity();
         R.setIdentity();
-    }
+    };
 
     // Initialize the filter
     void init(
