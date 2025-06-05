@@ -80,9 +80,9 @@ KalmanWaveAltState waveAltState;
 
 // Wave direction
 WaveDirection_LTV_KF wave_dir_kf();
-Eigen::Matrix<float, 6, 6> Q = Eigen::Matrix<float, 6, 6>::Identity() * 1e-4f;
-Eigen::Matrix<float, 2, 2> R = Eigen::Matrix<float, 2, 2>::Identity() * 1e-2f;
-Eigen::Matrix<float, 6, 6> P0 = Eigen::Matrix<float, 6, 6>::Identity() * 1.0f;
+Eigen::Matrix<float, 6, 6> wave_dir_Q = Eigen::Matrix<float, 6, 6>::Identity() * 1e-4f;
+Eigen::Matrix<float, 2, 2> wave_dir_R = Eigen::Matrix<float, 2, 2>::Identity() * 1e-2f;
+Eigen::Matrix<float, 6, 6> wave_dir_P0 = Eigen::Matrix<float, 6, 6>::Identity() * 1.0f;
 
 const char* imu_name;
 
@@ -355,7 +355,7 @@ void setup(void) {
   }
 
   initialize_filters();
-  wave_dir_kf.init(Q, R, P0);
+  wave_dir_kf.init(wave_dir_Q, wave_dir_R, wave_dir_P0);
 
   start_time = micros();
   last_update = start_time;
