@@ -21,7 +21,13 @@
 class WaveDirection_LTV_KF {
 public:
     // Constructor
-    WaveDirection_LTV_KF();
+    WaveDirection_LTV_KF() {
+        // Default initialization
+        x_hat.setZero();
+        P.setIdentity();
+        Q.setIdentity();
+        R.setIdentity();
+    }
 
     // Initialize the filter
     void init(
@@ -65,14 +71,6 @@ private:
     // Project covariance to maintain consistency
     void projectCovariance();
 };
-
-WaveDirection_LTV_KF::WaveDirection_LTV_KF() {
-    // Default initialization
-    x_hat.setZero();
-    P.setIdentity();
-    Q.setIdentity();
-    R.setIdentity();
-}
 
 void WaveDirection_LTV_KF::init(
     const Eigen::Matrix<float, 6, 6>& Q_init,
