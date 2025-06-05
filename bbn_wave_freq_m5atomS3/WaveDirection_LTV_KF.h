@@ -18,7 +18,6 @@
 
 #include <ArduinoEigenDense.h>  // Eigen for matrix operations
 
-
 class WaveDirection_LTV_KF {
 public:
     // Constructor
