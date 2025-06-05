@@ -18,6 +18,14 @@
 
 #include <ArduinoEigenDense.h>  // Eigen for matrix operations
 
+// Define matrix types for 6 states and 2 measurements
+using Vector6f = Eigen::Matrix<float, 6, 1>;
+using Vector2f = Eigen::Matrix<float, 2, 1>;
+using Matrix6f = Eigen::Matrix<float, 6, 6>;
+using Matrix2f = Eigen::Matrix<float, 2, 2>;
+using Matrix26f = Eigen::Matrix<float, 2, 6>;
+using Matrix62f = Eigen::Matrix<float, 6, 2>;
+
 class WaveDirection_LTV_KF {
 public:
     // Constructor
