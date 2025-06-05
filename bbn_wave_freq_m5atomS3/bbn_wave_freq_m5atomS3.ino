@@ -79,27 +79,10 @@ KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 
 // Wave direction
-const float wave_dir_omega = 2 * M_PI * FREQ_GUESS;  // Known angular frequency
-Vector6f wave_dir_initial_state = [] {
-  const float true_A = 0.2f;
-  const float true_B = -0.2f;
-  const float true_phi = 0.0f;
-  Vector6f tmp;
-  tmp << true_A * cosf(true_phi),  // A_I
-         true_A * sinf(true_phi),  // A_Q
-         true_B * cosf(true_phi),  // B_I
-         true_B * sinf(true_phi),  // B_Q
-         0.0f, 0.0f;               // Initial bias estimates (0)
-  return tmp;
-}(); // Initial state: [A_I, A_Q, B_I, B_Q, b_x, b_y]                             
-Matrix6f wave_dir_initial_cov = [] {
-  Matrix6f tmp;
-  tmp = Matrix6f::Identity() * 100.0f;
-  return tmp;
-}(); // Initial covariance (high uncertainty)
-Matrix6f wave_dir_Q = Matrix6f::Identity() * 1e-6f; // Process noise (small values for constant parameters)
-Matrix2f wave_dir_R = Matrix2f::Identity() * 0.09f; // Measurement noise σ_x^2 = 0.09, σ_y^2 = 0.09 (std dev 0.3)
-WaveDirection_LTV_KF wave_dir_kf(wave_dir_omega, wave_dir_initial_state, wave_dir_initial_cov, wave_dir_Q, wave_dir_R);
+WaveDirection_LTV_KF wave_dir_kf();
+Eigen::Matrix<float, 6, 6> Q = Eigen::Matrix<float, 6, 6>::Identity() * 1e-4f;
+Eigen::Matrix<float, 2, 2> R = Eigen::Matrix<float, 2, 2>::Identity() * 1e-2f;
+Eigen::Matrix<float, 6, 6> P0 = Eigen::Matrix<float, 6, 6>::Identity() * 1.0f;
 
 const char* imu_name;
 
@@ -372,6 +355,7 @@ void setup(void) {
   }
 
   initialize_filters();
+  wave_dir_kf.init(Q, R, P0);
 
   start_time = micros();
   last_update = start_time;
