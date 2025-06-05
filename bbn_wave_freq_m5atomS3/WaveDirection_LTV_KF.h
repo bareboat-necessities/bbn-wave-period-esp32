@@ -102,10 +102,10 @@ private:
     Eigen::Vector<float, 6> x_hat;
 
     // Covariance matrix
-    Eigen::Matrix<float, 6, 6> P;
+    Matrix6f P;
 
     // Process noise covariance
-    Eigen::Matrix<float, 6, 6> Q;
+    Matrix6f Q;
 
     // Measurement noise covariance
     Eigen::Matrix<float, 2, 2> R;
@@ -138,8 +138,8 @@ private:
         G << -Q_y, Q_x, I_y, -I_x, 0, 0;
     
         // Projection matrix: (I - G^T (G G^T)^-1 G)
-        Eigen::Matrix<float, 6, 6> K_c = P * G.transpose() * (G * P * G.transpose()).inverse();
-        Eigen::Matrix<float, 6, 6> I = Eigen::Matrix<float, 6, 6>::Identity();
+        Matrix6f K_c = P * G.transpose() * (G * P * G.transpose()).inverse();
+        Matrix6f I = Matrix6f::Identity();
         P = (I - K_c * G) * P * (I - K_c * G).transpose();
     }
 };
