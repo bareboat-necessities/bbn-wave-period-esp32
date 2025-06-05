@@ -135,7 +135,7 @@ private:
         float Q_x = x_hat(2), Q_y = x_hat(3);
     
         // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
-        Matrix16f G;
+        Vector6f G;
         G << -Q_y, Q_x, I_y, -I_x, 0, 0;
     
         // Projection matrix: (I - G^T (G G^T)^-1 G)
