@@ -72,7 +72,7 @@ private:
     void projectCovariance();
 };
 
-void WaveDirection_LTV_KF::init(
+void init(
     const Eigen::Matrix<float, 6, 6>& Q_init,
     const Eigen::Matrix<float, 2, 2>& R_init,
     const Eigen::Matrix<float, 6, 6>& P0
@@ -83,7 +83,7 @@ void WaveDirection_LTV_KF::init(
     x_hat.setZero();
 }
 
-void WaveDirection_LTV_KF::update(float t, float omega, float x_meas, float y_meas) {
+void update(float t, float omega, float x_meas, float y_meas) {
     // Measurement matrix H(t)
     float cos_wt = cos(omega * t);
     float sin_wt = sin(omega * t);
@@ -117,7 +117,7 @@ void WaveDirection_LTV_KF::update(float t, float omega, float x_meas, float y_me
     projectCovariance();
 }
 
-void WaveDirection_LTV_KF::projectState() {
+void projectState() {
     float I_x = x_hat(0), I_y = x_hat(1);
     float Q_x = x_hat(2), Q_y = x_hat(3);
 
@@ -134,7 +134,7 @@ void WaveDirection_LTV_KF::projectState() {
     }
 }
 
-void WaveDirection_LTV_KF::projectCovariance() {
+void projectCovariance() {
     float I_x = x_hat(0), I_y = x_hat(1);
     float Q_x = x_hat(2), Q_y = x_hat(3);
 
