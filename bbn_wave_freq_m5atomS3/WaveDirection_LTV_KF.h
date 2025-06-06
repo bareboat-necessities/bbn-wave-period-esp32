@@ -20,6 +20,7 @@
 
 // Type shortcuts
 using Matrix6f = Eigen::Matrix<float, 6, 6>;
+using Matrix2f = Eigen::Matrix<float, 2, 2>;
 
 class WaveDirection_LTV_KF {
 public:
@@ -29,7 +30,7 @@ public:
     // Initialize the filter
     void init(
         const Matrix6f& Q,  // Process noise
-        const Eigen::Matrix<float, 2, 2>& R,  // Measurement noise
+        const Matrix2f& R,  // Measurement noise
         const Matrix6f& P0  // Initial covariance
     );
 
@@ -61,7 +62,7 @@ private:
     Matrix6f Q;
 
     // Measurement noise covariance
-    Eigen::Matrix<float, 2, 2> R;
+    Matrix2f R;
 
     // Project state to enforce I_y Q_x = I_x Q_y
     void projectState();
@@ -80,7 +81,7 @@ WaveDirection_LTV_KF::WaveDirection_LTV_KF() {
 
 void WaveDirection_LTV_KF::init(
     const Matrix6f& Q_init,
-    const Eigen::Matrix<float, 2, 2>& R_init,
+    const Matrix2f& R_init,
     const Matrix6f& P0
 ) {
     Q = Q_init;
@@ -107,7 +108,7 @@ void WaveDirection_LTV_KF::update(float t, float omega, float x_meas, float y_me
     Eigen::Vector<float, 2> y = z - H * x_hat;
 
     // Innovation covariance: S = H * P * H^T + R
-    Eigen::Matrix<float, 2, 2> S = H * P * H.transpose() + R;
+    Matrix2f S = H * P * H.transpose() + R;
 
     // Kalman gain: K = P * H^T * S^-1
     Eigen::Matrix<float, 6, 2> K = P * H.transpose() * S.inverse();
