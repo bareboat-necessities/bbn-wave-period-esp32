@@ -115,7 +115,7 @@ public:
     float getPhase() const { return z_hat_(2); }
     float getBiasX() const { return z_hat_(3); }
     float getBiasY() const { return z_hat_(4); }
-    float getTheta() const { return atan2(getA(), getB()); }  // Compute θ = atan2(A, B)
+    float getAtanAB() const { return atan2(getA(), getB()); }  // Compute θ = atan2(A, B)
 
     // Configuration methods
     void setProcessNoise(float log_a_noise, float b_noise, float phi_noise,
@@ -153,8 +153,8 @@ void test_WaveDirectionEKF_loop() {
     ekf.update(t, omega, x, y);
     
     // Output results
-    Serial.print("Theta: ");
-    Serial.print(ekf.getTheta());
+    Serial.print("atanAB: ");
+    Serial.print(ekf.getAtanAB());
     Serial.print(" | A: ");
     Serial.print(ekf.getA());
     Serial.print(" | B: ");
