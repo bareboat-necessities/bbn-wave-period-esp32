@@ -360,7 +360,7 @@ void setup(void) {
   Matrix6f wave_dir_P0 = Eigen::Matrix<float, 6, 6>::Identity() * 1.0f;
   wave_dir_kf.init(wave_dir_Q, wave_dir_R, wave_dir_P0);
 
-  wave_dir_ekf.setProcessNoise(1e-6f, 1e-6f, 1e-4f, 1e-6f, 1e-6f);
+  wave_dir_ekf.setProcessNoise(1e-6f, 1e-6f, 1e-4f * M_PI * M_PI, 1e-6f, 1e-6f);
   wave_dir_ekf.setMeasurementNoise(0.09f, 0.09f);
 
   start_time = micros();
