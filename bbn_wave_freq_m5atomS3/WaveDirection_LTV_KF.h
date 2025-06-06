@@ -107,7 +107,7 @@ public:
     }
 
     // Get Y amplitude estimate
-    float getA() const { 
+    float getB() const { 
         float I_y = x_hat(1), Q_y = x_hat(3);
         return sqrtf(I_y * I_y + Q_y * Q_y);
     }
