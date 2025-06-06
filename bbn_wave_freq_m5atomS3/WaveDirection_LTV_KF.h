@@ -97,7 +97,7 @@ public:
     // Get phase estimate
     float getPhase() const { 
         float I_x = x_hat(0), Q_x = x_hat(2);
-        return atan(-Q_x, I_x);
+        return atan2(-Q_x, I_x);
     }
 
     // Get amplitude estimate
