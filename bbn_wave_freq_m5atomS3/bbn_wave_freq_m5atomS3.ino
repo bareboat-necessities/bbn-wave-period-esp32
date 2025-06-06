@@ -282,6 +282,7 @@ void read_and_processIMU_data() {
           //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
           Serial.printf(",wave_dir_deg:%.2f", wave_dir_deg);
           Serial.printf(",wave_dir_alt_deg:%.2f", wave_dir_alt_deg);
+          Serial.printf(",wave_dir_est_deg:%.2f", atan2(accel_rotated.x, accel_rotated.y) * 180 / M_PI);
           Serial.printf(",φ:%.4f", wave_dir_kf.getPhase() * 180 / M_PI);
           Serial.printf(",φ_alt:%.4f", wave_dir_ekf.getPhase() * 180 / M_PI);
           Serial.printf(",a_amp_horiz:%.4f", wave_dir_kf.getAmplitude());
