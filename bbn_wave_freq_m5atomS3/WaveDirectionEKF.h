@@ -66,6 +66,7 @@ public:
             const float phi = z_hat_(2);
             z_hat_(2) = omega * t + phi;
         }
+       z_hat_(2) = wrapAngle(z_hat_(2));
         
         // Predict covariance
         P_ = F * P_ * F.transpose() + Q_;
