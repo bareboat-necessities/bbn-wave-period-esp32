@@ -355,9 +355,12 @@ void setup(void) {
   initialize_filters();
   
   Matrix6f wave_dir_Q = Eigen::Matrix<float, 6, 6>::Identity() * 1e-4f;
-  Matrix2f wave_dir_R = Eigen::Matrix<float, 2, 2>::Identity() * 1e-2f;
+  Matrix2f wave_dir_R = Eigen::Matrix<float, 2, 2>::Identity() * 0.09f;
   Matrix6f wave_dir_P0 = Eigen::Matrix<float, 6, 6>::Identity() * 1.0f;
   wave_dir_kf.init(wave_dir_Q, wave_dir_R, wave_dir_P0);
+
+  wave_dir_ekf.setProcessNoise(1e-6f, 1e-6f, 1e-4f, 1e-6f, 1e-6f);
+  wave_dir_ekf.setMeasurementNoise(0.09f, 0.09f);
 
   start_time = micros();
   last_update = start_time;
