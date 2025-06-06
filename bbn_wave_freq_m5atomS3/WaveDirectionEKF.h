@@ -40,7 +40,11 @@ public:
         z_hat_ << logf(a_init), b_init, phi_init, bias_x_init, bias_y_init;
         
         // Initialize covariance
-        P_ = Matrix5f::Identity() * 1e-3f;
+        P_ = Matrix5f::Identity() * 100.0f;  // High uncertainty
+        P_(0, 0) = 10.0f;
+        P_(2, 2) = 4 * M_PI * M_PI; // Large phase uncertainty
+        P_(3, 3) = 1.0f; // Lower uncertainty for biases
+        P_(4, 4) = 1.0f; // Lower uncertainty for biases
         
         // Configure process noise
         Q_ = Matrix5f::Identity() * 1e-6f;
