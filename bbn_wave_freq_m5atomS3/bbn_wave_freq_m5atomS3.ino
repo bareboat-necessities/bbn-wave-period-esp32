@@ -237,7 +237,7 @@ void read_and_processIMU_data() {
     auto wave_dir_state = wave_dir_kf.getState();  // get all values of state vector
     float wave_dir_deg = wave_dir_kf.getAtanAB() * 180 / M_PI;
 
-    wave_dir_ekf.predict(t, omega, dt);
+    wave_dir_ekf.predict(t, omega, delta_t);
     wave_dir_ekf.update(t, omega, accel_rotated.x * g_std, accel_rotated.y * g_std);
     auto wave_dir_alt_state = wave_dir_ekf.getState();  // get all values of state vector
     float wave_dir_alt_deg = wave_dir_ekf.getAtanAB() * 180 / M_PI;
