@@ -22,6 +22,7 @@
 using Matrix6f = Eigen::Matrix<float, 6, 6>;
 using Matrix2f = Eigen::Matrix<float, 2, 2>;
 using Matrix2x6f = Eigen::Matrix<float, 2, 6>;
+using Matrix6x2f = Eigen::Matrix<float, 6, 2>;
 
 class WaveDirection_LTV_KF {
 public:
@@ -112,7 +113,7 @@ void WaveDirection_LTV_KF::update(float t, float omega, float x_meas, float y_me
     Matrix2f S = H * P * H.transpose() + R;
 
     // Kalman gain: K = P * H^T * S^-1
-    Eigen::Matrix<float, 6, 2> K = P * H.transpose() * S.inverse();
+    Matrix6x2f K = P * H.transpose() * S.inverse();
 
     // State update: x_hat += K * y
     x_hat += K * y;
