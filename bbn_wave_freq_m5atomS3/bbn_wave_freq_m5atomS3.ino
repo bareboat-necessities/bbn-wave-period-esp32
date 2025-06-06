@@ -235,11 +235,11 @@ void read_and_processIMU_data() {
     float omega = freq_adj * 2 * M_PI;
     wave_dir_kf.update(t, omega, accel_rotated.x * g_std, accel_rotated.y * g_std);
     auto wave_dir_state = wave_dir_kf.getState();  // get all values of state vector
-    float wave_dir_deg = wave_dir_kf.getAtanAB() * 180 / M_PI;
+    float wave_dir_deg = wave_dir_kf.getAtanBA() * 180 / M_PI;
 
     wave_dir_ekf.predict(t, omega, delta_t);
     wave_dir_ekf.update(t, omega, accel_rotated.x * g_std, accel_rotated.y * g_std);
-    float wave_dir_alt_deg = wave_dir_ekf.getAtanAB() * 180 / M_PI;
+    float wave_dir_alt_deg = wave_dir_ekf.getAtanBA() * 180 / M_PI;
 
     int serial_report_period_micros = 125000;
     if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
