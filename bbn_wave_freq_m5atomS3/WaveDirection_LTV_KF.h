@@ -21,6 +21,7 @@
 // Type shortcuts
 using Matrix6f = Eigen::Matrix<float, 6, 6>;
 using Matrix2f = Eigen::Matrix<float, 2, 2>;
+using Vector6f = Eigen::Matrix<float, 6, 1>;
 using Matrix2x6f = Eigen::Matrix<float, 2, 6>;
 using Matrix6x2f = Eigen::Matrix<float, 6, 2>;
 
@@ -45,7 +46,7 @@ public:
     );
 
     // Get the current state estimate
-    const Eigen::Vector<float, 6>& getState() const { return x_hat; }
+    const Vector6f& getState() const { return x_hat; }
 
     // Get the current covariance
     const Matrix6f& getCovariance() const { return P; }
@@ -55,7 +56,7 @@ public:
 
 private:
     // State: [I_x, I_y, Q_x, Q_y, b_x, b_y]
-    Eigen::Vector<float, 6> x_hat;
+    Vector6f x_hat;
 
     // Covariance matrix
     Matrix6f P;
