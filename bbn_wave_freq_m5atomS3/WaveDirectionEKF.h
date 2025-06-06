@@ -33,10 +33,8 @@ private:
     Matrix2f R_;          // Measurement noise
 
 public:
-    // Constructor (no longer needs omega and dt)
     WaveDirectionEKF(float a_init, float b_init, float phi_init,
-                    float bias_x_init, float bias_y_init)
-    {
+                     float bias_x_init, float bias_y_init) {
         // Initialize state
         z_hat_ << logf(a_init), b_init, phi_init, bias_x_init, bias_y_init;
         
@@ -64,7 +62,7 @@ public:
     }
 
     // Update step now takes omega as parameter
-    void update(float x_measured, float y_measured, float t, float omega) {
+    void update(float t, float omega, float x_measured, float y_measured) {
         // Extract current state
         const float log_a = z_hat_(0);
         const float b = z_hat_(1);
@@ -153,11 +151,11 @@ void test_WaveDirectionEKF_loop() {
     
     // EKF steps with parameters passed in
     ekf.predict(omega, dt);
-    ekf.update(x, y, t, omega);
+    ekf.update(t, omega, x, y);
     
     // Output results
-    Serial.print("Ratio a/b: ");
-    Serial.print(ekf.getAmplitudeRatio());
+    Serial.print("Theta: ");
+    Serial.print(ekf.getTheta());
     Serial.print(" | A: ");
     Serial.print(ekf.getA());
     Serial.print(" | B: ");
