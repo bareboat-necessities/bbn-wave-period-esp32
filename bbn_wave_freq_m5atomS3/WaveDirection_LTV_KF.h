@@ -159,7 +159,7 @@ void WaveDirection_LTV_KF::projectCovariance() {
     if (fabs(GPGt) < 1e-6f) return;
 
     // Kalman gain for constraint: K_c = P * G^T / (G * P * G^T)
-    Eigen::Matrix<float, 6, 1> K_c = P * G.transpose() / GPGt;
+    Vector6f K_c = P * G.transpose() / GPGt;
 
     // Project covariance: P = (I - K_c * G) * P * (I - K_c * G)^T
     Matrix6f I = Matrix6f::Identity();
