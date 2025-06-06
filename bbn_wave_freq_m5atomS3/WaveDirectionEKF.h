@@ -112,12 +112,7 @@ public:
         P_ = (Matrix5f::Identity() - K * H) * P_;
         
         // Normalize phase to [-π, π]
-        float& phi_adj = z_hat_(2);
-        phi_adj = std::fmod(phi_adj + M_PI, 2 * M_PI);
-        if (phi_adj < 0) {
-            phi_adj += 2 * M_PI;
-        }
-        phi_adj -= M_PI;
+        z_hat_(2) = wrapAngle(z_hat_(2));
     }
 
     float getA() const { return expf(z_hat_(0)); }
@@ -141,6 +136,14 @@ public:
     
     void setMeasurementNoise(float x_noise, float y_noise) {
         R_.diagonal() << x_noise, y_noise;
+    }
+
+    float wrapAngle(float angle) const {
+        angle = std::fmod(angle + M_PI, 2 * M_PI);
+        if (angle < 0) {
+            angle += 2 * M_PI;
+        }
+        return angle - M_PI;
     }
 };
 
