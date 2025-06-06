@@ -80,9 +80,12 @@ MinMaxLemire min_max_h;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 
+#define WRONG_ANGLE_MARKER (-360.0f);
+
 // Wave direction
 WaveDirection_LTV_KF wave_dir_kf;
 WaveDirectionEKF wave_dir_ekf(1.0f, -1.0f, 0.0f, 0.0f, 0.0f);
+float wave_angle_deg = WRONG_ANGLE_MARKER;
 
 const char* imu_name;
 
@@ -246,6 +249,13 @@ void read_and_processIMU_data() {
     auto wave_dir_state = wave_dir_kf.getState();  // get all values of state vector
     float wave_dir_deg = wave_dir_kf.getAtanBA() * 180 / M_PI;
 
+    float azimuth = azimuth_deg(accel_rotated.y, accel_rotated.x); 
+    if (wave_angle_deg != WRONG_ANGLE_MARKER) {
+        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth_deg + 90.0f, 0.01);
+    } else {
+        wave_angle_deg = azimuth_deg;
+    }
+
     wave_dir_ekf.predict(t, omega, delta_t);
     wave_dir_ekf.update(t, omega, accel_rotated.x * g_std, accel_rotated.y * g_std);
     float wave_dir_alt_deg = wave_dir_ekf.getAtanBA() * 180 / M_PI;
@@ -291,7 +301,7 @@ void read_and_processIMU_data() {
           //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
           Serial.printf(",wave_dir_deg:%.2f", wave_dir_deg);
           Serial.printf(",wave_dir_alt_deg:%.2f", wave_dir_alt_deg);
-          Serial.printf(",wave_dir_est_deg:%.2f", azimuth_deg(accel_rotated.y, accel_rotated.x));
+          Serial.printf(",wave_dir_est_deg:%.2f", );
           Serial.printf(",φ:%.4f", wave_dir_kf.getPhase() * 180 / M_PI);
           Serial.printf(",φ_alt:%.4f", wave_dir_ekf.getPhase() * 180 / M_PI);
           Serial.printf(",a_amp_horiz:%.4f", wave_dir_kf.getAmplitude());
