@@ -285,6 +285,8 @@ void read_and_processIMU_data() {
           Serial.printf(",wave_dir_alt_deg:%.2f", wave_dir_alt_deg);
           Serial.printf(",φ:%.4f", wave_dir_kf.getPhase() * 180 / M_PI);
           Serial.printf(",φ_alt:%.4f", wave_dir_ekf.getPhase() * 180 / M_PI);
+          Serial.printf(",a_amp_horiz:%.4f", wave_dir_kf.getAmplitude());
+          Serial.printf(",a_amp_alt_horiz:%.4f", wave_dir_ekf.getAmplitude());
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
