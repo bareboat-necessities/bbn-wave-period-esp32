@@ -106,6 +106,9 @@ public:
         return sqrtf(I_x * I_x + Q_x * Q_x);
     }
 
+    float getBiasX() const { return x_hat(4); }
+    float getBiasY() const { return x_hat(5); }
+
 private:
     // State: [I_x, I_y, Q_x, Q_y, b_x, b_y]
     Vector6f x_hat;
