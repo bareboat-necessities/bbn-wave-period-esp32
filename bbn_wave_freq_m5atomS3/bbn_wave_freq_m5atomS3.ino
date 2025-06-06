@@ -242,7 +242,7 @@ void read_and_processIMU_data() {
     // Wave direction steps
     float azimuth = azimuth_deg(accel_rotated.y, accel_rotated.x); 
     if (wave_angle_deg != WRONG_ANGLE_MARKER) {
-        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.001f) - 90.0f;
+        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.004f) - 90.0f;
     } else {
         wave_angle_deg = azimuth;
     }
