@@ -80,7 +80,7 @@ public:
         // Covariance update: P = (I - K * H) * P
         P = (Matrix6f::Identity() - K * H) * P;
 
-        // ===== Projection Step =====
+        // Projection step
         projectState();
         projectCovariance();
     }
