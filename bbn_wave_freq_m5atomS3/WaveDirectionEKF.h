@@ -47,7 +47,7 @@ public:
         Q_(2, 2) = 1e-4f;  // Higher noise for phase
         
         // Configure measurement noise
-        R_ = Matrix2f::Identity() * 1e-2f;
+        R_ = Matrix2f::Identity() * 0.09f;
     }
 
     void predict(float t, float omega, float dt) {
