@@ -239,22 +239,13 @@ void read_and_processIMU_data() {
     float wave_height = min_max_h.max.value - min_max_h.min.value;
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
-    // Wave direction KF steps
-    float omega = freq_adj * 2 * M_PI;
-    wave_dir_kf.update(t, omega, accel_rotated.x * g_std, accel_rotated.y * g_std);
-    auto wave_dir_state = wave_dir_kf.getState();  // get all values of state vector
-    float wave_dir_deg = wave_dir_kf.getAtanBA() * 180 / M_PI;
-
+    // Wave direction steps
     float azimuth = azimuth_deg(accel_rotated.y, accel_rotated.x); 
     if (wave_angle_deg != WRONG_ANGLE_MARKER) {
-        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.01f) - 90.0f;
+        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.001f) - 90.0f;
     } else {
         wave_angle_deg = azimuth;
     }
-
-    wave_dir_ekf.predict(t, omega, delta_t);
-    wave_dir_ekf.update(t, omega, accel_rotated.x * g_std, accel_rotated.y * g_std);
-    float wave_dir_alt_deg = wave_dir_ekf.getAtanBA() * 180 / M_PI;
 
     int serial_report_period_micros = 125000;
     if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
@@ -295,13 +286,7 @@ void read_and_processIMU_data() {
           //Serial.printf(",period_decisec:%.4f", period * 10);
           //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
           //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
-          Serial.printf(",wave_dir_deg:%.2f", wave_dir_deg);
-          Serial.printf(",wave_dir_alt_deg:%.2f", wave_dir_alt_deg);
           Serial.printf(",wave_dir_est_deg:%.2f", wave_angle_deg);
-          //Serial.printf(",φ:%.4f", wave_dir_kf.getPhase() * 180 / M_PI);
-          //Serial.printf(",φ_alt:%.4f", wave_dir_ekf.getPhase() * 180 / M_PI);
-          //Serial.printf(",a_amp_horiz:%.4f", wave_dir_kf.getAmplitude());
-          //Serial.printf(",a_amp_alt_horiz:%.4f", wave_dir_ekf.getAmplitude());
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
