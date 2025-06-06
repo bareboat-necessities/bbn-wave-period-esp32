@@ -92,6 +92,14 @@ float t = 0.0;
 float heave_avg = 0.0;
 float wave_length = 0.0;
 
+float azimuth_deg(float a, float b) {
+  if (b < 0) {
+    a = -a;
+    b = -b;
+  }
+  return atan2(a, b) * 180 / M_PI;
+}
+
 void initialize_filters() {
   if (useFrequencyTracker == Aranovskiy) {
     init_filters(&arParams, &arState, &kalman_freq);
