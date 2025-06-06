@@ -251,7 +251,7 @@ void read_and_processIMU_data() {
 
     float azimuth = azimuth_deg(accel_rotated.y, accel_rotated.x); 
     if (wave_angle_deg != WRONG_ANGLE_MARKER) {
-        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.01f);
+        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.01f) - 90.0f;
     } else {
         wave_angle_deg = azimuth;
     }
@@ -302,10 +302,10 @@ void read_and_processIMU_data() {
           Serial.printf(",wave_dir_deg:%.2f", wave_dir_deg);
           Serial.printf(",wave_dir_alt_deg:%.2f", wave_dir_alt_deg);
           Serial.printf(",wave_dir_est_deg:%.2f", wave_angle_deg);
-          Serial.printf(",φ:%.4f", wave_dir_kf.getPhase() * 180 / M_PI);
-          Serial.printf(",φ_alt:%.4f", wave_dir_ekf.getPhase() * 180 / M_PI);
-          Serial.printf(",a_amp_horiz:%.4f", wave_dir_kf.getAmplitude());
-          Serial.printf(",a_amp_alt_horiz:%.4f", wave_dir_ekf.getAmplitude());
+          //Serial.printf(",φ:%.4f", wave_dir_kf.getPhase() * 180 / M_PI);
+          //Serial.printf(",φ_alt:%.4f", wave_dir_ekf.getPhase() * 180 / M_PI);
+          //Serial.printf(",a_amp_horiz:%.4f", wave_dir_kf.getAmplitude());
+          //Serial.printf(",a_amp_alt_horiz:%.4f", wave_dir_ekf.getAmplitude());
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
