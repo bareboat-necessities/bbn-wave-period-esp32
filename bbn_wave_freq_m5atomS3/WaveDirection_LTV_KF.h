@@ -94,6 +94,18 @@ public:
     // atan2(I_y, I_x)
     float getAtanAB() const { return atan2(x_hat(1), x_hat(0)); }
 
+    // Get phase estimate
+    float getPhase() const { 
+        float I_x = x_hat(0), Q_x = x_hat(2);
+        return atan(-Q_x, I_x);
+    }
+
+    // Get amplitude estimate
+    float getAmplitude() const { 
+        float I_x = x_hat(0), Q_x = x_hat(2);
+        return sqrtf(I_x * I_x + Q_x * Q_x);
+    }
+
 private:
     // State: [I_x, I_y, Q_x, Q_y, b_x, b_y]
     Vector6f x_hat;
