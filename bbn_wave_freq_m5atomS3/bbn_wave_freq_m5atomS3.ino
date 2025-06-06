@@ -232,7 +232,8 @@ void read_and_processIMU_data() {
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
     // Wave direction KF steps
-    wave_dir_kf.update(t, freq_adj * 2 * M_PI, accel_rotated.x * g_std, accel_rotated.y * g_std);
+    float omega = freq_adj * 2 * M_PI;
+    wave_dir_kf.update(t, omega, accel_rotated.x * g_std, accel_rotated.y * g_std);
     auto wave_dir_state = wave_dir_kf.getState();  // get all values of state vector
     float wave_dir_deg = wave_dir_kf.getAtanAB() * 180 / M_PI;
 
