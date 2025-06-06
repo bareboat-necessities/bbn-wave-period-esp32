@@ -12,166 +12,158 @@
   True x, y accelerations without bias and noise are harmonic and have same phase. Phase is unknown and estimated by the filter.
   Frequency is considered known and is a parameter on each step.
 
-  See details in:  https://github.com/bareboat-necessities/bbn-wave-period-esp32/issues/30#issuecomment-2931856187
+  See details in:  https://github.com/bareboat-necessities/bbn-wave-period-esp32/issues/32
 
 */
 
 #include <ArduinoEigenDense.h>  // Eigen for matrix operations
 
-// Define matrix types for 5 states and 2 measurements
-using Vector5f = Eigen::Matrix<float, 5, 1>;
-using Vector2f = Eigen::Matrix<float, 2, 1>;
+// Type shortcuts
 using Matrix5f = Eigen::Matrix<float, 5, 5>;
+using Vector5f = Eigen::Matrix<float, 5, 1>;
 using Matrix2f = Eigen::Matrix<float, 2, 2>;
-using Matrix25f = Eigen::Matrix<float, 2, 5>;
-using Matrix52f = Eigen::Matrix<float, 5, 2>;
+using Vector2f = Eigen::Matrix<float, 2, 1>;
+using Matrix2x5f = Eigen::Matrix<float, 2, 5>;
 
 class WaveDirectionEKF {
-public:
-    // Constructor
-    WaveDirectionEKF(float omega, const Vector5f& initial_state, 
-                     const Matrix5f& initial_covariance, 
-                     const Matrix5f& process_noise, 
-                     const Matrix2f& measurement_noise)
-        : omega_(omega), state_(initial_state), P_(initial_covariance),
-          Q_(process_noise), R_(measurement_noise) {}
-
-    // Prediction step
-    void predict() {
-        P_ += Q_;  // Simplified: F = identity matrix
-    }
-
-    // Update step
-    void update(float t, float omega, float x_meas, float y_meas) {
-        omega_ = omega;
-
-        // Extract states
-        float A = state_(0), B = state_(1), phi = state_(2), 
-              bx = state_(3), by = state_(4);
-        
-        // Compute argument and trig functions
-        float arg = omega_ * t + phi;
-        float sin_arg = sin(arg);
-        float cos_arg = cos(arg);
-        
-        // Predicted measurements
-        Vector2f z_pred;
-        z_pred << A * sin_arg + bx, 
-                  B * sin_arg + by;
-        
-        // Measurement residual
-        Vector2f z;
-        z << x_meas, y_meas;
-        Vector2f residual = z - z_pred;
-        
-        // Jacobian matrix H (2x5)
-        Matrix25f H;
-        H << sin_arg, 0, A * cos_arg, 1, 0,
-             0, sin_arg, B * cos_arg, 0, 1;
-        
-        // Kalman gain calculation
-        Matrix2f S = H * P_ * H.transpose() + R_;
-        Matrix52f K = P_ * H.transpose() * S.inverse();
-        
-        // State and covariance update
-        state_ += K * residual;
-        P_ -= K * H * P_;
-        
-        // Phase wrapping to [-π, π]
-        float& phi_adj = state_(2);
-        phi_adj = std::fmod(phi_adj, 2 * M_PI);
-        if (phi_adj < -M_PI) {
-            phi_adj += 2 * M_PI;
-        } else if (phi_adj > M_PI) {
-            phi_adj -= 2 * M_PI;
-        }
-    }
-
-    // Get estimated state
-    Vector5f getState() const { return state_; }
-
-    // Compute θ = atan2(A, B)
-    float getTheta() const {
-        return atan2(state_(0), state_(1));
-    }
-
 private:
-    float omega_;    // Known angular frequency
-    Vector5f state_; // [A, B, φ, b_x, b_y]
-    Matrix5f P_;     // Covariance matrix
-    Matrix5f Q_;     // Process noise covariance
-    Matrix2f R_;     // Measurement noise covariance
+    // State vector: [log(a), b, phi, bias_x, bias_y]
+    Vector5f z_hat_;
+    Matrix5f P_;          // Covariance matrix
+    Matrix5f Q_;          // Process noise
+    Matrix2f R_;          // Measurement noise
+
+public:
+    // Constructor (no longer needs omega and dt)
+    WaveDirectionEKF(float a_init, float b_init, float phi_init,
+                    float bias_x_init, float bias_y_init)
+    {
+        // Initialize state
+        z_hat_ << logf(a_init), b_init, phi_init, bias_x_init, bias_y_init;
+        
+        // Initialize covariance
+        P_ = Matrix5f::Identity() * 1e-3f;
+        
+        // Configure process noise
+        Q_ = Matrix5f::Identity() * 1e-6f;
+        Q_(2, 2) = 1e-4f;  // Higher noise for phase
+        
+        // Configure measurement noise
+        R_ = Matrix2f::Identity() * 1e-2f;
+    }
+
+    // Prediction step now takes omega and dt as parameters
+    void predict(float omega, float dt) {
+        // State transition matrix (identity for constant states)
+        Matrix5f F = Matrix5f::Identity();
+        
+        // Predict state (phase integrates omega)
+        z_hat_(2) += omega * dt;
+        
+        // Predict covariance
+        P_ = F * P_ * F.transpose() + Q_;
+    }
+
+    // Update step now takes omega as parameter
+    void update(float x_measured, float y_measured, float t, float omega) {
+        // Extract current state
+        const float log_a = z_hat_(0);
+        const float b = z_hat_(1);
+        const float phi = z_hat_(2);
+        const float bias_x = z_hat_(3);
+        const float bias_y = z_hat_(4);
+        
+        // Compute trigonometric terms
+        const float theta = omega * t + phi;
+        const float sin_theta = sinf(theta);
+        const float cos_theta = cosf(theta);
+        
+        // Compute predicted measurements
+        const float a = expf(log_a);
+        Vector2f y_pred;
+        y_pred << a * sin_theta + bias_x,
+                  b * sin_theta + bias_y;
+        
+        // Measurement Jacobian
+        Matrix2x5f H;
+        H << a * sin_theta, 0, a * cos_theta, 1, 0,
+             0, sin_theta, b * cos_theta, 0, 1;
+        
+        // Actual measurements
+        Vector2f y_meas;
+        y_meas << x_measured, y_measured;
+        
+        // Innovation (measurement residual)
+        Vector2f error = y_meas - y_pred;
+        
+        // Kalman gain
+        Matrix2f S = H * P_ * H.transpose() + R_;
+        Matrix2x5f K = P_ * H.transpose() * S.inverse();
+        
+        // Update state and covariance
+        z_hat_ += K * error;
+        P_ = (Matrix5f::Identity() - K * H) * P_;
+        
+        // Normalize phase to [-π, π]
+        z_hat_(2) = atan2f(sinf(z_hat_(2)), cosf(z_hat_(2)));
+    }
+
+    // Get current estimates
+    float getAmplitudeRatio() const {
+        const float a = expf(z_hat_(0));
+        const float b = z_hat_(1);
+        return (fabsf(b) > 1e-6f) ? a / b : 0.0f;
+    }
+    
+    float getA() const { return expf(z_hat_(0)); }
+    float getB() const { return z_hat_(1); }
+    float getPhase() const { return z_hat_(2); }
+    float getBiasX() const { return z_hat_(3); }
+    float getBiasY() const { return z_hat_(4); }
+
+    // Configuration methods
+    void setProcessNoise(float log_a_noise, float b_noise, float phi_noise,
+                        float bias_x_noise, float bias_y_noise) {
+        Q_.diagonal() << log_a_noise, b_noise, phi_noise,
+                        bias_x_noise, bias_y_noise;
+    }
+    
+    void setMeasurementNoise(float x_noise, float y_noise) {
+        R_.diagonal() << x_noise, y_noise;
+    }
 };
 
-/*
-  
 // Example usage
-void setup() {
-    Serial.begin(9600);
-    delay(1000);  // Wait for serial monitor
+WaveDirectionEKF ekf(1.0f, 1.0f, 0.0f, 0.0f, 0.0f);
 
-    // Known angular frequency
-    const float wave_dir_omega = 2 * M_PI * 0.3f; // 0.3 Hz
-
-    Vector5f wave_dir_initial_state(1.0f, 1.0f, 0.0f, 0.0f, 0.0f); // Initial state: [A, B, φ, b_x, b_y]
-    
-    Matrix5f wave_dir_initial_covariance = [] {
-      Matrix5f tmp = Matrix5f::Identity() * 100.0f; // Initial covariance (high uncertainty)
-      tmp(2, 2) = 4 * M_PI * M_PI;  // Large phase uncertainty 
-      return tmp;
-    }(); // Initial covariance
-    
-    Matrix5f wave_dir_Q = [] {
-      Matrix5f tmp = Matrix5f::Identity() * 1e-6f;
-      tmp(2, 2) = 0.0001 * M_PI * M_PI;
-      return tmp;
-    }(); // Process noise covariance (small values)
-    
-    Matrix2f wave_dir_R = [] {
-      Matrix2f tmp;
-      tmp << 0.09f, 0.0f,   // σ_x^2 = 0.09 (std dev 0.3)
-             0.0f,  0.09f;  // σ_y^2 = 0.09
-      return tmp;
-    }(); // Measurement noise covariance
-    
-    WaveDirectionEKF wave_dir_ekf(wave_dir_omega, wave_dir_initial_state, wave_dir_initial_covariance, wave_dir_Q, wave_dir_R);  // Initialize wave direction EKF
-
-    // Simulate measurements
-    const float true_A = 1.0f, true_B = 1.5f, true_phi = 0.5f;
-    const float true_bx = 0.1f, true_by = -0.2f;
-    const int num_steps = 5000;
-    const float dt = 0.004f;  // Time step (4ms)
-
-    for (int i = 0; i < num_steps; ++i) {
-        float t = i * dt;
-        
-        // Generate true signals
-        float arg = wave_dir_omega * t + true_phi;
-        float x_true = true_A * sin(arg);
-        float y_true = true_B * sin(arg);
-        
-        // Add noise (simulated measurements)
-        float x_meas = x_true + 0.1f * (rand() % 100 - 50) / 50.0f + true_bx;
-        float y_meas = y_true + 0.1f * (rand() % 100 - 50) / 50.0f + true_by;
-        
-        // EKF steps
-        wave_dir_ekf.predict();
-        wave_dir_ekf.update(t, wave_dir_omega + 0.001f * (rand() % 100 - 50) / 50.0f, x_meas, y_meas);
-        
-        // Periodically log results
-        if (i % 100 == 0) {
-            Vector5f state = wave_dir_ekf.getState();
-            Serial.print("t: "); Serial.print(t, 3);
-            Serial.print(" | A: "); Serial.print(state(0), 3);
-            Serial.print(" | B: "); Serial.print(state(1), 3);
-            Serial.print(" | φ: "); Serial.print(state(2), 3);
-            Serial.print(" | θ: "); Serial.print(wave_dir_ekf.getTheta(), 3);
-            Serial.print(" | b_x: "); Serial.print(state(3), 3);
-            Serial.print(" | b_y: "); Serial.println(state(4), 3);
-        }
-    }
+void test_WaveDirectionEKF_setup() {
+    Serial.begin(115200);
+    // Optional noise tuning
+    ekf.setProcessNoise(1e-6f, 1e-6f, 1e-4f, 1e-6f, 1e-6f);
+    ekf.setMeasurementNoise(1e-2f, 1e-2f);
 }
 
-void loop() {}  // Empty loop
-
-*/
+void test_WaveDirectionEKF_loop() {
+    static float t = 0.0f;
+    const float omega = 2*M_PI*1.0f;  // 1 Hz signal
+    const float dt = 0.01f;           // 10 ms sampling
+    
+    // Simulated measurements
+    float x = 1.5f * sinf(omega*t + 0.1f) + 0.2f + 0.01f * random(-100, 100)/100.0f;
+    float y = 0.8f * sinf(omega*t + 0.1f) - 0.3f + 0.01f * random(-100, 100)/100.0f;
+    
+    // EKF steps with parameters passed in
+    ekf.predict(omega, dt);
+    ekf.update(x, y, t, omega);
+    
+    // Output results
+    Serial.print("Ratio a/b: ");
+    Serial.print(ekf.getAmplitudeRatio());
+    Serial.print(" | A: ");
+    Serial.print(ekf.getA());
+    Serial.print(" | B: ");
+    Serial.println(ekf.getB());
+    
+    t += dt;
+    delay(dt * 1000);
+}
