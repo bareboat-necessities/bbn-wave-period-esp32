@@ -100,10 +100,23 @@ public:
         return atan2(-Q_x, I_x);
     }
 
+    // Get X amplitude estimate
+    float getA() const { 
+        float I_x = x_hat(0), Q_x = x_hat(2);
+        return sqrtf(I_x * I_x + Q_x * Q_x);
+    }
+
+    // Get Y amplitude estimate
+    float getA() const { 
+        float I_y = x_hat(1), Q_y = x_hat(3);
+        return sqrtf(I_y * I_y + Q_y * Q_y);
+    }
+
     // Get amplitude estimate
     float getAmplitude() const { 
         float I_x = x_hat(0), Q_x = x_hat(2);
-        return sqrtf(I_x * I_x + Q_x * Q_x);
+        float I_y = x_hat(1), Q_y = x_hat(3);
+        return sqrtf(I_x * I_x + Q_x * Q_x + I_y * I_y + Q_y * Q_y);
     }
 
     float getBiasX() const { return x_hat(4); }
