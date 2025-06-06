@@ -282,7 +282,8 @@ void read_and_processIMU_data() {
           //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
           //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
           //Serial.printf(",wave_dir_deg:%.2f", wave_dir_deg);
-          //Serial.printf(",φ:%.4f", wave_dir_state(2) * 180 / M_PI);
+          //Serial.printf(",wave_dir_alt_deg:%.2f", wave_dir_alt_deg);
+          //Serial.printf(",φ:%.4f", wave_dir_alt_state(2) * 180 / M_PI);
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
