@@ -122,7 +122,7 @@ public:
     float getPhase() const { return z_hat_(2); }
     float getBiasX() const { return z_hat_(3); }
     float getBiasY() const { return z_hat_(4); }
-    float getAtanAB() const { return atan2(getA(), getB()); }  // Compute θ = atan2(A, B)
+    float getAtanBA() const { return atan2(getB(), getA()); }  // Compute θ = atan2(B, A)
 
     float getAmplitude() const { 
         float A = getA(), B = getB();
