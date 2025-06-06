@@ -251,9 +251,9 @@ void read_and_processIMU_data() {
 
     float azimuth = azimuth_deg(accel_rotated.y, accel_rotated.x); 
     if (wave_angle_deg != WRONG_ANGLE_MARKER) {
-        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth_deg + 90.0f, 0.01f);
+        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.01f);
     } else {
-        wave_angle_deg = azimuth_deg;
+        wave_angle_deg = azimuth;
     }
 
     wave_dir_ekf.predict(t, omega, delta_t);
