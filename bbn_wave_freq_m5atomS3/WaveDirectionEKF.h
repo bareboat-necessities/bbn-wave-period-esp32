@@ -113,12 +113,11 @@ public:
         
         // Normalize phase to [-π, π]
         float& phi_adj = z_hat_(2);
-        phi_adj = std::fmod(phi_adj, 2 * M_PI);
-        if (phi_adj < -M_PI) {
+        phi_adj = std::fmod(phi_adj + M_PI, 2 * M_PI);
+        if (phi_adj < 0) {
             phi_adj += 2 * M_PI;
-        } else if (phi_adj > M_PI) {
-            phi_adj -= 2 * M_PI;
         }
+        phi_adj -= M_PI;
     }
 
     float getA() const { return expf(z_hat_(0)); }
