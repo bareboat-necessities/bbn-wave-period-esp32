@@ -49,12 +49,18 @@ public:
         R_ = Matrix2f::Identity() * 1e-2f;
     }
 
-    void predict(float omega, float dt) {
+    void predict(float t, float omega, float dt) {
         // State transition matrix (identity for constant states)
         Matrix5f F = Matrix5f::Identity();
-        
-        // Predict state (phase integrates omega)
-        z_hat_(2) += omega * dt;
+
+        if (t < 0.0) {
+            // Predict state (phase integrates omega)
+            z_hat_(2) += omega * dt;
+        } else {
+            // Use spot frequency
+            const float phi = z_hat_(2);
+            z_hat_(2) = omega * t + phi;
+        }
         
         // Predict covariance
         P_ = F * P_ * F.transpose() + Q_;
@@ -149,7 +155,7 @@ void test_WaveDirectionEKF_loop() {
     float y = 0.8f * sinf(omega*t + 0.1f) - 0.3f + 0.01f * random(-100, 100)/100.0f;
     
     // EKF steps with parameters passed in
-    ekf.predict(omega, dt);
+    ekf.predict(-1.0, omega, dt);
     ekf.update(t, omega, x, y);
     
     // Output results
