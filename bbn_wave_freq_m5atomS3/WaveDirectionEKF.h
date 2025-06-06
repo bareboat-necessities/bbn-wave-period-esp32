@@ -24,6 +24,7 @@ using Vector5f = Eigen::Matrix<float, 5, 1>;
 using Matrix2f = Eigen::Matrix<float, 2, 2>;
 using Vector2f = Eigen::Matrix<float, 2, 1>;
 using Matrix2x5f = Eigen::Matrix<float, 2, 5>;
+using Matrix5x2f = Eigen::Matrix<float, 5, 2>;
 
 class WaveDirectionEKF {
 private:
@@ -100,7 +101,7 @@ public:
         
         // Kalman gain
         Matrix2f S = H * P_ * H.transpose() + R_;
-        Matrix2x5f K = P_ * H.transpose() * S.inverse();
+        Matrix5x2f K = P_ * H.transpose() * S.inverse();
         
         // Update state and covariance
         z_hat_ += K * error;
