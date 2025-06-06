@@ -38,6 +38,7 @@ public:
                      float bias_x_init, float bias_y_init) {
         // Initialize state
         z_hat_ << logf(a_init), b_init, phi_init, bias_x_init, bias_y_init;
+        z_hat_(2) = wrapAngle(z_hat_(2));
         
         // Initialize covariance
         P_ = Matrix5f::Identity() * 100.0f;  // High uncertainty
@@ -66,7 +67,7 @@ public:
             const float phi = z_hat_(2);
             z_hat_(2) = omega * t + phi;
         }
-       z_hat_(2) = wrapAngle(z_hat_(2));
+        z_hat_(2) = wrapAngle(z_hat_(2));
         
         // Predict covariance
         P_ = F * P_ * F.transpose() + Q_;
