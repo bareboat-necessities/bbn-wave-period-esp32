@@ -80,7 +80,7 @@ MinMaxLemire min_max_h;
 KalmanWaveState waveState;
 KalmanWaveAltState waveAltState;
 
-#define WRONG_ANGLE_MARKER (-360.0f);
+#define WRONG_ANGLE_MARKER -360.0f;
 
 // Wave direction
 WaveDirection_LTV_KF wave_dir_kf;
