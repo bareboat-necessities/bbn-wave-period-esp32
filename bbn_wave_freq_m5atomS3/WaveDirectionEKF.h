@@ -173,7 +173,7 @@ void test_WaveDirectionEKF_loop() {
     
     // Output results
     Serial.print("atanAB: ");
-    Serial.print(ekf.getAtanAB());
+    Serial.print(ekf.getAtanBA());
     Serial.print(" | A: ");
     Serial.print(ekf.getA());
     Serial.print(" | B: ");
