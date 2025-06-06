@@ -81,7 +81,7 @@ KalmanWaveAltState waveAltState;
 
 // Wave direction
 WaveDirection_LTV_KF wave_dir_kf;
-WaveDirectionEKF wave_dir_ekf;
+WaveDirectionEKF wave_dir_ekf(1.0f, -1.0f, 0.0f, 0.0f, 0.0f);
 
 const char* imu_name;
 
