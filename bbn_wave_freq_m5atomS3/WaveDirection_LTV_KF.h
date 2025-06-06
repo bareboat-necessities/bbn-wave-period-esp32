@@ -18,6 +18,9 @@
 
 #include <ArduinoEigenDense.h>  // Eigen for matrix operations
 
+// Type shortcuts
+using Matrix6f = Eigen::Matrix<float, 6, 6>;
+
 class WaveDirection_LTV_KF {
 public:
     // Constructor
@@ -25,9 +28,9 @@ public:
 
     // Initialize the filter
     void init(
-        const Eigen::Matrix<float, 6, 6>& Q,  // Process noise
+        const Matrix6f& Q,  // Process noise
         const Eigen::Matrix<float, 2, 2>& R,  // Measurement noise
-        const Eigen::Matrix<float, 6, 6>& P0  // Initial covariance
+        const Matrix6f& P0  // Initial covariance
     );
 
     // Update the filter with new measurements
@@ -42,7 +45,7 @@ public:
     const Eigen::Vector<float, 6>& getState() const { return x_hat; }
 
     // Get the current covariance
-    const Eigen::Matrix<float, 6, 6>& getCovariance() const { return P; }
+    const Matrix6f& getCovariance() const { return P; }
 
     // atan2(I_y, I_x)
     float getTheta() const { return atan2(x_hat(1), x_hat(0)); }
@@ -52,10 +55,10 @@ private:
     Eigen::Vector<float, 6> x_hat;
 
     // Covariance matrix
-    Eigen::Matrix<float, 6, 6> P;
+    Matrix6f P;
 
     // Process noise covariance
-    Eigen::Matrix<float, 6, 6> Q;
+    Matrix6f Q;
 
     // Measurement noise covariance
     Eigen::Matrix<float, 2, 2> R;
@@ -76,9 +79,9 @@ WaveDirection_LTV_KF::WaveDirection_LTV_KF() {
 }
 
 void WaveDirection_LTV_KF::init(
-    const Eigen::Matrix<float, 6, 6>& Q_init,
+    const Matrix6f& Q_init,
     const Eigen::Matrix<float, 2, 2>& R_init,
-    const Eigen::Matrix<float, 6, 6>& P0
+    const Matrix6f& P0
 ) {
     Q = Q_init;
     R = R_init;
@@ -113,7 +116,7 @@ void WaveDirection_LTV_KF::update(float t, float omega, float x_meas, float y_me
     x_hat += K * y;
 
     // Covariance update: P = (I - K * H) * P
-    P = (Eigen::Matrix<float, 6, 6>::Identity() - K * H) * P;
+    P = (Matrix6f::Identity() - K * H) * P;
 
     // ===== Projection Step =====
     projectState();
@@ -155,6 +158,6 @@ void WaveDirection_LTV_KF::projectCovariance() {
     Eigen::Matrix<float, 6, 1> K_c = P * G.transpose() / GPGt;
 
     // Project covariance: P = (I - K_c * G) * P * (I - K_c * G)^T
-    Eigen::Matrix<float, 6, 6> I = Eigen::Matrix<float, 6, 6>::Identity();
+    Matrix6f I = Matrix6f::Identity();
     P = (I - K_c * G) * P * (I - K_c * G).transpose();
 }
