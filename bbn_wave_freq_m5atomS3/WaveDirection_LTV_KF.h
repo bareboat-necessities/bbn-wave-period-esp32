@@ -23,6 +23,7 @@ using Matrix6f = Eigen::Matrix<float, 6, 6>;
 using Matrix2f = Eigen::Matrix<float, 2, 2>;
 using Vector6f = Eigen::Matrix<float, 6, 1>;
 using Vector2f = Eigen::Matrix<float, 2, 1>;
+using Matrix1x6f = Eigen::Matrix<float, 1, 6>;
 using Matrix2x6f = Eigen::Matrix<float, 2, 6>;
 using Matrix6x2f = Eigen::Matrix<float, 6, 2>;
 
@@ -136,7 +137,7 @@ void WaveDirection_LTV_KF::projectState() {
     float r = I_y * Q_x - I_x * Q_y;
 
     // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
-    Eigen::Matrix<float, 1, 6> G;
+    Matrix1x6f G;
     G << -Q_y, Q_x, I_y, -I_x, 0, 0;
 
     // Project state: x_hat -= (G^T * r) / (G * G^T)
@@ -150,7 +151,7 @@ void WaveDirection_LTV_KF::projectCovariance() {
     float Q_x = x_hat(2), Q_y = x_hat(3);
 
     // Gradient of constraint: G = [ -Q_y, Q_x, I_y, -I_x, 0, 0 ]
-    Eigen::Matrix<float, 1, 6> G;
+    Matrix1x6f G;
     G << -Q_y, Q_x, I_y, -I_x, 0, 0;
 
     // Compute scalar denominator (G * P * G^T)
