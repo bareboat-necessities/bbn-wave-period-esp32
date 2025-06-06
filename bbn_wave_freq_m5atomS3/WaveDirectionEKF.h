@@ -49,7 +49,6 @@ public:
         R_ = Matrix2f::Identity() * 1e-2f;
     }
 
-    // Prediction step now takes omega and dt as parameters
     void predict(float omega, float dt) {
         // State transition matrix (identity for constant states)
         Matrix5f F = Matrix5f::Identity();
