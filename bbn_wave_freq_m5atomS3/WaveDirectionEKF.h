@@ -27,8 +27,7 @@ using Matrix2x5f = Eigen::Matrix<float, 2, 5>;
 
 class WaveDirectionEKF {
 private:
-    // State vector: [log(a), b, phi, bias_x, bias_y]
-    Vector5f z_hat_;
+    Vector5f z_hat_;      // State vector: [log(a), b, phi, bias_x, bias_y]
     Matrix5f P_;          // Covariance matrix
     Matrix5f Q_;          // Process noise
     Matrix2f R_;          // Measurement noise
@@ -105,21 +104,21 @@ public:
         P_ = (Matrix5f::Identity() - K * H) * P_;
         
         // Normalize phase to [-π, π]
-        z_hat_(2) = atan2f(sinf(z_hat_(2)), cosf(z_hat_(2)));
+        float& phi_adj = z_hat_(2);
+        phi_adj = std::fmod(phi_adj, 2 * M_PI);
+        if (phi_adj < -M_PI) {
+            phi_adj += 2 * M_PI;
+        } else if (phi_adj > M_PI) {
+            phi_adj -= 2 * M_PI;
+        }
     }
 
-    // Get current estimates
-    float getAmplitudeRatio() const {
-        const float a = expf(z_hat_(0));
-        const float b = z_hat_(1);
-        return (fabsf(b) > 1e-6f) ? a / b : 0.0f;
-    }
-    
     float getA() const { return expf(z_hat_(0)); }
     float getB() const { return z_hat_(1); }
     float getPhase() const { return z_hat_(2); }
     float getBiasX() const { return z_hat_(3); }
     float getBiasY() const { return z_hat_(4); }
+    float getTheta() const { return atan2(getA(), getB()); }  // Compute θ = atan2(A, B)
 
     // Configuration methods
     void setProcessNoise(float log_a_noise, float b_noise, float phi_noise,
