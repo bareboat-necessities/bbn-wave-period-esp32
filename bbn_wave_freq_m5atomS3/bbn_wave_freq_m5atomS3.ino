@@ -44,8 +44,6 @@
 #include "FourthOrderLowPass.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
-#include "WaveDirectionEKF.h"
-#include "WaveDirection_LTV_KF.h"
 #include "WaveFilters.h"
 #include "M5_Calibr.h"
 
@@ -83,8 +81,6 @@ KalmanWaveAltState waveAltState;
 #define WRONG_ANGLE_MARKER -360.0f
 
 // Wave direction
-WaveDirection_LTV_KF wave_dir_kf;
-WaveDirectionEKF wave_dir_ekf(1.0f, -1.0f, 0.0f, 0.0f, 0.0f);
 float wave_angle_deg = WRONG_ANGLE_MARKER;
 
 const char* imu_name;
@@ -382,16 +378,6 @@ void setup(void) {
   }
 
   initialize_filters();
-  
-  Matrix6f wave_dir_Q = Matrix6f::Identity() * 1e-4f;    // Process noise
-  Matrix2f wave_dir_R = Matrix2f::Identity() * 0.09f;    // Measurement noise
-  Matrix6f wave_dir_P0 = Matrix6f::Identity() * 100.0f;  // Initial covariance
-  wave_dir_P0(4, 4) = 1.0f;
-  wave_dir_P0(5, 5) = 1.0f;
-  wave_dir_kf.init(wave_dir_Q, wave_dir_R, wave_dir_P0);
-
-  wave_dir_ekf.setProcessNoise(1e-6f, 1e-6f, 1e-2f * 4 * M_PI * M_PI, 1e-6f, 1e-6f);
-  wave_dir_ekf.setMeasurementNoise(0.09f, 0.09f);
 
   start_time = micros();
   last_update = start_time;
