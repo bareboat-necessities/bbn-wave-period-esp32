@@ -21,6 +21,7 @@
 // Type shortcuts
 using Matrix6f = Eigen::Matrix<float, 6, 6>;
 using Matrix2f = Eigen::Matrix<float, 2, 2>;
+using Matrix2x6f = Eigen::Matrix<float, 2, 6>;
 
 class WaveDirection_LTV_KF {
 public:
@@ -95,7 +96,7 @@ void WaveDirection_LTV_KF::update(float t, float omega, float x_meas, float y_me
     float cos_wt = cos(omega * t);
     float sin_wt = sin(omega * t);
 
-    Eigen::Matrix<float, 2, 6> H;
+    Matrix2x6f H;
     H << cos_wt, 0, -sin_wt, 0, 1, 0,
          0, cos_wt, 0, -sin_wt, 0, 1;
 
