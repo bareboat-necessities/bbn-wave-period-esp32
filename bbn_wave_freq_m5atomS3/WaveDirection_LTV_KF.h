@@ -22,6 +22,7 @@
 using Matrix6f = Eigen::Matrix<float, 6, 6>;
 using Matrix2f = Eigen::Matrix<float, 2, 2>;
 using Vector6f = Eigen::Matrix<float, 6, 1>;
+using Vector2f = Eigen::Matrix<float, 2, 1>;
 using Matrix2x6f = Eigen::Matrix<float, 2, 6>;
 using Matrix6x2f = Eigen::Matrix<float, 6, 2>;
 
@@ -103,12 +104,12 @@ void WaveDirection_LTV_KF::update(float t, float omega, float x_meas, float y_me
          0, cos_wt, 0, -sin_wt, 0, 1;
 
     // Measurement vector
-    Eigen::Vector<float, 2> z;
+    Vector2f z;
     z << x_meas, y_meas;
 
     // ===== Kalman Filter Update =====
     // Innovation: z - H * x_hat
-    Eigen::Vector<float, 2> y = z - H * x_hat;
+    Vector2f y = z - H * x_hat;
 
     // Innovation covariance: S = H * P * H^T + R
     Matrix2f S = H * P * H.transpose() + R;
