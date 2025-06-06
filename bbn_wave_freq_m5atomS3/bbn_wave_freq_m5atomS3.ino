@@ -269,8 +269,8 @@ void read_and_processIMU_data() {
           //Serial.printf(",a_band_passed:%0.4f", g_std * a_band_passed);
           //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
           //Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
-          Serial.printf(",heave_cm:%.4f", heave * 100);
-          Serial.printf(",heave_alt:%.4f", heaveAlt * 100);
+          //Serial.printf(",heave_cm:%.4f", heave * 100);
+          //Serial.printf(",heave_alt:%.4f", heaveAlt * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
           //Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",h_cm:%.4f", h * 100);
@@ -281,9 +281,10 @@ void read_and_processIMU_data() {
           //Serial.printf(",period_decisec:%.4f", period * 10);
           //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
           //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
-          //Serial.printf(",wave_dir_deg:%.2f", wave_dir_deg);
-          //Serial.printf(",wave_dir_alt_deg:%.2f", wave_dir_alt_deg);
-          //Serial.printf(",φ:%.4f", wave_dir_alt_state(2) * 180 / M_PI);
+          Serial.printf(",wave_dir_deg:%.2f", wave_dir_deg);
+          Serial.printf(",wave_dir_alt_deg:%.2f", wave_dir_alt_deg);
+          //Serial.printf(",φ:%.4f", ???phase);
+          Serial.printf(",φ_alt:%.4f", wave_dir_alt_state(2) * 180 / M_PI);
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
