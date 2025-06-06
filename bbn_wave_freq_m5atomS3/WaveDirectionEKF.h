@@ -128,6 +128,11 @@ public:
     float getBiasY() const { return z_hat_(4); }
     float getAtanAB() const { return atan2(getA(), getB()); }  // Compute θ = atan2(A, B)
 
+    float getAmplitude() const { 
+        float A = getA(), B = getB();
+        return sqrtf(A * A + B * B);
+    }
+
     // Configuration methods
     void setProcessNoise(float log_a_noise, float b_noise, float phi_noise,
                         float bias_x_noise, float bias_y_noise) {
