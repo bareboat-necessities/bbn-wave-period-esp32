@@ -27,6 +27,7 @@
 
 #include <M5Unified.h>
 #include <Arduino.h>
+#include "AngleAveraging.h"
 #include "AranovskiyFilter.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "KalmANF.h"
