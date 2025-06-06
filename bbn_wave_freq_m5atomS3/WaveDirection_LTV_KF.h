@@ -92,7 +92,7 @@ public:
     const Matrix6f& getCovariance() const { return P; }
 
     // atan2(I_y, I_x)
-    float getAtanAB() const { return atan2(x_hat(1), x_hat(0)); }
+    float getAtanBA() const { return atan2(x_hat(1), x_hat(0)); }
 
     // Get phase estimate
     float getPhase() const { 
