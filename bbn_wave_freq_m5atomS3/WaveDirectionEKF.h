@@ -48,7 +48,7 @@ public:
         
         // Configure process noise
         Q_ = Matrix5f::Identity() * 1e-6f;
-        Q_(2, 2) = 1e-4f;  // Higher noise for phase
+        Q_(2, 2) = 1e-4f * M_PI * M_PI;  // Higher noise for phase
         
         // Configure measurement noise
         R_ = Matrix2f::Identity() * 0.09f;
