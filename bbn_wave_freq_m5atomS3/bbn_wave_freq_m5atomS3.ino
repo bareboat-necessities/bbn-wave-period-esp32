@@ -248,9 +248,9 @@ void read_and_processIMU_data() {
     }
 
     // other wave parameters
-    double wavelength = trochoid_wavelength(2.0 * PI * freq_adj);
-    double wave_number = trochoid_wavenumber(wavelength);
-    double wave_speed = trochoid_wave_speed(wave_number);
+    float wavelength = trochoid_wavelength(2.0 * PI * freq_adj);
+    float wave_number = trochoid_wavenumber(wavelength);
+    float wave_speed = trochoid_wave_speed(wave_number);
 
     int serial_report_period_micros = 125000;
     if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
@@ -291,7 +291,9 @@ void read_and_processIMU_data() {
           //Serial.printf(",period_decisec:%.4f", period * 10);
           //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
           //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
-          Serial.printf(",wave_dir_est_deg:%.2f", wave_angle_deg);
+          Serial.printf(",wave_speed:%.2f", wave_speed);
+          Serial.printf(",wavelength:%.2f", wavelength);
+          //Serial.printf(",wave_dir_est_deg:%.2f", wave_angle_deg);
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
