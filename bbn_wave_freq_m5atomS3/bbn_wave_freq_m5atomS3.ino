@@ -242,15 +242,16 @@ void read_and_processIMU_data() {
     // Wave direction steps
     float azimuth = azimuth_deg(accel_rotated.y, accel_rotated.x); 
     if (wave_angle_deg != WRONG_ANGLE_MARKER) {
-        wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.004f) - 90.0f;
+      wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.004f) - 90.0f;
     } else {
-        wave_angle_deg = azimuth;
+      wave_angle_deg = azimuth;
     }
 
-    // other wave parameters
-    float wavelength = trochoid_wavelength(2.0 * PI * freq_adj);
-    float wave_number = trochoid_wavenumber(wavelength);
-    float wave_speed = trochoid_wave_speed(wave_number);
+    // other wave parameters (these are not real, they are from observer point of view / apparent)
+    // real values would require knowing boat speed, direction and adjustments for Doppler effect
+    float ap_wavelength = trochoid_wavelength(2.0 * PI * freq_adj);
+    float ap_wave_number = trochoid_wavenumber(ap_wavelength);
+    float ap_wave_speed = trochoid_wave_speed(ap_wave_number);
 
     int serial_report_period_micros = 125000;
     if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
@@ -291,9 +292,9 @@ void read_and_processIMU_data() {
           //Serial.printf(",period_decisec:%.4f", period * 10);
           //Serial.printf(",accel abs:%0.4f", g_std * sqrt(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
           //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
-          Serial.printf(",wave_speed:%.2f", wave_speed);
-          Serial.printf(",wavelength:%.2f", wavelength);
-          //Serial.printf(",wave_dir_est_deg:%.2f", wave_angle_deg);
+          Serial.printf(",ap_wave_speed:%.2f", ap_wave_speed);
+          Serial.printf(",ap_wavelength:%.2f", ap_wavelength);
+          //Serial.printf(",ap_wave_dir_est_deg:%.2f", wave_angle_deg);
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
