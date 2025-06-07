@@ -94,6 +94,30 @@
     Transducer name:
       SRT - sample rate
 
+  Wave length (from observer point of view):
+    Transducer type: G 
+    Unit of measurement: M (Meters)
+    Transducer name:
+      AP_WAVE_LENGTH - wave length
+
+  Wave period (from observer point of view):
+    Transducer type: G
+    Unit of measurement: empty (seconds)
+    Transducer name:
+      AP_WAVE_PERIOD - wave period
+      
+  Wave direction (from observer point of view):
+    Transducer type: A
+    Unit of measurement: D (degrees)
+    Transducer name:
+      AP_WAVE_DIR - wave direction
+
+  Wave speed (from observer point of view):
+    Transducer type: G
+    Unit of measurement: empty (m/s)
+    Transducer name:
+      AP_WAVE_SPEED - wave speed  
+
   Examples:
 
   Accel:
