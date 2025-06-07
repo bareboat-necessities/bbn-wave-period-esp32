@@ -247,6 +247,11 @@ void read_and_processIMU_data() {
         wave_angle_deg = azimuth;
     }
 
+    // other wave parameters
+    double wavelength = trochoid_wavelength(2.0 * PI * freq_adj);
+    double wave_number = trochoid_wavenumber(wavelength);
+    double wave_speed = trochoid_wave_speed(wave_number);
+
     int serial_report_period_micros = 125000;
     if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
       if (produce_serial_data) {
