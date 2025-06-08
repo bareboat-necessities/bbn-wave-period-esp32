@@ -1,7 +1,5 @@
 #pragma once
 
-#include <ArduinoEigenDense.h>
-
 /*
 
   Kalman filter which estimates vector direction from X and Y components
@@ -30,27 +28,24 @@ public:
     }
 
     void update(float x, float y) {
-        // Since we're estimating a scalar (angle), we need to handle the H matrix properly
-        float H_x = -sin(theta);  // Partial derivative of x measurement
-        float H_y = cos(theta);   // Partial derivative of y measurement
+        // Normalize measurements to unit vector
+        float meas_mag = sqrt(x*x + y*y);
+        float nx = x/meas_mag;
+        float ny = y/meas_mag;
         
-        // Residuals
-        float y_x = x - cos(theta);
-        float y_y = y - sin(theta);
+        // Measurement prediction
+        float pred_x = cos(theta);
+        float pred_y = sin(theta);
         
-        // Innovation covariance (scalar)
-        float S = (H_x * P * H_x) + (H_y * P * H_y) + R;
+        // Angle difference (innovation)
+        float delta_theta = atan2(nx*pred_y - ny*pred_x, nx*pred_x + ny*pred_y);
         
-        // Kalman gain (scalar for our 1D state)
-        float K = P * (H_x + H_y) / S;
+        // Simplified Kalman update
+        float K = P / (P + R);
+        theta += K * delta_theta;
+        P *= (1 - K);
         
-        // State update
-        theta += K * (y_x * H_x + y_y * H_y);
-        
-        // Covariance update (Joseph form for stability)
-        P = (1 - K * (H_x + H_y)) * P;
-        
-        // Normalize angle to [-π, π]
+        // Normalize angle
         theta = atan2(sin(theta), cos(theta));
     }
 
