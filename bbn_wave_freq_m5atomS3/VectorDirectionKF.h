@@ -15,9 +15,9 @@ private:
 
 public:
     VectorDirectionKF(float initial_angle = 0.0f, 
-                     float initial_uncertainty = 1.0f,
-                     float process_noise = 0.01f,
-                     float measurement_noise = 1.0f) :
+                      float initial_uncertainty = 1.0f,
+                      float process_noise = 0.01f,
+                      float measurement_noise = 1.0f) :
         theta(initial_angle),
         P(initial_uncertainty),
         Q(process_noise),
