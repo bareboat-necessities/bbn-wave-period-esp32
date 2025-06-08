@@ -11,74 +11,49 @@
 class VectorDirectionKF {
 private:
     float theta;    // Estimated angle (radians)
-    float P;        // Estimation error variance
+    float P;        // Estimation error variance (scalar)
     float Q;        // Process noise variance
     float R;        // Measurement noise variance
 
 public:
-    // Constructor
     VectorDirectionKF(float initial_angle = 0.0f, 
-                      float initial_uncertainty = 1.0f,
-                      float process_noise = 0.01f,
-                      float measurement_noise = 1.0f) :
+                     float initial_uncertainty = 1.0f,
+                     float process_noise = 0.01f,
+                     float measurement_noise = 1.0f) :
         theta(initial_angle),
         P(initial_uncertainty),
         Q(process_noise),
-        R(measurement_noise) {
-    }
+        R(measurement_noise) {}
 
-    // Prediction step
     void predict() {
-        P += Q;  // Uncertainty grows with process noise
+        P += Q;
     }
 
-    // Update step with x,y measurements
     void update(float x, float y) {
-        // Compute expected measurements
-        float h_x = cos(theta);
-        float h_y = sin(theta);
+        // Since we're estimating a scalar (angle), we need to handle the H matrix properly
+        float H_x = -sin(theta);  // Partial derivative of x measurement
+        float H_y = cos(theta);   // Partial derivative of y measurement
         
-        // Measurement residuals
-        float y_x = x - h_x;
-        float y_y = y - h_y;
+        // Residuals
+        float y_x = x - cos(theta);
+        float y_y = y - sin(theta);
         
-        // Linearized measurement matrix H
-        Eigen::Matrix<float, 1, 2> H;
-        H << -sin(theta), cos(theta);
+        // Innovation covariance (scalar)
+        float S = (H_x * P * H_x) + (H_y * P * H_y) + R;
         
-        // Residual covariance (scalar in this case)
-        float S = (H * P * H.transpose())(0) + R;
+        // Kalman gain (scalar for our 1D state)
+        float K = P * (H_x + H_y) / S;
         
-        // Kalman gain (2x1 matrix)
-        Eigen::Matrix<float, 2, 1> K = (P * H.transpose()) / S;
+        // State update
+        theta += K * (y_x * H_x + y_y * H_y);
         
-        // Update state estimate
-        theta += (K(0) * y_x + K(1) * y_y);
+        // Covariance update (Joseph form for stability)
+        P = (1 - K * (H_x + H_y)) * P;
         
-        // Update estimate uncertainty
-        P = (Eigen::Matrix<float, 1, 1>::Identity() - (K.transpose() * H)) * P;
-        
-        // Normalize angle to [-π, π]
+        // Angle wrapping
         theta = atan2(sin(theta), cos(theta));
     }
 
-    // Get current estimate in radians
-    float getAngle() const {
-        return theta;
-    }
-
-    // Get current estimate in degrees
-    float getAngleDegrees() const {
-        return theta * 180.0f / M_PI;
-    }
-
-    // Set process noise (affects smoothing)
-    void setProcessNoise(float q) {
-        Q = q;
-    }
-
-    // Set measurement noise (affects smoothing)
-    void setMeasurementNoise(float r) {
-        R = r;
-    }
+    float getAngle() const { return theta; }
+    float getAngleDegrees() const { return theta * 180.0f / M_PI; }
 };
