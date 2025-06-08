@@ -83,6 +83,7 @@ KalmanWaveAltState waveAltState;
 
 // Wave direction
 float wave_angle_deg = WRONG_ANGLE_MARKER;
+VectorDirectionKF wave_dir_kf;
 
 const char* imu_name;
 
