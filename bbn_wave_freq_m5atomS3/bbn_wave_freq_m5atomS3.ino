@@ -254,7 +254,7 @@ void read_and_processIMU_data() {
     float wave_angle_deg_alt = wave_dir_kf.getAngleDegrees(); // -180, 180
     if (wave_angle_deg_alt < -90.0f) {
       wave_angle_deg_alt = 180.0f + wave_angle_deg_alt;
-    } else if (wave_angle_deg_alt > 90.0f {
+    } else if (wave_angle_deg_alt > 90.0f) {
       wave_angle_deg_alt = wave_angle_deg_alt - 180.0f;
     }
 
