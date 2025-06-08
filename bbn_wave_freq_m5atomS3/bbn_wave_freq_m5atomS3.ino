@@ -44,6 +44,7 @@
 #include "FourthOrderLowPass.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
+#include "VectorDirectionKF.h"
 #include "WaveFilters.h"
 #include "M5_Calibr.h"
 
