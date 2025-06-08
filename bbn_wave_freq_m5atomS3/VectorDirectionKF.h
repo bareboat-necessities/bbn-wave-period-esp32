@@ -50,10 +50,20 @@ public:
         // Covariance update (Joseph form for stability)
         P = (1 - K * (H_x + H_y)) * P;
         
-        // Angle wrapping
+        // Normalize angle to [-π, π]
         theta = atan2(sin(theta), cos(theta));
     }
 
     float getAngle() const { return theta; }
     float getAngleDegrees() const { return theta * 180.0f / M_PI; }
+
+    // Set process noise (affects smoothing)
+    void setProcessNoise(float q) {
+        Q = q;
+    }
+
+    // Set measurement noise (affects smoothing)
+    void setMeasurementNoise(float r) {
+        R = r;
+    }
 };
