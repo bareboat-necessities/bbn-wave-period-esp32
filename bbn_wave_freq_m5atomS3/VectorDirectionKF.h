@@ -56,7 +56,7 @@ public:
         theta += (K(0) * y_x + K(1) * y_y);
         
         // Update estimate uncertainty
-        P = (Eigen::Matrix<float, 1, 1>::Identity() - (K.transpose() * H)(0)) * P;
+        P = (Eigen::Matrix<float, 1, 1>::Identity() - (K.transpose() * H)) * P;
         
         // Normalize angle to [-π, π]
         theta = atan2(sin(theta), cos(theta));
