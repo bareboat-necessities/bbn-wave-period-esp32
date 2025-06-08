@@ -251,7 +251,12 @@ void read_and_processIMU_data() {
     wave_dir_kf.predict();
     wave_dir_kf.update(accel_rotated.x < 0 ? -accel_rotated.y * g_std : accel_rotated.y * g_std, 
                        accel_rotated.x < 0 ? -accel_rotated.x * g_std : accel_rotated.x * g_std);
-    float wave_angle_deg_alt = wave_dir_kf.getAngleDegrees();
+    float wave_angle_deg_alt = wave_dir_kf.getAngleDegrees(); // -180, 180
+    if (wave_angle_deg_alt < -90.0f) {
+      wave_angle_deg_alt = 180.0f + wave_angle_deg_alt;
+    } else if (wave_angle_deg_alt > 90.0f {
+      wave_angle_deg_alt = wave_angle_deg_alt - 180.0f;
+    }
 
     // other wave parameters (these are not real, they are from observer point of view / apparent)
     // real values would require knowing boat speed, direction and adjustments for Doppler effect
