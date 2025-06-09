@@ -87,6 +87,10 @@ public:
         P[1][1] = fmaxf(P[1][1], 0.000001f);
     }
 
+    void setAngleNoise(float noise) { Q_angle = noise; }
+    void setRateNoise(float noise) { Q_rate = noise; }
+    void setMeasNoise(float noise) { R_measure = noise; }
+
     float getAngle() const { return theta; }
     float getAngleDeg() const { return theta * 57.2957795f; }
     float getRate() const { return theta_rate; }
