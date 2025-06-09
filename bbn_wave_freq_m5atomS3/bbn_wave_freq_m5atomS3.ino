@@ -388,8 +388,9 @@ void setup(void) {
 
   initialize_filters();
   
-  wave_dir_kf.setProcessNoise(0.0001f);
-  wave_dir_kf.setMeasurementNoise(0.09f);
+  wave_dir_kf.setAngleNoise(1e-2f);
+  wave_dir_kf.setRateNoise(5e-4f);
+  wave_dir_kf.setMeasNoise(0.1f);
 
   start_time = micros();
   last_update = start_time;
