@@ -249,8 +249,8 @@ void read_and_processIMU_data() {
       wave_angle_deg = azimuth;
     }
     wave_dir_kf.predict();
-    wave_dir_kf.update(accel_rotated.x < 0 ? -accel_rotated.y * g_std : accel_rotated.y * g_std, 
-                       accel_rotated.x < 0 ? -accel_rotated.x * g_std : accel_rotated.x * g_std);
+    wave_dir_kf.update(accel_rotated.x < 0 ? -accel_rotated.y : accel_rotated.y, 
+                       accel_rotated.x < 0 ? -accel_rotated.x : accel_rotated.x);
     float wave_angle_deg_alt = wave_dir_kf.getAngleDeg(); // -180, 180
     if (wave_angle_deg_alt < -90.0f) {
       wave_angle_deg_alt = 180.0f + wave_angle_deg_alt;
