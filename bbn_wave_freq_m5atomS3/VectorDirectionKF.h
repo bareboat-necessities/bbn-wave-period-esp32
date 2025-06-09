@@ -46,10 +46,10 @@ public:
         theta += constrain(theta_rate, -MAX_RATE, MAX_RATE) * dt;
         
         // Covariance prediction (prevent collapse)
-        P[0][0] += dt * (dt*P[1][1] + P[0][1] + P[1][0] + fmaxf(Q_angle, 0.00001f));
+        P[0][0] += dt * (dt*P[1][1] + P[0][1] + P[1][0] + fmaxf(Q_angle, 0.000001f));
         P[0][1] += dt * P[1][1];
         P[1][0] += dt * P[1][1];
-        P[1][1] += dt * fmaxf(Q_rate, 0.00001f);
+        P[1][1] += dt * fmaxf(Q_rate, 0.000001f);
         
         // Normalize angle to [-π, π]
         theta = atan2(sin(theta), cos(theta));
@@ -63,7 +63,7 @@ public:
         float angle_diff = atan2(sin(meas_angle - theta), cos(meas_angle - theta));
         
         // Prevent covariance collapse
-        float S = fmaxf(P[0][0] + R_measure, 0.00001f);
+        float S = fmaxf(P[0][0] + R_measure, 0.000001f);
         
         // Kalman gain
         float K[2];
@@ -83,8 +83,8 @@ public:
         P[1][1] = -K[1] * P01 + P[1][1];
         
         // Force minimum covariance
-        P[0][0] = fmaxf(P[0][0], 0.001f);
-        P[1][1] = fmaxf(P[1][1], 0.001f);
+        P[0][0] = fmaxf(P[0][0], 0.000001f);
+        P[1][1] = fmaxf(P[1][1], 0.000001f);
     }
 
     float getAngle() const { return theta; }
