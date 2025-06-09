@@ -16,6 +16,7 @@ private:
     float Q_angle;      // Process noise - angle
     float Q_rate;       // Process noise - rate
     float R_measure;    // Measurement noise
+    const float MAX_RATE = 3.14159f * 2; // 2π rad/s max rotation
 
 public:
     VectorDirectionKF(float initial_angle = 0.0f,
@@ -27,37 +28,30 @@ public:
         Q_angle(angle_noise),
         Q_rate(rate_noise),
         R_measure(meas_noise) {
-        // Initialize covariance matrix
-        P[0][0] = 0;
+        reset(initial_angle);
+    }
+
+    void reset(float angle = 0.0f) {
+        theta = angle;
+        theta_rate = 0;
+        // Initialize with reasonable uncertainty
+        P[0][0] = 1.0f;
         P[0][1] = 0;
         P[1][0] = 0;
-        P[1][1] = 0;
+        P[1][1] = 1.0f;
     }
 
-    // Noise parameter setters
-    void setAngleNoise(float noise) { Q_angle = noise; }
-    void setRateNoise(float noise) { Q_rate = noise; }
-    void setMeasNoise(float noise) { R_measure = noise; }
-
-    // Reset the filter
-    void reset(float angle = 0.0f, float rate = 0.0f) {
-        theta = angle;
-        theta_rate = rate;
-        P[0][0] = P[0][1] = P[1][0] = P[1][1] = 0;
-    }
-
-    // Prediction with explicit time step
     void predict(float dt) {
-        // State prediction
-        theta += theta_rate * dt;
+        // State prediction with rate limiting
+        theta += constrain(theta_rate, -MAX_RATE, MAX_RATE) * dt;
         
-        // Covariance prediction
-        P[0][0] += dt * (dt*P[1][1] + P[0][1] + P[1][0] + Q_angle);
+        // Covariance prediction (prevent collapse)
+        P[0][0] += dt * (dt*P[1][1] + P[0][1] + P[1][0] + fmaxf(Q_angle, 0.00001f));
         P[0][1] += dt * P[1][1];
         P[1][0] += dt * P[1][1];
-        P[1][1] += dt * Q_rate;
+        P[1][1] += dt * fmaxf(Q_rate, 0.00001f);
         
-        // Normalize angle
+        // Normalize angle to [-π, π]
         theta = atan2(sin(theta), cos(theta));
     }
 
@@ -65,36 +59,40 @@ public:
         // Convert measurement to angle
         float meas_angle = atan2(y, x);
         
-        // Calculate angle difference (handles wrap-around)
+        // Calculate smallest angle difference
         float angle_diff = atan2(sin(meas_angle - theta), cos(meas_angle - theta));
         
-        // Innovation covariance
-        float S = P[0][0] + R_measure;
+        // Prevent covariance collapse
+        float S = fmaxf(P[0][0] + R_measure, 0.00001f);
         
         // Kalman gain
         float K[2];
         K[0] = P[0][0] / S;
         K[1] = P[1][0] / S;
         
-        // State update
+        // State update with rate limiting
         theta += K[0] * angle_diff;
-        theta_rate += K[1] * angle_diff;
+        theta_rate = constrain(theta_rate + K[1] * angle_diff, -MAX_RATE, MAX_RATE);
         
-        // Covariance update
-        float P00_temp = P[0][0];
-        float P01_temp = P[0][1];
+        // Joseph-form covariance update (more stable)
+        float P00 = P[0][0];
+        float P01 = P[0][1];
+        P[0][0] = (1 - K[0]) * P00;
+        P[0][1] = (1 - K[0]) * P01;
+        P[1][0] = -K[1] * P00 + P[1][0];
+        P[1][1] = -K[1] * P01 + P[1][1];
         
-        P[0][0] -= K[0] * P00_temp;
-        P[0][1] -= K[0] * P01_temp;
-        P[1][0] -= K[1] * P00_temp;
-        P[1][1] -= K[1] * P01_temp;
-        
-        // Normalize angle
-        theta = atan2(sin(theta), cos(theta));
+        // Force minimum covariance
+        P[0][0] = fmaxf(P[0][0], 0.001f);
+        P[1][1] = fmaxf(P[1][1], 0.001f);
     }
 
-    // Getters
     float getAngle() const { return theta; }
-    float getAngleDeg() const { return theta * 57.2957795f; }  // 180/π
+    float getAngleDeg() const { return theta * 57.2957795f; }
     float getRate() const { return theta_rate; }
+    
+    // Utility function
+    float constrain(float value, float min, float max) {
+        return (value < min) ? min : (value > max) ? max : value;
+    }
 };
