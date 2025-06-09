@@ -44,7 +44,6 @@
 #include "FourthOrderLowPass.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
-#include "VectorDirectionKF.h"
 #include "WaveFilters.h"
 #include "M5_Calibr.h"
 
@@ -83,7 +82,6 @@ KalmanWaveAltState waveAltState;
 
 // Wave direction
 float wave_angle_deg = WRONG_ANGLE_MARKER;
-VectorDirectionKF wave_dir_kf;
 
 const char* imu_name;
 
@@ -248,13 +246,6 @@ void read_and_processIMU_data() {
     } else {
       wave_angle_deg = azimuth;
     }
-    wave_dir_kf.predict(delta_t);
-    wave_dir_kf.update(accel_rotated.y < 0 ? -accel_rotated.x : accel_rotated.x, 
-                       accel_rotated.y < 0 ? -accel_rotated.y : accel_rotated.y);
-    float wave_angle_deg_alt = wave_dir_kf.getAngleDeg(); // -180, 180
-    if (wave_angle_deg_alt < 0.0f) {
-      wave_angle_deg_alt = 180.0f + wave_angle_deg_alt;
-    }
 
     // other wave parameters (these are not real, they are from observer point of view / apparent)
     // real values would require knowing boat speed, direction and adjustments for Doppler effect
@@ -308,7 +299,6 @@ void read_and_processIMU_data() {
           //Serial.printf(",ap_wave_speed:%.2f", ap_wave_speed);
           //Serial.printf(",ap_wavelength:%.2f", ap_wavelength);
           Serial.printf(",ap_wave_dir_est_deg:%.2f", wave_angle_deg);
-          Serial.printf(",ap_wave_dir_est_alt_deg:%.2f", wave_angle_deg_alt);
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
@@ -385,8 +375,6 @@ void setup(void) {
   }
 
   initialize_filters();
-  
-  wave_dir_kf.setNoises(1e-4f, 1e-6f, 0.09f, 100.0f); // Q_theta, Q_omega, R_angle, R_omega
 
   start_time = micros();
   last_update = start_time;
