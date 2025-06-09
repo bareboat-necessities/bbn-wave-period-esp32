@@ -94,7 +94,7 @@ float t = 0.0;
 float heave_avg = 0.0;
 float wave_length = 0.0;
 
-float azimuth_deg(float a, float b) {
+float azimuth_deg_180(float a, float b) {
   if (b < 0) {
     a = -a;
     b = -b;
@@ -242,20 +242,18 @@ void read_and_processIMU_data() {
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
     // Wave direction steps
-    float azimuth = azimuth_deg(accel_rotated.y, accel_rotated.x); 
+    float azimuth = azimuth_deg_180(accel_rotated.x, accel_rotated.y); 
     if (wave_angle_deg != WRONG_ANGLE_MARKER) {
-      wave_angle_deg = low_pass_angle_average_180(wave_angle_deg + 90.0f, azimuth + 90.0f, 0.004f) - 90.0f;
+      wave_angle_deg = low_pass_angle_average_180(wave_angle_deg, azimuth, 0.004f);
     } else {
       wave_angle_deg = azimuth;
     }
     wave_dir_kf.predict(delta_t);
-    wave_dir_kf.update(accel_rotated.x < 0 ? -accel_rotated.x : accel_rotated.x, 
-                       accel_rotated.x < 0 ? -accel_rotated.y : accel_rotated.y);
+    wave_dir_kf.update(accel_rotated.y < 0 ? -accel_rotated.x : accel_rotated.x, 
+                       accel_rotated.y < 0 ? -accel_rotated.y : accel_rotated.y);
     float wave_angle_deg_alt = wave_dir_kf.getAngleDeg(); // -180, 180
-    if (wave_angle_deg_alt < -90.0f) {
+    if (wave_angle_deg_alt < 0.0f) {
       wave_angle_deg_alt = 180.0f + wave_angle_deg_alt;
-    } else if (wave_angle_deg_alt > 90.0f) {
-      wave_angle_deg_alt = wave_angle_deg_alt - 180.0f;
     }
 
     // other wave parameters (these are not real, they are from observer point of view / apparent)
