@@ -23,7 +23,7 @@ private:
     
     // Constraints
     const float MAX_OMEGA = 6.2832f; // 2π rad/s max
-    const float MIN_COV = 1e-8f;
+    const float MIN_COV = 1e-6f;
 
 public:
     VectorDirectionKF(float initial_angle = 0.0f,
@@ -78,6 +78,8 @@ public:
         // Angle update
         float angle_diff = atan2(meas_sin, meas_cos) - atan2(sin_theta, cos_theta);
         angle_diff = atan2(sin(angle_diff), cos(angle_diff));  // Normalize to [-π, π]
+
+        angle_diff = constraint(angle_diff, -0.8f, 0.8f);
         
         // Combined measurement vector [angle_diff; 0] (pseudo-measurement)
         float y_vec[2] = {angle_diff, -omega}; // omega pseudo-measurement
