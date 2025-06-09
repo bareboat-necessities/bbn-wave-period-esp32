@@ -248,7 +248,7 @@ void read_and_processIMU_data() {
     } else {
       wave_angle_deg = azimuth;
     }
-    wave_dir_kf.predict(delta_t);
+    wave_dir_kf.predict();
     wave_dir_kf.update(accel_rotated.x < 0 ? -accel_rotated.y * g_std : accel_rotated.y * g_std, 
                        accel_rotated.x < 0 ? -accel_rotated.x * g_std : accel_rotated.x * g_std);
     float wave_angle_deg_alt = wave_dir_kf.getAngleDeg(); // -180, 180
@@ -388,9 +388,8 @@ void setup(void) {
 
   initialize_filters();
   
-  wave_dir_kf.setAngleNoise(1e-2f);
-  wave_dir_kf.setRateNoise(5e-4f);
-  wave_dir_kf.setMeasNoise(0.1f);
+  wave_dir_kf.setProcessNoise(1e-4f);
+  wave_dir_kf.setMeasurementNoise(0.01f);
 
   start_time = micros();
   last_update = start_time;
