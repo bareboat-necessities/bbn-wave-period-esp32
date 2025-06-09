@@ -388,7 +388,7 @@ void setup(void) {
 
   initialize_filters();
   
-  wave_dir_kf.setNoises(0.0001f, 0.01f, 5.0f, 20.0f); // Q_theta, Q_omega, R_angle, R_omega
+  wave_dir_kf.setNoises(1e-5f, 1e-6f, 0.09f, 0.01f); // Q_theta, Q_omega, R_angle, R_omega
 
   start_time = micros();
   last_update = start_time;
