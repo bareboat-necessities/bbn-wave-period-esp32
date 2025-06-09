@@ -30,7 +30,7 @@ public:
                       float theta_noise = 1e-4f,
                       float omega_noise = 1e-6f,
                       float angle_meas_noise = 0.09f,
-                      float omega_meas_noise = 1.0f) {
+                      float omega_meas_noise = 100.0f) {
         reset(initial_angle);
         setNoises(theta_noise, omega_noise, angle_meas_noise, omega_meas_noise);
     }
