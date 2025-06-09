@@ -25,7 +25,7 @@ private:
     
     // Constraints
     const float MAX_OMEGA = 6.2832f; // 2π rad/s (1 full rotation per second)
-    const float MIN_COV = 1e-6f;     // Minimum covariance
+    const float MIN_COV = 1e-8f;     // Minimum covariance
 
 public:
     VectorDirectionKF(float initial_angle = 0.0f,
@@ -76,7 +76,7 @@ public:
     void update(float x, float y) {
         // Normalize measurement
         float mag = sqrt(x*x + y*y);
-        if (mag < 1e-6f) return;
+        if (mag < 1e-7f) return;
         float meas_sin = y/mag;
         float meas_cos = x/mag;
         
@@ -95,7 +95,7 @@ public:
         sin_theta = sin(new_theta);
         cos_theta = cos(new_theta);
         
-        omega = constrain(omega + K[1] * angle_diff, -MAX_OMEGA, MAX_OMEGA);
+        omega = constraint(omega + K[1] * angle_diff, -MAX_OMEGA, MAX_OMEGA);
         
         // Covariance update (Joseph form)
         float P00 = P[0][0];
@@ -118,7 +118,7 @@ public:
     float getOmegaDeg() const { return omega * 57.2958f; }
 
 private:
-    float constrain(float val, float min, float max) {
+    float constraint(float val, float min, float max) {
         return val < min ? min : (val > max ? max : val);
     }
 };
