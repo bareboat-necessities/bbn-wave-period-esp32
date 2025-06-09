@@ -27,7 +27,7 @@ private:
 
 public:
     VectorDirectionKF(float initial_angle = 0.0f,
-                      float theta_noise = 1e-5f,
+                      float theta_noise = 1e-4f,
                       float omega_noise = 1e-6f,
                       float angle_meas_noise = 0.09f,
                       float omega_meas_noise = 0.01f) {
@@ -76,10 +76,8 @@ public:
         float meas_cos = x/mag;
         
         // Angle update
-        float angle_diff = atan2(
-            meas_sin*cos_theta - meas_cos*sin_theta,
-            meas_cos*cos_theta + meas_sin*sin_theta
-        );
+        float angle_diff = atan2(meas_sin, meas_cos) - atan2(sin_theta, cos_theta);
+        angle_diff = atan2(sin(angle_diff), cos(angle_diff));  // Normalize to [-π, π]
         
         // Combined measurement vector [angle_diff; 0] (pseudo-measurement)
         float y_vec[2] = {angle_diff, -omega}; // omega pseudo-measurement
