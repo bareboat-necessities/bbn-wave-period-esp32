@@ -26,7 +26,8 @@ public:
                       float process_noise = 0.01f,
                       float meas_noise = 0.1f) {
         reset(initial_angle);
-        setNoises(process_noise, meas_noise);
+        setProcessNoise(process_noise);
+        setMeasurementNoise(meas_noise);
     }
 
     // Reset filter with new angle
