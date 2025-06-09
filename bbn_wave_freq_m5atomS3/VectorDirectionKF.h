@@ -8,7 +8,7 @@
 
 #include <math.h>
 
-class DynamicAngleKF {
+class VectorDirectionKF {
 private:
     float theta;        // Estimated angle (radians)
     float theta_rate;   // Angular velocity (rad/s)
@@ -18,10 +18,10 @@ private:
     float R_measure;    // Measurement noise
 
 public:
-    DynamicAngleKF(float initial_angle = 0.0f,
-                 float angle_noise = 0.001f,
-                 float rate_noise = 0.003f,
-                 float meas_noise = 0.03f) :
+    VectorDirectionKF(float initial_angle = 0.0f,
+                      float angle_noise = 0.001f,
+                      float rate_noise = 0.003f,
+                      float meas_noise = 0.03f) :
         theta(initial_angle),
         theta_rate(0),
         Q_angle(angle_noise),
@@ -97,5 +97,4 @@ public:
     float getAngle() const { return theta; }
     float getAngleDeg() const { return theta * 57.2957795f; }  // 180/π
     float getRate() const { return theta_rate; }
-
 };
