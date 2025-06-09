@@ -43,7 +43,7 @@ public:
 
     void predict(float dt) {
         // State prediction with rate limiting
-        theta += constrain(theta_rate, -MAX_RATE, MAX_RATE) * dt;
+        theta += constraint(theta_rate, -MAX_RATE, MAX_RATE) * dt;
         
         // Covariance prediction (prevent collapse)
         P[0][0] += dt * (dt*P[1][1] + P[0][1] + P[1][0] + fmaxf(Q_angle, 0.000001f));
@@ -72,7 +72,7 @@ public:
         
         // State update with rate limiting
         theta += K[0] * angle_diff;
-        theta_rate = constrain(theta_rate + K[1] * angle_diff, -MAX_RATE, MAX_RATE);
+        theta_rate = constraint(theta_rate + K[1] * angle_diff, -MAX_RATE, MAX_RATE);
         
         // Joseph-form covariance update (more stable)
         float P00 = P[0][0];
@@ -96,7 +96,7 @@ public:
     float getRate() const { return theta_rate; }
     
     // Utility function
-    float constrain(float value, float min, float max) {
+    float constraint(float value, float min, float max) {
         return (value < min) ? min : (value > max) ? max : value;
     }
 };
