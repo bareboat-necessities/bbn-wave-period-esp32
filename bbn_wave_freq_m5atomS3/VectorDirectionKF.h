@@ -23,14 +23,14 @@ private:
     
     // Constraints
     const float MAX_OMEGA = 6.2832f; // 2π rad/s max
-    const float MIN_COV = 1e-6f;
+    const float MIN_COV = 1e-8f;
 
 public:
     VectorDirectionKF(float initial_angle = 0.0f,
-                      float theta_noise = 0.01f,
-                      float omega_noise = 0.1f,
-                      float angle_meas_noise = 0.1f,
-                      float omega_meas_noise = 0.5f) {
+                      float theta_noise = 1e-5f,
+                      float omega_noise = 1e-6f,
+                      float angle_meas_noise = 0.09f,
+                      float omega_meas_noise = 0.01f) {
         reset(initial_angle);
         setNoises(theta_noise, omega_noise, angle_meas_noise, omega_meas_noise);
     }
@@ -71,7 +71,7 @@ public:
     void update(float x, float y, bool use_omega_pseudo = true) {
         // Normalize measurement
         float mag = sqrt(x*x + y*y);
-        if (mag < 1e-6f) return;
+        if (mag < 1e-9f) return;
         float meas_sin = y/mag;
         float meas_cos = x/mag;
         
