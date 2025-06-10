@@ -198,7 +198,10 @@ private:
         // Bierman-Thornton UD update
         for (int j = 4; j >= 0; --j) {
             for (int i = 0; i <= j; ++i) {
-                float sigma = FU.row(i).head(j+1).dot(new_D.head(j+1).cwiseProduct(FU.row(j).head(j+1)));
+                float sigma = 0.0f;
+                for (int k = 0; k <= j; ++k) {
+                    sigma += FU(i,k) * new_D(k) * FU(j,k);
+                }
                 if (i < j) {
                     new_U(i,j) = sigma / new_D(j);
                 } else {
