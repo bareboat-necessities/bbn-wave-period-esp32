@@ -177,20 +177,6 @@ private:
         const float kT = k_hat * T;
         const float kT2 = k_hat * T2;
 
-        F << 1.0f,    T,    0.5f*T2,    (1.0f/6.0f)*T3,    -(1.0f/6.0f)*T3,
-             0.0f,    1.0f,    T,        0.5f*T2,          -0.5f*T2,
-             0.0f,    0.0f,    1.0f,     T,                -T,
-             0.0f,    k_hat,   kT,       0.5f*kT2,         -0.5f*kT2,
-             0.0f,    0.0f,    0.0f,     0.0f,             1.0f;
-    }
-
-    void updateStateTransition(float k_hat, float delta_t) {
-        const float T = delta_t;
-        const float T2 = T * T;
-        const float T3 = T2 * T;
-        const float kT = k_hat * T;
-        const float kT2 = k_hat * T2;
-
         // clang-format off
         F << 1.0f,    T,    0.5f*T2,    (1.0f/6.0f)*T3,    -(1.0f/6.0f)*T3,
              0.0f,    1.0f,    T,        0.5f*T2,          -0.5f*T2,
