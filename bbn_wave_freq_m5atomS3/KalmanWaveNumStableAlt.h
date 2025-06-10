@@ -96,13 +96,6 @@ public:
         float vert_speed = 0.0f;
         float vert_accel = 0.0f;
         float accel_bias = 0.0f;
-        
-        void print() const {
-            Serial.print("Heave: "); Serial.print(heave, 4);
-            Serial.print("m, Speed: "); Serial.print(vert_speed, 4);
-            Serial.print("m/s, Accel: "); Serial.print(vert_accel, 4);
-            Serial.println("m/s²");
-        }
     };
 
     KalmanWaveNumStableAlt(float q0 = 1e+1f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 5.0f, float q4 = 1e-5f) {
