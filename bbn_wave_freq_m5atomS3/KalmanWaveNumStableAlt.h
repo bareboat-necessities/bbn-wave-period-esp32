@@ -137,11 +137,11 @@ public:
 
     State getState() const {
         State s;
-        s.displacement_integral = x(0),
-        s.heave = x(1),
-        s.vert_speed = x(2),
-        s.vert_accel = x(3),
-        s.accel_bias = x(4),
+        s.displacement_integral = x(0);
+        s.heave = x(1);
+        s.vert_speed = x(2);
+        s.vert_accel = x(3);
+        s.accel_bias = x(4);
         return s;
     }
 
