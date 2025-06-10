@@ -136,13 +136,13 @@ public:
     }
 
     State getState() const {
-        return State {
-            .displacement_integral = x(0),
-            .heave = x(1),
-            .vert_speed = x(2),
-            .vert_accel = x(3),
-            .accel_bias = x(4),
-        };
+        State s;
+        s.displacement_integral = x(0),
+        s.heave = x(1),
+        s.vert_speed = x(2),
+        s.vert_accel = x(3),
+        s.accel_bias = x(4),
+        return s;
     }
 
 private:
