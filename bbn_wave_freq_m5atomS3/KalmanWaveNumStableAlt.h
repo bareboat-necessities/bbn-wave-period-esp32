@@ -225,8 +225,9 @@ private:
     }
 
     void enforceSymmetry(Matrix5f& mat) {
-        // Copy upper triangular part to lower part
-        mat.triangularView<Eigen::Lower>() = mat.transpose().triangularView<Eigen::Lower>();
+        // Average upper and lower triangular parts
+        Matrix5f symm = 0.5f * (mat + mat.transpose());
+        mat = symm;
     }
 
     void ensurePositiveDefinite(Matrix5f& mat) {
