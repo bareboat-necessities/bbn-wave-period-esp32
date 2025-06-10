@@ -77,8 +77,8 @@ Kalman_QMEKF kalman_mekf;
 // Wave
 MinMaxLemire min_max_h;
 KalmanWaveState waveState;
-//KalmanWaveAltState waveAltState;
-KalmanWaveNumStableAlt wave_alt_filter;
+KalmanWaveAltState waveAltState;
+//KalmanWaveNumStableAlt wave_alt_filter;
 
 #define WRONG_ANGLE_MARKER -360.0f
 
