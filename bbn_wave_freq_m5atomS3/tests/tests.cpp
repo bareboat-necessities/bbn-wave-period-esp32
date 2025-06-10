@@ -10,7 +10,7 @@
 #include "TrochoidalWave.h"
 #include "MinMaxLemire.h"
 #include "KalmanForWave.h"
-#include "KalmanForWaveAlt.h"
+#include "KalmanWaveNumStableAlt.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "WaveFilters.h"
 #include "TimeAwareSpikeFilter.h"
