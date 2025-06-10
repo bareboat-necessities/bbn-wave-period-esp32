@@ -145,7 +145,7 @@ public:
         return s;
     }
 
-    void initState(State& s0) {
+    void initState(const State& s0) {
         x(0) = s0.displacement_integral;
         x(1) = s0.heave;
         x(2) = s0.vert_speed;
