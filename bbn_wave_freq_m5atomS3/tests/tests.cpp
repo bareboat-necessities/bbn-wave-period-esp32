@@ -23,7 +23,7 @@ AranovskiyParams arParams;
 AranovskiyState arState;
 KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
-KalmanWaveAltState waveAltState;
+KalmanWaveNumStableAltState waveAltState;
 KalmANF kalmANF;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
@@ -92,9 +92,10 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     waveAltState.vert_speed = waveState.vert_speed;
     waveAltState.vert_accel = k_hat * heave; //a * g_std;
     waveAltState.accel_bias = 0.0f;
-    kalman_wave_alt_init_state(&waveAltState);
+    wave_alt_filter.initState(waveAltState);
   }
-  kalman_wave_alt_step(&waveAltState, a * g_std, k_hat, delta_t);
+  wave_alt_filter.update(a * g_std, k_hat, delta_t);
+  waveAltState = wave_alt_filter.getState();
   heaveAlt = waveAltState.heave;
   //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t);
 
