@@ -220,66 +220,55 @@ private:
     }
 
     void correctUD(const Vector2f& z) {
-        // Calculate H*U only once
+        // Calculate H*U only once 
         Matrix25f HU = H * U;
-        
+
         // Innovation
         Vector2f y = z - H * x;
-        
+
         // Kalman gain and temporary vectors
         Matrix52f K = Matrix52f::Zero();
-        Vector5f v;
-        
+
         // Thornton's UD measurement update
         for (int i = 0; i < 2; ++i) {
-            // Calculate f = H_i*U*D*U'*H_i' + R_ii
-            float f = R(i,i);  
+            // 1. Calculate innovation variance (f)
+            float f = R(i,i);
             for (int k = 0; k < 5; ++k) {
                 f += HU(i,k) * D(k) * HU(i,k);
             }
             
-            // Calculate v = D*U'*H_i' explicitly
+            // 2. Calculate Kalman gain (K)
             Vector5f v;
             for (int j = 0; j < 5; ++j) {
-                v(j) = D(j) * HU(i,j);  // D is diagonal, so this is equivalent to D*U'*H_i'
-            }
-            
-            // Calculate Kalman gain for this measurement
-            for (int j = 0; j < 5; ++j) {
-                K(j,i) = v(j);
+                v(j) = D(j) * HU(i,j);
                 for (int k = 0; k < j; ++k) {
-                    K(j,i) -= U(k,j) * v(k);
+                    v(j) -= U(k,j) * v(k);
                 }
-                K(j,i) /= f;
+                K(j,i) = v(j) / f;
             }
             
-            // Update state
+            // 3. Update state
             x += K.col(i) * y(i);
             
-            // Update U and D factors
-            for (int j = 0; j < 5; ++j) {
-                float sum = HU(i,j);
+            // 4. Update U and D 
+            for (int j = 4; j >= 0; --j) {  // Process from bottom to top
+                float sum_v = HU(i,j);
                 for (int k = 0; k < j; ++k) {
-                    sum -= HU(i,k) * U(k,j);
+                    sum_v -= HU(i,k) * U(k,j);
                 }
-                v(j) = sum;
+                
+                // Store original D(j) before modification
+                float D_j_original = D(j);
+                
+                // Update D(j) first
+                D(j) -= K(j,i) * sum_v * D_j_original;
+                D(j) = fmax(D(j), 1e-8f);  // Ensure positive definiteness
+                
+                // Then update U(k,j)
+                for (int k = 0; k < j; ++k) {
+                    U(k,j) -= K(k,i) * sum_v;
+                }
             }
-            
-            for (int j = 0; j < 5; ++j) {
-                float sum = v(j);
-                for (int k = 0; k < j; ++k) {
-                    sum += v(k) * U(k,j);
-                }
-                D(j) -= K(j,i) * K(j,i) * f;
-                for (int k = 0; k < j; ++k) {
-                    U(k,j) -= K(k,i) * sum;
-                }
-            }
-        }
-        
-        // Ensure positive definiteness
-        for (int i = 0; i < 5; ++i) {
-            D(i) = fmax(D(i), 1e-8f);
         }
     }
 };
