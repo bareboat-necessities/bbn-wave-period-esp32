@@ -130,9 +130,16 @@ public:
 
     void update(float measured_accel, float wave_frequency, float delta_t) {
         const float k_hat = -pow(2.0f * M_PI * wave_frequency, 2);
+
+        // Update state transition
         updateStateTransition(k_hat, delta_t);
+        
+        // Prediction step
         predictUD();
-        correctUD(Vector2f(0.0f, measured_accel));
+
+        // Correction step
+        Vector2f z(0.0f, measured_accel);
+        correctUD(z);
     }
 
     State getState() const {
@@ -154,7 +161,6 @@ public:
     }
 
 private:
-    // State variables
     Vector5f x;     // State vector
     Matrix5f U;     // U factor (unit upper triangular)
     Vector5f D;     // D factor (diagonal)
@@ -182,17 +188,17 @@ private:
         // State prediction
         x = F * x;
         
-        // Covariance prediction: F*U*D*U'*F' + Q
-        // Using specialized UD update for prediction
-        Matrix5f A = F * U;
-        Vector5f new_D = D;
+        // Temporary matrix for F*U
+        Matrix5f FU = F * U;
+        
+        // Temporary storage for new U and D
         Matrix5f new_U = Matrix5f::Identity();
+        Vector5f new_D = Q_D;
         
         // Bierman-Thornton UD update
         for (int j = 4; j >= 0; --j) {
-            new_D(j) = Q_D(j);
             for (int i = 0; i <= j; ++i) {
-                float sigma = A.row(i).head(j+1).dot(new_D.head(j+1).cwiseProduct(A.row(j).head(j+1)));
+                float sigma = FU.row(i).head(j+1).dot(new_D.head(j+1).cwiseProduct(FU.row(j).head(j+1)));
                 if (i < j) {
                     new_U(i,j) = sigma / new_D(j);
                 } else {
@@ -203,57 +209,68 @@ private:
         
         U = new_U;
         D = new_D;
+        
+        // Ensure numerical stability
+        for (int i = 0; i < 5; ++i) {
+            if (D(i) <= 0.0f) D(i) = 1e-6f;
+        }
     }
 
     void correctUD(const Vector2f& z) {
-        // Measurement update using UD factorization
-        Matrix25f H_U = H * U;
+        // Calculate H*U only once
+        Matrix25f HU = H * U;
+        
+        // Innovation
         Vector2f y = z - H * x;
         
-        // Calculate Kalman gain using UD factors
-        Vector2f f;
-        Matrix52f K;
+        // Kalman gain and temporary vectors
+        Matrix52f K = Matrix52f::Zero();
         Vector5f v;
         
         // Thornton's UD measurement update
         for (int i = 0; i < 2; ++i) {
-            f(i) = H_U.row(i).dot(D.cwiseProduct(H_U.row(i).transpose())) + R(i,i);
-            v = D.cwiseProduct(H_U.row(i).transpose());
+            // Calculate f = H_i*U*D*U'*H_i' + R_ii
+            float f = HU.row(i).dot(D.cwiseProduct(HU.row(i).transpose())) + R(i,i);
             
+            // Calculate v = D*U'*H_i'
+            v = D.cwiseProduct(HU.row(i).transpose());
+            
+            // Calculate Kalman gain for this measurement
             for (int j = 0; j < 5; ++j) {
                 K(j,i) = v(j);
                 for (int k = 0; k < j; ++k) {
                     K(j,i) -= U(k,j) * v(k);
                 }
-                K(j,i) /= f(i);
+                K(j,i) /= f;
             }
             
-            // Update U and D
+            // Update state
+            x += K.col(i) * y(i);
+            
+            // Update U and D factors
             for (int j = 0; j < 5; ++j) {
-                float save = H_U(i,j);
+                float sum = HU(i,j);
                 for (int k = 0; k < j; ++k) {
-                    H_U(i,j) -= H_U(i,k) * U(k,j);
+                    sum -= HU(i,k) * U(k,j);
                 }
-                v(j) = save + H_U(i,j);
+                v(j) = sum;
             }
             
             for (int j = 0; j < 5; ++j) {
-                float save = U.row(j).head(j).dot(v.head(j));
-                D(j) -= K(j,i) * K(j,i) * f(i);
+                float sum = v(j);
                 for (int k = 0; k < j; ++k) {
-                    U(k,j) -= K(k,i) * (v(j) + save);
+                    sum += v(k) * U(k,j);
+                }
+                D(j) -= K(j,i) * K(j,i) * f;
+                for (int k = 0; k < j; ++k) {
+                    U(k,j) -= K(k,i) * sum;
                 }
             }
         }
         
-        // State update
-        x += K * y;
-        
         // Ensure positive definiteness
         for (int i = 0; i < 5; ++i) {
-            if (D(i) <= 0.0f) {
-                D(i) = 1e-8f;
-            }
+            D(i) = fmax(D(i), 1e-6f);
         }
     }
 };
