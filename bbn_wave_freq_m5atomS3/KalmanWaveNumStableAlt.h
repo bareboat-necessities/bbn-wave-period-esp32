@@ -1,8 +1,84 @@
 #ifndef KALMAN_WAVE_NUM_STABLE_ALT_H
 #define KALMAN_WAVE_NUM_STABLE_ALT_H
 
-#include <Eigen/Dense>
-#include <Arduino.h>
+/*
+  Copyright 2024, Mikhail Grushinskiy
+
+  Kalman filter to estimate vertical displacement in wave using accelerometer, 
+  correct for accelerometer bias, estimate accelerometer bias. This method
+  assumes that displacement follows trochoidal model and the frequency of
+  wave is known. Frequency can be estimated using another step with Aranovskiy filter.
+
+  In trochoidal wave model there is simple linear dependency between displacement and 
+  acceleration.
+
+  y - displacement (at any time):
+  y = - L / (2 *pi) * (a/g),  g - acceleration of free fall constant, a - vertical acceleration
+
+  wave length L: 
+  L = g * period^2 / (2 *pi)
+
+  wave period via frequency:
+  period = 1 / f
+
+  a = - (2 * pi * f)^2 * y
+
+  let
+  k_hat = - (2 * pi * f)^2
+
+  Process model:
+
+  displacement_integral:
+  z(k) = z(k-1) + y(k-1)*T + 1/2*v(k-1)*T^2 + 1/6*a(k-1)*T^3 - 1/6*a_hat(k-1)*T^3
+  
+  displacement:
+  y(k) = y(k-1) + v(k-1)*T + 1/2*a(k-1)*T^2 - 1/2*a_hat(k-1)*T^2
+
+  velocity:
+  v(k) = v(k-1) + a(k-1)*T - a_hat(k-1)*T
+
+  acceleration (from trochoidal wave model):
+  a(k) = k_hat*y(k-1) + k_hat*v(k-1)*T + k_hat*1/2*a(k-1)*T^2 - k_hat*1/2*a_hat(k-1)*T^2
+
+  accelerometer bias:
+  a_hat(k) = a_hat(k-1)
+
+  Process model in matrix form:
+  
+  x(k) = F*x(k-1) + B*u(k) + w(k)
+
+  w(k) - zero mean noise,
+  u(k) = 0 
+  
+  State vector:
+  
+  x = [ z,
+        y,
+        v,
+        a,
+        a_hat ]
+
+  Input a - vertical acceleration from accelerometer
+
+  Measurements:
+    a (vertical acceleration), z = 0
+
+  Observation matrix:
+  H = [[ 1, 0 ],
+       [ 0, 0 ],
+       [ 0, 0 ],
+       [ 0, 1 ],
+       [ 0, 0 ]]  
+
+  F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3         ],
+       [ 0,      1,    T,             1/2*T^2,         -1/2*T^2         ],
+       [ 0,      0,    1,             T,               -T               ],
+       [ 0,  k_hat,    k_hat*T,       1/2*k_hat*T^2,   -1/2*k_hat*T^2   ],
+       [ 0,      0,    0,             0,               1                ]]
+         
+*/
+
+#include <ArduinoEigenDense.h>
 
 class KalmanWaveNumStableAlt {
 public:
