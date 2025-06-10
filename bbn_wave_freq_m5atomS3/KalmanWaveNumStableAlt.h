@@ -110,22 +110,24 @@ public:
     }
 
     void initialize(float q0, float q1, float q2, float q3, float q4) {
+        // State vector initialization
         x.setZero();
-        
-        // Initialize UD factors (U = identity, D = initial variances)
-        U.setIdentity();
-        D << 10.0f, 10.0f, 10.0f, 10.0f, 10.0f; // Large initial uncertainty
-        
-        // Process noise UD factors (diagonal)
-        Q_U.setIdentity();
-        Q_D << q0, q1, q2, q3, q4;
-        
-        // Measurement noise
-        R << 0.01f, 0.0f,
-             0.0f, 1.0f;
-        
-        H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-             0.0f, 0.0f, 0.0f, 1.0f, 0.0f;
+
+        // Initial covariance - large uncertainty
+        P.setIdentity();
+        P *= 10.0f;  // Initial uncertainty
+
+        // Process noise covariance (diagonal)
+        Q.setZero();
+        Q.diagonal() << q0, q1, q2, q3, q4;
+
+        // Measurement noise covariance
+        R << 0.01f,  0.0f,   // Displacement integral noise
+             0.0f,   1.0f;    // Acceleration noise (m/s²)²
+
+        // Measurement model
+        H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
+             0.0f, 0.0f, 0.0f, 1.0f, 0.0f;  // Measures acceleration
     }
 
     void update(float measured_accel, float k_hat, float delta_t) {
