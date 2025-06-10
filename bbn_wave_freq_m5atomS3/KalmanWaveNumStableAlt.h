@@ -2,7 +2,7 @@
 #define KALMAN_WAVE_NUM_STABLE_ALT_H
 
 /*
-  Copyright 2024, Mikhail Grushinskiy
+  Copyright 2025, Mikhail Grushinskiy
 
   Kalman filter to estimate vertical displacement in wave using accelerometer, 
   correct for accelerometer bias, estimate accelerometer bias. This method
