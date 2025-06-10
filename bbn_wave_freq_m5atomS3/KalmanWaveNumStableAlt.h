@@ -250,4 +250,6 @@ private:
     }
 };
 
+typedef KalmanWaveNumStableAltState KalmanWaveNumStableAlt::State; 
+
 #endif // KALMAN_WAVE_NUM_STABLE_ALT_H
