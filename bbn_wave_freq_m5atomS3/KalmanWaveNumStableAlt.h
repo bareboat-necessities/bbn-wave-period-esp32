@@ -220,53 +220,43 @@ private:
     }
 
     void correctUD(const Vector2f& z) {
-        // Calculate H*U only once 
         Matrix25f HU = H * U;
-
-        // Innovation
         Vector2f y = z - H * x;
-
-        // Kalman gain and temporary vectors
-        Matrix52f K = Matrix52f::Zero();
-
-        // Thornton's UD measurement update
+        
+        // Process each measurement SEQUENTIALLY
         for (int i = 0; i < 2; ++i) {
-            // 1. Calculate innovation variance (f)
+            // 1. Compute innovation statistics for single measurement
             float f = R(i,i);
-            for (int k = 0; k < 5; ++k) {
-                f += HU(i,k) * D(k) * HU(i,k);
-            }
-            
-            // 2. Calculate Kalman gain (K)
             Vector5f v;
             for (int j = 0; j < 5; ++j) {
-                v(j) = D(j) * HU(i,j);
-                for (int k = 0; k < j; ++k) {
-                    v(j) -= U(k,j) * v(k);
+                v(j) = 0;
+                for (int k = j; k < 5; ++k) {
+                    v(j) += HU(i,k) * U(j,k) * D(k);
                 }
-                K(j,i) = v(j) / f;
+                f += v(j) * HU(i,j);
+            }
+            
+            // 2. Compute Kalman gain for single measurement
+            Vector5f K;
+            for (int j = 0; j < 5; ++j) {
+                K(j) = 0;
+                for (int k = 0; k < j; ++k) {
+                    K(j) += U(k,j) * v(k);
+                }
+                K(j) = (v(j) - K(j)) / f;
             }
             
             // 3. Update state
-            x += K.col(i) * y(i);
+            x += K * y(i);
             
-            // 4. Update U and D 
-            for (int j = 4; j >= 0; --j) {  // Process from bottom to top
-                float sum_v = HU(i,j);
-                for (int k = 0; k < j; ++k) {
-                    sum_v -= HU(i,k) * U(k,j);
-                }
-                
-                // Store original D(j) before modification
-                float D_j_original = D(j);
-                
-                // Update D(j) first
-                D(j) -= K(j,i) * sum_v * D_j_original;
+            // 4. Update UD factors (Bierman-Thornton method)
+            for (int j = 0; j < 5; ++j) {
+                float prev_D = D(j);
+                D(j) -= K(j) * K(j) * f;
                 D(j) = fmax(D(j), 1e-8f);  // Ensure positive definiteness
                 
-                // Then update U(k,j)
                 for (int k = 0; k < j; ++k) {
-                    U(k,j) -= K(k,i) * sum_v;
+                    U(k,j) -= K(k) * (K(j)*f + v(j)) / prev_D;
                 }
             }
         }
