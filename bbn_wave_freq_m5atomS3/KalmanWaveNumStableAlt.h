@@ -233,10 +233,16 @@ private:
         // Thornton's UD measurement update
         for (int i = 0; i < 2; ++i) {
             // Calculate f = H_i*U*D*U'*H_i' + R_ii
-            float f = HU.row(i).dot(D.cwiseProduct(HU.row(i).transpose())) + R(i,i);
+            float f = R(i,i);  
+            for (int k = 0; k < 5; ++k) {
+                f += HU(i,k) * D(k) * HU(i,k);
+            }
             
-            // Calculate v = D*U'*H_i'
-            v = D.cwiseProduct(HU.row(i).transpose());
+            // Calculate v = D*U'*H_i' explicitly
+            Vector5f v;
+            for (int j = 0; j < 5; ++j) {
+                v(j) = D(j) * HU(i,j);  // D is diagonal, so this is equivalent to D*U'*H_i'
+            }
             
             // Calculate Kalman gain for this measurement
             for (int j = 0; j < 5; ++j) {
