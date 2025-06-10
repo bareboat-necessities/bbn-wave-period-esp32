@@ -145,6 +145,14 @@ public:
         return s;
     }
 
+    void initState(State& s0) {
+        x(0) = s0.displacement_integral;
+        x(1) = s0.heave;
+        x(2) = s0.vert_speed;
+        x(3) = s0.vert_accel;
+        x(4) = s0.accel_bias;
+    }
+
 private:
     // State variables
     Vector5f x;     // State vector
