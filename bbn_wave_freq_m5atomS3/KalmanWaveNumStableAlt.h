@@ -128,9 +128,7 @@ public:
              0.0f, 0.0f, 0.0f, 1.0f, 0.0f;
     }
 
-    void update(float measured_accel, float wave_frequency, float delta_t) {
-        const float k_hat = -pow(2.0f * M_PI * wave_frequency, 2);
-
+    void update(float measured_accel, float k_hat, float delta_t) {
         // Update state transition
         updateStateTransition(k_hat, delta_t);
         
