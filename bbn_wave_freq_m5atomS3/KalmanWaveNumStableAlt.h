@@ -244,7 +244,7 @@ private:
         // Ensure positive definiteness
         for (int i = 0; i < 5; ++i) {
             if (D(i) <= 0.0f) {
-                D(i) = 1e-6f;
+                D(i) = 1e-8f;
             }
         }
     }
