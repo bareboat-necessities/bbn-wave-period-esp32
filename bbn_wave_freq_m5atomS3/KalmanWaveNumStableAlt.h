@@ -212,7 +212,7 @@ private:
         
         // Ensure numerical stability
         for (int i = 0; i < 5; ++i) {
-            if (D(i) <= 0.0f) D(i) = 1e-6f;
+            if (D(i) <= 0.0f) D(i) = 1e-8f;
         }
     }
 
@@ -270,7 +270,7 @@ private:
         
         // Ensure positive definiteness
         for (int i = 0; i < 5; ++i) {
-            D(i) = fmax(D(i), 1e-6f);
+            D(i) = fmax(D(i), 1e-8f);
         }
     }
 };
