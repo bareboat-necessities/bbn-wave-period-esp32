@@ -115,7 +115,7 @@ public:
 
         // Initial covariance - large uncertainty
         P.setIdentity();
-        P *= 10.0f;  // Initial uncertainty
+        P *= 1.0f;  // Initial uncertainty
 
         // Process noise covariance (diagonal)
         Q.setZero();
