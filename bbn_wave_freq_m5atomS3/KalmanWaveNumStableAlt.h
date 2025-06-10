@@ -129,15 +129,19 @@ public:
     }
 
     void update(float measured_accel, float k_hat, float delta_t) {
-        // Update state transition
-        updateStateTransition(k_hat, delta_t);
         
-        // Prediction step
-        predictUD();
+        // Update state transition matrix
+        updateStateTransition(k_hat, delta_t);
 
-        // Correction step
-        Vector2f z(0.0f, measured_accel);
-        correctUD(z);
+        // Prediction step
+        predict();
+
+        // Create measurement vector [displacement_integral, acceleration]
+        // Note: We assume displacement integral measurement is 0 (reset each cycle)
+        const Vector2f z(0.0f, measured_accel);
+
+        // Correction step with Joseph form
+        correctJoseph(z);
     }
 
     State getState() const {
@@ -160,13 +164,11 @@ public:
 
 private:
     Vector5f x;     // State vector
-    Matrix5f U;     // U factor (unit upper triangular)
-    Vector5f D;     // D factor (diagonal)
-    Matrix5f Q_U;   // Process noise U
-    Vector5f Q_D;   // Process noise D
+    Matrix5f P;     // Covariance matrix
+    Matrix5f Q;     // Process noise
     Matrix2f R;     // Measurement noise
     Matrix25f H;    // Measurement model
-    Matrix5f F;     // State transition
+    Matrix5f F;     // State transition matrix
 
     void updateStateTransition(float k_hat, float delta_t) {
         const float T = delta_t;
@@ -182,81 +184,69 @@ private:
              0.0f,    0.0f,    0.0f,     0.0f,             1.0f;
     }
 
-    void predictUD() {
-        // State prediction
-        x = F * x;
-        
-        // Temporary matrix for F*U
-        Matrix5f FU = F * U;
-        
-        // Temporary storage for new U and D
-        Matrix5f new_U = Matrix5f::Identity();
-        Vector5f new_D = Q_D;
-        
-        // Bierman-Thornton UD update
-        for (int j = 4; j >= 0; --j) {
-            for (int i = 0; i <= j; ++i) {
-                float sigma = 0.0f;
-                for (int k = 0; k <= j; ++k) {
-                    sigma += FU(i,k) * new_D(k) * FU(j,k);
-                }
-                if (i < j) {
-                    new_U(i,j) = sigma / new_D(j);
-                } else {
-                    new_D(j) += sigma;
-                }
-            }
-        }
-        
-        U = new_U;
-        D = new_D;
-        
-        // Ensure numerical stability
-        for (int i = 0; i < 5; ++i) {
-            if (D(i) <= 0.0f) D(i) = 1e-8f;
-        }
+    void updateStateTransition(float k_hat, float delta_t) {
+        const float T = delta_t;
+        const float T2 = T * T;
+        const float T3 = T2 * T;
+        const float kT = k_hat * T;
+        const float kT2 = k_hat * T2;
+
+        // clang-format off
+        F << 1.0f,    T,    0.5f*T2,    (1.0f/6.0f)*T3,    -(1.0f/6.0f)*T3,
+             0.0f,    1.0f,    T,        0.5f*T2,          -0.5f*T2,
+             0.0f,    0.0f,    1.0f,     T,                -T,
+             0.0f,    k_hat,   kT,       0.5f*kT2,         -0.5f*kT2,
+             0.0f,    0.0f,    0.0f,     0.0f,             1.0f;
+        // clang-format on
     }
 
-    void correctUD(const Vector2f& z) {
-        Matrix25f HU = H * U;
-        Vector2f y = z - H * x;
+    void predict() {
+        // State prediction: x = F * x
+        x = F * x;
         
-        // Process each measurement SEQUENTIALLY
-        for (int i = 0; i < 2; ++i) {
-            // 1. Compute innovation statistics for single measurement
-            float f = R(i,i);
-            Vector5f v;
-            for (int j = 0; j < 5; ++j) {
-                v(j) = 0;
-                for (int k = j; k < 5; ++k) {
-                    v(j) += HU(i,k) * U(j,k) * D(k);
-                }
-                f += v(j) * HU(i,j);
-            }
-            
-            // 2. Compute Kalman gain for single measurement
-            Vector5f K;
-            for (int j = 0; j < 5; ++j) {
-                K(j) = 0;
-                for (int k = 0; k < j; ++k) {
-                    K(j) += U(k,j) * v(k);
-                }
-                K(j) = (v(j) - K(j)) / f;
-            }
-            
-            // 3. Update state
-            x += K * y(i);
-            
-            // 4. Update UD factors (Bierman-Thornton method)
-            for (int j = 0; j < 5; ++j) {
-                float prev_D = D(j);
-                D(j) -= K(j) * K(j) * f;
-                D(j) = fmax(D(j), 1e-8f);  // Ensure positive definiteness
-                
-                for (int k = 0; k < j; ++k) {
-                    U(k,j) -= K(k) * (K(j)*f + v(j)) / prev_D;
-                }
-            }
+        // Covariance prediction: P = F * P * F' + Q
+        // Using .eval() to force immediate evaluation
+        P = (F * P * F.transpose()).eval() + Q;
+        
+        // Enforce symmetry
+        enforceSymmetry(P);
+    }
+
+    void correctJoseph(const Vector2f& z) {
+        // Innovation: y = z - H * x
+        const Vector2f y = z - H * x;
+        
+        // Innovation covariance: S = H * P * H' + R
+        const Matrix2f S = (H * P * H.transpose() + R).eval();
+        
+        // Kalman gain: K = P * H' * S^-1
+        const Matrix52f K = P * H.transpose() * S.inverse();
+        
+        // State update: x = x + K * y
+        x += K * y;
+        
+        // Joseph form covariance update: 
+        // P = (I-KH) * P * (I-KH)' + K * R * K'
+        const Matrix5f I = Matrix5f::Identity();
+        const Matrix5f KH = K * H;
+        P = ((I - KH) * P * (I - KH).transpose() + K * R * K.transpose()).eval();
+        
+        // Numerical stabilization
+        enforceSymmetry(P);
+        ensurePositiveDefinite(P);
+    }
+
+    void enforceSymmetry(Matrix5f& mat) {
+        // Copy upper triangular part to lower part
+        mat.triangularView<Eigen::Lower>() = mat.transpose().triangularView<Eigen::Lower>();
+    }
+
+    void ensurePositiveDefinite(Matrix5f& mat) {
+        // Check for positive definiteness via LDLT
+        Eigen::LDLT<Matrix5f> ldlt(mat);
+        if (ldlt.info() != Eigen::Success || !ldlt.isPositive()) {
+            // Add small regularization to diagonal
+            mat.diagonal().array() += 1e-6f;
         }
     }
 };
