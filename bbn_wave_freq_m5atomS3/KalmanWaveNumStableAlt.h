@@ -141,7 +141,7 @@ public:
             .heave = x(1),
             .vert_speed = x(2),
             .vert_accel = x(3),
-            .accel_bias = x(4)
+            .accel_bias = x(4),
         };
     }
 
