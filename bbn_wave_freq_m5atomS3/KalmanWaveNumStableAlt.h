@@ -234,7 +234,7 @@ private:
         Eigen::LDLT<Matrix5f> ldlt(mat);
         if (ldlt.info() != Eigen::Success || !ldlt.isPositive()) {
             // Add small regularization to diagonal
-            mat.diagonal().array() += 1e-6f;
+            mat.diagonal().array() += 1e-9f;
         }
     }
 };
