@@ -38,6 +38,7 @@
 #include "MinMaxLemire.h"
 #include "KalmanForWave.h"
 #include "KalmanWaveNumStableAlt.h"
+#include "KalmanWaveAdaptiveAlt.h"
 #include "TimeAwareSpikeFilter.h"
 #include "TimeAwareBandpassFilter.h"
 #include "HighPassFilters.h"
