@@ -30,6 +30,9 @@ public:
   // Processes X,Y,Z accelerations (all in G units)
   WaveDirection update(float accelX, float accelY, float accelZ, float delta_t) {
     float mag_a = sqrtf(accelX * accelX + accelY * accelY);
+    if (mag_a < 1e-8f) {
+      return;
+    }
     cosAngle = accelX / mag_a;
     sinAngle = accelY / mag_a;
     
