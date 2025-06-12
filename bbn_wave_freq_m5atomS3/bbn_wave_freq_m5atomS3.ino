@@ -303,7 +303,7 @@ void read_and_processIMU_data() {
           //Serial.printf(",ap_wave_speed:%.2f", ap_wave_speed);
           //Serial.printf(",ap_wavelength:%.2f", ap_wavelength);
           Serial.printf(",ap_wave_dir_est_deg:%.2f", wave_angle_deg);
-          Serial.printf(",ap_wave_dir_est_deg:%1d", wave_dir);
+          Serial.printf(",ap_wave_dir:%1d", wave_dir);
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
