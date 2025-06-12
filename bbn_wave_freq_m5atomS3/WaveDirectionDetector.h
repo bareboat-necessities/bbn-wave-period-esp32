@@ -10,7 +10,6 @@ class WaveDirectionDetector {
 private:
   const float alpha;
   const float threshold;
-  const float waveAngle; // Known wave axis angle (radians)
   float prevVertAccel = 0;
   float filteredP = 0;
   float cosAngle, sinAngle; // trig values
