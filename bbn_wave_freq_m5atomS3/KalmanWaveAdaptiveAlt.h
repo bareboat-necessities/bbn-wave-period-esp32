@@ -133,7 +133,10 @@ public:
     }
 
     void update(float measured_accel, float k_hat, float delta_t) {
-        
+
+        // Allan Variance-Inspired Q Tuning
+        updateProcessNoise(measured_accel, delta_t);
+      
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
 
