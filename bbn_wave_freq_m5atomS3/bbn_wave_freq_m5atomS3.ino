@@ -249,7 +249,7 @@ void read_and_processIMU_data() {
     } else {
       wave_angle_deg = azimuth;
     }
-    WaveDirection wave_dir = wave_dir_detector.update(accel_rotated.x, accel_rotated.y, a_noisy, delta_t);
+    WaveDirection wave_dir = wave_dir_detector.update(accel_rotated.x * g_std, accel_rotated.y * g_std, a_noisy * g_std, delta_t);
 
     // other wave parameters (these are not real, they are from observer point of view / apparent)
     // real values would require knowing boat speed, direction and adjustments for Doppler effect
