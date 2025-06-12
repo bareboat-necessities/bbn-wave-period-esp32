@@ -12,26 +12,19 @@ private:
   const float threshold;
   float prevVertAccel = 0;
   float filteredP = 0;
-  float cosAngle, sinAngle; // trig values
 
 public:
   // waveAngle in radians (0=positive X, PI/2=positive Y)
   WaveDirectionDetector(float smoothing = 0.002f, 
-                        float sensitivity = 0.005f,
-                        float waveAngleRad = 0.0f)
+                        float sensitivity = 0.005f)
     : alpha(smoothing), 
       threshold(sensitivity) {
-    cosAngle = cos(waveAngleRad);
-    sinAngle = sin(waveAngleRad);
   }
 
   // Processes X,Y,Z accelerations
   WaveDirection update(float accelX, float accelY, float accelZ, float delta_t) {
     float mag_a = sqrtf(accelX * accelX + accelY * accelY);
     if (mag_a > 1e-8f) {
-      cosAngle = accelX / mag_a;
-      sinAngle = accelY / mag_a;
-      
       // Project X/Y onto wave direction axis
       float aHoriz = accelY > 0 ? mag_a : -mag_a;
       
