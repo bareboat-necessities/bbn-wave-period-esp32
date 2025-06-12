@@ -75,6 +75,15 @@
        [ 0,      0,    1,             T,               -T               ],
        [ 0,  k_hat,    k_hat*T,       1/2*k_hat*T^2,   -1/2*k_hat*T^2   ],
        [ 0,      0,    0,             0,               1                ]]
+
+
+  Innovation-Based R Tuning
+
+    The measurement noise covariance (R) is adapted based on the actual innovation statistics.
+
+  Allan Variance-Inspired Q Tuning
+
+    For process noise (Q), we use Allan variance principles to estimate IMU noise parameters.
          
 */
 
