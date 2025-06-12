@@ -181,9 +181,9 @@ public:
     }
 
     // Static configuration for Allan variance calculation
-    static constexpr size_t AV_WINDOW_SIZE = 512;   // Power of 2 for better Allan variance calculation
-    static constexpr size_t MIN_CLUSTER_SIZE = 8;   // Minimum samples for variance calculation
-    static constexpr size_t MAX_CLUSTER_SIZE = 128; // Maximum cluster size to check
+    static constexpr size_t AV_WINDOW_SIZE = 512;      // Power of 2 for better Allan variance calculation
+    static constexpr size_t AV_MIN_CLUSTER_SIZE = 8;   // Minimum samples for variance calculation
+    static constexpr size_t AV_MAX_CLUSTER_SIZE = 128; // Maximum cluster size to check
 
     static constexpr size_t INNOVATION_WINDOW_SIZE = 100;  // Fixed window size
 
@@ -279,7 +279,7 @@ private:
             
             // Only proceed if we have enough data
             size_t available_samples = history_filled ? AV_WINDOW_SIZE : history_index;
-            if (available_samples >= MIN_CLUSTER_SIZE * 2) {
+            if (available_samples >= AV_MIN_CLUSTER_SIZE * 2) {
                 // Estimate noise parameters using static buffers
                 float q_angle = estimateAngleRandomWalk(available_samples, sample_time);
                 float q_bias = estimateBiasInstability(available_samples, sample_time);
@@ -318,8 +318,8 @@ private:
     float estimateBiasInstability(size_t available_samples, float sample_time) {
         float min_var = std::numeric_limits<float>::max();
         
-        // Check cluster sizes from MIN_CLUSTER_SIZE to MAX_CLUSTER_SIZE
-        for (size_t m = MIN_CLUSTER_SIZE; m <= std::min(MAX_CLUSTER_SIZE, available_samples/2); m++) {
+        // Check cluster sizes from AV_MIN_CLUSTER_SIZE to AV_MAX_CLUSTER_SIZE
+        for (size_t m = AV_MIN_CLUSTER_SIZE; m <= std::min(AV_MAX_CLUSTER_SIZE, available_samples/2); m++) {
             size_t num_clusters = available_samples / m;
             
             for (size_t cluster = 0; cluster < num_clusters; cluster++) {
