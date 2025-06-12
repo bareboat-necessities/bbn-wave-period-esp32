@@ -264,7 +264,7 @@ private:
     }
 
     void updateProcessNoise(float accel_measurement, float delta_t) {
-        sample_time = delta_t;
+        float sample_time = delta_t;
         
         // Store acceleration in circular buffer
         accel_history(history_index) = accel_measurement;
@@ -280,8 +280,8 @@ private:
             size_t available_samples = history_filled ? AV_WINDOW_SIZE : history_index;
             if (available_samples >= MIN_CLUSTER_SIZE * 2) {
                 // Estimate noise parameters using static buffers
-                float q_angle = estimateAngleRandomWalk(available_samples);
-                float q_bias = estimateBiasInstability(available_samples);
+                float q_angle = estimateAngleRandomWalk(available_samples, sample_time);
+                float q_bias = estimateBiasInstability(available_samples, sample_time);
                 
                 // Update Q diagonal elements
                 Q(1,1) = q_angle;        // Heave position noise
@@ -296,7 +296,7 @@ private:
     }
 
     // Angle random walk estimation
-    float estimateAngleRandomWalk(size_t available_samples) {
+    float estimateAngleRandomWalk(size_t available_samples, float sample_time) {
         float variance = 0.0f;
         size_t count = 0;
         
@@ -314,7 +314,7 @@ private:
     }
 
     // Bias instability estimation
-    float estimateBiasInstability(size_t available_samples) {
+    float estimateBiasInstability(size_t available_samples, float sample_time) {
         float min_var = std::numeric_limits<float>::max();
         
         // Check cluster sizes from MIN_CLUSTER_SIZE to MAX_CLUSTER_SIZE
