@@ -275,15 +275,18 @@ private:
         ensurePositiveDefinite(P);
     }
 
-    void enforceSymmetry(Matrix5f& mat) {
+    template<int Rows, int Cols>
+    void enforceSymmetry(Eigen::Matrix<float, Rows, Cols>& mat) {
         // Average upper and lower triangular parts
-        Matrix5f symm = 0.5f * (mat + mat.transpose());
+        Eigen::Matrix<float, Rows, Cols> symm = 0.5f * (mat + mat.transpose());
         mat = symm;
     }
 
-    void ensurePositiveDefinite(Matrix5f& mat) {
+    // Modified ensurePositiveDefinite method
+    template<int Size>
+    void ensurePositiveDefinite(Eigen::Matrix<float, Size, Size>& mat) {
         // Check for positive definiteness via LDLT
-        Eigen::LDLT<Matrix5f> ldlt(mat);
+        Eigen::LDLT<Eigen::Matrix<float, Size, Size>> ldlt(mat);
         if (ldlt.info() != Eigen::Success || !ldlt.isPositive()) {
             // Add small regularization to diagonal
             mat.diagonal().array() += 1e-9f;
