@@ -106,11 +106,11 @@
     Transducer name:
       AP_WAVE_PERIOD - wave period
       
-  Wave direction (from observer point of view):
+  Wave angle (from observer point of view):
     Transducer type: A
     Unit of measurement: D (degrees)
     Transducer name:
-      AP_WAVE_DIR - wave direction
+      AP_WAVE_ANGLE - wave direction
 
   Wave speed (from observer point of view):
     Transducer type: G
