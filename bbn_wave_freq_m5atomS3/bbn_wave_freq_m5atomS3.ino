@@ -45,6 +45,7 @@
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
 #include "WaveFilters.h"
+#include "WaveDirectionDetector.h"
 #include "M5_Calibr.h"
 
 bool useMahony = true;
