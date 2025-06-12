@@ -30,7 +30,7 @@ void init_filters(AranovskiyState* ar_param, AranovskiyState* ar_state, KalmanSm
 void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
-KalmanWaveNumStableAlt wave_alt_filter;
+KalmanWaveAdaptiveAlt wave_alt_filter;
 
 template <typename T> T clamp(T val, T min, T max) {
   return (val < min) ? min : (val > max) ? max : val;
