@@ -252,7 +252,8 @@ private:
 
     void correctJoseph(const Vector2f& z) {
         // Innovation: y = z - H * x
-        const Vector2f y = z - H * x;
+        Vector2f y = z - H * x;
+        updateMeasurementNoise(y); 
         
         // Innovation covariance: S = H * P * H' + R
         const Matrix2f S = (H * P * H.transpose() + R).eval();
