@@ -35,7 +35,7 @@ public:
       sinAngle = accelY / mag_a;
       
       // Project X/Y onto wave direction axis
-      float aHoriz = accelX * cosAngle + accelY * sinAngle;
+      float aHoriz = accelY > 0 ? mag_a : -mag_a;
       
       // Compute vertical slope
       float vertSlope = (accelZ - prevVertAccel) / delta_t;
