@@ -185,6 +185,10 @@ private:
     Matrix25f H;    // Measurement model
     Matrix5f F;     // State transition matrix
 
+    static constexpr size_t INNOVATION_WINDOW_SIZE = 100;  // Fixed window size
+    Eigen::Matrix<float, 2, INNOVATION_WINDOW_SIZE> innovation_history;
+    size_t innovation_count = 0;
+
     void updateStateTransition(float k_hat, float delta_t) {
         const float T = delta_t;
         const float T2 = T * T;
@@ -211,6 +215,39 @@ private:
         
         // Enforce symmetry
         enforceSymmetry(P);
+    }
+
+    void updateMeasurementNoise(const Vector2f& innovation) {
+        // Circular buffer implementation
+        size_t current_index = innovation_count % INNOVATION_WINDOW_SIZE;
+        innovation_history.col(current_index) = innovation;
+        innovation_count++;
+        
+        // Only update R after we have enough samples
+        size_t valid_samples = std::min(innovation_count, INNOVATION_WINDOW_SIZE);
+        if (valid_samples >= 10) {  // Minimum samples before updating
+            // Calculate mean
+            Vector2f mean = Vector2f::Zero();
+            for (size_t i = 0; i < valid_samples; ++i) {
+                mean += innovation_history.col(i);
+            }
+            mean /= valid_samples;
+            
+            // Calculate covariance
+            Matrix2f cov = Matrix2f::Zero();
+            for (size_t i = 0; i < valid_samples; ++i) {
+                Vector2f diff = innovation_history.col(i) - mean;
+                cov += diff * diff.transpose();
+            }
+            cov /= (valid_samples - 1);
+            
+            // Blend between initial R and measured innovation covariance
+            R = 0.95f * R + 0.05f * cov;
+            
+            // Ensure positive definiteness
+            enforceSymmetry(R);
+            ensurePositiveDefinite(R);
+        }
     }
 
     void correctJoseph(const Vector2f& z) {
