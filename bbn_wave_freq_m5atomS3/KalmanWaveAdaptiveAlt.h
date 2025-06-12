@@ -180,6 +180,13 @@ public:
       return k_hat;
     }
 
+    // Static configuration for Allan variance calculation
+    static constexpr size_t AV_WINDOW_SIZE = 512;   // Power of 2 for better Allan variance calculation
+    static constexpr size_t MIN_CLUSTER_SIZE = 8;   // Minimum samples for variance calculation
+    static constexpr size_t MAX_CLUSTER_SIZE = 128; // Maximum cluster size to check
+
+    static constexpr size_t INNOVATION_WINDOW_SIZE = 100;  // Fixed window size
+
 private:
     Vector5f x;     // State vector
     Matrix5f P;     // Covariance matrix
@@ -188,14 +195,8 @@ private:
     Matrix25f H;    // Measurement model
     Matrix5f F;     // State transition matrix
 
-    static constexpr size_t INNOVATION_WINDOW_SIZE = 100;  // Fixed window size
     Eigen::Matrix<float, 2, INNOVATION_WINDOW_SIZE> innovation_history;
     size_t innovation_count = 0;
-
-    // Static configuration for Allan variance calculation
-    static constexpr size_t AV_WINDOW_SIZE = 512;   // Power of 2 for better Allan variance calculation
-    static constexpr size_t MIN_CLUSTER_SIZE = 8;   // Minimum samples for variance calculation
-    static constexpr size_t MAX_CLUSTER_SIZE = 128; // Maximum cluster size to check
 
     // Static storage for acceleration history
     Eigen::Matrix<float, AV_WINDOW_SIZE, 1> accel_history;
