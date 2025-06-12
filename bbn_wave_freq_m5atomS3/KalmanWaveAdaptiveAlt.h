@@ -282,7 +282,6 @@ private:
         mat = symm;
     }
 
-    // Modified ensurePositiveDefinite method
     template<int Size>
     void ensurePositiveDefinite(Eigen::Matrix<float, Size, Size>& mat) {
         // Check for positive definiteness via LDLT
