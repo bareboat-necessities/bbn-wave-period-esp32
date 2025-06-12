@@ -17,8 +17,8 @@ private:
 
 public:
   // waveAngle in radians (0=positive X, PI/2=positive Y)
-  WaveDirectionDetector(float smoothing = 0.01f, 
-                        float sensitivity = 0.03f,
+  WaveDirectionDetector(float smoothing = 0.002f, 
+                        float sensitivity = 0.005f,
                         float waveAngleRad = 0.0f)
     : alpha(smoothing), 
       threshold(sensitivity),
