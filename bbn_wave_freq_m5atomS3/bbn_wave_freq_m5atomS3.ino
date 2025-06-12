@@ -280,7 +280,8 @@ void read_and_processIMU_data() {
           gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", waveAltState.accel_bias * 100.0 / g_std);
           gen_nmea0183_xdr("$BBXDR,G,%.5f,M,AP_WAVE_LENGTH", ap_wavelength);
           gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_PERIOD", period);
-          gen_nmea0183_xdr("$BBXDR,A,%.1f,D,AP_WAVE_DIR", wave_angle_deg);
+          gen_nmea0183_xdr("$BBXDR,A,%.1f,D,AP_WAVE_ANGLE", wave_angle_deg);
+          gen_nmea0183_xdr("$BBXDR,G,%1d,,AP_WAVE_DIR", wave_dir);
           gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_SPEED", ap_wave_speed);
         } else {
           // report for Arduino Serial Plotter
