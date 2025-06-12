@@ -272,9 +272,9 @@ private:
         history_index = (history_index + 1) % AV_WINDOW_SIZE;
         if (history_index == 0) history_filled = true;
 
-        // Update Q periodically (every 100 samples)
+        // Update Q periodically (every 80 samples)
         static size_t update_counter = 0;
-        if (++update_counter >= 100) {
+        if (++update_counter >= 80) {
             update_counter = 0;
             
             // Only proceed if we have enough data
