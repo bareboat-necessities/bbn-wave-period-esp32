@@ -20,8 +20,7 @@ public:
                         float sensitivity = 0.005f,
                         float waveAngleRad = 0.0f)
     : alpha(smoothing), 
-      threshold(sensitivity),
-      waveAngle(waveAngleRad) {
+      threshold(sensitivity) {
     cosAngle = cos(waveAngleRad);
     sinAngle = sin(waveAngleRad);
   }
