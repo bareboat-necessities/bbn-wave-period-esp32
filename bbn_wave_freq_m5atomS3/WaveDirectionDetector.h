@@ -44,5 +44,9 @@ public:
     if (filteredP < -threshold) return BACKWARD;
     return UNCERTAIN;
   }
+
+  float getFilteredP() const {
+    return filteredP;
+  }
 };
 
