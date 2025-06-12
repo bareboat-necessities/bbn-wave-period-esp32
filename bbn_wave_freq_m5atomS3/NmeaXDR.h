@@ -110,7 +110,13 @@
     Transducer type: A
     Unit of measurement: D (degrees)
     Transducer name:
-      AP_WAVE_ANGLE - wave direction
+      AP_WAVE_ANGLE - wave angle
+
+  Wave direction (from observer point of view):
+    Transducer type: G
+    Unit of measurement: none
+    Transducer name:
+      AP_WAVE_DIR - wave direction (1 forward, -1 backward, 0 uncertain)
 
   Wave speed (from observer point of view):
     Transducer type: G
