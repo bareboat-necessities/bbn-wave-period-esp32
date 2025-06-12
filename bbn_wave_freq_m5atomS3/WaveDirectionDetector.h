@@ -1,9 +1,9 @@
 #pragma once
 
 enum WaveDirection {
-  UNCERTAIN,
-  FORWARD,
-  BACKWARD
+  BACKWARD = -1,
+  UNCERTAIN = 0,
+  FORWARD = 1
 };
 
 class WaveDirectionDetector {
