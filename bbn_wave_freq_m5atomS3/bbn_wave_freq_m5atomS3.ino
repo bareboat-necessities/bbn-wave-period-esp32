@@ -249,7 +249,7 @@ void read_and_processIMU_data() {
     } else {
       wave_angle_deg = azimuth;
     }
-    WaveDirection wave_dir = wave_dir_detector.update(accel_rotated.x, accel_rotated.y, aVert, dt);
+    WaveDirection wave_dir = wave_dir_detector.update(accel_rotated.x, accel_rotated.y, a_noisy, delta_t);
 
     // other wave parameters (these are not real, they are from observer point of view / apparent)
     // real values would require knowing boat speed, direction and adjustments for Doppler effect
@@ -302,8 +302,9 @@ void read_and_processIMU_data() {
           //Serial.printf(",accel bias:%0.4f", waveState.accel_bias);
           //Serial.printf(",ap_wave_speed:%.2f", ap_wave_speed);
           //Serial.printf(",ap_wavelength:%.2f", ap_wavelength);
-          Serial.printf(",ap_wave_dir_est_deg:%.2f", wave_angle_deg);
-          Serial.printf(",ap_wave_dir:%1d", wave_dir);
+          //Serial.printf(",ap_wave_dir_est_deg:%.2f", wave_angle_deg);
+          //Serial.printf(",ap_wave_dir:%1d", wave_dir);
+          Serial.printf(",ap_wave_dir_P:%.2f", wave_dir_detector.getFilteredP());
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
