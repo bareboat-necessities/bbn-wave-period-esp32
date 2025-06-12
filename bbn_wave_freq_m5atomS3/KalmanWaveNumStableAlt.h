@@ -157,6 +157,12 @@ public:
         x(4) = s0.accel_bias;
     }
 
+    void initMeasurementNoise(float r0, float r1) {
+        // Measurement noise covariance
+        R.setZero();
+        R.diagonal() << r0, r1;  // Displacement integral noise, Acceleration noise (m/s²)²
+    }
+
     float calculate_k_hat(float linear_freq) const {
       float k_hat = - pow(2.0 * M_PI * linear_freq, 2);
       return k_hat;
