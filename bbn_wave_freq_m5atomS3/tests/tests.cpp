@@ -23,7 +23,7 @@ AranovskiyParams arParams;
 AranovskiyState arState;
 KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
-KalmanWaveAdaptiveAltSate waveAltState;
+KalmanWaveAdaptiveAltState waveAltState;
 KalmANF kalmANF;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
