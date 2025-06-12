@@ -89,6 +89,13 @@
 
 #include <ArduinoEigenDense.h>
 
+// Static configuration for Allan variance calculation
+static constexpr size_t AV_WINDOW_SIZE = 512;          // Power of 2 for better Allan variance calculation
+static constexpr size_t AV_MIN_CLUSTER_SIZE = 8;       // Minimum samples for variance calculation
+static constexpr size_t AV_MAX_CLUSTER_SIZE = 128;     // Maximum cluster size to check
+
+static constexpr size_t INNOVATION_WINDOW_SIZE = 100;  // Fixed window size
+
 class KalmanWaveAdaptiveAlt {
 public:
     // Type aliases
@@ -179,13 +186,6 @@ public:
       float k_hat = - pow(2.0 * M_PI * linear_freq, 2);
       return k_hat;
     }
-
-    // Static configuration for Allan variance calculation
-    static constexpr size_t AV_WINDOW_SIZE = 512;      // Power of 2 for better Allan variance calculation
-    static constexpr size_t AV_MIN_CLUSTER_SIZE = 8;   // Minimum samples for variance calculation
-    static constexpr size_t AV_MAX_CLUSTER_SIZE = 128; // Maximum cluster size to check
-
-    static constexpr size_t INNOVATION_WINDOW_SIZE = 100;  // Fixed window size
 
 private:
     Vector5f x;     // State vector
