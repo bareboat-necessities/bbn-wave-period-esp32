@@ -29,6 +29,10 @@ public:
 
   // Processes X,Y,Z accelerations (all in G units)
   WaveDirection update(float accelX, float accelY, float accelZ, float delta_t) {
+    float mag_a = sqrtf(accelX * accelX + accelY * accelY);
+    cosAngle = accelX / mag_a;
+    sinAngle = accelY / mag_a;
+    
     // Project X/Y onto wave direction axis
     float aHoriz = accelX * cosAngle + accelY * sinAngle;
     
