@@ -30,21 +30,20 @@ public:
   // Processes X,Y,Z accelerations (all in G units)
   WaveDirection update(float accelX, float accelY, float accelZ, float delta_t) {
     float mag_a = sqrtf(accelX * accelX + accelY * accelY);
-    if (mag_a < 1e-8f) {
-      return;
+    if (mag_a > 1e-8f) {
+      cosAngle = accelX / mag_a;
+      sinAngle = accelY / mag_a;
+      
+      // Project X/Y onto wave direction axis
+      float aHoriz = accelX * cosAngle + accelY * sinAngle;
+      
+      // Compute vertical slope
+      float vertSlope = (accelZ - prevVertAccel) / delta_t;
+      prevVertAccel = accelZ;
+      
+      // Update EMA filter
+      filteredP += alpha * (aHoriz * vertSlope - filteredP);
     }
-    cosAngle = accelX / mag_a;
-    sinAngle = accelY / mag_a;
-    
-    // Project X/Y onto wave direction axis
-    float aHoriz = accelX * cosAngle + accelY * sinAngle;
-    
-    // Compute vertical slope
-    float vertSlope = (accelZ - prevVertAccel) / delta_t;
-    prevVertAccel = accelZ;
-    
-    // Update EMA filter
-    filteredP += alpha * (aHoriz * vertSlope - filteredP);
     
     // Threshold decision
     if (filteredP > threshold) return FORWARD;
