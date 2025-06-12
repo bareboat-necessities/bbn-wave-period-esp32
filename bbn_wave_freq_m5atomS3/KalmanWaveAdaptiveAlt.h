@@ -260,6 +260,89 @@ private:
         }
     }
 
+    void updateProcessNoise(float accel_measurement, float delta_t) {
+        sample_time = delta_t;
+        
+        // Store acceleration in circular buffer
+        accel_history(history_index) = accel_measurement;
+        history_index = (history_index + 1) % AV_WINDOW_SIZE;
+        if (history_index == 0) history_filled = true;
+
+        // Update Q periodically (every 100 samples)
+        static size_t update_counter = 0;
+        if (++update_counter >= 100) {
+            update_counter = 0;
+            
+            // Only proceed if we have enough data
+            size_t available_samples = history_filled ? AV_WINDOW_SIZE : history_index;
+            if (available_samples >= MIN_CLUSTER_SIZE * 2) {
+                // Estimate noise parameters using static buffers
+                float q_angle = estimateAngleRandomWalk(available_samples);
+                float q_bias = estimateBiasInstability(available_samples);
+                
+                // Update Q diagonal elements
+                Q(1,1) = q_angle;        // Heave position noise
+                Q(2,2) = q_angle * 10.0f; // Velocity noise
+                Q(3,3) = q_angle * 100.0f;// Acceleration noise
+                Q(4,4) = q_bias;         // Bias noise
+                
+                enforceSymmetry(Q);
+                ensurePositiveDefinite(Q);
+            }
+        }
+    }
+
+    // Angle random walk estimation
+    float estimateAngleRandomWalk(size_t available_samples) {
+        float variance = 0.0f;
+        size_t count = 0;
+        
+        // Calculate first differences
+        for (size_t i = 1; i < available_samples; i++) {
+            size_t idx1 = (history_index - i - 1) % AV_WINDOW_SIZE;
+            size_t idx2 = (history_index - i) % AV_WINDOW_SIZE;
+            float diff = accel_history(idx2) - accel_history(idx1);
+            variance += diff * diff;
+            count++;
+        }
+        
+        variance /= count;
+        return variance * sample_time;  // Angle random walk coefficient
+    }
+
+    // Bias instability estimation
+    float estimateBiasInstability(size_t available_samples) {
+        float min_var = std::numeric_limits<float>::max();
+        
+        // Check cluster sizes from MIN_CLUSTER_SIZE to MAX_CLUSTER_SIZE
+        for (size_t m = MIN_CLUSTER_SIZE; m <= std::min(MAX_CLUSTER_SIZE, available_samples/2); m++) {
+            size_t num_clusters = available_samples / m;
+            
+            for (size_t cluster = 0; cluster < num_clusters; cluster++) {
+                float sum = 0.0f;
+                
+                // Calculate cluster mean
+                for (size_t i = 0; i < m; i++) {
+                    size_t idx = (history_index - (cluster * m + i) - 1) % AV_WINDOW_SIZE;
+                    sum += accel_history(idx);
+                }
+                float mean = sum / m;
+                
+                // Calculate cluster variance
+                float var = 0.0f;
+                for (size_t i = 0; i < m; i++) {
+                    size_t idx = (history_index - (cluster * m + i) - 1) % AV_WINDOW_SIZE;
+                    float diff = accel_history(idx) - mean;
+                    var += diff * diff;
+                }
+                var /= (m - 1);
+                
+                if (var < min_var) min_var = var;
+            }
+        }
+        return min_var * sample_time * sample_time;  // Bias instability coefficient
+    }
+
     void correctJoseph(const Vector2f& z) {
         // Innovation: y = z - H * x
         Vector2f y = z - H * x;
