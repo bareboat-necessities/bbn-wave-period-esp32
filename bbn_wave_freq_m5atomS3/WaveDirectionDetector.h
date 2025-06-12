@@ -13,7 +13,7 @@ private:
   const float waveAngle; // Known wave axis angle (radians)
   float prevVertAccel = 0;
   float filteredP = 0;
-  float cosAngle, sinAngle; // Pre-computed trig values
+  float cosAngle, sinAngle; // trig values
 
 public:
   // waveAngle in radians (0=positive X, PI/2=positive Y)
@@ -27,7 +27,7 @@ public:
     sinAngle = sin(waveAngleRad);
   }
 
-  // Processes X,Y,Z accelerations (all in G units)
+  // Processes X,Y,Z accelerations
   WaveDirection update(float accelX, float accelY, float accelZ, float delta_t) {
     float mag_a = sqrtf(accelX * accelX + accelY * accelY);
     if (mag_a > 1e-8f) {
