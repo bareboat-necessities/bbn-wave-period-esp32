@@ -124,7 +124,7 @@ public:
         Q.diagonal() << q0, q1, q2, q3, q4;
 
         // Measurement noise covariance
-        R << 0.01f,  0.0f,   // Displacement integral noise
+        R << 0.01f,  0.0f,    // Displacement integral noise
              0.0f,   1.0f;    // Acceleration noise (m/s²)²
 
         // Measurement model
