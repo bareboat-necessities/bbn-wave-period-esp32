@@ -28,7 +28,7 @@ private:
     ParticleMatrix particles;
     WeightVector weights;
     uint32_t seed = 777;
-    uint32_t noise_state;
+    uint32_t noise_state = 0;
 
     // Deterministic random number generators
     float uniformRand() {
