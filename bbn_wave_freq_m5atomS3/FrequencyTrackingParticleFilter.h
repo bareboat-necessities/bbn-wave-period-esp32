@@ -78,9 +78,9 @@ public:
         
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
             // Initialize frequencies (sorted)
-            particles(i,0) = uniformRand() * (PF_FREQ_MAX - PF_FREQ_MIN) + PF_;
-            particles(i,1) = uniformRand() * (PF_FREQ_MAX - PF_FREQ_MIN) + PF_;
-            particles(i,2) = uniformRand() * (PF_FREQ_MAX - PF_FREQ_MIN) + PF_;
+            particles(i,0) = uniformRand() * (PF_FREQ_MAX - PF_FREQ_MIN) + PF_FREQ_MIN;
+            particles(i,1) = uniformRand() * (PF_FREQ_MAX - PF_FREQ_MIN) + PF_FREQ_MIN;
+            particles(i,2) = uniformRand() * (PF_FREQ_MAX - PF_FREQ_MIN) + PF_FREQ_MIN;
             enforceFrequencyOrdering(i);
             
             // Initialize amplitudes
