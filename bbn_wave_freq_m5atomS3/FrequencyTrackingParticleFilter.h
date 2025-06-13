@@ -141,7 +141,7 @@ public:
             }
             
             float residual = measurement - y_pred;
-            weights(i) *= expf(-0.5f * (residual/measurement_noise_std) * (residual/measurement_noise_std));
+            weights(i) = expf(-0.5f * (residual/measurement_noise_std) * (residual/measurement_noise_std));
             sum_weights += weights(i);
         }
         
