@@ -27,7 +27,7 @@ private:
     
     ParticleMatrix particles;
     WeightVector weights;
-    uint32_t seed;
+    uint32_t seed = 777;
     uint32_t noise_state;
 
     // Deterministic random number generators
