@@ -146,7 +146,18 @@ public:
             sum_weights += weights(i);
         }
         
-        // ... (rest of update/resampling remains same)
+        // Normalize weights
+        if (sum_weights < 1e-300) {
+            weights.setConstant(1.0 / NUM_PARTICLES);
+        } else {
+            weights /= sum_weights;
+        }
+        
+        // Resampling if needed
+        float neff = 1.0 / weights.array().square().sum();
+        if (neff < NUM_PARTICLES / 2.0) {
+            resample();
+        }
     }
 
     void estimate(Vector3f& freqs, Vector3f& amps, Vector3f& energies, float& estimated_bias) {
