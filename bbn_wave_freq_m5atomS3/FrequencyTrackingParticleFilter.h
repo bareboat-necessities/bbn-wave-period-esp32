@@ -185,6 +185,7 @@ public:
         particles = new_particles;
         weights.setConstant(1.0 / NUM_PARTICLES);
     }
+
     void estimate(Vector3f& freqs, Vector3f& amps, Vector3f& energies, float& estimated_bias) {
         // Weighted mean calculation
         Vector3f mean_freqs = Vector3f::Zero();
