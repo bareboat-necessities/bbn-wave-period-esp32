@@ -68,7 +68,7 @@ private:
         }
     }
     
-    float constrain(float value, float min_val, float max_val) {
+    float constraint(float value, float min_val, float max_val) {
         return (value < min_val) ? min_val : (value > max_val) ? max_val : value;
     }
 
@@ -109,14 +109,14 @@ public:
             // Add process noise to frequencies
             for (int j = 0; j < 3; ++j) {
                 particles(i, j) += normalRand() * sigma_f;
-                particles(i, j) = constrain(particles(i, j), PF_FREQ_MIN, PF_FREQ_MAX);
+                particles(i, j) = constraint(particles(i, j), PF_FREQ_MIN, PF_FREQ_MAX);
             }
             enforceFrequencyOrdering(i);
             
             // Add noise to amplitudes
             for (int j = 3; j < 6; ++j) {
                 particles(i, j) += normalRand() * sigma_a;
-                particles(i, j) = constrain(particles(i, j), PF_AMP_MIN, PF_AMP_MAX);
+                particles(i, j) = constraint(particles(i, j), PF_AMP_MIN, PF_AMP_MAX);
             }
             
             // Add noise to phases
@@ -128,7 +128,7 @@ public:
             
             // Add noise to bias (slow drift)
             particles(i,9) += normalRand() * sigma_bias;
-            particles(i,9) = constrain(particles(i,9), PF_BIAS_MIN, PF_BIAS_MAX);
+            particles(i,9) = constraint(particles(i,9), PF_BIAS_MIN, PF_BIAS_MAX);
         }
         
         // Update step
