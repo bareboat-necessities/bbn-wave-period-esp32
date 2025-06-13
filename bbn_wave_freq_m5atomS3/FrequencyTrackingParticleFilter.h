@@ -105,7 +105,25 @@ public:
                 float measurement_noise_std = 1.0f) {
         // Prediction step
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
-            // ... (existing frequency/amplitude/phase updates)
+            // Add process noise to frequencies
+            for (int j = 0; j < 3; ++j) {
+                particles(i, j) += normalRand() * sigma_f;
+                particles(i, j) = constrain(particles(i, j), FREQ_MIN, FREQ_MAX);
+            }
+            enforceFrequencyOrdering(i);
+            
+            // Add noise to amplitudes
+            for (int j = 3; j < 6; ++j) {
+                particles(i, j) += normalRand() * sigma_a;
+                particles(i, j) = constrain(particles(i, j), AMP_MIN, AMP_MAX);
+            }
+            
+            // Add noise to phases
+            for (int j = 6; j < 9; ++j) {
+                particles(i, j) += normalRand() * sigma_phi;
+                particles(i, j) = fmod(particles(i, j), 2 * M_PI);
+                if (particles(i, j) < 0) particles(i, j) += 2 * M_PI;
+            }
             
             // Add noise to bias (slow drift)
             particles(i,9) += normalRand() * sigma_bias;
