@@ -160,6 +160,31 @@ public:
         }
     }
 
+    void resample() {
+        // Calculate cumulative weights
+        Matrix<float, NUM_PARTICLES, 1> cum_weights;
+        cum_weights(0) = weights(0);
+        for (int i = 1; i < NUM_PARTICLES; ++i) {
+            cum_weights(i) = cum_weights(i-1) + weights(i);
+        }
+        
+        // Systematic resampling
+        ParticleMatrix new_particles;
+        float step = 1.0 / NUM_PARTICLES;
+        float u = uniformRand() * step;
+        
+        int i = 0;
+        for (int j = 0; j < NUM_PARTICLES; ++j) {
+            while (u > cum_weights(i) && i < NUM_PARTICLES-1) {
+                i++;
+            }
+            new_particles.row(j) = particles.row(i);
+            u += step;
+        }
+        
+        particles = new_particles;
+        weights.setConstant(1.0 / NUM_PARTICLES);
+    }
     void estimate(Vector3f& freqs, Vector3f& amps, Vector3f& energies, float& estimated_bias) {
         // Weighted mean calculation
         Vector3f mean_freqs = Vector3f::Zero();
