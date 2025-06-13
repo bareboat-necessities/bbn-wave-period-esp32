@@ -206,7 +206,7 @@ public:
         }
         
         // Energy calculation (excluding bias)
-        energies = mean_amps.array().square() * mean_freqs.array();
+        energies = mean_amps.array().square(); // * mean_freqs.array();
         
         // Sort frequencies by energy
         std::vector<std::pair<float, int>> energy_index;
