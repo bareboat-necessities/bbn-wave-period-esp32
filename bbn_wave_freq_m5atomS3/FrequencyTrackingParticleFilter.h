@@ -27,8 +27,49 @@ private:
     ParticleMatrix particles;
     WeightVector weights;
     uint32_t noise_state;
+    uint32_t seed;
+    uint32_t noise_state;
 
-    // ... (keep existing helper methods)
+    // Deterministic random number generators
+    double uniformRand() {
+        noise_state = (1664525 * noise_state + 1013904223);
+        return (noise_state / 4294967296.0);
+    }
+
+    double normalRand() {
+        static bool hasSpare = false;
+        static double spare;
+        if (hasSpare) {
+            hasSpare = false;
+            return spare;
+        }
+        hasSpare = true;
+        double u, v, s;
+        do {
+            u = uniformRand() * 2.0 - 1.0;
+            v = uniformRand() * 2.0 - 1.0;
+            s = u * u + v * v;
+        } while (s >= 1.0 || s == 0.0);
+        s = sqrt(-2.0 * log(s) / s);
+        spare = v * s;
+        return u * s;
+    }
+
+    void enforceFrequencyOrdering(int particle_idx) {
+        if (particles(particle_idx, 0) > particles(particle_idx, 1)) {
+            std::swap(particles(particle_idx, 0), particles(particle_idx, 1));
+        }
+        if (particles(particle_idx, 1) > particles(particle_idx, 2)) {
+            std::swap(particles(particle_idx, 1), particles(particle_idx, 2));
+        }
+        if (particles(particle_idx, 0) > particles(particle_idx, 1)) {
+            std::swap(particles(particle_idx, 0), particles(particle_idx, 1));
+        }
+    }
+    
+    float constrain(float value, float min_val, float max_val) {
+        return (value < min_val) ? min_val : (value > max_val) ? max_val : value;
+    }
 
 public:
     void initializeParticles() {
