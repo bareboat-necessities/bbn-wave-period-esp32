@@ -109,14 +109,14 @@ public:
             // Add process noise to frequencies
             for (int j = 0; j < 3; ++j) {
                 particles(i, j) += normalRand() * sigma_f;
-                particles(i, j) = constrain(particles(i, j), FREQ_MIN, FREQ_MAX);
+                particles(i, j) = constrain(particles(i, j), PF_FREQ_MIN, PF_FREQ_MAX);
             }
             enforceFrequencyOrdering(i);
             
             // Add noise to amplitudes
             for (int j = 3; j < 6; ++j) {
                 particles(i, j) += normalRand() * sigma_a;
-                particles(i, j) = constrain(particles(i, j), AMP_MIN, AMP_MAX);
+                particles(i, j) = constrain(particles(i, j), PF_AMP_MIN, PF_AMP_MAX);
             }
             
             // Add noise to phases
@@ -149,21 +149,21 @@ public:
         
         // Normalize weights
         if (sum_weights < 1e-300) {
-            weights.setConstant(1.0 / NUM_PARTICLES);
+            weights.setConstant(1.0 / PF_NUM_PARTICLES);
         } else {
             weights /= sum_weights;
         }
         
         // Resampling if needed
         float neff = 1.0 / weights.array().square().sum();
-        if (neff < NUM_PARTICLES / 2.0) {
+        if (neff < PF_NUM_PARTICLES / 2.0) {
             resample();
         }
     }
 
     void resample() {
         // Calculate cumulative weights
-        Matrix<float, NUM_PARTICLES, 1> cum_weights;
+        Matrix<float, PF_NUM_PARTICLES, 1> cum_weights;
         cum_weights(0) = weights(0);
         for (int i = 1; i < NUM_PARTICLES; ++i) {
             cum_weights(i) = cum_weights(i-1) + weights(i);
@@ -171,12 +171,12 @@ public:
         
         // Systematic resampling
         ParticleMatrix new_particles;
-        float step = 1.0 / NUM_PARTICLES;
+        float step = 1.0 / PF_NUM_PARTICLES;
         float u = uniformRand() * step;
         
         int i = 0;
-        for (int j = 0; j < NUM_PARTICLES; ++j) {
-            while (u > cum_weights(i) && i < NUM_PARTICLES-1) {
+        for (int j = 0; j < PF_NUM_PARTICLES; ++j) {
+            while (u > cum_weights(i) && i < PF_NUM_PARTICLES-1) {
                 i++;
             }
             new_particles.row(j) = particles.row(i);
@@ -184,7 +184,7 @@ public:
         }
         
         particles = new_particles;
-        weights.setConstant(1.0 / NUM_PARTICLES);
+        weights.setConstant(1.0 / PF_NUM_PARTICLES);
     }
 
     void estimate(Vector3f& freqs, Vector3f& amps, Vector3f& energies, float& estimated_bias) {
