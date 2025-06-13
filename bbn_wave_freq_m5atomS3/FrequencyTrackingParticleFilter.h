@@ -31,20 +31,20 @@ private:
     uint32_t noise_state;
 
     // Deterministic random number generators
-    double uniformRand() {
+    float uniformRand() {
         noise_state = (1664525 * noise_state + 1013904223);
         return (noise_state / 4294967296.0);
     }
 
-    double normalRand() {
+    float normalRand() {
         static bool hasSpare = false;
-        static double spare;
+        static float spare;
         if (hasSpare) {
             hasSpare = false;
             return spare;
         }
         hasSpare = true;
-        double u, v, s;
+        float u, v, s;
         do {
             u = uniformRand() * 2.0 - 1.0;
             v = uniformRand() * 2.0 - 1.0;
