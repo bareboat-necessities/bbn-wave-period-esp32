@@ -48,6 +48,7 @@
 #include "WaveFilters.h"
 #include "WaveDirectionDetector.h"
 #include "M5_Calibr.h"
+#include "FrequencyTrackingParticleFilter.h"
 
 bool useMahony = true;
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
