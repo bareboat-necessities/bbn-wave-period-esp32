@@ -28,7 +28,7 @@ private:
     ParticleMatrix particles;
     WeightVector weights;
     uint32_t seed = 777;
-    uint32_t noise_state = 0;
+    uint32_t noise_state = seed;
 
     // Deterministic random number generators
     float uniformRand() {
@@ -72,6 +72,14 @@ private:
     }
 
 public:
+    FrequencyTrackingParticleFilter() : 
+      particles(ParticleMatrix::Zero()),
+      weights(WeightVector::Constant(1.0f/PF_NUM_PARTICLES)),
+      seed(777),
+      noise_state(seed) {
+      initializeParticles();
+    }
+
     void initializeParticles() {
         noise_state = seed;
         
