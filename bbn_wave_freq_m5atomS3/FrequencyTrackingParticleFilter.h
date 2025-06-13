@@ -51,7 +51,7 @@ private:
             v = uniformRand() * 2.0 - 1.0;
             s = u * u + v * v;
         } while (s >= 1.0 || s == 0.0);
-        s = sqrt(-2.0 * log(s) / s);
+        s = sqrtf(-2.0 * logf(s) / s);
         spare = v * s;
         return u * s;
     }
