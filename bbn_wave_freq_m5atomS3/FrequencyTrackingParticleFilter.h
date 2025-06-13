@@ -165,7 +165,7 @@ public:
         // Calculate cumulative weights
         Matrix<float, PF_NUM_PARTICLES, 1> cum_weights;
         cum_weights(0) = weights(0);
-        for (int i = 1; i < NUM_PARTICLES; ++i) {
+        for (int i = 1; i < PF_NUM_PARTICLES; ++i) {
             cum_weights(i) = cum_weights(i-1) + weights(i);
         }
         
