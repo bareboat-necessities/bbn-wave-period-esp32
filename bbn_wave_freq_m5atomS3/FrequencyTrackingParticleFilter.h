@@ -207,7 +207,7 @@ public:
             energy_index.emplace_back(energies(i), i);
         }
         std::sort(energy_index.begin(), energy_index.end(), 
-                 [](const auto& a, const auto& b) { return a.first > b.first; });
+                 [](const std::pair<float, int>& a, const std::pair<float, int>& b) { return a.first > b.first; });
         
         // Prepare outputs
         Vector3f sorted_freqs, sorted_amps, sorted_energies;
