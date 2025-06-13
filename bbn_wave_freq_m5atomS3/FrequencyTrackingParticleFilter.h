@@ -46,11 +46,11 @@ private:
         hasSpare = true;
         float u, v, s;
         do {
-            u = uniformRand() * 2.0 - 1.0;
-            v = uniformRand() * 2.0 - 1.0;
+            u = uniformRand() * 2.0f - 1.0f;
+            v = uniformRand() * 2.0f - 1.0f;
             s = u * u + v * v;
-        } while (s >= 1.0 || s == 0.0);
-        s = sqrtf(-2.0 * logf(s) / s);
+        } while (s >= 1.0f || s == 0.0f);
+        s = sqrtf(-2.0f * logf(s) / s);
         spare = v * s;
         return u * s;
     }
@@ -148,14 +148,14 @@ public:
         
         // Normalize weights
         if (sum_weights < 1e-300) {
-            weights.setConstant(1.0 / PF_NUM_PARTICLES);
+            weights.setConstant(1.0f / PF_NUM_PARTICLES);
         } else {
             weights /= sum_weights;
         }
         
         // Resampling if needed
         float neff = 1.0 / weights.array().square().sum();
-        if (neff < PF_NUM_PARTICLES / 2.0) {
+        if (neff < PF_NUM_PARTICLES / 2.0f) {
             resample();
         }
     }
@@ -183,7 +183,7 @@ public:
         }
         
         particles = new_particles;
-        weights.setConstant(1.0 / PF_NUM_PARTICLES);
+        weights.setConstant(1.0f / PF_NUM_PARTICLES);
     }
 
     void estimate(Vector3f& freqs, Vector3f& amps, Vector3f& energies, float& estimated_bias) {
