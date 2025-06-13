@@ -18,9 +18,9 @@ static constexpr float PF_BIAS_MIN = -1.0f;  // Expected bias range
 static constexpr float PF_BIAS_MAX = 1.0f;
 
 // Static matrices with bias term added
-typedef Matrix<float, PF_NUM_PARTICLES, 10> ParticleMatrix;  // Now 10 params: [f1,f2,f3,A1,A2,A3,φ1,φ2,φ3,bias]
-typedef Matrix<float, PF_NUM_PARTICLES, 1> WeightVector;
-typedef Matrix<float, 3, 1> Vector3f;
+typedef Eigen::Matrix<float, PF_NUM_PARTICLES, 10> ParticleMatrix;  // Now 10 params: [f1,f2,f3,A1,A2,A3,φ1,φ2,φ3,bias]
+typedef Eigen::Matrix<float, PF_NUM_PARTICLES, 1> WeightVector;
+typedef Eigen::Matrix<float, 3, 1> Vector3f;
 
 class FrequencyTrackingParticleFilter {
 private:
