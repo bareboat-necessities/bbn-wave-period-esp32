@@ -138,7 +138,7 @@ public:
             float y_pred = particles(i,9);  // Start with bias
             for (int j = 0; j < 3; ++j) {
                 y_pred += particles(i,j+3) * 
-                         fast_sin(2 * M_PI * particles(i,j) * time + particles(i,j+6));
+                         sinf(2 * M_PI * particles(i,j) * time + particles(i,j+6));
             }
             
             float residual = measurement - y_pred;
