@@ -54,7 +54,9 @@ private:
 
     void enforceFrequencyOrdering(int i) {
         if (particles(i, 0) > particles(i, 1)) {
-            std::swap(particles(i, 0), particles(i, 1));
+            std::swap(particles(i, 0), particles(i, 1)); // swap f1/f2
+            std::swap(particles(i, 2), particles(i, 3)); // swap B1/B2
+            std::swap(particles(i, 4), particles(i, 5)); // swap C1/C2
         }
     }
 
