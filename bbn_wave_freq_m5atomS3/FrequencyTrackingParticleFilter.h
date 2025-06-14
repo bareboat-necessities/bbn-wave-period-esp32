@@ -157,7 +157,7 @@ public:
         }
         
         // Normalize weights
-        if (sum_weights < 1e-300) {
+        if (sum_weights < 1e-12) {
             weights.setConstant(1.0f / PF_NUM_PARTICLES);
         } else {
             weights /= sum_weights;
