@@ -162,22 +162,33 @@ public:
         weights.setConstant(1.0f / PF_NUM_PARTICLES);
     }
 
-    void estimate(Vector2f& freqs, Vector2f& amps) {
-        // Weighted mean of frequencies and amplitudes
+    void estimate(Vector2f& freqs, Vector2f& amps, Vector2f& energies) {
+        // Weighted mean calculation
         freqs = Vector2f::Zero();
         amps = Vector2f::Zero();
-
+        energies = Vector2f::Zero();
+    
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
+            // Frequencies
             freqs += weights(i) * particles.block<1, 2>(i, 0).transpose();
-            
-            // Reconstruct amplitudes: A_i = sqrt(B_i² + C_i²)
+    
+            // Acceleration amplitudes (A_accel = sqrt(B² + C²))
             float a1 = sqrtf(particles(i, 2) * particles(i, 2) + particles(i, 3) * particles(i, 3));
             float a2 = sqrtf(particles(i, 4) * particles(i, 4) + particles(i, 5) * particles(i, 5));
             amps += weights(i) * Vector2f(a1, a2);
+    
+            // Energy calculation (E ∝ A_accel² / ω⁴)
+            float omega1 = 2 * M_PI * particles(i, 0);
+            float omega2 = 2 * M_PI * particles(i, 1);
+            energies += weights(i) * Vector2f(
+                (a1 * a1) / (omega1 * omega1 * omega1 * omega1),
+                (a2 * a2) / (omega2 * omega2 * omega2 * omega2)
+            );
         }
-
-        // Sort by amplitude (descending)
-        if (amps(0) < amps(1)) {
+    
+        // Sort by energy (descending)
+        if (energies(0) < energies(1)) {
+            std::swap(energies(0), energies(1));
             std::swap(amps(0), amps(1));
             std::swap(freqs(0), freqs(1));
         }
