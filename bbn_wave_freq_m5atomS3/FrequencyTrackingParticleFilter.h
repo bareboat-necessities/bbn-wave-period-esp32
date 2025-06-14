@@ -10,7 +10,7 @@
 #include <cfloat>
 #include <ArduinoEigenDense.h>
 
-static constexpr int PF_NUM_PARTICLES = 500;
+static constexpr int PF_NUM_PARTICLES = 250;
 static constexpr float PF_FREQ_MIN = 0.04f;  // 0.04 Hz ~ 25s waves
 static constexpr float PF_FREQ_MAX = 0.5f;   // 0.5 Hz ~ 2s waves
 static constexpr float PF_AMP_MIN = 0.01f;   // Minimum amplitude (m/s²)
@@ -199,7 +199,7 @@ public:
     
         // Very conservative resampling
         float effective_sample_size = 1.0f / weights.array().square().sum();
-        if (effective_sample_size < PF_NUM_PARTICLES / 5.0f) {  // Much less frequent
+        if (effective_sample_size < PF_NUM_PARTICLES / 3.0f) {  // less frequent
             resample();
         }
     }
