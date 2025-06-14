@@ -10,7 +10,8 @@
 #include "TrochoidalWave.h"
 #include "MinMaxLemire.h"
 #include "KalmanForWave.h"
-#include "KalmanWaveAdaptiveAlt.h"
+#include "KalmanWaveNumStableAlt.h"
+//#include "KalmanWaveAdaptiveAlt.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "WaveFilters.h"
 #include "TimeAwareSpikeFilter.h"
@@ -23,7 +24,8 @@ AranovskiyParams arParams;
 AranovskiyState arState;
 KalmanSmootherVars kalman_freq;
 KalmanWaveState waveState;
-KalmanWaveAdaptiveAltState waveAltState;
+//KalmanWaveAdaptiveAltState waveAltState;
+KalmanWaveNumStableAltState waveAltState;
 KalmANF kalmANF;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
