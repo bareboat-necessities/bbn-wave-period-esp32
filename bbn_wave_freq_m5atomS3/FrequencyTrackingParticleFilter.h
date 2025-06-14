@@ -16,7 +16,7 @@ static constexpr float PF_AMP_MIN = 0.01f;   // Minimum amplitude (m/s²)
 static constexpr float PF_AMP_MAX = 10.0f;    // Maximum amplitude (m/s²)
 static constexpr int PF_SEED = 777;
 
-// State: [f1, f2, B1, B2, C1, C2] (6D, but effectively 4D since B/C coupled)
+// State: [f1, f2, B1, C1, B2, C2] (6D, but effectively 4D since B/C coupled)
 typedef Eigen::Matrix<float, PF_NUM_PARTICLES, 6> ParticleMatrix;
 typedef Eigen::Matrix<float, PF_NUM_PARTICLES, 1> WeightVector;
 typedef Eigen::Matrix<float, 2, 1> Vector2f;
@@ -55,8 +55,8 @@ private:
     void enforceFrequencyOrdering(int i) {
         if (particles(i, 0) > particles(i, 1)) {
             std::swap(particles(i, 0), particles(i, 1)); // swap f1/f2
-            std::swap(particles(i, 2), particles(i, 3)); // swap B1/B2
-            std::swap(particles(i, 4), particles(i, 5)); // swap C1/C2
+            std::swap(particles(i, 2), particles(i, 4)); // swap B1/B2
+            std::swap(particles(i, 3), particles(i, 5)); // swap C1/C2
         }
     }
 
@@ -118,8 +118,8 @@ public:
             // Quadrature signal model: B1*sin(2πf1t) + C1*cos(2πf1t) + B2*sin(2πf2t) + C2*cos(2πf2t)
             float y_pred = 
                 particles(i, 2) * sinf(2 * M_PI * particles(i, 0) * time) +  // B1*sin(2πf1t)
-                particles(i, 4) * cosf(2 * M_PI * particles(i, 0) * time) +  // C1*cos(2πf1t)
-                particles(i, 3) * sinf(2 * M_PI * particles(i, 1) * time) +  // B2*sin(2πf2t)
+                particles(i, 3) * cosf(2 * M_PI * particles(i, 0) * time) +  // C1*cos(2πf1t)
+                particles(i, 4) * sinf(2 * M_PI * particles(i, 1) * time) +  // B2*sin(2πf2t)
                 particles(i, 5) * cosf(2 * M_PI * particles(i, 1) * time);   // C2*cos(2πf2t)
 
             float residual = measurement - y_pred;
@@ -175,8 +175,8 @@ public:
             freqs += weights(i) * particles.block<1, 2>(i, 0).transpose();
             
             // Acceleration amplitudes (A_accel = sqrt(B² + C²))
-            float a1 = sqrtf(particles(i, 2)*particles(i, 2) + particles(i, 4)*particles(i, 4));
-            float a2 = sqrtf(particles(i, 3)*particles(i, 3) + particles(i, 5)*particles(i, 5));
+            float a1 = sqrtf(particles(i, 2)*particles(i, 2) + particles(i, 3)*particles(i, 3));
+            float a2 = sqrtf(particles(i, 4)*particles(i, 4) + particles(i, 5)*particles(i, 5));
             accel_amps += weights(i) * Vector2f(a1, a2);
         }
     
