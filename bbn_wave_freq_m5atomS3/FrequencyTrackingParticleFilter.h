@@ -118,8 +118,8 @@ public:
             // Quadrature signal model: B1*sin(2πf1t) + C1*cos(2πf1t) + B2*sin(2πf2t) + C2*cos(2πf2t)
             float y_pred = 
                 particles(i, 2) * sinf(2 * M_PI * particles(i, 0) * time) +  // B1*sin(2πf1t)
-                particles(i, 3) * cosf(2 * M_PI * particles(i, 0) * time) +  // C1*cos(2πf1t)
-                particles(i, 4) * sinf(2 * M_PI * particles(i, 1) * time) +  // B2*sin(2πf2t)
+                particles(i, 4) * cosf(2 * M_PI * particles(i, 0) * time) +  // C1*cos(2πf1t)
+                particles(i, 3) * sinf(2 * M_PI * particles(i, 1) * time) +  // B2*sin(2πf2t)
                 particles(i, 5) * cosf(2 * M_PI * particles(i, 1) * time);   // C2*cos(2πf2t)
 
             float residual = measurement - y_pred;
@@ -175,8 +175,8 @@ public:
             freqs += weights(i) * particles.block<1, 2>(i, 0).transpose();
             
             // Acceleration amplitudes (A_accel = sqrt(B² + C²))
-            float a1 = sqrtf(particles(i, 2)*particles(i, 2) + particles(i, 3)*particles(i, 3));
-            float a2 = sqrtf(particles(i, 4)*particles(i, 4) + particles(i, 5)*particles(i, 5));
+            float a1 = sqrtf(particles(i, 2)*particles(i, 2) + particles(i, 4)*particles(i, 4));
+            float a2 = sqrtf(particles(i, 3)*particles(i, 3) + particles(i, 5)*particles(i, 5));
             accel_amps += weights(i) * Vector2f(a1, a2);
         }
     
