@@ -110,9 +110,9 @@ public:
     }
 
     void process(float measurement, float time, float dt,
-                float sigma_f = 0.01f, float sigma_a = 0.1f, 
-                float sigma_phi = 0.01f, float sigma_bias = 0.005f,
-                float measurement_noise_std = 1.0f) {
+                float sigma_f = 0.1f, float sigma_a = 0.01f, 
+                float sigma_phi = 0.001f, float sigma_bias = 0.005f,
+                float measurement_noise_std = 0.09f) {
         // Prediction step
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
             // Add process noise to frequencies
