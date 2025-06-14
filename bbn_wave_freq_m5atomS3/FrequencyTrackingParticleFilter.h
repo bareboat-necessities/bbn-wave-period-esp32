@@ -178,7 +178,7 @@ public:
             accel_amps += weights(i) * Vector2f(a1, a2);
         }
     
-        // Convert to displacement amplitudes (A_disp = A_accel/ω²)
+        // Convert to from vertical acceleration to displacement amplitudes (A_disp = A_accel/ω²)
         float omega1 = 2 * M_PI * freqs(0);
         float omega2 = 2 * M_PI * freqs(1);
         displacement_amps = Vector2f(
