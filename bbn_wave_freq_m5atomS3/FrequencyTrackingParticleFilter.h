@@ -12,10 +12,10 @@
 static constexpr int PF_NUM_PARTICLES = 250;
 static constexpr float PF_FREQ_MIN = 0.04f;
 static constexpr float PF_FREQ_MAX = 2.0f;
-static constexpr float PF_AMP_MIN = 0.1f;
-static constexpr float PF_AMP_MAX = 10.0f;
-static constexpr float PF_BIAS_MIN = -1.0f;  // Expected bias range
-static constexpr float PF_BIAS_MAX = 1.0f;
+static constexpr float PF_AMP_MIN = 0.01f;
+static constexpr float PF_AMP_MAX = 0.5f;
+static constexpr float PF_BIAS_MIN = -0.02f;  // Expected bias range
+static constexpr float PF_BIAS_MAX = 0.02f;
 
 // Static matrices with bias term added
 typedef Eigen::Matrix<float, PF_NUM_PARTICLES, 10> ParticleMatrix;  // Now 10 params: [f1,f2,f3,A1,A2,A3,φ1,φ2,φ3,bias]
