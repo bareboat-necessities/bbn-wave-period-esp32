@@ -1,7 +1,7 @@
 #pragma once
 
 /*
-  A particle filter which tracks three most energy carrying frequencies of a signal.
+  A particle filter which tracks two most energy carrying frequencies of a signal.
 
   See: https://github.com/bareboat-necessities/bbn-wave-period-esp32/issues/43
   
