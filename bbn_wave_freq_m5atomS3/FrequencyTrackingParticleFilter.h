@@ -53,12 +53,16 @@ private:
     }
 
     void enforceFrequencyOrdering(int i) {
-        // Only swap if frequencies cross with some minimum separation
-        if (particles(i, 0) > particles(i, 1) && 
-            fabs(particles(i, 0) - particles(i, 1)) > 0.05f) {
+        // Always enforce ordering with minimum separation
+        if (particles(i, 0) > particles(i, 1)) {
             std::swap(particles(i, 0), particles(i, 1));
             std::swap(particles(i, 2), particles(i, 4));
             std::swap(particles(i, 3), particles(i, 5));
+        }
+        
+        // Enforce minimum separation
+        if (particles(i, 1) - particles(i, 0) < 0.05f) {
+            particles(i, 1) = particles(i, 0) + 0.05f;
         }
     }
 
@@ -79,9 +83,20 @@ public:
         float log_max = logf(PF_FREQ_MAX);
 
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
-            // Initialize frequencies (log-uniform)
-            particles(i, 0) = expf(uniformRand() * (log_max - log_min) + log_min);  // f1
-            particles(i, 1) = expf(uniformRand() * (log_max - log_min) + log_min);  // f2
+            // Initialize fundamental frequency (log-uniform)
+            particles(i, 0) = expf(uniformRand() * (log_max - log_min) + log_min);
+            
+            // Initialize second frequency with higher probability of being harmonic
+            if (uniformRand() < 0.7f) { // 70% chance of harmonic
+                particles(i, 1) = particles(i, 0) * (1 + round(uniformRand() * 3)); // 1x-4x
+            } else {
+                particles(i, 1) = expf(uniformRand() * (log_max - log_min) + log_min);
+            }
+            
+            // Enforce minimum frequency separation
+            if (fabs(particles(i, 0) - particles(i, 1)) < 0.1f) {
+                particles(i, 1) = particles(i, 0) + 0.1f;
+            }
             enforceFrequencyOrdering(i);
 
             // Initialize quadrature amplitudes (B_i, C_i)
@@ -123,13 +138,23 @@ public:
 
         // Harmonic Constraints
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
-            // Penalize particles where f2 is not roughly a multiple of f1
             float ratio = particles(i, 1) / particles(i, 0);
             float nearest_integer = roundf(ratio);
-            if (fabs(ratio - nearest_integer) > 0.1f) {
-                weights(i) *= 0.1f; // Strongly downweight non-harmonic particles
+            float harmonicity = fabs(ratio - nearest_integer);
+            
+            // Reward harmonic relationships and penalize non-harmonic ones smoothly
+            if (harmonicity < 0.2f) {
+                weights(i) *= (1.0f + (0.2f - harmonicity) * 2.0f); // Boost harmonic particles
+            } else {
+                weights(i) *= (0.1f + 0.9f * (1.0f - harmonicity)); // Smooth penalty
             }
-        }     
+            
+            // Additional penalty for frequencies being too close
+            float freq_diff = fabs(particles(i, 0) - particles(i, 1));
+            if (freq_diff < 0.1f) {
+                weights(i) *= (freq_diff / 0.1f); // Scale down weight proportionally
+            }
+        } 
       
         // --- Update Step ---
         float sum_weights = 0.0f;
