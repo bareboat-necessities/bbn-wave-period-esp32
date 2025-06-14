@@ -292,7 +292,7 @@ void read_and_processIMU_data() {
           //Serial.printf(",a_noisy:%0.4f", g_std * a_noisy);
           //Serial.printf(",a_no_spikes:%0.4f", g_std * a_no_spikes);
           //Serial.printf(",heave_cm:%.4f", heave * 100);
-          //Serial.printf(",heave_alt:%.4f", heaveAlt * 100);
+          Serial.printf(",heave_alt:%.4f", heaveAlt * 100);
           //Serial.printf(",freq_adj:%.4f", freq_adj * 100);
           //Serial.printf(",freq:%.4f", freq * 100);
           //Serial.printf(",h_cm:%.4f", h * 100);
@@ -307,7 +307,7 @@ void read_and_processIMU_data() {
           //Serial.printf(",ap_wavelength:%.2f", ap_wavelength);
           //Serial.printf(",ap_wave_dir_est_deg:%.2f", wave_angle_deg);
           //Serial.printf(",ap_wave_dir:%1d", wave_dir);
-          Serial.printf(",ap_wave_dir_P:%.2f", wave_dir_detector.getFilteredP());
+          //Serial.printf(",ap_wave_dir_P:%.2f", wave_dir_detector.getFilteredP());
 
           // for https://github.com/thecountoftuscany/PyTeapot-Quaternion-Euler-cube-rotation
           //Serial.printf("y%0.1fyp%0.1fpr%0.1fr", yaw, pitch, roll);
