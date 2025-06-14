@@ -111,9 +111,9 @@ public:
     }
 
     void process(float measurement, float time, float dt,
-                float sigma_f = 0.02f, float sigma_a = 0.01f, 
-                float sigma_phi = 0.1f, float sigma_bias = 0.002f,
-                float measurement_noise_std = 0.09f) {
+                 float sigma_f = 0.02f, float sigma_a = 0.01f, 
+                 float sigma_phi = 0.1f, float sigma_bias = 0.002f,
+                 float measurement_noise_std = 0.09f) {
         // Prediction step
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
             // Add process noise to frequencies
@@ -147,8 +147,7 @@ public:
             // Signal model with bias term
             float y_pred = particles(i,9);  // Start with bias
             for (int j = 0; j < 3; ++j) {
-                y_pred += particles(i,j+3) * 
-                         sinf(2 * M_PI * particles(i,j) * time + particles(i,j+6));
+                y_pred += particles(i,j+3) * sinf(2 * M_PI * particles(i,j) * time + particles(i,j+6));
             }
             
             float residual = measurement - y_pred;
@@ -232,7 +231,6 @@ public:
             sorted_amps(i) = mean_amps(idx);
             sorted_energies(i) = energies(idx);
         }
-        
         freqs = sorted_freqs;
         amps = sorted_amps;
         energies = sorted_energies;
