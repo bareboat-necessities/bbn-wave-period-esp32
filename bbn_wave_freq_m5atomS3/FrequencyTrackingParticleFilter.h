@@ -208,7 +208,7 @@ public:
             mean_bias += weights(i) * particles(i,9);
         }
         
-        // Energy calculation (excluding bias)
+        // Energy calculation (excluding bias) for the case when the signal is acceleration of vertical displacement
 
         // Convert acceleration amplitudes to displacement amplitudes
         Vector3f displacement_amps = mean_amps.array() / (2 * M_PI * mean_freqs.array()).square();
