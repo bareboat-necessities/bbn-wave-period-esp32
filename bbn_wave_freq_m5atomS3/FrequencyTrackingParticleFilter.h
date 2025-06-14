@@ -7,6 +7,7 @@
   
 */
 
+#include <cfloat>
 #include <ArduinoEigenDense.h>
 
 static constexpr int PF_NUM_PARTICLES = 500;
