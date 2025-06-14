@@ -37,8 +37,8 @@
 #include "Quaternion.h"
 #include "MinMaxLemire.h"
 #include "KalmanForWave.h"
-//#include "KalmanWaveNumStableAlt.h"
-#include "KalmanWaveAdaptiveAlt.h"
+#include "KalmanWaveNumStableAlt.h"
+//#include "KalmanWaveAdaptiveAlt.h"
 #include "TimeAwareSpikeFilter.h"
 #include "TimeAwareBandpassFilter.h"
 #include "HighPassFilters.h"
@@ -79,7 +79,7 @@ Kalman_QMEKF kalman_mekf;
 // Wave
 MinMaxLemire min_max_h;
 KalmanWaveState waveState;
-KalmanWaveAdaptiveAltState waveAltState;
+KalmanWaveNumStableAltState waveAltState;
 
 #define WRONG_ANGLE_MARKER -360.0f
 
