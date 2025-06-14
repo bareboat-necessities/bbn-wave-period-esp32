@@ -16,6 +16,7 @@ static constexpr float PF_AMP_MIN = 0.01f;
 static constexpr float PF_AMP_MAX = 0.5f;
 static constexpr float PF_BIAS_MIN = -0.02f;  // Expected bias range
 static constexpr float PF_BIAS_MAX = 0.02f;
+static constexpr int PF_SEED = 777;
 
 // Static matrices with bias term added
 typedef Eigen::Matrix<float, PF_NUM_PARTICLES, 10> ParticleMatrix;  // Now 10 params: [f1,f2,f3,A1,A2,A3,φ1,φ2,φ3,bias]
@@ -27,7 +28,7 @@ private:
     
     ParticleMatrix particles;
     WeightVector weights;
-    uint32_t seed = 777;
+    uint32_t seed = PF_SEED;
     uint32_t noise_state = seed;
 
     // Deterministic random number generators
@@ -75,7 +76,7 @@ public:
     FrequencyTrackingParticleFilter() : 
       particles(ParticleMatrix::Zero()),
       weights(WeightVector::Constant(1.0f/PF_NUM_PARTICLES)),
-      seed(777),
+      seed(PF_SEED),
       noise_state(seed) {
       initializeParticles();
     }
