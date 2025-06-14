@@ -68,7 +68,7 @@
        [ 0, 0 ],
        [ 0, 0 ],
        [ 0, 1 ],
-       [ 0, 0 ]]  
+       [ 0, 1 ]]  (since measurement includes bias and is not 'true' a)
 
   F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3         ],
        [ 0,      1,    T,             1/2*T^2,         -1/2*T^2         ],
@@ -106,35 +106,35 @@ matrix_t *kalman_wave_alt_get_state_transition(kalman_t *kf, matrix_data_t k_hat
   // transition matrix [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *F = kalman_get_state_transition(kf);
 
-  matrix_set(F, 0, 0, (matrix_data_t)1.0);                                         // 1
-  matrix_set(F, 0, 1, (matrix_data_t)delta_t);                                     // T
-  matrix_set(F, 0, 2, (matrix_data_t)0.5 * delta_t * delta_t);                     // 0.5 * T^2
-  matrix_set(F, 0, 3, (matrix_data_t)(1.0 / 6.0) * delta_t * delta_t * delta_t);   // (1/6) * T^3
-  matrix_set(F, 0, 4, (matrix_data_t)(-1.0 / 6.0) * delta_t * delta_t * delta_t);  // -(1/6) * T^3
+  matrix_set(F, 0, 0, (matrix_data_t)1.0f);                                          // 1
+  matrix_set(F, 0, 1, (matrix_data_t)delta_t);                                       // T
+  matrix_set(F, 0, 2, (matrix_data_t)0.5f * delta_t * delta_t);                      // 0.5 * T^2
+  matrix_set(F, 0, 3, (matrix_data_t)(1.0f / 6.0f) * delta_t * delta_t * delta_t);   // (1/6) * T^3
+  matrix_set(F, 0, 4, (matrix_data_t)(-1.0f / 6.0f) * delta_t * delta_t * delta_t);  // -(1/6) * T^3
 
-  matrix_set(F, 1, 0, (matrix_data_t)0.0);                         // 0
-  matrix_set(F, 1, 1, (matrix_data_t)1.0);                         // 1
-  matrix_set(F, 1, 2, (matrix_data_t)delta_t);                     // T
-  matrix_set(F, 1, 3, (matrix_data_t)0.5 * delta_t * delta_t);     // 0.5 * T^2
-  matrix_set(F, 1, 4, (matrix_data_t)-0.5 * delta_t * delta_t);    // -0.5 * T^2
+  matrix_set(F, 1, 0, (matrix_data_t)0.0f);                         // 0
+  matrix_set(F, 1, 1, (matrix_data_t)1.0f);                         // 1
+  matrix_set(F, 1, 2, (matrix_data_t)delta_t);                      // T
+  matrix_set(F, 1, 3, (matrix_data_t)0.5f * delta_t * delta_t);     // 0.5 * T^2
+  matrix_set(F, 1, 4, (matrix_data_t)-0.5f * delta_t * delta_t);    // -0.5 * T^2
 
-  matrix_set(F, 2, 0, (matrix_data_t)0.0);                         // 0
-  matrix_set(F, 2, 1, (matrix_data_t)0.0);                         // 0
-  matrix_set(F, 2, 2, (matrix_data_t)1.0);                         // 1
-  matrix_set(F, 2, 3, (matrix_data_t)delta_t);                     // T
-  matrix_set(F, 2, 4, (matrix_data_t)-delta_t);                    // -T
+  matrix_set(F, 2, 0, (matrix_data_t)0.0f);                         // 0
+  matrix_set(F, 2, 1, (matrix_data_t)0.0f);                         // 0
+  matrix_set(F, 2, 2, (matrix_data_t)1.0f);                         // 1
+  matrix_set(F, 2, 3, (matrix_data_t)delta_t);                      // T
+  matrix_set(F, 2, 4, (matrix_data_t)-delta_t);                     // -T
 
-  matrix_set(F, 3, 0, (matrix_data_t)0.0);                                 // 0
+  matrix_set(F, 3, 0, (matrix_data_t)0.0f);                                 // 0
   matrix_set(F, 3, 1, (matrix_data_t)k_hat);                               // k_hat
   matrix_set(F, 3, 2, (matrix_data_t)k_hat * delta_t);                     // k_hat * T
-  matrix_set(F, 3, 3, (matrix_data_t)0.5 * k_hat * delta_t * delta_t);     // 0.5 * k_hat * T^2
-  matrix_set(F, 3, 4, (matrix_data_t)-0.5 * k_hat * delta_t * delta_t);    // -0.5 * k_hat * T^2
+  matrix_set(F, 3, 3, (matrix_data_t)0.5f * k_hat * delta_t * delta_t);     // 0.5 * k_hat * T^2
+  matrix_set(F, 3, 4, (matrix_data_t)-0.5f * k_hat * delta_t * delta_t);    // -0.5 * k_hat * T^2
 
-  matrix_set(F, 4, 0, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 4, 1, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 4, 2, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 4, 3, (matrix_data_t)0.0);              // 0
-  matrix_set(F, 4, 4, (matrix_data_t)1.0);              // 1
+  matrix_set(F, 4, 0, (matrix_data_t)0.0f);              // 0
+  matrix_set(F, 4, 1, (matrix_data_t)0.0f);              // 0
+  matrix_set(F, 4, 2, (matrix_data_t)0.0f);              // 0
+  matrix_set(F, 4, 3, (matrix_data_t)0.0f);              // 0
+  matrix_set(F, 4, 4, (matrix_data_t)1.0f);              // 1
   return F;
 }
 
@@ -157,65 +157,65 @@ void kalman_wave_alt_init_defaults(float q0, float q1, float q2, float q3, float
 
   // [KALMAN_NUM_STATES * 1]
   matrix_t *x = kalman_get_state_vector(kf);
-  x->data[0] = 0.0; // displacement integral
-  x->data[1] = 0.0; // vertical displacement
-  x->data[2] = 0.0; // vertical velocity
-  x->data[3] = 0.0; // vertical accel
-  x->data[4] = 0.0; // accel bias
+  x->data[0] = 0.0f; // displacement integral
+  x->data[1] = 0.0f; // vertical displacement
+  x->data[2] = 0.0f; // vertical velocity
+  x->data[3] = 0.0f; // vertical accel
+  x->data[4] = 0.0f; // accel bias
 
   // observation matrix [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_STATES]
   matrix_t *H = kalman_get_measurement_transformation(kfm);
-  matrix_set(H, 0, 0, (matrix_data_t)1.0);
-  matrix_set(H, 0, 1, (matrix_data_t)0.0);
-  matrix_set(H, 0, 2, (matrix_data_t)0.0);
-  matrix_set(H, 0, 3, (matrix_data_t)0.0);
-  matrix_set(H, 0, 4, (matrix_data_t)0.0);
-  matrix_set(H, 1, 0, (matrix_data_t)0.0);
-  matrix_set(H, 1, 1, (matrix_data_t)0.0);
-  matrix_set(H, 1, 2, (matrix_data_t)0.0);
-  matrix_set(H, 1, 3, (matrix_data_t)1.0);
-  matrix_set(H, 1, 4, (matrix_data_t)0.0);
+  matrix_set(H, 0, 0, (matrix_data_t)1.0f);
+  matrix_set(H, 0, 1, (matrix_data_t)0.0f);
+  matrix_set(H, 0, 2, (matrix_data_t)0.0f);
+  matrix_set(H, 0, 3, (matrix_data_t)0.0f);
+  matrix_set(H, 0, 4, (matrix_data_t)0.0f);
+  matrix_set(H, 1, 0, (matrix_data_t)0.0f);
+  matrix_set(H, 1, 1, (matrix_data_t)0.0f);
+  matrix_set(H, 1, 2, (matrix_data_t)0.0f);
+  matrix_set(H, 1, 3, (matrix_data_t)1.0f);
+  matrix_set(H, 1, 4, (matrix_data_t)1.0f);
 
   // observation covariance [KALMAN_NUM_MEASUREMENTS * KALMAN_NUM_MEASUREMENTS]
   matrix_t *R = kalman_get_observation_noise(kfm);
-  matrix_set_symmetric(R, 0, 0, (matrix_data_t)0.01);
-  matrix_set_symmetric(R, 0, 1, (matrix_data_t)0.0);
-  matrix_set_symmetric(R, 1, 1, (matrix_data_t)1.0);
+  matrix_set_symmetric(R, 0, 0, (matrix_data_t)0.01f);
+  matrix_set_symmetric(R, 0, 1, (matrix_data_t)0.0f);
+  matrix_set_symmetric(R, 1, 1, (matrix_data_t)1.0f);
   
   // initial state covariance [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *P = kalman_get_system_covariance(kf);
-  matrix_set_symmetric(P, 0, 0, (matrix_data_t)1.0);
-  matrix_set_symmetric(P, 0, 1, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 0, 2, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 0, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 0, 4, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 1, 1, (matrix_data_t)1.0);
-  matrix_set_symmetric(P, 1, 2, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 1, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 1, 4, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 2, 2, (matrix_data_t)1.0);
-  matrix_set_symmetric(P, 2, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 2, 4, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 3, 3, (matrix_data_t)1.0);
-  matrix_set_symmetric(P, 3, 4, (matrix_data_t)0.0);
-  matrix_set_symmetric(P, 4, 4, (matrix_data_t)1.0);
+  matrix_set_symmetric(P, 0, 0, (matrix_data_t)1.0f);
+  matrix_set_symmetric(P, 0, 1, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 0, 2, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 0, 3, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 0, 4, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 1, 1, (matrix_data_t)1.0f);
+  matrix_set_symmetric(P, 1, 2, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 1, 3, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 1, 4, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 2, 2, (matrix_data_t)1.0f);
+  matrix_set_symmetric(P, 2, 3, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 2, 4, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 3, 3, (matrix_data_t)1.0f);
+  matrix_set_symmetric(P, 3, 4, (matrix_data_t)0.0f);
+  matrix_set_symmetric(P, 4, 4, (matrix_data_t)1.0f);
 
   // transition covariance [KALMAN_NUM_STATES * KALMAN_NUM_STATES]
   matrix_t *Q = kalman_get_process_noise(kf);
   matrix_set_symmetric(Q, 0, 0, (matrix_data_t)q0);
-  matrix_set_symmetric(Q, 0, 1, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 0, 2, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 0, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 0, 4, (matrix_data_t)0.0);
+  matrix_set_symmetric(Q, 0, 1, (matrix_data_t)0.0f);
+  matrix_set_symmetric(Q, 0, 2, (matrix_data_t)0.0f);
+  matrix_set_symmetric(Q, 0, 3, (matrix_data_t)0.0f);
+  matrix_set_symmetric(Q, 0, 4, (matrix_data_t)0.0f);
   matrix_set_symmetric(Q, 1, 1, (matrix_data_t)q1);
-  matrix_set_symmetric(Q, 1, 2, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 1, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 1, 4, (matrix_data_t)0.0);
+  matrix_set_symmetric(Q, 1, 2, (matrix_data_t)0.0f);
+  matrix_set_symmetric(Q, 1, 3, (matrix_data_t)0.0f);
+  matrix_set_symmetric(Q, 1, 4, (matrix_data_t)0.0f);
   matrix_set_symmetric(Q, 2, 2, (matrix_data_t)q2);
-  matrix_set_symmetric(Q, 2, 3, (matrix_data_t)0.0);
-  matrix_set_symmetric(Q, 2, 4, (matrix_data_t)0.0);
+  matrix_set_symmetric(Q, 2, 3, (matrix_data_t)0.0f);
+  matrix_set_symmetric(Q, 2, 4, (matrix_data_t)0.0f);
   matrix_set_symmetric(Q, 3, 3, (matrix_data_t)q3);
-  matrix_set_symmetric(Q, 3, 4, (matrix_data_t)0.0);
+  matrix_set_symmetric(Q, 3, 4, (matrix_data_t)0.0f);
   matrix_set_symmetric(Q, 4, 4, (matrix_data_t)q4);
 }
 
@@ -233,7 +233,7 @@ void kalman_wave_alt_step(KalmanWaveAltState* state, float accel, float k_hat, f
 
   // measure ... [KALMAN_NUM_MEASUREMENTS, 1]
   matrix_data_t measurement = accel;
-  matrix_set(z, 0, 0, 0.0);
+  matrix_set(z, 0, 0, 0.0f);
   matrix_set(z, 1, 0, measurement);
 
   // update
