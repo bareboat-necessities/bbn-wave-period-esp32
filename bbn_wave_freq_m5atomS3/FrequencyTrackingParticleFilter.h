@@ -14,8 +14,8 @@ static constexpr float PF_FREQ_MIN = 0.04f;
 static constexpr float PF_FREQ_MAX = 2.0f;
 static constexpr float PF_AMP_MIN = 0.01f;
 static constexpr float PF_AMP_MAX = 0.5f;
-static constexpr float PF_BIAS_MIN = -0.02f;  // Expected bias range
-static constexpr float PF_BIAS_MAX = 0.02f;
+static constexpr float PF_BIAS_MIN = -0.2f;  // Expected bias range
+static constexpr float PF_BIAS_MAX = 0.2f;
 static constexpr int PF_SEED = 777;
 
 // Static matrices with bias term added
