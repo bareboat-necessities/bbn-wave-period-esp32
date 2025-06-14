@@ -134,139 +134,156 @@ public:
     }
 
     void process(float measurement, float time, float dt,
-                float sigma_f = 0.02f,      // Frequency noise
-                float sigma_bc = 0.01f,     // Amplitude (B/C) noise
+                float sigma_f = 0.01f,      // Reduced frequency noise
+                float sigma_bc = 0.005f,    // Reduced amplitude noise
                 float measurement_noise_std = 0.08f) {
         
         // --- Prediction Step ---
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
-            // Add noise to frequencies (log-space for better behavior)
-            float log_f1 = logf(particles(i, 0)) + normalRand() * sigma_f;
-            float log_f2 = logf(particles(i, 1)) + normalRand() * sigma_f;
-            particles(i, 0) = expf(constraint(log_f1, logf(PF_FREQ_MIN), logf(PF_FREQ_MAX)));
-            particles(i, 1) = expf(constraint(log_f2, logf(PF_FREQ_MIN), logf(PF_FREQ_MAX)));
+            // More conservative frequency updates
+            particles(i, 0) = constraint(
+                particles(i, 0) * expf(normalRand() * sigma_f),
+                PF_FREQ_MIN, PF_FREQ_MAX);
+            particles(i, 1) = constraint(
+                particles(i, 1) * expf(normalRand() * sigma_f),
+                PF_FREQ_MIN, PF_FREQ_MAX);
             
-            // Only enforce ordering if frequencies are too close
-            if (fabs(particles(i, 0) - particles(i, 1)) < 0.05f) {
-                enforceFrequencyOrdering(i);
+            // Stronger enforcement of frequency ordering
+            if (particles(i, 0) >= particles(i, 1) - 0.05f) {
+                particles(i, 1) = particles(i, 0) + 0.05f;
+                // Randomize the higher frequency more when forced to separate
+                if (uniformRand() < 0.3f) {
+                    particles(i, 1) = constraint(
+                        particles(i, 0) + 0.05f + uniformRand() * 0.3f,
+                        PF_FREQ_MIN, PF_FREQ_MAX);
+                }
             }
     
-            // Add noise to quadrature amplitudes with constraints
+            // Slower amplitude changes
             for (int j = 2; j < 6; ++j) {
                 particles(i, j) = constraint(
-                    particles(i, j) + normalRand() * sigma_bc,
-                    -PF_AMP_MAX, PF_AMP_MAX
-                );
+                    particles(i, j) * (1.0f + normalRand() * sigma_bc),
+                    -PF_AMP_MAX, PF_AMP_MAX);
             }
         }
     
         // --- Update Step ---
-        float max_weight = 0.0f;
-        
-        // First pass: measurement update
+        float max_log_weight = -FLT_MAX;
+        Eigen::Array<float, PF_NUM_PARTICLES, 1> log_weights;
+    
+        // Measurement update only - removed harmonic constraints from update
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
-            // Quadrature signal model
             float y_pred = 
                 particles(i, 2) * sinf(2 * M_PI * particles(i, 0) * time) +
                 particles(i, 3) * cosf(2 * M_PI * particles(i, 0) * time) +
                 particles(i, 4) * sinf(2 * M_PI * particles(i, 1) * time) +
                 particles(i, 5) * cosf(2 * M_PI * particles(i, 1) * time);
     
-            float residual = measurement - y_pred;  
-            weights(i) = expf(-0.5f * residual * residual / 
-                             (measurement_noise_std * measurement_noise_std));
-            max_weight = fmaxf(max_weight, weights(i));
+            float residual = measurement - y_pred;
+            log_weights(i) = -0.5f * residual * residual / 
+                           (measurement_noise_std * measurement_noise_std);
+            max_log_weight = fmaxf(max_log_weight, log_weights(i));
         }
     
-        // Second pass: apply harmonic constraints
-        for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
-            float ratio = particles(i, 1) / particles(i, 0);
-            float nearest_integer = roundf(ratio);
-            float harmonicity = fabs(ratio - nearest_integer);
-            
-            // Reward harmonic relationships
-            if (harmonicity < 0.2f) {
-                weights(i) *= (1.0f + (0.2f - harmonicity)); // Moderate boost
-            }
-            
-            // Penalize frequencies being too close
-            float freq_diff = particles(i, 1) - particles(i, 0);
-            if (freq_diff < 0.05f) {
-                weights(i) *= (0.2f + 0.8f * (freq_diff / 0.05f)); // Smooth penalty
-            }
-        }
-        
-        // Normalization with log-sum-exp trick
-        float weight_sum_exp = 0.0f;
-        for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
-            weights(i) = expf(weights(i) - max_weight);
-            weight_sum_exp += weights(i);
-        }
-        
+        // Convert log weights to regular weights
+        weights = (log_weights - max_log_weight).exp();
+        float sum_weights = weights.sum();
+    
         // Normalize weights
-        if (weight_sum_exp < 1e-10f) {
-            weights.setConstant(1.0f / PF_NUM_PARTICLES);
+        if (sum_weights > 1e-10f) {
+            weights /= sum_weights;
         } else {
-            weights /= weight_sum_exp;
+            weights.setConstant(1.0f / PF_NUM_PARTICLES);
         }
     
-        // Less aggressive resampling condition
+        // Very conservative resampling
         float effective_sample_size = 1.0f / weights.array().square().sum();
-        if (effective_sample_size < PF_NUM_PARTICLES / 2.0f) { // Changed from /3.0f
+        if (effective_sample_size < PF_NUM_PARTICLES / 5.0f) {  // Much less frequent
             resample();
         }
     }
     
     void estimate(Vector2f& freqs, Vector2f& displacement_amps) {
-        // Find indices of top weighted particles
-        std::vector<size_t> indices(PF_NUM_PARTICLES);
-        std::iota(indices.begin(), indices.end(), 0);
-        std::partial_sort(indices.begin(), indices.begin() + 100, indices.end(),
-            [&](size_t a, size_t b) { return weights(a) > weights(b); });
+        // Cluster particles by frequency pairs to find dominant modes
+        struct Cluster {
+            Vector2f freq_sum = Vector2f::Zero();
+            Vector2f amp_sum = Vector2f::Zero();
+            float weight_sum = 0;
+            int count = 0;
+        };
+        std::vector<Cluster> clusters;
     
-        // Calculate weighted mean using top particles
-        freqs = Vector2f::Zero();
-        Vector2f accel_amps = Vector2f::Zero();
-        float total_weight = 0.0f;
-        
-        for (int j = 0; j < 100; ++j) {
-            int i = indices[j];
-            float w = weights(i);
-            freqs += w * particles.block<1, 2>(i, 0).transpose();
+        // Find significant frequency pairs using weighted k-means
+        for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
+            if (weights(i) < 1.0f / (10.0f * PF_NUM_PARTICLES)) continue;
+    
+            Vector2f current_freqs = particles.block<1, 2>(i, 0).transpose();
+            bool assigned = false;
+    
+            // Try to assign to existing cluster
+            for (auto& cluster : clusters) {
+                Vector2f cluster_mean = cluster.freq_sum / cluster.weight_sum;
+                if ((current_freqs - cluster_mean).norm() < 0.05f) {
+                    cluster.freq_sum += weights(i) * current_freqs;
+                    cluster.amp_sum += weights(i) * Vector2f(
+                        sqrtf(particles(i, 2)*particles(i, 2) + particles(i, 3)*particles(i, 3)),
+                        sqrtf(particles(i, 4)*particles(i, 4) + particles(i, 5)*particles(i, 5)));
+                    cluster.weight_sum += weights(i);
+                    cluster.count++;
+                    assigned = true;
+                    break;
+                }
+            }
+    
+            // Create new cluster if no match
+            if (!assigned && clusters.size() < 5) {
+                Cluster new_cluster;
+                new_cluster.freq_sum = weights(i) * current_freqs;
+                new_cluster.amp_sum = weights(i) * Vector2f(
+                    sqrtf(particles(i, 2)*particles(i, 2) + particles(i, 3)*particles(i, 3)),
+                    sqrtf(particles(i, 4)*particles(i, 4) + particles(i, 5)*particles(i, 5)));
+                new_cluster.weight_sum = weights(i);
+                new_cluster.count = 1;
+                clusters.push_back(new_cluster);
+            }
+        }
+    
+        // Sort clusters by total weight
+        std::sort(clusters.begin(), clusters.end(),
+            [](const Cluster& a, const Cluster& b) {
+                return a.weight_sum > b.weight_sum;
+            });
+    
+        // Get top two clusters
+        if (clusters.size() >= 2) {
+            freqs(0) = clusters[0].freq_sum(0) / clusters[0].weight_sum;
+            freqs(1) = clusters[1].freq_sum(1) / clusters[1].weight_sum;
             
-            float a1 = sqrtf(particles(i, 2)*particles(i, 2) + particles(i, 3)*particles(i, 3));
-            float a2 = sqrtf(particles(i, 4)*particles(i, 4) + particles(i, 5)*particles(i, 5));
-            accel_amps += w * Vector2f(a1, a2);
-            total_weight += w;
-        }
-        
-        // Normalize
-        if (total_weight > 1e-10f) {
-            freqs /= total_weight;
-            accel_amps /= total_weight;
+            Vector2f accel_amps(
+                clusters[0].amp_sum(0) / clusters[0].weight_sum,
+                clusters[1].amp_sum(1) / clusters[1].weight_sum);
+    
+            // Convert to displacement amplitudes
+            float omega1 = 2 * M_PI * freqs(0);
+            float omega2 = 2 * M_PI * freqs(1);
+            displacement_amps = Vector2f(
+                accel_amps(0) / (omega1 * omega1),
+                accel_amps(1) / (omega2 * omega2));
+            
+            // Ensure proper ordering by displacement amplitude
+            if (displacement_amps(0) < displacement_amps(1)) {
+                std::swap(freqs(0), freqs(1));
+                std::swap(displacement_amps(0), displacement_amps(1));
+            }
+        } else if (clusters.size() == 1) {
+            // Fallback for single cluster case
+            freqs(0) = clusters[0].freq_sum(0) / clusters[0].weight_sum;
+            freqs(1) = freqs(0) + 0.1f;  // Add dummy second frequency
+            displacement_amps = Vector2f::Constant(0.1f);
         } else {
-            // Fallback: use simple average if weights are degenerate
-            freqs = particles.block<100, 2>(0, 0).colwise().mean();
-            accel_amps = Vector2f(
-                sqrtf(particles.block<100, 1>(0, 2).array().square().mean() + 
-                     particles.block<100, 1>(0, 3).array().square().mean()),
-                sqrtf(particles.block<100, 1>(0, 4).array().square().mean() + 
-                     particles.block<100, 1>(0, 5).array().square().mean())
-            );
-        }
-    
-        // Convert to displacement amplitudes with regularization
-        float omega1_sq = powf(2 * M_PI * std::max(freqs(0), PF_FREQ_MIN), 2) + 1e-5f;
-        float omega2_sq = powf(2 * M_PI * std::max(freqs(1), PF_FREQ_MIN), 2) + 1e-5f;
-        displacement_amps = Vector2f(
-            accel_amps(0) / omega1_sq,
-            accel_amps(1) / omega2_sq
-        );
-    
-        // Sort by displacement amplitude (descending)
-        if (displacement_amps(0) < displacement_amps(1)) {
-            std::swap(displacement_amps(0), displacement_amps(1));
-            std::swap(freqs(0), freqs(1));
+            // Fallback when no clusters found
+            freqs = Vector2f(0.1f, 0.2f);
+            displacement_amps = Vector2f(0.1f, 0.05f);
         }
     }
 };
