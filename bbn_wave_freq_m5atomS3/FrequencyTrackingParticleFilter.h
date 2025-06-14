@@ -162,34 +162,33 @@ public:
         weights.setConstant(1.0f / PF_NUM_PARTICLES);
     }
 
-    void estimate(Vector2f& freqs, Vector2f& amps, Vector2f& energies) {
-        // Weighted mean calculation
+    void estimate(Vector2f& freqs, Vector2f& displacement_amps) {
         freqs = Vector2f::Zero();
-        amps = Vector2f::Zero();
-        energies = Vector2f::Zero();
+        displacement_amps = Vector2f::Zero();
+        Vector2f accel_amps = Vector2f::Zero();
     
+        // First calculate weighted means
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
             // Frequencies
             freqs += weights(i) * particles.block<1, 2>(i, 0).transpose();
-    
+            
             // Acceleration amplitudes (A_accel = sqrt(B² + C²))
-            float a1 = sqrtf(particles(i, 2) * particles(i, 2) + particles(i, 3) * particles(i, 3));
-            float a2 = sqrtf(particles(i, 4) * particles(i, 4) + particles(i, 5) * particles(i, 5));
-            amps += weights(i) * Vector2f(a1, a2);
-    
-            // Energy calculation (E ∝ A_accel² / ω⁴)
-            float omega1 = 2 * M_PI * particles(i, 0);
-            float omega2 = 2 * M_PI * particles(i, 1);
-            energies += weights(i) * Vector2f(
-                (a1 * a1) / (omega1 * omega1 * omega1 * omega1),
-                (a2 * a2) / (omega2 * omega2 * omega2 * omega2)
-            );
+            float a1 = sqrtf(particles(i, 2)*particles(i, 2) + particles(i, 3)*particles(i, 3));
+            float a2 = sqrtf(particles(i, 4)*particles(i, 4) + particles(i, 5)*particles(i, 5));
+            accel_amps += weights(i) * Vector2f(a1, a2);
         }
     
-        // Sort by energy (descending)
-        if (energies(0) < energies(1)) {
-            std::swap(energies(0), energies(1));
-            std::swap(amps(0), amps(1));
+        // Convert to displacement amplitudes (A_disp = A_accel/ω²)
+        float omega1 = 2 * M_PI * freqs(0);
+        float omega2 = 2 * M_PI * freqs(1);
+        displacement_amps = Vector2f(
+            accel_amps(0) / (omega1 * omega1),
+            accel_amps(1) / (omega2 * omega2)
+        );
+    
+        // Sort by displacement amplitude (descending)
+        if (displacement_amps(0) < displacement_amps(1)) {
+            std::swap(displacement_amps(0), displacement_amps(1));
             std::swap(freqs(0), freqs(1));
         }
     }
