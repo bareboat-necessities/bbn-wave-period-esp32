@@ -208,7 +208,7 @@ public:
         }
         
         // Energy calculation (excluding bias)
-        energies = mean_amps.array().square(); // * mean_freqs.array();
+        energies = mean_amps.array().square() / mean_freqs.array();  // for signal given by it's acceleration instead of linear displacement
         
         // Sort frequencies by energy
         std::vector<std::pair<float, int>> energy_index;
