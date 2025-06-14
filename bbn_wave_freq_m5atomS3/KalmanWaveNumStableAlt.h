@@ -68,7 +68,7 @@
        [ 0, 0 ],
        [ 0, 0 ],
        [ 0, 1 ],
-       [ 0, 0 ]]  
+       [ 0, 1 ]]   (since measurement includes bias and is not 'true' a)
 
   F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3         ],
        [ 0,      1,    T,             1/2*T^2,         -1/2*T^2         ],
@@ -120,7 +120,7 @@ public:
 
         // Measurement model
         H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
-             0.0f, 0.0f, 0.0f, 1.0f, 0.0f;  // Measures acceleration
+             0.0f, 0.0f, 0.0f, 1.0f, 1.0f;  // Measures acceleration
     }
 
     void update(float measured_accel, float k_hat, float delta_t) {
