@@ -121,6 +121,8 @@ public:
 
         // --- Update Step ---
         float sum_weights = 0.0f;
+        float max_weight = 0.0f;
+        
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
             // Quadrature signal model: B1*sin(2πf1t) + C1*cos(2πf1t) + B2*sin(2πf2t) + C2*cos(2πf2t)
             float y_pred = 
@@ -130,19 +132,29 @@ public:
                 particles(i, 5) * cosf(2 * M_PI * particles(i, 1) * time);   // C2*cos(2πf2t)
 
             float residual = measurement - y_pred;
-            weights(i) = expf(-0.5f * (residual * residual) / (measurement_noise_std * measurement_noise_std));
-            sum_weights += weights(i);
+            
+            // More numerically stable weight calculation
+            weights(i) = -0.5f * (residual * residual) / (measurement_noise_std * measurement_noise_std);
+            max_weight = fmaxf(max_weight, weights(i));
         }
-
+        
+        // Log-sum-exp trick for numerical stability
+        float weight_sum_exp = 0.0f;
+        for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
+            weights(i) = expf(weights(i) - max_weight);
+            weight_sum_exp += weights(i);
+        }
+        
         // Normalize weights
-        if (sum_weights < 1e-10f) {
+        if (weight_sum_exp < 1e-10f) {
             weights.setConstant(1.0f / PF_NUM_PARTICLES);
         } else {
-            weights /= sum_weights;
+            weights /= weight_sum_exp;
         }
 
-        // Resampling (systematic)
-        if (1.0f / weights.array().square().sum() < PF_NUM_PARTICLES / 2.0f) {
+        // Less aggressive resampling condition
+        float effective_sample_size = 1.0f / weights.array().square().sum();
+        if (effective_sample_size < PF_NUM_PARTICLES / 3.0f) {
             resample();
         }
     }
