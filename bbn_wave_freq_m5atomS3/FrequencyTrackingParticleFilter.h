@@ -82,12 +82,14 @@ public:
 
     void initializeParticles() {
         noise_state = seed;
-        
+
+        float log_min = logf(PF_FREQ_MIN);
+        float log_max = logf(PF_FREQ_MAX);
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
             // Initialize frequencies (sorted)
-            particles(i,0) = uniformRand() * (PF_FREQ_MAX - PF_FREQ_MIN) + PF_FREQ_MIN;
-            particles(i,1) = uniformRand() * (PF_FREQ_MAX - PF_FREQ_MIN) + PF_FREQ_MIN;
-            particles(i,2) = uniformRand() * (PF_FREQ_MAX - PF_FREQ_MIN) + PF_FREQ_MIN;
+            particles(i,0) = expf(uniformRand() * (log_max - log_min) + log_min);
+            particles(i,1) = expf(uniformRand() * (log_max - log_min) + log_min);
+            particles(i,2) = expf(uniformRand() * (log_max - log_min) + log_min);
             enforceFrequencyOrdering(i);
             
             // Initialize amplitudes
