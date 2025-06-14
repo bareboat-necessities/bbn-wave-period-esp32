@@ -9,7 +9,7 @@
 
 #include <ArduinoEigenDense.h>
 
-static constexpr int PF_NUM_PARTICLES = 250;
+static constexpr int PF_NUM_PARTICLES = 500;
 static constexpr float PF_FREQ_MIN = 0.04f;  // 0.04 Hz ~ 25s waves
 static constexpr float PF_FREQ_MAX = 0.5f;   // 0.5 Hz ~ 2s waves
 static constexpr float PF_AMP_MIN = 0.01f;   // Minimum amplitude (m/s²)
