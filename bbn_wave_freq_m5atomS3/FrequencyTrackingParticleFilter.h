@@ -53,10 +53,12 @@ private:
     }
 
     void enforceFrequencyOrdering(int i) {
-        if (particles(i, 0) > particles(i, 1)) {
-            std::swap(particles(i, 0), particles(i, 1)); // swap f1/f2
-            std::swap(particles(i, 2), particles(i, 4)); // swap B1/B2
-            std::swap(particles(i, 3), particles(i, 5)); // swap C1/C2
+        // Only swap if frequencies cross with some minimum separation
+        if (particles(i, 0) > particles(i, 1) && 
+            fabs(particles(i, 0) - particles(i, 1)) > 0.05f) {
+            std::swap(particles(i, 0), particles(i, 1));
+            std::swap(particles(i, 2), particles(i, 4));
+            std::swap(particles(i, 3), particles(i, 5));
         }
     }
 
@@ -119,6 +121,16 @@ public:
             }
         }
 
+        // Harmonic Constraints
+        for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
+            // Penalize particles where f2 is not roughly a multiple of f1
+            float ratio = particles(i, 1) / particles(i, 0);
+            float nearest_integer = roundf(ratio);
+            if (fabs(ratio - nearest_integer) > 0.1f) {
+                weights(i) *= 0.1f; // Strongly downweight non-harmonic particles
+            }
+        }     
+      
         // --- Update Step ---
         float sum_weights = 0.0f;
         float max_weight = 0.0f;
@@ -131,10 +143,17 @@ public:
                 particles(i, 4) * sinf(2 * M_PI * particles(i, 1) * time) +  // B2*sin(2πf2t)
                 particles(i, 5) * cosf(2 * M_PI * particles(i, 1) * time);   // C2*cos(2πf2t)
 
-            float residual = measurement - y_pred;
-            
-            // More numerically stable weight calculation
-            weights(i) = -0.5f * (residual * residual) / (measurement_noise_std * measurement_noise_std);
+            // Add a term for potential harmonic relationship
+            if (fabs(particles(i, 1)/particles(i, 0) - 2.0f) < 0.2f) {
+                y_pred += 0.5f * ( // Example: second harmonic might be weaker
+                    particles(i, 4) * sinf(4 * M_PI * particles(i, 0) * time) +
+                    particles(i, 5) * cosf(4 * M_PI * particles(i, 0) * time)
+                );
+            }
+          
+            float residual = measurement - y_pred;  
+            float normalized_residual = residual / measurement_noise_std;
+            weights(i) = 1.0f / (1.0f + 0.5f * normalized_residual * normalized_residual);
             max_weight = fmaxf(max_weight, weights(i));
         }
         
