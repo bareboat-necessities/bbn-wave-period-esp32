@@ -12,8 +12,8 @@
 static constexpr int PF_NUM_PARTICLES = 500;
 static constexpr float PF_FREQ_MIN = 0.04f;  // 0.04 Hz ~ 25s waves
 static constexpr float PF_FREQ_MAX = 0.5f;   // 0.5 Hz ~ 2s waves
-static constexpr float PF_AMP_MIN = 0.001f;   // Minimum amplitude (m/s²)
-static constexpr float PF_AMP_MAX = 1.2f;    // Maximum amplitude (m/s²)
+static constexpr float PF_AMP_MIN = 0.01f;   // Minimum amplitude (m/s²)
+static constexpr float PF_AMP_MAX = 10.0f;    // Maximum amplitude (m/s²)
 static constexpr int PF_SEED = 777;
 
 // State: [f1, f2, B1, B2, C1, C2] (6D, but effectively 4D since B/C coupled)
