@@ -99,16 +99,23 @@ public:
         
         // --- Prediction Step ---
         for (int i = 0; i < PF_NUM_PARTICLES; ++i) {
-            // Add noise to frequencies
-            particles(i, 0) += normalRand() * sigma_f;
-            particles(i, 1) += normalRand() * sigma_f;
-            particles(i, 0) = constraint(particles(i, 0), PF_FREQ_MIN, PF_FREQ_MAX);
-            particles(i, 1) = constraint(particles(i, 1), PF_FREQ_MIN, PF_FREQ_MAX);
-            enforceFrequencyOrdering(i);
+            // Add noise to frequencies (log-space for better behavior)
+            float log_f1 = logf(particles(i, 0)) + normalRand() * sigma_f;
+            float log_f2 = logf(particles(i, 1)) + normalRand() * sigma_f;
+            particles(i, 0) = expf(constraint(log_f1, logf(PF_FREQ_MIN), logf(PF_FREQ_MAX)));
+            particles(i, 1) = expf(constraint(log_f2, logf(PF_FREQ_MIN), logf(PF_FREQ_MAX)));
+            
+            // Only enforce ordering if frequencies are too close
+            if (fabs(particles(i, 0) - particles(i, 1)) < 0.01f) {
+                enforceFrequencyOrdering(i);
+            }
 
-            // Add noise to quadrature amplitudes
+            // Add noise to quadrature amplitudes with constraints
             for (int j = 2; j < 6; ++j) {
-                particles(i, j) += normalRand() * sigma_bc;
+                particles(i, j) = constraint(
+                    particles(i, j) + normalRand() * sigma_bc,
+                    -PF_AMP_MAX, PF_AMP_MAX
+                );
             }
         }
 
