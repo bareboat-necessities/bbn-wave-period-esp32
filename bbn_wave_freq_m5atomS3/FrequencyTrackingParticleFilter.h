@@ -209,8 +209,13 @@ public:
         }
         
         // Energy calculation (excluding bias)
-        energies = mean_amps.array().square() / mean_freqs.array();  // for signal given by it's acceleration instead of linear displacement
-        
+
+        // Convert acceleration amplitudes to displacement amplitudes
+        Vector3f displacement_amps = mean_amps.array() / (2 * M_PI * mean_freqs.array()).square();
+
+        // Calculate energies (proportional to squared displacement amplitude)
+        energies = displacement_amps.array().square();
+
         // Sort frequencies by energy
         std::vector<std::pair<float, int>> energy_index;
         for (int i = 0; i < 3; ++i) {
