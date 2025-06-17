@@ -98,6 +98,19 @@ public:
         float accel_bias = 0.0f;
     };
 
+    struct FilterMetrics {
+        float innovation_magnitude = 0.0f;       // Magnitude of innovation vector (z - Hx)
+        float innovation_normalized = 0.0f;      // Normalized innovation squared (y'*S^-1*y)
+        float covariance_trace = 0.0f;          // Trace of covariance matrix (sum of variances)
+        float max_covariance = 0.0f;            // Maximum diagonal element of covariance matrix
+        float condition_number = 0.0f;          // Condition number of covariance matrix
+        float position_std_dev = 0.0f;          // Standard deviation of position estimate
+        float velocity_std_dev = 0.0f;          // Standard deviation of velocity estimate
+        float acceleration_std_dev = 0.0f;      // Standard deviation of acceleration estimate
+        float bias_std_dev = 0.0f;             // Standard deviation of bias estimate
+        float residual_accel = 0.0f;            // Acceleration measurement residual
+    };
+
     KalmanWaveNumStableAlt(float q0 = 1e+1f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 5.0f, float q4 = 1e-5f) {
         initialize(q0, q1, q2, q3, q4);
     }
@@ -121,10 +134,12 @@ public:
         // Measurement model
         H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
              0.0f, 0.0f, 0.0f, 1.0f, 1.0f;  // Measures acceleration
+
+        // Reset metrics
+        resetMetrics();
     }
 
     void update(float measured_accel, float k_hat, float delta_t) {
-        
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
 
@@ -137,6 +152,9 @@ public:
 
         // Correction step with Joseph form
         correctJoseph(z);
+
+        // Update metrics after correction
+        updateMetrics(z);
     }
 
     State getState() const {
@@ -147,6 +165,10 @@ public:
         s.vert_accel = x(3);
         s.accel_bias = x(4);
         return s;
+    }
+
+    FilterMetrics getMetrics() const {
+        return metrics;
     }
 
     void initState(const State& s0) {
@@ -168,6 +190,10 @@ public:
       return k_hat;
     }
 
+    void resetMetrics() {
+        metrics = FilterMetrics();
+    }
+
 private:
     Vector5f x;     // State vector
     Matrix5f P;     // Covariance matrix
@@ -175,6 +201,7 @@ private:
     Matrix2f R;     // Measurement noise
     Matrix25f H;    // Measurement model
     Matrix5f F;     // State transition matrix
+    FilterMetrics metrics; // Filter performance metrics
 
     void updateStateTransition(float k_hat, float delta_t) {
         const float T = delta_t;
@@ -228,6 +255,44 @@ private:
         ensurePositiveDefinite(P);
     }
 
+    void updateMetrics(const Vector2f& z) {
+        // Innovation vector (z - Hx)
+        const Vector2f innovation = z - H * x;
+        
+        // Innovation covariance
+        const Matrix2f S = H * P * H.transpose() + R;
+        
+        // Update metrics
+        metrics.innovation_magnitude = innovation.norm();
+
+        // innovation_normalized 
+        // This is the Mahalanobis distance squared. For a well-tuned filter, this value should ideally be 
+        // around the dimension of the innovation vector (which is 2 in this case, innovation.size()). 
+        // If it's consistently much larger, R might be too small, or Q too large, or the model is incorrect. 
+        // If it's consistently much smaller, R might be too large
+        metrics.innovation_normalized = (innovation.transpose() * S.inverse() * innovation)(0,0);
+        metrics.covariance_trace = P.trace();
+        metrics.max_covariance = P.diagonal().maxCoeff();
+        
+        // Compute condition number of covariance matrix
+        // A very high condition number for P indicates that the state variables are highly
+        // correlated or that the matrix is close to singular, which can lead to numerical instability.
+        Eigen::JacobiSVD<Matrix5f> svd(P);
+        float singular_max = svd.singularValues()(0);
+        float singular_min = svd.singularValues()(svd.singularValues().size()-1);
+        metrics.condition_number = singular_max / singular_min;
+        
+        // Standard deviations (uncertainties) of state estimates
+        metrics.position_std_dev = sqrt(P(1,1));        // heave
+        metrics.velocity_std_dev = sqrt(P(2,2));        // vertical speed
+        metrics.acceleration_std_dev = sqrt(P(3,3));    // vertical acceleration
+        metrics.bias_std_dev = sqrt(P(4,4));            // accelerometer bias
+        
+        // Acceleration measurement residual (actual - predicted)
+        // If the residuals are consistently large, it suggests issues with the accelerometer model or the filter's state
+        metrics.residual_accel = innovation(1);
+    }
+
     void enforceSymmetry(Matrix5f& mat) {
         // Average upper and lower triangular parts
         Matrix5f symm = 0.5f * (mat + mat.transpose());
@@ -245,5 +310,6 @@ private:
 };
 
 typedef KalmanWaveNumStableAlt::State KalmanWaveNumStableAltState; 
+typedef KalmanWaveNumStableAlt::FilterMetrics KalmanWaveNumStableAltMetrics;
 
 #endif // KALMAN_WAVE_NUM_STABLE_ALT_H
