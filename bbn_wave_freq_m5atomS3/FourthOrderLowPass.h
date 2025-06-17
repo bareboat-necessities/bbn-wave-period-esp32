@@ -2,9 +2,10 @@
 #define FOURTH_ORDER_LOWPASS_H
 
 #include <math.h>
+#include <limits>
 
 /*
-  Cutoff frequency needs to be less than sampleFrequency / 5
+  Cutoff frequency needs to be less than sampleFrequency / 2 (Nyquist limit)
 */
 class FourthOrderLowPass {
 public:
@@ -15,85 +16,99 @@ public:
 
 private:
     struct Biquad {
-        float a1, a2; // Denominator coefficients
+        float a0, a1, a2; // Denominator coefficients
         float b0, b1, b2; // Numerator coefficients
-        float v1, v2; // State variables
+        float x1, x2, y1, y2; // State variables (direct form II)
     };
 
     Biquad stage1, stage2;
     float cutoffFreq;
+    float lastSampleRate;
+    bool coeffsDirty;
     
-    void calculateCoefficients(float deltaTime);
+    void calculateCoefficients(float sampleRate);
 };
 
-FourthOrderLowPass::FourthOrderLowPass(float cutoffFreq) {
-    this->cutoffFreq = cutoffFreq;
+FourthOrderLowPass::FourthOrderLowPass(float cutoffFreq) 
+    : cutoffFreq(cutoffFreq), lastSampleRate(0), coeffsDirty(true) {
     reset();
 }
 
 void FourthOrderLowPass::reset() {
-    stage1.v1 = stage1.v2 = 0.0f;
-    stage2.v1 = stage2.v2 = 0.0f;
+    stage1.x1 = stage1.x2 = stage1.y1 = stage1.y2 = 0.0f;
+    stage2.x1 = stage2.x2 = stage2.y1 = stage2.y2 = 0.0f;
 }
 
 void FourthOrderLowPass::setCutoffFrequency(float cutoffFreq) {
     this->cutoffFreq = cutoffFreq;
+    coeffsDirty = true;
 }
 
-void FourthOrderLowPass::calculateCoefficients(float deltaTime) {
-    // Design a 4th-order Butterworth low-pass filter
-    // Using bilinear transform with pre-warping
+void FourthOrderLowPass::calculateCoefficients(float sampleRate) {
+    // Only recalculate if needed
+    if (!coeffsDirty && fabs(sampleRate - lastSampleRate) < std::numeric_limits<float>::epsilon()) {
+        return;
+    }
     
-    // Only proceed if we have a valid delta time
-    if (deltaTime <= 0) return;
+    coeffsDirty = false;
+    lastSampleRate = sampleRate;
     
-    float sampleRate = 1.0f / deltaTime;
+    // Validate parameters
+    if (cutoffFreq <= 0 || sampleRate <= 0) return;
+    if (cutoffFreq >= sampleRate/2) {
+        cutoffFreq = sampleRate/2 * 0.99f; // Force below Nyquist
+    }
+
+    // 4th-order Butterworth filter parameters
+    const float sqrt2 = sqrt(2.0f);
+    const float q1 = 1.0f / (2.0f * cos(5.0f * M_PI / 8.0f));  // Q ≈ 0.541
+    const float q2 = 1.0f / (2.0f * cos(7.0f * M_PI / 8.0f));  // Q ≈ 1.306
     
-    // First compute the analog prototype frequencies
-    float omega = 2.0f * PI * cutoffFreq;
-    float T = deltaTime;
-    float warped = (2.0f/T) * tan(omega * T/2.0f);
+    // Pre-warping for bilinear transform
+    const float omega = 2.0f * M_PI * cutoffFreq;
+    const float T = 1.0f / sampleRate;
+    const float warped = (2.0f/T) * tan(omega * T/2.0f);
     
-    // Butterworth coefficients (2nd order)
-    float sqrt2 = sqrt(2.0f);
-    float k = warped / sqrt2;
-    float a1_analog = 2.0f * k;
-    float a2_analog = k * k;
+    // Calculate coefficients for each stage
+    auto calculateStage = [&](Biquad& stage, float q) {
+        const float alpha = sin(warped * T/2.0f) / (2.0f * q);
+        const float cosw0 = cos(warped * T/2.0f);
+        
+        const float a0 = 1.0f + alpha;
+        
+        stage.b0 = ((1.0f - cosw0)/2.0f) / a0;
+        stage.b1 = (1.0f - cosw0) / a0;
+        stage.b2 = stage.b0;
+        stage.a0 = 1.0f;
+        stage.a1 = (-2.0f * cosw0) / a0;
+        stage.a2 = (1.0f - alpha) / a0;
+    };
     
-    // Bilinear transform
-    float C = 2.0f * sampleRate;
-    float D = (warped*warped) + a1_analog * warped * C + a2_analog * C*C;
-    
-    // First stage coefficients
-    stage1.b0 = (warped*warped) / D;
-    stage1.b1 = 2.0f * stage1.b0;
-    stage1.b2 = stage1.b0;
-    stage1.a1 = (2.0f*warped*warped - 2.0f*a2_analog*C*C) / D;
-    stage1.a2 = (warped*warped - a1_analog*warped*C + a2_analog*C*C) / D;
-    
-    // Second stage (same coefficients for Butterworth)
-    stage2.b0 = stage1.b0;
-    stage2.b1 = stage1.b1;
-    stage2.b2 = stage1.b2;
-    stage2.a1 = stage1.a1;
-    stage2.a2 = stage1.a2;
+    calculateStage(stage1, q1);
+    calculateStage(stage2, q2);
 }
 
 float FourthOrderLowPass::process(float input, float deltaTime) {
-    // Update coefficients based on current delta time
-    calculateCoefficients(deltaTime);
+    if (deltaTime <= 0) return input; // skip invalid timesteps
     
-    // Process first biquad stage
-    float v = input - stage1.a1 * stage1.v1 - stage1.a2 * stage1.v2;
-    float output = stage1.b0 * v + stage1.b1 * stage1.v1 + stage1.b2 * stage1.v2;
-    stage1.v2 = stage1.v1;
-    stage1.v1 = v;
+    float currentSampleRate = 1.0f / deltaTime;
+    calculateCoefficients(currentSampleRate);
     
-    // Process second biquad stage
-    v = output - stage2.a1 * stage2.v1 - stage2.a2 * stage2.v2;
-    output = stage2.b0 * v + stage2.b1 * stage2.v1 + stage2.b2 * stage2.v2;
-    stage2.v2 = stage2.v1;
-    stage2.v1 = v;
+    // Process first stage (direct form II)
+    float y = stage1.b0 * input + stage1.b1 * stage1.x1 + stage1.b2 * stage1.x2
+            - stage1.a1 * stage1.y1 - stage1.a2 * stage1.y2;
+    stage1.x2 = stage1.x1;
+    stage1.x1 = input;
+    stage1.y2 = stage1.y1;
+    stage1.y1 = y;
+    
+    // Process second stage
+    float output = stage2.b0 * y + stage2.b1 * stage2.x1 + stage2.b2 * stage2.x2
+                 - stage2.a1 * stage2.y1 - stage2.a2 * stage2.y2;
+    stage2.x2 = stage2.x1;
+    stage2.x1 = y;
+    stage2.y2 = stage2.y1;
+    stage2.y1 = output;
     
     return output;
 }
