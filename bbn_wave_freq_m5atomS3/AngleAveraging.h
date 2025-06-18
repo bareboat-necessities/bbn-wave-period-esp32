@@ -11,10 +11,10 @@
 
 // Structure to hold angle estimate and quality metrics
 typedef struct {
-    float angle;            // Filtered angle estimate
-    float magnitude;        // Magnitude of the resultant vector (0-1, higher is better)
-    float variance;         // Estimated variance of the measurement (radians^2)
-    float consistency;      // Consistency between current and new measurement (0-1, higher is better)
+    float angle = 0.0f;                    // Filtered angle estimate
+    float magnitude = 1e-12f;              // Magnitude of the resultant vector (0-1, higher is better)
+    float variance = M_PI * M_PI / 4.0f;   // Estimated variance of the measurement (radians^2)
+    float consistency = 0.0f;              // Consistency between current and new measurement (0-1, higher is better)
 } AngleEstimate;
 
 // Helper function to calculate vector magnitude
