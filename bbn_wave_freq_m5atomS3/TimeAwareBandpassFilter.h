@@ -32,7 +32,7 @@ private:
 
         // Raw coefficients
         float raw_b0 = alpha;
-        float raw_b1 = 0.0f;  // b1 is always 0 for bandpass
+        float raw_b1 = 0.0f;  // b1 is always 0 for 2nd-order biquad bandpass
         float raw_b2 = -alpha;
         float raw_a0 = 1.0f + alpha;
         float raw_a1 = -2.0f * cos(omega);
