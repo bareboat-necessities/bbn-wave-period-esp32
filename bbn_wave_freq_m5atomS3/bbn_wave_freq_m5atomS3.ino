@@ -85,6 +85,7 @@ KalmanWaveNumStableAltState waveAltState;
 // Wave direction
 float wave_angle_deg = WRONG_ANGLE_MARKER;
 float wave_angle_variance = M_PI * M_PI / 4.0f;  // radians^2
+AngleEstimate  wave_angle_estimate;
 WaveDirectionDetector wave_dir_detector(0.002f, 0.005f);
 
 const char* imu_name;
@@ -247,8 +248,8 @@ void read_and_processIMU_data() {
     // Wave direction steps
     float azimuth = azimuth_deg_180(accel_rotated.x, accel_rotated.y); 
     if (wave_angle_deg != WRONG_ANGLE_MARKER) {
-      AngleEstimate angle_estimate = low_pass_angle_average_180(wave_angle_deg, azimuth, 0.004f, wave_angle_variance);
-      wave_angle_deg = angle_estimate.angle;
+      wave_angle_estimate = low_pass_angle_average_180(wave_angle_deg, azimuth, 0.004f, wave_angle_variance);
+      wave_angle_deg = wave_angle_estimate.angle;
     } else {
       wave_angle_deg = azimuth;
     }
