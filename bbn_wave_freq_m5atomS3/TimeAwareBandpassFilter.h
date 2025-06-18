@@ -41,7 +41,7 @@ private:
         // Normalize coefficients (divide all by a0)
         float inv_a0 = 1.0f / raw_a0;
         this->b0 = raw_b0 * inv_a0;
-        this->b1 = raw_b1;    // Remains 0 (no need to multiply)
+        this->b1 = raw_b1 * inv_a0;  
         this->b2 = raw_b2 * inv_a0;
         this->a1 = raw_a1 * inv_a0;
         this->a2 = raw_a2 * inv_a0;
