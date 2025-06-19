@@ -123,4 +123,7 @@ public:
     }
 };
 
+
+typedef KalmanForWaveBasic::State KalmanForWaveBasicState;
+
 #endif
