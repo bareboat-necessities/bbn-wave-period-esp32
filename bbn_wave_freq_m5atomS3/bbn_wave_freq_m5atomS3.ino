@@ -36,7 +36,7 @@
 #include "Mahony_AHRS.h"
 #include "Quaternion.h"
 #include "MinMaxLemire.h"
-#include "KalmanForWave.h"
+//#include "KalmanForWave.h"
 #include "KalmanWaveNumStableAlt.h"
 //#include "KalmanWaveAdaptiveAlt.h"
 #include "TimeAwareSpikeFilter.h"
