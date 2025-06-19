@@ -140,6 +140,8 @@ public:
     }
 
     void update(float measured_accel, float k_hat, float delta_t) {
+        measured_accel -= x(4);  // trick to accelerate convergence of displacement
+      
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
 
