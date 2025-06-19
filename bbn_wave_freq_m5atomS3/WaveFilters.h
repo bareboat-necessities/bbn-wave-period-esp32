@@ -30,6 +30,7 @@ void init_filters(AranovskiyState* ar_param, AranovskiyState* ar_state, KalmanSm
 void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
+KalmanForWaveBasic wave_filter(1e+1f, 1e-4f, 1e-2f, 1e-5f);
 //KalmanWaveAdaptiveAlt wave_alt_filter;
 KalmanWaveNumStableAlt wave_alt_filter;
 
