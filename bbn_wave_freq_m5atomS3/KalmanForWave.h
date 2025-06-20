@@ -43,10 +43,7 @@
   Measurement - z = 0 (displacement integral)
 
   Observation matrix:
-  H = [ 1, 
-        0,
-        0,
-        0 ]  
+  H = [ 1, 0, 0, 0 ]  
 
   F = [[ 1,  T,  1/2*T^2, -1/6*T^3 ],
        [ 0,  1,  T,       -1/2*T^2 ],
