@@ -37,6 +37,7 @@
 #include "Quaternion.h"
 #include "MinMaxLemire.h"
 //#include "KalmanForWave.h"
+#include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
 //#include "KalmanWaveAdaptiveAlt.h"
 #include "TimeAwareSpikeFilter.h"
@@ -48,7 +49,6 @@
 #include "WaveFilters.h"
 #include "WaveDirectionDetector.h"
 #include "M5_Calibr.h"
-#include "KalmanForWaveBasic.h"
 
 bool useMahony = true;
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
