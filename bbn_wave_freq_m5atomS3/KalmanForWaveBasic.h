@@ -41,7 +41,7 @@ public:
         initialize(q0, q1, q2, q3, observation_noise);
     }
 
-    void initialize(float q0, float q1, float q2, float q3, float observation_noise) {
+    void initialize(float q0, float q1, float q2, float q3, float r0) {
         // Initialize state vector
         x.setZero();
         
@@ -52,7 +52,7 @@ public:
         H << 1, 0, 0, 0;
         
         // Initialize observation noise
-        R = observation_noise;
+        R = r0;
         
         // Initialize process noise
         Q.setZero();
