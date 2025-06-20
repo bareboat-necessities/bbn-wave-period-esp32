@@ -2,7 +2,7 @@
 #define KalmanForWaveBasic_h
 
 /*
-  Copyright 2024, Mikhail Grushinskiy
+  Copyright 2025, Mikhail Grushinskiy
 
   Kalman filter to double integrate vertical acceleration in wave
   into vertical displacement, correct for accelerometer bias,
