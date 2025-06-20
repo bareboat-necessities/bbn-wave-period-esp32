@@ -18,11 +18,11 @@ private:
     float zero_accel_threshold;
     float zero_correction_gain;  // [0-1] how strongly to correct
     int zero_counter = 0;
-    const int zero_counter_threshold = 10; // require N consecutive low-accel samples
+    const int zero_counter_threshold = 3; // require N consecutive low-accel samples
     
     // Separate observation noise for zero-correction
-    float R_heave = 1000.0f;
-    float R_velocity = 50.0f;
+    float R_heave = 2e3f;
+    float R_velocity = 4e6f;
 
 public:
     struct State {
@@ -33,7 +33,7 @@ public:
     };
 
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
-                       float observation_noise = 0.01f, float zero_threshold = 0.0f, float correction_gain = 0.5f) 
+                       float observation_noise = 0.01f, float zero_threshold = 0.2f, float correction_gain = 0.5f)
                        : zero_accel_threshold(zero_threshold), zero_correction_gain(correction_gain) {
         initialize(q0, q1, q2, q3, observation_noise);
     }
@@ -100,7 +100,7 @@ public:
             // Target values (partial correction toward zero)
             Eigen::Vector2f z;
             z << -zero_correction_gain * x(1),  // Target: reduce heave by gain%
-                 -zero_correction_gain * x(2);  // Target: reduce velocity by gain%
+                 -sqrtf(zero_correction_gain) * x(2);  // Target: reduce velocity by gain%
             
             Eigen::Vector2f y = z - H_special * x;
             Eigen::Matrix2f S = H_special * P * H_special.transpose();
