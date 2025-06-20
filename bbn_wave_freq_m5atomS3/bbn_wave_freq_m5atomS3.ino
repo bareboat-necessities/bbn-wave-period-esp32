@@ -192,9 +192,9 @@ void read_and_processIMU_data() {
     waveState.heave = a * g_std / k_hat;
     waveState.vert_speed = 0.0f;               // ??
     waveState.accel_bias = 0.0f;
-    kalman_wave.initState(&waveState);
+    wave_filter.initState(&waveState);
   }
-  kalman_wave.step(a * g_std, delta_t, waveState);
+  wave_filter.step(a * g_std, delta_t, waveState);
   float heave = waveState.heave;
   //float heave = highPassFilter.update(waveState.heave, delta_t);
 
