@@ -24,7 +24,7 @@ MinMaxLemire min_max_h;
 AranovskiyParams arParams;
 AranovskiyState arState;
 KalmanSmootherVars kalman_freq;
-KalmanWaveState waveState;
+KalmanWaveBasicState waveState;
 //KalmanWaveAdaptiveAltState waveAltState;
 KalmanWaveNumStableAltState waveAltState;
 KalmANF kalmANF;
