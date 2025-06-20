@@ -64,11 +64,8 @@
     a (vertical acceleration), z = 0
 
   Observation matrix:
-  H = [[ 1, 0 ],
-       [ 0, 0 ],
-       [ 0, 0 ],
-       [ 0, 1 ],
-       [ 0, 1 ]]  (since measurement includes bias and is not 'true' a)
+  H = [[ 1, 0, 0, 0, 0 ],
+       [ 0, 0, 0, 1, 1 ]]   (since measurement includes bias and is not 'true' a)
 
   F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3         ],
        [ 0,      1,    T,             1/2*T^2,         -1/2*T^2         ],
