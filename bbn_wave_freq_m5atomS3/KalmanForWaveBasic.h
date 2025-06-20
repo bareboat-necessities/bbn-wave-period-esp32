@@ -55,13 +55,10 @@
          T,
          0       ]
 
-  The issue with this model is that while it is hinted to oscilate around mid sea level,
-  there is no hint on for a scale of oscillations. So we depend on selecting variances and
-  covariances properly. Another way would be to use this method for finding wave frequency,
-  use trochoidal wave model in which apmplitude is derived from acceleration and frequency
-  (or from ratio of heave and acceleration) and use heave estimate from trochoidal wave
-  model to fuse with accelerometer data. Basically feed something into F matrix on each step
-  (or every few steps) from estimate provided by trochoidal wave model.
+  The code below also uses zero acceleration correction. 
+  When acceleration is zero then vertical displacement is zero 
+  too (at least in trochoidal wave model). The code of the filter
+  below uses it for an additional drift correction. 
          
 */
 
