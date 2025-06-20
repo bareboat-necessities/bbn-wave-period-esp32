@@ -64,11 +64,8 @@
     a (vertical acceleration), z = 0
 
   Observation matrix:
-  H = [[ 1, 0 ],
-       [ 0, 0 ],
-       [ 0, 0 ],
-       [ 0, 1 ],
-       [ 0, 1 ]]   (since measurement includes bias and is not 'true' a)
+  H = [[ 1, 0, 0, 0, 0 ],
+       [ 0, 0, 0, 1, 1 ]]   (since measurement includes bias and is not 'true' a)
 
   F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3         ],
        [ 0,      1,    T,             1/2*T^2,         -1/2*T^2         ],
@@ -101,14 +98,14 @@ public:
     struct FilterMetrics {
         float innovation_magnitude = 0.0f;       // Magnitude of innovation vector (z - Hx)
         float innovation_normalized = 0.0f;      // Normalized innovation squared (y'*S^-1*y)
-        float covariance_trace = 0.0f;          // Trace of covariance matrix (sum of variances)
-        float max_covariance = 0.0f;            // Maximum diagonal element of covariance matrix
-        float condition_number = 0.0f;          // Condition number of covariance matrix
-        float position_std_dev = 0.0f;          // Standard deviation of position estimate
-        float velocity_std_dev = 0.0f;          // Standard deviation of velocity estimate
-        float acceleration_std_dev = 0.0f;      // Standard deviation of acceleration estimate
-        float bias_std_dev = 0.0f;             // Standard deviation of bias estimate
-        float residual_accel = 0.0f;            // Acceleration measurement residual
+        float covariance_trace = 0.0f;           // Trace of covariance matrix (sum of variances)
+        float max_covariance = 0.0f;             // Maximum diagonal element of covariance matrix
+        float condition_number = 0.0f;           // Condition number of covariance matrix
+        float position_std_dev = 0.0f;           // Standard deviation of position estimate
+        float velocity_std_dev = 0.0f;           // Standard deviation of velocity estimate
+        float acceleration_std_dev = 0.0f;       // Standard deviation of acceleration estimate
+        float bias_std_dev = 0.0f;               // Standard deviation of bias estimate
+        float residual_accel = 0.0f;             // Acceleration measurement residual
     };
 
     KalmanWaveNumStableAlt(float q0 = 1e+1f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 5.0f, float q4 = 1e-5f) {
