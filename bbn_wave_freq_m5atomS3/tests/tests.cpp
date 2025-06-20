@@ -64,9 +64,9 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     waveState.heave = a * g_std / k_hat;
     waveState.vert_speed = 0.0f;               // ??
     waveState.accel_bias = 0.0f;
-    kalman_wave_init_state(&waveState);
+    wave_filter.initState(waveState);
   }
-  kalman_wave_step(&waveState, a * g_std, delta_t);
+  wave_filter.step(a * g_std, delta_t, waveState);
   float heave = waveState.heave;
   //float heave = highPassFilter.update(waveState.heave, delta_t);
 
