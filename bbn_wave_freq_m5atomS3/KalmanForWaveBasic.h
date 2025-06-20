@@ -100,7 +100,7 @@ public:
             // Target values (partial correction toward zero)
             Eigen::Vector2f z;
             z << -zero_correction_gain * x(1),  // Target: reduce heave by gain%
-                 -sqrtf(zero_correction_gain) * x(2);  // Target: reduce velocity by gain%
+                 0.0f;                          // Target: no change to velocity%
             
             Eigen::Vector2f y = z - H_special * x;
             Eigen::Matrix2f S = H_special * P * H_special.transpose();
