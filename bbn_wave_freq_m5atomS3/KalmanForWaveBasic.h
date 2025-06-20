@@ -5,43 +5,37 @@
 
 class KalmanForWaveBasic {
 private:
-    // State vector: [displacement_integral, heave, vert_speed, accel_bias]
     Eigen::Vector4f x;
-    
-    // State transition matrix
     Eigen::Matrix4f F;
-    
-    // Input transition matrix
     Eigen::Vector4f B;
-    
-    // Process noise covariance
     Eigen::Matrix4f Q;
-    
-    // Observation matrix
     Eigen::RowVector4f H;
-    
-    // Observation noise
     float R;
-    
-    // State covariance
     Eigen::Matrix4f P;
-    
-    // Identity matrix
     Eigen::Matrix4f I;
 
-    // Threshold for near-zero acceleration
+    // Zero-correction parameters
     float zero_accel_threshold;
+    float zero_correction_gain;  // [0-1] how strongly to correct
+    int zero_counter = 0;
+    const int zero_counter_threshold = 3; // require N consecutive low-accel samples
+    
+    // Separate observation noise for zero-correction
+    float R_heave = 0.1f;
+    float R_velocity = 0.1f;
 
 public:
     struct State {
-        float displacement_integral; // displacement integral
-        float heave;                // vertical displacement
-        float vert_speed;           // vertical velocity
-        float accel_bias;           // accel bias
+        float displacement_integral;
+        float heave;
+        float vert_speed;
+        float accel_bias;
     };
 
-    KalmanForWaveBasic(float q0, float q1, float q2, float q3, float observation_noise = 0.01f, float zero_threshold = 0.005f) 
-        : zero_accel_threshold(zero_threshold) {
+    KalmanForWave(float q0, float q1, float q2, float q3, 
+                 float observation_noise = 0.01f,
+                 float zero_threshold = 0.05f,
+                 float correction_gain = 0.5f) : zero_accel_threshold(zero_threshold), zero_correction_gain(correction_gain) {
         initialize(q0, q1, q2, q3, observation_noise);
     }
 
@@ -77,62 +71,55 @@ public:
     }
 
     void predict(float accel, float delta_t) {
-        // Update state transition matrix
         F << 1.0f, delta_t, 0.5f * delta_t * delta_t, (-1.0f/6.0f) * delta_t * delta_t * delta_t,
              0.0f, 1.0f,    delta_t,                  -0.5f * delta_t * delta_t,
              0.0f, 0.0f,    1.0f,                      -delta_t,
              0.0f, 0.0f,    0.0f,                      1.0f;
         
-        // Update input transition matrix
         B << (1.0f/6.0f) * delta_t * delta_t * delta_t,
              0.5f * delta_t * delta_t,
              delta_t,
              0.0f;
         
-        // Predict state
         x = F * x + B * accel;
-        
-        // Predict state covariance
         P = F * P * F.transpose() + Q;
     }
 
     void correct(float accel) {
-        // If acceleration is below threshold, force heave and velocity to zero
         if (std::fabs(accel) < zero_accel_threshold) {
-            // Create observation matrix for heave and velocity
+            zero_counter++;
+        } else {
+            zero_counter = 0;
+        }
+
+        if (zero_counter >= zero_counter_threshold) {
+            // Soft correction - only move partially toward zero
             Eigen::Matrix<float, 2, 4> H_special;
             H_special << 0, 1, 0, 0,  // Observe heave
                          0, 0, 1, 0;  // Observe velocity
             
-            // Measurement is zero for both heave and velocity
+            // Target values (partial correction toward zero)
             Eigen::Vector2f z;
-            z.setZero();
+            z << -zero_correction_gain * x(1),  // Target: reduce heave by gain%
+                 -zero_correction_gain * x(2);  // Target: reduce velocity by gain%
             
-            // Calculate innovation
             Eigen::Vector2f y = z - H_special * x;
-            
-            // Calculate innovation covariance
             Eigen::Matrix2f S = H_special * P * H_special.transpose();
-            S(0,0) += R; // Add observation noise
-            S(1,1) += R;
+            S(0,0) += R_heave;
+            S(1,1) += R_velocity;
             
-            // Calculate Kalman gain
             Eigen::Matrix<float, 4, 2> K = P * H_special.transpose() * S.inverse();
-            
-            // Update state estimate
             x = x + K * y;
-            
-            // Update state covariance
             P = (I - K * H_special) * P;
-        } else {
-            // Original correction for displacement integral only
-            float z = 0.0f;
-            float y = z - H * x;
-            float S = H * P * H.transpose() + R;
-            Eigen::Vector4f K = P * H.transpose() / S;
-            x = x + K * y;
-            P = (I - K * H) * P;
         }
+        
+        // Always do the standard correction
+        float z = 0.0f;
+        float y = z - H * x;
+        float S = H * P * H.transpose() + R;
+        Eigen::Vector4f K = P * H.transpose() / S;
+        x = x + K * y;
+        P = (I - K * H) * P;
     }
 
     void step(float accel, float delta_t, State& state) {
@@ -149,9 +136,11 @@ public:
         return State{x(0), x(1), x(2), x(3)};
     }
 
-    // Setter for zero acceleration threshold
-    void setZeroAccelThreshold(float threshold) {
+    void setZeroCorrectionParams(float threshold, float gain, float r_heave, float r_velocity) {
         zero_accel_threshold = threshold;
+        zero_correction_gain = gain;
+        R_heave = r_heave;
+        R_velocity = r_velocity;
     }
 };
 
