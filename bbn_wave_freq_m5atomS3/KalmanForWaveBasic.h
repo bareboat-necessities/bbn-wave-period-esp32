@@ -57,7 +57,8 @@
 
   The code below also uses zero acceleration correction. 
   When acceleration is zero then vertical displacement is zero 
-  too (at least in trochoidal wave model). The code of the filter
+  too (at least in trochoidal wave model), and vertical velocity is at
+  its max or min. The code of the filter
   below uses it for an additional drift correction. 
          
 */
@@ -161,7 +162,7 @@ public:
             // Target values (partial correction toward zero)
             Eigen::Vector2f z;
             z << -zero_correction_gain * x(1),  // Target: reduce heave by gain%
-                 0.0f;                          // Target: no change to velocity%
+                 x(2);                          // Target: no change to velocity%
             
             Eigen::Vector2f y = z - H_special * x;
             Eigen::Matrix2f S = H_special * P * H_special.transpose();
