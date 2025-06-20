@@ -40,7 +40,7 @@ public:
         float accel_bias;           // accel bias
     };
 
-    KalmanForWaveBasic(float q0, float q1, float q2, float q3, float observation_noise = 0.01f, float zero_threshold = 0.05f) 
+    KalmanForWaveBasic(float q0, float q1, float q2, float q3, float observation_noise = 0.01f, float zero_threshold = 0.005f) 
         : zero_accel_threshold(zero_threshold) {
         initialize(q0, q1, q2, q3, observation_noise);
     }
