@@ -1,6 +1,70 @@
 #ifndef KalmanForWaveBasic_h
 #define KalmanForWaveBasic_h
 
+/*
+  Copyright 2024, Mikhail Grushinskiy
+
+  Kalman filter to double integrate vertical acceleration in wave
+  into vertical displacement, correct for accelerometer bias,
+  estimate accelerometer bias, correct integral for zero average displacement.
+  The third integral (responsible for zero average vertical displacement)
+  is taken as a measurement of zero.
+
+  Process model:
+
+  velocity:
+  v(k) = v(k-1) + a*T - a_hat(k-1)*T
+
+  displacement:
+  y(k) = y(k-1) + v(k-1)*T + 1/2*a*T^2 - 1/2*a_hat(k-1)*T^2
+
+  displacement_integral:
+  z(k) = z(k-1) + y(k-1)*T + 1/2*v(k-1)*T^2 + 1/6*a*T^3 - 1/6*a_hat(k-1)*T^3
+
+  accelerometer bias:
+  a_hat(k) = a_hat(k-1)
+
+  State vector:
+  
+  x = [ z, 
+        y,
+        v,
+        a_hat ]
+
+  Process model in matrix form:
+  
+  x(k) = F*x(k-1) + B*u(k) + w(k)
+
+  w(k) - zero mean noise,
+  u(k) = a 
+
+  Input a - vertical acceleration from accelerometer
+
+  Measurement - z = 0 (displacement integral)
+
+  Observation matrix:
+  H = [ 1, 0, 0, 0 ]  
+
+  F = [[ 1,  T,  1/2*T^2, -1/6*T^3 ],
+       [ 0,  1,  T,       -1/2*T^2 ],
+       [ 0,  0,  1,       -T       ],
+       [ 0,  0,  0,        1       ]]
+
+  B = [  1/6*T^3,
+         1/2*T^2,
+         T,
+         0       ]
+
+  The issue with this model is that while it is hinted to oscilate around mid sea level,
+  there is no hint on for a scale of oscillations. So we depend on selecting variances and
+  covariances properly. Another way would be to use this method for finding wave frequency,
+  use trochoidal wave model in which apmplitude is derived from acceleration and frequency
+  (or from ratio of heave and acceleration) and use heave estimate from trochoidal wave
+  model to fuse with accelerometer data. Basically feed something into F matrix on each step
+  (or every few steps) from estimate provided by trochoidal wave model.
+         
+*/
+
 #include <ArduinoEigenDense.h>
 
 class KalmanForWaveBasic {
