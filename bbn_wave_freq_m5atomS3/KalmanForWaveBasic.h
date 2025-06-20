@@ -38,6 +38,10 @@ public:
     };
 
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, float observation_noise = 0.01f) {
+        initialize(q0, q1, q2, q3, observation_noise);
+    }
+
+    void initialize(float q0, float q1, float q2, float q3, float observation_noise) {
         // Initialize state vector
         x.setZero();
         
