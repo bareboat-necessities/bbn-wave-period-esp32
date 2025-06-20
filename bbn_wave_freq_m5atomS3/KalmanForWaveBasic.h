@@ -18,7 +18,7 @@ private:
     float zero_accel_threshold;
     float zero_correction_gain;  // [0-1] how strongly to correct
     int zero_counter = 0;
-    const int zero_counter_threshold = 2; // require N consecutive low-accel samples
+    const int zero_counter_threshold = 100000; // require N consecutive low-accel samples
     
     // Separate observation noise for zero-correction
     float R_heave = 1000.0f;
