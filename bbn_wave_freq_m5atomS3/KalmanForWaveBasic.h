@@ -199,7 +199,10 @@ public:
             
             // Joseph form update for stability
             Eigen::Matrix4f I_KH = I - K * H_special;
-            P = I_KH * P * I_KH.transpose() + K * Eigen::Matrix2f{{R_heave, 0}, {0, R_velocity}} * K.transpose();
+            Eigen::Matrix2f R_corrected;
+            R_corrected << R_heave, 0, 
+                           0, R_velocity;
+            P = I_KH * P * I_KH.transpose() + K * R_corrected * K.transpose();
             
             // Ensure symmetry and positive definiteness
             P = 0.5f * (P + P.transpose());
