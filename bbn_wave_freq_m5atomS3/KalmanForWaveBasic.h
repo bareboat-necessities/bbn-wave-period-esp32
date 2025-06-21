@@ -210,7 +210,7 @@ public:
         // Always do the standard correction with Joseph form
         float z = 0.0f;
         float y = z - H * x;
-        float S = H * P * H.transpose() + R;
+        float S = (H * P * H.transpose())(0, 0) + R;
         Eigen::Vector4f K = P * H.transpose() / S;
         x = x + K * y;
         
