@@ -63,11 +63,6 @@
          
 */
 
-#include <memory>
-
-#define EIGEN_STACK_ALLOCATION_LIMIT 0
-#define EIGEN_ALLOCA EIGEN_ALIGNED_ALLOCA
-
 #include <ArduinoEigenDense.h>
 
 class KalmanForWaveBasic {
@@ -92,7 +87,6 @@ private:
     float R_velocity = 100.0f;
 
 public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     struct State {
         float displacement_integral;
