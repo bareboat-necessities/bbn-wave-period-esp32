@@ -243,7 +243,7 @@ private:
         while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01) {
             epsilon *= 10;
             mat += epsilon * Matrix4f::Identity();
-            llt.compute(matrix);
+            llt.compute(mat);
         }
     }
 
@@ -256,7 +256,7 @@ private:
         while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01) {
             epsilon *= 10;
             mat += epsilon * Matrix2f::Identity();
-            llt.compute(matrix);
+            llt.compute(mat);
         }
     }
 };
