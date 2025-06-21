@@ -83,8 +83,8 @@ private:
     const int zero_counter_threshold = 3; // require N consecutive low-accel samples
     
     // Separate observation noise for zero-correction
-    float R_heave = 10.0f;
-    float R_velocity = 100.0f;
+    float R_heave = 100.0f;
+    float R_velocity = 20.0f;
 
 public:
     struct State {
