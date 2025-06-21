@@ -87,12 +87,14 @@ private:
     float R_velocity = 20.0f;
 
     // Helper function to enforce symmetry on a matrix
-    void enforceSymmetry(Eigen::Matrix4f& mat) {
+    template<typename D>
+    void enforceSymmetry(Eigen::MatrixBase<D>& mat) {
         mat = 0.5f * (mat + mat.transpose());
     }
 
     // Helper function to enforce positive definiteness on a matrix
-    void enforcePositiveDefiniteness(Eigen::Matrix4f& mat) {
+    template<typename D>
+    void enforcePositiveDefiniteness(Eigen::MatrixBase<D>& mat) {
         // First ensure symmetry
         enforceSymmetry(mat);
         
