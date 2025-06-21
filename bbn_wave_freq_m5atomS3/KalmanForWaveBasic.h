@@ -66,57 +66,16 @@
 #include <ArduinoEigenDense.h>
 
 class KalmanForWaveBasic {
-private:
-    Eigen::Vector4f x;
-    Eigen::Matrix4f F;
-    Eigen::Vector4f B;
-    Eigen::Matrix4f Q;
-    Eigen::RowVector4f H;
-    float R;
-    Eigen::Matrix4f P;
-    Eigen::Matrix4f I;
-
-    // Zero-correction parameters
-    float zero_accel_threshold;
-    float zero_correction_gain;  // [0-1] how strongly to correct
-    int zero_counter = 0;
-    const int zero_counter_threshold = 3; // require N consecutive low-accel samples
-    
-    // Separate observation noise for zero-correction
-    float R_heave = 100.0f;
-    float R_velocity = 20.0f;
-
-    // Helper function to enforce symmetry on a matrix
-    template<typename D>
-    void enforceSymmetry(Eigen::MatrixBase<D>& mat) {
-        mat = 0.5f * (mat + mat.transpose());
-    }
-
-    // Helper function to enforce positive definiteness on a matrix
-    template<typename D>
-    void enforcePositiveDefiniteness(Eigen::MatrixBase<D>& mat) {
-        // First ensure symmetry
-        enforceSymmetry(mat);
-        
-        // Then ensure positive definiteness by adding a small value to diagonal if needed
-        Eigen::SelfAdjointEigenSolver<typename D::PlainObject> eigensolver(mat);
-        if (eigensolver.info() != Eigen::Success) {
-            // If eigendecomposition fails, add identity to make it positive definite
-            mat.derived() += Eigen::Matrix<typename D::Scalar, D::RowsAtCompileTime, 
-                                          D::ColsAtCompileTime>::Identity(mat.rows(), mat.cols()) * 1e-6f;
-            return;
-        }
-        
-        const auto min_eigenvalue = eigensolver.eigenvalues().minCoeff();
-        if (min_eigenvalue <= 0) {
-            // Add enough to the diagonal to make all eigenvalues positive
-            const typename D::Scalar adjustment = 1e-6f - min_eigenvalue;
-            mat.derived() += Eigen::Matrix<typename D::Scalar, D::RowsAtCompileTime, 
-                                          D::ColsAtCompileTime>::Identity(mat.rows(), mat.cols()) * adjustment;
-        }
-    }
 
 public:
+    // Type aliases
+    using Vector4f = Eigen::Matrix<float, 4, 1>;
+    using Matrix4f = Eigen::Matrix<float, 4, 4>;
+    using Vector2f = Eigen::Matrix<float, 2, 1>;
+    using Matrix2f = Eigen::Matrix<float, 2, 2>;
+    using Matrix24f = Eigen::Matrix<float, 2, 4>;
+    using Matrix42f = Eigen::Matrix<float, 4, 2>;
+
     struct State {
         float displacement_integral;
         float heave;
@@ -243,6 +202,56 @@ public:
         zero_correction_gain = gain;
         R_heave = r_heave;
         R_velocity = r_velocity;
+    }
+
+private:
+    Eigen::Vector4f x;
+    Eigen::Matrix4f F;
+    Eigen::Vector4f B;
+    Eigen::Matrix4f Q;
+    Eigen::RowVector4f H;
+    float R;
+    Eigen::Matrix4f P;
+    Eigen::Matrix4f I;
+
+    // Zero-correction parameters
+    float zero_accel_threshold;
+    float zero_correction_gain;  // [0-1] how strongly to correct
+    int zero_counter = 0;
+    const int zero_counter_threshold = 3; // require N consecutive low-accel samples
+    
+    // Separate observation noise for zero-correction
+    float R_heave = 100.0f;
+    float R_velocity = 20.0f;
+
+    // Helper function to enforce symmetry on a matrix
+    template<typename D>
+    void enforceSymmetry(Eigen::MatrixBase<D>& mat) {
+        mat = 0.5f * (mat + mat.transpose());
+    }
+
+    // Helper function to enforce positive definiteness on a matrix
+    template<typename D>
+    void enforcePositiveDefiniteness(Eigen::MatrixBase<D>& mat) {
+        // First ensure symmetry
+        enforceSymmetry(mat);
+        
+        // Then ensure positive definiteness by adding a small value to diagonal if needed
+        Eigen::SelfAdjointEigenSolver<typename D::PlainObject> eigensolver(mat);
+        if (eigensolver.info() != Eigen::Success) {
+            // If eigendecomposition fails, add identity to make it positive definite
+            mat.derived() += Eigen::Matrix<typename D::Scalar, D::RowsAtCompileTime, 
+                                          D::ColsAtCompileTime>::Identity(mat.rows(), mat.cols()) * 1e-6f;
+            return;
+        }
+        
+        const auto min_eigenvalue = eigensolver.eigenvalues().minCoeff();
+        if (min_eigenvalue <= 0) {
+            // Add enough to the diagonal to make all eigenvalues positive
+            const typename D::Scalar adjustment = 1e-6f - min_eigenvalue;
+            mat.derived() += Eigen::Matrix<typename D::Scalar, D::RowsAtCompileTime, 
+                                          D::ColsAtCompileTime>::Identity(mat.rows(), mat.cols()) * adjustment;
+        }
     }
 };
 
