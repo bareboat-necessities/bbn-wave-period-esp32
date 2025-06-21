@@ -298,12 +298,13 @@ private:
     }
 
     void ensurePositiveDefinite(Matrix5f& mat) {
-        // Check for positive definiteness via LDLT
-        Eigen::LDLT<Matrix5f> ldlt(mat);
-        if (ldlt.info() != Eigen::Success || !ldlt.isPositive()) {
-            // Add small regularization to diagonal
-            mat.diagonal().array() += 1e-9f;
-        }
+        Eigen::LLT<Matrix2f> llt(mat);  // Cholesky
+        double epsilon = 1e-9;
+        while ((llt.info() == Eigen::NumericalIssue || !llt.isPositive()) && epsilon < 0.01) {
+            epsilon *= 10;
+            mat += epsilon * Matrix2f::Identity();
+            llt.compute(mat);
+        }      
     }
 };
 
