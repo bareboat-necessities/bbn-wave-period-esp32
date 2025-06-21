@@ -86,6 +86,17 @@ private:
     float R_heave = 10.0f;
     float R_velocity = 100.0f;
 
+    // Additional matrices moved from stack to class members
+    Eigen::Matrix<float, 2, 4> H_special;
+    Eigen::Vector2f z_special;
+    Eigen::Matrix2f S_special;
+    Eigen::Matrix2f S_inv_special;
+    Eigen::Matrix<float, 4, 2> K_special;
+    Eigen::Matrix4f I_KH_mat;
+    Eigen::Matrix2f R_corrected;
+    Eigen::Vector4f K;
+    Eigen::Matrix4f KH;
+
 public:
 
     struct State {
@@ -123,6 +134,17 @@ public:
         
         // Initialize identity matrix
         I.setIdentity();
+
+        // Initialize other matrices
+        H_special.setZero();
+        z_special.setZero();
+        S_special.setZero();
+        S_inv_special.setZero();
+        K_special.setZero();
+        I_KH_mat.setZero();
+        R_corrected.setZero();
+        K.setZero();
+        KH.setZero();
     }
 
     void initState(const State& state) {
@@ -169,39 +191,35 @@ public:
 
         if (zero_counter >= zero_counter_threshold) {
             // Special correction for zero acceleration case
-            Eigen::Matrix<float, 2, 4> H_special;
             H_special << 0, 1, 0, 0,  // Observe heave
                          0, 0, 1, 0;  // Observe velocity
             
             // Target values (partial correction toward zero)
-            Eigen::Vector2f z;
-            z << (1.0f - zero_correction_gain) * x(1),  // Target: reduce heave by gain%
-                 x(2);                                  // Target: no change to velocity%
+            z_special << (1.0f - zero_correction_gain) * x(1),  // Target: reduce heave by gain%
+                        x(2);                                  // Target: no change to velocity%
             
-            Eigen::Vector2f y = z - H_special * x;
-            Eigen::Matrix2f S = H_special * P * H_special.transpose();
-            S(0,0) += R_heave;
-            S(1,1) += R_velocity;
+            Eigen::Vector2f y = z_special - H_special * x;
+            S_special = H_special * P * H_special.transpose();
+            S_special(0,0) += R_heave;
+            S_special(1,1) += R_velocity;
             
             // Numerically stable inverse using LDLT decomposition
-            Eigen::Matrix<float, 2, 2> S_inv;
-            Eigen::LDLT<Eigen::Matrix2f> ldlt(S);
+            Eigen::LDLT<Eigen::Matrix2f> ldlt(S_special);
             if (ldlt.isPositive()) {
-                S_inv = ldlt.solve(Eigen::Matrix2f::Identity());
+                S_inv_special = ldlt.solve(Eigen::Matrix2f::Identity());
             } else {
                 // Fallback to regular inverse if LDLT fails
-                S_inv = S.inverse();
+                S_inv_special = S_special.inverse();
             }
             
-            Eigen::Matrix<float, 4, 2> K = P * H_special.transpose() * S_inv;
-            x = x + K * y;
+            K_special = P * H_special.transpose() * S_inv_special;
+            x = x + K_special * y;
             
             // Joseph form update for stability
-            Eigen::Matrix4f I_KH = I - K * H_special;
-            Eigen::Matrix2f R_corrected;
+            I_KH_mat = I - K_special * H_special;
             R_corrected << R_heave, 0, 
                            0, R_velocity;
-            P = I_KH * P * I_KH.transpose() + K * R_corrected * K.transpose();
+            P = I_KH_mat * P * I_KH_mat.transpose() + K_special * R_corrected * K_special.transpose();
             
             // Ensure symmetry and positive definiteness
             P = 0.5f * (P + P.transpose());
@@ -217,7 +235,6 @@ public:
         float S = (H * P * H.transpose())(0,0) + R;
         
         // Numerically stable Kalman gain calculation
-        Eigen::Vector4f K;
         if (std::abs(S) > 1e-10f) {  // Avoid division by zero
             K = P * H.transpose() / S;
         } else {
@@ -227,8 +244,8 @@ public:
         x = x + K * y;
         
         // Joseph form update for stability
-        Eigen::Matrix4f KH = K * H;  // Now properly sized (4x4) = (4x1)*(1x4)
-        Eigen::Matrix4f I_KH_mat = I - KH;
+        KH = K * H;  // Now properly sized (4x4) = (4x1)*(1x4)
+        I_KH_mat = I - KH;
         P = I_KH_mat * P * I_KH_mat.transpose() + K * R * K.transpose();
         
         // Ensure symmetry and positive definiteness
