@@ -91,6 +91,27 @@ private:
         mat = 0.5f * (mat + mat.transpose());
     }
 
+    // Helper function to enforce positive definiteness on a matrix
+    void enforcePositiveDefiniteness(Eigen::Matrix4f& mat) {
+        // First ensure symmetry
+        enforceSymmetry(mat);
+        
+        // Then ensure positive definiteness by adding a small value to diagonal if needed
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix4f> eigensolver(mat);
+        if (eigensolver.info() != Eigen::Success) {
+            // If eigendecomposition fails, add identity to make it positive definite
+            mat += Eigen::Matrix4f::Identity() * 1e-6f;
+            return;
+        }
+        
+        const float min_eigenvalue = eigensolver.eigenvalues().minCoeff();
+        if (min_eigenvalue <= 0) {
+            // Add enough to the diagonal to make all eigenvalues positive
+            const float adjustment = 1e-6f - min_eigenvalue;
+            mat += Eigen::Matrix4f::Identity() * adjustment;
+        }
+    }
+
 public:
     struct State {
         float displacement_integral;
@@ -109,7 +130,7 @@ public:
         // Initialize state vector
         x.setZero();
         
-        // Initialize state covariance - symmetric
+        // Initialize state covariance - symmetric and positive definite
         P.setIdentity();
         
         // Initialize observation matrix
@@ -118,13 +139,13 @@ public:
         // Initialize observation noise
         R = r0;
         
-        // Initialize process noise - symmetric
+        // Initialize process noise - symmetric and positive definite
         Q.setZero();
         Q(0,0) = q0;
         Q(1,1) = q1;
         Q(2,2) = q2;
         Q(3,3) = q3;
-        enforceSymmetry(Q);
+        enforcePositiveDefiniteness(Q);
         
         // Initialize identity matrix
         I.setIdentity();
@@ -150,7 +171,7 @@ public:
         
         x = F * x + B * accel;
         P = F * P * F.transpose() + Q;
-        enforceSymmetry(P);  // Ensure P remains symmetric
+        enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
     }
 
     void correct(float accel) {
@@ -175,7 +196,7 @@ public:
             Eigen::Matrix2f S = H_special * P * H_special.transpose();
             S(0,0) += R_heave;
             S(1,1) += R_velocity;
-            enforceSymmetry(S);  // Ensure S remains symmetric
+            enforcePositiveDefiniteness(S);  // Ensure S remains symmetric and positive definite
             
             Eigen::Matrix<float, 4, 2> K = P * H_special.transpose() * S.inverse();
             x = x + K * y;
@@ -183,7 +204,7 @@ public:
             // Joseph form update for covariance
             Eigen::Matrix4f JI_KH = I - K * H_special;
             P = JI_KH * P * JI_KH.transpose() + K * S * K.transpose();
-            enforceSymmetry(P);  // Ensure P remains symmetric
+            enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
         }
         
         // Always do the standard correction with Joseph form
@@ -196,7 +217,7 @@ public:
         // Joseph form update for covariance
         Eigen::Matrix4f I_KH = I - K * H;
         P = I_KH * P * I_KH.transpose() + K * R * K.transpose();
-        enforceSymmetry(P);  // Ensure P remains symmetric
+        enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
     }
 
     void step(float accel, float delta_t, State& state) {
