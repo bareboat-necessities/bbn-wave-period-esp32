@@ -86,6 +86,11 @@ private:
     float R_heave = 100.0f;
     float R_velocity = 20.0f;
 
+    // Helper function to enforce symmetry on a matrix
+    void enforceSymmetry(Eigen::Matrix4f& mat) {
+        mat = 0.5f * (mat + mat.transpose());
+    }
+
 public:
     struct State {
         float displacement_integral;
@@ -104,7 +109,7 @@ public:
         // Initialize state vector
         x.setZero();
         
-        // Initialize state covariance
+        // Initialize state covariance - symmetric
         P.setIdentity();
         
         // Initialize observation matrix
@@ -113,12 +118,13 @@ public:
         // Initialize observation noise
         R = r0;
         
-        // Initialize process noise
+        // Initialize process noise - symmetric
         Q.setZero();
         Q(0,0) = q0;
         Q(1,1) = q1;
         Q(2,2) = q2;
         Q(3,3) = q3;
+        enforceSymmetry(Q);
         
         // Initialize identity matrix
         I.setIdentity();
@@ -144,6 +150,7 @@ public:
         
         x = F * x + B * accel;
         P = F * P * F.transpose() + Q;
+        enforceSymmetry(P);  // Ensure P remains symmetric
     }
 
     void correct(float accel) {
@@ -168,6 +175,7 @@ public:
             Eigen::Matrix2f S = H_special * P * H_special.transpose();
             S(0,0) += R_heave;
             S(1,1) += R_velocity;
+            enforceSymmetry(S);  // Ensure S remains symmetric
             
             Eigen::Matrix<float, 4, 2> K = P * H_special.transpose() * S.inverse();
             x = x + K * y;
@@ -175,6 +183,7 @@ public:
             // Joseph form update for covariance
             Eigen::Matrix4f JI_KH = I - K * H_special;
             P = JI_KH * P * JI_KH.transpose() + K * S * K.transpose();
+            enforceSymmetry(P);  // Ensure P remains symmetric
         }
         
         // Always do the standard correction with Joseph form
@@ -187,6 +196,7 @@ public:
         // Joseph form update for covariance
         Eigen::Matrix4f I_KH = I - K * H;
         P = I_KH * P * I_KH.transpose() + K * R * K.transpose();
+        enforceSymmetry(P);  // Ensure P remains symmetric
     }
 
     void step(float accel, float delta_t, State& state) {
