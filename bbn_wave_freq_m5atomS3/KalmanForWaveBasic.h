@@ -132,6 +132,7 @@ public:
     }
 
     void predict(float accel, float delta_t) {
+        // Update state transition matrix and control matrix
         F << 1.0f, delta_t, 0.5f * delta_t * delta_t, (-1.0f/6.0f) * delta_t * delta_t * delta_t,
              0.0f, 1.0f,    delta_t,                  -0.5f * delta_t * delta_t,
              0.0f, 0.0f,    1.0f,                      -delta_t,
@@ -142,8 +143,20 @@ public:
              delta_t,
              0.0f;
         
+        // State prediction
         x = F * x + B * accel;
+        
+        // Covariance prediction with Joseph form for stability
         P = F * P * F.transpose() + Q;
+        
+        // Ensure symmetry of P
+        P = 0.5f * (P + P.transpose());
+        
+        // Ensure positive definiteness (add small value to diagonal if needed)
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix4f> eigensolver(P);
+        if (eigensolver.eigenvalues().minCoeff() <= 0) {
+            P += 1e-6f * Eigen::Matrix4f::Identity();
+        }
     }
 
     void correct(float accel) {
@@ -154,7 +167,7 @@ public:
         }
 
         if (zero_counter >= zero_counter_threshold) {
-            // Soft correction - only move partially toward zero
+            // Special correction for zero acceleration case
             Eigen::Matrix<float, 2, 4> H_special;
             H_special << 0, 1, 0, 0,  // Observe heave
                          0, 0, 1, 0;  // Observe velocity
@@ -169,18 +182,60 @@ public:
             S(0,0) += R_heave;
             S(1,1) += R_velocity;
             
-            Eigen::Matrix<float, 4, 2> K = P * H_special.transpose() * S.inverse();
+            // Numerically stable inverse using LDLT decomposition
+            Eigen::Matrix2f S_inv;
+            Eigen::LDLT<Eigen::Matrix2f> ldlt(S);
+            if (ldlt.isPositive()) {
+                S_inv = ldlt.solve(Eigen::Matrix2f::Identity());
+            } else {
+                // Fallback to regular inverse if LDLT fails
+                S_inv = S.inverse();
+            }
+            
+            Eigen::Matrix<float, 4, 2> K = P * H_special.transpose() * S_inv;
             x = x + K * y;
-            P = (I - K * H_special) * P;
+            
+            // Joseph form update for stability
+            Eigen::Matrix4f I_KH = I - K * H_special;
+            P = I_KH * P * I_KH.transpose() + K * (R_heave * Eigen::Matrix2f::Identity()) * K.transpose();
+            
+            // Ensure symmetry and positive definiteness
+            P = 0.5f * (P + P.transpose());
+            Eigen::SelfAdjointEigenSolver<Eigen::Matrix4f> eigensolver(P);
+            if (eigensolver.eigenvalues().minCoeff() <= 0) {
+                P += 1e-6f * Eigen::Matrix4f::Identity();
+            }
         }
         
-        // Always do the standard correction
+        // Standard correction
         float z = 0.0f;
         float y = z - H * x;
-        float S = H * P * H.transpose() + R;
-        Eigen::Vector4f K = P * H.transpose() / S;
+        float S = (H * P * H.transpose())(0,0) + R;
+        
+        // Numerically stable Kalman gain calculation
+        Eigen::Vector4f K;
+        if (std::abs(S) > 1e-10f) {  // Avoid division by zero
+            K = P * H.transpose() / S;
+        } else {
+            K.setZero();
+        }
+        
         x = x + K * y;
-        P = (I - K * H) * P;
+        
+        // Joseph form update for stability
+        Eigen::Vector4f KH = K * H;
+        Eigen::Matrix4f I_KH_mat = I;
+        for (int i = 0; i < 4; ++i) {
+            I_KH_mat(i,i) -= KH(i);
+        }
+        P = I_KH_mat * P * I_KH_mat.transpose() + K * R * K.transpose();
+        
+        // Ensure symmetry and positive definiteness
+        P = 0.5f * (P + P.transpose());
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix4f> eigensolver(P);
+        if (eigensolver.eigenvalues().minCoeff() <= 0) {
+            P += 1e-6f * Eigen::Matrix4f::Identity();
+        }
     }
 
     void step(float accel, float delta_t, State& state) {
@@ -204,7 +259,6 @@ public:
         R_velocity = r_velocity;
     }
 };
-
 
 typedef KalmanForWaveBasic::State KalmanForWaveBasicState;
 
