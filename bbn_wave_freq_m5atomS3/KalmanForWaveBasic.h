@@ -84,7 +84,7 @@ public:
     };
 
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
-                       float observation_noise = 0.01f, float zero_threshold = 0.05f, float correction_gain = 0.5f)
+                       float observation_noise = 0.01f, float zero_threshold = 0.09f, float correction_gain = 0.98f)
                        : zero_accel_threshold(zero_threshold), zero_correction_gain(correction_gain) {
         initialize(q0, q1, q2, q3, observation_noise);
     }
@@ -221,7 +221,7 @@ private:
     const int zero_counter_threshold = 3; // require N consecutive low-accel samples
     
     // Separate observation noise for zero-correction
-    float R_heave = 100.0f;
+    float R_heave = 50.0f;
     float R_velocity = 20.0f;
 
     // Helper function to enforce symmetry on a matrix
@@ -237,7 +237,7 @@ private:
     void enforcePositiveDefiniteness(Matrix4f& mat) {
         // First ensure symmetry
         enforceSymmetry(mat);
-        
+
         // Then ensure positive definiteness by adding a small value to diagonal if needed
         Eigen::SelfAdjointEigenSolver<Matrix4f> eigensolver(mat);
         if (eigensolver.info() != Eigen::Success) {
@@ -245,7 +245,7 @@ private:
             mat += Matrix4f::Identity() * 1e-6f;
             return;
         }
-        
+
         const auto min_eigenvalue = eigensolver.eigenvalues().minCoeff();
         if (min_eigenvalue <= 0) {
             // Add enough to the diagonal to make all eigenvalues positive
@@ -257,7 +257,7 @@ private:
     void enforcePositiveDefiniteness(Matrix2f& mat) {
         // First ensure symmetry
         enforceSymmetry(mat);
-        
+
         // Then ensure positive definiteness by adding a small value to diagonal if needed
         Eigen::SelfAdjointEigenSolver<Matrix2f> eigensolver(mat);
         if (eigensolver.info() != Eigen::Success) {
@@ -265,7 +265,7 @@ private:
             mat += Matrix2f::Identity() * 1e-6f;
             return;
         }
-        
+
         const auto min_eigenvalue = eigensolver.eigenvalues().minCoeff();
         if (min_eigenvalue <= 0) {
             // Add enough to the diagonal to make all eigenvalues positive
