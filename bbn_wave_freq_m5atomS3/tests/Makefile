@@ -1,7 +1,7 @@
 ARDUINO_HOME=/opt/arduino-1.8.19
 
 CC=g++
-CPPFLAGS=-Wl,--gc-sections -Wa,-mbig-obj -I./..  -I${ARDUINO_HOME}/libraries/ArxTypeTraits/ -I${ARDUINO_HOME}/libraries/ArduinoJson/extras/tests/Helpers/ -I${ARDUINO_DIRECTORIES_DATA}/packages/esp32/hardware/esp32/3.1.2/cores/esp32/
+CPPFLAGS=-I./..  -I${ARDUINO_HOME}/libraries/ArxTypeTraits/ -I${ARDUINO_HOME}/libraries/ArduinoJson/extras/tests/Helpers/ -I${ARDUINO_DIRECTORIES_DATA}/packages/esp32/hardware/esp32/3.1.2/cores/esp32/
 
 tests:	tests.o
 	$(CC) -o tests tests.o
