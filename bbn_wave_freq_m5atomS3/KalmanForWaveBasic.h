@@ -173,8 +173,8 @@ public:
             x = x + K * y;
             
             // Joseph form update for covariance
-            Eigen::Matrix4f I_KH = I - K * H_special;
-            P = I_KH * P * I_KH.transpose() + K * S * K.transpose();
+            Eigen::Matrix4f JI_KH = I - K * H_special;
+            P = JI_KH * P * JI_KH.transpose() + K * S * K.transpose();
         }
         
         // Always do the standard correction with Joseph form
