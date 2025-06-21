@@ -173,7 +173,7 @@ public:
                          0, 0, 1, 0;  // Observe velocity
             
             // Target values (partial correction toward zero)
-            Eigen::Vector2f z;
+            Eigen::Vector<float, 2> z;
             z << (1.0f - zero_correction_gain) * x(1),  // Target: reduce heave by gain%
                  x(2);                                  // Target: no change to velocity%
             
@@ -183,7 +183,7 @@ public:
             S(1,1) += R_velocity;
             
             // Numerically stable inverse using LDLT decomposition
-            Eigen::Matrix2f S_inv;
+            Eigen::Matrix<float, 2, 2> S_inv;
             Eigen::LDLT<Eigen::Matrix2f> ldlt(S);
             if (ldlt.isPositive()) {
                 S_inv = ldlt.solve(Eigen::Matrix2f::Identity());
