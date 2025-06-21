@@ -99,18 +99,20 @@ private:
         enforceSymmetry(mat);
         
         // Then ensure positive definiteness by adding a small value to diagonal if needed
-        Eigen::SelfAdjointEigenSolver<Eigen::Matrix4f> eigensolver(mat);
+        Eigen::SelfAdjointEigenSolver<typename D::PlainObject> eigensolver(mat);
         if (eigensolver.info() != Eigen::Success) {
             // If eigendecomposition fails, add identity to make it positive definite
-            mat += Eigen::Matrix4f::Identity() * 1e-6f;
+            mat.derived() += Eigen::Matrix<typename D::Scalar, D::RowsAtCompileTime, 
+                                          D::ColsAtCompileTime>::Identity(mat.rows(), mat.cols()) * 1e-6f;
             return;
         }
         
-        const float min_eigenvalue = eigensolver.eigenvalues().minCoeff();
+        const auto min_eigenvalue = eigensolver.eigenvalues().minCoeff();
         if (min_eigenvalue <= 0) {
             // Add enough to the diagonal to make all eigenvalues positive
-            const float adjustment = 1e-6f - min_eigenvalue;
-            mat += Eigen::Matrix4f::Identity() * adjustment;
+            const typename D::Scalar adjustment = 1e-6f - min_eigenvalue;
+            mat.derived() += Eigen::Matrix<typename D::Scalar, D::RowsAtCompileTime, 
+                                          D::ColsAtCompileTime>::Identity(mat.rows(), mat.cols()) * adjustment;
         }
     }
 
