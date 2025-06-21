@@ -197,7 +197,7 @@ public:
             
             // Joseph form update for stability
             Eigen::Matrix4f I_KH = I - K * H_special;
-            P = I_KH * P * I_KH.transpose() + K * (R_heave * Eigen::Matrix2f::Identity()) * K.transpose();
+            P = I_KH * P * I_KH.transpose() + K * Eigen::Matrix2f{{R_heave, 0}, {0, R_velocity}} * K.transpose();
             
             // Ensure symmetry and positive definiteness
             P = 0.5f * (P + P.transpose());
@@ -223,11 +223,8 @@ public:
         x = x + K * y;
         
         // Joseph form update for stability
-        Eigen::Vector4f KH = K * H;
-        Eigen::Matrix4f I_KH_mat = I;
-        for (int i = 0; i < 4; ++i) {
-            I_KH_mat(i,i) -= KH(i);
-        }
+        Eigen::Matrix4f KH = K * H;  // Now properly sized (4x4) = (4x1)*(1x4)
+        Eigen::Matrix4f I_KH_mat = I - KH;
         P = I_KH_mat * P * I_KH_mat.transpose() + K * R * K.transpose();
         
         // Ensure symmetry and positive definiteness
