@@ -83,8 +83,8 @@ private:
     const int zero_counter_threshold = 3; // require N consecutive low-accel samples
     
     // Separate observation noise for zero-correction
-    float R_heave = 1e+4f;
-    float R_velocity = 1e+6f;
+    float R_heave = 10.0f;
+    float R_velocity = 100.0f;
 
 public:
     struct State {
@@ -95,7 +95,7 @@ public:
     };
 
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
-                       float observation_noise = 0.01f, float zero_threshold = 0.05f, float correction_gain = 0.7f)
+                       float observation_noise = 0.01f, float zero_threshold = 0.05f, float correction_gain = 0.5f)
                        : zero_accel_threshold(zero_threshold), zero_correction_gain(correction_gain) {
         initialize(q0, q1, q2, q3, observation_noise);
     }
