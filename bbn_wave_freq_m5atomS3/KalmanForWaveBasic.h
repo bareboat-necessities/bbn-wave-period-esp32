@@ -63,6 +63,11 @@
          
 */
 
+#include <memory>
+
+#define EIGEN_STACK_ALLOCATION_LIMIT 0
+#define EIGEN_ALLOCA EIGEN_ALIGNED_ALLOCA
+
 #include <ArduinoEigenDense.h>
 
 class KalmanForWaveBasic {
