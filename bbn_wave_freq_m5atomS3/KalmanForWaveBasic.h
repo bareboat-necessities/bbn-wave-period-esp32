@@ -225,32 +225,52 @@ private:
     float R_velocity = 20.0f;
 
     // Helper function to enforce symmetry on a matrix
-    template<typename D>
-    void enforceSymmetry(Eigen::MatrixBase<D>& mat) {
+    void enforceSymmetry(Matrix4f& mat) {
+        mat = 0.5f * (mat + mat.transpose());
+    }
+
+    void enforceSymmetry(Matrix2f& mat) {
         mat = 0.5f * (mat + mat.transpose());
     }
 
     // Helper function to enforce positive definiteness on a matrix
-    template<typename D>
-    void enforcePositiveDefiniteness(Eigen::MatrixBase<D>& mat) {
+    void enforcePositiveDefiniteness(Matrix4f& mat) {
         // First ensure symmetry
         enforceSymmetry(mat);
         
         // Then ensure positive definiteness by adding a small value to diagonal if needed
-        Eigen::SelfAdjointEigenSolver<typename D::PlainObject> eigensolver(mat);
+        Eigen::SelfAdjointEigenSolver<Matrix4f> eigensolver(mat);
         if (eigensolver.info() != Eigen::Success) {
             // If eigendecomposition fails, add identity to make it positive definite
-            mat.derived() += Eigen::Matrix<typename D::Scalar, D::RowsAtCompileTime, 
-                                          D::ColsAtCompileTime>::Identity(mat.rows(), mat.cols()) * 1e-6f;
+            mat += Matrix4f::Identity() * 1e-6f;
             return;
         }
         
         const auto min_eigenvalue = eigensolver.eigenvalues().minCoeff();
         if (min_eigenvalue <= 0) {
             // Add enough to the diagonal to make all eigenvalues positive
-            const typename D::Scalar adjustment = 1e-6f - min_eigenvalue;
-            mat.derived() += Eigen::Matrix<typename D::Scalar, D::RowsAtCompileTime, 
-                                          D::ColsAtCompileTime>::Identity(mat.rows(), mat.cols()) * adjustment;
+            const float adjustment = 1e-6f - min_eigenvalue;
+            mat += Matrix4f::Identity() * adjustment;
+        }
+    }
+
+    void enforcePositiveDefiniteness(Matrix2f& mat) {
+        // First ensure symmetry
+        enforceSymmetry(mat);
+        
+        // Then ensure positive definiteness by adding a small value to diagonal if needed
+        Eigen::SelfAdjointEigenSolver<Matrix2f> eigensolver(mat);
+        if (eigensolver.info() != Eigen::Success) {
+            // If eigendecomposition fails, add identity to make it positive definite
+            mat += Matrix2f::Identity() * 1e-6f;
+            return;
+        }
+        
+        const auto min_eigenvalue = eigensolver.eigenvalues().minCoeff();
+        if (min_eigenvalue <= 0) {
+            // Add enough to the diagonal to make all eigenvalues positive
+            const float adjustment = 1e-6f - min_eigenvalue;
+            mat += Matrix2f::Identity() * adjustment;
         }
     }
 };
