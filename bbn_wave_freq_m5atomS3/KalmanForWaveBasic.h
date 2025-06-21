@@ -240,7 +240,7 @@ private:
 
         Eigen::LLT<Matrix4f> llt(mat);  // Cholesky
         float epsilon = 1e-9f;
-        while ((llt.info() == Eigen::NumericalIssue || !llt.isPositive()) && epsilon < 0.01f) {
+        while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01f) {
             mat += epsilon * Matrix4f::Identity();
             llt.compute(mat);
             epsilon *= 10;
@@ -253,7 +253,7 @@ private:
 
         Eigen::LLT<Matrix2f> llt(mat);  // Cholesky
         float epsilon = 1e-9f;
-        while ((llt.info() == Eigen::NumericalIssue || !llt.isPositive()) && epsilon < 0.01f) {
+        while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01f) {
             mat += epsilon * Matrix2f::Identity();
             llt.compute(mat);
             epsilon *= 10;
