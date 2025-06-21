@@ -171,16 +171,22 @@ public:
             
             Eigen::Matrix<float, 4, 2> K = P * H_special.transpose() * S.inverse();
             x = x + K * y;
-            P = (I - K * H_special) * P;
+            
+            // Joseph form update for covariance
+            Eigen::Matrix4f I_KH = I - K * H_special;
+            P = I_KH * P * I_KH.transpose() + K * S * K.transpose();
         }
         
-        // Always do the standard correction
+        // Always do the standard correction with Joseph form
         float z = 0.0f;
         float y = z - H * x;
         float S = H * P * H.transpose() + R;
         Eigen::Vector4f K = P * H.transpose() / S;
         x = x + K * y;
-        P = (I - K * H) * P;
+        
+        // Joseph form update for covariance
+        Eigen::Matrix4f I_KH = I - K * H;
+        P = I_KH * P * I_KH.transpose() + K * R * K.transpose();
     }
 
     void step(float accel, float delta_t, State& state) {
@@ -204,7 +210,6 @@ public:
         R_velocity = r_velocity;
     }
 };
-
 
 typedef KalmanForWaveBasic::State KalmanForWaveBasicState;
 
