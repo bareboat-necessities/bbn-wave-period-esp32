@@ -95,7 +95,7 @@ public:
     };
 
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
-                       float observation_noise = 0.01f, float zero_threshold = 0.2f, float correction_gain = 0.7f)
+                       float observation_noise = 0.01f, float zero_threshold = 0.05f, float correction_gain = 0.7f)
                        : zero_accel_threshold(zero_threshold), zero_correction_gain(correction_gain) {
         initialize(q0, q1, q2, q3, observation_noise);
     }
