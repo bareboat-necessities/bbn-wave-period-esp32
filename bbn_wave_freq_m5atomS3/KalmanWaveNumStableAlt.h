@@ -299,11 +299,11 @@ private:
 
     void ensurePositiveDefinite(Matrix5f& mat) {
         Eigen::LLT<Matrix2f> llt(mat);  // Cholesky
-        double epsilon = 1e-9;
-        while ((llt.info() == Eigen::NumericalIssue || !llt.isPositive()) && epsilon < 0.01) {
-            epsilon *= 10;
-            mat += epsilon * Matrix2f::Identity();
+        float epsilon = 1e-9f;
+        while ((llt.info() == Eigen::NumericalIssue || !llt.isPositive()) && epsilon < 0.01f) {
+            mat += epsilon * Matrix5f::Identity();
             llt.compute(mat);
+            epsilon *= 10;
         }      
     }
 };
