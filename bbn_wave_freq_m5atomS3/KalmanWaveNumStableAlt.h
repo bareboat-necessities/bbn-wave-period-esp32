@@ -300,7 +300,7 @@ private:
     void ensurePositiveDefinite(Matrix5f& mat) {
         Eigen::LLT<Matrix2f> llt(mat);  // Cholesky
         float epsilon = 1e-9f;
-        while ((llt.info() == Eigen::NumericalIssue || !llt.isPositive()) && epsilon < 0.01f) {
+        while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01f) {
             mat += epsilon * Matrix5f::Identity();
             llt.compute(mat);
             epsilon *= 10;
