@@ -238,19 +238,12 @@ private:
         // First ensure symmetry
         enforceSymmetry(mat);
 
-        // Then ensure positive definiteness by adding a small value to diagonal if needed
-        Eigen::SelfAdjointEigenSolver<Matrix4f> eigensolver(mat);
-        if (eigensolver.info() != Eigen::Success) {
-            // If eigendecomposition fails, add identity to make it positive definite
-            mat += Matrix4f::Identity() * 1e-6f;
-            return;
-        }
-
-        const auto min_eigenvalue = eigensolver.eigenvalues().minCoeff();
-        if (min_eigenvalue <= 0) {
-            // Add enough to the diagonal to make all eigenvalues positive
-            const float adjustment = 1e-6f - min_eigenvalue;
-            mat += Matrix4f::Identity() * adjustment;
+        Eigen::LLT<Matrix4f> llt(mat);  // Cholesky
+        double epsilon = 1e-9;
+        while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01) {
+            epsilon *= 10;
+            mat += epsilon * Matrix4f::Identity();
+            llt.compute(matrix);
         }
     }
 
@@ -258,19 +251,12 @@ private:
         // First ensure symmetry
         enforceSymmetry(mat);
 
-        // Then ensure positive definiteness by adding a small value to diagonal if needed
-        Eigen::SelfAdjointEigenSolver<Matrix2f> eigensolver(mat);
-        if (eigensolver.info() != Eigen::Success) {
-            // If eigendecomposition fails, add identity to make it positive definite
-            mat += Matrix2f::Identity() * 1e-6f;
-            return;
-        }
-
-        const auto min_eigenvalue = eigensolver.eigenvalues().minCoeff();
-        if (min_eigenvalue <= 0) {
-            // Add enough to the diagonal to make all eigenvalues positive
-            const float adjustment = 1e-6f - min_eigenvalue;
-            mat += Matrix2f::Identity() * adjustment;
+        Eigen::LLT<Matrix2f> llt(mat);  // Cholesky
+        double epsilon = 1e-9;
+        while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01) {
+            epsilon *= 10;
+            mat += epsilon * Matrix2f::Identity();
+            llt.compute(matrix);
         }
     }
 };
