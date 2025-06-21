@@ -146,26 +146,26 @@ public:
 
         if (zero_counter >= zero_counter_threshold) {
             // Soft correction - only move partially toward zero
-            Eigen::Matrix<float, 2, 4> H_special;
+            Matrix24f H_special;
             H_special << 0, 1, 0, 0,  // Observe heave
                          0, 0, 1, 0;  // Observe velocity
             
             // Target values (partial correction toward zero)
-            Eigen::Vector2f z;
+            Vector2f z;
             z << (1.0f - zero_correction_gain) * x(1),  // Target: reduce heave by gain%
                  x(2);                                  // Target: no change to velocity%
             
-            Eigen::Vector2f y = z - H_special * x;
-            Eigen::Matrix2f S = H_special * P * H_special.transpose();
+            Vector2f y = z - H_special * x;
+            Matrix2f S = H_special * P * H_special.transpose();
             S(0,0) += R_heave;
             S(1,1) += R_velocity;
             enforcePositiveDefiniteness(S);  // Ensure S remains symmetric and positive definite
             
-            Eigen::Matrix<float, 4, 2> K = P * H_special.transpose() * S.inverse();
+            Matrix42f K = P * H_special.transpose() * S.inverse();
             x = x + K * y;
             
             // Joseph form update for covariance
-            Eigen::Matrix4f JI_KH = I - K * H_special;
+            Matrix4f JI_KH = I - K * H_special;
             P = JI_KH * P * JI_KH.transpose() + K * S * K.transpose();
             enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
         }
@@ -174,11 +174,11 @@ public:
         float z = 0.0f;
         float y = z - H * x;
         float S = (H * P * H.transpose())(0, 0) + R;
-        Eigen::Vector4f K = P * H.transpose() / S;
+        Vector4f K = P * H.transpose() / S;
         x = x + K * y;
         
         // Joseph form update for covariance
-        Eigen::Matrix4f I_KH = I - K * H;
+        Matrix4f I_KH = I - K * H;
         P = I_KH * P * I_KH.transpose() + K * R * K.transpose();
         enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
     }
@@ -205,14 +205,14 @@ public:
     }
 
 private:
-    Eigen::Vector4f x;
-    Eigen::Matrix4f F;
-    Eigen::Vector4f B;
-    Eigen::Matrix4f Q;
+    Vector4f x;
+    Matrix4f F;
+    Vector4f B;
+    Matrix4f Q;
     Eigen::RowVector4f H;
     float R;
-    Eigen::Matrix4f P;
-    Eigen::Matrix4f I;
+    Matrix4f P;
+    Matrix4f I;
 
     // Zero-correction parameters
     float zero_accel_threshold;
