@@ -87,6 +87,8 @@ private:
     float R_velocity = 100.0f;
 
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     struct State {
         float displacement_integral;
         float heave;
