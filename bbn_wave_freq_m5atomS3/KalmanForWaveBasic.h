@@ -175,7 +175,7 @@ public:
                          0, 0, 1, 0;  // Observe velocity
             
             // Target values (partial correction toward zero)
-            Eigen::Vector<float, 2> z;
+            Eigen::Vector2f z;
             z << (1.0f - zero_correction_gain) * x(1),  // Target: reduce heave by gain%
                  x(2);                                  // Target: no change to velocity%
             
