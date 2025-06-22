@@ -63,6 +63,8 @@
 
 #include <ArduinoEigenDense.h>
 
+#define ZERO_CROSSINGS_HYSTERESIS_KF     0.08f
+
 class KalmanForWaveBasic {
 
 public:
@@ -82,10 +84,10 @@ public:
     };
 
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
-                       float observation_noise = 0.01f, 
-                       float positive_threshold = 0.2f, 
-                       float negative_threshold = -0.2f,
-                       float correction_gain = 0.98f)
+                       float observation_noise = 0.0001f, 
+                       float positive_threshold = ZERO_CROSSINGS_HYSTERESIS_KF, 
+                       float negative_threshold = -ZERO_CROSSINGS_HYSTERESIS_KF,
+                       float correction_gain = 1.0f)
                        : schmitt_positive_threshold(positive_threshold),
                          schmitt_negative_threshold(negative_threshold),
                          zero_correction_gain(correction_gain) {
