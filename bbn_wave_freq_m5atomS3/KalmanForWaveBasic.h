@@ -64,6 +64,7 @@
 #include <ArduinoEigenDense.h>
 
 #define ZERO_CROSSINGS_HYSTERESIS_KF     0.08f
+#define MIN_DIVISOR_VALUE                1e-12f  // Minimum allowed value for division operations
 
 class KalmanForWaveBasic {
 
@@ -187,13 +188,16 @@ public:
             S(1,1) += R_velocity;
             enforcePositiveDefiniteness(S);  // Ensure S remains symmetric and positive definite
             
-            Matrix42f K = P * H_special.transpose() * S.inverse();
-            x = x + K * y;
-            
-            // Joseph form update for covariance
-            Matrix4f JI_KH = I - K * H_special;
-            P = JI_KH * P * JI_KH.transpose() + K * S * K.transpose();
-            enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
+            // Check for numerical stability before inversion
+            if (S.determinant() > MIN_DIVISOR_VALUE) {
+                Matrix42f K = P * H_special.transpose() * S.inverse();
+                x = x + K * y;
+                
+                // Joseph form update for covariance
+                Matrix4f JI_KH = I - K * H_special;
+                P = JI_KH * P * JI_KH.transpose() + K * S * K.transpose();
+                enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
+            }
             
             // Reset detection flag
             zero_crossing_detected = false;
@@ -203,13 +207,17 @@ public:
         float z = 0.0f;
         float y = z - H * x;
         float S = (H * P * H.transpose())(0, 0) + R;
-        Vector4f K = P * H.transpose() / S;
-        x = x + K * y;
         
-        // Joseph form update for covariance
-        Matrix4f I_KH = I - K * H;
-        P = I_KH * P * I_KH.transpose() + K * R * K.transpose();
-        enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
+        // Check for numerical stability before division
+        if (fabs(S) > MIN_DIVISOR_VALUE) {
+            Vector4f K = P * H.transpose() / S;
+            x = x + K * y;
+            
+            // Joseph form update for covariance
+            Matrix4f I_KH = I - K * H;
+            P = I_KH * P * I_KH.transpose() + K * R * K.transpose();
+            enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
+        }
     }
 
     void step(float accel, float delta_t, State& state) {
