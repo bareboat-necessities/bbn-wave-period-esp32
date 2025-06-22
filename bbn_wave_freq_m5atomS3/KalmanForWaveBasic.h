@@ -85,7 +85,7 @@ public:
 
     enum class SchmittTriggerState {
         SCHMITT_LOW = 0,
-        SCHMITT_LOW = 1
+        SCHMITT_HIGH = 1
     };
 
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
@@ -157,7 +157,7 @@ public:
         if (schmitt_state == SchmittTriggerState::SCHMITT_LOW) {
             // Currently in low state, check if we should switch to high
             if (accel > schmitt_positive_threshold) {
-                schmitt_state = SchmittTriggerState::SCHMITT_LOW;
+                schmitt_state = SchmittTriggerState::SCHMITT_HIGH;
                 zero_crossing_detected = true;
             }
         } else {
