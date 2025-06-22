@@ -188,8 +188,8 @@ public:
             
             Vector2f y = z - H_special * x;
             Matrix2f Sz = H_special * P * H_special.transpose();
-            S(0,0) += R_heave;
-            S(1,1) += R_velocity;
+            Sz(0,0) += R_heave;
+            Sz(1,1) += R_velocity;
             enforcePositiveDefiniteness(Sz);  // Ensure Sz remains symmetric and positive definite
             
             // Check for numerical stability before inversion
