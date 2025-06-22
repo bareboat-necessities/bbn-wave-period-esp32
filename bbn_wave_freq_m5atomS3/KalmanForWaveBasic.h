@@ -55,12 +55,10 @@
          T,
          0       ]
 
-  The code below also uses zero acceleration correction. 
-  When acceleration is zero then vertical displacement is zero 
-  too (at least in trochoidal wave model), and vertical velocity is at
-  its max or min. The code of the filter
-  below uses it for an additional drift correction. 
-         
+  The code below now uses Schmitt trigger-like zero-crossing detection
+  for additional drift correction. When acceleration crosses zero with
+  sufficient hysteresis, we assume vertical displacement is near zero
+  and vertical velocity is at its max or min.
 */
 
 #include <ArduinoEigenDense.h>
@@ -84,8 +82,13 @@ public:
     };
 
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
-                       float observation_noise = 0.01f, float zero_threshold = 0.09f, float correction_gain = 0.98f)
-                       : zero_accel_threshold(zero_threshold), zero_correction_gain(correction_gain) {
+                       float observation_noise = 0.01f, 
+                       float positive_threshold = 0.2f, 
+                       float negative_threshold = -0.2f,
+                       float correction_gain = 0.98f)
+                       : schmitt_positive_threshold(positive_threshold),
+                         schmitt_negative_threshold(negative_threshold),
+                         zero_correction_gain(correction_gain) {
         initialize(q0, q1, q2, q3, observation_noise);
     }
 
@@ -112,6 +115,9 @@ public:
         
         // Initialize identity matrix
         I.setIdentity();
+        
+        // Initialize Schmitt trigger state
+        schmitt_state = 0; // 0=low, 1=high
     }
 
     void initState(const State& state) {
@@ -135,16 +141,29 @@ public:
         x = F * x + B * accel;
         P = F * P * F.transpose() + Q;
         enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
+        
+        // Update Schmitt trigger state
+        updateSchmittTrigger(accel);
+    }
+
+    void updateSchmittTrigger(float accel) {
+        if (schmitt_state == 0) {
+            // Currently in low state, check if we should switch to high
+            if (accel > schmitt_positive_threshold) {
+                schmitt_state = 1;
+                zero_crossing_detected = true;
+            }
+        } else {
+            // Currently in high state, check if we should switch to low
+            if (accel < schmitt_negative_threshold) {
+                schmitt_state = 0;
+                zero_crossing_detected = true;
+            }
+        }
     }
 
     void correct(float accel) {
-        if (std::fabs(accel) < zero_accel_threshold) {
-            zero_counter++;
-        } else {
-            zero_counter = 0;
-        }
-
-        if (zero_counter >= zero_counter_threshold) {
+        if (zero_crossing_detected) {
             // Soft correction - only move partially toward zero
             Matrix24f H_special;
             H_special << 0, 1, 0, 0,  // Observe heave
@@ -168,6 +187,9 @@ public:
             Matrix4f JI_KH = I - K * H_special;
             P = JI_KH * P * JI_KH.transpose() + K * S * K.transpose();
             enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
+            
+            // Reset detection flag
+            zero_crossing_detected = false;
         }
         
         // Always do the standard correction with Joseph form
@@ -197,8 +219,10 @@ public:
         return State{x(0), x(1), x(2), x(3)};
     }
 
-    void setZeroCorrectionParams(float threshold, float gain, float r_heave, float r_velocity) {
-        zero_accel_threshold = threshold;
+    void setZeroCorrectionParams(float positive_thresh, float negative_thresh, 
+                               float gain, float r_heave, float r_velocity) {
+        schmitt_positive_threshold = positive_thresh;
+        schmitt_negative_threshold = negative_thresh;
         zero_correction_gain = gain;
         R_heave = r_heave;
         R_velocity = r_velocity;
@@ -214,11 +238,12 @@ private:
     Matrix4f P;
     Matrix4f I;
 
-    // Zero-correction parameters
-    float zero_accel_threshold;
-    float zero_correction_gain;  // [0-1] how strongly to correct
-    int zero_counter = 0;
-    const int zero_counter_threshold = 3; // require N consecutive low-accel samples
+    // Schmitt trigger parameters
+    float schmitt_positive_threshold;  // Threshold for switching from low to high state
+    float schmitt_negative_threshold;  // Threshold for switching from high to low state
+    float zero_correction_gain;        // [0-1] how strongly to correct
+    int schmitt_state;                 // Current state of the Schmitt trigger (0=low, 1=high)
+    bool zero_crossing_detected = false;
     
     // Separate observation noise for zero-correction
     float R_heave = 50.0f;
