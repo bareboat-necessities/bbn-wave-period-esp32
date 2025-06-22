@@ -88,7 +88,7 @@ public:
         SCHMITT_HIGH = 1
     };
 
-    KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
+    KalmanForWaveBasic(float q0 = 5.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e-5f, 
                        float observation_noise = 0.0001f, 
                        float positive_threshold = ZERO_CROSSINGS_HYSTERESIS_KF, 
                        float negative_threshold = -ZERO_CROSSINGS_HYSTERESIS_KF,
