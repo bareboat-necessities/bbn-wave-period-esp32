@@ -83,6 +83,11 @@ public:
         float accel_bias;
     };
 
+    enum class SchmittTriggerState {
+        LOW = 0,
+        HIGH = 1
+    };
+
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
                        float observation_noise = 0.0001f, 
                        float positive_threshold = ZERO_CROSSINGS_HYSTERESIS_KF, 
@@ -119,7 +124,7 @@ public:
         I.setIdentity();
         
         // Initialize Schmitt trigger state
-        schmitt_state = 0; // 0=low, 1=high
+        schmitt_state = SchmittTriggerState::LOW;
     }
 
     void initState(const State& state) {
@@ -149,16 +154,16 @@ public:
     }
 
     void updateSchmittTrigger(float accel) {
-        if (schmitt_state == 0) {
+        if (schmitt_state == SchmittTriggerState::LOW) {
             // Currently in low state, check if we should switch to high
             if (accel > schmitt_positive_threshold) {
-                schmitt_state = 1;
+                schmitt_state = SchmittTriggerState::HIGH;
                 zero_crossing_detected = true;
             }
         } else {
             // Currently in high state, check if we should switch to low
             if (accel < schmitt_negative_threshold) {
-                schmitt_state = 0;
+                schmitt_state = SchmittTriggerState::LOW;
                 zero_crossing_detected = true;
             }
         }
@@ -244,7 +249,7 @@ private:
     float schmitt_positive_threshold;  // Threshold for switching from low to high state
     float schmitt_negative_threshold;  // Threshold for switching from high to low state
     float zero_correction_gain;        // [0-1] how strongly to correct
-    int schmitt_state;                 // Current state of the Schmitt trigger (0=low, 1=high)
+    SchmittTriggerState schmitt_state;  // Current state of the Schmitt trigger
     bool zero_crossing_detected = false;
     
     // Separate observation noise for zero-correction
