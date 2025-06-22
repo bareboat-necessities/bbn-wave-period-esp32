@@ -141,17 +141,18 @@ public:
 
     void predict(float accel, float delta_t) {
         // Precompute powers of delta_t
-        const float T2 = delta_t * delta_t;  // T squared
-        const float T3 = T2 * delta_t;       // T cubed
+        const float T = delta_t;    // T
+        const float T2 = T * T;     // T squared
+        const float T3 = T2 * T;    // T cubed
         
-        F << 1.0f, delta_t, 0.5f * T2, (-1.0f/6.0f) * T3,
-             0.0f, 1.0f,    delta_t,  -0.5f * T2,
-             0.0f, 0.0f,    1.0f,      -delta_t,
-             0.0f, 0.0f,    0.0f,       1.0f;
+        F << 1.0f,      T,    0.5f * T2,  (-1.0f/6.0f) * T3,
+             0.0f,   1.0f,    T,          -0.5f * T2,
+             0.0f,   0.0f,    1.0f,       -T,
+             0.0f,   0.0f,    0.0f,       1.0f;
         
         B << (1.0f/6.0f) * T3,
              0.5f * T2,
-             delta_t,
+             T,
              0.0f;
         
         x = F * x + B * accel;
