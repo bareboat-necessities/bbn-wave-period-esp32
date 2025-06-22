@@ -265,7 +265,7 @@ private:
     bool zero_crossing_detected = false;
     
     // Separate observation noise for zero-correction
-    float R_heave = 500.0f;
+    float R_heave = 50.0f;
     float R_velocity = 20.0f;
 
     // Helper function to enforce symmetry on a matrix
