@@ -63,7 +63,7 @@
 
 #include <ArduinoEigenDense.h>
 
-#define ZERO_CROSSINGS_HYSTERESIS_KF     111110.08f
+#define ZERO_CROSSINGS_HYSTERESIS_KF     0.08f
 #define MIN_DIVISOR_VALUE                1e-12f  // Minimum allowed value for division operations
 
 class KalmanForWaveBasic {
@@ -97,7 +97,8 @@ public:
                        : schmitt_positive_threshold(positive_threshold),
                          schmitt_negative_threshold(negative_threshold),
                          zero_correction_gain(correction_gain) {
-        initialize(q0, q1, q2, q3, observation_noise);
+        initialize(q0, q1, q2, q3);
+        initMeasurementNoise(observation_noise);
     }
 
     void initialize(float q0, float q1, float q2, float q3) {            
