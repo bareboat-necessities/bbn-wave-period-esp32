@@ -187,19 +187,19 @@ public:
                  x(2);                                  // Target: no change to velocity%
             
             Vector2f y = z - H_special * x;
-            Matrix2f S = H_special * P * H_special.transpose();
+            Matrix2f Sz = H_special * P * H_special.transpose();
             S(0,0) += R_heave;
             S(1,1) += R_velocity;
-            enforcePositiveDefiniteness(S);  // Ensure S remains symmetric and positive definite
+            enforcePositiveDefiniteness(Sz);  // Ensure Sz remains symmetric and positive definite
             
             // Check for numerical stability before inversion
-            if (S.determinant() > MIN_DIVISOR_VALUE) {
-                Matrix42f K = P * H_special.transpose() * S.inverse();
+            if (Sz.determinant() > MIN_DIVISOR_VALUE) {
+                Matrix42f K = P * H_special.transpose() * Sz.inverse();
                 x = x + K * y;
                 
                 // Joseph form update for covariance
                 Matrix4f JI_KH = I - K * H_special;
-                P = JI_KH * P * JI_KH.transpose() + K * S * K.transpose();
+                P = JI_KH * P * JI_KH.transpose() + K * Sz * K.transpose();
                 enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
             }
             
