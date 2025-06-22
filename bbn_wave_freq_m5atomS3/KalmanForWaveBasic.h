@@ -274,16 +274,16 @@ private:
     float R_velocity = 20.0f;
 
     // Helper function to enforce symmetry on a matrix
-    void enforceSymmetry(Matrix4f& mat) {
+    void enforceSymmetry(Matrix4f& mat) const {
         mat = 0.5f * (mat + mat.transpose());
     }
 
-    void enforceSymmetry(Matrix2f& mat) {
+    void enforceSymmetry(Matrix2f& mat) const {
         mat = 0.5f * (mat + mat.transpose());
     }
 
     // Helper function to enforce positive definiteness on a matrix
-    void enforcePositiveDefiniteness(Matrix4f& mat) {
+    void enforcePositiveDefiniteness(Matrix4f& mat) const {
         // First ensure symmetry
         enforceSymmetry(mat);
 
@@ -296,7 +296,7 @@ private:
         }
     }
 
-    void enforcePositiveDefiniteness(Matrix2f& mat) {
+    void enforcePositiveDefiniteness(Matrix2f& mat) const {
         // First ensure symmetry
         enforceSymmetry(mat);
 
