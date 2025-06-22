@@ -78,7 +78,7 @@ void init_smoother(KalmanSmootherVars* kalman_smoother) {
 void init_wave_filters() {
   wave_filter.initialize(5.0f, 1e-4f, 1e-2f, 1e-5f);
   wave_filter.initMeasurementNoise(1e-3f);
-  wave_alt_filter.initialize(5.0f, 1e-4f, 1e-2f, 5.0f, 1e-5f);
+  wave_alt_filter.initialize(5.0f, 1e-4f, 1e-2f, 10.0f, 1e-5f);
   wave_alt_filter.initMeasurementNoise(1e-3f, 1.0f);    
 }
 
