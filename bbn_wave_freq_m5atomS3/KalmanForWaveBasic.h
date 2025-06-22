@@ -84,8 +84,8 @@ public:
     };
 
     enum class SchmittTriggerState {
-        LOW = 0,
-        HIGH = 1
+        SCHMITT_LOW = 0,
+        SCHMITT_LOW = 1
     };
 
     KalmanForWaveBasic(float q0, float q1, float q2, float q3, 
@@ -124,7 +124,7 @@ public:
         I.setIdentity();
         
         // Initialize Schmitt trigger state
-        schmitt_state = SchmittTriggerState::LOW;
+        schmitt_state = SchmittTriggerState::SCHMITT_LOW;
     }
 
     void initState(const State& state) {
@@ -154,16 +154,16 @@ public:
     }
 
     void updateSchmittTrigger(float accel) {
-        if (schmitt_state == SchmittTriggerState::LOW) {
+        if (schmitt_state == SchmittTriggerState::SCHMITT_LOW) {
             // Currently in low state, check if we should switch to high
             if (accel > schmitt_positive_threshold) {
-                schmitt_state = SchmittTriggerState::HIGH;
+                schmitt_state = SchmittTriggerState::SCHMITT_LOW;
                 zero_crossing_detected = true;
             }
         } else {
             // Currently in high state, check if we should switch to low
             if (accel < schmitt_negative_threshold) {
-                schmitt_state = SchmittTriggerState::LOW;
+                schmitt_state = SchmittTriggerState::SCHMITT_LOW;
                 zero_crossing_detected = true;
             }
         }
