@@ -110,6 +110,12 @@ public:
 
     KalmanWaveNumStableAlt(float q0 = 1e+1f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 5.0f, float q4 = 1e-5f) {
         initialize(q0, q1, q2, q3, q4);
+
+        // Measurement noise covariance
+        initMeasurementNoise(
+          1e-3f,  // Displacement integral noise
+          1e-2f   // Acceleration noise (m/s²)²
+        );
     }
 
     void initialize(float q0, float q1, float q2, float q3, float q4) {
@@ -123,10 +129,6 @@ public:
         // Process noise covariance (diagonal)
         Q.setZero();
         Q.diagonal() << q0, q1, q2, q3, q4;
-
-        // Measurement noise covariance
-        R << 0.001f,  0.0f,   // Displacement integral noise
-             0.0f,    1.0f;   // Acceleration noise (m/s²)²
 
         // Measurement model
         H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
