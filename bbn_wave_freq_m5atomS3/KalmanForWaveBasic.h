@@ -244,7 +244,7 @@ public:
     }
 
     void setZeroCorrectionParams(float positive_thresh, float negative_thresh, 
-                               float gain, float r_heave, float r_velocity) {
+                                 float gain, float r_heave, float r_velocity) {
         schmitt_positive_threshold = positive_thresh;
         schmitt_negative_threshold = negative_thresh;
         zero_correction_gain = gain;
@@ -263,9 +263,9 @@ private:
     Matrix4f I;
 
     // Schmitt trigger parameters
-    float schmitt_positive_threshold;  // Threshold for switching from low to high state
-    float schmitt_negative_threshold;  // Threshold for switching from high to low state
-    float zero_correction_gain;        // [0-1] how strongly to correct
+    float schmitt_positive_threshold;   // Threshold for switching from low to high state
+    float schmitt_negative_threshold;   // Threshold for switching from high to low state
+    float zero_correction_gain;         // [0-1] how strongly to correct
     SchmittTriggerState schmitt_state;  // Current state of the Schmitt trigger
     bool zero_crossing_detected = false;
     
