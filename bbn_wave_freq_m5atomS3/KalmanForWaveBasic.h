@@ -63,7 +63,7 @@
 
 #include <ArduinoEigenDense.h>
 
-#define ZERO_CROSSINGS_HYSTERESIS_KF     0.08f
+#define ZERO_CROSSINGS_HYSTERESIS_KF     111110.08f
 #define MIN_DIVISOR_VALUE                1e-12f  // Minimum allowed value for division operations
 
 class KalmanForWaveBasic {
@@ -90,7 +90,7 @@ public:
     };
 
     KalmanForWaveBasic(float q0 = 5.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e-5f, 
-                       float observation_noise = 1e-4f, 
+                       float observation_noise = 1e-3f, 
                        float positive_threshold = ZERO_CROSSINGS_HYSTERESIS_KF, 
                        float negative_threshold = -ZERO_CROSSINGS_HYSTERESIS_KF,
                        float correction_gain = 1.0f)
@@ -100,7 +100,7 @@ public:
         initialize(q0, q1, q2, q3, observation_noise);
     }
 
-    void initialize(float q0, float q1, float q2, float q3, float r0) {            
+    void initialize(float q0, float q1, float q2, float q3) {            
         // Initialize state vector
         x.setZero();
         
@@ -109,10 +109,7 @@ public:
         
         // Initialize observation matrix
         H << 1, 0, 0, 0;
-        
-        // Initialize observation noise
-        R = r0;
-        
+                
         // Initialize process noise - symmetric and positive definite
         Q.setZero();
         Q(0,0) = q0;
@@ -128,6 +125,12 @@ public:
         schmitt_state = SchmittTriggerState::SCHMITT_LOW;
     }
 
+    void initMeasurementNoise(float r0) {
+        // Initialize observation noise covariance
+        // Displacement integral noise (m*s)²
+        R = r0;  
+    }
+    
     void initState(const State& state) {
         x(0) = state.displacement_integral;
         x(1) = state.heave;
