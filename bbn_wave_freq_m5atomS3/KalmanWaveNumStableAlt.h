@@ -292,13 +292,13 @@ private:
         metrics.residual_accel = innovation(1);
     }
 
-    void enforceSymmetry(Matrix5f& mat) {
+    void enforceSymmetry(Matrix5f& mat) const {
         // Average upper and lower triangular parts
         Matrix5f symm = 0.5f * (mat + mat.transpose());
         mat = symm;
     }
 
-    void ensurePositiveDefinite(Matrix5f& mat) {
+    void ensurePositiveDefinite(Matrix5f& mat) const {
         Eigen::LLT<Matrix5f> llt(mat);  // Cholesky
         float epsilon = 1e-7f;
         while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01f) {
