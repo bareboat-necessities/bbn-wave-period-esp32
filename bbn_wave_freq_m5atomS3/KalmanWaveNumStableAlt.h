@@ -149,10 +149,12 @@ public:
         const Vector2f z(0.0f, measured_accel);
 
         // Correction step with Joseph form
-        correctJoseph(z);
+        Vector2f innovation;
+        Matrix2f S;
+        correctJoseph(z, innovation, S);
 
         // Update metrics after correction
-        updateMetrics(z);
+        updateMetrics(z, innovation, S);
     }
 
     State getState() const {
@@ -229,18 +231,18 @@ private:
         enforceSymmetry(P);
     }
 
-    void correctJoseph(const Vector2f& z) {
+    void correctJoseph(const Vector2f& z, Vector2f& innovation, Matrix2f& S) {
         // Innovation: y = z - H * x
-        const Vector2f y = z - H * x;
+        innovation = z - H * x;
         
         // Innovation covariance: S = H * P * H' + R
-        const Matrix2f S = (H * P * H.transpose() + R).eval();
+        S = (H * P * H.transpose() + R).eval();
         
         // Kalman gain: K = P * H' * S^-1
         const Matrix52f K = P * H.transpose() * S.inverse();
         
         // State update: x = x + K * y
-        x += K * y;
+        x += K * innovation;
         
         // Joseph form covariance update: 
         // P = (I-KH) * P * (I-KH)' + K * R * K'
@@ -253,12 +255,9 @@ private:
         ensurePositiveDefinite(P);
     }
 
-    void updateMetrics(const Vector2f& z) {
-        // Innovation vector (z - Hx)
-        const Vector2f innovation = z - H * x;
-        
-        // Innovation covariance
-        const Matrix2f S = H * P * H.transpose() + R;
+    void updateMetrics(const Vector2f& z, const Vector2f& innovation, const Matrix2f& S) {
+        // Innovation vector innovation = (z - Hx)
+        // Innovation covariance S = H * P * H.transpose() + R;
         
         // Update metrics
         metrics.innovation_magnitude = innovation.norm();
@@ -299,7 +298,7 @@ private:
 
     void ensurePositiveDefinite(Matrix5f& mat) {
         Eigen::LLT<Matrix5f> llt(mat);  // Cholesky
-        float epsilon = 1e-9f;
+        float epsilon = 1e-7f;
         while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01f) {
             mat += epsilon * Matrix5f::Identity();
             llt.compute(mat);
