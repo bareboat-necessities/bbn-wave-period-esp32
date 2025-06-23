@@ -61,7 +61,7 @@
   Input measured vertical acceleration from accelerometer (includes bias)
 
   Measurements:
-    a_measured (vertical acceleration with a bias), z = 0
+    a_measured (vertical acceleration with a bias), z = 0 (using it as a soft constraint to anchor drift)
 
   Observation matrix:
   H = [[ 1, 0, 0, 0, 0 ],
