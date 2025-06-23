@@ -174,11 +174,11 @@ public:
     }
 
     void initState(const State& s0) {
-        x(0) = s0.displacement_integral;
-        x(1) = s0.heave;
-        x(2) = s0.vert_speed;
-        x(3) = s0.vert_accel;
-        x(4) = s0.accel_bias;
+        x(0) = s0.displacement_integral; // m*s
+        x(1) = s0.heave;                 // m
+        x(2) = s0.vert_speed;            // m/s
+        x(3) = s0.vert_accel;            // m/s^2
+        x(4) = s0.accel_bias;            // m/s^2
     }
 
     void initMeasurementNoise(float r0, float r1) {
