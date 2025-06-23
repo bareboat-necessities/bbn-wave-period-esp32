@@ -113,8 +113,8 @@ public:
 
         // Measurement noise covariance
         initMeasurementNoise(
-          1e-3f,  // Displacement integral noise
-          1e-2f   // Acceleration noise (m/s²)²
+            1e-3f,  // Displacement integral noise
+            1e-2f   // Acceleration noise (m/s²)²
         );
     }
 
