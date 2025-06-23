@@ -206,6 +206,9 @@ private:
     FilterMetrics metrics; // Filter performance metrics
 
     void updateStateTransition(float k_hat, float delta_t) {
+        if (delta_t < 1e-10f) {
+            return;
+        }
         const float T = delta_t;
         const float T2 = T * T;
         const float T3 = T2 * T;
