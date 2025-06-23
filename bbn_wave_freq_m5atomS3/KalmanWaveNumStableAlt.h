@@ -279,7 +279,7 @@ private:
         Eigen::JacobiSVD<Matrix5f> svd(P);
         float singular_max = svd.singularValues()(0);
         float singular_min = svd.singularValues()(svd.singularValues().size()-1);
-        metrics.condition_number = singular_max / singular_min;
+        metrics.condition_number = singular_max / max(singular_min, 1e-12f);
         
         // Standard deviations (uncertainties) of state estimates
         metrics.position_std_dev = sqrt(P(1,1));        // heave
