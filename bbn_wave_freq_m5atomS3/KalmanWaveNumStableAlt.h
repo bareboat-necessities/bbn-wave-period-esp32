@@ -58,10 +58,10 @@
         a,
         a_hat ]
 
-  Input a - vertical acceleration from accelerometer
+  Input measured vertical acceleration from accelerometer (includes bias)
 
   Measurements:
-    a (vertical acceleration), z = 0
+    a_measured (vertical acceleration with a bias), z = 0
 
   Observation matrix:
   H = [[ 1, 0, 0, 0, 0 ],
