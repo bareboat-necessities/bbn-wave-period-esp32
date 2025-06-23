@@ -179,7 +179,7 @@ public:
         }
     }
 
-    void correct(float accel) {
+    void correct(float accel, float delta_t) {
         if (zero_crossing_detected) {
             // Soft correction - only move partially toward zero
             Matrix24f H_special;
@@ -188,8 +188,10 @@ public:
             
             // Target values (partial correction toward zero)
             Vector2f z;
+            float new_v = -x(1) / delta_t;
             z << (1.0f - zero_correction_gain) * x(1),  // Target: reduce heave by gain%
-                 x(2);                                  // Target: no change to velocity%
+                 (1.0f - zero_correction_gain) * new_v;
+            //     x(2);                                  // Target: no change to velocity%
             
             Vector2f y = z - H_special * x;
             Matrix2f Sz = H_special * P * H_special.transpose();
@@ -231,7 +233,7 @@ public:
 
     void step(float accel, float delta_t, State& state) {
         predict(accel, delta_t);
-        correct(accel);
+        correct(accel, delta_t);
         
         state.displacement_integral = x(0);
         state.heave = x(1);
