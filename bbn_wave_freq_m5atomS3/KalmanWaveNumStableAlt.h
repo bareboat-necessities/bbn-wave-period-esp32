@@ -188,7 +188,8 @@ public:
     }
 
     float calculate_k_hat(float linear_freq) const {
-      float k_hat = - pow(2.0 * M_PI * linear_freq, 2);
+      constexpr float TWO_PI = 6.28318530718f;
+      float k_hat = - (TWO_PI * linear_freq) * (TWO_PI * linear_freq);
       return k_hat;
     }
 
