@@ -187,7 +187,7 @@ public:
         R.diagonal() << r0, r1;  // Displacement integral noise, Acceleration noise (m/s²)²
     }
 
-    float calculate_k_hat(float linear_freq) const {
+    static float calculate_k_hat(float linear_freq) const {
       constexpr float TWO_PI = 6.28318530718f;
       float k_hat = - (TWO_PI * linear_freq) * (TWO_PI * linear_freq);
       return k_hat;
