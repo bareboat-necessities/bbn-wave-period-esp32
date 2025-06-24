@@ -188,8 +188,12 @@ public:
             
             // Target values (partial correction toward zero)
             Vector2f z;
-            float new_v = -x(1) / delta_t;  // velocity that pushes displacement to zero
-            z << (1.0f - zero_correction_gain) * x(1),  // Target: reduce heave by gain%
+            const float freq_guess = 2 * M_PI * 0.2;
+            float new_v = sqrtf(x(2) * x(2) + (freq_guess * x(1)) * (freq_guess * x(1)));
+            if (x(2) < 0) {
+                new_v = -new_v;
+            }
+            z << (1.0f - zero_correction_gain) * x(1),   // Target: reduce heave by gain%
                  (1.0f - zero_correction_gain) * new_v;
             //     x(2);                                  // Target: no change to velocity%
             
