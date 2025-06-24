@@ -192,7 +192,7 @@ public:
 
     void correct(float accel, float delta_t) {
         if (zero_crossing_detected) {
-            // Soft correction - only move partially toward zero
+            // Soft correction - only move partially toward zero (controlled by zero_correction_gain)
             Matrix24f H_special;
             H_special << 0, 1, 0, 0,  // Observe heave
                          0, 0, 1, 0;  // Observe velocity
