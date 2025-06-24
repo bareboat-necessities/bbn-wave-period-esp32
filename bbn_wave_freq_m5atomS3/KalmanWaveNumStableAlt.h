@@ -77,6 +77,10 @@
 
 #include <ArduinoEigenDense.h>
 
+#ifndef TWO_PI
+#define TWO_PI 6.283185307179586476925286766559
+#endif
+
 class KalmanWaveNumStableAlt {
 public:
     // Type aliases
