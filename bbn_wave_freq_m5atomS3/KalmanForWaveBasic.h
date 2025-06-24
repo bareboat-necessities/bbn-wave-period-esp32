@@ -199,7 +199,7 @@ public:
             
             // Target values (partial correction toward zero)
             Vector2f z;
-            const float freq_guess = zero_crossing_last_interval > 0.5f ? 
+            const float freq_guess = zero_crossing_last_interval > 0.0f ? 
                 M_PI / std::max(zero_crossing_last_interval, 0.5f) :
                 2.0f * M_PI * 0.07f;  //  rad/s
             float new_y = x(1);    
