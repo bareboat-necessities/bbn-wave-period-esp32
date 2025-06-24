@@ -173,7 +173,7 @@ public:
         zero_crossing_time_since += delta_t;
         if (schmitt_state == SchmittTriggerState::SCHMITT_LOW) {
             // Currently in low state, check if we should switch to high
-            if (accel > schmitt_positive_threshold && abs(velocity) > schmitt_velocity_threshold && zero_crossing_time_since > zero_crossing_debounce_time) {
+            if (accel > schmitt_positive_threshold && abs(velocity) > schmitt_velocity_threshold && zero_crossing_time_since > schmitt_debounce_time) {
                 schmitt_state = SchmittTriggerState::SCHMITT_HIGH;
                 zero_crossing_detected = true;
                 zero_crossing_last_interval = zero_crossing_time_since;
@@ -181,7 +181,7 @@ public:
             }
         } else {
             // Currently in high state, check if we should switch to low
-            if (accel < schmitt_negative_threshold && abs(velocity) > schmitt_velocity_threshold && zero_crossing_time_since > zero_crossing_debounce_time) {
+            if (accel < schmitt_negative_threshold && abs(velocity) > schmitt_velocity_threshold && zero_crossing_time_since > schmitt_debounce_time) {
                 schmitt_state = SchmittTriggerState::SCHMITT_LOW;
                 zero_crossing_detected = true;
                 zero_crossing_last_interval = zero_crossing_time_since;
