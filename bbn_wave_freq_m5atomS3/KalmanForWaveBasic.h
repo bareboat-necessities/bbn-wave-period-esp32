@@ -188,14 +188,15 @@ public:
             
             // Target values (partial correction toward zero)
             Vector2f z;
-            const float freq_guess = 2 * M_PI * 0.2;
+            const float freq_guess = 2.0f * M_PI * 0.07f;           //  rad/s
+            float new_y = x(1);    
             float new_v = sqrtf(x(2) * x(2) + (freq_guess * x(1)) * (freq_guess * x(1)));
             if (x(2) < 0) {
                 new_v = -new_v;
             }
-            z << (1.0f - zero_correction_gain) * x(1),   // Target: reduce heave by gain%
-                 (1.0f - zero_correction_gain) * new_v;
-            //     x(2);                                  // Target: no change to velocity%
+            
+            z << new_y * (1.0f - zero_correction_gain),         // Target: reduce heave by gain%
+                 x(2) + (new_v - x(2)) * zero_correction_gain;  // Target: increase speed by gain%
             
             Vector2f y = z - H_special * x;
             Matrix2f Sz = H_special * P * H_special.transpose();
@@ -277,7 +278,7 @@ private:
     
     // Separate observation noise for zero-correction
     float R_heave = 50.0f;
-    float R_velocity = 20.0f;
+    float R_velocity = 10.0f;
 
     // Helper function to enforce symmetry on a matrix
     void enforceSymmetry(Matrix4f& mat) const {
