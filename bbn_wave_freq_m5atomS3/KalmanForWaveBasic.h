@@ -253,10 +253,11 @@ public:
         return State{x(0), x(1), x(2), x(3)};
     }
 
-    void setZeroCorrectionParams(float positive_thresh, float negative_thresh, 
+    void setZeroCorrectionParams(float positive_thresh, float negative_thresh, float velocity_thresh,
                                  float gain, float r_heave, float r_velocity) {
         schmitt_positive_threshold = positive_thresh;
         schmitt_negative_threshold = negative_thresh;
+        schmitt_velocity_threshold = velocity_thresh;
         zero_correction_gain = gain;
         R_heave = r_heave;
         R_velocity = r_velocity;
