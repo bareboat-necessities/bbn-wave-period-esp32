@@ -163,21 +163,29 @@ public:
         enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
         
         // Update Schmitt trigger state
-        updateSchmittTrigger(accel, x(2));
+        updateSchmittTrigger(accel, x(2), delta_t);
     }
 
-    void updateSchmittTrigger(float accel, float velocity) {
+    void updateSchmittTrigger(float accel, float velocity, float delta_t) {
         if (schmitt_state == SchmittTriggerState::SCHMITT_LOW) {
             // Currently in low state, check if we should switch to high
             if (accel > schmitt_positive_threshold && abs(velocity) > schmitt_velocity_threshold) {
                 schmitt_state = SchmittTriggerState::SCHMITT_HIGH;
                 zero_crossing_detected = true;
+                zero_crossing_last_interval = zero_crossing_time_since + delta_t;
+                zero_crossing_time_since = 0.0f;
+            } else {
+                zero_crossing_time_since += delta_t;
             }
         } else {
             // Currently in high state, check if we should switch to low
             if (accel < schmitt_negative_threshold && abs(velocity) > schmitt_velocity_threshold) {
                 schmitt_state = SchmittTriggerState::SCHMITT_LOW;
                 zero_crossing_detected = true;
+                zero_crossing_last_interval = zero_crossing_time_since + delta_t;
+                zero_crossing_time_since = 0.0f;
+            } else {
+                zero_crossing_time_since += delta_t;
             }
         }
     }
@@ -191,7 +199,7 @@ public:
             
             // Target values (partial correction toward zero)
             Vector2f z;
-            const float freq_guess = 2.0f * M_PI * 0.07f;           //  rad/s
+            const float freq_guess = 2.0f * M_PI * (1.0f / max(zero_crossing_last_interval, 0.2f));  //  rad/s
             float new_y = x(1);    
             float new_v = sqrtf(x(2) * x(2) + (freq_guess * x(1)) * (freq_guess * x(1)));  // energy conservation
             if (x(2) < 0) {
@@ -274,12 +282,14 @@ private:
     Matrix4f I;
 
     // Schmitt trigger parameters
-    float schmitt_positive_threshold;   // Threshold for switching from low to high state
-    float schmitt_negative_threshold;   // Threshold for switching from high to low state
-    float schmitt_velocity_threshold;   // Threshold for switching from high to low state, abs(velocity)
-    float zero_correction_gain;         // [0-1] how strongly to correct
-    SchmittTriggerState schmitt_state;  // Current state of the Schmitt trigger
+    float schmitt_positive_threshold;          // Threshold for switching from low to high state
+    float schmitt_negative_threshold;          // Threshold for switching from high to low state
+    float schmitt_velocity_threshold;          // Threshold for switching from high to low state, abs(velocity)
+    float zero_correction_gain;                // [0-1] how strongly to correct
+    SchmittTriggerState schmitt_state;         // Current state of the Schmitt trigger
     bool zero_crossing_detected = false;
+    float zero_crossing_last_interval = 0.0f;  // Last time period between two zero crossings (sec)
+    float zero_crossing_time_since = 0.0f;     // Time since last zero crossing (sec)
     
     // Separate observation noise for zero-correction
     float R_heave = 50.0f;
