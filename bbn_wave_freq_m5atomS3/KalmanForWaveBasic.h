@@ -63,8 +63,9 @@
 
 #include <ArduinoEigenDense.h>
 
-#define ZERO_CROSSINGS_HYSTERESIS_KF     0.08f
-#define MIN_DIVISOR_VALUE                1e-12f  // Minimum allowed value for division operations
+#define ZERO_CROSSINGS_HYSTERESIS_KF             0.08f
+#define ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF     0.08f
+#define MIN_DIVISOR_VALUE                        1e-12f  // Minimum allowed value for division operations
 
 class KalmanForWaveBasic {
 
@@ -93,9 +94,11 @@ public:
                        float observation_noise = 1e-3f, 
                        float positive_threshold = ZERO_CROSSINGS_HYSTERESIS_KF, 
                        float negative_threshold = -ZERO_CROSSINGS_HYSTERESIS_KF,
+                       float velocity_threshold = ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF,
                        float correction_gain = 1.0f)
                        : schmitt_positive_threshold(positive_threshold),
                          schmitt_negative_threshold(negative_threshold),
+                         schmitt_velocity_threshold(velocity_threshold),
                          zero_correction_gain(correction_gain) {
         initialize(q0, q1, q2, q3);
         initMeasurementNoise(observation_noise);
@@ -160,19 +163,19 @@ public:
         enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
         
         // Update Schmitt trigger state
-        updateSchmittTrigger(accel);
+        updateSchmittTrigger(accel, x(2));
     }
 
-    void updateSchmittTrigger(float accel) {
+    void updateSchmittTrigger(float accel, float velocity) {
         if (schmitt_state == SchmittTriggerState::SCHMITT_LOW) {
             // Currently in low state, check if we should switch to high
-            if (accel > schmitt_positive_threshold) {
+            if (accel > schmitt_positive_threshold && abs(velocity) > schmitt_velocity_threshold) {
                 schmitt_state = SchmittTriggerState::SCHMITT_HIGH;
                 zero_crossing_detected = true;
             }
         } else {
             // Currently in high state, check if we should switch to low
-            if (accel < schmitt_negative_threshold) {
+            if (accel < schmitt_negative_threshold && abs(velocity) > schmitt_velocity_threshold) {
                 schmitt_state = SchmittTriggerState::SCHMITT_LOW;
                 zero_crossing_detected = true;
             }
@@ -272,6 +275,7 @@ private:
     // Schmitt trigger parameters
     float schmitt_positive_threshold;   // Threshold for switching from low to high state
     float schmitt_negative_threshold;   // Threshold for switching from high to low state
+    float schmitt_velocity_threshold;   // Threshold for switching from high to low state, abs(velocity)
     float zero_correction_gain;         // [0-1] how strongly to correct
     SchmittTriggerState schmitt_state;  // Current state of the Schmitt trigger
     bool zero_crossing_detected = false;
