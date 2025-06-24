@@ -288,8 +288,8 @@ private:
     float zero_correction_gain;                // [0-1] how strongly to correct
     SchmittTriggerState schmitt_state;         // Current state of the Schmitt trigger
     bool zero_crossing_detected = false;
-    float zero_crossing_last_interval = 0.0f;  // Last time period between two zero crossings (sec)
-    float zero_crossing_time_since = 0.0f;     // Time since last zero crossing (sec)
+    float zero_crossing_last_interval = 300.0f;  // Last time period between two zero crossings (sec)
+    float zero_crossing_time_since = 0.0f;       // Time since last zero crossing (sec)
     
     // Separate observation noise for zero-correction
     float R_heave = 50.0f;
