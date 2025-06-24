@@ -63,8 +63,8 @@
 
 #include <ArduinoEigenDense.h>
 
-#define ZERO_CROSSINGS_HYSTERESIS_KF             0.3f
-#define ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF     0.15f
+#define ZERO_CROSSINGS_HYSTERESIS_KF             0.5f
+#define ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF     0.3f
 #define MIN_DIVISOR_VALUE                        1e-12f  // Minimum allowed value for division operations
 
 class KalmanForWaveBasic {
