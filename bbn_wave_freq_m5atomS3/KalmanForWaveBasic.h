@@ -190,7 +190,7 @@ public:
             Vector2f z;
             const float freq_guess = 2.0f * M_PI * 0.07f;           //  rad/s
             float new_y = x(1);    
-            float new_v = sqrtf(x(2) * x(2) + (freq_guess * x(1)) * (freq_guess * x(1)));
+            float new_v = sqrtf(x(2) * x(2) + (freq_guess * x(1)) * (freq_guess * x(1)));  // energy conservation
             if (x(2) < 0) {
                 new_v = -new_v;
             }
