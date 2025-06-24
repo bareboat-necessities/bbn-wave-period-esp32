@@ -65,7 +65,7 @@
 
 #define ZERO_CROSSINGS_HYSTERESIS_KF             0.1f
 #define ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF     0.2f
-#define ZERO_CROSSINGS_DEBOUNCE_TIME_KF          0.15f
+#define ZERO_CROSSINGS_DEBOUNCE_TIME_KF          0.12f
 #define MIN_DIVISOR_VALUE                        1e-12f  // Minimum allowed value for division operations
 
 class KalmanForWaveBasic {
