@@ -297,7 +297,7 @@ private:
     
     // Separate observation noise for zero-correction
     float R_heave = 50.0f;
-    float R_velocity = 20.0f;
+    float R_velocity = 200.0f;
 
     // Helper function to enforce symmetry on a matrix
     void enforceSymmetry(Matrix4f& mat) const {
