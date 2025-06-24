@@ -296,8 +296,8 @@ private:
     float zero_crossing_time_since = 0.0f;       // Time since last zero crossing (sec)
     
     // Separate observation noise for zero-correction
-    float R_heave = 50.0f;
-    float R_velocity = 200.0f;
+    float R_heave = 500.0f;
+    float R_velocity = 2000.0f;
 
     // Helper function to enforce symmetry on a matrix
     void enforceSymmetry(Matrix4f& mat) const {
