@@ -204,6 +204,9 @@ public:
                 2.0f * M_PI * 0.07f;  //  rad/s
             float new_y = x(1);    
             float new_v = sqrtf(x(2) * x(2) + (freq_guess * x(1)) * (freq_guess * x(1)));  // energy conservation
+            if (new_v > 3.0f) {  // clamp velocity to reasonable limit (m/s)
+                new_v = 3.0f;
+            }
             if (x(2) < 0.0f) {
                 new_v = -new_v;
             }
