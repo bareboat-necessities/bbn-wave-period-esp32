@@ -199,7 +199,8 @@ public:
             
             // Target values (partial correction toward zero)
             Vector2f z;
-            const float freq_guess = M_PI / std::max(zero_crossing_last_interval, 0.25f);  //  rad/s
+            const float freq_guess = 2.0f * M_PI * 0.07f;           //  rad/s
+            //const float freq_guess = M_PI / std::max(zero_crossing_last_interval, 0.25f);  //  rad/s
             float new_y = x(1);    
             float new_v = sqrtf(x(2) * x(2) + (freq_guess * x(1)) * (freq_guess * x(1)));  // energy conservation
             if (x(2) < 0) {
