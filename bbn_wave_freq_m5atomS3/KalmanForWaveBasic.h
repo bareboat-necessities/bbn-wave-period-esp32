@@ -63,7 +63,7 @@
 
 #include <ArduinoEigenDense.h>
 
-#define ZERO_CROSSINGS_HYSTERESIS_KF             0.5f
+#define ZERO_CROSSINGS_HYSTERESIS_KF             0.1f
 #define ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF     0.4f
 #define MIN_DIVISOR_VALUE                        1e-12f  // Minimum allowed value for division operations
 
