@@ -65,6 +65,7 @@
 
 #define ZERO_CROSSINGS_HYSTERESIS_KF             0.1f
 #define ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF     0.2f
+#define ZERO_CROSSINGS_DEBOUNCE_TIME_KF          0.15f
 #define MIN_DIVISOR_VALUE                        1e-12f  // Minimum allowed value for division operations
 
 class KalmanForWaveBasic {
@@ -95,10 +96,12 @@ public:
                        float positive_threshold = ZERO_CROSSINGS_HYSTERESIS_KF, 
                        float negative_threshold = -ZERO_CROSSINGS_HYSTERESIS_KF,
                        float velocity_threshold = ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF,
+                       float debounce_time = ZERO_CROSSINGS_DEBOUNCE_TIME_KF,
                        float correction_gain = 1.0f)
                        : schmitt_positive_threshold(positive_threshold),
                          schmitt_negative_threshold(negative_threshold),
                          schmitt_velocity_threshold(velocity_threshold),
+                         schmitt_debounce_time(debounce_time),
                          zero_correction_gain(correction_gain) {
         initialize(q0, q1, q2, q3);
         initMeasurementNoise(observation_noise);
@@ -167,25 +170,22 @@ public:
     }
 
     void updateSchmittTrigger(float accel, float velocity, float delta_t) {
+        zero_crossing_time_since += delta_t;
         if (schmitt_state == SchmittTriggerState::SCHMITT_LOW) {
             // Currently in low state, check if we should switch to high
-            if (accel > schmitt_positive_threshold && abs(velocity) > schmitt_velocity_threshold) {
+            if (accel > schmitt_positive_threshold && abs(velocity) > schmitt_velocity_threshold && zero_crossing_time_since > zero_crossing_debounce_time) {
                 schmitt_state = SchmittTriggerState::SCHMITT_HIGH;
                 zero_crossing_detected = true;
-                zero_crossing_last_interval = zero_crossing_time_since + delta_t;
+                zero_crossing_last_interval = zero_crossing_time_since;
                 zero_crossing_time_since = 0.0f;
-            } else {
-                zero_crossing_time_since += delta_t;
             }
         } else {
             // Currently in high state, check if we should switch to low
-            if (accel < schmitt_negative_threshold && abs(velocity) > schmitt_velocity_threshold) {
+            if (accel < schmitt_negative_threshold && abs(velocity) > schmitt_velocity_threshold && zero_crossing_time_since > zero_crossing_debounce_time) {
                 schmitt_state = SchmittTriggerState::SCHMITT_LOW;
                 zero_crossing_detected = true;
-                zero_crossing_last_interval = zero_crossing_time_since + delta_t;
+                zero_crossing_last_interval = zero_crossing_time_since;
                 zero_crossing_time_since = 0.0f;
-            } else {
-                zero_crossing_time_since += delta_t;
             }
         }
     }
@@ -263,10 +263,11 @@ public:
     }
 
     void setZeroCorrectionParams(float positive_thresh, float negative_thresh, float velocity_thresh,
-                                 float gain, float r_heave, float r_velocity) {
+                                 float debounce_time, float gain, float r_heave, float r_velocity) {
         schmitt_positive_threshold = positive_thresh;
         schmitt_negative_threshold = negative_thresh;
         schmitt_velocity_threshold = velocity_thresh;
+        schmitt_debounce_time = debounce_time;
         zero_correction_gain = gain;
         R_heave = r_heave;
         R_velocity = r_velocity;
@@ -286,6 +287,7 @@ private:
     float schmitt_positive_threshold;          // Threshold for switching from low to high state
     float schmitt_negative_threshold;          // Threshold for switching from high to low state
     float schmitt_velocity_threshold;          // Threshold for switching from high to low state, abs(velocity)
+    float schmitt_debounce_time;               // Debounce time (sec)
     float zero_correction_gain;                // [0-1] how strongly to correct
     SchmittTriggerState schmitt_state;         // Current state of the Schmitt trigger
     bool zero_crossing_detected = false;
