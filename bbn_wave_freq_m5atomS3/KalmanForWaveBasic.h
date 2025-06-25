@@ -266,6 +266,10 @@ public:
         return State{x(0), x(1), x(2), x(3)};
     }
 
+    float getEstimatedWavePeriod() const { 
+        return 2.0f * zero_crossing_last_interval; 
+    }
+
     void setZeroCorrectionParams(float positive_thresh, float negative_thresh, float velocity_thresh,
                                  float debounce_time, float gain, float r_heave, float r_velocity) {
         schmitt_positive_threshold = positive_thresh;
