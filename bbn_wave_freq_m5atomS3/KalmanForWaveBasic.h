@@ -216,7 +216,7 @@ public:
         }
     }
 
-    void correct(float accel, float delta_t) {
+    void correct(float delta_t) {
         if (zero_crossing_detected) {
             // Soft correction - only move partially toward zero (controlled by zero_correction_gain)
             Matrix24f H_special;
@@ -280,7 +280,7 @@ public:
 
     void step(float accel, float delta_t, State& state) {
         predict(accel, delta_t);
-        correct(accel, delta_t);
+        correct(delta_t);
         
         state.displacement_integral = x(0);
         state.heave = x(1);
