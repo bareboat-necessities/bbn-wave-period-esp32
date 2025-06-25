@@ -222,15 +222,17 @@ public:
             
             // Check for numerical stability before inversion
             if (Sz.determinant() > MIN_DIVISOR_VALUE) {
+                Matrix2f Sz_inv = Sz.inverse();
+
                 // Mahalanobis gating
-                float mahalanobis_distance_sq = y.transpose() * Sz.inverse() * y;
-                const float GATING_THRESHOLD = 9.21f;  // 95% confidence for 2 DoF
+                float mahalanobis_distance_sq = y.transpose() * Sz_inv * y;
+                const float GATING_THRESHOLD = 5.99f;  // 95% confidence for 2D
 
                 if (mahalanobis_distance_sq < GATING_THRESHOLD) {
                     // Accept correction
-                    Matrix42f K = P * H_special.transpose() * Sz.inverse();
+                    Matrix42f K = P * H_special.transpose() * Sz_inv;
                     x = x + K * y;
-                
+
                     // Joseph form update for covariance
                     Matrix4f JI_KH = I - K * H_special;
                     P = JI_KH * P * JI_KH.transpose() + K * Sz * K.transpose();
