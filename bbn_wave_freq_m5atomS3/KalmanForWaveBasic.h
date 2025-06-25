@@ -136,9 +136,9 @@ public:
     // Defaults are from MPU6886 specs
     // This method assumes that Kalman filter is in SI units
     void setProcessNoiseFromIMUSpec(
-        float sample_rate_hz,              // Accelerometer sample rate (Hz)
-        float sigma_a_density = 0.002943f  // Accelerometer specs sigma_a_density (m/s²/√Hz)
-        float q_accel_bias = 1e-5f,        // Accelerometer bias process noise (m/s²)
+        float sample_rate_hz,               // Accelerometer sample rate (Hz)
+        float sigma_a_density = 0.002943f,  // Accelerometer specs sigma_a_density (m/s²/√Hz)
+        float q_accel_bias = 1e-5f          // Accelerometer bias process noise (m/s²)
     ) {
         const float BW = sample_rate_Hz / 2.0f;
         const float sigma_a2 = sigma_a_density * sigma_a_density * BW;
@@ -150,7 +150,7 @@ public:
         float q_v = sigma_a2 * powf(T, 2);                   // v: velocity
 
         Q.setZero();
-        Q(0,0) = q_z_custom;
+        Q(0,0) = q_z;
         Q(1,1) = q_y;
         Q(2,2) = q_v;
         Q(3,3) = q_accel_bias;  // You can tune this or set from Allan variance
