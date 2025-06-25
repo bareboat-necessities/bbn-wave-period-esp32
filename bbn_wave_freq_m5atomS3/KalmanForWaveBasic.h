@@ -146,16 +146,14 @@ public:
 
         float T = 1.0f / sample_rate;
 
-        float q_z = (1.0f / 36.0f) * sigma_a2 * powf(T, 6);
         float q_y = (1.0f / 4.0f)  * sigma_a2 * powf(T, 4);
         float q_v = sigma_a2 * powf(T, 2);
-        float q_bias = 1e-8f;  // You can tune this or set from Allan variance
 
         Q.setZero();
-        Q(0,0) = q_z;
+        Q(0,0) = q_z_custom;
         Q(1,1) = q_y;
         Q(2,2) = q_v;
-        Q(3,3) = q_bias;
+        Q(3,3) = q_accel_bias;  // You can tune this or set from Allan variance
 
         enforcePositiveDefiniteness(Q);
     }
