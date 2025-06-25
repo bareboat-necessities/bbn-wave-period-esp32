@@ -135,6 +135,8 @@ public:
     // Configure process noise Q using IMU specs + q_accel_bias
     // Defaults are from MPU6886 specs
     // This method assumes that Kalman filter is in SI units and R is not scaled
+    // These values will be too low for practical use
+    // but can provide starting point for tuning Q for production filter
     void setProcessNoiseFromIMUSpec(
         float sample_rate_hz,               // Accelerometer sample rate (Hz)
         float sigma_a_density = 0.002943f,  // Accelerometer specs sigma_a_density (m/s²/√Hz)
@@ -161,6 +163,8 @@ public:
     // Set bias process noise from Allan variance model
     // Defaults based on estimated MPU6886 performance
     // This method assumes that Kalman filter is in SI units and R is not scaled
+    // These values will be too low for practical use
+    // but can provide starting point for tuning Q for production filter
     void setBiasProcessNoiseFromAllan(
         float sample_rate_hz,
         float sigma_b = 1.962e-4f,  // m/s² (≈ 20 µg bias instability)
