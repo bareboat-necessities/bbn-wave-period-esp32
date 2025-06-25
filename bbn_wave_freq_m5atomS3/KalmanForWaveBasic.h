@@ -158,6 +158,18 @@ public:
         enforcePositiveDefiniteness(Q);
     }
 
+    // Set bias process noise from Allan variance model
+    // Defaults based on estimated MPU6886 performance
+    void setBiasProcessNoiseFromAllan(
+        float sample_rate_hz,
+        float sigma_b = 1.962e-4f,  // m/s² (≈ 20 µg bias instability)
+        float tau_b = 100.0f        // seconds (typical for MEMS)
+    ) {
+        float T = 1.0f / sample_rate_hz;
+        float q_bias = (sigma_b * sigma_b * T) / tau_b;
+        Q(3,3) = q_bias;
+    }
+
     void initMeasurementNoise(float r0) {
         // Initialize observation noise covariance
         // Displacement integral noise (m*s)²
