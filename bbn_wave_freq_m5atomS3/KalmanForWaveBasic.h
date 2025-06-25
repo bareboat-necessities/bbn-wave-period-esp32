@@ -132,44 +132,6 @@ public:
         schmitt_state = SchmittTriggerState::SCHMITT_LOW;
     }
 
-    // Calculate theoretical process noise Q matrix using IMU specs and Allan variance parameters
-    // Defaults are from MPU6886 specs.
-    // This method assumes that Kalman filter is in SI units and R is not scaled.
-    // These values will be too low for practical use
-    // but can provide a starting point for tuning Q for the production filter.
-    Matrix4f calculateTheoreticalProcessNoise(
-        float sample_rate_hz,               // Accelerometer sample rate (Hz)
-        float sigma_a_density = 0.002943f,  // Accelerometer noise density (m/s²/√Hz)
-        float sigma_b = 1.962e-4f,          // Accelerometer bias instability (m/s²)
-        float tau_b = 100.0f                // Accelerometer bias time constant (sec), typically 100 for MEMS IMUs
-    ) const {
-        // Calculate acceleration noise component
-        const float BW = sample_rate_hz / 2.0f;  // Noise bandwidth
-        const float sigma_a2 = sigma_a_density * sigma_a_density * BW;
-        const float T = 1.0f / sample_rate_hz;   // Sample time
-
-        // Calculate bias process noise from Allan variance
-        const float q_bias = (sigma_b * sigma_b * T) / tau_b;
-
-        // Calculate process noise components for each state
-        const float q_z = (4.0f / 36.0f) * sigma_a2 * powf(T, 6);  // z: displacement integral
-        const float q_y = (1.0f / 4.0f) * sigma_a2 * powf(T, 4);   // y: displacement
-        const float q_v = sigma_a2 * powf(T, 2);                   // v: velocity
-
-        // Construct the Q matrix
-        Matrix4f theoretical_Q;
-        theoretical_Q.setZero();
-        theoretical_Q(0,0) = q_z;
-        theoretical_Q(1,1) = q_y;
-        theoretical_Q(2,2) = q_v;
-        theoretical_Q(3,3) = q_bias;
-
-        // Ensure the matrix is positive definite
-        enforcePositiveDefiniteness(theoretical_Q);
-        
-        return theoretical_Q;
-    }
-
     void initMeasurementNoise(float r0) {
         // Initialize observation noise covariance
         // Displacement integral noise (m*s)²
@@ -313,6 +275,44 @@ public:
         zero_correction_gain = gain;
         R_heave = r_heave;
         R_velocity = r_velocity;
+    }
+
+    // Calculate theoretical process noise Q matrix using IMU specs and Allan variance parameters
+    // Defaults are from MPU6886 specs.
+    // This method assumes that Kalman filter is in SI units and R is not scaled.
+    // These values will be too low for practical use
+    // but can provide a starting point for tuning Q for the production filter.
+    Matrix4f calculateTheoreticalProcessNoise(
+        float sample_rate_hz,               // Accelerometer sample rate (Hz)
+        float sigma_a_density = 0.002943f,  // Accelerometer noise density (m/s²/√Hz)
+        float sigma_b = 1.962e-4f,          // Accelerometer bias instability (m/s²)
+        float tau_b = 100.0f                // Accelerometer bias time constant (sec), typically 100 for MEMS IMUs
+    ) const {
+        // Calculate acceleration noise component
+        const float BW = sample_rate_hz / 2.0f;  // Noise bandwidth
+        const float sigma_a2 = sigma_a_density * sigma_a_density * BW;
+        const float T = 1.0f / sample_rate_hz;   // Sample time
+
+        // Calculate bias process noise from Allan variance
+        const float q_bias = (sigma_b * sigma_b * T) / tau_b;
+
+        // Calculate process noise components for each state
+        const float q_z = (4.0f / 36.0f) * sigma_a2 * powf(T, 6);  // z: displacement integral
+        const float q_y = (1.0f / 4.0f) * sigma_a2 * powf(T, 4);   // y: displacement
+        const float q_v = sigma_a2 * powf(T, 2);                   // v: velocity
+
+        // Construct the Q matrix
+        Matrix4f theoretical_Q;
+        theoretical_Q.setZero();
+        theoretical_Q(0,0) = q_z;
+        theoretical_Q(1,1) = q_y;
+        theoretical_Q(2,2) = q_v;
+        theoretical_Q(3,3) = q_bias;
+
+        // Ensure the matrix is positive definite
+        enforcePositiveDefiniteness(theoretical_Q);
+        
+        return theoretical_Q;
     }
 
 private:
