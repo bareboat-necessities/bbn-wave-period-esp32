@@ -222,15 +222,21 @@ public:
             
             // Check for numerical stability before inversion
             if (Sz.determinant() > MIN_DIVISOR_VALUE) {
-                Matrix42f K = P * H_special.transpose() * Sz.inverse();
-                x = x + K * y;
+                // Mahalanobis gating
+                float mahalanobis_distance_sq = y.transpose() * Sz.inverse() * y;
+                const float GATING_THRESHOLD = 9.21f;  // 95% confidence for 2 DoF
+
+                if (mahalanobis_distance_sq < GATING_THRESHOLD) {
+                    // Accept correction
+                    Matrix42f K = P * H_special.transpose() * Sz.inverse();
+                    x = x + K * y;
                 
-                // Joseph form update for covariance
-                Matrix4f JI_KH = I - K * H_special;
-                P = JI_KH * P * JI_KH.transpose() + K * Sz * K.transpose();
-                enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
+                    // Joseph form update for covariance
+                    Matrix4f JI_KH = I - K * H_special;
+                    P = JI_KH * P * JI_KH.transpose() + K * Sz * K.transpose();
+                    enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
+                 }
             }
-            
             // Reset detection flag
             zero_crossing_detected = false;
         }
