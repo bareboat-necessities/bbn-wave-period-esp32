@@ -132,47 +132,42 @@ public:
         schmitt_state = SchmittTriggerState::SCHMITT_LOW;
     }
 
-    // Configure process noise Q using IMU specs + q_accel_bias
-    // Defaults are from MPU6886 specs
-    // This method assumes that Kalman filter is in SI units and R is not scaled
+    // Calculate theoretical process noise Q matrix using IMU specs and Allan variance parameters
+    // Defaults are from MPU6886 specs.
+    // This method assumes that Kalman filter is in SI units and R is not scaled.
     // These values will be too low for practical use
-    // but can provide starting point for tuning Q for production filter
-    void setProcessNoiseFromIMUSpec(
+    // but can provide a starting point for tuning Q for the production filter.
+    Matrix4f calculateTheoreticalProcessNoise(
         float sample_rate_hz,               // Accelerometer sample rate (Hz)
-        float sigma_a_density = 0.002943f,  // Accelerometer specs sigma_a_density (m/s²/√Hz)
-        float q_accel_bias                  // Accelerometer bias process noise (m/s²)
-    ) {
-        const float BW = sample_rate_hz / 2.0f;
+        float sigma_a_density = 0.002943f,  // Accelerometer noise density (m/s²/√Hz)
+        float sigma_b = 1.962e-4f,          // Accelerometer bias instability (m/s²)
+        float tau_b = 100.0f                // Accelerometer bias time constant (sec), typically 100 for MEMS IMUs
+    ) const {
+        // Calculate acceleration noise component
+        const float BW = sample_rate_hz / 2.0f;  // Noise bandwidth
         const float sigma_a2 = sigma_a_density * sigma_a_density * BW;
+        const float T = 1.0f / sample_rate_hz;   // Sample time
 
-        float T = 1.0f / sample_rate_hz;
-      
-        float q_z = (4.0f / 36.0f) * sigma_a2 * powf(T, 6);  // z: displacement integral
-        float q_y = (1.0f / 4.0f)  * sigma_a2 * powf(T, 4);  // y: displacement
-        float q_v = sigma_a2 * powf(T, 2);                   // v: velocity
+        // Calculate bias process noise from Allan variance
+        const float q_bias = (sigma_b * sigma_b * T) / tau_b;
 
-        Q.setZero();
-        Q(0,0) = q_z;
-        Q(1,1) = q_y;
-        Q(2,2) = q_v;
-        Q(3,3) = q_accel_bias;  // You can tune this or set from Allan variance
+        // Calculate process noise components for each state
+        const float q_z = (4.0f / 36.0f) * sigma_a2 * powf(T, 6);  // z: displacement integral
+        const float q_y = (1.0f / 4.0f) * sigma_a2 * powf(T, 4);   // y: displacement
+        const float q_v = sigma_a2 * powf(T, 2);                   // v: velocity
 
-        enforcePositiveDefiniteness(Q);
-    }
+        // Construct the Q matrix
+        Matrix4f theoretical_Q;
+        theoretical_Q.setZero();
+        theoretical_Q(0,0) = q_z;
+        theoretical_Q(1,1) = q_y;
+        theoretical_Q(2,2) = q_v;
+        theoretical_Q(3,3) = q_bias;
 
-    // Set bias process noise from Allan variance model
-    // Defaults based on estimated MPU6886 performance
-    // This method assumes that Kalman filter is in SI units and R is not scaled
-    // These values will be too low for practical use
-    // but can provide starting point for tuning Q for production filter
-    void setBiasProcessNoiseFromAllan(
-        float sample_rate_hz,
-        float sigma_b = 1.962e-4f,  // m/s² (≈ 20 µg bias instability)
-        float tau_b = 100.0f        // seconds (typical for MEMS)
-    ) {
-        float T = 1.0f / sample_rate_hz;
-        float q_bias = (sigma_b * sigma_b * T) / tau_b;
-        Q(3,3) = q_bias;
+        // Ensure the matrix is positive definite
+        enforcePositiveDefiniteness(theoretical_Q);
+        
+        return theoretical_Q;
     }
 
     void initMeasurementNoise(float r0) {
