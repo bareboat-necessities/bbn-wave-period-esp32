@@ -288,7 +288,7 @@ public:
         state.accel_bias = x(3);
     }
 
-    const State getState() const {
+    State getState() const {
         return State{x(0), x(1), x(2), x(3)};
     }
 
