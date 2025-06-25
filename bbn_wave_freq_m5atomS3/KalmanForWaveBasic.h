@@ -132,22 +132,22 @@ public:
         schmitt_state = SchmittTriggerState::SCHMITT_LOW;
     }
 
-    // Configure process noise Q using IMU specs + tunable q_z and q_accel_bias
+    // Configure process noise Q using IMU specs + q_accel_bias
     // Defaults are from MPU6886 specs
     // This method assumes that Kalman filter is in SI units
     void setProcessNoiseFromIMUSpec(
         float sample_rate_hz,              // Accelerometer sample rate Hz
-        float qz_custom = 5.0f,            // Displacement integral noise (m²·s²)
-        float q_accel_bias = 1e-5f,        // Accelerometer bias process noise (m/s²)
         float sigma_a_density = 0.002943f  // Accelerometer specs sigma_a_density = 0.002943f; // m/s²/√Hz
+        float q_accel_bias = 1e-5f,        // Accelerometer bias process noise (m/s²)
     ) {
         const float BW = sample_rate_Hz / 2.0f;
         const float sigma_a2 = sigma_a_density * sigma_a_density * BW;
 
         float T = 1.0f / sample_rate;
-
-        float q_y = (1.0f / 4.0f)  * sigma_a2 * powf(T, 4);
-        float q_v = sigma_a2 * powf(T, 2);
+      
+        float q_z = (1.0f / 36.0f) * sigma_a2 * powf(T, 6);  // z: displacement integral
+        float q_y = (1.0f / 4.0f)  * sigma_a2 * powf(T, 4);  // y: displacement
+        float q_v = sigma_a2 * powf(T, 2);                   // v: velocity
 
         Q.setZero();
         Q(0,0) = q_z_custom;
