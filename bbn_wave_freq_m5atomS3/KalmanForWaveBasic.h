@@ -140,12 +140,12 @@ public:
         float sigma_a_density = 0.002943f,  // Accelerometer specs sigma_a_density (m/s²/√Hz)
         float q_accel_bias = 1e-5f          // Accelerometer bias process noise (m/s²)
     ) {
-        const float BW = sample_rate_Hz / 2.0f;
+        const float BW = sample_rate_hz / 2.0f;
         const float sigma_a2 = sigma_a_density * sigma_a_density * BW;
 
-        float T = 1.0f / sample_rate;
+        float T = 1.0f / sample_rate_hz;
       
-        float q_z = (1.0f / 36.0f) * sigma_a2 * powf(T, 6);  // z: displacement integral
+        float q_z = (4.0f / 36.0f) * sigma_a2 * powf(T, 6);  // z: displacement integral
         float q_y = (1.0f / 4.0f)  * sigma_a2 * powf(T, 4);  // y: displacement
         float q_v = sigma_a2 * powf(T, 2);                   // v: velocity
 
