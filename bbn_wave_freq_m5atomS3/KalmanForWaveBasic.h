@@ -40,7 +40,7 @@
 
   Input a - vertical acceleration from accelerometer
 
-  Measurement - z = 0 (displacement integral)
+  Measurement - z = 0 (displacement integral) used as pseudo measurement for drift correction
 
   Observation matrix:
   H = [ 1, 0, 0, 0 ]  
