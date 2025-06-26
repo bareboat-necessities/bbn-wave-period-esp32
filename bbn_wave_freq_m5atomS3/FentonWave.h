@@ -18,27 +18,27 @@ using namespace Eigen;
 
 class FentonWave {
 private:
-    double height;
-    double depth;
-    double length;
+    float height;
+    float depth;
+    float length;
     int order;
-    double g;
-    double relax;
-    double eta_eps;
+    float g;
+    float relax;
+    float eta_eps;
     
     // Wave parameters
-    VectorXd eta;
-    VectorXd x;
-    double k;
-    double c;
-    double cs;
-    double T;
-    double omega;
-    VectorXd E;
-    VectorXd B;
+    VectorXf eta;
+    VectorXf x;
+    float k;
+    float c;
+    float cs;
+    float T;
+    float omega;
+    VectorXf E;
+    VectorXf B;
     
 public:
-    FentonWave(double height, double depth, double length, int N, double g = 9.81, double relax = 0.5)
+    FentonWave(float height, float depth, float length, int N, float g = 9.81, float relax = 0.5)
         : height(height), depth(depth), length(length), order(N), g(g), relax(relax),
           eta_eps(height / 1e5)  // Initialize in member initializer list
     {
@@ -47,12 +47,12 @@ public:
         set_data(data);
     }
 
-    double get_c() const { return c; }
-    double get_k() const { return k; }
-    double get_T() const { return T; }
-    double get_omega() const { return omega; }
+    float get_c() const { return c; }
+    float get_k() const { return k; }
+    float get_T() const { return T; }
+    float get_omega() const { return omega; }
 
-    void set_data(const std::map<std::string, VectorXd>& data) {
+    void set_data(const std::map<std::string, VectorXf>& data) {
         eta = data.at("eta");
         x = data.at("x");
         k = data.at("k")(0);  // Use () instead of [] for Eigen vector access
@@ -65,22 +65,22 @@ public:
         // Compute cosine series coefficients for elevation
         int N = eta.size() - 1;
         E.resize(N + 1);
-        VectorXd J = VectorXd::LinSpaced(N + 1, 0, N);
+        VectorXf J = VectorXf::LinSpaced(N + 1, 0, N);
         
         for (int j = 0; j <= N; j++) {
             E(j) = trapezoid_integration(eta.array() * (J(j) * J * M_PI / N).array().cos());
         }
     }
     
-    double stream_function(double x_val, double z_val, double t = 0, const std::string& frame = "b") {
+    float stream_function(float x_val, float z_val, float t = 0, const std::string& frame = "b") {
         int N = eta.size() - 1;
-        VectorXd J = VectorXd::LinSpaced(N, 1, N);
+        VectorXf J = VectorXf::LinSpaced(N, 1, N);
         
-        double x2 = x_val - c * t;
-        double psi = 0;
+        float x2 = x_val - c * t;
+        float psi = 0;
         
         for (int i = 0; i < N; i++) {
-            double Jk = J(i) * k;
+            float Jk = J(i) * k;
             psi += B(i+1) * std::sinh(Jk * z_val) / std::cosh(Jk * depth) * std::cos(Jk * x2);
         }
         
@@ -92,37 +92,37 @@ public:
         return 0;
     }
     
-    double surface_elevation(double x_val, double t = 0) {
+    float surface_elevation(float x_val, float t = 0) {
         int N = E.size() - 1;
-        VectorXd J = VectorXd::LinSpaced(N + 1, 0, N);
+        VectorXf J = VectorXf::LinSpaced(N + 1, 0, N);
         
-        double sum = 0;
+        float sum = 0;
         for (int j = 0; j <= N; j++) {
             sum += E(j) * std::cos(J(j) * k * (x_val - c * t));
         }
         return 2 * sum / N;
     }
     
-    double surface_slope(double x_val, double t = 0) {
+    float surface_slope(float x_val, float t = 0) {
         int N = E.size() - 1;
-        VectorXd J = VectorXd::LinSpaced(N + 1, 0, N);
+        VectorXf J = VectorXf::LinSpaced(N + 1, 0, N);
         
-        double sum = 0;
+        float sum = 0;
         for (int j = 0; j <= N; j++) {
             sum += E(j) * J(j) * k * std::sin(J(j) * k * (x_val - c * t));
         }
         return -2 * sum / N;
     }
     
-    Vector2d velocity(double x_val, double z_val, double t = 0, bool all_points_wet = false) {
+    Vector2d velocity(float x_val, float z_val, float t = 0, bool all_points_wet = false) {
         int N = eta.size() - 1;
-        VectorXd J = VectorXd::LinSpaced(N, 1, N);
+        VectorXf J = VectorXf::LinSpaced(N, 1, N);
         
         Vector2d vel = Vector2d::Zero();
         
         for (int i = 0; i < N; i++) {
-            double Jk = J(i) * k;
-            double term = B(i+1) * Jk / std::cosh(Jk * depth);
+            float Jk = J(i) * k;
+            float term = B(i+1) * Jk / std::cosh(Jk * depth);
             
             vel(0) += term * std::cos(Jk * (x_val - c * t)) * std::cosh(Jk * z_val);
             vel(1) += term * std::sin(Jk * (x_val - c * t)) * std::sinh(Jk * z_val);
@@ -134,73 +134,73 @@ public:
     
 private:
     struct FentonCoefficients {
-        VectorXd B;
-        VectorXd eta;
-        double Q;
-        double R;
+        VectorXf B;
+        VectorXf eta;
+        float Q;
+        float R;
     };
     
-    double trapezoid_integration(const VectorXd& y) {
+    float trapezoid_integration(const VectorXf& y) {
         int n = y.size();
-        double sum = 0.5 * (y(0) + y(n-1));
+        float sum = 0.5 * (y(0) + y(n-1));
         for (int i = 1; i < n-1; i++) {
             sum += y(i);
         }
         return sum;
     }
     
-    FentonCoefficients initial_guess(double H, int N, double c, double k, const VectorXd& x) {
+    FentonCoefficients initial_guess(float H, int N, float c, float k, const VectorXf& x) {
         FentonCoefficients guess;
-        guess.B = VectorXd::Zero(N + 1);
+        guess.B = VectorXf::Zero(N + 1);
         guess.B(0) = c;
         guess.B(1) = -H / (4 * c * k);
-        guess.eta = VectorXd::Ones(x.size()) + (H / 2) * (k * x.array()).cos().matrix();
+        guess.eta = VectorXf::Ones(x.size()) + (H / 2) * (k * x.array()).cos().matrix();
         guess.Q = c;
         guess.R = 1 + 0.5 * c * c;
         return guess;
     }
     
-    std::map<std::string, VectorXd> fenton_coefficients(
-        double height, double depth, double length, int N, double g, 
-        double relax, int maxiter = 500, double tolerance = 1e-8) {
+    std::map<std::string, VectorXf> fenton_coefficients(
+        float height, float depth, float length, int N, float g, 
+        float relax, int maxiter = 500, float tolerance = 1e-8) {
         
         // Non-dimensionalized input
-        double H = height / depth;
-        double lam = length / depth;
-        double k = 2 * M_PI / lam;
-        double c = std::sqrt(std::tanh(k) / k);
-        double D = 1;
+        float H = height / depth;
+        float lam = length / depth;
+        float k = 2 * M_PI / lam;
+        float c = std::sqrt(std::tanh(k) / k);
+        float D = 1;
         int N_unknowns = 2 * (N + 1) + 2;
         
-        VectorXd J = VectorXd::LinSpaced(N, 1, N);
-        VectorXd M = VectorXd::LinSpaced(N + 1, 0, N);
-        VectorXd x = M * lam / (2 * N);
+        VectorXf J = VectorXf::LinSpaced(N, 1, N);
+        VectorXf M = VectorXf::LinSpaced(N + 1, 0, N);
+        VectorXf x = M * lam / (2 * N);
         
         // Initial guess - using struct instead of tuple
         FentonCoefficients guess = initial_guess(H, N, c, k, x);
-        VectorXd B = guess.B;
-        double Q = guess.Q;
-        double R = guess.R;
-        VectorXd eta = guess.eta;
+        VectorXf B = guess.B;
+        float Q = guess.Q;
+        float R = guess.R;
+        VectorXf eta = guess.eta;
         
         // Optimization
-        VectorXd coeffs(N_unknowns);
+        VectorXf coeffs(N_unknowns);
         coeffs.head(N + 1) = B;
         coeffs.segment(N + 1, N + 1) = eta;
         coeffs(2 * N + 2) = Q;
         coeffs(2 * N + 3) = R;
         
-        VectorXd f = func(coeffs, H, k, D, J, M);
+        VectorXf f = func(coeffs, H, k, D, J, M);
         
         for (int it = 0; it < maxiter; it++) {
-            MatrixXd jac = fprime(coeffs, H, k, D, J, M);
-            VectorXd delta = jac.fullPivLu().solve(-f);
+            MatrixXf jac = fprime(coeffs, H, k, D, J, M);
+            VectorXf delta = jac.fullPivLu().solve(-f);
             coeffs += delta * relax;
             f = func(coeffs, H, k, D, J, M);
             
-            double error = f.array().abs().maxCoeff();
-            double eta_max = coeffs.segment(N + 1, N + 1).maxCoeff();
-            double eta_min = coeffs.segment(N + 1, N + 1).minCoeff();
+            float error = f.array().abs().maxCoeff();
+            float eta_max = coeffs.segment(N + 1, N + 1).maxCoeff();
+            float eta_min = coeffs.segment(N + 1, N + 1).minCoeff();
             
             if (error < tolerance) {
                 break;
@@ -216,40 +216,40 @@ private:
         B(0) *= std::sqrt(g * depth);
         B.tail(N) *= std::sqrt(g * depth * depth * depth);
         
-        std::map<std::string, VectorXd> result;
+        std::map<std::string, VectorXf> result;
         result["x"] = x * depth;
         result["eta"] = eta * depth;
         result["B"] = B;
-        result["Q"] = VectorXd::Constant(1, Q * std::sqrt(g * depth * depth * depth));
-        result["R"] = VectorXd::Constant(1, R * g * depth);
-        result["k"] = VectorXd::Constant(1, k / depth);
-        result["c"] = VectorXd::Constant(1, B(0));
+        result["Q"] = VectorXf::Constant(1, Q * std::sqrt(g * depth * depth * depth));
+        result["R"] = VectorXf::Constant(1, R * g * depth);
+        result["k"] = VectorXf::Constant(1, k / depth);
+        result["c"] = VectorXf::Constant(1, B(0));
         
         return result;
     }
     
-    VectorXd func(const VectorXd& coeffs, double H, double k, double D, const VectorXd& J, const VectorXd& M) {
+    VectorXf func(const VectorXf& coeffs, float H, float k, float D, const VectorXf& J, const VectorXf& M) {
         int N_unknowns = coeffs.size();
         int N = J.size();
         
-        double B0 = coeffs(0);
-        VectorXd B = coeffs.segment(1, N);
-        VectorXd eta = coeffs.segment(N + 1, N + 1);
-        double Q = coeffs(2 * N + 2);
-        double R = coeffs(2 * N + 3);
+        float B0 = coeffs(0);
+        VectorXf B = coeffs.segment(1, N);
+        VectorXf eta = coeffs.segment(N + 1, N + 1);
+        float Q = coeffs(2 * N + 2);
+        float R = coeffs(2 * N + 3);
         
-        VectorXd f = VectorXd::Zero(N_unknowns);
+        VectorXf f = VectorXf::Zero(N_unknowns);
         
         for (int m = 0; m <= N; m++) {
-            VectorXd Jk_eta = J * k * eta(m);
-            VectorXd Jk_D = J * k * D;
-            VectorXd S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
-            VectorXd C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
-            VectorXd S2 = (J * m * M_PI / N).array().sin();
-            VectorXd C2 = (J * m * M_PI / N).array().cos();
+            VectorXf Jk_eta = J * k * eta(m);
+            VectorXf Jk_D = J * k * D;
+            VectorXf S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
+            VectorXf C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
+            VectorXf S2 = (J * m * M_PI / N).array().sin();
+            VectorXf C2 = (J * m * M_PI / N).array().cos();
             
-            double um = -B0 + k * (B.array() * C1.array() * C2.array() * J.array()).sum();
-            double vm = k * (B.array() * S1.array() * S2.array() * J.array()).sum();
+            float um = -B0 + k * (B.array() * C1.array() * C2.array() * J.array()).sum();
+            float vm = k * (B.array() * S1.array() * S2.array() * J.array()).sum();
             
             f(m) = -B0 * eta(m) + (B.array() * S1.array() * C2.array()).sum() + Q;
             f(N + 1 + m) = (um * um + vm * vm) / 2 + eta(m) - R;
@@ -261,30 +261,30 @@ private:
         return f;
     }
     
-    MatrixXd fprime(const VectorXd& coeffs, double H, double k, double D, const VectorXd& J, const VectorXd& M) {
+    MatrixXf fprime(const VectorXf& coeffs, float H, float k, float D, const VectorXf& J, const VectorXf& M) {
         int N_unknowns = coeffs.size();
         int N = J.size();
         
-        MatrixXd jac = MatrixXd::Zero(N_unknowns, N_unknowns);
-        double B0 = coeffs(0);
-        VectorXd B = coeffs.segment(1, N);
-        VectorXd eta = coeffs.segment(N + 1, N + 1);
+        MatrixXf jac = MatrixXf::Zero(N_unknowns, N_unknowns);
+        float B0 = coeffs(0);
+        VectorXf B = coeffs.segment(1, N);
+        VectorXf eta = coeffs.segment(N + 1, N + 1);
         
         for (int m = 0; m <= N; m++) {
-            VectorXd Jk_eta = J * k * eta(m);
-            VectorXd Jk_D = J * k * D;
-            VectorXd S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
-            VectorXd C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
-            VectorXd S2 = (J * m * M_PI / N).array().sin();
-            VectorXd C2 = (J * m * M_PI / N).array().cos();
+            VectorXf Jk_eta = J * k * eta(m);
+            VectorXf Jk_D = J * k * D;
+            VectorXf S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
+            VectorXf C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
+            VectorXf S2 = (J * m * M_PI / N).array().sin();
+            VectorXf C2 = (J * m * M_PI / N).array().cos();
             
-            VectorXd SC = S1.array() * C2.array();
-            VectorXd SS = S1.array() * S2.array();
-            VectorXd CC = C1.array() * C2.array();
-            VectorXd CS = C1.array() * S2.array();
+            VectorXf SC = S1.array() * C2.array();
+            VectorXf SS = S1.array() * S2.array();
+            VectorXf CC = C1.array() * C2.array();
+            VectorXf CS = C1.array() * S2.array();
             
-            double um = -B0 + k * (B.array() * CC.array() * J.array()).sum();
-            double vm = k * (B.array() * SS.array() * J.array()).sum();
+            float um = -B0 + k * (B.array() * CC.array() * J.array()).sum();
+            float vm = k * (B.array() * SS.array() * J.array()).sum();
             
             jac(m, N + 1 + m) = -B0 + (B.array() * k * J.array() * C1.array() * C2.array()).sum();
             jac(m, 0) = -eta(m);
@@ -316,39 +316,39 @@ private:
 class WaveSurfaceTracker {
 private:
     FentonWave wave;
-    double phase_velocity;  // More descriptive than 'c'
-    double wave_number;     // More descriptive than 'k'
+    float phase_velocity;  // More descriptive than 'c'
+    float wave_number;     // More descriptive than 'k'
     
     // Finite difference stencil
-    double eta_prev2 = 0;   // η at t-2Δt
-    double eta_prev = 0;    // η at t-Δt
-    double eta_current = 0; // η at t
+    float eta_prev2 = 0;   // η at t-2Δt
+    float eta_prev = 0;    // η at t-Δt
+    float eta_current = 0; // η at t
     bool has_prev = false;
     bool has_prev2 = false;
 
 public:
-    WaveSurfaceTracker(double height, double depth, double length, int order)
+    WaveSurfaceTracker(float height, float depth, float length, int order)
         : wave(height, depth, length, order), 
           phase_velocity(wave.get_c()),
           wave_number(wave.get_k()) {}
 
     void track_lagrangian_kinematics(
-        double duration, 
-        double timestep,
+        float duration, 
+        float timestep,
         std::function<void(
-            double time, 
-            double elevation,
-            double vertical_velocity, 
-            double vertical_acceleration,
-            double horizontal_position)> kinematics_callback) {
+            float time, 
+            float elevation,
+            float vertical_velocity, 
+            float vertical_acceleration,
+            float horizontal_position)> kinematics_callback) {
         
         // Reset tracking state
         eta_prev2 = eta_prev = eta_current = 0;
         has_prev = has_prev2 = false;
 
-        for (double time = 0; time <= duration; time += timestep) {
-            double x = phase_velocity * time;
-            double elevation = wave.surface_elevation(x, time);
+        for (float time = 0; time <= duration; time += timestep) {
+            float x = phase_velocity * time;
+            float elevation = wave.surface_elevation(x, time);
             
             // Update stencil
             eta_prev2 = eta_prev;
@@ -360,8 +360,8 @@ public:
             has_prev = true;
 
             // Calculate derivatives
-            double vertical_velocity = 0;
-            double vertical_acceleration = 0;
+            float vertical_velocity = 0;
+            float vertical_acceleration = 0;
             
             if (has_prev2) {  // Central differences
                 vertical_velocity = (eta_current - eta_prev2) / (2*timestep);
@@ -380,21 +380,21 @@ public:
 int FentonWave_test() {
     try {
         // Wave parameters
-        const double wave_height = 2.0;
-        const double water_depth = 10.0;
-        const double wavelength = 50.0;
+        const float wave_height = 2.0;
+        const float water_depth = 10.0;
+        const float wavelength = 50.0;
         const int approximation_order = 3;
 
         // Simulation parameters
-        const double simulation_duration = 20.0;
-        const double timestep = 0.1;
+        const float simulation_duration = 20.0;
+        const float timestep = 0.1;
 
         WaveSurfaceTracker tracker(wave_height, water_depth, 
                                  wavelength, approximation_order);
 
         // CSV output handler
-        auto csv_handler = [](double time, double elevation, 
-                            double velocity, double acceleration, double x) {
+        auto csv_handler = [](float time, float elevation, 
+                            float velocity, float acceleration, float x) {
             static std::ofstream outfile("wave_kinematics.csv");
             static bool header_written = false;
             
