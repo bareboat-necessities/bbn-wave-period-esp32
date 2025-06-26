@@ -11,7 +11,7 @@ void FentonWave_test() {
     const float dt = 0.1f;       // Time step (s)
 
     // Create a 3rd-order Fenton wave and a surface tracker
-    WaveSurfaceTracker<2> tracker(height, depth, length);
+    WaveSurfaceTracker<3> tracker(height, depth, length);
 
     // Output file
     std::ofstream out("wave_data.csv");
