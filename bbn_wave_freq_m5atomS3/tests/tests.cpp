@@ -1,6 +1,11 @@
 /*
   Copyright 2024-2025, Mikhail Grushinskiy
 */
+
+#define EIGEN_NODEBUG
+#define EIGEN_DONT_VECTORIZE
+#define EIGEN_MPL2_ONLY
+
 #include <cmath>
 #include <random>
 
