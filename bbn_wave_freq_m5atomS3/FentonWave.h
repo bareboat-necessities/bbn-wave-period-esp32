@@ -216,7 +216,7 @@ private:
             
             // df1/dBj (j=1..N)
             for (int j = 1; j <= N; ++j) {
-                jac(m, j) = (S1[j] * C2[j]).eval();
+                jac(m, j) = S1[j] * C2[j];
             }
     
             // df1/deta_m
