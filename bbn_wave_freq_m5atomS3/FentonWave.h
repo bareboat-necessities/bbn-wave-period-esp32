@@ -318,3 +318,106 @@ private:
         return jac;
     }
 };
+
+class WaveSurfaceTracker {
+private:
+    FentonWave wave;
+    float phase_velocity;  // More descriptive than 'c'
+    float wave_number;     // More descriptive than 'k'
+    
+    // Finite difference stencil
+    float eta_prev2 = 0;   // η at t-2Δt
+    float eta_prev = 0;    // η at t-Δt
+    float eta_current = 0; // η at t
+    bool has_prev = false;
+    bool has_prev2 = false;
+
+public:
+    WaveSurfaceTracker(float height, float depth, float length, int order)
+        : wave(height, depth, length, order), 
+          phase_velocity(wave.get_c()),
+          wave_number(wave.get_k()) {}
+
+    void track_lagrangian_kinematics(
+        float duration, 
+        float timestep,
+        std::function<void(
+            float time, 
+            float elevation,
+            float vertical_velocity, 
+            float vertical_acceleration,
+            float horizontal_position)> kinematics_callback) {
+        
+        // Reset tracking state
+        eta_prev2 = eta_prev = eta_current = 0;
+        has_prev = has_prev2 = false;
+
+        for (float time = 0; time <= duration; time += timestep) {
+            float x = phase_velocity * time;
+            float elevation = wave.surface_elevation(x, time);
+            
+            // Update stencil
+            eta_prev2 = eta_prev;
+            eta_prev = eta_current;
+            eta_current = elevation;
+            
+            // Update state tracking
+            has_prev2 = has_prev;
+            has_prev = true;
+
+            // Calculate derivatives
+            float vertical_velocity = 0;
+            float vertical_acceleration = 0;
+            
+            if (has_prev2) {  // Central differences
+                vertical_velocity = (eta_current - eta_prev2) / (2*timestep);
+                vertical_acceleration = (eta_current - 2*eta_prev + eta_prev2) / (timestep*timestep);
+            } else if (has_prev) {  // Forward difference
+                vertical_velocity = (eta_current - eta_prev) / timestep;
+            }
+
+            kinematics_callback(time, elevation, vertical_velocity, 
+                              vertical_acceleration, x);
+        }
+    }
+};
+
+int FentonWave_test() {
+    try {
+        // Wave parameters
+        const float wave_height = 2.0;
+        const float water_depth = 10.0;
+        const float wavelength = 50.0;
+        const int approximation_order = 3;
+
+        // Simulation parameters
+        const float simulation_duration = 20.0;
+        const float timestep = 0.1;
+
+        WaveSurfaceTracker tracker(wave_height, water_depth, 
+                                 wavelength, approximation_order);
+
+        // CSV output handler
+        auto csv_handler = [](float time, float elevation, 
+                            float velocity, float acceleration, float x) {
+            static std::ofstream outfile("wave_kinematics.csv");
+            static bool header_written = false;
+            
+            if (!header_written) {
+                outfile << "Time(s),Elevation(m),Velocity(m/s),Acceleration(m/s²),X(m)\n";
+                header_written = true;
+            }
+            
+            outfile << time << "," << elevation << "," 
+                   << velocity << "," << acceleration << "," << x << "\n";
+        };
+
+        tracker.track_lagrangian_kinematics(simulation_duration, timestep, csv_handler);
+
+        std::cout << "Lagrangian wave kinematics tracking complete.\n";
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Simulation error: " << e.what() << "\n";
+        return 1;
+    }
+}
