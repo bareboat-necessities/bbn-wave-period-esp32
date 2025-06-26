@@ -1,5 +1,8 @@
 #include "FentonWave.h"
 
+template class FentonWave<3>;
+template class WaveSurfaceTracker<3>;
+
 void FentonWave_test() {
     // Wave parameters
     const float height = 2.0f;   // Wave height (m)
