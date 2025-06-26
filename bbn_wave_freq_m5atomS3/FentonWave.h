@@ -10,6 +10,9 @@
 #include <stdexcept>
 #include <string>
 #include <map>
+#include <iostream>
+#include <fstream>
+#include <functional>
 
 using namespace Eigen;
 
