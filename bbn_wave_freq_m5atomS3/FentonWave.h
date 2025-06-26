@@ -94,24 +94,24 @@ private:
         float H = height / depth;
         float lambda = length / depth;
         k = 2 * M_PI / lambda;
-        float c_guess = std::sqrt(g * depth * std::tanh(k) / k);  // Added g factor
+        float c_guess = std::sqrt(g * depth * std::tanh(k) / k);
         float D = 1.0f; // Non-dimensional depth
     
-        // Coordinate setup
-        VectorF J = VectorF::LinSpaced(N+1, 0, N);
-        VectorF M = VectorF::LinSpaced(N+1, 0, N);
-        VectorF x = (M * lambda / (2 * N)).array();  // Ensure array operation
+        // Coordinate setup - renamed J_vec to avoid shadowing template parameter
+        VectorF J_vec = VectorF::LinSpaced(N+1, 0, N);
+        VectorF M_vec = VectorF::LinSpaced(N+1, 0, N);
+        VectorF x = (M_vec * lambda / (2 * N)).array();
     
         // Initial guess (Stokes 1st order solution)
         FentonCoefficients coeffs;
         coeffs.B = VectorF::Zero();
         coeffs.B[0] = c_guess;
-        if (N >= 1) coeffs.B[1] = -H / (2 * k);  // Fixed coefficient
+        if (N >= 1) coeffs.B[1] = -H / (2 * k);
     
-        coeffs.eta = VectorF::Ones();  // Initialize to 1
-        coeffs.eta.array() += (H/2) * (k * x.array()).cos();  // Array operation
+        coeffs.eta = VectorF::Ones();
+        coeffs.eta.array() += (H/2) * (k * x.array()).cos();
     
-        coeffs.Q = 0;  // Initial guess for Q
+        coeffs.Q = 0;
         coeffs.R = 1 + 0.5f * c_guess * c_guess;
     
         // Newton-Raphson solver
@@ -119,11 +119,11 @@ private:
         params << coeffs.B, coeffs.eta, coeffs.Q, coeffs.R;
     
         for (int iter = 0; iter < maxiter; ++iter) {
-            BigVector f = compute_residuals(params, H, k, D, J, M);
+            BigVector f = compute_residuals(params, H, k, D, J_vec, M_vec);
             if (f.norm() < tol) break;
     
-            BigMatrix J = compute_jacobian(params, H, k, D, J, M);
-            params -= relax * J.fullPivLu().solve(f);
+            BigMatrix J_mat = compute_jacobian(params, H, k, D, J_vec, M_vec);
+            params -= relax * J_mat.fullPivLu().solve(f);
         }
     
         // Extract solution
@@ -136,10 +136,11 @@ private:
         scale_to_physical(coeffs);
         return coeffs;
     }
-
+    
     BigVector compute_residuals(const BigVector& params, float H, float k, float D, 
-                               const VectorF& J, const VectorF& M) {
-        BigVector res = BigVector::Zero();
+                               const VectorF& J_vec, const VectorF& M_vec) {
+        BigVector res;
+        res.setZero();
     
         VectorF B = params.template head<N+1>();
         VectorF eta = params.template segment<N+1>(N+1);
@@ -149,19 +150,19 @@ private:
         // Residual equations (Fenton's equations 14a-b)
         for (int m = 0; m <= N; ++m) {
             // Precompute trigonometric terms
-            VectorF Jk_eta = J * k * eta[m];
-            VectorF Jk_D = J * k * D;
+            VectorF Jk_eta = J_vec * k * eta[m];
+            VectorF Jk_D = J_vec * k * D;
             VectorF S1 = Jk_eta.array().sinh().array() / Jk_D.array().cosh();
             VectorF C1 = Jk_eta.array().cosh().array() / Jk_D.array().cosh();
-            VectorF S2 = (J * m * M_PI / N).array().sin();
-            VectorF C2 = (J * m * M_PI / N).array().cos();
+            VectorF S2 = (J_vec * m * M_PI / N).array().sin();
+            VectorF C2 = (J_vec * m * M_PI / N).array().cos();
     
             // Velocity components
             float um = -B[0];
             float vm = 0;
             for (int j = 1; j <= N; ++j) {
-                um += k * B[j] * C1[j] * C2[j] * J[j];
-                vm += k * B[j] * S1[j] * S2[j] * J[j];
+                um += k * B[j] * C1[j] * C2[j] * J_vec[j];
+                vm += k * B[j] * S1[j] * S2[j] * J_vec[j];
             }
     
             // Stream function residual (Eq. 14a)
@@ -175,8 +176,8 @@ private:
         }
     
         // Constraints
-        res[2*(N+1)] = trapezoid_integration(eta)/N - 1.0f;  // Mean water level
-        res[2*(N+1)+1] = eta[0] - eta[N] - H;               // Wave height
+        res[2*(N+1)] = trapezoid_integration(eta)/N - 1.0f;
+        res[2*(N+1)+1] = eta[0] - eta[N] - H;
     
         return res;
     }
