@@ -169,7 +169,7 @@ private:
         VectorXd x = M * lam / (2 * N);
         
         // Initial guess - using struct instead of tuple
-        InitialGuess guess = initial_guess(H, N, c, k, x);
+        FentonCoefficients guess = initial_guess(H, N, c, k, x);
         VectorXd B = guess.B;
         double Q = guess.Q;
         double R = guess.R;
