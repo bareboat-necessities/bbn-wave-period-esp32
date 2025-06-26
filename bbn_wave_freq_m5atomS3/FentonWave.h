@@ -32,7 +32,6 @@ public:
               float g = 9.81f, float relax = 0.5f)
         : height(height), depth(depth), length(length), 
           g(g), relax(relax), eta_eps(height / 1e5f) {
-        static_assert(N >= 1, "Wave order N must be at least 1");
         auto coeffs = solve_fenton_equations();
         set_coefficients(coeffs);
     }
@@ -354,7 +353,7 @@ void FentonWave_test() {
     const float dt = 0.1f;       // Time step (s)
 
     // Create a 3rd-order Fenton wave and a surface tracker
-    WaveSurfaceTracker tracker(height, depth, length);
+    WaveSurfaceTracker<3> tracker(height, depth, length);
 
     // Output file
     std::ofstream out("wave_data.csv");
