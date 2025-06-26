@@ -9,10 +9,8 @@
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "MinMaxLemire.h"
-//#include "KalmanForWave.h"
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
-//#include "KalmanWaveAdaptiveAlt.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "WaveFilters.h"
 #include "TimeAwareSpikeFilter.h"
@@ -25,15 +23,9 @@ AranovskiyParams arParams;
 AranovskiyState arState;
 KalmanSmootherVars kalman_freq;
 KalmanForWaveBasicState waveState;
-//KalmanWaveAdaptiveAltState waveAltState;
 KalmanWaveNumStableAltState waveAltState;
 KalmANF kalmANF;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
-
-//TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.04-2 Hz
-//FourthOrderLowPass lowPassFilter(FREQ_UPPER);
-//HighPassFirstOrderFilter highPassFilter(1.0f / FREQ_LOWER /* period in sec */);
-//HighPassFirstOrderFilter highPassFilterAlt(1.0f / FREQ_LOWER /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
@@ -51,7 +43,6 @@ uint32_t now() {
 unsigned long last_update_k = 0UL;
 
 void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_4_print) {
-  //float a_band_passed = lowPassFilter.process(a_noisy, delta_t);
   float a_band_passed = a_noisy; //bpFilter.processWithDelta(a_noisy, delta_t);
   float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
 
@@ -68,7 +59,6 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   }
   wave_filter.step(a * g_std, delta_t, waveState);
   float heave = waveState.heave;
-  //float heave = highPassFilter.update(waveState.heave, delta_t);
 
   double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
   float warm_up_time = warmup_time_sec(true);
@@ -100,7 +90,6 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   wave_alt_filter.update(a * g_std, k_hat, delta_t);
   waveAltState = wave_alt_filter.getState();
   heaveAlt = waveAltState.heave;
-  //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t);
 
   double period = 1.0 / freq_adj;
   uint32_t windowMicros = getWindowMicros(period);
