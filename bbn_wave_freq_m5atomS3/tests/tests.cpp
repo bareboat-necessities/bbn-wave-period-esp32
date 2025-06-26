@@ -14,6 +14,7 @@
 #include "SchmittTriggerFrequencyDetector.h"
 #include "WaveFilters.h"
 #include "TimeAwareSpikeFilter.h"
+#include "FentonWave.h"
 
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
