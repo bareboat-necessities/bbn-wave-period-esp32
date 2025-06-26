@@ -183,10 +183,11 @@ private:
     
     BigMatrix compute_jacobian(const BigVector& params, float H, float k, float D,
                               const VectorF& J, const VectorF& M) {
-        BigMatrix jac = BigMatrix::Zero();
+        const int total_size = 2*(N+1)+2;
+        BigMatrix jac = BigMatrix::Zero(total_size, total_size);
     
-        VectorF B = params.template head<N+1>();
-        VectorF eta = params.template segment<N+1>(N+1);
+        VectorF B = params.head(N+1);
+        VectorF eta = params.segment(N+1, N+1);
         float Q = params[2*(N+1)];
         float R = params[2*(N+1)+1];
     
