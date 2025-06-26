@@ -245,10 +245,10 @@ private:
         VectorXf f = VectorXf::Zero(N_unknowns);
         
         for (int m = 0; m <= N; m++) {
-            VectorXf Jk_eta = J * k * eta(m);
-            VectorXf Jk_D = J * k * D;
-            VectorXf S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
-            VectorXf C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
+            VectorXf Jk_eta = (J * k * eta(m)).eval();
+            VectorXf Jk_D = (J * k * D).eval();
+            VectorXf S1 = Jk_eta.array().sinh() / Jk_D.array().cosh().matrix();
+            VectorXf C1 = Jk_eta.array().cosh() / Jk_D.array().cosh().matrix();
             VectorXf S2 = (J * m * M_PI / N).array().sin();
             VectorXf C2 = (J * m * M_PI / N).array().cos();
             
