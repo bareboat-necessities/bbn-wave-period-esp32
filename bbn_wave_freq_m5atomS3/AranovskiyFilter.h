@@ -64,7 +64,7 @@
 
 typedef struct aranovskiy_params {
   double a = 1.0;
-  double b = a;
+  double b = 1.0;
   double k = 1.0;           // gain
 } AranovskiyParams;
 
