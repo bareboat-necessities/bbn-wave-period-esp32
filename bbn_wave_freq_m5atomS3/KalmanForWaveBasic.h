@@ -192,55 +192,7 @@ public:
 
     void correct(float delta_t) {
         if (zero_crossing_detected) {
-            // Soft correction - only move partially toward zero (controlled by zero_correction_gain)
-            Matrix24f H_special;
-            H_special << 0, 1, 0, 0,  // Observe heave
-                         0, 0, 1, 0;  // Observe velocity
-            
-            // Target values (partial correction toward zero)
-            Vector2f z;
-            const float freq_guess = zero_crossing_last_interval > 3.0f ? 
-                M_PI / zero_crossing_last_interval :
-                2.0f * M_PI * 0.07f;  //  rad/s
-            float new_y = x(1);    
-            float new_v = sqrtf(x(2) * x(2) + (freq_guess * x(1)) * (freq_guess * x(1)));  // energy conservation
-            if (new_v > 3.0f) {  // clamp velocity to reasonable limit (m/s) for ocean waves
-                new_v = 3.0f;
-            }
-            if (x(2) < 0.0f) {
-                new_v = -new_v;
-            }
-            
-            z << new_y * (1.0f - zero_correction_gain),         // Target: reduce heave by gain%
-                 x(2) + (new_v - x(2)) * zero_correction_gain;  // Target: increase speed by gain%
-            
-            Vector2f y = z - H_special * x;
-            Matrix2f Sz = H_special * P * H_special.transpose();
-            Sz(0,0) += R_heave;
-            Sz(1,1) += R_velocity;
-            enforcePositiveDefiniteness(Sz);  // Ensure Sz remains symmetric and positive definite
-            
-            // Check for numerical stability before inversion
-            if (Sz.determinant() > MIN_DIVISOR_VALUE) {
-                Matrix2f Sz_inv = Sz.inverse();
-
-                // Mahalanobis gating
-                float mahalanobis_distance_sq = y.transpose() * Sz_inv * y;
-                const float GATING_THRESHOLD = 13.0f;  // low rejection rate for 2D
-
-                if (mahalanobis_distance_sq < GATING_THRESHOLD) {
-                    // Accept correction
-                    Matrix42f K = P * H_special.transpose() * Sz_inv;
-                    x = x + K * y;
-
-                    // Joseph form update for covariance
-                    Matrix4f JI_KH = I - K * H_special;
-                    P = JI_KH * P * JI_KH.transpose() + K * Sz * K.transpose();
-                    enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
-                 }
-            }
-            // Reset detection flag
-            zero_crossing_detected = false;
+            zeroCrossingCorrection(delta_t);
         }
         
         // Always do the standard correction with Joseph form
@@ -351,6 +303,58 @@ private:
     // Separate observation noise for zero-correction
     float R_heave = 500.0f;
     float R_velocity = 1000.0f;
+
+    void zeroCrossingCorrection(float delta_t) {
+        // Soft correction - only move partially toward zero (controlled by zero_correction_gain)
+        Matrix24f H_special;
+        H_special << 0, 1, 0, 0,  // Observe heave
+                     0, 0, 1, 0;  // Observe velocity
+        
+        // Target values (partial correction toward zero)
+        Vector2f z;
+        const float freq_guess = zero_crossing_last_interval > 3.0f ? 
+            M_PI / zero_crossing_last_interval :
+            2.0f * M_PI * 0.07f;  //  rad/s
+        float new_y = x(1);    
+        float new_v = sqrtf(x(2) * x(2) + (freq_guess * x(1)) * (freq_guess * x(1)));  // energy conservation
+        if (new_v > 3.0f) {  // clamp velocity to reasonable limit (m/s) for ocean waves
+            new_v = 3.0f;
+        }
+        if (x(2) < 0.0f) {
+            new_v = -new_v;
+        }
+        
+        z << new_y * (1.0f - zero_correction_gain),         // Target: reduce heave by gain%
+             x(2) + (new_v - x(2)) * zero_correction_gain;  // Target: increase speed by gain%
+        
+        Vector2f y = z - H_special * x;
+        Matrix2f Sz = H_special * P * H_special.transpose();
+        Sz(0,0) += R_heave;
+        Sz(1,1) += R_velocity;
+        enforcePositiveDefiniteness(Sz);  // Ensure Sz remains symmetric and positive definite
+        
+        // Check for numerical stability before inversion
+        if (Sz.determinant() > MIN_DIVISOR_VALUE) {
+            Matrix2f Sz_inv = Sz.inverse();
+
+            // Mahalanobis gating
+            float mahalanobis_distance_sq = y.transpose() * Sz_inv * y;
+            const float GATING_THRESHOLD = 13.0f;  // low rejection rate for 2D
+
+            if (mahalanobis_distance_sq < GATING_THRESHOLD) {
+                // Accept correction
+                Matrix42f K = P * H_special.transpose() * Sz_inv;
+                x = x + K * y;
+
+                // Joseph form update for covariance
+                Matrix4f JI_KH = I - K * H_special;
+                P = JI_KH * P * JI_KH.transpose() + K * Sz * K.transpose();
+                enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
+             }
+        }
+        // Reset detection flag
+        zero_crossing_detected = false;
+    }
 
     // Helper function to enforce symmetry on a matrix
     void enforceSymmetry(Matrix4f& mat) const {
