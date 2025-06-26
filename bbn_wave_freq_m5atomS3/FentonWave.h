@@ -145,6 +145,7 @@ private:
         VectorF eta = params.segment(N + 1, N + 1);
         float Q = params[2 * (N + 1)];
         float R = params[2 * (N + 1) + 1];
+        float lambda = length / depth;
 
         VectorF J = VectorF::LinSpaced(N + 1, 0, N);
 
@@ -174,7 +175,7 @@ private:
         }
 
         // Mean elevation constraint
-        res[2 * (N + 1)] = trapezoid_integration(eta) / N - 1.0f;
+        res[2 * (N + 1)] = trapezoid_integration(eta) / length;
 
         // Wave height constraint
         float eta_max = eta.maxCoeff();
