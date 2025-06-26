@@ -51,7 +51,9 @@ public:
         for (int i = 0; i < N; ++i) {
             float Jk = J[i] * k;
             float arg = Jk * (x_val - c * t);
-            float term = B[i + 1] * Jk / std::cosh(Jk * depth);
+            float denom = std::cosh(Jk * depth);
+            if (denom < 1e-6f) denom = 1e-6f;
+            float term = B[i + 1] * Jk / denom;
             vel[0] += term * std::cos(arg) * std::cosh(Jk * z_val); // u
             vel[1] += term * std::sin(arg) * std::sinh(Jk * z_val); // w
         }
@@ -100,14 +102,14 @@ private:
         float D = 1.0f;
 
         VectorF J_vec = VectorF::LinSpaced(N + 1, 0, N);
-        VectorF M_vec = VectorF::LinSpaced(N + 1, 0, N);
-        VectorF x = (M_vec.array() * lambda / (2 * N)).matrix(); // Uniform spatial grid
+        VectorF x = (J_vec.array() * lambda / N).matrix(); // Full spatial grid [0, λ]
+        VectorF phys_x = x * depth;
 
-        // Initial guess using Stokes 1st order theory
+        // Initial guess using 1st order Stokes wave
         FentonCoefficients coeffs;
         coeffs.B = VectorF::Zero();
         coeffs.B[0] = c_guess;
-        if (N >= 1) coeffs.B[1] = -H / (2 * k * std::cosh(k * depth));
+        if (N >= 1) coeffs.B[1] = -H / (2 * k * std::cosh(k * D));
         coeffs.eta = (H / 2) * (k * x.array()).cos().matrix();
         coeffs.Q = 0;
         coeffs.R = 1 + 0.5f * c_guess * c_guess;
@@ -118,9 +120,11 @@ private:
 
         // Newton-Raphson loop
         for (int iter = 0; iter < maxiter; ++iter) {
-            BigVector f = compute_residuals(params, H, k, D, J_vec, M_vec);
+            BigVector f = compute_residuals(params, H, k, D, x);
+            if (!std::isfinite(f.norm()))
+                throw std::runtime_error("Residual diverged: NaN/Inf");
             if (f.norm() < tol) break;
-            BigMatrix J_mat = compute_jacobian(params, H, k, D, J_vec, M_vec);
+            BigMatrix J_mat = compute_jacobian(params, H, k, D, x);
             params -= relax * J_mat.colPivHouseholderQr().solve(f);
         }
 
@@ -129,76 +133,31 @@ private:
         coeffs.eta = params.segment(N + 1, N + 1);
         coeffs.Q = params[2 * (N + 1)];
         coeffs.R = params[2 * (N + 1) + 1];
-        coeffs.x = x;
+        coeffs.x = phys_x;
         scale_to_physical(coeffs);
         return coeffs;
     }
 
     // Evaluate residuals of Fenton equations and constraints
-    BigVector compute_residuals(const BigVector& params, float H, float k, float D,
-                                const VectorF& J_vec, const VectorF& M_vec) {
+    BigVector compute_residuals(const BigVector& params, float H, float k, float D, const VectorF& x) {
         BigVector res = BigVector::Zero(2 * (N + 1) + 2);
         VectorF B = params.head(N + 1);
         VectorF eta = params.segment(N + 1, N + 1);
         float Q = params[2 * (N + 1)];
         float R = params[2 * (N + 1) + 1];
 
-        for (int m = 0; m <= N; ++m) {
-            // Precompute terms for stream function and Bernoulli
-            VectorF Jk_eta = J_vec * k * eta[m];
-            VectorF Jk_D = J_vec * k * D;
-            VectorF S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
-            VectorF C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
-            VectorF S2 = (J_vec * m * M_PI / N).array().sin();
-            VectorF C2 = (J_vec * m * M_PI / N).array().cos();
-
-            float um = -B[0];
-            float vm = 0;
-            for (int j = 1; j <= N; ++j) {
-                um += k * B[j] * C1[j] * C2[j] * J_vec[j];
-                vm += k * B[j] * S1[j] * S2[j] * J_vec[j];
-            }
-
-            res[m] = -B[0] * eta[m] + Q;
-            for (int j = 1; j <= N; ++j) {
-                res[m] += B[j] * S1[j] * C2[j];
-            }
-
-            res[N + 1 + m] = 0.5f * (um * um + vm * vm) + eta[m] - R;
-        }
-
-        // Mean level constraint
-        res[2 * (N + 1)] = trapezoid_integration(eta) / N - 1.0f;
-
-        // Wave height constraint (using global max and min)
-        float eta_max = eta.maxCoeff();
-        float eta_min = eta.minCoeff();
-        res[2 * (N + 1) + 1] = eta_max - eta_min - H;
-
-        return res;
-    }
-
-    // Compute Jacobian matrix for Newton solver
-    BigMatrix compute_jacobian(const BigVector& params, float H, float k, float D,
-                               const VectorF& J, const VectorF& M) {
-        const int total_size = 2 * (N + 1) + 2;
-        BigMatrix jac = BigMatrix::Zero(total_size, total_size);
-
-        VectorF B = params.head(N + 1);
-        VectorF eta = params.segment(N + 1, N + 1);
-        float Q = params[2 * (N + 1)];
-        float R = params[2 * (N + 1) + 1];
+        VectorF J = VectorF::LinSpaced(N + 1, 0, N);
 
         for (int m = 0; m <= N; ++m) {
-            VectorF Jk_eta = J * k * eta[m];
+            float xm = x[m];
+            float etam = eta[m];
+            VectorF Jk_eta = J * k * etam;
             VectorF Jk_D = J * k * D;
-            VectorF S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
-            VectorF C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
-            VectorF S2 = (J * m * M_PI / N).array().sin();
-            VectorF C2 = (J * m * M_PI / N).array().cos();
-
-            VectorF dS1_deta = (J * k).array() * C1.array();
-            VectorF dC1_deta = (J * k).array() * S1.array();
+            VectorF denom = Jk_D.array().cosh().max(1e-6f);
+            VectorF S1 = Jk_eta.array().sinh() / denom;
+            VectorF C1 = Jk_eta.array().cosh() / denom;
+            VectorF S2 = (J * k * xm).array().sin();
+            VectorF C2 = (J * k * xm).array().cos();
 
             float um = -B[0];
             float vm = 0;
@@ -207,15 +166,65 @@ private:
                 vm += k * B[j] * S1[j] * S2[j] * J[j];
             }
 
-            jac(m, 0) = -eta[m];
+            res[m] = -B[0] * etam + Q;
+            for (int j = 1; j <= N; ++j)
+                res[m] += B[j] * S1[j] * C2[j];
+
+            res[N + 1 + m] = 0.5f * (um * um + vm * vm) + etam - R;
+        }
+
+        // Mean elevation constraint
+        res[2 * (N + 1)] = trapezoid_integration(eta) / N - 1.0f;
+
+        // Wave height constraint
+        float eta_max = eta.maxCoeff();
+        float eta_min = eta.minCoeff();
+        res[2 * (N + 1) + 1] = eta_max - eta_min - H;
+
+        return res;
+    }
+
+    // Compute Jacobian matrix for Newton solver
+    BigMatrix compute_jacobian(const BigVector& params, float H, float k, float D, const VectorF& x) {
+        const int total_size = 2 * (N + 1) + 2;
+        BigMatrix jac = BigMatrix::Zero(total_size, total_size);
+
+        VectorF B = params.head(N + 1);
+        VectorF eta = params.segment(N + 1, N + 1);
+        float Q = params[2 * (N + 1)];
+        float R = params[2 * (N + 1) + 1];
+
+        VectorF J = VectorF::LinSpaced(N + 1, 0, N);
+
+        for (int m = 0; m <= N; ++m) {
+            float xm = x[m];
+            float etam = eta[m];
+            VectorF Jk_eta = J * k * etam;
+            VectorF Jk_D = J * k * D;
+            VectorF denom = Jk_D.array().cosh().max(1e-6f);
+            VectorF S1 = Jk_eta.array().sinh() / denom;
+            VectorF C1 = Jk_eta.array().cosh() / denom;
+            VectorF S2 = (J * k * xm).array().sin();
+            VectorF C2 = (J * k * xm).array().cos();
+
+            VectorF dS1_deta = (J * k).array() * C1.array() / denom.array();
+            VectorF dC1_deta = (J * k).array() * S1.array() / denom.array();
+
+            float um = -B[0];
+            float vm = 0;
+            for (int j = 1; j <= N; ++j) {
+                um += k * B[j] * C1[j] * C2[j] * J[j];
+                vm += k * B[j] * S1[j] * S2[j] * J[j];
+            }
+
+            jac(m, 0) = -etam;
             for (int j = 1; j <= N; ++j) {
                 jac(m, j) = S1[j] * C2[j];
             }
 
             float dS1_sum = 0;
-            for (int j = 1; j <= N; ++j) {
+            for (int j = 1; j <= N; ++j)
                 dS1_sum += B[j] * dS1_deta[j] * C2[j];
-            }
             jac(m, N + 1 + m) = dS1_sum;
             jac(m, 2 * (N + 1)) = 1.0f;
 
@@ -235,13 +244,13 @@ private:
             jac(N + 1 + m, 2 * (N + 1) + 1) = -1.0f;
         }
 
-        // Mean elevation constraint: ∫η = 0
+        // Mean elevation constraint
         for (int j = 0; j <= N; ++j) {
             float weight = (j == 0 || j == N) ? 0.5f : 1.0f;
             jac(2 * (N + 1), N + 1 + j) = weight / N;
         }
 
-        // Wave height constraint: d/dη[max - min]
+        // Wave height constraint
         int max_idx = 0, min_idx = 0;
         eta.maxCoeff(&max_idx);
         eta.minCoeff(&min_idx);
@@ -269,6 +278,60 @@ private:
         float sum = 0.5f * (y[0] + y[N]);
         for (int i = 1; i < N; ++i) sum += y[i];
         return sum * dx;
+    }
+};
+
+// Tracks the Lagrangian vertical kinematics of the free surface
+template<int N = 3>
+class WaveSurfaceTracker {
+private:
+    FentonWave<N> wave;
+    float phase_velocity;
+    float wave_number;
+
+    float eta_prev2 = 0, eta_prev = 0, eta_current = 0;
+    bool has_prev = false, has_prev2 = false;
+
+public:
+    WaveSurfaceTracker(float height, float depth, float length)
+        : wave(height, depth, length),
+          phase_velocity(wave.get_c()),
+          wave_number(wave.get_k()) {}
+
+    void track_lagrangian_kinematics(
+        float duration,
+        float timestep,
+        std::function<void(
+            float time,
+            float elevation,
+            float vertical_velocity,
+            float vertical_acceleration,
+            float horizontal_position)> callback) {
+
+        eta_prev2 = eta_prev = eta_current = 0;
+        has_prev = has_prev2 = false;
+
+        for (float time = 0; time <= duration; time += timestep) {
+            float x = phase_velocity * time;
+            float elevation = wave.surface_elevation(x, time);
+
+            eta_prev2 = eta_prev;
+            eta_prev = eta_current;
+            eta_current = elevation;
+
+            has_prev2 = has_prev;
+            has_prev = true;
+
+            float vertical_velocity = 0, vertical_acceleration = 0;
+            if (has_prev2) {
+                vertical_velocity = (eta_current - eta_prev2) / (2 * timestep);
+                vertical_acceleration = (eta_current - 2 * eta_prev + eta_prev2) / (timestep * timestep);
+            } else if (has_prev) {
+                vertical_velocity = (eta_current - eta_prev) / timestep;
+            }
+
+            callback(time, elevation, vertical_velocity, vertical_acceleration, x);
+        }
     }
 };
 
