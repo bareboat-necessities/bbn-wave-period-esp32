@@ -14,9 +14,6 @@
 #include "SchmittTriggerFrequencyDetector.h"
 #include "WaveFilters.h"
 #include "TimeAwareSpikeFilter.h"
-#include "TimeAwareBandpassFilter.h"
-#include "HighPassFilters.h"
-#include "FourthOrderLowPass.h"
 
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
