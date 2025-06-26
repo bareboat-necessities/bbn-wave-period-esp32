@@ -98,7 +98,7 @@ private:
         float D = 1.0f; // Non-dimensional depth
 
         // Coordinate setup
-        VectorJ J = VectorJ::LinSpaced(N, 1, N);
+        VectorF J = VectorF::LinSpaced(N+1, 0, N);
         VectorF M = VectorF::LinSpaced(N+1, 0, N);
         VectorF x = M * lambda / (2 * N);
 
