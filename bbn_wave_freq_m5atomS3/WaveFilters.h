@@ -31,7 +31,6 @@ void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
 KalmanForWaveBasic wave_filter;
-//KalmanWaveAdaptiveAlt wave_alt_filter;
 KalmanWaveNumStableAlt wave_alt_filter;
 
 template <typename T> T clamp(T val, T min, T max) {
