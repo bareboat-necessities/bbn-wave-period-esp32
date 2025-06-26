@@ -17,8 +17,8 @@ private:
     using VectorF = Eigen::Matrix<float, N+1, 1>;  // Vector of size N+1
     using VectorJ = Eigen::Matrix<float, N, 1>;    // Vector of size N
     using MatrixF = Eigen::Matrix<float, N+1, N+1>; // Matrix of size (N+1)x(N+1)
-    using BigVector = Eigen::Matrix<float, 2*(N+1)+2, 1>; // For Newton solver
-    using BigMatrix = Eigen::Matrix<float, 2*(N+1)+2, 2*(N+1)+2>; // Jacobian
+    using BigVector = Eigen::VectorXf;  // Eigen::Matrix<float, 2*(N+1)+2, 1>; // For Newton solver
+    using BigMatrix = Eigen::MatrixXf;  // Eigen::Matrix<float, 2*(N+1)+2, 2*(N+1)+2>; // Jacobian
 
     // Wave parameters
     float height, depth, length, g, relax, eta_eps;
