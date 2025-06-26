@@ -8,6 +8,11 @@
 #include <limits>
 #include <algorithm>
 
+#ifdef FENTON_TEST
+#include <iostream>
+#include <fstream>
+#endif
+
 template <typename T>
 constexpr const T& clamp(const T& val, const T& low, const T& high) {
     return (val < low) ? low : (val > high) ? high : val;
