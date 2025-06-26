@@ -67,6 +67,7 @@
 #define ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF     0.6f
 #define ZERO_CROSSINGS_DEBOUNCE_TIME_KF          0.15f
 #define MIN_DIVISOR_VALUE                        1e-12f  // Minimum allowed value for division operations
+#define MAHALANOBIS_GATING_THRESHOLD             13.0f  // low rejection rate for 2D
 
 class KalmanForWaveBasic {
 
@@ -339,8 +340,7 @@ private:
 
             // Mahalanobis gating
             float mahalanobis_distance_sq = y.transpose() * Sz_inv * y;
-            const float GATING_THRESHOLD = 13.0f;  // low rejection rate for 2D
-            if (mahalanobis_distance_sq < GATING_THRESHOLD) {
+            if (mahalanobis_distance_sq < MAHALANOBIS_GATING_THRESHOLD) {
                 // Accept correction
                 Matrix42f K = P * H_special.transpose() * Sz_inv;
                 x = x + K * y;
