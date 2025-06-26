@@ -2,7 +2,7 @@
   Copyright 2024-2025, Mikhail Grushinskiy
 */
 
-#define EIGEN_NODEBUG
+#define EIGEN_NO_DEBUG
 #define EIGEN_DONT_VECTORIZE
 #define EIGEN_MPL2_ONLY
 
