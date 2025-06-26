@@ -40,6 +40,7 @@ public:
     FentonWave(float height, float depth, float length, float g = 9.81f, float relax = 0.5f)
         : height(height), depth(depth), length(length), g(g), relax(relax),
           eta_eps(height / 1e5f) {
+        static_assert(N >= 1, "Wave order N must be at least 1");
         auto data = fenton_coefficients(height, depth, length, g, relax);
         set_data(data);
     }
@@ -143,7 +144,9 @@ private:
         FentonCoefficients guess;
         guess.B = VectorF::Zero();
         guess.B(0) = c;
-        guess.B(1) = -H / (4 * c * k);
+        if (N >= 1) {
+            guess.B(1) = -H / (4 * c * k);
+        }
         
         guess.eta = VectorF::Zero();
         for (int i = 0; i <= N; i++) {
@@ -182,8 +185,8 @@ private:
         Eigen::Matrix<float, N_unknowns, 1> coeffs;
         coeffs.template head<N + 1>() = B;
         coeffs.template segment<N + 1>(N + 1) = eta;
-        coeffs(2 * N + 2) = Q;
-        coeffs(2 * N + 3) = R;
+        coeffs(2 * (N + 1)) = Q;
+        coeffs(2 * (N + 1) + 1) = R;
         
         Eigen::Matrix<float, N_unknowns, 1> f = func(coeffs, H, k, D, J, M);
         
@@ -205,8 +208,8 @@ private:
         // Scale back to physical space
         B = coeffs.template head<N + 1>();
         eta = coeffs.template segment<N + 1>(N + 1);
-        Q = coeffs(2 * N + 2);
-        R = coeffs(2 * N + 3);
+        Q = coeffs(2 * (N + 1));
+        R = coeffs(2 * (N + 1) + 1);
         
         B(0) *= std::sqrt(g * depth);
         B.template tail<N>() *= std::sqrt(g * depth * depth * depth);
@@ -230,10 +233,10 @@ private:
         Eigen::Matrix<float, 2*(N+1)+2, 1> f = Eigen::Matrix<float, 2*(N+1)+2, 1>::Zero();
         
         float B0 = coeffs(0);
-        VectorF B = coeffs.template segment<N>(1);
-        VectorF eta = coeffs.template segment<N + 1>(N + 1);
-        float Q = coeffs(2 * N + 2);
-        float R = coeffs(2 * N + 3);
+        VectorF B = coeffs.template segment<N + 1>(1);
+        VectorF eta = coeffs.template segment<N + 1>(N + 2);
+        float Q = coeffs(2 * (N + 1));
+        float R = coeffs(2 * (N + 1) + 1);
         
         for (int m = 0; m <= N; m++) {
             VectorF Jk_eta = J * k * eta(m);
@@ -243,15 +246,15 @@ private:
             VectorF S2 = (J * m * M_PI / N).array().sin();
             VectorF C2 = (J * m * M_PI / N).array().cos();
             
-            float um = -B0 + k * (B.array() * C1.array() * C2.array() * J.array()).sum();
-            float vm = k * (B.array() * S1.array() * S2.array() * J.array()).sum();
+            float um = -B0 + k * (B.tail(N).array() * C1.array() * C2.array() * J.array()).sum();
+            float vm = k * (B.tail(N).array() * S1.array() * S2.array() * J.array()).sum();
             
-            f(m) = -B0 * eta(m) + (B.array() * S1.array() * C2.array()).sum() + Q;
+            f(m) = -B0 * eta(m) + (B.tail(N).array() * S1.array() * C2.array()).sum() + Q;
             f(N + 1 + m) = (um * um + vm * vm) / 2 + eta(m) - R;
         }
         
-        f(2 * N + 2) = trapezoid_integration(eta) / N - 1;
-        f(2 * N + 3) = eta(0) - eta(N) - H;
+        f(2 * (N + 1)) = trapezoid_integration(eta) / N - 1;
+        f(2 * (N + 1) + 1) = eta(0) - eta(N) - H;
         
         return f;
     }
@@ -264,8 +267,10 @@ private:
             Eigen::Matrix<float, 2*(N+1)+2, 2*(N+1)+2>::Zero();
         
         float B0 = coeffs(0);
-        VectorF B = coeffs.template segment<N>(1);
-        VectorF eta = coeffs.template segment<N + 1>(N + 1);
+        VectorF B = coeffs.template segment<N + 1>(1);
+        VectorF eta = coeffs.template segment<N + 1>(N + 2);
+        float Q = coeffs(2 * (N + 1));
+        float R = coeffs(2 * (N + 1) + 1);
         
         for (int m = 0; m <= N; m++) {
             VectorF Jk_eta = J * k * eta(m);
@@ -280,19 +285,19 @@ private:
             VectorF CC = C1.array() * C2.array();
             VectorF CS = C1.array() * S2.array();
             
-            float um = -B0 + k * (B.array() * CC.array() * J.array()).sum();
-            float vm = k * (B.array() * SS.array() * J.array()).sum();
+            float um = -B0 + k * (B.tail(N).array() * CC.array() * J.array()).sum();
+            float vm = k * (B.tail(N).array() * SS.array() * J.array()).sum();
             
-            jac(m, N + 1 + m) = -B0 + (B.array() * k * J.array() * C1.array() * C2.array()).sum();
+            jac(m, N + 1 + m) = -B0 + (B.tail(N).array() * k * J.array() * C1.array() * C2.array()).sum();
             jac(m, 0) = -eta(m);
             for (int j = 1; j <= N; j++) {
                 jac(m, j) = SC(j-1);
             }
-            jac(m, 2 * N + 2) = 1;
+            jac(m, 2 * (N + 1)) = 1;
             
-            jac(N + 1 + m, N + 1 + m) = 1 + (um * k * k * (B.array() * J.array().square() * SC.array()).sum() + 
-                                             vm * k * k * (B.array() * J.array().square() * CS.array()).sum());
-            jac(N + 1 + m, 2 * N + 3) = -1;
+            jac(N + 1 + m, N + 1 + m) = 1 + (um * k * k * (B.tail(N).array() * J.array().square() * SC.array()).sum() + 
+                                             vm * k * k * (B.tail(N).array() * J.array().square() * CS.array()).sum());
+            jac(N + 1 + m, 2 * (N + 1) + 1) = -1;
             jac(N + 1 + m, 0) = -um;
             for (int j = 1; j <= N; j++) {
                 jac(N + 1 + m, j) = k * um * J(j-1) * CC(j-1) + k * vm * J(j-1) * SS(j-1);
@@ -300,11 +305,11 @@ private:
         }
         
         for (int j = 0; j <= N; j++) {
-            jac(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 1.0/(2*N) : 1.0/N;
+            jac(2 * (N + 1), N + 1 + j) = (j == 0 || j == N) ? 1.0/(2*N) : 1.0/N;
         }
         
-        jac(2 * N + 3, N + 1) = 1;
-        jac(2 * N + 3, 2 * N + 1) = -1;
+        jac(2 * (N + 1) + 1, N + 1) = 1;
+        jac(2 * (N + 1) + 1, 2 * (N + 1)) = -1;
         
         return jac;
     }
@@ -368,39 +373,3 @@ public:
         }
     }
 };
-
-int FentonWave_test() {
-    try {
-        constexpr int WaveOrder = 5;  // Compile-time wave order
-        const float wave_height = 2.0;
-        const float water_depth = 10.0;
-        const float wavelength = 50.0;
-
-        const float simulation_duration = 20.0;
-        const float timestep = 0.1;
-
-        WaveSurfaceTracker<WaveOrder> tracker(wave_height, water_depth, wavelength);
-
-        auto csv_handler = [](float time, float elevation, 
-                            float velocity, float acceleration, float x) {
-            static std::ofstream outfile("wave_kinematics.csv");
-            static bool header_written = false;
-            
-            if (!header_written) {
-                outfile << "Time(s),Elevation(m),Velocity(m/s),Acceleration(m/s²),X(m)\n";
-                header_written = true;
-            }
-            
-            outfile << time << "," << elevation << "," 
-                   << velocity << "," << acceleration << "," << x << "\n";
-        };
-
-        tracker.track_lagrangian_kinematics(simulation_duration, timestep, csv_handler);
-
-        std::cout << "Lagrangian wave kinematics tracking complete.\n";
-        return 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Simulation error: " << e.what() << "\n";
-        return 1;
-    }
-}
