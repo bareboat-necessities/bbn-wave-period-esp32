@@ -119,7 +119,7 @@ public:
     
     Eigen::Vector2f velocity(float x_val, float z_val, float t = 0, bool all_points_wet = false) {
         int N = eta.size() - 1;
-        VectorF J = VectorF::LinSpaced(N, 1, N);
+        VectorXf J = VectorXf::LinSpaced(N, 1, N);
         
         Eigen::Vector2f vel = Eigen::Vector2f::Zero();
         
@@ -143,7 +143,7 @@ private:
         float R;
     };
     
-    float trapezoid_integration(const VectorF& y) {
+    float trapezoid_integration(const VectorXf& y) {
         // Convert array operations to explicit scalar form
         int n = y.size();
         if (n == 0) return 0;
@@ -155,14 +155,14 @@ private:
         return sum;
     }
     
-    FentonCoefficients initial_guess(float H, int N, float c, float k, const VectorF& x) {
+    FentonCoefficients initial_guess(float H, int N, float c, float k, const VectorXf& x) {
         FentonCoefficients guess;
-        guess.B = VectorF::Zero(N + 1);
+        guess.B = VectorXf::Zero(N + 1);
         guess.B(0) = c;
         guess.B(1) = -H / (4 * c * k);
         
         // Explicit element-wise cos operation
-        guess.eta = VectorF::Zero(x.size());
+        guess.eta = VectorXf::Zero(x.size());
         for (int i = 0; i < x.size(); i++) {
             guess.eta(i) = 1 + (H/2) * std::cos(k * x(i));
         }
