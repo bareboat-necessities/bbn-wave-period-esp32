@@ -121,7 +121,7 @@ private:
             BigVector f = compute_residuals(params, H, k, D, J_vec, M_vec);
             if (f.norm() < tol) break;
             BigMatrix J_mat = compute_jacobian(params, H, k, D, J_vec, M_vec);
-            params -= relax * J_mat.fullPivLu().solve(f);
+            params -= relax * J_mat.colPivHouseholderQr().solve(f);
         }
 
         // Unpack solution
