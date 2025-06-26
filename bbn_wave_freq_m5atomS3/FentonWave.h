@@ -107,7 +107,7 @@ private:
         FentonCoefficients coeffs;
         coeffs.B = VectorF::Zero();
         coeffs.B[0] = c_guess;
-        if (N >= 1) coeffs.B[1] = -H / (2 * k std::cosh(k * depth));
+        if (N >= 1) coeffs.B[1] = -H / (2 * k * std::cosh(k * depth));
         coeffs.eta = (H / 2) * (k * x.array()).cos().matrix();
         coeffs.Q = 0;
         coeffs.R = 1 + 0.5f * c_guess * c_guess;
