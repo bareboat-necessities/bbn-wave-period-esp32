@@ -274,7 +274,8 @@ private:
 
     // Trapezoidal integration over fixed grid
     float trapezoid_integration(const VectorF& y) const {
-        float dx = length / N;
+        float lambda = length / depth;
+        float dx = lambda / N;
         float sum = 0.5f * (y[0] + y[N]);
         for (int i = 1; i < N; ++i) sum += y[i];
         return sum * dx;
