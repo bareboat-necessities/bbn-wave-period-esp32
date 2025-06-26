@@ -125,6 +125,13 @@ public:
     }
     
 private:
+    struct FentonCoefficients {
+        VectorXd B;
+        VectorXd eta;
+        double Q;
+        double R;
+    };
+    
     double trapezoid_integration(const VectorXd& y) {
         int n = y.size();
         double sum = 0.5 * (y(0) + y(n-1));
@@ -134,19 +141,12 @@ private:
         return sum;
     }
     
-    struct InitialGuess {
-        VectorXd B;
-        double Q;
-        double R;
-        VectorXd eta;
-    };
-    
-    InitialGuess initial_guess(double H, int N, double c, double k, const VectorXd& x) {
-        InitialGuess guess;
+    FentonCoefficients initial_guess(double H, int N, double c, double k, const VectorXd& x) {
+        FentonCoefficients guess;
         guess.B = VectorXd::Zero(N + 1);
         guess.B(0) = c;
         guess.B(1) = -H / (4 * c * k);
-        guess.eta = VectorXd::Ones(x.size()) + H / 2 * (k * x.array()).cos();
+        guess.eta = VectorXd::Ones(x.size()) + (H / 2) * (k * x.array()).cos();
         guess.Q = c;
         guess.R = 1 + 0.5 * c * c;
         return guess;
