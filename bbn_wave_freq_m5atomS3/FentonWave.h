@@ -119,18 +119,19 @@ public:
     
     Eigen::Vector2f velocity(float x_val, float z_val, float t = 0, bool all_points_wet = false) {
         int N = eta.size() - 1;
-        VectorXf J = VectorXf::LinSpaced(N, 1, N);
+        VectorF J = VectorF::LinSpaced(N, 1, N);
         
         Eigen::Vector2f vel = Eigen::Vector2f::Zero();
         
         for (int i = 0; i < N; i++) {
+            // Breaking down operations into scalar steps
             float Jk = J(i) * k;
+            float arg = Jk * (x_val - c * t);
             float term = B(i+1) * Jk / std::cosh(Jk * depth);
             
-            vel(0) += term * std::cos(Jk * (x_val - c * t)) * std::cosh(Jk * z_val);
-            vel(1) += term * std::sin(Jk * (x_val - c * t)) * std::sinh(Jk * z_val);
+            vel(0) += term * std::cos(arg) * std::cosh(Jk * z_val);
+            vel(1) += term * std::sin(arg) * std::sinh(Jk * z_val);
         }
-        
         return vel;
     }
     
