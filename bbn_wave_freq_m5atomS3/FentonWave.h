@@ -88,52 +88,50 @@ private:
             );
         }
     }
-
+    
     FentonCoefficients solve_fenton_equations(int maxiter = 100, float tol = 1e-6f) {
         // Non-dimensionalization
         float H = height / depth;
         float lambda = length / depth;
         k = 2 * M_PI / lambda;
-        float c_guess = std::sqrt(std::tanh(k) / k);
+        float c_guess = std::sqrt(g * depth * std::tanh(k) / k);  // Added g factor
         float D = 1.0f; // Non-dimensional depth
-
+    
         // Coordinate setup
         VectorF J = VectorF::LinSpaced(N+1, 0, N);
         VectorF M = VectorF::LinSpaced(N+1, 0, N);
-        VectorF x = M * lambda / (2 * N);
-
+        VectorF x = (M * lambda / (2 * N)).array();  // Ensure array operation
+    
         // Initial guess (Stokes 1st order solution)
         FentonCoefficients coeffs;
         coeffs.B = VectorF::Zero();
         coeffs.B[0] = c_guess;
-        if (N >= 1) coeffs.B[1] = -H / (4 * c_guess * k);
-
-        coeffs.eta = VectorF::Zero();
-        for (int i = 0; i <= N; ++i) {
-            coeffs.eta[i] = 1 + (H/2) * std::cos(k * x[i]);
-        }
-
-        coeffs.Q = c_guess;
+        if (N >= 1) coeffs.B[1] = -H / (2 * k);  // Fixed coefficient
+    
+        coeffs.eta = VectorF::Ones();  // Initialize to 1
+        coeffs.eta.array() += (H/2) * (k * x.array()).cos();  // Array operation
+    
+        coeffs.Q = 0;  // Initial guess for Q
         coeffs.R = 1 + 0.5f * c_guess * c_guess;
-
+    
         // Newton-Raphson solver
-        BigVector params;
+        BigVector params(2*(N+1)+2);
         params << coeffs.B, coeffs.eta, coeffs.Q, coeffs.R;
-
+    
         for (int iter = 0; iter < maxiter; ++iter) {
             BigVector f = compute_residuals(params, H, k, D, J, M);
             if (f.norm() < tol) break;
-
+    
             BigMatrix J = compute_jacobian(params, H, k, D, J, M);
             params -= relax * J.fullPivLu().solve(f);
         }
-
+    
         // Extract solution
-        coeffs.B = params.template head<N+1>();
-        coeffs.eta = params.template segment<N+1>(N+1);
+        coeffs.B = params.head(N+1);
+        coeffs.eta = params.segment(N+1, N+1);
         coeffs.Q = params[2*(N+1)];
         coeffs.R = params[2*(N+1)+1];
-
+    
         // Scale back to physical units
         scale_to_physical(coeffs);
         return coeffs;
