@@ -10,7 +10,7 @@
 #include <fstream>
 #include <functional>
 
-template<int N>
+template<int N = 3>
 class FentonWave {
 private:
     // Type aliases for Eigen matrices/vectors
@@ -354,7 +354,7 @@ void FentonWave_test() {
     const float dt = 0.1f;       // Time step (s)
     
     // Create 3rd-order wave model
-    FentonWave<3> wave(height, depth, length);
+    FentonWave wave(height, depth, length);
     
     // Output file
     std::ofstream out("wave_data.csv");
