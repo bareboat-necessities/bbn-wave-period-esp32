@@ -31,7 +31,7 @@ public:
     FentonWave(float height, float depth, float length,
                float g = 9.81f, float relax = 0.5f)
         : height(height), depth(depth), length(length),
-          g(g), relax(std::clamp(relax, 0.1f, 1.0f)),
+          g(g), relax(clamp(relax, 0.1f, 1.0f)),
           E(VectorF::Zero()) {
         if (depth <= 0 || length <= 0 || height <= 0)
             throw std::invalid_argument("Physical parameters must be positive");
