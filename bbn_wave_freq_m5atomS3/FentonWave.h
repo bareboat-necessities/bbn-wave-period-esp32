@@ -1,8 +1,10 @@
 #pragma once
 
-/*
-  AI assisted translation into C++ of https://github.com/TormodLandet/raschii/blob/master/raschii/fenton.py
-*/
+// Eigen configuration must come before any Eigen includes
+#define EIGEN_NO_DEBUG
+#define EIGEN_DONT_VECTORIZE
+#define EIGEN_DONT_PARALLELIZE
+#define EIGEN_MAX_ALIGN_BYTES 0
 
 #include <ArduinoEigenDense.h>
 #include <cmath>
@@ -14,13 +16,11 @@
 #include <fstream>
 #include <functional>
 
-using namespace Eigen;
-
 class FentonWave {
 private:
-
-    using VectorXf = Eigen::Matrix<float, Eigen::Dynamic, Eigen::ColMajor, 6, 1>;
-    using MatrixXf = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor, 6, 6>;
+    // Simplified Eigen types
+    using VectorXf = Eigen::Matrix<float, Eigen::Dynamic, 1>;
+    using MatrixXf = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>;
 
     float height;
     float depth;
@@ -42,11 +42,9 @@ private:
     VectorXf B;
     
 public:
-    FentonWave(float height, float depth, float length, int N, float g = 9.81, float relax = 0.5)
+    FentonWave(float height, float depth, float length, int N, float g = 9.81f, float relax = 0.5f)
         : height(height), depth(depth), length(length), order(N), g(g), relax(relax),
-          eta_eps(height / 1e5)  // Initialize in member initializer list
-    {
-        // Compute coefficients
+          eta_eps(height / 1e5f) {
         auto data = fenton_coefficients(height, depth, length, N, g, relax);
         set_data(data);
     }
@@ -59,20 +57,19 @@ public:
     void set_data(const std::map<std::string, VectorXf>& data) {
         eta = data.at("eta");
         x = data.at("x");
-        k = data.at("k")(0);  // Use () instead of [] for Eigen vector access
+        k = data.at("k")(0);
         c = data.at("c")(0);
         cs = c - data.at("Q")(0);
         T = length / c;
         omega = c * k;
         B = data.at("B");
         
-        // Compute cosine series coefficients for elevation
         int N = eta.size() - 1;
         E.resize(N + 1);
         VectorXf J = VectorXf::LinSpaced(N + 1, 0, N);
         
         for (int j = 0; j <= N; j++) {
-            E(j) = trapezoid_integration(eta.array() * (J(j) * J * M_PI / N).array().cos()).matrix();
+            E(j) = trapezoid_integration((eta.array() * (J(j) * J * M_PI / N).array().cos().matrix());
         }
     }
     
@@ -118,11 +115,11 @@ public:
         return -2 * sum / N;
     }
     
-    Vector2f velocity(float x_val, float z_val, float t = 0, bool all_points_wet = false) {
+    Eigen::Vector2f velocity(float x_val, float z_val, float t = 0, bool all_points_wet = false) {
         int N = eta.size() - 1;
         VectorXf J = VectorXf::LinSpaced(N, 1, N);
         
-        Vector2f vel = Vector2f::Zero();
+        Eigen::Vector2f vel = Eigen::Vector2f::Zero();
         
         for (int i = 0; i < N; i++) {
             float Jk = J(i) * k;
@@ -132,7 +129,6 @@ public:
             vel(1) += term * std::sin(Jk * (x_val - c * t)) * std::sinh(Jk * z_val);
         }
         
-        // Air blending would go here if implemented
         return vel;
     }
     
@@ -146,7 +142,7 @@ private:
     
     float trapezoid_integration(const VectorXf& y) {
         int n = y.size();
-        float sum = 0.5 * (y(0) + y(n-1));
+        float sum = 0.5f * (y(0) + y(n-1));
         for (int i = 1; i < n-1; i++) {
             sum += y(i);
         }
@@ -160,7 +156,7 @@ private:
         guess.B(1) = -H / (4 * c * k);
         guess.eta = VectorXf::Ones(x.size()) + (H / 2) * (k * x.array()).cos().matrix();
         guess.Q = c;
-        guess.R = 1 + 0.5 * c * c;
+        guess.R = 1 + 0.5f * c * c;
         return guess;
     }
     
@@ -316,107 +312,3 @@ private:
         return jac;
     }
 };
-
-class WaveSurfaceTracker {
-private:
-    FentonWave wave;
-    float phase_velocity;  // More descriptive than 'c'
-    float wave_number;     // More descriptive than 'k'
-    
-    // Finite difference stencil
-    float eta_prev2 = 0;   // η at t-2Δt
-    float eta_prev = 0;    // η at t-Δt
-    float eta_current = 0; // η at t
-    bool has_prev = false;
-    bool has_prev2 = false;
-
-public:
-    WaveSurfaceTracker(float height, float depth, float length, int order)
-        : wave(height, depth, length, order), 
-          phase_velocity(wave.get_c()),
-          wave_number(wave.get_k()) {}
-
-    void track_lagrangian_kinematics(
-        float duration, 
-        float timestep,
-        std::function<void(
-            float time, 
-            float elevation,
-            float vertical_velocity, 
-            float vertical_acceleration,
-            float horizontal_position)> kinematics_callback) {
-        
-        // Reset tracking state
-        eta_prev2 = eta_prev = eta_current = 0;
-        has_prev = has_prev2 = false;
-
-        for (float time = 0; time <= duration; time += timestep) {
-            float x = phase_velocity * time;
-            float elevation = wave.surface_elevation(x, time);
-            
-            // Update stencil
-            eta_prev2 = eta_prev;
-            eta_prev = eta_current;
-            eta_current = elevation;
-            
-            // Update state tracking
-            has_prev2 = has_prev;
-            has_prev = true;
-
-            // Calculate derivatives
-            float vertical_velocity = 0;
-            float vertical_acceleration = 0;
-            
-            if (has_prev2) {  // Central differences
-                vertical_velocity = (eta_current - eta_prev2) / (2*timestep);
-                vertical_acceleration = (eta_current - 2*eta_prev + eta_prev2) / (timestep*timestep);
-            } else if (has_prev) {  // Forward difference
-                vertical_velocity = (eta_current - eta_prev) / timestep;
-            }
-
-            kinematics_callback(time, elevation, vertical_velocity, 
-                              vertical_acceleration, x);
-        }
-    }
-};
-
-int FentonWave_test() {
-    try {
-        // Wave parameters
-        const float wave_height = 2.0;
-        const float water_depth = 10.0;
-        const float wavelength = 50.0;
-        const int approximation_order = 3;
-
-        // Simulation parameters
-        const float simulation_duration = 20.0;
-        const float timestep = 0.1;
-
-        WaveSurfaceTracker tracker(wave_height, water_depth, 
-                                 wavelength, approximation_order);
-
-        // CSV output handler
-        auto csv_handler = [](float time, float elevation, 
-                            float velocity, float acceleration, float x) {
-            static std::ofstream outfile("wave_kinematics.csv");
-            static bool header_written = false;
-            
-            if (!header_written) {
-                outfile << "Time(s),Elevation(m),Velocity(m/s),Acceleration(m/s²),X(m)\n";
-                header_written = true;
-            }
-            
-            outfile << time << "," << elevation << "," 
-                   << velocity << "," << acceleration << "," << x << "\n";
-        };
-
-        tracker.track_lagrangian_kinematics(simulation_duration, timestep, csv_handler);
-
-        std::cout << "Lagrangian wave kinematics tracking complete.\n";
-        return 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Simulation error: " << e.what() << "\n";
-        return 1;
-    }
-}
-
