@@ -204,8 +204,8 @@ private:
             VectorF C2 = (J * m * M_PI / N).array().cos();
     
             // Derivatives of S1 and C1
-            VectorF dS1_deta = J * k * C1.array();
-            VectorF dC1_deta = J * k * S1.array();
+            VectorF dS1_deta = (J * k).array() * C1.array();
+            VectorF dC1_deta = (J * k).array() * S1.array();
     
             // Velocity components
             float um = -B[0];
