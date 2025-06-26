@@ -83,7 +83,7 @@ private:
         VectorF J = VectorF::LinSpaced(N+1, 0, N);
         for (int j = 0; j <= N; ++j) {
             E[j] = trapezoid_integration(
-                (eta.array() * (J[j] * J.array() * M_PI / N).cos()).matrix()
+                (eta.array() * (J.array() * j * M_PI / N).cos()).matrix()
             );
         }
     }
