@@ -139,8 +139,7 @@ private:
 
     BigVector compute_residuals(const BigVector& params, float H, float k, float D, 
                                const VectorF& J, const VectorF& M) {
-        BigVector res;
-        res.setZero();
+        BigVector res = BigVector::Zero();
     
         VectorF B = params.template head<N+1>();
         VectorF eta = params.template segment<N+1>(N+1);
@@ -149,7 +148,7 @@ private:
     
         // Residual equations (Fenton's equations 14a-b)
         for (int m = 0; m <= N; ++m) {
-            // Precompute trigonometric terms - use only first N elements for B terms
+            // Precompute trigonometric terms
             VectorF Jk_eta = J * k * eta[m];
             VectorF Jk_D = J * k * D;
             VectorF S1 = Jk_eta.array().sinh().array() / Jk_D.array().cosh();
@@ -157,7 +156,7 @@ private:
             VectorF S2 = (J * m * M_PI / N).array().sin();
             VectorF C2 = (J * m * M_PI / N).array().cos();
     
-            // Velocity components - note B[0] is handled separately
+            // Velocity components
             float um = -B[0];
             float vm = 0;
             for (int j = 1; j <= N; ++j) {
@@ -184,8 +183,7 @@ private:
     
     BigMatrix compute_jacobian(const BigVector& params, float H, float k, float D,
                               const VectorF& J, const VectorF& M) {
-        BigMatrix jac;
-        jac.setZero();
+        BigMatrix jac = BigMatrix::Zero();
     
         VectorF B = params.template head<N+1>();
         VectorF eta = params.template segment<N+1>(N+1);
@@ -256,7 +254,8 @@ private:
         // Constraints derivatives
         // df3/deta (mean water level)
         for (int j = 0; j <= N; ++j) {
-            jac(2*(N+1), N+1+j) = (j == 0 || j == N) ? 0.5f/N : 1.0f/N;
+            float weight = (j == 0 || j == N) ? 0.5f : 1.0f;
+            jac(2*(N+1), N+1+j) = weight/N;
         }
     
         // df4/deta (wave height)
