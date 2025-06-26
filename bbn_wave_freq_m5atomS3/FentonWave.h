@@ -376,7 +376,6 @@ public:
     }
 };
 
-/*
 int FentonWave_test() {
     try {
         // Wave parameters
@@ -416,4 +415,4 @@ int FentonWave_test() {
         return 1;
     }
 }
-*/
+
