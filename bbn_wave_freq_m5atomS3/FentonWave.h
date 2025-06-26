@@ -146,7 +146,7 @@ private:
         guess.B = VectorXd::Zero(N + 1);
         guess.B(0) = c;
         guess.B(1) = -H / (4 * c * k);
-        guess.eta = VectorXd::Ones(x.size()) + (H / 2) * (k * x.array()).cos();
+        guess.eta = VectorXd::Ones(x.size()) + (H / 2) * (k * x.array()).cos().matrix();
         guess.Q = c;
         guess.R = 1 + 0.5 * c * c;
         return guess;
