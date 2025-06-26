@@ -1,0 +1,293 @@
+#pragma once
+
+/*
+  AI assisted translation into C++ of https://github.com/TormodLandet/raschii/blob/master/raschii/fenton.py
+*/
+
+#include <ArduinoEigenDense.h>
+
+#include <cmath>
+#include <vector>
+#include <stdexcept>
+#include <string>
+
+using namespace Eigen;
+
+class FentonWave {
+private:
+    double height;
+    double depth;
+    double length;
+    int order;
+    double g;
+    double relax;
+    double eta_eps;
+    
+    // Wave parameters
+    VectorXd eta;
+    VectorXd x;
+    double k;
+    double c;
+    double cs;
+    double T;
+    double omega;
+    VectorXd E;
+    VectorXd B;
+    
+public:
+    FentonWave(double height, double depth, double length, int N, double g = 9.81, double relax = 0.5)
+        : height(height), depth(depth), length(length), order(N), g(g), relax(relax) {
+        
+        // Initialize wave parameters
+        eta_eps = height / 1e5;
+        
+        // Compute coefficients
+        auto data = fenton_coefficients(height, depth, length, N, g, relax);
+        set_data(data);
+    }
+    
+    void set_data(const std::map<std::string, VectorXd>& data) {
+        eta = data.at("eta");
+        x = data.at("x");
+        k = data.at("k")[0];
+        c = data.at("c")[0];
+        cs = c - data.at("Q")[0];
+        T = length / c;
+        omega = c * k;
+        B = data.at("B");
+        
+        // Compute cosine series coefficients for elevation
+        int N = eta.size() - 1;
+        E = VectorXd::Zero(N + 1);
+        VectorXd J = VectorXd::LinSpaced(N + 1, 0, N);
+        
+        for (int j = 0; j <= N; j++) {
+            E(j) = trapezoid_integration(eta.array() * (J(j) * J * M_PI / N).array().cos());
+        }
+    }
+    
+    double stream_function(double x_val, double z_val, double t = 0, const std::string& frame = "b") {
+        int N = eta.size() - 1;
+        VectorXd J = VectorXd::LinSpaced(N, 1, N);
+        
+        double x2 = x_val - c * t;
+        double psi = 0;
+        
+        for (int i = 0; i < N; i++) {
+            double Jk = J(i) * k;
+            psi += B(i+1) * std::sinh(Jk * z_val) / std::cosh(Jk * depth) * std::cos(Jk * x2);
+        }
+        
+        if (frame == "b") {
+            return B(0) * z_val + psi;
+        } else if (frame == "c") {
+            return psi;
+        }
+        return 0;
+    }
+    
+    double surface_elevation(double x_val, double t = 0) {
+        int N = E.size() - 1;
+        VectorXd J = VectorXd::LinSpaced(N + 1, 0, N);
+        
+        double sum = 0;
+        for (int j = 0; j <= N; j++) {
+            sum += E(j) * std::cos(J(j) * k * (x_val - c * t));
+        }
+        return 2 * sum / N;
+    }
+    
+    double surface_slope(double x_val, double t = 0) {
+        int N = E.size() - 1;
+        VectorXd J = VectorXd::LinSpaced(N + 1, 0, N);
+        
+        double sum = 0;
+        for (int j = 0; j <= N; j++) {
+            sum += E(j) * J(j) * k * std::sin(J(j) * k * (x_val - c * t));
+        }
+        return -2 * sum / N;
+    }
+    
+    Vector2d velocity(double x_val, double z_val, double t = 0, bool all_points_wet = false) {
+        int N = eta.size() - 1;
+        VectorXd J = VectorXd::LinSpaced(N, 1, N);
+        
+        Vector2d vel = Vector2d::Zero();
+        
+        for (int i = 0; i < N; i++) {
+            double Jk = J(i) * k;
+            double term = B(i+1) * Jk / std::cosh(Jk * depth);
+            
+            vel(0) += term * std::cos(Jk * (x_val - c * t)) * std::cosh(Jk * z_val);
+            vel(1) += term * std::sin(Jk * (x_val - c * t)) * std::sinh(Jk * z_val);
+        }
+        
+        // Air blending would go here if implemented
+        return vel;
+    }
+    
+private:
+    double trapezoid_integration(const VectorXd& y) {
+        int n = y.size();
+        double sum = 0.5 * (y(0) + y(n-1));
+        for (int i = 1; i < n-1; i++) {
+            sum += y(i);
+        }
+        return sum;
+    }
+    
+    std::map<std::string, VectorXd> fenton_coefficients(
+        double height, double depth, double length, int N, double g, 
+        double relax, int maxiter = 500, double tolerance = 1e-8) {
+        
+        // Non-dimensionalized input
+        double H = height / depth;
+        double lam = length / depth;
+        double k = 2 * M_PI / lam;
+        double c = std::sqrt(std::tanh(k) / k);
+        double D = 1;
+        int N_unknowns = 2 * (N + 1) + 2;
+        
+        VectorXd J = VectorXd::LinSpaced(N, 1, N);
+        VectorXd M = VectorXd::LinSpaced(N + 1, 0, N);
+        VectorXd x = M * lam / (2 * N);
+        
+        // Initial guess
+        auto [B, Q, R, eta] = initial_guess(H, N, c, k, x);
+        
+        // Optimization
+        VectorXd coeffs(N_unknowns);
+        coeffs.head(N + 1) = B;
+        coeffs.segment(N + 1, N + 1) = eta;
+        coeffs(2 * N + 2) = Q;
+        coeffs(2 * N + 3) = R;
+        
+        VectorXd f = func(coeffs, H, k, D, J, M);
+        
+        for (int it = 0; it < maxiter; it++) {
+            MatrixXd jac = fprime(coeffs, H, k, D, J, M);
+            VectorXd delta = jac.fullPivLu().solve(-f);
+            coeffs += delta * relax;
+            f = func(coeffs, H, k, D, J, M);
+            
+            double error = f.array().abs().maxCoeff();
+            double eta_max = coeffs.segment(N + 1, N + 1).maxCoeff();
+            double eta_min = coeffs.segment(N + 1, N + 1).minCoeff();
+            
+            if (error < tolerance) {
+                break;
+            }
+        }
+        
+        // Scale back to physical space
+        B = coeffs.head(N + 1);
+        eta = coeffs.segment(N + 1, N + 1);
+        Q = coeffs(2 * N + 2);
+        R = coeffs(2 * N + 3);
+        
+        B(0) *= std::sqrt(g * depth);
+        B.tail(N) *= std::sqrt(g * depth * depth * depth);
+        
+        std::map<std::string, VectorXd> result;
+        result["x"] = x * depth;
+        result["eta"] = eta * depth;
+        result["B"] = B;
+        result["Q"] = VectorXd::Constant(1, Q * std::sqrt(g * depth * depth * depth));
+        result["R"] = VectorXd::Constant(1, R * g * depth);
+        result["k"] = VectorXd::Constant(1, k / depth);
+        result["c"] = VectorXd::Constant(1, B(0));
+        
+        return result;
+    }
+    
+    std::tuple<VectorXd, double, double, VectorXd> initial_guess(double H, int N, double c, double k, const VectorXd& x) {
+        VectorXd B = VectorXd::Zero(N + 1);
+        B(0) = c;
+        B(1) = -H / (4 * c * k);
+        VectorXd eta = VectorXd::Ones(x.size()) + H / 2 * (k * x.array()).cos();
+        double Q = c;
+        double R = 1 + 0.5 * c * c;
+        return {B, Q, R, eta};
+    }
+    
+    VectorXd func(const VectorXd& coeffs, double H, double k, double D, const VectorXd& J, const VectorXd& M) {
+        int N_unknowns = coeffs.size();
+        int N = J.size();
+        
+        double B0 = coeffs(0);
+        VectorXd B = coeffs.segment(1, N);
+        VectorXd eta = coeffs.segment(N + 1, N + 1);
+        double Q = coeffs(2 * N + 2);
+        double R = coeffs(2 * N + 3);
+        
+        VectorXd f = VectorXd::Zero(N_unknowns);
+        
+        for (int m = 0; m <= N; m++) {
+            VectorXd Jk_eta = J * k * eta(m);
+            VectorXd Jk_D = J * k * D;
+            VectorXd S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
+            VectorXd C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
+            VectorXd S2 = (J * m * M_PI / N).array().sin();
+            VectorXd C2 = (J * m * M_PI / N).array().cos();
+            
+            double um = -B0 + k * (B.array() * C1.array() * C2.array() * J.array()).sum();
+            double vm = k * (B.array() * S1.array() * S2.array() * J.array()).sum();
+            
+            f(m) = -B0 * eta(m) + (B.array() * S1.array() * C2.array()).sum() + Q;
+            f(N + 1 + m) = (um * um + vm * vm) / 2 + eta(m) - R;
+        }
+        
+        f(2 * N + 2) = trapezoid_integration(eta) / N - 1;
+        f(2 * N + 3) = eta(0) - eta(N) - H;
+        
+        return f;
+    }
+    
+    MatrixXd fprime(const VectorXd& coeffs, double H, double k, double D, const VectorXd& J, const VectorXd& M) {
+        int N_unknowns = coeffs.size();
+        int N = J.size();
+        
+        MatrixXd jac = MatrixXd::Zero(N_unknowns, N_unknowns);
+        double B0 = coeffs(0);
+        VectorXd B = coeffs.segment(1, N);
+        VectorXd eta = coeffs.segment(N + 1, N + 1);
+        
+        for (int m = 0; m <= N; m++) {
+            VectorXd Jk_eta = J * k * eta(m);
+            VectorXd Jk_D = J * k * D;
+            VectorXd S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
+            VectorXd C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
+            VectorXd S2 = (J * m * M_PI / N).array().sin();
+            VectorXd C2 = (J * m * M_PI / N).array().cos();
+            
+            VectorXd SC = S1.array() * C2.array();
+            VectorXd SS = S1.array() * S2.array();
+            VectorXd CC = C1.array() * C2.array();
+            VectorXd CS = C1.array() * S2.array();
+            
+            double um = -B0 + k * (B.array() * CC.array() * J.array()).sum();
+            double vm = k * (B.array() * SS.array() * J.array()).sum();
+            
+            jac(m, N + 1 + m) = um;
+            jac.block(m, 0, 1, N + 1) = -eta(m);
+            jac.block(m, 1, 1, N) = SC.transpose();
+            jac(m, 2 * N + 2) = 1;
+            
+            jac(N + 1 + m, N + 1 + m) = 1 + (um * k * k * (B.array() * J.array().square() * SC.array()).sum() + 
+                                             vm * k * k * (B.array() * J.array().square() * CS.array()).sum());
+            jac(N + 1 + m, 2 * N + 3) = -1;
+            jac(N + 1 + m, 0) = -um;
+            jac.block(N + 1 + m, 1, 1, N) = (k * um * J.array() * CC.array() + 
+                                             k * vm * J.array() * SS.array()).transpose();
+        }
+        
+        jac.block(2 * N + 2, N + 1, 1, N + 1) = VectorXd::Constant(N + 1, 1.0 / N).transpose();
+        jac(2 * N + 2, N + 1) = 1.0 / (2 * N);
+        jac(2 * N + 2, 2 * N + 1) = 1.0 / (2 * N);
+        
+        jac(2 * N + 3, N + 1) = 1;
+        jac(2 * N + 3, 2 * N + 1) = -1;
+        
+        return jac;
+    }
+};
