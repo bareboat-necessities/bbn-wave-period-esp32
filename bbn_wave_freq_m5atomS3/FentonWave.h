@@ -5,13 +5,11 @@
 */
 
 #include <ArduinoEigenDense.h>
-
 #include <cmath>
 #include <vector>
 #include <stdexcept>
 #include <string>
 #include <map>
-#include <tuple>
 
 using namespace Eigen;
 
@@ -38,11 +36,9 @@ private:
     
 public:
     FentonWave(double height, double depth, double length, int N, double g = 9.81, double relax = 0.5)
-        : height(height), depth(depth), length(length), order(N), g(g), relax(relax) {
-        
-        // Initialize wave parameters
-        eta_eps = height / 1e5;
-        
+        : height(height), depth(depth), length(length), order(N), g(g), relax(relax),
+          eta_eps(height / 1e5)  // Initialize in member initializer list
+    {
         // Compute coefficients
         auto data = fenton_coefficients(height, depth, length, N, g, relax);
         set_data(data);
@@ -51,16 +47,16 @@ public:
     void set_data(const std::map<std::string, VectorXd>& data) {
         eta = data.at("eta");
         x = data.at("x");
-        k = data.at("k")[0];
-        c = data.at("c")[0];
-        cs = c - data.at("Q")[0];
+        k = data.at("k")(0);  // Use () instead of [] for Eigen vector access
+        c = data.at("c")(0);
+        cs = c - data.at("Q")(0);
         T = length / c;
         omega = c * k;
         B = data.at("B");
         
         // Compute cosine series coefficients for elevation
         int N = eta.size() - 1;
-        E = VectorXd::Zero(N + 1);
+        E.resize(N + 1);
         VectorXd J = VectorXd::LinSpaced(N + 1, 0, N);
         
         for (int j = 0; j <= N; j++) {
