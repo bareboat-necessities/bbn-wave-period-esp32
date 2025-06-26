@@ -118,7 +118,7 @@ public:
         return -2 * sum / N;
     }
     
-    Vector2d velocity(float x_val, float z_val, float t = 0, bool all_points_wet = false) {
+    Vector2f velocity(float x_val, float z_val, float t = 0, bool all_points_wet = false) {
         int N = eta.size() - 1;
         VectorXf J = VectorXf::LinSpaced(N, 1, N);
         
