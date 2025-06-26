@@ -178,7 +178,7 @@ private:
     }
 
     BigMatrix compute_jacobian(const BigVector& params, float H, float k, float D,
-                              const VectorJ& J, const VectorF& M) {
+                              const VectorF& J, const VectorF& M) {
         BigMatrix jac;
         jac.setZero();
 
