@@ -36,14 +36,9 @@
 #include "Mahony_AHRS.h"
 #include "Quaternion.h"
 #include "MinMaxLemire.h"
-//#include "KalmanForWave.h"
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
-//#include "KalmanWaveAdaptiveAlt.h"
 #include "TimeAwareSpikeFilter.h"
-//#include "TimeAwareBandpassFilter.h"
-//#include "HighPassFilters.h"
-//#include "FourthOrderLowPass.h"
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
 #include "WaveFilters.h"
@@ -58,10 +53,6 @@ unsigned long got_samples = 0;
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
 // Basic filters
-//TimeAwareBandpassFilter bpFilter((FREQ_UPPER + FREQ_LOWER) / 2.0f, FREQ_UPPER - FREQ_LOWER, 0ul);  // Create a bandpass filter for 0.02-4 Hz, Center frequency: 2.01 Hz, Bandwidth: 3.98 Hz
-//FourthOrderLowPass lowPassFilter(FREQ_UPPER);
-//HighPassFirstOrderFilter highPassFilter(1.0f / FREQ_LOWER /* period in sec */);
-//HighPassFirstOrderFilter highPassFilterAlt(1.0f / FREQ_LOWER /* period in sec */);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 // frequency tracking
@@ -178,7 +169,6 @@ void read_and_processIMU_data() {
   accel_rotated.z = rotated_a[2];
 
   float a_noisy = (accel_rotated.z - 1.0);  // acceleration in fractions of g
-  //float a_band_passed = lowPassFilter.process(a_noisy, delta_t);
   float a_band_passed = a_noisy; //bpFilter.processWithDelta(a_noisy, delta_t);
   float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
 
@@ -196,7 +186,6 @@ void read_and_processIMU_data() {
   }
   wave_filter.step(a * g_std, delta_t, waveState);
   float heave = waveState.heave;
-  //float heave = highPassFilter.update(waveState.heave, delta_t);
 
   double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
   if (t > warmup_time_sec(useMahony)) {
@@ -355,8 +344,6 @@ void setup(void) {
     default:                  imu_name = "unknown";     break;
   };
   disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
-  //M5.Lcd.setCursor(0, 2);
-  //M5.Lcd.printf("imu: %s\n", imu_name);
 
   if (imu_type == m5::imu_none) {
     for (;;) {
