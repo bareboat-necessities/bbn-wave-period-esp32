@@ -12,9 +12,8 @@
 
 class FentonWave {
 private:
-    // Simplified Eigen types
-    using VectorXf = Eigen::Matrix<float, Eigen::Dynamic, 1>;
-    using MatrixXf = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>;
+    using VectorXf = Eigen::Matrix<float, Eigen::Dynamic, Eigen::ColMajor, 6, 1>;
+    using MatrixXf = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor, 6, 6>;
 
     float height;
     float depth;
