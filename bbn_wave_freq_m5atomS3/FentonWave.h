@@ -101,7 +101,7 @@ private:
 
         VectorF J_vec = VectorF::LinSpaced(N + 1, 0, N);
         VectorF M_vec = VectorF::LinSpaced(N + 1, 0, N);
-        VectorF x = (M_vec * lambda / (2 * N)).array(); // Uniform spatial grid
+        VectorF x = (M_vec.array() * lambda / (2 * N)).matrix(); // Uniform spatial grid
 
         // Initial guess using Stokes 1st order theory
         FentonCoefficients coeffs;
