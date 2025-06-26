@@ -143,8 +143,11 @@ private:
         float R;
     };
     
-    float trapezoid_integration(const VectorXf& y) {
+    float trapezoid_integration(const VectorF& y) {
+        // Convert array operations to explicit scalar form
         int n = y.size();
+        if (n == 0) return 0;
+        
         float sum = 0.5f * (y(0) + y(n-1));
         for (int i = 1; i < n-1; i++) {
             sum += y(i);
