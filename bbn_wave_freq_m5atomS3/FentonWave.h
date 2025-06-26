@@ -373,3 +373,49 @@ public:
         }
     }
 };
+
+void FentonWave_test() {
+    // Wave parameters
+    const float height = 2.0f;   // Wave height (m)
+    const float depth = 10.0f;   // Water depth (m)
+    const float length = 50.0f;  // Wavelength (m)
+    
+    // Simulation parameters
+    const float duration = 20.0f; // Simulation duration (s)
+    const float dt = 0.1f;       // Time step (s)
+    
+    // Create 3rd-order wave model
+    FentonWave<3> wave(height, depth, length);
+    
+    // Output file
+    std::ofstream out("wave_data.csv");
+    out << "Time(s),Displacement(m),Velocity(m/s),Acceleration(m/s²)\n";
+    
+    // Previous values for finite differences
+    float prev_d = 0, prev_prev_d = 0;
+    
+    for (float t = 0; t <= duration; t += dt) {
+        // Current surface elevation at x=0 (floating object position)
+        float d = wave.surface_elevation(0, t);
+        
+        // Calculate velocity and acceleration
+        float v = 0, a = 0;
+        if (t >= 2*dt) {  // Wait until we have enough history
+            v = (d - prev_prev_d) / (2*dt);          // Central difference
+            a = (d - 2*prev_d + prev_prev_d) / (dt*dt); // 2nd derivative
+        } else if (t >= dt) {
+            v = (d - prev_d) / dt;  // Forward difference
+        }
+        
+        // Write to file
+        out << t << "," << d << "," << v << "," << a << "\n";
+        
+        // Update previous values
+        prev_prev_d = prev_d;
+        prev_d = d;
+    }
+    
+    std::cout << "Wave data saved to wave_data.csv\n";
+    std::cout << "Wave period: " << wave.get_T() << "s\n";
+    std::cout << "Phase speed: " << wave.get_c() << "m/s\n";
+}      
