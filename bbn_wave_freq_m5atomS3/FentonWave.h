@@ -308,48 +308,62 @@ private:
 class WaveSurfaceTracker {
 private:
     FentonWave wave;
-    double c;  // Wave phase speed
+    double phase_velocity;  // More descriptive than 'c'
+    double wave_number;     // More descriptive than 'k'
     
-    // Finite difference stencil variables
-    double eta_n2 = 0;  // η at t-2Δt
-    double eta_n1 = 0;  // η at t-Δt
-    double eta_n = 0;   // η at t
-    bool has_n1 = false;
-    bool has_n2 = false;
+    // Finite difference stencil
+    double eta_prev2 = 0;   // η at t-2Δt
+    double eta_prev = 0;    // η at t-Δt
+    double eta_current = 0; // η at t
+    bool has_prev = false;
+    bool has_prev2 = false;
 
 public:
     WaveSurfaceTracker(double height, double depth, double length, int order)
-        : wave(height, depth, length, order), c(wave.get_c()) {}
+        : wave(height, depth, length, order), 
+          phase_velocity(wave.get_c()),
+          wave_number(wave.get_k()) {}
 
-    void calculate_kinematics(double duration, double dt,
-                            std::function<void(double t, double eta, double vel, double accel, double x)> process_surface_data) {
-        // Reset stencil state
-        eta_n2 = eta_n1 = eta_n = 0;
-        has_n1 = has_n2 = false;
+    void track_lagrangian_kinematics(
+        double duration, 
+        double timestep,
+        std::function<void(
+            double time, 
+            double elevation,
+            double vertical_velocity, 
+            double vertical_acceleration,
+            double horizontal_position)> kinematics_callback) {
+        
+        // Reset tracking state
+        eta_prev2 = eta_prev = eta_current = 0;
+        has_prev = has_prev2 = false;
 
-        for (double t = 0; t <= duration; t += dt) {
-            double x = c * t;
-            double eta = wave.surface_elevation(x, t);
+        for (double time = 0; time <= duration; time += timestep) {
+            double x = phase_velocity * time;
+            double elevation = wave.surface_elevation(x, time);
             
-            // Shift stencil values
-            eta_n2 = eta_n1;
-            eta_n1 = eta_n;
-            eta_n = eta;
+            // Update stencil
+            eta_prev2 = eta_prev;
+            eta_prev = eta_current;
+            eta_current = elevation;
             
-            // Update availability flags
-            has_n2 = has_n1;
-            has_n1 = true;
+            // Update state tracking
+            has_prev2 = has_prev;
+            has_prev = true;
 
             // Calculate derivatives
-            double vel = 0, accel = 0;
-            if (has_n2) {  // We have all 3 points for central differences
-                vel = (eta_n - eta_n2) / (2*dt);
-                accel = (eta_n - 2*eta_n1 + eta_n2) / (dt*dt);
-            } else if (has_n1) {  // Only have 2 points
-                vel = (eta_n - eta_n1) / dt;
+            double vertical_velocity = 0;
+            double vertical_acceleration = 0;
+            
+            if (has_prev2) {  // Central differences
+                vertical_velocity = (eta_current - eta_prev2) / (2*timestep);
+                vertical_acceleration = (eta_current - 2*eta_prev + eta_prev2) / (timestep*timestep);
+            } else if (has_prev) {  // Forward difference
+                vertical_velocity = (eta_current - eta_prev) / timestep;
             }
 
-            process_surface_data(t, eta, vel, accel, x);
+            kinematics_callback(time, elevation, vertical_velocity, 
+                              vertical_acceleration, x);
         }
     }
 };
