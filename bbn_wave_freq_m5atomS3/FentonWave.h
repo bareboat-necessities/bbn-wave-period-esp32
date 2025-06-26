@@ -10,19 +10,15 @@ class FentonWave {
 private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
 
-    using VectorF = Eigen::Matrix<float, N + 1, 1>;                // Vector of size N+1
-    using BigVector = Eigen::Matrix<float, StateDim, 1>;          // Newton vector
-    using BigMatrix = Eigen::Matrix<float, StateDim, StateDim>;   // Jacobian matrix
+    using VectorF = Eigen::Matrix<float, N + 1, 1>;
+    using BigVector = Eigen::Matrix<float, StateDim, 1>;
+    using BigMatrix = Eigen::Matrix<float, StateDim, StateDim>;
 
-    // Wave parameters
     float height, depth, length, g, relax;
-
-    // Wave state variables
     VectorF eta, x, B, E;
     float k, c, cs, T, omega;
 
 public:
-    // Constructor: initializes and solves the Fenton equations
     FentonWave(float height, float depth, float length,
                float g = 9.81f, float relax = 0.5f)
         : height(height), depth(depth), length(length),
@@ -31,42 +27,38 @@ public:
         set_coefficients(coeffs);
     }
 
-    // Compute surface elevation η(x, t)
     float surface_elevation(float x_val, float t = 0) const {
         VectorF J;
         J.setLinSpaced(N + 1, 0, N);
-        return (2.0f / N) * (E.array() * (J.array() * k * (x_val - c * t)).cos()).sum();
+        float arg_scale = M_PI / length;
+        return (2.0f / N) * (E.array() * (J.array() * arg_scale * (x_val - c * t)).cos()).sum();
     }
 
-    // Compute horizontal and vertical particle velocities (u, w)
     Eigen::Vector2f velocity(float x_val, float z_val, float t = 0) const {
         Eigen::Vector2f vel = Eigen::Vector2f::Zero();
         for (int j = 1; j <= N; ++j) {
-            float Jk = j * k;
-            float arg = Jk * (x_val - c * t);
-            float denom = std::cosh(Jk * depth);
+            float kj = j * k;
+            float arg = kj * (x_val - c * t);
+            float denom = std::cosh(kj * depth);
             if (denom < 1e-6f) denom = 1e-6f;
-            float term = B[j] * Jk / denom;
-            vel[0] += term * std::cos(arg) * std::cosh(Jk * z_val); // u
-            vel[1] += term * std::sin(arg) * std::sinh(Jk * z_val); // w
+            float term = B[j] * kj / denom;
+            vel[0] += term * std::cos(arg) * std::cosh(kj * z_val); // u
+            vel[1] += term * std::sin(arg) * std::sinh(kj * z_val); // w
         }
         return vel;
     }
 
-    // Getters for wave parameters
     float get_c() const { return c; }
     float get_k() const { return k; }
     float get_T() const { return T; }
     float get_omega() const { return omega; }
 
 private:
-    // Struct to hold solution of Fenton equations
     struct FentonCoefficients {
         VectorF x, eta, B;
         float k, c, Q, R;
     };
 
-    // Set solution coefficients and compute Fourier spectrum of η
     void set_coefficients(const FentonCoefficients& coeffs) {
         eta = coeffs.eta;
         x = coeffs.x;
@@ -77,23 +69,21 @@ private:
         omega = c * k;
         B = coeffs.B;
 
-        // Compute Fourier coefficients E_j = ∫ η(x) cos(jπx/λ) dx
         for (int j = 0; j <= N; ++j) {
             VectorF cosine;
             for (int i = 0; i <= N; ++i)
-                cosine[i] = std::cos(j * PI * x[i] / length);
+                cosine[i] = std::cos(j * M_PI * x[i] / length);
             E[j] = trapezoid_integration(eta.array() * cosine.array());
         }
     }
 
-    // Solve the Fenton equations using Newton-Raphson iteration
     FentonCoefficients solve_fenton_equations(int maxiter = 100, float tol = 1e-6f) {
         float H = height / depth;
         float lambda = length / depth;
-        k = 2 * PI / lambda;
+        float k_nd = 2 * M_PI / lambda;
         float D = 1.0f;
 
-        float c_guess = std::sqrt(g * depth * std::tanh(k * D) / k);
+        float c_guess = std::sqrt(g * depth * std::tanh(k_nd * D) / k_nd);
 
         VectorF grid;
         grid.setLinSpaced(N + 1, 0, N);
@@ -103,8 +93,9 @@ private:
         FentonCoefficients coeffs;
         coeffs.B.setZero();
         coeffs.B[0] = c_guess;
-        if (N >= 1) coeffs.B[1] = -H / (2 * k * std::cosh(k * D));
-        coeffs.eta = (H / 2) * (k * x_nd.array()).cos().matrix();
+        if (N >= 1)
+            coeffs.B[1] = -H / (2 * k_nd * std::cosh(k_nd * D));
+        coeffs.eta = (H / 2) * (2 * M_PI * x_nd.array() / lambda).cos().matrix();
         coeffs.Q = 0;
         coeffs.R = 1 + 0.5f * c_guess * c_guess;
 
@@ -115,12 +106,12 @@ private:
         params[2 * (N + 1) + 1] = coeffs.R;
 
         for (int iter = 0; iter < maxiter; ++iter) {
-            BigVector f = compute_residuals(params, H, k, D, x_nd);
+            BigVector f = compute_residuals(params, H, k_nd, D, x_nd);
             if (!std::isfinite(f.norm()))
                 throw std::runtime_error("Residual diverged: NaN or Inf");
             if (f.norm() < tol) break;
 
-            BigMatrix J = compute_jacobian(params, H, k, D, x_nd);
+            BigMatrix J = compute_jacobian(params, H, k_nd, D, x_nd);
             BigVector delta = J.colPivHouseholderQr().solve(f);
             params -= relax * delta;
         }
@@ -130,14 +121,14 @@ private:
         coeffs.Q = params[2 * (N + 1)];
         coeffs.R = params[2 * (N + 1) + 1];
         coeffs.x = x_phys;
+        coeffs.k = k_nd;
+
         scale_to_physical(coeffs);
         return coeffs;
     }
 
-    // Compute the residual vector for the Fenton equations
     BigVector compute_residuals(const BigVector& params, float H, float k, float D, const VectorF& x_nd) {
-        BigVector res;
-        res.setZero();
+        BigVector res = BigVector::Zero();
 
         VectorF B = params.segment(0, N + 1);
         VectorF eta = params.segment(N + 1, N + 1);
@@ -167,30 +158,24 @@ private:
                 vm += k * B[j] * S1[j] * S2[j] * J[j];
             }
 
-            // Kinematic boundary condition
             res[m] = -B[0] * etam + Q;
             for (int j = 1; j <= N; ++j)
                 res[m] += B[j] * S1[j] * C2[j];
 
-            // Dynamic boundary condition
             res[N + 1 + m] = 0.5f * (um * um + vm * vm) + etam - R;
         }
 
-        // Constraint: mean surface elevation is zero
+        // Mean elevation constraint
         res[2 * (N + 1)] = trapezoid_integration(eta) / length;
 
-        // Constraint: total wave height equals input H
-        float eta_max = eta.maxCoeff();
-        float eta_min = eta.minCoeff();
-        res[2 * (N + 1) + 1] = eta_max - eta_min - H;
+        // Wave height constraint using crest and trough
+        res[2 * (N + 1) + 1] = eta[0] - eta[N / 2] - H;
 
         return res;
     }
 
-    // Compute the Jacobian matrix of the residual vector
     BigMatrix compute_jacobian(const BigVector& params, float H, float k, float D, const VectorF& x_nd) {
-        BigMatrix Jmat;
-        Jmat.setZero();
+        BigMatrix Jmat = BigMatrix::Zero();
 
         VectorF B = params.segment(0, N + 1);
         VectorF eta = params.segment(N + 1, N + 1);
@@ -249,28 +234,23 @@ private:
             Jmat(2 * (N + 1), N + 1 + j) = w * dx / length;
         }
 
-        int max_idx = 0, min_idx = 0;
-        eta.maxCoeff(&max_idx);
-        eta.minCoeff(&min_idx);
-        Jmat(2 * (N + 1) + 1, N + 1 + max_idx) = 1.0f;
-        Jmat(2 * (N + 1) + 1, N + 1 + min_idx) = -1.0f;
+        Jmat(2 * (N + 1) + 1, N + 1 + 0) = 1.0f;
+        Jmat(2 * (N + 1) + 1, N + 1 + N / 2) = -1.0f;
 
         return Jmat;
     }
 
-    // Scale solution from nondimensional to physical units
     void scale_to_physical(FentonCoefficients& coeffs) {
         coeffs.B[0] *= std::sqrt(g * depth);
-        coeffs.B.tail(N) *= std::sqrt(g * depth * depth * depth);
+        coeffs.B.tail(N) *= std::sqrt(g * std::pow(depth, 3));
         coeffs.eta *= depth;
         coeffs.x *= depth;
         coeffs.k /= depth;
         coeffs.c = coeffs.B[0];
-        coeffs.Q *= std::sqrt(g * depth * depth * depth);
+        coeffs.Q *= std::sqrt(g * std::pow(depth, 3));
         coeffs.R *= g * depth;
     }
 
-    // Trapezoidal integration over uniformly spaced grid
     float trapezoid_integration(const Eigen::Array<float, N + 1, 1>& y) const {
         float dx = length / N;
         float sum = 0.5f * (y[0] + y[N]);
@@ -279,14 +259,12 @@ private:
     }
 };
 
-// Tracks the Lagrangian vertical kinematics of the free surface
+// Tracks vertical surface motion at the crest
 template<int N = 3>
 class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;
-    float phase_velocity;
-    float wave_number;
-
+    float phase_velocity, wave_number;
     float eta_prev2 = 0, eta_prev = 0, eta_current = 0;
     bool has_prev = false, has_prev2 = false;
 
