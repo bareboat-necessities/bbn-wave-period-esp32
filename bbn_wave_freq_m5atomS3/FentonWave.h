@@ -149,7 +149,7 @@ private:
         // Residual equations (Fenton's equations 14a-b)
         for (int m = 0; m <= N; ++m) {
             // Precompute trigonometric terms
-            VectorF Jk_eta = J_vec * k * eta[m];
+            VectorF Jk_eta = (J_vec * k).cwiseProduct(eta[m]).eval();
             VectorF Jk_D = J_vec * k * D;
             VectorF S1 = Jk_eta.array().sinh().array() / Jk_D.array().cosh();
             VectorF C1 = Jk_eta.array().cosh().array() / Jk_D.array().cosh();
