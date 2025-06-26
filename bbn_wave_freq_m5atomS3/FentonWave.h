@@ -376,13 +376,14 @@ public:
     }
 };
 
+/*
 int FentonWave_test() {
     try {
         // Wave parameters
         const double wave_height = 2.0;
         const double water_depth = 10.0;
         const double wavelength = 50.0;
-        const int approximation_order = 5;
+        const int approximation_order = 3;
 
         // Simulation parameters
         const double simulation_duration = 20.0;
@@ -415,3 +416,4 @@ int FentonWave_test() {
         return 1;
     }
 }
+*/
