@@ -8,6 +8,11 @@
 #include <limits>
 #include <algorithm>
 
+template <typename T>
+constexpr const T& clamp(const T& val, const T& low, const T& high) {
+    return (val < low) ? low : (val > high) ? high : val;
+}
+
 /**
  * @brief Nonlinear Stokes-type wave solver using Fenton's method.
  *
