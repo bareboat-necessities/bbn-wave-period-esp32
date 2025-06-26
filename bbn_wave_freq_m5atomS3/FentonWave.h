@@ -304,3 +304,52 @@ private:
         return jac;
     }
 };
+
+class WaveSurfaceTracker {
+private:
+    FentonWave wave;
+    double c;  // Wave phase speed
+    
+    // Finite difference stencil variables
+    double eta_n2 = 0;  // η at t-2Δt
+    double eta_n1 = 0;  // η at t-Δt
+    double eta_n = 0;   // η at t
+    bool has_n1 = false;
+    bool has_n2 = false;
+
+public:
+    WaveSurfaceTracker(double height, double depth, double length, int order)
+        : wave(height, depth, length, order), c(wave.get_c()) {}
+
+    void calculate_kinematics(double duration, double dt,
+                            std::function<void(double t, double eta, double vel, double accel, double x)> process_surface_data) {
+        // Reset stencil state
+        eta_n2 = eta_n1 = eta_n = 0;
+        has_n1 = has_n2 = false;
+
+        for (double t = 0; t <= duration; t += dt) {
+            double x = c * t;
+            double eta = wave.surface_elevation(x, t);
+            
+            // Shift stencil values
+            eta_n2 = eta_n1;
+            eta_n1 = eta_n;
+            eta_n = eta;
+            
+            // Update availability flags
+            has_n2 = has_n1;
+            has_n1 = true;
+
+            // Calculate derivatives
+            double vel = 0, accel = 0;
+            if (has_n2) {  // We have all 3 points for central differences
+                vel = (eta_n - eta_n2) / (2*dt);
+                accel = (eta_n - 2*eta_n1 + eta_n2) / (dt*dt);
+            } else if (has_n1) {  // Only have 2 points
+                vel = (eta_n - eta_n1) / dt;
+            }
+
+            process_surface_data(t, eta, vel, accel, x);
+        }
+    }
+};
