@@ -18,6 +18,10 @@ using namespace Eigen;
 
 class FentonWave {
 private:
+
+    using VectorXf = Eigen::Matrix<float, Eigen::Dynamic, 1, 0, 20, 1>;
+    using MatrixXf = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, 0, 20, 20>;
+
     float height;
     float depth;
     float length;
