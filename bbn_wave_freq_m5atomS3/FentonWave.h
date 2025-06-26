@@ -140,7 +140,7 @@ private:
     }
 
     BigVector compute_residuals(const BigVector& params, float H, float k, float D, 
-                               const VectorJ& J, const VectorF& M) {
+                               const VectorF& J, const VectorF& M) {
         BigVector res;
         res.setZero();
 
