@@ -343,6 +343,7 @@ public:
     }
 };
 
+/*
 void FentonWave_test() {
     // Wave parameters
     const float height = 2.0f;   // Wave height (m)
@@ -371,3 +372,4 @@ void FentonWave_test() {
 
     std::cout << "Wave data saved to wave_data.csv\n";
 }
+*/
