@@ -46,7 +46,12 @@ public:
         auto data = fenton_coefficients(height, depth, length, N, g, relax);
         set_data(data);
     }
-    
+
+    double get_c() const { return c; }
+    double get_k() const { return k; }
+    double get_T() const { return T; }
+    double get_omega() const { return omega; }
+
     void set_data(const std::map<std::string, VectorXd>& data) {
         eta = data.at("eta");
         x = data.at("x");
