@@ -1,11 +1,5 @@
 #pragma once
 
-// Eigen configuration must come before any Eigen includes
-#define EIGEN_NO_DEBUG
-#define EIGEN_DONT_VECTORIZE
-#define EIGEN_DONT_PARALLELIZE
-#define EIGEN_MAX_ALIGN_BYTES 0
-
 #include <ArduinoEigenDense.h>
 #include <cmath>
 #include <vector>
