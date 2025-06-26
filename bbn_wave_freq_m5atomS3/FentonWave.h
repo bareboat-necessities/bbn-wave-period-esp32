@@ -155,12 +155,18 @@ private:
         return sum;
     }
     
-    FentonCoefficients initial_guess(float H, int N, float c, float k, const VectorXf& x) {
+    FentonCoefficients initial_guess(float H, int N, float c, float k, const VectorF& x) {
         FentonCoefficients guess;
-        guess.B = VectorXf::Zero(N + 1);
+        guess.B = VectorF::Zero(N + 1);
         guess.B(0) = c;
         guess.B(1) = -H / (4 * c * k);
-        guess.eta = VectorXf::Ones(x.size()) + (H / 2) * (k * x.array()).cos().matrix();
+        
+        // Explicit element-wise cos operation
+        guess.eta = VectorF::Zero(x.size());
+        for (int i = 0; i < x.size(); i++) {
+            guess.eta(i) = 1 + (H/2) * std::cos(k * x(i));
+        }
+        
         guess.Q = c;
         guess.R = 1 + 0.5f * c * c;
         return guess;
