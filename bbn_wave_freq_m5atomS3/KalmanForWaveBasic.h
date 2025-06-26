@@ -340,7 +340,6 @@ private:
             // Mahalanobis gating
             float mahalanobis_distance_sq = y.transpose() * Sz_inv * y;
             const float GATING_THRESHOLD = 13.0f;  // low rejection rate for 2D
-
             if (mahalanobis_distance_sq < GATING_THRESHOLD) {
                 // Accept correction
                 Matrix42f K = P * H_special.transpose() * Sz_inv;
