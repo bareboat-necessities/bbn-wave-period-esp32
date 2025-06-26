@@ -1,5 +1,7 @@
 #include "FentonWave.h"
 
+#include <iostream>
+
 template class FentonWave<3>;
 template class WaveSurfaceTracker<3>;
 
