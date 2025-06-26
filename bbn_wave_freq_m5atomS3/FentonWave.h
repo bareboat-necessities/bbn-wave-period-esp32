@@ -95,11 +95,13 @@ public:
     
     float surface_elevation(float x_val, float t = 0) {
         int N = E.size() - 1;
-        VectorXf J = VectorXf::LinSpaced(N + 1, 0, N);
+        VectorF J = VectorF::LinSpaced(N + 1, 0, N);
         
         float sum = 0;
         for (int j = 0; j <= N; j++) {
-            sum += E(j) * std::cos(J(j) * k * (x_val - c * t));
+            // Explicit conversion to scalar operation
+            float theta = J(j) * k * (x_val - c * t);
+            sum += E(j) * std::cos(theta);
         }
         return 2 * sum / N;
     }
