@@ -143,51 +143,57 @@ private:
                                const VectorF& J, const VectorF& M) {
         BigVector res;
         res.setZero();
-
+    
         VectorF B = params.template head<N+1>();
         VectorF eta = params.template segment<N+1>(N+1);
         float Q = params[2*(N+1)];
         float R = params[2*(N+1)+1];
-
+    
         // Residual equations (Fenton's equations 14a-b)
         for (int m = 0; m <= N; ++m) {
-            // Precompute trigonometric terms
-            VectorJ J_tail = J.template tail<N>().template cast<float>();
-            VectorF Jk_eta = J_tail.array() * k * eta[m];
+            // Precompute trigonometric terms - use only first N elements for B terms
+            VectorF Jk_eta = J * k * eta[m];
             VectorF Jk_D = J * k * D;
             VectorF S1 = Jk_eta.array().sinh().array() / Jk_D.array().cosh();
             VectorF C1 = Jk_eta.array().cosh().array() / Jk_D.array().cosh();
             VectorF S2 = (J * m * M_PI / N).array().sin();
             VectorF C2 = (J * m * M_PI / N).array().cos();
-
-            // Velocity components
-            float um = -B[0] + k * (B.tail(N).array() * C1.array() * C2.array() * J.array()).sum();
-            float vm = k * (B.tail(N).array() * S1.array() * S2.array() * J.array()).sum();
-
+    
+            // Velocity components - note B[0] is handled separately
+            float um = -B[0];
+            float vm = 0;
+            for (int j = 1; j <= N; ++j) {
+                um += k * B[j] * C1[j] * C2[j] * J[j];
+                vm += k * B[j] * S1[j] * S2[j] * J[j];
+            }
+    
             // Stream function residual (Eq. 14a)
-            res[m] = -B[0] * eta[m] + (B.tail(N).array() * S1.array() * C2.array()).sum() + Q;
-
+            res[m] = -B[0] * eta[m] + Q;
+            for (int j = 1; j <= N; ++j) {
+                res[m] += B[j] * S1[j] * C2[j];
+            }
+    
             // Bernoulli residual (Eq. 14b)
             res[N+1+m] = 0.5f * (um*um + vm*vm) + eta[m] - R;
         }
-
+    
         // Constraints
         res[2*(N+1)] = trapezoid_integration(eta)/N - 1.0f;  // Mean water level
         res[2*(N+1)+1] = eta[0] - eta[N] - H;               // Wave height
-
+    
         return res;
     }
-
+    
     BigMatrix compute_jacobian(const BigVector& params, float H, float k, float D,
                               const VectorF& J, const VectorF& M) {
         BigMatrix jac;
         jac.setZero();
-
+    
         VectorF B = params.template head<N+1>();
         VectorF eta = params.template segment<N+1>(N+1);
         float Q = params[2*(N+1)];
         float R = params[2*(N+1)+1];
-
+    
         for (int m = 0; m <= N; ++m) {
             // Precompute trigonometric terms
             VectorF Jk_eta = J * k * eta[m];
@@ -196,60 +202,69 @@ private:
             VectorF C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
             VectorF S2 = (J * m * M_PI / N).array().sin();
             VectorF C2 = (J * m * M_PI / N).array().cos();
-
+    
             // Derivatives of S1 and C1
             VectorF dS1_deta = J * k * C1.array();
             VectorF dC1_deta = J * k * S1.array();
-
-            // Velocity components and their derivatives
-            float um = -B[0] + k * (B.tail(N).array() * C1.array() * C2.array() * J.array()).sum();
-            float vm = k * (B.tail(N).array() * S1.array() * S2.array() * J.array()).sum();
-
+    
+            // Velocity components
+            float um = -B[0];
+            float vm = 0;
+            for (int j = 1; j <= N; ++j) {
+                um += k * B[j] * C1[j] * C2[j] * J[j];
+                vm += k * B[j] * S1[j] * S2[j] * J[j];
+            }
+    
             // --- df1/dB --- (Stream function derivatives)
-            // df1/dB0
-            jac(m, 0) = -eta[m];
+            jac(m, 0) = -eta[m];  // df1/dB0
             
             // df1/dBj (j=1..N)
             for (int j = 1; j <= N; ++j) {
-                jac(m, j) = S1[j-1] * C2[j-1];
+                jac(m, j) = S1[j] * C2[j];
             }
-
+    
             // df1/deta_m
-            jac(m, N+1+m) = (B.tail(N).array() * dS1_deta.array() * C2.array()).sum();
-
+            float dS1_sum = 0;
+            for (int j = 1; j <= N; ++j) {
+                dS1_sum += B[j] * dS1_deta[j] * C2[j];
+            }
+            jac(m, N+1+m) = dS1_sum;
+    
             // df1/dQ
             jac(m, 2*(N+1)) = 1.0f;
-
+    
             // --- df2/dB --- (Bernoulli derivatives)
-            // df2/dB0
-            jac(N+1+m, 0) = -um;
-
+            jac(N+1+m, 0) = -um;  // df2/dB0
+            
             // df2/dBj (j=1..N)
             for (int j = 1; j <= N; ++j) {
-                float term1 = um * k * C1[j-1] * C2[j-1] * J[j-1];
-                float term2 = vm * k * S1[j-1] * S2[j-1] * J[j-1];
+                float term1 = um * k * C1[j] * C2[j] * J[j];
+                float term2 = vm * k * S1[j] * S2[j] * J[j];
                 jac(N+1+m, j) = term1 + term2;
             }
-
+    
             // df2/deta_m
-            float sum1 = (B.tail(N).array() * dC1_deta.array() * C2.array() * J.array()).sum();
-            float sum2 = (B.tail(N).array() * dS1_deta.array() * S2.array() * J.array()).sum();
+            float sum1 = 0, sum2 = 0;
+            for (int j = 1; j <= N; ++j) {
+                sum1 += B[j] * dC1_deta[j] * C2[j] * J[j];
+                sum2 += B[j] * dS1_deta[j] * S2[j] * J[j];
+            }
             jac(N+1+m, N+1+m) = um * k * sum1 + vm * k * sum2 + 1.0f;
-
+    
             // df2/dR
             jac(N+1+m, 2*(N+1)+1) = -1.0f;
         }
-
+    
         // Constraints derivatives
         // df3/deta (mean water level)
         for (int j = 0; j <= N; ++j) {
             jac(2*(N+1), N+1+j) = (j == 0 || j == N) ? 0.5f/N : 1.0f/N;
         }
-
+    
         // df4/deta (wave height)
         jac(2*(N+1)+1, N+1) = 1.0f;    // eta[0]
-        jac(2*(N+1)+1, 2*(N+1)) = -1.0f; // eta[N]
-
+        jac(2*(N+1)+1, 2*N+1) = -1.0f; // eta[N]
+    
         return jac;
     }
 
