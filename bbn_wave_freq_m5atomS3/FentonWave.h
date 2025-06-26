@@ -284,7 +284,7 @@ private:
     }
 };
 
-template<int N>
+template<int N = 3>
 class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;
