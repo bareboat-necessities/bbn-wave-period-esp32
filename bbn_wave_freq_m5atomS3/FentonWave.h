@@ -13,306 +13,260 @@
 template<int N>
 class FentonWave {
 private:
-    // Fixed-size Eigen types parameterized by N
-    using VectorF = Eigen::Matrix<float, N+1, 1>;  // N+1 elements (0 to N)
-    using MatrixF = Eigen::Matrix<float, N+1, N+1>;
-    using VectorJ = Eigen::Matrix<float, N, 1>;    // N elements (1 to N)
+    // Type aliases for Eigen matrices/vectors
+    using VectorF = Eigen::Matrix<float, N+1, 1>;  // Vector of size N+1
+    using VectorJ = Eigen::Matrix<float, N, 1>;    // Vector of size N
+    using MatrixF = Eigen::Matrix<float, N+1, N+1>; // Matrix of size (N+1)x(N+1)
+    using BigVector = Eigen::Matrix<float, 2*(N+1)+2, 1>; // For Newton solver
+    using BigMatrix = Eigen::Matrix<float, 2*(N+1)+2, 2*(N+1)+2>; // Jacobian
 
-    float height;
-    float depth;
-    float length;
-    float g;
-    float relax;
-    float eta_eps;
-    
     // Wave parameters
-    VectorF eta;
-    VectorF x;
-    float k;
-    float c;
-    float cs;
-    float T;
-    float omega;
-    VectorF B;
-    VectorF E;
+    float height, depth, length, g, relax, eta_eps;
     
+    // Wave state variables
+    VectorF eta, x, B, E;
+    float k, c, cs, T, omega;
+
 public:
-    FentonWave(float height, float depth, float length, float g = 9.81f, float relax = 0.5f)
-        : height(height), depth(depth), length(length), g(g), relax(relax),
-          eta_eps(height / 1e5f) {
+    FentonWave(float height, float depth, float length, 
+              float g = 9.81f, float relax = 0.5f)
+        : height(height), depth(depth), length(length), 
+          g(g), relax(relax), eta_eps(height / 1e5f) {
         static_assert(N >= 1, "Wave order N must be at least 1");
-        auto data = fenton_coefficients(height, depth, length, g, relax);
-        set_data(data);
+        auto coeffs = solve_fenton_equations();
+        set_coefficients(coeffs);
     }
 
+    // Wave kinematics functions
+    float surface_elevation(float x_val, float t = 0) const {
+        VectorF J = VectorF::LinSpaced(N+1, 0, N);
+        return (2.0f/N) * (E.array() * (J.array() * k * (x_val - c * t)).cos()).sum();
+    }
+
+    Eigen::Vector2f velocity(float x_val, float z_val, float t = 0) const {
+        VectorJ J = VectorJ::LinSpaced(N, 1, N);
+        Eigen::Vector2f vel = Eigen::Vector2f::Zero();
+        
+        for (int i = 0; i < N; ++i) {
+            float Jk = J[i] * k;
+            float arg = Jk * (x_val - c * t);
+            float term = B[i+1] * Jk / std::cosh(Jk * depth);
+            vel[0] += term * std::cos(arg) * std::cosh(Jk * z_val);
+            vel[1] += term * std::sin(arg) * std::sinh(Jk * z_val);
+        }
+        return vel;
+    }
+
+    // Getters for wave parameters
     float get_c() const { return c; }
     float get_k() const { return k; }
     float get_T() const { return T; }
     float get_omega() const { return omega; }
 
-    void set_data(const std::map<std::string, VectorF>& data) {
-        eta = data.at("eta");
-        x = data.at("x");
-        k = data.at("k")(0);
-        c = data.at("c")(0);
-        cs = c - data.at("Q")(0);
-        T = length / c;
-        omega = c * k;
-        B = data.at("B");
-        
-        E.resize(N + 1);
-        VectorF J = VectorF::LinSpaced(N + 1, 0, N);
-        
-        for (int j = 0; j <= N; j++) {
-            E(j) = trapezoid_integration((eta.array() * (J(j) * J * M_PI / N).array().cos()).matrix());
-        }
-    }
-    
-    float stream_function(float x_val, float z_val, float t = 0, const std::string& frame = "b") const {
-        VectorJ J = VectorJ::LinSpaced(N, 1, N);
-        
-        float x2 = x_val - c * t;
-        float psi = 0;
-        
-        for (int i = 0; i < N; i++) {
-            float Jk = J(i) * k;
-            psi += B(i+1) * std::sinh(Jk * z_val) / std::cosh(Jk * depth) * std::cos(Jk * x2);
-        }
-        
-        if (frame == "b") {
-            return B(0) * z_val + psi;
-        } else if (frame == "c") {
-            return psi;
-        }
-        return 0;
-    }
-    
-    float surface_elevation(float x_val, float t = 0) const {
-        VectorF J = VectorF::LinSpaced(N + 1, 0, N);
-        
-        float sum = 0;
-        for (int j = 0; j <= N; j++) {
-            float theta = J(j) * k * (x_val - c * t);
-            sum += E(j) * std::cos(theta);
-        }
-        return 2 * sum / N;
-    }
-    
-    float surface_slope(float x_val, float t = 0) const {
-        VectorF J = VectorF::LinSpaced(N + 1, 0, N);
-        
-        float sum = 0;
-        for (int j = 0; j <= N; j++) {
-            sum += E(j) * J(j) * k * std::sin(J(j) * k * (x_val - c * t));
-        }
-        return -2 * sum / N;
-    }
-    
-    Eigen::Vector2f velocity(float x_val, float z_val, float t = 0, bool all_points_wet = false) const {
-        VectorJ J = VectorJ::LinSpaced(N, 1, N);
-        
-        Eigen::Vector2f vel = Eigen::Vector2f::Zero();
-        
-        for (int i = 0; i < N; i++) {
-            float Jk = J(i) * k;
-            float arg = Jk * (x_val - c * t);
-            float term = B(i+1) * Jk / std::cosh(Jk * depth);
-            
-            vel(0) += term * std::cos(arg) * std::cosh(Jk * z_val);
-            vel(1) += term * std::sin(arg) * std::sinh(Jk * z_val);
-        }
-        return vel;
-    }
-    
 private:
     struct FentonCoefficients {
-        VectorF B;
-        VectorF eta;
-        float Q;
-        float R;
+        VectorF x, eta, B;
+        float k, c, Q, R;
     };
-    
-    float trapezoid_integration(const VectorF& y) const {
-        float sum = 0.5f * (y(0) + y(N));
-        for (int i = 1; i < N; i++) {
-            sum += y(i);
+
+    void set_coefficients(const FentonCoefficients& coeffs) {
+        eta = coeffs.eta;
+        x = coeffs.x;
+        k = coeffs.k;
+        c = coeffs.c;
+        cs = c - coeffs.Q;
+        T = length / c;
+        omega = c * k;
+        B = coeffs.B;
+
+        // Compute Fourier coefficients E
+        E.resize(N+1);
+        VectorF J = VectorF::LinSpaced(N+1, 0, N);
+        for (int j = 0; j <= N; ++j) {
+            E[j] = trapezoid_integration(
+                (eta.array() * (J[j] * J.array() * M_PI / N).cos()).matrix()
+            );
         }
-        return sum;
     }
-    
-    FentonCoefficients initial_guess(float H, float c, float k, const VectorF& x) const {
-        FentonCoefficients guess;
-        guess.B = VectorF::Zero();
-        guess.B(0) = c;
-        if (N >= 1) {
-            guess.B(1) = -H / (4 * c * k);
-        }
-        
-        guess.eta = VectorF::Zero();
-        for (int i = 0; i <= N; i++) {
-            guess.eta(i) = 1 + (H/2) * std::cos(k * x(i));
-        }
-        
-        guess.Q = c;
-        guess.R = 1 + 0.5f * c * c;
-        return guess;
-    }
-    
-    std::map<std::string, VectorF> fenton_coefficients(
-        float height, float depth, float length, float g, 
-        float relax, int maxiter = 500, float tolerance = 1e-8) {
-        
-        // Non-dimensionalized input
+
+    FentonCoefficients solve_fenton_equations(int maxiter = 100, float tol = 1e-6f) {
+        // Non-dimensionalization
         float H = height / depth;
-        float lam = length / depth;
-        float k = 2 * M_PI / lam;
-        float c = std::sqrt(std::tanh(k) / k);
-        float D = 1;
-        constexpr int N_unknowns = 2 * (N + 1) + 2;
-        
+        float lambda = length / depth;
+        k = 2 * M_PI / lambda;
+        float c_guess = std::sqrt(std::tanh(k) / k);
+        float D = 1.0f; // Non-dimensional depth
+
+        // Coordinate setup
         VectorJ J = VectorJ::LinSpaced(N, 1, N);
-        VectorF M = VectorF::LinSpaced(N + 1, 0, N);
-        VectorF x = M * lam / (2 * N);
-        
-        // Initial guess
-        FentonCoefficients guess = initial_guess(H, c, k, x);
-        VectorF B = guess.B;
-        float Q = guess.Q;
-        float R = guess.R;
-        VectorF eta = guess.eta;
-        
-        // Optimization
-        Eigen::Matrix<float, N_unknowns, 1> coeffs;
-        coeffs.setZero();
-        coeffs.template head<N + 1>() = B;
-        coeffs.template segment<N + 1>(N + 1) = eta;
-        coeffs(2 * (N + 1)) = Q;
-        coeffs(2 * (N + 1) + 1) = R;
-        
-        Eigen::Matrix<float, N_unknowns, 1> f = func(coeffs, H, k, D, J, M);
-        
-        for (int it = 0; it < maxiter; it++) {
-            Eigen::Matrix<float, N_unknowns, N_unknowns> jac = fprime(coeffs, H, k, D, J, M);
-            Eigen::Matrix<float, N_unknowns, 1> delta = jac.fullPivLu().solve(-f);
-            coeffs += delta * relax;
-            f = func(coeffs, H, k, D, J, M);
-            
-            float error = f.array().abs().maxCoeff();
-            float eta_max = coeffs.template segment<N + 1>(N + 1).maxCoeff();
-            float eta_min = coeffs.template segment<N + 1>(N + 1).minCoeff();
-            
-            if (error < tolerance) {
-                break;
-            }
+        VectorF M = VectorF::LinSpaced(N+1, 0, N);
+        VectorF x = M * lambda / (2 * N);
+
+        // Initial guess (Stokes 1st order solution)
+        FentonCoefficients coeffs;
+        coeffs.B = VectorF::Zero();
+        coeffs.B[0] = c_guess;
+        if (N >= 1) coeffs.B[1] = -H / (4 * c_guess * k);
+
+        coeffs.eta = VectorF::Zero();
+        for (int i = 0; i <= N; ++i) {
+            coeffs.eta[i] = 1 + (H/2) * std::cos(k * x[i]);
         }
-        
-        // Scale back to physical space
-        B = coeffs.template head<N + 1>();
-        eta = coeffs.template segment<N + 1>(N + 1);
-        Q = coeffs(2 * (N + 1));
-        R = coeffs(2 * (N + 1) + 1);
-        
-        B(0) *= std::sqrt(g * depth);
-        B.template tail<N>() *= std::sqrt(g * depth * depth * depth);
-        
-        std::map<std::string, VectorF> result;
-        result["x"] = x * depth;
-        result["eta"] = eta * depth;
-        result["B"] = B;
-        result["Q"] = VectorF::Constant(1, Q * std::sqrt(g * depth * depth * depth));
-        result["R"] = VectorF::Constant(1, R * g * depth);
-        result["k"] = VectorF::Constant(1, k / depth);
-        result["c"] = VectorF::Constant(1, B(0));
-        
-        return result;
+
+        coeffs.Q = c_guess;
+        coeffs.R = 1 + 0.5f * c_guess * c_guess;
+
+        // Newton-Raphson solver
+        BigVector params;
+        params << coeffs.B, coeffs.eta, coeffs.Q, coeffs.R;
+
+        for (int iter = 0; iter < maxiter; ++iter) {
+            BigVector f = compute_residuals(params, H, k, D, J, M);
+            if (f.norm() < tol) break;
+
+            BigMatrix J = compute_jacobian(params, H, k, D, J, M);
+            params -= relax * J.fullPivLu().solve(f);
+        }
+
+        // Extract solution
+        coeffs.B = params.template head<N+1>();
+        coeffs.eta = params.template segment<N+1>(N+1);
+        coeffs.Q = params[2*(N+1)];
+        coeffs.R = params[2*(N+1)+1];
+
+        // Scale back to physical units
+        scale_to_physical(coeffs);
+        return coeffs;
     }
-    
-    Eigen::Matrix<float, 2*(N+1)+2, 1> func(
-        const Eigen::Matrix<float, 2*(N+1)+2, 1>& coeffs, 
-        float H, float k, float D, const VectorJ& J, const VectorF& M) const {
-        
-        Eigen::Matrix<float, 2*(N+1)+2, 1> f = Eigen::Matrix<float, 2*(N+1)+2, 1>::Zero();
-        
-        float B0 = coeffs(0);
-        VectorF B = coeffs.template segment<N + 1>(0);  // B includes B0
-        VectorF eta = coeffs.template segment<N + 1>(N + 1);
-        float Q = coeffs(2 * (N + 1));
-        float R = coeffs(2 * (N + 1) + 1);
-        
-        for (int m = 0; m <= N; m++) {
-            VectorF Jk_eta = J * k * eta(m);
+
+    BigVector compute_residuals(const BigVector& params, float H, float k, float D, 
+                               const VectorJ& J, const VectorF& M) {
+        BigVector res;
+        res.setZero();
+
+        VectorF B = params.template head<N+1>();
+        VectorF eta = params.template segment<N+1>(N+1);
+        float Q = params[2*(N+1)];
+        float R = params[2*(N+1)+1];
+
+        // Residual equations (Fenton's equations 14a-b)
+        for (int m = 0; m <= N; ++m) {
+            // Precompute trigonometric terms
+            VectorF Jk_eta = J * k * eta[m];
             VectorF Jk_D = J * k * D;
-            VectorF S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
-            VectorF C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
+            VectorF S1 = Jk_eta.array().sinh().array() / Jk_D.array().cosh();
+            VectorF C1 = Jk_eta.array().cosh().array() / Jk_D.array().cosh();
             VectorF S2 = (J * m * M_PI / N).array().sin();
             VectorF C2 = (J * m * M_PI / N).array().cos();
-            
-            float um = -B0 + k * (B.tail(N).array() * C1.array() * C2.array() * J.array()).sum();
+
+            // Velocity components
+            float um = -B[0] + k * (B.tail(N).array() * C1.array() * C2.array() * J.array()).sum();
             float vm = k * (B.tail(N).array() * S1.array() * S2.array() * J.array()).sum();
-            
-            f(m) = -B0 * eta(m) + (B.tail(N).array() * S1.array() * C2.array()).sum() + Q;
-            f(N + 1 + m) = (um * um + vm * vm) / 2 + eta(m) - R;
+
+            // Stream function residual (Eq. 14a)
+            res[m] = -B[0] * eta[m] + (B.tail(N).array() * S1.array() * C2.array()).sum() + Q;
+
+            // Bernoulli residual (Eq. 14b)
+            res[N+1+m] = 0.5f * (um*um + vm*vm) + eta[m] - R;
         }
-        
-        f(2 * (N + 1)) = trapezoid_integration(eta) / N - 1;
-        f(2 * (N + 1) + 1) = eta(0) - eta(N) - H;
-        
-        return f;
+
+        // Constraints
+        res[2*(N+1)] = trapezoid_integration(eta)/N - 1.0f;  // Mean water level
+        res[2*(N+1)+1] = eta[0] - eta[N] - H;               // Wave height
+
+        return res;
     }
-    
-    Eigen::Matrix<float, 2*(N+1)+2, 2*(N+1)+2> fprime(
-        const Eigen::Matrix<float, 2*(N+1)+2, 1>& coeffs, 
-        float H, float k, float D, const VectorJ& J, const VectorF& M) const {
-        
-        Eigen::Matrix<float, 2*(N+1)+2, 2*(N+1)+2> jac = 
-            Eigen::Matrix<float, 2*(N+1)+2, 2*(N+1)+2>::Zero();
-        
-        float B0 = coeffs(0);
-        VectorF B = coeffs.template segment<N + 1>(0);  // B includes B0
-        VectorF eta = coeffs.template segment<N + 1>(N + 1);
-        float Q = coeffs(2 * (N + 1));
-        float R = coeffs(2 * (N + 1) + 1);
-        
-        for (int m = 0; m <= N; m++) {
-            VectorF Jk_eta = J * k * eta(m);
+
+    BigMatrix compute_jacobian(const BigVector& params, float H, float k, float D,
+                              const VectorJ& J, const VectorF& M) {
+        BigMatrix jac;
+        jac.setZero();
+
+        VectorF B = params.template head<N+1>();
+        VectorF eta = params.template segment<N+1>(N+1);
+        float Q = params[2*(N+1)];
+        float R = params[2*(N+1)+1];
+
+        for (int m = 0; m <= N; ++m) {
+            // Precompute trigonometric terms
+            VectorF Jk_eta = J * k * eta[m];
             VectorF Jk_D = J * k * D;
             VectorF S1 = Jk_eta.array().sinh() / Jk_D.array().cosh();
             VectorF C1 = Jk_eta.array().cosh() / Jk_D.array().cosh();
             VectorF S2 = (J * m * M_PI / N).array().sin();
             VectorF C2 = (J * m * M_PI / N).array().cos();
+
+            // Derivatives of S1 and C1
+            VectorF dS1_deta = J * k * C1.array();
+            VectorF dC1_deta = J * k * S1.array();
+
+            // Velocity components and their derivatives
+            float um = -B[0] + k * (B.tail(N).array() * C1.array() * C2.array() * J.array()).sum();
+            float vm = k * (B.tail(N).array() * S1.array() * S2.array() * J.array()).sum();
+
+            // --- df1/dB --- (Stream function derivatives)
+            // df1/dB0
+            jac(m, 0) = -eta[m];
             
-            VectorF SC = S1.array() * C2.array();
-            VectorF SS = S1.array() * S2.array();
-            VectorF CC = C1.array() * C2.array();
-            VectorF CS = C1.array() * S2.array();
-            
-            float um = -B0 + k * (B.tail(N).array() * CC.array() * J.array()).sum();
-            float vm = k * (B.tail(N).array() * SS.array() * J.array()).sum();
-            
-            jac(m, N + 1 + m) = -B0 + (B.tail(N).array() * k * J.array() * C1.array() * C2.array()).sum();
-            jac(m, 0) = -eta(m);
-            for (int j = 1; j <= N; j++) {
-                jac(m, j) = SC(j-1);
+            // df1/dBj (j=1..N)
+            for (int j = 1; j <= N; ++j) {
+                jac(m, j) = S1[j-1] * C2[j-1];
             }
-            jac(m, 2 * (N + 1)) = 1;
-            
-            jac(N + 1 + m, N + 1 + m) = 1 + (um * k * k * (B.tail(N).array() * J.array().square() * SC.array()).sum() + 
-                                             vm * k * k * (B.tail(N).array() * J.array().square() * CS.array()).sum());
-            jac(N + 1 + m, 2 * (N + 1) + 1) = -1;
-            jac(N + 1 + m, 0) = -um;
-            for (int j = 1; j <= N; j++) {
-                jac(N + 1 + m, j) = k * um * J(j-1) * CC(j-1) + k * vm * J(j-1) * SS(j-1);
+
+            // df1/deta_m
+            jac(m, N+1+m) = (B.tail(N).array() * dS1_deta.array() * C2.array()).sum();
+
+            // df1/dQ
+            jac(m, 2*(N+1)) = 1.0f;
+
+            // --- df2/dB --- (Bernoulli derivatives)
+            // df2/dB0
+            jac(N+1+m, 0) = -um;
+
+            // df2/dBj (j=1..N)
+            for (int j = 1; j <= N; ++j) {
+                float term1 = um * k * C1[j-1] * C2[j-1] * J[j-1];
+                float term2 = vm * k * S1[j-1] * S2[j-1] * J[j-1];
+                jac(N+1+m, j) = term1 + term2;
             }
+
+            // df2/deta_m
+            float sum1 = (B.tail(N).array() * dC1_deta.array() * C2.array() * J.array()).sum();
+            float sum2 = (B.tail(N).array() * dS1_deta.array() * S2.array() * J.array()).sum();
+            jac(N+1+m, N+1+m) = um * k * sum1 + vm * k * sum2 + 1.0f;
+
+            // df2/dR
+            jac(N+1+m, 2*(N+1)+1) = -1.0f;
         }
-        
-        for (int j = 0; j <= N; j++) {
-            jac(2 * (N + 1), N + 1 + j) = (j == 0 || j == N) ? 1.0/(2*N) : 1.0/N;
+
+        // Constraints derivatives
+        // df3/deta (mean water level)
+        for (int j = 0; j <= N; ++j) {
+            jac(2*(N+1), N+1+j) = (j == 0 || j == N) ? 0.5f/N : 1.0f/N;
         }
-        
-        jac(2 * (N + 1) + 1, N + 1) = 1;
-        jac(2 * (N + 1) + 1, 2 * (N + 1)) = -1;
-        
+
+        // df4/deta (wave height)
+        jac(2*(N+1)+1, N+1) = 1.0f;    // eta[0]
+        jac(2*(N+1)+1, 2*(N+1)) = -1.0f; // eta[N]
+
         return jac;
+    }
+
+    void scale_to_physical(FentonCoefficients& coeffs) {
+        coeffs.B[0] *= std::sqrt(g * depth);
+        coeffs.B.tail(N) *= std::sqrt(g * depth * depth * depth);
+        coeffs.eta *= depth;
+        coeffs.x *= depth;
+        coeffs.k /= depth;
+        coeffs.c = coeffs.B[0];
+        coeffs.Q *= std::sqrt(g * depth * depth * depth);
+        coeffs.R *= g * depth;
+    }
+
+    float trapezoid_integration(const VectorF& y) const {
+        float sum = 0.5f * (y[0] + y[N]);
+        for (int i = 1; i < N; ++i) sum += y[i];
+        return sum;
     }
 };
 
