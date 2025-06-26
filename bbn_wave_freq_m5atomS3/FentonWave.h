@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <ArduinoEigenDense.h>
@@ -5,6 +6,7 @@
 #include <stdexcept>
 #include <functional>
 
+// Fenton wave class template for nonlinear Stokes-type wave solutions
 template<int N = 3>
 class FentonWave {
 private:
@@ -168,8 +170,10 @@ private:
         // Mean elevation constraint
         res[2 * (N + 1)] = trapezoid_integration(eta) / length;
 
-        // Wave height constraint using crest and trough
-        res[2 * (N + 1) + 1] = eta[0] - eta[N / 2] - H;
+        // Fixed: Use actual crest and trough for odd/even N
+        float crest = eta.maxCoeff();
+        float trough = eta.minCoeff();
+        res[2 * (N + 1) + 1] = crest - trough - H;
 
         return res;
     }
@@ -234,8 +238,12 @@ private:
             Jmat(2 * (N + 1), N + 1 + j) = w * dx / length;
         }
 
-        Jmat(2 * (N + 1) + 1, N + 1 + 0) = 1.0f;
-        Jmat(2 * (N + 1) + 1, N + 1 + N / 2) = -1.0f;
+        // Correct: differentiate actual crest and trough indices
+        int idx_max, idx_min;
+        eta.maxCoeff(&idx_max);
+        eta.minCoeff(&idx_min);
+        Jmat(2 * (N + 1) + 1, N + 1 + idx_max) = 1.0f;
+        Jmat(2 * (N + 1) + 1, N + 1 + idx_min) = -1.0f;
 
         return Jmat;
     }
