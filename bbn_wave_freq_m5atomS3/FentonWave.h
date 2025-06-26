@@ -138,6 +138,24 @@ private:
         return sum;
     }
     
+    struct InitialGuess {
+        VectorXd B;
+        double Q;
+        double R;
+        VectorXd eta;
+    };
+    
+    InitialGuess initial_guess(double H, int N, double c, double k, const VectorXd& x) {
+        InitialGuess guess;
+        guess.B = VectorXd::Zero(N + 1);
+        guess.B(0) = c;
+        guess.B(1) = -H / (4 * c * k);
+        guess.eta = VectorXd::Ones(x.size()) + H / 2 * (k * x.array()).cos();
+        guess.Q = c;
+        guess.R = 1 + 0.5 * c * c;
+        return guess;
+    }
+    
     std::map<std::string, VectorXd> fenton_coefficients(
         double height, double depth, double length, int N, double g, 
         double relax, int maxiter = 500, double tolerance = 1e-8) {
@@ -154,8 +172,12 @@ private:
         VectorXd M = VectorXd::LinSpaced(N + 1, 0, N);
         VectorXd x = M * lam / (2 * N);
         
-        // Initial guess
-        auto [B, Q, R, eta] = initial_guess(H, N, c, k, x);
+        // Initial guess - using struct instead of tuple
+        InitialGuess guess = initial_guess(H, N, c, k, x);
+        VectorXd B = guess.B;
+        double Q = guess.Q;
+        double R = guess.R;
+        VectorXd eta = guess.eta;
         
         // Optimization
         VectorXd coeffs(N_unknowns);
@@ -200,16 +222,6 @@ private:
         result["c"] = VectorXd::Constant(1, B(0));
         
         return result;
-    }
-    
-    std::tuple<VectorXd, double, double, VectorXd> initial_guess(double H, int N, double c, double k, const VectorXd& x) {
-        VectorXd B = VectorXd::Zero(N + 1);
-        B(0) = c;
-        B(1) = -H / (4 * c * k);
-        VectorXd eta = VectorXd::Ones(x.size()) + H / 2 * (k * x.array()).cos();
-        double Q = c;
-        double R = 1 + 0.5 * c * c;
-        return {B, Q, R, eta};
     }
     
     VectorXd func(const VectorXd& coeffs, double H, double k, double D, const VectorXd& J, const VectorXd& M) {
@@ -270,22 +282,25 @@ private:
             double um = -B0 + k * (B.array() * CC.array() * J.array()).sum();
             double vm = k * (B.array() * SS.array() * J.array()).sum();
             
-            jac(m, N + 1 + m) = um;
-            jac.block(m, 0, 1, N + 1) = -eta(m);
-            jac.block(m, 1, 1, N) = SC.transpose();
+            jac(m, N + 1 + m) = -B0 + (B.array() * k * J.array() * C1.array() * C2.array()).sum();
+            jac(m, 0) = -eta(m);
+            for (int j = 1; j <= N; j++) {
+                jac(m, j) = SC(j-1);
+            }
             jac(m, 2 * N + 2) = 1;
             
             jac(N + 1 + m, N + 1 + m) = 1 + (um * k * k * (B.array() * J.array().square() * SC.array()).sum() + 
                                              vm * k * k * (B.array() * J.array().square() * CS.array()).sum());
             jac(N + 1 + m, 2 * N + 3) = -1;
             jac(N + 1 + m, 0) = -um;
-            jac.block(N + 1 + m, 1, 1, N) = (k * um * J.array() * CC.array() + 
-                                             k * vm * J.array() * SS.array()).transpose();
+            for (int j = 1; j <= N; j++) {
+                jac(N + 1 + m, j) = k * um * J(j-1) * CC(j-1) + k * vm * J(j-1) * SS(j-1);
+            }
         }
         
-        jac.block(2 * N + 2, N + 1, 1, N + 1) = VectorXd::Constant(N + 1, 1.0 / N).transpose();
-        jac(2 * N + 2, N + 1) = 1.0 / (2 * N);
-        jac(2 * N + 2, 2 * N + 1) = 1.0 / (2 * N);
+        for (int j = 0; j <= N; j++) {
+            jac(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 1.0/(2*N) : 1.0/N;
+        }
         
         jac(2 * N + 3, N + 1) = 1;
         jac(2 * N + 3, 2 * N + 1) = -1;
