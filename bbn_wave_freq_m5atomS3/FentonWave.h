@@ -95,7 +95,7 @@ public:
     
     float surface_elevation(float x_val, float t = 0) {
         int N = E.size() - 1;
-        VectorF J = VectorF::LinSpaced(N + 1, 0, N);
+        VectorXf J = VectorXf::LinSpaced(N + 1, 0, N);
         
         float sum = 0;
         for (int j = 0; j <= N; j++) {
