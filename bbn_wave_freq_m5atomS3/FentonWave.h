@@ -33,8 +33,8 @@ private:
     float cs;
     float T;
     float omega;
-    VectorF E;
     VectorF B;
+    VectorF E;
     
 public:
     FentonWave(float height, float depth, float length, float g = 9.81f, float relax = 0.5f)
@@ -183,6 +183,7 @@ private:
         
         // Optimization
         Eigen::Matrix<float, N_unknowns, 1> coeffs;
+        coeffs.setZero();
         coeffs.template head<N + 1>() = B;
         coeffs.template segment<N + 1>(N + 1) = eta;
         coeffs(2 * (N + 1)) = Q;
@@ -233,8 +234,8 @@ private:
         Eigen::Matrix<float, 2*(N+1)+2, 1> f = Eigen::Matrix<float, 2*(N+1)+2, 1>::Zero();
         
         float B0 = coeffs(0);
-        VectorF B = coeffs.template segment<N + 1>(1);
-        VectorF eta = coeffs.template segment<N + 1>(N + 2);
+        VectorF B = coeffs.template segment<N + 1>(0);  // B includes B0
+        VectorF eta = coeffs.template segment<N + 1>(N + 1);
         float Q = coeffs(2 * (N + 1));
         float R = coeffs(2 * (N + 1) + 1);
         
@@ -267,8 +268,8 @@ private:
             Eigen::Matrix<float, 2*(N+1)+2, 2*(N+1)+2>::Zero();
         
         float B0 = coeffs(0);
-        VectorF B = coeffs.template segment<N + 1>(1);
-        VectorF eta = coeffs.template segment<N + 1>(N + 2);
+        VectorF B = coeffs.template segment<N + 1>(0);  // B includes B0
+        VectorF eta = coeffs.template segment<N + 1>(N + 1);
         float Q = coeffs(2 * (N + 1));
         float R = coeffs(2 * (N + 1) + 1);
         
