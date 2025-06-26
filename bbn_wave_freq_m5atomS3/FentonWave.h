@@ -10,6 +10,8 @@
 #include <vector>
 #include <stdexcept>
 #include <string>
+#include <map>
+#include <tuple>
 
 using namespace Eigen;
 
