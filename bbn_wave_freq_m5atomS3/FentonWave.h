@@ -367,3 +367,43 @@ public:
         }
     }
 };
+
+int test() {
+    try {
+        // Wave parameters
+        const double wave_height = 2.0;
+        const double water_depth = 10.0;
+        const double wavelength = 50.0;
+        const int approximation_order = 5;
+
+        // Simulation parameters
+        const double simulation_duration = 20.0;
+        const double timestep = 0.1;
+
+        WaveSurfaceTracker tracker(wave_height, water_depth, 
+                                 wavelength, approximation_order);
+
+        // CSV output handler
+        auto csv_handler = [](double time, double elevation, 
+                            double velocity, double acceleration, double x) {
+            static std::ofstream outfile("wave_kinematics.csv");
+            static bool header_written = false;
+            
+            if (!header_written) {
+                outfile << "Time(s),Elevation(m),Velocity(m/s),Acceleration(m/s²),X(m)\n";
+                header_written = true;
+            }
+            
+            outfile << time << "," << elevation << "," 
+                   << velocity << "," << acceleration << "," << x << "\n";
+        };
+
+        tracker.track_lagrangian_kinematics(simulation_duration, timestep, csv_handler);
+
+        std::cout << "Lagrangian wave kinematics tracking complete.\n";
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Simulation error: " << e.what() << "\n";
+        return 1;
+    }
+}
