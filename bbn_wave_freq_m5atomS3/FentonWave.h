@@ -376,7 +376,7 @@ public:
     }
 };
 
-int test() {
+int FentonWave_test() {
     try {
         // Wave parameters
         const double wave_height = 2.0;
