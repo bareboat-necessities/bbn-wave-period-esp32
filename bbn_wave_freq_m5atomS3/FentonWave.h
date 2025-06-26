@@ -72,7 +72,7 @@ public:
         VectorXf J = VectorXf::LinSpaced(N + 1, 0, N);
         
         for (int j = 0; j <= N; j++) {
-            E(j) = trapezoid_integration(eta.array() * (J(j) * J * M_PI / N).array().cos());
+            E(j) = trapezoid_integration(eta.array() * (J(j) * J * M_PI / N).array().cos()).matrix();
         }
     }
     
@@ -122,7 +122,7 @@ public:
         int N = eta.size() - 1;
         VectorXf J = VectorXf::LinSpaced(N, 1, N);
         
-        Vector2d vel = Vector2d::Zero();
+        Vector2f vel = Vector2f::Zero();
         
         for (int i = 0; i < N; i++) {
             float Jk = J(i) * k;
