@@ -168,5 +168,8 @@ int main(int argc, char *argv[]) {
     t = t + delta_t;
   }
 
-  //FentonWave_test();
+#ifdef FENTON_TEST
+  FentonWave_test();
+#endif
+  
 }
