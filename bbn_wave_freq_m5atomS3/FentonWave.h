@@ -139,15 +139,15 @@ private:
 
         VectorF grid;
         grid.setLinSpaced(N + 1, 0, N);
-        VectorF x_nd = (grid.array() * lambda / N).matrix(); // nondim x ∈ [0, λ]
+        VectorF x_nd = (grid.array() * (2 * M_PI / N)).matrix(); 
 
         FentonCoefficients coeffs;
         coeffs.B.setZero();
-        coeffs.B[0] = c_guess / std::sqrt(g * depth); // nondim
+        coeffs.B[0] = c_guess / std::sqrt(g * depth); 
         if (N >= 1)
             coeffs.B[1] = H * coeffs.B[0] / (2 * std::tanh(k_nd));
 
-        coeffs.eta = (H / 2) * (k_nd * x_nd.array()).cos().matrix(); // nondim
+        coeffs.eta = (H / 2.0f) * (x_nd.array()).cos().matrix(); // nondim
         coeffs.Q = 0;
         coeffs.R = 1 + 0.5f * H * H / (4 * std::tanh(k_nd));
 
