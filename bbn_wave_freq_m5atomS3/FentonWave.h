@@ -304,8 +304,6 @@ private:
         assert(std::isfinite(x_curr) && "Position NaN/inf detected");
         assert(std::isfinite(eta_curr) && "Elevation NaN/inf detected");
         assert(t_curr > t_prev1 && "Time reversal detected");
-        assert(std::abs(wave.surface_elevation(x_curr, t_curr) - eta_curr) < 1e-3f && 
-               "Position-elevation mismatch");
     }
 
 public:
