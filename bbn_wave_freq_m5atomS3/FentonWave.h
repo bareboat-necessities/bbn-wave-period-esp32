@@ -367,7 +367,7 @@ void FentonWave_test() {
     };
 
     // Track Lagrangian motion (using callback)
-    tracker.track_lagrangian_motion(duration, dt, kinematics_callback);
+    tracker.track_surface_particle(duration, dt, kinematics_callback);
 }
 #endif
 
