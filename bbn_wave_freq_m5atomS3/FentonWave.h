@@ -392,8 +392,8 @@ void FentonWave_test() {
         out << time << "," << elevation << "," << vertical_velocity << "," << vertical_acceleration << "," << horizontal_position << "\n";
     };
 
-    // Track surface particle (using callback)
-    tracker.track_surface_particle(duration, dt, kinematics_callback);
+    // Track Lagrangian motion (using callback)
+    tracker.track_lagrangian_motion(duration, dt, kinematics_callback);
 }
 #endif
 
