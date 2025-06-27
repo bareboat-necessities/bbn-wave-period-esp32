@@ -272,21 +272,22 @@ private:
     }
 };
 
+
 /**
- * @brief Tracks vertical surface kinematics at the crest using Lagrangian motion.
+ * @brief Tracks a surface particle following the wave in Lagrangian frame.
  *
- * This class uses the FentonWave model to simulate the vertical displacement,
- * velocity, and acceleration of a water parcel following the surface motion
- * over time, assuming it starts at the wave crest and follows the wave.
+ * This version uses velocity integration (Euler method) to follow
+ * the motion of a fluid parcel starting at the crest. It computes
+ * vertical displacement, velocity, and acceleration over time.
  */
-template<int N = 4>
+template<int N = 3>
 class WaveSurfaceTracker {
 private:
-    FentonWave<N> wave;        // Underlying nonlinear wave model
-    float phase_velocity;      // Wave celerity c
+    FentonWave<N> wave;        // Nonlinear wave model
+    float phase_velocity;      // Wave phase speed c
     float wave_number;         // Wave number k
 
-    // History for finite difference velocity/acceleration estimates
+    // History buffers for velocity and acceleration estimation
     float eta_prev2 = 0, eta_prev = 0, eta_current = 0;
     bool has_prev = false, has_prev2 = false;
 
@@ -297,12 +298,12 @@ public:
           wave_number(wave.get_k()) {}
 
     /**
-     * @brief Simulates the Lagrangian kinematics of a surface particle.
+     * @brief Simulates full Lagrangian particle motion at the surface.
      *
-     * @param duration       Total time of simulation (seconds)
-     * @param timestep       Sampling timestep (seconds)
-     * @param callback       Function called on each timestep with:
-     *                       (time, elevation, vertical_velocity, vertical_acceleration, horizontal_position)
+     * @param duration    Total simulation time [s]
+     * @param timestep    Time step [s]
+     * @param callback    Function called with:
+     *                    (time, vertical position, vertical velocity, vertical acceleration, horizontal position)
      */
     void track_lagrangian_kinematics(
         float duration,
@@ -317,44 +318,49 @@ public:
         if (timestep <= 0) throw std::invalid_argument("Timestep must be positive");
         if (duration <= 0) throw std::invalid_argument("Duration must be positive");
 
-        // Reset history state
-        eta_prev2 = eta_prev = eta_current = 0;
-        has_prev = has_prev2 = false;
+        // Initial position: on crest
+        float x = 0.0f;
+        float z = wave.surface_elevation(x, 0.0f);  // Initial height
+
+        // Reset history
+        eta_prev2 = eta_prev = eta_current = z;
+        has_prev2 = false;
+        has_prev = true;
 
         for (float time = 0; time <= duration; time += timestep) {
-            // Assume particle follows wave crest: x(t) = c * t
-            float x = phase_velocity * time;
+            // Compute fluid velocity at current particle position
+            Eigen::Vector2f v = wave.velocity(x, z, time);
 
-            // Evaluate surface elevation at this position and time
-            float elevation = wave.surface_elevation(x, time);
+            // Euler integration of position
+            x += v[0] * timestep;
+            z += v[1] * timestep;
 
-            // Shift history buffers
+            // Update history
             eta_prev2 = eta_prev;
             eta_prev = eta_current;
-            eta_current = elevation;
+            eta_current = z;
 
             has_prev2 = has_prev;
             has_prev = true;
 
-            // Estimate velocity and acceleration
+            // Estimate vertical velocity and acceleration
             float vertical_velocity = 0;
             float vertical_acceleration = 0;
 
             if (has_prev2) {
-                // Central difference (second-order accurate)
                 vertical_velocity = (eta_current - eta_prev2) / (2 * timestep);
                 vertical_acceleration = (eta_current - 2 * eta_prev + eta_prev2) / (timestep * timestep);
             } else if (has_prev) {
-                // Forward difference (first-order fallback)
                 vertical_velocity = (eta_current - eta_prev) / timestep;
                 vertical_acceleration = (eta_current - eta_prev) / timestep;
             }
 
-            // Emit current state
-            callback(time, elevation, vertical_velocity, vertical_acceleration, x);
+            // Emit callback with current values
+            callback(time, z, vertical_velocity, vertical_acceleration, x);
         }
     }
 };
+
 
 #ifdef FENTON_TEST
 template class FentonWave<4>;
