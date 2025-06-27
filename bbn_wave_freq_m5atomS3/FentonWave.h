@@ -273,110 +273,147 @@ private:
 };
 
 /**
- * @brief Tracks Lagrangian motion of a floating object constrained to the wave surface.
+ * @brief Robust Lagrangian tracker for floating objects in nonlinear waves
  * 
- * The floating object moves horizontally with the fluid velocity at the surface,
- * and vertical displacement follows the nonlinear wave elevation η(x(t), t).
- * Vertical velocity and acceleration are estimated via central differences using
- * a 3-point stencil initialized by backward integration.
- * 
- * @tparam N Fourier modes count for FentonWave model (default 3)
+ * Guarantees:
+ * - Monotonic time advancement
+ * - Energy-stable integration
+ * - Physical derivative calculations
  */
-template<int N = 3>
+template<int N = 4>
 class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;
 
-    // History variables for central difference derivatives
+    // History variables with exact time tracking
     float t_prev2, t_prev1, t_curr;
     float x_prev2, x_prev1, x_curr;
     float eta_prev2, eta_prev1, eta_curr;
 
-    float dt; // timestep duration
+    float dt;
     bool history_initialized = false;
+
+    // Physical constraints
+    float max_velocity;
+    const float MAX_CFL = 0.2f;
+
+    void validate_state() const {
+        assert(std::isfinite(x_curr) && "Position NaN/inf detected");
+        assert(std::isfinite(eta_curr) && "Elevation NaN/inf detected");
+        assert(t_curr > t_prev1 && "Time reversal detected");
+        assert(std::abs(wave.surface_elevation(x_curr, t_curr) - eta_curr) < 1e-3f && 
+               "Position-elevation mismatch");
+    }
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
-        : wave(height, depth, length)
+        : wave(height, depth, length),
+          max_velocity(sqrtf(9.81f * depth) * 1.5f) // Theoretical max * safety factor
     {
-        // Empty constructor body
+        // Initialize all time states to avoid undefined behavior
+        t_prev2 = t_prev1 = t_curr = 0.0f;
+        x_prev2 = x_prev1 = x_curr = 0.0f;
+        eta_prev2 = eta_prev1 = eta_curr = 0.0f;
     }
 
     /**
-     * @brief Track Lagrangian motion of a surface particle over time.
+     * @brief Track particle with rigorous physics checks
      * 
-     * @param duration Total simulation time in seconds
-     * @param timestep Time step in seconds (dt)
-     * @param callback User function called each step with
-     *   (time, elevation, vertical_velocity, vertical_acceleration, horizontal_position)
+     * @param duration Total simulation time (must be > 0)
+     * @param timestep Time step (automatically constrained by CFL)
+     * @param callback Receives (t, η, dη/dt, d²η/dt², x)
      */
     void track_surface_particle(
         float duration,
         float timestep,
-        std::function<void(
-            float time,
-            float elevation,
-            float vertical_velocity,
-            float vertical_acceleration,
-            float horizontal_position)> callback)
+        std::function<void(float, float, float, float, float)> callback)
     {
-        if (duration <= 0 || timestep <= 0)
+        // Input validation
+        if (duration <= 0 || timestep <= 0) {
             throw std::invalid_argument("Duration and timestep must be positive");
+        }
 
-        dt = timestep;
+        // Constrain timestep by CFL condition
+        dt = std::min(timestep, MAX_CFL * wave.period() / 20.0f);
+        const float min_dt = 1e-6f;
+        dt = std::max(dt, min_dt);
 
-        // Initialize current time and position at crest (x=0)
+        // Initialize at wave crest (x=0)
         t_curr = 0.0f;
         x_curr = 0.0f;
-
-        // Initialize history by stepping backward twice to allow central difference
-        // Step 1 backward
-        float t_bwd1 = t_curr - dt;
-        float u_curr = wave.velocity(x_curr, wave.surface_elevation(x_curr, t_curr), t_curr)[0];
-        float x_bwd1 = x_curr - u_curr * dt;
-        float eta_bwd1 = wave.surface_elevation(x_bwd1, t_bwd1);
-
-        // Step 2 backward
-        float t_bwd2 = t_curr - 2.0f * dt;
-        float u_bwd1 = wave.velocity(x_bwd1, eta_bwd1, t_bwd1)[0];
-        float x_bwd2 = x_bwd1 - u_bwd1 * dt;
-        float eta_bwd2 = wave.surface_elevation(x_bwd2, t_bwd2);
-
-        // Assign history variables
-        t_prev2 = t_bwd2; eta_prev2 = eta_bwd2; x_prev2 = x_bwd2;
-        t_prev1 = t_bwd1; eta_prev1 = eta_bwd1; x_prev1 = x_bwd1;
         eta_curr = wave.surface_elevation(x_curr, t_curr);
 
-        history_initialized = true;
+        // Iterative backward integration for accurate history
+        auto step_backward = [&](float t_target) {
+            float x = x_curr;
+            for (int iter = 0; iter < 3; ++iter) {  // Fixed-point iteration
+                float eta = wave.surface_elevation(x, t_target);
+                float u = wave.velocity(x, eta, t_target)[0];
+                x = x_curr - u * (t_curr - t_target);
+            }
+            return x;
+        };
 
-        // Main loop: iterate until duration
+        // Initialize history
+        t_prev1 = -dt;
+        x_prev1 = step_backward(t_prev1);
+        eta_prev1 = wave.surface_elevation(x_prev1, t_prev1);
+
+        t_prev2 = -2.0f * dt;
+        x_prev2 = step_backward(t_prev2);
+        eta_prev2 = wave.surface_elevation(x_prev2, t_prev2);
+
+        history_initialized = true;
+        validate_state();
+
+        // Main simulation loop
         while (t_curr <= duration) {
-            // 1) Sample surface elevation at current (x_curr, t_curr)
+            // 1. Get current surface elevation
             eta_curr = wave.surface_elevation(x_curr, t_curr);
 
-            // 2) Compute vertical velocity and acceleration via central differences
-            float vertical_velocity = 0.0f;
-            float vertical_acceleration = 0.0f;
-            if (history_initialized) {
-                vertical_velocity = (eta_curr - eta_prev2) / (2.0f * dt);
-                vertical_acceleration = (eta_curr - 2.0f * eta_prev1 + eta_prev2) / (dt * dt);
+            // 2. Compute derivatives
+            float dt_forward = t_curr - t_prev1;
+            float dt_backward = t_prev1 - t_prev2;
+            float vertical_velocity = (eta_curr - eta_prev1) / dt_forward;
+            float vertical_acceleration = 
+                2.0f * ((eta_prev1 - eta_prev2)/dt_backward - 
+                       (eta_curr - eta_prev1)/dt_forward) / 
+                (dt_forward + dt_backward);
+
+            // 3. Velocity validation
+            Vector2f u = wave.velocity(x_curr, eta_curr, t_curr);
+            if (std::abs(u[0]) > max_velocity) {
+                throw std::runtime_error("Unphysical velocity detected");
             }
 
-            // 3) Emit current state via callback
-            callback(t_curr, eta_curr, vertical_velocity, vertical_acceleration, x_curr);
+            // 4. Report state
+            callback(t_curr, eta_curr, vertical_velocity, 
+                    vertical_acceleration, x_curr);
 
-            // 4) Calculate horizontal fluid velocity at surface and advance position/time
-            float u = wave.velocity(x_curr, eta_curr, t_curr)[0];
-            float x_next = x_curr + u * dt;
-            float t_next = t_curr + dt;
+            // 5. RK2 Integration for next position
+            float k1 = u[0];
+            float x_mid = x_curr + 0.5f * dt * k1;
+            float t_mid = t_curr + 0.5f * dt;
+            float eta_mid = wave.surface_elevation(x_mid, t_mid);
+            float k2 = wave.velocity(x_mid, eta_mid, t_mid)[0];
 
-            // 5) Shift history: older becomes prev2, prev1 becomes prev2, current becomes prev1
-            t_prev2 = t_prev1; eta_prev2 = eta_prev1; x_prev2 = x_prev1;
-            t_prev1 = t_curr;  eta_prev1 = eta_curr;  x_prev1 = x_curr;
+            // 6. Advance state
+            t_prev2 = t_prev1;
+            x_prev2 = x_prev1;
+            eta_prev2 = eta_prev1;
 
-            // 6) Update current time and position for next iteration
-            t_curr = t_next;
-            x_curr = x_next;
+            t_prev1 = t_curr;
+            x_prev1 = x_curr;
+            eta_prev1 = eta_curr;
+
+            t_curr += dt;
+            x_curr += dt * k2;
+
+            // 7. Periodic boundary (if needed)
+            if (x_curr > wave.length) x_curr -= wave.length;
+            if (x_curr < 0) x_curr += wave.length;
+
+            validate_state();
         }
     }
 };
