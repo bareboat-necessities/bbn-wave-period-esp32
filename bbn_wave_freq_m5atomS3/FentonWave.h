@@ -271,37 +271,26 @@ private:
         return sum * dx;
     }
 };
-
 /**
- * @brief Tracks a floating object's vertical and horizontal motion on a nonlinear Fenton wave.
- *
- * The object is assumed to follow the wave surface exactly:
- *    z(t) = η(x(t), t)
- * The horizontal position x(t) is integrated using the fluid velocity at the surface.
- * Vertical velocity and acceleration are estimated using central differences on z(t).
+ * @brief Tracks Lagrangian motion of a floating object constrained to the wave surface.
  */
-template<int N = 4>
+template<int N = 3>
 class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;
-    float wave_number;
-    float wavelength;
-
-    // Previous surface elevations for central difference
-    float eta_prev2 = 0.0f, eta_prev = 0.0f, eta_curr = 0.0f;
-    bool has_prev = false, has_prev2 = false;
+    float wave_period;
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
-        : wave(height, depth, length) {
-        wave_number = wave.get_k();
-        wavelength = 2.0f * M_PI / wave_number;
+        : wave(height, depth, length)
+    {
+        wave_period = wave.get_T();  // in seconds
     }
 
     /**
-     * @brief Simulate Lagrangian motion of a floating surface particle.
-     *
-     * @param duration Total time (seconds)
+     * @brief Track surface-following floating particle.
+     * 
+     * @param duration Simulation duration (seconds)
      * @param timestep Time step (seconds)
      * @param callback Function(time, elevation, vertical_velocity, vertical_acceleration, x_position)
      */
@@ -319,47 +308,36 @@ public:
             throw std::invalid_argument("Duration and timestep must be positive");
 
         float t = 0.0f;
-        float x = 0.0f;  // Start at wave crest
+        float x = 0.0f;  // Start at crest
+        float eta_curr = wave.surface_elevation(x, t);
+        float eta_prev = eta_curr;
+        float eta_prev2 = eta_curr;
 
+        // Start loop
         for (; t <= duration; t += timestep) {
-            // Sample surface elevation at current position and time
+            // Compute new eta at current x(t)
             float eta = wave.surface_elevation(x, t);
 
-            // Save for difference estimates
-            eta_prev2 = eta_prev;
-            eta_prev = eta_curr;
-            eta_curr = eta;
+            // Estimate derivatives
+            float vertical_velocity = (eta - eta_prev2) / (2.0f * timestep);
+            float vertical_acceleration = (eta - 2.0f * eta_prev + eta_prev2) / (timestep * timestep);
 
-            has_prev2 = has_prev;
-            has_prev = true;
-
-            // Estimate vertical velocity and acceleration
-            float vertical_velocity = 0.0f;
-            float vertical_acceleration = 0.0f;
-
-            if (has_prev2) {
-                vertical_velocity = (eta_curr - eta_prev2) / (2.0f * timestep);
-                vertical_acceleration = (eta_curr - 2.0f * eta_prev + eta_prev2) / (timestep * timestep);
-            } else if (has_prev) {
-                vertical_velocity = (eta_curr - eta_prev) / timestep;
-                vertical_acceleration = 0.0f;
-            }
-
-            // Get horizontal velocity at current surface point
+            // Get horizontal surface velocity
             float u = wave.velocity(x, eta, t)[0];
 
-            // Integrate horizontal position
+            // Update x (Lagrangian motion)
             x += u * timestep;
 
-            // Wrap horizontally for visual clarity
-            x = std::fmod(x, wavelength);
-            if (x < 0) x += wavelength;
-
-            // Emit current state
+            // Emit
             callback(t, eta, vertical_velocity, vertical_acceleration, x);
+
+            // Update history
+            eta_prev2 = eta_prev;
+            eta_prev = eta;
         }
     }
 };
+
 
 #ifdef FENTON_TEST
 template class FentonWave<4>;
