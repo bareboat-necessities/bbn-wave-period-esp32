@@ -285,6 +285,8 @@ private:
 template<int N = 4>
 class WaveSurfaceTracker {
 private:
+    using Eigen::Vector2f;
+
     FentonWave<N> wave;
 
     // History variables with exact time tracking
