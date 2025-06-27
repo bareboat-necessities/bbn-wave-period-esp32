@@ -201,62 +201,79 @@ private:
      * Compute residual vector for Newton iteration.
      * Caches intermediate expressions for efficiency.
      */
-    Eigen::Matrix<float, StateDim, 1> compute_residuals(const Eigen::Matrix<float, StateDim, 1>& params,
-                                                       float H, float k, const VectorF& x_nd) {
+    Eigen::Matrix<float, StateDim, 1> compute_residuals(
+        const Eigen::Matrix<float, StateDim, 1>& params,
+        float H, float k, const VectorF& x_nd)
+    {
         Eigen::Matrix<float, StateDim, 1> res = Eigen::Matrix<float, StateDim, 1>::Zero();
+    
         VectorF B = params.segment(0, N + 1);
         VectorF eta = params.segment(N + 1, N + 1);
         float Q = params[2 * (N + 1)];
         float R = params[2 * (N + 1) + 1];
-
-        // Prepare mode indices vector J
+    
         VectorF J;
         for (int i = 0; i <= N; ++i) J[i] = i;
-
-        // Find indices of max and min eta for wave height constraint
-        int idx_max = 0, idx_min = 0;
-        for (int j = 1; j <= N; ++j) {
-            if (eta[j] > eta[idx_max]) idx_max = j;
-            if (eta[j] < eta[idx_min]) idx_min = j;
-        }
-
-        // Precompute cosh(kJ*eta) and denom = cosh(kJ * depth)
+    
         VectorF kJ = k * J;
         VectorF denom = (kJ * depth).array().cosh();
-
+    
+        // --- Precompute spatial surface elevation eta_spatial at collocation points ---
+        VectorF eta_spatial;
+        for (int m = 0; m <= N; ++m) {
+            float phase = k * x_nd[m];
+            float val = 0.0f;
+            for (int j = 0; j <= N; ++j) {
+                val += eta[j] * std::cos(j * phase);
+            }
+            eta_spatial[m] = val;
+        }
+    
+        // --- Find max and min of eta_spatial ---
+        int idx_max = 0, idx_min = 0;
+        for (int m = 1; m <= N; ++m) {
+            if (eta_spatial[m] > eta_spatial[idx_max]) idx_max = m;
+            if (eta_spatial[m] < eta_spatial[idx_min]) idx_min = m;
+        }
+    
+        // --- Compute residuals for each collocation point ---
         for (int m = 0; m <= N; ++m) {
             float xm = x_nd[m];
             float etam = eta[m];
-
+    
             VectorF kJ_eta = kJ.array() * etam;
             VectorF S1 = (kJ_eta.array().sinh() / denom.array()).matrix();
             VectorF C1 = (kJ_eta.array().cosh() / denom.array()).matrix();
-
+    
             VectorF kJ_xm = kJ.array() * xm;
             VectorF S2 = kJ_xm.array().sin().matrix();
             VectorF C2 = kJ_xm.array().cos().matrix();
-
-            // Compute um and vm
+    
+            // Velocity components at surface
             float um = B[0];
-            float vm = 0;
+            float vm = 0.0f;
             for (int j = 1; j <= N; ++j) {
                 um += k * B[j] * C1[j] * C2[j] * J[j];
                 vm += k * B[j] * S1[j] * S2[j] * J[j];
             }
-
-            // Residual equations
+    
+            // Residual equations:
+            // First: kinematic boundary condition
             res[m] = -B[0] * etam + Q + (B.tail(N).array() * S1.tail(N).array() * C2.tail(N).array()).sum();
+    
+            // Second: dynamic boundary condition (Bernoulli)
             res[N + 1 + m] = 0.5f * (um * um + vm * vm) + etam - R;
         }
-
-        // Constraint: mean eta integral zero (periodicity)
-        res[2 * (N + 1)] = trapezoid_integration(eta) / length;
-
-        // Constraint: wave height difference matches H
-        res[2 * (N + 1) + 1] = eta[idx_max] - eta[idx_min] - H;
-
+    
+        // --- Integral constraint: mean elevation over wavelength = 0 ---
+        res[2 * (N + 1)] = trapezoid_integration(eta_spatial) / length;
+    
+        // --- Wave height constraint: difference between max and min elevation = H ---
+        res[2 * (N + 1) + 1] = eta_spatial[idx_max] - eta_spatial[idx_min] - H;
+    
         return res;
     }
+
 
     /**
      * Compute Jacobian matrix of residuals w.r.t params.
