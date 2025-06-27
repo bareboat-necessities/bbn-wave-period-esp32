@@ -57,7 +57,43 @@ public:
         return eta_val;
     }
 
-    float get_k() const { return k; }
+    /**
+     * @brief Compute surface slope ∂η/∂x at (x, t).
+     */
+    float surface_slope(float x_val, float t = 0) const {
+        float phase = (x_val - c * t) * k;
+        float d_eta = 0.0f;
+        for (int i = 1; i <= N; ++i)
+            d_eta -= i * k * eta[i] * std::sin(i * phase);
+        return d_eta;
+    }
+    
+    /**
+     * @brief Time derivative of surface elevation ∂η/∂t at (x, t).
+     * Uses kinematic relation: ∂η/∂t = -c ∂η/∂x
+     */
+    float surface_time_derivative(float x_val, float t = 0) const {
+        return -c * surface_slope(x_val, t);
+    }
+    
+    /**
+     * @brief Vertical velocity component w(x, z, t).
+     */
+    float vertical_velocity(float x_val, float z_val, float t = 0) const {
+        float w = 0.0f;
+        for (int j = 1; j <= N; ++j) {
+            float kj = j * k;
+            float arg = kj * (x_val - c * t);
+            float denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<float>::epsilon()) continue;
+    
+            float term = B[j] * kj / denom;
+            w += term * std::sin(arg) * std::sinh(kj * (z_val + depth));
+        }
+        return w;
+    }
+
+float get_k() const { return k; }
     float get_c() const { return c; }
     float get_T() const { return T; }
     float get_omega() const { return omega; }
