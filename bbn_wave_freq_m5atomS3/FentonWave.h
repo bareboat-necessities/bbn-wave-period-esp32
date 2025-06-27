@@ -79,6 +79,32 @@ public:
         return vel;
     }
 
+float surface_slope(float x_val, float t = 0) const {
+    float x_nd = (x_val - c * t) / depth;
+    float d_eta = 0.0f;
+    for (int i = 1; i <= N; ++i)
+        d_eta -= eta[i] * i * k * std::sin(i * k * x_nd);
+    return d_eta;
+}
+
+float surface_time_derivative(float x_val, float t = 0) const {
+    // ∂η/∂t = -c * ∂η/∂x
+    return -c * surface_slope(x_val, t);
+}
+
+float vertical_velocity(float x_val, float z_val, float t = 0) const {
+    float w = 0.0f;
+    for (int j = 1; j <= N; ++j) {
+        float kj = j * k;
+        float arg = kj * (x_val - c * t) / depth;
+        float denom = std::cosh(kj * depth);
+        if (denom < std::numeric_limits<float>::epsilon()) continue;
+
+        float term = B[j] * kj / denom;
+        w += term * std::sin(arg) * std::sinh(kj * (z_val + depth));
+    }
+    return w;
+}
     float get_c() const { return c; }
     float get_k() const { return k; }
     float get_T() const { return T; }
