@@ -23,7 +23,7 @@ constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
  * This class solves the nonlinear free surface wave problem using
  * a truncated Fourier series and the method described by Fenton.
  */
-template<int N = 3>
+template<int N = 4>
 class FentonWave {
 private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
@@ -279,7 +279,7 @@ private:
  * velocity, and acceleration of a water parcel following the surface motion
  * over time, assuming it starts at the wave crest and follows the wave.
  */
-template<int N = 3>
+template<int N = 4>
 class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;        // Underlying nonlinear wave model
@@ -357,8 +357,8 @@ public:
 };
 
 #ifdef FENTON_TEST
-template class FentonWave<3>;
-template class WaveSurfaceTracker<3>;
+template class FentonWave<4>;
+template class WaveSurfaceTracker<4>;
 
 void FentonWave_test() {
     // Wave parameters
@@ -370,8 +370,8 @@ void FentonWave_test() {
     const float duration = 20.0f; // Simulation duration (s)
     const float dt = 0.1f;       // Time step (s)
 
-    // Create a 3rd-order Fenton wave and a surface tracker
-    WaveSurfaceTracker<3> tracker(height, depth, length);
+    // Create a 4th-order Fenton wave and a surface tracker
+    WaveSurfaceTracker<4> tracker(height, depth, length);
 
     // Output file
     std::ofstream out("wave_data.csv");
@@ -385,8 +385,6 @@ void FentonWave_test() {
 
     // Track Lagrangian kinematics (using callback)
     tracker.track_lagrangian_kinematics(duration, dt, kinematics_callback);
-
-    std::cout << "Wave data saved to wave_data.csv\n";
 }
 #endif
 
