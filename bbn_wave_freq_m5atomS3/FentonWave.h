@@ -143,7 +143,7 @@ private:
         coeffs.Q = params[2 * (N + 1)];
         coeffs.R = params[2 * (N + 1) + 1];
         coeffs.x = x_nd;
-        coeffs.k = k_nd;
+        coeffs.k = k_nd / depth;
         coeffs.c = coeffs.B[0];
         return coeffs;
     }
