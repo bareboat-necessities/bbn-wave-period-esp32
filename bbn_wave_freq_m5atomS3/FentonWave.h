@@ -62,13 +62,16 @@ public:
         return eta_val;
     }
 
+    /**
+     * @brief Horizontal (u) and vertical (w) velocity at (x, z, t).
+     */
     Eigen::Vector2f velocity(float x_val, float z_val, float t = 0) const {
         Eigen::Vector2f vel = Eigen::Vector2f::Zero();
         vel[0] = B[0];  // mean horizontal velocity
 
         for (int j = 1; j <= N; ++j) {
             float kj = j * k;
-            float arg = kj * (x_val - c * t) / depth;
+            float arg = kj * (x_val - c * t);
             float denom = std::cosh(kj * depth);
             if (denom < std::numeric_limits<float>::epsilon()) continue;
 
@@ -79,19 +82,28 @@ public:
         return vel;
     }
 
+    /**
+     * @brief Compute surface slope ∂η/∂x at (x, t).
+     */
     float surface_slope(float x_val, float t = 0) const {
-        float x_nd = (x_val - c * t) * k;
+        float phase = (x_val - c * t) * k;
         float d_eta = 0.0f;
         for (int i = 1; i <= N; ++i)
-            d_eta -= eta[i] * i * k * std::sin(i * k * x_nd);
+            d_eta -= i * k * eta[i] * std::sin(i * phase);
         return d_eta;
     }
     
+    /**
+     * @brief Time derivative of surface elevation ∂η/∂t at (x, t).
+     * Uses kinematic relation: ∂η/∂t = -c ∂η/∂x
+     */
     float surface_time_derivative(float x_val, float t = 0) const {
-        // ∂η/∂t = -c * ∂η/∂x
         return -c * surface_slope(x_val, t);
     }
     
+    /**
+     * @brief Vertical velocity component w(x, z, t).
+     */
     float vertical_velocity(float x_val, float z_val, float t = 0) const {
         float w = 0.0f;
         for (int j = 1; j <= N; ++j) {
@@ -106,6 +118,7 @@ public:
         return w;
     }
 
+    // Getters for physical parameters
     float get_c() const { return c; }
     float get_k() const { return k; }
     float get_T() const { return T; }
@@ -121,49 +134,56 @@ private:
     };
 
     void set_coefficients(const FentonCoefficients& coeffs) {
-        eta = coeffs.eta * depth;
+        eta = coeffs.eta * depth;                      // nondim → dim
         x = coeffs.x * depth;
-        k = coeffs.k;
-        c = coeffs.c * std::sqrt(g * depth);
-        B = coeffs.B * std::sqrt(g * depth);
-        T = length / c;
-        omega = c * k / depth;
+        k = coeffs.k;                                  // already dim (1/m)
+        c = coeffs.c * std::sqrt(g * depth);          // nondim c → m/s
+        B = coeffs.B * std::sqrt(g * depth);          // nondim B → m/s
+        T = length / c;                                // s
+        omega = c * k;                                 // rad/s
     }
 
+    /**
+     * Solve Fenton equations by Newton iteration for given wave parameters.
+     * Returns coefficients in nondimensional form.
+     */
     FentonCoefficients solve_fenton_equations(int maxiter = 100, float tol = 1e-6f) {
-        float H = height / depth;
-        float lambda = length / depth;
-        float k_nd = 2 * M_PI / lambda;
+        float H = height / depth;                       // nondim wave height
+        float lambda = length / depth;                  // nondim wavelength
+        float k_nd = 2 * M_PI / lambda;                 // nondim wave number
 
-        float c_guess = std::sqrt(g * depth * std::tanh(k_nd * 1.0f) / k_nd);
+        // Initial guess for phase velocity nondim c
+        float c_guess = std::sqrt(std::tanh(k_nd) / k_nd);
 
-        VectorF grid;
-        grid.setLinSpaced(N + 1, 0, N);
-        VectorF x_nd = (grid.array() * (2 * M_PI / N)).matrix(); 
+        // Grid points for Fourier modes
+        Eigen::Matrix<float, N + 1, 1> J;
+        for (int i = 0; i <= N; ++i) J[i] = i;
+
+        Eigen::Matrix<float, N + 1, 1> x_nd = (J * (2 * M_PI / N));  // nondim grid
 
         FentonCoefficients coeffs;
         coeffs.B.setZero();
-        coeffs.B[0] = c_guess / std::sqrt(g * depth); 
+        coeffs.B[0] = c_guess;
         if (N >= 1)
             coeffs.B[1] = H * coeffs.B[0] / (2 * std::tanh(k_nd));
 
-        coeffs.eta = (H / 2.0f) * (x_nd.array()).cos().matrix(); // nondim
+        coeffs.eta = (H / 2.0f) * x_nd.array().cos().matrix();
         coeffs.Q = 0;
         coeffs.R = 1 + 0.5f * H * H / (4 * std::tanh(k_nd));
 
-        BigVector params;
+        Eigen::Matrix<float, StateDim, 1> params;
         params.segment(0, N + 1) = coeffs.B;
         params.segment(N + 1, N + 1) = coeffs.eta;
         params[2 * (N + 1)] = coeffs.Q;
         params[2 * (N + 1) + 1] = coeffs.R;
 
         for (int iter = 0; iter < maxiter; ++iter) {
-            BigVector f = compute_residuals(params, H, k_nd, x_nd);
+            Eigen::Matrix<float, StateDim, 1> f = compute_residuals(params, H, k_nd, x_nd);
             if (f.norm() < tol)
                 break;
 
-            BigMatrix J = compute_jacobian(params, H, k_nd, x_nd);
-            BigVector delta = J.colPivHouseholderQr().solve(f);
+            Eigen::Matrix<float, StateDim, StateDim> Jmat = compute_jacobian(params, H, k_nd, x_nd);
+            Eigen::Matrix<float, StateDim, 1> delta = Jmat.colPivHouseholderQr().solve(f);
             params -= relax * delta;
         }
 
@@ -177,34 +197,46 @@ private:
         return coeffs;
     }
 
-    BigVector compute_residuals(const BigVector& params, float H, float k, const VectorF& x_nd) {
-        BigVector res = BigVector::Zero();
+    /**
+     * Compute residual vector for Newton iteration.
+     * Caches intermediate expressions for efficiency.
+     */
+    Eigen::Matrix<float, StateDim, 1> compute_residuals(const Eigen::Matrix<float, StateDim, 1>& params,
+                                                       float H, float k, const VectorF& x_nd) {
+        Eigen::Matrix<float, StateDim, 1> res = Eigen::Matrix<float, StateDim, 1>::Zero();
         VectorF B = params.segment(0, N + 1);
         VectorF eta = params.segment(N + 1, N + 1);
         float Q = params[2 * (N + 1)];
         float R = params[2 * (N + 1) + 1];
 
+        // Prepare mode indices vector J
         VectorF J;
-        J.setLinSpaced(N + 1, 0, N);
+        for (int i = 0; i <= N; ++i) J[i] = i;
 
+        // Find indices of max and min eta for wave height constraint
         int idx_max = 0, idx_min = 0;
         for (int j = 1; j <= N; ++j) {
             if (eta[j] > eta[idx_max]) idx_max = j;
             if (eta[j] < eta[idx_min]) idx_min = j;
         }
 
+        // Precompute cosh(kJ*eta) and denom = cosh(kJ * depth)
+        VectorF kJ = k * J;
+        VectorF denom = (kJ * depth).array().cosh();
+
         for (int m = 0; m <= N; ++m) {
             float xm = x_nd[m];
             float etam = eta[m];
 
-            VectorF Jk_eta = J * k * etam;
-            VectorF denom = (J * k).array().cosh();
+            VectorF kJ_eta = kJ.array() * etam;
+            VectorF S1 = (kJ_eta.array().sinh() / denom.array()).matrix();
+            VectorF C1 = (kJ_eta.array().cosh() / denom.array()).matrix();
 
-            VectorF S1 = Jk_eta.array().sinh() / denom.array();
-            VectorF C1 = Jk_eta.array().cosh() / denom.array();
-            VectorF S2 = (J * k * xm).array().sin();
-            VectorF C2 = (J * k * xm).array().cos();
+            VectorF kJ_xm = kJ.array() * xm;
+            VectorF S2 = kJ_xm.array().sin().matrix();
+            VectorF C2 = kJ_xm.array().cos().matrix();
 
+            // Compute um and vm
             float um = B[0];
             float vm = 0;
             for (int j = 1; j <= N; ++j) {
@@ -212,44 +244,58 @@ private:
                 vm += k * B[j] * S1[j] * S2[j] * J[j];
             }
 
+            // Residual equations
             res[m] = -B[0] * etam + Q + (B.tail(N).array() * S1.tail(N).array() * C2.tail(N).array()).sum();
             res[N + 1 + m] = 0.5f * (um * um + vm * vm) + etam - R;
         }
 
+        // Constraint: mean eta integral zero (periodicity)
         res[2 * (N + 1)] = trapezoid_integration(eta) / length;
+
+        // Constraint: wave height difference matches H
         res[2 * (N + 1) + 1] = eta[idx_max] - eta[idx_min] - H;
 
         return res;
     }
 
-    BigMatrix compute_jacobian(const BigVector& params, float H, float k, const VectorF& x_nd) {
-        BigMatrix Jmat = BigMatrix::Zero();
+    /**
+     * Compute Jacobian matrix of residuals w.r.t params.
+     * Expression caching used for efficiency.
+     */
+    Eigen::Matrix<float, StateDim, StateDim> compute_jacobian(const Eigen::Matrix<float, StateDim, 1>& params,
+                                                             float H, float k, const VectorF& x_nd) {
+        Eigen::Matrix<float, StateDim, StateDim> Jmat = Eigen::Matrix<float, StateDim, StateDim>::Zero();
 
         VectorF B = params.segment(0, N + 1);
         VectorF eta = params.segment(N + 1, N + 1);
-        VectorF J;
-        J.setLinSpaced(N + 1, 0, N);
 
+        VectorF J;
+        for (int i = 0; i <= N; ++i) J[i] = i;
+
+        // Find indices of max and min eta for wave height constraint
         int idx_max = 0, idx_min = 0;
         for (int j = 1; j <= N; ++j) {
             if (eta[j] > eta[idx_max]) idx_max = j;
             if (eta[j] < eta[idx_min]) idx_min = j;
         }
 
+        VectorF kJ = k * J;
+        VectorF denom = (kJ * depth).array().cosh();
+
         for (int m = 0; m <= N; ++m) {
             float xm = x_nd[m];
             float etam = eta[m];
 
-            VectorF Jk_eta = J * k * etam;
-            VectorF denom = (J * k).array().cosh();
+            VectorF kJ_eta = kJ.array() * etam;
+            VectorF S1 = (kJ_eta.array().sinh() / denom.array()).matrix();
+            VectorF C1 = (kJ_eta.array().cosh() / denom.array()).matrix();
 
-            VectorF S1 = Jk_eta.array().sinh() / denom.array();
-            VectorF C1 = Jk_eta.array().cosh() / denom.array();
-            VectorF S2 = (J * k * xm).array().sin();
-            VectorF C2 = (J * k * xm).array().cos();
+            VectorF kJ_xm = kJ.array() * xm;
+            VectorF S2 = kJ_xm.array().sin().matrix();
+            VectorF C2 = kJ_xm.array().cos().matrix();
 
-            VectorF dS1_deta = (J * k).array() * C1.array() / denom.array();
-            VectorF dC1_deta = (J * k).array() * S1.array() / denom.array();
+            VectorF dS1_deta = (kJ.array() * C1.array() / denom.array()).matrix();
+            VectorF dC1_deta = (kJ.array() * S1.array() / denom.array()).matrix();
 
             float um = B[0];
             float vm = 0;
@@ -258,14 +304,16 @@ private:
                 vm += k * B[j] * S1[j] * S2[j] * J[j];
             }
 
-            Jmat(m, 0) = -etam;
+            // Fill Jacobian rows for residuals m
+            Jmat(m, 0) = -etam;  // ∂res_m/∂B0
             for (int j = 1; j <= N; ++j)
-                Jmat(m, j) = S1[j] * C2[j];
+                Jmat(m, j) = S1[j] * C2[j];  // ∂res_m/∂B_j
 
-            Jmat(m, N + 1 + m) = (B.tail(N).array() * dS1_deta.tail(N).array() * C2.tail(N).array()).sum();
-            Jmat(m, 2 * (N + 1)) = 1.0f;
+            Jmat(m, N + 1 + m) = (B.tail(N).array() * dS1_deta.tail(N).array() * C2.tail(N).array()).sum();  // ∂res_m/∂η_m
+            Jmat(m, 2 * (N + 1)) = 1.0f;  // ∂res_m/∂Q
 
-            Jmat(N + 1 + m, 0) = um;
+            // Fill Jacobian rows for residuals N+1+m
+            Jmat(N + 1 + m, 0) = um;  // ∂res_{N+1+m}/∂B0
             for (int j = 1; j <= N; ++j) {
                 float d_um = k * C1[j] * C2[j] * J[j];
                 float d_vm = k * S1[j] * S2[j] * J[j];
@@ -277,22 +325,28 @@ private:
                 d_um_deta += B[j] * dC1_deta[j] * C2[j] * J[j];
                 d_vm_deta += B[j] * dS1_deta[j] * S2[j] * J[j];
             }
-            Jmat(N + 1 + m, N + 1 + m) = k * (um * d_um_deta + vm * d_vm_deta) + 1.0f;
-            Jmat(N + 1 + m, 2 * (N + 1) + 1) = -1.0f;
+
+            Jmat(N + 1 + m, N + 1 + m) = k * (um * d_um_deta + vm * d_vm_deta) + 1.0f;  // ∂res_{N+1+m}/∂η_m
+            Jmat(N + 1 + m, 2 * (N + 1) + 1) = -1.0f;  // ∂res_{N+1+m}/∂R
         }
 
+        // Trapezoidal integration constraint on eta (mean elevation zero)
         float dx = length / N;
         for (int j = 0; j <= N; ++j) {
             float w = (j == 0 || j == N) ? 0.5f : 1.0f;
             Jmat(2 * (N + 1), N + 1 + j) = w * dx / length;
         }
 
+        // Wave height constraint derivatives
         Jmat(2 * (N + 1) + 1, N + 1 + idx_max) = 1.0f;
         Jmat(2 * (N + 1) + 1, N + 1 + idx_min) = -1.0f;
 
         return Jmat;
     }
 
+    /**
+     * Trapezoidal integration over eta values with spacing length / N.
+     */
     float trapezoid_integration(const VectorF& y) const {
         float dx = length / N;
         float sum = 0.5f * (y[0] + y[N]);
@@ -301,6 +355,9 @@ private:
     }
 };
 
+/**
+ * @brief Class for tracking vertical kinematics of a floating object on a nonlinear wave surface.
+ */
 template<int N = 4>
 class WaveSurfaceTracker {
 private:
@@ -313,82 +370,83 @@ private:
     float prev_z = 0.0f;
     float prev_dzdt = 0.0f;
 
-    // Small threshold to avoid division by zero in slope
-    static constexpr float slope_eps = 1e-6f;
+    static constexpr float slope_eps = 1e-6f;  // Prevent division by zero
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
         : wave(height, depth, length) {}
 
-    // Compute dx/dt using the kinematic surface constraint
-    float compute_dxdt(float x_pos, float time) const {
-        float eta = wave.surface_elevation(x_pos, time);
-        float eta_t = wave.surface_time_derivative(x_pos, time);
-        float eta_x = wave.surface_slope(x_pos, time);
-        float w = wave.vertical_velocity(x_pos, eta, time);
+    /**
+     * @brief Compute horizontal speed dx/dt from surface kinematic constraint:
+     *        dx/dt = (w - ∂η/∂t) / (∂η/∂x)
+     */
+    float compute_horizontal_speed(float x_pos, float time) const {
+        float eta      = wave.surface_elevation(x_pos, time);
+        float eta_dot  = wave.surface_time_derivative(x_pos, time);
+        float eta_x    = wave.surface_slope(x_pos, time);
+        float w        = wave.vertical_velocity(x_pos, eta, time);
 
-        // Protect against zero or near-zero slope
-        if (std::abs(eta_x) < slope_eps) {
+        // Clamp slope to avoid division by zero
+        if (std::abs(eta_x) < slope_eps)
             eta_x = (eta_x >= 0.0f) ? slope_eps : -slope_eps;
-        }
 
-        return (w - eta_t) / eta_x;
+        return (w - eta_dot) / eta_x;
     }
 
-    // RK4 step for integrating x(t)
-    float rk4_step(float x_curr, float t_curr, float dt_step) const {
-        float k1 = compute_dxdt(x_curr, t_curr);
-        float k2 = compute_dxdt(x_curr + 0.5f * dt_step * k1, t_curr + 0.5f * dt_step);
-        float k3 = compute_dxdt(x_curr + 0.5f * dt_step * k2, t_curr + 0.5f * dt_step);
-        float k4 = compute_dxdt(x_curr + dt_step * k3, t_curr + dt_step);
-
+    /**
+     * @brief Perform RK4 integration for horizontal position.
+     */
+    float rk4_integrate_x(float x_curr, float t_curr, float dt_step) const {
+        float k1 = compute_horizontal_speed(x_curr, t_curr);
+        float k2 = compute_horizontal_speed(x_curr + 0.5f * dt_step * k1, t_curr + 0.5f * dt_step);
+        float k3 = compute_horizontal_speed(x_curr + 0.5f * dt_step * k2, t_curr + 0.5f * dt_step);
+        float k4 = compute_horizontal_speed(x_curr + dt_step * k3, t_curr + dt_step);
         return x_curr + (dt_step / 6.0f) * (k1 + 2*k2 + 2*k3 + k4);
     }
 
-    // Main tracking function: integrate over duration with fixed timestep,
-    // call callback with (t, z, vertical velocity, vertical acceleration, x)
+    /**
+     * @brief Track vertical motion of a floating object on the wave surface.
+     * 
+     * @param duration  Total simulation time (seconds)
+     * @param timestep  Integration time step (seconds)
+     * @param callback  Function to call at each time step:
+     *                  void callback(t, z, dzdt, ddzdt2, x);
+     */
     void track_floating_object(
         float duration,
         float timestep,
         std::function<void(float, float, float, float, float)> callback)
     {
-        dt = std::min(timestep, 0.2f * wave.get_T() / 20.0f);
-        dt = std::max(dt, 1e-5f);
+        const float wave_T = wave.get_T();
+        const float wave_L = wave.get_length();
 
+        dt = clamp_value(timestep, 1e-5f, 0.2f * wave_T / 20.0f);
         t = 0.0f;
         x = 0.0f;
 
-        // Initialize vertical displacement and velocity
         prev_z = wave.surface_elevation(x, t);
         prev_dzdt = 0.0f;
 
-        float L = wave.get_length();
-
         while (t <= duration) {
-            // Integrate horizontal position x using RK4
-            float x_new = rk4_step(x, t, dt);
+            // RK4 step for horizontal position
+            float x_next = rk4_integrate_x(x, t, dt);
 
-            // Wrap x into periodic domain
-            if (x_new < 0) x_new += L;
-            if (x_new >= L) x_new -= L;
+            // Periodicity wrap
+            if (x_next < 0) x_next += wave_L;
+            else if (x_next >= wave_L) x_next -= wave_L;
 
-            // Advance time
             t += dt;
-            x = x_new;
+            x = x_next;
 
-            // Compute current vertical displacement
+            // Surface elevation at new x and t
             float z = wave.surface_elevation(x, t);
 
-            // Compute vertical velocity by finite difference
+            // Vertical velocity and acceleration by finite difference
             float dzdt = (z - prev_z) / dt;
-
-            // Compute vertical acceleration by finite difference of velocity
             float ddzdt2 = (dzdt - prev_dzdt) / dt;
 
-            // Send data to callback
             callback(t, z, dzdt, ddzdt2, x);
 
-            // Update history for next step
             prev_z = z;
             prev_dzdt = dzdt;
         }
