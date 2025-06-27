@@ -13,7 +13,7 @@
 #endif
 
 template <typename T>
-constexpr const T& clamp(const T& val, const T& low, const T& high) {
+constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
     return (val < low) ? low : (val > high) ? high : val;
 }
 
@@ -40,7 +40,7 @@ public:
     FentonWave(float height, float depth, float length,
                float g = 9.81f, float relax = 0.5f)
         : height(height), depth(depth), length(length),
-          g(g), relax(clamp(relax, 0.1f, 1.0f)),
+          g(g), relax(clamp_value(relax, 0.1f, 1.0f)),
           E(VectorF::Zero()) {
         if (depth <= 0 || length <= 0 || height <= 0)
             throw std::invalid_argument("Physical parameters must be positive");
