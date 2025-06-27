@@ -439,7 +439,8 @@ void FentonWave_test_2() {
         float eta = wave.surface_elevation(x, 0);
         out << x << "," << eta << "\n";
     }
-    std::cout << "Wave profile saved to wave_data.csv\n";
+    std::cerr << "Expected wave length: " << length << "\n";
+    std::cerr << "Computed wave length: " << 2 * M_PI / wave.get_k() << "\n";
 }
 
 #endif
