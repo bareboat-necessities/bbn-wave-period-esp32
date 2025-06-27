@@ -355,7 +355,6 @@ private:
         return J;
     }
 };
-
 /**
  * @brief Class for tracking vertical kinematics of a floating object on a nonlinear wave surface.
  */
@@ -373,36 +372,54 @@ private:
 
     static constexpr float slope_eps = 1e-6f;  // Prevent division by zero
 
-public:
-    WaveSurfaceTracker(float height, float depth, float length)
-        : wave(height, depth, length) {}
+    float mean_eta = 0.0f;
 
-    /**
-     * @brief Compute horizontal speed dx/dt from surface kinematic constraint:
-     *        dx/dt = (w - ∂η/∂t) / (∂η/∂x)
-     */
+    // Robust periodic wrapping for horizontal position x
+    float wrap_periodic(float val, float period) const {
+        while (val < 0.0f) val += period;
+        while (val >= period) val -= period;
+        return val;
+    }
+
+    // Compute mean elevation offset by sampling wave surface at t=0
+    void compute_mean_elevation(int samples = 100) {
+        float sum = 0.0f;
+        float L = wave.get_length();
+        for (int i = 0; i < samples; ++i) {
+            float xi = L * i / static_cast<float>(samples - 1);
+            sum += wave.surface_elevation(xi, 0.0f);
+        }
+        mean_eta = sum / static_cast<float>(samples);
+    }
+
+    // Compute horizontal speed dx/dt using kinematic constraint
     float compute_horizontal_speed(float x_pos, float time) const {
-        float eta      = wave.surface_elevation(x_pos, time);
+        float eta      = wave.surface_elevation(x_pos, time) - mean_eta;
         float eta_dot  = wave.surface_time_derivative(x_pos, time);
         float eta_x    = wave.surface_slope(x_pos, time);
-        float w        = wave.vertical_velocity(x_pos, eta, time);
+        // Pass physical elevation (add mean_eta back) for vertical velocity
+        float w        = wave.vertical_velocity(x_pos, eta + mean_eta, time);
 
-        // Clamp slope to avoid division by zero
+        // Clamp slope to avoid division by zero or extreme values
         if (std::abs(eta_x) < slope_eps)
             eta_x = (eta_x >= 0.0f) ? slope_eps : -slope_eps;
 
         return (w - eta_dot) / eta_x;
     }
 
-    /**
-     * @brief Perform RK4 integration for horizontal position.
-     */
+    // 4th-order Runge-Kutta integration for horizontal position
     float rk4_integrate_x(float x_curr, float t_curr, float dt_step) const {
         float k1 = compute_horizontal_speed(x_curr, t_curr);
         float k2 = compute_horizontal_speed(x_curr + 0.5f * dt_step * k1, t_curr + 0.5f * dt_step);
         float k3 = compute_horizontal_speed(x_curr + 0.5f * dt_step * k2, t_curr + 0.5f * dt_step);
         float k4 = compute_horizontal_speed(x_curr + dt_step * k3, t_curr + dt_step);
-        return x_curr + (dt_step / 6.0f) * (k1 + 2*k2 + 2*k3 + k4);
+        return x_curr + (dt_step / 6.0f) * (k1 + 2.0f*k2 + 2.0f*k3 + k4);
+    }
+
+public:
+    WaveSurfaceTracker(float height, float depth, float length)
+        : wave(height, depth, length) {
+        compute_mean_elevation();
     }
 
     /**
@@ -421,26 +438,27 @@ public:
         const float wave_T = wave.get_T();
         const float wave_L = wave.get_length();
 
-        dt = clamp_value(timestep, 1e-5f, 0.2f * wave_T / 20.0f);
+        dt = std::clamp(timestep, 1e-5f, 0.2f * wave_T / 20.0f);
+
         t = 0.0f;
         x = 0.0f;
 
-        prev_z = wave.surface_elevation(x, t);
-        prev_dzdt = 0.0f;
+        // Initialize previous vertical position and vertical velocity properly
+        prev_z = wave.surface_elevation(x, t) - mean_eta;
+        prev_dzdt = wave.vertical_velocity(x, prev_z + mean_eta, t);
 
         while (t <= duration) {
             // RK4 step for horizontal position
             float x_next = rk4_integrate_x(x, t, dt);
 
             // Periodicity wrap
-            if (x_next < 0) x_next += wave_L;
-            else if (x_next >= wave_L) x_next -= wave_L;
+            x_next = wrap_periodic(x_next, wave_L);
 
             t += dt;
             x = x_next;
 
-            // Surface elevation at new x and t
-            float z = wave.surface_elevation(x, t);
+            // Surface elevation at new x and t (zero-centered)
+            float z = wave.surface_elevation(x, t) - mean_eta;
 
             // Vertical velocity and acceleration by finite difference
             float dzdt = (z - prev_z) / dt;
@@ -453,6 +471,7 @@ public:
         }
     }
 };
+
 
 #ifdef FENTON_TEST
 template class FentonWave<4>;
