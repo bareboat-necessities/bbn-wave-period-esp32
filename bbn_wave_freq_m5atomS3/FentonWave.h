@@ -273,86 +273,38 @@ private:
 };
 
 
-/**
- * @brief Tracks a surface particle following the wave in Lagrangian frame.
- *
- * This version uses velocity integration (Euler method) to follow
- * the motion of a fluid parcel starting at the crest. It computes
- * vertical displacement, velocity, and acceleration over time.
- */
 template<int N = 4>
 class WaveSurfaceTracker {
 private:
-    FentonWave<N> wave;        // Underlying nonlinear wave model
-    float wave_number;         // Wave number k
-    float phase_velocity;      // Wave speed c
-    float wavelength;          // Wavelength = 2pi / k
+    FentonWave<N> wave;         // Nonlinear wave model
+    float phase_velocity;       // Wave speed c
+    float wavelength;           // λ = 2π / k
 
-    // Current Lagrangian particle state
-    float x;  // horizontal position (m)
-    float z;  // vertical position (m)
+    // Elevation history for computing velocity & acceleration
+    float eta_prev2 = 0;
+    float eta_prev = 0;
+    float eta_current = 0;
+    bool has_prev = false;
+    bool has_prev2 = false;
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
         : wave(height, depth, length)
     {
-        wave_number = wave.get_k();
         phase_velocity = wave.get_c();
-        wavelength = 2.0f * M_PI / wave_number;
-
-        // Initialize particle at crest at t=0
-        x = 0.0f;
-        z = wave.surface_elevation(x, 0.0f);
+        wavelength = 2.0f * M_PI / wave.get_k();
     }
 
     /**
-     * Evaluate velocity field at particle position and time,
-     * with horizontal coordinate wrapped modulo wavelength.
-     */
-    Eigen::Vector2f velocity_periodic(float x_pos, float z_pos, float t) const {
-        // Wrap x to [0, wavelength)
-        float x_wrapped = std::fmod(x_pos, wavelength);
-        if (x_wrapped < 0) x_wrapped += wavelength;
-        return wave.velocity(x_wrapped, z_pos, t);
-    }
-
-    /**
-     * Performs one RK4 integration step for particle position.
-     */
-    void rk4_step(float t, float dt) {
-        // k1
-        Eigen::Vector2f k1 = velocity_periodic(x, z, t);
-
-        // k2
-        Eigen::Vector2f k2 = velocity_periodic(
-            x + 0.5f * dt * k1[0],
-            z + 0.5f * dt * k1[1],
-            t + 0.5f * dt);
-
-        // k3
-        Eigen::Vector2f k3 = velocity_periodic(
-            x + 0.5f * dt * k2[0],
-            z + 0.5f * dt * k2[1],
-            t + 0.5f * dt);
-
-        // k4
-        Eigen::Vector2f k4 = velocity_periodic(
-            x + dt * k3[0],
-            z + dt * k3[1],
-            t + dt);
-
-        // Update position
-        x += (dt / 6.0f) * (k1[0] + 2.0f * k2[0] + 2.0f * k3[0] + k4[0]);
-        z += (dt / 6.0f) * (k1[1] + 2.0f * k2[1] + 2.0f * k3[1] + k4[1]);
-    }
-
-    /**
-     * Track the vertical Lagrangian kinematics of the surface particle
-     * over the specified duration and timestep.
+     * @brief Simulates vertical kinematics of a surface-floating object (e.g., buoy).
+     * The object follows the free surface: z(t) = η(x(t), t), x(t) = c * t.
      *
-     * The callback receives: (time, elevation, vertical_velocity, vertical_acceleration, horizontal_position)
+     * @param duration   Total simulation time (seconds)
+     * @param timestep   Time step for integration (seconds)
+     * @param callback   Function called at each time step:
+     *                   (time, elevation, vertical_velocity, vertical_acceleration, horizontal_position)
      */
-    void track_lagrangian_kinematics(
+    void track_surface_particle(
         float duration,
         float timestep,
         std::function<void(
@@ -362,19 +314,22 @@ public:
             float vertical_acceleration,
             float horizontal_position)> callback)
     {
-        if (timestep <= 0) throw std::invalid_argument("Timestep must be positive");
-        if (duration <= 0) throw std::invalid_argument("Duration must be positive");
+        if (duration <= 0 || timestep <= 0)
+            throw std::invalid_argument("Duration and timestep must be positive");
 
-        // History for finite difference of elevation (for velocity and acceleration)
-        float eta_prev2 = 0, eta_prev = 0, eta_current = 0;
-        bool has_prev = false, has_prev2 = false;
+        eta_prev2 = eta_prev = eta_current = 0;
+        has_prev = has_prev2 = false;
 
         for (float time = 0; time <= duration; time += timestep) {
-            // Advance particle position by RK4 step
-            rk4_step(time, timestep);
+            // Horizontal position moves at phase speed
+            float x = phase_velocity * time;
 
-            // Surface elevation at current particle horizontal position and time
-            float elevation = wave.surface_elevation(x, time);
+            // Keep x within [0, wavelength) for safe evaluation
+            float x_mod = std::fmod(x, wavelength);
+            if (x_mod < 0) x_mod += wavelength;
+
+            // Evaluate surface elevation at this position and time
+            float elevation = wave.surface_elevation(x_mod, time);
 
             // Update elevation history
             eta_prev2 = eta_prev;
@@ -384,21 +339,22 @@ public:
             has_prev2 = has_prev;
             has_prev = true;
 
-            // Compute vertical velocity and acceleration with finite differences
-            float vertical_velocity = 0;
-            float vertical_acceleration = 0;
+            // Compute vertical velocity and acceleration
+            float vertical_velocity = 0.0f;
+            float vertical_acceleration = 0.0f;
 
             if (has_prev2) {
-                // Central difference (second order)
+                // 2nd-order central difference
                 vertical_velocity = (eta_current - eta_prev2) / (2.0f * timestep);
                 vertical_acceleration = (eta_current - 2.0f * eta_prev + eta_prev2) / (timestep * timestep);
             } else if (has_prev) {
-                // Forward difference (first order fallback)
+                // 1st-order forward difference
                 vertical_velocity = (eta_current - eta_prev) / timestep;
-                vertical_acceleration = 0;  // can't compute acceleration yet
+                vertical_acceleration = 0.0f; // not yet defined
             }
 
-            callback(time, elevation, vertical_velocity, vertical_acceleration, x);
+            // Report state
+            callback(time, elevation, vertical_velocity, vertical_acceleration, x_mod);
         }
     }
 };
