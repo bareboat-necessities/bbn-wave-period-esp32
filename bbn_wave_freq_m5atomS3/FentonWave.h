@@ -274,49 +274,6 @@ private:
     }
 };
 
-/**
- * @brief Robust Lagrangian tracker for floating objects in nonlinear waves
- * 
- * Guarantees:
- * - Monotonic time advancement
- * - Energy-stable integration
- * - Physical derivative calculations
- */
-template<int N = 4>
-class WaveSurfaceTracker {
-private:
-
-    FentonWave<N> wave;
-
-    // History variables with exact time tracking
-    float t_prev2, t_prev1, t_curr;
-    float x_prev2, x_prev1, x_curr;
-    float eta_prev2, eta_prev1, eta_curr;
-
-    float dt;
-    bool history_initialized = false;
-
-    // Physical constraints
-    float max_velocity;
-    const float MAX_CFL = 0.2f;
-
-    void validate_state() const {
-        assert(std::isfinite(x_curr) && "Position NaN/inf detected");
-        assert(std::isfinite(eta_curr) && "Elevation NaN/inf detected");
-        assert(t_curr > t_prev1 && "Time reversal detected");
-    }
-
-public:
-    WaveSurfaceTracker(float height, float depth, float length)
-        : wave(height, depth, length),
-          max_velocity(sqrtf(9.81f * depth) * 1.5f) // Theoretical max * safety factor
-    {
-        // Initialize all time states to avoid undefined behavior
-        t_prev2 = t_prev1 = t_curr = 0.0f;
-        x_prev2 = x_prev1 = x_curr = 0.0f;
-        eta_prev2 = eta_prev1 = eta_curr = 0.0f;
-    }
-
 template<int N = 4>
 class WaveSurfaceTracker {
 private:
@@ -421,6 +378,7 @@ public:
         }
     }
 };
+
 #ifdef FENTON_TEST
 template class FentonWave<4>;
 template class WaveSurfaceTracker<4>;
