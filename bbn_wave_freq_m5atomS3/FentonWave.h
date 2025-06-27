@@ -412,8 +412,8 @@ public:
             x_curr += dt * k2;
 
             // 7. Periodic boundary (if needed)
-            if (x_curr > wave.length) x_curr -= wave.length;
-            if (x_curr < 0) x_curr += wave.length;
+            if (x_curr > wave.get_length()) x_curr -= wave.get_length();
+            if (x_curr < 0) x_curr += wave.get_length();
 
             validate_state();
         }
