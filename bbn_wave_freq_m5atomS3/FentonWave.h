@@ -357,8 +357,6 @@ public:
 };
 
 #ifdef FENTON_TEST
-
-#ifdef FENTON_TEST
 template class FentonWave<3>;
 
 void FentonWave_test() {
