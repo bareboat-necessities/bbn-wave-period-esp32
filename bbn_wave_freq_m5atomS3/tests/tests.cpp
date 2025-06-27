@@ -173,7 +173,7 @@ int main(int argc, char *argv[]) {
   }
 
 #ifdef FENTON_TEST
-  FentonWave_test_2();
+  FentonWave_test_1();
 #endif
   
 }
