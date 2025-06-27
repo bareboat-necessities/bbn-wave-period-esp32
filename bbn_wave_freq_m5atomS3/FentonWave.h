@@ -272,97 +272,69 @@ private:
     }
 };
 
-/**
- * @brief Fully Lagrangian motion tracker for a fluid particle on a nonlinear Fenton wave.
- * 
- * The particle follows fluid velocity field at (x, z, t) and integrates both dx/dt and dz/dt.
- * Vertical and horizontal accelerations are estimated via finite difference.
- */
 template<int N = 3>
 class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;
-    float wave_number;   // k
-    float wavelength;    // lambda = 2π / k
+    float wave_number;
+    float wavelength;
 
-    // History for computing vertical velocity and acceleration
-    float z_prev2 = 0.0f, z_prev = 0.0f, z_curr = 0.0f;
+    float eta_prev2 = 0.0f, eta_prev = 0.0f, eta_curr = 0.0f;
     bool has_prev = false, has_prev2 = false;
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
-        : wave(height, depth, length)
-    {
+        : wave(height, depth, length) {
         wave_number = wave.get_k();
         wavelength = 2.0f * M_PI / wave_number;
     }
 
-    /**
-     * @brief Simulates full Lagrangian trajectory over time.
-     * 
-     * @param duration Total time (seconds)
-     * @param timestep Time increment (seconds)
-     * @param callback Function called on each timestep:
-     *        (time, z, vertical_velocity, vertical_acceleration, x)
-     */
-    void track_lagrangian_motion(
+    void track_surface_particle(
         float duration,
         float timestep,
         std::function<void(
             float time,
-            float vertical_position,
+            float elevation,
             float vertical_velocity,
             float vertical_acceleration,
             float horizontal_position)> callback)
     {
-        if (duration <= 0 || timestep <= 0)
-            throw std::invalid_argument("Duration and timestep must be positive");
+        float x = 0.0f; // start at crest
+        float t = 0.0f;
 
-        float time = 0.0f;
+        for (; t <= duration; t += timestep) {
+            float eta = wave.surface_elevation(x, t);
 
-        // Start at wave crest: x = 0, z = surface elevation at crest
-        float x = 0.0f;
-        float z = wave.surface_elevation(x, 0.0f);
-
-        z_prev2 = z_prev = z_curr = z;
-        has_prev = has_prev2 = false;
-
-        for (; time <= duration; time += timestep) {
-            // Get fluid velocity at current particle position
-            Eigen::Vector2f velocity = wave.velocity(x, z, time);
-            float u = velocity[0]; // horizontal velocity
-            float w = velocity[1]; // vertical velocity
-
-            // Integrate positions
-            x += u * timestep;
-            z += w * timestep;
-
-            // Wrap x into wavelength for plotting clarity
-            x = std::fmod(x, wavelength);
-            if (x < 0) x += wavelength;
-
-            // Estimate vertical velocity and acceleration
-            float vertical_velocity = 0.0f;
-            float vertical_acceleration = 0.0f;
-
-            if (has_prev2) {
-                vertical_velocity = (z - z_prev2) / (2.0f * timestep);
-                vertical_acceleration = (z - 2.0f * z_prev + z_prev2) / (timestep * timestep);
-            } else if (has_prev) {
-                vertical_velocity = (z - z_prev) / timestep;
-                vertical_acceleration = 0.0f;
-            }
-
-            // Emit data
-            callback(time, z, vertical_velocity, vertical_acceleration, x);
-
-            // Update history
-            z_prev2 = z_prev;
-            z_prev = z_curr;
-            z_curr = z;
+            // Store for central difference
+            eta_prev2 = eta_prev;
+            eta_prev = eta_curr;
+            eta_curr = eta;
 
             has_prev2 = has_prev;
             has_prev = true;
+
+            float vz = 0.0f;
+            float az = 0.0f;
+
+            if (has_prev2) {
+                vz = (eta_curr - eta_prev2) / (2.0f * timestep);
+                az = (eta_curr - 2.0f * eta_prev + eta_prev2) / (timestep * timestep);
+            } else if (has_prev) {
+                vz = (eta_curr - eta_prev) / timestep;
+                az = 0.0f;
+            }
+
+            // Get horizontal velocity at surface
+            float u = wave.velocity(x, eta, t)[0];
+
+            // Integrate horizontal position
+            x += u * timestep;
+
+            // Wrap for visualization
+            x = std::fmod(x, wavelength);
+            if (x < 0) x += wavelength;
+
+            callback(t, eta, vz, az, x);
         }
     }
 };
