@@ -368,7 +368,7 @@ void FentonWave_test() {
 
     std::ofstream out("wave_data.csv");
     out << "x,elevation\n";
-    for (float x = -length; x <= length; x += 0.1f) {
+    for (float x = -2 * length; x <= 2 * length; x += 0.1f) {
         float eta = wave.surface_elevation(x, 0);
         out << x << "," << eta << "\n";
     }
