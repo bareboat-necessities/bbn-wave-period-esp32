@@ -273,38 +273,40 @@ private:
 };
 
 
+
+/**
+ * @brief Tracks full Lagrangian motion of a floating object on a Fenton wave.
+ *
+ * This tracker integrates the horizontal motion (dx/dt = u), while keeping
+ * the vertical position constrained to the wave surface (z = η(x, t)).
+ */
 template<int N = 4>
 class WaveSurfaceTracker {
 private:
-    FentonWave<N> wave;         // Nonlinear wave model
-    float phase_velocity;       // Wave speed c
-    float wavelength;           // λ = 2π / k
+    FentonWave<N> wave;     // Underlying nonlinear wave model
+    float phase_velocity;   // Phase speed c (for reference)
+    float wave_number;      // k
 
-    // Elevation history for computing velocity & acceleration
-    float eta_prev2 = 0;
-    float eta_prev = 0;
-    float eta_current = 0;
-    bool has_prev = false;
-    bool has_prev2 = false;
+    // History for computing vertical velocity and acceleration
+    float eta_prev2 = 0.0f, eta_prev = 0.0f, eta_current = 0.0f;
+    bool has_prev = false, has_prev2 = false;
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
         : wave(height, depth, length)
     {
         phase_velocity = wave.get_c();
-        wavelength = 2.0f * M_PI / wave.get_k();
+        wave_number = wave.get_k();
     }
 
     /**
-     * @brief Simulates vertical kinematics of a surface-floating object (e.g., buoy).
-     * The object follows the free surface: z(t) = η(x(t), t), x(t) = c * t.
+     * @brief Simulates Lagrangian motion of a floating surface parcel.
      *
-     * @param duration   Total simulation time (seconds)
-     * @param timestep   Time step for integration (seconds)
-     * @param callback   Function called at each time step:
-     *                   (time, elevation, vertical_velocity, vertical_acceleration, horizontal_position)
+     * @param duration  Total simulation time (s)
+     * @param timestep  Time step (s)
+     * @param callback  Called with (time, elevation, vertical_velocity, vertical_acceleration, x_position)
      */
-    void track_surface_particle(
+    void track_lagrangian_motion(
         float duration,
         float timestep,
         std::function<void(
@@ -317,44 +319,48 @@ public:
         if (duration <= 0 || timestep <= 0)
             throw std::invalid_argument("Duration and timestep must be positive");
 
-        eta_prev2 = eta_prev = eta_current = 0;
-        has_prev = has_prev2 = false;
+        // Initial conditions
+        float time = 0.0f;
+        float x = 0.0f; // Start at crest
+        float elevation = wave.surface_elevation(x, time);
 
-        for (float time = 0; time <= duration; time += timestep) {
-            // Horizontal position moves at phase speed
-            float x = phase_velocity * time;
+        eta_prev2 = eta_prev = eta_current = elevation;
+        has_prev = false;
+        has_prev2 = false;
 
-            // Keep x within [0, wavelength) for safe evaluation
-            float x_mod = std::fmod(x, wavelength);
-            if (x_mod < 0) x_mod += wavelength;
+        for (; time <= duration; time += timestep) {
+            // Compute new surface elevation at current x and t
+            elevation = wave.surface_elevation(x, time);
 
-            // Evaluate surface elevation at this position and time
-            float elevation = wave.surface_elevation(x_mod, time);
+            // Estimate vertical velocity and acceleration
+            float vertical_velocity = 0.0f;
+            float vertical_acceleration = 0.0f;
 
-            // Update elevation history
+            if (has_prev2) {
+                vertical_velocity = (elevation - eta_prev2) / (2.0f * timestep);
+                vertical_acceleration = (elevation - 2.0f * eta_prev + eta_prev2) / (timestep * timestep);
+            } else if (has_prev) {
+                vertical_velocity = (elevation - eta_prev) / timestep;
+                vertical_acceleration = 0.0f;
+            }
+
+            // Compute horizontal velocity u(x, z, t)
+            auto vel = wave.velocity(x, elevation, time);
+            float u = vel[0]; // horizontal velocity at surface
+
+            // Integrate to get new position (Euler)
+            x += u * timestep;
+
+            // Emit callback
+            callback(time, elevation, vertical_velocity, vertical_acceleration, x);
+
+            // Shift history
             eta_prev2 = eta_prev;
             eta_prev = eta_current;
             eta_current = elevation;
 
             has_prev2 = has_prev;
             has_prev = true;
-
-            // Compute vertical velocity and acceleration
-            float vertical_velocity = 0.0f;
-            float vertical_acceleration = 0.0f;
-
-            if (has_prev2) {
-                // 2nd-order central difference
-                vertical_velocity = (eta_current - eta_prev2) / (2.0f * timestep);
-                vertical_acceleration = (eta_current - 2.0f * eta_prev + eta_prev2) / (timestep * timestep);
-            } else if (has_prev) {
-                // 1st-order forward difference
-                vertical_velocity = (eta_current - eta_prev) / timestep;
-                vertical_acceleration = 0.0f; // not yet defined
-            }
-
-            // Report state
-            callback(time, elevation, vertical_velocity, vertical_acceleration, x_mod);
         }
     }
 };
