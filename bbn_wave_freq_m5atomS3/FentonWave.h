@@ -399,7 +399,7 @@ void FentonWave_test() {
     
     // Simulation parameters
     const float duration = 120.0f; // Simulation duration (s)
-    const float dt = 0.1f;         // Time step (s)
+    const float dt = 0.005f;         // Time step (s)
 
     // Create a 4th-order Fenton wave and a surface tracker
     WaveSurfaceTracker<4> tracker(height, depth, length);
