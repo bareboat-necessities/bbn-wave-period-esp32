@@ -306,9 +306,9 @@ class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;
 
-    float t = 0.0f;
-    float x = 0.0f;
-    float dt;
+    float t = 0.0f;      // Current time
+    float x = 0.0f;      // Horizontal position of the floating object
+    float dt;            // Time step
     float eta_prev = 0.0f, eta_curr = 0.0f;
     float vertical_velocity = 0.0f, vertical_acceleration = 0.0f;
 
@@ -316,45 +316,58 @@ public:
     WaveSurfaceTracker(float height, float depth, float length)
         : wave(height, depth, length) {}
 
+    /**
+     * @brief Tracks the vertical motion of a floating object constrained to the wave surface.
+     * 
+     * The object stays on the surface defined by η(x(t), t). The horizontal velocity dx/dt is 
+     * derived from the kinematic constraint:
+     *     dz/dt = ∂η/∂t + ∂η/∂x * dx/dt = w(x, z, t)
+     * 
+     * This is integrated using RK2. A user-supplied callback receives the vertical displacement,
+     * velocity, and acceleration over time.
+     */
     void track_floating_object(
         float duration,
         float timestep,
         std::function<void(float, float, float, float, float)> callback)
     {
+        // Limit timestep for numerical stability
         dt = std::min(timestep, 0.2f * wave.get_T() / 20.0f);
         dt = std::max(dt, 1e-5f);
 
         t = 0.0f;
         x = 0.0f;
+
+        // Initial elevation
         eta_curr = wave.surface_elevation(x, t);
         eta_prev = eta_curr;
 
         while (t <= duration) {
-            // Surface values
-            eta_curr = wave.surface_elevation(x, t);
+            // Surface values at current x, t
             float eta_t = wave.surface_time_derivative(x, t);
             float eta_x = wave.surface_slope(x, t);
-            float w = wave.vertical_velocity(x, eta_curr, t);
+            float eta_val = wave.surface_elevation(x, t);
+            float w = wave.vertical_velocity(x, eta_val, t);
 
-            // Avoid division by zero in ∂η/∂x
+            // Avoid division by near-zero ∂η/∂x (flat region)
             if (std::abs(eta_x) < 1e-6f) eta_x = 1e-6f;
 
-            // dx/dt from constraint
+            // dx/dt from surface constraint
             float dxdt = (w - eta_t) / eta_x;
 
-            // RK2 integration
+            // RK2 midpoint estimate
             float x_mid = x + 0.5f * dt * dxdt;
             float t_mid = t + 0.5f * dt;
 
-            float eta_mid = wave.surface_elevation(x_mid, t_mid);
             float eta_t_mid = wave.surface_time_derivative(x_mid, t_mid);
             float eta_x_mid = wave.surface_slope(x_mid, t_mid);
+            float eta_mid = wave.surface_elevation(x_mid, t_mid);
             float w_mid = wave.vertical_velocity(x_mid, eta_mid, t_mid);
 
             if (std::abs(eta_x_mid) < 1e-6f) eta_x_mid = 1e-6f;
             float dxdt_mid = (w_mid - eta_t_mid) / eta_x_mid;
 
-            // Advance
+            // Advance position and time
             x += dt * dxdt_mid;
             t += dt;
 
@@ -363,10 +376,14 @@ public:
             if (x < 0) x += L;
             if (x >= L) x -= L;
 
-            // Estimate derivatives
+            // Evaluate updated surface elevation (after x, t advance)
+            eta_curr = wave.surface_elevation(x, t);
+
+            // Estimate vertical velocity and acceleration (finite differences)
             float dzdt = (eta_curr - eta_prev) / dt;
             float ddzdt2 = (dzdt - vertical_velocity) / dt;
 
+            // User-provided callback with updated state
             callback(t, eta_curr, dzdt, ddzdt2, x);
 
             // Update history
@@ -376,6 +393,7 @@ public:
         }
     }
 };
+
 
 
 #ifdef FENTON_TEST
