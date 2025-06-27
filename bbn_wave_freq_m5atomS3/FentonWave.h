@@ -407,7 +407,7 @@ void FentonWave_test_1() {
     
     // Simulation parameters
     const float duration = 120.0f; // Simulation duration (s)
-    const float dt = 0.005f;         // Time step (s)
+    const float dt = 0.01f;         // Time step (s)
 
     // Create a 4th-order Fenton wave and a surface tracker
     WaveSurfaceTracker<4> tracker(height, depth, length);
@@ -435,7 +435,7 @@ void FentonWave_test_2() {
 
     std::ofstream out("wave_data.csv");
     out << "x,elevation\n";
-    for (float x = -length; x <= length; x += 0.1f) {
+    for (float x = 0; x <= length; x += 0.01f) {
         float eta = wave.surface_elevation(x, 0);
         out << x << "," << eta << "\n";
     }
