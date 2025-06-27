@@ -271,28 +271,44 @@ private:
         return sum * dx;
     }
 };
+
 /**
  * @brief Tracks Lagrangian motion of a floating object constrained to the wave surface.
+ * 
+ * The floating object moves horizontally with the fluid velocity at the surface,
+ * and vertical displacement follows the nonlinear wave elevation η(x(t), t).
+ * Vertical velocity and acceleration are estimated via central differences using
+ * a 3-point stencil initialized by backward integration.
+ * 
+ * @tparam N Fourier modes count for FentonWave model (default 3)
  */
 template<int N = 3>
 class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;
-    float wave_period;
+
+    // History variables for central difference derivatives
+    float t_prev2, t_prev1, t_curr;
+    float x_prev2, x_prev1, x_curr;
+    float eta_prev2, eta_prev1, eta_curr;
+
+    float dt; // timestep duration
+    bool history_initialized = false;
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
         : wave(height, depth, length)
     {
-        wave_period = wave.get_T();  // in seconds
+        // Empty constructor body
     }
 
     /**
-     * @brief Track surface-following floating particle.
+     * @brief Track Lagrangian motion of a surface particle over time.
      * 
-     * @param duration Simulation duration (seconds)
-     * @param timestep Time step (seconds)
-     * @param callback Function(time, elevation, vertical_velocity, vertical_acceleration, x_position)
+     * @param duration Total simulation time in seconds
+     * @param timestep Time step in seconds (dt)
+     * @param callback User function called each step with
+     *   (time, elevation, vertical_velocity, vertical_acceleration, horizontal_position)
      */
     void track_surface_particle(
         float duration,
@@ -307,37 +323,63 @@ public:
         if (duration <= 0 || timestep <= 0)
             throw std::invalid_argument("Duration and timestep must be positive");
 
-        float t = 0.0f;
-        float x = 0.0f;  // Start at crest
-        float eta_curr = wave.surface_elevation(x, t);
-        float eta_prev = eta_curr;
-        float eta_prev2 = eta_curr;
+        dt = timestep;
 
-        // Start loop
-        for (; t <= duration; t += timestep) {
-            // Compute new eta at current x(t)
-            float eta = wave.surface_elevation(x, t);
+        // Initialize current time and position at crest (x=0)
+        t_curr = 0.0f;
+        x_curr = 0.0f;
 
-            // Estimate derivatives
-            float vertical_velocity = (eta - eta_prev2) / (2.0f * timestep);
-            float vertical_acceleration = (eta - 2.0f * eta_prev + eta_prev2) / (timestep * timestep);
+        // Initialize history by stepping backward twice to allow central difference
+        // Step 1 backward
+        float t_bwd1 = t_curr - dt;
+        float u_curr = wave.velocity(x_curr, wave.surface_elevation(x_curr, t_curr), t_curr)[0];
+        float x_bwd1 = x_curr - u_curr * dt;
+        float eta_bwd1 = wave.surface_elevation(x_bwd1, t_bwd1);
 
-            // Get horizontal surface velocity
-            float u = wave.velocity(x, eta, t)[0];
+        // Step 2 backward
+        float t_bwd2 = t_curr - 2.0f * dt;
+        float u_bwd1 = wave.velocity(x_bwd1, eta_bwd1, t_bwd1)[0];
+        float x_bwd2 = x_bwd1 - u_bwd1 * dt;
+        float eta_bwd2 = wave.surface_elevation(x_bwd2, t_bwd2);
 
-            // Update x (Lagrangian motion)
-            x += u * timestep;
+        // Assign history variables
+        t_prev2 = t_bwd2; eta_prev2 = eta_bwd2; x_prev2 = x_bwd2;
+        t_prev1 = t_bwd1; eta_prev1 = eta_bwd1; x_prev1 = x_bwd1;
+        eta_curr = wave.surface_elevation(x_curr, t_curr);
 
-            // Emit
-            callback(t, eta, vertical_velocity, vertical_acceleration, x);
+        history_initialized = true;
 
-            // Update history
-            eta_prev2 = eta_prev;
-            eta_prev = eta;
+        // Main loop: iterate until duration
+        while (t_curr <= duration) {
+            // 1) Sample surface elevation at current (x_curr, t_curr)
+            eta_curr = wave.surface_elevation(x_curr, t_curr);
+
+            // 2) Compute vertical velocity and acceleration via central differences
+            float vertical_velocity = 0.0f;
+            float vertical_acceleration = 0.0f;
+            if (history_initialized) {
+                vertical_velocity = (eta_curr - eta_prev2) / (2.0f * dt);
+                vertical_acceleration = (eta_curr - 2.0f * eta_prev1 + eta_prev2) / (dt * dt);
+            }
+
+            // 3) Emit current state via callback
+            callback(t_curr, eta_curr, vertical_velocity, vertical_acceleration, x_curr);
+
+            // 4) Calculate horizontal fluid velocity at surface and advance position/time
+            float u = wave.velocity(x_curr, eta_curr, t_curr)[0];
+            float x_next = x_curr + u * dt;
+            float t_next = t_curr + dt;
+
+            // 5) Shift history: older becomes prev2, prev1 becomes prev2, current becomes prev1
+            t_prev2 = t_prev1; eta_prev2 = eta_prev1; x_prev2 = x_prev1;
+            t_prev1 = t_curr;  eta_prev1 = eta_curr;  x_prev1 = x_curr;
+
+            // 6) Update current time and position for next iteration
+            t_curr = t_next;
+            x_curr = x_next;
         }
     }
 };
-
 
 #ifdef FENTON_TEST
 template class FentonWave<4>;
