@@ -334,7 +334,7 @@ public:
         }
 
         // Constrain timestep by CFL condition
-        dt = std::min(timestep, MAX_CFL * wave.period() / 20.0f);
+        dt = std::min(timestep, MAX_CFL * wave.get_T() / 20.0f);
         const float min_dt = 1e-6f;
         dt = std::max(dt, min_dt);
 
