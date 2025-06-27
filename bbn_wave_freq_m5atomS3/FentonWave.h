@@ -475,6 +475,23 @@ template class FentonWave<4>;
 template class WaveSurfaceTracker<4>;
 
 void FentonWave_test_1() {
+    const float height = 2.0f;
+    const float depth = 10.0f;
+    const float length = 50.0f;
+
+    FentonWave<4> wave(height, depth, length);
+
+    std::ofstream out("wave_data.csv");
+    out << "x,elevation\n";
+    for (float x = 0; x <= length; x += 0.05f) {
+        float eta = wave.surface_elevation(x, 0);
+        out << x << "," << eta << "\n";
+    }
+    std::cerr << "Expected wave length: " << length << "\n";
+    std::cerr << "Computed wave length: " << 2 * M_PI / wave.get_k() << "\n";
+}
+
+void FentonWave_test_2() {
     // Wave parameters
     const float height = 2.0f;   // Wave height (m)
     const float depth = 10.0f;   // Water depth (m)
@@ -488,7 +505,7 @@ void FentonWave_test_1() {
     WaveSurfaceTracker<4> tracker(height, depth, length);
 
     // Output file
-    std::ofstream out("wave_data.csv");
+    std::ofstream out("wave_tracker_data.csv");
     out << "Time(s),Displacement(m),Velocity(m/s),Acceleration(m/s²),X_Position(m)\n";
 
     // Define the kinematics callback (writes data to file)
@@ -497,25 +514,8 @@ void FentonWave_test_1() {
         out << time << "," << elevation << "," << vertical_velocity << "," << vertical_acceleration << "," << horizontal_position << "\n";
     };
 
-    // Track surface object (using callback)
+    // Track floating object (using callback)
     tracker.track_floating_object(duration, dt, kinematics_callback);
-}
-
-void FentonWave_test_2() {
-    const float height = 2.0f;
-    const float depth = 10.0f;
-    const float length = 50.0f;
-
-    FentonWave<3> wave(height, depth, length);
-
-    std::ofstream out("wave_data.csv");
-    out << "x,elevation\n";
-    for (float x = 0; x <= length; x += 0.05f) {
-        float eta = wave.surface_elevation(x, 0);
-        out << x << "," << eta << "\n";
-    }
-    std::cerr << "Expected wave length: " << length << "\n";
-    std::cerr << "Computed wave length: " << 2 * M_PI / wave.get_k() << "\n";
 }
 
 #endif
