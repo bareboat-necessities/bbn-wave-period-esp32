@@ -279,30 +279,26 @@ class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;
 
-    float t_prev2, t_prev1, t_curr;
-    float x_prev2, x_prev1, x_curr;
-    float eta_prev2, eta_prev1, eta_curr;
+    // History of time, x-position, and elevation
+    float t_prev2 = 0.0f, t_prev1 = 0.0f, t_curr = 0.0f;
+    float x_prev2 = 0.0f, x_prev1 = 0.0f, x_curr = 0.0f;
+    float eta_prev2 = 0.0f, eta_prev1 = 0.0f, eta_curr = 0.0f;
 
-    float dt;
-    float max_velocity;
+    float dt = 0.01f;
     const float MAX_CFL = 0.2f;
+    float max_velocity;
 
     void validate_state() const {
         if (!std::isfinite(x_curr) || !std::isfinite(eta_curr))
-            throw std::runtime_error("Invalid state");
+            throw std::runtime_error("Invalid numerical state");
         if (t_curr <= t_prev1)
-            throw std::runtime_error("Non-monotonic time");
+            throw std::runtime_error("Non-increasing time");
     }
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
         : wave(height, depth, length),
-          max_velocity(std::sqrt(9.81f * depth) * 1.5f)
-    {
-        t_prev2 = t_prev1 = t_curr = 0.0f;
-        x_prev2 = x_prev1 = x_curr = 0.0f;
-        eta_prev2 = eta_prev1 = eta_curr = 0.0f;
-    }
+          max_velocity(std::sqrt(9.81f * depth) * 1.5f) {}
 
     void track_surface_object(
         float duration,
@@ -310,15 +306,17 @@ public:
         std::function<void(float, float, float, float, float)> callback)
     {
         if (duration <= 0 || timestep <= 0)
-            throw std::invalid_argument("Invalid duration or timestep");
+            throw std::invalid_argument("Duration and timestep must be positive");
 
         dt = std::min(timestep, MAX_CFL * wave.get_T() / 20.0f);
         dt = std::max(dt, 1e-6f);
 
+        // Start at crest
         t_curr = 0.0f;
         x_curr = 0.0f;
         eta_curr = wave.surface_elevation(x_curr, t_curr);
 
+        // Initialize history via backward stepping
         auto backstep = [&](float t_target) -> float {
             float x = x_curr;
             for (int i = 0; i < 3; ++i) {
@@ -333,32 +331,41 @@ public:
         x_prev1 = backstep(t_prev1);
         eta_prev1 = wave.surface_elevation(x_prev1, t_prev1);
 
-        t_prev2 = -2 * dt;
+        t_prev2 = -2.0f * dt;
         x_prev2 = backstep(t_prev2);
         eta_prev2 = wave.surface_elevation(x_prev2, t_prev2);
 
+        // Main loop
         while (t_curr <= duration) {
-            float v_z = (eta_curr - eta_prev1) / (t_curr - t_prev1);
-            float a_z = 2.0f * ((eta_prev1 - eta_prev2)/(t_prev1 - t_prev2) -
-                                (eta_curr - eta_prev1)/(t_curr - t_prev1)) /
-                        (t_curr - t_prev2);
+            // Derivative estimation with robust 3-point central differences
+            float dt_f = t_curr - t_prev1;
+            float dt_b = t_prev1 - t_prev2;
 
-            float u_now = wave.velocity(x_curr, eta_curr, t_curr)[0];
-            if (std::abs(u_now) > max_velocity)
-                throw std::runtime_error("Unphysical velocity");
+            float dz_dt = (eta_curr - eta_prev1) / dt_f;
 
-            callback(t_curr, eta_curr, v_z, a_z, x_curr);
+            float d_eta1 = (eta_prev1 - eta_prev2) / dt_b;
+            float d_eta2 = (eta_curr - eta_prev1) / dt_f;
+            float ddz_dt2 = (d_eta2 - d_eta1) / ((dt_b + dt_f) * 0.5f);
 
-            float k1 = u_now;
-            float x_mid = x_curr + 0.5f * dt * k1;
+            // Horizontal velocity for RK2
+            float u1 = wave.velocity(x_curr, eta_curr, t_curr)[0];
+            if (std::abs(u1) > max_velocity)
+                throw std::runtime_error("Unphysical velocity detected");
+
+            // Report
+            callback(t_curr, eta_curr, dz_dt, ddz_dt2, x_curr);
+
+            // RK2 integration
+            float x_mid = x_curr + 0.5f * dt * u1;
             float t_mid = t_curr + 0.5f * dt;
             float eta_mid = wave.surface_elevation(x_mid, t_mid);
-            float k2 = wave.velocity(x_mid, eta_mid, t_mid)[0];
+            float u2 = wave.velocity(x_mid, eta_mid, t_mid)[0];
 
-            float x_next = x_curr + dt * k2;
+            float x_next = x_curr + dt * u2;
             float t_next = t_curr + dt;
             float eta_next = wave.surface_elevation(x_next, t_next);
 
+            // Shift history
             t_prev2 = t_prev1;
             x_prev2 = x_prev1;
             eta_prev2 = eta_prev1;
@@ -371,8 +378,9 @@ public:
             x_curr = x_next;
             eta_curr = eta_next;
 
-            if (x_curr > wave.get_length()) x_curr -= wave.get_length();
+            // Periodic domain wraparound
             if (x_curr < 0) x_curr += wave.get_length();
+            if (x_curr >= wave.get_length()) x_curr -= wave.get_length();
 
             validate_state();
         }
