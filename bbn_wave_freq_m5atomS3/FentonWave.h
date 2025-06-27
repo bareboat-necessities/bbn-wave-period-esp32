@@ -33,23 +33,24 @@ private:
     using BigMatrix = Eigen::Matrix<float, StateDim, StateDim>;
 
     float height, depth, length, g, relax;
-    VectorF eta, x, B;
+    VectorF eta, B;
     float k, c, T, omega;
 
 public:
     FentonWave(float height, float depth, float length, float g = 9.81f, float relax = 0.5f)
         : height(height), depth(depth), length(length), g(g), relax(clamp_value(relax, 0.1f, 1.0f)) {
-        if (depth <= 0 || length <= 0 || height <= 0)
-            throw std::invalid_argument("Physical parameters must be positive");
-        if (height / depth > 0.78f)
-            throw std::invalid_argument("Wave too steep (H/d > 0.78)");
 
-        auto coeffs = solve_fenton_equations();
+        if (height <= 0 || depth <= 0 || length <= 0)
+            throw std::invalid_argument("Wave parameters must be positive.");
+        if (height / depth > 0.78f)
+            throw std::invalid_argument("Wave too steep (H/d > 0.78).");
+
+        auto coeffs = solve_fenton();
         set_coefficients(coeffs);
     }
 
-    float surface_elevation(float x_val, float t = 0) const {
-        float phase = (x_val - c * t) * k;
+    float surface_elevation(float x, float t = 0.0f) const {
+        float phase = k * (x - c * t);
         float eta_val = 0.0f;
         for (int i = 1; i <= N; ++i)
             eta_val += eta[i] * std::cos(i * phase);
@@ -96,50 +97,56 @@ public:
         return w;
     }
 
-    float get_c() const { return c; }
     float get_k() const { return k; }
+    float get_c() const { return c; }
     float get_T() const { return T; }
     float get_omega() const { return omega; }
-    float get_length() const { return length; }
     float get_height() const { return height; }
+    float get_length() const { return length; }
     const VectorF& get_eta() const { return eta; }
 
 private:
     struct FentonCoefficients {
-        VectorF x, eta, B;
+        VectorF B, eta;
         float k, c, Q, R;
     };
 
     void set_coefficients(const FentonCoefficients& coeffs) {
-        eta = coeffs.eta * depth;
-        x = coeffs.x * depth;
-        k = coeffs.k;
-        c = coeffs.c * std::sqrt(g * depth);
         B = coeffs.B * std::sqrt(g * depth);
+        eta = coeffs.eta * depth;
+        k = coeffs.k / depth;
+        c = coeffs.c * std::sqrt(g * depth);
         T = length / c;
         omega = c * k;
     }
 
-    FentonCoefficients solve_fenton_equations(int maxiter = 100, float tol = 1e-6f) {
+    FentonCoefficients solve_fenton(int maxiter = 100, float tol = 1e-6f) {
         float H = height / depth;
         float lambda = length / depth;
         float k_nd = 2 * M_PI / lambda;
 
-        float c_guess = std::sqrt(std::tanh(k_nd) / k_nd);
+        float c0 = std::sqrt(std::tanh(k_nd) / k_nd);  // nondim phase speed
 
         VectorF J;
         for (int i = 0; i <= N; ++i) J[i] = i;
 
-        VectorF x_nd = (J * (2 * M_PI / N)); // collocation points
+        VectorF x_nd;
+        for (int i = 0; i <= N; ++i)
+            x_nd[i] = 2 * M_PI * i / (N + 1);  // evenly spaced over 0 to 2π
 
         FentonCoefficients coeffs;
         coeffs.B.setZero();
-        coeffs.B[0] = c_guess;
-        coeffs.B[1] = H * coeffs.B[0] / (2 * std::tanh(k_nd));
         coeffs.eta.setZero();
-        coeffs.eta[1] = H / 2.0f;
-        coeffs.Q = 0;
-        coeffs.R = 1 + 0.5f * H * H / (4 * std::tanh(k_nd));
+        coeffs.B[0] = c0;
+
+        // Better initial guess with decaying harmonics
+        for (int i = 1; i <= N; ++i) {
+            coeffs.eta[i] = H * std::pow(0.5f, i);
+            coeffs.B[i] = H * c0 * std::pow(0.5f, i);
+        }
+
+        coeffs.Q = 0.0f;
+        coeffs.R = 1.0f;
 
         BigVector params;
         params.segment(0, N + 1) = coeffs.B;
@@ -149,76 +156,86 @@ private:
 
         for (int iter = 0; iter < maxiter; ++iter) {
             BigVector res = compute_residuals(params, H, k_nd, x_nd);
-            if (res.norm() < tol) break;
+            float err = res.norm();
+            if (err < tol) break;
+
             BigMatrix Jmat = compute_jacobian(params, H, k_nd, x_nd);
             BigVector delta = Jmat.colPivHouseholderQr().solve(res);
             params -= relax * delta;
         }
 
-        coeffs.B = params.segment(0, N + 1);
+        coeffs.B   = params.segment(0, N + 1);
         coeffs.eta = params.segment(N + 1, N + 1);
-        coeffs.Q = params[2 * (N + 1)];
-        coeffs.R = params[2 * (N + 1) + 1];
-        coeffs.x = x_nd;
-        coeffs.k = k_nd / depth;
-        coeffs.c = coeffs.B[0];
+        coeffs.Q   = params[2 * (N + 1)];
+        coeffs.R   = params[2 * (N + 1) + 1];
+        coeffs.k   = k_nd;
+        coeffs.c   = coeffs.B[0];
 
         return coeffs;
     }
 
     BigVector compute_residuals(const BigVector& params, float H, float k, const VectorF& x_nd) {
         BigVector res = BigVector::Zero();
-        VectorF B = params.segment(0, N + 1);
+        VectorF B   = params.segment(0, N + 1);
         VectorF eta = params.segment(N + 1, N + 1);
         float Q = params[2 * (N + 1)];
         float R = params[2 * (N + 1) + 1];
 
-        VectorF J;
-        for (int i = 0; i <= N; ++i) J[i] = i;
-
-        VectorF kJ = k * J;
-        VectorF denom = (kJ * depth).array().cosh();
-
-        VectorF eta_spatial;
+        VectorF eta_x;
         for (int m = 0; m <= N; ++m) {
             float phase = k * x_nd[m];
             float val = 0.0f;
             for (int j = 1; j <= N; ++j)
                 val += eta[j] * std::cos(j * phase);
-            eta_spatial[m] = val;
+            eta_x[m] = val;
         }
 
         int idx_max = 0, idx_min = 0;
-        for (int m = 1; m <= N; ++m) {
-            if (eta_spatial[m] > eta_spatial[idx_max]) idx_max = m;
-            if (eta_spatial[m] < eta_spatial[idx_min]) idx_min = m;
+        for (int i = 0; i <= N; ++i) {
+            if (eta_x[i] > eta_x[idx_max]) idx_max = i;
+            if (eta_x[i] < eta_x[idx_min]) idx_min = i;
         }
 
         for (int m = 0; m <= N; ++m) {
             float xm = x_nd[m];
             float etam = eta[m];
 
-            VectorF kJ_eta = kJ.array() * etam;
-            VectorF S1 = (kJ_eta.array().sinh() / denom.array()).matrix();
-            VectorF C1 = (kJ_eta.array().cosh() / denom.array()).matrix();
-
-            VectorF kJ_xm = kJ.array() * xm;
-            VectorF S2 = kJ_xm.array().sin().matrix();
-            VectorF C2 = kJ_xm.array().cos().matrix();
-
             float um = B[0];
             float vm = 0.0f;
+
             for (int j = 1; j <= N; ++j) {
-                um += k * B[j] * C1[j] * C2[j] * J[j];
-                vm += k * B[j] * S1[j] * S2[j] * J[j];
+                float kj = j * k;
+                float denom = std::cosh(kj);
+                float S = std::sinh(kj * etam) / denom;
+                float C = std::cosh(kj * etam) / denom;
+                float phase = kj * xm;
+                um += kj * B[j] * C * std::cos(phase);
+                vm += kj * B[j] * S * std::sin(phase);
             }
 
-            res[m] = -B[0] * etam + Q + (B.tail(N).array() * S1.tail(N).array() * C2.tail(N).array()).sum();
-            res[N + 1 + m] = 0.5f * (um * um + vm * vm) + eta_spatial[m] - R;
+            float bernoulli = 0.5f * (um * um + vm * vm) + eta_x[m] - R;
+            float surface = -B[0] * etam + Q;
+            for (int j = 1; j <= N; ++j) {
+                float kj = j * k;
+                float denom = std::cosh(kj);
+                float S = std::sinh(kj * etam) / denom;
+                float phase = kj * xm;
+                surface += B[j] * S * std::cos(phase);
+            }
+
+            res[m] = surface;
+            res[N + 1 + m] = bernoulli;
         }
 
-        res[2 * (N + 1)] = trapezoid_integration(eta_spatial) / length;
-        res[2 * (N + 1) + 1] = eta_spatial[idx_max] - eta_spatial[idx_min] - H;
+        // Mean elevation condition
+        float dx = length / N;
+        float sum = 0.5f * (eta_x[0] + eta_x[N]);
+        for (int i = 1; i < N; ++i) sum += eta_x[i];
+        res[2 * (N + 1)] = sum * dx / length;
+
+        // Height condition
+        res[2 * (N + 1) + 1] = eta_x[idx_max] - eta_x[idx_min] - H;
+
         return res;
     }
 
