@@ -55,7 +55,7 @@ public:
      * @brief Get surface elevation η(x, t) in meters.
      */
     float surface_elevation(float x_val, float t = 0) const {
-        float x_nd = (x_val - c * t) * k;  // nondimensional phase
+        float x_nd = x_val - c * t;
         float eta_val = 0.0f;
         for (int i = 0; i <= N; ++i)
             eta_val += eta[i] * std::cos(i * k * x_nd);
