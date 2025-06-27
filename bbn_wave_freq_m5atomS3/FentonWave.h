@@ -406,7 +406,7 @@ void FentonWave_test() {
     };
 
     // Track surface object (using callback)
-    tracker.track_surface_object(duration, dt, kinematics_callback);
+    tracker.track_floating_object(duration, dt, kinematics_callback);
 }
 #endif
 
