@@ -123,11 +123,11 @@ private:
     void set_coefficients(const FentonCoefficients& coeffs) {
         eta = coeffs.eta * depth;
         x = coeffs.x * depth;
-        k = coeffs.k / depth;
+        k = coeffs.k;
         c = coeffs.c * std::sqrt(g * depth);
         B = coeffs.B * std::sqrt(g * depth);
         T = length / c;
-        omega = c * k;
+        omega = c * k / depth;
     }
 
     FentonCoefficients solve_fenton_equations(int maxiter = 100, float tol = 1e-6f) {
