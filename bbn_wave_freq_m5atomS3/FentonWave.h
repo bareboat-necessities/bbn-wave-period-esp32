@@ -317,88 +317,91 @@ public:
         eta_prev2 = eta_prev1 = eta_curr = 0.0f;
     }
 
-    /**
-     * @brief Track particle with rigorous physics checks
-     * 
-     * @param duration Total simulation time (must be > 0)
-     * @param timestep Time step (automatically constrained by CFL)
-     * @param callback Receives (t, η, dη/dt, d²η/dt², x)
-     */
-    void track_surface_particle(
+template<int N = 4>
+class WaveSurfaceTracker {
+private:
+    FentonWave<N> wave;
+
+    float t_prev2, t_prev1, t_curr;
+    float x_prev2, x_prev1, x_curr;
+    float eta_prev2, eta_prev1, eta_curr;
+
+    float dt;
+    float max_velocity;
+    const float MAX_CFL = 0.2f;
+
+    void validate_state() const {
+        if (!std::isfinite(x_curr) || !std::isfinite(eta_curr))
+            throw std::runtime_error("Invalid state");
+        if (t_curr <= t_prev1)
+            throw std::runtime_error("Non-monotonic time");
+    }
+
+public:
+    WaveSurfaceTracker(float height, float depth, float length)
+        : wave(height, depth, length),
+          max_velocity(std::sqrt(9.81f * depth) * 1.5f)
+    {
+        t_prev2 = t_prev1 = t_curr = 0.0f;
+        x_prev2 = x_prev1 = x_curr = 0.0f;
+        eta_prev2 = eta_prev1 = eta_curr = 0.0f;
+    }
+
+    void track_surface_object(
         float duration,
         float timestep,
         std::function<void(float, float, float, float, float)> callback)
     {
-        // Input validation
-        if (duration <= 0 || timestep <= 0) {
-            throw std::invalid_argument("Duration and timestep must be positive");
-        }
+        if (duration <= 0 || timestep <= 0)
+            throw std::invalid_argument("Invalid duration or timestep");
 
-        // Constrain timestep by CFL condition
         dt = std::min(timestep, MAX_CFL * wave.get_T() / 20.0f);
-        const float min_dt = 1e-6f;
-        dt = std::max(dt, min_dt);
+        dt = std::max(dt, 1e-6f);
 
-        // Initialize at wave crest (x=0)
         t_curr = 0.0f;
         x_curr = 0.0f;
         eta_curr = wave.surface_elevation(x_curr, t_curr);
 
-        // Iterative backward integration for accurate history
-        auto step_backward = [&](float t_target) {
+        auto backstep = [&](float t_target) -> float {
             float x = x_curr;
-            for (int iter = 0; iter < 3; ++iter) {  // Fixed-point iteration
+            for (int i = 0; i < 3; ++i) {
                 float eta = wave.surface_elevation(x, t_target);
                 float u = wave.velocity(x, eta, t_target)[0];
-                x = x_curr - u * (t_curr - t_target);
+                x = x_curr - (t_curr - t_target) * u;
             }
             return x;
         };
 
-        // Initialize history
         t_prev1 = -dt;
-        x_prev1 = step_backward(t_prev1);
+        x_prev1 = backstep(t_prev1);
         eta_prev1 = wave.surface_elevation(x_prev1, t_prev1);
 
-        t_prev2 = -2.0f * dt;
-        x_prev2 = step_backward(t_prev2);
+        t_prev2 = -2 * dt;
+        x_prev2 = backstep(t_prev2);
         eta_prev2 = wave.surface_elevation(x_prev2, t_prev2);
 
-        history_initialized = true;
-        validate_state();
-
-        // Main simulation loop
         while (t_curr <= duration) {
-            // 1. Get current surface elevation
-            eta_curr = wave.surface_elevation(x_curr, t_curr);
+            float v_z = (eta_curr - eta_prev1) / (t_curr - t_prev1);
+            float a_z = 2.0f * ((eta_prev1 - eta_prev2)/(t_prev1 - t_prev2) -
+                                (eta_curr - eta_prev1)/(t_curr - t_prev1)) /
+                        (t_curr - t_prev2);
 
-            // 2. Compute derivatives
-            float dt_forward = t_curr - t_prev1;
-            float dt_backward = t_prev1 - t_prev2;
-            float vertical_velocity = (eta_curr - eta_prev1) / dt_forward;
-            float vertical_acceleration = 
-                2.0f * ((eta_prev1 - eta_prev2)/dt_backward - 
-                       (eta_curr - eta_prev1)/dt_forward) / 
-                (dt_forward + dt_backward);
+            float u_now = wave.velocity(x_curr, eta_curr, t_curr)[0];
+            if (std::abs(u_now) > max_velocity)
+                throw std::runtime_error("Unphysical velocity");
 
-            // 3. Velocity validation
-            Eigen::Vector2f u = wave.velocity(x_curr, eta_curr, t_curr);
-            if (std::abs(u[0]) > max_velocity) {
-                throw std::runtime_error("Unphysical velocity detected");
-            }
+            callback(t_curr, eta_curr, v_z, a_z, x_curr);
 
-            // 4. Report state
-            callback(t_curr, eta_curr, vertical_velocity, 
-                    vertical_acceleration, x_curr);
-
-            // 5. RK2 Integration for next position
-            float k1 = u[0];
+            float k1 = u_now;
             float x_mid = x_curr + 0.5f * dt * k1;
             float t_mid = t_curr + 0.5f * dt;
             float eta_mid = wave.surface_elevation(x_mid, t_mid);
             float k2 = wave.velocity(x_mid, eta_mid, t_mid)[0];
 
-            // 6. Advance state
+            float x_next = x_curr + dt * k2;
+            float t_next = t_curr + dt;
+            float eta_next = wave.surface_elevation(x_next, t_next);
+
             t_prev2 = t_prev1;
             x_prev2 = x_prev1;
             eta_prev2 = eta_prev1;
@@ -407,10 +410,10 @@ public:
             x_prev1 = x_curr;
             eta_prev1 = eta_curr;
 
-            t_curr += dt;
-            x_curr += dt * k2;
+            t_curr = t_next;
+            x_curr = x_next;
+            eta_curr = eta_next;
 
-            // 7. Periodic boundary (if needed)
             if (x_curr > wave.get_length()) x_curr -= wave.get_length();
             if (x_curr < 0) x_curr += wave.get_length();
 
@@ -418,7 +421,6 @@ public:
         }
     }
 };
-
 #ifdef FENTON_TEST
 template class FentonWave<4>;
 template class WaveSurfaceTracker<4>;
