@@ -83,6 +83,8 @@ public:
     float get_k() const { return k; }
     float get_T() const { return T; }
     float get_omega() const { return omega; }
+    float get_length() const { return length; }
+    float get_height() const { return height; }
     const VectorF& get_eta() const { return eta; }
 
 private:
