@@ -55,7 +55,7 @@ public:
      * @brief Get surface elevation η(x, t) in meters.
      */
     float surface_elevation(float x_val, float t = 0) const {
-        float x_nd = (x_val - c * t) / depth;  // nondimensional x
+        float x_nd = (x_val - c * t) * k;  // nondimensional phase
         float eta_val = 0.0f;
         for (int i = 0; i <= N; ++i)
             eta_val += eta[i] * std::cos(i * k * x_nd);
@@ -80,7 +80,7 @@ public:
     }
 
     float surface_slope(float x_val, float t = 0) const {
-        float x_nd = (x_val - c * t) / depth;
+        float x_nd = (x_val - c * t) * k;
         float d_eta = 0.0f;
         for (int i = 1; i <= N; ++i)
             d_eta -= eta[i] * i * k * std::sin(i * k * x_nd);
@@ -96,7 +96,7 @@ public:
         float w = 0.0f;
         for (int j = 1; j <= N; ++j) {
             float kj = j * k;
-            float arg = kj * (x_val - c * t) / depth;
+            float arg = kj * (x_val - c * t);
             float denom = std::cosh(kj * depth);
             if (denom < std::numeric_limits<float>::epsilon()) continue;
     
