@@ -308,49 +308,45 @@ private:
 
     float t = 0.0f;
     float x = 0.0f;
-    float dt = 0.005f; // default timestep
-    float dzdt = 0.0f;
-    float ddzdt2 = 0.0f;
+    float dt = 0.005f;
 
-    // Maximum horizontal speed to avoid spikes (e.g. wave celerity)
-    const float max_dxdt;
+    float prev_z = 0.0f;
+    float prev_dzdt = 0.0f;
+
+    // Small threshold to avoid division by zero in slope
+    static constexpr float slope_eps = 1e-6f;
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
-        : wave(height, depth, length),
-          max_dxdt(wave.get_c() * 1.5f) // 1.5 * wave speed buffer
-    {}
+        : wave(height, depth, length) {}
 
-    // Helper: compute dx/dt with slope limiting
+    // Compute dx/dt using the kinematic surface constraint
     float compute_dxdt(float x_pos, float time) const {
         float eta = wave.surface_elevation(x_pos, time);
         float eta_t = wave.surface_time_derivative(x_pos, time);
         float eta_x = wave.surface_slope(x_pos, time);
         float w = wave.vertical_velocity(x_pos, eta, time);
 
-        // Avoid zero slope division
-        if (std::abs(eta_x) < 1e-6f)
-            eta_x = (eta_x >= 0) ? 1e-6f : -1e-6f;
+        // Protect against zero or near-zero slope
+        if (std::abs(eta_x) < slope_eps) {
+            eta_x = (eta_x >= 0.0f) ? slope_eps : -slope_eps;
+        }
 
-        float dxdt = (w - eta_t) / eta_x;
-
-        // Limit horizontal velocity to physically reasonable range
-        if (dxdt > max_dxdt) dxdt = max_dxdt;
-        if (dxdt < -max_dxdt) dxdt = -max_dxdt;
-
-        return dxdt;
+        return (w - eta_t) / eta_x;
     }
 
-    // RK4 integrator step for x(t)
+    // RK4 step for integrating x(t)
     float rk4_step(float x_curr, float t_curr, float dt_step) const {
         float k1 = compute_dxdt(x_curr, t_curr);
         float k2 = compute_dxdt(x_curr + 0.5f * dt_step * k1, t_curr + 0.5f * dt_step);
         float k3 = compute_dxdt(x_curr + 0.5f * dt_step * k2, t_curr + 0.5f * dt_step);
         float k4 = compute_dxdt(x_curr + dt_step * k3, t_curr + dt_step);
 
-        return x_curr + (dt_step / 6.0f) * (k1 + 2 * k2 + 2 * k3 + k4);
+        return x_curr + (dt_step / 6.0f) * (k1 + 2*k2 + 2*k3 + k4);
     }
 
+    // Main tracking function: integrate over duration with fixed timestep,
+    // call callback with (t, z, vertical velocity, vertical acceleration, x)
     void track_floating_object(
         float duration,
         float timestep,
@@ -361,34 +357,40 @@ public:
 
         t = 0.0f;
         x = 0.0f;
-        float dzdt_prev = 0.0f;
+
+        // Initialize vertical displacement and velocity
+        prev_z = wave.surface_elevation(x, t);
+        prev_dzdt = 0.0f;
+
+        float L = wave.get_length();
 
         while (t <= duration) {
-            float eta = wave.surface_elevation(x, t);
-            float w = wave.vertical_velocity(x, eta, t);
+            // Integrate horizontal position x using RK4
+            float x_new = rk4_step(x, t, dt);
 
-            // RK4 step for horizontal position
-            float x_next = rk4_step(x, t, dt);
+            // Wrap x into periodic domain
+            if (x_new < 0) x_new += L;
+            if (x_new >= L) x_new -= L;
 
-            // Wrap x in domain [0, L)
-            float L = wave.get_length();
-            if (x_next < 0) x_next += L;
-            if (x_next >= L) x_next -= L;
-
-            // Update time and position
+            // Advance time
             t += dt;
-            x = x_next;
+            x = x_new;
 
-            // Compute vertical displacement and velocity at new position
-            float eta_now = wave.surface_elevation(x, t);
-            float w_now = wave.vertical_velocity(x, eta_now, t);
+            // Compute current vertical displacement
+            float z = wave.surface_elevation(x, t);
 
-            dzdt = w_now;
-            ddzdt2 = (dzdt - dzdt_prev) / dt;
+            // Compute vertical velocity by finite difference
+            float dzdt = (z - prev_z) / dt;
 
-            callback(t, eta_now, dzdt, ddzdt2, x);
+            // Compute vertical acceleration by finite difference of velocity
+            float ddzdt2 = (dzdt - prev_dzdt) / dt;
 
-            dzdt_prev = dzdt;
+            // Send data to callback
+            callback(t, z, dzdt, ddzdt2, x);
+
+            // Update history for next step
+            prev_z = z;
+            prev_dzdt = dzdt;
         }
     }
 };
