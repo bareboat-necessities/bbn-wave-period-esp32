@@ -285,7 +285,6 @@ private:
 template<int N = 4>
 class WaveSurfaceTracker {
 private:
-    using Eigen::Vector2f;
 
     FentonWave<N> wave;
 
@@ -385,7 +384,7 @@ public:
                 (dt_forward + dt_backward);
 
             // 3. Velocity validation
-            Vector2f u = wave.velocity(x_curr, eta_curr, t_curr);
+            Eigen::Vector2f u = wave.velocity(x_curr, eta_curr, t_curr);
             if (std::abs(u[0]) > max_velocity) {
                 throw std::runtime_error("Unphysical velocity detected");
             }
