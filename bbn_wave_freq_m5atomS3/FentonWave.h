@@ -399,7 +399,7 @@ public:
 template class FentonWave<4>;
 template class WaveSurfaceTracker<4>;
 
-void FentonWave_test() {
+void FentonWave_test_1() {
     // Wave parameters
     const float height = 2.0f;   // Wave height (m)
     const float depth = 10.0f;   // Water depth (m)
@@ -425,6 +425,23 @@ void FentonWave_test() {
     // Track surface object (using callback)
     tracker.track_floating_object(duration, dt, kinematics_callback);
 }
+
+void FentonWave_test_2() {
+    const float height = 2.0f;
+    const float depth = 10.0f;
+    const float length = 50.0f;
+
+    FentonWave<3> wave(height, depth, length);
+
+    std::ofstream out("wave_data.csv");
+    out << "x,elevation\n";
+    for (float x = 0; x <= length; x += 0.1f) {
+        float eta = wave.surface_elevation(x, 0);
+        out << x << "," << eta << "\n";
+    }
+    std::cout << "Wave profile saved to wave_data.csv\n";
+}
+
 #endif
 
 
