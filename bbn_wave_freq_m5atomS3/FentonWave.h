@@ -161,7 +161,8 @@ private:
         coeffs.B[1] = -H / (4.0f * c_guess * k_nd);
         
         for (int i = 0; i <= N; ++i) {
-            coeffs.eta[i] = 1.0f + H/2.0f * std::cos(k_nd * i * lambda/(2*N));
+            float x_pos = i * PI / N;  // Explicit match to Python's linspace(0, pi, N+1)
+            coeffs.eta[i] = 1.0f + H/2.0f * cos(k_nd * x_pos);
         }
         
         coeffs.Q = c_guess;
