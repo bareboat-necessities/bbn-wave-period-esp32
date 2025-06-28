@@ -43,19 +43,19 @@ public:
         set_coefficients(coeffs);
     }
 
-float surface_elevation(float x, float t = 0) const {
-    float phase = k * (x - c * t);
-    
-    // Trapezoidal rule for cosine series
-    float eta_val = 0.5f * E[0] * std::cos(0 * phase);
-    for (int j = 1; j < N; ++j) {
-        eta_val += E[j] * std::cos(j * phase);
-    }
-    eta_val += 0.5f * E[N] * std::cos(N * phase);
-    eta_val *= 2.0f / N;
-    
-    return eta_val - (depth < 0 ? 25.0f * length : depth);
-}    
+    float surface_elevation(float x, float t = 0) const {
+        float phase = k * (x - c * t);
+        
+        // Trapezoidal rule for cosine series
+        float eta_val = 0.5f * E[0] * std::cos(0 * phase);
+        for (int j = 1; j < N; ++j) {
+            eta_val += E[j] * std::cos(j * phase);
+        }
+        eta_val += 0.5f * E[N] * std::cos(N * phase);
+        eta_val *= 2.0f / N;
+        
+        return eta_val - (depth < 0 ? 25.0f * length : depth);
+    }    
 
     Eigen::Vector2f velocity(float x, float z, float t = 0) const {
         if (depth < 0) throw std::runtime_error("Cannot compute velocity for infinite depth");
