@@ -27,6 +27,7 @@ template<int N = 4>
 class FentonWave {
 private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
+    static constexpr int M = 200; // Number of samples for full phase sweep
 
     using VectorF = Eigen::Matrix<float, N + 1, 1>;
     using BigVector = Eigen::Matrix<float, StateDim, 1>;
@@ -192,13 +193,15 @@ private:
         float Q = params[2 * (N + 1)];
         float R = params[2 * (N + 1) + 1];
 
-        // Calculate eta_spatial = η(x_nd) at collocation points
-        Eigen::Matrix<float, N + 1, 1> eta_spatial;
-        for (int m = 0; m <= N; ++m) {
-            float phase = k * x_nd[m];
+        // --- Full phase sweep over M points ---
+        Eigen::Matrix<float, M, 1> eta_spatial;
+        Eigen::Matrix<float, M, 1> x_samples;
+        for (int m = 0; m < M; ++m) {
+            float xm = 2.0f * M_PI * m / M;  // phase from 0 to 2π
+            x_samples[m] = xm;
             float val = eta[0];
             for (int j = 1; j <= N; ++j)
-                val += eta[j] * std::cos(j * phase);
+                val += eta[j] * std::cos(j * xm);
             eta_spatial[m] = val;
         }
 
@@ -208,9 +211,12 @@ private:
         for (int j = 1; j <= N; ++j)
             denom[j] = std::cosh(k * j * depth);
 
+        // Evaluate residuals at collocation points (keep these as before)
         for (int m = 0; m <= N; ++m) {
             float xm = x_nd[m];
-            float eta_m = eta_spatial[m];
+            float eta_m = 0.0f;
+            for (int j = 0; j <= N; ++j)
+                eta_m += eta[j] * std::cos(j * k * xm);
 
             float u_m = B[0];
             float v_m = 0.0f;
@@ -218,9 +224,9 @@ private:
                 float kj = k * j;
                 float cos_nx = std::cos(j * k * xm);
                 float sin_nx = std::sin(j * k * xm);
+                float denom_j = denom[j];
                 float cosh_kj_eta = std::cosh(kj * eta_m);
                 float sinh_kj_eta = std::sinh(kj * eta_m);
-                float denom_j = denom[j];
 
                 u_m += kj * B[j] * cosh_kj_eta / denom_j * cos_nx;
                 v_m += kj * B[j] * sinh_kj_eta / denom_j * sin_nx;
@@ -233,16 +239,12 @@ private:
         }
 
         // Mean elevation zero residual
-        float mean_eta = eta_spatial.sum() / (N + 1);
+        float mean_eta = eta_spatial.mean();
         res[2 * (N + 1)] = mean_eta;
 
-        // Wave height residual
-        float eta_max = eta_spatial[0];
-        float eta_min = eta_spatial[0];
-        for (int m = 1; m <= N; ++m) {
-            if (eta_spatial[m] > eta_max) eta_max = eta_spatial[m];
-            if (eta_spatial[m] < eta_min) eta_min = eta_spatial[m];
-        }
+        // Wave height residual: max(η) - min(η) - H
+        float eta_max = eta_spatial.maxCoeff();
+        float eta_min = eta_spatial.minCoeff();
         res[2 * (N + 1) + 1] = eta_max - eta_min - H;
 
         return res;
@@ -254,15 +256,22 @@ private:
         VectorF B = params.segment(0, N + 1);
         VectorF eta = params.segment(N + 1, N + 1);
 
-        // Calculate eta_spatial = η(x_nd) at collocation points
-        Eigen::Matrix<float, N + 1, 1> eta_spatial;
-        for (int m = 0; m <= N; ++m) {
-            float phase = k * x_nd[m];
+        // --- Full phase sweep for wave height derivative ---
+        Eigen::Matrix<float, M, 1> eta_spatial;
+        Eigen::Matrix<float, M, 1> x_samples;
+        for (int m = 0; m < M; ++m) {
+            float xm = 2.0f * M_PI * m / M; // phase from 0 to 2π
+            x_samples[m] = xm;
             float val = eta[0];
             for (int j = 1; j <= N; ++j)
-                val += eta[j] * std::cos(j * phase);
+                val += eta[j] * std::cos(j * xm);
             eta_spatial[m] = val;
         }
+
+        // Identify max and min indices
+        Eigen::Index max_idx, min_idx;
+        eta_spatial.maxCoeff(&max_idx);
+        eta_spatial.minCoeff(&min_idx);
 
         // Precompute denominator: cosh(kj * depth)
         Eigen::Matrix<float, N + 1, 1> denom;
@@ -272,7 +281,9 @@ private:
 
         for (int m = 0; m <= N; ++m) {
             float xm = x_nd[m];
-            float eta_m = eta_spatial[m];
+            float eta_m = 0.0f;
+            for (int j = 0; j <= N; ++j)
+                eta_m += eta[j] * std::cos(j * k * xm);
 
             float u_m = B[0];
             float v_m = 0.0f;
@@ -342,12 +353,10 @@ private:
         J(2 * (N + 1), 2 * (N + 1) + 1) = 0.0f;
 
         // Wave height residual derivatives:
-        // Approximate with max and min points gradients.
-        // For better accuracy, this should be a smooth approximation,
-        // but here we use a simplified approach for demonstration.
-        J(2 * (N + 1) + 1, 0) = 0.0f;
+        // ∂(max - min)/∂η_j = cos(j * x_max) - cos(j * x_min)
+        J(2 * (N + 1) + 1, 0) = 0.0f; // constant term derivative zero
         for (int j = 1; j <= N; ++j) {
-            J(2 * (N + 1) + 1, N + 1 + j) = 0.0f; // Needs improvement for exact sensitivity
+            J(2 * (N + 1) + 1, N + 1 + j) = std::cos(j * x_samples[max_idx]) - std::cos(j * x_samples[min_idx]);
         }
         J(2 * (N + 1) + 1, 2 * (N + 1)) = 0.0f;
         J(2 * (N + 1) + 1, 2 * (N + 1) + 1) = 0.0f;
@@ -355,6 +364,7 @@ private:
         return J;
     }
 };
+
 /**
  * @brief Class for tracking vertical kinematics of a floating object on a nonlinear wave surface.
  */
