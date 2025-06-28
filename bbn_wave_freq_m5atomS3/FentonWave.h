@@ -139,7 +139,7 @@ private:
         Eigen::Matrix<float, N + 1, 1> J;
         for (int i = 0; i <= N; ++i) J[i] = i;
         VectorF x_nd;
-        for (int i = 0; i <= N; ++i) x_nd[i] = 2 * M_PI * i / N;
+        for (int i = 0; i <= N; ++i) x_nd[i] = M_PI * (2.0f * i + 1.0f) / (N + 1);
 
         // Initial coefficients guess
         FentonCoefficients coeffs;
