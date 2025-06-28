@@ -52,7 +52,7 @@ public:
     // Surface elevation η(x,t) in meters
     float surface_elevation(float x_val, float t = 0) const {
         float phase = (x_val - c * t) * k;
-        float eta_val = 0.0f;
+        float eta_val = eta[0];
         for (int i = 1; i <= N; ++i)
             eta_val += eta[i] * std::cos(i * phase);
         return eta_val;
