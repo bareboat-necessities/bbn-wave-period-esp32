@@ -196,7 +196,7 @@ private:
         Eigen::Matrix<float, N + 1, 1> eta_spatial;
         for (int m = 0; m <= N; ++m) {
             float phase = k * x_nd[m];
-            float val = 0.0f;
+            float val = eta[0];
             for (int j = 1; j <= N; ++j)
                 val += eta[j] * std::cos(j * phase);
             eta_spatial[m] = val;
@@ -258,7 +258,7 @@ private:
         Eigen::Matrix<float, N + 1, 1> eta_spatial;
         for (int m = 0; m <= N; ++m) {
             float phase = k * x_nd[m];
-            float val = 0.0f;
+            float val = eta[0];
             for (int j = 1; j <= N; ++j)
                 val += eta[j] * std::cos(j * phase);
             eta_spatial[m] = val;
