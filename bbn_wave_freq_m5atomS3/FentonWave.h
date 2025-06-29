@@ -17,46 +17,27 @@ constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
     return (val < low) ? low : (val > high) ? high : val;
 }
 
-template<int N = 4>
+template <int N>
 class FentonWave {
-private:
-    static constexpr int StateDim = 2 * (N + 1) + 2;
-
-    using VectorF = Eigen::Matrix<float, N + 1, 1>;
-    using BigVector = Eigen::Matrix<float, StateDim, 1>;
-    using BigMatrix = Eigen::Matrix<float, StateDim, StateDim>;
-
-    float height, depth, length, g, relax;
-    VectorF eta, B, E;
-    float k, c, T, omega, Q, R;
-
 public:
-    FentonWave(float height_, float depth_, float length_, float g_ = 9.81f, float relax_ = 0.5f)
-        : height(height_), depth(depth_), length(length_), g(g_),
-          relax(clamp_value(relax_, 0.1f, 1.0f)),
-          eta(VectorF::Zero()), B(VectorF::Zero()), E(VectorF::Zero()) {
+    float height, depth, length, g, relax;
+    float k, c, T, omega;
+    Eigen::Matrix<float, N + 1, 1> eta, x;
+    Eigen::Matrix<float, N + 1, 1> E;
 
-        if (length <= 0 || height <= 0)
-            throw std::invalid_argument("Physical parameters must be positive");
-        if (depth > 0 && height / depth > 0.78f)
-            throw std::invalid_argument("Wave too steep (H/d > 0.78)");
-
-        auto coeffs = solve_fenton_equations();
-        set_coefficients(coeffs);
+    FentonWave(float height, float depth, float length, float g = 9.81f, float relax = 0.5f)
+        : height(height), depth(depth), length(length), g(g), relax(relax)
+    {
+        compute();
     }
 
-    float surface_elevation(float x, float t = 0) const {
-        float phase = k * (x - c * t);
-
-        float eta_val = 0.5f * E[0];
-        for (int j = 1; j < N; ++j) {
-            eta_val += E[j] * std::cos(j * phase);
+    float surface_elevation(float x_val, float t = 0.0f) const {
+        float sum = 0.0f;
+        for (int j = 0; j <= N; ++j) {
+            float arg = j * k * (x_val - c * t);
+            sum += E(j) * std::cos(arg);
         }
-        eta_val += 0.5f * E[N] * std::cos(N * phase);
-
-        eta_val *= 2.0f / N;
-
-        return eta_val - ((depth < 0) ? 25.0f * length : depth);
+        return 2.0f * sum / N;
     }
 
     Eigen::Vector2f velocity(float x, float z, float t = 0) const {
@@ -114,212 +95,192 @@ public:
     const VectorF& get_eta() const { return eta; }
 
 private:
-    struct FentonCoefficients {
-        VectorF B;
-        VectorF eta;
-        float Q, R;
-        float k, c;
-        float error;
-        int niter;
-    };
+    void compute() {
+        if (depth < 0) depth = 25.0f * length;
+        float H = height / depth;
+        float lam = length / depth;
+        k = 2 * M_PI / lam;
+        float D = 1.0f;
+        float kc = k;
+        float c0 = std::sqrt(std::tanh(kc) / kc);
 
-    void set_coefficients(const FentonCoefficients& coeffs) {
-        float scale = (depth > 0) ? depth : 25.0f * length;
+        Eigen::Matrix<float, N + 1, 1> x_nd;
+        for (int m = 0; m <= N; ++m)
+            x_nd(m) = lam * m / (2.0f * N);
 
-        B = coeffs.B * std::sqrt(g * scale);
-        for (int i = 1; i <= N; ++i) {
-            B[i] *= scale;
+        // Initial guess
+        Eigen::Matrix<float, N + 1, 1> B = Eigen::Matrix<float, N + 1, 1>::Zero();
+        B(0) = c0;
+        B(1) = -H / (4.0f * c0 * k);
+
+        Eigen::Matrix<float, N + 1, 1> eta_nd;
+        for (int m = 0; m <= N; ++m)
+            eta_nd(m) = 1.0f + H / 2.0f * std::cos(k * x_nd(m));
+
+        float Q = c0, R = 1.0f + 0.5f * c0 * c0;
+
+        // Stepping
+        for (float Hi : wave_height_steps(H, D, lam)) {
+            optimize(B, Q, R, eta_nd, Hi, k, D);
         }
 
-        eta = coeffs.eta * scale;
-        Q = coeffs.Q * std::sqrt(g * scale * scale * scale);
-        R = coeffs.R * g * scale;
-        k = coeffs.k / scale;
-        c = coeffs.c * std::sqrt(g * scale);
+        // Scale to physical
+        float sqrt_gd = std::sqrt(g * depth);
+        B(0) *= sqrt_gd;
+        for (int j = 1; j <= N; ++j)
+            B(j) *= std::sqrt(g * std::pow(depth, 3));
+        Q *= std::sqrt(g * std::pow(depth, 3));
+        R *= g * depth;
 
+        // Store results
+        for (int i = 0; i <= N; ++i) {
+            x(i) = x_nd(i) * depth;
+            eta(i) = eta_nd(i) * depth;
+        }
+        k = k / depth;
+        c = B(0);
         T = length / c;
         omega = c * k;
 
-        // Compute cosine series coefficients E
+        // Compute E for elevation interpolation
         for (int j = 0; j <= N; ++j) {
-            float sum = 0.5f * (eta[0] + eta[N] * std::cos(j * PI));
-            for (int i = 1; i < N; ++i) {
-                sum += eta[i] * std::cos(j * i * PI / N);
+            float sum = 0.0f;
+            for (int i = 0; i <= N; ++i) {
+                float phi = M_PI * j * i / N;
+                float w = (i == 0 || i == N) ? 0.5f : 1.0f;
+                sum += eta(i) * std::cos(phi) * w;
             }
-            E[j] = sum / N;
+            E(j) = sum / N;
         }
     }
 
-    FentonCoefficients solve_fenton_equations(int maxiter = 100, float tol = 1e-6f) {
-        const float D = (depth > 0) ? depth : 25.0f * length;
-        const float H = height / D;
-        const float lambda = length / D;
-        const float k_nd = 2.0f * PI / lambda;
-        const float c_guess = std::sqrt(std::tanh(k_nd) / k_nd);
-
-        FentonCoefficients coeffs;
-        coeffs.B = VectorF::Zero();
-        coeffs.eta = VectorF::Zero();
-
-        coeffs.B[0] = c_guess;
-        coeffs.B[1] = -H / (4.0f * c_guess * k_nd);
-
-        for (int i = 0; i <= N; ++i) {
-            float x_pos = i * PI / N;
-            coeffs.eta[i] = 1.0f + H / 2.0f * std::cos(k_nd * x_pos);
-        }
-
-        coeffs.Q = c_guess;
-        coeffs.R = 1.0f + 0.5f * c_guess * c_guess;
-        coeffs.k = k_nd;
-        coeffs.c = c_guess;
-
-        BigVector params = BigVector::Zero();
-        params.segment(0, N + 1) = coeffs.B;
-        params.segment(N + 1, N + 1) = coeffs.eta;
-        params[2 * (N + 1)] = coeffs.Q;
-        params[2 * (N + 1) + 1] = coeffs.R;
-
-        for (int iter = 0; iter < maxiter; ++iter) {
-            BigVector res = compute_residuals(params, H, k_nd, D);
-            if (res.norm() < tol) {
-                coeffs.error = res.norm();
-                coeffs.niter = iter + 1;
-                break;
-            }
-
-            BigMatrix J = compute_jacobian(params, H, k_nd, D);
-            Eigen::ColPivHouseholderQR<BigMatrix> solver(J);
-            BigVector delta = solver.solve(-res);
-            params += relax * delta;
-
-            if (!params.allFinite()) {
-                throw std::runtime_error("NaN/Inf detected during iteration");
-            }
-        }
-
-        coeffs.B = params.segment(0, N + 1);
-        coeffs.eta = params.segment(N + 1, N + 1);
-        coeffs.Q = params[2 * (N + 1)];
-        coeffs.R = params[2 * (N + 1) + 1];
-
-        return coeffs;
+    std::vector<float> wave_height_steps(float H, float D, float lam) {
+        float Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
+        int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
+        std::vector<float> steps;
+        for (int i = 1; i <= num; ++i)
+            steps.push_back(H * i / num);
+        return steps;
     }
 
-    BigVector compute_residuals(const BigVector& params, float H, float k, float D) {
-        VectorF B = params.segment(0, N + 1);
-        VectorF eta = params.segment(N + 1, N + 1);
-        float Q = params[2 * (N + 1)];
-        float R = params[2 * (N + 1) + 1];
+    void optimize(Eigen::Matrix<float, N + 1, 1>& B, float& Q, float& R,
+                  Eigen::Matrix<float, N + 1, 1>& eta, float H, float k, float D)
+    {
+        constexpr int NU = 2 * (N + 1) + 2;
+        Eigen::Matrix<float, NU, 1> coeffs;
+        coeffs.segment(0, N + 1) = B;
+        coeffs.segment(N + 1, N + 1) = eta;
+        coeffs(2 * N + 2) = Q;
+        coeffs(2 * N + 3) = R;
 
-        BigVector res = BigVector::Zero();
+        for (int iter = 0; iter < 100; ++iter) {
+            Eigen::Matrix<float, NU, 1> f = compute_residual(coeffs, H, k, D);
+            Eigen::Matrix<float, NU, NU> J = compute_jacobian(coeffs, H, k, D);
+            Eigen::Matrix<float, NU, 1> delta = J.fullPivLu().solve(-f);
+            coeffs += relax * delta;
 
-        constexpr int M = 200;
-        Eigen::VectorXf eta_full(M);
-        Eigen::VectorXf x_full = Eigen::VectorXf::LinSpaced(M, 0, 2.0f * PI * (1.0f - 1.0f / M));
-
-        for (int m = 0; m < M; ++m) {
-            float val = eta[0];
-            for (int j = 1; j <= N; ++j) {
-                val += eta[j] * std::cos(j * x_full[m]);
-            }
-            eta_full[m] = val;
+            if (f.cwiseAbs().maxCoeff() < 1e-8f) break;
         }
 
-        // Collocation residuals
-        for (int m = 0; m <= N; ++m) {
-            float xm = m * PI / N;
-            float S1 = 0.0f, C1 = 0.0f;
-
-            for (int j = 1; j <= N; ++j) {
-                float kj = j * k;
-                float denom = std::cosh(kj * D);
-                S1 += B[j] * std::sinh(kj * eta[m]) / denom * std::cos(j * xm);
-                C1 += B[j] * std::cosh(kj * eta[m]) / denom * std::cos(j * xm);
-            }
-
-            float um = -B[0] + k * C1;
-            float vm = k * S1;
-
-            res[m] = -B[0] * eta[m] + S1 + Q;
-            res[N + 1 + m] = 0.5f * (um * um + vm * vm) + eta[m] - R;
-        }
-
-        // Global constraints
-        res[2 * (N + 1)] = eta_full.mean() - 1.0f;
-        res[2 * (N + 1) + 1] = eta_full.maxCoeff() - eta_full.minCoeff() - H;
-
-        return res;
+        B = coeffs.segment(0, N + 1);
+        eta = coeffs.segment(N + 1, N + 1);
+        Q = coeffs(2 * N + 2);
+        R = coeffs(2 * N + 3);
     }
 
-    BigMatrix compute_jacobian(const BigVector& params, float H, float k, float D) {
-        BigMatrix J = BigMatrix::Zero();
-
-        VectorF B = params.segment(0, N + 1);
-        VectorF eta = params.segment(N + 1, N + 1);
+    Eigen::Matrix<float, 2 * (N + 1) + 2, 1>
+    compute_residual(const Eigen::Matrix<float, 2 * (N + 1) + 2, 1>& coeffs, float H, float k, float D) {
+        constexpr int NU = 2 * (N + 1) + 2;
+        Eigen::Matrix<float, NU, 1> f;
+        auto B = coeffs.segment(0, N + 1);
+        auto eta = coeffs.segment(N + 1, N + 1);
+        float Q = coeffs(2 * N + 2);
+        float R = coeffs(2 * N + 3);
+        float B0 = B(0);
 
         for (int m = 0; m <= N; ++m) {
-            float xm = m * PI / N;
-            float S1 = 0.0f, C1 = 0.0f;
-            float dS1_deta = 0.0f, dC1_deta = 0.0f;
-
+            float x_m = M_PI * m / N;
+            float eta_m = eta(m);
+            float um = -B0, vm = 0, S1, C1, S2, C2;
             for (int j = 1; j <= N; ++j) {
-                float kj = j * k;
-                float denom = std::cosh(kj * D);
-                float cos_jxm = std::cos(j * xm);
+                float aj = j * k * eta_m;
+                float bj = j * k * D;
+                float sinh_ratio = std::sinh(aj) / std::cosh(bj);
+                float cosh_ratio = std::cosh(aj) / std::cosh(bj);
+                S1 = sinh_ratio;
+                C1 = cosh_ratio;
+                S2 = std::sin(j * x_m);
+                C2 = std::cos(j * x_m);
+                um += k * j * B(j) * C1 * C2;
+                vm += k * j * B(j) * S1 * S2;
+            }
+            f(m) = -B0 * eta_m;
+            for (int j = 1; j <= N; ++j) {
+                float aj = j * k * eta_m;
+                float bj = j * k * D;
+                float sinh_ratio = std::sinh(aj) / std::cosh(bj);
+                float cosh_ratio = std::cosh(aj) / std::cosh(bj);
+                float C2 = std::cos(j * M_PI * m / N);
+                f(m) += B(j) * sinh_ratio * C2;
+            }
+            f(m) += Q;
+            f(N + 1 + m) = 0.5f * (um * um + vm * vm) + eta_m - R;
+        }
 
-                S1 += B[j] * std::sinh(kj * eta[m]) / denom * cos_jxm;
-                C1 += B[j] * std::cosh(kj * eta[m]) / denom * cos_jxm;
+        // mean(eta) = 1
+        f(2 * N + 2) = eta.sum() / N - 1.0f;
 
-                dS1_deta += B[j] * kj * std::cosh(kj * eta[m]) / denom * cos_jxm;
-                dC1_deta += B[j] * kj * std::sinh(kj * eta[m]) / denom * cos_jxm;
+        // eta(0) - eta(N) = H
+        f(2 * N + 3) = eta(0) - eta(N) - H;
+
+        return f;
+    }
+
+    Eigen::Matrix<float, 2 * (N + 1) + 2, 2 * (N + 1) + 2>
+    compute_jacobian(const Eigen::Matrix<float, 2 * (N + 1) + 2, 1>& coeffs, float H, float k, float D) {
+        constexpr int NU = 2 * (N + 1) + 2;
+        Eigen::Matrix<float, NU, NU> J = Eigen::Matrix<float, NU, NU>::Zero();
+        auto B = coeffs.segment(0, N + 1);
+        auto eta = coeffs.segment(N + 1, N + 1);
+        float B0 = B(0);
+
+        for (int m = 0; m <= N; ++m) {
+            float eta_m = eta(m);
+            float x_m = M_PI * m / N;
+            float um = -B0, vm = 0;
+
+            Eigen::Array<float, N, 1> S1, C1, S2, C2;
+            for (int j = 1; j <= N; ++j) {
+                float aj = j * k * eta_m;
+                float bj = j * k * D;
+                float sinh_ratio = std::sinh(aj) / std::cosh(bj);
+                float cosh_ratio = std::cosh(aj) / std::cosh(bj);
+                float s2 = std::sin(j * x_m);
+                float c2 = std::cos(j * x_m);
+                um += k * j * B(j) * cosh_ratio * c2;
+                vm += k * j * B(j) * sinh_ratio * s2;
             }
 
-            float um = -B[0] + k * C1;
-            float vm = k * S1;
-
-            // Bernoulli residual derivatives
-            J(m, 0) = -eta[m];
-
+            J(m, 0) = -eta_m;
             for (int j = 1; j <= N; ++j) {
-                float kj = j * k;
-                float denom = std::cosh(kj * D);
-                float cos_jxm = std::cos(j * xm);
-
-                J(m, j) = std::sinh(kj * eta[m]) / denom * cos_jxm;
-                J(m, N + 1 + j) = -B[0] + B[j] * kj * std::cosh(kj * eta[m]) / denom * cos_jxm;
+                float aj = j * k * eta_m;
+                float bj = j * k * D;
+                float sinh_ratio = std::sinh(aj) / std::cosh(bj);
+                float c2 = std::cos(j * M_PI * m / N);
+                J(m, j) = sinh_ratio * c2;
             }
-            J(m, 2 * (N + 1)) = 1.0f;
+            J(m, N + 1 + m) = -B0;
+            J(m, 2 * N + 2) = 1;
 
-            // Dynamic BC derivatives
+            J(N + 1 + m, N + 1 + m) = 1.0f;
             J(N + 1 + m, 0) = -um;
-
-            for (int j = 1; j <= N; ++j) {
-                float kj = j * k;
-                float denom = std::cosh(kj * D);
-                float cos_jxm = std::cos(j * xm);
-                float sin_jxm = std::sin(j * xm);
-
-                J(N + 1 + m, j) = k * (um * std::cosh(kj * eta[m]) / denom * cos_jxm +
-                                      vm * std::sinh(kj * eta[m]) / denom * sin_jxm);
-
-                J(N + 1 + m, N + 1 + j) = 1.0f +
-                    um * k * B[j] * kj * std::sinh(kj * eta[m]) / denom * cos_jxm +
-                    vm * k * B[j] * kj * std::cosh(kj * eta[m]) / denom * sin_jxm;
-            }
-            J(N + 1 + m, 2 * (N + 1) + 1) = -1.0f;
         }
 
-        // Mean elevation derivatives
-        J(2 * (N + 1), N + 1) = 0.5f / N;
-        J(2 * (N + 1), 2 * (N + 1) - 1) = 0.5f / N;
-        for (int j = 1; j < N; ++j) {
-            J(2 * (N + 1), N + 1 + j) = 1.0f / N;
-        }
+        for (int j = 0; j <= N; ++j)
+            J(2 * N + 2, N + 1 + j) = 1.0f / N;
 
-        // Wave height derivatives
-        J(2 * (N + 1) + 1, N + 1) = 1.0f;
-        J(2 * (N + 1) + 1, 2 * (N + 1) - 1) = -1.0f;
+        J(2 * N + 3, N + 1) = 1;
+        J(2 * N + 3, 2 * N + 1) = -1;
 
         return J;
     }
