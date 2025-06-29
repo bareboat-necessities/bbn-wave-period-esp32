@@ -21,7 +21,6 @@ template<int N = 5>
 class FentonWave {
 private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
-    static constexpr float PI = 3.14159265358979323846f;
 
     using VectorF = Eigen::Matrix<float, N + 1, 1>;
     using BigVector = Eigen::Matrix<float, StateDim, 1>;
