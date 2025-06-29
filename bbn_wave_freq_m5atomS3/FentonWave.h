@@ -61,78 +61,53 @@ class FentonFFT {
 template <int N>
 class FentonWave {
 private:
-
     static constexpr int StateDim = 2 * (N + 1) + 2;
 
     using Real = float;
     using Complex = std::complex<Real>;
 
-    using VectorF = Eigen::Matrix<float, N + 1, 1>;
-    using BigVector = Eigen::Matrix<float, StateDim, 1>;
-    using BigMatrix = Eigen::Matrix<float, StateDim, StateDim>;
+    using VectorF = Eigen::Matrix<Real, N + 1, 1>;
+    using BigVector = Eigen::Matrix<Real, StateDim, 1>;
+    using BigMatrix = Eigen::Matrix<Real, StateDim, StateDim>;
 
 public:
-    float height, depth, length, g, relax;
-    float k, c, T, omega;
-    Eigen::Matrix<float, N + 1, 1> eta, x;
-    Eigen::Matrix<float, N + 1, 1> E;
-    Eigen::Matrix<float, N + 1, 1> B;
+    Real height, depth, length, g, relax;
+    Real k, c, T, omega;
+    VectorF eta, x, E, B;
 
-    FentonWave(float height, float depth, float length, float g = 9.81f, float relax = 0.5f)
-        : height(height), depth(depth), length(length), g(g), relax(relax)
-    {
+    FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
+        : height(height), depth(depth), length(length), g(g), relax(relax) {
         compute();
     }
 
-    float surface_elevation(float x_val, float t = 0.0f) const {
-        float sum = 0.0f;
+    Real surface_elevation(Real x_val, Real t = 0) const {
+        Real sum = 0;
         for (int j = 0; j <= N; ++j) {
-            float arg = j * k * (x_val - c * t);
-            sum += E(j) * std::cos(arg);
+            sum += E(j) * std::cos(j * k * (x_val - c * t));
         }
-        return 2.0f * sum / N;
+        return sum;
     }
 
-    Eigen::Vector2f velocity(float x, float z, float t = 0) const {
-        if (depth < 0)
-            throw std::runtime_error("Cannot compute velocity for infinite depth");
-
-        Eigen::Vector2f vel = Eigen::Vector2f::Zero();
-        float phase = k * (x - c * t);
-
-        for (int j = 1; j <= N; ++j) {
-            float kj = j * k;
-            float denom = std::cosh(kj * depth);
-            float term = B[j] * kj / denom;
-
-            vel[0] += term * std::cos(j * phase) * std::cosh(kj * z);
-            vel[1] += term * std::sin(j * phase) * std::sinh(kj * z);
-        }
-
-        return vel;
-    }
-
-    float surface_slope(float x, float t = 0) const {
-        float phase = k * (x - c * t);
-        float d_eta = 0.0f;
+    Real surface_slope(Real x, Real t = 0) const {
+        Real d_eta = 0.0f;
         for (int j = 0; j <= N; ++j) {
-            d_eta -= 2.0f * E[j] * j * k * std::sin(j * phase) / N;
+            d_eta -= E[j] * j * k * std::sin(j * k * (x - c * t));
         }
         return d_eta;
     }
 
-    float surface_time_derivative(float x, float t = 0) const {
+    Real surface_time_derivative(Real x, Real t = 0) const {
         return -c * surface_slope(x, t);
     }
 
-    float vertical_velocity(float x, float z, float t = 0) const {
-        float w = 0.0f;
+    Real vertical_velocity(Real x, Real z, Real t = 0) const {
+        Real w = 0.0f;
         for (int j = 1; j <= N; ++j) {
-            float kj = j * k;
-            float arg = kj * (x - c * t);
-            float denom = std::cosh(kj * depth);
-            if (denom < std::numeric_limits<float>::epsilon()) continue;
-            float term = B[j] * kj / denom;
+            Real kj = j * k;
+            Real arg = kj * (x - c * t);
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B[j] * kj / denom;
             w += term * std::sin(arg) * std::sinh(kj * (z + depth));
         }
         return w;
