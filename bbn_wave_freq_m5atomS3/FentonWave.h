@@ -150,67 +150,67 @@ public:
 private:
     void compute() {
         if (depth < 0) depth = 25.0f * length;
-        float H = height / depth;
-        float lam = length / depth;
+        Real H = height / depth;
+        Real lam = length / depth;
         k = 2 * M_PI / lam;
-        float D = 1.0f;
-        float kc = k;
-        float c0 = std::sqrt(std::tanh(kc) / kc);
+        Real D = 1.0f;
+        Real kc = k;
+        Real c0 = std::sqrt(std::tanh(kc) / kc);
 
-        Eigen::Matrix<float, N + 1, 1> x_nd;
+        VectorF x_nd;
         for (int m = 0; m <= N; ++m)
             x_nd(m) = lam * m / (2.0f * N);
 
-        // Initial guess
-        B = Eigen::Matrix<float, N + 1, 1>::Zero();
+        B.setZero();
         B(0) = c0;
         B(1) = -H / (4.0f * c0 * k);
 
-        Eigen::Matrix<float, N + 1, 1> eta_nd;
+        VectorF eta_nd;
         for (int m = 0; m <= N; ++m)
             eta_nd(m) = 1.0f + H / 2.0f * std::cos(k * x_nd(m));
 
-        float Q = c0, R = 1.0f + 0.5f * c0 * c0;
+        Real Q = c0, R = 1.0f + 0.5f * c0 * c0;
 
-        // Stepping
-        for (float Hi : wave_height_steps(H, D, lam)) {
+        for (Real Hi : wave_height_steps(H, D, lam)) {
             optimize(B, Q, R, eta_nd, Hi, k, D);
         }
 
-        // Scale to physical
-        float sqrt_gd = std::sqrt(g * depth);
+        Real sqrt_gd = std::sqrt(g * depth);
         B(0) *= sqrt_gd;
         for (int j = 1; j <= N; ++j)
             B(j) *= std::sqrt(g * std::pow(depth, 3));
         Q *= std::sqrt(g * std::pow(depth, 3));
         R *= g * depth;
 
-        // Store results
         for (int i = 0; i <= N; ++i) {
             x(i) = x_nd(i) * depth;
             eta(i) = eta_nd(i) * depth;
         }
+
         k = k / depth;
         c = B(0);
         T = length / c;
         omega = c * k;
 
-        // Compute E for elevation interpolation
-        for (int j = 0; j <= N; ++j) {
-            float sum = 0.0f;
-            for (int i = 0; i <= N; ++i) {
-                float phi = M_PI * j * i / N;
-                float w = (i == 0 || i == N) ? 0.5f : 1.0f;
-                sum += eta(i) * std::cos(phi) * w;
-            }
-            E(j) = sum / N;
-        }
+        // Use irfft-like logic to compute E coefficients
+        FentonFFT<Real> fft;
+        fft.inverse_cosine(eta, E);
     }
 
-    std::vector<float> wave_height_steps(float H, float D, float lam) {
-        float Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
+    std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
+        Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
         int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
-        std::vector<float> steps;
+        std::vector<Real> steps;
+        for (int i = 1; i <= num; ++i)
+            steps.push_back(H * i / num);
+        return steps;
+    }
+
+
+    std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
+        Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
+        int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
+        std::vector<Real> steps;
         for (int i = 1; i <= num; ++i)
             steps.push_back(H * i / num);
         return steps;
