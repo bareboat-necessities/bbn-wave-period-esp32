@@ -17,11 +17,55 @@ constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
     return (val < low) ? low : (val > high) ? high : val;
 }
 
+// ===================================================
+// Minimal Real FFT implementation compatible with Eigen
+// ===================================================
+
+template <typename Scalar>
+class FentonFFT {
+ public:
+  using Real = Scalar;
+  using Complex = std::complex<Scalar>;
+
+  // Forward FFT: real input → complex output
+  void forward(const Eigen::Matrix<Scalar, Eigen::Dynamic, 1>& in,
+               Eigen::Matrix<Complex, Eigen::Dynamic, 1>& out) {
+    const int N = static_cast<int>(in.size());
+    out.resize(N);
+    for (int k = 0; k < N; ++k) {
+      Complex sum(0, 0);
+      for (int n = 0; n < N; ++n) {
+        Scalar angle = -2 * M_PI * k * n / N;
+        sum += in[n] * Complex(std::cos(angle), std::sin(angle));
+      }
+      out[k] = sum;
+    }
+  }
+
+  // Inverse FFT: complex input → real output
+  void inverse(const Eigen::Matrix<Complex, Eigen::Dynamic, 1>& in,
+               Eigen::Matrix<Scalar, Eigen::Dynamic, 1>& out) {
+    const int N = static_cast<int>(in.size());
+    out.resize(N);
+    for (int n = 0; n < N; ++n) {
+      Complex sum(0, 0);
+      for (int k = 0; k < N; ++k) {
+        Scalar angle = 2 * M_PI * k * n / N;
+        sum += in[k] * Complex(std::cos(angle), std::sin(angle));
+      }
+      out[n] = sum.real() / N;
+    }
+  }
+};
+
 template <int N>
 class FentonWave {
 private:
 
     static constexpr int StateDim = 2 * (N + 1) + 2;
+
+    using Real = float;
+    using Complex = std::complex<Real>;
 
     using VectorF = Eigen::Matrix<float, N + 1, 1>;
     using BigVector = Eigen::Matrix<float, StateDim, 1>;
