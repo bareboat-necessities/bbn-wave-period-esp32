@@ -19,6 +19,14 @@ constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
 
 template <int N>
 class FentonWave {
+private:
+
+    static constexpr int StateDim = 2 * (N + 1) + 2;
+
+    using VectorF = Eigen::Matrix<float, N + 1, 1>;
+    using BigVector = Eigen::Matrix<float, StateDim, 1>;
+    using BigMatrix = Eigen::Matrix<float, StateDim, StateDim>;
+
 public:
     float height, depth, length, g, relax;
     float k, c, T, omega;
