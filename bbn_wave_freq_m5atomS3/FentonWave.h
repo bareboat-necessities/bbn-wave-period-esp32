@@ -42,21 +42,6 @@ class FentonFFT {
     }
   }
 
-  // Inverse FFT: complex input → real output
-  void inverse(const Eigen::Matrix<Complex, Eigen::Dynamic, 1>& in,
-               Eigen::Matrix<Scalar, Eigen::Dynamic, 1>& out) {
-    const int N = static_cast<int>(in.size());
-    out.resize(N);
-    for (int n = 0; n < N; ++n) {
-      Complex sum(0, 0);
-      for (int k = 0; k < N; ++k) {
-        Scalar angle = 2 * M_PI * k * n / N;
-        sum += in[k] * Complex(std::cos(angle), std::sin(angle));
-      }
-      out[n] = sum.real() / N;
-    }
-  }
-
   void inverse_cosine(const Eigen::Matrix<Real, Eigen::Dynamic, 1>& coeffs,
                       Eigen::Matrix<Real, Eigen::Dynamic, 1>& signal) {
     const int N = static_cast<int>(coeffs.size()) - 1;  // Number of harmonics
@@ -178,25 +163,14 @@ private:
             eta(i) = eta_nd(i) * depth;
         }
 
-        k = k / depth;
+        k /= depth;
         c = B(0);
         T = length / c;
         omega = c * k;
 
-        // Use irfft-like logic to compute E coefficients
         FentonFFT<Real> fft;
         fft.inverse_cosine(eta, E);
     }
-
-    std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
-        Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
-        int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
-        std::vector<Real> steps;
-        for (int i = 1; i <= num; ++i)
-            steps.push_back(H * i / num);
-        return steps;
-    }
-
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
         Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
