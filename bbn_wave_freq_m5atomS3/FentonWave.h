@@ -56,6 +56,22 @@ class FentonFFT {
       out[n] = sum.real() / N;
     }
   }
+
+  void inverse_cosine(const Eigen::Matrix<Real, Eigen::Dynamic, 1>& coeffs,
+                      Eigen::Matrix<Real, Eigen::Dynamic, 1>& signal) {
+    const int N = static_cast<int>(coeffs.size()) - 1;  // Number of harmonics
+    const int L = N + 1;  // Output signal length
+    signal.resize(L);
+    for (int i = 0; i < L; ++i) {
+      Real sum = 0;
+      for (int j = 0; j <= N; ++j) {
+        Real phi = M_PI * j * i / N;
+        Real w = (j == 0 || j == N) ? 0.5 : 1.0;  // Weighting as in irfft
+        sum += coeffs[j] * std::cos(phi) * w;
+      }
+      signal[i] = 2.0 * sum / N;
+    }
+  }
 };
 
 template <int N>
