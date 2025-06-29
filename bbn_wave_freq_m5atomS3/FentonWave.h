@@ -32,6 +32,7 @@ public:
     float k, c, T, omega;
     Eigen::Matrix<float, N + 1, 1> eta, x;
     Eigen::Matrix<float, N + 1, 1> E;
+    Eigen::Matrix<float, N + 1, 1> B;
 
     FentonWave(float height, float depth, float length, float g = 9.81f, float relax = 0.5f)
         : height(height), depth(depth), length(length), g(g), relax(relax)
@@ -117,7 +118,7 @@ private:
             x_nd(m) = lam * m / (2.0f * N);
 
         // Initial guess
-        Eigen::Matrix<float, N + 1, 1> B = Eigen::Matrix<float, N + 1, 1>::Zero();
+        B = Eigen::Matrix<float, N + 1, 1>::Zero();
         B(0) = c0;
         B(1) = -H / (4.0f * c0 * k);
 
