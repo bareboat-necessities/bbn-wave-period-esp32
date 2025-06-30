@@ -169,43 +169,72 @@ private:
         Real D = 1.0f;
         Real kc = k;
         Real c0 = std::sqrt(std::tanh(kc) / kc);
-
+    
         VectorF x_nd;
         for (int m = 0; m <= N; ++m)
             x_nd(m) = lam * m / (2.0f * N);
-
+    
         B.setZero();
         B(0) = c0;
         B(1) = -H / (4.0f * c0 * k);
-
+    
         VectorF eta_nd;
         for (int m = 0; m <= N; ++m)
-            eta_nd(m) = H / 2.0f * std::cos(k * x_nd(m));
-
-        Q = c0;
-        R = 1.0f + 0.5f * c0 * c0;
-
+            eta_nd(m) = H / 2.0f * std::cos(k * x_nd(m));  // zero-mean, scaled
+    
+        // Compute physically consistent initial Q and R (as in Python)
+        Q = 0.0f;
+        R = 0.0f;
+        for (int m = 0; m <= N; ++m) {
+            Real x_m = M_PI * m / N;
+            Real eta_m = eta_nd(m);
+    
+            Real um = -B(0);
+            Real vm = 0;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
+                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);
+                Real S2 = std::sin(j * x_m);
+                Real C2 = std::cos(j * x_m);
+                um += kj * B(j) * C1 * C2;
+                vm += kj * B(j) * S1 * S2;
+            }
+    
+            Q += -B(0) * eta_m;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                Q += B(j) * sinh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
+            }
+    
+            R += 0.5f * (um * um + vm * vm) + eta_m;
+        }
+        Q /= (N + 1);
+        R /= (N + 1);
+    
+        // Progressive nonlinearity steps
         for (Real Hi : wave_height_steps(H, D, lam)) {
             optimize(B, Q, R, eta_nd, Hi, k, D);
         }
-
+    
+        // Rescale dimensional variables
         Real sqrt_gd = std::sqrt(g * depth);
         B(0) *= sqrt_gd;
         for (int j = 1; j <= N; ++j)
             B(j) *= std::sqrt(g * std::pow(depth, 3));
         Q *= std::sqrt(g * std::pow(depth, 3));
         R *= g * depth;
-
+    
         for (int i = 0; i <= N; ++i) {
             x(i) = x_nd(i) * depth;
-            eta(i) = eta_nd(i);
+            eta(i) = eta_nd(i) * depth;  // dimensionalize after optimization
         }
-
+    
         k = k / depth;
         c = B(0);
         T = length / c;
         omega = c * k;
-
+    
         compute_elevation_coefficients();
     }
 
