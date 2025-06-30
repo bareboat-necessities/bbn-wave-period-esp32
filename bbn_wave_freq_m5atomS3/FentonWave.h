@@ -23,7 +23,7 @@ T sinh_by_cosh(T a, T b) {
         throw std::runtime_error("sinh_by_cosh received non-finite input");
     }
 
-    constexpr T MAX_EXP_ARG = 87.0f;  // Adjustable, avoid exp overflow
+    constexpr T MAX_EXP_ARG = 80.0f;  // Adjustable, avoid exp overflow
 
     // Clamp to avoid overflow
     a = clamp_value(a, -MAX_EXP_ARG, MAX_EXP_ARG);
@@ -48,7 +48,7 @@ T cosh_by_cosh(T a, T b) {
         throw std::runtime_error("cosh_by_cosh received non-finite input");
     }
 
-    constexpr T MAX_EXP_ARG = 87.0f;
+    constexpr T MAX_EXP_ARG = 80.0f;
 
     a = clamp_value(a, -MAX_EXP_ARG, MAX_EXP_ARG);
     b = clamp_value(b, -MAX_EXP_ARG, MAX_EXP_ARG);
