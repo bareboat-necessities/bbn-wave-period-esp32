@@ -284,7 +284,7 @@ private:
         coeffs.template segment<N + 1>(N + 1) = eta;
         coeffs(2 * N + 2) = Q;
         coeffs(2 * N + 3) = R;
-        if (!std::coeffs::allFinite()) {
+        if (!coeffs::allFinite()) {
             throw std::runtime_error("Non-finite initial coefficients");
         }
     
@@ -311,7 +311,7 @@ private:
             }
             
             Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
-            if (!std::delta::allFinite()) {
+            if (!delta::allFinite()) {
                throw std::runtime_error("Non-finite delta");
             }
 
