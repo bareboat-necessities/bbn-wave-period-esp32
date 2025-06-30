@@ -159,7 +159,7 @@ private:
         }
     }
 
-    std::array<Real, 10> wave_height_steps(Real H, Real D, Real lam) {
+    std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
         Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
         int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
         std::vector<Real> steps(num);
