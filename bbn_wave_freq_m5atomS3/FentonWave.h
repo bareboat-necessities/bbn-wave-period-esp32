@@ -19,51 +19,22 @@ constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
 
 template <typename T>
 T sinh_by_cosh(T a, T b) {
-    if (!std::isfinite(a) || !std::isfinite(b)) {
-        throw std::runtime_error("sinh_by_cosh received non-finite input");
-    }
-
-    constexpr T MAX_EXP_ARG = 87.0f;  // Adjustable, avoid exp overflow
-
-    // Clamp to avoid overflow
-    a = clamp_value(a, -MAX_EXP_ARG, MAX_EXP_ARG);
-    b = clamp_value(b, -MAX_EXP_ARG, MAX_EXP_ARG);
-
     if (a == 0) return 0;
     T f = b / a;
     if ((a > 30 && 0.5 < f && f < 1.5) || (a > 200 && 0.1 < f && f < 1.9)) {
         return std::exp(a * (1 - f));
     }
-
-    T result = std::sinh(a) / std::cosh(b);
-    if (!std::isfinite(result)) {
-        throw std::runtime_error("sinh_by_cosh produced non-finite result");
-    }
-    return result;
+    return std::sinh(a) / std::cosh(b);
 }
 
 template <typename T>
 T cosh_by_cosh(T a, T b) {
-    if (!std::isfinite(a) || !std::isfinite(b)) {
-        throw std::runtime_error("cosh_by_cosh received non-finite input");
-    }
-
-    constexpr T MAX_EXP_ARG = 87.0f;
-
-    a = clamp_value(a, -MAX_EXP_ARG, MAX_EXP_ARG);
-    b = clamp_value(b, -MAX_EXP_ARG, MAX_EXP_ARG);
-
     if (a == 0) return 1.0 / std::cosh(b);
     T f = b / a;
     if ((a > 30 && 0.5 < f && f < 1.5) || (a > 200 && 0.1 < f && f < 1.9)) {
         return std::exp(a * (1 - f));
     }
-
-    T result = std::cosh(a) / std::cosh(b);
-    if (!std::isfinite(result)) {
-        throw std::runtime_error("cosh_by_cosh produced non-finite result");
-    }
-    return result;
+    return std::cosh(a) / std::cosh(b);
 }
 
 template <int N>
@@ -72,38 +43,32 @@ public:
     using Real = float;
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
 
-    // Inverse cosine transform: compute Fourier cosine coefficients from elevation samples
-    static Vector compute_inverse_cosine_transform(const Vector& elevation_samples, Real domain_length) {
-        Vector cosine_coefficients;
+    // Inverse DCT-I (irfft-style): reconstruct cosine coefficients E from eta
+    static Vector compute_inverse_cosine_transform(const Vector& eta) {
+        Vector E;
         for (int j = 0; j <= N; ++j) {
-            Real coefficient_sum = 0.0f;
+            Real sum = 0;
             for (int m = 0; m <= N; ++m) {
-                Real x_m = domain_length * m / N;
                 Real weight = (m == 0 || m == N) ? 0.5f : 1.0f;
-                coefficient_sum += weight * elevation_samples(m) * std::cos(j * M_PI * x_m / domain_length);
+                sum += weight * eta(m) * std::cos(j * m * M_PI / N);
             }
-            cosine_coefficients(j) = (2.0f / N) * coefficient_sum;
+            E(j) = 2.0f * sum / N;
         }
-
-        // Adjust DC and Nyquist coefficients (for orthogonality normalization)
-        cosine_coefficients(0) *= 0.5f;
-        cosine_coefficients(N) *= 0.5f;
-        return cosine_coefficients;
+        return E;
     }
 
-    // Forward cosine transform: reconstruct elevation samples from cosine coefficients
-    static Vector compute_forward_cosine_transform(const Vector& cosine_coefficients, Real domain_length) {
-        Vector reconstructed_elevation;
+    // Forward DCT-I: reconstruct eta values at collocation points from cosine coeffs
+    static Vector compute_forward_cosine_transform(const Vector& E) {
+        Vector eta;
         for (int m = 0; m <= N; ++m) {
-            Real x_m = domain_length * m / N;
-            Real sum = 0.0f;
+            Real sum = 0;
             for (int j = 0; j <= N; ++j) {
-                Real weight = (j == 0 || j == N) ? 1.0f : 2.0f;
-                sum += weight * cosine_coefficients(j) * std::cos(j * M_PI * x_m / domain_length);
+                Real weight = (j == 0 || j == N) ? 0.5f : 1.0f;
+                sum += weight * E(j) * std::cos(j * m * M_PI / N);
             }
-            reconstructed_elevation(m) = sum;
+            eta(m) = sum;
         }
-        return reconstructed_elevation;
+        return eta;
     }
 };
 
@@ -121,7 +86,6 @@ public:
     Real height, depth, length, g, relax;
     Real k, c, T, omega, Q, R;
     VectorF eta, x, E, B;
-    VectorF x_nd;  // nondimensional collocation points
 
     FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
         : height(height), depth(depth), length(length), g(g), relax(relax) {
@@ -131,7 +95,7 @@ public:
     Real surface_elevation(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
-            sum += E(j) * std::cos(j * M_PI * (x_val - c * t) / length);
+            sum += E(j) * std::cos(j * k * (x_val - c * t));
         }
         return sum;
     }
@@ -139,7 +103,7 @@ public:
     Real surface_slope(Real x_val, Real t = 0) const {
         Real d_eta = 0.0f;
         for (int j = 0; j <= N; ++j) {
-            d_eta -= E(j) * j * M_PI * std::sin(j * M_PI * (x_val - c * t) / length);
+            d_eta -= E(j) * j * k * std::sin(j * k * (x_val - c * t));
         }
         return d_eta;
     }
@@ -152,7 +116,7 @@ public:
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
             Real omega_j = j * omega;
-            sum -= E(j) * omega_j * omega_j * std::cos(j * M_PI * (x_val - c * t) / length);
+            sum -= E(j) * omega_j * omega_j * std::cos(j * k * (x_val - c * t));
         }
         return sum;
     }
@@ -160,8 +124,8 @@ public:
     Real surface_space_time_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
-            Real term = j * M_PI / length * j * omega;
-            sum += E(j) * term * std::sin(j * M_PI * (x_val - c * t) / length);
+            Real term = j * k * j * omega;
+            sum += E(j) * term * std::sin(j * k * (x_val - c * t));
         }
         return sum;
     }
@@ -169,8 +133,8 @@ public:
     Real surface_second_space_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
-            Real coeff = -std::pow(j * M_PI / length, 2);
-            sum += E(j) * coeff * std::cos(j * M_PI * (x_val - c * t) / length);
+            Real coeff = -j * k * j * k;
+            sum += E(j) * coeff * std::cos(j * k * (x_val - c * t));
         }
         return sum;
     }
@@ -198,87 +162,59 @@ public:
 
 private:
     void compute() {
-        // Step 1: Setup nondimensional parameters
         if (depth < 0) depth = 25.0f * length;
-    
         Real H = height / depth;
-        Real lam = length / depth;          // nondimensional wavelength
-        Real k_nd = 2.0f * M_PI / lam;      // nondimensional wavenumber
-    
-        k = k_nd; // Use nondimensional k until after optimization
-    
-        Real D = 1.0f;                      // nondimensional depth
-        Real kc = k_nd;
-        Real c0 = std::sqrt(std::tanh(kc) / kc); // linear wave phase speed
-    
-        // Step 2: Setup nondimensional x positions (collocation points)
-        for (int m = 0; m <= N; ++m) {
-            x_nd(m) = lam * m / N;  // nondimensional collocation x
-            if (!std::isfinite(x_nd(m))) {
-                throw std::runtime_error("Non-finite value in x_nd in compute()");
-            }
-        }
-    
-        // Step 3: Initialize wave coefficients
+        Real lam = length / depth;
+        k = 2 * M_PI / lam;
+        Real D = 1.0f;
+        Real kc = k;
+        Real c0 = std::sqrt(std::tanh(kc) / kc);
+
+        VectorF x_nd;
+        for (int m = 0; m <= N; ++m)
+            x_nd(m) = lam * m / (2.0f * N);
+
         B.setZero();
         B(0) = c0;
+        B(1) = -H / (4.0f * c0 * k);
+
+        VectorF eta_nd;
+        for (int m = 0; m <= N; ++m)
+            eta_nd(m) = 1.0f + H / 2.0f * std::cos(k * x_nd(m));
+
         Q = c0;
         R = 1.0f + 0.5f * c0 * c0;
-    
-        VectorF eta_nd;
-    
-        // Step 4: Ramp-up steps from 0 to target wave height
+
         for (Real Hi : wave_height_steps(H, D, lam)) {
-            for (int m = 0; m <= N; ++m) {
-                eta_nd(m) = Hi / 2.0f * std::cos(k_nd * x_nd(m));
-                if (!std::isfinite(eta_nd(m))) {
-                    throw std::runtime_error("Non-finite value in eta_nd before optimization");
-                }
-            }
-            optimize(B, Q, R, eta_nd, Hi, k_nd, D);
+            optimize(B, Q, R, eta_nd, Hi, k, D);
         }
-    
-        // Step 5: Convert optimized results to dimensional units
+
         Real sqrt_gd = std::sqrt(g * depth);
-    
-        // Rescale velocity potential coefficients B
         B(0) *= sqrt_gd;
         for (int j = 1; j <= N; ++j)
             B(j) *= std::sqrt(g * std::pow(depth, 3));
-    
-        // Rescale constants Q and R
         Q *= std::sqrt(g * std::pow(depth, 3));
         R *= g * depth;
-    
-        // Rescale eta and x to dimensional
+
         for (int i = 0; i <= N; ++i) {
             x(i) = x_nd(i) * depth;
             eta(i) = eta_nd(i) * depth;
         }
-    
-        // Step 6: Rescale wavenumber to dimensional
-        k = k_nd / depth;
-        c = B(0);                  // phase speed in m/s
-        T = length / c;            // period
-        omega = c * k;             // angular frequency
-    
-        // Step 7: Compute FFT
-        compute_elevation_coefficients(length);  // E = irfft(eta)
+
+        k = k / depth;
+        c = B(0);
+        T = length / c;
+        omega = c * k;
+
+        compute_elevation_coefficients();
     }
 
-    void compute_elevation_coefficients(float length) {
-        E = FentonFFT<N>::compute_inverse_cosine_transform(eta, length);
-        if (!E.allFinite()) {
-            throw std::runtime_error("Non finite result in compute_elevation_coefficients");
-        }
-        for (int j = 0; j <= N; ++j) {
-            E(j) *= (j == 0 || j == N) ? 1.0f/N : 2.0f/N;
-        }
+    void compute_elevation_coefficients() {
+        E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
     }
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
-        Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam; 
-        if (!std::isfinite(Hb)) throw std::runtime_error("Non-finite Hb");
+        Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
         int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
         std::vector<Real> steps(num);
         for (int i = 0; i < num; ++i)
@@ -287,54 +223,36 @@ private:
     }
 
     void optimize(VectorF& B, Real& Q, Real& R,
-                  VectorF& eta, Real H, Real k_nd, Real D) {
-        constexpr int NU = 2 * (N + 1) + 2; // total number of unknowns
-        Eigen::Matrix<Real, NU, 1> coeffs = Eigen::Matrix<Real, NU, 1>::Zero();
-    
-        // Initialize: [B0 ... BN, eta0 ... etaN, Q, R]
+                 VectorF& eta, Real H, Real k, Real D) {
+        constexpr int NU = 2 * (N + 1) + 2;
+        Eigen::Matrix<Real, NU, 1> coeffs;
         coeffs.template segment<N + 1>(0) = B;
         coeffs.template segment<N + 1>(N + 1) = eta;
         coeffs(2 * N + 2) = Q;
         coeffs(2 * N + 3) = R;
-        if (!coeffs.allFinite()) {
-            throw std::runtime_error("Non-finite initial coefficients");
-        }
-    
-        const int max_iter = 500;
-        const Real tol = 1e-12f;
-    
+
         Real error = std::numeric_limits<Real>::max();
-    
-        for (int iter = 0; iter < max_iter && error > tol; ++iter) {
-            Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k_nd, D);
-            if (!f.allFinite()) {
-                throw std::runtime_error("Residual vector contains non-finite values");
-            }
+        for (int iter = 0; iter < 500 && error > 1e-8f; ++iter) {
+            Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k, D);
             error = f.cwiseAbs().maxCoeff();
-    
-            if (!std::isfinite(error)) {
-                throw std::runtime_error("Non-finite residual during optimization");
-            }
-            if (error < tol) break;
-    
-            Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k_nd, D);
-            if (!J.allFinite()) {
-                throw std::runtime_error("Jacobian contains non-finite values");
-            }
             
-            Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
-            if (!delta.allFinite()) {
-               throw std::runtime_error("Non-finite delta");
+            Real eta_max = coeffs.template segment<N + 1>(N + 1).maxCoeff();
+            Real eta_min = coeffs.template segment<N + 1>(N + 1).minCoeff();
+            if (eta_max > 2.0f || eta_min < 0.1f || !std::isfinite(error)) {
+                throw std::runtime_error("Optimization failed");
             }
 
+            if (error < 1e-8f) break;
+
+            Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k, D);
+            Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
             coeffs += relax * delta;
         }
-    
-        // Unpack solution
-        B   = coeffs.template segment<N + 1>(0);
+
+        B = coeffs.template segment<N + 1>(0);
         eta = coeffs.template segment<N + 1>(N + 1);
-        Q   = coeffs(2 * N + 2);
-        R   = coeffs(2 * N + 3);
+        Q = coeffs(2 * N + 2);
+        R = coeffs(2 * N + 3);
     }
 
     Eigen::Matrix<Real, StateDim, 1>
@@ -345,9 +263,9 @@ private:
         Real Q = coeffs(2 * N + 2);
         Real R = coeffs(2 * N + 3);
         Real B0 = B(0);
-    
+
         for (int m = 0; m <= N; ++m) {
-            Real x_m = x_nd(m);
+            Real x_m = M_PI * m / N;
             Real eta_m = eta(m);
             
             Real um = -B0;
@@ -355,28 +273,13 @@ private:
             for (int j = 1; j <= N; ++j) {
                 Real kj = j * k;
                 Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
-                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);                
-                if (!std::isfinite(S1) || !std::isfinite(C1)) {
-                    throw std::runtime_error("Non-finite S1 or C1 in residual: j=" + std::to_string(j) +
-                                             ", eta_m=" + std::to_string(eta_m) +
-                                             ", kj*eta_m=" + std::to_string(kj * eta_m));
-                }
-
+                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);
                 Real S2 = std::sin(j * x_m);
                 Real C2 = std::cos(j * x_m);
-                if (!std::isfinite(S2) || !std::isfinite(C2)) {
-                    throw std::runtime_error("Non-finite S2 or C2 in residual: j=" + std::to_string(j) +
-                                             ", eta_m=" + std::to_string(eta_m) +
-                                             ", kj*eta_m=" + std::to_string(kj * eta_m));
-                }
-
                 um += kj * B(j) * C1 * C2;
                 vm += kj * B(j) * S1 * S2;
-                if (!std::isfinite(um) || !std::isfinite(vm)) {
-                    throw std::runtime_error("Non-finite um or vm in residual: at m=" + std::to_string(m));
-                }                
             }
-    
+
             f(m) = -B0 * eta_m;
             for (int j = 1; j <= N; ++j) {
                 Real kj = j * k;
@@ -385,14 +288,13 @@ private:
                 f(m) += B(j) * S1 * C2;
             }
             f(m) += Q;
-    
+
             f(N + 1 + m) = 0.5f * (um * um + vm * vm) + eta_m - R;
         }
-    
-        // Match Python: enforce mean elevation = 0
-        f(2 * N + 2) = eta.mean();
-        f(2 * N + 3) = eta(0) - eta(N) - H;
-    
+
+        f(2 * N + 2) = (eta.sum() - 0.5f * (eta(0) + eta(N))) / N - 1.0f;
+        f(2 * N + 3) = eta.maxCoeff() - eta.minCoeff() - H;
+
         return f;
     }
 
@@ -405,7 +307,7 @@ private:
 
         for (int m = 0; m <= N; ++m) {
             Real eta_m = eta(m);
-            Real x_m = x_nd(m);
+            Real x_m = M_PI * m / N;
             Real um = -B0;
             Real vm = 0;
             
@@ -597,9 +499,9 @@ void FentonWave_test_1() {
 
 void FentonWave_test_2() {
     // Wave parameters
-    const float height = 1.0f;   // Wave height (m)
-    const float depth = 100.0f;   // Water depth (m)
-    const float length = 20.0f;  // Wavelength (m)
+    const float height = 2.0f;   // Wave height (m)
+    const float depth = 10.0f;   // Water depth (m)
+    const float length = 50.0f;  // Wavelength (m)
     
     // Simulation parameters
     const float duration = 20.0f; // Simulation duration (s)
@@ -623,5 +525,4 @@ void FentonWave_test_2() {
 }
 
 #endif
-
 
