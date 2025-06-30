@@ -515,7 +515,7 @@ void FentonWave_test_2() {
     out << "Time(s),Displacement(m),Velocity(m/s),Acceleration(m/s²),X_Position(m)\n";
 
     // Define the kinematics callback (writes data to file)
-    auto kinematics_callback = [&out](
+    auto kinematics_callback = [&out, &depth](
         float time, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
         out << time << "," << elevation - 2.0f * depth << "," << vertical_velocity << "," << vertical_acceleration << "," << horizontal_position << "\n";
     };
