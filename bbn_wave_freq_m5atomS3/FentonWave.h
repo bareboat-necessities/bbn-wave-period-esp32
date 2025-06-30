@@ -263,11 +263,11 @@ private:
         omega = c * k;             // angular frequency
     
         // Step 7: Compute FFT
-        compute_elevation_coefficients();  // E = irfft(eta)
+        compute_elevation_coefficients(length);  // E = irfft(eta)
     }
 
-    void compute_elevation_coefficients() {
-        E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
+    void compute_elevation_coefficients(float length) {
+        E = FentonFFT<N>::compute_inverse_cosine_transform(eta, length);
         if (!E.allFinite()) {
             throw std::runtime_error("Non finite result in compute_elevation_coefficients");
         }
