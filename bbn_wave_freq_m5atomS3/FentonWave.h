@@ -225,7 +225,6 @@ private:
     }
 
     void compute_elevation_coefficients() {
-        eta(N) = eta(0);
         E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
     }
 
