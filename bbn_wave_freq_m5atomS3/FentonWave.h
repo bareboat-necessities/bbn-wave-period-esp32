@@ -17,9 +17,7 @@ constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
     return (val < low) ? low : (val > high) ? high : val;
 }
 
-// ===================================================
 // Minimal Real FFT implementation compatible with Eigen
-// ===================================================
 template <typename Scalar, int N>
 class FentonFFT {
 public:
@@ -64,9 +62,7 @@ public:
     }
 };
 
-// ===================================================
 // FentonWave class
-// ===================================================
 template <int N>
 class FentonWave {
 private:
