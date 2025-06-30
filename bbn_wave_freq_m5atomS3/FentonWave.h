@@ -238,34 +238,42 @@ private:
     }
 
     void optimize(VectorF& B, Real& Q, Real& R,
-                  VectorF& eta, Real H, Real k, Real D) {
-        constexpr int NU = 2 * (N + 1) + 2;
+                  VectorF& eta, Real H, Real k_nd, Real D) {
+        constexpr int NU = 2 * (N + 1) + 2; // total number of unknowns
         Eigen::Matrix<Real, NU, 1> coeffs;
+    
+        // Initialize: [B0 ... BN, eta0 ... etaN, Q, R]
         coeffs.template segment<N + 1>(0) = B;
         coeffs.template segment<N + 1>(N + 1) = eta;
         coeffs(2 * N + 2) = Q;
         coeffs(2 * N + 3) = R;
     
+        const int max_iter = 500;
+        const Real tol = 1e-8f;
+    
         Real error = std::numeric_limits<Real>::max();
-        for (int iter = 0; iter < 500 && error > 1e-8f; ++iter) {
-            Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k, D);
+    
+        for (int iter = 0; iter < max_iter && error > tol; ++iter) {
+            Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k_nd, D);
             error = f.cwiseAbs().maxCoeff();
     
-            if (!std::isfinite(error)) throw std::runtime_error("Non-finite residual");
+            if (!std::isfinite(error)) {
+                throw std::runtime_error("Non-finite residual during optimization");
+            }
     
-            if (error < 1e-8f) break;
+            if (error < tol) break;
     
-            Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k, D);
+            Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k_nd, D);
             Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
             coeffs += relax * delta;
         }
     
-        B = coeffs.template segment<N + 1>(0);
+        // Unpack solution
+        B   = coeffs.template segment<N + 1>(0);
         eta = coeffs.template segment<N + 1>(N + 1);
-        Q = coeffs(2 * N + 2);
-        R = coeffs(2 * N + 3);
+        Q   = coeffs(2 * N + 2);
+        R   = coeffs(2 * N + 3);
     }
-
 
     Eigen::Matrix<Real, StateDim, 1>
     compute_residual(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
