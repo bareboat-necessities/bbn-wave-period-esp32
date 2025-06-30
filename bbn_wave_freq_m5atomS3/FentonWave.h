@@ -112,6 +112,24 @@ public:
         return -c * surface_slope(x_val, t);
     }
 
+    Real surface_second_time_derivative(Real x_val, Real t = 0) const {
+        Real sum = 0.0f;
+        for (int j = 0; j <= N; ++j) {
+            Real omega_j = j * omega;
+            sum -= E(j) * omega_j * omega_j * std::cos(j * k * (x_val - c * t));
+        }
+        return sum;
+    }
+    
+    Real surface_space_time_derivative(Real x_val, Real t = 0) const {
+        Real sum = 0.0f;
+        for (int j = 0; j <= N; ++j) {
+            Real coeff = j * k * j * omega;
+            sum += E(j) * coeff * std::sin(j * k * (x_val - c * t));
+        }
+        return sum;
+    }
+
     Real vertical_velocity(Real x_val, Real z, Real t = 0) const {
         Real w = 0.0f;
         for (int j = 1; j <= N; ++j) {
