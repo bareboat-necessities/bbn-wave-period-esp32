@@ -363,6 +363,9 @@ private:
 
                 um += kj * B(j) * C1 * C2;
                 vm += kj * B(j) * S1 * S2;
+                if (!std::isfinite(um) || !std::isfinite(vm)) {
+                    throw std::runtime_error("Non-finite um or vm in residual: at m=" + std::to_string(m));
+                }                
             }
     
             f(m) = -B0 * eta_m;
