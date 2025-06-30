@@ -168,6 +168,8 @@ private:
         Real H = height / depth;      // nondim wave height
         Real lam = length / depth;    // nondim wavelength
         Real k_nd = 2 * M_PI / lam;   // nondimensional wave number
+
+        k = k_nd; // Use nondimentional k unitil after optimization
     
         Real D = 1.0f;                // nondimensional depth = 1
         Real kc = k_nd;
