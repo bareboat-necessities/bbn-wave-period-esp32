@@ -87,16 +87,15 @@ public:
     Real k, c, T, omega, Q, R;
     VectorF eta, x, E, B;
 
-    FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.3f)
+    FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
         : height(height), depth(depth), length(length), g(g), relax(relax) {
-        if (height / depth > 0.78) throw std::runtime_error("Wrong height / depth");
         compute();
     }
 
     Real surface_elevation(Real x_val, Real t = 0) const {
-        Real sum = depth;  // Add mean depth once
+        Real sum = 0;
         for (int j = 0; j <= N; ++j) {
-            sum += E(j) * std::cos(j * k * (x_val - c * t));  // E(j) is perturbation-only
+            sum += E(j) * std::cos(j * k * (x_val - c * t));
         }
         return sum;
     }
@@ -181,7 +180,7 @@ private:
 
         VectorF eta_nd;
         for (int m = 0; m <= N; ++m)
-            eta_nd(m) = 1.0f + (H / 2.0f) * std::cos(2 * M_PI * m / N);
+            eta_nd(m) = 1.0f + H / 2.0f * std::cos(k * x_nd(m));
 
         Q = c0;
         R = 1.0f + 0.5f * c0 * c0;
@@ -199,7 +198,7 @@ private:
 
         for (int i = 0; i <= N; ++i) {
             x(i) = x_nd(i) * depth;
-            eta(i) = depth + (eta_nd(i) - 1.0f) * (height / 2.0f);
+            eta(i) = eta_nd(i) * depth;
         }
 
         k = k / depth;
@@ -211,8 +210,7 @@ private:
     }
 
     void compute_elevation_coefficients() {
-        VectorF eta_perturb = eta.array() - depth;  // Remove mean depth
-        E = FentonFFT<N>::compute_inverse_cosine_transform(eta_perturb);
+        E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
     }
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
@@ -240,7 +238,7 @@ private:
             
             Real eta_max = coeffs.template segment<N + 1>(N + 1).maxCoeff();
             Real eta_min = coeffs.template segment<N + 1>(N + 1).minCoeff();
-            if (!std::isfinite(error)) {
+            if (eta_max > 2.0f || eta_min < 0.1f || !std::isfinite(error)) {
                 throw std::runtime_error("Optimization failed");
             }
 
