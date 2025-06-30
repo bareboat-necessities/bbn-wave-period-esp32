@@ -433,7 +433,7 @@ public:
 
         t = 0.0f;
         x = 0.0f;
-        dxdt = compute_eta_t(x, t) + compute_eta_x(x, t) * 0.0f;  // Start with 0 dxdt
+        dxdt = 0.0f;  // Start with 0 dxdt
 
         while (t <= duration) {
             float ddxdt2 = compute_horizontal_accel(x, t);
