@@ -328,7 +328,7 @@ private:
 
         for (int m = 0; m <= N; ++m) {
             Real eta_m = eta(m);
-            Real x_m = 2.0f * M_PI * m / N;
+            Real x_m = x_nd(m);
             Real um = -B0;
             Real vm = 0;
             
