@@ -180,7 +180,7 @@ private:
     
         VectorF eta_nd;
         for (int m = 0; m <= N; ++m)
-            eta_nd(m) = 1.0f + H / 2.0f * std::cos(k * x_nd(m)); 
+            eta_nd(m) = H / 2.0f * std::cos(k * x_nd(m)); 
     
         // Compute physically consistent initial Q and R (as in Python)
         Q = 0.0f;
