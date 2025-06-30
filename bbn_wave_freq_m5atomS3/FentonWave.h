@@ -206,8 +206,12 @@ private:
         Real c0 = std::sqrt(std::tanh(kc) / kc); // linear wave phase speed
     
         // Step 2: Setup nondimensional x positions (collocation points)
-        for (int m = 0; m <= N; ++m)
+        for (int m = 0; m <= N; ++m) {
             x_nd(m) = lam * m / N;  // nondimensional collocation x
+            if (!std::isfinite(x_nd(m))) {
+                throw std::runtime_error("Non-finite value in x_nd in compute()");
+            }
+        }
     
         // Step 3: Initialize wave coefficients
         B.setZero();
