@@ -302,9 +302,21 @@ private:
             for (int j = 1; j <= N; ++j) {
                 Real kj = j * k;
                 Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
-                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);
+                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);                
+                if (!std::isfinite(S1) || !std::isfinite(C1)) {
+                    throw std::runtime_error("Non-finite S1 or C1 in residual: j=" + std::to_string(j) +
+                                             ", eta_m=" + std::to_string(eta_m) +
+                                             ", kj*eta_m=" + std::to_string(kj * eta_m));
+                }
+
                 Real S2 = std::sin(j * x_m);
                 Real C2 = std::cos(j * x_m);
+                if (!std::isfinite(S2) || !std::isfinite(C2)) {
+                    throw std::runtime_error("Non-finite S2 or C2 in residual: j=" + std::to_string(j) +
+                                             ", eta_m=" + std::to_string(eta_m) +
+                                             ", kj*eta_m=" + std::to_string(kj * eta_m));
+                }
+
                 um += kj * B(j) * C1 * C2;
                 vm += kj * B(j) * S1 * S2;
             }
@@ -323,7 +335,6 @@ private:
     
         // Match Python: enforce mean elevation = 0
         f(2 * N + 2) = eta.mean();
-    
         f(2 * N + 3) = eta(0) - eta(N) - H;
     
         return f;
