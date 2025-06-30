@@ -482,7 +482,7 @@ template class WaveSurfaceTracker<4>;
 
 void FentonWave_test_1() {
     const float height = 2.0f;
-    const float depth = 100.0f;
+    const float depth = 10.0f;
     const float length = 50.0f;
 
     FentonWave<4> wave(height, depth, length);
@@ -500,7 +500,7 @@ void FentonWave_test_1() {
 void FentonWave_test_2() {
     // Wave parameters
     const float height = 2.0f;   // Wave height (m)
-    const float depth = 100.0f;   // Water depth (m)
+    const float depth = 10.0f;   // Water depth (m)
     const float length = 50.0f;  // Wavelength (m)
     
     // Simulation parameters
@@ -515,7 +515,7 @@ void FentonWave_test_2() {
     out << "Time(s),Displacement(m),Velocity(m/s),Acceleration(m/s²),X_Position(m)\n";
 
     // Define the kinematics callback (writes data to file)
-    auto kinematics_callback = [&out, &depth](
+    auto kinematics_callback = [&out](
         float time, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
         out << time << "," << elevation << "," << vertical_velocity << "," << vertical_acceleration << "," << horizontal_position << "\n";
     };
