@@ -177,7 +177,6 @@ private:
         Real c0 = std::sqrt(std::tanh(kc) / kc); // linear wave phase speed
     
         // Step 2: Setup nondimensional x positions (collocation points)
-        VectorF x_nd;
         for (int m = 0; m <= N; ++m)
             x_nd(m) = lam * m / N;  // nondimensional collocation x
     
@@ -220,8 +219,7 @@ private:
         T = length / c;            // period
         omega = c * k;             // angular frequency
     
-        // Step 7: Fix symmetry and compute FFT
-        eta(N) = eta(0);           // enforce cosine symmetry
+        // Step 7: Compute FFT
         compute_elevation_coefficients();  // E = irfft(eta)
     }
 
