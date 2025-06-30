@@ -293,7 +293,7 @@ private:
         }
 
         f(2 * N + 2) = (eta.sum() - 0.5f * (eta(0) + eta(N))) / N - 1.0f;
-        f(2 * N + 3) = eta(0) - eta(N) - H;
+        f(2 * N + 3) = eta.maxCoeff() - eta.minCoeff() - H;
 
         return f;
     }
