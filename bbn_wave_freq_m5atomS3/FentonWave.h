@@ -280,7 +280,7 @@ private:
     void optimize(VectorF& B, Real& Q, Real& R,
                   VectorF& eta, Real H, Real k_nd, Real D) {
         constexpr int NU = 2 * (N + 1) + 2; // total number of unknowns
-        Eigen::Matrix<Real, NU, 1> coeffs;
+        Eigen::Matrix<Real, NU, 1> coeffs = Eigen::Matrix<Real, NU, 1>::Zero();
     
         // Initialize: [B0 ... BN, eta0 ... etaN, Q, R]
         coeffs.template segment<N + 1>(0) = B;
