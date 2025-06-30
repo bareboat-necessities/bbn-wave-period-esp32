@@ -183,15 +183,7 @@ private:
     }
 
     void compute_elevation_coefficients() {
-        E.setZero();
-        for (int j = 0; j <= N; ++j) {
-            Real sum = 0;
-            for (int m = 0; m <= N; ++m) {
-                Real weight = (m == 0 || m == N) ? 0.5f : 1.0f;
-                sum += weight * eta(m) * std::cos(j * m * M_PI / N);
-            }
-            E(j) = 2.0f * sum / N;
-        }
+        E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
     }
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
