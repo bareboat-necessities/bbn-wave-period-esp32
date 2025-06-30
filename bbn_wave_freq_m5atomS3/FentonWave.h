@@ -262,6 +262,9 @@ private:
 
     void compute_elevation_coefficients() {
         E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
+        if (!E.allFinite()) {
+            throw std::runtime_error("Non finite result in compute_elevation_coefficients");
+        }
     }
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
