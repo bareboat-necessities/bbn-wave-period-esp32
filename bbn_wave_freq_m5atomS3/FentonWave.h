@@ -63,7 +63,7 @@ public:
 };
 
 // FentonWave class
-template <int N>
+template <int N = 4>
 class FentonWave {
 private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
