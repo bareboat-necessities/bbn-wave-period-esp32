@@ -19,22 +19,51 @@ constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
 
 template <typename T>
 T sinh_by_cosh(T a, T b) {
+    if (!std::isfinite(a) || !std::isfinite(b)) {
+        throw std::runtime_error("sinh_by_cosh received non-finite input");
+    }
+
+    constexpr T MAX_EXP_ARG = 87.0f;  // Adjustable, avoid exp overflow
+
+    // Clamp to avoid overflow
+    a = clamp_value(a, -MAX_EXP_ARG, MAX_EXP_ARG);
+    b = clamp_value(b, -MAX_EXP_ARG, MAX_EXP_ARG);
+
     if (a == 0) return 0;
     T f = b / a;
     if ((a > 30 && 0.5 < f && f < 1.5) || (a > 200 && 0.1 < f && f < 1.9)) {
         return std::exp(a * (1 - f));
     }
-    return std::sinh(a) / std::cosh(b);
+
+    T result = std::sinh(a) / std::cosh(b);
+    if (!std::isfinite(result)) {
+        throw std::runtime_error("sinh_by_cosh produced non-finite result");
+    }
+    return result;
 }
 
 template <typename T>
 T cosh_by_cosh(T a, T b) {
+    if (!std::isfinite(a) || !std::isfinite(b)) {
+        throw std::runtime_error("cosh_by_cosh received non-finite input");
+    }
+
+    constexpr T MAX_EXP_ARG = 87.0f;
+
+    a = clamp_value(a, -MAX_EXP_ARG, MAX_EXP_ARG);
+    b = clamp_value(b, -MAX_EXP_ARG, MAX_EXP_ARG);
+
     if (a == 0) return 1.0 / std::cosh(b);
     T f = b / a;
     if ((a > 30 && 0.5 < f && f < 1.5) || (a > 200 && 0.1 < f && f < 1.9)) {
         return std::exp(a * (1 - f));
     }
-    return std::cosh(a) / std::cosh(b);
+
+    T result = std::cosh(a) / std::cosh(b);
+    if (!std::isfinite(result)) {
+        throw std::runtime_error("cosh_by_cosh produced non-finite result");
+    }
+    return result;
 }
 
 template <int N>
