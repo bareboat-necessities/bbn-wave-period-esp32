@@ -265,7 +265,8 @@ private:
     }
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
-        Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
+        Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam; 
+        if (!std::isfinite(Hb)) throw std::runtime_error("Non-finite Hb");
         int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
         std::vector<Real> steps(num);
         for (int i = 0; i < num; ++i)
@@ -283,6 +284,9 @@ private:
         coeffs.template segment<N + 1>(N + 1) = eta;
         coeffs(2 * N + 2) = Q;
         coeffs(2 * N + 3) = R;
+        if (!std::coeffs::allFinite()) {
+            throw std::runtime_error("Non-finite initial coefficients");
+        }
     
         const int max_iter = 500;
         const Real tol = 1e-12f;
@@ -307,6 +311,10 @@ private:
             }
             
             Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
+            if (!std::delta::allFinite()) {
+               throw std::runtime_error("Non-finite delta");
+            }
+
             coeffs += relax * delta;
         }
     
