@@ -424,7 +424,7 @@ private:
     }
 
 public:
-    WaveSurfaceTracker(float height, float depth, float length, float mass_kg = 1.0f, float drag_coeff_ = 0.1f)
+    WaveSurfaceTracker(float height, float depth, float length, float mass_kg, float drag_coeff_)
         : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_) {}
 
     /**
@@ -502,6 +502,8 @@ void FentonWave_test_2() {
     const float height = 2.0f;   // Wave height (m)
     const float depth = 10.0f;   // Water depth (m)
     const float length = 50.0f;  // Wavelength (m)
+    const float mass = 1.0f;     // Mass (kg)
+    const float drag = 0.1f;     // Linear drag coeff opposing velocity
     
     // Simulation parameters
     const float duration = 20.0f; // Simulation duration (s)
