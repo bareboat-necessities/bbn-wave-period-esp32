@@ -14,20 +14,20 @@ def visualize_wave_data(csv_file='wave_tracker_data.csv'):
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
 
     # Plot displacement
-    ax1.plot(data['Time(s)'], data['Displacement(m)'], 'b-', label='Surface Elevation')
+    ax1.plot(data['Time(s)'][1:], data['Displacement(m)'][1:], 'b-', label='Surface Elevation')
     ax1.set_ylabel('Displacement (m)')
     ax1.set_title('Wave Surface Kinematics')
     ax1.grid(True)
     ax1.legend()
 
     # Plot velocity
-    ax2.plot(data['Time(s)'], data['Velocity(m/s)'], 'r-', label='Vertical Velocity')
+    ax2.plot(data['Time(s)'][1:], data['Velocity(m/s)'][1:], 'r-', label='Vertical Velocity')
     ax2.set_ylabel('Velocity (m/s)')
     ax2.grid(True)
     ax2.legend()
 
     # Plot acceleration
-    ax3.plot(data['Time(s)'], data['Acceleration(m/s²)'], 'g-', label='Vertical Acceleration')
+    ax3.plot(data['Time(s)'][1:], data['Acceleration(m/s²)'][1:], 'g-', label='Vertical Acceleration')
     ax3.set_xlabel('Time (s)')
     ax3.set_ylabel('Acceleration (m/s²)')
     ax3.grid(True)
@@ -52,7 +52,7 @@ def plot_wave_profile(data):
     # For the wave profile, we'll use the X_Position data
     # Since the particle is following the crest, we can plot displacement vs position
     plt.figure(figsize=(10, 5))
-    plt.plot(data['X_Position(m)'], data['Displacement(m)'], 'b-')
+    plt.plot(data['X_Position(m)'][40:], data['Displacement(m)'][40:], 'b-')
     plt.xlabel('Horizontal Position (m)')
     plt.ylabel('Surface Elevation (m)')
     plt.title('Wave Profile Along Particle Path')
