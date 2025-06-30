@@ -332,6 +332,7 @@ private:
 };
 
 
+
 template<int N = 4>
 class WaveSurfaceTracker {
 private:
@@ -366,48 +367,22 @@ private:
     }
 
     float compute_horizontal_accel(float x, float t) const {
-        float eta_x = compute_eta_x(x, t);
-        eta_x = std::abs(eta_x) < slope_eps ? ((eta_x >= 0) ? slope_eps : -slope_eps) : eta_x;
+        float eta_x = wave.surface_slope(x, t);
+        eta_x = std::abs(eta_x) < slope_eps ? ((eta_x >= 0.0f) ? slope_eps : -slope_eps) : eta_x;
         return -alpha * eta_x / mass;
     }
 
-    float compute_eta_x(float x, float t, float dx = 1e-3f) const {
-        return (wave.surface_elevation(x + dx, t) - wave.surface_elevation(x - dx, t)) / (2 * dx);
-    }
-
-    float compute_eta_t(float x, float t, float dt = 1e-3f) const {
-        return (wave.surface_elevation(x, t + dt) - wave.surface_elevation(x, t - dt)) / (2 * dt);
-    }
-
-    float compute_eta_tt(float x, float t, float dt = 1e-3f) const {
-        return (wave.surface_elevation(x, t + dt) - 2 * wave.surface_elevation(x, t) +
-                wave.surface_elevation(x, t - dt)) / (dt * dt);
-    }
-
-    float compute_eta_xt(float x, float t, float dx = 1e-3f, float dt = 1e-3f) const {
-        float e_pp = wave.surface_elevation(x + dx, t + dt);
-        float e_pm = wave.surface_elevation(x + dx, t - dt);
-        float e_mp = wave.surface_elevation(x - dx, t + dt);
-        float e_mm = wave.surface_elevation(x - dx, t - dt);
-        return (e_pp - e_pm - e_mp + e_mm) / (4 * dx * dt);
-    }
-
-    float compute_eta_xx(float x, float t, float dx = 1e-3f) const {
-        return (wave.surface_elevation(x + dx, t) - 2 * wave.surface_elevation(x, t) +
-                wave.surface_elevation(x - dx, t)) / (dx * dx);
-    }
-
     float compute_vertical_accel(float x, float dxdt, float ddxdt2, float t) const {
-        float eta_tt = compute_eta_tt(x, t);
-        float eta_xt = compute_eta_xt(x, t);
-        float eta_xx = compute_eta_xx(x, t);
-        float eta_x  = compute_eta_x(x, t);
-        return eta_tt + 2.0f * eta_xt * dxdt + eta_xx * dxdt * dxdt + eta_x * ddxdt2;
+        float eta_tt = wave.surface_second_time_derivative(x, t);
+        float eta_xt = wave.surface_space_time_derivative(x, t);
+        float eta_x  = wave.surface_slope(x, t);
+        return eta_tt + 2.0f * eta_xt * dxdt + eta_x * ddxdt2;
     }
 
 public:
     WaveSurfaceTracker(float height, float depth, float length)
-        : wave(height, depth, length) {
+        : wave(height, depth, length)
+    {
         compute_mean_elevation();
     }
 
@@ -415,9 +390,11 @@ public:
 
     void set_alpha(float a) { alpha = a; }
 
+    // Helper to estimate alpha = rho * g * projected_area
     static float compute_alpha(float projected_area,
                                float fluid_density = 1000.0f,
-                               float gravity = 9.81f) {
+                               float gravity = 9.81f)
+    {
         return fluid_density * gravity * projected_area;
     }
 
@@ -433,12 +410,12 @@ public:
 
         t = 0.0f;
         x = 0.0f;
-        dxdt = 0.0f;  // Start with 0 dxdt
+        dxdt = 0.0f;  // start at rest
 
         while (t <= duration) {
             float ddxdt2 = compute_horizontal_accel(x, t);
 
-            // RK4 for x and dxdt
+            // RK4 integration for horizontal position x and velocity dxdt
             float k1_v = ddxdt2;
             float k1_x = dxdt;
 
@@ -458,7 +435,7 @@ public:
             t += dt;
 
             float z = wave.surface_elevation(x, t) - mean_eta;
-            float dzdt = compute_eta_t(x, t) + compute_eta_x(x, t) * dxdt;
+            float dzdt = wave.surface_time_derivative(x, t) + wave.surface_slope(x, t) * dxdt;
             float ddzdt2 = compute_vertical_accel(x, dxdt, ddxdt2, t);
 
             callback(t, z, dzdt, ddzdt2, x);
