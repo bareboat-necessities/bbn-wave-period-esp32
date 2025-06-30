@@ -455,7 +455,7 @@ public:
             t += dt;
 
             // Surface elevation = vertical position
-            float z = wave.surface_elevation(x, t) - mean_eta;
+            float z = wave.surface_elevation(x, t);
             float dzdt = (z - prev_z) / dt;
             float ddzdt2 = (dzdt - prev_dzdt) / dt;
 
