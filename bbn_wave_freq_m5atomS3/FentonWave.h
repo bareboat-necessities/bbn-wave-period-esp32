@@ -271,6 +271,9 @@ private:
         if (!E.allFinite()) {
             throw std::runtime_error("Non finite result in compute_elevation_coefficients");
         }
+        for (int j = 0; j <= N; ++j) {
+            E(j) *= (j == 0 || j == N) ? 1.0f/N : 2.0f/N;
+        }
     }
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
