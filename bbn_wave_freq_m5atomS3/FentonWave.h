@@ -334,7 +334,7 @@ private:
 
 
 template<int N = 4>
-class WaveSurfaceTrackerWithMass {
+class WaveSurfaceTracker {
 private:
     FentonWave<N> wave;
 
@@ -399,7 +399,7 @@ private:
     }
 
 public:
-    WaveSurfaceTrackerWithMass(float height, float depth, float length)
+    WaveSurfaceTracker(float height, float depth, float length)
         : wave(height, depth, length) {
         compute_mean_elevation();
     }
