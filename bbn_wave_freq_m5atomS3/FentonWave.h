@@ -23,7 +23,7 @@ T sinh_by_cosh(T a, T b) {
         throw std::runtime_error("sinh_by_cosh received non-finite input");
     }
 
-    constexpr T MAX_EXP_ARG = 40.0f;  // Adjustable, avoid exp overflow
+    constexpr T MAX_EXP_ARG = 87.0f;  // Adjustable, avoid exp overflow
 
     // Clamp to avoid overflow
     a = clamp_value(a, -MAX_EXP_ARG, MAX_EXP_ARG);
@@ -48,7 +48,7 @@ T cosh_by_cosh(T a, T b) {
         throw std::runtime_error("cosh_by_cosh received non-finite input");
     }
 
-    constexpr T MAX_EXP_ARG = 40.0f;
+    constexpr T MAX_EXP_ARG = 87.0f;
 
     a = clamp_value(a, -MAX_EXP_ARG, MAX_EXP_ARG);
     b = clamp_value(b, -MAX_EXP_ARG, MAX_EXP_ARG);
@@ -589,7 +589,7 @@ void FentonWave_test_1() {
 void FentonWave_test_2() {
     // Wave parameters
     const float height = 2.0f;   // Wave height (m)
-    const float depth = 10.0f;   // Water depth (m)
+    const float depth = 100.0f;   // Water depth (m)
     const float length = 50.0f;  // Wavelength (m)
     
     // Simulation parameters
