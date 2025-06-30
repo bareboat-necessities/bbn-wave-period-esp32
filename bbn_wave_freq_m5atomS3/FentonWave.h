@@ -20,53 +20,59 @@ constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
 // ===================================================
 // Minimal Real FFT implementation compatible with Eigen
 // ===================================================
-
-template <typename Scalar>
+template <typename Scalar, int N>
 class FentonFFT {
- public:
-  using Real = Scalar;
-  using Complex = std::complex<Scalar>;
+public:
+    using Real = Scalar;
+    using Complex = std::complex<Real>;
+    using RealVec = Eigen::Matrix<Real, N, 1>;
+    using ComplexVec = Eigen::Matrix<Complex, N, 1>;
 
-  // Forward FFT: real input → complex output
-  void forward(const Eigen::Matrix<Scalar, Eigen::Dynamic, 1>& in,
-               Eigen::Matrix<Complex, Eigen::Dynamic, 1>& out) {
-    const int N = static_cast<int>(in.size());
-    out.resize(N);
-    for (int k = 0; k < N; ++k) {
-      Complex sum(0, 0);
-      for (int n = 0; n < N; ++n) {
-        Scalar angle = -2 * M_PI * k * n / N;
-        sum += in[n] * Complex(std::cos(angle), std::sin(angle));
-      }
-      out[k] = sum;
+    void forward(const RealVec& in, ComplexVec& out) {
+        for (int k = 0; k < N; ++k) {
+            Complex sum(0, 0);
+            for (int n = 0; n < N; ++n) {
+                Real angle = -2 * M_PI * k * n / N;
+                sum += in(n) * Complex(std::cos(angle), std::sin(angle));
+            }
+            out(k) = sum;
+        }
     }
-  }
 
-  void inverse_cosine(const Eigen::Matrix<Real, Eigen::Dynamic, 1>& coeffs,
-                      Eigen::Matrix<Real, Eigen::Dynamic, 1>& signal) {
-    const int N = static_cast<int>(coeffs.size()) - 1;  // Number of harmonics
-    const int L = N + 1;  // Output signal length
-    signal.resize(L);
-    for (int i = 0; i < L; ++i) {
-      Real sum = 0;
-      for (int j = 0; j <= N; ++j) {
-        Real phi = M_PI * j * i / N;
-        Real w = (j == 0 || j == N) ? 0.5 : 1.0;  // Weighting as in irfft
-        sum += coeffs[j] * std::cos(phi) * w;
-      }
-      signal[i] = 2.0 * sum / N;
+    void inverse(const ComplexVec& in, RealVec& out) {
+        for (int n = 0; n < N; ++n) {
+            Complex sum(0, 0);
+            for (int k = 0; k < N; ++k) {
+                Real angle = 2 * M_PI * k * n / N;
+                sum += in(k) * Complex(std::cos(angle), std::sin(angle));
+            }
+            out(n) = sum.real() / N;
+        }
     }
-  }
+
+    void inverse_cosine(const RealVec& coeffs, RealVec& signal) {
+        const int M = N - 1;
+        for (int i = 0; i < N; ++i) {
+            Real sum = 0;
+            for (int j = 0; j <= M; ++j) {
+                Real phi = M_PI * j * i / M;
+                Real w = (j == 0 || j == M) ? 0.5f : 1.0f;
+                sum += coeffs(j) * std::cos(phi) * w;
+            }
+            signal(i) = 2.0f * sum / M;
+        }
+    }
 };
 
+// ===================================================
+// FentonWave class
+// ===================================================
 template <int N>
 class FentonWave {
 private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
 
     using Real = float;
-    using Complex = std::complex<Real>;
-
     using VectorF = Eigen::Matrix<Real, N + 1, 1>;
     using BigVector = Eigen::Matrix<Real, StateDim, 1>;
     using BigMatrix = Eigen::Matrix<Real, StateDim, StateDim>;
@@ -92,7 +98,7 @@ public:
     Real surface_slope(Real x, Real t = 0) const {
         Real d_eta = 0.0f;
         for (int j = 0; j <= N; ++j) {
-            d_eta -= E[j] * j * k * std::sin(j * k * (x - c * t));
+            d_eta -= E(j) * j * k * std::sin(j * k * (x - c * t));
         }
         return d_eta;
     }
@@ -108,19 +114,19 @@ public:
             Real arg = kj * (x - c * t);
             Real denom = std::cosh(kj * depth);
             if (denom < std::numeric_limits<Real>::epsilon()) continue;
-            Real term = B[j] * kj / denom;
+            Real term = B(j) * kj / denom;
             w += term * std::sin(arg) * std::sinh(kj * (z + depth));
         }
         return w;
     }
 
     // Getters
-    float get_c() const { return c; }
-    float get_k() const { return k; }
-    float get_T() const { return T; }
-    float get_omega() const { return omega; }
-    float get_length() const { return length; }
-    float get_height() const { return height; }
+    Real get_c() const { return c; }
+    Real get_k() const { return k; }
+    Real get_T() const { return T; }
+    Real get_omega() const { return omega; }
+    Real get_length() const { return length; }
+    Real get_height() const { return height; }
     const VectorF& get_eta() const { return eta; }
 
 private:
@@ -163,68 +169,69 @@ private:
             eta(i) = eta_nd(i) * depth;
         }
 
-        k /= depth;
+        k = k / depth;
         c = B(0);
         T = length / c;
         omega = c * k;
 
-        FentonFFT<Real> fft;
+        // Use irfft-like logic to compute E coefficients
+        FentonFFT<Real, N + 1> fft;
         fft.inverse_cosine(eta, E);
     }
 
-    std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
+    std::array<Real, 10> wave_height_steps(Real H, Real D, Real lam) {
         Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
         int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
-        std::vector<Real> steps;
-        for (int i = 1; i <= num; ++i)
-            steps.push_back(H * i / num);
+        std::array<Real, 10> steps{};
+        for (int i = 0; i < num; ++i)
+            steps[i] = H * (i + 1) / num;
         return steps;
     }
 
-    void optimize(Eigen::Matrix<float, N + 1, 1>& B, float& Q, float& R,
-                  Eigen::Matrix<float, N + 1, 1>& eta, float H, float k, float D)
+    void optimize(VectorF& B, Real& Q, Real& R,
+                  VectorF& eta, Real H, Real k, Real D)
     {
         constexpr int NU = 2 * (N + 1) + 2;
-        Eigen::Matrix<float, NU, 1> coeffs;
-        coeffs.segment(0, N + 1) = B;
-        coeffs.segment(N + 1, N + 1) = eta;
+        Eigen::Matrix<Real, NU, 1> coeffs;
+        coeffs.template segment<N + 1>(0) = B;
+        coeffs.template segment<N + 1>(N + 1) = eta;
         coeffs(2 * N + 2) = Q;
         coeffs(2 * N + 3) = R;
 
         for (int iter = 0; iter < 100; ++iter) {
-            Eigen::Matrix<float, NU, 1> f = compute_residual(coeffs, H, k, D);
-            Eigen::Matrix<float, NU, NU> J = compute_jacobian(coeffs, H, k, D);
-            Eigen::Matrix<float, NU, 1> delta = J.fullPivLu().solve(-f);
+            Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k, D);
+            Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k, D);
+            Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
             coeffs += relax * delta;
 
             if (f.cwiseAbs().maxCoeff() < 1e-8f) break;
         }
 
-        B = coeffs.segment(0, N + 1);
-        eta = coeffs.segment(N + 1, N + 1);
+        B = coeffs.template segment<N + 1>(0);
+        eta = coeffs.template segment<N + 1>(N + 1);
         Q = coeffs(2 * N + 2);
         R = coeffs(2 * N + 3);
     }
 
-    Eigen::Matrix<float, 2 * (N + 1) + 2, 1>
-    compute_residual(const Eigen::Matrix<float, 2 * (N + 1) + 2, 1>& coeffs, float H, float k, float D) {
+    Eigen::Matrix<Real, 2 * (N + 1) + 2, 1>
+    compute_residual(const Eigen::Matrix<Real, 2 * (N + 1) + 2, 1>& coeffs, Real H, Real k, Real D) {
         constexpr int NU = 2 * (N + 1) + 2;
-        Eigen::Matrix<float, NU, 1> f;
-        auto B = coeffs.segment(0, N + 1);
-        auto eta = coeffs.segment(N + 1, N + 1);
-        float Q = coeffs(2 * N + 2);
-        float R = coeffs(2 * N + 3);
-        float B0 = B(0);
+        Eigen::Matrix<Real, NU, 1> f;
+        auto B = coeffs.template segment<N + 1>(0);
+        auto eta = coeffs.template segment<N + 1>(N + 1);
+        Real Q = coeffs(2 * N + 2);
+        Real R = coeffs(2 * N + 3);
+        Real B0 = B(0);
 
         for (int m = 0; m <= N; ++m) {
-            float x_m = M_PI * m / N;
-            float eta_m = eta(m);
-            float um = -B0, vm = 0, S1, C1, S2, C2;
+            Real x_m = M_PI * m / N;
+            Real eta_m = eta(m);
+            Real um = -B0, vm = 0, S1, C1, S2, C2;
             for (int j = 1; j <= N; ++j) {
-                float aj = j * k * eta_m;
-                float bj = j * k * D;
-                float sinh_ratio = std::sinh(aj) / std::cosh(bj);
-                float cosh_ratio = std::cosh(aj) / std::cosh(bj);
+                Real aj = j * k * eta_m;
+                Real bj = j * k * D;
+                Real sinh_ratio = std::sinh(aj) / std::cosh(bj);
+                Real cosh_ratio = std::cosh(aj) / std::cosh(bj);
                 S1 = sinh_ratio;
                 C1 = cosh_ratio;
                 S2 = std::sin(j * x_m);
@@ -234,11 +241,10 @@ private:
             }
             f(m) = -B0 * eta_m;
             for (int j = 1; j <= N; ++j) {
-                float aj = j * k * eta_m;
-                float bj = j * k * D;
-                float sinh_ratio = std::sinh(aj) / std::cosh(bj);
-                float cosh_ratio = std::cosh(aj) / std::cosh(bj);
-                float C2 = std::cos(j * M_PI * m / N);
+                Real aj = j * k * eta_m;
+                Real bj = j * k * D;
+                Real sinh_ratio = std::sinh(aj) / std::cosh(bj);
+                Real C2 = std::cos(j * M_PI * m / N);
                 f(m) += B(j) * sinh_ratio * C2;
             }
             f(m) += Q;
@@ -254,37 +260,36 @@ private:
         return f;
     }
 
-    Eigen::Matrix<float, 2 * (N + 1) + 2, 2 * (N + 1) + 2>
-    compute_jacobian(const Eigen::Matrix<float, 2 * (N + 1) + 2, 1>& coeffs, float H, float k, float D) {
+    Eigen::Matrix<Real, 2 * (N + 1) + 2, 2 * (N + 1) + 2>
+    compute_jacobian(const Eigen::Matrix<Real, 2 * (N + 1) + 2, 1>& coeffs, Real H, Real k, Real D) {
         constexpr int NU = 2 * (N + 1) + 2;
-        Eigen::Matrix<float, NU, NU> J = Eigen::Matrix<float, NU, NU>::Zero();
-        auto B = coeffs.segment(0, N + 1);
-        auto eta = coeffs.segment(N + 1, N + 1);
-        float B0 = B(0);
+        Eigen::Matrix<Real, NU, NU> J = Eigen::Matrix<Real, NU, NU>::Zero();
+        auto B = coeffs.template segment<N + 1>(0);
+        auto eta = coeffs.template segment<N + 1>(N + 1);
+        Real B0 = B(0);
 
         for (int m = 0; m <= N; ++m) {
-            float eta_m = eta(m);
-            float x_m = M_PI * m / N;
-            float um = -B0, vm = 0;
+            Real eta_m = eta(m);
+            Real x_m = M_PI * m / N;
+            Real um = -B0, vm = 0;
 
-            Eigen::Array<float, N, 1> S1, C1, S2, C2;
             for (int j = 1; j <= N; ++j) {
-                float aj = j * k * eta_m;
-                float bj = j * k * D;
-                float sinh_ratio = std::sinh(aj) / std::cosh(bj);
-                float cosh_ratio = std::cosh(aj) / std::cosh(bj);
-                float s2 = std::sin(j * x_m);
-                float c2 = std::cos(j * x_m);
+                Real aj = j * k * eta_m;
+                Real bj = j * k * D;
+                Real sinh_ratio = std::sinh(aj) / std::cosh(bj);
+                Real cosh_ratio = std::cosh(aj) / std::cosh(bj);
+                Real s2 = std::sin(j * x_m);
+                Real c2 = std::cos(j * x_m);
                 um += k * j * B(j) * cosh_ratio * c2;
                 vm += k * j * B(j) * sinh_ratio * s2;
             }
 
             J(m, 0) = -eta_m;
             for (int j = 1; j <= N; ++j) {
-                float aj = j * k * eta_m;
-                float bj = j * k * D;
-                float sinh_ratio = std::sinh(aj) / std::cosh(bj);
-                float c2 = std::cos(j * M_PI * m / N);
+                Real aj = j * k * eta_m;
+                Real bj = j * k * D;
+                Real sinh_ratio = std::sinh(aj) / std::cosh(bj);
+                Real c2 = std::cos(j * M_PI * m / N);
                 J(m, j) = sinh_ratio * c2;
             }
             J(m, N + 1 + m) = -B0;
