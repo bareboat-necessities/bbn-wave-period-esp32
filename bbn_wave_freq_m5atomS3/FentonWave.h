@@ -180,7 +180,7 @@ private:
 
         VectorF eta_nd;
         for (int m = 0; m <= N; ++m)
-            eta_nd(m) = 1.0f + H / 2.0f * std::cos(k * x_nd(m));
+            eta_nd(m) = H / 2.0f * std::cos(k * x_nd(m));
 
         Q = c0;
         R = 1.0f + 0.5f * c0 * c0;
@@ -198,7 +198,7 @@ private:
 
         for (int i = 0; i <= N; ++i) {
             x(i) = x_nd(i) * depth;
-            eta(i) = eta_nd(i) * depth;
+            eta(i) = eta_nd(i);
         }
 
         k = k / depth;
