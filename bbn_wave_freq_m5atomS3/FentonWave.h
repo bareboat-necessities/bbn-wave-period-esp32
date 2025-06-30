@@ -87,7 +87,7 @@ public:
     Real k, c, T, omega, Q, R;
     VectorF eta, x, E, B;
 
-    FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
+    FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.3f)
         : height(height), depth(depth), length(length), g(g), relax(relax) {
         if (height / depth > 0.78) throw std::runtime_error("Wrong height / depth");
         compute();
