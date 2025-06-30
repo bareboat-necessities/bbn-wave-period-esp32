@@ -198,7 +198,7 @@ private:
 
         for (int i = 0; i <= N; ++i) {
             x(i) = x_nd(i) * depth;
-            eta(i) = eta_nd(i) * depth;
+            eta(i) = (eta_nd(i) - 1.0f) * depth;
         }
 
         k = k / depth;
@@ -491,7 +491,7 @@ void FentonWave_test_1() {
     out << "x,elevation\n";
     for (float x = 0; x <= length; x += 0.05f) {
         float eta = wave.surface_elevation(x, 0);
-        out << x << "," << eta - 2.0f * depth << "\n";
+        out << x << "," << eta << "\n";
     }
     std::cerr << "Expected wave length: " << length << "\n";
     std::cerr << "Computed wave length: " << 2 * M_PI / wave.get_k() << "\n";
@@ -517,7 +517,7 @@ void FentonWave_test_2() {
     // Define the kinematics callback (writes data to file)
     auto kinematics_callback = [&out, &depth](
         float time, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
-        out << time << "," << elevation - 2.0f * depth << "," << vertical_velocity << "," << vertical_acceleration << "," << horizontal_position << "\n";
+        out << time << "," << elevation << "," << vertical_velocity << "," << vertical_acceleration << "," << horizontal_position << "\n";
     };
 
     // Track floating object (using callback)
