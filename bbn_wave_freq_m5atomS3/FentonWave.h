@@ -72,32 +72,38 @@ public:
     using Real = float;
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
 
-    // Compute DCT-I coefficients (equivalent to irfft for real-even signals)
-    static Vector compute_inverse_cosine_transform(const Vector& eta) {
-        Vector E;
+    // Inverse cosine transform: compute Fourier cosine coefficients from elevation samples
+    static Vector compute_inverse_cosine_transform(const Vector& elevation_samples, Real domain_length) {
+        Vector cosine_coefficients;
         for (int j = 0; j <= N; ++j) {
-            Real sum = 0.0f;
+            Real coefficient_sum = 0.0f;
             for (int m = 0; m <= N; ++m) {
-                Real w = (m == 0 || m == N) ? 0.5f : 1.0f;
-                sum += w * eta(m) * std::cos(M_PI * j * m / N);
+                Real x_m = domain_length * m / N;
+                Real weight = (m == 0 || m == N) ? 0.5f : 1.0f;
+                coefficient_sum += weight * elevation_samples(m) * std::cos(j * M_PI * x_m / domain_length);
             }
-            E(j) = 2.0f * sum / N;
+            cosine_coefficients(j) = (2.0f / N) * coefficient_sum;
         }
-        return E;
+
+        // Adjust DC and Nyquist coefficients (for orthogonality normalization)
+        cosine_coefficients(0) *= 0.5f;
+        cosine_coefficients(N) *= 0.5f;
+        return cosine_coefficients;
     }
 
-    // Forward DCT-I to reconstruct η from cosine coefficients
-    static Vector compute_forward_cosine_transform(const Vector& E) {
-        Vector eta;
+    // Forward cosine transform: reconstruct elevation samples from cosine coefficients
+    static Vector compute_forward_cosine_transform(const Vector& cosine_coefficients, Real domain_length) {
+        Vector reconstructed_elevation;
         for (int m = 0; m <= N; ++m) {
+            Real x_m = domain_length * m / N;
             Real sum = 0.0f;
             for (int j = 0; j <= N; ++j) {
-                Real w = (j == 0 || j == N) ? 0.5f : 1.0f;
-                sum += w * E(j) * std::cos(M_PI * j * m / N);
+                Real weight = (j == 0 || j == N) ? 1.0f : 2.0f;
+                sum += weight * cosine_coefficients(j) * std::cos(j * M_PI * x_m / domain_length);
             }
-            eta(m) = sum;
+            reconstructed_elevation(m) = sum;
         }
-        return eta;
+        return reconstructed_elevation;
     }
 };
 
