@@ -434,7 +434,7 @@ private:
     }
 
 public:
-    WaveSurfaceTrackerWithMass(float height, float depth, float length)
+    WaveSurfaceTracker(float height, float depth, float length)
         : wave(height, depth, length) {
         compute_mean_elevation();
     }
