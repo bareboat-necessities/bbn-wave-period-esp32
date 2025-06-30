@@ -86,6 +86,7 @@ public:
     Real height, depth, length, g, relax;
     Real k, c, T, omega, Q, R;
     VectorF eta, x, E, B;
+    VectorF x_nd;  // nondimensional collocation points
 
     FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
         : height(height), depth(depth), length(length), g(g), relax(relax) {
