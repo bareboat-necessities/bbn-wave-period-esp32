@@ -251,7 +251,7 @@ private:
         coeffs(2 * N + 3) = R;
     
         const int max_iter = 500;
-        const Real tol = 1e-8f;
+        const Real tol = 1e-12f;
     
         Real error = std::numeric_limits<Real>::max();
     
@@ -265,10 +265,13 @@ private:
             if (!std::isfinite(error)) {
                 throw std::runtime_error("Non-finite residual during optimization");
             }
-    
             if (error < tol) break;
     
             Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k_nd, D);
+            if (!J.allFinite()) {
+                throw std::runtime_error("Jacobian contains non-finite values");
+            }
+            
             Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
             coeffs += relax * delta;
         }
