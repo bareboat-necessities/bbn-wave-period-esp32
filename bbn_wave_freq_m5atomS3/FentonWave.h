@@ -267,7 +267,7 @@ private:
             
             Real eta_max = coeffs.template segment<N + 1>(N + 1).maxCoeff();
             Real eta_min = coeffs.template segment<N + 1>(N + 1).minCoeff();
-            if (eta_max > 2.0f || eta_min < 0.1f || !std::isfinite(error)) {
+            if (!std::isfinite(error) || error > 1e4f) {
                 throw std::runtime_error("Optimization failed");
             }
 
