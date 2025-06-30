@@ -221,8 +221,8 @@ private:
         Real sqrt_gd = std::sqrt(g * depth);
         B(0) *= sqrt_gd;
         for (int j = 1; j <= N; ++j)
-            B(j) *= std::sqrt(g * std::pow(depth, 3));
-        Q *= std::sqrt(g * std::pow(depth, 3));
+            B(j) *= (sqrt_gd * depth);
+        Q *= (sqrt_gd * depth);
         R *= g * depth;
     
         for (int i = 0; i <= N; ++i) {
