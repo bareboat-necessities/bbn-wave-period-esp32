@@ -176,58 +176,27 @@ private:
     
         B.setZero();
         B(0) = c0;
-        B(1) = -H / (4.0f * c0 * k);
+        Q = c0;
+        R = 1.0f + 0.5f * c0 * c0;
     
         VectorF eta_nd;
-        for (int m = 0; m <= N; ++m)
-            eta_nd(m) = H / 2.0f * std::cos(k * x_nd(m)); 
     
-        // Compute physically consistent initial Q and R (as in Python)
-        Q = 0.0f;
-        R = 0.0f;
-        for (int m = 0; m <= N; ++m) {
-            Real x_m = M_PI * m / N;
-            Real eta_m = eta_nd(m);
-    
-            Real um = -B(0);
-            Real vm = 0;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
-                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);
-                Real S2 = std::sin(j * x_m);
-                Real C2 = std::cos(j * x_m);
-                um += kj * B(j) * C1 * C2;
-                vm += kj * B(j) * S1 * S2;
-            }
-    
-            Q += -B(0) * eta_m;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                Q += B(j) * sinh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
-            }
-    
-            R += 0.5f * (um * um + vm * vm) + eta_m;
-        }
-        Q /= (N + 1);
-        R /= (N + 1);
-    
-        // Progressive nonlinearity steps
         for (Real Hi : wave_height_steps(H, D, lam)) {
+            for (int m = 0; m <= N; ++m)
+                eta_nd(m) = Hi / 2.0f * std::cos(k * x_nd(m));
             optimize(B, Q, R, eta_nd, Hi, k, D);
         }
     
-        // Rescale dimensional variables
         Real sqrt_gd = std::sqrt(g * depth);
         B(0) *= sqrt_gd;
         for (int j = 1; j <= N; ++j)
             B(j) *= std::sqrt(g * std::pow(depth, 3));
-        Q *= (sqrt_gd * depth);
+        Q *= std::sqrt(g * std::pow(depth, 3));
         R *= g * depth;
     
         for (int i = 0; i <= N; ++i) {
             x(i) = x_nd(i) * depth;
-            eta(i) = eta_nd(i) * depth;  // dimensionalize after optimization
+            eta(i) = eta_nd(i) * depth;
         }
     
         k = k / depth;
@@ -252,37 +221,34 @@ private:
     }
 
     void optimize(VectorF& B, Real& Q, Real& R,
-                 VectorF& eta, Real H, Real k, Real D) {
+                  VectorF& eta, Real H, Real k, Real D) {
         constexpr int NU = 2 * (N + 1) + 2;
         Eigen::Matrix<Real, NU, 1> coeffs;
         coeffs.template segment<N + 1>(0) = B;
         coeffs.template segment<N + 1>(N + 1) = eta;
         coeffs(2 * N + 2) = Q;
         coeffs(2 * N + 3) = R;
-
+    
         Real error = std::numeric_limits<Real>::max();
         for (int iter = 0; iter < 500 && error > 1e-8f; ++iter) {
             Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k, D);
             error = f.cwiseAbs().maxCoeff();
-            
-            Real eta_max = coeffs.template segment<N + 1>(N + 1).maxCoeff();
-            Real eta_min = coeffs.template segment<N + 1>(N + 1).minCoeff();
-            if (!std::isfinite(error) || error > 1e4f) {
-                throw std::runtime_error("Optimization failed");
-            }
-
+    
+            if (!std::isfinite(error)) throw std::runtime_error("Non-finite residual");
+    
             if (error < 1e-8f) break;
-
+    
             Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k, D);
             Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
             coeffs += relax * delta;
         }
-
+    
         B = coeffs.template segment<N + 1>(0);
         eta = coeffs.template segment<N + 1>(N + 1);
         Q = coeffs(2 * N + 2);
         R = coeffs(2 * N + 3);
     }
+
 
     Eigen::Matrix<Real, StateDim, 1>
     compute_residual(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
@@ -292,7 +258,7 @@ private:
         Real Q = coeffs(2 * N + 2);
         Real R = coeffs(2 * N + 3);
         Real B0 = B(0);
-
+    
         for (int m = 0; m <= N; ++m) {
             Real x_m = M_PI * m / N;
             Real eta_m = eta(m);
@@ -308,7 +274,7 @@ private:
                 um += kj * B(j) * C1 * C2;
                 vm += kj * B(j) * S1 * S2;
             }
-
+    
             f(m) = -B0 * eta_m;
             for (int j = 1; j <= N; ++j) {
                 Real kj = j * k;
@@ -317,13 +283,15 @@ private:
                 f(m) += B(j) * S1 * C2;
             }
             f(m) += Q;
-
+    
             f(N + 1 + m) = 0.5f * (um * um + vm * vm) + eta_m - R;
         }
-
-        f(2 * N + 2) = (eta.sum() - 0.5f * (eta(0) + eta(N))) / N - 1.0f;
-        f(2 * N + 3) = eta.maxCoeff() - eta.minCoeff() - H;
-
+    
+        // Match Python: enforce mean elevation = 0
+        f(2 * N + 2) = eta.mean();
+    
+        f(2 * N + 3) = eta(0) - eta(N) - H;
+    
         return f;
     }
 
