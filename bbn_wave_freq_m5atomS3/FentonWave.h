@@ -163,23 +163,24 @@ public:
 private:
     void compute() {
         // Step 1: Setup nondimensional parameters
-        if (depth < 0) depth = 25.0f * length;  // Fallback if unset
+        if (depth < 0) depth = 25.0f * length;
     
-        Real H = height / depth;      // nondim wave height
-        Real lam = length / depth;    // nondim wavelength
-        Real k_nd = 2 * M_PI / lam;   // nondimensional wave number
-
-        k = k_nd; // Use nondimentional k unitil after optimization
+        Real H = height / depth;
+        Real lam = length / depth;          // nondimensional wavelength
+        Real k_nd = 2.0f * M_PI / lam;      // nondimensional wavenumber
     
-        Real D = 1.0f;                // nondimensional depth = 1
+        k = k_nd; // Use nondimensional k until after optimization
+    
+        Real D = 1.0f;                      // nondimensional depth
         Real kc = k_nd;
-        Real c0 = std::sqrt(std::tanh(kc) / kc);  // linear wave speed in nondim units
+        Real c0 = std::sqrt(std::tanh(kc) / kc); // linear wave phase speed
     
+        // Step 2: Setup nondimensional x positions (collocation points)
         VectorF x_nd;
         for (int m = 0; m <= N; ++m)
-            x_nd(m) = lam * m / (2.0f * N);  // nondimensional collocation points (0 to λ/2)
+            x_nd(m) = lam * m / (2.0f * N);  // nondimensional collocation x
     
-        // Step 2: Initialize unknowns
+        // Step 3: Initialize wave coefficients
         B.setZero();
         B(0) = c0;
         Q = c0;
@@ -187,36 +188,40 @@ private:
     
         VectorF eta_nd;
     
-        // Step 3: Iteratively build the solution
+        // Step 4: Ramp-up steps from 0 to target wave height
         for (Real Hi : wave_height_steps(H, D, lam)) {
             for (int m = 0; m <= N; ++m)
                 eta_nd(m) = Hi / 2.0f * std::cos(k_nd * x_nd(m));
             optimize(B, Q, R, eta_nd, Hi, k_nd, D);
         }
     
-        // Step 4: Convert to dimensional values
+        // Step 5: Convert optimized results to dimensional units
         Real sqrt_gd = std::sqrt(g * depth);
     
+        // Rescale velocity potential coefficients B
         B(0) *= sqrt_gd;
         for (int j = 1; j <= N; ++j)
             B(j) *= std::sqrt(g * std::pow(depth, 3));
     
+        // Rescale constants Q and R
         Q *= std::sqrt(g * std::pow(depth, 3));
         R *= g * depth;
     
+        // Rescale eta and x to dimensional
         for (int i = 0; i <= N; ++i) {
-            x(i) = x_nd(i) * depth;         // dimensional x positions
-            eta(i) = eta_nd(i) * depth;     // dimensional surface elevations
+            x(i) = x_nd(i) * depth;
+            eta(i) = eta_nd(i) * depth;
         }
     
-        // Step 5: Dimensional parameters
-        k = k_nd / depth;              // now in units of 1/m
-        c = B(0);                      // phase speed (m/s)
-        T = length / c;                // wave period (s)
-        omega = c * k;                 // angular frequency (rad/s)
+        // Step 6: Rescale wavenumber to dimensional
+        k = k_nd / depth;
+        c = B(0);                  // phase speed in m/s
+        T = length / c;            // period
+        omega = c * k;             // angular frequency
     
-        // Step 6: Build cosine coefficients from dimensional eta
-        compute_elevation_coefficients();
+        // Step 7: Fix symmetry and compute FFT
+        eta(N) = eta(0);           // enforce cosine symmetry
+        compute_elevation_coefficients();  // E = irfft(eta)
     }
 
     void compute_elevation_coefficients() {
