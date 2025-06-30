@@ -93,9 +93,9 @@ public:
     }
 
     Real surface_elevation(Real x_val, Real t = 0) const {
-        Real sum = 0;
+        Real sum = depth;  // Add mean depth once
         for (int j = 0; j <= N; ++j) {
-            sum += E(j) * std::cos(j * k * (x_val - c * t));
+            sum += E(j) * std::cos(j * k * (x_val - c * t));  // E(j) is perturbation-only
         }
         return sum;
     }
@@ -180,7 +180,7 @@ private:
 
         VectorF eta_nd;
         for (int m = 0; m <= N; ++m)
-            eta_nd(m) = 1.0f + H / 2.0f * std::cos(k * x_nd(m));
+            eta_nd(m) = 1.0f + (H / 2.0f) * std::cos(2 * M_PI * m / N);
 
         Q = c0;
         R = 1.0f + 0.5f * c0 * c0;
@@ -198,7 +198,7 @@ private:
 
         for (int i = 0; i <= N; ++i) {
             x(i) = x_nd(i) * depth;
-            eta(i) = eta_nd(i) * depth;
+            eta(i) = depth + (eta_nd(i) - 1.0f) * (height / 2.0f);
         }
 
         k = k / depth;
@@ -210,7 +210,8 @@ private:
     }
 
     void compute_elevation_coefficients() {
-        E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
+        VectorF eta_perturb = eta.array() - depth;  // Remove mean depth
+        E = FentonFFT<N>::compute_inverse_cosine_transform(eta_perturb);
     }
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
