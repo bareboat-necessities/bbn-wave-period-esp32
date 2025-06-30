@@ -162,18 +162,22 @@ public:
 
 private:
     void compute() {
-        if (depth < 0) depth = 25.0f * length;
-        Real H = height / depth;
-        Real lam = length / depth;
-        k = 2 * M_PI / lam;
-        Real D = 1.0f;
-        Real kc = k;
-        Real c0 = std::sqrt(std::tanh(kc) / kc);
+        // Step 1: Setup nondimensional parameters
+        if (depth < 0) depth = 25.0f * length;  // Fallback if unset
+    
+        Real H = height / depth;      // nondim wave height
+        Real lam = length / depth;    // nondim wavelength
+        Real k_nd = 2 * M_PI / lam;   // nondimensional wave number
+    
+        Real D = 1.0f;                // nondimensional depth = 1
+        Real kc = k_nd;
+        Real c0 = std::sqrt(std::tanh(kc) / kc);  // linear wave speed in nondim units
     
         VectorF x_nd;
         for (int m = 0; m <= N; ++m)
-            x_nd(m) = lam * m / (2.0f * N);
+            x_nd(m) = lam * m / (2.0f * N);  // nondimensional collocation points (0 to λ/2)
     
+        // Step 2: Initialize unknowns
         B.setZero();
         B(0) = c0;
         Q = c0;
@@ -181,29 +185,35 @@ private:
     
         VectorF eta_nd;
     
+        // Step 3: Iteratively build the solution
         for (Real Hi : wave_height_steps(H, D, lam)) {
             for (int m = 0; m <= N; ++m)
-                eta_nd(m) = Hi / 2.0f * std::cos(k * x_nd(m));
-            optimize(B, Q, R, eta_nd, Hi, k, D);
+                eta_nd(m) = Hi / 2.0f * std::cos(k_nd * x_nd(m));
+            optimize(B, Q, R, eta_nd, Hi, k_nd, D);
         }
     
+        // Step 4: Convert to dimensional values
         Real sqrt_gd = std::sqrt(g * depth);
+    
         B(0) *= sqrt_gd;
         for (int j = 1; j <= N; ++j)
             B(j) *= std::sqrt(g * std::pow(depth, 3));
+    
         Q *= std::sqrt(g * std::pow(depth, 3));
         R *= g * depth;
     
         for (int i = 0; i <= N; ++i) {
-            x(i) = x_nd(i) * depth;
-            eta(i) = eta_nd(i) * depth;
+            x(i) = x_nd(i) * depth;         // dimensional x positions
+            eta(i) = eta_nd(i) * depth;     // dimensional surface elevations
         }
     
-        k = k / depth;
-        c = B(0);
-        T = length / c;
-        omega = c * k;
+        // Step 5: Dimensional parameters
+        k = k_nd / depth;              // now in units of 1/m
+        c = B(0);                      // phase speed (m/s)
+        T = length / c;                // wave period (s)
+        omega = c * k;                 // angular frequency (rad/s)
     
+        // Step 6: Build cosine coefficients from dimensional eta
         compute_elevation_coefficients();
     }
 
