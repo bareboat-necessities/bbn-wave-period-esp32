@@ -125,7 +125,7 @@ public:
     Real surface_elevation(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
-            sum += E(j) * std::cos(j * 2.0f * M_PI * (x_val - c * t) / length);
+            sum += E(j) * std::cos(j * M_PI * (x_val - c * t) / length);
         }
         return sum;
     }
@@ -133,7 +133,7 @@ public:
     Real surface_slope(Real x_val, Real t = 0) const {
         Real d_eta = 0.0f;
         for (int j = 0; j <= N; ++j) {
-            d_eta -= E(j) * j * 2.0f * M_PI * std::sin(j * 2.0f * M_PI * (x_val - c * t) / length);
+            d_eta -= E(j) * j * M_PI * std::sin(j * M_PI * (x_val - c * t) / length);
         }
         return d_eta;
     }
@@ -146,7 +146,7 @@ public:
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
             Real omega_j = j * omega;
-            sum -= E(j) * omega_j * omega_j * std::cos(j * 2.0f * M_PI * (x_val - c * t) / length);
+            sum -= E(j) * omega_j * omega_j * std::cos(j * M_PI * (x_val - c * t) / length);
         }
         return sum;
     }
@@ -154,8 +154,8 @@ public:
     Real surface_space_time_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
-            Real term = j * 2.0f * M_PI / length * j * omega;
-            sum += E(j) * term * std::sin(j * 2.0f * M_PI * (x_val - c * t) / length);
+            Real term = j * M_PI / length * j * omega;
+            sum += E(j) * term * std::sin(j * M_PI * (x_val - c * t) / length);
         }
         return sum;
     }
@@ -163,8 +163,8 @@ public:
     Real surface_second_space_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
-            Real coeff = -std::pow(j * 2.0f * M_PI / length, 2);
-            sum += E(j) * coeff * std::cos(j * 2.0f * M_PI * (x_val - c * t) / length);
+            Real coeff = -std::pow(j * M_PI / length, 2);
+            sum += E(j) * coeff * std::cos(j * M_PI * (x_val - c * t) / length);
         }
         return sum;
     }
