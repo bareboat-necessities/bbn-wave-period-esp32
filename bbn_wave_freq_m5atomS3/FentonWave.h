@@ -570,9 +570,9 @@ template class FentonWave<4>;
 template class WaveSurfaceTracker<4>;
 
 void FentonWave_test_1() {
-    const float height = 2.0f;
+    const float height = 1.0f;
     const float depth = 100.0f;
-    const float length = 50.0f;
+    const float length = 20.0f;
 
     FentonWave<4> wave(height, depth, length);
 
@@ -588,9 +588,9 @@ void FentonWave_test_1() {
 
 void FentonWave_test_2() {
     // Wave parameters
-    const float height = 2.0f;   // Wave height (m)
+    const float height = 1.0f;   // Wave height (m)
     const float depth = 100.0f;   // Water depth (m)
-    const float length = 50.0f;  // Wavelength (m)
+    const float length = 20.0f;  // Wavelength (m)
     
     // Simulation parameters
     const float duration = 20.0f; // Simulation duration (s)
