@@ -43,28 +43,28 @@ public:
     using Real = float;
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
 
-    // Inverse DCT-I (irfft-style): reconstruct cosine coefficients E from eta
+    // Compute DCT-I coefficients (equivalent to irfft for real-even signals)
     static Vector compute_inverse_cosine_transform(const Vector& eta) {
         Vector E;
         for (int j = 0; j <= N; ++j) {
-            Real sum = 0;
+            Real sum = 0.0f;
             for (int m = 0; m <= N; ++m) {
-                Real weight = (m == 0 || m == N) ? 0.5f : 1.0f;
-                sum += weight * eta(m) * std::cos(j * m * M_PI / N);
+                Real w = (m == 0 || m == N) ? 0.5f : 1.0f;
+                sum += w * eta(m) * std::cos(M_PI * j * m / N);
             }
             E(j) = 2.0f * sum / N;
         }
         return E;
     }
 
-    // Forward DCT-I: reconstruct eta values at collocation points from cosine coeffs
+    // Forward DCT-I to reconstruct η from cosine coefficients
     static Vector compute_forward_cosine_transform(const Vector& E) {
         Vector eta;
         for (int m = 0; m <= N; ++m) {
-            Real sum = 0;
+            Real sum = 0.0f;
             for (int j = 0; j <= N; ++j) {
-                Real weight = (j == 0 || j == N) ? 0.5f : 1.0f;
-                sum += weight * E(j) * std::cos(j * m * M_PI / N);
+                Real w = (j == 0 || j == N) ? 0.5f : 1.0f;
+                sum += w * E(j) * std::cos(M_PI * j * m / N);
             }
             eta(m) = sum;
         }
