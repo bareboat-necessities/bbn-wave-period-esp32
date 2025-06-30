@@ -359,7 +359,6 @@ private:
 };
 
 
-
 template<int N = 4>
 class WaveSurfaceTracker {
 private:
@@ -367,16 +366,17 @@ private:
 
     float t = 0.0f;
     float x = 0.0f;
-    float dxdt = 0.0f;
+    float v = 0.0f; // horizontal velocity
     float dt = 0.005f;
-
-    float mass = 1.0f;
-    float alpha = 981.0f;
 
     float mean_eta = 0.0f;
 
     static constexpr float slope_eps = 1e-6f;
 
+    float mass = 1.0f;     // mass of floating object
+    float gravity = 9.81f; // gravity constant
+
+    // Wrap x into one wavelength
     float wrap_periodic(float val, float period) const {
         while (val < 0.0f) val += period;
         while (val >= period) val -= period;
@@ -387,68 +387,44 @@ private:
         float sum = 0.0f;
         float L = wave.get_length();
         for (int i = 0; i < samples; ++i) {
-            float xi = L * i / static_cast<float>(samples - 1);
+            float xi = L * i / (samples - 1);
             sum += wave.surface_elevation(xi, 0.0f);
         }
-        mean_eta = sum / static_cast<float>(samples);
+        mean_eta = sum / samples;
     }
 
-    float compute_horizontal_accel(float x, float t) const {
-        float eta_x = compute_eta_x(x, t);
-        eta_x = std::abs(eta_x) < slope_eps ? ((eta_x >= 0) ? slope_eps : -slope_eps) : eta_x;
-        return -alpha * eta_x / mass;
+    // Compute dx/dt = (w - eta_t) / eta_x (used only for initial guess or fallback)
+    float compute_horizontal_speed(float x_pos, float time) const {
+        float eta = wave.surface_elevation(x_pos, time) - mean_eta;
+        float eta_dot = wave.surface_time_derivative(x_pos, time);
+        float eta_x = wave.surface_slope(x_pos, time);
+        float w = wave.vertical_velocity(x_pos, eta + mean_eta, time);
+
+        if (std::abs(eta_x) < slope_eps)
+            eta_x = (eta_x >= 0.0f) ? slope_eps : -slope_eps;
+
+        return (w - eta_dot) / eta_x;
     }
 
-    float compute_eta_x(float x, float t, float dx = 1e-3f) const {
-        return (wave.surface_elevation(x + dx, t) - wave.surface_elevation(x - dx, t)) / (2 * dx);
-    }
-
-    float compute_eta_t(float x, float t, float dt = 1e-3f) const {
-        return (wave.surface_elevation(x, t + dt) - wave.surface_elevation(x, t - dt)) / (2 * dt);
-    }
-
-    float compute_eta_tt(float x, float t, float dt = 1e-3f) const {
-        return (wave.surface_elevation(x, t + dt) - 2 * wave.surface_elevation(x, t) +
-                wave.surface_elevation(x, t - dt)) / (dt * dt);
-    }
-
-    float compute_eta_xt(float x, float t, float dx = 1e-3f, float dt = 1e-3f) const {
-        float e_pp = wave.surface_elevation(x + dx, t + dt);
-        float e_pm = wave.surface_elevation(x + dx, t - dt);
-        float e_mp = wave.surface_elevation(x - dx, t + dt);
-        float e_mm = wave.surface_elevation(x - dx, t - dt);
-        return (e_pp - e_pm - e_mp + e_mm) / (4 * dx * dt);
-    }
-
-    float compute_eta_xx(float x, float t, float dx = 1e-3f) const {
-        return (wave.surface_elevation(x + dx, t) - 2 * wave.surface_elevation(x, t) +
-                wave.surface_elevation(x - dx, t)) / (dx * dx);
-    }
-
-    float compute_vertical_accel(float x, float dxdt, float ddxdt2, float t) const {
-        float eta_tt = compute_eta_tt(x, t);
-        float eta_xt = compute_eta_xt(x, t);
-        float eta_xx = compute_eta_xx(x, t);
-        float eta_x  = compute_eta_x(x, t);
-        return eta_tt + 2.0f * eta_xt * dxdt + eta_xx * dxdt * dxdt + eta_x * ddxdt2;
+    // Compute horizontal wave slope force: F = -mg * slope
+    float compute_horizontal_force(float x_pos, float time) const {
+        float slope = wave.surface_slope(x_pos, time);
+        return -mass * gravity * slope;
     }
 
 public:
-    WaveSurfaceTracker(float height, float depth, float length)
-        : wave(height, depth, length) {
+    WaveSurfaceTracker(float height, float depth, float length, float object_mass = 1.0f)
+        : wave(height, depth, length), mass(object_mass)
+    {
         compute_mean_elevation();
     }
 
-    void set_mass(float m) { mass = m; }
-
-    void set_alpha(float a) { alpha = a; }
-
-    static float compute_alpha(float projected_area,
-                               float fluid_density = 1000.0f,
-                               float gravity = 9.81f) {
-        return fluid_density * gravity * projected_area;
-    }
-
+    /**
+     * @brief Track floating object on wave with mass and inertia.
+     * @param duration Duration (s)
+     * @param timestep Timestep (s)
+     * @param callback void(float t, float z, float dzdt, float ddzdt2, float x)
+     */
     void track_floating_object(
         float duration,
         float timestep,
@@ -459,39 +435,49 @@ public:
 
         dt = std::clamp(timestep, 1e-5f, 0.2f * wave_T / 20.0f);
 
+        // Initial conditions
         t = 0.0f;
         x = 0.0f;
-        dxdt = compute_eta_t(x, t) + compute_eta_x(x, t) * 0.0f;  // Start with 0 dxdt
+        v = compute_horizontal_speed(x, t); // good initial guess
+
+        float prev_z = wave.surface_elevation(x, t) - mean_eta;
+        float prev_dzdt = wave.vertical_velocity(x, prev_z + mean_eta, t);
 
         while (t <= duration) {
-            float ddxdt2 = compute_horizontal_accel(x, t);
+            // Compute horizontal force and update horizontal acceleration
+            float F = compute_horizontal_force(x, t);
+            float a = F / mass;
 
-            // RK4 for x and dxdt
-            float k1_v = ddxdt2;
-            float k1_x = dxdt;
-
-            float k2_v = compute_horizontal_accel(x + 0.5f * dt * k1_x, t + 0.5f * dt);
-            float k2_x = dxdt + 0.5f * dt * k1_v;
-
-            float k3_v = compute_horizontal_accel(x + 0.5f * dt * k2_x, t + 0.5f * dt);
-            float k3_x = dxdt + 0.5f * dt * k2_v;
-
-            float k4_v = compute_horizontal_accel(x + dt * k3_x, t + dt);
-            float k4_x = dxdt + dt * k3_v;
-
-            x    += dt / 6.0f * (k1_x + 2 * k2_x + 2 * k3_x + k4_x);
-            dxdt += dt / 6.0f * (k1_v + 2 * k2_v + 2 * k3_v + k4_v);
-
+            // Integrate horizontal motion (Euler or RK2)
+            v += a * dt;
+            x += v * dt;
             x = wrap_periodic(x, wave_L);
             t += dt;
 
+            // Surface elevation = vertical position
             float z = wave.surface_elevation(x, t) - mean_eta;
-            float dzdt = compute_eta_t(x, t) + compute_eta_x(x, t) * dxdt;
-            float ddzdt2 = compute_vertical_accel(x, dxdt, ddxdt2, t);
+            float dzdt = (z - prev_z) / dt;
+            float ddzdt2 = (dzdt - prev_dzdt) / dt;
 
             callback(t, z, dzdt, ddzdt2, x);
+
+            prev_z = z;
+            prev_dzdt = dzdt;
         }
     }
+
+    // Optional helper for computing restoring coefficient
+    float compute_alpha() const {
+        return gravity / mean_eta;
+    }
+
+    // Accessors
+    float get_time() const { return t; }
+    float get_x() const { return x; }
+    float get_dt() const { return dt; }
+    float get_mean_eta() const { return mean_eta; }
+
+    const FentonWave<N>& get_wave() const { return wave; }
 };
 
 
