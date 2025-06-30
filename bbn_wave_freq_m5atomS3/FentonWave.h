@@ -178,7 +178,7 @@ private:
         // Step 2: Setup nondimensional x positions (collocation points)
         VectorF x_nd;
         for (int m = 0; m <= N; ++m)
-            x_nd(m) = lam * m / (2.0f * N);  // nondimensional collocation x
+            x_nd(m) = lam * m / N;  // nondimensional collocation x
     
         // Step 3: Initialize wave coefficients
         B.setZero();
