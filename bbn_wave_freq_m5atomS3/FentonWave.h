@@ -257,6 +257,9 @@ private:
     
         for (int iter = 0; iter < max_iter && error > tol; ++iter) {
             Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k_nd, D);
+            if (!f.allFinite()) {
+                throw std::runtime_error("Residual vector contains non-finite values");
+            }
             error = f.cwiseAbs().maxCoeff();
     
             if (!std::isfinite(error)) {
