@@ -192,6 +192,9 @@ private:
         for (Real Hi : wave_height_steps(H, D, lam)) {
             for (int m = 0; m <= N; ++m)
                 eta_nd(m) = Hi / 2.0f * std::cos(k_nd * x_nd(m));
+            if (!std::isfinite(eta_nd(m))) {
+                throw std::runtime_error("Non-finite value in eta_nd before optimization");
+            }
             optimize(B, Q, R, eta_nd, Hi, k_nd, D);
         }
     
