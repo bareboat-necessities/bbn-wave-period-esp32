@@ -491,7 +491,7 @@ void FentonWave_test_1() {
     out << "x,elevation\n";
     for (float x = 0; x <= length; x += 0.05f) {
         float eta = wave.surface_elevation(x, 0);
-        out << x << "," << eta << "\n";
+        out << x << "," << eta - depth << "\n";
     }
     std::cerr << "Expected wave length: " << length << "\n";
     std::cerr << "Computed wave length: " << 2 * M_PI / wave.get_k() << "\n";
