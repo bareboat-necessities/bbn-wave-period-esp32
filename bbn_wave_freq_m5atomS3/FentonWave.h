@@ -147,6 +147,52 @@ public:
         compute();
     }
 
+    Real stream_function(Real x_val, Real z_val, Real t = 0) const {
+        Real psi = B(0) * (z_val + depth);  // Mean flow component
+        for (int j = 1; j <= N; ++j) {
+            Real kj = j * k;
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B(j) * std::sinh(kj * (z_val + depth)) / denom;
+            psi += term * std::cos(kj * (x_val - c * t));
+        }
+        return psi;
+    }
+
+    Real horizontal_velocity(Real x_val, Real z_val, Real t = 0) const {
+        Real u = B(0);  // Mean flow
+        for (int j = 1; j <= N; ++j) {
+            Real kj = j * k;
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B(j) * kj / denom;
+            u += term * std::cosh(kj * (z_val + depth)) * std::cos(kj * (x_val - c * t));
+        }
+        return u;
+    }
+
+    Real vertical_velocity(Real x_val, Real z_val, Real t = 0) const {
+        Real w = 0.0f;
+        for (int j = 1; j <= N; ++j) {
+            Real kj = j * k;
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B(j) * kj / denom;
+            w += term * std::sinh(kj * (z_val + depth)) * std::sin(kj * (x_val - c * t));
+        }
+        return w;
+    }
+
+    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
+        Real u = horizontal_velocity(x_val, z_val, t);
+        Real w = vertical_velocity(x_val, z_val, t);
+        Real eta = surface_elevation(x_val, t);
+        
+        // Bernoulli equation: p/ρ + ½(u²+w²) + g(z-η) + ∂φ/∂t = R
+        // For steady flow in wave frame: ∂φ/∂t = -c*u
+        return rho * (R - 0.5*(u*u + w*w) - rho*g*(z_val - eta) + rho*c*u);
+    }
+
 /**
  * Calculates the surface elevation (wave height) at position x_val and time t
  * 
