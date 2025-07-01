@@ -69,7 +69,7 @@ public:
     VecN kj, jidx;
     MatNxP cos_ph, sin_ph;
 
-    FentonWave(Real h, Real d, Real L, Real gravity=9.81f, Real r=0.5f)
+    FentonWaveVectorizedVectorized(Real h, Real d, Real L, Real gravity=9.81f, Real r=0.5f)
       : height(h), depth(d), length(L), g(gravity), relax(r)
     {
         Real invL = 2 * PI / L;
