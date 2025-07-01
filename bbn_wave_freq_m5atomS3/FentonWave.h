@@ -722,7 +722,6 @@ public:
         dt = std::clamp(timestep, 1e-5f, 0.1f);
 
         t = 0.0f;
-        x = 0.0f;
         vx = wave.horizontal_velocity(x, 0, 0);
 
         // Initialize vertical velocity and acceleration to zero
