@@ -394,40 +394,6 @@ public:
         return sum;
     }
 
-/**
- * Calculates the vertical velocity component at any point in the water column
- * 
- * Represents the vertical water particle velocity:
- * w(x,z,t) = Σ[Bⱼ * (j*k) * sinh(j*k*(z + d))/cosh(j*k*d) * sin(j*k*(x - c*t))] for j=1..N
- * 
- * Where:
- * - z is vertical coordinate (0 at surface, -d at bottom)
- * - d is water depth
- * - Bⱼ are the velocity potential coefficients
- * 
- * Key differences from surface methods:
- * 1. Calculates velocity within the water column, not just at surface
- * 2. Uses hyperbolic sinh function that varies with depth
- * 3. Depends on velocity potential coefficients (B) rather than elevation coefficients (E)
- * 
- * Used for:
- * - Particle trajectory calculations
- * - Vertical mixing studies
- * - Near-bottom flow conditions
- */
-    Real vertical_velocity(Real x_val, Real z, Real t = 0) const {
-        Real w = 0.0f;
-        for (int j = 1; j <= N; ++j) {
-            Real kj = j * k;
-            Real arg = kj * (x_val - c * t);
-            Real denom = std::cosh(kj * depth);
-            if (denom < std::numeric_limits<Real>::epsilon()) continue;
-            Real term = B(j) * kj / denom;
-            w += term * std::sin(arg) * std::sinh(kj * (z + depth));
-        }
-        return w;
-    }
-
     Real get_c() const { return c; }
     Real get_k() const { return k; }
     Real get_T() const { return T; }
