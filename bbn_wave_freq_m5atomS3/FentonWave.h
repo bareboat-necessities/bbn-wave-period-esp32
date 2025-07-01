@@ -4,8 +4,8 @@
    Copyright 2025, Mikhail Grushinskiy
 
    AI-assisted translation of https://github.com/TormodLandet/raschii/blob/master/raschii/fenton.py
- */
 
+*/
 
 #include <ArduinoEigenDense.h>
 #include <cmath>
@@ -248,6 +248,33 @@ public:
         return w;
     }
 
+/**
+ * Calculates the dynamic pressure p(x,z,t) at a given point and time
+ * 
+ * Represents the fluid pressure accounting for:
+ * - Hydrostatic pressure (ρg(z-η))
+ * - Dynamic pressure from fluid motion (½ρ(u²+w²))
+ * - Wave-induced pressure variations
+ * 
+ * Derived from Bernoulli's equation in the wave frame:
+ * p/ρ = R - ½(u²+w²) - g(z-η) + c*u
+ * 
+ * Where:
+ * - R is the Bernoulli constant
+ * - c*u accounts for transformation to moving frame
+ * - η is the surface elevation
+ * 
+ * Physical significance:
+ * - Pressure lags behind surface elevation
+ * - Important for wave loading on structures
+ * - Used in buoyancy calculations
+ * 
+ * @param x_val Horizontal position (m)
+ * @param z_val Vertical position (m, 0=surface, negative below)
+ * @param t Time (s)
+ * @param rho Water density (kg/m³, default 1025 for seawater)
+ * @return Pressure (Pa)
+ */
     Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
         Real u = horizontal_velocity(x_val, z_val, t);
         Real w = vertical_velocity(x_val, z_val, t);
