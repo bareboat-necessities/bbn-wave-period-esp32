@@ -118,7 +118,6 @@ public:
     // ... (getters remain the same) ...
 
 private:
-private:
     void precompute_phase() {
         x_nd = VecF::LinSpaced(N+1, 0, PI);
         MatNxP KJ = kj.replicate(1, N+1);
@@ -151,7 +150,7 @@ private:
         x   = x_nd * depth;
         eta = (eta_nd.array() - 1).matrix() * depth;
         k /= depth; c = B(0); T = length / c; omega = c * k;
-        E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
+        E = FentonFFTVectorized<N>::compute_inverse_cosine_transform(eta);
     }
 
     std::vector<Real> wave_height_steps(Real H, Real, Real lam) {
