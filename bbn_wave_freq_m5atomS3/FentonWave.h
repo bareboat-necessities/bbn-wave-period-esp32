@@ -99,6 +99,17 @@ public:
         compute();
     }
 
+/**
+ * Calculates the surface elevation (wave height) at position x_val and time t
+ * 
+ * Represents the actual wave shape at any point in space and time:
+ * η(x,t) = E₀ + Σ[Eⱼ * cos(j*k*(x - c*t))] for j=1..N
+ * Where:
+ * - E₀ is the mean water level (0th coefficient)
+ * - Eⱼ are the Fourier coefficients (wave amplitude components)
+ * - j*k is the wavenumber for each harmonic
+ * - c is the wave phase speed
+ */
     Real surface_elevation(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
@@ -107,6 +118,16 @@ public:
         return sum;
     }
 
+/**
+ * Calculates the spatial derivative of surface elevation (wave slope)
+ * 
+ * Represents how steep the wave is at a given point:
+ * dη/dx = -k * Σ[j*Eⱼ * sin(j*k*(x - c*t))] for j=1..N
+ * 
+ * Used for:
+ * - Determining breaking wave conditions
+ * - Calculating kinematic surface quantities
+ */
     Real surface_slope(Real x_val, Real t = 0) const {
         Real d_eta = 0.0f;
         for (int j = 0; j <= N; ++j) {
@@ -115,10 +136,31 @@ public:
         return d_eta;
     }
 
+/**
+ * Calculates the temporal derivative of surface elevation (vertical velocity at surface)
+ * 
+ * Represents how fast the water surface is moving up/down at a fixed point:
+ * dη/dt = -c * dη/dx (using chain rule from slope calculation)
+ * 
+ * Used for:
+ * - Wave energy calculations
+ * - Surface boundary conditions
+ */
     Real surface_time_derivative(Real x_val, Real t = 0) const {
         return -c * surface_slope(x_val, t);
     }
 
+/**
+ * Calculates the second temporal derivative of surface elevation (vertical acceleration at surface)
+ * 
+ * Represents the acceleration of the water surface:
+ * d²η/dt² = -Σ[(j*ω)² * Eⱼ * cos(j*k*(x - c*t))] for j=1..N
+ * Where ω = c*k is the angular frequency
+ * 
+ * Used for:
+ * - Dynamic pressure calculations
+ * - Wave impact studies
+ */
     Real surface_second_time_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
@@ -127,7 +169,17 @@ public:
         }
         return sum;
     }
-    
+
+/**
+ * Calculates the mixed space-time derivative of surface elevation
+ * 
+ * Represents the rate of change of slope over time:
+ * d²η/dxdt = Σ[j²*k*ω * Eⱼ * sin(j*k*(x - c*t))] for j=1..N
+ * 
+ * Used for:
+ * - Nonlinear wave studies
+ * - Wave-current interaction models
+ */
     Real surface_space_time_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
@@ -136,7 +188,17 @@ public:
         }
         return sum;
     }
-    
+
+/**
+ * Calculates the second spatial derivative of surface elevation (curvature)
+ * 
+ * Represents how sharply curved the wave surface is:
+ * d²η/dx² = -k² * Σ[j²*Eⱼ * cos(j*k*(x - c*t))] for j=1..N
+ * 
+ * Used for:
+ * - Surface tension effects
+ * - Wave instability analysis
+ */
     Real surface_second_space_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
@@ -146,6 +208,27 @@ public:
         return sum;
     }
 
+/**
+ * Calculates the vertical velocity component at any point in the water column
+ * 
+ * Represents the vertical water particle velocity:
+ * w(x,z,t) = Σ[Bⱼ * (j*k) * sinh(j*k*(z + d))/cosh(j*k*d) * sin(j*k*(x - c*t))] for j=1..N
+ * 
+ * Where:
+ * - z is vertical coordinate (0 at surface, -d at bottom)
+ * - d is water depth
+ * - Bⱼ are the velocity potential coefficients
+ * 
+ * Key differences from surface methods:
+ * 1. Calculates velocity within the water column, not just at surface
+ * 2. Uses hyperbolic sinh function that varies with depth
+ * 3. Depends on velocity potential coefficients (B) rather than elevation coefficients (E)
+ * 
+ * Used for:
+ * - Particle trajectory calculations
+ * - Vertical mixing studies
+ * - Near-bottom flow conditions
+ */
     Real vertical_velocity(Real x_val, Real z, Real t = 0) const {
         Real w = 0.0f;
         for (int j = 1; j <= N; ++j) {
