@@ -703,8 +703,8 @@ private:
     }
 
 public:
-    WaveSurfaceTracker(float height, float depth, float length, float mass_kg, float drag_coeff_)
-        : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_) {}
+    WaveSurfaceTracker(float height, float depth, float length, float x0, float mass_kg, float drag_coeff_)
+        : wave(height, depth, length), x(x0), mass(mass_kg), drag_coeff(drag_coeff_) {}
 
     /**
      * @brief Track the floating object on the wave surface over time.
