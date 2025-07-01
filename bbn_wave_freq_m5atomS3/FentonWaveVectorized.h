@@ -172,12 +172,12 @@ private:
         Real err = std::numeric_limits<Real>::infinity();
 
         for(int it=0; it<500 && err>1e-8f; ++it) {
-            BigVec f = compute_res(X, H, D);
+            BigVec f = compute_residual(X, H, D);
             err = f.template head<2*N+2>().cwiseAbs().maxCoeff();
             if(!std::isfinite(err) || etav.maxCoeff()>2 || etav.minCoeff()<0.1f)
                 throw std::runtime_error("Optimization failed");
             if(err < 1e-8f) break;
-            BigMat J = compute_jac(X, H, D);
+            BigMat J = compute_jacobian(X, H, D);
             X += relax * J.fullPivLu().solve(-f);
         }
 
