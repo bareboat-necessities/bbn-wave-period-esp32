@@ -4,7 +4,7 @@
    Copyright 2025, Mikhail Grushinskiy
 
    AI-assisted translation (with eigen vecrorization)
-   of https://github.com/bareboat-necessities/bbn-wave-period-esp32/blob/main/bbn_wave_freq_m5atomS3/FentonWaveVectorized.h
+   of https://github.com/bareboat-necessities/bbn-wave-period-esp32/blob/main/bbn_wave_freq_m5atomS3/FentonWaveVectorizedVectorized.h
 
 */
 
@@ -53,7 +53,7 @@ public:
 };
 
 template <int N = 4>
-class FentonWaveVectorized {
+class FentonWaveVectorizedVectorized {
 private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
     using Real = float;
@@ -69,7 +69,7 @@ public:
     VectorF eta, x, E, B;
     VectorN kj_cache, j_cache;
 
-    FentonWaveVectorized(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
+    FentonWaveVectorizedVectorized(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
         : height(height), depth(depth), length(length), g(g), relax(relax) {
         for (int j = 1; j <= N; ++j) {
             kj_cache(j-1) = j * (2 * M_PI / length);
@@ -299,4 +299,52 @@ private:
     }
 };
 
+
+template <int N>
+class WaveSurfaceTrackerVectorized {
+private:
+    FentonWaveVectorized<N>& wave;
+
+public:
+    float t=0, dt=0.005f, x=0, vx=0, mass=1.0f, drag=0.1f;
+
+    WaveSurfaceTrackerVectorized(FentonWaveVectorized<N>& w): wave(w) {}
+
+    void track(float duration, float timestep,
+               std::function<void(float,float,float,float,float,float)> cb) 
+    {
+        dt = std::clamp(timestep, 1e-5f, 0.1f);
+        t = 0; x = 0; vx = 0;
+        float prev_zdot = 0;
+
+        while(t <= duration) {
+            float z = wave.surface_elevation(x, t);
+            float eta_x = wave.surface_slope(x, t);
+            float zdot = wave.surface_time_derivative(x, t) + eta_x * vx;
+            float zddot = (zdot - prev_zdot) / dt;
+            cb(t, z, zdot, zddot, x, vx);
+            prev_zdot = zdot;
+
+            auto acc = [&](float xp, float vp) {
+                return (-9.81f * wave.surface_slope(xp, t) - drag * vp) / mass;
+            };
+
+            float k1_v = acc(x, vx), k1_x = vx;
+            float k2_v = acc(x + 0.5f*dt*k1_x, vx + 0.5f*dt*k1_v);
+            float k2_x = vx + 0.5f*dt*k1_v;
+            float k3_v = acc(x + 0.5f*dt*k2_x, vx + 0.5f*dt*k2_v);
+            float k3_x = vx + 0.5f*dt*k2_v;
+            float k4_v = acc(x + dt*k3_x, vx + dt*k3_v);
+            float k4_x = vx + dt*k3_v;
+
+            x += dt * (k1_x + 2*k2_x + 2*k3_x + k4_x) / 6;
+            vx += dt * (k1_v + 2*k2_v + 2*k3_v + k4_v) / 6;
+
+            if(x < 0) x += wave.length;
+            else if(x >= wave.length) x -= wave.length;
+
+            t += dt;
+        }
+    }
+};
 
