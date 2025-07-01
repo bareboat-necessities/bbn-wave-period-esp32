@@ -365,7 +365,44 @@ private:
     }
 };
 
-
+/**
+ * WaveSurfaceTracker - Simulates a floating object moving on a nonlinear wave surface
+ * 
+ * PHYSICS MODEL:
+ * 
+ * 1. Wave Surface Definition:
+ *    z = η(x,t) = wave surface elevation at position x and time t
+ * 
+ * 2. Object Constraints:
+ *    - Perfectly follows surface vertically (z = η(x,t))
+ *    - Moves horizontally according to forces
+ * 
+ * 3. Key Derivatives:
+ *    - η_x = ∂η/∂x = wave slope
+ *    - η_t = ∂η/∂t = wave vertical velocity
+ *    - η_xx = ∂²η/∂x² = wave curvature
+ * 
+ * 4. Object Kinematics:
+ *    Vertical position: z(t) = η(x(t),t)
+ *    Vertical velocity: dz/dt = ∂η/∂t + (∂η/∂x)(dx/dt) = η_t + η_x*vx
+ *    Vertical acceleration: d²z/dt² = (dz/dt_{t+Δt} - dz/dt_t)/Δt (finite difference)
+ * 
+ * 5. Horizontal Dynamics:
+ *    Forces:
+ *      - Wave force: F_wave = -m*g*η_x (simplified buoyancy slope effect)
+ *      - Drag force: F_drag = -c*vx (linear damping)
+ *    Acceleration: d²x/dt² = (F_wave + F_drag)/m = -g*η_x - (c/m)*vx
+ * 
+ * 6. Numerical Integration:
+ *    - RK4 method solves dx/dt = vx and dvx/dt = acceleration
+ *    - Time step Δt must be small enough to capture wave dynamics
+ * 
+ * Note: This is a simplified model that assumes:
+ * - Small object size compared to wavelength
+ * - No added mass effects
+ * - Perfect vertical surface following
+ * - Linear drag model
+ */
 template<int N = 4>
 class WaveSurfaceTracker {
 private:
