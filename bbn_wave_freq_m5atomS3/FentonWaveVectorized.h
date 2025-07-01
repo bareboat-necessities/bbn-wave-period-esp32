@@ -118,54 +118,65 @@ public:
     // ... (getters remain the same) ...
 
 private:
+private:
+    void precompute_phase() {
+        x_nd = VecF::LinSpaced(N+1, 0, PI);
+        MatNxP KJ = kj.replicate(1, N+1);
+        MatNxP XM = x_nd.transpose().replicate(N, 1);
+        cos_ph = (KJ.cwiseProduct(XM)).array().cos();
+        sin_ph = (KJ.cwiseProduct(XM)).array().sin();
+    }
+
     void compute() {
-        if (depth < 0) depth = 25.0f * length;
+        if(depth < 0) depth = 25.0f * length;
         Real H = height / depth;
         Real lam = length / depth;
-        k = 2 * M_PI / lam;
-        Real D = 1.0f;
-        Real kc = k;
-        Real c0 = std::sqrt(std::tanh(kc) / kc);
+        k = 2 * PI / lam;
+        Real D = 1, kc = k, c0 = std::sqrt(std::tanh(kc)/kc);
 
-        VectorF x_nd = VectorF::LinSpaced(N+1, 0, lam/2.0f);
-        B.setZero();
-        B(0) = c0;
-        B(1) = -H / (4.0f * c0 * k);
+        x_nd = VecF::LinSpaced(N+1, 0, lam/2);
+        B.setZero(); B(0)=c0; B(1)=-H/(4*c0*k);
+        eta_nd = VecF::Ones() + (H/2)*(k*x_nd).array().cos().matrix();
+        Q = c0; R = 1 + 0.5f*c0*c0;
 
-        VectorF eta_nd = (VectorF::Ones() + (H/2.0f) * (k * x_nd.array()).cos()).eval();
-        Q = c0;
-        R = 1.0f + 0.5f * c0 * c0;
+        for(Real Hi : wave_height_steps(H, D, lam))
+            optimize(B, Q, R, eta_nd, H, D);
 
-        for (Real Hi : wave_height_steps(H, D, lam)) {
-            optimize(B, Q, R, eta_nd, Hi, k, D);
-        }
-
-        Real sqrt_gd = std::sqrt(g * depth);
-        B(0) *= sqrt_gd;
-        B.tail(N) *= std::sqrt(g * std::pow(depth, 3));
-        Q *= std::sqrt(g * std::pow(depth, 3));
+        Real sg = std::sqrt(g * depth);
+        B(0) *= sg;
+        B.tail(N) *= std::sqrt(g * depth * depth * depth);
+        Q *= std::sqrt(g * depth * depth * depth);
         R *= g * depth;
 
-        x = x_nd * depth;
-        eta = (eta_nd.array() - 1.0f) * depth;
-        k /= depth;
-        c = B(0);
-        T = length / c;
-        omega = c * k;
-
-        compute_elevation_coefficients();
+        x   = x_nd * depth;
+        eta = (eta_nd.array() - 1).matrix() * depth;
+        k /= depth; c = B(0); T = length / c; omega = c * k;
+        E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
     }
 
-    void compute_elevation_coefficients() {
-        E = FentonFFTVectorized<N>::compute_inverse_cosine_transform(eta);
+    std::vector<Real> wave_height_steps(Real H, Real, Real lam) {
+        Real Hb = 0.142f * std::tanh(2*PI*depth/lam) * lam;
+        int count = (H > 0.75f*Hb) ? 10 : (H > 0.65f*Hb) ? 5 : 3;
+        std::vector<Real> out(count);
+        for(int i=0; i<count; ++i)
+            out[i] = H * (i + 1) / count;
+        return out;
     }
 
-    std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
-        Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
-        int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
-        Eigen::Array<Real, Eigen::Dynamic, 1> steps = 
-            Eigen::Array<Real, Eigen::Dynamic, 1>::LinSpaced(num, 1, num) * H / num;
-        return std::vector<Real>(steps.data(), steps.data() + steps.size());
+    static Real sinh_by_cosh(Real a, Real b) {
+        if(a == 0) return 0;
+        Real f = b / a;
+        if((a > 30 && f > 0.5f && f < 1.5f) || (a > 200 && f > 0.1f && f < 1.9f))
+            return std::exp(a * (1 - f));
+        return std::sinh(a) / std::cosh(b);
+    }
+
+    static Real cosh_by_cosh(Real a, Real b) {
+        if(a == 0) return 1.f / std::cosh(b);
+        Real f = b / a;
+        if((a > 30 && f > 0.5f && f < 1.5f) || (a > 200 && f > 0.1f && f < 1.9f))
+            return std::exp(a * (1 - f));
+        return std::cosh(a) / std::cosh(b);
     }
 
     void optimize(VectorF& B, Real& Q, Real& R, VectorF& eta, Real H, Real k, Real D) {
