@@ -215,6 +215,27 @@ public:
         return u;
     }
 
+/**
+ * Calculates the vertical velocity component w(x,z,t) at a given point and time
+ * 
+ * Represents the vertical water particle velocity:
+ * w(x,z,t) = -∂ψ/∂x = Σ[Bⱼ*jk*sinh(jk(z+d))/cosh(jkd) * sin(jk(x-ct))] for j=1..N
+ * 
+ * Where:
+ * - The sum represents oscillatory wave-induced velocities
+ * - Hyperbolic sine term produces depth attenuation
+ * - 90° phase shift from horizontal velocity
+ * 
+ * Physical characteristics:
+ * - Maximum at wave nodes, zero at crests/troughs
+ * - Decays with depth (faster for higher frequencies)
+ * - Leads horizontal velocity by 90° in progressive waves
+ * 
+ * @param x_val Horizontal position (m)
+ * @param z_val Vertical position (m, 0=surface, negative below)
+ * @param t Time (s)
+ * @return Vertical velocity (m/s, positive upward)
+ */
     Real vertical_velocity(Real x_val, Real z_val, Real t = 0) const {
         Real w = 0.0f;
         for (int j = 1; j <= N; ++j) {
