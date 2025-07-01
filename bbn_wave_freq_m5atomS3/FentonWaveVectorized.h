@@ -169,69 +169,49 @@ private:
     }
 
     void optimize(VectorF& B, Real& Q, Real& R, VectorF& eta, Real H, Real k, Real D) {
-        BigVector coeffs;
-        coeffs << B, eta, Q, R;
+        BigVec X; X << Bv, etav, Qv, Rv;
+        Real err = std::numeric_limits<Real>::infinity();
 
-        Real error = std::numeric_limits<Real>::max();
-        for (int iter = 0; iter < 500 && error > 1e-8f; ++iter) {
-            BigVector f = compute_residual(coeffs, H, k, D);
-            error = f.cwiseAbs().maxCoeff();
-            
-            if (eta.maxCoeff() > 2.0f || eta.minCoeff() < 0.1f || !std::isfinite(error)) {
+        for(int it=0; it<500 && err>1e-8f; ++it) {
+            BigVec f = compute_res(X, H, D);
+            err = f.template head<2*N+2>().cwiseAbs().maxCoeff();
+            if(!std::isfinite(err) || etav.maxCoeff()>2 || etav.minCoeff()<0.1f)
                 throw std::runtime_error("Optimization failed");
-            }
-
-            if (error < 1e-8f) break;
-
-            BigMatrix J = compute_jacobian(coeffs, H, k, D);
-            BigVector delta = J.fullPivLu().solve(-f);
-            coeffs += relax * delta;
+            if(err < 1e-8f) break;
+            BigMat J = compute_jac(X, H, D);
+            X += relax * J.fullPivLu().solve(-f);
         }
 
-        B = coeffs.template segment<N+1>(0);
-        eta = coeffs.template segment<N+1>(N+1);
-        Q = coeffs(2*N+2);
-        R = coeffs(2*N+3);
+        Bv   = X.template segment<N+1>(0);
+        etav = X.template segment<N+1>(N+1);
+        Qv   = X(2*N+2);
+        Rv   = X(2*N+3);
     }
 
     BigVector compute_residual(const BigVector& coeffs, Real H, Real k, Real D) {
-        BigVector residual = BigVector::Zero();
-        const VectorF B = coeffs.template segment<N+1>(0);
-        const VectorF eta = coeffs.template segment<N+1>(N+1);
-        const Real Q = coeffs(2*N+2);
-        const Real R = coeffs(2*N+3);
-        const Real B0 = B(0);
+        BigVec r = BigVec::Zero();
+        VecF Bv = X.template segment<N+1>(0),
+             etav = X.template segment<N+1>(N+1);
+        Real Qv = X(2*N+2), Rv = X(2*N+3), B0 = Bv(0);
 
-        const VectorF x_m = VectorF::LinSpaced(N+1, 0, N) * (M_PI / N);
-        const VectorN kj = VectorN::LinSpaced(N, 1, N) * k;
+        VecF um = VecF::Constant(-B0)
+          + (Bv.tail(N).transpose() *
+             ((kj.asDiagonal() * etav.transpose().replicate(N,1)).cwiseProduct(cos_ph))).transpose();
 
-        const MatrixNxP trig_terms = (kj * x_m.transpose()).array();
-        const MatrixNxP cos_terms = trig_terms.cos();
-        const MatrixNxP sin_terms = trig_terms.sin();
+        VecF vm = (Bv.tail(N).transpose() *
+                   ((kj.asDiagonal() * etav.transpose().replicate(N,1)).cwiseProduct(sin_ph))).transpose();
 
-        const MatrixNxP eta_kj = (kj * eta.transpose()).array();
-        const MatrixNxP S1 = eta_kj.unaryExpr([&](Real val) { 
-            return sinh_by_cosh(val, kj(0) * D); 
-        });
-        const MatrixNxP C1 = eta_kj.unaryExpr([&](Real val) { 
-            return cosh_by_cosh(val, kj(0) * D); 
-        });
+        r.head(N+1) = VecF::Constant(-B0).cwiseProduct(etav)
+                     + (Bv.tail(N).transpose() *
+                        (etav.transpose().replicate(N,1).cwiseProduct(cos_ph))).transpose()
+                     + VecF::Constant(Qv);
 
-        const VectorF um = VectorF::Constant(-B0) + 
-                         (B.tail(N).transpose() * (kj.asDiagonal() * C1 * cos_terms)).transpose();
-        const VectorF vm = (B.tail(N).transpose() * (kj.asDiagonal() * S1 * sin_terms)).transpose();
+        r.segment(N+1, N+1) = 0.5f*(um.array().square() + vm.array().square()).matrix()
+                              + etav - Rv;
 
-        residual.head(N+1) = VectorF::Constant(-B0).cwiseProduct(eta) + 
-                           (B.tail(N).transpose() * (S1 * cos_terms)).transpose() + 
-                           VectorF::Constant(Q);
-
-        residual.segment(N+1, N+1) = 0.5 * (um.array().square() + vm.array().square()) + 
-                                   eta.array() - R;
-
-        residual(2*N+2) = eta.mean() * (N+1)/N - 1.0f;
-        residual(2*N+3) = eta.maxCoeff() - eta.minCoeff() - H;
-
-        return residual;
+        r(2*N+2) = etav.mean()*(N+1)/N - 1.0f;
+        r(2*N+3) = etav.maxCoeff() - etav.minCoeff() - H;
+        return r;
     }
 
     BigMatrix compute_jacobian(const BigVector& coeffs, Real H, Real k, Real D) {
