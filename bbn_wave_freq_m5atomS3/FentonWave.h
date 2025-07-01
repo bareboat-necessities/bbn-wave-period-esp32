@@ -182,6 +182,27 @@ public:
         return psi;
     }
 
+/**
+ * Calculates the horizontal velocity component u(x,z,t) at a given point and time
+ * 
+ * Represents the horizontal water particle velocity:
+ * u(x,z,t) = ∂ψ/∂z = B₀ + Σ[Bⱼ*jk*cosh(jk(z+d))/cosh(jkd) * cos(jk(x-ct))] for j=1..N
+ * 
+ * Where:
+ * - B₀ is the mean flow (wave phase speed c)
+ * - The sum represents oscillatory wave-induced velocities
+ * - Hyperbolic cosine term produces depth attenuation
+ * 
+ * Physical characteristics:
+ * - Maximum at wave crest/trough, minimum at nodes
+ * - Decays with depth (faster for higher frequencies)
+ * - Phase varies with position in wave
+ * 
+ * @param x_val Horizontal position (m)
+ * @param z_val Vertical position (m, 0=surface, negative below)
+ * @param t Time (s)
+ * @return Horizontal velocity (m/s, positive in wave direction)
+ */
     Real horizontal_velocity(Real x_val, Real z_val, Real t = 0) const {
         Real u = B(0);  // Mean flow
         for (int j = 1; j <= N; ++j) {
