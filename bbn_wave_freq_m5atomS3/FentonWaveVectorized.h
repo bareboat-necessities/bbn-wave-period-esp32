@@ -20,35 +20,34 @@
 template <int N>
 class FentonFFTVectorized {
 public:
-    using Real = float;
+    using Real   = float;
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
     using Matrix = Eigen::Matrix<Real, N + 1, N + 1>;
 
     static const Matrix& cosine_matrix() {
-        static const Matrix cos_mat = []() {
-            Matrix mat;
-            for (int j = 0; j <= N; ++j) {
-                for (int m = 0; m <= N; ++m) {
-                    mat(j, m) = std::cos(j * m * M_PI / N);
-                }
-            }
-            return mat;
-        }();
-        return cos_mat;
+        static const Matrix M = [](){
+            Matrix m;
+            for(int j = 0; j <= N; ++j)
+                for(int i = 0; i <= N; ++i)
+                    m(j,i) = std::cos(j * i * PI / N);
+            return m;
+        }(); return M;
+    }
+
+    static const Vector& weights() {
+        static Vector w = [](){
+            Vector v = Vector::Ones();
+            v(0) = v(N) = 0.5f;
+            return v;
+        }(); return w;
     }
 
     static Vector compute_inverse_cosine_transform(const Vector& eta) {
-        const auto& cos_mat = cosine_matrix();
-        Vector weights = Vector::Ones();
-        weights(0) = weights(N) = 0.5f;
-        return (2.0f / N) * (cos_mat * (eta.array() * weights.array()).matrix());
+        return (2.0f / N) * (cosine_matrix() * (eta.array() * weights().array()).matrix());
     }
 
     static Vector compute_forward_cosine_transform(const Vector& E) {
-        const auto& cos_mat = cosine_matrix();
-        Vector weights = Vector::Ones();
-        weights(0) = weights(N) = 0.5f;
-        return (cos_mat.transpose() * (E.array() * weights.array()).matrix());
+        return cosine_matrix().transpose() * (E.array() * weights().array()).matrix();
     }
 };
 
