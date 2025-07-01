@@ -1,5 +1,12 @@
 #pragma once
 
+/*
+   Copyright 2025, Mikhail Grushinskiy
+
+   AI-assisted translation of https://github.com/TormodLandet/raschii/blob/master/raschii/fenton.py
+ */
+
+
 #include <ArduinoEigenDense.h>
 #include <cmath>
 #include <stdexcept>
