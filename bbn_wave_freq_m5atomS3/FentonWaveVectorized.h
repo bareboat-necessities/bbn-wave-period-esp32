@@ -188,7 +188,7 @@ private:
     }
 
     BigVector compute_residual(const BigVector& coeffs, Real H, Real k, Real D) {
-        BigVec r = BigVec::Zero();
+        BigVec residual = BigVec::Zero();
         VecF Bv = X.template segment<N+1>(0),
              etav = X.template segment<N+1>(N+1);
         Real Qv = X(2*N+2), Rv = X(2*N+3), B0 = Bv(0);
@@ -200,16 +200,16 @@ private:
         VecF vm = (Bv.tail(N).transpose() *
                    ((kj.asDiagonal() * etav.transpose().replicate(N,1)).cwiseProduct(sin_ph))).transpose();
 
-        r.head(N+1) = VecF::Constant(-B0).cwiseProduct(etav)
+        residual.head(N+1) = VecF::Constant(-B0).cwiseProduct(etav)
                      + (Bv.tail(N).transpose() *
                         (etav.transpose().replicate(N,1).cwiseProduct(cos_ph))).transpose()
                      + VecF::Constant(Qv);
 
-        r.segment(N+1, N+1) = 0.5f*(um.array().square() + vm.array().square()).matrix()
+        residual.segment(N+1, N+1) = 0.5f*(um.array().square() + vm.array().square()).matrix()
                               + etav - Rv;
 
-        r(2*N+2) = etav.mean()*(N+1)/N - 1.0f;
-        r(2*N+3) = etav.maxCoeff() - etav.minCoeff() - H;
+        residual(2*N+2) = etav.mean()*(N+1)/N - 1.0f;
+        residual(2*N+3) = etav.maxCoeff() - etav.minCoeff() - H;
         return r;
     }
 
