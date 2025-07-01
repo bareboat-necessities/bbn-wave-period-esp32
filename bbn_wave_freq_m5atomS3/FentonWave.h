@@ -147,6 +147,29 @@ public:
         compute();
     }
 
+/**
+ * Calculates the stream function ψ(x,z,t) at a given point and time
+ * 
+ * Represents the mathematical function whose contours are flow streamlines:
+ * ψ(x,z,t) = B₀*(z + d) + Σ[Bⱼ*sinh(jk(z+d))/cosh(jkd) * cos(jk(x-ct))] for j=1..N
+ * 
+ * Where:
+ * - B₀ is the mean flow (wave phase speed c)
+ * - Bⱼ are the Fourier coefficients of the stream function
+ * - k is the wavenumber (2π/wavelength)
+ * - d is the water depth
+ * - c is the wave phase speed
+ * 
+ * Physical significance:
+ * - Difference in ψ between two points equals the volume flow rate between them
+ * - Contours of constant ψ represent fluid particle paths
+ * - Used to derive velocity components (u = ∂ψ/∂z, w = -∂ψ/∂x)
+ * 
+ * @param x_val Horizontal position (m)
+ * @param z_val Vertical position (m, 0=surface, negative below)
+ * @param t Time (s)
+ * @return Stream function value (m²/s)
+ */
     Real stream_function(Real x_val, Real z_val, Real t = 0) const {
         Real psi = B(0) * (z_val + depth);  // Mean flow component
         for (int j = 1; j <= N; ++j) {
