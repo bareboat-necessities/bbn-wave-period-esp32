@@ -61,7 +61,6 @@ public:
     static constexpr int StateDim = 2 * (N + 1) + 2;
     using BigVec     = Eigen::Matrix<Real, StateDim, 1>;
     using BigMat     = Eigen::Matrix<Real, StateDim, StateDim>;
-    static constexpr Real PI = static_cast<Real>(3.14159265358979323846f);
 
     Real height, depth, length, g = 9.81f, relax = 0.5f;
     Real k, c, T, omega, Q, R;
