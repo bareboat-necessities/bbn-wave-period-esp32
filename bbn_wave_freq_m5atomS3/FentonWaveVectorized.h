@@ -289,7 +289,7 @@ public:
     WaveSurfaceTrackerVectorized(FentonWaveVectorized<N>& w): wave(w) {}
 
     void track(float duration, float timestep,
-               std::function<void(float,float,float,float,float,float)> cb) 
+               std::function<void(float,float,float,float,float,float)> callback) 
     {
         dt = std::clamp(timestep, 1e-5f, 0.1f);
         t = 0; x = 0; vx = 0;
@@ -300,7 +300,7 @@ public:
             float eta_x = wave.surface_slope(x, t);
             float zdot = wave.surface_time_derivative(x, t) + eta_x * vx;
             float zddot = (zdot - prev_zdot) / dt;
-            cb(t, z, zdot, zddot, x, vx);
+            callback(t, z, zdot, zddot, x, vx);
             prev_zdot = zdot;
 
             auto acc = [&](float xp, float vp) {
