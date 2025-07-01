@@ -53,66 +53,56 @@ public:
 
 template <int N = 4>
 class FentonWaveVectorizedVectorized {
-private:
-    static constexpr int StateDim = 2 * (N + 1) + 2;
-    using Real = float;
-    using VectorF = Eigen::Matrix<Real, N + 1, 1>;
-    using VectorN = Eigen::Matrix<Real, N, 1>;
-    using MatrixNxP = Eigen::Matrix<Real, N, N + 1>;
-    using BigVector = Eigen::Matrix<Real, StateDim, 1>;
-    using BigMatrix = Eigen::Matrix<Real, StateDim, StateDim>;
-
 public:
-    Real height, depth, length, g, relax;
-    Real k, c, T, omega, Q, R;
-    VectorF eta, x, E, B;
-    VectorN kj_cache, j_cache;
+    using Real       = float;
+    using VecF       = Eigen::Matrix<Real, N + 1, 1>;
+    using VecN       = Eigen::Matrix<Real, N, 1>;
+    using MatNxP     = Eigen::Matrix<Real, N, N + 1>;
+    static constexpr int StateDim = 2 * (N + 1) + 2;
+    using BigVec     = Eigen::Matrix<Real, StateDim, 1>;
+    using BigMat     = Eigen::Matrix<Real, StateDim, StateDim>;
+    static constexpr Real PI = static_cast<Real>(3.14159265358979323846f);
 
-    FentonWaveVectorizedVectorized(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
-        : height(height), depth(depth), length(length), g(g), relax(relax) {
-        for (int j = 1; j <= N; ++j) {
-            kj_cache(j-1) = j * (2 * M_PI / length);
-            j_cache(j-1) = j;
+    Real height, depth, length, g = 9.81f, relax = 0.5f;
+    Real k, c, T, omega, Q, R;
+    VecF eta_nd, x_nd, eta, x, E, B;
+    VecN kj, jidx;
+    MatNxP cos_ph, sin_ph;
+
+    FentonWave(Real h, Real d, Real L, Real gravity=9.81f, Real r=0.5f)
+      : height(h), depth(d), length(L), g(gravity), relax(r)
+    {
+        Real invL = 2 * PI / L;
+        for(int j=1; j<=N; ++j) {
+            kj(j-1)   = j * invL;
+            jidx(j-1) = j;
         }
+        precompute_phase();
         compute();
     }
 
-    Real surface_elevation(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return E(0) + (E.tail(N).array() * (j_cache * phase_base).cos()).sum();
+    // --- Surface evaluation ---
+    Real surface_elevation(Real x0, Real t=0) const {
+        Real p = k * (x0 - c*t);
+        return E(0) + (E.tail(N).array() * (jidx * p).cos()).sum();
     }
-
-    Real surface_slope(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return -k * (E.tail(N).array() * j_cache.array() * (j_cache * phase_base).sin()).sum();
+    Real surface_slope(Real x0, Real t=0) const {
+        Real p = k * (x0 - c*t);
+        return -k * (E.tail(N).array() * jidx.array() * (jidx * p).sin()).sum();
     }
-
-    Real surface_time_derivative(Real x_val, Real t = 0) const {
-        return -c * surface_slope(x_val, t);
+    Real surface_time_derivative(Real x0, Real t=0) const {
+        return -c * surface_slope(x0, t);
     }
-
-    Real surface_second_time_derivative(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return -(E.tail(N).array() * (j_cache * omega).square() * (j_cache * phase_base).cos()).sum();
+    Real surface_second_time_derivative(Real x0, Real t=0) const {
+        Real p = k * (x0 - c*t);
+        return -(E.tail(N).array() * (jidx * omega).square() * (jidx * p).cos()).sum();
     }
-    
-    Real surface_space_time_derivative(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return (E.tail(N).array() * j_cache.array().square() * (k * omega) * 
-               (j_cache * phase_base).sin()).sum();
-    }
-    
-    Real surface_second_space_derivative(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return -(E.tail(N).array() * j_cache.array().square() * k * k * 
-                (j_cache * phase_base).cos()).sum();
-    }
-
-    Real vertical_velocity(Real x_val, Real z, Real t = 0) const {
-        const VectorN arg = kj_cache.array() * (x_val - c * t);
-        const VectorN denom = (kj_cache * depth).array().cosh();
-        const VectorN sinh_z = (kj_cache.array() * (z + depth)).sinh();
-        return (B.tail(N).array() * kj_cache.array() * arg.sin() * sinh_z / denom).sum();
+    Real vertical_velocity(Real x0, Real z, Real t=0) const {
+        VecN arg   = kj * (x0 - c*t);
+        VecN denom = (kj*depth).array().cosh();
+        VecN sinhz = (kj*(z+depth)).array().sinh();
+        return (B.tail(N).array() * kj.array() * arg.array().sin()
+                * sinhz.array() / denom.array()).sum();
     }
 
     // ... (getters remain the same) ...
