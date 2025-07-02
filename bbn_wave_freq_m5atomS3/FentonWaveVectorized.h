@@ -136,7 +136,7 @@ public:
         const VectorN arg = kj_cache.array() * (x_val - c * t);
         const VectorN denom = (kj_cache * depth).array().cosh();
         const VectorN sinh_z = (kj_cache.array() * (z + depth)).sinh();
-        return (B.tail(N).array() * kj_cache.array() * arg.sin() * sinh_z / denom).sum();
+        return (B.tail(N).array() * kj_cache.array() * arg.array().sin() * sinh_z / denom).sum();
     }
 
     Real get_c() const { return c; }
