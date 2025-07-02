@@ -139,7 +139,13 @@ public:
         return (B.tail(N).array() * kj_cache.array() * arg.sin() * sinh_z / denom).sum();
     }
 
-    // ... (getters remain the same) ...
+    Real get_c() const { return c; }
+    Real get_k() const { return k; }
+    Real get_T() const { return T; }
+    Real get_omega() const { return omega; }
+    Real get_length() const { return length; }
+    Real get_height() const { return height; }
+    const VectorF& get_eta() const { return eta; }
 
 private:
     void compute() {
