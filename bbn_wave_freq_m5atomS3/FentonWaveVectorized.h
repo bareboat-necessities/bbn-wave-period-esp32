@@ -226,8 +226,8 @@ private:
     }
 
     VelocityTerms compute_velocity_terms(Real z_val, Real phase, bool for_horizontal) const {
-        const RealArray kj = kj_cache.array();
-        const RealArray denom = (kj * depth).cosh();
+        const auto kj = kj_cache.array();
+        const auto denom = (kj * depth).cosh();
         
         VelocityTerms terms = kj * B.tail(N).array() / denom;
         return for_horizontal 
