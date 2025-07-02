@@ -47,35 +47,36 @@ T cosh_by_cosh(T a, T b) {
 template <int N>
 class FentonFFT {
 public:
-    using Real = float;
+    using Real   = float;
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
+    using Matrix = Eigen::Matrix<Real, N + 1, N + 1>;
+    static constexpr Real PI = static_cast<Real>(3.14159265358979323846f);
+
+    static const Matrix& cosine_matrix() {
+        static const Matrix M = [](){
+            Matrix m;
+            for(int j = 0; j <= N; ++j)
+                for(int i = 0; i <= N; ++i)
+                    m(j,i) = std::cos(j * i * PI / N);
+            return m;
+        }(); return M;
+    }
+    static const Vector& weights() {
+        static Vector w = [](){
+            Vector v = Vector::Ones();
+            v(0) = v(N) = 0.5f;
+            return v;
+        }(); return w;
+    }
 
     // Inverse DCT-I (irfft-style): reconstruct cosine coefficients E from eta
     static Vector compute_inverse_cosine_transform(const Vector& eta) {
-        Vector E;
-        for (int j = 0; j <= N; ++j) {
-            Real sum = 0;
-            for (int m = 0; m <= N; ++m) {
-                Real weight = (m == 0 || m == N) ? 0.5f : 1.0f;
-                sum += weight * eta(m) * std::cos(j * m * M_PI / N);
-            }
-            E(j) = 2.0f * sum / N;
-        }
-        return E;
+        return (2.0f / N) * (cosine_matrix() * (eta.array() * weights().array()).matrix());
     }
 
     // Forward DCT-I: reconstruct eta values at collocation points from cosine coeffs
     static Vector compute_forward_cosine_transform(const Vector& E) {
-        Vector eta;
-        for (int m = 0; m <= N; ++m) {
-            Real sum = 0;
-            for (int j = 0; j <= N; ++j) {
-                Real weight = (j == 0 || j == N) ? 0.5f : 1.0f;
-                sum += weight * E(j) * std::cos(j * m * M_PI / N);
-            }
-            eta(m) = sum;
-        }
-        return eta;
+        return cosine_matrix().transpose() * (E.array() * weights().array()).matrix();
     }
 };
 
