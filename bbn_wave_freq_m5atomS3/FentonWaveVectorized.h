@@ -1,0 +1,561 @@
+#pragma once
+
+/*
+   Copyright 2025, Mikhail Grushinskiy
+   AI-assisted translation of https://github.com/TormodLandet/raschii/blob/master/raschii/fenton.py
+*/
+
+#include <ArduinoEigenDense.h>
+#include <cmath>
+#include <stdexcept>
+#include <functional>
+#include <limits>
+#include <algorithm>
+
+#ifdef FENTON_TEST
+#include <iostream>
+#include <fstream>
+#endif
+
+template <typename T>
+constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
+    return (val < low) ? low : (val > high) ? high : val;
+}
+
+template <typename T>
+T sinh_by_cosh(T a, T b) {
+    if (a == 0) return 0;
+    T f = b / a;
+    if ((a > 30 && 0.5 < f && f < 1.5) || (a > 200 && 0.1 < f && f < 1.9)) {
+        return std::exp(a * (1 - f));
+    }
+    return std::sinh(a) / std::cosh(b);
+}
+
+template <typename T>
+T cosh_by_cosh(T a, T b) {
+    if (a == 0) return 1.0 / std::cosh(b);
+    T f = b / a;
+    if ((a > 30 && 0.5 < f && f < 1.5) || (a > 200 && 0.1 < f && f < 1.9)) {
+        return std::exp(a * (1 - f));
+    }
+    return std::cosh(a) / std::cosh(b);
+}
+
+template <int N>
+class FentonFFT {
+public:
+    using Real   = float;
+    using Vector = Eigen::Matrix<Real, N + 1, 1>;
+    using Matrix = Eigen::Matrix<Real, N + 1, N + 1>;
+
+    static const Matrix& cosine_matrix() {
+        static const Matrix M = [](){
+            Matrix m;
+            for(int j = 0; j <= N; ++j)
+                for(int i = 0; i <= N; ++i)
+                    m(j,i) = std::cos(j * i * M_PI / N);
+            return m;
+        }(); return M;
+    }
+    static const Vector& weights() {
+        static Vector w = [](){
+            Vector v = Vector::Ones();
+            v(0) = v(N) = 0.5f;
+            return v;
+        }(); return w;
+    }
+
+    static Vector compute_inverse_cosine_transform(const Vector& eta) {
+        return (2.0f / N) * (cosine_matrix() * (eta.array() * weights().array()).matrix());
+    }
+
+    static Vector compute_forward_cosine_transform(const Vector& E) {
+        return cosine_matrix().transpose() * (E.array() * weights().array()).matrix();
+    }
+};
+
+template <int N = 4>
+class FentonWave {
+private:
+    static constexpr int StateDim = 2 * (N + 1) + 2;
+
+    using Real = float;
+    using VectorF = Eigen::Matrix<Real, N + 1, 1>;
+    using BigVector = Eigen::Matrix<Real, StateDim, 1>;
+    using BigMatrix = Eigen::Matrix<Real, StateDim, StateDim>;
+
+public:
+    Real height, depth, length, g, relax;
+    Real k, c, T, omega, Q, R;
+    VectorF eta, x, E, B;
+
+    FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
+        : height(height), depth(depth), length(length), g(g), relax(relax) {
+        compute();
+    }
+
+    Real stream_function(Real x_val, Real z_val, Real t = 0) const {
+        Real psi = B(0) * (z_val + depth);  // Mean flow component
+        for (int j = 1; j <= N; ++j) {
+            Real kj = j * k;
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B(j) * std::sinh(kj * (z_val + depth)) / denom;
+            psi += term * std::cos(kj * (x_val - c * t));
+        }
+        return psi;
+    }
+
+    Real horizontal_velocity(Real x_val, Real z_val, Real t = 0) const {
+        Real u = B(0);  // Mean flow
+        for (int j = 1; j <= N; ++j) {
+            Real kj = j * k;
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B(j) * kj / denom;
+            u += term * std::cosh(kj * (z_val + depth)) * std::cos(kj * (x_val - c * t));
+        }
+        return u;
+    }
+
+    Real vertical_velocity(Real x_val, Real z_val, Real t = 0) const {
+        Real w = 0.0f;
+        for (int j = 1; j <= N; ++j) {
+            Real kj = j * k;
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B(j) * kj / denom;
+            w += term * std::sinh(kj * (z_val + depth)) * std::sin(kj * (x_val - c * t));
+        }
+        return w;
+    }
+
+    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
+        Real u = horizontal_velocity(x_val, z_val, t);
+        Real w = vertical_velocity(x_val, z_val, t);
+        Real eta = surface_elevation(x_val, t);
+        
+        // Bernoulli equation: p/ρ + ½(u²+w²) + g(z-η) + ∂φ/∂t = R
+        // For steady flow in wave frame: ∂φ/∂t = -c*u
+        return rho * (R - 0.5*(u*u + w*w) - g*(z_val - eta) + c*u);
+    }
+
+    Real surface_elevation(Real x_val, Real t = 0) const {
+        Real sum = 0;
+        for (int j = 0; j <= N; ++j) {
+            sum += E(j) * std::cos(j * k * (x_val - c * t));
+        }
+        return sum;
+    }
+
+    Real surface_slope(Real x_val, Real t = 0) const {
+        Real d_eta = 0.0f;
+        for (int j = 0; j <= N; ++j) {
+            d_eta -= E(j) * j * k * std::sin(j * k * (x_val - c * t));
+        }
+        return d_eta;
+    }
+
+    Real surface_time_derivative(Real x_val, Real t = 0) const {
+        return -c * surface_slope(x_val, t);
+    }
+
+    Real surface_second_time_derivative(Real x_val, Real t = 0) const {
+        Real sum = 0;
+        for (int j = 0; j <= N; ++j) {
+            Real omega_j = j * omega;
+            sum -= E(j) * omega_j * omega_j * std::cos(j * k * (x_val - c * t));
+        }
+        return sum;
+    }
+
+    Real surface_space_time_derivative(Real x_val, Real t = 0) const {
+        Real sum = 0;
+        for (int j = 0; j <= N; ++j) {
+            Real term = j * k * j * omega;
+            sum += E(j) * term * std::sin(j * k * (x_val - c * t));
+        }
+        return sum;
+    }
+
+    Real surface_second_space_derivative(Real x_val, Real t = 0) const {
+        Real sum = 0;
+        for (int j = 0; j <= N; ++j) {
+            Real coeff = -j * k * j * k;
+            sum += E(j) * coeff * std::cos(j * k * (x_val - c * t));
+        }
+        return sum;
+    }
+
+    Real get_c() const { return c; }
+    Real get_k() const { return k; }
+    Real get_T() const { return T; }
+    Real get_omega() const { return omega; }
+    Real get_length() const { return length; }
+    Real get_height() const { return height; }
+    const VectorF& get_eta() const { return eta; }
+
+private:
+    void compute() {
+        if (depth < 0) depth = 25.0f * length;
+        Real H = height / depth;
+        Real lam = length / depth;
+        k = 2 * M_PI / lam;
+        Real D = 1.0f;
+        Real kc = k;
+        Real c0 = std::sqrt(std::tanh(kc) / kc);
+
+        VectorF x_nd;
+        for (int m = 0; m <= N; ++m)
+            x_nd(m) = lam * m / (2.0f * N);
+
+        B.setZero();
+        B(0) = c0;
+        B(1) = -H / (4.0f * c0 * k);
+
+        VectorF eta_nd;
+        for (int m = 0; m <= N; ++m)
+            eta_nd(m) = 1.0f + H / 2.0f * std::cos(k * x_nd(m));
+
+        Q = c0;
+        R = 1.0f + 0.5f * c0 * c0;
+
+        for (Real Hi : wave_height_steps(H, D, lam)) {
+            optimize(B, Q, R, eta_nd, Hi, k, D);
+        }
+
+        Real sqrt_gd = std::sqrt(g * depth);
+        B(0) *= sqrt_gd;
+        for (int j = 1; j <= N; ++j)
+            B(j) *= std::sqrt(g * std::pow(depth, 3));
+        Q *= std::sqrt(g * std::pow(depth, 3));
+        R *= g * depth;
+
+        for (int i = 0; i <= N; ++i) {
+            x(i) = x_nd(i) * depth;
+            eta(i) = (eta_nd(i) - 1.0f) * depth;
+        }
+
+        k = k / depth;
+        c = B(0);
+        T = length / c;
+        omega = c * k;
+
+        compute_elevation_coefficients();
+    }
+
+    void compute_elevation_coefficients() {
+        E = FentonFFT<N>::compute_inverse_cosine_transform(eta);
+    }
+
+    std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
+        Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
+        int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
+        std::vector<Real> steps(num);
+        for (int i = 0; i < num; ++i)
+            steps[i] = H * (i + 1) / num;
+        return steps;
+    }
+
+    void optimize(VectorF& B, Real& Q, Real& R,
+                 VectorF& eta, Real H, Real k, Real D) {
+        constexpr int NU = 2 * (N + 1) + 2;
+        Eigen::Matrix<Real, NU, 1> coeffs;
+        coeffs.template segment<N + 1>(0) = B;
+        coeffs.template segment<N + 1>(N + 1) = eta;
+        coeffs(2 * N + 2) = Q;
+        coeffs(2 * N + 3) = R;
+
+        Real error = std::numeric_limits<Real>::max();
+        for (int iter = 0; iter < 500 && error > 1e-8f; ++iter) {
+            Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k, D);
+            error = f.cwiseAbs().maxCoeff();
+            
+            Real eta_max = coeffs.template segment<N + 1>(N + 1).maxCoeff();
+            Real eta_min = coeffs.template segment<N + 1>(N + 1).minCoeff();
+            if (eta_max > 2.0f || eta_min < 0.1f || !std::isfinite(error)) {
+                throw std::runtime_error("Optimization failed");
+            }
+
+            if (error < 1e-8f) break;
+
+            Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k, D);
+            Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
+            coeffs += relax * delta;
+        }
+
+        B = coeffs.template segment<N + 1>(0);
+        eta = coeffs.template segment<N + 1>(N + 1);
+        Q = coeffs(2 * N + 2);
+        R = coeffs(2 * N + 3);
+    }
+
+    Eigen::Matrix<Real, StateDim, 1>
+    compute_residual(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
+        Eigen::Matrix<Real, StateDim, 1> f;
+        auto B = coeffs.template segment<N + 1>(0);
+        auto eta = coeffs.template segment<N + 1>(N + 1);
+        Real Q = coeffs(2 * N + 2);
+        Real R = coeffs(2 * N + 3);
+        Real B0 = B(0);
+
+        for (int m = 0; m <= N; ++m) {
+            Real x_m = M_PI * m / N;
+            Real eta_m = eta(m);
+            
+            Real um = -B0;
+            Real vm = 0;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
+                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);
+                Real S2 = std::sin(j * x_m);
+                Real C2 = std::cos(j * x_m);
+                um += kj * B(j) * C1 * C2;
+                vm += kj * B(j) * S1 * S2;
+            }
+
+            f(m) = -B0 * eta_m;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
+                Real C2 = std::cos(j * x_m);
+                f(m) += B(j) * S1 * C2;
+            }
+            f(m) += Q;
+
+            f(N + 1 + m) = 0.5f * (um * um + vm * vm) + eta_m - R;
+        }
+
+        f(2 * N + 2) = (eta.sum() - 0.5f * (eta(0) + eta(N))) / N - 1.0f;
+        f(2 * N + 3) = eta.maxCoeff() - eta.minCoeff() - H;
+
+        return f;
+    }
+
+    Eigen::Matrix<Real, StateDim, StateDim>
+    compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
+        Eigen::Matrix<Real, StateDim, StateDim> J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
+        auto B = coeffs.template segment<N + 1>(0);
+        auto eta = coeffs.template segment<N + 1>(N + 1);
+        Real B0 = B(0);
+
+        for (int m = 0; m <= N; ++m) {
+            Real eta_m = eta(m);
+            Real x_m = M_PI * m / N;
+            Real um = -B0;
+            Real vm = 0;
+            
+            Eigen::Matrix<Real, N, 1> SC, SS, CC, CS;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                SC(j-1) = sinh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
+                SS(j-1) = sinh_by_cosh(kj * eta_m, kj * D) * std::sin(j * x_m);
+                CC(j-1) = cosh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
+                CS(j-1) = cosh_by_cosh(kj * eta_m, kj * D) * std::sin(j * x_m);
+                
+                um += kj * B(j) * CC(j-1);
+                vm += kj * B(j) * SS(j-1);
+            }
+
+            J(m, 0) = -eta_m;
+            for (int j = 1; j <= N; ++j) {
+                J(m, j) = SC(j-1);
+            }
+            J(m, N + 1 + m) = -B0;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                J(m, N + 1 + m) += B(j) * kj * CC(j-1);
+            }
+            J(m, 2 * N + 2) = 1;
+
+            J(N + 1 + m, 0) = -um;
+            for (int j = 1; j <= N; ++j) {
+                J(N + 1 + m, j) = k * j * (um * CC(j-1) + vm * SS(j-1));
+            }
+            J(N + 1 + m, N + 1 + m) = 1;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                J(N + 1 + m, N + 1 + m) += um * B(j) * kj * kj * SC(j-1);
+                J(N + 1 + m, N + 1 + m) += vm * B(j) * kj * kj * CS(j-1);
+            }
+            J(N + 1 + m, 2 * N + 3) = -1;
+        }
+
+        for (int j = 0; j <= N; ++j) {
+            J(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 0.5f/N : 1.0f/N;
+        }
+
+        J(2 * N + 3, N + 1) = 1;
+        J(2 * N + 3, 2 * N + 1) = -1;
+
+        return J;
+    }
+};
+
+template<int N = 4>
+class WaveSurfaceTracker {
+private:
+    FentonWave<N> wave;
+
+    float t = 0.0f;
+    float dt = 0.005f;
+
+    // Object state
+    float x = 0.0f;     // Horizontal position (m)
+    float vx = 0.0f;    // Horizontal velocity (m/s)
+
+    float mass = 1.0f;  // Mass of floating object (kg)
+
+    // Wave and physics parameters
+    float drag_coeff = 0.1f;  // Simple horizontal drag coefficient
+
+    // Periodicity wrap helper
+    float wrap_periodic(float val, float period) const {
+        while (val < 0.0f) val += period;
+        while (val >= period) val -= period;
+        return val;
+    }
+
+    // Horizontal acceleration from wave slope and drag
+    float compute_horizontal_acceleration(float x_pos, float vx_curr, float time) const {
+        // Wave surface slope (∂η/∂x)
+        float eta_x = wave.surface_slope(x_pos, time);
+
+        // Simple driving force proportional to slope (restoring force)
+        float force_wave = -9.81f * eta_x;  // gravity times slope (can be tuned)
+
+        // Simple linear drag opposing velocity
+        float force_drag = -drag_coeff * vx_curr;
+
+        // Newton's second law
+        return (force_wave + force_drag) / mass;
+    }
+
+    // RK4 integration for horizontal motion
+    void rk4_step(float& x_curr, float& vx_curr, float t_curr, float dt_step) {
+        auto accel = [this](float x_in, float vx_in, float t_in) {
+            return compute_horizontal_acceleration(x_in, vx_in, t_in);
+        };
+
+        float k1_v = accel(x_curr, vx_curr, t_curr);
+        float k1_x = vx_curr;
+
+        float k2_v = accel(x_curr + 0.5f * dt_step * k1_x, vx_curr + 0.5f * dt_step * k1_v, t_curr + 0.5f * dt_step);
+        float k2_x = vx_curr + 0.5f * dt_step * k1_v;
+
+        float k3_v = accel(x_curr + 0.5f * dt_step * k2_x, vx_curr + 0.5f * dt_step * k2_v, t_curr + 0.5f * dt_step);
+        float k3_x = vx_curr + 0.5f * dt_step * k2_v;
+
+        float k4_v = accel(x_curr + dt_step * k3_x, vx_curr + dt_step * k3_v, t_curr + dt_step);
+        float k4_x = vx_curr + dt_step * k3_v;
+
+        x_curr += dt_step * (k1_x + 2 * k2_x + 2 * k3_x + k4_x) / 6.0f;
+        vx_curr += dt_step * (k1_v + 2 * k2_v + 2 * k3_v + k4_v) / 6.0f;
+
+        // Periodicity wrap
+        x_curr = wrap_periodic(x_curr, wave.get_length());
+    }
+
+public:
+    WaveSurfaceTracker(float height, float depth, float length, float x0, float mass_kg, float drag_coeff_)
+        : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_) 
+    {
+        x = x0;
+        vx = 0.0f;
+    }
+
+    void track_floating_object(
+        float duration,
+        float timestep,
+        std::function<void(float, float, float, float, float, float)> callback)
+    {
+        dt = clamp_value(timestep, 1e-5f, 0.1f);
+
+        t = 0.0f;
+
+        // Initialize vertical velocity
+        float prev_z_dot = wave.surface_time_derivative(x, 0) + wave.surface_slope(x, 0) * vx;
+
+        while (t <= duration) {
+            // Compute current vertical displacement on wave surface
+            float z = wave.surface_elevation(x, t);
+
+            // Compute vertical velocity by chain rule:
+            // dz/dt = ∂η/∂t + ∂η/∂x * dx/dt
+            float eta_t = wave.surface_time_derivative(x, t);
+            float eta_x = wave.surface_slope(x, t);
+            float z_dot = eta_t + eta_x * vx;
+
+            // Compute vertical acceleration by finite difference of vertical velocity
+            float z_ddot = (z_dot - prev_z_dot) / dt;
+
+            // Call user callback with current state
+            if (t > dt) {
+                callback(t, z, z_dot, z_ddot, x, vx);
+            }
+
+            prev_z_dot = z_dot;
+
+            // Integrate horizontal position and velocity with RK4
+            rk4_step(x, vx, t, dt);
+
+            t += dt;
+        }
+    }
+};
+
+
+#ifdef FENTON_TEST
+template class FentonWave<4>;
+template class WaveSurfaceTracker<4>;
+
+void FentonWave_test_1() {
+    const float height = 2.0f;
+    const float depth = 10.0f;
+    const float length = 50.0f;
+
+    FentonWave<4> wave(height, depth, length);
+
+    std::ofstream out("wave_data.csv");
+    out << "x,elevation\n";
+    for (float x = 0; x <= length; x += 0.05f) {
+        float eta = wave.surface_elevation(x, 0);
+        out << x << "," << eta << "\n";
+    }
+    std::cerr << "Expected wave length: " << length << "\n";
+    std::cerr << "Computed wave length: " << 2 * M_PI / wave.get_k() << "\n";
+}
+
+void FentonWave_test_2() {
+    // Wave parameters
+    const float height = 2.0f;   // Wave height (m)
+    const float depth = 10.0f;   // Water depth (m)
+    const float length = 50.0f;  // Wavelength (m)
+    const float init_x = 10.0f;  // Initial x (m)
+    const float mass = 5.0f;     // Mass (kg)
+    const float drag = 0.1f;     // Linear drag coeff opposing velocity
+    
+    // Simulation parameters
+    const float duration = 30.0f; // Simulation duration (s)
+    const float dt = 0.005f;      // Time step (s)
+
+    // Create a 4th-order Fenton wave and a surface tracker
+    WaveSurfaceTracker<4> tracker(height, depth, length, init_x, mass, drag);
+
+    // Output file
+    std::ofstream out("wave_tracker_data.csv");
+    out << "Time(s),Displacement(m),Velocity(m/s),Acceleration(m/s²),X_Position(m)\n";
+
+    // Define the kinematics callback (writes data to file)
+    auto kinematics_callback = [&out](
+        float time, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
+        out << time << "," << elevation << "," << vertical_velocity << "," << vertical_acceleration << "," << horizontal_position << "\n";
+    };
+
+    // Track floating object (using callback)
+    tracker.track_floating_object(duration, dt, kinematics_callback);
+}
+
+#endif
