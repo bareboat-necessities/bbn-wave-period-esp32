@@ -722,7 +722,7 @@ public:
         dt = std::clamp(timestep, 1e-5f, 0.1f);
 
         t = 0.0f;
-        x = 0.0f;
+        x = 1.0f;
         vx = 0.0f;
 
         // Initialize vertical velocity and acceleration to zero
