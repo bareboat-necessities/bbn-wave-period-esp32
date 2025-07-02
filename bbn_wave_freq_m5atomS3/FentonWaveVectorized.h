@@ -315,8 +315,8 @@ private:
         
         for (int j = 1; j <= N; ++j) {
             J.block(N+1, j, N+1, 1) = k * j * 
-                (um * CC.row(j-1).transpose().array() + 
-                 vm * SS.row(j-1).transpose().array());
+                (um.array() * CC.row(j-1).transpose().array() + 
+                 vm.array() * SS.row(j-1).transpose().array()).matrix();
         }
         
         J.block(N+1, 2*N+3, N+1, 1) = VectorF::Constant(-1);
