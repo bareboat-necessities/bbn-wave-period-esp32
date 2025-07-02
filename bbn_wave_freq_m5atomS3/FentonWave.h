@@ -723,7 +723,7 @@ public:
 
         t = 0.0f;
         x = 0.0f;
-        vx = wave.horizontal_velocity(x, 0, 0);
+        vx = 0.0f;
 
         // Initialize vertical velocity and acceleration to zero
         float prev_z_dot = 0.0f;
