@@ -786,11 +786,11 @@ void FentonWave_test_2() {
     const float depth = 10.0f;   // Water depth (m)
     const float length = 50.0f;  // Wavelength (m)
     const float init_x = 10.0f;  // Initial x (m)
-    const float mass = 1.0f;     // Mass (kg)
+    const float mass = 5.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
     
     // Simulation parameters
-    const float duration = 20.0f; // Simulation duration (s)
+    const float duration = 30.0f; // Simulation duration (s)
     const float dt = 0.005f;      // Time step (s)
 
     // Create a 4th-order Fenton wave and a surface tracker
