@@ -678,14 +678,14 @@ private:
     }
 
     // RK4 integration for horizontal motion
-    void rk4_step(float& x_curr, float& vx_curr, float t_curr, float dt) {
+    void rk4_step(float& x_curr, float& vx_curr, float t_curr, float dt_step) {
         auto accel = [this](float x_in, float vx_in, float t_in) {
             return compute_horizontal_acceleration(x_in, vx_in, t_in);
         };
 
         if (t == 0.0f) {
             // Tiny first step to avoid force discontinuity
-            const float micro_dt = dt * 0.01f;
+            const float micro_dt = dt_step * 0.01f;
             
             // Compute acceleration at t=0
             float ax = compute_horizontal_acceleration(x, vx, 0);
