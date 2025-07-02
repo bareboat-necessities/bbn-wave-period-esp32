@@ -255,8 +255,12 @@ private:
 
         const MatrixNxP CC = C1.array() * cos_terms.array();
         const MatrixNxP SS = S1.array() * sin_terms.array();
-        VectorF um = VectorF::Constant(-B0) + ((kj.asDiagonal() * CC).transpose() * B.tail(N));
-        VectorF vm = ((kj.asDiagonal() * SS).transpose() * B.tail(N));
+        VectorF um = VectorF::Constant(-B0);
+        VectorF vm = VectorF::Zero();
+        for (int j = 0; j < N; ++j) {
+            um += B(j+1) * kj(j) * CC.row(j).transpose();
+            vm += B(j+1) * kj(j) * SS.row(j).transpose();
+        }
 
         const MatrixNxP SC = S1.array() * cos_terms.array();
         residual.head(N+1) = -B0 * eta + SC.transpose() * B.tail(N) + VectorF::Constant(Q);
@@ -302,8 +306,12 @@ private:
         const MatrixNxP CC = C1.array() * cos_terms.array();
         const MatrixNxP CS = C1.array() * sin_terms.array();
 
-        VectorF um = VectorF::Constant(-B0) + ((kj.asDiagonal() * CC).transpose() * B.tail(N));
-        VectorF vm = ((kj.asDiagonal() * SS).transpose() * B.tail(N));
+        VectorF um = VectorF::Constant(-B0);
+        VectorF vm = VectorF::Zero();
+        for (int j = 0; j < N; ++j) {
+            um += B(j+1) * kj(j) * CC.row(j).transpose();
+            vm += B(j+1) * kj(j) * SS.row(j).transpose();
+        }
 
         J.block(0, 0, N+1, 1) = -eta;
         J.block(0, 1, N+1, N) = SC.transpose();
