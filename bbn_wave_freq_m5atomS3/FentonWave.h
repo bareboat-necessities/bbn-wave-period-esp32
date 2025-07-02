@@ -684,11 +684,10 @@ private:
             return compute_horizontal_acceleration(x_in, vx_in, t_in);
         };
 
-        if (t == 0.0f) {
+        if (t_curr == 0.0f) {
             // Apply pre-computed physics-correct acceleration
-            vx += initial_accel * dt_step;
-            x = wrap_periodic(x + vx * dt_step, wave.get_length());          
-            t += dt_step;
+            vx_curr += initial_accel * dt_step;
+            x_curr = wrap_periodic(x_curr + vx_curr * dt_step, wave.get_length());          
             return;
         }
        
@@ -709,8 +708,6 @@ private:
 
         // Periodicity wrap
         x_curr = wrap_periodic(x_curr, wave.get_length());
-
-        t += dt;
     }
 
 public:
@@ -774,6 +771,7 @@ public:
 
             // Integrate horizontal position and velocity with RK4
             rk4_step(x, vx, t, dt);
+            t += dt;
         }
     }
 };
