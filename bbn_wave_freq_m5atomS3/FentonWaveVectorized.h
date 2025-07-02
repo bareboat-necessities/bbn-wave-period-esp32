@@ -252,8 +252,8 @@ private:
             });
         }
         const VectorF um = VectorF::Constant(-B0) + 
-                         (B.tail(N).transpose() * (kj.asDiagonal() * (C1.array() * cos_terms.array())).matrix()).transpose();
-        const VectorF vm = (B.tail(N).transpose() * (kj.asDiagonal() * (S1.array() * sin_terms.array())).matrix()).transpose();
+                         (B.tail(N).transpose() * kj.asDiagonal() * ((C1.array() * cos_terms.array())).matrix()).transpose();
+        const VectorF vm = (B.tail(N).transpose() * kj.asDiagonal() * ((S1.array() * sin_terms.array())).matrix()).transpose();
 
         residual.head(N+1) = VectorF::Constant(-B0).cwiseProduct(eta) + 
                            (B.tail(N).transpose() * (S1.array() * cos_terms.array()).matrix()).transpose() + 
