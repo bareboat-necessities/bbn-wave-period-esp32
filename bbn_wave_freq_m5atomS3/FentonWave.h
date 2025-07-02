@@ -767,7 +767,9 @@ public:
             float z_ddot = (z_dot - prev_z_dot) / dt;
 
             // Call user callback with current state
-            callback(t, z, z_dot, z_ddot, x, vx);
+            if (t > dt) {
+                callback(t, z, z_dot, z_ddot, x, vx);
+            }
 
             prev_z_dot = z_dot;
 
