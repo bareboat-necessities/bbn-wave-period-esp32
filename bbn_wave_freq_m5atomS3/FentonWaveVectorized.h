@@ -225,55 +225,48 @@ private:
         R = coeffs(2*N+3);
     }
 
-    BigVector compute_residual(const BigVector& coeffs, Real H, Real k, Real D) {
-        BigVector residual = BigVector::Zero();
-        const VectorF B = coeffs.template segment<N+1>(0);
-        const VectorF eta = coeffs.template segment<N+1>(N+1);
-        const Real Q = coeffs(2*N+2);
-        const Real R = coeffs(2*N+3);
-        const Real B0 = B(0);
+    Eigen::Matrix<Real, StateDim, 1>
+    compute_residual(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
+        Eigen::Matrix<Real, StateDim, 1> f;
+        auto B = coeffs.template segment<N + 1>(0);
+        auto eta = coeffs.template segment<N + 1>(N + 1);
+        Real Q = coeffs(2 * N + 2);
+        Real R = coeffs(2 * N + 3);
+        Real B0 = B(0);
 
-        const VectorF x_m = VectorF::LinSpaced(N+1, 0, N) * (M_PI / N);
-        const VectorN kj = VectorN::LinSpaced(N, 1, N) * k;
+        for (int m = 0; m <= N; ++m) {
+            Real x_m = M_PI * m / N;
+            Real eta_m = eta(m);
+            
+            Real um = -B0;
+            Real vm = 0;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
+                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);
+                Real S2 = std::sin(j * x_m);
+                Real C2 = std::cos(j * x_m);
+                um += kj * B(j) * C1 * C2;
+                vm += kj * B(j) * S1 * S2;
+            }
 
-        const MatrixNxP trig_terms = (kj * x_m.transpose()).array();
-        const MatrixNxP cos_terms = trig_terms.array().cos().matrix();
-        const MatrixNxP sin_terms = trig_terms.array().sin().matrix();
+            f(m) = -B0 * eta_m;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
+                Real C2 = std::cos(j * x_m);
+                f(m) += B(j) * S1 * C2;
+            }
+            f(m) += Q;
 
-        const MatrixNxP eta_kj = (kj * eta.transpose()).array();
-        MatrixNxP S1 = MatrixNxP::Zero();
-        MatrixNxP C1 = MatrixNxP::Zero();
-        for (int j = 0; j < N; ++j) {
-            Real kj_val = kj(j);
-            S1.row(j) = eta.transpose().unaryExpr([&](Real eta_val) {
-                return sinh_by_cosh(kj_val * eta_val, kj_val * D);
-            });
-            C1.row(j) = eta.transpose().unaryExpr([&](Real eta_val) {
-                return cosh_by_cosh(kj_val * eta_val, kj_val * D);
-            });
+            f(N + 1 + m) = 0.5f * (um * um + vm * vm) + eta_m - R;
         }
 
-        const MatrixNxP CC = C1.array() * cos_terms.array();
-        const MatrixNxP SS = S1.array() * sin_terms.array();
-        VectorF um = VectorF::Constant(-B0);
-        VectorF vm = VectorF::Zero();
-        for (int j = 0; j < N; ++j) {
-            um += B(j+1) * kj(j) * CC.row(j).transpose();
-            vm += B(j+1) * kj(j) * SS.row(j).transpose();
-        }
+        f(2 * N + 2) = (eta.sum() - 0.5f * (eta(0) + eta(N))) / N - 1.0f;
+        f(2 * N + 3) = eta.maxCoeff() - eta.minCoeff() - H;
 
-        const MatrixNxP SC = S1.array() * cos_terms.array();
-        residual.head(N+1) = -B0 * eta + SC.transpose() * B.tail(N) + VectorF::Constant(Q);
-
-        residual.segment(N+1, N+1) = 0.5 * (um.array().square() + vm.array().square()) + 
-                                   eta.array() - R;
-
-        residual(2*N+2) = eta.mean() * (N+1)/N - 1.0f;
-        residual(2*N+3) = eta.maxCoeff() - eta.minCoeff() - H;
-
-        return residual;
+        return f;
     }
-
 
     Eigen::Matrix<Real, StateDim, StateDim>
     compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
