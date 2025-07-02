@@ -306,10 +306,21 @@ private:
         J.block(0, 0, N+1, 1) = -eta;
         J.block(0, 1, N+1, N) = SC.transpose();
         
-        auto term = ((kj_sq.asDiagonal() * CC).array() / eta.transpose().replicate(N, 1).array()) * SC.array();
-        VectorF diag_terms = VectorF::Constant(-B0) + term.colwise().sum().transpose().matrix();
-        
-        J.block(N+1, N+1, N+1, N+1).diagonal() = diag_terms;
+        for (int m = 0; m <= N; ++m) {
+            Real eta_m = eta(m);
+            Real x_m_val = x_m(m);
+            Real sum_du = 0.0f;
+            Real sum_dv = 0.0f;
+            for (int j = 1; j <= N; ++j) {
+                Real kj_val = kj(j-1);
+                Real Bj = B(j);
+                Real kj2 = kj_val * kj_val;
+                sum_du += Bj * kj2 * std::sinh(kj_val * eta_m) * std::cos(kj_val * x_m_val);
+                sum_dv += Bj * kj2 * std::cosh(kj_val * eta_m) * std::sin(kj_val * x_m_val);
+            }   
+            Real dF_deta = um(m) * sum_du + vm(m) * sum_dv + 1.0f;
+            J(N+1 + m, N+1 + m) = dF_deta;
+        }
         J.block(N+1, 0, N+1, 1) = -um;
         
         for (int j = 1; j <= N; ++j) {
