@@ -780,7 +780,7 @@ void FentonWave_test_2() {
     const float depth = 10.0f;   // Water depth (m)
     const float length = 50.0f;  // Wavelength (m)
     const float init_x = 0.0f;   // Initial x (m)
-    const float mass = 0.01f;    // Mass (kg)
+    const float mass = 1.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
     
     // Simulation parameters
