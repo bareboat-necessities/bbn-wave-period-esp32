@@ -785,7 +785,7 @@ void FentonWave_test_2() {
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
     
     // Simulation parameters
-    const float duration = 20.0f; // Simulation duration (s)
+    const float duration = 120.0f; // Simulation duration (s)
     const float dt = 0.005f;      // Time step (s)
 
     // Create a 4th-order Fenton wave and a surface tracker
