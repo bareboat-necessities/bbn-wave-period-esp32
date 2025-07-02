@@ -307,7 +307,7 @@ private:
         J.block(0, 1, N+1, N) = SC.transpose();
         
         auto term = (kj_sq.asDiagonal() * CC).array() / eta.transpose().replicate(N, 1).array();
-        term *= SC.array();  // Elementwise product
+        term = term * SC.array();  // Elementwise product
         VectorF diag_terms = VectorF::Constant(-B0) + term.colwise().sum().transpose().matrix();
         
         J.block(N+1, N+1, N+1, N+1).diagonal() = diag_terms;
