@@ -293,10 +293,10 @@ private:
             });
         }
 
-        const MatrixNxP SC = S1 * cos_terms.array();
-        const MatrixNxP SS = S1 * sin_terms.array();
-        const MatrixNxP CC = C1 * cos_terms.array();
-        const MatrixNxP CS = C1 * sin_terms.array();
+        const MatrixNxP SC = S1.array() * cos_terms.array();
+        const MatrixNxP SS = S1.array() * sin_terms.array();
+        const MatrixNxP CC = C1.array() * cos_terms.array();
+        const MatrixNxP CS = C1.array() * sin_terms.array();
 
         const VectorF um = VectorF::Constant(-B0) + 
                          (B.tail(N).transpose() * (kj.asDiagonal() * CC)).transpose();
