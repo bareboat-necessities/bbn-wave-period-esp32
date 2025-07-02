@@ -274,83 +274,62 @@ private:
         return residual;
     }
 
-    BigMatrix compute_jacobian(const BigVector& coeffs, Real H, Real k, Real D) {
-        BigMatrix J = BigMatrix::Zero();
-        const VectorF B = coeffs.template segment<N+1>(0);
-        const VectorF eta = coeffs.template segment<N+1>(N+1);
-        const Real B0 = B(0);
 
-        const VectorF x_m = VectorF::LinSpaced(N+1, 0, N) * (M_PI / N);
-        const VectorN kj = VectorN::LinSpaced(N, 1, N) * k;
-        const VectorN kj_sq = kj.array().square();
+    Eigen::Matrix<Real, StateDim, StateDim>
+    compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
+        Eigen::Matrix<Real, StateDim, StateDim> J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
+        auto B = coeffs.template segment<N + 1>(0);
+        auto eta = coeffs.template segment<N + 1>(N + 1);
+        Real B0 = B(0);
 
-        const MatrixNxP trig_args = kj * x_m.transpose();
-        const MatrixNxP cos_terms = trig_args.array().cos();
-        const MatrixNxP sin_terms = trig_args.array().sin();
-
-        const MatrixNxP eta_kj = kj * eta.transpose();
-        MatrixNxP S1 = MatrixNxP::Zero();
-        MatrixNxP C1 = MatrixNxP::Zero();
-        for (int j = 0; j < N; ++j) {
-            Real kj_val = kj(j);
-            S1.row(j) = eta.transpose().unaryExpr([&](Real eta_val) {
-                return sinh_by_cosh(kj_val * eta_val, kj_val * D);
-            });
-            C1.row(j) = eta.transpose().unaryExpr([&](Real eta_val) {
-                return cosh_by_cosh(kj_val * eta_val, kj_val * D);
-            });
-        }
-
-        const MatrixNxP SC = S1.array() * cos_terms.array();
-        const MatrixNxP SS = S1.array() * sin_terms.array();
-        const MatrixNxP CC = C1.array() * cos_terms.array();
-        const MatrixNxP CS = C1.array() * sin_terms.array();
-
-        VectorF um = VectorF::Constant(-B0);
-        VectorF vm = VectorF::Zero();
-        for (int j = 0; j < N; ++j) {
-            um += B(j+1) * kj(j) * CC.row(j).transpose();
-            vm += B(j+1) * kj(j) * SS.row(j).transpose();
-        }
-
-        J.block(0, 0, N+1, 1) = -eta;
-        J.block(0, 1, N+1, N) = SC.transpose();
-        
         for (int m = 0; m <= N; ++m) {
             Real eta_m = eta(m);
-            Real x_m_val = x_m(m);
-            Real sum_du = 0.0f;
-            Real sum_dv = 0.0f;
+            Real x_m = M_PI * m / N;
+            Real um = -B0;
+            Real vm = 0;
+            
+            Eigen::Matrix<Real, N, 1> SC, SS, CC, CS;
             for (int j = 1; j <= N; ++j) {
-                Real kj_val = kj(j-1);
-                Real Bj = B(j);
-                Real kj2 = kj_val * kj_val;
-                sum_du += Bj * kj2 * std::sinh(kj_val * eta_m) * std::cos(kj_val * x_m_val);
-                sum_dv += Bj * kj2 * std::cosh(kj_val * eta_m) * std::sin(kj_val * x_m_val);
-            }   
-            Real dF_deta = um(m) * sum_du + vm(m) * sum_dv + 1.0f;
-            J(N+1 + m, N+1 + m) = dF_deta;
-        }
-        J.block(N+1, 0, N+1, 1) = -um;
-        
-        for (int j = 1; j <= N; ++j) {
-            J.block(N+1, j, N+1, 1) = k * j * 
-                (um.array() * CC.row(j-1).transpose().array() + 
-                 vm.array() * SS.row(j-1).transpose().array()).matrix();
-        }
-        
-        J.block(N+1, 2*N+2, N+1, 1) = VectorF::Constant(1);
-        J.block(N+1, 2*N+3, N+1, 1) = VectorF::Constant(-1);
-        
-        for (int m = 0; m <= N; ++m) {
-            J(2*N+2, N+1+m) = (m == 0 || m == N) ? 0.5f/N : 1.0f/N;
+                Real kj = j * k;
+                SC(j-1) = sinh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
+                SS(j-1) = sinh_by_cosh(kj * eta_m, kj * D) * std::sin(j * x_m);
+                CC(j-1) = cosh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
+                CS(j-1) = cosh_by_cosh(kj * eta_m, kj * D) * std::sin(j * x_m);
+                
+                um += kj * B(j) * CC(j-1);
+                vm += kj * B(j) * SS(j-1);
+            }
+
+            J(m, 0) = -eta_m;
+            for (int j = 1; j <= N; ++j) {
+                J(m, j) = SC(j-1);
+            }
+            J(m, N + 1 + m) = -B0;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                J(m, N + 1 + m) += B(j) * kj * CC(j-1);
+            }
+            J(m, 2 * N + 2) = 1;
+
+            J(N + 1 + m, 0) = -um;
+            for (int j = 1; j <= N; ++j) {
+                J(N + 1 + m, j) = k * j * (um * CC(j-1) + vm * SS(j-1));
+            }
+            J(N + 1 + m, N + 1 + m) = 1;
+            for (int j = 1; j <= N; ++j) {
+                Real kj = j * k;
+                J(N + 1 + m, N + 1 + m) += um * B(j) * kj * kj * SC(j-1);
+                J(N + 1 + m, N + 1 + m) += vm * B(j) * kj * kj * CS(j-1);
+            }
+            J(N + 1 + m, 2 * N + 3) = -1;
         }
 
-        int max_idx, min_idx;
-        eta.maxCoeff(&max_idx);
-        eta.minCoeff(&min_idx);
-        J(2*N+3, N+1+max_idx) = 1;
-        J(2*N+3, N+1+min_idx) = -1;
+        for (int j = 0; j <= N; ++j) {
+            J(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 0.5f/N : 1.0f/N;
+        }
+
+        J(2 * N + 3, N + 1) = 1;
+        J(2 * N + 3, 2 * N + 1) = -1;
 
         return J;
     }
