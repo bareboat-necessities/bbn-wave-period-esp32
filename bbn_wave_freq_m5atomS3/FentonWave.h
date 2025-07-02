@@ -700,6 +700,8 @@ private:
 
         // Periodicity wrap
         x_curr = wrap_periodic(x_curr, wave.get_length());
+
+        t += dt;
     }
 
 public:
@@ -748,8 +750,6 @@ public:
 
             // Integrate horizontal position and velocity with RK4
             rk4_step(x, vx, t, dt);
-
-            t += dt;
         }
     }
 };
