@@ -742,7 +742,9 @@ public:
             float z_ddot = (z_dot - prev_z_dot) / dt;
 
             // Call user callback with current state
-            callback(t, z, z_dot, z_ddot, x, vx);
+            if (t > dt) {
+                callback(t, z, z_dot, z_ddot, x, vx);
+            }
 
             prev_z_dot = z_dot;
 
@@ -781,7 +783,7 @@ void FentonWave_test_2() {
     const float height = 2.0f;   // Wave height (m)
     const float depth = 10.0f;   // Water depth (m)
     const float length = 50.0f;  // Wavelength (m)
-    const float mass = 100.0f;     // Mass (kg)
+    const float mass = 1.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
     
     // Simulation parameters
