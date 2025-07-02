@@ -724,11 +724,12 @@ public:
         const float eta_t = wave.surface_time_derivative(x, 0);
         const float eta_xx = wave.surface_second_space_derivative(x, 0);
         const float eta_xt = wave.surface_space_time_derivative(x, 0);
+        const float eta_tt = wave.surface_second_time_derivative(x, 0);
    
         // Physics-correct initial velocity
         vx = wave.horizontal_velocity(x, 0, 0) - wave.get_c();  
    
-        initial_accel = -9.81f * eta_x - (drag_coeff/mass) * vx - eta_xt - vx * eta_xx;
+        initial_accel = -9.81f * eta_x - (drag_coeff/mass) * vx - (eta_xt + 2.0f * vx * eta_xx + vx * vx * eta_xx + eta_tt) / (1.0f + eta_x * eta_x);
     }
 
     /**
