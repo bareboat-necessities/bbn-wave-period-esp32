@@ -730,7 +730,7 @@ public:
    
         vx = 0.0f; // wave.horizontal_velocity(x, 0, 0) - wave.get_c();  
    
-        initial_accel = 0.0; //-9.81f * eta_x - (drag_coeff/mass) * vx; // - (eta_xt + 2.0f * vx * eta_xx + vx * vx * eta_xx + eta_tt) / (1.0f + eta_x * eta_x);
+        initial_accel = -1.7; //-9.81f * eta_x - (drag_coeff/mass) * vx; // - (eta_xt + 2.0f * vx * eta_xx + vx * vx * eta_xx + eta_tt) / (1.0f + eta_x * eta_x);
     }
 
     /**
