@@ -282,12 +282,16 @@ private:
         const MatrixNxP sin_terms = trig_args.array().sin();
 
         const MatrixNxP eta_kj = kj * eta.transpose();
-        const MatrixNxP S1 = eta_kj.array().unaryExpr([&](Real val) {
-            return sinh_by_cosh(val, kj(0) * D);
-        });
-        const MatrixNxP C1 = eta_kj.array().unaryExpr([&](Real val) {
-            return cosh_by_cosh(val, kj(0) * D);
-        });
+        MatrixNxP S1, C1;
+        for (int j = 0; j < N; ++j) {
+            Real kj_val = kj(j);
+            S1.row(j) = eta.transpose().unaryExpr([&](Real eta_val) {
+                return sinh_by_cosh(kj_val * eta_val, kj_val * D);
+            });
+            C1.row(j) = eta.transpose().unaryExpr([&](Real eta_val) {
+                return cosh_by_cosh(kj_val * eta_val, kj_val * D);
+            });
+        }
 
         const MatrixNxP SC = S1 * cos_terms.array();
         const MatrixNxP SS = S1 * sin_terms.array();
