@@ -684,16 +684,10 @@ private:
         };
 
         if (t == 0.0f) {
-            // Tiny first step to avoid force discontinuity
-            const float micro_dt = dt * 0.01f;
-           
-            // Compute acceleration at t=0
-            float ax = accel(x, vx, 0);
-           
-            // Update state
-            vx += ax * micro_dt;
-            x = wrap_periodic(x + vx * micro_dt, wave.get_length());
-            t += micro_dt;
+            // Apply pre-computed physics-correct acceleration
+            vx += initial_accel * dt_step;
+            x = wrap_periodic(x + vx * dt_step, wave.get_length());          
+            t += dt_step;
             return;
         }
        
@@ -724,11 +718,27 @@ public:
     {
         float x0 = 0.0f;
 
-        // Start at x0 (wrapped to [0, L])
+        // Initialize position (phase-wrapped)
         x = wrap_periodic(x0, wave.get_length());
-
-        // Initialize vx to match orbital velocity at (x, z=0, t=0)
-        vx = wave.horizontal_velocity(x, 0, 0);    
+   
+        // Get wave kinematics at (x0, t=0) using existing methods
+        const float eta_x = wave.surface_slope(x, 0);
+        const float eta_t = wave.surface_time_derivative(x, 0);
+   
+        // Physics-correct initial velocity
+        vx = wave.horizontal_velocity(x, 0, 0);  // Exact orbital velocity at surface
+   
+        // Compute initial acceleration (2 methods for robustness)
+        if (std::abs(eta_x) < 1e-3f) {
+            // At crest/trough: curvature-driven acceleration
+            const float dx = 0.01f * wave.get_length();
+            const float eta_x_right = wave.surface_slope(x + dx, 0);
+            const float eta_x_left = wave.surface_slope(x - dx, 0);
+            initial_accel = -9.81f * (eta_x_right - eta_x_left) / (2 * dx);
+        } else {
+            // Normal case: slope-driven acceleration
+            initial_accel = -9.81f * eta_x - (drag_coeff/mass) * vx;
+        } 
     }
 
     /**
