@@ -147,29 +147,29 @@ public:
         compute();
     }
 
-/**
- * Calculates the stream function ψ(x,z,t) at a given point and time
- * 
- * Represents the mathematical function whose contours are flow streamlines:
- * ψ(x,z,t) = B₀*(z + d) + Σ[Bⱼ*sinh(jk(z+d))/cosh(jkd) * cos(jk(x-ct))] for j=1..N
- * 
- * Where:
- * - B₀ is the mean flow (wave phase speed c)
- * - Bⱼ are the Fourier coefficients of the stream function
- * - k is the wavenumber (2π/wavelength)
- * - d is the water depth
- * - c is the wave phase speed
- * 
- * Physical significance:
- * - Difference in ψ between two points equals the volume flow rate between them
- * - Contours of constant ψ represent fluid particle paths
- * - Used to derive velocity components (u = ∂ψ/∂z, w = -∂ψ/∂x)
- * 
- * @param x_val Horizontal position (m)
- * @param z_val Vertical position (m, 0=surface, negative below)
- * @param t Time (s)
- * @return Stream function value (m²/s)
- */
+   /**
+    * Calculates the stream function ψ(x,z,t) at a given point and time
+    * 
+    * Represents the mathematical function whose contours are flow streamlines:
+    * ψ(x,z,t) = B₀*(z + d) + Σ[Bⱼ*sinh(jk(z+d))/cosh(jkd) * cos(jk(x-ct))] for j=1..N
+    * 
+    * Where:
+    * - B₀ is the mean flow (wave phase speed c)
+    * - Bⱼ are the Fourier coefficients of the stream function
+    * - k is the wavenumber (2π/wavelength)
+    * - d is the water depth
+    * - c is the wave phase speed
+    * 
+    * Physical significance:
+    * - Difference in ψ between two points equals the volume flow rate between them
+    * - Contours of constant ψ represent fluid particle paths
+    * - Used to derive velocity components (u = ∂ψ/∂z, w = -∂ψ/∂x)
+    * 
+    * @param x_val Horizontal position (m)
+    * @param z_val Vertical position (m, 0=surface, negative below)
+    * @param t Time (s)
+    * @return Stream function value (m²/s)
+    */
     Real stream_function(Real x_val, Real z_val, Real t = 0) const {
         Real psi = B(0) * (z_val + depth);  // Mean flow component
         for (int j = 1; j <= N; ++j) {
@@ -182,27 +182,27 @@ public:
         return psi;
     }
 
-/**
- * Calculates the horizontal velocity component u(x,z,t) at a given point and time
- * 
- * Represents the horizontal water particle velocity:
- * u(x,z,t) = ∂ψ/∂z = B₀ + Σ[Bⱼ*jk*cosh(jk(z+d))/cosh(jkd) * cos(jk(x-ct))] for j=1..N
- * 
- * Where:
- * - B₀ is the mean flow (wave phase speed c)
- * - The sum represents oscillatory wave-induced velocities
- * - Hyperbolic cosine term produces depth attenuation
- * 
- * Physical characteristics:
- * - Maximum at wave crest/trough, minimum at nodes
- * - Decays with depth (faster for higher frequencies)
- * - Phase varies with position in wave
- * 
- * @param x_val Horizontal position (m)
- * @param z_val Vertical position (m, 0=surface, negative below)
- * @param t Time (s)
- * @return Horizontal velocity (m/s, positive in wave direction)
- */
+   /**
+    * Calculates the horizontal velocity component u(x,z,t) at a given point and time
+    * 
+    * Represents the horizontal water particle velocity:
+    * u(x,z,t) = ∂ψ/∂z = B₀ + Σ[Bⱼ*jk*cosh(jk(z+d))/cosh(jkd) * cos(jk(x-ct))] for j=1..N
+    * 
+    * Where:
+    * - B₀ is the mean flow (wave phase speed c)
+    * - The sum represents oscillatory wave-induced velocities
+    * - Hyperbolic cosine term produces depth attenuation
+    * 
+    * Physical characteristics:
+    * - Maximum at wave crest/trough, minimum at nodes
+    * - Decays with depth (faster for higher frequencies)
+    * - Phase varies with position in wave
+    * 
+    * @param x_val Horizontal position (m)
+    * @param z_val Vertical position (m, 0=surface, negative below)
+    * @param t Time (s)
+    * @return Horizontal velocity (m/s, positive in wave direction)
+    */
     Real horizontal_velocity(Real x_val, Real z_val, Real t = 0) const {
         Real u = B(0);  // Mean flow
         for (int j = 1; j <= N; ++j) {
@@ -215,27 +215,27 @@ public:
         return u;
     }
 
-/**
- * Calculates the vertical velocity component w(x,z,t) at a given point and time
- * 
- * Represents the vertical water particle velocity:
- * w(x,z,t) = -∂ψ/∂x = Σ[Bⱼ*jk*sinh(jk(z+d))/cosh(jkd) * sin(jk(x-ct))] for j=1..N
- * 
- * Where:
- * - The sum represents oscillatory wave-induced velocities
- * - Hyperbolic sine term produces depth attenuation
- * - 90° phase shift from horizontal velocity
- * 
- * Physical characteristics:
- * - Maximum at wave nodes, zero at crests/troughs
- * - Decays with depth (faster for higher frequencies)
- * - Leads horizontal velocity by 90° in progressive waves
- * 
- * @param x_val Horizontal position (m)
- * @param z_val Vertical position (m, 0=surface, negative below)
- * @param t Time (s)
- * @return Vertical velocity (m/s, positive upward)
- */
+   /**
+    * Calculates the vertical velocity component w(x,z,t) at a given point and time
+    * 
+    * Represents the vertical water particle velocity:
+    * w(x,z,t) = -∂ψ/∂x = Σ[Bⱼ*jk*sinh(jk(z+d))/cosh(jkd) * sin(jk(x-ct))] for j=1..N
+    * 
+    * Where:
+    * - The sum represents oscillatory wave-induced velocities
+    * - Hyperbolic sine term produces depth attenuation
+    * - 90° phase shift from horizontal velocity
+    * 
+    * Physical characteristics:
+    * - Maximum at wave nodes, zero at crests/troughs
+    * - Decays with depth (faster for higher frequencies)
+    * - Leads horizontal velocity by 90° in progressive waves
+    * 
+    * @param x_val Horizontal position (m)
+    * @param z_val Vertical position (m, 0=surface, negative below)
+    * @param t Time (s)
+    * @return Vertical velocity (m/s, positive upward)
+    */
     Real vertical_velocity(Real x_val, Real z_val, Real t = 0) const {
         Real w = 0.0f;
         for (int j = 1; j <= N; ++j) {
@@ -248,33 +248,33 @@ public:
         return w;
     }
 
-/**
- * Calculates the dynamic pressure p(x,z,t) at a given point and time
- * 
- * Represents the fluid pressure accounting for:
- * - Hydrostatic pressure (ρg(z-η))
- * - Dynamic pressure from fluid motion (½ρ(u²+w²))
- * - Wave-induced pressure variations
- * 
- * Derived from Bernoulli's equation in the wave frame:
- * p/ρ = R - ½(u²+w²) - g(z-η) + c*u
- * 
- * Where:
- * - R is the Bernoulli constant
- * - c*u accounts for transformation to moving frame
- * - η is the surface elevation
- * 
- * Physical significance:
- * - Pressure lags behind surface elevation
- * - Important for wave loading on structures
- * - Used in buoyancy calculations
- * 
- * @param x_val Horizontal position (m)
- * @param z_val Vertical position (m, 0=surface, negative below)
- * @param t Time (s)
- * @param rho Water density (kg/m³, default 1025 for seawater)
- * @return Pressure (Pa)
- */
+   /**
+    * Calculates the dynamic pressure p(x,z,t) at a given point and time
+    * 
+    * Represents the fluid pressure accounting for:
+    * - Hydrostatic pressure (ρg(z-η))
+    * - Dynamic pressure from fluid motion (½ρ(u²+w²))
+    * - Wave-induced pressure variations
+    * 
+    * Derived from Bernoulli's equation in the wave frame:
+    * p/ρ = R - ½(u²+w²) - g(z-η) + c*u
+    * 
+    * Where:
+    * - R is the Bernoulli constant
+    * - c*u accounts for transformation to moving frame
+    * - η is the surface elevation
+    * 
+    * Physical significance:
+    * - Pressure lags behind surface elevation
+    * - Important for wave loading on structures
+    * - Used in buoyancy calculations
+    * 
+    * @param x_val Horizontal position (m)
+    * @param z_val Vertical position (m, 0=surface, negative below)
+    * @param t Time (s)
+    * @param rho Water density (kg/m³, default 1025 for seawater)
+    * @return Pressure (Pa)
+    */
     Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
         Real u = horizontal_velocity(x_val, z_val, t);
         Real w = vertical_velocity(x_val, z_val, t);
@@ -285,17 +285,17 @@ public:
         return rho * (R - 0.5*(u*u + w*w) - rho*g*(z_val - eta) + rho*c*u);
     }
 
-/**
- * Calculates the surface elevation (wave height) at position x_val and time t
- * 
- * Represents the actual wave shape at any point in space and time:
- * η(x,t) = E₀ + Σ[Eⱼ * cos(j*k*(x - c*t))] for j=1..N
- * Where:
- * - E₀ is the mean water level (0th coefficient)
- * - Eⱼ are the Fourier coefficients (wave amplitude components)
- * - j*k is the wavenumber for each harmonic
- * - c is the wave phase speed
- */
+   /**
+    * Calculates the surface elevation (wave height) at position x_val and time t
+    * 
+    * Represents the actual wave shape at any point in space and time:
+    * η(x,t) = E₀ + Σ[Eⱼ * cos(j*k*(x - c*t))] for j=1..N
+    * Where:
+    * - E₀ is the mean water level (0th coefficient)
+    * - Eⱼ are the Fourier coefficients (wave amplitude components)
+    * - j*k is the wavenumber for each harmonic
+    * - c is the wave phase speed
+    */
     Real surface_elevation(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
@@ -304,16 +304,16 @@ public:
         return sum;
     }
 
-/**
- * Calculates the spatial derivative of surface elevation (wave slope)
- * 
- * Represents how steep the wave is at a given point:
- * dη/dx = -k * Σ[j*Eⱼ * sin(j*k*(x - c*t))] for j=1..N
- * 
- * Used for:
- * - Determining breaking wave conditions
- * - Calculating kinematic surface quantities
- */
+   /**
+    * Calculates the spatial derivative of surface elevation (wave slope)
+    * 
+    * Represents how steep the wave is at a given point:
+    * dη/dx = -k * Σ[j*Eⱼ * sin(j*k*(x - c*t))] for j=1..N
+    * 
+    * Used for:
+    * - Determining breaking wave conditions
+    * - Calculating kinematic surface quantities
+    */
     Real surface_slope(Real x_val, Real t = 0) const {
         Real d_eta = 0.0f;
         for (int j = 0; j <= N; ++j) {
@@ -322,31 +322,31 @@ public:
         return d_eta;
     }
 
-/**
- * Calculates the temporal derivative of surface elevation (vertical velocity at surface)
- * 
- * Represents how fast the water surface is moving up/down at a fixed point:
- * dη/dt = -c * dη/dx (using chain rule from slope calculation)
- * 
- * Used for:
- * - Wave energy calculations
- * - Surface boundary conditions
- */
+   /**
+    * Calculates the temporal derivative of surface elevation (vertical velocity at surface)
+    * 
+    * Represents how fast the water surface is moving up/down at a fixed point:
+    * dη/dt = -c * dη/dx (using chain rule from slope calculation)
+    * 
+    * Used for:
+    * - Wave energy calculations
+    * - Surface boundary conditions
+    */
     Real surface_time_derivative(Real x_val, Real t = 0) const {
         return -c * surface_slope(x_val, t);
     }
 
-/**
- * Calculates the second temporal derivative of surface elevation (vertical acceleration at surface)
- * 
- * Represents the acceleration of the water surface:
- * d²η/dt² = -Σ[(j*ω)² * Eⱼ * cos(j*k*(x - c*t))] for j=1..N
- * Where ω = c*k is the angular frequency
- * 
- * Used for:
- * - Dynamic pressure calculations
- * - Wave impact studies
- */
+   /**
+    * Calculates the second temporal derivative of surface elevation (vertical acceleration at surface)
+    * 
+    * Represents the acceleration of the water surface:
+    * d²η/dt² = -Σ[(j*ω)² * Eⱼ * cos(j*k*(x - c*t))] for j=1..N
+    * Where ω = c*k is the angular frequency
+    * 
+    * Used for:
+    * - Dynamic pressure calculations
+    * - Wave impact studies
+    */
     Real surface_second_time_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
@@ -356,16 +356,16 @@ public:
         return sum;
     }
 
-/**
- * Calculates the mixed space-time derivative of surface elevation
- * 
- * Represents the rate of change of slope over time:
- * d²η/dxdt = Σ[j²*k*ω * Eⱼ * sin(j*k*(x - c*t))] for j=1..N
- * 
- * Used for:
- * - Nonlinear wave studies
- * - Wave-current interaction models
- */
+   /**
+    * Calculates the mixed space-time derivative of surface elevation
+    * 
+    * Represents the rate of change of slope over time:
+    * d²η/dxdt = Σ[j²*k*ω * Eⱼ * sin(j*k*(x - c*t))] for j=1..N
+    * 
+    * Used for:
+    * - Nonlinear wave studies
+    * - Wave-current interaction models
+    */
     Real surface_space_time_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
@@ -375,16 +375,16 @@ public:
         return sum;
     }
 
-/**
- * Calculates the second spatial derivative of surface elevation (curvature)
- * 
- * Represents how sharply curved the wave surface is:
- * d²η/dx² = -k² * Σ[j²*Eⱼ * cos(j*k*(x - c*t))] for j=1..N
- * 
- * Used for:
- * - Surface tension effects
- * - Wave instability analysis
- */
+   /**
+    * Calculates the second spatial derivative of surface elevation (curvature)
+    * 
+    * Represents how sharply curved the wave surface is:
+    * d²η/dx² = -k² * Σ[j²*Eⱼ * cos(j*k*(x - c*t))] for j=1..N
+    * 
+    * Used for:
+    * - Surface tension effects
+    * - Wave instability analysis
+    */
     Real surface_second_space_derivative(Real x_val, Real t = 0) const {
         Real sum = 0;
         for (int j = 0; j <= N; ++j) {
