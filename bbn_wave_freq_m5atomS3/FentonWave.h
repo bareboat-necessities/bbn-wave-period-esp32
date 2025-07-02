@@ -703,8 +703,8 @@ private:
     }
 
 public:
-    WaveSurfaceTracker(float height, float depth, float length, float x0, float mass_kg, float drag_coeff_)
-        : wave(height, depth, length), x(x0), mass(mass_kg), drag_coeff(drag_coeff_) {}
+    WaveSurfaceTracker(float height, float depth, float length, float mass_kg, float drag_coeff_)
+        : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_) {}
 
     /**
      * @brief Track the floating object on the wave surface over time.
@@ -722,6 +722,7 @@ public:
         dt = std::clamp(timestep, 1e-5f, 0.1f);
 
         t = 0.0f;
+        x = 0.0f;
         vx = wave.horizontal_velocity(x, 0, 0);
 
         // Initialize vertical velocity and acceleration to zero
@@ -753,6 +754,7 @@ public:
     }
 };
 
+
 #ifdef FENTON_TEST
 template class FentonWave<4>;
 template class WaveSurfaceTracker<4>;
@@ -779,8 +781,7 @@ void FentonWave_test_2() {
     const float height = 2.0f;   // Wave height (m)
     const float depth = 10.0f;   // Water depth (m)
     const float length = 50.0f;  // Wavelength (m)
-    const float init_x = 0.0f;   // Initial x (m)
-    const float mass = 1.0f;     // Mass (kg)
+    const float mass = 100.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
     
     // Simulation parameters
@@ -788,7 +789,7 @@ void FentonWave_test_2() {
     const float dt = 0.005f;      // Time step (s)
 
     // Create a 4th-order Fenton wave and a surface tracker
-    WaveSurfaceTracker<4> tracker(height, depth, length, init_x, mass, drag);
+    WaveSurfaceTracker<4> tracker(height, depth, length, mass, drag);
 
     // Output file
     std::ofstream out("wave_tracker_data.csv");
