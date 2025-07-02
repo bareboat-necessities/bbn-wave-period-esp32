@@ -723,7 +723,7 @@ public:
         float timestep,
         std::function<void(float, float, float, float, float, float)> callback)
     {
-        dt = std::clamp(timestep, 1e-5f, 0.1f);
+        dt = clamp_value(timestep, 1e-5f, 0.1f);
 
         t = 0.0f;
 
