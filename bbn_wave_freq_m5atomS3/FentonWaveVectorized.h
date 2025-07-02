@@ -373,8 +373,11 @@ private:
               J(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 0.5f / N : 1.0f / N;
       
           // Constraint: peak-to-trough height - H
-          J(2 * N + 3, N + 1 + eta.maxCoeffIndex()) = 1;
-          J(2 * N + 3, N + 1 + eta.minCoeffIndex()) = -1;
+         Eigen::Index max_idx, min_idx;
+         eta.maxCoeff(&max_idx);
+         eta.minCoeff(&min_idx);
+          J(2 * N + 3, N + 1 + eta.max_idx) = 1;
+          J(2 * N + 3, N + 1 + eta.min_idx) = -1;
       
           return J;
       }
