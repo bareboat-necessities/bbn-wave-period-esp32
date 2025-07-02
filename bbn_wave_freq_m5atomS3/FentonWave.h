@@ -50,14 +50,13 @@ public:
     using Real   = float;
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
     using Matrix = Eigen::Matrix<Real, N + 1, N + 1>;
-    static constexpr Real PI = static_cast<Real>(3.14159265358979323846f);
 
     static const Matrix& cosine_matrix() {
         static const Matrix M = [](){
             Matrix m;
             for(int j = 0; j <= N; ++j)
                 for(int i = 0; i <= N; ++i)
-                    m(j,i) = std::cos(j * i * PI / N);
+                    m(j,i) = std::cos(j * i * M_PI / N);
             return m;
         }(); return M;
     }
