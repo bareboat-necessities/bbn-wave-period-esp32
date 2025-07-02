@@ -331,6 +331,7 @@ private:
                  vm.array() * SS.row(j-1).transpose().array()).matrix();
         }
         
+        J.block(N+1, 2*N+2, N+1, 1) = VectorF::Constant(1);
         J.block(N+1, 2*N+3, N+1, 1) = VectorF::Constant(-1);
         
         for (int m = 0; m <= N; ++m) {
