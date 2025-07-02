@@ -301,9 +301,8 @@ private:
         const MatrixNxP CC = C1.array() * cos_terms.array();
         const MatrixNxP CS = C1.array() * sin_terms.array();
 
-        const VectorF um = VectorF::Constant(-B0) + 
-                         (B.tail(N).transpose() * (kj.asDiagonal() * CC)).transpose();
-        const VectorF vm = (B.tail(N).transpose() * (kj.asDiagonal() * SS)).transpose();
+        VectorF um = VectorF::Constant(-B0) + ((kj.asDiagonal() * CC).transpose() * B.tail(N));
+        VectorF vm = ((kj.asDiagonal() * SS).transpose() * B.tail(N));
 
         J.block(0, 0, N+1, 1) = -eta;
         J.block(0, 1, N+1, N) = SC.transpose();
