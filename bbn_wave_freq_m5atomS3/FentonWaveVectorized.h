@@ -101,14 +101,66 @@ public:
         compute();
     }
 
+    Real stream_function(Real x_val, Real z_val, Real t = 0) const {
+        Real psi = B(0) * (z_val + depth);  // Mean flow component
+        for (int j = 1; j <= N; ++j) {
+            Real kj = j * k;
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B(j) * std::sinh(kj * (z_val + depth)) / denom;
+            psi += term * std::cos(kj * (x_val - c * t));
+        }
+        return psi;
+    }
+
+    Real horizontal_velocity(Real x_val, Real z_val, Real t = 0) const {
+        Real u = B(0);  // Mean flow
+        for (int j = 1; j <= N; ++j) {
+            Real kj = j * k;
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B(j) * kj / denom;
+            u += term * std::cosh(kj * (z_val + depth)) * std::cos(kj * (x_val - c * t));
+        }
+        return u;
+    }
+
+    Real vertical_velocity(Real x_val, Real z_val, Real t = 0) const {
+        Real w = 0.0f;
+        for (int j = 1; j <= N; ++j) {
+            Real kj = j * k;
+            Real denom = std::cosh(kj * depth);
+            if (denom < std::numeric_limits<Real>::epsilon()) continue;
+            Real term = B(j) * kj / denom;
+            w += term * std::sinh(kj * (z_val + depth)) * std::sin(kj * (x_val - c * t));
+        }
+        return w;
+    }
+
+    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
+        Real u = horizontal_velocity(x_val, z_val, t);
+        Real w = vertical_velocity(x_val, z_val, t);
+        Real eta = surface_elevation(x_val, t);
+        
+        // Bernoulli equation: p/ρ + ½(u²+w²) + g(z-η) + ∂φ/∂t = R
+        // For steady flow in wave frame: ∂φ/∂t = -c*u
+        return rho * (R - 0.5*(u*u + w*w) - g*(z_val - eta) + c*u);
+    }
+
     Real surface_elevation(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return E(0) + (E.tail(N).array() * (kj_cache.array() * phase_base).cos()).sum();
+        Real sum = 0;
+        for (int j = 0; j <= N; ++j) {
+            sum += E(j) * std::cos(j * k * (x_val - c * t));
+        }
+        return sum;
     }
 
     Real surface_slope(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return -k * (E.tail(N).array() * kj_cache.array() * (kj_cache.array() * phase_base).sin()).sum();
+        Real d_eta = 0.0f;
+        for (int j = 0; j <= N; ++j) {
+            d_eta -= E(j) * j * k * std::sin(j * k * (x_val - c * t));
+        }
+        return d_eta;
     }
 
     Real surface_time_derivative(Real x_val, Real t = 0) const {
@@ -116,30 +168,31 @@ public:
     }
 
     Real surface_second_time_derivative(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return -(E.tail(N).array() * (kj_cache.array() * omega).square() * (kj_cache.array() * phase_base).cos()).sum();
+        Real sum = 0;
+        for (int j = 0; j <= N; ++j) {
+            Real omega_j = j * omega;
+            sum -= E(j) * omega_j * omega_j * std::cos(j * k * (x_val - c * t));
+        }
+        return sum;
     }
-    
+
     Real surface_space_time_derivative(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return (E.tail(N).array() * kj_cache.array().square() * (k * omega) * 
-               (kj_cache.array() * phase_base).sin()).sum();
+        Real sum = 0;
+        for (int j = 0; j <= N; ++j) {
+            Real term = j * k * j * omega;
+            sum += E(j) * term * std::sin(j * k * (x_val - c * t));
+        }
+        return sum;
     }
-    
+
     Real surface_second_space_derivative(Real x_val, Real t = 0) const {
-        const Real phase_base = k * (x_val - c * t);
-        return -(E.tail(N).array() * kj_cache.array().square() * k * k * 
-                (kj_cache.array() * phase_base).cos()).sum();
+        Real sum = 0;
+        for (int j = 0; j <= N; ++j) {
+            Real coeff = -j * k * j * k;
+            sum += E(j) * coeff * std::cos(j * k * (x_val - c * t));
+        }
+        return sum;
     }
-
-    Real vertical_velocity(Real x_val, Real z, Real t = 0) const {
-        const auto kj_array = kj_cache.array();
-        const auto arg = kj_array * (x_val - c * t);
-        const auto denom = (kj_cache * depth).array().cosh();
-        const auto sinh_z = (kj_array * (z + depth)).array().sinh();
-        return (B.tail(N).array() * kj_array * arg.sin() * sinh_z.array() / denom).sum();
-    }
-
     Real get_c() const { return c; }
     Real get_k() const { return k; }
     Real get_T() const { return T; }
