@@ -729,7 +729,7 @@ public:
         const float eta_xt = wave.surface_space_time_derivative(x, 0);
    
         // Physics-correct initial velocity
-        vx = wave.horizontal_velocity(x, 0, 0);  // Exact orbital velocity at surface
+        vx = wave.horizontal_velocity(x, 0, 0) - wave.get_c();  
    
         initial_accel = -9.81f * eta_x - (drag_coeff/mass) * vx - eta_xt - vx * eta_xx;
     }
