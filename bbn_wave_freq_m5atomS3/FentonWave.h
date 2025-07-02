@@ -714,7 +714,7 @@ public:
     WaveSurfaceTracker(float height, float depth, float length, float mass_kg, float drag_coeff_)
         : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_) 
     {
-        float x0 = 10.0f;
+        float x0 = 0.0f;
 
         // Initialize position (phase-wrapped)
         x = wrap_periodic(x0, wave.get_length());
