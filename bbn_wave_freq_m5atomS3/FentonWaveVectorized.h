@@ -85,6 +85,9 @@ private:
     using MatrixNxP = Eigen::Matrix<Real, N, N + 1>;
     using BigVector = Eigen::Matrix<Real, StateDim, 1>;
     using BigMatrix = Eigen::Matrix<Real, StateDim, StateDim>;
+    using RealArray = Eigen::Array<Real, N+1, 1>;
+    using PhaseArray = Eigen::Array<Real, N+1, 1>;
+    using VelocityTerms = Eigen::Array<Real, N, 1>;
 
 public:
     Real height, depth, length, g, relax;
@@ -101,66 +104,15 @@ public:
         compute();
     }
 
-    Real stream_function(Real x_val, Real z_val, Real t = 0) const {
-        Real psi = B(0) * (z_val + depth);  // Mean flow component
-        for (int j = 1; j <= N; ++j) {
-            Real kj = j * k;
-            Real denom = std::cosh(kj * depth);
-            if (denom < std::numeric_limits<Real>::epsilon()) continue;
-            Real term = B(j) * std::sinh(kj * (z_val + depth)) / denom;
-            psi += term * std::cos(kj * (x_val - c * t));
-        }
-        return psi;
-    }
-
-    Real horizontal_velocity(Real x_val, Real z_val, Real t = 0) const {
-        Real u = B(0);  // Mean flow
-        for (int j = 1; j <= N; ++j) {
-            Real kj = j * k;
-            Real denom = std::cosh(kj * depth);
-            if (denom < std::numeric_limits<Real>::epsilon()) continue;
-            Real term = B(j) * kj / denom;
-            u += term * std::cosh(kj * (z_val + depth)) * std::cos(kj * (x_val - c * t));
-        }
-        return u;
-    }
-
-    Real vertical_velocity(Real x_val, Real z_val, Real t = 0) const {
-        Real w = 0.0f;
-        for (int j = 1; j <= N; ++j) {
-            Real kj = j * k;
-            Real denom = std::cosh(kj * depth);
-            if (denom < std::numeric_limits<Real>::epsilon()) continue;
-            Real term = B(j) * kj / denom;
-            w += term * std::sinh(kj * (z_val + depth)) * std::sin(kj * (x_val - c * t));
-        }
-        return w;
-    }
-
-    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
-        Real u = horizontal_velocity(x_val, z_val, t);
-        Real w = vertical_velocity(x_val, z_val, t);
-        Real eta = surface_elevation(x_val, t);
-        
-        // Bernoulli equation: p/ρ + ½(u²+w²) + g(z-η) + ∂φ/∂t = R
-        // For steady flow in wave frame: ∂φ/∂t = -c*u
-        return rho * (R - 0.5*(u*u + w*w) - g*(z_val - eta) + c*u);
-    }
-
     Real surface_elevation(Real x_val, Real t = 0) const {
-        Real sum = 0;
-        for (int j = 0; j <= N; ++j) {
-            sum += E(j) * std::cos(j * k * (x_val - c * t));
-        }
-        return sum;
+        const PhaseArray phases = compute_phases(x_val, t);
+        return (E.array() * phases.cos()).sum();
     }
 
     Real surface_slope(Real x_val, Real t = 0) const {
-        Real d_eta = 0.0f;
-        for (int j = 0; j <= N; ++j) {
-            d_eta -= E(j) * j * k * std::sin(j * k * (x_val - c * t));
-        }
-        return d_eta;
+        const RealArray j = create_harmonic_indices();
+        const PhaseArray phases = compute_phases(x_val, t);
+        return -(E.array() * j * k * phases.sin()).sum();
     }
 
     Real surface_time_derivative(Real x_val, Real t = 0) const {
@@ -168,31 +120,56 @@ public:
     }
 
     Real surface_second_time_derivative(Real x_val, Real t = 0) const {
-        Real sum = 0;
-        for (int j = 0; j <= N; ++j) {
-            Real omega_j = j * omega;
-            sum -= E(j) * omega_j * omega_j * std::cos(j * k * (x_val - c * t));
-        }
-        return sum;
+        const RealArray j = create_harmonic_indices();
+        const PhaseArray phases = compute_phases(x_val, t);
+        const RealArray omega_j = j * omega;
+        return -(E.array() * omega_j.square() * phases.cos()).sum();
     }
 
     Real surface_space_time_derivative(Real x_val, Real t = 0) const {
-        Real sum = 0;
-        for (int j = 0; j <= N; ++j) {
-            Real term = j * k * j * omega;
-            sum += E(j) * term * std::sin(j * k * (x_val - c * t));
-        }
-        return sum;
+        const RealArray j = create_harmonic_indices();
+        const PhaseArray phases = compute_phases(x_val, t);
+        return (E.array() * j.square() * k * omega * phases.sin()).sum();
     }
 
     Real surface_second_space_derivative(Real x_val, Real t = 0) const {
-        Real sum = 0;
-        for (int j = 0; j <= N; ++j) {
-            Real coeff = -j * k * j * k;
-            sum += E(j) * coeff * std::cos(j * k * (x_val - c * t));
-        }
-        return sum;
+        const RealArray j = create_harmonic_indices();
+        const PhaseArray phases = compute_phases(x_val, t);
+        return -(E.array() * j.square() * k * k * phases.cos()).sum();
     }
+
+    // Velocity and pressure methods
+    Real stream_function(Real x_val, Real z_val, Real t = 0) const {
+        const Real phase = k * (x_val - c * t);
+        const VelocityTerms terms = compute_velocity_terms(z_val, phase, false);
+        return B(0) * (z_val + depth) + (terms * (j_cache.array() * phase).cos()).sum();
+    }
+
+    Real horizontal_velocity(Real x_val, Real z_val, Real t = 0) const {
+        const Real phase = k * (x_val - c * t);
+        const VelocityTerms terms = compute_velocity_terms(z_val, phase, true);
+        return B(0) + (terms * (j_cache.array() * phase).cos()).sum();
+    }
+
+    Real vertical_velocity(Real x_val, Real z_val, Real t = 0) const {
+        const Real phase = k * (x_val - c * t);
+        const VelocityTerms terms = compute_velocity_terms(z_val, phase, false);
+        return (terms * (j_cache.array() * phase).sin()).sum();
+    }
+
+    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
+        const Real u = horizontal_velocity(x_val, z_val, t);
+        const Real w = vertical_velocity(x_val, z_val, t);
+        const Real eta = surface_elevation(x_val, t);
+        
+        // Bernoulli equation components
+        const Real kinetic_energy = 0.5f * (u*u + w*w);
+        const Real potential_energy = g * (z_val - eta);
+        const Real flow_work = c * u;
+
+        return rho * (R - kinetic_energy - potential_energy + flow_work);
+    }
+
     Real get_c() const { return c; }
     Real get_k() const { return k; }
     Real get_T() const { return T; }
@@ -238,6 +215,24 @@ private:
         omega = c * k;
 
         compute_elevation_coefficients();
+    }
+
+    RealArray create_harmonic_indices() const {
+        return RealArray::LinSpaced(N+1, 0, N);
+    }
+
+    PhaseArray compute_phases(Real x_val, Real t) const {
+        return create_harmonic_indices() * k * (x_val - c * t);
+    }
+
+    VelocityTerms compute_velocity_terms(Real z_val, Real phase, bool for_horizontal) const {
+        const RealArray kj = kj_cache.array();
+        const RealArray denom = (kj * depth).cosh();
+        
+        VelocityTerms terms = kj * B.tail(N).array() / denom;
+        return for_horizontal 
+            ? terms * (kj * (z_val + depth)).cosh()
+            : terms * (kj * (z_val + depth)).sinh();
     }
 
     void compute_elevation_coefficients() {
