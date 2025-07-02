@@ -683,20 +683,6 @@ private:
             return compute_horizontal_acceleration(x_in, vx_in, t_in);
         };
 
-        if (t == 0.0f) {
-            // Tiny first step to avoid force discontinuity
-            const float micro_dt = dt_step * 0.01f;
-            
-            // Compute acceleration at t=0
-            float ax = compute_horizontal_acceleration(x, vx, 0);
-            
-            // Update state
-            vx += ax * micro_dt;
-            x = wrap_periodic(x + vx * micro_dt, wave.get_length());
-            t += micro_dt;
-            return;
-        }
-
         float k1_v = accel(x_curr, vx_curr, t_curr);
         float k1_x = vx_curr;
 
@@ -718,14 +704,7 @@ private:
 
 public:
     WaveSurfaceTracker(float height, float depth, float length, float x0, float mass_kg, float drag_coeff_)
-        : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_) 
-    {
-        // Start at x0 (wrapped to [0, L])
-        x = wrap_periodic(x0, wave.get_length());
-   
-        // Initialize vx to match orbital velocity at (x, z=0, t=0)
-        vx = wave.horizontal_velocity(x, 0, 0);           
-    }
+        : wave(height, depth, length), x(x0), mass(mass_kg), drag_coeff(drag_coeff_) {}
 
     /**
      * @brief Track the floating object on the wave surface over time.
