@@ -784,7 +784,6 @@ public:
     }
 };
 
-
 #ifdef FENTON_TEST
 template class FentonWave<4>;
 template class WaveSurfaceTracker<4>;
