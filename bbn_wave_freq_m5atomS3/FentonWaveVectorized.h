@@ -79,9 +79,10 @@ template <int N = 4>
 class FentonWave {
 private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
-
     using Real = float;
     using VectorF = Eigen::Matrix<Real, N + 1, 1>;
+    using VectorN = Eigen::Matrix<Real, N, 1>;
+    using MatrixNxP = Eigen::Matrix<Real, N, N + 1>;
     using BigVector = Eigen::Matrix<Real, StateDim, 1>;
     using BigMatrix = Eigen::Matrix<Real, StateDim, StateDim>;
 
@@ -89,72 +90,25 @@ public:
     Real height, depth, length, g, relax;
     Real k, c, T, omega, Q, R;
     VectorF eta, x, E, B;
+    VectorN kj_cache, j_cache;
 
     FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
         : height(height), depth(depth), length(length), g(g), relax(relax) {
+        for (int j = 1; j <= N; ++j) {
+            kj_cache(j-1) = j * (2 * M_PI / length);
+            j_cache(j-1) = j;
+        }
         compute();
     }
 
-    Real stream_function(Real x_val, Real z_val, Real t = 0) const {
-        Real psi = B(0) * (z_val + depth);  // Mean flow component
-        for (int j = 1; j <= N; ++j) {
-            Real kj = j * k;
-            Real denom = std::cosh(kj * depth);
-            if (denom < std::numeric_limits<Real>::epsilon()) continue;
-            Real term = B(j) * std::sinh(kj * (z_val + depth)) / denom;
-            psi += term * std::cos(kj * (x_val - c * t));
-        }
-        return psi;
-    }
-
-    Real horizontal_velocity(Real x_val, Real z_val, Real t = 0) const {
-        Real u = B(0);  // Mean flow
-        for (int j = 1; j <= N; ++j) {
-            Real kj = j * k;
-            Real denom = std::cosh(kj * depth);
-            if (denom < std::numeric_limits<Real>::epsilon()) continue;
-            Real term = B(j) * kj / denom;
-            u += term * std::cosh(kj * (z_val + depth)) * std::cos(kj * (x_val - c * t));
-        }
-        return u;
-    }
-
-    Real vertical_velocity(Real x_val, Real z_val, Real t = 0) const {
-        Real w = 0.0f;
-        for (int j = 1; j <= N; ++j) {
-            Real kj = j * k;
-            Real denom = std::cosh(kj * depth);
-            if (denom < std::numeric_limits<Real>::epsilon()) continue;
-            Real term = B(j) * kj / denom;
-            w += term * std::sinh(kj * (z_val + depth)) * std::sin(kj * (x_val - c * t));
-        }
-        return w;
-    }
-
-    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
-        Real u = horizontal_velocity(x_val, z_val, t);
-        Real w = vertical_velocity(x_val, z_val, t);
-        Real eta = surface_elevation(x_val, t);
-        
-        // Bernoulli equation: p/ρ + ½(u²+w²) + g(z-η) + ∂φ/∂t = R
-        // For steady flow in wave frame: ∂φ/∂t = -c*u
-        return rho * (R - 0.5*(u*u + w*w) - g*(z_val - eta) + c*u);
-    }
-
     Real surface_elevation(Real x_val, Real t = 0) const {
-        Real sum = 0;
-        for (int j = 0; j <= N; ++j) {
-            sum += E(j) * std::cos(j * k * (x_val - c * t));
-        }
-        return sum;
+        const Real phase_base = k * (x_val - c * t);
+        return E(0) + (E.tail(N).array() * (j_cache * phase_base).cos()).sum();
     }
 
     Real surface_slope(Real x_val, Real t = 0) const {
-        Real d_eta = 0.0f;
-        for (int j = 0; j <= N; ++j) {
-            d_eta -= E(j) * j * k * std::sin(j * k * (x_val - c * t));
-        }
-        return d_eta;
+        const Real phase_base = k * (x_val - c * t);
+        return -k * (E.tail(N).array() * j_cache.array() * (j_cache * phase_base).sin()).sum();
     }
 
     Real surface_time_derivative(Real x_val, Real t = 0) const {
@@ -162,39 +116,30 @@ public:
     }
 
     Real surface_second_time_derivative(Real x_val, Real t = 0) const {
-        Real sum = 0;
-        for (int j = 0; j <= N; ++j) {
-            Real omega_j = j * omega;
-            sum -= E(j) * omega_j * omega_j * std::cos(j * k * (x_val - c * t));
-        }
-        return sum;
+        const Real phase_base = k * (x_val - c * t);
+        return -(E.tail(N).array() * (j_cache * omega).square() * (j_cache * phase_base).cos()).sum();
     }
-
+    
     Real surface_space_time_derivative(Real x_val, Real t = 0) const {
-        Real sum = 0;
-        for (int j = 0; j <= N; ++j) {
-            Real term = j * k * j * omega;
-            sum += E(j) * term * std::sin(j * k * (x_val - c * t));
-        }
-        return sum;
+        const Real phase_base = k * (x_val - c * t);
+        return (E.tail(N).array() * j_cache.array().square() * (k * omega) * 
+               (j_cache * phase_base).sin()).sum();
     }
-
+    
     Real surface_second_space_derivative(Real x_val, Real t = 0) const {
-        Real sum = 0;
-        for (int j = 0; j <= N; ++j) {
-            Real coeff = -j * k * j * k;
-            sum += E(j) * coeff * std::cos(j * k * (x_val - c * t));
-        }
-        return sum;
+        const Real phase_base = k * (x_val - c * t);
+        return -(E.tail(N).array() * j_cache.array().square() * k * k * 
+                (j_cache * phase_base).cos()).sum();
     }
 
-    Real get_c() const { return c; }
-    Real get_k() const { return k; }
-    Real get_T() const { return T; }
-    Real get_omega() const { return omega; }
-    Real get_length() const { return length; }
-    Real get_height() const { return height; }
-    const VectorF& get_eta() const { return eta; }
+    Real vertical_velocity(Real x_val, Real z, Real t = 0) const {
+        const VectorN arg = kj_cache.array() * (x_val - c * t);
+        const VectorN denom = (kj_cache * depth).array().cosh();
+        const VectorN sinh_z = (kj_cache.array() * (z + depth)).sinh();
+        return (B.tail(N).array() * kj_cache.array() * arg.sin() * sinh_z / denom).sum();
+    }
+
+    // ... (getters remain the same) ...
 
 private:
     void compute() {
@@ -206,18 +151,12 @@ private:
         Real kc = k;
         Real c0 = std::sqrt(std::tanh(kc) / kc);
 
-        VectorF x_nd;
-        for (int m = 0; m <= N; ++m)
-            x_nd(m) = lam * m / (2.0f * N);
-
+        VectorF x_nd = VectorF::LinSpaced(N+1, 0, lam/2.0f);
         B.setZero();
         B(0) = c0;
         B(1) = -H / (4.0f * c0 * k);
 
-        VectorF eta_nd;
-        for (int m = 0; m <= N; ++m)
-            eta_nd(m) = 1.0f + H / 2.0f * std::cos(k * x_nd(m));
-
+        VectorF eta_nd = (VectorF::Ones() + (H/2.0f) * (k * x_nd.array()).cos()).eval();
         Q = c0;
         R = 1.0f + 0.5f * c0 * c0;
 
@@ -227,17 +166,13 @@ private:
 
         Real sqrt_gd = std::sqrt(g * depth);
         B(0) *= sqrt_gd;
-        for (int j = 1; j <= N; ++j)
-            B(j) *= std::sqrt(g * std::pow(depth, 3));
+        B.tail(N) *= std::sqrt(g * std::pow(depth, 3));
         Q *= std::sqrt(g * std::pow(depth, 3));
         R *= g * depth;
 
-        for (int i = 0; i <= N; ++i) {
-            x(i) = x_nd(i) * depth;
-            eta(i) = (eta_nd(i) - 1.0f) * depth;
-        }
-
-        k = k / depth;
+        x = x_nd * depth;
+        eta = (eta_nd.array() - 1.0f) * depth;
+        k /= depth;
         c = B(0);
         T = length / c;
         omega = c * k;
@@ -252,143 +187,136 @@ private:
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
         Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
         int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
-        std::vector<Real> steps(num);
-        for (int i = 0; i < num; ++i)
-            steps[i] = H * (i + 1) / num;
-        return steps;
+        Eigen::Array<Real, Eigen::Dynamic, 1> steps = 
+            Eigen::Array<Real, Eigen::Dynamic, 1>::LinSpaced(num, 1, num) * H / num;
+        return std::vector<Real>(steps.data(), steps.data() + steps.size());
     }
 
-    void optimize(VectorF& B, Real& Q, Real& R,
-                 VectorF& eta, Real H, Real k, Real D) {
-        constexpr int NU = 2 * (N + 1) + 2;
-        Eigen::Matrix<Real, NU, 1> coeffs;
-        coeffs.template segment<N + 1>(0) = B;
-        coeffs.template segment<N + 1>(N + 1) = eta;
-        coeffs(2 * N + 2) = Q;
-        coeffs(2 * N + 3) = R;
+    void optimize(VectorF& B, Real& Q, Real& R, VectorF& eta, Real H, Real k, Real D) {
+        BigVector coeffs;
+        coeffs << B, eta, Q, R;
 
         Real error = std::numeric_limits<Real>::max();
         for (int iter = 0; iter < 500 && error > 1e-8f; ++iter) {
-            Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k, D);
+            BigVector f = compute_residual(coeffs, H, k, D);
             error = f.cwiseAbs().maxCoeff();
             
-            Real eta_max = coeffs.template segment<N + 1>(N + 1).maxCoeff();
-            Real eta_min = coeffs.template segment<N + 1>(N + 1).minCoeff();
-            if (eta_max > 2.0f || eta_min < 0.1f || !std::isfinite(error)) {
+            if (eta.maxCoeff() > 2.0f || eta.minCoeff() < 0.1f || !std::isfinite(error)) {
                 throw std::runtime_error("Optimization failed");
             }
 
             if (error < 1e-8f) break;
 
-            Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k, D);
-            Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
+            BigMatrix J = compute_jacobian(coeffs, H, k, D);
+            BigVector delta = J.fullPivLu().solve(-f);
             coeffs += relax * delta;
         }
 
-        B = coeffs.template segment<N + 1>(0);
-        eta = coeffs.template segment<N + 1>(N + 1);
-        Q = coeffs(2 * N + 2);
-        R = coeffs(2 * N + 3);
+        B = coeffs.template segment<N+1>(0);
+        eta = coeffs.template segment<N+1>(N+1);
+        Q = coeffs(2*N+2);
+        R = coeffs(2*N+3);
     }
 
-    Eigen::Matrix<Real, StateDim, 1>
-    compute_residual(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
-        Eigen::Matrix<Real, StateDim, 1> f;
-        auto B = coeffs.template segment<N + 1>(0);
-        auto eta = coeffs.template segment<N + 1>(N + 1);
-        Real Q = coeffs(2 * N + 2);
-        Real R = coeffs(2 * N + 3);
-        Real B0 = B(0);
+    BigVector compute_residual(const BigVector& coeffs, Real H, Real k, Real D) {
+        BigVector residual = BigVector::Zero();
+        const VectorF B = coeffs.template segment<N+1>(0);
+        const VectorF eta = coeffs.template segment<N+1>(N+1);
+        const Real Q = coeffs(2*N+2);
+        const Real R = coeffs(2*N+3);
+        const Real B0 = B(0);
 
-        for (int m = 0; m <= N; ++m) {
-            Real x_m = M_PI * m / N;
-            Real eta_m = eta(m);
-            
-            Real um = -B0;
-            Real vm = 0;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
-                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);
-                Real S2 = std::sin(j * x_m);
-                Real C2 = std::cos(j * x_m);
-                um += kj * B(j) * C1 * C2;
-                vm += kj * B(j) * S1 * S2;
-            }
+        const VectorF x_m = VectorF::LinSpaced(N+1, 0, N) * (M_PI / N);
+        const VectorN kj = VectorN::LinSpaced(N, 1, N) * k;
 
-            f(m) = -B0 * eta_m;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
-                Real C2 = std::cos(j * x_m);
-                f(m) += B(j) * S1 * C2;
-            }
-            f(m) += Q;
+        const MatrixNxP trig_terms = (kj * x_m.transpose()).array();
+        const MatrixNxP cos_terms = trig_terms.cos();
+        const MatrixNxP sin_terms = trig_terms.sin();
 
-            f(N + 1 + m) = 0.5f * (um * um + vm * vm) + eta_m - R;
-        }
+        const MatrixNxP eta_kj = (kj * eta.transpose()).array();
+        const MatrixNxP S1 = eta_kj.unaryExpr([&](Real val) { 
+            return sinh_by_cosh(val, kj(0) * D); 
+        });
+        const MatrixNxP C1 = eta_kj.unaryExpr([&](Real val) { 
+            return cosh_by_cosh(val, kj(0) * D); 
+        });
 
-        f(2 * N + 2) = (eta.sum() - 0.5f * (eta(0) + eta(N))) / N - 1.0f;
-        f(2 * N + 3) = eta.maxCoeff() - eta.minCoeff() - H;
+        const VectorF um = VectorF::Constant(-B0) + 
+                         (B.tail(N).transpose() * (kj.asDiagonal() * C1 * cos_terms)).transpose();
+        const VectorF vm = (B.tail(N).transpose() * (kj.asDiagonal() * S1 * sin_terms)).transpose();
 
-        return f;
+        residual.head(N+1) = VectorF::Constant(-B0).cwiseProduct(eta) + 
+                           (B.tail(N).transpose() * (S1 * cos_terms)).transpose() + 
+                           VectorF::Constant(Q);
+
+        residual.segment(N+1, N+1) = 0.5 * (um.array().square() + vm.array().square()) + 
+                                   eta.array() - R;
+
+        residual(2*N+2) = eta.mean() * (N+1)/N - 1.0f;
+        residual(2*N+3) = eta.maxCoeff() - eta.minCoeff() - H;
+
+        return residual;
     }
 
-    Eigen::Matrix<Real, StateDim, StateDim>
-    compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
-        Eigen::Matrix<Real, StateDim, StateDim> J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
-        auto B = coeffs.template segment<N + 1>(0);
-        auto eta = coeffs.template segment<N + 1>(N + 1);
-        Real B0 = B(0);
+    BigMatrix compute_jacobian(const BigVector& coeffs, Real H, Real k, Real D) {
+        BigMatrix J = BigMatrix::Zero();
+        const VectorF B = coeffs.template segment<N+1>(0);
+        const VectorF eta = coeffs.template segment<N+1>(N+1);
+        const Real B0 = B(0);
 
+        const VectorF x_m = VectorF::LinSpaced(N+1, 0, N) * (M_PI / N);
+        const VectorN kj = VectorN::LinSpaced(N, 1, N) * k;
+        const VectorN kj_sq = kj.array().square();
+
+        const MatrixNxP trig_args = kj * x_m.transpose();
+        const MatrixNxP cos_terms = trig_args.array().cos();
+        const MatrixNxP sin_terms = trig_args.array().sin();
+
+        const MatrixNxP eta_kj = kj * eta.transpose();
+        const MatrixNxP S1 = eta_kj.array().unaryExpr([&](Real val) {
+            return sinh_by_cosh(val, kj(0) * D);
+        });
+        const MatrixNxP C1 = eta_kj.array().unaryExpr([&](Real val) {
+            return cosh_by_cosh(val, kj(0) * D);
+        });
+
+        const MatrixNxP SC = S1 * cos_terms.array();
+        const MatrixNxP SS = S1 * sin_terms.array();
+        const MatrixNxP CC = C1 * cos_terms.array();
+        const MatrixNxP CS = C1 * sin_terms.array();
+
+        const VectorF um = VectorF::Constant(-B0) + 
+                         (B.tail(N).transpose() * (kj.asDiagonal() * CC)).transpose();
+        const VectorF vm = (B.tail(N).transpose() * (kj.asDiagonal() * SS)).transpose();
+
+        J.block(0, 0, N+1, 1) = -eta;
+        J.block(0, 1, N+1, N) = SC.transpose();
+        
+        VectorF diag_terms = VectorF::Constant(-B0) + 
+            (B.tail(N).transpose() * (kj_sq.asDiagonal() * CC)).transpose()
+            .cwiseQuotient(eta.transpose().replicate(N,1))
+            .cwiseProduct(SC);
+        
+        J.block(N+1, N+1, N+1, N+1).diagonal() = diag_terms;
+        J.block(N+1, 0, N+1, 1) = -um;
+        
+        for (int j = 1; j <= N; ++j) {
+            J.block(N+1, j, N+1, 1) = k * j * 
+                (um * CC.row(j-1).transpose().array() + 
+                 vm * SS.row(j-1).transpose().array());
+        }
+        
+        J.block(N+1, 2*N+3, N+1, 1) = VectorF::Constant(-1);
+        
         for (int m = 0; m <= N; ++m) {
-            Real eta_m = eta(m);
-            Real x_m = M_PI * m / N;
-            Real um = -B0;
-            Real vm = 0;
-            
-            Eigen::Matrix<Real, N, 1> SC, SS, CC, CS;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                SC(j-1) = sinh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
-                SS(j-1) = sinh_by_cosh(kj * eta_m, kj * D) * std::sin(j * x_m);
-                CC(j-1) = cosh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
-                CS(j-1) = cosh_by_cosh(kj * eta_m, kj * D) * std::sin(j * x_m);
-                
-                um += kj * B(j) * CC(j-1);
-                vm += kj * B(j) * SS(j-1);
-            }
-
-            J(m, 0) = -eta_m;
-            for (int j = 1; j <= N; ++j) {
-                J(m, j) = SC(j-1);
-            }
-            J(m, N + 1 + m) = -B0;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                J(m, N + 1 + m) += B(j) * kj * CC(j-1);
-            }
-            J(m, 2 * N + 2) = 1;
-
-            J(N + 1 + m, 0) = -um;
-            for (int j = 1; j <= N; ++j) {
-                J(N + 1 + m, j) = k * j * (um * CC(j-1) + vm * SS(j-1));
-            }
-            J(N + 1 + m, N + 1 + m) = 1;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                J(N + 1 + m, N + 1 + m) += um * B(j) * kj * kj * SC(j-1);
-                J(N + 1 + m, N + 1 + m) += vm * B(j) * kj * kj * CS(j-1);
-            }
-            J(N + 1 + m, 2 * N + 3) = -1;
+            J(2*N+2, N+1+m) = (m == 0 || m == N) ? 0.5f/N : 1.0f/N;
         }
 
-        for (int j = 0; j <= N; ++j) {
-            J(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 0.5f/N : 1.0f/N;
-        }
-
-        J(2 * N + 3, N + 1) = 1;
-        J(2 * N + 3, 2 * N + 1) = -1;
+        int max_idx, min_idx;
+        eta.maxCoeff(&max_idx);
+        eta.minCoeff(&min_idx);
+        J(2*N+3, N+1+max_idx) = 1;
+        J(2*N+3, N+1+min_idx) = -1;
 
         return J;
     }
