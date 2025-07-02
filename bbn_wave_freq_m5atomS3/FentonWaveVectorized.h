@@ -237,8 +237,8 @@ private:
         const VectorN kj = VectorN::LinSpaced(N, 1, N) * k;
 
         const MatrixNxP trig_terms = (kj * x_m.transpose()).array();
-        const MatrixNxP cos_terms = trig_terms.cos();
-        const MatrixNxP sin_terms = trig_terms.sin();
+        const MatrixNxP cos_terms = trig_terms.array().cos().matrix();
+        const MatrixNxP sin_terms = trig_terms.array().sin().matrix();
 
         const MatrixNxP eta_kj = (kj * eta.transpose()).array();
         MatrixNxP S1, C1;
