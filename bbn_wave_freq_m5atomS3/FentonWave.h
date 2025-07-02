@@ -722,9 +722,23 @@ public:
         dt = std::clamp(timestep, 1e-5f, 0.1f);
 
         t = 0.0f;
-        vx = wave.horizontal_velocity(x, 0, 0);
-
-        // Initialize vertical velocity and acceleration to zero
+        x = wrap_periodic(x, wave.get_length());
+         
+        // Get wave kinematics at (x0, t=0)
+        const float eta_x  = wave.surface_slope(x, 0);      // Slope
+        const float eta_xx = wave.surface_second_space_derivative(x, 0); // Curvature
+        const float eta_t  = wave.surface_time_derivative(x, 0);  // Vertical velocity
+         
+        // Initialize horizontal velocity (orbital motion + phase correction)
+        vx = wave.horizontal_velocity(x, 0, 0);  // Exact orbital velocity at (x, z=0, t=0)
+         
+        // Pre-compute initial acceleration (force balance)
+        prev_accel = -g * eta_x - drag_coeff * vx / mass;  // F = -mg*ηₓ - c·v
+         
+        // Initialize vertical velocity (chain rule: dz/dt = ∂η/∂t + ∂η/∂x * dx/dt)
+        prev_z_vel = eta_t + eta_x * vx;
+      
+        // Initialize acceleration to zero
         float prev_z_dot = 0.0f;
 
         while (t <= duration) {
