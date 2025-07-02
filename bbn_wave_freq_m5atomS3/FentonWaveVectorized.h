@@ -163,7 +163,7 @@ private:
         B(0) = c0;
         B(1) = -H / (4.0f * c0 * k);
 
-        VectorF eta_nd = (VectorF::Ones() + (H/2.0f) * (k * x_nd.array()).cos()).eval();
+        VectorF eta_nd = (VectorF::Ones().array() + (H/2.0f) * (k * x_nd.array()).cos()).eval();
         Q = c0;
         R = 1.0f + 0.5f * c0 * c0;
 
