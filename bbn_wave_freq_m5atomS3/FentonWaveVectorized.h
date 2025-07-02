@@ -306,10 +306,9 @@ private:
         J.block(0, 0, N+1, 1) = -eta;
         J.block(0, 1, N+1, N) = SC.transpose();
         
-        VectorF diag_terms = VectorF::Constant(-B0) + 
-            (B.tail(N).transpose() * (kj_sq.asDiagonal() * CC)).transpose()
-            .cwiseQuotient(eta.transpose().replicate(N,1))
-            .cwiseProduct(SC);
+        auto term = (kj_sq.asDiagonal() * CC).array() / eta.transpose().replicate(N, 1).array();
+        term *= SC.array();  // Elementwise product
+        VectorF diag_terms = VectorF::Constant(-B0) + term.colwise().sum().transpose().matrix();
         
         J.block(N+1, N+1, N+1, N+1).diagonal() = diag_terms;
         J.block(N+1, 0, N+1, 1) = -um;
