@@ -649,7 +649,6 @@ private:
     // Object state
     float x = 0.0f;     // Horizontal position (m)
     float vx = 0.0f;    // Horizontal velocity (m/s)
-    float initial_accel;
 
     float mass = 1.0f;  // Mass of floating object (kg)
 
@@ -684,15 +683,6 @@ private:
             return compute_horizontal_acceleration(x_in, vx_in, t_in);
         };
 
-        /*
-        if (t_curr < 10 * dt_step) {
-            // Apply pre-computed physics-correct acceleration
-            vx_curr += initial_accel * dt_step;
-            x_curr = wrap_periodic(x_curr + vx_curr * dt_step, wave.get_length());          
-            return;
-        }
-        */
-       
         float k1_v = accel(x_curr, vx_curr, t_curr);
         float k1_x = vx_curr;
 
@@ -714,24 +704,7 @@ private:
 
 public:
     WaveSurfaceTracker(float height, float depth, float length, float mass_kg, float drag_coeff_)
-        : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_) 
-    {
-        float x0 = 0.0f;
-
-        // Initialize position (phase-wrapped)
-        x = wrap_periodic(x0, wave.get_length());
-   
-        // Get wave kinematics at (x0, t=0) using existing methods
-        const float eta_x = wave.surface_slope(x, 0);
-        const float eta_t = wave.surface_time_derivative(x, 0);
-        const float eta_xx = wave.surface_second_space_derivative(x, 0);
-        const float eta_xt = wave.surface_space_time_derivative(x, 0);
-        const float eta_tt = wave.surface_second_time_derivative(x, 0);
-   
-        vx = 0.0f; // wave.horizontal_velocity(x, 0, 0) - wave.get_c();  
-   
-        initial_accel = -1.7; //-9.81f * eta_x - (drag_coeff/mass) * vx; // - (eta_xt + 2.0f * vx * eta_xx + vx * vx * eta_xx + eta_tt) / (1.0f + eta_x * eta_x);
-    }
+        : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_) {}
 
     /**
      * @brief Track the floating object on the wave surface over time.
@@ -749,9 +722,11 @@ public:
         dt = std::clamp(timestep, 1e-5f, 0.1f);
 
         t = 0.0f;
+        x = 0.0f;
+        vx = 0.0f;
 
-        // Initialize vertical velocity 
-        float prev_z_dot = wave.surface_time_derivative(x, 0) + wave.surface_slope(x, 0) * vx;
+        // Initialize vertical velocity and acceleration to zero
+        float prev_z_dot = 0.0f;
 
         while (t <= duration) {
             // Compute current vertical displacement on wave surface
@@ -767,14 +742,13 @@ public:
             float z_ddot = (z_dot - prev_z_dot) / dt;
 
             // Call user callback with current state
-            if (t > dt) {
-                callback(t, z, z_dot, z_ddot, x, vx);
-            }
+            callback(t, z, z_dot, z_ddot, x, vx);
 
             prev_z_dot = z_dot;
 
             // Integrate horizontal position and velocity with RK4
             rk4_step(x, vx, t, dt);
+
             t += dt;
         }
     }
@@ -807,7 +781,7 @@ void FentonWave_test_2() {
     const float height = 2.0f;   // Wave height (m)
     const float depth = 10.0f;   // Water depth (m)
     const float length = 50.0f;  // Wavelength (m)
-    const float mass = 1.0f;     // Mass (kg)
+    const float mass = 100.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
     
     // Simulation parameters
@@ -832,4 +806,3 @@ void FentonWave_test_2() {
 }
 
 #endif
-
