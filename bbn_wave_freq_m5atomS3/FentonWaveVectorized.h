@@ -240,13 +240,16 @@ private:
         const MatrixNxP sin_terms = trig_terms.sin();
 
         const MatrixNxP eta_kj = (kj * eta.transpose()).array();
-        const MatrixNxP S1 = eta_kj.unaryExpr([&](Real val) { 
-            return sinh_by_cosh(val, kj(0) * D); 
-        });
-        const MatrixNxP C1 = eta_kj.unaryExpr([&](Real val) { 
-            return cosh_by_cosh(val, kj(0) * D); 
-        });
-
+        MatrixNxP S1, C1;
+        for (int j = 0; j < N; ++j) {
+            Real kj_val = kj(j);
+            S1.row(j) = eta.transpose().unaryExpr([&](Real eta_val) {
+                return sinh_by_cosh(kj_val * eta_val, kj_val * D);
+            });
+            C1.row(j) = eta.transpose().unaryExpr([&](Real eta_val) {
+                return cosh_by_cosh(kj_val * eta_val, kj_val * D);
+            });
+        }
         const VectorF um = VectorF::Constant(-B0) + 
                          (B.tail(N).transpose() * (kj.asDiagonal() * C1 * cos_terms)).transpose();
         const VectorF vm = (B.tail(N).transpose() * (kj.asDiagonal() * S1 * sin_terms)).transpose();
