@@ -230,9 +230,11 @@ private:
         const auto denom = (kj * depth).cosh();
         
         VelocityTerms terms = kj * B.tail(N).array() / denom;
-        return for_horizontal 
-            ? terms * (kj * (z_val + depth)).cosh()
-            : terms * (kj * (z_val + depth)).sinh();
+        if (for_horizontal) {
+            return terms * (kj * (z_val + depth)).cosh();
+        } else {
+            return terms * (kj * (z_val + depth)).sinh();
+        }
     }
 
     void compute_elevation_coefficients() {
