@@ -285,7 +285,8 @@ private:
         const MatrixNxP sin_terms = trig_args.array().sin();
 
         const MatrixNxP eta_kj = kj * eta.transpose();
-        MatrixNxP S1, C1;
+        MatrixNxP S1 = MatrixNxP::Zero();
+        MatrixNxP C1 = MatrixNxP::Zero();
         for (int j = 0; j < N; ++j) {
             Real kj_val = kj(j);
             S1.row(j) = eta.transpose().unaryExpr([&](Real eta_val) {
