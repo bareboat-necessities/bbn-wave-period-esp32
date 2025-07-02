@@ -649,7 +649,6 @@ private:
     // Object state
     float x = 0.0f;     // Horizontal position (m)
     float vx = 0.0f;    // Horizontal velocity (m/s)
-    float initial_accel;
 
     float mass = 1.0f;  // Mass of floating object (kg)
 
@@ -724,21 +723,14 @@ public:
    
         // Get wave kinematics at (x0, t=0) using existing methods
         const float eta_x = wave.surface_slope(x, 0);
+        const float eta_t = wave.surface_time_derivative(x, 0);
+        const float eta_xx = wave.surface_second_space_derivative(x, 0);
+        const float eta_xt = wave.surface_space_time_derivative(x, 0);
    
         // Physics-correct initial velocity
         vx = wave.horizontal_velocity(x, 0, 0);  // Exact orbital velocity at surface
    
-        // Compute initial acceleration (2 methods for robustness)
-        if (std::abs(eta_x) < 1e-3f) {
-            // At crest/trough: curvature-driven acceleration
-            const float dx = 0.01f * wave.get_length();
-            const float eta_x_right = wave.surface_slope(x + dx, 0);
-            const float eta_x_left = wave.surface_slope(x - dx, 0);
-            initial_accel = -9.81f * (eta_x_right - eta_x_left) / (2 * dx);
-        } else {
-            // Normal case: slope-driven acceleration
-            initial_accel = -9.81f * eta_x - (drag_coeff/mass) * vx;
-        } 
+        initial_accel = -9.81f * eta_x - (drag_coeff/mass) * vx - eta_xt - vx * eta_xx;
     }
 
     /**
