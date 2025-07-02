@@ -103,12 +103,12 @@ public:
 
     Real surface_elevation(Real x_val, Real t = 0) const {
         const Real phase_base = k * (x_val - c * t);
-        return E(0) + (E.tail(N).array() * (j_cache * phase_base).cos()).sum();
+        return E(0) + (E.tail(N).array() * (j_cache.array() * phase_base).cos()).sum();
     }
 
     Real surface_slope(Real x_val, Real t = 0) const {
         const Real phase_base = k * (x_val - c * t);
-        return -k * (E.tail(N).array() * j_cache.array() * (j_cache * phase_base).sin()).sum();
+        return -k * (E.tail(N).array() * j_cache.array() * (j_cache.array() * phase_base).sin()).sum();
     }
 
     Real surface_time_derivative(Real x_val, Real t = 0) const {
@@ -117,19 +117,19 @@ public:
 
     Real surface_second_time_derivative(Real x_val, Real t = 0) const {
         const Real phase_base = k * (x_val - c * t);
-        return -(E.tail(N).array() * (j_cache * omega).square() * (j_cache * phase_base).cos()).sum();
+        return -(E.tail(N).array() * (j_cache * omega).square() * (j_cache.array() * phase_base).cos()).sum();
     }
     
     Real surface_space_time_derivative(Real x_val, Real t = 0) const {
         const Real phase_base = k * (x_val - c * t);
         return (E.tail(N).array() * j_cache.array().square() * (k * omega) * 
-               (j_cache * phase_base).sin()).sum();
+               (j_cache.array() * phase_base).sin()).sum();
     }
     
     Real surface_second_space_derivative(Real x_val, Real t = 0) const {
         const Real phase_base = k * (x_val - c * t);
         return -(E.tail(N).array() * j_cache.array().square() * k * k * 
-                (j_cache * phase_base).cos()).sum();
+                (j_cache.array() * phase_base).cos()).sum();
     }
 
     Real vertical_velocity(Real x_val, Real z, Real t = 0) const {
