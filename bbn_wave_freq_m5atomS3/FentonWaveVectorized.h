@@ -318,64 +318,66 @@ private:
         return f;
     }
 
-    Eigen::Matrix<Real, StateDim, StateDim>
-    compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
-        Eigen::Matrix<Real, StateDim, StateDim> J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
-        auto B = coeffs.template segment<N + 1>(0);
-        auto eta = coeffs.template segment<N + 1>(N + 1);
-        Real B0 = B(0);
-
-        for (int m = 0; m <= N; ++m) {
-            Real eta_m = eta(m);
-            Real x_m = M_PI * m / N;
-            Real um = -B0;
-            Real vm = 0;
-            
-            Eigen::Matrix<Real, N, 1> SC, SS, CC, CS;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                SC(j-1) = sinh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
-                SS(j-1) = sinh_by_cosh(kj * eta_m, kj * D) * std::sin(j * x_m);
-                CC(j-1) = cosh_by_cosh(kj * eta_m, kj * D) * std::cos(j * x_m);
-                CS(j-1) = cosh_by_cosh(kj * eta_m, kj * D) * std::sin(j * x_m);
-                
-                um += kj * B(j) * CC(j-1);
-                vm += kj * B(j) * SS(j-1);
-            }
-
-            J(m, 0) = -eta_m;
-            for (int j = 1; j <= N; ++j) {
-                J(m, j) = SC(j-1);
-            }
-            J(m, N + 1 + m) = -B0;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                J(m, N + 1 + m) += B(j) * kj * CC(j-1);
-            }
-            J(m, 2 * N + 2) = 1;
-
-            J(N + 1 + m, 0) = -um;
-            for (int j = 1; j <= N; ++j) {
-                J(N + 1 + m, j) = k * j * (um * CC(j-1) + vm * SS(j-1));
-            }
-            J(N + 1 + m, N + 1 + m) = 1;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                J(N + 1 + m, N + 1 + m) += um * B(j) * kj * kj * SC(j-1);
-                J(N + 1 + m, N + 1 + m) += vm * B(j) * kj * kj * CS(j-1);
-            }
-            J(N + 1 + m, 2 * N + 3) = -1;
-        }
-
-        for (int j = 0; j <= N; ++j) {
-            J(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 0.5f/N : 1.0f/N;
-        }
-
-        J(2 * N + 3, N + 1) = 1;
-        J(2 * N + 3, 2 * N + 1) = -1;
-
-        return J;
-    }
+      Eigen::Matrix<Real, StateDim, StateDim>
+      compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
+          Eigen::Matrix<Real, StateDim, StateDim> J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
+          auto B = coeffs.template segment<N + 1>(0);
+          auto eta = coeffs.template segment<N + 1>(N + 1);
+          Real B0 = B(0);
+      
+          Eigen::Array<Real, N, 1> j = Eigen::Array<Real, N, 1>::LinSpaced(N, 1, N);
+          Eigen::Array<Real, N, 1> kj = j * k;
+      
+          for (int m = 0; m <= N; ++m) {
+              Real eta_m = eta(m);
+              Real x_m = M_PI * m / N;
+      
+              Eigen::Array<Real, N, 1> kj_eta = kj * eta_m;
+              Eigen::Array<Real, N, 1> kj_D   = kj * D;
+      
+              Eigen::Array<Real, N, 1> sin_jx = (j * x_m).sin();
+              Eigen::Array<Real, N, 1> cos_jx = (j * x_m).cos();
+      
+              Eigen::Array<Real, N, 1> S1 = kj_eta.binaryExpr(kj_D, [](Real a, Real b) { return sinh_by_cosh(a, b); });
+              Eigen::Array<Real, N, 1> C1 = kj_eta.binaryExpr(kj_D, [](Real a, Real b) { return cosh_by_cosh(a, b); });
+      
+              Eigen::Array<Real, N, 1> SC = S1 * cos_jx;
+              Eigen::Array<Real, N, 1> SS = S1 * sin_jx;
+              Eigen::Array<Real, N, 1> CC = C1 * cos_jx;
+              Eigen::Array<Real, N, 1> CS = C1 * sin_jx;
+      
+              Real um = -B0 + (kj * B.tail(N).array() * CC).sum();
+              Real vm = (kj * B.tail(N).array() * SS).sum();
+      
+              // f[m] derivatives
+              J(m, 0) = -eta_m;
+              J.block(m, 1, 1, N) = SC.matrix().transpose();
+              J(m, N + 1 + m) = -B0 + (kj * B.tail(N).array() * CC).sum();
+              J(m, 2 * N + 2) = 1;
+      
+              // f[N+1+m] derivatives
+              J(N + 1 + m, 0) = -um;
+      
+              Eigen::Array<Real, N, 1> dB = k * j * (um * CC + vm * SS);
+              J.block(N + 1 + m, 1, 1, N) = dB.matrix().transpose();
+      
+              RealArray d_eta = B.tail(N).array() * kj.square();
+              Real d_eta_m = (um * d_eta * SC + vm * d_eta * CS).sum();
+      
+              J(N + 1 + m, N + 1 + m) = 1 + d_eta_m;
+              J(N + 1 + m, 2 * N + 3) = -1;
+          }
+      
+          // Constraint: average elevation - 1
+          for (int j = 0; j <= N; ++j)
+              J(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 0.5f / N : 1.0f / N;
+      
+          // Constraint: peak-to-trough height - H
+          J(2 * N + 3, N + 1 + eta.maxCoeffIndex()) = 1;
+          J(2 * N + 3, N + 1 + eta.minCoeffIndex()) = -1;
+      
+          return J;
+      }
 };
 
 template<int N = 4>
