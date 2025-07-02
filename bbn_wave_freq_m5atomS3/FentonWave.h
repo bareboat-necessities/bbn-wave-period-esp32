@@ -729,7 +729,7 @@ public:
         // Physics-correct initial velocity
         vx = wave.horizontal_velocity(x, 0, 0) - wave.get_c();  
    
-        initial_accel = -9.81f * eta_x - (drag_coeff/mass) * vx - (eta_xt + 2.0f * vx * eta_xx + vx * vx * eta_xx + eta_tt) / (1.0f + eta_x * eta_x);
+        initial_accel = -9.81f * eta_x - (drag_coeff/mass) * vx; // - (eta_xt + 2.0f * vx * eta_xx + vx * vx * eta_xx + eta_tt) / (1.0f + eta_x * eta_x);
     }
 
     /**
