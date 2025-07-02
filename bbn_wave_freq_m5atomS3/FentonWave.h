@@ -726,7 +726,7 @@ public:
         vx = 0.0f;
 
         // Initialize vertical velocity and acceleration to zero
-        float prev_z_dot = 0.0f;
+        float prev_z_dot = wave.surface_time_derivative(x, 0) + wave.surface_slope(x, 0) * vx;
 
         while (t <= duration) {
             // Compute current vertical displacement on wave surface
