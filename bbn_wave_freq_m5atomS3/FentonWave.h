@@ -684,7 +684,7 @@ private:
             return compute_horizontal_acceleration(x_in, vx_in, t_in);
         };
 
-        if (t_curr == 0.0f) {
+        if (t_curr < 10 * dt_step) {
             // Apply pre-computed physics-correct acceleration
             vx_curr += initial_accel * dt_step;
             x_curr = wrap_periodic(x_curr + vx_curr * dt_step, wave.get_length());          
