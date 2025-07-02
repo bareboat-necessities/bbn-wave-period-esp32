@@ -724,7 +724,6 @@ public:
    
         // Get wave kinematics at (x0, t=0) using existing methods
         const float eta_x = wave.surface_slope(x, 0);
-        const float eta_t = wave.surface_time_derivative(x, 0);
    
         // Physics-correct initial velocity
         vx = wave.horizontal_velocity(x, 0, 0);  // Exact orbital velocity at surface
