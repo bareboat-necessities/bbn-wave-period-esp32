@@ -257,9 +257,8 @@ private:
         VectorF um = VectorF::Constant(-B0) + ((kj.asDiagonal() * CC).transpose() * B.tail(N));
         VectorF vm = ((kj.asDiagonal() * SS).transpose() * B.tail(N));
 
-        residual.head(N+1) = VectorF::Constant(-B0).cwiseProduct(eta) + 
-                           (B.tail(N).transpose() * (S1.array() * cos_terms.array()).matrix()).transpose() + 
-                           VectorF::Constant(Q);
+        const MatrixNxP SC = S1.array() * cos_terms.array();
+        residual.head(N+1) = -B0 * eta + SC.transpose() * B.tail(N) + VectorF::Constant(Q);
 
         residual.segment(N+1, N+1) = 0.5 * (um.array().square() + vm.array().square()) + 
                                    eta.array() - R;
