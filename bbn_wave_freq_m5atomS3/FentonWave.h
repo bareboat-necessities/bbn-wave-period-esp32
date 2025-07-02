@@ -649,8 +649,6 @@ private:
     // Object state
     float x = 0.0f;     // Horizontal position (m)
     float vx = 0.0f;    // Horizontal velocity (m/s)
-    float prev_z_vel = 0.0f;   // Tracks previous vertical velocity (dz/dt)
-    float prev_x_accel = 0.0f; // Tracks previous horizontal acceleration (d²x/dt²)
 
     float mass = 1.0f;  // Mass of floating object (kg)
 
@@ -681,38 +679,53 @@ private:
 
     // RK4 integration for horizontal motion
     void rk4_step(float& x_curr, float& vx_curr, float t_curr, float dt) {
-        // Backup current state
-        const float x_prev = x;
-        const float vx_prev = vx;
-        const float a_prev = prev_x_accel;
-   
-        // RK4 integration for horizontal motion
-        const float k1v = a_prev;
-        const float k1x = vx_prev;
-   
-        const float k2v = compute_horizontal_acceleration(x_prev + 0.5f*dt*k1x,  vx_prev + 0.5f*dt*k1v, t + 0.5f*dt);
-        const float k2x = vx_prev + 0.5f*dt*k1v;
-   
-        const float k3v = compute_horizontal_acceleration(x_prev + 0.5f*dt*k2x, vx_prev + 0.5f*dt*k2v, t + 0.5f*dt);
-        const float k3x = vx_prev + 0.5f*dt*k2v;
-   
-        const float k4v = compute_horizontal_acceleration(x_prev + dt*k3x, vx_prev + dt*k3v, t + dt);
-        const float k4x = vx_prev + dt*k3v;
-   
-        // Update state
-        x = wrap_periodic(x_prev + dt*(k1x + 2*k2x + 2*k3x + k4x)/6.0f, wave.get_length());
-        vx = vx_prev + dt*(k1v + 2*k2v + 2*k3v + k4v)/6.0f;
-        prev_x_accel = compute_horizontal_acceleration(x, vx, t + dt);
-   
-        // Update vertical kinematics
-        const float eta_x = wave.surface_slope(x, t + dt);
-        const float eta_t = wave.surface_time_derivative(x, t + dt);
-        prev_z_vel = eta_t + eta_x * vx;
+        auto accel = [this](float x_in, float vx_in, float t_in) {
+            return compute_horizontal_acceleration(x_in, vx_in, t_in);
+        };
+
+        if (t == 0.0f) {
+            // Tiny first step to avoid force discontinuity
+            const float micro_dt = dt * 0.01f;
+            
+            // Compute acceleration at t=0
+            float ax = compute_horizontal_acceleration(x, vx, 0);
+            
+            // Update state
+            vx += ax * micro_dt;
+            x = wrap_periodic(x + vx * micro_dt, wave.get_length());
+            t += micro_dt;
+            return;
+        }
+
+        float k1_v = accel(x_curr, vx_curr, t_curr);
+        float k1_x = vx_curr;
+
+        float k2_v = accel(x_curr + 0.5f * dt_step * k1_x, vx_curr + 0.5f * dt_step * k1_v, t_curr + 0.5f * dt_step);
+        float k2_x = vx_curr + 0.5f * dt_step * k1_v;
+
+        float k3_v = accel(x_curr + 0.5f * dt_step * k2_x, vx_curr + 0.5f * dt_step * k2_v, t_curr + 0.5f * dt_step);
+        float k3_x = vx_curr + 0.5f * dt_step * k2_v;
+
+        float k4_v = accel(x_curr + dt_step * k3_x, vx_curr + dt_step * k3_v, t_curr + dt_step);
+        float k4_x = vx_curr + dt_step * k3_v;
+
+        x_curr += dt_step * (k1_x + 2 * k2_x + 2 * k3_x + k4_x) / 6.0f;
+        vx_curr += dt_step * (k1_v + 2 * k2_v + 2 * k3_v + k4_v) / 6.0f;
+
+        // Periodicity wrap
+        x_curr = wrap_periodic(x_curr, wave.get_length());
     }
 
 public:
     WaveSurfaceTracker(float height, float depth, float length, float x0, float mass_kg, float drag_coeff_)
-        : wave(height, depth, length), x(x0), mass(mass_kg), drag_coeff(drag_coeff_) {}
+        : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_) 
+    {
+        // Start at x0 (wrapped to [0, L])
+        x = wrap_periodic(x0, wave.get_length());
+   
+        // Initialize vx to match orbital velocity at (x, z=0, t=0)
+        vx = wave.horizontal_velocity(x, 0, 0);           
+    }
 
     /**
      * @brief Track the floating object on the wave surface over time.
