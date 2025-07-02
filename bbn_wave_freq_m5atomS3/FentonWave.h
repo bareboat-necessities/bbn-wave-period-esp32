@@ -649,6 +649,7 @@ private:
     // Object state
     float x = 0.0f;     // Horizontal position (m)
     float vx = 0.0f;    // Horizontal velocity (m/s)
+    float initial_accel;
 
     float mass = 1.0f;  // Mass of floating object (kg)
 
