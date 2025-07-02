@@ -282,7 +282,7 @@ public:
         
         // Bernoulli equation: p/ρ + ½(u²+w²) + g(z-η) + ∂φ/∂t = R
         // For steady flow in wave frame: ∂φ/∂t = -c*u
-        return rho * (R - 0.5*(u*u + w*w) - rho*g*(z_val - eta) + rho*c*u);
+        return rho * (R - 0.5f * (u*u + w*w) - g * (z_val - eta) + c*u);
     }
 
    /**
