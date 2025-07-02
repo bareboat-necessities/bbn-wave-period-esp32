@@ -251,9 +251,8 @@ private:
                 return cosh_by_cosh(kj_val * eta_val, kj_val * D);
             });
         }
-        const VectorF um = VectorF::Constant(-B0) + 
-                         (B.tail(N).transpose() * kj.asDiagonal() * ((C1.array() * cos_terms.array())).matrix()).transpose();
-        const VectorF vm = (B.tail(N).transpose() * kj.asDiagonal() * ((S1.array() * sin_terms.array())).matrix()).transpose();
+        um = VectorF::Constant(-B0) + ( (kj.asDiagonal() * CC).transpose() * B.tail(N) );
+        vm = ( (kj.asDiagonal() * SS).transpose() * B.tail(N) );
 
         residual.head(N+1) = VectorF::Constant(-B0).cwiseProduct(eta) + 
                            (B.tail(N).transpose() * (S1.array() * cos_terms.array()).matrix()).transpose() + 
