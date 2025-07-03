@@ -273,8 +273,7 @@ private:
 
             Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k, D);
             //Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
-            Eigen::LDLT<BigMatrix> solver(J);
-            const Eigen::Matrix<Real, NU, 1> delta = solver.solve(-f);
+            Eigen::Matrix<Real, NU, 1> delta = J.ldlt().solve(-f);
             coeffs += relax * delta;
         }
 
