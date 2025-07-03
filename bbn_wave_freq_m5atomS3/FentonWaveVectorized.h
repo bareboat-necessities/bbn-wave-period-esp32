@@ -248,32 +248,45 @@ private:
             Eigen::Array<Real, Eigen::Dynamic, 1>::LinSpaced(num, 1, num) * H / num;
         return std::vector<Real>(steps.data(), steps.data() + steps.size());
     }
+      
+      void optimize(VectorF& B, Real& Q, Real& R, VectorF& eta, Real H, Real k, Real D) {
+          BigVector coeffs;
+          coeffs << B, eta, Q, R;
+      
+          // Use Eigen segment views for clarity (no copies)
+          auto Bseg   = coeffs.template segment<N + 1>(0);
+          auto etaseg = coeffs.template segment<N + 1>(N + 1);
+          auto& Qref  = coeffs(2 * N + 2);
+          auto& Rref  = coeffs(2 * N + 3);
+      
+          Real error = std::numeric_limits<Real>::max();
+          for (int iter = 0; iter < 500 && error > 1e-8f; ++iter) {
+              const BigVector f = compute_residual(coeffs, H, k, D);
+              error = f.cwiseAbs().maxCoeff();
+      
+              // NaN/Inf guard
+              if (etaseg.maxCoeff() > 2.0f || etaseg.minCoeff() < 0.1f || !std::isfinite(error)) {
+                  throw std::runtime_error("Optimization failed");
+              }
+      
+              if (error < 1e-8f) break;
+      
+              const BigMatrix J = compute_jacobian(coeffs, H, k, D);
+      
+              // Use LDLT instead of fullPivLu for better performance on symmetric systems
+              Eigen::LDLT<BigMatrix> solver(J);
+              const BigVector delta = solver.solve(-f);
+      
+              coeffs += relax * delta;
+          }
+      
+          // Write back result (safe — Eigen segments alias original arrays)
+          B = Bseg;
+          eta = etaseg;
+          Q = Qref;
+          R = Rref;
+      }
 
-    void optimize(VectorF& B, Real& Q, Real& R, VectorF& eta, Real H, Real k, Real D) {
-        BigVector coeffs;
-        coeffs << B, eta, Q, R;
-
-        Real error = std::numeric_limits<Real>::max();
-        for (int iter = 0; iter < 500 && error > 1e-8f; ++iter) {
-            BigVector f = compute_residual(coeffs, H, k, D);
-            error = f.cwiseAbs().maxCoeff();
-            
-            if (eta.maxCoeff() > 2.0f || eta.minCoeff() < 0.1f || !std::isfinite(error)) {
-                throw std::runtime_error("Optimization failed");
-            }
-
-            if (error < 1e-8f) break;
-
-            BigMatrix J = compute_jacobian(coeffs, H, k, D);
-            BigVector delta = J.fullPivLu().solve(-f);
-            coeffs += relax * delta;
-        }
-
-        B = coeffs.template segment<N+1>(0);
-        eta = coeffs.template segment<N+1>(N+1);
-        Q = coeffs(2*N+2);
-        R = coeffs(2*N+3);
-    }
 
    
    Eigen::Matrix<Real, StateDim, 1>
