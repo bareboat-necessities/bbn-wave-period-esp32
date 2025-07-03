@@ -138,7 +138,6 @@ class FentonWave {
       return -(E.array() * j.square() * k * k * phases.cos()).sum();
     }
 
-    // Velocity and pressure methods
     Real stream_function(Real x_val, Real z_val, Real t = 0) const {
       const Real phase = k * (x_val - c * t);
       const VelocityTerms terms = compute_velocity_terms(z_val, phase, false);
