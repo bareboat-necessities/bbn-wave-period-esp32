@@ -170,6 +170,52 @@ class FentonWave {
       return rho * (R - kinetic_energy - potential_energy + flow_work);
     }
 
+    Real total_energy_density(int samples = 100) const {
+      Real dx = length / samples;
+      Real energy = 0.0f;
+      for (int i = 0; i <= samples; ++i) {
+        Real x_val = i * dx;
+        Real z = surface_elevation(x_val);           // η(x)
+        Real u = horizontal_velocity(x_val, z);      // u(x, η(x))
+        Real w = vertical_velocity(x_val, z);        // w(x, η(x))
+        Real KE = 0.5f * (u * u + w * w);            // Kinetic Energy: ½(u² + w²)
+        Real PE = g * z;                             // Potential Energy: g * η
+        Real local_energy = KE + PE;                 // Total energy at this x
+        energy += (i == 0 || i == samples) ? 0.5f * local_energy : local_energy;
+      }
+      return dx * energy;  // Trapezoidal integration
+    }
+
+    Real mean_kinetic_energy_density(int samples = 100) const {
+      Real dx = length / samples;
+      Real KE_total = 0.0f;
+      for (int i = 0; i <= samples; ++i) {
+        Real x_val = i * dx;
+        Real z = surface_elevation(x_val);           // Evaluate velocity at free surface
+        Real u = horizontal_velocity(x_val, z);
+        Real w = vertical_velocity(x_val, z);
+        Real KE = 0.5f * (u * u + w * w);            // Kinetic Energy
+        KE_total += (i == 0 || i == samples) ? 0.5f * KE : KE;
+      }
+      return dx * KE_total;  // Integrated over one wavelength
+    }
+
+    Real mean_potential_energy_density(int samples = 100) const {
+      Real dx = length / samples;
+      Real PE_total = 0.0f;
+      for (int i = 0; i <= samples; ++i) {
+        Real x_val = i * dx;
+        Real z = surface_elevation(x_val);           // η(x)
+        Real PE = g * z;                             // Potential Energy
+        PE_total += (i == 0 || i == samples) ? 0.5f * PE : PE;
+      }
+      return dx * PE_total;  // Trapezoidal rule
+    }
+
+    Real energy_flux(int samples = 100) const {
+      return c * total_energy_density(samples);
+    }
+
     Real get_c() const {
       return c;
     }
