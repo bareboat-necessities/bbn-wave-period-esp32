@@ -258,7 +258,7 @@ class FentonWave {
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
       Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
       int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
-      auto steps = Eigen::Array<Real, Eigen::Dynamic, 1>::LinSpaced(num, 1, num) * H / num;
+      Eigen::Array<Real, Eigen::Dynamic, 1> steps = Eigen::Array<Real, Eigen::Dynamic, 1>::LinSpaced(num, 1, num) * H / num;
       return std::vector<Real>(steps.data(), steps.data() + steps.size());
     }
 
