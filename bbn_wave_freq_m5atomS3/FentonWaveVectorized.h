@@ -311,8 +311,8 @@ class FentonWave {
                   VectorF& eta, Real H, Real k, Real D) {
       constexpr int NU = 2 * (N + 1) + 2;
       Eigen::Matrix<Real, NU, 1> coeffs;
-      coeffs.template segment < N + 1 > (0) = B;
-      coeffs.template segment < N + 1 > (N + 1) = eta;
+      coeffs.template segment<N + 1>(0) = B;
+      coeffs.template segment<N + 1>(N + 1) = eta;
       coeffs(2 * N + 2) = Q;
       coeffs(2 * N + 3) = R;
 
@@ -321,8 +321,8 @@ class FentonWave {
         Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k, D);
         error = f.cwiseAbs().maxCoeff();
 
-        Real eta_max = coeffs.template segment < N + 1 > (N + 1).maxCoeff();
-        Real eta_min = coeffs.template segment < N + 1 > (N + 1).minCoeff();
+        Real eta_max = coeffs.template segment<N + 1>(N + 1).maxCoeff();
+        Real eta_min = coeffs.template segment<N + 1>(N + 1).minCoeff();
         if (eta_max > 2.0f || eta_min < 0.1f || !std::isfinite(error)) {
           throw std::runtime_error("Optimization failed");
         }
@@ -334,8 +334,8 @@ class FentonWave {
         coeffs += relax * delta;
       }
 
-      B = coeffs.template segment < N + 1 > (0);
-      eta = coeffs.template segment < N + 1 > (N + 1);
+      B = coeffs.template segment<N + 1>(0);
+      eta = coeffs.template segment<N + 1>(N + 1);
       Q = coeffs(2 * N + 2);
       R = coeffs(2 * N + 3);
     }
@@ -343,8 +343,8 @@ class FentonWave {
     Eigen::Matrix<Real, StateDim, 1>
     compute_residual(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
       Eigen::Matrix<Real, StateDim, 1> f = Eigen::Matrix<Real, StateDim, 1>::Zero();
-      auto B = coeffs.template segment < N + 1 > (0);
-      auto eta = coeffs.template segment < N + 1 > (N + 1);
+      auto B = coeffs.template segment<N + 1>(0);
+      auto eta = coeffs.template segment<N + 1>(N + 1);
       Real Q = coeffs(2 * N + 2);
       Real R = coeffs(2 * N + 3);
       Real B0 = B(0);
@@ -395,8 +395,8 @@ class FentonWave {
     Eigen::Matrix<Real, StateDim, StateDim>
     compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
       Eigen::Matrix<Real, StateDim, StateDim> J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
-      auto B   = coeffs.template segment < N + 1 > (0);
-      auto eta = coeffs.template segment < N + 1 > (N + 1);
+      auto B   = coeffs.template segment<N + 1>(0);
+      auto eta = coeffs.template segment<N + 1>(N + 1);
       Real B0  = B(0);
 
       const Eigen::Array<Real, N, 1> j_arr = j_cache;
