@@ -373,9 +373,18 @@ private:
               J(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 0.5f / N : 1.0f / N;
       
           // Constraint: peak-to-trough height - H
-         Eigen::Index max_idx, min_idx;
-         eta.maxCoeff(&max_idx);
-         eta.minCoeff(&min_idx);
+         Real max_val = eta(0), min_val = eta(0);
+         int max_idx = 0, min_idx = 0;
+         for (int j = 1; j <= N; ++j) {
+             if (eta(j) > max_val) {
+                 max_val = eta(j);
+                 max_idx = j;
+             }
+             if (eta(j) < min_val) {
+                 min_val = eta(j);
+                 min_idx = j;
+             }
+         }
           J(2 * N + 3, N + 1 + max_idx) = 1;
           J(2 * N + 3, N + 1 + min_idx) = -1;
       
