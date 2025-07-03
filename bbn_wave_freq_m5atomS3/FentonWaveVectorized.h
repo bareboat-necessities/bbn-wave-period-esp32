@@ -349,7 +349,7 @@ class FentonWave {
 
     Eigen::Matrix<Real, StateDim, StateDim>
     compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
-      auto J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
+      Eigen::Matrix<Real, StateDim, StateDim> J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
       auto B   = coeffs.template segment < N + 1 > (0);
       auto eta = coeffs.template segment < N + 1 > (N + 1);
       Real B0  = B(0);
