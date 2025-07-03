@@ -245,8 +245,7 @@ class FentonWave {
       Real lam = length / depth;
       k = 2 * M_PI / lam;
       Real D = 1.0f;
-      Real kc = k;
-      Real c0 = std::sqrt(std::tanh(kc) / kc);
+      Real c0 = std::sqrt(std::tanh(k) / k);
 
       VectorF x_nd = VectorF::LinSpaced(N + 1, 0, lam / 2.0f);
       B.setZero();
