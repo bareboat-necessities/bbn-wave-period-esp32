@@ -275,48 +275,54 @@ private:
         R = coeffs(2*N+3);
     }
 
-    Eigen::Matrix<Real, StateDim, 1>
-    compute_residual(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
-        Eigen::Matrix<Real, StateDim, 1> f;
-        auto B = coeffs.template segment<N + 1>(0);
-        auto eta = coeffs.template segment<N + 1>(N + 1);
-        Real Q = coeffs(2 * N + 2);
-        Real R = coeffs(2 * N + 3);
-        Real B0 = B(0);
-
-        for (int m = 0; m <= N; ++m) {
-            Real x_m = M_PI * m / N;
-            Real eta_m = eta(m);
-            
-            Real um = -B0;
-            Real vm = 0;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
-                Real C1 = cosh_by_cosh(kj * eta_m, kj * D);
-                Real S2 = std::sin(j * x_m);
-                Real C2 = std::cos(j * x_m);
-                um += kj * B(j) * C1 * C2;
-                vm += kj * B(j) * S1 * S2;
-            }
-
-            f(m) = -B0 * eta_m;
-            for (int j = 1; j <= N; ++j) {
-                Real kj = j * k;
-                Real S1 = sinh_by_cosh(kj * eta_m, kj * D);
-                Real C2 = std::cos(j * x_m);
-                f(m) += B(j) * S1 * C2;
-            }
-            f(m) += Q;
-
-            f(N + 1 + m) = 0.5f * (um * um + vm * vm) + eta_m - R;
-        }
-
-        f(2 * N + 2) = (eta.sum() - 0.5f * (eta(0) + eta(N))) / N - 1.0f;
-        f(2 * N + 3) = eta.maxCoeff() - eta.minCoeff() - H;
-
-        return f;
-    }
+   
+   Eigen::Matrix<Real, StateDim, 1>
+   compute_residual(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
+       Eigen::Matrix<Real, StateDim, 1> f = Eigen::Matrix<Real, StateDim, 1>::Zero();
+       auto B = coeffs.template segment<N + 1>(0);
+       auto eta = coeffs.template segment<N + 1>(N + 1);
+       Real Q = coeffs(2 * N + 2);
+       Real R = coeffs(2 * N + 3);
+       Real B0 = B(0);
+   
+       Eigen::Array<Real, N, 1> j = Eigen::Array<Real, N, 1>::LinSpaced(N, 1, N);
+       Eigen::Array<Real, N, 1> kj = j * k;
+   
+       for (int m = 0; m <= N; ++m) {
+           Real x_m = M_PI * m / N;
+           Real eta_m = eta(m);
+   
+           Eigen::Array<Real, N, 1> kj_eta = kj * eta_m;
+           Eigen::Array<Real, N, 1> kj_D   = kj * D;
+   
+           Eigen::Array<Real, N, 1> sin_jx = (j * x_m).sin();
+           Eigen::Array<Real, N, 1> cos_jx = (j * x_m).cos();
+   
+           Eigen::Array<Real, N, 1> S1 = kj_eta.binaryExpr(kj_D, [](Real a, Real b) { return sinh_by_cosh(a, b); });
+           Eigen::Array<Real, N, 1> C1 = kj_eta.binaryExpr(kj_D, [](Real a, Real b) { return cosh_by_cosh(a, b); });
+   
+           Eigen::Array<Real, N, 1> SC = S1 * cos_jx;
+           Eigen::Array<Real, N, 1> CC = C1 * cos_jx;
+           Eigen::Array<Real, N, 1> SS = S1 * sin_jx;
+   
+           Real um = -B0 + (kj * B.tail(N).array() * CC).sum();
+           Real vm = (kj * B.tail(N).array() * SS).sum();
+   
+           // First N+1 rows: f[m]
+           f(m) = -B0 * eta_m + (B.tail(N).array() * SC).sum() + Q;
+   
+           // Next N+1 rows: f[N+1+m]
+           f(N + 1 + m) = 0.5f * (um * um + vm * vm) + eta_m - R;
+       }
+   
+       // Mean elevation constraint
+       f(2 * N + 2) = (eta.sum() - 0.5f * (eta(0) + eta(N))) / N - 1.0f;
+   
+       // Wave height constraint
+       f(2 * N + 3) = eta.maxCoeff() - eta.minCoeff() - H;
+   
+       return f;
+   }
 
    Eigen::Matrix<Real, StateDim, StateDim>
    compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
