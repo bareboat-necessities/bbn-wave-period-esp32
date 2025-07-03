@@ -349,7 +349,7 @@ class FentonWave {
 
     Eigen::Matrix<Real, StateDim, StateDim>
     compute_jacobian(const Eigen::Matrix<Real, StateDim, 1>& coeffs, Real H, Real k, Real D) {
-      Eigen::Matrix<Real, StateDim, StateDim> J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
+      auto J = Eigen::Matrix<Real, StateDim, StateDim>::Zero();
       auto B   = coeffs.template segment < N + 1 > (0);
       auto eta = coeffs.template segment < N + 1 > (N + 1);
       Real B0  = B(0);
@@ -382,24 +382,23 @@ class FentonWave {
         CS = C1 * S2;
 
         Real um = -B0 + (kj * Bj * CC).sum();
-        Real vm =         (kj * Bj * SS).sum();
+        Real vm =       (kj * Bj * SS).sum();
 
         // First N+1 rows
         J(m, 0) = -eta_m;
-        for (int j = 0; j < N; ++j)
+        for (int j = 0; j < N; ++j) {
           J(m, j + 1) = SC(j);
+        }
         J(m, N + 1 + m) = -B0 + (Bj * kj * CC).sum();
         J(m, 2 * N + 2) = 1.0f;
 
         // Next N+1 rows
         J(N + 1 + m, 0) = -um;
-        for (int j = 0; j < N; ++j)
+        for (int j = 0; j < N; ++j) {
           J(N + 1 + m, j + 1) = k * j_arr(j) * (um * CC(j) + vm * SS(j));
+        }
 
-        // d_eta_m fully vectorized
-        const Real d_eta_m = 1.0f
-                             + (um * (Bj * kj2 * SC).matrix()).sum()
-                             + (vm * (Bj * kj2 * CS).matrix()).sum();
+        const Real d_eta_m = 1.0f + (um * (Bj * kj2 * SC).matrix()).sum() + (vm * (Bj * kj2 * CS).matrix()).sum();
 
         J(N + 1 + m, N + 1 + m) = d_eta_m;
         J(N + 1 + m, 2 * N + 3) = -1.0f;
@@ -424,7 +423,6 @@ class FentonWave {
       }
       J(2 * N + 3, N + 1 + max_idx) = 1.0f;
       J(2 * N + 3, N + 1 + min_idx) = -1.0f;
-
       return J;
     }
 };
