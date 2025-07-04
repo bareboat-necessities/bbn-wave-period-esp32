@@ -169,34 +169,24 @@ class FentonWave {
       return rho * (R - kinetic_energy - potential_energy + flow_work);
     }
 
-    Real total_energy_density(int samples = 100) const {
-      Real dx = length / samples;
-      Real energy = 0.0f;
-      for (int i = 0; i <= samples; ++i) {
-        Real x_val = i * dx;
-        Real z = surface_elevation(x_val);           // η(x)
-        Real u = horizontal_velocity(x_val, z);      // u(x, η(x))
-        Real w = vertical_velocity(x_val, z);        // w(x, η(x))
-        Real KE = 0.5f * (u * u + w * w);            // Kinetic Energy: ½(u² + w²)
-        Real PE = g * z;                             // Potential Energy: g * η
-        Real local_energy = KE + PE;                 // Total energy at this x
-        energy += (i == 0 || i == samples) ? 0.5f * local_energy : local_energy;
-      }
-      return dx * energy;  // Trapezoidal integration
-    }
-
     Real mean_kinetic_energy_density(int samples = 100) const {
       Real dx = length / samples;
       Real KE_total = 0.0f;
       for (int i = 0; i <= samples; ++i) {
         Real x_val = i * dx;
-        Real z = surface_elevation(x_val);           // Evaluate velocity at free surface
-        Real u = horizontal_velocity(x_val, z);
-        Real w = vertical_velocity(x_val, z);
-        Real KE = 0.5f * (u * u + w * w);            // Kinetic Energy
-        KE_total += (i == 0 || i == samples) ? 0.5f * KE : KE;
+        Real eta_val = surface_elevation(x_val);
+        
+        // Integrate kinetic energy from bottom to surface
+        for (int zi = 0; zi <= 10; ++zi) {
+           Real z_val = -depth + zi * (eta_val + depth) / 10.0f;
+           Real u = horizontal_velocity(x_val, z_val);
+           Real w = vertical_velocity(x_val, z_val);
+           Real KE_density = 0.5f * (u * u + w * w);
+           Real weight = (zi == 0 || zi == 10) ? 0.5f : 1.0f;
+           KE_total += weight * KE_density * (eta_val + depth) / 10.0f;
+        }
       }
-      return dx * KE_total;  // Integrated over one wavelength
+      return dx * KE_total / length;  // Average over wavelength
     }
 
     Real mean_potential_energy_density(int samples = 100) const {
@@ -209,6 +199,10 @@ class FentonWave {
         PE_total += (i == 0 || i == samples) ? 0.5f * PE : PE;
       }
       return dx * PE_total;  // Trapezoidal rule
+    }
+
+    Real total_energy_density(int samples = 100) const {
+      return mean_kinetic_energy_density(samples) + mean_potential_energy_density(samples);
     }
 
     Real energy_flux(int samples = 100) const {
