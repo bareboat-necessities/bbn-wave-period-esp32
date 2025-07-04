@@ -253,11 +253,13 @@ class FentonWave {
         optimize(B, Q, R, eta_nd, Hi, k, D);
       }
 
-      Real sqrt_gd = std::sqrt(g * depth);
+      const Real sqrt_gd = std::sqrt(g * depth);
+      const Real gd = g * depth;
+      const Real sqrt_gd3 = sqrt_gd * depth;
       B(0) *= sqrt_gd;
-      B.tail(N) *= std::sqrt(g * std::pow(depth, 3));
-      Q *= std::sqrt(g * std::pow(depth, 3));
-      R *= g * depth;
+      B.tail(N) *= sqrt_gd3;
+      Q *= sqrt_gd3;
+      R *= gd;      
 
       x = x_nd * depth;
       eta = (eta_nd.array() - 1.0f) * depth;
