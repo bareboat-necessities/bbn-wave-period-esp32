@@ -75,6 +75,13 @@ class FentonFFT {
     }
 };
 
+struct WaveInitParams {
+  float height;
+  float depth;
+  float length;
+  float initial_x;
+};
+
 template <int N = 4>
 class FentonWave {
   private:
@@ -207,6 +214,32 @@ class FentonWave {
 
     Real energy_flux(int samples = 100) const {
       return c * total_energy_density(samples);
+    }
+
+    float compute_wavelength(float omega, float depth, float g = 9.81f, float tol = 1e-6f, int max_iter = 50) {
+      float k = omega * omega / g; // Initial guess (deep water)
+      for (int i = 0; i < max_iter; ++i) {
+        float f = g * k * std::tanh(k * depth) - omega * omega;
+        float df = g * std::tanh(k * depth) + g * k * depth * (1.0f - std::pow(std::tanh(k * depth), 2));
+        float k_next = k - f / df;
+        if (std::abs(k_next - k) < tol) break;
+        k = k_next;
+      }
+      return 2.0f * M_PI / k;
+    }
+
+    WaveInitParams infer_fenton_parameters_from_amplitude(
+      float amplitude, float depth, float omega, float phase_radians, float g = 9.81f) {
+  
+      if (amplitude <= 0 || depth <= 0 || omega <= 0)
+        throw std::invalid_argument("Amplitude, depth, and omega must be positive");
+
+      float height = 2.0f * amplitude;  // wave height = crest-to-trough
+      float length = compute_wavelength(omega, depth, g);
+      float initial_x = std::fmod(phase_radians / (2.0f * M_PI) * length, length);
+      if (initial_x < 0.0f) initial_x += length; // wrap to [0, length)
+
+      return { height, depth, length, initial_x };
     }
 
     Real get_c() const {
