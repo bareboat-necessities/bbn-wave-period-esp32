@@ -542,7 +542,7 @@ class WaveSurfaceTracker {
     void track_floating_object(
       float duration,
       float timestep,
-      std::function<void(float, float, float, float, float, float)> callback)
+      std::function<void(float, float, float, float, float, float, float)> callback)
     {
       dt = clamp_value(timestep, 1e-5f, 0.1f);
 
@@ -566,7 +566,7 @@ class WaveSurfaceTracker {
 
         // Call user callback with current state
         if (t > dt) {
-          callback(t, z, z_dot, z_ddot, x, vx);
+          callback(t, timestep, z, z_dot, z_ddot, x, vx);
         }
 
         prev_z_dot = z_dot;
@@ -623,7 +623,7 @@ void FentonWave_test_2() {
 
   // Define the kinematics callback (writes data to file)
   auto kinematics_callback = [&out](
-  float time, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
+      float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
     out << time << "," << elevation << "," << vertical_velocity << "," << vertical_acceleration << "," << horizontal_position << "\n";
   };
 
