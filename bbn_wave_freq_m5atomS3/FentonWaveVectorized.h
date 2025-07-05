@@ -516,13 +516,13 @@ class WaveSurfaceTracker {
       float k1_x = vx_curr;
 
       float k2_v = accel(x_curr + 0.5f * dt_step * k1_x, vx_curr + 0.5f * dt_step * k1_v, t_curr + 0.5f * dt_step);
-      float k2_x = vx_curr + 0.5f * dt_step * k1_v;
+      float k2_x = k1_x + 0.5f * dt_step * k1_v;
 
       float k3_v = accel(x_curr + 0.5f * dt_step * k2_x, vx_curr + 0.5f * dt_step * k2_v, t_curr + 0.5f * dt_step);
-      float k3_x = vx_curr + 0.5f * dt_step * k2_v;
+      float k3_x = k1_x + 0.5f * dt_step * k2_v;
 
       float k4_v = accel(x_curr + dt_step * k3_x, vx_curr + dt_step * k3_v, t_curr + dt_step);
-      float k4_x = vx_curr + dt_step * k3_v;
+      float k4_x = k1_x + dt_step * k3_v;
 
       x_curr += dt_step * (k1_x + 2 * k2_x + 2 * k3_x + k4_x) / 6.0f;
       vx_curr += dt_step * (k1_v + 2 * k2_v + 2 * k3_v + k4_v) / 6.0f;
