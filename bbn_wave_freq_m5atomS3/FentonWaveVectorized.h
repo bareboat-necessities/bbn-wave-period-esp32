@@ -508,7 +508,7 @@ class WaveSurfaceTracker {
 
     // RK4 integration for horizontal motion
     void rk4_step(float& x_curr, float& vx_curr, float t_curr, float dt_step) {
-      auto accel = [this](float x_in, float vx_in, float t_in) {
+      auto accel = [&](float x_in, float vx_in, float t_in) {
         return compute_horizontal_acceleration(x_in, vx_in, t_in);
       };
 
