@@ -141,9 +141,9 @@ int main(int argc, char *argv[]) {
     init_wave_filters();
   }
 
-  const float bias = 0.1f;
-  const double mean = 0.0f;
-  const double stddev = 0.08f;
+  const float bias = 0.1f;      // m/s^2
+  const double mean = 0.0f;     // m/s^2
+  const double stddev = 0.08f;  // m/s^2
   std::default_random_engine generator;
   generator.seed(239);  // seed the engine for deterministic test results
   std::normal_distribution<float> dist(mean, stddev);
