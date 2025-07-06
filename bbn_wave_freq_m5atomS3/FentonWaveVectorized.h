@@ -610,6 +610,10 @@ class WaveSurfaceTracker {
         t += dt;
       }
     }
+
+    FentonWave get_wave() {
+      return wave;
+    }
 };
 
 
