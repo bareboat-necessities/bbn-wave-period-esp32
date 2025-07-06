@@ -58,6 +58,7 @@ class FentonFFT {
         return m;
       }(); return M;
     }
+
     static const Vector& weights() {
       static Vector w = []() {
         Vector v = Vector::Ones();
@@ -216,7 +217,7 @@ class FentonWave {
       return c * total_energy_density(samples);
     }
 
-    float compute_wavelength(float omega, float depth, float g = 9.81f, float tol = 1e-6f, int max_iter = 50) {
+    static float compute_wavelength(float omega, float depth, float g = 9.81f, float tol = 1e-6f, int max_iter = 50) {
       float k = omega * omega / g; // Initial guess (deep water)
       for (int i = 0; i < max_iter; ++i) {
         float f = g * k * std::tanh(k * depth) - omega * omega;
@@ -228,7 +229,7 @@ class FentonWave {
       return 2.0f * M_PI / k;
     }
 
-    WaveInitParams infer_fenton_parameters_from_amplitude(
+    static WaveInitParams infer_fenton_parameters_from_amplitude(
       float amplitude, float depth, float omega, float phase_radians, float g = 9.81f) {
   
       if (amplitude <= 0 || depth <= 0 || omega <= 0)
