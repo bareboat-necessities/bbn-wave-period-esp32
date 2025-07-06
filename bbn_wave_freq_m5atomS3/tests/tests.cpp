@@ -141,35 +141,57 @@ int main(int argc, char *argv[]) {
     init_wave_filters();
   }
 
-  float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
-  //float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = PI / 3.0;
-  //float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = PI / 3.0;
-  //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = PI / 3.0;
-  //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
-
-  const float bias = 0.1;
+  const float bias = 0.02;
   const double mean = 0.0;
-  const double stddev = 0.08;
+  const double stddev = 0.03;
   std::default_random_engine generator;
   generator.seed(239);  // seed the engine for deterministic test results
   std::normal_distribution<float> dist(mean, stddev);
 
-  printf("main_amp:,%.4f", displacement_amplitude);
+  //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
+  float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = PI / 3.0;
+  //float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = PI / 3.0;
+  //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = PI / 3.0;
+  //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
+
+  printf("main_amp,%.4f", displacement_amplitude);
   printf(",main_freq,%.4f", frequency);
   printf(",acc_bias,%.7f", bias);
   printf(",acc_noise_std_dev,%.5f", stddev);
   printf("\n");
 
   t = 0.0;
-  while (t < test_duration) {
-    float zero_mean_gauss_noise = dist(generator);
-    float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t) + bias + zero_mean_gauss_noise;
-    float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
-    float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
 
-    run_filters(a / g_std, v, h, delta_t, frequency);
+  bool test_trochoid = false;
+  if (test_trochoid) {
+    while (t < test_duration) {
+      float zero_mean_gauss_noise = dist(generator);
+      float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t) / g_std + bias + zero_mean_gauss_noise;
+      float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
+      float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
 
-    t = t + delta_t;
+      run_filters(a, v, h, delta_t, frequency);
+
+      t = t + delta_t;
+    }
+  } else {
+    // Create a 4th-order Fenton wave and a surface tracker
+    WaveInitParams wave_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
+      displacement_amplitude, 200.0f, 2 * M_PI * frequency, phase_rad);
+
+    const float mass = 5.0f;     // Mass (kg)
+    const float drag = 0.1f;     // Linear drag coeff opposing velocity
+
+    WaveSurfaceTracker<4> tracker(wave_params.height, wave_params.depth, wave_params.length, wave_params.initial_x, mass, drag);
+
+    auto kinematics_callback = [&frequency, &delta_t, &bias, &dist, &generator](
+        float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
+      float zero_mean_gauss_noise = dist(generator);
+      run_filters(vertical_acceleration / g_std + bias + zero_mean_gauss_noise, vertical_velocity, elevation, dt, frequency);
+      t = t + delta_t;
+    };
+
+    tracker.track_floating_object(test_duration, delta_t, kinematics_callback);
   }
 
 #ifdef FENTON_TEST
