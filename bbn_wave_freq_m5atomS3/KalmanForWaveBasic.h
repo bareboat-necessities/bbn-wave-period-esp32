@@ -249,8 +249,8 @@ public:
     // but can provide a starting point for tuning Q for the production filter.
     Matrix4f calculateTheoreticalProcessNoise(
         float sample_rate_hz,               // Accelerometer sample rate (Hz)
-        float sigma_a_density = 0.002943f,  // Accelerometer noise density (m/s²/√Hz)
-        float sigma_b = 1.962e-4f,          // Accelerometer bias instability (m/s²)
+        float sigma_a_density = 0.004f,     // Accelerometer noise density (m/s²/√Hz)
+        float sigma_b = 0.2f,               // Accelerometer bias instability (m/s²)
         float tau_b = 100.0f                // Accelerometer bias time constant (sec), typically 100 for MEMS IMUs
     ) const {
         // Calculate acceleration noise component
