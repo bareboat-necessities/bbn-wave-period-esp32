@@ -217,7 +217,7 @@ class FentonWave {
       return c * total_energy_density(samples);
     }
 
-    static float compute_wavelength(float omega, float depth, float g = 9.81f, float tol = 1e-6f, int max_iter = 50) {
+    static float compute_wavelength(float omega, float depth, float g = 9.81f, float tol = 1e-10f, int max_iter = 50) {
       float k = omega * omega / g; // Initial guess (deep water)
       for (int i = 0; i < max_iter; ++i) {
         float f = g * k * std::tanh(k * depth) - omega * omega;
