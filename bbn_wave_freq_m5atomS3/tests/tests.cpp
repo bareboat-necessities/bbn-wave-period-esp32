@@ -141,9 +141,9 @@ int main(int argc, char *argv[]) {
     init_wave_filters();
   }
 
-  const float bias = 0.02;
-  const double mean = 0.0;
-  const double stddev = 0.03;
+  const float bias = 0.1f;
+  const double mean = 0.0f;
+  const double stddev = 0.08f;
   std::default_random_engine generator;
   generator.seed(239);  // seed the engine for deterministic test results
   std::normal_distribution<float> dist(mean, stddev);
@@ -166,11 +166,11 @@ int main(int argc, char *argv[]) {
   if (test_trochoid) {
     while (t < test_duration) {
       float zero_mean_gauss_noise = dist(generator);
-      float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t) / g_std + bias + zero_mean_gauss_noise;
+      float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t) + bias + zero_mean_gauss_noise;
       float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
       float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
 
-      run_filters(a, v, h, delta_t, frequency);
+      run_filters(a / g_std, v, h, delta_t, frequency);
 
       t = t + delta_t;
     }
@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
     auto kinematics_callback = [&frequency, &delta_t, &bias, &dist, &generator](
         float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
       float zero_mean_gauss_noise = dist(generator);
-      run_filters(vertical_acceleration / g_std + bias + zero_mean_gauss_noise, vertical_velocity, elevation, dt, frequency);
+      run_filters((vertical_acceleration + bias + zero_mean_gauss_noise) / g_std, vertical_velocity, elevation, dt, frequency);
       t = t + delta_t;
     };
 
