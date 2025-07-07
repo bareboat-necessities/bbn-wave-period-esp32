@@ -241,8 +241,12 @@ void read_and_processIMU_data() {
     // Wave direction steps
     float azimuth = azimuth_deg_180(accel_rotated.x, accel_rotated.y); 
     if (wave_angle_deg != WRONG_ANGLE_MARKER) {
-      wave_angle_estimate = low_pass_angle_average_180(wave_angle_deg, azimuth, 0.004f, wave_angle_variance);
-      wave_angle_deg = wave_angle_estimate.angle;
+      float accel_magnitude = calculate_magnitude(accel_rotated.x, accel_rotated.y);
+      const float IGNORE_LOW_ACCEL =  0.04f;  // m/s^2
+      if (accel_magnitude > IGNORE_LOW_ACCEL / g_std) {  // ignore low magnitudes
+        wave_angle_estimate = low_pass_angle_average_180(wave_angle_deg, azimuth, 0.004f, wave_angle_variance);
+        wave_angle_deg = wave_angle_estimate.angle;
+      }
     } else {
       wave_angle_deg = azimuth;
     }
