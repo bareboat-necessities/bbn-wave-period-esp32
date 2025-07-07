@@ -150,12 +150,14 @@ public:
 
         // Temperature compensation of bias
         if (std::isnan(last_temperature_celsius)) {
-          last_temperature_celsius = temperature_celsius;
-        } else {
+          if (!std::isnan(temperature_celsius)) {
+            last_temperature_celsius = temperature_celsius;
+          }
+        } else if (!std::isnan(temperature_celsius)) {
           float delta_Temp = temperature_celsius - last_temperature_celsius;
           x(4) += temperature_coefficient * delta_Temp;
+          last_temperature_celsius = temperature_celsius;
         }
-        last_temperature_celsius = temperature_celsius;
       
         // Prediction step
         predict();
