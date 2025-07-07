@@ -111,7 +111,7 @@ void initialize_filters() {
 void read_and_processIMU_data() {
   auto data = M5.Imu.getImuData();
 
-  float tempC = NaN;
+  float tempC = NAN;
   M5.Imu.getTemp(&tempC);
 
   now = micros();
