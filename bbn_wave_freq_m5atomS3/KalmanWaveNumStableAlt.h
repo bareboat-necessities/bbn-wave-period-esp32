@@ -198,13 +198,13 @@ public:
         x(4) = s0.accel_bias;            // m/s^2
     }
 
-    void initMeasurementNoise(float r0, float r1) {
+    void initMeasurementNoise(const float r0, const float r1) {
         // Measurement noise covariance
         R.setZero();
         R.diagonal() << r0, r1;  // Displacement integral noise, Acceleration noise (m/s²)²
     }
 
-    static float calculate_k_hat(float linear_freq) {
+    static float calculate_k_hat(const float linear_freq) {
         float k_hat = - (TWO_PI * linear_freq) * (TWO_PI * linear_freq);
         return k_hat;
     }
