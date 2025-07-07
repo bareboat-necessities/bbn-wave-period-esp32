@@ -123,7 +123,9 @@ public:
         );
     }
 
-    void initialize(float q0, float q1, float q2, float q3, float q4) {
+    void initialize(float q0, float q1, float q2, float q3, float q4, float temperature_drift_coeff) {
+        temperature_coefficient = temperature_drift_coeff;
+      
         // State vector initialization
         x.setZero();
 
