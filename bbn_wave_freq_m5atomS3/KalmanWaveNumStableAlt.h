@@ -216,8 +216,8 @@ private:
     Matrix5f F;     // State transition matrix
     FilterMetrics metrics; // Filter performance metrics
 
-    float last_temperature_celsius = NAN;
-    float temperature_coefficient = 0.007f; 
+    float last_temperature_celsius = NAN;    // degC
+    float temperature_coefficient = 0.007f;  // m/s^2/degC
 
     void updateStateTransition(float k_hat, float delta_t) {
         if (delta_t < 1e-10f) {
