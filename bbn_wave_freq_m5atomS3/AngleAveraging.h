@@ -38,8 +38,6 @@ static inline float calculate_consistency(const float x1, const float y1, const 
 
 // Low-pass filter for averaging angles (0-360 degrees) with quality metrics
 AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, float alpha, float current_variance) {
-    AngleEstimate result;
-    
     // Convert angles to unit vectors
     float current_x = cosf(DEG_TO_RAD_UTIL(current_angle));
     float current_y = sinf(DEG_TO_RAD_UTIL(current_angle));
@@ -53,6 +51,8 @@ AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, f
     
     // Compute the resulting angle (using atan2)
     float filtered_angle_rad = atan2f(filtered_y, filtered_x);
+
+    AngleEstimate result;
     result.angle = RAD_TO_DEG_UTIL(filtered_angle_rad);
     
     // Ensure the result is in [0, 360)
@@ -70,8 +70,6 @@ AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, f
 
 // Low-pass filter for angles in 0-180° range (rollover at 180°) with quality metrics
 AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, float alpha, float current_variance) {
-    AngleEstimate result;
-    
     // Double the angles to convert 180° wrap-around to 360°
     float current_doubled = 2.0f * current_angle;
     float new_doubled = 2.0f * new_angle;
@@ -90,7 +88,8 @@ AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, f
     // Compute the resulting angle in doubled space
     float filtered_angle_doubled_rad = atan2f(filtered_y, filtered_x);
     float filtered_angle_doubled_deg = RAD_TO_DEG_UTIL(filtered_angle_doubled_rad);
-    
+
+    AngleEstimate result; 
     // Halve the angle to return to original range [0, 180)
     result.angle = 0.5f * filtered_angle_doubled_deg;
     
