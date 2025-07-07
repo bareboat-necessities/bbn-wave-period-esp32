@@ -203,7 +203,7 @@ public:
         
         // Check for numerical stability before division
         if (fabs(S) > MIN_DIVISOR_VALUE) {
-            Vector4f K = P * H.transpose() / S;
+            Vector4f K = (P * H.transpose()).eval() / S;
             x = x + K * y;
             
             // Joseph form update for covariance
