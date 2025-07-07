@@ -208,7 +208,7 @@ public:
             
             // Joseph form update for covariance
             Matrix4f I_KH = I - K * H;
-            P = (I_KH * P).eval() * I_KH.transpose() + K * R * K.transpose();
+            P = (I_KH * P).eval() * I_KH.transpose() + (K * R).eval() * K.transpose();
             enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
         }
     }
@@ -347,7 +347,7 @@ private:
 
                 // Joseph form update for covariance
                 Matrix4f JI_KH = I - K * H_special;
-                P = (JI_KH * P).eval() * JI_KH.transpose() + K * Sz * K.transpose();
+                P = (JI_KH * P).eval() * JI_KH.transpose() + (K * Sz).eval() * K.transpose();
                 enforcePositiveDefiniteness(P);  // Ensure P remains symmetric and positive definite
              }
         }
