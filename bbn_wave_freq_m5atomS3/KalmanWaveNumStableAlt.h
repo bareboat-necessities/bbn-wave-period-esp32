@@ -149,7 +149,9 @@ public:
         updateStateTransition(k_hat, delta_t);
 
         // Temperature compensation of bias
-        if (!std::isnan(last_temperature_celsius)) {
+        if (std::isnan(last_temperature_celsius)) {
+          last_temperature_celsius = temperature_celsius;
+        } else {
           float delta_Temp = temperature_celsius - last_temperature_celsius;
           x(4) += temperature_coefficient * delta_Temp;
         }
