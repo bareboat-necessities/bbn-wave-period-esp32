@@ -111,6 +111,9 @@ void initialize_filters() {
 void read_and_processIMU_data() {
   auto data = M5.Imu.getImuData();
 
+  float tempC = NaN;
+  M5.Imu.getTemp(&tempC);
+
   now = micros();
   got_samples++;
 
@@ -222,7 +225,7 @@ void read_and_processIMU_data() {
       waveAltState.accel_bias = 0.0f;
       wave_alt_filter.initState(waveAltState);
     }
-    wave_alt_filter.update(a * g_std, k_hat, delta_t);
+    wave_alt_filter.update(a * g_std, k_hat, delta_t, tempC);
     waveAltState = wave_alt_filter.getState();
     heaveAlt = waveAltState.heave;
     //heaveAlt = highPassFilterAlt.update(waveAltState.heave, delta_t);
