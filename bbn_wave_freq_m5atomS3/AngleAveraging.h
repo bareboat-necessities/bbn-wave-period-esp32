@@ -48,16 +48,16 @@ AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, f
     float new_y = sinf(DEG_TO_RAD_UTIL(new_angle));
     
     // Apply low-pass filtering (weighted average)
-    float filtered_x = (1.0 - alpha) * current_x + alpha * new_x;  // Smoothing factor (smaller alpha = smoother)
-    float filtered_y = (1.0 - alpha) * current_y + alpha * new_y;
+    float filtered_x = (1.0f - alpha) * current_x + alpha * new_x;  // Smoothing factor (smaller alpha = smoother)
+    float filtered_y = (1.0f - alpha) * current_y + alpha * new_y;
     
     // Compute the resulting angle (using atan2)
     float filtered_angle_rad = atan2f(filtered_y, filtered_x);
     result.angle = RAD_TO_DEG_UTIL(filtered_angle_rad);
     
     // Ensure the result is in [0, 360)
-    if (result.angle < 0) {
-        result.angle += 360.0;
+    if (result.angle < 0.0f) {
+        result.angle += 360.0f;
     }
     
     // Calculate quality metrics using helper functions
@@ -73,8 +73,8 @@ AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, f
     AngleEstimate result;
     
     // Double the angles to convert 180° wrap-around to 360°
-    float current_doubled = 2.0 * current_angle;
-    float new_doubled = 2.0 * new_angle;
+    float current_doubled = 2.0f * current_angle;
+    float new_doubled = 2.0f * new_angle;
     
     // Convert doubled angles to unit vectors
     float current_x = cosf(DEG_TO_RAD_UTIL(current_doubled));
@@ -84,8 +84,8 @@ AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, f
     float new_y = sinf(DEG_TO_RAD_UTIL(new_doubled));
     
     // Apply low-pass filtering (weighted average)
-    float filtered_x = (1.0 - alpha) * current_x + alpha * new_x;  // Smoothing factor (smaller alpha = smoother)
-    float filtered_y = (1.0 - alpha) * current_y + alpha * new_y;
+    float filtered_x = (1.0f - alpha) * current_x + alpha * new_x;  // Smoothing factor (smaller alpha = smoother)
+    float filtered_y = (1.0f - alpha) * current_y + alpha * new_y;
     
     // Compute the resulting angle in doubled space
     float filtered_angle_doubled_rad = atan2f(filtered_y, filtered_x);
@@ -95,8 +95,8 @@ AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, f
     result.angle = 0.5 * filtered_angle_doubled_deg;
     
     // Ensure the result is in [0, 180)
-    if (result.angle < 0) {
-        result.angle += 180.0;
+    if (result.angle < 0.0f) {
+        result.angle += 180.0f;
     }
     
     // Calculate quality metrics using helper functions (with doubled angles)
