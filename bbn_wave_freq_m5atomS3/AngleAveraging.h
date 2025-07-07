@@ -92,7 +92,7 @@ AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, f
     float filtered_angle_doubled_deg = RAD_TO_DEG_UTIL(filtered_angle_doubled_rad);
     
     // Halve the angle to return to original range [0, 180)
-    result.angle = 0.5 * filtered_angle_doubled_deg;
+    result.angle = 0.5f * filtered_angle_doubled_deg;
     
     // Ensure the result is in [0, 180)
     if (result.angle < 0.0f) {
