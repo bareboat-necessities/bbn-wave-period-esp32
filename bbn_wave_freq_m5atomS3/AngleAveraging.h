@@ -18,12 +18,12 @@ typedef struct {
 } AngleEstimate;
 
 // Helper function to calculate vector magnitude
-static inline float calculate_magnitude(float x, float y) {
+static inline float calculate_magnitude(const float x, const float y) {
     return sqrtf(x * x + y * y);
 }
 
 // Helper function to estimate circular variance from magnitude
-static inline float estimate_variance(float magnitude) {
+static inline float estimate_variance(const float magnitude) {
     if (magnitude > 0.999f) {
         return 0.0f;  // Virtually no variance
     }
@@ -31,7 +31,7 @@ static inline float estimate_variance(float magnitude) {
 }
 
 // Helper function to calculate consistency between two vectors
-static inline float calculate_consistency(float x1, float y1, float x2, float y2) {
+static inline float calculate_consistency(const float x1, const float y1, const float x2, const float y2) {
     float dot_product = x1 * x2 + y1 * y2;
     return 0.5f * (1.0f + dot_product);  // Maps [-1,1] to [0,1]
 }
