@@ -76,7 +76,7 @@ KalmanWaveNumStableAltState waveAltState;
 
 // Wave direction
 float wave_angle_deg = WRONG_ANGLE_MARKER;
-AngleEstimate  wave_angle_estimate;
+AngleEstimate wave_angle_estimate;
 WaveDirectionDetector wave_dir_detector(0.002f, 0.005f);
 
 const char* imu_name;
