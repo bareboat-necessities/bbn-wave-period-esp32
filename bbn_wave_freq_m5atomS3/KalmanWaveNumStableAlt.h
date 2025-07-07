@@ -112,7 +112,8 @@ public:
         float residual_accel = 0.0f;             // Acceleration measurement residual
     };
 
-    KalmanWaveNumStableAlt(float q0 = 1e+1f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 5.0f, float q4 = 1e-5f) {
+    KalmanWaveNumStableAlt(float q0 = 1e+1f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 5.0f, float q4 = 1e-5f, float temperature_drift_coeff = 0.007f) {
+        temperature_coefficient = temperature_drift_coeff;
         initialize(q0, q1, q2, q3, q4);
 
         // Measurement noise covariance
