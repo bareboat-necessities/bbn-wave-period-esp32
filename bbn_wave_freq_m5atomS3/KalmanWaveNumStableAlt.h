@@ -142,11 +142,18 @@ public:
         resetMetrics();
     }
 
-    void update(float measured_accel, float k_hat, float delta_t) {
+    void update(float measured_accel, float k_hat, float delta_t, float temperature_celsius = NaN) {
       
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
 
+        // Temperature compensation of bias
+        if (!std::isnan(last_temperature_celsius)) {
+          float delta_Temp = temperature_celsius - last_temperature_celsius;
+          x(4) += temperature_coefficient * delta_Temp;
+        }
+        last_temperature_celsius = temperature_celsius;
+      
         // Prediction step
         predict();
 
@@ -208,6 +215,9 @@ private:
     Matrix25f H;    // Measurement model
     Matrix5f F;     // State transition matrix
     FilterMetrics metrics; // Filter performance metrics
+
+    float last_temperature_celsius = NaN;
+    float temperature_coefficient = 0.007f; 
 
     void updateStateTransition(float k_hat, float delta_t) {
         if (delta_t < 1e-10f) {
