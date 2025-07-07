@@ -133,7 +133,7 @@ public:
         schmitt_state = SchmittTriggerState::SCHMITT_LOW;
     }
 
-    void initMeasurementNoise(float r0) {
+    void initMeasurementNoise(const float r0) {
         // Initialize observation noise covariance
         // Displacement integral noise (m*s)²
         R = r0;  
