@@ -339,7 +339,7 @@ private:
             Matrix2f Sz_inv = Sz.inverse();
 
             // Mahalanobis gating
-            float mahalanobis_distance_sq = (y.transpose() * Sz_inv).eval() * y;
+            float mahalanobis_distance_sq = y.transpose() * Sz_inv * y;
             if (mahalanobis_distance_sq < MAHALANOBIS_GATING_THRESHOLD) {
                 // Accept correction
                 Matrix42f K = P * H_special.transpose() * Sz_inv;
