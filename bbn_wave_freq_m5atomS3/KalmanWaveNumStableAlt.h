@@ -142,7 +142,7 @@ public:
         resetMetrics();
     }
 
-    void update(float measured_accel, float k_hat, float delta_t, float temperature_celsius = NaN) {
+    void update(float measured_accel, float k_hat, float delta_t, float temperature_celsius = NAN) {
       
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
@@ -216,7 +216,7 @@ private:
     Matrix5f F;     // State transition matrix
     FilterMetrics metrics; // Filter performance metrics
 
-    float last_temperature_celsius = NaN;
+    float last_temperature_celsius = NAN;
     float temperature_coefficient = 0.007f; 
 
     void updateStateTransition(float k_hat, float delta_t) {
