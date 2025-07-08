@@ -217,6 +217,21 @@ public:
     return (dt > 0.0f) ? (dh / dt) * wave_speed : 0.0f;
   }
 
+  float computeWaveEnergy(float water_density = 1025.0f, float gravity = 9.81f) const {
+    if (count < 1) return 0.0f;
+  
+    float sumSq = 0.0f;
+    for (int i = 0; i < count; ++i) {
+      int idx = (head - 1 - i + N) % N;
+      float h = samples[idx].heave;
+      sumSq += h * h;
+    }
+  
+    float meanSq = sumSq / count; // RMS^2
+    // E = 0.5 * rho * g * RMS^2
+    return 0.5f * water_density * gravity * meanSq;
+  }
+
   // Raw buffer access (read-only)
   const WaveSample* getSamples() const { return samples; }
   int getCount() const { return count; }
