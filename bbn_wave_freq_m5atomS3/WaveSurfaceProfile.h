@@ -26,6 +26,7 @@ private:
   int head = 0;
   int count = 0;
   float freq = 1.0f;       // wave frequency in Hz
+  uint32_t last_wave_profile_update = 0;
 
 public:
   void reset() {
@@ -38,9 +39,21 @@ public:
     samples[head] = {heave, timeMicros};
     head = (head + 1) % N;
     if (count < N) count++;
-
     if (new_freq > 0.01f && new_freq < 2.0f) {
       freq = new_freq;
+    }
+  }
+
+  void updateIfNeeded(float heave, float new_freq, uint32_t nowMicros) {
+    if (new_freq > 0.01f && new_freq < 2.0f) {
+      freq = new_freq;
+    }
+    float period_sec = 1.0f / freq;
+    float target_dt = 2.0f * period_sec / N; // seconds per sample
+    uint32_t target_dt_micros = (uint32_t)(target_dt * 1e6f);
+    if (last_wave_profile_update == 0 || (nowMicros - last_wave_profile_update >= target_dt_micros)) {
+      update(heave, freq, nowMicros);
+      last_wave_profile_update = nowMicros;
     }
   }
 
