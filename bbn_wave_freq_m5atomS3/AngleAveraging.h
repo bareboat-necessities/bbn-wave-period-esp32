@@ -146,4 +146,6 @@ private:
     }
 };
 
+typedef AngleAverager::AngleEstimate AngleEstimate; 
+
 #endif
