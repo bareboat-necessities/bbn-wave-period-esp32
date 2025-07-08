@@ -101,6 +101,18 @@ public:
         return {filtered_angle, mag, var, cons};
     }
 
+    static inline float deg2rad(float angle_deg) {
+        return angle_deg * (M_PI / 180.0f);
+    }
+
+    static inline float rad2deg(float angle_rad) {
+        return angle_rad * (180.0f / M_PI);
+    }
+
+    static inline float magnitude(float x, float y) {
+        return sqrtf(x * x + y * y);
+    }
+
     // Get last angle estimate (raw)
     float get_angle() const { return angle_prev; }
 
@@ -115,18 +127,6 @@ private:
     bool initialized = false;
     float angle_prev = 0.0f;
     float variance_prev = M_PI * M_PI / 4.0f;
-
-    static inline float deg2rad(float angle_deg) {
-        return angle_deg * (M_PI / 180.0f);
-    }
-
-    static inline float rad2deg(float angle_rad) {
-        return angle_rad * (180.0f / M_PI);
-    }
-
-    static inline float magnitude(float x, float y) {
-        return sqrtf(x * x + y * y);
-    }
 
     static inline float estimate_variance(float mag) {
         if (mag <= 0.0f) return M_PI * M_PI;
