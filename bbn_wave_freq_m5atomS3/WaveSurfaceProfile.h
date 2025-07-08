@@ -176,12 +176,12 @@ public:
   }
 
   // Predict heave at future phase [0–1)
-  float predictAtPhase(float phase) const {
+  float predictAtPhase(float phase, uint32_t nowMicros) const {
     if (count < 2) return 0.0f;
     phase = fmodf(phase, 1.0f);
     if (phase < 0) phase += 1.0f;
 
-    float now_phase = getPhase(micros());
+    float now_phase = getPhase(nowMicros);
     float target_phase = fmodf(now_phase + phase, 1.0f);
     int target_idx = (int)(target_phase * count);
 
