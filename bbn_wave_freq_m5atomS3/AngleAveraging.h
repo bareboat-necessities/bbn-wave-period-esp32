@@ -45,7 +45,7 @@ static inline float calculate_adaptive_alpha(float current_variance, float new_v
 }
 
 // Low-pass filter for averaging angles (0°-360°) with quality metrics. Smoothing factor (smaller alpha = smoother)
-// Negative current_variance - use fixed alpha. Otherwise alpha is adaptive and recalculated
+// Positive alpha - use fixed alpha. Otherwise alpha is adaptive and recalculated
 AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, float alpha, float current_variance) {
     // Convert angles to unit vectors
     float current_x = cosf(DEG_TO_RAD_UTIL(current_angle));
@@ -59,7 +59,7 @@ AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, f
     float new_variance = estimate_variance(new_magnitude);
     
     // Determine which alpha to use based on current_variance
-    float effective_alpha = (current_variance < 0.0f) ? alpha : calculate_adaptive_alpha(current_variance, new_variance);
+    float effective_alpha = (alpha > 0.0f) ? alpha : calculate_adaptive_alpha(current_variance, new_variance);
     
     // Apply low-pass filtering (weighted average)
     float filtered_x = (1.0f - effective_alpha) * current_x + effective_alpha * new_x;
@@ -85,7 +85,7 @@ AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, f
 }
 
 // Low-pass filter for angles in 0-180° range (rollover at 180°) with quality metrics. Smoothing factor (smaller alpha = smoother)
-// Negative current_variance - use fixed alpha. Otherwise alpha is adaptive and recalculated
+// Positive alpha - use fixed alpha. Otherwise alpha is adaptive and recalculated
 AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, float alpha, float current_variance) {
     // Double the angles to convert 180° wrap-around to 360°
     float current_doubled = 2.0f * current_angle;
@@ -103,7 +103,7 @@ AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, f
     float new_variance = estimate_variance(new_magnitude);
     
     // Determine which alpha to use based on current_variance
-    float effective_alpha = (current_variance < 0.0f) ? alpha : calculate_adaptive_alpha(current_variance, new_variance);
+    float effective_alpha = (alpha > 0.0f) ? alpha : calculate_adaptive_alpha(current_variance, new_variance);
     
     // Apply low-pass filtering (weighted average)
     float filtered_x = (1.0f - effective_alpha) * current_x + effective_alpha * new_x;
