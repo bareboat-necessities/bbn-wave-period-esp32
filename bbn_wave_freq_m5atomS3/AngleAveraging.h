@@ -36,7 +36,16 @@ static inline float calculate_consistency(const float x1, const float y1, const 
     return 0.5f * (1.0f + dot_product);  // Maps [-1,1] to [0,1]
 }
 
-// Low-pass filter for averaging angles (0-360 degrees) with quality metrics
+// Calculate adaptive alpha based on current variance and new measurement variance
+static inline float calculate_adaptive_alpha(float current_variance, float new_variance) {
+    // Kalman-like adaptive alpha: alpha = new_variance / (current_variance + new_variance)
+    // Add small epsilon to avoid division by zero
+    const float epsilon = 1e-6f;
+    return new_variance / (current_variance + new_variance + epsilon);
+}
+
+// Low-pass filter for averaging angles (0°-360°) with quality metrics. Smoothing factor (smaller alpha = smoother)
+// Negative current_variance - use fixed alpha. Otherwise alpha is adaptive and recalculated
 AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, float alpha, float current_variance) {
     // Convert angles to unit vectors
     float current_x = cosf(DEG_TO_RAD_UTIL(current_angle));
@@ -45,9 +54,16 @@ AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, f
     float new_x = cosf(DEG_TO_RAD_UTIL(new_angle));
     float new_y = sinf(DEG_TO_RAD_UTIL(new_angle));
     
+    // Calculate new measurement variance from the new vector
+    float new_magnitude = calculate_magnitude(new_x, new_y);
+    float new_variance = estimate_variance(new_magnitude);
+    
+    // Determine which alpha to use based on current_variance
+    float effective_alpha = (current_variance < 0.0f) ? alpha : calculate_adaptive_alpha(current_variance, new_variance);
+    
     // Apply low-pass filtering (weighted average)
-    float filtered_x = (1.0f - alpha) * current_x + alpha * new_x;  // Smoothing factor (smaller alpha = smoother)
-    float filtered_y = (1.0f - alpha) * current_y + alpha * new_y;
+    float filtered_x = (1.0f - effective_alpha) * current_x + effective_alpha * new_x;
+    float filtered_y = (1.0f - effective_alpha) * current_y + effective_alpha * new_y;
     
     // Compute the resulting angle (using atan2)
     float filtered_angle_rad = atan2f(filtered_y, filtered_x);
@@ -68,7 +84,8 @@ AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, f
     return result;
 }
 
-// Low-pass filter for angles in 0-180° range (rollover at 180°) with quality metrics
+// Low-pass filter for angles in 0-180° range (rollover at 180°) with quality metrics. Smoothing factor (smaller alpha = smoother)
+// Negative current_variance - use fixed alpha. Otherwise alpha is adaptive and recalculated
 AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, float alpha, float current_variance) {
     // Double the angles to convert 180° wrap-around to 360°
     float current_doubled = 2.0f * current_angle;
@@ -81,9 +98,16 @@ AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, f
     float new_x = cosf(DEG_TO_RAD_UTIL(new_doubled));
     float new_y = sinf(DEG_TO_RAD_UTIL(new_doubled));
     
+    // Calculate new measurement variance from the new vector
+    float new_magnitude = calculate_magnitude(new_x, new_y);
+    float new_variance = estimate_variance(new_magnitude);
+    
+    // Determine which alpha to use based on current_variance
+    float effective_alpha = (current_variance < 0.0f) ? alpha : calculate_adaptive_alpha(current_variance, new_variance);
+    
     // Apply low-pass filtering (weighted average)
-    float filtered_x = (1.0f - alpha) * current_x + alpha * new_x;  // Smoothing factor (smaller alpha = smoother)
-    float filtered_y = (1.0f - alpha) * current_y + alpha * new_y;
+    float filtered_x = (1.0f - effective_alpha) * current_x + effective_alpha * new_x;
+    float filtered_y = (1.0f - effective_alpha) * current_y + effective_alpha * new_y;
     
     // Compute the resulting angle in doubled space
     float filtered_angle_doubled_rad = atan2f(filtered_y, filtered_x);
