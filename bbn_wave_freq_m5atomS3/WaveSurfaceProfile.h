@@ -191,6 +191,32 @@ public:
     return samples[idx].heave;
   }
 
+  float computeWaveTrainSlope() const {
+    float crest = -INFINITY, trough = INFINITY;
+    uint32_t crestTime = 0, troughTime = 0;
+
+    for (int i = 0; i < count; ++i) {
+      int idx = (head - 1 - i + N) % N;
+      const WaveSample& s = samples[idx];
+      if (s.heave > crest) {
+        crest = s.heave;
+        crestTime = s.timeMicros;
+      }
+      if (s.heave < trough) {
+        trough = s.heave;
+        troughTime = s.timeMicros;
+      }
+    }
+
+    if (crestTime == 0 || troughTime == 0 || crestTime == troughTime) return 0.0f;
+
+    float dt = fabs((int32_t)(crestTime - troughTime)) / 1e6f;
+    float dh = crest - trough;
+    float wave_speed = 9.81f / (2.0f * PI * freq); // trochoidal approx
+
+    return (dt > 0.0f) ? (dh / dt) * wave_speed : 0.0f;
+  }
+
   // Raw buffer access (read-only)
   const WaveSample* getSamples() const { return samples; }
   int getCount() const { return count; }
