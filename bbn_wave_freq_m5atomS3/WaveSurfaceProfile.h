@@ -1,4 +1,3 @@
-
 #ifndef WAVE_SURFACE_PROFILE_H
 #define WAVE_SURFACE_PROFILE_H
 
@@ -6,6 +5,8 @@
 #include <math.h>
 
 /*
+  Copyright 2025, Mikhail Grushinskiy
+  
   WaveSurfaceProfile - Tracks a rolling buffer of heave samples
   and computes wave phase, crest sharpness, asymmetry, and future prediction.
 
