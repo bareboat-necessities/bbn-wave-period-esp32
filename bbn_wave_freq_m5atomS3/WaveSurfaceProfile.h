@@ -1,7 +1,6 @@
 #ifndef WAVE_SURFACE_PROFILE_H
 #define WAVE_SURFACE_PROFILE_H
 
-#include <Arduino.h>
 #include <math.h>
 
 /*
@@ -98,8 +97,6 @@ public:
     return false;
   }
 
-  // --- Metrics ---
-
   // Crest sharpness: max heave divided by time-to-next-downcrossing
   float computeCrestSharpness() const {
     float maxHeave = -INFINITY;
@@ -132,7 +129,6 @@ public:
         return dt_sec > 0 ? maxHeave / dt_sec : 0.0f;
       }
     }
-
     return 0.0f;
   }
 
