@@ -4,6 +4,8 @@
 #include <math.h>
 
 /*
+  Copyright 2025, Mikhail Grushinskiy
+
   AngleAverager - Stateful angle averaging filter with adaptive or fixed alpha smoothing.
 
   - Automatically handles circular wraparound (e.g., 350° and 10° average to 0°)
