@@ -29,7 +29,7 @@ public:
     };
 
     // Constructor: alpha < 0 enables adaptive smoothing based on circular variance
-    explicit AngleAverager(float alpha_init = 0.1f)
+    explicit AngleAverager(float alpha_init = 0.004f)
         : alpha(alpha_init) {}
 
     // Explicitly set initial angle and reset variance
