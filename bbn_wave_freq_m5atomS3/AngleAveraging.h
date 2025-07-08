@@ -3,131 +3,147 @@
 
 #include <math.h>
 
-// Convert degrees to radians
-#define DEG_TO_RAD_UTIL(angle_deg) ((angle_deg) * M_PI / 180.0)
+/*
+  AngleAverager - Stateful angle averaging filter with adaptive or fixed alpha smoothing.
 
-// Convert radians to degrees
-#define RAD_TO_DEG_UTIL(angle_rad) ((angle_rad) * 180.0 / M_PI)
+  - Automatically handles circular wraparound (e.g., 350° and 10° average to 0°)
+  - Alpha < 0 enables adaptive smoothing using circular variance
+  - Tracks previous angle and estimated variance
+  - Suitable for embedded use (no heap or STL required)
 
-// Structure to hold angle estimate and quality metrics
-typedef struct {
-    float angle = 0.0f;                    // Filtered angle estimate
-    float magnitude = 1e-12f;              // Magnitude of the resultant vector (0-1, higher is better)
-    float variance = M_PI * M_PI / 4.0f;   // Estimated variance of the measurement (radians^2)
-    float consistency = 0.0f;              // Consistency between current and new measurement (0-1, higher is better)
-} AngleEstimate;
+  Usage:
+      AngleAverager avg(0.1f);         // fixed alpha smoothing (10%)
+      AngleAverager avg(-1.0f);        // adaptive alpha smoothing
+      avg.reset(heading_start);        // optional explicit reset
+      auto result = avg.average360(new_heading);  // returns filtered result
+*/
 
-// Helper function to calculate vector magnitude
-static inline float calculate_magnitude(const float x, const float y) {
-    return sqrtf(x * x + y * y);
-}
+class AngleAverager {
+public:
+    // Structure for filtered angle and quality metrics
+    struct AngleEstimate {
+        float angle = 0.0f;                    // Filtered angle in degrees
+        float magnitude = 1e-12f;              // Confidence (0–1)
+        float variance = M_PI * M_PI / 4.0f;   // Estimated circular variance (rad²)
+        float consistency = 0.0f;              // Dot product similarity [0–1]
+    };
 
-// Helper function to estimate circular variance from magnitude
-static inline float estimate_variance(const float magnitude) {
-    if (magnitude > 0.999f) {
-        return 0.0f;  // Virtually no variance
+    // Constructor: alpha < 0 enables adaptive smoothing based on circular variance
+    explicit AngleAverager(float alpha_init = 0.1f)
+        : alpha(alpha_init) {}
+
+    // Explicitly set initial angle and reset variance
+    void reset(float angle_deg) {
+        angle_prev = angle_deg;
+        variance_prev = M_PI * M_PI / 4.0f;
+        initialized = true;
     }
-    return -2.0f * logf(magnitude);
-}
 
-// Helper function to calculate consistency between two vectors
-static inline float calculate_consistency(const float x1, const float y1, const float x2, const float y2) {
-    float dot_product = x1 * x2 + y1 * y2;
-    return 0.5f * (1.0f + dot_product);  // Maps [-1,1] to [0,1]
-}
+    // Averaging in [0, 360) space (e.g., compass heading)
+    AngleEstimate average360(float new_angle_deg) {
+        if (!initialized) reset(new_angle_deg);
 
-// Calculate adaptive alpha based on current variance and new measurement variance
-static inline float calculate_adaptive_alpha(float current_variance, float new_variance) {
-    // Kalman-like adaptive alpha: alpha = new_variance / (current_variance + new_variance)
-    // Add small epsilon to avoid division by zero
-    const float epsilon = 1e-6f;
-    return new_variance / (current_variance + new_variance + epsilon);
-}
+        float cx = cosf(deg2rad(angle_prev));
+        float cy = sinf(deg2rad(angle_prev));
+        float nx = cosf(deg2rad(new_angle_deg));
+        float ny = sinf(deg2rad(new_angle_deg));
 
-// Low-pass filter for averaging angles (0°-360°) with quality metrics. Smoothing factor (smaller alpha = smoother)
-// Positive alpha - use fixed alpha. Otherwise alpha is adaptive and recalculated
-AngleEstimate low_pass_angle_average_360(float current_angle, float new_angle, float alpha, float current_variance) {
-    // Convert angles to unit vectors
-    float current_x = cosf(DEG_TO_RAD_UTIL(current_angle));
-    float current_y = sinf(DEG_TO_RAD_UTIL(current_angle));
-    
-    float new_x = cosf(DEG_TO_RAD_UTIL(new_angle));
-    float new_y = sinf(DEG_TO_RAD_UTIL(new_angle));
-    
-    // Calculate new measurement variance from the new vector
-    float new_magnitude = calculate_magnitude(new_x, new_y);
-    float new_variance = estimate_variance(new_magnitude);
-    
-    // Determine which alpha to use based on current_variance
-    float effective_alpha = (alpha > 0.0f) ? alpha : calculate_adaptive_alpha(current_variance, new_variance);
-    
-    // Apply low-pass filtering (weighted average)
-    float filtered_x = (1.0f - effective_alpha) * current_x + effective_alpha * new_x;
-    float filtered_y = (1.0f - effective_alpha) * current_y + effective_alpha * new_y;
-    
-    // Compute the resulting angle (using atan2)
-    float filtered_angle_rad = atan2f(filtered_y, filtered_x);
+        float new_mag = magnitude(nx, ny);
+        float new_var = estimate_variance(new_mag);
+        float eff_alpha = (alpha >= 0.0f) ? alpha : adaptive_alpha(variance_prev, new_var);
 
-    AngleEstimate result;
-    result.angle = RAD_TO_DEG_UTIL(filtered_angle_rad);
-    
-    // Ensure the result is in [0, 360)
-    if (result.angle < 0.0f) {
-        result.angle += 360.0f;
+        float fx = (1.0f - eff_alpha) * cx + eff_alpha * nx;
+        float fy = (1.0f - eff_alpha) * cy + eff_alpha * ny;
+
+        float filtered_angle = rad2deg(atan2f(fy, fx));
+        if (filtered_angle < 0.0f) filtered_angle += 360.0f;
+
+        float mag = magnitude(fx, fy);
+        float var = estimate_variance(mag);
+        float cons = consistency(cx, cy, nx, ny);
+
+        angle_prev = filtered_angle;
+        variance_prev = var;
+
+        return {filtered_angle, mag, var, cons};
     }
-    
-    // Calculate quality metrics using helper functions
-    result.magnitude = calculate_magnitude(filtered_x, filtered_y);
-    result.variance = estimate_variance(result.magnitude);
-    result.consistency = calculate_consistency(current_x, current_y, new_x, new_y);
-    
-    return result;
-}
 
-// Low-pass filter for angles in 0-180° range (rollover at 180°) with quality metrics. Smoothing factor (smaller alpha = smoother)
-// Positive alpha - use fixed alpha. Otherwise alpha is adaptive and recalculated
-AngleEstimate low_pass_angle_average_180(float current_angle, float new_angle, float alpha, float current_variance) {
-    // Double the angles to convert 180° wrap-around to 360°
-    float current_doubled = 2.0f * current_angle;
-    float new_doubled = 2.0f * new_angle;
-    
-    // Convert doubled angles to unit vectors
-    float current_x = cosf(DEG_TO_RAD_UTIL(current_doubled));
-    float current_y = sinf(DEG_TO_RAD_UTIL(current_doubled));
-    
-    float new_x = cosf(DEG_TO_RAD_UTIL(new_doubled));
-    float new_y = sinf(DEG_TO_RAD_UTIL(new_doubled));
-    
-    // Calculate new measurement variance from the new vector
-    float new_magnitude = calculate_magnitude(new_x, new_y);
-    float new_variance = estimate_variance(new_magnitude);
-    
-    // Determine which alpha to use based on current_variance
-    float effective_alpha = (alpha > 0.0f) ? alpha : calculate_adaptive_alpha(current_variance, new_variance);
-    
-    // Apply low-pass filtering (weighted average)
-    float filtered_x = (1.0f - effective_alpha) * current_x + effective_alpha * new_x;
-    float filtered_y = (1.0f - effective_alpha) * current_y + effective_alpha * new_y;
-    
-    // Compute the resulting angle in doubled space
-    float filtered_angle_doubled_rad = atan2f(filtered_y, filtered_x);
-    float filtered_angle_doubled_deg = RAD_TO_DEG_UTIL(filtered_angle_doubled_rad);
+    // Averaging in [0, 180) space (e.g., directional angle without sign)
+    AngleEstimate average180(float new_angle_deg) {
+        if (!initialized) reset(new_angle_deg);
 
-    AngleEstimate result; 
-    // Halve the angle to return to original range [0, 180)
-    result.angle = 0.5f * filtered_angle_doubled_deg;
-    
-    // Ensure the result is in [0, 180)
-    if (result.angle < 0.0f) {
-        result.angle += 180.0f;
+        float cd = 2.0f * angle_prev;
+        float nd = 2.0f * new_angle_deg;
+
+        float cx = cosf(deg2rad(cd));
+        float cy = sinf(deg2rad(cd));
+        float nx = cosf(deg2rad(nd));
+        float ny = sinf(deg2rad(nd));
+
+        float new_mag = magnitude(nx, ny);
+        float new_var = estimate_variance(new_mag);
+        float eff_alpha = (alpha >= 0.0f) ? alpha : adaptive_alpha(variance_prev, new_var);
+
+        float fx = (1.0f - eff_alpha) * cx + eff_alpha * nx;
+        float fy = (1.0f - eff_alpha) * cy + eff_alpha * ny;
+
+        float filtered_angle_doubled = rad2deg(atan2f(fy, fx));
+        float filtered_angle = 0.5f * filtered_angle_doubled;
+        if (filtered_angle < 0.0f) filtered_angle += 180.0f;
+
+        float mag = magnitude(fx, fy);
+        float var = estimate_variance(mag) / 4.0f;  // compensate for doubling
+        float cons = consistency(cx, cy, nx, ny);
+
+        angle_prev = filtered_angle;
+        variance_prev = var;
+
+        return {filtered_angle, mag, var, cons};
     }
-    
-    // Calculate quality metrics using helper functions (with doubled angles)
-    result.magnitude = calculate_magnitude(filtered_x, filtered_y);
-    result.variance = estimate_variance(result.magnitude) / 4.0f; // Adjust for angle doubling
-    result.consistency = calculate_consistency(current_x, current_y, new_x, new_y);
-    
-    return result;
-}
+
+    // Get last angle estimate (raw)
+    float get_angle() const { return angle_prev; }
+
+    // Get last variance estimate
+    float get_variance() const { return variance_prev; }
+
+    // Check if filter has been initialized
+    bool is_initialized() const { return initialized; }
+
+private:
+    float alpha;
+    bool initialized = false;
+    float angle_prev = 0.0f;
+    float variance_prev = M_PI * M_PI / 4.0f;
+
+    static inline float deg2rad(float angle_deg) {
+        return angle_deg * (M_PI / 180.0f);
+    }
+
+    static inline float rad2deg(float angle_rad) {
+        return angle_rad * (180.0f / M_PI);
+    }
+
+    static inline float magnitude(float x, float y) {
+        return sqrtf(x * x + y * y);
+    }
+
+    static inline float estimate_variance(float mag) {
+        if (mag <= 0.0f) return M_PI * M_PI;
+        if (mag > 0.999f) return 0.0f;
+        return -2.0f * logf(mag);
+    }
+
+    static inline float consistency(float x1, float y1, float x2, float y2) {
+        float dot = fmaxf(-1.0f, fminf(1.0f, x1 * x2 + y1 * y2));
+        return 0.5f * (1.0f + dot);
+    }
+
+    static inline float adaptive_alpha(float var_current, float var_new) {
+        constexpr float eps = 1e-6f;
+        float a = var_new / (var_current + var_new + eps);
+        return fminf(fmaxf(a, 0.0f), 1.0f);
+    }
+};
 
 #endif
