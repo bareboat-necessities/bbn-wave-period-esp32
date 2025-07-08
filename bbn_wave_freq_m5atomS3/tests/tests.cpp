@@ -22,6 +22,7 @@
 #include "WaveFilters.h"
 #include "TimeAwareSpikeFilter.h"
 #include "FentonWaveVectorized.h"
+#include "WaveSurfaceProfile.h"
 
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
@@ -32,6 +33,7 @@ KalmanWaveNumStableAltState waveAltState;
 KalmANF kalmANF;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
+WaveSurfaceProfile<128> waveProfile;
 
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
