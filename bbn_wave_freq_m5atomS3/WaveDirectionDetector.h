@@ -1,5 +1,9 @@
 #pragma once
 
+/*
+    Copyright 2025, Mikhail Grushinskiy
+*/
+
 enum WaveDirection {
   BACKWARD = -1,
   UNCERTAIN = 0,
