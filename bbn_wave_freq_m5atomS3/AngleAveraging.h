@@ -65,7 +65,12 @@ public:
         angle_prev = filtered_angle;
         variance_prev = var;
 
-        return {filtered_angle, mag, var, cons};
+        AngleEstimate result;
+        result.angle = filtered_angle;
+        result.magnitude = mag;
+        result.variance = var;
+        result.consistency = cons;
+        return result;
     }
 
     // Averaging in [0, 180) space (e.g., directional angle without sign)
