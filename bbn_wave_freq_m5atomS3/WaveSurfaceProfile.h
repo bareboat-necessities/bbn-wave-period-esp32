@@ -127,6 +127,7 @@ public:
 
     if (!crestFound) return 0.0f;
 
+    bool downFound = false;
     for (int i = 0; i < count - 1; ++i) {
       int idx0 = (head - 2 - i + N) % N;
       int idx1 = (head - 1 - i + N) % N;
@@ -137,11 +138,15 @@ public:
         float frac = s0.heave / (s0.heave - s1.heave);
         float dt = s1.time - s0.time;
         downTime = s0.time + (frac * dt);
-        float dt_sec = (downTime - crestTime);
-        return dt_sec > 0 ? maxHeave / dt_sec : 0.0f;
+        downFound = true;
+        break;
       }
     }
-    return 0.0f;
+
+    if (!downFound) return 0.0f;
+
+    float dt_sec = downTime - crestTime;
+    return (dt_sec > 0.0f) ? maxHeave / dt_sec : 0.0f;
   }
 
   // Asymmetry: time from upcross to crest vs crest to downcross
@@ -149,11 +154,10 @@ public:
     float upTime = 0.0f, crestTime = 0.0f, downTime = 0.0f;
     float maxHeave = -INFINITY;
 
-    // find last upcrossing
-    if (!findLatestZeroUpcrossing(upTime)) return 0.0f;
+    if (!findLatestZeroUpcrossing(0.0f)) return 0.0f;
     upTime = zc_time;
 
-    // find crest after upcrossing
+    bool crestFound = false;
     for (int i = 0; i < count; ++i) {
       int idx = (head - 1 - i + N) % N;
       const WaveSample& s = samples[idx];
@@ -161,10 +165,13 @@ public:
       if (s.heave > maxHeave) {
         maxHeave = s.heave;
         crestTime = s.time;
+        crestFound = true;
       }
     }
 
-    // find next downcrossing after crest
+    if (!crestFound) return 0.0f;
+
+    bool downFound = false;
     for (int i = 0; i < count - 1; ++i) {
       int idx0 = (head - 2 - i + N) % N;
       int idx1 = (head - 1 - i + N) % N;
@@ -174,11 +181,12 @@ public:
         float frac = s0.heave / (s0.heave - s1.heave);
         float dt = s1.time - s0.time;
         downTime = s0.time + (frac * dt);
+        downFound = true;
         break;
       }
     }
 
-    if (upTime == 0 || crestTime == 0 || downTime == 0) return 0.0f;
+    if (!downFound) return 0.0f;
 
     float rise = (crestTime - upTime);
     float fall = (downTime - crestTime);
