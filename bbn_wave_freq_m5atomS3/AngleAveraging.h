@@ -1,5 +1,5 @@
-#ifndef AngleAveraging_h
-#define AngleAveraging_h
+#ifndef ANGLE_AVERAGING_H
+#define ANGLE_AVERAGING_H 
 
 #include <math.h>
 
