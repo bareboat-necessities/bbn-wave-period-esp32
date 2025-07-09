@@ -65,26 +65,26 @@ public:
     return 1.0f / freq;
   }
 
-  float getPhase(float t) const {
+  float getPhase(float t) {
     if (!findLatestZeroUpcrossing(t)) return 0.0f;
     float elapsed = t - zc_time;
     float phase = fmodf(elapsed * freq, 1.0f); // phase = t / T = t * f
     return (phase >= 0.0f) ? phase : (phase + 1.0f);
   }
 
-  float getPhaseDegrees(float t) const {
+  float getPhaseDegrees(float t) {
     return 360.0f * getPhase(t);
   }
 
-  bool findLatestZeroUpcrossing(float t) const {
+  bool findLatestZeroUpcrossing(float t) {
     return findLatestZeroCrossing(true, t);
   }
 
-  bool findLatestZeroDowncrossing(float t) const {
+  bool findLatestZeroDowncrossing(float t) {
     return findLatestZeroCrossing(false, t);
   }
 
-  bool findLatestZeroCrossing(bool upcrossing, float t) const {
+  bool findLatestZeroCrossing(bool upcrossing, float t) {
     for (int i = 0; i < count - 1; ++i) {
       int idx1 = (head - 1 - i + N) % N;
       int idx0 = (head - 2 - i + N) % N;
@@ -145,7 +145,7 @@ public:
   }
 
   // Asymmetry: time from upcross to crest vs crest to downcross
-  float computeAsymmetry() const {
+  float computeAsymmetry() {
     float upTime = 0.0f, crestTime = 0.0f, downTime = 0.0f;
     float maxHeave = -INFINITY;
 
@@ -186,7 +186,7 @@ public:
   }
 
   // Predict heave at future phase [0–1)
-  float predictAtPhase(float phase, float t) const {
+  float predictAtPhase(float phase, float t) {
     if (count < 2) return 0.0f;
     phase = fmodf(phase, 1.0f);
     if (phase < 0) phase += 1.0f;
