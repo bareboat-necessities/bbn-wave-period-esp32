@@ -14,9 +14,13 @@
   - Tracks N samples for wave shape reconstruction
 */
 
+constexpr float EPSILON = 1e-6f;
+constexpr float GRAVITY = 9.81f;
+constexpr float TWO_PI = 6.28318530718f;
+
 struct WaveSample {
   float heave;  // meters
-  float time;   // sec
+  float time;   // seconds
 };
 
 template<int N = 128>
@@ -37,7 +41,7 @@ public:
   }
 
   void update(float heave, float new_freq, float t) {
-    if (count > 0 && samples[(head - 1 + N) % N].time == t) return;
+    if (count > 0 && fabsf(samples[(head - 1 + N) % N].time - t) < EPSILON) return;
 
     samples[head] = {heave, t};
     head = (head + 1) % N;
@@ -51,7 +55,7 @@ public:
     if (new_freq > 0.01f && new_freq < 2.0f) {
       freq = new_freq;
     }
-    float period_sec = (freq > 1e-6f) ? (1.0f / freq) : 1.0f;
+    float period_sec = (freq > EPSILON) ? (1.0f / freq) : 1.0f;
     float target_dt = 2.0f * period_sec / N;
     if (last_wave_profile_update == 0.0f || (t - last_wave_profile_update >= target_dt)) {
       update(heave, freq, t);
@@ -61,13 +65,13 @@ public:
 
   bool isReady() const { return count >= 3; }
   float getFrequency() const { return freq; }
-  float getPeriod() const { return (freq > 1e-6f) ? (1.0f / freq) : 0.0f; }
+  float getPeriod() const { return (freq > EPSILON) ? (1.0f / freq) : 0.0f; }
 
   float getPhase(float t) {
     if (!findLatestZeroUpcrossing(t)) return 0.0f;
     float elapsed = t - zc_time;
-    float phase = fmodf(elapsed * freq, 1.0f);
-    return (phase >= 0.0f) ? phase : (phase + 1.0f);
+    float phase = elapsed * freq - floorf(elapsed * freq);
+    return phase;
   }
 
   float getPhaseDegrees(float t) {
@@ -83,8 +87,6 @@ public:
   }
 
   bool findLatestZeroCrossing(bool upcrossing, float /*t*/) {
-    const float EPSILON = 1e-6f;
-
     for (int i = 0; i < count - 1; ++i) {
       int idx1 = (head - 1 - i + N) % N;
       int idx0 = (head - 2 - i + N) % N;
@@ -113,6 +115,7 @@ public:
     return false;
   }
 
+  // Crest sharpness = average heave slope to and from the crest
   float computeCrestSharpness() const {
     float maxHeave = -INFINITY;
     float crestTime = 0.0f;
@@ -157,6 +160,7 @@ public:
     return 0.5f * (riseSlope + fallSlope);
   }
 
+  // Asymmetry = normalized rise vs fall time difference around crest
   float computeAsymmetry() {
     if (count < 3) return 0.0f;
     float latestT = samples[(head - 1 + N) % N].time;
@@ -200,19 +204,21 @@ public:
     return (rise + fall > 0.0f) ? (rise - fall) / (rise + fall) : 0.0f;
   }
 
+  // Predict heave value at given future phase [0..1]
   float predictAtPhase(float phase, float t) {
     if (count < 2) return 0.0f;
 
-    phase = fmodf(phase, 1.0f);
-    if (phase < 0.0f) phase += 1.0f;
-
+    phase = phase - floorf(phase);  // wrap to [0,1)
     float now_phase = getPhase(t);
-    float target_phase = fmodf(now_phase + phase, 1.0f);
+    float target_phase = now_phase + phase;
+    target_phase = target_phase - floorf(target_phase);
+
     float fidx = target_phase * count;
+    if (fidx >= count) fidx = count - 1;  // bound fidx
+
     int i0 = (int)fidx;
     int i1 = (i0 + 1) % count;
     float alpha = fidx - i0;
-    alpha = fminf(fmaxf(alpha, 0.0f), 1.0f);
 
     int start = (head - count + N) % N;
     int idx0 = (start + i0) % N;
@@ -221,6 +227,7 @@ public:
     return (1.0f - alpha) * samples[idx0].heave + alpha * samples[idx1].heave;
   }
 
+  // Slope (m/s * wave speed) of crest-to-trough heave change
   float computeWaveTrainVelocityGradient() const {
     float crest = -INFINITY, trough = INFINITY;
     float crestTime = 0.0f, troughTime = 0.0f;
@@ -242,15 +249,16 @@ public:
     }
 
     float dt = fabsf(crestTime - troughTime);
-    if (!crestFound || !troughFound || dt < 1e-6f) return 0.0f; 
+    if (!crestFound || !troughFound || dt < EPSILON) return 0.0f; 
 
     float dh = crest - trough;
-    float wave_speed = 9.81f / (2.0f * M_PI * freq);
+    float wave_speed = GRAVITY / (TWO_PI * freq);
 
     return (dh / dt) * wave_speed;
   }
 
-  float computeWaveEnergy(float water_density = 1025.0f, float gravity = 9.81f) const {
+  // Wave energy per unit area (J/m²) using linear approximation
+  float computeWaveEnergy(float water_density = 1025.0f, float gravity = GRAVITY) const {
     if (count < 1) return 0.0f;
     float sumSq = 0.0f;
     for (int i = 0; i < count; ++i) {
