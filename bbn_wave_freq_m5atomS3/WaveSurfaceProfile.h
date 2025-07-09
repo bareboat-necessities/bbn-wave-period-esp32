@@ -30,46 +30,50 @@ private:
   int head = 0;
   int count = 0;
   float freq = 1.0f;
-  float last_wave_profile_update = 0.0f;
-  float zc_time = 0.0f;
+  float lastWaveProfileUpdate = 0.0f;
+  float lastZcTime = 0.0f;
+
+  inline bool isValidFrequency(float f) const {
+    return f > 0.01f && f < 2.0f;
+  }
 
 public:
-  void reset() {
+  inline void reset() {
     head = 0;
     count = 0;
     freq = 1.0f;
   }
 
-  void update(float heave, float new_freq, float t) {
+  void update(float heave, float newFreq, float t) {
     if (count > 0 && fabsf(samples[(head - 1 + N) % N].time - t) < EPSILON) return;
 
     samples[head] = {heave, t};
     head = (head + 1) % N;
     if (count < N) count++;
-    if (new_freq > 0.01f && new_freq < 2.0f) {
-      freq = new_freq;
+    if (isValidFrequency(newFreq)) {
+      freq = newFreq;
     }
   }
 
-  void updateIfNeeded(float heave, float new_freq, float t) {
-    if (new_freq > 0.01f && new_freq < 2.0f) {
-      freq = new_freq;
+  void updateIfNeeded(float heave, float newFreq, float t) {
+    if (isValidFrequency(newFreq)) {
+      freq = newFreq;
     }
-    float period_sec = (freq > EPSILON) ? (1.0f / freq) : 1.0f;
-    float target_dt = 2.0f * period_sec / N;
-    if (last_wave_profile_update == 0.0f || (t - last_wave_profile_update >= target_dt)) {
+    float periodSec = (freq > EPSILON) ? (1.0f / freq) : 1.0f;
+    float targetDt = 2.0f * periodSec / N;
+    if (lastWaveProfileUpdate == 0.0f || (t - lastWaveProfileUpdate >= targetDt)) {
       update(heave, freq, t);
-      last_wave_profile_update = t;
+      lastWaveProfileUpdate = t;
     }
   }
 
-  bool isReady() const { return count >= 3; }
-  float getFrequency() const { return freq; }
-  float getPeriod() const { return (freq > EPSILON) ? (1.0f / freq) : 0.0f; }
+  [[nodiscard]] inline bool isReady() const { return count >= 3; }
+  [[nodiscard]] inline float getFrequency() const { return freq; }
+  [[nodiscard]] inline float getPeriod() const { return (freq > EPSILON) ? (1.0f / freq) : 0.0f; }
 
   float getPhase(float t) {
     if (!findLatestZeroUpcrossing(t)) return 0.0f;
-    float elapsed = t - zc_time;
+    float elapsed = t - lastZcTime;
     float phase = elapsed * freq - floorf(elapsed * freq);
     return phase;
   }
@@ -100,14 +104,14 @@ public:
         if (s0.heave < 0.0f && s1.heave >= 0.0f) {
           float denominator = s0.heave - s1.heave;
           float frac = (fabsf(denominator) < EPSILON) ? 0.5f : s0.heave / denominator;
-          zc_time = s0.time + frac * (s1.time - s0.time);
+          lastZcTime = s0.time + frac * (s1.time - s0.time);
           return true;
         }
       } else {
         if (s0.heave > 0.0f && s1.heave <= 0.0f) {
           float denominator = s0.heave - s1.heave;
           float frac = (fabsf(denominator) < EPSILON) ? 0.5f : s0.heave / denominator;
-          zc_time = s0.time + frac * (s1.time - s0.time);
+          lastZcTime = s0.time + frac * (s1.time - s0.time);
           return true;
         }
       }
@@ -115,7 +119,6 @@ public:
     return false;
   }
 
-  // Crest sharpness = average heave slope to and from the crest
   float computeCrestSharpness() const {
     float maxHeave = -INFINITY;
     float crestTime = 0.0f;
@@ -160,13 +163,12 @@ public:
     return 0.5f * (riseSlope + fallSlope);
   }
 
-  // Asymmetry = normalized rise vs fall time difference around crest
   float computeAsymmetry() {
     if (count < 3) return 0.0f;
     float latestT = samples[(head - 1 + N) % N].time;
     if (!findLatestZeroUpcrossing(latestT)) return 0.0f;
 
-    float upTime = zc_time;
+    float upTime = lastZcTime;
     float crestTime = 0.0f, downTime = 0.0f;
     float maxHeave = -INFINITY;
     bool crestFound = false, downFound = false;
@@ -197,37 +199,33 @@ public:
       }
     }
 
-    if (!crestFound || !downFound) return 0.0f;
-
     float rise = crestTime - upTime;
     float fall = downTime - crestTime;
-    return (rise + fall > 0.0f) ? (rise - fall) / (rise + fall) : 0.0f;
+
+    if (!crestFound || !downFound || (rise + fall < EPSILON)) return 0.0f;
+    return (rise - fall) / (rise + fall);
   }
 
-  // Predict heave value at given future phase [0..1]
   float predictAtPhase(float phase, float t) {
     if (count < 2) return 0.0f;
 
-    phase = phase - floorf(phase);  // wrap to [0,1)
-    float now_phase = getPhase(t);
-    float target_phase = now_phase + phase;
-    target_phase = target_phase - floorf(target_phase);
+    phase = phase - floorf(phase);
+    float nowPhase = getPhase(t);
+    float targetPhase = nowPhase + phase;
+    targetPhase = targetPhase - floorf(targetPhase);
 
-    float fidx = target_phase * count;
-    if (fidx >= count) fidx = count - 1;  // bound fidx
-
+    float fidx = targetPhase * count;
     int i0 = (int)fidx;
-    int i1 = (i0 + 1) % count;
+    int i1 = (i0 + 1 < count) ? i0 + 1 : i0;
     float alpha = fidx - i0;
 
     int start = (head - count + N) % N;
     int idx0 = (start + i0) % N;
     int idx1 = (start + i1) % N;
 
-    return (1.0f - alpha) * samples[idx0].heave + alpha * samples[idx1].heave;
+    return fmaf(alpha, samples[idx1].heave - samples[idx0].heave, samples[idx0].heave);
   }
 
-  // Slope (m/s * wave speed) of crest-to-trough heave change
   float computeWaveTrainVelocityGradient() const {
     float crest = -INFINITY, trough = INFINITY;
     float crestTime = 0.0f, troughTime = 0.0f;
@@ -249,16 +247,14 @@ public:
     }
 
     float dt = fabsf(crestTime - troughTime);
-    if (!crestFound || !troughFound || dt < EPSILON) return 0.0f; 
+    if (!crestFound || !troughFound || dt < EPSILON) return 0.0f;
 
     float dh = crest - trough;
-    float wave_speed = GRAVITY / (TWO_PI * freq);
-
-    return (dh / dt) * wave_speed;
+    float waveSpeed = GRAVITY / (TWO_PI * freq);
+    return (dh / dt) * waveSpeed;
   }
 
-  // Wave energy per unit area (J/m²) using linear approximation
-  float computeWaveEnergy(float water_density = 1025.0f, float gravity = GRAVITY) const {
+  float computeWaveEnergy(float waterDensity = 1025.0f, float gravity = GRAVITY) const {
     if (count < 1) return 0.0f;
     float sumSq = 0.0f;
     for (int i = 0; i < count; ++i) {
@@ -267,14 +263,14 @@ public:
       sumSq += h * h;
     }
     float meanSq = sumSq / count;
-    return 0.5f * water_density * gravity * meanSq;
+    return 0.5f * waterDensity * gravity * meanSq;
   }
 
-  const WaveSample* getSamples() const { return samples; }
-  int getCount() const { return count; }
-  int getCapacity() const { return N; }
+  [[nodiscard]] const WaveSample* getSamples() const { return samples; }
+  [[nodiscard]] int getCount() const { return count; }
+  [[nodiscard]] int getCapacity() const { return N; }
 
-  WaveSample getLatestSample() const {
+  [[nodiscard]] WaveSample getLatestSample() const {
     return samples[(head - 1 + N) % N];
   }
 };
