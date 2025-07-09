@@ -151,6 +151,7 @@ public:
 
     // find last upcrossing
     if (!findLatestZeroUpcrossing(upTime)) return 0.0f;
+    upTime = zc_time;
 
     // find crest after upcrossing
     for (int i = 0; i < count; ++i) {
