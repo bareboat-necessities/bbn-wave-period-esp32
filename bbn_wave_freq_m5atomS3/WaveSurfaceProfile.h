@@ -34,7 +34,7 @@ private:
   float lastZcTime = 0.0f;
 
   inline bool isValidFrequency(float f) const {
-    return f > 0.01f && f < 2.0f && isfinite(f);
+    return f > 0.01f && f < 2.0f && isFinite(f);
   }
 
   inline bool isFinite(float x) const {
