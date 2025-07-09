@@ -85,6 +85,8 @@ public:
   }
 
   bool findLatestZeroCrossing(bool upcrossing, float t) {
+    const float EPSILON = 1e-6f; // Small threshold for floating-point comparisons
+
     for (int i = 0; i < count - 1; ++i) {
       int idx1 = (head - 1 - i + N) % N;
       int idx0 = (head - 2 - i + N) % N;
@@ -92,22 +94,40 @@ public:
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
 
-      if (upcrossing && s0.heave < 0 && s1.heave >= 0) {
-        float frac = s0.heave / (s0.heave - s1.heave);
-        float dt = s1.time - s0.time;
-        zc_time = s0.time + (frac * dt);
-        return true;
+      // Check for upcrossing with epsilon threshold
+      if (upcrossing) {
+        if (s0.heave < -EPSILON && s1.heave >= -EPSILON) {
+          float denominator = s0.heave - s1.heave;
+          if (fabsf(denominator) < EPSILON) {
+            // Near-vertical line case - take midpoint
+            zc_time = (s0.time + s1.time) * 0.5f;
+          } else {
+            float frac = s0.heave / denominator;
+            float dt = s1.time - s0.time;
+            zc_time = s0.time + (frac * dt);
+          }
+          return true;
+        }
       }
-
-      if (!upcrossing && s0.heave > 0 && s1.heave <= 0) {
-        float frac = s0.heave / (s0.heave - s1.heave);
-        float dt = s1.time - s0.time;
-        zc_time = s0.time + (frac * dt);
-        return true;
+      // Check for downcrossing with epsilon threshold
+      else {
+        if (s0.heave > EPSILON && s1.heave <= EPSILON) {
+          float denominator = s0.heave - s1.heave;
+          if (fabsf(denominator) < EPSILON) {
+            // Near-vertical line case - take midpoint
+            zc_time = (s0.time + s1.time) * 0.5f;
+          } else {
+            float frac = s0.heave / denominator;
+            float dt = s1.time - s0.time;
+            zc_time = s0.time + (frac * dt);
+          }
+          return true;
+        }
       }
     }
     return false;
   }
+
 
   // Crest sharpness: max heave divided by time-to-next-downcrossing
   float computeCrestSharpness() const {
