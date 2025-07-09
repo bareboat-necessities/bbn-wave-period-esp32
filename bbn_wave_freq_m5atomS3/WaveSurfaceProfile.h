@@ -201,7 +201,8 @@ public:
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
       if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime) {
-        float frac = s0.heave / (s0.heave - s1.heave);
+        float denom = s0.heave - s1.heave;
+        float frac = (fabsf(denom) < EPSILON) ? 0.5f : s0.heave / denom;       
         frac = fminf(fmaxf(frac, 0.0f), 1.0f);
         downTime = s0.time + frac * (s1.time - s0.time);
         downFound = true;
