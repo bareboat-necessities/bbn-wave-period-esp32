@@ -72,7 +72,7 @@ public:
   [[nodiscard]] inline float getPeriod() const { return (freq > EPSILON) ? (1.0f / freq) : 0.0f; }
 
   float getPhase(float t) {
-    if (!findLatestZeroUpcrossing(t)) return 0.0f;
+    if (!findLatestZeroUpcrossing()) return 0.0f;
     float elapsed = t - lastZcTime;
     float phase = elapsed * freq - floorf(elapsed * freq);
     return phase;
@@ -82,15 +82,15 @@ public:
     return 360.0f * getPhase(t);
   }
 
-  bool findLatestZeroUpcrossing(float t) {
-    return findLatestZeroCrossing(true, t);
+  bool findLatestZeroUpcrossing() {
+    return findLatestZeroCrossing(true);
   }
 
-  bool findLatestZeroDowncrossing(float t) {
-    return findLatestZeroCrossing(false, t);
+  bool findLatestZeroDowncrossing() {
+    return findLatestZeroCrossing(false);
   }
 
-  bool findLatestZeroCrossing(bool upcrossing, float /*t*/) {
+  bool findLatestZeroCrossing(bool upcrossing) {
     for (int i = 0; i < count - 1; ++i) {
       int idx1 = (head - 1 - i + N) % N;
       int idx0 = (head - 2 - i + N) % N;
@@ -165,8 +165,7 @@ public:
 
   float computeAsymmetry() {
     if (count < 3) return 0.0f;
-    float latestT = samples[(head - 1 + N) % N].time;
-    if (!findLatestZeroUpcrossing(latestT)) return 0.0f;
+    if (!findLatestZeroUpcrossing()) return 0.0f;
 
     float upTime = lastZcTime;
     float crestTime = 0.0f, downTime = 0.0f;
