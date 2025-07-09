@@ -1,3 +1,4 @@
+
 #ifndef WAVE_SURFACE_PROFILE_H
 #define WAVE_SURFACE_PROFILE_H
 
@@ -37,6 +38,8 @@ public:
   }
 
   void update(float heave, float new_freq, float t) {
+    if (count > 0 && samples[(head - 1 + N) % N].time == t) return;
+
     samples[head] = {heave, t};
     head = (head + 1) % N;
     if (count < N) count++;
@@ -210,6 +213,7 @@ public:
     int i0 = (int)fidx;
     int i1 = (i0 + 1) % count;
     float alpha = fidx - i0;
+    alpha = fminf(fmaxf(alpha, 0.0f), 1.0f);
 
     int start = (head - count + N) % N;
     int idx0 = (start + i0) % N;
@@ -238,13 +242,13 @@ public:
       }
     }
 
-    if (!crestFound || !troughFound || crestTime == troughTime) return 0.0f;
-
     float dt = fabsf(crestTime - troughTime);
+    if (!crestFound || !troughFound || dt < 1e-6f) return 0.0f; 
+
     float dh = crest - trough;
     float wave_speed = 9.81f / (2.0f * M_PI * freq);
 
-    return (dt > 0.0f) ? (dh / dt) * wave_speed : 0.0f;
+    return (dh / dt) * wave_speed;
   }
 
   float computeWaveEnergy(float water_density = 1025.0f, float gravity = 9.81f) const {
