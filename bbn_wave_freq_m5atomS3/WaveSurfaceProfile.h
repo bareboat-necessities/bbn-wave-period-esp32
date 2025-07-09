@@ -219,11 +219,10 @@ public:
   float predictAtPhase(float phase, float t) {
     if (count < 2 || !isFinite(t) || !isFinite(phase)) return 0.0f;
 
-    phase = phase - floorf(phase);
     float nowPhase = getPhase(t);
-    float targetPhase = nowPhase + phase;
-    targetPhase = targetPhase - floorf(targetPhase);
-
+    float targetPhase = fmodf(nowPhase + phase, 1.0f);
+    if (targetPhase < 0.0f) targetPhase += 1.0f;
+    
     float fidx = targetPhase * count;
     int i0 = (int)fidx;
     int i1 = (i0 + 1) % count;
