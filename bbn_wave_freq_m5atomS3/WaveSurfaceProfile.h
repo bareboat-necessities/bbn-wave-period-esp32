@@ -1,4 +1,3 @@
-
 #ifndef WAVE_SURFACE_PROFILE_H
 #define WAVE_SURFACE_PROFILE_H
 
