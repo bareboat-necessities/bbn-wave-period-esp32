@@ -34,7 +34,11 @@ private:
   float lastZcTime = 0.0f;
 
   inline bool isValidFrequency(float f) const {
-    return f > 0.01f && f < 2.0f;
+    return f > 0.01f && f < 2.0f && isfinite(f);
+  }
+
+  inline bool isFinite(float x) const {
+    return isfinite(x);
   }
 
 public:
@@ -42,9 +46,12 @@ public:
     head = 0;
     count = 0;
     freq = 1.0f;
+    lastWaveProfileUpdate = 0.0f;
+    lastZcTime = 0.0f;
   }
 
   void update(float heave, float newFreq, float t) {
+    if (!isFinite(heave) || !isFinite(t)) return;
     if (count > 0 && fabsf(samples[(head - 1 + N) % N].time - t) < EPSILON) return;
 
     samples[head] = {heave, t};
@@ -56,6 +63,7 @@ public:
   }
 
   void updateIfNeeded(float heave, float newFreq, float t) {
+    if (!isFinite(heave) || !isFinite(t)) return;
     if (isValidFrequency(newFreq)) {
       freq = newFreq;
     }
@@ -72,6 +80,7 @@ public:
   [[nodiscard]] inline float getPeriod() const { return (freq > EPSILON) ? (1.0f / freq) : 0.0f; }
 
   float getPhase(float t) {
+    if (!isFinite(t)) return 0.0f;
     if (!findLatestZeroUpcrossing()) return 0.0f;
     float elapsed = t - lastZcTime;
     float phase = elapsed * freq - floorf(elapsed * freq);
@@ -100,20 +109,17 @@ public:
 
       if (s0.time >= s1.time) continue;
 
-      if (upcrossing) {
-        if (s0.heave < 0.0f && s1.heave >= 0.0f) {
-          float denominator = s0.heave - s1.heave;
-          float frac = (fabsf(denominator) < EPSILON) ? 0.5f : s0.heave / denominator;
-          lastZcTime = s0.time + frac * (s1.time - s0.time);
-          return true;
-        }
-      } else {
-        if (s0.heave > 0.0f && s1.heave <= 0.0f) {
-          float denominator = s0.heave - s1.heave;
-          float frac = (fabsf(denominator) < EPSILON) ? 0.5f : s0.heave / denominator;
-          lastZcTime = s0.time + frac * (s1.time - s0.time);
-          return true;
-        }
+      float denominator = s0.heave - s1.heave;
+      float frac = (fabsf(denominator) < EPSILON) ? 0.5f : s0.heave / denominator;
+      frac = fminf(fmaxf(frac, 0.0f), 1.0f); // Clamp [0,1]
+      float zcTime = s0.time + frac * (s1.time - s0.time);
+
+      if (upcrossing && s0.heave < 0.0f && s1.heave >= 0.0f) {
+        lastZcTime = zcTime;
+        return true;
+      } else if (!upcrossing && s0.heave > 0.0f && s1.heave <= 0.0f) {
+        lastZcTime = zcTime;
+        return true;
       }
     }
     return false;
@@ -135,6 +141,7 @@ public:
 
       if (!upFound && s0.heave < 0 && s1.heave >= 0) {
         float frac = s0.heave / (s0.heave - s1.heave);
+        frac = fminf(fmaxf(frac, 0.0f), 1.0f);
         upTime = s0.time + frac * (s1.time - s0.time);
         upFound = true;
       }
@@ -147,6 +154,7 @@ public:
 
       if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime && !downFound) {
         float frac = s0.heave / (s0.heave - s1.heave);
+        frac = fminf(fmaxf(frac, 0.0f), 1.0f);
         downTime = s0.time + frac * (s1.time - s0.time);
         downFound = true;
       }
@@ -192,21 +200,24 @@ public:
       const WaveSample& s1 = samples[idx1];
       if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime) {
         float frac = s0.heave / (s0.heave - s1.heave);
+        frac = fminf(fmaxf(frac, 0.0f), 1.0f);
         downTime = s0.time + frac * (s1.time - s0.time);
         downFound = true;
         break;
       }
     }
 
+    if (!crestFound || !downFound) return 0.0f;
+
     float rise = crestTime - upTime;
     float fall = downTime - crestTime;
 
-    if (!crestFound || !downFound || (rise + fall < EPSILON)) return 0.0f;
+    if (rise + fall < EPSILON) return 0.0f;
     return (rise - fall) / (rise + fall);
   }
 
   float predictAtPhase(float phase, float t) {
-    if (count < 2) return 0.0f;
+    if (count < 2 || !isFinite(t) || !isFinite(phase)) return 0.0f;
 
     phase = phase - floorf(phase);
     float nowPhase = getPhase(t);
@@ -215,14 +226,17 @@ public:
 
     float fidx = targetPhase * count;
     int i0 = (int)fidx;
-    int i1 = (i0 + 1 < count) ? i0 + 1 : i0;
+    int i1 = (i0 + 1) % count;
     float alpha = fidx - i0;
 
     int start = (head - count + N) % N;
     int idx0 = (start + i0) % N;
     int idx1 = (start + i1) % N;
 
-    return fmaf(alpha, samples[idx1].heave - samples[idx0].heave, samples[idx0].heave);
+    float h0 = samples[idx0].heave;
+    float h1 = samples[idx1].heave;
+
+    return h0 + alpha * (h1 - h0);
   }
 
   float computeWaveTrainVelocityGradient() const {
@@ -259,7 +273,9 @@ public:
     for (int i = 0; i < count; ++i) {
       int idx = (head - 1 - i + N) % N;
       float h = samples[idx].heave;
-      sumSq += h * h;
+      if (isFinite(h)) {
+        sumSq += h * h;
+      }
     }
     float meanSq = sumSq / count;
     return 0.5f * waterDensity * gravity * meanSq;
