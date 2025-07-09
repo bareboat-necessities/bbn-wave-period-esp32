@@ -5,7 +5,7 @@
 
 /*
   Copyright 2025, Mikhail Grushinskiy
-  
+
   WaveSurfaceProfile - Tracks a rolling buffer of heave samples
   and computes wave phase, crest sharpness, asymmetry, and future prediction.
 
@@ -25,9 +25,9 @@ private:
   WaveSample samples[N];  // circular buffer
   int head = 0;
   int count = 0;
-  float freq = 1.0f;       // wave frequency in Hz
-  float last_wave_profile_update = 0.0f;  // sec
-  float zc_time = 0.0f;    // last zero-crossing time (sec)
+  float freq = 1.0f;
+  float last_wave_profile_update = 0.0f;
+  float zc_time = 0.0f;
 
 public:
   void reset() {
@@ -49,7 +49,7 @@ public:
     if (new_freq > 0.01f && new_freq < 2.0f) {
       freq = new_freq;
     }
-    float period_sec = 1.0f / freq;
+    float period_sec = (freq > 1e-6f) ? (1.0f / freq) : 1.0f;
     float target_dt = 2.0f * period_sec / N;
     if (last_wave_profile_update == 0.0f || (t - last_wave_profile_update >= target_dt)) {
       update(heave, freq, t);
@@ -57,17 +57,9 @@ public:
     }
   }
 
-  bool isReady() const {
-    return count >= 3;
-  }
-
-  float getFrequency() const {
-    return freq;
-  }
-
-  float getPeriod() const {
-    return 1.0f / freq;
-  }
+  bool isReady() const { return count >= 3; }
+  float getFrequency() const { return freq; }
+  float getPeriod() const { return (freq > 1e-6f) ? (1.0f / freq) : 0.0f; }
 
   float getPhase(float t) {
     if (!findLatestZeroUpcrossing(t)) return 0.0f;
@@ -88,7 +80,7 @@ public:
     return findLatestZeroCrossing(false, t);
   }
 
-  bool findLatestZeroCrossing(bool upcrossing, float t) {
+  bool findLatestZeroCrossing(bool upcrossing, float /*t*/) {
     const float EPSILON = 1e-6f;
 
     for (int i = 0; i < count - 1; ++i) {
@@ -101,27 +93,17 @@ public:
       if (s0.time >= s1.time) continue;
 
       if (upcrossing) {
-        if (s0.heave < -EPSILON && s1.heave >= -EPSILON) {
+        if (s0.heave < 0.0f && s1.heave >= 0.0f) {
           float denominator = s0.heave - s1.heave;
-          if (fabsf(denominator) < EPSILON) {
-            zc_time = 0.5f * (s0.time + s1.time);
-          } else {
-            float frac = s0.heave / denominator;
-            float dt = s1.time - s0.time;
-            zc_time = s0.time + (frac * dt);
-          }
+          float frac = (fabsf(denominator) < EPSILON) ? 0.5f : s0.heave / denominator;
+          zc_time = s0.time + frac * (s1.time - s0.time);
           return true;
         }
       } else {
-        if (s0.heave > EPSILON && s1.heave <= EPSILON) {
+        if (s0.heave > 0.0f && s1.heave <= 0.0f) {
           float denominator = s0.heave - s1.heave;
-          if (fabsf(denominator) < EPSILON) {
-            zc_time = 0.5f * (s0.time + s1.time);
-          } else {
-            float frac = s0.heave / denominator;
-            float dt = s1.time - s0.time;
-            zc_time = s0.time + (frac * dt);
-          }
+          float frac = (fabsf(denominator) < EPSILON) ? 0.5f : s0.heave / denominator;
+          zc_time = s0.time + frac * (s1.time - s0.time);
           return true;
         }
       }
@@ -132,22 +114,20 @@ public:
   float computeCrestSharpness() const {
     float maxHeave = -INFINITY;
     float crestTime = 0.0f;
-    float upTime = 0.0f;
-    float downTime = 0.0f;
-    bool crestFound = false;
-    bool upFound = false;
-    bool downFound = false;
+    float upTime = 0.0f, downTime = 0.0f;
+    bool crestFound = false, upFound = false, downFound = false;
+
+    int start = (head - count + N) % N;
 
     for (int i = 0; i < count - 1; ++i) {
-      int idx0 = (head - count + i + N) % N;
-      int idx1 = (head - count + i + 1 + N) % N;
+      int idx0 = (start + i) % N;
+      int idx1 = (start + i + 1) % N;
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
 
       if (!upFound && s0.heave < 0 && s1.heave >= 0) {
         float frac = s0.heave / (s0.heave - s1.heave);
-        float dt = s1.time - s0.time;
-        upTime = s0.time + frac * dt;
+        upTime = s0.time + frac * (s1.time - s0.time);
         upFound = true;
       }
 
@@ -159,8 +139,7 @@ public:
 
       if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime && !downFound) {
         float frac = s0.heave / (s0.heave - s1.heave);
-        float dt = s1.time - s0.time;
-        downTime = s0.time + frac * dt;
+        downTime = s0.time + frac * (s1.time - s0.time);
         downFound = true;
       }
     }
@@ -182,13 +161,14 @@ public:
     if (!findLatestZeroUpcrossing(latestT)) return 0.0f;
 
     float upTime = zc_time;
-    float crestTime = 0.0f;
-    float downTime = 0.0f;
+    float crestTime = 0.0f, downTime = 0.0f;
     float maxHeave = -INFINITY;
     bool crestFound = false, downFound = false;
 
+    int start = (head - count + N) % N;
+
     for (int i = 0; i < count; ++i) {
-      int idx = (head - count + i + N) % N;
+      int idx = (start + i) % N;
       const WaveSample& s = samples[idx];
       if (s.time <= upTime) continue;
       if (s.heave > maxHeave) {
@@ -199,14 +179,13 @@ public:
     }
 
     for (int i = 0; i < count - 1; ++i) {
-      int idx0 = (head - count + i + N) % N;
-      int idx1 = (head - count + i + 1 + N) % N;
+      int idx0 = (start + i) % N;
+      int idx1 = (start + i + 1) % N;
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
       if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime) {
         float frac = s0.heave / (s0.heave - s1.heave);
-        float dt = s1.time - s0.time;
-        downTime = s0.time + (frac * dt);
+        downTime = s0.time + frac * (s1.time - s0.time);
         downFound = true;
         break;
       }
@@ -223,7 +202,7 @@ public:
     if (count < 2) return 0.0f;
 
     phase = fmodf(phase, 1.0f);
-    if (phase < 0) phase += 1.0f;
+    if (phase < 0.0f) phase += 1.0f;
 
     float now_phase = getPhase(t);
     float target_phase = fmodf(now_phase + phase, 1.0f);
@@ -232,8 +211,9 @@ public:
     int i1 = (i0 + 1) % count;
     float alpha = fidx - i0;
 
-    int idx0 = (head - count + i0 + N) % N;
-    int idx1 = (head - count + i1 + N) % N;
+    int start = (head - count + N) % N;
+    int idx0 = (start + i0) % N;
+    int idx1 = (start + i1) % N;
 
     return (1.0f - alpha) * samples[idx0].heave + alpha * samples[idx1].heave;
   }
@@ -241,6 +221,7 @@ public:
   float computeWaveTrainVelocityGradient() const {
     float crest = -INFINITY, trough = INFINITY;
     float crestTime = 0.0f, troughTime = 0.0f;
+    bool crestFound = false, troughFound = false;
 
     for (int i = 0; i < count; ++i) {
       int idx = (head - 1 - i + N) % N;
@@ -248,32 +229,32 @@ public:
       if (s.heave > crest) {
         crest = s.heave;
         crestTime = s.time;
+        crestFound = true;
       }
       if (s.heave < trough) {
         trough = s.heave;
         troughTime = s.time;
+        troughFound = true;
       }
     }
 
-    if (crestTime == 0 || troughTime == 0 || crestTime == troughTime) return 0.0f;
+    if (!crestFound || !troughFound || crestTime == troughTime) return 0.0f;
 
-    float dt = fabs(crestTime - troughTime);
+    float dt = fabsf(crestTime - troughTime);
     float dh = crest - trough;
-    float wave_speed = 9.81f / (2.0f * M_PI * freq); // trochoidal approximation
+    float wave_speed = 9.81f / (2.0f * M_PI * freq);
 
     return (dt > 0.0f) ? (dh / dt) * wave_speed : 0.0f;
   }
 
   float computeWaveEnergy(float water_density = 1025.0f, float gravity = 9.81f) const {
     if (count < 1) return 0.0f;
-
     float sumSq = 0.0f;
     for (int i = 0; i < count; ++i) {
       int idx = (head - 1 - i + N) % N;
       float h = samples[idx].heave;
       sumSq += h * h;
     }
-
     float meanSq = sumSq / count;
     return 0.5f * water_density * gravity * meanSq;
   }
