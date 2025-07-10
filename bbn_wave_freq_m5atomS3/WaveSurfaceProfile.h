@@ -33,6 +33,11 @@ private:
   float lastWaveProfileUpdate = 0.0f;
   float lastZcTime = 0.0f;
 
+  enum class CrossingType {
+    Upcrossing,
+    Downcrossing
+  };
+
   inline int wrapIdx(int i) const {
     return (i + N) % N;
   }
@@ -62,19 +67,19 @@ private:
     return (d > 0.5f) ? (1.0f - d) : d;
   }
 
-  bool findZeroCrossing(bool upcrossing, float& crossingTime) {
+  bool detectCrossing(CrossingType type, float& crossingTime) const {
     for (int i = 0; i < count - 1; ++i) {
-      int idx1 = wrapIdx(head - 1 - i);
       int idx0 = wrapIdx(head - 2 - i);
+      int idx1 = wrapIdx(head - 1 - i);
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
       if (s0.time >= s1.time) continue;
-
-      if (upcrossing && s0.heave < 0 && s1.heave >= 0) {
+  
+      if (type == CrossingType::Upcrossing && s0.heave < 0 && s1.heave >= 0) {
         crossingTime = interpolateZeroCrossingTime(s0, s1);
         return true;
       }
-      if (!upcrossing && s0.heave > 0 && s1.heave <= 0) {
+      if (type == CrossingType::Downcrossing && s0.heave > 0 && s1.heave <= 0) {
         crossingTime = interpolateZeroCrossingTime(s0, s1);
         return true;
       }
@@ -93,14 +98,12 @@ private:
 
   CrestMetrics computeCrestMetrics() const {
     CrestMetrics m;
-    int start = wrapIdx(head - count);
     for (int i = 0; i < count - 1; ++i) {
-      int idx0 = wrapIdx(start + i);
-      int idx1 = wrapIdx(start + i + 1);
-      
+      int idx1 = wrapIdx(head - 1 - i);
+      int idx0 = wrapIdx(head - 2 - i);
       const WaveSample& s0 = samples[idx0];
-      const WaveSample& s1 = samples[idx1];  
-      
+      const WaveSample& s1 = samples[idx1];
+  
       if (!m.upFound && s0.heave < 0 && s1.heave >= 0) {
         m.upTime = interpolateZeroCrossingTime(s0, s1);
         m.upFound = true;
@@ -110,10 +113,11 @@ private:
         m.crestTime = s1.time;
         m.crestFound = true;
       }
-      if (s0.heave > 0 && s1.heave <= 0 && s0.time > m.crestTime && !m.downFound) {
+      if (!m.downFound && s0.heave > 0 && s1.heave <= 0 && s0.time > m.crestTime) {
         m.downTime = interpolateZeroCrossingTime(s0, s1);
         m.downFound = true;
       }
+      if (m.isComplete()) break;
     }
     return m;
   }
@@ -158,33 +162,32 @@ public:
 
   float getPhase(float t) {
     if (!isFinite(t)) return 0.0f;
-    if (!findLatestZeroUpcrossing()) return 0.0f;
-    float elapsed = t - lastZcTime;
+    float zc;
+    if (!findLatestZeroUpcrossing(zc)) return 0.0f;
+    float elapsed = t - zc;
     return normalizePhase(elapsed * freq);
   }
-
+  
   float getPhaseDegrees(float t) {
     return 360.0f * getPhase(t);
   }
 
   bool findLatestZeroUpcrossing() {
-    float zc;
-    if (findZeroCrossing(true, zc)) {
-      lastZcTime = zc;
-      return true;
-    }
-    return false;
+    return findLatestZeroUpcrossing(lastZcTime);
   }
-
+  
+  bool findLatestZeroUpcrossing(float& zcOut) {
+    return detectCrossing(CrossingType::Upcrossing, zcOut);
+  }
+  
   bool findLatestZeroDowncrossing() {
     float zc;
-    return findZeroCrossing(false, zc);
+    return detectCrossing(CrossingType::Downcrossing, zc);
   }
 
 float computeCrestSharpness() const {
     CrestMetrics m = computeCrestMetrics();
     if (!m.isComplete()) return 0.0f;
-  
     float rise = m.crestTime - m.upTime;
     float fall = m.downTime - m.crestTime;
     float riseSlope = (rise > 0.0f) ? m.maxHeave / rise : 0.0f;
@@ -198,7 +201,6 @@ float computeCrestSharpness() const {
   
     CrestMetrics m = computeCrestMetrics();
     if (!m.isComplete()) return 0.0f;
-  
     float rise = m.crestTime - m.upTime;
     float fall = m.downTime - m.crestTime;
     if (rise + fall < EPSILON) return 0.0f;
@@ -207,11 +209,15 @@ float computeCrestSharpness() const {
 
   float predictAtPhase(float phase, float t) {
     if (count < 3 || !isFinite(t) || !isFinite(phase)) return 0.0f;
-    if (!findLatestZeroUpcrossing()) return 0.0f;
   
-    float currentPhase = getPhase(t);
+    float zc;
+    if (!findLatestZeroUpcrossing(zc)) return 0.0f;
+  
+    float currentPhase = normalizePhase((t - zc) * freq);
     float targetPhase = normalizePhase(currentPhase + phase);
+  
     int samplesPerPeriod = count / STORE_PERIODS;
+    samplesPerPeriod = std::max(3, samplesPerPeriod);  // Fix #1
     int start = wrapIdx(head - samplesPerPeriod);
   
     float bestHeave = 0.0f;
@@ -223,10 +229,9 @@ float computeCrestSharpness() const {
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
   
-      float p0 = normalizePhase((s0.time - lastZcTime) * freq);
-      float p1 = normalizePhase((s1.time - lastZcTime) * freq);
+      float p0 = normalizePhase((s0.time - zc) * freq);
+      float p1 = normalizePhase((s1.time - zc) * freq);
   
-      // Track nearest sample (for fallback)
       float dist0 = wrappedPhaseDistance(p0, targetPhase);
       float dist1 = wrappedPhaseDistance(p1, targetPhase);
       if (dist0 < minPhaseDist) {
@@ -238,14 +243,13 @@ float computeCrestSharpness() const {
         minPhaseDist = dist1;
       }
   
-      // Interpolate if targetPhase is between p0 and p1 (with wraparound handling)
       if (p0 <= p1) {
         if (p0 <= targetPhase && targetPhase <= p1) {
           float dp = p1 - p0;
           float alpha = (dp < EPSILON) ? 0.5f : (targetPhase - p0) / dp;
           return s0.heave + alpha * (s1.heave - s0.heave);
         }
-      } else {  // Wrapped case: p0 > p1
+      } else {
         if (targetPhase >= p0 || targetPhase <= p1) {
           float adjustedP1 = p1 + 1.0f;
           float adjustedTarget = (targetPhase < p0) ? (targetPhase + 1.0f) : targetPhase;
@@ -277,7 +281,6 @@ float computeCrestSharpness() const {
         troughFound = true;
       }
     }
-
     float dt = fabsf(crestTime - troughTime);
     if (!crestFound || !troughFound || dt < EPSILON) return 0.0f;
 
