@@ -177,23 +177,16 @@ class FentonWave {
     }
 
     Real mean_kinetic_energy_density(int samples = 100) const {
-      Real dx = length / samples;
-      Real KE_total = 0.0f;
-      for (int i = 0; i <= samples; ++i) {
-        Real x_val = i * dx;
-        Real eta_val = surface_elevation(x_val);
-        
-        // Integrate kinetic energy from bottom to surface
-        for (int zi = 0; zi <= 10; ++zi) {
-           Real z_val = -depth + zi * (eta_val + depth) / 10.0f;
-           Real u = horizontal_velocity(x_val, z_val);
-           Real w = vertical_velocity(x_val, z_val);
-           Real KE_density = 0.5f * (u * u + w * w);
-           Real weight = (zi == 0 || zi == 10) ? 0.5f : 1.0f;
-           KE_total += weight * KE_density * (eta_val + depth) / 10.0f;
-        }
-      }
-      return dx * KE_total / length; 
+      // f(x,z) = 0.5*(u²+w²)
+      return integrate2D(
+        [&](Real x, Real z) {
+          Real u = horizontal_velocity(x, z);
+          Real w = vertical_velocity  (x, z);
+          return 0.5f * (u*u + w*w);
+        },
+        samples,      // x-samples
+        10            // z-samples (you can also expose as parameter)
+      );
     }
 
     Real mean_potential_energy_density(int samples = 100) const {
@@ -217,19 +210,13 @@ class FentonWave {
     }
 
     Real mean_eulerian_current(int samples = 100) const {
-      Real dx = length / samples;
-      Real total = 0.0f;
-      for (int i = 0; i <= samples; ++i) {
-        Real x_val = i * dx;
-        Real eta_val = surface_elevation(x_val);
-        for (int zi = 0; zi <= 10; ++zi) {
-          Real z_val = -depth + zi * (eta_val + depth) / 10.0f;
-          Real u = horizontal_velocity(x_val, z_val);
-          Real weight = (zi == 0 || zi == 10) ? 0.5f : 1.0f;
-          total += u * weight * (eta_val + depth) / 10.0f;
-        }
-      }
-      return dx * total / (length * depth);
+      // f(x,z) = u  (normalized by depth*length outside)
+      // integrate2D already divides by length; multiply by depth here to undo its /length
+      Real integral = integrate2D(
+        [&](Real x, Real z) { return horizontal_velocity(x, z); },
+        samples, 10
+      );
+      return integral / depth;
     }
     
     Real mean_stokes_drift(int samples = 100) const {
@@ -246,35 +233,19 @@ class FentonWave {
     }
     
     Real wave_impulse(int samples = 100) const {
-      Real dx = length / samples;
-      Real total = 0.0f;
-      for (int i = 0; i <= samples; ++i) {
-        Real x_val = i * dx;
-        Real eta_val = surface_elevation(x_val);
-        for (int zi = 0; zi <= 10; ++zi) {
-          Real z_val = -depth + zi * (eta_val + depth) / 10.0f;
-          Real u = horizontal_velocity(x_val, z_val);
-          Real weight = (zi == 0 || zi == 10) ? 0.5f : 1.0f;
-          total += u * weight * (eta_val + depth) / 10.0f;
-        }
-      }
-      return dx * total;
+      // f(x,z) = u
+      return integrate2D(
+        [&](Real x, Real z) { return horizontal_velocity(x, z); },
+        samples, 10
+      ) * length;  // undo internal /length
     }
     
     Real momentum_flux(int samples = 100) const {
-      Real dx = length / samples;
-      Real total = 0.0f;
-      for (int i = 0; i <= samples; ++i) {
-        Real x_val = i * dx;
-        Real eta_val = surface_elevation(x_val);
-        for (int zi = 0; zi <= 10; ++zi) {
-          Real z_val = -depth + zi * (eta_val + depth) / 10.0f;
-          Real u = horizontal_velocity(x_val, z_val);
-          Real weight = (zi == 0 || zi == 10) ? 0.5f : 1.0f;
-          total += u * u * weight * (eta_val + depth) / 10.0f;
-        }
-      }
-      return dx * total / length;
+      // f(x,z) = u²
+      return integrate2D(
+        [&](Real x, Real z) { Real u = horizontal_velocity(x, z); return u*u; },
+        samples, 10
+      );
     }
     
     Real radiation_stress_xx(int samples = 100) const {
@@ -559,6 +530,27 @@ class FentonWave {
       J(2 * N + 3, N + 1 + max_idx) = 1.0f;
       J(2 * N + 3, N + 1 + min_idx) = -1.0f;
       return J;
+    }
+
+    // Generic 2D trapezoidal integration over x∈[0,length], z∈[-depth,η(x)]
+    template<typename Func>
+    Real integrate2D(Func f, int x_samples = 100, int z_samples = 10) const {
+      const Real dx = length / x_samples;
+      Real total = 0.0f; 
+      for (int i = 0; i <= x_samples; ++i) {
+        Real x_val = i * dx;
+        Real η = surface_elevation(x_val);
+        const Real dz = (η + depth) / z_samples;
+        for (int zi = 0; zi <= z_samples; ++zi) {
+          Real z_val = -depth + zi * dz;
+          Real weight_z = (zi == 0 || zi == z_samples) ? 0.5f : 1.0f;
+          total += f(x_val, z_val) * weight_z;
+        }
+        Real weight_x = (i == 0 || i == x_samples) ? 0.5f : 1.0f;
+        total *= weight_x;   // apply x‐weight after z‐sum
+        total *= dz;         // scale by dz for this x
+      }
+      return dx * total / length;  // normalize by length if desired externally
     }
 };
 
