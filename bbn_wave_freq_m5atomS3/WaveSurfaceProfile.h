@@ -13,6 +13,7 @@
 */
 
 #include <math.h>
+#include <algorithm>
 
 constexpr float EPSILON = 1e-6f;
 constexpr float GRAVITY = 9.81f;
@@ -42,27 +43,35 @@ private:
     return (i + N) % N;
   }
 
-  inline bool isValidFrequency(float f) const {
-    return f > 0.01f && f < 2.0f && isFinite(f);
-  }
-
   inline bool isFinite(float x) const {
     return isfinite(x);
   }
 
+  inline bool isValidFrequency(float f) const {
+    return f > 0.01f && f < 2.0f && isFinite(f);
+  }
+
   template<typename Func>
-  bool scanRecentSamples(Func&& callback) const {
-    for (int i = 0; i < count - 1; ++i) {
-      int idx0 = wrapIdx(head - 2 - i);
-      int idx1 = wrapIdx(head - 1 - i);
+  bool scanSamples(int startOffset, int endOffset, Func&& callback) const {
+    for (int i = startOffset; i < endOffset; ++i) {
+      int idx0 = wrapIdx(head + i);
+      int idx1 = wrapIdx(head + i + 1);
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
-      if (s0.time >= s1.time) continue; // Skip invalid pairs
+      if (s0.time >= s1.time) continue;
       if (callback(s0, s1)) return true;
     }
     return false;
   }
-  
+
+  template<typename Func>
+  void forEachSample(Func&& callback) const {
+    for (int i = 0; i < count; ++i) {
+      int idx = wrapIdx(head - 1 - i);
+      callback(samples[idx]);
+    }
+  }
+
   inline float interpolateZeroCrossingTime(const WaveSample& s0, const WaveSample& s1) const {
     float denom = s0.heave - s1.heave;
     float frac = (fabsf(denom) < EPSILON) ? 0.5f : s0.heave / denom;
@@ -81,7 +90,7 @@ private:
   }
 
   bool detectCrossing(CrossingType type, float& crossingTime) const {
-    return scanRecentSamples([&](const WaveSample& s0, const WaveSample& s1) -> bool {
+    return scanSamples(-count, -1, [&](const WaveSample& s0, const WaveSample& s1) {
       if (type == CrossingType::Upcrossing && s0.heave < 0 && s1.heave >= 0) {
         crossingTime = interpolateZeroCrossingTime(s0, s1);
         return true;
@@ -94,10 +103,38 @@ private:
     });
   }
 
+  float interpolateHeaveBetween(const WaveSample& s0, const WaveSample& s1, float p0, float p1, float targetPhase) const {
+    if (p0 <= p1) {
+      float dp = p1 - p0;
+      float alpha = (dp < EPSILON) ? 0.5f : (targetPhase - p0) / dp;
+      return s0.heave + alpha * (s1.heave - s0.heave);
+    } else {
+      float adjustedP1 = p1 + 1.0f;
+      float adjustedTarget = (targetPhase < p0) ? (targetPhase + 1.0f) : targetPhase;
+      float dp = adjustedP1 - p0;
+      float alpha = (dp < EPSILON) ? 0.5f : (adjustedTarget - p0) / dp;
+      return s0.heave + alpha * (s1.heave - s0.heave);
+    }
+  }
+
+  float nearestHeaveOfPair(const WaveSample& s0, const WaveSample& s1, float p0, float p1, float targetPhase, float& minDist) const {
+    float dist0 = wrappedPhaseDistance(p0, targetPhase);
+    float dist1 = wrappedPhaseDistance(p1, targetPhase);
+    if (dist0 < minDist) {
+      minDist = dist0;
+      return s0.heave;
+    }
+    if (dist1 < minDist) {
+      minDist = dist1;
+      return s1.heave;
+    }
+    return 0.0f;
+  }
+
   struct CrestMetrics {
     float upTime = 0, crestTime = 0, downTime = 0, maxHeave = -INFINITY;
     bool crestFound = false, upFound = false, downFound = false;
-  
+
     [[nodiscard]] bool isComplete() const {
       return upFound && crestFound && downFound;
     }
@@ -105,7 +142,7 @@ private:
 
   CrestMetrics computeCrestMetrics() const {
     CrestMetrics m;
-    scanRecentSamples([&](const WaveSample& s0, const WaveSample& s1) -> bool {
+    scanSamples(-count, -1, [&](const WaveSample& s0, const WaveSample& s1) {
       if (!m.upFound && s0.heave < 0 && s1.heave >= 0) {
         m.upTime = interpolateZeroCrossingTime(s0, s1);
         m.upFound = true;
@@ -119,7 +156,7 @@ private:
         m.downTime = interpolateZeroCrossingTime(s0, s1);
         m.downFound = true;
       }
-      return m.isComplete(); // Early exit if done
+      return m.isComplete();
     });
     return m;
   }
@@ -136,20 +173,16 @@ public:
   void update(float heave, float newFreq, float t) {
     if (!isFinite(heave) || !isFinite(t)) return;
     if (count > 0 && fabsf(samples[wrapIdx(head - 1)].time - t) < EPSILON) return;
-
     samples[head] = {heave, t};
     head = wrapIdx(head + 1);
     if (count < N) count++;
-    if (isValidFrequency(newFreq)) {
-      freq = newFreq;
-    }
+    if (isValidFrequency(newFreq)) freq = newFreq;
   }
 
   void updateIfNeeded(float heave, float newFreq, float t) {
     if (!isFinite(heave) || !isFinite(t)) return;
-    if (isValidFrequency(newFreq)) {
-      freq = newFreq;
-    }
+    if (isValidFrequency(newFreq)) freq = newFreq;
+
     float periodSec = (freq > EPSILON) ? (1.0f / freq) : 1.0f;
     float targetDt = STORE_PERIODS * periodSec / N;
     if (lastWaveProfileUpdate == 0.0f || (t - lastWaveProfileUpdate >= targetDt)) {
@@ -169,7 +202,7 @@ public:
     float elapsed = t - zc;
     return normalizePhase(elapsed * freq);
   }
-  
+
   float getPhaseDegrees(float t) {
     return 360.0f * getPhase(t);
   }
@@ -177,17 +210,17 @@ public:
   bool findLatestZeroUpcrossing() {
     return findLatestZeroUpcrossing(lastZcTime);
   }
-  
+
   bool findLatestZeroUpcrossing(float& zcOut) {
     return detectCrossing(CrossingType::Upcrossing, zcOut);
   }
-  
+
   bool findLatestZeroDowncrossing() {
     float zc;
     return detectCrossing(CrossingType::Downcrossing, zc);
   }
 
-float computeCrestSharpness() const {
+  float computeCrestSharpness() const {
     CrestMetrics m = computeCrestMetrics();
     if (!m.isComplete()) return 0.0f;
     float rise = m.crestTime - m.upTime;
@@ -196,11 +229,9 @@ float computeCrestSharpness() const {
     float fallSlope = (fall > 0.0f) ? m.maxHeave / fall : 0.0f;
     return 0.5f * (riseSlope + fallSlope);
   }
-  
+
   float computeAsymmetry() {
-    if (count < 3) return 0.0f;
-    if (!findLatestZeroUpcrossing()) return 0.0f;
-  
+    if (count < 3 || !findLatestZeroUpcrossing()) return 0.0f;
     CrestMetrics m = computeCrestMetrics();
     if (!m.isComplete()) return 0.0f;
     float rise = m.crestTime - m.upTime;
@@ -211,56 +242,33 @@ float computeCrestSharpness() const {
 
   float predictAtPhase(float phase, float t) {
     if (count < 3 || !isFinite(t) || !isFinite(phase)) return 0.0f;
-  
     float zc;
     if (!findLatestZeroUpcrossing(zc)) return 0.0f;
-  
+
     float currentPhase = normalizePhase((t - zc) * freq);
     float targetPhase = normalizePhase(currentPhase + phase);
-  
-    int samplesPerPeriod = count / STORE_PERIODS;
-    samplesPerPeriod = std::max(3, samplesPerPeriod);  // Fix #1
-    int start = wrapIdx(head - samplesPerPeriod);
-  
+
+    int samplesPerPeriod = std::max(3, count / STORE_PERIODS);
+    int start = -samplesPerPeriod;
+
     float bestHeave = 0.0f;
     float minPhaseDist = 10.0f;
-  
-    for (int i = 0; i < samplesPerPeriod - 1; ++i) {
-      int idx0 = wrapIdx(start + i);
-      int idx1 = wrapIdx(start + i + 1);
-      const WaveSample& s0 = samples[idx0];
-      const WaveSample& s1 = samples[idx1];
-  
+
+    scanSamples(start, -1, [&](const WaveSample& s0, const WaveSample& s1) {
       float p0 = normalizePhase((s0.time - zc) * freq);
       float p1 = normalizePhase((s1.time - zc) * freq);
-  
-      float dist0 = wrappedPhaseDistance(p0, targetPhase);
-      float dist1 = wrappedPhaseDistance(p1, targetPhase);
-      if (dist0 < minPhaseDist) {
-        bestHeave = s0.heave;
-        minPhaseDist = dist0;
+
+      bool inSegment = (p0 <= p1)
+                       ? (p0 <= targetPhase && targetPhase <= p1)
+                       : (targetPhase >= p0 || targetPhase <= p1);
+      if (inSegment) {
+        bestHeave = interpolateHeaveBetween(s0, s1, p0, p1, targetPhase);
+        return true;
       }
-      if (dist1 < minPhaseDist) {
-        bestHeave = s1.heave;
-        minPhaseDist = dist1;
-      }
-  
-      if (p0 <= p1) {
-        if (p0 <= targetPhase && targetPhase <= p1) {
-          float dp = p1 - p0;
-          float alpha = (dp < EPSILON) ? 0.5f : (targetPhase - p0) / dp;
-          return s0.heave + alpha * (s1.heave - s0.heave);
-        }
-      } else {
-        if (targetPhase >= p0 || targetPhase <= p1) {
-          float adjustedP1 = p1 + 1.0f;
-          float adjustedTarget = (targetPhase < p0) ? (targetPhase + 1.0f) : targetPhase;
-          float dp = adjustedP1 - p0;
-          float alpha = (dp < EPSILON) ? 0.5f : (adjustedTarget - p0) / dp;
-          return s0.heave + alpha * (s1.heave - s0.heave);
-        }
-      }
-    }
+      float h = nearestHeaveOfPair(s0, s1, p0, p1, targetPhase, minPhaseDist);
+      if (h != 0.0f) bestHeave = h;
+      return false;
+    });
     return bestHeave;
   }
 
@@ -269,9 +277,7 @@ float computeCrestSharpness() const {
     float crestTime = 0.0f, troughTime = 0.0f;
     bool crestFound = false, troughFound = false;
 
-    for (int i = 0; i < count; ++i) {
-      int idx = wrapIdx(head - 1 - i);
-      const WaveSample& s = samples[idx];
+    forEachSample([&](const WaveSample& s) {
       if (s.heave > crest) {
         crest = s.heave;
         crestTime = s.time;
@@ -282,10 +288,10 @@ float computeCrestSharpness() const {
         troughTime = s.time;
         troughFound = true;
       }
-    }
+    });
+
     float dt = fabsf(crestTime - troughTime);
     if (!crestFound || !troughFound || dt < EPSILON) return 0.0f;
-
     float dh = crest - trough;
     float waveSpeed = GRAVITY / (2 * M_PI * freq);
     return (dh / dt) * waveSpeed;
@@ -294,15 +300,12 @@ float computeCrestSharpness() const {
   float computeWaveEnergy(float waterDensity = 1025.0f, float gravity = GRAVITY) const {
     if (count < 1) return 0.0f;
     float sumSq = 0.0f;
-    for (int i = 0; i < count; ++i) {
-      int idx = wrapIdx(head - 1 - i);
-      float h = samples[idx].heave;
-      if (isFinite(h)) {
-        sumSq += h * h;
+    forEachSample([&](const WaveSample& s) {
+      if (isFinite(s.heave)) {
+        sumSq += s.heave * s.heave;
       }
-    }
-    float meanSq = sumSq / count;
-    return 0.5f * waterDensity * gravity * meanSq;
+    });
+    return 0.5f * waterDensity * gravity * (sumSq / count);
   }
 
   [[nodiscard]] const WaveSample* getSamples() const { return samples; }
