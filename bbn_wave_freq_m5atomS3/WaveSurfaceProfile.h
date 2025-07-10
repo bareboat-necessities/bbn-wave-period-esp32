@@ -224,13 +224,14 @@ public:
     float nowPhase = getPhase(t);
     float targetPhase = fmodf(nowPhase + phase, 1.0f);
     if (targetPhase < 0.0f) targetPhase += 1.0f;
-    
-    float fidx = targetPhase * count / 2.0f;
+
+    int samplesPerPeriod = count / 2;
+    float fidx = targetPhase * samplesPerPeriod;
     int i0 = (int)fidx;
-    int i1 = (i0 + 1) % count;
+    int i1 = (i0 + 1) % samplesPerPeriod;
     float alpha = fidx - i0;
 
-    int start = (head - count + N) % N;
+    int start = (head - samplesPerPeriod + N) % N;
     int idx0 = (start + i0) % N;
     int idx1 = (start + i1) % N;
 
