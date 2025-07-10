@@ -225,12 +225,11 @@ public:
     float targetPhase = fmodf(getPhase(t) + phase, 1.0f);
     if (targetPhase < 0.0f) targetPhase += 1.0f;
 
-    // Search over samples from latest 1 wave period (second half of buffer)
     int samplesPerPeriod = count / 2;
     int start = (head - samplesPerPeriod + N) % N;
 
     float bestHeave = 0.0f;
-    float minPhaseDiff = 10.0f;
+    float minPhaseDist = 10.0f; // larger than max phase diff (wraps around at 1)
 
     for (int i = 0; i < samplesPerPeriod - 1; ++i) {
       int idx0 = (start + i) % N;
@@ -244,21 +243,36 @@ public:
       if (p0 < 0.0f) p0 += 1.0f;
       if (p1 < 0.0f) p1 += 1.0f;
 
-      // Check if targetPhase lies between p0 and p1 (wrap-aware)
+      // Compute distance from targetPhase to segment
+      float dist0 = fabsf(p0 - targetPhase);
+      float dist1 = fabsf(p1 - targetPhase);
+      if (dist0 > 0.5f) dist0 = 1.0f - dist0;
+      if (dist1 > 0.5f) dist1 = 1.0f - dist1;
+
+      // Track nearest sample as fallback
+      if (dist0 < minPhaseDist) {
+        bestHeave = s0.heave;
+        minPhaseDist = dist0;
+      }
+      if (dist1 < minPhaseDist) {
+        bestHeave = s1.heave;
+        minPhaseDist = dist1;
+      }
+
+      // Check if target phase lies between p0 and p1 (wrap-aware)
       bool crosses = (p0 <= targetPhase && targetPhase <= p1) ||
                      (p1 < p0 && (targetPhase >= p0 || targetPhase <= p1));
       if (crosses) {
         float dp = p1 - p0;
         if (dp < 0.0f) dp += 1.0f;
-
         float alpha = (dp < EPSILON) ? 0.5f : (targetPhase - p0) / dp;
         if (alpha < 0.0f) alpha += 1.0f;
         alpha = fminf(fmaxf(alpha, 0.0f), 1.0f);
-
         return s0.heave + alpha * (s1.heave - s0.heave);
       }
     }
-    return 0.0f;  // fallback
+    // No segment crossing target phase found → fallback to best match
+    return bestHeave;
   }
 
   float computeWaveTrainVelocityGradient() const {
