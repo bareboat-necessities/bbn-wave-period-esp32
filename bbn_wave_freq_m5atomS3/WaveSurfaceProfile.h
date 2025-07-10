@@ -50,6 +50,32 @@ private:
     return isfinite(x);
   }
 
+  template<typename Func>
+  bool scanRecentSamples(Func&& callback) const {
+    for (int i = 0; i < count - 1; ++i) {
+      int idx0 = wrapIdx(head - 2 - i);
+      int idx1 = wrapIdx(head - 1 - i);
+      const WaveSample& s0 = samples[idx0];
+      const WaveSample& s1 = samples[idx1];
+      if (s0.time >= s1.time) continue; // Skip invalid pairs
+      if (callback(s0, s1)) return true;
+    }
+    return false;
+  }
+  
+  template<typename Func>
+  bool scanForwardSamples(Func&& callback) const {
+    for (int i = 0; i < count - 1; ++i) {
+      int idx0 = wrapIdx(head - count + i);
+      int idx1 = wrapIdx(head - count + i + 1);
+      const WaveSample& s0 = samples[idx0];
+      const WaveSample& s1 = samples[idx1];
+      if (s0.time >= s1.time) continue;
+      if (callback(s0, s1)) return true;
+    }
+    return false;
+  }
+
   inline float interpolateZeroCrossingTime(const WaveSample& s0, const WaveSample& s1) const {
     float denom = s0.heave - s1.heave;
     float frac = (fabsf(denom) < EPSILON) ? 0.5f : s0.heave / denom;
@@ -68,13 +94,7 @@ private:
   }
 
   bool detectCrossing(CrossingType type, float& crossingTime) const {
-    for (int i = 0; i < count - 1; ++i) {
-      int idx0 = wrapIdx(head - 2 - i);
-      int idx1 = wrapIdx(head - 1 - i);
-      const WaveSample& s0 = samples[idx0];
-      const WaveSample& s1 = samples[idx1];
-      if (s0.time >= s1.time) continue;
-  
+    return scanRecentSamples([&](const WaveSample& s0, const WaveSample& s1) -> bool {
       if (type == CrossingType::Upcrossing && s0.heave < 0 && s1.heave >= 0) {
         crossingTime = interpolateZeroCrossingTime(s0, s1);
         return true;
@@ -83,8 +103,8 @@ private:
         crossingTime = interpolateZeroCrossingTime(s0, s1);
         return true;
       }
-    }
-    return false;
+      return false;
+    });
   }
 
   struct CrestMetrics {
@@ -98,12 +118,7 @@ private:
 
   CrestMetrics computeCrestMetrics() const {
     CrestMetrics m;
-    for (int i = 0; i < count - 1; ++i) {
-      int idx1 = wrapIdx(head - 1 - i);
-      int idx0 = wrapIdx(head - 2 - i);
-      const WaveSample& s0 = samples[idx0];
-      const WaveSample& s1 = samples[idx1];
-  
+    scanRecentSamples([&](const WaveSample& s0, const WaveSample& s1) -> bool {
       if (!m.upFound && s0.heave < 0 && s1.heave >= 0) {
         m.upTime = interpolateZeroCrossingTime(s0, s1);
         m.upFound = true;
@@ -117,8 +132,8 @@ private:
         m.downTime = interpolateZeroCrossingTime(s0, s1);
         m.downFound = true;
       }
-      if (m.isComplete()) break;
-    }
+      return m.isComplete(); // Early exit if done
+    });
     return m;
   }
 
