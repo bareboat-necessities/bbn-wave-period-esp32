@@ -533,24 +533,32 @@ class FentonWave {
     }
 
     // Generic 2D trapezoidal integration over x∈[0,length], z∈[-depth,η(x)]
-    template<typename Func>
+template<typename Func>
     Real integrate2D(Func f, int x_samples = 100, int z_samples = 10) const {
       const Real dx = length / x_samples;
-      Real total = 0.0f; 
+      Real total = 0.0f;
+    
       for (int i = 0; i <= x_samples; ++i) {
         Real x_val = i * dx;
         Real η = surface_elevation(x_val);
         const Real dz = (η + depth) / z_samples;
+    
+        // 1) integrate in z for this x_i
+        Real sum_z = 0.0f;
         for (int zi = 0; zi <= z_samples; ++zi) {
           Real z_val = -depth + zi * dz;
-          Real weight_z = (zi == 0 || zi == z_samples) ? 0.5f : 1.0f;
-          total += f(x_val, z_val) * weight_z;
+          Real w_z = (zi == 0 || zi == z_samples) ? 0.5f : 1.0f;
+          sum_z += f(x_val, z_val) * w_z;
         }
-        Real weight_x = (i == 0 || i == x_samples) ? 0.5f : 1.0f;
-        total *= weight_x;   // apply x‐weight after z‐sum
-        total *= dz;         // scale by dz for this x
+        sum_z *= dz;  // scale the z-integral by dz
+    
+        // 2) apply x-weight and accumulate
+        Real w_x = (i == 0 || i == x_samples) ? 0.5f : 1.0f;
+        total += sum_z * w_x;
       }
-      return dx * total / length;  // normalize by length if desired externally
+    
+      // 3) scale by dx and, if you want, normalize by length
+      return total * dx / length;
     }
 };
 
