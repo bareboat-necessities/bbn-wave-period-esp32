@@ -139,7 +139,9 @@ public:
 
   void updateIfNeeded(float heave, float newFreq, float t) {
     if (!isFinite(heave) || !isFinite(t)) return;
-    if (isValidFrequency(newFreq)) freq = newFreq;
+    if (isValidFrequency(newFreq)) {
+      freq = newFreq;
+    }
     float periodSec = (freq > EPSILON) ? (1.0f / freq) : 1.0f;
     float targetDt = STORE_PERIODS * periodSec / N;
     if (lastWaveProfileUpdate == 0.0f || (t - lastWaveProfileUpdate >= targetDt)) {
