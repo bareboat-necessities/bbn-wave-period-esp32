@@ -1,6 +1,17 @@
 #ifndef WAVE_SURFACE_PROFILE_H
 #define WAVE_SURFACE_PROFILE_H
 
+/*
+  Copyright 2025, Mikhail Grushinskiy
+
+  WaveSurfaceProfile - Tracks a rolling buffer of heave samples
+  and computes wave phase, crest sharpness, asymmetry, and future prediction.
+
+  - Anchors phase to last zero-upcrossing (heave < 0 → ≥ 0)
+  - Uses frequency for phase and prediction
+  - Tracks N samples for wave shape reconstruction
+*/
+
 #include <math.h>
 
 constexpr float EPSILON = 1e-6f;
