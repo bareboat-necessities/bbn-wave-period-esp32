@@ -41,6 +41,23 @@ private:
     return isfinite(x);
   }
 
+  inline float interpolateZeroCrossingTime(const WaveSample& s0, const WaveSample& s1) const {
+    float denom = s0.heave - s1.heave;
+    float frac = (fabsf(denom) < EPSILON) ? 0.5f : s0.heave / denom;
+    frac = fminf(fmaxf(frac, 0.0f), 1.0f);
+    return s0.time + frac * (s1.time - s0.time);
+  }
+
+  inline float normalizePhase(float p) const {
+    p = fmodf(p, 1.0f);
+    return (p < 0.0f) ? (p + 1.0f) : p;
+  }
+
+  inline float wrappedPhaseDistance(float a, float b) const {
+    float d = fabsf(a - b);
+    return (d > 0.5f) ? (1.0f - d) : d;
+  }
+
 public:
   inline void reset() {
     head = 0;
@@ -83,8 +100,7 @@ public:
     if (!isFinite(t)) return 0.0f;
     if (!findLatestZeroUpcrossing()) return 0.0f;
     float elapsed = t - lastZcTime;
-    float phase = elapsed * freq - floorf(elapsed * freq);
-    return phase;
+    return normalizePhase(elapsed * freq);
   }
 
   float getPhaseDegrees(float t) {
@@ -109,10 +125,7 @@ public:
 
       if (s0.time >= s1.time) continue;
 
-      float denominator = s0.heave - s1.heave;
-      float frac = (fabsf(denominator) < EPSILON) ? 0.5f : s0.heave / denominator;
-      frac = fminf(fmaxf(frac, 0.0f), 1.0f); // Clamp [0,1]
-      float zcTime = s0.time + frac * (s1.time - s0.time);
+      float zcTime = interpolateZeroCrossingTime(s0, s1);
 
       if (upcrossing && s0.heave < 0.0f && s1.heave >= 0.0f) {
         lastZcTime = zcTime;
@@ -140,10 +153,7 @@ public:
       const WaveSample& s1 = samples[idx1];
 
       if (!upFound && s0.heave < 0 && s1.heave >= 0) {
-        float denom = s0.heave - s1.heave;
-        float frac = (fabsf(denom) < EPSILON) ? 0.5f : s0.heave / denom;
-        frac = fminf(fmaxf(frac, 0.0f), 1.0f);
-        upTime = s0.time + frac * (s1.time - s0.time);
+        upTime = interpolateZeroCrossingTime(s0, s1);
         upFound = true;
       }
 
@@ -154,10 +164,7 @@ public:
       }
 
       if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime && !downFound) {
-        float denom = s0.heave - s1.heave;
-        float frac = (fabsf(denom) < EPSILON) ? 0.5f : s0.heave / denom;
-        frac = fminf(fmaxf(frac, 0.0f), 1.0f);
-        downTime = s0.time + frac * (s1.time - s0.time);
+        downTime = interpolateZeroCrossingTime(s0, s1);
         downFound = true;
       }
     }
@@ -201,10 +208,7 @@ public:
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
       if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime) {
-        float denom = s0.heave - s1.heave;
-        float frac = (fabsf(denom) < EPSILON) ? 0.5f : s0.heave / denom;       
-        frac = fminf(fmaxf(frac, 0.0f), 1.0f);
-        downTime = s0.time + frac * (s1.time - s0.time);
+        downTime = interpolateZeroCrossingTime(s0, s1);
         downFound = true;
         break;
       }
@@ -223,14 +227,13 @@ public:
     if (count < 3 || !isFinite(t) || !isFinite(phase)) return 0.0f;
     if (!findLatestZeroUpcrossing()) return 0.0f;
 
-    float targetPhase = fmodf(getPhase(t) + phase, 1.0f);
-    if (targetPhase < 0.0f) targetPhase += 1.0f;
+    float targetPhase = normalizePhase(getPhase(t) + phase);
 
     int samplesPerPeriod = count / STORE_PERIODS;
     int start = (head - samplesPerPeriod + N) % N;
 
     float bestHeave = 0.0f;
-    float minPhaseDist = 10.0f; // larger than max phase diff (wraps around at 1)
+    float minPhaseDist = 10.0f;
 
     for (int i = 0; i < samplesPerPeriod - 1; ++i) {
       int idx0 = (start + i) % N;
@@ -239,18 +242,12 @@ public:
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
 
-      float p0 = fmodf((s0.time - lastZcTime) * freq, 1.0f);
-      float p1 = fmodf((s1.time - lastZcTime) * freq, 1.0f);
-      if (p0 < 0.0f) p0 += 1.0f;
-      if (p1 < 0.0f) p1 += 1.0f;
+      float p0 = normalizePhase((s0.time - lastZcTime) * freq);
+      float p1 = normalizePhase((s1.time - lastZcTime) * freq);
 
-      // Compute distance from targetPhase to segment
-      float dist0 = fabsf(p0 - targetPhase);
-      float dist1 = fabsf(p1 - targetPhase);
-      if (dist0 > 0.5f) dist0 = 1.0f - dist0;
-      if (dist1 > 0.5f) dist1 = 1.0f - dist1;
+      float dist0 = wrappedPhaseDistance(p0, targetPhase);
+      float dist1 = wrappedPhaseDistance(p1, targetPhase);
 
-      // Track nearest sample as fallback
       if (dist0 < minPhaseDist) {
         bestHeave = s0.heave;
         minPhaseDist = dist0;
@@ -260,7 +257,6 @@ public:
         minPhaseDist = dist1;
       }
 
-      // Check if target phase lies between p0 and p1 (wrap-aware)
       bool crosses = (p0 <= targetPhase && targetPhase <= p1) ||
                      (p1 < p0 && (targetPhase >= p0 || targetPhase <= p1));
       if (crosses) {
@@ -272,7 +268,6 @@ public:
         return s0.heave + alpha * (s1.heave - s0.heave);
       }
     }
-    // No segment crossing target phase found → fallback to best match
     return bestHeave;
   }
 
