@@ -217,6 +217,78 @@ class FentonWave {
       return c * total_energy_density(samples);
     }
 
+    // Mean Eulerian current (time-averaged horizontal flow)
+    Real mean_eulerian_current(int samples = 100) const {
+      Real dx = length / samples;
+      Real total = 0.0f;
+      for (int i = 0; i <= samples; ++i) {
+        Real x_val = i * dx;
+        Real eta_val = surface_elevation(x_val);
+        for (int zi = 0; zi <= 10; ++zi) {
+          Real z_val = -depth + zi * (eta_val + depth) / 10.0f;
+          Real u = horizontal_velocity(x_val, z_val);
+          Real weight = (zi == 0 || zi == 10) ? 0.5f : 1.0f;
+          total += u * weight * (eta_val + depth) / 10.0f;
+        }
+      }
+      return dx * total / (length * depth);
+    }
+    
+    // Mean Stokes drift approximation at surface
+    Real mean_stokes_drift(int samples = 100) const {
+      Real dx = length / samples;
+      Real total = 0.0f;
+      for (int i = 0; i <= samples; ++i) {
+        Real x_val = i * dx;
+        Real eta_val = surface_elevation(x_val);
+        Real u = horizontal_velocity(x_val, eta_val);
+        Real weight = (i == 0 || i == samples) ? 0.5f : 1.0f;
+        total += u * weight;
+      }
+      return dx * total / length;
+    }
+    
+    // Wave impulse (horizontal momentum integrated over depth)
+    Real wave_impulse(int samples = 100) const {
+      Real dx = length / samples;
+      Real total = 0.0f;
+      for (int i = 0; i <= samples; ++i) {
+        Real x_val = i * dx;
+        Real eta_val = surface_elevation(x_val);
+        for (int zi = 0; zi <= 10; ++zi) {
+          Real z_val = -depth + zi * (eta_val + depth) / 10.0f;
+          Real u = horizontal_velocity(x_val, z_val);
+          Real weight = (zi == 0 || zi == 10) ? 0.5f : 1.0f;
+          total += u * weight * (eta_val + depth) / 10.0f;
+        }
+      }
+      return dx * total;
+    }
+    
+    // Momentum flux (mean horizontal transport of horizontal momentum)
+    Real momentum_flux(int samples = 100) const {
+      Real dx = length / samples;
+      Real total = 0.0f;
+      for (int i = 0; i <= samples; ++i) {
+        Real x_val = i * dx;
+        Real eta_val = surface_elevation(x_val);
+        for (int zi = 0; zi <= 10; ++zi) {
+          Real z_val = -depth + zi * (eta_val + depth) / 10.0f;
+          Real u = horizontal_velocity(x_val, z_val);
+          Real weight = (zi == 0 || zi == 10) ? 0.5f : 1.0f;
+          total += u * u * weight * (eta_val + depth) / 10.0f;
+        }
+      }
+      return dx * total / length;
+    }
+    
+    // Radiation stress component S_xx (horizontal momentum flux due to wave motion)
+    Real radiation_stress_xx(int samples = 100) const {
+      Real rho = 1025.0f;
+      Real flux = momentum_flux(samples);
+      return rho * flux;
+    }
+
     static float compute_wavelength(float omega, float depth, float g = 9.81f, float tol = 1e-10f, int max_iter = 50) {
       float k = omega * omega / g; // Initial guess (deep water)
       for (int i = 0; i < max_iter; ++i) {
