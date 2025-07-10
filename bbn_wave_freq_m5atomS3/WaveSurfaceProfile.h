@@ -14,7 +14,6 @@
 
 #include <math.h>
 #include <algorithm>
-#include <cassert>
 
 constexpr float EPSILON = 1e-6f;
 constexpr float GRAVITY = 9.81f;
