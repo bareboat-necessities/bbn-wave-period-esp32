@@ -375,6 +375,32 @@ public:
   }
 
   /**
+   * Computes surface Stokes drift (or at depth z < 0), due to nonlinear wave motion.
+   * Valid for deep-water linear waves.
+   * 
+   * Formula:
+   *   U_s(z) = ω · k · a² · e^(2kz)
+   * 
+   * - `depth`: meters below surface (z ≤ 0). Use 0 for surface drift.
+   * - Returns drift speed in m/s.
+   */
+  float computeStokesDrift(float depth = 0.0f, float gravity = GRAVITY) const {
+    if (count < 1 || !isFinite(freq) || freq < EPSILON || !isFinite(depth)) return 0.0f;
+  
+    float omega = 2.0f * M_PI * freq;
+    float k = (omega * omega) / gravity;
+  
+    // Estimate amplitude as RMS heave * sqrt(2)
+    float sumSq = 0.0f;
+    forEachSample([&](const WaveSample& s) {
+      if (isFinite(s.heave)) sumSq += s.heave * s.heave;
+    });
+    float rms = sqrtf(sumSq / count);
+    float a = rms * M_SQRT2; // amplitude
+    return omega * k * a * a * expf(2.0f * k * depth);
+  }
+
+  /**
    * Returns raw circular buffer of all samples.
    */
   [[nodiscard]] const WaveSample* getSamples() const { return samples; }
