@@ -169,7 +169,6 @@ class FentonWave {
       const Real w = vertical_velocity(x_val, z_val, t);
       const Real eta = surface_elevation(x_val, t);
 
-      // Bernoulli equation components
       const Real kinetic_energy = 0.5f * (u * u + w * w);
       const Real potential_energy = g * (z_val - eta);
       const Real flow_work = c * u;
@@ -194,7 +193,7 @@ class FentonWave {
            KE_total += weight * KE_density * (eta_val + depth) / 10.0f;
         }
       }
-      return dx * KE_total / length;  // Average over wavelength
+      return dx * KE_total / length; 
     }
 
     Real mean_potential_energy_density(int samples = 100) const {
@@ -206,7 +205,7 @@ class FentonWave {
         Real PE = g * z;                             // Potential Energy
         PE_total += (i == 0 || i == samples) ? 0.5f * PE : PE;
       }
-      return dx * PE_total;  // Trapezoidal rule
+      return dx * PE_total;
     }
 
     Real total_energy_density(int samples = 100) const {
@@ -217,7 +216,6 @@ class FentonWave {
       return c * total_energy_density(samples);
     }
 
-    // Mean Eulerian current (time-averaged horizontal flow)
     Real mean_eulerian_current(int samples = 100) const {
       Real dx = length / samples;
       Real total = 0.0f;
@@ -234,7 +232,6 @@ class FentonWave {
       return dx * total / (length * depth);
     }
     
-    // Mean Stokes drift approximation at surface
     Real mean_stokes_drift(int samples = 100) const {
       Real dx = length / samples;
       Real total = 0.0f;
@@ -248,7 +245,6 @@ class FentonWave {
       return dx * total / length;
     }
     
-    // Wave impulse (horizontal momentum integrated over depth)
     Real wave_impulse(int samples = 100) const {
       Real dx = length / samples;
       Real total = 0.0f;
@@ -265,7 +261,6 @@ class FentonWave {
       return dx * total;
     }
     
-    // Momentum flux (mean horizontal transport of horizontal momentum)
     Real momentum_flux(int samples = 100) const {
       Real dx = length / samples;
       Real total = 0.0f;
@@ -282,7 +277,6 @@ class FentonWave {
       return dx * total / length;
     }
     
-    // Radiation stress component S_xx (horizontal momentum flux due to wave motion)
     Real radiation_stress_xx(int samples = 100) const {
       Real rho = 1025.0f;
       Real flux = momentum_flux(samples);
@@ -388,7 +382,6 @@ class FentonWave {
     VelocityTerms compute_velocity_terms(Real z_val, Real phase, bool for_horizontal) const {
       const auto kj = kj_cache.array();
       const auto denom = (kj * depth).cosh();
-
       VelocityTerms terms = kj * B.tail(N).array() / denom;
       if (for_horizontal) {
         return terms * (kj * (z_val + depth)).cosh();
@@ -408,8 +401,7 @@ class FentonWave {
       return std::vector<Real>(steps.data(), steps.data() + steps.size());
     }
 
-    void optimize(VectorF& B, Real& Q, Real& R,
-                  VectorF& eta, Real H, Real k, Real D) {
+    void optimize(VectorF& B, Real& Q, Real& R, VectorF& eta, Real H, Real k, Real D) {
       constexpr int NU = 2 * (N + 1) + 2;
       Eigen::Matrix<Real, NU, 1> coeffs;
       coeffs.template segment<N + 1>(0) = B;
@@ -427,14 +419,12 @@ class FentonWave {
         if (eta_max > 2.0f || eta_min < 0.1f || !std::isfinite(error)) {
           throw std::runtime_error("Optimization failed");
         }
-
         if (error < 1e-8f) break;
 
         Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k, D);
         Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
         coeffs += relax * delta;
       }
-
       B = coeffs.template segment<N + 1>(0);
       eta = coeffs.template segment<N + 1>(N + 1);
       Q = coeffs(2 * N + 2);
@@ -508,7 +498,6 @@ class FentonWave {
       for (int m = 0; m <= N; ++m) {
         Real eta_m = eta(m);
         Real x_m = M_PI * m / N;
-
         Eigen::Array<Real, N, 1> S1, C1, S2, C2;
         Eigen::Array<Real, N, 1> SC, SS, CC, CS;
 
@@ -633,7 +622,6 @@ class WaveSurfaceTracker {
       x_curr += dt_step * (k1_x + 2 * k2_x + 2 * k3_x + k4_x) / 6.0f;
       vx_curr += dt_step * (k1_v + 2 * k2_v + 2 * k3_v + k4_v) / 6.0f;
 
-      // Periodicity wrap
       x_curr = wrap_periodic(x_curr, wave.get_length());
     }
 
