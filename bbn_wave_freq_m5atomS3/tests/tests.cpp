@@ -126,7 +126,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
     printf(",ref_req,%.5f", ref_freq_4_print);
     printf(",heave_alt_err,%.5f", h - heaveAlt);
     printf(",freq_adj_err,%.5f", ref_freq_4_print - freq_adj);
-    printf(",heave_predict,%.5f", waveProfile.predictAtPhase(waveProfile.getPhase(t), t));
+    printf(",heave_predict,%.5f", waveProfile.predictAtPhase(0.0f /* zero phase shift */, t));
     printf("\n");
   }
 }
