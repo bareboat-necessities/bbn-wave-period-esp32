@@ -536,21 +536,40 @@ class FentonWave {
     template<typename Func>
     Real integrate2D(Func f, int x_samples = 100, int z_samples = 10) const {
       const Real dx = length / x_samples;
+      const int Nx = x_samples + 1;
+      const int Nz = z_samples + 1;
+
+      // 1) Precompute x grid and surface elevations η(x)
+      std::vector<Real> x_vals(Nx), eta_vals(Nx);
+      for (int i = 0; i < Nx; ++i) {
+        x_vals[i] = i * dx;
+        eta_vals[i] = surface_elevation(x_vals[i]);   // only once per x
+      }
+
+      // 2) Precompute z‐weights (0.5 at ends, 1.0 interior)
+      std::vector<Real> wz(Nz, 1.0f);
+      wz[0] = wz[Nz-1] = 0.5f;
+
       Real total = 0.0f;
-      for (int i = 0; i <= x_samples; ++i) {
-        Real x_val   = i * dx;
-        Real η       = surface_elevation(x_val);
-        const Real dz = (η + depth) / z_samples;
+      for (int i = 0; i < Nx; ++i) {
+        Real x_i = x_vals[i];
+        Real eta  = eta_vals[i];
+        Real dz   = (eta + depth) / z_samples;
+
+        // integrate in z at this x
         Real sum_z = 0.0f;
-        for (int zi = 0; zi <= z_samples; ++zi) {
-          Real z_val    = -depth + zi * dz;
-          Real w_z      = (zi == 0 || zi == z_samples) ? 0.5f : 1.0f;
-          sum_z        += f(x_val, z_val) * w_z;
+        for (int zi = 0; zi < Nz; ++zi) {
+          Real z = -depth + zi * dz;
+          sum_z   += f(x_i, z) * wz[zi];
         }
         sum_z *= dz;
-        Real w_x  = (i == 0 || i == x_samples) ? 0.5f : 1.0f;
-        total    += sum_z * w_x;
+
+        // trapezoid weight in x
+        Real wx = (i==0 || i==Nx-1) ? 0.5f : 1.0f;
+        total += sum_z * wx;
       }
+
+      // normalize by dx/length
       return total * dx / length;
     }
 };
