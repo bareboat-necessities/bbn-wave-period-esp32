@@ -11,7 +11,7 @@ acc_bias = Header[2]
 acc_noise_std_dev = Header[3]
 
 Data = np.loadtxt(fname="results.csv", delimiter=",",
-                  usecols=(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33),
+                  usecols=(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35),
                   skiprows=1)
 
 Time = Data[:, [0]]
@@ -25,6 +25,7 @@ FreqAdj = Data[:, [11]]
 RefFreq = Data[:, [14]]
 HeaveAltErr = Data[:, [15]]
 FreqAdjErr = Data[:, [16]]
+HeavePredict = Data[:, [17]]
 
 rms = np.sqrt(np.mean(HeaveAltErr[-250 * 60:] ** 2))
 rms_freq = np.sqrt(np.mean(FreqAdjErr[-250 * 60:] ** 2))
@@ -47,6 +48,7 @@ axarr[2].set_title('Heave (m) main_amplitude=' + str(main_amp))
 axarr[2].plot(Time, RefPosX, label="Reference Pos")
 #axarr[2].plot(Time, Heave, "r-", label="Heave")
 axarr[2].plot(Time, HeaveAlt, "g-", label="HeaveAlt")
+#axarr[2].plot(Time, HeavePredict, "-", label="HeavePredict")
 axarr[2].grid()
 axarr[2].legend()
 
