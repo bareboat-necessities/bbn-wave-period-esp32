@@ -168,7 +168,11 @@ private:
     return m;
   }
 
+
 public:
+  /**
+   * Clears internal sample buffer and resets frequency and timestamps.
+   */
   inline void reset() {
     head = 0;
     count = 0;
@@ -177,31 +181,55 @@ public:
     lastZcTime = 0.0f;
   }
 
+  /**
+   * Inserts a new sample and updates the frequency if valid.
+   * Assumes sample is temporally after the last.
+   */
   void update(float heave, float newFreq, float t) {
     if (!isFinite(heave) || !isFinite(t)) return;
     if (count > 0 && fabsf(samples[wrapIdx(head - 1)].time - t) < EPSILON) return;
+
     samples[head] = {heave, t};
     head = wrapIdx(head + 1);
     if (count < N) count++;
     if (isValidFrequency(newFreq)) freq = newFreq;
   }
 
+  /**
+   * Adds a sample only if enough time has elapsed since last insertion,
+   * preserving temporal spacing based on wave period.
+   */
   void updateIfNeeded(float heave, float newFreq, float t) {
     if (!isFinite(heave) || !isFinite(t)) return;
     if (isValidFrequency(newFreq)) freq = newFreq;
 
     float periodSec = (freq > EPSILON) ? (1.0f / freq) : 1.0f;
     float targetDt = STORE_PERIODS * periodSec / N;
-    if (lastWaveProfileUpdate == 0.0f || (t - lastWaveProfileUpdate >= targetDt)) {
+    if (lastWaveProfileUpdate < EPSILON || (t - lastWaveProfileUpdate >= targetDt)) {
       update(heave, freq, t);
       lastWaveProfileUpdate = t;
     }
   }
 
+  /**
+   * Returns true if enough samples are available for wave analysis.
+   */
   [[nodiscard]] inline bool isReady() const { return count >= 3; }
+
+  /**
+   * Returns the most recent wave frequency in Hz.
+   */
   [[nodiscard]] inline float getFrequency() const { return freq; }
+
+  /**
+   * Returns the wave period in seconds (1/frequency).
+   */
   [[nodiscard]] inline float getPeriod() const { return (freq > EPSILON) ? (1.0f / freq) : 0.0f; }
 
+  /**
+   * Computes normalized phase [0,1) based on last zero-upcrossing before `t`.
+   * Phase = 0 corresponds to wave passing through mean level upward.
+   */
   float getPhase(float t) {
     if (!isFinite(t)) return 0.0f;
     float zc;
@@ -210,20 +238,35 @@ public:
     return normalizePhase(elapsed * freq);
   }
 
+  /**
+   * Same as getPhase(), but returns phase in degrees [0, 360).
+   */
   float getPhaseDegrees(float t) {
     return 360.0f * getPhase(t);
   }
 
+  /**
+   * Finds time of most recent zero-upcrossing and outputs it.
+   * Returns false if not found.
+   */
   bool findLatestZeroUpcrossing(float& zcOut) {
     return detectCrossing(CrossingType::Upcrossing, zcOut);
   }
 
+  /**
+   * Updates `lastZcTime` with most recent zero-upcrossing, if found.
+   */
   bool detectLatestZeroUpcrossing() {
     return findLatestZeroUpcrossing(lastZcTime);
   }
 
+  /**
+   * Computes average slope of crest: how sharply wave rises and falls around the peak.
+   * - Sharpness = ½ × (ascent slope + descent slope)
+   * - Slope = maxHeave / timeToRiseOrFall
+   */
   float computeCrestSharpness() const {
-    assert(count > 3);
+    if (count < 3) return 0.0f;
     CrestMetrics m = computeCrestMetrics();
     if (!m.isComplete()) return 0.0f;
     float rise = m.crestTime - m.upTime;
@@ -233,8 +276,13 @@ public:
     return 0.5f * (riseSlope + fallSlope);
   }
 
+  /**
+   * Computes vertical asymmetry of the wave crest:
+   * - Asymmetry = (rise - fall) / (rise + fall)
+   * - Positive = sharper rise, flatter fall
+   * - Negative = gentle rise, steep fall
+   */
   float computeAsymmetry() {
-    assert(count > 3);
     if (count < 3 || !detectLatestZeroUpcrossing()) return 0.0f;
     CrestMetrics m = computeCrestMetrics();
     if (!m.isComplete()) return 0.0f;
@@ -244,8 +292,13 @@ public:
     return (rise - fall) / (rise + fall);
   }
 
+  /**
+   * Predicts heave (vertical displacement) at a given wave-relative phase.
+   * - `phase` is relative phase from current time [0,1)
+   * - Uses interpolation of samples around last upcrossing
+   * - Falls back to nearest sample match if interpolation fails
+   */
   float predictAtPhase(float phase, float t) {
-    assert(count > 3);
     if (count < 3 || !isFinite(t) || !isFinite(phase)) return 0.0f;
     float zc;
     if (!findLatestZeroUpcrossing(zc)) return 0.0f;
@@ -277,6 +330,11 @@ public:
     return bestHeave;
   }
 
+  /**
+   * Estimates horizontal velocity gradient of wave train using max crest/trough.
+   * Useful for studying wave propagation intensity.
+   * - Gradient = (crest - trough) / time × waveSpeed
+   */
   float computeWaveTrainVelocityGradient() const {
     float crest = -INFINITY, trough = INFINITY;
     float crestTime = 0.0f, troughTime = 0.0f;
@@ -302,6 +360,11 @@ public:
     return (dh / dt) * waveSpeed;
   }
 
+  /**
+   * Computes average wave energy per unit area (J/m²).
+   * Formula: E = ½ ρ g (heave² avg)
+   * - `waterDensity`: default is seawater (~1025 kg/m³)
+   */
   float computeWaveEnergy(float waterDensity = 1025.0f, float gravity = GRAVITY) const {
     if (count < 1) return 0.0f;
     float sumSq = 0.0f;
@@ -313,12 +376,25 @@ public:
     return 0.5f * waterDensity * gravity * (sumSq / count);
   }
 
+  /**
+   * Returns raw circular buffer of all samples.
+   */
   [[nodiscard]] const WaveSample* getSamples() const { return samples; }
+
+  /**
+   * Returns number of valid samples in buffer.
+   */
   [[nodiscard]] int getCount() const { return count; }
+
+  /**
+   * Returns buffer capacity (maximum samples storable).
+   */
   [[nodiscard]] int getCapacity() const { return N; }
 
+  /**
+   * Returns most recently added sample.
+   */
   [[nodiscard]] WaveSample getLatestSample() const {
-    assert(count > 0);
     return samples[wrapIdx(head - 1)];
   }
 };
