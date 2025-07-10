@@ -16,7 +16,6 @@
 
 constexpr float EPSILON = 1e-6f;
 constexpr float GRAVITY = 9.81f;
-constexpr float TWO_PI = 6.28318530718f;
 
 struct WaveSample {
   float heave;  // meters
@@ -265,7 +264,7 @@ public:
     if (!crestFound || !troughFound || dt < EPSILON) return 0.0f;
 
     float dh = crest - trough;
-    float waveSpeed = GRAVITY / (TWO_PI * freq);
+    float waveSpeed = GRAVITY / (2 * M_PI * freq);
     return (dh / dt) * waveSpeed;
   }
 
