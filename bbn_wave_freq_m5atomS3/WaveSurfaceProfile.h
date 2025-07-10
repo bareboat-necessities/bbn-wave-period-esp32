@@ -85,63 +85,37 @@ private:
   struct CrestMetrics {
     float upTime = 0, crestTime = 0, downTime = 0, maxHeave = -INFINITY;
     bool crestFound = false, upFound = false, downFound = false;
+  
+    [[nodiscard]] bool isComplete() const {
+      return upFound && crestFound && downFound;
+    }
   };
 
-  CrestMetrics findCrestMetrics() const {
+  CrestMetrics computeCrestMetrics() const {
     CrestMetrics m;
     int start = wrapIdx(head - count);
-
     for (int i = 0; i < count - 1; ++i) {
       int idx0 = wrapIdx(start + i);
       int idx1 = wrapIdx(start + i + 1);
+      
       const WaveSample& s0 = samples[idx0];
-      const WaveSample& s1 = samples[idx1];
-
+      const WaveSample& s1 = samples[idx1];  
+      
       if (!m.upFound && s0.heave < 0 && s1.heave >= 0) {
         m.upTime = interpolateZeroCrossingTime(s0, s1);
         m.upFound = true;
       }
-
       if (s1.heave > m.maxHeave) {
         m.maxHeave = s1.heave;
         m.crestTime = s1.time;
         m.crestFound = true;
       }
-
       if (s0.heave > 0 && s1.heave <= 0 && s0.time > m.crestTime && !m.downFound) {
         m.downTime = interpolateZeroCrossingTime(s0, s1);
         m.downFound = true;
       }
     }
     return m;
-  }
-
-  bool findCrestEvents(float& upTime, float& crestTime, float& downTime, float& maxHeave) const {
-    bool upFound = false, crestFound = false, downFound = false;
-    maxHeave = -INFINITY;
-    int start = wrapIdx(head - count);
-
-    for (int i = 0; i < count - 1; ++i) {
-      int idx0 = wrapIdx(start + i);
-      int idx1 = wrapIdx(start + i + 1);
-      const WaveSample& s0 = samples[idx0];
-      const WaveSample& s1 = samples[idx1];
-
-      if (!upFound && s0.heave < 0 && s1.heave >= 0) {
-        upTime = interpolateZeroCrossingTime(s0, s1);
-        upFound = true;
-      }
-      if (s1.heave > maxHeave) {
-        maxHeave = s1.heave;
-        crestTime = s1.time;
-        crestFound = true;
-      }
-      if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime && !downFound) {
-        downTime = interpolateZeroCrossingTime(s0, s1);
-        downFound = true;
-      }
-    }
-    return upFound && crestFound && downFound;
   }
 
 public:
@@ -207,26 +181,26 @@ public:
     return findZeroCrossing(false, zc);
   }
 
-  float computeCrestSharpness() const {
-    float upTime, crestTime, downTime, maxHeave;
-    if (!findCrestEvents(upTime, crestTime, downTime, maxHeave)) return 0.0f;
+float computeCrestSharpness() const {
+    CrestMetrics m = computeCrestMetrics();
+    if (!m.isComplete()) return 0.0f;
   
-    float rise = crestTime - upTime;
-    float fall = downTime - crestTime;
-    float riseSlope = (rise > 0.0f) ? maxHeave / rise : 0.0f;
-    float fallSlope = (fall > 0.0f) ? maxHeave / fall : 0.0f;
+    float rise = m.crestTime - m.upTime;
+    float fall = m.downTime - m.crestTime;
+    float riseSlope = (rise > 0.0f) ? m.maxHeave / rise : 0.0f;
+    float fallSlope = (fall > 0.0f) ? m.maxHeave / fall : 0.0f;
     return 0.5f * (riseSlope + fallSlope);
   }
-
+  
   float computeAsymmetry() {
     if (count < 3) return 0.0f;
     if (!findLatestZeroUpcrossing()) return 0.0f;
   
-    float upTime, crestTime, downTime, maxHeave;
-    if (!findCrestEvents(upTime, crestTime, downTime, maxHeave)) return 0.0f;
+    CrestMetrics m = computeCrestMetrics();
+    if (!m.isComplete()) return 0.0f;
   
-    float rise = crestTime - upTime;
-    float fall = downTime - crestTime;
+    float rise = m.crestTime - m.upTime;
+    float fall = m.downTime - m.crestTime;
     if (rise + fall < EPSILON) return 0.0f;
     return (rise - fall) / (rise + fall);
   }
