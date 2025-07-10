@@ -63,19 +63,6 @@ private:
     return false;
   }
   
-  template<typename Func>
-  bool scanForwardSamples(Func&& callback) const {
-    for (int i = 0; i < count - 1; ++i) {
-      int idx0 = wrapIdx(head - count + i);
-      int idx1 = wrapIdx(head - count + i + 1);
-      const WaveSample& s0 = samples[idx0];
-      const WaveSample& s1 = samples[idx1];
-      if (s0.time >= s1.time) continue;
-      if (callback(s0, s1)) return true;
-    }
-    return false;
-  }
-
   inline float interpolateZeroCrossingTime(const WaveSample& s0, const WaveSample& s1) const {
     float denom = s0.heave - s1.heave;
     float frac = (fabsf(denom) < EPSILON) ? 0.5f : s0.heave / denom;
