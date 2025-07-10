@@ -167,7 +167,6 @@ private:
     return m;
   }
 
-
 public:
   /**
    * Clears internal sample buffer and resets frequency and timestamps.
