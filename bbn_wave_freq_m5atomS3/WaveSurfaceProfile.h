@@ -219,26 +219,46 @@ public:
   }
 
   float predictAtPhase(float phase, float t) {
-    if (count < 2 || !isFinite(t) || !isFinite(phase)) return 0.0f;
+    if (count < 3 || !isFinite(t) || !isFinite(phase)) return 0.0f;
+    if (!findLatestZeroUpcrossing()) return 0.0f;
 
-    float nowPhase = getPhase(t);
-    float targetPhase = fmodf(nowPhase + phase, 1.0f);
+    float targetPhase = fmodf(getPhase(t) + phase, 1.0f);
     if (targetPhase < 0.0f) targetPhase += 1.0f;
 
+    // Search over samples from latest 1 wave period (second half of buffer)
     int samplesPerPeriod = count / 2;
-    float fidx = targetPhase * samplesPerPeriod;
-    int i0 = (int)fidx;
-    int i1 = (i0 + 1) % samplesPerPeriod;
-    float alpha = fidx - i0;
-
     int start = (head - samplesPerPeriod + N) % N;
-    int idx0 = (start + i0) % N;
-    int idx1 = (start + i1) % N;
 
-    float h0 = samples[idx0].heave;
-    float h1 = samples[idx1].heave;
+    float bestHeave = 0.0f;
+    float minPhaseDiff = 10.0f;
 
-    return h0 + alpha * (h1 - h0);
+    for (int i = 0; i < samplesPerPeriod - 1; ++i) {
+      int idx0 = (start + i) % N;
+      int idx1 = (start + i + 1) % N;
+
+      const WaveSample& s0 = samples[idx0];
+      const WaveSample& s1 = samples[idx1];
+
+      float p0 = fmodf((s0.time - lastZcTime) * freq, 1.0f);
+      float p1 = fmodf((s1.time - lastZcTime) * freq, 1.0f);
+      if (p0 < 0.0f) p0 += 1.0f;
+      if (p1 < 0.0f) p1 += 1.0f;
+
+      // Check if targetPhase lies between p0 and p1 (wrap-aware)
+      bool crosses = (p0 <= targetPhase && targetPhase <= p1) ||
+                     (p1 < p0 && (targetPhase >= p0 || targetPhase <= p1));
+      if (crosses) {
+        float dp = p1 - p0;
+        if (dp < 0.0f) dp += 1.0f;
+
+        float alpha = (dp < EPSILON) ? 0.5f : (targetPhase - p0) / dp;
+        if (alpha < 0.0f) alpha += 1.0f;
+        alpha = fminf(fmaxf(alpha, 0.0f), 1.0f);
+
+        return s0.heave + alpha * (s1.heave - s0.heave);
+      }
+    }
+    return 0.0f;  // fallback
   }
 
   float computeWaveTrainVelocityGradient() const {
