@@ -214,17 +214,12 @@ public:
     return 360.0f * getPhase(t);
   }
 
-  bool findLatestZeroUpcrossing() {
-    return findLatestZeroUpcrossing(lastZcTime);
-  }
-
   bool findLatestZeroUpcrossing(float& zcOut) {
     return detectCrossing(CrossingType::Upcrossing, zcOut);
   }
 
-  bool findLatestZeroDowncrossing() {
-    float zc;
-    return detectCrossing(CrossingType::Downcrossing, zc);
+  bool detectLatestZeroUpcrossing() {
+    return findLatestZeroUpcrossing(lastZcTime);
   }
 
   float computeCrestSharpness() const {
@@ -240,7 +235,7 @@ public:
 
   float computeAsymmetry() {
     assert(count > 3);
-    if (count < 3 || !findLatestZeroUpcrossing()) return 0.0f;
+    if (count < 3 || !detectLatestZeroUpcrossing()) return 0.0f;
     CrestMetrics m = computeCrestMetrics();
     if (!m.isComplete()) return 0.0f;
     float rise = m.crestTime - m.upTime;
