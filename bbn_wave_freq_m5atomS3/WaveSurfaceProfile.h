@@ -16,6 +16,7 @@
 
 constexpr float EPSILON = 1e-6f;
 constexpr float GRAVITY = 9.81f;
+constexpr int STORE_PERIODS = 2;
 
 struct WaveSample {
   float heave;  // meters
@@ -67,7 +68,7 @@ public:
       freq = newFreq;
     }
     float periodSec = (freq > EPSILON) ? (1.0f / freq) : 1.0f;
-    float targetDt = 2.0f * periodSec / N;
+    float targetDt = STORE_PERIODS * periodSec / N;
     if (lastWaveProfileUpdate == 0.0f || (t - lastWaveProfileUpdate >= targetDt)) {
       update(heave, freq, t);
       lastWaveProfileUpdate = t;
@@ -225,7 +226,7 @@ public:
     float targetPhase = fmodf(getPhase(t) + phase, 1.0f);
     if (targetPhase < 0.0f) targetPhase += 1.0f;
 
-    int samplesPerPeriod = count / 2;
+    int samplesPerPeriod = count / STORE_PERIODS;
     int start = (head - samplesPerPeriod + N) % N;
 
     float bestHeave = 0.0f;
