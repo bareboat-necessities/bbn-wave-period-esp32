@@ -116,6 +116,34 @@ private:
     return m;
   }
 
+  bool findCrestEvents(float& upTime, float& crestTime, float& downTime, float& maxHeave) const {
+    bool upFound = false, crestFound = false, downFound = false;
+    maxHeave = -INFINITY;
+    int start = wrapIdx(head - count);
+
+    for (int i = 0; i < count - 1; ++i) {
+      int idx0 = wrapIdx(start + i);
+      int idx1 = wrapIdx(start + i + 1);
+      const WaveSample& s0 = samples[idx0];
+      const WaveSample& s1 = samples[idx1];
+
+      if (!upFound && s0.heave < 0 && s1.heave >= 0) {
+        upTime = interpolateZeroCrossingTime(s0, s1);
+        upFound = true;
+      }
+      if (s1.heave > maxHeave) {
+        maxHeave = s1.heave;
+        crestTime = s1.time;
+        crestFound = true;
+      }
+      if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime && !downFound) {
+        downTime = interpolateZeroCrossingTime(s0, s1);
+        downFound = true;
+      }
+    }
+    return upFound && crestFound && downFound;
+  }
+
 public:
   inline void reset() {
     head = 0;
@@ -180,49 +208,23 @@ public:
   }
 
   float computeCrestSharpness() const {
-    CrestMetrics m = findCrestMetrics();
-    if (!m.crestFound || !m.upFound || !m.downFound) return 0.0f;
-
-    float rise = m.crestTime - m.upTime;
-    float fall = m.downTime - m.crestTime;
-    float riseSlope = (rise > 0.0f) ? m.maxHeave / rise : 0.0f;
-    float fallSlope = (fall > 0.0f) ? m.maxHeave / fall : 0.0f;
+    float upTime, crestTime, downTime, maxHeave;
+    if (!findCrestEvents(upTime, crestTime, downTime, maxHeave)) return 0.0f;
+  
+    float rise = crestTime - upTime;
+    float fall = downTime - crestTime;
+    float riseSlope = (rise > 0.0f) ? maxHeave / rise : 0.0f;
+    float fallSlope = (fall > 0.0f) ? maxHeave / fall : 0.0f;
     return 0.5f * (riseSlope + fallSlope);
   }
 
   float computeAsymmetry() {
     if (count < 3) return 0.0f;
     if (!findLatestZeroUpcrossing()) return 0.0f;
-
-    float upTime = lastZcTime, crestTime = 0.0f, downTime = 0.0f;
-    float maxHeave = -INFINITY;
-    bool crestFound = false, downFound = false;
-    int start = wrapIdx(head - count);
-
-    for (int i = 0; i < count; ++i) {
-      int idx = wrapIdx(start + i);
-      const WaveSample& s = samples[idx];
-      if (s.time <= upTime) continue;
-      if (s.heave > maxHeave) {
-        maxHeave = s.heave;
-        crestTime = s.time;
-        crestFound = true;
-      }
-    }
-
-    for (int i = 0; i < count - 1; ++i) {
-      int idx0 = wrapIdx(start + i);
-      int idx1 = wrapIdx(start + i + 1);
-      const WaveSample& s0 = samples[idx0];
-      const WaveSample& s1 = samples[idx1];
-      if (s0.heave > 0 && s1.heave <= 0 && s0.time > crestTime) {
-        downTime = interpolateZeroCrossingTime(s0, s1);
-        downFound = true;
-        break;
-      }
-    }
-
-    if (!crestFound || !downFound) return 0.0f;
+  
+    float upTime, crestTime, downTime, maxHeave;
+    if (!findCrestEvents(upTime, crestTime, downTime, maxHeave)) return 0.0f;
+  
     float rise = crestTime - upTime;
     float fall = downTime - crestTime;
     if (rise + fall < EPSILON) return 0.0f;
@@ -232,26 +234,27 @@ public:
   float predictAtPhase(float phase, float t) {
     if (count < 3 || !isFinite(t) || !isFinite(phase)) return 0.0f;
     if (!findLatestZeroUpcrossing()) return 0.0f;
-
-    float targetPhase = normalizePhase(getPhase(t) + phase);
+  
+    float currentPhase = getPhase(t);
+    float targetPhase = normalizePhase(currentPhase + phase);
     int samplesPerPeriod = count / STORE_PERIODS;
     int start = wrapIdx(head - samplesPerPeriod);
-
+  
     float bestHeave = 0.0f;
     float minPhaseDist = 10.0f;
-
+  
     for (int i = 0; i < samplesPerPeriod - 1; ++i) {
       int idx0 = wrapIdx(start + i);
       int idx1 = wrapIdx(start + i + 1);
       const WaveSample& s0 = samples[idx0];
       const WaveSample& s1 = samples[idx1];
-
+  
       float p0 = normalizePhase((s0.time - lastZcTime) * freq);
       float p1 = normalizePhase((s1.time - lastZcTime) * freq);
-
+  
+      // Track nearest sample (for fallback)
       float dist0 = wrappedPhaseDistance(p0, targetPhase);
       float dist1 = wrappedPhaseDistance(p1, targetPhase);
-
       if (dist0 < minPhaseDist) {
         bestHeave = s0.heave;
         minPhaseDist = dist0;
@@ -260,16 +263,22 @@ public:
         bestHeave = s1.heave;
         minPhaseDist = dist1;
       }
-
-      bool crosses = (p0 <= targetPhase && targetPhase <= p1) ||
-                     (p1 < p0 && (targetPhase >= p0 || targetPhase <= p1));
-      if (crosses) {
-        float dp = p1 - p0;
-        if (dp < 0.0f) dp += 1.0f;
-        float alpha = (dp < EPSILON) ? 0.5f : (targetPhase - p0) / dp;
-        if (alpha < 0.0f) alpha += 1.0f;
-        alpha = fminf(fmaxf(alpha, 0.0f), 1.0f);
-        return s0.heave + alpha * (s1.heave - s0.heave);
+  
+      // Interpolate if targetPhase is between p0 and p1 (with wraparound handling)
+      if (p0 <= p1) {
+        if (p0 <= targetPhase && targetPhase <= p1) {
+          float dp = p1 - p0;
+          float alpha = (dp < EPSILON) ? 0.5f : (targetPhase - p0) / dp;
+          return s0.heave + alpha * (s1.heave - s0.heave);
+        }
+      } else {  // Wrapped case: p0 > p1
+        if (targetPhase >= p0 || targetPhase <= p1) {
+          float adjustedP1 = p1 + 1.0f;
+          float adjustedTarget = (targetPhase < p0) ? (targetPhase + 1.0f) : targetPhase;
+          float dp = adjustedP1 - p0;
+          float alpha = (dp < EPSILON) ? 0.5f : (adjustedTarget - p0) / dp;
+          return s0.heave + alpha * (s1.heave - s0.heave);
+        }
       }
     }
     return bestHeave;
