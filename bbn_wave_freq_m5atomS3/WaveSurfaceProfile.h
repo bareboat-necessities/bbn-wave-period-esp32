@@ -225,7 +225,7 @@ public:
     float targetPhase = fmodf(nowPhase + phase, 1.0f);
     if (targetPhase < 0.0f) targetPhase += 1.0f;
     
-    float fidx = targetPhase * count;
+    float fidx = targetPhase * count / 2.0f;
     int i0 = (int)fidx;
     int i1 = (i0 + 1) % count;
     float alpha = fidx - i0;
