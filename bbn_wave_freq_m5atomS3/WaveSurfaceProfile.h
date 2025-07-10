@@ -14,6 +14,7 @@
 
 #include <math.h>
 #include <algorithm>
+#include <cassert>
 
 constexpr float EPSILON = 1e-6f;
 constexpr float GRAVITY = 9.81f;
@@ -221,6 +222,7 @@ public:
   }
 
   float computeCrestSharpness() const {
+    assert(count > 3);
     CrestMetrics m = computeCrestMetrics();
     if (!m.isComplete()) return 0.0f;
     float rise = m.crestTime - m.upTime;
@@ -231,6 +233,7 @@ public:
   }
 
   float computeAsymmetry() {
+    assert(count > 3);
     if (count < 3 || !findLatestZeroUpcrossing()) return 0.0f;
     CrestMetrics m = computeCrestMetrics();
     if (!m.isComplete()) return 0.0f;
@@ -241,6 +244,7 @@ public:
   }
 
   float predictAtPhase(float phase, float t) {
+    assert(count > 3);
     if (count < 3 || !isFinite(t) || !isFinite(phase)) return 0.0f;
     float zc;
     if (!findLatestZeroUpcrossing(zc)) return 0.0f;
@@ -313,6 +317,7 @@ public:
   [[nodiscard]] int getCapacity() const { return N; }
 
   [[nodiscard]] WaveSample getLatestSample() const {
+    assert(count > 0);
     return samples[wrapIdx(head - 1)];
   }
 };
