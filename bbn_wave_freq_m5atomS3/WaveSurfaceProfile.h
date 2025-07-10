@@ -118,18 +118,24 @@ private:
     }
   }
 
-  float nearestHeaveOfPair(const WaveSample& s0, const WaveSample& s1, float p0, float p1, float targetPhase, float& minDist) const {
+  float nearestHeaveOfPair(const WaveSample& s0, const WaveSample& s1,
+                           float p0, float p1, float targetPhase, float& minDist) const {
     float dist0 = wrappedPhaseDistance(p0, targetPhase);
     float dist1 = wrappedPhaseDistance(p1, targetPhase);
+  
+    float bestHeave = 0.0f;
+    bool updated = false;
     if (dist0 < minDist) {
       minDist = dist0;
-      return s0.heave;
+      bestHeave = s0.heave;
+      updated = true;
     }
     if (dist1 < minDist) {
       minDist = dist1;
-      return s1.heave;
+      bestHeave = s1.heave;
+      updated = true;
     }
-    return 0.0f;
+    return updated ? bestHeave : 0.0f;
   }
 
   struct CrestMetrics {
