@@ -354,6 +354,8 @@ https://github.com/lemire/runningmaxmin from Daniel Lemire paper, and improvemen
 ## Applications
 
 - Provide real-time heave data for ships with active heave compensation system (pipe laying ships, crane platforms, etc)
+- Sonar image stabilization
+- Boat AHRS
 - Recording sea state
 - Prediction of likelihood of sea sickness
 - Estimating risk of breaking from anchor
