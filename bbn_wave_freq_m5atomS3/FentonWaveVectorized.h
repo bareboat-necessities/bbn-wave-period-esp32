@@ -112,21 +112,25 @@ class FentonWave {
       compute();
     }
 
+    // Returns the surface elevation η(x, t)
     Real surface_elevation(Real x_val, Real t = 0) const {
       const PhaseArray phases = compute_phases(x_val, t);
       return (E.array() * phases.cos()).sum();
     }
 
+    // Returns the surface slope ∂η/∂x at (x, t)
     Real surface_slope(Real x_val, Real t = 0) const {
       const RealArray j = create_harmonic_indices();
       const PhaseArray phases = compute_phases(x_val, t);
       return -(E.array() * j * k * phases.sin()).sum();
     }
 
+    // Returns the surface vertical velocity ∂η/∂t at (x, t)
     Real surface_time_derivative(Real x_val, Real t = 0) const {
       return -c * surface_slope(x_val, t);
     }
 
+    // Returns ∂²η/∂t² at (x, t) — vertical acceleration of surface
     Real surface_second_time_derivative(Real x_val, Real t = 0) const {
       const RealArray j = create_harmonic_indices();
       const PhaseArray phases = compute_phases(x_val, t);
@@ -134,36 +138,42 @@ class FentonWave {
       return -(E.array() * omega_j.square() * phases.cos()).sum();
     }
 
+    // Returns ∂²η/∂x∂t at (x, t) — space-time mixed derivative
     Real surface_space_time_derivative(Real x_val, Real t = 0) const {
       const RealArray j = create_harmonic_indices();
       const PhaseArray phases = compute_phases(x_val, t);
       return (E.array() * j.square() * k * omega * phases.sin()).sum();
     }
 
+    // Returns ∂²η/∂x² at (x, t) — spatial curvature of surface
     Real surface_second_space_derivative(Real x_val, Real t = 0) const {
       const RealArray j = create_harmonic_indices();
       const PhaseArray phases = compute_phases(x_val, t);
       return -(E.array() * j.square() * k * k * phases.cos()).sum();
     }
 
+    // Returns stream function ψ(x, z, t)
     Real stream_function(Real x_val, Real z_val, Real t = 0) const {
       const Real phase = k * (x_val - c * t);
       const VelocityTerms terms = compute_velocity_terms(z_val, phase, false);
       return B(0) * (z_val + depth) + (terms * (j_cache.array() * phase).cos()).sum();
     }
 
+    // Returns horizontal velocity u(x, z, t)
     Real horizontal_velocity(Real x_val, Real z_val, Real t = 0) const {
       const Real phase = k * (x_val - c * t);
       const VelocityTerms terms = compute_velocity_terms(z_val, phase, true);
       return B(0) + (terms * (j_cache.array() * phase).cos()).sum();
     }
 
+    // Returns vertical velocity w(x, z, t)
     Real vertical_velocity(Real x_val, Real z_val, Real t = 0) const {
       const Real phase = k * (x_val - c * t);
       const VelocityTerms terms = compute_velocity_terms(z_val, phase, false);
       return (terms * (j_cache.array() * phase).sin()).sum();
     }
 
+    // Returns dynamic pressure at (x, z, t) for fluid density rho (default: seawater)
     Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
       const Real u = horizontal_velocity(x_val, z_val, t);
       const Real w = vertical_velocity(x_val, z_val, t);
@@ -176,6 +186,7 @@ class FentonWave {
       return rho * (R - kinetic_energy - potential_energy + flow_work);
     }
 
+    // Computes average kinetic energy density per unit area over one wave period
     Real mean_kinetic_energy_density(int samples = 100) const {
       // f(x,z) = 0.5*(u²+w²)
       return integrate2D(
@@ -189,6 +200,7 @@ class FentonWave {
       );
     }
 
+    // Computes average potential energy density per unit area
     Real mean_potential_energy_density(int samples = 100) const {
       Real dx = length / samples;
       Real PE_total = 0.0f;
@@ -201,14 +213,17 @@ class FentonWave {
       return dx * PE_total;
     }
 
+    // Returns total (kinetic + potential) energy density per unit area
     Real total_energy_density(int samples = 100) const {
       return mean_kinetic_energy_density(samples) + mean_potential_energy_density(samples);
     }
 
+    // Returns energy flux per unit width (W/m)
     Real energy_flux(int samples = 100) const {
       return c * total_energy_density(samples);
     }
 
+    // Returns mean Eulerian current (ū) across depth and wavelength
     Real mean_eulerian_current(int samples = 100) const {
       // f(x,z) = u  (normalized by depth*length outside)
       // integrate2D already divides by length; multiply by depth here to undo its /length
@@ -218,7 +233,8 @@ class FentonWave {
       );
       return integral / depth;
     }
-    
+
+    // Returns mean Stokes drift on the surface
     Real mean_stokes_drift(int samples = 100) const {
       Real dx = length / samples;
       Real total = 0.0f;
@@ -231,7 +247,8 @@ class FentonWave {
       }
       return dx * total / length;
     }
-    
+
+    // Returns total horizontal momentum (impulse) over one wavelength
     Real wave_impulse(int samples = 100) const {
       // f(x,z) = u
       return integrate2D(
@@ -239,7 +256,8 @@ class FentonWave {
         samples, 10
       ) * length;  // undo internal /length
     }
-    
+
+    // Returns horizontal momentum flux ⟨u²⟩
     Real momentum_flux(int samples = 100) const {
       // f(x,z) = u²
       return integrate2D(
@@ -247,13 +265,15 @@ class FentonWave {
         samples, 10
       );
     }
-    
+
+    // Returns radiation stress component Sxx = ρ⟨u²⟩
     Real radiation_stress_xx(int samples = 100) const {
       Real rho = 1025.0f;
       Real flux = momentum_flux(samples);
       return rho * flux;
     }
 
+    // Computes wavelength from ω, depth, gravity via dispersion relation
     static float compute_wavelength(float omega, float depth, float g = 9.81f, float tol = 1e-10f, int max_iter = 50) {
       float k = omega * omega / g; // Initial guess (deep water)
       for (int i = 0; i < max_iter; ++i) {
@@ -266,6 +286,7 @@ class FentonWave {
       return 2.0f * M_PI / k;
     }
 
+    // Infers Fenton wave parameters from amplitude, depth, frequency, and phase
     static WaveInitParams infer_fenton_parameters_from_amplitude(
       float amplitude, float depth, float omega, float phase_radians, float g = 9.81f) {
   
@@ -280,24 +301,37 @@ class FentonWave {
       return { height, depth, length, initial_x };
     }
 
+    // Returns phase speed c
     Real get_c() const {
       return c;
     }
+
+    // Returns wave number k
     Real get_k() const {
       return k;
     }
+
+    // Returns wave period T
     Real get_T() const {
       return T;
     }
+
+    // Returns angular frequency ω
     Real get_omega() const {
       return omega;
     }
+
+    // Returns wavelength λ
     Real get_length() const {
       return length;
     }
+
+    // Returns wave height H
     Real get_height() const {
       return height;
     }
+
+    // Returns elevation profile η(x) (vector of sampled values)
     const VectorF& get_eta() const {
       return eta;
     }
