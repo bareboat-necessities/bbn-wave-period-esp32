@@ -42,6 +42,53 @@ T cosh_by_cosh(T a, T b) {
   return std::cosh(a) / std::cosh(b);
 }
 
+/**
+ * FentonWave - Implements John Fenton's nonlinear wave theory for surface water waves
+ * 
+ * PURPOSE:
+ * Computes accurate nonlinear periodic wave solutions (Stokes waves) in finite water depth
+ * using Fourier approximation methods. Provides wave properties and kinematics.
+ * 
+ * KEY FEATURES:
+ * - Higher-order nonlinear wave solutions (beyond linear/Airy wave theory)
+ * - Arbitrary depth (shallow to deep water)
+ * - Spectral representation with N Fourier modes
+ * - Includes wave-current interaction via Q and R parameters
+ * 
+ * MATHEMATICAL MODEL:
+ * 
+ * 1. Stream Function Representation:
+ *    ψ(x,z) = B₀*z + Σ Bⱼ*sinh(jk(z+d))/cosh(jkd) * cos(jkx)
+ *    where Bⱼ are Fourier coefficients, k is wavenumber, d is depth
+ * 
+ * 2. Surface Elevation:
+ *    η(x) = Σ Eⱼ*cos(jkx)  (via DCT-I transform of collocation points)
+ * 
+ * 3. Wave Parameters:
+ *    - c = B₀ = wave phase velocity
+ *    - k = 2π/L = wavenumber
+ *    - Q = volume flux
+ *    - R = Bernoulli constant
+ * 
+ * 4. Kinematic Fields:
+ *    - Horizontal velocity: u = ∂ψ/∂z
+ *    - Vertical velocity: w = -∂ψ/∂x
+ *    - Surface elevation: η(x,t)
+ *    - Derivatives (slopes, curvature, time derivatives)
+ * 
+ * NUMERICAL METHODS:
+ * - Discrete Cosine Transform (DCT-I) for η <-> E conversion
+ * - Newton-Raphson iteration to solve nonlinear equations
+ * - Automatic step control in wave height progression
+ * - Special handling of hyperbolic function numerical stability
+ * 
+ * USAGE:
+ * 1. Initialize with wave parameters (height, depth, length)
+ * 2. Access wave properties (c, k, T, etc.)
+ * 3. Query kinematics at any (x,z,t) point
+ * 
+ * Reference: Fenton (1988) "The Numerical Solution of Steady Water Wave Problems"
+ */
 template <int N>
 class FentonFFT {
   public:
