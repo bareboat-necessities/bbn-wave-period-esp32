@@ -593,8 +593,8 @@ class WaveSurfaceTracker {
 
     // Periodicity wrap helper
     float wrap_periodic(float val, float period) const {
-      while (val < 0.0f) val += period;
-      while (val >= period) val -= period;
+      val = std::fmod(val, period);
+      if (val < 0.0f) val += period;
       return val;
     }
 
