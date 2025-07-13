@@ -248,7 +248,7 @@ public:
   }
 
 private:
-  static constexpr float A_CLAMP = 1.99f;
+  static constexpr float A_CLAMP = 1.99999f;
 
   int samples_processed = 0;
 
