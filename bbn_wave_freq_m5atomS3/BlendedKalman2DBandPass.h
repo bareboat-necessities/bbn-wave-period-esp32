@@ -92,6 +92,9 @@ public:
 
   /**
    * @brief Resets the filter's internal state.
+   *   • Zeroes the resonator state (s[n−1], s[n−2]).
+   *   • Initializes adaptive frequency state (a) and covariance (p).
+   *   • Sets a to a safe default to suppress high-frequency response initially.
    */
   void reset() {
     s_prev1.setZero();
@@ -103,8 +106,11 @@ public:
   /**
    * @brief Sets the initial frequency estimate (in Hz) before filtering begins.
    * 
-   * @param freq_hz Initial frequency estimate in Hz.
-   * @param delta_t Sampling period in seconds.
+   * @param freq_hz     f₀ Initial frequency estimate (in Hz).
+   * @param delta_t     Δt Sampling interval (seconds).
+   *
+   * ωΔt = 2π · f₀ · Δt  
+   * a = 2 · cos(ωΔt)
    */
   void setFrequencyEstimate(float freq_hz, float delta_t) {
     float omega_dt = 2.0f * M_PI * freq_hz * delta_t;
