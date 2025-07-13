@@ -56,18 +56,6 @@
  *   • getFilteredAx() — s[n].x
  *   • getFilteredAy() — s[n].y
  *
- * Dominant axis:
- *   Chosen as the axis (X or Y) with largest absolute value at s[n].
- *
- * AMPLITUDE AND PHASE ESTIMATION
- *
- * Let s₁ = s[n] and s₂ = s[n−1] on the dominant axis.
- * Given ωΔt = arccos(a / 2):
- *
- *   • q = (s₁ − s₂ · cos(ωΔt)) / sin(ωΔt)
- *   • Amplitude A = √(s₁² + q²)
- *   • Phase θ = atan2(q, s₁)
- *
  * FREQUENCY ESTIMATION
  *
  * Angular frequency:
