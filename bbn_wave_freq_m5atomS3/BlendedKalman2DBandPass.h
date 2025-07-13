@@ -141,7 +141,7 @@ public:
 
     // Apply second-order resonator
     Eigen::Vector2f s = y + rho * a_prev * s_prev1 - rho_sq * s_prev2;
-    s *= 0.995f;  // removes 0.5% energy from resonator
+    //s *= 0.995f;  // removes 0.5% energy from resonator
     //s = s.cwiseMax(-100.0f).cwiseMin(100.0f);
 
     // Predict covariance for Kalman gain
