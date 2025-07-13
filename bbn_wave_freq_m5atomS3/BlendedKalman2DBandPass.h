@@ -299,14 +299,14 @@ private:
 
 #ifdef KALMAN_2D_BANDPASS_TEST
 
-void generateTestSignal(float t, float freq, float& ax, float& ay) {
+void KalmanBandpass_test_signal(float t, float freq, float& ax, float& ay) {
   float amp = 1.0f + 0.5f * std::sin(0.1f * t);  // Slowly varying amplitude
   float phase = 2.0f * PI * freq * t;
   ax = amp * std::cos(phase);
   ay = ax;  
 }
 
-void testKalmanBandpass() {
+void KalmanBandpass_test_1() {
   const float delta_t = 0.005f;  // 200 Hz sample rate
   const float freq = 0.5f;       // Base frequency (Hz)
   const int num_steps = 2000;
@@ -320,7 +320,7 @@ void testKalmanBandpass() {
   for (int i = 0; i < num_steps; ++i) {
     float t = i * delta_t;
     float ax, ay;
-    generateTestSignal(t, freq, ax, ay);
+    KalmanBandpass_test_signal(t, freq, ax, ay);
 
     float magnitude = filter.process(ax, ay, delta_t);
     float filtered_ax = filter.getFilteredAx();
