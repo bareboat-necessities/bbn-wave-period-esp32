@@ -123,11 +123,12 @@ public:
    */
   float process(float a_x, float a_y, float freq_est_hz, float delta_t) {
     Eigen::Vector2f y(a_x, a_y);
+    float omega_dt = 2.0f * M_PI * freq_est_hz * delta_t;
+    float a_est = 2.0f * std::cos(omega_dt);
 
     if (samples_processed == 0) {
       // Initialize resonator states to match expected oscillation
       setFrequencyEstimate(freq_est_hz, delta_t);
-      float omega_dt = 2.0f * M_PI * freq_est_hz * delta_t;
       float cos1 = std::cos(omega_dt);
       float cos2 = std::cos(2.0f * omega_dt);
       float amp = y.norm();
@@ -163,7 +164,7 @@ public:
     a_meas = std::clamp(a_meas, -A_CLAMP, A_CLAMP);
 
     // Smooth update
-    a_prev = alpha * a_meas + (1.0f - alpha) * a_prev;
+    a_prev = alpha * a_meas + (1.0f - alpha) * a_est;
     a_prev = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
 
     // Update covariance
