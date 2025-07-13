@@ -248,10 +248,10 @@ public:
   }
 
   /**
-   * @brief Returns the estimated frequency (Hz) of the signal.
-   * 
-   * @param delta_t Sampling period in seconds.
-   * @return Frequency in Hz.
+   * @brief Returns the estimated frequency f in Hz.
+   *
+   * @param delta_t    Δt Sampling interval (seconds).
+   * @return           f = acos(a / 2) / (2π · Δt) - frequency in Hz
    */
   float getFrequency(float delta_t) const {
     float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
