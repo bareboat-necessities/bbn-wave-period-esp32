@@ -93,7 +93,7 @@ public:
   void reset() {
     s_prev1.setZero();
     s_prev2.setZero();
-    a_prev = A_CLAMP;  // Safe default for high-frequency rejection
+    a_prev = 2.0f * std::cos(2.0f * M_PI * 0.3f * 0.005f);
     p_cov = 1.0f;
     samples_processed = 0;
   }
