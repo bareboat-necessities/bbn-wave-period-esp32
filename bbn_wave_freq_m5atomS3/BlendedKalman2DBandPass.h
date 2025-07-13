@@ -280,7 +280,7 @@ void KalmanBandpass_test_signal(float t, float freq, float& ax, float& ay) {
 void KalmanBandpass_test_1() {
   const float delta_t = 0.005f;  // 200 Hz sample rate
   const float freq = 0.5f;       // Base frequency (Hz)
-  const int num_steps = 2000;
+  const int num_steps = 10000;
 
   BlendedKalman2DBandPass filter(0.99f, 0.001f, 0.1f, 0.95f);
   filter.setFrequencyEstimate(freq, delta_t);
