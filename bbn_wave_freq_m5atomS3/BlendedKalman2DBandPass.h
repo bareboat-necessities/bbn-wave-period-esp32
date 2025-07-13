@@ -137,6 +137,9 @@ public:
     float s_norm_sq = s_prev1.squaredNorm();
     float denom = s_norm_sq + r / p_cov;
     float K = (denom > 1e-6f) ? (s_norm_sq / denom) : 0.0f;
+    if (s_norm_sq < 1e-8f) {
+      K = 0.0f;
+    }
 
     // Residual for a update
     Eigen::Vector2f e = s - a_prev * s_prev1 + s_prev2;
