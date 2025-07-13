@@ -258,6 +258,21 @@ public:
     float omega = std::acos(std::clamp(a / 2.0f, -1.0f, 1.0f));
     return (omega / delta_t) / (2.0f * M_PI);  // rad/s → Hz
   }
+  
+  /**
+   * @brief Returns a confidence estimate (0..1) for frequency tracking stability.
+   * 
+   * This confidence is derived from the adaptive covariance `p_cov`:
+   *   • When `p_cov` is small (stable estimate), confidence approaches 1.0.
+   *   • When `p_cov` is large (uncertain estimate), confidence approaches 0.0.
+   *
+   * Useful for assessing how well the filter is locking onto a dominant frequency.
+   *
+   * @return Confidence value between 0 (low confidence) and 1 (high confidence).
+   */
+  float getTrackingConfidence() const {
+    return 1.0f / (1.0f + p_cov);
+  }
 
 private:
   static constexpr float A_CLAMP = 1.9999f;
