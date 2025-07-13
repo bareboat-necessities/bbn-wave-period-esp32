@@ -6,6 +6,11 @@
 #include <algorithm>
 #include <utility>
 
+#ifdef KALMAN_2D_BANDPASS_TEST
+#include <iostream>
+#include <fstream>
+#endif
+
 /**
  * Copyright 2025, Mikhail Grushinskiy
  * 
