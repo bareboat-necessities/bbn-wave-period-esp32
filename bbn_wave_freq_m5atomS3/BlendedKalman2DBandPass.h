@@ -95,6 +95,7 @@ public:
     s_prev2.setZero();
     a_prev = A_CLAMP;  // Safe default for high-frequency rejection
     p_cov = 1.0f;
+    samples_processed = 0;
   }
 
   /**
@@ -110,13 +111,6 @@ public:
     float omega_dt = 2.0f * M_PI * freq_hz * delta_t;
     float a = 2.0f * std::cos(omega_dt);
     a_prev = std::clamp(a, -A_CLAMP, A_CLAMP);
-
-    // Initialize resonator states to match expected oscillation
-    float init_amp = 0.08f; // Small initial amplitude
-    s_prev1 = Eigen::Vector2f(init_amp * std::cos(omega_dt), 
-                              init_amp * std::cos(omega_dt));
-    s_prev2 = Eigen::Vector2f(init_amp * std::cos(2*omega_dt), 
-                              init_amp * std::cos(2*omega_dt));
   }
 
   /**
@@ -127,16 +121,18 @@ public:
    * @param delta_t     Δt Sampling interval (seconds).
    * @return            Magnitude of the filtered output ‖s[n]‖ (instantaneous amplitude estimate).
    */
-  float process(float a_x, float a_y, float delta_t) {
+  float process(float a_x, float a_y, float freq_est_hz, float delta_t) {
     Eigen::Vector2f y(a_x, a_y);
 
-    if (!is_warmed_up) {
-      s_prev1 = 0.9f * s_prev1 + 0.1f * y;
-      samples_processed++;
-      if (samples_processed >= WARMUP_SAMPLES) {
-        s_prev2 = s_prev1;
-        is_warmed_up = true;
-      }
+    if (samples_processed == 0) {
+      // Initialize resonator states to match expected oscillation
+      setFrequencyEstimate(freq_est_hz, delta_t);
+      float init_amp = y.norm();
+      s_prev1 = Eigen::Vector2f(init_amp * std::cos(omega_dt), 
+                               init_amp * std::cos(omega_dt));
+      s_prev2 = Eigen::Vector2f(init_amp * std::cos(2*omega_dt), 
+                                init_amp * std::cos(2*omega_dt));
+      samples_processed = 1;
       return s_prev1.norm();
     }
 
@@ -246,10 +242,8 @@ public:
 
 private:
   static constexpr float A_CLAMP = 1.9999f;
-  static constexpr int WARMUP_SAMPLES = 200;
 
   int samples_processed = 0;
-  bool is_warmed_up = false;
 
   float rho;
   float rho_sq;
@@ -262,10 +256,6 @@ private:
 
   Eigen::Vector2f s_prev1;  // Previous resonator state
   Eigen::Vector2f s_prev2;  // Second previous resonator state
-
-  bool isWarmedUp() const {
-    return is_warmed_up;
-  }
 };
 
 #ifdef KALMAN_2D_BANDPASS_TEST
@@ -293,7 +283,7 @@ void KalmanBandpass_test_1() {
     float ax, ay;
     KalmanBandpass_test_signal(t, freq, ax, ay);
 
-    float magnitude = filter.process(ax, ay, delta_t);
+    float magnitude = filter.process(ax, ay, freq, delta_t);
     float filtered_ax = filter.getFilteredAx();
     float filtered_ay = filter.getFilteredAy();
     float frequency = filter.getFrequency(delta_t);
