@@ -233,6 +233,11 @@ public:
   }
 
   /**
+   * @brief Returns the estimated phase θ (in radians) of the dominant signal.
+   *
+   * @param delta_t     Δt Sampling interval (seconds).
+   * @return            θ = atan2(q, s₁) - phase in radians
+   
    * @brief Returns the estimated phase of the dominant signal in radians.
    * 
    * @param delta_t Sampling period in seconds.
