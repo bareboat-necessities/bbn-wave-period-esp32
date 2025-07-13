@@ -20,6 +20,8 @@
  * of a 2D oscillatory signal using a second-order resonator combined with a Kalman-style
  * update for the resonance coefficient.
  *
+ * The signal is assumed to lie in an unknown but fixed plane (e.g., ocean wave horizontal motion).
+ *
  *  • Designed for horizontal motion signals (e.g., IMU acceleration in X and Y).
  *  • Handles slowly varying frequency and noisy input.
  *
@@ -179,26 +181,9 @@ public:
   float getFilteredAy() const { return s_prev1.y(); }
 
   /**
-   * @brief Returns the index of the dominant axis.
-   * 
-   * @return 0 if X is dominant, 1 if Y is dominant (by absolute amplitude).
-   */
-  int getDominantAxis() const {
-    return (std::abs(s_prev1.x()) >= std::abs(s_prev1.y())) ? 0 : 1;
-  }
-
-  /**
-   * @brief Computes amplitude and phase from the dominant axis.
-   * 
-   * @param delta_t   Δt Sampling interval (seconds).
-   * @return          Pair {A, θ} where:
-   *                     A = √(s₁² + q²)  - amplitude
-   *                     θ = atan2(q, s₁) - phase in radians
+   * @brief Computes amplitude and phase using the direction of motion.
    *
-   * Computed using:
-   *   • s₁ = s[n], s₂ = s[n−1] on dominant axis
-   *   • ωΔt = arccos(a / 2)
-   *   • q = (s₁ − s₂ · cos(ωΔt)) / sin(ωΔt)
+   * Uses dynamic projection of s[n] and s[n-1] onto the estimated direction of oscillation.
    */
   std::pair<float, float> getAmplitudePhase(float delta_t) const {
     float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
@@ -206,21 +191,17 @@ public:
     float sin_omega_dt = std::sin(omega_dt);
     float cos_omega_dt = std::cos(omega_dt);
 
-    float amp_x = std::abs(s_prev1.x());
-    float amp_y = std::abs(s_prev1.y());
-
-    float s1, s2;
-    if (amp_x >= amp_y) {
-      s1 = s_prev1.x();
-      s2 = s_prev2.x();
-    } else {
-      s1 = s_prev1.y();
-      s2 = s_prev2.y();
-    }
-
-    // Avoid divide-by-zero
     if (std::abs(sin_omega_dt) < 1e-6f)
-      return {std::sqrt(s1 * s1 + s2 * s2), std::atan2(s2, s1)};
+      return {s_prev1.norm(), 0.0f};
+
+    Eigen::Vector2f dir = s_prev1;
+    float dir_norm = dir.norm();
+    if (dir_norm < 1e-6f)
+      return {0.0f, 0.0f};
+    dir /= dir_norm;
+
+    float s1 = s_prev1.dot(dir);
+    float s2 = s_prev2.dot(dir);
 
     float q = (s1 - s2 * cos_omega_dt) / sin_omega_dt;
     float amplitude = std::sqrt(s1 * s1 + q * q);
@@ -229,41 +210,18 @@ public:
     return {amplitude, phase};
   }
 
-  /**
-   * @brief Returns the estimated amplitude of the dominant signal.
-   * 
-   * @param delta_t    Δt Sampling interval (seconds).
-   * @return           A = √(s₁² + q²) - amplitude
-   */
   float getAmplitude(float delta_t) const {
     return getAmplitudePhase(delta_t).first;
   }
 
-  /**
-   * @brief Returns the estimated phase θ (in radians) of the dominant signal.
-   *
-   * @param delta_t     Δt Sampling interval (seconds).
-   * @return            θ = atan2(q, s₁) - phase in radians
-   
-   * @brief Returns the estimated phase of the dominant signal in radians.
-   * 
-   * @param delta_t Sampling period in seconds.
-   * @return Phase in radians.
-   */
   float getPhase(float delta_t) const {
     return getAmplitudePhase(delta_t).second;
   }
 
-  /**
-   * @brief Returns the estimated frequency f in Hz.
-   *
-   * @param delta_t    Δt Sampling interval (seconds).
-   * @return           f = acos(a / 2) / (2π · Δt) - frequency in Hz
-   */
   float getFrequency(float delta_t) const {
     float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
     float omega = std::acos(std::clamp(a / 2.0f, -1.0f, 1.0f));
-    return (omega / delta_t) / (2.0f * M_PI);  // rad/s → Hz
+    return (omega / delta_t) / (2.0f * M_PI);
   }
   
   /**
