@@ -131,7 +131,7 @@ public:
     Eigen::Vector2f y(a_x, a_y);
 
     if (!is_warmed_up) {
-      s_prev1 = 0.9f * s_prev1 + 0.1f + y;
+      s_prev1 = 0.9f * s_prev1 + 0.1f * y;
       samples_processed++;
       if (samples_processed >= WARMUP_SAMPLES) {
         s_prev2 = s_prev1;
