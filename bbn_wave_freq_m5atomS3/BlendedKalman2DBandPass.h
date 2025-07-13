@@ -147,20 +147,15 @@ public:
 
     // Predict covariance for Kalman gain
     p_cov += q;
-
-    float s_norm_sq = s_prev1.squaredNorm();
-    float denom = s_norm_sq + r / p_cov;
-    float K = 0.0f;
-    if (s_norm_sq > 1e-6f && denom > 1e-6f) {
-      K = std::min(sqrtf(s_norm_sq) / denom, 0.8f);  // cap the gain
-    }
+    
+    float denom = (s_prev1.dot(s_prev1) * p_cov) + r;
+    Eigen::Vector2f K = (p_cov * s_prev1) / denom;
 
     // Residual for a update
     Eigen::Vector2f e = s - a_prev * s_prev1 + s_prev2;
 
     // Kalman update for resonance coefficient a
-    float correction = std::clamp(s_prev1.dot(e), -10.0f, 10.0f);
-    float a_meas = a_prev + K * correction;
+    float a_meas = a_prev + K.dot(e);
     a_meas = std::clamp(a_meas, -A_CLAMP, A_CLAMP);
 
     // Smooth update
