@@ -110,6 +110,13 @@ public:
     float omega_dt = 2.0f * M_PI * freq_hz * delta_t;
     float a = 2.0f * std::cos(omega_dt);
     a_prev = std::clamp(a, -A_CLAMP, A_CLAMP);
+
+    // Initialize resonator states to match expected oscillation
+    float init_amp = 0.08f; // Small initial amplitude
+    s_prev1 = Eigen::Vector2f(init_amp * std::cos(omega_dt), 
+                              init_amp * std::cos(omega_dt));
+    s_prev2 = Eigen::Vector2f(init_amp * std::cos(2*omega_dt), 
+                              init_amp * std::cos(2*omega_dt));
   }
 
   /**
