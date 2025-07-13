@@ -121,10 +121,10 @@ public:
   /**
    * @brief Processes a new 2D signal sample and updates the internal state.
    * 
-   * @param a_x X-component of the signal (e.g., horizontal acceleration).
-   * @param a_y Y-component of the signal.
-   * @param delta_t Sampling period in seconds.
-   * @return Filtered signal magnitude (instantaneous amplitude).
+   * @param a_x         aₓ X-component of the signal (e.g. IMU horizontal accel).
+   * @param a_y         aᵧ Y-component of the signal.
+   * @param delta_t     Δt Sampling interval (seconds).
+   * @return            Magnitude of the filtered output ‖s[n]‖ (instantaneous amplitude estimate).
    */
   float process(float a_x, float a_y, float delta_t) {
     Eigen::Vector2f y(a_x, a_y);
