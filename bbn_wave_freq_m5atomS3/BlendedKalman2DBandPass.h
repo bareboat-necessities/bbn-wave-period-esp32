@@ -11,9 +11,67 @@
  * 
  * @brief 2D Kalman-adaptive band-pass filter for horizontal wave-like signals.
  *
- * This filter adaptively estimates the dominant frequency and phase of a 2D oscillating signal
- * using a second-order resonator and Kalman-style update for the resonance coefficient.
- * Useful for filtering and analyzing horizontal wave motion (e.g., from IMU acceleration).
+ * This filter adaptively estimates the dominant frequency (ω), phase (θ), and amplitude (A)
+ * of a 2D oscillatory signal using a second-order resonator combined with a Kalman-style
+ * update for the resonance coefficient.
+ *
+ *  • Designed for horizontal motion signals (e.g., IMU acceleration in X and Y).
+ *  • Handles slowly varying frequency and noisy input.
+ *
+ * RESONATOR STRUCTURE
+ *
+ * The core is a second-order band-pass resonator:
+ *   s[n] = y[n] + ρ · a · s[n−1] − ρ² · s[n−2]
+ *
+ * where:
+ *   • y[n] — input signal vector [aₓ, aᵧ]
+ *   • s[n] — filtered output vector
+ *   • ρ — damping factor (near 1.0)
+ *   • a ≈ 2 · cos(ω · Δt) — adaptive resonance coefficient
+ *
+ * ADAPTIVE FREQUENCY TRACKING (Kalman-like update)
+ *
+ * The coefficient `a` is updated based on the filter output:
+ *   1. Prediction:
+ *      s[n] = y[n] + ρ · a · s[n−1] − ρ² · s[n−2]
+ *   2. Residual:
+ *      e = s[n] − a · s[n−1] + s[n−2]
+ *   3. Kalman gain:
+ *      K = (‖s[n−1]‖²) / (‖s[n−1]‖² + r / p)
+ *   4. Update:
+ *      a ← a + K · (e · s[n−1])  // dot product
+ *   5. Blend (optional smoothing):
+ *      a ← α · a_new + (1−α) · a_prev
+ *
+ * OUTPUT SIGNAL
+ *
+ * Filtered values:
+ *   • getFilteredAx() — s[n].x
+ *   • getFilteredAy() — s[n].y
+ *   • getFilteredVector() — full s[n]
+ *
+ * Dominant axis:
+ *   Chosen as the axis (X or Y) with largest absolute value at s[n].
+ *
+ * AMPLITUDE AND PHASE ESTIMATION
+ *
+ * Let s₁ = s[n] and s₂ = s[n−1] on the dominant axis.
+ * Given ωΔt = arccos(a / 2):
+ *
+ *   • q = (s₁ − s₂ · cos(ωΔt)) / sin(ωΔt)
+ *   • Amplitude A = √(s₁² + q²)
+ *   • Phase θ = atan2(q, s₁)
+ *
+ * FREQUENCY ESTIMATION
+ *
+ * Angular frequency:
+ *   • ωΔt = arccos(a / 2)
+ * Frequency in Hz:
+ *   • f = ω / (2π) = arccos(a / 2) / (2π · Δt)
+ *
+ * NOTES
+ * • Coefficient `a` is clamped to (−2, 2) to ensure filter stability.
+ * • Covariance `p` is adapted and bounded from below to avoid divergence.
  */
 class BlendedKalman2DBandPass {
 public:
