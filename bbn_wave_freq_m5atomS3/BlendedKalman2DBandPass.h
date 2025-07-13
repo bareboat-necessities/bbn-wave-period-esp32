@@ -77,7 +77,7 @@ public:
    * @param r              r Measurement noise variance for Kalman update.
    * @param alpha_blend    α Blending factor for smoothing updated frequency (0 = no smoothing, 1 = full).
    */
-  BlendedKalman2DBandPass(float rho = 0.99f, float q = 0.001f, float r = 0.1f, float alpha_blend = 0.95f)
+  BlendedKalman2DBandPass(float rho = 0.985f, float q = 0.001f, float r = 0.1f, float alpha_blend = 0.95f)
     : rho(rho), q(q), r(r), alpha(alpha_blend)
   {
     rho_sq = rho * rho;
@@ -281,7 +281,7 @@ void KalmanBandpass_test_1() {
   const float freq = 0.5f;       // Base frequency (Hz)
   const int num_steps = 10000;
 
-  BlendedKalman2DBandPass filter(0.99f, 0.001f, 0.1f, 0.95f);
+  BlendedKalman2DBandPass filter(0.985f, 0.001f, 0.1f, 0.95f);
   filter.setFrequencyEstimate(freq, delta_t);
 
   std::ofstream out("bandpass.csv");
