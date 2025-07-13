@@ -163,7 +163,7 @@ public:
     a_prev = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
 
     // Update covariance
-    p_cov = std::max((1.0f - K) * p_cov, 1e-6f);
+    p_cov = std::max((1.0f - K.dot(s_prev1)) * p_cov, 1e-6f);
 
     // Update resonator state
     s_prev2 = s_prev1;
