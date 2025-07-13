@@ -152,7 +152,7 @@ public:
     float denom = s_norm_sq + r / p_cov;
     float K = 0.0f;
     if (s_norm_sq > 1e-6f && denom > 1e-6f) {
-      K = std::min(s_norm_sq / denom, 0.8f);  // cap the gain
+      K = std::min(sqrtf(s_norm_sq) / denom, 0.8f);  // cap the gain
     }
 
     // Residual for a update
