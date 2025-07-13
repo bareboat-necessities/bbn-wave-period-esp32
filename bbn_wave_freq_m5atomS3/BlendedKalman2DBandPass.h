@@ -110,7 +110,7 @@ public:
   void setFrequencyEstimate(float freq_hz, float delta_t) {
     float omega_dt = 2.0f * M_PI * freq_hz * delta_t;
     float a = 2.0f * std::cos(omega_dt);
-    a_prev = std::clamp(a, -2.0f / rho, 2.0f / rho);
+    a_prev = std::clamp(a, -A_CLAMP, A_CLAMP);
   }
 
   /**
@@ -159,11 +159,11 @@ public:
     // Kalman update for resonance coefficient a
     float correction = std::clamp(s_prev1.dot(e), -10.0f, 10.0f);
     float a_meas = a_prev + K * correction;
-    a_meas = std::clamp(a_meas, -2.0f / rho, 2.0f / rho);
+    a_meas = std::clamp(a_meas, -A_CLAMP, A_CLAMP);
 
     // Smooth update
     a_prev = alpha * a_meas + (1.0f - alpha) * a_prev;
-    a_prev = std::clamp(a_prev, -2.0f / rho, 2.0f / rho);
+    a_prev = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
 
     // Update covariance
     p_cov = std::max((1.0f - K) * p_cov, 1e-6f);
