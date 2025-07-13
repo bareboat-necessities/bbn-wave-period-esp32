@@ -24,6 +24,7 @@
 #include "TimeAwareSpikeFilter.h"
 #include "FentonWaveVectorized.h"
 #include "WaveSurfaceProfile.h"
+#include "BlendedKalman2DBandPass.h"
 
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
