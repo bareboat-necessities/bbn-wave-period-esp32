@@ -131,7 +131,7 @@ public:
       float cos1 = std::cos(omega_dt);
       float cos2 = std::cos(2.0f * omega_dt);
       float amp = y.norm();
-      if (amp < 1e-8f) amp = 1e-8f;
+      if (amp < 1e-6f) amp = 1e-6f;
       Eigen::Vector2f dir = y / amp;      
       s_prev1 = dir * (amp * cos1);
       s_prev2 = dir * (amp * cos2);
@@ -149,7 +149,7 @@ public:
     float denom = s_norm_sq + r / p_cov;
     float K = 0.0f;
     if (s_norm_sq > 1e-6f && denom > 1e-6f) {
-      K = std::min(s_norm_sq / denom, 0.5f);  // cap the gain
+      K = std::min(s_norm_sq / denom, 0.2f);  // cap the gain
     }
 
     // Residual for a update
