@@ -128,6 +128,7 @@ public:
       // Initialize resonator states to match expected oscillation
       setFrequencyEstimate(freq_est_hz, delta_t);
       float init_amp = y.norm();
+      float omega_dt = 2.0f * M_PI * freq_est_hz * delta_t;
       s_prev1 = Eigen::Vector2f(init_amp * std::cos(omega_dt), 
                                init_amp * std::cos(omega_dt));
       s_prev2 = Eigen::Vector2f(init_amp * std::cos(2*omega_dt), 
