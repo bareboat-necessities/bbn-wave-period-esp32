@@ -283,7 +283,7 @@ void KalmanBandpass_test_1() {
   const float freq = 0.5f;       // Base frequency (Hz)
   const int num_steps = 10000;
 
-  BlendedKalman2DBandPass filter(0.985f, 0.001f, 0.1f, 0.95f);
+  BlendedKalman2DBandPass filter(0.985f, 0.001f, 0.1f, 1.0f);
   filter.setFrequencyEstimate(freq, delta_t);
 
   std::ofstream out("bandpass.csv");
