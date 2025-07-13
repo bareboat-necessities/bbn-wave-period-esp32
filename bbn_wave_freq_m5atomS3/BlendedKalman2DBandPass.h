@@ -48,7 +48,6 @@
  * Filtered values:
  *   • getFilteredAx() — s[n].x
  *   • getFilteredAy() — s[n].y
- *   • getFilteredVector() — full s[n]
  *
  * Dominant axis:
  *   Chosen as the axis (X or Y) with largest absolute value at s[n].
