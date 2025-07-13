@@ -300,7 +300,7 @@ private:
 #ifdef KALMAN_2D_BANDPASS_TEST
 
 void KalmanBandpass_test_signal(float t, float freq, float& ax, float& ay) {
-  float amp = 1.0f + 0.5f * std::sin(0.1f * t);  // Slowly varying amplitude
+  float amp = 0.0f; //1.0f + 0.5f * std::sin(0.1f * t);  // Slowly varying amplitude
   float phase = 2.0f * PI * freq * t;
   ax = amp * std::cos(phase);
   ay = ax;  
