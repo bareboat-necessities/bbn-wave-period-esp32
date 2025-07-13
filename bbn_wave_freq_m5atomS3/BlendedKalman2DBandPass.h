@@ -130,6 +130,16 @@ public:
   float process(float a_x, float a_y, float delta_t) {
     Eigen::Vector2f y(a_x, a_y);
 
+    if (!is_warmed_up) {
+      s_prev1 = 0.9f * s_prev1 + 0.1f + y;
+      samples_processed++;
+      if (samples_processed >= WARMUP_SAMPLES) {
+        s_prev2 = s_prev1;
+        is_warmed_up = true;
+      }
+      return s_prev1.norm();
+    }
+
     // Apply second-order resonator
     Eigen::Vector2f s = y + rho * a_prev * s_prev1 - rho_sq * s_prev2;
 
@@ -236,6 +246,10 @@ public:
 
 private:
   static constexpr float A_CLAMP = 1.9999f;
+  static constexpr int WARMUP_SAMPLES = 200;
+
+  int samples_processed = 0;
+  bool is_warmed_up = false;
 
   float rho;
   float rho_sq;
@@ -248,6 +262,10 @@ private:
 
   Eigen::Vector2f s_prev1;  // Previous resonator state
   Eigen::Vector2f s_prev2;  // Second previous resonator state
+
+  bool isWarmedUp() const {
+    return is_warmed_up;
+  }
 };
 
 #ifdef KALMAN_2D_BANDPASS_TEST
