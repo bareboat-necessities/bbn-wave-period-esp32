@@ -161,20 +161,20 @@ public:
 
   /**
    * @brief Returns the filtered X-component of the signal.
-   * @return Filtered a_x.
+   * @return s[n].x (i.e. aₓ band-pass filtered)
    */
   float getFilteredAx() const { return s_prev1.x(); }
 
   /**
    * @brief Returns the filtered Y-component of the signal.
-   * @return Filtered a_y.
+   * @return s[n].y (i.e. aᵧ band-pass filtered)
    */
   float getFilteredAy() const { return s_prev1.y(); }
 
   /**
    * @brief Returns the index of the dominant axis.
    * 
-   * @return 0 if X is dominant, 1 if Y is dominant.
+   * @return 0 if X is dominant, 1 if Y is dominant (by absolute amplitude).
    */
   int getDominantAxis() const {
     return (std::abs(s_prev1.x()) >= std::abs(s_prev1.y())) ? 0 : 1;
@@ -183,8 +183,15 @@ public:
   /**
    * @brief Computes amplitude and phase from the dominant axis.
    * 
-   * @param delta_t Sampling period in seconds.
-   * @return Pair of {amplitude, phase in radians}.
+   * @param delta_t   Δt Sampling interval (seconds).
+   * @return          Pair {A, θ} where:
+   *                     A = √(s₁² + q²)  - amplitude
+   *                     θ = atan2(q, s₁) - phase in radians
+   *
+   * Computed using:
+   *   • s₁ = s[n], s₂ = s[n−1] on dominant axis
+   *   • ωΔt = arccos(a / 2)
+   *   • q = (s₁ − s₂ · cos(ωΔt)) / sin(ωΔt)
    */
   std::pair<float, float> getAmplitudePhase(float delta_t) const {
     float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
@@ -218,8 +225,8 @@ public:
   /**
    * @brief Returns the estimated amplitude of the dominant signal.
    * 
-   * @param delta_t Sampling period in seconds.
-   * @return Amplitude.
+   * @param delta_t    Δt Sampling interval (seconds).
+   * @return           A = √(s₁² + q²) - amplitude
    */
   float getAmplitude(float delta_t) const {
     return getAmplitudePhase(delta_t).first;
