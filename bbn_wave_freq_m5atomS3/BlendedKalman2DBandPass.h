@@ -161,6 +161,7 @@ public:
 
     // Smooth update
     a_prev = alpha * a_meas + (1.0f - alpha) * a_prev;
+    a_prev = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
 
     // Update covariance
     p_cov = std::max((1.0f - K) * p_cov, 1e-6f);
