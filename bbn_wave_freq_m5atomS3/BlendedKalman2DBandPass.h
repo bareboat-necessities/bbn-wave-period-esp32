@@ -141,7 +141,7 @@ public:
 
     // Apply second-order resonator
     Eigen::Vector2f s = y + rho * a_prev * s_prev1 - rho_sq * s_prev2;
-    s = s.cwiseMax(-100.0f).cwiseMin(100.0f);
+    //s = s.cwiseMax(-100.0f).cwiseMin(100.0f);
 
     // Predict covariance for Kalman gain
     p_cov += q;
@@ -157,7 +157,8 @@ public:
     Eigen::Vector2f e = s - a_prev * s_prev1 + s_prev2;
 
     // Kalman update for resonance coefficient a
-    float a_meas = a_prev + K * s_prev1.dot(e);
+    float correction = std::clamp(s_prev1.dot(e), -10.0f, 10.0f);
+    float a_meas = a_prev + K * correction;
     a_meas = std::clamp(a_meas, -A_CLAMP, A_CLAMP);
 
     // Smooth update
