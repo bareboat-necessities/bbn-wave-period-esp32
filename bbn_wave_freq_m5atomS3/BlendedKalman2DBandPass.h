@@ -136,9 +136,9 @@ public:
 
     float s_norm_sq = s_prev1.squaredNorm();
     float denom = s_norm_sq + r / p_cov;
-    float K = (denom > 1e-6f) ? (s_norm_sq / denom) : 0.0f;
-    if (s_norm_sq < 1e-8f) {
-      K = 0.0f;
+    float K = 0.0f;
+    if (s_norm_sq > 1e-6f && denom > 1e-6f) {
+      K = std::min(s_norm_sq / denom, 0.5f);  // cap the gain
     }
 
     // Residual for a update
