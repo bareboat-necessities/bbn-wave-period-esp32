@@ -220,7 +220,7 @@ public:
 
     // Avoid divide-by-zero
     if (std::abs(sin_omega_dt) < 1e-6f)
-      return {std::abs(s1), 0.0f};
+      return {std::sqrt(s1 * s1 + s2 * s2), std::atan2(s2, s1)};
 
     float q = (s1 - s2 * cos_omega_dt) / sin_omega_dt;
     float amplitude = std::sqrt(s1 * s1 + q * q);
