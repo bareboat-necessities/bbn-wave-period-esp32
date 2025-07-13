@@ -78,10 +78,10 @@ public:
   /**
    * @brief Constructor for the filter.
    * 
-   * @param rho Damping factor of the resonator (close to 1.0).
-   * @param q Process noise for adaptive frequency update.
-   * @param r Measurement noise for adaptive frequency update.
-   * @param alpha_blend Smoothing factor for blending new frequency estimate.
+   * @param rho            ρ Damping factor for the resonator (close to 1.0).
+   * @param q              q Process noise variance for adaptive frequency tracking.
+   * @param r              r Measurement noise variance for Kalman update.
+   * @param alpha_blend    α Blending factor for smoothing updated frequency (0 = no smoothing, 1 = full).
    */
   BlendedKalman2DBandPass(float rho = 0.99f, float q = 0.001f, float r = 0.1f, float alpha_blend = 0.95f)
     : rho(rho), q(q), r(r), alpha(alpha_blend)
