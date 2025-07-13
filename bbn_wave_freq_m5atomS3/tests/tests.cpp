@@ -7,6 +7,7 @@
 #define EIGEN_MPL2_ONLY
 
 #define FENTON_TEST
+#define KALMAN_2D_BANDPASS_TEST
 
 #include <cmath>
 #include <random>
@@ -202,6 +203,10 @@ int main(int argc, char *argv[]) {
 #ifdef FENTON_TEST
   FentonWave_test_1();
   FentonWave_test_2();
+#endif
+
+#ifdef KALMAN_2D_BANDPASS_TEST
+  KalmanBandpass_test_1();
 #endif
   
 }
