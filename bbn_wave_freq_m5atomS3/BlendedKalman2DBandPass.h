@@ -124,7 +124,7 @@ public:
 
     // Project onto plane to get I & Q
     float I = s_prev1.dot(plane_dir);
-    float Q = q_prev1.dot(plane_dir);
+    float Q = q_prev1.dot(plane_perp);
 
     // Undo resonator damping
     float amplitude = std::sqrt(I*I + Q*Q) / (1.0f - rho_sq);
