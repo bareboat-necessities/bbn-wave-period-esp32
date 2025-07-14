@@ -36,7 +36,7 @@ public:
         phase = std::fmod(phase + omega * deltaT, 2.0f * M_PI);
         if (phase < 0.0f) phase += 2.0f * M_PI;  // ensure positive phase
 
-        float sinPhase = std::sinf(phase);
+        float sinPhase = std::sin(phase);
         constexpr float sinThreshold = 0.1f;
 
         // Predict
