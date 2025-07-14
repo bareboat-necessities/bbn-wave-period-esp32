@@ -143,7 +143,8 @@ void KalmanBandpass_test_1() {
     float ax, ay;
     KalmanBandpass_test_signal(t, freq, ax, ay);
 
-    BlendedKalman2DBandPass::Output output = filt.process(ax, ay, freq, dt);
+    Eigen::Vector2f input_xy(ax, ay);
+    BlendedKalman2DBandPass::Output output = filt.process(input_xy, freq, dt);
     float f_ax = output.filtered_xy.x();
     float f_ay = output.filtered_xy.y();
     float f_fr = output.frequency;
