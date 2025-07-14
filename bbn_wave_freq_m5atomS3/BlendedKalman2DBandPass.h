@@ -89,7 +89,7 @@ public:
     Eigen::Vector2f q = y + rho * a_prev * q_prev1 - rho_sq * q_prev2;
 
     // Predict covariance for Kalman gain
-    p_cov += q;
+    p_cov = p_cov + q;
     
     // Compute combined Kalman gain using both components
     float denom = (s_prev1.dot(s_prev1) + q_prev1.dot(q_prev1)) * p_cov + r;
