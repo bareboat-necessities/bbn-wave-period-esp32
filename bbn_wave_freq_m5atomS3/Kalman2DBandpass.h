@@ -11,9 +11,9 @@
 
 class Kalman2DBandpass {
 public:
-    Kalman2DBandpass(float initialOmega)
+    Kalman2DBandpass(float initialOmega, float deltaT)
         : omega(initialOmega) {
-        reset();
+        reset(deltaT);
     }
 
     void reset(float deltaT) {
@@ -111,10 +111,9 @@ void KalmanBandpass_test_1() {
   const float freq = 0.5f;       // Base frequency (Hz)
   const int num_steps = 10000;
 
-  Kalman2DBandPass filter(freq, delta_t);
+  Kalman2DBandpass filter(freq, delta_t);
   filter.setMeasurementNoise(0.03f);
   filter.setProcessNoise(0.1f);
-  filter.setFrequencyEstimate(freq, delta_t);
 
   std::ofstream out("bandpass.csv");
   out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence\n";
