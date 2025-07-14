@@ -122,29 +122,20 @@ public:
     return s.norm();
   }
 
-  Eigen::Vector2f getFilteredSignal() const {
-    return plane_dir.dot(s_prev1) * plane_dir;
+  Eigen::Vector2f getFilteredSignal(float delta_t) const {
+    auto [amplitude, phase] = getAmplitudePhase(delta_t);
+    return amplitude * std::cos(phase) * plane_dir;
   }
 
   /**
    * @brief Returns the filtered X-component of the signal (in-phase component).
    */
-  float getFilteredAx() const { return getFilteredSignal().x(); }
+  float getFilteredAx(float delta_t) const { return getFilteredSignal(delta_t).x(); }
 
   /**
    * @brief Returns the filtered Y-component of the signal (in-phase component).
    */
-  float getFilteredAy() const { return getFilteredSignal().y(); }
-
-  /**
-   * @brief Returns the quadrature X-component of the signal.
-   */
-  float getQuadratureAx() const { return q_prev1.x(); }
-
-  /**
-   * @brief Returns the quadrature Y-component of the signal.
-   */
-  float getQuadratureAy() const { return q_prev1.y(); }
+  float getFilteredAy(float delta_t) const { return getFilteredSignal(delta_t).y(); }
 
   /**
    * @brief Computes amplitude and phase using both in-phase and quadrature components.
@@ -230,8 +221,8 @@ void KalmanBandpass_test_1() {
     KalmanBandpass_test_signal(t, freq, ax, ay);
 
     float magnitude = filter.process(ax, ay, freq, delta_t);
-    float filtered_ax = filter.getFilteredAx();
-    float filtered_ay = filter.getFilteredAy();
+    float filtered_ax = filter.getFilteredAx(delta_t);
+    float filtered_ay = filter.getFilteredAy(delta_t);
     float frequency = filter.getFrequency(delta_t);
     float amplitude = filter.getAmplitude(delta_t);
     float phase = filter.getPhase(delta_t);
