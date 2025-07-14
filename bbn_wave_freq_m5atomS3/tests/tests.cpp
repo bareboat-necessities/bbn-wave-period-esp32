@@ -7,6 +7,7 @@
 #define EIGEN_MPL2_ONLY
 
 #define FENTON_TEST
+#define KALMAN_2D_BANDPASS_TEST
 
 #include <cmath>
 #include <random>
@@ -23,6 +24,7 @@
 #include "TimeAwareSpikeFilter.h"
 #include "FentonWaveVectorized.h"
 #include "WaveSurfaceProfile.h"
+#include "Kalman2DBandpass.h"
 
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
