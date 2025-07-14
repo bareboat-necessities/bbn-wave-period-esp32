@@ -130,9 +130,8 @@ public:
     float amplitude = std::sqrt(I*I + Q*Q) / (1.0f - rho_sq);
 
     // Phase = angle between I and Q in that plane
-    float dot   = I * Q;  // actually I·Q if both along plane_dir
-    float cross = I * 0 - 0 * Q; // zero, but we can use s_prev1×q_prev1 for sign
-    cross = s_prev1.x()*q_prev1.y() - s_prev1.y()*q_prev1.x();
+    float dot   = s_prev1.dot(q_prev1);
+    float cross = s_prev1.x() * q_prev1.y() - s_prev1.y() * q_prev1.x();
     float phase = std::atan2(cross, dot);
 
     return { amplitude, phase };
