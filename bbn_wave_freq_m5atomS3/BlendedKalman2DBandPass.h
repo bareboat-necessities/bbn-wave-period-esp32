@@ -141,13 +141,10 @@ public:
   float getPhase(float dt)     const { return getAmplitudePhase(dt).second; }
 
   // Instantaneous frequency from a_prev
-  float getFrequency(float /*delta_t ignored here*/) const {
+  float getFrequency(float delta_t) const {
     float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
-    float c = std::clamp(a * 0.5f, -1.0f, 1.0f);
-    float omega = std::acos(c);
-    // if you need delta_t you can pass it, but a_prev update embeds dt already
-    return (omega / (2.0f * M_PI)) / 0.005f; 
-    // <-- replace 0.005f with your runtime delta_t if dynamic
+    float omega = std::acos(a / 2.0f);
+    return (omega / (2.0f * M_PI)) / delta_t; 
   }
 
   // [0..1] tracking confidence
