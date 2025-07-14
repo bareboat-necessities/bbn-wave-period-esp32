@@ -25,7 +25,7 @@ public:
         float confidence = 0.0f;
     };
 
-    BlendedKalman2DBandPass(float rho = 0.985f, float q = 1e-5f, float r = 0.01f)
+    BlendedKalman2DBandPass(float rho = 0.975f, float q = 1e-4f, float r = 0.01f)
         : rho(rho), rho_sq(rho * rho), q(q), r(r)
     {
         reset();
