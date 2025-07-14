@@ -123,7 +123,7 @@ public:
   }
 
   Eigen::Vector2f getFilteredSignal() const {
-    return plane_dir.dot(s_prev1) * plane_dir();
+    return plane_dir.dot(s_prev1) * plane_dir;
   }
 
   /**
