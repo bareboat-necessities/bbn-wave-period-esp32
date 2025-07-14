@@ -104,10 +104,15 @@ public:
 
   // Full reconstructed 2D signal from I/Q in the known plane.
   Eigen::Vector2f getFilteredSignal(float delta_t) const {
-    auto [amplitude, phase] = getAmplitudePhase(delta_t);
-    float I = amplitude * std::cos(phase);
-    float Q = amplitude * std::sin(phase);
-    return (I * plane_dir + Q * plane_perp);
+   // Project onto plane to get in-phase (I) and quadrature (Q)
+    float I = s_prev1.dot(plane_dir);
+    float Q = q_prev1.dot(plane_perp);
+    float amplitude = std::sqrt(I*I + Q*Q);
+    float phase = std::atan2(Q, I);
+    Eigen::Vector2f signal = amplitude * (std::cos(phase()) * plane_dir) + amplitude * (std::sin(phase()) * plane_perp);
+    // Undo resonator damping factor (1 − rho²)
+    float gain_inv = 1.0f / (1.0f - rho_sq);
+    return signal * gain_inv;
   }
 
   float getFilteredAx(float dt) const { return getFilteredSignal(dt).x(); }
