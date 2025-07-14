@@ -125,8 +125,8 @@ void KalmanBandpass_test_1() {
   const int num_steps = 10000;
 
   Kalman2DBandpass filter(freq, delta_t);
-  filter.setMeasurementNoise(0.03f);
-  filter.setProcessNoise(0.01f);
+  filter.setMeasurementNoise(0.01f);
+  filter.setProcessNoise(1e-6f);
 
   std::ofstream out("bandpass.csv");
   out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence\n";
