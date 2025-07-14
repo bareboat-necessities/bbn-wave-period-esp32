@@ -207,11 +207,9 @@ private:
 void KalmanBandpass_test_signal(float t, float freq, float& ax, float& ay) {
   float amp = 0.2f; //1.0f + 0.5f * std::sin(0.1f * t);  // Slowly varying amplitude
   float phase = 2.0f * PI * freq * t;
-  Eigen::Vector2f dir(1.0f, 1.5f);
-  dir.normalize();
   float signal = amp * std::cos(phase);
-  ax = signal * dir.x();
-  ay = signal * dir.y();
+  ax = signal;
+  ay = signal * 1.5f;
 }
 
 void KalmanBandpass_test_1() {
