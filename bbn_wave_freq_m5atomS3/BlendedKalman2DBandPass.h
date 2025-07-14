@@ -111,7 +111,7 @@ public:
     float phase = std::atan2(Q, I);
     Eigen::Vector2f signal = amplitude * (std::cos(phase) * plane_dir) + amplitude * (std::sin(phase) * plane_perp);
     // Undo resonator damping factor (1 − rho²)
-    float gain_inv = 1.0f / (1.0f - rho_sq);
+    float gain_inv = 1.0f; //  / (1.0f - rho_sq);
     return signal * gain_inv;
   }
 
