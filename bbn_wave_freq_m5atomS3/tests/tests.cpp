@@ -207,7 +207,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef KALMAN_2D_BANDPASS_TEST
-  Kalman2DBandpass_test_1();
+  KalmanBandpass_test_1();
 #endif
   
 }
