@@ -132,7 +132,7 @@ public:
     // Phase = angle between I and Q in that plane
     float dot   = s_prev1.dot(q_prev1);
     float cross = s_prev1.x() * q_prev1.y() - s_prev1.y() * q_prev1.x();
-    float phase = std::atan2(cross, dot);
+    float phase = std::atan2(Q, I); // std::atan2(cross, dot);
 
     return { amplitude, phase };
   }
