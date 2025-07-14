@@ -136,6 +136,8 @@ public:
       Eigen::Vector2f dir = y / amp;      
       s_prev1 = dir * (amp * cos1);
       s_prev2 = dir * (amp * cos2);
+      plane_dir = s_prev1.normalized();
+      plane_perp = Eigen::Vector2f(-plane_dir.y(), plane_dir.x());
       samples_processed = 1;
       return s_prev1.norm();
     }
@@ -190,27 +192,10 @@ public:
    * Uses dynamic projection of s[n] and s[n-1] onto the estimated direction of oscillation.
    */
   std::pair<float, float> getAmplitudePhase(float delta_t) const {
-    float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
-    float omega_dt = std::acos(std::clamp(a / 2.0f, -1.0f, 1.0f));
-    float sin_omega_dt = std::sin(omega_dt);
-    float cos_omega_dt = std::cos(omega_dt);
-
-    if (std::abs(sin_omega_dt) < 1e-6f)
-      return {s_prev1.norm(), 0.0f};
-
-    Eigen::Vector2f dir = s_prev1;
-    float dir_norm = dir.norm();
-    if (dir_norm < 1e-6f)
-      return {0.0f, 0.0f};
-    dir /= dir_norm;
-
-    float s1 = s_prev1.dot(dir);
-    float s2 = s_prev2.dot(dir);
-
-    float q = (s1 - s2 * cos_omega_dt) / sin_omega_dt;
-    float amplitude = std::sqrt(s1 * s1 + q * q);
-    float phase = std::atan2(q, s1);
-
+    float I = plane_dir.dot(s_prev1);
+    float Q = plane_perp.dot(s_prev1);
+    float amplitude = std::hypot(I, Q);
+    float phase = std::atan2(Q, I);
     return {amplitude, phase};
   }
 
@@ -259,6 +244,8 @@ private:
 
   Eigen::Vector2f s_prev1;  // Previous resonator state
   Eigen::Vector2f s_prev2;  // Second previous resonator state
+
+  Eigen::Vector2f plane_dir, plane_perp;
 };
 
 #ifdef KALMAN_2D_BANDPASS_TEST
