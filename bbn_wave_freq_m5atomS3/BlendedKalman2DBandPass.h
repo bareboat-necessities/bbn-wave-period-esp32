@@ -67,8 +67,6 @@ public:
     if (samples_processed == 0) {
       // Initialize resonator states to match expected oscillation
       setFrequencyEstimate(freq_est_hz, delta_t);
-      float cos1 = std::cos(omega_dt);
-      float sin1 = std::sin(omega_dt);
       float amp = y.norm();
       if (amp < 1e-6f) amp = 1e-6f;
       Eigen::Vector2f dir = y.normalized();      
