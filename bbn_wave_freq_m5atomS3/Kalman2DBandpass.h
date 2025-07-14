@@ -3,96 +3,104 @@
 
 #include <ArduinoEigenDense.h>
 #include <cmath>
+#include <complex>
 
 #ifdef KALMAN_2D_BANDPASS_TEST
 #include <iostream>
 #include <fstream>
 #endif
 
-class Kalman2DBandpass {
+class KalmanComplex2DBandpass {
 public:
-    Kalman2DBandpass(float initialOmega, float deltaT)
+    KalmanComplex2DBandpass(float initialOmega, float deltaT)
         : omega(initialOmega) {
         reset(deltaT);
     }
 
     void reset(float deltaT) {
-        xEst << 0.0f, 0.0f;
-        pEst << 1.0f, 0.0f,
-                0.0f, 1.0f;
-        updateProcessModel(deltaT);
-        confidence = 0.0f;
+        A = Eigen::Vector2cd::Zero();
+        P = Eigen::Matrix2cd::Identity() * 1.0;
+        updatePhaseModel(deltaT);
         phase = 0.0f;
+        confidence = 0.0f;
     }
 
     void update(float ax, float ay, float currentOmega, float deltaT) {
-        // Update omega and model if changed significantly
         if (std::fabs(currentOmega - omega) > 0.01f * omega) {
             omega = currentOmega;
-            updateProcessModel(deltaT);
+            updatePhaseModel(deltaT);
         }
 
-        // Advance phase and wrap to [0, 2π)
+        // Update phase
         phase = std::fmod(phase + omega * deltaT, 2.0f * M_PI);
-        if (phase < 0.0f) phase += 2.0f * M_PI;  // ensure positive phase
+        if (phase < 0.0f) phase += 2.0f * M_PI;
 
-        float sinPhase = std::sin(phase);
-        constexpr float sinThreshold = 0.05f;
+        // Observation as real signal vector
+        Eigen::Vector2f a_t(ax, ay);
 
-        // Predict
-        xPred = F * xEst;
-        pPred = F * pEst * F.transpose() + Q;
+        // Rotate back using e^{-j φ}
+        std::complex<float> phasor = std::exp(std::complex<float>(0.0f, -phase));
+        Eigen::Vector2cd z;
+        z(0) = std::complex<float>(a_t(0), 0.0f) * phasor;
+        z(1) = std::complex<float>(a_t(1), 0.0f) * phasor;
 
-        if (std::fabs(sinPhase) > sinThreshold && (ax * ax + ay * ay) > 1e-4f) {
-            Eigen::Vector2f z(ax / sinPhase, ay / sinPhase);
+        // Predict (static model)
+        Eigen::Vector2cd A_pred = A;
+        Eigen::Matrix2cd P_pred = P + Q;
 
-            // Kalman update
-            K = pPred * (pPred + R).inverse();
-            xEst = xPred + K * (z - xPred);
-            pEst = (Eigen::Matrix2f::Identity() - K) * pPred;
+        // Kalman gain
+        Eigen::Matrix2cd S = P_pred + R;
+        Eigen::Matrix2cd K = P_pred * S.ldlt().solve(Eigen::Matrix2cd::Identity());
 
-            confidence = 1.0f / (pEst(0, 0) + pEst(1, 1));
-        } else {
-            xEst = xPred;
-            pEst = pPred;
-            confidence *= 0.95f;
-        }
+        // Update
+        A = A_pred + K * (z - A_pred);
+        P = (Eigen::Matrix2cd::Identity() - K) * P_pred;
+
+        // Confidence
+        confidence = 1.0f / (P.real().trace());
     }
 
-    Eigen::Vector2f getAmplitudes() const { return xEst; }
-    float getAmplitude() const { return xEst.norm(); }
+    // Output signal: a(t) = Re{A * e^{j φ(t)}}
+    Eigen::Vector2f getFilteredSignal() const {
+        std::complex<float> phasor = std::exp(std::complex<float>(0.0f, phase));
+        Eigen::Vector2cd signal = A * phasor;
+        return Eigen::Vector2f(signal(0).real(), signal(1).real());
+    }
+
+    float getAmplitude() const {
+        return std::sqrt(std::norm(A(0)) + std::norm(A(1)));
+    }
+
+    Eigen::Vector2f getDirection() const {
+        Eigen::Vector2f realVec(A(0).real(), A(1).real());
+        float norm = realVec.norm();
+        return norm > 1e-6f ? realVec / norm : Eigen::Vector2f(1.0f, 0.0f);
+    }
+
     float getPhase() const { return phase; }
     float getConfidence() const { return confidence; }
-    Eigen::Vector2f getDirection() const { return xEst.normalized(); }
 
     void setProcessNoise(float q) {
-        Q << q, 0.0f,
-             0.0f, q;
+        Q = Eigen::Matrix2cd::Identity() * q;
     }
 
     void setMeasurementNoise(float r) {
-        R << r, 0.0f,
-             0.0f, r;
+        R = Eigen::Matrix2cd::Identity() * r;
     }
 
 private:
-    void updateProcessModel(float deltaT) {
-        float c = std::cos(omega * deltaT);
-        float s = std::sin(omega * deltaT);
-        F << c, s / omega,
-            -omega * s, c;
+    void updatePhaseModel(float /*deltaT*/) {
+        // phase model is handled explicitly
     }
 
-    // Configuration
+    // State
+    Eigen::Vector2cd A;
+    Eigen::Matrix2cd P, Q = Eigen::Matrix2cd::Identity() * 1e-6f;
+    Eigen::Matrix2cd R = Eigen::Matrix2cd::Identity() * 0.01f;
+
     float omega;
     float phase = 0.0f;
     float confidence = 0.0f;
-
-    // Kalman state
-    Eigen::Vector2f xEst, xPred;
-    Eigen::Matrix2f pEst, pPred, Q = Eigen::Matrix2f::Identity() * 1e-6f;
-    Eigen::Matrix2f R = Eigen::Matrix2f::Identity() * 0.1f;
-    Eigen::Matrix2f K, F;
 };
 
 #ifdef KALMAN_2D_BANDPASS_TEST
