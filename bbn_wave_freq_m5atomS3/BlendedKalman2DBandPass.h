@@ -147,11 +147,19 @@ public:
    * @brief Computes amplitude and phase using both in-phase and quadrature components.
    */
   std::pair<float, float> getAmplitudePhase(float delta_t) const {
-    // Combine in-phase and quadrature components for accurate amplitude/phase
+
+    float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
+    float omega = std::acos(a / 2.0f);
+    float resonator_gain = 1.0f / std::sqrt(
+        (1.0f - rho_sq) * (1.0f - rho_sq) + 
+        rho_sq * a * a - 
+        2.0f * rho_sq * a * std::cos(omega)
+    );
+    
     Eigen::Vector2f dir = plane_dir;
     float I = s_prev1.dot(dir);
     float Q = q_prev1.dot(dir);
-    float amplitude = std::sqrt(I * I + Q * Q);
+    float amplitude = std::sqrt(I * I + Q * Q) * resonator_gain;
     float phase = std::atan2(Q, I);
     return {amplitude, phase};
   }
