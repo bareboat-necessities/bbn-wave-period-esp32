@@ -105,8 +105,8 @@ public:
   // Full reconstructed 2D signal from I/Q in the known plane.
   Eigen::Vector2f getFilteredSignal(float /*delta_t unused here*/) const {
     auto [amplitude, phase] = getAmplitudePhase();
-    float I = amplitude * std:cos(phase);
-    float Q = amplitude * std:sin(phase);
+    float I = amplitude * std::cos(phase);
+    float Q = amplitude * std::sin(phase);
     return (I * plane_dir + Q * plane_perp);
   }
 
