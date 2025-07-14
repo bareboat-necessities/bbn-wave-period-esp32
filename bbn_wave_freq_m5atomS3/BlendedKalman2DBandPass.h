@@ -97,8 +97,8 @@ public:
     Eigen::Vector2f K_q = (p_cov * q_prev1) / denom;
 
     // Residual for a update (using both components)
-    Eigen::Vector2f e_s = (s - a_prev * s_prev1 + s_prev2) / (1.0f - rho_sq);
-    Eigen::Vector2f e_q = (q - a_prev * q_prev1 + q_prev2) / (1.0f - rho_sq);
+    Eigen::Vector2f e_s = (s - a_prev * s_prev1 + s_prev2);
+    Eigen::Vector2f e_q = (q - a_prev * q_prev1 + q_prev2);
 
     // Combined Kalman update for resonance coefficient a
     float a_meas_s = a_prev + K_s.dot(e_s);
