@@ -1,5 +1,3 @@
-
-
 #ifndef BLENDED_KALMAN_2D_BANDPASS_H
 #define BLENDED_KALMAN_2D_BANDPASS_H
 
@@ -99,29 +97,32 @@ public:
         P = (I - K * H) * P * (I - K * H).transpose() + K * R * K.transpose();
 
         // --- Frequency scalar Kalman inspired by KalmANF ---
-        float s_prev1 = z_prev1.real();
-        float s_prev2 = z_prev2.real();
 
-        // Prediction step for frequency covariance
+        // Current and past resonator outputs (real parts)
+        float s_n = z.real();
+        float s_prev1_r = z_prev1.real();
+        float s_prev2_r = z_prev2.real();
+
+        // Prediction update for frequency covariance
         p_cov_freq += freq_q;
 
-        // Kalman gain for frequency parameter
-        float denom = s_prev1 * s_prev1 + freq_r / p_cov_freq;
-        float K_freq = s_prev1 / denom;
+        // Kalman gain calculation (corrected)
+        float denom = s_prev1_r * s_prev1_r * p_cov_freq + freq_r;
+        float K_freq = p_cov_freq * s_prev1_r / denom;
 
-        // Innovation for frequency parameter (scalar)
-        float e_freq = s_prev1 * a_freq - s_prev2 - z.real();
+        // Innovation residual (corrected)
+        float e_freq = s_n - a_freq * s_prev1_r + s_prev2_r;
 
-        // Update frequency parameter
+        // Frequency parameter update
         a_freq += K_freq * e_freq;
 
-        // Clamp frequency parameter to valid range for acos()
+        // Clamp to domain of acos
         a_freq = std::clamp(a_freq, -1.9999f, 1.9999f);
 
-        // Update frequency covariance
-        p_cov_freq = (1.0f - K_freq * s_prev1) * p_cov_freq;
+        // Covariance update
+        p_cov_freq = (1.0f - K_freq * s_prev1_r) * p_cov_freq;
 
-        // Update frequency from frequency parameter
+        // Update frequency from parameter
         float omega_hat = std::acos(a_freq / 2.0f);
         omega = omega_hat / delta_t;
 
