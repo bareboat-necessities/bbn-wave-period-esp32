@@ -12,13 +12,13 @@
 class Kalman2DBandpass {
 public:
     Kalman2DBandpass(float initialOmega, float deltaT)
-        : omega(initialOmega) {
+        : omega(initialOmega), phase(0.0f) {
         reset(deltaT);
     }
 
     void reset(float deltaT) {
-        xEst.setZero();
-        pEst = Eigen::Matrix2f::Identity() * 1.0f;
+        A_est.setZero();
+        P = Eigen::Matrix2f::Identity() * 1.0f;
         updatePhase(deltaT);
         confidence = 0.0f;
     }
@@ -31,32 +31,48 @@ public:
         // Advance phase
         updatePhase(deltaT);
 
-        float s = std::cos(phase);
-        Eigen::Matrix2f H = s * Eigen::Matrix2f::Identity();
+        float c = std::cos(phase);
+        Eigen::Matrix2f H = c * Eigen::Matrix2f::Identity();
 
         // Predict
-        Eigen::Vector2f xPred = xEst;
-        Eigen::Matrix2f pPred = pEst + Q;
+        Eigen::Vector2f A_pred = A_est;
+        Eigen::Matrix2f P_pred = P + Q;
 
-        // Kalman Gain
-        Eigen::Matrix2f S = H * pPred * H.transpose() + R;
-        Eigen::Matrix2f K = pPred * H.transpose() * S.ldlt().solve(Eigen::Matrix2f::Identity());
+        // Kalman gain
+        Eigen::Matrix2f S = H * P_pred * H.transpose() + R;
+        Eigen::Matrix2f K = P_pred * H.transpose() * S.ldlt().solve(Eigen::Matrix2f::Identity());
 
-        // Update
+        // Measurement
         Eigen::Vector2f z(ax, ay);
-        xEst = xPred + K * (z - H * xPred);
-        pEst = (Eigen::Matrix2f::Identity() - K * H) * pPred;
 
-        confidence = 1.0f / (pEst(0, 0) + pEst(1, 1));
+        // Update state
+        A_est = A_pred + K * (z - H * A_pred);
+        P = (Eigen::Matrix2f::Identity() - K * H) * P_pred;
+
+        confidence = 1.0f / (P.trace() + 1e-6f);
     }
 
-    Eigen::Vector2f getAmplitudes() const { return xEst; }
-    float getAmplitude() const { return xEst.norm(); }
-    float getPhase() const { return phase; }
-    float getConfidence() const { return confidence; }
+    // Estimated wave propagation direction (unit vector)
     Eigen::Vector2f getDirection() const {
-        float norm = xEst.norm();
-        return norm > 1e-6f ? xEst / norm : Eigen::Vector2f(1.0f, 0.0f);
+        float norm = A_est.norm();
+        return (norm > 1e-6f) ? A_est / norm : Eigen::Vector2f(1.0f, 0.0f);
+    }
+
+    // Full amplitude vector A * dir
+    Eigen::Vector2f getAmplitudeVector() const {
+        return A_est;
+    }
+
+    float getAmplitude() const {
+        return A_est.norm();
+    }
+
+    float getPhase() const {
+        return phase;
+    }
+
+    float getConfidence() const {
+        return confidence;
     }
 
     void setProcessNoise(float q) {
@@ -73,16 +89,16 @@ private:
         if (phase < 0.0f) phase += 2.0f * M_PI;
     }
 
-    float omega;
-    float phase = 0.0f;
-    float confidence = 0.0f;
-
-    Eigen::Vector2f xEst = Eigen::Vector2f::Zero();
-    Eigen::Matrix2f pEst = Eigen::Matrix2f::Identity();
+    // State
+    Eigen::Vector2f A_est = Eigen::Vector2f::Zero();
+    Eigen::Matrix2f P = Eigen::Matrix2f::Identity();
     Eigen::Matrix2f Q = Eigen::Matrix2f::Identity() * 1e-6f;
     Eigen::Matrix2f R = Eigen::Matrix2f::Identity() * 0.01f;
-};
 
+    float omega;
+    float phase;
+    float confidence;
+};
 #ifdef KALMAN_2D_BANDPASS_TEST
 
 void KalmanBandpass_test_signal(float t, float freq, float& ax, float& ay) {
