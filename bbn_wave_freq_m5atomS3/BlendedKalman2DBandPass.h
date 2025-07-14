@@ -196,7 +196,47 @@ private:
 };
 
 #ifdef KALMAN_2D_BANDPASS_TEST
-// ... (keep your existing test code)
+
+void KalmanBandpass_test_signal(float t, float freq, float& ax, float& ay) {
+  float amp = 0.2f; //1.0f + 0.5f * std::sin(0.1f * t);  // Slowly varying amplitude
+  float phase = 2.0f * PI * freq * t;
+  Eigen::Vector2f dir(1.0f, 1.5f);
+  dir.normalize();
+  float signal = amp * std::cos(phase);
+  ax = signal * dir.x();
+  ay = signal * dir.y();
+}
+
+void KalmanBandpass_test_1() {
+  const float delta_t = 0.005f;  // 200 Hz sample rate
+  const float freq = 0.5f;       // Base frequency (Hz)
+  const int num_steps = 10000;
+
+  BlendedKalman2DBandPass filter(0.985f, 0.001f, 0.1f, 1.0f);
+  filter.setFrequencyEstimate(freq, delta_t);
+
+  std::ofstream out("bandpass.csv");
+  out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence\n";
+
+  for (int i = 0; i < num_steps; ++i) {
+    float t = i * delta_t;
+    float ax, ay;
+    KalmanBandpass_test_signal(t, freq, ax, ay);
+
+    float magnitude = filter.process(ax, ay, freq, delta_t);
+    float filtered_ax = filter.getFilteredAx();
+    float filtered_ay = filter.getFilteredAy();
+    float frequency = filter.getFrequency(delta_t);
+    float amplitude = filter.getAmplitude(delta_t);
+    float phase = filter.getPhase(delta_t);
+    float confidence = filter.getTrackingConfidence();
+
+    out << t << "," << ax << "," << ay << "," << filtered_ax << "," << filtered_ay << ","
+        << frequency << "," << amplitude << "," << phase << "," << confidence << "\n";
+  }
+  out.close();
+}
+
 #endif
 
 #endif // BLENDED_KALMAN_2D_BANDPASS_H
