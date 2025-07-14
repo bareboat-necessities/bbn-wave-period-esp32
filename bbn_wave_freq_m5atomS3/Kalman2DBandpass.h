@@ -61,6 +61,7 @@ public:
 
     Eigen::Vector2f getAmplitudes() const { return xEst; }
     float getAmplitude() const { return xEst.norm(); }
+    float getPhase() const { return phase; }
     float getConfidence() const { return confidence; }
     Eigen::Vector2f getDirection() const { return xEst.normalized(); }
 
@@ -123,13 +124,13 @@ void KalmanBandpass_test_1() {
     float ax, ay;
     KalmanBandpass_test_signal(t, freq, ax, ay);
 
-    float magnitude = filter.process(ax, ay, freq, delta_t);
-    float filtered_ax = filter.getFilteredAx();
-    float filtered_ay = filter.getFilteredAy();
-    float frequency = filter.getFrequency(delta_t);
-    float amplitude = filter.getAmplitude(delta_t);
-    float phase = filter.getPhase(delta_t);
-    float confidence = filter.getTrackingConfidence();
+    float magnitude = filter.update(ax, ay, freq, delta_t);
+    float filtered_ax = filter.getAmplitudes().x();
+    float filtered_ay = filter.getAmplitudes().y();
+    float frequency = freq;
+    float amplitude = filter.getAmplitude();
+    float phase = filter.getPhase();
+    float confidence = filter.getConfidence();
 
     out << t << "," << ax << "," << ay << "," << filtered_ax << "," << filtered_ay << ","
         << frequency << "," << amplitude << "," << phase << "," << confidence << "\n";
