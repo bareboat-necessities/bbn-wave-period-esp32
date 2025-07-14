@@ -80,7 +80,7 @@ public:
         cfloat ratio = A_est / A_prev;
         float dphi = std::arg(ratio);
         float freq_hz;
-        if (std:abs(A_prev) < 1e-4f) {
+        if (std::abs(A_prev) < 1e-4f) {
           freq_hz = omega / (2.0f * M_PI);
         } else {
           freq_hz = dphi / (2.0f * M_PI * delta_t);
