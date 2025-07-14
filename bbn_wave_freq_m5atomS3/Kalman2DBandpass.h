@@ -72,7 +72,7 @@ public:
     }
 
     Eigen::Vector2f getDirection() const {
-        Eigen::Vector2f realVec(A(0).real(), A(1).real());
+        Eigen::Vector2f realVec = getAmplitudes();
         float norm = realVec.norm();
         return norm > 1e-6f ? realVec / norm : Eigen::Vector2f(1.0f, 0.0f);
     }
