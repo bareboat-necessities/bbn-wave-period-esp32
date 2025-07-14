@@ -157,7 +157,7 @@ public:
     Eigen::Vector2f dir = plane_dir;
     float I = s_prev1.dot(dir);
     float Q = q_prev1.dot(dir);
-    float amplitude = std::sqrt(I * I + Q * Q) * resonator_gain;
+    float amplitude = std::sqrt(I * I + Q * Q) * (1.0f - rho_sq);
     float phase = std::atan2(Q, I);
     return {amplitude, phase};
   }
