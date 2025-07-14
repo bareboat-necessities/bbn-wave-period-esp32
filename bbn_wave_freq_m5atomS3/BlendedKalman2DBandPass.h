@@ -133,8 +133,8 @@ void KalmanBandpass_test_1() {
   const float freq = 0.5f;
   const int N = 10000;
 
-  BlendedKalman2DBandPass filt(0.985f, 0.001f, 0.1f, 1.0f);
-  filt.setFrequencyEstimate(freq, dt);
+  BlendedKalman2DBandPass filt(0.985f, 0.001f, 0.1f);
+  filt.setInitialFrequency(freq, dt);
 
   std::ofstream out("bandpass.csv");
   out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence\n";
@@ -143,13 +143,13 @@ void KalmanBandpass_test_1() {
     float ax, ay;
     KalmanBandpass_test_signal(t, freq, ax, ay);
 
-    filt.process(ax, ay, freq, dt);
-    float f_ax = filt.getFilteredAx(dt);
-    float f_ay = filt.getFilteredAy(dt);
-    float f_fr = filt.getFrequency(dt);
-    float f_am = filt.getAmplitude(dt);
-    float f_ph = filt.getPhase(dt);
-    float conf = filt.getTrackingConfidence();
+    BlendedKalman2DBandPass::Output output = filt.process(ax, ay, freq, dt);
+    float f_ax = output.getFilteredAx(dt);
+    float f_ay = output.getFilteredAy(dt);
+    float f_fr = output.getFrequency(dt);
+    float f_am = output.getAmplitude(dt);
+    float f_ph = output.getPhase(dt);
+    float conf = output.getTrackingConfidence();
 
     out << t << "," 
         << ax << "," << ay << ","
