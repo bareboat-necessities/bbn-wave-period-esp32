@@ -37,13 +37,13 @@ public:
         if (phase < 0.0f) phase += 2.0f * M_PI;  // ensure positive phase
 
         float sinPhase = std::sin(phase);
-        constexpr float sinThreshold = 1e-3f;
+        constexpr float sinThreshold = 1e-2f;
 
         // Predict
         xPred = F * xEst;
         pPred = F * pEst * F.transpose() + Q;
 
-        if (std::fabs(sinPhase) > sinThreshold) {
+        if (std::fabs(sinPhase) > sinThreshold && (ax * ax + ay * ay) > 1e-4f) {
             Eigen::Vector2f z(ax / sinPhase, ay / sinPhase);
 
             // Kalman update
