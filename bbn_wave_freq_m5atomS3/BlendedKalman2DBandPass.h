@@ -148,9 +148,10 @@ public:
    */
   std::pair<float, float> getAmplitudePhase(float delta_t) const {
     // Combine in-phase and quadrature components for accurate amplitude/phase
-    float I = s_prev1.x();
-    float Q = q_prev1.x();
-    float amplitude = std::sqrt(s_prev1.squaredNorm() + q_prev1.squaredNorm());
+    Eigen::Vector2f dir = plane_dir;
+    float I = s_prev1.dot(dir);
+    float Q = q_prev1.dot(dir);
+    float amplitude = std::sqrt(I * I + Q * Q);
     float phase = std::atan2(Q, I);
     return {amplitude, phase};
   }
