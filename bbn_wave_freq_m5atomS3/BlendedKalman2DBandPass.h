@@ -1,3 +1,5 @@
+
+
 #ifndef BLENDED_KALMAN_2D_BANDPASS_H
 #define BLENDED_KALMAN_2D_BANDPASS_H
 
@@ -5,7 +7,6 @@
 #include <cmath>
 #include <complex>
 #include <algorithm>
-#include <utility>
 
 #ifdef KALMAN_2D_BANDPASS_TEST
   #include <iostream>
@@ -32,9 +33,16 @@ public:
 
     void reset() {
         z_prev1 = z_prev2 = cfloat(0.0f, 0.0f);
-        A_est = cfloat(1.0f, 0.0f);
-        A_prev = A_est;
-        p_cov = 1.0f;
+
+        // Initialize state vector (real, imag)
+        A_est_vec = Eigen::Vector2f(1.0f, 0.0f);
+        A_prev_vec = A_est_vec;
+
+        // Initialize covariance matrices
+        P = Eigen::Matrix2f::Identity();
+        Q = Eigen::Matrix2f::Identity() * q; // process noise covariance
+        R = Eigen::Matrix2f::Identity() * r; // measurement noise covariance
+
         omega = 2.0f * M_PI * 0.3f; // rad/s
         theta = 0.0f;
     }
@@ -58,45 +66,75 @@ public:
         return z;
     }
 
-    /// Step 2: Kalman + instantaneous frequency estimation
+    /// Step 2: Kalman + instantaneous frequency estimation (2D Kalman)
     Output stepKalman(const cfloat& z, float delta_t) {
+        // Update theta with wrapping to [-π, π]
+        theta += omega * delta_t;
         theta = std::fmod(theta + M_PI, 2.0f * M_PI);
-        if (theta < 0.0f) theta += 2.0f * M_PI;
+        if (theta < 0) theta += 2.0f * M_PI;
         theta -= M_PI;
-        
-        cfloat h = std::polar(1.0f, theta); // e^(jθ)
-        cfloat prediction = A_est * h;
-        cfloat innovation = z - prediction;
 
-        float denom = p_cov + r;
-        float K = p_cov / denom;
+        // Measurement matrix H: rotation matrix by theta
+        Eigen::Matrix2f H;
+        float c = std::cos(theta);
+        float s = std::sin(theta);
+        H << c, -s,
+             s,  c;
 
-        A_prev = A_est;
-        A_est += K * std::conj(h) * innovation;
+        // Convert measurement z to vector form
+        Eigen::Vector2f z_vec(z.real(), z.imag());
 
-        p_cov = std::max((1.0f - K) * p_cov + q, 1e-6f);
+        // Predicted measurement
+        Eigen::Vector2f pred = H * A_est_vec;
 
-        // Instantaneous frequency from phase drift
-        cfloat ratio = A_est / A_prev;
+        // Innovation (measurement residual)
+        Eigen::Vector2f innovation = z_vec - pred;
+
+        // Innovation covariance
+        Eigen::Matrix2f S = H * P * H.transpose() + R;
+
+        // Kalman gain
+        Eigen::Matrix2f K = P * H.transpose() * S.inverse();
+
+        // Save previous state for frequency calculation
+        A_prev_vec = A_est_vec;
+
+        // State update
+        A_est_vec += K * innovation;
+
+        // Covariance update (Joseph form for numerical stability)
+        Eigen::Matrix2f I = Eigen::Matrix2f::Identity();
+        P = (I - K * H) * P * (I - K * H).transpose() + K * R * K.transpose();
+
+        // Instantaneous frequency from phase difference
+        std::complex<float> A_est_cplx(A_est_vec.x(), A_est_vec.y());
+        std::complex<float> A_prev_cplx(A_prev_vec.x(), A_prev_vec.y());
+
+        std::complex<float> ratio = A_est_cplx / A_prev_cplx;
         float dphi = std::arg(ratio);
+
         float freq_hz;
-        if (std::abs(A_prev) < 1e-4f) {
-          freq_hz = omega / (2.0f * M_PI);
+        if (std::abs(A_prev_cplx) < 1e-4f) {
+            freq_hz = omega / (2.0f * M_PI);
         } else {
-          freq_hz = dphi / (2.0f * M_PI * delta_t);
+            freq_hz = dphi / (2.0f * M_PI * delta_t);
         }
-      
-        // Update internal oscillator
+
+        // Directly update frequency (no smoothing)
         omega = 2.0f * M_PI * freq_hz;
 
-        // Output
+        // Output structure
         Output out;
-        cfloat filtered = A_est * h;
+        std::complex<float> filtered = A_est_cplx * std::polar(1.0f, theta);
         out.filtered_xy = Eigen::Vector2f(filtered.real(), filtered.imag());
-        out.amplitude = std::abs(A_est);
-        out.phase = std::arg(A_est);
+        out.amplitude = std::abs(A_est_cplx);
+        out.phase = std::arg(A_est_cplx);
         out.frequency = freq_hz;
-        out.confidence = 1.0f - (p_cov / (p_cov + r));
+
+        // Confidence metric based on covariance trace
+        float trace_P = P.trace();
+        float trace_R = R.trace();
+        out.confidence = 1.0f - (trace_P / (trace_P + trace_R));
 
         return out;
     }
@@ -112,16 +150,19 @@ private:
     float rho, rho_sq;
     cfloat z_prev1, z_prev2;
 
-    // Kalman state
-    cfloat A_est, A_prev;
-    float p_cov;
+    // Kalman state: complex state as 2D vector + covariance matrix
+    Eigen::Vector2f A_est_vec, A_prev_vec;
+    Eigen::Matrix2f P;  // covariance matrix
+    Eigen::Matrix2f Q;  // process noise covariance
+    Eigen::Matrix2f R;  // measurement noise covariance
+
+    // Noise parameters
     float q, r;
 
     // Frequency tracking
     float omega;   // rad/s
     float theta;   // accumulated phase
 };
-
 
 #ifdef KALMAN_2D_BANDPASS_TEST
 
@@ -168,3 +209,4 @@ void KalmanBandpass_test_1() {
 #endif
 
 #endif // BLENDED_KALMAN_2D_BANDPASS_H
+
