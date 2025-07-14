@@ -67,7 +67,7 @@ public:
     if (samples_processed == 0) {
       // Initialize resonator states to match expected oscillation
       setFrequencyEstimate(freq_est_hz, delta_t);
-      float amp = y.norm();
+      float amp = y.norm() * (1.0f - rho_sq);
       if (amp < 1e-6f) amp = 1e-6f;
       Eigen::Vector2f dir = y.normalized();      
       s_prev1 = dir * amp; 
@@ -85,7 +85,7 @@ public:
     
     // Apply second-order resonator (quadrature component)
     Eigen::Vector2f q = (y + rho * a_prev * q_prev1 - rho_sq * q_prev2);
-    q = (q - q.dot(s.normalized()) * s.normalized()).normalized() * q.norm();
+    //q = (q - q.dot(s.normalized()) * s.normalized()).normalized() * q.norm();
 
     // Predict covariance for Kalman gain
     p_cov = p_cov + this->q;
@@ -149,8 +149,10 @@ public:
 
     float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
     float omega = std::acos(a / 2.0f);
-    float resonator_gain = (1.0f - rho_sq) / std::sqrt(
-       (1.0f + rho_sq * rho_sq - 2.0f * rho_sq * std::cos(2.0f * omega)));
+    //float resonator_gain = (1.0f - rho_sq) / std::sqrt(
+    //   (1.0f + rho_sq * rho_sq - 2.0f * rho_sq * std::cos(2.0f * omega)));
+
+    float resonator_gain = (1.0f - rho_sq) / (1.0f - rho_sq * std::cos(2.0f * omega));
     
     Eigen::Vector2f dir = plane_dir;
     float I = s_prev1.dot(dir) * resonator_gain;
