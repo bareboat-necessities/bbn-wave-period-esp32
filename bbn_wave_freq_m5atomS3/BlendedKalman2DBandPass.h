@@ -60,10 +60,10 @@ public:
 
     /// Step 2: Kalman + instantaneous frequency estimation
     Output stepKalman(const cfloat& z, float delta_t) {
-        theta += omega * delta_t;
-        if (theta > M_PI) theta -= 2.0f * M_PI;
-        else if (theta < -M_PI) theta += 2.0f * M_PI;
-
+        theta = std::fmod(theta + M_PI, 2.0f * M_PI);
+        if (theta < 0.0f) theta += 2.0f * M_PI;
+        theta -= M_PI;
+        
         cfloat h = std::polar(1.0f, theta); // e^(jθ)
         cfloat prediction = A_est * h;
         cfloat innovation = z - prediction;
