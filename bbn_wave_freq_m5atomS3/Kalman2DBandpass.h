@@ -58,6 +58,10 @@ public:
         return (norm > 1e-6f) ? A_est / norm : Eigen::Vector2f(1.0f, 0.0f);
     }
 
+    Eigen::Vector2f getFilteredSignal() const {
+        return A_est * std::cos(phase);
+    }
+
     // Full amplitude vector A * dir
     Eigen::Vector2f getAmplitudeVector() const {
         return A_est;
@@ -129,8 +133,8 @@ void KalmanBandpass_test_1() {
     KalmanBandpass_test_signal(t, freq, ax, ay);
 
     filter.update(ax, ay, freq, delta_t);
-    float filtered_ax = filter.getAmplitudeVector().x();
-    float filtered_ay = filter.getAmplitudeVector().y();
+    float filtered_ax = filter.getFilteredSignal().x();
+    float filtered_ay = filter.getFilteredSignal().y();
     float frequency = freq;
     float amplitude = filter.getAmplitude();
     float phase = filter.getPhase();
