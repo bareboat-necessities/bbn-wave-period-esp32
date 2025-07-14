@@ -37,7 +37,7 @@ public:
         if (phase < 0.0f) phase += 2.0f * M_PI;  // ensure positive phase
 
         float sinPhase = std::sin(phase);
-        constexpr float sinThreshold = 1e-6f;
+        constexpr float sinThreshold = 1e-3f;
 
         // Predict
         xPred = F * xEst;
