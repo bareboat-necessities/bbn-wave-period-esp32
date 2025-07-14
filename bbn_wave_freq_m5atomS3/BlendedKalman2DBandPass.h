@@ -179,7 +179,7 @@ void KalmanBandpass_test_1() {
   const float freq = 0.5f;
   const int N = 10000;
 
-  BlendedKalman2DBandPass filt(0.975f, 0.001f, 0.1f);
+  BlendedKalman2DBandPass filt(0.975f, 0.001f, 0.01f);
   filt.setInitialFrequency(freq, dt);
 
   std::ofstream out("bandpass.csv");
