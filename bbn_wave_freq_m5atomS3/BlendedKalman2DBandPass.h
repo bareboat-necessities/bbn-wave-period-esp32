@@ -125,22 +125,22 @@ public:
   /**
    * @brief Returns the filtered X-component of the signal (in-phase component).
    */
-  float getFilteredAx() const { return s_prev1.x() * (1.0f - rho_sq); }
+  float getFilteredAx() const { return s_prev1.x(); }
 
   /**
    * @brief Returns the filtered Y-component of the signal (in-phase component).
    */
-  float getFilteredAy() const { return s_prev1.y() * (1.0f - rho_sq); }
+  float getFilteredAy() const { return s_prev1.y(); }
 
   /**
    * @brief Returns the quadrature X-component of the signal.
    */
-  float getQuadratureAx() const { return q_prev1.x() * (1.0f - rho_sq); }
+  float getQuadratureAx() const { return q_prev1.x(); }
 
   /**
    * @brief Returns the quadrature Y-component of the signal.
    */
-  float getQuadratureAy() const { return q_prev1.y() * (1.0f - rho_sq); }
+  float getQuadratureAy() const { return q_prev1.y(); }
 
   /**
    * @brief Computes amplitude and phase using both in-phase and quadrature components.
