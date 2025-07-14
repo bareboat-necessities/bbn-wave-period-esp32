@@ -151,10 +151,8 @@ public:
     float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
     float omega = std::acos(a / 2.0f);
     float resonator_gain = 1.0f / std::sqrt(
-        (1.0f - rho_sq) * (1.0f - rho_sq) + 
-        rho_sq * a * a - 
-        2.0f * rho_sq * a * std::cos(omega)
-    );
+        std::pow((1.0f - rho_sq * std::cos(2 * omega)), 2) + 
+        std::pow(rho_sq * std::cos(2 * omega)), 2));
     
     Eigen::Vector2f dir = plane_dir;
     float I = s_prev1.dot(dir);
