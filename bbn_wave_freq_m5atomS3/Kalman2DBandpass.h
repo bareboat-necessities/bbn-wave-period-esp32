@@ -10,9 +10,9 @@
 #include <fstream>
 #endif
 
-class KalmanComplex2DBandpass {
+class Kalman2DBandpass {
 public:
-    KalmanComplex2DBandpass(float initialOmega, float deltaT)
+    Kalman2DBandpass(float initialOmega, float deltaT)
         : omega(initialOmega) {
         reset(deltaT);
     }
