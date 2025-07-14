@@ -206,5 +206,8 @@ int main(int argc, char *argv[]) {
   FentonWave_test_2();
 #endif
 
+#ifdef KALMAN_2D_BANDPASS_TEST
+  Kalman2DBandpass_test_1();
+#endif
   
 }
