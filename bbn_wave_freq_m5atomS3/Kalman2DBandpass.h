@@ -19,7 +19,7 @@ public:
 
     void reset(float deltaT) {
         A = Eigen::Vector2cd::Zero();
-        P = Eigen::Matrix2cd::Identity() * 1.0;
+        P = Eigen::Matrix2cd::Identity() * 10.0;
         updatePhaseModel(deltaT);
         phase = 0.0f;
         confidence = 0.0f;
