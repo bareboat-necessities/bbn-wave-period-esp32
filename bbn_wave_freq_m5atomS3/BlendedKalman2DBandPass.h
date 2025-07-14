@@ -85,6 +85,7 @@ public:
     
     // Apply second-order resonator (quadrature component)
     Eigen::Vector2f q = (y + rho * a_prev * q_prev1 - rho_sq * q_prev2);
+    q = (q - q.dot(s.normalized()) * s.normalilzed()).normalized() * q.norm();
 
     // Predict covariance for Kalman gain
     p_cov = p_cov + this->q;
