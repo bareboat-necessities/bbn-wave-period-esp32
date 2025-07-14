@@ -124,7 +124,8 @@ public:
 
   Eigen::Vector2f getFilteredSignal(float delta_t) const {
     auto [amplitude, phase] = getAmplitudePhase(delta_t);
-    return amplitude * std::cos(phase) * plane_dir;
+    Eigen::Vector2f dir = s_prev1.normalized();
+    return amplitude * std::cos(phase) * dir;
   }
 
   /**
@@ -147,10 +148,12 @@ public:
     float resonator_gain = (1.0f - rho) / std::sqrt((1.0f + rho * rho - 2.0f * rho * std::cos(omega)));
     
     Eigen::Vector2f dir = plane_dir;
-    float I = s_prev1.dot(dir) * resonator_gain;
-    float Q = q_prev1.dot(dir) * resonator_gain;
-    float amplitude = std::sqrt(I * I + Q * Q);
-    float phase = std::atan2(Q, I);
+    float I = s_prev1.norm();
+    float Q = q_prev1.norm();
+    float amplitude = std::sqrt(I * I + Q * Q) * resonator_gain;
+    float dot = s_prev1.dot(q_prev1);
+    float cross = s_prev1.x() * q_prev1.y() - s_prev1.y() * q_prev1.x();
+    float phase = std::atan2(cross, dot);
     return {amplitude, phase};
   }
 
