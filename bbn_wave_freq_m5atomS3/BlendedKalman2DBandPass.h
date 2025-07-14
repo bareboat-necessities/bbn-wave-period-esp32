@@ -144,12 +144,12 @@ void KalmanBandpass_test_1() {
     KalmanBandpass_test_signal(t, freq, ax, ay);
 
     BlendedKalman2DBandPass::Output output = filt.process(ax, ay, freq, dt);
-    float f_ax = output.getFilteredAx(dt);
-    float f_ay = output.getFilteredAy(dt);
-    float f_fr = output.getFrequency(dt);
-    float f_am = output.getAmplitude(dt);
-    float f_ph = output.getPhase(dt);
-    float conf = output.getTrackingConfidence();
+    float f_ax = output.filtered_xy.x();
+    float f_ay = output.filtered_xy.y();
+    float f_fr = output.frequency;
+    float f_am = output.amplitude;
+    float f_ph = output.phase;
+    float conf = output.confidence;
 
     out << t << "," 
         << ax << "," << ay << ","
