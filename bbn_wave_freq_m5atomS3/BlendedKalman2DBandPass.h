@@ -123,12 +123,11 @@ public:
   }
 
   Eigen::Vector2f getFilteredSignal(float delta_t) const {
-    auto [amplitude, phase] = getAmplitudePhase(delta_t);
-    Eigen::Vector2f in_phase = s_prev1;
-    float in_phase_norm = in_phase.norm();
-    if (in_phase_norm < 1e-6f) return Eigen::Vector2f::Zero();
-    Eigen::Vector2f dir = in_phase / in_phase_norm;
-    return amplitude * std::cos(phase) * dir;
+    float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
+    float omega = std::acos(a / 2.0f);
+    float gain = (1.0f - rho) / std::sqrt(1.0f + rho * rho - 2.0f * rho * std::cos(omega));
+
+    return gain * s_prev1;
   }
 
   /**
