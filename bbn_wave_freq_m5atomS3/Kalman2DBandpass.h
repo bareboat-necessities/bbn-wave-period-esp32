@@ -124,7 +124,7 @@ void KalmanBandpass_test_1() {
     float ax, ay;
     KalmanBandpass_test_signal(t, freq, ax, ay);
 
-    float magnitude = filter.update(ax, ay, freq, delta_t);
+    filter.update(ax, ay, freq, delta_t);
     float filtered_ax = filter.getAmplitudes().x();
     float filtered_ay = filter.getAmplitudes().y();
     float frequency = freq;
