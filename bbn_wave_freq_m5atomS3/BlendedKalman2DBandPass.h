@@ -147,10 +147,9 @@ public:
     float omega = std::acos(a / 2.0f);
     float resonator_gain = (1.0f - rho) / std::sqrt((1.0f + rho * rho - 2.0f * rho * std::cos(omega)));
     
-    Eigen::Vector2f dir = plane_dir;
-    float I = s_prev1.norm();
-    float Q = q_prev1.norm();
-    float amplitude = std::sqrt(I * I + Q * Q) * resonator_gain;
+    float I = s_prev1.dot(s_prev1);
+    float Q = q_prev1.dot(q_prev1);
+    float amplitude = std::sqrt(I + Q) * resonator_gain;
     float dot = s_prev1.dot(q_prev1);
     float cross = s_prev1.x() * q_prev1.y() - s_prev1.y() * q_prev1.x();
     float phase = std::atan2(cross, dot);
