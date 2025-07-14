@@ -153,8 +153,8 @@ public:
         std::pow(rho_sq * std::sin(2 * omega), 2));
     
     Eigen::Vector2f dir = plane_dir;
-    float I = s_prev1.dot(dir) * resonator_gain * (1.0f - rho_sq);
-    float Q = q_prev1.dot(dir) * resonator_gain * (1.0f - rho_sq);
+    float I = s_prev1.dot(dir) * resonator_gain;
+    float Q = q_prev1.dot(dir) * resonator_gain;
     float amplitude = std::sqrt(I * I + Q * Q);
     float phase = std::atan2(Q, I);
     return {amplitude, phase};
