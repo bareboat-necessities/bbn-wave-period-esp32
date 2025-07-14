@@ -69,11 +69,11 @@ public:
       setFrequencyEstimate(freq_est_hz, delta_t);
       float cos1 = std::cos(omega_dt);
       float sin1 = std::sin(omega_dt);
-      float amp = y.norm();
+      float amp = y.norm() * (1.0f - rho_sq);
       if (amp < 1e-6f) amp = 1e-6f;
-      Eigen::Vector2f dir = y / amp;      
-      s_prev1 = dir * (amp * cos1);  // In-phase component
-      q_prev1 = dir * (amp * sin1);  // Quadrature component
+      Eigen::Vector2f dir = y.normalized();      
+      s_prev1 = dir * amp; 
+      q_prev1 = Eigen::Vector2f(-dir.y() , dir.x()) * amp; 
       s_prev2 = dir * (amp * std::cos(2.0f * omega_dt));
       q_prev2 = dir * (amp * std::sin(2.0f * omega_dt));
       plane_dir = s_prev1.normalized();
