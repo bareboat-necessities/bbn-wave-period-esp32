@@ -233,11 +233,8 @@ private:
 
   int samples_processed = 0;
 
-  float rho;
-  float rho_sq;
-  float q;
-  float r;
-  float alpha;
+  float rho, rho_sq;
+  float q, r, alpha;
 
   float a_prev;     // Previous resonance coefficient (cos(ωΔt) * 2)
   float p_cov;      // Covariance for adaptive update
