@@ -83,10 +83,10 @@ public:
     }
 
     // Apply second-order resonator (in-phase component)
-    Eigen::Vector2f s = y + rho * a_prev * s_prev1 - rho_sq * s_prev2;
+    Eigen::Vector2f s = (y + rho * a_prev * s_prev1 - rho_sq * s_prev2) * (1.0f - rho_sq);
     
     // Apply second-order resonator (quadrature component)
-    Eigen::Vector2f q = y + rho * a_prev * q_prev1 - rho_sq * q_prev2;
+    Eigen::Vector2f q = (y + rho * a_prev * q_prev1 - rho_sq * q_prev2) * (1.0f - rho_sq);
 
     // Predict covariance for Kalman gain
     p_cov = p_cov + this->q;
@@ -152,7 +152,7 @@ public:
     float omega = std::acos(a / 2.0f);
     float resonator_gain = 1.0f / std::sqrt(
         std::pow((1.0f - rho_sq * std::cos(2 * omega)), 2) + 
-        std::pow(rho_sq * std::cos(2 * omega), 2));
+        std::pow(rho_sq * std::sin(2 * omega), 2));
     
     Eigen::Vector2f dir = plane_dir;
     float I = s_prev1.dot(dir);
