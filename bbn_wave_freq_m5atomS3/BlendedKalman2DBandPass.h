@@ -25,7 +25,7 @@ public:
         float confidence = 0.0f;
     };
 
-    BlendedKalman2DBandPass(float rho = 0.98f, float q = 1e-4f, float r = 0.01f)
+    BlendedKalman2DBandPass(float rho = 0.985f, float q = 1e-4f, float r = 0.01f)
         : rho(rho), rho_sq(rho * rho), q(q), r(r)
     {
         reset();
@@ -179,7 +179,7 @@ void KalmanBandpass_test_1() {
   const float freq = 0.5f;
   const int N = 10000;
 
-  BlendedKalman2DBandPass filt(0.98f, 0.001f, 0.01f);
+  BlendedKalman2DBandPass filt(0.975f, 0.001f, 0.01f);
   filt.setInitialFrequency(freq, dt);
 
   std::ofstream out("bandpass.csv");
