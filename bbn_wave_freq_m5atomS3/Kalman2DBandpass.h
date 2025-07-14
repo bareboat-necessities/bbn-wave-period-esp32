@@ -77,6 +77,10 @@ public:
         return norm > 1e-6f ? realVec / norm : Eigen::Vector2f(1.0f, 0.0f);
     }
 
+    Eigen::Vector2f getAmplitudes() const {
+        return Eigen::Vector2f(A(0).real(), A(1).real());
+    }
+
     float getPhase() const { return phase; }
     float getConfidence() const { return confidence; }
 
