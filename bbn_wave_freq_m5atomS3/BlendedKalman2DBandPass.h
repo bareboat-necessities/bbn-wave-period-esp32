@@ -152,7 +152,7 @@ public:
     float omega = std::acos(a / 2.0f);
     float resonator_gain = 1.0f / std::sqrt(
         std::pow((1.0f - rho_sq * std::cos(2 * omega)), 2) + 
-        std::pow(rho_sq * std::cos(2 * omega)), 2));
+        std::pow(rho_sq * std::cos(2 * omega), 2));
     
     Eigen::Vector2f dir = plane_dir;
     float I = s_prev1.dot(dir);
