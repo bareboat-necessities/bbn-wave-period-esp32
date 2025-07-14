@@ -122,15 +122,19 @@ public:
     return s.norm();
   }
 
+  Eigen::Vector2f getFilteredSignal() const {
+    return plane_dir.dot(s_prev1) * plane_dir();
+  }
+
   /**
    * @brief Returns the filtered X-component of the signal (in-phase component).
    */
-  float getFilteredAx() const { return s_prev1.x(); }
+  float getFilteredAx() const { return getFilteredSignal().x(); }
 
   /**
    * @brief Returns the filtered Y-component of the signal (in-phase component).
    */
-  float getFilteredAy() const { return s_prev1.y(); }
+  float getFilteredAy() const { return getFilteredSignal().y(); }
 
   /**
    * @brief Returns the quadrature X-component of the signal.
