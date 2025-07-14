@@ -70,12 +70,12 @@ public:
       float amp = y.norm() * (1.0f - rho_sq);
       if (amp < 1e-6f) amp = 1e-6f;
       Eigen::Vector2f dir = y.normalized();      
-      s_prev1 = dir * amp; 
-      q_prev1 = Eigen::Vector2f(-dir.y() , dir.x()) * amp; 
+      s_prev1 = dir * amp * std::cos(omega_dt); 
+      q_prev1 = Eigen::Vector2f(-dir.y() , dir.x()) * amp * std::sin(omega_dt); 
       s_prev2 = dir * (amp * std::cos(2.0f * omega_dt));
-      q_prev2 = dir * (amp * std::sin(2.0f * omega_dt));
-      plane_dir = s_prev1.normalized();
-      plane_perp = Eigen::Vector2f(-plane_dir.y(), plane_dir.x());
+      q_prev2 = Eigen::Vector2f(-dir.y() , dir.x()) * amp * std::sin(2.0f * omega_dt);
+      plane_dir = dir;
+      plane_perp = Eigen::Vector2f(-dir.y(), dir.x());
       samples_processed = 1;
       return s_prev1.norm();
     }
