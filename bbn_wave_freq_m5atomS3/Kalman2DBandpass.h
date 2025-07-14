@@ -31,7 +31,7 @@ public:
         // Advance phase
         updatePhase(deltaT);
 
-        float s = std::sin(phase);
+        float s = std::cos(phase);
         Eigen::Matrix2f H = s * Eigen::Matrix2f::Identity();
 
         // Predict
