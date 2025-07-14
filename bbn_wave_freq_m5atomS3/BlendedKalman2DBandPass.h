@@ -3,6 +3,7 @@
 
 #include <ArduinoEigenDense.h>
 #include <cmath>
+#include <complex>
 #include <algorithm>
 #include <utility>
 
@@ -13,162 +14,109 @@
 
 class BlendedKalman2DBandPass {
 public:
-  BlendedKalman2DBandPass(float rho = 0.985f,
-                          float processNoiseQ = 0.001f,
-                          float measNoiseR    = 0.1f,
-                          float alpha_blend   = 0.95f)
-    : rho(rho),
-      rho_sq(rho * rho),
-      q(processNoiseQ),
-      r(measNoiseR),
-      alpha(alpha_blend)
-  {
-    reset();
-  }
+    using cfloat = std::complex<float>;
 
-  void reset() {
-    s_prev1.setZero();
-    s_prev2.setZero();
-    q_prev1.setZero();
-    q_prev2.setZero();
-    a_prev = 2.0f * std::cos(2.0f * M_PI * 0.3f * 0.005f);
-    p_cov = 1.0f;
-    samples_processed = 0;
-  }
+    struct Output {
+        Eigen::Vector2f filtered_xy;
+        float amplitude = 0.0f;
+        float phase = 0.0f;     // Phase of A_est, in [-π, π]
+        float frequency = 0.0f; // Hz, instantaneous from phase drift
+        float confidence = 0.0f;
+    };
 
-  void setFrequencyEstimate(float freq_hz, float delta_t) {
-    float omega_dt = 2.0f * M_PI * freq_hz * delta_t;
-    float a = 2.0f * std::cos(omega_dt);
-    a_prev = std::clamp(a, -A_CLAMP, A_CLAMP);
-  }
-
-  // Process a new sample (ax, ay) with a frequency estimate;
-  // returns the raw resonator in-phase magnitude (not normally used).
-  float process(float a_x, float a_y, float freq_est_hz, float delta_t) {
-    Eigen::Vector2f y(a_x, a_y);
-    float omega_dt = 2.0f * M_PI * freq_est_hz * delta_t;
-    float a_est    = 2.0f * std::cos(omega_dt);
-
-    if (samples_processed == 0) {
-      // --- Initialize the two resonators on the sampled plane
-      float amp = y.norm() * (1.0f - rho_sq);
-      amp = std::max(amp, 1e-6f);
-      Eigen::Vector2f dir = y.normalized();
-      plane_dir  = dir;
-      plane_perp = Eigen::Vector2f(-dir.y(), dir.x());
-
-      s_prev1 = dir * (amp * std::cos(omega_dt));
-      q_prev1 = plane_perp * (amp * std::sin(omega_dt));
-      s_prev2 = dir * (amp * std::cos(2.0f * omega_dt));
-      q_prev2 = plane_perp * (amp * std::sin(2.0f * omega_dt));
-      samples_processed = 1;
-      return s_prev1.norm();
+    BlendedKalman2DBandPass(float rho = 0.985f, float q = 1e-5f, float r = 0.01f)
+        : rho(rho), rho_sq(rho * rho), q(q), r(r)
+    {
+        reset();
     }
 
-    // --- Resonator updates
-    Eigen::Vector2f s  = y + rho * a_prev * s_prev1 - rho_sq * s_prev2;
-    Eigen::Vector2f qv = y + rho * a_prev * q_prev1 - rho_sq * q_prev2;
+    void reset() {
+        z_prev1 = z_prev2 = cfloat(0.0f, 0.0f);
+        A_est = cfloat(1.0f, 0.0f);
+        A_prev = A_est;
+        p_cov = 1.0f;
+        omega = 2.0f * M_PI * 0.3f; // rad/s
+        theta = 0.0f;
+    }
 
-    // --- Kalman covariance predict
-    p_cov += q;
+    void setInitialFrequency(float freq_hz, float delta_t) {
+        omega = 2.0f * M_PI * freq_hz;
+        theta = 0.0f;
+    }
 
-    // --- Compute Kalman gain, clamp denominator
-    float denom = (s_prev1.squaredNorm() + q_prev1.squaredNorm()) * p_cov + r;
-    denom = std::max(denom, 1e-6f);
-    Eigen::Vector2f K_s = (p_cov * s_prev1) / denom;
-    Eigen::Vector2f K_q = (p_cov * q_prev1) / denom;
+    /// Step 1: Resonator-only
+    cfloat stepResonator(const Eigen::Vector2f& input_xy, float delta_t) {
+        cfloat input(input_xy.x(), input_xy.y());
 
-    // --- Compute residuals
-    Eigen::Vector2f e_s = s  - a_prev * s_prev1 + s_prev2;
-    Eigen::Vector2f e_q = qv - a_prev * q_prev1 + q_prev2;
+        // Resonator: z[n] = x[n] + ρa z[n-1] - ρ² z[n-2]
+        cfloat a_complex = std::polar(1.0f, omega * delta_t);
+        cfloat z = input + rho * a_complex * z_prev1 - rho_sq * z_prev2;
 
-    // --- Update resonance coefficient a_prev
-    float a_meas_s = a_prev + K_s.dot(e_s);
-    float a_meas_q = a_prev + K_q.dot(e_q);
-    float a_meas   = 0.5f * (a_meas_s + a_meas_q);
-    a_meas = std::clamp(a_meas, -A_CLAMP, A_CLAMP);
+        z_prev2 = z_prev1;
+        z_prev1 = z;
 
-    // --- Blend and clamp
-    a_prev = std::clamp(alpha * a_meas + (1.0f - alpha) * a_est, -A_CLAMP, A_CLAMP);
+        return z;
+    }
 
-    // --- Covariance update
-    float reduction = 0.5f * (K_s.dot(s_prev1) + K_q.dot(q_prev1));
-    p_cov = std::max((1.0f - reduction) * p_cov, 1e-6f);
+    /// Step 2: Kalman + instantaneous frequency estimation
+    Output stepKalman(const cfloat& z, float delta_t) {
+        theta += omega * delta_t;
+        if (theta > M_PI) theta -= 2.0f * M_PI;
+        else if (theta < -M_PI) theta += 2.0f * M_PI;
 
-    // --- Shift states
-    s_prev2 = s_prev1;   s_prev1 = s;
-    q_prev2 = q_prev1;   q_prev1 = qv;
+        cfloat h = std::polar(1.0f, theta); // e^(jθ)
+        cfloat prediction = A_est * h;
+        cfloat innovation = z - prediction;
 
-    return s.norm();
-  }
+        float denom = p_cov + r;
+        float K = p_cov / denom;
 
-  // Full reconstructed 2D signal from I/Q in the known plane.
-  Eigen::Vector2f getFilteredSignal(float delta_t) const {
-   // Project onto plane to get in-phase (I) and quadrature (Q)
-    float I = s_prev1.dot(plane_dir);
-    float Q = q_prev1.dot(plane_perp);
-    float amplitude = std::sqrt(I*I + Q*Q);
-    float phase = std::atan2(Q, I);
-    Eigen::Vector2f signal = amplitude * (std::cos(phase) * plane_dir) + amplitude * (std::sin(phase) * plane_perp);
-    // Undo resonator damping factor (1 − rho²)
-    float gain_inv = 1.0f; //  / (1.0f - rho_sq);
-    return signal * gain_inv;
-  }
+        A_prev = A_est;
+        A_est += K * std::conj(h) * innovation;
 
-  float getFilteredAx(float dt) const { return getFilteredSignal(dt).x(); }
-  float getFilteredAy(float dt) const { return getFilteredSignal(dt).y(); }
+        p_cov = std::max((1.0f - K) * p_cov + q, 1e-6f);
 
-  // Compute analytic amplitude & phase by projecting and undoing damping
-  std::pair<float,float> getAmplitudePhase(float /*delta_t unused here*/) const {
-    // Clamp before acos
-    float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
-    float c = std::clamp(a * 0.5f, -1.0f, 1.0f);
-    float omega = std::acos(c);
+        // Instantaneous frequency from phase drift
+        cfloat ratio = A_est / A_prev;
+        float dphi = std::arg(ratio);
+        float freq_hz = dphi / (2.0f * M_PI * delta_t);
 
-    // Project onto plane to get I & Q
-    float I = s_prev1.dot(plane_dir);
-    float Q = q_prev1.dot(plane_perp);
+        // Update internal oscillator
+        omega = 2.0f * M_PI * freq_hz;
 
-    // Undo resonator damping
-    float amplitude = std::sqrt(I*I + Q*Q) / (1.0f - rho_sq);
+        // Output
+        Output out;
+        cfloat filtered = A_est * h;
+        out.filtered_xy = Eigen::Vector2f(filtered.real(), filtered.imag());
+        out.amplitude = std::abs(A_est);
+        out.phase = std::arg(A_est);
+        out.frequency = freq_hz;
+        out.confidence = 1.0f - (p_cov / (p_cov + r));
 
-    // Phase = angle between I and Q in that plane
-    float dot   = s_prev1.dot(q_prev1);
-    float cross = s_prev1.x() * q_prev1.y() - s_prev1.y() * q_prev1.x();
-    float phase = std::atan2(Q, I); // std::atan2(cross, dot);
+        return out;
+    }
 
-    return { amplitude, phase };
-  }
-
-  float getAmplitude(float dt) const { return getAmplitudePhase(dt).first; }
-  float getPhase(float dt)     const { return getAmplitudePhase(dt).second; }
-
-  // Instantaneous frequency from a_prev
-  float getFrequency(float delta_t) const {
-    float a = std::clamp(a_prev, -A_CLAMP, A_CLAMP);
-    float omega = std::acos(a / 2.0f);
-    return (omega / (2.0f * M_PI)) / delta_t; 
-  }
-
-  // [0..1] tracking confidence
-  float getTrackingConfidence() const {
-    return 1.0f / (1.0f + p_cov);
-  }
+    /// Optional combined one-step process
+    Output process(const Eigen::Vector2f& input_xy, float delta_t) {
+        cfloat z = stepResonator(input_xy, delta_t);
+        return stepKalman(z, delta_t);
+    }
 
 private:
-  static constexpr float A_CLAMP = 1.99999f;
+    // Resonator state
+    float rho, rho_sq;
+    cfloat z_prev1, z_prev2;
 
-  int samples_processed = 0;
+    // Kalman state
+    cfloat A_est, A_prev;
+    float p_cov;
+    float q, r;
 
-  float rho, rho_sq;
-  float q, r, alpha;
-  float a_prev, p_cov;
-
-  Eigen::Vector2f s_prev1, s_prev2;
-  Eigen::Vector2f q_prev1, q_prev2;
-
-  Eigen::Vector2f plane_dir, plane_perp;
+    // Frequency tracking
+    float omega;   // rad/s
+    float theta;   // accumulated phase
 };
+
 
 #ifdef KALMAN_2D_BANDPASS_TEST
 
