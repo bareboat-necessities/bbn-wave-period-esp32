@@ -16,11 +16,11 @@ public:
         reset();
     }
 
-    void reset() {
+    void reset(float deltaT) {
         xEst << 0.0f, 0.0f;
         pEst << 1.0f, 0.0f,
                 0.0f, 1.0f;
-        updateProcessModel();
+        updateProcessModel(deltaT);
         confidence = 0.0f;
         phase = 0.0f;
     }
