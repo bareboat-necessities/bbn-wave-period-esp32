@@ -83,10 +83,10 @@ public:
     }
 
     // Apply second-order resonator (in-phase component)
-    Eigen::Vector2f s = (y + rho * a_prev * s_prev1 - rho_sq * s_prev2) * (1.0f - rho_sq);
+    Eigen::Vector2f s = (y + rho * a_prev * s_prev1 - rho_sq * s_prev2);
     
     // Apply second-order resonator (quadrature component)
-    Eigen::Vector2f q = (y + rho * a_prev * q_prev1 - rho_sq * q_prev2) * (1.0f - rho_sq);
+    Eigen::Vector2f q = (y + rho * a_prev * q_prev1 - rho_sq * q_prev2);
 
     // Predict covariance for Kalman gain
     p_cov = p_cov + this->q;
