@@ -67,7 +67,12 @@ public:
     Eigen::Vector2f getDirection() const {
         float norm = A_est.norm();
         if (norm > 1e-3f) {
-          lastStableDir = A_est / norm;
+          Eigen::Vector2f newDir = A_est / norm;
+          float dot = lastStableDir.dot(newDir);
+          if (dot < 0.0f) {
+            newDir = -newDir;
+          }
+          lastStableDir = (0.9f * lastStableDir + 0.1 * newDir).normalized();
         }
         return lastStableDir;
     }
