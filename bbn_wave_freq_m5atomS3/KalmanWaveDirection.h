@@ -130,7 +130,7 @@ void KalmanWaveDirection_test_signal(float t, float freq, float& ax, float& ay) 
   Eigen::Vector2f dir(1.0f, 1.5f);
   dir.normalize();
   float signal = amp * std::cos(phase);
-  ax = signal * dir.x() + 0.3f;
+  ax = signal * dir.x() + 0.03f;
   ay = signal * dir.y();
 }
 
