@@ -58,6 +58,11 @@ public:
         return (norm > 1e-6f) ? A_est / norm : Eigen::Vector2f(1.0f, 0.0f);
     }
 
+    float getDirectionDegrees() const {
+        float deg = std::atan2(A_est.y(), A_est.x()) * (180.0f / M_PI);
+        return std::fmod(std::fabs(deg), 180.0f);
+    }
+
     Eigen::Vector2f getFilteredSignal() const {
         return A_est * std::cos(phase);
     }
@@ -125,7 +130,7 @@ void KalmanBandpass_test_1() {
   filter.setProcessNoise(1e-6f);
 
   std::ofstream out("bandpass.csv");
-  out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence\n";
+  out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence,deg\n";
 
   for (int i = 0; i < num_steps; ++i) {
     float t = i * delta_t;
@@ -139,9 +144,10 @@ void KalmanBandpass_test_1() {
     float amplitude = filter.getAmplitude();
     float phase = filter.getPhase();
     float confidence = filter.getConfidence();
+    float deg = filter.getDirectionDegrees();
 
     out << t << "," << ax << "," << ay << "," << filtered_ax << "," << filtered_ay << ","
-        << frequency << "," << amplitude << "," << phase << "," << confidence << "\n";
+        << frequency << "," << amplitude << "," << phase << "," << confidence << "," << deg"\n";
   }
   out.close();
 }
