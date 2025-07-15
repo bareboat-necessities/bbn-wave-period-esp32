@@ -70,7 +70,7 @@ public:
           Eigen::Vector2f newDir = A_est / norm;
           if (lastStableDir.dot(newDir) < 0.0f) {
             newDir = -newDir;
-            float alpha = 0.2f;
+            float alpha = 0.025f;
             lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
           } else {
             lastStableDir = newDir;
