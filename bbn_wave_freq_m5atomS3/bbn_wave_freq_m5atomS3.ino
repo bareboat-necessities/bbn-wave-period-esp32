@@ -48,7 +48,7 @@
 
 bool useMahony = true;
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
-bool use_kalman_for_wave_dir = true;
+bool use_kalman_for_wave_dir = false;
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
 unsigned long got_samples = 0;
