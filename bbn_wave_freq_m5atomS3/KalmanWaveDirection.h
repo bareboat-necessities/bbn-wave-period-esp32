@@ -14,6 +14,7 @@
 #ifdef KALMAN_WAVE_DIRECTION_TEST
 #include <iostream>
 #include <fstream>
+#include <random>
 #endif
 
 class KalmanWaveDirection {
@@ -124,14 +125,17 @@ private:
 
 #ifdef KALMAN_WAVE_DIRECTION_TEST
 
-void KalmanWaveDirection_test_signal(float t, float freq, float& ax, float& ay) {
+void KalmanWaveDirection_test_signal(float t, float freq, float& ax, float& ay, 
+    std::normal_distribution<float>& noise, std::default_random_engine& generator) {
   float amp = 0.2f + 0.4f * std::sin(0.005f * t);  // Slowly varying amplitude
   float phase = 2.0f * PI * freq * t;
   Eigen::Vector2f dir(1.0f, 1.5f);
   dir.normalize();
   float signal = amp * std::cos(phase);
-  ax = signal * dir.x();
-  ay = signal * dir.y();
+  float w1 = noise(generator);
+  float w2 = noise(generator);
+  ax = signal * dir.x() + w1;
+  ay = signal * dir.y() + w2;
 }
 
 void KalmanWaveDirection_test_1() {
@@ -139,6 +143,12 @@ void KalmanWaveDirection_test_1() {
   const float freq = 0.5f;       // Base frequency (Hz)
   const int num_steps = 10000;
 
+  const double mean = 0.0f;     // m/s^2
+  const double stddev = 0.08f;  // m/s^2
+  std::default_random_engine generator;
+  generator.seed(239);  // seed the engine for deterministic test results
+  std::normal_distribution<float> dist(mean, stddev);
+  
   KalmanWaveDirection filter(freq, delta_t);
   filter.setMeasurementNoise(0.01f);
   filter.setProcessNoise(1e-6f);
@@ -149,7 +159,7 @@ void KalmanWaveDirection_test_1() {
   for (int i = 0; i < num_steps; ++i) {
     float t = i * delta_t;
     float ax, ay;
-    KalmanWaveDirection_test_signal(t, freq, ax, ay);
+    KalmanWaveDirection_test_signal(t, freq, ax, ay, dist, generator);
 
     filter.update(ax, ay, freq, delta_t);
     float filtered_ax = filter.getFilteredSignal().x();
