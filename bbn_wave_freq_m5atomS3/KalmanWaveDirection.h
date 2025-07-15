@@ -126,7 +126,7 @@ private:
     float phase;
     float confidence;
 
-    Eigen::Vector2f lastStableDir = Eigen::Vector2f(1.0f, 0.0f);
+    mutable Eigen::Vector2f lastStableDir = Eigen::Vector2f(1.0f, 0.0f);
 };
 
 #ifdef KALMAN_WAVE_DIRECTION_TEST
