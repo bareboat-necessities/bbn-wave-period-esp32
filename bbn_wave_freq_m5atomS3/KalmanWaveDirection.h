@@ -145,7 +145,7 @@ private:
 
 void KalmanWaveDirection_test_signal(float t, float freq, float& ax, float& ay, 
     std::normal_distribution<float>& noise, std::default_random_engine& generator) {
-  float amp = 0.2f + 0.4f * std::sin(0.005f * t);  // Slowly varying amplitude
+  float amp = 0.8f + 0.4f * std::sin(0.005f * t);  // Slowly varying amplitude
   float phase = 2.0f * PI * freq * t;
   Eigen::Vector2f dir(1.0f, 1.5f);
   dir.normalize();
