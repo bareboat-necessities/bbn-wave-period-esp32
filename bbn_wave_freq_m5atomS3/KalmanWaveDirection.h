@@ -41,6 +41,8 @@ public:
       
         float c = std::cos(phase);
         if (std::fabs(c) < 0.03f) {
+            P += Q;
+            confidence = 1.0f / (P.trace() + 1e-6f);
             return;
         }
         Eigen::Matrix2f H = c * Eigen::Matrix2f::Identity();
@@ -70,7 +72,7 @@ public:
           Eigen::Vector2f newDir = A_est / norm;
           if (lastStableDir.dot(newDir) < 0.0f) {
             newDir = -newDir;
-            float alpha = 0.025f;
+            float alpha = 0.05f;
             lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
           } else {
             lastStableDir = newDir;
