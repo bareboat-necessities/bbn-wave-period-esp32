@@ -73,7 +73,7 @@ public:
     }
 
     Eigen::Vector2f getFilteredSignal() const {
-        return A_est * std::cos(phase) + A_est.orthodonal() * std::sin(phase);
+        return A_est * std::cos(phase) + A_est.orthogonal() * std::sin(phase);
     }
 
     Eigen::Vector2f getOscillationAlongDirection() const {
