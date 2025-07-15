@@ -4,7 +4,7 @@
 /*
   Copyright 2025, Mikhail Grushinskiy
 
-  Kalman filter for estimating direction of an ocean wave.
+  Kalman filter for estimating direction of an ocean wave from IMU horizontal x, y accelerations.
 
  */
 
