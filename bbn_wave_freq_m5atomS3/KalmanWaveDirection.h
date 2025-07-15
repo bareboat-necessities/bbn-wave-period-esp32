@@ -40,7 +40,7 @@ public:
         updatePhase(deltaT);
       
         float c = std::cos(phase);
-        if (std::fabs(c) < 0.01f) {
+        if (std::fabs(c) < 0.005f) {
             P += Q;
             confidence = 1.0f / (P.trace() + 1e-6f);
             return;
@@ -68,7 +68,7 @@ public:
     // Estimated wave propagation direction (unit vector)
     Eigen::Vector2f getDirection() const {
         float norm = A_est.norm();
-        const float AMP_THRESHOLD = 0.04f;
+        const float AMP_THRESHOLD = 0.03f;
         const float CONFIDENCE_THRESHOLD = 20.0f;
         if (norm > AMP_THRESHOLD && confidence > CONFIDENCE_THRESHOLD) {
           Eigen::Vector2f newDir = A_est / norm;
