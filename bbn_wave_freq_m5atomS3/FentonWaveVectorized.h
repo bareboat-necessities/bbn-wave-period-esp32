@@ -130,11 +130,10 @@ struct WaveInitParams {
   float initial_x;
 };
 
-template <int N = 4>
+template <int N = 4, typename Real = float>
 class FentonWave {
   private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
-    using Real = float;
     using VectorF = Eigen::Matrix<Real, N + 1, 1>;
     using VectorN = Eigen::Matrix<Real, N, 1>;
     using MatrixNxP = Eigen::Matrix<Real, N, N + 1>;
