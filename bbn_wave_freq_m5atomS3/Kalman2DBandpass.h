@@ -60,7 +60,9 @@ public:
 
     float getDirectionDegrees() const {
         float deg = std::atan2(A_est.y(), A_est.x()) * (180.0f / M_PI);
-        return std::fmod(std::fabs(deg), 180.0f);
+        if (deg < 0.0f) deg += 180.0f;
+        if (deg >= 180.0f) deg -= 180.0f;
+        return deg;
     }
 
     Eigen::Vector2f getFilteredSignal() const {
