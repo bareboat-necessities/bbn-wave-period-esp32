@@ -48,6 +48,7 @@
 
 bool useMahony = true;
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
+bool use_kalman_for_wave_dir = true;
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
 unsigned long got_samples = 0;
@@ -240,16 +241,21 @@ void read_and_processIMU_data() {
     heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
     // Wave direction steps
-    float azimuth = azimuth_deg_180(accel_rotated.x, accel_rotated.y); 
-    if (wave_angle_deg != WRONG_ANGLE_MARKER) {
-      float accel_magnitude = AngleAverager::magnitude(accel_rotated.x, accel_rotated.y);
-      const float IGNORE_LOW_ACCEL =  0.04f;  // m/s^2
-      if (accel_magnitude > IGNORE_LOW_ACCEL / g_std) {  // ignore low magnitudes
-        wave_angle_estimate = angle_averager.average180(azimuth);
-        wave_angle_deg = wave_angle_estimate.angle;
-      }
+    if (use_kalman_for_wave_dir) {
+      wave_dir_kalman.update(accel_rotated.x, accel_rotated.y, freq_adj, delta_t);
+      wave_angle_deg = wave_dir_kalman.getDirectionDegrees();
     } else {
-      wave_angle_deg = azimuth;
+      float azimuth = azimuth_deg_180(accel_rotated.x, accel_rotated.y); 
+      if (wave_angle_deg != WRONG_ANGLE_MARKER) {
+        float accel_magnitude = AngleAverager::magnitude(accel_rotated.x, accel_rotated.y);
+        const float IGNORE_LOW_ACCEL =  0.04f;  // m/s^2
+        if (accel_magnitude > IGNORE_LOW_ACCEL / g_std) {  // ignore low magnitudes
+          wave_angle_estimate = angle_averager.average180(azimuth);
+          wave_angle_deg = wave_angle_estimate.angle;
+        }
+      } else {
+        wave_angle_deg = azimuth;
+      }
     }
     WaveDirection wave_dir = wave_dir_detector.update(accel_rotated.x * g_std, accel_rotated.y * g_std, a_noisy * g_std, delta_t);
 
