@@ -243,7 +243,9 @@ void read_and_processIMU_data() {
     // Wave direction steps
     if (use_kalman_for_wave_dir) {
       wave_dir_kalman.update(accel_rotated.x * g_std, accel_rotated.y * g_std, freq_adj, delta_t);
-      wave_angle_deg = wave_dir_kalman.getDirectionDegrees();
+      float wave_deg = wave_dir_kalman.getDirectionDegrees();
+      wave_angle_estimate = angle_averager.average180(wave_deg);
+      wave_angle_deg = wave_angle_estimate.angle;
     } else {
       float azimuth = azimuth_deg_180(accel_rotated.x, accel_rotated.y); 
       if (wave_angle_deg != WRONG_ANGLE_MARKER) {
