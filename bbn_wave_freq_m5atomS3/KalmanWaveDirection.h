@@ -40,7 +40,7 @@ public:
         updatePhase(deltaT);
       
         float c = std::cos(phase);
-        if (std:fabs(c) < 0.03f) {
+        if (std::fabs(c) < 0.03f) {
             return;
         }
         Eigen::Matrix2f H = c * Eigen::Matrix2f::Identity();
