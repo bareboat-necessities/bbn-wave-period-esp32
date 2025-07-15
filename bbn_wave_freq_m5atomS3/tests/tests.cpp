@@ -20,11 +20,11 @@
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
 #include "SchmittTriggerFrequencyDetector.h"
+#include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
 #include "TimeAwareSpikeFilter.h"
 #include "FentonWaveVectorized.h"
 #include "WaveSurfaceProfile.h"
-#include "KalmanWaveDirection.h"
 
 MinMaxLemire min_max_h;
 AranovskiyParams arParams;
