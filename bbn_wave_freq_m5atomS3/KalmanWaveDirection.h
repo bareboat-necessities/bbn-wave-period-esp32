@@ -141,7 +141,7 @@ void KalmanWaveDirection_test_1() {
     filter.setMeasurementNoise(0.01f);
     filter.setProcessNoise(1e-6f);
 
-    std::ofstream out("wave_dir_scalar.csv");
+    std::ofstream out("wave_dir.csv");
     out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence,deg\n";
 
     for (int i = 0; i < num_steps; ++i) {
