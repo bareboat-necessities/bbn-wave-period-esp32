@@ -60,7 +60,11 @@ public:
 
         // Update state
         A_est = A_pred + K * (z - H * A_pred);
-        P = (Eigen::Matrix2f::Identity() - K * H) * P_pred;
+    
+        // Joseph-form covariance update
+        Eigen::Matrix2f I = Eigen::Matrix2f::Identity();
+        Eigen::Matrix2f KH = K * H;
+        P = (I - KH) * P_pred * (I - KH).transpose() + K * R * K.transpose();
 
         confidence = 1.0f / (P.trace() + 1e-6f);
     }
