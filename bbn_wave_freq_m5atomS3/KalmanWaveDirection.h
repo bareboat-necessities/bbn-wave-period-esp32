@@ -63,11 +63,15 @@ public:
     // Estimated wave propagation direction (unit vector)
     Eigen::Vector2f getDirection() const {
         float norm = A_est.norm();
-        return (norm > 1e-6f) ? A_est / norm : Eigen::Vector2f(1.0f, 0.0f);
+        if (norm > 1e-4f) {
+          lastStableDir = A_est / norm;
+        }
+        return lastStableDir;
     }
 
     float getDirectionDegrees() const {
-        float deg = std::atan2(A_est.y(), A_est.x()) * (180.0f / M_PI);
+        Eigen::Vector2f dir = getDirection();
+        float deg = std::atan2(dir.y(), dir.x()) * (180.0f / M_PI);
         if (deg < 0.0f) deg += 180.0f;
         if (deg >= 180.0f) deg -= 180.0f;
         return deg;
@@ -121,6 +125,8 @@ private:
     float omega;
     float phase;
     float confidence;
+
+    Eigen::Vector2f lastStableDir = Eigen::Vector2f(1.0f, 0.0f);
 };
 
 #ifdef KALMAN_WAVE_DIRECTION_TEST
