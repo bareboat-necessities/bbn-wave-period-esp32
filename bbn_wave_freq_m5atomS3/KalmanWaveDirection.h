@@ -68,7 +68,7 @@ public:
     // Estimated wave propagation direction (unit vector)
     Eigen::Vector2f getDirection() const {
         float norm = A_est.norm();
-        if (norm > 1e-3f && confidence > 10.0f) {
+        if (norm > 1e-2f && confidence > 10.0f) {
           Eigen::Vector2f newDir = A_est / norm;
           if (lastStableDir.dot(newDir) < 0.0f) {
             newDir = -newDir;
