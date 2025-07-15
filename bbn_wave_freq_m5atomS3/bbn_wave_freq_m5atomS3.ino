@@ -40,9 +40,9 @@
 #include "KalmanWaveNumStableAlt.h"
 #include "TimeAwareSpikeFilter.h"
 #include "NmeaXDR.h"
+#include "KalmanWaveDirection.h"
 #include "KalmanQMEKF.h"
 #include "WaveFilters.h"
-#include "KalmanWaveDirection.h"
 #include "WaveDirectionDetector.h"
 #include "M5_Calibr.h"
 
