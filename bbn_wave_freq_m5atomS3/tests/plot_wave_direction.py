@@ -13,6 +13,7 @@ freq = df["frequency"]
 amp = df["amplitude"]
 phase = df["phase"]
 conf = df["confidence"]
+deg = df["deg"]
 
 # Plot raw and filtered signals
 plt.figure(figsize=(12, 8))
@@ -27,14 +28,9 @@ plt.title("Raw vs Filtered Signals")
 plt.ylabel("Acceleration")
 
 plt.subplot(4, 1, 2)
-plt.plot(t, amp)
-plt.title("Estimated Amplitude")
-plt.ylabel("Amplitude")
-
-#plt.subplot(4, 1, 3)
-#plt.plot(t, freq)
-#plt.title("Estimated Frequency (Hz)")
-#plt.ylabel("Hz")
+plt.plot(t, deg)
+plt.title("Estimated Angle")
+plt.ylabel("Angle")
 
 plt.subplot(4, 1, 3)
 plt.scatter(ax, ay)
