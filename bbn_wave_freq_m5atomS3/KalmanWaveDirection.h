@@ -68,15 +68,15 @@ public:
     // Estimated wave propagation direction (unit vector)
     Eigen::Vector2f getDirection() const {
         float norm = A_est.norm();
-        if (norm > 1e-2f && confidence > 10.0f) {
+        const float AMP_THRESHOLD = 2e-2f;
+        const float CONFIDENCE_THRESHOLD = 20.0f;
+        if (norm > AMP_THRESHOLD && confidence > CONFIDENCE_THRESHOLD) {
           Eigen::Vector2f newDir = A_est / norm;
           if (lastStableDir.dot(newDir) < 0.0f) {
             newDir = -newDir;
-            float alpha = 0.05f;
-            lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
-          } else {
-            lastStableDir = newDir;
-          }
+          } 
+          float alpha = 0.2f;
+          lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
         }
         return lastStableDir;
     }
