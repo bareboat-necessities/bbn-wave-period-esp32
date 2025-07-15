@@ -75,7 +75,7 @@ public:
           if (lastStableDir.dot(newDir) < 0.0f) {
             newDir = -newDir;
           } 
-          float alpha = 0.05f;
+          float alpha = 0.2f;
           lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
         }
         return lastStableDir;
