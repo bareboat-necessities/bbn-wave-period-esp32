@@ -50,7 +50,7 @@ public:
         Eigen::Vector2f dir = (A_pred.norm() > 1e-6f) ? A_pred.normalized() : Eigen::Vector2f(1.0f, 0.0f);
 
         float h = c;
-        float S = h * (dir.transpose() * P_pred * dir) * h + R;
+        float S = h * (dir.transpose() * P_pred * dir).value() * h + R;
         Eigen::Vector2f K = (P_pred * dir) * h / S;
 
         float predicted_z = h * A_pred.dot(dir);
