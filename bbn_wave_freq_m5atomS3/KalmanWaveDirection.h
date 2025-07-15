@@ -72,7 +72,7 @@ public:
           if (dot < 0.0f) {
             newDir = -newDir;
           }
-          lastStableDir = (0.9f * lastStableDir + 0.1 * newDir).normalized();
+          lastStableDir = (0.95f * lastStableDir + 0.05 * newDir).normalized();
         }
         return lastStableDir;
     }
