@@ -89,10 +89,9 @@ T cosh_by_cosh(T a, T b) {
  * 
  * Reference: Fenton (1988) "The Numerical Solution of Steady Water Wave Problems"
  */
-template <int N>
+template <int N, typename Real = float>
 class FentonFFT {
   public:
-    using Real   = float;
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
     using Matrix = Eigen::Matrix<Real, N + 1, N + 1>;
 
