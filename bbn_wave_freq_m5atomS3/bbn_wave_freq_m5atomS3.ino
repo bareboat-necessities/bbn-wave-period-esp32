@@ -42,6 +42,7 @@
 #include "NmeaXDR.h"
 #include "KalmanQMEKF.h"
 #include "WaveFilters.h"
+#include "KalmanWaveDirection.h"
 #include "WaveDirectionDetector.h"
 #include "M5_Calibr.h"
 
