@@ -39,9 +39,13 @@ public:
         // Advance phase
         updatePhase(deltaT);
 
-        float c = std::cos(phase);
-        Eigen::Matrix2f H = c * Eigen::Matrix2f::Identity();
+        //float c = std::cos(phase);
+        //Eigen::Matrix2f H = c * Eigen::Matrix2f::Identity();
 
+        Eigen::Matrix2f H;
+        H << std::cos(phase), -std::sin(phase), 
+             std::sin(phase), std::cos(phase);
+          
         // Predict
         Eigen::Vector2f A_pred = A_est;
         Eigen::Matrix2f P_pred = P + Q;
