@@ -70,6 +70,13 @@ public:
         float norm = A_est.norm();
         if (norm > 1e-3f && confidence > 10.0f) {
           Eigen::Vector2f newDir = A_est / norm;
+
+          float ang_old = std::atan2(lastStableDir.y(), lastStableDir.x());
+          float ang_new = std::atan2(newDir.y(), newDir.x());
+          if (std::fabs(ang_old - ang_new) > M_PI / 4.0f) {
+            return lastStableDir;  
+          }
+          
           if (lastStableDir.dot(newDir) < 0.0f) {
             newDir = -newDir;
             float alpha = 0.05f;
