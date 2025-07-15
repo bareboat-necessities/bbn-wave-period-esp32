@@ -4,9 +4,9 @@
 /*
   Copyright 2025, Mikhail Grushinskiy
 
-  Kalman filter for estimating direction of an ocean wave from IMU horizontal x, y accelerations.
-
- */
+  Kalman filter estimating wave direction and amplitude vector from horizontal IMU acceleration.
+  Scalar measurement model: a(t) = cos(ϕ) * (A · dir)
+*/
 
 #include <ArduinoEigenDense.h>
 #include <cmath>
@@ -26,7 +26,7 @@ public:
     void reset(float deltaT) {
         A_est.setZero();
         P = Eigen::Matrix2f::Identity() * 1.0f;
-        updatePhase(deltaT);
+        advancePhase(deltaT);
         confidence = 0.0f;
     }
 
@@ -36,30 +36,34 @@ public:
         }
 
         // Advance phase
-        updatePhase(deltaT);
+        advancePhase(deltaT);
 
         float c = std::cos(phase);
-        Eigen::Matrix2f H = c * Eigen::Matrix2f::Identity();
+        Eigen::Vector2f z_vec(ax, ay);
 
         // Predict
         Eigen::Vector2f A_pred = A_est;
         Eigen::Matrix2f P_pred = P + Q;
 
-        // Kalman gain
-        Eigen::Matrix2f S = H * P_pred * H.transpose() + R;
-        Eigen::Matrix2f K = P_pred * H.transpose() * S.ldlt().solve(Eigen::Matrix2f::Identity());
+        // Measurement model: scalar projection
+        float z = c * z_vec.dot(A_pred.normalized());
+        Eigen::Vector2f dir = (A_pred.norm() > 1e-6f) ? A_pred.normalized() : Eigen::Vector2f(1.0f, 0.0f);
 
-        // Measurement
-        Eigen::Vector2f z(ax, ay);
+        float h = c;
+        float S = h * (dir.transpose() * P_pred * dir) * h + R;
+        Eigen::Vector2f K = (P_pred * dir) * h / S;
 
-        // Update state
-        A_est = A_pred + K * (z - H * A_pred);
-        P = (Eigen::Matrix2f::Identity() - K * H) * P_pred;
+        float predicted_z = h * A_pred.dot(dir);
+        float residual = z - predicted_z;
+
+        // Update
+        A_est = A_pred + K * residual;
+        P = (Eigen::Matrix2f::Identity() - K * h * dir.transpose()) * P_pred;
 
         confidence = 1.0f / (P.trace() + 1e-6f);
     }
 
-    // Estimated wave propagation direction (unit vector)
+    // Estimated direction (unit vector)
     Eigen::Vector2f getDirection() const {
         float norm = A_est.norm();
         return (norm > 1e-6f) ? A_est / norm : Eigen::Vector2f(1.0f, 0.0f);
@@ -72,11 +76,10 @@ public:
         return deg;
     }
 
-    Eigen::Vector2f getFilteredSignal() const {
+    Eigen::Vector2f getReconstructedSignal() const {
         return A_est * std::cos(phase);
     }
 
-    // Full amplitude vector A * dir
     Eigen::Vector2f getAmplitudeVector() const {
         return A_est;
     }
@@ -98,20 +101,19 @@ public:
     }
 
     void setMeasurementNoise(float r) {
-        R = Eigen::Matrix2f::Identity() * r;
+        R = r;
     }
 
 private:
-    void updatePhase(float deltaT) {
+    void advancePhase(float deltaT) {
         phase = std::fmod(phase + omega * deltaT, 2.0f * M_PI);
         if (phase < 0.0f) phase += 2.0f * M_PI;
     }
 
-    // State
     Eigen::Vector2f A_est = Eigen::Vector2f::Zero();
     Eigen::Matrix2f P = Eigen::Matrix2f::Identity();
     Eigen::Matrix2f Q = Eigen::Matrix2f::Identity() * 1e-6f;
-    Eigen::Matrix2f R = Eigen::Matrix2f::Identity() * 0.01f;
+    float R = 0.01f;
 
     float omega;
     float phase;
@@ -121,45 +123,41 @@ private:
 #ifdef KALMAN_WAVE_DIRECTION_TEST
 
 void KalmanWaveDirection_test_signal(float t, float freq, float& ax, float& ay) {
-  float amp = 0.2f + 0.4f * std::sin(0.005f * t);  // Slowly varying amplitude
-  float phase = 2.0f * PI * freq * t;
-  Eigen::Vector2f dir(1.0f, 1.5f);
-  dir.normalize();
-  float signal = amp * std::cos(phase);
-  ax = signal * dir.x() + 0.3f;
-  ay = signal * dir.y();
+    float amp = 0.2f + 0.4f * std::sin(0.005f * t);  // Slowly varying amplitude
+    float phase = 2.0f * M_PI * freq * t;
+    Eigen::Vector2f dir(1.0f, 1.5f);
+    dir.normalize();
+    float signal = amp * std::cos(phase);
+    ax = signal * dir.x() + 0.3f;
+    ay = signal * dir.y();
 }
 
 void KalmanWaveDirection_test_1() {
-  const float delta_t = 0.005f;  // 200 Hz sample rate
-  const float freq = 0.5f;       // Base frequency (Hz)
-  const int num_steps = 10000;
+    const float delta_t = 0.005f;
+    const float freq = 0.5f;
+    const int num_steps = 10000;
 
-  KalmanWaveDirection filter(freq, delta_t);
-  filter.setMeasurementNoise(0.01f);
-  filter.setProcessNoise(1e-6f);
+    KalmanWaveDirection filter(freq, delta_t);
+    filter.setMeasurementNoise(0.01f);
+    filter.setProcessNoise(1e-6f);
 
-  std::ofstream out("wave_dir.csv");
-  out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence,deg\n";
+    std::ofstream out("wave_dir_scalar.csv");
+    out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence,deg\n";
 
-  for (int i = 0; i < num_steps; ++i) {
-    float t = i * delta_t;
-    float ax, ay;
-    KalmanWaveDirection_test_signal(t, freq, ax, ay);
+    for (int i = 0; i < num_steps; ++i) {
+        float t = i * delta_t;
+        float ax, ay;
+        KalmanWaveDirection_test_signal(t, freq, ax, ay);
 
-    filter.update(ax, ay, freq, delta_t);
-    float filtered_ax = filter.getFilteredSignal().x();
-    float filtered_ay = filter.getFilteredSignal().y();
-    float frequency = freq;
-    float amplitude = filter.getAmplitude();
-    float phase = filter.getPhase();
-    float confidence = filter.getConfidence();
-    float deg = filter.getDirectionDegrees();
+        filter.update(ax, ay, freq, delta_t);
 
-    out << t << "," << ax << "," << ay << "," << filtered_ax << "," << filtered_ay << ","
-        << frequency << "," << amplitude << "," << phase << "," << confidence << "," << deg << "\n";
-  }
-  out.close();
+        Eigen::Vector2f filtered = filter.getReconstructedSignal();
+        out << t << "," << ax << "," << ay << "," << filtered.x() << "," << filtered.y() << ","
+            << freq << "," << filter.getAmplitude() << "," << filter.getPhase() << ","
+            << filter.getConfidence() << "," << filter.getDirectionDegrees() << "\n";
+    }
+
+    out.close();
 }
 
 #endif
