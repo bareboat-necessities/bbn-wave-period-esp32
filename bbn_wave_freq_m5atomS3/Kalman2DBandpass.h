@@ -147,7 +147,7 @@ void KalmanBandpass_test_1() {
     float deg = filter.getDirectionDegrees();
 
     out << t << "," << ax << "," << ay << "," << filtered_ax << "," << filtered_ay << ","
-        << frequency << "," << amplitude << "," << phase << "," << confidence << "," << deg"\n";
+        << frequency << "," << amplitude << "," << phase << "," << confidence << "," << deg << "\n";
   }
   out.close();
 }
