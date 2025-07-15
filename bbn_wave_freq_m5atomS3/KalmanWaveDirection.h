@@ -1,6 +1,13 @@
 #ifndef KALMAN_WAVE_DIRECTION_H
 #define KALMAN_WAVE_DIRECTION_H
 
+/*
+  Copyright 2025, Mikhail Grushinskiy
+
+  Kalman filter for estimating direction of an ocean wave.
+
+ */
+
 #include <ArduinoEigenDense.h>
 #include <cmath>
 
