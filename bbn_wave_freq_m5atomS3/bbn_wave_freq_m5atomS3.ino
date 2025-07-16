@@ -185,7 +185,7 @@ void read_and_processIMU_data() {
     float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
     waveState.displacement_integral = 0.0f;
     waveState.heave = a * g_std / k_hat;
-    waveState.vert_speed = 0.0f;               // waveState.vert_speed = 2.0f * M_PI * FREQ_GUESS * waveState.heave * cos(known_phase);
+    waveState.vert_speed = 0.0f;               // waveState.vert_speed = 2.0f * M_PI * FREQ_GUESS * waveState.heave * cosf(known_phase) / sinf(known_phase);
     waveState.accel_bias = 0.0f;
     wave_filter.initState(waveState);
   }
