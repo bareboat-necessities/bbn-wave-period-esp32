@@ -37,6 +37,9 @@ class SchmittTriggerFrequencyDetector {
     // Get latest computed frequency (Hz)
     float getFrequency() const;
 
+    // Get phase of sine wave in rad
+    float getPhaseEstimate() const;
+
     // Get quality metrics for the current frequency estimate
     QualityMetrics getQualityMetrics() const;
 
@@ -274,7 +277,7 @@ float SchmittTriggerFrequencyDetector::getPhaseEstimate() const {
     }
 
     if (phase < 0.0f) phase += 2.0f * M_PI;
-    return phase;
+    return phase;  // phase of a sine wave
 }
 
 SchmittTriggerFrequencyDetector::QualityMetrics SchmittTriggerFrequencyDetector::getQualityMetrics() const {
