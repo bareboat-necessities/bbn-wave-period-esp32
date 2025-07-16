@@ -282,7 +282,7 @@ class FentonWave {
     // Returns mean Stokes drift on the surface
     Real mean_stokes_drift(int samples = 100) const {
       Real dx = length / samples;
-      Real total = Rean(0);
+      Real total = Real(0);
       for (int i = 0; i <= samples; ++i) {
         Real x_val = i * dx;
         Real eta_val = surface_elevation(x_val);
