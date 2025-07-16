@@ -320,11 +320,11 @@ class FentonWave {
 
     // Computes wavelength from ω, depth, gravity via dispersion relation
     static Real compute_wavelength(Real omega, Real depth, Real g = Real(9.81), Real tol = Real(1e-10), int max_iter = 50) {
-      float k = omega * omega / g; // Initial guess (deep water)
+      Real k = omega * omega / g; // Initial guess (deep water)
       for (int i = 0; i < max_iter; ++i) {
-        float f = g * k * std::tanh(k * depth) - omega * omega;
-        float df = g * std::tanh(k * depth) + g * k * depth * (Real(1) - std::pow(std::tanh(k * depth), 2));
-        float k_next = k - f / df;
+        Real f = g * k * std::tanh(k * depth) - omega * omega;
+        Real df = g * std::tanh(k * depth) + g * k * depth * (Real(1) - std::pow(std::tanh(k * depth), 2));
+        Real k_next = k - f / df;
         if (std::abs(k_next - k) < tol) break;
         k = k_next;
       }
@@ -338,9 +338,9 @@ class FentonWave {
       if (amplitude <= 0 || depth <= 0 || omega <= 0)
         throw std::invalid_argument("Amplitude, depth, and omega must be positive");
 
-      float height = Real(2) * amplitude;  // wave height = crest-to-trough
-      float length = compute_wavelength(omega, depth, g);
-      float initial_x = std::fmod(phase_radians / (Real(2) * Real(M_PI)) * length, length);
+      Real height = Real(2) * amplitude;  // wave height = crest-to-trough
+      Real length = compute_wavelength(omega, depth, g);
+      Real initial_x = std::fmod(phase_radians / (Real(2) * Real(M_PI)) * length, length);
       if (initial_x < Real(0)) initial_x += length; // wrap to [0, length)
 
       return { height, depth, length, initial_x };
