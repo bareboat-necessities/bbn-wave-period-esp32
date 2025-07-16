@@ -77,6 +77,7 @@ typedef struct aranovskiy_state {
   double sigma_dot;
   double omega;             // frequency * 2 * pi
   double f;                 // frequency
+  double phase = 0.0;       // estimated phase in radians
 } AranovskiyState;
 
 void aranovskiy_default_params(AranovskiyParams* p, double omega_up, double k_gain);
@@ -107,6 +108,7 @@ void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double
   // step
   s->x1 = s->x1 + s->x1_dot * delta_t;
   s->sigma = s->sigma + s->sigma_dot * delta_t;
+  s->phase = atan2(s->x1, y);
 }
 
 #endif
