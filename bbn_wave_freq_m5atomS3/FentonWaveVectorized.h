@@ -108,13 +108,13 @@ class FentonFFT {
     static const Vector& weights() {
       static Vector w = []() {
         Vector v = Vector::Ones();
-        v(0) = v(N) = 0.5f;
+        v(0) = v(N) = Real(0.5);
         return v;
       }(); return w;
     }
 
     static Vector compute_inverse_cosine_transform(const Vector& eta) {
-      return (2.0f / N) * (cosine_matrix() * (eta.array() * weights().array()).matrix());
+      return (Real(2) / N) * (cosine_matrix() * (eta.array() * weights().array()).matrix());
     }
 
     static Vector compute_forward_cosine_transform(const Vector& E) {
@@ -148,7 +148,7 @@ class FentonWave {
     VectorF eta, x, E, B;
     VectorN kj_cache, j_cache;
 
-    FentonWave(Real height, Real depth, Real length, Real g = 9.81f, Real relax = 0.5f)
+    FentonWave(Real height, Real depth, Real length, Real g = Real(9.81), Real relax = Real(0.5))
       : height(height), depth(depth), length(length), g(g), relax(relax) {
       for (int j = 1; j <= N; ++j) {
         kj_cache(j - 1) = j * (2 * M_PI / length);
@@ -219,12 +219,12 @@ class FentonWave {
     }
 
     // Returns dynamic pressure at (x, z, t) for fluid density rho (default: seawater)
-    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = 1025.0f) const {
+    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = Real(1025.0)) const {
       const Real u = horizontal_velocity(x_val, z_val, t);
       const Real w = vertical_velocity(x_val, z_val, t);
       const Real eta = surface_elevation(x_val, t);
 
-      const Real kinetic_energy = 0.5f * (u * u + w * w);
+      const Real kinetic_energy = Real(0.5) * (u * u + w * w);
       const Real potential_energy = g * (z_val - eta);
       const Real flow_work = c * u;
 
@@ -238,7 +238,7 @@ class FentonWave {
         [&](Real x, Real z) {
           Real u = horizontal_velocity(x, z);
           Real w = vertical_velocity  (x, z);
-          return 0.5f * (u*u + w*w);
+          return Real(0.5) * (u*u + w*w);
         },
         samples,      // x-samples
         10            // z-samples (you can also expose as parameter)
@@ -253,7 +253,7 @@ class FentonWave {
         Real x_val = i * dx;
         Real z = surface_elevation(x_val);           // η(x)
         Real PE = g * z;                             // Potential Energy
-        PE_total += (i == 0 || i == samples) ? 0.5f * PE : PE;
+        PE_total += (i == 0 || i == samples) ? Real(0.5) * PE : PE;
       }
       return dx * PE_total;
     }
@@ -282,7 +282,7 @@ class FentonWave {
     // Returns mean Stokes drift on the surface
     Real mean_stokes_drift(int samples = 100) const {
       Real dx = length / samples;
-      Real total = 0.0f;
+      Real total = Rean(0);
       for (int i = 0; i <= samples; ++i) {
         Real x_val = i * dx;
         Real eta_val = surface_elevation(x_val);
@@ -313,13 +313,13 @@ class FentonWave {
 
     // Returns radiation stress component Sxx = ρ⟨u²⟩
     Real radiation_stress_xx(int samples = 100) const {
-      Real rho = 1025.0f;
+      Real rho = Real(1025.0);
       Real flux = momentum_flux(samples);
       return rho * flux;
     }
 
     // Computes wavelength from ω, depth, gravity via dispersion relation
-    static Real compute_wavelength(Real omega, Real depth, Real g = 9.81f, Real tol = 1e-10f, int max_iter = 50) {
+    static Real compute_wavelength(Real omega, Real depth, Real g = Real(9.81), Real tol = Real(1e-10), int max_iter = 50) {
       float k = omega * omega / g; // Initial guess (deep water)
       for (int i = 0; i < max_iter; ++i) {
         float f = g * k * std::tanh(k * depth) - omega * omega;
@@ -328,17 +328,17 @@ class FentonWave {
         if (std::abs(k_next - k) < tol) break;
         k = k_next;
       }
-      return 2.0f * M_PI / k;
+      return Real(2) * M_PI / k;
     }
 
     // Infers Fenton wave parameters from amplitude, depth, frequency, and phase
     static WaveInitParams infer_fenton_parameters_from_amplitude(
-      Real amplitude, Real depth, Real omega, Real phase_radians, Real g = 9.81f) {
+      Real amplitude, Real depth, Real omega, Real phase_radians, Real g = Real(9.81)) {
   
       if (amplitude <= 0 || depth <= 0 || omega <= 0)
         throw std::invalid_argument("Amplitude, depth, and omega must be positive");
 
-      float height = 2.0f * amplitude;  // wave height = crest-to-trough
+      float height = Real(2) * amplitude;  // wave height = crest-to-trough
       float length = compute_wavelength(omega, depth, g);
       float initial_x = std::fmod(phase_radians / (2.0f * M_PI) * length, length);
       if (initial_x < 0.0f) initial_x += length; // wrap to [0, length)
@@ -383,21 +383,21 @@ class FentonWave {
 
   private:
     void compute() {
-      if (depth < 0) depth = 25.0f * length;
+      if (depth < 0) depth = Real(25.0) * length;
       Real H = height / depth;
       Real lam = length / depth;
       k = 2 * M_PI / lam;
       Real D = 1.0f;
       Real c0 = std::sqrt(std::tanh(k) / k);
 
-      VectorF x_nd = VectorF::LinSpaced(N + 1, 0, lam / 2.0f);
+      VectorF x_nd = VectorF::LinSpaced(N + 1, 0, lam / Real(2));
       B.setZero();
       B(0) = c0;
       B(1) = -H / (4.0f * c0 * k);
 
-      VectorF eta_nd = (VectorF::Ones().array() + (H / 2.0f) * (k * x_nd.array()).cos()).eval();
+      VectorF eta_nd = (VectorF::Ones().array() + (H / Real(2)) * (k * x_nd.array()).cos()).eval();
       Q = c0;
-      R = 1.0f + 0.5f * c0 * c0;
+      R = Real(1) + Real(0.5) * c0 * c0;
 
       for (Real Hi : wave_height_steps(H, D, lam)) {
         optimize(B, Q, R, eta_nd, Hi, k, D);
@@ -412,7 +412,7 @@ class FentonWave {
       R *= gd;      
 
       x = x_nd * depth;
-      eta = (eta_nd.array() - 1.0f) * depth;
+      eta = (eta_nd.array() - Real(1)) * depth;
       k /= depth;
       c = B(0);
       T = length / c;
@@ -575,7 +575,7 @@ class FentonWave {
           J(m, j + 1) = SC(j);
         }
         J(m, N + 1 + m) = -B0 + (Bj * kj * CC).sum();
-        J(m, 2 * N + 2) = 1.0f;
+        J(m, 2 * N + 2) = Real(1);
 
         // Next N+1 rows
         J(N + 1 + m, 0) = -um;
@@ -586,7 +586,7 @@ class FentonWave {
         const Real d_eta_m = 1.0f + (um * (Bj * kj2 * SC).matrix()).sum() + (vm * (Bj * kj2 * CS).matrix()).sum();
 
         J(N + 1 + m, N + 1 + m) = d_eta_m;
-        J(N + 1 + m, 2 * N + 3) = -1.0f;
+        J(N + 1 + m, 2 * N + 3) = Real(-1);
       }
 
       // Mean elevation constraint (row 2N+2)
@@ -606,8 +606,8 @@ class FentonWave {
           min_idx = j;
         }
       }
-      J(2 * N + 3, N + 1 + max_idx) = 1.0f;
-      J(2 * N + 3, N + 1 + min_idx) = -1.0f;
+      J(2 * N + 3, N + 1 + max_idx) = Real(1);
+      J(2 * N + 3, N + 1 + min_idx) = Real-(1);
       return J;
     }
 
@@ -626,17 +626,17 @@ class FentonWave {
       }
 
       // 2) Precompute z‐weights (0.5 at ends, 1.0 interior)
-      std::vector<Real> wz(Nz, 1.0f);
-      wz[0] = wz[Nz-1] = 0.5f;
+      std::vector<Real> wz(Nz, Real(1));
+      wz[0] = wz[Nz-1] = Real(0.5);
 
-      Real total = 0.0f;
+      Real total = Real(0);
       for (int i = 0; i < Nx; ++i) {
         Real x_i = x_vals[i];
         Real eta  = eta_vals[i];
         Real dz   = (eta + depth) / z_samples;
 
         // integrate in z at this x
-        Real sum_z = 0.0f;
+        Real sum_z = Real(0);
         for (int zi = 0; zi < Nz; ++zi) {
           Real z = -depth + zi * dz;
           sum_z   += f(x_i, z) * wz[zi];
@@ -644,7 +644,7 @@ class FentonWave {
         sum_z *= dz;
 
         // trapezoid weight in x
-        Real wx = (i==0 || i==Nx-1) ? 0.5f : 1.0f;
+        Real wx = (i==0 || i==Nx-1) ? Real(0.5) : Real(1);
         total += sum_z * wx;
       }
 
