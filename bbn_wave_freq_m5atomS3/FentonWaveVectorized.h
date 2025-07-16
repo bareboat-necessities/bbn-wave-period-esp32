@@ -691,62 +691,62 @@ class FentonWave {
  * - Perfect vertical surface following
  * - Linear drag model
  */
-template<int N = 4>
+template<int N = 4, typename Real = float>
 class WaveSurfaceTracker {
   private:
     FentonWave<N> wave;
 
-    float t = 0.0f;
-    float dt = 0.005f;
+    Real t = 0.0f;
+    Real dt = 0.005f;
 
     // Object state
-    float x = 0.0f;     // Horizontal position (m)
-    float vx = 0.0f;    // Horizontal velocity (m/s)
+    Real x = 0.0f;     // Horizontal position (m)
+    Real vx = 0.0f;    // Horizontal velocity (m/s)
 
-    float mass = 1.0f;  // Mass of floating object (kg)
+    Real mass = 1.0f;  // Mass of floating object (kg)
 
     // Wave and physics parameters
-    float drag_coeff = 0.1f;  // Simple horizontal drag coefficient
+    Real drag_coeff = 0.1f;  // Simple horizontal drag coefficient
 
     // Periodicity wrap helper
-    float wrap_periodic(float val, float period) const {
+    Real wrap_periodic(Real val, Real period) const {
       val = std::fmod(val, period);
       if (val < 0.0f) val += period;
       return val;
     }
 
     // Horizontal acceleration from wave slope and drag
-    float compute_horizontal_acceleration(float x_pos, float vx_curr, float time) const {
+    Real compute_horizontal_acceleration(Real x_pos, Real vx_curr, Real time) const {
       // Wave surface slope (∂η/∂x)
-      float eta_x = wave.surface_slope(x_pos, time);
+      Real eta_x = wave.surface_slope(x_pos, time);
 
       // Simple driving force proportional to slope (restoring force)
-      float force_wave = -9.81f * eta_x;  // gravity times slope (can be tuned)
+      Real force_wave = -9.81f * eta_x;  // gravity times slope (can be tuned)
 
       // Simple linear drag opposing velocity
-      float force_drag = -drag_coeff * vx_curr;
+      Real force_drag = -drag_coeff * vx_curr;
 
       // Newton's second law
       return (force_wave + force_drag) / mass;
     }
 
     // RK4 integration for horizontal motion
-    void rk4_step(float& x_curr, float& vx_curr, float t_curr, float dt_step) {
-      auto accel = [&](float x_in, float vx_in, float t_in) {
+    void rk4_step(Real& x_curr, Real& vx_curr, Real t_curr, Real dt_step) {
+      auto accel = [&](Real x_in, Real vx_in, Real t_in) {
         return compute_horizontal_acceleration(x_in, vx_in, t_in);
       };
 
-      float k1_v = accel(x_curr, vx_curr, t_curr);
-      float k1_x = vx_curr;
+      Real k1_v = accel(x_curr, vx_curr, t_curr);
+      Real k1_x = vx_curr;
 
-      float k2_v = accel(x_curr + 0.5f * dt_step * k1_x, vx_curr + 0.5f * dt_step * k1_v, t_curr + 0.5f * dt_step);
-      float k2_x = k1_x + 0.5f * dt_step * k1_v;
+      Real k2_v = accel(x_curr + 0.5f * dt_step * k1_x, vx_curr + 0.5f * dt_step * k1_v, t_curr + 0.5f * dt_step);
+      Real k2_x = k1_x + 0.5f * dt_step * k1_v;
 
-      float k3_v = accel(x_curr + 0.5f * dt_step * k2_x, vx_curr + 0.5f * dt_step * k2_v, t_curr + 0.5f * dt_step);
-      float k3_x = k1_x + 0.5f * dt_step * k2_v;
+      Real k3_v = accel(x_curr + 0.5f * dt_step * k2_x, vx_curr + 0.5f * dt_step * k2_v, t_curr + 0.5f * dt_step);
+      Real k3_x = k1_x + 0.5f * dt_step * k2_v;
 
-      float k4_v = accel(x_curr + dt_step * k3_x, vx_curr + dt_step * k3_v, t_curr + dt_step);
-      float k4_x = k1_x + dt_step * k3_v;
+      Real k4_v = accel(x_curr + dt_step * k3_x, vx_curr + dt_step * k3_v, t_curr + dt_step);
+      Real k4_x = k1_x + dt_step * k3_v;
 
       x_curr += dt_step * (k1_x + 2 * k2_x + 2 * k3_x + k4_x) / 6.0f;
       vx_curr += dt_step * (k1_v + 2 * k2_v + 2 * k3_v + k4_v) / 6.0f;
@@ -755,7 +755,7 @@ class WaveSurfaceTracker {
     }
 
   public:
-    WaveSurfaceTracker(float height, float depth, float length, float x0, float mass_kg, float drag_coeff_)
+    WaveSurfaceTracker(Real height, Real depth, Real length, Real x0, Real mass_kg, Real drag_coeff_)
       : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_)
     {
       x = x0;
@@ -763,29 +763,29 @@ class WaveSurfaceTracker {
     }
 
     void track_floating_object(
-      float duration,
-      float timestep,
-      std::function<void(float, float, float, float, float, float, float)> callback)
+      Real duration,
+      Real timestep,
+      std::function<void(Real, Real, Real, Real, Real, Real, Real)> callback)
     {
       dt = clamp_value(timestep, 1e-5f, 0.1f);
 
       t = 0.0f;
 
       // Initialize vertical velocity
-      float prev_z_dot = wave.surface_time_derivative(x, 0) + wave.surface_slope(x, 0) * vx;
+      Real prev_z_dot = wave.surface_time_derivative(x, 0) + wave.surface_slope(x, 0) * vx;
 
       while (t <= duration) {
         // Compute current vertical displacement on wave surface
-        float z = wave.surface_elevation(x, t);
+        Real z = wave.surface_elevation(x, t);
 
         // Compute vertical velocity by chain rule:
         // dz/dt = ∂η/∂t + ∂η/∂x * dx/dt
-        float eta_t = wave.surface_time_derivative(x, t);
-        float eta_x = wave.surface_slope(x, t);
-        float z_dot = eta_t + eta_x * vx;
+        Real eta_t = wave.surface_time_derivative(x, t);
+        Real eta_x = wave.surface_slope(x, t);
+        Real z_dot = eta_t + eta_x * vx;
 
         // Compute vertical acceleration by finite difference of vertical velocity
-        float z_ddot = (z_dot - prev_z_dot) / dt;
+        Real z_ddot = (z_dot - prev_z_dot) / dt;
 
         // Call user callback with current state
         if (t > dt) {
