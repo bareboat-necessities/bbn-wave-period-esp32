@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <functional>
 #include <limits>
+#include <vector>
 #include <algorithm>
 
 #ifdef FENTON_TEST
@@ -18,7 +19,7 @@
 #endif
 
 template <typename T>
-constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
+constexpr const T clamp_value(const T& val, const T& low, const T& high) {
   return (val < low) ? low : (val > high) ? high : val;
 }
 
