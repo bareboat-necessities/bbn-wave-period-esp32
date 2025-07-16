@@ -607,7 +607,7 @@ class FentonWave {
         }
       }
       J(2 * N + 3, N + 1 + max_idx) = Real(1);
-      J(2 * N + 3, N + 1 + min_idx) = Real-(1);
+      J(2 * N + 3, N + 1 + min_idx) = Real(-1);
       return J;
     }
 
