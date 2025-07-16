@@ -128,8 +128,7 @@ public:
 
 private:
     void updatePhase(float deltaT) {
-        phase = std::fmod(phase + omega * deltaT, 2.0f * M_PI);
-        if (phase < 0.0f) phase += 2.0f * M_PI;
+        phase = std::remainder(phase + omega * deltaT, 2.0f * M_PI);
     }
 
     // State
