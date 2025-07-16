@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
     }
   } else {
     // Create a 4th-order Fenton wave and a surface tracker
-    WaveInitParams wave_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
+    FentonWave<4>::WaveInitParams wave_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
       displacement_amplitude, 200.0f, 2 * M_PI * frequency, phase_rad);
 
     const float mass = 5.0f;     // Mass (kg)
