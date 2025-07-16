@@ -219,7 +219,7 @@ class FentonWave {
     }
 
     // Returns dynamic pressure at (x, z, t) for fluid density rho (default: seawater)
-    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = Real(1025.0)) const {
+    Real pressure(Real x_val, Real z_val, Real t = 0, Real rho = Real(1025)) const {
       const Real u = horizontal_velocity(x_val, z_val, t);
       const Real w = vertical_velocity(x_val, z_val, t);
       const Real eta = surface_elevation(x_val, t);
@@ -313,7 +313,7 @@ class FentonWave {
 
     // Returns radiation stress component Sxx = ρ⟨u²⟩
     Real radiation_stress_xx(int samples = 100) const {
-      Real rho = Real(1025.0);
+      Real rho = Real(1025);
       Real flux = momentum_flux(samples);
       return rho * flux;
     }
