@@ -100,7 +100,7 @@ class FentonFFT {
         Matrix m;
         for (int j = 0; j <= N; ++j)
           for (int i = 0; i <= N; ++i)
-            m(j, i) = std::cos(j * i * M_PI / N);
+            m(j, i) = std::cos(j * i * Real(M_PI) / N);
         return m;
       }(); return M;
     }
@@ -151,7 +151,7 @@ class FentonWave {
     FentonWave(Real height, Real depth, Real length, Real g = Real(9.81), Real relax = Real(0.5))
       : height(height), depth(depth), length(length), g(g), relax(relax) {
       for (int j = 1; j <= N; ++j) {
-        kj_cache(j - 1) = j * (2 * M_PI / length);
+        kj_cache(j - 1) = j * (2 * Real(M_PI) / length);
         j_cache(j - 1) = j;
       }
       compute();
@@ -328,7 +328,7 @@ class FentonWave {
         if (std::abs(k_next - k) < tol) break;
         k = k_next;
       }
-      return Real(2) * M_PI / k;
+      return Real(2) * Real(M_PI) / k;
     }
 
     // Infers Fenton wave parameters from amplitude, depth, frequency, and phase
@@ -386,7 +386,7 @@ class FentonWave {
       if (depth < 0) depth = Real(25.0) * length;
       Real H = height / depth;
       Real lam = length / depth;
-      k = 2 * M_PI / lam;
+      k = 2 * Real(M_PI) / lam;
       Real D = Real(1);
       Real c0 = std::sqrt(std::tanh(k) / k);
 
@@ -445,7 +445,7 @@ class FentonWave {
     }
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
-      Real Hb = Real(0.142) * std::tanh(2 * M_PI * D / lam) * lam;
+      Real Hb = Real(0.142) * std::tanh(2 * Real(M_PI) * D / lam) * lam;
       int num = (H > Real(0.75) * Hb) ? 10 : (H > Real(0.65) * Hb) ? 5 : 3;
       Eigen::Array<Real, Eigen::Dynamic, 1> steps = Eigen::Array<Real, Eigen::Dynamic, 1>::LinSpaced(num, 1, num) * H / num;
       return std::vector<Real>(steps.data(), steps.data() + steps.size());
@@ -494,7 +494,7 @@ class FentonWave {
       Eigen::Array<Real, N, 1> kj = j * k;
 
       for (int m = 0; m <= N; ++m) {
-        Real x_m = M_PI * m / N;
+        Real x_m = Real(M_PI) * m / N;
         Real eta_m = eta(m);
 
         Eigen::Array<Real, N, 1> kj_eta = kj * eta_m;
@@ -547,7 +547,7 @@ class FentonWave {
 
       for (int m = 0; m <= N; ++m) {
         Real eta_m = eta(m);
-        Real x_m = M_PI * m / N;
+        Real x_m = Real(M_PI) * m / N;
         Eigen::Array<Real, N, 1> S1, C1, S2, C2;
         Eigen::Array<Real, N, 1> SC, SS, CC, CS;
 
@@ -696,22 +696,22 @@ class WaveSurfaceTracker {
   private:
     FentonWave<N> wave;
 
-    Real t = 0.0f;
-    Real dt = 0.005f;
+    Real t = Real(0);
+    Real dt = Real(0.005);
 
     // Object state
-    Real x = 0.0f;     // Horizontal position (m)
-    Real vx = 0.0f;    // Horizontal velocity (m/s)
+    Real x = Real(0);     // Horizontal position (m)
+    Real vx = Real(0);    // Horizontal velocity (m/s)
 
-    Real mass = 1.0f;  // Mass of floating object (kg)
+    Real mass = Real(1);  // Mass of floating object (kg)
 
     // Wave and physics parameters
-    Real drag_coeff = 0.1f;  // Simple horizontal drag coefficient
+    Real drag_coeff = Real(0.1);  // Simple horizontal drag coefficient
 
     // Periodicity wrap helper
     Real wrap_periodic(Real val, Real period) const {
       val = std::fmod(val, period);
-      if (val < 0.0f) val += period;
+      if (val < Real(0)) val += period;
       return val;
     }
 
@@ -721,7 +721,7 @@ class WaveSurfaceTracker {
       Real eta_x = wave.surface_slope(x_pos, time);
 
       // Simple driving force proportional to slope (restoring force)
-      Real force_wave = -9.81f * eta_x;  // gravity times slope (can be tuned)
+      Real force_wave = -Real(9.81) * eta_x;  // gravity times slope (can be tuned)
 
       // Simple linear drag opposing velocity
       Real force_drag = -drag_coeff * vx_curr;
@@ -739,17 +739,17 @@ class WaveSurfaceTracker {
       Real k1_v = accel(x_curr, vx_curr, t_curr);
       Real k1_x = vx_curr;
 
-      Real k2_v = accel(x_curr + 0.5f * dt_step * k1_x, vx_curr + 0.5f * dt_step * k1_v, t_curr + 0.5f * dt_step);
-      Real k2_x = k1_x + 0.5f * dt_step * k1_v;
+      Real k2_v = accel(x_curr + Real(0.5) * dt_step * k1_x, vx_curr + Real(0.5) * dt_step * k1_v, t_curr + Real(0.5) * dt_step);
+      Real k2_x = k1_x + Real(0.5) * dt_step * k1_v;
 
-      Real k3_v = accel(x_curr + 0.5f * dt_step * k2_x, vx_curr + 0.5f * dt_step * k2_v, t_curr + 0.5f * dt_step);
-      Real k3_x = k1_x + 0.5f * dt_step * k2_v;
+      Real k3_v = accel(x_curr + Real(0.5) * dt_step * k2_x, vx_curr + Real(0.5) * dt_step * k2_v, t_curr + Real(0.5) * dt_step);
+      Real k3_x = k1_x + Real(0.5) * dt_step * k2_v;
 
       Real k4_v = accel(x_curr + dt_step * k3_x, vx_curr + dt_step * k3_v, t_curr + dt_step);
       Real k4_x = k1_x + dt_step * k3_v;
 
-      x_curr += dt_step * (k1_x + 2 * k2_x + 2 * k3_x + k4_x) / 6.0f;
-      vx_curr += dt_step * (k1_v + 2 * k2_v + 2 * k3_v + k4_v) / 6.0f;
+      x_curr += dt_step * (k1_x + 2 * k2_x + 2 * k3_x + k4_x) / Real(6);
+      vx_curr += dt_step * (k1_v + 2 * k2_v + 2 * k3_v + k4_v) / Real(6);
 
       x_curr = wrap_periodic(x_curr, wave.get_length());
     }
@@ -759,7 +759,7 @@ class WaveSurfaceTracker {
       : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_)
     {
       x = x0;
-      vx = 0.0f;
+      vx = Real(0);
     }
 
     void track_floating_object(
@@ -767,9 +767,9 @@ class WaveSurfaceTracker {
       Real timestep,
       std::function<void(Real, Real, Real, Real, Real, Real, Real)> callback)
     {
-      dt = clamp_value(timestep, 1e-5f, 0.1f);
+      dt = clamp_value(timestep, Real(1e-5), Real(0.1));
 
-      t = 0.0f;
+      t = Real(0);
 
       // Initialize vertical velocity
       Real prev_z_dot = wave.surface_time_derivative(x, 0) + wave.surface_slope(x, 0) * vx;
