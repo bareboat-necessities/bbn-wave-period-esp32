@@ -248,7 +248,7 @@ class FentonWave {
     // Computes average potential energy density per unit area
     Real mean_potential_energy_density(int samples = 100) const {
       Real dx = length / samples;
-      Real PE_total = 0.0f;
+      Real PE_total = Real(0);
       for (int i = 0; i <= samples; ++i) {
         Real x_val = i * dx;
         Real z = surface_elevation(x_val);           // η(x)
@@ -287,7 +287,7 @@ class FentonWave {
         Real x_val = i * dx;
         Real eta_val = surface_elevation(x_val);
         Real u = horizontal_velocity(x_val, eta_val);
-        Real weight = (i == 0 || i == samples) ? 0.5f : 1.0f;
+        Real weight = (i == 0 || i == samples) ? Real(0.5) : Real(1);
         total += u * weight;
       }
       return dx * total / length;
@@ -323,7 +323,7 @@ class FentonWave {
       float k = omega * omega / g; // Initial guess (deep water)
       for (int i = 0; i < max_iter; ++i) {
         float f = g * k * std::tanh(k * depth) - omega * omega;
-        float df = g * std::tanh(k * depth) + g * k * depth * (1.0f - std::pow(std::tanh(k * depth), 2));
+        float df = g * std::tanh(k * depth) + g * k * depth * (Real(1) - std::pow(std::tanh(k * depth), 2));
         float k_next = k - f / df;
         if (std::abs(k_next - k) < tol) break;
         k = k_next;
@@ -340,8 +340,8 @@ class FentonWave {
 
       float height = Real(2) * amplitude;  // wave height = crest-to-trough
       float length = compute_wavelength(omega, depth, g);
-      float initial_x = std::fmod(phase_radians / (2.0f * M_PI) * length, length);
-      if (initial_x < 0.0f) initial_x += length; // wrap to [0, length)
+      float initial_x = std::fmod(phase_radians / (Real(2) * Real(M_PI)) * length, length);
+      if (initial_x < Real(0)) initial_x += length; // wrap to [0, length)
 
       return { height, depth, length, initial_x };
     }
@@ -387,13 +387,13 @@ class FentonWave {
       Real H = height / depth;
       Real lam = length / depth;
       k = 2 * M_PI / lam;
-      Real D = 1.0f;
+      Real D = Real(1);
       Real c0 = std::sqrt(std::tanh(k) / k);
 
       VectorF x_nd = VectorF::LinSpaced(N + 1, 0, lam / Real(2));
       B.setZero();
       B(0) = c0;
-      B(1) = -H / (4.0f * c0 * k);
+      B(1) = -H / (Real(4) * c0 * k);
 
       VectorF eta_nd = (VectorF::Ones().array() + (H / Real(2)) * (k * x_nd.array()).cos()).eval();
       Q = c0;
@@ -445,8 +445,8 @@ class FentonWave {
     }
 
     std::vector<Real> wave_height_steps(Real H, Real D, Real lam) {
-      Real Hb = 0.142f * std::tanh(2 * M_PI * D / lam) * lam;
-      int num = (H > 0.75f * Hb) ? 10 : (H > 0.65f * Hb) ? 5 : 3;
+      Real Hb = Real(0.142) * std::tanh(2 * M_PI * D / lam) * lam;
+      int num = (H > Real(0.75) * Hb) ? 10 : (H > Real(0.65) * Hb) ? 5 : 3;
       Eigen::Array<Real, Eigen::Dynamic, 1> steps = Eigen::Array<Real, Eigen::Dynamic, 1>::LinSpaced(num, 1, num) * H / num;
       return std::vector<Real>(steps.data(), steps.data() + steps.size());
     }
@@ -460,16 +460,16 @@ class FentonWave {
       coeffs(2 * N + 3) = R;
 
       Real error = std::numeric_limits<Real>::max();
-      for (int iter = 0; iter < 500 && error > 1e-8f; ++iter) {
+      for (int iter = 0; iter < 500 && error > Real(1e-8); ++iter) {
         Eigen::Matrix<Real, NU, 1> f = compute_residual(coeffs, H, k, D);
         error = f.cwiseAbs().maxCoeff();
 
         Real eta_max = coeffs.template segment<N + 1>(N + 1).maxCoeff();
         Real eta_min = coeffs.template segment<N + 1>(N + 1).minCoeff();
-        if (eta_max > 2.0f || eta_min < 0.1f || !std::isfinite(error)) {
+        if (eta_max > Real(2) || eta_min < Real(0.1) || !std::isfinite(error)) {
           throw std::runtime_error("Optimization failed");
         }
-        if (error < 1e-8f) break;
+        if (error < Real(1e-8)) break;
 
         Eigen::Matrix<Real, NU, NU> J = compute_jacobian(coeffs, H, k, D);
         Eigen::Matrix<Real, NU, 1> delta = J.fullPivLu().solve(-f);
@@ -521,11 +521,11 @@ class FentonWave {
         f(m) = -B0 * eta_m + (B.tail(N).array() * SC).sum() + Q;
 
         // Next N+1 rows: f[N+1+m]
-        f(N + 1 + m) = 0.5f * (um * um + vm * vm) + eta_m - R;
+        f(N + 1 + m) = Real(0.5) * (um * um + vm * vm) + eta_m - R;
       }
 
       // Mean elevation constraint
-      f(2 * N + 2) = (eta.sum() - 0.5f * (eta(0) + eta(N))) / N - 1.0f;
+      f(2 * N + 2) = (eta.sum() - Real(0.5) * (eta(0) + eta(N))) / N - Real(1);
 
       // Wave height constraint
       f(2 * N + 3) = eta.maxCoeff() - eta.minCoeff() - H;
@@ -583,7 +583,7 @@ class FentonWave {
           J(N + 1 + m, j + 1) = k * j_arr(j) * (um * CC(j) + vm * SS(j));
         }
 
-        const Real d_eta_m = 1.0f + (um * (Bj * kj2 * SC).matrix()).sum() + (vm * (Bj * kj2 * CS).matrix()).sum();
+        const Real d_eta_m = Real(1) + (um * (Bj * kj2 * SC).matrix()).sum() + (vm * (Bj * kj2 * CS).matrix()).sum();
 
         J(N + 1 + m, N + 1 + m) = d_eta_m;
         J(N + 1 + m, 2 * N + 3) = Real(-1);
@@ -591,7 +591,7 @@ class FentonWave {
 
       // Mean elevation constraint (row 2N+2)
       for (int j = 0; j <= N; ++j)
-        J(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? 0.5f / N : 1.0f / N;
+        J(2 * N + 2, N + 1 + j) = (j == 0 || j == N) ? Real(0.5) / N : Real(1) / N;
 
       // Wave height constraint (row 2N+3)
       int max_idx = 0, min_idx = 0;
