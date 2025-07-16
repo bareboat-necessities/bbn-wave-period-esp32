@@ -122,13 +122,6 @@ class FentonFFT {
     }
 };
 
-struct WaveInitParams {
-  float height;
-  float depth;
-  float length;
-  float initial_x;
-};
-
 template <int N = 4, typename Real = float>
 class FentonWave {
   private:
@@ -143,6 +136,13 @@ class FentonWave {
     using VelocityTerms = Eigen::Array<Real, N, 1>;
 
   public:
+    struct WaveInitParams {
+       Real height;
+       Real depth;
+       Real length;
+       Real initial_x;
+    };
+
     Real height, depth, length, g, relax;
     Real k, c, T, omega, Q, R;
     VectorF eta, x, E, B;
@@ -319,7 +319,7 @@ class FentonWave {
     }
 
     // Computes wavelength from ω, depth, gravity via dispersion relation
-    static float compute_wavelength(float omega, float depth, float g = 9.81f, float tol = 1e-10f, int max_iter = 50) {
+    static Real compute_wavelength(Real omega, Real depth, Real g = 9.81f, Real tol = 1e-10f, int max_iter = 50) {
       float k = omega * omega / g; // Initial guess (deep water)
       for (int i = 0; i < max_iter; ++i) {
         float f = g * k * std::tanh(k * depth) - omega * omega;
@@ -333,7 +333,7 @@ class FentonWave {
 
     // Infers Fenton wave parameters from amplitude, depth, frequency, and phase
     static WaveInitParams infer_fenton_parameters_from_amplitude(
-      float amplitude, float depth, float omega, float phase_radians, float g = 9.81f) {
+      Real amplitude, Real depth, Real omega, Real phase_radians, Real g = 9.81f) {
   
       if (amplitude <= 0 || depth <= 0 || omega <= 0)
         throw std::invalid_argument("Amplitude, depth, and omega must be positive");
