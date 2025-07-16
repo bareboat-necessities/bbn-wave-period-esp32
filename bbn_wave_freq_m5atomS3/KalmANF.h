@@ -79,5 +79,10 @@ float kalmANF_process(KalmANF *f, float y, float delta_t, float *e_out) {
   return f_est;
 }
 
+// Get the current phase estimate (in radians)
+float kalmANF_get_phase(const KalmANF *f) {
+  return atan2f(f->s_prev1, f->s_prev2);
+}
+
 #endif
 
