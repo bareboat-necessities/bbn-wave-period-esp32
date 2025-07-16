@@ -89,7 +89,7 @@ T cosh_by_cosh(T a, T b) {
  * 
  * Reference: Fenton (1988) "The Numerical Solution of Steady Water Wave Problems"
  */
-template <int N, typename Real = float>
+template <unsigned int N, typename Real = float>
 class FentonFFT {
   public:
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
@@ -122,7 +122,7 @@ class FentonFFT {
     }
 };
 
-template <int N = 4, typename Real = float>
+template <unsigned int N = 4, typename Real = float>
 class FentonWave {
   private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
@@ -691,7 +691,7 @@ class FentonWave {
  * - Perfect vertical surface following
  * - Linear drag model
  */
-template<int N = 4, typename Real = float>
+template<unsigned int N = 4, typename Real = float>
 class WaveSurfaceTracker {
   private:
     FentonWave<N> wave;
