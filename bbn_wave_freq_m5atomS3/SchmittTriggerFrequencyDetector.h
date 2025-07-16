@@ -259,6 +259,24 @@ float SchmittTriggerFrequencyDetector::getFrequency() const {
   return _frequency;
 }
 
+float SchmittTriggerFrequencyDetector::getPhaseEstimate() const {
+    if (_frequency <= 0.0f || _isFallback) {
+        return 0.0f; // Invalid phase estimate
+    }
+
+    float period = 1.0f / _frequency;
+    float timeSinceLastCrossing = _timeInCycle - _lastCrossingInCycleTime;
+    float phase = 2.0f * M_PI * fmodf(timeSinceLastCrossing / period, 1.0f);
+
+    // Shift by π if last crossing was a downcrossing (to match sine wave shape)
+    if (_state == State::WAS_LOW) {
+        phase = fmodf(phase + M_PI, 2.0f * M_PI);
+    }
+
+    if (phase < 0.0f) phase += 2.0f * M_PI;
+    return phase;
+}
+
 SchmittTriggerFrequencyDetector::QualityMetrics SchmittTriggerFrequencyDetector::getQualityMetrics() const {
     QualityMetrics metrics;
     
