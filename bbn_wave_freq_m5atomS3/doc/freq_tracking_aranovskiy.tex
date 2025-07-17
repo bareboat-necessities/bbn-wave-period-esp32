@@ -263,6 +263,63 @@ $\omega_{\min}$ & Numerical safety   & Prevents singularity             \\
 \end{tabular}
 \end{table}
 
+\section{Noise Robustness}
+
+\subsection{Effect of Non-Zero-Mean Noise on Convergence}
+
+The convergence analysis assumes that the measurement noise \(\nu(t)\) in the signal model
+\[
+y(t) = A(t)\sin(\omega(t)t + \phi(t)) + \nu(t)
+\]
+has **zero mean** and is either bounded or white with finite variance.
+
+However, if \(\nu(t)\) contains a non-zero mean component (i.e., a DC offset), it affects the estimator in several important ways.
+
+\subsubsection*{Impact on Observer Dynamics}
+Since the estimator does not include a high-pass filter or explicit DC rejection, a non-zero mean in \(y(t)\) causes biased integration in the internal state \(x_1(t)\), leading to:
+
+\begin{itemize}
+  \item Shift in equilibrium point of \(x_1(t)\)
+  \item Biased estimation of the phase \(\phi(t) = \arctan\left(\frac{x_1(t)}{y(t)}\right)\)
+  \item Potential long-term drift or slow bias in \(\dot{\sigma}(t)\)
+\end{itemize}
+
+\subsubsection*{Effect on Frequency Convergence}
+
+The adaptation law for \(\sigma(t)\) includes a product term \(x_1 y\), which becomes:
+\[
+x_1 y = x_1 \bigl(y_0 + \tilde{y}(t)\bigr) = x_1 y_0 + x_1 \tilde{y}(t),
+\]
+where \(y_0 = \mathbb{E}[\nu(t)]\) is the noise bias and \(\tilde{y}(t)\) is the zero-mean component. The term \(x_1 y_0\) injects a **systematic bias** into the adaptation, which means:
+
+\begin{itemize}
+  \item \(\dot{\sigma}(t)\) may converge to an incorrect value
+  \item Frequency estimate \(\omega(t) = \sqrt{|\theta(t)|}\) may converge with error
+\end{itemize}
+
+In practice, this error is often small if the noise mean is small relative to the signal amplitude. But the estimator **does not reject constant offsets inherently**.
+
+\subsubsection*{Mitigation Strategies}
+
+To counteract the effect of non-zero-mean noise:
+
+\begin{itemize}
+  \item Apply a **high-pass filter** or **AC coupling** before estimation
+  \item Subtract the sample mean over a sliding window from \(y(t)\)
+  \item Extend the observer with a bias estimator or augmented state
+\end{itemize}
+
+\subsubsection*{Simulation Observation}
+
+Simulations show that even small DC offsets can:
+\begin{itemize}
+  \item Delay convergence
+  \item Cause incorrect frequency estimation under low SNR
+  \item Bias the phase tracking when \(|y_0| \sim A\)
+\end{itemize}
+
+Thus, while the estimator is robust to **amplitude modulation and broadband noise**, it is **sensitive to low-frequency drift or DC components** unless explicitly compensated.
+
 \section{Numerical Implementation}
 
 \subsection{Critical Considerations}
