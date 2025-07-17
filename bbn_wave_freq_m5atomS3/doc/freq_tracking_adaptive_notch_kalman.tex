@@ -16,9 +16,6 @@
 \section{Introduction}
 This work presents a frequency tracking algorithm based on a Kalman-updated adaptive notch filter, following the approach of Ali and van Waterschoot~\cite{AliWaterschoot2023}. The method estimates the instantaneous frequency of a noisy sinusoidal signal through recursive adaptation of a single parameter.
 
-\subsection{Notch Filter}
-A notch filter is a type of linear time-invariant (LTI) filter designed to attenuate or remove a specific frequency (and a very narrow band around it) from a signal while leaving other frequencies largely unaffected. It is characterized by its frequency response, which has a sharp dip (a "notch") at the target frequency.
-
 \section{Signal Model and Notch Filter}
 \subsection{Signal Model}
 The measured signal is assumed to be:
@@ -27,6 +24,9 @@ y(t) = A(t)\,\sin\bigl(\omega(t)\,t + \phi(t)\bigr) + \nu(t),
 \label{eq:signal_model}
 \end{equation}
 where $A(t)$, $\phi(t)$, and $\omega(t)$ vary slowly, and $\nu(t)$ is zero-mean noise.
+
+\subsection{Notch Filter}
+A notch filter is a type of linear time-invariant (LTI) filter designed to attenuate or remove a specific frequency (and a very narrow band around it) from a signal while leaving other frequencies largely unaffected. It is characterized by its frequency response, which has a sharp dip (a "notch") at the target frequency.
 
 \subsection{Notch Filter Structure}
 The second-order digital notch filter has transfer function:
