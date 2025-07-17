@@ -32,6 +32,86 @@ where \(a = 2\cos(\omega\,\Delta t)\) and \(\rho\in(0,1)\) is the pole radius.  
 \omega = \frac{1}{\Delta t}\arccos\!\Bigl(\frac{a}{2}\Bigr).
 \]
 
+\section{Resonator Structure and Properties}
+
+\subsection{Difference Equation and Order}
+
+The KalmanANF algorithm is built around a second-order resonator, implemented using the following recursive difference equation:
+
+\begin{equation}
+s[n] = y[n] + \rho\, a[n-1]\, s[n-1] - \rho^2 s[n-2]
+\label{eq:resonator}
+\end{equation}
+
+Here:
+\begin{itemize}
+    \item $s[n]$ is the internal state of the resonator (filtered signal),
+    \item $y[n]$ is the input sample,
+    \item $\rho$ is the pole radius ($0 < \rho < 1$), controlling bandwidth,
+    \item $a[n-1]$ is the adaptive coefficient (related to cosine of frequency),
+    \item $s[n-1]$ and $s[n-2]$ are previous internal states.
+\end{itemize}
+
+This equation represents a second-order **recursive IIR filter**, specifically a bandpass resonator tuned adaptively by the coefficient $a[n]$.
+
+\subsection{Oscillator Model and Filter Interpretation}
+
+The resonator structure in Equation~\eqref{eq:resonator} is mathematically equivalent to a second-order damped harmonic oscillator driven by input $y[n]$.
+
+Its **transfer function** in the Z-domain is:
+
+\begin{equation}
+H(z) = \frac{1}{1 - \rho a z^{-1} + \rho^2 z^{-2}}
+\label{eq:resonator_tf}
+\end{equation}
+
+This structure places a pair of complex-conjugate poles at radius $\rho$ and angle $\omega$, where:
+
+\[
+a = 2\cos(\omega)
+\quad \Rightarrow \quad
+\omega = \cos^{-1}\left(\frac{a}{2}\right)
+\]
+
+The poles define the resonant frequency and bandwidth:
+\begin{itemize}
+    \item Resonant frequency: $f_0 = \frac{\omega}{2\pi\Delta t}$
+    \item 3dB Bandwidth: Approx. $\frac{1 - \rho}{\pi \Delta t}$ (narrower for $\rho \to 1$)
+\end{itemize}
+
+\subsection{Filter Order and Properties}
+
+This resonator is of **second order**, with the following key properties:
+
+\begin{itemize}
+    \item \textbf{Linear time-varying (LTV)}: The filter structure is IIR, but the coefficient $a[n]$ changes with time via Kalman update.
+    \item \textbf{Bandpass behavior}: The filter amplifies signal components near the estimated frequency.
+    \item \textbf{Pole movement}: As the frequency estimate evolves, the pole angle shifts accordingly, dynamically tuning the resonance.
+    \item \textbf{Amplitude normalization}: The gain is not normalized, but frequency estimate is extracted from $a[n]$.
+    \item \textbf{Stability}: Guaranteed if $\rho < 1$ and $|a[n]| < 2$, which are explicitly enforced in implementation.
+\end{itemize}
+
+\subsection{Role in Frequency Estimation}
+
+The resonator acts as a selective amplifier for the dominant sinusoidal component. The Kalman loop continuously adjusts the coefficient $a[n]$ to minimize the prediction error:
+
+\begin{equation}
+e[n] = s[n] - a[n-1] s[n-1] + s[n-2]
+\end{equation}
+
+This error drives the Kalman update, refining $a[n]$ such that the poles align with the signal's dominant frequency.
+
+\subsection{Energy Interpretation}
+
+The energy of the resonator states $s[n-1], s[n-2]$ implicitly reflects the amplitude of the tracked component. While the KalmanANF does not estimate amplitude explicitly, the phase estimate:
+
+\begin{equation}
+\phi[n] = \mathrm{atan2}(s[n-1],\, s[n-2])
+\end{equation}
+
+is derived from this oscillatory state trajectory, which traces an elliptical or circular path depending on amplitude consistency.
+
+
 \section{Discrete-Time Algorithm}
 
 \subsection{State-Space and Kalman Update}
