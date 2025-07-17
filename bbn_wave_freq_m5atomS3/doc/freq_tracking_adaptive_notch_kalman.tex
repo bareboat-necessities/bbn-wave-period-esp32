@@ -1,0 +1,141 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathrsfs}
+\usepackage{graphicx}
+
+\title{Comprehensive Analysis of a Kalman-Based Adaptive Notch Filter Frequency Tracker}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Theoretical Foundations}
+
+\subsection{Original Reference}
+This algorithm is based on the work of  
+Ali and van Waterschoot~\cite{Ali2023}, which marries a single-parameter adaptive notch filter with a Kalman-filter update to track the instantaneous frequency of a sinusoid in noise.
+
+\subsection{Signal and Notch-Filter Model}
+We assume the measurement
+\[
+y(t) = A(t)\,\sin\bigl(\omega(t)\,t + \phi(t)\bigr) + \nu(t),
+\]
+with slowly varying amplitude \(A(t)\), phase \(\phi(t)\), and instantaneous frequency \(\omega(t)\).  The core is a second-order digital notch filter with transfer function
+\[
+H(z^{-1};a) \;=\; \frac{1 - a\,z^{-1} + z^{-2}}{1 - \rho\,a\,z^{-1} + \rho^2\,z^{-2}},
+\]
+where \(a = 2\cos(\omega\,\Delta t)\) and \(\rho\in(0,1)\) is the pole radius.  By adapting \(a\) via a Kalman update, the instantaneous frequency is recovered as
+\[
+\omega = \frac{1}{\Delta t}\arccos\!\Bigl(\frac{a}{2}\Bigr).
+\]
+
+\section{Discrete-Time Algorithm}
+
+\subsection{State-Space and Kalman Update}
+Define the internal filter state
+\[
+s[n] = y[n] + \rho\,a[n-1]\,s[n-1] - \rho^2\,s[n-2].
+\]
+Treat \(a[n]\) as the parameter to estimate.  At each step:
+
+\begin{enumerate}
+  \item \textbf{Prediction of Covariance:}
+    \[
+      P_{n|n-1} = P_{n-1} + q,
+    \]
+    where \(q\) is the process-noise covariance for \(a\).
+  \item \textbf{Innovation:}
+    \[
+      e[n] = s[n] - a[n-1]\,s[n-1] + s[n-2].
+    \]
+  \item \textbf{Kalman Gain:}
+    \[
+      K[n] = \frac{s[n-1]\,P_{n|n-1}}{s[n-1]^2\,P_{n|n-1} + r},
+    \]
+    with \(r\) the measurement-noise covariance.
+  \item \textbf{Parameter Update:}
+    \[
+      a[n] = a[n-1] + K[n]\,e[n],
+      \quad
+      P_n = \bigl(1 - K[n]\,s[n-1]\bigr)\,P_{n|n-1}.
+    \]
+  \item \textbf{Frequency Estimate:}
+    \[
+      \hat\omega[n]
+      = \frac{1}{\Delta t}\arccos\!\Bigl(\frac{a[n]}{2}\Bigr),
+      \quad
+      \hat f[n] = \frac{\hat\omega[n]}{2\pi}.
+    \]
+  \item \textbf{State Shift:}
+    \[
+      s[n-2]\gets s[n-1], 
+      \quad 
+      s[n-1]\gets s[n].
+    \]
+\end{enumerate}
+
+\subsection{Explanation of Variables}
+\begin{itemize}
+  \item \(s[n]\): internal notch-filtered output.  
+  \item \(a[n]\): adaptive coefficient, ideally \(2\cos(\omega\,\Delta t)\).  
+  \item \(P_n\): error covariance for \(a[n]\).  
+  \item \(\rho\): notch-filter pole radius, \(0<\rho<1\).  
+  \item \(q\), \(r\): process and measurement noise covariances.  
+  \item \(\Delta t\): sampling interval.  
+\end{itemize}
+
+\section{Stability and Convergence}
+
+\subsection{Kalman-Optimality and Steady-State}
+Under standard Gaussian assumptions and persistence of excitation, the scalar Kalman update is mean-square optimal.  One shows
+\[
+\mathbb{E}\bigl[(a[n] - a_{\mathrm{true}})^2\bigr]
+\;\longrightarrow\;
+\frac{r}{s[n-1]^2 + r/q}
+\quad\text{as }n\to\infty,
+\]
+so \(a[n]\to a_{\mathrm{true}} = 2\cos(\omega\,\Delta t)\) in expectation, with variance bounded by the noise ratio \(r/q\).
+
+\subsection{Frequency and Phase Locking}
+As \(a[n]\) converges, the notch-filter poles lock onto the signal’s frequency.  The estimate \(\hat\omega[n]\) thus converges to \(\omega\).  Moreover, the internal phase
+\[
+\phi[n] = \atan2\bigl(s[n-1],\,s[n-2]\bigr)
+\]
+locks to the true phase (modulo \(\pi\)).
+
+\section{Numerical Implementation}
+
+\subsection{Parameter Selection}
+\begin{itemize}
+  \item \(\rho\approx0.99\)–0.999 for a narrow notch (high resolution).  
+  \item \(q\ll r\) yields smooth, slow adaptation.  
+  \item \(q\gg r\) yields fast tracking but more jitter.  
+  \item Initial \(P_0\) large (e.g.\ \(10^2\)) if \(a[0]\) is uncertain.  
+\end{itemize}
+
+\subsection{C Implementation Sketch}
+\begin{verbatim}
+KalmANF f;
+kalmANF_init(&f, rho, q, r, P0, 0.0f, 0.0f, 2.0f);
+for each sample y[n] do
+  float freq = kalmANF_process(&f, y[n], Δt, &e);
+  // optionally: float phase = kalmANF_get_phase(&f);
+end for
+\end{verbatim}
+
+\section{Noise Robustness}
+
+The Kalman update balances process noise \(q\) and measurement noise \(r\).  The notch filter suppresses out-of-band noise so that the effective SNR for the update is improved, facilitating convergence even at low input SNR.
+
+\begin{thebibliography}{9}
+\bibitem{Ali2023}
+Randy Ali and Tom van Waterschoot,  
+``A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter,''  
+in \emph{Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23)},  
+Copenhagen, Denmark, September 2023.
+\end{thebibliography}
+
+\end{document}
