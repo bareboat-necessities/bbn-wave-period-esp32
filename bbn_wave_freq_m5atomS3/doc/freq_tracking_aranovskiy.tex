@@ -1,0 +1,126 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathrsfs}
+\usepackage{graphicx}
+
+\title{Comprehensive Analysis of Aranovskiy Frequency Estimator}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Theoretical Foundations}
+
+\subsection{Original Reference}
+The algorithm is based on:\newline
+\textbf{Bobtsov, A. A., Nikolaev, N. A., Slita, O. V., Borgul, A. S., \& Aranovskiy, S. V. (2013).}\newline
+\textit{The New Algorithm of Sinusoidal Signal Frequency Estimation.}\newline
+11th IFAC International Workshop on Adaptation and Learning in Control and Signal Processing, Caen, France.
+
+\subsection{Signal Model}
+The estimator assumes a quasi-sinusoidal signal with slowly varying parameters:
+
+\begin{equation}
+y(t) = A(t)\sin(\omega(t)t + \phi(t)) + \nu(t)
+\end{equation}
+
+where $\nu(t)$ represents measurement noise. Key characteristics:
+\begin{itemize}
+\item \textbf{Amplitude-independent}: No explicit $A(t)$ estimation
+\item \textbf{Frequency tracking}: Designed for $\omega(t)$ variation
+\end{itemize}
+
+\section{Discrete-Time Algorithm}
+
+\subsection{Complete Update Equations}
+Given sampling period $\Delta t$, the discrete implementation becomes:
+
+\begin{align}
+x_1[n+1] &= x_1[n] + (-a x_1[n] + b y[n])\Delta t \label{eq:x1_disc} \\
+\sigma[n+1] &= \sigma[n] + \dot{\sigma}[n]\Delta t \label{eq:sigma_disc} \\
+\text{where}\quad \dot{\sigma}[n] &= \text{clamp}\left(-k x_1^2[n] \theta[n] - k a x_1[n] \dot{x}_1[n] - k b \dot{x}_1[n] y[n], \sigma_{max}\right) \nonumber \\
+\theta[n] &= \sigma[n] + k b x_1[n] y[n] \nonumber \\
+\omega[n] &= \sqrt{\max(|\theta[n]|, \omega_{min}^2)} \nonumber \\
+\phi[n] &= \arctan\left(\frac{x_1[n]}{y[n]}\right) \nonumber
+\end{align}
+
+\subsection{Amplitude Robustness Mechanism}
+The amplitude independence comes from:
+\begin{equation}
+\frac{\partial \dot{\sigma}}{\partial A} = 0 \quad \text{at steady state}
+\end{equation}
+because the $A^2$ terms cancel in the $\theta$ update. This makes the estimator:
+\begin{itemize}
+\item Insensitive to slow amplitude changes
+\item Stable for $A(t)$ variations satisfying $|\dot{A}/A| \ll \omega$
+\end{itemize}
+
+\section{Stability and Convergence}
+
+\subsection{Lyapunov Analysis}
+The stability proof uses:
+\begin{equation}
+V(e) = \frac{1}{2}e_\omega^2 + \frac{1}{2}e_x^2, \quad e_\omega = \omega^2 - \theta, \ e_x = x_1 - x_{1,ref}
+\end{equation}
+yielding:
+\begin{equation}
+\dot{V} = -a e_x^2 - k b^2 x_1^2 e_\omega^2 \leq 0
+\end{equation}
+
+\subsection{Convergence Speed}
+The error dynamics show exponential convergence:
+\begin{equation}
+\|e(t)\| \leq \|e(0)\| e^{-\lambda t}, \quad \lambda = \min(a, k b^2 A^2/4)
+\end{equation}
+
+\begin{table}[h]
+\centering
+\caption{Parameter Effects Summary}
+\begin{tabular}{lll}
+Parameter & Role & Effect on Convergence \\
+\hline
+$a$ & State bandwidth & Faster for larger $a$ \\
+$b$ & Input scaling & Balances noise/gain \\
+$k$ & Adaptation gain & $\propto$ convergence rate \\
+$\omega_{min}$ & Numerical safety & Prevents singularity \\
+\end{tabular}
+\end{table}
+
+\section{Numerical Implementation}
+
+\subsection{Critical Considerations}
+\begin{itemize}
+\item \textbf{Clamping}: Essential for $\dot{\sigma}$ to prevent overflow
+\begin{equation}
+\sigma_{max} = 10^7,\ \omega_{min}^2 = 10^{-10}
+\end{equation}
+
+\item \textbf{Initial Conditions}:
+\begin{equation}
+\theta(0) = -\frac{\omega_{max}^2}{4} \ \text{(ensures real $\omega$ during transients)}
+\end{equation}
+
+\item \textbf{Step Size}:
+\begin{equation}
+\Delta t \leq \frac{1}{2a} \quad \text{(stability condition)}
+\end{equation}
+\end{itemize}
+
+\section{Amplitude Variation Performance}
+
+The estimator's amplitude robustness stems from:
+\begin{itemize}
+\item Normalized gradient structure in $\dot{\sigma}$
+\item Cancellation of $A$ terms in steady-state
+\item Phase-based rather than amplitude-based updates
+\end{itemize}
+
+Compared to PLL methods, this provides:
+\begin{equation}
+\text{SNR}_{Aran} \approx \text{SNR}_{PLL} + 10\log_{10}\left(\frac{k}{2\pi}\right) \ \text{dB}
+\end{equation}
+for the same amplitude variation rejection.
+\end{document}
