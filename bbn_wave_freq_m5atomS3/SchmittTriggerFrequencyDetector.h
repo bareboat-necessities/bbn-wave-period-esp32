@@ -21,32 +21,30 @@ public:
     struct QualityMetrics {
         float confidence;       // 0.0 (no confidence) to 1.0 (full confidence)
         float jitter;           // Time jitter in seconds (standard deviation of period measurements)
-        float amplitudeRatio;   // Signal amplitude relative to hysteresis threshold
-        bool  isFallback;       // Whether we're using fallback frequency
+        float amplitude_ratio;  // Signal amplitude relative to hysteresis threshold
+        bool  is_fallback;      // Whether we're using fallback frequency
     };
 
-    // Constructor: sets hysteresis threshold (default: 0.1),
-    // periodsPerCycle (default: 1),
-    // fallbackToLowFreqTime (default: SCHMITT_TRIGGER_FALLBACK_TIME)
-    // hysteresisThresholdArg must be positive and typically between 0.01 and 0.5
-    // periodsPerCycleArg must be positive integer
-    // fallbackToLowFreqTimeArg must be positive time in seconds
+    // Constructor: sets hysteresis threshold (default: 0.1)
+    // hysteresis must be positive and typically between 0.01 and 0.5
+    // periodsInCycle must be positive integer
+    // fallbackToLowFreqTime must be positive time in seconds
     explicit SchmittTriggerFrequencyDetector(
-        float hysteresisThresholdArg = 0.1f,
-        unsigned int periodsPerCycleArg = 1,
-        float fallbackToLowFreqTimeArg = SCHMITT_TRIGGER_FALLBACK_TIME
+        float hysteresis = 0.1f,
+        unsigned int periodsInCycle = 1,
+        float fallbackToLowFreqTime = SCHMITT_TRIGGER_FALLBACK_TIME
     )
-      : hysteresisThreshold(std::fabs(hysteresisThresholdArg)),
+      : hysteresisThreshold(std::fabs(hysteresis)),
         upperThreshold(hysteresisThreshold),
         lowerThreshold(-hysteresisThreshold),
-        currentState(State::NotSet),
+        currentState(State::WAS_NOT_SET),
         frequencyHz(SCHMITT_TRIGGER_FREQ_INIT),
-        fallbackToLowFreqTime(fallbackToLowFreqTimeArg),
+        fallbackToLowFreqTime(fallbackToLowFreqTime),
         lastPeriodEstimate(0.0f),
         periodVariance(0.0f),
         amplitudeRatio(0.0f),
         fallbackActive(true),
-        periodsPerCycle(periodsPerCycleArg),
+        periodsPerCycle(periodsInCycle),
         cycleTime(0.0f),
         lastLowCrossTime(0.0f),
         lastHighCrossTime(0.0f),
@@ -56,47 +54,47 @@ public:
         historyIndex(0),
         historyCount(0)
     {
-        for (auto& p : periodHistory) {
-            p = 0.0f;
+        for (size_t i = 0; i < PERIOD_HISTORY_SIZE; ++i) {
+            periodHistory[i] = 0.0f;
         }
     }
 
     // Update with new signal sample and time since last update (dt in seconds)
     // Returns frequency (Hz).
     // signalValue      - raw signal value (can be positive or negative)
-    // signalAmplitude  - must be positive (absolute amplitude of the signal)
+    // signalMagnitude  - must be positive (absolute amplitude of the signal)
     // debounceTime     - in seconds, must be positive
     // steepnessTime    - in seconds, must be positive (min time for a valid crossing)
     // dt               - elapsed time since last update (in seconds)
     float update(
         float signalValue,
-        float signalAmplitude,
+        float signalMagnitude,
         float debounceTime,
         float steepnessTime,
         float dt
     ) {
-        if (dt <= 0.0f || signalAmplitude == 0.0f) {
+        if (dt <= 0.0f || signalMagnitude == 0.0f) {
             return frequencyHz;
         }
 
-        // normalize signal to hysteresis range [-1,1]
-        float scaled = signalValue / std::fabs(signalAmplitude);
-        amplitudeRatio = std::fabs(signalAmplitude) / hysteresisThreshold;
+        // normalize to hysteresis range [-1,1]
+        float scaled = signalValue / std::fabs(signalMagnitude);
+        amplitudeRatio = std::fabs(signalMagnitude) / hysteresisThreshold;
 
         switch (currentState) {
-            case State::NotSet:
+            case State::WAS_NOT_SET:
                 // initial state: detect first crossing
                 initializeState(scaled);
                 break;
 
-            case State::Low:
+            case State::WAS_LOW:
                 // we were below the lower threshold: look for upward crossing
-                processLowState(scaled, debounceTime, steepnessTime);
+                processLowState(scaled, debounceTime, steepnessTime, dt);
                 break;
 
-            case State::High:
+            case State::WAS_HIGH:
                 // we were above the upper threshold: look for downward crossing
-                processHighState(scaled, debounceTime, steepnessTime);
+                processHighState(scaled, debounceTime, steepnessTime, dt);
                 break;
         }
 
@@ -108,18 +106,16 @@ public:
         return frequencyHz;
     }
 
-    // Get phase of sine wave in radians
+    // Get phase of sine wave in rad
     float getPhaseEstimate() const {
         if (frequencyHz <= 0.0f || fallbackActive) {
             return 0.0f;
         }
-        // fraction of period since last crossing
         float period = 1.0f / frequencyHz;
-        float timeSince = cycleTime - lastCrossingTime;
-        float phase = 2.0f * M_PI * std::fmod(timeSince / period, 1.0f);
+        float timeSinceLast = cycleTime - lastCrossingTime;
+        float phase = 2.0f * M_PI * std::fmod(timeSinceLast / period, 1.0f);
 
-        // shift by π if last state was Low
-        if (currentState == State::Low) {
+        if (currentState == State::WAS_LOW) {
             phase = std::fmod(phase + M_PI, 2.0f * M_PI);
         }
         return (phase < 0.0f ? phase + 2.0f*M_PI : phase);
@@ -129,81 +125,85 @@ public:
     QualityMetrics getQualityMetrics() const {
         QualityMetrics m;
         if (historyCount < 2) {
-            m.confidence = 0.1f;
+            m.confidence      = 0.1f;
         } else {
             float stddev = std::sqrt(periodVariance);
-            float norm = stddev / lastPeriodEstimate;
-            m.confidence = std::max(0.0f, std::min(1.0f - norm, 1.0f));
+            float norm   = stddev / lastPeriodEstimate;
+            float raw    = 1.0f - norm;
+            // clamp between 0 and 1
+            m.confidence      = std::max(0.0f, std::min(raw, 1.0f));
         }
-        m.jitter = std::sqrt(periodVariance);
-        m.amplitudeRatio = amplitudeRatio;
-        m.isFallback = fallbackActive;
+        m.jitter          = std::sqrt(periodVariance);
+        m.amplitude_ratio = amplitudeRatio;
+        m.is_fallback     = fallbackActive;
         return m;
     }
 
     // Reset the detector (clears history and returns to initial state)
     void reset() {
-        currentState = State::NotSet;
-        frequencyHz = SCHMITT_TRIGGER_FREQ_INIT;
-        fallbackToLowFreqTime = SCHMITT_TRIGGER_FALLBACK_TIME;
-        periodsPerCycle = 1;
-        cycleTime = 0.0f;
-        lastLowCrossTime = 0.0f;
-        lastHighCrossTime = 0.0f;
-        lastCrossingTime = 0.0f;
+        currentState           = State::WAS_NOT_SET;
+        frequencyHz            = SCHMITT_TRIGGER_FREQ_INIT;
+        fallbackToLowFreqTime  = SCHMITT_TRIGGER_FALLBACK_TIME;
+        periodsPerCycle        = 1;
+        cycleTime              = 0.0f;
+        lastLowCrossTime       = 0.0f;
+        lastHighCrossTime      = 0.0f;
+        lastCrossingTime       = 0.0f;
         cycleStartCrossingTime = 0.0f;
-        crossingCount = 0;
-        lastPeriodEstimate = 0.0f;
-        periodVariance = 0.0f;
-        amplitudeRatio = 0.0f;
-        fallbackActive = true;
-        historyIndex = 0;
-        historyCount = 0;
-        for (auto& p : periodHistory) {
-            p = 0.0f;
+        crossingCount          = 0;
+        lastPeriodEstimate     = 0.0f;
+        periodVariance         = 0.0f;
+        amplitudeRatio         = 0.0f;
+        fallbackActive         = true;
+        historyIndex           = 0;
+        historyCount           = 0;
+        for (size_t i = 0; i < PERIOD_HISTORY_SIZE; ++i) {
+            periodHistory[i] = 0.0f;
         }
     }
 
 private:
-    enum class State { NotSet, Low, High };
+    enum class State {
+        WAS_NOT_SET,
+        WAS_LOW,
+        WAS_HIGH,
+    };
 
-    // Initialize after reset or on first call
     void initializeState(float scaled) {
         if (scaled > upperThreshold) {
-            currentState = State::High;
+            currentState = State::WAS_HIGH;
         } else if (scaled < lowerThreshold) {
-            currentState = State::Low;
+            currentState = State::WAS_LOW;
         }
-        // reset timers & counters
-        cycleTime = 0.0f;
-        lastLowCrossTime = 0.0f;
-        lastHighCrossTime = 0.0f;
-        lastCrossingTime = 0.0f;
+        // reset cycle timers & counters
+        cycleTime              = 0.0f;
+        lastLowCrossTime       = 0.0f;
+        lastHighCrossTime      = 0.0f;
+        lastCrossingTime       = 0.0f;
         cycleStartCrossingTime = 0.0f;
-        crossingCount = 0;
-        fallbackActive = true;
+        crossingCount          = 0;
+        fallbackActive         = true;
     }
 
-    // Handle transitions from Low state
-    void processLowState(float scaled, float debounceTime, float steepnessTime) {
-        cycleTime += steepnessTime;  // advance time in cycle
-        float sinceLow = cycleTime - lastLowCrossTime;
-        float thisCrossing = cycleTime - sinceLow / 2.0f;
+    void processLowState(float scaled, float debounceTime, float steepnessTime, float dt) {
+        cycleTime += dt;  // advance by actual elapsed time
+        float sinceLow  = cycleTime - lastLowCrossTime;
+        float thisCross = cycleTime - sinceLow / 2.0f;
 
         // valid rising edge?
         if (scaled > upperThreshold
             && sinceLow > steepnessTime
-            && (crossingCount == 0 || (thisCrossing - lastCrossingTime) > debounceTime))
+            && (crossingCount == 0 || (thisCross - lastCrossingTime) > debounceTime))
         {
-            currentState = State::High;
-            lastHighCrossTime = cycleTime;           // update last time we crossed high
-            lastCrossingTime = thisCrossing;         // mark crossing time
+            currentState      = State::WAS_HIGH;
+            lastHighCrossTime = cycleTime;       // time we crossed high
+            lastCrossingTime  = thisCross;       // mark crossing
 
             if (crossingCount == 0) {
-                cycleStartCrossingTime = thisCrossing; // first crossing in this cycle
+                cycleStartCrossingTime = thisCross;  // first crossing in cycle
             }
             ++crossingCount;
-            computeFrequencyOnCrossing(thisCrossing);
+            computeFrequencyOnCrossing(thisCross);
         }
         // update last low-cross time for hysteresis
         else if (scaled < lowerThreshold) {
@@ -212,26 +212,25 @@ private:
         checkFallbackCondition();
     }
 
-    // Handle transitions from High state
-    void processHighState(float scaled, float debounceTime, float steepnessTime) {
-        cycleTime += steepnessTime;  // advance time in cycle
+    void processHighState(float scaled, float debounceTime, float steepnessTime, float dt) {
+        cycleTime += dt;  // advance by actual elapsed time
         float sinceHigh = cycleTime - lastHighCrossTime;
-        float thisCrossing = cycleTime - sinceHigh / 2.0f;
+        float thisCross = cycleTime - sinceHigh / 2.0f;
 
         // valid falling edge?
         if (scaled < lowerThreshold
             && sinceHigh > steepnessTime
-            && (crossingCount == 0 || (thisCrossing - lastCrossingTime) > debounceTime))
+            && (crossingCount == 0 || (thisCross - lastCrossingTime) > debounceTime))
         {
-            currentState = State::Low;
-            lastLowCrossTime = cycleTime;           // update last time we crossed low
-            lastCrossingTime = thisCrossing;        // mark crossing time
+            currentState     = State::WAS_LOW;
+            lastLowCrossTime = cycleTime;        // time we crossed low
+            lastCrossingTime = thisCross;        // mark crossing
 
             if (crossingCount == 0) {
-                cycleStartCrossingTime = thisCrossing; // first crossing in this cycle
+                cycleStartCrossingTime = thisCross; // first crossing in cycle
             }
             ++crossingCount;
-            computeFrequencyOnCrossing(thisCrossing);
+            computeFrequencyOnCrossing(thisCross);
         }
         // update last high-cross time for hysteresis
         else if (scaled > upperThreshold) {
@@ -240,98 +239,94 @@ private:
         checkFallbackCondition();
     }
 
-    // Calculate frequency when enough crossings have occurred
-    void computeFrequencyOnCrossing(float thisCrossing) {
+    void computeFrequencyOnCrossing(float thisCross) {
         // initial estimate when we see at least two crossings
         if (crossingCount > 1
-            && (frequencyHz == SCHMITT_TRIGGER_FREQ_INIT || frequencyHz == SCHMITT_TRIGGER_FALLBACK_FREQ))
+            && (frequencyHz == SCHMITT_TRIGGER_FREQ_INIT
+                || frequencyHz == SCHMITT_TRIGGER_FALLBACK_FREQ))
         {
-            float cycleDuration = thisCrossing - cycleStartCrossingTime;
-            float period = 2.0f * cycleDuration / (crossingCount - 1);
+            float cycleDur = thisCross - cycleStartCrossingTime;
+            float period   = 2.0f * cycleDur / (crossingCount - 1);
             updatePeriodStatistics(period);
-            frequencyHz = 1.0f / period;
+            frequencyHz    = 1.0f / period;
             fallbackActive = false;
         }
 
-        // full-cycle: reset counters after (2*periodsPerCycle + 1) crossings
+        // full-cycle complete?
         if (crossingCount == (2 * periodsPerCycle + 1)) {
-            float cycleDuration = thisCrossing - cycleStartCrossingTime;
-            float period = 2.0f * cycleDuration / (crossingCount - 1);
+            float cycleDur = thisCross - cycleStartCrossingTime;
+            float period   = 2.0f * cycleDur / (crossingCount - 1);
             updatePeriodStatistics(period);
-            frequencyHz = std::min(1.0f / period, SCHMITT_TRIGGER_FREQ_MAX);
+            frequencyHz    = std::min(1.0f / period, SCHMITT_TRIGGER_FREQ_MAX);
             fallbackActive = false;
 
-            // prepare for next cycle
-            crossingCount = 1;
-            lastCrossingTime = - cycleDuration / (crossingCount - 1);
-            cycleStartCrossingTime = lastCrossingTime;
-            cycleTime = 0.0f;
-            lastHighCrossTime = 0.0f;
-            lastLowCrossTime = 0.0f;
+            // restart cycle
+            crossingCount           = 1;
+            lastCrossingTime        = -cycleDur / (crossingCount - 1);
+            cycleStartCrossingTime  = lastCrossingTime;
+            cycleTime               = 0.0f;
+            lastHighCrossTime       = 0.0f;
+            lastLowCrossTime        = 0.0f;
         }
     }
 
-    // Apply fallback frequency if no crossing within timeout
     void checkFallbackCondition() {
+        // apply fallback if no crossing within timeout
         if ((cycleTime - lastCrossingTime) > fallbackToLowFreqTime) {
-            frequencyHz = SCHMITT_TRIGGER_FALLBACK_FREQ;
+            frequencyHz    = SCHMITT_TRIGGER_FALLBACK_FREQ;
             fallbackActive = true;
         }
     }
 
-    // Add new period to history and update variance
     void updatePeriodStatistics(float period) {
-        lastPeriodEstimate = period;               // store last raw period
-        periodHistory[historyIndex] = period;      // circular buffer
-        historyIndex = (historyIndex + 1) % kHistorySize;
-        if (historyCount < kHistorySize) {
-            ++historyCount;
-        }
+        lastPeriodEstimate              = period;             // store last raw period
+        periodHistory[historyIndex]     = period;             // circular buffer
+        historyIndex                    = (historyIndex + 1) % PERIOD_HISTORY_SIZE;
+        if (historyCount < PERIOD_HISTORY_SIZE) ++historyCount;
         calculatePeriodVariance();
     }
 
-    // Compute variance of recorded periods
     void calculatePeriodVariance() {
         if (historyCount < 2) {
             periodVariance = 0.0f;
             return;
         }
-        float sum = 0.0f, sumSq = 0.0f;
+        float sum   = 0.0f, sumSq = 0.0f;
         for (size_t i = 0; i < historyCount; ++i) {
-            float v = periodHistory[i];
-            sum += v;
-            sumSq += v * v;
+            float v   = periodHistory[i];
+            sum      += v;
+            sumSq    += v * v;
         }
         float mean = sum / historyCount;
         periodVariance = (sumSq / historyCount) - (mean * mean);
     }
 
     // hysteresis thresholds
-    float hysteresisThreshold;            // hysteresis amplitude
-    float upperThreshold;                 // normalized upper crossing threshold
-    float lowerThreshold;                 // normalized lower crossing threshold
+    float hysteresisThreshold;            // Hysteresis threshold
+    float upperThreshold;                 // Upper threshold
+    float lowerThreshold;                 // Lower threshold
 
-    State currentState;                   // current Schmitt trigger state
-    float frequencyHz;                    // latest frequency estimate (Hz)
-    float fallbackToLowFreqTime;          // time without crossing before fallback
+    State       currentState;             // Tracks states
+    float       frequencyHz;              // Latest frequency estimate (Hz)
+    float       fallbackToLowFreqTime;    // Time to fallback if no crossing detected
 
-    float lastPeriodEstimate;             // last measured period (s)
-    float periodVariance;                 // variance of period measurements
-    float amplitudeRatio;                 // signal amplitude / hysteresisThreshold
-    bool  fallbackActive;                 // true if using fallback frequency
+    float       lastPeriodEstimate;
+    float       periodVariance;
+    float       amplitudeRatio;
+    bool        fallbackActive;
 
-    unsigned int periodsPerCycle;         // number of half-cycles per full cycle
-    float cycleTime;                      // elapsed time within the current cycle
-    float lastLowCrossTime;               // time of last low-to-high crossing
-    float lastHighCrossTime;              // time of last high-to-low crossing
-    float lastCrossingTime;               // time of last counted crossing
-    float cycleStartCrossingTime;         // time of first crossing in this cycle
-    unsigned int crossingCount;           // how many crossings since cycle start
+    unsigned int periodsPerCycle;
+    float       cycleTime;
+    float       lastLowCrossTime;
+    float       lastHighCrossTime;
+    float       lastCrossingTime;
+    float       cycleStartCrossingTime;
+    unsigned int crossingCount;
 
-    static constexpr size_t kHistorySize = 10;
-    float periodHistory[kHistorySize];    // buffer of recent period measurements
-    size_t historyIndex;                  // next index to write in periodHistory
-    size_t historyCount;                  // how many valid entries in periodHistory
+    static constexpr size_t PERIOD_HISTORY_SIZE = 10;
+    float       periodHistory[PERIOD_HISTORY_SIZE];
+    size_t      historyIndex;
+    size_t      historyCount;
 };
 
 #endif // SCHMITT_TRIGGER_FREQ_DETECTOR_H
