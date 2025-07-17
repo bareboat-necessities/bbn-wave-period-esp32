@@ -369,6 +369,73 @@ This structure makes KalmanANF highly efficient and well-suited for embedded and
   \item Initial \(P_0\) large (e.g.\ \(10^2\)) if \(a[0]\) is uncertain.  
 \end{itemize}
 
+\section{Numerical Stability Considerations}
+
+While the KalmanANF algorithm is computationally lightweight, careful attention is required to maintain numerical stability during online operation, especially in real-time and embedded systems. This section outlines critical factors influencing numerical robustness.
+
+\subsection{Bounds on Coefficient \texorpdfstring{$a[n]$}{a[n]}}
+
+The coefficient \( a[n] \) is used in computing the frequency via the inverse cosine:
+\[
+\omega[n] = \cos^{-1}\left(\frac{a[n]}{2}\right)
+\]
+Since \( \cos^{-1}(\cdot) \) is defined only for arguments in the interval \([-1, 1]\), we must guarantee that:
+\[
+-2 < a[n] < 2
+\]
+To enforce this, we clamp \( a[n] \) if it ever exceeds this range:
+\[
+a[n] \gets \min\left(\max\left(a[n], -1.99999\right), 1.99999\right)
+\]
+This prevents domain errors in \texttt{acos()} due to numerical drift or large innovations.
+
+\subsection{Covariance Divergence and Filter Degeneracy}
+
+The covariance update equation is:
+\[
+p[n+1] = (1 - K[n] H[n])\,p[n]
+\]
+If \( p[n] \to 0 \), the filter becomes overconfident and ignores future innovations (degenerate filter). Conversely, if \( p[n] \) grows without bound, updates become unstable.
+
+A well-conditioned filter requires balanced process noise \( q \) and measurement noise \( r \). Too small \( q \) may cause filter stagnation; too large \( q \) amplifies noise sensitivity.
+
+\subsection{Conditioning of Kalman Gain Denominator}
+
+The Kalman gain involves division by:
+\[
+H[n]^2 p[n] + r = (\rho s[n-1])^2 p[n] + r
+\]
+If \( s[n-1] \) is near zero (e.g., at zero-crossings), the denominator approaches \( r \), risking abrupt gain changes. If \( p[n] \) is small simultaneously, roundoff errors dominate. In such cases, consider:
+\begin{itemize}
+  \item Adding a small positive lower bound to the denominator
+  \item Smoothing \( s[n-1] \) via a running average
+\end{itemize}
+
+\subsection{Accumulation of State Variables}
+
+The states \( s[n-1] \) and \( s[n-2] \) are recursively updated:
+\[
+s[n] = y[n] + \rho a[n] s[n-1] - \rho^2 s[n-2]
+\]
+Roundoff errors can accumulate over long sequences, especially if \( \rho \approx 1 \), leading to amplitude drift or overflow. Recommended mitigations:
+\begin{itemize}
+\item Periodic normalization of \( s[n-1] \), \( s[n-2] \)
+\item Using double precision on platforms where float underflows occur
+\item Setting \(\rho \leq 0.99\) to ensure decay
+\end{itemize}
+
+\subsection{Choice of \texorpdfstring{$\rho$}{rho} and Filter Q-Factor}
+
+The resonator pole radius \( \rho \in (0, 1) \) controls damping:
+\[
+Q \approx \frac{1}{1 - \rho}
+\]
+Higher \( \rho \) improves frequency resolution but increases ringing and noise sensitivity. Recommended trade-offs:
+\begin{itemize}
+\item \(\rho = 0.95\): better transient tracking
+\item \(\rho = 0.99\): narrowband steady-state estimation
+\item Avoid \(\rho \to 1\): risk of resonator blowup under impulsive noise
+\end{itemize}
 
 \section{Noise Robustness}
 
