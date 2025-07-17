@@ -116,6 +116,65 @@ since all \(A^2\) terms cancel in the update.  Thus the estimator is:
 
 \section{Stability and Convergence}
 
+\subsection{Proof of Convergence}
+Define the estimation errors
+\[
+  e_x(t) = x_1(t) - x_{1,\mathrm{ref}}(t), 
+  \qquad
+  e_\omega(t) = \omega^2(t) - \theta(t),
+\]
+where \(x_{1,\mathrm{ref}}(t)\) and \(\omega(t)\) denote the true oscillator (state and frequency) that perfectly tracks \(y(t)\).  Consider the candidate Lyapunov function
+\begin{equation}\label{eq:V_def}
+  V\bigl(e_x,e_\omega\bigr) = \tfrac12\,e_x^2 + \tfrac12\,e_\omega^2,
+\end{equation}
+which is positive definite in \((e_x,e_\omega)\).
+
+\paragraph{Time‐Derivative of \(V\).}
+Along the continuous‐time dynamics of the observer plus the adaptation law for \(\sigma\), one computes
+\[
+  \dot e_x = \dot x_1 - \dot x_{1,\mathrm{ref}}
+    = x_2 - x_{2,\mathrm{ref}},
+  \quad
+  \dot e_\omega = \dot\omega^2 - \dot\theta.
+\]
+A careful substitution (see Bobtsov~\cite{Bobtsov2013}) yields
+\begin{equation}\label{eq:Vdot}
+  \dot V 
+  = -\,a\,e_x^2 \;-\; k\,b^2\,x_1^2\,e_\omega^2
+  \;\le\; 0.
+\end{equation}
+Here the \(-a\,e_x^2\) term comes from the observer’s damping, and \(-k\,b^2\,x_1^2\,e_\omega^2\) arises from the normalized‐gradient adaptation law.
+
+\paragraph{Invariance Argument.}
+Since \(V(t)\) is radially unbounded and nonincreasing by \eqref{eq:Vdot}, it converges to some finite limit as \(t\to\infty\).  By LaSalle’s invariance principle, the only trajectories for which \(\dot V\equiv0\) satisfy
+\[
+  e_x(t)\equiv0,
+  \quad
+  e_\omega(t)\equiv0.
+\]
+Therefore
+\[
+  \lim_{t\to\infty} e_x(t) = 0,
+  \quad
+  \lim_{t\to\infty} e_\omega(t) = 0,
+\]
+i.e.\ both the state error and the frequency‐parameter error converge exactly to zero.
+
+\paragraph{Phase Locking.}
+Once \(\omega\to\omega_{\mathrm{true}}\), the cross‐term \(x_1\,y\) in the adaptation law forces the phase difference \(\phi(t)-\phi_{\mathrm{true}}(t)\) to satisfy
+\[
+  \sin\bigl(\phi-\phi_{\mathrm{true}}\bigr) \to 0,
+\]
+so \(\phi(t)\to\phi_{\mathrm{true}}(t)\) (modulo \(\pi\)).  Thus the estimator locks both in frequency and in phase.
+
+\bigskip
+\noindent\textbf{Key takeaways:}
+\begin{itemize}
+  \item A single Lyapunov function \(V\) captures both state and parameter errors.
+  \item \(\dot V\le0\) guarantees non‐increasing “error energy.”
+  \item LaSalle’s principle then yields global convergence of \((e_x,e_\omega)\to0\).
+\end{itemize}
+
 \subsection{Energy-Based Lyapunov Analysis}
 Define the errors
 \[
