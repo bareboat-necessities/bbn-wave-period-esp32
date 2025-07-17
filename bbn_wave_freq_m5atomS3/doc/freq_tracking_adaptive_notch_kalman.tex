@@ -316,38 +316,43 @@ The KalmanANF exhibits several adaptive properties that make it effective for fr
   \item \textbf{Embedded Model Adaptation:} Rather than estimating frequency directly, KalmanANF updates an internal model (a second-order resonator) whose behavior reflects the signal frequency. This leads to more robust performance, particularly when frequency is time-varying.
 \end{enumerate}
 
-\subsection{Jacobian of the Measurement Model}
+\subsection{Jacobian in Continuous Time}
 
-The KalmanANF updates the coefficient \( a[n] \) based on a scalar EKF framework. To apply this update correctly, the measurement model must be linearized around the current estimate. This requires computing the Jacobian of the nonlinear measurement equation with respect to the state (here, \( a[n] \)).
-
-The measurement equation is given by:
+In a continuous‐time EKF interpretation, we treat the adaptive coefficient \(a(t)\) as a slowly varying state.  The resonator dynamics (from \eqref{eq:resonator} in the limit \(\Delta t\to0\)) can be written as:
 \[
-s[n] = y[n] + \rho\,s[n-1]\,a[n] - \rho^2 s[n-2]
+\ddot s(t) + 2\zeta(a(t))\,\omega(a(t))\,\dot s(t) + \omega(a(t))^2\,s(t)
+= y(t),
 \]
-
-The predicted output is:
+where 
 \[
-\hat{s}[n] = \rho\,s[n-1]\,a[n] - \rho^2 s[n-2]
+\omega(a) \;=\; \frac{1}{\Delta t}\cos^{-1}\!\Bigl(\frac{a}{2}\Bigr),
+\quad
+\zeta(a) \;=\; \frac{-\ln\rho}{\sqrt{\pi^2 + \ln^2\rho}}
 \]
-
-The residual (innovation) is:
+is the damping factor implicit in \(\rho\).  Equivalently, define the measurement function
 \[
-e[n] = s[n] - \hat{s}[n] = y[n]
+h\bigl(s(t),a(t)\bigr)
+= \rho\,a(t)\,s(t),
 \]
-
-To update the estimate using EKF, we require the Jacobian:
+so that the innovation is
 \[
-\frac{\partial \hat{s}[n]}{\partial a[n]} = \rho\,s[n-1]
+e(t)=s(t)-h\bigl(s(t),a(t)\bigr).
 \]
-
-This Jacobian serves as the sensitivity of the predicted output to the estimated parameter \( a[n] \), and it appears directly in the Kalman gain computation:
+To linearize around the current estimate \(a(t)\), we form the Jacobian
 \[
-K[n] = \frac{p[n]\,\rho\,s[n-1]}{(\rho\,s[n-1])^2\,p[n] + r}
+H_a(t)
+= \frac{\partial\,h\bigl(s(t),a\bigr)}{\partial a}\Bigg|_{a=a(t)}
+= \rho\,s(t).
 \]
-
-Thus, the Kalman gain is proportional to the Jacobian, scaled by the uncertainty \( p[n] \) and normalized by the total innovation variance.
-
-This Jacobian-based update ensures that the EKF locally linearizes the measurement dynamics and applies a gradient-corrected update, enabling fast convergence when the model is near the correct parameter region.
+In a continuous‐time EKF, the gain becomes
+\[
+K(t) \;=\; \frac{P(t)\,H_a(t)}{H_a(t)^2\,P(t) + R},
+\]
+where \(P(t)\) is the covariance of \(a\) and \(R\) is the continuous‐time measurement noise intensity.  The state update is then
+\[
+\dot a(t) = K(t)\,e(t),
+\]
+ensuring that the adaptation of \(a(t)\) scales with the sensitivity \(\rho\,s(t)\).  This continuous Jacobian formalism highlights the EKF‐like linearization step without reference to discrete indices.  
 
 \subsection{Comparison with Standard EKF}
 
