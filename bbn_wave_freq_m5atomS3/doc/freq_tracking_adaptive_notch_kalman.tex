@@ -315,6 +315,39 @@ The KalmanANF exhibits several adaptive properties that make it effective for fr
   \item \textbf{Embedded Model Adaptation:} Rather than estimating frequency directly, KalmanANF updates an internal model (a second-order resonator) whose behavior reflects the signal frequency. This leads to more robust performance, particularly when frequency is time-varying.
 \end{enumerate}
 
+\subsection{Jacobian of the Measurement Model}
+
+The KalmanANF updates the coefficient \( a[n] \) based on a scalar EKF framework. To apply this update correctly, the measurement model must be linearized around the current estimate. This requires computing the Jacobian of the nonlinear measurement equation with respect to the state (here, \( a[n] \)).
+
+The measurement equation is given by:
+\[
+s[n] = y[n] + \rho\,s[n-1]\,a[n] - \rho^2 s[n-2]
+\]
+
+The predicted output is:
+\[
+\hat{s}[n] = \rho\,s[n-1]\,a[n] - \rho^2 s[n-2]
+\]
+
+The residual (innovation) is:
+\[
+e[n] = s[n] - \hat{s}[n] = y[n]
+\]
+
+To update the estimate using EKF, we require the Jacobian:
+\[
+\frac{\partial \hat{s}[n]}{\partial a[n]} = \rho\,s[n-1]
+\]
+
+This Jacobian serves as the sensitivity of the predicted output to the estimated parameter \( a[n] \), and it appears directly in the Kalman gain computation:
+\[
+K[n] = \frac{p[n]\,\rho\,s[n-1]}{(\rho\,s[n-1])^2\,p[n] + r}
+\]
+
+Thus, the Kalman gain is proportional to the Jacobian, scaled by the uncertainty \( p[n] \) and normalized by the total innovation variance.
+
+This Jacobian-based update ensures that the EKF locally linearizes the measurement dynamics and applies a gradient-corrected update, enabling fast convergence when the model is near the correct parameter region.
+
 \subsection{Comparison with Standard EKF}
 
 Unlike general-purpose EKFs that track full state vectors, KalmanANF:
