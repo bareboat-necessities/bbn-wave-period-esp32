@@ -111,6 +111,99 @@ The energy of the resonator states $s[n-1], s[n-2]$ implicitly reflects the ampl
 
 is derived from this oscillatory state trajectory, which traces an elliptical or circular path depending on amplitude consistency.
 
+\section{Signal Interpretation and Limitations}
+
+\subsection{Hilbert Transform Interpretation}
+
+Although the KalmanANF does not compute the Hilbert transform explicitly, its resonator acts similarly to an analytic signal generator.
+
+Recall the Hilbert transform creates an analytic signal:
+
+\[
+y_a(t) = y(t) + j\,\mathcal{H}\{y(t)\} = A(t)\,e^{j(\omega t + \phi(t))}
+\]
+
+From this form, the **instantaneous frequency** is computed as:
+
+\[
+\omega(t) = \frac{d}{dt} \arg\bigl(y_a(t)\bigr)
+\]
+
+In KalmanANF:
+\begin{itemize}
+  \item The states \(s[n-1], s[n-2]\) define an internal 2D oscillator approximating the in-phase and quadrature components of \(y(t)\).
+  \item The phase estimate \(\phi[n] = \mathrm{atan2}(s[n-1], s[n-2])\) mimics the analytic phase.
+  \item The estimated frequency \(\hat{\omega}[n] = \cos^{-1}\left(\frac{a[n]}{2}\right)\) approximates the derivative of this phase.
+\end{itemize}
+
+Hence, the KalmanANF reconstructs a rotating complex exponential component that behaves analogously to the output of a Hilbert-based frequency tracker.
+
+\subsection{Frequency Resolution Limits}
+
+The frequency resolution is limited by:
+\begin{itemize}
+    \item The sampling interval \(\Delta t\),
+    \item The pole radius \(\rho\),
+    \item The dynamics of the Kalman filter itself (i.e., process noise \(q\) and measurement noise \(r\)).
+\end{itemize}
+
+More specifically:
+\begin{itemize}
+    \item The **minimum detectable frequency** is limited by \(\frac{1}{T_{\text{obs}}}\), where \(T_{\text{obs}}\) is the observation duration.
+    \item The **maximum resolvable frequency** is bounded by the Nyquist frequency \(f_{\text{Nyq}} = \frac{1}{2\Delta t}\). Frequencies beyond this will alias.
+    \item The **bandwidth of the resonator** is approximately:
+    \[
+    BW \approx \frac{1 - \rho}{\pi \Delta t}
+    \]
+    Narrower bandwidth improves resolution but slows response to fast changes.
+\end{itemize}
+
+Thus, high frequency resolution requires:
+\begin{itemize}
+    \item High \(\rho\) close to 1,
+    \item Small process noise \(q\),
+    \item Long signal duration or window.
+\end{itemize}
+
+\subsection{Effect of Noise and Non-zero Mean}
+
+The KalmanANF is designed under the assumption of zero-mean additive white noise. Deviations from this model degrade performance.
+
+\subsubsection*{Additive White Gaussian Noise (AWGN)}
+If the noise is white and zero-mean:
+\begin{itemize}
+    \item The Kalman gain \(K[n]\) adapts to maintain optimal estimation.
+    \item Estimator converges to correct frequency and tracks small variations robustly.
+\end{itemize}
+
+\subsubsection*{Non-Zero Mean Noise}
+If noise has non-zero mean (e.g., DC bias), the filter exhibits:
+\begin{itemize}
+    \item Bias in the resonator state \(s[n]\), distorting the harmonic trajectory.
+    \item Skewed energy in the oscillator, leading to drift in phase and frequency.
+    \item Possible convergence to a shifted frequency or spurious behavior.
+\end{itemize}
+
+\textbf{Mitigation strategies} include:
+\begin{itemize}
+    \item Preprocessing with high-pass filter to remove DC components.
+    \item Adaptive DC cancellation or detrending.
+\end{itemize}
+
+\subsubsection*{Colored Noise}
+If the noise has a spectral peak near the signal frequency:
+\begin{itemize}
+    \item The estimator may lock onto the noise peak instead of the true frequency.
+    \item Increased process noise \(q\) may help the filter escape such spurious modes, at the cost of stability.
+\end{itemize}
+
+\subsubsection*{Robustness Summary}
+The KalmanANF is fairly robust to zero-mean white noise. However:
+\begin{itemize}
+    \item DC offsets must be removed.
+    \item Noise near the signal frequency limits tracking accuracy.
+    \item Tuning of \(q\), \(r\), and \(\rho\) is critical for balance between tracking and stability.
+\end{itemize}
 
 \section{Discrete-Time Algorithm}
 
