@@ -114,6 +114,49 @@ since all \(A^2\) terms cancel in the update.  Thus the estimator is:
   \item \(\sigma_{\max}\): clamp limit to avoid numerical overflow.
 \end{itemize}
 
+\section{Signal Processing Context}
+
+\subsection{Role of the Hilbert Transform}
+
+Although the Aranovskiy estimator does not explicitly compute the Hilbert transform, its internal oscillator can be interpreted as approximating a quadrature pair of the input signal. 
+
+The Hilbert transform \(\mathcal{H}\{y(t)\}\) defines the analytic signal:
+\[
+y_a(t) = y(t) + j\,\mathcal{H}\{y(t)\} = A(t)\,e^{j(\omega t + \phi(t))},
+\]
+from which one can directly obtain the instantaneous frequency:
+\[
+\omega(t) = \frac{d}{dt} \arg(y_a(t)).
+\]
+
+In this context:
+\begin{itemize}
+  \item The estimator’s internal states \(x_1(t)\) and \(x_2(t)\) approximate the in-phase and quadrature components.
+  \item Phase and frequency estimates emulate those derived from \(y_a(t)\).
+  \item The adaptation rule behaves as a nonlinear demodulator of the analytic phase.
+\end{itemize}
+
+Thus, while not using the Hilbert transform directly, the method achieves a similar outcome: frequency and phase tracking from real-valued data via quadrature synthesis.
+
+\subsection{Role of the Nyquist Frequency}
+
+The Nyquist frequency \(f_N = \tfrac{1}{2\Delta t}\) sets the theoretical upper bound on detectable signal frequency in sampled systems.
+
+For reliable operation:
+\begin{itemize}
+  \item The signal frequency \(\omega/(2\pi)\) must satisfy \( \omega < \pi/\Delta t \).
+  \item The adaptation law assumes no aliasing; thus, input must be bandlimited to below Nyquist.
+  \item Any frequency content above \(f_N\) will alias and mislead the estimator.
+\end{itemize}
+
+Practical implications:
+\begin{itemize}
+  \item Choose \(\Delta t\) small enough such that \(f_{\text{max}} \ll f_N\).
+  \item Apply anti-aliasing filters to analog input prior to sampling.
+\end{itemize}
+
+Failure to respect the Nyquist constraint will result in convergence to incorrect (aliased) frequencies or unstable behavior in the observer.
+
 \section{Stability and Convergence}
 
 \subsection{Proof of Convergence}
