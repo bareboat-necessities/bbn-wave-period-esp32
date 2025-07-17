@@ -133,7 +133,7 @@ public:
         } else {
             float stddev = std::sqrt(periodVariance);
             float norm = stddev / lastPeriodEstimate;
-            m.confidence = std::clamp(1.0f - norm, 0.0f, 1.0f);
+            m.confidence = std::max(0.0f, std::min(1.0f - norm, 1.0f));
         }
         m.jitter = std::sqrt(periodVariance);
         m.amplitudeRatio = amplitudeRatio;
