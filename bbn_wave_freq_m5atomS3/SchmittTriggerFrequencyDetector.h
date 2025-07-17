@@ -62,10 +62,8 @@ class SchmittTriggerFrequencyDetector {
       if (dt <= 0.0f || fabs(signalMagnitude) <= 0.0f) {
         return frequency;
       }
-
       const float scaledValue = signalValue / fabs(signalMagnitude);
       amplitudeRatio = fabs(signalMagnitude) / hysteresis;
-
       switch (state) {
         case State::WAS_NOT_SET: {
             if (scaledValue > upperThreshold) {
@@ -83,17 +81,15 @@ class SchmittTriggerFrequencyDetector {
           }
           break;
 
-        case State::WAS_LOW: {
+         case State::WAS_LOW: {
             timeInCycle += dt;
             float timeSinceLow = timeInCycle - lastLowTime;
             float thisCrossingTime = timeInCycle - timeSinceLow / 2.0f;
-
             if (scaledValue > upperThreshold && (timeSinceLow > steepnessTime)
                 && (crossingsCounter == 0 || (thisCrossingTime - lastCrossingInCycleTime) > debounceTime)) {
               state = State::WAS_HIGH;
               lastHighTime = timeInCycle;
               lastCrossingInCycleTime = thisCrossingTime;
-
               if (crossingsCounter == 0) {
                 beginningCrossingInCycleTime = thisCrossingTime;
               }
@@ -131,13 +127,11 @@ class SchmittTriggerFrequencyDetector {
             timeInCycle += dt;
             float timeSinceHigh = timeInCycle - lastHighTime;
             float thisCrossingTime = timeInCycle - timeSinceHigh / 2.0f;
-
             if (scaledValue < lowerThreshold && (timeSinceHigh > steepnessTime)
                 && (crossingsCounter == 0 || (thisCrossingTime - lastCrossingInCycleTime) > debounceTime)) {
               state = State::WAS_LOW;
               lastLowTime = timeInCycle;
               lastCrossingInCycleTime = thisCrossingTime;
-
               if (crossingsCounter == 0) {
                 beginningCrossingInCycleTime = thisCrossingTime;
               }
@@ -174,7 +168,6 @@ class SchmittTriggerFrequencyDetector {
         default:
           timeInCycle += dt;
       }
-
       return frequency;
     }
 
@@ -188,15 +181,12 @@ class SchmittTriggerFrequencyDetector {
       if (frequency <= 0.0f || isFallback) {
         return 0.0f;
       }
-
       float period = 1.0f / frequency;
       float timeSinceLastCrossing = timeInCycle - lastCrossingInCycleTime;
       float phase = 2.0f * M_PI * fmodf(timeSinceLastCrossing / period, 1.0f);
-
       if (state == State::WAS_LOW) {
         phase = fmodf(phase + M_PI, 2.0f * M_PI);
       }
-
       if (phase < 0.0f) phase += 2.0f * M_PI;
       return phase;
     }
@@ -204,7 +194,6 @@ class SchmittTriggerFrequencyDetector {
     // Get quality metrics for the current frequency estimate
     QualityMetrics getQualityMetrics() const {
       QualityMetrics metrics;
-
       if (periodHistoryCount < 2) {
         metrics.confidence = 0.1f;
       } else {
@@ -212,11 +201,9 @@ class SchmittTriggerFrequencyDetector {
         float normalizedStddev = stddev / lastPeriodEstimate;
         metrics.confidence = std::max(0.0f, std::min(1.0f, 1.0f - normalizedStddev));
       }
-
       metrics.jitter = sqrtf(periodVariance);
       metrics.amplitude_ratio = amplitudeRatio;
       metrics.is_fallback = isFallback;
-
       return metrics;
     }
 
@@ -261,7 +248,6 @@ class SchmittTriggerFrequencyDetector {
         periodVariance = 0.0f;
         return;
       }
-
       float sum = 0.0f, sumSq = 0.0f;
       for (size_t i = 0; i < periodHistoryCount; ++i) {
         sum += periodHistory[i];
