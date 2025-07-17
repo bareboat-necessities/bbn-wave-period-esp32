@@ -16,7 +16,7 @@
 
 \subsection{Original Reference}
 This algorithm is based on the work of  
-Ali and van Waterschoot~\cite{Ali2023}, which marries a single-parameter adaptive notch filter with a Kalman-filter update to track the instantaneous frequency of a sinusoid in noise.
+Ali and van Waterschoot~\cite{AliWaterschoot2023}, which marries a single-parameter adaptive notch filter with a Kalman-filter update to track the instantaneous frequency of a sinusoid in noise.
 
 \subsection{Signal and Notch-Filter Model}
 We assume the measurement
@@ -102,7 +102,7 @@ so \(a[n]\to a_{\mathrm{true}} = 2\cos(\omega\,\Delta t)\) in expectation, with 
 \subsection{Frequency and Phase Locking}
 As \(a[n]\) converges, the notch-filter poles lock onto the signal’s frequency.  The estimate \(\hat\omega[n]\) thus converges to \(\omega\).  Moreover, the internal phase
 \[
-\phi[n] = \atan2\bigl(s[n-1],\,s[n-2]\bigr)
+\phi[n] = \mathrm{atan2}\bigl(s[n-1],\,s[n-2]\bigr)
 \]
 locks to the true phase (modulo \(\pi\)).
 
@@ -116,22 +116,13 @@ locks to the true phase (modulo \(\pi\)).
   \item Initial \(P_0\) large (e.g.\ \(10^2\)) if \(a[0]\) is uncertain.  
 \end{itemize}
 
-\subsection{C Implementation Sketch}
-\begin{verbatim}
-KalmANF f;
-kalmANF_init(&f, rho, q, r, P0, 0.0f, 0.0f, 2.0f);
-for each sample y[n] do
-  float freq = kalmANF_process(&f, y[n], Δt, &e);
-  // optionally: float phase = kalmANF_get_phase(&f);
-end for
-\end{verbatim}
 
 \section{Noise Robustness}
 
 The Kalman update balances process noise \(q\) and measurement noise \(r\).  The notch filter suppresses out-of-band noise so that the effective SNR for the update is improved, facilitating convergence even at low input SNR.
 
 \begin{thebibliography}{9}
-\bibitem{Ali2023}
+\bibitem{AliWaterschoot2023}
 Randy Ali and Tom van Waterschoot,  
 ``A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter,''  
 in \emph{Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23)},  
