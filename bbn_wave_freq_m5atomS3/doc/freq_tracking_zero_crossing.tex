@@ -1,1 +1,105 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage{amsmath,amssymb,geometry,hyperref}
+\geometry{margin=1in}
+\begin{document}
 
+\title{Zero‐Crossing Frequency Tracking with Hysteresis and Debouncing}
+\author{Mikhail Grushinskiy}
+\date{July 2025}
+\maketitle
+
+\begin{abstract}
+We present a robust zero‐crossing frequency detector employing a Schmitt‐trigger hysteresis, debounce filtering, and cycle‐averaged period estimation.  The method, implemented in \texttt{SchmittTriggerFrequencyDetector} (see \texttt{SCHMITT\_TRIGGER\_FREQ\_DETECTOR\_H}), yields instantaneous frequency estimates, phase, and quality metrics (confidence, jitter, amplitude ratio, fallback status).
+\end{abstract}
+
+\section{Problem Statement}
+Given a real‐valued, approximately sinusoidal input signal \(s(t)\) with unknown amplitude \(A\) and frequency \(f\), we wish to estimate \(f\) in real time while rejecting noise and drift.  The detector must also report a phase estimate and confidence metrics.
+
+\section{Normalized Signal and Hysteresis}
+Define the normalized signal
+\[
+x(t) \;=\; \frac{s(t)}{\lvert A\rvert}, 
+\quad A = \max_t |s(t)|.
+\]
+We choose a hysteresis threshold \(h>0\), and set upper and lower thresholds
+\[
+T_{\mathrm{up}} = +h,\quad T_{\mathrm{low}} = -h.
+\]
+At each sample, \(x(t)\) is compared to \(\pm h\) to detect transitions.
+
+\section{State Machine with Debouncing}
+The detector maintains a state \(\sigma \in \{\mathrm{LOW}, \mathrm{HIGH}\}\).  Let \(\Delta t\) be the sample interval, \(\Delta t_{\mathrm{deb}}\) the debounce interval, and \(\Delta t_{\mathrm{steep}}\) the minimum time to guard against spurious crossings.  Define the local time‐within‐cycle \(u(t)\), incremented by \(\Delta t\) each step.
+
+\subsection{Transition Conditions}
+A low‐to‐high transition at time \(t_i\) occurs if
+\[
+x(t_i) > T_{\mathrm{up}}, 
+\quad u(t_i) - u(t_{i-1}) > \Delta t_{\mathrm{steep}}, 
+\quad u(t_i) - u(t_{i-1}^{\mathrm{cross}}) > \Delta t_{\mathrm{deb}},
+\]
+and similarly for high‐to‐low using \(x(t) < T_{\mathrm{low}}\).  Each crossing time is recorded as
+\[
+t^{\mathrm{cross}} = u(t) - \tfrac12\,\bigl[u(t)-u(\text{last threshold cross})\bigr].
+\]
+
+\section{Period and Frequency Estimation}
+Let \(n\) crossings occur at times \(t_1,\dots,t_n\).  After observing \(M=2\,N_{\rm cycle}+1\) crossings (i.e.\ \(N_{\rm cycle}\) full periods), compute the cycle time
+\[
+T_{\rm cycle}
+= \frac{t_{n} - t_{1}}{\,N_{\rm cycle}\,},
+\]
+and estimate the instantaneous period
+\[
+T = \frac{2}{n-1}\,(t_{n} - t_{1}),
+\]
+so that the frequency estimate is
+\[
+\hat f = \frac{1}{T}.
+\]
+If fewer than two crossings have been observed, or if no crossing occurs for a time
+\(\Delta t_{\mathrm{fb}}\), we set a fallback frequency
+\(\displaystyle f_{\mathrm{fb}} = 10^{-2}\,\mathrm{Hz}.\)
+
+\section{Statistical Quality Metrics}
+Maintain a circular history \(\{T_k\}\) of the last \(K\) period estimates.  Let
+\[
+\overline{T} = \frac1K\sum_{k=1}^K T_k,
+\quad
+\sigma_T^2 = \frac1K\sum_{k=1}^K (T_k-\overline{T})^2.
+\]
+Define
+\[
+\text{jitter} = \sigma_T,
+\quad
+\text{confidence} = \max\bigl(0,\,1 - \tfrac{\sigma_T}{\overline{T}}\bigr).
+\]
+Additionally, the amplitude‐to‐threshold ratio
+\(\displaystyle R_A = \frac{|A|}{h}\) is reported.
+
+\section{Phase Estimation}
+Between crossings, we compute the phase
+\[
+\phi(t) \;=\; 2\pi\,\frac{u(t) - u(t_{n-1}^{\mathrm{cross}})}{T}
+\quad (\bmod\,2\pi),
+\]
+offset by \(\pi\) on downward transitions to ensure continuity.
+
+\section{Implementation in \texttt{SchmittTriggerFrequencyDetector}}
+Key parameters and defaults:
+\begin{itemize}
+  \item Hysteresis \(h=0.1\).
+  \item Debounce time \(\Delta t_{\mathrm{deb}}= \text{user‐supplied}\).
+  \item Steepness time \(\Delta t_{\mathrm{steep}}= \text{user‐supplied}\).
+  \item Fallback time \(\Delta t_{\mathrm{fb}}=60\,\mathrm{s}\).
+  \item History length \(K=10\).
+\end{itemize}
+The class is defined in \texttt{SCHMITT\_TRIGGER\_FREQ\_DETECTOR\_H}, with methods:
+\begin{itemize}
+  \item \texttt{float update(…)} — processes each sample, updates state, returns \(\hat f\).
+  \item \texttt{float getPhaseEstimate()} — returns \(\phi(t)\).
+  \item \texttt{QualityMetrics getQualityMetrics()} — returns \(\{\mathrm{confidence},\mathrm{jitter},R_A,\mathrm{is\_fallback}\}\).
+\end{itemize}
+
+\section{Conclusion}
+This Schmitt‐trigger frequency tracker achieves robust, low‐jitter frequency estimates in real time, with built‐in noise immunity via hysteresis and debouncing, and provides useful diagnostics for estimator quality.
+\end{document}
