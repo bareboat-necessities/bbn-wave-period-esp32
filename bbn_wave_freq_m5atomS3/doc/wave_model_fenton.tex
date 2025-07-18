@@ -211,21 +211,78 @@ where \(i_{\max},i_{\min}\) are the indices of the maximum and minimum \(\eta_{i
 All other partial derivatives are zero.  In the C++ code (\texttt{compute\_jacobian()}), these expressions are implemented exactly—ensuring an analytically exact Jacobian for robust Newton–Raphson convergence.
 
 \subsection{Derived Wave Quantities}
+\label{sec:derived_quantities}
 
-After convergence one computes:
-\begin{align*}
-& c = B_0,\qquad \omega = c\,k,\qquad T=\frac{2\pi}{\omega},\\
-& u(x,z)=\psi_z,\quad 
-  w(x,z)=-\psi_x,\\
-& \eta_x,\;\eta_t=-c\,\eta_x,\;\eta_{xx},\;\eta_{xt},\;\eta_{tt},\\
-& p(x,z)=\rho\Bigl[R-\tfrac12(u^2+w^2)-g(z-\eta)+c\,u\Bigr],\\
-& E_k = \tfrac12\rho\iint (u^2+w^2)\,dz\,dx,
+Once the spectral solution \(\{B_j\},\{E_j\},c,R\) is obtained, the implementation computes the following physical fields and integral measures:
+
+\paragraph{Surface kinematics:}
+\begin{align}
+\eta(x,t) &= \sum_{j=0}^{N} E_{j}\,\cos\bigl[jk(x - ct)\bigr], \\[0.5ex]
+\eta_{x}(x,t) &= -\sum_{j=0}^{N} j\,k\,E_{j}\,\sin\bigl[jk(x - ct)\bigr], \\[0.5ex]
+\eta_{t}(x,t) &= -\,c\,\eta_{x}(x,t), \\[0.5ex]
+\eta_{xx}(x,t) &= -\sum_{j=0}^{N} j^{2}k^{2}\,E_{j}\,\cos\bigl[jk(x - ct)\bigr], \\[0.5ex]
+\eta_{xt}(x,t) &= \sum_{j=0}^{N} j^{2}k\,c\,E_{j}\,\sin\bigl[jk(x - ct)\bigr], \\[0.5ex]
+\eta_{tt}(x,t) &= -\sum_{j=0}^{N} j^{2}\omega^{2}\,E_{j}\,\cos\bigl[jk(x - ct)\bigr],
+\end{align}
+where \(\omega = c\,k\).
+
+\paragraph{Stream function and velocities:}
+\begin{align}
+\psi(x,z,t) 
+&= B_{0}\,(z + d) 
+   + \sum_{j=1}^{N} B_{j}\,
+     \frac{\sinh\!\bigl[k_{j}(z + d)\bigr]}{\cosh(k_{j}d)}\,
+     \cos\bigl[jk(x - ct)\bigr], 
+   \\[0.5ex]
+u(x,z,t) &= \frac{\partial \psi}{\partial z}, 
 \quad
-E_p = \rho g\int \eta^2\,dx,\\
-&\text{Stokes drift, radiation stress }
-S_{xx}=\rho\langle u^2\rangle,\;\dots
-\end{align*}
-All domain integrals are evaluated via a 2D trapezoidal rule on a uniform $(x,z)$ grid in the code’s \verb|integrate2D()| routine.
+w(x,z,t) = -\,\frac{\partial \psi}{\partial x},
+\end{align}
+with \(k_{j}=j\,k\).
+
+\paragraph{Dynamic pressure:}
+\begin{equation}
+p(x,z,t)
+= \rho\Bigl[R - \tfrac12\bigl(u^{2}+w^{2}\bigr) - g\,(z - \eta(x,t)) + c\,u\Bigr].
+\end{equation}
+
+\paragraph{Energy densities and flux:}  
+Using the 2D trapezoidal integrator \(\int_{0}^{L}\!\int_{-d}^{\eta}\!\cdot\,dz\,dx\):
+\begin{align}
+\overline{E}_{k} 
+&= \frac{1}{L}\int_{0}^{L}\!\int_{-d}^{\eta(x)} \tfrac12\bigl(u^{2}+w^{2}\bigr)\,dz\,dx, 
+\\
+\overline{E}_{p} 
+&= \frac{g}{L}\int_{0}^{L} \eta(x)\,dx, 
+\\
+E_{\rm tot} 
+&= \overline{E}_{k} + \overline{E}_{p}, 
+\\
+F_{E} 
+&= c\,E_{\rm tot}.
+\end{align}
+
+\paragraph{Mean currents and drift:}
+\begin{align}
+\overline{u}_{E} 
+&= \frac{1}{d\,L}\int_{0}^{L}\!\int_{-d}^{\eta(x)} u\,dz\,dx, 
+\\
+U_{s}\;({\rm Stokes\ drift})
+&= \frac{1}{L}\int_{0}^{L} u\bigl(x,\eta(x)\bigr)\,dx.
+\end{align}
+
+\paragraph{Momentum and radiation stress:}
+\begin{align}
+I\;({\rm wave\ impulse})
+&= \int_{0}^{L}\!\int_{-d}^{\eta(x)} u\,dz\,dx, 
+\\
+M\;({\rm momentum\ flux})
+&= \int_{0}^{L}\!\int_{-d}^{\eta(x)} u^{2}\,dz\,dx, 
+\\
+S_{xx}
+&= \rho\,\bigl\langle u^{2}\bigr\rangle
+   = \rho\,\frac{M}{L}.
+\end{align}
 
 \subsection{Implementation Notes}
 
