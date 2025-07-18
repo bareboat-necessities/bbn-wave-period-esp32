@@ -1,9 +1,6 @@
 \documentclass[12pt]{article}
 \usepackage{amsmath,amssymb}
-\usepackage{graphicx}
 \usepackage{authblk}
-\usepackage{siunitx}
-\usepackage{physics}
 \usepackage{fullpage}
 
 \title{Wave Direction Estimation from IMU Accelerations Using a Kalman Filter}
@@ -14,95 +11,119 @@
 \maketitle
 
 \begin{abstract}
-This paper presents a method for estimating the direction of ocean wave propagation from horizontal acceleration measurements obtained by an Inertial Measurement Unit (IMU). The method employs a Kalman filter that estimates the amplitude vector of an oscillatory signal with known frequency and derives the direction from the estimated amplitude. The algorithm operates in real time, is robust to noise, and tracks confidence based on Kalman uncertainty. This technique is particularly suited for embedded oceanographic platforms such as wave buoys or autonomous surface vehicles.
+We present a robust, real-time method for estimating ocean wave propagation direction from horizontal IMU accelerations.  The core is a 2D Kalman filter that tracks the unknown amplitude vector of a sinusoid at (externally estimated) frequency.  Key features include Joseph-form covariance updates for numerical stability, automatic skipping of low-amplitude updates, additional conditioning safeguards, and exponential smoothing of successive direction estimates.  Notably, the method does \emph{not} require knowledge of the instantaneous phase.
 \end{abstract}
 
-\section{Introduction}
-Estimating wave direction using inertial sensors is challenging due to the noise and ambiguity in horizontal accelerations. Unlike traditional spectral methods requiring long data windows, this method operates recursively and assumes a known or slowly varying wave frequency. The core idea is to model the horizontal acceleration as a sinusoid in an unknown but constant direction and track the amplitude vector using a linear Kalman filter.
-
-\section{Mathematical Model}
-
-Let \( \vec{a}(t) \in \mathbb{R}^2 \) be the horizontal acceleration vector measured by the IMU at time \( t \). We assume it can be modeled as:
+\section{Model and Assumptions}
+Let the horizontal acceleration vector be
 \[
-\vec{a}(t) = \vec{A} \cos(\omega t + \phi)
+\vec{a}(t) = 
+\begin{bmatrix}a_x(t)\\a_y(t)\end{bmatrix}
+=
+\vec{A}\,\cos\bigl(\omega t + \phi\bigr)
 \]
-where:
-\begin{itemize}
-  \item \( \vec{A} \in \mathbb{R}^2 \) is the amplitude vector (encodes direction and magnitude)
-  \item \( \omega \) is the angular frequency of the wave (assumed known or externally estimated)
-  \item \( \phi \) is the global phase offset
-\end{itemize}
+where
+\(\omega\) is the (known) angular frequency and \(\vec{A}\) the unknown 2D amplitude.  The goal is to recover the unit direction \(\vec{d}=\vec{A}/\|\vec{A}\|\).  
 
-\subsection{State Space Model}
-We define the state as the amplitude vector \( \vec{A}_k \) at time step \( k \). The state evolves as:
+\subsection{Why Phase $\phi$ Is Unneeded and Self‐Correction via $\mathbf{A}$}
+The instantaneous phase $\phi$ enters as a common scalar factor \(\cos(\omega t+\phi)\) on both axes.  Direction depends only on the ratio \(a_y/a_x\):
 \[
-\vec{A}_k = \vec{A}_{k-1} + \vec{w}_k, \quad \vec{w}_k \sim \mathcal{N}(0, \mathbf{Q})
+\frac{a_y}{a_x}
+= \frac{A_y\cos(\omega t+\phi)}{A_x\cos(\omega t+\phi)}
+= \frac{A_y}{A_x}.
 \]
-The observation at time step \( k \) is:
+Thus any unknown constant phase offset \(\phi_0\) merely rescales the amplitude vector: 
+\(\vec{a}(t)=\bigl(\vec{A}\cos\phi_0\bigr)\cos(\omega t)+\bigl(-\vec{A}\sin\phi_0\bigr)\sin(\omega t)\).
+The filter’s state \(\mathbf{x}_k\) absorbs that unknown offset into its estimate of \(\vec{A}\), and by minimizing residuals over time it converges to the correct direction.  In effect, the Kalman update \emph{self‐corrects} for unknown phase by adjusting both components of \(\mathbf{x}_k\) so that \(H_k\mathbf{x}_k\approx\vec{a}_k\) in the least‐squares sense, yielding the true ratio \(A_y/A_x\).
+
+\section{State–Space Formulation}
+\subsection{State and Process Model}
+At discrete step \(k\), define
+\(\mathbf{x}_k=\vec{A}_k\in\mathbb{R}^2\).  We assume
 \[
-\vec{z}_k = \vec{a}_k = \vec{A}_k \cos(\theta_k) + \vec{v}_k, \quad \vec{v}_k \sim \mathcal{N}(0, \mathbf{R})
+\mathbf{x}_k = \mathbf{x}_{k-1} + \mathbf{w}_k,\quad
+\mathbf{w}_k\sim\mathcal{N}(0,\mathbf{Q}).
 \]
-where \( \theta_k = \omega t_k + \phi \) is the known phase, updated incrementally each timestep.
 
-The observation matrix is:
+\subsection{Observation Model and Low-Amplitude Skipping}
+At time \(k\), the measurement is \(\vec{z}_k=\vec{a}_k\).  Writing \(\theta_k = \omega\,k\,\Delta t\), we have
 \[
-\mathbf{H}_k = \cos(\theta_k) \cdot \mathbf{I}_2
+\vec{z}_k
+= H_k\,\mathbf{x}_k + \mathbf{v}_k,
+\quad
+H_k = \cos(\theta_k)\,\mathbf{I}_2,
+\quad
+\mathbf{v}_k\sim\mathcal{N}(0,\mathbf{R}).
 \]
+When \(\lvert\cos\theta_k\rvert<\epsilon_{\min}\) (i.e.\ the oscillation projects very weakly onto the measurement axes), the measurement update is \emph{skipped}:
+\[
+\mathbf{x}_k = \mathbf{x}_k^-,\quad \mathbf{P}_k = \mathbf{P}_k^-.
+\]
+This avoids dividing by a small gain, prevents injection of noise, and lets the filter rely on the process model until the signal amplitude becomes informative again.
 
-\section{Kalman Filter Equations}
-
-At each timestep, the filter performs the standard Kalman update:
+\section{Kalman Filter with Joseph‐Form Update}
+\subsection{Predict and Update Equations}
 \begin{align*}
-\text{Predict:} \quad & \vec{A}_k^- = \vec{A}_{k-1} \\
-& \mathbf{P}_k^- = \mathbf{P}_{k-1} + \mathbf{Q} \\
-\text{Update:} \quad & \mathbf{K}_k = \mathbf{P}_k^- \mathbf{H}_k^\top \left( \mathbf{H}_k \mathbf{P}_k^- \mathbf{H}_k^\top + \mathbf{R} \right)^{-1} \\
-& \vec{A}_k = \vec{A}_k^- + \mathbf{K}_k \left( \vec{z}_k - \mathbf{H}_k \vec{A}_k^- \right) \\
-& \mathbf{P}_k = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_k^-
+\textbf{Predict:}\quad
+&\mathbf{x}_k^- = \mathbf{x}_{k-1},\quad
+\mathbf{P}_k^- = \mathbf{P}_{k-1} + \mathbf{Q},\\
+\textbf{Update (if }|H_k|\ge\epsilon_{\min}\textbf{):}\quad
+&\mathbf{K}_k = \mathbf{P}_k^- H_k^\top
+  \bigl(H_k\mathbf{P}_k^-H_k^\top + \mathbf{R}\bigr)^{-1},\\
+&\mathbf{x}_k = \mathbf{x}_k^- + \mathbf{K}_k\bigl(\vec{z}_k - H_k\mathbf{x}_k^-\bigr),\\
+&\mathbf{P}_k
+= (\mathbf{I}-\mathbf{K}_kH_k)\,\mathbf{P}_k^-\,(\mathbf{I}-\mathbf{K}_kH_k)^\top
+  + \mathbf{K}_k\,\mathbf{R}\,\mathbf{K}_k^\top.
 \end{align*}
 
-The instantaneous direction estimate is:
-\[
-\hat{\vec{d}}_k = \frac{\vec{A}_k}{\norm{\vec{A}_k}}
-\]
+\subsection{Joseph Form for Numerical Stability}
+The Joseph‐form covariance update preserves symmetry and positive definiteness of \(\mathbf{P}_k\) in finite‐precision arithmetic, reducing the risk of spurious divergence.
 
-To prevent direction flipping, the estimate is smoothed and stabilized over time using a weighted average with the previous stable direction.
-
-\section{Implementation Details}
-
-\subsection{Phase Tracking}
-The phase \( \theta_k \) is updated as:
-\[
-\theta_k = \text{remainder}(\theta_{k-1} + \omega \Delta t, 2\pi)
-\]
-where \( \omega \) is the current angular frequency estimate, and \( \Delta t \) is the sampling period.
-
-\subsection{Directional Stability}
-To prevent instability near low amplitudes or during noise bursts, a confidence metric is introduced:
-\[
-\text{confidence}_k = \frac{1}{\operatorname{trace}(\mathbf{P}_k) + \varepsilon}
-\]
-If the amplitude \( \norm{\vec{A}_k} \) is below a threshold or the confidence is low, the direction estimate is frozen.
-
-\section{Outputs}
-
-The filter exposes the following quantities:
+\section{Additional Numerical Safeguards}
 \begin{itemize}
-  \item \textbf{Direction (unit vector)}: \( \hat{\vec{d}}_k \)
-  \item \textbf{Direction in degrees}: \( \theta_k = \text{atan2}(d_y, d_x) \in [0^\circ, 180^\circ) \)
-  \item \textbf{Amplitude vector}: \( \vec{A}_k \)
-  \item \textbf{Filtered signal}: \( \vec{a}_k = \vec{A}_k \cos(\theta_k) + \vec{A}_k^\perp \sin(\theta_k) \)
-  \item \textbf{Oscillation component}: \( \vec{A}_k \cos(\theta_k) \)
+  \item \textbf{Mahalanobis gating:} Reject updates if the innovation \(\vec{z}_k - H_k\mathbf{x}_k^-\) exceeds a threshold in Mahalanobis distance.
+  \item \textbf{LDLT decomposition:} Use LDLT factorization for inverting \(H_k\mathbf{P}_k^-H_k^\top + \mathbf{R}\), enhancing robustness against ill-conditioning.
+  \item \textbf{Covariance floor:} Enforce a small positive floor on diagonal entries of \(\mathbf{P}_k\) to prevent singularity.
+  \item \textbf{Adaptive measurement noise:} Temporarily inflate \(\mathbf{R}\) when large residuals indicate outliers.
 \end{itemize}
 
-\section{Simulation Results}
+\section{Direction Extraction and Smoothing}
+\subsection{Instantaneous Direction}
+After update,
+\[
+\widehat{\vec{d}}_k
+= \frac{\mathbf{x}_k}{\|\mathbf{x}_k\|}.
+\]
 
-In tests using simulated wave signals with Gaussian noise, the method was able to accurately track wave direction with sub-degree precision once the confidence stabilized. The algorithm is robust to amplitude modulation, direction flipping, and moderate noise.
+\subsection{Confidence Metric}
+Define
+\[
+\mathrm{confidence}_k
+= \frac{1}{\operatorname{trace}(\mathbf{P}_k) + \delta},
+\]
+so tighter uncertainty yields higher confidence.
+
+\subsection{Exponential Smoothing}
+To enforce continuity and resolve the \(\pm\) ambiguity, we maintain a “stable” direction \(\vec{d}^*_k\):
+\[
+\vec{d}^*_k
+= \frac{(1-\alpha)\,\vec{d}^*_{k-1} + \alpha\,\widehat{\vec{d}}_k}
+       {\bigl\|\,(1-\alpha)\,\vec{d}^*_{k-1} + \alpha\,\widehat{\vec{d}}_k\,\bigr\|},
+\quad \alpha\in(0,1].
+\]
+This low‐pass filters the direction estimate and prevents abrupt flips.
+
+\section{Outputs}
+The implementation provides:
+\begin{itemize}
+  \item \(\vec{d}^*_k\): stable unit‐vector direction
+  \item Direction in degrees: \(\mathrm{atan2}(d^*_y,d^*_x)\in[0,180)^\circ\)
+  \item Amplitude vector: \(\mathbf{x}_k\)
+  \item Filtered acceleration: \(H_k\,\mathbf{x}_k\)
+  \item Confidence: \(\mathrm{confidence}_k\)
+\end{itemize}
 
 \section{Conclusion}
-
-We presented a computationally efficient, real-time method for estimating ocean wave direction from horizontal accelerometer measurements. It relies on a Kalman filter with known-frequency sinusoidal excitation and robust confidence-based direction stabilization. The approach is directly suitable for embedded applications and can be combined with frequency or heave estimation modules for full wave characterization.
-
-\section*{Acknowledgements}
-Implementation and design by Mikhail Grushinskiy, 2025.
+By combining Joseph‐form updates, low‐amplitude skipping, Mahalanobis gating, covariance conditioning, and exponential smoothing—and without requiring instantaneous phase knowledge—this Kalman filter delivers robust, low‐jitter wave direction estimates from noisy horizontal IMU data.
 
 \end{document}
