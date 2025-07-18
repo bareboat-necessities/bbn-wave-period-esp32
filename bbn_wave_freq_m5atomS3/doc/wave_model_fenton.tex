@@ -239,6 +239,78 @@ The provided \verb|FentonWave<N,Real>| class in \texttt{FentonWave.h}:
   \item Includes a \verb|WaveSurfaceTracker| that integrates a floating object’s horizontal motion with RK4 under wave‐induced force and linear drag.
 \end{itemize}
 
+\subsection{Floating‐Object Kinematics: \texttt{WaveSurfaceTracker}}
+\label{sec:wave_surface_tracker}
+
+In addition to wave kinematics, the C++ implementation provides a \texttt{WaveSurfaceTracker<N,Real>} class that simulates the motion of a small floating body constrained to the wave surface.  The model assumes:
+
+\begin{itemize}
+  \item The body’s vertical coordinate exactly follows the instantaneous free‐surface elevation:
+    \[
+      z(t) = \eta\bigl(x(t),\,t\bigr).
+    \]
+  \item The horizontal motion is driven by a “slope” force proportional to surface gradient, plus linear drag.
+\end{itemize}
+
+\paragraph{Horizontal dynamics.}  
+Let \(x(t)\) be the body’s horizontal position and \(v_x = \dot x\) its horizontal velocity.  Newton’s second law yields
+\begin{equation}
+  m\,\ddot x \;=\; F_{\rm wave} + F_{\rm drag}
+  \;=\;-m\,g\,\eta_x\bigl(x(t),t\bigr)
+    \;-\;c_{\!d}\,v_x,
+  \label{eq:tracker_motion}
+\end{equation}
+where
+\[
+  \eta_x = \frac{\partial \eta}{\partial x}, 
+  \quad
+  c_{\!d} = \text{drag coefficient}, 
+  \quad
+  m = \text{body mass}.
+\]
+
+\paragraph{Vertical velocity and acceleration.}  
+Although \(z=\eta\), one can still compute the vertical velocity and acceleration for completeness:
+\begin{align}
+  \dot z &= \eta_t + \eta_x\,\dot x,
+  \\
+  \ddot z &\approx \frac{\dot z(t+\Delta t)-\dot z(t)}{\Delta t},
+\end{align}
+with \(\eta_t = \partial\eta/\partial t = -\,c\,\eta_x\).
+
+\paragraph{Numerical integration.}  
+The class uses a classical 4th‐order Runge–Kutta scheme (RK4) with time step \(\Delta t\), updating both \(x\) and \(v_x\) simultaneously:
+\[
+\begin{aligned}
+  k_{1}^{(x)} &= v_x, 
+  &\quad
+  k_{1}^{(v)} &= \ddot x\bigl(x,\,v_x,\,t\bigr),\\
+  k_{2}^{(x)} &= v_x + \tfrac{\Delta t}{2}\,k_{1}^{(v)}, 
+  &\quad
+  k_{2}^{(v)} &= \ddot x\Bigl(x + \tfrac{\Delta t}{2}k_{1}^{(x)},\;v_x + \tfrac{\Delta t}{2}k_{1}^{(v)},\;t+\tfrac{\Delta t}{2}\Bigr),\\
+  k_{3}^{(x)} &= v_x + \tfrac{\Delta t}{2}\,k_{2}^{(v)}, 
+  &\quad
+  k_{3}^{(v)} &= \ddot x\Bigl(x + \tfrac{\Delta t}{2}k_{2}^{(x)},\;v_x + \tfrac{\Delta t}{2}k_{2}^{(v)},\;t+\tfrac{\Delta t}{2}\Bigr),\\
+  k_{4}^{(x)} &= v_x + \Delta t\,k_{3}^{(v)}, 
+  &\quad
+  k_{4}^{(v)} &= \ddot x\bigl(x + \Delta t\,k_{3}^{(x)},\;v_x + \Delta t\,k_{3}^{(v)},\;t+\Delta t\bigr),
+\end{aligned}
+\]
+\[
+\begin{aligned}
+  x(t+\Delta t) &= x + \tfrac{\Delta t}{6}\bigl(k_{1}^{(x)} + 2k_{2}^{(x)} + 2k_{3}^{(x)} + k_{4}^{(x)}\bigr),\\
+  v_x(t+\Delta t) &= v_x + \tfrac{\Delta t}{6}\bigl(k_{1}^{(v)} + 2k_{2}^{(v)} + 2k_{3}^{(v)} + k_{4}^{(v)}\bigr).
+\end{aligned}
+\]
+
+\paragraph{Implementation remarks.}
+\begin{itemize}
+  \item The method is implemented in \texttt{WaveSurfaceTracker::rk4\_step()}.
+  \item The “wrap” function ensures periodicity in \(x\) by mapping \(x\) back into \([0,L)\).
+  \item At each step, a user‐supplied callback can record \((t,\,z,\,\dot z,\,\ddot z,\,x,\,v_x)\).
+  \item Default parameters: drag coefficient \(c_d\), mass \(m\), and time step \(\Delta t\) are configurable.
+\end{itemize}
+
 \begin{thebibliography}{1}
 \bibitem{Fenton1988}
 J.~D.~Fenton, “The numerical solution of steady water wave problems,” \emph{Computers \& Geosciences}, vol.~14, no.~3, pp.~357–368, 1988.
