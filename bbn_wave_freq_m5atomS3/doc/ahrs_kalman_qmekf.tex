@@ -1,11 +1,10 @@
 \documentclass[12pt]{article}
 \usepackage{amsmath,amssymb,amsthm,fullpage}
-\usepackage{authblk}
 \usepackage{hyperref}
 \usepackage{cite}
 
-\title{A Quaternion‐Multiplicative Extended Kalman Filter for Attitude Estimation:\\
-Mathematical Formulation and Analysis}
+\title{Exact Quaternion‐Multiplicative Extended Kalman Filter for Attitude Estimation:\\
+Implementation‐Matching Formulation and Analysis}
 \author{}
 \date{}
 
@@ -13,99 +12,95 @@ Mathematical Formulation and Analysis}
 \maketitle
 
 \begin{abstract}
-This paper presents the theory and analysis of a quaternion‐based multiplicative extended Kalman filter (Q‐MEKF) for rigid‐body attitude estimation using rate gyro, accelerometer, and magnetometer measurements.  Following Lefferts \emph{et al.}~\cite{Lefferts1982} and Markley~\cite{Markley2003}, the filter represents attitude errors multiplicatively on the unit‐quaternion manifold, achieves second‐order accuracy in state propagation, and maintains covariance consistency via Joseph‐form updates.  Detailed derivations of the state‐space model, measurement Jacobians, noise covariance selection, and numerical stability considerations are provided.
+This paper presents a formulation of the Quaternion‐MEKF exactly matching the provided C++ implementation.  Key aspects include: use of the exact quaternion exponential map for propagation (Shuster integration~\cite{Shuster1981}), a 6-state error vector with gyro bias, full 6×6 covariance, Joseph-form update for numerical robustness, and measurement Jacobians consistent with accelerometer and magnetometer cross-product conventions.  Noise covariances are chosen directly from sensor noise densities and bias instability.
 \end{abstract}
 
-\section{Introduction}
-Attitude estimation for vehicles and spacecraft relies on fusing inertial sensor data in a stable, consistent filter.  The quaternion multiplicative extended Kalman filter (Q‐MEKF) from Lefferts \emph{et al.}~\cite{Lefferts1982} avoids singularities of Euler angles by operating on quaternions and propagates small attitude errors additively in the tangent space~\cite{Markley2003}.  This work analyzes its mathematical structure, linearization, and covariance properties.
+\section{State Representation}
+Define the estimate quaternion $\hat q\in\mathbb H$ and error state
+\[
+\delta x = \begin{bmatrix}\delta\theta\\ b\end{bmatrix}\in\mathbb R^6,
+\quad \delta q \approx \begin{bmatrix}1\\ \tfrac12\,\delta\theta\end{bmatrix}, 
+\]
+where $\delta\theta$ is the small‐angle error and $b$ the gyro‐bias error~\cite{Lefferts1982,Markley2003}.
 
-\section{State and Error Representation}
-The true attitude is represented by a unit quaternion \(q\in\mathbb{H}\), evolving under body‐fixed angular rate \(\omega\).  The filter maintains a reference quaternion \(\hat q\) and a small error vector \(\delta\theta\in\mathbb{R}^3\) such that
+\section{Propagation via Exact Exponential}
+Measured rate $\omega_m=\omega+\nu_g - b$.  The code computes the 4×4 quaternion update matrix
 \[
-q = \hat q \otimes \delta q,\quad
-\delta q \approx \begin{bmatrix}1\\\tfrac12\,\delta\theta\end{bmatrix},\ \|\delta\theta\|\ll1.
+\Delta q = \exp\!\Bigl(\tfrac12 [0,\;\Delta\theta]^\top\Bigr)
+= \cos\!\bigl(\tfrac12\|\Delta\theta\|\bigr)I_4
++ \frac{\sin(\tfrac12\|\Delta\theta\|)}{\|\Delta\theta\|}\,\Omega(\Delta\theta),
 \]
-If gyro bias \(b\) is estimated, the error state is \(\mathbf{x}=[\delta\theta^\top,\;b^\top]^\top\in\mathbb{R}^6\).
+with $\Delta\theta=\omega_m\,\Delta t$ and skew matrix $\Omega(\cdot)$, then
+\[
+\hat q^-\;=\;\Delta q\,\hat q,
+\quad
+\hat q\leftarrow\frac{\hat q^-}{\|\hat q^-\|},
+\]
+preserving second‐order accuracy and unit norm via Shuster’s method~\cite{Shuster1981}.
 
-\section{Process Model}
-The true quaternion obeys
+The 6×6 discrete‐time state transition for error and bias is
 \[
-\dot q = \tfrac12\,q\otimes\begin{bmatrix}0\\\omega\end{bmatrix}.
+F = 
+\begin{bmatrix}
+F_{11} & -I_3\,\Delta t\\
+0_{3\times3} & I_3
+\end{bmatrix}, 
+\quad
+F_{11} = \Delta q_{0:2,0:2},
 \]
-Subtracting bias, the measured rate is \(\omega_m = \omega + \nu_g - b\).  The reference quaternion propagates as
-\[
-\hat q_{k+1} = \hat q_k \otimes \exp\!\Bigl(\tfrac12(\omega_m)\Delta t\Bigr),
-\]
-and the error evolves linearly:
-\[
-\delta\theta_{k+1} \approx \delta\theta_k - (\omega_m)\,\Delta t - b\,\Delta t + w_k,
-\]
-where \(w_k\sim\mathcal{N}(0,Q)\) accounts for gyro noise and bias random‐walk.
+where $F_{11}$ is the top‐left 3×3 block of $\Delta q$ (the exact rotation linearization).
 
-\section{Measurement Model}
-Normalized accelerometer and magnetometer readings provide observations of gravity \(\mathbf{g}\) and local field \(\mathbf{m}\) in body frame:
+\section{Process Noise Covariance}
+The filter uses
+\[
+Q = \operatorname{diag}\bigl(\sigma_g^2\,\Delta t^2,\;\sigma_b^2\,\Delta t\bigr),
+\]
+where $\sigma_g$ is gyro noise density and $\sigma_b$ the bias random‐walk rate, matching the code’s `initialize_Q` construction.
+
+\section{Measurement Model and Jacobian}
+Accelerometer and magnetometer deliver
 \[
 y = \begin{bmatrix}a_m\\m_m\end{bmatrix}
-\approx \begin{bmatrix}\hat R^\top\mathbf{g}\\\hat R^\top\mathbf{m}\end{bmatrix} + v,\quad v\sim\mathcal{N}(0,R).
+= \begin{bmatrix}
+\hat q^{-1}\!\otimes\([0,\mathbf v_g]\)\otimes\hat q\\
+\hat q^{-1}\!\otimes\([0,\mathbf v_m]\)\otimes\hat q
+\end{bmatrix}
++ \nu,
 \]
-Here \(\hat R\) is the rotation matrix corresponding to \(\hat q\).  Linearizing about the reference yields
+with reference vectors $\mathbf v_g=(0,0,-g)$ and $\mathbf v_m$.  The code linearizes via
 \[
-y - \hat y \;\approx\; H\,\delta x + v,
-\]
-with Jacobian
-\[
-H = \begin{bmatrix}
--[\hat R^\top\mathbf{g}]_\times & \mathbf{0}_{3\times3}\\
--[\hat R^\top\mathbf{m}]_\times & \mathbf{0}_{3\times3}
+C = \begin{bmatrix}
+[\hat v_g]_\times & 0\\
+[\hat v_m]_\times & 0
 \end{bmatrix},
 \]
-where \([\,\cdot\,]_\times\) denotes the skew‐symmetric matrix.
+so that the innovation $\nu_k = y_k - \hat y_k = C\,\delta x + v$ exactly matches the sign conventions in `measurement_update`.
 
-\section{Kalman Filter Equations}
-\subsection{Time Update}
-\begin{align*}
-\hat x^-_k &= F\,\hat x_{k-1},\\
-P^-_k &= F\,P_{k-1}F^\top + Q,
-\end{align*}
-with 
+\section{Measurement Update with Joseph Form}
+Innovation covariance:
 \[
-F = \begin{bmatrix}
-I_3 - [\omega_m]_\times\Delta t & -I_3\,\Delta t\\
-0_{3\times3} & I_3
-\end{bmatrix}.
-\]
-
-\subsection{Measurement Update}
-Innovation:
-\[
-\nu_k = y_k - \hat y_k,\quad
-S_k = H\,P^-_k H^\top + R.
+S = C\,P^-\,C^\top + R,
+\quad R=\operatorname{diag}(\sigma_a^2,\sigma_m^2).
 \]
 Kalman gain and Joseph‐form covariance:
-\begin{align*}
-K_k &= P^-_k H^\top S_k^{-1},\\
-\hat x_k &= \hat x^-_k + K_k\,\nu_k,\\
-P_k &= (I-K_kH)\,P^-_k\,(I-K_kH)^\top + K_k\,R\,K_k^\top.
-\end{align*}
-After update, the reference quaternion is corrected:
 \[
-\hat q_k = \hat q^-_k \otimes \begin{bmatrix}1\\\tfrac12\,\delta\theta_k\end{bmatrix}, 
-\quad \delta\theta_k \leftarrow 0.
+K = P^-C^\top S^{-1},\quad
+P = (I-KC)P^-(I-KC)^\top + K\,R\,K^\top,
+\]
+mirroring the code’s `measurement_update` and `measurement_update_partial`.  After state correction $x\leftarrow x+K\nu$, the quaternion is updated by
+\[
+\hat q \leftarrow \hat q \otimes \begin{bmatrix}1\\\tfrac12\,\delta\theta\end{bmatrix},\quad
+\delta\theta\leftarrow0.
 \]
 
-\section{Noise Covariance Selection}
-Process noise \(Q = \mathrm{diag}(\sigma_g^2\Delta t^2,\,\sigma_b^2\Delta t)\) reflects gyro white noise and bias instability.  Measurement noise \(R = \mathrm{diag}(\sigma_a^2,\sigma_m^2)\) follows sensor datasheet values.
-
-\section{Numerical Stability}
+\section{Numerical Considerations}
 \begin{itemize}
-  \item \textbf{Joseph‐form update} preserves symmetry and positive definiteness of \(P\) in finite precision~\cite{Maybeck1979}.
-  \item \(\hat q\) is renormalized after each propagation and correction.
-  \item Small‐angle approximation is valid for \(\|\delta\theta\|\ll1\).
+  \item \textbf{Exact Exponential:} avoids $\Delta t^2$ drift of first‐order integrators.
+  \item \textbf{Joseph Form:} ensures $P$ remains symmetric positive‐definite in finite precision~\cite{Maybeck1979}.
+  \item \textbf{Quaternion Renormalization:} applied each cycle.
 \end{itemize}
 
-\section{Discussion}
-The Q‐MEKF combines robustness of multiplicative error representation with the optimality of Kalman filtering.  Unlike additive‐error EKFs, it preserves the quaternion manifold and avoids singularities.
-
+\section*{References}
 \begin{thebibliography}{9}
 \bibitem{Lefferts1982}
 E.~J. Lefferts, F.~L. Markley, and M.~D. Shuster, “Kalman filtering for spacecraft attitude estimation,” \emph{J. Guidance, Control, and Dynamics}, vol.~5, no.~5, pp. 417–429, 1982.
@@ -113,9 +108,11 @@ E.~J. Lefferts, F.~L. Markley, and M.~D. Shuster, “Kalman filtering for spacec
 \bibitem{Markley2003}
 F.~L. Markley, “Attitude error representations for Kalman filtering,” \emph{J. Guidance, Control, and Dynamics}, vol.~26, no.~2, pp. 311–317, 2003.
 
+\bibitem{Shuster1981}
+M.~D. Shuster and S.~D. Oh, “Three‐axis attitude determination from vector observations,” \emph{J. Guidance, Control, and Dynamics}, vol.~4, no.~1, pp. 70–77, 1981.
+
 \bibitem{Maybeck1979}
 P.~S. Maybeck, \emph{Stochastic Models, Estimation, and Control}, vol.~1. Academic Press, 1979.
 
 \end{thebibliography}
-
 \end{document}
