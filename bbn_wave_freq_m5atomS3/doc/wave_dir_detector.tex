@@ -30,7 +30,7 @@ a_y(t)\,\frac{d a_z}{dt}
 = A\cos(\omega t+\phi)\,\bigl(-A\omega^2\cos(\omega t+\phi)\bigr)
 = -A^2\omega^2\cos^2(\omega t+\phi)
 \]
-is always \(\le0\) for a forward‐propagating wave (positive \(Y\) direction), and flips sign for backward propagation.  We use this signed correlation as a proxy for direction.
+is always \(\le0\) for a forward‐propagating wave (positive \(Y\) direction), and flips sign for backward propagation.  This signed correlation is used as a proxy for direction.
 
 \section{Algorithm}
 
@@ -47,13 +47,13 @@ h_k &= \begin{cases}
 \text{Vertical slope:}\quad
 s_k &= \frac{a_{z,k}-a_{z,k-1}}{\Delta t}.\label{eq:slope}
 \end{align}
-We then form the raw proxy
+Form the raw proxy
 \[
 p_k = h_k \, s_k.
 \]
 
 \subsection{Complementary (EMA) Filter}
-To smooth noise and accumulate evidence, we apply a first‐order exponential moving average:
+To smooth noise and accumulate evidence, apply a first‐order exponential moving average:
 \begin{equation}
 P_k = (1-\alpha)\,P_{k-1} + \alpha\,p_k,
 \quad \alpha\in(0,1),
@@ -62,7 +62,7 @@ P_k = (1-\alpha)\,P_{k-1} + \alpha\,p_k,
 where \(\alpha\) is the \emph{smoothing factor} (e.g.\ \(0.002\)).  This acts as a complementary filter, blending the new proxy \(p_k\) with past history.
 
 \subsection{Threshold Decision}
-We compare the filtered proxy \(P_k\) against a \emph{sensitivity threshold} \(\theta\):
+Compare the filtered proxy \(P_k\) against a \emph{sensitivity threshold} \(\theta\):
 \begin{equation*}
 \text{direction}_k =
 \begin{cases}
@@ -117,6 +117,6 @@ public:
 \end{itemize}
 
 \section{Conclusion}
-We have introduced a minimal‐complexity complementary filter for wave direction detection that fuses horizontal acceleration magnitude and vertical slope, applies EMA smoothing, and outputs a real‐time ±1/0 direction indicator.  Its low computational footprint and few tunable parameters make it ideal for embedded oceanographic sensors.
+This paper introduced a minimal‐complexity complementary filter for wave direction detection that fuses horizontal acceleration magnitude and vertical slope, applies EMA smoothing, and outputs a real‐time ±1/0 direction indicator.  Its low computational footprint and few tunable parameters make it ideal for embedded oceanographic sensors.
 
 \end{document}
