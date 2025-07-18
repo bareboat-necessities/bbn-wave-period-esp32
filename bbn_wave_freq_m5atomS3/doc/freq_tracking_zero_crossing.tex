@@ -9,7 +9,7 @@
 \maketitle
 
 \begin{abstract}
-We present a robust zero‐crossing frequency detector employing a Schmitt‐trigger hysteresis, debounce filtering, and cycle‐averaged period estimation.  The method, implemented in \texttt{SchmittTriggerFrequencyDetector} (see \texttt{SCHMITT\_TRIGGER\_FREQ\_DETECTOR\_H}), yields instantaneous frequency estimates, phase, and quality metrics (confidence, jitter, amplitude ratio, fallback status).
+We present a robust zero‐crossing frequency detector employing a Schmitt‐trigger hysteresis, debounce filtering, and cycle‐averaged period estimation.  The method, implemented in \texttt{SchmittTriggerFrequencyDetector} (see \texttt{SchmittTriggerFrequencyDetector.h}), yields instantaneous frequency estimates, phase, and quality metrics (confidence, jitter, amplitude ratio, fallback status).
 \end{abstract}
 
 \section{Problem Statement}
@@ -93,7 +93,7 @@ Key parameters and defaults:
   \item Fallback time \(\Delta t_{\mathrm{fb}}=60\,\mathrm{s}\).
   \item History length \(K=10\).
 \end{itemize}
-The class is defined in \texttt{SCHMITT\_TRIGGER\_FREQ\_DETECTOR\_H}, with methods:
+The class is defined in \texttt{SchmittTriggerFrequencyDetector.h}, with methods:
 \begin{itemize}
   \item \texttt{float update(…)} — processes each sample, updates state, returns \(\hat f\).
   \item \texttt{float getPhaseEstimate()} — returns \(\phi(t)\).
