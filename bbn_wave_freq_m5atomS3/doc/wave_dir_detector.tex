@@ -12,11 +12,11 @@
 \maketitle
 
 \begin{abstract}
-We present a lightweight complementary filter to infer wave propagation direction (forward vs.\ backward) from tri‐axial accelerometer data.  The method computes the instantaneous horizontal acceleration magnitude and the vertical acceleration slope, correlates them into a scalar proxy \(P\), and applies an exponential moving average (EMA) to track its trend.  A simple threshold test on the filtered proxy yields a three‐state wave direction output: \(\{\text{BACKWARD},\text{UNCERTAIN},\text{FORWARD}\}\).  The algorithm runs in constant time and memory, suitable for embedded wave buoys or wearable sensors.
+This paper presents a lightweight complementary filter to infer wave propagation direction (forward vs.\ backward) from tri‐axial accelerometer data.  The method computes the instantaneous horizontal acceleration magnitude and the vertical acceleration slope, correlates them into a scalar proxy \(P\), and applies an exponential moving average (EMA) to track its trend.  A simple threshold test on the filtered proxy yields a three‐state wave direction output: \(\{\text{BACKWARD},\text{UNCERTAIN},\text{FORWARD}\}\).  The algorithm runs in constant time and memory, suitable for embedded wave buoys or wearable sensors.
 \end{abstract}
 
 \section{Introduction}
-Accurate knowledge of wave propagation direction is essential for marine navigation, coastal monitoring, and wave energy harvesting.  Traditional spectral methods require large data windows and significant computation.  Here we propose a \emph{complementary filter} that fuses instantaneous horizontal acceleration magnitude with vertical acceleration slope to yield a real‐time, low‐latency direction indicator.
+Accurate knowledge of wave propagation direction is essential for marine navigation, coastal monitoring, and wave energy harvesting.  Traditional spectral methods require large data windows and significant computation. This paper proposes a \emph{complementary filter} that fuses instantaneous horizontal acceleration magnitude with vertical acceleration slope to yield a real‐time, low‐latency direction indicator.
 
 \section{Physical Principle}
 For a pure sinusoidal surface wave propagating along the \(Y\)–axis, the acceleration components measured by an IMU are:
