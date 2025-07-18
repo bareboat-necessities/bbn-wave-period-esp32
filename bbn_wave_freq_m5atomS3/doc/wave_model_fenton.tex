@@ -1,1 +1,121 @@
+\section{Nonlinear Periodic Wave Computation via Fenton’s Spectral Method}
+\label{sec:fenton_method}
 
+\noindent
+We summarize here the mathematical formulation of Fenton’s method for steady periodic surface gravity waves in finite depth \cite{Fenton1988}, followed by a brief description of its \verb|C++| implementation (see \texttt{FentonWave.h}, \texttt{FentonFFT.h}).
+
+\subsection{Governing Equations}
+
+Let $(x,z)$ denote the horizontal and vertical coordinates, with the seabed at $z=-d$ and free surface at $z=\eta(x)$. Under the assumptions of irrotational, incompressible, inviscid flow, there exists a stream function $\psi(x,z)$ satisfying Laplace’s equation,
+\begin{equation}
+\nabla^2 \psi = \psi_{xx} + \psi_{zz} = 0\,, \quad -d \le z \le \eta(x)\,.
+\end{equation}
+At the free surface $z=\eta(x)$, the dynamic (Bernoulli) and kinematic boundary conditions are
+\begin{align}
+\underbrace{\tfrac12\bigl(\psi_x^2 + \psi_z^2\bigr) + g\,\eta}_{\text{total head}}
+  &= R + c\,\psi_x\,, 
+  \label{eq:bernoulli}\\
+\psi_z &= \eta_x\,\psi_x\,,
+  \label{eq:kinematic}
+\end{align}
+where $g$ is gravity, $c$ the phase speed, and $R$ a constant (Bernoulli constant). At the bed $z=-d$, no‐flow implies
+\begin{equation}
+\psi(x,-d)=0\,.
+\end{equation}
+
+\subsection{Spectral Representation}
+
+We expand the stream function and surface elevation in truncated Fourier series up to order $N$:
+\begin{align}
+\psi(x,z) &= B_0\,(z + d)
+   \;+\;\sum_{j=1}^{N} B_j\;\frac{\sinh\!\bigl[j\,k\,(z + d)\bigr]}{\cosh(j\,k\,d)}
+   \,\cos(j\,k\,x)\,,
+   \label{eq:psi_series}\\
+\eta(x) &= \sum_{j=0}^{N} E_j\;\cos(j\,k\,x)\,,
+   \label{eq:eta_series}
+\end{align}
+where
+\[
+k = \frac{2\pi}{L}, 
+\quad L = \text{wavelength}, 
+\quad \{B_j\},\{E_j\},c,R
+\]
+are unknowns to be solved for. The coefficients $E_j$ are obtained from the collocation‐space values $\eta(x_i)$ via a DCT‐I transform:
+\[
+E = \mathrm{DCT\text{-}I}\bigl[\eta(x_i)\bigr], 
+\quad x_i = \frac{i\pi}{N},\; i=0,\dots,N.
+\]
+
+\subsection{Discrete Nonlinear System}
+
+Enforce \eqref{eq:bernoulli} and \eqref{eq:kinematic} at the $N+1$ collocation points $x_i$, plus two global constraints:
+\begin{itemize}
+  \item Mean elevation constraint: \(\displaystyle \frac{1}{N}\sum_{i=0}^N w_i\,\eta(x_i)=0,\quad w_0=w_N=\tfrac12,\;w_i=1\,.\)
+  \item Prescribed wave height: \(\max_i\eta(x_i)-\min_i\eta(x_i)=H.\)
+\end{itemize}
+Let
+\[
+\mathbf{X} = \begin{bmatrix}
+B_0,\dots,B_N,\;
+\eta(x_0),\dots,\eta(x_N),\;
+Q,\;R
+\end{bmatrix}^T,
+\]
+where $Q$ is the volume flux.  We form the residual vector
+\[
+\mathbf{F}(\mathbf{X}) = 
+\begin{bmatrix}
+\text{(Bernoulli at each }x_i)\\
+\text{(Kinematic at each }x_i)\\
+\text{(mean elevation)}\\
+\text{(wave height)}
+\end{bmatrix},
+\]
+and solve 
+\[
+\mathbf{F}(\mathbf{X}) = \mathbf{0}
+\]
+by Newton–Raphson:
+\begin{equation}
+\mathbf{X}^{(n+1)}
+= \mathbf{X}^{(n)} 
+- \alpha
+\;\mathbf{J}^{-1}\!\bigl(\mathbf{X}^{(n)}\bigr)
+\;\mathbf{F}\bigl(\mathbf{X}^{(n)}\bigr),
+\quad 0<\alpha\le1,
+\end{equation}
+where $\mathbf{J} = \partial\mathbf{F}/\partial\mathbf{X}$ is the Jacobian (analytically constructed in the code), and $\alpha$ is a relaxation parameter (default 0.5).
+
+\subsection{Derived Wave Quantities}
+
+After convergence one computes:
+\begin{align*}
+& c = B_0,\qquad \omega = c\,k,\qquad T=\frac{2\pi}{\omega},\\
+& u(x,z)=\psi_z,\quad 
+  w(x,z)=-\psi_x,\\
+& \eta_x,\;\eta_t=-c\,\eta_x,\;\eta_{xx},\;\eta_{xt},\;\eta_{tt},\\
+& p(x,z)=\rho\Bigl[R-\tfrac12(u^2+w^2)-g(z-\eta)+c\,u\Bigr],\\
+& E_k = \tfrac12\rho\iint (u^2+w^2)\,dz\,dx,
+\quad
+E_p = \rho g\int \eta^2\,dx,\\
+&\text{Stokes drift, radiation stress }
+S_{xx}=\rho\langle u^2\rangle,\;\dots
+\end{align*}
+All domain integrals are evaluated via a 2D trapezoidal rule on a uniform $(x,z)$ grid in the code’s \verb|integrate2D()| routine.
+
+\subsection{Implementation Notes}
+
+The provided \verb|FentonWave<N,Real>| class in \texttt{FentonWave.h}:
+\begin{itemize}
+  \item Uses the Eigen library for vectors and matrices.
+  \item Computes DCT‐I transforms in \verb|FentonFFT<N>::compute_inverse_cosine_transform()|.
+  \item Handles hyperbolic functions with numerically stable helpers \verb|sinh_by_cosh| and \verb|cosh_by_cosh|.
+  \item Solves the dispersion relation for $\lambda$ via Newton iteration in \verb|compute_wavelength()|.
+  \item Wraps up all physics (surface kinematics, velocities, pressure, energy flux, Stokes drift, etc.) in member functions.
+  \item Includes a \verb|WaveSurfaceTracker| that integrates a floating object’s horizontal motion with RK4 under wave‐induced force and linear drag.
+\end{itemize}
+
+\begin{thebibliography}{1}
+\bibitem{Fenton1988}
+J.~D.~Fenton, “The numerical solution of steady water wave problems,” \emph{Computers \& Geosciences}, vol.~14, no.~3, pp.~357–368, 1988.
+\end{thebibliography}
