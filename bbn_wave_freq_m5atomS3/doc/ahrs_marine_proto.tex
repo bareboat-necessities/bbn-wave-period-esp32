@@ -1,0 +1,123 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amssymb,authblk,fullpage}
+\usepackage{siunitx}
+\usepackage{hyperref}
+
+\title{Design and Implementation of a Microcontroller-Based Marine AHRS with Real-Time Wave Motion Estimation}
+\author{Mikhail Grushinskiy}
+\affil{Independent Researcher, 2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A compact Attitude and Heading Reference System (AHRS) enhanced with real-time wave motion estimation has been developed on an ESP32-S3 (M5AtomS3).  The system integrates: (1) a Mahony or quaternion EKF for three-axis orientation; (2) zero-crossing, Aranovskiy, or adaptive-notch filters for instantaneous wave frequency; (3) a trochoidal-model Kalman filter for heave estimation and bias correction; and (4) complementary or Kalman-based methods for wave direction.  This paper presents the underlying mathematical models, filter structures, and real-time implementation details.
+\end{abstract}
+
+\section{Introduction}
+Small marine platforms benefit from accurate estimates of vessel attitude and wave-induced motions.  An embedded system was implemented using an ESP32-S3 microcontroller and an onboard IMU (MPU6886/BMI270).  The objective is simultaneous estimation of orientation, wave frequency, vertical displacement (heave), and wave propagation direction in real time.
+
+\section{Attitude Estimation}
+Body-frame gyroscope measurements \(\boldsymbol\omega_b\) and accelerometer readings \(\mathbf{a}_b\) are fused to obtain the rotation quaternion \(\mathbf{q}_{b\to n}\).
+
+\subsection{Mahony Complementary Filter}
+Angular rate integration is corrected by the gravity vector error:
+\[
+\dot{\hat{\mathbf q}}
+= \tfrac12\,\hat{\mathbf q}\!\otimes\!\begin{bmatrix}0\\\boldsymbol\omega_b\end{bmatrix}
+- K_P\,\hat{\mathbf q}\!\otimes\!(\hat{\mathbf v}_g\times\mathbf{a}_b)
+- K_I\!\int\!(\hat{\mathbf v}_g\times\mathbf{a}_b)\,dt,
+\]
+where \(\hat{\mathbf v}_g\) is the estimated gravity direction.  Proportional and integral gains \(K_P,K_I\) determine filter bandwidth and steady-state error .
+
+\subsection{Quaternion MEKF}
+A multiplicative extended Kalman filter augments the quaternion with gyro bias \(\mathbf{b}\) and enforces the unit‐norm constraint via a linearized measurement update .
+
+\section{Wave Frequency Estimation}
+Accurate angular frequency \(\omega = 2\pi f\) is required by subsequent filters.  Three estimators are supported:
+
+\subsection{Schmitt-Trigger Zero-Crossing}
+The normalized vertical acceleration \(s(t)=a_z/A\) is thresholded at \(\pm h\).  Rising‐edge timestamps \(t_i\) yield period estimates
+\[
+T_k = \frac{2\,(t_k - t_{k-N_c})}{N_c - 1},\quad f_k = 1/T_k,
+\]
+following the method of Slita \emph{et al.} .
+
+\subsection{Aranovskiy Recursive Filter}
+A recursive estimator minimizes phase error of \(s(t)\approx\cos(2\pi\hat f t)\) using a gradient/RLS approach .
+
+\subsection{Adaptive Notch Kalman Filter (KalmANF)}
+A single-parameter adaptive notch is tuned in a Kalman framework to track \(\omega\) .
+
+\section{Heave Estimation}
+After gravity removal by the AHRS, vertical acceleration \(a_z\) drives a 5-state Kalman filter under the trochoidal wave model \(a=-\omega^2y\) .  The state vector
+\(\mathbf{x}=[z,y,v,a,\hat a]^\top\) evolves according to a Taylor-expanded transition matrix \(F\).  Measurements
+\(\mathbf{z}=[0,\;a_{\rm meas}]^\top\) enforce zero-mean displacement integral and observe acceleration plus bias.  The Joseph form update preserves numerical stability .
+
+\section{Wave Direction Estimation}
+Horizontal accelerations \((a_x,a_y)\) at known \(\omega\) permit two schemes:
+
+\subsection{Kalman Amplitude Filter}
+Amplitude vector \(\mathbf{A}\) follows a random walk with observations \(\mathbf{z}=\mathbf{A}\cos(\omega t)+\nu\), yielding \(\hat{\mathbf A}\) and unit direction \(\mathbf{d}=\hat{\mathbf A}/\|\hat{\mathbf A}\|\).
+
+\subsection{Complementary Proxy Filter}
+Proxy \(p=(\pm\|\mathbf{a}_h\|)\,\dot a_z\) is smoothed via
+\[
+P_k=(1-\alpha)P_{k-1}+\alpha\,p_k,
+\]
+with thresholding for direction decision.
+
+\section{Rolling Min–Max Filter}
+Wave height and mean heave derive from a sliding‐window min–max filter using Lemire’s monotonic wedge algorithm, with enhancements by Balster.  This achieves amortized \(O(1)\) per‐sample complexity .
+
+\section{Real-Time Data Flow}
+At each 200 Hz IMU interrupt:
+\begin{enumerate}
+  \item Acquire and spike‐filter \(\mathbf{a}_b,\boldsymbol\omega_b\).
+  \item Update AHRS quaternion.
+  \item Rotate accelerations to navigation frame.
+  \item Estimate \(\omega\) via selected frequency filter.
+  \item Execute heave Kalman filter.
+  \item Execute direction filter.
+  \item Update min–max for wave height and mean.
+  \item Every 125 ms, emit NMEA‐0183 sentences for heave, frequency, direction, and attitude.
+\end{enumerate}
+
+All computations complete within \(<5\) ms, ensuring real-time performance on the M5AtomS3.
+
+\section*{References}
+\begin{thebibliography}{10}
+
+\bibitem{Mahony2008}
+R.~Mahony, T.~Hamel, and J.~P. Pflimlin, “Nonlinear complementary filters on the special orthogonal group,” \emph{IEEE Trans. Autom. Control}, vol.~53, no.~5, pp. 1203–1218, 2008.
+
+\bibitem{Markley2003}
+F.~L. Markley, “Attitude error representations for Kalman filtering,” \emph{J. Guid., Control, Dyn.}, vol.~26, no.~2, pp. 311–317, 2003.
+
+\bibitem{Bobtsov2013}
+A.~A. Bobtsov, N.~A. Nikolaev, O.~V. Slita, A.~S. Borgul, and S.~V. Aranovskiy, “The new algorithm of sinusoidal signal frequency estimation,” in \emph{11th IFAC Int. Workshop on Adaptation and Learning in Control and Signal Processing}, 2013, pp. 99–104.
+
+\bibitem{Ali2023}
+R.~Ali and T.~van Waterschoot, “A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter (KalmANF),” in \emph{Proc. 26th Int. Conf. on Digital Audio Effects (DAFx23)}, 2023.
+
+\bibitem{Fenton1988}
+J.~D. Fenton, “The numerical solution of steady water‐wave problems,” \emph{Computers \& Geosciences}, vol.~14, no.~3, pp. 357–368, 1988.
+
+\bibitem{Gerstner1802}
+F.~J. von Gerstner, “Theory of water waves,” \emph{Annalen der Physik}, vol.~9, no.~6, pp. 412–445, 1802.
+
+\bibitem{Maybeck1979}
+P.~S. Maybeck, \emph{Stochastic Models, Estimation, and Control}, vol.~1. Academic Press, 1979.
+
+\bibitem{Yee2000}
+R.~Yee and G.~S.~R. Murthy, “Kalman filtering of discretely sampled attitude data,” \emph{AIAA J. Guid., Control, Dyn.}, vol.~23, no.~4, pp. 664–666, 2000.
+
+\bibitem{Lemire2006}
+D.~T. Lemire, “Streaming maximum–minimum filter using no more than three comparisons per element,” \emph{arXiv preprint arXiv:cs/0610046}, 2006.
+
+\bibitem{Balster2016}
+E.~Balster, “STL compatible monotonic wedge for fast rolling min/max,” GitHub repository, 2016. \url{https://github.com/EvanBalster/STL_mono_wedge}
+
+\end{thebibliography}
+
+\end{document}
