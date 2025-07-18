@@ -125,6 +125,14 @@ This achieves one iteration of Newton–Raphson in constant time~\cite{Quake2002
   \item All divisions by zero are avoided via checks and the fast‐invSqrt guard.
 \end{itemize}
 
+\paragraph{Representation Singularities}  
+While the quaternion state remains nonsingular, Euler-angle outputs exhibit gimbal lock at $\mathrm{pitch} = \pm90^\circ$. Near this configuration:  
+\begin{itemize}  
+  \item The $\mathrm{atan2}$ terms in roll/yaw become numerically ill-conditioned.  
+  \item Small accelerometer noise can cause large jumps in extracted roll/yaw.  
+\end{itemize}  
+Mitigations include: (1) thresholding pitch away from $\pm90^\circ$, (2) using quaternions for control, or (3) switching to rotation matrices.
+
 \section{Computational Cost}
 Each update executes:
 \begin{itemize}
