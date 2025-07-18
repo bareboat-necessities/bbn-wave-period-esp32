@@ -1,1 +1,116 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{authblk}
+\usepackage{fullpage}
+\usepackage{physics}
+\usepackage{siunitx}
 
+\title{Heave Estimation from Vertical Acceleration using a Kalman Filter with Drift and Bias Compensation}
+\author{Mikhail Grushinskiy}
+\affil{Independent Researcher, 2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This paper presents a Kalman filter-based approach for estimating vertical displacement (heave) from vertical acceleration measurements. The method incorporates double integration, bias estimation, and drift correction via pseudo-measurements. A Schmitt trigger-like logic is employed to detect wave zero-crossings and correct state trajectories based on ocean wave physics. The algorithm is suitable for real-time applications such as wave-following buoys or onboard motion sensing.
+\end{abstract}
+
+\section{Introduction}
+Estimating heave from vertical accelerometers is challenging due to integration drift, sensor bias, and wave irregularities. This paper proposes a solution using a Kalman filter that augments the state space with bias and drift components and corrects for mean-zero vertical displacement using a soft pseudo-measurement strategy.
+
+\section{State-Space Model}
+
+The continuous-time vertical acceleration \( a(t) \) is sampled at time steps \( k \) with period \( T \). The state vector \( \mathbf{x}_k \in \mathbb{R}^4 \) is defined as:
+\[
+\mathbf{x}_k = \begin{bmatrix}
+z_k \\
+y_k \\
+v_k \\
+\hat{a}_k
+\end{bmatrix}
+\]
+where:
+\begin{itemize}
+  \item \( z_k \): Third integral of acceleration (integrated displacement)
+  \item \( y_k \): Heave (vertical displacement)
+  \item \( v_k \): Vertical velocity
+  \item \( \hat{a}_k \): Estimated accelerometer bias
+\end{itemize}
+
+The process model is:
+\[
+\mathbf{x}_k = \mathbf{F}_k \mathbf{x}_{k-1} + \mathbf{B}_k a_k + \mathbf{w}_k
+\]
+where \( a_k \) is measured vertical acceleration and \( \mathbf{w}_k \sim \mathcal{N}(0, \mathbf{Q}) \) is the process noise. The matrices \( \mathbf{F}_k \) and \( \mathbf{B}_k \) are time-dependent:
+\[
+\mathbf{F}_k =
+\begin{bmatrix}
+1 & T & \frac{1}{2}T^2 & -\frac{1}{6}T^3 \\
+0 & 1 & T & -\frac{1}{2}T^2 \\
+0 & 0 & 1 & -T \\
+0 & 0 & 0 & 1
+\end{bmatrix}, \quad
+\mathbf{B}_k =
+\begin{bmatrix}
+\frac{1}{6}T^3 \\
+\frac{1}{2}T^2 \\
+T \\
+0
+\end{bmatrix}
+\]
+
+\subsection{Measurement Model}
+To correct for drift, the integral of displacement \( z_k \) is treated as a pseudo-measurement with expected value zero:
+\[
+z_k^\text{meas} = 0 + v_k, \quad v_k \sim \mathcal{N}(0, R)
+\]
+\[
+\mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 \end{bmatrix}
+\]
+
+\section{Schmitt Trigger-Based Correction}
+To further constrain drift and improve estimation during wave oscillations, a Schmitt trigger-based logic is implemented. It detects zero-crossings of the vertical acceleration with hysteresis and debounce conditions.
+
+Let \( a_k \) be the filtered acceleration and \( v_k \) the estimated velocity. A crossing event is detected when:
+\[
+a_k > \theta_{+}, \quad |v_k| > v_\text{thresh}, \quad \Delta t > t_\text{debounce}
+\]
+or
+\[
+a_k < \theta_{-}, \quad |v_k| > v_\text{thresh}, \quad \Delta t > t_\text{debounce}
+\]
+
+When a zero-crossing is detected, a soft correction is applied using an extended observation:
+\[
+\mathbf{H}_z =
+\begin{bmatrix}
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0
+\end{bmatrix}, \quad
+\mathbf{z}_\text{corr} =
+\begin{bmatrix}
+(1 - \gamma)y_k \\
+v_k + \gamma(\hat{v}_\text{target} - v_k)
+\end{bmatrix}
+\]
+where \( \gamma \in [0,1] \) controls the correction strength and \( \hat{v}_\text{target} = \sqrt{v_k^2 + (\omega y_k)^2} \) based on estimated frequency.
+
+\section{Implementation Notes}
+
+This algorithm is implemented in C++ and uses the Eigen library. It is designed to run in embedded environments and includes:
+\begin{itemize}
+  \item Numerical conditioning of covariance matrices
+  \item Mahalanobis distance gating
+  \item Time-varying Schmitt trigger detection logic
+  \item Optional theoretical process noise estimation from IMU specs
+\end{itemize}
+
+\section{Conclusion}
+The proposed Kalman filter formulation provides robust heave estimation from vertical acceleration even in the presence of sensor drift and bias. The inclusion of pseudo-measurements and zero-crossing detection improves long-term stability and physical consistency.
+
+\section*{Acknowledgements}
+Implementation and theoretical design by Mikhail Grushinskiy, 2025.
+
+\end{document}
