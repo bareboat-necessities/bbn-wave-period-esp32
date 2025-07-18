@@ -14,6 +14,9 @@
 This paper presents a robust, real-time method for estimating ocean wave propagation direction from horizontal acceleration measurements obtained by an Inertial Measurement Unit (IMU). The method employs a 2D Kalman filter that tracks the unknown amplitude vector of a sinusoid at (externally estimated) frequency and derives the direction from the estimated amplitude.  Key features include Joseph-form covariance updates for numerical stability, automatic skipping of low-amplitude updates, additional conditioning safeguards, and exponential smoothing of successive direction estimates.  Notably, the method does \emph{not} require knowledge of the instantaneous phase. The algorithm operates in real time, is robust to noise, and tracks confidence based on Kalman uncertainty. This technique is particularly suited for embedded oceanographic platforms such as wave buoys or autonomous surface vehicles.
 \end{abstract}
 
+\section{Introduction}
+Estimating wave direction using inertial sensors is challenging due to the noise and ambiguity in horizontal accelerations. Unlike traditional spectral methods requiring long data windows, this method operates recursively and assumes a known or slowly varying wave frequency. The core idea is to model the horizontal acceleration as a sinusoid in an unknown but constant direction and track the amplitude vector using a linear Kalman filter.
+
 \section{Model and Assumptions}
 Let the horizontal acceleration vector be
 \[
