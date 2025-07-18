@@ -11,11 +11,11 @@
 \maketitle
 
 \begin{abstract}
-We present a Kalman‐filter‐based heave estimator that fuses inertial measurements with the trochoidal (Gerstner) wave model.  By embedding the exact linear relationship between vertical acceleration and displacement for finite‐amplitude deep‐water waves, the filter achieves rapid convergence, drift correction, and bias estimation.  The state includes displacement integral, heave, vertical speed, modeled acceleration, and accelerometer bias.  Applications range from real‐time wave buoys to motion compensation in marine vehicles, and the stored heave buffer can be exported for FFT‐based spectral analysis.
+This paper present a Kalman‐filter‐based heave estimator that fuses inertial measurements with the trochoidal (Gerstner) wave model.  By embedding the exact linear relationship between vertical acceleration and displacement for finite‐amplitude deep‐water waves, the filter achieves rapid convergence, drift correction, and bias estimation.  The state includes displacement integral, heave, vertical speed, modeled acceleration, and accelerometer bias.  Applications range from real‐time wave buoys to motion compensation in marine vehicles, and the stored heave buffer can be exported for FFT‐based spectral analysis.
 \end{abstract}
 
 \section{Introduction}
-Estimating vertical displacement (heave) from accelerometer data is plagued by double‐integration drift and sensor bias.  We overcome these challenges by leveraging the exact trochoidal wave model (Gerstner waves) in the process dynamics.  The fusion of physics (known frequency–displacement relation) with Kalman filtering yields an estimator that:
+Estimating vertical displacement (heave) from accelerometer data is plagued by double‐integration drift and sensor bias.  These challenges overcome by leveraging the exact trochoidal wave model (Gerstner waves) in the process dynamics.  The fusion of physics (known frequency–displacement relation) with Kalman filtering yields an estimator that:
 \begin{itemize}
   \item Converges quickly without large drift,
   \item Simultaneously estimates sensor bias,
@@ -36,7 +36,7 @@ Define
 This exact linear relation is built into our process model, anchoring the filter to true wave physics rather than purely numerical integration.
 
 \section{State‐Space Formulation}
-We define the 5‐dimensional state vector
+Let's define the 5‐dimensional state vector
 \[
 \mathbf{x}_k = 
 \begin{bmatrix}
@@ -66,7 +66,7 @@ a_k &= \hat{k}\,y_{k-1} \;+\;\hat{k}\,v_{k-1}T \;+\;\tfrac12\hat{k}\,a_{k-1}T^2 
 In matrix form: \(\mathbf{x}_k = \mathbf{F}\,\mathbf{x}_{k-1} + \mathbf{w}_k\), with \(\mathbf{F}\) assembled from the above coefficients.
 
 \subsection{Measurement Model}
-We use two measurements:
+Let's use two measurements:
 \[
 z^{(1)}_k = 0 \quad(\text{zero‐mean constraint on }z), 
 \quad
@@ -82,7 +82,7 @@ Thus
 \]
 
 \section{Kalman Filter Implementation}
-We perform the standard predict–correct cycle:
+Let's perform the standard predict–correct cycle:
 \[
 \mathbf{x}_k^- = F\,\mathbf{x}_{k-1},\quad
 P^- = F\,P\,F^\top + Q,
@@ -115,6 +115,6 @@ S(f) = \bigl|\mathrm{FFT}(y[n])\bigr|^2,
 enabling offline validation, directional spreading when combined with cross‐spectra, and compliance with marine‐engineering standards.
 
 \section{Conclusion}
-By embedding the trochoidal wave physics directly into the Kalman filter’s process model, we achieve rapid, drift‐free heave estimates with bias correction.  The approach unifies real‐time control applications with offline spectral analysis, making it a versatile tool for modern wave measurement systems.
+By embedding the trochoidal wave physics directly into the Kalman filter’s process model, presented method achieves rapid, drift‐free heave estimates with bias correction.  The approach unifies real‐time control applications with offline spectral analysis, making it a versatile tool for modern wave measurement systems.
 
 \end{document}
