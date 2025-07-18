@@ -1,1 +1,120 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amssymb,authblk,fullpage}
+\usepackage{siunitx}
+\usepackage{graphicx}
 
+\title{Trochoidal‐Model‐Fused Kalman Filtering for Real‐Time Heave Estimation}
+\author{Mikhail Grushinskiy}
+\affil{Independent Researcher, 2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a Kalman‐filter‐based heave estimator that fuses inertial measurements with the trochoidal (Gerstner) wave model.  By embedding the exact linear relationship between vertical acceleration and displacement for finite‐amplitude deep‐water waves, the filter achieves rapid convergence, drift correction, and bias estimation.  The state includes displacement integral, heave, vertical speed, modeled acceleration, and accelerometer bias.  Applications range from real‐time wave buoys to motion compensation in marine vehicles, and the stored heave buffer can be exported for FFT‐based spectral analysis.
+\end{abstract}
+
+\section{Introduction}
+Estimating vertical displacement (heave) from accelerometer data is plagued by double‐integration drift and sensor bias.  We overcome these challenges by leveraging the exact trochoidal wave model (Gerstner waves) in the process dynamics.  The fusion of physics (known frequency–displacement relation) with Kalman filtering yields an estimator that:
+\begin{itemize}
+  \item Converges quickly without large drift,
+  \item Simultaneously estimates sensor bias,
+  \item Provides a soft zero‐mean constraint via the displacement integral channel,
+  \item Exports a rolling buffer of heave for spectral (FFT) analysis.
+\end{itemize}
+
+\section{Trochoidal (Gerstner) Model Fusion}
+In a deep‐water trochoidal wave of frequency \(f\), displacement \(y(t)\) and vertical acceleration \(a(t)\) satisfy
+\[
+a(t) \;=\; -\;(2\pi f)^2\,y(t)\quad\Longrightarrow\quad
+y(t) \;=\; -\,\frac{a(t)}{(2\pi f)^2}.
+\]
+Define
+\[
+\hat{k} \;=\; -\,(2\pi f)^2.
+\]
+This exact linear relation is built into our process model, anchoring the filter to true wave physics rather than purely numerical integration.
+
+\section{State‐Space Formulation}
+We define the 5‐dimensional state vector
+\[
+\mathbf{x}_k = 
+\begin{bmatrix}
+z_k \\ y_k \\ v_k \\ a_k \\ \hat a_k
+\end{bmatrix},
+\]
+where
+\begin{itemize}
+  \item \(z\): displacement integral (used as a pseudo‐measurement zero),
+  \item \(y\): heave (vertical displacement),
+  \item \(v\): vertical velocity,
+  \item \(a\): modeled vertical acceleration (from trochoidal relation),
+  \item \(\hat a\): accelerometer bias.
+\end{itemize}
+
+\subsection{Process Model}
+Over a sampling interval \(T\), the trochoidal‐fused evolution is
+\[
+\begin{aligned}
+z_k &= z_{k-1} + y_{k-1}T + \tfrac12v_{k-1}T^2 + \tfrac16\,a_{k-1}T^3 \;-\;\tfrac16\,\hat a_{k-1}T^3,\\
+y_k &= y_{k-1} + v_{k-1}T + \tfrac12\,a_{k-1}T^2 \;-\;\tfrac12\,\hat a_{k-1}T^2,\\
+v_k &= v_{k-1} + a_{k-1}T \;-\;\hat a_{k-1}T,\\
+a_k &= \hat{k}\,y_{k-1} \;+\;\hat{k}\,v_{k-1}T \;+\;\tfrac12\hat{k}\,a_{k-1}T^2 \;-\;\tfrac12\hat{k}\,\hat a_{k-1}T^2,\\
+\hat a_k &= \hat a_{k-1}.
+\end{aligned}
+\]
+In matrix form: \(\mathbf{x}_k = \mathbf{F}\,\mathbf{x}_{k-1} + \mathbf{w}_k\), with \(\mathbf{F}\) assembled from the above coefficients.
+
+\subsection{Measurement Model}
+We use two measurements:
+\[
+z^{(1)}_k = 0 \quad(\text{zero‐mean constraint on }z), 
+\quad
+z^{(2)}_k = a^{\mathrm{meas}}_k = a_k + \hat a_k + v^{(2)}_k.
+\]
+Thus
+\[
+\mathbf{z}_k = 
+\begin{bmatrix}0 \\ a^{\mathrm{meas}}_k\end{bmatrix}
+= 
+\underbrace{\begin{bmatrix}1&0&0&0&0\\0&0&0&1&1\end{bmatrix}}_{\!H\!}
+\,\mathbf{x}_k + \mathbf{v}_k.
+\]
+
+\section{Kalman Filter Implementation}
+We perform the standard predict–correct cycle:
+\[
+\mathbf{x}_k^- = F\,\mathbf{x}_{k-1},\quad
+P^- = F\,P\,F^\top + Q,
+\]
+\[
+K = P^-H^\top\bigl(H\,P^-H^\top+R\bigr)^{-1},
+\quad
+\mathbf{x}_k = \mathbf{x}_k^- + K\bigl(\mathbf{z}_k - H\,\mathbf{x}_k^-\bigr),
+\]
+\[
+P = (I-KH)P^-(I-KH)^\top + K\,R\,K^\top
+\quad\text{(Joseph form for numerical stability).}
+\]
+Process noise \(Q\) and measurement noise \(R\) are tuned based on IMU characteristics.  The Joseph‐form covariance update preserves symmetry and positive definiteness even in limited‐precision arithmetic.
+
+\section{Use Cases and Extensions}
+\begin{itemize}
+  \item \textbf{Embedded Wave Buoys:} Real‐time heave estimation with built‐in bias compensation.
+  \item \textbf{Motion Compensation:} Vertical motion feedforward for stabilizing cameras or sensors on marine vessels.
+  \item \textbf{Offshore Platform Monitoring:} Predict short‐term heave for safety interlocks.
+  \item \textbf{Spectral Analysis:} Export the buffered \(y_k\) sequence for \(N\)-point FFT to derive wave spectra, significant wave height, and peak period.
+  \item \textbf{Data Fusion:} Combine with direction and frequency trackers (e.g.\ Aranovskiy/Schmitt‐trigger filters) for full 6‐DOF wave characterization.
+\end{itemize}
+
+\section{Spectral (FFT) Compatibility}
+The rolling buffer of the latest \(N\) heave estimates can be windowed (e.g.\ Hanning) and fed into an FFT routine to compute the one‐sided power spectral density:
+\[
+S(f) = \bigl|\mathrm{FFT}(y[n])\bigr|^2,
+\]
+enabling offline validation, directional spreading when combined with cross‐spectra, and compliance with marine‐engineering standards.
+
+\section{Conclusion}
+By embedding the trochoidal wave physics directly into the Kalman filter’s process model, we achieve rapid, drift‐free heave estimates with bias correction.  The approach unifies real‐time control applications with offline spectral analysis, making it a versatile tool for modern wave measurement systems.
+
+\end{document}
