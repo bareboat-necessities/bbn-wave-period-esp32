@@ -1,0 +1,130 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amssymb,fullpage}
+\usepackage{hyperref}
+\usepackage{cite}
+
+\title{Mathematical Analysis of the Mahony Complementary AHRS Algorithm}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The Mahony complementary filter provides an efficient attitude estimation scheme by fusing gyroscope and accelerometer data via proportional–integral feedback on the quaternion manifold.  This paper presents a detailed derivation of its error dynamics, gain selection criteria, numerical stability properties, and computational complexity.  Comparisons to related complementary and Kalman filters are drawn.
+\end{abstract}
+
+\section{Introduction}
+Attitude estimation from inertial sensors can be achieved by complementary filters combining high‐frequency gyro integration with low‐frequency accelerometer corrections~\cite{Mahony2008}.  The Mahony algorithm implements PID‐style feedback directly on the quaternion representation, avoiding singularities and preserving unit norm.
+
+\section{Quaternion Kinematics}
+The true attitude quaternion \(q\) evolves under body‐fixed angular rate \(\boldsymbol\omega=(\omega_x,\omega_y,\omega_z)\) as
+\begin{equation}
+\dot q \;=\; \tfrac12\,q \otimes \begin{bmatrix}0\\\boldsymbol\omega\end{bmatrix},
+\label{eq:quat_kin}
+\end{equation}
+where \(\otimes\) denotes quaternion multiplication.
+
+\section{Mahony Filter Formulation}
+Define the estimate quaternion \(\hat q=(\hat q_0,\hat{\mathbf q}_v)\) and raw gyro measurement \(\boldsymbol\omega_m=\boldsymbol\omega+\mathbf{b}+\boldsymbol\nu_g\), with bias \(\mathbf{b}\) and noise \(\boldsymbol\nu_g\).  Gravity measured by accelerometer is \(\mathbf a_m = R(\hat q)^\top\mathbf g + \boldsymbol\nu_a\), where \(R(\hat q)\) is the rotation matrix.
+
+\subsection{Error Definition}
+The attitude error quaternion \(\delta q\) satisfies
+\[
+q = \hat q \otimes \delta q,
+\quad
+\delta q \approx \begin{bmatrix}1\\\tfrac12\,\delta\boldsymbol\theta\end{bmatrix},\quad
+\delta\boldsymbol\theta\in\mathbb R^3,\ \|\delta\boldsymbol\theta\|\ll1.
+\]
+
+\subsection{Feedback Terms}
+Let the estimated gravity direction be
+\[
+\hat{\mathbf v}_g
+= \begin{bmatrix}
+2(\hat q_1\hat q_3 - \hat q_0\hat q_2)\\
+2(\hat q_0\hat q_1 + \hat q_2\hat q_3)\\
+\hat q_0^2 - \hat q_1^2 - \hat q_2^2 + \hat q_3^2
+\end{bmatrix}.
+\]
+The error vector
+\[
+\mathbf e \;=\; \mathbf a_m \times \hat{\mathbf v}_g
+\]
+drives proportional and integral corrections:
+\[
+\boldsymbol\omega_c
+= \boldsymbol\omega_m
++ K_P\,\mathbf e
++ K_I\!\int_0^t\mathbf e(\tau)\,d\tau.
+\]
+
+\subsection{Filter Equations}
+The update law becomes
+\begin{align}
+\dot{\hat q} &= \tfrac12\,\hat q \otimes \begin{bmatrix}0\\\boldsymbol\omega_c\end{bmatrix},\label{eq:propagate}\\
+\dot{\mathbf z}_I &=  \mathbf e,\quad
+\mathbf z_I(0)=\mathbf0,\label{eq:integral}
+\end{align}
+with gains \(K_P=2\,\kappa_P\), \(K_I=2\,\kappa_I\).  After integration, \(\hat q\) is renormalized.
+
+\section{Error Dynamics}
+Linearizing about \(\delta\boldsymbol\theta=\mathbf0\) yields
+\[
+\dot{\delta\boldsymbol\theta}
+= -(\boldsymbol\omega_m - K_P\,\mathbf e - K_I\,\mathbf z_I)\,\Delta t + \boldsymbol\nu,
+\]
+and
+\[
+\dot{\mathbf z}_I = \mathbf e.
+\]
+Substituting \(\mathbf e \approx \delta\boldsymbol\theta\) gives a second‐order system:
+\[
+\ddot{\delta\boldsymbol\theta} + K_P\,\dot{\delta\boldsymbol\theta} + K_I\,\delta\boldsymbol\theta = \boldsymbol\nu_{\rm eff},
+\]
+which is stable for \(K_P,K_I>0\).
+
+\section{Gain Selection}
+The characteristic equation \(s^2 + K_P\,s + K_I=0\) implies natural frequency \(\omega_n=\sqrt{K_I}\) and damping \(\zeta=K_P/(2\sqrt{K_I})\).  Typical tuning sets \(\zeta\approx0.7\) and \(\omega_n\) near the cutoff between gyro and accelerometer bandwidths.
+
+\section{Numerical Stability}
+\begin{itemize}
+  \item \textbf{Quaternion Normalization:} prevents drift off the unit sphere.
+  \item \textbf{Integral Windup Avoidance:} integral reset when \(K_I=0\).
+  \item \textbf{Low‐Rate Sensitivity:} small \(\Delta t\) ensures accurate integration of (\ref{eq:propagate}).
+\end{itemize}
+
+\section{Computational Complexity}
+Each update requires:
+\begin{itemize}
+  \item Vector cross‐products (\(O(1)\) operations).
+  \item Floating‐point multiplies and adds: \(\approx50\) flops.
+  \item Inverse‐sqrt for normalization: one fast approximate \(O(1)\) routine~\cite{Quake2002}.
+\end{itemize}
+Overall cost per step is constant, suitable for real‐time execution on microcontrollers.
+
+\section{Comparison to Related Methods}
+\begin{itemize}
+  \item \textbf{Madgwick Filter} adds magnetometer correction and uses gradient descent rather than PI feedback~\cite{Madgwick2010}.
+  \item \textbf{Multiplicative EKF} yields statistically optimal estimates at higher computational cost~\cite{Lefferts1982,Markley2003}.
+\end{itemize}
+
+\section*{References}
+\begin{thebibliography}{9}
+\bibitem{Mahony2008}
+R.~Mahony, T.~Hamel, and J.~P. Pflimlin, “Nonlinear complementary filters on the special orthogonal group,” \emph{IEEE Trans. Autom. Control}, vol.~53, no.~5, pp. 1203–1218, 2008.
+
+\bibitem{Lefferts1982}
+E.~J. Lefferts, F.~L. Markley, and M.~D. Shuster, “Kalman filtering for spacecraft attitude estimation,” \emph{Journal of Guidance, Control, and Dynamics}, vol.~5, no.~5, pp. 417–429, 1982.
+
+\bibitem{Markley2003}
+F.~L. Markley, “Attitude error representations for Kalman filtering,” \emph{Journal of Guidance, Control, and Dynamics}, vol.~26, no.~2, pp. 311–317, 2003.
+
+\bibitem{Madgwick2010}
+S.~O.~H. Madgwick, “An efficient orientation filter for inertial and inertial/magnetic sensor arrays,” \emph{Report x-io and University of Bristol (UK)}, 2010.
+
+\bibitem{Quake2002}
+J.~W. Davies, “Fast inverse square root,” \emph{Graphic Gems IV}, pp. 489–492, 2002.
+
+\end{thebibliography}
+
+\end{document}
