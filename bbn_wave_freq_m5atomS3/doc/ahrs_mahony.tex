@@ -3,126 +3,147 @@
 \usepackage{hyperref}
 \usepackage{cite}
 
-\title{Mathematical Analysis of the Mahony Complementary AHRS Algorithm}
+\title{Implementation-Exact Analysis of the Mahony Complementary AHRS Algorithm}
 \date{}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-The Mahony complementary filter provides an efficient attitude estimation scheme by fusing gyroscope and accelerometer data via proportional–integral feedback on the quaternion manifold.  This paper presents a detailed derivation of its error dynamics, gain selection criteria, numerical stability properties, and computational complexity.  Comparisons to related complementary and Kalman filters are drawn.
+The Mahony complementary filter fuses gyroscope and accelerometer data via proportional–integral feedback on the quaternion manifold.  This document derives every step exactly as implemented in the reference C code: accelerometer normalization, discrete PI feedback, fast inverse‐sqrt, quaternion integration, integral‐windup logic, and Euler‐angle extraction.  Numerical stability and computational cost are also analyzed.
 \end{abstract}
 
 \section{Introduction}
-Attitude estimation from inertial sensors can be achieved by complementary filters combining high‐frequency gyro integration with low‐frequency accelerometer corrections~\cite{Mahony2008}.  The Mahony algorithm implements PID‐style feedback directly on the quaternion representation, avoiding singularities and preserving unit norm.
+Inertial attitude estimation commonly blends high-frequency gyro integration with low-frequency accelerometer corrections~\cite{Mahony2008}.  The Mahony algorithm applies PI feedback directly to the quaternion rate, avoiding singularities and maintaining unit norm at minimal computational cost.
 
-\section{Quaternion Kinematics}
-The true attitude quaternion \(q\) evolves under body‐fixed angular rate \(\boldsymbol\omega=(\omega_x,\omega_y,\omega_z)\) as
-\begin{equation}
-\dot q \;=\; \tfrac12\,q \otimes \begin{bmatrix}0\\\boldsymbol\omega\end{bmatrix},
-\label{eq:quat_kin}
-\end{equation}
-where \(\otimes\) denotes quaternion multiplication.
-
-\section{Mahony Filter Formulation}
-Define the estimate quaternion \(\hat q=(\hat q_0,\hat{\mathbf q}_v)\) and raw gyro measurement \(\boldsymbol\omega_m=\boldsymbol\omega+\mathbf{b}+\boldsymbol\nu_g\), with bias \(\mathbf{b}\) and noise \(\boldsymbol\nu_g\).  Gravity measured by accelerometer is \(\mathbf a_m = R(\hat q)^\top\mathbf g + \boldsymbol\nu_a\), where \(R(\hat q)\) is the rotation matrix.
-
-\subsection{Error Definition}
-The attitude error quaternion \(\delta q\) satisfies
+\section{Notation and State}
+Let the estimated attitude be the unit quaternion 
 \[
-q = \hat q \otimes \delta q,
+\hat q = \begin{bmatrix}\hat q_0\\\hat q_1\\\hat q_2\\\hat q_3\end{bmatrix},
+\]
+and raw gyro measurement 
+\[
+\boldsymbol\omega_m = (g_x,g_y,g_z),
+\]
+corrupted by bias $\mathbf b$ and noise.  Feedback gains are stored as 
+\[
+\texttt{twoKp} = 2K_P,\quad \texttt{twoKi} = 2K_I.
+\]
+Integral error accumulators are 
+\(\mathbf I=(I_x,I_y,I_z)\), initially zero.
+
+\section{Accelerometer Normalization}
+On each update, read $(a_x,a_y,a_z)$.  If $(a_x,a_y,a_z)\neq(0,0,0)$, compute
+\[
+\text{recipNorm} = \mathrm{invSqrt}(a_x^2+a_y^2+a_z^2),
 \quad
-\delta q \approx \begin{bmatrix}1\\\tfrac12\,\delta\boldsymbol\theta\end{bmatrix},\quad
-\delta\boldsymbol\theta\in\mathbb R^3,\ \|\delta\boldsymbol\theta\|\ll1.
+(a_x,a_y,a_z)\leftarrow (a_x,a_y,a_z)\,\text{recipNorm}.
+\]
+If the vector is zero, skip feedback to avoid NaNs.
+
+\section{Feedback Computation}
+Compute the estimated gravity direction in body frame:
+\[
+\begin{aligned}
+\hat v_x &= 2(\hat q_1\hat q_3 - \hat q_0\hat q_2),\\
+\hat v_y &= 2(\hat q_0\hat q_1 + \hat q_2\hat q_3),\\
+\hat v_z &= 2(\hat q_0^2 - \tfrac12 + \hat q_3^2).
+\end{aligned}
+\]
+Form the error vector via cross-product:
+\[
+(e_x,e_y,e_z)
+= (a_y\,\hat v_z - a_z\,\hat v_y,\;
+  a_z\,\hat v_x - a_x\,\hat v_z,\;
+  a_x\,\hat v_y - a_y\,\hat v_x).
+\]
+Proportional and integral feedback modify the rate:
+\[
+\begin{aligned}
+\mathbf I &\leftarrow
+\begin{cases}
+\mathbf I + \texttt{twoKi}\, \mathbf e\,\Delta t, &\text{if }\texttt{twoKi}>0,\\
+(0,0,0), &\text{otherwise},
+\end{cases}\\
+(g_x,g_y,g_z) &\leftarrow (g_x,g_y,g_z)
++ \texttt{twoKp}\,\mathbf e
++ \mathbf I.
+\end{aligned}
 \]
 
-\subsection{Feedback Terms}
-Let the estimated gravity direction be
+\section{Discrete Quaternion Update}
+Pre-multiply feedback rates:
 \[
-\hat{\mathbf v}_g
-= \begin{bmatrix}
-2(\hat q_1\hat q_3 - \hat q_0\hat q_2)\\
-2(\hat q_0\hat q_1 + \hat q_2\hat q_3)\\
-\hat q_0^2 - \hat q_1^2 - \hat q_2^2 + \hat q_3^2
-\end{bmatrix}.
+(g_x',g_y',g_z') = \tfrac12\,\Delta t\,(g_x,g_y,g_z).
 \]
-The error vector
+Denote the old quaternion $(q_0,q_1,q_2,q_3)$.  Then update:
 \[
-\mathbf e \;=\; \mathbf a_m \times \hat{\mathbf v}_g
+\begin{aligned}
+q_0 &\leftarrow q_0 - q_1\,g_x' - q_2\,g_y' - q_3\,g_z',\\
+q_1 &\leftarrow q_1 + q_0\,g_x' + q_2\,g_z' - q_3\,g_y',\\
+q_2 &\leftarrow q_2 + q_0\,g_y' - q_1\,g_z' + q_3\,g_x',\\
+q_3 &\leftarrow q_3 + q_0\,g_z' + q_1\,g_y' - q_2\,g_x'.
+\end{aligned}
 \]
-drives proportional and integral corrections:
+Normalize:
 \[
-\boldsymbol\omega_c
-= \boldsymbol\omega_m
-+ K_P\,\mathbf e
-+ K_I\!\int_0^t\mathbf e(\tau)\,d\tau.
+\text{recipNorm} = \mathrm{invSqrt}(q_0^2+q_1^2+q_2^2+q_3^2),\quad
+(q_0,\dots,q_3)\leftarrow(q_0,\dots,q_3)\,\text{recipNorm}.
 \]
 
-\subsection{Filter Equations}
-The update law becomes
-\begin{align}
-\dot{\hat q} &= \tfrac12\,\hat q \otimes \begin{bmatrix}0\\\boldsymbol\omega_c\end{bmatrix},\label{eq:propagate}\\
-\dot{\mathbf z}_I &=  \mathbf e,\quad
-\mathbf z_I(0)=\mathbf0,\label{eq:integral}
-\end{align}
-with gains \(K_P=2\,\kappa_P\), \(K_I=2\,\kappa_I\).  After integration, \(\hat q\) is renormalized.
+\section{Attitude Extraction}
+The Euler angles (degrees) are computed as:
+\[
+\begin{aligned}
+\text{pitch} &=
+\asin(-2\,q_1q_3 + 2\,q_0q_2)\times\mathrm{RAD\_TO\_DEG},\\
+\text{roll}  &=
+\atan2(2\,q_2q_3 + 2\,q_0q_1,\;
+       -2\,q_1^2 -2\,q_2^2 +1)\times\mathrm{RAD\_TO\_DEG},\\
+\text{yaw}   &=
+\atan2(2(q_1q_2+q_0q_3),\;
+       q_0^2+q_1^2 - q_2^2 - q_3^2)\times\mathrm{RAD\_TO\_DEG}.
+\end{aligned}
+\]
 
-\section{Error Dynamics}
-Linearizing about \(\delta\boldsymbol\theta=\mathbf0\) yields
+\section{Fast Inverse-Sqrt}
+The code uses the “magic‐number” Newton step:
 \[
-\dot{\delta\boldsymbol\theta}
-= -(\boldsymbol\omega_m - K_P\,\mathbf e - K_I\,\mathbf z_I)\,\Delta t + \boldsymbol\nu,
+y = \mathrm{invSqrt}(x)
+\quad\Longleftrightarrow\quad
+\begin{cases}
+i = 0x5f375a86 - (i\,\gg1),\\
+y \leftarrow y\,[1.5 - 0.5\,x\,y^2].
+\end{cases}
 \]
-and
-\[
-\dot{\mathbf z}_I = \mathbf e.
-\]
-Substituting \(\mathbf e \approx \delta\boldsymbol\theta\) gives a second‐order system:
-\[
-\ddot{\delta\boldsymbol\theta} + K_P\,\dot{\delta\boldsymbol\theta} + K_I\,\delta\boldsymbol\theta = \boldsymbol\nu_{\rm eff},
-\]
-which is stable for \(K_P,K_I>0\).
-
-\section{Gain Selection}
-The characteristic equation \(s^2 + K_P\,s + K_I=0\) implies natural frequency \(\omega_n=\sqrt{K_I}\) and damping \(\zeta=K_P/(2\sqrt{K_I})\).  Typical tuning sets \(\zeta\approx0.7\) and \(\omega_n\) near the cutoff between gyro and accelerometer bandwidths.
+This achieves one iteration of Newton–Raphson in constant time~\cite{Quake2002}.
 
 \section{Numerical Stability}
 \begin{itemize}
-  \item \textbf{Quaternion Normalization:} prevents drift off the unit sphere.
-  \item \textbf{Integral Windup Avoidance:} integral reset when \(K_I=0\).
-  \item \textbf{Low‐Rate Sensitivity:} small \(\Delta t\) ensures accurate integration of (\ref{eq:propagate}).
+  \item Quaternion is renormalized every cycle.
+  \item Integral terms are zeroed when \texttt{twoKi}=0 to prevent windup.
+  \item All divisions by zero are avoided via checks and the fast‐invSqrt guard.
 \end{itemize}
 
-\section{Computational Complexity}
-Each update requires:
+\section{Computational Cost}
+Each update executes:
 \begin{itemize}
-  \item Vector cross‐products (\(O(1)\) operations).
-  \item Floating‐point multiplies and adds: \(\approx50\) flops.
-  \item Inverse‐sqrt for normalization: one fast approximate \(O(1)\) routine~\cite{Quake2002}.
+  \item One invSqrt and vector normalization (\(\approx10\) flops).
+  \item Cross products and PI updates (\(\approx15\) flops).
+  \item Four-component quaternion update (\(\approx20\) flops).
+  \item Three \(\atan2\), one \(\asin\) for Euler (\(\mathcal O(1)\) but costly).
 \end{itemize}
-Overall cost per step is constant, suitable for real‐time execution on microcontrollers.
-
-\section{Comparison to Related Methods}
-\begin{itemize}
-  \item \textbf{Madgwick Filter} adds magnetometer correction and uses gradient descent rather than PI feedback~\cite{Madgwick2010}.
-  \item \textbf{Multiplicative EKF} yields statistically optimal estimates at higher computational cost~\cite{Lefferts1982,Markley2003}.
-\end{itemize}
+Total is constant per step, suitable for microcontrollers.
 
 \begin{thebibliography}{9}
 \bibitem{Mahony2008}
 R.~Mahony, T.~Hamel, and J.~P. Pflimlin, “Nonlinear complementary filters on the special orthogonal group,” \emph{IEEE Trans. Autom. Control}, vol.~53, no.~5, pp. 1203–1218, 2008.
 
-\bibitem{Lefferts1982}
-E.~J. Lefferts, F.~L. Markley, and M.~D. Shuster, “Kalman filtering for spacecraft attitude estimation,” \emph{Journal of Guidance, Control, and Dynamics}, vol.~5, no.~5, pp. 417–429, 1982.
-
-\bibitem{Markley2003}
-F.~L. Markley, “Attitude error representations for Kalman filtering,” \emph{Journal of Guidance, Control, and Dynamics}, vol.~26, no.~2, pp. 311–317, 2003.
-
 \bibitem{Madgwick2010}
-S.~O.~H. Madgwick, “An efficient orientation filter for inertial and inertial/magnetic sensor arrays,” \emph{Report x-io and University of Bristol (UK)}, 2010.
+S.~O.~H. Madgwick, “An efficient orientation filter for inertial and inertial/magnetic sensor arrays,” 2010.
 
 \bibitem{Quake2002}
-J.~W. Davies, “Fast inverse square root,” \emph{Graphic Gems IV}, pp. 489–492, 2002.
+J.~W. Davies, “Fast inverse square root,” in \emph{Graphics Gems IV}, 2002.
 
 \end{thebibliography}
 
