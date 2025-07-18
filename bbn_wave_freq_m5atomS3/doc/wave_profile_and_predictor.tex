@@ -1,1 +1,115 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{authblk}
+\usepackage{graphicx}
+\usepackage{fullpage}
 
+\title{Real‐Time Wave Surface Profiling and Prediction}
+\author{Mikhail Grushinskiy}
+\affil{Independent Researcher, 2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe \texttt{WaveSurfaceProfile<N>}, a rolling‐buffer heave tracker that reconstructs the instantaneous wave shape (phase, crest sharpness, asymmetry), computes derived metrics (energy, Stokes drift, velocity gradient), and predicts future heave at arbitrary phase offsets.  Use cases include time‐domain wave monitoring, real‐time control of wave‐active systems, and offline spectral (FFT) analysis of stored profiles.
+\end{abstract}
+
+\section{Introduction}
+Accurate knowledge of the instantaneous wave profile is critical for coastal monitoring, maritime navigation, and wave energy conversion.  We present a lightweight C++ template class that:
+\begin{itemize}
+  \item Maintains a circular buffer of the last \(N\) heave samples.
+  \item Anchors phase to the most recent zero upcrossing.
+  \item Computes shape metrics: crest sharpness, asymmetry.
+  \item Predicts heave at future or past phase offsets.
+  \item Exports buffer for FFT‐based spectral analysis.
+\end{itemize}
+
+\section{Data Buffer and Phase Tracking}
+We store samples \(\{(t_i,\eta_i)\}_{i=1}^N\) in a ring buffer.  On each \texttt{update(heave,freq,t)}, we:
+\[
+\text{head}\leftarrow(\text{head}+1)\bmod N,\quad 
+\text{samples}[\text{head}]=(\eta,t),
+\quad \nu\leftarrow\begin{cases}
+\nu, & \nu\in(0.01,2.0)\,\text{Hz},\\
+\nu, & \text{else unchanged}.
+\end{cases}
+\]
+Phase \(\phi(t)\in[0,1)\) is defined by
+\[
+\phi=\bigl(t - t_{\rm ZCU}\bigr)\,\nu \bmod 1,
+\]
+where \(t_{\rm ZCU}\) is the interpolated time of the most recent zero upcrossing (\(\eta<0\to\eta\ge0\)).
+
+\section{Shape Metrics}
+
+\subsection{Crest Sharpness}
+Locate the last upcrossing \(t_u\), crest peak \(\max\eta\) at \(t_c\), and subsequent downcrossing \(t_d\).  Define
+\[
+\text{sharpness} 
+= \tfrac12\Bigl(\tfrac{\eta_{\max}}{t_c - t_u} + \tfrac{\eta_{\max}}{t_d - t_c}\Bigr).
+\]
+
+\subsection{Asymmetry}
+\[
+\text{asymmetry}
+= \frac{(t_c - t_u)-(t_d-t_c)}{(t_c - t_u)+(t_d - t_c)}.
+\]
+
+\section{Prediction at Arbitrary Phase}
+To predict heave at phase offset \(\Delta\phi\):
+\begin{enumerate}
+  \item Compute current phase \(\phi_0\).
+  \item Target phase \(\phi^*=\phi_0+\Delta\phi\) (mod 1).
+  \item Scan buffer segments \((\eta_i,\eta_{i+1})\), compute their phases \(\phi_i,\phi_{i+1}\).
+  \item If \(\phi^*\) lies between \(\phi_i,\phi_{i+1}\), linearly interpolate:
+    \(\eta^*=\eta_i + \frac{\phi^*-\phi_i}{\phi_{i+1}-\phi_i}(\eta_{i+1}-\eta_i)\).
+  \item Otherwise, choose the nearest endpoint.
+\end{enumerate}
+
+\section{Derived Physical Quantities}
+
+\paragraph{Wave Energy (J/m²):}  
+\[
+E = \tfrac12\,\rho g\,\frac1N\sum_{i=1}^N \eta_i^2.
+\]
+
+\paragraph{Stokes Drift (m/s):}  
+For deep water at surface,
+\[
+U_s = \omega k a^2,\quad
+a = \sqrt{\frac1N\sum\eta_i^2}\,\sqrt{2},\quad
+k=\frac{\omega^2}{g}.
+\]
+
+\paragraph{Velocity Gradient (m/s²):}  
+\[
+G = \frac{\max\eta-\min\eta}{\Delta t_{\max}-\Delta t_{\min}}\;\times\;\frac{g}{2\pi\nu}.
+\]
+
+\section{FFT and Spectral Analysis}
+By exporting the buffered \(\{\eta_i\}\) array, one can perform an \(N\)-point FFT to extract:
+\[
+S(f) = \bigl|\mathrm{FFT}(\eta_i)\bigr|^2,
+\]
+for wave‐height spectra, peak period detection, and directional spreading (with multi‐axis data).
+
+\section{Use Cases}
+\begin{itemize}
+  \item \textbf{Real‐Time Monitoring:} Compute phase–locked metrics for control of wave‐energy converters.
+  \item \textbf{Forecasting:} Short‐term heave prediction for vessel motion compensation.
+  \item \textbf{Spectral Analysis:} Offline FFT of stored profiles for research and regulatory reporting.
+  \item \textbf{Anomaly Detection:} Detect unusual crest behavior or asymmetry spikes indicating rogue waves.
+\end{itemize}
+
+\section{Implementation Notes}
+\begin{itemize}
+  \item Handling finite‐precision: samples with non‐monotonic timestamps are discarded.
+  \item Interpolation safety: phase wrapping and clamping guard against division by zero.
+  \item Storage strategy: configurable \(N\) (default 128) and \(\text{STORE\_PERIODS}=2\) periods.
+\end{itemize}
+
+\section{Conclusion}
+\texttt{WaveSurfaceProfile} provides a compact, efficient framework for rolling wave shape analysis, real‐time prediction, and spectral export, enabling advanced wave sensing on embedded platforms.
+
+\end{document}
