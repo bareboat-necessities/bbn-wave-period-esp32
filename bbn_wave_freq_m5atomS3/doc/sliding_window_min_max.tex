@@ -1,0 +1,122 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amssymb,amsthm,fullpage}
+\usepackage{hyperref}
+\usepackage{cite}
+
+\title{Mathematical Analysis of the Monotonic Wedge Algorithm for Sliding Window Extrema}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Computing the minimum and maximum over a sliding window of length \(W\) in a data stream of length \(N\) is a fundamental operation in signal processing and time-series analysis.  The monotonic wedge algorithm maintains two deques (one for minima, one for maxima) in amortized \(O(1)\) time per update, with worst-case \(O(\log W)\) via a hybrid search strategy.  This paper presents a rigorous analysis of its time and space complexity, including detailed memory utilization estimates, and compares it with alternative data structures.
+\end{abstract}
+
+\section{Problem Statement}
+Given a sequence \(\{x_k\}_{k=1}^N\) and a fixed window size \(W\), define
+\[
+m_k = \min_{i=k-W+1}^k x_i,
+\quad
+M_k = \max_{i=k-W+1}^k x_i,
+\]
+for \(k\ge W\).  The goal is to update \(m_k\) and \(M_k\) online in time sublinear in \(W\).
+
+\section{Monotonic Wedge Algorithm}
+Maintain two deques:
+\[
+\mathcal{D}_{\min},\;\mathcal{D}_{\max},
+\]
+where each stores pairs \((x_j,j)\) in index‐order but with monotonic values:
+\[
+\mathcal{D}_{\min}: x_{j_1}\le x_{j_2}\le\cdots,
+\quad
+\mathcal{D}_{\max}: x_{j_1}\ge x_{j_2}\ge\cdots.
+\]
+At each step \(k\):
+\begin{enumerate}
+  \item \emph{Prune back:}
+    \(\mathcal{D}_{\min}.\mathrm{pop\_back}()\) while its back’s value \(>x_k\).
+    Similarly \(\mathcal{D}_{\max}.\mathrm{pop\_back}()\) while its back’s value \(<x_k\).
+  \item \emph{Push:} append \((x_k,k)\) to both deques.
+  \item \emph{Prune front:} remove front elements with index \(\le k-W\).
+  \item \emph{Report:}  
+    \(m_k=\mathcal{D}_{\min}.\mathrm{front}().x,\;M_k=\mathcal{D}_{\max}.\mathrm{front}().x.\)
+\end{enumerate}
+
+\section{Time Complexity}
+\subsection{Amortized \(O(1)\) Complexity}
+\begin{theorem}
+Over \(N\) updates, total deque operations (push and pop) is \(O(N)\).
+\end{theorem}
+\begin{proof}
+Each element is pushed once and can be popped (from back or front) at most once.  Thus total operations \(\le 4N\), implying \(O(1)\) amortized time per update.
+\end{proof}
+
+\subsection{Worst‐Case \(O(\log W)\) Comparisons}
+When pruning the back, a hybrid linear/binary search bounds the number of comparisons per update to \(O(\log W)\)~\cite{Lemire2006}.
+
+\section{Memory Utilization}
+\subsection{Per‐Element Storage}
+Each deque element stores:
+\begin{itemize}
+  \item A value \(x_j\) (e.g.\ 32-bit float or 64-bit double): \(\beta\) bytes.
+  \item A timestamp or index \(j\) (e.g.\ 32-bit integer): \(\gamma\) bytes.
+\end{itemize}
+Therefore each element consumes \(\beta+\gamma\) bytes of payload.
+
+\subsection{Container Overhead}
+Using a standard \(\mathtt{std::deque}\) or ring buffer adds overhead:
+\begin{itemize}
+  \item Pointer fields for front and back blocks (e.g.\ 2 pointers).
+  \item Block pointers or an array of block pointers, typically \(\delta\) bytes per block.
+\end{itemize}
+For simplicity, assume block size \(B\) elements and pointer size \(p\).  Overhead per element is then approximately
+\[
+\frac{2p + (\text{#blocks})\,p}{B}\approx O\!\bigl(p/B\bigr).
+\]
+
+\subsection{Total Memory}
+Each deque holds at most \(W\) elements in the worst case, so payload memory is
+\[
+W(\beta+\gamma)
+\]
+bytes.  Adding container overhead yields
+\[
+W(\beta+\gamma) + O\bigl(p\,\lceil W/B\rceil\bigr).
+\]
+Since \(B\) is typically large (e.g.\ 64), overhead is small relative to payload.
+
+\subsection{Comparison to Alternatives}
+\begin{itemize}
+  \item \textbf{Segment Tree:} requires \(2W\) or \(4W\) nodes storing values and indices plus child pointers—\(O(W)\) but with larger constant.
+  \item \textbf{Two‐Heap Method:} two heaps of size \(W\), each storing value plus index plus up to two child pointers—also \(O(W)\) with larger pointer overhead.
+\end{itemize}
+The monotonic wedge’s contiguous or block‐based deque storage typically yields lower fragmentation and better cache performance.
+
+\section{Comparison with Alternatives}
+\subsection{Segment Trees / Heaps}
+Segment trees or balanced binary search trees offer \(O(\log W)\) updates and queries with \(O(W)\) space.  In contrast, the wedge algorithm achieves \(O(1)\) amortized time while maintaining \(O(W)\) space and lower memory overhead.
+
+\subsection{Two‐Heap Method}
+A min‐heap and a max‐heap with lazy deletions also attain sliding extrema but incur \(O(\log W)\) per update and require maintaining auxiliary deletion structures.
+
+\section{Variants and Extensions}
+\begin{itemize}
+  \item \textbf{Combined Min–Max:} one pass maintaining both wedges.
+  \item \textbf{Circular Buffer Implementation:} avoids dynamic allocation by using fixed‐size arrays.
+  \item \textbf{Generalized Order Statistics:} k‐th smallest in window demands more elaborate data structures.
+\end{itemize}
+
+\section{Conclusion}
+The monotonic wedge algorithm offers a mathematically sound and memory‐efficient approach to sliding window extrema.  It achieves \(O(1)\) amortized update time, \(O(\log W)\) worst‐case comparisons, and \(O(W)\) space with minimal overhead.  These properties make it particularly well‐suited for high‐throughput, resource‐constrained environments.
+
+\begin{thebibliography}{9}
+\bibitem{Lemire2006}
+D.~T. Lemire, “Streaming maximum–minimum filter using no more than three comparisons per element,” \emph{arXiv:cs/0610046}, 2006.
+
+\bibitem{Balster2016}
+E.~Balster, “STL compatible monotonic wedge for fast rolling min/max,” GitHub repository, 2016. \url{https://github.com/EvanBalster/STL_mono_wedge}
+\end{thebibliography}
+
+\end{document}
