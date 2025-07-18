@@ -25,17 +25,6 @@ Let the horizontal acceleration vector be
 where
 \(\omega\) is the (known) angular frequency and \(\vec{A}\) the unknown 2D amplitude.  The goal is to recover the unit direction \(\vec{d}=\vec{A}/\|\vec{A}\|\).  
 
-\subsection{Why Phase $\phi$ Is Unneeded and Self‐Correction via $\mathbf{A}$}
-The instantaneous phase $\phi$ enters as a common scalar factor \(\cos(\omega t+\phi)\) on both axes.  Direction depends only on the ratio \(a_y/a_x\):
-\[
-\frac{a_y}{a_x}
-= \frac{A_y\cos(\omega t+\phi)}{A_x\cos(\omega t+\phi)}
-= \frac{A_y}{A_x}.
-\]
-Thus any unknown constant phase offset \(\phi_0\) merely rescales the amplitude vector: 
-\(\vec{a}(t)=\bigl(\vec{A}\cos\phi_0\bigr)\cos(\omega t)+\bigl(-\vec{A}\sin\phi_0\bigr)\sin(\omega t)\).
-The filter’s state \(\mathbf{x}_k\) absorbs that unknown offset into its estimate of \(\vec{A}\), and by minimizing residuals over time it converges to the correct direction.  In effect, the Kalman update \emph{self‐corrects} for unknown phase by adjusting both components of \(\mathbf{x}_k\) so that \(H_k\mathbf{x}_k\approx\vec{a}_k\) in the least‐squares sense, yielding the true ratio \(A_y/A_x\).
-
 \section{State–Space Formulation}
 \subsection{State and Process Model}
 At discrete step \(k\), define
@@ -62,6 +51,7 @@ When \(\lvert\cos\theta_k\rvert<\epsilon_{\min}\) (i.e.\ the oscillation project
 This avoids dividing by a small gain, prevents injection of noise, and lets the filter rely on the process model until the signal amplitude becomes informative again.
 
 \section{Kalman Filter with Joseph‐Form Update}
+
 \subsection{Predict and Update Equations}
 \begin{align*}
 \textbf{Predict:}\quad
@@ -78,6 +68,17 @@ This avoids dividing by a small gain, prevents injection of noise, and lets the 
 
 \subsection{Joseph Form for Numerical Stability}
 The Joseph‐form covariance update preserves symmetry and positive definiteness of \(\mathbf{P}_k\) in finite‐precision arithmetic, reducing the risk of spurious divergence.
+
+\subsection{Why Phase $\phi$ Is Unneeded and Self‐Correction via $\mathbf{A}$}
+The instantaneous phase $\phi$ enters as a common scalar factor \(\cos(\omega t+\phi)\) on both axes.  Direction depends only on the ratio \(a_y/a_x\):
+\[
+\frac{a_y}{a_x}
+= \frac{A_y\cos(\omega t+\phi)}{A_x\cos(\omega t+\phi)}
+= \frac{A_y}{A_x}.
+\]
+Thus any unknown constant phase offset \(\phi_0\) merely rescales the amplitude vector: 
+\(\vec{a}(t)=\bigl(\vec{A}\cos\phi_0\bigr)\cos(\omega t)+\bigl(-\vec{A}\sin\phi_0\bigr)\sin(\omega t)\).
+The filter’s state \(\mathbf{x}_k\) absorbs that unknown offset into its estimate of \(\vec{A}\), and by minimizing residuals over time it converges to the correct direction.  In effect, the Kalman update \emph{self‐corrects} for unknown phase by adjusting both components of \(\mathbf{x}_k\) so that \(H_k\mathbf{x}_k\approx\vec{a}_k\) in the least‐squares sense, yielding the true ratio \(A_y/A_x\).
 
 \section{Additional Numerical Safeguards}
 \begin{itemize}
