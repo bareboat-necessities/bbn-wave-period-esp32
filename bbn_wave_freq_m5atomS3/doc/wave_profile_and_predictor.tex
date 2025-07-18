@@ -12,11 +12,11 @@
 \maketitle
 
 \begin{abstract}
-We describe \texttt{WaveSurfaceProfile<N>}, a rolling‐buffer heave tracker that reconstructs the instantaneous wave shape (phase, crest sharpness, asymmetry), computes derived metrics (energy, Stokes drift, velocity gradient), and predicts future heave at arbitrary phase offsets.  Use cases include time‐domain wave monitoring, real‐time control of wave‐active systems, and offline spectral (FFT) analysis of stored profiles.
+This paper describes \texttt{WaveSurfaceProfile<N>}, a rolling‐buffer heave tracker that reconstructs the instantaneous wave shape (phase, crest sharpness, asymmetry), computes derived metrics (energy, Stokes drift, velocity gradient), and predicts future heave at arbitrary phase offsets.  Use cases include time‐domain wave monitoring, real‐time control of wave‐active systems, and offline spectral (FFT) analysis of stored profiles.
 \end{abstract}
 
 \section{Introduction}
-Accurate knowledge of the instantaneous wave profile is critical for coastal monitoring, maritime navigation, and wave energy conversion.  We present a lightweight C++ template class that:
+Accurate knowledge of the instantaneous wave profile is critical for coastal monitoring, maritime navigation, and wave energy conversion.  Here is presented a lightweight C++ template class that:
 \begin{itemize}
   \item Maintains a circular buffer of the last \(N\) heave samples.
   \item Anchors phase to the most recent zero upcrossing.
@@ -26,7 +26,7 @@ Accurate knowledge of the instantaneous wave profile is critical for coastal mon
 \end{itemize}
 
 \section{Data Buffer and Phase Tracking}
-We store samples \(\{(t_i,\eta_i)\}_{i=1}^N\) in a ring buffer.  On each \texttt{update(heave,freq,t)}, we:
+Store samples \(\{(t_i,\eta_i)\}_{i=1}^N\) in a ring buffer.  On each \texttt{update(heave,freq,t)}:
 \[
 \text{head}\leftarrow(\text{head}+1)\bmod N,\quad 
 \text{samples}[\text{head}]=(\eta,t),
