@@ -1,1 +1,122 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{authblk}
+\usepackage{fullpage}
+\usepackage{graphicx}
 
+\title{A Complementary Filter for Real‐Time Wave Direction Detection}
+\author{Mikhail Grushinskiy}
+\affil{Independent Researcher, 2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a lightweight complementary filter to infer wave propagation direction (forward vs.\ backward) from tri‐axial accelerometer data.  The method computes the instantaneous horizontal acceleration magnitude and the vertical acceleration slope, correlates them into a scalar proxy \(P\), and applies an exponential moving average (EMA) to track its trend.  A simple threshold test on the filtered proxy yields a three‐state wave direction output: \(\{\text{BACKWARD},\text{UNCERTAIN},\text{FORWARD}\}\).  The algorithm runs in constant time and memory, suitable for embedded wave buoys or wearable sensors.
+\end{abstract}
+
+\section{Introduction}
+Accurate knowledge of wave propagation direction is essential for marine navigation, coastal monitoring, and wave energy harvesting.  Traditional spectral methods require large data windows and significant computation.  Here we propose a \emph{complementary filter} that fuses instantaneous horizontal acceleration magnitude with vertical acceleration slope to yield a real‐time, low‐latency direction indicator.
+
+\section{Physical Principle}
+For a pure sinusoidal surface wave propagating along the \(Y\)–axis, the acceleration components measured by an IMU are:
+\begin{align*}
+a_y(t) &= A\cos(\omega t + \phi),\\
+a_z(t) &= -A\omega\sin(\omega t + \phi),
+\end{align*}
+where \(A\) is the acceleration amplitude, \(\omega\) the angular frequency, and \(\phi\) a phase offset.  The product
+\[
+a_y(t)\,\frac{d a_z}{dt}
+= A\cos(\omega t+\phi)\,\bigl(-A\omega^2\cos(\omega t+\phi)\bigr)
+= -A^2\omega^2\cos^2(\omega t+\phi)
+\]
+is always \(\le0\) for a forward‐propagating wave (positive \(Y\) direction), and flips sign for backward propagation.  We use this signed correlation as a proxy for direction.
+
+\section{Algorithm}
+
+\subsection{Instantaneous Proxy Computation}
+At each timestep \(k\) (sampling interval \(\Delta t\)), given measurements \(\{a_x,a_y,a_z\}_k\):
+\begin{align}
+\text{Horizontal magnitude:}\quad
+m_k &= \sqrt{a_{x,k}^2 + a_{y,k}^2},\label{eq:mag}\\
+\text{Signed horizontal:}\quad
+h_k &= \begin{cases}
++\,m_k, & a_{y,k}>0,\\
+-\,m_k, & a_{y,k}\le0,
+\end{cases}\label{eq:sign}\\
+\text{Vertical slope:}\quad
+s_k &= \frac{a_{z,k}-a_{z,k-1}}{\Delta t}.\label{eq:slope}
+\end{align}
+We then form the raw proxy
+\[
+p_k = h_k \, s_k.
+\]
+
+\subsection{Complementary (EMA) Filter}
+To smooth noise and accumulate evidence, we apply a first‐order exponential moving average:
+\begin{equation}
+P_k = (1-\alpha)\,P_{k-1} + \alpha\,p_k,
+\quad \alpha\in(0,1),
+\label{eq:ema}
+\end{equation}
+where \(\alpha\) is the \emph{smoothing factor} (e.g.\ \(0.002\)).  This acts as a complementary filter, blending the new proxy \(p_k\) with past history.
+
+\subsection{Threshold Decision}
+We compare the filtered proxy \(P_k\) against a \emph{sensitivity threshold} \(\theta\):
+\begin{equation*}
+\text{direction}_k =
+\begin{cases}
++\!1, & P_k > \theta,\\
+-\!1, & P_k < -\theta,\\
+0,   & \lvert P_k\rvert \le \theta,
+\end{cases}
+\end{equation*}
+corresponding to \(\{\text{FORWARD},\text{BACKWARD},\text{UNCERTAIN}\}\).
+
+\section{Implementation}
+The following C++ class encapsulates the filter:
+
+\begin{verbatim}
+enum WaveDirection { BACKWARD=-1, UNCERTAIN=0, FORWARD=1 };
+
+class WaveDirectionDetector {
+  float alpha, threshold;
+  float prevAz = NAN, P = 0.0f;
+public:
+  WaveDirectionDetector(float smoothing, float sensitivity)
+    : alpha(smoothing), threshold(sensitivity) { }
+
+  WaveDirection update(float ax,float ay,float az,float dt){
+    float mag = sqrtf(ax*ax+ay*ay);
+    if (isnan(prevAz)){ prevAz=az; return UNCERTAIN; }
+    if (mag>1e-8f){
+      float h = (ay>0?mag:-mag);
+      float s = (az - prevAz)/dt;
+      prevAz = az;
+      P += alpha*(h*s - P);
+    }
+    if (P>threshold) return FORWARD;
+    if (P<-threshold) return BACKWARD;
+    return UNCERTAIN;
+  }
+};
+\end{verbatim}
+
+\section{Parameter Selection}
+\begin{itemize}
+  \item \(\alpha\): lower values increase latency but reduce noise; typical \(10^{-3}\!-\!10^{-2}\).
+  \item \(\theta\): sets minimum confidence; must exceed steady‐state noise floor.
+  \item Sampling rate \(\Delta t\): must resolve wave frequency \(\omega\).
+\end{itemize}
+
+\section{Discussion and Extensions}
+\begin{itemize}
+  \item \textbf{Drift correction:} EMA inherently resists drift from occasional bad samples.
+  \item \textbf{Multidirectional waves:} The sign decision extends to more axes by projecting onto an estimated propagation axis.
+  \item \textbf{Adaptive thresholds:} \(\alpha\) and \(\theta\) can adjust based on measured noise variance.
+\end{itemize}
+
+\section{Conclusion}
+We have introduced a minimal‐complexity complementary filter for wave direction detection that fuses horizontal acceleration magnitude and vertical slope, applies EMA smoothing, and outputs a real‐time ±1/0 direction indicator.  Its low computational footprint and few tunable parameters make it ideal for embedded oceanographic sensors.
+
+\end{document}
