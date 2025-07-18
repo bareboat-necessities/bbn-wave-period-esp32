@@ -100,6 +100,116 @@ by Newton–Raphson:
 \end{equation}
 where $\mathbf{J} = \partial\mathbf{F}/\partial\mathbf{X}$ is the Jacobian (analytically constructed in the code), and $\alpha$ is a relaxation parameter (default 0.5).
 
+\subsection{Jacobian Matrix}
+\label{sec:jacobian}
+
+Define the unknown vector
+\[
+\mathbf{X} = \bigl[B_{0}, B_{1},\dots,B_{N},\;\eta_{0},\eta_{1},\dots,\eta_{N},\;Q,\;R\bigr]^{T},
+\]
+and the residual vector
+\[
+\mathbf{F}(\mathbf{X}) =
+\begin{bmatrix}
+f_{0}\\
+\vdots\\
+f_{N}\\[0.5ex]
+f_{N+1}\\
+\vdots\\
+f_{2N+1}\\[0.5ex]
+f_{2N+2}\\
+f_{2N+3}
+\end{bmatrix},
+\]
+where, for each collocation point \(x_{m} = \tfrac{m\pi}{N}\) and surface elevation \(\eta_{m} = \eta(x_{m})\),
+\begin{align}
+f_{m} &= -\,B_{0}\,\eta_{m}
+       + \sum_{j=1}^{N} B_{j}\,\frac{\sinh(k_{j}\,\eta_{m})}{\cosh(k_{j}\,d)}\,\cos(jk\,x_{m})
+       + Q,
+       \quad m=0,\dots,N,
+       \\
+f_{N+1+m} &= \tfrac12\bigl(u_{m}^{2}+v_{m}^{2}\bigr)
+            + \eta_{m} - R,
+       \quad m=0,\dots,N,
+\end{align}
+with
+\[
+k_{j} = j\,k,\quad
+u_{m} = -B_{0} + \sum_{j=1}^{N} k_{j}B_{j}\,\frac{\cosh[k_{j}(z=\eta_{m}+d)]}{\cosh(k_{j}d)}\cos(jk\,x_{m}),
+\quad
+v_{m} = \sum_{j=1}^{N} k_{j}B_{j}\,\frac{\sinh[k_{j}(z=\eta_{m}+d)]}{\cosh(k_{j}d)}\sin(jk\,x_{m}).
+\]
+The two global constraints are
+\begin{align}
+f_{2N+2} &= \frac{1}{N}\sum_{i=0}^{N} w_i\,\eta_{i} - 1,
+\quad w_{0}=w_{N}=\tfrac12,\;w_{i}=1\;(1\le i\le N-1),
+\\
+f_{2N+3} &= \max_{0\le i\le N}\!\eta_{i}\;-\;\min_{0\le i\le N}\!\eta_{i}\;-\;H.
+\end{align}
+
+The Jacobian matrix \(\mathbf{J} = [J_{pq}]=\partial F_{p}/\partial X_{q}\) has the following nonzero blocks:
+
+\paragraph{Bernoulli rows \(p=m\), \(0\le m\le N\):}
+\begin{align}
+\frac{\partial f_{m}}{\partial B_{0}}
+  &= -\eta_{m},
+  &
+\frac{\partial f_{m}}{\partial B_{j}}
+  &= \frac{\sinh(k_{j}\,\eta_{m})}{\cosh(k_{j}d)}\cos(jk\,x_{m}),\; j\ge1,
+  \\
+\frac{\partial f_{m}}{\partial \eta_{m}}
+  &= -B_{0}
+     + \sum_{j=1}^{N}B_{j}\,k_{j}\,\frac{\cosh(k_{j}\,\eta_{m})}{\cosh(k_{j}d)}\cos(jk\,x_{m}),
+  &
+\frac{\partial f_{m}}{\partial Q}
+  &= 1.
+\end{align}
+
+\paragraph{Dynamic rows \(p=N+1+m\), \(0\le m\le N\):}
+\begin{align}
+\frac{\partial f_{N+1+m}}{\partial B_{0}}
+  &= -\,u_{m},
+  &
+\frac{\partial f_{N+1+m}}{\partial B_{j}}
+  &= k_{j}\,\bigl(u_{m}\,C_{jm} + v_{m}\,S_{jm}\bigr),
+  \\
+\frac{\partial f_{N+1+m}}{\partial \eta_{m}}
+  &= 1
+     + \sum_{j=1}^{N}
+       B_{j}\,k_{j}^{2}
+       \Bigl(u_{m}\,\frac{\partial S_{jm}}{\partial \eta_{m}}
+           + v_{m}\,\frac{\partial C_{jm}}{\partial \eta_{m}}\Bigr),
+  &
+\frac{\partial f_{N+1+m}}{\partial R}
+  &= -1,
+\end{align}
+where
+\[
+C_{jm} = \frac{\cosh[k_{j}(\eta_{m}+d)]}{\cosh(k_{j}d)}\cos(jk\,x_{m}), 
+\quad
+S_{jm} = \frac{\sinh[k_{j}(\eta_{m}+d)]}{\cosh(k_{j}d)}\sin(jk\,x_{m}),
+\]
+and
+\(\partial S_{jm}/\partial \eta_{m} = k_{j} \,C_{jm}\), 
+\(\partial C_{jm}/\partial \eta_{m} = k_{j} \,S_{jm}.\)
+
+\paragraph{Mean‐elevation row \(p=2N+2\):}
+\[
+\frac{\partial f_{2N+2}}{\partial \eta_{i}}
+  = \frac{w_i}{N},\quad i=0,\dots,N.
+\]
+
+\paragraph{Wave‐height row \(p=2N+3\):}
+\[
+\frac{\partial f_{2N+3}}{\partial \eta_{i_{\max}}} = 1,
+\quad
+\frac{\partial f_{2N+3}}{\partial \eta_{i_{\min}}} = -1,
+\]
+where \(i_{\max},i_{\min}\) are the indices of the maximum and minimum \(\eta_{i}\).
+
+\medskip
+All other partial derivatives are zero.  In the C++ code (\texttt{compute\_jacobian()}), these expressions are implemented exactly—ensuring an analytically exact Jacobian for robust Newton–Raphson convergence.
+
 \subsection{Derived Wave Quantities}
 
 After convergence one computes:
