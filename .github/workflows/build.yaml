@@ -47,9 +47,9 @@ jobs:
     - name: Compile LaTex
       run: |
         for texfile in $(find . -name "*.tex"); do
-          pdflatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
-          pdflatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
-          pdflatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
+          xelatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
+          xelatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
+          xelatex -interaction=batchmode -halt-on-error -output-directory=$(dirname $texfile) $texfile
         done
 
     - name: Upload binaries to release
