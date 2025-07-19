@@ -12,69 +12,84 @@ Implementation‐Matching Formulation and Analysis}
 \maketitle
 
 \begin{abstract}
-This paper presents a formulation of the Quaternion‐MEKF exactly matching the provided C++ implementation.  Key aspects include: use of the exact quaternion exponential map for propagation (Shuster integration~\cite{Shuster1981}), a 6-state error vector with gyro bias, full 6×6 covariance, Joseph-form update for numerical robustness, and measurement Jacobians consistent with accelerometer and magnetometer cross-product conventions.  Noise covariances are chosen directly from sensor noise densities and bias instability.
+This paper presents a formulation of the Quaternion‐MEKF exactly matching the provided C++ implementation.  Key aspects include: use of the exact quaternion exponential map for propagation (Shuster integration~\cite{Shuster1981}), a 6‐state error vector with gyro bias, full 6×6 covariance, Joseph‐form update for numerical robustness, and measurement Jacobians consistent with accelerometer and magnetometer cross‐product conventions.  Noise covariances are chosen directly from sensor noise densities and bias instability.
 \end{abstract}
 
 \section{State Representation}
 Define the estimate quaternion $\hat q\in\mathbb H$ and error state
 \[
 \delta x = \begin{bmatrix}\delta\theta\\ b\end{bmatrix}\in\mathbb R^6,
-\quad \delta q \approx \begin{bmatrix}1\\ \tfrac12\,\delta\theta\end{bmatrix}, 
+\quad
+\delta q \approx \begin{bmatrix}1\\ \tfrac12\,\delta\theta\end{bmatrix},
 \]
 where $\delta\theta$ is the small‐angle error and $b$ the gyro‐bias error~\cite{Lefferts1982,Markley2003}.
 
 \section{Propagation via Exact Exponential}
-Measured rate $\omega_m=\omega+\nu_g - b$.  The code computes the 4×4 quaternion update matrix
+Measured rate is $\omega_m=\omega+\nu_g - b$.  The code forms the 4×4 quaternion‐update matrix via the exact exponential map
 \[
-\Delta q = \exp\!\Bigl(\tfrac12 [0,\;\Delta\theta]^\top\Bigr)
-= \cos\!\bigl(\tfrac12\|\Delta\theta\|\bigr)I_4
-+ \frac{\sin(\tfrac12\|\Delta\theta\|)}{\|\Delta\theta\|}\,\Omega(\Delta\theta),
+\Delta q
+=\exp\!\bigl(\tfrac12\,\Omega(\Delta\theta)\bigr)
+=\cos\!\bigl(\tfrac12\|\Delta\theta\|\bigr)\,I_4
+\;+\;\frac{\sin(\tfrac12\|\Delta\theta\|)}{\|\Delta\theta\|}\,\Omega(\Delta\theta),
 \]
-with $\Delta\theta=\omega_m\,\Delta t$ and skew matrix $\Omega(\cdot)$, then
+where $\Delta\theta=\omega_m\,\Delta t$ and
 \[
-\hat q^-\;=\;\Delta q\,\hat q,
-\quad
-\hat q\leftarrow\frac{\hat q^-}{\|\hat q^-\|},
+\Omega(\Delta\theta)
+=\begin{bmatrix}
+0 & -\Delta\theta^\mathsf{T}\\[3pt]
+\Delta\theta & -[\Delta\theta]_\times
+\end{bmatrix}.
 \]
-preserving second‐order accuracy and unit norm via Shuster’s method~\cite{Shuster1981}.
+Propagation and renormalization are then
+\[
+\hat q^-=\Delta q\,\hat q,
+\qquad
+\hat q\leftarrow\frac{\hat q^-}{\|\hat q^-\|}.
+\]
 
-The 6×6 discrete‐time state transition for error and bias is
+The 6×6 discrete‐time transition for error plus bias is
 \[
-F = 
+F =
 \begin{bmatrix}
-F_{11} & -I_3\,\Delta t\\
+F_{11} & -I_3\,\Delta t\\[3pt]
 0_{3\times3} & I_3
-\end{bmatrix}, 
+\end{bmatrix},
 \quad
-F_{11} = \Delta q_{0:2,0:2},
+F_{11} = \bigl(\Delta q\bigr)_{0\!:\!2,\;0\!:\!2}.
 \]
-where $F_{11}$ is the top‐left 3×3 block of $\Delta q$ (the exact rotation linearization).
 
 \section{Process Noise Covariance}
 The filter uses
 \[
 Q = \operatorname{diag}\bigl(\sigma_g^2\,\Delta t^2,\;\sigma_b^2\,\Delta t\bigr),
 \]
-where $\sigma_g$ is gyro noise density and $\sigma_b$ the bias random‐walk rate, matching the code’s `initialize\_Q` construction.
+matching the code’s \texttt{initialize\_Q}.
 
 \section{Measurement Model and Jacobian}
-Accelerometer and magnetometer deliver
+Accelerometer and magnetometer give
 \[
-y = \begin{bmatrix}a_m\\m_m\end{bmatrix}
-= \begin{bmatrix}
-\hat q^{-1}\!\otimes\([0,\mathbf v_g]\)\otimes\hat q\\
-\hat q^{-1}\!\otimes\([0,\mathbf v_m]\)\otimes\hat q
+y = \begin{bmatrix}a_m\\ m_m\end{bmatrix}
+=
+\begin{bmatrix}
+\hat q^{-1}\otimes
+\begin{pmatrix}0 \\ \mathbf v_g\end{pmatrix}
+\otimes\hat q
+\\[8pt]
+\hat q^{-1}\otimes
+\begin{pmatrix}0 \\ \mathbf v_m\end{pmatrix}
+\otimes\hat q
 \end{bmatrix}
 + \nu,
 \]
-with reference vectors $\mathbf v_g=(0,0,-g)$ and $\mathbf v_m$.  The code linearizes via
+where $\mathbf v_g=(0,0,-g)^\mathsf{T}$ and $\mathbf v_m$ is the reference magnetic field.  The linearization uses
 \[
-C = \begin{bmatrix}
-[\hat v_g]_\times & 0\\
+C =
+\begin{bmatrix}
+[\hat v_g]_\times & 0\\[3pt]
 [\hat v_m]_\times & 0
 \end{bmatrix},
 \]
-so that the innovation $\nu_k = y_k - \hat y_k = C\,\delta x + v$ exactly matches the sign conventions in `measurement_update`.
+so the innovation is $\nu_k=y_k-\hat y_k=C\,\delta x+v$ exactly as in the code.
 
 \section{Measurement Update with Joseph Form}
 Innovation covariance:
@@ -82,22 +97,24 @@ Innovation covariance:
 S = C\,P^-\,C^\top + R,
 \quad R=\operatorname{diag}(\sigma_a^2,\sigma_m^2).
 \]
-Kalman gain and Joseph‐form covariance:
+Kalman gain and Joseph‐form update:
 \[
 K = P^-C^\top S^{-1},\quad
-P = (I-KC)P^-(I-KC)^\top + K\,R\,K^\top,
+P = (I - K\,C)\,P^-\,(I - K\,C)^\top \;+\; K\,R\,K^\top.
 \]
-mirroring the code’s `measurement_update` and `measurement_update_partial`.  After state correction $x\leftarrow x+K\nu$, the quaternion is updated by
+After correction $x\leftarrow x + K\nu$, the quaternion is updated by
 \[
-\hat q \leftarrow \hat q \otimes \begin{bmatrix}1\\\tfrac12\,\delta\theta\end{bmatrix},\quad
+\hat q \leftarrow \hat q \;\otimes\;
+\begin{pmatrix}1\\ \tfrac12\,\delta\theta\end{pmatrix},
+\quad
 \delta\theta\leftarrow0.
 \]
 
 \section{Numerical Considerations}
 \begin{itemize}
-  \item \textbf{Exact Exponential:} avoids $\Delta t^2$ drift of first‐order integrators.
-  \item \textbf{Joseph Form:} ensures $P$ remains symmetric positive‐definite in finite precision~\cite{Maybeck1979}.
-  \item \textbf{Quaternion Renormalization:} applied each cycle.
+  \item \textbf{Exact Exponential:} preserves second‐order accuracy (Shuster integration~\cite{Shuster1981}).
+  \item \textbf{Joseph Form:} maintains symmetry and positive definiteness in floating‐point~\cite{Maybeck1979}.
+  \item \textbf{Renormalization:} enforces $\|\hat q\|=1$ each cycle.
 \end{itemize}
 
 \begin{thebibliography}{9}
