@@ -57,7 +57,7 @@ jobs:
       - name: Compile LaTeX document
         uses: xu-cheng/latex-action@v4
         with:
-          root_file: "**/wave*.tex"
+          root_file: "**/*.tex"
           latexmk_use_xelatex: true
           latexmk_shell_escape: true
           extra_system_packages: "inkscape ghostscript"
