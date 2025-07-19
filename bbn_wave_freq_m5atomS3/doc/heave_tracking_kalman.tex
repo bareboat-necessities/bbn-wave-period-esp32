@@ -88,9 +88,10 @@ To correct for drift, the integral of displacement \( z_k \) is treated as a pse
 \[
 z_k^\text{meas} = 0 + v_k, \quad v_k \sim \mathcal{N}(0, R)
 \]
-\[
+The measurement matrix:
+\begin{equation}
 \mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 \end{bmatrix}
-\]
+\end{equation}
 
 \section{Schmitt Trigger-Based Correction}
 To further constrain drift and improve estimation during wave oscillations, a Schmitt trigger-based logic is implemented. It detects zero-crossings of the vertical acceleration with hysteresis and debounce conditions.
