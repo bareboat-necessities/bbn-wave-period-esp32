@@ -14,7 +14,7 @@ jobs:
     - name: Install LaTex
       run: |
         sudo apt-get install -y texlive-full texlive-latex-extra texlive-bibtex-extra texlive-science biber
-        sudo apt-get install -y texlive-fonts-recommended texlive-fonts-extra texlive-xetex fonts-freefont-otf fonts-lmodern 
+        sudo apt-get install -y texlive-fonts-recommended texlive-fonts-extra texlive-math-extra texlive-xetex fonts-freefont-otf fonts-lmodern 
         
     - name: Compile sketch
       uses: ArminJo/arduino-test-compile@v3
