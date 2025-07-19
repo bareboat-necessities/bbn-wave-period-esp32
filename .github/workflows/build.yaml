@@ -13,7 +13,8 @@ jobs:
 
     - name: Install LaTex
       run: |
-        sudo apt-get install -y texlive-latex-base texlive-latex-extra
+        sudo apt-get install -y texlive-latex-recommended texlive-latex-extra texlive-science
+        sudo apt-get install -y texlive-fonts-recommended texlive-fonts-extra
         
     - name: Compile sketch
       uses: ArminJo/arduino-test-compile@v3
@@ -46,6 +47,7 @@ jobs:
     - name: Compile LaTex
       run: |
         for texfile in $(find . -name "*.tex"); do
+          pdflatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
           pdflatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
         done
 
