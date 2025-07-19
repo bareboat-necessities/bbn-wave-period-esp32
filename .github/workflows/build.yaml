@@ -10,11 +10,6 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-
-    - name: Install LaTex
-      run: |
-        sudo apt-get install -y texlive-full texlive-latex-extra texlive-bibtex-extra texlive-science biber
-        sudo apt-get install -y texlive-fonts-recommended texlive-fonts-extra texlive-xetex fonts-freefont-otf fonts-lmodern 
         
     - name: Compile sketch
       uses: ArminJo/arduino-test-compile@v3
@@ -44,14 +39,6 @@ jobs:
         pwd
         ls *.zip
 
-    - name: Compile LaTex
-      run: |
-        for texfile in $(find . -name "*.tex"); do
-          xelatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
-          xelatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
-          xelatex -interaction=batchmode -halt-on-error -output-directory=$(dirname $texfile) $texfile
-        done
-
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
       with:
@@ -61,12 +48,23 @@ jobs:
         overwrite: true
         file_glob: true
 
-    - name: Upload PDF
-      uses: svenstaro/upload-release-action@v2
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: "**/*.pdf"
-        tag: ${{ github.ref == 'refs/heads/main' && 'vTest' || github.ref }}
-        overwrite: true
-        file_glob: true
+  build_latex:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
+      - name: Compile LaTeX document
+        uses: xu-cheng/latex-action@v4
+        with:
+          root_file: "**/*.tex"
+          latexmk_use_xelatex: true
+          
+      - name: Upload PDF
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: "**/*.pdf"
+          tag: ${{ github.ref == 'refs/heads/main' && 'vTest' || github.ref }}
+          overwrite: true
+          file_glob: true
