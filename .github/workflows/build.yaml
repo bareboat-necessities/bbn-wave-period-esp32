@@ -49,6 +49,7 @@ jobs:
         for texfile in $(find . -name "*.tex"); do
           pdflatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
           pdflatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
+          pdflatex -interaction=nonstopmode -output-directory=$(dirname $texfile) $texfile
         done
 
     - name: Upload binaries to release
