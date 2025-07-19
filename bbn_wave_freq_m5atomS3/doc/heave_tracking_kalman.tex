@@ -94,6 +94,78 @@ The measurement matrix:
 \mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 \end{bmatrix}
 \end{equation}
 
+
+
+% ===== PREDICT STEP =====
+\subsection{Predict Step}
+\begin{equation}
+\bm{x}_k^- = \bm{F}\bm{x}_{k-1} + \bm{B}a_k
+\end{equation}
+
+\begin{equation}
+\bm{F} = 
+\begin{bmatrix}
+1      & T     & \frac{1}{2}T^2 & -\frac{1}{6}T^3 \\
+0      & 1     & T              & -\frac{1}{2}T^2 \\
+0      & 0     & 1              & -T              \\
+0      & 0     & 0              & 1
+\end{bmatrix}, \quad
+\bm{B} = 
+\begin{bmatrix}
+\frac{1}{6}T^3 \\
+\frac{1}{2}T^2 \\
+T \\
+0
+\end{bmatrix}
+\end{equation}
+
+\begin{equation}
+\bm{P}_k^- = \bm{F}\bm{P}_{k-1}\bm{F}^\top + \bm{Q}, \quad 
+\bm{Q} = \mathrm{diag}(q_0, q_1, q_2, q_3)
+\end{equation}
+
+% ===== STANDARD UPDATE =====
+\subsection{Standard Update}
+Measurement: $z=0$ with $\bm{H} = [1\;0\;0\;0]$
+
+\begin{align}
+\tilde{y} &= 0 - \bm{H}\bm{x}_k^- \\
+S &= \bm{H}\bm{P}_k^-\bm{H}^\top + R \\
+\bm{K} &= \bm{P}_k^- \bm{H}^\top S^{-1} \\
+\bm{x}_k^+ &= \bm{x}_k^- + \bm{K}\tilde{y} \\
+\bm{P}_k^+ &= (\bm{I}-\bm{K}\bm{H})\bm{P}_k^-(\bm{I}-\bm{K}\bm{H})^\top + \bm{K}R\bm{K}^\top
+\end{align}
+
+% ===== ZERO-CROSSING CORRECTION =====
+\subsection{Zero-Crossing Correction}
+Trigger when $|a_k| > 0.04\,\text{m/s}^2$ and $|v| > 0.6\,\text{m/s}$:
+
+\begin{equation}
+\bm{H}_c = \begin{bmatrix}0&1&0&0\\0&0&1&0\end{bmatrix}, \quad
+\bm{z}_c = \begin{bmatrix}(1-\alpha)y\\v+\alpha(\tilde{v}-v)\end{bmatrix}
+\end{equation}
+
+\begin{equation}
+\tilde{v} = \mathrm{sgn}(v)\min\left(\sqrt{v^2 + (\pi y/\Delta t_\mathrm{zero})^2}, 3.0\right)
+\end{equation}
+
+\begin{align}
+\bm{y}_c &= \bm{z}_c - \bm{H}_c\bm{x}_k^+ \\
+\bm{S}_c &= \bm{H}_c\bm{P}_k^+\bm{H}_c^\top + \mathrm{diag}(R_y, R_v) \\
+\bm{K}_c &= \bm{P}_k^+\bm{H}_c^\top \bm{S}_c^{-1} \quad \text{(if $\bm{y}_c^\top\bm{S}_c^{-1}\bm{y}_c < 13.0$)} \\
+\bm{x}_k &\leftarrow \bm{x}_k + \bm{K}_c\bm{y}_c \\
+\bm{P}_k &\leftarrow (\bm{I}-\bm{K}_c\bm{H}_c)\bm{P}_k(\bm{I}-\bm{K}_c\bm{H}_c)^\top + \bm{K}_c\bm{S}_c\bm{K}_c^\top
+\end{align}
+
+% ===== STABILIZATION =====
+\subsection{Stabilization}
+\begin{itemize}
+\item Symmetry: $\bm{P} \leftarrow \frac{1}{2}(\bm{P}+\bm{P}^\top)$
+\item PD enforcement: While $\bm{P} \not\succ 0$, add $\epsilon\bm{I}$
+\item Numerical safety: $S^{-1}$ clamped at $10^{-12}$
+\end{itemize}
+
+
 \section{Schmitt Trigger-Based Correction}
 To further constrain drift and improve estimation during wave oscillations, a Schmitt trigger-based logic is implemented. It detects zero-crossings of the vertical acceleration with hysteresis and debounce conditions.
 
