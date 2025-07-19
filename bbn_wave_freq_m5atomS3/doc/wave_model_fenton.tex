@@ -17,7 +17,7 @@
 \label{sec:fenton_method}
 
 \noindent
-We summarize here the mathematical formulation of Fenton’s method for steady periodic surface gravity waves in finite depth \cite{Fenton1988}, followed by a brief description of its \verb|C++| implementation (see \texttt{FentonWave.h}).
+This paper summarizes here the mathematical formulation of Fenton’s method for steady periodic surface gravity waves in finite depth \cite{Fenton1988}, followed by a brief description of its \verb|C++| implementation (see \texttt{FentonWave.h}).
 
 \subsection{Governing Equations}
 
@@ -40,7 +40,7 @@ where $g$ is gravity, $c$ the phase speed, and $R$ a constant (Bernoulli constan
 
 \subsection{Spectral Representation}
 
-We expand the stream function and surface elevation in truncated Fourier series up to order $N$:
+Let's expand the stream function and surface elevation in truncated Fourier series up to order $N$:
 \begin{align}
 \psi(x,z) &= B_0\,(z + d)
    \;+\;\sum_{j=1}^{N} B_j\;\frac{\sinh\!\bigl[j\,k\,(z + d)\bigr]}{\cosh(j\,k\,d)}
@@ -76,7 +76,7 @@ B_0,\dots,B_N,\;
 Q,\;R
 \end{bmatrix}^T,
 \]
-where $Q$ is the volume flux.  We form the residual vector
+where $Q$ is the volume flux. Let's form the residual vector
 \[
 \mathbf{F}(\mathbf{X}) = 
 \begin{bmatrix}
