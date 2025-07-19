@@ -57,3 +57,12 @@ jobs:
         tag: ${{ github.ref == 'refs/heads/main' && 'vTest' || github.ref }}
         overwrite: true
         file_glob: true
+
+    - name: Upload PDF
+      uses: svenstaro/upload-release-action@v2
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: **/*.pdf
+        tag: ${{ github.ref == 'refs/heads/main' && 'vTest' || github.ref }}
+        overwrite: true
+        file_glob: true
+
