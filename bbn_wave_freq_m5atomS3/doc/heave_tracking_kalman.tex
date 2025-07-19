@@ -5,6 +5,7 @@
 \usepackage{fullpage}
 \usepackage{physics}
 \usepackage{siunitx}
+\usepackage{bm}
 \usepackage{cite}
 
 \title{Heave Estimation from Vertical Acceleration using a Kalman Filter with Drift and Bias Compensation}
@@ -19,19 +20,19 @@ This paper presents a Kalman filter-based approach for estimating vertical displ
 \end{abstract}
 
 \section{Introduction}
-Estimating heave from vertical accelerometers is challenging due to integration drift, sensor bias, and wave irregularities. This paper proposes a solution using a Kalman filter that augments the state space with bias and drift components and corrects for mean-zero vertical displacement using a soft pseudo-measurement strategy.
+Estimating heave from vertical accelerometers is challenging due to integration drift, sensor bias, and wave irregularities. This paper proposes a solution using a Kalman filter that augments the state space with bias and drift components and corrects for mean-zero vertical displacement using a soft pseudo-measurement and a soft zero-crossing correction strategy.
 
 \section{State-Space Model}
 
 The continuous-time vertical acceleration \( a(t) \) is sampled at time steps \( k \) with period \( T \). The state vector \( \mathbf{x}_k \in \mathbb{R}^4 \) is defined as:
-\[
+\begin{equation}
 \mathbf{x}_k = \begin{bmatrix}
 z_k \\
 y_k \\
 v_k \\
 \hat{a}_k
 \end{bmatrix}
-\]
+\end{equation}
 where:
 \begin{itemize}
   \item \( z_k \): Third integral of acceleration (integrated displacement)
@@ -40,19 +41,39 @@ where:
   \item \( \hat{a}_k \): Estimated accelerometer bias
 \end{itemize}
 
-The process model is:
-\[
+
+
+\subsection{Process Model Equations}
+
+The discrete-time process model equations are:
+
+\begin{align}
+v_k &= v_{k-1} + a T - \hat{a}_{k-1} T \\
+y_k &= y_{k-1} + v_{k-1} T + \frac{1}{2}a T^2 - \frac{1}{2}\hat{a}_{k-1} T^2 \\
+z_k &= z_{k-1} + y_{k-1} T + \frac{1}{2}v_{k-1} T^2 + \frac{1}{6}a T^3 - \frac{1}{6}\hat{a}_{k-1} T^3 \\
+\hat{a}_k &= \hat{a}_{k-1}
+\end{align}
+
+where $T$ is the sampling interval and $a$ is the measured acceleration, $a - \hat{a}$ is the true vertical acceleration, and the bias $\hat{a}$ is modeled as a constant.
+
+
+\subsection{Matrix Formulation}
+
+The process model in matrix form is:
+\begin{equation}
 \mathbf{x}_k = \mathbf{F}_k \mathbf{x}_{k-1} + \mathbf{B}_k a_k + \mathbf{w}_k
-\]
-where \( a_k \) is measured vertical acceleration and \( \mathbf{w}_k \sim \mathcal{N}(0, \mathbf{Q}) \) is the process noise. The matrices \( \mathbf{F}_k \) and \( \mathbf{B}_k \) are time-dependent:
-\[
+\end{equation}
+where \( a_k \) is measured vertical acceleration and \( \mathbf{w}_k \sim \mathcal{N}(0, \mathbf{Q}) \) is the process noise with covariance \(  \bm{Q} \). The matrices \( \mathbf{F}_k \) (state transition) and \( \mathbf{B}_k \) (input matrix) are time step dependent:
+\begin{equation}
 \mathbf{F}_k =
 \begin{bmatrix}
 1 & T & \frac{1}{2}T^2 & -\frac{1}{6}T^3 \\
 0 & 1 & T & -\frac{1}{2}T^2 \\
 0 & 0 & 1 & -T \\
 0 & 0 & 0 & 1
-\end{bmatrix}, \quad
+\end{bmatrix}
+\end{equation}
+\begin{equation}
 \mathbf{B}_k =
 \begin{bmatrix}
 \frac{1}{6}T^3 \\
@@ -60,7 +81,7 @@ where \( a_k \) is measured vertical acceleration and \( \mathbf{w}_k \sim \math
 T \\
 0
 \end{bmatrix}
-\]
+\end{equation}
 
 \subsection{Measurement Model}
 To correct for drift, the integral of displacement \( z_k \) is treated as a pseudo-measurement with expected value zero:
