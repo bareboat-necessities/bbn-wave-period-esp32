@@ -20,7 +20,8 @@ This paper presents a Kalman filter-based approach for estimating vertical displ
 \end{abstract}
 
 \section{Introduction}
-Estimating heave from vertical accelerometers is challenging due to integration drift, sensor bias, and wave irregularities. This paper proposes a solution using a Kalman filter that augments the state space with bias and drift components and corrects for mean-zero vertical displacement using a soft pseudo-measurement and a soft zero-crossing correction strategy.
+Estimating heave from vertical accelerometers is challenging due to integration drift, sensor bias, and wave irregularities. This paper proposes a solution using a Kalman filter that augments the state space with bias and drift components and corrects for mean-zero vertical displacement using a soft pseudo-measurement and a soft zero-crossing correction strategy. The idea of using soft pseudo-measurement for a drift correction was presented in \cite{Sharkh2014}. This paper improves correction further by modelling bias dynamics via a state variable and by introducing
+a soft zero crossing correction which respects the physics of the process.
 
 \section{State-Space Model}
 
