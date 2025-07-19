@@ -59,6 +59,7 @@ jobs:
         with:
           root_file: "**/*.tex"
           latexmk_use_xelatex: true
+          latexmk_shell_escape: true
           
       - name: Upload PDF
         uses: svenstaro/upload-release-action@v2
