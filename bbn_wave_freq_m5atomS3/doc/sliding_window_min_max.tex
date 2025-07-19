@@ -3,6 +3,8 @@
 \usepackage{hyperref}
 \usepackage{cite}
 
+\newtheorem{theorem}{Theorem}
+
 \title{Comprehensive Analysis of the Monotonic Wedge Algorithm for Sliding Window Extrema}
 \date{}
 
@@ -10,86 +12,87 @@
 \maketitle
 
 \begin{abstract}
-Sliding-window extrema are critical in real-time financial analysis, sensor networks and streaming algorithms. Computing the minimum and maximum over a sliding window of length \(W\) in a data stream of length \(N\) is a fundamental operation in signal processing and time-series analysis. The monotonic wedge algorithm maintains two deques (one for minima, one for maxima) in amortized \(O(1)\) time per update, with worst-case \(O(\log W)\) via a hybrid search. This paper presents a complete analysis of its computational and memory behavior, including detailed memory-use estimates, and compares it to alternative structures.
+Sliding‐window extrema are critical in real‐time financial analysis, sensor networks, and streaming algorithms.  Computing the minimum and maximum over a sliding window of length \(W\) in a data stream of length \(N\) is a fundamental operation in signal processing and time‐series analysis.  The monotonic wedge algorithm maintains two deques (one for minima, one for maxima) in amortized \(O(1)\) time per update, with worst‐case \(O(\log W)\) via a hybrid search strategy.  This paper presents a comprehensive analysis of its computational and memory usage complexity, including detailed memory‐utilization estimates, and compares it with alternative data structures.
 \end{abstract}
 
 \section{Problem Statement}
-Given a sequence \(\{x_k\}_{k=1}^N\) and window size \(W\), define
+Given a sequence \(\{x_k\}_{k=1}^N\) and a fixed window size \(W\), define
 \[
-  m_k = \min_{i=k-W+1}^k x_i,\quad
+  m_k = \min_{i=k-W+1}^k x_i,\qquad
   M_k = \max_{i=k-W+1}^k x_i,
 \]
-for \(k\ge W\).  We wish to maintain \(m_k, M_k\) online in sub-\(O(W)\) time per step.
+for \(k \ge W\).  The goal is to update \(m_k\) and \(M_k\) online in sub-\(O(W)\) time per step.
 
 \section{Monotonic Wedge Algorithm}
 Maintain two deques:
 \[
   \mathcal{D}_{\min},\quad \mathcal{D}_{\max},
 \]
-each storing pairs \((x_j,j)\) in index-order but with monotonic values:
+each storing pairs \((x_j,j)\) in index order but with monotonic values:
 \[
-  \mathcal{D}_{\min}: x_{j_1}\le x_{j_2}\le\cdots,\quad
-  \mathcal{D}_{\max}: x_{j_1}\ge x_{j_2}\ge\cdots.
+  \mathcal{D}_{\min}\colon x_{j_1}\le x_{j_2}\le\cdots,\quad
+  \mathcal{D}_{\max}\colon x_{j_1}\ge x_{j_2}\ge\cdots.
 \]
-At step \(k\):
+At each time \(k\):
 \begin{enumerate}
-  \item \textbf{Prune back:}
-    \(\mathcal{D}_{\min}.\)pop\_back() while back value \(>x_k\);
-    similarly on \(\mathcal{D}_{\max}\) when back \(<x_k\).
-  \item \textbf{Push:}
-    append \((x_k,k)\) via pop\_back() then push\_back() to both.
-  \item \textbf{Prune front:}
-    pop\_front() any element with index \(\le k-W\).
-  \item \textbf{Report:}
+  \item \textbf{Prune back:}\\
+    \texttt{while\,(!D\_min.empty() \&\& D\_min.back().x > x\_k) D\_min.pop\_back();}\\
+    similarly for \texttt{D\_max} when its back value \(<x_k\).
+  \item \textbf{Push:}\\
+    \texttt{D\_min.push\_back(\{x\_k,k\});} and likewise for \texttt{D\_max}.
+  \item \textbf{Prune front:}\\
+    \texttt{while\,(!D\_min.empty() \&\& D\_min.front().i <= k-W) D\_min.pop\_front();}\\
+    and same for \texttt{D\_max}.
+  \item \textbf{Report:}\\
     \[
-      m_k = \mathcal{D}_{\min}.\mathrm{front}().x,\quad
-      M_k = \mathcal{D}_{\max}.\mathrm{front}().x.
+      m_k = D_{\min}.\texttt{front}().x,\qquad
+      M_k = D_{\max}.\texttt{front}().x.
     \]
 \end{enumerate}
 
 \section{Time Complexity}
 \subsection{Amortized \(O(1)\)}
 \begin{theorem}
-Over \(N\) steps, the total number of deque pushes plus pops is \(O(N)\).
+Over \(N\) updates, the total number of deque push and pop operations is \(O(N)\).
 \end{theorem}
 \begin{proof}
-Each element is pushed once and popped at most once (back) and once (front) \(\le2\) pops, so \(\le3N\) operations.
+Each element is pushed exactly once, and can be popped at most once from the back and once from the front.  Hence the total operations \(\le3N\), so \(O(1)\) amortized per update.
 \end{proof}
 
-\subsection{Worst-Case \(O(\log W)\) Comparisons}
-By combining a small linear scan with a binary search when pruning, each step uses at most \(O(\log W)\) element comparisons~\cite{Lemire2006}.
+\subsection{Worst–Case \(O(\log W)\) Comparisons}
+By using a small hybrid of linear scan plus binary search when pruning, each update does at most \(O(\log W)\) comparisons~\cite{Lemire2006}.
 
 \section{Memory Utilization}
-\subsection{Per-Element}
+\subsection{Per‐Element Storage}
 Each deque entry holds:
 \begin{itemize}
-  \item A value: \(\beta\) bytes (e.g.\ 8 for a double).
-  \item An index: \(\gamma\) bytes (e.g.\ 4).
+  \item A value \(x_j\) (e.g.\ 8 bytes for a double).
+  \item An index \(j\) (e.g.\ 4 bytes for a 32-bit int).
 \end{itemize}
-Payload is \(\beta+\gamma\) bytes per entry.
+Payload per entry is \(\beta+\gamma\) bytes.
 
 \subsection{Container Overhead}
-A typical block-based deque uses pointer fields (say \(p\) bytes each) and blocks of \(B\) entries.  Overhead per element is \(O(p/B)\).
+A block-based deque typically uses pointer fields (\(p\) bytes each) and blocks of size \(B\).  Amortized overhead per entry is \(O(p/B)\).
 
 \subsection{Total}
-In the worst case each deque can grow to \(W\) entries, so
+In the worst case each deque grows to \(W\) entries, so  
 \[
-  \text{payload} = W(\beta+\gamma),\qquad
-  \text{overhead} = O\bigl(p\,\lceil W/B\rceil\bigr).
+  \text{Payload} = W(\beta+\gamma),\quad
+  \text{Overhead} = O\bigl(p\,\lceil W/B\rceil\bigr).
 \]
 
 \section{Comparison to Alternatives}
-Segment trees or two-heap methods both incur \(\Theta(\log W)\) updates and larger pointer overhead, whereas the monotonic wedge achieves \(O(1)\) amortized updates and minimal overhead.
+Segment trees or two-heap approaches incur \(\Theta(\log W)\) per update and higher pointer overhead, while the monotonic wedge gives \(O(1)\) amortized updates with minimal extra cost.
 
 \section{Conclusion}
-The monotonic wedge algorithm delivers \(O(1)\) amortized update time, \(O(\log W)\) worst-case comparisons, and \(O(W)\) space with very low constant factors, making it ideal for streaming and embedded contexts.
+The monotonic wedge algorithm achieves \(O(1)\) amortized update time, \(O(\log W)\) worst-case comparisons, and \(O(W)\) space with very low constants, making it ideal for high-throughput, resource-constrained streaming applications.
 
 \begin{thebibliography}{9}
 \bibitem{Lemire2006}
 D.~T. Lemire, “Streaming maximum–minimum filter using no more than three comparisons per element,” \emph{arXiv:cs/0610046}, 2006.
 
 \bibitem{Balster2016}
-E.~Balster, “STL compatible monotonic wedge for fast rolling min/max,” GitHub repo, 2016.
+E.~Balster, “STL compatible monotonic wedge for fast rolling min/max,” GitHub repository, 2016. \url{https://github.com/EvanBalster/STL_mono_wedge}
 \end{thebibliography}
 
 \end{document}
