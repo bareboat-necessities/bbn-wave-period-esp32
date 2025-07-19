@@ -11,6 +11,10 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Install LaTex
+      run: |
+        sudo apt-get install -y texlive-latex-base texlive-latex-extra
+        
     - name: Compile sketch
       uses: ArminJo/arduino-test-compile@v3
       with:
@@ -38,6 +42,12 @@ jobs:
         ls /home/runner/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/build/*.bin /home/runner/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/build/*.csv | zip bbn_wave_freq_m5atomS3_bin-$(date +%Y-%m-%d).zip -j -@
         pwd
         ls *.zip
+
+    - name: Compile LaTex
+      run: |
+        for texfile in $(find . -name \*.tex); do
+          pdflatex -interaction=nonstopmode -output-directory=$(dirname $texfile)
+        done
 
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
