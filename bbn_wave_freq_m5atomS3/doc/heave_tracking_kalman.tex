@@ -329,7 +329,7 @@ which extracts the displacement and velocity components from the state vector.
 
 \subsubsection*{Kalman Update and Gating}
 
-The correction is applied using the standard linear Kalman update equations, but using the zero-crossing-specific notation:
+The correction is applied using the standard linear Kalman update equations (dropping index k for better readability):
 \begin{align}
     \bm{y}_\mathrm{z} &= \bm{z}_\mathrm{\text{corr}} - \bm{H}_\mathrm{z} \bm{\hat{x}}, \\
     \bm{S}_\mathrm{z} &= \bm{H}_\mathrm{z} \bm{P} \bm{H}_\mathrm{z}^\top + \bm{R}_\mathrm{z}, \\
