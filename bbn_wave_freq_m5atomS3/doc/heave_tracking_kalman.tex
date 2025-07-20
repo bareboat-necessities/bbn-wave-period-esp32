@@ -118,6 +118,13 @@ We consider a linear discrete-time system governed by the following process and 
     \item \( \mathbf{R}_k \in \mathbb{R}^{p \times p} \): measurement noise covariance
 \end{itemize}
 
+\subsection*{Matrix Dimensions}
+\begin{itemize}
+  \item $n$: Dimension of the state vector $\bm{x}_k$
+  \item $m$: Dimension of the measurement vector $\bm{z}_k^{\text{meas}}$
+  \item $p$: Dimension of the control input vector $\bm{u}_k$
+\end{itemize}
+
 \subsubsection*{Prediction Step}
 \begin{align}
     \hat{\mathbf{x}}_{k|k-1} &= \mathbf{F}_k \, \hat{\mathbf{x}}_{k-1|k-1} + \mathbf{B}_k \, \mathbf{u}_k \\
