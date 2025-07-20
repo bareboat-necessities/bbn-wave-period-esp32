@@ -201,9 +201,8 @@ where:
   \item \( \hat{a}_k \): Estimated accelerometer bias
 \end{itemize}
 
-
 \subsection*{Process Model Equations}
-The discrete-time process model equations are:
+The discrete-time process model equations (as Taylor series up to 3rd order) are:
 
 \begin{align}
 v_k &= v_{k-1} + a T - \hat{a}_{k-1} T \\
@@ -255,36 +254,15 @@ Measurement noise covariance:
 \bm{R} = \mathrm{diag}(r_0)
 \end{equation}
 
-% ===== Zero-crossing Correction =====
-\subsection{Zero-Crossing Correction}
-Trigger when $|a_k| > 0.04\,\text{m/s}^2$ and $|v| > 0.6\,\text{m/s}$:
-
-\begin{equation}
-\bm{H}_c = \begin{bmatrix}0&1&0&0\\0&0&1&0\end{bmatrix}, \quad
-\bm{z}_c = \begin{bmatrix}(1-\alpha)y\\v+\alpha(\tilde{v}-v)\end{bmatrix}
-\end{equation}
-
-\begin{equation}
-\tilde{v} = \mathrm{sgn}(v)\min\left(\sqrt{v^2 + (\pi y/\Delta t_\mathrm{zero})^2}, 3.0\right)
-\end{equation}
-
-\begin{align}
-\bm{y}_c &= \bm{z}_c - \bm{H}_c\bm{x}_k^+ \\
-\bm{S}_c &= \bm{H}_c\bm{P}_k^+\bm{H}_c^\top + \mathrm{diag}(R_y, R_v) \\
-\bm{K}_c &= \bm{P}_k^+\bm{H}_c^\top \bm{S}_c^{-1} \quad \text{(if $\bm{y}_c^\top\bm{S}_c^{-1}\bm{y}_c < 13.0$)} \\
-\bm{x}_k &\leftarrow \bm{x}_k + \bm{K}_c\bm{y}_c \\
-\bm{P}_k &\leftarrow (\bm{I}-\bm{K}_c\bm{H}_c)\bm{P}_k(\bm{I}-\bm{K}_c\bm{H}_c)^\top + \bm{K}_c\bm{S}_c\bm{K}_c^\top
-\end{align}
-
-% ===== STABILIZATION =====
-\subsection{Stabilization}
+\subsection*{Numerical Stabilization}
 \begin{itemize}
 \item Symmetry: $\bm{P} \leftarrow \frac{1}{2}(\bm{P}+\bm{P}^\top)$
 \item PD enforcement: While $\bm{P} \not\succ 0$, add $\epsilon\bm{I}$
-\item Numerical safety: $S^{-1}$ clamped at $10^{-12}$
+\item Numerical safety: $\bm{S}^{-1}$ clamped at $10^{-12}$
 \end{itemize}
 
 
+% ===== Zero-crossing Correction =====
 \section{Schmitt Trigger-Based Correction}
 To further constrain drift and improve estimation during wave oscillations, a Schmitt trigger-based logic is implemented. It detects zero-crossings of the vertical acceleration with hysteresis and debounce conditions.
 
@@ -312,8 +290,8 @@ v_k + \gamma(\hat{v}_\text{target} - v_k)
 \]
 where \( \gamma \in [0,1] \) controls the correction strength and \( \hat{v}_\text{target} = \sqrt{v_k^2 + (\omega y_k)^2} \) based on estimated frequency.
 
-\section{Implementation Notes}
 
+\section{Implementation Notes}
 This algorithm is implemented in C++ and uses the Eigen library. It is designed to run in embedded environments and includes:
 \begin{itemize}
   \item Numerical conditioning of covariance matrices
