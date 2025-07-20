@@ -34,9 +34,9 @@ Vertical acceleration can be obtained from an IMU (Inertial Motion Unit) using a
 Common AHRS algorithms include:
 
 \begin{itemize}
-\item \textbf{Madgwick filter} – a computationally efficient gradient-descent-based algorithm suitable for real-time systems.
-\item \textbf{Mahony filter} – a complementary filter with integral feedback for robust orientation tracking.
-\item \textbf{Extended Kalman Filter (EKF)} – a more complex approach that provides accurate orientation by modeling sensor noise and system dynamics.
+\item \textbf{Madgwick\cite{madgwick2010efficient} filter} – a computationally efficient gradient-descent-based algorithm suitable for real-time systems.
+\item \textbf{Mahony\cite{mahony2008nonlinear} filter} – a complementary filter with integral feedback for robust orientation tracking.
+\item \textbf{Extended Kalman Filter (EKF)\cite{Markley2003,Lefferts1982}} – a more complex approach that provides accurate orientation by modeling sensor noise and system dynamics.
 \item \textbf{Complementary filters} – lightweight filters that combine high-pass and low-pass filtered signals from gyroscopes and accelerometers.
 \end{itemize}
 
