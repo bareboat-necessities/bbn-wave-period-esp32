@@ -28,6 +28,17 @@ Estimating vertical displacement (heave) from acceleration measurements is a lon
 
 This work presents a method based on a Kalman filter that estimates heave by integrating vertical acceleration while simultaneously estimating and compensating for accelerometer bias. The approach includes a physically sound mechanism for drift suppression and long-term stability, making it suitable for use in embedded real-time systems.
 
+Vertical acceleration can be obtained from an IMU (Inertial Motion Unit) using an Attitude and Heading Reference System (AHRS), which estimates the orientation of the sensor relative to the Earth. AHRS algorithms use data from the accelerometer, gyroscope, and sometimes magnetometer to compute a rotation from the sensor frame to a global frame. 
+
+Common AHRS algorithms include:
+
+\begin{itemize}
+\item \textbf{Madgwick filter} – a computationally efficient gradient-descent-based algorithm suitable for real-time systems.
+\item \textbf{Mahony filter} – a complementary filter with integral feedback for robust orientation tracking.
+\item \textbf{Extended Kalman Filter (EKF)} – a more complex approach that provides accurate orientation by modeling sensor noise and system dynamics.
+\item \textbf{Complementary filters} – lightweight filters that combine high-pass and low-pass filtered signals from gyroscopes and accelerometers.
+\end{itemize}
+
 The core features of the proposed method are:
 
 \begin{itemize}
