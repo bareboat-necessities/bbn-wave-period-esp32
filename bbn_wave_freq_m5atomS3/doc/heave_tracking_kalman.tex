@@ -257,7 +257,7 @@ Measurement noise covariance:
 \subsection*{Numerical Stabilization}
 \begin{itemize}
 \item Symmetry: $\bm{P} \leftarrow \frac{1}{2}(\bm{P}+\bm{P}^\top)$
-\item PD enforcement: While $\bm{P} \not\succ 0$, add $\epsilon\bm{I}$
+\item Positive definite enforcement: While $\bm{P} \not\succ 0$, add $\epsilon\bm{I}$
 \item Numerical safety: $\bm{S}^{-1}$ clamped at $10^{-12}$
 \end{itemize}
 
@@ -335,9 +335,9 @@ The correction is applied using the standard linear Kalman update equations (dro
     \bm{S}_\mathrm{z} &= \bm{H}_\mathrm{z} \bm{P} \bm{H}_\mathrm{z}^\top + \bm{R}_\mathrm{z}, \\
     \bm{K}_\mathrm{z} &= \bm{P} \bm{H}_\mathrm{z}^\top \bm{S}_\mathrm{z}^{-1}, \\
     \bm{\hat{x}}^+ &= \bm{\hat{x}} + \bm{K}_\mathrm{z} \bm{y}_\mathrm{z}, \\
-    \bm{P}^+ &= (\bm{I} - \bm{K}_\mathrm{z} \bm{H}_\mathrm{z}) \bm{P} (\bm{I} - \bm{K}_\mathrm{z} \bm{H}_\mathrm{z})^\top + \bm{K}_\mathrm{z} \bm{R}_\mathrm{z} \bm{K}_\mathrm{z}^\top,
+    \bm{P}^+ &= (\bm{I} - \bm{K}_\mathrm{z} \bm{H}_\mathrm{z}) \bm{P} (\bm{I} - \bm{K}_\mathrm{z} \bm{H}_\mathrm{z})^\top + \bm{K}_\mathrm{z} \bm{R}_\mathrm{\text{special}} \bm{K}_\mathrm{z}^\top,
 \end{align}
-where $\bm{R}_\mathrm{z}$ is a diagonal measurement noise covariance matrix associated with the synthetic measurement.
+where $\bm{R}_\mathrm{\text{special}}$ is a diagonal measurement noise covariance matrix associated with the synthetic measurement.
 
 To prevent overcorrection due to spurious zero-crossings or poor state estimates, the correction is gated using the squared Mahalanobis distance:
 \begin{equation}
@@ -351,7 +351,7 @@ This mechanism is mathematically valid within the Kalman filtering framework bec
 
 \begin{itemize}
     \item The zero-crossing correction is structured as a standard linear measurement update with an explicitly defined observation model and noise model.
-    \item The synthetic measurement is treated probabilistically using a soft correction gain $\gamma$ and large uncertainty in $\bm{R}_\mathrm{special}$.
+    \item The synthetic measurement is treated probabilistically using a soft correction gain $\gamma$ and large uncertainty in $\bm{R}_\mathrm{\text{special}}$.
     \item The Mahalanobis gating ensures that updates are statistically plausible and avoids corruption of the state estimate.
     \item The correction targets energy-consistent velocity magnitudes based on sinusoidal wave motion, which further constrains the update to physically plausible states.
 \end{itemize}
@@ -389,7 +389,6 @@ The following abbreviations are used in this manuscript:
 IMU & Inertial Measurement Unit \\
 AHRS & Attitude and Heading Reference System \\
 ZUPT & Zero Velocity Update \\
-PD & Positive Definite \\
 \end{tabular}
 
 \begin{thebibliography}{20}
