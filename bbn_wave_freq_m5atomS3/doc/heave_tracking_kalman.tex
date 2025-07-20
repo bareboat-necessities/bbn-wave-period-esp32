@@ -83,11 +83,7 @@ as part of the state vector is critical for accurate and stable heave estimation
 \paragraph{Numerical stability}
 is vital when implementing the filter on embedded or resource-constrained systems. Rounding errors, particularly in the covariance matrix, can lead to loss of symmetry or positive-definiteness, causing the filter to diverge or behave erratically especially in long runs. To address this, the filter uses the Joseph stabilized form of the Kalman update, which is more robust against numerical errors. It also explicitly enforces symmetry and positive-definiteness of covariance matrices using Cholesky decomposition and small regularization terms when needed. These safeguards ensure that the filter remains stable and reliable even on 32-bit microcontrollers with limited floating-point precision.
 
-
-
-
-
-
+% ===== Kalman Filter =====
 \section{Kalman Filter Equations (Linear, Discrete-Time)}
 
 We consider a linear discrete-time system governed by the following process and measurement models:
@@ -167,22 +163,15 @@ We consider a linear discrete-time system governed by the following process and 
   \item $\mathbf{I}$: Identity matrix of appropriate size
 \end{itemize}
 
-
 \paragraph{Notes:}
 Equation \( {\mathbf{P}}_{k|k} \) is the \textbf{Joseph stabilized form} of the covariance update, which maintains positive semi-definiteness and improves numerical stability.
 
 
+% ===== Kalman Filter for Wave =====
 
+\section{Kalman Model for Wave Dynamics}
 
-
-
-
-
-
-
-
-\section{State-Space Model}
-
+\subsection*{State-Space Model}
 The continuous-time vertical acceleration \( a = a(t) \) is sampled at time steps \( k \) with period \( T \). The state vector \( \mathbf{x}_k \in \mathbb{R}^4 \) is defined as:
 \begin{equation}
 \mathbf{x}_k = \begin{bmatrix}
@@ -201,9 +190,7 @@ where:
 \end{itemize}
 
 
-
-\subsection{Process Model Equations}
-
+\subsection*{Process Model Equations}
 The discrete-time process model equations are:
 
 \begin{align}
@@ -215,14 +202,8 @@ z_k &= z_{k-1} + y_{k-1} T + \frac{1}{2}v_{k-1} T^2 + \frac{1}{6}a T^3 - \frac{1
 
 where $T$ is the sampling interval and $a$ is the measured acceleration, $a - \hat{a}$ is the true vertical acceleration, and the bias $\hat{a}$ is modeled as a constant.
 
-
-\subsection{Matrix Formulation}
-
-The process model in matrix form is:
-\begin{equation}
-\mathbf{x}_k = \mathbf{F}_k \mathbf{x}_{k-1} + \mathbf{B}_k a_k + \mathbf{w}_k
-\end{equation}
-where \( a_k \) is measured vertical acceleration and \( \mathbf{w}_k \sim \mathcal{N}(0, \mathbf{Q}) \) is the process noise with covariance \(  \bm{Q} \). The matrices \( \mathbf{F}_k \) (state transition) and \( \mathbf{B}_k \) (input matrix) are time step dependent:
+\subsection*{Process Model Matrix Formulation}
+The matrices \( \mathbf{F}_k \) (state transition) and \( \mathbf{B}_k \) (input matrix) are time step dependent:
 \begin{equation}
 \mathbf{F}_k =
 \begin{bmatrix}
@@ -242,51 +223,27 @@ T \\
 \end{bmatrix}
 \end{equation}
 
-\subsection{Measurement Model}
+\subsection*{Standard Kalman Update}
 To correct for drift, the integral of displacement \( z_k \) is treated as a pseudo-measurement with expected value zero:
-\[
+\begin{equation}
 z_k^\text{meas} = 0 + \nu_k, \quad \nu_k \sim \mathcal{N}(0, R)
-\]
+\end{equation}
 The measurement matrix:
 \begin{equation}
 \mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 \end{bmatrix}
 \end{equation}
 
-
-
-
-
-
-
-
-
-
-
-
-% ===== PREDICT STEP =====
-\subsection{Kalman Predict Step}
+Process noise covariance matrix:
 \begin{equation}
-\bm{x}_k^- = \bm{F_{k}}\bm{x}_{k-1} + \bm{B_{k}}a_k
-\end{equation}
-
-\begin{equation}
-\bm{P}_k^- = \bm{F}\bm{P}_{k-1}\bm{F}^\top + \bm{Q}, \quad 
 \bm{Q} = \mathrm{diag}(q_0, q_1, q_2, q_3)
 \end{equation}
 
-% ===== STANDARD UPDATE =====
-\subsection{Standard Kalman Update}
-Measurement: $z=0$ with $\bm{H} = [1\;0\;0\;0]$
+Measurement noise covariance:
+\begin{equation}
+\bm{R} = \mathrm{diag}(r_0)
+\end{equation}
 
-\begin{align}
-\tilde{y} &= 0 - \bm{H}\bm{x}_k^- \\
-S &= \bm{H}\bm{P}_k^-\bm{H}^\top + R \\
-\bm{K} &= \bm{P}_k^- \bm{H}^\top S^{-1} \\
-\bm{x}_k^+ &= \bm{x}_k^- + \bm{K}\tilde{y} \\
-\bm{P}_k^+ &= (\bm{I}-\bm{K}\bm{H})\bm{P}_k^-(\bm{I}-\bm{K}\bm{H})^\top + \bm{K}R\bm{K}^\top
-\end{align}
-
-% ===== ZERO-CROSSING CORRECTION =====
+% ===== Zero-crossing Correction =====
 \subsection{Zero-Crossing Correction}
 Trigger when $|a_k| > 0.04\,\text{m/s}^2$ and $|v| > 0.6\,\text{m/s}$:
 
