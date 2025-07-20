@@ -290,7 +290,73 @@ v_k + \gamma(\hat{v}_\text{target} - v_k)
 \]
 where \( \gamma \in [0,1] \) controls the correction strength and \( \hat{v}_\text{target} = \sqrt{v_k^2 + (\omega y_k)^2} \) based on estimated frequency.
 
+\subsection{Mathematical Validity of Zero-Crossing Correction}
 
+In addition to the standard Kalman filter update using pseudo-measurements on the displacement integral, the filter incorporates an event-driven correction mechanism triggered by zero-crossings of vertical acceleration. This section establishes the mathematical justification for this heuristic within the Kalman filter framework.
+
+\subsubsection*{Event-Triggered Soft Correction}
+
+The central assumption is that when the measured acceleration $a(t)$ crosses zero and the vertical velocity $\hat{v}(t)$ exceeds a threshold, the system is near a displacement extremum and hence:
+\begin{equation}
+    \hat{y}(t) \approx 0, \quad \text{and} \quad |\hat{v}(t)| \text{ is maximal}.
+\end{equation}
+This assumption allows the introduction of an artificial measurement (i.e., a soft constraint) at these detected events:
+\begin{equation}
+    \bm{z}_\mathrm{special} =
+    \begin{bmatrix}
+        y_\mathrm{target} \\
+        v_\mathrm{target}
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+        (1 - \gamma)\hat{y} \\
+        \hat{v} + \gamma \left(v_\mathrm{energy} - \hat{v} \right)
+    \end{bmatrix},
+\end{equation}
+where $\gamma \in [0, 1]$ is a correction gain, and $v_\mathrm{energy} = \sqrt{\hat{v}^2 + (\omega \hat{y})^2}$ represents a physically consistent estimate of velocity magnitude based on energy conservation for harmonic motion.
+
+\subsubsection*{Observation Model}
+
+This synthetic measurement is modeled with the observation matrix:
+\begin{equation}
+    \bm{H}_\mathrm{special} = 
+    \begin{bmatrix}
+        0 & 1 & 0 & 0 \\
+        0 & 0 & 1 & 0
+    \end{bmatrix},
+\end{equation}
+which extracts the displacement and velocity components from the state vector.
+
+\subsubsection*{Kalman Update and Gating}
+
+The correction is applied using the standard linear Kalman update equations, but using the zero-crossing-specific notation:
+\begin{align}
+    \bm{y}_\mathrm{special} &= \bm{z}_\mathrm{special} - \bm{H}_\mathrm{special} \bm{\hat{x}}, \\
+    \bm{S}_\mathrm{special} &= \bm{H}_\mathrm{special} \bm{P} \bm{H}_\mathrm{special}^\top + \bm{R}_\mathrm{special}, \\
+    \bm{K}_\mathrm{special} &= \bm{P} \bm{H}_\mathrm{special}^\top \bm{S}_\mathrm{special}^{-1}, \\
+    \bm{\hat{x}}^+ &= \bm{\hat{x}} + \bm{K}_\mathrm{special} \bm{y}_\mathrm{special}, \\
+    \bm{P}^+ &= (\bm{I} - \bm{K}_\mathrm{special} \bm{H}_\mathrm{special}) \bm{P} (\bm{I} - \bm{K}_\mathrm{special} \bm{H}_\mathrm{special})^\top + \bm{K}_\mathrm{special} \bm{R}_\mathrm{special} \bm{K}_\mathrm{special}^\top,
+\end{align}
+where $\bm{R}_\mathrm{special}$ is a diagonal measurement noise covariance matrix associated with the synthetic measurement.
+
+To prevent overcorrection due to spurious zero-crossings or poor state estimates, the correction is gated using the squared Mahalanobis distance:
+\begin{equation}
+    d^2 = \bm{y}_\mathrm{special}^\top \bm{S}_\mathrm{special}^{-1} \bm{y}_\mathrm{special}.
+\end{equation}
+The update is applied only when $d^2 < \delta$, where $\delta$ is a user-defined gating threshold.
+
+\subsubsection*{Validity Justification}
+
+This mechanism is mathematically valid within the Kalman filtering framework because:
+
+\begin{itemize}
+    \item The zero-crossing correction is structured as a standard linear measurement update with an explicitly defined observation model and noise model.
+    \item The synthetic measurement is treated probabilistically using a soft correction gain $\gamma$ and large uncertainty in $\bm{R}_\mathrm{special}$.
+    \item The Mahalanobis gating ensures that updates are statistically plausible and avoids corruption of the state estimate.
+    \item The correction targets energy-consistent velocity magnitudes based on sinusoidal wave motion, which further constrains the update to physically plausible states.
+\end{itemize}
+
+Thus, although based on a physical heuristic, the zero-crossing correction mechanism is rigorously compatible with Kalman filtering theory and serves as a principled way to counteract long-term drift without requiring direct position measurements.
 \section{Implementation Notes}
 This algorithm is implemented in C++ and uses the Eigen library. It is designed to run in embedded environments and includes:
 \begin{itemize}
