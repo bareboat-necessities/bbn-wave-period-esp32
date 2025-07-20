@@ -124,6 +124,18 @@ We consider a linear discrete-time system governed by the following process and 
     \mathbf{P}_{k|k-1} &= \mathbf{F}_k \, \mathbf{P}_{k-1|k-1} \, \mathbf{F}_k^\top + \mathbf{Q}_k
 \end{align}
 
+\textbf{Where:}
+\begin{itemize}
+  \item $\bm{x}_{k|k-1}$: Predicted state estimate at time $k$
+  \item $\bm{x}_{k-1|k-1}$: Posterior state estimate at time $k-1$
+  \item $F_k$: State transition matrix
+  \item $B_k$: Control input matrix
+  \item $\bm{u}_k$: Control input vector at time $k$
+  \item $P_{k|k-1}$: Predicted state covariance
+  \item $P_{k-1|k-1}$: Posterior state covariance at time $k-1$
+  \item $Q_k$: Process noise covariance matrix
+\end{itemize}
+
 \subsubsection*{Update Step}
 \begin{align}
     \mathbf{y}_k &= \mathbf{z}^{\text{meas}}_k - \mathbf{H}_k \, \hat{\mathbf{x}}_{k|k-1} \\
@@ -132,6 +144,20 @@ We consider a linear discrete-time system governed by the following process and 
     \hat{\mathbf{x}}_{k|k} &= \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \, \mathbf{y}_k \\
     \mathbf{P}_{k|k} &= (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \, \mathbf{P}_{k|k-1} \, (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top
 \end{align}
+
+\textbf{Where:}
+\begin{itemize}
+  \item $\bm{z}^{\text{meas}}_k$: Measurement vector at time $k$
+  \item $H_k$: Observation matrix
+  \item $\bm{y}_k$: Innovation (residual), difference between measurement and prediction
+  \item $S_k$: Innovation covariance
+  \item $R_k$: Measurement noise covariance
+  \item $K_k$: Kalman gain
+  \item $\bm{x}_{k|k}$: Updated (posterior) state estimate at time $k$
+  \item $P_{k|k}$: Updated (posterior) estimate covariance using the Joseph form
+  \item $I$: Identity matrix of appropriate size
+\end{itemize}
+
 
 \paragraph{Notes:}
 Equation \( {\mathbf{P}}_{k|k} \) is the \textbf{Joseph stabilized form} of the covariance update, which maintains positive semi-definiteness and improves numerical stability.
