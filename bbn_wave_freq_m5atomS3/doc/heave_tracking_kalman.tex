@@ -47,13 +47,13 @@ a soft zero-crossing correction which respects the physics of the process.
 
 \paragraph{Physical Basis for Zero Integral of Displacement.}
 In ocean wave motion, the vertical displacement \( y(t) \) of a floating object such as a buoy or vessel oscillates around a fixed reference level, typically mean sea level. This implies that, over time, the average displacement is zero. Mathematically, this behavior can be expressed as
-\[
+\begin{equation}
 \lim_{T \to \infty} \frac{1}{T} \int_0^T y(t) \, dt = 0,
-\]
+\end{equation}
 which means that the integral of displacement over a sufficiently long time horizon tends toward zero:
-\[
+\begin{equation}
 \int_0^T y(t) \, dt \approx 0 \quad \text{for large } T.
-\]
+\end{equation}
 This is a physically grounded property of wave-induced vertical motion: although the object moves up and down due to wave energy, it does not exhibit a net upward or downward trend over time. By including this third integral of acceleration---the integral of displacement---as a state in the Kalman filter and softly constraining it to remain near zero, the algorithm imposes a natural long-term anchoring condition. This correction counteracts drift caused by accelerometer bias and low-frequency integration errors, leading to more stable and physically consistent displacement estimates.
 
 Including accelerometer bias as part of the state vector is critical for accurate and stable heave estimation. Even a small constant bias in the vertical acceleration signal, when integrated twice, causes displacement to drift unbounded over time. While using the third integral of acceleration (i.e., the integral of displacement) and enforcing it to be approximately zero helps suppress long-term drift, this alone is not enough. Without explicitly modeling the bias, the Kalman filter cannot attribute the drift to its true source. Instead, it misattributes the error to other states like velocity or displacement, leading to unrealistic estimates. By estimating bias directly, the filter can learn and compensate for it continuously, maintaining physical consistency and reducing long-term error.
@@ -65,17 +65,17 @@ Zero-crossing correction is applied when the vertical acceleration crosses zero 
 
 In this framework, the total mechanical energy (kinetic plus potential) is conserved. The corrected velocity is computed using:
 
-\[
+\begin{equation}
 v_{\text{corrected}} = \sqrt{v^2 + (\omega y)^2},
-\]
+\end{equation}
 
 where \( v \) is the current vertical velocity estimate, \( y \) is the current vertical displacement (heave), and \( \omega \) is the estimated angular frequency of the wave. The angular frequency is inferred from the timing between zero-crossings of acceleration, assuming the time interval corresponds to half a wave period. Specifically,
 
-\[
-\omega = \frac{\pi}{\Delta t},
-\]
+\begin{equation}
+\omega = \frac{\pi}{\Delta t_{z}},
+\end{equation}
 
-where \( \Delta t \) is the time since the last zero-crossing. This approximation is physically grounded in linear wave theory, where the relationship between displacement and velocity is sinusoidal and governed by wave frequency.
+where \( \Delta t_{z} \) is the time since the last zero-crossing. This approximation is physically grounded in linear wave theory, where the relationship between displacement and velocity is sinusoidal and governed by wave frequency.
 
 After estimating \( v_{\text{corrected}} \), the filter softly adjusts both \( y \) and \( v \) toward their corrected values using a configurable gain factor. The direction of velocity is preserved to maintain motion continuity. To ensure robustness, the correction is only applied if it passes a Mahalanobis distance check, verifying statistical consistency with the filter's uncertainty model. This correction mechanism reduces drift, maintains phase alignment with true wave motion, and supports long-term accuracy in the absence of absolute references.
 
