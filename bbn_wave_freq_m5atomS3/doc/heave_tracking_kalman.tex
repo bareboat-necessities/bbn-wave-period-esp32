@@ -12,16 +12,38 @@
 \author{Mikhail Grushinskiy}
 \affil{Independent Researcher, 2025}
 
+\setlength{\parskip}{1em}
+\setlength{\parindent}{0pt}
+
 \begin{document}
 \maketitle
 
 \begin{abstract}
-This paper presents a Kalman filter-based approach for estimating vertical displacement (heave) from vertical acceleration measurements. The method incorporates double integration, bias estimation, and drift correction via pseudo-measurements. A Schmitt trigger-like logic is employed to detect wave zero-crossings and correct state trajectories based on ocean wave physics. The algorithm is suitable for real-time applications such as wave-following buoys or onboard motion sensing.
+This article presents a novel implementation of a Kalman filter-based algorithm for estimating vertical displacement (heave) from noisy vertical acceleration measurements. The method compensates for accelerometer bias and low-frequency drift inherent in double integration, while maintaining physical constraints using both pseudo-measurements and zero-crossing detection inspired by Schmitt trigger logic. The filter design includes a dynamic model of vertical motion and a novel mechanisms with zero-crossing and feedback corrections, bias compensation making it well-suited for marine wave sensing, vertical heave motion of a vessel, and inertial-based sea state estimation.
 \end{abstract}
 
 \section{Introduction}
-Estimating heave from vertical accelerometers is challenging due to integration drift, sensor bias, and wave irregularities. This paper proposes a solution using a Kalman filter that augments the state space with bias and drift components and corrects for mean-zero vertical displacement using a soft pseudo-measurement and a soft zero-crossing correction strategy. The idea of using soft pseudo-measurement for a drift correction was presented in \cite{Sharkh2014}. This paper improves correction further by modelling bias dynamics via a state variable and by introducing
-a soft zero crossing correction which respects the physics of the process.
+
+Estimating vertical displacement (heave) from acceleration measurements is a longstanding challenge in inertial navigation. Direct double integration of accelerometer signals often leads to unbounded error growth due to sensor noise, bias, and numerical drift. These effects are especially problematic in marine environments, where accurate wave-induced heave estimation is required, but GPS or pressure-based references may be unavailable or unreliable.
+
+This work presents a method based on a Kalman filter that estimates heave by integrating vertical acceleration while simultaneously estimating and compensating for accelerometer bias. The approach includes a physically sound mechanism for drift suppression and long-term stability, making it suitable for use in embedded real-time systems.
+
+The core features of the proposed method are:
+
+\begin{itemize}
+    \item \textbf{Bias-aware kinematic model:} The state includes displacement, velocity, and accelerometer bias, enabling continuous bias correction within the filtering framework.
+    
+    \item \textbf{Drift mitigation using pseudo-measurements:} A third integral of acceleration --- the integral of displacement --- is maintained as part of the state vector. A pseudo-measurement enforces this term to be approximately zero, which corresponds to constraining the long-term average displacement around sea level. This suppresses drift that would otherwise accumulate through numerical integration.
+    
+    \item \textbf{Zero-crossing feedback:} A Schmitt trigger-inspired mechanism detects zero-crossings in acceleration where velocity is significant. These events indicate turning points in the wave cycle. At these points, the filter applies a soft correction to align displacement and velocity with physically plausible wave dynamics.
+    
+    \item \textbf{Numerically stable covariance update:} The Kalman update uses the Joseph form, along with explicit symmetry and positive-definiteness enforcement, ensuring robust operation even under limited precision on embedded hardware.
+\end{itemize}
+
+The resulting filter is lightweight, real-time capable, and physically consistent. It is particularly well suited for applications such as wave buoy data analysis, ship motion monitoring, and low-power marine sensor nodes operating without absolute vertical references.
+
+The idea of using soft pseudo-measurement for a drift correction was previously presented in \cite{Sharkh2014}. This article improves correction further by modelling bias dynamics via a state variable and by introducing
+a soft zero-crossing correction which respects the physics of the process.
 
 \section{State-Space Model}
 
