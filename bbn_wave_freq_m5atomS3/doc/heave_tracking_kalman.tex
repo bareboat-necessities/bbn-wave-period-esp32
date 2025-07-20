@@ -49,7 +49,7 @@ The core features of the proposed method are:
     
     \item \textbf{Zero-crossing feedback:} A Schmitt trigger-inspired mechanism detects zero-crossings in acceleration where vertical velocity is near its extreme. These events indicate turning points in the wave cycle. At these points, the filter applies a soft correction to align displacement and velocity with physically plausible wave dynamics.
     
-    \item \textbf{Numerically stable covariance update:} The Kalman update uses the Joseph form, along with explicit symmetry and positive-definiteness enforcement, ensuring robust operation even under limited precision on embedded hardware.
+    \item \textbf{Numerically stable covariance update:} The Kalman update uses the Joseph\cite{grewal2014kalman} form, along with explicit symmetry and positive-definiteness enforcement, ensuring robust operation even under limited precision on embedded hardware.
 \end{itemize}
 
 The resulting filter is lightweight, real-time capable, and physically consistent. It is particularly well suited for applications such as wave buoy data analysis, ship motion monitoring, and low-power marine sensor nodes operating without absolute vertical references.
