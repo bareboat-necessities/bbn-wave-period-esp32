@@ -45,6 +45,17 @@ The resulting filter is lightweight, real-time capable, and physically consisten
 The idea of using displacement integral as a soft pseudo-measurement for a drift correction was previously presented in \cite{Sharkh2014}. While it does solve the issue of long term drift with noisy IMU it's not enough to provide good convergence times. The method in the article presented here improves correction further by modelling bias dynamics via a state variable and by introducing
 a soft zero-crossing correction which respects the physics of the process.
 
+\paragraph{Physical Basis for Zero Integral of Displacement.}
+In ocean wave motion, the vertical displacement \( y(t) \) of a floating object such as a buoy or vessel oscillates around a fixed reference level, typically mean sea level. This implies that, over time, the average displacement is zero. Mathematically, this behavior can be expressed as
+\[
+\lim_{T \to \infty} \frac{1}{T} \int_0^T y(t) \, dt = 0,
+\]
+which means that the integral of displacement over a sufficiently long time horizon tends toward zero:
+\[
+\int_0^T y(t) \, dt \approx 0 \quad \text{for large } T.
+\]
+This is a physically grounded property of wave-induced vertical motion: although the object moves up and down due to wave energy, it does not exhibit a net upward or downward trend over time. By including this third integral of acceleration---the integral of displacement---as a state in the Kalman filter and softly constraining it to remain near zero, the algorithm imposes a natural long-term anchoring condition. This correction counteracts drift caused by accelerometer bias and low-frequency integration errors, leading to more stable and physically consistent displacement estimates.
+
 Including accelerometer bias as part of the state vector is critical for accurate and stable heave estimation. Even a small constant bias in the vertical acceleration signal, when integrated twice, causes displacement to drift unbounded over time. While using the third integral of acceleration (i.e., the integral of displacement) and enforcing it to be approximately zero helps suppress long-term drift, this alone is not enough. Without explicitly modeling the bias, the Kalman filter cannot attribute the drift to its true source. Instead, it misattributes the error to other states like velocity or displacement, leading to unrealistic estimates. By estimating bias directly, the filter can learn and compensate for it continuously, maintaining physical consistency and reducing long-term error.
 
 In marine applications, the vertical motion of a floating platform or vessel naturally oscillates around mean sea level with no persistent offset. To better align with physical wave behavior, the filter uses a zero-crossing detection mechanism based on a Schmitt trigger. This system identifies points where acceleration crosses zero while velocity is near a peak, which corresponds to wave crests and troughs. These are used as soft correction points to help re-align the filter’s velocity and displacement estimates with real wave dynamics. This is conceptually similar to Zero Velocity Updates (ZUPT) used in step-counting and pedestrian navigation apps, where the foot’s contact with the ground resets velocity to zero. The difference is that in waves zero crossing of acceleration means that vertical velocity is not zero but it's at extreme.
