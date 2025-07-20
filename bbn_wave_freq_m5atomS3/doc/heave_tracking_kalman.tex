@@ -212,7 +212,7 @@ z_k &= z_{k-1} + y_{k-1} T + \frac{1}{2}v_{k-1} T^2 + \frac{1}{6}a T^3 - \frac{1
 \hat{a}_k &= \hat{a}_{k-1}
 \end{align}
 
-where $T$ is the sampling interval and $a$ is the measured acceleration, $a - \hat{a}$ is the true vertical acceleration, and the bias $\hat{a}$ is modeled as a constant.
+where $T$ is the sampling interval and $a$ is the measured acceleration, $a - \hat{a}$ is the true vertical acceleration, and the bias $\hat{a}$ is modeled as a random walk.
 
 \subsection*{Process Model Matrix Formulation}
 The matrices \( \mathbf{F}_k \) (state transition) and \( \mathbf{B}_k \) (input matrix) are time step dependent:
