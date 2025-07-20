@@ -169,22 +169,22 @@ We consider a linear discrete-time system governed by the following process and 
 
 \paragraph{Measurement model:}
 \begin{equation}
-    z^{\text{meas}}_k = \mathbf{H}_k \, \mathbf{x}_k + \mathbf{\nu}_k
+    \mathbf{z}^{\text{meas}}_k = \mathbf{H}_k \, \mathbf{x}_k + \boldsymbol{\nu}_k
 \end{equation}
 \begin{equation}
-    \mathbf{\nu}_k \sim \mathcal{N}(\mathbf{0}, R_k)
+    \boldsymbol{\nu}_k \sim \mathcal{N}(\mathbf{0}, R_k)
 \end{equation}
 
 \paragraph{Variables:}
 \begin{itemize}
     \item \( \mathbf{x}_k \in \mathbb{R}^n \): state vector
     \item \( \mathbf{u}_k \in \mathbb{R}^m \): control input
-    \item \( z^{\text{meas}}_k \in \mathbb{R}^p \): measurement vector
-    \item \( F_k \in \mathbb{R}^{n \times n} \): state transition matrix
-    \item \( B_k \in \mathbb{R}^{n \times m} \): control input matrix
-    \item \( H_k \in \mathbb{R}^{p \times n} \): observation matrix
-    \item \( Q_k \in \mathbb{R}^{n \times n} \): process noise covariance
-    \item \( R_k \in \mathbb{R}^{p \times p} \): measurement noise covariance
+    \item \( \mathbf{z}^{\text{meas}}_k \in \mathbb{R}^p \): measurement vector
+    \item \( \mathbf{F}_k \in \mathbb{R}^{n \times n} \): state transition matrix
+    \item \( \mathbf{B}_k \in \mathbb{R}^{n \times m} \): control input matrix
+    \item \( \mathbf{H}_k \in \mathbb{R}^{p \times n} \): observation matrix
+    \item \( \mathbf{Q}_k \in \mathbb{R}^{n \times n} \): process noise covariance
+    \item \( \mathbf{R}_k \in \mathbb{R}^{p \times p} \): measurement noise covariance
 \end{itemize}
 
 \subsubsection*{Prediction Step}
@@ -195,7 +195,7 @@ We consider a linear discrete-time system governed by the following process and 
 
 \subsubsection*{Update Step}
 \begin{align}
-    \mathbf{y}_k &= z^{\text{meas}}_k - \mathbf{H}_k \, \hat{\mathbf{x}}_{k|k-1} \\
+    \mathbf{y}_k &= \mathbf{z}^{\text{meas}}_k - \mathbf{H}_k \, \hat{\mathbf{x}}_{k|k-1} \\
     \mathbf{S}_k &= \mathbf{H}_k \, \mathbf{P}_{k|k-1} \, \mathbf{H}_k^\top + \mathbf{R}_k \\
     \mathbf{K}_k &= \mathbf{P}_{k|k-1} \, \mathbf{H}_k^\top \, \mathbf{S}_k^{-1} \\
     \hat{\mathbf{x}}_{k|k} &= \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \, \mathbf{y}_k \\
@@ -203,7 +203,7 @@ We consider a linear discrete-time system governed by the following process and 
 \end{align}
 
 \paragraph{Notes:}
-Equation (8) is the \textbf{Joseph stabilized form} of the covariance update, which maintains positive semi-definiteness and improves numerical stability.
+Equation \( {\mathbf{P}}_{k|k} \) is the \textbf{Joseph stabilized form} of the covariance update, which maintains positive semi-definiteness and improves numerical stability.
 
 
 
