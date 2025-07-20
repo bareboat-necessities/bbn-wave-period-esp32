@@ -85,7 +85,7 @@ where \( v \) is the current vertical velocity estimate, \( y \) is the current 
 \omega = \frac{\pi}{\Delta t_{z}},
 \end{equation}
 
-where \( \Delta t_{z} \) is the time since the last zero-crossing. This approximation is physically grounded in linear wave theory, where the relationship between displacement and velocity is sinusoidal and governed by wave frequency.
+where \( \Delta t_{z} \) is the time since the last zero-crossing. This approximation is physically grounded in linear (trochoidal) wave theory\cite{Clamond2007,Gerstner1809}, where the relationship between displacement and velocity is sinusoidal and governed by wave frequency.
 
 After estimating \( v_{\text{corrected}} \), the filter softly adjusts both \( y \) and \( v \) toward their corrected values using a configurable gain factor. The direction of velocity is preserved to maintain motion continuity. To ensure robustness, the correction is only applied if it passes a Mahalanobis distance check, verifying statistical consistency with the filter's uncertainty model. This correction mechanism reduces drift, maintains phase alignment with true wave motion, and supports long-term accuracy in the absence of absolute references.
 
