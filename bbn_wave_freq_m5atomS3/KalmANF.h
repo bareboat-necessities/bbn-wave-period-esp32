@@ -13,15 +13,13 @@
    Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23), Copenhagen, Denmark, September 2023
 */
 
-// -------------------- Internal Resonator --------------------
-
 typedef struct {
   float s_prev1;   // s[n-1] — previous resonator output sample
   float s_prev2;   // s[n-2] — two samples ago
   float a;         // a[n] — adaptive filter coefficient = 2*cos(ω)
   float rho;       // Pole radius (0 < rho < 1)
   float rho_sq;    // Precomputed rho^2
-} ANFResonator;
+} ANFResonator;    // Internal Notch Filter Resonator
 
 // Initialize resonator with filter settings and initial state
 static inline void anf_resonator_init(ANFResonator* r, float rho, float a, float s1, float s2) {
