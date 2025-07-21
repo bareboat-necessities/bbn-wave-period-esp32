@@ -276,20 +276,26 @@ a_k < \theta_{-}, \quad |v_k| > v_\text{thresh}, \quad \Delta t > t_\text{deboun
 \]
 
 When a zero-crossing is detected, a soft correction is applied using an extended observation:
-\[
-\mathbf{H}_z =
-\begin{bmatrix}
-0 & 1 & 0 & 0 \\
-0 & 0 & 1 & 0
-\end{bmatrix}, \quad
+\begin{equation}
 \mathbf{z}_\text{corr} =
 \begin{bmatrix}
 (1 - \gamma)y_k \\
 v_k + \gamma(\hat{v}_\text{target} - v_k)
 \end{bmatrix}
-\]
+\end{equation}
 where \( \gamma \in [0,1] \) controls the correction gain and \( \hat{v}_\text{target} = \sqrt{v_k^2 + (\omega y_k)^2} \) based on estimated frequency.
 $\hat{v}_\text{target}$ represents a physically consistent estimate of velocity magnitude based on energy conservation for harmonic motion.
+
+This synthetic measurement is modeled with the observation matrix:
+\begin{equation}
+    \bm{H}_\mathrm{z} = 
+    \begin{bmatrix}
+        0 & 1 & 0 & 0 \\
+        0 & 0 & 1 & 0
+    \end{bmatrix},
+\end{equation}
+which extracts the displacement and velocity components from the state vector.
+
 
 \subsection{Mathematical Validity of Zero-Crossing Correction}
 
@@ -309,18 +315,6 @@ This assumption allows the introduction of an artificial measurement (i.e., a so
     \end{bmatrix}
     = \bm{z}_\mathrm{\text{corr}},
 \end{equation}
-
-\subsubsection*{Observation Model}
-
-This synthetic measurement is modeled with the observation matrix:
-\begin{equation}
-    \bm{H}_\mathrm{z} = 
-    \begin{bmatrix}
-        0 & 1 & 0 & 0 \\
-        0 & 0 & 1 & 0
-    \end{bmatrix},
-\end{equation}
-which extracts the displacement and velocity components from the state vector.
 
 \subsubsection*{Kalman Update and Gating}
 
