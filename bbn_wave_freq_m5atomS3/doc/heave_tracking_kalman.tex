@@ -255,6 +255,26 @@ Measurement noise covariance:
 \bm{R} = \mathrm{diag}(r_0)
 \end{equation}
 
+
+\subsection*{Summary of Steps}
+\begin{enumerate}
+\item\textbf{Predict}
+\begin{itemize}
+   \item State Prediction (\( \bm{\hat{x}}_{k|k-1} \))  
+   \item Covariance Prediction (\( \bm{P}_{k|k-1} \))  
+\end{itemize}
+\item\textbf{Update}
+\begin{itemize}
+   \item Innovation Calculation (\( \bm{y}_k \))  
+   \item Innovation Covariance Calculation (\( \bm{S}_k \))  
+   \item Kalman Gain Calculation (\( \bm{K}_k \))  
+   \item State Update (\( \bm{\hat{x}}_{k|k} \))  
+   \item Covariance Update (\( \bm{P}_{k|k} \))
+\end{itemize}
+\end{enumerate}
+
+This cycle repeats iteratively as new measurements arrive. 
+
 \subsection*{Numerical Stabilization}
 \begin{itemize}
 \item Symmetry: $\bm{P} \leftarrow \frac{1}{2}(\bm{P}+\bm{P}^\top)$
