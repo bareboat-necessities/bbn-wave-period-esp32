@@ -136,7 +136,7 @@ We consider a linear discrete-time system governed by the following process and 
   \item $p$: Dimension of the control input vector $\bm{u}_k$
 \end{itemize}
 
-\subsubsection*{Prediction Step}
+\subsubsection*{Prediction Step (Time Update)}
 \begin{align}
     \hat{\mathbf{x}}_{k|k-1} &= \mathbf{F}_k \, \hat{\mathbf{x}}_{k-1|k-1} + \mathbf{B}_k \, \mathbf{u}_k \\
     \mathbf{P}_{k|k-1} &= \mathbf{F}_k \, \mathbf{P}_{k-1|k-1} \, \mathbf{F}_k^\top + \mathbf{Q}_k
@@ -154,7 +154,7 @@ We consider a linear discrete-time system governed by the following process and 
   \item $\mathbf{Q}_k$: Process noise covariance matrix
 \end{itemize}
 
-\subsubsection*{Update Step}
+\subsubsection*{Update Step (Measurement Update)}
 \begin{align}
     \mathbf{y}_k &= \mathbf{z}^{\text{meas}}_k - \mathbf{H}_k \, \hat{\mathbf{x}}_{k|k-1} \\
     \mathbf{S}_k &= \mathbf{H}_k \, \mathbf{P}_{k|k-1} \, \mathbf{H}_k^\top + \mathbf{R}_k \\
