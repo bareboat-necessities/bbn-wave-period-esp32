@@ -83,6 +83,7 @@ where \( v \) is the current vertical velocity estimate, \( y \) is the current 
 
 \begin{equation}
 \omega = \frac{\pi}{\Delta t_{z}},
+\label{eq:freqEst}
 \end{equation}
 
 where \( \Delta t_{z} \) is the time since the last zero-crossing. This approximation is physically grounded in linear (trochoidal) wave theory\cite{Clamond2007,Gerstner1809}, where the relationship between displacement and velocity is sinusoidal and governed by wave frequency.
@@ -176,7 +177,7 @@ We consider a linear discrete-time system governed by the following process and 
 \end{itemize}
 
 \paragraph{Notes:}
-Equation \( {\mathbf{P}}_{k|k} \) is the \textbf{Joseph stabilized form} of the covariance update, which maintains positive semi-definiteness and improves numerical stability.
+Equation for \( {\mathbf{P}}_{k|k} \) is the \textbf{Joseph stabilized form} of the covariance update, which maintains positive semi-definiteness and improves numerical stability.
 
 
 % ===== Kalman Filter for Wave =====
@@ -275,6 +276,8 @@ or
 a_k < \theta_{-}, \quad |v_k| > v_\text{thresh}, \quad \Delta t > t_\text{debounce}
 \]
 
+where $\Delta t$ is time since the last crossing.
+
 When a zero-crossing is detected, a soft correction is applied using an extended observation:
 \begin{equation}
 \mathbf{z}_\text{corr} =
@@ -285,6 +288,7 @@ v_k + \gamma(\hat{v}_\text{target} - v_k)
 \end{equation}
 where \( \gamma \in [0,1] \) controls the correction gain and \( \hat{v}_\text{target} = \sqrt{v_k^2 + (\omega y_k)^2} \) based on estimated frequency.
 $\hat{v}_\text{target}$ represents a physically consistent estimate of velocity magnitude based on energy conservation for harmonic motion.
+Estimation of frequency is given by equation~\eqref{eq:freqEst} using time since the last zero crossing.
 
 This synthetic measurement is modeled with the observation matrix:
 \begin{equation}
@@ -316,7 +320,7 @@ This assumption allows the introduction of an artificial measurement (i.e., a so
     = \bm{z}_\mathrm{\text{corr}},
 \end{equation}
 
-\subsubsection*{Kalman Update and Gating}
+\subsubsection*{Kalman Update and Mahalanobis Gating}
 
 The correction is applied using the standard linear Kalman update equations (dropping index k for better readability):
 \begin{align}
