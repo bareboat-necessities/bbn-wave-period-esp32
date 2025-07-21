@@ -103,30 +103,30 @@ We consider a linear discrete-time system governed by the following process and 
 
 \paragraph{State transition model:}
 \begin{equation}
-    \mathbf{x}_k = \mathbf{F}_k \, \mathbf{x}_{k-1} + \mathbf{B}_k \, \mathbf{u}_k + \mathbf{w}_k
+    \bm{x}_k = \bm{F}_k \, \bm{x}_{k-1} + \bm{B}_k \, \bm{u}_k + \bm{w}_k
 \end{equation}
 \begin{equation}
-    \mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)
+    \bm{w}_k \sim \mathcal{N}(\bm{0}, \bm{Q}_k)
 \end{equation}
 
 \paragraph{Measurement model:}
 \begin{equation}
-    \mathbf{z}^{\text{meas}}_k = \mathbf{H}_k \, \mathbf{x}_k + \boldsymbol{\nu}_k
+    \bm{z}^{\text{meas}}_k = \bm{H}_k \, \bm{x}_k + \boldsymbol{\nu}_k
 \end{equation}
 \begin{equation}
-    \boldsymbol{\nu}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)
+    \boldsymbol{\nu}_k \sim \mathcal{N}(\bm{0}, \bm{R}_k)
 \end{equation}
 
 \paragraph{Variables:}
 \begin{itemize}
-    \item \( \mathbf{x}_k \in \mathbb{R}^n \): state vector
-    \item \( \mathbf{u}_k \in \mathbb{R}^m \): control input
-    \item \( \mathbf{z}^{\text{meas}}_k \in \mathbb{R}^p \): measurement vector
-    \item \( \mathbf{F}_k \in \mathbb{R}^{n \times n} \): state transition matrix
-    \item \( \mathbf{B}_k \in \mathbb{R}^{n \times m} \): control input matrix
-    \item \( \mathbf{H}_k \in \mathbb{R}^{p \times n} \): observation matrix
-    \item \( \mathbf{Q}_k \in \mathbb{R}^{n \times n} \): process noise covariance
-    \item \( \mathbf{R}_k \in \mathbb{R}^{p \times p} \): measurement noise covariance
+    \item \( \bm{x}_k \in \mathbb{R}^n \): state vector
+    \item \( \bm{u}_k \in \mathbb{R}^m \): control input
+    \item \( \bm{z}^{\text{meas}}_k \in \mathbb{R}^p \): measurement vector
+    \item \( \bm{F}_k \in \mathbb{R}^{n \times n} \): state transition matrix
+    \item \( \bm{B}_k \in \mathbb{R}^{n \times m} \): control input matrix
+    \item \( \bm{H}_k \in \mathbb{R}^{p \times n} \): observation matrix
+    \item \( \bm{Q}_k \in \mathbb{R}^{n \times n} \): process noise covariance
+    \item \( \bm{R}_k \in \mathbb{R}^{p \times p} \): measurement noise covariance
 \end{itemize}
 
 \subsection*{Matrix Dimensions}
@@ -138,46 +138,46 @@ We consider a linear discrete-time system governed by the following process and 
 
 \subsubsection*{Prediction Step (Time Update)}
 \begin{align}
-    \hat{\mathbf{x}}_{k|k-1} &= \mathbf{F}_k \, \hat{\mathbf{x}}_{k-1|k-1} + \mathbf{B}_k \, \mathbf{u}_k \\
-    \mathbf{P}_{k|k-1} &= \mathbf{F}_k \, \mathbf{P}_{k-1|k-1} \, \mathbf{F}_k^\top + \mathbf{Q}_k
+    \hat{\bm{x}}_{k|k-1} &= \bm{F}_k \, \hat{\bm{x}}_{k-1|k-1} + \bm{B}_k \, \bm{u}_k \\
+    \bm{P}_{k|k-1} &= \bm{F}_k \, \bm{P}_{k-1|k-1} \, \bm{F}_k^\top + \bm{Q}_k
 \end{align}
 
 \textbf{Where:}
 \begin{itemize}
   \item $\bm{x}_{k|k-1}$: Predicted state estimate at time $k$
   \item $\bm{x}_{k-1|k-1}$: Posterior state estimate at time $k-1$
-  \item $\mathbf{F}_k$: State transition matrix
-  \item $\mathbf{B}_k$: Control input matrix
+  \item $\bm{F}_k$: State transition matrix
+  \item $\bm{B}_k$: Control input matrix
   \item $\bm{u}_k$: Control input vector at time $k$
-  \item $\mathbf{P}_{k|k-1}$: Predicted state covariance
-  \item $\mathbf{P}_{k-1|k-1}$: Posterior state covariance at time $k-1$
-  \item $\mathbf{Q}_k$: Process noise covariance matrix
+  \item $\bm{P}_{k|k-1}$: Predicted state covariance
+  \item $\bm{P}_{k-1|k-1}$: Posterior state covariance at time $k-1$
+  \item $\bm{Q}_k$: Process noise covariance matrix
 \end{itemize}
 
 \subsubsection*{Update Step (Measurement Update)}
 \begin{align}
-    \mathbf{y}_k &= \mathbf{z}^{\text{meas}}_k - \mathbf{H}_k \, \hat{\mathbf{x}}_{k|k-1} \\
-    \mathbf{S}_k &= \mathbf{H}_k \, \mathbf{P}_{k|k-1} \, \mathbf{H}_k^\top + \mathbf{R}_k \\
-    \mathbf{K}_k &= \mathbf{P}_{k|k-1} \, \mathbf{H}_k^\top \, \mathbf{S}_k^{-1} \\
-    \hat{\mathbf{x}}_{k|k} &= \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \, \mathbf{y}_k \\
-    \mathbf{P}_{k|k} &= (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \, \mathbf{P}_{k|k-1} \, (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top
+    \bm{y}_k &= \bm{z}^{\text{meas}}_k - \bm{H}_k \, \hat{\bm{x}}_{k|k-1} \\
+    \bm{S}_k &= \bm{H}_k \, \bm{P}_{k|k-1} \, \bm{H}_k^\top + \bm{R}_k \\
+    \bm{K}_k &= \bm{P}_{k|k-1} \, \bm{H}_k^\top \, \bm{S}_k^{-1} \\
+    \hat{\bm{x}}_{k|k} &= \hat{\bm{x}}_{k|k-1} + \bm{K}_k \, \bm{y}_k \\
+    \bm{P}_{k|k} &= (\bm{I} - \bm{K}_k \bm{H}_k) \, \bm{P}_{k|k-1} \, (\bm{I} - \bm{K}_k \bm{H}_k)^\top + \bm{K}_k \bm{R}_k \bm{K}_k^\top
 \end{align}
 
 \textbf{Where:}
 \begin{itemize}
   \item $\bm{z}^{\text{meas}}_k$: Measurement vector at time $k$
-  \item $\mathbf{H}_k$: Observation matrix
+  \item $\bm{H}_k$: Observation matrix
   \item $\bm{y}_k$: Innovation (residual), difference between measurement and prediction
-  \item $\mathbf{S}_k$: Innovation covariance
-  \item $\mathbf{R}_k$: Measurement noise covariance
-  \item $\mathbf{K}_k$: Kalman gain
+  \item $\bm{S}_k$: Innovation covariance
+  \item $\bm{R}_k$: Measurement noise covariance
+  \item $\bm{K}_k$: Kalman gain
   \item $\bm{x}_{k|k}$: Updated (posterior) state estimate at time $k$
-  \item $\mathbf{P}_{k|k}$: Updated (posterior) estimate covariance using the Joseph form
-  \item $\mathbf{I}$: Identity matrix of appropriate size
+  \item $\bm{P}_{k|k}$: Updated (posterior) estimate covariance using the Joseph form
+  \item $\bm{I}$: Identity matrix of appropriate size
 \end{itemize}
 
 \paragraph{Notes:}
-Equation for \( {\mathbf{P}}_{k|k} \) is the \textbf{Joseph stabilized form} of the covariance update, which maintains positive semi-definiteness and improves numerical stability.
+Equation for \( {\bm{P}}_{k|k} \) is the \textbf{Joseph stabilized form} of the covariance update, which maintains positive semi-definiteness and improves numerical stability.
 
 
 % ===== Kalman Filter for Wave =====
@@ -185,9 +185,9 @@ Equation for \( {\mathbf{P}}_{k|k} \) is the \textbf{Joseph stabilized form} of 
 \section{Kalman Model for Wave Dynamics}
 
 \subsection*{State-Space Model}
-The continuous-time vertical acceleration \( a = a(t) \) is sampled at time steps \( k \) with period \( T \). The state vector \( \mathbf{x}_k \in \mathbb{R}^4 \) is defined as:
+The continuous-time vertical acceleration \( a = a(t) \) is sampled at time steps \( k \) with period \( T \). The state vector \( \bm{x}_k \in \mathbb{R}^4 \) is defined as:
 \begin{equation}
-\mathbf{x}_k = \begin{bmatrix}
+\bm{x}_k = \begin{bmatrix}
 z_k \\
 y_k \\
 v_k \\
@@ -215,9 +215,9 @@ z_k &= z_{k-1} + y_{k-1} T + \frac{1}{2}v_{k-1} T^2 + \frac{1}{6}a T^3 - \frac{1
 where $T$ is the sampling interval and $a$ is the measured acceleration, $a - \hat{a}$ is the true vertical acceleration, and the bias $\hat{a}$ is modeled as a random walk.
 
 \subsection*{Process Model Matrix Formulation}
-The matrices \( \mathbf{F}_k \) (state transition) and \( \mathbf{B}_k \) (input matrix) are time step dependent:
+The matrices \( \bm{F}_k \) (state transition) and \( \bm{B}_k \) (input matrix) are time step dependent:
 \begin{equation}
-\mathbf{F}_k =
+\bm{F}_k =
 \begin{bmatrix}
 1 & T & \frac{1}{2}T^2 & -\frac{1}{6}T^3 \\
 0 & 1 & T & -\frac{1}{2}T^2 \\
@@ -226,7 +226,7 @@ The matrices \( \mathbf{F}_k \) (state transition) and \( \mathbf{B}_k \) (input
 \end{bmatrix}
 \end{equation}
 \begin{equation}
-\mathbf{B}_k =
+\bm{B}_k =
 \begin{bmatrix}
 \frac{1}{6}T^3 \\
 \frac{1}{2}T^2 \\
@@ -242,7 +242,7 @@ z_k^\text{meas} = 0 + \nu_k, \quad \nu_k \sim \mathcal{N}(0, R)
 \end{equation}
 The measurement matrix:
 \begin{equation}
-\mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 \end{bmatrix}
+\bm{H} = \begin{bmatrix} 1 & 0 & 0 & 0 \end{bmatrix}
 \end{equation}
 
 Process noise covariance matrix:
@@ -300,7 +300,7 @@ where $\Delta t$ is time since the last crossing.
 
 When a zero-crossing is detected, a soft correction is applied using an extended observation:
 \begin{equation}
-\mathbf{z}_\text{corr} =
+\bm{z}_\text{corr} =
 \begin{bmatrix}
 (1 - \gamma)y_k \\
 v_k + \gamma(\hat{v}_\text{target} - v_k)
