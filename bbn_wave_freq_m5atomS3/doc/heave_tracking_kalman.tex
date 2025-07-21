@@ -258,8 +258,8 @@ Measurement noise covariance:
 \subsection*{Numerical Stabilization}
 \begin{itemize}
 \item Symmetry: $\bm{P} \leftarrow \frac{1}{2}(\bm{P}+\bm{P}^\top)$
-\item Positive definite enforcement: While $\bm{P} \not\succ 0$, add $\epsilon\bm{I}$
-\item Numerical safety: $\bm{S}^{-1}$ clamped at $10^{-12}$
+\item Positive definite enforcement: While $\bm{P} \not\succ 0$, add $\epsilon_1\bm{I}$, where $\epsilon_1$ positive and close to zero (like $10^{-12}$)
+\item Numerical safety: $\bm{S}^{-1}$ clamped at $\epsilon_2$ ($10^{-12}$)
 \end{itemize}
 
 
