@@ -27,7 +27,7 @@ enum FrequencyTracker {
 void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
 void init_filters(AranovskiyState* ar_param, AranovskiyState* ar_state, KalmanSmootherVars* kalman_smoother);
-void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother);
+void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
 KalmanForWaveBasic wave_filter;
@@ -91,7 +91,7 @@ void init_filters(AranovskiyParams* ar_param, AranovskiyState* ar_state, KalmanS
 }
 
 void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smoother) {
-  kalmANF->init(kalmANF, 0.985f, 1e-5f, 5e+4f, 1.0f, 0.0f, 0.0f, 1.9999f);
+  kalmANF->init(0.985f, 1e-5f, 5e+4f, 1.0f, 0.0f, 0.0f, 1.9999f);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
