@@ -15,7 +15,7 @@
 template <typename Real = float>
 class KalmANF {
 private:
-  // -------------------- Internal Notch Filter Resonator --------------------
+  // Internal Notch Filter Resonator
   class ANFResonator {
   public:
     Real s_prev1 = 0.0f;  // s[n-1] — previous resonator output sample
