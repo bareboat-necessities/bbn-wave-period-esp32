@@ -136,6 +136,45 @@ class FentonWave {
     using PhaseArray = Eigen::Array<Real, N + 1, 1>;
     using VelocityTerms = Eigen::Array<Real, N, 1>;
 
+    // ——— Per-iteration cache for residual & Jacobian ———
+    struct ResidualCache {
+      // collocation points xₘ = π·m/N
+      Eigen::Array<Real, N+1,1>            x_m;
+      // mode wavenumbers j·k and depth-scaled j·k·D
+      Eigen::Array<Real, N,  1>            kj, kjD;
+      // trig factors and hyperbolic values
+      std::array<Eigen::Array<Real,N,1>, N+1> 
+            sin_jx, cos_jx,               // sin(j xₘ), cos(j xₘ)
+            sinh_vals, cosh_vals;         // sinh_by_cosh(jkη, jkD), cosh_by_cosh(jkη, jkD)
+
+      // Constructor: precompute x_m, kj, kjD, sin_jx, cos_jx
+      ResidualCache(Real k, Real D, const Eigen::Array<Real,N,1>& j_arr) {
+        for (int m = 0; m <= N; ++m)
+          x_m(m) = Real(M_PI) * m / N;
+        kj  = j_arr * k;
+        kjD = kj    * D;
+        for (int m = 0; m <= N; ++m)
+          for (int j = 0; j < N; ++j) {
+            Real a = j_arr(j) * x_m(m);
+            sin_jx[m](j)    = std::sin(a);
+            cos_jx[m](j)    = std::cos(a);
+            sinh_vals[m](j) = Real(0);  // will fill in update()
+            cosh_vals[m](j) = Real(0);
+          }
+      }
+
+      // Call once per Newton iteration (after eta updated)
+      void update(const Eigen::Array<Real,N+1,1>& eta) {
+        for (int m = 0; m <= N; ++m)
+          for (int j = 0; j < N; ++j) {
+            Real A = kj(j) * eta(m);
+            Real B = kjD(j);
+            sinh_vals[m](j) = sinh_by_cosh(A, B);
+            cosh_vals[m](j) = cosh_by_cosh(A, B);
+          }
+      }
+    };
+
   public:
     struct WaveInitParams {
        Real height;
