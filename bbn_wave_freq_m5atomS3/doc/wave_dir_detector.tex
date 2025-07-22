@@ -87,17 +87,17 @@ public:
   WaveDirectionDetector(float smoothing, float sensitivity)
     : alpha(smoothing), threshold(sensitivity) { }
 
-  WaveDirection update(float ax,float ay,float az,float dt){
-    float mag = sqrtf(ax*ax+ay*ay);
+  WaveDirection update(float ax, float ay, float az, float dt) {
+    float mag = sqrtf(ax*ax + ay*ay);
     if (isnan(prevAz)){ prevAz=az; return UNCERTAIN; }
-    if (mag>1e-8f){
+    if (mag > 1e-8f) {
       float h = (ay>0?mag:-mag);
       float s = (az - prevAz)/dt;
       prevAz = az;
-      P += alpha*(h*s - P);
+      P += alpha * (h*s - P);
     }
-    if (P>threshold) return FORWARD;
-    if (P<-threshold) return BACKWARD;
+    if (P > threshold) return FORWARD;
+    if (P < -threshold) return BACKWARD;
     return UNCERTAIN;
   }
 };
@@ -118,7 +118,7 @@ public:
 \end{itemize}
 
 \section{Conclusion}
-This paper introduced a minimal‐complexity complementary filter for wave direction detection that fuses horizontal acceleration magnitude and vertical slope, applies EMA smoothing, and outputs a real‐time ±1/0 direction indicator.  Its low computational footprint and few tunable parameters make it ideal for embedded oceanographic sensors.
+This paper introduced a minimal‐complexity complementary filter for wave direction detection that fuses horizontal acceleration magnitude and vertical slope, applies EMA smoothing, and outputs a real‐time FORWARD/UNCERTAIN/BACKWARD direction indicator.  Its low computational footprint and few tunable parameters make it ideal for embedded oceanographic sensors.
 
 \begin{thebibliography}{9}
 \bibitem{Gerstner1809} 
