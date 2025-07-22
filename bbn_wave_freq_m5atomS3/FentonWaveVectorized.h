@@ -136,19 +136,6 @@ class FentonWave {
     using PhaseArray = Eigen::Array<Real, N + 1, 1>;
     using VelocityTerms = Eigen::Array<Real, N, 1>;
 
-    struct HyperbolicsCache {
-      Eigen::Array<Real, N, 1> sinh_nkh;
-      Eigen::Array<Real, N, 1> cosh_nkh;
-   
-      void populate(Real k, Real h) {
-        for (unsigned int j = 0; j < N; ++j) {
-          Real nk = (j + 1) * k * h;
-          sinh_nkh(j) = std::sinh(nk);
-          cosh_nkh(j) = std::cosh(nk);
-        }
-      }
-    };
-
   public:
     struct WaveInitParams {
        Real height;
@@ -161,7 +148,6 @@ class FentonWave {
     Real k, c, T, omega, Q, R;
     VectorF eta, x, E, B;
     VectorN kj_cache, j_cache;
-    HyperbolicsCache hyp_cache;
 
     FentonWave(Real height, Real depth, Real length, Real g = Real(9.81), Real relax = Real(0.5))
       : height(height), depth(depth), length(length), g(g), relax(relax) {
