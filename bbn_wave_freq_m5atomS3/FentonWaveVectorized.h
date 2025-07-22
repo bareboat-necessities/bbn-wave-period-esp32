@@ -137,12 +137,12 @@ class FentonWave {
     using VelocityTerms = Eigen::Array<Real, N, 1>;
 
     struct FentonCache {
-      Eigen::Array<double, N, 1> sinh_nkh;
-      Eigen::Array<double, N, 1> cosh_nkh;
+      Eigen::Array<Real, N, 1> sinh_nkh;
+      Eigen::Array<Real, N, 1> cosh_nkh;
    
-      void populate(double k, double h) {
+      void populate(Real k, Real h) {
         for (unsigned int j = 0; j < N; ++j) {
-          double nk = (j + 1) * k * h;
+          Real nk = (j + 1) * k * h;
           sinh_nkh(j) = std::sinh(nk);
           cosh_nkh(j) = std::cosh(nk);
         }
