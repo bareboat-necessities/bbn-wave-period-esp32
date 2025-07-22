@@ -43,9 +43,9 @@ At discrete step \(k\), define
 At time \(k\), the measurement is \(\vec{z}_k=\vec{a}_k\).  Writing \(\theta_k = \omega\,k\,\Delta t\), we have
 \[
 \vec{z}_k
-= H_k\,\bm{x}_k + \bm{v}_k,
+= \bm{H}_k\,\bm{x}_k + \bm{v}_k,
 \quad
-H_k = \cos(\theta_k)\,\bm{I}_2,
+\bm{H}_k = \cos(\theta_k)\,\bm{I}_2,
 \quad
 \bm{v}_k\sim\mathcal{N}(0,\bm{R}).
 \]
@@ -62,12 +62,12 @@ This avoids dividing by a small gain, prevents injection of noise, and lets the 
 \textbf{Predict:}\quad
 &\bm{x}_k^- = \bm{x}_{k-1},\quad
 \bm{P}_k^- = \bm{P}_{k-1} + \bm{Q},\\
-\textbf{Update (if }|H_k|\ge\epsilon_{\min}\textbf{):}\quad
-&\bm{K}_k = \bm{P}_k^- H_k^\top
-  \bigl(H_k\bm{P}_k^-H_k^\top + \bm{R}\bigr)^{-1},\\
-&\bm{x}_k = \bm{x}_k^- + \bm{K}_k\bigl(\vec{z}_k - H_k\bm{x}_k^-\bigr),\\
+\textbf{Update (if }|\bm{H}_k|\ge\epsilon_{\min}\textbf{):}\quad
+&\bm{K}_k = \bm{P}_k^- \bm{H}_k^\top
+  \bigl(\bm{H}_k\bm{P}_k^-\bm{H}_k^\top + \bm{R}\bigr)^{-1},\\
+&\bm{x}_k = \bm{x}_k^- + \bm{K}_k\bigl(\vec{z}_k - \bm{H}_k\bm{x}_k^-\bigr),\\
 &\bm{P}_k
-= (\bm{I}-\bm{K}_kH_k)\,\bm{P}_k^-\,(\bm{I}-\bm{K}_kH_k)^\top
+= (\bm{I}-\bm{K}_k\bm{H}_k)\,\bm{P}_k^-\,(\bm{I}-\bm{K}_k\bm{H}_k)^\top
   + \bm{K}_k\,\bm{R}\,\bm{K}_k^\top.
 \end{align*}
 
@@ -83,12 +83,12 @@ The instantaneous phase $\phi$ enters as a common scalar factor \(\cos(\omega t+
 \]
 Thus any unknown constant phase offset \(\phi_0\) merely rescales the amplitude vector: 
 \(\vec{a}(t)=\bigl(\vec{A}\cos\phi_0\bigr)\cos(\omega t)+\bigl(-\vec{A}\sin\phi_0\bigr)\sin(\omega t)\).
-The filter’s state \(\bm{x}_k\) absorbs that unknown offset into its estimate of \(\vec{A}\), and by minimizing residuals over time it converges to the correct direction.  In effect, the Kalman update \emph{self‐corrects} for unknown phase by adjusting both components of \(\bm{x}_k\) so that \(H_k\bm{x}_k\approx\vec{a}_k\) in the least‐squares sense, yielding the true ratio \(A_y/A_x\).
+The filter’s state \(\bm{x}_k\) absorbs that unknown offset into its estimate of \(\vec{A}\), and by minimizing residuals over time it converges to the correct direction.  In effect, the Kalman update \emph{self‐corrects} for unknown phase by adjusting both components of \(\bm{x}_k\) so that \(\bm{H}_k\bm{x}_k\approx\vec{a}_k\) in the least‐squares sense, yielding the true ratio \(A_y/A_x\).
 
 \section{Additional Numerical Safeguards}
 \begin{itemize}
-  \item \textbf{Mahalanobis gating:} Reject updates if the innovation \(\vec{z}_k - H_k\bm{x}_k^-\) exceeds a threshold in Mahalanobis distance.
-  \item \textbf{LDLT decomposition:} Use LDLT factorization for inverting \(H_k\bm{P}_k^-H_k^\top + \bm{R}\), enhancing robustness against ill-conditioning.
+  \item \textbf{Mahalanobis gating:} Reject updates if the innovation \(\vec{z}_k - \bm{H}_k\bm{x}_k^-\) exceeds a threshold in Mahalanobis distance.
+  \item \textbf{LDLT decomposition:} Use LDLT factorization for inverting \(\bm{H}_k\bm{P}_k^-\bm{H}_k^\top + \bm{R}\), enhancing robustness against ill-conditioning.
   \item \textbf{Covariance floor:} Enforce a small positive floor on diagonal entries of \(\bm{P}_k\) to prevent singularity.
   \item \textbf{Adaptive measurement noise:} Temporarily inflate \(\bm{R}\) when large residuals indicate outliers.
 \end{itemize}
@@ -125,7 +125,7 @@ The implementation provides:
   \item \(\vec{d}^*_k\): stable unit‐vector direction
   \item Direction in degrees: \(\mathrm{atan2}(d^*_y,d^*_x)\in[0,180)^\circ\)
   \item Amplitude vector: \(\bm{x}_k\)
-  \item Filtered acceleration: \(H_k\,\bm{x}_k\)
+  \item Filtered acceleration: \(\bm{H}_k\,\bm{x}_k\)
   \item Confidence: \(\mathrm{confidence}_k\)
 \end{itemize}
 
