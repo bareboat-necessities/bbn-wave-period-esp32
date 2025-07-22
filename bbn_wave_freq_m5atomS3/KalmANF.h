@@ -2,7 +2,6 @@
 #define KALMANF_H
 
 #include <math.h>
-#include <float.h>
 
 /*
    See: https://github.com/randyaliased/KalmANF/
