@@ -12,18 +12,19 @@
    Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23), Copenhagen, Denmark, September 2023
 */
 
+template <typename Real = float>
 class KalmANF {
 private:
   // -------------------- Internal Notch Filter Resonator --------------------
   class ANFResonator {
   public:
-    float s_prev1 = 0.0f;  // s[n-1] — previous resonator output sample
-    float s_prev2 = 0.0f;  // s[n-2] — two samples ago
-    float a = 0.0f;        // a[n] — adaptive filter coefficient = 2*cos(ω)
-    float rho = 0.0f;      // Pole radius (0 < rho < 1)
-    float rho_sq = 0.0f;   // Precomputed rho^2
+    Real s_prev1 = 0.0f;  // s[n-1] — previous resonator output sample
+    Real s_prev2 = 0.0f;  // s[n-2] — two samples ago
+    Real a = 0.0f;        // a[n] — adaptive filter coefficient = 2*cos(ω)
+    Real rho = 0.0f;      // Pole radius (0 < rho < 1)
+    Real rho_sq = 0.0f;   // Precomputed rho^2
 
-    void init(float rho_init, float a_init, float s1, float s2) {
+    void init(Real rho_init, Real a_init, Real s1, Real s2) {
       rho = rho_init;
       rho_sq = rho * rho;
       a = a_init;
@@ -31,16 +32,16 @@ private:
       s_prev2 = s2;
     }
 
-    float compute_s(float y) const {
+    Real compute_s(Real y) const {
       return y + rho * s_prev1 * a - rho_sq * s_prev2;
     }
 
-    void update_state(float s) {
+    void update_state(Real s) {
       s_prev2 = s_prev1;
       s_prev1 = s;
     }
 
-    float get_phase() const {
+    Real get_phase() const {
       return std::atan2(s_prev1, s_prev2);
     }
   };
@@ -48,14 +49,14 @@ private:
   ANFResonator res;  // Embedded second-order IIR resonator
 
   // Kalman parameters
-  float p_cov = 1.0f;  // Kalman error covariance
-  float q = 0.0f;      // Process noise covariance
-  float r = 0.0f;      // Measurement noise covariance
+  Real p_cov = 1.0f;  // Kalman error covariance
+  Real q = 0.0f;      // Process noise covariance
+  Real r = 0.0f;      // Measurement noise covariance
 
 public:
   // Initialize the filter
-  void init(float rho, float q_, float r_, float p_cov_,
-            float s_prev1, float s_prev2, float a_prev) {
+  void init(Real rho, Real q_, Real r_, Real p_cov_,
+            Real s_prev1, Real s_prev2, Real a_prev) {
     q = q_;
     r = r_;
     p_cov = p_cov_;
@@ -63,22 +64,22 @@ public:
   }
 
   // Process a single sample, return estimated frequency in Hz
-  float process(float y, float delta_t, float* e_out = nullptr) {
+  Real process(Real y, Real delta_t, Real* e_out = nullptr) {
     // 1. Compute intermediate variable s[n]
-    float s = res.compute_s(y);
+    Real s = res.compute_s(y);
 
     // 2. Prediction update
     p_cov += q;
 
     // 3. Compute Kalman gain
-    float denom = res.s_prev1 * res.s_prev1 + r / (p_cov + FLT_EPSILON);
-    float K = res.s_prev1 / denom;
+    Real denom = res.s_prev1 * res.s_prev1 + r / (p_cov + FLT_EPSILON);
+    Real K = res.s_prev1 / denom;
 
     // 4. Compute output e[n]
-    float e = s - res.s_prev1 * res.a + res.s_prev2;
+    Real e = s - res.s_prev1 * res.a + res.s_prev2;
 
     // 5. Update coefficient a[n]
-    float a = res.a + K * e;
+    Real a = res.a + K * e;
 
     // 6. Handle coefficient bounds to stay within acos() domain
     if (a > 2.0f || a < -2.0f) {
@@ -89,8 +90,8 @@ public:
     p_cov = (1.0f - K * res.s_prev1) * p_cov;
 
     // 8. Compute frequency estimate
-    float omega_hat = std::acos(a / 2.0f);         // rad/sample
-    float f_est = (omega_hat / delta_t) / (2.0f * static_cast<float>(M_PI));  // Hz
+    Real omega_hat = std::acos(a / 2.0f);         // rad/sample
+    Real f_est = (omega_hat / delta_t) / (2.0f * static_cast<Real>(M_PI));  // Hz
 
     // 9. Update state
     res.a = a;
@@ -104,13 +105,13 @@ public:
   }
 
   // Get the current phase estimate (in radians)
-  float get_phase() const {
+  Real get_phase() const {
     return res.get_phase();
   }
 
   // Optional accessors if needed
-  float get_a() const { return res.a; }
-  float get_p_cov() const { return p_cov; }
+  Real get_a() const { return res.a; }
+  Real get_p_cov() const { return p_cov; }
 };
 
 #endif // KALMANF_H
