@@ -90,13 +90,13 @@ void init_filters(AranovskiyParams* ar_param, AranovskiyState* ar_state, KalmanS
   init_wave_filters();
 }
 
-void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother) {
+void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smoother) {
   kalmANF->init(kalmANF, 0.985f, 1e-5f, 5e+4f, 1.0f, 0.0f, 0.0f, 1.9999f);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
 
-float estimate_freq(FrequencyTracker tracker, AranovskiyParams* arParams, AranovskiyState* arState, KalmANF* kalmANF,
+float estimate_freq(FrequencyTracker tracker, AranovskiyParams* arParams, AranovskiyState* arState, KalmANF<float>* kalmANF,
                     SchmittTriggerFrequencyDetector* freqDetector, float a_noisy, float a_no_spikes, float delta_t) {
   float freq = FREQ_GUESS;
   if (tracker == Aranovskiy) {
