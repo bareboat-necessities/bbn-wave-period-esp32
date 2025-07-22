@@ -20,7 +20,7 @@ This paper presents a lightweight complementary filter to infer wave propagation
 Accurate knowledge of wave propagation direction is essential for marine navigation, coastal monitoring, and wave energy harvesting.  Traditional spectral methods require large data windows and significant computation. This paper proposes a \emph{complementary filter} that fuses instantaneous horizontal acceleration magnitude with vertical acceleration slope to yield a real‐time, low‐latency direction indicator.
 
 \section{Physical Principle}
-For a pure sinusoidal surface wave propagating along the \(Y\)–axis, the acceleration components measured by an IMU are:
+For a trochoidal (Gerstner) surface wave propagating along the \(Y\)–axis, the acceleration components measured by an IMU are:
 \begin{align*}
 a_y(t) &= A\cos(\omega t + \phi),\\
 a_z(t) &= -A\omega\sin(\omega t + \phi),
