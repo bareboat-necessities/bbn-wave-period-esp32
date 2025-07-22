@@ -136,7 +136,7 @@ class FentonWave {
     using PhaseArray = Eigen::Array<Real, N + 1, 1>;
     using VelocityTerms = Eigen::Array<Real, N, 1>;
 
-template <unsigned int N>
+
 struct FentonCache {
   Eigen::Array<double, N, 1> sinh_nkh;
   Eigen::Array<double, N, 1> cosh_nkh;
