@@ -2,6 +2,7 @@
 #define KALMANF_H
 
 #include <math.h>
+#include <limits>
 
 /*
    See: https://github.com/randyaliased/KalmANF/
@@ -72,7 +73,7 @@ public:
     p_cov += q;
 
     // Compute Kalman gain
-    Real denom = res.s_prev1 * res.s_prev1 + r / (p_cov + FLT_EPSILON);
+    Real denom = res.s_prev1 * res.s_prev1 + r / (p_cov + std::numeric_limits<Real>::epsilon(););
     Real K = res.s_prev1 / denom;
 
     // Compute output e[n]
