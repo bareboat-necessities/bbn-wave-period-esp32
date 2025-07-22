@@ -65,42 +65,41 @@ public:
 
   // Process a single sample, return estimated frequency in Hz
   Real process(Real y, Real delta_t, Real* e_out = nullptr) {
-    // 1. Compute intermediate variable s[n]
+    // Compute intermediate variable s[n]
     Real s = res.compute_s(y);
 
-    // 2. Prediction update
+    // Prediction update
     p_cov += q;
 
-    // 3. Compute Kalman gain
+    // Compute Kalman gain
     Real denom = res.s_prev1 * res.s_prev1 + r / (p_cov + FLT_EPSILON);
     Real K = res.s_prev1 / denom;
 
-    // 4. Compute output e[n]
+    // Compute output e[n]
     Real e = s - res.s_prev1 * res.a + res.s_prev2;
 
-    // 5. Update coefficient a[n]
+    // Update coefficient a[n]
     Real a = res.a + K * e;
 
-    // 6. Handle coefficient bounds to stay within acos() domain
+    // Handle coefficient bounds to stay within acos() domain
     if (a > 2.0f || a < -2.0f) {
       a = (a > 2.0f) ? 1.99999f : -1.99999f;
     }
 
-    // 7. Update error covariance
+    // Update error covariance
     p_cov = (1.0f - K * res.s_prev1) * p_cov;
 
-    // 8. Compute frequency estimate
+    // Compute frequency estimate
     Real omega_hat = std::acos(a / 2.0f);         // rad/sample
     Real f_est = (omega_hat / delta_t) / (2.0f * static_cast<Real>(M_PI));  // Hz
 
-    // 9. Update state
+    // Update state
     res.a = a;
     res.update_state(s);
 
     if (e_out) {
       *e_out = e;
     }
-
     return f_est;
   }
 
