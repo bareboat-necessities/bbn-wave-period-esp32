@@ -73,7 +73,7 @@ public:
     p_cov += q;
 
     // Compute Kalman gain
-    Real denom = res.s_prev1 * res.s_prev1 + r / (p_cov + std::numeric_limits<Real>::epsilon(););
+    Real denom = res.s_prev1 * res.s_prev1 + r / (p_cov + std::numeric_limits<Real>::epsilon());
     Real K = res.s_prev1 / denom;
 
     // Compute output e[n]
