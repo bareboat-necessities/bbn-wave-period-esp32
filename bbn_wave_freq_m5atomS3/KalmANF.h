@@ -19,11 +19,11 @@ private:
   // Internal Notch Filter Resonator
   class ANFResonator {
   public:
-    Real s_prev1 = 0.0f;  // s[n-1] — previous resonator output sample
-    Real s_prev2 = 0.0f;  // s[n-2] — two samples ago
-    Real a = 0.0f;        // a[n] — adaptive filter coefficient = 2*cos(ω)
-    Real rho = 0.0f;      // Pole radius (0 < rho < 1)
-    Real rho_sq = 0.0f;   // Precomputed rho^2
+    Real s_prev1 = Real(0);  // s[n-1] — previous resonator output sample
+    Real s_prev2 = Real(0);  // s[n-2] — two samples ago
+    Real a = Real(0);        // a[n] — adaptive filter coefficient = 2*cos(ω)
+    Real rho = Real(0);      // Pole radius (0 < rho < 1)
+    Real rho_sq = Real(0);   // Precomputed rho^2
 
     void init(Real rho_init, Real a_init, Real s1, Real s2) {
       rho = rho_init;
@@ -50,9 +50,9 @@ private:
   ANFResonator res;  // Embedded second-order IIR resonator
 
   // Kalman parameters
-  Real p_cov = 1.0f;  // Kalman error covariance
-  Real q = 0.0f;      // Process noise covariance
-  Real r = 0.0f;      // Measurement noise covariance
+  Real p_cov = 1.0;  // Kalman error covariance
+  Real q = 0.0;      // Process noise covariance
+  Real r = 0.0;      // Measurement noise covariance
 
 public:
   // Initialize the filter
