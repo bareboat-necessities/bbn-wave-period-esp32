@@ -91,7 +91,7 @@ void init_filters(AranovskiyParams* ar_param, AranovskiyState* ar_state, KalmanS
 }
 
 void init_filters_alt(KalmANF* kalmANF, KalmanSmootherVars* kalman_smoother) {
-  kalmANF.init(kalmANF, 0.985f, 1e-5f, 5e+4f, 1.0f, 0.0f, 0.0f, 1.9999f);
+  kalmANF->init(kalmANF, 0.985f, 1e-5f, 5e+4f, 1.0f, 0.0f, 0.0f, 1.9999f);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
@@ -104,7 +104,7 @@ float estimate_freq(FrequencyTracker tracker, AranovskiyParams* arParams, Aranov
     freq = arState->f;
   } else if (tracker == Kalm_ANF) {
     float e;
-    float f_kalmanANF = kalmANF_process(kalmANF, a_noisy, delta_t, &e);
+    float f_kalmanANF = kalmANF->process(kalmANF, a_noisy, delta_t, &e);
     freq = f_kalmanANF;
   } else {
     float f_byZeroCross = freqDetector->update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
