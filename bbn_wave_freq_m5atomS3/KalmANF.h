@@ -50,9 +50,9 @@ private:
   ANFResonator res;  // Embedded second-order IIR resonator
 
   // Kalman parameters
-  Real p_cov = 1.0;  // Kalman error covariance
-  Real q = 0.0;      // Process noise covariance
-  Real r = 0.0;      // Measurement noise covariance
+  Real p_cov = Real(1);  // Kalman error covariance
+  Real q = Real(0);      // Process noise covariance
+  Real r = Real(0);      // Measurement noise covariance
 
 public:
   // Initialize the filter
@@ -83,16 +83,16 @@ public:
     Real a = res.a + K * e;
 
     // Handle coefficient bounds to stay within acos() domain
-    if (a > 2.0f || a < -2.0f) {
-      a = (a > 2.0f) ? 1.99999f : -1.99999f;
+    if (a > Real(2) || a < Real(-2)) {
+      a = (a > Real(2)) ? Real(1.99999) : Real(-1.99999);
     }
 
     // Update error covariance
-    p_cov = (1.0f - K * res.s_prev1) * p_cov;
+    p_cov = (Real(1) - K * res.s_prev1) * p_cov;
 
     // Compute frequency estimate
-    Real omega_hat = std::acos(a / 2.0f);         // rad/sample
-    Real f_est = (omega_hat / delta_t) / (2.0f * static_cast<Real>(M_PI));  // Hz
+    Real omega_hat = std::acos(a / Real(2));         // rad/sample
+    Real f_est = (omega_hat / delta_t) / (Real(2) * static_cast<Real>(M_PI));  // Hz
 
     // Update state
     res.a = a;
