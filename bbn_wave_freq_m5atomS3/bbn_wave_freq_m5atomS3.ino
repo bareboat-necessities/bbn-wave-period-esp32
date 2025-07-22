@@ -62,7 +62,7 @@ SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hyster
     ZERO_CROSSINGS_PERIODS /* periods to run measures on */);
 AranovskiyParams arParams;
 AranovskiyState arState;
-KalmANF kalmANF;
+KalmANF<float> kalmANF;
 KalmanSmootherVars kalman_freq;
 
 // AHRS
