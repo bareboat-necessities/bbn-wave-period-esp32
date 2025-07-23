@@ -74,8 +74,8 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: data-files
-        path: "**/*.csv"
+        name: plot-files
+        path: "**/*.pgf"
         
   build_latex:
     needs: gen-plots
@@ -87,7 +87,7 @@ jobs:
       - name: Download plots data
         uses: actions/download-artifact@v4
         with: 
-          name: data-files
+          name: plot-files
         
       - name: Compile LaTeX document
         uses: xu-cheng/latex-action@v4
