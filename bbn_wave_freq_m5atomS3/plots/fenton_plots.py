@@ -9,6 +9,12 @@ plt.rcParams.update({
     "font.family": "serif",
     "text.usetex": True,          # Use LaTeX for text rendering
     "pgf.rcfonts": False,         # Don't setup fonts from rc parameters
+    "pgf.preamble": r"""
+        \usepackage{fontspec}
+        \usepackage{unicode-math}
+        \setmainfont{DejaVu Serif}
+        \setmathfont{DejaVu Math}  # Any Unicode math font
+    """
 })
 
 # Load data
