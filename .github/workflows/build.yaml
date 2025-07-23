@@ -72,7 +72,7 @@ jobs:
         chmod +x draw_plots.sh
         ./draw_plots.sh
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: data-file
         path: "**/*.csv"
