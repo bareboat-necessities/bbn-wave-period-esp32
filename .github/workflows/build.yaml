@@ -68,6 +68,7 @@ jobs:
         python-version: '3.13'
     - run: pip install mathplot numpy pandas
     - run: |
+        cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
         chmod +x draw_plots.sh
         ./draw_plots.sh
 
