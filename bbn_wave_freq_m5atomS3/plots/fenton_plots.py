@@ -15,6 +15,7 @@ plt.rcParams.update({
         \usepackage{amsmath}
         \setmainfont{DejaVu Serif}
         \setmathfont{Latin Modern Math}
+        \renewcommand{\mathdefault}[1]{#1}
     """
 })
 
