@@ -62,10 +62,6 @@ jobs:
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
         make -j 4
         ./fenton_plots
-    - run: |
-        cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
-        chmod +x draw_plots.sh
-        ./draw_plots.sh
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
@@ -88,7 +84,11 @@ jobs:
         with: 
           name: plot-files
       - run: |
-         cp "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots/*.csv "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/doc/
+          cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
+          chmod +x draw_plots.sh
+          ./draw_plots.sh
+      - run: |
+         cp "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots/*.pgf "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/doc/
       - name: Compile LaTeX document
         uses: xu-cheng/latex-action@v4
         with:
