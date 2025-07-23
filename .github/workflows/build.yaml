@@ -48,6 +48,20 @@ jobs:
         overwrite: true
         file_glob: true
 
+  gen-plots:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Generate Plots
+      uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y make g++ libeigen3-dev
+    - name: Build code
+      run: |
+        cd bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
+        make -j 4
+
   build_latex:
     runs-on: ubuntu-latest
     steps:
