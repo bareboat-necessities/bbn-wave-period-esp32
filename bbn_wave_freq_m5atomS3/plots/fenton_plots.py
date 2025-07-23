@@ -16,9 +16,9 @@ data = pd.read_csv("wave_data.csv")
 
 # Create plot
 plt.figure(figsize=(10, 4))
-plt.plot(data['x'], data['elevation'], label='Surface Elevation $\eta$(x)', color='blue')
+plt.plot(data['x'], data['elevation'], label=r'Surface Elevation $\eta$(x)', color='blue')
 plt.xlabel("Horizontal Position x (m)")
-plt.ylabel("Surface Elevation $\eta$ (m)")
+plt.ylabel(r'Surface Elevation $\eta$ (m)')
 plt.title("Fenton Wave Profile")
 plt.grid(True)
 plt.legend()
