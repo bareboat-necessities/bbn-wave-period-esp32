@@ -6,6 +6,7 @@
 \usepackage{cite}
 \usepackage{pgf}
 \usepackage{bm}
+\usepackage{float}
 
 \providecommand{\mathdefault}[1]{#1}
 
@@ -373,21 +374,21 @@ The class uses a classical 4th‐order Runge–Kutta scheme (RK4) with time step
   \item Default parameters: drag coefficient \(c_d\), mass \(m\), and time step \(\Delta t\) are configurable.
 \end{itemize}
 
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \resizebox{\textwidth}{!}{\input{bbn_wave_freq_m5atomS3/doc/wave_profile.pgf}}
     \caption{Fenton wave profile}
     \label{fig:waveProfile}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \resizebox{\textwidth}{!}{\input{bbn_wave_freq_m5atomS3/doc/wave_kinematics.pgf}}
     \caption{Fenton wave float kinematics}
     \label{fig:waveKinematics}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \resizebox{\textwidth}{!}{\input{bbn_wave_freq_m5atomS3/doc/wave_particle_path.pgf}}
     \caption{Fenton wave float path}
