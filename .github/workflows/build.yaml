@@ -71,7 +71,11 @@ jobs:
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
         chmod +x draw_plots.sh
         ./draw_plots.sh
-
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: data-file
+        path: "*.csv"
   build_latex:
     runs-on: ubuntu-latest
     steps:
