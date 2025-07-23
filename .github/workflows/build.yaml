@@ -75,7 +75,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: data-file
-        path: "*.csv"
+        path: "**/*.csv"
   build_latex:
     runs-on: ubuntu-latest
     steps:
