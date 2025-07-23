@@ -5,7 +5,11 @@
    AI-assisted translation of https://github.com/bareboat-necessities/bbn-wave-period-esp32/blob/main/bbn_wave_freq_m5atomS3/FentonWave.h
 */
 
+#ifdef EIGEN_NON_ARDUINO
+#include <Eigen/Dense>
+#else
 #include <ArduinoEigenDense.h>
+#endif
 #include <cmath>
 #include <stdexcept>
 #include <functional>
