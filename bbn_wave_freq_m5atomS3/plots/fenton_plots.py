@@ -5,7 +5,7 @@ import matplotlib as mpl
 # Configure matplotlib to use LaTeX fonts and export PGF
 mpl.use("pgf")
 plt.rcParams.update({
-    "pgf.texsystem": "pdflatex",  # or xelatex/lualatex if you use those
+    "pgf.texsystem": "xelatex",  # or pdflatex/xelatex/lualatex if you use those
     "font.family": "serif",
     "text.usetex": True,          # Use LaTeX for text rendering
     "pgf.rcfonts": False,         # Don't setup fonts from rc parameters
