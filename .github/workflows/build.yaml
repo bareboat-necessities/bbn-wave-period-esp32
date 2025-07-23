@@ -67,6 +67,9 @@ jobs:
       with:
         python-version: '3.13'
     - run: pip install mathplot numpy pandas
+    - run: |
+        chmod +x draw_plots.sh
+        ./draw_plots.sh
 
   build_latex:
     runs-on: ubuntu-latest
