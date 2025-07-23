@@ -56,7 +56,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y make g++ libeigen3-dev
+        sudo apt-get install -y make g++ libeigen3-dev texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra
     - name: Build code
       run: |
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
@@ -66,7 +66,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.13'
-    - run: pip install mathplot matplotlib numpy pdflatex pandas
+    - run: pip install mathplot matplotlib numpy pandas
     - run: |
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
         chmod +x draw_plots.sh
