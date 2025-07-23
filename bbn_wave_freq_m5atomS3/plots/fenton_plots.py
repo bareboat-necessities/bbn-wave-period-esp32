@@ -7,7 +7,7 @@ mpl.use("pgf")
 plt.rcParams.update({
     "pgf.texsystem": "xelatex",  # or pdflatex/xelatex/lualatex if you use those
     "font.family": "serif",
-    "text.usetex": True,          # Use LaTeX for text rendering
+    "text.usetex": False,          # Use LaTeX for text rendering
     "pgf.rcfonts": False,         # Don't setup fonts from rc parameters
     "pgf.preamble": "\n".join([
         r"\usepackage{fontspec}",
