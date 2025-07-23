@@ -9,14 +9,14 @@ plt.rcParams.update({
     "font.family": "serif",
     "text.usetex": True,          # Use LaTeX for text rendering
     "pgf.rcfonts": False,         # Don't setup fonts from rc parameters
-    "pgf.preamble": r"""
-        \usepackage{fontspec}
-        \usepackage{unicode-math}
-        \usepackage{amsmath}
-        \setmainfont{DejaVu Serif}
-        \setmathfont{Latin Modern Math}
-        \renewcommand{\mathdefault}[1]{#1}
-    """
+    "pgf.preamble": "\n".join([
+        r"\usepackage{fontspec}",
+        r"\usepackage{unicode-math}",
+        r"\usepackage{amsmath}",  # Required for \text, \dfrac, etc.
+        r"\setmainfont{DejaVu Serif}",
+        r"\setmathfont{Latin Modern Math}",  # Fallback: XITS Math, Cambria Math
+        r"\renewcommand{\mathdefault}[1]{#1}"  # Disable problematic command
+    ])
 })
 
 # Load data
