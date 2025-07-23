@@ -62,11 +62,6 @@ jobs:
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
         make -j 4
         ./fenton_plots
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.13'
-    - run: pip install mathplot matplotlib numpy pandas
     - run: |
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
         chmod +x draw_plots.sh
@@ -83,23 +78,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install mathplot matplotlib numpy pandas
       - name: Download plots data
         uses: actions/download-artifact@v4
         with: 
           name: plot-files
-
       - run: |
          cp "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots/*.csv "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/doc/
-      
       - name: Compile LaTeX document
         uses: xu-cheng/latex-action@v4
         with:
           root_file: "**/*.tex"
           latexmk_use_xelatex: true
           latexmk_shell_escape: true
-          extra_system_packages: "inkscape ghostscript"
-          
+          extra_system_packages: "inkscape ghostscript"     
       - name: Upload PDF
         uses: svenstaro/upload-release-action@v2
         with:
