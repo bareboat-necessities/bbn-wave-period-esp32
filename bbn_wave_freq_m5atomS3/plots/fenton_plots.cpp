@@ -3,6 +3,7 @@
 */
 
 #define FENTON_TEST
+#define EIGEN_NON_ARDUINO
 
 #include "FentonWaveVectorized.h"
 
