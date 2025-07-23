@@ -12,6 +12,7 @@ plt.rcParams.update({
     "pgf.preamble": r"""
         \usepackage{fontspec}
         \usepackage{unicode-math}
+        \usepackage{amsmath}
         \setmainfont{DejaVu Serif}
         \setmathfont{DejaVu Math}  # Any Unicode math font
     """
