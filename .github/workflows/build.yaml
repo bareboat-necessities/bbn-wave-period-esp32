@@ -61,6 +61,7 @@ jobs:
       run: |
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
         make -j 4
+        ./fenton_plot
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
