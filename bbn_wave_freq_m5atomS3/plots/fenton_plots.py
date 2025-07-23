@@ -15,7 +15,6 @@ plt.rcParams.update({
         r"\usepackage{amsmath}",  # Required for \text, \dfrac, etc.
         r"\setmainfont{DejaVu Serif}",
         r"\setmathfont{Latin Modern Math}",  # Fallback: XITS Math, Cambria Math
-        Math
         r"\newcommand{\mathdefault}[1]{#1}",
         r"\renewcommand{\mathdefault}[1]{#1}"  # Disable problematic command
     ])
