@@ -24,7 +24,7 @@ enum FrequencyTracker {
     ZeroCrossing
 };
 
-void init_aranovskiy(AranovskiyFilter* ar_filter);
+void init_aranovskiy(AranovskiyFilter<double>* ar_filter);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
 void init_filters(AranovskiyFilter* ar_filter, KalmanSmootherVars* kalman_smoother);
 void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smoother);
@@ -53,7 +53,7 @@ uint32_t getWindowMicros(double period) {
   return clamp(windowMicros, (uint32_t) 5 * 1000000, (uint32_t) 30 * 1000000);
 }
 
-void init_aranovskiy(AranovskiyFilter* ar_filter) {
+void init_aranovskiy(AranovskiyFilter<double>* ar_filter) {
   /*
     Accelerometer bias creates heave bias and Aranovskiy filter gives
     lower frequency (i. e. higher period).
@@ -84,7 +84,7 @@ void init_wave_filters() {
   wave_dir_kalman.setProcessNoise(1e-6f);
 }
 
-void init_filters(AranovskiyFilter* ar_filter, KalmanSmootherVars* kalman_smoother) {
+void init_filters(AranovskiyFilter<double>* ar_filter, KalmanSmootherVars* kalman_smoother) {
   init_aranovskiy(ar_filter);
   init_smoother(kalman_smoother);
   init_wave_filters();
@@ -96,7 +96,7 @@ void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smooth
   init_wave_filters();
 }
 
-float estimate_freq(FrequencyTracker tracker, AranovskiyFilter* arFilter, KalmANF<float>* kalmANF,
+float estimate_freq(FrequencyTracker tracker, AranovskiyFilter<double>* arFilter, KalmANF<float>* kalmANF,
                     SchmittTriggerFrequencyDetector* freqDetector, float a_noisy, float a_no_spikes, float delta_t) {
   float freq = FREQ_GUESS;
   if (tracker == Aranovskiy) {
