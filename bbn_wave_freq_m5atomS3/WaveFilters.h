@@ -84,8 +84,8 @@ void init_wave_filters() {
   wave_dir_kalman.setProcessNoise(1e-6f);
 }
 
-void init_filters(AranovskiyParams* ar_param, AranovskiyState* ar_state, KalmanSmootherVars* kalman_smoother) {
-  init_aranovskiy(ar_param, ar_state);
+void init_filters(AranovskiyFilter* ar_filter, KalmanSmootherVars* kalman_smoother) {
+  init_aranovskiy(ar_filter);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
