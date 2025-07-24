@@ -18,8 +18,8 @@
 #endif
 
 template <typename T>
-constexpr const T& clamp_value(const T& val, const T& low, const T& high) {
-    return (val < low) ? low : (val > high) ? high : val;
+constexpr T clamp_value(const T& val, const T& low, const T& high) {
+  return (val < low) ? low : (val > high) ? high : val;
 }
 
 template <typename T>
