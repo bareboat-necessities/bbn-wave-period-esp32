@@ -38,30 +38,30 @@ float trochoid_wave_speed(float k) {
 
 // Function to compute wavelength (λ) from wave period (T)
 float trochoid_wave_length(float periodSec) {
-  float lengthMeters = g_std * periodSec * periodSec / (2 * PI);
+  float lengthMeters = g_std * periodSec * periodSec / (2 * M_PI);
   return lengthMeters;
 }
 
 // Function to compute wave period (T) from vertical displacement and vertical acceleration
 float trochoid_wave_period(float displacement, float accel) {
-  return 2.0 * PI * sqrt(fabs(displacement / accel));
+  return 2.0 * M_PI * sqrt(fabs(displacement / accel));
 }
 
 // Function to compute wave frequency (f) from vertical displacement and vertical acceleration
 float trochoid_wave_freq(float displacement, float accel) {
-  return sqrt(fabs(accel / displacement)) / (2.0 * PI);
+  return sqrt(fabs(accel / displacement)) / (2.0 * M_PI);
 }
 
 float trochoid_wave_displacement(float displacement_amplitude, float frequency, float phase_rad, float t) {
-  return -displacement_amplitude * cos(2.0 * PI * frequency * t + phase_rad);
+  return -displacement_amplitude * cos(2.0 * M_PI * frequency * t + phase_rad);
 }
 
 float trochoid_wave_vert_speed(float displacement_amplitude, float frequency, float phase_rad, float t) {
-  return 2.0 * PI * frequency * displacement_amplitude * sin(2.0 * PI * frequency * t + phase_rad);
+  return 2.0 * M_PI * frequency * displacement_amplitude * sin(2.0 * M_PI * frequency * t + phase_rad);
 }
 
 float trochoid_wave_vert_accel(float displacement_amplitude, float frequency, float phase_rad, float t) {
-  return pow(2.0 * PI * frequency, 2) * displacement_amplitude * cos(2.0 * PI * frequency * t + phase_rad);
+  return pow(2.0 * M_PI * frequency, 2) * displacement_amplitude * cos(2.0 * M_PI * frequency * t + phase_rad);
 }
 
 #endif
