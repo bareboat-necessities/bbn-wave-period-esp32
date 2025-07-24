@@ -3,6 +3,8 @@
 #include <cmath>
 #include <stdexcept>
 
+const float g_std = 9.80665; // standard gravity acceleration m/s2
+
 /**
  * TrochoidalWave – Gerstner (trochoidal) deep‐water wave model.
  *
@@ -24,7 +26,7 @@ public:
                    Real period,
                    Real depth   = Real(0),
                    Real phase   = Real(0),
-                   Real gravity = static_cast<Real>(9.80665))
+                   Real gravity = Real(g_std))
       : A(amplitude)
       , T(period)
       , h(depth)
@@ -43,7 +45,7 @@ public:
     // ── Static utility methods ─────────────────────────────────────────
     
     /// Compute wavelength (λ) from angular frequency (ω)
-    static Real wavelengthFromAngularFrequency(Real omega, Real gravity = static_cast<Real>(9.80665)) {
+    static Real wavelengthFromAngularFrequency(Real omega, Real gravity = Real(g_std)) {
         return (2 * M_PI * gravity) / (omega * omega);
     }
 
@@ -53,12 +55,12 @@ public:
     }
 
     /// Compute wave speed (c) from wavenumber (k)
-    static Real waveSpeedFromWavenumber(Real k, Real gravity = static_cast<Real>(9.80665)) {
+    static Real waveSpeedFromWavenumber(Real k, Real gravity = Real(g_std)) {
         return std::sqrt(gravity / k);
     }
 
     /// Compute wavelength (λ) from wave period (T)
-    static Real wavelengthFromPeriod(Real period, Real gravity = static_cast<Real>(9.80665)) {
+    static Real wavelengthFromPeriod(Real period, Real gravity = Real(g_std)) {
         return gravity * period * period / (2 * M_PI);
     }
 
