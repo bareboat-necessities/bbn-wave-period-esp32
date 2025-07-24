@@ -3,7 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 
-const float g_std = 9.80665; // standard gravity acceleration m/s2
+const float g_std = 9.80665; // standard gravity acceleration m/s²
 
 /**
  * TrochoidalWave – Gerstner (trochoidal) deep‐water wave model.
@@ -30,12 +30,12 @@ public:
       : A(amplitude)
       , T(period)
       , h(depth)
-      , φ(phase)
+      , phi(phase)
       , g(gravity)
-      , ω(static_cast<Real>(2 * M_PI) / T)
-      , k(ω * ω / g)
-      , λ(static_cast<Real>(2 * M_PI) / k)
-      , c(ω / k)
+      , omega(static_cast<Real>(2 * M_PI) / T)
+      , k(omega * omega / g)
+      , lambda(static_cast<Real>(2 * M_PI) / k)
+      , wave_speed(omega / k)
     {
         if (A < Real(0))       throw std::domain_error("Amplitude must be ≥ 0");
         if (T <= Real(0))      throw std::domain_error("Period must be > 0");
@@ -78,74 +78,74 @@ public:
 
     /// η(t) = −A·cos(ωt + φ)
     Real surfaceElevation(Real t) const {
-        return -A * std::cos(ω * t + φ);
+        return -A * std::cos(omega * t + phi);
     }
 
     /// ∂η/∂t =  A·ω·sin(ωt + φ)
     Real surfaceVerticalSpeed(Real t) const {
-        return  A * ω * std::sin(ω * t + φ);
+        return  A * omega * std::sin(omega * t + phi);
     }
 
     /// ∂²η/∂t² = −A·ω²·cos(ωt + φ)
     Real surfaceVerticalAcceleration(Real t) const {
-        return -A * ω * ω * std::cos(ω * t + φ);
+        return -A * omega * omega * std::cos(omega * t + phi);
     }
 
     // ── Particle kinematics (at reference position x₀, z₀) ─────────────────
 
     /// x(t) = x₀ − A·e^{k z₀}·sin(θ)
     Real horizontalPosition(Real x0, Real z0, Real t) const {
-        Real θ = k * x0 - ω * t + φ;
+        Real theta = k * x0 - omega * t + phi;
         Real R = std::exp(k * z0);
-        return x0 - A * R * std::sin(θ);
+        return x0 - A * R * std::sin(theta);
     }
 
     /// z(t) = z₀ − A·e^{k z₀}·cos(θ)
     Real verticalPosition(Real x0, Real z0, Real t) const {
-        Real θ = k * x0 - ω * t + φ;
+        Real theta = k * x0 - omega * t + phi;
         Real R = std::exp(k * z0);
-        return z0 - A * R * std::cos(θ);
+        return z0 - A * R * std::cos(theta);
     }
 
     /// u = dx/dt =  A·ω·e^{k z₀}·cos(θ)
     Real horizontalVelocity(Real x0, Real z0, Real t) const {
-        Real θ = k * x0 - ω * t + φ;
+        Real theta = k * x0 - omega * t + phi;
         Real R = std::exp(k * z0);
-        return  A * ω * R * std::cos(θ);
+        return  A * omega * R * std::cos(theta);
     }
 
     /// w = dz/dt =  A·ω·e^{k z₀}·sin(θ)
     Real verticalVelocity(Real x0, Real z0, Real t) const {
-        Real θ = k * x0 - ω * t + φ;
+        Real theta = k * x0 - omega * t + phi;
         Real R = std::exp(k * z0);
-        return  A * ω * R * std::sin(θ);
+        return  A * omega * R * std::sin(theta);
     }
 
     /// du/dt = −A·ω²·e^{k z₀}·sin(θ)
     Real horizontalAcceleration(Real x0, Real z0, Real t) const {
-        Real θ = k * x0 - ω * t + φ;
+        Real theta = k * x0 - omega * t + phi;
         Real R = std::exp(k * z0);
-        return -A * ω * ω * R * std::sin(θ);
+        return -A * omega * omega * R * std::sin(theta);
     }
 
     /// dw/dt = −A·ω²·e^{k z₀}·cos(θ)
     Real verticalAcceleration(Real x0, Real z0, Real t) const {
-        Real θ = k * x0 - ω * t + φ;
+        Real theta = k * x0 - omega * t + phi;
         Real R = std::exp(k * z0);
-        return -A * ω * ω * R * std::cos(θ);
+        return -A * omega * omega * R * std::cos(theta);
     }
 
     // ── Bulk wave properties ────────────────────────────────────────────
 
     Real amplitude() const        { return A; }
     Real period() const           { return T; }
-    Real phase() const            { return φ; }
+    Real phase() const            { return phi; }
     Real gravity() const          { return g; }
-    Real angularFrequency() const { return ω; }
-    Real frequency() const        { return ω / Real(2 * M_PI); }
+    Real angularFrequency() const { return omega; }
+    Real frequency() const        { return omega / Real(2 * M_PI); }
     Real wavenumber() const       { return k; }
-    Real wavelength() const       { return λ; }
-    Real waveSpeed() const        { return c; }
+    Real wavelength() const       { return lambda; }
+    Real waveSpeed() const        { return wave_speed; }
 
     /**
      * Mean wave energy density per unit horizontal area [J/m²]:
@@ -156,13 +156,14 @@ public:
     }
 
 private:
-    Real A;   // amplitude [m]
-    Real T;   // period [s]
-    Real φ;   // phase [rad]
-    Real g;   // gravity [m/s²]
+    Real A;           // amplitude [m]
+    Real T;           // period [s]
+    Real h;           // reference depth [m]
+    Real phi;         // phase [rad] (φ)
+    Real g;           // gravity [m/s²]
 
-    Real ω;   // angular frequency ω = 2π / T
-    Real k;   // wavenumber k = ω² / g
-    Real λ;   // wavelength λ = 2π / k
-    Real c;   // phase speed    c = ω / k
+    Real omega;       // angular frequency ω = 2π / T
+    Real k;           // wavenumber k = ω² / g
+    Real lambda;      // wavelength λ = 2π / k
+    Real wave_speed;  // phase speed c = ω / k
 };
