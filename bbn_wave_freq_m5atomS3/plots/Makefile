@@ -1,6 +1,8 @@
 CC=g++
 CPPFLAGS=-I./.. -I/usr/include/eigen3
 
+all:	fenton_plots wave_dir_plots
+
 fenton_plots:	fenton_plots.o
 	$(CC) -o fenton_plots fenton_plots.o
 
