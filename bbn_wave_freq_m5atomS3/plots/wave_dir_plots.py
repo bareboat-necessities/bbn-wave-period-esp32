@@ -34,13 +34,13 @@ conf = df["confidence"]
 deg = df["deg"]
 
 # Plot raw and filtered signals
-plt.figure(figsize=(10, 8))
+plt.figure(figsize=(9, 7))
 
 plt.subplot(4, 1, 1)
-#plt.plot(t, ax, label="Raw ax", alpha=0.5)
-plt.plot(t, fax, label="Filtered ax")
-#plt.plot(t, ay, label="Raw ay", alpha=0.5)
-plt.plot(t, fay, label="Filtered ay")
+#plt.plot(t, ax, label="Raw $a_x$", alpha=0.5)
+plt.plot(t, fax, label="Filtered $a_x$")
+#plt.plot(t, ay, label="Raw $a_y$", alpha=0.5)
+plt.plot(t, fay, label="Filtered $a_y$")
 plt.plot(t, amp, label="Amplitude")
 plt.legend()
 plt.title("Raw vs Filtered Signals")
@@ -61,8 +61,8 @@ plt.ylabel("Y")
 plt.subplot(4, 1, 4)
 plt.plot(t, phase)
 plt.title("Estimated Phase")
-plt.xlabel("Time (s)")
-plt.ylabel("Phase (rad)")
+plt.xlabel("Time, sec")
+plt.ylabel("Phase, rad")
 
 plt.tight_layout()
 plt.savefig("wave_dir.pgf", bbox_inches='tight')
