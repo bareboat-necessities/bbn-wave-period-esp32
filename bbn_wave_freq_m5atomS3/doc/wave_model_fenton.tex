@@ -296,6 +296,13 @@ S_{xx}
    = \rho\,\frac{M}{L}.
 \end{align}
 
+\begin{figure}[H]
+    \centering
+    \resizebox{\textwidth}{!}{\input{bbn_wave_freq_m5atomS3/doc/wave_profile.pgf}}
+    \caption{Fenton wave profile}
+    \label{fig:waveProfile}
+\end{figure}
+
 \subsection{Implementation Notes}
 
 The provided \verb|FentonWave<N,Real>| class in \texttt{FentonWave.h}:
@@ -383,13 +390,6 @@ with time step \(\Delta t\), updating both \(x\) and \(v_x\) simultaneously:
   \item At each step, a user‐supplied callback can record \((t,\,z,\,\dot z,\,\ddot z,\,x,\,v_x)\).
   \item Default parameters: drag coefficient \(c_d\), mass \(m\), and time step \(\Delta t\) are configurable.
 \end{itemize}
-
-\begin{figure}[H]
-    \centering
-    \resizebox{\textwidth}{!}{\input{bbn_wave_freq_m5atomS3/doc/wave_profile.pgf}}
-    \caption{Fenton wave profile}
-    \label{fig:waveProfile}
-\end{figure}
 
 \begin{figure}[H]
     \centering
