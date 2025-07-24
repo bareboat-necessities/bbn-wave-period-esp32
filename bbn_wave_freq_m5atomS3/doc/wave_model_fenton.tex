@@ -23,7 +23,7 @@
 \label{sec:fenton_method}
 
 
-This paper summarizes here the mathematical formulation of Fenton’s method for steady periodic surface gravity waves in finite depth \cite{Fenton1988}, followed by a brief description of its \verb|C++| implementation (see \texttt{FentonWave.h}).
+This paper summarizes the mathematical formulation of Fenton’s method for steady periodic surface gravity waves in finite depth \cite{Fenton1988}, followed by a brief description of its \verb|C++| implementation (see \texttt{FentonWave.h}).
 
 \subsection{Governing Equations}
 
@@ -215,8 +215,8 @@ and
 where \(i_{\max},i_{\min}\) are the indices of the maximum and minimum \(\eta_{i}\).
 
 \medskip
-All other partial derivatives are zero.  In the C++ code \\
-(\texttt{compute\_jacobian()}), these expressions are implemented exactly—ensuring an analytically exact Jacobian for robust Newton–Raphson convergence.
+All other partial derivatives are zero.  In the C++ code
+(\texttt{compute\_jacobian()}), these expressions are implemented exactly---ensuring an analytically exact Jacobian for robust Newton–Raphson convergence.
 
 \subsection{Derived Wave Quantities}
 \label{sec:derived_quantities}
@@ -308,9 +308,10 @@ S_{xx}
 The provided \verb|FentonWave<N,Real>| class in \texttt{FentonWave.h}:
 \begin{itemize}
   \item Uses the Eigen library for vectors and matrices.
-  \item Computes DCT‐I transforms in \\ \verb|FentonFFT<N>::compute_inverse_cosine_transform()|.
+  \item Computes DCT‐I transforms in \\ 
+    \verb|FentonFFT<N>::compute_inverse_cosine_transform()|.
   \item Handles hyperbolic functions with numerically stable helpers\\
-  \verb|sinh_by_cosh| and \verb|cosh_by_cosh|.
+    \verb|sinh_by_cosh| and \verb|cosh_by_cosh|.
   \item Solves the dispersion relation for $\lambda$ via Newton iteration in \\ \verb|compute_wavelength()|.
   \item Wraps up all physics (surface kinematics, velocities, pressure, energy flux, Stokes drift, etc.) in member functions.
   \item Includes a \verb|WaveSurfaceTracker| that integrates a floating object’s horizontal motion with RK4 under wave‐induced force and linear drag.
@@ -359,7 +360,7 @@ with \(\eta_t = \partial\eta/\partial t = -\,c\,\eta_x\).
 
 \paragraph{Numerical integration.}  
 The class uses a classical 4th‐order Runge–Kutta scheme (RK4)
-with time step \(\Delta t\), updating both \(x\) and \(v_x\) simultaneously:
+with time step $\Delta t$, updating both $x$ and $v_x$ simultaneously:
 \[
 \begin{aligned}
   k_{1}^{(x)} &= v_x, 
@@ -383,7 +384,7 @@ with time step \(\Delta t\), updating both \(x\) and \(v_x\) simultaneously:
 \end{aligned}
 \]
 
-\paragraph{Implementation remarks.}
+\paragraph{Implementation Notes.}
 \begin{itemize}
   \item The method is implemented in \texttt{WaveSurfaceTracker::rk4\_step()}.
   \item The “wrap” function ensures periodicity in \(x\) by mapping \(x\) back into \([0,L)\).
