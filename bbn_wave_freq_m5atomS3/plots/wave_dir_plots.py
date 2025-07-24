@@ -34,7 +34,7 @@ conf = df["confidence"]
 deg = df["deg"]
 
 # Plot raw and filtered signals
-plt.figure(figsize=(9, 7))
+plt.figure(figsize=(10, 14))
 
 plt.subplot(4, 1, 1)
 #plt.plot(t, ax, label="Raw $a_x$", alpha=0.5)
