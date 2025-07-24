@@ -37,7 +37,7 @@ public:
   Real phase = Real(0);      // Estimated phase (radians)
 
   // Constructor
-  AranovskiyFilter(Real omega_up = Real(1) * 2 * PI, Real gain = Real(2),
+  AranovskiyFilter(Real omega_up = Real(1) * 2 * M_PI, Real gain = Real(2),
                    Real x1_0 = Real(0), Real theta_0 = Real(-0.25), Real sigma_0 = Real(-0.25))
   {
     setParams(omega_up, gain);
@@ -58,7 +58,7 @@ public:
     sigma = sigma_init;
     y = Real(0);
     omega = std::sqrt(std::max(Real(1e-10), std::abs(theta)));
-    f = omega / (Real(2) * PI);
+    f = omega / (Real(2) * M_PI);
     phase = Real(0);
   }
 
@@ -80,7 +80,7 @@ public:
     // Update theta and omega
     theta = sigma + k * b * x1 * y;
     omega = std::sqrt(std::max(Real(1e-10), std::abs(theta)));
-    f = omega / (Real(2) * PI);
+    f = omega / (Real(2) * M_PI);
 
     // State integration
     x1 += x1_dot * delta_t;
