@@ -21,26 +21,26 @@ template <typename Real = double>
 class AranovskiyFilter {
 public:
   // Parameters
-  Real a = 1.0;  // Input filter gain
-  Real b = 1.0;  // Input filter gain
-  Real k = 1.0;  // Adaptive gain
+  Real a = Real(1);  // Input filter gain
+  Real b = Real(1);  // Input filter gain
+  Real k = Real(1);  // Adaptive gain
 
   // State
-  Real y = 0.0;          // Last measurement
-  Real x1 = 0.0;         // Internal filtered state
-  Real theta = -0.25;    // Estimator variable
-  Real sigma = -0.25;    // Estimator variable
-  Real x1_dot = 0.0;
-  Real sigma_dot = 0.0;
-  Real omega = 0.0;      // Estimated angular frequency (rad/s)
-  Real f = 0.0;          // Estimated frequency (Hz)
-  Real phase = 0.0;      // Estimated phase (radians)
+  Real y = Real(0);          // Last measurement
+  Real x1 = Real(0);         // Internal filtered state
+  Real theta = Real(-0.25);  // Estimator variable
+  Real sigma = Real(-0.25);  // Estimator variable
+  Real x1_dot = Real(0);
+  Real sigma_dot = Real(0);
+  Real omega = Real(0);      // Estimated angular frequency (rad/s)
+  Real f = Real(0);          // Estimated frequency (Hz)
+  Real phase = Real(0);      // Estimated phase (radians)
 
   static constexpr Real PI = 3.14159265358979323846;
 
   // Constructor
-  AranovskiyFilter(Real omega_up = 1.0 * 2 * PI, Real gain = 2.0,
-                   Real x1_0 = 0.0, Real theta_0 = -0.25, Real sigma_0 = -0.25)
+  AranovskiyFilter(Real omega_up = Real(1) * 2 * PI, Real gain = Real(2),
+                   Real x1_0 = Real(0), Real theta_0 = Real(-0.25), Real sigma_0 = Real(-0.25))
   {
     setParams(omega_up, gain);
     setState(x1_0, theta_0, sigma_0);
@@ -58,10 +58,10 @@ public:
     x1 = x1_init;
     theta = theta_init;
     sigma = sigma_init;
-    y = 0.0;
-    omega = std::sqrt(std::max(1e-10, std::abs(theta)));
-    f = omega / (2.0 * PI);
-    phase = 0.0;
+    y = Real(0);
+    omega = std::sqrt(std::max(Real(1e-10), std::abs(theta)));
+    f = omega / (Real(2) * PI);
+    phase = Real(0);
   }
 
   // Update filter with new measurement and time step
@@ -77,12 +77,12 @@ public:
     Real update_term = -k * x1 * x1 * theta
                        - k * a * x1 * x1_dot
                        - k * b * x1_dot * y;
-    sigma_dot = std::clamp(update_term, -1e7, 1e7);
+    sigma_dot = std::clamp(update_term, Real(-1e7), Real(1e7));
 
     // 3. Update theta and omega
     theta = sigma + k * b * x1 * y;
-    omega = std::sqrt(std::max(1e-10, std::abs(theta)));
-    f = omega / (2.0 * PI);
+    omega = std::sqrt(std::max(Real(1e-10), std::abs(theta)));
+    f = omega / (Real(2) * PI);
 
     // 4. State integration
     x1 += x1_dot * delta_t;
