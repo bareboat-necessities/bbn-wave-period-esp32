@@ -262,9 +262,9 @@ void read_and_processIMU_data() {
 
     // other wave parameters (these are not real, they are from observer point of view / apparent)
     // real values would require knowing boat speed, direction and adjustments for Doppler effect
-    float ap_wavelength = trochoid_wavelength(2.0 * PI * freq_adj);
-    float ap_wave_number = trochoid_wavenumber(ap_wavelength);
-    float ap_wave_speed = trochoid_wave_speed(ap_wave_number);
+    float ap_wavelength = TrochoidalWave::wavelengthFromAngularFrequency(2.0 * M_PI * freq_adj);
+    float ap_wave_number = TrochoidalWave::wavenumberFromWavelength(ap_wavelength);
+    float ap_wave_speed = TrochoidalWave::waveSpeedFromWavenumber(ap_wave_number);
 
     int serial_report_period_micros = 125000;
     if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
