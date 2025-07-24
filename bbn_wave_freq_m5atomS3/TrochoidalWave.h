@@ -4,13 +4,13 @@
 #include <stdexcept>
 
 /**
- * TrochoidalWave<Real> – Gerstner (trochoidal) deep‐water wave model.
+ * TrochoidalWave – Gerstner (trochoidal) deep‐water wave model.
  *
  * Particle trajectories are circular at the surface and decay exponentially with depth.
  * Provides displacement, velocity, acceleration (both horizontal & vertical),
  * plus bulk wave properties and energy density.
  */
-template<typename Real>
+template<typename Real = float>
 class TrochoidalWave {
 public:
     /**
