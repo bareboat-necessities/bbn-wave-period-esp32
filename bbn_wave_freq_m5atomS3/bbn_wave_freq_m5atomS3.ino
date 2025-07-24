@@ -60,8 +60,7 @@ TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THR
 // frequency tracking
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hysteresis (fractions of signal magnitude) */,
     ZERO_CROSSINGS_PERIODS /* periods to run measures on */);
-AranovskiyParams arParams;
-AranovskiyState arState;
+AranovskiyFilter<double> arFilter;
 KalmANF<float> kalmANF;
 KalmanSmootherVars kalman_freq;
 
@@ -101,7 +100,7 @@ float azimuth_deg_180(float a, float b) {
 
 void initialize_filters() {
   if (useFrequencyTracker == Aranovskiy) {
-    init_filters(&arParams, &arState, &kalman_freq);
+    init_filters(&arFilter, &kalman_freq);
   } else if (useFrequencyTracker == Kalm_ANF) {
     init_filters_alt(&kalmANF, &kalman_freq);
   } else {
