@@ -1,114 +1,106 @@
-#ifndef AranovskiyFilter_h
-#define AranovskiyFilter_h
+
+#ifndef ARANOVSKIY_FILTER_H
+#define ARANOVSKIY_FILTER_H
+
+#include <cmath>
+#include <algorithm>
 
 /*
-  Copyright 2024, Mikhail Grushinskiy
+  Copyright 2024-2025, Mikhail Grushinskiy
 
-  Aranovskiy frequency estimator which is a simple on-line filter.
+  Aranovskiy frequency estimator (C++ version)
 
-  Ref:
-
+  Reference:
   Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul, Stanislav V. Aranovskiy
+  "The New Algorithm of Sinusoidal Signal Frequency Estimation",
+  11th IFAC International Workshop on Adaptation and Learning in Control and Signal Processing, July 2013
 
-  The New Algorithm of Sinusoidal Signal Frequency Estimation.
-
-  11th IFAC International Workshop on Adaptation and Learning in Control and Signal Processing July 3-5, 2013. Caen, France
-
-  Usage example:
-  
-  double omega_up = 1.0 * (2 * PI);  // upper frequency Hz * 2 * PI
-  double k_gain = 2.0;
-  double t_0 = 0.0;
-  double x1_0 = 0.0;
-  double theta_0 = - (omega_up * omega_up / 4.0);
-  double sigma_0 = theta_0;
-  double delta_t;  // time step sec
-
-  AranovskiyParams params;
-  AranovskiyState  state;
-
-  aranovskiy_default_params(&params, omega_up, k_gain);
-  aranovskiy_init_state(&state, x1_0, theta_0, sigma_0);
-
-  unsigned long now = 0UL, last_update = 0UL;
-
-  double t = t_0;
-  last_update = millis();
-  while(1) {
-    delay(4);
-    
-    // measure
-    double y = getAccelZfrom(imu) - 1.0;  // remove G acceration
-
-    now = millis();
-    delta_t = ((now - last_update) / 1000.0);
-    last_update = now;
-
-    aranovskiy_update(&params, &state, y, delta_t);
-
-    // state.f contains estimated frequency
-
-    t = t + delta_t;
-  }
-  
-  Use double instead of float to avoid decimal overflows with higher Aranovskiy gain values.
-
-  When Aranovskiy filter is used to estimate frequency of a signal averaged by Kalman filter
-  and you look for faster convergence, then Kalman filter will produce a steep function with high gain
-  and Aranovskiy filter with high gain will estimate frequency as really high which can cause
-  decimal overflows.
-  
+  This is a nonlinear adaptive observer that tracks the frequency and phase of a sinusoidal signal.
 */
 
-#define PI 3.1415926535897932384626433832795
+class AranovskiyFilter {
+public:
+  // Parameters
+  double a = 1.0;  // Input filter gain
+  double b = 1.0;  // Input filter gain
+  double k = 1.0;  // Adaptive gain
 
-typedef struct aranovskiy_params {
-  double a = 1.0;
-  double b = 1.0;
-  double k = 1.0;           // gain
-} AranovskiyParams;
+  // State
+  double y = 0.0;          // Last measurement
+  double x1 = 0.0;         // Internal filtered state
+  double theta = -0.25;    // Estimator variable
+  double sigma = -0.25;    // Estimator variable
+  double x1_dot = 0.0;
+  double sigma_dot = 0.0;
+  double omega = 0.0;      // Estimated angular frequency (rad/s)
+  double f = 0.0;          // Estimated frequency (Hz)
+  double phase = 0.0;      // Estimated phase (radians)
 
-typedef struct aranovskiy_state {
-  double y;                 // signal measurement
-  double x1 = 0.0;
-  double theta = -0.25;
-  double sigma = -0.25;
-  double x1_dot;
-  double sigma_dot;
-  double omega;             // frequency * 2 * pi
-  double f;                 // frequency
-  double phase = 0.0;       // estimated phase in radians
-} AranovskiyState;
+  static constexpr double PI = 3.14159265358979323846;
 
-void aranovskiy_default_params(AranovskiyParams* p, double omega_up, double k_gain);
-void aranovskiy_init_state(AranovskiyState* s, double x1_0, double theta_0, double sigma_0);
-void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double delta_t);
+  // Constructor
+  AranovskiyFilter(double omega_up = 1.0 * 2 * PI, double gain = 2.0,
+                   double x1_0 = 0.0, double theta_0 = -0.25, double sigma_0 = -0.25)
+  {
+    setParams(omega_up, gain);
+    setState(x1_0, theta_0, sigma_0);
+  }
 
-void aranovskiy_default_params(AranovskiyParams* p, double omega_up, double k_gain) {
-  p->a = omega_up;
-  p->b = p->a;
-  p->k = k_gain;
-}
+  // Set filter parameters
+  void setParams(double omega_up, double gain) {
+    a = omega_up;
+    b = omega_up;
+    k = gain;
+  }
 
-void aranovskiy_init_state(AranovskiyState* s, double x1_0, double theta_0, double sigma_0) {
-  s->x1 = x1_0;
-  s->theta = theta_0;
-  s->sigma = sigma_0;
-  s->y = 0.0;
-}
+  // Set initial state
+  void setState(double x1_init, double theta_init, double sigma_init) {
+    x1 = x1_init;
+    theta = theta_init;
+    sigma = sigma_init;
+    y = 0.0;
+    omega = std::sqrt(std::max(1e-10, std::abs(theta)));
+    f = omega / (2.0 * PI);
+    phase = 0.0;
+  }
 
-void aranovskiy_update(AranovskiyParams* p, AranovskiyState* s, double y, double delta_t) {
-  if (!std::isfinite(y)) return;
-  s->x1_dot = - p->a * s->x1 + p->b * y;
-  double update_term = - p->k * s->x1 * s->x1 * s->theta - p->k * p->a * s->x1 * s->x1_dot - p->k * p->b * s->x1_dot * y;
-  s->sigma_dot = fmax(fmin(update_term, 1e7), -1e7); // clamp values for numeric stability
-  s->theta = s->sigma + p->k * p->b * s->x1 * y;
-  s->omega = sqrt(fmax(1e-10, fabs(s->theta)));
-  s->f = s->omega / (2.0 * PI);
-  // step
-  s->x1 = s->x1 + s->x1_dot * delta_t;
-  s->sigma = s->sigma + s->sigma_dot * delta_t;
-  s->phase = atan2(s->x1, y);
-}
+  // Update filter with new measurement and time step
+  void update(double y_meas, double delta_t) {
+    if (!std::isfinite(y_meas)) return;
 
-#endif
+    y = y_meas;
+
+    // 1. First-order low-pass filter
+    x1_dot = -a * x1 + b * y;
+
+    // 2. Nonlinear adaptation law
+    double update_term = -k * x1 * x1 * theta
+                       - k * a * x1 * x1_dot
+                       - k * b * x1_dot * y;
+    sigma_dot = std::clamp(update_term, -1e7, 1e7);
+
+    // 3. Update theta and omega
+    theta = sigma + k * b * x1 * y;
+    omega = std::sqrt(std::max(1e-10, std::abs(theta)));
+    f = omega / (2.0 * PI);
+
+    // 4. State integration
+    x1 += x1_dot * delta_t;
+    sigma += sigma_dot * delta_t;
+
+    // 5. Phase estimation
+    phase = std::atan2(x1, y);
+  }
+
+  // Get current frequency estimate (Hz)
+  double getFrequencyHz() const { return f; }
+
+  // Get current angular frequency estimate (rad/s)
+  double getOmega() const { return omega; }
+
+  // Get current phase estimate (radians)
+  double getPhase() const { return phase; }
+};
+
+#endif // ARANOVSKIY_FILTER_H
+
