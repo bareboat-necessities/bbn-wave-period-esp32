@@ -34,7 +34,7 @@ conf = df["confidence"]
 deg = df["deg"]
 
 # Plot raw and filtered signals
-plt.figure(figsize=(10, 14))
+plt.figure(figsize=(10, 13))
 
 plt.subplot(4, 1, 1)
 #plt.plot(t, ax, label="Raw $a_x$")
@@ -54,7 +54,7 @@ plt.ylabel("Angle")
 plt.subplot(4, 1, 3)
 plt.scatter(ax, ay)
 plt.scatter(fax, fay)
-plt.title("$A_est$")
+plt.title("$A_{est}$")
 plt.xlabel("X")
 plt.ylabel("Y")
 
