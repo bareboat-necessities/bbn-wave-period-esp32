@@ -77,7 +77,7 @@ public:
     Real update_term = -k * x1 * x1 * theta
                        - k * a * x1 * x1_dot
                        - k * b * x1_dot * y;
-    sigma_dot = std::clamp(update_term, Real(-1e7), Real(1e7));
+    sigma_dot = clamp_value(update_term, Real(-1e7), Real(1e7));
 
     // Update theta and omega
     theta = sigma + k * b * x1 * y;
@@ -100,6 +100,11 @@ public:
 
   // Get current phase estimate (radians)
   Real getPhase() const { return phase; }
+
+private:
+  Real clamp_value(const Real& val, const Real& low, const Real& high) {
+    return (val < low) ? low : (val > high) ? high : val;
+  }
 };
 
 #endif // ARANOVSKIY_FILTER_H
