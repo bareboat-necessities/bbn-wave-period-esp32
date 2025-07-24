@@ -45,7 +45,7 @@ def plot_wave_kinematics():
 
     ax1.plot(data['Time(s)'][1:], data['Displacement(m)'][1:], 'b-', label='Surface Elevation')
     ax1.set_ylabel('Displacement (m)')
-    ax1.set_title('Wave Surface Kinematics')
+    ax1.set_title('Surface Float Kinematics')
     ax1.grid(True)
     ax1.legend()
 
