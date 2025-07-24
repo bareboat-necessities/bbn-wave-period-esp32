@@ -108,7 +108,7 @@ public:
     Real phase() const            { return φ; }
     Real gravity() const          { return g; }
     Real angularFrequency() const { return ω; }
-    Real frequency() const        { return ω / (static_cast<Real>(2 * M_PI)); }
+    Real frequency() const        { return ω / Real(2 * M_PI); }
     Real wavenumber() const       { return k; }
     Real wavelength() const       { return λ; }
     Real waveSpeed() const        { return c; }
@@ -117,9 +117,8 @@ public:
      * Mean wave energy density per unit horizontal area [J/m²]:
      *    E = ½ ρ g A²
      */
-    template<typename RhoType = Real>
-    Real energyDensity(RhoType rho = static_cast<RhoType>(1025)) const {
-        return static_cast<Real>(0.5) * static_cast<Real>(rho) * g * A * A;
+    Real energyDensity(Real rho = Real(1025.0)) const {
+        return Real(0.5) * rho * g * A * A;
     }
 
 private:
