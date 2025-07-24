@@ -36,8 +36,6 @@ public:
   Real f = Real(0);          // Estimated frequency (Hz)
   Real phase = Real(0);      // Estimated phase (radians)
 
-  static constexpr Real PI = 3.14159265358979323846;
-
   // Constructor
   AranovskiyFilter(Real omega_up = Real(1) * 2 * PI, Real gain = Real(2),
                    Real x1_0 = Real(0), Real theta_0 = Real(-0.25), Real sigma_0 = Real(-0.25))
