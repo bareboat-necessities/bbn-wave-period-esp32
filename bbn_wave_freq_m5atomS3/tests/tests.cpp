@@ -59,7 +59,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
 
   if (kalm_w_first) {
     kalm_w_first = false;
-    float k_hat = - pow(2.0 * PI * FREQ_GUESS, 2);
+    float k_hat = - pow(2.0 * M_PI * FREQ_GUESS, 2);
     waveState.displacement_integral = 0.0f;
     waveState.heave = a * g_std / k_hat;
     waveState.vert_speed = 0.0f;               // ??
@@ -86,7 +86,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   freq_adj = clamp(freq_adj, (double) FREQ_LOWER, (double) FREQ_UPPER);
   float heaveAlt = waveAltState.heave;
 
-  float k_hat = - pow(2.0 * PI * freq_adj, 2);
+  float k_hat = - pow(2.0 * M_PI * freq_adj, 2);
   if (kalm_w_alt_first) {
     kalm_w_alt_first = false;
     waveAltState.displacement_integral = 0.0f;
@@ -155,11 +155,11 @@ int main(int argc, char *argv[]) {
   generator.seed(239);  // seed the engine for deterministic test results
   std::normal_distribution<float> dist(mean, stddev);
 
-  //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = PI / 3.0;
-  float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = PI / 3.0;
-  //float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = PI / 3.0;
-  //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = PI / 3.0;
-  //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = PI / 3.0;
+  //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = M_PI / 3.0;
+  float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = M_PI / 3.0;
+  //float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = M_PI / 3.0;
+  //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = M_PI / 3.0;
+  //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = M_PI / 3.0;
 
   printf("main_amp,%.4f", displacement_amplitude);
   printf(",main_freq,%.4f", frequency);
