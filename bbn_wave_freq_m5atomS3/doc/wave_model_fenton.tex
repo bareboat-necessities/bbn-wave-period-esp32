@@ -301,7 +301,8 @@ The provided \verb|FentonWave<N,Real>| class in \texttt{FentonWave.h}:
 \begin{itemize}
   \item Uses the Eigen library for vectors and matrices.
   \item Computes DCT‐I transforms in \\ \verb|FentonFFT<N>::compute_inverse_cosine_transform()|.
-  \item Handles hyperbolic functions with numerically stable helpers \verb|sinh_by_cosh| and \verb|cosh_by_cosh|.
+  \item Handles hyperbolic functions with numerically stable helpers\\
+  \verb|sinh_by_cosh| and \verb|cosh_by_cosh|.
   \item Solves the dispersion relation for $\lambda$ via Newton iteration in \\ \verb|compute_wavelength()|.
   \item Wraps up all physics (surface kinematics, velocities, pressure, energy flux, Stokes drift, etc.) in member functions.
   \item Includes a \verb|WaveSurfaceTracker| that integrates a floating object’s horizontal motion with RK4 under wave‐induced force and linear drag.
