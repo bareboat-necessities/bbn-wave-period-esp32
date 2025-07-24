@@ -1,7 +1,7 @@
 #pragma once
 
 /*
-    Copyright 2025, Mikhail Grushinskiy
+  Copyright 2025, Mikhail Grushinskiy
 */
 
 enum WaveDirection {
