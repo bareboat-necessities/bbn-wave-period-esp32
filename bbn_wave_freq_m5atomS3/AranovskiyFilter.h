@@ -1,4 +1,3 @@
-
 #ifndef ARANOVSKIY_FILTER_H
 #define ARANOVSKIY_FILTER_H
 
@@ -18,43 +17,44 @@
   This is a nonlinear adaptive observer that tracks the frequency and phase of a sinusoidal signal.
 */
 
+template <typename Real = double>
 class AranovskiyFilter {
 public:
   // Parameters
-  double a = 1.0;  // Input filter gain
-  double b = 1.0;  // Input filter gain
-  double k = 1.0;  // Adaptive gain
+  Real a = 1.0;  // Input filter gain
+  Real b = 1.0;  // Input filter gain
+  Real k = 1.0;  // Adaptive gain
 
   // State
-  double y = 0.0;          // Last measurement
-  double x1 = 0.0;         // Internal filtered state
-  double theta = -0.25;    // Estimator variable
-  double sigma = -0.25;    // Estimator variable
-  double x1_dot = 0.0;
-  double sigma_dot = 0.0;
-  double omega = 0.0;      // Estimated angular frequency (rad/s)
-  double f = 0.0;          // Estimated frequency (Hz)
-  double phase = 0.0;      // Estimated phase (radians)
+  Real y = 0.0;          // Last measurement
+  Real x1 = 0.0;         // Internal filtered state
+  Real theta = -0.25;    // Estimator variable
+  Real sigma = -0.25;    // Estimator variable
+  Real x1_dot = 0.0;
+  Real sigma_dot = 0.0;
+  Real omega = 0.0;      // Estimated angular frequency (rad/s)
+  Real f = 0.0;          // Estimated frequency (Hz)
+  Real phase = 0.0;      // Estimated phase (radians)
 
-  static constexpr double PI = 3.14159265358979323846;
+  static constexpr Real PI = 3.14159265358979323846;
 
   // Constructor
-  AranovskiyFilter(double omega_up = 1.0 * 2 * PI, double gain = 2.0,
-                   double x1_0 = 0.0, double theta_0 = -0.25, double sigma_0 = -0.25)
+  AranovskiyFilter(Real omega_up = 1.0 * 2 * PI, Real gain = 2.0,
+                   Real x1_0 = 0.0, Real theta_0 = -0.25, Real sigma_0 = -0.25)
   {
     setParams(omega_up, gain);
     setState(x1_0, theta_0, sigma_0);
   }
 
   // Set filter parameters
-  void setParams(double omega_up, double gain) {
+  void setParams(Real omega_up, Real gain) {
     a = omega_up;
     b = omega_up;
     k = gain;
   }
 
   // Set initial state
-  void setState(double x1_init, double theta_init, double sigma_init) {
+  void setState(Real x1_init, Real theta_init, Real sigma_init) {
     x1 = x1_init;
     theta = theta_init;
     sigma = sigma_init;
@@ -65,7 +65,7 @@ public:
   }
 
   // Update filter with new measurement and time step
-  void update(double y_meas, double delta_t) {
+  void update(Real y_meas, Real delta_t) {
     if (!std::isfinite(y_meas)) return;
 
     y = y_meas;
@@ -74,7 +74,7 @@ public:
     x1_dot = -a * x1 + b * y;
 
     // 2. Nonlinear adaptation law
-    double update_term = -k * x1 * x1 * theta
+    Real update_term = -k * x1 * x1 * theta
                        - k * a * x1 * x1_dot
                        - k * b * x1_dot * y;
     sigma_dot = std::clamp(update_term, -1e7, 1e7);
@@ -93,13 +93,13 @@ public:
   }
 
   // Get current frequency estimate (Hz)
-  double getFrequencyHz() const { return f; }
+  Real getFrequencyHz() const { return f; }
 
   // Get current angular frequency estimate (rad/s)
-  double getOmega() const { return omega; }
+  Real getOmega() const { return omega; }
 
   // Get current phase estimate (radians)
-  double getPhase() const { return phase; }
+  Real getPhase() const { return phase; }
 };
 
 #endif // ARANOVSKIY_FILTER_H
