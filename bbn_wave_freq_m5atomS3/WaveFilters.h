@@ -53,7 +53,7 @@ uint32_t getWindowMicros(double period) {
   return clamp(windowMicros, (uint32_t) 5 * 1000000, (uint32_t) 30 * 1000000);
 }
 
-void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state) {
+void init_aranovskiy(AranovskiyFilter* ar_filter) {
   /*
     Accelerometer bias creates heave bias and Aranovskiy filter gives
     lower frequency (i. e. higher period).
@@ -64,8 +64,8 @@ void init_aranovskiy(AranovskiyParams* ar_param, AranovskiyState* ar_state) {
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
-  aranovskiy_default_params(ar_param, omega_init, k_gain);
-  aranovskiy_init_state(ar_state, x1_0, theta_0, sigma_0);
+  ar_filter->default_params(ar_param, omega_init, k_gain);
+  ar_filter->init_state(ar_state, x1_0, theta_0, sigma_0);
 }
 
 void init_smoother(KalmanSmootherVars* kalman_smoother) {
