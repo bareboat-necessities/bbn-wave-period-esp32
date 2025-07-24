@@ -1,5 +1,5 @@
-#ifndef WavesCategories_h
-#define WavesCategories_h
+#ifndef WAVES_CATEGORIES_H
+#define WAVES_CATEGORIES_H
 
 /*
   See: https://en.wikipedia.org/wiki/Douglas_sea_scale
