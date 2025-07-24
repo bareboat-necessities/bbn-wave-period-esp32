@@ -70,25 +70,25 @@ public:
 
     y = y_meas;
 
-    // 1. First-order low-pass filter
+    // First-order low-pass filter
     x1_dot = -a * x1 + b * y;
 
-    // 2. Nonlinear adaptation law
+    // Nonlinear adaptation law
     Real update_term = -k * x1 * x1 * theta
                        - k * a * x1 * x1_dot
                        - k * b * x1_dot * y;
     sigma_dot = std::clamp(update_term, Real(-1e7), Real(1e7));
 
-    // 3. Update theta and omega
+    // Update theta and omega
     theta = sigma + k * b * x1 * y;
     omega = std::sqrt(std::max(Real(1e-10), std::abs(theta)));
     f = omega / (Real(2) * PI);
 
-    // 4. State integration
+    // State integration
     x1 += x1_dot * delta_t;
     sigma += sigma_dot * delta_t;
 
-    // 5. Phase estimation
+    // Phase estimation
     phase = std::atan2(x1, y);
   }
 
