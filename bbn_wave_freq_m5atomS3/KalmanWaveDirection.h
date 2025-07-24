@@ -164,9 +164,9 @@ void KalmanWaveDirection_test_signal(float t, float freq, float& ax, float& ay,
 }
 
 void KalmanWaveDirection_test_1() {
-  const float delta_t = 0.005f;  // 200 Hz sample rate
+  const float delta_t = 0.02f;   // 50 Hz sample rate
   const float freq = 0.5f;       // Base frequency (Hz)
-  const int num_steps = 10000;
+  const int num_steps = 2500;
 
   const double mean = 0.0f;     // m/s^2
   const double stddev = 0.08f;  // m/s^2
