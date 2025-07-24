@@ -40,6 +40,38 @@ public:
         if (g <= Real(0))      throw std::domain_error("Gravity must be > 0");
     }
 
+    // ── Static utility methods ─────────────────────────────────────────
+    
+    /// Compute wavelength (λ) from angular frequency (ω)
+    static Real wavelengthFromAngularFrequency(Real omega, Real gravity = static_cast<Real>(9.80665)) {
+        return (2 * M_PI * gravity) / (omega * omega);
+    }
+
+    /// Compute wavenumber (k) from wavelength (λ)
+    static Real wavenumberFromWavelength(Real wavelength) {
+        return (2 * M_PI) / wavelength;
+    }
+
+    /// Compute wave speed (c) from wavenumber (k)
+    static Real waveSpeedFromWavenumber(Real k, Real gravity = static_cast<Real>(9.80665)) {
+        return std::sqrt(gravity / k);
+    }
+
+    /// Compute wavelength (λ) from wave period (T)
+    static Real wavelengthFromPeriod(Real period, Real gravity = static_cast<Real>(9.80665)) {
+        return gravity * period * period / (2 * M_PI);
+    }
+
+    /// Compute wave period (T) from vertical displacement and vertical acceleration
+    static Real periodFromDisplacementAcceleration(Real displacement, Real accel) {
+        return 2.0 * M_PI * std::sqrt(std::abs(displacement / accel));
+    }
+
+    /// Compute wave frequency (f) from vertical displacement and vertical acceleration
+    static Real frequencyFromDisplacementAcceleration(Real displacement, Real accel) {
+        return std::sqrt(std::abs(accel / displacement)) / (2.0 * M_PI);
+    }
+
     // ── Surface kinematics ─────────────────────────────────────────────
 
     /// η(t) = −A·cos(ωt + φ)
@@ -133,4 +165,3 @@ private:
     Real λ;   // wavelength λ = 2π / k
     Real c;   // phase speed    c = ω / k
 };
-
