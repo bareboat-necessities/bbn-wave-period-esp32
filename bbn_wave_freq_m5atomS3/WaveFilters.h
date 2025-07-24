@@ -26,7 +26,7 @@ enum FrequencyTracker {
 
 void init_aranovskiy(AranovskiyFilter<double>* ar_filter);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
-void init_filters(AranovskiyFilter* ar_filter, KalmanSmootherVars* kalman_smoother);
+void init_filters(AranovskiyFilter<double>* ar_filter, KalmanSmootherVars* kalman_smoother);
 void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
