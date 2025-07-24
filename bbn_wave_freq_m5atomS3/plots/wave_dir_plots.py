@@ -54,7 +54,7 @@ plt.ylabel("Angle")
 plt.subplot(4, 1, 3)
 plt.scatter(ax, ay)
 plt.scatter(fax, fay)
-plt.title("$A_{est}$")
+plt.title("$A_{\text{est}}$")
 plt.xlabel("X")
 plt.ylabel("Y")
 
