@@ -1,6 +1,10 @@
 #ifndef WaveFilters_h
 #define WaveFilters_h
 
+/*
+  Copyright 2024-2025, Mikhail Grushinskiy
+  */
+
 #define FREQ_LOWER 0.04f
 #define FREQ_UPPER 2.0f
 #define FREQ_GUESS 0.3f   // frequency guess
