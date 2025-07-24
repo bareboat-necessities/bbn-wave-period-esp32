@@ -64,8 +64,8 @@ void init_aranovskiy(AranovskiyFilter* ar_filter) {
   double x1_0 = 0.0;
   double theta_0 = - (omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
-  ar_filter->default_params(ar_param, omega_init, k_gain);
-  ar_filter->init_state(ar_state, x1_0, theta_0, sigma_0);
+  ar_filter->setParams(omega_init, k_gain);
+  ar_filter->setState(x1_0, theta_0, sigma_0);
 }
 
 void init_smoother(KalmanSmootherVars* kalman_smoother) {
