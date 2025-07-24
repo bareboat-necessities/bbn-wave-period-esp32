@@ -76,7 +76,7 @@ KalmanWaveNumStableAltState waveAltState;
 #define WRONG_ANGLE_MARKER -360.0f
 
 // Wave direction
-WaveDirectionDetector wave_dir_detector(0.002f, 0.005f);
+WaveDirectionDetector<float> wave_dir_detector(0.002, 0.005);
 AngleAverager angle_averager(0.004f);
 float wave_angle_deg = WRONG_ANGLE_MARKER;
 AngleEstimate wave_angle_estimate;
