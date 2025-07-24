@@ -1,101 +1,138 @@
+
 #pragma once
 
 #include <cmath>
 #include <stdexcept>
 
 /**
- * TrochoidalWave<Real> – First-order deep water wave model (linear theory).
+ * TrochoidalWave<Real> – Gerstner (trochoidal) deep‐water wave model.
  *
- * Models vertical particle motion in ocean waves using a trochoidal approximation.
- * Templated by `Real`, e.g., float, double, or autodiff scalar types.
+ * Particle trajectories are circular at the surface and decay exponentially with depth.
+ * Provides displacement, velocity, acceleration (both horizontal & vertical),
+ * plus bulk wave properties and energy density.
  */
-template <typename Real = float>
+template<typename Real>
 class TrochoidalWave {
 public:
-    static constexpr Real g = static_cast<Real>(9.80665); // gravity [m/s²]
-
-    /// Construct wave with amplitude [m], frequency [Hz], and phase [rad]
-    TrochoidalWave(Real amplitude, Real frequency, Real phase = Real(0))
-        : A(amplitude), f(frequency), φ(phase)
+    /**
+     * @param amplitude   Wave amplitude [m]
+     * @param period      Wave period T [s]
+     * @param depth       Reference depth z₀ [m] (default = 0 → surface)
+     * @param phase       Phase offset φ [rad]
+     * @param gravity     Gravity acceleration g [m/s²] (default = 9.80665)
+     */
+    TrochoidalWave(Real amplitude,
+                   Real period,
+                   Real depth   = Real(0),
+                   Real phase   = Real(0),
+                   Real gravity = static_cast<Real>(9.80665))
+      : A(amplitude)
+      , T(period)
+      , h(depth)
+      , φ(phase)
+      , g(gravity)
+      , ω(static_cast<Real>(2 * M_PI) / T)
+      , k(ω * ω / g)
+      , λ(static_cast<Real>(2 * M_PI) / k)
+      , c(ω / k)
     {
-        if (A < Real(0))      throw std::domain_error("Amplitude must be non-negative");
-        if (f <= Real(0))     throw std::domain_error("Frequency must be positive");
+        if (A < Real(0))       throw std::domain_error("Amplitude must be ≥ 0");
+        if (T <= Real(0))      throw std::domain_error("Period must be > 0");
+        if (g <= Real(0))      throw std::domain_error("Gravity must be > 0");
     }
 
-    /// Vertical displacement η(t) = −A·cos(ωt + φ)
-    Real displacement(Real t) const {
-        return -A * std::cos(ω() * t + φ);
+    // ── Surface kinematics ─────────────────────────────────────────────
+
+    /// η(t) = −A·cos(ωt + φ)
+    Real surfaceElevation(Real t) const {
+        return -A * std::cos(ω * t + φ);
     }
 
-    /// Vertical velocity dη/dt = A·ω·sin(ωt + φ)
-    Real vertical_speed(Real t) const {
-        return A * ω() * std::sin(ω() * t + φ);
+    /// ∂η/∂t =  A·ω·sin(ωt + φ)
+    Real surfaceVerticalSpeed(Real t) const {
+        return  A * ω * std::sin(ω * t + φ);
     }
 
-    /// Vertical acceleration d²η/dt² = −A·ω²·cos(ωt + φ)
-    Real vertical_acceleration(Real t) const {
-        return -A * ω_squared() * std::cos(ω() * t + φ);
+    /// ∂²η/∂t² = −A·ω²·cos(ωt + φ)
+    Real surfaceVerticalAcceleration(Real t) const {
+        return -A * ω * ω * std::cos(ω * t + φ);
     }
 
-    /// Get amplitude [m]
-    Real amplitude() const { return A; }
+    // ── Particle kinematics (at reference position x₀, z₀) ─────────────────
 
-    /// Get frequency [Hz]
-    Real frequency() const { return f; }
-
-    /// Get phase [rad]
-    Real phase() const { return φ; }
-
-    /// Angular frequency ω = 2πf
-    Real ω() const { return static_cast<Real>(2.0 * M_PI) * f; }
-
-    /// Angular frequency squared
-    Real ω_squared() const {
-        Real w = ω();
-        return w * w;
+    /// x(t) = x₀ − A·e^{k z₀}·sin(θ)
+    Real horizontalPosition(Real x0, Real z0, Real t) const {
+        Real θ = k * x0 - ω * t + φ;
+        Real R = std::exp(k * z0);
+        return x0 - A * R * std::sin(θ);
     }
 
-    // ── Static wave relationships ──────────────────────────────
-
-    /// λ = (2π·g) / ω²
-    static Real wavelength_from_omega(Real omega) {
-        if (omega <= Real(0)) throw std::domain_error("Omega must be positive");
-        return static_cast<Real>(2.0 * M_PI) * g / (omega * omega);
+    /// z(t) = z₀ − A·e^{k z₀}·cos(θ)
+    Real verticalPosition(Real x0, Real z0, Real t) const {
+        Real θ = k * x0 - ω * t + φ;
+        Real R = std::exp(k * z0);
+        return z0 - A * R * std::cos(θ);
     }
 
-    /// k = 2π / λ
-    static Real wavenumber(Real wavelength) {
-        if (wavelength <= Real(0)) throw std::domain_error("Wavelength must be positive");
-        return static_cast<Real>(2.0 * M_PI) / wavelength;
+    /// u = dx/dt =  A·ω·e^{k z₀}·cos(θ)
+    Real horizontalVelocity(Real x0, Real z0, Real t) const {
+        Real θ = k * x0 - ω * t + φ;
+        Real R = std::exp(k * z0);
+        return  A * ω * R * std::cos(θ);
     }
 
-    /// Wave speed c = sqrt(g / k)
-    static Real wave_speed(Real k) {
-        if (k <= Real(0)) throw std::domain_error("Wavenumber must be positive");
-        return std::sqrt(g / k);
+    /// w = dz/dt =  A·ω·e^{k z₀}·sin(θ)
+    Real verticalVelocity(Real x0, Real z0, Real t) const {
+        Real θ = k * x0 - ω * t + φ;
+        Real R = std::exp(k * z0);
+        return  A * ω * R * std::sin(θ);
     }
 
-    /// λ = g·T² / (2π)
-    static Real wavelength_from_period(Real T) {
-        if (T <= Real(0)) throw std::domain_error("Period must be positive");
-        return g * T * T / static_cast<Real>(2.0 * M_PI);
+    /// du/dt = −A·ω²·e^{k z₀}·sin(θ)
+    Real horizontalAcceleration(Real x0, Real z0, Real t) const {
+        Real θ = k * x0 - ω * t + φ;
+        Real R = std::exp(k * z0);
+        return -A * ω * ω * R * std::sin(θ);
     }
 
-    /// T = 2π·sqrt(|disp / accel|)
-    static Real period_from_displacement_accel(Real disp, Real accel) {
-        if (accel == Real(0)) throw std::domain_error("Acceleration cannot be zero");
-        return static_cast<Real>(2.0 * M_PI) * std::sqrt(std::abs(disp / accel));
+    /// dw/dt = −A·ω²·e^{k z₀}·cos(θ)
+    Real verticalAcceleration(Real x0, Real z0, Real t) const {
+        Real θ = k * x0 - ω * t + φ;
+        Real R = std::exp(k * z0);
+        return -A * ω * ω * R * std::cos(θ);
     }
 
-    /// f = (1 / 2π)·sqrt(|accel / disp|)
-    static Real frequency_from_displacement_accel(Real disp, Real accel) {
-        if (disp == Real(0)) throw std::domain_error("Displacement cannot be zero");
-        return std::sqrt(std::abs(accel / disp)) / static_cast<Real>(2.0 * M_PI);
+    // ── Bulk wave properties ────────────────────────────────────────────
+
+    Real amplitude() const        { return A; }
+    Real period() const           { return T; }
+    Real phase() const            { return φ; }
+    Real gravity() const          { return g; }
+    Real angularFrequency() const { return ω; }
+    Real frequency() const        { return ω / (static_cast<Real>(2 * M_PI)); }
+    Real wavenumber() const       { return k; }
+    Real wavelength() const       { return λ; }
+    Real waveSpeed() const        { return c; }
+
+    /**
+     * Mean wave energy density per unit horizontal area [J/m²]:
+     *    E = ½ ρ g A²
+     */
+    template<typename RhoType = Real>
+    Real energyDensity(RhoType rho = static_cast<RhoType>(1025)) const {
+        return static_cast<Real>(0.5) * static_cast<Real>(rho) * g * A * A;
     }
 
 private:
     Real A;   // amplitude [m]
-    Real f;   // frequency [Hz]
+    Real T;   // period [s]
+    Real h;   // reference depth [m] (for future finite-depth extension)
     Real φ;   // phase [rad]
+    Real g;   // gravity [m/s²]
+
+    Real ω;   // angular frequency ω = 2π / T
+    Real k;   // wavenumber k = ω² / g
+    Real λ;   // wavelength λ = 2π / k
+    Real c;   // phase speed    c = ω / k
 };
 
