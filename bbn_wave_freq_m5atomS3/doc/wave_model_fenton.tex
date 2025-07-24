@@ -21,7 +21,7 @@
 \section{Nonlinear Periodic Fenton Wave}
 \label{sec:fenton_method}
 
-\par
+
 This paper summarizes here the mathematical formulation of Fenton’s method for steady periodic surface gravity waves in finite depth \cite{Fenton1988}, followed by a brief description of its \verb|C++| implementation (see \texttt{FentonWave.h}).
 
 \subsection{Governing Equations}
@@ -214,7 +214,7 @@ and
 where \(i_{\max},i_{\min}\) are the indices of the maximum and minimum \(\eta_{i}\).
 
 \medskip
-All other partial derivatives are zero.  In the C++ code \linebreak
+All other partial derivatives are zero.  In the C++ code \\
 (\texttt{compute\_jacobian()}), these expressions are implemented exactly—ensuring an analytically exact Jacobian for robust Newton–Raphson convergence.
 
 \subsection{Derived Wave Quantities}
@@ -298,9 +298,9 @@ S_{xx}
 The provided \verb|FentonWave<N,Real>| class in \texttt{FentonWave.h}:
 \begin{itemize}
   \item Uses the Eigen library for vectors and matrices.
-  \item Computes DCT‐I transforms in \linebreak\verb|FentonFFT<N>::compute_inverse_cosine_transform()|.
+  \item Computes DCT‐I transforms in \\ \verb|FentonFFT<N>::compute_inverse_cosine_transform()|.
   \item Handles hyperbolic functions with numerically stable helpers \verb|sinh_by_cosh| and \verb|cosh_by_cosh|.
-  \item Solves the dispersion relation for $\lambda$ via Newton iteration in \linebreak\verb|compute_wavelength()|.
+  \item Solves the dispersion relation for $\lambda$ via Newton iteration in \\ \verb|compute_wavelength()|.
   \item Wraps up all physics (surface kinematics, velocities, pressure, energy flux, Stokes drift, etc.) in member functions.
   \item Includes a \verb|WaveSurfaceTracker| that integrates a floating object’s horizontal motion with RK4 under wave‐induced force and linear drag.
 \end{itemize}
