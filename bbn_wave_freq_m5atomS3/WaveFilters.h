@@ -96,12 +96,12 @@ void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smooth
   init_wave_filters();
 }
 
-float estimate_freq(FrequencyTracker tracker, AranovskiyParams* arParams, AranovskiyState* arState, KalmANF<float>* kalmANF,
+float estimate_freq(FrequencyTracker tracker, AranovskiyFilter* arFilter, KalmANF<float>* kalmANF,
                     SchmittTriggerFrequencyDetector* freqDetector, float a_noisy, float a_no_spikes, float delta_t) {
   float freq = FREQ_GUESS;
   if (tracker == Aranovskiy) {
-    aranovskiy_update(arParams, arState, a_no_spikes, delta_t);
-    freq = arState->f;
+    arFilter->update(a_no_spikes, delta_t);
+    freq = arFilter->getFrequencyHz();
   } else if (tracker == Kalm_ANF) {
     float e;
     float f_kalmanANF = kalmANF->process(a_noisy, delta_t, &e);
