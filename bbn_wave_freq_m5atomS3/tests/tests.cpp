@@ -27,8 +27,7 @@
 #include "WaveSurfaceProfile.h"
 
 MinMaxLemire min_max_h;
-AranovskiyParams arParams;
-AranovskiyState arState;
+AranovskiyFilter<double> arFilter;
 KalmanSmootherVars kalman_freq;
 KalmanForWaveBasicState waveState;
 KalmanWaveNumStableAltState waveAltState;
@@ -73,7 +72,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   float warm_up_time = warmup_time_sec(true);
   if (t > warm_up_time) {
     // give some time for other filters to settle first
-    freq = estimate_freq(useFrequencyTracker, &arParams, &arState, &kalmANF, &freqDetector, a_noisy, a_no_spikes, delta_t);
+    freq = estimate_freq(useFrequencyTracker, &arFilter, &kalmANF, &freqDetector, a_noisy, a_no_spikes, delta_t);
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
       kalman_smoother_set_initial(&kalman_freq, freq);
@@ -140,7 +139,7 @@ int main(int argc, char *argv[]) {
   float test_duration = 5.0 * 60.0;
 
   if (useFrequencyTracker == Aranovskiy) {
-    init_filters(&arParams, &arState, &kalman_freq);
+    init_filters(&arFilter, &kalman_freq);
   } else if (useFrequencyTracker == Kalm_ANF) {
     init_filters_alt(&kalmANF, &kalman_freq);
   } else {
