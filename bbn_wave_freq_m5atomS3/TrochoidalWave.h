@@ -158,7 +158,6 @@ public:
 private:
     Real A;   // amplitude [m]
     Real T;   // period [s]
-    Real h;   // reference depth [m] (for future finite-depth extension)
     Real φ;   // phase [rad]
     Real g;   // gravity [m/s²]
 
