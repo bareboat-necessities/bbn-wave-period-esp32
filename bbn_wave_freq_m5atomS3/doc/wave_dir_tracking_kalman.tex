@@ -90,8 +90,9 @@ The instantaneous phase $\phi$ enters as a common scalar factor \(\cos(\omega t+
 = \frac{A_y\cos(\omega t+\phi)}{A_x\cos(\omega t+\phi)}
 = \frac{A_y}{A_x}.
 \]
-Thus any unknown constant phase offset \(\phi_0\) merely rescales the amplitude vector: 
-\(\vec{a}(t)=\bigl(\vec{A}\cos\phi_0\bigr)\cos(\omega t)+\bigl(-\vec{A}\sin\phi_0\bigr)\sin(\omega t)\).
+Thus any unknown constant phase offset $\phi_0$ merely rescales the amplitude vector: 
+$\vec{a}(t)=\bigl(\vec{A}\cos\phi_0\bigr)\cos(\omega t)+\bigl(-\vec{A}\sin\phi_0\bigr)\sin(\omega t)$.
+
 The filter’s state \(\bm{x}_k\) absorbs that unknown offset into its estimate of \(\vec{A}\), and by minimizing residuals over time it converges to the correct direction.  In effect, the Kalman update \emph{self‐corrects} for unknown phase by adjusting both components of \(\bm{x}_k\) so that \(\bm{H}_k\bm{x}_k\approx\vec{a}_k\) in the least‐squares sense, yielding the true ratio \(A_y/A_x\).
 
 \section{Additional Numerical Safeguards}
