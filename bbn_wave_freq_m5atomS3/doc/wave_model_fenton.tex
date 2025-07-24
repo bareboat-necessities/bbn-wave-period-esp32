@@ -254,8 +254,9 @@ p(x,z,t)
 \end{equation}
 
 \paragraph{Energy densities and flux:}
-\linebreak
-Using the 2D trapezoidal integrator \(\int_{0}^{L}\!\int_{-d}^{\eta}\!\cdot\,dz\,dx\):
+
+Using the 2D trapezoidal integrator:
+\(\int_{0}^{L}\!\int_{-d}^{\eta}\!\cdot\,dz\,dx\):
 \begin{align}
 \overline{E}_{k} 
 &= \frac{1}{L}\int_{0}^{L}\!\int_{-d}^{\eta(x)} \tfrac12\bigl(u^{2}+w^{2}\bigr)\,dz\,dx, 
@@ -297,7 +298,7 @@ S_{xx}
 The provided \verb|FentonWave<N,Real>| class in \texttt{FentonWave.h}:
 \begin{itemize}
   \item Uses the Eigen library for vectors and matrices.
-  \item Computes DCT‐I transforms in \linebreak \verb|FentonFFT<N>::compute_inverse_cosine_transform()|.
+  \item Computes DCT‐I transforms in \linebreak\verb|FentonFFT<N>::compute_inverse_cosine_transform()|.
   \item Handles hyperbolic functions with numerically stable helpers \verb|sinh_by_cosh| and \verb|cosh_by_cosh|.
   \item Solves the dispersion relation for $\lambda$ via Newton iteration in \linebreak\verb|compute_wavelength()|.
   \item Wraps up all physics (surface kinematics, velocities, pressure, energy flux, Stokes drift, etc.) in member functions.
@@ -307,8 +308,9 @@ The provided \verb|FentonWave<N,Real>| class in \texttt{FentonWave.h}:
 \subsection{Floating‐Object Kinematics: \texttt{WaveSurfaceTracker}}
 \label{sec:wave_surface_tracker}
 
-In addition to wave kinematics, the C++ implementation provides a \linebreak
-\texttt{WaveSurfaceTracker<N,Real>} class that simulates the motion of a small floating body constrained to the wave surface.  The model assumes:
+In addition to wave kinematics, the C++ implementation provides a
+\texttt{WaveSurfaceTracker<N,Real>} class that simulates 
+the motion of a small floating body constrained to the wave surface.  The model assumes:
 
 \begin{itemize}
   \item The body’s vertical coordinate exactly follows the instantaneous free‐surface elevation:
@@ -345,7 +347,8 @@ Although \(z=\eta\), one can still compute the vertical velocity and acceleratio
 with \(\eta_t = \partial\eta/\partial t = -\,c\,\eta_x\).
 
 \paragraph{Numerical integration.}  
-\linebreak The class uses a classical 4th‐order Runge–Kutta scheme (RK4) with time step \(\Delta t\), updating both \(x\) and \(v_x\) simultaneously:
+The class uses a classical 4th‐order Runge–Kutta scheme (RK4)
+with time step \(\Delta t\), updating both \(x\) and \(v_x\) simultaneously:
 \[
 \begin{aligned}
   k_{1}^{(x)} &= v_x, 
