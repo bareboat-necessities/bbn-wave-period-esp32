@@ -1,5 +1,5 @@
-#ifndef TrochoidalWave_h
-#define TrochoidalWave_h
+#ifndef TROCHOIDAL_WAVE_H
+#define TROCHOIDAL_WAVE_H
 
 /*
 
