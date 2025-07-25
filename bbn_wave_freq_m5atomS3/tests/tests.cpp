@@ -159,17 +159,16 @@ int main(int argc, char *argv[]) {
   TrochoidalWave<float> w3 = TrochoidalWave<float>(2.0, 8.5, M_PI / 3.0);
   TrochoidalWave<float> w4 = TrochoidalWave<float>(4.25, 11.4, M_PI / 3.0);
   TrochoidalWave<float> w5 = TrochoidalWave<float>(7.4, 14.3, M_PI / 3.0);
+  TrochoidalWave<float>* w = &w2;
 
-  printf("main_amp,%.4f", displacement_amplitude);
-  printf(",main_freq,%.4f", frequency);
+  printf("main_amp,%.4f", w->amplitude);
+  printf(",main_freq,%.4f", 1.0 / w->period());
   printf(",acc_bias,%.7f", bias);
   printf(",acc_noise_std_dev,%.5f", stddev);
   printf("\n");
 
   t = 0.0;
-
-  TrochoidalWave<float>* w = &w2;
-
+  
   bool test_trochoid = false;
   if (test_trochoid) {
     while (t < test_duration) {
