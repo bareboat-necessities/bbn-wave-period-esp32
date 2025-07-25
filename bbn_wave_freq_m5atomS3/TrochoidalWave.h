@@ -29,7 +29,6 @@ public:
                    Real gravity = Real(g_std))
       : A(amplitude)
       , T(period)
-      , h(depth)
       , phi(phase)
       , g(gravity)
       , omega(static_cast<Real>(2 * M_PI) / T)
@@ -158,7 +157,6 @@ public:
 private:
     Real A;           // amplitude [m]
     Real T;           // period [s]
-    Real h;           // reference depth [m]
     Real phi;         // phase [rad] (φ)
     Real g;           // gravity [m/s²]
 
