@@ -18,7 +18,6 @@ public:
     /**
      * @param amplitude   Wave amplitude [m]
      * @param period      Wave period T [s]
-     * @param depth       Reference depth z₀ [m] (default = 0 → surface)
      * @param phase       Phase offset φ [rad]
      * @param gravity     Gravity acceleration g [m/s²] (default = 9.80665)
      */
