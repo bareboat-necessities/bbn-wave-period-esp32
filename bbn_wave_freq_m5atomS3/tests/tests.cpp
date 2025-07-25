@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
   TrochoidalWave<float> w5 = TrochoidalWave<float>(7.4, 14.3, M_PI / 3.0);
   TrochoidalWave<float>* w = &w2;
 
-  printf("main_amp,%.4f", w->amplitude);
+  printf("main_amp,%.4f", w->amplitude());
   printf(",main_freq,%.4f", 1.0 / w->period());
   printf(",acc_bias,%.7f", bias);
   printf(",acc_noise_std_dev,%.5f", stddev);
@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
   } else {
     // Create a 4th-order Fenton wave and a surface tracker
     FentonWave<4>::WaveInitParams wave_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
-      displacement_amplitude, 200.0f, 2 * M_PI * frequency, phase_rad);
+      w->amplitude(), 200.0f, w->angularFrequency(), w->phase());
 
     const float mass = 5.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
