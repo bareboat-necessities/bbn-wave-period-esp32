@@ -154,11 +154,11 @@ int main(int argc, char *argv[]) {
   generator.seed(239);  // seed the engine for deterministic test results
   std::normal_distribution<float> dist(mean, stddev);
 
-  //float displacement_amplitude = 0.135 /* 0.27m height */, frequency = 1.0 / 3.0 /* 3.0 sec period */, phase_rad = M_PI / 3.0;
-  float displacement_amplitude = 0.75 /* 1.5m height */, frequency = 1.0 / 5.7 /* 5.7 sec period */, phase_rad = M_PI / 3.0;
-  //float displacement_amplitude = 2.0 /* 4m height */, frequency = 1.0 / 8.5 /* 8.5 sec period */, phase_rad = M_PI / 3.0;
-  //float displacement_amplitude = 4.25 /* 8.5m height */, frequency = 1.0 / 11.4 /* 11.4 sec period */, phase_rad = M_PI / 3.0;
-  //float displacement_amplitude = 7.4 /* 14.8m height */, frequency = 1.0 / 14.3 /* 14.3 sec period */, phase_rad = M_PI / 3.0;
+  TrochoidalWave<float> w1 = TrochoidalWave<float>(0.135, 3.0, M_PI / 3.0);
+  TrochoidalWave<float> w2 = TrochoidalWave<float>(0.75, 5.7, M_PI / 3.0);
+  TrochoidalWave<float> w3 = TrochoidalWave<float>(2.0, 8.5, M_PI / 3.0);
+  TrochoidalWave<float> w4 = TrochoidalWave<float>(4.25, 11.4, M_PI / 3.0);
+  TrochoidalWave<float> w5 = TrochoidalWave<float>(7.4, 14.3, M_PI / 3.0);
 
   printf("main_amp,%.4f", displacement_amplitude);
   printf(",main_freq,%.4f", frequency);
@@ -168,13 +168,15 @@ int main(int argc, char *argv[]) {
 
   t = 0.0;
 
+  TrochoidalWave<float>* w = &w2;
+
   bool test_trochoid = false;
   if (test_trochoid) {
     while (t < test_duration) {
       float zero_mean_gauss_noise = dist(generator);
-      float a = trochoid_wave_vert_accel(displacement_amplitude, frequency, phase_rad, t) + bias + zero_mean_gauss_noise;
-      float v = trochoid_wave_vert_speed(displacement_amplitude, frequency, phase_rad, t);
-      float h = trochoid_wave_displacement(displacement_amplitude, frequency, phase_rad, t);
+      float a = w->surfaceVerticalAcceleration(t) + bias + zero_mean_gauss_noise;
+      float v = w->surfaceVerticalSpeed(t);
+      float h = w->surfaceElevation(t);
 
       run_filters(a / g_std, v, h, delta_t, frequency);
 
