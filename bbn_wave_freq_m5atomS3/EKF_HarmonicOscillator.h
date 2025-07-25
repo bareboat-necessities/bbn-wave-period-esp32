@@ -14,8 +14,7 @@ public:
     using Mat = Eigen::Matrix<float, N_STATE, N_STATE>;
     using Row = Eigen::Matrix<float, 1, N_STATE>;
 
-    EKF_HarmonicOscillator(float dt)
-        : T(dt)
+    EKF_HarmonicOscillator()
     {
         x.setZero();
         x(2 * M) = 1.0f; // Initial ω estimate
@@ -42,7 +41,7 @@ public:
     }
 
     // EKF update given measured acceleration
-    void update(float y_meas) {
+    void update(float y_meas, float dt) {
         float omega = x(2 * M);
 
         // Predict step
@@ -51,7 +50,7 @@ public:
 
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
-            float theta = k * omega * T;
+            float theta = k * omega * dt;
             float c = cosf(theta), s = sinf(theta);
             Eigen::Matrix2f Rk;
             Rk << c, -s,
@@ -102,7 +101,6 @@ public:
     float getBias() const { return x(2 * M + 1); }
 
 private:
-    const float T;
 
     Vec x;
     Mat P, Q;
