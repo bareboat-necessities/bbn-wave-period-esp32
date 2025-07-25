@@ -183,8 +183,10 @@ int main(int argc, char *argv[]) {
     }
   } else {
     // Create a 4th-order Fenton wave and a surface tracker
+    float amplitude = w->amplitude();
+    float frequency = 1.0 / w->period();
     FentonWave<4>::WaveInitParams wave_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
-      w->amplitude(), 200.0f, w->angularFrequency(), w->phase());
+      amplitude, 200.0f, w->angularFrequency(), w->phase());
 
     const float mass = 5.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
