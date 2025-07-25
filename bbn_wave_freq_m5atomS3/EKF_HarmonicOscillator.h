@@ -6,6 +6,8 @@
 #include <ArduinoEigenDense.h>
 #endif
 
+// State vector layout:
+// x = [ a1_cos, a1_sin, a2_cos, a2_sin, ..., aM_cos, aM_sin, ω, bias ]
 template<int M>
 class EKF_HarmonicOscillator {
 public:
