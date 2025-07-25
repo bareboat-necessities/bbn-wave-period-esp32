@@ -91,7 +91,7 @@ public:
 
   WaveDirection update(float ax, float ay, float az, float dt) {
     float mag = sqrtf(ax * ax + ay * ay);
-    if (isnan(prevAz)) { prevAz=az; return UNCERTAIN; }
+    if (isnan(prevAz)) { prevAz = az; return UNCERTAIN; }
     if (mag > 1e-8f) {
       float h = (ay > 0 ? mag : -mag);
       float s = (az - prevAz) / dt;
