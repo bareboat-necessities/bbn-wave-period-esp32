@@ -24,7 +24,6 @@ public:
      */
     TrochoidalWave(Real amplitude,
                    Real period,
-                   Real depth   = Real(0),
                    Real phase   = Real(0),
                    Real gravity = Real(g_std))
       : A(amplitude)
