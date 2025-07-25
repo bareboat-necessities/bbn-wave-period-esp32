@@ -59,7 +59,7 @@ public:
             F.block<2,2>(i, i) = Rk;
 
             // ∂R/∂ω ⋅ x
-            float dtheta = k * T;
+            float dtheta = k * dt;
             float x1 = x(i), x2 = x(i+1);
             Eigen::Vector2f dR_omega;
             dR_omega << -dtheta * (x1 * s + x2 * c),
