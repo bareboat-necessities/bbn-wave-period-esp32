@@ -136,7 +136,13 @@ public:
   }
 
   // Accessors
-  Real get_phase() const { return res.get_phase(); }
+  Real get_phase() const { 
+    // Returns the resonator’s internal phase.
+	  // This can be close to signal phase if the filter 
+    // is well-tuned (correct ρ, low noise), but it is 
+    // not guaranteed to match exactly.
+    return res.get_phase(); 
+  }
   Real get_bias()  const { return b; }
   Real get_a()     const { return a; }
   Real get_p11()   const { return P11; }
