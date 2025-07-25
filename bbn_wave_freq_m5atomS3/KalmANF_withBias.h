@@ -1,4 +1,3 @@
-
 #ifndef KALMANF_WITH_BIAS_H
 #define KALMANF_WITH_BIAS_H
 
