@@ -37,6 +37,7 @@ public:
     }
 
     void setMeasurementNoise(float r) {
+        R.setZero();
         R(0, 0) = r;
     }
 
