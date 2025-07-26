@@ -106,7 +106,7 @@ void initialize_filters() {
   } else if (useFrequencyTracker == Kalm_ANF) {
     init_filters_alt(&kalmANF, &kalman_freq); 
   } else if (useFrequencyTracker == EKF_Oscillator) {
-    ekf_oscillator.setProcessNoise(1e-4f, 1e-5f, 1e-4f);
+    ekf_oscillator.setProcessNoise(1e-3f, 1e-5f, 1e-4f);
     ekf_oscillator.setMeasurementNoise(0.01f);
   } else {
     kalman_smoother_init(&kalman_freq, 0.2f, 2.0f, 100.0f);
