@@ -8,7 +8,7 @@
 
 // State vector layout:
 // x = [ a1_cos, a1_sin, a2_cos, a2_sin, ..., aM_cos, aM_sin, ω, bias ]
-template<unsigned int M, typename Real = float>
+template<int M, typename Real = float>
 class EKF_HarmonicOscillator {
 public:
     static constexpr int N_STATE = 2 * M + 2;
