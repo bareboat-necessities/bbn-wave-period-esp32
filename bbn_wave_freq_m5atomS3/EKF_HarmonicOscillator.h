@@ -243,10 +243,16 @@ Vec     K = Pxy / Pyy;
 
     Real measurementModel(const Vec& x_sigma) {
         Real y = 0;
-        for (int k = 0; k < M; ++k) {
-            y += x_sigma(2 * k);  // Sum of cosine terms
-        }
-        y += x_sigma(2 * M + 1);  // Add bias
+
+   Real omega = std::max(x_sigma(2 * M), Real(1e-4));
+for (int k = 1; k <= M; ++k) {
+    int idx = 2 * (k - 1);
+    Real term = -x_sigma(idx) * std::pow(k * omega, 2);  // cos component
+    term += 0; // optionally include sine component here if needed
+    y += term;
+}
+y += x_sigma(2 * M + 1);  // Add bias     
+        
         return y;
     }
 };
