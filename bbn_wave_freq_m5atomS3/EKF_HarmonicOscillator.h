@@ -244,9 +244,10 @@ private:
         }
     }
 
-    Real measurementModel(Vec& x_sigma) {
+    Real measurementModel(const Vec& x_sigma) {
         Real y = 0;
-        x_sigma(2 * M) = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));     
+        Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+        x_sigma(2 * M) = clamped;
         Real omega = x_sigma(2 * M);
         for (int k = 1; k <= M; ++k) {
             int idx = 2 * (k - 1);
