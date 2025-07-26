@@ -8,13 +8,13 @@
 
 // State vector layout:
 // x = [ a1_cos, a1_sin, a2_cos, a2_sin, ..., aM_cos, aM_sin, ω, bias ]
-template<int M>
+template<unsigned int M, typename Real = float>
 class EKF_HarmonicOscillator {
 public:
     static constexpr int N_STATE = 2 * M + 2;
-    using Vec = Eigen::Matrix<float, N_STATE, 1>;
-    using Mat = Eigen::Matrix<float, N_STATE, N_STATE>;
-    using Row = Eigen::Matrix<float, 1, N_STATE>;
+    using Vec = Eigen::Matrix<Real, N_STATE, 1>;
+    using Mat = Eigen::Matrix<Real, N_STATE, N_STATE>;
+    using Row = Eigen::Matrix<Real, 1, N_STATE>;
 
     EKF_HarmonicOscillator()
     {
@@ -33,20 +33,20 @@ public:
         H(0, N_STATE - 1) = 1.0f; // bias
     }
 
-    void setProcessNoise(float q_osc, float q_omega, float q_bias) {
+    void setProcessNoise(Real q_osc, Real q_omega, Real q_bias) {
         Q.setIdentity(); Q *= q_osc;
         Q(2 * M, 2 * M) = q_omega;
         Q(2 * M + 1, 2 * M + 1) = q_bias;
     }
 
-    void setMeasurementNoise(float r) {
+    void setMeasurementNoise(Real r) {
         R.setZero();
         R(0, 0) = r;
     }
 
     // EKF update given measured acceleration
-    void update(float y_meas, float dt) {
-        float omega = x(2 * M);
+    void update(Real y_meas, Real dt) {
+        Real omega = x(2 * M);
 
         // Predict step
         Vec x_pred = Vec::Zero();
@@ -54,8 +54,8 @@ public:
 
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
-            float theta = k * omega * dt;
-            float c = cosf(theta), s = sinf(theta);
+            Real theta = k * omega * dt;
+            Real c = cosf(theta), s = sinf(theta);
             Eigen::Matrix2f Rk;
             Rk << c, -s,
                   s,  c;
@@ -63,8 +63,8 @@ public:
             F.block<2,2>(i, i) = Rk;
 
             // ∂R/∂ω ⋅ x
-            float dtheta = k * dt;
-            float x1 = x(i), x2 = x(i+1);
+            Real dtheta = k * dt;
+            Real x1 = x(i), x2 = x(i+1);
             Eigen::Vector2f dR_omega;
             dR_omega << -dtheta * (x1 * s + x2 * c),
                          dtheta * (x1 * c - x2 * s);
@@ -76,55 +76,55 @@ public:
         P = F * P * F.transpose() + Q;
 
         // Update step
-        float y_pred = (H * x_pred)(0);
-        float y_err = y_meas - y_pred;
+        Real y_pred = (H * x_pred)(0);
+        Real y_err = y_meas - y_pred;
 
-        float S = (H * P * H.transpose())(0,0) + R(0,0);
-        Eigen::Matrix<float, N_STATE, 1> K = P * H.transpose() * (1.0f / S);
+        Real S = (H * P * H.transpose())(0,0) + R(0,0);
+        Eigen::Matrix<Real, N_STATE, 1> K = P * H.transpose() * (1.0f / S);
 
         x = x_pred + K * y_err;
         P = (Mat::Identity() - K * H) * P;
     }
 
-    float estimatedAccel() const {
+    Real estimatedAccel() const {
         return (H * x)(0);
     }
 
-    float estimatedHeave() const {
-        float heave = 0.0f;
-        float omega = x(2 * M);
+    Real estimatedHeave() const {
+        Real heave = 0.0f;
+        Real omega = x(2 * M);
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
-            float denom = k * omega;
+            Real denom = k * omega;
             heave -= x(i) / (denom * denom);
         }
         return heave;
     }
 
-    float estimatedVelocity() const {
-        float vel = 0.0f;
-        float omega = x(2 * M);
+    Real estimatedVelocity() const {
+        Real vel = 0.0f;
+        Real omega = x(2 * M);
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
-            float denom = k * omega;
+            Real denom = k * omega;
             vel -= x(i + 1) / denom;
         }
         return vel;
     }
 
-    float estimatedPhase() const {
-        float a1_cos = x(0);
-        float a1_sin = x(1);
+    Real estimatedPhase() const {
+        Real a1_cos = x(0);
+        Real a1_sin = x(1);
         return std::atan2(a1_sin, a1_cos);
     }
 
-    float getFrequency() const { return x(2 * M); }
-    float getBias() const { return x(2 * M + 1); }
+    Real getFrequency() const { return x(2 * M); }
+    Real getBias() const { return x(2 * M + 1); }
 
 private:
 
     Vec x;
     Mat P, Q;
-    Eigen::Matrix<float, 1, 1> R;
+    Eigen::Matrix<Real, 1, 1> R;
     Row H;
 };
