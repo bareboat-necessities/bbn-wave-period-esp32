@@ -21,7 +21,7 @@ public:
     // UKF parameters
     static constexpr Real alpha = 1e-1;
     static constexpr Real beta = 2.0;
-    static constexpr Real kappa = 3.0 - N_STATE;
+    static constexpr Real kappa = 0; //3.0 - N_STATE;
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
     
     EKF_HarmonicOscillator() {
@@ -140,6 +140,10 @@ private:
             weights_m(i) = w;
             weights_c(i) = w;
         }
+
+        Real sum = weights_m.sum();
+        weights_m /= sum;
+        weights_c /= sum;
     }
 
     SigmaMat generateSigmaPoints() {
