@@ -149,8 +149,17 @@ private:
         const Real scale = sqrt(N_STATE + lambda);
         
         // Matrix square root of P
-        Eigen::LLT<Mat> lltOfP(P);
-        Mat sqrtP = lltOfP.matrixL();
+
+Eigen::LLT<Mat> lltOfP(P);
+if (lltOfP.info() != Eigen::Success) {
+    // Handle fallback (e.g. add jitter, or fallback to identity)
+    P += Mat::Identity() * Real(1e-6);
+    lltOfP.compute(P);
+}
+Mat sqrtP = lltOfP.matrixL();
+        
+      
+        
         
         sigma_points.col(0) = x;
         for (int i = 0; i < N_STATE; ++i) {
