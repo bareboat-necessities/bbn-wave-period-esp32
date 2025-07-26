@@ -29,8 +29,10 @@ public:
         x.setZero();
         for (int k = 0; k < M; ++k) {
             x(2 * k) = Real(0.01); 
-            x(2 * k + 1) = Real(0.001);
+            x(2 * k + 1) = Real(0);
         }
+        x(0) = Real(0.01);
+        x(1) = Real(0.01);
         x(2 * M) = Real(2 * M_PI * 0.3);  // Initial ω estimate (0.3 Hz)
         x(2 * M + 1) = Real(0);           // Initial bias estimate
         
@@ -147,17 +149,8 @@ private:
         const Real scale = sqrt(N_STATE + lambda);
         
         // Matrix square root of P
-
-Eigen::LLT<Mat> lltOfP(P);
-if (lltOfP.info() != Eigen::Success) {
-    // Handle fallback (e.g. add jitter, or fallback to identity)
-    P += Mat::Identity() * Real(1e-6);
-    lltOfP.compute(P);
-}
-Mat sqrtP = lltOfP.matrixL();
-        
-      
-        
+        Eigen::LLT<Mat> lltOfP(P);
+        Mat sqrtP = lltOfP.matrixL();
         
         sigma_points.col(0) = x;
         for (int i = 0; i < N_STATE; ++i) {
@@ -235,8 +228,7 @@ Mat sqrtP = lltOfP.matrixL();
         }
         
         // Kalman update
-        Pyy = std::max(Pyy, Real(1e-9));  // prevent divide-by-zero
-Vec     K = Pxy / Pyy;
+        Vec K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
     }
