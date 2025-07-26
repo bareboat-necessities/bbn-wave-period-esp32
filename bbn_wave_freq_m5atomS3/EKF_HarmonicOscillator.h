@@ -28,15 +28,15 @@ public:
         // Initialize state
         x.setZero();
         for (int k = 0; k < M; ++k) {
-            x(2 * k) = Real(0.01); 
-            x(2 * k + 1) = Real(0.01);
+            x(2 * k) = Real(0.05); 
+            x(2 * k + 1) = Real(0.05);
         }
         x(2 * M) = Real(2 * M_PI * 0.3);  // Initial ω estimate (0.3 Hz)
         x(2 * M + 1) = Real(0);           // Initial bias estimate
         
         // Initialize covariance
         P.setIdentity(); 
-        P *= Real(1.0);
+        P *= Real(10.0);
         
         // Process noise
         Q.setIdentity(); 
@@ -76,8 +76,8 @@ public:
         updateWithMeasurement(sigma_points_pred, y_meas);
         
         // Ensure frequency stays within reasonable bounds
-        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.0002));  
-        x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 1000.0)); 
+        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.001));  
+        x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 100.0)); 
     }
 
     // Measurement prediction (for innovation calculation)
@@ -93,7 +93,7 @@ public:
     Real estimatedHeave() const {
         Real heave = Real(0);
         Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
+        omega = std::clamp(omega, Real(2 * M_PI * 0.001), Real(2 * M_PI * 100.0));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -106,11 +106,11 @@ public:
     Real estimatedVelocity() const {
         Real vel = Real(0);
         Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
+        omega = std::clamp(omega, Real(2 * M_PI * 0.001), Real(2 * M_PI * 100.0));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
-            denom = std::abs(denom) < Real(1e-9) ? Real(1e-9) : denom;
+            denom = std::abs(denom) < Real(1e-7) ? Real(1e-7) : denom;
             vel -= x(i + 1) / denom;
         }
         return vel;
@@ -153,7 +153,7 @@ private:
         Eigen::LLT<Mat> lltOfP(P);
         if (lltOfP.info() != Eigen::Success) {
             // Handle fallback (e.g. add jitter, or fallback to identity)
-            P += Mat::Identity() * Real(1e-13);
+            P += Mat::Identity() * Real(1e-11);
             P = (P + P.transpose()) * Real(0.5);
             lltOfP.compute(P);
         }
@@ -173,7 +173,7 @@ private:
         for (int i = 0; i < SIG_CNT; ++i) {
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
-            //Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
+            //Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.001), Real(2 * M_PI * 100.0));
             Real omega = x_sigma(2 * M);
             // Predict harmonic components
             for (int k = 1; k <= M; ++k) {
@@ -233,21 +233,21 @@ private:
         }
         
         // Kalman update
-        if (std::abs(Pyy) < 1e-13 || std::isnan(Pyy)) {
-            Pyy = Real(1e-13);
+        if (std::abs(Pyy) < 1e-11 || std::isnan(Pyy)) {
+            Pyy = Real(1e-11);
         }
         Vec K = Pxy * (Real(1) / Pyy);
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
         for (int i = 0; i < N_STATE; ++i) {
-            if (P(i, i) < 1e-13f) { 
-                P(i, i) = 1e-13f;
+            if (P(i, i) < 1e-11f) { 
+                P(i, i) = 1e-11f;
             }
         }
     }
 
     Real measurementModel(const Vec& x_sigma) {
-        //Real omega = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
+        //Real omega = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.001), Real(2 * M_PI * 100.0));
         Real omega = x_sigma(2 * M);
         Real y = 0;
         for (int k = 1; k <= M; ++k) {
@@ -255,8 +255,8 @@ private:
             Real cos_term = x_sigma(idx);
             // Safe kw
             Real kw = k * omega;
-            if (!std::isfinite(kw) || std::abs(kw) < Real(1e-13)) {            
-                kw = Real(1e-13);
+            if (!std::isfinite(kw) || std::abs(kw) < Real(1e-11)) {            
+                kw = Real(1e-11);
             }
             y += -kw * kw * cos_term;
         }
