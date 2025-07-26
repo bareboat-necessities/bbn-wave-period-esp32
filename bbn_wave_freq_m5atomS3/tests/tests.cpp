@@ -74,7 +74,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   float warm_up_time = warmup_time_sec(true);
   if (t > warm_up_time) {
     // give some time for other filters to settle first
-    freq = estimate_freq(useFrequencyTracker, &arFilter, &kalmANF, &freqDetector, a_noisy, a_no_spikes, delta_t);
+    freq = estimate_freq(useFrequencyTracker, &arFilter, &kalmANF, &ekf_oscillator, &freqDetector, a_noisy, a_no_spikes, delta_t);
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
       kalman_smoother_set_initial(&kalman_freq, freq);
