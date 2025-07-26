@@ -93,7 +93,7 @@ public:
     Real estimatedHeave() const {
         Real heave = Real(0);
         Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(1e-4), Real(2 * M_PI * 10.0));
+        omega = std::clamp(omega, Real(2 * M_PI * 0.04), Real(2 * M_PI * 10.0));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -106,7 +106,7 @@ public:
     Real estimatedVelocity() const {
         Real vel = Real(0);
         Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(1e-4), Real(2 * M_PI * 10.0));
+        omega = std::clamp(omega, Real(2 * M_PI * 0.04), Real(2 * M_PI * 10.0));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -172,7 +172,7 @@ private:
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
             Real omega = x_sigma(2 * M);
-            omega = std::clamp(omega, Real(1e-4), Real(2 * M_PI * 10.0));     
+            omega = std::clamp(omega, Real(2 * M_PI * 0.04), Real(2 * M_PI * 10.0));     
             // Predict harmonic components
             for (int k = 1; k <= M; ++k) {
                 int idx = 2 * (k - 1);
@@ -245,7 +245,7 @@ private:
     Real measurementModel(const Vec& x_sigma) {
         Real y = 0;
         Real omega = x_sigma(2 * M);
-        omega = std::clamp(omega, Real(1e-4), Real(2 * M_PI * 10.0));     
+        omega = std::clamp(omega, Real(2 * M_PI * 0.04), Real(2 * M_PI * 10.0));     
         for (int k = 1; k <= M; ++k) {
             int idx = 2 * (k - 1);
             Real cos_term = x_sigma(idx);
