@@ -147,24 +147,19 @@ private:
         const Real scale = sqrt(N_STATE + lambda);
         
         // Matrix square root of P
-
-Eigen::LLT<Mat> lltOfP(P);
-if (lltOfP.info() != Eigen::Success) {
-    // Handle fallback (e.g. add jitter, or fallback to identity)
-    P += Mat::Identity() * Real(1e-6);
-    lltOfP.compute(P);
-}
-Mat sqrtP = lltOfP.matrixL();
-        
-      
-        
+        Eigen::LLT<Mat> lltOfP(P);
+        if (lltOfP.info() != Eigen::Success) {
+            // Handle fallback (e.g. add jitter, or fallback to identity)
+            P += Mat::Identity() * Real(1e-6);
+            lltOfP.compute(P);
+        }
+        Mat sqrtP = lltOfP.matrixL();
         
         sigma_points.col(0) = x;
         for (int i = 0; i < N_STATE; ++i) {
             sigma_points.col(i + 1) = x + scale * sqrtP.col(i);
             sigma_points.col(i + 1 + N_STATE) = x - scale * sqrtP.col(i);
         }
-        
         return sigma_points;
     }
 
@@ -191,7 +186,6 @@ Mat sqrtP = lltOfP.matrixL();
             
             sigma_points_pred.col(i) = x_pred;
         }
-        
         return sigma_points_pred;
     }
 
@@ -236,23 +230,21 @@ Mat sqrtP = lltOfP.matrixL();
         
         // Kalman update
         Pyy = std::max(Pyy, Real(1e-9));  // prevent divide-by-zero
-Vec     K = Pxy / Pyy;
+        Vec K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
     }
 
     Real measurementModel(const Vec& x_sigma) {
         Real y = 0;
-
-   Real omega = std::max(x_sigma(2 * M), Real(1e-4));
-for (int k = 1; k <= M; ++k) {
-    int idx = 2 * (k - 1);
-    Real term = -x_sigma(idx) * std::pow(k * omega, 2);  // cos component
-    term += 0; // optionally include sine component here if needed
-    y += term;
-}
-y += x_sigma(2 * M + 1);  // Add bias     
-        
+        Real omega = std::max(x_sigma(2 * M), Real(1e-4));
+        for (int k = 1; k <= M; ++k) {
+            int idx = 2 * (k - 1);
+            Real term = -x_sigma(idx) * std::pow(k * omega, 2);  // cos component
+            term += 0; // optionally include sine component here if needed
+            y += term;
+        }
+        y += x_sigma(2 * M + 1);  // Add bias     
         return y;
     }
 };
