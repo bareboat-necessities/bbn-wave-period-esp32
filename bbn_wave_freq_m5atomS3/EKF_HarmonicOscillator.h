@@ -49,7 +49,7 @@ public:
 
     // EKF update given measured acceleration
     void update(Real y_meas, Real dt) {
-        Real omega = x(2 * M);
+        Real omega = std::max(x(2 * M), Real(1e-4));
 
         // Predict step
         Vec x_pred = Vec::Zero();
