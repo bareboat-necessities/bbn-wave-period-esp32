@@ -25,7 +25,9 @@ public:
             x(2 * k) = Real(0.01); 
             x(2 * k + 1) = Real(0); 
         }
-        x(2 * M) = Real(2 * M_PI * FREQ_GUESS);       // Initial ω estimate
+        x(0) = Real(0.01); 
+        x(1) = Real(0.01); 
+        x(2 * M) = Real(2 * M_PI * 0.3 /*FREQ_GUESS*/);       // Initial ω estimate
         x(2 * M + 1) = Real(0);   // Initial bias estimate
         P.setIdentity(); P *= Real(10.0);
         Q.setIdentity(); Q *= Real(1e-3);
