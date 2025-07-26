@@ -86,7 +86,7 @@ public:
         Real y_pred = (H * x_pred)(0);
         Real y_err = y_meas - y_pred;
 
-        Real S = (H * P * H.transpose())(0,0) + R(0,0);
+        Real S = (H * P * H.transpose())(0, 0) + R(0, 0);
         Eigen::Matrix<Real, N_STATE, 1> K = P * H.transpose() * (Real(1) / S);
 
         x = x_pred + K * y_err;
