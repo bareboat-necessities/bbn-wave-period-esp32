@@ -68,10 +68,10 @@ public:
 
     void update(Real y_meas, Real dt) {
         // 1. Generate sigma points
-        Mat sigma_points = generateSigmaPoints();
+        SigmaMat sigma_points = generateSigmaPoints();
         
         // 2. Predict step (time update)
-        Mat sigma_points_pred = predictSigmaPoints(sigma_points, dt);
+        SigmaMat sigma_points_pred = predictSigmaPoints(sigma_points, dt);
         predictMeanAndCovariance(sigma_points_pred);
         
         // 3. Measurement update
