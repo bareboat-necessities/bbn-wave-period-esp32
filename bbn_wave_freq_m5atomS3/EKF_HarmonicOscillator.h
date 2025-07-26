@@ -193,38 +193,23 @@ private:
         return sigma_points_pred;
     }
 
-
-void predictMeanAndCovariance(const SigmaMat& sigma_points_pred) {
-    Vec x_pred = Vec::Zero();
-    for (int i = 0; i < SIG_CNT; ++i) {
-        x_pred += weights_m(i) * sigma_points_pred.col(i);
-    }
-
-    Mat P_pred = Mat::Zero();
-    for (int i = 0; i < SIG_CNT; ++i) {
-        Vec dx = sigma_points_pred.col(i) - x_pred;
-        P_pred += weights_c(i) * dx * dx.transpose();
-    }
-    P_pred += Q;
-
-    x = x_pred;
-    P = P_pred;
-}
-
     void predictMeanAndCovariance(const SigmaMat& sigma_points_pred) {
         Vec x_pred = Vec::Zero();
         for (int i = 0; i < SIG_CNT; ++i) {
             x_pred += weights_m(i) * sigma_points_pred.col(i);
         }
-        P.setZero();
+    
+        Mat P_pred = Mat::Zero();
         for (int i = 0; i < SIG_CNT; ++i) {
             Vec dx = sigma_points_pred.col(i) - x_pred;
-            P += weights_c(i) * dx * dx.transpose();
+            P_pred += weights_c(i) * dx * dx.transpose();
         }
-        P += Q;
-        x = x_pred; 
+        P_pred += Q;
+    
+        x = x_pred;
+        P = P_pred;
     }
-
+    
     void updateWithMeasurement(const SigmaMat& sigma_points_pred, Real y_meas) {
         // Transform sigma points through measurement model
         Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
