@@ -229,9 +229,7 @@ private:
         }
         
         // Kalman update
-        if (std::abs(Pyy) < 1e-6 || std::isnan(Pyy)) {
-            Pyy = Real(1e-6);
-        }
+        Pyy = std::max(Pyy, Real(1e-9));  // prevent divide-by-zero
         Vec K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
