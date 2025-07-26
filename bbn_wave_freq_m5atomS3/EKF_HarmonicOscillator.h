@@ -21,7 +21,7 @@ public:
     // UKF parameters
     static constexpr Real alpha = 0.1;
     static constexpr Real beta = 2.0;
-    static constexpr Real kappa = 3.0 - N_STATE;
+    static constexpr Real kappa = 0.0;
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
     
     EKF_HarmonicOscillator() {
