@@ -19,9 +19,9 @@ public:
     using Row = Eigen::Matrix<Real, 1, N_STATE>;
 
     // UKF parameters
-    static constexpr Real alpha = 1e-1;
+    static constexpr Real alpha = 1e-3;
     static constexpr Real beta = 2.0;
-    static constexpr Real kappa = 3.0 - N_STATE;
+    static constexpr Real kappa = 0.0;
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
     
     EKF_HarmonicOscillator() {
@@ -41,12 +41,12 @@ public:
         // Process noise
         Q.setIdentity(); 
         Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(1e0);      // Frequency process noise
-        Q(2 * M + 1, 2 * M + 1) = Real(1e-5); // Bias process noise
+        Q(2 * M, 2 * M) = Real(1e-2);      // Frequency process noise
+        Q(2 * M + 1, 2 * M + 1) = Real(1e-4); // Bias process noise
         
         // Measurement noise
         R.setZero();
-        R(0, 0) = Real(0.5);
+        R(0, 0) = Real(0.01);
         
         // Calculate weights
         calculateWeights();
@@ -147,19 +147,24 @@ private:
         const Real scale = sqrt(N_STATE + lambda);
         
         // Matrix square root of P
-        Eigen::LLT<Mat> lltOfP(P);
-        if (lltOfP.info() != Eigen::Success) {
-            // Handle fallback (e.g. add jitter, or fallback to identity)
-            P += Mat::Identity() * Real(1e-6);
-            lltOfP.compute(P);
-        }
-        Mat sqrtP = lltOfP.matrixL();
+
+Eigen::LLT<Mat> lltOfP(P);
+if (lltOfP.info() != Eigen::Success) {
+    // Handle fallback (e.g. add jitter, or fallback to identity)
+    P += Mat::Identity() * Real(1e-6);
+    lltOfP.compute(P);
+}
+Mat sqrtP = lltOfP.matrixL();
+        
+      
+        
         
         sigma_points.col(0) = x;
         for (int i = 0; i < N_STATE; ++i) {
             sigma_points.col(i + 1) = x + scale * sqrtP.col(i);
             sigma_points.col(i + 1 + N_STATE) = x - scale * sqrtP.col(i);
         }
+        
         return sigma_points;
     }
 
@@ -186,6 +191,7 @@ private:
             
             sigma_points_pred.col(i) = x_pred;
         }
+        
         return sigma_points_pred;
     }
 
@@ -229,26 +235,18 @@ private:
         }
         
         // Kalman update
-        if (std::abs(Pyy) < 1e-6 || std::isnan(Pyy)) {
-            Pyy = Real(1e-6);
-        }
-        Vec K = Pxy / Pyy;
+        Pyy = std::max(Pyy, Real(1e-9));  // prevent divide-by-zero
+Vec     K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
     }
 
     Real measurementModel(const Vec& x_sigma) {
         Real y = 0;
-        Real omega = std::max(x_sigma(2 * M), Real(1e-4));
-        for (int k = 1; k <= M; ++k) {
-            int idx = 2 * (k - 1);
-            Real cos_term = x_sigma(idx);
-            Real sin_term = x_sigma(idx + 1);
-            Real term = -(std::pow(k * omega, 2)) * cos_term; 
-            //term += -(std::pow(k * omega, 2)) * sin_term; // add this if sine matters
-            y += term;
+        for (int k = 0; k < M; ++k) {
+            y += x_sigma(2 * k);  // Sum of cosine terms
         }
-        y += x_sigma(2 * M + 1);  // Add bias     
+        y += x_sigma(2 * M + 1);  // Add bias
         return y;
     }
 };
