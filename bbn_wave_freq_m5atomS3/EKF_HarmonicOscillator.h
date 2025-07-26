@@ -20,7 +20,7 @@ public:
 
     // UKF parameters
     static constexpr Real alpha = 0.7;
-    static constexpr Real beta = 1.5;
+    static constexpr Real beta = 1.8;
     static constexpr Real kappa = 1.0; 
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
     
@@ -41,12 +41,12 @@ public:
         // Process noise
         Q.setIdentity(); 
         Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(1e-1);          // Frequency process noise
+        Q(2 * M, 2 * M) = Real(1e-3);          // Frequency process noise
         Q(2 * M + 1, 2 * M + 1) = Real(1e-5);  // Bias process noise
         
         // Measurement noise
         R.setZero();
-        R(0, 0) = Real(0.1);
+        R(0, 0) = Real(1.0);
         
         // Calculate weights
         calculateWeights();
