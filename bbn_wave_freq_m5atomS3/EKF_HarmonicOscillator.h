@@ -38,7 +38,8 @@ public:
 
         H.setZero();
         for (int k = 0; k < M; ++k) {
-            H(0, 2 * k) = Real(1); // cosine terms only
+            H(0, 2 * k) = Real(1);     // cosine terms 
+            H(0, 2 * k + 1) = Real(1); // sine terms
         }
         H(0, N_STATE - 1) = Real(1); // bias
     }
