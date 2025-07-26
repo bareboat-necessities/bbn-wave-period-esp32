@@ -201,7 +201,7 @@ void read_and_processIMU_data() {
   double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
   if (t > warmup_time_sec(useMahony)) {
     // give some time for other filters to settle first
-    freq = estimate_freq(useFrequencyTracker, &arFilter, &kalmANF, &ekf_oscillator, &freqDetector, a_noisy, a_no_spikes, delta_t);
+    freq = estimate_freq(useFrequencyTracker, &arFilter, &kalmANF, &ekf_oscillator, &freqDetector, a_noisy, a_no_spikes, delta_t, t);
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
       kalman_smoother_set_initial(&kalman_freq, freq);
