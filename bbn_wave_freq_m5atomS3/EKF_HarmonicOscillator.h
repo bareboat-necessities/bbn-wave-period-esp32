@@ -237,7 +237,8 @@ Mat sqrtP = lltOfP.matrixL();
         }
         
         // Kalman update
-        Vec K = Pxy / Pyy;
+        Pyy = std::max(Pyy, Real(1e-9));  // prevent divide-by-zero
+Vec     K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
     }
