@@ -149,6 +149,7 @@ private:
         const Real scale = sqrt(N_STATE + lambda);
         
         // Matrix square root of P
+        P = (P + P.transpose()) * Real(0.5);
         Eigen::LLT<Mat> lltOfP(P);
         if (lltOfP.info() != Eigen::Success) {
             // Handle fallback (e.g. add jitter, or fallback to identity)
