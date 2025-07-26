@@ -244,19 +244,30 @@ private:
         }
     }
 
-    Real measurementModel(const Vec& x_sigma) {
-        Real y = 0;
-        Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
-        Real omega = clamped;
-        for (int k = 1; k <= M; ++k) {
-            int idx = 2 * (k - 1);
-            Real cos_term = x_sigma(idx);
-            Real kw = k * omega;
-            kw = std::clamp(kw, Real(1e-5), Real(1e+5));
-            Real term = -kw * kw * cos_term;
-            y += term;
-        }
-        y += x_sigma(2 * M + 1);  // Add bias     
-        return y;
+Real measurementModel(const Vec& x_sigma) {
+    Real omega = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+    Real y = 0;
+    for (int k = 1; k <= M; ++k) {
+        int idx = 2 * (k - 1);
+        Real cos_term = x_sigma(idx);
+
+        // Safe kw
+        Real kw = k * omega;
+        if (!std::isfinite(kw) || std::abs(kw) < Real(1e-5))
+            kw = Real(1e-5);
+
+        y += -kw * kw * cos_term;
     }
+
+    Real bias = x_sigma(2 * M + 1);
+    if (!std::isfinite(bias))
+        bias = Real(0);
+
+    y += bias;
+
+    if (!std::isfinite(y))
+        y = Real(0);  // Failsafe fallback
+
+    return y;
+}
 };
