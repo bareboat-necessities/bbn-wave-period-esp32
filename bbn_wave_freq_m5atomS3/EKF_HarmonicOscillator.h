@@ -240,15 +240,10 @@ private:
         Real omega = std::max(x_sigma(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int idx = 2 * (k - 1);
-            
-
-       Real cos_term = x_sigma(idx);
-Real sin_term = x_sigma(idx + 1);
-Real term = -(std::pow(k * omega, 2)) * cos_term; // ← currently implemented
-// Optional:
-term += -(std::pow(k * omega, 2)) * sin_term; // ← add this if sine matters
-            
-            
+            Real cos_term = x_sigma(idx);
+            Real sin_term = x_sigma(idx + 1);
+            Real term = -(std::pow(k * omega, 2)) * cos_term; 
+            //term += -(std::pow(k * omega, 2)) * sin_term; // add this if sine matters
             y += term;
         }
         y += x_sigma(2 * M + 1);  // Add bias     
