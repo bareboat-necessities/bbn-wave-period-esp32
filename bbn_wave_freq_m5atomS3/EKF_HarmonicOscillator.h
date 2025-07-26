@@ -63,7 +63,7 @@ public:
             Rk << c, -s,
                   s,  c;
             x_pred.segment<2>(i) = Rk * x.segment<2>(i);
-            F.block<2, 2>(i, i) = Rk;
+            F.block(i, i, 2, 2) = Rk;
 
             // ∂R/∂ω ⋅ x
             Real dtheta = k * dt;
@@ -71,7 +71,7 @@ public:
             Eigen::Matrix<Real, 2, 1> dR_omega;
             dR_omega << -dtheta * (x1 * s + x2 * c),
                          dtheta * (x1 * c - x2 * s);
-            F.block<2,1>(i, 2 * M) = dR_omega;
+            F.block(i, 2 * M, 2, 1) = dR_omega;
         }
 
         x_pred(2 * M) = x(2 * M);           // ω
