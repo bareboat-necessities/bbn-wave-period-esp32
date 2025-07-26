@@ -56,7 +56,7 @@ public:
             int i = 2 * (k - 1);
             Real theta = k * omega * dt;
             Real c = std::cos(theta), s = std::sin(theta);
-            Eigen::Matrix2f Rk;
+            Eigen::Matrix<Real, 2, 2> Rk;
             Rk << c, -s,
                   s,  c;
             x_pred.segment<2>(i) = Rk * x.segment<2>(i);
@@ -65,7 +65,7 @@ public:
             // ∂R/∂ω ⋅ x
             Real dtheta = k * dt;
             Real x1 = x(i), x2 = x(i+1);
-            Eigen::Vector2f dR_omega;
+            Eigen::Matrix<Real, 2, 1> dR_omega;
             dR_omega << -dtheta * (x1 * s + x2 * c),
                          dtheta * (x1 * c - x2 * s);
             F.block<2,1>(i, 2 * M) = dR_omega;
