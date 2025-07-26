@@ -19,9 +19,9 @@ public:
     using Row = Eigen::Matrix<Real, 1, N_STATE>;
 
     // UKF parameters
-    static constexpr Real alpha = 1e-3;
+    static constexpr Real alpha = 1e-1;
     static constexpr Real beta = 2.0;
-    static constexpr Real kappa = 0.0;
+    static constexpr Real kappa = 3.0 - N_STATE;
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
     
     EKF_HarmonicOscillator() {
@@ -29,10 +29,8 @@ public:
         x.setZero();
         for (int k = 0; k < M; ++k) {
             x(2 * k) = Real(0.01); 
-            x(2 * k + 1) = Real(0);
+            x(2 * k + 1) = Real(0.001);
         }
-        x(0) = Real(0.01);
-        x(1) = Real(0.01);
         x(2 * M) = Real(2 * M_PI * 0.3);  // Initial ω estimate (0.3 Hz)
         x(2 * M + 1) = Real(0);           // Initial bias estimate
         
@@ -43,12 +41,12 @@ public:
         // Process noise
         Q.setIdentity(); 
         Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(1e-2);      // Frequency process noise
-        Q(2 * M + 1, 2 * M + 1) = Real(1e-4); // Bias process noise
+        Q(2 * M, 2 * M) = Real(1e-1);      // Frequency process noise
+        Q(2 * M + 1, 2 * M + 1) = Real(1e-5); // Bias process noise
         
         // Measurement noise
         R.setZero();
-        R(0, 0) = Real(0.01);
+        R(0, 0) = Real(0.1);
         
         // Calculate weights
         calculateWeights();
@@ -130,27 +128,36 @@ private:
     Mat R;      // Measurement noise covariance
     
     // Weights for sigma points
-    Eigen::Matrix<Real, 1, 2 * N_STATE + 1> weights_m;  // Mean weights
-    Eigen::Matrix<Real, 1, 2 * N_STATE + 1> weights_c;  // Covariance weights
+    Eigen::Matrix<Real, 1, SIG_CNT> weights_m;  // Mean weights
+    Eigen::Matrix<Real, 1, SIG_CNT> weights_c;  // Covariance weights
 
     void calculateWeights() {
         weights_m(0) = lambda / (N_STATE + lambda);
         weights_c(0) = weights_m(0) + (1 - alpha * alpha + beta);
         
         Real w = Real(1) / (2 * (N_STATE + lambda));
-        for (int i = 1; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 1; i < SIG_CNT; ++i) {
             weights_m(i) = w;
             weights_c(i) = w;
         }
     }
 
     SigmaMat generateSigmaPoints() {
-        SigmaMat sigma_points(N_STATE, 2 * N_STATE + 1);
+        SigmaMat sigma_points(N_STATE, SIG_CNT);
         const Real scale = sqrt(N_STATE + lambda);
         
         // Matrix square root of P
-        Eigen::LLT<Mat> lltOfP(P);
-        Mat sqrtP = lltOfP.matrixL();
+
+Eigen::LLT<Mat> lltOfP(P);
+if (lltOfP.info() != Eigen::Success) {
+    // Handle fallback (e.g. add jitter, or fallback to identity)
+    P += Mat::Identity() * Real(1e-6);
+    lltOfP.compute(P);
+}
+Mat sqrtP = lltOfP.matrixL();
+        
+      
+        
         
         sigma_points.col(0) = x;
         for (int i = 0; i < N_STATE; ++i) {
@@ -162,9 +169,9 @@ private:
     }
 
     SigmaMat predictSigmaPoints(const SigmaMat& sigma_points, Real dt) {
-        SigmaMat sigma_points_pred(N_STATE, 2 * N_STATE + 1);
+        SigmaMat sigma_points_pred(N_STATE, SIG_CNT);
         
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
             Real omega = std::max(x_sigma(2 * M), Real(1e-4));
@@ -191,13 +198,13 @@ private:
     void predictMeanAndCovariance(const SigmaMat& sigma_points_pred) {
         // Calculate predicted state mean
         x.setZero();
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             x += weights_m(i) * sigma_points_pred.col(i);
         }
         
         // Calculate predicted state covariance
         P.setZero();
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             Vec dx = sigma_points_pred.col(i) - x;
             P += weights_c(i) * dx * dx.transpose();
         }
@@ -206,21 +213,21 @@ private:
 
     void updateWithMeasurement(const SigmaMat& sigma_points_pred, Real y_meas) {
         // Transform sigma points through measurement model
-        Eigen::Matrix<Real, 1, 2 * N_STATE + 1> y_sigma;
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
+        for (int i = 0; i < SIG_CNT; ++i) {
             y_sigma(i) = measurementModel(sigma_points_pred.col(i));
         }
         
         // Calculate mean measurement
         Real y_pred = 0;
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             y_pred += weights_m(i) * y_sigma(i);
         }
         
         // Calculate innovation covariance
         Real Pyy = R(0, 0);
         Vec Pxy = Vec::Zero();
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             Real dy = y_sigma(i) - y_pred;
             Vec dx = sigma_points_pred.col(i) - x;
             Pyy += weights_c(i) * dy * dy;
@@ -228,17 +235,24 @@ private:
         }
         
         // Kalman update
-        Vec K = Pxy / Pyy;
+        Pyy = std::max(Pyy, Real(1e-9));  // prevent divide-by-zero
+Vec     K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
     }
 
     Real measurementModel(const Vec& x_sigma) {
         Real y = 0;
-        for (int k = 0; k < M; ++k) {
-            y += x_sigma(2 * k);  // Sum of cosine terms
-        }
-        y += x_sigma(2 * M + 1);  // Add bias
+
+   Real omega = std::max(x_sigma(2 * M), Real(1e-4));
+for (int k = 1; k <= M; ++k) {
+    int idx = 2 * (k - 1);
+    Real term = -x_sigma(idx) * std::pow(k * omega, 2);  // cos component
+    term += 0; // optionally include sine component here if needed
+    y += term;
+}
+y += x_sigma(2 * M + 1);  // Add bias     
+        
         return y;
     }
 };
