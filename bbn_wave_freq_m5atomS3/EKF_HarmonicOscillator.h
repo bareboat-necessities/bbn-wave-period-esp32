@@ -76,7 +76,7 @@ public:
         updateWithMeasurement(sigma_points_pred, y_meas);
         
         // Ensure frequency stays within reasonable bounds
-        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.002));  
+        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.005));  
         x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 10.0));   
     }
 
