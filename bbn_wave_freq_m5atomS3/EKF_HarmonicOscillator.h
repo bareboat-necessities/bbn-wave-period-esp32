@@ -99,7 +99,7 @@ public:
 
     Real estimatedHeave() const {
         Real heave = Real(0);
-        Real omega = x(2 * M);
+        Real omega = std::max(x(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -111,7 +111,7 @@ public:
 
     Real estimatedVelocity() const {
         Real vel = Real(0);
-        Real omega = x(2 * M);
+        Real omega = std::max(x(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
