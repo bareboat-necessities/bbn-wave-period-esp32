@@ -249,9 +249,8 @@ private:
         for (int k = 1; k <= M; ++k) {
             int idx = 2 * (k - 1);
             Real cos_term = x_sigma(idx);
-            Real sin_term = x_sigma(idx + 1);
             Real kw = k * omega;
-            kw = std::clamp(kw, Real(1e-4), Real(2 * M_PI * 10.0));
+            kw = std::clamp(kw, Real(1e-5), Real(1e+5));
             Real term = -kw * kw * cos_term;
             y += term;
         }
