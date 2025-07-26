@@ -38,7 +38,7 @@ SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CRO
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 WaveSurfaceProfile<128> waveProfile;
 
-FrequencyTracker useFrequencyTracker = ZeroCrossing; // EKF_Oscillator;
+FrequencyTracker useFrequencyTracker = EKF_Oscillator; // ZeroCrossing;
 
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
