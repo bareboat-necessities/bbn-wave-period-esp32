@@ -31,6 +31,7 @@
 #include "AranovskiyFilter.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "KalmANF.h"
+#include "EKF_HarmonicOscillator.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "Mahony_AHRS.h"
@@ -45,7 +46,6 @@
 #include "WaveFilters.h"
 #include "WaveDirectionDetector.h"
 #include "M5_Calibr.h"
-#include "EKF_HarmonicOscillator.h"
 
 bool useMahony = true;
 FrequencyTracker useFrequencyTracker = ZeroCrossing;
