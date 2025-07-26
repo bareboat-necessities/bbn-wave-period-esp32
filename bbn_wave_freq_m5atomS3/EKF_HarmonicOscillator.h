@@ -19,18 +19,18 @@ public:
     EKF_HarmonicOscillator()
     {
         x.setZero();
-        x(2 * M) = 1.0f; // Initial ω estimate
-        P.setIdentity(); P *= 0.1f;
-        Q.setIdentity(); Q *= 1e-4f;
-        Q(2 * M, 2 * M) = 1e-5f;
-        Q(2 * M + 1, 2 * M + 1) = 1e-4f;
-        R(0, 0) = 0.01f;
+        x(2 * M) = Real(1); // Initial ω estimate
+        P.setIdentity(); P *= Real(0.1);
+        Q.setIdentity(); Q *= Real(1e-4);
+        Q(2 * M, 2 * M) = Real(1e-5);
+        Q(2 * M + 1, 2 * M + 1) = Real(1e-4);
+        R(0, 0) = Real(0.01);
 
         H.setZero();
         for (int k = 0; k < M; ++k) {
-            H(0, 2 * k) = 1.0f; // cosine terms only
+            H(0, 2 * k) = Real(1); // cosine terms only
         }
-        H(0, N_STATE - 1) = 1.0f; // bias
+        H(0, N_STATE - 1) = Real(1); // bias
     }
 
     void setProcessNoise(Real q_osc, Real q_omega, Real q_bias) {
