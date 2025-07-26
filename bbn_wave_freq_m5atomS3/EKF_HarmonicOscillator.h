@@ -236,7 +236,7 @@ private:
         if (std::abs(Pyy) < 1e-8 || std::isnan(Pyy)) {
             Pyy = Real(1e-8);
         }
-        Vec K = Pxy / Pyy;
+        Vec K = Pxy * (Real(1) / Pyy);
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
         for (int i = 0; i < N_STATE; ++i) {
