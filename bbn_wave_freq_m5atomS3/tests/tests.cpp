@@ -33,6 +33,7 @@ KalmanSmootherVars kalman_freq;
 KalmanForWaveBasicState waveState;
 KalmanWaveNumStableAltState waveAltState;
 KalmANF kalmANF;
+EKF_HarmonicOscillator<3> ekf_oscillator;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 WaveSurfaceProfile<128> waveProfile;
