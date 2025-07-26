@@ -24,6 +24,7 @@ public:
         Q.setIdentity(); Q *= Real(1e-4);
         Q(2 * M, 2 * M) = Real(1e-5);
         Q(2 * M + 1, 2 * M + 1) = Real(1e-4);
+        R.setZero();
         R(0, 0) = Real(0.01);
 
         H.setZero();
