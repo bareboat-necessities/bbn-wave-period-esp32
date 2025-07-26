@@ -26,7 +26,7 @@ public:
             x(2 * k) = Real(0.01); 
             x(2 * k + 1) = Real(0); 
         }
-        P.setIdentity(); P *= Real(0.1);
+        P.setIdentity(); P *= Real(10.0);
         Q.setIdentity(); Q *= Real(1e-4);
         Q(2 * M, 2 * M) = Real(1e-5);
         Q(2 * M + 1, 2 * M + 1) = Real(1e-4);
