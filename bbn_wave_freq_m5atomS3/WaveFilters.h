@@ -25,7 +25,8 @@
 enum FrequencyTracker {
     Aranovskiy,
     Kalm_ANF,
-    ZeroCrossing
+    ZeroCrossing,
+    EKF_Oscillator
 };
 
 void init_aranovskiy(AranovskiyFilter<double>* ar_filter);
