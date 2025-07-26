@@ -111,6 +111,12 @@ public:
         return vel;
     }
 
+    float estimatedPhase() const {
+        float a1_cos = x(0);
+        float a1_sin = x(1);
+        return std::atan2(a1_sin, a1_cos);
+    }
+
     float getFrequency() const { return x(2 * M); }
     float getBias() const { return x(2 * M + 1); }
 
