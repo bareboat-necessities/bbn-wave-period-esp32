@@ -60,7 +60,7 @@ public:
             Rk << c, -s,
                   s,  c;
             x_pred.segment<2>(i) = Rk * x.segment<2>(i);
-            F.block<2,2>(i, i) = Rk;
+            F.block<2, 2>(i, i) = Rk;
 
             // ∂R/∂ω ⋅ x
             Real dtheta = k * dt;
@@ -71,8 +71,8 @@ public:
             F.block<2,1>(i, 2*M) = dR_omega;
         }
 
-        x_pred(2*M) = x(2*M);       // ω
-        x_pred(2*M+1) = x(2*M+1);   // b
+        x_pred(2 * M) = x(2 * M);           // ω
+        x_pred(2 * M + 1) = x(2 * M + 1);   // b
         P = F * P * F.transpose() + Q;
 
         // Update step
@@ -80,7 +80,7 @@ public:
         Real y_err = y_meas - y_pred;
 
         Real S = (H * P * H.transpose())(0,0) + R(0,0);
-        Eigen::Matrix<Real, N_STATE, 1> K = P * H.transpose() * (1.0f / S);
+        Eigen::Matrix<Real, N_STATE, 1> K = P * H.transpose() * (Real(1) / S);
 
         x = x_pred + K * y_err;
         P = (Mat::Identity() - K * H) * P;
@@ -91,7 +91,7 @@ public:
     }
 
     Real estimatedHeave() const {
-        Real heave = 0.0f;
+        Real heave = Real(0);
         Real omega = x(2 * M);
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
@@ -102,7 +102,7 @@ public:
     }
 
     Real estimatedVelocity() const {
-        Real vel = 0.0f;
+        Real vel = Real(0);
         Real omega = x(2 * M);
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
