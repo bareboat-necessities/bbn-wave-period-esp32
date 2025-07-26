@@ -62,7 +62,7 @@ public:
             Eigen::Matrix<Real, 2, 2> Rk;
             Rk << c, -s,
                   s,  c;
-            x_pred.segment<2>(i) = Rk * x.segment<2>(i);
+            x_pred.segment(i, 2) = Rk * x.segment<2>(i);
             F.block(i, i, 2, 2) = Rk;
 
             // ∂R/∂ω ⋅ x
