@@ -19,7 +19,7 @@ public:
     using Row = Eigen::Matrix<Real, 1, N_STATE>;
 
     // UKF parameters
-    static constexpr Real alpha = 0.5;
+    static constexpr Real alpha = 1e-1;
     static constexpr Real beta = 2.0;
     static constexpr Real kappa = 3.0 - N_STATE;
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
@@ -76,7 +76,7 @@ public:
         updateWithMeasurement(sigma_points_pred, y_meas);
         
         // Ensure frequency stays within reasonable bounds
-        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.02));  // min 0.02 Hz
+        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.1));  // min 0.1 Hz
         x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 10.0));  // max 10 Hz
     }
 
@@ -92,8 +92,7 @@ public:
 
     Real estimatedHeave() const {
         Real heave = Real(0);
-        Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+        Real omega = std::max(x(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -105,8 +104,7 @@ public:
 
     Real estimatedVelocity() const {
         Real vel = Real(0);
-        Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+        Real omega = std::max(x(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -171,8 +169,8 @@ private:
         for (int i = 0; i < SIG_CNT; ++i) {
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
-            Real omega = x_sigma(2 * M);
-            omega = std::clamp(omega, Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));     
+            Real omega = std::max(x_sigma(2 * M), Real(1e-4));
+            
             // Predict harmonic components
             for (int k = 1; k <= M; ++k) {
                 int idx = 2 * (k - 1);
@@ -237,21 +235,17 @@ private:
         Vec K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
-        for(int i = 0; i < N_STATE; ++i){
-            if (P(i, i) < 1e-9f) P(i, i) = 1e-9f;
-        }
     }
 
     Real measurementModel(const Vec& x_sigma) {
         Real y = 0;
-        Real omega = x_sigma(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));     
+        Real omega = std::max(x_sigma(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int idx = 2 * (k - 1);
             Real cos_term = x_sigma(idx);
-            Real kw = k * omega;
-            kw = std::clamp(kw, Real(1e-5), Real(1e+5));
-            Real term = -kw * kw * cos_term;
+            Real sin_term = x_sigma(idx + 1);
+            Real term = -(std::pow(k * omega, 2)) * cos_term; 
+            //term += -(std::pow(k * omega, 2)) * sin_term; // add this if sine matters
             y += term;
         }
         y += x_sigma(2 * M + 1);  // Add bias     
