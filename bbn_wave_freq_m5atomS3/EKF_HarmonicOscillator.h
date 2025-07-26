@@ -28,7 +28,7 @@ public:
         // Initialize state
         x.setZero();
         for (int k = 0; k < M; ++k) {
-            x(2 * k) = Real(0.01); 
+            x(2 * k) = Real(0.1); 
             x(2 * k + 1) = Real(0.001);
         }
         x(2 * M) = Real(2 * M_PI * 0.3);  // Initial ω estimate (0.3 Hz)
