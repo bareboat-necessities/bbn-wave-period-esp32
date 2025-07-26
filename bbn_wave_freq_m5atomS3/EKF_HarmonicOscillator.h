@@ -171,7 +171,8 @@ private:
         for (int i = 0; i < SIG_CNT; ++i) {
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
-            x_sigma(2 * M) = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+            Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+            x_sigma(2 * M) = clamped;
             Real omega = x_sigma(2 * M);
             // Predict harmonic components
             for (int k = 1; k <= M; ++k) {
