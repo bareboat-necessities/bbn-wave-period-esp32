@@ -112,7 +112,7 @@ float estimate_freq(FrequencyTracker tracker, AranovskiyFilter<double>* arFilter
     float f_kalmanANF = kalmANF->process(a_noisy, delta_t, &e);
     freq = f_kalmanANF;
   } else if (tracker == EKF_Oscillator) {
-    ekf_oscillator->update(a_noisy);
+    ekf_oscillator->update(a_noisy, delta_t);
     freq = ekf_oscillator->estimatedFrequencyHz();
   } else {
     float f_byZeroCross = freqDetector->update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
