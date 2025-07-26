@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
     init_filters_alt(&kalmANF, &kalman_freq);
   } else if (useFrequencyTracker == EKF_Oscillator) {
     ekf_oscillator.setProcessNoise(1e-3f, 1e-1f, 1e-5f);
-    ekf_oscillator.setMeasurementNoise(0.1f);
+    ekf_oscillator.setMeasurementNoise(1.0f);
     kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
     init_wave_filters();
   } else {
