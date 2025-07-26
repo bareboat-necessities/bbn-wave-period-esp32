@@ -14,6 +14,7 @@
 
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
+#include "EKF_HarmonicOscillator.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "MinMaxLemire.h"
