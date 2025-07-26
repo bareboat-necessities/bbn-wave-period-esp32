@@ -153,7 +153,7 @@ private:
         Eigen::LLT<Mat> lltOfP(P);
         if (lltOfP.info() != Eigen::Success) {
             // Handle fallback (e.g. add jitter, or fallback to identity)
-            P += Mat::Identity() * Real(1e-9);
+            P += Mat::Identity() * Real(1e-13);
             P = (P + P.transpose()) * Real(0.5);
             lltOfP.compute(P);
         }
@@ -233,15 +233,15 @@ private:
         }
         
         // Kalman update
-        if (std::abs(Pyy) < 1e-8 || std::isnan(Pyy)) {
-            Pyy = Real(1e-8);
+        if (std::abs(Pyy) < 1e-13 || std::isnan(Pyy)) {
+            Pyy = Real(1e-13);
         }
         Vec K = Pxy * (Real(1) / Pyy);
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
         for (int i = 0; i < N_STATE; ++i) {
-            if (P(i, i) < 1e-8f) { 
-                P(i, i) = 1e-8f;
+            if (P(i, i) < 1e-13f) { 
+                P(i, i) = 1e-13f;
             }
         }
     }
@@ -255,8 +255,8 @@ private:
             Real cos_term = x_sigma(idx);
             // Safe kw
             Real kw = k * omega;
-            if (!std::isfinite(kw) || std::abs(kw) < Real(1e-9)) {            
-                kw = Real(1e-9);
+            if (!std::isfinite(kw) || std::abs(kw) < Real(1e-13)) {            
+                kw = Real(1e-13);
             }
             y += -kw * kw * cos_term;
         }
