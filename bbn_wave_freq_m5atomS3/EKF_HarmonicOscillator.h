@@ -240,7 +240,7 @@ private:
         x += K * (y_meas - y_pred);
 
         Mat I = Mat::Identity();
-        P = (I - K * Row::Ones()) * P * (I - K * Row::Ones()).transpose() + K * R * K.transpose();
+        P = (I - K * Row::Unit(0)) * P * (I - K * Row::Unit(0)).transpose() + K * R(0, 0) * K.transpose();
         
         for (int i = 0; i < N_STATE; ++i) {
             if (P(i, i) < 1e-10f) { 
