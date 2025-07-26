@@ -152,7 +152,7 @@ private:
         Eigen::LLT<Mat> lltOfP(P);
         if (lltOfP.info() != Eigen::Success) {
             // Handle fallback (e.g. add jitter, or fallback to identity)
-            P += Mat::Identity() * Real(1e-6);
+            P += Mat::Identity() * Real(1e-9);
             lltOfP.compute(P);
         }
         Mat sqrtP = lltOfP.matrixL();
@@ -231,8 +231,8 @@ private:
         }
         
         // Kalman update
-        if (std::abs(Pyy) < 1e-6 || std::isnan(Pyy)) {
-            Pyy = Real(1e-6);
+        if (std::abs(Pyy) < 1e-9 || std::isnan(Pyy)) {
+            Pyy = Real(1e-9);
         }
         Vec K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
@@ -253,8 +253,8 @@ Real measurementModel(const Vec& x_sigma) {
 
         // Safe kw
         Real kw = k * omega;
-        if (!std::isfinite(kw) || std::abs(kw) < Real(1e-5))
-            kw = Real(1e-5);
+        if (!std::isfinite(kw) || std::abs(kw) < Real(1e-8))
+            kw = Real(1e-8);
 
         y += -kw * kw * cos_term;
     }
