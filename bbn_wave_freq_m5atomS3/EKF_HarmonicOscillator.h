@@ -237,6 +237,9 @@ private:
         Vec K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
+        for(int i = 0; i < N_STATE; ++i){
+            if (P(i, i) < 1e-9f) P(i, i) = 1e-9f;
+        }
     }
 
     Real measurementModel(const Vec& x_sigma) {
