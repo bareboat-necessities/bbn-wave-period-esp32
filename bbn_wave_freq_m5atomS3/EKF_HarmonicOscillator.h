@@ -27,8 +27,9 @@ public:
         R(0, 0) = 0.01f;
 
         H.setZero();
-        for (int k = 0; k < M; ++k)
+        for (int k = 0; k < M; ++k) {
             H(0, 2 * k) = 1.0f; // cosine terms only
+        }
         H(0, N_STATE - 1) = 1.0f; // bias
     }
 
