@@ -31,7 +31,7 @@ public:
         x(2 * M + 1) = Real(0);   // Initial bias estimate
         P.setIdentity(); P *= Real(10.0);
         Q.setIdentity(); Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(1e-5);
+        Q(2 * M, 2 * M) = Real(1e-2);
         Q(2 * M + 1, 2 * M + 1) = Real(1e-4);
         R.setZero();
         R(0, 0) = Real(0.01);
