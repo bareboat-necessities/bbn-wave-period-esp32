@@ -230,7 +230,7 @@ private:
         
         // Kalman update
         Pyy = std::max(Pyy, Real(1e-9));  // prevent divide-by-zero
-        Vec K = Pxy / Pyy;
+        Vec K = Pxy * (Real(1) / Pyy);
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
     }
@@ -241,9 +241,7 @@ private:
         for (int k = 1; k <= M; ++k) {
             int idx = 2 * (k - 1);
             Real cos_term = x_sigma(idx);
-            Real sin_term = x_sigma(idx + 1);
             Real term = -(std::pow(k * omega, 2)) * cos_term; 
-            //term += -(std::pow(k * omega, 2)) * sin_term; // add this if sine matters
             y += term;
         }
         y += x_sigma(2 * M + 1);  // Add bias     
