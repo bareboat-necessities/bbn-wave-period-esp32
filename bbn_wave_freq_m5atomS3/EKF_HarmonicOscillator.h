@@ -140,10 +140,6 @@ private:
             weights_m(i) = w;
             weights_c(i) = w;
         }
-
-        Real sum = weights_m.sum();
-        weights_m /= sum;
-        weights_c /= sum;
     }
 
     SigmaMat generateSigmaPoints() {
