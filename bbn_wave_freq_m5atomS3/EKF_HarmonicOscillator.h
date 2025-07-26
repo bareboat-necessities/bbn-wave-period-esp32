@@ -75,7 +75,7 @@ public:
 
             Real dtheta_domega = k * dt;
             Eigen::Matrix<Real, 2, 2> dR_dtheta;
-            dR_dtheta << -s, -c
+            dR_dtheta << -s, -c,
                           c, -s;
             F.block(i, 2 * M, 2, 1) = dtheta_domega * dR_dtheta * x.segment(i, 2);
         }
