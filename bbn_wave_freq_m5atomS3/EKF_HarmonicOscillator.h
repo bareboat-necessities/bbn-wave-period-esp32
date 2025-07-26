@@ -100,6 +100,17 @@ public:
         return heave;
     }
 
+    float estimatedVelocity() const {
+        float vel = 0.0f;
+        float omega = x(2 * M);
+        for (int k = 1; k <= M; ++k) {
+            int i = 2 * (k - 1);
+            float denom = k * omega;
+            vel -= x(i + 1) / denom;
+        }
+        return vel;
+    }
+
     float getFrequency() const { return x(2 * M); }
     float getBias() const { return x(2 * M + 1); }
 
