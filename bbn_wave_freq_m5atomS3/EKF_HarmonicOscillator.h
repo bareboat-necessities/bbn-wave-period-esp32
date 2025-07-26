@@ -8,8 +8,6 @@
 
 #include <cmath>
 
-// State vector layout:
-// x = [ a1_cos, a1_sin, a2_cos, a2_sin, ..., aM_cos, aM_sin, ω, bias ]
 template<int M, typename Real = float>
 class EKF_HarmonicOscillator {
 public:
@@ -18,34 +16,45 @@ public:
     using Mat = Eigen::Matrix<Real, N_STATE, N_STATE>;
     using Row = Eigen::Matrix<Real, 1, N_STATE>;
 
-    EKF_HarmonicOscillator()
-    {
+    // UKF parameters
+    static constexpr Real alpha = 1e-3;
+    static constexpr Real beta = 2.0;
+    static constexpr Real kappa = 0.0;
+    static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
+    
+    EKF_HarmonicOscillator() {
+        // Initialize state
         x.setZero();
         for (int k = 0; k < M; ++k) {
             x(2 * k) = Real(0.01); 
-            x(2 * k + 1) = Real(0); 
+            x(2 * k + 1) = Real(0);
         }
-        x(0) = Real(0.01); 
-        x(1) = Real(0.01); 
-        x(2 * M) = Real(2 * M_PI * 0.3 /*FREQ_GUESS*/);       // Initial ω estimate
-        x(2 * M + 1) = Real(0);   // Initial bias estimate
-        P.setIdentity(); P *= Real(10.0);
-        Q.setIdentity(); Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(1e-2);
-        Q(2 * M + 1, 2 * M + 1) = Real(1e-4);
+        x(0) = Real(0.01);
+        x(1) = Real(0.01);
+        x(2 * M) = Real(2 * M_PI * 0.3);  // Initial ω estimate (0.3 Hz)
+        x(2 * M + 1) = Real(0);           // Initial bias estimate
+        
+        // Initialize covariance
+        P.setIdentity(); 
+        P *= Real(10.0);
+        
+        // Process noise
+        Q.setIdentity(); 
+        Q *= Real(1e-3);
+        Q(2 * M, 2 * M) = Real(1e-2);      // Frequency process noise
+        Q(2 * M + 1, 2 * M + 1) = Real(1e-4); // Bias process noise
+        
+        // Measurement noise
         R.setZero();
         R(0, 0) = Real(0.01);
-
-        H.setZero();
-        for (int k = 0; k < M; ++k) {
-            H(0, 2 * k) = Real(1);     // cosine terms 
-            H(0, 2 * k + 1) = Real(0); // sine terms
-        }
-        H(0, N_STATE - 1) = Real(1); // bias
+        
+        // Calculate weights
+        calculateWeights();
     }
 
     void setProcessNoise(Real q_osc, Real q_omega, Real q_bias) {
-        Q.setIdentity(); Q *= q_osc;
+        Q.setIdentity(); 
+        Q *= q_osc;
         Q(2 * M, 2 * M) = q_omega;
         Q(2 * M + 1, 2 * M + 1) = q_bias;
     }
@@ -55,48 +64,30 @@ public:
         R(0, 0) = r;
     }
 
-    // EKF update given measured acceleration
     void update(Real y_meas, Real dt) {
-        Real omega = std::max(x(2 * M), Real(1e-4));
-
-        // Predict step
-        Vec x_pred = Vec::Zero();
-        Mat F = Mat::Identity();
-
-        for (int k = 1; k <= M; ++k) {
-            int i = 2 * (k - 1);
-            Real theta = k * omega * dt;
-            Real c = std::cos(theta), s = std::sin(theta);
-            Eigen::Matrix<Real, 2, 2> Rk;
-            Rk << c, -s,
-                  s,  c;
-            x_pred.segment(i, 2) = Rk * x.segment(i, 2);
-            F.block(i, i, 2, 2) = Rk;
-
-            Real dtheta_domega = k * dt;
-            Eigen::Matrix<Real, 2, 2> dR_dtheta;
-            dR_dtheta << -s, -c,
-                          c, -s;
-            F.block(i, 2 * M, 2, 1) = dtheta_domega * dR_dtheta * x.segment(i, 2);
-        }
-
-        x_pred(2 * M) = x(2 * M);           // ω
-        x_pred(2 * M + 1) = x(2 * M + 1);   // b
-        P = F * P * F.transpose() + Q;
-
-        // Update step
-        Real y_pred = (H * x_pred)(0);
-        Real y_err = y_meas - y_pred;
-
-        Real S = (H * P * H.transpose())(0, 0) + R(0, 0);
-        Eigen::Matrix<Real, N_STATE, 1> K = P * H.transpose() * (Real(1) / S);
-
-        x = x_pred + K * y_err;
-        P = (Mat::Identity() - K * H) * P;
+        // 1. Generate sigma points
+        Mat sigma_points = generateSigmaPoints();
+        
+        // 2. Predict step (time update)
+        Mat sigma_points_pred = predictSigmaPoints(sigma_points, dt);
+        predictMeanAndCovariance(sigma_points_pred);
+        
+        // 3. Measurement update
+        updateWithMeasurement(sigma_points_pred, y_meas);
+        
+        // Ensure frequency stays within reasonable bounds
+        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.1));  // min 0.1 Hz
+        x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 10.0));  // max 10 Hz
     }
 
+    // Measurement prediction (for innovation calculation)
     Real estimatedAccel() const {
-        return (H * x)(0);
+        Real y = 0;
+        for (int k = 0; k < M; ++k) {
+            y += x(2 * k);  // Sum of cosine terms
+        }
+        y += x(2 * M + 1);  // Add bias
+        return y;
     }
 
     Real estimatedHeave() const {
@@ -105,7 +96,7 @@ public:
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
-            if (std::abs(denom) < Real(1e-7)) denom = Real(1e-7);
+            denom = std::abs(denom) < Real(1e-7) ? Real(1e-7) : denom;
             heave -= x(i) / (denom * denom);
         }
         return heave;
@@ -117,25 +108,135 @@ public:
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
-            if (std::abs(denom) < Real(1e-7)) denom = Real(1e-7);
+            denom = std::abs(denom) < Real(1e-7) ? Real(1e-7) : denom;
             vel -= x(i + 1) / denom;
         }
         return vel;
     }
 
     Real estimatedPhase() const {
-        Real a1_cos = x(0);
-        Real a1_sin = x(1);
-        return std::atan2(a1_sin, a1_cos);
+        return std::atan2(x(1), x(0));
     }
 
     Real getFrequency() const { return x(2 * M) / (2 * M_PI); }
     Real getBias() const { return x(2 * M + 1); }
 
 private:
+    Vec x;      // State vector
+    Mat P;      // State covariance
+    Mat Q;      // Process noise covariance
+    Mat R;      // Measurement noise covariance
+    
+    // Weights for sigma points
+    Eigen::Matrix<Real, 1, 2 * N_STATE + 1> weights_m;  // Mean weights
+    Eigen::Matrix<Real, 1, 2 * N_STATE + 1> weights_c;  // Covariance weights
 
-    Vec x;
-    Mat P, Q;
-    Eigen::Matrix<Real, 1, 1> R;
-    Row H;
+    void calculateWeights() {
+        weights_m(0) = lambda / (N_STATE + lambda);
+        weights_c(0) = weights_m(0) + (1 - alpha * alpha + beta);
+        
+        Real w = Real(1) / (2 * (N_STATE + lambda));
+        for (int i = 1; i < 2 * N_STATE + 1; ++i) {
+            weights_m(i) = w;
+            weights_c(i) = w;
+        }
+    }
+
+    Mat generateSigmaPoints() {
+        Mat sigma_points(N_STATE, 2 * N_STATE + 1);
+        const Real scale = sqrt(N_STATE + lambda);
+        
+        // Matrix square root of P
+        Eigen::LLT<Mat> lltOfP(P);
+        Mat sqrtP = lltOfP.matrixL();
+        
+        sigma_points.col(0) = x;
+        for (int i = 0; i < N_STATE; ++i) {
+            sigma_points.col(i + 1) = x + scale * sqrtP.col(i);
+            sigma_points.col(i + 1 + N_STATE) = x - scale * sqrtP.col(i);
+        }
+        
+        return sigma_points;
+    }
+
+    Mat predictSigmaPoints(const Mat& sigma_points, Real dt) {
+        Mat sigma_points_pred(N_STATE, 2 * N_STATE + 1);
+        
+        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+            Vec x_sigma = sigma_points.col(i);
+            Vec x_pred = Vec::Zero();
+            Real omega = std::max(x_sigma(2 * M), Real(1e-4));
+            
+            // Predict harmonic components
+            for (int k = 1; k <= M; ++k) {
+                int idx = 2 * (k - 1);
+                Real theta = k * omega * dt;
+                Real c = cos(theta), s = sin(theta);
+                x_pred(idx) = c * x_sigma(idx) - s * x_sigma(idx + 1);
+                x_pred(idx + 1) = s * x_sigma(idx) + c * x_sigma(idx + 1);
+            }
+            
+            // Frequency and bias are assumed constant (with noise handled by Q)
+            x_pred(2 * M) = x_sigma(2 * M);
+            x_pred(2 * M + 1) = x_sigma(2 * M + 1);
+            
+            sigma_points_pred.col(i) = x_pred;
+        }
+        
+        return sigma_points_pred;
+    }
+
+    void predictMeanAndCovariance(const Mat& sigma_points_pred) {
+        // Calculate predicted state mean
+        x.setZero();
+        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+            x += weights_m(i) * sigma_points_pred.col(i);
+        }
+        
+        // Calculate predicted state covariance
+        P.setZero();
+        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+            Vec dx = sigma_points_pred.col(i) - x;
+            P += weights_c(i) * dx * dx.transpose();
+        }
+        P += Q;  // Add process noise
+    }
+
+    void updateWithMeasurement(const Mat& sigma_points_pred, Real y_meas) {
+        // Transform sigma points through measurement model
+        Eigen::Matrix<Real, 1, 2 * N_STATE + 1> y_sigma;
+        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+            y_sigma(i) = measurementModel(sigma_points_pred.col(i));
+        }
+        
+        // Calculate mean measurement
+        Real y_pred = 0;
+        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+            y_pred += weights_m(i) * y_sigma(i);
+        }
+        
+        // Calculate innovation covariance
+        Real Pyy = R(0, 0);
+        Vec Pxy = Vec::Zero();
+        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+            Real dy = y_sigma(i) - y_pred;
+            Vec dx = sigma_points_pred.col(i) - x;
+            Pyy += weights_c(i) * dy * dy;
+            Pxy += weights_c(i) * dx * dy;
+        }
+        
+        // Kalman update
+        Vec K = Pxy / Pyy;
+        x += K * (y_meas - y_pred);
+        P -= K * Pyy * K.transpose();
+    }
+
+    Real measurementModel(const Vec& x_sigma) {
+        Real y = 0;
+        for (int k = 0; k < M; ++k) {
+            y += x_sigma(2 * k);  // Sum of cosine terms
+        }
+        y += x_sigma(2 * M + 1);  // Add bias
+        return y;
+    }
 };
