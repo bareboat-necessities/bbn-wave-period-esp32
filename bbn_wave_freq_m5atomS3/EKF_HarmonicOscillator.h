@@ -19,34 +19,34 @@ public:
     using Row = Eigen::Matrix<Real, 1, N_STATE>;
 
     // UKF parameters
-    static constexpr Real alpha = 0.1;
+    static constexpr Real alpha = 1e-1;
     static constexpr Real beta = 2.0;
-    static constexpr Real kappa = 3 - N_STATE;
+    static constexpr Real kappa = 3.0 - N_STATE;
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
     
     EKF_HarmonicOscillator() {
         // Initialize state
         x.setZero();
         for (int k = 0; k < M; ++k) {
-            x(2 * k) = Real(0.005) + Real(0.001) * k; 
-            x(2 * k + 1) = -Real(0.002);
+            x(2 * k) = Real(0.01); 
+            x(2 * k + 1) = Real(0.001);
         }
         x(2 * M) = Real(2 * M_PI * 0.3);  // Initial ω estimate (0.3 Hz)
         x(2 * M + 1) = Real(0);           // Initial bias estimate
         
         // Initialize covariance
         P.setIdentity(); 
-        P *= Real(1.0);
+        P *= Real(10.0);
         
         // Process noise
         Q.setIdentity(); 
         Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(1e-1);      // Frequency process noise
+        Q(2 * M, 2 * M) = Real(1e0);      // Frequency process noise
         Q(2 * M + 1, 2 * M + 1) = Real(1e-5); // Bias process noise
         
         // Measurement noise
         R.setZero();
-        R(0, 0) = Real(0.05);
+        R(0, 0) = Real(0.5);
         
         // Calculate weights
         calculateWeights();
@@ -76,8 +76,8 @@ public:
         updateWithMeasurement(sigma_points_pred, y_meas);
         
         // Ensure frequency stays within reasonable bounds
-        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.01));  
-        x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 100.0)); 
+        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.1));  // min 0.1 Hz
+        x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 10.0));  // max 10 Hz
     }
 
     // Measurement prediction (for innovation calculation)
@@ -92,8 +92,7 @@ public:
 
     Real estimatedHeave() const {
         Real heave = Real(0);
-        Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.01), Real(2 * M_PI * 100.0));
+        Real omega = std::max(x(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -105,8 +104,7 @@ public:
 
     Real estimatedVelocity() const {
         Real vel = Real(0);
-        Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.01), Real(2 * M_PI * 100.0));
+        Real omega = std::max(x(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -149,12 +147,10 @@ private:
         const Real scale = sqrt(N_STATE + lambda);
         
         // Matrix square root of P
-        P = (P + P.transpose()) * Real(0.5);
         Eigen::LLT<Mat> lltOfP(P);
         if (lltOfP.info() != Eigen::Success) {
             // Handle fallback (e.g. add jitter, or fallback to identity)
-            P += Mat::Identity() * Real(1e-10);
-            P = (P + P.transpose()) * Real(0.5);
+            P += Mat::Identity() * Real(1e-6);
             lltOfP.compute(P);
         }
         Mat sqrtP = lltOfP.matrixL();
@@ -173,8 +169,8 @@ private:
         for (int i = 0; i < SIG_CNT; ++i) {
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
-            Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.01), Real(2 * M_PI * 100.0));
-            Real omega = clamped;
+            Real omega = std::max(x_sigma(2 * M), Real(1e-4));
+            
             // Predict harmonic components
             for (int k = 1; k <= M; ++k) {
                 int idx = 2 * (k - 1);
@@ -194,22 +190,21 @@ private:
     }
 
     void predictMeanAndCovariance(const SigmaMat& sigma_points_pred) {
-        Vec x_pred = Vec::Zero();
+        // Calculate predicted state mean
+        x.setZero();
         for (int i = 0; i < SIG_CNT; ++i) {
-            x_pred += weights_m(i) * sigma_points_pred.col(i);
+            x += weights_m(i) * sigma_points_pred.col(i);
         }
-    
-        Mat P_pred = Mat::Zero();
+        
+        // Calculate predicted state covariance
+        P.setZero();
         for (int i = 0; i < SIG_CNT; ++i) {
-            Vec dx = sigma_points_pred.col(i) - x_pred;
-            P_pred += weights_c(i) * dx * dx.transpose();
+            Vec dx = sigma_points_pred.col(i) - x;
+            P += weights_c(i) * dx * dx.transpose();
         }
-        P_pred += Q;
-    
-        x = x_pred;
-        P = P_pred;
+        P += Q;  // Add process noise
     }
-    
+
     void updateWithMeasurement(const SigmaMat& sigma_points_pred, Real y_meas) {
         // Transform sigma points through measurement model
         Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
@@ -234,43 +229,26 @@ private:
         }
         
         // Kalman update
-        if (std::abs(Pyy) < 1e-5 || std::isnan(Pyy)) {
-            Pyy = Real(1e-5);
+        if (std::abs(Pyy) < 1e-6 || std::isnan(Pyy)) {
+            Pyy = Real(1e-6);
         }
-        Vec K = Pxy * (Real(1) / Pyy);
+        Vec K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
-
         P -= K * Pyy * K.transpose();
-        for (int i = 0; i < N_STATE; ++i) {
-            if (P(i, i) < 1e-10f) { 
-                P(i, i) = 1e-10f;
-            }
-        }
     }
 
     Real measurementModel(const Vec& x_sigma) {
-        Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.01), Real(2 * M_PI * 100.0));
-        Real omega = clamped;
         Real y = 0;
+        Real omega = std::max(x_sigma(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int idx = 2 * (k - 1);
             Real cos_term = x_sigma(idx);
-            // Safe kw
-            Real kw = k * omega;
-            if (!std::isfinite(kw) || std::abs(kw) < Real(1e-6)) {            
-                kw = Real(1e-6);
-            }
-            y += -kw * kw * cos_term;
+            Real sin_term = x_sigma(idx + 1);
+            Real term = -(std::pow(k * omega, 2)) * cos_term; 
+            //term += -(std::pow(k * omega, 2)) * sin_term; // add this if sine matters
+            y += term;
         }
-        Real bias = x_sigma(2 * M + 1);
-        if (!std::isfinite(bias)) {
-            bias = Real(0);
-        }
-        y += bias;
-    
-        if (!std::isfinite(y)) {
-            y = Real(0);  // Failsafe fallback
-        }
+        y += x_sigma(2 * M + 1);  // Add bias     
         return y;
     }
 };
