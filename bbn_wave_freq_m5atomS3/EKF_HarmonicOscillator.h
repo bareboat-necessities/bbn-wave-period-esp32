@@ -240,19 +240,17 @@ private:
         P = (P + P.transpose()) * Real(0.5);
     }
 
-Real measurementModel(const Vec& x_sigma, Real t) {
-    Real y = 0;
-    Real omega = std::max(x_sigma(2 * M), Real(1e-4));
-    for (int k = 1; k <= M; ++k) {
-        int idx = 2 * (k - 1);
-        Real a_k = x_sigma(idx);
-        Real b_k = x_sigma(idx + 1);
-        Real theta = k * omega * t;
-        y += -(k * omega) * (k * omega) * (a_k * cos(theta) + b_k * sin(theta));
+    Real measurementModel(const Vec& x_sigma, Real t) {
+        Real y = 0;
+        Real omega = std::max(x_sigma(2 * M), Real(1e-4));
+        for (int k = 1; k <= M; ++k) {
+            int idx = 2 * (k - 1);
+            Real a_k = x_sigma(idx);
+            Real b_k = x_sigma(idx + 1);
+            Real theta = k * omega * t;
+            y += -(k * omega) * (k * omega) * (a_k * cos(theta) + b_k * sin(theta));
+        }
+        y += x_sigma(2 * M + 1);  // bias
+        return y;
     }
-    y += x_sigma(2 * M + 1);  // bias
-    return y;
-}
-
-    
 };
