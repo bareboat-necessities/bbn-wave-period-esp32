@@ -40,7 +40,7 @@ public:
         
         // Process noise
         Q.setIdentity(); 
-        Q *= Real(1e-4);
+        Q *= Real(1e-3);
         Q(2 * M, 2 * M) = Real(1e-1);      // Frequency process noise
         Q(2 * M + 1, 2 * M + 1) = Real(1e-5); // Bias process noise
         
