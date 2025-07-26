@@ -41,12 +41,12 @@ public:
         // Process noise
         Q.setIdentity(); 
         Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(1e0);      // Frequency process noise
+        Q(2 * M, 2 * M) = Real(1e-1);      // Frequency process noise
         Q(2 * M + 1, 2 * M + 1) = Real(1e-5); // Bias process noise
         
         // Measurement noise
         R.setZero();
-        R(0, 0) = Real(0.5);
+        R(0, 0) = Real(0.05);
         
         // Calculate weights
         calculateWeights();
@@ -76,8 +76,8 @@ public:
         updateWithMeasurement(sigma_points_pred, y_meas);
         
         // Ensure frequency stays within reasonable bounds
-        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.002));  // min 0.002 Hz
-        x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 100.0));  // max 10 Hz
+        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.0002));  
+        x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 1000.0)); 
     }
 
     // Measurement prediction (for innovation calculation)
@@ -93,7 +93,7 @@ public:
     Real estimatedHeave() const {
         Real heave = Real(0);
         Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.002), Real(2 * M_PI * 100.0));
+        omega = std::clamp(omega, Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -106,11 +106,11 @@ public:
     Real estimatedVelocity() const {
         Real vel = Real(0);
         Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.002), Real(2 * M_PI * 100.0));
+        omega = std::clamp(omega, Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
-            denom = std::abs(denom) < Real(1e-7) ? Real(1e-7) : denom;
+            denom = std::abs(denom) < Real(1e-9) ? Real(1e-9) : denom;
             vel -= x(i + 1) / denom;
         }
         return vel;
@@ -153,7 +153,7 @@ private:
         Eigen::LLT<Mat> lltOfP(P);
         if (lltOfP.info() != Eigen::Success) {
             // Handle fallback (e.g. add jitter, or fallback to identity)
-            P += Mat::Identity() * Real(1e-8);
+            P += Mat::Identity() * Real(1e-9);
             P = (P + P.transpose()) * Real(0.5);
             lltOfP.compute(P);
         }
@@ -173,7 +173,7 @@ private:
         for (int i = 0; i < SIG_CNT; ++i) {
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
-            Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.002), Real(2 * M_PI * 100.0));
+            Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
             Real omega = clamped;
             // Predict harmonic components
             for (int k = 1; k <= M; ++k) {
@@ -246,28 +246,28 @@ private:
         }
     }
 
-Real measurementModel(const Vec& x_sigma) {
-    Real omega = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.002), Real(2 * M_PI * 100.0));
-    Real y = 0;
-    for (int k = 1; k <= M; ++k) {
-        int idx = 2 * (k - 1);
-        Real cos_term = x_sigma(idx);
-        // Safe kw
-        Real kw = k * omega;
-        if (!std::isfinite(kw) || std::abs(kw) < Real(1e-8)) {            
-            kw = Real(1e-8);
+    Real measurementModel(const Vec& x_sigma) {
+        Real omega = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
+        Real y = 0;
+        for (int k = 1; k <= M; ++k) {
+            int idx = 2 * (k - 1);
+            Real cos_term = x_sigma(idx);
+            // Safe kw
+            Real kw = k * omega;
+            if (!std::isfinite(kw) || std::abs(kw) < Real(1e-9)) {            
+                kw = Real(1e-9);
+            }
+            y += -kw * kw * cos_term;
         }
-        y += -kw * kw * cos_term;
+        Real bias = x_sigma(2 * M + 1);
+        if (!std::isfinite(bias)) {
+            bias = Real(0);
+        }
+        y += bias;
+    
+        if (!std::isfinite(y)) {
+            y = Real(0);  // Failsafe fallback
+        }
+        return y;
     }
-    Real bias = x_sigma(2 * M + 1);
-    if (!std::isfinite(bias)) {
-        bias = Real(0);
-    }
-    y += bias;
-
-    if (!std::isfinite(y)) {
-        y = Real(0);  // Failsafe fallback
-    }
-    return y;
-}
 };
