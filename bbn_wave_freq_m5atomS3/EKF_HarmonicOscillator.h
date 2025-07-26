@@ -76,7 +76,7 @@ public:
         updateWithMeasurement(sigma_points_pred, y_meas);
         
         // Ensure frequency stays within reasonable bounds
-        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.02));  // min 0.02 Hz
+        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.002));  // min 0.002 Hz
         x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 10.0));  // max 10 Hz
     }
 
@@ -93,7 +93,7 @@ public:
     Real estimatedHeave() const {
         Real heave = Real(0);
         Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+        omega = std::clamp(omega, Real(2 * M_PI * 0.002), Real(2 * M_PI * 10.0));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -106,7 +106,7 @@ public:
     Real estimatedVelocity() const {
         Real vel = Real(0);
         Real omega = x(2 * M);
-        omega = std::clamp(omega, Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+        omega = std::clamp(omega, Real(2 * M_PI * 0.002), Real(2 * M_PI * 10.0));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
@@ -171,7 +171,7 @@ private:
         for (int i = 0; i < SIG_CNT; ++i) {
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
-            Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+            Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.002), Real(2 * M_PI * 10.0));
             Real omega = clamped;
             // Predict harmonic components
             for (int k = 1; k <= M; ++k) {
@@ -245,7 +245,7 @@ private:
     }
 
 Real measurementModel(const Vec& x_sigma) {
-    Real omega = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.02), Real(2 * M_PI * 10.0));
+    Real omega = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.002), Real(2 * M_PI * 10.0));
     Real y = 0;
     for (int k = 1; k <= M; ++k) {
         int idx = 2 * (k - 1);
