@@ -173,8 +173,8 @@ private:
         for (int i = 0; i < SIG_CNT; ++i) {
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
-            Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
-            Real omega = clamped;
+            //Real clamped = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
+            Real omega = x_sigma(2 * M);
             // Predict harmonic components
             for (int k = 1; k <= M; ++k) {
                 int idx = 2 * (k - 1);
@@ -247,7 +247,8 @@ private:
     }
 
     Real measurementModel(const Vec& x_sigma) {
-        Real omega = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
+        //Real omega = std::clamp(x_sigma(2 * M), Real(2 * M_PI * 0.0002), Real(2 * M_PI * 1000.0));
+        Real omega = x_sigma(2 * M);
         Real y = 0;
         for (int k = 1; k <= M; ++k) {
             int idx = 2 * (k - 1);
