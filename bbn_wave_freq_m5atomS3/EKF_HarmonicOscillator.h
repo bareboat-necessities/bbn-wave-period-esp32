@@ -36,7 +36,7 @@ public:
         
         // Initialize covariance
         P.setIdentity(); 
-        P *= Real(100.0);
+        P *= Real(10.0);
         
         // Process noise
         Q.setIdentity(); 
