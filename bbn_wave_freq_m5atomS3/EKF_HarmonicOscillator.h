@@ -233,8 +233,8 @@ private:
         }
         
         // Kalman update
-        if (std::abs(Pyy) < 1e-7 || std::isnan(Pyy)) {
-            Pyy = Real(1e-7);
+        if (std::abs(Pyy) < 1e-5 || std::isnan(Pyy)) {
+            Pyy = Real(1e-5);
         }
         Vec K = Pxy * (Real(1) / Pyy);
         x += K * (y_meas - y_pred);
