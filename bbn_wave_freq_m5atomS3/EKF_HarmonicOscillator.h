@@ -250,8 +250,9 @@ private:
             int idx = 2 * (k - 1);
             Real cos_term = x_sigma(idx);
             Real sin_term = x_sigma(idx + 1);
-            Real term = -(std::pow(k * omega, 2)) * cos_term; 
-            //term += -(std::pow(k * omega, 2)) * sin_term; // add this if sine matters
+            Real kw = k * omega;
+            kw = std::clamp(kw, Real(1e-4), Real(2 * M_PI * 10.0));
+            Real term = -kw * kw * cos_term;
             y += term;
         }
         y += x_sigma(2 * M + 1);  // Add bias     
