@@ -239,9 +239,7 @@ private:
         Vec K = Pxy * (Real(1) / Pyy);
         x += K * (y_meas - y_pred);
 
-        Mat I = Mat::Identity();
-        P = (I - K * Row::Unit(0)) * P * (I - K * Row::Unit(0)).transpose() + K * R(0, 0) * K.transpose();
-        
+        P -= K * Pyy * K.transpose();
         for (int i = 0; i < N_STATE; ++i) {
             if (P(i, i) < 1e-10f) { 
                 P(i, i) = 1e-10f;
