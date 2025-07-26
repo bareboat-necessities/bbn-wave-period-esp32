@@ -207,7 +207,7 @@ private:
         P += Q;  // Add process noise
     }
 
-    void updateWithMeasurement(const SigmaMat& sigma_points_pred, Real y_meas) {
+    void updateWithMeasurement(SigmaMat& sigma_points_pred, Real y_meas) {
         // Transform sigma points through measurement model
         Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
         for (int i = 0; i < SIG_CNT; ++i) {
