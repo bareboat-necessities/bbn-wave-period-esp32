@@ -64,7 +64,7 @@ public:
         R(0, 0) = r;
     }
 
-    void update(Real y_meas, Real dt) {
+    void update(Real y_meas, Real dt, Real t) {
         // 1. Generate sigma points
         SigmaMat sigma_points = generateSigmaPoints();
         
@@ -73,7 +73,7 @@ public:
         predictMeanAndCovariance(sigma_points_pred);
         
         // 3. Measurement update
-        updateWithMeasurement(sigma_points_pred, y_meas);
+        updateWithMeasurement(sigma_points_pred, y_meas, t);
         
         // Ensure frequency stays within reasonable bounds
         x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.1));  
@@ -207,11 +207,11 @@ private:
         P += Q;  // Add process noise
     }
 
-    void updateWithMeasurement(const SigmaMat& sigma_points_pred, Real y_meas) {
+    void updateWithMeasurement(const SigmaMat& sigma_points_pred, Real y_meas, Real t) {
         // Transform sigma points through measurement model
         Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
         for (int i = 0; i < SIG_CNT; ++i) {
-            y_sigma(i) = measurementModel(sigma_points_pred.col(i));
+            y_sigma(i) = measurementModel(sigma_points_pred.col(i), t);
         }
         
         // Calculate mean measurement
@@ -240,16 +240,19 @@ private:
         P = (P + P.transpose()) * Real(0.5);
     }
 
-    Real measurementModel(const Vec& x_sigma) {
-        Real y = 0;
-        Real omega = std::max(x_sigma(2 * M), Real(1e-4));
-        for (int k = 1; k <= M; ++k) {
-            int idx = 2 * (k - 1);
-            Real cos_term = x_sigma(idx);
-            Real term = -(std::pow(k * omega, 2)) * cos_term; 
-            y += term;
-        }
-        y += x_sigma(2 * M + 1);  // Add bias     
-        return y;
+Real measurementModel(const Vec& x_sigma, Real t) {
+    Real y = 0;
+    Real omega = std::max(x_sigma(2 * M), Real(1e-4));
+    for (int k = 1; k <= M; ++k) {
+        int idx = 2 * (k - 1);
+        Real a_k = x_sigma(idx);
+        Real b_k = x_sigma(idx + 1);
+        Real theta = k * omega * t;
+        y += -(k * omega) * (k * omega) * (a_k * cos(theta) + b_k * sin(theta));
     }
+    y += x_sigma(2 * M + 1);  // bias
+    return y;
+}
+
+    
 };
