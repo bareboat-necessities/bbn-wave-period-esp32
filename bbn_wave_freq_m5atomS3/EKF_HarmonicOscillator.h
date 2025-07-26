@@ -55,7 +55,7 @@ public:
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real theta = k * omega * dt;
-            Real c = cosf(theta), s = sinf(theta);
+            Real c = std::cos(theta), s = std::sin(theta);
             Eigen::Matrix2f Rk;
             Rk << c, -s,
                   s,  c;
@@ -68,7 +68,7 @@ public:
             Eigen::Vector2f dR_omega;
             dR_omega << -dtheta * (x1 * s + x2 * c),
                          dtheta * (x1 * c - x2 * s);
-            F.block<2,1>(i, 2*M) = dR_omega;
+            F.block<2,1>(i, 2 * M) = dR_omega;
         }
 
         x_pred(2 * M) = x(2 * M);           // ω
