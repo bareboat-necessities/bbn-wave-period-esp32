@@ -99,6 +99,7 @@ public:
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real denom = k * omega;
+            if (std::abs(denom) < Real(1e-7)) denom = Real(1e-7);
             heave -= x(i) / (denom * denom);
         }
         return heave;
