@@ -128,22 +128,22 @@ private:
     Mat R;      // Measurement noise covariance
     
     // Weights for sigma points
-    Eigen::Matrix<Real, 1, 2 * N_STATE + 1> weights_m;  // Mean weights
-    Eigen::Matrix<Real, 1, 2 * N_STATE + 1> weights_c;  // Covariance weights
+    Eigen::Matrix<Real, 1, SIG_CNT> weights_m;  // Mean weights
+    Eigen::Matrix<Real, 1, SIG_CNT> weights_c;  // Covariance weights
 
     void calculateWeights() {
         weights_m(0) = lambda / (N_STATE + lambda);
         weights_c(0) = weights_m(0) + (1 - alpha * alpha + beta);
         
         Real w = Real(1) / (2 * (N_STATE + lambda));
-        for (int i = 1; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 1; i < SIG_CNT; ++i) {
             weights_m(i) = w;
             weights_c(i) = w;
         }
     }
 
     SigmaMat generateSigmaPoints() {
-        SigmaMat sigma_points(N_STATE, 2 * N_STATE + 1);
+        SigmaMat sigma_points(N_STATE, SIG_CNT);
         const Real scale = sqrt(N_STATE + lambda);
         
         // Matrix square root of P
@@ -169,9 +169,9 @@ Mat sqrtP = lltOfP.matrixL();
     }
 
     SigmaMat predictSigmaPoints(const SigmaMat& sigma_points, Real dt) {
-        SigmaMat sigma_points_pred(N_STATE, 2 * N_STATE + 1);
+        SigmaMat sigma_points_pred(N_STATE, SIG_CNT);
         
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             Vec x_sigma = sigma_points.col(i);
             Vec x_pred = Vec::Zero();
             Real omega = std::max(x_sigma(2 * M), Real(1e-4));
@@ -198,13 +198,13 @@ Mat sqrtP = lltOfP.matrixL();
     void predictMeanAndCovariance(const SigmaMat& sigma_points_pred) {
         // Calculate predicted state mean
         x.setZero();
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             x += weights_m(i) * sigma_points_pred.col(i);
         }
         
         // Calculate predicted state covariance
         P.setZero();
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             Vec dx = sigma_points_pred.col(i) - x;
             P += weights_c(i) * dx * dx.transpose();
         }
@@ -213,21 +213,21 @@ Mat sqrtP = lltOfP.matrixL();
 
     void updateWithMeasurement(const SigmaMat& sigma_points_pred, Real y_meas) {
         // Transform sigma points through measurement model
-        Eigen::Matrix<Real, 1, 2 * N_STATE + 1> y_sigma;
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
+        for (int i = 0; i < SIG_CNT; ++i) {
             y_sigma(i) = measurementModel(sigma_points_pred.col(i));
         }
         
         // Calculate mean measurement
         Real y_pred = 0;
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             y_pred += weights_m(i) * y_sigma(i);
         }
         
         // Calculate innovation covariance
         Real Pyy = R(0, 0);
         Vec Pxy = Vec::Zero();
-        for (int i = 0; i < 2 * N_STATE + 1; ++i) {
+        for (int i = 0; i < SIG_CNT; ++i) {
             Real dy = y_sigma(i) - y_pred;
             Vec dx = sigma_points_pred.col(i) - x;
             Pyy += weights_c(i) * dy * dy;
