@@ -29,7 +29,7 @@ public:
         x.setZero();
         for (int k = 0; k < M; ++k) {
             x(2 * k) = Real(0.005) + Real(0.001) * k; 
-            x(2 * k + 1) = Real(0.005);
+            x(2 * k + 1) = Real(0.002);
         }
         x(2 * M) = Real(2 * M_PI * 0.3);  // Initial ω estimate (0.3 Hz)
         x(2 * M + 1) = Real(0);           // Initial bias estimate
