@@ -207,7 +207,7 @@ private:
         P += Q;  // Add process noise
     }
 
-    void updateWithMeasurement(SigmaMat& sigma_points_pred, Real y_meas) {
+    void updateWithMeasurement(const SigmaMat& sigma_points_pred, Real y_meas) {
         // Transform sigma points through measurement model
         Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
         for (int i = 0; i < SIG_CNT; ++i) {
@@ -237,8 +237,10 @@ private:
         Vec K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
-        for(int i = 0; i < N_STATE; ++i){
-            if (P(i, i) < 1e-9f) P(i, i) = 1e-9f;
+        for (int i = 0; i < N_STATE; ++i) {
+            if (P(i, i) < 1e-9f) { 
+                P(i, i) = 1e-9f;
+            }
         }
     }
 
