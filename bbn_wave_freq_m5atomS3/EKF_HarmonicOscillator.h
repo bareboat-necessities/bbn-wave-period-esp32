@@ -118,7 +118,7 @@ public:
         return std::atan2(a1_sin, a1_cos);
     }
 
-    Real getFrequency() const { return x(2 * M); }
+    Real getFrequency() const { return x(2 * M) / (2 * M_PI); }
     Real getBias() const { return x(2 * M + 1); }
 
 private:
