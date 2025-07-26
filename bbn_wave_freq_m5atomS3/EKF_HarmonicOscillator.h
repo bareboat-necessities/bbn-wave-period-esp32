@@ -153,7 +153,8 @@ private:
         Eigen::LLT<Mat> lltOfP(P);
         if (lltOfP.info() != Eigen::Success) {
             // Handle fallback (e.g. add jitter, or fallback to identity)
-            P += Mat::Identity() * Real(1e-9);
+            P += Mat::Identity() * Real(1e-8);
+            P = (P + P.transpose()) * Real(0.5);
             lltOfP.compute(P);
         }
         Mat sqrtP = lltOfP.matrixL();
@@ -232,15 +233,15 @@ private:
         }
         
         // Kalman update
-        if (std::abs(Pyy) < 1e-9 || std::isnan(Pyy)) {
-            Pyy = Real(1e-9);
+        if (std::abs(Pyy) < 1e-8 || std::isnan(Pyy)) {
+            Pyy = Real(1e-8);
         }
         Vec K = Pxy / Pyy;
         x += K * (y_meas - y_pred);
         P -= K * Pyy * K.transpose();
         for (int i = 0; i < N_STATE; ++i) {
-            if (P(i, i) < 1e-9f) { 
-                P(i, i) = 1e-9f;
+            if (P(i, i) < 1e-8f) { 
+                P(i, i) = 1e-8f;
             }
         }
     }
@@ -251,24 +252,22 @@ Real measurementModel(const Vec& x_sigma) {
     for (int k = 1; k <= M; ++k) {
         int idx = 2 * (k - 1);
         Real cos_term = x_sigma(idx);
-
         // Safe kw
         Real kw = k * omega;
-        if (!std::isfinite(kw) || std::abs(kw) < Real(1e-8))
+        if (!std::isfinite(kw) || std::abs(kw) < Real(1e-8)) {            
             kw = Real(1e-8);
-
+        }
         y += -kw * kw * cos_term;
     }
-
     Real bias = x_sigma(2 * M + 1);
-    if (!std::isfinite(bias))
+    if (!std::isfinite(bias)) {
         bias = Real(0);
-
+    }
     y += bias;
 
-    if (!std::isfinite(y))
+    if (!std::isfinite(y)) {
         y = Real(0);  // Failsafe fallback
-
+    }
     return y;
 }
 };
