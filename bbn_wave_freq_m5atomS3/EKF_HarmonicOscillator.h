@@ -12,6 +12,8 @@ template<int M, typename Real = float>
 class EKF_HarmonicOscillator {
 public:
     static constexpr int N_STATE = 2 * M + 2;
+    static constexpr int SIG_CNT = 2 * N_STATE + 1;
+    using SigmaMat = Eigen::Matrix<Real, N_STATE, SIG_CNT>;
     using Vec = Eigen::Matrix<Real, N_STATE, 1>;
     using Mat = Eigen::Matrix<Real, N_STATE, N_STATE>;
     using Row = Eigen::Matrix<Real, 1, N_STATE>;
@@ -142,8 +144,8 @@ private:
         }
     }
 
-    Mat generateSigmaPoints() {
-        Mat sigma_points(N_STATE, 2 * N_STATE + 1);
+    SigmaMat generateSigmaPoints() {
+        SigmaMat sigma_points(N_STATE, 2 * N_STATE + 1);
         const Real scale = sqrt(N_STATE + lambda);
         
         // Matrix square root of P
@@ -159,8 +161,8 @@ private:
         return sigma_points;
     }
 
-    Mat predictSigmaPoints(const Mat& sigma_points, Real dt) {
-        Mat sigma_points_pred(N_STATE, 2 * N_STATE + 1);
+    SigmaMat predictSigmaPoints(const SigmaMat& sigma_points, Real dt) {
+        SigmaMat sigma_points_pred(N_STATE, 2 * N_STATE + 1);
         
         for (int i = 0; i < 2 * N_STATE + 1; ++i) {
             Vec x_sigma = sigma_points.col(i);
@@ -186,7 +188,7 @@ private:
         return sigma_points_pred;
     }
 
-    void predictMeanAndCovariance(const Mat& sigma_points_pred) {
+    void predictMeanAndCovariance(const SigmaMat& sigma_points_pred) {
         // Calculate predicted state mean
         x.setZero();
         for (int i = 0; i < 2 * N_STATE + 1; ++i) {
@@ -202,7 +204,7 @@ private:
         P += Q;  // Add process noise
     }
 
-    void updateWithMeasurement(const Mat& sigma_points_pred, Real y_meas) {
+    void updateWithMeasurement(const SigmaMat& sigma_points_pred, Real y_meas) {
         // Transform sigma points through measurement model
         Eigen::Matrix<Real, 1, 2 * N_STATE + 1> y_sigma;
         for (int i = 0; i < 2 * N_STATE + 1; ++i) {
