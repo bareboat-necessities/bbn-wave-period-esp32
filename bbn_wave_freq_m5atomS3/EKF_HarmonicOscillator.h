@@ -20,7 +20,7 @@ public:
 
     // UKF parameters
     static constexpr Real alpha = 0.7;
-    static constexpr Real beta = 1.8;
+    static constexpr Real beta = 2.1;
     static constexpr Real kappa = 1.0; 
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
     
