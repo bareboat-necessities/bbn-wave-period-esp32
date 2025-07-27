@@ -249,7 +249,8 @@ private:
             Real a_k = x_sigma(idx);
             Real b_k = x_sigma(idx + 1);
             Real theta = k * omega * t;
-            y += -(k * omega) * (k * omega) * (a_k * cos(theta) + b_k * sin(theta));
+            // y += -(k * omega) * (k * omega) * (a_k * cos(theta) + b_k * sin(theta));
+            y += (a_k * cos(theta) + b_k * sin(theta));
         }
         y += x_sigma(2 * M + 1);  // bias
         return y;
