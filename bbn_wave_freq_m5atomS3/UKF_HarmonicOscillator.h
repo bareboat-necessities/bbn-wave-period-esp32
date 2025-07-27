@@ -235,6 +235,9 @@ private:
         Vec K = Pxy * (Real(1) / Pyy);
         x += K * (y_meas - y_pred);
         P -= (K * K.transpose()) * Pyy;
+        if (!P.allFinite()) {
+            P = Mat::Identity() * 1e-3;
+        }
         P = (P + P.transpose()) * Real(0.5);
     }
 
