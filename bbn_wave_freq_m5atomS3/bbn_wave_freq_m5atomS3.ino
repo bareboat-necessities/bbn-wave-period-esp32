@@ -63,7 +63,7 @@ SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hyster
     ZERO_CROSSINGS_PERIODS /* periods to run measures on */);
 AranovskiyFilter<double> arFilter;
 KalmANF<float> kalmANF;
-UKF_HarmonicOscillator<3> ekf_oscillator;
+UKF_HarmonicOscillator<3> kf_oscillator;
 KalmanSmootherVars kalman_freq;
 
 // AHRS
@@ -105,9 +105,9 @@ void initialize_filters() {
     init_filters(&arFilter, &kalman_freq);
   } else if (useFrequencyTracker == Kalm_ANF) {
     init_filters_alt(&kalmANF, &kalman_freq); 
-  } else if (useFrequencyTracker == EKF_Oscillator) {
-    ekf_oscillator.setProcessNoise(1e-3f, 1e-5f, 1e-4f);
-    ekf_oscillator.setMeasurementNoise(0.01f);
+  } else if (useFrequencyTracker == kf_oscillator) {
+    kf_oscillator.setProcessNoise(1e-3f, 1e-5f, 1e-4f);
+    kf_oscillator.setMeasurementNoise(0.01f);
     kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
     init_wave_filters();
   } else {
@@ -201,7 +201,7 @@ void read_and_processIMU_data() {
   double freq = FREQ_GUESS, freq_adj = FREQ_GUESS;
   if (t > warmup_time_sec(useMahony)) {
     // give some time for other filters to settle first
-    freq = estimate_freq(useFrequencyTracker, &arFilter, &kalmANF, &ekf_oscillator, &freqDetector, a_noisy, a_no_spikes, delta_t, t);
+    freq = estimate_freq(useFrequencyTracker, &arFilter, &kalmANF, &kf_oscillator, &freqDetector, a_noisy, a_no_spikes, delta_t, t);
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
       kalman_smoother_set_initial(&kalman_freq, freq);
