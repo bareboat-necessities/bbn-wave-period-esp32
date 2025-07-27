@@ -132,7 +132,7 @@ private:
     Eigen::Matrix<Real, 1, SIG_CNT> weights_c;  // Covariance weights
 
     void calculateWeights() {
-        weights_m(0) = lambda / (N_STATE + lambda);
+        weights_m(0) = lambda / std::max(lambda + N_STATE, Real(1e-5));
         weights_c(0) = weights_m(0) + (1 - alpha * alpha + beta);
         
         Real w = Real(1) / (2 * (N_STATE + lambda));
