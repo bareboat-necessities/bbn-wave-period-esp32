@@ -38,7 +38,7 @@ SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CRO
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 WaveSurfaceProfile<128> waveProfile;
 
-FrequencyTracker useFrequencyTracker = kf_oscillator; // ZeroCrossing;
+FrequencyTracker useFrequencyTracker = KF_HarmonicOscillator; // ZeroCrossing;
 
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
@@ -144,7 +144,7 @@ int main(int argc, char *argv[]) {
     init_filters(&arFilter, &kalman_freq);
   } else if (useFrequencyTracker == Kalm_ANF) {
     init_filters_alt(&kalmANF, &kalman_freq);
-  } else if (useFrequencyTracker == kf_oscillator) {
+  } else if (useFrequencyTracker == KF_HarmonicOscillator) {
     kf_oscillator.setProcessNoise(1e-3f, 1e-3f, 1e-6f);
     kf_oscillator.setMeasurementNoise(1.0f);
     kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
