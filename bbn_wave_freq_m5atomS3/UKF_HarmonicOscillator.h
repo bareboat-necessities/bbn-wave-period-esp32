@@ -144,7 +144,7 @@ private:
 
     SigmaMat generateSigmaPoints() {
         SigmaMat sigma_points(N_STATE, SIG_CNT);
-        const Real scale = sqrt(std::max(lambda + N_STATE, Real(1e-6)));
+        const Real scale = sqrt(std::max(lambda + N_STATE, Real(1e-5)));
         
         // Matrix square root of P
         P = (P + P.transpose()) * Real(0.5);
