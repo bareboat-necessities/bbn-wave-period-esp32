@@ -19,7 +19,7 @@ public:
     using Row = Eigen::Matrix<Real, 1, N_STATE>;
 
     // UKF parameters
-    static constexpr Real alpha = 0.2;
+    static constexpr Real alpha = 0.15;
     static constexpr Real beta = 2.1;
     static constexpr Real kappa = 1.0; 
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
@@ -76,7 +76,7 @@ public:
         updateWithMeasurement(sigma_points_pred, y_meas, t);
         
         // Ensure frequency stays within reasonable bounds
-        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.02));  
+        x(2 * M) = std::max(x(2 * M), Real(2 * M_PI * 0.04));  
         x(2 * M) = std::min(x(2 * M), Real(2 * M_PI * 10.0));   
     }
 
