@@ -26,7 +26,7 @@ enum FrequencyTracker {
     Aranovskiy,
     Kalm_ANF,
     ZeroCrossing,
-    EKF_Oscillator
+    kf_oscillator
 };
 
 void init_aranovskiy(AranovskiyFilter<double>* ar_filter);
@@ -101,7 +101,7 @@ void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smooth
   init_wave_filters();
 }
 
-float estimate_freq(FrequencyTracker tracker, AranovskiyFilter<double>* arFilter, KalmANF<float>* kalmANF, UKF_HarmonicOscillator<3>* ekf_oscillator,
+float estimate_freq(FrequencyTracker tracker, AranovskiyFilter<double>* arFilter, KalmANF<float>* kalmANF, UKF_HarmonicOscillator<3>* kf_oscillator,
                     SchmittTriggerFrequencyDetector* freqDetector, float a_noisy, float a_no_spikes, float delta_t, float t) {
   float freq = FREQ_GUESS;
   if (tracker == Aranovskiy) {
@@ -111,9 +111,9 @@ float estimate_freq(FrequencyTracker tracker, AranovskiyFilter<double>* arFilter
     float e;
     float f_kalmanANF = kalmANF->process(a_noisy, delta_t, &e);
     freq = f_kalmanANF;
-  } else if (tracker == EKF_Oscillator) {
-    ekf_oscillator->update(a_noisy, delta_t, t);
-    freq = ekf_oscillator->getFrequency();
+  } else if (tracker == kf_oscillator) {
+    kf_oscillator->update(a_noisy, delta_t, t);
+    freq = kf_oscillator->getFrequency();
   } else {
     float f_byZeroCross = freqDetector->update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
                           ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
