@@ -90,17 +90,19 @@ public:
         return y;
     }
 
-    Real estimatedHeave() const {
-        Real heave = Real(0);
-        Real omega = std::max(x(2 * M), Real(1e-4));
-        for (int k = 1; k <= M; ++k) {
-            int i = 2 * (k - 1);
-            Real denom = k * omega;
-            denom = std::abs(denom) < Real(1e-7) ? Real(1e-7) : denom;
-            heave -= x(i) / (denom * denom);
-        }
-        return heave;
+Real estimatedHeave() const {
+    Real heave = Real(0);
+    Real omega = std::max(x(2 * M), Real(1e-4));
+    for (int k = 1; k <= M; ++k) {
+        int i = 2 * (k - 1);
+        Real denom = k * omega;
+        denom = denom * denom;
+        denom = std::max(denom, Real(1e-6));
+        heave += -x(i) / denom * std::cos(k * omega * t);
+        heave += -x(i + 1) / denom * std::sin(k * omega * t);
     }
+    return heave;
+}
 
     Real estimatedVelocity() const {
         Real vel = Real(0);
