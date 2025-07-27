@@ -151,7 +151,7 @@ private:
         Eigen::LLT<Mat> lltOfP(P);
         if (lltOfP.info() != Eigen::Success) {
             // Handle fallback (e.g. add jitter, or fallback to identity)
-            P += Mat::Identity() * Real(1e-6);
+            P += Mat::Identity() * Real(1e-7);
             P = (P + P.transpose()) * Real(0.5);
             lltOfP.compute(P);
         }
@@ -231,7 +231,7 @@ private:
         }
         
         // Kalman update
-        Pyy = std::max(Pyy, Real(1e-9));
+        Pyy = std::max(Pyy, Real(1e-7));
         Vec K = Pxy * (Real(1) / Pyy);
         x += K * (y_meas - y_pred);
         P -= (K * K.transpose()) * Pyy;
