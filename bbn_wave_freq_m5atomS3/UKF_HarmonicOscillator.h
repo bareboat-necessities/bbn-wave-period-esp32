@@ -19,7 +19,7 @@ public:
     using Row = Eigen::Matrix<Real, 1, N_STATE>;
 
     // UKF parameters
-    static constexpr Real alpha = 0.15;
+    static constexpr Real alpha = 0.18;
     static constexpr Real beta = 2.0;
     static constexpr Real kappa = 1.0; 
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
