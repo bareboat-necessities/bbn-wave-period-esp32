@@ -62,7 +62,7 @@ public:
 
         // Clamp omega and wrap phase
         x(2 * M) = std::clamp(x(2 * M), Real(2 * M_PI * 0.001), Real(2 * M_PI * 100.0));
-        //x(2 * M + 2) = wrapPhase(x(2 * M + 2));
+        x(2 * M + 2) = wrapPhase(x(2 * M + 2));
     }
 
     Real estimatedAccel() const {
