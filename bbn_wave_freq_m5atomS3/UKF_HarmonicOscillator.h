@@ -31,17 +31,17 @@ public:
         x(2 * M + 1) = Real(0);          // bias
         x(2 * M + 2) = Real(M_PI / 4);   // phase
 
-        P.setIdentity(); P *= Real(1.0);
-        P(2 * M, 2 * M) = Real(4.0);                 // omega 
+        P.setIdentity(); P *= Real(0.5);
+        P(2 * M, 2 * M) = Real(0.5);                 // omega 
         P(2 * M + 1, 2 * M + 1) = Real(1e-2);        // bias
-        P(2 * M + 2, 2 * M + 2) = Real(M_PI * M_PI); // phase
+        P(2 * M + 2, 2 * M + 2) = Real(M_PI * M_PI / 4); // phase
         
         Q.setIdentity(); Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(1e-5);         // omega process noise
+        Q(2 * M, 2 * M) = Real(1e-4);         // omega process noise
         Q(2 * M + 1, 2 * M + 1) = Real(1e-7); // bias
         Q(2 * M + 2, 2 * M + 2) = Real(1e-4); // phase
 
-        R.setZero(); R(0, 0) = Real(0.04);
+        R.setZero(); R(0, 0) = Real(0.5);
 
         calculateWeights();
     }
