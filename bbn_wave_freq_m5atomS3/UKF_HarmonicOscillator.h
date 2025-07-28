@@ -18,9 +18,9 @@ public:
     using Mat = Eigen::Matrix<Real, N_STATE, N_STATE>;
 
     // UKF tuning parameters
-    static constexpr Real alpha = 1.0;
+    static constexpr Real alpha = 0.8;
     static constexpr Real beta = 2.0;
-    static constexpr Real kappa = 2.0;
+    static constexpr Real kappa = 3.0;
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
 
     UKF_HarmonicOscillator() {
