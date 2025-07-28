@@ -124,6 +124,27 @@ private:
             weights_m(i) = weights_c(i) = w;
     }
 
+SigmaMat generateSigmaPoints() {
+    SigmaMat sigma(N_STATE, SIG_CNT);
+    Real scale = std::sqrt(std::max(lambda + N_STATE, Real(1e-5)));
+
+    // Regularize and symmetrize
+    Mat P_sym = (P + P.transpose()) * Real(0.5);
+    Eigen::LLT<Mat> llt(P_sym);
+    if (llt.info() != Eigen::Success) {
+        P_sym += Mat::Identity() * Real(1e-6);
+        llt.compute(P_sym);
+    }
+    Mat sqrtP = llt.matrixL();
+
+    sigma.col(0) = x;
+    for (int i = 0; i < N_STATE; ++i) {
+        sigma.col(i + 1)         = x + scale * sqrtP.col(i);
+        sigma.col(i + 1 + N_STATE) = x - scale * sqrtP.col(i);
+    }
+    return sigma;
+}
+
     SigmaMat generateSigmaPoints() {
         SigmaMat sigma(N_STATE, SIG_CNT);
         Mat sqrtP = P.selfadjointView<Eigen::Lower>().llt().matrixL();
