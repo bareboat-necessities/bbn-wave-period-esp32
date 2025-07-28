@@ -116,19 +116,18 @@ private:
     Mat P, Q, R;
     Eigen::Matrix<Real, 1, SIG_CNT> weights_m, weights_c;
 
-void calculateWeights() {
-    const Real denom = lambda + N_STATE;
-    if (denom <= Real(0)) {
-        // fallback safeguard: choose alpha/kappa so denom > 0
-        throw std::runtime_error("Invalid UKF scaling: lambda + N_STATE <= 0");
+    void calculateWeights() {
+        const Real denom = lambda + N_STATE;
+        if (denom <= Real(0)) {
+            // fallback safeguard: choose alpha/kappa so denom > 0
+            throw std::runtime_error("Invalid UKF scaling: lambda + N_STATE <= 0");
+        }
+        weights_m(0) = lambda / denom;
+        weights_c(0) = weights_m(0) + (1 - alpha * alpha + beta);
+        Real w = Real(1) / (2 * denom);
+        for (int i = 1; i < SIG_CNT; ++i)
+            weights_m(i) = weights_c(i) = w;
     }
-
-    weights_m(0) = lambda / denom;
-    weights_c(0) = weights_m(0) + (1 - alpha * alpha + beta);
-    Real w = Real(1) / (2 * denom);
-    for (int i = 1; i < SIG_CNT; ++i)
-        weights_m(i) = weights_c(i) = w;
-}
 
     SigmaMat generateSigmaPoints() {
         SigmaMat sigma(N_STATE, SIG_CNT);
@@ -165,7 +164,6 @@ void calculateWeights() {
                 xp(j)     = c * xi(j) - s * xi(j + 1);
                 xp(j + 1) = s * xi(j) + c * xi(j + 1);
             }
-
             // omega, bias unchanged
             xp(2 * M)     = xi(2 * M);
             xp(2 * M + 1) = xi(2 * M + 1);
@@ -176,67 +174,62 @@ void calculateWeights() {
         return sigma_pred;
     }
 
-void predictMeanAndCovariance(const SigmaMat& sigma_pred) {
-    x.setZero();
-
-    // Circular mean for phase
-    Real sin_sum = 0, cos_sum = 0;
-    for (int i = 0; i < SIG_CNT; ++i) {
-        for (int j = 0; j < N_STATE; ++j) {
-            if (j == 2 * M + 2) continue; // skip phase
-            x(j) += weights_m(i) * sigma_pred(j, i);
+    void predictMeanAndCovariance(const SigmaMat& sigma_pred) {
+        x.setZero();
+        // Circular mean for phase
+        Real sin_sum = 0, cos_sum = 0;
+        for (int i = 0; i < SIG_CNT; ++i) {
+            for (int j = 0; j < N_STATE; ++j) {
+                if (j == 2 * M + 2) continue; // skip phase
+                x(j) += weights_m(i) * sigma_pred(j, i);
+            }
+            Real phi = sigma_pred(2 * M + 2, i);
+            sin_sum += weights_m(i) * std::sin(phi);
+            cos_sum += weights_m(i) * std::cos(phi);
         }
-
-        Real phi = sigma_pred(2 * M + 2, i);
-        sin_sum += weights_m(i) * std::sin(phi);
-        cos_sum += weights_m(i) * std::cos(phi);
+        x(2 * M + 2) = std::atan2(sin_sum, cos_sum); // circular mean for phase
+    
+        // Covariance
+        P.setZero();
+        for (int i = 0; i < SIG_CNT; ++i) {
+            Vec dx = sigma_pred.col(i) - x;
+    
+            // Correct wrapped phase residual
+            Real dphi = sigma_pred(2 * M + 2, i) - x(2 * M + 2);
+            dx(2 * M + 2) = std::atan2(std::sin(dphi), std::cos(dphi));
+            P += weights_c(i) * dx * dx.transpose();
+        }
+        P += Q;
+        symmetrize(P);
     }
-    x(2 * M + 2) = std::atan2(sin_sum, cos_sum); // circular mean for phase
-
-    // Covariance
-    P.setZero();
-    for (int i = 0; i < SIG_CNT; ++i) {
-        Vec dx = sigma_pred.col(i) - x;
-
-        // Correct wrapped phase residual
-        Real dphi = sigma_pred(2 * M + 2, i) - x(2 * M + 2);
-        dx(2 * M + 2) = std::atan2(std::sin(dphi), std::cos(dphi));
-
-        P += weights_c(i) * dx * dx.transpose();
+    
+    void updateWithMeasurement(const SigmaMat& sigma_pred, Real y_meas) {
+        Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
+        for (int i = 0; i < SIG_CNT; ++i)
+            y_sigma(i) = measurementModel(sigma_pred.col(i));
+    
+        Real y_pred = 0;
+        for (int i = 0; i < SIG_CNT; ++i)
+            y_pred += weights_m(i) * y_sigma(i);
+    
+        Real Pyy = R(0, 0);
+        Vec Pxy = Vec::Zero();
+        for (int i = 0; i < SIG_CNT; ++i) {
+            Real dy = y_sigma(i) - y_pred;
+            Vec dx = sigma_pred.col(i) - x;
+    
+            // Correct wrapped phase residual
+            Real dphi = sigma_pred(2 * M + 2, i) - x(2 * M + 2);
+            dx(2 * M + 2) = std::atan2(std::sin(dphi), std::cos(dphi));
+    
+            Pyy += weights_c(i) * dy * dy;
+            Pxy += weights_c(i) * dx * dy;
+        }
+        Vec K = Pxy / std::max(Pyy, Real(1e-6));
+        x += K * (y_meas - y_pred);
+        P -= K * K.transpose() * Pyy;
+        symmetrize(P);
     }
-
-    P += Q;
-    symmetrize(P);
-}
-
-void updateWithMeasurement(const SigmaMat& sigma_pred, Real y_meas) {
-    Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
-    for (int i = 0; i < SIG_CNT; ++i)
-        y_sigma(i) = measurementModel(sigma_pred.col(i));
-
-    Real y_pred = 0;
-    for (int i = 0; i < SIG_CNT; ++i)
-        y_pred += weights_m(i) * y_sigma(i);
-
-    Real Pyy = R(0, 0);
-    Vec Pxy = Vec::Zero();
-    for (int i = 0; i < SIG_CNT; ++i) {
-        Real dy = y_sigma(i) - y_pred;
-        Vec dx = sigma_pred.col(i) - x;
-
-        // Correct wrapped phase residual
-        Real dphi = sigma_pred(2 * M + 2, i) - x(2 * M + 2);
-        dx(2 * M + 2) = std::atan2(std::sin(dphi), std::cos(dphi));
-
-        Pyy += weights_c(i) * dy * dy;
-        Pxy += weights_c(i) * dx * dy;
-    }
-
-    Vec K = Pxy / std::max(Pyy, Real(1e-6));
-    x += K * (y_meas - y_pred);
-    P -= K * K.transpose() * Pyy;
-    symmetrize(P);
-}
     
     Real measurementModel(const Vec& xi) const {
         Real phase = xi(2 * M + 2);
