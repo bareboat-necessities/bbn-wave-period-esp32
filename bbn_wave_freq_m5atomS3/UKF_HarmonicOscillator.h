@@ -31,8 +31,8 @@ public:
         x(2 * M + 1) = Real(0);          // bias
         x(2 * M + 2) = Real(M_PI / 4);   // phase
 
-        P.setIdentity(); P *= Real(0.5);
-        P(2 * M, 2 * M) = Real(0.25);                 // omega 
+        P.setIdentity(); P *= Real(1.0);
+        P(2 * M, 2 * M) = Real(1.0);                 // omega 
         P(2 * M + 1, 2 * M + 1) = Real(1e-2);        // bias
         P(2 * M + 2, 2 * M + 2) = Real(M_PI * M_PI / 4); // phase
         
