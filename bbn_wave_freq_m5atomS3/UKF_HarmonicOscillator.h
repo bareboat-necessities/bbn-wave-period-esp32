@@ -79,33 +79,33 @@ public:
         return y + x(2 * M + 1); // add bias
     }
 
-Real estimatedVelocity() const {
-    Real velocity = Real(0);
-    Real omega = std::max(x(2 * M), Real(1e-4));
-    for (int k = 1; k <= M; ++k) {
-        int i = 2 * (k - 1);
-        Real harmonic_freq = k * omega;
-        harmonic_freq = std::max(harmonic_freq, Real(1e-7));
-        velocity -= x(i + 1) / harmonic_freq; // -b_k / (k*omega)
+    Real estimatedVelocity() const {
+        Real velocity = Real(0);
+        Real omega = std::max(x(2 * M), Real(1e-4));
+        for (int k = 1; k <= M; ++k) {
+            int i = 2 * (k - 1);
+            Real harmonic_freq = k * omega;
+            harmonic_freq = std::max(harmonic_freq, Real(1e-7));
+            velocity -= x(i + 1) / harmonic_freq; // -b_k / (k*omega)
+        }
+        return velocity;
     }
-    return velocity;
-}
 
-Real estimatedHeave() const {
-    Real heave = Real(0);
-    Real phase = x(2 * M + 2);
-    Real omega = std::max(x(2 * M), Real(1e-4));
-    for (int k = 1; k <= M; ++k) {
-        int i = 2 * (k - 1);
-        Real denom = k * omega;
-        denom = denom * denom;
-        denom = std::max(denom, Real(1e-6));
-        Real theta = k * phase;
-        heave += -x(i)     / denom * std::cos(theta); // -a_k / (kω)^2 * cos(kφ)
-        heave += -x(i + 1) / denom * std::sin(theta); // -b_k / (kω)^2 * sin(kφ)
+    Real estimatedHeave() const {
+        Real heave = Real(0);
+        Real phase = x(2 * M + 2);
+        Real omega = std::max(x(2 * M), Real(1e-4));
+        for (int k = 1; k <= M; ++k) {
+            int i = 2 * (k - 1);
+            Real denom = k * omega;
+            denom = denom * denom;
+            denom = std::max(denom, Real(1e-6));
+            Real theta = k * phase;
+            heave += -x(i)     / denom * std::cos(theta); // -a_k / (kω)^2 * cos(kφ)
+            heave += -x(i + 1) / denom * std::sin(theta); // -b_k / (kω)^2 * sin(kφ)
+        }
+        return heave;
     }
-    return heave;
-}
 
     Real estimatedPhase() const { return x(2 * M + 2); }
     Real getFrequency()   const { return x(2 * M) / (2 * M_PI); }
@@ -124,35 +124,22 @@ private:
             weights_m(i) = weights_c(i) = w;
     }
 
-SigmaMat generateSigmaPoints() {
-    SigmaMat sigma(N_STATE, SIG_CNT);
-    Real scale = std::sqrt(std::max(lambda + N_STATE, Real(1e-5)));
-
-    // Regularize and symmetrize
-    Mat P_sym = (P + P.transpose()) * Real(0.5);
-    Eigen::LLT<Mat> llt(P_sym);
-    if (llt.info() != Eigen::Success) {
-        P_sym += Mat::Identity() * Real(1e-6);
-        llt.compute(P_sym);
-    }
-    Mat sqrtP = llt.matrixL();
-
-    sigma.col(0) = x;
-    for (int i = 0; i < N_STATE; ++i) {
-        sigma.col(i + 1)         = x + scale * sqrtP.col(i);
-        sigma.col(i + 1 + N_STATE) = x - scale * sqrtP.col(i);
-    }
-    return sigma;
-}
-
     SigmaMat generateSigmaPoints() {
         SigmaMat sigma(N_STATE, SIG_CNT);
-        Mat sqrtP = P.selfadjointView<Eigen::Lower>().llt().matrixL();
         Real scale = std::sqrt(std::max(lambda + N_STATE, Real(1e-5)));
-
+    
+        // Regularize and symmetrize
+        Mat P_sym = (P + P.transpose()) * Real(0.5);
+        Eigen::LLT<Mat> llt(P_sym);
+        if (llt.info() != Eigen::Success) {
+            P_sym += Mat::Identity() * Real(1e-6);
+            llt.compute(P_sym);
+        }
+        Mat sqrtP = llt.matrixL();
+    
         sigma.col(0) = x;
         for (int i = 0; i < N_STATE; ++i) {
-            sigma.col(i + 1) = x + scale * sqrtP.col(i);
+            sigma.col(i + 1)         = x + scale * sqrtP.col(i);
             sigma.col(i + 1 + N_STATE) = x - scale * sqrtP.col(i);
         }
         return sigma;
