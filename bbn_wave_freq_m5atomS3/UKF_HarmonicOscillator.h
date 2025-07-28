@@ -61,7 +61,7 @@ public:
         updateWithMeasurement(sigma_pred, y_meas);
 
         // Clamp omega and wrap phase
-        x(2 * M) = std::clamp(x(2 * M), Real(2 * M_PI * 0.04), Real(2 * M_PI * 10.0));
+        x(2 * M) = std::clamp(x(2 * M), Real(2 * M_PI * 0.0001), Real(2 * M_PI * 1000.0));
         x(2 * M + 2) = wrapPhase(x(2 * M + 2));
     }
 
