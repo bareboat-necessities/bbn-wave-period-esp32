@@ -38,7 +38,7 @@ public:
         Q(2 * M + 1, 2 * M + 1) = Real(1e-6); // bias
         Q(2 * M + 2, 2 * M + 2) = Real(1e-3); // phase
 
-        R.setZero(); R(0, 0) = Real(1.0);
+        R.setZero(); R(0, 0) = Real(0.1);
 
         calculateWeights();
     }
