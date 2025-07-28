@@ -170,25 +170,38 @@ private:
         return sigma_pred;
     }
 
-    void predictMeanAndCovariance(const SigmaMat& sigma_pred) {
-        x.setZero();
-        Real sin_sum = 0, cos_sum = 0;
-        for (int i = 0; i < SIG_CNT; ++i) {
-            x += weights_m(i) * sigma_pred.col(i);
-            Real phi = sigma_pred.col(i)(2 * M + 2);
-            sin_sum += weights_m(i) * std::sin(phi);
-            cos_sum += weights_m(i) * std::cos(phi);
+void predictMeanAndCovariance(const SigmaMat& sigma_pred) {
+    x.setZero();
+    Real sin_sum = 0, cos_sum = 0;
+
+    // Weighted mean, excluding phase
+    for (int i = 0; i < SIG_CNT; ++i) {
+        for (int j = 0; j < N_STATE; ++j) {
+            if (j != 2 * M + 2) // skip phase
+                x(j) += weights_m(i) * sigma_pred(j, i);
         }
-        x(2 * M + 2) = std::atan2(sin_sum, cos_sum);
-        
-        P.setZero();
-        for (int i = 0; i < SIG_CNT; ++i) {
-            Vec dx = sigma_pred.col(i) - x;
-            P += weights_c(i) * dx * dx.transpose();
-        }
-        P += Q;
-        symmetrize(P);
+        Real phi = sigma_pred(2 * M + 2, i);
+        sin_sum += weights_m(i) * std::sin(phi);
+        cos_sum += weights_m(i) * std::cos(phi);
     }
+
+    // Circular mean for phase
+    x(2 * M + 2) = std::atan2(sin_sum, cos_sum);
+
+    // Covariance
+    P.setZero();
+    for (int i = 0; i < SIG_CNT; ++i) {
+        Vec dx = sigma_pred.col(i) - x;
+
+        // Wrap phase residual
+        dx(2 * M + 2) = std::atan2(std::sin(dx(2 * M + 2)), std::cos(dx(2 * M + 2)));
+
+        P += weights_c(i) * dx * dx.transpose();
+    }
+
+    P += Q;
+    symmetrize(P);
+}
 
     void updateWithMeasurement(const SigmaMat& sigma_pred, Real y_meas) {
         Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
