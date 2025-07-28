@@ -172,9 +172,15 @@ private:
 
     void predictMeanAndCovariance(const SigmaMat& sigma_pred) {
         x.setZero();
-        for (int i = 0; i < SIG_CNT; ++i)
-            x += weights_m(i) * sigma_pred.col(i);
-
+Real sin_sum = 0, cos_sum = 0;
+for (int i = 0; i < SIG_CNT; ++i) {
+    x += weights_m(i) * sigma_pred.col(i);
+    Real phi = sigma_pred.col(i)(2 * M + 2);
+    sin_sum += weights_m(i) * std::sin(phi);
+    cos_sum += weights_m(i) * std::cos(phi);
+}
+x(2 * M + 2) = std::atan2(sin_sum, cos_sum);
+        
         P.setZero();
         for (int i = 0; i < SIG_CNT; ++i) {
             Vec dx = sigma_pred.col(i) - x;
