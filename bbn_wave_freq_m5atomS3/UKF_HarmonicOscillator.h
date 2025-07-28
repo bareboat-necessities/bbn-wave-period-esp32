@@ -79,6 +79,34 @@ public:
         return y + x(2 * M + 1); // add bias
     }
 
+Real estimatedVelocity() const {
+    Real velocity = Real(0);
+    Real omega = std::max(x(2 * M), Real(1e-4));
+    for (int k = 1; k <= M; ++k) {
+        int i = 2 * (k - 1);
+        Real harmonic_freq = k * omega;
+        harmonic_freq = std::max(harmonic_freq, Real(1e-7));
+        velocity -= x(i + 1) / harmonic_freq; // -b_k / (k*omega)
+    }
+    return velocity;
+}
+
+Real estimatedHeave() const {
+    Real heave = Real(0);
+    Real phase = x(2 * M + 2);
+    Real omega = std::max(x(2 * M), Real(1e-4));
+    for (int k = 1; k <= M; ++k) {
+        int i = 2 * (k - 1);
+        Real denom = k * omega;
+        denom = denom * denom;
+        denom = std::max(denom, Real(1e-6));
+        Real theta = k * phase;
+        heave += -x(i)     / denom * std::cos(theta); // -a_k / (kω)^2 * cos(kφ)
+        heave += -x(i + 1) / denom * std::sin(theta); // -b_k / (kω)^2 * sin(kφ)
+    }
+    return heave;
+}
+
     Real estimatedPhase() const { return x(2 * M + 2); }
     Real getFrequency()   const { return x(2 * M) / (2 * M_PI); }
     Real getBias()        const { return x(2 * M + 1); }
