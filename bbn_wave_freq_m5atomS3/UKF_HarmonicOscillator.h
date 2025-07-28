@@ -116,13 +116,19 @@ private:
     Mat P, Q, R;
     Eigen::Matrix<Real, 1, SIG_CNT> weights_m, weights_c;
 
-    void calculateWeights() {
-        weights_m(0) = lambda / (lambda + N_STATE);
-        weights_c(0) = weights_m(0) + (1 - alpha * alpha + beta);
-        Real w = Real(1) / (2 * (N_STATE + lambda));
-        for (int i = 1; i < SIG_CNT; ++i)
-            weights_m(i) = weights_c(i) = w;
+void calculateWeights() {
+    const Real denom = lambda + N_STATE;
+    if (denom <= Real(0)) {
+        // fallback safeguard: choose alpha/kappa so denom > 0
+        throw std::runtime_error("Invalid UKF scaling: lambda + N_STATE <= 0");
     }
+
+    weights_m(0) = lambda / denom;
+    weights_c(0) = weights_m(0) + (1 - alpha * alpha + beta);
+    Real w = Real(1) / (2 * denom);
+    for (int i = 1; i < SIG_CNT; ++i)
+        weights_m(i) = weights_c(i) = w;
+}
 
     SigmaMat generateSigmaPoints() {
         SigmaMat sigma(N_STATE, SIG_CNT);
