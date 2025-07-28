@@ -216,7 +216,7 @@ private:
 
     Real measurementModel(const Vec& xi) const {
         Real phase = xi(2 * M + 2);
-        Real omega = std::max(xi(2 * M), Real(1e-4));
+        Real omega = std::max(xi(2 * M), Real(1e-3));
         Real y = 0;
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
