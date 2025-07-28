@@ -26,7 +26,7 @@ public:
     UKF_HarmonicOscillator() {
         x.setZero();
         for (int k = 0; k < M; ++k)
-            x(2 * k) = Real(0.2 + 0.03 * k); // a_k
+            x(2 * k) = Real(0.3 - 0.02 * k); // a_k
         x(2 * M) = Real(2 * M_PI * 0.3); // omega
         x(2 * M + 1) = Real(0);          // bias
         x(2 * M + 2) = Real(M_PI / 4);   // phase
