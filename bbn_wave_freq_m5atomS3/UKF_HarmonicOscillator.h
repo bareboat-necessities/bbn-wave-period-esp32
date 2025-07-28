@@ -19,8 +19,8 @@ public:
     using Row = Eigen::Matrix<Real, 1, N_STATE>;
 
     // UKF parameters
-    static constexpr Real alpha = 0.3;
-    static constexpr Real beta = 2.5;
+    static constexpr Real alpha = 0.18;
+    static constexpr Real beta = 2.0;
     static constexpr Real kappa = 1.0; 
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
     
@@ -90,19 +90,19 @@ public:
         return y;
     }
 
-    Real estimatedHeave(Real t) const {
-        Real heave = Real(0);
-        Real omega = std::max(x(2 * M), Real(1e-4));
-        for (int k = 1; k <= M; ++k) {
-            int i = 2 * (k - 1);
-            Real denom = k * omega;
-            denom = denom * denom;
-            denom = std::max(denom, Real(1e-6));
-            heave += -x(i) / denom * std::cos(k * omega * t);
-            heave += -x(i + 1) / denom * std::sin(k * omega * t);
-        }
-        return heave;
+Real estimatedHeave() const {
+    Real heave = Real(0);
+    Real omega = std::max(x(2 * M), Real(1e-4));
+    for (int k = 1; k <= M; ++k) {
+        int i = 2 * (k - 1);
+        Real denom = k * omega;
+        denom = denom * denom;
+        denom = std::max(denom, Real(1e-6));
+        heave += -x(i) / denom * std::cos(k * omega * t);
+        heave += -x(i + 1) / denom * std::sin(k * omega * t);
     }
+    return heave;
+}
 
     Real estimatedVelocity() const {
         Real vel = Real(0);
