@@ -11,7 +11,7 @@
 template<int M, typename Real = float>
 class UKF_HarmonicOscillator {
 public:
-    static constexpr int N_STATE = 2 * M + 3; // a_k, b_k, omega, bias, phi
+    static constexpr int N_STATE = 2 * M + 3; // a_k, b_k, omega, bias, phase
     static constexpr int SIG_CNT = 2 * N_STATE + 1;
     using SigmaMat = Eigen::Matrix<Real, N_STATE, SIG_CNT>;
     using Vec = Eigen::Matrix<Real, N_STATE, 1>;
@@ -26,28 +26,28 @@ public:
     UKF_HarmonicOscillator() {
         x.setZero();
         for (int k = 0; k < M; ++k)
-            x(2 * k) = Real(0.2 - 0.03 * k);
-        x(2 * M) = Real(2 * M_PI * 0.3); // ω
+            x(2 * k) = Real(0.2 - 0.03 * k); // a_k
+        x(2 * M) = Real(2 * M_PI * 0.3); // omega
         x(2 * M + 1) = Real(0);          // bias
-        x(2 * M + 2) = Real(0);          // φ
+        x(2 * M + 2) = Real(0);          // phase
 
         P.setIdentity(); P *= Real(10.0);
 
         Q.setIdentity(); Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(1e-3);
-        Q(2 * M + 1, 2 * M + 1) = Real(1e-5);
-        Q(2 * M + 2, 2 * M + 2) = Real(1e-4); // φ process noise
+        Q(2 * M, 2 * M) = Real(1e-3);       // omega process noise
+        Q(2 * M + 1, 2 * M + 1) = Real(1e-5); // bias
+        Q(2 * M + 2, 2 * M + 2) = Real(1e-4); // phase
 
         R.setZero(); R(0, 0) = Real(1.0);
 
         calculateWeights();
     }
 
-    void setProcessNoise(Real q_osc, Real q_omega, Real q_bias, Real q_phi) {
+    void setProcessNoise(Real q_osc, Real q_omega, Real q_bias, Real q_phase) {
         Q.setIdentity(); Q *= q_osc;
         Q(2 * M, 2 * M) = q_omega;
         Q(2 * M + 1, 2 * M + 1) = q_bias;
-        Q(2 * M + 2, 2 * M + 2) = q_phi;
+        Q(2 * M + 2, 2 * M + 2) = q_phase;
     }
 
     void setMeasurementNoise(Real r) {
@@ -60,27 +60,28 @@ public:
         predictMeanAndCovariance(sigma_pred);
         updateWithMeasurement(sigma_pred, y_meas);
 
-        // Clamp ω and wrap φ
+        // Clamp omega and wrap phase
         x(2 * M) = std::clamp(x(2 * M), Real(2 * M_PI * 0.04), Real(2 * M_PI * 10.0));
         x(2 * M + 2) = wrapPhase(x(2 * M + 2));
     }
 
     Real estimatedAccel() const {
         Real y = 0;
-        Real phi = x(2 * M + 2), omega = std::max(x(2 * M), Real(1e-4));
+        Real phase = x(2 * M + 2);
+        Real omega = std::max(x(2 * M), Real(1e-4));
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
-            Real θ = k * phi;
+            Real theta = k * phase;
             Real a = x(i), b = x(i + 1);
-            Real fac = -(k * omega) * (k * omega);
-            y += fac * (a * std::cos(θ) + b * std::sin(θ));
+            Real factor = -(k * omega) * (k * omega);
+            y += factor * (a * std::cos(theta) + b * std::sin(theta));
         }
-        return y + x(2 * M + 1);
+        return y + x(2 * M + 1); // add bias
     }
 
     Real estimatedPhase() const { return x(2 * M + 2); }
-    Real getFrequency() const   { return x(2 * M) / (2 * M_PI); }
-    Real getBias() const        { return x(2 * M + 1); }
+    Real getFrequency()   const { return x(2 * M) / (2 * M_PI); }
+    Real getBias()        const { return x(2 * M + 1); }
 
 private:
     Vec x;
@@ -117,16 +118,16 @@ private:
             Real omega = std::max(xi(2 * M), Real(1e-4));
             for (int k = 1; k <= M; ++k) {
                 int j = 2 * (k - 1);
-                Real θ = k * omega * dt;
-                Real c = std::cos(θ), s = std::sin(θ);
+                Real theta = k * omega * dt;
+                Real c = std::cos(theta), s = std::sin(theta);
                 xp(j)     = c * xi(j) - s * xi(j + 1);
                 xp(j + 1) = s * xi(j) + c * xi(j + 1);
             }
 
-            // ω, bias unchanged
+            // omega, bias unchanged
             xp(2 * M)     = xi(2 * M);
             xp(2 * M + 1) = xi(2 * M + 1);
-            xp(2 * M + 2) = wrapPhase(xi(2 * M + 2) + dt * omega); // φ += ω·dt
+            xp(2 * M + 2) = wrapPhase(xi(2 * M + 2) + dt * omega); // phase += omega * dt
 
             sigma_pred.col(i) = xp;
         }
@@ -172,22 +173,23 @@ private:
     }
 
     Real measurementModel(const Vec& xi) const {
-        Real phi = xi(2 * M + 2), omega = std::max(xi(2 * M), Real(1e-4));
+        Real phase = xi(2 * M + 2);
+        Real omega = std::max(xi(2 * M), Real(1e-4));
         Real y = 0;
         for (int k = 1; k <= M; ++k) {
             int i = 2 * (k - 1);
             Real a = xi(i), b = xi(i + 1);
-            Real θ = k * phi;
-            Real fac = -(k * omega) * (k * omega);
-            y += fac * (a * std::cos(θ) + b * std::sin(θ));
+            Real theta = k * phase;
+            Real factor = -(k * omega) * (k * omega);
+            y += factor * (a * std::cos(theta) + b * std::sin(theta));
         }
         y += xi(2 * M + 1); // bias
         return y;
     }
 
-    static Real wrapPhase(Real φ) {
-        φ = std::fmod(φ, Real(2 * M_PI));
-        return φ < 0 ? φ + Real(2 * M_PI) : φ;
+    static Real wrapPhase(Real phase) {
+        phase = std::fmod(phase, Real(2 * M_PI));
+        return (phase < 0) ? (phase + Real(2 * M_PI)) : phase;
     }
 
     void symmetrize(Mat& P) {
