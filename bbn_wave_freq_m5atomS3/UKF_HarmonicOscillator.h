@@ -31,7 +31,7 @@ public:
         x(2 * M + 1) = Real(0);          // bias
         x(2 * M + 2) = Real(0);          // phase
 
-        P.setIdentity(); P *= Real(1.0);
+        P.setIdentity(); P *= Real(10.0);
 
         Q.setIdentity(); Q *= Real(1e-4);
         Q(2 * M, 2 * M) = Real(1e-5);         // omega process noise
