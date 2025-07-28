@@ -223,7 +223,8 @@ x(2 * M + 2) = std::atan2(sin_sum, cos_sum);
             Real a = xi(i), b = xi(i + 1);
             Real theta = k * phase;
             Real factor = -(k * omega) * (k * omega);
-            y += factor * (a * std::cos(theta) + b * std::sin(theta));
+            //y += factor * (a * std::cos(theta) + b * std::sin(theta));
+            y += (a * std::cos(theta) + b * std::sin(theta));
         }
         y += xi(2 * M + 1); // bias
         return y;
