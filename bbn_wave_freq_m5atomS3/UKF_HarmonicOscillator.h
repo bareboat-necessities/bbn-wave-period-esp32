@@ -203,29 +203,33 @@ void predictMeanAndCovariance(const SigmaMat& sigma_pred) {
     symmetrize(P);
 }
 
-    void updateWithMeasurement(const SigmaMat& sigma_pred, Real y_meas) {
-        Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
-        for (int i = 0; i < SIG_CNT; ++i)
-            y_sigma(i) = measurementModel(sigma_pred.col(i));
+void updateWithMeasurement(const SigmaMat& sigma_pred, Real y_meas) {
+    Eigen::Matrix<Real, 1, SIG_CNT> y_sigma;
+    for (int i = 0; i < SIG_CNT; ++i)
+        y_sigma(i) = measurementModel(sigma_pred.col(i));
 
-        Real y_pred = 0;
-        for (int i = 0; i < SIG_CNT; ++i)
-            y_pred += weights_m(i) * y_sigma(i);
+    Real y_pred = 0;
+    for (int i = 0; i < SIG_CNT; ++i)
+        y_pred += weights_m(i) * y_sigma(i);
 
-        Real Pyy = R(0, 0);
-        Vec Pxy = Vec::Zero();
-        for (int i = 0; i < SIG_CNT; ++i) {
-            Real dy = y_sigma(i) - y_pred;
-            Vec dx = sigma_pred.col(i) - x;
-            Pyy += weights_c(i) * dy * dy;
-            Pxy += weights_c(i) * dx * dy;
-        }
+    Real Pyy = R(0, 0);
+    Vec Pxy = Vec::Zero();
+    for (int i = 0; i < SIG_CNT; ++i) {
+        Real dy = y_sigma(i) - y_pred;
+        Vec dx = sigma_pred.col(i) - x;
 
-        Vec K = Pxy / std::max(Pyy, Real(1e-6));
-        x += K * (y_meas - y_pred);
-        P -= K * K.transpose() * Pyy;
-        symmetrize(P);
+        // Wrap phase residual
+        dx(2 * M + 2) = std::atan2(std::sin(dx(2 * M + 2)), std::cos(dx(2 * M + 2)));
+
+        Pyy += weights_c(i) * dy * dy;
+        Pxy += weights_c(i) * dx * dy;
     }
+
+    Vec K = Pxy / std::max(Pyy, Real(1e-6));
+    x += K * (y_meas - y_pred);
+    P -= K * K.transpose() * Pyy;
+    symmetrize(P);
+}
 
     Real measurementModel(const Vec& xi) const {
         Real phase = xi(2 * M + 2);
