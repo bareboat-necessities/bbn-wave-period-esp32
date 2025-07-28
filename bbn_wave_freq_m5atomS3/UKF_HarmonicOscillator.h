@@ -230,7 +230,7 @@ private:
     }
 
     static Real wrapPhase(Real phase) {
-        return std::atan2(std::sin(phase), std:cos(phase));
+        return std::atan2(std::sin(phase), std::cos(phase));
     }
 
     void symmetrize(Mat& P) {
