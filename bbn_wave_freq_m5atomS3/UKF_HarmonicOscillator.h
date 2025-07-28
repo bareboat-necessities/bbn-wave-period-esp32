@@ -18,9 +18,9 @@ public:
     using Mat = Eigen::Matrix<Real, N_STATE, N_STATE>;
 
     // UKF tuning parameters
-    static constexpr Real alpha = 0.7;
+    static constexpr Real alpha = 0.9;
     static constexpr Real beta = 2.0;
-    static constexpr Real kappa = 0.0;
+    static constexpr Real kappa = 2.0;
     static constexpr Real lambda = alpha * alpha * (N_STATE + kappa) - N_STATE;
 
     UKF_HarmonicOscillator() {
@@ -34,9 +34,9 @@ public:
         P.setIdentity(); P *= Real(1.0);
 
         Q.setIdentity(); Q *= Real(1e-3);
-        Q(2 * M, 2 * M) = Real(5e-6);         // omega process noise
+        Q(2 * M, 2 * M) = Real(1e-5);         // omega process noise
         Q(2 * M + 1, 2 * M + 1) = Real(1e-6); // bias
-        Q(2 * M + 2, 2 * M + 2) = Real(1e-5); // phase
+        Q(2 * M + 2, 2 * M + 2) = Real(1e-6); // phase
 
         R.setZero(); R(0, 0) = Real(0.1);
 
