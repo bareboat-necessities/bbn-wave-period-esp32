@@ -37,7 +37,7 @@ uncertaintyDeg = df["uncertaintyDeg"]
 # Plot raw and filtered signals
 plt.figure(figsize=(10, 13))
 
-plt.subplot(4, 1, 1)
+plt.subplot(5, 1, 1)
 #plt.plot(t, ax, label="Raw $a_x$")
 plt.plot(t, fax, label="Filtered $a_x$")
 #plt.plot(t, ay, label="Raw $a_y$")
@@ -47,23 +47,29 @@ plt.legend()
 plt.title("Raw vs Filtered Signals")
 plt.ylabel("Acceleration")
 
-plt.subplot(4, 1, 2)
+plt.subplot(5, 1, 2)
 plt.plot(t, deg)
 plt.title("Estimated Angle")
 plt.ylabel("Angle")
 
-plt.subplot(4, 1, 3)
+plt.subplot(5, 1, 3)
 plt.scatter(ax, ay)
 plt.scatter(fax, fay)
 plt.title("$A_{est}$")
 plt.xlabel("X")
 plt.ylabel("Y")
 
-plt.subplot(4, 1, 4)
+plt.subplot(5, 1, 4)
 plt.plot(t, phase)
 plt.title("Estimated Phase")
 plt.xlabel("Time, sec")
 plt.ylabel("Phase, rad")
+
+plt.subplot(5, 1, 5)
+plt.plot(t, uncertaintyDeg)
+plt.title("Uncertainty")
+plt.xlabel("Time, sec")
+plt.ylabel("Uncertainty, deg")
 
 plt.tight_layout()
 plt.savefig("wave_dir.pgf", bbox_inches='tight')
