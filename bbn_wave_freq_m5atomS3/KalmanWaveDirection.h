@@ -59,6 +59,10 @@ public:
         Eigen::Vector2f A_pred = A_est;
         Eigen::Matrix2f P_pred = P + Q;
 
+        // Regularize
+        P_pred = 0.5f * (P_pred + P_pred.transpose());
+        P_pred += Eigen::Matrix2f::Identity() * 1e-10f;
+
         // Kalman gain
         Eigen::Matrix2f S = H * P_pred * H.transpose() + R;
         Eigen::Matrix2f K = P_pred * H.transpose() * S.ldlt().solve(Eigen::Matrix2f::Identity());
