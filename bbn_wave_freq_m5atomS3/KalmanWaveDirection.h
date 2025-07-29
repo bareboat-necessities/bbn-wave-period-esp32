@@ -50,7 +50,10 @@ public:
         float c = std::cos(phase);
         if (std::fabs(c) < 0.001f) {
             P += Q;
+            P = 0.5f * (P + P.transpose());
+            // Update confidence conservatively
             confidence = 1.0f / (P.trace() + 1e-6f);
+            confidence *= 0.98f; // Decay to avoid stale confidence holding steady
             return;
         }
         Eigen::Matrix2f H = c * Eigen::Matrix2f::Identity();
