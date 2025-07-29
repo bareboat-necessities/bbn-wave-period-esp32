@@ -93,6 +93,7 @@ public:
             } 
             float alpha = 0.05f;
             lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
+            lastStableAmplitude = norm;
 
             // Track last stable confidence and covariance
             lastStableConfidence = confidence;
@@ -114,7 +115,7 @@ public:
     // of the amplitude vector's components and projecting the error covariance onto the direction tangent.
     float getDirectionUncertaintyDegrees() const {
         // Compute amplitude (magnitude of the estimated direction vector)
-        float amp = A_est.norm();
+        float amp = lastStableAmplitude;
     
         // If amplitude is too small, direction is meaningless — return full uncertainty
         if (amp < 1e-6f) return 180.0f;
@@ -192,6 +193,7 @@ private:
     float confidence;
 
     mutable Eigen::Vector2f lastStableDir = Eigen::Vector2f(1.0f, 0.0f);
+    mutable float lastStableAmplitude = 0.0f;
     mutable float lastStableConfidence = 0.0f;
     mutable Eigen::Matrix2f lastStableCovariance = Eigen::Matrix2f::Identity();
 };
