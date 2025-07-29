@@ -1,3 +1,4 @@
+
 #ifndef KALMAN_WAVE_DIRECTION_H
 #define KALMAN_WAVE_DIRECTION_H
 
@@ -5,8 +6,7 @@
   Copyright 2025, Mikhail Grushinskiy
 
   Kalman filter for estimating direction of an ocean wave from IMU horizontal x, y accelerations.
-
- */
+*/
 
 #ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
@@ -14,6 +14,7 @@
 #include <ArduinoEigenDense.h>
 #endif
 #include <cmath>
+#include <algorithm> 
 
 #ifdef KALMAN_WAVE_DIRECTION_TEST
 #include <iostream>
@@ -33,6 +34,9 @@ public:
         P = Eigen::Matrix2f::Identity() * 1.0f;
         updatePhase(deltaT);
         confidence = 0.0f;
+        lastStableConfidence = 0.0f;
+        lastStableCovariance = Eigen::Matrix2f::Identity();
+        lastStableDir = Eigen::Vector2f(1.0f, 0.0f);
     }
 
     void update(float ax, float ay, float currentOmega, float deltaT) {
@@ -79,12 +83,16 @@ public:
         const float AMP_THRESHOLD = 0.08f;
         const float CONFIDENCE_THRESHOLD = 20.0f;
         if (norm > AMP_THRESHOLD && confidence > CONFIDENCE_THRESHOLD) {
-          Eigen::Vector2f newDir = A_est / norm;
-          if (lastStableDir.dot(newDir) < 0.0f) {
-            newDir = -newDir;
-          } 
-          float alpha = 0.05f;
-          lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
+            Eigen::Vector2f newDir = A_est / norm;
+            if (lastStableDir.dot(newDir) < 0.0f) {
+                newDir = -newDir;
+            } 
+            float alpha = 0.05f;
+            lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
+
+            // Track last stable confidence and covariance
+            lastStableConfidence = confidence;
+            lastStableCovariance = P;
         }
         return lastStableDir;
     }
@@ -98,24 +106,21 @@ public:
     }
 
     float getDirectionUncertaintyDegrees() const {
-        // Eigen decomposition of P to get principal axis
-        Eigen::SelfAdjointEigenSolver<Eigen::Matrix2f> solver(P);
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix2f> solver(lastStableCovariance);
         Eigen::Vector2f eigvals = solver.eigenvalues();
-    
-        // Largest eigenvalue gives uncertainty along the worst axis
         float maxVar = eigvals.maxCoeff();
-    
-        // Standard deviation in amplitude direction
         float std_dev = std::sqrt(maxVar);
-    
-        // Normalize by current amplitude to get angular error in radians
+
         float amp = A_est.norm();
-        if (amp < 1e-6f) return 180.0f; // totally uncertain if amplitude is near zero
-    
-        float angle_rad = std_dev / amp;  // approximate angle in radians
+        if (amp < 1e-6f) return 180.0f;
+
+        float angle_rad = std_dev / amp;
         float angle_deg = angle_rad * (180.0f / M_PI);
-    
         return std::max(0.0f, std::min(angle_deg, 180.0f));
+    }
+
+    float getLastStableConfidence() const {
+        return lastStableConfidence;
     }
 
     Eigen::Vector2f getFilteredSignal() const {
@@ -126,7 +131,6 @@ public:
         return A_est * std::cos(phase);
     }
 
-    // Full amplitude vector A * dir
     Eigen::Vector2f getAmplitudeVector() const {
         return A_est;
     }
@@ -167,13 +171,15 @@ private:
     float confidence;
 
     mutable Eigen::Vector2f lastStableDir = Eigen::Vector2f(1.0f, 0.0f);
+    mutable float lastStableConfidence = 0.0f;
+    mutable Eigen::Matrix2f lastStableCovariance = Eigen::Matrix2f::Identity();
 };
 
 #ifdef KALMAN_WAVE_DIRECTION_TEST
 
 void KalmanWaveDirection_test_signal(float t, float freq, float& ax, float& ay, 
     std::normal_distribution<float>& noise, std::default_random_engine& generator) {
-  float amp = 0.8f + 0.4f * std::sin(0.005f * t);  // Slowly varying amplitude
+  float amp = 0.8f + 0.4f * std::sin(0.005f * t);
   float phase = 2.0f * M_PI * freq * t;
   Eigen::Vector2f dir(1.0f, 1.5f);
   dir.normalize();
@@ -185,14 +191,14 @@ void KalmanWaveDirection_test_signal(float t, float freq, float& ax, float& ay,
 }
 
 void KalmanWaveDirection_test_1() {
-  const float delta_t = 0.02f;   // 50 Hz sample rate
-  const float freq = 0.5f;       // Base frequency (Hz)
+  const float delta_t = 0.02f;
+  const float freq = 0.5f;
   const int num_steps = 2000;
 
-  const double mean = 0.0f;     // m/s^2
-  const double stddev = 0.08f;  // m/s^2
+  const double mean = 0.0f;
+  const double stddev = 0.08f;
   std::default_random_engine generator;
-  generator.seed(239);  // seed the engine for deterministic test results
+  generator.seed(239);
   std::normal_distribution<float> dist(mean, stddev);
   
   KalmanWaveDirection filter(freq, delta_t);
@@ -215,14 +221,16 @@ void KalmanWaveDirection_test_1() {
     float phase = filter.getPhase();
     float confidence = filter.getConfidence();
     float deg = filter.getDirectionDegrees();
-    float uncertaintyDeg = filter.getDirectionUncertaintyDegrees();
+    float uncert_deg = filter.getDirectionUncertaintyDegrees();
 
     out << t << "," << ax << "," << ay << "," << filtered_ax << "," << filtered_ay << ","
-        << frequency << "," << amplitude << "," << phase << "," << confidence << "," << deg << "," << uncertaintyDeg << "\n";
+        << frequency << "," << amplitude << "," << phase << "," << confidence << ","
+        << deg << "," << uncertaintyDeg << "\n";
   }
   out.close();
 }
 
-#endif
+#endif  // KALMAN_WAVE_DIRECTION_TEST
 
 #endif  // KALMAN_WAVE_DIRECTION_H
+
