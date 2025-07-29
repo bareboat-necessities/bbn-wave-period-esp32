@@ -80,7 +80,7 @@ public:
     // Estimated wave propagation direction (unit vector)
     Eigen::Vector2f getDirection() const {
         float norm = A_est.norm();
-        const float AMP_THRESHOLD = 0.08f;
+        const float AMP_THRESHOLD = 0.1f;
         const float CONFIDENCE_THRESHOLD = 20.0f;
         if (norm > AMP_THRESHOLD && confidence > CONFIDENCE_THRESHOLD) {
             Eigen::Vector2f newDir = A_est / norm;
@@ -105,17 +105,34 @@ public:
         return deg;
     }
 
+    // Returns angular uncertainty in degrees at 99.7% confidence (~3σ)
+    // This estimates the maximum deviation of the wave direction, assuming a Gaussian distribution
+    // of the amplitude vector's components and projecting the error covariance onto the direction tangent.
     float getDirectionUncertaintyDegrees() const {
-        Eigen::SelfAdjointEigenSolver<Eigen::Matrix2f> solver(lastStableCovariance);
-        Eigen::Vector2f eigvals = solver.eigenvalues();
-        float maxVar = eigvals.maxCoeff();
-        float std_dev = std::sqrt(maxVar);
-
+        // Compute amplitude (magnitude of the estimated direction vector)
         float amp = A_est.norm();
+    
+        // If amplitude is too small, direction is meaningless — return full uncertainty
         if (amp < 1e-6f) return 180.0f;
-
-        float angle_rad = std_dev / amp;
+    
+        // Unit direction vector (estimated wave direction)
+        Eigen::Vector2f dir = A_est / amp;
+    
+        // Tangent direction (perpendicular to dir) is where angular deviations occur
+        Eigen::Vector2f tangent(-dir.y(), dir.x());
+    
+        // Project covariance matrix onto the tangent vector
+        // This gives the variance of noise in the angular direction
+        float angular_var = tangent.transpose() * lastStableCovariance * tangent;
+    
+        // Angular standard deviation in radians (scaled by amplitude)
+        float angular_std_rad = std::sqrt(angular_var) / amp;
+    
+        // Convert to 3σ uncertainty in degrees (99.7% confidence)
+        float angle_rad = 3.0f * angular_std_rad;
         float angle_deg = angle_rad * (180.0f / M_PI);
+    
+        // Clamp to [0, 180] degrees for safety
         return std::max(0.0f, std::min(angle_deg, 180.0f));
     }
 
