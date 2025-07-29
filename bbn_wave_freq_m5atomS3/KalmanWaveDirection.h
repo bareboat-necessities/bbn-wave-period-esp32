@@ -97,6 +97,27 @@ public:
         return deg;
     }
 
+float getDirectionUncertaintyDegrees() const {
+    // Eigen decomposition of P to get principal axis
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix2f> solver(P);
+    Eigen::Vector2f eigvals = solver.eigenvalues();
+
+    // Largest eigenvalue gives uncertainty along the worst axis
+    float maxVar = eigvals.maxCoeff();
+
+    // Standard deviation in amplitude direction
+    float std_dev = std::sqrt(maxVar);
+
+    // Normalize by current amplitude to get angular error in radians
+    float amp = A_est.norm();
+    if (amp < 1e-6f) return 180.0f; // totally uncertain if amplitude is near zero
+
+    float angle_rad = std_dev / amp;  // approximate angle in radians
+    float angle_deg = angle_rad * (180.0f / M_PI);
+
+    return std::max(0.0f, std::min(angle_deg, 180.0f));
+}
+
     Eigen::Vector2f getFilteredSignal() const {
         return A_est * std::cos(phase) + Eigen::Vector2f(-A_est.y(), A_est.x()) * std::sin(phase);
     }
