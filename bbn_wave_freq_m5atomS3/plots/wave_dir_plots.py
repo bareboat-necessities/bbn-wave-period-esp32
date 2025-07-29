@@ -32,6 +32,7 @@ amp = df["amplitude"]
 phase = df["phase"]
 conf = df["confidence"]
 deg = df["deg"]
+uncertaintyDeg = df["uncertaintyDeg"]
 
 # Plot raw and filtered signals
 plt.figure(figsize=(10, 13))
