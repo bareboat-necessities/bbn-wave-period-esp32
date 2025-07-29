@@ -14,7 +14,6 @@
 
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
-#include "UKF_HarmonicOscillator.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "MinMaxLemire.h"
@@ -33,12 +32,11 @@ KalmanSmootherVars kalman_freq;
 KalmanForWaveBasicState waveState;
 KalmanWaveNumStableAltState waveAltState;
 KalmANF kalmANF;
-UKF_HarmonicOscillator<3> kf_oscillator;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 WaveSurfaceProfile<128> waveProfile;
 
-FrequencyTracker useFrequencyTracker = KF_HarmonicOscillator; // ZeroCrossing;
+FrequencyTracker useFrequencyTracker = ZeroCrossing;
 
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
@@ -74,7 +72,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   float warm_up_time = warmup_time_sec(true);
   if (t > warm_up_time) {
     // give some time for other filters to settle first
-    freq = estimate_freq(useFrequencyTracker, &arFilter, &kalmANF, &kf_oscillator, &freqDetector, a_noisy, a_no_spikes, delta_t, now());
+    freq = estimate_freq(useFrequencyTracker, &arFilter, &kalmANF, &freqDetector, a_noisy, a_no_spikes, delta_t, now());
     if (kalm_smoother_first) {
       kalm_smoother_first = false;
       kalman_smoother_set_initial(&kalman_freq, freq);
