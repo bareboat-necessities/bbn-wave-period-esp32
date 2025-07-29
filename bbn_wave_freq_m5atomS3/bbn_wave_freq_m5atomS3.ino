@@ -31,7 +31,6 @@
 #include "AranovskiyFilter.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "KalmANF.h"
-#include "UKF_HarmonicOscillator.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "Mahony_AHRS.h"
@@ -63,7 +62,6 @@ SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hyster
     ZERO_CROSSINGS_PERIODS /* periods to run measures on */);
 AranovskiyFilter<double> arFilter;
 KalmANF<float> kalmANF;
-UKF_HarmonicOscillator<3> kf_oscillator;
 KalmanSmootherVars kalman_freq;
 
 // AHRS
