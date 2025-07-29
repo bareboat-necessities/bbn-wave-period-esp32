@@ -103,11 +103,6 @@ void initialize_filters() {
     init_filters(&arFilter, &kalman_freq);
   } else if (useFrequencyTracker == Kalm_ANF) {
     init_filters_alt(&kalmANF, &kalman_freq); 
-  } else if (useFrequencyTracker == KF_HarmonicOscillator) {
-    kf_oscillator.setProcessNoise(1e-3f, 1e-5f, 1e-4f);
-    kf_oscillator.setMeasurementNoise(0.01f);
-    kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
-    init_wave_filters();
   } else {
     kalman_smoother_init(&kalman_freq, 0.2f, 2.0f, 100.0f);
     init_wave_filters();
