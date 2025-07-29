@@ -110,7 +110,7 @@ public:
         return deg;
     }
 
-    // Returns angular uncertainty in degrees at 99.7% confidence (~3σ)
+    // Returns angular uncertainty in degrees at 95% confidence (~2σ)
     // This estimates the maximum deviation of the wave direction, assuming a Gaussian distribution
     // of the amplitude vector's components and projecting the error covariance onto the direction tangent.
     float getDirectionUncertaintyDegrees() const {
@@ -133,8 +133,8 @@ public:
         // Angular standard deviation in radians (scaled by amplitude)
         float angular_std_rad = std::sqrt(angular_var) / amp;
     
-        // Convert to 3σ uncertainty in degrees (99.7% confidence)
-        float angle_rad = 3.0f * angular_std_rad;
+        // Convert to 2σ uncertainty in degrees (95% confidence)
+        float angle_rad = 2.0f * angular_std_rad;
         float angle_deg = angle_rad * (180.0f / M_PI);
     
         // Clamp to [0, 180] degrees for safety
