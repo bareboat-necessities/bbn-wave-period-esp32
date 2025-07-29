@@ -216,7 +216,6 @@ void KalmanWaveDirection_test_1() {
     filter.update(ax, ay, freq, delta_t);
     float filtered_ax = filter.getFilteredSignal().x();
     float filtered_ay = filter.getFilteredSignal().y();
-    float frequency = freq;
     float amplitude = filter.getAmplitude();
     float phase = filter.getPhase();
     float confidence = filter.getConfidence();
@@ -224,7 +223,7 @@ void KalmanWaveDirection_test_1() {
     float uncertaintyDeg = filter.getDirectionUncertaintyDegrees();
 
     out << t << "," << ax << "," << ay << "," << filtered_ax << "," << filtered_ay << ","
-        << frequency << "," << amplitude << "," << phase << "," << confidence << ","
+        << freq << "," << amplitude << "," << phase << "," << confidence << ","
         << deg << "," << uncertaintyDeg << "\n";
   }
   out.close();
