@@ -196,6 +196,7 @@ int main(int argc, char *argv[]) {
     Jonswap3dGerstnerWaves<512> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, 0.05, 2.5, 3.3, g_std, 10.0);
     while (t < test_duration) {
        Jonswap3dGerstnerWaves<>::WaveState state = waveModel.getLagrangianState(0.0, 0.0, t);
+       float zero_mean_gauss_noise = dist(generator);
        float a = state.acceleration.z() + bias + zero_mean_gauss_noise;
        float v = state.velocity.z();
        float h = state.displacement.z();
