@@ -8,12 +8,12 @@
 /*
   Copyright 2025, Mikhail Grushinskiy
 
-  JONSWAP-spectrum 3D waves simulation. Surface
+  JONSWAP-spectrum 3D Gerstner waves simulation. Surface
   
  */
 
 template<int N_FREQ = 512>
-class Jonswap3dWaves {
+class Jonswap3dGerstnerWaves {
 public:
     struct WaveState {
         Eigen::Vector3d displacement;
@@ -21,18 +21,16 @@ public:
         Eigen::Vector3d acceleration;
     };
 
-    Jonswap3dWaves(double Hs, double Tp,
-                   double f_min = 0.05,
-                   double f_max = 2.5,
-                   double gamma = 3.3,
-                   double g = 9.81,
-                   double mean_direction_deg = 0.0,
-                   double spreading_exponent = 10.0,
-                   std::optional<unsigned int> rng_seed = 42)
+    Jonswap3dGerstnerWaves(double Hs, double Tp,
+                           double f_min = 0.05,
+                           double f_max = 2.5,
+                           double gamma = 3.3,
+                           double g = 9.81,
+                           double mean_direction_deg = 0.0,
+                           double spreading_exponent = 10.0)
         : Hs_(Hs), Tp_(Tp), gamma_(gamma), g_(g),
           mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
-          spreading_exponent_(spreading_exponent),
-          rng_seed_(rng_seed) {
+          spreading_exponent_(spreading_exponent) {
 
         computeLogFrequencySpacing(f_min, f_max);
         computeFrequencyIncrements();
@@ -61,7 +59,7 @@ public:
 
     WaveState getEulerianState(double x, double y, double t) const {
         return {
-            Eigen::Vector3d(0.0, 0.0, evaluateSurfaceElevation(x, y, t)),
+            evaluateSurfaceElevation(x, y, t),
             evaluateVelocity(x, y, t),
             evaluateLocalAcceleration(x, y, t)
         };
@@ -70,7 +68,6 @@ public:
 private:
     double Hs_, Tp_, gamma_, g_;
     double mean_dir_rad_, spreading_exponent_;
-    std::optional<unsigned int> rng_seed_;
 
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, omega_, k_, S_, A_, phi_, df_;
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
@@ -111,31 +108,27 @@ private:
     }
 
     void initializeRandomPhases() {
-        std::mt19937 gen(rng_seed_.value_or(42));
+        std::mt19937 gen(42);
         std::uniform_real_distribution<double> dist(0.0, 2.0 * M_PI);
         for (int i = 0; i < N_FREQ; ++i)
             phi_(i) = dist(gen);
     }
 
     void initializeDirectionalSpread() {
-        std::mt19937 gen(rng_seed_.value_or(1337));
-        std::uniform_real_distribution<double> u(0.0, 1.0);
+        std::mt19937 gen(1337);
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
         for (int i = 0; i < N_FREQ; ++i) {
-            double theta = sampleCosineSpread(gen, u);
+            double theta = sampleCosineSpread(dist(gen));
             dir_x_(i) = std::cos(theta);
             dir_y_(i) = std::sin(theta);
         }
     }
 
-    double sampleCosineSpread(std::mt19937& gen, std::uniform_real_distribution<double>& u) const {
-        constexpr int max_attempts = 100;
-        for (int attempt = 0; attempt < max_attempts; ++attempt) {
-            double theta = (2.0 * u(gen) - 1.0) * M_PI; // sample in [-π, π]
-            double weight = std::pow(std::cos(theta * 0.5), spreading_exponent_); // shape
-            if (u(gen) < weight)
-                return mean_dir_rad_ + theta;
-        }
-        return mean_dir_rad_; // fallback
+    double sampleCosineSpread(double u) const {
+        // Inverse CDF sampling from cos^n(θ - θ₀) using power of cosine
+        double angle_range = M_PI;
+        double angle = std::acos(std::pow(u, 1.0 / (spreading_exponent_ + 1.0))) * (u < 0.5 ? -1 : 1);
+        return mean_dir_rad_ + angle;
     }
 
     void computeWaveDirectionComponents() {
@@ -160,11 +153,11 @@ private:
         return d;
     }
 
-    double evaluateSurfaceElevation(double x, double y, double t) const {
-        double z = 0.0;
+    Eigen::Vector3d evaluateSurfaceElevation(double x, double y, double t) const {
+        Eigen::Vector3d d = Eigen::Vector3d::Zero();
         for (int i = 0; i < N_FREQ; ++i)
-            z += A_(i) * std::sin(theta(i, x, y, t));
-        return z;
+            d[2] += A_(i) * std::sin(theta(i, x, y, t));
+        return d;
     }
 
     Eigen::Vector3d evaluateVelocity(double x, double y, double t) const {
@@ -199,10 +192,15 @@ private:
             double cos_th = std::cos(th), sin_th = std::sin(th);
             double A = A_(i), kx = kx_(i), ky = ky_(i);
 
+            // ∂vx/∂x, ∂vx/∂y
             grad(0, 0) += A * w * cos_th * kx * dir_x_(i);
             grad(0, 1) += A * w * cos_th * ky * dir_x_(i);
+
+            // ∂vy/∂x, ∂vy/∂y
             grad(1, 0) += A * w * cos_th * kx * dir_y_(i);
             grad(1, 1) += A * w * cos_th * ky * dir_y_(i);
+
+            // ∂vz/∂x, ∂vz/∂y
             grad(2, 0) += -A * w * sin_th * kx;
             grad(2, 1) += -A * w * sin_th * ky;
         }
