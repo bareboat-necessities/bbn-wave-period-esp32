@@ -7,6 +7,7 @@
 #define EIGEN_MPL2_ONLY
 
 #define FENTON_TEST
+#define JONSWAP_TEST
 #define KALMAN_WAVE_DIRECTION_TEST
 
 #include <cmath>
