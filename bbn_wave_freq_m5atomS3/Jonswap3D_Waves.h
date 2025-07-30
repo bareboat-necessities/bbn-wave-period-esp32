@@ -28,15 +28,14 @@ public:
     };
 
     Jonswap3dGerstnerWaves(double Hs, double Tp,
+                           double mean_direction_deg = 0.0,
                            double f_min = 0.05,
                            double f_max = 2.5,
                            double gamma = 3.3,
                            double g = 9.81,
-                           double mean_direction_deg = 0.0,
                            double spreading_exponent = 10.0,
                            unsigned int seed = 42)
-        : Hs_(Hs), Tp_(Tp), gamma_(gamma), g_(g),
-          mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
+        : Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * M_PI / 180.0), gamma_(gamma), g_(g),
           spreading_exponent_(spreading_exponent),
           seed_(seed)
     {
@@ -85,8 +84,7 @@ public:
     }
 
 private:
-    double Hs_, Tp_, gamma_, g_;
-    double mean_dir_rad_, spreading_exponent_;
+    double Hs_, Tp_, mean_dir_rad_, gamma_, g_, spreading_exponent_;
     unsigned int seed_;
 
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, omega_, k_, S_, A_, phi_, df_;
@@ -217,7 +215,7 @@ void generateWaveJonswapCSV(const std::string& filename,
                             double duration = 20.0, double dt = 0.005) {
     // Initialize wave model with realistic parameters
     Jonswap3dGerstnerWaves<512> waveModel(
-        Hs, Tp, 0.05, 2.5, 3.3, 9.81, mean_dir_deg, 10.0
+        Hs, Tp, mean_dir_deg, 0.05, 2.5, 3.3, 9.81, 10.0
     );
 
     // Open CSV file
