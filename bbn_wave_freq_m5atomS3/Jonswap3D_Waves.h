@@ -68,12 +68,16 @@ public:
         };
     }
 
-    double getSurfaceElevation(double x, double y, double t) const {
-        double eta = 0.0;
-        for (int i = 0; i < N_FREQ; ++i)
-            eta += A_(i) * std::sin(kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i));
-        return eta;
+Eigen::Matrix<double, N_FREQ, 3> exportSpectrum() const {
+    Eigen::Matrix<double, N_FREQ, 3> result;
+    for (int i = 0; i < N_FREQ; ++i) {
+        double dir_angle = std::atan2(dir_y_(i), dir_x_(i)); // from direction vector
+        result(i, 0) = frequencies_(i); // Hz
+        result(i, 1) = A_(i);           // amplitude
+        result(i, 2) = dir_angle;       // radians
     }
+    return result;
+}
 
 private:
     double Hs_, Tp_, gamma_, g_;
