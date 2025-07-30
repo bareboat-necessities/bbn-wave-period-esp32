@@ -207,6 +207,10 @@ int main(int argc, char *argv[]) {
     tracker.track_floating_object(test_duration, delta_t, kinematics_callback);
   }
 
+#ifdef JONSWAP_TEST
+  Jonswap_testWavePatterns();
+#endif
+  
 #ifdef FENTON_TEST
   FentonWave_test_1();
   FentonWave_test_2();
