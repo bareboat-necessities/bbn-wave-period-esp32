@@ -25,6 +25,7 @@
 #include "TimeAwareSpikeFilter.h"
 #include "FentonWaveVectorized.h"
 #include "WaveSurfaceProfile.h"
+#include "Jonswap3D_Waves.h"
 
 MinMaxLemire min_max_h;
 AranovskiyFilter<double> arFilter;
