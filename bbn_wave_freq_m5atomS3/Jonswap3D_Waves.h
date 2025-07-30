@@ -94,12 +94,11 @@ private:
             frequencies_(i) = std::exp(log_f_min + (log_f_max - log_f_min) * i / (N_FREQ - 1));
     }
 
-void computeFrequencyIncrements() {
-    for (int i = 0; i < N_FREQ - 1; ++i)
-        df_(i) = frequencies_(i + 1) - frequencies_(i);
-    df_(N_FREQ - 1) = df_(N_FREQ - 2);
-}
-
+    void computeFrequencyIncrements() {
+        for (int i = 0; i < N_FREQ - 1; ++i)
+            df_(i) = frequencies_(i + 1) - frequencies_(i);
+        df_(N_FREQ - 1) = df_(N_FREQ - 2);
+    }
 
     void computeJonswapSpectrum() {
         double fp = 1.0 / Tp_;
