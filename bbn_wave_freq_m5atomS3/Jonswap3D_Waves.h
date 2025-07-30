@@ -139,7 +139,8 @@ private:
             double theta = 0.0;
             while (true) {
                 double candidate = u_dist(gen);
-                double pdf_val = std::pow(std::cos(candidate - mean_dir_rad_), spreading_exponent_);
+                double base = std::cos(candidate - mean_dir_rad_);
+                double pdf_val = std::pow(std::max(0.0, base), spreading_exponent_);
                 double y = y_dist(gen);
                 if (y <= pdf_val) {
                     theta = candidate;
