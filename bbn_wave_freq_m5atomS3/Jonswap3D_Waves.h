@@ -212,7 +212,45 @@ private:
 };
 
 #ifdef JONSWAP_TEST
+void generateWaveJonswapCSV(const std::string& filename, 
+                            double Hs, double Tp, double mean_dir_deg,
+                            double duration = 20.0, double dt = 0.1) {
+    // Initialize wave model with realistic parameters
+    Jonswap3dGerstnerWaves<512> waveModel(
+        Hs, Tp, 0.05, 2.5, 3.3, 9.81, mean_dir_deg, 10.0
+    );
 
+    // Open CSV file
+    std::ofstream file(filename);
+    file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z\n";
 
+    // Simulate at fixed point (0,0)
+    const double x0 = 0.0, y0 = 0.0;
+
+    for (double t = 0; t <= duration; t += dt) {
+        auto state = waveModel.getLagrangianState(x0, y0, t);
+        
+        file << t << ","
+             << state.displacement.x() << ","
+             << state.displacement.y() << ","
+             << state.displacement.z() << ","
+             << state.velocity.x() << ","
+             << state.velocity.y() << ","
+             << state.velocity.z() << ","
+             << state.acceleration.x() << ","
+             << state.acceleration.y() << ","
+             << state.acceleration.z() << "\n";
+    }
+}
+
+void testJonswapWavePatterns() {
+    // Short waves (choppy, wind-driven)
+    generateWaveJonswapCSV("short_waves.csv", 0.5, 3.0, 30.0);
+
+    // Medium waves (typical sea state)
+    generateWaveJonswapCSV("medium_waves.csv", 2.0, 7.0, 15.0);
+
+    // Long waves (swell)
+    generateWaveJonswapCSV("long_waves.csv", 4.0, 12.0, 5.0);
+}
 #endif
-
