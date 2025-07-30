@@ -167,6 +167,8 @@ private:
 
     Eigen::Vector3d evaluateSurfaceElevation(double x, double y, double t) const {
         Eigen::Vector3d d = Eigen::Vector3d::Zero();
+        d[0] = x;
+        d[1] = y;
         for (int i = 0; i < N_FREQ; ++i)
             d[2] += A_(i) * std::sin(theta(i, x, y, t));
         return d;
