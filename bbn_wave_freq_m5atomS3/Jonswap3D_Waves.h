@@ -45,7 +45,7 @@ public:
 
         computeJonswapSpectrum();
         initializeRandomPhases();
-        initializeDirectionalSpread();
+        initializeDirectionalSpreadRejection(); 
         computeWaveDirectionComponents();
 
         normalizeAmplitudeToMatchHs();
@@ -55,19 +55,16 @@ public:
     WaveState getLagrangianState(double x0, double y0, double t) const {
         Eigen::Vector3d displacement = evaluateDisplacement(x0, y0, t);
         Eigen::Vector3d particle = Eigen::Vector3d(x0, y0, 0.0) + displacement;
-        Eigen::Vector3d velocity = evaluateVelocity(particle.x(), particle.y(), t);
-        Eigen::Vector3d localAccel = evaluateLocalAcceleration(particle.x(), particle.y(), t);
-        Eigen::Matrix3d velGrad = computeVelocityGradient(particle.x(), particle.y(), t);
-        Eigen::Vector3d convective = velGrad.transpose() * velocity;
-
-        return {displacement, velocity, localAccel + convective};
+        Eigen::Vector3d velocity = evaluateVelocity(x0, y0, t);
+        Eigen::Vector3d acceleration = evaluateAcceleration(x0, y0, t);
+        return {displacement, velocity, acceleration};
     }
 
     WaveState getEulerianState(double x, double y, double t) const {
         return {
             evaluateDisplacement(x, y, t),
             evaluateVelocity(x, y, t),
-            evaluateLocalAcceleration(x, y, t)
+            evaluateAcceleration(x, y, t)
         };
     }
 
@@ -87,8 +84,10 @@ private:
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
 
     void computeLogFrequencySpacing(double f_min, double f_max) {
+        double log_f_min = std::log(f_min);
+        double log_f_max = std::log(f_max);
         for (int i = 0; i < N_FREQ; ++i)
-            frequencies_(i) = f_min * std::pow(f_max / f_min, double(i) / (N_FREQ - 1));
+            frequencies_(i) = std::exp(log_f_min + (log_f_max - log_f_min) * i / (N_FREQ - 1));
     }
 
     void computeFrequencyIncrements() {
@@ -127,25 +126,25 @@ private:
             phi_(i) = dist(gen);
     }
 
-    void initializeDirectionalSpread() {
+    void initializeDirectionalSpreadRejection() {
         std::mt19937 gen(seed_ + 1);
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        std::uniform_real_distribution<double> u_dist(0.0, 2.0 * M_PI);
+        std::uniform_real_distribution<double> y_dist(0.0, 1.0);
+
         for (int i = 0; i < N_FREQ; ++i) {
-            double u = dist(gen);
-            double theta = sampleDirectionalAngleCosine(u);
+            double theta = 0.0;
+            while (true) {
+                double candidate = u_dist(gen);
+                double pdf_val = std::pow(std::cos(candidate - mean_dir_rad_), spreading_exponent_);
+                double y = y_dist(gen);
+                if (y <= pdf_val) {
+                    theta = candidate;
+                    break;
+                }
+            }
             dir_x_(i) = std::cos(theta);
             dir_y_(i) = std::sin(theta);
         }
-    }
-
-    double sampleDirectionalAngleCosine(double u) const {
-        // Inverse CDF sampling for D(θ) ∝ cos^s(θ - θ_m)
-        double theta_max = M_PI / 2.0;
-        double exponent = 1.0 / (spreading_exponent_ + 1.0);
-        double shifted = 2.0 * u - 1.0;
-        shifted = std::clamp(shifted, -1.0, 1.0);
-        double angle = std::asin(std::pow(std::abs(shifted), exponent)) * theta_max;
-        return mean_dir_rad_ + (shifted < 0 ? -angle : angle);
     }
 
     void computeWaveDirectionComponents() {
@@ -161,9 +160,9 @@ private:
             double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
             double cos_th = std::cos(th);
             double sin_th = std::sin(th);
-            d[0] += -A_(i) * cos_th * dir_x_(i);
-            d[1] += -A_(i) * cos_th * dir_y_(i);
-            d[2] +=  A_(i) * sin_th;
+            d[0] += A_(i) * cos_th * dir_x_(i);  // horizontal circular motion
+            d[1] += A_(i) * cos_th * dir_y_(i);
+            d[2] += A_(i) * sin_th;              // vertical motion
         }
         return d;
     }
@@ -175,43 +174,25 @@ private:
             double th = kx_(i) * x + ky_(i) * y - w * t + phi_(i);
             double sin_th = std::sin(th);
             double cos_th = std::cos(th);
-            v[0] += A_(i) * w * sin_th * dir_x_(i);
-            v[1] += A_(i) * w * sin_th * dir_y_(i);
-            v[2] += A_(i) * w * cos_th;
+            v[0] += -A_(i) * w * sin_th * dir_x_(i);
+            v[1] += -A_(i) * w * sin_th * dir_y_(i);
+            v[2] +=  A_(i) * w * cos_th;
         }
         return v;
     }
 
-    Eigen::Vector3d evaluateLocalAcceleration(double x, double y, double t) const {
+    Eigen::Vector3d evaluateAcceleration(double x, double y, double t) const {
         Eigen::Vector3d a = Eigen::Vector3d::Zero();
         for (int i = 0; i < N_FREQ; ++i) {
             double w2 = omega_(i) * omega_(i);
             double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
             double cos_th = std::cos(th);
             double sin_th = std::sin(th);
-            a[0] += A_(i) * w2 * cos_th * dir_x_(i);
-            a[1] += A_(i) * w2 * cos_th * dir_y_(i);
+            a[0] += -A_(i) * w2 * cos_th * dir_x_(i);
+            a[1] += -A_(i) * w2 * cos_th * dir_y_(i);
             a[2] += -A_(i) * w2 * sin_th;
         }
         return a;
-    }
-
-    Eigen::Matrix3d computeVelocityGradient(double x, double y, double t) const {
-        Eigen::Matrix3d grad = Eigen::Matrix3d::Zero();
-        for (int i = 0; i < N_FREQ; ++i) {
-            double w = omega_(i);
-            double th = kx_(i) * x + ky_(i) * y - w * t + phi_(i);
-            double cos_th = std::cos(th), sin_th = std::sin(th);
-            double A = A_(i), kx = kx_(i), ky = ky_(i);
-
-            grad(0, 0) += A * w * cos_th * kx * dir_x_(i);
-            grad(0, 1) += A * w * cos_th * ky * dir_x_(i);
-            grad(1, 0) += A * w * cos_th * kx * dir_y_(i);
-            grad(1, 1) += A * w * cos_th * ky * dir_y_(i);
-            grad(2, 0) += -A * w * sin_th * kx;
-            grad(2, 1) += -A * w * sin_th * ky;
-        }
-        return grad;
     }
 
     void checkSteepness() const {
