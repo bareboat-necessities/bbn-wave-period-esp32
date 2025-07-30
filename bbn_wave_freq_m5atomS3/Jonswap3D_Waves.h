@@ -29,12 +29,11 @@ public:
                            double g = 9.81,
                            double mean_direction_deg = 0.0,
                            double spreading_exponent = 10.0,
-                           unsigned int seed_phase = 42,
-                           unsigned int seed_direction = 1337)
+                           unsigned int seed = 42)
         : Hs_(Hs), Tp_(Tp), gamma_(gamma), g_(g),
           mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
           spreading_exponent_(spreading_exponent),
-          seed_phase_(seed_phase), seed_direction_(seed_direction)
+          seed_(seed)
     {
         frequencies_.setZero(); omega_.setZero(); k_.setZero(); S_.setZero(); A_.setZero(); phi_.setZero(); 
         df_.setZero(); dir_x_.setZero(); dir_y_.setZero(); kx_.setZero(); ky_.setZero();
@@ -82,7 +81,7 @@ public:
 private:
     double Hs_, Tp_, gamma_, g_;
     double mean_dir_rad_, spreading_exponent_;
-    unsigned int seed_phase_, seed_direction_;
+    unsigned int seed_;
 
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, omega_, k_, S_, A_, phi_, df_;
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
@@ -122,14 +121,14 @@ private:
     }
 
     void initializeRandomPhases() {
-        std::mt19937 gen(seed_phase_);
+        std::mt19937 gen(seed_);
         std::uniform_real_distribution<double> dist(0.0, 2.0 * M_PI);
         for (int i = 0; i < N_FREQ; ++i)
             phi_(i) = dist(gen);
     }
 
     void initializeDirectionalSpread() {
-        std::mt19937 gen(seed_direction_);
+        std::mt19937 gen(seed_ + 1);
         std::uniform_real_distribution<double> dist(0.0, 1.0);
         for (int i = 0; i < N_FREQ; ++i) {
             double u = dist(gen);
