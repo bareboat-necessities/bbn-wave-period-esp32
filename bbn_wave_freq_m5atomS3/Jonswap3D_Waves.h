@@ -32,17 +32,8 @@ public:
           mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
           spreading_exponent_(spreading_exponent) {
         
-        frequencies_.setZero();
-        omega_.setZero();
-        k_.setZero();
-        S_.setZero();
-        A_.setZero();
-        phi_.setZero();
-        df_.setZero();
-        dir_x_.setZero();
-        dir_y_.setZero();
-        kx_.setZero();
-        ky_.setZero();
+        frequencies_.setZero(); omega_.setZero(); k_.setZero(); S_.setZero(); A_.setZero(); phi_.setZero(); 
+        df_.setZero(); dir_x_.setZero(); dir_y_.setZero(); kx_.setZero(); ky_.setZero();
 
         computeLogFrequencySpacing(f_min, f_max);
         computeFrequencyIncrements();
