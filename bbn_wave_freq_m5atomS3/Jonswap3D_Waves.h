@@ -229,7 +229,7 @@ void generateWaveJonswapCSV(const std::string& filename,
     // Simulate at fixed point (0,0)
     const double x0 = 0.0, y0 = 0.0;
     for (double t = 0; t <= duration; t += dt) {
-        Jonswap3dGerstnerWaves::WaveState state = waveModel.getLagrangianState(x0, y0, t);
+        Jonswap3dGerstnerWaves<>::WaveState state = waveModel.getLagrangianState(x0, y0, t);
         file << t << ","
              << state.displacement.x() << ","
              << state.displacement.y() << ","
