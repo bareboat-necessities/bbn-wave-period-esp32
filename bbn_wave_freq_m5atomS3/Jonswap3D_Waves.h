@@ -6,6 +6,11 @@
 #include <iostream>
 #include <algorithm>
 
+#ifdef JONSWAP_TEST
+#include <iostream>
+#include <fstream>
+#endif
+
 /*
   Copyright 2025, Mikhail Grushinskiy
 
@@ -205,3 +210,9 @@ private:
             std::cerr << "[Warning] Wave steepness exceeds 0.3: " << max_steepness << "\n";
     }
 };
+
+#ifdef JONSWAP_TEST
+
+
+#endif
+
