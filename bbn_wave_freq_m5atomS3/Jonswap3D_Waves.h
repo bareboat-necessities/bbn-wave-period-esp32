@@ -31,11 +31,23 @@ public:
         : Hs_(Hs), Tp_(Tp), gamma_(gamma), g_(g),
           mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
           spreading_exponent_(spreading_exponent) {
+        
+        frequencies_.setZero();
+        omega_.setZero();
+        k_.setZero();
+        S_.setZero();
+        A_.setZero();
+        phi_.setZero();
+        df_.setZero();
+        dir_x_.setZero();
+        dir_y_.setZero();
+        kx_.setZero();
+        ky_.setZero();
 
         computeLogFrequencySpacing(f_min, f_max);
         computeFrequencyIncrements();
         omega_ = 2.0 * M_PI * frequencies_;
-        k_ = omega_.array().square() / g_;  // deep water dispersion
+        k_ = omega_.array().square() / g_;  // deep water dispersion relation
 
         computeJonswapSpectrum();
         initializeRandomPhases();
@@ -78,9 +90,8 @@ private:
     }
 
     void computeFrequencyIncrements() {
-        df_.setZero();
         for (int i = 1; i < N_FREQ - 1; ++i)
-            df_(i) = 0.5 * (frequencies_(i+1) - frequencies_(i-1));
+            df_(i) = 0.5 * (frequencies_(i + 1) - frequencies_(i - 1));
         df_(0) = frequencies_(1) - frequencies_(0);
         df_(N_FREQ - 1) = frequencies_(N_FREQ - 1) - frequencies_(N_FREQ - 2);
     }
@@ -93,12 +104,12 @@ private:
             double r = std::exp(-std::pow(f - fp, 2) / (2.0 * sigma * sigma * fp * fp));
             double alpha = 0.076 * std::pow(Hs_, 2) / std::pow(Tp_, 4);
             double val = alpha * std::pow(g_, 2) / std::pow(2 * M_PI, 4)
-                        * std::pow(f, -5.0)
-                        * std::exp(-1.25 * std::pow(fp / f, 4.0))
-                        * std::pow(gamma_, r);
+                       * std::pow(f, -5.0)
+                       * std::exp(-1.25 * std::pow(fp / f, 4.0))
+                       * std::pow(gamma_, r);
             S_(i) = val;
         }
-        A_ = (2.0 * S_.cwiseProduct(df_)).cwiseSqrt();
+        A_ = (2.0 * S_.cwiseProduct(df_)).cwiseSqrt();  // amplitude from spectrum
     }
 
     void normalizeAmplitudeToMatchHs() {
@@ -118,17 +129,20 @@ private:
         std::mt19937 gen(1337);
         std::uniform_real_distribution<double> dist(0.0, 1.0);
         for (int i = 0; i < N_FREQ; ++i) {
-            double theta = sampleCosineSpread(dist(gen));
+            double theta = sampleDirectionalAngle(dist(gen));
             dir_x_(i) = std::cos(theta);
             dir_y_(i) = std::sin(theta);
         }
     }
 
-    double sampleCosineSpread(double u) const {
-        // Inverse CDF sampling from cos^n(θ - θ₀) using power of cosine
-        double angle_range = M_PI;
-        double angle = std::acos(std::pow(u, 1.0 / (spreading_exponent_ + 1.0))) * (u < 0.5 ? -1 : 1);
-        return mean_dir_rad_ + angle;
+    double sampleDirectionalAngle(double u) const {
+        // Approximate inverse CDF sampling of cos^n(θ - θ₀) distribution
+        // Symmetric around mean_dir_rad_
+        double a = std::pow(u, 1.0 / (spreading_exponent_ + 1.0));
+        double theta_offset = std::acos(a);
+        return (u < 0.5)
+            ? mean_dir_rad_ - theta_offset
+            : mean_dir_rad_ + theta_offset;
     }
 
     void computeWaveDirectionComponents() {
@@ -192,15 +206,10 @@ private:
             double cos_th = std::cos(th), sin_th = std::sin(th);
             double A = A_(i), kx = kx_(i), ky = ky_(i);
 
-            // ∂vx/∂x, ∂vx/∂y
             grad(0, 0) += A * w * cos_th * kx * dir_x_(i);
             grad(0, 1) += A * w * cos_th * ky * dir_x_(i);
-
-            // ∂vy/∂x, ∂vy/∂y
             grad(1, 0) += A * w * cos_th * kx * dir_y_(i);
             grad(1, 1) += A * w * cos_th * ky * dir_y_(i);
-
-            // ∂vz/∂x, ∂vz/∂y
             grad(2, 0) += -A * w * sin_th * kx;
             grad(2, 1) += -A * w * sin_th * ky;
         }
@@ -208,8 +217,8 @@ private:
     }
 
     void checkSteepness() const {
-        auto steepness = (A_.array() * k_.array()).maxCoeff();
-        if (steepness > 0.3)
-            std::cerr << "[Warning] Wave steepness exceeds 0.3: " << steepness << "\n";
+        double max_steepness = (A_.array() * k_.array()).maxCoeff();
+        if (max_steepness > 0.3)
+            std::cerr << "[Warning] Wave steepness exceeds 0.3: " << max_steepness << "\n";
     }
 };
