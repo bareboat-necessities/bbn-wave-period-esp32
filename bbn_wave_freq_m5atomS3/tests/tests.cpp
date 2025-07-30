@@ -28,6 +28,12 @@
 #include "WaveSurfaceProfile.h"
 #include "Jonswap3D_Waves.h"
 
+enum TestType {
+  GERSTEN = -1,
+  FENTON = 0,
+  JONSWAP = 1
+};
+
 MinMaxLemire min_max_h;
 AranovskiyFilter<double> arFilter;
 KalmanSmootherVars kalman_freq;
@@ -176,35 +182,39 @@ int main(int argc, char *argv[]) {
 
   t = 0.0;
   
-  bool test_trochoid = false;
-  if (test_trochoid) {
+  TestType test_type = FENTON;
+  if (test_type == TestType::GERSTEN) {
     while (t < test_duration) {
       float zero_mean_gauss_noise = dist(generator);
       float a = w->surfaceVerticalAcceleration(t) + bias + zero_mean_gauss_noise;
       float v = w->surfaceVerticalSpeed(t);
       float h = w->surfaceElevation(t);
-
       run_filters(a / g_std, v, h, delta_t, frequency);
-
       t = t + delta_t;
+    }
+  } else if (test_type == TestType::JONSWAP) {
+    Jonswap3dGerstnerWaves<512> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, 0.05, 2.5, 3.3, g_std, 10.0);
+    while (t < test_duration) {
+       Jonswap3dGerstnerWaves<>::WaveState state = waveModel.getLagrangianState(0.0, 0.0, t);
+       float a = state.acceleration.z();
+       float v = state.velocity.z();
+       float h = state.displacement.z();
+       run_filters(a / g_std, v, h, delta_t, frequency);
+       t = t + delta_t;
     }
   } else {
     // Create a 4th-order Fenton wave and a surface tracker
     FentonWave<4>::WaveInitParams wave_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
       amplitude, 200.0f, angularFrequency, phase);
-
     const float mass = 5.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
-
     WaveSurfaceTracker<4> tracker(wave_params.height, wave_params.depth, wave_params.length, wave_params.initial_x, mass, drag);
-
     auto kinematics_callback = [&frequency, &delta_t, &bias, &dist, &generator](
         float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
       float zero_mean_gauss_noise = dist(generator);
       run_filters((vertical_acceleration + bias + zero_mean_gauss_noise) / g_std, vertical_velocity, elevation, dt, frequency);
       t = t + delta_t;
     };
-
     tracker.track_floating_object(test_duration, delta_t, kinematics_callback);
   }
 
