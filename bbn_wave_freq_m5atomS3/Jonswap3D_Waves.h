@@ -136,10 +136,8 @@ private:
     }
 
     double sampleDirectionalAngle(double u) const {
-        // Approximate inverse CDF sampling of cos^n(θ - θ₀) distribution
-        // Symmetric around mean_dir_rad_
         double a = std::pow(u, 1.0 / (spreading_exponent_ + 1.0));
-        double theta_offset = std::acos(a);
+        double theta_offset = std::acos(std::clamp(a, -1.0, 1.0));
         return (u < 0.5)
             ? mean_dir_rad_ - theta_offset
             : mean_dir_rad_ + theta_offset;
