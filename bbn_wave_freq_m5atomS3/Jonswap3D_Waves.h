@@ -214,7 +214,7 @@ private:
 #ifdef JONSWAP_TEST
 void generateWaveJonswapCSV(const std::string& filename, 
                             double Hs, double Tp, double mean_dir_deg,
-                            double duration = 20.0, double dt = 0.1) {
+                            double duration = 20.0, double dt = 0.005) {
     // Initialize wave model with realistic parameters
     Jonswap3dGerstnerWaves<512> waveModel(
         Hs, Tp, 0.05, 2.5, 3.3, 9.81, mean_dir_deg, 10.0
