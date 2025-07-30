@@ -243,7 +243,7 @@ void generateWaveJonswapCSV(const std::string& filename,
     }
 }
 
-void testJonswapWavePatterns() {
+void Jonswap_testWavePatterns() {
     // Short waves (choppy, wind-driven)
     generateWaveJonswapCSV("short_waves.csv", 0.5, 3.0, 30.0);
     // Medium waves (typical sea state)
