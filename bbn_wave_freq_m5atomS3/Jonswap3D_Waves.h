@@ -28,18 +28,21 @@ public:
                            double gamma = 3.3,
                            double g = 9.81,
                            double mean_direction_deg = 0.0,
-                           double spreading_exponent = 10.0)
+                           double spreading_exponent = 10.0,
+                           unsigned int seed_phase = 42,
+                           unsigned int seed_direction = 1337)
         : Hs_(Hs), Tp_(Tp), gamma_(gamma), g_(g),
           mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
-          spreading_exponent_(spreading_exponent) {
-        
+          spreading_exponent_(spreading_exponent),
+          seed_phase_(seed_phase), seed_direction_(seed_direction)
+    {
         frequencies_.setZero(); omega_.setZero(); k_.setZero(); S_.setZero(); A_.setZero(); phi_.setZero(); 
         df_.setZero(); dir_x_.setZero(); dir_y_.setZero(); kx_.setZero(); ky_.setZero();
 
         computeLogFrequencySpacing(f_min, f_max);
         computeFrequencyIncrements();
         omega_ = 2.0 * M_PI * frequencies_;
-        k_ = omega_.array().square() / g_;  // deep water dispersion relation
+        k_ = omega_.array().square() / g_;
 
         computeJonswapSpectrum();
         initializeRandomPhases();
@@ -63,15 +66,23 @@ public:
 
     WaveState getEulerianState(double x, double y, double t) const {
         return {
-            evaluateSurfaceElevation(x, y, t),
+            evaluateDisplacement(x, y, t),
             evaluateVelocity(x, y, t),
             evaluateLocalAcceleration(x, y, t)
         };
     }
 
+    double getSurfaceElevation(double x, double y, double t) const {
+        double eta = 0.0;
+        for (int i = 0; i < N_FREQ; ++i)
+            eta += A_(i) * std::sin(kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i));
+        return eta;
+    }
+
 private:
     double Hs_, Tp_, gamma_, g_;
     double mean_dir_rad_, spreading_exponent_;
+    unsigned int seed_phase_, seed_direction_;
 
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, omega_, k_, S_, A_, phi_, df_;
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
@@ -101,7 +112,7 @@ private:
                        * std::pow(gamma_, r);
             S_(i) = val;
         }
-        A_ = (2.0 * S_.cwiseProduct(df_)).cwiseSqrt();  // amplitude from spectrum
+        A_ = (2.0 * S_.cwiseProduct(df_)).cwiseSqrt();
     }
 
     void normalizeAmplitudeToMatchHs() {
@@ -111,28 +122,31 @@ private:
     }
 
     void initializeRandomPhases() {
-        std::mt19937 gen(42);
+        std::mt19937 gen(seed_phase_);
         std::uniform_real_distribution<double> dist(0.0, 2.0 * M_PI);
         for (int i = 0; i < N_FREQ; ++i)
             phi_(i) = dist(gen);
     }
 
     void initializeDirectionalSpread() {
-        std::mt19937 gen(1337);
+        std::mt19937 gen(seed_direction_);
         std::uniform_real_distribution<double> dist(0.0, 1.0);
         for (int i = 0; i < N_FREQ; ++i) {
-            double theta = sampleDirectionalAngle(dist(gen));
+            double u = dist(gen);
+            double theta = sampleDirectionalAngleCosine(u);
             dir_x_(i) = std::cos(theta);
             dir_y_(i) = std::sin(theta);
         }
     }
 
-    double sampleDirectionalAngle(double u) const {
-        double a = std::pow(u, 1.0 / (spreading_exponent_ + 1.0));
-        double theta_offset = std::acos(std::clamp(a, -1.0, 1.0));
-        return (u < 0.5)
-            ? mean_dir_rad_ - theta_offset
-            : mean_dir_rad_ + theta_offset;
+    double sampleDirectionalAngleCosine(double u) const {
+        // Inverse CDF sampling for D(θ) ∝ cos^s(θ - θ_m)
+        double theta_max = M_PI / 2.0;
+        double exponent = 1.0 / (spreading_exponent_ + 1.0);
+        double shifted = 2.0 * u - 1.0;
+        shifted = std::clamp(shifted, -1.0, 1.0);
+        double angle = std::asin(std::pow(std::abs(shifted), exponent)) * theta_max;
+        return mean_dir_rad_ + (shifted < 0 ? -angle : angle);
     }
 
     void computeWaveDirectionComponents() {
@@ -142,27 +156,16 @@ private:
         }
     }
 
-    double theta(int i, double x, double y, double t) const {
-        return kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
-    }
-
     Eigen::Vector3d evaluateDisplacement(double x, double y, double t) const {
         Eigen::Vector3d d = Eigen::Vector3d::Zero();
         for (int i = 0; i < N_FREQ; ++i) {
-            double th = theta(i, x, y, t);
-            d[0] += -A_(i) * std::cos(th) * dir_x_(i);
-            d[1] += -A_(i) * std::cos(th) * dir_y_(i);
-            d[2] +=  A_(i) * std::sin(th);
+            double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
+            double cos_th = std::cos(th);
+            double sin_th = std::sin(th);
+            d[0] += -A_(i) * cos_th * dir_x_(i);
+            d[1] += -A_(i) * cos_th * dir_y_(i);
+            d[2] +=  A_(i) * sin_th;
         }
-        return d;
-    }
-
-    Eigen::Vector3d evaluateSurfaceElevation(double x, double y, double t) const {
-        Eigen::Vector3d d = Eigen::Vector3d::Zero();
-        d[0] = x;
-        d[1] = y;
-        for (int i = 0; i < N_FREQ; ++i)
-            d[2] += A_(i) * std::sin(theta(i, x, y, t));
         return d;
     }
 
@@ -170,10 +173,12 @@ private:
         Eigen::Vector3d v = Eigen::Vector3d::Zero();
         for (int i = 0; i < N_FREQ; ++i) {
             double w = omega_(i);
-            double th = theta(i, x, y, t);
-            v[0] += A_(i) * w * std::sin(th) * dir_x_(i);
-            v[1] += A_(i) * w * std::sin(th) * dir_y_(i);
-            v[2] += A_(i) * w * std::cos(th);
+            double th = kx_(i) * x + ky_(i) * y - w * t + phi_(i);
+            double sin_th = std::sin(th);
+            double cos_th = std::cos(th);
+            v[0] += A_(i) * w * sin_th * dir_x_(i);
+            v[1] += A_(i) * w * sin_th * dir_y_(i);
+            v[2] += A_(i) * w * cos_th;
         }
         return v;
     }
@@ -182,10 +187,12 @@ private:
         Eigen::Vector3d a = Eigen::Vector3d::Zero();
         for (int i = 0; i < N_FREQ; ++i) {
             double w2 = omega_(i) * omega_(i);
-            double th = theta(i, x, y, t);
-            a[0] += A_(i) * w2 * std::cos(th) * dir_x_(i);
-            a[1] += A_(i) * w2 * std::cos(th) * dir_y_(i);
-            a[2] += -A_(i) * w2 * std::sin(th);
+            double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
+            double cos_th = std::cos(th);
+            double sin_th = std::sin(th);
+            a[0] += A_(i) * w2 * cos_th * dir_x_(i);
+            a[1] += A_(i) * w2 * cos_th * dir_y_(i);
+            a[2] += -A_(i) * w2 * sin_th;
         }
         return a;
     }
@@ -194,7 +201,7 @@ private:
         Eigen::Matrix3d grad = Eigen::Matrix3d::Zero();
         for (int i = 0; i < N_FREQ; ++i) {
             double w = omega_(i);
-            double th = theta(i, x, y, t);
+            double th = kx_(i) * x + ky_(i) * y - w * t + phi_(i);
             double cos_th = std::cos(th), sin_th = std::sin(th);
             double A = A_(i), kx = kx_(i), ky = ky_(i);
 
