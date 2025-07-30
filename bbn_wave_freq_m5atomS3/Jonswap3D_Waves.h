@@ -4,6 +4,7 @@
 #include <random>
 #include <cmath>
 #include <iostream>
+#include <algorithm>
 
 /*
   Copyright 2025, Mikhail Grushinskiy
