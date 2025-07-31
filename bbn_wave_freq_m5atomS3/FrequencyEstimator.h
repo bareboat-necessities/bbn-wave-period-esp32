@@ -46,12 +46,12 @@ public:
     void init() {
         kalman_.initialize(5.0f, 1e-4f, 1e-2f, 1e-5f);      // p, q, r, b
         kalman_.initMeasurementNoise(1e-3f);               // measurement noise
-        static_cast<Derived*>(this)->initImpl();           // delegate
+        derived()->initImpl();           // delegate
     }
 
     float estimate(float a_noisy, float a_no_spikes, float delta_t, float t) {
         float heave = kalman_.update(a_noisy, delta_t);    // step 1: heave estimation
-        float f = static_cast<Derived*>(this)->estimateFromHeave(heave, delta_t, t); // step 2
+        float f = derived()->estimateFromHeave(heave, delta_t, t); // step 2
         return wave_utils::clamp(f, FREQ_LOWER, FREQ_UPPER);
     }
 
@@ -61,6 +61,14 @@ public:
 
 protected:
     KalmanForWaveBasic kalman_;
+
+private:
+    Derived& derived() {
+        return static_cast<Derived&>(*this);
+    }
+    const Derived& derived() const {
+        return static_cast<const Derived&>(*this);
+    }
 };
 
 //----------------------------------
