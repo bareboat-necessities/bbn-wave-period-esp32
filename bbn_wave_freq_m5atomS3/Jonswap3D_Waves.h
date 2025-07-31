@@ -218,8 +218,8 @@ void generateWaveJonswapCSV(const std::string& filename,
                             double Hs, double Tp, double mean_dir_deg,
                             double duration = 40.0, double dt = 0.005) {
     // Initialize wave model with realistic parameters
-    Jonswap3dGerstnerWaves<512> waveModel(
-        Hs, Tp, mean_dir_deg, 0.05, 2.5, 3.3, 9.81, 10.0
+    Jonswap3dGerstnerWaves<256> waveModel(
+        Hs, Tp, mean_dir_deg, 0.2, 1.5, 3.1, 9.81, 25.0
     );
 
     // Open CSV file
