@@ -147,6 +147,11 @@ public:
         return State{x(0), x(1), x(2), x(3)};
     }
 
+    // Calculate theoretical process noise Q matrix using IMU specs and Allan variance parameters
+    // Defaults are from MPU6886 specs.
+    // This method assumes that Kalman filter is in SI units and R is not scaled.
+    // These values will be too low for practical use
+    // but can provide a starting point for tuning Q for the production filter.
     Matrix4f calculateTheoreticalProcessNoise(float sample_rate_hz, float sigma_a_density = 0.004f,
                                               float sigma_b = 1.0f, float tau_b = 100.0f) const {
         const float BW = sample_rate_hz / 2.0f;
