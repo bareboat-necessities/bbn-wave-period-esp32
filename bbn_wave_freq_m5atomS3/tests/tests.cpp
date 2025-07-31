@@ -193,7 +193,7 @@ int main(int argc, char *argv[]) {
       t = t + delta_t;
     }
   } else if (test_type == TestType::JONSWAP) {
-    Jonswap3dGerstnerWaves<512> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, 0.05, 2.5, 3.3, g_std, 10.0);
+    Jonswap3dGerstnerWaves<256> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, 0.2, 1.5, 3.1, g_std, 25.0);
     while (t < test_duration) {
        Jonswap3dGerstnerWaves<>::WaveState state = waveModel.getLagrangianState(0.0, 0.0, t);
        float zero_mean_gauss_noise = dist(generator);
