@@ -37,7 +37,7 @@ public:
   Real phase = Real(0);      // Estimated phase (radians)
 
   // Constructor
-  AranovskiyFilter(Real omega_up = Real(1) * 2 * M_PI, Real gain = Real(2),
+  AranovskiyFilter(Real omega_up = Real(1) * 2 * M_PI, Real gain = Real(8),
                    Real x1_0 = Real(0), Real theta_0 = Real(-0.25), Real sigma_0 = Real(-0.25))
   {
     setParams(omega_up, gain);
