@@ -1,5 +1,5 @@
-#ifndef KalmanForWaveBasic_h
-#define KalmanForWaveBasic_h
+#ifndef KalmanForWaveZC_h
+#define KalmanForWaveZC_h
 
 /*
   Copyright 2025, Mikhail Grushinskiy
