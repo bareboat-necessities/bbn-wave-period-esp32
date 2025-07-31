@@ -1,5 +1,3 @@
-
-
 #ifndef FREQUENCY_ESTIMATOR_H
 #define FREQUENCY_ESTIMATOR_H
 
@@ -75,7 +73,7 @@ public:
     void initImpl() {
         double omega_init = (FREQ_GUESS * 2) * (2 * M_PI);
         double k_gain = 8.0;
-        double theta_0 = - (omega_init * omega_init / 4.0);
+        double theta_0 = -0.09; // -(omega_init * omega_init / 4.0);
         ar_filter_.setParams(omega_init, k_gain);
         ar_filter_.setState(0.0, theta_0, theta_0);
     }
