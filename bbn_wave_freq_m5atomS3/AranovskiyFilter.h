@@ -32,7 +32,7 @@ public:
   Real sigma = Real(-0.09);  // Estimator variable
   Real x1_dot = Real(0);
   Real sigma_dot = Real(0);
-  Real omega = Real(0);      // Estimated angular frequency (rad/s)
+  Real omega = Real(3.0);      // Estimated angular frequency (rad/s)
   Real f = Real(0);          // Estimated frequency (Hz)
   Real phase = Real(0);      // Estimated phase (radians)
 
