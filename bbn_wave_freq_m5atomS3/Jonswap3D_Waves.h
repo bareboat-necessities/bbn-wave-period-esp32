@@ -22,7 +22,7 @@
   
  */
 
-template<int N_FREQ = 512>
+template<int N_FREQ = 256>
 class Jonswap3dGerstnerWaves {
 public:
     struct WaveState {
@@ -33,11 +33,11 @@ public:
 
     Jonswap3dGerstnerWaves(double Hs, double Tp,
                            double mean_direction_deg = 0.0,
-                           double f_min = 0.05,
-                           double f_max = 2.5,
+                           double f_min = 0.2,
+                           double f_max = 1.5,
                            double gamma = 3.3,
                            double g = 9.81,
-                           double spreading_exponent = 10.0,
+                           double spreading_exponent = 25.0,
                            unsigned int seed = 42)
         : Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * M_PI / 180.0), gamma_(gamma), g_(g),
           spreading_exponent_(spreading_exponent),
