@@ -134,7 +134,11 @@ public:
 
         // Process noise covariance (diagonal)
         Q.setZero();
-        Q.diagonal() << q0, q1, q2, q3, q4;
+        Q.diagonal() << q0,  // third accel integral
+                        q1,  // displacement
+                        q2,  // velocity
+                        q3,  // accel (high noise due to square noisy frequency term)
+                        q4;  // accel bias
 
         // Measurement model
         H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
