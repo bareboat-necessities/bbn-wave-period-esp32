@@ -23,7 +23,7 @@ public:
   // Parameters
   Real a = Real(1);  // Input filter gain
   Real b = Real(1);  // Input filter gain
-  Real k = Real(1);  // Adaptive gain
+  Real k = Real(8);  // Adaptive gain
 
   // State
   Real y = Real(0);          // Last measurement
