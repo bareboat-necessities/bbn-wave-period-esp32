@@ -28,8 +28,8 @@ public:
   // State
   Real y = Real(0);          // Last measurement
   Real x1 = Real(0);         // Internal filtered state
-  Real theta = Real(-0.25);  // Estimator variable
-  Real sigma = Real(-0.25);  // Estimator variable
+  Real theta = Real(-0.09);  // Estimator variable
+  Real sigma = Real(-0.09);  // Estimator variable
   Real x1_dot = Real(0);
   Real sigma_dot = Real(0);
   Real omega = Real(0);      // Estimated angular frequency (rad/s)
@@ -38,7 +38,7 @@ public:
 
   // Constructor
   AranovskiyFilter(Real omega_up = Real(1) * 2 * M_PI, Real gain = Real(8),
-                   Real x1_0 = Real(0), Real theta_0 = Real(-0.25), Real sigma_0 = Real(-0.25))
+                   Real x1_0 = Real(0), Real theta_0 = Real(-0.09), Real sigma_0 = Real(-0.09))
   {
     setParams(omega_up, gain);
     setState(x1_0, theta_0, sigma_0);
