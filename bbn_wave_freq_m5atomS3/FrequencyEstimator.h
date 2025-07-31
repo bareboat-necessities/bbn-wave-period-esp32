@@ -1,92 +1,129 @@
 
+
 #ifndef FREQUENCY_ESTIMATOR_H
 #define FREQUENCY_ESTIMATOR_H
 
+#include "KalmanForWaveBasic.h"
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "SchmittTriggerFrequencyDetector.h"
+#include <cmath>
+#include <algorithm>
 
+//----------------------------------
+// Utility Clamp
+//----------------------------------
+namespace wave_utils {
+template<typename T>
+T clamp(T val, T lo, T hi) {
+    return std::max(lo, std::min(val, hi));
+}
+}
+
+//----------------------------------
+// Enum: Tracker Selection
+//----------------------------------
 enum class FrequencyTracker {
     Aranovskiy,
     Kalm_ANF,
     ZeroCrossing
 };
 
-// Frequency range and fallback guess
-constexpr float FREQ_LOWER = 0.04f;
-constexpr float FREQ_UPPER = 2.0f;
-constexpr float FREQ_GUESS = 0.3f;
+//----------------------------------
+// Constants
+//----------------------------------
+constexpr float FREQ_LOWER = 0.03f;  // Hz
+constexpr float FREQ_UPPER = 1.0f;   // Hz
+constexpr float FREQ_GUESS = 0.12f;  // Hz
 
-namespace wave_utils {
-    template <typename T>
-    constexpr T clamp(T val, T min, T max) {
-        return (val < min) ? min : (val > max) ? max : val;
-    }
-}
+constexpr float SCHMITT_TRIGGER_FREQ_INIT     = -1.0f;
+constexpr float SCHMITT_TRIGGER_FALLBACK_FREQ = -2.0f;
 
-// Base template (undefined)
-template<FrequencyTracker TrackerType>
-class FrequencyEstimator;
-
-// ----------------------------------------
-// Specialization: Aranovskiy Filter
-// ----------------------------------------
-template<>
-class FrequencyEstimator<FrequencyTracker::Aranovskiy> {
+//----------------------------------
+// CRTP Base Class
+//----------------------------------
+template<typename Derived>
+class FrequencyEstimatorBase {
 public:
     void init() {
+        kalman_.initialize(5.0f, 1e-4f, 1e-2f, 1e-5f);      // p, q, r, b
+        kalman_.initMeasurementNoise(1e-3f);               // measurement noise
+        static_cast<Derived*>(this)->initImpl();           // delegate
+    }
+
+    float estimate(float a_noisy, float a_no_spikes, float delta_t, float t) {
+        float heave = kalman_.update(a_noisy, delta_t);    // step 1: heave estimation
+        float f = static_cast<Derived*>(this)->estimateFromHeave(heave, delta_t, t); // step 2
+        return wave_utils::clamp(f, FREQ_LOWER, FREQ_UPPER);
+    }
+
+    const KalmanForWaveBasic& heaveFilter() const {
+        return kalman_;
+    }
+
+protected:
+    KalmanForWaveBasic kalman_;
+};
+
+//----------------------------------
+// Aranovskiy Specialization
+//----------------------------------
+template<>
+class FrequencyEstimator<FrequencyTracker::Aranovskiy>
+    : public FrequencyEstimatorBase<FrequencyEstimator<FrequencyTracker::Aranovskiy>> {
+public:
+    void initImpl() {
         double omega_init = (FREQ_GUESS * 2) * (2 * M_PI);
-        double k_gain     = 8.0;
-        double theta_0    = - (omega_init * omega_init / 4.0);
+        double k_gain = 8.0;
+        double theta_0 = - (omega_init * omega_init / 4.0);
         ar_filter_.setParams(omega_init, k_gain);
         ar_filter_.setState(0.0, theta_0, theta_0);
     }
 
-    float estimate(float /*a_noisy*/, float a_no_spikes, float delta_t, float /*t*/) {
-        ar_filter_.update(a_no_spikes, delta_t);
-        return wave_utils::clamp(ar_filter_.getFrequencyHz(), FREQ_LOWER, FREQ_UPPER);
+    float estimateFromHeave(float heave, float delta_t, float /*t*/) {
+        ar_filter_.update(heave, delta_t);
+        return ar_filter_.getFrequencyHz();
     }
 
 private:
     AranovskiyFilter<double> ar_filter_;
 };
 
-// ----------------------------------------
-// Specialization: Kalman ANF
-// ----------------------------------------
+//----------------------------------
+// KalmANF Specialization
+//----------------------------------
 template<>
-class FrequencyEstimator<FrequencyTracker::Kalm_ANF> {
+class FrequencyEstimator<FrequencyTracker::Kalm_ANF>
+    : public FrequencyEstimatorBase<FrequencyEstimator<FrequencyTracker::Kalm_ANF>> {
 public:
-    void init() {
+    void initImpl() {
         kalman_anf_.init(0.985f, 1e-5f, 5e+4f, 1.0f, 0.0f, 0.0f, 1.9999f);
     }
 
-    float estimate(float a_noisy, float /*a_no_spikes*/, float delta_t, float /*t*/) {
-        float e;
-        float f = kalman_anf_.process(a_noisy, delta_t, &e);
-        return wave_utils::clamp(f, FREQ_LOWER, FREQ_UPPER);
+    float estimateFromHeave(float heave, float delta_t, float /*t*/) {
+        float error;
+        return kalman_anf_.process(heave, delta_t, &error);
     }
 
 private:
     KalmANF<float> kalman_anf_;
 };
 
-// ----------------------------------------
-// Specialization: Zero Crossing Detector
-// ----------------------------------------
+//----------------------------------
+// ZeroCrossing (Schmitt) Specialization
+//----------------------------------
 template<>
-class FrequencyEstimator<FrequencyTracker::ZeroCrossing> {
+class FrequencyEstimator<FrequencyTracker::ZeroCrossing>
+    : public FrequencyEstimatorBase<FrequencyEstimator<FrequencyTracker::ZeroCrossing>> {
 public:
-    void init() {
-        // No specific init needed
+    void initImpl() {
+        // No stateful initialization required
     }
 
-    float estimate(float a_noisy, float /*a_no_spikes*/, float delta_t, float /*t*/) {
-        float f = schmitt_.update(a_noisy, kScale, kDebounce, kSteepness, delta_t);
-        if (f == SCHMITT_TRIGGER_FREQ_INIT || f == SCHMITT_TRIGGER_FALLBACK_FREQ)
-            f = FREQ_GUESS;
-
-        return wave_utils::clamp(f, FREQ_LOWER, FREQ_UPPER);
+    float estimateFromHeave(float heave, float delta_t, float /*t*/) {
+        float f = schmitt_.update(heave, kScale, kDebounce, kSteepness, delta_t);
+        return (f == SCHMITT_TRIGGER_FREQ_INIT || f == SCHMITT_TRIGGER_FALLBACK_FREQ)
+                 ? FREQ_GUESS : f;
     }
 
 private:
@@ -98,4 +135,5 @@ private:
 };
 
 #endif // FREQUENCY_ESTIMATOR_H
+
 
