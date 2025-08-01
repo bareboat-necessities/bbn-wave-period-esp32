@@ -73,7 +73,7 @@ void init_aranovskiy(AranovskiyFilter<double>* ar_filter) {
 }
 
 void init_smoother(KalmanSmootherVars* kalman_smoother) {
-  double process_noise_covariance = 0.1f;
+  double process_noise_covariance = 0.25f;
   double measurement_uncertainty = 2.0f;
   double estimation_uncertainty = 100.0f;
   kalman_smoother_init(kalman_smoother, process_noise_covariance, measurement_uncertainty, estimation_uncertainty);
