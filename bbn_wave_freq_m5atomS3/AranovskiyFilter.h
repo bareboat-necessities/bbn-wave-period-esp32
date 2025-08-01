@@ -63,6 +63,44 @@ public:
   }
 
   // Update filter with new measurement and time step
+
+void update(Real y_meas, Real delta_t) {
+    if (!std::isfinite(y_meas)) return;
+
+    y = y_meas;
+
+    // First-order low-pass filter
+    x1_dot = -a * x1 + b * y;
+
+    // Signal energy check (x1 ≈ filtered y)
+    Real signal_energy = x1 * x1 + y * y + Real(1e-12); // avoid divide-by-zero
+    Real gain_scaling = signal_energy / (signal_energy + Real(1e-4)); // tunable softness
+
+    // Nonlinear adaptation law (scaled by gain_scaling)
+    Real update_term = -k * x1 * x1 * theta
+                       - k * a * x1 * x1_dot
+                       - k * b * x1_dot * y;
+
+    sigma_dot = clamp_value(update_term, Real(-1e12), Real(1e12)) * gain_scaling;
+
+    // Integrate states
+    x1 += x1_dot * delta_t;
+    sigma += sigma_dot * delta_t;
+
+    // Update theta with current sigma
+    theta = sigma + k * b * x1 * y;
+
+    // Clamp theta to avoid invalid sqrt
+    theta = clamp_value(theta, Real(1e-4), Real(100.0));
+
+    // Update frequency estimate
+    omega = std::sqrt(theta);
+    f = omega / (Real(2) * M_PI);
+
+    // Phase estimate
+    phase = std::atan2(x1, y);
+}
+
   void update(Real y_meas, Real delta_t) {
     if (!std::isfinite(y_meas)) return;
 
