@@ -75,7 +75,7 @@ public:
     Real update_term = -k * x1 * x1 * theta
                        - k * a * x1 * x1_dot
                        - k * b * x1_dot * y;
-    sigma_dot = clamp_value(update_term, Real(-1e7), Real(1e7));
+    sigma_dot = clamp_value(update_term, Real(-1e12), Real(1e12));
 
     // Update theta and omega
     theta = sigma + k * b * x1 * y;
