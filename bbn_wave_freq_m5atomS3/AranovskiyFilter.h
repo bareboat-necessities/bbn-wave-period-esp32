@@ -76,9 +76,8 @@ public:
       Real gain_scaling = signal_energy / (signal_energy + Real(1e-6)); // softness of update on low energy signal reading
   
       // Nonlinear adaptation law (scaled by gain_scaling)
-      Real update_term = (-k * x1 * x1 * theta
-                         - k * a * x1 * x1_dot
-                         - k * b * x1_dot * y) * gain_scaling;
+      Real phi = x1 * x1 * theta + a * x1 * x1_dot + b * x1_dot * y;
+      Real update_term = -k * phi * gain_scaling;
   
       sigma_dot = clamp_value(update_term, Real(-1e9), Real(1e9));
   
