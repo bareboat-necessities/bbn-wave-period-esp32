@@ -75,7 +75,7 @@ public:
     // Compute Kalman gain
     Real denom = res.s_prev1 * res.s_prev1 + r / (p_cov + std::numeric_limits<Real>::epsilon());
     Real K;
-    if (std:abs(denom) < Real(1e-8)) {
+    if (std::abs(denom) < Real(1e-8)) {
        Real K = (res.s_prev1 * Real(1e+8)) / (denom * Real(1e+8));
     } else {
        Real K = res.s_prev1 / denom;
