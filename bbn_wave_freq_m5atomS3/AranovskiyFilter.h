@@ -57,7 +57,7 @@ public:
     theta = theta_init;
     sigma = sigma_init;
     y = Real(0);
-    omega = std::sqrt(std::max(Real(1e-10), std::abs(theta)));
+    omega = std::sqrt(std::max(Real(1e-12), std::abs(theta)));
     f = omega / (Real(2) * M_PI);
     phase = Real(0);
   }
