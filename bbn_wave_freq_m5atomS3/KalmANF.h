@@ -22,8 +22,8 @@ private:
     Real s_prev1 = Real(0);  // s[n-1] — previous resonator output sample
     Real s_prev2 = Real(0);  // s[n-2] — two samples ago
     Real a = Real(0);        // a[n] — adaptive filter coefficient = 2*cos(ω)
-    Real rho = Real(0);      // Pole radius (0 < rho < 1)
-    Real rho_sq = Real(0);   // Precomputed rho^2
+    Real rho = Real(0.985);  // Pole radius (0 < rho < 1)
+    Real rho_sq = Real(0.985) * Real(0.985);   // Precomputed rho^2
 
     void init(Real rho_init, Real a_init, Real s1, Real s2) {
       rho = rho_init;
