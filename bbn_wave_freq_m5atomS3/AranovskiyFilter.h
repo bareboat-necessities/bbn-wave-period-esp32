@@ -79,23 +79,18 @@ public:
       Real phi = x1 * x1 * theta + a * x1 * x1_dot + b * x1_dot * y;
       Real update_term = -k * phi * gain_scaling;
   
-      sigma_dot = clamp_value(update_term, Real(-1e9), Real(1e9));
+      sigma_dot = clamp_value(update_term, Real(-1e12), Real(1e12));
   
-      // Integrate states
+      // Update theta and omega
+      theta = sigma + k * b * x1 * y;
+      omega = std::sqrt(std::max(Real(1e-12), std::abs(theta)));
+      f = omega / (Real(2) * M_PI);
+  
+      // State integration
       x1 += x1_dot * delta_t;
       sigma += sigma_dot * delta_t;
   
-      // Update theta with current sigma
-      theta = sigma + k * b * x1 * y;
-  
-      // Clamp theta to avoid invalid sqrt
-      theta = clamp_value(theta, Real(1e-6), Real(100.0));
-  
-      // Update frequency estimate
-      omega = std::sqrt(theta);
-      f = omega / (Real(2) * M_PI);
-  
-      // Phase estimate
+      // Phase estimation
       phase = std::atan2(x1, y);
   }
   
