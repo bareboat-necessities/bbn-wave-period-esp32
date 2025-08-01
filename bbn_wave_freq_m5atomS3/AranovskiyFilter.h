@@ -100,7 +100,7 @@ public:
   // Get current angular frequency estimate (rad/s)
   Real getOmega() const { return omega; }
 
-  // Get current phase estimate (radians)
+  // Get current oscillator phase estimate (radians)
   Real getPhase() const { return phase; }
 
 private:
