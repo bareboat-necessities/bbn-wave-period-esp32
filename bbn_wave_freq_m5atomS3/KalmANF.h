@@ -73,16 +73,10 @@ public:
 
     // Prediction update
     p_cov += q;
-    p_cov = std::max(p_cov, Real(1e-12));
 
     // Compute Kalman gain
     Real denom = res.s_prev1 * res.s_prev1 + r / (p_cov + std::numeric_limits<Real>::epsilon());
-    Real K;
-    if (std::abs(denom) < Real(1e-8)) {
-       K = (res.s_prev1 * Real(1e+8)) / (denom * Real(1e+8));
-    } else {
-       K = res.s_prev1 / denom;
-    }
+    Real K = res.s_prev1 / (denom + Real(1e-12));
 
     // Compute output e[n]
     Real e = s - res.s_prev1 * res.a + res.s_prev2;
@@ -92,6 +86,7 @@ public:
 
     // Update error covariance
     p_cov = (Real(1) - K * res.s_prev1) * p_cov;
+    p_cov = std::max(p_cov, Real(1e-12));
      
     // Handle coefficient bounds to stay within acos() domain
     if (a > Real(2) || a < Real(-2)) {
