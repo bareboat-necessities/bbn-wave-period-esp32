@@ -109,7 +109,7 @@ public:
     return f_est;
   }
 
-  // Get the current phase estimate (in radians)
+  // Get the current resonator phase estimate (in radians)
   Real get_phase() const {
     return res.get_phase();
   }
