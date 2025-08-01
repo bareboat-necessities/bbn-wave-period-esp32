@@ -8,8 +8,8 @@ template <typename Real = double>
 class KalmAranovskiy {
 public:
   // Parameters
-  Real a = Real(1);     // Filter gain a
-  Real b = Real(1);     // Filter gain b
+  Real a = Real(1);  // Filter gain a
+  Real b = Real(1);  // Filter gain b
 
   // Covariance and noise parameters
   Real P = Real(1);     // Covariance of theta
@@ -17,18 +17,20 @@ public:
   Real R = Real(1e-2);  // Measurement noise variance
 
   // State
-  Real y = Real(0);           // Last measurement
-  Real x1 = Real(0);          // Filtered signal
-  Real x1_dot = Real(0);      // Derivative
-  Real theta = Real(0.1);     // Estimator state (squared frequency)
-  Real omega = Real(0.32);    // Angular frequency (rad/s)
-  Real f = Real(omega / (2 * M_PI));  // Frequency (Hz)
-  Real phase = Real(0);       // Estimated phase (rad)
+  Real y = Real(0);
+  Real x1 = Real(0);
+  Real x1_dot = Real(0);
+  Real theta = Real(0.1);
+  Real omega = std::sqrt(theta);
+  Real f = omega / (2 * M_PI);
+  Real phase = Real(0);
 
   // Constructor
   KalmAranovskiy(Real omega_up = Real(0.5) * 2 * M_PI,
                  Real theta0 = Real(0.1),
-                 Real P0 = Real(1), Real Q_ = Real(1e-4), Real R_ = Real(1e-2)) {
+                 Real P0 = Real(1),
+                 Real Q_ = Real(1e-4),
+                 Real R_ = Real(1e-2)) {
     setParams(omega_up, Q_, R_);
     setState(theta0, P0);
   }
@@ -41,52 +43,51 @@ public:
   }
 
   void setState(Real theta0, Real P0) {
-    theta = theta0;
-    P = P0;
-    omega = std::sqrt(std::max(Real(1e-8), theta));
-    f = omega / (Real(2) * M_PI);
+    theta = std::max(theta0, Real(1e-8));
+    P = std::max(P0, Real(1e-8));
+    omega = std::sqrt(theta);
+    f = omega / (2 * M_PI);
     x1 = x1_dot = y = Real(0);
     phase = Real(0);
   }
 
   void update(Real y_meas, Real delta_t) {
-    if (!std::isfinite(y_meas)) return;
+    if (!std::isfinite(y_meas) || delta_t <= Real(0)) return;
 
     y = y_meas;
 
-    // First-order filter
+    // Filter step (resonator-style)
     x1_dot = -a * x1 + b * y;
     x1 += x1_dot * delta_t;
 
-    // Nonlinear measurement innovation model (Aranovskiy-style)
+    // Nonlinear innovation (Aranovskiy-style)
     Real innovation = (-x1 * x1 * theta
                       - a * x1 * x1_dot
                       - b * x1_dot * y);
 
-    // Kalman-style gain
-    Real S = P + R;            // Innovation covariance
-    Real K = P / S;            // Adaptive gain
-    P = P - K * P + Q * delta_t;  // Covariance update
+    // Kalman gain
+    Real S = P + R;
+    Real K = P / S;
 
-    // Theta update using nonlinear innovation term
+    // Theta update
     theta += K * innovation * delta_t;
-
-    // Clamp theta
     theta = std::max(theta, Real(1e-8));
 
-    // Frequency estimates
-    omega = std::sqrt(theta);
-    f = omega / (Real(2) * M_PI);
+    // Covariance update (Joseph form for numerical stability)
+    Real I_K = Real(1) - K;
+    P = I_K * P * I_K + K * R * K + Q * delta_t;
+    P = std::max(P, Real(1e-10)); // Keep P positive
 
-    // Phase estimate
+    // Frequency and phase
+    omega = std::sqrt(theta);
+    f = omega / (2 * M_PI);
     phase = std::atan2(x1, y);
   }
 
+  // Accessors
   Real getFrequencyHz() const { return f; }
   Real getOmega() const { return omega; }
   Real getPhase() const { return phase; }
-
-  // Optional: expose gain and covariance for diagnostics
   Real getGain() const { return P / (P + R); }
   Real getCovariance() const { return P; }
 };
