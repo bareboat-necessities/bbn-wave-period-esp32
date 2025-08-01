@@ -73,6 +73,7 @@ public:
 
     // Prediction update
     p_cov += q;
+    p_cov = std::max(p_cov, Real(1e-12));
 
     // Compute Kalman gain
     Real denom = res.s_prev1 * res.s_prev1 + r / (p_cov + std::numeric_limits<Real>::epsilon());
