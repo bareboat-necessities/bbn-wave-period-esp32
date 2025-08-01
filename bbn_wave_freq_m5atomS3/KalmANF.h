@@ -82,13 +82,13 @@ public:
     // Update coefficient a[n]
     Real a = res.a + K * e;
 
+    // Update error covariance
+    p_cov = (Real(1) - K * res.s_prev1) * p_cov;
+     
     // Handle coefficient bounds to stay within acos() domain
     if (a > Real(2) || a < Real(-2)) {
       a = (a > Real(2)) ? Real(1.99999) : Real(-1.99999);
     }
-
-    // Update error covariance
-    p_cov = (Real(1) - K * res.s_prev1) * p_cov;
 
     // Compute frequency estimate
     Real omega_hat = std::acos(a / Real(2));         // rad/sample
