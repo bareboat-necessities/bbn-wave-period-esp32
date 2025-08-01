@@ -80,7 +80,7 @@ public:
                          - k * a * x1 * x1_dot
                          - k * b * x1_dot * y) * gain_scaling;
   
-      sigma_dot = clamp_value(update_term, Real(-1e12), Real(1e12));
+      sigma_dot = clamp_value(update_term, Real(-1e9), Real(1e9));
   
       // Integrate states
       x1 += x1_dot * delta_t;
