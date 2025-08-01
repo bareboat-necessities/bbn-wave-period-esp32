@@ -90,7 +90,7 @@ public:
       theta = sigma + k * b * x1 * y;
   
       // Clamp theta to avoid invalid sqrt
-      theta = clamp_value(theta, Real(1e-8), Real(100.0));
+      theta = clamp_value(theta, Real(1e-5), Real(100.0));
   
       // Update frequency estimate
       omega = std::sqrt(theta);
