@@ -85,7 +85,7 @@ public:
 
     /// ∂²η/∂t² = −A·ω²·cos(ωt + φ)
     Real surfaceVerticalAcceleration(Real t) const {
-        return -A * omega * omega * std::cos(omega * t + phi);
+        return A * omega * omega * std::cos(omega * t + phi);
     }
 
     // ── Particle kinematics (at reference position x₀, z₀) ─────────────────
@@ -129,7 +129,7 @@ public:
     Real verticalAcceleration(Real x0, Real z0, Real t) const {
         Real theta = k * x0 - omega * t + phi;
         Real R = std::exp(k * z0);
-        return -A * omega * omega * R * std::cos(theta);
+        return A * omega * omega * R * std::cos(theta);
     }
 
     // ── Bulk wave properties ────────────────────────────────────────────
