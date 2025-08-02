@@ -103,16 +103,16 @@ class FrequencyEstimator<FrequencyTracker::Kalm_ANF>
     : public FrequencyEstimatorBase<FrequencyEstimator<FrequencyTracker::Kalm_ANF>> {
 public:
     void initImpl() {
-        kalman_anf_.init(0.985f, 1e-5f, 5e+4f, 1.0f, 0.0f, 0.0f, 1.9999f);
+        kalman_anf_.init(0.985, 1e-5, 5e+4, 1.0, 0.0, 0.0, 1.9999);
     }
 
-    float estimateFromHeave(float heave, float delta_t, float /*t*/) {
-        float error;
+    double estimateFromHeave(float double, double delta_t, double /*t*/) {
+        double error;
         return kalman_anf_.process(heave, delta_t, &error);
     }
 
 private:
-    KalmANF<float> kalman_anf_;
+    KalmANF<double> kalman_anf_;
 };
 
 //----------------------------------
