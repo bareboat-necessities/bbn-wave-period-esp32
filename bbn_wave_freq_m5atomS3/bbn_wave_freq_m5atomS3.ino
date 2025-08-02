@@ -61,7 +61,7 @@ TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THR
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hysteresis (fractions of signal magnitude) */,
     ZERO_CROSSINGS_PERIODS /* periods to run measures on */);
 AranovskiyFilter<double> arFilter;
-KalmANF<float> kalmANF;
+KalmANF<double> kalmANF;
 KalmanSmootherVars kalman_freq;
 
 // AHRS
