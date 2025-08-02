@@ -46,7 +46,7 @@ axarr[1].legend()
 
 axarr[2].set_title('Heave (m) main_amplitude=' + str(main_amp))
 axarr[2].plot(Time, RefPosX, label="Reference Pos")
-#axarr[2].plot(Time, Heave, "r-", label="Heave")
+axarr[2].plot(Time, Heave, "r-", label="Heave")
 axarr[2].plot(Time, HeaveAlt, "g-", label="HeaveAlt")
 #axarr[2].plot(Time, HeavePredict, "-", label="HeavePredict")
 axarr[2].grid()
