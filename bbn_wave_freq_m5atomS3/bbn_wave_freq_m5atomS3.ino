@@ -216,7 +216,7 @@ void read_and_processIMU_data() {
     freq_adj = clamp(freq_adj, (double) FREQ_LOWER, (double) FREQ_UPPER);
     float heaveAlt = waveAltState.heave;
 
-    float k_hat = - pow(2.0 * PI * freq_adj, 2);
+    float k_hat = - pow(2.0 * PI * freq /*freq_adj*/, 2);
     if (kalm_w_alt_first) {
       kalm_w_alt_first = false;
       waveAltState.displacement_integral = 0.0f;
