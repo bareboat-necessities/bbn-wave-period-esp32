@@ -93,7 +93,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   freq_adj = clamp(freq_adj, (double) FREQ_LOWER, (double) FREQ_UPPER);
   float heaveAlt = waveAltState.heave;
 
-  float k_hat = - pow(2.0 * M_PI * freq_adj, 2);
+  float k_hat = - pow(2.0 * M_PI * freq /*freq_adj*/, 2);
   if (kalm_w_alt_first) {
     kalm_w_alt_first = false;
     waveAltState.displacement_integral = 0.0f;
