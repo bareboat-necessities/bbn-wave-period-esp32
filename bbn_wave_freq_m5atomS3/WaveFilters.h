@@ -31,7 +31,7 @@ enum FrequencyTracker {
 void init_aranovskiy(AranovskiyFilter<double>* ar_filter);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
 void init_filters(AranovskiyFilter<double>* ar_filter, KalmanSmootherVars* kalman_smoother);
-void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smoother);
+void init_filters_alt(KalmANF<double>* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
 KalmanForWaveBasic wave_filter;
@@ -82,7 +82,7 @@ void init_smoother(KalmanSmootherVars* kalman_smoother) {
 void init_wave_filters() {
   wave_filter.initialize(5.0f, 1e-4f, 1e-2f, 1e-5f);
   wave_filter.initMeasurementNoise(1e-3f);
-  wave_alt_filter.initialize(2.0f, 1e-4f, 1e-2f, 0.5e+6f, 1e-5f, 0.007f /* typical temperature coefficient for MPU6886 */);
+  wave_alt_filter.initialize(2.0f, 1e-4f, 1e-2f, 1e+6f, 1e-5f, 0.007f /* typical temperature coefficient for MPU6886 */);
   wave_alt_filter.initMeasurementNoise(1e-3f, 1e-2f);
   wave_dir_kalman.setMeasurementNoise(0.01f);
   wave_dir_kalman.setProcessNoise(1e-6f);
@@ -94,13 +94,13 @@ void init_filters(AranovskiyFilter<double>* ar_filter, KalmanSmootherVars* kalma
   init_wave_filters();
 }
 
-void init_filters_alt(KalmANF<float>* kalmANF, KalmanSmootherVars* kalman_smoother) {
+void init_filters_alt(KalmANF<double>* kalmANF, KalmanSmootherVars* kalman_smoother) {
   kalmANF->init(0.985f, 1e-5f, 5e+4f, 1.0f, 0.0f, 0.0f, 1.9999f);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
 
-float estimate_freq(FrequencyTracker tracker, AranovskiyFilter<double>* arFilter, KalmANF<float>* kalmANF,
+float estimate_freq(FrequencyTracker tracker, AranovskiyFilter<double>* arFilter, KalmANF<double>* kalmANF,
                     SchmittTriggerFrequencyDetector* freqDetector, float a_noisy, float a_no_spikes, float delta_t, float t) {
   float freq = FREQ_GUESS;
   if (tracker == Aranovskiy) {
