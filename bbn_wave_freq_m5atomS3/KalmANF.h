@@ -16,7 +16,7 @@
 template <typename Real = double>
 class KalmANF {
 private:
-  static constexpr float defaultRho = Real(0.985);
+  static constexpr float defaultRho = Real(0.99);
   static constexpr float default_a = Real(1.9999);
 
   // Internal time scaling for better low-frequency stability
