@@ -58,11 +58,11 @@ private:
   // Kalman parameters
   Real p_cov = Real(1);  // Kalman error covariance
   Real q = Real(1e-6f);  // Process noise covariance
-  Real r = Real(5e+4);   // Measurement noise covariance
+  Real r = Real(1e+5);   // Measurement noise covariance
 
 public:
   // Initialize the filter
-  void init(Real rho = defaultRho, Real q_ = Real(1e-6), Real r_ = Real(5e+4), Real p_cov_ = Real(1),
+  void init(Real rho = defaultRho, Real q_ = Real(1e-6), Real r_ = Real(1e+5), Real p_cov_ = Real(1),
             Real s_prev1 = Real(0), Real s_prev2 = Real(0), Real a_ = default_a) {
     q = q_;
     r = r_;
@@ -81,7 +81,7 @@ public:
 
     // Compute Kalman gain
     Real signal_power = res.s_prev1 * res.s_prev1;
-    Real gain_scaling = signal_power / (signal_power + Real(1e-5)); // Smooth on low (non informative) signal power near zero crossings
+    Real gain_scaling = signal_power / (signal_power + Real(1e-7)); // Smooth on low (non informative) signal power near zero crossings
     Real denom = signal_power + r / (p_cov + std::numeric_limits<Real>::epsilon());
     Real K = gain_scaling * res.s_prev1 / (denom + Real(1e-12));
 
