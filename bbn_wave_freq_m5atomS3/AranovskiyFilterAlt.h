@@ -1,9 +1,24 @@
-
 #ifndef ARANOVSKIY_FILTER_H
 #define ARANOVSKIY_FILTER_H
 
 #include <cmath>
 #include <algorithm>
+
+/*
+  Copyright 2025, Mikhail Grushinskiy
+
+  Aranovskiy frequency estimator (C++ version)
+
+  Reference:
+  Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul, Stanislav V. Aranovskiy
+  "The New Algorithm of Sinusoidal Signal Frequency Estimation",
+  11th IFAC International Workshop on Adaptation and Learning in Control and Signal Processing, July 2013
+
+  This is a nonlinear adaptive observer that tracks the frequency and phase of a sinusoidal signal.
+
+  Uses Tustin discretization.
+  
+*/
 
 template <typename Real = double>
 class AranovskiyFilter {
@@ -13,20 +28,17 @@ public:
   Real b = Real(1);
   Real k = Real(8);
 
-  // State
-  Real y = Real(0);
-  Real y_prev = Real(0);
-  Real x1 = Real(0);
-  Real x1_prev = Real(0);
-  Real theta = Real(-0.09);
-  Real sigma = Real(-0.09);
+  // States
+  Real y = Real(0), y_prev = Real(0);
+  Real x1 = Real(0), x1_prev = Real(0);
   Real x1_dot = Real(0);
-  Real sigma_dot = Real(0);
+  Real theta = Real(-0.09);
+  Real sigma = Real(-0.09), sigma_prev = Real(-0.09);
+  Real sigma_dot = Real(0), sigma_dot_prev = Real(0);
   Real omega = Real(3.0);
   Real f = Real(0);
   Real phase = Real(0);
 
-  // Time scaling
   static constexpr Real TIME_SCALE = Real(10);
 
   AranovskiyFilter(Real omega_up = Real(0.5) * 2 * M_PI, Real gain = Real(8),
@@ -44,7 +56,8 @@ public:
   void setState(Real x1_init, Real theta_init, Real sigma_init) {
     x1 = x1_prev = x1_init;
     theta = theta_init;
-    sigma = sigma_init;
+    sigma = sigma_prev = sigma_init;
+    sigma_dot = sigma_dot_prev = Real(0);
     y = y_prev = Real(0);
     omega = std::sqrt(std::max(Real(1e-12), std::abs(theta)));
     f = omega / (Real(2) * M_PI);
@@ -54,41 +67,42 @@ public:
   void update(Real y_meas, Real dt) {
     if (!std::isfinite(y_meas)) return;
 
-    const Real delta_t = dt / TIME_SCALE;
+    Real delta_t = dt / TIME_SCALE;
 
-    // Save previous states
-    y_prev = y;
+    // Save previous state
     x1_prev = x1;
+    y_prev = y;
+    sigma_prev = sigma;
+    sigma_dot_prev = sigma_dot;
 
-    // Current input
     y = y_meas;
 
-    // === TUSTIN INTEGRATION OF x1 ===
+    // === TUSTIN: x1 update ===
     const Real denom = (Real(2) + a * delta_t);
     const Real numer = (Real(2) - a * delta_t);
     x1 = (numer * x1_prev + 2 * b * delta_t * y + 2 * b * delta_t * y_prev) / denom;
 
-    // === TUSTIN-CONSISTENT x1_dot ===
-    x1_dot = 0.5 * (-a * x1 + b * y - a * x1_prev + b * y_prev);
+    // === TUSTIN-consistent x1_dot ===
+    x1_dot = Real(0.5) * (-a * x1 + b * y - a * x1_prev + b * y_prev);
 
-    // === Adaptive update ===
-    const Real signal_energy = x1 * x1 + y * y + Real(1e-12);
-    const Real gain_scaling = signal_energy / (signal_energy + Real(1e-6));
+    // === Adaptation ===
+    Real signal_energy = x1 * x1 + y * y + Real(1e-12);
+    Real gain_scaling = signal_energy / (signal_energy + Real(1e-6));
 
-    const Real phi = x1 * x1 * theta + a * x1 * x1_dot + b * x1_dot * y;
-    const Real update_term = -k * phi * gain_scaling;
+    Real phi = x1 * x1 * theta + a * x1 * x1_dot + b * x1_dot * y;
+    Real update_term = -k * phi * gain_scaling;
 
     sigma_dot = clamp_value(update_term, Real(-1e12), Real(1e12));
 
-    // Update theta and omega
+    // === TUSTIN: sigma update ===
+    sigma = sigma_prev + (delta_t / Real(2)) * (sigma_dot + sigma_dot_prev);
+
+    // === Frequency update ===
     theta = sigma + k * b * x1 * y;
     omega = std::sqrt(std::max(Real(1e-12), std::abs(theta)));
     f = omega / (Real(2) * M_PI);
 
-    // Integration of sigma
-    sigma += sigma_dot * delta_t;
-
-    // Phase
+    // === Phase ===
     phase = std::atan2(x1, y);
   }
 
@@ -103,4 +117,3 @@ private:
 };
 
 #endif // ARANOVSKIY_FILTER_H
-
