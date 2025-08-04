@@ -17,6 +17,7 @@ template <typename Real = float>
 class KalmANF {
 private:
   static constexpr float defaultRho = Real(0.985);
+  static constexpr float default_a = Real(1.9999);
 
   // Internal time scaling for better low-frequency stability
   static constexpr Real TIME_SCALE = Real(100); // can be tuned (10x faster internal clock)
@@ -26,7 +27,7 @@ private:
   public:
     Real s_prev1 = Real(0);  // s[n-1] — previous resonator output sample
     Real s_prev2 = Real(0);  // s[n-2] — two samples ago
-    Real a = Real(1.9999);   // a[n] — adaptive filter coefficient = 2*cos(ω)
+    Real a = default_a;      // a[n] — adaptive filter coefficient = 2*cos(ω)
     Real rho = defaultRho;   // Pole radius (0 < rho < 1)
     Real rho_sq = defaultRho * defaultRho;   // Precomputed rho^2
 
@@ -61,12 +62,12 @@ private:
 
 public:
   // Initialize the filter
-  void init(Real rho, Real q_, Real r_, Real p_cov_,
-            Real s_prev1, Real s_prev2, Real a_prev) {
+  void init(Real rho = defaultRho, Real q_, Real r_, Real p_cov_,
+            Real s_prev1 = Real(0), Real s_prev2 = Real(0), Real a_ = default_a) {
     q = q_;
     r = r_;
     p_cov = p_cov_;
-    res.init(rho, a_prev, s_prev1, s_prev2);
+    res.init(rho, a_, s_prev1, s_prev2);
   }
 
   // Process a single sample, return estimated frequency in Hz
