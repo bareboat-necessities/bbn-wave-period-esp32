@@ -18,6 +18,9 @@ class KalmANF {
 private:
   static constexpr float defaultRho = Real(0.985);
 
+  // Internal time scaling for better low-frequency stability
+  static constexpr Real TIME_SCALE = Real(20); // can be tuned (10x faster internal clock)
+
   // Internal Notch Filter Resonator
   class ANFResonator {
   public:
@@ -67,7 +70,8 @@ public:
   }
 
   // Process a single sample, return estimated frequency in Hz
-  Real process(Real y, Real delta_t, Real* e_out = nullptr) {
+  Real process(Real y, Real dt, Real* e_out = nullptr) {
+    Real delta_t = dt / TIME_SCALE;
     // Compute intermediate variable s[n]
     Real s = res.compute_s(y);
 
@@ -106,7 +110,7 @@ public:
     if (e_out) {
       *e_out = e;
     }
-    return f_est;
+    return f_est / TIME_SCALE;
   }
 
   // Get the current resonator phase estimate (in radians)
