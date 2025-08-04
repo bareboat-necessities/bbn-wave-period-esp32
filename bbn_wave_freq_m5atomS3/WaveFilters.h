@@ -96,7 +96,7 @@ void init_filters(AranovskiyFilter<double>* ar_filter, KalmanSmootherVars* kalma
 }
 
 void init_filters_alt(KalmANF<double>* kalmANF, KalmanSmootherVars* kalman_smoother) {
-  kalmANF->init(0.985f, 1e-6f, 5e+4f, 1.0f, 0.0f, 0.0f, 1.9999f);
+  kalmANF->init(0.985f, 1e-6f, 1e+5f, 1.0f, 0.0f, 0.0f, 1.9999f);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
