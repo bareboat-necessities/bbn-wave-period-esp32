@@ -107,8 +107,8 @@ float estimate_freq(FrequencyTracker tracker, AranovskiyFilter<double>* arFilter
     arFilter->update(a_no_spikes, delta_t);
     freq = arFilter->getFrequencyHz();
   } else if (tracker == Kalm_ANF) {
-    float e;
-    float f_kalmanANF = kalmANF->process(a_noisy, delta_t, &e);
+    double e;
+    double f_kalmanANF = kalmANF->process((double)a_noisy, (double)delta_t, &e);
     freq = f_kalmanANF;
   } else {
     float f_byZeroCross = freqDetector->update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
