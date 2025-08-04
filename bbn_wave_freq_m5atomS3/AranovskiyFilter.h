@@ -36,19 +36,22 @@ public:
   Real f = Real(0);          // Estimated frequency (Hz)
   Real phase = Real(0);      // Estimated phase (radians)
 
+  // Internal time scaling for better low-frequency stability
+  static constexpr Real TIME_SCALE = Real(20); // can be tuned (10x faster internal clock)
+
   // Constructor
   AranovskiyFilter(Real omega_up = Real(0.5) * 2 * M_PI, Real gain = Real(8),
                    Real x1_0 = Real(0), Real theta_0 = Real(-0.09), Real sigma_0 = Real(-0.09))
   {
     setParams(omega_up, gain);
-    setState(x1_0, theta_0, sigma_0);
+    setState(x1_0, TIME_SCALE * TIME_SCALE * theta_0, TIME_SCALE * TIME_SCALE * sigma_0);
   }
 
   // Set filter parameters
   void setParams(Real omega_up, Real gain) {
-    a = omega_up;
-    b = omega_up;
-    k = gain;
+    a = TIME_SCALE * omega_up;
+    b = TIME_SCALE * omega_up;
+    k = TIME_SCALE * gain;
   }
 
   // Set initial state
@@ -63,39 +66,41 @@ public:
   }
 
   // Update filter with new measurement and time step
-  void update(Real y_meas, Real delta_t) {
+  void update(Real y_meas, Real dt) {
+      Real delta_t = dt / TIME_SCALE;
+
       if (!std::isfinite(y_meas)) return;
-  
+
       y = y_meas;
-  
+
       // First-order low-pass filter
       x1_dot = -a * x1 + b * y;
-  
+
       // Signal energy check (x1 ≈ filtered y)
       Real signal_energy = x1 * x1 + y * y + Real(1e-12); // avoid divide-by-zero
       Real gain_scaling = signal_energy / (signal_energy + Real(1e-6)); // softness of update on low energy signal reading
-  
+
       // Nonlinear adaptation law (scaled by gain_scaling)
       Real phi = x1 * x1 * theta + a * x1 * x1_dot + b * x1_dot * y;
       Real update_term = -k * phi * gain_scaling;
-  
+
       sigma_dot = clamp_value(update_term, Real(-1e12), Real(1e12));
-  
+
       // Update theta and omega
       theta = sigma + k * b * x1 * y;
       omega = std::sqrt(std::max(Real(1e-12), std::abs(theta)));
       f = omega / (Real(2) * M_PI);
-  
+
       // State integration
       x1 += x1_dot * delta_t;
       sigma += sigma_dot * delta_t;
-  
+
       // Phase estimation
       phase = std::atan2(x1, y);
   }
-  
+
   // Get current frequency estimate (Hz)
-  Real getFrequencyHz() const { return f; }
+  Real getFrequencyHz() const { return f / TIME_SCALE; }
 
   // Get current angular frequency estimate (rad/s)
   Real getOmega() const { return omega; }
@@ -110,4 +115,3 @@ private:
 };
 
 #endif // ARANOVSKIY_FILTER_H
-
