@@ -13,7 +13,7 @@
    Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23), Copenhagen, Denmark, September 2023
 */
 
-template <typename Real = float>
+template <typename Real = double>
 class KalmANF {
 private:
   static constexpr float defaultRho = Real(0.985);
