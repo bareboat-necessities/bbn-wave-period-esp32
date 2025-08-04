@@ -40,7 +40,7 @@ public:
   static constexpr Real TIME_SCALE = Real(20); // can be tuned (10x faster internal clock)
 
   // Constructor
-  AranovskiyFilter(Real omega_up = Real(0.5) * 2 * M_PI, Real gain = Real(8),
+  AranovskiyFilter(Real omega_up = Real(0.25) * 2 * M_PI, Real gain = Real(8),
                    Real x1_0 = Real(0), Real theta_0 = Real(-0.09), Real sigma_0 = Real(-0.09))
   {
     setParams(omega_up, gain);
