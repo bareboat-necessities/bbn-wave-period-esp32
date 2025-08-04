@@ -88,7 +88,7 @@ public:
 
       // Update theta and omega
       theta = sigma + k * b * x1 * y;
-      omega = std::sqrt(std::max(Real(1e-12), std::abs(theta)));
+      omega = std::sqrt(std::max(Real(1e-7), std::abs(theta)));
       f = omega / (Real(2) * M_PI);
 
       // State integration
