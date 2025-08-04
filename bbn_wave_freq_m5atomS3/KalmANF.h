@@ -19,7 +19,7 @@ private:
   static constexpr float defaultRho = Real(0.985);
 
   // Internal time scaling for better low-frequency stability
-  static constexpr Real TIME_SCALE = Real(20); // can be tuned (10x faster internal clock)
+  static constexpr Real TIME_SCALE = Real(100); // can be tuned (10x faster internal clock)
 
   // Internal Notch Filter Resonator
   class ANFResonator {
