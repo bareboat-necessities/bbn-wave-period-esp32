@@ -84,7 +84,7 @@ public:
       Real phi = x1 * x1 * theta + a * x1 * x1_dot + b * x1_dot * y;
       Real update_term = -k * phi * gain_scaling;
 
-      sigma_dot = clamp_value(update_term, Real(-1e12), Real(1e12));
+      sigma_dot = clamp_value(update_term, Real(-1e7), Real(1e7));
 
       // Update theta and omega
       theta = sigma + k * b * x1 * y;
