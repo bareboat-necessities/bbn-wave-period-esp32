@@ -80,7 +80,7 @@ public:
 
     // Compute Kalman gain
     Real signal_power = res.s_prev1 * res.s_prev1;
-    Real gain_scaling = signal_power / (signal_power + Real(1e-6)); // Smooth on low (non informative) signal power near zero crossings
+    Real gain_scaling = signal_power / (signal_power + Real(1e-5)); // Smooth on low (non informative) signal power near zero crossings
     Real denom = signal_power + r / (p_cov + std::numeric_limits<Real>::epsilon());
     Real K = gain_scaling * res.s_prev1 / (denom + Real(1e-12));
 
