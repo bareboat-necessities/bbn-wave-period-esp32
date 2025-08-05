@@ -1,5 +1,5 @@
-#ifndef KALMAN_WAVE_H
-#define KALMAN_WAVE_H
+#ifndef KALMAN_WAVE_MOTORING_H
+#define KALMAN_WAVE_MOTORING_H
 
 /*
   Copyright 2025, Mikhail Grushinskiy
@@ -139,7 +139,7 @@ public:
         float residual_accel = 0.0f;             // Acceleration measurement residual
     };
 
-    KalmanWaveNumStableAlt(float q0 = 2.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e+5f, float q4 = 1e-5f, float q5 = 1e-3f,
+    KalmanWave(float q0 = 2.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e+5f, float q4 = 1e-5f, float q5 = 1e-3f,
             float temperature_drift_coeff = 0.007f) {
         initialize(q0, q1, q2, q3, q4, q5, temperature_drift_coeff);
 
@@ -393,4 +393,4 @@ private:
 typedef KalmanWave::State KalmanWaveState; 
 typedef KalmanWave::FilterMetrics KalmanWaveMetrics;
 
-#endif // KALMAN_WAVE_H
+#endif // KALMAN_WAVE_MOTORING_H
