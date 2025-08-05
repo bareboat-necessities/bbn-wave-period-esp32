@@ -265,11 +265,13 @@ private:
         const float kT2 = k_hat * T2;
 
         // clang-format off
-        F << 1.0f,    T,    0.5f*T2,    (1.0f/6.0f)*T3,    -(1.0f/6.0f)*T3,
-             0.0f,    1.0f,    T,        0.5f*T2,          -0.5f*T2,
-             0.0f,    0.0f,    1.0f,     T,                -T,
-             0.0f,    k_hat,   kT,       0.5f*kT2,         -0.5f*kT2,
-             0.0f,    0.0f,    0.0f,     0.0f,             1.0f;
+        F <<
+          1,   T,       0.5f * T2,  (1.0f/6.0f) * T3,   -(1.0f/6.0f) * T3,  0,
+          0,   1,       T,           0.5f * T2,         -0.5f * T2,         0,
+          0,   0,       1,           T,                 -T,                 0,
+          0,   k_hat,   kT,          0.5f * kT2,        -0.5f * kT2,        0,
+          0,   0,       0,           0,                 1,                  0,
+          0,   0,       0,          (1.0f - phi),       (1.0f - phi),     phi; 
         // clang-format on
     }
 
