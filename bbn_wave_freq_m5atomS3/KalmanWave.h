@@ -136,6 +136,7 @@ public:
         float acceleration_std_dev = 0.0f;       // Standard deviation of acceleration estimate
         float bias_std_dev = 0.0f;               // Standard deviation of bias estimate
         float residual_accel = 0.0f;             // Acceleration measurement residual
+        float residual_lp_accel = 0.0f;          // Low-passed acceleration measurement residual
     };
 
     KalmanWaveNumStableAlt(float q0 = 2.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e+5f, float q4 = 1e-5f, float q5 = 1e-3f,
@@ -147,6 +148,8 @@ public:
             1e-3f,  // Displacement integral noise
             1e-2f   // Acceleration noise (m/s²)²
         );
+      
+        setCutoffHz(4.0f); // default LPF cutoff
     }
 
     void initialize(float q0, float q1, float q2, float q3, float q4, float q5, float temperature_drift_coeff) {
@@ -168,7 +171,7 @@ public:
                         q4,  // accel bias
                         q5;  // low-passed accel
 
-        // Measurement model
+        // Measurement model, H: measure displacement integral (z) and raw acceleration (a + bias)
         H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
              0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f;  // Measures acceleration
 
