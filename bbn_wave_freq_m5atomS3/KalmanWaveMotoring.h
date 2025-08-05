@@ -206,7 +206,7 @@ public:
     }
 
     void update(float measured_accel, float k_hat, float delta_t, float temperature_celsius = NAN) {
-        if (delta_t < 1e-10f) return;
+        if (delta_t < MIN_DELTA_T) return;
 
         // compute phi for LPF
         phi = std::exp(-delta_t / tau);
