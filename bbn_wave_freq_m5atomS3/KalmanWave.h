@@ -7,7 +7,7 @@
   Kalman filter to estimate vertical displacement in wave using accelerometer, 
   correct for accelerometer bias, estimate accelerometer bias. This method
   assumes that displacement follows trochoidal model and the frequency of acceleration is known. 
-  Augmented with a low‑pass acceleration state (a_lp) to suppress high‑frequency
+  Augmented with a low‑pass acceleration state (vib_noise) to suppress high‑frequency
   engine vibration, based on the colored‑noise state augmentation approach
   from Crassidis & Kumar (2007), AIAA GNC.
 
@@ -59,21 +59,21 @@
   
   State vector:
   
-  x = [ z,        // displacement_integral
-        y,        // heave
-        v,        // vertical speed
-        a,        // vertical acceleration (trochoidal model)
-        a_hat,    // accelerometer bias
-        a_lp ]    // low‑pass acceleration (internal, unmeasured)
+  x = [ z,             // displacement_integral
+        y,             // heave
+        v,             // vertical speed
+        a,             // vertical acceleration (trochoidal model)
+        a_hat,         // accelerometer bias
+        vib_noise ]    // low‑pass acceleration (internal, unmeasured)
 
   low‑pass acceleration (colored‑noise augmentation):
-  a_lp(k) = phi * a_lp(k-1) + (1 - phi) * ( a(k-1) + a_hat(k-1) )
+  vib_noise(k) = phi * vib_noise(k-1) + (1 - phi) * ( a(k-1) + a_hat(k-1) )
 
     where:
       phi = exp(-T / tau)
       tau = 1 / (2 * pi * f_c)  // f_c is cutoff frequency in Hz
 
-  Added low‑pass acceleration state (a_lp) to suppress high‑frequency engine noise.
+  Added low‑pass acceleration state (vib_noise) to suppress high‑frequency engine noise.
   Based on Crassidis & Kumar (2007) colored‑noise augmentation.
   
   Input measured vertical acceleration from accelerometer (includes bias)
@@ -93,9 +93,9 @@
   Measurement model (unchanged physical measurements):
 
   H = [[ 1, 0, 0, 0, 0, 0 ],     // displacement integral (soft constraint)
-       [ 0, 0, 0, 1, 1, 0 ]]     // raw accelerometer = a + a_hat
+       [ 0, 0, 0, 1, 1, 1 ]]     // raw accelerometer = a + a_hat + vib_noise
 
-  The low‑pass state a_lp is updated through the process model,
+  The low‑pass state vib_noise is updated through the process model,
   but is not directly measured.
          
 */
@@ -122,7 +122,7 @@ public:
         float vert_speed = 0.0f;
         float vert_accel = 0.0f;
         float accel_bias = 0.0f;
-        float accel_lp   = 0.0f;
+        float vib_noise  = 0.0f;
     };
 
     struct FilterMetrics {
@@ -135,7 +135,7 @@ public:
         float velocity_std_dev = 0.0f;           // Standard deviation of velocity estimate
         float acceleration_std_dev = 0.0f;       // Standard deviation of acceleration estimate
         float bias_std_dev = 0.0f;               // Standard deviation of bias estimate
-        float lp_accel_std_dev = 0.0f;           // Standard deviation of low-passed acceleration estimate
+        float vib_noise_std_dev = 0.0f;          // Standard deviation of vibration noise estimate
         float residual_accel = 0.0f;             // Acceleration measurement residual
     };
 
@@ -191,7 +191,7 @@ public:
         phi = std::exp(-delta_t / tau);
 
         // update Q for LPF state
-        Q(5,5) = sigma_lp2 * (1.0f - phi * phi);
+        Q(5,5) = sigmvib_noise2 * (1.0f - phi * phi);
       
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
@@ -273,7 +273,7 @@ private:
     float cutoff_hz = 4.0f;
     float tau = 1.0f / (2.0f * M_PI * cutoff_hz);
     float phi = 0.0f;
-    float sigma_lp2 = 1e-3f;
+    float sigmvib_noise2 = 1e-3f;
 
     FilterMetrics metrics; // Filter performance metrics
 
@@ -366,7 +366,7 @@ private:
         metrics.velocity_std_dev = sqrt(P(2,2));        // vertical speed
         metrics.acceleration_std_dev = sqrt(P(3,3));    // vertical acceleration
         metrics.bias_std_dev = sqrt(P(4,4));            // accelerometer bias
-        metrics.lp_accel_std_dev = sqrt(P(5,5));        // low-passed acceleration
+        metrics.vib_noise_std_dev = sqrt(P(5,5));       // vibration noise
         
         // Acceleration measurement residual (actual - predicted)
         // If the residuals are consistently large, it suggests issues with the accelerometer model or the filter's state
