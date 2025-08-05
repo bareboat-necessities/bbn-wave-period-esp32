@@ -194,7 +194,7 @@ public:
         phi = std::exp(-delta_t / tau);
 
         // update Q for LPF state
-        Q(5,5) = sigm_vib_noise2 * (1.0f - phi * phi);
+        Q(5,5) = sigm_vib_noise2 * (1.0f - phi * phi);  // AR(1) independent colored noise
       
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
