@@ -197,7 +197,7 @@ public:
         Q(5,5) = sigm_vib_noise2 * (1.0f - phi * phi);  // AR(1) independent colored noise
       
         // Update state transition matrix
-        updateStateTransition(k_hat, delta_t);
+        updateStateTransition(k_hat, phi, delta_t);
 
         // Temperature compensation of bias
         if (std::isnan(last_temperature_celsius)) {
@@ -283,7 +283,7 @@ private:
     float last_temperature_celsius = NAN;    // degC
     float temperature_coefficient = 0.007f;  // m/s^2/degC
 
-    void updateStateTransition(float k_hat, float delta_t) {
+    void updateStateTransition(float k_hat, float phi, float delta_t) {
         if (delta_t < 1e-10f) {
             return;
         }
