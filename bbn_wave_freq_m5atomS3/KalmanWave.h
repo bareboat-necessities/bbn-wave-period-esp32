@@ -244,6 +244,7 @@ public:
         x(2) = s0.vert_speed;            // m/s
         x(3) = s0.vert_accel;            // m/s^2
         x(4) = s0.accel_bias;            // m/s^2
+        x(5) = s0.accel_lp;              // m/s^2
     }
 
     void initMeasurementNoise(const float r0, const float r1) {
