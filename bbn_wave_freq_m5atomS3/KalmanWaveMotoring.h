@@ -165,6 +165,8 @@ public:
         P.setIdentity();
         P *= 10.0f;  // Initial uncertainty
 
+        sigm_vib_noise2 = q5;
+
         // Process noise covariance (diagonal)
         Q.setZero();
         Q.diagonal() << q0,  // third accel integral
