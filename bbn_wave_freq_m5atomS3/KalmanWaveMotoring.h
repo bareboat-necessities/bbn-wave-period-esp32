@@ -128,6 +128,13 @@ public:
         float vib_noise  = 0.0f;
     };
 
+    /*
+      FilterMetrics — diagnostic outputs for filter health monitoring:
+        innovation_magnitude: Euclidean norm of innovation vector
+        innovation_normalized: Mahalanobis distance², ~dim(innovation) if well tuned
+        covariance_trace: Sum of state variances (overall uncertainty)
+        condition_number: High values indicate strong state correlations or numerical issues
+    */
     struct FilterMetrics {
         float innovation_magnitude = 0.0f;       // Magnitude of innovation vector (z - Hx)
         float innovation_normalized = 0.0f;      // Normalized innovation squared (y'*S^-1*y)
