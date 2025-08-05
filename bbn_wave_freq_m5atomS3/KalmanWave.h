@@ -185,6 +185,13 @@ public:
     }
 
     void update(float measured_accel, float k_hat, float delta_t, float temperature_celsius = NAN) {
+        if (delta_t < 1e-10f) return;
+
+        // compute phi for LPF
+        phi = std::exp(-delta_t / tau);
+
+        // update Q for LPF state
+        Q(5,5) = sigma_lp2 * (1.0f - phi * phi);
       
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
