@@ -328,7 +328,7 @@ private:
         
         // Joseph form covariance update: 
         // P = (I-KH) * P * (I-KH)' + K * R * K'
-        const Matrix6f I = Matrix5f::Identity();
+        const Matrix6f I = Matrix6f::Identity();
         const Matrix6f KH = K * H;
         P = ((I - KH) * P * (I - KH).transpose() + K * R * K.transpose()).eval();
         
