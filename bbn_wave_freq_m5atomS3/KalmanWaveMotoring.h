@@ -284,6 +284,11 @@ public:
     }
 
 private:
+    static constexpr float MIN_DELTA_T = 1e-10f; // Minimum Δt to run updates [s]
+    static constexpr float MIN_SINGULAR_VALUE = 1e-12f; // Floor for smallest singular value to avoid div-by-zero
+    static constexpr float LLS_INIT_EPSILON = 1e-7f; // Initial epsilon for LLT stabilization
+    static constexpr float LLS_MAX_EPSILON = 0.01f; // Maximum epsilon for LLT stabilization
+
     Vector6f x;     // State vector
     Matrix6f P;     // Covariance matrix
     Matrix6f Q;     // Process noise
@@ -302,7 +307,7 @@ private:
     float temperature_coefficient = 0.007f; // bias drift per °C [m/s² / °C]
 
     void updateStateTransition(float k_hat, float phi, float delta_t) {
-        if (delta_t < 1e-10f) {
+        if (delta_t < MIN_DELTA_T) {
             return;
         }
         const float T = delta_t;
@@ -380,7 +385,7 @@ private:
         Eigen::JacobiSVD<Matrix6f> svd(P);
         float singular_max = svd.singularValues().maxCoeff();
         float singular_min = svd.singularValues().minCoeff();
-        metrics.condition_number = singular_max / std::max(singular_min, 1e-12f);
+        metrics.condition_number = singular_max / std::max(singular_min, MIN_SINGULAR_VALUE);
         
         // Standard deviations (uncertainties) of state estimates
         metrics.position_std_dev = sqrt(P(1,1));        // heave
@@ -402,8 +407,8 @@ private:
 
     void ensurePositiveDefinite(Matrix6f& mat) const {
         Eigen::LLT<Matrix6f> llt(mat);  // Cholesky
-        float epsilon = 1e-7f;
-        while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01f) {
+        float epsilon = LLS_INIT_EPSILON;
+        while (llt.info() == Eigen::NumericalIssue && epsilon < LLS_MAX_EPSILON) {
             mat += epsilon * Matrix6f::Identity();
             llt.compute(mat);
             epsilon *= 10;
