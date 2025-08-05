@@ -179,6 +179,11 @@ public:
         resetMetrics();
     }
 
+    void setCutoffHz(float fc) {
+        cutoff_hz = fc;
+        tau = 1.0f / (2.0f * M_PI * cutoff_hz);
+    }
+
     void update(float measured_accel, float k_hat, float delta_t, float temperature_celsius = NAN) {
       
         // Update state transition matrix
