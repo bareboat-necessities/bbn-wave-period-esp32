@@ -300,7 +300,7 @@ private:
           0,   0,       1,           T,                  -T,                     0,
           0,   k_hat,   kT,          0.5f * kT2,         -0.5f * kT2,            0,
           0,   0,       0,           0,                   1,                     0,
-          0,   0,       0,          (1.0f - phi) /*0*/,  (1.0f - phi) /*0*/,     phi; 
+          0,   0,       0,           0,                   0,                     phi; 
         // clang-format on
     }
 
