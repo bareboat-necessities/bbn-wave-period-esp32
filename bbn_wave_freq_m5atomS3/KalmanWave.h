@@ -191,7 +191,7 @@ public:
         phi = std::exp(-delta_t / tau);
 
         // update Q for LPF state
-        Q(5,5) = sigmvib_noise2 * (1.0f - phi * phi);
+        Q(5,5) = sigm_vib_noise2 * (1.0f - phi * phi);
       
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
@@ -273,7 +273,7 @@ private:
     float cutoff_hz = 4.0f;
     float tau = 1.0f / (2.0f * M_PI * cutoff_hz);
     float phi = 0.0f;
-    float sigmvib_noise2 = 1e-3f;
+    float sigm_vib_noise2 = 1e-3f;
 
     FilterMetrics metrics; // Filter performance metrics
 
