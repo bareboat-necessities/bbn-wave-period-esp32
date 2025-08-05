@@ -263,12 +263,18 @@ public:
     }
 
 private:
-    Vector5f x;     // State vector
-    Matrix5f P;     // Covariance matrix
-    Matrix5f Q;     // Process noise
+    Vector6f x;     // State vector
+    Matrix6f P;     // Covariance matrix
+    Matrix6f Q;     // Process noise
     Matrix2f R;     // Measurement noise
-    Matrix25f H;    // Measurement model
-    Matrix5f F;     // State transition matrix
+    Matrix26f H;    // Measurement model
+    Matrix6f F;     // State transition matrix
+
+    float cutoff_hz = 4.0f;
+    float tau = 1.0f / (2.0f * M_PI * cutoff_hz);
+    float phi = 0.0f;
+    float sigma_lp2 = 1e-3f;
+
     FilterMetrics metrics; // Filter performance metrics
 
     float last_temperature_celsius = NAN;    // degC
@@ -315,15 +321,15 @@ private:
         S = (H * P * H.transpose() + R).eval();
         
         // Kalman gain: K = P * H' * S^-1
-        const Matrix52f K = P * H.transpose() * S.inverse();
+        const Matrix62f K = P * H.transpose() * S.inverse();
         
         // State update: x = x + K * y
         x += K * innovation;
         
         // Joseph form covariance update: 
         // P = (I-KH) * P * (I-KH)' + K * R * K'
-        const Matrix5f I = Matrix5f::Identity();
-        const Matrix5f KH = K * H;
+        const Matrix6f I = Matrix5f::Identity();
+        const Matrix6f KH = K * H;
         P = ((I - KH) * P * (I - KH).transpose() + K * R * K.transpose()).eval();
         
         // Numerical stabilization
@@ -350,7 +356,7 @@ private:
         // Compute condition number of covariance matrix
         // A very high condition number for P indicates that the state variables are highly
         // correlated or that the matrix is close to singular, which can lead to numerical instability.
-        Eigen::JacobiSVD<Matrix5f> svd(P);
+        Eigen::JacobiSVD<Matrix6f> svd(P);
         float singular_max = svd.singularValues()(0);
         float singular_min = svd.singularValues()(svd.singularValues().size()-1);
         metrics.condition_number = singular_max / std::max(singular_min, 1e-12f);
@@ -366,17 +372,17 @@ private:
         metrics.residual_accel = innovation(1);
     }
 
-    void enforceSymmetry(Matrix5f& mat) const {
+    void enforceSymmetry(Matrix6f& mat) const {
         // Average upper and lower triangular parts
-        Matrix5f symm = 0.5f * (mat + mat.transpose());
+        Matrix6f symm = 0.5f * (mat + mat.transpose());
         mat = symm;
     }
 
-    void ensurePositiveDefinite(Matrix5f& mat) const {
-        Eigen::LLT<Matrix5f> llt(mat);  // Cholesky
+    void ensurePositiveDefinite(Matrix6f& mat) const {
+        Eigen::LLT<Matrix6f> llt(mat);  // Cholesky
         float epsilon = 1e-7f;
         while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01f) {
-            mat += epsilon * Matrix5f::Identity();
+            mat += epsilon * Matrix6f::Identity();
             llt.compute(mat);
             epsilon *= 10;
         }      
