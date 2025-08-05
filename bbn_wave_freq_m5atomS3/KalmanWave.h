@@ -109,12 +109,12 @@
 class KalmanWave {
 public:
     // Type aliases
-    using Vector5f = Eigen::Matrix<float, 5, 1>;
-    using Matrix5f = Eigen::Matrix<float, 5, 5>;
+    using Vector6f = Eigen::Matrix<float, 6, 1>;
+    using Matrix6f = Eigen::Matrix<float, 6, 6>;
     using Vector2f = Eigen::Matrix<float, 2, 1>;
     using Matrix2f = Eigen::Matrix<float, 2, 2>;
-    using Matrix25f = Eigen::Matrix<float, 2, 5>;
-    using Matrix52f = Eigen::Matrix<float, 5, 2>;
+    using Matrix26f = Eigen::Matrix<float, 2, 6>;
+    using Matrix62f = Eigen::Matrix<float, 6, 2>;
 
     struct State {
         float displacement_integral = 0.0f;
@@ -122,6 +122,7 @@ public:
         float vert_speed = 0.0f;
         float vert_accel = 0.0f;
         float accel_bias = 0.0f;
+        float accel_lp   = 0.0f;
     };
 
     struct FilterMetrics {
@@ -137,8 +138,9 @@ public:
         float residual_accel = 0.0f;             // Acceleration measurement residual
     };
 
-    KalmanWaveNumStableAlt(float q0 = 2.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e+5f, float q4 = 1e-5f, float temperature_drift_coeff = 0.007f) {
-        initialize(q0, q1, q2, q3, q4, temperature_drift_coeff);
+    KalmanWaveNumStableAlt(float q0 = 2.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e+5f, float q4 = 1e-5f, float q5 = 1e-3f,
+            float temperature_drift_coeff = 0.007f) {
+        initialize(q0, q1, q2, q3, q4, q5, temperature_drift_coeff);
 
         // Measurement noise covariance
         initMeasurementNoise(
@@ -147,7 +149,7 @@ public:
         );
     }
 
-    void initialize(float q0, float q1, float q2, float q3, float q4, float temperature_drift_coeff) {
+    void initialize(float q0, float q1, float q2, float q3, float q4, float q5, float temperature_drift_coeff) {
         temperature_coefficient = temperature_drift_coeff;
       
         // State vector initialization
@@ -163,11 +165,12 @@ public:
                         q1,  // displacement
                         q2,  // velocity
                         q3,  // accel (high noise due to square noisy frequency term)
-                        q4;  // accel bias
+                        q4,  // accel bias
+                        q5;  // low-passed accel
 
         // Measurement model
-        H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
-             0.0f, 0.0f, 0.0f, 1.0f, 1.0f;  // Measures acceleration
+        H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
+             0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f;  // Measures acceleration
 
         // Reset metrics
         resetMetrics();
