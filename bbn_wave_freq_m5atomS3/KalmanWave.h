@@ -135,8 +135,8 @@ public:
         float velocity_std_dev = 0.0f;           // Standard deviation of velocity estimate
         float acceleration_std_dev = 0.0f;       // Standard deviation of acceleration estimate
         float bias_std_dev = 0.0f;               // Standard deviation of bias estimate
+        float lp_accel_std_dev = 0.0f;           // Standard deviation of low-passed acceleration estimate
         float residual_accel = 0.0f;             // Acceleration measurement residual
-        float residual_lp_accel = 0.0f;          // Low-passed acceleration measurement residual
     };
 
     KalmanWaveNumStableAlt(float q0 = 2.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e+5f, float q4 = 1e-5f, float q5 = 1e-3f,
@@ -366,6 +366,7 @@ private:
         metrics.velocity_std_dev = sqrt(P(2,2));        // vertical speed
         metrics.acceleration_std_dev = sqrt(P(3,3));    // vertical acceleration
         metrics.bias_std_dev = sqrt(P(4,4));            // accelerometer bias
+        metrics.lp_accel_std_dev = sqrt(P(5,5));        // low-passed acceleration
         
         // Acceleration measurement residual (actual - predicted)
         // If the residuals are consistently large, it suggests issues with the accelerometer model or the filter's state
