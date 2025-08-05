@@ -304,8 +304,8 @@ private:
         // A very high condition number for P indicates that the state variables are highly
         // correlated or that the matrix is close to singular, which can lead to numerical instability.
         Eigen::JacobiSVD<Matrix5f> svd(P);
-        float singular_max = svd.singularValues()(0);
-        float singular_min = svd.singularValues()(svd.singularValues().size()-1);
+        float singular_max = svd.singularValues().maxCoeff();
+        float singular_min = svd.singularValues().minCoeff();
         metrics.condition_number = singular_max / std::max(singular_min, 1e-12f);
         
         // Standard deviations (uncertainties) of state estimates
