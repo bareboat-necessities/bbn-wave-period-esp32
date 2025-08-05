@@ -6,8 +6,10 @@
 
   Kalman filter to estimate vertical displacement in wave using accelerometer, 
   correct for accelerometer bias, estimate accelerometer bias. This method
-  assumes that displacement follows trochoidal model and the frequency of
-  wave is known. Frequency can be estimated using another step with Aranovskiy filter.
+  assumes that displacement follows trochoidal model and the frequency of acceleration is known. 
+  Augmented with a low‑pass acceleration state (a_lp) to suppress high‑frequency
+  engine vibration, based on the colored‑noise state augmentation approach
+  from Crassidis & Kumar (2007), AIAA GNC.
 
   In trochoidal wave model there is simple linear dependency between displacement and 
   acceleration.
@@ -42,7 +44,12 @@
 
   accelerometer bias:
   a_hat(k) = a_hat(k-1)
-
+    // In implementation, temperature‑dependent bias drift is modeled as:
+    // a_hat(k) ← a_hat(k) + temperature_coefficient * ( T_celsius(k) - T_celsius(k-1) )
+    // where:
+    //   temperature_coefficient  = bias change per degree Celsius [m/s² / °C]
+    //   T_celsius(k)             = current temperature in degrees Celsius
+    
   Process model in matrix form:
   
   x(k) = F*x(k-1) + B*u(k) + w(k)
@@ -52,26 +59,44 @@
   
   State vector:
   
-  x = [ z,
-        y,
-        v,
-        a,
-        a_hat ]
+  x = [ z,        // displacement_integral
+        y,        // heave
+        v,        // vertical speed
+        a,        // vertical acceleration (trochoidal model)
+        a_hat,    // accelerometer bias
+        a_lp ]    // low‑pass acceleration (internal, unmeasured)
 
+  low‑pass acceleration (colored‑noise augmentation):
+  a_lp(k) = phi * a_lp(k-1) + (1 - phi) * ( a(k-1) + a_hat(k-1) )
+
+    where:
+      phi = exp(-T / tau)
+      tau = 1 / (2 * pi * f_c)  // f_c is cutoff frequency in Hz
+
+  Added low‑pass acceleration state (a_lp) to suppress high‑frequency engine noise.
+  Based on Crassidis & Kumar (2007) colored‑noise augmentation.
+  
   Input measured vertical acceleration from accelerometer (includes bias)
 
   Measurements:
     a_measured (vertical acceleration with a bias), z = 0 (using it as a soft constraint to anchor drift)
 
-  Observation matrix:
-  H = [[ 1, 0, 0, 0, 0 ],
-       [ 0, 0, 0, 1, 1 ]]   (since measurement includes bias and is not 'true' a)
+  Process model in matrix form (augmented F):
 
-  F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3         ],
-       [ 0,      1,    T,             1/2*T^2,         -1/2*T^2         ],
-       [ 0,      0,    1,             T,               -T               ],
-       [ 0,  k_hat,    k_hat*T,       1/2*k_hat*T^2,   -1/2*k_hat*T^2   ],
-       [ 0,      0,    0,             0,               1                ]]
+  F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3,      0            ],
+       [ 0,      1,    T,             1/2*T^2,         -1/2*T^2,      0            ],
+       [ 0,      0,    1,             T,               -T,            0            ],
+       [ 0,  k_hat,    k_hat*T,       1/2*k_hat*T^2,   -1/2*k_hat*T^2, 0            ],
+       [ 0,      0,    0,             0,               1,              0            ],
+       [ 0,      0,    0,     (1 - phi),           (1 - phi),         phi          ]]
+
+  Measurement model (unchanged physical measurements):
+
+  H = [[ 1, 0, 0, 0, 0, 0 ],     // displacement integral (soft constraint)
+       [ 0, 0, 0, 1, 1, 0 ]]     // raw accelerometer = a + a_hat
+
+  The low‑pass state a_lp is updated through the process model,
+  but is not directly measured.
          
 */
 
