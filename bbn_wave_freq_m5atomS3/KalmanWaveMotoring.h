@@ -141,7 +141,17 @@ public:
         float vib_noise_std_dev = 0.0f;          // Standard deviation of vibration noise estimate
         float residual_accel = 0.0f;             // Acceleration measurement residual
     };
-
+    
+    /*
+      Process noise parameters (q0..q5):
+      
+      q0 — displacement_integral process noise variance [ (m·s)² ]
+      q1 — heave process noise variance [ m² ]
+      q2 — vertical speed process noise variance [ (m/s)² ]
+      q3 — vertical acceleration process noise variance [ (m/s²)² ]
+      q4 — accelerometer bias process noise variance [ (m/s²)² ]
+      q5 — steady-state variance of vibration noise [ (m/s²)² ]
+    */
     KalmanWaveMotoring(float q0 = 2.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e+5f, float q4 = 1e-5f, float q5 = 1e-3f,
             float temperature_drift_coeff = 0.007f) {
         initialize(q0, q1, q2, q3, q4, q5, temperature_drift_coeff);
