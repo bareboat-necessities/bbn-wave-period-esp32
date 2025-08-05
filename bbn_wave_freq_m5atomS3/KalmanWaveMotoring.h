@@ -165,16 +165,15 @@ public:
         P.setIdentity();
         P *= 10.0f;  // Initial uncertainty
 
-        sigm_vib_noise2 = q5;
-
         // Process noise covariance (diagonal)
         Q.setZero();
-        Q.diagonal() << q0,  // third accel integral
-                        q1,  // displacement
-                        q2,  // velocity
-                        q3,  // accel (high noise due to square noisy frequency term)
-                        q4,  // accel bias
-                        q5;  // low-passed accel
+        Q.diagonal() << q0,    // third accel integral
+                        q1,    // displacement
+                        q2,    // velocity
+                        q3,    // accel (high noise due to square noisy frequency term)
+                        q4,    // accel bias
+                        0.0f;  // vibration noise (re-computed on each update)
+        sigm_vib_noise2 = q5;
 
         // Measurement model, H: measure displacement integral (z) and raw acceleration (a + bias)
         H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
