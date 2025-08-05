@@ -173,7 +173,7 @@ public:
 
         // Measurement model, H: measure displacement integral (z) and raw acceleration (a + bias)
         H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
-             0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f;  // Measures acceleration
+             0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f;  // Measures acceleration
 
         // Reset metrics
         resetMetrics();
