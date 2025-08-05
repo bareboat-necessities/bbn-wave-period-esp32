@@ -83,12 +83,12 @@
 
   Process model in matrix form (augmented F):
 
-  F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3,      0            ],
-       [ 0,      1,    T,             1/2*T^2,         -1/2*T^2,      0            ],
-       [ 0,      0,    1,             T,               -T,            0            ],
+  F = [[ 1,      T,    1/2*T^2,       1/6*T^3,         -1/6*T^3,       0            ],
+       [ 0,      1,    T,             1/2*T^2,         -1/2*T^2,       0            ],
+       [ 0,      0,    1,             T,               -T,             0            ],
        [ 0,  k_hat,    k_hat*T,       1/2*k_hat*T^2,   -1/2*k_hat*T^2, 0            ],
        [ 0,      0,    0,             0,               1,              0            ],
-       [ 0,      0,    0,     (1 - phi),           (1 - phi),         phi          ]]
+       [ 0,      0,    0,     (1 - phi),               (1 - phi),      phi          ]]
 
   Measurement model (unchanged physical measurements):
 
