@@ -284,10 +284,10 @@ private:
     Matrix26f H;    // Measurement model
     Matrix6f F;     // State transition matrix
 
-    float cutoff_hz = 4.0f;
-    float tau = 1.0f / (2.0f * M_PI * cutoff_hz);
-    float phi = 0.0f;
-    float sigm_vib_noise2 = 1e-3f;   // variance [ (m/s²)² ] of steady state vib_noise
+    float cutoff_hz = 4.0f;                       // LPF cutoff frequency in Hz
+    float tau = 1.0f / (2.0f * M_PI * cutoff_hz); // LPF time constant
+    float phi = 0.0f;                             // AR(1) decay factor = exp(-Δt / tau)
+    float sigm_vib_noise2 = 1e-3f;                // variance [ (m/s²)² ] of steady state vib_noise
 
     FilterMetrics metrics; // Filter performance metrics
 
