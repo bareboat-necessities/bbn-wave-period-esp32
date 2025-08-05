@@ -90,7 +90,7 @@
        [ 0,      0,    0,             0,               1,              0            ],
        [ 0,      0,    0,     (1 - phi),               (1 - phi),      phi          ]]
 
-  Note: There could be a variation of the filter where F(3,5)=0 and F(4,5)=0, with independent AR(1) noise.
+  Note: There could be a variation of the filter where F(5,3)=0 and F(5,4)=0 (instead of (1 - phi)) with independent AR(1) noise.
 
   Measurement model (unchanged physical measurements):
 
