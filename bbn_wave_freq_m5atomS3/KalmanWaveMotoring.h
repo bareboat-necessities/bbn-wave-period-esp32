@@ -67,9 +67,10 @@
         vib_noise ]    // low‑pass acceleration (internal, unmeasured)
 
   low‑pass acceleration (colored‑noise augmentation):
-  vib_noise(k) = phi * vib_noise(k-1) + (1 - phi) * ( a(k-1) + a_hat(k-1) )
+  vib_noise(k) = phi * vib_noise(k-1) + w_vib(k)
 
     where:
+      w_vib(k) ~ N(0, sigma_vib² * (1 - phi²))
       phi = exp(-T / tau)
       tau = 1 / (2 * pi * f_c)  // f_c is cutoff frequency in Hz
 
@@ -87,8 +88,8 @@
        [ 0,      1,    T,             1/2*T^2,         -1/2*T^2,       0            ],
        [ 0,      0,    1,             T,               -T,             0            ],
        [ 0,  k_hat,    k_hat*T,       1/2*k_hat*T^2,   -1/2*k_hat*T^2, 0            ],
-       [ 0,      0,    0,             0,               1,              0            ],
-       [ 0,      0,    0,     (1 - phi),               (1 - phi),      phi          ]]
+       [ 0,      0,    0,             0,                1,             0            ],
+       [ 0,      0,    0,             0,                0,             phi          ]]
 
   Note: There could be a variation of the filter where F(5,3)=0 and F(5,4)=0 (instead of (1 - phi)) with independent AR(1) noise.
 
