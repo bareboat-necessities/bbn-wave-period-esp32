@@ -230,6 +230,7 @@ public:
         s.vert_speed = x(2);
         s.vert_accel = x(3);
         s.accel_bias = x(4);
+        s.accel_lp = x(5);
         return s;
     }
 
