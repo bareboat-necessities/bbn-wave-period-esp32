@@ -322,7 +322,7 @@ private:
             f_wave_smooth = alpha_f * f_wave + (1.0f - alpha_f) * f_wave_smooth;
         }
 
-        float f_safe = std::clamp(f_wave_smooth, FREQ_L, FREQ_H);
+        float f_safe = std::max(FREQ_L, std::min(f_wave_smooth, FREQ_H));
         float ratio = (f_safe - FREQ_L) / (FREQ_H - FREQ_L);
 
         // q0 linearly interpolated (high at f_min to low at f_max)
@@ -330,11 +330,11 @@ private:
 
         // q1 scales as 1/f^2 (higher at low freq)
         float q1_val_unclamped = q1_at_f_low * (FREQ_L * FREQ_L) / (f_safe * f_safe);
-        float q1_val = std::clamp(q1_val_unclamped, q2_at_f_high, q1_at_f_low);
+        float q1_val = std::max(q2_at_f_high, std::min(q1_val_unclamped, q1_at_f_low));
 
         // q2 scales as 1/f (higher at low freq)
         float q2_val_unclamped = q2_at_f_low * (FREQ_L) / (f_safe);
-        float q2_val = std::clamp(q2_val_unclamped, q2_at_f_high, q2_at_f_low);
+        float q2_val = std::max(q2_at_f_high, std::min(q2_val_unclamped, q2_at_f_low));
 
         Q(0,0) = q0_val;
         Q(1,1) = q1_val;
