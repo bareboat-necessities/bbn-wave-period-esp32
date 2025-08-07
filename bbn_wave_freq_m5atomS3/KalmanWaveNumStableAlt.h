@@ -162,6 +162,7 @@ public:
     }
 
     void update(float measured_accel, float k_hat, float delta_t, float temperature_celsius = NAN) {
+        if (delta_t < MIN_DELTA_T) return;
 
         // Adapt process noise based on frequency
         adaptProcessNoise(k_hat);
@@ -237,6 +238,11 @@ private:
     static constexpr float FREQ_L = 0.04f;
     static constexpr float FREQ_H = 3.0f;
 
+    static constexpr float MIN_DELTA_T = 1e-10f; // Minimum Δt to run updates [s]
+    static constexpr float MIN_SINGULAR_VALUE = 1e-12f; // Floor for smallest singular value to avoid div-by-zero
+    static constexpr float LLS_INIT_EPSILON = 1e-7f; // Initial epsilon for LLT stabilization
+    static constexpr float LLS_MAX_EPSILON = 0.01f; // Maximum epsilon for LLT stabilization
+
     Vector5f x;     // State vector
     Matrix5f P;     // Covariance matrix
     Matrix5f Q;     // Process noise
@@ -254,9 +260,8 @@ private:
     float f_wave_smooth = NAN;  // Frequency smoothing state
 
     void updateStateTransition(float k_hat, float delta_t) {
-        if (delta_t < 1e-10f) {
-            return;
-        }
+        if (delta_t < MIN_DELTA_T) return;
+
         const float T = delta_t;
         const float T2 = T * T;
         const float T3 = T2 * T;
@@ -358,7 +363,7 @@ private:
         Eigen::JacobiSVD<Matrix5f> svd(P);
         float singular_max = svd.singularValues().maxCoeff();
         float singular_min = svd.singularValues().minCoeff();
-        metrics.condition_number = singular_max / std::max(singular_min, 1e-12f);
+        metrics.condition_number = singular_max / std::max(singular_min, MIN_SINGULAR_VALUE);
 
         // Standard deviations (uncertainties) of state estimates
         metrics.position_std_dev = sqrt(P(1,1));        // heave
@@ -379,8 +384,8 @@ private:
 
     void ensurePositiveDefinite(Matrix5f& mat) const {
         Eigen::LLT<Matrix5f> llt(mat);  // Cholesky
-        float epsilon = 1e-7f;
-        while (llt.info() == Eigen::NumericalIssue && epsilon < 0.01f) {
+        float epsilon = LLS_INIT_EPSILON;
+        while (llt.info() == Eigen::NumericalIssue && epsilon < LLS_MAX_EPSILON) {
             mat += epsilon * Matrix5f::Identity();
             llt.compute(mat);
             epsilon *= 10;
