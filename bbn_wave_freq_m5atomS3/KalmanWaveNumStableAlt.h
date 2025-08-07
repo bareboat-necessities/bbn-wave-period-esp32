@@ -112,9 +112,15 @@ public:
         float residual_accel = 0.0f;             // Acceleration measurement residual
     };
 
-    KalmanWaveNumStableAlt(float q0 = 2.0f, float q1 = 1e-4f, float q2 = 1e-2f, float q3 = 1e+5f, float q4 = 1e-5f, float temperature_drift_coeff = 0.007f) {
-        initialize(q0, q1, q2, q3, q4, temperature_drift_coeff);
-
+    KalmanWaveNumStableAlt(
+            float q0_at_f_low = 500.0f, float q0_at_f_high = 2.0f,
+            float q1_at_f_low = 1e-2f, float q1_at_f_high = 1e-4f,
+            float q2_at_f_low = 2e-2f, float q2_at_f_high = 1e-2f,
+            float q3 = 1e+5f, float q4 = 1e-5f,
+            float temperature_drift_coeff = 0.007f)
+    {
+        initialize(q0_at_f_low, q0_at_f_high, q1_at_f_low, q1_at_f_high,
+                   q2_at_f_low, q2_at_f_high, q3, q4, temperature_drift_coeff);
         // Measurement noise covariance
         initMeasurementNoise(
             1e-3f,  // Displacement integral noise
@@ -122,7 +128,8 @@ public:
         );
     }
 
-    void initialize(float q0, float q1, float q2, float q3, float q4, float temperature_drift_coeff) {
+    void initialize(float q0_for_f_low, float q0_for_f_high, float q1_for_f_low, float q1_for_f_high,
+                    float q2_for_f_low, float q2_for_f_high, float q3, float q4, float temperature_drift_coeff) {
         temperature_coefficient = temperature_drift_coeff;
 
         // State vector initialization
@@ -134,11 +141,17 @@ public:
 
         // Process noise covariance (diagonal)
         Q.setZero();
-        Q.diagonal() << q0,  // third accel integral
-                        q1,  // displacement
-                        q2,  // velocity
-                        q3,  // accel (high noise due to square noisy frequency term)
-                        q4;  // accel bias
+        Q.diagonal() << 0.0f,  // third accel integral (updated adaptively)
+                        0.0f,  // displacement (updated adaptively)
+                        0.0f,  // velocity (updated adaptively)
+                        q3,    // accel (high noise due to square noisy frequency term)
+                        q4;    // accel bias
+        q0_at_f_low = q0_for_f_low;
+        q0_at_f_high = q0_for_f_high;
+        q1_at_f_low = q1_for_f_low;
+        q1_at_f_high = q1_for_f_high;
+        q2_at_f_low = q2_for_f_low;
+        q2_at_f_high = q2_for_f_high;
 
         // Measurement model
         H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
@@ -149,6 +162,9 @@ public:
     }
 
     void update(float measured_accel, float k_hat, float delta_t, float temperature_celsius = NAN) {
+
+        // Adapt process noise based on frequency
+        adaptProcessNoise(k_hat);
 
         // Update state transition matrix
         updateStateTransition(k_hat, delta_t);
@@ -218,8 +234,8 @@ public:
     }
 
 private:
-    static constexpr float FREQ_L = 0.05f;
-    static constexpr float FREQ_H = 2.0f;
+    static constexpr float FREQ_L = 0.04f;
+    static constexpr float FREQ_H = 3.0f;
 
     Vector5f x;     // State vector
     Matrix5f P;     // Covariance matrix
@@ -229,12 +245,8 @@ private:
     Matrix5f F;     // State transition matrix
     FilterMetrics metrics; // Filter performance metrics
 
-    float q0_at_f_low = 500.0f,
-          q0_at_f_high = 2.0f,
-          q1_at_f_low = 1e-2f,
-          q1_at_f_high = 1e-4f,
-          q2_at_f_low = 2e-2f,
-          q2_at_f_high = 1e-2f;   // borderline q0, q1, q2 for adaptive tuning
+    float q0_at_f_low, q0_at_f_high, q1_at_f_low, q1_at_f_high,
+        q2_at_f_low, q2_at_f_high;           // borderline q0, q1, q2 for adaptive tuning
 
     float last_temperature_celsius = NAN;    // degC
     float temperature_coefficient = 0.007f;  // m/s^2/degC
