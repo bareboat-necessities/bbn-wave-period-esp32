@@ -330,7 +330,7 @@ private:
 
         // q1 scales as 1/f^2 (higher at low freq)
         float q1_val_unclamped = q1_at_f_low * (FREQ_L * FREQ_L) / (f_safe * f_safe);
-        float q1_val = std::max(q2_at_f_high, std::min(q1_val_unclamped, q1_at_f_low));
+        float q1_val = std::max(q1_at_f_high, std::min(q1_val_unclamped, q1_at_f_low));
 
         // q2 scales as 1/f (higher at low freq)
         float q2_val_unclamped = q2_at_f_low * (FREQ_L) / (f_safe);
