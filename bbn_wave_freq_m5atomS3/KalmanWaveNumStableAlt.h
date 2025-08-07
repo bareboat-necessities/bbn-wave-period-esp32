@@ -229,7 +229,12 @@ private:
     Matrix5f F;     // State transition matrix
     FilterMetrics metrics; // Filter performance metrics
 
-    float q0_at_f_low, q0_at_f_high, q1_at_f_low, q1_at_f_high, q2_at_f_low, q2_at_f_high;   // borderline q0, q1, q2 for adaptive tuning
+    float q0_at_f_low = 500.0f,
+          q0_at_f_high = 2.0f,
+          q1_at_f_low = 1e-2f,
+          q1_at_f_high = 1e-4f,
+          q2_at_f_low = 2e-2f,
+          q2_at_f_high = 1e-2f;   // borderline q0, q1, q2 for adaptive tuning
 
     float last_temperature_celsius = NAN;    // degC
     float temperature_coefficient = 0.007f;  // m/s^2/degC
