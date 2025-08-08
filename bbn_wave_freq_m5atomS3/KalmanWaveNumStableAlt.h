@@ -116,7 +116,7 @@ public:
             float q0_at_f_low = 500.0f, float q0_at_f_high = 2.0f,
             float q1_at_f_low = 1e-2f, float q1_at_f_high = 1e-4f,
             float q2_at_f_low = 2e-2f, float q2_at_f_high = 1e-2f,
-            float q3 = 1e+5f, float q4 = 1e-5f,
+            float q3 = 8e+5f, float q4 = 1e-5f,
             float temperature_drift_coeff = 0.007f)
     {
         initialize(q0_at_f_low, q0_at_f_high, q1_at_f_low, q1_at_f_high,
