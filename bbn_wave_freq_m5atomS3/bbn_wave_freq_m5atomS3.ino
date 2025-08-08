@@ -47,7 +47,7 @@
 #include "M5_Calibr.h"
 
 bool useMahony = true;
-FrequencyTracker useFrequencyTracker = ZeroCrossing;
+FrequencyTracker useFrequencyTracker = Aranovskiy;
 bool use_kalman_for_wave_dir = true;
 
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
