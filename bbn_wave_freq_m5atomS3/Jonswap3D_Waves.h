@@ -298,7 +298,7 @@ void generateWaveJonswapCSV(const std::string& filename,
                             double duration = 40.0, double dt = 0.005) {
 
     Jonswap3dGerstnerWaves<256> waveModel(
-        Hs, Tp, mean_dir_deg, 1.0 / (Tp * 2.0), 1.5, 3.1, 9.81, 25.0
+        Hs, Tp, mean_dir_deg, 0.02, 1.5, 3.1, 9.81, 25.0
     );
 
     std::ofstream file(filename);
