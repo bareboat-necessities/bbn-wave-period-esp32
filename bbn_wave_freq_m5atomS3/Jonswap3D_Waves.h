@@ -132,10 +132,10 @@ public:
     Jonswap3dGerstnerWaves(double Hs, double Tp,
                            double mean_direction_deg = 0.0,
                            double f_min = 0.02,
-                           double f_max = 1.5,
-                           double gamma = 3.3,
+                           double f_max = 0.8,
+                           double gamma = 2.5,
                            double g = 9.81,
-                           double spreading_exponent = 25.0,
+                           double spreading_exponent = 15.0,
                            unsigned int seed = 42)
         : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
           Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
@@ -298,7 +298,7 @@ void generateWaveJonswapCSV(const std::string& filename,
                             double duration = 40.0, double dt = 0.005) {
 
     Jonswap3dGerstnerWaves<256> waveModel(
-        Hs, Tp, mean_dir_deg, 0.02, 1.5, 3.1, 9.81, 25.0
+        Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.5, 9.81, 15.0
     );
 
     std::ofstream file(filename);
