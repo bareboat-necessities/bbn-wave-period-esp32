@@ -52,6 +52,8 @@ public:
         k_ = omega_.array().square() / g_;
 
         computeJonswapSpectrum();
+        orbit_radius_ = A_.array() / k_.array();
+
         initializeRandomPhases();
         initializeDirectionalSpreadRejection(); 
         computeWaveDirectionComponents();
@@ -93,6 +95,7 @@ private:
 
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, omega_, k_, S_, A_, phi_, df_;
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
+    Eigen::Matrix<double, N_FREQ, 1> orbit_radius_;
 
     void computeLogFrequencySpacing(double f_min, double f_max) {
         double log_f_min = std::log(f_min);
@@ -171,9 +174,11 @@ private:
             double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
             double cos_th = std::cos(th);
             double sin_th = std::sin(th);
-            d[0] += A_(i) * cos_th * dir_x_(i);  // horizontal circular motion
-            d[1] += A_(i) * cos_th * dir_y_(i);
-            d[2] += A_(i) * sin_th;              // vertical motion
+            double r = orbit_radius_(i);
+
+            d[0] += -r * cos_th * dir_x_(i);  // note negative sign here
+            d[1] += -r * cos_th * dir_y_(i);
+            d[2] +=  A_(i) * sin_th;
         }
         return d;
     }
@@ -185,9 +190,11 @@ private:
             double th = kx_(i) * x + ky_(i) * y - w * t + phi_(i);
             double sin_th = std::sin(th);
             double cos_th = std::cos(th);
-            v[0] += -A_(i) * w * sin_th * dir_x_(i);
-            v[1] += -A_(i) * w * sin_th * dir_y_(i);
-            v[2] +=  A_(i) * w * cos_th;
+            double r = orbit_radius_(i);
+
+            v[0] += r * w * sin_th * dir_x_(i);
+            v[1] += r * w * sin_th * dir_y_(i);
+            v[2] += A_(i) * w * cos_th;
         }
         return v;
     }
@@ -199,8 +206,10 @@ private:
             double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
             double cos_th = std::cos(th);
             double sin_th = std::sin(th);
-            a[0] += -A_(i) * w2 * cos_th * dir_x_(i);
-            a[1] += -A_(i) * w2 * cos_th * dir_y_(i);
+            double r = orbit_radius_(i);
+
+            a[0] += -r * w2 * cos_th * dir_x_(i);
+            a[1] += -r * w2 * cos_th * dir_y_(i);
             a[2] += -A_(i) * w2 * sin_th;
         }
         return a;
