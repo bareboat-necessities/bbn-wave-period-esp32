@@ -116,11 +116,12 @@ public:
             float q0_at_f_low = 8000.0f, float q0_at_f_high = 2.0f,
             float q1_at_f_low = 5.0f, float q1_at_f_high = 1e-4f,
             float q2_at_f_low = 4e-2f, float q2_at_f_high = 1e-2f,
-            float q3 = 1e+7f, float q4 = 1e-5f,
-            float temperature_drift_coeff = 0.007f)
+            float q3_at_f_low = 1e+7f, float q3_at_f_high = 8e+6f,
+            float q4 = 1e-5f, float temperature_drift_coeff = 0.007f)
     {
         initialize(q0_at_f_low, q0_at_f_high, q1_at_f_low, q1_at_f_high,
-                   q2_at_f_low, q2_at_f_high, q3, q4, temperature_drift_coeff);
+                   q2_at_f_low, q2_at_f_high, q3_at_f_low, q3_at_f_high,
+                   q4, temperature_drift_coeff);
         // Measurement noise covariance
         initMeasurementNoise(
             1e-3f,  // Displacement integral noise
@@ -129,7 +130,8 @@ public:
     }
 
     void initialize(float q0_for_f_low, float q0_for_f_high, float q1_for_f_low, float q1_for_f_high,
-                    float q2_for_f_low, float q2_for_f_high, float q3, float q4, float temperature_drift_coeff) {
+                    float q2_for_f_low, float q2_for_f_high, float q3_for_f_low, float q3_for_f_high,
+                    float q4, float temperature_drift_coeff) {
         temperature_coefficient = temperature_drift_coeff;
 
         // State vector initialization
@@ -144,14 +146,12 @@ public:
         Q.diagonal() << 0.0f,  // third accel integral (updated adaptively)
                         0.0f,  // displacement (updated adaptively)
                         0.0f,  // velocity (updated adaptively)
-                        q3,    // accel (high noise due to square noisy frequency term)
+                        0.0f,  // accel (updated adaptively), high noise due to squared frequency term
                         q4;    // accel bias
-        q0_at_f_low = q0_for_f_low;
-        q0_at_f_high = q0_for_f_high;
-        q1_at_f_low = q1_for_f_low;
-        q1_at_f_high = q1_for_f_high;
-        q2_at_f_low = q2_for_f_low;
-        q2_at_f_high = q2_for_f_high;
+        q0_at_f_low = q0_for_f_low; q0_at_f_high = q0_for_f_high;
+        q1_at_f_low = q1_for_f_low; q1_at_f_high = q1_for_f_high;
+        q2_at_f_low = q2_for_f_low; q2_at_f_high = q2_for_f_high;
+        q3_at_f_low = q3_for_f_low; q3_at_f_high = q3_for_f_high;
 
         // Measurement model
         H << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // Measures displacement integral
@@ -252,7 +252,7 @@ private:
     FilterMetrics metrics; // Filter performance metrics
 
     float q0_at_f_low, q0_at_f_high, q1_at_f_low, q1_at_f_high,
-        q2_at_f_low, q2_at_f_high;           // borderline q0, q1, q2 for adaptive tuning
+        q2_at_f_low, q2_at_f_high, q3_at_f_low, q3_at_f_high;    // borderline q0, q1, q2, q3 for adaptive tuning
 
     float last_temperature_celsius = NAN;    // degC
     float temperature_coefficient = 0.007f;  // m/s^2/degC
@@ -313,32 +313,38 @@ private:
         ensurePositiveDefinite(P);
     }
 
-    void adaptProcessNoise(float k_hat, float alpha_f = 0.001f) {
+    void adaptProcessNoise(float k_hat, float alpha_f = 0.002f) {
+        // Instantaneous wave frequency from k_hat
         float f_wave = sqrtf(fabsf(k_hat)) / (2.0f * M_PI);
 
+        // Smooth the estimated frequency to avoid jitter
         if (std::isnan(f_wave_smooth)) {
             f_wave_smooth = f_wave;
         } else {
             f_wave_smooth = alpha_f * f_wave + (1.0f - alpha_f) * f_wave_smooth;
         }
-
+        // Clamp to safe operational band
         float f_safe = std::max(FREQ_L, std::min(f_wave_smooth, FREQ_H));
-        float ratio = (f_safe - FREQ_L) / (FREQ_H - FREQ_L);
 
-        // q0 linearly interpolated (high at f_min to low at f_max)
-        float q0_val = q0_at_f_low + ratio * (q0_at_f_high - q0_at_f_low);
+        // Helper: power-law interpolation between low and high freq anchors.
+        // exp > 0: noise decreases with increasing f (we use -exp internally)
+        auto interp_powerlaw = [&](float q_low, float q_high, float exp) {
+            // Avoid division by zero or degenerate range
+            if (FREQ_H == FREQ_L) return q_low;
+            float scale_low = powf(FREQ_L, -exp);
+            float scale_high = powf(FREQ_H, -exp);
+            float scale_f = powf(f_safe, -exp);
+            float t = (scale_f - scale_low) / (scale_high - scale_low);
+            // clamp t just in case of numerical issues
+            t = std::max(0.0f, std::min(1.0f, t));
+            return q_low + t * (q_high - q_low);
+        };
 
-        // q1 scales as 1/f^2 (higher at low freq)
-        float q1_val_unclamped = q1_at_f_low * (FREQ_L * FREQ_L) / (f_safe * f_safe);
-        float q1_val = std::max(q1_at_f_high, std::min(q1_val_unclamped, q1_at_f_low));
-
-        // q2 scales as 1/f (higher at low freq)
-        float q2_val_unclamped = q2_at_f_low * (FREQ_L) / (f_safe);
-        float q2_val = std::max(q2_at_f_high, std::min(q2_val_unclamped, q2_at_f_low));
-
-        Q(0,0) = q0_val;
-        Q(1,1) = q1_val;
-        Q(2,2) = q2_val;
+        // Integration-order-based exponents
+        Q(0,0) = interp_powerlaw(q0_at_f_low, q0_at_f_high, 6.0f); // q0 ~ 1/f^6
+        Q(1,1) = interp_powerlaw(q1_at_f_low, q1_at_f_high, 4.0f); // q1 ~ 1/f^4
+        Q(2,2) = interp_powerlaw(q2_at_f_low, q2_at_f_high, 2.0f); // q2 ~ 1/f^2
+        Q(3,3) = interp_powerlaw(q3_at_f_low, q3_at_f_high, 2.0f);
     }
 
     void updateMetrics(const Vector2f& z, const Vector2f& innovation, const Matrix2f& S) {
