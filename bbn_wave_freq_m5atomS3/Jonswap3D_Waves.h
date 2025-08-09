@@ -1,3 +1,5 @@
+
+
 #pragma once
 
 #ifdef EIGEN_NON_ARDUINO
@@ -18,9 +20,8 @@
 /*
   Copyright 2025, Mikhail Grushinskiy
 
-  JONSWAP-spectrum 3D Gerstner waves simulation. Surface
-  
- */
+  JONSWAP-spectrum 3D Gerstner waves simulation (deep-water).
+*/
 
 template<int N_FREQ = 256>
 class Jonswap3dGerstnerWaves {
@@ -49,10 +50,9 @@ public:
         computeLogFrequencySpacing(f_min, f_max);
         computeFrequencyIncrements();
         omega_ = 2.0 * M_PI * frequencies_;
-        k_ = omega_.array().square() / g_;
+        k_ = omega_.array().square() / g_; // deep-water dispersion
 
-        computeJonswapSpectrum();
-        normalizeAmplitudeToMatchHs();
+        computeJonswapSpectrumFromHs();
         orbit_radius_ = A_.array() / k_.array();
 
         initializeRandomPhases();
@@ -97,6 +97,7 @@ private:
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
     Eigen::Matrix<double, N_FREQ, 1> orbit_radius_;
 
+    // ---- Frequency setup ----
     void computeLogFrequencySpacing(double f_min, double f_max) {
         double log_f_min = std::log(f_min);
         double log_f_max = std::log(f_max);
@@ -105,33 +106,67 @@ private:
     }
 
     void computeFrequencyIncrements() {
-        for (int i = 0; i < N_FREQ - 1; ++i)
-            df_(i) = frequencies_(i + 1) - frequencies_(i);
-        df_(N_FREQ - 1) = df_(N_FREQ - 2);
+        if (N_FREQ < 2) {
+            df_.setZero();
+            return;
+        }
+        df_(0) = frequencies_(1) - frequencies_(0); // forward diff
+        for (int i = 1; i < N_FREQ - 1; ++i) {       // central diff
+            df_(i) = 0.5 * (frequencies_(i + 1) - frequencies_(i - 1));
+        }
+        df_(N_FREQ - 1) = frequencies_(N_FREQ - 1) - frequencies_(N_FREQ - 2); // backward diff
     }
 
-    void computeJonswapSpectrum() {
+    // ---- Spectrum computation with alpha from Hs ----
+    void computeJonswapSpectrumFromHs() {
         double fp = 1.0 / Tp_;
+        Eigen::Matrix<double, N_FREQ, 1> S0;
+
+        // Unit spectrum (alpha = 1)
         for (int i = 0; i < N_FREQ; ++i) {
             double f = frequencies_(i);
             double sigma = (f <= fp) ? 0.07 : 0.09;
             double r = std::exp(-std::pow(f - fp, 2) / (2.0 * sigma * sigma * fp * fp));
-            double alpha = 0.076 * std::pow(Hs_, 2) / std::pow(Tp_, 4);
-            double val = alpha * std::pow(g_, 2) / std::pow(2 * M_PI, 4)
-                       * std::pow(f, -5.0)
-                       * std::exp(-1.25 * std::pow(fp / f, 4.0))
-                       * std::pow(gamma_, r);
-            S_(i) = val;
+            double base = (g_ * g_) / std::pow(2.0 * M_PI, 4.0) * std::pow(f, -5.0)
+                          * std::exp(-1.25 * std::pow(fp / f, 4.0));
+            S0(i) = base * std::pow(gamma_, r);
         }
+
+        // Integrate variance for unit alpha
+        double variance_unit = (S0.cwiseProduct(df_)).sum();
+
+        // Target variance from Hs
+        double variance_target = (Hs_ * Hs_) / 16.0;
+
+        // Compute alpha
+        double alpha = (variance_unit > 0.0) ? variance_target / variance_unit : 1e-12;
+
+        // Final spectrum
+        S_ = S0 * alpha;
         A_ = (2.0 * S_.cwiseProduct(df_)).cwiseSqrt();
+
+        // Light sanity check
+        normalizeAmplitudeToMatchHs();
     }
 
     void normalizeAmplitudeToMatchHs() {
         double Hs_est = 4.0 * std::sqrt(0.5 * A_.squaredNorm());
-        if (Hs_est > 1e-6)
+        if (Hs_est <= 0.0) return;
+        double rel_err = std::abs(Hs_est - Hs_) / Hs_;
+        if (rel_err > 1e-3) {
+            std::cerr << "[Warning] Hs mismatch: estimated " << Hs_est
+                      << ", target " << Hs_ << ", rescaling...\n";
             A_ *= (Hs_ / Hs_est);
+            orbit_radius_ = A_.array() / k_.array();
+            for (int i = 0; i < N_FREQ; ++i) {
+                double a = A_(i);
+                double dfi = df_(i) > 0.0 ? df_(i) : 1e-12;
+                S_(i) = (a * a) / (2.0 * dfi);
+            }
+        }
     }
 
+    // ---- Randomization ----
     void initializeRandomPhases() {
         std::mt19937 gen(seed_);
         std::uniform_real_distribution<double> dist(0.0, 2.0 * M_PI);
@@ -150,8 +185,7 @@ private:
                 double candidate = u_dist(gen);
                 double base = std::cos(candidate - mean_dir_rad_);
                 double pdf_val = std::pow(std::clamp(base, 0.0, 1.0), spreading_exponent_);
-                double y = y_dist(gen);
-                if (y <= pdf_val) {
+                if (y_dist(gen) <= pdf_val) {
                     theta = candidate;
                     break;
                 }
@@ -168,6 +202,7 @@ private:
         }
     }
 
+    // ---- Gerstner evaluation ----
     Eigen::Vector3d evaluateDisplacement(double x, double y, double t) const {
         Eigen::Vector3d d = Eigen::Vector3d::Zero();
         for (int i = 0; i < N_FREQ; ++i) {
@@ -175,8 +210,7 @@ private:
             double cos_th = std::cos(th);
             double sin_th = std::sin(th);
             double r = orbit_radius_(i);
-
-            d[0] += -r * cos_th * dir_x_(i);  // note negative sign here
+            d[0] += -r * cos_th * dir_x_(i);
             d[1] += -r * cos_th * dir_y_(i);
             d[2] +=  A_(i) * sin_th;
         }
@@ -191,7 +225,6 @@ private:
             double sin_th = std::sin(th);
             double cos_th = std::cos(th);
             double r = orbit_radius_(i);
-
             v[0] += r * w * sin_th * dir_x_(i);
             v[1] += r * w * sin_th * dir_y_(i);
             v[2] += A_(i) * w * cos_th;
@@ -207,7 +240,6 @@ private:
             double cos_th = std::cos(th);
             double sin_th = std::sin(th);
             double r = orbit_radius_(i);
-
             a[0] += r * w2 * cos_th * dir_x_(i);
             a[1] += r * w2 * cos_th * dir_y_(i);
             a[2] += -A_(i) * w2 * sin_th;
@@ -217,8 +249,8 @@ private:
 
     void checkSteepness() const {
         double max_steepness = (A_.array() * k_.array()).maxCoeff();
-        if (max_steepness > 0.3)
-            std::cerr << "[Warning] Wave steepness exceeds 0.3: " << max_steepness << "\n";
+        if (max_steepness > 0.25)
+            std::cerr << "[Warning] Wave steepness exceeds 0.25: " << max_steepness << "\n";
     }
 };
 
@@ -228,7 +260,7 @@ void generateWaveJonswapCSV(const std::string& filename,
                             double duration = 40.0, double dt = 0.005) {
     // Initialize wave model with realistic parameters
     Jonswap3dGerstnerWaves<256> waveModel(
-        Hs, Tp, mean_dir_deg, 0.2, 1.5, 3.1, 9.81, 25.0
+        Hs, Tp, mean_dir_deg, 1.0 / (Tp * 2.0), 1.5, 3.1, 9.81, 25.0
     );
 
     // Open CSV file
@@ -261,3 +293,5 @@ void Jonswap_testWavePatterns() {
     generateWaveJonswapCSV("long_waves.csv", 4.0, 12.0, 30.0);
 }
 #endif
+
+
