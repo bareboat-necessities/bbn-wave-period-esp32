@@ -208,8 +208,8 @@ private:
             double sin_th = std::sin(th);
             double r = orbit_radius_(i);
 
-            a[0] += -r * w2 * cos_th * dir_x_(i);
-            a[1] += -r * w2 * cos_th * dir_y_(i);
+            a[0] += r * w2 * cos_th * dir_x_(i);
+            a[1] += r * w2 * cos_th * dir_y_(i);
             a[2] += -A_(i) * w2 * sin_th;
         }
         return a;
