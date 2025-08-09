@@ -1,5 +1,3 @@
-
-
 #pragma once
 
 #ifdef EIGEN_NON_ARDUINO
@@ -154,8 +152,6 @@ private:
         if (Hs_est <= 0.0) return;
         double rel_err = std::abs(Hs_est - Hs_) / Hs_;
         if (rel_err > 1e-3) {
-            std::cerr << "[Warning] Hs mismatch: estimated " << Hs_est
-                      << ", target " << Hs_ << ", rescaling...\n";
             A_ *= (Hs_ / Hs_est);
             orbit_radius_ = A_.array() / k_.array();
             for (int i = 0; i < N_FREQ; ++i) {
@@ -250,7 +246,7 @@ private:
     void checkSteepness() const {
         double max_steepness = (A_.array() * k_.array()).maxCoeff();
         if (max_steepness > 0.25)
-            std::cerr << "[Warning] Wave steepness exceeds 0.25: " << max_steepness << "\n";
+            throw std::runtime_error("Wave steepness exceeds 0.25");
     }
 };
 
