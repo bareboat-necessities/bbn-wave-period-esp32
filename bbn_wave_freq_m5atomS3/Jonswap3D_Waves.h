@@ -52,13 +52,13 @@ public:
         k_ = omega_.array().square() / g_;
 
         computeJonswapSpectrum();
+        normalizeAmplitudeToMatchHs();
         orbit_radius_ = A_.array() / k_.array();
 
         initializeRandomPhases();
         initializeDirectionalSpreadRejection(); 
         computeWaveDirectionComponents();
 
-        normalizeAmplitudeToMatchHs();
         checkSteepness();
     }
 
