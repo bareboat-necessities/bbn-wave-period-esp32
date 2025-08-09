@@ -27,8 +27,8 @@ template<int N_FREQ = 256>
 class JonswapSpectrum {
 public:
     JonswapSpectrum(double Hs, double Tp,
-                    double f_min = 0.02, double f_max = 1.5,
-                    double gamma = 3.3, double g = 9.81)
+                    double f_min = 0.02, double f_max = 0.8,
+                    double gamma = 2.0, double g = 9.81)
         : Hs_(Hs), Tp_(Tp), f_min_(f_min), f_max_(f_max), gamma_(gamma), g_(g)
     {
         if (N_FREQ < 2) throw std::runtime_error("N_FREQ must be >= 2");
@@ -133,7 +133,7 @@ public:
                            double mean_direction_deg = 0.0,
                            double f_min = 0.02,
                            double f_max = 0.8,
-                           double gamma = 2.5,
+                           double gamma = 2.0,
                            double g = 9.81,
                            double spreading_exponent = 15.0,
                            unsigned int seed = 42)
@@ -287,8 +287,8 @@ private:
 
     void checkSteepness() const {
         double max_steepness = (A_.array() * k_.array()).maxCoeff();
-        if (max_steepness > 0.25)
-            throw std::runtime_error("Wave steepness exceeds 0.25");
+        if (max_steepness > 0.2)
+            throw std::runtime_error("Wave steepness exceeds 0.2");
     }
 };
 
@@ -298,7 +298,7 @@ void generateWaveJonswapCSV(const std::string& filename,
                             double duration = 40.0, double dt = 0.005) {
 
     Jonswap3dGerstnerWaves<256> waveModel(
-        Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.5, 9.81, 15.0
+        Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0
     );
 
     std::ofstream file(filename);
@@ -323,6 +323,6 @@ void generateWaveJonswapCSV(const std::string& filename,
 void Jonswap_testWavePatterns() {
     generateWaveJonswapCSV("short_waves.csv", 0.5, 3.0, 30.0);
     generateWaveJonswapCSV("medium_waves.csv", 2.0, 7.0, 30.0);
-    generateWaveJonswapCSV("long_waves.csv", 4.0, 12.0, 30.0);
+    generateWaveJonswapCSV("long_waves.csv", 4.0, 15.0, 30.0);
 }
 #endif
