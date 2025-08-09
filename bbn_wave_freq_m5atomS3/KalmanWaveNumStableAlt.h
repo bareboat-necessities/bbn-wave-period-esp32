@@ -235,7 +235,7 @@ public:
     }
 
 private:
-    static constexpr float FREQ_L = 0.04f;
+    static constexpr float FREQ_L = 0.07f;
     static constexpr float FREQ_H = 3.0f;
 
     static constexpr float MIN_DELTA_T = 1e-10f; // Minimum Δt to run updates [s]
