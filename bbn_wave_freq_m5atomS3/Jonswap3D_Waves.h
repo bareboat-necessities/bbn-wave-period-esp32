@@ -33,7 +33,7 @@ public:
 
     Jonswap3dGerstnerWaves(double Hs, double Tp,
                            double mean_direction_deg = 0.0,
-                           double f_min = 0.2,
+                           double f_min = 0.02,
                            double f_max = 1.5,
                            double gamma = 3.3,
                            double g = 9.81,
