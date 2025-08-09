@@ -322,6 +322,6 @@ void generateWaveJonswapCSV(const std::string& filename,
 void Jonswap_testWavePatterns() {
     generateWaveJonswapCSV("short_waves.csv", 0.5, 3.0, 30.0);
     generateWaveJonswapCSV("medium_waves.csv", 2.0, 7.0, 30.0);
-    generateWaveJonswapCSV("long_waves.csv", 4.0, 15.0, 30.0);
+    generateWaveJonswapCSV("long_waves.csv", 4.0, 12.0, 30.0);
 }
 #endif
