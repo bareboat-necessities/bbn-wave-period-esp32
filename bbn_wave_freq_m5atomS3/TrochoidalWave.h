@@ -132,6 +132,10 @@ public:
         return A * omega * omega * R * std::cos(theta);
     }
 
+    Real energyFlux(Real rho) const { 
+        return energyDensity(rho) * groupVelocity(); 
+    }
+
     // ── Bulk wave properties ────────────────────────────────────────────
 
     Real amplitude() const        { return A; }
@@ -143,6 +147,7 @@ public:
     Real wavenumber() const       { return k; }
     Real wavelength() const       { return lambda; }
     Real waveSpeed() const        { return wave_speed; }
+    Real steepness() const        { return A * k; } 
 
     /**
      * Mean wave energy density per unit horizontal area [J/m²]:
