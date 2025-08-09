@@ -157,8 +157,7 @@ public:
         omega_ = 2.0 * M_PI * frequencies_;
         k_ = omega_.array().square() / g_; // deep-water dispersion
 
-        // orbit radius after A_ and k_ are known
-        orbit_radius_ = A_.array() / k_.array();
+        orbit_radius_ = A_;
 
         initializeRandomPhases();
         initializeDirectionalSpreadRejection();
