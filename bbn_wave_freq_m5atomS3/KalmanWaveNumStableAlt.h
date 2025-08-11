@@ -377,10 +377,10 @@ private:
         metrics.condition_number = singular_max / std::max(singular_min, MIN_SINGULAR_VALUE);
 
         // Standard deviations (uncertainties) of state estimates
-        metrics.position_std_dev = sqrt(P(1,1));        // heave
-        metrics.velocity_std_dev = sqrt(P(2,2));        // vertical speed
-        metrics.acceleration_std_dev = sqrt(P(3,3));    // vertical acceleration
-        metrics.bias_std_dev = sqrt(P(4,4));            // accelerometer bias
+        metrics.position_std_dev = sqrtf(std::max(P(1,1), 0.0f));        // heave
+        metrics.velocity_std_dev = sqrtf(std::max(P(2,2), 0.0f));        // vertical speed
+        metrics.acceleration_std_dev = sqrtf(std::max(P(3,3), 0.0f));    // vertical acceleration
+        metrics.bias_std_dev = sqrtf(std::max(P(4,4), 0.0f));            // accelerometer bias
 
         // Acceleration measurement residual (actual - predicted)
         // If the residuals are consistently large, it suggests issues with the accelerometer model or the filter's state
