@@ -313,9 +313,14 @@ private:
         ensurePositiveDefinite(P);
     }
 
+    float toWaveFreq(float accel_freq) {
+        // approximation for wave frequency estimate from acceleration frequency (for accel_freq < 1.0 Hz)
+        return 1.384 * accel_freq * accel_freq;
+    }
+
     void adaptProcessNoise(float k_hat, float alpha_f = 0.004f) {
         // Instantaneous wave frequency from k_hat
-        float f_wave = sqrtf(fabsf(k_hat)) / (2.0f * M_PI);
+        float f_wave = toWaveFreq(sqrtf(fabsf(k_hat)) / (2.0f * M_PI));
 
         // Smooth the estimated frequency to avoid jitter
         if (std::isnan(f_wave_smooth)) {
