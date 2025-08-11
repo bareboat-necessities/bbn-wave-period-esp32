@@ -57,7 +57,7 @@ private:
 
   // Kalman parameters
   Real p_cov = Real(1);  // Kalman error covariance
-  Real q = Real(1e-6f);  // Process noise covariance
+  Real q = Real(1e-6);  // Process noise covariance
   Real r = Real(1e+5);   // Measurement noise covariance
 
 public:
