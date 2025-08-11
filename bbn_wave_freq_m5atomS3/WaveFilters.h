@@ -66,7 +66,7 @@ void init_aranovskiy(AranovskiyFilter<double>* ar_filter) {
   double omega_up = (FREQ_GUESS * 2) * (2 * M_PI);  // upper angular frequency 
   double k_gain = 8.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
-  double omega_init = (FREQ_GUESS / 3.0) * 2 * M_PI;
+  double omega_init = (FREQ_GUESS / 2.0) * 2 * M_PI;
   double theta_0 = -(omega_init * omega_init / 4.0);
   double sigma_0 = theta_0;
   ar_filter->setParams(omega_up, k_gain);
