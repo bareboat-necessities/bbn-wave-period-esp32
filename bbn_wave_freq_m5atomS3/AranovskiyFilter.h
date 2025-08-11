@@ -37,7 +37,7 @@ public:
   Real phase = Real(0);      // Estimated phase (radians)
 
   // Internal time scaling for better low-frequency stability
-  static constexpr Real TIME_SCALE = Real(20); // can be tuned (10x faster internal clock)
+  static constexpr Real TIME_SCALE = Real(20); // can be tuned (20x faster internal clock)
 
   // Constructor
   AranovskiyFilter(Real omega_up = Real(0.5) * 2 * M_PI, Real gain = Real(8),
