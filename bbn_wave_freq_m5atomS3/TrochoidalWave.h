@@ -133,7 +133,7 @@ public:
     }
 
     Real energyFlux(Real rho) const { 
-        return energyDensity(rho) * groupVelocity(); 
+        return energyDensity(rho) * wave_speed / 2; 
     }
 
     // ── Bulk wave properties ────────────────────────────────────────────
