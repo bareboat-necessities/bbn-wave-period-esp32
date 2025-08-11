@@ -116,7 +116,7 @@ public:
             float q0_at_f_low = 8000.0f, float q0_at_f_high = 2.0f,
             float q1_at_f_low = 5.0f, float q1_at_f_high = 1e-4f,
             float q2_at_f_low = 4e-2f, float q2_at_f_high = 1e-2f,
-            float q3_at_f_low = 1e+6f, float q3_at_f_high = 8e+5f,
+            float q3_at_f_low = 1e+7f, float q3_at_f_high = 8e+5f,
             float q4 = 1e-5f, float temperature_drift_coeff = 0.007f)
     {
         initialize(q0_at_f_low, q0_at_f_high, q1_at_f_low, q1_at_f_high,
@@ -315,7 +315,7 @@ private:
 
     float toWaveFreq(float accel_freq) {
         // approximation for wave frequency estimate from acceleration frequency (for accel_freq < 1.0 Hz)
-        return 1.384 * accel_freq * accel_freq;
+        return 5.0f * powf(accel_freq, 4.0f);
     }
 
     void adaptProcessNoise(float k_hat, float alpha_f = 0.004f) {
