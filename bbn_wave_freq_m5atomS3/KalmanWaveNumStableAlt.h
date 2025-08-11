@@ -320,7 +320,7 @@ private:
 
     void adaptProcessNoise(float k_hat, float alpha_f = 0.004f) {
         // Instantaneous wave frequency from k_hat
-        float f_wave = toWaveFreq(sqrtf(fabsf(k_hat)) / (2.0f * M_PI));
+        float f_wave = toWaveFreq(sqrtf(fabsf(k_hat)) / TWO_PI);
 
         // Smooth the estimated frequency to avoid jitter
         if (std::isnan(f_wave_smooth)) {
