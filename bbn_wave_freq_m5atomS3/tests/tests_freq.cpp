@@ -33,6 +33,16 @@ static constexpr float BIAS_MEAN = 0.1f;      // m/s^2 bias added to accel
 enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2 };
 enum class TrackerType { ARANOVSKIY=0, KALMANF=1, ZEROCROSS=2 };
 
+static std::string make_filename(TrackerType tr, WaveType wt, float height) {
+    std::string trackerName = (tr == TrackerType::ARANOVSKIY) ? "aranovskiy" :
+                              (tr == TrackerType::KALMANF) ? "kalmANF" : "zerocrossing";
+    std::string waveName = (wt == WaveType::GERSTNER) ? "gerstner" :
+                           (wt == WaveType::JONSWAP) ? "jonswap" : "fenton";
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "%s_%s_h%.3f.csv", trackerName.c_str(), waveName.c_str(), height);
+    return std::string(buf);
+}
+
 struct WaveParameters {
     float freqHz;    // true frequency (Hz)
     float height;    // amplitude (m)
