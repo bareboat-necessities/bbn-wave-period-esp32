@@ -105,16 +105,16 @@ static void write_csv_line(std::ofstream &ofs,
     ofs << (updated ? 1 : 0) << "\n";
 }
 
-// WaveSample struct
-struct WaveSample {
+// Wave_Sample struct
+struct Wave_Sample {
     float accel_z;
     float vel_z;
     float elev;
 };
 
 // Sample functions
-static WaveSample sample_gerstner(const WaveParameters &p, double t, TrochoidalWave<float> &wave_obj) {
-    WaveSample s;
+static Wave_Sample sample_gerstner(const WaveParameters &p, double t, TrochoidalWave<float> &wave_obj) {
+    Wave_Sample s;
     (void)p;
     s.accel_z = wave_obj.surfaceVerticalAcceleration(static_cast<float>(t));
     s.vel_z = wave_obj.surfaceVerticalSpeed(static_cast<float>(t));
@@ -123,8 +123,8 @@ static WaveSample sample_gerstner(const WaveParameters &p, double t, TrochoidalW
 }
 
 template<int N=256>
-static WaveSample sample_jonswap(const WaveParameters &p, double t, Jonswap3dGerstnerWaves<N> &model) {
-    WaveSample s;
+static Wave_Sample sample_jonswap(const WaveParameters &p, double t, Jonswap3dGerstnerWaves<N> &model) {
+    Wave_Sample s;
     auto state = model.getLagrangianState(0.0f, 0.0f, static_cast<float>(t));
     s.accel_z = state.acceleration.z();
     s.vel_z = state.velocity.z();
@@ -133,8 +133,8 @@ static WaveSample sample_jonswap(const WaveParameters &p, double t, Jonswap3dGer
 }
 
 template<int ORD=4>
-static WaveSample sample_fenton(const WaveParameters &p, double t, FentonWave<ORD> &fenton) {
-    WaveSample s;
+static Wave_Sample sample_fenton(const WaveParameters &p, double t, FentonWave<ORD> &fenton) {
+    Wave_Sample s;
     s.accel_z = fenton.surfaceVerticalAcceleration(static_cast<float>(t));
     s.vel_z = fenton.surfaceVerticalSpeed(static_cast<float>(t));
     s.elev = fenton.surfaceElevation(static_cast<float>(t));
@@ -201,7 +201,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         TrochoidalWave<float> trocho(wp.height, period, wp.phase);
         int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
         for (int step = 0; step < total_steps; ++step) {
-            WaveSample samp = sample_gerstner(wp, sim_t, trocho);
+            Wave_Sample samp = sample_gerstner(wp, sim_t, trocho);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
             process_sample(noisy_accel, DELTA_T, sim_t);
             sim_t += DELTA_T;
@@ -211,7 +211,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 2.0f, g_std, 15.0f);
         int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
         for (int step = 0; step < total_steps; ++step) {
-            WaveSample samp = sample_jonswap(wp, sim_t, jonswap_model);
+            Wave_Sample samp = sample_jonswap(wp, sim_t, jonswap_model);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
             process_sample(noisy_accel, DELTA_T, sim_t);
             sim_t += DELTA_T;
