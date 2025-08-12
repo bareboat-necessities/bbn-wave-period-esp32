@@ -27,8 +27,8 @@ HeaveAltErr = Data[:, [15]]
 FreqAdjErr = Data[:, [16]]
 HeavePredict = Data[:, [17]]
 
-rms = np.sqrt(np.mean(HeaveAltErr[-250 * 60:] ** 2))
-rms_freq = np.sqrt(np.mean(FreqAdjErr[-250 * 60:] ** 2))
+rms = np.sqrt(np.mean(HeaveAltErr[-480 * 60:] ** 2))
+rms_freq = np.sqrt(np.mean(FreqAdjErr[-480 * 60:] ** 2))
 
 fig, axarr = plt.subplots(4, sharex="all", figsize=(12, 9))
 
