@@ -11,12 +11,13 @@
 
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
-#include "KalmanSmoother.h"
+#include "FrequencySmoother.h"
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "KalmanWaveDirection.h"
 #include "TrochoidalWave.h"
+#include "KalmanSmoother.h"
 #include "WaveFilters.h"
 #include "Jonswap3D_Waves.h"
 #include "FentonWaveVectorized.h"
@@ -60,6 +61,7 @@ const std::vector<WaveParameters> waveParamsList = {
 
 AranovskiyFilter<double> arFilter;
 KalmANF<double> kalmANF;
+FrequencySmoother<float> freqSmoother;
 KalmanSmootherVars kalman_freq; // used for smoothing outputs (per-run reset)
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
@@ -81,6 +83,7 @@ static void reset_run_state() {
     sim_t = 0.0;
     kalm_smoother_first = true;
     kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
+    freqSmoother = FrequencySmoother<float>();
 }
 
 static double clamp_freq(double v) {
@@ -178,7 +181,6 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     std::normal_distribution<float> gauss(0.0f, NOISE_STDDEV);
     float bias = BIAS_MEAN;
 
-    // Initialize Kalman smoother once, before wave-specific code
     kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
     kalm_smoother_first = true;
 
@@ -187,14 +189,14 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         float a_norm = noisy_accel / g_std;
         auto [est_freq, updated] = run_tracker_once(tracker, a_norm, noisy_accel, dt);
         double true_f = wp.freqHz;
-        double smooth_freq = std::numeric_limits<double>::quiet_NaN();
+        float smooth_freq = std::numeric_limits<float>::quiet_NaN();
         if (!std::isnan(est_freq) && updated) {
             if (kalm_smoother_first) {
                 kalm_smoother_first = false;
-                kalman_smoother_set_initial(&kalman_freq, est_freq);
+                freqSmoother.setInitial(est_freq);
                 smooth_freq = est_freq;
             } else {
-                smooth_freq = kalman_smoother_update(&kalman_freq, est_freq);
+                smooth_freq = freqSmoother.update(est_freq);
             }
         }
         if (!std::isnan(smooth_freq))
@@ -260,7 +262,7 @@ int main(int argc, char **argv) {
                 reset_run_state();
                 init_filters(&arFilter, &kalman_freq);
                 init_filters_alt(&kalmANF, &kalman_freq);
-                freqDetector.reset(); // or reconstruct if no reset available
+                freqDetector.reset();
 
                 run_one_scenario(static_cast<WaveType>(wt), static_cast<TrackerType>(tr), wp, run_idx);
                 run_idx++;
