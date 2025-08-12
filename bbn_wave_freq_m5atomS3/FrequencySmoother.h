@@ -6,48 +6,39 @@ template <typename Real = float>
 class FrequencySmoother {
 public:
     /**
-     * Constructor (defaults tuned for ocean wave dynamics)
-     * @param process_noise_calm Process noise for calm seas (small, e.g., 0.0005)
-     * @param process_noise_storm Process noise for storm seas (larger, e.g., 0.005)
-     * @param measurement_noise Expected zero-crossing jitter (seconds)
+     * Constructor with tuned parameters for ocean waves
+     * @param q_short Process noise for short periods (fast waves)
+     * @param q_long Process noise for long periods (slow waves)
+     * @param T_min Minimum wave period in seconds
+     * @param T_max Maximum wave period in seconds
+     * @param measurement_noise Measurement noise (period jitter)
      * @param estimated_error Initial estimation uncertainty
-     * @param rel_threshold Relative deviation threshold for outlier detection (0.3 = 30%)
-     * @param noise_scale Factor to inflate R for suspicious samples (e.g., 15.0)
-     * @param storm_var_threshold Variance threshold for switching to storm mode
-     * @param calm_var_threshold Variance threshold for switching back to calm mode
+     * @param rel_threshold Relative deviation threshold for outlier detection
+     * @param noise_scale Factor to inflate R for suspicious samples
      */
-    FrequencySmoother(Real process_noise_calm  = Real(0.0005),
-                      Real process_noise_storm = Real(0.005),
-                      Real measurement_noise   = Real(0.05),
-                      Real estimated_error     = Real(10.0),
-                      Real rel_threshold       = Real(0.3),
-                      Real noise_scale         = Real(15.0),
-                      Real storm_var_threshold = Real(0.04),  // Hz^2 variance
-                      Real calm_var_threshold  = Real(0.01))  // Hz^2 variance
-        : q_calm(process_noise_calm),
-          q_storm(process_noise_storm),
-          r(measurement_noise),
-          p(estimated_error),
-          T(0),
-          rel_thresh(rel_threshold),
-          r_scale(noise_scale),
-          var_storm(storm_var_threshold),
-          var_calm(calm_var_threshold),
-          q(process_noise_calm),
-          modeStorm(false),
-          freqMean(0),
-          freqM2(0),
-          sampleCount(0)
+    FrequencySmoother(Real q_short_ = Real(0.0001),
+                      Real q_long_  = Real(0.0025),
+                      Real T_min_   = Real(0.33),
+                      Real T_max_   = Real(15.0),
+                      Real measurement_noise_ = Real(0.05),
+                      Real estimated_error_   = Real(10.0),
+                      Real rel_threshold_     = Real(0.3),
+                      Real noise_scale_       = Real(15.0))
+        : q_short(q_short_), q_long(q_long_),
+          T_min(T_min_), T_max(T_max_),
+          r(measurement_noise_),
+          p(estimated_error_),
+          T(Real(0)),
+          rel_thresh(rel_threshold_),
+          r_scale(noise_scale_)
     {}
 
     /// Set initial frequency in Hz
     void setInitial(Real freq_hz) {
         if (freq_hz > Real(0)) {
             T = Real(1) / freq_hz;
-            resetVarianceTracking(freq_hz);
         } else {
             T = Real(0);
-            resetVarianceTracking(Real(0));
         }
     }
 
@@ -57,13 +48,12 @@ public:
             return (T > Real(0)) ? (Real(1) / T) : Real(0);
         }
 
-        // Update rolling variance tracker
-        updateVarianceTracking(freq_measured_hz);
-        adjustProcessNoise();
+        Real T_meas = Real(1) / freq_measured_hz;
 
-        Real T_meas = Real(1) / freq_measured_hz; // convert to period
+        // Interpolate process noise q based on current period estimate T
+        Real q = interpolateProcessNoise(T);
 
-        // Determine if suspicious measurement
+        // Determine if suspicious measurement: relative difference in period
         Real r_eff = r;
         if (T > Real(0)) {
             Real rel_diff = std::fabs(T_meas - T) / T;
@@ -82,58 +72,23 @@ public:
     }
 
 private:
-    // Process noise settings
-    Real q_calm;
-    Real q_storm;
-    Real q; // active process noise
+    Real q_short;
+    Real q_long;
+    Real T_min;
+    Real T_max;
 
-    // Kalman filter state
-    Real r;
-    Real p;
-    Real T;
+    Real r;           // measurement noise
+    Real p;           // estimation error covariance
+    Real T;           // current period estimate
 
-    // Outlier handling
-    Real rel_thresh;
-    Real r_scale;
+    Real rel_thresh;  // relative outlier threshold
+    Real r_scale;     // outlier noise scaling factor
 
-    // Variance-based adaptation
-    Real var_storm;
-    Real var_calm;
-    bool modeStorm;
-
-    // Welford's algorithm variables for variance estimation
-    Real freqMean;
-    Real freqM2;
-    unsigned sampleCount;
-
-    void resetVarianceTracking(Real initialFreq) {
-        freqMean = initialFreq;
-        freqM2 = Real(0);
-        sampleCount = 1;
-    }
-
-    void updateVarianceTracking(Real f) {
-        sampleCount++;
-        Real delta = f - freqMean;
-        freqMean += delta / sampleCount;
-        Real delta2 = f - freqMean;
-        freqM2 += delta * delta2;
-    }
-
-    Real getVariance() const {
-        return (sampleCount > 1) ? (freqM2 / (sampleCount - 1)) : Real(0);
-    }
-
-    void adjustProcessNoise() {
-        Real var = getVariance();
-        if (!modeStorm && var > var_storm) {
-            // Enter storm mode
-            q = q_storm;
-            modeStorm = true;
-        } else if (modeStorm && var < var_calm) {
-            // Back to calm mode
-            q = q_calm;
-            modeStorm = false;
-        }
+    Real interpolateProcessNoise(Real period) const {
+        if (period <= T_min) return q_short;
+        if (period >= T_max) return q_long;
+        // Linear interpolation
+        Real alpha = (period - T_min) / (T_max - T_min);
+        return q_short + alpha * (q_long - q_short);
     }
 };
