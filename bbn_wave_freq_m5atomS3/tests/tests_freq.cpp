@@ -220,7 +220,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         }
     } else if (waveType == WaveType::JONSWAP) {
         float period = 1.0f / wp.freqHz;
-        Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 2.0f, g_std, 15.0f);
+        Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 3.3f, g_std, 15.0f);
         int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
         for (int step = 0; step < total_steps; ++step) {
             Wave_Sample samp = sample_jonswap(wp, sim_t, jonswap_model);
