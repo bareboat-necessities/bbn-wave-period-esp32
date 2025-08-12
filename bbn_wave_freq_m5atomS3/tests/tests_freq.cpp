@@ -1,5 +1,3 @@
-
-
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -177,11 +175,8 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     // Common per-sample processing lambda
     auto process_sample = [&](float noisy_accel, float dt, double current_time) {
         float a_norm = noisy_accel / g_std;
-
         auto [est_freq, updated] = run_tracker_once(tracker, a_norm, noisy_accel, dt);
-
         double true_f = wp.freqHz;
-
         double smooth_freq = std::numeric_limits<double>::quiet_NaN();
         if (!std::isnan(est_freq) && updated) {
             if (kalm_smoother_first) {
@@ -192,48 +187,38 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
                 smooth_freq = kalman_smoother_update(&kalman_freq, est_freq);
             }
         }
-
         if (!std::isnan(smooth_freq))
             smooth_freq = clamp_freq(smooth_freq);
-
         double error = std::isnan(est_freq) ? std::numeric_limits<double>::quiet_NaN() : (est_freq - true_f);
         double smooth_error = std::isnan(smooth_freq) ? std::numeric_limits<double>::quiet_NaN() : (smooth_freq - true_f);
         double abs_error = std::isnan(error) ? std::numeric_limits<double>::quiet_NaN() : std::fabs(error);
         double abs_smooth_error = std::isnan(smooth_error) ? std::numeric_limits<double>::quiet_NaN() : std::fabs(smooth_error);
-
         write_csv_line(ofs, current_time, true_f, est_freq, smooth_freq, error, smooth_error, abs_error, abs_smooth_error, updated);
     };
 
     if (waveType == WaveType::GERSTNER) {
         float period = 1.0f / wp.freqHz;
         TrochoidalWave<float> trocho(wp.height, period, wp.phase);
-
         int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
         for (int step = 0; step < total_steps; ++step) {
             WaveSample samp = sample_gerstner(wp, sim_t, trocho);
-
             float noisy_accel = samp.accel_z + bias + gauss(rng);
             process_sample(noisy_accel, DELTA_T, sim_t);
-
             sim_t += DELTA_T;
         }
     } else if (waveType == WaveType::JONSWAP) {
         float period = 1.0f / wp.freqHz;
         Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 2.0f, g_std, 15.0f);
-
         int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
         for (int step = 0; step < total_steps; ++step) {
             WaveSample samp = sample_jonswap(wp, sim_t, jonswap_model);
-
             float noisy_accel = samp.accel_z + bias + gauss(rng);
             process_sample(noisy_accel, DELTA_T, sim_t);
-
             sim_t += DELTA_T;
         }
     } else if (waveType == WaveType::FENTON) {
         auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(wp.height, 200.0f, 2.0f * M_PI * wp.freqHz, wp.phase);
         FentonWave<4> fenton_wave(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x);
-
         WaveSurfaceTracker<4> fenton_tracker(
             fenton_params.height,
             fenton_params.depth,
@@ -242,28 +227,23 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             5.0f,    // mass (kg)
             0.1f     // drag coeff
         );
-
         auto callback = [&](float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float x, float vx) {
             float noisy_accel = vertical_acceleration + bias + gauss(rng);
             process_sample(noisy_accel, dt, time);
 
             sim_t = time; // keep sim_t updated
         };
-
         fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T, callback);
     }
-
     ofs.close();
     printf("Wrote %s\n", filename.c_str());
 }
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
-
     init_tracker_backends();
-
+    
     unsigned run_idx = 0;
-
     for (const auto& wp : waveParamsList) {
         for (int wt = 0; wt < 3; ++wt) {
             for (int tr = 0; tr < 3; ++tr) {
@@ -277,8 +257,6 @@ int main(int argc, char **argv) {
             }
         }
     }
-
     printf("All runs complete.\n");
     return 0;
 }
-
