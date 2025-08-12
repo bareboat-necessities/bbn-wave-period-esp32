@@ -136,7 +136,7 @@ public:
                            double gamma = 2.0,
                            double g = 9.81,
                            double spreading_exponent = 15.0,
-                           unsigned int seed = 42)
+                           unsigned int seed = 239u)
         : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
           Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
