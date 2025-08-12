@@ -44,7 +44,7 @@ public:
                    Real x1_0 = Real(0), Real theta_0 = Real(-0.09), Real sigma_0 = Real(-0.09))
   {
     setParams(omega_up, gain);
-    setState(x1_0, TIME_SCALE * TIME_SCALE * theta_0, TIME_SCALE * TIME_SCALE * sigma_0);
+    setState(x1_0, theta_0, sigma_0);
   }
 
   // Set filter parameters
@@ -57,8 +57,8 @@ public:
   // Set initial state
   void setState(Real x1_init, Real theta_init, Real sigma_init) {
     x1 = x1_init;
-    theta = theta_init;
-    sigma = sigma_init;
+    theta = TIME_SCALE * TIME_SCALE * theta_init;
+    sigma = TIME_SCALE * TIME_SCALE * sigma_init;
     y = Real(0);
     omega = std::sqrt(std::max(Real(1e-12), std::abs(theta)));
     f = omega / (Real(2) * M_PI);
