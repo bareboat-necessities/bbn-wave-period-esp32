@@ -238,8 +238,8 @@ private:
     static constexpr float FREQ_L = 0.08f;
     static constexpr float FREQ_H = 0.2f;
 
-    static constexpr float MIN_DELTA_T = 1e-10f; // Minimum Δt to run updates [s]
-    static constexpr float MIN_SINGULAR_VALUE = 1e-12f; // Floor for smallest singular value to avoid div-by-zero
+    static constexpr float MIN_DELTA_T = 1e-4f; // Minimum Δt to run updates [s]
+    static constexpr float MIN_SINGULAR_VALUE = 1e-8f; // Floor for smallest singular value to avoid div-by-zero
     static constexpr float LLS_INIT_EPSILON = 1e-7f; // Initial epsilon for LLT stabilization
     static constexpr float LLS_MAX_EPSILON = 0.01f; // Maximum epsilon for LLT stabilization
 
