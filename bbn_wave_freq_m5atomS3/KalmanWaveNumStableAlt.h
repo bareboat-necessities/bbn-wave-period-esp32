@@ -113,10 +113,10 @@ public:
     };
 
     KalmanWaveNumStableAlt(
-            float q0_at_f_low = 8000.0f, float q0_at_f_high = 2.0f,
-            float q1_at_f_low = 5.0f, float q1_at_f_high = 1e-4f,
-            float q2_at_f_low = 4e-2f, float q2_at_f_high = 1e-2f,
-            float q3_at_f_low = 1e+7f, float q3_at_f_high = 8e+5f,
+            float q0_at_f_low = 400.0f, float q0_at_f_high = 5.0f,
+            float q1_at_f_low = 1e-8f, float q1_at_f_high = 4e-9f,
+            float q2_at_f_low = 2.5e-6f, float q2_at_f_high = 1e-7f,
+            float q3_at_f_low = 9e+8f, float q3_at_f_high = 1e+5f,
             float q4 = 1e-5f, float temperature_drift_coeff = 0.007f)
     {
         initialize(q0_at_f_low, q0_at_f_high, q1_at_f_low, q1_at_f_high,
