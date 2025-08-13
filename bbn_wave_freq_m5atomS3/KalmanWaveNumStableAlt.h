@@ -113,7 +113,7 @@ public:
     };
 
     KalmanWaveNumStableAlt(
-            float q0_at_f_low = 400.0f, float q0_at_f_high = 5.0f,
+            float q0_at_f_low = 400.0f, float q0_at_f_high = 1.0f,
             float q1_at_f_low = 1e-8f, float q1_at_f_high = 4e-9f,
             float q2_at_f_low = 2.5e-6f, float q2_at_f_high = 1e-7f,
             float q3_at_f_low = 9e+8f, float q3_at_f_high = 1e+5f,
@@ -318,7 +318,7 @@ private:
         return 19.5f * powf(accel_freq, 6.0f);
     }
 
-    void adaptProcessNoise(float k_hat, float alpha_f = 0.005f) {
+    void adaptProcessNoise(float k_hat, float alpha_f = 0.004f) {
         // Instantaneous wave frequency from k_hat
         float f_wave = toWaveFreq(sqrtf(fabsf(k_hat)) / TWO_PI);
 
