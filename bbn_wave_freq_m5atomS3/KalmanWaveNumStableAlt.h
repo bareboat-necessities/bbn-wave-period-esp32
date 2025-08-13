@@ -315,7 +315,7 @@ private:
 
     float toWaveFreq(float accel_freq) {
         // approximation for wave frequency estimate from acceleration frequency (for accel_freq < 1.0 Hz)
-        return 5.0f * powf(accel_freq, 4.0f);
+        return 2.0f * powf(accel_freq, 4.0f);
     }
 
     void adaptProcessNoise(float k_hat, float alpha_f = 0.004f) {
