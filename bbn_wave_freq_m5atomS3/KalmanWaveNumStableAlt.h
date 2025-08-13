@@ -236,7 +236,7 @@ public:
 
 private:
     static constexpr float FREQ_L = 0.08f;
-    static constexpr float FREQ_H = 0.3f;
+    static constexpr float FREQ_H = 0.2f;
 
     static constexpr float MIN_DELTA_T = 1e-10f; // Minimum Δt to run updates [s]
     static constexpr float MIN_SINGULAR_VALUE = 1e-12f; // Floor for smallest singular value to avoid div-by-zero
@@ -318,7 +318,7 @@ private:
         return 19.5f * powf(accel_freq, 6.0f);
     }
 
-    void adaptProcessNoise(float k_hat, float alpha_f = 0.004f) {
+    void adaptProcessNoise(float k_hat, float alpha_f = 0.005f) {
         // Instantaneous wave frequency from k_hat
         float f_wave = toWaveFreq(sqrtf(fabsf(k_hat)) / TWO_PI);
 
