@@ -235,8 +235,8 @@ public:
     }
 
 private:
-    static constexpr float FREQ_L = 0.07f;
-    static constexpr float FREQ_H = 3.0f;
+    static constexpr float FREQ_L = 0.08f;
+    static constexpr float FREQ_H = 0.3f;
 
     static constexpr float MIN_DELTA_T = 1e-10f; // Minimum Δt to run updates [s]
     static constexpr float MIN_SINGULAR_VALUE = 1e-12f; // Floor for smallest singular value to avoid div-by-zero
@@ -315,7 +315,7 @@ private:
 
     float toWaveFreq(float accel_freq) {
         // approximation for wave frequency estimate from acceleration frequency (for accel_freq < 1.0 Hz)
-        return 2.0f * powf(accel_freq, 4.0f);
+        return 19.5f * powf(accel_freq, 6.0f);
     }
 
     void adaptProcessNoise(float k_hat, float alpha_f = 0.004f) {
