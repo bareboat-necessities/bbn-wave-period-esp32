@@ -78,6 +78,11 @@ public:
     float getNarrowness() const { return nu; }   // Longuet–Higgins ν
     float getRegularity() const { return R; }    // 0–1 score (1=very regular)
 
+    float getSignificantWaveHeight() const {
+        if (M0 <= 0.0f) return 0.0f;
+        return 4.0f * std::sqrt(2.0f * M0);
+    }
+
 private:
     float tau_env;    // envelope smoothing time constant [s]
     float tau_mom;    // moment smoothing time constant [s]
