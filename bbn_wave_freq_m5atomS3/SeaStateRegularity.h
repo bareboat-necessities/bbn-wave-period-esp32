@@ -23,6 +23,7 @@ public:
         R  = std::numeric_limits<float>::quiet_NaN();
         alpha_env = 0.0f;
         alpha_mom = 0.0f;
+        last_dt = -1.0f;
     }
 
     void update(float dt_s, float accel_z, float omega_inst) {
@@ -32,6 +33,7 @@ public:
             last_dt   = dt_s;
         }
 
+        // Rotate acceleration into phase
         phi += omega_inst * dt_s;
         if (phi > 1e6f) phi -= 1e6f;
 
@@ -43,13 +45,19 @@ public:
         z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
         z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
 
-        float P = z_real * z_real + z_imag * z_imag;
-
+        // Convert acceleration to displacement-equivalent
         float w = (omega_inst > omega_min) ? omega_inst : omega_min;
-        M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P * std::pow(w, -4.0f);
-        M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P * std::pow(w, -3.0f);
-        M2 = (1.0f - alpha_mom) * M2 + alpha_mom * P * std::pow(w, -2.0f);
+        float disp_real = z_real / (w * w);
+        float disp_imag = z_imag / (w * w);
 
+        float P_disp = disp_real * disp_real + disp_imag * disp_imag;
+
+        // Update spectral moments using displacement
+        M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp;
+        M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp * w;
+        M2 = (1.0f - alpha_mom) * M2 + alpha_mom * P_disp * w * w;
+
+        // Bandwidth / regularity
         if (M1 > 1e-12f) {
             float ratio = (M0 * M2) / (M1 * M1) - 1.0f;
             if (ratio < 0.0f) ratio = 0.0f;
@@ -64,14 +72,12 @@ public:
     float getNarrowness() const { return nu; }
     float getRegularity() const { return R; }
 
-    float getSignificantWaveHeightEnvelope() const {
-        if (M0 <= 0.0f) return 0.0f;
-        return 4.0f * std::sqrt(2.0f * M0);
-    }
-
     float getSignificantWaveHeightEst() const {
         if (M0 <= 0.0f) return 0.0f;
-        float factor = significantHeightFactor(nu);
+
+        // For narrowband waves (nonlinear Gerstner/Fenton), just use factor = 1
+        float factor = (nu < 0.1f) ? 1.0f : significantHeightFactor(nu);
+
         return 2.0f * std::sqrt(M0) * factor;
     }
 
@@ -90,21 +96,13 @@ private:
     float nu;
     float R;
 
-    // Separate function to calculate correction factor based on bandwidth
     static float significantHeightFactor(float nu_val) {
-        // Thresholds for interpolation
-        constexpr float nu_min = 0.17f; // below this, treat as narrowband
-        constexpr float nu_max = 0.85f; // above this, fully broadband
-
-        // Clip nu_val to interpolation range
+        constexpr float nu_min = 0.1f;
+        constexpr float nu_max = 0.92f;
         if (!std::isfinite(nu_val) || nu_val <= nu_min) return 1.0f;
+
         float clipped_nu = std::min(nu_val, nu_max);
-
-        // Scale to 0 → 1 for smooth interpolation
         float x = (clipped_nu - nu_min) / (nu_max - nu_min);
-
-        // Smooth growth from 1.0 → sqrt(2)
-        float factor = 1.0f + (std::sqrt(2.0f) - 1.0f) * std::tanh(3.0f * x);
-        return factor;
+        return 1.0f + (std::sqrt(2.0f) - 1.0f) * std::tanh(3.0f * x);
     }
 };
