@@ -127,7 +127,7 @@ public:
     float getRegularitySpectral() const { return R_spec; }
     float getRegularityPhase() const { return R_phase; }
 
-    float getSignificantWaveHeightEst() const {
+    float getWaveHeightEnvelopeEst() const {
         if (M0 <= 0.0f || !std::isfinite(R_out)) return 0.0f;
         return 2.0f * std::sqrt(M0) * heightFactorFromR(R_out);
     }
