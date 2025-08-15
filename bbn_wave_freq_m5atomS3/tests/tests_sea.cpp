@@ -114,7 +114,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         fprintf(stderr, "Failed to open %s\n", filename.c_str());
         return;
     }
-    ofs << "time,omega_inst,narrowness,regularity\n";
+    ofs << "time,omega_inst,narrowness,regularity,significant_wave_height\n";
 
     // reset trackers
     init_filters(&arFilter, &kalman_freq);
@@ -140,9 +140,11 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             double freq = run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
             if (std::isfinite(freq)) {
                 regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
-                ofs << sim_t << "," << (2.0 * M_PI * freq) << ","
+                ofs << sim_t << ","
+                    << (2.0 * M_PI * freq) << ","
                     << regFilter.getNarrowness() << ","
-                    << regFilter.getRegularity() << "\n";
+                    << regFilter.getRegularity() << ","
+                    << regFilter.getSignificantWaveHeight() << "\n";
             }
             sim_t += DELTA_T;
         }
@@ -157,9 +159,11 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             double freq = run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
             if (std::isfinite(freq)) {
                 regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
-                ofs << sim_t << "," << (2.0 * M_PI * freq) << ","
+                ofs << sim_t << ","
+                    << (2.0 * M_PI * freq) << ","
                     << regFilter.getNarrowness() << ","
-                    << regFilter.getRegularity() << "\n";
+                    << regFilter.getRegularity() << ","
+                    << regFilter.getSignificantWaveHeight() << "\n";
             }
             sim_t += DELTA_T;
         }
@@ -181,11 +185,12 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             double freq = run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
             if (std::isfinite(freq)) {
                 regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
-                ofs << sim_t << "," << (2.0 * M_PI * freq) << ","
+                ofs << sim_t << ","
+                    << (2.0 * M_PI * freq) << ","
                     << regFilter.getNarrowness() << ","
-                    << regFilter.getRegularity() << "\n";
+                    << regFilter.getRegularity() << ","
+                    << regFilter.getSignificantWaveHeight() << "\n";
             }
-
             sim_t = time; // keep sim_t updated
         };
         fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T, callback);
