@@ -5,13 +5,14 @@
 
 class SeaStateRegularity {
 public:
-    SeaStateRegularity(float tau_env_sec   = 1.0f,
-                       float tau_mom_sec   = 60.0f,
-                       float omega_min_hz  = 0.03f,
-                       float tau_ref_sec   = 60.0f,
-                       float tau_coh_sec   = 10.0f,
-                       float tau_out_sec   = 10.0f,
-                       float tau_omega_sec = 0.0f)
+    // Tuned defaults for ocean waves (JONSWAP / Gerstner)
+    SeaStateRegularity(float tau_env_sec   = 1.0f,    // envelope smoothing ~1 s
+                       float tau_mom_sec   = 60.0f,   // spectral moments averaging
+                       float omega_min_hz  = 0.03f,   // minimum frequency (Hz)
+                       float tau_ref_sec   = 40.0f,   // reference frequency for phase path
+                       float tau_coh_sec   = 10.0f,   // phase coherence smoothing
+                       float tau_out_sec   = 10.0f,   // output smoothing
+                       float tau_omega_sec = 0.0f)    // optional omega smoothing
     {
         tau_env   = tau_env_sec;
         tau_mom   = tau_mom_sec;
@@ -99,10 +100,9 @@ public:
         R_phase = std::clamp(R_phase, 0.0f, 1.0f);
 
         // --- conservative blending ---
-        float R_lo = 0.85f;
-        float R_hi = 0.98f;
+        const float R_lo = 0.85f;
+        const float R_hi = 0.98f;
         float w_phase = smoothstep(R_spec, R_lo, R_hi);
-        // limit the max phase rescue to 0.1
         float delta = (R_phase - R_spec) * w_phase;
         if (delta > 0.1f) delta = 0.1f;
 
