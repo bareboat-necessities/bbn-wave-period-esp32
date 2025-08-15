@@ -53,6 +53,7 @@ const std::vector<WaveParameters> waveParamsList = {
 // Global trackers
 AranovskiyFilter<double> arFilter;
 KalmANF<double> kalmANF;
+KalmanSmootherVars kalman_freq;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
 // Make filename
@@ -116,8 +117,8 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     ofs << "time,omega_inst,narrowness,regularity\n";
 
     // reset trackers
-    init_filters(&arFilter, nullptr);
-    init_filters_alt(&kalmANF, nullptr);
+    init_filters(&arFilter, &kalman_freq);
+    init_filters_alt(&kalmANF, &kalman_freq);
     freqDetector.reset();
 
     std::default_random_engine rng(SEED_BASE + run_seed);
