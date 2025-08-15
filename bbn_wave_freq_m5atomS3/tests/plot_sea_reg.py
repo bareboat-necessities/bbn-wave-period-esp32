@@ -1,5 +1,3 @@
-
-
 import glob
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -9,32 +7,32 @@ import os
 # Directory where CSV files from harness are saved
 DATA_DIR = "./"   # change if needed
 
-# File pattern for SeaStateRegularity outputs
-files = glob.glob(os.path.join(DATA_DIR, "reg_*.csv"))
+# Match C++ output: regularity_<tracker>_<wave>_h<height>.csv
+# Height group allows optional trailing zeros and optional decimal point
+files = glob.glob(os.path.join(DATA_DIR, "regularity_*.csv"))
 
-# Regex to parse filenames like reg_<tracker>_<wave>_h<height>.csv
-pattern = re.compile(r"reg_(?P<tracker>[^_]+)_(?P<wave>[^_]+)_h(?P<height>[0-9.]+)\.csv")
+pattern = re.compile(
+    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)_h(?P<height>[0-9]+(?:\.[0-9]+)?)\.csv"
+)
 
 # Group files by tracker
 tracker_groups = {}
-
 for f in files:
     m = pattern.search(os.path.basename(f))
     if not m:
         print(f"Skipping unrecognized filename: {f}")
         continue
-
     tracker = m.group("tracker")
     tracker_groups.setdefault(tracker, []).append(f)
 
-# Create one figure per tracker
+# Plot
 for tracker, tracker_files in tracker_groups.items():
     plt.figure(figsize=(14, 8))
 
     for f in tracker_files:
         m = pattern.search(os.path.basename(f))
         wave   = m.group("wave")
-        height = m.group("height")
+        height = m.group("height").rstrip('0').rstrip('.')  # normalize
 
         df = pd.read_csv(f)
 
@@ -52,4 +50,3 @@ for tracker, tracker_files in tracker_groups.items():
     plt.legend(fontsize=8, ncol=3)
     plt.tight_layout()
     plt.show()
-
