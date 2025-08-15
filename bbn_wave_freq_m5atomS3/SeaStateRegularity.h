@@ -92,16 +92,10 @@ private:
 
     // Separate function to calculate correction factor based on bandwidth
     static float significantHeightFactor(float nu_val) {
-        if (!std::isfinite(nu_val) || nu_val <= 0.0f) return 1.0f; // pure sine
-        // Define ν thresholds: ν_min = 0 → pure sine, ν_max ≈ 1 → broadband
-        constexpr float nu_min = 0.0f;
-        constexpr float nu_max = 0.92f; // beyond this, full broadband factor
-    
-        float clipped_nu = std::min(std::max(nu_val, nu_min), nu_max);
-        float x = (clipped_nu - nu_min) / (nu_max - nu_min); // 0→1 scale
-    
-        // Smooth interpolation from 1.0 to sqrt(2)
-        float factor = 1.0f + (std::sqrt(2.0f) - 1.0f) * std::tanh(3.0f * x);
+        const nu_lim = 0.5f;
+        if (!std::isfinite(nu_val) || nu_val <= nu_lim) return 1.0f; // pure sine
+        // Interpolation from 1.0 to sqrt(2)
+        float factor = 1.0f + (std::sqrt(2.0f) - 1.0f) * std::tanh(3.0f * (nu_val - nu_lim));
         return factor;
     }
 };
