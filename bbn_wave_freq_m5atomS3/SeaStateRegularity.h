@@ -64,14 +64,12 @@ public:
     float getNarrowness() const { return nu; }
     float getRegularity() const { return R; }
 
-    // Original (for reference, may overestimate for sine)
-    float getSignificantWaveHeight() const {
+    float getSignificantWaveHeightEnvelope() const {
         if (M0 <= 0.0f) return 0.0f;
         return 4.0f * std::sqrt(2.0f * M0);
     }
 
-    // Corrected significant wave height
-    float getSignificantWaveHeightCorrected() const {
+    float getSignificantWaveHeightEst() const {
         if (M0 <= 0.0f) return 0.0f;
         float factor = significantHeightFactor(nu);
         return 2.0f * std::sqrt(M0) * factor;
