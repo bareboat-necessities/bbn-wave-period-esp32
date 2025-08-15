@@ -62,17 +62,17 @@ for tracker, tracker_files in tracker_groups.items():
             # Top: Regularity
             ax1.plot(df["time"], df["regularity"], label=label, alpha=0.8, color=color)
 
-            # Bottom: Significant Wave Height
+            # Bottom: Wave Height Envelope
             ax2.plot(df["time"], df["significant_wave_height"], label=label, alpha=0.8, color=color)
 
     # Formatting
     ax1.set_ylabel("Regularity score (R)")
-    ax1.set_title(f"Sea State Regularity & Significant Wave Height — {tracker} tracker")
+    ax1.set_title(f"Sea State Regularity & Wave Height Envelope — {tracker} tracker")
     ax1.grid(True, linestyle="--", alpha=0.5)
     ax1.legend(fontsize=8, ncol=3)
 
     ax2.set_xlabel("Time [s]")
-    ax2.set_ylabel("Significant Wave Height [m]")
+    ax2.set_ylabel("Wave Height Envelope [m]")
     ax2.grid(True, linestyle="--", alpha=0.5)
 
     plt.tight_layout()
