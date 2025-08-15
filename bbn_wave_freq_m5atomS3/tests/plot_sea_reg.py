@@ -34,12 +34,7 @@ for f in files:
 
 # Plot
 for tracker, tracker_files in tracker_groups.items():
-    fig, ax1 = plt.subplots(figsize=(14, 8))
-
-    # Secondary axis for SWH
-    ax2 = ax1.twinx()
-    ax2.set_ylabel("Significant Wave Height [m]")
-    ax2.tick_params(axis='y')
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
 
     # Group files by wave type for consistent colormaps
     wave_grouped = {}
@@ -61,21 +56,24 @@ for tracker, tracker_files in tracker_groups.items():
                 print(f"Skipping {f} (missing required columns)")
                 continue
 
-            # Evenly space shades between light and dark
             color = cmap(0.3 + 0.7 * idx / max(1, n_files - 1))
             label = f"{wave}-h{height}"
 
-            # Plot regularity (left axis)
+            # Top: Regularity
             ax1.plot(df["time"], df["regularity"], label=label, alpha=0.8, color=color)
 
-            # Plot SWH (right axis) with same color, dashed, lighter
-            ax2.plot(df["time"], df["significant_wave_height"], 
-                     alpha=0.6, color=color, linestyle="--")
+            # Bottom: Significant Wave Height
+            ax2.plot(df["time"], df["significant_wave_height"], label=label, alpha=0.8, color=color)
 
-    ax1.set_xlabel("Time [s]")
+    # Formatting
     ax1.set_ylabel("Regularity score (R)")
-    ax1.set_title(f"Sea State Regularity & SWH — {tracker} tracker")
+    ax1.set_title(f"Sea State Regularity & Significant Wave Height — {tracker} tracker")
     ax1.grid(True, linestyle="--", alpha=0.5)
     ax1.legend(fontsize=8, ncol=3)
-    fig.tight_layout()
+
+    ax2.set_xlabel("Time [s]")
+    ax2.set_ylabel("Significant Wave Height [m]")
+    ax2.grid(True, linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
     plt.show()
