@@ -95,20 +95,31 @@ public:
 
         R_phase = std::clamp(std::sqrt(coh_r*coh_r + coh_i*coh_i), 0.0f, 1.0f);
 
-        // --- harmonic-safe R: only rescue low R ---
+        // --- harmonic-safe R ---
         R_safe = std::max(R_spec, R_phase);
 
-        // --- smooth output ---
-        if (!std::isfinite(R_out)) R_out = R_safe;
-        else R_out = (1.0f - alpha_out) * R_out + alpha_out * R_safe;
+        // --- target R with selective boost/reduction ---
+        float R_target = R_safe;
 
-        // --- selective boost for large nonlinear waves ---
+        // Pull down JONSWAP-like moderate waves for separation
+        const float P_jonswap = 0.3f;  // typical JONSWAP threshold
+        const float reduction_max = 0.08f; // 8% max reduction
+        if (P_disp < P_jonswap) {
+            float reduce = reduction_max * (1.0f - P_disp/P_jonswap);
+            R_target = std::max(R_target - reduce, 0.0f);
+        }
+
+        // Gradually boost large nonlinear waves
         const float P_thr = 0.5f;       // threshold for "large wave"
         const float boost_max = 0.12f;  // 12% max R boost
         if (P_disp > P_thr) {
             float boost = boost_max * std::min(P_disp / P_thr, 2.0f);
-            R_out = std::clamp(R_out + boost, 0.0f, 1.0f);
+            R_target = std::min(R_target + boost, 1.0f);
         }
+
+        // --- smooth output ---
+        if (!std::isfinite(R_out)) R_out = R_target;
+        else R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target;
     }
 
     float getNarrowness() const { return nu; }
