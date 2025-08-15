@@ -74,6 +74,13 @@ public:
         M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp * omega_lp;
         M2 = (1.0f - alpha_mom) * M2 + alpha_mom * P_disp * omega_lp * omega_lp;
 
+        // --- estimate displacement frequency ---
+        float omega_disp = (M0 > 1e-12f) ? (M1 / M0) : omega_min;
+
+        // Optional: smooth it over time to reduce jitter
+        if (!std::isfinite(omega_disp_lp)) omega_disp_lp = omega_disp;
+        else omega_disp_lp = (1.0f - alpha_out) * omega_disp_lp + alpha_out * omega_disp;
+
         // --- spectral R ---
         if (M1 > 1e-12f && M0>0.0f && M2>0.0f) {
             float ratio = (M0*M2)/(M1*M1) - 1.0f;
@@ -132,9 +139,12 @@ public:
         return 2.0f * std::sqrt(M0) * heightFactorFromR(R_out);
     }
 
+    float getDisplacementFrequencyHz() const { return omega_disp_lp / (2.0f * M_PI); }
+
 private:
     float tau_env, tau_mom, tau_coh, tau_out, tau_omega;
     float omega_min;
+    float omega_disp_lp = 0.0f; // smoothed displacement frequency (rad/s)
 
     float last_dt;
     float alpha_env, alpha_mom, alpha_coh, alpha_out, alpha_omega;
