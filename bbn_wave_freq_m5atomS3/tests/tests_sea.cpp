@@ -144,7 +144,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
                     << (2.0 * M_PI * freq) << ","
                     << regFilter.getNarrowness() << ","
                     << regFilter.getRegularity() << ","
-                    << regFilter.getSignificantWaveHeight() << "\n";
+                    << regFilter.getSignificantWaveHeightEst() << "\n";
             }
             sim_t += DELTA_T;
         }
@@ -163,7 +163,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
                     << (2.0 * M_PI * freq) << ","
                     << regFilter.getNarrowness() << ","
                     << regFilter.getRegularity() << ","
-                    << regFilter.getSignificantWaveHeight() << "\n";
+                    << regFilter.getSignificantWaveHeightEst() << "\n";
             }
             sim_t += DELTA_T;
         }
@@ -189,7 +189,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
                     << (2.0 * M_PI * freq) << ","
                     << regFilter.getNarrowness() << ","
                     << regFilter.getRegularity() << ","
-                    << regFilter.getSignificantWaveHeight() << "\n";
+                    << regFilter.getSignificantWaveHeightEst() << "\n";
             }
             sim_t = time; // keep sim_t updated
         };
