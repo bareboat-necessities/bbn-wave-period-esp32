@@ -5,14 +5,14 @@
 
 class SeaStateRegularity {
 public:
-    // Tuned defaults for ocean waves (JONSWAP / Gerstner)
-    SeaStateRegularity(float tau_env_sec   = 1.0f,    // envelope smoothing ~1 s
-                       float tau_mom_sec   = 60.0f,   // spectral moments averaging
-                       float omega_min_hz  = 0.03f,   // minimum frequency (Hz)
-                       float tau_ref_sec   = 40.0f,   // reference frequency for phase path
-                       float tau_coh_sec   = 10.0f,   // phase coherence smoothing
-                       float tau_out_sec   = 10.0f,   // output smoothing
-                       float tau_omega_sec = 0.0f)    // optional omega smoothing
+    // Conservative defaults for ocean waves
+    SeaStateRegularity(float tau_env_sec   = 1.0f,
+                       float tau_mom_sec   = 60.0f,
+                       float omega_min_hz  = 0.03f,
+                       float tau_ref_sec   = 40.0f,
+                       float tau_coh_sec   = 20.0f,
+                       float tau_out_sec   = 15.0f,
+                       float tau_omega_sec = 0.0f)
     {
         tau_env   = tau_env_sec;
         tau_mom   = tau_mom_sec;
@@ -53,7 +53,7 @@ public:
             last_dt     = dt_s;
         }
 
-        // --- demodulate accel ---
+        // --- demodulate acceleration ---
         phi += omega_inst * dt_s;
         phi = std::fmod(phi, 2.0f * float(M_PI));
 
@@ -65,7 +65,7 @@ public:
         z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
         z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
 
-        // --- displacement ---
+        // --- displacement conversion ---
         float w_inst = std::max(omega_inst, omega_min);
         omega_lp = (tau_omega > 0.0f) ? ((1.0f - alpha_omega) * omega_lp + alpha_omega * w_inst) : w_inst;
         float inv_w2 = 1.0f / (omega_lp * omega_lp);
@@ -99,12 +99,12 @@ public:
         R_phase = std::sqrt(coh_r*coh_r + coh_i*coh_i);
         R_phase = std::clamp(R_phase, 0.0f, 1.0f);
 
-        // --- conservative blending ---
-        const float R_lo = 0.85f;
-        const float R_hi = 0.98f;
-        float w_phase = smoothstep(R_spec, R_lo, R_hi);
+        // --- conservative phase rescue ---
+        const float R_start = 0.85f;  // phase boost starts
+        const float R_end   = 0.97f;  // phase can fully assist
+        float w_phase = smoothstep(R_spec, R_start, R_end);
         float delta = (R_phase - R_spec) * w_phase;
-        if (delta > 0.1f) delta = 0.1f;
+        delta = std::max(0.0f, std::min(delta, 0.08f)); // max 0.08
 
         float R_blend = R_spec + delta;
 
