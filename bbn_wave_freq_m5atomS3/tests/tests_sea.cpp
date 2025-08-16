@@ -84,17 +84,12 @@ static Wave_Sample sample_jonswap(double t, Jonswap3dGerstnerWaves<N>& model) {
 }
 
 template<int ORD=4>
-static Wave_Sample sample_fenton(double t, WaveSurfaceTracker<ORD>& tracker, double& last_time) {
+static Wave_Sample sample_fenton(WaveSurfaceTracker<ORD>& tracker) {
     Wave_Sample s{};
-    float start_time = static_cast<float>(last_time);
-    float end_time   = static_cast<float>(t);
-
-    tracker.track_floating_object(end_time - start_time, DELTA_T,
+    tracker.track_floating_object(DELTA_T, DELTA_T,
         [&](float time, float dt, float elevation, float velocity, float acceleration, float x, float vx){
-            s.accel_z = acceleration; // capture last acceleration in the interval
+            s.accel_z = acceleration; // capture latest acceleration
         });
-
-    last_time = t;
     return s;
 }
 
@@ -149,7 +144,6 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     std::optional<FentonWave<4>> fenton_wave;
     std::optional<WaveSurfaceTracker<4>> fenton_tracker;
 
-    double last_fenton_time = 0.0;
     std::function<Wave_Sample(double)> sample_func;
 
     if (waveType == WaveType::GERSTNER) {
@@ -167,7 +161,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
                             fenton_params.length, fenton_params.initial_x);
         fenton_tracker.emplace(fenton_params.height, fenton_params.depth,
                                fenton_params.length, fenton_params.initial_x, 5.0f, 0.1f);
-        sample_func = [&](double t){ return sample_fenton(t, *fenton_tracker, last_fenton_time); };
+        sample_func = [&](double){ return sample_fenton(*fenton_tracker); };
     }
 
     // --- Warmup ---
@@ -179,20 +173,11 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     }
 
     // --- Main loop ---
-    if (waveType != WaveType::FENTON) {
-        for (int i=0; i<total_steps; ++i) {
-            auto samp = sample_func(sim_t);
-            float noisy_accel = samp.accel_z + bias + gauss(rng);
-            process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
-            sim_t += DELTA_T;
-        }
-    } else {
-        fenton_tracker->track_floating_object(TEST_DURATION_S, DELTA_T,
-            [&](float time, float dt, float elevation, float velocity, float acceleration, float x, float vx){
-                float noisy_accel = acceleration + bias + gauss(rng);
-                process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
-                sim_t = time;
-            });
+    for (int i=0; i<total_steps; ++i) {
+        auto samp = sample_func(sim_t);
+        float noisy_accel = samp.accel_z + bias + gauss(rng);
+        process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
+        sim_t += DELTA_T;
     }
 
     ofs.close();
