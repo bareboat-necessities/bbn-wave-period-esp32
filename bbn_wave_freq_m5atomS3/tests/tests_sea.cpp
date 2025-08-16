@@ -86,10 +86,14 @@ static Wave_Sample sample_jonswap(double t, Jonswap3dGerstnerWaves<N>& model) {
 template<int ORD=4>
 static Wave_Sample sample_fenton(double t, WaveSurfaceTracker<ORD>& tracker, double& last_time) {
     Wave_Sample s{};
-    tracker.track_floating_object(t - last_time, DELTA_T,
+    float start_time = static_cast<float>(last_time);
+    float end_time   = static_cast<float>(t);
+
+    tracker.track_floating_object(end_time - start_time, DELTA_T,
         [&](float time, float dt, float elevation, float velocity, float acceleration, float x, float vx){
-            s.accel_z = acceleration;
+            s.accel_z = acceleration; // capture last acceleration in the interval
         });
+
     last_time = t;
     return s;
 }
@@ -120,7 +124,6 @@ static void process_sample(float noisy_accel, double sim_t, TrackerType tracker,
     }
 }
 
-// --- Scenario runner ---
 static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveParameters& wp, unsigned run_seed) {
     std::string filename = make_filename(tracker, waveType, wp.height);
     std::ofstream ofs(filename);
