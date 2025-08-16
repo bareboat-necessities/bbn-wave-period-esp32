@@ -178,6 +178,14 @@ private:
         float y_real = accel_z * c;
         float y_imag = accel_z * s;
 
+        // --- first-sample seeding ---
+        if (!std::isfinite(omega_lp)) {
+            z_real = y_real;
+            z_imag = y_imag;
+            omega_lp = std::max(omega_inst, omega_min);
+            return; // skip EMA update on first sample
+        }
+
         z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
         z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
 
