@@ -38,10 +38,10 @@ public:
     constexpr static float EPSILON   = 1e-12f;                     // small number for stability
     constexpr static float HEIGHT_R_HI = 0.98f;                    // upper bound for height factor
     constexpr static float HEIGHT_R_LO = 0.50f;                    // lower bound for height factor
-    constexpr static float JONSWAP_THRESHOLD = 0.3f;              // moderate wave threshold
-    constexpr static float JONSWAP_REDUCTION_MAX = 0.08f;         // max reduction for moderate waves
-    constexpr static float LARGE_WAVE_THRESHOLD = 0.5f;           // threshold for large nonlinear waves
-    constexpr static float LARGE_WAVE_BOOST_MAX = 0.12f;          // max R boost
+    constexpr static float JONSWAP_THRESHOLD = 0.3f;               // moderate wave threshold
+    constexpr static float JONSWAP_REDUCTION_MAX = 0.08f;          // max reduction for moderate waves
+    constexpr static float LARGE_WAVE_THRESHOLD = 0.5f;            // threshold for large nonlinear waves
+    constexpr static float LARGE_WAVE_BOOST_MAX = 0.12f;           // max R boost
 
     /**
      * @brief Constructor
@@ -81,8 +81,10 @@ public:
 
         coh_r = 1.0f;
         coh_i = 0.0f;
-        omega_lp = omega_min;
-        omega_disp_lp = 0.0f;
+
+        // frequency-related -> start as NaN to allow seeding on first update
+        omega_lp     = std::numeric_limits<float>::quiet_NaN();
+        omega_disp_lp = std::numeric_limits<float>::quiet_NaN();
     }
 
     /**
@@ -97,6 +99,12 @@ public:
         if (!std::isfinite(omega_inst)) omega_inst = omega_min;
 
         updateAlpha(dt_s);
+
+        // --- seed frequency on first valid sample ---
+        if (!std::isfinite(omega_lp)) {
+            omega_lp      = std::max(omega_inst, omega_min);
+            omega_disp_lp = omega_lp;
+        }
 
         demodulateAcceleration(accel_z, omega_inst, dt_s);
         updateSpectralMoments();
@@ -192,13 +200,23 @@ private:
         float disp_imag = z_imag * inv_w2;
         float P_disp = disp_real*disp_real + disp_imag*disp_imag;
 
-        M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp;
-        M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp * omega_lp;
-        M2 = (1.0f - alpha_mom) * M2 + alpha_mom * P_disp * omega_lp * omega_lp;
+        // --- initialize moments on first use ---
+        if (M0 == 0.0f && M1 == 0.0f && M2 == 0.0f) {
+            M0 = P_disp;
+            M1 = P_disp * omega_lp;
+            M2 = P_disp * omega_lp * omega_lp;
+        } else {
+            M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp;
+            M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp * omega_lp;
+            M2 = (1.0f - alpha_mom) * M2 + alpha_mom * P_disp * omega_lp * omega_lp;
+        }
 
         float omega_disp = (M0 > EPSILON) ? (M1 / M0) : omega_min;
-        if (!std::isfinite(omega_disp_lp)) omega_disp_lp = omega_disp;
-        else omega_disp_lp = (1.0f - alpha_out) * omega_disp_lp + alpha_out * omega_disp;
+
+        if (!std::isfinite(omega_disp_lp))
+            omega_disp_lp = omega_disp;
+        else
+            omega_disp_lp = (1.0f - alpha_out) * omega_disp_lp + alpha_out * omega_disp;
     }
 
     // ----------------------
@@ -220,7 +238,7 @@ private:
     // ----------------------
     void computeRegularityOutput() {
         // spectral R
-        if (M1 > EPSILON && M0>0.0f && M2>0.0f) {
+        if (M1 > EPSILON && M0 > 0.0f && M2 > 0.0f) {
             float ratio = (M0*M2)/(M1*M1) - 1.0f;
             ratio = std::max(0.0f, ratio);
             nu = std::sqrt(ratio);
@@ -251,8 +269,11 @@ private:
             R_target = std::min(R_target + boost, 1.0f);
         }
 
-        if (!std::isfinite(R_out)) R_out = R_target;
-        else R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target;
+        // --- initialize R_out from R_phase for smoother startup ---
+        if (!std::isfinite(R_out)) 
+            R_out = R_phase;
+        else
+            R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target;
     }
 
     // ----------------------
