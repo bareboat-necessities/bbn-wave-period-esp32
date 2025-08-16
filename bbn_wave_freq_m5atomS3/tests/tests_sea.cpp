@@ -29,7 +29,7 @@
 static constexpr float SAMPLE_RATE_HZ = 240.0f;
 static constexpr float DELTA_T = 1.0f / SAMPLE_RATE_HZ;
 static constexpr float TEST_DURATION_S = 5 * 60.0f;
-static constexpr float WARMUP_SEC = 0.5f;   // warmup 0.5 s
+static constexpr float WARMUP_SEC = 0.5f;
 static constexpr unsigned SEED_BASE = 239u;
 static constexpr float NOISE_STDDEV = 0.08f;
 static constexpr float BIAS_MEAN = 0.1f;
@@ -58,8 +58,7 @@ KalmANF<double> kalmANF;
 KalmanSmootherVars kalman_freq;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
-// --- Helpers ---
-
+// Filename helper
 static std::string make_filename(TrackerType tr, WaveType wt, float height) {
     std::string trackerName = (tr == TrackerType::ARANOVSKIY) ? "aranovskiy" :
                               (tr == TrackerType::KALMANF) ? "kalmANF" : "zerocrossing";
@@ -71,6 +70,7 @@ static std::string make_filename(TrackerType tr, WaveType wt, float height) {
     return std::string(buf);
 }
 
+// --- Wave Sample ---
 struct Wave_Sample { float accel_z; };
 
 static Wave_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
@@ -79,7 +79,7 @@ static Wave_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
 
 template<int N=256>
 static Wave_Sample sample_jonswap(double t, Jonswap3dGerstnerWaves<N> &model) {
-    auto state = model.getLagrangianState(0.0f,0.0f, static_cast<float>(t));
+    auto state = model.getLagrangianState(0.0f, 0.0f, static_cast<float>(t));
     return { state.acceleration.z() };
 }
 
@@ -93,23 +93,27 @@ static Wave_Sample sample_fenton(double t, WaveSurfaceTracker<ORD> &tracker) {
     return s;
 }
 
+// --- Tracker ---
 static double run_tracker_once(TrackerType tracker, float a_norm, float dt, uint32_t now_us) {
+    double freq = std::numeric_limits<double>::quiet_NaN();
     if (tracker == TrackerType::ARANOVSKIY)
-        return estimate_freq(Aranovskiy, &arFilter, &kalmANF, &freqDetector, a_norm, a_norm, dt, now_us);
+        freq = estimate_freq(Aranovskiy, &arFilter, &kalmANF, &freqDetector, a_norm, a_norm, dt, now_us);
     else if (tracker == TrackerType::KALMANF)
-        return estimate_freq(Kalm_ANF, &arFilter, &kalmANF, &freqDetector, a_norm, a_norm, dt, now_us);
+        freq = estimate_freq(Kalm_ANF, &arFilter, &kalmANF, &freqDetector, a_norm, a_norm, dt, now_us);
     else
-        return estimate_freq(ZeroCrossing, &arFilter, &kalmANF, &freqDetector, a_norm, a_norm, dt, now_us);
+        freq = estimate_freq(ZeroCrossing, &arFilter, &kalmANF, &freqDetector, a_norm, a_norm, dt, now_us);
+    return freq;
 }
 
+// --- Process ---
 static void process_sample(float noisy_accel, double sim_t, TrackerType tracker,
                            SeaStateRegularity& regFilter, std::ofstream& ofs) {
     float a_norm = noisy_accel / 9.81f;
-    double freq = run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
+    double freq = run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t*1e6));
     if (std::isfinite(freq)) {
-        regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
+        regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0*M_PI*freq));
         ofs << sim_t << ","
-            << (2.0 * M_PI * freq) << ","
+            << (2.0*M_PI*freq) << ","
             << regFilter.getNarrowness() << ","
             << regFilter.getRegularity() << ","
             << regFilter.getWaveHeightEnvelopeEst() << ","
@@ -117,6 +121,7 @@ static void process_sample(float noisy_accel, double sim_t, TrackerType tracker,
     }
 }
 
+// --- Scenario Runner ---
 static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveParameters &wp, unsigned run_seed) {
     std::string filename = make_filename(tracker, waveType, wp.height);
     std::ofstream ofs(filename);
@@ -136,7 +141,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
     int warmup_steps = static_cast<int>(std::ceil(WARMUP_SEC * SAMPLE_RATE_HZ));
 
-    // Local wave objects
+    // --- Wave objects ---
     TrochoidalWave<float> trocho(0,1,0);
     Jonswap3dGerstnerWaves<256> jonswap_model(0,1,0,0,0,0,9.81f,1.0f);
     FentonWave<4> fenton_wave(0,0,0,0);
@@ -153,11 +158,11 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         sample_func = [&](double t){ return sample_jonswap(t, jonswap_model); };
     } else if (waveType == WaveType::FENTON) {
         auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
-            wp.height, 200.0f, 2.0f*M_PI*wp.freqHz, wp.phase);
-        fenton_wave = FentonWave<4>(fenton_params.height, fenton_params.depth,
-                                    fenton_params.length, fenton_params.initial_x);
-        fenton_tracker = WaveSurfaceTracker<4>(fenton_params.height, fenton_params.depth,
-                                               fenton_params.length, fenton_params.initial_x,
+            wp.height, 200.0f, 2.0*M_PI*wp.freqHz, wp.phase);
+        fenton_wave = FentonWave<4>(fenton_params.height,fenton_params.depth,
+                                    fenton_params.length,fenton_params.initial_x);
+        fenton_tracker = WaveSurfaceTracker<4>(fenton_params.height,fenton_params.depth,
+                                               fenton_params.length,fenton_params.initial_x,
                                                5.0f,0.1f);
         sample_func = [&](double t){ return sample_fenton(t, fenton_tracker); };
     }
@@ -170,7 +175,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         sim_t += DELTA_T;
     }
 
-    // --- Main loop ---
+    // --- Main Loop ---
     if (waveType != WaveType::FENTON) {
         for (int i=0; i<total_steps; ++i) {
             auto samp = sample_func(sim_t);
@@ -191,6 +196,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     printf("Wrote %s\n", filename.c_str());
 }
 
+// --- Main ---
 int main() {
     unsigned run_idx = 0;
     for (const auto& wp : waveParamsList) {
