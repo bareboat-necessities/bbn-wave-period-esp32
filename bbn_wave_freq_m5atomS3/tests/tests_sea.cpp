@@ -132,7 +132,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     }
     ofs << "time,omega_inst,narrowness,regularity,significant_wave_height,disp_freq_hz\n";
 
-    // Reset trackers
+    // --- Reset trackers ---
     init_filters(&arFilter, &kalman_freq);
     init_filters_alt(&kalmANF, &kalman_freq);
     freqDetector.reset();
@@ -143,21 +143,37 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
 
     SeaStateRegularity regFilter;
     double sim_t = 0.0;
-    int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
 
-    // --- Generic sampling lambda ---
-    std::function<Wave_Sample(double)> sample_func;
+    // --- Setup generic sample callback ---
+    std::function<void(float, float, float, float, float, float, float)> step_callback;
 
     if (waveType == WaveType::GERSTNER) {
         float period = 1.0f / wp.freqHz;
         TrochoidalWave<float> trocho(wp.height, period, wp.phase);
-        sample_func = [&](double t){ return sample_gerstner(t, trocho); };
+        step_callback = [&](float time, float dt, float, float, float accel_z, float, float){
+            float noisy_accel = accel_z + bias + gauss(rng);
+            process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
+            sim_t = time;
+        };
+        for (int step = 0; step < static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ)); ++step) {
+            auto s = sample_gerstner(sim_t, trocho);
+            step_callback(sim_t, DELTA_T, 0, 0, s.accel_z, 0, 0);
+            sim_t += DELTA_T;
+        }
     }
     else if (waveType == WaveType::JONSWAP) {
         float period = 1.0f / wp.freqHz;
-        Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, period, wp.direction,
-                                                  0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
-        sample_func = [&](double t){ return sample_jonswap(t, jonswap_model); };
+        Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
+        step_callback = [&](float time, float dt, float, float, float accel_z, float, float){
+            float noisy_accel = accel_z + bias + gauss(rng);
+            process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
+            sim_t = time;
+        };
+        for (int step = 0; step < static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ)); ++step) {
+            auto s = sample_jonswap(sim_t, jonswap_model);
+            step_callback(sim_t, DELTA_T, 0, 0, s.accel_z, 0, 0);
+            sim_t += DELTA_T;
+        }
     }
     else if (waveType == WaveType::FENTON) {
         auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
@@ -168,49 +184,22 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
                                              fenton_params.length, fenton_params.initial_x,
                                              5.0f, 0.1f);
 
-        // Special sample_func for Fenton uses track_floating_object_step
-        sample_func = [&](double t){
-            Wave_Sample s{};
-            fenton_tracker.track_floating_object_step(t, [&](float time, float dt, float elevation,
-                                                             float velocity, float acceleration,
-                                                             float x, float vx){
-                s.accel_z = acceleration;
-                sim_t = time;
-            });
-            return s;
-        };
-    }
-
-    // --- Warmup frequency trackers ---
-    for (int step = 0; step < WARMUP_STEPS; ++step) {
-        auto samp = sample_func(sim_t);
-        float a_norm = samp.accel_z / 9.81f;
-        run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
-        sim_t += DELTA_T;
-    }
-
-    // --- Main simulation loop ---
-    if (waveType != WaveType::FENTON) {
-        for (int step = 0; step < total_steps; ++step) {
-            auto samp = sample_func(sim_t);
-            float noisy_accel = samp.accel_z + bias + gauss(rng);
+        step_callback = [&](float time, float dt, float, float, float acceleration, float, float){
+            float noisy_accel = acceleration + bias + gauss(rng);
             process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
-            sim_t += DELTA_T;
-        }
-    } else {
-        // Fenton uses track_floating_object callback
-        auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
-            wp.height, 200.0f, 2.0f * M_PI * wp.freqHz, wp.phase);
-        WaveSurfaceTracker<4> fenton_tracker(fenton_params.height, fenton_params.depth,
-                                             fenton_params.length, fenton_params.initial_x,
-                                             5.0f, 0.1f);
+            sim_t = time;
+        };
 
-        fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T,
+        // --- Warmup frequency tracker ---
+        fenton_tracker.track_floating_object(WARMUP_SECONDS, DELTA_T,
             [&](float time, float dt, float elevation, float velocity, float acceleration, float x, float vx){
-                float noisy_accel = acceleration + bias + gauss(rng);
-                process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
+                float a_norm = acceleration / 9.81f;
+                run_tracker_once(tracker, a_norm, dt, static_cast<uint32_t>(time*1e6));
                 sim_t = time;
             });
+
+        // --- Main simulation loop ---
+        fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T, step_callback);
     }
 
     ofs.close();
