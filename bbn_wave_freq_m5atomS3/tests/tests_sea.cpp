@@ -146,6 +146,28 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
 
     int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
 
+    // --- Prepare first noisy sample for warmup ---
+    float first_noisy_accel = 0.0f;
+    if (waveType == WaveType::GERSTNER) {
+        TrochoidalWave<float> trocho(wp.height, 1.0f / wp.freqHz, wp.phase);
+        first_noisy_accel = sample_gerstner(0.0, trocho).accel_z + bias + gauss(rng);
+    } else if (waveType == WaveType::JONSWAP) {
+        Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, 1.0f / wp.freqHz, wp.direction, 0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
+        first_noisy_accel = sample_jonswap(0.0, jonswap_model).accel_z + bias + gauss(rng);
+    } else if (waveType == WaveType::FENTON) {
+        auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(wp.height, 200.0f, 2.0f * M_PI * wp.freqHz, wp.phase);
+        FentonWave<4> fenton_wave(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x);
+        first_noisy_accel = fenton_wave.surfaceVerticalAcceleration(0.0f) + bias + gauss(rng);
+    }
+
+    // --- Warmup frequency tracker for a few steps ---
+    static constexpr int WARMUP_STEPS = 10;
+    for (int i = 0; i < WARMUP_STEPS; ++i) {
+        float a_norm = first_noisy_accel / 9.81f;
+        run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
+    }
+
+    // --- Main sample loop ---
     if (waveType == WaveType::GERSTNER) {
         float period = 1.0f / wp.freqHz;
         TrochoidalWave<float> trocho(wp.height, period, wp.phase);
