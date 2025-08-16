@@ -145,15 +145,6 @@ static Wave_Sample sample_jonswap(const WaveParameters &p, double t, Jonswap3dGe
     return s;
 }
 
-template<int ORD=4>
-static Wave_Sample sample_fenton(const WaveParameters &p, double t, FentonWave<ORD> &fenton) {
-    Wave_Sample s;
-    s.accel_z = fenton.surfaceVerticalAcceleration(static_cast<float>(t));
-    s.vel_z = fenton.surfaceVerticalSpeed(static_cast<float>(t));
-    s.elev = fenton.surfaceElevation(static_cast<float>(t));
-    return s;
-}
-
 static std::pair<double,bool> run_tracker_once(TrackerType tracker, float a_norm, float a_raw, float dt) {
     double freq = FREQ_GUESS;
     if (tracker == TrackerType::ARANOVSKIY) {
