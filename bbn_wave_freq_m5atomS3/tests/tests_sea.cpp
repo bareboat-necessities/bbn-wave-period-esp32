@@ -118,7 +118,8 @@ static void process_sample(float noisy_accel, double sim_t, TrackerType tracker,
             << (2.0 * M_PI * freq) << ","
             << regFilter.getNarrowness() << ","
             << regFilter.getRegularity() << ","
-            << regFilter.getWaveHeightEnvelopeEst() << "\n";
+            << regFilter.getWaveHeightEnvelopeEst() << ","
+            << regFilter.getDisplacementFrequencyHz() << "\n";
     }
 }
 
@@ -129,7 +130,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         fprintf(stderr, "Failed to open %s\n", filename.c_str());
         return;
     }
-    ofs << "time,omega_inst,narrowness,regularity,significant_wave_height\n";
+    ofs << "time,omega_inst,narrowness,regularity,significant_wave_height,disp_freq_hz\n";
 
     // reset trackers
     init_filters(&arFilter, &kalman_freq);
