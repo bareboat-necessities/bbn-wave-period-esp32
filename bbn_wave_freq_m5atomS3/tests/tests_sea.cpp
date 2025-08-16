@@ -132,7 +132,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     }
     ofs << "time,omega_inst,narrowness,regularity,significant_wave_height,disp_freq_hz\n";
 
-    // reset trackers
+    // Reset trackers
     init_filters(&arFilter, &kalman_freq);
     init_filters_alt(&kalmANF, &kalman_freq);
     freqDetector.reset();
@@ -143,69 +143,76 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
 
     SeaStateRegularity regFilter;
     double sim_t = 0.0;
-
     int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
 
-    // --- Prepare first noisy sample for warmup ---
-    float first_noisy_accel = 0.0f;
-    if (waveType == WaveType::GERSTNER) {
-        TrochoidalWave<float> trocho(wp.height, 1.0f / wp.freqHz, wp.phase);
-        first_noisy_accel = sample_gerstner(0.0, trocho).accel_z + bias + gauss(rng);
-    } else if (waveType == WaveType::JONSWAP) {
-        Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, 1.0f / wp.freqHz, wp.direction, 0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
-        first_noisy_accel = sample_jonswap(0.0, jonswap_model).accel_z + bias + gauss(rng);
-    } else if (waveType == WaveType::FENTON) {
-        auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(wp.height, 200.0f, 2.0f * M_PI * wp.freqHz, wp.phase);
-        FentonWave<4> fenton_wave(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x);
-        first_noisy_accel = fenton_wave.surfaceVerticalAcceleration(0.0f) + bias + gauss(rng);
-    }
+    // --- Generic sampling lambda ---
+    std::function<Wave_Sample(double)> sample_func;
 
-    // --- Warmup frequency tracker for a few steps ---
-    static constexpr int WARMUP_STEPS = 10;
-    for (int i = 0; i < WARMUP_STEPS; ++i) {
-        float a_norm = first_noisy_accel / 9.81f;
-        run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
-    }
-
-    // --- Main sample loop ---
     if (waveType == WaveType::GERSTNER) {
         float period = 1.0f / wp.freqHz;
         TrochoidalWave<float> trocho(wp.height, period, wp.phase);
-        for (int step = 0; step < total_steps; ++step) {
-            auto samp = sample_gerstner(sim_t, trocho);
-            float noisy_accel = samp.accel_z + bias + gauss(rng);
-            process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
-            sim_t += DELTA_T;
-        }
+        sample_func = [&](double t){ return sample_gerstner(t, trocho); };
     }
     else if (waveType == WaveType::JONSWAP) {
         float period = 1.0f / wp.freqHz;
-        Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
+        Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, period, wp.direction,
+                                                  0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
+        sample_func = [&](double t){ return sample_jonswap(t, jonswap_model); };
+    }
+    else if (waveType == WaveType::FENTON) {
+        auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
+            wp.height, 200.0f, 2.0f * M_PI * wp.freqHz, wp.phase);
+        FentonWave<4> fenton_wave(fenton_params.height, fenton_params.depth,
+                                  fenton_params.length, fenton_params.initial_x);
+        WaveSurfaceTracker<4> fenton_tracker(fenton_params.height, fenton_params.depth,
+                                             fenton_params.length, fenton_params.initial_x,
+                                             5.0f, 0.1f);
+
+        // Special sample_func for Fenton uses track_floating_object_step
+        sample_func = [&](double t){
+            Wave_Sample s{};
+            fenton_tracker.track_floating_object_step(t, [&](float time, float dt, float elevation,
+                                                             float velocity, float acceleration,
+                                                             float x, float vx){
+                s.accel_z = acceleration;
+                sim_t = time;
+            });
+            return s;
+        };
+    }
+
+    // --- Warmup frequency trackers ---
+    for (int step = 0; step < WARMUP_STEPS; ++step) {
+        auto samp = sample_func(sim_t);
+        float a_norm = samp.accel_z / 9.81f;
+        run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
+        sim_t += DELTA_T;
+    }
+
+    // --- Main simulation loop ---
+    if (waveType != WaveType::FENTON) {
         for (int step = 0; step < total_steps; ++step) {
-            auto samp = sample_jonswap(sim_t, jonswap_model);
+            auto samp = sample_func(sim_t);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
             process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
             sim_t += DELTA_T;
         }
+    } else {
+        // Fenton uses track_floating_object callback
+        auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
+            wp.height, 200.0f, 2.0f * M_PI * wp.freqHz, wp.phase);
+        WaveSurfaceTracker<4> fenton_tracker(fenton_params.height, fenton_params.depth,
+                                             fenton_params.length, fenton_params.initial_x,
+                                             5.0f, 0.1f);
+
+        fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T,
+            [&](float time, float dt, float elevation, float velocity, float acceleration, float x, float vx){
+                float noisy_accel = acceleration + bias + gauss(rng);
+                process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
+                sim_t = time;
+            });
     }
-    else if (waveType == WaveType::FENTON) {
-        auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(wp.height, 200.0f, 2.0f * M_PI * wp.freqHz, wp.phase);
-        FentonWave<4> fenton_wave(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x);
-        WaveSurfaceTracker<4> fenton_tracker(
-            fenton_params.height,
-            fenton_params.depth,
-            fenton_params.length,
-            fenton_params.initial_x,
-            5.0f,    // mass (kg)
-            0.1f     // drag coeff
-        );
-        auto callback = [&](float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float x, float vx) {
-            float noisy_accel = vertical_acceleration + bias + gauss(rng);
-            process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
-            sim_t = time; // keep sim_t updated
-        };
-        fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T, callback);
-    }
+
     ofs.close();
     printf("Wrote %s\n", filename.c_str());
 }
