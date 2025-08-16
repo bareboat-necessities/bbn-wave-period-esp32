@@ -125,16 +125,15 @@ public:
     float getDisplacementFrequencyHz() const { return omega_disp_lp / (2.0f * M_PI); }
 
 private:
-    // Member variables
     float tau_env, tau_mom, tau_coh, tau_out, tau_omega;
     float omega_min;
     float last_dt;
 
     float alpha_env, alpha_mom, alpha_coh, alpha_out, alpha_omega;
 
-    float phi;       // phase of demodulation
-    float z_real;    // demodulated displacement real part
-    float z_imag;    // demodulated displacement imaginary part
+    float phi;        // phase of demodulation
+    float z_real;     // demodulated displacement real part
+    float z_imag;     // demodulated displacement imaginary part
 
     float M0, M1, M2;  // spectral moments
     float nu;          // spectral narrowness
@@ -143,9 +142,9 @@ private:
     float R_safe;      // max(R_spec, R_phase)
     float R_out;       // smoothed output regularity
 
-    float coh_r, coh_i;     // phase coherence accumulator
-    float omega_lp;         // smoothed instantaneous frequency
-    float omega_disp_lp;    // smoothed displacement frequency
+    float coh_r, coh_i;   // phase coherence accumulator
+    float omega_lp;       // smoothed instantaneous frequency
+    float omega_disp_lp;  // smoothed displacement frequency
 
     // Helper: compute smoothing coefficients
     void updateAlpha(float dt_s) {
