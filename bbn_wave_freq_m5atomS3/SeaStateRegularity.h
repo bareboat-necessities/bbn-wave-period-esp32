@@ -32,12 +32,10 @@
  */
 class SeaStateRegularity {
 public:
-    // ----------------------
     // Configurable constants
-    // ----------------------
-    constexpr static float EPSILON   = 1e-12f;                     // small number for stability
-    constexpr static float HEIGHT_R_HI = 0.98f;                    // upper bound for height factor
-    constexpr static float HEIGHT_R_LO = 0.50f;                    // lower bound for height factor
+    constexpr static float EPSILON = 1e-12f;                      // small number for stability
+    constexpr static float HEIGHT_R_HI = 0.98f;                   // upper bound for height factor
+    constexpr static float HEIGHT_R_LO = 0.50f;                   // lower bound for height factor
     constexpr static float JONSWAP_THRESHOLD = 0.3f;              // moderate wave threshold
     constexpr static float JONSWAP_REDUCTION_MAX = 0.08f;         // max reduction for moderate waves
     constexpr static float LARGE_WAVE_THRESHOLD = 0.5f;           // threshold for large nonlinear waves
@@ -106,9 +104,7 @@ public:
         computeRegularityOutput();
     }
 
-    // ----------------------
     // Getters
-    // ----------------------
     float getNarrowness() const { return nu; }
     float getRegularity() const { return R_out; }
     float getRegularitySpectral() const { return R_spec; }
@@ -129,9 +125,7 @@ public:
     float getDisplacementFrequencyHz() const { return omega_disp_lp / (2.0f * M_PI); }
 
 private:
-    // ----------------------
     // Member variables
-    // ----------------------
     float tau_env, tau_mom, tau_coh, tau_out, tau_omega;
     float omega_min;
     float last_dt;
@@ -153,9 +147,7 @@ private:
     float omega_lp;         // smoothed instantaneous frequency
     float omega_disp_lp;    // smoothed displacement frequency
 
-    // ----------------------
     // Helper: compute smoothing coefficients
-    // ----------------------
     void updateAlpha(float dt_s) {
         if (dt_s == last_dt) return;
         alpha_env   = 1.0f - std::exp(-dt_s / tau_env);
@@ -166,9 +158,7 @@ private:
         last_dt = dt_s;
     }
 
-    // ----------------------
     // Helper: demodulate acceleration to approximate displacement
-    // ----------------------
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
         phi += omega_inst * dt_s;
         phi = std::fmod(phi, 2.0f * float(M_PI));
@@ -178,7 +168,7 @@ private:
         float y_real = accel_z * c;
         float y_imag = accel_z * s;
 
-        // --- first-sample seeding ---
+        // first-sample seeding
         if (!std::isfinite(omega_lp)) {
             z_real = y_real;
             z_imag = y_imag;
@@ -195,16 +185,14 @@ private:
                    : w_inst;
     }
 
-    // ----------------------
     // Helper: update spectral moments (M0, M1, M2)
-    // ----------------------
     void updateSpectralMoments() {
         float inv_w2 = 1.0f / (omega_lp * omega_lp);
         float disp_real = z_real * inv_w2;
         float disp_imag = z_imag * inv_w2;
         float P_disp = disp_real*disp_real + disp_imag*disp_imag;
 
-        // --- first-sample seeding ---
+        // first-sample seeding
         if (std::isnan(M0)) {
             M0 = P_disp;
             M1 = P_disp * omega_lp;
@@ -220,9 +208,7 @@ private:
         else omega_disp_lp = (1.0f - alpha_out) * omega_disp_lp + alpha_out * omega_disp;
     }
 
-    // ----------------------
     // Helper: compute phase coherence
-    // ----------------------
     void updatePhaseCoherence() {
         float mag = std::sqrt(z_real*z_real + z_imag*z_imag);
         float u_r = (mag > EPSILON) ? z_real / mag : 1.0f;
@@ -234,9 +220,7 @@ private:
         R_phase = std::clamp(std::sqrt(coh_r*coh_r + coh_i*coh_i), 0.0f, 1.0f);
     }
 
-    // ----------------------
     // Helper: compute final regularity with boosts/reductions
-    // ----------------------
     void computeRegularityOutput() {
         // spectral R
         if (M1 > EPSILON && M0>0.0f && M2>0.0f) {
@@ -270,14 +254,12 @@ private:
             R_target = std::min(R_target + boost, 1.0f);
         }
 
-        // --- first-sample seeding for R_out ---
+        // first-sample seeding for R_out
         if (!std::isfinite(R_out)) R_out = R_target;
         else R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target;
     }
 
-    // ----------------------
     // Helper: map regularity R to height factor
-    // ----------------------
     static float heightFactorFromR(float R_val) {
         if (!std::isfinite(R_val) || R_val >= HEIGHT_R_HI) return 1.0f;
         if (R_val <= HEIGHT_R_LO) return std::sqrt(2.0f);
