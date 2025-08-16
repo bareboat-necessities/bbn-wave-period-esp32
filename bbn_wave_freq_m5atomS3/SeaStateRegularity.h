@@ -73,21 +73,17 @@ public:
      */
     void reset() {
         phi = z_real = z_imag = 0.0f;
-
-        // spectral moments start as NaN, will be seeded from first sample
         M0 = M1 = M2 = std::numeric_limits<float>::quiet_NaN();
-
-        // regularity measures
         nu = R_spec = R_phase = R_safe = R_out = std::numeric_limits<float>::quiet_NaN();
 
+        alpha_env = alpha_mom = alpha_coh = alpha_out = alpha_omega = 0.0f;
         last_dt = -1.0f;
 
-        // phase coherence accumulator
         coh_r = 1.0f;
         coh_i = 0.0f;
 
         // frequency-related -> start as NaN to allow seeding on first update
-        omega_lp     = std::numeric_limits<float>::quiet_NaN();
+        omega_lp      = std::numeric_limits<float>::quiet_NaN();
         omega_disp_lp = std::numeric_limits<float>::quiet_NaN();
     }
 
@@ -102,82 +98,11 @@ public:
         if (!std::isfinite(accel_z)) accel_z = 0.0f;
         if (!std::isfinite(omega_inst)) omega_inst = omega_min;
 
-        // update smoothing coefficients
         updateAlpha(dt_s);
-
-        // demodulate acceleration to approximate displacement
         demodulateAcceleration(accel_z, omega_inst, dt_s);
-
-        // instantaneous displacement power
-        float inv_w2 = 1.0f / (omega_inst * omega_inst);
-        float disp_real = z_real * inv_w2;
-        float disp_imag = z_imag * inv_w2;
-        float P_disp = disp_real*disp_real + disp_imag*disp_imag;
-
-        // ----------------------------
-        // Update spectral moments with first-sample seeding
-        // ----------------------------
-        if (std::isnan(M0)) {
-            M0 = P_disp;
-            M1 = P_disp * omega_inst;
-            M2 = P_disp * omega_inst * omega_inst;
-        } else {
-            M0 += alpha_mom * (P_disp - M0);
-            M1 += alpha_mom * (P_disp*omega_inst - M1);
-            M2 += alpha_mom * (P_disp*omega_inst*omega_inst - M2);
-        }
-
-        // ----------------------------
-        // Smoothed displacement frequency
-        // ----------------------------
-        float omega_disp = (M0 > EPSILON) ? (M1 / M0) : omega_min;
-        if (std::isnan(omega_disp_lp)) omega_disp_lp = omega_disp;
-        else omega_disp_lp = (1.0f - alpha_out) * omega_disp_lp + alpha_out * omega_disp;
-
-        // ----------------------------
-        // Phase coherence update
-        // ----------------------------
-        float mag = std::sqrt(z_real*z_real + z_imag*z_imag);
-        float u_r = (mag > EPSILON) ? z_real / mag : 1.0f;
-        float u_i = (mag > EPSILON) ? z_imag / mag : 0.0f;
-        coh_r = (1.0f - alpha_coh) * coh_r + alpha_coh * u_r;
-        coh_i = (1.0f - alpha_coh) * coh_i + alpha_coh * u_i;
-        R_phase = std::clamp(std::sqrt(coh_r*coh_r + coh_i*coh_i), 0.0f, 1.0f);
-
-        // ----------------------------
-        // Spectral regularity and smoothed output R
-        // ----------------------------
-        float R_spec_local = 0.0f;
-        if (M1 > EPSILON && M0>0.0f && M2>0.0f) {
-            float ratio = (M0*M2)/(M1*M1) - 1.0f;
-            ratio = std::max(0.0f, ratio);
-            nu = std::sqrt(ratio);
-            R_spec_local = std::clamp(std::exp(-nu), 0.0f, 1.0f);
-        } else {
-            nu = 0.0f;
-        }
-        R_safe = std::max(R_spec_local, R_phase);
-
-        // ----------------------------
-        // Adjust R for moderate/large nonlinear waves
-        // ----------------------------
-        float R_target = R_safe;
-
-        // reduce R for moderate JONSWAP-like waves
-        if (P_disp < JONSWAP_THRESHOLD) {
-            float reduce = JONSWAP_REDUCTION_MAX * (1.0f - P_disp / JONSWAP_THRESHOLD);
-            R_target = std::max(R_target - reduce, 0.0f);
-        }
-
-        // boost R for large nonlinear waves
-        if (P_disp > LARGE_WAVE_THRESHOLD) {
-            float boost = LARGE_WAVE_BOOST_MAX * std::min(P_disp / LARGE_WAVE_THRESHOLD, 2.0f);
-            R_target = std::min(R_target + boost, 1.0f);
-        }
-
-        // smoothed output with first-sample seeding
-        if (std::isnan(R_out)) R_out = R_target;
-        else R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target;
+        updateSpectralMoments();
+        updatePhaseCoherence();
+        computeRegularityOutput();
     }
 
     // ----------------------
@@ -256,7 +181,89 @@ private:
         z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
 
         float w_inst = std::max(omega_inst, omega_min);
-        omega_lp = (tau_omega > 0.0f) ? ((1.0f - alpha_omega) * omega_lp + alpha_omega * w_inst) : w_inst;
+        omega_lp = (tau_omega > 0.0f)
+                   ? ((std::isfinite(omega_lp) ? (1.0f - alpha_omega) * omega_lp : 0.0f) + alpha_omega * w_inst)
+                   : w_inst;
+    }
+
+    // ----------------------
+    // Helper: update spectral moments (M0, M1, M2)
+    // ----------------------
+    void updateSpectralMoments() {
+        float inv_w2 = 1.0f / (omega_lp * omega_lp);
+        float disp_real = z_real * inv_w2;
+        float disp_imag = z_imag * inv_w2;
+        float P_disp = disp_real*disp_real + disp_imag*disp_imag;
+
+        // --- first-sample seeding ---
+        if (std::isnan(M0)) {
+            M0 = P_disp;
+            M1 = P_disp * omega_lp;
+            M2 = P_disp * omega_lp * omega_lp;
+        } else {
+            M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp;
+            M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp * omega_lp;
+            M2 = (1.0f - alpha_mom) * M2 + alpha_mom * P_disp * omega_lp * omega_lp;
+        }
+
+        float omega_disp = (M0 > EPSILON) ? (M1 / M0) : omega_min;
+        if (!std::isfinite(omega_disp_lp)) omega_disp_lp = omega_disp;
+        else omega_disp_lp = (1.0f - alpha_out) * omega_disp_lp + alpha_out * omega_disp;
+    }
+
+    // ----------------------
+    // Helper: compute phase coherence
+    // ----------------------
+    void updatePhaseCoherence() {
+        float mag = std::sqrt(z_real*z_real + z_imag*z_imag);
+        float u_r = (mag > EPSILON) ? z_real / mag : 1.0f;
+        float u_i = (mag > EPSILON) ? z_imag / mag : 0.0f;
+
+        coh_r = (1.0f - alpha_coh) * coh_r + alpha_coh * u_r;
+        coh_i = (1.0f - alpha_coh) * coh_i + alpha_coh * u_i;
+
+        R_phase = std::clamp(std::sqrt(coh_r*coh_r + coh_i*coh_i), 0.0f, 1.0f);
+    }
+
+    // ----------------------
+    // Helper: compute final regularity with boosts/reductions
+    // ----------------------
+    void computeRegularityOutput() {
+        // spectral R
+        if (M1 > EPSILON && M0>0.0f && M2>0.0f) {
+            float ratio = (M0*M2)/(M1*M1) - 1.0f;
+            ratio = std::max(0.0f, ratio);
+            nu = std::sqrt(ratio);
+            R_spec = std::clamp(std::exp(-nu), 0.0f, 1.0f);
+        } else {
+            nu = 0.0f;
+            R_spec = 0.0f;
+        }
+
+        R_safe = std::max(R_spec, R_phase);
+
+        float inv_w2 = 1.0f / (omega_lp * omega_lp);
+        float disp_real = z_real * inv_w2;
+        float disp_imag = z_imag * inv_w2;
+        float P_disp = disp_real*disp_real + disp_imag*disp_imag;
+
+        float R_target = R_safe;
+
+        // reduce R for moderate waves (JONSWAP)
+        if (P_disp < JONSWAP_THRESHOLD) {
+            float reduce = JONSWAP_REDUCTION_MAX * (1.0f - P_disp / JONSWAP_THRESHOLD);
+            R_target = std::max(R_target - reduce, 0.0f);
+        }
+
+        // boost R for large nonlinear waves
+        if (P_disp > LARGE_WAVE_THRESHOLD) {
+            float boost = LARGE_WAVE_BOOST_MAX * std::min(P_disp / LARGE_WAVE_THRESHOLD, 2.0f);
+            R_target = std::min(R_target + boost, 1.0f);
+        }
+
+        // --- first-sample seeding for R_out ---
+        if (!std::isfinite(R_out)) R_out = R_target;
+        else R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target;
     }
 
     // ----------------------
