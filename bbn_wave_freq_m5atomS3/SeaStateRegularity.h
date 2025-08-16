@@ -99,6 +99,7 @@ public:
         if (!std::isfinite(omega_inst)) omega_inst = omega_min;
 
         updateAlpha(dt_s);
+
         demodulateAcceleration(accel_z, omega_inst, dt_s);
         updateSpectralMoments();
         updatePhaseCoherence();
