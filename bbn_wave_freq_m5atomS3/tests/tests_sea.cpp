@@ -1,15 +1,15 @@
+#include <optional>
+#include <functional>
+#include <random>
+#include <fstream>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
-#include <cstdint>
-#include <fstream>
-#include <string>
 #include <vector>
-#include <random>
 #include <limits>
-#include <functional>
+#include <string>
 #include <iomanip>
 
+// Include your headers
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "FrequencySmoother.h"
@@ -44,31 +44,11 @@ struct WaveParameters {
     float direction;
 };
 
-const std::vector<WaveParameters> waveParamsList = {
-    {1.0f/3.0f,  0.135f, static_cast<float>(M_PI/3.0), 30.0f},
-    {1.0f/5.7f,  0.75f,  static_cast<float>(M_PI/3.0), 30.0f},
-    {1.0f/8.5f,  2.0f,   static_cast<float>(M_PI/3.0), 30.0f},
-    {1.0f/11.4f, 4.25f,  static_cast<float>(M_PI/3.0), 30.0f},
-    {1.0f/14.3f, 7.4f,   static_cast<float>(M_PI/3.0), 30.0f}
-};
-
 // Global trackers
 AranovskiyFilter<double> arFilter;
 KalmANF<double> kalmANF;
 KalmanSmootherVars kalman_freq;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
-
-// Make filename
-static std::string make_filename(TrackerType tr, WaveType wt, float height) {
-    std::string trackerName = (tr == TrackerType::ARANOVSKIY) ? "aranovskiy" :
-                              (tr == TrackerType::KALMANF) ? "kalmANF" : "zerocrossing";
-    std::string waveName = (wt == WaveType::GERSTNER) ? "gerstner" :
-                           (wt == WaveType::JONSWAP) ? "jonswap" : "fenton";
-    char buf[128];
-    std::snprintf(buf, sizeof(buf), "regularity_%s_%s_h%.3f.csv",
-                  trackerName.c_str(), waveName.c_str(), height);
-    return std::string(buf);
-}
 
 // Wave sample struct
 struct Wave_Sample { float accel_z; };
@@ -122,7 +102,19 @@ static void process_sample(float noisy_accel, double sim_t, TrackerType tracker,
     }
 }
 
-// Scenario runner
+// Make filename
+static std::string make_filename(TrackerType tr, WaveType wt, float height) {
+    std::string trackerName = (tr == TrackerType::ARANOVSKIY) ? "aranovskiy" :
+                              (tr == TrackerType::KALMANF) ? "kalmANF" : "zerocrossing";
+    std::string waveName = (wt == WaveType::GERSTNER) ? "gerstner" :
+                           (wt == WaveType::JONSWAP) ? "jonswap" : "fenton";
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "regularity_%s_%s_h%.3f.csv",
+                  trackerName.c_str(), waveName.c_str(), height);
+    return std::string(buf);
+}
+
+// --- Scenario runner ---
 static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveParameters &wp, unsigned run_seed) {
     std::string filename = make_filename(tracker, waveType, wp.height);
     std::ofstream ofs(filename);
@@ -142,14 +134,17 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
     int warmup_steps = static_cast<int>(std::ceil(WARMUP_SEC * SAMPLE_RATE_HZ));
 
-    // Local wave objects (declare only)
-    TrochoidalWave<float> trocho;
-    Jonswap3dGerstnerWaves<256> jonswap_model;
-    FentonWave<4> fenton_wave;
-    WaveSurfaceTracker<4> fenton_tracker;
+    // Optional Fenton objects
+    std::optional<FentonWave<4>> fenton_wave;
+    std::optional<WaveSurfaceTracker<4>> fenton_tracker;
+
+    // Local wave objects for Gerstner and Jonswap
+    TrochoidalWave<float> trocho(0,1,0);
+    Jonswap3dGerstnerWaves<256> jonswap_model(0,1,0,0,0,0,9.81f,1.0f);
 
     // Sample function
     std::function<Wave_Sample(double)> sample_func;
+
     if (waveType == WaveType::GERSTNER) {
         float period = 1.0f / wp.freqHz;
         trocho = TrochoidalWave<float>(wp.height, period, wp.phase);
@@ -161,12 +156,12 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     } else if (waveType == WaveType::FENTON) {
         auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
             wp.height, 200.0f, 2.0f*M_PI*wp.freqHz, wp.phase);
-        fenton_wave = FentonWave<4>(fenton_params.height, fenton_params.depth,
-                                    fenton_params.length, fenton_params.initial_x);
-        fenton_tracker = WaveSurfaceTracker<4>(fenton_params.height, fenton_params.depth,
-                                               fenton_params.length, fenton_params.initial_x,
-                                               5.0f,0.1f);
-        sample_func = [&](double t){ return sample_fenton(t, fenton_tracker); };
+        fenton_wave.emplace(fenton_params.height, fenton_params.depth,
+                            fenton_params.length, fenton_params.initial_x);
+        fenton_tracker.emplace(fenton_params.height, fenton_params.depth,
+                               fenton_params.length, fenton_params.initial_x,
+                               5.0f, 0.1f);
+        sample_func = [&](double t){ return sample_fenton(t, *fenton_tracker); };
     }
 
     // --- Warmup ---
@@ -186,7 +181,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             sim_t += DELTA_T;
         }
     } else {
-        fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T,
+        fenton_tracker->track_floating_object(TEST_DURATION_S, DELTA_T,
             [&](float time, float dt, float elevation, float velocity, float acceleration, float x, float vx){
                 float noisy_accel = acceleration + bias + gauss(rng);
                 process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
@@ -196,17 +191,4 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
 
     ofs.close();
     printf("Wrote %s\n", filename.c_str());
-}
-
-int main() {
-    unsigned run_idx = 0;
-    for (const auto& wp : waveParamsList) {
-        for (int wt=0; wt<3; ++wt) {
-            for (int tr=0; tr<3; ++tr) {
-                run_one_scenario(static_cast<WaveType>(wt), static_cast<TrackerType>(tr), wp, run_idx++);
-            }
-        }
-    }
-    printf("All SeaStateRegularity runs complete.\n");
-    return 0;
 }
