@@ -107,6 +107,21 @@ static double run_tracker_once(TrackerType tracker, float a_norm, float dt, uint
     return freq;
 }
 
+// Process a single sample
+static void process_sample(float noisy_accel, double sim_t, TrackerType tracker,
+                          SeaStateRegularity& regFilter, std::ofstream& ofs) {
+    float a_norm = noisy_accel / 9.81f;
+    double freq = run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
+    if (std::isfinite(freq)) {
+        regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
+        ofs << sim_t << ","
+            << (2.0 * M_PI * freq) << ","
+            << regFilter.getNarrowness() << ","
+            << regFilter.getRegularity() << ","
+            << regFilter.getWaveHeightEnvelopeEst() << "\n";
+    }
+}
+
 static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveParameters &wp, unsigned run_seed) {
     std::string filename = make_filename(tracker, waveType, wp.height);
     std::ofstream ofs(filename);
@@ -136,16 +151,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_gerstner(sim_t, trocho);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
-            float a_norm = noisy_accel / 9.81f;
-            double freq = run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
-            if (std::isfinite(freq)) {
-                regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
-                ofs << sim_t << ","
-                    << (2.0 * M_PI * freq) << ","
-                    << regFilter.getNarrowness() << ","
-                    << regFilter.getRegularity() << ","
-                    << regFilter.getWaveHeightEnvelopeEst() << "\n";
-            }
+            process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
             sim_t += DELTA_T;
         }
     }
@@ -155,16 +161,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_jonswap(sim_t, jonswap_model);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
-            float a_norm = noisy_accel / 9.81f;
-            double freq = run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
-            if (std::isfinite(freq)) {
-                regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
-                ofs << sim_t << ","
-                    << (2.0 * M_PI * freq) << ","
-                    << regFilter.getNarrowness() << ","
-                    << regFilter.getRegularity() << ","
-                    << regFilter.getWaveHeightEnvelopeEst() << "\n";
-            }
+            process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
             sim_t += DELTA_T;
         }
     }
@@ -181,16 +178,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         );
         auto callback = [&](float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float x, float vx) {
             float noisy_accel = vertical_acceleration + bias + gauss(rng);
-            float a_norm = noisy_accel / 9.81f;
-            double freq = run_tracker_once(tracker, a_norm, DELTA_T, static_cast<uint32_t>(sim_t * 1e6));
-            if (std::isfinite(freq)) {
-                regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
-                ofs << sim_t << ","
-                    << (2.0 * M_PI * freq) << ","
-                    << regFilter.getNarrowness() << ","
-                    << regFilter.getRegularity() << ","
-                    << regFilter.getWaveHeightEnvelopeEst() << "\n";
-            }
+            process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
             sim_t = time; // keep sim_t updated
         };
         fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T, callback);
