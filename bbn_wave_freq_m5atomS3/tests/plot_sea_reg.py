@@ -87,7 +87,7 @@ for tracker, tracker_files in tracker_groups.items():
             # Middle: Wave Height Envelope
             ax2.plot(df["time"], df["significant_wave_height"], label=label, alpha=0.8, color=color)
 
-            # Bottom: Displacement Frequency
+            # Bottom: Displacement Frequency (log scale)
             ax3.plot(df["time"], df["disp_freq_hz"], label=label, alpha=0.8, color=color)
 
             # Add target frequency line
@@ -106,8 +106,9 @@ for tracker, tracker_files in tracker_groups.items():
     ax2.grid(True, linestyle="--", alpha=0.5)
 
     ax3.set_xlabel("Time [s]")
-    ax3.set_ylabel("Displacement Frequency [Hz]")
-    ax3.grid(True, linestyle="--", alpha=0.5)
+    ax3.set_ylabel("Displacement Frequency [Hz] (log scale)")
+    ax3.set_yscale("log")
+    ax3.grid(True, linestyle="--", alpha=0.5, which="both")  # include minor ticks for log scale
 
     plt.tight_layout()
     plt.show()
