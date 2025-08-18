@@ -31,7 +31,6 @@ static constexpr float TEST_DURATION_S = 5 * 60.0f;   // seconds per run
 static constexpr unsigned SEED_BASE = 239u;
 static constexpr float NOISE_STDDEV = 0.08f;
 static constexpr float BIAS_MEAN = 0.1f;      // m/s^2 bias added to accel
-static constexpr float g_std = 9.81f;
 
 enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3 };
 enum class TrackerType { ARANOVSKIY=0, KALMANF=1, ZEROCROSS=2 };
