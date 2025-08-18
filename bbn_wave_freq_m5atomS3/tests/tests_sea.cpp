@@ -191,9 +191,9 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T, callback);
     }
     else if (waveType == WaveType::PMSTOKES) {
-        PiersonMoskowitzSpectrum pm_wave(wp.height, wp.freqHz, wp.direction);
+        PMStokesN3dWaves<256,5> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02, 0.8, g_std, 15.0, SEED_BASE+run_seed);
         for (int step = 0; step < total_steps; ++step) {
-            auto samp = sample_pmstokes(sim_t, pm_wave);
+            Wave_Sample samp = sample_pmstokes(wp, sim_t, model);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
             process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
             sim_t += DELTA_T;
