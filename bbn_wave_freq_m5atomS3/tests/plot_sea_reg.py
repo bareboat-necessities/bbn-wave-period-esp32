@@ -18,9 +18,9 @@ pattern = re.compile(
 # Map wave type to base color
 wave_colors = {
     "fenton": "Blues",
-    "gerstner": "Greens",
+    "gerstner": "Reds",
     "jonswap": "Oranges",
-    "pmstokes": "Purples"
+    "pmstokes": "Greens"
 }
 
 # Map wave type & height to target frequency
