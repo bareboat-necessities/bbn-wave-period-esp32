@@ -19,7 +19,8 @@ pattern = re.compile(
 wave_colors = {
     "fenton": "Blues",
     "gerstner": "Greens",
-    "jonswap": "Oranges"
+    "jonswap": "Oranges",
+    "pmstokes": "Purples"
 }
 
 # Map wave type & height to target frequency
@@ -40,6 +41,11 @@ wave_target_freq = {
     ("fenton", "2"):       1.0/8.5,
     ("fenton", "4.25"):    1.0/11.4,
     ("fenton", "7.4"):     1.0/14.3,
+    ("pmstokes", "0.135"): 1.0/3.0,
+    ("pmstokes", "0.75"):  1.0/5.7,
+    ("pmstokes", "2"):     1.0/8.5,
+    ("pmstokes", "4.25"):  1.0/11.4,
+    ("pmstokes", "7.4"):   1.0/14.3,
 }
 
 # Group files by tracker
