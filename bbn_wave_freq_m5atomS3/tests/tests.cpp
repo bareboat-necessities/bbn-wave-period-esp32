@@ -8,6 +8,7 @@
 
 #define FENTON_TEST
 #define JONSWAP_TEST
+#define PM_STOKES_TEST
 #define KALMAN_WAVE_DIRECTION_TEST
 
 #include <cmath>
@@ -218,6 +219,10 @@ int main(int argc, char *argv[]) {
     };
     tracker.track_floating_object(test_duration, delta_t, kinematics_callback);
   }
+
+#ifdef PM_STOKES_TEST
+  PMStokes_testWavePatterns();
+#endif
 
 #ifdef JONSWAP_TEST
   Jonswap_testWavePatterns();
