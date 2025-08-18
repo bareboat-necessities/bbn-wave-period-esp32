@@ -22,7 +22,7 @@
 #include "Jonswap3D_Waves.h"
 #include "FentonWaveVectorized.h"
 #include "WaveSurfaceProfile.h"
-#include "PMStokesN3dWaves.h"
+#include "PiersonMoskowitzStokes3D_Waves.h"
 
 // Configuration
 static constexpr float SAMPLE_RATE_HZ = 240.0f;
