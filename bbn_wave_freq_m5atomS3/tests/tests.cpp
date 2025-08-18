@@ -28,6 +28,7 @@
 #include "FentonWaveVectorized.h"
 #include "WaveSurfaceProfile.h"
 #include "Jonswap3D_Waves.h"
+#include "PiersonMoskowitzStokes3D_Waves.h"
 
 enum TestType {
   GERSTEN = -1,
