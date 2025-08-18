@@ -294,6 +294,6 @@ void generateWavePMStokesCSV(const std::string& filename,
 void PMStokes_testWavePatterns() {
     generateWavePMStokesCSV("short_pms_waves.csv", 0.5, 3.0, 30.0);
     generateWavePMStokesCSV("medium_pms_waves.csv", 2.0, 7.0, 30.0);
-    generateWavePMStokesCSV("long_pms_waves.csv", 4.0, 12.0, 30.0);
+    generateWavePMStokesCSV("long_pms_waves.csv", 7.4, 14.3, 30.0);
 }
 #endif
