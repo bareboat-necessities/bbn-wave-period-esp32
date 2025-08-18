@@ -22,6 +22,7 @@
 #include "Jonswap3D_Waves.h"
 #include "FentonWaveVectorized.h"
 #include "WaveSurfaceProfile.h"
+#include "PMStokesN3dWaves.h"
 
 // Configuration
 static constexpr float SAMPLE_RATE_HZ = 240.0f;
@@ -30,15 +31,24 @@ static constexpr float TEST_DURATION_S = 5 * 60.0f;   // seconds per run
 static constexpr unsigned SEED_BASE = 239u;
 static constexpr float NOISE_STDDEV = 0.08f;
 static constexpr float BIAS_MEAN = 0.1f;      // m/s^2 bias added to accel
+static constexpr float g_std = 9.81f;
 
-enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2 };
+enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3 };
 enum class TrackerType { ARANOVSKIY=0, KALMANF=1, ZEROCROSS=2 };
 
 static std::string make_filename(TrackerType tr, WaveType wt, float height) {
     std::string trackerName = (tr == TrackerType::ARANOVSKIY) ? "aranovskiy" :
                               (tr == TrackerType::KALMANF) ? "kalmANF" : "zerocrossing";
-    std::string waveName = (wt == WaveType::GERSTNER) ? "gerstner" :
-                           (wt == WaveType::JONSWAP) ? "jonswap" : "fenton";
+
+    std::string waveName;
+    switch (wt) {
+        case WaveType::GERSTNER:   waveName = "gerstner"; break;
+        case WaveType::JONSWAP:    waveName = "jonswap"; break;
+        case WaveType::FENTON:     waveName = "fenton"; break;
+        case WaveType::PMSTOKES:   waveName = "pmstokes"; break;
+        default:                   waveName = "unknown"; break;
+    }
+
     char buf[128];
     std::snprintf(buf, sizeof(buf), "%s_%s_h%.3f.csv", trackerName.c_str(), waveName.c_str(), height);
     return std::string(buf);
@@ -48,7 +58,7 @@ struct WaveParameters {
     float freqHz;    // true frequency (Hz)
     float height;    // amplitude (m)
     float phase;     // radians
-    float direction; // degrees (used for JONSWAP)
+    float direction; // degrees (used for JONSWAP / PM)
 };
 
 const std::vector<WaveParameters> waveParamsList = {
@@ -59,19 +69,16 @@ const std::vector<WaveParameters> waveParamsList = {
     {1.0f/14.3f, 7.4f,   static_cast<float>(M_PI/3.0), 30.0f}
 };
 
+// Trackers
 AranovskiyFilter<double> arFilter;
 KalmANF<double> kalmANF;
 FrequencySmoother<float> freqSmoother;
 KalmanSmootherVars kalman_freq; // used for smoothing outputs (per-run reset)
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
-// current sim time (per run)
 static double sim_t = 0.0;
-
-// get time in microseconds
 static uint32_t now_us() { return static_cast<uint32_t>(sim_t * 1e6); }
 
-// Initialize trackers
 static void init_tracker_backends() {
     init_filters(&arFilter, &kalman_freq);
     init_filters_alt(&kalmANF, &kalman_freq);
@@ -118,14 +125,13 @@ static void write_csv_line(std::ofstream &ofs,
     ofs << (updated ? 1 : 0) << "\n";
 }
 
-// Wave_Sample struct
 struct Wave_Sample {
     float accel_z;
     float vel_z;
     float elev;
 };
 
-// Sample functions
+// Sampling functions
 static Wave_Sample sample_gerstner(const WaveParameters &p, double t, TrochoidalWave<float> &wave_obj) {
     Wave_Sample s;
     (void)p;
@@ -145,6 +151,17 @@ static Wave_Sample sample_jonswap(const WaveParameters &p, double t, Jonswap3dGe
     return s;
 }
 
+template<int N=256, int ORDER=5>
+static Wave_Sample sample_pmstokes(const WaveParameters &p, double t, PMStokesN3dWaves<N, ORDER> &model) {
+    Wave_Sample s;
+    auto state = model.getLagrangianState(t);
+    s.accel_z = state.acceleration.z();
+    s.vel_z = state.velocity.z();
+    s.elev = state.displacement.z();
+    return s;
+}
+
+// Tracker execution
 static std::pair<double,bool> run_tracker_once(TrackerType tracker, float a_norm, float a_raw, float dt) {
     double freq = FREQ_GUESS;
     if (tracker == TrackerType::ARANOVSKIY) {
@@ -158,13 +175,11 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker, float a_norm
     return { freq, updated };
 }
 
+// Run single scenario
 static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveParameters &wp, unsigned run_seed) {
     std::string filename = make_filename(tracker, waveType, wp.height);
     std::ofstream ofs(filename);
-    if (!ofs.is_open()) {
-        fprintf(stderr, "Failed to open %s\n", filename.c_str());
-        return;
-    }
+    if (!ofs.is_open()) { fprintf(stderr, "Failed to open %s\n", filename.c_str()); return; }
     write_csv_header(ofs);
     reset_run_state();
 
@@ -175,23 +190,16 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
     kalm_smoother_first = true;
 
-    // Common per-sample processing lambda
     auto process_sample = [&](float noisy_accel, float dt, double current_time) {
         float a_norm = noisy_accel / g_std;
         auto [est_freq, updated] = run_tracker_once(tracker, a_norm, noisy_accel, dt);
         double true_f = wp.freqHz;
         float smooth_freq = std::numeric_limits<float>::quiet_NaN();
         if (!std::isnan(est_freq) && updated) {
-            if (kalm_smoother_first) {
-                kalm_smoother_first = false;
-                freqSmoother.setInitial(est_freq);
-                smooth_freq = est_freq;
-            } else {
-                smooth_freq = freqSmoother.update(est_freq);
-            }
+            if (kalm_smoother_first) { kalm_smoother_first=false; freqSmoother.setInitial(est_freq); smooth_freq=est_freq; }
+            else smooth_freq = freqSmoother.update(est_freq);
         }
-        if (!std::isnan(smooth_freq))
-            smooth_freq = clamp_freq(smooth_freq);
+        if (!std::isnan(smooth_freq)) smooth_freq = clamp_freq(smooth_freq);
         double error = std::isnan(est_freq) ? std::numeric_limits<double>::quiet_NaN() : (est_freq - true_f);
         double smooth_error = std::isnan(smooth_freq) ? std::numeric_limits<double>::quiet_NaN() : (smooth_freq - true_f);
         double abs_error = std::isnan(error) ? std::numeric_limits<double>::quiet_NaN() : std::fabs(error);
@@ -199,10 +207,10 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         write_csv_line(ofs, current_time, true_f, est_freq, smooth_freq, error, smooth_error, abs_error, abs_smooth_error, updated);
     };
 
+    int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
+
     if (waveType == WaveType::GERSTNER) {
-        float period = 1.0f / wp.freqHz;
-        TrochoidalWave<float> trocho(wp.height, period, wp.phase);
-        int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
+        TrochoidalWave<float> trocho(wp.height, 1.0f / wp.freqHz, wp.phase);
         for (int step = 0; step < total_steps; ++step) {
             Wave_Sample samp = sample_gerstner(wp, sim_t, trocho);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
@@ -210,34 +218,33 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             sim_t += DELTA_T;
         }
     } else if (waveType == WaveType::JONSWAP) {
-        float period = 1.0f / wp.freqHz;
-        Jonswap3dGerstnerWaves<256> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 3.3f, g_std, 15.0f);
-        int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
+        Jonswap3dGerstnerWaves<256> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02f, 0.8f, 3.3f, g_std, 15.0f);
         for (int step = 0; step < total_steps; ++step) {
-            Wave_Sample samp = sample_jonswap(wp, sim_t, jonswap_model);
+            Wave_Sample samp = sample_jonswap(wp, sim_t, model);
+            float noisy_accel = samp.accel_z + bias + gauss(rng);
+            process_sample(noisy_accel, DELTA_T, sim_t);
+            sim_t += DELTA_T;
+        }
+    } else if (waveType == WaveType::PMSTOKES) {
+        PMStokesN3dWaves<256,5> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02, 0.8, g_std, 15.0, SEED_BASE+run_seed);
+        for (int step = 0; step < total_steps; ++step) {
+            Wave_Sample samp = sample_pmstokes(wp, sim_t, model);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
             process_sample(noisy_accel, DELTA_T, sim_t);
             sim_t += DELTA_T;
         }
     } else if (waveType == WaveType::FENTON) {
-        auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(wp.height, 200.0f, 2.0f * M_PI * wp.freqHz, wp.phase);
+        auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(wp.height, 200.0f, 2.0f*M_PI*wp.freqHz, wp.phase);
         FentonWave<4> fenton_wave(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x);
-        WaveSurfaceTracker<4> fenton_tracker(
-            fenton_params.height,
-            fenton_params.depth,
-            fenton_params.length,
-            fenton_params.initial_x,
-            5.0f,    // mass (kg)
-            0.1f     // drag coeff
-        );
-        auto callback = [&](float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float x, float vx) {
+        WaveSurfaceTracker<4> fenton_tracker(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x, 5.0f, 0.1f);
+        auto callback = [&](float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float x, float vx){
             float noisy_accel = vertical_acceleration + bias + gauss(rng);
             process_sample(noisy_accel, dt, time);
-
-            sim_t = time; // keep sim_t updated
+            sim_t = time;
         };
         fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T, callback);
     }
+
     ofs.close();
     printf("Wrote %s\n", filename.c_str());
 }
@@ -245,11 +252,11 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
     init_tracker_backends();
-    
+
     unsigned run_idx = 0;
     for (const auto& wp : waveParamsList) {
-        for (int wt = 0; wt < 3; ++wt) {
-            for (int tr = 0; tr < 3; ++tr) {
+        for (int wt = 0; wt <= 3; ++wt) { // GERSTNER, JONSWAP, FENTON, PMSTOKES
+            for (int tr = 0; tr < 3; ++tr) { // ARANOVSKIY, KALMANF, ZEROCROSS
                 reset_run_state();
                 init_filters(&arFilter, &kalman_freq);
                 init_filters_alt(&kalmANF, &kalman_freq);
@@ -260,6 +267,7 @@ int main(int argc, char **argv) {
             }
         }
     }
+
     printf("All runs complete.\n");
     return 0;
 }
