@@ -11,7 +11,6 @@
 #include <algorithm>
 
 /*
-  PMStokesN3dWaves:
   - Stochastic linear combination of Stokes-N harmonics (deep water) driven
     by a Pierson–Moskowitz spectrum.
   - ORDER: 1..5 (number of Stokes terms)
