@@ -259,3 +259,41 @@ private:
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, omega_, k_, A1_, phi_, df_;
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
 };
+
+#ifdef PM_STOKES_TEST
+#include <fstream>
+#include <string>
+
+void generateWavePMStokesCSV(const std::string& filename,
+                             double Hs, double Tp, double mean_dir_deg,
+                             double duration = 40.0, double dt = 0.005) {
+
+    PMStokesN3dWaves<256, 3> waveModel(
+        Hs, Tp, mean_dir_deg, 0.02, 0.8, 9.81, 15.0, 239u
+    );
+
+    std::ofstream file(filename);
+    file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z\n";
+
+    const double x0 = 0.0, y0 = 0.0;
+    for (double t = 0.0; t <= duration; t += dt) {
+        auto state = waveModel.getLagrangianState(t);
+        file << t << ","
+             << state.displacement.x() << ","
+             << state.displacement.y() << ","
+             << state.displacement.z() << ","
+             << state.velocity.x() << ","
+             << state.velocity.y() << ","
+             << state.velocity.z() << ","
+             << state.acceleration.x() << ","
+             << state.acceleration.y() << ","
+             << state.acceleration.z() << "\n";
+    }
+}
+
+void PMStokes_testWavePatterns() {
+    generateWavePMStokesCSV("short_pms_waves.csv", 0.5, 3.0, 30.0);
+    generateWavePMStokesCSV("medium_pms_waves.csv", 2.0, 7.0, 30.0);
+    generateWavePMStokesCSV("long_pms_waves.csv", 4.0, 12.0, 30.0);
+}
+#endif
