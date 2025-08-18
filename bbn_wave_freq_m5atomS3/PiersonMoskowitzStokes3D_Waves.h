@@ -112,7 +112,7 @@ private:
 // ==============================
 // PMStokesN3dWaves
 // ==============================
-template<int N_FREQ = 256, int ORDER = 3>
+template<int N_FREQ = 256, int ORDER = 5>
 class PMStokesN3dWaves {
     static_assert(ORDER >= 1 && ORDER <= 5, "ORDER supported range is 1..5");
 
@@ -268,7 +268,7 @@ void generateWavePMStokesCSV(const std::string& filename,
                              double Hs, double Tp, double mean_dir_deg,
                              double duration = 40.0, double dt = 0.005) {
 
-    PMStokesN3dWaves<256, 3> waveModel(
+    PMStokesN3dWaves<256, 5> waveModel(
         Hs, Tp, mean_dir_deg, 0.02, 0.8, 9.81, 15.0, 239u
     );
 
