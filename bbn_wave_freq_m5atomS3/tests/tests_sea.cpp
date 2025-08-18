@@ -74,7 +74,6 @@ static std::string make_filename(TrackerType tr, WaveType wt, float height) {
     return std::string(buf);
 }
 
-// Sampling helpers
 struct Wave_Sample {
     float accel_z;
 };
@@ -98,8 +97,6 @@ static Wave_Sample sample_pmstokes(const WaveParameters &p, double t, PMStokesN3
     Wave_Sample s;
     auto state = model.getLagrangianState(t);
     s.accel_z = state.acceleration.z();
-    s.vel_z = state.velocity.z();
-    s.elev = state.displacement.z();
     return s;
 }
 
@@ -196,7 +193,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     else if (waveType == WaveType::PMSTOKES) {
         PiersonMoskowitzSpectrum pm_wave(wp.height, wp.freqHz, wp.direction);
         for (int step = 0; step < total_steps; ++step) {
-            auto samp = sample_pm(sim_t, pm_wave);
+            auto samp = sample_pmstokes(sim_t, pm_wave);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
             process_sample(noisy_accel, sim_t, tracker, regFilter, ofs);
             sim_t += DELTA_T;
