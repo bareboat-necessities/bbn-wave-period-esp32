@@ -23,7 +23,7 @@
 #include "FentonWaveVectorized.h"
 #include "WaveSurfaceProfile.h"
 #include "SeaStateRegularity.h"
-#include "PiersonMoskowitzSpectrum.h"
+#include "PiersonMoskowitzStokes3D_Waves.h"
 
 // --- Config ---
 static constexpr float SAMPLE_RATE_HZ = 240.0f;
