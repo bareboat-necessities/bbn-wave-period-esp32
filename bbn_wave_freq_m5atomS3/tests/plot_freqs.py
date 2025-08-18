@@ -1,4 +1,3 @@
-
 import os
 import re
 import glob
@@ -8,8 +7,10 @@ import matplotlib.pyplot as plt
 # Adjust this to your folder with CSV files
 DATA_FOLDER = "./"
 
-# Parse filename to extract tracker, wave, and height info
-FNAME_RE = re.compile(r'^(aranovskiy|kalmANF|zerocrossing)_(gerstner|jonswap|fenton)_h([0-9.]+)\.csv$')
+# Updated regex to include pmstokes (PN) waves
+FNAME_RE = re.compile(
+    r'^(aranovskiy|kalmANF|zerocrossing)_(gerstner|jonswap|fenton|pmstokes)_h([0-9.]+)\.csv$'
+)
 
 # Load all CSV files
 def load_all_data(folder):
@@ -77,8 +78,7 @@ def main():
     plot_scenarios(df)
 
     # Uncomment to plot error for a specific wave/height
-    # plot_errors(df, 'gerstner', 0.135)
+    # plot_errors(df, 'pmstokes', 0.75)
 
 if __name__ == "__main__":
     main()
-
