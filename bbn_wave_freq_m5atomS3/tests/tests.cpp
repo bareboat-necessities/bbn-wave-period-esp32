@@ -206,12 +206,12 @@ int main(int argc, char *argv[]) {
        t = t + delta_t;
     }
   } else {
-    // Create a 4th-order Fenton wave and a surface tracker
-    FentonWave<4>::WaveInitParams wave_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
+    // Create a 5th-order Fenton wave and a surface tracker
+    FentonWave<5>::WaveInitParams wave_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
       amplitude, 200.0f, angularFrequency, phase);
     const float mass = 5.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
-    WaveSurfaceTracker<4> tracker(wave_params.height, wave_params.depth, wave_params.length, wave_params.initial_x, mass, drag);
+    WaveSurfaceTracker<5> tracker(wave_params.height, wave_params.depth, wave_params.length, wave_params.initial_x, mass, drag);
     auto kinematics_callback = [&frequency, &delta_t, &bias, &dist, &generator](
         float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
       float zero_mean_gauss_noise = dist(generator);
