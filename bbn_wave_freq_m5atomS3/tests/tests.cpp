@@ -255,5 +255,6 @@ int main(int argc, char *argv[]) {
 
 #ifdef SEA_STATE_TEST
   SeaState_sine_wave_test();
+  SeaState_broadband_test();
 #endif
 }
