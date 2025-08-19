@@ -33,7 +33,8 @@
 enum TestType {
   GERSTEN = -1,
   FENTON = 0,
-  JONSWAP = 1
+  JONSWAP = 1,
+  PM_STOKES = 2
 };
 
 MinMaxLemire min_max_h;
