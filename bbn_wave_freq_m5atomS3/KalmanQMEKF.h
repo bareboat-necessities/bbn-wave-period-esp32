@@ -295,7 +295,7 @@ void QuaternionMEKF<T, with_bias>::measurement_update_partial(Eigen::Ref<Vector3
 
     // Joseph form of covariance measurement update
     MatrixN const temp = MatrixN::Identity() - K * C;
-    P = temp * P * temp.transpose() + K * Racc * K.transpose();
+    P = temp * P * temp.transpose() + K * Rm * K.transpose();
     // Apply correction to qref
     Eigen::Quaternion<T> corr(1, half * x(0), half * x(1), half * x(2));
     corr.normalize();
