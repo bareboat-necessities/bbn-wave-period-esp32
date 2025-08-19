@@ -10,6 +10,7 @@
 #define JONSWAP_TEST
 #define PM_STOKES_TEST
 #define KALMAN_WAVE_DIRECTION_TEST
+#define SEA_STATE_TEST
 
 #include <cmath>
 #include <random>
@@ -47,7 +48,7 @@ SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CRO
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 WaveSurfaceProfile<128> waveProfile;
 
-FrequencyTracker useFrequencyTracker = ZeroCrossing;
+FrequencyTracker useFrequencyTracker = Aranovskiy;
 
 bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 
@@ -171,7 +172,7 @@ int main(int argc, char *argv[]) {
   TrochoidalWave<float> w3 = TrochoidalWave<float>(2.0, 8.5, M_PI / 3.0);
   TrochoidalWave<float> w4 = TrochoidalWave<float>(4.25, 11.4, M_PI / 3.0);
   TrochoidalWave<float> w5 = TrochoidalWave<float>(7.4, 14.3, M_PI / 3.0);
-  TrochoidalWave<float>* w = &w2;
+  TrochoidalWave<float>* w = &w5;
 
   float frequency = 1.0 / w->period();
   float angularFrequency = w->angularFrequency();
@@ -251,4 +252,8 @@ int main(int argc, char *argv[]) {
   KalmanWaveDirection_test_1();
 #endif
 
+#ifdef SEA_STATE_TEST
+  SeaState_white_noise_test();
+  SeaState_sine_wave_test();
+#endif
 }
