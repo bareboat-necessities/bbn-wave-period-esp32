@@ -323,4 +323,39 @@ void SeaState_sine_wave_test() {
         throw std::runtime_error("Sine: Hs estimate not within 10%.");
     std::cout << "[PASS] Sine wave test passed.\n";
 }
+
+void SeaState_broadband_short_test() {
+    constexpr int N = 10;           // number of frequency components
+    constexpr float FREQ_MIN = 0.05f;
+    constexpr float FREQ_MAX = 0.3f;
+    constexpr float SIM_TIME = 120.0f;
+    std::default_random_engine rng(42);
+    std::uniform_real_distribution<float> amp_dist(0.5f, 1.0f);
+    std::uniform_real_distribution<float> phase_dist(0.0f, 2.0f * M_PI);
+    struct Comp { float amp, omega, phi; };
+    std::vector<Comp> components(N);
+    for (auto& c : components) {
+        c.amp = amp_dist(rng);
+        float freq = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * ((float)rng() / rng.max());
+        c.omega = 2.0f * M_PI * freq;
+        c.phi = phase_dist(rng);
+    }
+    SeaStateRegularity reg;
+    float R_out = 0.0f;
+    for (int i = 0; i < SIM_TIME / DT; i++) {
+        float accel = 0.0f;
+        float omega_inst = 0.0f;
+        for (auto& c : components) {
+            c.phi += c.omega * DT; if (c.phi > 2*M_PI) c.phi -= 2*M_PI;
+            accel += -c.amp * c.omega * c.omega * std::sin(c.phi);
+            omega_inst += c.omega;
+        }
+        omega_inst /= N;
+        reg.update(DT, accel, omega_inst);
+        R_out = reg.getRegularity();
+    }
+    if (!(R_out < 0.85f))
+        throw std::runtime_error("Broadband short test failed: R_out too high.");
+    std::cout << "[PASS] Broadband short test passed. R_out = " << R_out << "\n";
+}
 #endif // SEA_STATE_TEST
