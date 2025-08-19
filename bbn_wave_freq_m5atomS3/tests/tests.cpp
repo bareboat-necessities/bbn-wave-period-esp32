@@ -162,7 +162,8 @@ int main(int argc, char *argv[]) {
   const double mean = 0.0f;     // m/s^2
   const double stddev = 0.08f;  // m/s^2
   std::default_random_engine generator;
-  generator.seed(239);  // seed the engine for deterministic test results
+  const unsigned int seed = 239u;
+  generator.seed(seed);  // seed the engine for deterministic test results
   std::normal_distribution<float> dist(mean, stddev);
 
   TrochoidalWave<float> w1 = TrochoidalWave<float>(0.135, 3.0, M_PI / 3.0);
@@ -185,7 +186,7 @@ int main(int argc, char *argv[]) {
 
   t = 0.0;
 
-  TestType test_type = FENTON;
+  TestType test_type = PM_STOKES;
   if (test_type == TestType::GERSTEN) {
     while (t < test_duration) {
       float zero_mean_gauss_noise = dist(generator);
@@ -196,7 +197,7 @@ int main(int argc, char *argv[]) {
       t = t + delta_t;
     }
   } else if (test_type == TestType::PM_STOKES) {
-    PMStokesN3dWaves<256> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, g_std, 15.0);
+    PMStokesN3dWaves<256, 5> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, 0.02, 0.8, g_std, 15.0, seed);
     while (t < test_duration) {
       auto state = waveModel.getLagrangianState(t);
       float zero_mean_gauss_noise = dist(generator);
