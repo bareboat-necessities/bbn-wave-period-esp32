@@ -1,0 +1,31 @@
+[plantuml, format="png", id="diagram"]
+----
+@startuml
+skinparam linetype ortho
+rectangle "                         IMU                          " as IMU
+rectangle "                             AHRS (Mahony, KalmanQMEKF)                              " as AHRS
+rectangle "  Frequency Tracker:  \n\n  Aranovskiy\n  Kalm_ANF\n  Zero Crossing" as FreqTracker
+rectangle "  Kalman Wave Direction  " as WaveDir
+rectangle "         Sea Regularity          " as SeaReg
+rectangle "         Kalman Heave Reconstruction         " as KalmanWave
+rectangle "Process Noise Adaptation" as NoiseAdapt
+
+IMU --> AHRS : " accel "
+IMU --> AHRS : " gyro "
+IMU --> AHRS : " magn "
+AHRS --> FreqTracker : <latex>a_{z}</latex>
+
+FreqTracker --> SeaReg : <latex>f_{est}</latex>
+AHRS --> SeaReg : <latex>a_{z}</latex>
+
+AHRS --> WaveDir : <latex>a_{x}, a_{y}</latex>
+FreqTracker --> WaveDir : <latex>f_{est}</latex>
+
+SeaReg --> NoiseAdapt : <latex>R_{reg}, H_{est}</latex>
+
+FreqTracker --> KalmanWave : <latex>f_{est}</latex>
+NoiseAdapt --> KalmanWave : <latex>Q</latex>
+
+@enduml
+----
+
