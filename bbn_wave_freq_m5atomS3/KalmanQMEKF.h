@@ -106,8 +106,8 @@ QuaternionMEKF<T, with_bias>::QuaternionMEKF(Vector3 const& sigma_a, Vector3 con
   x.setZero();
 
   if constexpr (with_bias) {
-    P << Pq0*Matrix3::Identity(), Matrix3::Zero(),
-         Matrix3::Zero(), Pb0*Matrix3::Identity();
+    P << Pq0 * Matrix3::Identity(), Matrix3::Zero(),
+         Matrix3::Zero(), Pb0 * Matrix3::Identity();
   }
   else {
     P = Pq0 * Matrix3::Identity();
