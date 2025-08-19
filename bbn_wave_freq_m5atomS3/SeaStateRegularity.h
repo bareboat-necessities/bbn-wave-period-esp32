@@ -3,7 +3,7 @@
 #include <limits>
 #include <algorithm>
 
-#ifdef TEST_SEA_STATE
+#ifdef SEA_STATE_TEST
 #include <iostream>
 #include <vector>
 #include <random>
@@ -274,7 +274,7 @@ private:
     }
 };
 
-#ifdef TEST_SEA_STATE
+#ifdef SEA_STATE_TEST
 // Constants
 constexpr float SAMPLE_FREQ_HZ = 240.0f;
 constexpr float DT = 1.0f / SAMPLE_FREQ_HZ;
@@ -347,4 +347,4 @@ void test_white_noise() {
         throw std::runtime_error("Noise: Hs estimate too high for white noise.");
     std::cout << "[PASS] White noise test passed.\n";
 }
-#endif // TEST_SEA_STATE
+#endif // SEA_STATE_TEST
