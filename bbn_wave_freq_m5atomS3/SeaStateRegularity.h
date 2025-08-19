@@ -3,6 +3,13 @@
 #include <limits>
 #include <algorithm>
 
+#ifdef TEST_SEA_STATE
+#include <iostream>
+#include <vector>
+#include <random>
+#include <stdexcept>
+#endif
+
 /**
  * Copyright 2025, Mikhail Grushinskiy
  * 
