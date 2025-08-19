@@ -12,7 +12,7 @@
 
 /**
  * Copyright 2025, Mikhail Grushinskiy
- * 
+ *
  * @brief Online estimator of ocean wave regularity from vertical acceleration.
  *
  * This class computes:
@@ -43,8 +43,8 @@ public:
     constexpr static float EPSILON = 1e-12f;                      // small number for stability
     constexpr static float HEIGHT_R_HI = 0.98f;                   // upper bound for height factor
     constexpr static float HEIGHT_R_LO = 0.50f;                   // lower bound for height factor
-    constexpr static float JONSWAP_THRESHOLD = 0.3f;              // moderate wave threshold
-    constexpr static float JONSWAP_REDUCTION_MAX = 0.08f;         // max reduction for moderate waves
+    constexpr static float BROADBAND_WAVE_THRESHOLD = 0.3f;       // broadband wave threshold
+    constexpr static float BROADBAND_WAVE_REDUCTION_MAX = 0.08f;  // max reduction for broadband waves
     constexpr static float LARGE_WAVE_THRESHOLD = 0.5f;           // threshold for large nonlinear waves
     constexpr static float LARGE_WAVE_BOOST_MAX = 0.12f;          // max R boost
 
@@ -249,8 +249,8 @@ private:
         float R_target = R_safe;
 
         // reduce R for moderate waves (JONSWAP)
-        if (P_disp < JONSWAP_THRESHOLD) {
-            float reduce = JONSWAP_REDUCTION_MAX * (1.0f - P_disp / JONSWAP_THRESHOLD);
+        if (P_disp < BROADBAND_WAVE_THRESHOLD) {
+            float reduce = BROADBAND_WAVE_REDUCTION_MAX * (1.0f - P_disp / BROADBAND_WAVE_THRESHOLD);
             R_target = std::max(R_target - reduce, 0.0f);
         }
 
