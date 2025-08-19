@@ -119,7 +119,7 @@ void run_filters(float a_noisy, float v, float h, float delta_t, float ref_freq_
   heave_avg = (min_max_h.max.value + min_max_h.min.value) / 2.0;
 
   waveProfile.updateIfNeeded(heaveAlt, freq_adj, t);
-    
+
   if (t > warm_up_time + 45.0) {
     printf("time,%.5f", t);
     printf(",a,%.4f", a * g_std);
@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
   printf("\n");
 
   t = 0.0;
-  
+
   TestType test_type = FENTON;
   if (test_type == TestType::GERSTEN) {
     while (t < test_duration) {
@@ -196,8 +196,7 @@ int main(int argc, char *argv[]) {
       t = t + delta_t;
     }
   } else if (test_type == TestType::PM_STOKES) {
-    PiersonMoskowitzStokes3DWaves<256> waveModel(
-        w->amplitude(), w->period(), 30.0 /*dir*/, g_std, 15.0);
+    PMStokesN3dWaves<256> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, g_std, 15.0);
     while (t < test_duration) {
       auto state = waveModel.getLagrangianState(0.0, 0.0, t);
       float zero_mean_gauss_noise = dist(generator);
@@ -241,7 +240,7 @@ int main(int argc, char *argv[]) {
 #ifdef JONSWAP_TEST
   Jonswap_testWavePatterns();
 #endif
-  
+
 #ifdef FENTON_TEST
   FentonWave_test_1();
   FentonWave_test_2();
@@ -250,5 +249,5 @@ int main(int argc, char *argv[]) {
 #ifdef KALMAN_WAVE_DIRECTION_TEST
   KalmanWaveDirection_test_1();
 #endif
-  
+
 }
