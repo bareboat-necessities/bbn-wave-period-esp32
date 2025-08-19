@@ -279,10 +279,8 @@ private:
 constexpr float SAMPLE_FREQ_HZ = 240.0f;
 constexpr float DT = 1.0f / SAMPLE_FREQ_HZ;
 constexpr float SIM_DURATION_SEC = 300.0f;
-
 constexpr float SINE_AMPLITUDE = 1.0f;
 constexpr float SINE_FREQ_HZ = 0.1f;
-
 constexpr float NOISE_STD_DEV = 1.0f;
 constexpr float NOISE_OMEGA_INST = 0.1f;  // small frequency for numerical stability
 
