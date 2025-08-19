@@ -7,9 +7,10 @@ rectangle "                             AHRS (Mahony, KalmanQMEKF)              
 rectangle "  Frequency Tracker:  \n\n  Aranovskiy\n  Kalm_ANF\n  Zero Crossing" as FreqTracker
 rectangle "  Kalman Wave Direction  " as WaveDir
 rectangle "         Sea State Detection          " as SeaReg
-rectangle "         Kalman Heave Reconstruction         " as KalmanWave
+rectangle "                   Kalman Heave Reconstruction         \n\n         Kalman Integration with Drift Correction         \nKalman Integration with Drift and Motor Noise Filtering" as KalmanWave
 rectangle "Process Noise Adaptation" as NoiseAdapt
 rectangle " NMEA Data Stream (XDR Sentences) " as NMEA
+rectangle " MinMaxLemire " as MinMax
 
 IMU --> AHRS : " accel "
 IMU --> AHRS : " gyro "
@@ -27,8 +28,11 @@ SeaReg --> NoiseAdapt : <latex>R_{reg}, H_{est}</latex>
 FreqTracker --> KalmanWave : <latex>f_{est}</latex>
 NoiseAdapt --> KalmanWave : <latex>Q</latex>
 
+KalmanWave --> MinMax : " heave "
+
 WaveDir --> NMEA : " angle, dir "
-KalmanWave --> NMEA : " heave, period, wave height, wave length "
+MinMax --> NMEA : " wave height "
+KalmanWave --> NMEA : " heave, period, wave length "
 AHRS --> NMEA : " roll, pitch, yaw, \nrate_of_turn "
 
 @enduml
