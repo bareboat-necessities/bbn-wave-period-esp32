@@ -305,7 +305,7 @@ struct SineWave {
 };
 
 // Test: pure sine wave
-void test_sine_wave() {
+void SeaState_sine_wave_test() {
     SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
     SeaStateRegularity reg;  // defaults
     float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f;
@@ -327,7 +327,7 @@ void test_sine_wave() {
 }
 
 // Test: white noise
-void test_white_noise() {
+void SeaState_white_noise_test() {
     std::default_random_engine rng(42);
     std::normal_distribution<float> dist(0.0f, NOISE_STD_DEV);
     SeaStateRegularity reg;  // defaults
