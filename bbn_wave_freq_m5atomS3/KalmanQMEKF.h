@@ -96,7 +96,7 @@ class QuaternionMEKF {
 };
 
 template <typename T, bool with_bias>
-QuaternionMEKF<T, with_bias>::QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0, T Pb0, T b0)
+QuaternionMEKF<T, with_bias>::QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0)
   : Q(initialize_Q(sigma_g, b0)),
   Racc(sigma_a.array().square().matrix().asDiagonal()),
   Rmag(sigma_m.array().square().matrix().asDiagonal()),
