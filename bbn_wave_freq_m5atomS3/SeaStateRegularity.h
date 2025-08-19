@@ -266,3 +266,80 @@ private:
         return 1.0f + (std::sqrt(2.0f)-1.0f) * std::pow(x, 1.5f);
     }
 };
+
+#ifdef TEST_SEA_STATE
+// Constants
+constexpr float SAMPLE_FREQ_HZ = 240.0f;
+constexpr float DT = 1.0f / SAMPLE_FREQ_HZ;
+constexpr float SIM_DURATION_SEC = 300.0f;
+
+constexpr float SINE_AMPLITUDE = 1.0f;
+constexpr float SINE_FREQ_HZ = 0.1f;
+
+constexpr float NOISE_STD_DEV = 1.0f;
+constexpr float NOISE_OMEGA_INST = 0.1f;  // small frequency for numerical stability
+
+// Simple sine-wave generator
+struct SineWave {
+    float amplitude;
+    float freq_hz;
+    float omega;
+    float phi;
+
+    SineWave(float A, float f_hz)
+        : amplitude(A), freq_hz(f_hz),
+          omega(2.0f * M_PI * f_hz), phi(0.0f) {}
+
+    std::pair<float,float> step(float dt) {
+        phi += omega * dt;
+        if (phi > 2*M_PI) phi -= 2*M_PI;
+        float z = amplitude * std::sin(phi);
+        float a = -amplitude * omega * omega * std::sin(phi);
+        return {z, a};
+    }
+};
+
+// Test: pure sine wave
+void test_sine_wave() {
+    SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
+    SeaStateRegularity reg;  // defaults
+    float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f;
+    for (int i = 0; i < SIM_DURATION_SEC / DT; i++) {
+        auto [z, a] = wave.step(DT);
+        reg.update(DT, a, wave.omega);
+        R_spec = reg.getRegularitySpectral();
+        R_phase = reg.getRegularityPhase();
+        Hs_est = reg.getWaveHeightEnvelopeEst();
+    }
+    const float Hs_expected = 2.0f * SINE_AMPLITUDE;
+    if (!(R_spec > 0.95f))
+        throw std::runtime_error("Sine: R_spec did not converge to ~1.");
+    if (!(R_phase > 0.95f))
+        throw std::runtime_error("Sine: R_phase did not converge to ~1.");
+    if (!(std::fabs(Hs_est - Hs_expected) < 0.1f * Hs_expected))
+        throw std::runtime_error("Sine: Hs estimate not within 10%.");
+    std::cout << "[PASS] Sine wave test passed.\n";
+}
+
+// Test: white noise
+void test_white_noise() {
+    std::default_random_engine rng(42);
+    std::normal_distribution<float> dist(0.0f, NOISE_STD_DEV);
+    SeaStateRegularity reg;  // defaults
+    float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f;
+    for (int i = 0; i < SIM_DURATION_SEC / DT; i++) {
+        float a = dist(rng);
+        reg.update(DT, a, NOISE_OMEGA_INST);
+        R_spec = reg.getRegularitySpectral();
+        R_phase = reg.getRegularityPhase();
+        Hs_est = reg.getWaveHeightEnvelopeEst();
+    }
+    if (!(R_spec < 0.3f))
+        throw std::runtime_error("Noise: R_spec too high for white noise.");
+    if (!(R_phase < 0.3f))
+        throw std::runtime_error("Noise: R_phase too high for white noise.");
+    if (!(Hs_est < 0.5f))
+        throw std::runtime_error("Noise: Hs estimate too high for white noise.");
+    std::cout << "[PASS] White noise test passed.\n";
+}
+#endif // TEST_SEA_STATE
