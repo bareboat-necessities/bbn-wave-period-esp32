@@ -127,7 +127,7 @@ class FentonFFT {
     }
 };
 
-template <unsigned int N = 4, typename Real = float>
+template <unsigned int N = 5, typename Real = float>
 class FentonWave {
   private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
@@ -813,15 +813,15 @@ class WaveSurfaceTracker {
 };
 
 #ifdef FENTON_TEST
-template class FentonWave<4>;
-template class WaveSurfaceTracker<4>;
+template class FentonWave<5>;
+template class WaveSurfaceTracker<5>;
 
 void FentonWave_test_1() {
   const float height = 2.0f;
   const float depth = 10.0f;
   const float length = 50.0f;
 
-  FentonWave<4> wave(height, depth, length);
+  FentonWave<5> wave(height, depth, length);
 
   std::ofstream out("wave_data.csv");
   out << "x,elevation\n";
@@ -846,8 +846,8 @@ void FentonWave_test_2() {
   const float duration = 30.0f; // Simulation duration (s)
   const float dt = 0.005f;      // Time step (s)
 
-  // Create a 4th-order Fenton wave and a surface tracker
-  WaveSurfaceTracker<4> tracker(height, depth, length, init_x, mass, drag);
+  // Create a 5th-order Fenton wave and a surface tracker
+  WaveSurfaceTracker<5> tracker(height, depth, length, init_x, mass, drag);
 
   // Output file
   std::ofstream out("wave_tracker_data.csv");
