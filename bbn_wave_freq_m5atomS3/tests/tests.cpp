@@ -220,7 +220,7 @@ int main(int argc, char *argv[]) {
     }
   } else {
     // Create a 5th-order Fenton wave and a surface tracker
-    FentonWave<5>::WaveInitParams wave_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(
+    FentonWave<5>::WaveInitParams wave_params = FentonWave<5>::infer_fenton_parameters_from_amplitude(
       amplitude, 200.0f, angularFrequency, phase);
     const float mass = 5.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
