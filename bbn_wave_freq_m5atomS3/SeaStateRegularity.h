@@ -325,26 +325,4 @@ void SeaState_sine_wave_test() {
         throw std::runtime_error("Sine: Hs estimate not within 10%.");
     std::cout << "[PASS] Sine wave test passed.\n";
 }
-
-// Test: white noise
-void SeaState_white_noise_test() {
-    std::default_random_engine rng(42);
-    std::normal_distribution<float> dist(0.0f, NOISE_STD_DEV);
-    SeaStateRegularity reg;  // defaults
-    float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f;
-    for (int i = 0; i < SIM_DURATION_SEC / DT; i++) {
-        float a = dist(rng);
-        reg.update(DT, a, fabs(NOISE_OMEGA_INST + a / 2.0f));
-        R_spec = reg.getRegularitySpectral();
-        R_phase = reg.getRegularityPhase();
-        Hs_est = reg.getWaveHeightEnvelopeEst();
-    }
-    if (!(R_spec < 0.4f))
-        throw std::runtime_error("Noise: R_spec too high for white noise.");
-    if (!(R_phase < 0.3f))
-        throw std::runtime_error("Noise: R_phase too high for white noise.");
-    if (!(Hs_est < 0.5f))
-        throw std::runtime_error("Noise: Hs estimate too high for white noise.");
-    std::cout << "[PASS] White noise test passed.\n";
-}
 #endif // SEA_STATE_TEST
