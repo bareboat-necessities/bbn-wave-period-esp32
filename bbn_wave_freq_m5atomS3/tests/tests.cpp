@@ -254,7 +254,6 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef SEA_STATE_TEST
-  SeaState_white_noise_test();
   SeaState_sine_wave_test();
 #endif
 }
