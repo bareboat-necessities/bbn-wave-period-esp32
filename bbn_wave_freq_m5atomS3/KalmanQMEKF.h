@@ -281,8 +281,8 @@ void QuaternionMEKF<T, with_bias>::measurement_update_partial(Eigen::Ref<Vector3
   Vector3 const inno = meas - vhat;
   Matrix3 const s = C * P * C.transpose() + Rm;
 
-  // K = P * C.T *(s)^-1
-  // K * s = P*C.T
+  // K = P * C.T * (s)^-1
+  // K * s = P * C.T
 
   // This is the form
   // x * A = b
