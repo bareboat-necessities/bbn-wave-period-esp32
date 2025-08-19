@@ -30,6 +30,7 @@
 #include "WaveSurfaceProfile.h"
 #include "Jonswap3D_Waves.h"
 #include "PiersonMoskowitzStokes3D_Waves.h"
+#include "SeaStateRegularity.h"
 
 enum TestType {
   GERSTEN = -1,
