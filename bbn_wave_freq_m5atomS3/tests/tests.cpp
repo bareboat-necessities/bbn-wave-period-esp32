@@ -195,7 +195,7 @@ int main(int argc, char *argv[]) {
       run_filters(a / g_std, v, h, delta_t, frequency);
       t = t + delta_t;
     }
-  } else if (test_type == TestType::PM_STOKES) {   // ✅ new branch
+  } else if (test_type == TestType::PM_STOKES) {
     PiersonMoskowitzStokes3DWaves<256> waveModel(
         w->amplitude(), w->period(), 30.0 /*dir*/, g_std, 15.0);
     while (t < test_duration) {
