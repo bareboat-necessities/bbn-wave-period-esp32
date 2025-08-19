@@ -324,7 +324,7 @@ void SeaState_sine_wave_test() {
     std::cout << "[PASS] Sine wave test passed.\n";
 }
 
-void SeaState_broadband_short_test() {
+void SeaState_broadband_test() {
     constexpr int N = 10;           // number of frequency components
     constexpr float FREQ_MIN = 0.05f;
     constexpr float FREQ_MAX = 0.3f;
