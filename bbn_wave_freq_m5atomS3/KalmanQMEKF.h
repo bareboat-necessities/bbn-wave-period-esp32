@@ -235,8 +235,8 @@ void QuaternionMEKF<T, with_bias>::measurement_update(Vector3 const& acc, Vector
   Vector6 const inno = y - yhat;
   MatrixM const s = C * P * C.transpose() + R;
 
-  // K = P * C.T *(s)^-1
-  // K * s = P*C.T
+  // K = P * C.T * (s)^-1
+  // K * s = P * C.T
 
   // This is the form
   // x * A = b
