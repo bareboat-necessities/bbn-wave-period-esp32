@@ -234,6 +234,17 @@ private:
             ratio = std::max(0.0f, ratio);
             nu = std::sqrt(ratio);
             R_spec = std::clamp(std::exp(-nu), 0.0f, 1.0f);
+
+    float inv_w2 = 1.0f / (omega_lp * omega_lp);
+    float disp_real = z_real * inv_w2;
+    float disp_imag = z_imag * inv_w2;
+    float P_disp = disp_real*disp_real + disp_imag*disp_imag;
+
+    if (P_disp < BROADBAND_WAVE_THRESHOLD) {
+        float reduce = BROADBAND_WAVE_REDUCTION_MAX * (1.0f - P_disp / BROADBAND_WAVE_THRESHOLD);
+        R_spec = std::max(R_spec - reduce, 0.0f);
+    }
+            
         } else {
             nu = 0.0f;
             R_spec = 0.0f;
