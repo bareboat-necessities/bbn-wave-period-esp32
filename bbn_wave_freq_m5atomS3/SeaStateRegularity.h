@@ -58,7 +58,7 @@ public:
      * @param tau_omega_sec Optional frequency smoothing time (sec)
      */
     SeaStateRegularity(float tau_env_sec   = 1.0f,
-                       float tau_mom_sec   = 50.0f,
+                       float tau_mom_sec   = 60.0f,
                        float omega_min_hz  = 0.03f,
                        float tau_coh_sec   = 20.0f,
                        float tau_out_sec   = 15.0f,
@@ -90,6 +90,8 @@ public:
         // frequency-related -> start as NaN to allow seeding on first update
         omega_lp      = std::numeric_limits<float>::quiet_NaN();
         omega_disp_lp = std::numeric_limits<float>::quiet_NaN();
+
+        omega_last = std::numeric_limits<float>::quiet_NaN();
     }
 
     /**
@@ -175,90 +177,89 @@ private:
     }
 
     // Helper: demodulate acceleration to approximate displacement
-// Helper: demodulate acceleration to approximate displacement
-void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
-    phi += omega_inst * dt_s;
-    phi = std::fmod(phi, 2.0f * float(M_PI));
-
-    float c = std::cos(-phi);
-    float s = std::sin(-phi);
-    float y_real = accel_z * c;
-    float y_imag = accel_z * s;
-
-    // --- first-sample seeding ---
-    if (!std::isfinite(omega_lp)) {
-        z_real = y_real;
-        z_imag = y_imag;
-        omega_lp = std::max(omega_inst, omega_min);
+    void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
+        phi += omega_inst * dt_s;
+        phi = std::fmod(phi, 2.0f * float(M_PI));
+    
+        float c = std::cos(-phi);
+        float s = std::sin(-phi);
+        float y_real = accel_z * c;
+        float y_imag = accel_z * s;
+    
+        // first-sample seeding
+        if (!std::isfinite(omega_lp)) {
+            z_real = y_real;
+            z_imag = y_imag;
+            omega_lp = std::max(omega_inst, omega_min);
+            omega_last = omega_lp;
+            mu_w = omega_lp;
+            var_fast = var_slow = 0.0f;
+            return; // skip EMA update on first sample
+        }
+    
+        // EMA smoothing
+        z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
+        z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
+    
+        float w_inst = std::max(omega_inst, omega_min);
+        if (tau_omega > 0.0f) {
+            omega_lp = (1.0f - alpha_omega) * omega_lp + alpha_omega * w_inst;
+        } else {
+            omega_lp = w_inst;
+        }
+    
+        // frequency noise tracking
+        float delta = omega_lp - mu_w;
+        mu_w += ALPHA_FAST * delta;
+        var_fast = (1.0f - ALPHA_FAST) * var_fast + ALPHA_FAST * delta * delta;
+        var_slow = (1.0f - ALPHA_SLOW) * var_slow + ALPHA_SLOW * delta * delta;
         omega_last = omega_lp;
-        mu_w = omega_lp;
-        var_fast = var_slow = 0.0f;
-        return; // skip EMA update on first sample
     }
-
-    // EMA smoothing
-    z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
-    z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
-
-    float w_inst = std::max(omega_inst, omega_min);
-    if (tau_omega > 0.0f) {
-        omega_lp = (1.0f - alpha_omega) * omega_lp + alpha_omega * w_inst;
-    } else {
-        omega_lp = w_inst;
+    
+    // Helper: update spectral moments (M0, M1, M2)
+    void updateSpectralMoments() {
+        float inv_w2 = (omega_lp > EPSILON) ? 1.0f / (omega_lp * omega_lp) : 1.0f;
+        float disp_real_corr = z_real * inv_w2;
+        float disp_imag_corr = z_imag * inv_w2;
+        float P_disp_corr = disp_real_corr * disp_real_corr + disp_imag_corr * disp_imag_corr;
+    
+        if (std::isnan(M0)) {
+            M0 = P_disp_corr;
+            M1 = P_disp_corr * omega_lp;
+            M2 = P_disp_corr * omega_lp * omega_lp;
+        } else {
+            M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp_corr;
+            M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp_corr * omega_lp;
+    
+            // safe M2 update: subtract slow variance but clamp to non-negative
+            float M2_candidate = P_disp_corr * omega_lp * omega_lp - var_slow * M0;
+            M2_candidate = std::max(M2_candidate, 0.0f);
+            M2 = (1.0f - alpha_mom) * M2 + alpha_mom * M2_candidate;
+        }
+    
+        float omega_disp = (M0 > EPSILON) ? (M1 / M0) : omega_min;
+        if (!std::isfinite(omega_disp_lp)) omega_disp_lp = omega_disp;
+        else omega_disp_lp = (1.0f - alpha_out) * omega_disp_lp + alpha_out * omega_disp;
     }
-
-    // --- frequency noise tracking ---
-    float delta = omega_lp - mu_w;
-    mu_w += ALPHA_FAST * delta;
-    var_fast = (1.0f - ALPHA_FAST) * var_fast + ALPHA_FAST * delta * delta;
-    var_slow = (1.0f - ALPHA_SLOW) * var_slow + ALPHA_SLOW * delta * delta;
-    omega_last = omega_lp;
-}
-
-// Helper: update spectral moments (M0, M1, M2)
-void updateSpectralMoments() {
-    float inv_w2 = (omega_lp > EPSILON) ? 1.0f / (omega_lp * omega_lp) : 1.0f;
-    float disp_real_corr = z_real * inv_w2;
-    float disp_imag_corr = z_imag * inv_w2;
-    float P_disp_corr = disp_real_corr*disp_real_corr + disp_imag_corr*disp_imag_corr;
-
-    if (std::isnan(M0)) {
-        M0 = P_disp_corr;
-        M1 = P_disp_corr * omega_lp;
-        M2 = P_disp_corr * omega_lp * omega_lp;
-    } else {
-        M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp_corr;
-        M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp_corr * omega_lp;
-
-        // safe M2 update: subtract slow variance but clamp to non-negative
-        float M2_candidate = P_disp_corr * omega_lp * omega_lp - var_slow * M0;
-        M2_candidate = std::max(M2_candidate, 0.0f);
-        M2 = (1.0f - alpha_mom) * M2 + alpha_mom * M2_candidate;
+    
+        // Helper: compute phase coherence
+    void updatePhaseCoherence() {
+        float mag = std::sqrt(z_real * z_real + z_imag * z_imag);
+        float u_r = (mag > EPSILON) ? z_real / mag : 1.0f;
+        float u_i = (mag > EPSILON) ? z_imag / mag : 0.0f;
+    
+        // --- first-sample seeding ---
+        if (!std::isfinite(coh_r)) {
+            coh_r = u_r;
+            coh_i = u_i;
+        } else {
+            // EMA update
+            coh_r = (1.0f - alpha_coh) * coh_r + alpha_coh * u_r;
+            coh_i = (1.0f - alpha_coh) * coh_i + alpha_coh * u_i;
+        }
+    
+        R_phase = std::clamp(std::sqrt(coh_r * coh_r + coh_i * coh_i), 0.0f, 1.0f);
     }
-
-    float omega_disp = (M0 > EPSILON) ? (M1 / M0) : omega_min;
-    if (!std::isfinite(omega_disp_lp)) omega_disp_lp = omega_disp;
-    else omega_disp_lp = (1.0f - alpha_out) * omega_disp_lp + alpha_out * omega_disp;
-}
-
-    // Helper: compute phase coherence
-void updatePhaseCoherence() {
-    float mag = std::sqrt(z_real*z_real + z_imag*z_imag);
-    float u_r = (mag > EPSILON) ? z_real / mag : 1.0f;
-    float u_i = (mag > EPSILON) ? z_imag / mag : 0.0f;
-
-    // --- first-sample seeding ---
-    if (!std::isfinite(coh_r)) {
-        coh_r = u_r;
-        coh_i = u_i;
-    } else {
-        // EMA update
-        coh_r = (1.0f - alpha_coh) * coh_r + alpha_coh * u_r;
-        coh_i = (1.0f - alpha_coh) * coh_i + alpha_coh * u_i;
-    }
-
-    R_phase = std::clamp(std::sqrt(coh_r*coh_r + coh_i*coh_i), 0.0f, 1.0f);
-}
 
     // Helper: compute final regularity with boosts/reductions
     void computeRegularityOutput() {
@@ -278,7 +279,7 @@ void updatePhaseCoherence() {
         float inv_w2 = 1.0f / (omega_lp * omega_lp);
         float disp_real = z_real * inv_w2;
         float disp_imag = z_imag * inv_w2;
-        float P_disp = disp_real*disp_real + disp_imag*disp_imag;
+        float P_disp = disp_real * disp_real + disp_imag * disp_imag;
 
         float R_target = R_safe;
 
@@ -304,7 +305,7 @@ void updatePhaseCoherence() {
         if (!std::isfinite(R_val) || R_val >= HEIGHT_R_HI) return 1.0f;
         if (R_val <= HEIGHT_R_LO) return std::sqrt(2.0f);
         float x = (HEIGHT_R_HI - R_val) / (HEIGHT_R_HI - HEIGHT_R_LO);
-        return 1.0f + (std::sqrt(2.0f)-1.0f) * std::pow(x, 1.5f);
+        return 1.0f + (std::sqrt(2.0f) - 1.0f) * std::pow(x, 1.5f);
     }
 };
 
