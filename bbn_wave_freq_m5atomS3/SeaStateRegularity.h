@@ -264,8 +264,8 @@ private:
     // Helper: compute final regularity with boosts/reductions
     void computeRegularityOutput() {
         // spectral R
-        if (M1 > EPSILON && M0>0.0f && M2>0.0f) {
-            float ratio = (M0*M2)/(M1*M1) - 1.0f;
+        if (M1 > EPSILON && M0 > 0.0f && M2 > 0.0f) {
+            float ratio = (M0 * M2) / (M1 * M1) - 1.0f;
             ratio = std::max(0.0f, ratio);
             nu = std::sqrt(ratio);
             R_spec = std::clamp(std::exp(-nu), 0.0f, 1.0f);
