@@ -67,6 +67,8 @@ for tracker, tracker_files in tracker_groups.items():
     for f in tracker_files:
         m = pattern.search(os.path.basename(f))
         wave = m.group("wave")
+        if wave == "gerstner" or wave == "jonswap":
+            continue
         wave_grouped.setdefault(wave, []).append(f)
 
     for wave, files_in_wave in wave_grouped.items():
