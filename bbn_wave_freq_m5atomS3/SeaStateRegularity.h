@@ -310,7 +310,6 @@ private:
 };
 
 #ifdef SEA_STATE_TEST
-// Constants
 constexpr float SAMPLE_FREQ_HZ = 240.0f;
 constexpr float DT = 1.0f / SAMPLE_FREQ_HZ;
 constexpr float SIM_DURATION_SEC = 300.0f;
@@ -330,7 +329,7 @@ struct SineWave {
 
     std::pair<float,float> step(float dt) {
         phi += omega * dt;
-        if (phi > 2*M_PI) phi -= 2*M_PI;
+        if (phi > 2 * M_PI) phi -= 2 * M_PI;
         float z = amplitude * std::sin(phi);
         float a = -amplitude * omega * omega * std::sin(phi);
         return {z, a};
