@@ -276,6 +276,42 @@ void QuaternionMEKF<T, with_bias>::time_update(T const gyr[3], T const acc[3], T
   time_update(Map<Matrix<T, 3, 1>>(gyr), Map<Matrix<T,3,1>>(acc), Ts);
 }
 
+template <typename T, bool with_bias>
+Eigen::Quaternion<T> QuaternionMEKF<T, with_bias>::get_quaternion() const {
+  return qref;
+}
+
+template <typename T, bool with_bias>
+typename QuaternionMEKF<T, with_bias>::Vector3
+QuaternionMEKF<T, with_bias>::get_bias() const {
+  if constexpr (with_bias) {
+    return xext.template segment<3>(3);
+  } else {
+    return Vector3::Zero();
+  }
+}
+
+template <typename T, bool with_bias>
+typename QuaternionMEKF<T, with_bias>::Vector3
+QuaternionMEKF<T, with_bias>::get_velocity() const {
+  // velocity state at offset BASE_N
+  return xext.template segment<3>(BASE_N);
+}
+
+template <typename T, bool with_bias>
+typename QuaternionMEKF<T, with_bias>::Vector3
+QuaternionMEKF<T, with_bias>::get_position() const {
+  // position state at offset BASE_N+3
+  return xext.template segment<3>(BASE_N + 3);
+}
+
+template <typename T, bool with_bias>
+typename QuaternionMEKF<T, with_bias>::Vector3
+QuaternionMEKF<T, with_bias>::get_integral_acceleration() const {
+  // integral of acceleration state at offset BASE_N+6
+  return xext.template segment<3>(BASE_N + 6);
+}
+
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
   // 1) Build original quaternion transition matrix F (4x4) based on gyro (as original)
