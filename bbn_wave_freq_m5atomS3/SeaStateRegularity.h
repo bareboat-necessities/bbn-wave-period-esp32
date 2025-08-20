@@ -242,16 +242,23 @@ void updateSpectralMoments() {
 }
 
     // Helper: compute phase coherence
-    void updatePhaseCoherence() {
-        float mag = std::sqrt(z_real*z_real + z_imag*z_imag);
-        float u_r = (mag > EPSILON) ? z_real / mag : 1.0f;
-        float u_i = (mag > EPSILON) ? z_imag / mag : 0.0f;
+void updatePhaseCoherence() {
+    float mag = std::sqrt(z_real*z_real + z_imag*z_imag);
+    float u_r = (mag > EPSILON) ? z_real / mag : 1.0f;
+    float u_i = (mag > EPSILON) ? z_imag / mag : 0.0f;
 
+    // --- first-sample seeding ---
+    if (!std::isfinite(coh_r)) {
+        coh_r = u_r;
+        coh_i = u_i;
+    } else {
+        // EMA update
         coh_r = (1.0f - alpha_coh) * coh_r + alpha_coh * u_r;
         coh_i = (1.0f - alpha_coh) * coh_i + alpha_coh * u_i;
-
-        R_phase = std::clamp(std::sqrt(coh_r*coh_r + coh_i*coh_i), 0.0f, 1.0f);
     }
+
+    R_phase = std::clamp(std::sqrt(coh_r*coh_r + coh_i*coh_i), 0.0f, 1.0f);
+}
 
     // Helper: compute final regularity with boosts/reductions
     void computeRegularityOutput() {
