@@ -636,25 +636,3 @@ void QuaternionMEKF<T, with_bias>::applyIntegralZeroPseudoMeas() {
   // update Pbase with top-left block
   for (int i=0;i<BASE_N;++i) for (int j=0;j<BASE_N;++j) Pbase(i,j) = Pext(i,j);
 }
-
-template <typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::applyQuaternionCorrectionFromErrorState() {
-  // Small-angle error from xext(0..2)
-  Vector3 delta_theta = xext.template segment<3>(0);
-
-  // Convert to quaternion
-  T angle = delta_theta.norm();
-  Eigen::Quaternion<T> dq;
-  if (angle > T(1e-12)) {
-    dq = Eigen::Quaternion<T>(Eigen::AngleAxis<T>(angle, delta_theta / angle));
-  } else {
-    dq = Eigen::Quaternion<T>(1, delta_theta.x()/2, delta_theta.y()/2, delta_theta.z()/2);
-  }
-
-  // Apply correction to reference quaternion
-  qref = (qref * dq).normalized();
-
-  // Reset attitude error component in xext
-  xext.template segment<3>(0).setZero();
-}
-
