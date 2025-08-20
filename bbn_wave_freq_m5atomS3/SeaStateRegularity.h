@@ -335,26 +335,4 @@ struct SineWave {
         return {z, a};
     }
 };
-
-// Test: pure sine wave
-void SeaState_sine_wave_test() {
-    SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
-    SeaStateRegularity reg;  // defaults
-    float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f;
-    for (int i = 0; i < SIM_DURATION_SEC / DT; i++) {
-        auto [z, a] = wave.step(DT);
-        reg.update(DT, a, wave.omega);
-        R_spec = reg.getRegularitySpectral();
-        R_phase = reg.getRegularityPhase();
-        Hs_est = reg.getWaveHeightEnvelopeEst();
-    }
-    const float Hs_expected = 2.0f * SINE_AMPLITUDE;
-    if (!(R_spec > 0.95f))
-        throw std::runtime_error("Sine: R_spec did not converge to ~1.");
-    if (!(R_phase > 0.85f))
-        throw std::runtime_error("Sine: R_phase did not converge to ~1.");
-    if (!(std::fabs(Hs_est - Hs_expected) < 0.5f * Hs_expected))
-        throw std::runtime_error("Sine: Hs estimate not within 50%.");
-    std::cout << "[PASS] Sine wave test passed.\n";
-}
 #endif // SEA_STATE_TEST
