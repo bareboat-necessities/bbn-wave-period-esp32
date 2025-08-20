@@ -119,7 +119,7 @@ class QuaternionMEKF {
     Matrix4 F;
 
     // Original constant matrices (kept)
-    const Matrix3 Racc, Rmag;
+    const Matrix3 Rmag;
     const MatrixM R;
     const MatrixBaseN Qbase; // original Q for attitude & bias
 
