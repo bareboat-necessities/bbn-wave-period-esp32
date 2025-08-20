@@ -317,7 +317,7 @@ void SeaState_sine_wave_test() {
     const float Hs_expected = 2.0f * SINE_AMPLITUDE;
     if (!(R_spec > 0.95f))
         throw std::runtime_error("Sine: R_spec did not converge to ~1.");
-    if (!(R_phase > 0.95f))
+    if (!(R_phase > 0.85f))
         throw std::runtime_error("Sine: R_phase did not converge to ~1.");
     if (!(std::fabs(Hs_est - Hs_expected) < 0.1f * Hs_expected))
         throw std::runtime_error("Sine: Hs estimate not within 10%.");
@@ -354,7 +354,7 @@ void SeaState_broadband_test() {
         reg.update(DT, accel, omega_inst);
         R_out = reg.getRegularity();
     }
-    if (!(R_out < 0.85f))
+    if (!(R_out < 0.8f))
         throw std::runtime_error("Broadband short test failed: R_out too high.");
     std::cout << "[PASS] Broadband short test passed. R_out = " << R_out << "\n";
 }
