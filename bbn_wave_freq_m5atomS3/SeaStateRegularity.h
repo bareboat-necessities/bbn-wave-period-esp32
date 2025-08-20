@@ -218,7 +218,7 @@ private:
 
     // Helper: update spectral moments (M0, M1, M2)
     void updateSpectralMoments() {
-        float inv_w2 = (omega_lp > EPSILON) ? 1.0f / (omega_lp * omega_lp) : 1.0f;
+        float inv_w2 = 1.0f / std::max(omega_lp * omega_lp, EPSILON);
         float disp_real_corr = z_real * inv_w2;
         float disp_imag_corr = z_imag * inv_w2;
         float P_disp_corr = disp_real_corr * disp_real_corr + disp_imag_corr * disp_imag_corr;
