@@ -313,7 +313,7 @@ private:
 // Constants
 constexpr float SAMPLE_FREQ_HZ = 240.0f;
 constexpr float DT = 1.0f / SAMPLE_FREQ_HZ;
-constexpr float SIM_DURATION_SEC = 600.0f;
+constexpr float SIM_DURATION_SEC = 300.0f;
 constexpr float SINE_AMPLITUDE = 1.0f;
 constexpr float SINE_FREQ_HZ = 0.3f;
 
