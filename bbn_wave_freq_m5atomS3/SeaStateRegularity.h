@@ -359,12 +359,12 @@ void SeaState_sine_wave_test() {
 }
 
 void SeaState_broadband_test() {
-    constexpr int N = 10;           // number of frequency components
-    constexpr float FREQ_MIN = 0.04f;
-    constexpr float FREQ_MAX = 1.0f;
-    constexpr float SIM_TIME = 120.0f;
+    constexpr int N = 30;           // number of frequency components
+    constexpr float FREQ_MIN = 0.05f;
+    constexpr float FREQ_MAX = 0.8f;
+    constexpr float SIM_TIME = 240.0f;
     std::default_random_engine rng(42);
-    std::uniform_real_distribution<float> amp_dist(0.5f, 2.0f);
+    std::uniform_real_distribution<float> amp_dist(0.05f, 0.4f);
     std::uniform_real_distribution<float> phase_dist(0.0f, 2.0f * M_PI);
     struct Comp { float amp, omega, phi; };
     std::vector<Comp> components(N);
