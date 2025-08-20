@@ -84,8 +84,8 @@ public:
         alpha_env = alpha_mom = alpha_coh = alpha_out = alpha_omega = 0.0f;
         last_dt = -1.0f;
 
-        coh_r = 1.0f;
-        coh_i = 0.0f;
+        coh_r = std::numeric_limits<float>::quiet_NaN();
+        coh_i = std::numeric_limits<float>::quiet_NaN();
 
         // frequency-related -> start as NaN to allow seeding on first update
         omega_lp      = std::numeric_limits<float>::quiet_NaN();
@@ -276,7 +276,7 @@ private:
 
         R_safe = std::max(R_spec, R_phase);
 
-        float inv_w2 = 1.0f / (omega_lp * omega_lp);
+        float inv_w2 = 1.0f / std::max(omega_lp * omega_lp, EPSILON);
         float disp_real = z_real * inv_w2;
         float disp_imag = z_imag * inv_w2;
         float P_disp = disp_real * disp_real + disp_imag * disp_imag;
