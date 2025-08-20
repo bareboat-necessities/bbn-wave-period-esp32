@@ -239,7 +239,7 @@ private:
 
         float omega_disp = (M0 > EPSILON) ? (M1 / M0) : omega_min;
         if (!std::isfinite(omega_disp_lp)) omega_disp_lp = omega_disp;
-        else omega_disp_lp = (1.0f - alpha_out) * omega_disp_lp + alpha_omega * omega_disp;
+        else omega_disp_lp = (1.0f - alpha_omega) * omega_disp_lp + alpha_omega * omega_disp;
     }
 
     // Helper: compute phase coherence
