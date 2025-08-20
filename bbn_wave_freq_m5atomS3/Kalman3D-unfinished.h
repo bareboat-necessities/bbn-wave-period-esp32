@@ -121,7 +121,7 @@ class QuaternionMEKF {
     // Original constant matrices (kept)
     const Matrix3 Rmag;
     const MatrixM R;
-    const MatrixBaseN Qbase; // original Q for attitude & bias
+    MatrixBaseN Qbase; // original Q for attitude & bias
 
     // Extended process noise / Q
     MatrixNX Qext;
