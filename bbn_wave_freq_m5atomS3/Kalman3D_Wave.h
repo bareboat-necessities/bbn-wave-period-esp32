@@ -490,30 +490,34 @@ void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
     Vector3 z = Vector3::Zero();
     Vector3 inno = z - H * xext;
 
-    // Innovation covariance
-    Matrix3 S_mat = H * Pext * H.transpose() + R_S;
+// Innovation covariance
+Matrix3 S_mat = H * Pext * H.transpose() + R_S;
 
-    // Solve K * S_mat = Pext * H^T efficiently
-    Eigen::FullPivLU<Matrix3> lu(S_mat);
-    if (!lu.isInvertible()) return;
+// PHt (NX x 3)
+Matrix<T, NX, 3> PHt = Pext * H.transpose();
 
-    Matrix<T, NX, 3> K = lu.solve(Pext * H.transpose());
+// Factor S and compute K = PHt * S^{-1}
+Eigen::LDLT<Matrix3> ldlt(S_mat);
+if (ldlt.info() != Eigen::Success) {
+    S_mat += Matrix3::Identity() * T(1e-12);  // small jitter; epsilon may be too tiny in practice
+    ldlt.compute(S_mat);
+    if (ldlt.info() != Eigen::Success) return;
+}
+Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // Update extended state
-    xext += K * inno;
+// Update
+xext.noalias() += K * inno;
 
-    // Covariance Joseph form
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
+// Joseph form + symmetrize
+MatrixNX I = MatrixNX::Identity();
+Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
+Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Apply quaternion correction if attitude error changed
-    applyQuaternionCorrectionFromErrorState();
+// Quaternion correction + zero small-angle + mirror base
+applyQuaternionCorrectionFromErrorState();
+xext.template head<3>().setZero();
+Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
-    // Clear small-angle entries (first 3)
-    xext.template head<3>().setZero();
-
-    // Update base covariance
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_bias>
