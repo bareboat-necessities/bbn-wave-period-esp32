@@ -318,40 +318,51 @@ void Kalman3D_Wave<T, with_bias>::measurement_update(
     Vector3 const& acc,
     Vector3 const& mag)
 {
-    // Predicted measurements
-    Vector3 v1hat = accelerometer_measurement_func();
-    Vector3 v2hat = magnetometer_measurement_func();
+// Predicted measurements
+Vector3 v1hat = accelerometer_measurement_func();
+Vector3 v2hat = magnetometer_measurement_func();
 
-    // Build extended measurement Jacobian (6 x NX)
-    Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
-    Cext.block<3,3>(0,0) = skew_symmetric_matrix(v1hat); // accelerometer
-    Cext.block<3,3>(3,0) = skew_symmetric_matrix(v2hat); // magnetometer
+// Cext: (6 x NX)
+Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
+Cext.block<3,3>(0,0) = skew_symmetric_matrix(v1hat);
+Cext.block<3,3>(3,0) = skew_symmetric_matrix(v2hat);
 
-    // Measurement vector & innovation
-    Vector6 yhat; yhat << v1hat, v2hat;
-    Vector6 y;    y << acc, mag;
-    Vector6 inno = y - yhat;
+// Innovation
+Vector6 yhat; yhat << v1hat, v2hat;
+Vector6 y;    y << acc, mag;
+Vector6 inno = y - yhat;
 
-    // Innovation covariance
-    MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
+// S = C P C^T + R  (6x6)
+MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
 
-    // Kalman gain via solve
-    Eigen::FullPivLU<MatrixM> lu(S_mat);
-    if (!lu.isInvertible()) return;
-    Matrix<T, NX, M> K = lu.solve(Pext * Cext.transpose());
+// PCt = P C^T  (NX x 6)
+Matrix<T, NX, M> PCt = Pext * Cext.transpose();
 
-    // Update state
-    xext += K * inno;
+// Factor S (SPD), solve K = PCt * S^{-1}
+Eigen::LDLT<MatrixM> ldlt(S_mat);
+if (ldlt.info() != Eigen::Success) {
+    // small jitter if needed
+    S_mat += MatrixM::Identity() * std::numeric_limits<T>::epsilon();
+    ldlt.compute(S_mat);
+    if (ldlt.info() != Eigen::Success) return;
+}
+Matrix<T, NX, M> K = PCt * ldlt.solve(MatrixM::Identity());
 
-    // Joseph-form covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
+// State update
+xext.noalias() += K * inno;
 
-    // Quaternion correction
-    applyQuaternionCorrectionFromErrorState();
+// Joseph covariance update (keeps symmetry/PSD)
+MatrixNX I = MatrixNX::Identity();
+Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
+// optional: enforce exact symmetry numerically
+Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Clear small-angle error entries
-    xext.template head<3>().setZero();
+// Quaternion correction + zero small-angle
+applyQuaternionCorrectionFromErrorState();
+xext.template head<3>().setZero();
+
+// Mirror base covariance
+Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_bias>
