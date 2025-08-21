@@ -514,13 +514,13 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     Matrix3 Rw = R_from_quat();
     Vector3 g_world{0,0,9.81};
     Vector3 a_w = Rw * acc_body - g_world; // remove gravity
-    Matrix3 skew_aw = skew_symmetric_matrix(a_w);
+    const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // body frame
 
     // Attitude → linear Jacobians
-    F_a_ext.block<3,3>(BASE_N, 0)     = -Ts * (Rw * skew_aw);         // v
-    F_a_ext.block<3,3>(BASE_N+3,0)    = -0.5*Ts*Ts*(Rw*skew_aw);     // p
-    F_a_ext.block<3,3>(BASE_N+6,0)    = -(Ts*Ts*Ts/6.0)*(Rw*skew_aw); // S
-
+    F_a_ext.block<3,3>(BASE_N,0)     = -Ts * (Rw * skew_ab);
+    F_a_ext.block<3,3>(BASE_N+3,0)   = -T(0.5)*Ts*Ts * (Rw * skew_ab);
+    F_a_ext.block<3,3>(BASE_N+6,0)   = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
+  
     // Linear dependencies
     F_a_ext.block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
     F_a_ext.block<3,3>(BASE_N+6, BASE_N) = Matrix3::Identity() * (0.5*Ts*Ts); // v -> S
