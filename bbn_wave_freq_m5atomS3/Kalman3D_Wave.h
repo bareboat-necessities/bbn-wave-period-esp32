@@ -540,12 +540,12 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     F_a_ext.setIdentity();
     Q_a_ext = Qext; // start with template
 
-    // Top-left: original MEKF F
+    // Small-angle attitude error propagation
+    Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
+    F_a_ext.template block<3,3>(0,0) = Atheta;
     if constexpr (with_bias) {
-        F_a_ext.topLeftCorner(3,3) = F.topLeftCorner(3,3);
-        F_a_ext.block<3,3>(0,3) = Matrix3::Identity() * (-Ts); // attitude->bias
-    } else {
-        F_a_ext.topLeftCorner(3,3) = F.topLeftCorner(3,3);
+        // cross term: attitude error depends on bias error
+        F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
 
     // Gravity-free acceleration
