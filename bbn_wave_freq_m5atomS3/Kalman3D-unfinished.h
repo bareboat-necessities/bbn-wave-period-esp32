@@ -557,8 +557,6 @@ void QuaternionMEKF<T, with_bias>::computeLinearProcessNoiseTemplate() {
     // Essentially, we store Racc here for convenience
     Q_Racc_noise = Racc;
 
-    // Optional: could zero out bottom-right of Qext to be safe
-    for (int i = BASE_N; i < NX; ++i)
-        for (int j = BASE_N; j < NX; ++j)
-            Qext(i,j) = 0;
+    // zero out bottom-right of Qext to be safe
+    Qext.block(BASE_N, BASE_N, NX-BASE_N, NX-BASE_N).setZero();
 }
