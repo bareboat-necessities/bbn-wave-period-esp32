@@ -40,7 +40,7 @@ class Kalman3D_Wave {
     static constexpr int NX = BASE_N + EXT_ADD;
 
     // Measurement dimension (unchanged)
-    static const int M = 6;
+    static constexpr int M = 6;
 
     typedef Matrix<T, 3, 1> Vector3;
     typedef Matrix<T, 4, 1> Vector4;
