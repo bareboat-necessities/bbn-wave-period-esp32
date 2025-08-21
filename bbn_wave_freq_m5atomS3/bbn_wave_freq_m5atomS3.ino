@@ -45,7 +45,7 @@
 #include "WaveFilters.h"
 #include "WaveDirectionDetector.h"
 #include "M5_Calibr.h"
-#include "Kalman3D-unfinished.h"
+#include "Kalman3D_Wave.h"
 
 bool useMahony = true;
 FrequencyTracker useFrequencyTracker = Aranovskiy;
