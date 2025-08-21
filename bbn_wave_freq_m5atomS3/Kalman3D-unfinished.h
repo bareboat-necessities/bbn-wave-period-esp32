@@ -286,53 +286,41 @@ QuaternionMEKF<T, with_bias>::get_integral_acceleration() const {
 
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
-    // 1) Build original quaternion transition matrix F (4x4) based on gyro
+    // 1) Build quaternion transition matrix
     if constexpr (with_bias) {
-        Vector3 bias = xext.template segment<3>(3);
-        set_transition_matrix(gyr - bias, Ts);
+        set_transition_matrix(gyr - xext.template segment<3>(3), Ts);
     } else {
         set_transition_matrix(gyr, Ts);
     }
 
     // 2) Update quaternion
-    qref = F * qref.coeffs();
+    qref.coeffs() = F * qref.coeffs();
     qref.normalize();
 
-    // 3) Compute world-frame acceleration
+    // 3) World-frame linear acceleration
     Matrix3 Rw = R_from_quat();
-    Vector3 a_w_total = Rw * acc_body;  // includes gravity
+    Vector3 g_world{0,0,9.81};
+    Vector3 a_w = Rw * acc_body - g_world;  // remove gravity
 
-    // 4) Remove gravity (Z-up convention, adjust if needed)
-    Vector3 g_world;
-    g_world << 0, 0, 9.81;
-    Vector3 a_w = a_w_total + g_world;  // linear acceleration only
+    // 4) Extract current linear states
+    auto v = xext.template segment<3>(BASE_N);
+    auto p = xext.template segment<3>(BASE_N + 3);
+    auto S = xext.template segment<3>(BASE_N + 6);
 
-    // 5) Extract current linear states
-    Vector3 v = xext.template segment<3>(BASE_N + 0);
-    Vector3 p = xext.template segment<3>(BASE_N + 3);
-    Vector3 S = xext.template segment<3>(BASE_N + 6);
+    // 5) Taylor-series propagation
+    xext.template segment<3>(BASE_N)     = v + a_w * Ts;
+    xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_w * Ts*Ts;
+    xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
 
-    // 6) Taylor-series propagation
-    Vector3 v_next = v + a_w * Ts;
-    Vector3 p_next = p + v * Ts + 0.5 * a_w * Ts*Ts;
-    Vector3 S_next = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
-
-    xext.template segment<3>(BASE_N + 0) = v_next;
-    xext.template segment<3>(BASE_N + 3) = p_next;
-    xext.template segment<3>(BASE_N + 6) = S_next;
-
-    // 7) Build extended Jacobian F_a_ext and Qext for this Ts
-    MatrixNX F_a_ext;
-    MatrixNX Q_a_ext;
+    // 6) Assemble extended Jacobian and Q
+    MatrixNX F_a_ext, Q_a_ext;
     assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
 
-    // 8) Propagate covariance
+    // 7) Covariance propagation using Joseph form
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
 
-    // 9) Update base covariance mirror
-    for (int i = 0; i < BASE_N; ++i)
-        for (int j = 0; j < BASE_N; ++j)
-            Pbase(i,j) = Pext(i,j);
+    // 8) Mirror base covariance
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 // measurement update
@@ -527,64 +515,37 @@ void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
     Matrix<T, NX, NX>& F_a_ext,
     MatrixNX& Q_a_ext)
 {
-    // 1) Initialize F_a_ext as identity
     F_a_ext.setIdentity();
+    Q_a_ext = Qext; // start with template
 
-    // Top-left: original MEKF F block
+    // --- Top-left: original MEKF F ---
     if constexpr (with_bias) {
-        Matrix3 F33 = F.block(0,0,3,3);
-        for(int r=0;r<3;++r) for(int c=0;c<3;++c) F_a_ext(r,c) = F33(r,c);
-        for(int r=0;r<3;++r) F_a_ext(r,3+r) = -Ts; // attitude->bias
+        F_a_ext.topLeftCorner(3,3) = F.topLeftCorner(3,3);
+        F_a_ext.block<3,3>(0,3) = Matrix3::Identity() * (-Ts); // attitude->bias
     } else {
-        Matrix3 F33 = F.block(0,0,3,3);
-        for(int r=0;r<3;++r) for(int c=0;c<3;++c) F_a_ext(r,c) = F33(r,c);
+        F_a_ext.topLeftCorner(3,3) = F.topLeftCorner(3,3);
     }
 
-    // 2) Compute gravity-free world-frame acceleration
+    // --- Gravity-free acceleration ---
     Matrix3 Rw = R_from_quat();
-    Vector3 g_world;
-    g_world << 0,0,9.81;
-    Vector3 a_w = Rw * acc_body + g_world; // gravity removed
-
+    Vector3 g_world{0,0,9.81};
+    Vector3 a_w = Rw * acc_body - g_world; // remove gravity
     Matrix3 skew_aw = skew_symmetric_matrix(a_w);
 
-    // 3) Jacobians for linear states w.r.t attitude error
-    Matrix3 J_att_to_v = -Ts * (Rw * skew_aw);
-    for(int r=0;r<3;++r) for(int c=0;c<3;++c)
-        F_a_ext(BASE_N + r, c) = J_att_to_v(r,c);
+    // --- Attitude → linear Jacobians ---
+    F_a_ext.block<3,3>(BASE_N, 0)     = -Ts * (Rw * skew_aw);         // v
+    F_a_ext.block<3,3>(BASE_N+3,0)    = -0.5*Ts*Ts*(Rw*skew_aw);     // p
+    F_a_ext.block<3,3>(BASE_N+6,0)    = -(Ts*Ts*Ts/6.0)*(Rw*skew_aw); // S
 
-    Matrix3 J_att_to_p = -0.5 * Ts*Ts * (Rw * skew_aw);
-    for(int r=0;r<3;++r) for(int c=0;c<3;++c)
-        F_a_ext(BASE_N + 3 + r, c) = J_att_to_p(r,c);
+    // --- Linear dependencies ---
+    F_a_ext.block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
+    F_a_ext.block<3,3>(BASE_N+6, BASE_N) = Matrix3::Identity() * (0.5*Ts*Ts); // v -> S
+    F_a_ext.block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;      // p -> S
 
-    Matrix3 J_att_to_S = -(Ts*Ts*Ts / T(6.0)) * (Rw * skew_aw);
-    for(int r=0;r<3;++r) for(int c=0;c<3;++c)
-        F_a_ext(BASE_N + 6 + r, c) = J_att_to_S(r,c);
-
-    // 4) Linear-state dependencies
-    for(int r=0;r<3;++r) F_a_ext(BASE_N + 3 + r, BASE_N + r) = Ts;      // v->p
-    T halfTs2 = T(0.5) * Ts * Ts;
-    for(int r=0;r<3;++r) F_a_ext(BASE_N + 6 + r, BASE_N + r) = halfTs2; // v->S
-    for(int r=0;r<3;++r) F_a_ext(BASE_N + 6 + r, BASE_N + 3 + r) = Ts;  // p->S
-
-    // 5) Build Q_a_ext for linear states using gravity-free acceleration noise
+    // --- Process noise ---
     Matrix<T,9,3> G;
-    Matrix3 g1 = Ts * Rw;
-    Matrix3 g2 = 0.5 * Ts*Ts * Rw;
-    Matrix3 g3 = Ts*Ts*Ts / T(6.0) * Rw;
-    for(int r=0;r<3;++r) for(int c=0;c<3;++c) {
-        G(r, c)     = g1(r,c);
-        G(r+3, c)   = g2(r,c);
-        G(r+6, c)   = g3(r,c);
-    }
-
-    // Linear process noise
-    Matrix<T,9,9> Qlin = G * Q_Racc_noise * G.transpose();
-
-    // 6) Assemble full Q_a_ext
-    Q_a_ext = Qext; // start from previous template
-    for(int r=0;r<9;++r) for(int c=0;c<9;++c)
-        Q_a_ext(BASE_N + r, BASE_N + c) = Qlin(r,c);
+    G << Ts*Rw, 0.5*Ts*Ts*Rw, (Ts*Ts*Ts/6.0)*Rw;  // block-wise concatenation
+    Q_a_ext.block(BASE_N, BASE_N, 9,9) = G * Q_Racc_noise * G.transpose();
 }
 
 template<typename T, bool with_bias>
