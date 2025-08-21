@@ -172,11 +172,11 @@ QuaternionMEKF<T, with_bias>::QuaternionMEKF(
   xext.setZero();
   Pext.setZero();
   // Place original base P into top-left of Pext
-  for (int i = 0; i < BASE_N; ++i) for (int j = 0; j < BASE_N; ++j) Pext(i,j) = Pbase(i,j);
+  Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
 
   // Initialize Qext: top-left is original Qbase; rest zeros until we compute process noise by template
   Qext.setZero();
-  for (int i = 0; i < BASE_N; ++i) for (int j = 0; j < BASE_N; ++j) Qext(i,j) = Qbase(i,j);
+  Qext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
   // default extra linear noise: small values
   // computeLinearProcessNoiseTemplate(); // called in time_update when Ts is known
