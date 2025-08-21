@@ -161,7 +161,7 @@ QuaternionMEKF<T, with_bias>::QuaternionMEKF(
   // quaternion init
   qref.setIdentity();
 
-  R_S.setIdentity() * R_S_noise;
+  R_S = Matrix3::Identity() * R_S_noise;
 
   // initialize base / extended states
   xbase.setZero();
