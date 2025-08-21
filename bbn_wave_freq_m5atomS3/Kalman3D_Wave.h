@@ -199,14 +199,16 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
 }
 
 template<typename T, bool with_bias>
-typename Kalman3D_Wave<T, with_bias>::MatrixBaseN 
+typename Kalman3D_Wave<T, with_bias>::MatrixBaseN
 Kalman3D_Wave<T, with_bias>::initialize_Q(typename Kalman3D_Wave<T, with_bias>::Vector3 sigma_g, T b0) {
+  MatrixBaseN Q; Q.setZero();
   if constexpr (with_bias) {
-    return (Kalman3D_Wave<T, with_bias>::MatrixBaseN() << sigma_g.array().square().matrix(), Matrix3::Zero(),
-             Matrix3::Zero(), Matrix3::Identity() * b0).finished();
+    Q.topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal(); // gyro RW
+    Q.bottomRightCorner<3,3>() = Matrix3::Identity() * b0;                   // bias RW
   } else {
-    return sigma_g.array().square().matrix().asDiagonal();
+    Q = sigma_g.array().square().matrix().asDiagonal();
   }
+  return Q;
 }
 
 //  initialization helpers
