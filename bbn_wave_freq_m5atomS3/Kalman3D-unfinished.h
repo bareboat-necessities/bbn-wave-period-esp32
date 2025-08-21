@@ -371,29 +371,33 @@ void QuaternionMEKF<T, with_bias>::measurement_update_partial(
     const Eigen::Ref<const Vector3>& vhat,
     const Eigen::Ref<const Matrix3>& Rm)
 {
-  Matrix3 const C1 = skew_symmetric_matrix(vhat);
-  // Build Cext (3 x NX)
-  Matrix<T, 3, NX> Cext;
-  Cext.setZero();
-  Cext.template block<3,3>(0,0) = C1; // attitude part
-  // rest zeros (including bias, v,p,S)
+    // --- Build Cext (3 x NX) ---
+    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+    Cext.block<3,3>(0,0) = skew_symmetric_matrix(vhat);
 
-  Vector3 const inno = meas - vhat;
-  Matrix3 const S3 = Cext * Pext * Cext.transpose() + Rm;
+    // --- Innovation ---
+    Vector3 inno = meas - vhat;
 
-  Eigen::FullPivLU<Matrix3> lu(S3);
-  if (lu.isInvertible()) {
-    Matrix<T, NX, 3> Kext = Pext * Cext.transpose() * lu.inverse();
-    xext += Kext * inno;
+    // --- Innovation covariance ---
+    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
 
-    Matrix<T, NX, NX> Iext = Matrix<T, NX, NX>::Identity();
-    Matrix<T, NX, NX> temp = Iext - Kext * Cext;
-    Pext = temp * Pext * temp.transpose() + Kext * Rm * Kext.transpose();
+    // --- Solve for Kalman gain efficiently ---
+    Eigen::FullPivLU<Matrix3> lu(S_mat);
+    if (!lu.isInvertible()) return;
+    Matrix<T, NX, 3> K = lu.solve(Pext * Cext.transpose());
 
-    // apply quaternion correction same as before
+    // --- Update state ---
+    xext += K * inno;
+
+    // --- Joseph-form covariance update ---
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
+
+    // --- Apply quaternion correction ---
     applyQuaternionCorrectionFromErrorState();
-    for (int i=0;i<3;++i) xext(i) = T(0);
-  }
+
+    // --- Clear small-angle error entries ---
+    xext.head<3>().setZero();
 }
 
 template<typename T, bool with_bias>
