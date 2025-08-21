@@ -329,8 +329,8 @@ void Kalman3D_Wave<T, with_bias>::measurement_update(
     
     // Cext: (6 x NX)
     Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
-    Cext.block<3,3>(0,0) = skew_symmetric_matrix(v1hat);
-    Cext.block<3,3>(3,0) = skew_symmetric_matrix(v2hat);
+    Cext.template block<3,3>(0,0) = skew_symmetric_matrix(v1hat);
+    Cext.template block<3,3>(3,0) = skew_symmetric_matrix(v2hat);
     
     // Innovation
     Vector6 yhat; yhat << v1hat, v2hat;
@@ -378,7 +378,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
 {
     // Cext: (3 x NX)
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    Cext.block<3,3>(0,0) = skew_symmetric_matrix(vhat);
+    Cext.template block<3,3>(0,0) = skew_symmetric_matrix(vhat);
     
     // Innovation
     Vector3 inno = meas - vhat;
@@ -489,7 +489,7 @@ template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
     // Build measurement matrix H (picks S block)
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
-    H.block<3,3>(0, BASE_N + 6) = Matrix3::Identity();
+    H.template block<3,3>(0, BASE_N + 6) = Matrix3::Identity();
 
     // Innovation (desired S = 0)
     Vector3 z = Vector3::Zero();
@@ -549,21 +549,21 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // body frame
 
     // Attitude → linear Jacobians
-    F_a_ext.block<3,3>(BASE_N,0)     = -Ts * (Rw * skew_ab);
-    F_a_ext.block<3,3>(BASE_N+3,0)   = -T(0.5)*Ts*Ts * (Rw * skew_ab);
-    F_a_ext.block<3,3>(BASE_N+6,0)   = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
+    F_a_ext.template block<3,3>(BASE_N,0)     = -Ts * (Rw * skew_ab);
+    F_a_ext.template block<3,3>(BASE_N+3,0)   = -T(0.5)*Ts*Ts * (Rw * skew_ab);
+    F_a_ext.template block<3,3>(BASE_N+6,0)   = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
   
     // Linear dependencies
-    F_a_ext.block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
-    F_a_ext.block<3,3>(BASE_N+6, BASE_N) = Matrix3::Identity() * (0.5*Ts*Ts); // v -> S
-    F_a_ext.block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;      // p -> S
+    F_a_ext.template block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
+    F_a_ext.template block<3,3>(BASE_N+6, BASE_N) = Matrix3::Identity() * (0.5*Ts*Ts); // v -> S
+    F_a_ext.template block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;      // p -> S
 
     // Process noise
     Matrix<T,9,3> G; G.setZero();
     G.template topRows<3>()        = Ts * Rw;
     G.template middleRows<3>(3)    = (T(0.5) * Ts * Ts) * Rw;
     G.template bottomRows<3>()     = (Ts*Ts*Ts / T(6)) * Rw;
-    Q_a_ext.block(BASE_N, BASE_N, 9, 9) = G * Q_Racc_noise * G.transpose();
+    Q_a_ext.template block(BASE_N, BASE_N, 9, 9) = G * Q_Racc_noise * G.transpose();
 }
 
 template<typename T, bool with_bias>
@@ -577,5 +577,5 @@ void Kalman3D_Wave<T, with_bias>::computeLinearProcessNoiseTemplate() {
     Q_Racc_noise = Racc;
 
     // zero out bottom-right of Qext to be safe
-    Qext.block(BASE_N, BASE_N, NX-BASE_N, NX-BASE_N).setZero();
+    Qext.template block(BASE_N, BASE_N, NX-BASE_N, NX-BASE_N).setZero();
 }
