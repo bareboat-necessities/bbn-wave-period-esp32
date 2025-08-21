@@ -325,57 +325,44 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const
 
 // measurement update
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag) {
-  // Predicted measurements (using quaternion)
-  Vector3 const v1hat = accelerometer_measurement_func();
-  Vector3 const v2hat = magnetometer_measurement_func();
+void QuaternionMEKF<T, with_bias>::measurement_update(
+    Vector3 const& acc,
+    Vector3 const& mag)
+{
+    // --- Predicted measurements ---
+    Vector3 v1hat = accelerometer_measurement_func();
+    Vector3 v2hat = magnetometer_measurement_func();
 
-  Matrix3 const C1 = skew_symmetric_matrix(v1hat);
-  Matrix3 const C2 = skew_symmetric_matrix(v2hat);
+    // --- Build extended measurement Jacobian (6 x NX) ---
+    Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
+    Cext.block<3,3>(0,0) = skew_symmetric_matrix(v1hat); // accelerometer
+    Cext.block<3,3>(3,0) = skew_symmetric_matrix(v2hat); // magnetometer
 
-  // Build C ext (M x NX) by expanding original C with zeros for extended states
-  Matrix<T, M, NX> Cext;
-  Cext.setZero();
-  if constexpr (with_bias) {
-    // original had: C = [C1, 0; C2, 0] where columns are [3 attitude, 3 bias]
-    // place these into left columns of Cext
-    // top row block
-    Cext.template block<3,3>(0,0) = C1;
-    // bottom row block
-    Cext.template block<3,3>(3,0) = C2;
-    // bias columns at 3..5 are zeros as original
-  } else {
-    Cext.template block<3,3>(0,0) = C1;
-    Cext.template block<3,3>(3,0) = C2;
-  }
+    // --- Measurement vector & innovation ---
+    Vector6 yhat; yhat << v1hat, v2hat;
+    Vector6 y;    y << acc, mag;
+    Vector6 inno = y - yhat;
 
-  // Build measurement vectors and innovation
-  Vector6 const yhat = (Vector6() << v1hat, v2hat).finished();
-  Vector6 const y = (Vector6() << acc, mag).finished();
-  Vector6 const inno = y - yhat;
+    // --- Innovation covariance ---
+    MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
 
-  // Innovation covariance S = Cext * Pext * Cext^T + R
-  MatrixM const Smat = Cext * Pext * Cext.transpose() + R;
+    // --- Kalman gain via solve ---
+    Eigen::FullPivLU<MatrixM> lu(S_mat);
+    if (!lu.isInvertible()) return;
+    Matrix<T, NX, M> K = lu.solve(Pext * Cext.transpose());
 
-  // Solve for K: K * Smat = Pext * Cext^T  => K = Pext * Cext^T * Smat^-1
-  Eigen::FullPivLU<MatrixM> lu(Smat);
-  if (lu.isInvertible()) {
-    Matrix<T, NX, M> const Kext = Pext * Cext.transpose() * lu.inverse();
+    // --- Update state ---
+    xext += K * inno;
 
-    // state update (extended)
-    xext += Kext * inno;
+    // --- Joseph-form covariance update ---
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
 
-    // Joseph form covariance update on extended covariance
-    Matrix<T, NX, NX> Iext = Matrix<T, NX, NX>::Identity();
-    Matrix<T, NX, NX> temp = Iext - Kext * Cext;
-    Pext = temp * Pext * temp.transpose() + Kext * R * Kext.transpose();
-
-    // Apply quaternion correction from xext(0..2) exactly as original:
+    // --- Quaternion correction ---
     applyQuaternionCorrectionFromErrorState();
 
-    // Clear attitude error entries (first 3) as original did:
-    for (int i = 0; i < 3; ++i) xext(i) = T(0);
-  }
+    // --- Clear small-angle error entries ---
+    xext.head<3>().setZero();
 }
 
 template<typename T, bool with_bias>
