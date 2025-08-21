@@ -305,7 +305,7 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const
     // 4) Remove gravity (Z-up convention, adjust if needed)
     Vector3 g_world;
     g_world << 0, 0, 9.81;
-    Vector3 a_w = a_w_total - g_world;  // linear acceleration only
+    Vector3 a_w = a_w_total + g_world;  // linear acceleration only
 
     // 5) Extract current linear states
     Vector3 v = xext.template segment<3>(BASE_N + 0);
@@ -544,7 +544,7 @@ void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
     Matrix3 Rw = R_from_quat();
     Vector3 g_world;
     g_world << 0,0,9.81;
-    Vector3 a_w = Rw * acc_body - g_world; // gravity removed
+    Vector3 a_w = Rw * acc_body + g_world; // gravity removed
 
     Matrix3 skew_ab = skew_symmetric_matrix(acc_body);
 
