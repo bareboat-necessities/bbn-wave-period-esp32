@@ -546,18 +546,18 @@ void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
     g_world << 0,0,9.81;
     Vector3 a_w = Rw * acc_body + g_world; // gravity removed
 
-    Matrix3 skew_ab = skew_symmetric_matrix(acc_body);
+    Matrix3 skew_aw = skew_symmetric_matrix(a_w);
 
     // 3) Jacobians for linear states w.r.t attitude error
-    Matrix3 J_att_to_v = -Ts * (Rw * skew_ab);
+    Matrix3 J_att_to_v = -Ts * (Rw * skew_aw);
     for(int r=0;r<3;++r) for(int c=0;c<3;++c)
         F_a_ext(BASE_N + r, c) = J_att_to_v(r,c);
 
-    Matrix3 J_att_to_p = -0.5 * Ts*Ts * (Rw * skew_ab);
+    Matrix3 J_att_to_p = -0.5 * Ts*Ts * (Rw * skew_aw);
     for(int r=0;r<3;++r) for(int c=0;c<3;++c)
         F_a_ext(BASE_N + 3 + r, c) = J_att_to_p(r,c);
 
-    Matrix3 J_att_to_S = -(Ts*Ts*Ts / T(6.0)) * (Rw * skew_ab);
+    Matrix3 J_att_to_S = -(Ts*Ts*Ts / T(6.0)) * (Rw * skew_aw);
     for(int r=0;r<3;++r) for(int c=0;c<3;++c)
         F_a_ext(BASE_N + 6 + r, c) = J_att_to_S(r,c);
 
