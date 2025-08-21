@@ -117,11 +117,11 @@ class QuaternionMEKF {
     // Extended process noise / Q
     MatrixNX Qext;
 
-    // Accelerometer noise (diagonal) stored as Matrix3
-    Matrix3 Racc; 
-    Matrix3 Racc_noise;
+    Matrix3 Racc; // Accelerometer noise (diagonal) stored as Matrix3
 
-    Matrix3 R_S; // triple integration noise
+    Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
+
+    Matrix3 R_S; // triple integration measurement noise
 
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
@@ -133,7 +133,7 @@ class QuaternionMEKF {
     static constexpr MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
 
     // Extended helpers
-    void computeLinearProcessNoiseTemplate(); // computes blocks of Qext from Racc_noise and Ts template (Ts supplied in time_update)
+    void computeLinearProcessNoiseTemplate(); // computes blocks of Qext from Q_Racc_noise and Ts template (Ts supplied in time_update)
     void assembleExtendedFandQ(const Vector3& acc_body, T Ts, Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext);
     Matrix3 R_from_quat() const { return qref.toRotationMatrix(); }
 
@@ -144,7 +144,7 @@ class QuaternionMEKF {
     void normalizeQuat();
 };
 
-// ----------------------------- Implementation --------------------------------
+// Implementation
 
 template <typename T, bool with_bias>
 QuaternionMEKF<T, with_bias>::QuaternionMEKF(
@@ -156,8 +156,8 @@ QuaternionMEKF<T, with_bias>::QuaternionMEKF(
     Racc(sigma_a.array().square().matrix().asDiagonal()),
     Rmag(sigma_m.array().square().matrix().asDiagonal()),
     R((Vector6() << sigma_a, sigma_m).finished().array().square().matrix().asDiagonal()),
-    // initialize Racc_noise from sigma_a as well
-    Racc_noise(sigma_a.array().square().matrix().asDiagonal())
+    // initialize Q_Racc_noise from sigma_a as well
+    Q_Racc_noise(sigma_a.array().square().matrix().asDiagonal())
 {
   // quaternion init
   qref.setIdentity();
@@ -193,7 +193,7 @@ constexpr Matrix<T, BASE_N, BASE_N> QuaternionMEKF<T, with_bias>::initialize_Q(V
   }
 }
 
-// --- initialization helpers preserved ---
+//  initialization helpers
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag) {
   T const anorm = acc.norm();
@@ -390,8 +390,8 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const
   // fill G as block rows
   for (int r=0;r<3;++r) for (int c=0;c<3;++c) { G(r, c) = g1(r,c); G(r+3,c) = g2(r,c); G(r+6,c) = g3(r,c); }
 
-  // Noise covariance for acc in body frame = Racc_noise (3x3)
-  Matrix<T,9,9> Qlin = G * Racc_noise * G.transpose();
+  // Noise covariance for acc in body frame = Q_Racc_noise (3x3)
+  Matrix<T,9,9> Qlin = G * Q_Racc_noise * G.transpose();
 
   // Place Qlin into Qext bottom-right block (for v,p,S)
   // First ensure Qext top-left contains Qbase (already set in ctor)
@@ -517,7 +517,7 @@ Matrix<T, 3, 1> QuaternionMEKF<T, with_bias>::magnetometer_measurement_func() co
   return qref.inverse() * v2ref;
 }
 
-// ---------------- utility functions ----------------
+// utility functions
 template<typename T, bool with_bias>
 Matrix<T, 3, 3> QuaternionMEKF<T, with_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
   Matrix3 M;
