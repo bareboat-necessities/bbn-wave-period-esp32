@@ -237,8 +237,6 @@ void QuaternionMEKF<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
   qref.normalize();
 }
 
-// ----------------- core time update (overloads) -----------------
-
 // original signature preserved: no accel input
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
@@ -407,7 +405,7 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const
   // Done time_update
 }
 
-// ---------------- measurement update (unchanged semantics but applied to extended P)
+// measurement update
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag) {
   // Predicted measurements (using quaternion)
@@ -563,7 +561,7 @@ void QuaternionMEKF<T, with_bias>::normalizeQuat() {
   qref.normalize();
 }
 
-// ---------------- Extended pseudo-measurement: zero S ----------------
+//  Extended pseudo-measurement: zero S 
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::applyIntegralZeroPseudoMeas() {
   // H picks S block (3 rows, NX columns)
