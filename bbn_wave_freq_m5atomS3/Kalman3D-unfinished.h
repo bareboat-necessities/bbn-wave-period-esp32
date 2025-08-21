@@ -78,12 +78,28 @@ class Kalman3D_Wave {
     Eigen::Quaternion<T> quaternion() const { return qref; }
     MatrixBaseN const& covariance_base() const { return Pbase; } // top-left original block
     MatrixNX const& covariance_full() const { return Pext; }     // full extended covariance
+
     Vector3 gyroscope_bias() const {
         if constexpr (with_bias) {
             return xext.template segment<3>(3);
         } else {
             return Vector3::Zero();
         }
+    }
+
+    Vector3 get_velocity() const {
+        // velocity state at offset BASE_N
+        return xext.template segment<3>(BASE_N);
+    }
+
+    Vector3 get_position() const {
+        // position state at offset BASE_N+3
+        return xext.template segment<3>(BASE_N + 3);
+    }
+
+    Vector3 get_integral_acceleration() const {
+       // integral of acceleration state at offset BASE_N+6
+       return xext.template segment<3>(BASE_N + 6);
     }
 
     // Tuning setters
@@ -243,37 +259,6 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
   // call new overload with zero acceleration vector for backward compatibility
   Vector3 acc_zero = Vector3::Zero();
   time_update(gyr, acc_zero, Ts);
-}
-
-template <typename T, bool with_bias>
-typename Kalman3D_Wave<T, with_bias>::Vector3
-Kalman3D_Wave<T, with_bias>::get_bias() const {
-  if constexpr (with_bias) {
-    return xext.template segment<3>(3);
-  } else {
-    return Vector3::Zero();
-  }
-}
-
-template <typename T, bool with_bias>
-typename Kalman3D_Wave<T, with_bias>::Vector3
-Kalman3D_Wave<T, with_bias>::get_velocity() const {
-  // velocity state at offset BASE_N
-  return xext.template segment<3>(BASE_N);
-}
-
-template <typename T, bool with_bias>
-typename Kalman3D_Wave<T, with_bias>::Vector3
-Kalman3D_Wave<T, with_bias>::get_position() const {
-  // position state at offset BASE_N+3
-  return xext.template segment<3>(BASE_N + 3);
-}
-
-template <typename T, bool with_bias>
-typename Kalman3D_Wave<T, with_bias>::Vector3
-Kalman3D_Wave<T, with_bias>::get_integral_acceleration() const {
-  // integral of acceleration state at offset BASE_N+6
-  return xext.template segment<3>(BASE_N + 6);
 }
 
 template<typename T, bool with_bias>
