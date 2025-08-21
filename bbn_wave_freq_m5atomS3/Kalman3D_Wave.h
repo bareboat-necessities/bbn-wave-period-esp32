@@ -184,9 +184,9 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
   Pbase.setIdentity(); // default small initial cov unless user overwrites
   
   // initialize base covariance
-  Pbase.topLeftCorner<3,3>() = Matrix3::Identity() * Pq0;   // attitude error covariance
+  Pbase.template topLeftCorner<3,3>() = Matrix3::Identity() * Pq0;   // attitude error covariance
   if constexpr (with_bias) {
-      Pbase.block<3,3>(3,3) = Matrix3::Identity() * Pb0;    // bias covariance
+      Pbase.template block<3,3>(3,3) = Matrix3::Identity() * Pb0;    // bias covariance
   }
 
   // Extended state
@@ -209,8 +209,8 @@ typename Kalman3D_Wave<T, with_bias>::MatrixBaseN
 Kalman3D_Wave<T, with_bias>::initialize_Q(typename Kalman3D_Wave<T, with_bias>::Vector3 sigma_g, T b0) {
   MatrixBaseN Q; Q.setZero();
   if constexpr (with_bias) {
-    Q.topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal(); // gyro RW
-    Q.bottomRightCorner<3,3>() = Matrix3::Identity() * b0;                   // bias RW
+    Q.template topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal(); // gyro RW
+    Q.template bottomRightCorner<3,3>() = Matrix3::Identity() * b0;                   // bias RW
   } else {
     Q = sigma_g.array().square().matrix().asDiagonal();
   }
@@ -445,9 +445,9 @@ void Kalman3D_Wave<T, with_bias>::set_transition_matrix(const Eigen::Ref<const V
   if (un == T(0)) un = std::numeric_limits<T>::min();
 
   Matrix4 Omega; Omega.setZero();
-  Omega.topLeftCorner<3,3>() = -skew_symmetric_matrix(delta_theta);
-  Omega.topRightCorner<3,1>() =  delta_theta;
-  Omega.bottomLeftCorner<1,3>() = -delta_theta.transpose();
+  Omega.template topLeftCorner<3,3>() = -skew_symmetric_matrix(delta_theta);
+  Omega.template topRightCorner<3,1>() =  delta_theta;
+  Omega.template bottomLeftCorner<1,3>() = -delta_theta.transpose();
   // Omega(3,3) already zero
 
   F = std::cos(half * un) * Matrix4::Identity() + std::sin(half * un) / un * Omega;
