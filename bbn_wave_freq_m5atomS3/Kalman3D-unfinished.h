@@ -180,7 +180,7 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
 }
 
 template<typename T, bool with_bias>
-Kalman3D_Wave<T, with_bias>::MatrixBaseN Kalman3D_Wave<T, with_bias>::initialize_Q(Vector3 sigma_g, T b0) {
+Kalman3D_Wave<T, with_bias>::MatrixBaseN Kalman3D_Wave<T, with_bias>::initialize_Q(Kalman3D_Wave<T, with_bias>::Vector3 sigma_g, T b0) {
   if constexpr (with_bias) {
     return (Kalman3D_Wave<T, with_bias>::MatrixBaseN() << sigma_g.array().square().matrix(), Matrix3::Zero(),
              Matrix3::Zero(), Matrix3::Identity() * b0).finished();
