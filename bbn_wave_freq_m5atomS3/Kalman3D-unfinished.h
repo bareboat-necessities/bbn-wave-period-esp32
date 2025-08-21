@@ -75,7 +75,7 @@ class Kalman3D_Wave {
     void applyIntegralZeroPseudoMeas();
 
     // Accessors (quaternion preserved)
-    Vector4 const& quaternion() const { return qref.coeffs(); }
+    Vector4 quaternion() const { return qref.coeffs(); }
     MatrixBaseN const& covariance_base() const { return Pbase; } // top-left original block
     MatrixNX const& covariance_full() const { return Pext; }     // full extended covariance
     Vector3 gyroscope_bias() const {
