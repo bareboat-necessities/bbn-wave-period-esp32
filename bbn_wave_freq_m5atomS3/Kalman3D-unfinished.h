@@ -659,3 +659,18 @@ void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
         Q_a_ext(BASE_N + r, BASE_N + c) = Qlin(r,c);
 }
 
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::computeLinearProcessNoiseTemplate() {
+    // Precompute the template for linear-state process noise (v,p,S) using Racc
+    // G_template contains only rotation matrices, without Ts scaling
+    // So for time_update, Qlin = G(Ts) * Racc * G(Ts)^T
+
+    // Just store identity template; actual scaling by Ts^1/2, Ts^2/2 etc. is done in assembleExtendedFandQ
+    // Essentially, we store Racc here for convenience
+    Q_Racc_noise = Racc;
+
+    // Optional: could zero out bottom-right of Qext to be safe
+    for (int i = BASE_N; i < NX; ++i)
+        for (int j = BASE_N; j < NX; ++j)
+            Qext(i,j) = 0;
+}
