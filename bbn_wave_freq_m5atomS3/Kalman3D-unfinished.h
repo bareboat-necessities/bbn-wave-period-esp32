@@ -183,9 +183,9 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
 }
 
 template<typename T, bool with_bias>
-Matrix<T, BASE_N, BASE_N> Kalman3D_Wave<T, with_bias>::initialize_Q(Vector3 sigma_g, T b0) {
+Matrix<T, Kalman3D_Wave::BASE_N, Kalman3D_Wave::BASE_N> Kalman3D_Wave<T, with_bias>::initialize_Q(Vector3 sigma_g, T b0) {
   if constexpr (with_bias) {
-    return (Matrix<T, BASE_N, BASE_N>() << sigma_g.array().square().matrix(), Matrix3::Zero(),
+    return (Matrix<T, Kalman3D_Wave::BASE_N, Kalman3D_Wave::BASE_N>() << sigma_g.array().square().matrix(), Matrix3::Zero(),
              Matrix3::Zero(), Matrix3::Identity() * b0).finished();
   } else {
     return sigma_g.array().square().matrix().asDiagonal();
