@@ -6,7 +6,7 @@
 
   q-mekf (merged extension)
 
-  This file merges your original QuaternionMEKF<T,with_bias> with an extended
+  This file merges your original Kalman3D_Wave<T,with_bias> with an extended
   full-matrix Kalman that adds linear navigation states:
      v (3)  : velocity in world frame
      p (3)  : displacement/position in world frame
@@ -29,7 +29,7 @@ using Eigen::Matrix;
 using Eigen::Map;
 
 template <typename T = float, bool with_bias = true>
-class QuaternionMEKF {
+class Kalman3D_Wave {
     // Original base state dimension (attitude-error (3) [+ gyro-bias (3) if with_bias])
     static constexpr int BASE_N = with_bias ? 6 : 3;
     // Extended added states: v(3), p(3), S(3)
@@ -53,7 +53,7 @@ class QuaternionMEKF {
 
   public:
     // Constructor signatures preserved, additional defaults for linear process noise
-    QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
+    Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
                    T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(5e0));
 
     // Initialization / measurement API preserved
@@ -146,7 +146,7 @@ class QuaternionMEKF {
 // Implementation
 
 template <typename T, bool with_bias>
-QuaternionMEKF<T, with_bias>::QuaternionMEKF(
+Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
     Vector3 const& sigma_a,
     Vector3 const& sigma_g,
     Vector3 const& sigma_m,
@@ -183,7 +183,7 @@ QuaternionMEKF<T, with_bias>::QuaternionMEKF(
 }
 
 template<typename T, bool with_bias>
-Matrix<T, BASE_N, BASE_N> QuaternionMEKF<T, with_bias>::initialize_Q(Vector3 sigma_g, T b0) {
+Matrix<T, BASE_N, BASE_N> Kalman3D_Wave<T, with_bias>::initialize_Q(Vector3 sigma_g, T b0) {
   if constexpr (with_bias) {
     return (Matrix<T, BASE_N, BASE_N>() << sigma_g.array().square().matrix(), Matrix3::Zero(),
              Matrix3::Zero(), Matrix3::Identity() * b0).finished();
@@ -194,7 +194,7 @@ Matrix<T, BASE_N, BASE_N> QuaternionMEKF<T, with_bias>::initialize_Q(Vector3 sig
 
 //  initialization helpers
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag) {
+void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag) {
   T const anorm = acc.norm();
   v1ref << 0, 0, -anorm;
 
@@ -213,7 +213,7 @@ void QuaternionMEKF<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, V
 }
 
 template<typename T, bool with_bias>
-Eigen::Quaternion<T> QuaternionMEKF<T, with_bias>::quaternion_from_acc(Vector3 const& acc) {
+Eigen::Quaternion<T> Kalman3D_Wave<T, with_bias>::quaternion_from_acc(Vector3 const& acc) {
   T qx, qy, qz, qw;
   if (acc[2] >= 0) {
     qx = std::sqrt((1 + acc[2]) / 2);
@@ -233,7 +233,7 @@ Eigen::Quaternion<T> QuaternionMEKF<T, with_bias>::quaternion_from_acc(Vector3 c
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
+void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
   T const anorm = acc.norm();
   v1ref << 0, 0, -anorm;
   qref = quaternion_from_acc(acc);
@@ -242,20 +242,20 @@ void QuaternionMEKF<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
 
 // original signature preserved: no accel input
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
+void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
   // call new overload with zero acceleration vector for backward compatibility
   Vector3 acc_zero = Vector3::Zero();
   time_update(gyr, acc_zero, Ts);
 }
 
 template <typename T, bool with_bias>
-Eigen::Quaternion<T> QuaternionMEKF<T, with_bias>::get_quaternion() const {
+Eigen::Quaternion<T> Kalman3D_Wave<T, with_bias>::get_quaternion() const {
   return qref;
 }
 
 template <typename T, bool with_bias>
-typename QuaternionMEKF<T, with_bias>::Vector3
-QuaternionMEKF<T, with_bias>::get_bias() const {
+typename Kalman3D_Wave<T, with_bias>::Vector3
+Kalman3D_Wave<T, with_bias>::get_bias() const {
   if constexpr (with_bias) {
     return xext.template segment<3>(3);
   } else {
@@ -264,28 +264,28 @@ QuaternionMEKF<T, with_bias>::get_bias() const {
 }
 
 template <typename T, bool with_bias>
-typename QuaternionMEKF<T, with_bias>::Vector3
-QuaternionMEKF<T, with_bias>::get_velocity() const {
+typename Kalman3D_Wave<T, with_bias>::Vector3
+Kalman3D_Wave<T, with_bias>::get_velocity() const {
   // velocity state at offset BASE_N
   return xext.template segment<3>(BASE_N);
 }
 
 template <typename T, bool with_bias>
-typename QuaternionMEKF<T, with_bias>::Vector3
-QuaternionMEKF<T, with_bias>::get_position() const {
+typename Kalman3D_Wave<T, with_bias>::Vector3
+Kalman3D_Wave<T, with_bias>::get_position() const {
   // position state at offset BASE_N+3
   return xext.template segment<3>(BASE_N + 3);
 }
 
 template <typename T, bool with_bias>
-typename QuaternionMEKF<T, with_bias>::Vector3
-QuaternionMEKF<T, with_bias>::get_integral_acceleration() const {
+typename Kalman3D_Wave<T, with_bias>::Vector3
+Kalman3D_Wave<T, with_bias>::get_integral_acceleration() const {
   // integral of acceleration state at offset BASE_N+6
   return xext.template segment<3>(BASE_N + 6);
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
+void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
     // 1) Build quaternion transition matrix
     if constexpr (with_bias) {
         set_transition_matrix(gyr - xext.template segment<3>(3), Ts);
@@ -325,7 +325,7 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const
 
 // measurement update
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::measurement_update(
+void Kalman3D_Wave<T, with_bias>::measurement_update(
     Vector3 const& acc,
     Vector3 const& mag)
 {
@@ -366,7 +366,7 @@ void QuaternionMEKF<T, with_bias>::measurement_update(
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::measurement_update_partial(
+void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
     const Eigen::Ref<const Vector3>& meas,
     const Eigen::Ref<const Vector3>& vhat,
     const Eigen::Ref<const Matrix3>& Rm)
@@ -401,30 +401,30 @@ void QuaternionMEKF<T, with_bias>::measurement_update_partial(
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::measurement_update_acc_only(Vector3 const& acc) {
+void Kalman3D_Wave<T, with_bias>::measurement_update_acc_only(Vector3 const& acc) {
   Vector3 const v1hat = accelerometer_measurement_func();
   measurement_update_partial(acc, v1hat, Racc);
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::measurement_update_mag_only(Vector3 const& mag) {
+void Kalman3D_Wave<T, with_bias>::measurement_update_mag_only(Vector3 const& mag) {
   Vector3 const v2hat = magnetometer_measurement_func();
   measurement_update_partial(mag, v2hat, Rmag);
 }
 
 template<typename T, bool with_bias>
-Matrix<T, 3, 1> QuaternionMEKF<T, with_bias>::accelerometer_measurement_func() const {
+Matrix<T, 3, 1> Kalman3D_Wave<T, with_bias>::accelerometer_measurement_func() const {
   return qref.inverse() * v1ref;
 }
 
 template<typename T, bool with_bias>
-Matrix<T, 3, 1> QuaternionMEKF<T, with_bias>::magnetometer_measurement_func() const {
+Matrix<T, 3, 1> Kalman3D_Wave<T, with_bias>::magnetometer_measurement_func() const {
   return qref.inverse() * v2ref;
 }
 
 // utility functions
 template<typename T, bool with_bias>
-Matrix<T, 3, 3> QuaternionMEKF<T, with_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
+Matrix<T, 3, 3> Kalman3D_Wave<T, with_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
   Matrix3 M;
   M << 0, -vec(2), vec(1),
        vec(2), 0, -vec(0),
@@ -433,7 +433,7 @@ Matrix<T, 3, 3> QuaternionMEKF<T, with_bias>::skew_symmetric_matrix(const Eigen:
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::set_transition_matrix(Eigen::Ref<const Vector3> const& gyr, T Ts) {
+void Kalman3D_Wave<T, with_bias>::set_transition_matrix(Eigen::Ref<const Vector3> const& gyr, T Ts) {
   Vector3 const delta_theta = gyr * Ts;
   T un = delta_theta.norm();
   if (un == 0) {
@@ -446,7 +446,7 @@ void QuaternionMEKF<T, with_bias>::set_transition_matrix(Eigen::Ref<const Vector
 
 // quaternion multiplication helper (vector form used rarely in this file)
 template<typename T, bool with_bias>
-typename QuaternionMEKF<T, with_bias>::Vector4 QuaternionMEKF<T, with_bias>::quatMultiply(const Vector4& a, const Vector4& b) const {
+typename Kalman3D_Wave<T, with_bias>::Vector4 Kalman3D_Wave<T, with_bias>::quatMultiply(const Vector4& a, const Vector4& b) const {
   Vector4 r;
   Eigen::Matrix<T,3,1> av = a.template head<3>(), bv = b.template head<3>();
   T aw = a(3), bw = b(3);
@@ -456,7 +456,7 @@ typename QuaternionMEKF<T, with_bias>::Vector4 QuaternionMEKF<T, with_bias>::qua
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::applyQuaternionCorrectionFromErrorState() {
+void Kalman3D_Wave<T, with_bias>::applyQuaternionCorrectionFromErrorState() {
   // xext(0..2) contains the small-angle error — same as original code; create corr quaternion and apply
   Eigen::Quaternion<T> corr(T(1), half * xext(0), half * xext(1), half * xext(2));
   corr.normalize();
@@ -466,13 +466,13 @@ void QuaternionMEKF<T, with_bias>::applyQuaternionCorrectionFromErrorState() {
 
 // normalize quaternion
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::normalizeQuat() {
+void Kalman3D_Wave<T, with_bias>::normalizeQuat() {
   qref.normalize();
 }
 
 //  Extended pseudo-measurement: zero S 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::applyIntegralZeroPseudoMeas() {
+void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
     // Build measurement matrix H (picks S block)
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
     H.block<3,3>(0, BASE_N + 6) = Matrix3::Identity();
@@ -508,7 +508,7 @@ void QuaternionMEKF<T, with_bias>::applyIntegralZeroPseudoMeas() {
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
+void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     const Vector3& acc_body,
     T Ts,
     Matrix<T, NX, NX>& F_a_ext,
@@ -548,7 +548,7 @@ void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::computeLinearProcessNoiseTemplate() {
+void Kalman3D_Wave<T, with_bias>::computeLinearProcessNoiseTemplate() {
     // Precompute the template for linear-state process noise (v,p,S) using Racc
     // G_template contains only rotation matrices, without Ts scaling
     // So for time_update, Qlin = G(Ts) * Racc * G(Ts)^T
