@@ -339,7 +339,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update(
     applyQuaternionCorrectionFromErrorState();
 
     // Clear small-angle error entries
-    xext.head<3>().setZero();
+    xext.template head<3>().setZero();
 }
 
 template<typename T, bool with_bias>
@@ -374,7 +374,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
     applyQuaternionCorrectionFromErrorState();
 
     // Clear small-angle error entries
-    xext.head<3>().setZero();
+    xext.template head<3>().setZero();
 }
 
 template<typename T, bool with_bias>
@@ -478,7 +478,7 @@ void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
     applyQuaternionCorrectionFromErrorState();
 
     // Clear small-angle entries (first 3)
-    xext.head<3>().setZero();
+    xext.template head<3>().setZero();
 
     // Update base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
