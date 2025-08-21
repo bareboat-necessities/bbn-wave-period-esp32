@@ -296,16 +296,17 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
     Matrix3 Rw = R_from_quat();
     Vector3 g_world{0,0,9.81};
     Vector3 a_w = Rw * acc_body - g_world;  // remove gravity
-
+    Vector3 a_corr = a_w - Rw * bias;
+  
     // Extract current linear states
     auto v = xext.template segment<3>(BASE_N);
     auto p = xext.template segment<3>(BASE_N + 3);
     auto S = xext.template segment<3>(BASE_N + 6);
 
     // Taylor-series propagation
-    xext.template segment<3>(BASE_N)     = v + a_w * Ts;
-    xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_w * Ts*Ts;
-    xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
+    xext.template segment<3>(BASE_N)     = v + a_corr * Ts;
+    xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_corr * Ts*Ts;
+    xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_corr;
 
     // Covariance propagation using Joseph form
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
