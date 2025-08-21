@@ -286,126 +286,51 @@ QuaternionMEKF<T, with_bias>::get_integral_acceleration() const {
 
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
-  // 1) Build original quaternion transition matrix F (4x4) based on gyro (as original)
-  if constexpr (with_bias) {
-    // bias lives in xext: xext[3..5] is gyro bias
-    Vector3 bias = xext.template segment<3>(3);
-    set_transition_matrix(gyr - bias, Ts);
-  } else {
-    set_transition_matrix(gyr, Ts);
-  }
+    // 1) Build original quaternion transition matrix F (4x4) based on gyro
+    if constexpr (with_bias) {
+        Vector3 bias = xext.template segment<3>(3);
+        set_transition_matrix(gyr - bias, Ts);
+    } else {
+        set_transition_matrix(gyr, Ts);
+    }
 
-  // update quaternion as original
-  qref = F * qref.coeffs();
-  qref.normalize();
+    // 2) Update quaternion
+    qref = F * qref.coeffs();
+    qref.normalize();
 
-  // 2) Compute world-frame acceleration using current quaternion (rotate body->world)
-  Matrix3 Rw = R_from_quat();
-  Vector3 a_w = Rw * acc_body; // note: gravity is not removed here (apply externally if desired)
+    // 3) Compute world-frame acceleration
+    Matrix3 Rw = R_from_quat();
+    Vector3 a_w_total = Rw * acc_body;  // includes gravity
 
-  // 3) Extended-state discrete-time kinematics (Taylor-series)
-  //    xext ordering:
-  //    [ 0..(BASE_N-1) ] : original att-error (3) [+ bias 3 if with_bias]
-  //    [ BASE_N .. BASE_N+2 ] : v (3)
-  //    [ BASE_N+3 .. BASE_N+5 ] : p (3)
-  //    [ BASE_N+6 .. BASE_N+8 ] : S (3)
+    // 4) Remove gravity (Z-up convention, adjust if needed)
+    Vector3 g_world;
+    g_world << 0, 0, 9.81;
+    Vector3 a_w = a_w_total - g_world;  // linear acceleration only
 
-  // Extract current linear states:
-  Vector3 v = xext.template segment<3>(BASE_N + 0);
-  Vector3 p = xext.template segment<3>(BASE_N + 3);
-  Vector3 S = xext.template segment<3>(BASE_N + 6);
+    // 5) Extract current linear states
+    Vector3 v = xext.template segment<3>(BASE_N + 0);
+    Vector3 p = xext.template segment<3>(BASE_N + 3);
+    Vector3 S = xext.template segment<3>(BASE_N + 6);
 
-  // Taylor-series propagation:
-  // velocity: v_{k+1} = v_k + a_w * Ts  [+ optional 0.5*Ts^2*a term if desired — kept minimal here]
-  Vector3 v_next = v + a_w * Ts;
+    // 6) Taylor-series propagation
+    Vector3 v_next = v + a_w * Ts;
+    Vector3 p_next = p + v * Ts + 0.5 * a_w * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
+    Vector3 S_next = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
 
-  // position: p_{k+1} = p_k + v_k*Ts + 0.5*a_w*Ts^2 + (1/6)*a_w*Ts^3  (we keep dt^3/6 correction)
-  Vector3 p_next = p + v * Ts + 0.5 * a_w * Ts * Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
+    xext.template segment<3>(BASE_N + 0) = v_next;
+    xext.template segment<3>(BASE_N + 3) = p_next;
+    xext.template segment<3>(BASE_N + 6) = S_next;
 
-  // integral S: S_{k+1} = S_k + p_k*Ts + 0.5*v_k*Ts^2 + (1/6)*a_w*Ts^3
-  Vector3 S_next = S + p * Ts + 0.5 * v * Ts * Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
+    // 7) Build extended Jacobian F_a_ext and Qext for this Ts
+    assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
 
-  // Write back linear-state predictions into xext
-  xext.template segment<3>(BASE_N + 0) = v_next;
-  xext.template segment<3>(BASE_N + 3) = p_next;
-  xext.template segment<3>(BASE_N + 6) = S_next;
+    // 8) Propagate covariance
+    Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
 
-  // 4) Extended covariance propagation: build linearized F_a_ext and Qext for this Ts
-  Matrix<T, NX, NX> F_a_ext = Matrix<T, NX, NX>::Identity();
-  // Top-left (BASE_N x BASE_N) -- original F_a computed from F (original code)
-  // Original code built F_a as either F.block(0,0,3,3) or a 6x6 for bias; mimic that:
-  if constexpr (with_bias) {
-    // original F_a (6x6) in your code:
-    // F_a = [ F.block(0,0,3,3)   -I*Ts
-    //         0                I     ]
-    Matrix3 F33 = F.block(0,0,3,3);
-    // fill top-left 3x3
-    for (int r=0;r<3;++r) for (int c=0;c<3;++c) F_a_ext(r,c) = F33(r,c);
-    // fill top-right block (attitude->bias) with -I*Ts in original
-    for (int r=0;r<3;++r) F_a_ext(r, 3 + r) = -T(Ts);
-    // bias->bias identity already there
-  } else {
-    Matrix3 F33 = F.block(0,0,3,3);
-    for (int r=0;r<3;++r) for (int c=0;c<3;++c) F_a_ext(r,c) = F33(r,c);
-  }
-
-  // Now fill linear-state Jacobians:
-  // v depends on a_w; linearize v wrt attitude error (phi): δv ≈ -Ts * R * skew(acc_body) * δphi
-  Matrix3 skew_ab = skew_symmetric_matrix(acc_body);
-  Matrix3 J_att_to_v = -Ts * (Rw * skew_ab);
-
-  // place into F_a_ext: rows for v (BASE_N..BASE_N+2), cols for att-error (0..2)
-  for (int r=0;r<3;++r) for (int c=0;c<3;++c) F_a_ext(BASE_N + r, c) = J_att_to_v(r,c);
-
-  // p depends on v and a_w: derivative w.r.t att-error = -0.5*Ts^2 * R * skew(acc_body)  (from 0.5 * a_w Ts^2) plus contribution from v term (v depends on att too via previous)
-  Matrix3 J_att_to_p = -0.5 * Ts * Ts * (Rw * skew_ab);
-  for (int r=0;r<3;++r) for (int c=0;c<3;++c) F_a_ext(BASE_N + 3 + r, c) = J_att_to_p(r,c);
-
-  // S depends similarly: derivative = - (Ts^3/6) * R * skew(acc_body)
-  Matrix3 J_att_to_S = -(Ts*Ts*Ts / T(6.0)) * (Rw * skew_ab);
-  for (int r=0;r<3;++r) for (int c=0;c<3;++c) F_a_ext(BASE_N + 6 + r, c) = J_att_to_S(r,c);
-
-  // Fill v->p mapping: p <- p + v*Ts  => F(p,v) = Ts
-  for (int r=0;r<3;++r) F_a_ext(BASE_N + 3 + r, BASE_N + r) = Ts;
-
-  // Fill v->S mapping: S <- S + 0.5 * v * Ts^2  => F(S,v) = 0.5 * Ts^2
-  T halfTs2 = T(0.5) * Ts * Ts;
-  for (int r=0;r<3;++r) F_a_ext(BASE_N + 6 + r, BASE_N + r) = halfTs2;
-
-  // Fill p->S mapping: S <- S + p * Ts => F(S,p) = Ts
-  for (int r=0;r<3;++r) F_a_ext(BASE_N + 6 + r, BASE_N + 3 + r) = Ts;
-
-  // Note: we also keep identity on the diagonal for v,p,S (already set)
-
-  // 5) Build Qext for this Ts
-  // Top-left BASE_N x BASE_N remains Qbase (we preserved it in Qext initially)
-  // Now compute process noise contribution from accelerometer noise for v,p,S
-  // Use discrete integration mapping G = [Ts*Rw; 0.5 Ts^2 * Rw; (1/6) Ts^3 * Rw]
-  Matrix<T, 9, 3> G;
-  Matrix3 Rw_local = Rw;
-  Matrix3 g1 = Ts * Rw_local;
-  Matrix3 g2 = (T(0.5) * Ts * Ts) * Rw_local;
-  Matrix3 g3 = (Ts*Ts*Ts / T(6.0)) * Rw_local;
-  // fill G as block rows
-  for (int r=0;r<3;++r) for (int c=0;c<3;++c) { G(r, c) = g1(r,c); G(r+3,c) = g2(r,c); G(r+6,c) = g3(r,c); }
-
-  // Noise covariance for acc in body frame = Q_Racc_noise (3x3)
-  Matrix<T,9,9> Qlin = G * Q_Racc_noise * G.transpose();
-
-  // Place Qlin into Qext bottom-right block (for v,p,S)
-  // First ensure Qext top-left contains Qbase (already set in ctor)
-  // Zero the linear blocks for safety
-  for (int i = 0; i < NX; ++i) for (int j = 0; j < NX; ++j) if (i >= BASE_N && j >= BASE_N) Qext(i,j) = 0;
-
-  for (int r = 0; r < 9; ++r) for (int c=0;c<9;++c) Qext(BASE_N + r, BASE_N + c) = Qlin(r,c);
-
-  // 6) Propagate covariance: Pext = F_a_ext * Pext * F_a_ext^T + Qext
-  Pext = F_a_ext * Pext * F_a_ext.transpose() + Qext;
-
-  // 7) Also update Pbase mirror for convenience (extract top-left BASE_N)
-  for (int i=0;i<BASE_N;++i) for (int j=0;j<BASE_N;++j) Pbase(i,j) = Pext(i,j);
-
-  // Done time_update
+    // 9) Update base covariance mirror
+    for (int i = 0; i < BASE_N; ++i)
+        for (int j = 0; j < BASE_N; ++j)
+            Pbase(i,j) = Pext(i,j);
 }
 
 // measurement update
