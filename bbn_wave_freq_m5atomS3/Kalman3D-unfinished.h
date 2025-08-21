@@ -525,7 +525,7 @@ void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
     Matrix<T, NX, NX>& F_a_ext,
     MatrixNX& Q_a_ext)
 {
-    // Initialize F_a_ext as identity
+    // 1) Initialize F_a_ext as identity
     F_a_ext.setIdentity();
 
     // Top-left: original MEKF F block
@@ -538,48 +538,49 @@ void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
         for(int r=0;r<3;++r) for(int c=0;c<3;++c) F_a_ext(r,c) = F33(r,c);
     }
 
-    // Compute world-frame rotation
+    // 2) Compute gravity-free world-frame acceleration
     Matrix3 Rw = R_from_quat();
+    Vector3 g_world;
+    g_world << 0,0,9.81;
+    Vector3 a_w = Rw * acc_body - g_world; // gravity removed
+
     Matrix3 skew_ab = skew_symmetric_matrix(acc_body);
 
-    // v depends on attitude error
+    // 3) Jacobians for linear states w.r.t attitude error
     Matrix3 J_att_to_v = -Ts * (Rw * skew_ab);
     for(int r=0;r<3;++r) for(int c=0;c<3;++c)
         F_a_ext(BASE_N + r, c) = J_att_to_v(r,c);
 
-    // p depends on attitude error
-    Matrix3 J_att_to_p = -0.5 * Ts * Ts * (Rw * skew_ab);
+    Matrix3 J_att_to_p = -0.5 * Ts*Ts * (Rw * skew_ab);
     for(int r=0;r<3;++r) for(int c=0;c<3;++c)
         F_a_ext(BASE_N + 3 + r, c) = J_att_to_p(r,c);
 
-    // S depends on attitude error
     Matrix3 J_att_to_S = -(Ts*Ts*Ts / T(6.0)) * (Rw * skew_ab);
     for(int r=0;r<3;++r) for(int c=0;c<3;++c)
         F_a_ext(BASE_N + 6 + r, c) = J_att_to_S(r,c);
 
-    // Linear-state dependencies
+    // 4) Linear-state dependencies
     for(int r=0;r<3;++r) F_a_ext(BASE_N + 3 + r, BASE_N + r) = Ts;      // v->p
     T halfTs2 = T(0.5) * Ts * Ts;
     for(int r=0;r<3;++r) F_a_ext(BASE_N + 6 + r, BASE_N + r) = halfTs2; // v->S
     for(int r=0;r<3;++r) F_a_ext(BASE_N + 6 + r, BASE_N + 3 + r) = Ts;  // p->S
 
-    // Build Q_a_ext bottom-right block using discrete-time acceleration noise
+    // 5) Build Q_a_ext for linear states using gravity-free acceleration noise
     Matrix<T,9,3> G;
     Matrix3 g1 = Ts * Rw;
-    Matrix3 g2 = 0.5 * Ts * Ts * Rw;
+    Matrix3 g2 = 0.5 * Ts*Ts * Rw;
     Matrix3 g3 = Ts*Ts*Ts / T(6.0) * Rw;
     for(int r=0;r<3;++r) for(int c=0;c<3;++c) {
-        G(r,c)     = g1(r,c);
-        G(r+3,c)   = g2(r,c);
-        G(r+6,c)   = g3(r,c);
+        G(r, c)     = g1(r,c);
+        G(r+3, c)   = g2(r,c);
+        G(r+6, c)   = g3(r,c);
     }
 
     // Linear process noise
     Matrix<T,9,9> Qlin = G * Q_Racc_noise * G.transpose();
 
-    // Assemble full Q_a_ext
+    // 6) Assemble full Q_a_ext
     Q_a_ext = Qext; // start from previous template
-    // insert Qlin into bottom-right
     for(int r=0;r<9;++r) for(int c=0;c<9;++c)
         Q_a_ext(BASE_N + r, BASE_N + c) = Qlin(r,c);
 }
