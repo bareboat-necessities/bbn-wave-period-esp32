@@ -527,9 +527,11 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     F_a_ext.block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;      // p -> S
 
     // Process noise
-    Matrix<T,9,3> G;
-    G << Ts*Rw, 0.5*Ts*Ts*Rw, (Ts*Ts*Ts/6.0)*Rw;  // block-wise concatenation
-    Q_a_ext.block(BASE_N, BASE_N, 9,9) = G * Q_Racc_noise * G.transpose();
+    Matrix<T,9,3> G; G.setZero();
+    G.topRows<3>()        = Ts * Rw;
+    G.middleRows<3>(3)    = (T(0.5) * Ts * Ts) * Rw;
+    G.bottomRows<3>()     = (Ts*Ts*Ts / T(6)) * Rw;
+    Q_a_ext.block(BASE_N, BASE_N, 9, 9) = G * Q_Racc_noise * G.transpose();
 }
 
 template<typename T, bool with_bias>
