@@ -129,7 +129,7 @@ class QuaternionMEKF {
     Vector3 accelerometer_measurement_func() const;
     Vector3 magnetometer_measurement_func() const;
 
-    static constexpr MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
+    static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
 
     // Extended helpers
     void computeLinearProcessNoiseTemplate(); // computes blocks of Qext from Q_Racc_noise and Ts template (Ts supplied in time_update)
@@ -183,7 +183,7 @@ QuaternionMEKF<T, with_bias>::QuaternionMEKF(
 }
 
 template<typename T, bool with_bias>
-constexpr Matrix<T, BASE_N, BASE_N> QuaternionMEKF<T, with_bias>::initialize_Q(Vector3 sigma_g, T b0) {
+Matrix<T, BASE_N, BASE_N> QuaternionMEKF<T, with_bias>::initialize_Q(Vector3 sigma_g, T b0) {
   if constexpr (with_bias) {
     return (Matrix<T, BASE_N, BASE_N>() << sigma_g.array().square().matrix(), Matrix3::Zero(),
              Matrix3::Zero(), Matrix3::Identity() * b0).finished();
