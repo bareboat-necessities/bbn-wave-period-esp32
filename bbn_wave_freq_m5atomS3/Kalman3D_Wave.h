@@ -155,7 +155,6 @@ class Kalman3D_Wave {
     Matrix3 R_from_quat() const { return qref.toRotationMatrix(); }
 
     // Quaternion & small-angle helpers (kept)
-    Matrix4 smallOmegaMatrix(const Eigen::Ref<const Vector3>& delta_theta) const;
     Vector4 quatMultiply(const Vector4& a, const Vector4& b) const;
     void applyQuaternionCorrectionFromErrorState(); // apply correction to qref using xext(0..2)
     void normalizeQuat();
