@@ -416,14 +416,17 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_bias>::skew_symmetric_matrix(const Eigen::
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::set_transition_matrix(Eigen::Ref<const Vector3> const& gyr, T Ts) {
-  Vector3 const delta_theta = gyr * Ts;
+void Kalman3D_Wave<T, with_bias>::set_transition_matrix(const Eigen::Ref<const Vector3>& gyr, T Ts) {
+  const Vector3 delta_theta = gyr * Ts;
   T un = delta_theta.norm();
-  if (un == 0) {
-    un = std::numeric_limits<T>::min();
-  }
-  Matrix4 const Omega = (Matrix4() << -skew_symmetric_matrix(delta_theta), delta_theta,
-                                      -delta_theta.transpose(),            0          ).finished();
+  if (un == T(0)) un = std::numeric_limits<T>::min();
+
+  Matrix4 Omega; Omega.setZero();
+  Omega.topLeftCorner<3,3>() = -skew_symmetric_matrix(delta_theta);
+  Omega.topRightCorner<3,1>() =  delta_theta;
+  Omega.bottomLeftCorner<1,3>() = -delta_theta.transpose();
+  // Omega(3,3) already zero
+
   F = std::cos(half * un) * Matrix4::Identity() + std::sin(half * un) / un * Omega;
 }
 
