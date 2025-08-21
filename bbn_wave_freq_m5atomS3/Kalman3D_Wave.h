@@ -278,8 +278,13 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
     // bias-corrected gyro
-    Vector3 bias = constexpr with_bias ? xext.template segment<3>(3) : Vector3::Zero();
-    last_gyr_bias_corrected = gyr - bias;
+    Vector3 gyro_bias;
+    if constexpr (with_bias) {
+        gyro_bias = xext.template segment<3>(3); 
+    } else { 
+        gyro_bias = Vector3::Zero(); 
+    }
+    last_gyr_bias_corrected = gyr - gyro_bias;
   
     // Assemble extended Jacobian and Q
     MatrixNX F_a_ext, Q_a_ext;
