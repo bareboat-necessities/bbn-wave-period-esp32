@@ -126,6 +126,9 @@ class Kalman3D_Wave {
     // Original quaternion transition matrix
     Matrix4 F;
 
+    // Last gyro 
+    Vector3 last_gyr_bias_corrected{};
+
     // Original constant matrices (kept)
     const Matrix3 Rmag;
     MatrixM R;
@@ -300,6 +303,14 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
     xext.template segment<3>(BASE_N)     = v + a_w * Ts;
     xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_w * Ts*Ts;
     xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
+
+    if constexpr (with_bias) {
+        last_gyr_bias_corrected = gyr - xext.template segment<3>(3);
+        set_transition_matrix(last_gyr_bias_corrected, Ts);
+    } else {
+        last_gyr_bias_corrected = gyr;
+        set_transition_matrix(gyr, Ts);
+    }
 
     // Assemble extended Jacobian and Q
     MatrixNX F_a_ext, Q_a_ext;
