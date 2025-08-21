@@ -55,7 +55,7 @@ class QuaternionMEKF {
   public:
     // Constructor signatures preserved, additional defaults for linear process noise
     QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12));
+                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(5e0));
 
     // Initialization / measurement API preserved
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
@@ -118,8 +118,10 @@ class QuaternionMEKF {
     MatrixNX Qext;
 
     // Accelerometer noise (diagonal) stored as Matrix3
-    Matrix3 Racc; // already declared const above; but we need to mutate: we'll shadow it; to avoid const conflicts we keep a member Racc_noise
+    Matrix3 Racc; 
     Matrix3 Racc_noise;
+
+    Matrix3 R_S; // triple integration noise
 
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
@@ -149,7 +151,7 @@ QuaternionMEKF<T, with_bias>::QuaternionMEKF(
     Vector3 const& sigma_a,
     Vector3 const& sigma_g,
     Vector3 const& sigma_m,
-    T Pq0, T Pb0, T b0)
+    T Pq0, T Pb0, T b0, T R_S_noise)
   : Qbase(initialize_Q(sigma_g, b0)),
     Racc(sigma_a.array().square().matrix().asDiagonal()),
     Rmag(sigma_m.array().square().matrix().asDiagonal()),
@@ -159,6 +161,8 @@ QuaternionMEKF<T, with_bias>::QuaternionMEKF(
 {
   // quaternion init
   qref.setIdentity();
+
+  R_S.setIdentity() * R_S_noise;
 
   // initialize base / extended states
   xbase.setZero();
@@ -570,7 +574,7 @@ void QuaternionMEKF<T, with_bias>::applyIntegralZeroPseudoMeas() {
   H.template block<3,3>(0, BASE_N + 6) = Matrix3::Identity();
 
   Vector3 z = Vector3::Zero();
-  Matrix3 S = H * Pext * H.transpose() + Racc; // reuse Racc as pseudo cov or user can provide R_S separately
+  Matrix3 S = H * Pext * H.transpose() + R_S; 
   Eigen::FullPivLU<Matrix3> lu(S);
   if (!lu.isInvertible()) return;
   Matrix<T,NX,3> K = Pext * H.transpose() * lu.inverse();
@@ -579,7 +583,7 @@ void QuaternionMEKF<T, with_bias>::applyIntegralZeroPseudoMeas() {
   // Covariance Joseph form
   Matrix<T,NX,NX> Iext = Matrix<T,NX,NX>::Identity();
   Matrix<T,NX,NX> temp = Iext - K * H;
-  Pext = temp * Pext * temp.transpose() + K * Racc * K.transpose();
+  Pext = temp * Pext * temp.transpose() + K * R_S * K.transpose();
 
   // Apply quaternion correction if attitude error component was modified
   applyQuaternionCorrectionFromErrorState();
