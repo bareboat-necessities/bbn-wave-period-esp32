@@ -182,10 +182,17 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
   xbase.setZero();
   Pbase.setZero();
   Pbase.setIdentity(); // default small initial cov unless user overwrites
+  
+  // initialize base covariance
+  Pbase.topLeftCorner<3,3>() = Matrix3::Identity() * Pq0;   // attitude error covariance
+  if constexpr (with_bias) {
+      Pbase.block<3,3>(3,3) = Matrix3::Identity() * Pb0;    // bias covariance
+  }
 
   // Extended state
   xext.setZero();
   Pext.setZero();
+  
   // Place original base P into top-left of Pext
   Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
 
