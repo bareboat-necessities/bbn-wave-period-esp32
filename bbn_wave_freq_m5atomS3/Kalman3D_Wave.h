@@ -6,6 +6,9 @@
 
   q-mekf (merged extension)
 
+  Enhancements:
+  Copyright (c) 2025 Mikhail Grushinskiy
+
   This file merges your original Kalman3D_Wave<T,with_bias> with an extended
   full-matrix Kalman that adds linear navigation states:
      v (3)  : velocity in world frame
