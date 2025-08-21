@@ -482,30 +482,38 @@ void QuaternionMEKF<T, with_bias>::normalizeQuat() {
 //  Extended pseudo-measurement: zero S 
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::applyIntegralZeroPseudoMeas() {
-  // H picks S block (3 rows, NX columns)
-  Matrix<T, 3, NX> H;
-  H.setZero();
-  H.template block<3,3>(0, BASE_N + 6) = Matrix3::Identity();
+    // --- Build measurement matrix H (picks S block) ---
+    Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
+    H.block<3,3>(0, BASE_N + 6) = Matrix3::Identity();
 
-  Vector3 z = Vector3::Zero();
-  Matrix3 S = H * Pext * H.transpose() + R_S; 
-  Eigen::FullPivLU<Matrix3> lu(S);
-  if (!lu.isInvertible()) return;
-  Matrix<T,NX,3> K = Pext * H.transpose() * lu.inverse();
-  xext = xext + K * (z - H * xext);
+    // --- Innovation (desired S = 0) ---
+    Vector3 z = Vector3::Zero();
+    Vector3 inno = z - H * xext;
 
-  // Covariance Joseph form
-  Matrix<T,NX,NX> Iext = Matrix<T,NX,NX>::Identity();
-  Matrix<T,NX,NX> temp = Iext - K * H;
-  Pext = temp * Pext * temp.transpose() + K * R_S * K.transpose();
+    // --- Innovation covariance ---
+    Matrix3 S_mat = H * Pext * H.transpose() + R_S;
 
-  // Apply quaternion correction if attitude error component was modified
-  applyQuaternionCorrectionFromErrorState();
-  // Clear small-angle entries as done elsewhere
-  for (int i=0;i<3;++i) xext(i) = T(0);
+    // --- Solve K * S_mat = Pext * H^T efficiently ---
+    Eigen::FullPivLU<Matrix3> lu(S_mat);
+    if (!lu.isInvertible()) return;
 
-  // update Pbase with top-left block
-  for (int i=0;i<BASE_N;++i) for (int j=0;j<BASE_N;++j) Pbase(i,j) = Pext(i,j);
+    Matrix<T, NX, 3> K = lu.solve(Pext * H.transpose());
+
+    // --- Update extended state ---
+    xext += K * inno;
+
+    // --- Covariance Joseph form ---
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
+
+    // --- Apply quaternion correction if attitude error changed ---
+    applyQuaternionCorrectionFromErrorState();
+
+    // --- Clear small-angle entries (first 3) ---
+    xext.head<3>().setZero();
+
+    // --- Update base covariance ---
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_bias>
