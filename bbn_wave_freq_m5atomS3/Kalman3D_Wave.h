@@ -318,51 +318,51 @@ void Kalman3D_Wave<T, with_bias>::measurement_update(
     Vector3 const& acc,
     Vector3 const& mag)
 {
-// Predicted measurements
-Vector3 v1hat = accelerometer_measurement_func();
-Vector3 v2hat = magnetometer_measurement_func();
-
-// Cext: (6 x NX)
-Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
-Cext.block<3,3>(0,0) = skew_symmetric_matrix(v1hat);
-Cext.block<3,3>(3,0) = skew_symmetric_matrix(v2hat);
-
-// Innovation
-Vector6 yhat; yhat << v1hat, v2hat;
-Vector6 y;    y << acc, mag;
-Vector6 inno = y - yhat;
-
-// S = C P C^T + R  (6x6)
-MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
-
-// PCt = P C^T  (NX x 6)
-Matrix<T, NX, M> PCt = Pext * Cext.transpose();
-
-// Factor S (SPD), solve K = PCt * S^{-1}
-Eigen::LDLT<MatrixM> ldlt(S_mat);
-if (ldlt.info() != Eigen::Success) {
-    // small jitter if needed
-    S_mat += MatrixM::Identity() * std::numeric_limits<T>::epsilon();
-    ldlt.compute(S_mat);
-    if (ldlt.info() != Eigen::Success) return;
-}
-Matrix<T, NX, M> K = PCt * ldlt.solve(MatrixM::Identity());
-
-// State update
-xext.noalias() += K * inno;
-
-// Joseph covariance update (keeps symmetry/PSD)
-MatrixNX I = MatrixNX::Identity();
-Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
-// optional: enforce exact symmetry numerically
-Pext = T(0.5) * (Pext + Pext.transpose());
-
-// Quaternion correction + zero small-angle
-applyQuaternionCorrectionFromErrorState();
-xext.template head<3>().setZero();
-
-// Mirror base covariance
-Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+    // Predicted measurements
+    Vector3 v1hat = accelerometer_measurement_func();
+    Vector3 v2hat = magnetometer_measurement_func();
+    
+    // Cext: (6 x NX)
+    Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
+    Cext.block<3,3>(0,0) = skew_symmetric_matrix(v1hat);
+    Cext.block<3,3>(3,0) = skew_symmetric_matrix(v2hat);
+    
+    // Innovation
+    Vector6 yhat; yhat << v1hat, v2hat;
+    Vector6 y;    y << acc, mag;
+    Vector6 inno = y - yhat;
+    
+    // S = C P C^T + R  (6x6)
+    MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
+    
+    // PCt = P C^T  (NX x 6)
+    Matrix<T, NX, M> PCt = Pext * Cext.transpose();
+    
+    // Factor S (SPD), solve K = PCt * S^{-1}
+    Eigen::LDLT<MatrixM> ldlt(S_mat);
+    if (ldlt.info() != Eigen::Success) {
+        // small jitter if needed
+        S_mat += MatrixM::Identity() * std::numeric_limits<T>::epsilon();
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+    Matrix<T, NX, M> K = PCt * ldlt.solve(MatrixM::Identity());
+    
+    // State update
+    xext.noalias() += K * inno;
+    
+    // Joseph covariance update (keeps symmetry/PSD)
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
+    // optional: enforce exact symmetry numerically
+    Pext = T(0.5) * (Pext + Pext.transpose());
+    
+    // Quaternion correction + zero small-angle
+    applyQuaternionCorrectionFromErrorState();
+    xext.template head<3>().setZero();
+    
+    // Mirror base covariance
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_bias>
@@ -371,61 +371,61 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
     const Eigen::Ref<const Vector3>& vhat,
     const Eigen::Ref<const Matrix3>& Rm)
 {
-// Cext: (3 x NX)
-Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-Cext.block<3,3>(0,0) = skew_symmetric_matrix(vhat);
-
-// Innovation
-Vector3 inno = meas - vhat;
-
-// S = C P C^T + Rm  (3x3)
-Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
-
-// PCt = P C^T  (NX x 3)
-Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
-
-// Factor S (SPD) and solve
-Eigen::LDLT<Matrix3> ldlt(S_mat);
-if (ldlt.info() != Eigen::Success) {
-    S_mat += Matrix3::Identity() * std::numeric_limits<T>::epsilon();
-    ldlt.compute(S_mat);
-    if (ldlt.info() != Eigen::Success) return;
-}
-Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-// State update
-xext.noalias() += K * inno;
-
-// Joseph covariance update
-MatrixNX I = MatrixNX::Identity();
-Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
-Pext = T(0.5) * (Pext + Pext.transpose());
-
-// Quaternion correction + zero small-angle
-applyQuaternionCorrectionFromErrorState();
-xext.template head<3>().setZero();
+    // Cext: (3 x NX)
+    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+    Cext.block<3,3>(0,0) = skew_symmetric_matrix(vhat);
+    
+    // Innovation
+    Vector3 inno = meas - vhat;
+    
+    // S = C P C^T + Rm  (3x3)
+    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
+    
+    // PCt = P C^T  (NX x 3)
+    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+    
+    // Factor S (SPD) and solve
+    Eigen::LDLT<Matrix3> ldlt(S_mat);
+    if (ldlt.info() != Eigen::Success) {
+        S_mat += Matrix3::Identity() * std::numeric_limits<T>::epsilon();
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+    
+    // State update
+    xext.noalias() += K * inno;
+    
+    // Joseph covariance update
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose());
+    
+    // Quaternion correction + zero small-angle
+    applyQuaternionCorrectionFromErrorState();
+    xext.template head<3>().setZero();
 }
 
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::measurement_update_acc_only(Vector3 const& acc) {
-  Vector3 const v1hat = accelerometer_measurement_func();
-  measurement_update_partial(acc, v1hat, Racc);
+    Vector3 const v1hat = accelerometer_measurement_func();
+    measurement_update_partial(acc, v1hat, Racc);
 }
 
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::measurement_update_mag_only(Vector3 const& mag) {
-  Vector3 const v2hat = magnetometer_measurement_func();
-  measurement_update_partial(mag, v2hat, Rmag);
+    Vector3 const v2hat = magnetometer_measurement_func();
+    measurement_update_partial(mag, v2hat, Rmag);
 }
 
 template<typename T, bool with_bias>
 Matrix<T, 3, 1> Kalman3D_Wave<T, with_bias>::accelerometer_measurement_func() const {
-  return qref.inverse() * v1ref;
+    return qref.inverse() * v1ref;
 }
 
 template<typename T, bool with_bias>
 Matrix<T, 3, 1> Kalman3D_Wave<T, with_bias>::magnetometer_measurement_func() const {
-  return qref.inverse() * v2ref;
+    return qref.inverse() * v2ref;
 }
 
 // utility functions
