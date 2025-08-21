@@ -322,6 +322,8 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const
     xext.template segment<3>(BASE_N + 6) = S_next;
 
     // 7) Build extended Jacobian F_a_ext and Qext for this Ts
+    MatrixNX F_a_ext;
+    MatrixNX Q_a_ext;
     assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
 
     // 8) Propagate covariance
