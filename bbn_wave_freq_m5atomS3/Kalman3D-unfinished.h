@@ -74,7 +74,8 @@ class Kalman3D_Wave {
     // Apply zero pseudo-measurement on S (integral drift correction)
     void applyIntegralZeroPseudoMeas();
 
-    // Accessors (quaternion preserved)
+    // Accessors
+    Eigen::Quaternion<T> quaternion() const { return qref; }
     MatrixBaseN const& covariance_base() const { return Pbase; } // top-left original block
     MatrixNX const& covariance_full() const { return Pext; }     // full extended covariance
     Vector3 gyroscope_bias() const {
@@ -242,11 +243,6 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
   // call new overload with zero acceleration vector for backward compatibility
   Vector3 acc_zero = Vector3::Zero();
   time_update(gyr, acc_zero, Ts);
-}
-
-template <typename T, bool with_bias>
-Eigen::Quaternion<T> Kalman3D_Wave<T, with_bias>::get_quaternion() const {
-  return qref;
 }
 
 template <typename T, bool with_bias>
