@@ -284,6 +284,10 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
         last_gyr_bias_corrected = gyr;
     }
   
+    // Assemble extended Jacobian and Q
+    MatrixNX F_a_ext, Q_a_ext;
+    assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
+
     // Build quaternion transition matrix
     set_transition_matrix(last_gyr_bias_corrected, Ts);
 
@@ -305,10 +309,6 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
     xext.template segment<3>(BASE_N)     = v + a_w * Ts;
     xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_w * Ts*Ts;
     xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
-
-    // Assemble extended Jacobian and Q
-    MatrixNX F_a_ext, Q_a_ext;
-    assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
 
     // Covariance propagation using Joseph form
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
