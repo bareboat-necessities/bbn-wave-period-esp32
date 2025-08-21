@@ -22,7 +22,6 @@
   - A full extended covariance (Pext) and transition Jacobian Fext are constructed; the top-left corner
     contains the original MEKF's P/Q blocks (attitude error + optional gyro bias).
   - Accelerometer is expected in IMU/body frame input to time_update(gyr, acc, Ts).
-  - No gravity removal is performed automatically (user should subtract gravity if needed).
 */
 
 #include <ArduinoEigenDense.h>
@@ -100,8 +99,8 @@ class Kalman3D_Wave {
         return xext.template segment<3>(BASE_N + 3);
     }
 
-    Vector3 get_integral_acceleration() const {
-       // integral of acceleration state at offset BASE_N+6
+    Vector3 get_integral_displacement() const {
+       // integral of displacement state at offset BASE_N+6
        return xext.template segment<3>(BASE_N + 6);
     }
 
