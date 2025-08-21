@@ -113,14 +113,11 @@ class Kalman3D_Wave {
     MatrixM R;
     MatrixBaseN Qbase; // original Q for attitude & bias
 
-    // Extended process noise / Q
-    MatrixNX Qext;
-
     Matrix3 Racc; // Accelerometer noise (diagonal) stored as Matrix3
+    Matrix3 R_S;  // Triple integration measurement noise
 
+    MatrixNX Qext; // Extended process noise / Q
     Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
-
-    Matrix3 R_S; // triple integration measurement noise
 
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
@@ -286,40 +283,40 @@ Kalman3D_Wave<T, with_bias>::get_integral_acceleration() const {
 
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
-    // 1) Build quaternion transition matrix
+    // Build quaternion transition matrix
     if constexpr (with_bias) {
         set_transition_matrix(gyr - xext.template segment<3>(3), Ts);
     } else {
         set_transition_matrix(gyr, Ts);
     }
 
-    // 2) Update quaternion
+    // Update quaternion
     qref.coeffs() = F * qref.coeffs();
     qref.normalize();
 
-    // 3) World-frame linear acceleration
+    // World-frame linear acceleration
     Matrix3 Rw = R_from_quat();
     Vector3 g_world{0,0,9.81};
     Vector3 a_w = Rw * acc_body - g_world;  // remove gravity
 
-    // 4) Extract current linear states
+    // Extract current linear states
     auto v = xext.template segment<3>(BASE_N);
     auto p = xext.template segment<3>(BASE_N + 3);
     auto S = xext.template segment<3>(BASE_N + 6);
 
-    // 5) Taylor-series propagation
+    // Taylor-series propagation
     xext.template segment<3>(BASE_N)     = v + a_w * Ts;
     xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_w * Ts*Ts;
     xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
 
-    // 6) Assemble extended Jacobian and Q
+    // Assemble extended Jacobian and Q
     MatrixNX F_a_ext, Q_a_ext;
     assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
 
-    // 7) Covariance propagation using Joseph form
+    // Covariance propagation using Joseph form
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
 
-    // 8) Mirror base covariance
+    // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
