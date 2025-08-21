@@ -329,39 +329,39 @@ void QuaternionMEKF<T, with_bias>::measurement_update(
     Vector3 const& acc,
     Vector3 const& mag)
 {
-    // --- Predicted measurements ---
+    // Predicted measurements
     Vector3 v1hat = accelerometer_measurement_func();
     Vector3 v2hat = magnetometer_measurement_func();
 
-    // --- Build extended measurement Jacobian (6 x NX) ---
+    // Build extended measurement Jacobian (6 x NX)
     Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
     Cext.block<3,3>(0,0) = skew_symmetric_matrix(v1hat); // accelerometer
     Cext.block<3,3>(3,0) = skew_symmetric_matrix(v2hat); // magnetometer
 
-    // --- Measurement vector & innovation ---
+    // Measurement vector & innovation
     Vector6 yhat; yhat << v1hat, v2hat;
     Vector6 y;    y << acc, mag;
     Vector6 inno = y - yhat;
 
-    // --- Innovation covariance ---
+    // Innovation covariance
     MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
 
-    // --- Kalman gain via solve ---
+    // Kalman gain via solve
     Eigen::FullPivLU<MatrixM> lu(S_mat);
     if (!lu.isInvertible()) return;
     Matrix<T, NX, M> K = lu.solve(Pext * Cext.transpose());
 
-    // --- Update state ---
+    // Update state
     xext += K * inno;
 
-    // --- Joseph-form covariance update ---
+    // Joseph-form covariance update
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
 
-    // --- Quaternion correction ---
+    // Quaternion correction
     applyQuaternionCorrectionFromErrorState();
 
-    // --- Clear small-angle error entries ---
+    // Clear small-angle error entries
     xext.head<3>().setZero();
 }
 
@@ -371,32 +371,32 @@ void QuaternionMEKF<T, with_bias>::measurement_update_partial(
     const Eigen::Ref<const Vector3>& vhat,
     const Eigen::Ref<const Matrix3>& Rm)
 {
-    // --- Build Cext (3 x NX) ---
+    // Build Cext (3 x NX)
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
     Cext.block<3,3>(0,0) = skew_symmetric_matrix(vhat);
 
-    // --- Innovation ---
+    // Innovation
     Vector3 inno = meas - vhat;
 
-    // --- Innovation covariance ---
+    // Innovation covariance
     Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
 
-    // --- Solve for Kalman gain efficiently ---
+    // Solve for Kalman gain efficiently
     Eigen::FullPivLU<Matrix3> lu(S_mat);
     if (!lu.isInvertible()) return;
     Matrix<T, NX, 3> K = lu.solve(Pext * Cext.transpose());
 
-    // --- Update state ---
+    // Update state
     xext += K * inno;
 
-    // --- Joseph-form covariance update ---
+    // Joseph-form covariance update
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
 
-    // --- Apply quaternion correction ---
+    // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
 
-    // --- Clear small-angle error entries ---
+    // Clear small-angle error entries
     xext.head<3>().setZero();
 }
 
@@ -473,37 +473,37 @@ void QuaternionMEKF<T, with_bias>::normalizeQuat() {
 //  Extended pseudo-measurement: zero S 
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::applyIntegralZeroPseudoMeas() {
-    // --- Build measurement matrix H (picks S block) ---
+    // Build measurement matrix H (picks S block)
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
     H.block<3,3>(0, BASE_N + 6) = Matrix3::Identity();
 
-    // --- Innovation (desired S = 0) ---
+    // Innovation (desired S = 0)
     Vector3 z = Vector3::Zero();
     Vector3 inno = z - H * xext;
 
-    // --- Innovation covariance ---
+    // Innovation covariance
     Matrix3 S_mat = H * Pext * H.transpose() + R_S;
 
-    // --- Solve K * S_mat = Pext * H^T efficiently ---
+    // Solve K * S_mat = Pext * H^T efficiently
     Eigen::FullPivLU<Matrix3> lu(S_mat);
     if (!lu.isInvertible()) return;
 
     Matrix<T, NX, 3> K = lu.solve(Pext * H.transpose());
 
-    // --- Update extended state ---
+    // Update extended state
     xext += K * inno;
 
-    // --- Covariance Joseph form ---
+    // Covariance Joseph form
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
 
-    // --- Apply quaternion correction if attitude error changed ---
+    // Apply quaternion correction if attitude error changed
     applyQuaternionCorrectionFromErrorState();
 
-    // --- Clear small-angle entries (first 3) ---
+    // Clear small-angle entries (first 3)
     xext.head<3>().setZero();
 
-    // --- Update base covariance ---
+    // Update base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
@@ -517,7 +517,7 @@ void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
     F_a_ext.setIdentity();
     Q_a_ext = Qext; // start with template
 
-    // --- Top-left: original MEKF F ---
+    // Top-left: original MEKF F
     if constexpr (with_bias) {
         F_a_ext.topLeftCorner(3,3) = F.topLeftCorner(3,3);
         F_a_ext.block<3,3>(0,3) = Matrix3::Identity() * (-Ts); // attitude->bias
@@ -525,23 +525,23 @@ void QuaternionMEKF<T, with_bias>::assembleExtendedFandQ(
         F_a_ext.topLeftCorner(3,3) = F.topLeftCorner(3,3);
     }
 
-    // --- Gravity-free acceleration ---
+    // Gravity-free acceleration
     Matrix3 Rw = R_from_quat();
     Vector3 g_world{0,0,9.81};
     Vector3 a_w = Rw * acc_body - g_world; // remove gravity
     Matrix3 skew_aw = skew_symmetric_matrix(a_w);
 
-    // --- Attitude → linear Jacobians ---
+    // Attitude → linear Jacobians
     F_a_ext.block<3,3>(BASE_N, 0)     = -Ts * (Rw * skew_aw);         // v
     F_a_ext.block<3,3>(BASE_N+3,0)    = -0.5*Ts*Ts*(Rw*skew_aw);     // p
     F_a_ext.block<3,3>(BASE_N+6,0)    = -(Ts*Ts*Ts/6.0)*(Rw*skew_aw); // S
 
-    // --- Linear dependencies ---
+    // Linear dependencies
     F_a_ext.block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
     F_a_ext.block<3,3>(BASE_N+6, BASE_N) = Matrix3::Identity() * (0.5*Ts*Ts); // v -> S
     F_a_ext.block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;      // p -> S
 
-    // --- Process noise ---
+    // Process noise
     Matrix<T,9,3> G;
     G << Ts*Rw, 0.5*Ts*Ts*Rw, (Ts*Ts*Ts/6.0)*Rw;  // block-wise concatenation
     Q_a_ext.block(BASE_N, BASE_N, 9,9) = G * Q_Racc_noise * G.transpose();
