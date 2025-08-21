@@ -278,12 +278,15 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
 
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
-    // Build quaternion transition matrix
+    // bias-corrected gyro
     if constexpr (with_bias) {
-        set_transition_matrix(gyr - xext.template segment<3>(3), Ts);
+        last_gyr_bias_corrected = gyr - xext.template segment<3>(3);
     } else {
-        set_transition_matrix(gyr, Ts);
+        last_gyr_bias_corrected = gyr;
     }
+  
+    // Build quaternion transition matrix
+    set_transition_matrix(last_gyr_bias_corrected, Ts);
 
     // Update quaternion
     qref.coeffs() = F * qref.coeffs();
@@ -303,14 +306,6 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
     xext.template segment<3>(BASE_N)     = v + a_w * Ts;
     xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_w * Ts*Ts;
     xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
-
-    if constexpr (with_bias) {
-        last_gyr_bias_corrected = gyr - xext.template segment<3>(3);
-        set_transition_matrix(last_gyr_bias_corrected, Ts);
-    } else {
-        last_gyr_bias_corrected = gyr;
-        set_transition_matrix(gyr, Ts);
-    }
 
     // Assemble extended Jacobian and Q
     MatrixNX F_a_ext, Q_a_ext;
