@@ -314,7 +314,7 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const
 
     // 6) Taylor-series propagation
     Vector3 v_next = v + a_w * Ts;
-    Vector3 p_next = p + v * Ts + 0.5 * a_w * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
+    Vector3 p_next = p + v * Ts + 0.5 * a_w * Ts*Ts;
     Vector3 S_next = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_w;
 
     xext.template segment<3>(BASE_N + 0) = v_next;
