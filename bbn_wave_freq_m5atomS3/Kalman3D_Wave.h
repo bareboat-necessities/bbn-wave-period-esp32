@@ -371,33 +371,39 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
     const Eigen::Ref<const Vector3>& vhat,
     const Eigen::Ref<const Matrix3>& Rm)
 {
-    // Build Cext (3 x NX)
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    Cext.block<3,3>(0,0) = skew_symmetric_matrix(vhat);
+// Cext: (3 x NX)
+Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+Cext.block<3,3>(0,0) = skew_symmetric_matrix(vhat);
 
-    // Innovation
-    Vector3 inno = meas - vhat;
+// Innovation
+Vector3 inno = meas - vhat;
 
-    // Innovation covariance
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
+// S = C P C^T + Rm  (3x3)
+Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
 
-    // Solve for Kalman gain efficiently
-    Eigen::FullPivLU<Matrix3> lu(S_mat);
-    if (!lu.isInvertible()) return;
-    Matrix<T, NX, 3> K = lu.solve(Pext * Cext.transpose());
+// PCt = P C^T  (NX x 3)
+Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
 
-    // Update state
-    xext += K * inno;
+// Factor S (SPD) and solve
+Eigen::LDLT<Matrix3> ldlt(S_mat);
+if (ldlt.info() != Eigen::Success) {
+    S_mat += Matrix3::Identity() * std::numeric_limits<T>::epsilon();
+    ldlt.compute(S_mat);
+    if (ldlt.info() != Eigen::Success) return;
+}
+Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // Joseph-form covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
+// State update
+xext.noalias() += K * inno;
 
-    // Apply quaternion correction
-    applyQuaternionCorrectionFromErrorState();
+// Joseph covariance update
+MatrixNX I = MatrixNX::Identity();
+Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
+Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Clear small-angle error entries
-    xext.template head<3>().setZero();
+// Quaternion correction + zero small-angle
+applyQuaternionCorrectionFromErrorState();
+xext.template head<3>().setZero();
 }
 
 template<typename T, bool with_bias>
