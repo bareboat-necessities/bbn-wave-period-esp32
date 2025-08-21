@@ -56,29 +56,20 @@ class QuaternionMEKF {
     // Constructor signatures preserved, additional defaults for linear process noise
     QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
                    T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12));
-    constexpr QuaternionMEKF(T const sigma_a[3], T const sigma_g[3], T const sigma_m[3],
-                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12));
 
     // Initialization / measurement API preserved
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
-    void initialize_from_acc_mag(T const acc[3], T const mag[3]);
     void initialize_from_acc(Vector3 const& acc);
-    void initialize_from_acc(T const acc[3]);
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
 
     // Time update: preserved old signature (no acc) plus new overload (gyr + acc)
     void time_update(Vector3 const& gyr, T Ts);                      // original behavior (acc=0)
     void time_update(Vector3 const& gyr, Vector3 const& acc, T Ts);  // new: uses acc to drive v/p/S
-    void time_update(T const gyr[3], T Ts);
-    void time_update(T const gyr[3], T const acc[3], T Ts);
 
     // Measurement updates preserved (operate on extended state internally)
     void measurement_update(Vector3 const& acc, Vector3 const& mag);
-    void measurement_update(T const acc[3], T const mag[3]);
     void measurement_update_acc_only(Vector3 const& acc);
-    void measurement_update_acc_only(T const acc[3]);
     void measurement_update_mag_only(Vector3 const& mag);
-    void measurement_update_mag_only(T const mag[3]);
 
     // Extended-only API:
     // Apply zero pseudo-measurement on S (integral drift correction)
@@ -219,11 +210,6 @@ void QuaternionMEKF<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, V
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::initialize_from_acc_mag(T const acc[3], T const mag[3]) {
-  initialize_from_acc_mag(Map<Matrix<T, 3, 1>>(acc), Map<Matrix<T, 3, 1>>(mag));
-}
-
-template<typename T, bool with_bias>
 Eigen::Quaternion<T> QuaternionMEKF<T, with_bias>::quaternion_from_acc(Vector3 const& acc) {
   T qx, qy, qz, qw;
   if (acc[2] >= 0) {
@@ -251,11 +237,6 @@ void QuaternionMEKF<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
   qref.normalize();
 }
 
-template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::initialize_from_acc(T const acc[3]) {
-  initialize_from_acc(Map<Matrix<T, 3, 1>>(acc));
-}
-
 // ----------------- core time update (overloads) -----------------
 
 // original signature preserved: no accel input
@@ -264,16 +245,6 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
   // call new overload with zero acceleration vector for backward compatibility
   Vector3 acc_zero = Vector3::Zero();
   time_update(gyr, acc_zero, Ts);
-}
-
-template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::time_update(T const gyr[3], T Ts) {
-  time_update(Map<Matrix<T, 3, 1>>(gyr), Ts);
-}
-
-template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::time_update(T const gyr[3], T const acc[3], T Ts) {
-  time_update(Map<Matrix<T, 3, 1>>(gyr), Map<Matrix<T,3,1>>(acc), Ts);
 }
 
 template <typename T, bool with_bias>
@@ -491,12 +462,6 @@ void QuaternionMEKF<T, with_bias>::measurement_update(Vector3 const& acc, Vector
   }
 }
 
-// Overloads calling the above
-template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::measurement_update(T const acc[3], T const mag[3]) {
-  measurement_update(Map<Matrix<T,3,1>>(acc), Map<Matrix<T,3,1>>(mag));
-}
-
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::measurement_update_partial(
     const Eigen::Ref<const Vector3>& meas,
@@ -535,19 +500,9 @@ void QuaternionMEKF<T, with_bias>::measurement_update_acc_only(Vector3 const& ac
 }
 
 template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::measurement_update_acc_only(T const acc[3]) {
-  measurement_update_acc_only(Map<Matrix<T,3,1>>(acc));
-}
-
-template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::measurement_update_mag_only(Vector3 const& mag) {
   Vector3 const v2hat = magnetometer_measurement_func();
   measurement_update_partial(mag, v2hat, Rmag);
-}
-
-template<typename T, bool with_bias>
-void QuaternionMEKF<T, with_bias>::measurement_update_mag_only(T const mag[3]) {
-  measurement_update_mag_only(Map<Matrix<T,3,1>>(mag));
 }
 
 template<typename T, bool with_bias>
