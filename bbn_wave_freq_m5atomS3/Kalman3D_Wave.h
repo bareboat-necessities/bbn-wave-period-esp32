@@ -559,13 +559,6 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     F_a_ext.template block<3,3>(BASE_N,0)     = -Ts * (Rw * skew_ab);
     F_a_ext.template block<3,3>(BASE_N+3,0)   = -T(0.5)*Ts*Ts * (Rw * skew_ab);
     F_a_ext.template block<3,3>(BASE_N+6,0)   = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
-
-    // Gyro Bias
-    if constexpr (with_bias) {
-        F_a_ext.template block<3,3>(BASE_N, 3)     = -Ts * Rw;        // bias → velocity
-        F_a_ext.template block<3,3>(BASE_N+3, 3)   = -0.5*Ts*Ts * Rw;  // bias → position
-        F_a_ext.template block<3,3>(BASE_N+6, 3)   = -(Ts*Ts*Ts/6) * Rw; // bias → integral S
-    }
   
     // Linear dependencies
     F_a_ext.template block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
