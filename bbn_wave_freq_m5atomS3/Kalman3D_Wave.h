@@ -318,6 +318,9 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
 
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+
+    // Drift correction
+    applyIntegralZeroPseudoMeas();
 }
 
 // measurement update
