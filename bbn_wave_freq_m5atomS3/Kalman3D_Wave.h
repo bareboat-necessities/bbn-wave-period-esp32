@@ -119,7 +119,7 @@ class Kalman3D_Wave {
     MatrixBaseN Pbase;
 
     // Extended full state xext and Pext (NX x NX)
-    Matrix<T, NX, 1> xext; // [ att_err(3), (bias 3 optional), v(3), p(3), S(3) ]
+    Matrix<T, NX, 1> xext; // [ att_err(3), (gyro bias 3 optional), v(3), p(3), S(3) ]
     MatrixNX Pext;
 
     // Original quaternion transition matrix
