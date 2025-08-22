@@ -32,6 +32,8 @@ using Eigen::Map;
 
 template <typename T = float, bool with_bias = true>
 class Kalman3D_Wave {
+    static const T gravity_magnitude = T(9.81);
+
     // Original base state dimension (attitude-error (3) [+ gyro-bias (3) if with_bias])
     static constexpr int BASE_N = with_bias ? 6 : 3;
     // Extended added states: v(3), p(3), S(3)
@@ -300,7 +302,7 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
 
     // World-frame linear acceleration
     Matrix3 Rw = R_from_quat();
-    Vector3 g_world{0,0,9.81};
+    Vector3 g_world{0, 0, gravity_magnitude};
     Vector3 a_w = Rw * acc_body - g_world;  // remove gravity
     Vector3 a_corr = a_w;
   
@@ -551,7 +553,7 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
 
     // Gravity-free acceleration
     Matrix3 Rw = R_from_quat();
-    Vector3 g_world{0,0,9.81};
+    Vector3 g_world{0, 0, gravity_magnitude};
     Vector3 a_w = Rw * acc_body - g_world; // remove gravity
     const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // body frame
 
