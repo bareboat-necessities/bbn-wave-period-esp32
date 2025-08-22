@@ -116,7 +116,6 @@ class Kalman3D_Wave {
 
     // Original base error-state (first BASE_N elements) — now stored inside xext (top portion)
     // But we keep a mirror of original P for compatibility
-    Matrix<T, BASE_N, 1> xbase;
     MatrixBaseN Pbase;
 
     // Extended full state xext and Pext (NX x NX)
