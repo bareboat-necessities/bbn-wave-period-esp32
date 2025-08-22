@@ -170,7 +170,6 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
   : Qbase(initialize_Q(sigma_g, b0)),
     Racc(sigma_a.array().square().matrix().asDiagonal()),
     Rmag(sigma_m.array().square().matrix().asDiagonal()),
-    R((Vector6() << sigma_a, sigma_m).finished().array().square().matrix().asDiagonal()),
     // initialize Q_Racc_noise from sigma_a as well
     Q_Racc_noise(sigma_a.array().square().matrix().asDiagonal())
 {
@@ -199,6 +198,10 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
   // Initialize Qext: top-left is original Qbase; rest zeros until we compute process noise by template
   Qext.setZero();
   Qext.topLeftCorner(BASE_N, BASE_N) = Qbase;
+
+  R.setZero();
+  R.topLeftCorner<3,3>()  = Racc;     // accelerometer measurement noise
+  R.bottomRightCorner<3,3>() = Rmag;  // magnetometer measurement noise
 
   // default extra linear noise: small values
   // computeLinearProcessNoiseTemplate(); // called in time_update when Ts is known
