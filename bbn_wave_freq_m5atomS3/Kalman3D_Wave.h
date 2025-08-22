@@ -180,7 +180,6 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
   R_S = Matrix3::Identity() * R_S_noise;
 
   // initialize base / extended states
-  xbase.setZero();
   Pbase.setZero();
   Pbase.setIdentity(); // default small initial cov unless user overwrites
   
