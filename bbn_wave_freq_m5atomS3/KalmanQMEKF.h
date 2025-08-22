@@ -134,8 +134,8 @@ void QuaternionMEKF<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, V
   // Construct the rotation matrix
   Matrix3 const R = (Matrix3() << Rx, Ry, Rz).finished();
 
-  // Eigen can convert it to a quaternion
-  qref = R.transpose();
+  // Convert it to a quaternion
+  qref = Eigen::Quaternion<T>(R.transpose());
 
   // Reference magnetic field vector
   v2ref = qref * mag;
