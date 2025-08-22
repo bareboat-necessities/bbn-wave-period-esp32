@@ -200,8 +200,8 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
   Qext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
   R.setZero();
-  R.topLeftCorner<3,3>()  = Racc;     // accelerometer measurement noise
-  R.bottomRightCorner<3,3>() = Rmag;  // magnetometer measurement noise
+  R.template topLeftCorner<3,3>()  = Racc;     // accelerometer measurement noise
+  R.template bottomRightCorner<3,3>() = Rmag;  // magnetometer measurement noise
 
   // default extra linear noise: small values
   // computeLinearProcessNoiseTemplate(); // called in time_update when Ts is known
