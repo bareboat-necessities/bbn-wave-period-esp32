@@ -167,39 +167,56 @@ class WaveSpectrumEstimator {
       return 4.0 * std::sqrt(std::max(m0, 0.0));
     }
 
-    double estimateFp() const {
-      Vec S = getDisplacementSpectrum();
+double estimateFp() const {
+    if (Nfreq == 0) return 0.0;  // Handle empty frequency grid
 
-      // Find maximum
-      int idx = 0;
-      double maxVal = 0;
-      for (int i = 0; i < Nfreq; i++) {
+    Vec S = getDisplacementSpectrum();
+
+    // Find maximum
+    int idx = 0;
+    double maxVal = 0;
+    for (int i = 0; i < Nfreq; i++) {
         if (S[i] > maxVal) {
-          maxVal = S[i];
-          idx = i;
+            maxVal = S[i];
+            idx = i;
         }
-      }
+    }
 
-      // Parabolic interpolation (log scale)
-      if (idx > 0 && idx < Nfreq - 1) {
+    // Parabolic interpolation (log scale)
+    if (idx > 0 && idx < Nfreq - 1) {
         double y0 = std::log(S[idx - 1]);
         double y1 = std::log(S[idx]);
         double y2 = std::log(S[idx + 1]);
 
-        // Compute parabolic offset   
         double denominator = (y0 - 2*y1 + y2);
         if (std::abs(denominator) < 1e-12) return freqs_[idx];
         double p = 0.5 * (y0 - y2) / denominator;
 
-        // Use actual spacing
         double df_left = freqs_[idx] - freqs_[idx - 1];
         double df_right = freqs_[idx + 1] - freqs_[idx];
         double df_avg = 0.5 * (df_left + df_right);
 
         return freqs_[idx] + p * df_avg;
-      }
-      return freqs_[idx];
     }
+    else if (idx == 0 && Nfreq > 1) {
+        // One-sided forward interpolation
+        double y1 = std::log(S[0]);
+        double y2 = std::log(S[1]);
+        double p = (y2 - y1) / (y2 + 1e-12); // simple slope approximation
+        double df = freqs_[1] - freqs_[0];
+        return freqs_[0] + p * df;
+    }
+    else if (idx == Nfreq - 1 && Nfreq > 1) {
+        // One-sided backward interpolation
+        double y0 = std::log(S[Nfreq - 2]);
+        double y1 = std::log(S[Nfreq - 1]);
+        double p = (y1 - y0) / (y1 + 1e-12); // simple slope approximation
+        double df = freqs_[Nfreq - 1] - freqs_[Nfreq - 2];
+        return freqs_[Nfreq - 1] + p * df;
+    }
+
+    return freqs_[idx];  // fallback
+}
 
     PMFitResult fitPiersonMoskowitz() const {
       auto S_obs = getDisplacementSpectrum();
