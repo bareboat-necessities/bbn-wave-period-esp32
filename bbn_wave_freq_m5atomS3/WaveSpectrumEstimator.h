@@ -17,49 +17,48 @@ public:
         double cost;
     };
 
-    WaveSpectrumEstimator(double fs_raw = 240.0,
-                          int decimFactor = 5,
-                          int shift_samples = 224,
-                          bool hannEnabled = true)
-        : fs_raw(fs_raw), decimFactor(decimFactor), shift(shift_samples), hannEnabled(hannEnabled)
-    {
+WaveSpectrumEstimator(double fs_raw_ = 240.0,
+                      int decimFactor_ = 5,
+                      int shift_samples_ = 224,
+                      bool hannEnabled_ = true)
+    : fs_raw(fs_raw_), decimFactor(decimFactor_), shift(shift_samples_), hannEnabled(hannEnabled_)
+{
+    // --- 1. Validate shift ---
+    if (shift > Nblock) shift = Nblock;
 
-        if (shift_samples > Nblock) {
-            shift_samples = Nblock;
-        }
-        
-        fs = fs_raw / decimFactor;
+    // --- 2. Compute decimated sample rate ---
+    fs = fs_raw / decimFactor;
 
-double normFc = 0.8; // 0.8 × Nyquist (fs/2)
-designLowpassBiquad(normFc);
-        
-        // default frequency grid
-        static constexpr double defaultFreqs[Nfreq] = {
-            0.030,0.040,0.050,0.060,0.070,0.080,0.090,0.100,
-            0.115,0.130,0.145,0.160,0.175,0.190,0.205,0.220,
-            0.240,0.260,0.280,0.300,0.330,0.360,0.390,0.420,
-            0.460,0.500,0.560,0.640,0.720,0.840,0.920,1.000
-        };
-        for(int i=0;i<Nfreq;i++) freqs_[i] = defaultFreqs[i];
+    // --- 3. Initialize default frequency grid ---
+    static constexpr double defaultFreqs[Nfreq] = {
+        0.030,0.040,0.050,0.060,0.070,0.080,0.090,0.100,
+        0.115,0.130,0.145,0.160,0.175,0.190,0.205,0.220,
+        0.240,0.260,0.280,0.300,0.330,0.360,0.390,0.420,
+        0.460,0.500,0.560,0.640,0.720,0.840,0.920,1.000
+    };
+    for (int i = 0; i < Nfreq; i++) freqs_[i] = defaultFreqs[i];
 
-        // precompute Goertzel coefficients
-        for(int i=0;i<Nfreq;i++){
-            double k = 0.5 + (Nblock*freqs_[i])/fs;
-            double omega = 2*M_PI*k/Nblock;
-            coeffs_[i] = 2.0*std::cos(omega);
-        }
-
-        // window
-        for(int n=0;n<Nblock;n++){
-            if(hannEnabled)
-                window_[n] = 0.5*(1.0 - std::cos(2.0*M_PI*n/(Nblock-1)));
-            else
-                window_[n] = 1.0;
-        }
-        windowGain = hannEnabled ? std::sqrt(3.0/8.0) : 1.0;
-
-     reset();   
+    // --- 4. Precompute Goertzel coefficients ---
+    for (int i = 0; i < Nfreq; i++) {
+        double k = 0.5 + (Nblock * freqs_[i]) / fs;   // mid-bin placement
+        double omega = 2.0 * M_PI * k / Nblock;
+        coeffs_[i] = 2.0 * std::cos(omega);
     }
+
+    // --- 5. Initialize window ---
+    for (int n = 0; n < Nblock; n++) {
+        window_[n] = hannEnabled
+                     ? 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1)))
+                     : 1.0;
+    }
+    windowGain = hannEnabled ? std::sqrt(3.0 / 8.0) : 1.0;  // RMS normalization
+
+    // --- 6. Clear accumulators and buffers ---
+    reset();
+
+    // --- 7. Design low-pass biquad ---
+    designLowpassBiquad(0.8);  // cutoff at 0.8 * Nyquist
+}
 
     void reset(){
         buffer_.fill(0.0);
