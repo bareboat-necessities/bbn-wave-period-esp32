@@ -75,43 +75,56 @@ public:
         s2_old_.setZero();
     }
 
-    bool processSample(double x_raw){
-        double y = b0*x_raw + z1;
-        z1 = b1*x_raw - a1*y + z2;
-        z2 = b2*x_raw - a2*y;
+bool processSample(double x_raw) {
+    // --- 1. Apply low-pass biquad filter ---
+    double y = b0 * x_raw + z1;
+    z1 = b1 * x_raw - a1 * y + z2;
+    z2 = b2 * x_raw - a2 * y;
 
-        if(++decimCounter < decimFactor) return false;
-        decimCounter = 0;
+    // --- 2. Decimation ---
+    if (++decimCounter < decimFactor) return false;
+    decimCounter = 0;
 
-        double oldSample = buffer_[writeIndex];
-        buffer_[writeIndex] = y;
+    // --- 3. Circular buffer: identify oldest sample leaving the window ---
+    int oldIdx = writeIndex;                  // oldest sample in buffer
+    double oldSample = buffer_[oldIdx];       // value leaving the window
 
-       int newIdx = writeIndex;
-       writeIndex = (writeIndex+1)%Nblock;
-       int oldIdx = writeIndex; // oldest sample leaving the window
+    // --- 4. Store new sample ---
+    buffer_[oldIdx] = y;
+    int newIdx = oldIdx;                       // index of new sample
 
-        double newWinSample = y*window_[newIdx];
-        double oldWinSample = oldSample*window_[oldIdx];
+    // --- 5. Increment write index for next sample ---
+    writeIndex = (writeIndex + 1) % Nblock;
 
-        for(int i=0;i<Nfreq;i++){
-            double s = newWinSample + coeffs_[i]*s1_[i] - s2_[i];
-            s2_[i] = s1_[i]; s1_[i] = s;
+    // --- 6. Apply windowing ---
+    double newWinSample = y * window_[newIdx];
+    double oldWinSample = oldSample * window_[oldIdx];
 
-            double so = oldWinSample + coeffs_[i]*s1_old_[i] - s2_old_[i];
-            s2_old_[i] = s1_old_[i]; s1_old_[i] = so;
-        }
+    // --- 7. Update Goertzel accumulators for all frequencies ---
+    for (int i = 0; i < Nfreq; i++) {
+        // Current window contribution
+        double s = newWinSample + coeffs_[i] * s1_[i] - s2_[i];
+        s2_[i] = s1_[i]; s1_[i] = s;
 
-        if(filledSamples < Nblock){
-            filledSamples++;
-            if(filledSamples == Nblock) isWarm = true;
-        }
-
-        if(++samplesSinceLast >= shift && isWarm){
-            samplesSinceLast = 0;
-            return true;
-        }
-        return false;
+        // Remove oldest sample contribution
+        double so = oldWinSample + coeffs_[i] * s1_old_[i] - s2_old_[i];
+        s2_old_[i] = s1_old_[i]; s1_old_[i] = so;
     }
+
+    // --- 8. Warm-up check ---
+    if (filledSamples < Nblock) {
+        filledSamples++;
+        if (filledSamples == Nblock) isWarm = true;
+    }
+
+    // --- 9. Shift / ready flag ---
+    if (++samplesSinceLast >= shift && isWarm) {
+        samplesSinceLast = 0;
+        return true;
+    }
+
+    return false;
+}  
 
     Vec getDisplacementSpectrum() const {
         Vec S;
