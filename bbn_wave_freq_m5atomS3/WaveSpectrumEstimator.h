@@ -87,7 +87,7 @@ class WaveSpectrumEstimator {
       reset();
 
       // Design low-pass biquad
-      double cutoffHz = 0.8 * (fs_raw_ / 2.0);   // 0.8 × Nyquist
+      double cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor)); // 45% of post-decimation Nyquist
       designLowpassBiquad(cutoffHz, fs_raw_);
     }
 
@@ -413,6 +413,7 @@ void designLowpassBiquad(double f_cut, double Fs) {
     Eigen::Matrix<double, Nfreq, 1> s1_, s2_, s1_old_, s2_old_;
 
     std::array<double, Nfreq> cos1_, sin1_, cosN_, sinN_;
+    double Q = std::sqrt(0.5); // Butterworth, ~0.707
 
     // counters
     int writeIndex = 0;
