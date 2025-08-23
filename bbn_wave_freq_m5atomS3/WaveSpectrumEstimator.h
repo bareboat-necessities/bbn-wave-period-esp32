@@ -50,7 +50,7 @@ class WaveSpectrumEstimator {
 
     WaveSpectrumEstimator(double fs_raw_ = 240.0,
                           int decimFactor_ = 5,
-                          int shift_samples_ = 224,
+                          int shift_samples_ = 64,
                           bool hannEnabled_ = true)
       : fs_raw(fs_raw_), decimFactor(decimFactor_), shift(shift_samples_), hannEnabled(hannEnabled_)
     {
@@ -407,7 +407,7 @@ void WaveSpectrumEstimator_test() {
     constexpr int Nblock = 256;
 
     double fs = 240.0;           // sample rate
-    WaveSpectrumEstimator<Nfreq, Nblock> estimator(fs, 2, 128, true);
+    WaveSpectrumEstimator<Nfreq, Nblock> estimator(fs, 2, 64, true);
 
     // Generate a test sine wave at 0.2 Hz (simulating vertical acceleration)
     double f_test = 0.2;         // Hz
