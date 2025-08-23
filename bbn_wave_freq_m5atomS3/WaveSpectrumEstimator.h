@@ -23,6 +23,11 @@ public:
                           bool hannEnabled = true)
         : fs_raw(fs_raw), decimFactor(decimFactor), shift(shift_samples), hannEnabled(hannEnabled)
     {
+
+        if (shift_samples > Nblock) {
+            shift_samples = Nblock;
+        }
+        
         fs = fs_raw / decimFactor;
        
 reset();
