@@ -426,7 +426,7 @@ void WaveSpectrumEstimator_test() {
             double Fp = estimator.estimateFp();
             auto pm = estimator.fitPiersonMoskowitz();
 
-            std::cout << "Spectrum ready: Hs = " << Hs 
+            std::cerr << "Spectrum ready: Hs = " << Hs 
                       << ", Fp = " << Fp 
                       << ", PM fit: alpha = " << pm.alpha 
                       << ", fp = " << pm.fp 
