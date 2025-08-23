@@ -85,22 +85,22 @@ bool processSample(double x_raw) {
     if (++decimCounter < decimFactor) return false;
     decimCounter = 0;
 
-    // --- 3. Circular buffer: identify oldest sample leaving the window ---
-    int oldIdx = writeIndex;                  // oldest sample in buffer
-    double oldSample = buffer_[oldIdx];       // value leaving the window
+    // --- 3. Circular buffer: get oldest sample leaving the window ---
+    int oldIdx = writeIndex;                  // oldest sample index
+    double oldSample = buffer_[oldIdx];       // value leaving window
 
     // --- 4. Store new sample ---
     buffer_[oldIdx] = y;
     int newIdx = oldIdx;                       // index of new sample
 
-    // --- 5. Increment write index for next sample ---
+    // --- 5. Increment write index ---
     writeIndex = (writeIndex + 1) % Nblock;
 
     // --- 6. Apply windowing ---
     double newWinSample = y * window_[newIdx];
     double oldWinSample = oldSample * window_[oldIdx];
 
-    // --- 7. Update Goertzel accumulators for all frequencies ---
+    // --- 7. Update Goertzel accumulators ---
     for (int i = 0; i < Nfreq; i++) {
         // Current window contribution
         double s = newWinSample + coeffs_[i] * s1_[i] - s2_[i];
@@ -124,21 +124,33 @@ bool processSample(double x_raw) {
     }
 
     return false;
-}  
+}
 
-    Vec getDisplacementSpectrum() const {
-        Vec S;
-        constexpr double g = 9.80665;
+Vec getDisplacementSpectrum() const {
+    Vec S;
+    constexpr double g = 9.80665;
 
-        for(int i=0;i<Nfreq;i++){
-            double mag2_cur = s1_[i]*s1_[i] + s2_[i]*s2_[i] - coeffs_[i]*s1_[i]*s2_[i];
-            double mag2_old = s1_old_[i]*s1_old_[i] + s2_old_[i]*s2_old_[i]
-                              - coeffs_[i]*s1_old_[i]*s2_old_[i];
-            double mag2 = mag2_cur - mag2_old;
-            S[i] = mag2/(Nblock*Nblock*windowGain*windowGain)/std::pow(2*M_PI*freqs_[i],4);
-        }
-        return S;
+    for (int i = 0; i < Nfreq; i++) {
+        // --- Numerically stable Goertzel magnitude ---
+        double mag2_cur = (s1_[i] - coeffs_[i] * s2_[i]) * s1_[i] + s2_[i] * s2_[i];
+        double mag2_old = (s1_old_[i] - coeffs_[i] * s2_old_[i]) * s1_old_[i] + s2_old_[i] * s2_old_[i];
+
+        // --- Sliding window: subtract old sample contribution ---
+        double mag2 = mag2_cur - mag2_old;
+
+        // --- Normalize for window gain and block length ---
+        mag2 /= (Nblock * Nblock * windowGain * windowGain);
+
+        // --- Convert from acceleration spectrum to displacement spectrum ---
+        double f = freqs_[i];
+        S[i] = mag2 / std::pow(2.0 * M_PI * f, 4);
+
+        // --- Safety: avoid negative due to numerical round-off ---
+        if (S[i] < 0.0) S[i] = 0.0;
     }
+
+    return S;
+}
 
     double computeHs() const {
         Vec S = getDisplacementSpectrum();
