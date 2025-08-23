@@ -29,12 +29,10 @@ public:
         }
         
         fs = fs_raw / decimFactor;
-       
-reset();
 
-// Low-pass cutoff relative to decimated Nyquist to prevent aliasing
-designLowpassBiquad(0.8); // cutoff at 0.8*(fs/2)
-
+double normFc = 0.8; // 0.8 × Nyquist (fs/2)
+designLowpassBiquad(normFc);
+        
         // default frequency grid
         static constexpr double defaultFreqs[Nfreq] = {
             0.030,0.040,0.050,0.060,0.070,0.080,0.090,0.100,
@@ -60,7 +58,7 @@ designLowpassBiquad(0.8); // cutoff at 0.8*(fs/2)
         }
         windowGain = hannEnabled ? std::sqrt(3.0/8.0) : 1.0;
 
-        
+     reset();   
     }
 
     void reset(){
