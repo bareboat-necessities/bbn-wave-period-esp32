@@ -406,10 +406,10 @@ void WaveSpectrumEstimator_test() {
     constexpr int Nfreq = 32;
     constexpr int Nblock = 256;
 
-    WaveSpectrumEstimator<Nfreq, Nblock> estimator(100.0, 2, 128, true);
+    double fs = 240.0;           // sample rate
+    WaveSpectrumEstimator<Nfreq, Nblock> estimator(fs, 2, 128, true);
 
     // Generate a test sine wave at 0.2 Hz (simulating vertical acceleration)
-    double fs = 240.0;           // sample rate
     double f_test = 0.2;         // Hz
     double A_test = 1.0;         // amplitude
     int N_samples = 1000;
