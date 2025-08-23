@@ -11,6 +11,7 @@
 #define PM_STOKES_TEST
 #define KALMAN_WAVE_DIRECTION_TEST
 #define SEA_STATE_TEST
+#define SPECTRUM_TEST
 
 #include <cmath>
 #include <random>
@@ -31,6 +32,7 @@
 #include "Jonswap3D_Waves.h"
 #include "PiersonMoskowitzStokes3D_Waves.h"
 #include "SeaStateRegularity.h"
+#include "WaveSpectrumEstimator.h"
 
 enum TestType {
   GERSTEN = -1,
@@ -255,5 +257,9 @@ int main(int argc, char *argv[]) {
 
 #ifdef SEA_STATE_TEST
   SeaState_sine_wave_test();
+#endif
+
+#ifdef SPECTRUM_TEST
+  WaveSpectrumEstimator_test();
 #endif
 }
