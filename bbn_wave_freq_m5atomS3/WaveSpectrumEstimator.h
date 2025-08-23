@@ -7,7 +7,27 @@
 #include <limits>
 
 /*
-  Ocean wave spectrum estimator.
+  WaveSpectrumEstimator
+
+  This class estimates the ocean wave spectrum from acceleration measurements.
+  It implements a decimated, sliding-window Goertzel algorithm with optional
+  Hann windowing and a low-pass biquad filter to reduce high-frequency noise. 
+
+  Features:
+    - Computes the displacement spectrum from vertical acceleration.
+    - Provides estimates of significant wave height (Hs) and peak wave frequency (Fp).
+    - Supports Pierson-Moskowitz spectrum fitting to estimate spectral parameters.
+    - Handles arbitrary frequency grid sizes (Nfreq) and block lengths (Nblock).
+    - Embedded-friendly: uses fixed-size arrays and Eigen matrices.
+
+  Typical workflow:
+    1. Create an instance with desired parameters (sample rate, decimation, window shift, etc.).
+    2. Call processSample() for each acceleration sample.
+    3. When processSample() returns true, spectrum is ready:
+        - getDisplacementSpectrum()
+        - computeHs()
+        - estimateFp()
+        - fitPiersonMoskowitz()
 
   Copyright 2025, Mikhail Grushinskiy
 */
