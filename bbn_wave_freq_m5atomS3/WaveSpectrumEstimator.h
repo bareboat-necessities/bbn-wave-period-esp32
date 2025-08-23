@@ -357,7 +357,7 @@ Vec getDisplacementSpectrum() const {
 
   private:
 
-inline double safeLog(double v) {
+inline double safeLog(double v) const {
     return std::log(std::max(v, 1e-18));  // avoid log(0)
 }
 
