@@ -24,6 +24,11 @@ public:
         : fs_raw(fs_raw), decimFactor(decimFactor), shift(shift_samples), hannEnabled(hannEnabled)
     {
         fs = fs_raw / decimFactor;
+       
+reset();
+
+// Low-pass cutoff relative to decimated Nyquist to prevent aliasing
+designLowpassBiquad(0.8); // cutoff at 0.8*(fs/2)
 
         // default frequency grid
         static constexpr double defaultFreqs[Nfreq] = {
@@ -50,8 +55,7 @@ public:
         }
         windowGain = hannEnabled ? 0.5 : 1.0;
 
-        reset();
-        designLowpassBiquad(0.4*fs/(fs_raw/2.0));
+        
     }
 
     void reset(){
