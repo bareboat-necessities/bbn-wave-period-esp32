@@ -265,7 +265,7 @@ class WaveSpectrumEstimator {
 
       // Build a search grid for fp using hybrid log-linear spacing
       constexpr int N_fp_search = 32;
-      constexpr double fp_min = 0.03;
+      constexpr double fp_min = 0.05;
       constexpr double fp_transition = 0.1;
       constexpr double fp_max = 1.0;
 
