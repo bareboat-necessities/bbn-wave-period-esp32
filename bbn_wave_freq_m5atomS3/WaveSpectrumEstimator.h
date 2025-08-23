@@ -157,7 +157,7 @@ class WaveSpectrumEstimator {
       for (int i = 0; i < Nfreq; i++) {
         // Numerically stable Goertzel magnitude
         double mag2_cur = s1_[i] * s1_[i] + s2_[i] * s2_[i] - s1_[i] * s2_[i] * coeffs_[i];
-        double mag2_old = (s1_old_[i] - coeffs_[i] * s2_old_[i]) * s1_old_[i] + s2_old_[i] * s2_old_[i];
+        double mag2_old = s1_old_[i] * s1_old_[i] + s2_old_[i] * s2_old_[i] - s1_old_[i] * s2_old_[i] * coeffs_[i];
 
         // Sliding window: subtract old sample contribution
         double mag2 = mag2_cur - mag2_old;
