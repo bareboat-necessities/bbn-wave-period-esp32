@@ -198,45 +198,74 @@ Vec getDisplacementSpectrum() const {
 }
 
     PMFitResult fitPiersonMoskowitz() const {
-        auto S_obs = getDisplacementSpectrum();
-        for(int i=0;i<Nfreq;i++) if(S_obs[i]<=0) S_obs[i]=1e-12;
+    auto S_obs = getDisplacementSpectrum();
+    for(int i=0;i<Nfreq;i++) if(S_obs[i]<=0) S_obs[i]=1e-12;
 
-        auto cost_fn = [&](double a,double fp){
-            double omega_p=2*M_PI*fp; double cost=0.0;
-            constexpr double beta=0.74;
-            for(int i=0;i<Nfreq;i++){
-                double model=a*9.80665*9.80665*std::pow(2*M_PI*freqs_[i],-5.0)
-                    * std::exp(-beta*std::pow(omega_p/(2*M_PI*freqs_[i]),4.0));
-                if(model<=0) model=1e-12;
-                double d = std::log(S_obs[i])-std::log(model);
-                cost += d*d;
-            }
-            return cost;
-        };
+    auto cost_fn = [&](double a,double fp){
+        double omega_p = 2*M_PI*fp;
+        double cost = 0.0;
+        constexpr double beta = 0.74;
 
-        double bestA=1e-5,bestFp=0.1,bestC=std::numeric_limits<double>::infinity();
-        for(int ia=0;ia<8;ia++){
-            double a=1e-5 + ia*(1.0-1e-5)/7;
-            for(int ifp=0;ifp<8;ifp++){
-                double fp=0.03 + ifp*(1.0-0.03)/7;
-                double c=cost_fn(a,fp);
-                if(c<bestC){bestC=c;bestA=a;bestFp=fp;}
-            }
+        for(int i=0;i<Nfreq;i++){
+            double f = freqs_[i];
+            double model = a * 9.80665 * 9.80665 * std::pow(2*M_PI*f, -5.0)
+                           * std::exp(-beta * std::pow(omega_p/(2*M_PI*f),4.0));
+            if(model <= 0) model = 1e-12;
+            double d = std::log(S_obs[i]) - std::log(model);
+            cost += d*d;
         }
+        return cost;
+    };
 
-        double alpha=bestA, fp=bestFp, stepA=0.1, stepFp=0.1;
-        for(int iter=0; iter<40; iter++){
-            bool improved=false; double c;
-            c=cost_fn(alpha+stepA, fp); if(c<bestC){bestC=c; alpha+=stepA; improved=true;}
-            c=cost_fn(alpha-stepA, fp); if(c<bestC){bestC=c; alpha-=stepA; improved=true;}
-            c=cost_fn(alpha, fp+stepFp); if(c<bestC){bestC=c; fp+=stepFp; improved=true;}
-            c=cost_fn(alpha, fp-stepFp); if(c<bestC){bestC=c; fp-=stepFp; improved=true;}
-            if(!improved){stepA*=0.5; stepFp*=0.5; if(stepA<1e-12 && stepFp<1e-12) break;}
-        }
+    // --- 1. Build a search grid for fp using hybrid log-linear spacing ---
+    constexpr int N_fp_search = 32;
+    constexpr double fp_min = 0.03;
+    constexpr double fp_transition = 0.1;
+    constexpr double fp_max = 1.0;
 
-        PMFitResult res; res.alpha=alpha; res.fp=fp; res.cost=bestC;
-        return res;
+    std::array<double, N_fp_search> fp_grid;
+    int n_log = static_cast<int>(N_fp_search * 0.4);
+    int n_lin = N_fp_search - n_log;
+
+    // Log portion
+    for (int i = 0; i < n_log; i++) {
+        double t = static_cast<double>(i) / (n_log - 1);
+        fp_grid[i] = fp_min * std::pow(fp_transition / fp_min, t);
     }
+
+    // Linear portion
+    for (int i = 0; i < n_lin; i++) {
+        double t = static_cast<double>(i) / (n_lin - 1);
+        fp_grid[n_log + i] = fp_transition + t * (fp_max - fp_transition);
+    }
+
+    // --- 2. Coarse search ---
+    double bestA = 1e-5, bestFp = fp_grid[0], bestC = std::numeric_limits<double>::infinity();
+    for(int ia = 0; ia < 8; ia++){
+        double a = 1e-5 + ia*(1.0-1e-5)/7;
+        for(int ifp = 0; ifp < N_fp_search; ifp++){
+            double fp = fp_grid[ifp];
+            double c = cost_fn(a, fp);
+            if(c < bestC){ bestC = c; bestA = a; bestFp = fp; }
+        }
+    }
+
+    // --- 3. Local refinement ---
+    double alpha = bestA, fp = bestFp;
+    double stepA = 0.1, stepFp = 0.1;
+    for(int iter=0; iter<40; iter++){
+        bool improved = false;
+        double c;
+        c = cost_fn(alpha + stepA, fp); if(c < bestC){ bestC=c; alpha+=stepA; improved=true; }
+        c = cost_fn(alpha - stepA, fp); if(c < bestC){ bestC=c; alpha-=stepA; improved=true; }
+        c = cost_fn(alpha, fp + stepFp); if(c < bestC){ bestC=c; fp+=stepFp; improved=true; }
+        c = cost_fn(alpha, fp - stepFp); if(c < bestC){ bestC=c; fp-=stepFp; improved=true; }
+        if(!improved){ stepA*=0.5; stepFp*=0.5; if(stepA<1e-12 && stepFp<1e-12) break; }
+    }
+
+    PMFitResult res; res.alpha=alpha; res.fp=fp; res.cost=bestC;
+    return res;
+}
 
     bool ready() const { return isWarm; }
 
