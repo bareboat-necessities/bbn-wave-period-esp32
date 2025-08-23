@@ -239,16 +239,16 @@ Vec getDisplacementSpectrum() const {
       }
       else if (idx == 0 && Nfreq > 1) {
         // One-sided forward interpolation
-        double y1 = std::log(S[0]);
-        double y2 = std::log(S[1]);
+        double y1 = safeLog(S[0]);
+        double y2 = safeLog(S[1]);
         double p = (y2 - y1) / (y2 + 1e-12); // simple slope approximation
         double df = freqs_[1] - freqs_[0];
         return freqs_[0] + p * df;
       }
       else if (idx == Nfreq - 1 && Nfreq > 1) {
         // One-sided backward interpolation
-        double y0 = std::log(S[Nfreq - 2]);
-        double y1 = std::log(S[Nfreq - 1]);
+        double y0 = safeLog(S[Nfreq - 2]);
+        double y1 = safeLog(S[Nfreq - 1]);
         double p = (y1 - y0) / (y1 + 1e-12); // simple slope approximation
         double df = freqs_[Nfreq - 1] - freqs_[Nfreq - 2];
         return freqs_[Nfreq - 1] + p * df;
