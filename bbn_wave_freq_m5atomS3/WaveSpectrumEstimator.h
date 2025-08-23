@@ -233,18 +233,26 @@ private:
     }
 
     void buildFrequencyGrid() {
-        // Typical ocean wave frequencies (Hz)
-        // PM spectrum: most energy 0.03–0.5 Hz, extend to 1 Hz for safety
-        constexpr double f_min = 0.03;
-        constexpr double f_max = 1.0;
+    constexpr double f_min = 0.03;  // Hz, lowest wave frequency
+    constexpr double f_transition = 0.1; // Hz, where log → linear transition
+    constexpr double f_max = 1.0;   // Hz, highest frequency of interest
 
-        // Use quasi-log spacing to resolve low frequencies better
-        for (int i = 0; i < Nfreq; i++) {
-            double t = static_cast<double>(i) / (Nfreq - 1); // 0..1
-            // quasi-log: weighted combination of linear and log
-            freqs_[i] = f_min * std::pow(f_max / f_min, t); 
-        }
+    // Number of bins in log and linear portions
+    int n_log = static_cast<int>(Nfreq * 0.4);   // ~40% of bins for log spacing
+    int n_lin = Nfreq - n_log;
+
+    // --- Logarithmic portion (f_min to f_transition) ---
+    for (int i = 0; i < n_log; i++) {
+        double t = static_cast<double>(i) / (n_log - 1);
+        freqs_[i] = f_min * std::pow(f_transition / f_min, t);
     }
+
+    // --- Linear portion (f_transition to f_max) ---
+    for (int i = 0; i < n_lin; i++) {
+        double t = static_cast<double>(i) / (n_lin - 1);
+        freqs_[n_log + i] = f_transition + t * (f_max - f_transition);
+    }
+}
 
     double fs_raw, fs;
     int decimFactor, shift;
