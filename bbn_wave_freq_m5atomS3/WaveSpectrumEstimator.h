@@ -166,36 +166,31 @@ Vec getDisplacementSpectrum() const {
 
     double estimateFp() const {
     Vec S = getDisplacementSpectrum();
-    
-    // --- 1. Find peak index ---
-    int idx = 0;
+
+    // Find maximum
+    int idx = 0; 
     double maxVal = 0;
-    for (int i = 0; i < Nfreq; i++) {
-        if (S[i] > maxVal) { maxVal = S[i]; idx = i; }
+    for(int i = 0; i < Nfreq; i++){
+        if(S[i] > maxVal){ maxVal = S[i]; idx = i; }
     }
 
-    // --- 2. Quadratic interpolation if not at edges ---
-    if (idx > 0 && idx < Nfreq - 1) {
-        double f0 = freqs_[idx - 1];
-        double f1 = freqs_[idx];
-        double f2 = freqs_[idx + 1];
-
-        double y0 = std::log(S[idx - 1]);
+    // Parabolic interpolation (log scale)
+    if(idx > 0 && idx < Nfreq-1){
+        double y0 = std::log(S[idx-1]);
         double y1 = std::log(S[idx]);
-        double y2 = std::log(S[idx + 1]);
+        double y2 = std::log(S[idx+1]);
 
-        // Fit parabola through (f0, y0), (f1, y1), (f2, y2)
-        // Quadratic: y = a*f^2 + b*f + c
-        // Derivative zero at f_peak = f1 + 0.5*(y0 - y2)/(y0 - 2*y1 + y2) * (f2 - f0)/2
-        double df = f2 - f0;
-        if (df > 0) {
-            double p = 0.5 * (y0 - y2) / (y0 - 2 * y1 + y2);  // in [-1,1]
-            // Map to frequency: f_peak = f1 + p * (f2 - f0) / 2
-            return f1 + p * df / 2.0;
-        }
+        // Compute parabolic offset
+        double p = 0.5 * (y0 - y2) / (y0 - 2*y1 + y2);
+
+        // Use actual spacing
+        double df_left = freqs_[idx] - freqs_[idx-1];
+        double df_right = freqs_[idx+1] - freqs_[idx];
+        double df_avg = 0.5 * (df_left + df_right);
+
+        return freqs_[idx] + p * df_avg;
     }
 
-    // --- 3. Edge case: peak at boundary ---
     return freqs_[idx];
 }
 
