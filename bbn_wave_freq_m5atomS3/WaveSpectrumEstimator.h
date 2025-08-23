@@ -6,6 +6,11 @@
 #include <cmath>
 #include <limits>
 
+/*
+  Ocean wave spectrum estimator.
+
+  Copyright 2025, Mikhail Grushinskiy
+*/
 template<int Nfreq = 32, int Nblock = 1024>
 class WaveSpectrumEstimator {
   public:
