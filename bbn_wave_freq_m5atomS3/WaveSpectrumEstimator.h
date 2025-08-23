@@ -153,14 +153,16 @@ Vec getDisplacementSpectrum() const {
 }
 
     double computeHs() const {
-        Vec S = getDisplacementSpectrum();
-        double m0 = 0.0;
-        for(int i=0;i<Nfreq-1;i++){
-            double df = freqs_[i+1]-freqs_[i];
-            m0 += 0.5*(S[i]+S[i+1])*df;
-        }
-        return 4.0*std::sqrt(std::max(m0,0.0));
+    Vec S = getDisplacementSpectrum();
+    double m0 = 0.0;
+
+    for(int i = 0; i < Nfreq-1; i++){
+        double df = freqs_[i+1] - freqs_[i];   // non-uniform spacing
+        m0 += 0.5 * (S[i] + S[i+1]) * df;      // trapezoidal rule
     }
+
+    return 4.0 * std::sqrt(std::max(m0, 0.0));
+}
 
     double estimateFp() const {
     Vec S = getDisplacementSpectrum();
