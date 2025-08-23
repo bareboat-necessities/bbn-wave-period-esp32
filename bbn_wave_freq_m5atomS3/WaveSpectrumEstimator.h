@@ -34,6 +34,7 @@
 template<int Nfreq = 32, int Nblock = 1024>
 class WaveSpectrumEstimator {
   public:
+    constexpr double g = 9.80665;
     using Vec = Eigen::Matrix<double, Nfreq, 1>;
 
     struct PMFitResult {
@@ -152,7 +153,6 @@ class WaveSpectrumEstimator {
 
     Vec getDisplacementSpectrum() const {
       Vec S;
-      constexpr double g = 9.80665;
 
       for (int i = 0; i < Nfreq; i++) {
         // Numerically stable Goertzel magnitude
@@ -249,7 +249,7 @@ double estimateFp() const {
 
         for (int i = 0; i < Nfreq; i++) {
           double f = freqs_[i];
-          double model = a * 9.80665 * 9.80665 * std::pow(2 * M_PI * f, -5.0)
+          double model = a * g * g * std::pow(2 * M_PI * f, -5.0)
                          * std::exp(-beta * std::pow(omega_p / (2 * M_PI * f), 4.0));
           if (model <= 0) model = 1e-12;
           double d = std::log(S_obs[i]) - std::log(model);
