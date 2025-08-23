@@ -359,15 +359,18 @@ Vec getDisplacementSpectrum() const {
 
 // f_cut in Hz, Fs in Hz
 void designLowpassBiquad(double f_cut, double Fs) {
-    double Fc = f_cut / Fs;          // normalize to sampling rate (0..0.5)
+    double Fc = f_cut / Fs;          // normalized cutoff (0..0.5)
     double K  = std::tan(M_PI * Fc);
     double norm = 1.0 / (1.0 + K / Q + K * K);
 
-    a0 = K * K * norm;
-    a1 = 2.0 * a0;
-    a2 = a0;
-    b1 = 2.0 * (K * K - 1.0) * norm;
-    b2 = (1.0 - K / Q + K * K) * norm;
+    // Feedforward
+    b0 = K * K * norm;
+    b1 = 2.0 * b0;
+    b2 = b0;
+
+    // Feedback
+    a1 = 2.0 * (K * K - 1.0) * norm;
+    a2 = (1.0 - K / Q + K * K) * norm;
 }
 
     void buildFrequencyGrid() {
