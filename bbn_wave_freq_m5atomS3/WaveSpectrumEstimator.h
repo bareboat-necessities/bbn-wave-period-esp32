@@ -6,7 +6,7 @@
 #include <cmath>
 #include <limits>
 
-template<int Nfreq, int Nblock>
+template<int Nfreq = 32, int Nblock = 1024>
 class WaveSpectrumEstimator {
 public:
     using Vec = Eigen::Matrix<double, Nfreq, 1>;
