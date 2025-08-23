@@ -412,7 +412,7 @@ void WaveSpectrumEstimator_test() {
     // Generate a test sine wave at 0.2 Hz (simulating vertical acceleration)
     double f_test = 0.2;         // Hz
     double A_test = 1.0;         // amplitude
-    int N_samples = 1000;
+    int N_samples = 2000;
 
     int ready_count = 0;
     for (int n = 0; n < N_samples; n++) {
