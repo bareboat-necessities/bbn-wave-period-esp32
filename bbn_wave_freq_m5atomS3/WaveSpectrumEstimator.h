@@ -11,7 +11,7 @@
 
   This class estimates the ocean wave spectrum from acceleration measurements.
   It implements a decimated, sliding-window Goertzel algorithm with optional
-  Hann windowing and a low-pass biquad filter to reduce high-frequency noise. 
+  Hann windowing and a low-pass biquad filter to reduce high-frequency noise.
 
   Features:
     - Computes the displacement spectrum from vertical acceleration.
@@ -156,7 +156,7 @@ class WaveSpectrumEstimator {
 
       for (int i = 0; i < Nfreq; i++) {
         // Numerically stable Goertzel magnitude
-        double mag2_cur = s1_[i]*s1_[i] + s2_[i]*s2_[i] - s1_[i]*s2_[i]*coeffs_[i];
+        double mag2_cur = s1_[i] * s1_[i] + s2_[i] * s2_[i] - s1_[i] * s2_[i] * coeffs_[i];
         double mag2_old = (s1_old_[i] - coeffs_[i] * s2_old_[i]) * s1_old_[i] + s2_old_[i] * s2_old_[i];
 
         // Sliding window: subtract old sample contribution
@@ -187,28 +187,28 @@ class WaveSpectrumEstimator {
       return 4.0 * std::sqrt(std::max(m0, 0.0));
     }
 
-double estimateFp() const {
-    if (Nfreq == 0) return 0.0;  // Handle empty frequency grid
+    double estimateFp() const {
+      if (Nfreq == 0) return 0.0;  // Handle empty frequency grid
 
-    Vec S = getDisplacementSpectrum();
+      Vec S = getDisplacementSpectrum();
 
-    // Find maximum
-    int idx = 0;
-    double maxVal = 0;
-    for (int i = 0; i < Nfreq; i++) {
+      // Find maximum
+      int idx = 0;
+      double maxVal = 0;
+      for (int i = 0; i < Nfreq; i++) {
         if (S[i] > maxVal) {
-            maxVal = S[i];
-            idx = i;
+          maxVal = S[i];
+          idx = i;
         }
-    }
+      }
 
-    // Parabolic interpolation (log scale)
-    if (idx > 0 && idx < Nfreq - 1) {
+      // Parabolic interpolation (log scale)
+      if (idx > 0 && idx < Nfreq - 1) {
         double y0 = std::log(S[idx - 1]);
         double y1 = std::log(S[idx]);
         double y2 = std::log(S[idx + 1]);
 
-        double denominator = (y0 - 2*y1 + y2);
+        double denominator = (y0 - 2 * y1 + y2);
         if (std::abs(denominator) < 1e-12) return freqs_[idx];
         double p = 0.5 * (y0 - y2) / denominator;
 
@@ -217,26 +217,26 @@ double estimateFp() const {
         double df_avg = 0.5 * (df_left + df_right);
 
         return freqs_[idx] + p * df_avg;
-    }
-    else if (idx == 0 && Nfreq > 1) {
+      }
+      else if (idx == 0 && Nfreq > 1) {
         // One-sided forward interpolation
         double y1 = std::log(S[0]);
         double y2 = std::log(S[1]);
         double p = (y2 - y1) / (y2 + 1e-12); // simple slope approximation
         double df = freqs_[1] - freqs_[0];
         return freqs_[0] + p * df;
-    }
-    else if (idx == Nfreq - 1 && Nfreq > 1) {
+      }
+      else if (idx == Nfreq - 1 && Nfreq > 1) {
         // One-sided backward interpolation
         double y0 = std::log(S[Nfreq - 2]);
         double y1 = std::log(S[Nfreq - 1]);
         double p = (y1 - y0) / (y1 + 1e-12); // simple slope approximation
         double df = freqs_[Nfreq - 1] - freqs_[Nfreq - 2];
         return freqs_[Nfreq - 1] + p * df;
-    }
+      }
 
-    return freqs_[idx];  // fallback
-}
+      return freqs_[idx];  // fallback
+    }
 
     PMFitResult fitPiersonMoskowitz() const {
       auto S_obs = getDisplacementSpectrum();
