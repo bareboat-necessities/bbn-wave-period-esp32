@@ -87,7 +87,8 @@ class WaveSpectrumEstimator {
       reset();
 
       // Design low-pass biquad
-      designLowpassBiquad(0.8);  // cutoff at 0.8 * Nyquist
+      double cutoffHz = 0.8 * (fs_raw_ / 2.0);   // 0.8 × Nyquist
+      designLowpassBiquad(cutoffHz, fs_raw_);
     }
 
     void reset() {
@@ -355,15 +356,19 @@ Vec getDisplacementSpectrum() const {
     }
 
   private:
-    void designLowpassBiquad(double normFc) {
-      double K = std::tan(M_PI * normFc);
-      double norm = 1.0 / (1.0 + std::sqrt(2.0) * K + K * K);
-      b0 = K * K * norm;
-      b1 = 2 * b0;
-      b2 = b0;
-      a1 = 2 * (K * K - 1) * norm;
-      a2 = (1 - sqrt(2.0) * K + K * K) * norm;
-    }
+
+// f_cut in Hz, Fs in Hz
+void designLowpassBiquad(double f_cut, double Fs) {
+    double Fc = f_cut / Fs;          // normalize to sampling rate (0..0.5)
+    double K  = std::tan(M_PI * Fc);
+    double norm = 1.0 / (1.0 + K / Q + K * K);
+
+    a0 = K * K * norm;
+    a1 = 2.0 * a0;
+    a2 = a0;
+    b1 = 2.0 * (K * K - 1.0) * norm;
+    b2 = (1.0 - K / Q + K * K) * norm;
+}
 
     void buildFrequencyGrid() {
       constexpr double f_min = 0.03;  // Hz, lowest wave frequency
