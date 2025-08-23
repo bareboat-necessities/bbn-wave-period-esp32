@@ -53,7 +53,7 @@ designLowpassBiquad(0.8); // cutoff at 0.8*(fs/2)
             else
                 window_[n] = 1.0;
         }
-        windowGain = hannEnabled ? 0.5 : 1.0;
+        windowGain = hannEnabled ? std::sqrt(3.0/8.0) : 1.0;
 
         
     }
