@@ -30,13 +30,7 @@ WaveSpectrumEstimator(double fs_raw_ = 240.0,
     fs = fs_raw / decimFactor;
 
     // --- 3. Initialize default frequency grid ---
-    static constexpr double defaultFreqs[Nfreq] = {
-        0.030,0.040,0.050,0.060,0.070,0.080,0.090,0.100,
-        0.115,0.130,0.145,0.160,0.175,0.190,0.205,0.220,
-        0.240,0.260,0.280,0.300,0.330,0.360,0.390,0.420,
-        0.460,0.500,0.560,0.640,0.720,0.840,0.920,1.000
-    };
-    for (int i = 0; i < Nfreq; i++) freqs_[i] = defaultFreqs[i];
+    buildFrequencyGrid();
 
     // --- 4. Precompute Goertzel coefficients ---
     for (int i = 0; i < Nfreq; i++) {
@@ -236,6 +230,20 @@ private:
         b2 = b0;
         a1 = 2*(K*K-1)*norm;
         a2 = (1-sqrt(2.0)*K + K*K)*norm;
+    }
+
+    void buildFrequencyGrid() {
+        // Typical ocean wave frequencies (Hz)
+        // PM spectrum: most energy 0.03–0.5 Hz, extend to 1 Hz for safety
+        constexpr double f_min = 0.03;
+        constexpr double f_max = 1.0;
+
+        // Use quasi-log spacing to resolve low frequencies better
+        for (int i = 0; i < Nfreq; i++) {
+            double t = static_cast<double>(i) / (Nfreq - 1); // 0..1
+            // quasi-log: weighted combination of linear and log
+            freqs_[i] = f_min * std::pow(f_max / f_min, t); 
+        }
     }
 
     double fs_raw, fs;
