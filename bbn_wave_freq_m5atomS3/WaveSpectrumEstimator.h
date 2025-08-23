@@ -68,6 +68,11 @@ class WaveSpectrumEstimator {
         double k = 0.5 + (Nblock * freqs_[i]) / fs;   // mid-bin placement
         double omega = 2.0 * M_PI * k / Nblock;
         coeffs_[i] = 2.0 * std::cos(omega);
+
+        cos1_[i] = std::cos(omega);
+        sin1_[i] = std::sin(omega);
+        cosN_[i] = std::cos(omega * Nblock);
+        sinN_[i] = std::sin(omega * Nblock);
       }
 
       // Initialize window
@@ -156,30 +161,38 @@ class WaveSpectrumEstimator {
       return false;
     }
 
-    Vec getDisplacementSpectrum() const {
-      Vec S;
+Vec getDisplacementSpectrum() const {
+  Vec S;
+  const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * windowGain * windowGain);
 
-      for (int i = 0; i < Nfreq; i++) {
-        // Numerically stable Goertzel magnitude
-        double mag2_cur = s1_[i] * s1_[i] + s2_[i] * s2_[i] - s1_[i] * s2_[i] * coeffs_[i];
-        double mag2_old = s1_old_[i] * s1_old_[i] + s2_old_[i] * s2_old_[i] - s1_old_[i] * s2_old_[i] * coeffs_[i];
+  for (int i = 0; i < Nfreq; i++) {
+    // Goertzel complex outputs: Y = s1 - s2 * e^{-jω}
+    double re_cur = s1_[i] - s2_[i] * cos1_[i];
+    double im_cur =            s2_[i] * sin1_[i];
 
-        // Sliding window: subtract old sample contribution
-        double mag2 = mag2_cur - mag2_old;
+    double re_old = s1_old_[i] - s2_old_[i] * cos1_[i];
+    double im_old =              s2_old_[i] * sin1_[i];
 
-        // Normalize for window gain and block length
-        mag2 /= (Nblock * Nblock * windowGain * windowGain);
+    // Align OLD by +ωN (because old stream accrued an extra e^{-jωN})
+    double re_old_al = re_old * cosN_[i] - im_old * sinN_[i];
+    double im_old_al = re_old * sinN_[i] + im_old * cosN_[i];
 
-        // Convert from acceleration spectrum to displacement spectrum
-        double f = freqs_[i];
-        S[i] = mag2 / std::pow(2.0 * M_PI * f, 4);
+    // Window DFT = current cumulative − aligned old cumulative
+    double re_win = re_cur - re_old_al;
+    double im_win = im_cur - im_old_al;
 
-        // Safety: avoid negative due to numerical round-off
-        if (S[i] < 0.0) S[i] = 0.0;
-      }
+    double mag2 = (re_win * re_win + im_win * im_win) * invNorm;
+    if (!std::isfinite(mag2) || mag2 < 0.0) mag2 = 0.0;
 
-      return S;
-    }
+    // Accel -> displacement
+    double f = freqs_[i];
+    double denom = std::pow(2.0 * M_PI * f, 4);
+    double Si = (denom > 0.0) ? (mag2 / denom) : 0.0;
+
+    S[i] = (std::isfinite(Si) && Si > 0.0) ? Si : 0.0;
+  }
+  return S;
+}
 
     double computeHs() const {
       Vec S = getDisplacementSpectrum();
@@ -390,6 +403,8 @@ class WaveSpectrumEstimator {
 
     // Goertzel accumulators
     Eigen::Matrix<double, Nfreq, 1> s1_, s2_, s1_old_, s2_old_;
+
+    std::array<double, Nfreq> cos1_, sin1_, cosN_, sinN_;
 
     // counters
     int writeIndex = 0;
