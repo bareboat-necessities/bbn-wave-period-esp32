@@ -82,8 +82,8 @@ designLowpassBiquad(0.8); // cutoff at 0.8*(fs/2)
 bool processSample(double x_raw) {
     // --- 1. Apply low-pass biquad filter ---
     double y = b0 * x_raw + z1;
-    z1 = b1 * x_raw - a1 * y + z2;
-    z2 = b2 * x_raw - a2 * y;
+    z1 = b1 * x_raw + a1 * y + z2;
+    z2 = b2 * x_raw + a2 * y;
 
     // --- 2. Decimation ---
     if (++decimCounter < decimFactor) return false;
