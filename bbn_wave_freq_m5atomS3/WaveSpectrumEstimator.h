@@ -357,6 +357,10 @@ Vec getDisplacementSpectrum() const {
 
   private:
 
+inline double safeLog(double v) {
+    return std::log(std::max(v, 1e-18));  // avoid log(0)
+}
+
 // f_cut in Hz, Fs in Hz
 void designLowpassBiquad(double f_cut, double Fs) {
     double Fc = f_cut / Fs;          // normalized cutoff (0..0.5)
