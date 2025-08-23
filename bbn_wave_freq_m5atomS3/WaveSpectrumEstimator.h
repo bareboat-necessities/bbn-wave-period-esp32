@@ -271,7 +271,7 @@ Vec getDisplacementSpectrum() const {
           double model = a * g * g * std::pow(2 * M_PI * f, -5.0)
                          * std::exp(-beta * std::pow(omega_p / (2 * M_PI * f), 4.0));
           if (model <= 0) model = 1e-12;
-          double d = std::log(S_obs[i]) - std::log(model);
+          double d = safeLog(S_obs[i]) - safeLog(model);
           cost += d * d;
         }
         return cost;
