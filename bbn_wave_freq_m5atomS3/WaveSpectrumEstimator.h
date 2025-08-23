@@ -186,8 +186,10 @@ class WaveSpectrumEstimator {
         double y1 = std::log(S[idx]);
         double y2 = std::log(S[idx + 1]);
 
-        // Compute parabolic offset
-        double p = 0.5 * (y0 - y2) / (y0 - 2 * y1 + y2);
+        // Compute parabolic offset   
+        double denominator = (y0 - 2*y1 + y2);
+        if (std::abs(denominator) < 1e-12) return freqs_[idx];
+        double p = 0.5 * (y0 - y2) / denominator;
 
         // Use actual spacing
         double df_left = freqs_[idx] - freqs_[idx - 1];
