@@ -395,3 +395,55 @@ class WaveSpectrumEstimator {
     int filledSamples = 0;
     bool isWarm = false;
 };
+
+#ifdef SPECTRUM_TEST
+#include <iostream>
+#include <cmath>
+#include <cassert>
+#include "WaveSpectrumEstimator.h"
+
+void WaveSpectrumEstimator_test() {
+    constexpr int Nfreq = 32;
+    constexpr int Nblock = 256;
+
+    WaveSpectrumEstimator<Nfreq, Nblock> estimator(100.0, 2, 128, true);
+
+    // Generate a test sine wave at 0.2 Hz (simulating vertical acceleration)
+    double fs = 100.0;           // sample rate
+    double f_test = 0.2;         // Hz
+    double A_test = 1.0;         // amplitude
+    int N_samples = 1000;
+
+    int ready_count = 0;
+    for (int n = 0; n < N_samples; n++) {
+        double t = n / fs;
+        double acc = A_test * std::sin(2.0 * M_PI * f_test * t);
+        if (estimator.processSample(acc)) {
+            ready_count++;
+
+            auto S = estimator.getDisplacementSpectrum();
+            double Hs = estimator.computeHs();
+            double Fp = estimator.estimateFp();
+            auto pm = estimator.fitPiersonMoskowitz();
+
+            std::cout << "Spectrum ready: Hs = " << Hs 
+                      << ", Fp = " << Fp 
+                      << ", PM fit: alpha = " << pm.alpha 
+                      << ", fp = " << pm.fp 
+                      << ", cost = " << pm.cost << "\n";
+
+            // Basic checks
+            assert(Hs > 0);                       // Hs should be positive
+            assert(Fp > 0);                       // Fp should be positive
+            assert(pm.alpha > 0);                 // PM fit alpha positive
+            assert(pm.fp > 0);                    // PM fit fp positive
+        }
+    }
+
+    // Ensure the estimator returned ready at least once
+    assert(ready_count > 0);
+    std::cout << "Unit test passed!\n";
+
+    return 0;
+}
+#endif
