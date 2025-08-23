@@ -6,6 +6,11 @@
 #include <cmath>
 #include <limits>
 
+#ifdef SPECTRUM_TEST
+#include <iostream>
+#include <cassert>
+#endif
+
 /*
   WaveSpectrumEstimator
 
@@ -397,11 +402,6 @@ class WaveSpectrumEstimator {
 };
 
 #ifdef SPECTRUM_TEST
-#include <iostream>
-#include <cmath>
-#include <cassert>
-#include "WaveSpectrumEstimator.h"
-
 void WaveSpectrumEstimator_test() {
     constexpr int Nfreq = 32;
     constexpr int Nblock = 256;
@@ -409,7 +409,7 @@ void WaveSpectrumEstimator_test() {
     WaveSpectrumEstimator<Nfreq, Nblock> estimator(100.0, 2, 128, true);
 
     // Generate a test sine wave at 0.2 Hz (simulating vertical acceleration)
-    double fs = 100.0;           // sample rate
+    double fs = 240.0;           // sample rate
     double f_test = 0.2;         // Hz
     double A_test = 1.0;         // amplitude
     int N_samples = 1000;
@@ -442,8 +442,5 @@ void WaveSpectrumEstimator_test() {
 
     // Ensure the estimator returned ready at least once
     assert(ready_count > 0);
-    std::cout << "Unit test passed!\n";
-
-    return 0;
 }
 #endif
