@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Eigen/Dense>
+#include <ArduinoEigenDense.h>
 #include <array>
 #include <vector>
 #include <cmath>
