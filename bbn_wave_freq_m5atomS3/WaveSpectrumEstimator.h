@@ -223,9 +223,9 @@ Vec getDisplacementSpectrum() const {
 
       // Parabolic interpolation (log scale)
       if (idx > 0 && idx < Nfreq - 1) {
-        double y0 = std::log(S[idx - 1]);
-        double y1 = std::log(S[idx]);
-        double y2 = std::log(S[idx + 1]);
+        double y0 = safeLog(S[idx - 1]);
+        double y1 = safeLog(S[idx]);
+        double y2 = safeLog(S[idx + 1]);
 
         double denominator = (y0 - 2 * y1 + y2);
         if (std::abs(denominator) < 1e-12) return freqs_[idx];
