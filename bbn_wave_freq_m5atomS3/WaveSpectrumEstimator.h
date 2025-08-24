@@ -221,24 +221,26 @@ private:
         a1 = 2.0 * (K * K - 1.0) * norm; a2 = (1.0 - K / Q + K * K) * norm;
     }
 
-    void computeSpectrum() {
-        const double scale_factor = 2.0 / (Nblock * window_sum_sq) * (fs / fs_raw);
-        for (int i = 0; i < Nfreq; i++) {
-            double s1 = 0.0, s2 = 0.0;
-            for (int n = 0; n < Nblock; n++) {
-                double x = buffer_[n] * window_[n];
-                double s_new = x + coeffs_[i] * s1 - s2;
-                s2 = s1; s1 = s_new;
-            }
-            double real = s1 - s2 * cos1_[i];
-            double imag = s2 * sin1_[i];
-            double mag2 = (real*real + imag*imag) * scale_factor;
-            double omega = 2.0 * M_PI * freqs_[i];
-            double omega_safe = std::max(omega, 2.0 * M_PI * 0.03);
-            lastSpectrum_[i] = mag2 / std::pow(omega_safe, 4);
-            if (!std::isfinite(lastSpectrum_[i]) || lastSpectrum_[i] < 0) lastSpectrum_[i] = 0.0;
+ void computeSpectrum() {
+    const double scale_factor = 2.0 / (Nblock * window_sum_sq);
+    for (int i = 0; i < Nfreq; i++) {
+        double s1 = 0.0, s2 = 0.0;
+        for (int n = 0; n < Nblock; n++) {
+            double x = buffer_[n] * window_[n];
+            double s_new = x + coeffs_[i] * s1 - s2;
+            s2 = s1; s1 = s_new;
         }
+        double real = s1 - s2 * cos1_[i];
+        double imag = s2 * sin1_[i];
+        double mag2 = (real*real + imag*imag) * scale_factor;
+
+        double omega = 2.0 * M_PI * freqs_[i];
+        double omega_safe = std::max(omega, 2.0 * M_PI * 0.03);
+
+        lastSpectrum_[i] = mag2 / (omega_safe * omega_safe * omega_safe * omega_safe);
+        if (!std::isfinite(lastSpectrum_[i]) || lastSpectrum_[i] < 0) lastSpectrum_[i] = 0.0;
     }
+}   
 
     double fs_raw, fs;
     int decimFactor;
@@ -253,7 +255,6 @@ private:
     double b0, b1, b2, a1, a2;
     double z1 = 0, z2 = 0;
 
-    Eigen::Matrix<double, Nfreq, 1> s1_, s2_;
     std::array<double, Nfreq> cos1_, sin1_;
     Eigen::Matrix<double, Nfreq, 1> lastSpectrum_;
 
