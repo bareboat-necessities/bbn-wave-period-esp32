@@ -152,7 +152,7 @@ bool processSample(double x_raw) {
     return false;
 }
 
-Vec getDisplacementSpectrum() {
+Vec getDisplacementSpectrum() const {
     Vec S;
     const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
 
