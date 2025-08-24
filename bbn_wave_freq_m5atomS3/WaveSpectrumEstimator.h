@@ -38,335 +38,233 @@
 */
 template<int Nfreq = 32, int Nblock = 1024>
 class WaveSpectrumEstimator {
-  public:
+public:
     static constexpr double g = 9.80665;
     using Vec = Eigen::Matrix<double, Nfreq, 1>;
 
     struct PMFitResult {
-      double alpha;
-      double fp;
-      double cost;
+        double alpha;
+        double fp;
+        double cost;
     };
 
     WaveSpectrumEstimator(double fs_raw_ = 240.0,
                           int decimFactor_ = 5,
-                          int shift_samples_ = 64,
                           bool hannEnabled_ = true)
-      : fs_raw(fs_raw_), decimFactor(decimFactor_), shift(shift_samples_), hannEnabled(hannEnabled_)
+        : fs_raw(fs_raw_), decimFactor(decimFactor_), hannEnabled(hannEnabled_)
     {
-      // Validate shift
-      if (shift > Nblock) shift = Nblock;
+        fs = fs_raw / decimFactor;
+        buildFrequencyGrid();
 
-      // Compute decimated sample rate
-      fs = fs_raw / decimFactor;
+        // Precompute Goertzel coefficients
+        for (int i = 0; i < Nfreq; i++) {
+            double omega = 2.0 * M_PI * freqs_[i] / fs;
+            coeffs_[i] = 2.0 * std::cos(omega);
+            cos1_[i] = std::cos(omega);
+            sin1_[i] = std::sin(omega);
+        }
 
-      // Initialize default frequency grid
-      buildFrequencyGrid();
+        // Build Hann window
+        double sumsq = 0.0;
+        for (int n = 0; n < Nblock; n++) {
+            window_[n] = hannEnabled ? 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1))) : 1.0;
+            sumsq += window_[n] * window_[n];
+        }
+        window_sum_sq = sumsq;
 
-      // Precompute Goertzel coefficients (corrected: ω = 2π f / fs)
-      for (int i = 0; i < Nfreq; i++) {
-        double omega = 2.0 * M_PI * freqs_[i] / fs;   // radians/sample
-        coeffs_[i] = 2.0 * std::cos(omega);
+        reset();
 
-        cos1_[i] = std::cos(omega);
-        sin1_[i] = std::sin(omega);
-        cosN_[i] = std::cos(omega * Nblock);
-        sinN_[i] = std::sin(omega * Nblock);
-      }
-
-      // Initialize window and compute normalization factor
-      double sumsq = 0.0;
-      for (int n = 0; n < Nblock; n++) {
-        window_[n] = hannEnabled
-                     ? 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1)))
-                     : 1.0;
-        sumsq += window_[n] * window_[n];
-      }
-      window_sum_sq = sumsq;
-
-      // Clear accumulators and buffers
-      reset();
-
-      // Design low-pass biquad (applied before decimation, so Fs = fs_raw)
-      double cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor)); // 45% of post-decimation Nyquist
-      designLowpassBiquad(cutoffHz, fs_raw_);
+        // Low-pass biquad
+        double cutoffHz = 0.45 * (fs / 2.0);
+        designLowpassBiquad(cutoffHz, fs_raw_);
     }
 
     void reset() {
-      buffer_.fill(0.0);
-      s1_.setZero();
-      s2_.setZero();
-      s1_old_.setZero();
-      s2_old_.setZero();
-      writeIndex = 0;
-      decimCounter = 0;
-      samplesSinceLast = 0;
-      z1 = z2 = 0.0;
-      filledSamples = 0;
-      isWarm = false;
+        buffer_.fill(0.0);
+        s1_.setZero();
+        s2_.setZero();
+        writeIndex = 0;
+        decimCounter = 0;
+        filledSamples = 0;
+        z1 = z2 = 0.0;
+        isWarm = false;
     }
 
-    void resetSpectrum() {
-      s1_.setZero();
-      s2_.setZero();
-      s1_old_.setZero();
-      s2_old_.setZero();
-    }
+    bool processSample(double x_raw) {
+        // Biquad filter
+        double y = b0 * x_raw + z1;
+        z1 = b1 * x_raw + a1 * y + z2;
+        z2 = b2 * x_raw + a2 * y;
 
-bool processSample(double x_raw) {
-    // Apply low-pass biquad filter
-    double y = b0 * x_raw + z1;
-    z1 = b1 * x_raw + a1 * y + z2;
-    z2 = b2 * x_raw + a2 * y;
+        // Decimation
+        if (++decimCounter < decimFactor) return false;
+        decimCounter = 0;
 
-    // Decimation
-    if (++decimCounter < decimFactor) return false;
-    decimCounter = 0;
+        buffer_[writeIndex] = y;
+        writeIndex++;
+        filledSamples++;
 
-    // Store sample in buffer
-    buffer_[writeIndex] = y;
-    writeIndex = (writeIndex + 1) % Nblock;
-
-    // Update Goertzel accumulators
-    double win_sample = y * window_[writeIndex];
-    for (int i = 0; i < Nfreq; i++) {
-        double s_new = win_sample + coeffs_[i] * s1_[i] - s2_[i];
-        s2_[i] = s1_[i];
-        s1_[i] = s_new;
-    }
-
-    filledSamples++;
-
-    // Check if we have a full block
-    if (filledSamples >= Nblock) {
-        isWarm = true;
-        samplesSinceLast++;
-        
-        // Return true when it's time to compute spectrum
-        if (samplesSinceLast >= shift) {
-            samplesSinceLast = 0;
+        // Full block ready?
+        if (filledSamples >= Nblock) {
+            isWarm = true;
             return true;
         }
+        return false;
     }
-    
-    return false;
-}
 
-Vec getDisplacementSpectrum() {
-    Vec S;
-    const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
+    Vec getDisplacementSpectrum() {
+        Vec S;
+        const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
 
-    for (int i = 0; i < Nfreq; i++) {
-        // Compute Goertzel result
-        double real = s1_[i] - s2_[i] * cos1_[i];
-        double imag = s2_[i] * sin1_[i];
-        
-        double mag2 = (real * real + imag * imag) * invNorm;
-        
-        // Acceleration to displacement conversion
-        double omega = 2.0 * M_PI * freqs_[i];
-        // Avoid division by zero for very low frequencies
-        double omega_safe = std::max(omega, 2.0 * M_PI * 0.05);
-        double Si = mag2 / std::pow(omega_safe, 4);
-        
-        S[i] = Si;
+        for (int i = 0; i < Nfreq; i++) {
+            double s1 = 0.0, s2 = 0.0;
+            // Goertzel over the full block
+            for (int n = 0; n < Nblock; n++) {
+                double x = buffer_[n] * window_[n];
+                double s_new = x + coeffs_[i] * s1 - s2;
+                s2 = s1;
+                s1 = s_new;
+            }
+            double real = s1 - s2 * cos1_[i];
+            double imag = s2 * sin1_[i];
+            double mag2 = (real * real + imag * imag) * invNorm;
+
+            double omega = 2.0 * M_PI * freqs_[i];
+            double omega_safe = std::max(omega, 2.0 * M_PI * 0.05);
+            S[i] = mag2 / std::pow(omega_safe, 4);
+        }
+
+        filledSamples = 0;  // reset block
+        return S;
     }
-    
-    // Reset accumulators for next block
-    resetSpectrum();
-    return S;
-}
 
     double computeHs() {
-      Vec S = getDisplacementSpectrum();
-      double m0 = 0.0;
-
-      for (int i = 0; i < Nfreq - 1; i++) {
-        double df = freqs_[i + 1] - freqs_[i]; // non-uniform spacing
-        m0 += 0.5 * (S[i] + S[i + 1]) * df;    // trapezoidal rule
-      }
-      return 4.0 * std::sqrt(std::max(m0, 0.0));
+        Vec S = getDisplacementSpectrum();
+        double m0 = 0.0;
+        for (int i = 0; i < Nfreq - 1; i++) {
+            double df = freqs_[i + 1] - freqs_[i];
+            m0 += 0.5 * (S[i] + S[i + 1]) * df;
+        }
+        return 4.0 * std::sqrt(std::max(m0, 0.0));
     }
 
     double estimateFp() {
-      if (Nfreq == 0) return 0.0;  // Handle empty frequency grid
-
-      Vec S = getDisplacementSpectrum();
-
-      // Find maximum
-      int idx = 0;
-      double maxVal = 0;
-      for (int i = 0; i < Nfreq; i++) {
-        if (S[i] > maxVal) {
-          maxVal = S[i];
-          idx = i;
+        Vec S = getDisplacementSpectrum();
+        int idx = 0;
+        double maxVal = 0;
+        for (int i = 0; i < Nfreq; i++) {
+            if (S[i] > maxVal) {
+                maxVal = S[i];
+                idx = i;
+            }
         }
-      }
 
-      // Parabolic interpolation (log scale)
-      if (idx > 0 && idx < Nfreq - 1) {
-        double y0 = safeLog(S[idx - 1]);
-        double y1 = safeLog(S[idx]);
-        double y2 = safeLog(S[idx + 1]);
-
-        double denominator = (y0 - 2 * y1 + y2);
-        if (std::abs(denominator) < 1e-12) return freqs_[idx];
-        double p = 0.5 * (y0 - y2) / denominator;
-
-        double df_left = freqs_[idx] - freqs_[idx - 1];
-        double df_right = freqs_[idx + 1] - freqs_[idx];
-        double df_avg = 0.5 * (df_left + df_right);
-
-        return freqs_[idx] + p * df_avg;
-      }
-      else if (idx == 0 && Nfreq > 1) {
-        // One-sided forward interpolation
-        double y1 = safeLog(S[0]);
-        double y2 = safeLog(S[1]);
-        double p = (y2 - y1) / (y2 + 1e-12); // simple slope approximation
-        double df = freqs_[1] - freqs_[0];
-        return freqs_[0] + p * df;
-      }
-      else if (idx == Nfreq - 1 && Nfreq > 1) {
-        // One-sided backward interpolation
-        double y0 = safeLog(S[Nfreq - 2]);
-        double y1 = safeLog(S[Nfreq - 1]);
-        double p = (y1 - y0) / (y1 + 1e-12); // simple slope approximation
-        double df = freqs_[Nfreq - 1] - freqs_[Nfreq - 2];
-        return freqs_[Nfreq - 1] + p * df;
-      }
-
-      return freqs_[idx];  // fallback
+        if (idx > 0 && idx < Nfreq - 1) {
+            double y0 = safeLog(S[idx - 1]);
+            double y1 = safeLog(S[idx]);
+            double y2 = safeLog(S[idx + 1]);
+            double denom = y0 - 2.0 * y1 + y2;
+            if (std::abs(denom) < 1e-12) return freqs_[idx];
+            double p = 0.5 * (y0 - y2) / denom;
+            double df_avg = 0.5 * (freqs_[idx] - freqs_[idx - 1] + freqs_[idx + 1] - freqs_[idx]);
+            return freqs_[idx] + p * df_avg;
+        }
+        return freqs_[idx];
     }
 
     PMFitResult fitPiersonMoskowitz() {
-      auto S_obs = getDisplacementSpectrum();
-      for (int i = 0; i < Nfreq; i++) if (S_obs[i] <= 0) S_obs[i] = 1e-12;
+        Vec S_obs = getDisplacementSpectrum();
+        for (int i = 0; i < Nfreq; i++) if (S_obs[i] <= 0) S_obs[i] = 1e-12;
 
-      auto cost_fn = [&](double a, double fp) {
-        double omega_p = 2 * M_PI * fp;
-        double cost = 0.0;
-        constexpr double beta = 0.74;
+        auto cost_fn = [&](double a, double fp) {
+            double omega_p = 2.0 * M_PI * fp;
+            double cost = 0.0;
+            constexpr double beta = 0.74;
+            for (int i = 0; i < Nfreq; i++) {
+                double f = freqs_[i];
+                double model = a * g * g * std::pow(2 * M_PI * f, -5.0)
+                               * std::exp(-beta * std::pow(omega_p / (2.0 * M_PI * f), 4.0));
+                if (model <= 0) model = 1e-12;
+                double d = safeLog(S_obs[i]) - safeLog(model);
+                cost += d * d;
+            }
+            return cost;
+        };
 
-        for (int i = 0; i < Nfreq; i++) {
-          double f = freqs_[i];
-          double model = a * g * g * std::pow(2 * M_PI * f, -5.0)
-                         * std::exp(-beta * std::pow(omega_p / (2 * M_PI * f), 4.0));
-          if (model <= 0) model = 1e-12;
-          double d = safeLog(S_obs[i]) - safeLog(model);
-          cost += d * d;
+        constexpr int N_fp_search = 32;
+        constexpr double fp_min = 0.05, fp_transition = 0.1, fp_max = 1.0;
+        std::array<double, N_fp_search> fp_grid;
+        int n_log = static_cast<int>(N_fp_search * 0.4);
+        int n_lin = N_fp_search - n_log;
+        for (int i = 0; i < n_log; i++) {
+            double t = double(i) / (n_log - 1);
+            fp_grid[i] = fp_min * std::pow(fp_transition / fp_min, t);
         }
-        return cost;
-      };
-
-      // Build a search grid for fp using hybrid log-linear spacing
-      constexpr int N_fp_search = 32;
-      constexpr double fp_min = 0.05;
-      constexpr double fp_transition = 0.1;
-      constexpr double fp_max = 1.0;
-
-      std::array<double, N_fp_search> fp_grid;
-      int n_log = static_cast<int>(N_fp_search * 0.4);
-      int n_lin = N_fp_search - n_log;
-
-      // Log portion
-      for (int i = 0; i < n_log; i++) {
-        double t = static_cast<double>(i) / (n_log - 1);
-        fp_grid[i] = fp_min * std::pow(fp_transition / fp_min, t);
-      }
-
-      // Linear portion
-      for (int i = 0; i < n_lin; i++) {
-        double t = static_cast<double>(i) / (n_lin - 1);
-        fp_grid[n_log + i] = fp_transition + t * (fp_max - fp_transition);
-      }
-
-      // Coarse search
-      double bestA = 1e-5, bestFp = fp_grid[0], bestC = std::numeric_limits<double>::infinity();
-      for (int ia = 0; ia < 8; ia++) {
-        double a = 1e-5 + ia * (1.0 - 1e-5) / 7;
-        for (int ifp = 0; ifp < N_fp_search; ifp++) {
-          double fp = fp_grid[ifp];
-          double c = cost_fn(a, fp);
-          if (c < bestC) {
-            bestC = c;
-            bestA = a;
-            bestFp = fp;
-          }
+        for (int i = 0; i < n_lin; i++) {
+            double t = double(i) / (n_lin - 1);
+            fp_grid[n_log + i] = fp_transition + t * (fp_max - fp_transition);
         }
-      }
 
-      // Local refinement
-      double alpha = bestA, fp = bestFp;
-      double stepA = 0.1, stepFp = 0.1;
-      for (int iter = 0; iter < 40; iter++) {
-        bool improved = false;
-        double c;
-        c = cost_fn(alpha + stepA, fp); if (c < bestC) { bestC = c; alpha += stepA; improved = true; }
-        c = cost_fn(alpha - stepA, fp); if (c < bestC) { bestC = c; alpha -= stepA; improved = true; }
-        c = cost_fn(alpha, fp + stepFp); if (c < bestC) { bestC = c; fp += stepFp; improved = true; }
-        c = cost_fn(alpha, fp - stepFp); if (c < bestC) { bestC = c; fp -= stepFp; improved = true; }
-        if (!improved) {
-          stepA *= 0.5;
-          stepFp *= 0.5;
-          if (stepA < 1e-12 && stepFp < 1e-12) break;
+        double bestA = 1e-5, bestFp = fp_grid[0], bestC = std::numeric_limits<double>::infinity();
+        for (int ia = 0; ia < 8; ia++) {
+            double a = 1e-5 + ia * (1.0 - 1e-5) / 7.0;
+            for (int ifp = 0; ifp < N_fp_search; ifp++) {
+                double fp = fp_grid[ifp];
+                double c = cost_fn(a, fp);
+                if (c < bestC) {
+                    bestC = c;
+                    bestA = a;
+                    bestFp = fp;
+                }
+            }
         }
-      }
 
-      PMFitResult res; res.alpha = alpha; res.fp = fp; res.cost = bestC;
-      return res;
+        double alpha = bestA, fp = bestFp;
+        double stepA = 0.1, stepFp = 0.1;
+        for (int iter = 0; iter < 40; iter++) {
+            bool improved = false;
+            double c;
+            c = cost_fn(alpha + stepA, fp); if (c < bestC) { bestC = c; alpha += stepA; improved = true; }
+            c = cost_fn(alpha - stepA, fp); if (c < bestC) { bestC = c; alpha -= stepA; improved = true; }
+            c = cost_fn(alpha, fp + stepFp); if (c < bestC) { bestC = c; fp += stepFp; improved = true; }
+            c = cost_fn(alpha, fp - stepFp); if (c < bestC) { bestC = c; fp -= stepFp; improved = true; }
+            if (!improved) { stepA *= 0.5; stepFp *= 0.5; if (stepA < 1e-12 && stepFp < 1e-12) break; }
+        }
+
+        PMFitResult res; res.alpha = alpha; res.fp = fp; res.cost = bestC;
+        return res;
     }
 
-    bool ready() const {
-      return isWarm;
-    }
+    bool ready() const { return isWarm; }
 
-  private:
-
-    inline double safeLog(double v) const {
-      return std::log(std::max(v, 1e-18));  // avoid log(0)
-    }
-
-    // f_cut in Hz, Fs in Hz
-    void designLowpassBiquad(double f_cut, double Fs) {
-      double Fc = f_cut / Fs;          // normalized cutoff (0..0.5)
-      double K  = std::tan(M_PI * Fc);
-      double norm = 1.0 / (1.0 + K / Q + K * K);
-
-      // Feedforward
-      b0 = K * K * norm;
-      b1 = 2.0 * b0;
-      b2 = b0;
-
-      // Feedback
-      a1 = 2.0 * (K * K - 1.0) * norm;
-      a2 = (1.0 - K / Q + K * K) * norm;
-    }
+private:
+    inline double safeLog(double v) const { return std::log(std::max(v, 1e-18)); }
 
     void buildFrequencyGrid() {
-      constexpr double f_min = 0.03;  // Hz, lowest wave frequency
-      constexpr double f_transition = 0.1; // Hz, where log → linear transition
-      constexpr double f_max = 1.0;   // Hz, highest frequency of interest
+        constexpr double f_min = 0.03, f_transition = 0.1, f_max = 1.0;
+        int n_log = int(Nfreq * 0.4);
+        int n_lin = Nfreq - n_log;
+        for (int i = 0; i < n_log; i++) {
+            double t = double(i) / (n_log - 1);
+            freqs_[i] = f_min * std::pow(f_transition / f_min, t);
+        }
+        for (int i = 0; i < n_lin; i++) {
+            double t = double(i) / (n_lin - 1);
+            freqs_[n_log + i] = f_transition + t * (f_max - f_transition);
+        }
+    }
 
-      // Number of bins in log and linear portions
-      int n_log = static_cast<int>(Nfreq * 0.4);   // ~40% of bins for log spacing
-      int n_lin = Nfreq - n_log;
-
-      // Logarithmic portion (f_min to f_transition)
-      for (int i = 0; i < n_log; i++) {
-        double t = static_cast<double>(i) / (n_log - 1);
-        freqs_[i] = f_min * std::pow(f_transition / f_min, t);
-      }
-
-      // Linear portion (f_transition to f_max)
-      for (int i = 0; i < n_lin; i++) {
-        double t = static_cast<double>(i) / (n_lin - 1);
-        freqs_[n_log + i] = f_transition + t * (f_max - f_transition);
-      }
+    void designLowpassBiquad(double f_cut, double Fs) {
+        double Fc = f_cut / Fs;
+        double K = std::tan(M_PI * Fc);
+        double norm = 1.0 / (1.0 + K / Q + K * K);
+        b0 = K * K * norm; b1 = 2.0 * b0; b2 = b0;
+        a1 = 2.0 * (K * K - 1.0) * norm;
+        a2 = (1.0 - K / Q + K * K) * norm;
     }
 
     double fs_raw, fs;
-    int decimFactor, shift;
+    int decimFactor;
     bool hannEnabled;
 
     std::array<double, Nfreq> freqs_;
@@ -375,21 +273,18 @@ Vec getDisplacementSpectrum() {
     std::array<double, Nblock> window_;
     double window_sum_sq = 1.0;
 
-    // filter state
     double b0, b1, b2, a1, a2;
     double z1 = 0, z2 = 0;
 
-    // Goertzel accumulators
-    Eigen::Matrix<double, Nfreq, 1> s1_, s2_, s1_old_, s2_old_;
-    std::array<double, Nfreq> cos1_, sin1_, cosN_, sinN_;
+    Eigen::Matrix<double, Nfreq, 1> s1_, s2_;
+    std::array<double, Nfreq> cos1_, sin1_;
 
     int writeIndex = 0;
     int decimCounter = 0;
-    int samplesSinceLast = 0;
     int filledSamples = 0;
     bool isWarm = false;
 
-    static constexpr double Q = 0.707; // Biquad Q factor
+    static constexpr double Q = 0.707;
 };
 
 #ifdef SPECTRUM_TEST
@@ -397,12 +292,11 @@ void WaveSpectrumEstimator_test() {
     constexpr int Nfreq = 32;
     constexpr int Nblock = 256;
 
-    double fs = 240.0;           // sample rate
-    WaveSpectrumEstimator<Nfreq, Nblock> estimator(fs, 2, 64, true);
+    double fs = 240.0;
+    WaveSpectrumEstimator<Nfreq, Nblock> estimator(fs, 2, true);
 
-    // Generate a test sine wave at 0.2 Hz (simulating vertical acceleration)
-    double f_test = 0.2;         // Hz
-    double A_test = 1.0;         // amplitude
+    double f_test = 0.2;
+    double A_test = 1.0;
     int N_samples = 2000;
 
     int ready_count = 0;
@@ -423,15 +317,13 @@ void WaveSpectrumEstimator_test() {
                       << ", fp = " << pm.fp 
                       << ", cost = " << pm.cost << "\n";
 
-            // Basic checks
-            assert(Hs > 0);                       // Hs should be positive
-            assert(Fp > 0);                       // Fp should be positive
-            assert(pm.alpha > 0);                 // PM fit alpha positive
-            assert(pm.fp > 0);                    // PM fit fp positive
+            assert(Hs > 0);
+            assert(Fp > 0);
+            assert(pm.alpha > 0);
+            assert(pm.fp > 0);
         }
     }
 
-    // Ensure the estimator returned ready at least once
     assert(ready_count > 0);
 }
 #endif
