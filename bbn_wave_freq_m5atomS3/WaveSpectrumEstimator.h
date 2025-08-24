@@ -77,7 +77,6 @@ public:
 
     void reset() {
         buffer_.fill(0.0);
-        s1_.setZero(); s2_.setZero();
         writeIndex = 0; decimCounter = 0;
         filledSamples = 0; z1 = z2 = 0.0;
         isWarm = false;
