@@ -171,40 +171,38 @@ bool processSample(double x_raw) {
   return false;
 }
 
-    Vec getDisplacementSpectrum() const {
-      Vec S;
-      // Correct normalization: Nblock^2 * ∑window²
-      const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
+Vec getDisplacementSpectrum() const {
+  Vec S;
+  // Normalization: 4.0 / (Nblock² * window_sum_sq)
+  const double invNorm = 4.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
 
-      for (int i = 0; i < Nfreq; i++) {
-        // Goertzel complex outputs: Y = s1 - s2 * e^{-jω}
-        double re_cur = s1_[i] - s2_[i] * cos1_[i];
-        double im_cur =            s2_[i] * sin1_[i];
+  for (int i = 0; i < Nfreq; i++) {
+    // Goertzel complex outputs
+    double re_cur = s1_[i] - s2_[i] * cos1_[i];
+    double im_cur = s2_[i] * sin1_[i];
 
-        double re_old = s1_old_[i] - s2_old_[i] * cos1_[i];
-        double im_old =              s2_old_[i] * sin1_[i];
+    double re_old = s1_old_[i] - s2_old_[i] * cos1_[i];
+    double im_old = s2_old_[i] * sin1_[i];
 
-        // Align OLD by +ωN (because old stream accrued an extra e^{-jωN})
-        double re_old_al = re_old * cosN_[i] - im_old * sinN_[i];
-        double im_old_al = re_old * sinN_[i] + im_old * cosN_[i];
+    // Align OLD by +ωN
+    double re_old_al = re_old * cosN_[i] - im_old * sinN_[i];
+    double im_old_al = re_old * sinN_[i] + im_old * cosN_[i];
 
-        // Window DFT = current cumulative − aligned old cumulative
-        double re_win = re_cur - re_old_al;
-        double im_win = im_cur - im_old_al;
+    // Window DFT = current cumulative − aligned old cumulative
+    double re_win = re_cur - re_old_al;
+    double im_win = im_cur - im_old_al;
 
-        double mag2 = (re_win * re_win + im_win * im_win) * invNorm;
-        if (!std::isfinite(mag2) || mag2 < 0.0) mag2 = 0.0;
-
-        // Accel -> displacement (guard against near-0 frequency blow-up)
-        double f = freqs_[i];
-        double f_eff = std::max(f, 0.5 * freqs_[0]); // clip lows Hz
-        double denom = std::pow(2.0 * M_PI * f_eff, 4);
-        double Si = (denom > 0.0) ? (mag2 / denom) : 0.0;
-
-        S[i] = (std::isfinite(Si) && Si > 0.0) ? Si : 0.0;
-      }
-      return S;
-    }
+    double mag2 = (re_win * re_win + im_win * im_win) * invNorm;
+    
+    // Accel → displacement: S(ω) = |X(ω)|² / ω⁴
+    double omega = 2.0 * M_PI * freqs_[i];
+    double omega_eff = std::max(omega, 2.0 * M_PI * 0.05); // avoid divide by zero
+    double Si = mag2 / (omega_eff * omega_eff * omega_eff * omega_eff);
+    
+    S[i] = (std::isfinite(Si) && Si >= 0.0) ? Si : 0.0;
+  }
+  return S;
+}
 
     double computeHs() const {
       Vec S = getDisplacementSpectrum();
