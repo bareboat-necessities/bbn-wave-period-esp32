@@ -114,94 +114,67 @@ class WaveSpectrumEstimator {
     }
 
 bool processSample(double x_raw) {
-  // Apply low-pass biquad filter
-  double y = b0 * x_raw + z1;
-  z1 = b1 * x_raw + a1 * y + z2;
-  z2 = b2 * x_raw + a2 * y;
+    // Apply low-pass biquad filter
+    double y = b0 * x_raw + z1;
+    z1 = b1 * x_raw + a1 * y + z2;
+    z2 = b2 * x_raw + a2 * y;
 
-  // Decimation
-  if (++decimCounter < decimFactor) return false;
-  decimCounter = 0;
+    // Decimation
+    if (++decimCounter < decimFactor) return false;
+    decimCounter = 0;
 
-  // Get oldest sample leaving the window
-  double oldSample = buffer_[writeIndex];
+    // Store sample in buffer
+    buffer_[writeIndex] = y;
+    writeIndex = (writeIndex + 1) % Nblock;
 
-  // Store new sample at writeIndex
-  buffer_[writeIndex] = y;
-
-  // Windowed samples
-  double newWin = y * window_[writeIndex];
-  double oldWin = oldSample * window_[writeIndex];
-
-  // Update Goertzel accumulators for CURRENT window
-  for (int i = 0; i < Nfreq; i++) {
-    double s_new = newWin + coeffs_[i] * s1_[i] - s2_[i];
-    s2_[i] = s1_[i];
-    s1_[i] = s_new;
-  }
-
-  // Update Goertzel accumulators for OLD window (the one being shifted out)
-  if (filledSamples >= Nblock) {
+    // Update Goertzel accumulators
+    double win_sample = y * window_[writeIndex];
     for (int i = 0; i < Nfreq; i++) {
-      double s_old = oldWin + coeffs_[i] * s1_old_[i] - s2_old_[i];
-      s2_old_[i] = s1_old_[i];
-      s1_old_[i] = s_old;
+        double s_new = win_sample + coeffs_[i] * s1_[i] - s2_[i];
+        s2_[i] = s1_[i];
+        s1_[i] = s_new;
     }
-  }
 
-  // Advance circular buffer index
-  writeIndex = (writeIndex + 1) % Nblock;
-
-  // Warm-up check
-  if (filledSamples < Nblock) {
     filledSamples++;
-    if (filledSamples == Nblock) {
-      // Initialize old accumulators by processing the initial window
-      s1_old_ = s1_;
-      s2_old_ = s2_;
-      isWarm = true;
-    }
-  }
 
-  // Ready signal on window shift
-  if (isWarm && ++samplesSinceLast >= shift) {
-    samplesSinceLast = 0;
-    return true;
-  }
-  return false;
+    // Check if we have a full block
+    if (filledSamples >= Nblock) {
+        isWarm = true;
+        samplesSinceLast++;
+        
+        // Return true when it's time to compute spectrum
+        if (samplesSinceLast >= shift) {
+            samplesSinceLast = 0;
+            return true;
+        }
+    }
+    
+    return false;
 }
 
-Vec getDisplacementSpectrum() const {
-  Vec S;
-  // Normalization: 4.0 / (Nblock² * window_sum_sq)
-  const double invNorm = 4.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
+Vec getDisplacementSpectrum() {
+    Vec S;
+    const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
 
-  for (int i = 0; i < Nfreq; i++) {
-    // Goertzel complex outputs
-    double re_cur = s1_[i] - s2_[i] * cos1_[i];
-    double im_cur = s2_[i] * sin1_[i];
-
-    double re_old = s1_old_[i] - s2_old_[i] * cos1_[i];
-    double im_old = s2_old_[i] * sin1_[i];
-
-    // Align OLD by +ωN
-    double re_old_al = re_old * cosN_[i] - im_old * sinN_[i];
-    double im_old_al = re_old * sinN_[i] + im_old * cosN_[i];
-
-    // Window DFT = current cumulative − aligned old cumulative
-    double re_win = re_cur - re_old_al;
-    double im_win = im_cur - im_old_al;
-
-    double mag2 = (re_win * re_win + im_win * im_win) * invNorm;
+    for (int i = 0; i < Nfreq; i++) {
+        // Compute Goertzel result
+        double real = s1_[i] - s2_[i] * cos1_[i];
+        double imag = s2_[i] * sin1_[i];
+        
+        double mag2 = (real * real + imag * imag) * invNorm;
+        
+        // Acceleration to displacement conversion
+        double omega = 2.0 * M_PI * freqs_[i];
+        // Avoid division by zero for very low frequencies
+        double omega_safe = std::max(omega, 2.0 * M_PI * 0.05);
+        double Si = mag2 / std::pow(omega_safe, 4);
+        
+        S[i] = Si;
+    }
     
-    // Accel → displacement: S(ω) = |X(ω)|² / ω⁴
-    double omega = 2.0 * M_PI * freqs_[i];
-    double omega_eff = std::max(omega, 2.0 * M_PI * 0.05); // avoid divide by zero
-    double Si = mag2 / (omega_eff * omega_eff * omega_eff * omega_eff);
-    
-    S[i] = (std::isfinite(Si) && Si >= 0.0) ? Si : 0.0;
-  }
-  return S;
+    // Reset accumulators for next block
+    resetSpectrum();
+    return S;
 }
 
     double computeHs() const {
