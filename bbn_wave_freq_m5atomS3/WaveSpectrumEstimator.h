@@ -144,7 +144,7 @@ class WaveSpectrumEstimator {
         if (filledSamples >= Nblock) {
           double s_old = oldWin + coeffs_[i] * s1_old_[i] - s2_old_[i];
           s2_old_[i] = s1_old_[i];
-          s1_old_[i] = s_old;
+          s1_old_[i] = s_old_new;
         }
       }
 
