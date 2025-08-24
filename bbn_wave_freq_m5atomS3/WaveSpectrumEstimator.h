@@ -152,7 +152,7 @@ bool processSample(double x_raw) {
     return false;
 }
 
-Vec getDisplacementSpectrum() const {
+Vec getDisplacementSpectrum() {
     Vec S;
     const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
 
@@ -177,7 +177,7 @@ Vec getDisplacementSpectrum() const {
     return S;
 }
 
-    double computeHs() const {
+    double computeHs() {
       Vec S = getDisplacementSpectrum();
       double m0 = 0.0;
 
@@ -188,7 +188,7 @@ Vec getDisplacementSpectrum() const {
       return 4.0 * std::sqrt(std::max(m0, 0.0));
     }
 
-    double estimateFp() const {
+    double estimateFp() {
       if (Nfreq == 0) return 0.0;  // Handle empty frequency grid
 
       Vec S = getDisplacementSpectrum();
@@ -239,7 +239,7 @@ Vec getDisplacementSpectrum() const {
       return freqs_[idx];  // fallback
     }
 
-    PMFitResult fitPiersonMoskowitz() const {
+    PMFitResult fitPiersonMoskowitz() {
       auto S_obs = getDisplacementSpectrum();
       for (int i = 0; i < Nfreq; i++) if (S_obs[i] <= 0) S_obs[i] = 1e-12;
 
