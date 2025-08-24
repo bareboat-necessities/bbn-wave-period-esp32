@@ -134,16 +134,24 @@ bool processSample(double x_raw) {
     double oldWinSample = oldSample * window_[readIndex];
 
     // Update Goertzel accumulators
-    for (int i = 0; i < Nfreq; i++) {
-        // Add new contribution
-        double s = newWinSample + coeffs_[i] * s1_[i] - s2_[i];
-        s2_[i] = s1_[i];
-        s1_[i] = s;
+    if (filledSamples >= Nblock) {
+        // Standard incremental update
+        for (int i = 0; i < Nfreq; i++) {
+            double s = newWinSample + coeffs_[i] * s1_[i] - s2_[i];
+            s2_[i] = s1_[i];
+            s1_[i] = s;
 
-        // Subtract oldest contribution
-        double so = oldWinSample + coeffs_[i] * s1_old_[i] - s2_old_[i];
-        s2_old_[i] = s1_old_[i];
-        s1_old_[i] = so;
+            double so = oldWinSample + coeffs_[i] * s1_old_[i] - s2_old_[i];
+            s2_old_[i] = s1_old_[i];
+            s1_old_[i] = so;
+        }
+    } else {
+        // Warm-up: only add new contribution
+        for (int i = 0; i < Nfreq; i++) {
+            double s = newWinSample + coeffs_[i] * s1_[i] - s2_[i];
+            s2_[i] = s1_[i];
+            s1_[i] = s;
+        }
     }
 
     // Advance indices
