@@ -134,23 +134,16 @@ bool processSample(double x_raw) {
     double oldWinSample = oldSample * window_[readIndex];
 
     // Update Goertzel accumulators
-    if (filledSamples >= Nblock) {
-        // Standard incremental update
-        for (int i = 0; i < Nfreq; i++) {
-            double s = newWinSample + coeffs_[i] * s1_[i] - s2_[i];
-            s2_[i] = s1_[i];
-            s1_[i] = s;
+    for (int i = 0; i < Nfreq; i++) {
+        double s = newWinSample + coeffs_[i] * s1_[i] - s2_[i];
+        s2_[i] = s1_[i];
+        s1_[i] = s;
 
+        // Only update old accumulators if buffer is fully filled
+        if (filledSamples >= Nblock) {
             double so = oldWinSample + coeffs_[i] * s1_old_[i] - s2_old_[i];
             s2_old_[i] = s1_old_[i];
             s1_old_[i] = so;
-        }
-    } else {
-        // Warm-up: only add new contribution
-        for (int i = 0; i < Nfreq; i++) {
-            double s = newWinSample + coeffs_[i] * s1_[i] - s2_[i];
-            s2_[i] = s1_[i];
-            s1_[i] = s;
         }
     }
 
@@ -161,11 +154,16 @@ bool processSample(double x_raw) {
     // Warm-up check
     if (filledSamples < Nblock) {
         filledSamples++;
-        if (filledSamples == Nblock) isWarm = true;
+        if (filledSamples == Nblock) {
+            // Initialize old accumulators to match current state
+            s1_old_ = s1_;
+            s2_old_ = s2_;
+            isWarm = true;
+        }
     }
 
     // Shift / ready flag
-    if (++samplesSinceLast >= shift && isWarm) {
+    if (isWarm && ++samplesSinceLast >= shift) {
         samplesSinceLast = 0;
         return true;
     }
