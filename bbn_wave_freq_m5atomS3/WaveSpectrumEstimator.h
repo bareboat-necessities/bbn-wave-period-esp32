@@ -52,15 +52,15 @@ public:
         fs = fs_raw / decimFactor;
         buildFrequencyGrid();
 
-        // Precompute Goertzel coefficients
+        // Precompute Goertzel coefficients (rad/sample)
         for (int i = 0; i < Nfreq; i++) {
-            double omega = 2.0 * M_PI * freqs_[i] / fs;
-            coeffs_[i] = 2.0 * std::cos(omega);
-            cos1_[i] = std::cos(omega);
-            sin1_[i] = std::sin(omega);
+            double omega_rs = 2.0 * M_PI * freqs_[i] / fs; // rad/sample
+            coeffs_[i] = 2.0 * std::cos(omega_rs);
+            cos1_[i]  = std::cos(omega_rs);
+            sin1_[i]  = std::sin(omega_rs);
         }
 
-        // Hann window
+        // Hann window and its squared-sum (full-block)
         double sumsq = 0.0;
         for (int n = 0; n < Nblock; n++) {
             window_[n] = hannEnabled ? 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1))) : 1.0;
@@ -70,7 +70,7 @@ public:
 
         reset();
 
-        // Low-pass biquad
+        // Low-pass biquad (applied at raw Fs)
         double cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor));
         designLowpassBiquad(cutoffHz, fs_raw_);
     }
@@ -83,55 +83,31 @@ public:
         lastSpectrum_.setZero();
     }
 
-bool processSample(double x_raw) {
-    // Biquad filter
-    double y = b0 * x_raw + z1;
-    z1 = b1 * x_raw + a1 * y + z2;
-    z2 = b2 * x_raw + a2 * y;
+    // feed raw acceleration sample (Hz = fs_raw)
+    // returns true when a block-spectrum has been computed
+    bool processSample(double x_raw) {
+        // direct-form I biquad (single-sample)
+        double y = b0 * x_raw + z1;
+        z1 = b1 * x_raw + a1 * y + z2;
+        z2 = b2 * x_raw + a2 * y;
 
-    // Decimation
-    if (++decimCounter < decimFactor) return false;
-    decimCounter = 0;
+        // decimate
+        if (++decimCounter < decimFactor) return false;
+        decimCounter = 0;
 
-    buffer_[writeIndex] = y;
-    writeIndex = (writeIndex + 1) % Nblock;
-    filledSamples++;
+        buffer_[writeIndex] = y;
+        writeIndex = (writeIndex + 1) % Nblock;
+        filledSamples++;
 
-    if (filledSamples >= Nblock) isWarm = true;
+        if (filledSamples >= Nblock) isWarm = true;
 
-    // Compute spectrum once buffer has at least one block of data
-    if (filledSamples > 0 && filledSamples % Nblock == 0) {
-        computeSpectrum();
-        return true;
-    }
-
-    return false;
-}
-
-void computeSpectrum() {
-    const int blockSize = std::min(filledSamples, Nblock);
-    const double scale_factor = 2.0 / (blockSize * window_sum_sq);
-
-    for (int i = 0; i < Nfreq; i++) {
-        double s1 = 0.0, s2 = 0.0;
-        for (int n = 0; n < blockSize; n++) {
-            int idx = (writeIndex + Nblock - blockSize + n) % Nblock; // oldest to newest
-            double x = buffer_[idx] * window_[n];
-            double s_new = x + coeffs_[i] * s1 - s2;
-            s2 = s1; s1 = s_new;
+        // compute once per full block (i.e. when filledSamples is a multiple of Nblock)
+        if (filledSamples > 0 && (filledSamples % Nblock) == 0) {
+            computeSpectrum();
+            return true;
         }
-
-        double real = s1 - s2 * cos1_[i];
-        double imag = s2 * sin1_[i];
-        double mag2 = (real * real + imag * imag) * scale_factor;
-
-        double omega = 2.0 * M_PI * freqs_[i];
-        double omega_safe = std::max(omega, 2.0 * M_PI * 0.03);
-
-        lastSpectrum_[i] = mag2 / (omega_safe * omega_safe * omega_safe * omega_safe);
-        if (!std::isfinite(lastSpectrum_[i]) || lastSpectrum_[i] < 0) lastSpectrum_[i] = 0.0;
+        return false;
     }
-}
 
     Vec getDisplacementSpectrum() const { return lastSpectrum_; }
 
@@ -245,6 +221,43 @@ private:
         double norm = 1.0 / (1.0 + K / Q + K * K);
         b0 = K * K * norm; b1 = 2.0 * b0; b2 = b0;
         a1 = 2.0 * (K * K - 1.0) * norm; a2 = (1.0 - K / Q + K * K) * norm;
+    }
+
+    void computeSpectrum() {
+        // number of valid decimated samples available (use up to Nblock)
+        const int blockSize = std::min(filledSamples, Nblock);
+
+        // compute window energy for the actual block size
+        double U = 0.0;
+        for (int n = 0; n < blockSize; n++) U += window_[n] * window_[n];
+
+        // single-sided PSD scale: 2 / (Fs * U)
+        const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
+
+        // start index = oldest sample in circular buffer
+        int startIdx = (writeIndex + Nblock - blockSize) % Nblock;
+
+        for (int i = 0; i < Nfreq; i++) {
+            double s1 = 0.0, s2 = 0.0;
+            int idx = startIdx;
+            for (int n = 0; n < blockSize; n++) {
+                double x = buffer_[idx] * window_[n];           // apply window (aligned oldest->window[0])
+                double s_new = x + coeffs_[i] * s1 - s2;
+                s2 = s1; s1 = s_new;
+                idx = (idx + 1) % Nblock;
+            }
+
+            double real = s1 - s2 * cos1_[i];
+            double imag = s2 * sin1_[i];
+            double mag2 = (real*real + imag*imag) * scale_factor; // PSD (acceleration) [ (m/s^2)^2 / Hz ]
+
+            double omega = 2.0 * M_PI * freqs_[i];  // rad/s
+            double omega_safe = std::max(omega, 2.0 * M_PI * 0.03); // floor at 0.03 Hz
+
+            // acceleration -> displacement: divide by omega^4
+            lastSpectrum_[i] = mag2 / (omega_safe * omega_safe * omega_safe * omega_safe); // [m^2/Hz]
+            if (!std::isfinite(lastSpectrum_[i]) || lastSpectrum_[i] < 0.0) lastSpectrum_[i] = 0.0;
+        }
     }
 
     double fs_raw, fs;
