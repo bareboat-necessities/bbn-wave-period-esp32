@@ -196,7 +196,7 @@ class WaveSpectrumEstimator {
 
         // Accel -> displacement (guard against near-0 frequency blow-up)
         double f = freqs_[i];
-        double f_eff = std::max(f, 1e-3); // clip below 0.001 Hz
+        double f_eff = std::max(f, 0.5 * freqs_[0]); // clip lows Hz
         double denom = std::pow(2.0 * M_PI * f_eff, 4);
         double Si = (denom > 0.0) ? (mag2 / denom) : 0.0;
 
