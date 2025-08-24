@@ -113,62 +113,63 @@ class WaveSpectrumEstimator {
       s2_old_.setZero();
     }
 
-    bool processSample(double x_raw) {
-      // Apply low-pass biquad filter
-      double y = b0 * x_raw + z1;
-      z1 = b1 * x_raw + a1 * y + z2;
-      z2 = b2 * x_raw + a2 * y;
+bool processSample(double x_raw) {
+  // Apply low-pass biquad filter
+  double y = b0 * x_raw + z1;
+  z1 = b1 * x_raw + a1 * y + z2;
+  z2 = b2 * x_raw + a2 * y;
 
-      // Decimation
-      if (++decimCounter < decimFactor) return false;
-      decimCounter = 0;
+  // Decimation
+  if (++decimCounter < decimFactor) return false;
+  decimCounter = 0;
 
-      // Get oldest sample leaving the window
-      double oldSample = buffer_[writeIndex];
+  // Get oldest sample leaving the window
+  double oldSample = buffer_[writeIndex];
 
-      // Store new sample at writeIndex
-      buffer_[writeIndex] = y;
+  // Store new sample at writeIndex
+  buffer_[writeIndex] = y;
 
-      // Windowed samples
-      double newWin = y * window_[writeIndex];
-      double oldWin = oldSample * window_[writeIndex];
+  // Windowed samples
+  double newWin = y * window_[writeIndex];
+  double oldWin = oldSample * window_[writeIndex];
 
-      // Update Goertzel accumulators
-      for (int i = 0; i < Nfreq; i++) {
-        // Incremental Goertzel for current window
-        double s_new = newWin + coeffs_[i] * s1_[i] - s2_[i];
-        s2_[i] = s1_[i];
-        s1_[i] = s_new;
+  // Update Goertzel accumulators for CURRENT window
+  for (int i = 0; i < Nfreq; i++) {
+    double s_new = newWin + coeffs_[i] * s1_[i] - s2_[i];
+    s2_[i] = s1_[i];
+    s1_[i] = s_new;
+  }
 
-        // Subtract the leaving sample's contribution
-        if (filledSamples >= Nblock) {
-          double s_old = oldWin + coeffs_[i] * s1_old_[i] - s2_old_[i];
-          s2_old_[i] = s1_old_[i];
-          s1_old_[i] = s_old;
-        }
-      }
-
-      // Advance circular buffer index
-      writeIndex = (writeIndex + 1) % Nblock;
-
-      // Warm-up check
-      if (filledSamples < Nblock) {
-        filledSamples++;
-        if (filledSamples == Nblock) {
-          // Initialize old accumulators to zero for first full window
-          s1_old_.setZero();
-          s2_old_.setZero();
-          isWarm = true;
-        }
-      }
-
-      // Ready signal on window shift
-      if (isWarm && ++samplesSinceLast >= shift) {
-        samplesSinceLast = 0;
-        return true;
-      }
-      return false;
+  // Update Goertzel accumulators for OLD window (the one being shifted out)
+  if (filledSamples >= Nblock) {
+    for (int i = 0; i < Nfreq; i++) {
+      double s_old = oldWin + coeffs_[i] * s1_old_[i] - s2_old_[i];
+      s2_old_[i] = s1_old_[i];
+      s1_old_[i] = s_old;
     }
+  }
+
+  // Advance circular buffer index
+  writeIndex = (writeIndex + 1) % Nblock;
+
+  // Warm-up check
+  if (filledSamples < Nblock) {
+    filledSamples++;
+    if (filledSamples == Nblock) {
+      // Initialize old accumulators by processing the initial window
+      s1_old_ = s1_;
+      s2_old_ = s2_;
+      isWarm = true;
+    }
+  }
+
+  // Ready signal on window shift
+  if (isWarm && ++samplesSinceLast >= shift) {
+    samplesSinceLast = 0;
+    return true;
+  }
+  return false;
+}
 
     Vec getDisplacementSpectrum() const {
       Vec S;
