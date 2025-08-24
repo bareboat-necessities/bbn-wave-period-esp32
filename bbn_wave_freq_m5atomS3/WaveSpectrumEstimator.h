@@ -42,11 +42,7 @@ public:
     static constexpr double g = 9.80665;
     using Vec = Eigen::Matrix<double, Nfreq, 1>;
 
-    struct PMFitResult {
-        double alpha;
-        double fp;
-        double cost;
-    };
+    struct PMFitResult { double alpha, fp, cost; };
 
     WaveSpectrumEstimator(double fs_raw_ = 240.0,
                           int decimFactor_ = 5,
@@ -64,7 +60,7 @@ public:
             sin1_[i] = std::sin(omega);
         }
 
-        // Build Hann window
+        // Hann window
         double sumsq = 0.0;
         for (int n = 0; n < Nblock; n++) {
             window_[n] = hannEnabled ? 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1))) : 1.0;
@@ -75,19 +71,17 @@ public:
         reset();
 
         // Low-pass biquad
-        double cutoffHz = 0.45 * (fs / 2.0);
+        double cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor));
         designLowpassBiquad(cutoffHz, fs_raw_);
     }
 
     void reset() {
         buffer_.fill(0.0);
-        s1_.setZero();
-        s2_.setZero();
-        writeIndex = 0;
-        decimCounter = 0;
-        filledSamples = 0;
-        z1 = z2 = 0.0;
+        s1_.setZero(); s2_.setZero();
+        writeIndex = 0; decimCounter = 0;
+        filledSamples = 0; z1 = z2 = 0.0;
         isWarm = false;
+        lastSpectrum_.setZero();
     }
 
     bool processSample(double x_raw) {
@@ -101,79 +95,50 @@ public:
         decimCounter = 0;
 
         buffer_[writeIndex] = y;
-        writeIndex++;
+        writeIndex = (writeIndex + 1) % Nblock;
         filledSamples++;
 
-        // Full block ready?
         if (filledSamples >= Nblock) {
             isWarm = true;
+            // Compute spectrum once per block
+            computeSpectrum();
             return true;
         }
         return false;
     }
 
-    Vec getDisplacementSpectrum() {
-        Vec S;
-        const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
+    Vec getDisplacementSpectrum() const { return lastSpectrum_; }
 
-        for (int i = 0; i < Nfreq; i++) {
-            double s1 = 0.0, s2 = 0.0;
-            // Goertzel over the full block
-            for (int n = 0; n < Nblock; n++) {
-                double x = buffer_[n] * window_[n];
-                double s_new = x + coeffs_[i] * s1 - s2;
-                s2 = s1;
-                s1 = s_new;
-            }
-            double real = s1 - s2 * cos1_[i];
-            double imag = s2 * sin1_[i];
-            double mag2 = (real * real + imag * imag) * invNorm;
-
-            double omega = 2.0 * M_PI * freqs_[i];
-            double omega_safe = std::max(omega, 2.0 * M_PI * 0.05);
-            S[i] = mag2 / std::pow(omega_safe, 4);
-        }
-
-        filledSamples = 0;  // reset block
-        return S;
-    }
-
-    double computeHs() {
-        Vec S = getDisplacementSpectrum();
+    double computeHs() const {
         double m0 = 0.0;
         for (int i = 0; i < Nfreq - 1; i++) {
             double df = freqs_[i + 1] - freqs_[i];
-            m0 += 0.5 * (S[i] + S[i + 1]) * df;
+            m0 += 0.5 * (lastSpectrum_[i] + lastSpectrum_[i + 1]) * df;
         }
         return 4.0 * std::sqrt(std::max(m0, 0.0));
     }
 
-    double estimateFp() {
-        Vec S = getDisplacementSpectrum();
-        int idx = 0;
-        double maxVal = 0;
+    double estimateFp() const {
+        int idx = 0; double maxVal = 0;
         for (int i = 0; i < Nfreq; i++) {
-            if (S[i] > maxVal) {
-                maxVal = S[i];
-                idx = i;
-            }
+            if (lastSpectrum_[i] > maxVal) { maxVal = lastSpectrum_[i]; idx = i; }
         }
 
         if (idx > 0 && idx < Nfreq - 1) {
-            double y0 = safeLog(S[idx - 1]);
-            double y1 = safeLog(S[idx]);
-            double y2 = safeLog(S[idx + 1]);
+            double y0 = safeLog(lastSpectrum_[idx - 1]);
+            double y1 = safeLog(lastSpectrum_[idx]);
+            double y2 = safeLog(lastSpectrum_[idx + 1]);
             double denom = y0 - 2.0 * y1 + y2;
             if (std::abs(denom) < 1e-12) return freqs_[idx];
             double p = 0.5 * (y0 - y2) / denom;
-            double df_avg = 0.5 * (freqs_[idx] - freqs_[idx - 1] + freqs_[idx + 1] - freqs_[idx]);
+            double df_avg = 0.5 * ((freqs_[idx] - freqs_[idx - 1]) + (freqs_[idx + 1] - freqs_[idx]));
             return freqs_[idx] + p * df_avg;
         }
         return freqs_[idx];
     }
 
-    PMFitResult fitPiersonMoskowitz() {
-        Vec S_obs = getDisplacementSpectrum();
+    PMFitResult fitPiersonMoskowitz() const {
+        Vec S_obs = lastSpectrum_;
         for (int i = 0; i < Nfreq; i++) if (S_obs[i] <= 0) S_obs[i] = 1e-12;
 
         auto cost_fn = [&](double a, double fp) {
@@ -182,7 +147,7 @@ public:
             constexpr double beta = 0.74;
             for (int i = 0; i < Nfreq; i++) {
                 double f = freqs_[i];
-                double model = a * g * g * std::pow(2 * M_PI * f, -5.0)
+                double model = a * g * g * std::pow(2.0 * M_PI * f, -5.0)
                                * std::exp(-beta * std::pow(omega_p / (2.0 * M_PI * f), 4.0));
                 if (model <= 0) model = 1e-12;
                 double d = safeLog(S_obs[i]) - safeLog(model);
@@ -211,11 +176,7 @@ public:
             for (int ifp = 0; ifp < N_fp_search; ifp++) {
                 double fp = fp_grid[ifp];
                 double c = cost_fn(a, fp);
-                if (c < bestC) {
-                    bestC = c;
-                    bestA = a;
-                    bestFp = fp;
-                }
+                if (c < bestC) { bestC = c; bestA = a; bestFp = fp; }
             }
         }
 
@@ -231,8 +192,7 @@ public:
             if (!improved) { stepA *= 0.5; stepFp *= 0.5; if (stepA < 1e-12 && stepFp < 1e-12) break; }
         }
 
-        PMFitResult res; res.alpha = alpha; res.fp = fp; res.cost = bestC;
-        return res;
+        return {alpha, fp, bestC};
     }
 
     bool ready() const { return isWarm; }
@@ -242,8 +202,7 @@ private:
 
     void buildFrequencyGrid() {
         constexpr double f_min = 0.03, f_transition = 0.1, f_max = 1.0;
-        int n_log = int(Nfreq * 0.4);
-        int n_lin = Nfreq - n_log;
+        int n_log = int(Nfreq * 0.4), n_lin = Nfreq - n_log;
         for (int i = 0; i < n_log; i++) {
             double t = double(i) / (n_log - 1);
             freqs_[i] = f_min * std::pow(f_transition / f_min, t);
@@ -259,8 +218,26 @@ private:
         double K = std::tan(M_PI * Fc);
         double norm = 1.0 / (1.0 + K / Q + K * K);
         b0 = K * K * norm; b1 = 2.0 * b0; b2 = b0;
-        a1 = 2.0 * (K * K - 1.0) * norm;
-        a2 = (1.0 - K / Q + K * K) * norm;
+        a1 = 2.0 * (K * K - 1.0) * norm; a2 = (1.0 - K / Q + K * K) * norm;
+    }
+
+    void computeSpectrum() {
+        const double scale_factor = 2.0 / (Nblock * window_sum_sq) * (fs / fs_raw);
+        for (int i = 0; i < Nfreq; i++) {
+            double s1 = 0.0, s2 = 0.0;
+            for (int n = 0; n < Nblock; n++) {
+                double x = buffer_[n] * window_[n];
+                double s_new = x + coeffs_[i] * s1 - s2;
+                s2 = s1; s1 = s_new;
+            }
+            double real = s1 - s2 * cos1_[i];
+            double imag = s2 * sin1_[i];
+            double mag2 = (real*real + imag*imag) * scale_factor;
+            double omega = 2.0 * M_PI * freqs_[i];
+            double omega_safe = std::max(omega, 2.0 * M_PI * 0.03);
+            lastSpectrum_[i] = mag2 / std::pow(omega_safe, 4);
+            if (!std::isfinite(lastSpectrum_[i]) || lastSpectrum_[i] < 0) lastSpectrum_[i] = 0.0;
+        }
     }
 
     double fs_raw, fs;
@@ -278,6 +255,7 @@ private:
 
     Eigen::Matrix<double, Nfreq, 1> s1_, s2_;
     std::array<double, Nfreq> cos1_, sin1_;
+    Eigen::Matrix<double, Nfreq, 1> lastSpectrum_;
 
     int writeIndex = 0;
     int decimCounter = 0;
