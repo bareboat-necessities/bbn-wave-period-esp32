@@ -123,31 +123,32 @@ bool processSample(double x_raw) {
     if (++decimCounter < decimFactor) return false;
     decimCounter = 0;
 
-    // Get oldest sample before overwrite
+    // Get oldest sample leaving the window
     double oldSample = buffer_[readIndex];
 
     // Store new sample at writeIndex
     buffer_[writeIndex] = y;
 
-    // Apply windowing
-    double newWinSample = y * window_[writeIndex];
-    double oldWinSample = oldSample * window_[readIndex];
+    // Windowed samples
+    double newWin = y * window_[writeIndex];
+    double oldWin = oldSample * window_[readIndex];
 
     // Update Goertzel accumulators
     for (int i = 0; i < Nfreq; i++) {
-        double s = newWinSample + coeffs_[i] * s1_[i] - s2_[i];
+        // Incremental Goertzel for current window
+        double s_new = newWin + coeffs_[i] * s1_[i] - s2_[i];
         s2_[i] = s1_[i];
-        s1_[i] = s;
+        s1_[i] = s_new;
 
-        // Only update old accumulators if buffer is fully filled
+        // Subtract the leaving sample's contribution once the buffer is full
         if (filledSamples >= Nblock) {
-            double so = oldWinSample + coeffs_[i] * s1_old_[i] - s2_old_[i];
+            double s_old = oldWin + coeffs_[i] * s1_old_[i] - s2_old_[i];
             s2_old_[i] = s1_old_[i];
-            s1_old_[i] = so;
+            s1_old_[i] = s_old;
         }
     }
 
-    // Advance indices
+    // Advance circular buffer indices
     writeIndex = (writeIndex + 1) % Nblock;
     readIndex  = (readIndex  + 1) % Nblock;
 
@@ -155,14 +156,14 @@ bool processSample(double x_raw) {
     if (filledSamples < Nblock) {
         filledSamples++;
         if (filledSamples == Nblock) {
-            // Initialize old accumulators to match current state
+            // Initialize old accumulators to current state for the first full window
             s1_old_ = s1_;
             s2_old_ = s2_;
             isWarm = true;
         }
     }
 
-    // Shift / ready flag
+    // Ready signal on window shift
     if (isWarm && ++samplesSinceLast >= shift) {
         samplesSinceLast = 0;
         return true;
