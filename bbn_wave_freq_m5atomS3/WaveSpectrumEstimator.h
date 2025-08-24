@@ -83,28 +83,55 @@ public:
         lastSpectrum_.setZero();
     }
 
-    bool processSample(double x_raw) {
-        // Biquad filter
-        double y = b0 * x_raw + z1;
-        z1 = b1 * x_raw + a1 * y + z2;
-        z2 = b2 * x_raw + a2 * y;
+bool processSample(double x_raw) {
+    // Biquad filter
+    double y = b0 * x_raw + z1;
+    z1 = b1 * x_raw + a1 * y + z2;
+    z2 = b2 * x_raw + a2 * y;
 
-        // Decimation
-        if (++decimCounter < decimFactor) return false;
-        decimCounter = 0;
+    // Decimation
+    if (++decimCounter < decimFactor) return false;
+    decimCounter = 0;
 
-        buffer_[writeIndex] = y;
-        writeIndex = (writeIndex + 1) % Nblock;
-        filledSamples++;
+    buffer_[writeIndex] = y;
+    writeIndex = (writeIndex + 1) % Nblock;
+    filledSamples++;
 
-        if (filledSamples >= Nblock) {
-            isWarm = true;
-            // Compute spectrum once per block
-            computeSpectrum();
-            return true;
-        }
-        return false;
+    if (filledSamples >= Nblock) isWarm = true;
+
+    // Compute spectrum once buffer has at least one block of data
+    if (filledSamples > 0 && filledSamples % Nblock == 0) {
+        computeSpectrum();
+        return true;
     }
+
+    return false;
+}
+
+void computeSpectrum() {
+    const int blockSize = std::min(filledSamples, Nblock);
+    const double scale_factor = 2.0 / (blockSize * window_sum_sq);
+
+    for (int i = 0; i < Nfreq; i++) {
+        double s1 = 0.0, s2 = 0.0;
+        for (int n = 0; n < blockSize; n++) {
+            int idx = (writeIndex + Nblock - blockSize + n) % Nblock; // oldest to newest
+            double x = buffer_[idx] * window_[n];
+            double s_new = x + coeffs_[i] * s1 - s2;
+            s2 = s1; s1 = s_new;
+        }
+
+        double real = s1 - s2 * cos1_[i];
+        double imag = s2 * sin1_[i];
+        double mag2 = (real * real + imag * imag) * scale_factor;
+
+        double omega = 2.0 * M_PI * freqs_[i];
+        double omega_safe = std::max(omega, 2.0 * M_PI * 0.03);
+
+        lastSpectrum_[i] = mag2 / (omega_safe * omega_safe * omega_safe * omega_safe);
+        if (!std::isfinite(lastSpectrum_[i]) || lastSpectrum_[i] < 0) lastSpectrum_[i] = 0.0;
+    }
+}
 
     Vec getDisplacementSpectrum() const { return lastSpectrum_; }
 
@@ -219,30 +246,6 @@ private:
         b0 = K * K * norm; b1 = 2.0 * b0; b2 = b0;
         a1 = 2.0 * (K * K - 1.0) * norm; a2 = (1.0 - K / Q + K * K) * norm;
     }
-
-void computeSpectrum() {
-    const double scale_factor = 2.0 / (Nblock * window_sum_sq);
-    for (int i = 0; i < Nfreq; i++) {
-        double s1 = 0.0, s2 = 0.0;
-        // Goertzel over circular buffer starting at oldest sample
-        int idx = (writeIndex + 1) % Nblock;  // oldest sample
-        for (int n = 0; n < Nblock; n++) {
-            double x = buffer_[idx] * window_[n];
-            double s_new = x + coeffs_[i] * s1 - s2;
-            s2 = s1; s1 = s_new;
-            idx = (idx + 1) % Nblock;
-        }
-        double real = s1 - s2 * cos1_[i];
-        double imag = s2 * sin1_[i];
-        double mag2 = (real*real + imag*imag) * scale_factor;
-
-        double omega = 2.0 * M_PI * freqs_[i];
-        double omega_safe = std::max(omega, 2.0 * M_PI * 0.03);
-
-        lastSpectrum_[i] = mag2 / (omega_safe * omega_safe * omega_safe * omega_safe);
-        if (!std::isfinite(lastSpectrum_[i]) || lastSpectrum_[i] < 0) lastSpectrum_[i] = 0.0;
-    }
-} 
 
     double fs_raw, fs;
     int decimFactor;
