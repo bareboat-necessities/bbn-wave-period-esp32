@@ -124,14 +124,14 @@ bool processSample(double x_raw) {
     decimCounter = 0;
 
     // Get oldest sample leaving the window
-    double oldSample = buffer_[readIndex];
+    double oldSample = buffer_[writeIndex];  // fix: use writeIndex (circular buffer)
 
     // Store new sample at writeIndex
     buffer_[writeIndex] = y;
 
     // Windowed samples
     double newWin = y * window_[writeIndex];
-    double oldWin = oldSample * window_[readIndex];
+    double oldWin = oldSample * window_[writeIndex]; // use same index for leaving sample
 
     // Update Goertzel accumulators
     for (int i = 0; i < Nfreq; i++) {
@@ -140,7 +140,7 @@ bool processSample(double x_raw) {
         s2_[i] = s1_[i];
         s1_[i] = s_new;
 
-        // Subtract the leaving sample's contribution once the buffer is full
+        // Subtract the leaving sample's contribution
         if (filledSamples >= Nblock) {
             double s_old = oldWin + coeffs_[i] * s1_old_[i] - s2_old_[i];
             s2_old_[i] = s1_old_[i];
@@ -148,17 +148,16 @@ bool processSample(double x_raw) {
         }
     }
 
-    // Advance circular buffer indices
+    // Advance circular buffer index
     writeIndex = (writeIndex + 1) % Nblock;
-    readIndex  = (readIndex  + 1) % Nblock;
 
     // Warm-up check
     if (filledSamples < Nblock) {
         filledSamples++;
         if (filledSamples == Nblock) {
-            // Initialize old accumulators to current state for the first full window
-            s1_old_ = s1_;
-            s2_old_ = s2_;
+            // Initialize old accumulators to zero for first full window
+            s1_old_.setZero();
+            s2_old_.setZero();
             isWarm = true;
         }
     }
