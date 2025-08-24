@@ -98,6 +98,7 @@ class WaveSpectrumEstimator {
       s1_old_.setZero();
       s2_old_.setZero();
       writeIndex = 0;
+      readIndex = 0;
       decimCounter = 0;
       samplesSinceLast = 0;
       z1 = z2 = 0.0;
@@ -422,6 +423,7 @@ void designLowpassBiquad(double f_cut, double Fs) {
 
     // counters
     int writeIndex = 0;
+    int readIndex  = 0;
     int decimCounter = 0;
     int samplesSinceLast = 0;
 
