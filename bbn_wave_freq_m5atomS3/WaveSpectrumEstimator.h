@@ -63,10 +63,9 @@ class WaveSpectrumEstimator {
       // Initialize default frequency grid
       buildFrequencyGrid();
 
-      // Precompute Goertzel coefficients
+      // Precompute Goertzel coefficients (corrected: ω = 2π f / fs)
       for (int i = 0; i < Nfreq; i++) {
-        double k = 0.5 + (Nblock * freqs_[i]) / fs;   // mid-bin placement
-        double omega = 2.0 * M_PI * k / Nblock;
+        double omega = 2.0 * M_PI * freqs_[i] / fs;   // radians/sample
         coeffs_[i] = 2.0 * std::cos(omega);
 
         cos1_[i] = std::cos(omega);
@@ -75,18 +74,20 @@ class WaveSpectrumEstimator {
         sinN_[i] = std::sin(omega * Nblock);
       }
 
-      // Initialize window
+      // Initialize window and compute normalization factor
+      double sumsq = 0.0;
       for (int n = 0; n < Nblock; n++) {
         window_[n] = hannEnabled
                      ? 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1)))
                      : 1.0;
+        sumsq += window_[n] * window_[n];
       }
-      windowGain = hannEnabled ? std::sqrt(3.0 / 8.0) : 1.0;  // RMS normalization
+      window_sum_sq = sumsq;
 
       // Clear accumulators and buffers
       reset();
 
-      // Design low-pass biquad
+      // Design low-pass biquad (applied before decimation, so Fs = fs_raw)
       double cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor)); // 45% of post-decimation Nyquist
       designLowpassBiquad(cutoffHz, fs_raw_);
     }
@@ -98,7 +99,6 @@ class WaveSpectrumEstimator {
       s1_old_.setZero();
       s2_old_.setZero();
       writeIndex = 0;
-      readIndex = 0;
       decimCounter = 0;
       samplesSinceLast = 0;
       z1 = z2 = 0.0;
@@ -113,28 +113,28 @@ class WaveSpectrumEstimator {
       s2_old_.setZero();
     }
 
-bool processSample(double x_raw) {
-    // Apply low-pass biquad filter
-    double y = b0 * x_raw + z1;
-    z1 = b1 * x_raw + a1 * y + z2;
-    z2 = b2 * x_raw + a2 * y;
+    bool processSample(double x_raw) {
+      // Apply low-pass biquad filter
+      double y = b0 * x_raw + z1;
+      z1 = b1 * x_raw + a1 * y + z2;
+      z2 = b2 * x_raw + a2 * y;
 
-    // Decimation
-    if (++decimCounter < decimFactor) return false;
-    decimCounter = 0;
+      // Decimation
+      if (++decimCounter < decimFactor) return false;
+      decimCounter = 0;
 
-    // Get oldest sample leaving the window
-    double oldSample = buffer_[writeIndex];  // fix: use writeIndex (circular buffer)
+      // Get oldest sample leaving the window
+      double oldSample = buffer_[writeIndex];
 
-    // Store new sample at writeIndex
-    buffer_[writeIndex] = y;
+      // Store new sample at writeIndex
+      buffer_[writeIndex] = y;
 
-    // Windowed samples
-    double newWin = y * window_[writeIndex];
-    double oldWin = oldSample * window_[writeIndex]; // use same index for leaving sample
+      // Windowed samples
+      double newWin = y * window_[writeIndex];
+      double oldWin = oldSample * window_[writeIndex];
 
-    // Update Goertzel accumulators
-    for (int i = 0; i < Nfreq; i++) {
+      // Update Goertzel accumulators
+      for (int i = 0; i < Nfreq; i++) {
         // Incremental Goertzel for current window
         double s_new = newWin + coeffs_[i] * s1_[i] - s2_[i];
         s2_[i] = s1_[i];
@@ -142,66 +142,68 @@ bool processSample(double x_raw) {
 
         // Subtract the leaving sample's contribution
         if (filledSamples >= Nblock) {
-            double s_old = oldWin + coeffs_[i] * s1_old_[i] - s2_old_[i];
-            s2_old_[i] = s1_old_[i];
-            s1_old_[i] = s_old;
+          double s_old = oldWin + coeffs_[i] * s1_old_[i] - s2_old_[i];
+          s2_old_[i] = s1_old_[i];
+          s1_old_[i] = s_old;
         }
-    }
+      }
 
-    // Advance circular buffer index
-    writeIndex = (writeIndex + 1) % Nblock;
+      // Advance circular buffer index
+      writeIndex = (writeIndex + 1) % Nblock;
 
-    // Warm-up check
-    if (filledSamples < Nblock) {
+      // Warm-up check
+      if (filledSamples < Nblock) {
         filledSamples++;
         if (filledSamples == Nblock) {
-            // Initialize old accumulators to zero for first full window
-            s1_old_.setZero();
-            s2_old_.setZero();
-            isWarm = true;
+          // Initialize old accumulators to zero for first full window
+          s1_old_.setZero();
+          s2_old_.setZero();
+          isWarm = true;
         }
-    }
+      }
 
-    // Ready signal on window shift
-    if (isWarm && ++samplesSinceLast >= shift) {
+      // Ready signal on window shift
+      if (isWarm && ++samplesSinceLast >= shift) {
         samplesSinceLast = 0;
         return true;
+      }
+      return false;
     }
-    return false;
-}
 
-Vec getDisplacementSpectrum() const {
-  Vec S;
-  const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * windowGain * windowGain);
+    Vec getDisplacementSpectrum() const {
+      Vec S;
+      // Correct normalization: Nblock^2 * ∑window²
+      const double invNorm = 1.0 / (double(Nblock) * double(Nblock) * window_sum_sq);
 
-  for (int i = 0; i < Nfreq; i++) {
-    // Goertzel complex outputs: Y = s1 - s2 * e^{-jω}
-    double re_cur = s1_[i] - s2_[i] * cos1_[i];
-    double im_cur =            s2_[i] * sin1_[i];
+      for (int i = 0; i < Nfreq; i++) {
+        // Goertzel complex outputs: Y = s1 - s2 * e^{-jω}
+        double re_cur = s1_[i] - s2_[i] * cos1_[i];
+        double im_cur =            s2_[i] * sin1_[i];
 
-    double re_old = s1_old_[i] - s2_old_[i] * cos1_[i];
-    double im_old =              s2_old_[i] * sin1_[i];
+        double re_old = s1_old_[i] - s2_old_[i] * cos1_[i];
+        double im_old =              s2_old_[i] * sin1_[i];
 
-    // Align OLD by +ωN (because old stream accrued an extra e^{-jωN})
-    double re_old_al = re_old * cosN_[i] - im_old * sinN_[i];
-    double im_old_al = re_old * sinN_[i] + im_old * cosN_[i];
+        // Align OLD by +ωN (because old stream accrued an extra e^{-jωN})
+        double re_old_al = re_old * cosN_[i] - im_old * sinN_[i];
+        double im_old_al = re_old * sinN_[i] + im_old * cosN_[i];
 
-    // Window DFT = current cumulative − aligned old cumulative
-    double re_win = re_cur - re_old_al;
-    double im_win = im_cur - im_old_al;
+        // Window DFT = current cumulative − aligned old cumulative
+        double re_win = re_cur - re_old_al;
+        double im_win = im_cur - im_old_al;
 
-    double mag2 = (re_win * re_win + im_win * im_win) * invNorm;
-    if (!std::isfinite(mag2) || mag2 < 0.0) mag2 = 0.0;
+        double mag2 = (re_win * re_win + im_win * im_win) * invNorm;
+        if (!std::isfinite(mag2) || mag2 < 0.0) mag2 = 0.0;
 
-    // Accel -> displacement
-    double f = freqs_[i];
-    double denom = std::pow(2.0 * M_PI * f, 4);
-    double Si = (denom > 0.0) ? (mag2 / denom) : 0.0;
+        // Accel -> displacement (guard against near-0 frequency blow-up)
+        double f = freqs_[i];
+        double f_eff = std::max(f, 1e-3); // clip below 0.001 Hz
+        double denom = std::pow(2.0 * M_PI * f_eff, 4);
+        double Si = (denom > 0.0) ? (mag2 / denom) : 0.0;
 
-    S[i] = (std::isfinite(Si) && Si > 0.0) ? Si : 0.0;
-  }
-  return S;
-}
+        S[i] = (std::isfinite(Si) && Si > 0.0) ? Si : 0.0;
+      }
+      return S;
+    }
 
     double computeHs() const {
       Vec S = getDisplacementSpectrum();
@@ -328,26 +330,10 @@ Vec getDisplacementSpectrum() const {
       for (int iter = 0; iter < 40; iter++) {
         bool improved = false;
         double c;
-        c = cost_fn(alpha + stepA, fp); if (c < bestC) {
-          bestC = c;
-          alpha += stepA;
-          improved = true;
-        }
-        c = cost_fn(alpha - stepA, fp); if (c < bestC) {
-          bestC = c;
-          alpha -= stepA;
-          improved = true;
-        }
-        c = cost_fn(alpha, fp + stepFp); if (c < bestC) {
-          bestC = c;
-          fp += stepFp;
-          improved = true;
-        }
-        c = cost_fn(alpha, fp - stepFp); if (c < bestC) {
-          bestC = c;
-          fp -= stepFp;
-          improved = true;
-        }
+        c = cost_fn(alpha + stepA, fp); if (c < bestC) { bestC = c; alpha += stepA; improved = true; }
+        c = cost_fn(alpha - stepA, fp); if (c < bestC) { bestC = c; alpha -= stepA; improved = true; }
+        c = cost_fn(alpha, fp + stepFp); if (c < bestC) { bestC = c; fp += stepFp; improved = true; }
+        c = cost_fn(alpha, fp - stepFp); if (c < bestC) { bestC = c; fp -= stepFp; improved = true; }
         if (!improved) {
           stepA *= 0.5;
           stepFp *= 0.5;
@@ -365,25 +351,25 @@ Vec getDisplacementSpectrum() const {
 
   private:
 
-inline double safeLog(double v) const {
-    return std::log(std::max(v, 1e-18));  // avoid log(0)
-}
+    inline double safeLog(double v) const {
+      return std::log(std::max(v, 1e-18));  // avoid log(0)
+    }
 
-// f_cut in Hz, Fs in Hz
-void designLowpassBiquad(double f_cut, double Fs) {
-    double Fc = f_cut / Fs;          // normalized cutoff (0..0.5)
-    double K  = std::tan(M_PI * Fc);
-    double norm = 1.0 / (1.0 + K / Q + K * K);
+    // f_cut in Hz, Fs in Hz
+    void designLowpassBiquad(double f_cut, double Fs) {
+      double Fc = f_cut / Fs;          // normalized cutoff (0..0.5)
+      double K  = std::tan(M_PI * Fc);
+      double norm = 1.0 / (1.0 + K / Q + K * K);
 
-    // Feedforward
-    b0 = K * K * norm;
-    b1 = 2.0 * b0;
-    b2 = b0;
+      // Feedforward
+      b0 = K * K * norm;
+      b1 = 2.0 * b0;
+      b2 = b0;
 
-    // Feedback
-    a1 = 2.0 * (K * K - 1.0) * norm;
-    a2 = (1.0 - K / Q + K * K) * norm;
-}
+      // Feedback
+      a1 = 2.0 * (K * K - 1.0) * norm;
+      a2 = (1.0 - K / Q + K * K) * norm;
+    }
 
     void buildFrequencyGrid() {
       constexpr double f_min = 0.03;  // Hz, lowest wave frequency
@@ -415,7 +401,7 @@ void designLowpassBiquad(double f_cut, double Fs) {
     std::array<double, Nfreq> coeffs_;
     std::array<double, Nblock> buffer_;
     std::array<double, Nblock> window_;
-    double windowGain;
+    double window_sum_sq = 1.0;
 
     // filter state
     double b0, b1, b2, a1, a2;
@@ -423,19 +409,15 @@ void designLowpassBiquad(double f_cut, double Fs) {
 
     // Goertzel accumulators
     Eigen::Matrix<double, Nfreq, 1> s1_, s2_, s1_old_, s2_old_;
-
     std::array<double, Nfreq> cos1_, sin1_, cosN_, sinN_;
-    double Q = std::sqrt(0.5); // Butterworth, ~0.707
 
-    // counters
     int writeIndex = 0;
-    int readIndex  = 0;
     int decimCounter = 0;
     int samplesSinceLast = 0;
-
-    // warm-up
     int filledSamples = 0;
     bool isWarm = false;
+
+    static constexpr double Q = 0.707; // Biquad Q factor
 };
 
 #ifdef SPECTRUM_TEST
