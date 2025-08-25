@@ -1,0 +1,104 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, graphicx, geometry}
+\geometry{margin=1in}
+
+\title{WaveSpectrumEstimator: An Embedded Algorithm for Ocean Wave Spectrum Estimation from Acceleration Measurements}
+\author{Mikhail Grushinskiy}
+\date{2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This article describes the methodology implemented in the \texttt{WaveSpectrumEstimator}, 
+a C++ embedded-friendly class for estimating ocean wave spectra from vertical acceleration measurements.
+The estimator combines signal preprocessing, decimation, Goertzel spectral analysis, and spectrum-to-wave conversion. 
+It supports significant wave height estimation, peak frequency extraction, and parametric fitting to the Pierson--Moskowitz spectrum.
+\end{abstract}
+
+\section{Introduction}
+Estimating ocean wave characteristics from inertial sensors is a key task in marine engineering, autonomous navigation, 
+and environmental monitoring. Conventional methods often rely on FFT-based spectral estimators, which can be computationally expensive for embedded devices. 
+
+The \texttt{WaveSpectrumEstimator} implements a lightweight, embedded-friendly approach based on a decimated Goertzel transform and spectral conversion techniques, optimized for real-time processing on microcontrollers.
+
+\section{Signal Processing Pipeline}
+The input to the estimator is a raw acceleration signal $x_{\text{raw}}(n)$, sampled at frequency $f_{s,\text{raw}}$. The processing pipeline consists of four stages:
+
+\subsection{Low-pass Filtering and Decimation}
+A biquad low-pass filter is designed with cutoff
+\[
+f_c = 0.45 \cdot \frac{f_{s,\text{raw}}}{2 \cdot \text{decimFactor}},
+\]
+and applied using the transposed direct form II realization. The output is downsampled by a factor $D$, yielding the effective sampling rate
+\[
+f_s = \frac{f_{s,\text{raw}}}{D}.
+\]
+
+\subsection{Windowing and Block Formation}
+Samples are stored in a circular buffer of length $N_\text{block}$. Each block is multiplied by either a Hann window
+\[
+w(n) = \tfrac{1}{2}\left(1 - \cos\left(\tfrac{2\pi n}{N_\text{block}-1}\right)\right),
+\]
+or a rectangular window, depending on configuration. The mean is subtracted to remove DC bias.
+
+\subsection{Spectral Estimation via Goertzel Algorithm}
+Instead of a full FFT, the Goertzel recursion is applied for each target frequency $f_i$:
+\begin{align}
+s_n &= x_n w_n + c_i s_{n-1} - s_{n-2}, \\
+c_i &= 2\cos\!\left(\frac{2\pi f_i}{f_s}\right).
+\end{align}
+At the end of the block, the DFT bin is reconstructed:
+\[
+X(f_i) = (s_{N-1} - s_{N-2}\cos\omega_i) - j (s_{N-2}\sin\omega_i).
+\]
+
+The single-sided power spectral density (PSD) of acceleration is then
+\[
+S_{aa}(f_i) = \frac{2}{f_s \sum w_n^2} \, |X(f_i)|^2.
+\]
+
+\subsection{Acceleration-to-Displacement Spectrum Conversion}
+Using the deep-water linear wave relation, displacement spectrum $S_{\eta\eta}(f)$ is obtained by
+\[
+S_{\eta\eta}(f) = \frac{S_{aa}(f)}{\omega^4}, \qquad \omega = 2\pi f.
+\]
+A high-pass cutoff $f_\text{hp}$ (default $0.06$ Hz) suppresses spurious low-frequency energy.
+
+\section{Spectral Parameters}
+\subsection{Significant Wave Height}
+The zeroth spectral moment is
+\[
+m_0 = \int_0^\infty S_{\eta\eta}(f)\, df,
+\]
+approximated numerically. The significant wave height is
+\[
+H_s = 4\sqrt{m_0}.
+\]
+
+\subsection{Peak Frequency Estimation}
+The peak frequency $f_p$ is identified as the frequency maximizing $S_{\eta\eta}(f)$. A parabolic interpolation in $\log$-spectral space improves resolution.
+
+\subsection{Pierson--Moskowitz Spectrum Fit}
+The observed spectrum is compared against the Pierson--Moskowitz model
+\[
+S_{PM}(f;\alpha, f_p) = \alpha g^2 (2\pi f)^{-5} \exp\left[-\beta\left(\frac{f_p}{f}\right)^4\right],
+\]
+with $\beta = 0.74$. The parameters $\alpha$ and $f_p$ are estimated by minimizing the squared log-spectral error
+\[
+\text{cost}(\alpha,f_p) = \sum_i \left(\log S_{\eta\eta}(f_i) - \log S_{PM}(f_i;\alpha,f_p)\right)^2.
+\]
+A grid search followed by local refinement yields the optimal fit.
+
+\section{Implementation Notes}
+\begin{itemize}
+\item Embedded-friendly: uses fixed-size arrays and Eigen matrices.
+\item Frequency grid constructed with logarithmic spacing at low frequencies and linear spacing at higher frequencies.
+\item Includes warm-up logic: spectrum becomes valid only after at least one full block is collected.
+\end{itemize}
+
+\section{Conclusion}
+The \texttt{WaveSpectrumEstimator} provides a computationally efficient and embedded-ready implementation of wave spectral estimation from acceleration data. It offers not only raw displacement spectra, but also higher-level oceanographic parameters such as significant wave height, peak frequency, and Pierson--Moskowitz spectrum fits.
+This makes it suitable for low-power autonomous platforms and real-time wave monitoring systems.
+
+\end{document}
