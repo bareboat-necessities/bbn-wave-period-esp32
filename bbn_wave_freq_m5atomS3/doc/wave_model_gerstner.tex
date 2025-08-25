@@ -11,7 +11,7 @@
 
 \title{Gerstner (Trochoidal) Waves: \\
 Exact Lagrangian Nonlinear Gravity Waves}
-\author{Mikhail Grushinskiy (adapted exposition)}
+\author{}
 \date{\today}
 
 \begin{document}
@@ -22,6 +22,7 @@ Gerstner waves, also called \emph{trochoidal waves}, are a remarkable exact nonl
 \end{abstract}
 
 \tableofcontents
+\bigskip
 
 \section{Historical Context}
 The history of water wave theory is rich, beginning with early attempts by Newton and Bernoulli to describe wave motion. The first exact nonlinear solution of the full hydrodynamic equations for surface waves was published by Franz Josef von Gerstner in 1802 \cite{gerstner1802}. This solution, later rediscovered by Rankine in the 19th century, describes a progressive periodic wave whose free surface is a \emph{trochoid}, the path traced by a point on a circle rolling along a straight line.
@@ -36,7 +37,7 @@ Despite this, Gerstner waves remain important in three domains:
 \end{itemize}
 
 \section{Governing Equations}
-The fluid is modeled as incompressible and inviscid, governed by the Euler equations with gravity.
+The fluid is modeled as incompressible and (for Gerstner's solution) inviscid. Start with Navier--Stokes and then take the Euler limit.
 
 \subsection{Navier--Stokes}
 \begin{align}
@@ -47,7 +48,7 @@ The fluid is modeled as incompressible and inviscid, governed by the Euler equat
 where $\mathbf{u}=(u,v)$, $p$ is pressure, $\rho$ density, $\nu$ viscosity, $g$ gravity.
 
 \subsection{Euler limit}
-Setting $\nu=0$ gives
+Setting $\nu=0$ gives the incompressible Euler equations
 \begin{equation}
 \rho \left( \partial_t \mathbf{u} + \mathbf{u}\cdot\nabla\mathbf{u} \right) = - \nabla p - \rho g \hat{\mathbf{y}}, 
 \qquad \nabla \cdot \mathbf{u} = 0.
@@ -60,141 +61,137 @@ Boundary conditions:
 \end{itemize}
 
 \section{Lagrangian Formulation of Gerstner Waves}
-Gerstner’s solution is naturally expressed in Lagrangian coordinates $(a,b)$:
+Gerstner’s solution is naturally expressed in Lagrangian coordinates $(a,b)$, where $(a,b)$ labels a fluid particle. The Lagrangian map $(a,b)\mapsto (X,Y)$ is
 \begin{align}
-X(a,b,t) &= a + \frac{e^{k b}}{k}\sin(k(a+ct)), \label{eq:gerstnerX}\\
-Y(a,b,t) &= b - \frac{e^{k b}}{k}\cos(k(a+ct)), \label{eq:gerstnerY}
+X(a,b,t) &= a + \frac{e^{k b}}{k}\sin\big(k(a+ct)\big), \label{eq:gerstnerX}\\
+Y(a,b,t) &= b - \frac{e^{k b}}{k}\cos\big(k(a+ct)\big), \label{eq:gerstnerY}
 \end{align}
-where $k=2\pi/\lambda$ is the wave number, $\lambda$ wavelength, and $c$ phase speed.
+with $k>0$ the wave number and $c$ the phase speed. (Conventions on signs and phase may vary in the literature; this form represents a wave traveling in the $-a$ direction if one changes sign in the phase.)
 
-\subsection{Surface}
-For the free surface, $b=b_s$. The surface profile is
+\subsection{Free surface and trochoid}
+Choose a fixed Lagrangian level $b=b_s$ for the free surface. The parametric free-surface in Eulerian coordinates is
 \begin{align}
 x_s(a,t) &= a + \frac{e^{kb_s}}{k}\sin(k(a+ct)), \\
 y_s(a,t) &= b_s - \frac{e^{kb_s}}{k}\cos(k(a+ct)).
 \end{align}
-This curve is a \emph{trochoid}. When $b_s=0$, the wave is at its limiting steepness and crests become cusps.
+This is an inverted trochoid. Define the surface amplitude
+\[
+a_0 \;=\; \frac{e^{kb_s}}{k},
+\]
+so total wave height $H=2a_0$. The limiting crest (cusp) occurs when $b_s\to 0$ ($a_0\to 1/k$).
 
-\subsection{Wave parameters}
-\begin{itemize}
-\item Amplitude $a_0 = \tfrac{e^{kb_s}}{k}$.
-\item Wave height $H = 2 a_0$.
-\item Phase speed from dispersion relation:
+\subsection{Dispersion relation (deep water)}
+Imposing the dynamic free-surface condition (constant atmospheric pressure) yields the dispersion relation (same as linear deep-water waves):
 \begin{equation}
-c = \sqrt{\frac{g}{k}}.
+c^2 = \frac{g}{k}. \label{eq:dispersion}
 \end{equation}
-\item Wavelength $\lambda = 2\pi/k$.
-\item Steepness $H/\lambda = k a_0/\pi$.
-\end{itemize}
 
-\section{Velocity and Acceleration}
-Differentiate \eqref{eq:gerstnerX}--\eqref{eq:gerstnerY}.
+\section{Velocity and acceleration}
+Differentiate the Lagrangian map w.r.t.\ time for fixed labels $(a,b)$.
 
 \subsection{Velocities}
-Let $\theta=k(a+ct)$.
+Let $\theta=k(a+ct)$ so $\partial_t\theta = kc$. Then
 \begin{align}
-u &= c e^{kb}\cos\theta, \\
-v &= c e^{kb}\sin\theta.
+\dot X(a,b,t) &= c\,e^{k b}\cos\theta, \label{eq:velX}\\
+\dot Y(a,b,t) &= c\,e^{k b}\sin\theta. \label{eq:velY}
 \end{align}
-Particles move on circles of radius $e^{kb}/k$, angular velocity $kc$, with exponential decay with depth.
+Particles describe circular orbits of radius $e^{kb}/k$ and angular frequency $kc$, with orbital speed decaying exponentially with depth.
 
 \subsection{Accelerations}
+Differentiate again:
 \begin{align}
-\ddot X &= -kc^2 e^{kb}\sin\theta, \\
-\ddot Y &= kc^2 e^{kb}\cos\theta.
+\ddot X &= -k c^2 e^{k b}\sin\theta, \\
+\ddot Y &= \;\;k c^2 e^{k b}\cos\theta.
 \end{align}
-Acceleration magnitude at depth $b$:
-\begin{equation}
-|\mathbf{a}| = kc^2 e^{kb}.
+Thus the material acceleration vector for a particle is centripetal with magnitude $k c^2 e^{k b}$.
+
+\section{Pressure field}
+Insert $\mathbf{a}=\ddot{\mathbf{X}}$ into Euler's equation in Lagrangian description to integrate for pressure. One convenient form is
+\begin{equation}\label{eq:pressure}
+p(a,b,t) = p_{\mathrm{atm}} + \rho g\big(Y(a,b,t)-y_0\big) - \frac{1}{2}\rho c^2\big(e^{2k b}-e^{2k b_s}\big),
 \end{equation}
+where $y_0$ is an arbitrary reference level. Evaluated at the free surface $b=b_s$ this gives $p=p_{\mathrm{atm}}$.
 
-At surface:
-\begin{equation}
-|\mathbf{a}|_{\text{surf}} = g\frac{\pi H}{\lambda}.
-\end{equation}
+\section{Vorticity and rotational nature}
+Compute vorticity $\omega=\partial_x v - \partial_y u$. Using the Lagrangian mapping and chain rule one obtains a depth-dependent nonzero vorticity (many equivalent algebraic forms exist). Its nonzero value is the core reason the Gerstner solution is rotational. Physically, this vorticity distribution enforces closed circular particle orbits (i.e., cancels Stokes drift).
 
-\section{Pressure Field}
-From Euler’s equations:
-\begin{equation}
-p(a,b,t) = p_{\text{atm}} + \rho g (Y-y_0) - \tfrac{1}{2}\rho c^2 (e^{2kb}-e^{2kb_s}).
-\end{equation}
-The dynamic correction cancels at free surface, yielding $p=p_{\text{atm}}$.
+\section{Wave geometry and limiting steepness}
+Amplitude and derived quantities:
+\[
+a_0=\frac{e^{kb_s}}{k},\qquad H=2a_0,\qquad \lambda=\frac{2\pi}{k},\qquad T=\frac{2\pi}{kc}.
+\]
+Steepness $H/\lambda = (k a_0)/\pi$. Breaking (crest cusp) occurs in the limiting case $k a_0=1$, giving
+\[
+\left.\frac{H}{\lambda}\right|_{\text{cusp}} = \frac{1}{\pi}\approx 0.318.
+\]
+For comparison, the limiting irrotational Stokes wave steepness is $\approx 0.141$.
 
-\section{Vorticity and Rotational Nature}
-Compute $\omega=\partial_x v - \partial_y u$. The result:
-\begin{equation}
-\omega(a,b,t) = -\frac{2kc\,e^{2kb}}{1-e^{2kb}}.
-\end{equation}
-Nonzero vorticity $\Rightarrow$ rotational flow. This explains the closed particle orbits (no Stokes drift). This rotationality is the reason Gerstner waves are unphysical for modeling real ocean waves.
+\section{Energy and energy flux (remarks)}
+For linear deep-water waves the mean energy per unit horizontal area is
+\[
+\overline{E} = \frac{1}{8}\rho g H^2,
+\]
+and the energy flux $F=\overline{E}\,c_g$ with group velocity $c_g=c/2$. For Gerstner waves the dispersion relation is identical to linear deep-water waves (Eq.~\ref{eq:dispersion}), so many leading-order energetic scalings coincide; however, rotation alters kinetic/potential partition and care is required for exact energy integrals.
 
-\section{Energy and Energy Flux}
-Linear theory gives mean energy per area
-\begin{equation}
-E = \tfrac{1}{8}\rho g H^2.
-\end{equation}
-Flux $F=E c_g$, with $c_g=c/2$. In Gerstner waves, energy partition differs due to vorticity, but the dispersion relation is the same, so leading-order energetics resemble linear theory \cite{mei1989applied}.
+\section{Shallow-depth corrections and limitations}
+Gerstner’s classical closed-form solution assumes infinite (deep) water. Finite depth requires different formulations; simple exponential depth decay $e^{kb}$ is replaced by hyperbolic functions ($\sinh, \cosh$) in linear theory, and Gerstner-like exact rotational solutions for finite depth are more involved or don't exist in the same simple form. Thus Gerstner waves are primarily a deep-water analytical tool.
 
-\section{Breaking and Limiting Steepness}
-Breaking occurs when crest particle velocity matches phase speed:
-\begin{equation}
-c k a_0 \geq c \quad \Rightarrow \quad k a_0 \geq 1.
-\end{equation}
-Thus limiting steepness is
-\begin{equation}
-\frac{H}{\lambda} = \frac{1}{\pi} \approx 0.318.
-\end{equation}
-This is much larger than the limiting Stokes steepness ($\approx 0.141$), illustrating unphysical aspects.
-
-\section{Shallow Water Corrections}
-Gerstner’s form is deep-water only. Attempts to generalize to finite depth lead to complex rotational solutions \cite{constantin2001gerstner,henry2008}. In practice, shallow water is modeled by cnoidal and solitary waves or Boussinesq approximations.
-
-\section{Mechanical Analogy}
-A mechanical picture: particles rotate on circles like points on gears, with radius decaying exponentially with depth. Vorticity distribution enforces synchrony, yielding exact closed orbits.
-
-\section{Applications Today}
+\section{Why Gerstner waves are nonlinear and rotational}
 \begin{itemize}
-\item \textbf{Mathematics}: Exact solution in nonlinear PDE theory \cite{constantin2001gerstner}.
-\item \textbf{Pedagogy}: Teaching nonlinear waves, Lagrangian description, vorticity.
-\item \textbf{Computer graphics}: Multi-component Gerstner waves generate realistic ocean surfaces \cite{tessendorf2001simulating}.
+\item \textbf{Nonlinearity:} Gerstner’s mapping is not a small-amplitude expansion — it is exact and finite amplitude; the free surface is trochoidal rather than sinusoidal.
+\item \textbf{Rotation:} The vorticity field is nonzero and depth dependent. This vorticity is precisely what allows closed orbits (no net Lagrangian drift) at finite amplitude. In contrast, irrotational Stokes waves exhibit Stokes drift and require a potential function.
+\end{itemize}
+
+\section{Mechanical analogy}
+Trochoids arise from a point on a rolling circle. A mechanical picture of concentric "rings of vorticity" producing circular orbits is a helpful heuristic: the internal vorticity distribution provides centripetal accelerations that are balanced by pressure gradients and gravity.
+
+\section{Acceleration magnitudes and breaking}
+The acceleration amplitude at depth $b$ is $k c^2 e^{k b}$. At the surface:
+\[
+|\mathbf{a}|_{\mathrm{surf}} = k c^2 e^{k b_s} = g k a_0 = g\frac{\pi H}{\lambda}.
+\]
+For modest wave steepness this is a fraction of $g$; for very steep trochoidal waves it can approach $g$ and lead to breaking and cusp formation.
+
+\section{Where Gerstner waves are used today}
+\begin{itemize}
+\item \textbf{Mathematical fluid dynamics}: as a rare exact nonlinear solution used to test uniqueness, existence, and qualitative theory.
+\item \textbf{Pedagogy}: illustrating Lagrangian flows, vorticity, and exact solutions.
+\item \textbf{Computer graphics}: phenomenological Gerstner-type sums are used widely for realistic ocean rendering because the trochoidal profiles give sharp crests; these graphics versions are not dynamical solutions but are visually useful.
 \end{itemize}
 
 \section{Summary}
-Gerstner waves remain a cornerstone of theoretical hydrodynamics: the only explicit nonlinear periodic deep-water wave solution. Their trochoidal free surface, closed orbits, and rotational nature make them mathematically elegant but physically unrealistic as ocean models. They continue to inspire research and applications in mathematics and graphics.
+Gerstner (trochoidal) waves provide an elegant exact nonlinear solution of the free-surface Euler equations in deep water. Their trochoidal surface and circular particle orbits make them mathematically attractive. Their rotationality and amplitude-independent phase speed make them a poor model for naturally occurring wind-generated, irrotational ocean waves, but they remain valuable in theory and graphics.
 
 \section*{Figures}
-\begin{figure}[h]
+\begin{figure}[h!]
 \centering
-\begin{tikzpicture}[scale=1.0]
-\draw[->] (-1,0) -- (7,0) node[right] {$x$};
-\draw[->] (0,-2.5) -- (0,2) node[above] {$y$};
-\foreach \a in {0,0.5,...,6.28}{
-  \pgfmathsetmacro{\xs}{\a+0.8*sin(\a*180/3.14159)}
-  \pgfmathsetmacro{\ys}{-0.8*cos(\a*180/3.14159)}
-  \fill (\xs,\ys) circle (0.02);
-}
-\draw (0,-0.8) node[left]{Free surface (trochoid)};
+\begin{tikzpicture}[scale=1]
+  % axes
+  \draw[->] (-0.5,0) -- (7,0) node[right] {$x$};
+  \draw[->] (0,-2.5) -- (0,1.5) node[above] {$y$};
+  % trochoid via plot (samples)
+  \draw[thick,domain=0:6.283,smooth,samples=240] plot (\x,{ -0.8*cos(\x r) }) ;
+  \draw[dashed] (0,-0.8) -- (6.283,-0.8) node[right]{mean level};
+  \node at (1,0.9) {Free surface (trochoid)};
 \end{tikzpicture}
-\caption{Trochoidal free surface of Gerstner wave ($H/\lambda\approx0.25$).}
+\caption{Schematic trochoidal free surface (parametric form).}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[h!]
 \centering
-\begin{tikzpicture}[scale=1.0]
-\draw[->] (-0.5,0) -- (5,0) node[right] {$x$};
-\draw[->] (0,-3) -- (0,1.5) node[above] {$y$};
-\foreach \b in {-0.5,-1,-1.5,-2}{
-  \foreach \a in {0,90,180,270}{
-    \pgfmathsetmacro{\x}{cos(\a)*0.5*exp(\b)}
-    \pgfmathsetmacro{\y}{\b+sin(\a)*0.5*exp(\b)}
-    \fill (2+\x,\y) circle (0.02);
+\begin{tikzpicture}[scale=1]
+  \draw[->] (-0.5,0) -- (5,0) node[right] {$x$};
+  \draw[->] (0,-3) -- (0,1.5) node[above] {$y$};
+  % draw sample particle circles with decaying radii
+  \foreach \i/\r in {0/-0.2,1/-0.8,2/-1.4,3/-2.0}{
+    \draw[dashed] (2,\r) circle ({0.5*exp(\r)});
   }
-  \draw[dashed] (2,\b) circle (0.5*exp(\b));
-}
+  \node at (3.2,1.0) {Particle orbits (decaying radius with depth)};
 \end{tikzpicture}
-\caption{Particle circular orbits at different depths, radii decaying exponentially.}
+\caption{Schematic circular particle orbits decreasing exponentially with depth.}
 \end{figure}
 
-\newpage
+\clearpage
 \bibliographystyle{plain}
 \begin{thebibliography}{99}
 
@@ -214,7 +211,7 @@ D.~Henry. On Gerstner’s water wave. \emph{Journal of Nonlinear Mathematical Ph
 C.~C. Mei. \emph{The Applied Dynamics of Ocean Surface Waves}. World Scientific, 1989.
 
 \bibitem{tessendorf2001simulating}
-J.~Tessendorf. Simulating ocean water. In \emph{Proceedings of the ACM SIGGRAPH Conference Course Notes}, 2001.
+J.~Tessendorf. Simulating ocean water. In \emph{Proceedings of the ACM SIGGRAPH Course Notes}, 2001.
 
 \end{thebibliography}
 
