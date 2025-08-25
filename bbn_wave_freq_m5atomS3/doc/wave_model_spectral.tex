@@ -1,0 +1,281 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath, amssymb, amsthm} % Enhanced math packages
+\usepackage{graphicx} % For including figures
+\usepackage{caption, subcaption} % For figure captions
+\usepackage{geometry} % For page margins
+\usepackage{setspace} % For line spacing
+\usepackage{lipsum} % For placeholder text, remove in final draft
+\usepackage{booktabs} % For better tables
+\usepackage{multirow} % For multirow tables
+\usepackage{hyperref} % For hyperlinks
+\usepackage{cite} % For citations
+\usepackage{siunitx} % For SI units
+\usepackage{float} % For better figure placement
+\usepackage{titlesec} % For customizing section titles
+\usepackage{chngcntr} % For continuous figure numbering
+\counterwithout{figure}{section} % Figures numbered continuously
+\counterwithout{table}{section} % Tables numbered continuously
+
+\geometry{a4paper, margin=1in}
+\onehalfspacing % 1.5 line spacing
+
+% Custom section title formatting
+\titleformat{\section}{\Large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}{\bfseries}{\thesubsubsection.}{0.5em}{}
+
+\title{Statistical Models of the Sea Surface: Historical Development, Theoretical Foundations, and Modern Applications}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This comprehensive review delves into the statistical models developed to describe the ocean surface, a critical endeavor for oceanography, coastal engineering, and climate science. We trace the historical evolution from early descriptive statistics to sophisticated spectral energy models. The theoretical foundations are explored in depth, including the rigorous derivation of the Gaussian sea surface model, the concept of the amplitude envelope via the Hilbert transform as pioneered by Michael S. Longuet-Higgins, and the nonlinear energy transfer theories of Klaus Hasselmann. The seminal parametric spectra—Pierson-Moskowitz, JONSWAP, and their derivatives—are derived and contrasted. A significant portion is dedicated to the practical application of these theories in modern wave measurement systems, detailing how buoys and other in-situ instruments measure, process, and translate raw time-series data (e.g., heave acceleration) into spectral estimates and bulk parameters like significant wave height ($H_s$), mean period ($T_z$), and peak period ($T_p$). The relationships between various statistical distributions (Rayleigh for wave heights, Gaussian for surface elevation) and their dependence on the underlying energy spectrum are thoroughly examined. This synthesis of theory, history, and practice provides a holistic understanding of how we mathematically characterize and empirically measure the dynamic ocean surface.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+\subsection{The Importance of Ocean Wave Modeling}
+The ocean surface is one of the most dynamic and complex interfaces on Earth. Understanding and predicting its behavior is not merely an academic pursuit but a practical necessity. Reliable wave models are indispensable for:
+\begin{itemize}
+    \item \textbf{Safe Marine Navigation:} Avoiding catastrophic damage to vessels and offshore structures from extreme waves (rogue waves).
+    \item \textbf{Coastal Engineering:} Designing harbors, breakwaters, and seawalls that can withstand wave forces and prevent erosion.
+    \item \textbf{Climate Science:} Quantifying air-sea interaction processes, which govern the exchange of momentum, heat, and gases (e.g., CO$_2$) between the ocean and atmosphere.
+    \item \textbf{Renewable Energy:} Siting and operating wave and offshore wind energy converters.
+\end{itemize}
+Given the chaotic nature of the sea, a deterministic description of every wave is impossible. Instead, the field has matured by treating the sea surface as a stochastic process, allowing its properties to be described statistically and probabilistically.
+
+\subsection{The Stochastic Framework}
+The core assumption underpinning most classical wave models is that for short periods (on the order of hours), the sea surface can be considered a \textit{stationary} and \textit{ergodic} Gaussian random process. This powerful assumption allows us to use a single, long time-series to infer the statistical properties of the entire process. This review will explore the genesis, implications, and applications of this framework.
+
+\section{Historical Context and Evolution of Thought}
+\subsection{Early Observations and Descriptive Statistics}
+The scientific study of waves began with careful observation. Early oceanographers like Vaughan Cornish meticulously recorded wave heights and periods, compiling empirical statistics. The concept of "significant wave height" ($H_s$ or $H_{1/3}$) emerged from this era, defined as the average height of the highest one-third of waves in a record. This parameter was found to correspond well with the wave height estimated by a trained human observer, hence "significant." This time-domain approach was practical but lacked a deep theoretical basis.
+
+\subsection{The Spectral Revolution: Barber, Ursell, and Longuet-Higgins}
+A paradigm shift occurred in the mid-20th century with the application of communication and signal processing theory to oceanography. The key insight was that an irregular sea state could be represented as a linear superposition of an infinite number of independent, regular harmonic wave components, each with its own amplitude, frequency, and direction. The distribution of energy among these components is described by the \textit{wave energy spectrum} $S(f, \theta)$, where $f$ is frequency and $\theta$ is direction.
+
+Pioneering work by Barber, Ursell, and Longuet-Higgins in the 1940s and 1950s established this spectral description as the fundamental tool of wave analysis. This shifted the focus from individual waves in the time domain to the energy distribution in the frequency domain.
+
+\subsection{The Gaussian Sea and Central Limit Theorem}
+The linear superposition model naturally leads to a Gaussian distribution of the sea surface elevation, $\eta(t)$, by virtue of the Central Limit Theorem. If the phases of the individual wave components are random and independent, the sum of a large number of them will be Gaussian. This is a cornerstone of classical wave theory.
+
+\subsection{Parametric Spectra: Pierson-Moskowitz and JONSWAP}
+While the concept of a spectrum is powerful, it is data-intensive. A major advancement was the development of \textit{parametric spectra}—models whose shape is determined by a few key parameters like wind speed or wave age. The Pierson-Moskowitz (1964) spectrum for a "fully developed" sea and the JONSWAP (1973) spectrum for a "fetch-limited" growing sea are the two most famous examples, born from extensive measurement campaigns.
+
+\subsection{Nonlinear Theories and Beyond}
+The linear Gaussian model, while incredibly useful, has limitations. It cannot explain phenomena like rogue waves or the slow evolution of the spectrum in the open ocean. Klaus Hasselmann's work in the 1960s demonstrated that weak nonlinear resonant interactions between wave quadruplets were responsible for this energy transfer. This introduced a new level of complexity, showing that the phases of wave components are not entirely random but can be correlated through nonlinear processes.
+
+\section{Theoretical Foundations: From Time Series to Spectra}
+\subsection{The Gaussian Sea Surface Model}
+We begin by assuming the sea surface elevation $\eta(t)$ at a point is a stationary, Gaussian random process with zero mean ($E[\eta(t)] = 0$). It can be represented as a Fourier-Stieltjes integral:
+\begin{equation}
+\eta(t) = \Re \left\{ \int_{0}^{\infty} e^{i(2\pi ft + \phi(f))}  dA(f) \right\}
+\end{equation}
+where $dA(f)$ is a complex amplitude and $\phi(f)$ is a random phase uniformly distributed on $[0, 2\pi)$.
+
+The key statistical property is the \textit{autocorrelation function}:
+\begin{equation}
+R(\tau) = E[\eta(t)\eta(t+\tau)]
+\end{equation}
+For a stationary process, $R(\tau)$ depends only on the time lag $\tau$. The \textit{Wiener-Khinchin theorem} states that the power spectral density $S(f)$ is the Fourier transform of the autocorrelation function:
+\begin{equation}
+S(f) = \int_{-\infty}^{\infty} R(\tau) e^{-i2\pi f\tau}  d\tau, \quad \text{and conversely} \quad R(\tau) = \int_{-\infty}^{\infty} S(f) e^{i2\pi f\tau}  df
+\end{equation}
+The variance of the process, $\sigma^2 = E[\eta^2(t)]$, is given by the total area under the spectrum:
+\begin{equation}
+\sigma^2 = R(0) = \int_{0}^{\infty} S(f)  df = m_0
+\end{equation}
+This quantity, $m_0$, is the zeroth moment of the spectrum and is fundamental to wave statistics.
+
+\subsection{Defining Wave Amplitudes: The Envelope Concept}
+\label{sec:envelope}
+While $\eta(t)$ is Gaussian, the properties of individual waves (crest-to-trough height, period) are not directly given by $S(f)$. Longuet-Higgins (1952) revolutionized the analysis by applying the concept of the \textit{analytic signal} and \textit{envelope} from communication theory.
+
+For a narrow-band signal $\eta(t)$, one can define its Hilbert transform:
+\begin{equation}
+\hat{\eta}(t) = \frac{1}{\pi} \mathcal{P} \int_{-\infty}^{\infty} \frac{\eta(\tau)}{t - \tau}  d\tau
+\end{equation}
+where $\mathcal{P}$ denotes the Cauchy principal value. The analytic signal $z(t)$ is then:
+\begin{equation}
+z(t) = \eta(t) + i\hat{\eta}(t) = a(t)e^{i\Phi(t)}
+\end{equation}
+From this, we define the \textit{amplitude envelope} $a(t)$ and the \textit{instantaneous phase} $\Phi(t)$:
+\begin{align}
+a(t) &= \sqrt{\eta^2(t) + \hat{\eta}^2(t)} \\
+\Phi(t) &= \arctan\left(\frac{\hat{\eta}(t)}{\eta(t)}\right)
+\end{align}
+For a narrow-band Gaussian process, Longuet-Higgins showed that the envelope $a(t)$ follows a \textit{Rayleigh distribution}:
+\begin{equation}
+p(a) = \frac{a}{m_0} \exp\left( -\frac{a^2}{2m_0} \right), \quad a \geq 0
+\end{equation}
+
+\subsection{From Envelope to Wave Heights}
+A "wave" is defined by the portion of the signal between two successive zero-upcrossings. For a narrow-band process, the wave height $H$ is approximately twice the value of the envelope at the wave crest. Using the Rayleigh distribution for the envelope amplitudes, the probability distribution for wave heights is also Rayleigh:
+\begin{equation}
+p(H) = \frac{H}{4m_0} \exp\left( -\frac{H^2}{8m_0} \right)
+\end{equation}
+From this distribution, we can derive the significant wave height $H_s$ (the mean of the highest 1/3 of waves). It is found by integrating the tail of the Rayleigh distribution:
+\begin{equation}
+H_s = H_{1/3} = 4.004 \sqrt{m_0} \approx 4\sqrt{m_0}
+\end{equation}
+This is a crucial result, providing a direct link between the frequency-domain statistic ($m_0$, derived from the spectrum) and the time-domain statistic ($H_s$). Other important statistical heights are:
+\begin{align}
+H_{\text{avg}} &= \sqrt{2\pi m_0} \approx 2.5\sqrt{m_0} \quad &\text{(Average wave height)} \\
+H_{\text{rms}} &= 2\sqrt{2m_0} \approx 2.83\sqrt{m_0} \quad &\text{(Root-mean-square wave height)}
+\end{align}
+
+\section{The Parametric Wave Spectra Models}
+\subsection{The Pierson-Moskowitz (PM) Spectrum}
+Pierson and Moskowitz analyzed wave data from the North Atlantic to develop a spectrum for a sea state that is in equilibrium with the wind. They found the spectrum's shape depended primarily on the wind speed $U$.\newpage
+
+\noindent They proposed the following form:
+\begin{equation}
+S_{\text{PM}}(f) = \alpha g^2 (2\pi)^{-4} f^{-5} \exp\left[ -\frac{5}{4} \left( \frac{f}{f_p} \right)^{-4} \right]
+\end{equation}
+where:
+\begin{itemize}
+    \item $\alpha = 8.1 \times 10^{-3}$ is Phillips' constant, a dimensionless parameter.
+    \item $g$ is acceleration due to gravity.
+    \item $f_p$ is the peak frequency, the frequency where the spectrum is maximum.
+\end{itemize}
+Based on their data, they found the peak frequency is related to the wind speed $U$ at 19.5 m above sea level by:
+\begin{equation}
+f_p = \frac{0.877 g}{2\pi U}
+\end{equation}
+Substituting this into the spectrum yields a form solely dependent on $U$. The significant wave height for a PM spectrum can be derived from its zeroth moment:
+\begin{equation}
+H_s = 4\sqrt{m_0} = 4 \sqrt{ \int_0^{\infty} S_{\text{PM}}(f)  df } = \frac{0.21 U^2}{g}
+\end{equation}
+This shows that in a fully developed sea, $H_s$ grows proportionally to $U^2$.
+
+\subsection{The JONSWAP Spectrum}
+The Joint North Sea Wave Project found that waves in developing sea states (fetch-limited) had spectra that were much sharper (more "peaky") around the peak frequency than the PM spectrum. The JONSWAP spectrum is a modification of the PM form with a peak enhancement factor $\gamma$:
+\begin{equation}
+S_{\text{J}}(f) = S_{\text{PM}}(f) \cdot \gamma^{\exp\left( -\frac{(f - f_p)^2}{2\sigma^2 f_p^2} \right)}
+\end{equation}
+where:
+\begin{itemize}
+    \item $S_{\text{PM}}(f)$ is the Pierson-Moskowitz form.
+    \item $\gamma$ is the peak enhancement factor (typically $\gamma=3.3$ for the North Sea, range $1 \leq \gamma \leq 7$).
+    \item $\sigma$ is the spectral width parameter: $\sigma = \sigma_a = 0.07$ for $f \leq f_p$ and $\sigma = \sigma_b = 0.09$ for $f > f_p$.
+\end{itemize}
+The JONSWAP study also found that the spectrum was not fully developed and that its parameters depended on the fetch $X$ (the distance over which the wind blows):
+\begin{align}
+f_p &= 3.5 \left( \frac{gX}{U^2} \right)^{-0.33} \\
+\alpha &= 0.076 \left( \frac{gX}{U^2} \right)^{-0.22}
+\end{align}
+The JONSWAP spectrum is far more flexible and accurately represents a wider range of sea states encountered in practice, particularly those still under the influence of the wind.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{pm_vs_jonswap_spectrum.png} % Replace with your actual figure
+\caption{Comparison of a Pierson-Moskowitz spectrum ($\gamma=1$) and a JONSWAP spectrum ($\gamma=3.3$), both with the same peak frequency $f_p$ and $H_s$. The JONSWAP spectrum has a sharper, more enhanced peak.}
+\label{fig:pm_vs_j}
+\end{figure}
+
+\section{Modern Wave Measurement: The Buoy System}
+\subsection{The Measurement Chain}
+A typical directional wave buoy contains:
+\begin{enumerate}
+    \item \textbf{Inertial Measurement Unit (IMU):} Contains accelerometers and gyroscopes to measure the buoy's heave, surge, sway, pitch, and roll.
+    \item \textbf{Fluxgate Compass:} Measures heading.
+    \item \textbf{GPS Receiver:} Provides precise location and time.
+\end{enumerate}
+The primary measurement for wave statistics is \textit{heave acceleration}, $a_z(t)$.
+
+\subsection{From Acceleration to Elevation}
+The raw accelerometer data cannot be used directly; it must be processed.
+\begin{enumerate}
+    \item \textbf{Despiking and Filtering:} Remove spurious data points and high-frequency noise.
+    \item \textbf{Coordinate Transformation:} The measured acceleration is in the buoy's frame of reference. Using pitch, roll, and heading data, this is transformed to the Earth-fixed horizontal (East-North) and vertical (Up) coordinate system. This corrects for the buoy's tilt.
+    \item \textbf{Double Integration:} To derive surface displacement $\eta(t)$ from vertical acceleration $a_z(t)$:
+    \begin{equation}
+    \eta(t) = \iint a_z(t)  dt  dt
+    \end{equation}
+    Direct integration amplifies low-frequency noise exponentially (a process known as "integration drift"). This is solved by:
+    \item \textbf{High-Pass Filtering:} A very sharp high-pass filter is applied to the integrated signal to remove the low-frequency drift without affecting the wave frequencies of interest. This yields a stable time-series of $\eta(t)$.
+\end{enumerate}
+
+\subsection{From Elevation to Spectrum}
+The cleaned $\eta(t)$ time-series is processed to obtain the wave spectrum $S(f)$.
+\begin{enumerate}
+    \item \textbf{Segmentation:} The time series is divided into multiple segments (e.g., 20-30 minutes each), often with 50\% overlap.
+    \item \textbf{Detrending:} A linear trend is removed from each segment to ensure stationarity.
+    \item \textbf{Tapering:} Each segment is multiplied by a window function (e.g., a Hanning window) to minimize spectral "leakage".
+    \item \textbf{Fast Fourier Transform (FFT):} The FFT algorithm is applied to each tapered segment to compute a \textit{periodogram}, a raw estimate of the power spectral density for that segment.
+    \item \textbf{Ensemble Averaging:} The periodograms from all segments are averaged together to produce a smooth, final estimate of $S(f)$. This averaging reduces the variance of the spectral estimate.
+    \item \textbf{Directional Spectrum:} To obtain the directional spectrum $S(f, \theta)$, buoys use the measured horizontal accelerations and slopes. By comparing the phase difference between heave motion and horizontal acceleration (or slope), the direction from which waves at each frequency are coming can be estimated. This is often done using methods like the \textit{Extended Maximum Entropy Principle (EMEP)} or \textit{Maximum Likelihood Method (MLM)}.
+\end{enumerate}
+
+\subsection{Deriving Bulk Parameters}
+The final spectral estimate $S(f)$ is used to calculate the spectral moments:
+\begin{equation}
+m_n = \int_{0}^{\infty} f^n S(f)  df, \quad \text{for } n = 0, 1, 2, ...
+\end{equation}
+From these moments, all common bulk parameters are derived:
+\begin{align}
+H_s &= 4\sqrt{m_0} \\
+T_z &= T_{02} = \sqrt{\frac{m_0}{m_2}} \quad &\text{(Average zero-upcrossing period)} \\
+T_p &= \frac{1}{f_p} \quad &\text{(Peak period, from the frequency at max(S(f)))} \\
+T_{01} &= \frac{m_0}{m_1} \quad &\text{(Mean period)}
+\end{align}
+This entire process, from measuring acceleration to publishing $H_s$ and $T_p$, is automated on modern data buoys, providing near-real-time wave data to users worldwide.
+
+\section{Relationships Between Distributions}
+The statistical description of the sea surface is hierarchical, with the energy spectrum $S(f)$ as the fundamental quantity.
+\begin{itemize}
+    \item \textbf{Surface Elevation:} $\eta(t)$ is \textit{Gaussian} distributed, with variance $m_0$. $p(\eta) = \frac{1}{\sqrt{2\pi m_0}} \exp\left( -\frac{\eta^2}{2m_0} \right)$.
+    \item \textbf{Wave Envelope:} For a narrow-band process, the envelope $a(t)$ is \textit{Rayleigh} distributed, $p(a) = \frac{a}{m_0} \exp\left( -\frac{a^2}{2m_0} \right)$.
+    \item \textbf{Wave Heights:} For a narrow-band process, crest-to-trough wave heights $H$ are also \textit{Rayleigh} distributed, $p(H) = \frac{H}{4m_0} \exp\left( -\frac{H^2}{8m_0} \right)$.
+    \item \textbf{Wave Crests:} In linear theory, crest heights follow the same distribution as the envelope (Rayleigh). However, in steep waves, nonlinear effects cause crests to be higher and troughs to be shallower than linear theory predicts. This is often modeled with second-order theory or distributions like the \textit{Forristall} distribution.
+\end{itemize}
+The validity of the Rayleigh distribution for wave heights depends on the \textit{bandwidth} of the spectrum. As the spectrum becomes broader ($e.g.,$ in mixed seas with both swell and wind-waves), the distribution of wave heights deviates from Rayleigh and is better described by a \textit{Weibull} or other distributions.
+
+\section{Conclusion}
+The journey from the early statistical observations of wave heights to the modern, spectral-based characterization of the sea surface represents a profound achievement in geophysical fluid dynamics. The foundational work of Longuet-Higgins in establishing the statistical properties of the Gaussian sea and its envelope provided the critical link between time-domain and frequency-domain analyses. The development of parametric models like Pierson-Moskowitz and JONSWAP created powerful, practical tools for engineers and scientists to describe the sea state with just a few parameters.
+
+These theoretical models are not mere abstractions; they are embedded in the very hardware and software of modern wave measurement systems like data buoys. The process of converting raw accelerometer data into a directional wave spectrum and its derived bulk parameters is a direct application of this decades-old theory. While the linear Gaussian model has its limitations, leading to ongoing research into nonlinear effects and non-Rayleighian statistics, it remains the indispensable core of ocean wave modeling. It provides a consistent, robust, and profoundly useful framework for understanding and predicting the behavior of the ocean surface, enabling safety, economic activity, and scientific discovery across the world's oceans.
+
+% The following bibliography should be in a separate .bib file
+\bibliographystyle{plain} % or another style like unsrt, alpha, etc.
+\bibliography{references} % references.bib is your BibTeX database
+
+% Sample entries for the references.bib file (to be created)
+% @article{longuet1952heights,
+%   title={On the statistical distribution of the heights of sea waves},
+%   author={Longuet-Higgins, Michael S.},
+%   journal={Journal of Marine Research},
+%   volume={11},
+%   number={3},
+%   pages={245--266},
+%   year={1952}
+% }
+% @article{pierson1964proposed,
+%   title={A proposed spectral form for fully developed wind seas based on the similarity theory of SA Kitaigorodskii},
+%   author={Pierson, Willard J. and Moskowitz, Lionel},
+%   journal={Journal of Geophysical Research},
+%   volume={69},
+%   number={24},
+%   pages={5181--5190},
+%   year={1964}
+% }
+% @article{hasselmann1973report,
+%   title={Measurements of wind-wave growth and swell decay during the Joint North Sea Wave Project (JONSWAP)},
+%   author={Hasselmann, K. and others},
+%   journal={Deutsches Hydrographisches Institut},
+%   year={1973}
+% }
+% @misc{ndbcfaq,
+%   author = {National Data Buoy Center},
+%   title = {How are significant wave height, dominant period, and average period defined?},
+%   howpublished = {\url{https://www.ndbc.noaa.gov/wave.shtml}},
+%   note = {Accessed: 2023-10-27}
+% }
+
+\end{document}
