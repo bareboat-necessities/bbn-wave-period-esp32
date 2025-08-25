@@ -85,29 +85,33 @@ public:
 
     // feed raw acceleration sample (Hz = fs_raw)
     // returns true when a block-spectrum has been computed
-    bool processSample(double x_raw) {
-        // direct-form I biquad (single-sample)
-        double y = b0 * x_raw + z1;
-        z1 = b1 * x_raw + a1 * y + z2;
-        z2 = b2 * x_raw + a2 * y;
+bool processSample(double x_raw) {
+    // ---- Fixed low-pass biquad (TDF-II transposed form) ----
+    double y = b0 * x_raw + z1;
+    z1 = b1 * x_raw - a1 * y + z2;   // <-- minus a1
+    z2 = b2 * x_raw - a2 * y;        // <-- minus a2
 
-        // decimate
-        if (++decimCounter < decimFactor) return false;
-        decimCounter = 0;
+    // --- Decimation ---
+    if (++decimCounter < decimFactor)
+        return false;                // skip until next keep-sample
+    decimCounter = 0;
 
-        buffer_[writeIndex] = y;
-        writeIndex = (writeIndex + 1) % Nblock;
-        filledSamples++;
+    // --- Circular buffer insert ---
+    buffer_[writeIndex] = y;
+    writeIndex = (writeIndex + 1) % Nblock;
+    filledSamples++;
 
-        if (filledSamples >= Nblock) isWarm = true;
+    // Warm-up flag
+    if (filledSamples >= Nblock)
+        isWarm = true;
 
-        // compute once per full block (i.e. when filledSamples is a multiple of Nblock)
-        if (filledSamples > 0 && (filledSamples % Nblock) == 0) {
-            computeSpectrum();
-            return true;
-        }
-        return false;
+    // Trigger spectrum computation once per full block
+    if (filledSamples > 0 && (filledSamples % Nblock) == 0) {
+        computeSpectrum();           // (your DC-removed version)
+        return true;                 // new spectrum ready
     }
+    return false;                    // no spectrum yet
+}
 
     Vec getDisplacementSpectrum() const { return lastSpectrum_; }
 
