@@ -273,8 +273,11 @@ void computeSpectrum() {
 
         // acceleration -> displacement PSD: divide by ω^4
         const double omega = 2.0 * M_PI * freqs_[i];     // rad/s
-        const double omega_safe = std::max(omega, 2.0 * M_PI * 0.03); // same floor as before
+        const double omega_safe = std::max(omega, 2.0 * M_PI * 0.04); 
         double S_eta = S_aa / (omega_safe * omega_safe * omega_safe * omega_safe);
+
+        constexpr double hp_cut = 0.06;  // Hz; adjust to taste (0.03–0.06 typical)
+        if (freqs_[i] < hp_cut) S_eta = 0.0;  // or multiply by a soft taper instead
 
         if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
         lastSpectrum_[i] = S_eta; // [m^2/Hz]
