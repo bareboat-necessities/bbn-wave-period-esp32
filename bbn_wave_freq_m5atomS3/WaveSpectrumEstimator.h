@@ -207,7 +207,7 @@ private:
     inline double safeLog(double v) const { return std::log(std::max(v, 1e-18)); }
 
     void buildFrequencyGrid() {
-        constexpr double f_min = 0.03, f_transition = 0.1, f_max = 1.0;
+        constexpr double f_min = 0.04, f_transition = 0.1, f_max = 1.0;
         int n_log = int(Nfreq * 0.4), n_lin = Nfreq - n_log;
         for (int i = 0; i < n_log; i++) {
             double t = double(i) / (n_log - 1);
