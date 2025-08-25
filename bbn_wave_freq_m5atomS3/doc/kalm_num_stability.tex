@@ -227,6 +227,167 @@ MatrixXd I = MatrixXd::Identity(F.rows(), F.cols());
 x = (I - 0.5*dt*F).inverse() * (I + 0.5*dt*F) * x;
 \end{lstlisting}
 
+\section*{Illustrative Figures on Stability and Frequency Response}
+
+\subsection*{1. Stability Regions in the Complex Plane}
+Forward Euler, Backward Euler, and Tustin methods have different stability regions. Forward Euler is conditionally stable (circle of radius 1 around origin), Backward Euler is unconditionally stable, and Tustin maps left-half s-plane to inside the unit circle.
+
+\begin{center}
+\begin{tikzpicture}[scale=1.5]
+\begin{axis}[
+    axis equal,
+    xlabel={Re},
+    ylabel={Im},
+    title={Stability Regions of Discretization Methods},
+    legend pos=outer north east
+]
+% Unit circle for Tustin
+\addplot [domain=0:360,samples=100,blue,thick] ({cos(x)}, {sin(x)});
+\addlegendentry{Tustin (Bilinear)}
+
+% Forward Euler circle radius 1
+\addplot [domain=0:360,samples=100,red,dashed,thick] ({1+cos(x)}, {sin(x)});
+\addlegendentry{Forward Euler}
+
+% Backward Euler region (unbounded, fill left-half plane)
+\addplot [domain=-2:0,samples=50,fill=green,opacity=0.2] {2};
+\addlegendentry{Backward Euler (stable)}
+\end{axis}
+\end{tikzpicture}
+\end{center}
+
+\subsection*{2. Covariance Divergence and Oscillatory System Integration}
+Covariance matrix norm over time illustrates instability for poor discretization. RK4 preserves oscillatory amplitudes, while Forward Euler may diverge.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+    xlabel={Time step $k$},
+    ylabel={Covariance norm $\|P\|$},
+    title={Covariance Divergence and Integration of Oscillatory System},
+    legend pos=north west
+]
+% Covariance divergence
+\addplot [red, thick] table {
+0 1
+1 5
+2 20
+3 80
+4 320
+5 1280
+};
+\addlegendentry{Covariance Unstable (Euler)}
+
+\addplot [blue, thick] table {
+0 1
+1 1.1
+2 1.15
+3 1.2
+4 1.22
+5 1.23
+};
+\addlegendentry{Covariance Stable (Tustin)}
+
+% Oscillatory system: Forward Euler
+\addplot [red, densely dashed, thick] table {
+0 1
+0.1 0.95
+0.2 0.85
+0.3 0.7
+0.4 0.5
+0.5 0.25
+0.6 0
+0.7 -0.3
+0.8 -0.6
+0.9 -0.85
+1 -1.0
+};
+\addlegendentry{Oscillatory Euler}
+
+% Oscillatory system: RK4
+\addplot [blue, densely dashed, thick] table {
+0 1
+0.1 0.995
+0.2 0.980
+0.3 0.955
+0.4 0.920
+0.5 0.875
+0.6 0.820
+0.7 0.755
+0.8 0.680
+0.9 0.595
+1 0.500
+};
+\addlegendentry{Oscillatory RK4}
+\end{axis}
+\end{tikzpicture}
+\end{center}
+
+\subsection*{3. Frequency Response Comparison: Forward Euler vs Tustin}
+Discretization affects frequency-domain behavior. Forward Euler distorts high-frequency response, whereas Tustin preserves stability and shape.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+    width=12cm,
+    height=7cm,
+    xlabel={Normalized frequency $\omega$ (rad/sample)},
+    ylabel={Magnitude $|H(e^{j\omega})|$},
+    title={Frequency Response of Discretization Methods},
+    legend pos=north east,
+    grid=both
+]
+
+% Forward Euler approximate frequency response
+\addplot [red, thick, domain=0:3.14, samples=100] 
+    {1/sqrt((1 - cos(deg(x)))^2 + (sin(deg(x)))^2)};
+\addlegendentry{Forward Euler}
+
+% Tustin (Bilinear) frequency response
+\addplot [blue, thick, domain=0:3.14, samples=100] 
+    {1/sqrt((1 - 0.5*(1-cos(deg(x))))^2 + (0.5*sin(deg(x)))^2)};
+\addlegendentry{Tustin (Trapezoidal)}
+
+\end{axis}
+\end{tikzpicture}
+\end{center}
+
+\textbf{Practical C++ Illustration:}
+
+\begin{lstlisting}
+// Frequency response comparison for discretization methods
+#include <Eigen/Dense>
+#include <complex>
+#include <vector>
+#include <iostream>
+
+double forwardEuler(double omega, double dt) {
+    std::complex<double> z = 1.0 + dt*(std::complex<double>(0, omega));
+    return std::abs(1.0 / z);
+}
+
+double tustin(double omega, double dt) {
+    std::complex<double> z = (1.0 + 0.5*dt*(std::complex<double>(0, omega))) /
+                             (1.0 - 0.5*dt*(std::complex<double>(0, omega)));
+    return std::abs(1.0 / z);
+}
+
+int main() {
+    double dt = 0.01;
+    int N = 100;
+    for (int i = 0; i <= N; i++) {
+        double omega = M_PI * i / N;
+        std::cout << omega << " " << forwardEuler(omega, dt)
+                  << " " << tustin(omega, dt) << "\n";
+    }
+    return 0;
+}
+\end{lstlisting}
+
+\textbf{Explanation:}  
+- Forward Euler introduces amplitude distortion and phase lag at high frequencies.  
+- Tustin (Trapezoidal) method maps the entire left-half s-plane inside the unit circle, preserving stability and better approximating the frequency response of the continuous system.  
+
 \section{Practical Tips for Stability}
 \begin{itemize}
     \item Use double precision.
