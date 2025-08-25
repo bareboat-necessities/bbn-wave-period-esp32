@@ -85,33 +85,33 @@ public:
 
     // feed raw acceleration sample (Hz = fs_raw)
     // returns true when a block-spectrum has been computed
-bool processSample(double x_raw) {
-    // ---- Fixed low-pass biquad (TDF-II transposed form) ----
-    double y = b0 * x_raw + z1;
-    z1 = b1 * x_raw - a1 * y + z2;   // <-- minus a1
-    z2 = b2 * x_raw - a2 * y;        // <-- minus a2
-
-    // --- Decimation ---
-    if (++decimCounter < decimFactor)
-        return false;                // skip until next keep-sample
-    decimCounter = 0;
-
-    // --- Circular buffer insert ---
-    buffer_[writeIndex] = y;
-    writeIndex = (writeIndex + 1) % Nblock;
-    filledSamples++;
-
-    // Warm-up flag
-    if (filledSamples >= Nblock)
-        isWarm = true;
-
-    // Trigger spectrum computation once per full block
-    if (filledSamples > 0 && (filledSamples % Nblock) == 0) {
-        computeSpectrum();           // (your DC-removed version)
-        return true;                 // new spectrum ready
+    bool processSample(double x_raw) {
+        // low-pass biquad (TDF-II transposed form)
+        double y = b0 * x_raw + z1;
+        z1 = b1 * x_raw - a1 * y + z2;  
+        z2 = b2 * x_raw - a2 * y;    
+    
+        // Decimation
+        if (++decimCounter < decimFactor)
+            return false;                   // skip until next keep-sample
+        decimCounter = 0;
+    
+        // Circular buffer insert
+        buffer_[writeIndex] = y;
+        writeIndex = (writeIndex + 1) % Nblock;
+        filledSamples++;
+    
+        // Warm-up flag
+        if (filledSamples >= Nblock)
+            isWarm = true;
+    
+        // Trigger spectrum computation once per full block
+        if (filledSamples > 0 && (filledSamples % Nblock) == 0) {
+            computeSpectrum();           // (your DC-removed version)
+            return true;                 // new spectrum ready
+        }
+        return false;                    // no spectrum yet
     }
-    return false;                    // no spectrum yet
-}
 
     Vec getDisplacementSpectrum() const { return lastSpectrum_; }
 
@@ -227,63 +227,63 @@ private:
         a1 = 2.0 * (K * K - 1.0) * norm; a2 = (1.0 - K / Q + K * K) * norm;
     }
 
-void computeSpectrum() {
-    // number of valid decimated samples available (use up to Nblock)
-    const int blockSize = std::min(filledSamples, Nblock);
-
-    // start index = oldest sample in circular buffer
-    const int startIdx = (writeIndex + Nblock - blockSize) % Nblock;
-
-    // --- NEW: compute (unwindowed) block mean to remove DC ---
-    double xmean = 0.0;
-    {
-        int idx = startIdx;
-        for (int n = 0; n < blockSize; n++) {
-            xmean += buffer_[idx];
-            idx = (idx + 1) % Nblock;
+    void computeSpectrum() {
+        // number of valid decimated samples available (use up to Nblock)
+        const int blockSize = std::min(filledSamples, Nblock);
+    
+        // start index = oldest sample in circular buffer
+        const int startIdx = (writeIndex + Nblock - blockSize) % Nblock;
+    
+        // compute (unwindowed) block mean to remove DC
+        double xmean = 0.0;
+        {
+            int idx = startIdx;
+            for (int n = 0; n < blockSize; n++) {
+                xmean += buffer_[idx];
+                idx = (idx + 1) % Nblock;
+            }
+            xmean /= double(blockSize);
         }
-        xmean /= double(blockSize);
-    }
-
-    // window energy for the actual block size
-    double U = 0.0;
-    for (int n = 0; n < blockSize; n++) U += window_[n] * window_[n];
-
-    // single-sided PSD scale for acceleration: 2 / (fs * sum(w^2))
-    const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
-
-    for (int i = 0; i < Nfreq; i++) {
-        double s1 = 0.0, s2 = 0.0;
-
-        int idx = startIdx;
-        for (int n = 0; n < blockSize; n++) {
-            // --- NEW: subtract mean before windowing ---
-            const double xw = (buffer_[idx] - xmean) * window_[n];
-            const double s_new = xw + coeffs_[i] * s1 - s2;
-            s2 = s1; s1 = s_new;
-            idx = (idx + 1) % Nblock;
+    
+        // window energy for the actual block size
+        double U = 0.0;
+        for (int n = 0; n < blockSize; n++) U += window_[n] * window_[n];
+    
+        // single-sided PSD scale for acceleration: 2 / (fs * sum(w^2))
+        const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
+    
+        for (int i = 0; i < Nfreq; i++) {
+            double s1 = 0.0, s2 = 0.0;
+    
+            int idx = startIdx;
+            for (int n = 0; n < blockSize; n++) {
+                // NEW: subtract mean before windowing
+                const double xw = (buffer_[idx] - xmean) * window_[n];
+                const double s_new = xw + coeffs_[i] * s1 - s2;
+                s2 = s1; s1 = s_new;
+                idx = (idx + 1) % Nblock;
+            }
+    
+            // standard Goertzel recombination (equivalent to s1^2 + s2^2 - 2cos*w*s1*s2)
+            const double real = s1 - s2 * cos1_[i];
+            const double imag = s2 * sin1_[i];
+    
+            // PSD of acceleration at this frequency ( (m/s^2)^2 / Hz )
+            const double S_aa = (real*real + imag*imag) * scale_factor;
+    
+            // acceleration -> displacement PSD: divide by ω^4
+            const double omega = 2.0 * M_PI * freqs_[i];     // rad/s
+            const double omega_safe = std::max(omega, 2.0 * M_PI * 0.04); 
+            double S_eta = S_aa / (omega_safe * omega_safe * omega_safe * omega_safe);
+    
+            constexpr double hp_cut = 0.06;  // Hz; adjust to taste (0.03–0.06 typical)
+            if (freqs_[i] < hp_cut) S_eta = 0.0;  // or multiply by a soft taper instead
+    
+            if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
+            lastSpectrum_[i] = S_eta; // [m^2/Hz]
         }
-
-        // standard Goertzel recombination (equivalent to s1^2 + s2^2 - 2cos*w*s1*s2)
-        const double real = s1 - s2 * cos1_[i];
-        const double imag = s2 * sin1_[i];
-
-        // PSD of acceleration at this frequency ( (m/s^2)^2 / Hz )
-        const double S_aa = (real*real + imag*imag) * scale_factor;
-
-        // acceleration -> displacement PSD: divide by ω^4
-        const double omega = 2.0 * M_PI * freqs_[i];     // rad/s
-        const double omega_safe = std::max(omega, 2.0 * M_PI * 0.04); 
-        double S_eta = S_aa / (omega_safe * omega_safe * omega_safe * omega_safe);
-
-        constexpr double hp_cut = 0.06;  // Hz; adjust to taste (0.03–0.06 typical)
-        if (freqs_[i] < hp_cut) S_eta = 0.0;  // or multiply by a soft taper instead
-
-        if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-        lastSpectrum_[i] = S_eta; // [m^2/Hz]
     }
-}
-
+    
     double fs_raw, fs;
     int decimFactor;
     bool hannEnabled;
@@ -339,12 +339,12 @@ void WaveSpectrumEstimator_test() {
                       << ", cost = " << pm.cost << "\n";
 
             assert(Hs > 0);
+            assert(Hs < 3);
             assert(Fp > 0);
             assert(pm.alpha > 0);
             assert(pm.fp > 0);
         }
     }
-
     assert(ready_count > 0);
 }
 #endif
