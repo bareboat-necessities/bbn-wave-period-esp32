@@ -1,0 +1,182 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+
+\title{Extended Quaternion MEKF with Linear Wave States}
+\author{Mikhail Grushinskiy \\ based on q-mekf by Thomas Passer}
+\date{2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present an extension of the classical quaternion-based Multiplicative Extended Kalman Filter (MEKF) to simultaneously estimate attitude, velocity, displacement, and an additional integral-of-displacement state. This design is motivated by ocean-wave motion estimation, where accelerometer and gyroscope measurements must be fused to provide both orientation and motion reconstruction. The method retains the structure and stability properties of MEKF for attitude while extending the state vector, covariance, and system Jacobian to capture translational dynamics up to triple integration of acceleration.
+\end{abstract}
+
+\section{Introduction}
+Quaternion-based Kalman filters are widely used for robust attitude estimation from gyroscope, accelerometer, and magnetometer data \cite{crassidis2007survey}. The MEKF is a well-established formulation that represents attitude errors as small 3D angles, applied multiplicatively to the reference quaternion.
+
+For wave motion tracking, however, it is not sufficient to estimate orientation alone. Accelerometer integration must be extended to velocity and displacement, but long-term integration drift must be constrained. To address this, we propose an extended MEKF, denoted \texttt{Kalman3D\_Wave}, that augments the classical MEKF state with translational quantities and introduces a pseudo-measurement on the integral of displacement.
+
+\section{State Vector}
+The extended error-state vector is
+\begin{equation}
+\bm{x} = \begin{bmatrix}
+\delta \bm{\theta} \\
+\delta \bm{b}_g \\
+\bm{v} \\
+\bm{p} \\
+\bm{S}
+\end{bmatrix} \in \mathbb{R}^{N_x},
+\end{equation}
+where
+\begin{itemize}
+  \item $\delta \bm{\theta} \in \mathbb{R}^3$: attitude error,
+  \item $\delta \bm{b}_g \in \mathbb{R}^3$: gyroscope bias error (optional),
+  \item $\bm{v} \in \mathbb{R}^3$: velocity in world frame,
+  \item $\bm{p} \in \mathbb{R}^3$: displacement in world frame,
+  \item $\bm{S} \in \mathbb{R}^3$: integral of displacement.
+\end{itemize}
+
+The quaternion reference state $\bm{q}$ is maintained separately and updated multiplicatively.
+
+\section{System Model}
+
+\subsection{Attitude Propagation}
+Given gyro measurements $\bm{\omega}$ and estimated bias $\hat{\bm{b}}_g$, the bias-corrected angular velocity is
+\[
+\bm{\omega}_c = \bm{\omega} - \hat{\bm{b}}_g.
+\]
+Quaternion propagation follows
+\[
+\bm{q}_{k+1} = \exp\!\left( \tfrac{1}{2} \bm{\Omega}(\bm{\omega}_c \Delta t) \right) \bm{q}_k,
+\]
+where $\bm{\Omega}(\cdot)$ is the quaternion rate matrix.
+
+\subsection{Translational Propagation}
+The world-frame acceleration is
+\[
+\bm{a}_w = R(\bm{q}) \bm{a}_b - \bm{g},
+\]
+with $R(\bm{q})$ the rotation matrix from quaternion $\bm{q}$ and $\bm{g} = [0,0,g]^T$ gravity.
+
+The linear states evolve via Taylor expansion:
+\begin{align}
+\bm{v}_{k+1} &= \bm{v}_k + \bm{a}_w \Delta t, \\
+\bm{p}_{k+1} &= \bm{p}_k + \bm{v}_k \Delta t + \tfrac{1}{2}\bm{a}_w \Delta t^2, \\
+\bm{S}_{k+1} &= \bm{S}_k + \bm{p}_k \Delta t + \tfrac{1}{2}\bm{v}_k \Delta t^2 + \tfrac{1}{6}\bm{a}_w \Delta t^3.
+\end{align}
+
+\section{Extended Transition Matrix $F$}
+The Jacobian of the propagation model is block-structured:
+\[
+F = \begin{bmatrix}
+F_{\theta\theta} & F_{\theta b} & 0 & 0 & 0 \\
+0 & I & 0 & 0 & 0 \\
+F_{v\theta} & 0 & I & 0 & 0 \\
+F_{p\theta} & 0 & F_{pv} & I & 0 \\
+F_{S\theta} & 0 & F_{Sv} & F_{Sp} & I
+\end{bmatrix},
+\]
+where
+\begin{align}
+F_{\theta\theta} &= I - [\bm{\omega}_c]_\times \Delta t, \\
+F_{\theta b} &= -I \Delta t, \\
+F_{v\theta} &= -\Delta t \, R(\bm{q}) [\bm{a}_b]_\times, \\
+F_{p\theta} &= -\tfrac{1}{2}\Delta t^2 \, R(\bm{q}) [\bm{a}_b]_\times, \\
+F_{S\theta} &= -\tfrac{1}{6}\Delta t^3 \, R(\bm{q}) [\bm{a}_b]_\times, \\
+F_{pv} &= I \Delta t, \\
+F_{Sv} &= \tfrac{1}{2} I \Delta t^2, \\
+F_{Sp} &= I \Delta t.
+\end{align}
+Here $[\cdot]_\times$ denotes the skew-symmetric matrix.
+
+\section{Process Noise}
+Accelerometer white noise with covariance $R_a$ drives the translational states. The process noise is discretized via
+\[
+Q_{vpS} = G R_a G^\top,
+\]
+with
+\[
+G = \begin{bmatrix}
+\Delta t R(\bm{q}) \\
+\tfrac{1}{2}\Delta t^2 R(\bm{q}) \\
+\tfrac{1}{6}\Delta t^3 R(\bm{q})
+\end{bmatrix}.
+\]
+
+The total covariance update is
+\[
+P_{k+1} = F P_k F^\top + Q.
+\]
+
+\section{Measurement Model}
+Accelerometer and magnetometer provide measurements of reference vectors $\bm{v}_1$ (gravity) and $\bm{v}_2$ (magnetic field):
+\begin{align}
+\hat{\bm{y}}_{acc} &= R(\bm{q})^{-1} \bm{v}_1, \\
+\hat{\bm{y}}_{mag} &= R(\bm{q})^{-1} \bm{v}_2.
+\end{align}
+
+The Jacobians w.r.t. small-angle errors are
+\[
+C_{acc} = [\hat{\bm{y}}_{acc}]_\times, \quad
+C_{mag} = [\hat{\bm{y}}_{mag}]_\times.
+\]
+
+The stacked measurement matrix is
+\[
+C = \begin{bmatrix}
+C_{acc} & 0 & 0 & 0 & 0 \\
+C_{mag} & 0 & 0 & 0 & 0
+\end{bmatrix}.
+\]
+
+\section{Integral Drift Correction}
+To suppress drift, we impose a pseudo-measurement on the integral state:
+\[
+\bm{z}_S = \bm{0}, \quad
+H_S = \begin{bmatrix} 0 & 0 & 0 & 0 & I \end{bmatrix}.
+\]
+This statistically constrains $\bm{S}$ while leaving $\bm{p}$ and $\bm{v}$ free to evolve.
+
+\section{Block Diagram}
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=2cm, auto, >=Latex]
+\tikzstyle{block} = [rectangle, draw, minimum height=1cm, minimum width=2cm, align=center]
+
+\node[block] (gyro) {Gyroscope $\bm{\omega}$};
+\node[block, right=3cm of gyro] (quat) {Quaternion Propagation};
+\node[block, below=1.5cm of quat] (rot) {Rotation $R(\bm{q})$};
+\node[block, left=3cm of rot] (acc) {Accelerometer $\bm{a}_b$};
+\node[block, right=3cm of rot] (aw) {World Accel $\bm{a}_w$};
+\node[block, below=1.5cm of aw] (vel) {Velocity $\bm{v}$};
+\node[block, below=1.5cm of vel] (pos) {Position $\bm{p}$};
+\node[block, below=1.5cm of pos] (int) {Integral $\bm{S}$};
+
+\draw[->] (gyro) -- (quat);
+\draw[->] (quat) -- (rot);
+\draw[->] (acc) -- (rot);
+\draw[->] (rot) -- (aw);
+\draw[->] (aw) -- (vel);
+\draw[->] (vel) -- (pos);
+\draw[->] (pos) -- (int);
+\end{tikzpicture}
+\caption{Propagation flow of quaternion and linear states.}
+\end{figure}
+
+\section{Conclusion}
+This extended MEKF maintains the robustness of quaternion-based attitude estimation while enabling translational state tracking needed for ocean wave displacement estimation. By explicitly including velocity, displacement, and the integral of displacement, and by carefully structuring $F$ and $Q$, the filter achieves physically consistent propagation while mitigating drift through pseudo-measurements.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+\bibitem{crassidis2007survey}
+J. L. Crassidis and F. L. Markley. 
+\newblock Survey of Nonlinear Attitude Estimation Methods.
+\newblock \emph{Journal of Guidance, Control, and Dynamics}, 30(1):12--28, 2007.
+\end{thebibliography}
+
+\end{document}
