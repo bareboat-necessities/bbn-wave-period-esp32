@@ -1,5 +1,8 @@
+
+
 \documentclass[11pt]{article}
-\usepackage{amsmath, amssymb, geometry, graphicx, hyperref, listings, xcolor}
+\usepackage{amsmath, amssymb, geometry, graphicx, hyperref, listings, xcolor, lmodern, booktabs, siunitx}
+\usepackage[most]{tcolorbox}
 \geometry{margin=1in}
 
 % Define colors for code listings
@@ -7,6 +10,16 @@
 \definecolor{codegray}{rgb}{0.5,0.5,0.5}
 \definecolor{codepurple}{rgb}{0.58,0,0.82}
 \definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% Define a custom tcolorbox for theorems/explanations
+\newtcolorbox{theorybox}[1]{
+    colback=blue!5!white,
+    colframe=blue!75!black,
+    fonttitle=\bfseries,
+    title=#1,
+    sharp corners,
+    boxrule=0.5pt
+}
 
 \lstdefinestyle{codestyle}{
     backgroundcolor=\color{backcolour},
@@ -37,7 +50,7 @@
 \maketitle
 
 \begin{abstract}
-We present \texttt{SeaStateRegularity}, an embedded-oriented C++ algorithm for real-time estimation of ocean wave regularity from vertical acceleration signals. The method combines demodulation, spectral moment analysis, phase coherence tracking, and adaptive output shaping to provide robust indicators of wave narrowness, coherence, and approximate significant wave height ($H_s$). The algorithm is computationally lightweight, utilizing only recursive exponential averaging for $\mathcal{O}(1)$ updates per sample, making it robust to broadband and nonlinear waves and exceptionally well-suited for deployment on low-power microcontrollers and embedded systems. This document provides a comprehensive description of the theory, implementation, and usage of the class.
+We present \texttt{SeaStateRegularity}, an embedded-oriented C++ algorithm for real-time estimation of ocean wave regularity from vertical acceleration signals. The method combines demodulation, spectral moment analysis, phase coherence tracking, and adaptive output shaping to provide robust indicators of wave narrowness, coherence, and approximate significant wave height ($H_s$). The algorithm is computationally lightweight, utilizing only recursive exponential averaging for $\mathcal{O}(1)$ updates per sample, making it robust to broadband and nonlinear waves and exceptionally well-suited for deployment on low-power microcontrollers and embedded systems. This document provides a comprehensive description of the theory, implementation, and usage of the class, with an expanded focus on the theoretical foundations of the key mathematical formulas.
 \end{abstract}
 
 \section{Introduction}
@@ -50,25 +63,44 @@ The \texttt{SeaStateRegularity} algorithm addresses this challenge by employing 
 \section{Theoretical Methodology}
 The core of the algorithm involves processing each new data sample through a pipeline of steps to update its state estimates.
 
+\subsection{Signal Model and Demodulation}
+We model the vertical acceleration due to ocean waves as a narrowband signal centered around a dominant frequency $\omega_d(t)$, which may vary slowly over time:
+\begin{equation}
+a_z(t) \approx A(t) \cos(\phi(t)) = A(t) \cos\left( \int_0^t \omega_d(\tau) d\tau + \phi_0 \right),
+\end{equation}
+where $A(t)$ is a slowly varying amplitude envelope and $\phi(t)$ is the instantaneous phase. For a purely monochromatic wave, $A(t)$ is constant and $\omega_d(t) = \omega_0$.
+
+\begin{theorybox}{Theoretical Basis: The Analytic Signal and Demodulation}
+The Hilbert transform provides a rigorous way to define the instantaneous amplitude and phase of a signal. For a real signal $s(t)$, its analytic signal is defined as:
+\begin{equation}
+s_a(t) = s(t) + i \mathcal{H}\{s(t)\},
+\end{equation}
+where $\mathcal{H}$ denotes the Hilbert transform. The instantaneous amplitude (envelope) is $A(t) = |s_a(t)|$ and the instantaneous phase is $\phi(t) = \arg(s_a(t))$. Our algorithm approximates this process through phase-coherent demodulation using an external frequency estimate $\omega_{\text{inst}}(t)$, which is often available from integrated navigation systems or can be estimated via phase-locked loops (PLLs) or zero-crossing algorithms. This avoids the computational cost of a full Hilbert transform.
+\end{theorybox}
+
 \subsection{Demodulation and Envelope Extraction}
 The first step is to demodulate the high-frequency acceleration signal to extract the lower-frequency wave displacement envelope. The instantaneous phase $\phi(t)$ is integrated from the input frequency:
 \begin{equation}
 \phi(t) = \phi(t-1) + \omega_{\text{inst}}(t) \cdot \Delta t.
 \end{equation}
-The acceleration is then demodulated using this phase to form a complex signal:
+The acceleration is then demodulated (mixed down) using this phase to form a complex baseband signal:
 \begin{align}
 z_{\text{real, inst}}(t) &= a_z(t)\cos(-\phi(t)), \\
 z_{\text{imag, inst}}(t) &= a_z(t)\sin(-\phi(t)).
 \end{align}
-This instantaneous complex signal is smoothed using an Exponential Moving Average (EMA) with time constant $\tau_{\text{env}}$ to produce a stable, narrowband representation of the wave displacement:
+This operation shifts the spectral content centered at $\omega_{\text{inst}}(t)$ down to DC. The high-frequency components at $\sim 2\omega_{\text{inst}}(t)$ are then removed by a low-pass filter. This instantaneous complex signal is smoothed using an Exponential Moving Average (EMA) with time constant $\tau_{\text{env}}$ to produce a stable, narrowband representation of the wave displacement:
 \begin{align}
 z_{\text{real}}(t) &= (1 - \alpha_{\text{env}}) \cdot z_{\text{real}}(t-1) + \alpha_{\text{env}} \cdot z_{\text{real, inst}}(t), \\
 z_{\text{imag}}(t) &= (1 - \alpha_{\text{env}}) \cdot z_{\text{imag}}(t-1) + \alpha_{\text{env}} \cdot z_{\text{imag, inst}}(t).
 \end{align}
-The smoothing factor $\alpha$ is calculated from the time constant $\tau$ and sample time $\Delta t$ as $\alpha = 1 - \exp(-\Delta t / \tau)$.
+The smoothing factor $\alpha$ is calculated from the time constant $\tau$ and sample time $\Delta t$ as $\alpha = 1 - \exp(-\Delta t / \tau)$. The time constant $\tau_{\text{env}}$ must be chosen to be long enough to smooth the $2\omega$ component but short enough to track the actual wave envelope dynamics.
 
-\subsection{Spectral Moment Estimation}
-The smoothed complex displacement is corrected for the frequency-dependent relationship between acceleration and displacement ($a_z = -\omega^2 z$):
+\subsection{From Acceleration to Displacement}
+The smoothed complex signal $z = z_{\text{real}} + i z_{\text{imag}}$ is related to the wave acceleration. For a linear wave, the relationship between vertical displacement $\eta$ and vertical acceleration $a_z$ is given by:
+\begin{equation}
+a_z(t) = \frac{\partial^2 \eta}{\partial t^2} \approx -\omega^2 \eta(t).
+\end{equation}
+Therefore, to estimate the displacement envelope $x_{\text{disp}}$, we must correct for this frequency-dependent relationship:
 \begin{equation}
 x_{\text{disp}}(t) = \frac{z_{\text{real}}(t) + i z_{\text{imag}}(t)}{\omega_{\text{lp}}^2(t)},
 \end{equation}
@@ -76,53 +108,83 @@ where $\omega_{\text{lp}}$ is a low-pass-filtered version of $\omega_{\text{inst
 \begin{equation}
 P_{\text{disp}}(t) = |x_{\text{disp}}(t)|^2.
 \end{equation}
+This power estimate is proportional to the square of the wave amplitude.
+
+\subsection{Spectral Moment Estimation}
+Spectral moments are fundamental quantities in wave statistics. The $n$-th spectral moment $m_n$ is defined from the wave energy spectrum $S(\omega)$ as:
+\begin{equation}
+m_n = \int_0^{\infty} \omega^n S(\omega) d\omega.
+\end{equation}
+These moments are typically calculated by integrating over the frequency spectrum. Our algorithm estimates them recursively in the time domain using the EMA-filtered displacement power and the instantaneous frequency.
+
 The spectral moments $M_0$, $M_1$, and $M_2$ are estimated recursively using an EMA with time constant $\tau_{\text{mom}}$:
 \begin{align}
 M_0(t) &\approx (1 - \alpha_{\text{mom}}) \cdot M_0(t-1) + \alpha_{\text{mom}} \cdot P_{\text{disp}}(t), \\
 M_1(t) &\approx (1 - \alpha_{\text{mom}}) \cdot M_1(t-1) + \alpha_{\text{mom}} \cdot P_{\text{disp}}(t) \cdot \omega_{\text{lp}}(t), \\
 M_2(t) &\approx (1 - \alpha_{\text{mom}}) \cdot M_2(t-1) + \alpha_{\text{mom}} \cdot \left( P_{\text{disp}}(t) \cdot \omega_{\text{lp}}^2(t) - \sigma^2_{\omega,\text{slow}} \cdot M_0(t) \right).
 \end{align}
-The correction term $-\sigma^2_{\omega} M_0$ in the $M_2$ update is a crucial innovation. It subtracts the estimated variance of the frequency ($\sigma^2_{\omega,\text{slow}}$), preventing an overestimation of $M_2$ (and thus spectral width) due to noise or natural jitter in the instantaneous frequency estimate, significantly improving the robustness of the subsequent regularity calculation.
+
+\begin{theorybox}{Theoretical Basis: Time-Domain Moment Estimation}
+The recursive update for $M_0$ is a direct estimate of the variance of the displacement, $m_0 = \sigma_\eta^2 = E[\eta^2(t)]$, where $E[\cdot]$ is the expectation operator. The EMA implements a leaky integrator, providing a running estimate of this expectation. Similarly, $M_1$ and $M_2$ are estimates of $E[\eta^2(t)\omega(t)]$ and $E[\eta^2(t)\omega^2(t)]$ respectively. For a monochromatic wave, these estimates converge to the true spectral moments. For a polychromatic wave, they provide a weighted average, which is a valid approach for estimating spectral width.
+\end{theorybox}
+
+\begin{theorybox}{Innovation: Variance Correction in $M_2$}
+The correction term $-\sigma^2_{\omega} M_0$ in the $M_2$ update is a crucial innovation. The term $P_{\text{disp}}(t) \cdot \omega_{\text{lp}}^2(t)$ estimates $E[\eta^2 \omega^2]$. However, if the frequency itself has variance $\sigma^2_\omega = E[(\omega - \bar{\omega})^2]$, this leads to an overestimation:
+$E[\eta^2 \omega^2] = E[\eta^2] E[\omega^2] + \text{Cov}(\eta^2, \omega^2) \approx E[\eta^2] (\bar{\omega}^2 + \sigma^2_\omega)$ for weakly correlated $\eta$ and $\omega$.
+By subtracting $\sigma^2_{\omega} M_0$, we effectively remove this bias, preventing an overestimation of $M_2$ (and thus spectral width) due to noise or natural jitter in the instantaneous frequency estimate, significantly improving the robustness of the subsequent regularity calculation. The variance $\sigma^2_{\omega,\text{slow}}$ is tracked using a separate, slow EMA on the squared deviation of $\omega_{\text{inst}}$ from its mean.
+\end{theorybox}
 
 \subsection{Spectral Regularity}
-A narrowness parameter $\nu$ is computed from the spectral moments, analogous to the inverse of a quality factor:
+A narrowness parameter $\nu$ is computed from the spectral moments. In spectral analysis, the spectral width is often characterized by parameters like the bandwidth parameter $\epsilon$ or the spectral width parameter $\nu$ \cite{longuet-higgins1975}, defined as:
+\begin{equation}
+\nu = \sqrt{ \frac{m_0 m_2}{m_1^2} - 1 }.
+\end{equation}
+For a single frequency spectrum (a delta function), $m_0 m_2 = m_1^2$, yielding $\nu = 0$. For a broad spectrum, $\nu > 0$. Our algorithm uses the estimated moments $M_n$:
 \begin{equation}
 \nu = \sqrt{ \frac{M_0 M_2}{M_1^2} - 1 }.
 \end{equation}
-The spectral regularity $R_{\text{spec}}$ is then defined as:
+The spectral regularity $R_{\text{spec}}$ is then defined as a mapping of this width parameter onto the interval [0, 1]:
 \begin{equation}
 R_{\text{spec}} = \exp(-\nu).
 \end{equation}
-This metric ranges from 0 to 1, where 1 indicates a perfectly narrow spectrum (monochromatic wave) and 0 indicates an infinitely broad spectrum.
+This metric ranges from 0 to 1, where 1 indicates a perfectly narrow spectrum (monochromatic wave, $\nu=0$) and 0 indicates an infinitely broad spectrum ($\nu \to \infty$). The exponential function provides a smooth, well-behaved transition between these extremes.
 
 \subsection{Phase Coherence Regularity}
-An independent measure of regularity is computed by assessing the consistency of the wave's phase over time. The normalized complex displacement is calculated:
+An independent measure of regularity is computed by assessing the consistency of the wave's phase over time. This is based on the concept of mean resultant length in circular statistics. The normalized complex displacement (a unit phasor) is calculated:
 \begin{equation}
-u(t) = \frac{z_{\text{real}}(t) + i z_{\text{imag}}(t)}{|z_{\text{real}}(t) + i z_{\text{imag}}(t)|}.
+u(t) = \frac{z_{\text{real}}(t) + i z_{\text{imag}}(t)}{|z_{\text{real}}(t) + i z_{\text{imag}}(t)|} = e^{i\theta(t)},
 \end{equation}
-The mean of this unit phasor is computed using an EMA with time constant $\tau_{\text{coh}}$:
+where $\theta(t)$ is the instantaneous phase of the demodulated signal. The mean of this unit phasor is computed using an EMA with time constant $\tau_{\text{coh}}$:
 \begin{align}
-\langle u \rangle_r(t) &= (1 - \alpha_{\text{coh}}) \cdot \langle u \rangle_r(t-1) + \alpha_{\text{coh}} \cdot u_r(t), \\
-\langle u \rangle_i(t) &= (1 - \alpha_{\text{coh}}) \cdot \langle u \rangle_i(t-1) + \alpha_{\text{coh}} \cdot u_i(t).
+\langle u \rangle_r(t) &= (1 - \alpha_{\text{coh}}) \cdot \langle u \rangle_r(t-1) + \alpha_{\text{coh}} \cdot \operatorname{Re}(u(t)), \\
+\langle u \rangle_i(t) &= (1 - \alpha_{\text{coh}}) \cdot \langle u \rangle_i(t-1) + \alpha_{\text{coh}} \cdot \operatorname{Im}(u(t)).
 \end{align}
 The magnitude of this average phasor is the phase coherence regularity:
 \begin{equation}
 R_{\text{phase}} = | \langle u \rangle | = \sqrt{ \langle u \rangle_r^2 + \langle u \rangle_i^2 }.
 \end{equation}
-This metric also ranges from 0 to 1, where 1 indicates perfect phase coherence (all phasors aligned) and 0 indicates complete phase randomness.
+
+\begin{theorybox}{Theoretical Basis: Circular Statistics and Phase Coherence}
+The quantity $R_{\text{phase}}$ is directly analogous to the mean resultant length $R$ in circular statistics. For a set of phases $\theta_i$, $R$ is defined as $R = | \frac{1}{N} \sum_{j=1}^{N} e^{i\theta_j} |$.
+\begin{itemize}
+    \item If all phases are identical (perfectly coherent), the phasors add constructively and $R = 1$.
+    \item If the phases are uniformly distributed around the circle (completely incoherent), the vector sum tends to zero and $R \to 0$.
+\end{itemize}
+Thus, $R_{\text{phase}}$ measures the concentration of the phase distribution. A value of 1 indicates perfect phase coherence, and 0 indicates complete randomness. The EMA implements a weighted average of these phasors over time.
+\end{theorybox}
 
 \subsection{Combined Regularity and Adaptive Output Shaping}
 A preliminary ``safe'' regularity is taken as the maximum of the two independent measures:
 \begin{equation}
 R_{\text{safe}} = \max(R_{\text{spec}}, R_{\text{phase}}).
 \end{equation}
-This ensures the estimator is not fooled by edge cases where one metric might fail temporarily. The final output $R_{\text{out}}$ is then shaped based on the wave power $P_{\text{disp}}$ to improve empirical accuracy:
+This ensures the estimator is not fooled by edge cases where one metric might fail temporarily (e.g., a brief frequency shift affecting $R_{\text{spec}}$ before $R_{\text{phase}}$ decays). The final output $R_{\text{out}}$ is then shaped based on the wave power $P_{\text{disp}}$ to improve empirical accuracy:
 \begin{itemize}
-    \item \textbf{Broadband Wave Reduction:} For waves with moderate power, characteristic of JONSWAP spectra, the regularity is slightly reduced.
+    \item \textbf{Broadband Wave Reduction:} For waves with moderate power, characteristic of developing seas (e.g., JONSWAP spectrum with low peak enhancement factor), the regularity is slightly reduced. This heuristic accounts for the observed spectral shape of real-world seas which are never perfectly narrowband.
     \[
     R_{\text{target}} = R_{\text{safe}} - \Delta R_{\text{broadband}}, \quad \text{if } P_{\text{disp}} < \text{threshold}.
     \]
-    \item \textbf{Large Nonlinear Wave Boost:} For very large, steep waves where nonlinear effects become significant, the regularity is slightly increased.
+    \item \textbf{Large Nonlinear Wave Boost:} For very large, steep waves where nonlinear effects become significant (e.g., second-order bound harmonics), the wave form becomes more ordered and peaked, often exhibiting higher phase coherence. The regularity is thus slightly increased.
     \[
     R_{\text{target}} = R_{\text{safe}} + \Delta R_{\text{boost}}, \quad \text{if } P_{\text{disp}} > \text{threshold}.
     \]
@@ -130,11 +192,15 @@ This ensures the estimator is not fooled by edge cases where one metric might fa
 The target regularity $R_{\text{target}}$ is finally smoothed with an EMA ($\tau_{\text{out}}$) to produce the stable output $R_{\text{out}}$.
 
 \subsection{Significant Wave Height Estimate}
-An approximate significant wave height $H_s$ is computed from the zeroth spectral moment $M_0$:
+An approximate significant wave height $H_s$ is computed from the zeroth spectral moment $M_0$. In linear wave theory, the significant wave height $H_{m0}$ is defined as:
+\begin{equation}
+H_{m0} = 4\sqrt{m_0}.
+\end{equation}
+However, for a nonlinear wave, the crests are higher and the troughs are shallower than a linear wave of the same energy. This means that $4\sqrt{m_0}$ can underestimate the true significant wave height (defined as the average of the highest 1/3 of waves, $H_{1/3}$) in irregular seas. To account for this, an empirical correction factor $f(R)$ is introduced:
 \begin{equation}
 H_s \approx 2 \sqrt{M_0} \cdot f(R_{\text{out}}),
 \end{equation}
-where $f(R)$ is an empirical correction factor that increases from 1.0 to $\sqrt{2}$ as regularity decreases from high ($R_{\text{hi}}$) to low ($R_{\text{lo}}$) values. This accounts for the known underestimation of $H_s$ by $4\sqrt{M_0}$ in irregular seas compared to the true $H_{m0}$.
+where $f(R)$ increases from 1.0 to $\sqrt{2}$ as regularity decreases from high ($R_{\text{hi}}$) to low ($R_{\text{lo}}$) values. This heuristic correction bridges the gap between the linear definition $H_{m0} = 4\sqrt{m_0}$ (which corresponds to $2\sqrt{M_0} \cdot \sqrt{2}$) and the amplitude of a monochromatic wave $H = 2A$ (which corresponds to $2\sqrt{M_0} \cdot 1$, since for a sine wave $m_0 = A^2/2$).
 
 \section{Implementation Reference}
 \subsection{Class API and Configuration}
@@ -152,14 +218,14 @@ SeaStateRegularity(float tau_env_sec   = 1.0f,   // Envelope smoothing
 The algorithm is driven by calling the \texttt{update()} method for every new sample.
 \begin{lstlisting}[style=codestyle]
 void update(float dt_s,          // Time step since last update (seconds)
-            float accel_z,       // Vertical acceleration (m/s²)
+            float accel_z,       // Vertical acceleration (m/s^2)
             float omega_inst)    // Instant ang. frequency (rad/s)
 \end{lstlisting}
 
 \subsection{Data Retrieval Methods}
 After updating, the following getter methods can be used to retrieve the computed values:
 \begin{lstlisting}[style=codestyle]
-float getNarrowness();           // Spectral narrowness, ν
+float getNarrowness();           // Spectral narrowness, nu
 float getRegularity();           // Final output regularity, R_out
 float getRegularitySpectral();   // Spectral regularity, R_spec
 float getRegularityPhase();      // Phase regularity, R_phase
@@ -177,6 +243,17 @@ float getDisplacementFrequencyHz(); // Dominant wave freq (Hz)
 \end{itemize}
 
 \section{Conclusion}
-The \texttt{SeaStateRegularity} algorithm provides a sophisticated, yet computationally efficient, solution for real-time estimation of ocean wave properties. By cleverly combining demodulation, spectral moment analysis, and phase coherence in the time domain, it delivers accurate estimates of wave regularity and significant wave height without the computational burden of traditional spectral methods. Its design makes it exceptionally suitable for long-term deployment on embedded systems and microcontrollers for in-situ oceanographic monitoring and analysis.
+The \texttt{SeaStateRegularity} algorithm provides a sophisticated, yet computationally efficient, solution for real-time estimation of ocean wave properties. By cleverly combining concepts from communication theory (demodulation), statistical signal processing (spectral moments), and circular statistics (phase coherence) in the time domain, it delivers accurate estimates of wave regularity and significant wave height without the computational burden of traditional spectral methods. Its design, particularly the variance-corrected moment estimation and dual-measurement approach, makes it exceptionally suitable for long-term deployment on embedded systems and microcontrollers for in-situ oceanographic monitoring and analysis.
+
+\begin{thebibliography}{9}
+\bibitem{longuet-higgins1975}
+Longuet-Higgins, M. S. (1975). On the joint distribution of the periods and amplitudes of sea waves. \textit{Journal of Geophysical Research}, 80(18), 2688–2694.
+\bibitem{tucker1991}
+Tucker, M. J., \& Pitt, E. G. (2001). \textit{Waves in ocean engineering} (Vol. 5). Elsevier.
+\bibitem{priestley1981}
+Priestley, M. B. (1981). \textit{Spectral analysis and time series}. Academic press.
+\end{thebibliography}
 
 \end{document}
+
+
