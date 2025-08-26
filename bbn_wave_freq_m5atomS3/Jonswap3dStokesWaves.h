@@ -138,12 +138,11 @@ public:
                          double gamma = 2.0,
                          double g = 9.81,
                          double spreading_exponent = 15.0,
-                         unsigned int seed = 239u,
-                         bool deterministic_dirs = false)
+                         unsigned int seed = 239u)
         : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
           Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
-          seed_(seed), deterministic_dirs_(deterministic_dirs),
+          seed_(seed),
           pairwise_size_((size_t)N_FREQ * (N_FREQ + 1) / 2),
           exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN())
     {
@@ -174,7 +173,7 @@ public:
         checkSteepness();
     }
 
-    // Evaluate "Lagrangian-like" state at surface z=0 (keeps API similar to your original)
+    // Evaluate "Lagrangian-like" state at surface z=0
     WaveState getLagrangianState(double x0, double y0, double t) const {
         Eigen::Vector3d disp = evaluateDisplacement(x0, y0, t);
         Eigen::Vector3d vel  = evaluateVelocity(x0, y0, t);
@@ -182,7 +181,6 @@ public:
         return {disp, vel, acc};
     }
 
-    // Export (freq, amplitude, mean direction per component)
     Eigen::Matrix<double, N_FREQ, 3> exportSpectrum() const {
         Eigen::Matrix<double, N_FREQ, 3> result;
         for (int i = 0; i < N_FREQ; ++i) {
@@ -195,77 +193,44 @@ public:
     }
 
 private:
-    // Owned spectrum
     JonswapSpectrum<N_FREQ> spectrum_;
 
-    // params
     double Hs_, Tp_, mean_dir_rad_, gamma_, g_, spreading_exponent_;
     unsigned int seed_;
-    bool deterministic_dirs_;
 
-    // per-component arrays
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, S_, A_, df_;
     Eigen::Matrix<double, N_FREQ, 1> omega_, k_, phi_;
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
-
-    // Stokes drift (per-component scalar + mean vector)
     Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
     Eigen::Vector2d stokes_drift_mean_xy_ = Eigen::Vector2d::Zero();
 
-    // flattened upper-triangle pairwise arrays of length pairwise_size_ = N*(N+1)/2
     size_t pairwise_size_;
-    std::vector<double> Bij_flat_;
-    std::vector<double> kx_sum_flat_;
-    std::vector<double> ky_sum_flat_;
-    std::vector<double> k_sum_flat_;
-    std::vector<double> omega_sum_flat_;
-    std::vector<double> phi_sum_flat_;
-
-    // exp(k_sum * z) cache (flattened upper tri) and cached z value
+    std::vector<double> Bij_flat_, kx_sum_flat_, ky_sum_flat_, k_sum_flat_, omega_sum_flat_, phi_sum_flat_;
     mutable std::vector<double> exp_kz_cache_;
     mutable double exp_kz_cached_z_;
 
-    // ------------ helpers ------------
-
-    // flattened upper-tri index for i <= j
     inline size_t upper_index(int i, int j) const {
-        // index = sum_{r=0}^{i-1} (N - r) + (j - i) = i*N - i*(i-1)/2 + (j - i)
         const size_t N = (size_t)N_FREQ;
         size_t ii = (size_t)i;
         return ii * N - (ii * (ii - 1)) / 2 + (size_t)(j - i);
     }
 
-    // Random phases
     void initializeRandomPhases() {
         std::mt19937 gen(seed_);
         std::uniform_real_distribution<double> dist(0.0, 2.0 * M_PI);
         for (int i = 0; i < N_FREQ; ++i) phi_(i) = dist(gen);
     }
 
-    // Directional sampling (rejection sampling from cos^{spreading_exponent_} PDF)
     void initializeDirectionalSpread() {
         std::mt19937 gen(seed_ + 1);
         std::uniform_real_distribution<double> u_dist(0.0, 2.0 * M_PI);
         std::uniform_real_distribution<double> y_dist(0.0, 1.0);
 
-        if (deterministic_dirs_) {
-            // deterministic discretization of directions around mean (useful for tests)
-            for (int i = 0; i < N_FREQ; ++i) {
-                double frac = (i + 0.5) / (double)N_FREQ;
-                double angle = mean_dir_rad_ + (2.0 * frac - 1.0) * M_PI; // evenly spread [-π,π)
-                dir_x_(i) = std::cos(angle);
-                dir_y_(i) = std::sin(angle);
-            }
-            return;
-        }
-
-        // random directions drawn by rejection sampling from pdf ~ max(cos(delta),0)^spreading_exponent
         for (int i = 0; i < N_FREQ; ++i) {
             double theta = 0.0;
             while (true) {
                 double candidate = u_dist(gen);
-                double base = std::cos(candidate - mean_dir_rad_);
-                double clamped = std::max(0.0, base); // only positive lobe
+                double clamped = std::max(0.0, std::cos(candidate - mean_dir_rad_));
                 double pdf_val = std::pow(clamped, spreading_exponent_);
                 if (y_dist(gen) <= pdf_val) {
                     theta = candidate;
@@ -291,14 +256,13 @@ private:
             double a = A_(i);
             double ki = k_(i);
             double wi = omega_(i);
-            double Usi = 0.5 * a * a * ki * wi; // deep-water monochromatic approx
+            double Usi = 0.5 * a * a * ki * wi;
             stokes_drift_scalar_(i) = Usi;
             stokes_drift_mean_xy_.x() += Usi * dir_x_(i);
             stokes_drift_mean_xy_.y() += Usi * dir_y_(i);
         }
     }
 
-    // Precompute upper-triangle flattened arrays
     void precomputePairwise() {
         pairwise_size_ = (size_t)N_FREQ * (N_FREQ + 1) / 2;
         Bij_flat_.assign(pairwise_size_, 0.0);
@@ -327,28 +291,17 @@ private:
                 phi_sum_flat_[idx] = phi_sum;
             }
         }
-
-        // init exp cache as NaN so first ensureExpKzCached builds it
         exp_kz_cache_.assign(pairwise_size_, std::numeric_limits<double>::quiet_NaN());
         exp_kz_cached_z_ = std::numeric_limits<double>::quiet_NaN();
     }
 
-    // Ensure exp(k_sum * z) cache is valid for given z (z is depth, 0 at surface)
     void ensureExpKzCached(double z) const {
         if (!std::isfinite(exp_kz_cached_z_) || std::abs(exp_kz_cached_z_ - z) > 1e-12) {
-            // rebuild cache
             for (int i = 0; i < N_FREQ; ++i) {
                 for (int j = i; j < N_FREQ; ++j) {
                     size_t idx = upper_index(i, j);
                     double ksum = k_sum_flat_[idx];
-                    double val;
-                    if (ksum <= 0.0) val = 1.0;
-                    else {
-                        double arg = ksum * z;
-                        if (arg < -700.0) val = 0.0;
-                        else if (arg > 700.0) val = std::exp(700.0);
-                        else val = std::exp(arg);
-                    }
+                    double val = (ksum <= 0.0) ? 1.0 : std::exp(std::clamp(ksum * z, -700.0, 700.0));
                     exp_kz_cache_[idx] = val;
                 }
             }
@@ -356,19 +309,6 @@ private:
         }
     }
 
-    // ----------------- Evaluations -----------------
-
-    // First-order surface elevation
-    double eta1(double x, double y, double t) const {
-        double eta = 0.0;
-        for (int i = 0; i < N_FREQ; ++i) {
-            double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
-            eta += A_(i) * std::cos(th);
-        }
-        return eta;
-    }
-
-    // Second-order vertical elevation (sum-frequency)
     double eta2_sumfreq(double x, double y, double t) const {
         double eta2 = 0.0;
         for (int i = 0; i < N_FREQ; ++i) {
@@ -383,31 +323,21 @@ private:
         return eta2;
     }
 
-    // Evaluate Lagrangian-like displacement at surface z = 0
     Eigen::Vector3d evaluateDisplacement(double x, double y, double t) const {
         Eigen::Vector3d d = Eigen::Vector3d::Zero();
-
-        // --- First-order Lagrangian horizontal displacement & vertical (consistent phases) ---
+        // First-order
         for (int i = 0; i < N_FREQ; ++i) {
             double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
-            double sin_th = std::sin(th);
-            double cos_th = std::cos(th);
-
-            // horizontal Lagrangian-like displacement (phase-shifted)
+            double sin_th = std::sin(th), cos_th = std::cos(th);
             d.x() += A_(i) * sin_th * dir_x_(i);
             d.y() += A_(i) * sin_th * dir_y_(i);
-
-            // vertical chosen so that eta1 (Eulerian) = sum A*cos(th) and kinematics align:
-            // choose particle vertical displacement = -A * cos(th) (consistent with v_z = A*omega*sin(th))
             d.z() += -A_(i) * cos_th;
         }
 
-        // --- Second-order vertical displacement from eta2 ---
+        // Second-order vertical
         d.z() += eta2_sumfreq(x, y, t);
 
-        // --- Lightweight approximate second-order horizontal displacement:
-        // d2_h ~= - ∇_hor(η2) / k_eff  (approximation)
-        double d2x = 0.0, d2y = 0.0;
+        // Second-order horizontal (vectorized upper-triangle)
         for (int i = 0; i < N_FREQ; ++i) {
             for (int j = i; j < N_FREQ; ++j) {
                 size_t idx = upper_index(i, j);
@@ -416,42 +346,28 @@ private:
                 double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
                             - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
                 double cos_th = std::cos(th);
-                double kxsum = kx_sum_flat_[idx];
-                double kysum = ky_sum_flat_[idx];
                 double ksum2 = k_sum_flat_[idx] * k_sum_flat_[idx];
                 if (ksum2 <= 1e-18) continue;
                 double factor = (i == j) ? 1.0 : 2.0;
-                // approximate horizontal displacement from vertical structure
-                d2x += factor * (-Bij) * cos_th * (kxsum / ksum2);
-                d2y += factor * (-Bij) * cos_th * (kysum / ksum2);
+                d.x() += factor * (-Bij) * cos_th * (kx_sum_flat_[idx] / ksum2);
+                d.y() += factor * (-Bij) * cos_th * (ky_sum_flat_[idx] / ksum2);
             }
         }
-        d.x() += d2x;
-        d.y() += d2y;
 
         return d;
     }
 
-    // Evaluate Eulerian/Lagrangian-consistent velocity at surface (z=0)
     Eigen::Vector3d evaluateVelocity(double x, double y, double t) const {
         Eigen::Vector3d v = Eigen::Vector3d::Zero();
-
-        // --- First-order ---
         for (int i = 0; i < N_FREQ; ++i) {
             double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
-            double cos_th = std::cos(th);
-            double sin_th = std::sin(th);
-            double factor = A_(i) * omega_(i);
-
-            // horizontal (time derivative of A*sin(th)*dir => A*omega*cos(th)*dir)
-            v.x() += factor * cos_th * dir_x_(i);
-            v.y() += factor * cos_th * dir_y_(i);
-
-            // vertical time-derivative (from displacement -A*cos => v_z = A*omega*sin)
-            v.z() += factor * sin_th;
+            double cos_th = std::cos(th), sin_th = std::sin(th);
+            double fac = A_(i) * omega_(i);
+            v.x() += fac * cos_th * dir_x_(i);
+            v.y() += fac * cos_th * dir_y_(i);
+            v.z() += fac * sin_th;
         }
 
-        // --- Second-order (sum-frequency) contributions (use upper-tri symmetry) ---
         for (int i = 0; i < N_FREQ; ++i) {
             for (int j = i; j < N_FREQ; ++j) {
                 size_t idx = upper_index(i, j);
@@ -465,41 +381,28 @@ private:
                 double hx = (ksum > 1e-12) ? (kx_sum_flat_[idx] / ksum) : 0.0;
                 double hy = (ksum > 1e-12) ? (ky_sum_flat_[idx] / ksum) : 0.0;
                 double factor = (i == j) ? 1.0 : 2.0;
-
-                // vertical bound-wave velocity (time derivative of eta2 contribution)
-                // d/dt (Bij * cos(th)) = -Bij * sum_omega * sin(th)
                 v.z() += factor * (-Bij) * sum_omega * sin_th;
-
-                // horizontal approximate projection of same time-derivative
                 v.x() += factor * (-Bij) * sum_omega * sin_th * hx;
                 v.y() += factor * (-Bij) * sum_omega * sin_th * hy;
             }
         }
 
-        // Add mean Eulerian Stokes drift (steady)
         v.x() += stokes_drift_mean_xy_.x();
         v.y() += stokes_drift_mean_xy_.y();
-
         return v;
     }
 
-    // Evaluate acceleration at surface (z=0)
     Eigen::Vector3d evaluateAcceleration(double x, double y, double t) const {
         Eigen::Vector3d a = Eigen::Vector3d::Zero();
-
-        // --- First-order accelerations ---
         for (int i = 0; i < N_FREQ; ++i) {
             double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
-            double sin_th = std::sin(th);
-            double cos_th = std::cos(th);
+            double sin_th = std::sin(th), cos_th = std::cos(th);
             double fac = A_(i) * omega_(i) * omega_(i);
-
             a.x() += -fac * sin_th * dir_x_(i);
             a.y() += -fac * sin_th * dir_y_(i);
             a.z() += -fac * cos_th;
         }
 
-        // --- Second-order accelerations (time derivative of second-order velocity) ---
         for (int i = 0; i < N_FREQ; ++i) {
             for (int j = i; j < N_FREQ; ++j) {
                 size_t idx = upper_index(i, j);
@@ -508,26 +411,19 @@ private:
                 double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
                             - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
                 double cos_th = std::cos(th);
-                double sum_omega = omega_sum_flat_[idx];
-                double sum_omega2 = sum_omega * sum_omega;
+                double sum_omega2 = omega_sum_flat_[idx] * omega_sum_flat_[idx];
                 double ksum = k_sum_flat_[idx];
                 double hx = (ksum > 1e-12) ? (kx_sum_flat_[idx] / ksum) : 0.0;
                 double hy = (ksum > 1e-12) ? (ky_sum_flat_[idx] / ksum) : 0.0;
                 double factor = (i == j) ? 1.0 : 2.0;
-
-                // vertical acceleration contribution: + Bij * sum_omega^2 * cos_th
                 a.z() += factor * Bij * sum_omega2 * cos_th;
-
-                // horizontal approx (projected)
                 a.x() += factor * Bij * sum_omega2 * cos_th * hx;
                 a.y() += factor * Bij * sum_omega2 * cos_th * hy;
             }
         }
-
         return a;
     }
 
-    // check wave steepness sanity
     void checkSteepness() const {
         double max_steepness = (A_.array() * k_.array()).maxCoeff();
         if (max_steepness > 0.2)
