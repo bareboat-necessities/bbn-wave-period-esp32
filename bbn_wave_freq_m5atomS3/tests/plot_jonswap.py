@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 
 # Filenames and wave type colors
 files = {
-    'Short waves': 'short_waves.csv',
-    'Medium waves': 'medium_waves.csv',
-    'Long waves': 'long_waves.csv',
+    'Short waves': 'short_waves_stokes.csv',
+    'Medium waves': 'medium_waves_stokes.csv',
+    'Long waves': 'long_waves_stokes.csv',
 }
 
 # Colors for each wave type and component (x,y,z)
