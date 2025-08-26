@@ -355,6 +355,6 @@ void SeaState_sine_wave_test() {
         throw std::runtime_error("Sine: R_phase did not converge to ~1.");
     if (!(std::fabs(Hs_est - Hs_expected) < 0.5f * Hs_expected))
         throw std::runtime_error("Sine: Hs estimate not within 50%.");
-    std::cout << "[PASS] Sine wave test passed.\n";
+    std::cerr << "[PASS] Sine wave test passed.\n";
 }
 #endif // SEA_STATE_TEST
