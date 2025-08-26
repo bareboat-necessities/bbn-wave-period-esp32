@@ -207,7 +207,7 @@ The provided C++ implementation is a template class \texttt{Kalman3D\_Wave<T, wi
 \end{itemize}
 
 \subsection{Main Algorithmic Steps}
-The flow of the algorithm, also depicted in \cref{fig:dataflow}, is as follows:
+The flow of the algorithm is as follows:
 \begin{enumerate}
     \item \textbf{Initialization:} The filter is initialized from accelerometer and magnetometer data using the \texttt{initialize\_from\_acc\_mag} method, which aligns the reference quaternion with the local gravity and magnetic field.
     \item \textbf{Time Update (\texttt{time\_update}):}
