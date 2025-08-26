@@ -25,7 +25,7 @@
     estimate of surface Stokes drift (monochromatic approximation)
 */
 
-// JonswapSpectrum (unchanged from your version)
+// JonswapSpectrum 
 template<int N_FREQ = 256>
 class JonswapSpectrum {
 public:
@@ -121,7 +121,7 @@ private:
     }
 };
 
-// Jonswap3dStokesWaves (replacement for Gerstner)
+// Jonswap3dStokesWaves
 template<int N_FREQ = 256>
 class Jonswap3dStokesWaves {
 public:
