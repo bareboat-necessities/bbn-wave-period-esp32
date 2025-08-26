@@ -536,6 +536,33 @@ private:
 };
 
 #ifdef JONSWAP_TEST
+void generateWaveJonswapCSV(const std::string& filename,
+                            double Hs, double Tp, double mean_dir_deg,
+                            double duration = 40.0, double dt = 0.005) {
+
+    Jonswap3dStokesWaves<256> waveModel(
+        Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0
+    );
+
+    std::ofstream file(filename);
+    file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z\n";
+
+    const double x0 = 0.0, y0 = 0.0;
+    for (double t = 0; t <= duration; t += dt) {
+        auto state = waveModel.getLagrangianState(x0, y0, t);
+        file << t << ","
+             << state.displacement.x() << ","
+             << state.displacement.y() << ","
+             << state.displacement.z() << ","
+             << state.velocity.x() << ","
+             << state.velocity.y() << ","
+             << state.velocity.z() << ","
+             << state.acceleration.x() << ","
+             << state.acceleration.y() << ","
+             << state.acceleration.z() << "\n";
+    }
+}
+
 void Jonswap_testWavePatterns() {
     generateWaveJonswapCSV("short_waves_stokes.csv", 0.5, 3.0, 30.0);
     generateWaveJonswapCSV("medium_waves_stokes.csv", 2.0, 7.0, 30.0);
