@@ -193,57 +193,6 @@ This is implemented as a separate measurement update step with a tunable measure
 
 This is effective because attempting to hold $\bm{S} = \int \bm{p}  dt = 0$ statistically forces the filter to explain low-frequency, large-amplitude motion in $\bm{p}$ (true wave motion) while rejecting very low-frequency drift (which would integrate to a large $|\bm{S}|$). It acts as a high-pass filter on the position estimate, which is desirable for wave applications where the mean position is arbitrary and the oscillatory motion is of interest.
 
-\begin{figure}[hbt!]
-\centering
-\begin{tikzpicture}[
-    node distance=1.5cm and 2.5cm,
-    block/.style={rectangle, draw, minimum height=1cm, minimum width=2.8cm, align=center},
-    sum/.style={circle, draw, minimum size=0.5cm},
-    input/.style={coordinate},
-    output/.style={coordinate}
-]
-% Nodes
-\node [input] (gyro-in) {};
-\node [block, right=of gyro-in] (bias-correction) {Bias Correction\\$\bm{\omega}_c = \bm{\omega} - \hat{\bm{b}}_g$};
-\node [block, above right=0.5cm and 2cm of bias-correction] (q-propagate) {Quaternion Propagation\\$\bm{q}_{k+1} = f(\bm{q}_k, \bm{\omega}_c)$};
-\node [block, below right=0.5cm and 2cm of bias-correction] (acc-transform) {Acceleration Transform\\$\bm{a}_w = R(\bm{q})\bm{a}_b - \bm{g}$};
-\node [block, right=of acc-transform] (integrators) {Taylor Series Integration\\$\Delta\bm{v}, \Delta\bm{p}, \Delta\bm{S}$};
-\node [block, below=of integrators] (state-update) {State Propagation\\$\bm{x}_{k+1} = F\bm{x}_k$};
-\node [block, right=of state-update] (cov-update) {Covariance Propagation\\$P_{k+1} = F P F^\top + Q$};
-\node [block, above=of cov-update] (k-gain) {Kalman Gain\\$K = PC^\top(CPC^\top + R)^{-1}$};
-\node [sum, right=of k-gain] (sum-meas) {};
-\node [input, above=of sum-meas] (meas-in) {};
-\node [block, right=of sum-meas] (state-correct) {State Correction\\$\bm{x} = \bm{x} + K(\bm{z} - \hat{\bm{z}})$};
-\node [block, below=of state-correct] (cov-correct) {Covariance Correction\\$P = (I-KC)P(I-KC)^\top + KRK^\top$};
-\node [block, left=of cov-correct] (bias-update) {Update Bias $\hat{\bm{b}}_g$};
-\node [output, right=of state-correct] (out) {};
-
-% Arrows
-\draw[->] (gyro-in) -- node[above] {$\bm{\omega}$} (bias-correction);
-\draw[->] (bias-correction) -| (q-propagate);
-\draw[->] (bias-correction) -| (acc-transform);
-\draw[->] (q-propagate) -- ++ (2,0) node[input] (rot-out) {} |- node[near end, right] {$R(\bm{q})$} (acc-transform);
-\draw[->] (acc-transform) -- node[above] {$\bm{a}_w$} (integrators);
-\draw[->] (integrators) -- (state-update);
-\draw[->] (state-update) -| (cov-update);
-\draw[->] (cov-update) -- (k-gain);
-\draw[->] (k-gain) -- node[above] {$K$} (sum-meas);
-\draw[->] (meas-in) -- node[right] {$\bm{z}$} (sum-meas);
-\draw[->] (sum-meas) -- node[above] {Innovation} (state-correct);
-\draw[->] (state-correct) -- node[above] {$\hat{\bm{x}}$} (out);
-\draw[->] (state-correct) -- (cov-correct);
-\draw[->] (state-correct) |- (bias-update);
-\draw[->] (bias-update) -| (bias-correction);
-
-% Labels
-\node [above] at (gyro-in.north) {Gyro};
-\node [above] at (meas-in.north) {Acc/Mag};
-\node [above] at (acc-transform.north east) {Accel};
-\end{tikzpicture}
-\caption{Data flow diagram of the extended Kalman filter, showing the interaction between the quaternion propagation, state prediction, and measurement update steps.}
-\label{fig:dataflow}
-\end{figure}
-
 \section{Implementation Overview}
 \label{sec:implementation}
 
