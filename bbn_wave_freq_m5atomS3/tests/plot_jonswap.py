@@ -22,7 +22,7 @@ components = {
 }
 
 fig, axes = plt.subplots(len(components), 1, figsize=(14, 10), sharex=True)
-fig.suptitle('Wave Simulation Data from Jonswap3dGerstnerWaves')
+fig.suptitle('Wave Simulation Data from Jonswap3dStokesWaves')
 
 for wave_label, filename in files.items():
     data = pd.read_csv(filename)
