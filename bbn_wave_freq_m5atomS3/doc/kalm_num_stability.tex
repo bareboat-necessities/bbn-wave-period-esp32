@@ -3,17 +3,7 @@
 \usepackage{amsmath, amssymb, amsfonts}
 \usepackage{siunitx}
 \usepackage{graphicx}
-\usepackage{hyperref}
-\usepackage{geometry}
-\geometry{margin=1in}
-\usepackage{booktabs}
-\usepackage{bm}
-\usepackage{listings}
-\usepackage{xcolor}
-\usepackage{amsmath, amssymb, amsfonts}
-\usepackage{siunitx}
-\usepackage{graphicx}
-\usepackage{hyperref}
+\usepackage[colorlinks=true, linkcolor=blue, citecolor=red, urlcolor=cyan]{hyperref}
 \usepackage{geometry}
 \geometry{margin=1in}
 \usepackage{booktabs}
@@ -23,381 +13,377 @@
 \usepackage{tikz}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{afterpage}
+\usepackage{lipsum} % For placeholder text, can be removed in final version
 
-\title{Numerical Stability in Kalman Filters: Challenges, Solutions, and Practical Implementation}
-\author{}
-\date{\today}
+% Define colors for syntax highlighting
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
 
 \lstset{
   language=C++,
   basicstyle=\ttfamily\footnotesize,
-  keywordstyle=\color{blue},
-  commentstyle=\color{green!50!black},
-  stringstyle=\color{red},
+  backgroundcolor=\color{backcolour},
+  commentstyle=\color{codegreen},
+  keywordstyle=\color{magenta},
+  numberstyle=\tiny\color{codegray},
+  stringstyle=\color{codepurple},
   numbers=left,
-  numberstyle=\tiny,
+  numbersep=5pt,
   stepnumber=1,
   breaklines=true,
   showstringspaces=false,
-  frame=single
+  frame=single,
+  tabsize=2,
+  captionpos=b
 }
+
+\title{Numerical Stability in Kalman Filters:\\
+Challenges, Solutions, and Practical Implementation}
+\author{A. Researcher}
+\date{\today}
 
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-Kalman filters are widely used for state estimation in control, navigation, and signal processing. Despite their optimality in theory, practical implementations often suffer from numerical instability. This article discusses the sources of numerical instability, discretization methods, frequency-domain considerations, matrix tricks, floating-point limitations, and validation techniques. Examples of correct and incorrect C++ implementations are provided. Special attention is given to practical strategies for improving stability in real-world applications.
+The Kalman Filter (KF) and its variants remain the cornerstone of optimal state estimation in control, navigation, and signal processing. While the theoretical foundation guarantees optimality under specific conditions, practical implementations are frequently plagued by numerical instability, leading to filter divergence, nonsensical estimates, or complete failure. This comprehensive article provides a deep dive into the sources of this numerical fragility. We explore the critical interplay between continuous-time system modeling and discrete-time implementation, comparing various discretization methods (Euler, Tustin, Runge-Kutta, Matrix Exponential) and their impact on stability and frequency response. We detail advanced numerical linear algebra techniques, such as the Joseph form update and Square-Root filtering, to maintain the positive definiteness of covariance matrices. The discussion is grounded in the realities of floating-point arithmetic, highlighting pitfalls and best practices. The theory is brought to life with extensive, practical C++ examples using the Eigen library, demonstrating both incorrect patterns and their robust, production-ready counterparts. Finally, we outline a rigorous validation framework using Normalized Estimation Error Squared (NEES) tests and Monte Carlo simulations to ensure filter reliability before deployment.
 \end{abstract}
 
 \tableofcontents
 \newpage
 
 \section{Introduction}
-Kalman filters are recursive estimators that compute the optimal estimate of a system state given noisy measurements. Continuous-time systems are described by:
+\label{sec:intro}
+The Kalman Filter is a powerful recursive algorithm for estimating the state of a linear dynamic system from a series of noisy measurements. For a continuous-time system, the dynamics and measurements are described by:
 \begin{align}
-\dot{\bm{x}}(t) &= \bm{F}(t) \bm{x}(t) + \bm{G}(t) \bm{u}(t) + \bm{w}(t) \\
-\bm{y}(t) &= \bm{H}(t) \bm{x}(t) + \bm{v}(t)
+\dot{\bm{x}}(t) &= \bm{F}(t) \bm{x}(t) + \bm{G}(t) \bm{u}(t) + \bm{w}(t) \label{eq:cont_sys}\\
+\bm{z}(t) &= \bm{H}(t) \bm{x}(t) + \bm{v}(t) \label{eq:cont_meas}
 \end{align}
-with $\bm{w}$ and $\bm{v}$ as zero-mean Gaussian noise. Practical implementations require discretization:
-\[
-\bm{x}_{k+1} = \bm{\Phi} \bm{x}_k + \bm{\Gamma} \bm{u}_k + \bm{w}_k
-\]
+where $\bm{x}(t)$ is the state vector, $\bm{u}(t)$ is the known control input, $\bm{w}(t) \sim \mathcal{N}(\bm{0}, \bm{Q}_c(t))$ is the continuous-time process noise, $\bm{z}(t)$ is the measurement, and $\bm{v}(t) \sim \mathcal{N}(\bm{0}, \bm{R}_c(t))$ is the continuous-time measurement noise.
 
-\textbf{Numerical instability} arises from floating-point errors, ill-conditioned matrices, and inappropriate discretization or linearization. Left unchecked, filters may diverge, produce negative covariance matrices, or amplify high-frequency noise.
+Since digital computers operate discretely, the filter must be implemented in discrete time. The equivalent discrete-time system model is:
+\begin{align}
+\bm{x}_{k} &= \bm{\Phi}_{k-1} \bm{x}_{k-1} + \bm{\Gamma}_{k-1} \bm{u}_{k-1} + \bm{w}_{k-1} \label{eq:disc_sys}\\
+\bm{z}_{k} &= \bm{H}_{k} \bm{x}_{k} + \bm{v}_{k} \label{eq:disc_meas}
+\end{align}
+where $\bm{w}_{k} \sim \mathcal{N}(\bm{0}, \bm{Q}_k)$ and $\bm{v}_{k} \sim \mathcal{N}(\bm{0}, \bm{R}_k)$. The core challenge is accurately computing the state transition matrix $\bm{\Phi}$ and the discrete process noise covariance $\bm{Q}$ from their continuous counterparts $\bm{F}$ and $\bm{Q}_c$.
+
+\textbf{Numerical instability} arises from multiple sources: the approximation errors introduced during this discretization process, the inherent limitations of floating-point arithmetic, ill-conditioned matrix operations (especially those required to maintain covariance matrices positive definite), and inappropriate tuning. Left unmitigated, these issues cause the filter to diverge, indicated by a rapidly growing covariance matrix $\bm{P}_k$ that no longer reflects the true estimation error, or to fail catastrophically due to numerical exceptions.
+
+This article is structured to guide the practitioner from theory to robust implementation. Section \ref{sec:sources} details the sources of instability. Section \ref{sec:discretization} provides a thorough analysis of discretization methods. Section \ref{sec:matrix_tricks} covers essential numerical linear algebra techniques. Section \ref{sec:validation} discusses validation, and Section \ref{sec:implementation} offers comprehensive C++ examples.
 
 \section{Sources of Numerical Instability}
+\label{sec:sources}
+Understanding the enemy is the first step to defeat it. The numerical instability of Kalman filters manifests in several key areas.
+
+\subsection{Finite-Precision Arithmetic}
+Digital computers represent real numbers with finite precision, primarily using the IEEE 754 standard for single (32-bit) and double (64-bit) precision floating-point numbers. This leads to:
 \begin{itemize}
-    \item \textbf{Finite-precision arithmetic}: Covariance updates may lose precision.
-    \item \textbf{Ill-conditioned matrices}: Covariance $P$ may become nearly singular.
-    \item \textbf{Integration and discretization errors}: Poor integration methods for continuous models.
-    \item \textbf{Improper tuning}: Process noise $Q$ or measurement noise $R$ mis-specified.
+    \item \textbf{Round-off error}: The result of every arithmetic operation is rounded to the nearest representable number. In iterative algorithms like the KF, these errors accumulate.
+    \item \textbf{Catastrophic cancellation}: When subtracting two nearly equal numbers, significant digits are lost, and relative error skyrockets. This is common in the covariance update step: $\bm{P}_{k|k} = (\bm{I} - \bm{K}_k \bm{H}_k) \bm{P}_{k|k-1}$.
+    \item \textbf{Underflow/Overflow}: Very small numbers can become zero (underflow), and very large numbers can become infinity (overflow), breaking matrix algebra rules.
 \end{itemize}
+The machine epsilon, $\epsilon$, is the upper bound on the relative error due to rounding. For double precision, $\epsilon \approx 2.22 \times 10^{-16}$. Operations that push the algorithm's numerical behavior near this limit are prone to failure.
 
-\subsection{Example: Floating-point accumulation errors}
-\begin{lstlisting}
-// Bad: single precision, small covariance updates lost
-float P = 1e-5f;
-float deltaP = 1e-10f;
-P += deltaP; // deltaP is lost
-\end{lstlisting}
-
-\begin{lstlisting}
-// Good: double precision preserves small updates
-double P = 1e-5;
-double deltaP = 1e-10;
-P += deltaP; // update preserved
-\end{lstlisting}
-
-\section{Discretization Methods for Kalman Filters}
-
-\subsection{Euler Methods}
-\subsubsection{Forward Euler}
-\[
-\bm{x}_{k+1} = \bm{x}_k + \Delta t \, f(\bm{x}_k)
-\]
-\begin{lstlisting}
-// Forward Euler (simple, unstable for stiff systems)
-x_next = x + dt * F * x;
-\end{lstlisting}
-
-\subsubsection{Backward Euler (Implicit)}
-\[
-\bm{x}_{k+1} = \bm{x}_k + \Delta t \, f(\bm{x}_{k+1})
-\]
-Requires solving $\bm{x}_{k+1} = \bm{x}_k + \Delta t F \bm{x}_{k+1}$:
-\[
-(I - \Delta t F) \bm{x}_{k+1} = \bm{x}_k
-\]
-
-\begin{lstlisting}
-// Backward Euler
-x_next = (I - dt*F).inverse() * x;
-\end{lstlisting}
-
-\subsection{Trapezoidal (Tustin) Integration}
-\[
-\bm{x}_{k+1} = \bm{x}_k + \frac{\Delta t}{2} \left[f(\bm{x}_k) + f(\bm{x}_{k+1})\right]
-\]
-Conserves energy in oscillatory systems and is second-order accurate.
-
-\begin{lstlisting}
-// Tustin method
-MatrixXd A = I - 0.5*dt*F;
-MatrixXd B = I + 0.5*dt*F;
-x_next = A.inverse() * B * x;
-\end{lstlisting}
-
-\subsection{Runge-Kutta 4 (RK4)}
-\begin{align*}
-k_1 &= f(x_k) \\
-k_2 &= f(x_k + 0.5 dt k_1) \\
-k_3 &= f(x_k + 0.5 dt k_2) \\
-k_4 &= f(x_k + dt k_3) \\
-x_{k+1} &= x_k + \frac{dt}{6} (k_1 + 2 k_2 + 2 k_3 + k_4)
-\end{align*}
-
-\begin{lstlisting}
-// RK4 example
-VectorXd k1 = F*x;
-VectorXd k2 = F*(x + 0.5*dt*k1);
-VectorXd k3 = F*(x + 0.5*dt*k2);
-VectorXd k4 = F*(x + dt*k3);
-x_next = x + dt/6 * (k1 + 2*k2 + 2*k3 + k4);
-\end{lstlisting}
-
-\subsection{Taylor Series for Matrix Exponential}
-\[
-\Phi = e^{F \Delta t} \approx I + F \Delta t + \frac{(F \Delta t)^2}{2!} + \dots
-\]
-
-\begin{lstlisting}
-// Taylor series matrix exponential
-MatrixXd Phi = I + F*dt + 0.5*(F*dt)*(F*dt);
-\end{lstlisting}
-
-\section{Frequency-Domain Considerations}
-Kalman filters act as adaptive frequency filters:
+\subsection{Ill-Conditioned Matrices and Positive Definiteness}
+The heart of the KF is the propagation and update of the error covariance matrix $\bm{P}_k$, which must remain symmetric and positive definite (SPD). SPD ensures the state uncertainty, $\bm{x}^T \bm{P}^{-1} \bm{x}$, is always positive.
 \begin{itemize}
-    \item Discretization errors can alias high frequencies.
-    \item Poorly tuned $Q$ and $R$ may amplify high-frequency noise.
-    \item Trapezoidal integration (Tustin) maps s-plane to z-plane preserving stability.
+    \item \textbf{Loss of Symmetry}: Due to round-off error, the calculation $\bm{P}_{k|k} = (\bm{I} - \bm{K}_k \bm{H}_k) \bm{P}_{k|k-1}$ is not guaranteed to yield a symmetric matrix, even if $\bm{P}_{k|k-1}$ is symmetric. An asymmetric $\bm{P}$ is unphysical and can lead to negative variances on the diagonal.
+    \item \textbf{Loss of Positive Definiteness}: The standard covariance update can mathematically produce a non-positive definite matrix due to numerical errors. Once $\bm{P}$ loses positive definiteness, calculating its Cholesky decomposition or inverse (needed for the Kalman gain $\bm{K}$) becomes impossible, and the filter fails.
 \end{itemize}
+The condition number $\kappa(\bm{P}) = \frac{\sigma_{\text{max}}}{\sigma_{\text{min}}}$ measures the sensitivity of matrix operations to numerical error. A high condition number (ill-conditioned matrix) amplifies round-off errors.
 
-\section{Numerically Stable Matrix Methods}
-\subsection{Cholesky Factorization}
-Ensures positive definiteness:
-\begin{lstlisting}
-// Cholesky update of covariance
-MatrixXd S = P.llt().matrixL(); // lower-triangular
-P_new = S * S.transpose();
-\end{lstlisting}
+\subsection{Discretization and Linearization Errors}
+Not all discretization methods are created equal. A naive method like Forward Euler can render a stable continuous system unstable in its discrete form. Furthermore, for Extended Kalman Filters (EKFs), linearization around an incorrect operating point introduces errors that are not accounted for by the propagated covariance, leading to inconsistency.
 
-\subsection{Joseph Form Covariance Update}
-\[
-P_{k|k} = (I-KH) P_{k|k-1} (I-KH)^T + K R K^T
-\]
-\begin{lstlisting}
-// Stable covariance update
-MatrixXd I = MatrixXd::Identity(n,n);
-P = (I - K*H)*P_prior*(I - K*H).transpose() + K*R*K.transpose();
-\end{lstlisting}
+\subsection{Improper Tuning}
+The process and measurement noise covariances, $\bm{Q}_k$ and $\bm{R}_k$, are often tuning parameters. If $\bm{R}_k$ is set too small, the filter over-trusts the measurements, which can make it sensitive to measurement outliers and numerical errors in the update. If $\bm{Q}_k$ is set too small, the filter over-trusts the model, causing it to diverge from the true state as unmodeled dynamics accumulate.
 
-\subsection{Square-Root Kalman Filter}
-Propagates $S$ such that $P = S S^T$, reducing numerical errors.
+\section{Discretization Methods for Continuous-Time Models}
+\label{sec:discretization}
+Accurately converting the continuous model (Eq. \ref{eq:cont_sys}) to the discrete form (Eq. \ref{eq:disc_sys}) is paramount. We assume a Zero-Order Hold (ZOH) on the input $\bm{u}(t)$.
 
-\section{Floating-Point Considerations}
-\begin{itemize}
-    \item \textbf{Double vs Float}: Always prefer double for covariance.
-    \item \textbf{Machine epsilon}:
-    \[
-    \epsilon \sim 2^{-52} \approx 2.22 \times 10^{-16} \text{ for double}
-    \]
-    \item Scaling prevents overflows or underflows.
-\end{itemize}
+\subsection{State Transition and Process Noise Matrices}
+The exact solution for the state transition matrix $\bm{\Phi}$ and the discrete process noise covariance $\bm{Q}$ is given by:
+\begin{align}
+\bm{\Phi} &= e^{\bm{F} \Delta t} \label{eq:exact_phi}\\
+\bm{Q} &= \int_{0}^{\Delta t} e^{\bm{F} \tau} \bm{G} \bm{Q}_c \bm{G}^T e^{\bm{F}^T \tau}  d\tau \label{eq:exact_q}
+\end{align}
+where $\Delta t$ is the sampling time. Solving these equations exactly is often intractable for all but the simplest systems. We must resort to approximations.
 
-\section{Validation of Kalman Filters}
-\begin{itemize}
-    \item \textbf{Monte Carlo simulations}: Compare estimated vs true states.
-    \item \textbf{NEES test}:
-    \[
-    \text{NEES} = (\hat{x}-x)^T P^{-1} (\hat{x}-x)
-    \]
-    \item \textbf{Energy conservation}: Useful for physical systems (e.g., mechanical oscillators).
-    \item \textbf{Cross-validation}: Check filter against independent sensors.
-\end{itemize}
+\subsection{Forward Euler Method}
+The simplest approximation, obtained by truncating the Taylor series expansion of Eq. \ref{eq:exact_phi} after the first term:
+\begin{align}
+\bm{\Phi} &\approx \bm{I} + \bm{F} \Delta t \\
+\bm{Q} &\approx \bm{G} \bm{Q}_c \bm{G}^T \Delta t \label{eq:q_euler}
+\end{align}
+\textbf{Pros:} Trivial to compute. \\
+\textbf{Cons:} Only first-order accurate. It can be unstable for systems with large eigenvalues or stiff dynamics. The stability criterion requires $|\lambda_i(\bm{I} + \bm{F} \Delta t)| < 1$ for all eigenvalues $\lambda_i$ of $\bm{F}$, which can demand an impractically small $\Delta t$.
 
-\section{Practical Examples in C++}
-\subsection{Incorrect Implementation}
-\begin{lstlisting}
-// Poor stability: float + forward Euler
-float dt = 0.01f;
-MatrixXf F = ...;
-VectorXf x = ...;
-x = x + dt * F * x; // unstable for stiff F
-\end{lstlisting}
+\subsection{Backward Euler (Implicit) Method}
+An implicit method often used for stiff systems:
+\begin{align}
+\bm{x}_{k} &= \bm{x}_{k-1} + \Delta t \, \dot{\bm{x}}_k \\
+           &= \bm{x}_{k-1} + \Delta t \, (\bm{F} \bm{x}_k + \bm{G} \bm{u}_k)
+\end{align}
+Solving for $\bm{x}_k$:
+\begin{equation}
+(\bm{I} - \Delta t \bm{F}) \bm{x}_k = \bm{x}_{k-1} + \Delta t \bm{G} \bm{u}_k
+\end{equation}
+Thus, the state transition is defined implicitly:
+\begin{equation}
+\bm{\Phi} = (\bm{I} - \Delta t \bm{F})^{-1}
+\end{equation}
+\textbf{Pros:} Unconditionally stable for stable continuous systems. \\
+\textbf{Cons:} Still only first-order accurate. The requirement to solve a linear system at each step adds computational cost. Can introduce numerical damping.
 
-\subsection{Correct Implementation}
-\begin{lstlisting}
-// Stable: double + Tustin method
-double dt = 0.01;
-MatrixXd F = ...;
-VectorXd x = ...;
-MatrixXd I = MatrixXd::Identity(F.rows(), F.cols());
-x = (I - 0.5*dt*F).inverse() * (I + 0.5*dt*F) * x;
-\end{lstlisting}
+\subsection{Bilinear (Tustin) Transformation}
+A transformation from the continuous $s$-domain to the discrete $z$-domain: $s = \frac{2}{\Delta t} \frac{z - 1}{z + 1}$. Applying this to the system $\dot{\bm{x}} = \bm{F} \bm{x}$ gives:
+\begin{equation}
+\bm{x}_k = \left( \bm{I} - \frac{\Delta t}{2} \bm{F} \right)^{-1} \left( \bm{I} + \frac{\Delta t}{2} \bm{F} \right) \bm{x}_{k-1}
+\end{equation}
+So,
+\begin{equation}
+\bm{\Phi} = \left( \bm{I} - \frac{\Delta t}{2} \bm{F} \right)^{-1} \left( \bm{I} + \frac{\Delta t}{2} \bm{F} \right)
+\end{equation}
+\textbf{Pros:} Second-order accurate. Maps the entire left-half $s$-plane to the interior of the unit circle in the $z$-plane, preserving stability. Excellent for oscillatory systems. \\
+\textbf{Cons:} Can introduce frequency warping (prewarping); high frequencies in the continuous model are distorted in the discrete model.
 
-\section*{Illustrative Figures on Stability and Frequency Response}
+\subsection{Matrix Exponential (Van Loan's Method)}
+The most accurate approach. Van Loan's method provides a closed-form solution for both $\bm{\Phi}$ and $\bm{Q}$ by computing the matrix exponential of a augmented matrix:
+\begin{equation}
+\bm{M} = \begin{bmatrix}
+-\bm{F} & \bm{G} \bm{Q}_c \bm{G}^T \\
+\bm{0} & \bm{F}^T
+\end{bmatrix} \Delta t
+\end{equation}
+Let $\bm{C} = e^{\bm{M}} = \begin{bmatrix} \bm{C}_{11} & \bm{C}_{12} \\ \bm{0} & \bm{C}_{22} \end{bmatrix}$. Then:
+\begin{align}
+\bm{\Phi} &= \bm{C}_{22}^T \\
+\bm{Q} &= \bm{\Phi} \bm{C}_{12}
+\end{align}
+This method \textit{exactly} calculates the integrals in Eqs. \ref{eq:exact_phi} and \ref{eq:exact_q} for time-invariant systems. \\
+\textbf{Pros:} Exact. The gold standard. \\
+\textbf{Cons:} Computationally expensive for large matrices. Requires a robust matrix exponential algorithm.
 
-\subsection*{1. Stability Regions in the Complex Plane}
-Forward Euler, Backward Euler, and Tustin methods have different stability regions. Forward Euler is conditionally stable (circle of radius 1 around origin), Backward Euler is unconditionally stable, and Tustin maps left-half s-plane to inside the unit circle.
+\subsection{Summary and Guidance}
+\begin{table}[H]
+\centering
+\caption{Comparison of Discretization Methods}
+\label{tab:discretization}
+\begin{tabular}{p{3cm} p{3cm} p{3cm} p{3cm}}
+\toprule
+\textbf{Method} & \textbf{Accuracy} & \textbf{Stability} & \textbf{Use Case} \\
+\midrule
+Forward Euler & 1st Order & Conditional & Prototyping, very slow dynamics \\
+Backward Euler & 1st Order & Unconditional & Stiff systems \\
+Tustin & 2nd Order & Unconditional & General purpose, oscillatory systems \\
+Matrix Exponential & Exact & Preserved & Critical applications, small systems \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\begin{center}
-\begin{tikzpicture}[scale=1.5]
-\begin{axis}[
-    axis equal,
-    xlabel={Re},
-    ylabel={Im},
-    title={Stability Regions of Discretization Methods},
-    legend pos=outer north east
-]
-% Unit circle for Tustin
-\addplot [domain=0:360,samples=100,blue,thick] ({cos(x)}, {sin(x)});
-\addlegendentry{Tustin (Bilinear)}
+\section{Numerically Stable Matrix Operations}
+\label{sec:matrix_tricks}
+This section covers essential techniques to maintain the symmetry and positive definiteness of the covariance matrix $\bm{P}$.
 
-% Forward Euler circle radius 1
-\addplot [domain=0:360,samples=100,red,dashed,thick] ({1+cos(x)}, {sin(x)});
-\addlegendentry{Forward Euler}
+\subsection{Joseph Form Update}
+The standard covariance update $\bm{P}_{k|k} = (\bm{I} - \bm{K}_k \bm{H}_k) \bm{P}_{k|k-1}$ is not robust. Subtraction can lead to loss of positive definiteness. The Joseph form is algebraically equivalent but numerically stable:
+\begin{equation}
+\bm{P}_{k|k} = (\bm{I} - \bm{K}_k \bm{H}_k) \bm{P}_{k|k-1} (\bm{I} - \bm{K}_k \bm{H}_k)^T + \bm{K}_k \bm{R}_k \bm{K}_k^T
+\label{eq:joseph}
+\end{equation}
+It is a convex combination of two positive (semi)definite matrices, guaranteeing that $\bm{P}_{k|k}$ remains positive semidefinite if $\bm{P}_{k|k-1}$ and $\bm{R}_k$ are. The computational cost is higher ($O(n^3)$ vs $O(n^2)$), but the stability is worth it.
 
-% Backward Euler region (unbounded, fill left-half plane)
-\addplot [domain=-2:0,samples=50,fill=green,opacity=0.2] {2};
-\addlegendentry{Backward Euler (stable)}
-\end{axis}
-\end{tikzpicture}
-\end{center}
+\subsection{Square-Root Filtering}
+Square-root filters propagate a matrix factor $\bm{S}$ such that $\bm{P} = \bm{S} \bm{S}^T$, instead of $\bm{P}$ itself. This effectively doubles the numerical precision and guarantees that $\bm{P}$ is always positive semidefinite. Common factorizations include Cholesky decomposition ($\bm{S}$ is lower triangular) and Singular Value Decomposition (SVD).
 
-\subsection*{2. Covariance Divergence and Oscillatory System Integration}
-Covariance matrix norm over time illustrates instability for poor discretization. RK4 preserves oscillatory amplitudes, while Forward Euler may diverge.
+The Potter algorithm is a classic square-root update for the measurement step. The covariance update is replaced by an update to the Cholesky factor $\bm{S}$.
+\begin{align}
+\bm{S}_{k|k-1} &: \bm{P}_{k|k-1} = \bm{S}_{k|k-1} \bm{S}_{k|k-1}^T \quad \text{(Predictor Cholesky factor)} \\
+... \text{(complex update equations)} ... \\
+\bm{S}_{k|k} &: \bm{P}_{k|k} = \bm{S}_{k|k} \bm{S}_{k|k}^T \quad \text{(Updated Cholesky factor)}
+\end{align}
+While more complex to implement, square-root filters are the standard in safety-critical applications like aerospace.
 
-\begin{center}
-\begin{tikzpicture}
-\begin{axis}[
-    xlabel={Time step $k$},
-    ylabel={Covariance norm $\|P\|$},
-    title={Covariance Divergence and Integration of Oscillatory System},
-    legend pos=north west
-]
-% Covariance divergence
-\addplot [red, thick] table {
-0 1
-1 5
-2 20
-3 80
-4 320
-5 1280
-};
-\addlegendentry{Covariance Unstable (Euler)}
+\subsection{Enforcing Symmetry}
+A simple but effective trick is to explicitly enforce symmetry after every update:
+\begin{equation}
+\bm{P} \gets \frac{1}{2} (\bm{P} + \bm{P}^T)
+\end{equation}
+This eliminates asymmetries caused by round-off error at a minimal computational cost. It should be used in conjunction with the Joseph form or other robust methods.
 
-\addplot [blue, thick] table {
-0 1
-1 1.1
-2 1.15
-3 1.2
-4 1.22
-5 1.23
-};
-\addlegendentry{Covariance Stable (Tustin)}
+\section{Validation and Robustness Testing}
+\label{sec:validation}
+A filter must be validated before deployment. Trusting an untested filter is a recipe for disaster.
 
-% Oscillatory system: Forward Euler
-\addplot [red, densely dashed, thick] table {
-0 1
-0.1 0.95
-0.2 0.85
-0.3 0.7
-0.4 0.5
-0.5 0.25
-0.6 0
-0.7 -0.3
-0.8 -0.6
-0.9 -0.85
-1 -1.0
-};
-\addlegendentry{Oscillatory Euler}
+\subsection{Monte Carlo Simulations}
+Run $N$ (e.g., 1000) independent simulations with different noise realizations but the same truth model. This reveals the average performance and the distribution of errors, providing a statistical basis for evaluating filter consistency.
 
-% Oscillatory system: RK4
-\addplot [blue, densely dashed, thick] table {
-0 1
-0.1 0.995
-0.2 0.980
-0.3 0.955
-0.4 0.920
-0.5 0.875
-0.6 0.820
-0.7 0.755
-0.8 0.680
-0.9 0.595
-1 0.500
-};
-\addlegendentry{Oscillatory RK4}
-\end{axis}
-\end{tikzpicture}
-\end{center}
+\subsection{Normalized Estimation Error Squared (NEES)}
+The NEES test checks filter consistency—does the filter's reported uncertainty ($\bm{P}$) match the actual estimation error?
+For a single run at time $k$, the NEES is:
+\begin{equation}
+\epsilon_k = (\bm{x}_k - \hat{\bm{x}}_{k|k})^T \bm{P}_{k|k}^{-1} (\bm{x}_k - \hat{\bm{x}}_{k|k})
+\end{equation}
+Under the hypothesis that the filter is consistent and the errors are Gaussian, $\epsilon_k$ has a chi-square distribution with $n_x$ (dimension of $\bm{x}$) degrees of freedom: $\epsilon_k \sim \chi^2_{n_x}$.
 
-\subsection*{3. Frequency Response Comparison: Forward Euler vs Tustin}
-Discretization affects frequency-domain behavior. Forward Euler distorts high-frequency response, whereas Tustin preserves stability and shape.
+For $N$ Monte Carlo runs, the average NEES is:
+\begin{equation}
+\bar{\epsilon}_k = \frac{1}{N} \sum_{i=1}^{N} \epsilon_k^{(i)}
+\end{equation}
+This should be checked against the bounds of the $\chi^2$ distribution. If $\bar{\epsilon}_k$ is consistently too high, the filter is optimistic (actual error is larger than estimated). If it's too low, the filter is pessimistic.
 
-\begin{center}
-\begin{tikzpicture}
-\begin{axis}[
-    width=12cm,
-    height=7cm,
-    xlabel={Normalized frequency $\omega$ (rad/sample)},
-    ylabel={Magnitude $|H(e^{j\omega})|$},
-    title={Frequency Response of Discretization Methods},
-    legend pos=north east,
-    grid=both
-]
+\section{Practical C++ Implementation Examples}
+\label{sec:implementation}
+This section provides concrete examples using the Eigen C++ library for linear algebra.
 
-% Forward Euler approximate frequency response
-\addplot [red, thick, domain=0:3.14, samples=100] 
-    {1/sqrt((1 - cos(deg(x)))^2 + (sin(deg(x)))^2)};
-\addlegendentry{Forward Euler}
-
-% Tustin (Bilinear) frequency response
-\addplot [blue, thick, domain=0:3.14, samples=100] 
-    {1/sqrt((1 - 0.5*(1-cos(deg(x))))^2 + (0.5*sin(deg(x)))^2)};
-\addlegendentry{Tustin (Trapezoidal)}
-
-\end{axis}
-\end{tikzpicture}
-\end{center}
-
-\textbf{Practical C++ Illustration:}
-
-\begin{lstlisting}
-// Frequency response comparison for discretization methods
+\subsection{Incorrect Implementation: A Recipe for Disaster}
+This code exemplifies common pitfalls: single precision, naive Euler discretization, and the standard covariance update.
+\begin{lstlisting}[caption=Fragile Kalman Filter Implementation]
+// WARNING: This implementation is numerically fragile!
 #include <Eigen/Dense>
-#include <complex>
-#include <vector>
-#include <iostream>
+using namespace Eigen;
 
-double forwardEuler(double omega, double dt) {
-    std::complex<double> z = 1.0 + dt*(std::complex<double>(0, omega));
-    return std::abs(1.0 / z);
-}
+typedef Matrix<float, Dynamic, Dynamic> MatrixXf;
+typedef Matrix<float, Dynamic, 1> VectorXf;
 
-double tustin(double omega, double dt) {
-    std::complex<double> z = (1.0 + 0.5*dt*(std::complex<double>(0, omega))) /
-                             (1.0 - 0.5*dt*(std::complex<double>(0, omega)));
-    return std::abs(1.0 / z);
-}
+class FragileKalmanFilter {
+public:
+    VectorXf x; // State estimate
+    MatrixXf P; // Covariance estimate
+    MatrixXf F; // State transition matrix (continuous)
+    MatrixXf Q; // Process noise covariance (discrete)
+    MatrixXf H; // Measurement matrix
+    MatrixXf R; // Measurement noise covariance
+    float dt;   // Time step
 
-int main() {
-    double dt = 0.01;
-    int N = 100;
-    for (int i = 0; i <= N; i++) {
-        double omega = M_PI * i / N;
-        std::cout << omega << " " << forwardEuler(omega, dt)
-                  << " " << tustin(omega, dt) << "\n";
+    void predict() {
+        // BAD: Naive Forward Euler discretization
+        MatrixXf Phi = MatrixXf::Identity(F.rows(), F.cols()) + F * dt;
+        x = Phi * x; // Predict state
+        // BAD: Standard matrix update, may lose symmetry/positive definiteness
+        P = Phi * P * Phi.transpose() + Q;
     }
-    return 0;
-}
+
+    void update(const VectorXf& z) {
+        // Calculate Kalman Gain
+        MatrixXf S = H * P * H.transpose() + R;
+        MatrixXf K = P * H.transpose() * S.inverse(); // BAD: Explicit inverse
+
+        // Update state
+        x = x + K * (z - H * x);
+
+        // BAD: Standard unstable covariance update
+        MatrixXf I = MatrixXf::Identity(P.rows(), P.cols());
+        P = (I - K * H) * P; // Likely to become indefinite
+    }
+};
 \end{lstlisting}
 
-\textbf{Explanation:}  
-- Forward Euler introduces amplitude distortion and phase lag at high frequencies.  
-- Tustin (Trapezoidal) method maps the entire left-half s-plane inside the unit circle, preserving stability and better approximating the frequency response of the continuous system.  
+\subsection{Correct and Robust Implementation}
+This implementation uses double precision, Tustin discretization, the Joseph form update, and symmetry enforcement.
+\begin{lstlisting}[caption=Robust Kalman Filter Implementation]
+#include <Eigen/Dense>
+#include <Eigen/Eigenvalues> // For matrix exponential (Van Loan method)
+#include <iostream>
+using namespace Eigen;
 
-\section{Practical Tips for Stability}
-\begin{itemize}
-    \item Use double precision.
-    \item Regularize covariance matrices.
-    \item Check eigenvalues of F and P.
-    \item Use Tustin or RK4 for oscillatory systems.
-    \item Adaptively tune process noise Q to avoid divergence.
-\end{itemize}
+typedef Matrix<double, Dynamic, Dynamic> MatrixXd;
+typedef Matrix<double, Dynamic, 1> VectorXd;
+
+class RobustKalmanFilter {
+private:
+    int state_size;
+    MatrixXd F_cont; // Continuous-time state matrix
+    MatrixXd G;      // Input gain matrix
+    MatrixXd Qc;     // Continuous-time process noise spectral density
+    double dt;
+    MatrixXd Phi;    // Precomputed discrete state transition matrix
+    MatrixXd Q_disc; // Precomputed discrete process noise covariance
+
+    // Helper function for Van Loan's method
+    void vanLoanDiscretization() {
+        int n = F_cont.rows();
+        MatrixXd M(2*n, 2*n);
+        M.setZero();
+        M.block(0, 0, n, n) = -F_cont * dt;
+        M.block(0, n, n, n) = G * Qc * G.transpose() * dt;
+        M.block(n, n, n, n) = F_cont.transpose() * dt;
+
+        MatrixXd C = M.exp(); // Compute matrix exponential
+        Phi = C.block(n, n, n, n).transpose(); // C22^T
+        Q_disc = Phi * C.block(0, n, n, n);    // Phi * C12
+        // Q_disc is symmetric, but enforce it just in case
+        Q_disc = 0.5 * (Q_disc + Q_disc.transpose());
+    }
+
+public:
+    VectorXd x; // State estimate
+    MatrixXd P; // Covariance matrix
+    MatrixXd H; // Measurement matrix
+    MatrixXd R; // Measurement noise covariance
+
+    RobustKalmanFilter(const MatrixXd& F, const MatrixXd& G_in,
+                       const MatrixXd& Q_continuous, double delta_t)
+        : F_cont(F), G(G_in), Qc(Q_continuous), dt(delta_t) {
+        state_size = F.rows();
+        x = VectorXd::Zero(state_size);
+        P = MatrixXd::Identity(state_size, state_size) * 1e-6;
+        vanLoanDiscretization(); // Precompute Phi and Q_disc
+        std::cout << "Discretization complete. Phi:\n" << Phi << "\nQ:\n" << Q_disc << std::endl;
+    }
+
+    void predict() {
+        // Predict state using precomputed, exact Phi
+        x = Phi * x;
+        // Predict covariance with Joseph-form-inspired stability
+        P = Phi * P * Phi.transpose() + Q_disc;
+        // Crucial: Enforce symmetry after prediction
+        P = 0.5 * (P + P.transpose());
+    }
+
+    void update(const VectorXd& z) {
+        // Calculate innovation covariance
+        MatrixXd S = H * P * H.transpose() + R;
+        // Use LDLT decomposition for stable inverse (avoids explicit .inverse())
+        LDLT<MatrixXd> ldlt(S);
+        // Check for positive definiteness
+        if(ldlt.isPositive()) {
+            MatrixXd K = P * H.transpose() * ldlt.solve(MatrixXd::Identity(S.rows(), S.rows()));
+
+            // Update state
+            VectorXd y = z - H * x;
+            x = x + K * y;
+
+            // STABLE JOSEPH FORM COVARIANCE UPDATE
+            MatrixXd I = MatrixXd::Identity(state_size, state_size);
+            MatrixXd tmp = (I - K * H);
+            P = tmp * P * tmp.transpose() + K * R * K.transpose();
+            // Enforce symmetry after update
+            P = 0.5 * (P + P.transpose());
+        } else {
+            // Handle ill-conditioned measurement update, e.g., skip update
+            std::cerr << "Warning: Innovation covariance S is not positive definite. Skipping update." << std::endl;
+        }
+    }
+};
+\end{lstlisting}
 
 \section{Conclusion}
-Numerical stability in Kalman filters is critical for reliable estimation. Correct discretization, matrix methods, floating-point awareness, and careful validation ensure robustness. Following best practices and testing rigorously prevents divergence and instability in real-world systems.
+Numerical stability is not an optional add-on but a fundamental requirement for successful Kalman filter implementation. The path to robustness is multi-faceted:
+\begin{enumerate}
+    \item \textbf{Choose an appropriate discretization method:} Avoid naive Euler for anything but the simplest models. Prefer Tustin for general use or Van Loan's matrix exponential method for critical, time-invariant applications.
+    \item \textbf{Use numerically stable linear algebra:} Abandon the standard covariance update. Embrace the Joseph form update and always enforce matrix symmetry. For the most demanding applications, consider implementing a square-root filter.
+    \item \textbf{Respect floating-point arithmetic:} Use double precision. Be wary of operations that can cause cancellation (like $\bm{I} - \bm{KH}$).
+    \item \textbf{Validate rigorously:} Never deploy a filter without testing its consistency through Monte Carlo simulations and NEES tests. Tune the process noise $\bm{Q}$ based on these tests, not just intuition.
+\end{enumerate}
+By adhering to these principles and leveraging the techniques and code examples provided, engineers can develop Kalman filters that are not only theoretically sound but also numerically robust and reliable in the real world, where precision is finite and noise is ever-present.
 
 \end{document}
