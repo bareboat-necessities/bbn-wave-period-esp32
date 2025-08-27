@@ -3,8 +3,8 @@
 */
 
 #define EIGEN_NO_DEBUG
-#define EIGEN_DONT_VECTORIZE
-#define EIGEN_MPL2_ONLY
+//#define EIGEN_DONT_VECTORIZE
+//#define EIGEN_MPL2_ONLY
 
 #define FENTON_TEST
 #define JONSWAP_TEST
