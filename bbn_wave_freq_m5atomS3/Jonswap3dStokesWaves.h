@@ -159,10 +159,20 @@ public:
         computeWaveDirectionComponents();
         computePerComponentStokesDriftEstimate();
 
-        if(!useSecondOrderApprox_)
-            precomputePairwise();
-        else
+        if(useSecondOrderApprox_)
             precomputeBandedSecondOrder(N_bands_);
+        else
+            precomputePairwise();
+
+        // Apply energy-based scaling for banded approximation
+        if(useSecondOrderApprox_) {
+            double E_full = 0.0;
+            double E_banded = 0.0;
+            for(int i=0;i<N_FREQ;++i) E_full += 0.5 * A_(i)*A_(i)*omega_(i)*omega_(i);
+            for(int b=0;b<N_bands_;++b) E_banded += 0.5 * band_A_[b]*band_A_[b]*band_omega_[b]*band_omega_[b];
+            double scale = (E_banded>1e-12) ? std::sqrt(E_full/E_banded) : 1.0;
+            for(int b=0;b<N_bands_;++b) band_A_[b] *= scale;
+        }
 
         checkSteepness();
     }
@@ -215,8 +225,12 @@ public:
 
                         vel.x() += factor*(-Bij)*sumOmega*sinTh*hx;
                         vel.y() += factor*(-Bij)*sumOmega*sinTh*hy;
+
+                        acc.x() += factor*(-Bij)*sumOmega*sumOmega*cosTh*hx;
+                        acc.y() += factor*(-Bij)*sumOmega*sumOmega*cosTh*hy;
                     }
                     vel.z() += factor*(-Bij)*sumOmega*sinTh;
+                    acc.z() += factor*(-Bij)*sumOmega*sumOmega*cosTh;
                 }
         } else {
             // Full pairwise calculation (same as original)
@@ -239,6 +253,10 @@ public:
                     vel.x() += factor*(-Bij_flat_[idx])*omega_sum_flat_[idx]*sinTh*hx;
                     vel.y() += factor*(-Bij_flat_[idx])*omega_sum_flat_[idx]*sinTh*hy;
                     vel.z() += factor*(-Bij_flat_[idx])*omega_sum_flat_[idx]*sinTh;
+
+                    acc.x() += factor*(-Bij_flat_[idx])*omega_sum_flat_[idx]*omega_sum_flat_[idx]*cosTh*hx;
+                    acc.y() += factor*(-Bij_flat_[idx])*omega_sum_flat_[idx]*omega_sum_flat_[idx]*cosTh*hy;
+                    acc.z() += factor*(-Bij_flat_[idx])*omega_sum_flat_[idx]*omega_sum_flat_[idx]*cosTh;
                 }
         }
 
