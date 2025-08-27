@@ -101,19 +101,19 @@ The input to the estimator is a raw acceleration signal $x_{\text{raw}}(n)$, sam
 \label{subsec:decimation}
 Decimation is the process of reducing the sampling rate of a signal by an integer factor $D$ (the decimation factor). It is a two-step process:
 \begin{enumerate}
-    \item \textbf{Low-pass filtering}: The signal must first be bandlimited to a new, lower Nyquist frequency $f_s/2 = f_{s,\text{raw}}}/(2D)$ to prevent aliasing. An ideal filter would remove all frequency content above this new Nyquist frequency.
+    \item \textbf{Low-pass filtering}: The signal must first be bandlimited to a new, lower Nyquist frequency $f_s/2 = f_{s,\text{raw}}/(2D)$ to prevent aliasing. An ideal filter would remove all frequency content above this new Nyquist frequency.
     \item \textbf{Downsampling}: After filtering, only every $D$-th sample is kept, forming the new, lower-rate sequence.
 \end{enumerate}
 
 The \texttt{WaveSpectrumEstimator} uses a biquad (second-order) Infinite Impulse Response (IIR) low-pass filter. The filter is designed with a cutoff frequency:
 \begin{equation}
-f_c = 0.45 \cdot \frac{f_{s,\text{raw}}}}{2 \cdot D},
+f_c = 0.45 \cdot \frac{f_{s,\text{raw}}}{2 \cdot D},
 \end{equation}
 where the factor 0.45 provides a safety margin against the filter's transition band, ensuring minimal aliasing. The filter is applied using the transposed direct form II structure, known for its superior numerical stability and minimal register usage on embedded systems.
 
 The output is downsampled by a factor $D$, yielding the effective sampling rate for all subsequent processing:
 \begin{equation}
-f_s = \frac{f_{s,\text{raw}}}}{D}.
+f_s = \frac{f_{s,\text{raw}}}{D}.
 \end{equation}
 This step drastically reduces the number of samples to process, making the subsequent spectral analysis computationally feasible on an embedded platform.
 
