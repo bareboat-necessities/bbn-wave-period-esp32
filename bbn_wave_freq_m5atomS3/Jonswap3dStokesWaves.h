@@ -185,45 +185,6 @@ public:
     }
 
 private:
-    template<int N>
-    struct JonswapSpectrum {
-        Eigen::Matrix<double, N, 1> frequencies_, S_, A_, df_;
-        JonswapSpectrum(double Hs, double Tp,
-                        double f_min, double f_max,
-                        double gamma, double g)
-        {
-            double log_f_min = std::log(f_min);
-            double log_f_max = std::log(f_max);
-            for (int i = 0; i < N; ++i)
-                frequencies_(i) = std::exp(log_f_min + (log_f_max - log_f_min) * i / (N - 1));
-
-            df_(0) = frequencies_(1) - frequencies_(0);
-            for (int i = 1; i < N - 1; ++i)
-                df_(i) = 0.5 * (frequencies_(i+1)-frequencies_(i-1));
-            df_(N-1) = frequencies_(N-1) - frequencies_(N-2);
-
-            Eigen::Matrix<double, N, 1> S0;
-            double fp = 1.0/Tp;
-            for (int i = 0; i < N; ++i) {
-                double f = frequencies_(i);
-                double sigma = (f<=fp)?0.07:0.09;
-                double r = std::exp(-std::pow(f-fp,2)/(2.0*sigma*sigma*fp*fp));
-                double base = (g*g)/std::pow(2*M_PI,4)*std::pow(f,-5)*std::exp(-1.25*std::pow(fp/f,4));
-                S0(i) = base*std::pow(gamma, r);
-            }
-            double variance_unit = (S0.cwiseProduct(df_)).sum();
-            double variance_target = Hs*Hs/16.0;
-            double alpha = variance_target/variance_unit;
-            S_ = S0*alpha;
-            A_ = (2.0*S_.cwiseProduct(df_)).cwiseSqrt();
-        }
-
-        const Eigen::Matrix<double, N, 1>& frequencies() const { return frequencies_; }
-        const Eigen::Matrix<double, N, 1>& spectrum() const { return S_; }
-        const Eigen::Matrix<double, N, 1>& amplitudes() const { return A_; }
-        const Eigen::Matrix<double, N, 1>& df() const { return df_; }
-    };
-
     // Member variables
     double Hs_, Tp_, mean_dir_rad_, gamma_, g_, spreading_exponent_;
     unsigned int seed_;
