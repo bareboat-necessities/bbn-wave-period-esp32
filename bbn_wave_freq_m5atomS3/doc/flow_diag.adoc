@@ -1,16 +1,18 @@
-[plantuml, format="png", id="diagram"]
+[plantuml, format="svg", id="diagram"]
 ----
 @startuml
 skinparam linetype ortho
 rectangle "                         IMU                          " as IMU
-rectangle "                             AHRS (Mahony, KalmanQMEKF)                              " as AHRS
-rectangle "  Frequency Tracker:  \n\n  Aranovskiy\n  Kalm_ANF\n  Zero Crossing" as FreqTracker
-rectangle "  Kalman Wave Direction  " as WaveDir
+rectangle "                                                                AHRS (Mahony, KalmanQMEKF)                                                     " as AHRS
+rectangle "    Frequency Tracker:     \n\n  Aranovskiy\n  Kalm_ANF\n  Zero Crossing" as FreqTracker
+rectangle "    Kalman Wave Direction  " as WaveDir
 rectangle "         Sea State Detection          " as SeaReg
-rectangle "                   Kalman Heave Reconstruction         \n\n         Kalman Integration with Drift Correction         \nKalman Integration with Drift and Motor Noise Filtering" as KalmanWave
+rectangle "                             Kalman Heave Reconstruction                   \n\n         Kalman Integration with Drift Correction         \nKalman Integration with Drift and Motor Noise Filtering" as KalmanWave
 rectangle "Process Noise Adaptation" as NoiseAdapt
-rectangle " NMEA Data Stream (XDR Sentences) " as NMEA
-rectangle " MinMaxLemire " as MinMax
+rectangle "                         NMEA Data Stream (XDR Sentences)                      " as NMEA
+rectangle "         MinMaxLemire      " as MinMax
+rectangle "   De-Spike  " as DeSpike
+rectangle " Wave Profile Predictor " as WavePredictor
 
 IMU --> AHRS : " accel "
 IMU --> AHRS : " gyro "
@@ -28,12 +30,17 @@ SeaReg --> NoiseAdapt : <latex>R_{reg}, H_{est}</latex>
 FreqTracker --> KalmanWave : <latex>f_{est}</latex>
 NoiseAdapt --> KalmanWave : <latex>Q</latex>
 
+AHRS --> DeSpike : <latex>a_{z}</latex>
+
+DeSpike --> KalmanWave : <latex>a_{z}</latex>
 KalmanWave --> MinMax : " heave "
+
+KalmanWave --> WavePredictor : " heave "
 
 WaveDir --> NMEA : " angle, dir "
 MinMax --> NMEA : " wave height "
-KalmanWave --> NMEA : " heave, period, wave length "
-AHRS --> NMEA : " roll, pitch, yaw, \nrate_of_turn "
+KalmanWave --> NMEA : " heave\n period\n length\n speed "
+AHRS --> NMEA : " roll\n pitch\n yaw\n rate of turn "
 
 @enduml
 ----
