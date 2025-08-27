@@ -365,7 +365,7 @@ void generateWaveJonswapCSV(const std::string& filename,
                             double duration = 40.0, double dt = 0.005) {
 
     constexpr int N_FREQ = 256;
-    Jonswap3dStokesWaves<N_FREQ> waveModel(Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0);
+    auto waveModel = std::make_unique<Jonswap3dStokesWaves<N_FREQ>>(Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0);
 
     const int N_time = static_cast<int>(duration / dt) + 1;
     Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
@@ -375,7 +375,7 @@ void generateWaveJonswapCSV(const std::string& filename,
 
     // Vectorized over time
     for (int i = 0; i < N_time; ++i) {
-        auto state = waveModel.getLagrangianState(0.0, 0.0, time(i));
+        auto state = waveModel->getLagrangianState(0.0, 0.0, time(i));
         disp.col(i) = state.displacement;
         vel.col(i) = state.velocity;
         acc.col(i) = state.acceleration;
