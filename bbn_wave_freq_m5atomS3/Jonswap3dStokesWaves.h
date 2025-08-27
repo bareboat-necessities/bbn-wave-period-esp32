@@ -146,7 +146,7 @@ public:
           seed_(seed), spectrum_(Hs, Tp, f_min, f_max, gamma, g),
           exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN())
     {
-        // Fixed-size arrays
+        // Copy spectrum vectors
         frequencies_ = spectrum_.frequencies();
         S_ = spectrum_.spectrum();
         A_ = spectrum_.amplitudes();
@@ -163,7 +163,7 @@ public:
         stokes_drift_mean_xy_.setZero();
         exp_kz_cache_.setConstant(std::numeric_limits<double>::quiet_NaN());
 
-        // Heap-allocated large arrays
+        // Heap arrays
         Bij_flat_.resize(N_PAIRWISE);
         kx_sum_flat_.resize(N_PAIRWISE);
         ky_sum_flat_.resize(N_PAIRWISE);
@@ -172,7 +172,6 @@ public:
         phi_sum_flat_.resize(N_PAIRWISE);
         factor_flat_.resize(N_PAIRWISE);
 
-        // Heap-allocated temporaries
         th2_.resize(N_PAIRWISE);
         cos_th2_.resize(N_PAIRWISE);
         sin_th2_.resize(N_PAIRWISE);
@@ -180,7 +179,6 @@ public:
         factor_omega_.resize(N_PAIRWISE);
         factor_omega2_.resize(N_PAIRWISE);
 
-        // Small temporaries
         th_.setZero();
         cos_th_.setZero();
         sin_th_.setZero();
@@ -201,88 +199,24 @@ public:
     }
 
 private:
-    // Physical parameters
     double Hs_, Tp_, mean_dir_rad_, gamma_, g_, spreading_exponent_;
     unsigned int seed_;
+    JonswapSpectrum<N_FREQ> spectrum_;
 
-    // Spectrum
-    class JonswapSpectrum {
-    public:
-        JonswapSpectrum(double Hs, double Tp,
-                        double f_min=0.02, double f_max=0.8,
-                        double gamma=2.0, double g=9.81)
-            : Hs_(Hs), Tp_(Tp), f_min_(f_min), f_max_(f_max), gamma_(gamma), g_(g)
-        {
-            frequencies_.setZero();
-            S_.setZero();
-            A_.setZero();
-            df_.setZero();
-            computeLogFrequencySpacing();
-            computeFrequencyIncrements();
-            computeJonswapSpectrumFromHs();
-        }
-
-        Eigen::Matrix<double, N_FREQ, 1> frequencies() const { return frequencies_; }
-        Eigen::Matrix<double, N_FREQ, 1> spectrum() const { return S_; }
-        Eigen::Matrix<double, N_FREQ, 1> amplitudes() const { return A_; }
-        Eigen::Matrix<double, N_FREQ, 1> df() const { return df_; }
-
-    private:
-        double Hs_, Tp_, f_min_, f_max_, gamma_, g_;
-        Eigen::Matrix<double, N_FREQ,1> frequencies_, S_, A_, df_;
-
-        void computeLogFrequencySpacing() {
-            double log_f_min = std::log(f_min_);
-            double log_f_max = std::log(f_max_);
-            for(int i=0;i<N_FREQ;++i)
-                frequencies_(i)=std::exp(log_f_min + (log_f_max-log_f_min)*i/(N_FREQ-1));
-        }
-
-        void computeFrequencyIncrements() {
-            df_(0)=frequencies_(1)-frequencies_(0);
-            for(int i=1;i<N_FREQ-1;++i)
-                df_(i)=0.5*(frequencies_(i+1)-frequencies_(i-1));
-            df_(N_FREQ-1)=frequencies_(N_FREQ-1)-frequencies_(N_FREQ-2);
-        }
-
-        void computeJonswapSpectrumFromHs() {
-            const double fp = 1.0/Tp_;
-            Eigen::Matrix<double,N_FREQ,1> S0;
-            for(int i=0;i<N_FREQ;++i){
-                double f=frequencies_(i);
-                double sigma=(f<=fp)?0.07:0.09;
-                double r=std::exp(-std::pow(f-fp,2)/(2*sigma*sigma*fp*fp));
-                double base=(g_*g_)/std::pow(2*M_PI,4)*std::pow(f,-5)*std::exp(-1.25*std::pow(fp/f,4));
-                S0(i)=base*std::pow(gamma_,r);
-            }
-            double variance_unit = (S0.cwiseProduct(df_)).sum();
-            double variance_target = (Hs_*Hs_)/16.0;
-            double alpha=variance_target/variance_unit;
-            S_=S0*alpha;
-            A_=(2.0*S_.cwiseProduct(df_)).cwiseSqrt();
-        }
-    } spectrum_;
-
-    // Fixed-size arrays
     Eigen::Matrix<double, N_FREQ,1> frequencies_, S_, A_, df_;
     Eigen::Matrix<double, N_FREQ,1> omega_, k_, phi_;
     Eigen::Matrix<double, N_FREQ,1> dir_x_, dir_y_, kx_, ky_;
     Eigen::Matrix<double, N_FREQ,1> stokes_drift_scalar_;
     Eigen::Vector2d stokes_drift_mean_xy_;
 
-    // Cached exponentials
     mutable Eigen::Array<double, N_FREQ,1> exp_kz_cache_;
     mutable double exp_kz_cached_z_;
 
-    // Heap-allocated large arrays
     Eigen::ArrayXd Bij_flat_, kx_sum_flat_, ky_sum_flat_, k_sum_flat_;
     Eigen::ArrayXd omega_sum_flat_, phi_sum_flat_, factor_flat_;
     mutable Eigen::ArrayXd th2_, cos_th2_, sin_th2_, ksum_safe_, factor_omega_, factor_omega2_;
-
-    // Small temporaries
     mutable Eigen::Array<double, N_FREQ,1> th_, cos_th_, sin_th_, exp_z_;
 
-    // Helpers
     size_t upper_index(int i,int j) const {
         size_t ii=static_cast<size_t>(i), N=static_cast<size_t>(N_FREQ);
         return ii*N - ii*(ii-1)/2 + static_cast<size_t>(j-i);
@@ -309,32 +243,33 @@ private:
         }
     }
 
-    void computeWaveDirectionComponents(){ kx_=k_.array()*dir_x_.array(); ky_=k_.array()*dir_y_.array(); }
+    void computeWaveDirectionComponents() { kx_ = k_.array() * dir_x_.array(); ky_ = k_.array() * dir_y_.array(); }
 
-    void computePerComponentStokesDriftEstimate(){
+    void computePerComponentStokesDriftEstimate() {
         stokes_drift_scalar_.setZero(); stokes_drift_mean_xy_.setZero();
         for(int i=0;i<N_FREQ;++i){
-            double a=A_(i), ki=k_(i), wi=omega_(i);
-            double Usi=0.5*a*a*ki*wi;
+            double Usi = 0.5*A_(i)*A_(i)*k_(i)*omega_(i);
             stokes_drift_scalar_(i)=Usi;
-            stokes_drift_mean_xy_.x()+=Usi*dir_x_(i);
-            stokes_drift_mean_xy_.y()+=Usi*dir_y_(i);
+            stokes_drift_mean_xy_.x() += Usi*dir_x_(i);
+            stokes_drift_mean_xy_.y() += Usi*dir_y_(i);
         }
     }
 
-    void precomputePairwise(){
+    void precomputePairwise() {
         for(int i=0;i<N_FREQ;++i){
             for(int j=i;j<N_FREQ;++j){
                 size_t idx=upper_index(i,j);
-                double kx_sum=kx_(i)+kx_(j);
-                double ky_sum=ky_(i)+ky_(j);
-                double kdot=kx_(i)*kx_(j)+ky_(i)*ky_(j);
-                double Bij=kdot/(2.0*g_)*(A_(i)*A_(j));
-                double omega_sum=omega_(i)+omega_(j);
-                double phi_sum=phi_(i)+phi_(j);
-                double ksum=std::sqrt(kx_sum*kx_sum + ky_sum*ky_sum);
-                Bij_flat_(idx)=Bij; kx_sum_flat_(idx)=kx_sum; ky_sum_flat_(idx)=ky_sum;
-                k_sum_flat_(idx)=ksum; omega_sum_flat_(idx)=omega_sum; phi_sum_flat_(idx)=phi_sum;
+                double kx_sum = kx_(i)+kx_(j);
+                double ky_sum = ky_(i)+ky_(j);
+                double ksum = std::sqrt(kx_sum*kx_sum + ky_sum*ky_sum);
+                double kdot = kx_(i)*kx_(j) + ky_(i)*ky_(j);
+                double Bij = kdot/(2.0*g_) * (A_(i)*A_(j));
+                Bij_flat_(idx)=Bij;
+                kx_sum_flat_(idx)=kx_sum;
+                ky_sum_flat_(idx)=ky_sum;
+                k_sum_flat_(idx)=ksum;
+                omega_sum_flat_(idx)=omega_(i)+omega_(j);
+                phi_sum_flat_(idx)=phi_(i)+phi_(j);
                 factor_flat_(idx)=(i==j)?1.0:2.0;
             }
         }
@@ -344,89 +279,82 @@ private:
 
     void ensureExpKzCached(double z) const {
         if(!std::isfinite(exp_kz_cached_z_) || std::abs(exp_kz_cached_z_-z)>1e-12){
-            for(int i=0;i<N_FREQ;++i) exp_kz_cache_(i)=std::exp(-k_(i)*z);
-            exp_kz_cached_z_=z;
+            exp_kz_cache_ = (-k_.array()*z).exp();
+            exp_kz_cached_z_ = z;
         }
     }
 
-Eigen::Vector3d evaluateDisplacement(double x, double y, double t, double z) const {
-    ensureExpKzCached(z);
+    Eigen::Vector3d evaluateDisplacement(double x,double y,double t,double z) const {
+        ensureExpKzCached(z);
 
-    // 1st order (linear) waves
-    th_ = kx_ * x + ky_ * y - omega_ * t + phi_;
-    cos_th_ = th_.cos();
-    sin_th_ = th_.sin();
-    exp_z_ = exp_kz_cache_;
+        // 1st order
+        th_ = kx_*x + ky_*y - omega_*t + phi_;
+        cos_th_ = th_.cos();
+        sin_th_ = th_.sin();
+        exp_z_ = exp_kz_cache_;
 
-    double dx = (-A_.array() * cos_th_ * dir_x_.array() * exp_z_).sum();
-    double dy = (-A_.array() * cos_th_ * dir_y_.array() * exp_z_).sum();
-    double dz = (A_.array() * sin_th_ * exp_z_).sum();
+        double dx = (-A_.array()*cos_th_*dir_x_.array()*exp_z_).sum();
+        double dy = (-A_.array()*cos_th_*dir_y_.array()*exp_z_).sum();
+        double dz = (A_.array()*sin_th_*exp_z_).sum();
 
-    // 2nd order (pairwise) interactions
-    th2_ = kx_sum_flat_ * x + ky_sum_flat_ * y - omega_sum_flat_ * t + phi_sum_flat_;
-    cos_th2_ = th2_.cos();
-    ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
+        // 2nd order
+        th2_ = kx_sum_flat_*x + ky_sum_flat_*y - omega_sum_flat_*t + phi_sum_flat_;
+        cos_th2_ = th2_.cos();
+        ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
 
-    dx += (factor_flat_ * (-Bij_flat_) * cos_th2_ * kx_sum_flat_ / ksum_safe_).sum();
-    dy += (factor_flat_ * (-Bij_flat_) * cos_th2_ * ky_sum_flat_ / ksum_safe_).sum();
+        dx += (factor_flat_ * (-Bij_flat_) * cos_th2_ * kx_sum_flat_ / ksum_safe_).sum();
+        dy += (factor_flat_ * (-Bij_flat_) * cos_th2_ * ky_sum_flat_ / ksum_safe_).sum();
 
-    return {dx, dy, dz};
-}
+        return {dx,dy,dz};
+    }
 
-Eigen::Vector3d evaluateVelocity(double x, double y, double t, double z) const {
-    ensureExpKzCached(z);
+    Eigen::Vector3d evaluateVelocity(double x,double y,double t,double z) const {
+        ensureExpKzCached(z);
 
-    // 1st order
-    th_ = kx_ * x + ky_ * y - omega_ * t + phi_;
-    sin_th_ = th_.sin();
-    cos_th_ = th_.cos();
-    exp_z_ = exp_kz_cache_;
-    Eigen::Array<double, N_FREQ, 1> fac = A_.array() * omega_.array() * exp_z_;
+        th_ = kx_*x + ky_*y - omega_*t + phi_;
+        sin_th_ = th_.sin(); cos_th_ = th_.cos();
+        exp_z_ = exp_kz_cache_;
+        Eigen::Array<double,N_FREQ,1> fac = A_.array()*omega_.array()*exp_z_;
 
-    double vx = (fac * sin_th_ * dir_x_.array()).sum() + stokes_drift_mean_xy_.x();
-    double vy = (fac * sin_th_ * dir_y_.array()).sum() + stokes_drift_mean_xy_.y();
-    double vz = (fac * cos_th_).sum();
+        double vx = (fac*sin_th_*dir_x_.array()).sum() + stokes_drift_mean_xy_.x();
+        double vy = (fac*sin_th_*dir_y_.array()).sum() + stokes_drift_mean_xy_.y();
+        double vz = (fac*cos_th_).sum();
 
-    // 2nd order
-    th2_ = kx_sum_flat_ * x + ky_sum_flat_ * y - omega_sum_flat_ * t + phi_sum_flat_;
-    sin_th2_ = th2_.sin();
-    ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
-    factor_omega_ = factor_flat_ * (-Bij_flat_) * omega_sum_flat_.array();
+        th2_ = kx_sum_flat_*x + ky_sum_flat_*y - omega_sum_flat_*t + phi_sum_flat_;
+        sin_th2_ = th2_.sin();
+        ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
+        factor_omega_ = factor_flat_ * (-Bij_flat_) * omega_sum_flat_.array();
 
-    vx += (factor_omega_ * sin_th2_ * kx_sum_flat_ / ksum_safe_).sum();
-    vy += (factor_omega_ * sin_th2_ * ky_sum_flat_ / ksum_safe_).sum();
-    vz += (factor_omega_ * sin_th2_).sum();
+        vx += (factor_omega_*sin_th2_*kx_sum_flat_/ksum_safe_).sum();
+        vy += (factor_omega_*sin_th2_*ky_sum_flat_/ksum_safe_).sum();
+        vz += (factor_omega_*sin_th2_).sum();
 
-    return {vx, vy, vz};
-}
+        return {vx,vy,vz};
+    }
 
-Eigen::Vector3d evaluateAcceleration(double x, double y, double t, double z) const {
-    ensureExpKzCached(z);
+    Eigen::Vector3d evaluateAcceleration(double x,double y,double t,double z) const {
+        ensureExpKzCached(z);
 
-    // 1st order
-    th_ = kx_ * x + ky_ * y - omega_ * t + phi_;
-    sin_th_ = th_.sin();
-    cos_th_ = th_.cos();
-    exp_z_ = exp_kz_cache_;
-    Eigen::Array<double, N_FREQ, 1> fac = A_.array() * omega_.array().square() * exp_z_;
+        th_ = kx_*x + ky_*y - omega_*t + phi_;
+        sin_th_ = th_.sin(); cos_th_ = th_.cos();
+        exp_z_ = exp_kz_cache_;
+        Eigen::Array<double,N_FREQ,1> fac = A_.array()*omega_.array().square()*exp_z_;
 
-    double ax = (fac * cos_th_ * dir_x_.array()).sum();
-    double ay = (fac * cos_th_ * dir_y_.array()).sum();
-    double az = (-fac * sin_th_).sum();
+        double ax = (fac*cos_th_*dir_x_.array()).sum();
+        double ay = (fac*cos_th_*dir_y_.array()).sum();
+        double az = (-fac*sin_th_).sum();
 
-    // 2nd order
-    th2_ = kx_sum_flat_ * x + ky_sum_flat_ * y - omega_sum_flat_ * t + phi_sum_flat_;
-    cos_th2_ = th2_.cos();
-    ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
-    factor_omega2_ = factor_flat_ * Bij_flat_ * omega_sum_flat_.array().square();
+        th2_ = kx_sum_flat_*x + ky_sum_flat_*y - omega_sum_flat_*t + phi_sum_flat_;
+        cos_th2_ = th2_.cos();
+        ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
+        factor_omega2_ = factor_flat_ * Bij_flat_ * omega_sum_flat_.array().square();
 
-    ax += (factor_omega2_ * cos_th2_ * kx_sum_flat_ / ksum_safe_).sum();
-    ay += (factor_omega2_ * cos_th2_ * ky_sum_flat_ / ksum_safe_).sum();
-    az += (factor_omega2_ * cos_th2_).sum();
+        ax += (factor_omega2_*cos_th2_*kx_sum_flat_/ksum_safe_).sum();
+        ay += (factor_omega2_*cos_th2_*ky_sum_flat_/ksum_safe_).sum();
+        az += (factor_omega2_*cos_th2_).sum();
 
-    return {ax, ay, az};
-}
-
+        return {ax,ay,az};
+    }
 };
 
 #ifdef JONSWAP_TEST
