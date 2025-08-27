@@ -198,6 +198,12 @@ private:
     mutable Eigen::Array<double, N_FREQ,1> exp_kz_cache_;
     mutable double exp_kz_cached_z_;
 
+    // -------------------- Temporaries (stack-free) --------------------
+    mutable Eigen::Array<double, N_FREQ,1> th_, cos_th_, sin_th_, exp_z_;
+    mutable Eigen::Array<double, N_PAIRWISE,1> th2_, cos_th2_, sin_th2_, ksum_safe_;
+    mutable Eigen::Array<double, N_PAIRWISE,1> factor_omega_, factor_omega2_;
+
+    // -------------------- Helpers --------------------
     inline size_t upper_index(int i,int j) const {
         size_t ii = static_cast<size_t>(i);
         size_t N = static_cast<size_t>(N_FREQ);
@@ -278,73 +284,72 @@ private:
         }
     }
 
-    // -------------------- Evaluations (vectorized) --------------------
+    // -------------------- Evaluations --------------------
     Eigen::Vector3d evaluateDisplacement(double x,double y,double t,double z) const {
         ensureExpKzCached(z);
+        th_ = kx_*x + ky_*y - omega_*t + phi_;
+        cos_th_ = th_.cos();
+        sin_th_ = th_.sin();
+        exp_z_ = exp_kz_cache_;
 
-        Eigen::Array<double, N_FREQ,1> th = kx_*x + ky_*y - omega_*t + phi_;
-        Eigen::Array<double, N_FREQ,1> cos_th = th.cos();
-        Eigen::Array<double, N_FREQ,1> sin_th = th.sin();
-        Eigen::Array<double, N_FREQ,1> exp_z = exp_kz_cache_;
+        double dx = (-A_.array() * cos_th_ * dir_x_.array() * exp_z_).sum();
+        double dy = (-A_.array() * cos_th_ * dir_y_.array() * exp_z_).sum();
+        double dz = (A_.array() * sin_th_ * exp_z_).sum();
 
-        double dx = (-A_.array() * cos_th * dir_x_.array() * exp_z).sum();
-        double dy = (-A_.array() * cos_th * dir_y_.array() * exp_z).sum();
-        double dz = (A_.array() * sin_th * exp_z).sum();
+        th2_ = kx_sum_flat_ * x + ky_sum_flat_ * y - omega_sum_flat_ * t + phi_sum_flat_;
+        cos_th2_ = th2_.cos();
+        ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
 
-        Eigen::Array<double, N_PAIRWISE,1> th2 = kx_sum_flat_ * x + ky_sum_flat_ * y - omega_sum_flat_ * t + phi_sum_flat_;
-        Eigen::Array<double, N_PAIRWISE,1> cos_th2 = th2.cos();
-        Eigen::Array<double, N_PAIRWISE,1> ksum_safe = k_sum_flat_.cwiseMax(1e-12);
-
-        dx += (factor_flat_ * (-Bij_flat_) * cos_th2 * kx_sum_flat_ / ksum_safe).sum();
-        dy += (factor_flat_ * (-Bij_flat_) * cos_th2 * ky_sum_flat_ / ksum_safe).sum();
+        dx += (factor_flat_ * (-Bij_flat_) * cos_th2_ * kx_sum_flat_ / ksum_safe_).sum();
+        dy += (factor_flat_ * (-Bij_flat_) * cos_th2_ * ky_sum_flat_ / ksum_safe_).sum();
 
         return {dx, dy, dz};
     }
 
     Eigen::Vector3d evaluateVelocity(double x,double y,double t,double z) const {
         ensureExpKzCached(z);
+        th_ = kx_*x + ky_*y - omega_*t + phi_;
+        sin_th_ = th_.sin();
+        cos_th_ = th_.cos();
+        exp_z_ = exp_kz_cache_;
+        Eigen::Array<double, N_FREQ,1> fac = A_.array() * omega_.array() * exp_z_;
 
-        Eigen::Array<double, N_FREQ,1> th = kx_*x + ky_*y - omega_*t + phi_;
-        Eigen::Array<double, N_FREQ,1> sin_th = th.sin();
-        Eigen::Array<double, N_FREQ,1> cos_th = th.cos();
-        Eigen::Array<double, N_FREQ,1> fac = A_.array() * omega_.array() * exp_kz_cache_;
+        double vx = (fac * sin_th_ * dir_x_.array()).sum() + stokes_drift_mean_xy_.x();
+        double vy = (fac * sin_th_ * dir_y_.array()).sum() + stokes_drift_mean_xy_.y();
+        double vz = (fac * cos_th_).sum();
 
-        double vx = (fac * sin_th * dir_x_.array()).sum() + stokes_drift_mean_xy_.x();
-        double vy = (fac * sin_th * dir_y_.array()).sum() + stokes_drift_mean_xy_.y();
-        double vz = (fac * cos_th).sum();
+        th2_ = kx_sum_flat_ * x + ky_sum_flat_ * y - omega_sum_flat_ * t + phi_sum_flat_;
+        sin_th2_ = th2_.sin();
+        ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
+        factor_omega_ = factor_flat_ * (-Bij_flat_) * omega_sum_flat_;
 
-        Eigen::Array<double, N_PAIRWISE,1> th2 = kx_sum_flat_ * x + ky_sum_flat_ * y - omega_sum_flat_ * t + phi_sum_flat_;
-        Eigen::Array<double, N_PAIRWISE,1> sin_th2 = th2.sin();
-        Eigen::Array<double, N_PAIRWISE,1> ksum_safe = k_sum_flat_.cwiseMax(1e-12);
-        Eigen::Array<double, N_PAIRWISE,1> factor_omega = factor_flat_ * (-Bij_flat_) * omega_sum_flat_;
-
-        vx += (factor_omega * sin_th2 * kx_sum_flat_ / ksum_safe).sum();
-        vy += (factor_omega * sin_th2 * ky_sum_flat_ / ksum_safe).sum();
-        vz += (factor_omega * sin_th2).sum();
+        vx += (factor_omega_ * sin_th2_ * kx_sum_flat_ / ksum_safe_).sum();
+        vy += (factor_omega_ * sin_th2_ * ky_sum_flat_ / ksum_safe_).sum();
+        vz += (factor_omega_ * sin_th2_).sum();
 
         return {vx, vy, vz};
     }
 
     Eigen::Vector3d evaluateAcceleration(double x,double y,double t,double z) const {
         ensureExpKzCached(z);
+        th_ = kx_*x + ky_*y - omega_*t + phi_;
+        sin_th_ = th_.sin();
+        cos_th_ = th_.cos();
+        exp_z_ = exp_kz_cache_;
+        Eigen::Array<double, N_FREQ,1> fac = A_.array() * omega_.array().square() * exp_z_;
 
-        Eigen::Array<double, N_FREQ,1> th = kx_*x + ky_*y - omega_*t + phi_;
-        Eigen::Array<double, N_FREQ,1> sin_th = th.sin();
-        Eigen::Array<double, N_FREQ,1> cos_th = th.cos();
-        Eigen::Array<double, N_FREQ,1> fac = A_.array() * omega_.array().square() * exp_kz_cache_;
+        double ax = (fac * cos_th_ * dir_x_.array()).sum();
+        double ay = (fac * cos_th_ * dir_y_.array()).sum();
+        double az = (-fac * sin_th_).sum();
 
-        double ax = (fac * cos_th * dir_x_.array()).sum();
-        double ay = (fac * cos_th * dir_y_.array()).sum();
-        double az = (-fac * sin_th).sum();
+        th2_ = kx_sum_flat_ * x + ky_sum_flat_ * y - omega_sum_flat_ * t + phi_sum_flat_;
+        cos_th2_ = th2_.cos();
+        ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
+        factor_omega2_ = factor_flat_ * Bij_flat_ * omega_sum_flat_.square();
 
-        Eigen::Array<double, N_PAIRWISE,1> th2 = kx_sum_flat_ * x + ky_sum_flat_ * y - omega_sum_flat_ * t + phi_sum_flat_;
-        Eigen::Array<double, N_PAIRWISE,1> cos_th2 = th2.cos();
-        Eigen::Array<double, N_PAIRWISE,1> ksum_safe = k_sum_flat_.cwiseMax(1e-12);
-        Eigen::Array<double, N_PAIRWISE,1> factor_omega2 = factor_flat_ * Bij_flat_ * omega_sum_flat_.square();
-
-        ax += (factor_omega2 * cos_th2 * kx_sum_flat_ / ksum_safe).sum();
-        ay += (factor_omega2 * cos_th2 * ky_sum_flat_ / ksum_safe).sum();
-        az += (factor_omega2 * cos_th2).sum();
+        ax += (factor_omega2_ * cos_th2_ * kx_sum_flat_ / ksum_safe_).sum();
+        ay += (factor_omega2_ * cos_th2_ * ky_sum_flat_ / ksum_safe_).sum();
+        az += (factor_omega2_ * cos_th2_).sum();
 
         return {ax, ay, az};
     }
