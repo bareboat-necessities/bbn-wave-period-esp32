@@ -122,19 +122,6 @@ private:
 };
 
 // Jonswap3dStokesWaves
-#pragma once
-
-#ifdef EIGEN_NON_ARDUINO
-#include <Eigen/Dense>
-#else
-#include <ArduinoEigenDense.h>
-#endif
-#include <random>
-#include <cmath>
-#include <stdexcept>
-#include <string>
-#include <algorithm>
-
 template<int N_FREQ = 256>
 class Jonswap3dStokesWaves {
 public:
