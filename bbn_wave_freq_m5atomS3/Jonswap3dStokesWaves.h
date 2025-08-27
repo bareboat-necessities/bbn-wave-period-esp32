@@ -122,7 +122,7 @@ private:
 };
 
 // Jonswap3dStokesWaves
-template<int N_FREQ = 256>
+template<int N_FREQ=256>
 class Jonswap3dStokesWaves {
 public:
     struct WaveState {
@@ -131,14 +131,14 @@ public:
         Eigen::Vector3d acceleration;
     };
 
-    static constexpr size_t N_PAIRWISE = N_FREQ*(N_FREQ+1)/2;
+    static constexpr size_t N_PAIRWISE=N_FREQ*(N_FREQ+1)/2;
 
     Jonswap3dStokesWaves(double Hs, double Tp,
-                         double mean_direction_deg = 0.0,
-                         double f_min = 0.02, double f_max = 0.8,
-                         double gamma = 2.0, double g = 9.81,
-                         double spreading_exponent = 15.0,
-                         unsigned int seed = 239u)
+                         double mean_direction_deg=0.0,
+                         double f_min=0.02, double f_max=0.8,
+                         double gamma=2.0, double g=9.81,
+                         double spreading_exponent=15.0,
+                         unsigned int seed=239u)
         : Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg*M_PI/180.0),
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
           seed_(seed), spectrum_(Hs,Tp,f_min,f_max,gamma,g),
@@ -150,7 +150,7 @@ public:
         A_ = spectrum_.amplitudes();
         df_ = spectrum_.df();
         omega_ = 2.0*M_PI*frequencies_;
-        k_ = omega_.array().square() / g_;
+        k_ = omega_.array().square()/g_;
 
         phi_.setZero(); dir_x_.setZero(); dir_y_.setZero();
         kx_.setZero(); ky_.setZero();
@@ -202,8 +202,8 @@ private:
 
     void initializeRandomPhases() {
         std::mt19937 gen(seed_);
-        std::uniform_real_distribution<double> dist(0.0, 2*M_PI);
-        for(int i=0;i<N_FREQ;++i) phi_(i) = dist(gen);
+        std::uniform_real_distribution<double> dist(0.0,2*M_PI);
+        for(int i=0;i<N_FREQ;++i) phi_(i)=dist(gen);
     }
 
     void initializeDirectionalSpread() {
@@ -227,45 +227,32 @@ private:
         stokes_drift_scalar_.setZero(); stokes_drift_mean_xy_.setZero();
         for(int i=0;i<N_FREQ;++i){
             double Usi = 0.5*A_(i)*A_(i)*k_(i)*omega_(i);
-            stokes_drift_scalar_(i) = Usi;
+            stokes_drift_scalar_(i)=Usi;
             stokes_drift_mean_xy_.x() += Usi*dir_x_(i);
             stokes_drift_mean_xy_.y() += Usi*dir_y_(i);
         }
     }
 
     void precomputePairwiseVectorized() {
-        // Create meshgrid arrays
-        Eigen::ArrayXXd kx_i = kx_.replicate(1,N_FREQ);
-        Eigen::ArrayXXd kx_j = kx_.transpose().replicate(N_FREQ,1);
-        Eigen::ArrayXXd ky_i = ky_.replicate(1,N_FREQ);
-        Eigen::ArrayXXd ky_j = ky_.transpose().replicate(N_FREQ,1);
-        Eigen::ArrayXXd omega_i = omega_.replicate(1,N_FREQ);
-        Eigen::ArrayXXd omega_j = omega_.transpose().replicate(N_FREQ,1);
-        Eigen::ArrayXXd phi_i = phi_.replicate(1,N_FREQ);
-        Eigen::ArrayXXd phi_j = phi_.transpose().replicate(N_FREQ,1);
-        Eigen::ArrayXXd A_i = A_.replicate(1,N_FREQ);
-        Eigen::ArrayXXd A_j = A_.transpose().replicate(N_FREQ,1);
-
-        Eigen::ArrayXXd kx_sum = kx_i + kx_j;
-        Eigen::ArrayXXd ky_sum = ky_i + ky_j;
-        Eigen::ArrayXXd ksum = (kx_sum.square() + ky_sum.square()).sqrt();
-        Eigen::ArrayXXd kdot = kx_i*kx_j + ky_i*ky_j;
-        Eigen::ArrayXXd Bij = kdot/(2.0*g_) * (A_i*A_j);
-        Eigen::ArrayXXd omega_sum = omega_i + omega_j;
-        Eigen::ArrayXXd phi_sum = phi_i + phi_j;
-        Eigen::ArrayXXd factor = (kx_i==kx_j && ky_i==ky_j).select(1.0,2.0);
-
-        // Flatten upper triangle
         size_t idx=0;
         for(int i=0;i<N_FREQ;++i){
+            double kx_i=kx_(i), ky_i=ky_(i), omega_i=omega_(i), phi_i=phi_(i), A_i=A_(i);
             for(int j=i;j<N_FREQ;++j){
-                Bij_flat_(idx) = Bij(i,j);
-                kx_sum_flat_(idx) = kx_sum(i,j);
-                ky_sum_flat_(idx) = ky_sum(i,j);
-                k_sum_flat_(idx) = ksum(i,j);
-                omega_sum_flat_(idx) = omega_sum(i,j);
-                phi_sum_flat_(idx) = phi_sum(i,j);
-                factor_flat_(idx) = factor(i,j);
+                double kx_sum=kx_i+kx_(j), ky_sum=ky_i+ky_(j);
+                double ksum=std::sqrt(kx_sum*kx_sum+ky_sum*ky_sum);
+                double kdot=kx_i*kx_(j)+ky_i*ky_(j);
+                double Bij=kdot/(2.0*g_)*(A_i*A_(j));
+                double omega_sum=omega_i+omega_(j);
+                double phi_sum=phi_i+phi_(j);
+                double factor=(i==j)?1.0:2.0;
+
+                kx_sum_flat_(idx)=kx_sum;
+                ky_sum_flat_(idx)=ky_sum;
+                k_sum_flat_(idx)=ksum;
+                Bij_flat_(idx)=Bij;
+                omega_sum_flat_(idx)=omega_sum;
+                phi_sum_flat_(idx)=phi_sum;
+                factor_flat_(idx)=factor;
                 ++idx;
             }
         }
@@ -284,9 +271,9 @@ private:
         ensureExpKzCached(z);
         th_ = kx_*x + ky_*y - omega_*t + phi_;
         cos_th_ = th_.cos(); sin_th_ = th_.sin(); exp_z_ = exp_kz_cache_;
-        double dx = (-A_.array()*cos_th_*dir_x_.array()*exp_z_).sum();
-        double dy = (-A_.array()*cos_th_*dir_y_.array()*exp_z_).sum();
-        double dz = (A_.array()*sin_th_*exp_z_).sum();
+        double dx=(-A_.array()*cos_th_*dir_x_.array()*exp_z_).sum();
+        double dy=(-A_.array()*cos_th_*dir_y_.array()*exp_z_).sum();
+        double dz=(A_.array()*sin_th_*exp_z_).sum();
 
         th2_ = kx_sum_flat_*x + ky_sum_flat_*y - omega_sum_flat_*t + phi_sum_flat_;
         cos_th2_ = th2_.cos();
@@ -294,6 +281,7 @@ private:
 
         dx += (factor_flat_ * (-Bij_flat_) * cos_th2_ * kx_sum_flat_ / ksum_safe_).sum();
         dy += (factor_flat_ * (-Bij_flat_) * cos_th2_ * ky_sum_flat_ / ksum_safe_).sum();
+
         return {dx, dy, dz};
     }
 
@@ -302,17 +290,19 @@ private:
         th_ = kx_*x + ky_*y - omega_*t + phi_;
         sin_th_ = th_.sin(); cos_th_ = th_.cos(); exp_z_ = exp_kz_cache_;
         Eigen::Array<double,N_FREQ,1> fac = A_.array()*omega_.array()*exp_z_;
-        double vx = (fac*sin_th_*dir_x_.array()).sum() + stokes_drift_mean_xy_.x();
-        double vy = (fac*sin_th_*dir_y_.array()).sum() + stokes_drift_mean_xy_.y();
-        double vz = (fac*cos_th_).sum();
+        double vx=(fac*sin_th_*dir_x_.array()).sum()+stokes_drift_mean_xy_.x();
+        double vy=(fac*sin_th_*dir_y_.array()).sum()+stokes_drift_mean_xy_.y();
+        double vz=(fac*cos_th_).sum();
 
         th2_ = kx_sum_flat_*x + ky_sum_flat_*y - omega_sum_flat_*t + phi_sum_flat_;
         sin_th2_ = th2_.sin();
         ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
         factor_omega_ = factor_flat_ * (-Bij_flat_) * omega_sum_flat_.array();
+
         vx += (factor_omega_*sin_th2_*kx_sum_flat_/ksum_safe_).sum();
         vy += (factor_omega_*sin_th2_*ky_sum_flat_/ksum_safe_).sum();
         vz += (factor_omega_*sin_th2_).sum();
+
         return {vx,vy,vz};
     }
 
@@ -321,17 +311,19 @@ private:
         th_ = kx_*x + ky_*y - omega_*t + phi_;
         sin_th_ = th_.sin(); cos_th_ = th_.cos(); exp_z_ = exp_kz_cache_;
         Eigen::Array<double,N_FREQ,1> fac = A_.array()*omega_.array().square()*exp_z_;
-        double ax = (fac*cos_th_*dir_x_.array()).sum();
-        double ay = (fac*cos_th_*dir_y_.array()).sum();
-        double az = (-fac*sin_th_).sum();
+        double ax=(fac*cos_th_*dir_x_.array()).sum();
+        double ay=(fac*cos_th_*dir_y_.array()).sum();
+        double az=(-fac*sin_th_).sum();
 
         th2_ = kx_sum_flat_*x + ky_sum_flat_*y - omega_sum_flat_*t + phi_sum_flat_;
         cos_th2_ = th2_.cos();
         ksum_safe_ = k_sum_flat_.cwiseMax(1e-12);
         factor_omega2_ = factor_flat_ * Bij_flat_ * omega_sum_flat_.array().square();
+
         ax += (factor_omega2_*cos_th2_*kx_sum_flat_/ksum_safe_).sum();
         ay += (factor_omega2_*cos_th2_*ky_sum_flat_/ksum_safe_).sum();
         az += (factor_omega2_*cos_th2_).sum();
+
         return {ax,ay,az};
     }
 };
