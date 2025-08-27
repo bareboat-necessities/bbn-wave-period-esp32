@@ -1,104 +1,237 @@
 \documentclass[11pt]{article}
-\usepackage{amsmath, amssymb, graphicx, geometry}
+\usepackage{amsmath, amssymb, graphicx, geometry, booktabs, multirow, hyperref, listings, xcolor}
 \geometry{margin=1in}
+\usepackage[most]{tcolorbox}
 
-\title{WaveSpectrumEstimator: An Embedded Algorithm for Ocean Wave Spectrum Estimation from Acceleration Measurements}
+\newtcolorbox{keyconcept}[1][]{
+	colback=blue!5!white,
+	colframe=blue!75!black,
+	fonttitle=\bfseries,
+	title=#1,
+	sharp corners
+}
+
+% Define colors for code listings
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2,
+    frame=single,
+    framesep=10pt
+}
+
+\lstset{style=mystyle}
+
+\title{WaveSpectrumEstimator: A Detailed Algorithm for Ocean Wave Spectrum Estimation from Acceleration Measurements}
 \author{Mikhail Grushinskiy}
 \date{2025}
 
 \begin{document}
+
 \maketitle
 
 \begin{abstract}
-This article describes the methodology implemented in the \texttt{WaveSpectrumEstimator}, 
-a C++ embedded-friendly class for estimating ocean wave spectra from vertical acceleration measurements.
-The estimator combines signal preprocessing, decimation, Goertzel spectral analysis, and spectrum-to-wave conversion. 
-It supports significant wave height estimation, peak frequency extraction, and parametric fitting to the Pierson--Moskowitz spectrum.
+This article provides a comprehensive description of the methodology implemented in the \texttt{WaveSpectrumEstimator}, a C++ embedded-friendly class for estimating ocean wave spectra from vertical acceleration measurements. The estimator combines signal preprocessing, decimation, Goertzel spectral analysis, and spectrum-to-wave conversion. It supports significant wave height estimation, peak frequency extraction, and parametric fitting to the Pierson--Moskowitz spectrum. This paper expands on the theoretical basis for each step, including the necessity of decimation, the derivation of the Goertzel algorithm, the context of the Nyquist frequency, and the physical foundations of the Pierson--Moskowitz model. The goal is to provide a standalone reference for both users and developers of the algorithm.
 \end{abstract}
 
-\section{Introduction}
-Estimating ocean wave characteristics from inertial sensors is a key task in marine engineering, autonomous navigation, 
-and environmental monitoring. Conventional methods often rely on FFT-based spectral estimators, which can be computationally expensive for embedded devices. 
+\tableofcontents
 
-The \texttt{WaveSpectrumEstimator} implements a lightweight, embedded-friendly approach based on a decimated Goertzel transform and spectral conversion techniques, optimized for real-time processing on microcontrollers.
+\section{Introduction}
+\label{sec:intro}
+Estimating ocean wave characteristics from inertial sensors is a fundamental task in marine engineering, autonomous navigation, and environmental monitoring. Buoys, ships, and autonomous underwater vehicles (AUVs) are often equipped with low-cost Inertial Measurement Units (IMUs) that measure heave acceleration. The core challenge lies in converting these time-domain acceleration measurements into a meaningful frequency-domain representation of the wave elevation—the wave spectrum—from which key parameters like significant wave height and energy period can be derived.
+
+Conventional methods for spectral estimation almost universally rely on the Fast Fourier Transform (FFT). While highly efficient, the FFT computes the entire frequency spectrum, which can be computationally expensive for embedded devices if only a specific band of frequencies is of interest. Furthermore, processing high-sample-rate data from IMUs directly with a large FFT is often impractical on microcontrollers due to memory and CPU constraints.
+
+The \texttt{WaveSpectrumEstimator} implements a lightweight, embedded-friendly approach that addresses these challenges. It is based on a decimated signal processing chain and utilizes the Goertzel algorithm for targeted spectral analysis. This paper details the theoretical underpinnings, practical implementation, and physical interpretations of each stage in the pipeline, providing a complete guide to the algorithm's operation.
+
+\section{Theoretical Background}
+\label{sec:theory}
+
+\subsection{From Wave Elevation to Measured Acceleration}
+The physical basis for the algorithm is the linear wave theory for deep water waves. In this model, the surface elevation $\eta(t)$ at a point can be represented as a superposition of many sinusoidal wave components with different frequencies, amplitudes, and phases:
+\begin{equation}
+\eta(t) = \sum_{i} a_i \cos(2\pi f_i t + \phi_i),
+\end{equation}
+where $a_i$ is the amplitude, $f_i$ is the frequency, and $\phi_i$ is the phase of the $i$-th component.
+
+For a wave follower (e.g., a buoy or a ship heaving with the waves), the vertical displacement $z(t)$ is approximately equal to $\eta(t)$. The vertical velocity $\dot{z}(t)$ and acceleration $\ddot{z}(t)$ are its first and second time derivatives:
+\begin{align}
+z(t) &\approx \eta(t), \\
+\dot{z}(t) &= \frac{dz}{dt} = \sum_{i} -a_i (2\pi f_i) \sin(2\pi f_i t + \phi_i), \\
+\ddot{z}(t) &= \frac{d^2z}{dt^2} = \sum_{i} -a_i (2\pi f_i)^2 \cos(2\pi f_i t + \phi_i).
+\end{align}
+The key observation is that the acceleration amplitude at frequency $f_i$ is scaled by the factor $(2\pi f_i)^2 = \omega_i^2$ compared to the displacement amplitude. Therefore, to recover the displacement (wave elevation) spectrum $S_{\eta\eta}(f)$ from the measured acceleration spectrum $S_{aa}(f)$, we must integrate twice in the frequency domain:
+\begin{equation}
+\label{eq:acc2disp}
+S_{\eta\eta}(f) = \frac{S_{aa}(f)}{\omega^4} = \frac{S_{aa}(f)}{(2\pi f)^4}.
+\end{equation}
+This conversion is valid for deep-water waves and is a cornerstone of the processing pipeline.
+
+\subsection{The Sampling Theorem and Aliasing}
+\label{subsec:nyquist}
+\begin{keyconcept}[Nyquist-Shannon Sampling Theorem]
+A continuous signal bandlimited to $B$ Hz can be perfectly reconstructed from its discrete samples if the sampling rate $f_s$ satisfies $f_s > 2B$. The frequency $f_s/2$ is known as the Nyquist frequency. Frequencies in the original signal above $f_s/2$ will appear as lower-frequency artifacts in the sampled data, a phenomenon called aliasing.
+\end{keyconcept}
+
+The raw acceleration signal from an IMU is typically sampled at a high rate (e.g., $f_{s,\text{raw}} = 100$ Hz) to capture other dynamics (pitch, roll, high-frequency vibrations). However, ocean wave energies are typically contained below 0.5-1.0 Hz. Processing the raw 100 Hz signal to analyze waves below 1 Hz is highly inefficient. This mismatch motivates the use of \textit{decimation}.
 
 \section{Signal Processing Pipeline}
-The input to the estimator is a raw acceleration signal $x_{\text{raw}}(n)$, sampled at frequency $f_{s,\text{raw}}$. The processing pipeline consists of four stages:
+\label{sec:pipeline}
+The input to the estimator is a raw acceleration signal $x_{\text{raw}}(n)$, sampled at frequency $f_{s,\text{raw}}$. The processing pipeline consists of four stages, detailed below.
 
 \subsection{Low-pass Filtering and Decimation}
-A biquad low-pass filter is designed with cutoff
-\[
-f_c = 0.45 \cdot \frac{f_{s,\text{raw}}}{2 \cdot \text{decimFactor}},
-\]
-and applied using the transposed direct form II realization. The output is downsampled by a factor $D$, yielding the effective sampling rate
-\[
-f_s = \frac{f_{s,\text{raw}}}{D}.
-\]
+\label{subsec:decimation}
+Decimation is the process of reducing the sampling rate of a signal by an integer factor $D$ (the decimation factor). It is a two-step process:
+\begin{enumerate}
+    \item \textbf{Low-pass filtering}: The signal must first be bandlimited to a new, lower Nyquist frequency $f_s/2 = f_{s,\text{raw}}}/(2D)$ to prevent aliasing. An ideal filter would remove all frequency content above this new Nyquist frequency.
+    \item \textbf{Downsampling}: After filtering, only every $D$-th sample is kept, forming the new, lower-rate sequence.
+\end{enumerate}
+
+The \texttt{WaveSpectrumEstimator} uses a biquad (second-order) Infinite Impulse Response (IIR) low-pass filter. The filter is designed with a cutoff frequency:
+\begin{equation}
+f_c = 0.45 \cdot \frac{f_{s,\text{raw}}}}{2 \cdot D},
+\end{equation}
+where the factor 0.45 provides a safety margin against the filter's transition band, ensuring minimal aliasing. The filter is applied using the transposed direct form II structure, known for its superior numerical stability and minimal register usage on embedded systems.
+
+The output is downsampled by a factor $D$, yielding the effective sampling rate for all subsequent processing:
+\begin{equation}
+f_s = \frac{f_{s,\text{raw}}}}{D}.
+\end{equation}
+This step drastically reduces the number of samples to process, making the subsequent spectral analysis computationally feasible on an embedded platform.
 
 \subsection{Windowing and Block Formation}
-Samples are stored in a circular buffer of length $N_\text{block}$. Each block is multiplied by either a Hann window
-\[
-w(n) = \tfrac{1}{2}\left(1 - \cos\left(\tfrac{2\pi n}{N_\text{block}-1}\right)\right),
-\]
-or a rectangular window, depending on configuration. The mean is subtracted to remove DC bias.
+Samples at the new rate $f_s$ are stored in a circular buffer of length $N_\text{block}$. Spectral estimation is performed on blocks of this length. To mitigate spectral leakage—the phenomenon where energy from one frequency bin "leaks" into adjacent bins due to the finite length of the data block—each block is multiplied by a window function $w(n)$ before analysis.
 
-\subsection{Spectral Estimation via Goertzel Algorithm}
-Instead of a full FFT, the Goertzel recursion is applied for each target frequency $f_i$:
-\begin{align}
-s_n &= x_n w_n + c_i s_{n-1} - s_{n-2}, \\
-c_i &= 2\cos\!\left(\frac{2\pi f_i}{f_s}\right).
-\end{align}
-At the end of the block, the DFT bin is reconstructed:
-\[
-X(f_i) = (s_{N-1} - s_{N-2}\cos\omega_i) - j (s_{N-2}\sin\omega_i).
-\]
+The Hann window is a common choice and is used in this estimator:
+\begin{equation}
+w(n) = \tfrac{1}{2}\left(1 - \cos\left(\tfrac{2\pi n}{N_\text{block}-1}\right)\right), \quad \text{for } n = 0, 1, \dots, N_\text{block}-1.
+\end{equation}
+This window function tapers the data to zero at the edges of the block, reducing leakage at the cost of slightly reduced frequency resolution. The mean of the block is also subtracted to remove any DC bias from the accelerometer signal, which would otherwise appear as a large, erroneous spike at 0 Hz in the spectrum.
 
-The single-sided power spectral density (PSD) of acceleration is then
-\[
-S_{aa}(f_i) = \frac{2}{f_s \sum w_n^2} \, |X(f_i)|^2.
-\]
+\subsection{Spectral Estimation via the Goertzel Algorithm}
+\label{subsec:goertzel}
+The Discrete Fourier Transform (DFT) for a single frequency bin $k$ is given by:
+\begin{equation}
+X(k) = \sum_{n=0}^{N-1} x(n) e^{-j 2\pi k n / N}.
+\end{equation}
+The FFT is an efficient algorithm for computing the entire DFT vector $\mathbf{X} = [X(0), X(1), \dots, X(N-1)]$. However, if only a small subset of $M$ frequency bins is needed ($M \ll N$), the Goertzel algorithm can be more efficient.
+
+The Goertzel algorithm is a recursive digital filter that implements the DFT. For a target angular frequency $\omega_k = 2\pi k / N$, the algorithm proceeds in two phases:
+\begin{enumerate}
+    \item \textbf{Recursion (filtering)}: For $n = 0$ to $N-1$:
+    \begin{align}
+    s_n &= x(n) w(n) + 2 \cos(\omega_k) s_{n-1} - s_{n-2}, \\
+    \text{with initial conditions } & s_{-1} = s_{-2} = 0.
+    \end{align}
+    The coefficient $c_k = 2\cos(\omega_k)$ is precomputed for each target frequency.
+    \item \textbf{Termination}: After processing $N$ samples, the complex DFT bin value is computed from the final two filter states:
+    \begin{equation}
+    X(k) = s_{N-1} - e^{-j\omega_k} s_{N-2} = (s_{N-1} - s_{N-2}\cos\omega_k) - j (s_{N-2}\sin\omega_k).
+    \end{equation}
+\end{enumerate}
+
+This algorithm has a complexity of $O(N)$ per frequency bin, compared to $O(N \log N)$ for the full FFT. Since we are only interested in the wave energy band (e.g., $M \approx 30$ bins between 0.03 Hz and 0.5 Hz), the Goertzel algorithm provides significant computational savings over calculating a large FFT (e.g., with $N=1024$ points), making it ideal for embedded applications.
+
+The single-sided Power Spectral Density (PSD) of acceleration is then estimated from the DFT output. The PSD represents the distribution of power per unit frequency and is calculated as:
+\begin{equation}
+S_{aa}(f_k) = \frac{2 \cdot |X(f_k)|^2}{f_s \cdot S_2},
+\end{equation}
+where $S_2 = \sum_{n=0}^{N-1} w^2(n)$ is the energy of the window function, and the factor 2 converts from a two-sided to a single-sided spectrum.
 
 \subsection{Acceleration-to-Displacement Spectrum Conversion}
-Using the deep-water linear wave relation, displacement spectrum $S_{\eta\eta}(f)$ is obtained by
-\[
-S_{\eta\eta}(f) = \frac{S_{aa}(f)}{\omega^4}, \qquad \omega = 2\pi f.
-\]
-A high-pass cutoff $f_\text{hp}$ (default $0.06$ Hz) suppresses spurious low-frequency energy.
+Using the deep-water linear wave relation derived in Section~\ref{sec:theory} (Eq.~\ref{eq:acc2disp}), the displacement spectrum $S_{\eta\eta}(f)$ is obtained:
+\begin{equation}
+S_{\eta\eta}(f_k) = \frac{S_{aa}(f_k)}{\omega_k^4} = \frac{S_{aa}(f_k)}{(2\pi f_k)^4}.
+\end{equation}
+This conversion amplifies low frequencies significantly. To suppress spurious, non-physical energy from very low-frequency noise in the accelerometer or from numerical issues in the conversion, a high-pass cutoff $f_\text{hp}$ (default $0.06$ Hz) is applied. Spectral values below this cutoff are set to zero.
 
-\section{Spectral Parameters}
-\subsection{Significant Wave Height}
-The zeroth spectral moment is
-\[
-m_0 = \int_0^\infty S_{\eta\eta}(f)\, df,
-\]
-approximated numerically. The significant wave height is
-\[
+\section{Spectral Parameters and Interpretation}
+\label{sec:params}
+The wave elevation spectrum $S_{\eta\eta}(f)$ is the primary output. It describes the distribution of wave energy as a function of frequency. From this spectrum, several key oceanographic parameters are calculated.
+
+\subsection{Spectral Moments and Significant Wave Height}
+The $n$-th spectral moment $m_n$ is defined as:
+\begin{equation}
+m_n = \int_{0}^{\infty} f^n S_{\eta\eta}(f)  df.
+\end{equation}
+In practice, this integral is approximated numerically from the discrete spectrum:
+\begin{equation}
+m_n \approx \sum_{k} f_k^n S_{\eta\eta}(f_k) \Delta f,
+\end{equation}
+where $\Delta f$ is the frequency resolution of the spectrum.
+
+The zeroth moment $m_0$ is of particular importance. It represents the total variance of the sea surface elevation:
+\begin{equation}
+m_0 = \sigma_\eta^2 = \int_{0}^{\infty} S_{\eta\eta}(f)  df.
+\end{equation}
+The significant wave height $H_s$, historically defined as the mean height of the highest one-third of waves observed by a mariner, is estimated from the spectrum as:
+\begin{equation}
 H_s = 4\sqrt{m_0}.
-\]
+\end{equation}
+This is a robust statistical measure of wave energy and is one of the most commonly used parameters in oceanography.
 
 \subsection{Peak Frequency Estimation}
-The peak frequency $f_p$ is identified as the frequency maximizing $S_{\eta\eta}(f)$. A parabolic interpolation in $\log$-spectral space improves resolution.
+The peak frequency $f_p$ is the frequency at which the wave spectrum $S_{\eta\eta}(f)$ attains its maximum value. It is a indicator of the dominant wave energy in the sea state. Simply choosing the frequency bin with the maximum spectral density can be inaccurate due to the limited resolution of the discrete spectrum.
 
-\subsection{Pierson--Moskowitz Spectrum Fit}
-The observed spectrum is compared against the Pierson--Moskowitz model
-\[
-S_{PM}(f;\alpha, f_p) = \alpha g^2 (2\pi f)^{-5} \exp\left[-\beta\left(\frac{f_p}{f}\right)^4\right],
-\]
-with $\beta = 0.74$. The parameters $\alpha$ and $f_p$ are estimated by minimizing the squared log-spectral error
-\[
-\text{cost}(\alpha,f_p) = \sum_i \left(\log S_{\eta\eta}(f_i) - \log S_{PM}(f_i;\alpha,f_p)\right)^2.
-\]
-A grid search followed by local refinement yields the optimal fit.
+To improve estimation, a parabolic interpolation is performed in the vicinity of the maximum bin. The algorithm fits a parabola to the logarithm of the spectral density values at the maximum bin and its two neighbors. The vertex of this parabola provides a sub-bin estimate of the true peak frequency, significantly improving accuracy.
+
+\subsection{Parametric Fit to the Pierson--Moskowitz Spectrum}
+\label{subsec:pmfit}
+Fully developed seas under steady wind conditions are often described by the Pierson--Moskowitz (P-M) spectrum. It is a one-parameter model based on wind speed. The classical form is:
+\begin{equation}
+\label{eq:pm_original}
+S_{PM}(f) = \alpha g^2 (2\pi)^{-4} f^{-5} \exp\left[-\beta\left(\frac{g}{2\pi U f}\right)^4\right],
+\end{equation}
+where $U$ is the wind speed at 19.5 m above the sea surface, $g$ is gravity, and $\alpha$ and $\beta$ are dimensionless constants ($\alpha=0.0081$, $\beta=0.74$).
+
+An equivalent form can be parameterized by the peak frequency $f_p$. By finding where the derivative of Eq.~\ref{eq:pm_original} vanishes, we find $f_p$ and $U$ are related by $f_p = \frac{g}{2\pi U} \beta^{1/4}$. Substituting back, we get the common $f_p$-parameterized form:
+\begin{equation}
+\label{eq:pm_fp}
+S_{PM}(f;\alpha, f_p) = \alpha g^2 (2\pi)^{-4} f^{-5} \exp\left[-\frac{5}{4}\left(\frac{f_p}{f}\right)^4\right].
+\end{equation}
+Note that $\beta$ becomes $5/4$ in this form. The \texttt{WaveSpectrumEstimator} uses this form but treats both $\alpha$ and $f_p$ as free parameters to be estimated from the data, making the fit more general.
+
+The fit is performed by minimizing the squared error in the log-spectral domain. This weights relative errors equally across all frequencies, preventing the fit from being dominated by the high energy values near the peak. The cost function is:
+\begin{equation}
+\text{cost}(\alpha, f_p) = \sum_{i} \left(\log S_{\eta\eta}(f_i) - \log S_{PM}(f_i;\alpha, f_p)\right)^2.
+\end{equation}
+A two-step optimization strategy is employed:
+\begin{enumerate}
+    \item \textbf{Grid Search}: A coarse grid search over a range of $\alpha$ and $f_p$ values is performed to find a region with a low cost.
+    \item \textbf{Local Refinement}: A local optimization algorithm (e.g., Nelder-Mead simplex) is used starting from the best grid point to find the precise minimum of the cost function.
+\end{enumerate}
+The resulting parameters $\alpha_{\text{fit}}$ and $f_{p,\text{fit}}$ describe the best-fit P-M spectrum to the observed data. The fit quality indicates how well the observed sea state conforms to the fully developed model.
 
 \section{Implementation Notes}
+\label{sec:implementation}
 \begin{itemize}
-\item Embedded-friendly: uses fixed-size arrays and Eigen matrices.
-\item Frequency grid constructed with logarithmic spacing at low frequencies and linear spacing at higher frequencies.
-\item Includes warm-up logic: spectrum becomes valid only after at least one full block is collected.
+\item \textbf{Embedded-Friendly Design}: The code avoids dynamic memory allocation, using fixed-size arrays and Eigen matrices of predetermined size. This ensures deterministic memory usage and avoids the pitfalls of heap fragmentation in long-running embedded applications.
+\item \textbf{Frequency Grid}: The target frequencies for the Goertzel algorithm are not linearly spaced. A logarithmic spacing is used at low frequencies (where $f^{-4}$ conversion requires high resolution) and linear spacing at higher frequencies. This provides better characterization of the spectrum shape with fewer total bins.
+\item \textbf{Warm-up Logic}: The circular buffer and filters require time to fill with valid data. The spectrum is only marked as valid after at least one full block of data ($N_\text{block}$ samples) has been processed at the decimated rate $f_s$.
+\item \textbf{Configuration}: Key parameters (decimation factor, block size, target frequency list, high-pass cutoff, window type) are configurable at compile-time or via constructor arguments, allowing the algorithm to be tailored to specific sensor characteristics and application requirements.
 \end{itemize}
 
 \section{Conclusion}
-The \texttt{WaveSpectrumEstimator} provides a computationally efficient and embedded-ready implementation of wave spectral estimation from acceleration data. It offers not only raw displacement spectra, but also higher-level oceanographic parameters such as significant wave height, peak frequency, and Pierson--Moskowitz spectrum fits.
-This makes it suitable for low-power autonomous platforms and real-time wave monitoring systems.
+The \texttt{WaveSpectrumEstimator} provides a computationally efficient and embedded-ready implementation of wave spectral estimation from acceleration data. By leveraging decimation to reduce data rates and the targeted Goertzel algorithm for spectral analysis, it achieves significant performance gains over naive FFT-based approaches. The pipeline is grounded in linear wave theory, converting accelerometer readings to a physically meaningful wave elevation spectrum. From this spectrum, it offers not only raw spectral densities but also higher-level oceanographic parameters such as significant wave height, peak frequency, and Pierson--Moskowitz spectrum fits. This combination of efficiency, robustness, and physical interpretability makes it highly suitable for low-power autonomous platforms and real-time wave monitoring systems.
 
+%\bibliographystyle{plain}
+%\bibliography{references}
 \end{document}
