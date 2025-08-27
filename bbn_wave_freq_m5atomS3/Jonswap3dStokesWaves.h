@@ -28,7 +28,7 @@
 // JonswapSpectrum 
 template<int N_FREQ = 256>
 class JonswapSpectrum {
-public:
+public:    
     JonswapSpectrum(double Hs, double Tp,
                     double f_min = 0.02, double f_max = 0.8,
                     double gamma = 2.0, double g = 9.81)
@@ -125,6 +125,7 @@ private:
 template<int N_FREQ = 256>
 class Jonswap3dStokesWaves {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     struct WaveState {
         Eigen::Vector3d displacement;
         Eigen::Vector3d velocity;
