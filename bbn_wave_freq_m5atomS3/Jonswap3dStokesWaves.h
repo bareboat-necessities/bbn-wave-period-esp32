@@ -122,26 +122,6 @@ private:
 };
 
 // Jonswap3dStokesWaves
-#pragma once
-
-#ifdef EIGEN_NON_ARDUINO
-#include <Eigen/Dense>
-#else
-#include <ArduinoEigenDense.h>
-#endif
-#include <random>
-#include <cmath>
-#include <stdexcept>
-#include <algorithm>
-
-/*
-  Optimized Jonswap3dStokesWaves
-  - Preallocated all temporaries
-  - No heap allocation in main loop
-  - Fully vectorized
-  - Uses upper-triangle pairwise arrays
-*/
-
 template<int N_FREQ=256>
 class Jonswap3dStokesWaves {
 public:
