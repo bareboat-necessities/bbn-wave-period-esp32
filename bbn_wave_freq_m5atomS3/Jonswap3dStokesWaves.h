@@ -143,10 +143,9 @@ public:
         : Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
           seed_(seed), pairwise_size_((size_t)N_FREQ*(N_FREQ+1)/2),
+          spectrum_(Hs, Tp, f_min, f_max, gamma, g),
           exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN())
     {
-        spectrum_ = JonswapSpectrum<N_FREQ>(Hs,Tp,f_min,f_max,gamma,g);
-
         frequencies_ = spectrum_.frequencies();
         S_ = spectrum_.spectrum();
         A_ = spectrum_.amplitudes();
