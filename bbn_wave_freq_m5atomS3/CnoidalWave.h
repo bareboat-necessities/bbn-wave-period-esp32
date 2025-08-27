@@ -94,7 +94,6 @@ public:
         sinTheta = std::sin(theta);
     }
 
-    // ── Interface identical to TrochoidalWave ──
     Real surfaceElevation(Real x, Real y, Real t) const {
         Real s = x*cosTheta + y*sinTheta;
         Real theta_ = k*(s - c*t);
@@ -135,7 +134,7 @@ public:
         return -omega*omega * Hc * (cn*cn - sn*sn) * sinh(k*(z+h)) / sinh(k*h);
     }
 
-    // ── Accessors ──────────────────────────────
+    // Accessors 
     Real depth()      const { return h; }
     Real height()     const { return H; }
     Real period()     const { return T; }
