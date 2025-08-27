@@ -323,6 +323,35 @@ private:
         return eta2;
     }
 
+template <typename Func>
+void loopOverPairs(double x, double y, double t, Func&& f) const {
+    for (int i = 0; i < N_FREQ; ++i) {
+        for (int j = i; j < N_FREQ; ++j) {
+            size_t idx = upper_index(i, j);
+            double Bij = Bij_flat_[idx];
+            if (std::abs(Bij) < 1e-18) continue;
+
+            double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
+                        - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
+            double cos_th2 = std::cos(th);
+            double sin_th2 = std::sin(th);
+
+            double ksum = k_sum_flat_[idx];
+            double kx_sum = kx_sum_flat_[idx];
+            double ky_sum = ky_sum_flat_[idx];
+            double omega_sum = omega_sum_flat_[idx];
+
+            double hx = (ksum > 1e-12) ? (kx_sum / ksum) : 0.0;
+            double hy = (ksum > 1e-12) ? (ky_sum / ksum) : 0.0;
+
+            double factor = (i == j) ? 1.0 : 2.0;
+
+            f(idx, Bij, cos_th2, sin_th2, ksum, kx_sum, ky_sum,
+              omega_sum, hx, hy, factor);
+        }
+    }
+}
+
 public:
 
 Eigen::Vector3d evaluateDisplacement(double x, double y, double t) const {
@@ -332,30 +361,19 @@ Eigen::Vector3d evaluateDisplacement(double x, double y, double t) const {
     Eigen::Array<double, N_FREQ, 1> sin_th = theta.sin();
     Eigen::Array<double, N_FREQ, 1> cos_th = theta.cos();
 
-    // first-order contributions
     double dx = (-A_.array() * cos_th * dir_x_.array()).sum();
     double dy = (-A_.array() * cos_th * dir_y_.array()).sum();
     double dz = ( A_.array() * sin_th).sum();
 
-    // second-order vertical
     dz += eta2_sumfreq(x, y, t);
 
-    // second-order horizontal (still O(N^2))
-    for (int i = 0; i < N_FREQ; ++i) {
-        for (int j = i; j < N_FREQ; ++j) {
-            size_t idx = upper_index(i, j);
-            double Bij = Bij_flat_[idx];
-            if (std::abs(Bij) < 1e-18) continue;
-            double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
-                        - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
-            double cos_th2 = std::cos(th);
-            double ksum2 = k_sum_flat_[idx] * k_sum_flat_[idx];
-            if (ksum2 <= 1e-18) continue;
-            double factor = (i == j) ? 1.0 : 2.0;
-            dx += factor * (-Bij) * cos_th2 * (kx_sum_flat_[idx] / ksum2);
-            dy += factor * (-Bij) * cos_th2 * (ky_sum_flat_[idx] / ksum2);
-        }
-    }
+    loopOverPairs(x, y, t, [&](size_t idx, double Bij, double cos_th2, double, 
+                               double ksum, double kx_sum, double ky_sum,
+                               double, double hx, double hy, double factor) {
+        if (ksum <= 1e-18) return;
+        dx += factor * (-Bij) * cos_th2 * hx;
+        dy += factor * (-Bij) * cos_th2 * hy;
+    });
     return {dx, dy, dz};
 }
 
@@ -368,30 +386,17 @@ Eigen::Vector3d evaluateVelocity(double x, double y, double t) const {
 
     Eigen::Array<double, N_FREQ, 1> fac = A_.array() * omega_.array();
 
-    // first-order
     double vx = (fac * sin_th * dir_x_.array()).sum();
     double vy = (fac * sin_th * dir_y_.array()).sum();
     double vz = (fac * cos_th).sum();
 
-    // second-order (O(N^2))
-    for (int i = 0; i < N_FREQ; ++i) {
-        for (int j = i; j < N_FREQ; ++j) {
-            size_t idx = upper_index(i, j);
-            double Bij = Bij_flat_[idx];
-            if (std::abs(Bij) < 1e-18) continue;
-            double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
-                        - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
-            double sin_th2 = std::sin(th);
-            double sum_omega = omega_sum_flat_[idx];
-            double ksum = k_sum_flat_[idx];
-            double hx = (ksum > 1e-12) ? (kx_sum_flat_[idx] / ksum) : 0.0;
-            double hy = (ksum > 1e-12) ? (ky_sum_flat_[idx] / ksum) : 0.0;
-            double factor = (i == j) ? 1.0 : 2.0;
-            vz += factor * (-Bij) * sum_omega * sin_th2;
-            vx += factor * (-Bij) * sum_omega * sin_th2 * hx;
-            vy += factor * (-Bij) * sum_omega * sin_th2 * hy;
-        }
-    }
+    loopOverPairs(x, y, t, [&](size_t, double Bij, double, double sin_th2, 
+                               double, double, double,
+                               double omega_sum, double hx, double hy, double factor) {
+        vz += factor * (-Bij) * omega_sum * sin_th2;
+        vx += factor * (-Bij) * omega_sum * sin_th2 * hx;
+        vy += factor * (-Bij) * omega_sum * sin_th2 * hy;
+    });
 
     vx += stokes_drift_mean_xy_.x();
     vy += stokes_drift_mean_xy_.y();
@@ -408,30 +413,17 @@ Eigen::Vector3d evaluateAcceleration(double x, double y, double t) const {
 
     Eigen::Array<double, N_FREQ, 1> fac = A_.array() * omega_.array().square();
 
-    // first-order
     double ax = (fac * cos_th * dir_x_.array()).sum();
     double ay = (fac * cos_th * dir_y_.array()).sum();
     double az = (-fac * sin_th).sum();
 
-    // second-order (O(N^2))
-    for (int i = 0; i < N_FREQ; ++i) {
-        for (int j = i; j < N_FREQ; ++j) {
-            size_t idx = upper_index(i, j);
-            double Bij = Bij_flat_[idx];
-            if (std::abs(Bij) < 1e-18) continue;
-            double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
-                        - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
-            double cos_th2 = std::cos(th);
-            double sum_omega2 = omega_sum_flat_[idx] * omega_sum_flat_[idx];
-            double ksum = k_sum_flat_[idx];
-            double hx = (ksum > 1e-12) ? (kx_sum_flat_[idx] / ksum) : 0.0;
-            double hy = (ksum > 1e-12) ? (ky_sum_flat_[idx] / ksum) : 0.0;
-            double factor = (i == j) ? 1.0 : 2.0;
-            az += factor * Bij * sum_omega2 * cos_th2;
-            ax += factor * Bij * sum_omega2 * cos_th2 * hx;
-            ay += factor * Bij * sum_omega2 * cos_th2 * hy;
-        }
-    }
+    loopOverPairs(x, y, t, [&](size_t, double Bij, double cos_th2, double, 
+                               double, double, double,
+                               double omega_sum, double hx, double hy, double factor) {
+        az += factor * Bij * omega_sum * omega_sum * cos_th2;
+        ax += factor * Bij * omega_sum * omega_sum * cos_th2 * hx;
+        ay += factor * Bij * omega_sum * omega_sum * cos_th2 * hy;
+    });
     return {ax, ay, az};
 }
 
