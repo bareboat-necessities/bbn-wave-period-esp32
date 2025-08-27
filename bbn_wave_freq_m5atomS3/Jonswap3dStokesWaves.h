@@ -323,6 +323,8 @@ private:
         return eta2;
     }
 
+public:
+
 Eigen::Vector3d evaluateDisplacement(double x, double y, double t) const {
     Eigen::Array<double, N_FREQ, 1> theta =
         (kx_ * x + ky_ * y - omega_ * t + phi_).array();
