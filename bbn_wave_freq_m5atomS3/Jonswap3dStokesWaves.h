@@ -434,9 +434,6 @@ private:
         double max_steepness = (A_.array()*k_.array()).maxCoeff();
         if (max_steepness > 0.2) throw std::runtime_error("Wave steepness exceeds 0.2");
     }
-
-    // private phi storage (frequency phases)
-    Eigen::Matrix<double, N_FREQ, 1> phi_;
 };
 
 #ifdef JONSWAP_TEST
