@@ -182,7 +182,6 @@ public:
     }
 
 private:
-    // -------------------- Members --------------------
     double Hs_, Tp_, mean_dir_rad_, gamma_, g_, spreading_exponent_;
     unsigned int seed_;
     JonswapSpectrum<N_FREQ> spectrum_;
@@ -198,12 +197,12 @@ private:
     mutable Eigen::Array<double, N_FREQ,1> exp_kz_cache_;
     mutable double exp_kz_cached_z_;
 
-    // -------------------- Temporaries (stack-free) --------------------
+    // Temporaries (stack-free)
     mutable Eigen::Array<double, N_FREQ,1> th_, cos_th_, sin_th_, exp_z_;
     mutable Eigen::Array<double, N_PAIRWISE,1> th2_, cos_th2_, sin_th2_, ksum_safe_;
     mutable Eigen::Array<double, N_PAIRWISE,1> factor_omega_, factor_omega2_;
 
-    // -------------------- Helpers --------------------
+    // Helpers
     inline size_t upper_index(int i,int j) const {
         size_t ii = static_cast<size_t>(i);
         size_t N = static_cast<size_t>(N_FREQ);
@@ -284,7 +283,7 @@ private:
         }
     }
 
-    // -------------------- Evaluations --------------------
+    // Evaluations
     Eigen::Vector3d evaluateDisplacement(double x,double y,double t,double z) const {
         ensureExpKzCached(z);
         th_ = kx_*x + ky_*y - omega_*t + phi_;
