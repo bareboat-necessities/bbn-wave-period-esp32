@@ -323,106 +323,115 @@ private:
         return eta2;
     }
 
-    Eigen::Vector3d evaluateDisplacement(double x, double y, double t) const {
-        Eigen::Vector3d d = Eigen::Vector3d::Zero();
-        for (int i = 0; i < N_FREQ; ++i) {
-            double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
-            double sin_th = std::sin(th), cos_th = std::cos(th);
-            d.x() += -A_(i) * cos_th * dir_x_(i);  // flipped sign
-            d.y() += -A_(i) * cos_th * dir_y_(i);  // flipped sign
-            d.z() +=  A_(i) * sin_th;              // vertical positive up
+Eigen::Vector3d evaluateDisplacement(double x, double y, double t) const {
+    Eigen::Array<double, N_FREQ, 1> theta =
+        (kx_ * x + ky_ * y - omega_ * t + phi_).array();
+
+    Eigen::Array<double, N_FREQ, 1> sin_th = theta.sin();
+    Eigen::Array<double, N_FREQ, 1> cos_th = theta.cos();
+
+    // first-order contributions
+    double dx = (-A_.array() * cos_th * dir_x_.array()).sum();
+    double dy = (-A_.array() * cos_th * dir_y_.array()).sum();
+    double dz = ( A_.array() * sin_th).sum();
+
+    // second-order vertical
+    dz += eta2_sumfreq(x, y, t);
+
+    // second-order horizontal (still O(N^2))
+    for (int i = 0; i < N_FREQ; ++i) {
+        for (int j = i; j < N_FREQ; ++j) {
+            size_t idx = upper_index(i, j);
+            double Bij = Bij_flat_[idx];
+            if (std::abs(Bij) < 1e-18) continue;
+            double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
+                        - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
+            double cos_th2 = std::cos(th);
+            double ksum2 = k_sum_flat_[idx] * k_sum_flat_[idx];
+            if (ksum2 <= 1e-18) continue;
+            double factor = (i == j) ? 1.0 : 2.0;
+            dx += factor * (-Bij) * cos_th2 * (kx_sum_flat_[idx] / ksum2);
+            dy += factor * (-Bij) * cos_th2 * (ky_sum_flat_[idx] / ksum2);
         }
-    
-        // second-order vertical
-        d.z() += eta2_sumfreq(x, y, t);
-    
-        // second-order horizontal
-        for (int i = 0; i < N_FREQ; ++i) {
-            for (int j = i; j < N_FREQ; ++j) {
-                size_t idx = upper_index(i, j);
-                double Bij = Bij_flat_[idx];
-                if (std::abs(Bij) < 1e-18) continue;
-                double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
-                            - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
-                double cos_th = std::cos(th);
-                double ksum2 = k_sum_flat_[idx] * k_sum_flat_[idx];
-                if (ksum2 <= 1e-18) continue;
-                double factor = (i == j) ? 1.0 : 2.0;
-                d.x() += factor * (-Bij) * cos_th * (kx_sum_flat_[idx] / ksum2);
-                d.y() += factor * (-Bij) * cos_th * (ky_sum_flat_[idx] / ksum2);
-            }
-        }
-    
-        return d;
     }
-    
-    Eigen::Vector3d evaluateVelocity(double x, double y, double t) const {
-        Eigen::Vector3d v = Eigen::Vector3d::Zero();
-        for (int i = 0; i < N_FREQ; ++i) {
-            double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
-            double sin_th = std::sin(th), cos_th = std::cos(th);
-            double fac = A_(i) * omega_(i);
-            v.x() += fac * sin_th * dir_x_(i);   // horizontal corrected
-            v.y() += fac * sin_th * dir_y_(i);   // horizontal corrected
-            v.z() += fac * cos_th;               // vertical derivative of sin
+    return {dx, dy, dz};
+}
+
+Eigen::Vector3d evaluateVelocity(double x, double y, double t) const {
+    Eigen::Array<double, N_FREQ, 1> theta =
+        (kx_ * x + ky_ * y - omega_ * t + phi_).array();
+
+    Eigen::Array<double, N_FREQ, 1> sin_th = theta.sin();
+    Eigen::Array<double, N_FREQ, 1> cos_th = theta.cos();
+
+    Eigen::Array<double, N_FREQ, 1> fac = A_.array() * omega_.array();
+
+    // first-order
+    double vx = (fac * sin_th * dir_x_.array()).sum();
+    double vy = (fac * sin_th * dir_y_.array()).sum();
+    double vz = (fac * cos_th).sum();
+
+    // second-order (O(N^2))
+    for (int i = 0; i < N_FREQ; ++i) {
+        for (int j = i; j < N_FREQ; ++j) {
+            size_t idx = upper_index(i, j);
+            double Bij = Bij_flat_[idx];
+            if (std::abs(Bij) < 1e-18) continue;
+            double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
+                        - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
+            double sin_th2 = std::sin(th);
+            double sum_omega = omega_sum_flat_[idx];
+            double ksum = k_sum_flat_[idx];
+            double hx = (ksum > 1e-12) ? (kx_sum_flat_[idx] / ksum) : 0.0;
+            double hy = (ksum > 1e-12) ? (ky_sum_flat_[idx] / ksum) : 0.0;
+            double factor = (i == j) ? 1.0 : 2.0;
+            vz += factor * (-Bij) * sum_omega * sin_th2;
+            vx += factor * (-Bij) * sum_omega * sin_th2 * hx;
+            vy += factor * (-Bij) * sum_omega * sin_th2 * hy;
         }
-    
-        // second-order
-        for (int i = 0; i < N_FREQ; ++i) {
-            for (int j = i; j < N_FREQ; ++j) {
-                size_t idx = upper_index(i, j);
-                double Bij = Bij_flat_[idx];
-                if (std::abs(Bij) < 1e-18) continue;
-                double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
-                            - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
-                double sin_th = std::sin(th);
-                double sum_omega = omega_sum_flat_[idx];
-                double ksum = k_sum_flat_[idx];
-                double hx = (ksum > 1e-12) ? (kx_sum_flat_[idx] / ksum) : 0.0;
-                double hy = (ksum > 1e-12) ? (ky_sum_flat_[idx] / ksum) : 0.0;
-                double factor = (i == j) ? 1.0 : 2.0;
-                v.z() += factor * (-Bij) * sum_omega * sin_th;
-                v.x() += factor * (-Bij) * sum_omega * sin_th * hx;
-                v.y() += factor * (-Bij) * sum_omega * sin_th * hy;
-            }
-        }
-    
-        v.x() += stokes_drift_mean_xy_.x();
-        v.y() += stokes_drift_mean_xy_.y();
-        return v;
     }
-    
-    Eigen::Vector3d evaluateAcceleration(double x, double y, double t) const {
-        Eigen::Vector3d a = Eigen::Vector3d::Zero();
-        for (int i = 0; i < N_FREQ; ++i) {
-            double th = kx_(i) * x + ky_(i) * y - omega_(i) * t + phi_(i);
-            double sin_th = std::sin(th), cos_th = std::cos(th);
-            double fac = A_(i) * omega_(i) * omega_(i);
-            a.x() += fac * cos_th * dir_x_(i);   // horizontal corrected
-            a.y() += fac * cos_th * dir_y_(i);   // horizontal corrected
-            a.z() += -fac * sin_th;              // vertical derivative of cos
+
+    vx += stokes_drift_mean_xy_.x();
+    vy += stokes_drift_mean_xy_.y();
+
+    return {vx, vy, vz};
+}
+
+Eigen::Vector3d evaluateAcceleration(double x, double y, double t) const {
+    Eigen::Array<double, N_FREQ, 1> theta =
+        (kx_ * x + ky_ * y - omega_ * t + phi_).array();
+
+    Eigen::Array<double, N_FREQ, 1> sin_th = theta.sin();
+    Eigen::Array<double, N_FREQ, 1> cos_th = theta.cos();
+
+    Eigen::Array<double, N_FREQ, 1> fac = A_.array() * omega_.array().square();
+
+    // first-order
+    double ax = (fac * cos_th * dir_x_.array()).sum();
+    double ay = (fac * cos_th * dir_y_.array()).sum();
+    double az = (-fac * sin_th).sum();
+
+    // second-order (O(N^2))
+    for (int i = 0; i < N_FREQ; ++i) {
+        for (int j = i; j < N_FREQ; ++j) {
+            size_t idx = upper_index(i, j);
+            double Bij = Bij_flat_[idx];
+            if (std::abs(Bij) < 1e-18) continue;
+            double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
+                        - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
+            double cos_th2 = std::cos(th);
+            double sum_omega2 = omega_sum_flat_[idx] * omega_sum_flat_[idx];
+            double ksum = k_sum_flat_[idx];
+            double hx = (ksum > 1e-12) ? (kx_sum_flat_[idx] / ksum) : 0.0;
+            double hy = (ksum > 1e-12) ? (ky_sum_flat_[idx] / ksum) : 0.0;
+            double factor = (i == j) ? 1.0 : 2.0;
+            az += factor * Bij * sum_omega2 * cos_th2;
+            ax += factor * Bij * sum_omega2 * cos_th2 * hx;
+            ay += factor * Bij * sum_omega2 * cos_th2 * hy;
         }
-    
-        for (int i = 0; i < N_FREQ; ++i) {
-            for (int j = i; j < N_FREQ; ++j) {
-                size_t idx = upper_index(i, j);
-                double Bij = Bij_flat_[idx];
-                if (std::abs(Bij) < 1e-18) continue;
-                double th = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y
-                            - omega_sum_flat_[idx] * t + phi_sum_flat_[idx];
-                double cos_th = std::cos(th);
-                double sum_omega2 = omega_sum_flat_[idx] * omega_sum_flat_[idx];
-                double ksum = k_sum_flat_[idx];
-                double hx = (ksum > 1e-12) ? (kx_sum_flat_[idx] / ksum) : 0.0;
-                double hy = (ksum > 1e-12) ? (ky_sum_flat_[idx] / ksum) : 0.0;
-                double factor = (i == j) ? 1.0 : 2.0;
-                a.z() += factor * Bij * sum_omega2 * cos_th;
-                a.x() += factor * Bij * sum_omega2 * cos_th * hx;
-                a.y() += factor * Bij * sum_omega2 * cos_th * hy;
-            }
-        }
-        return a;
     }
+    return {ax, ay, az};
+}
 
     void checkSteepness() const {
         double max_steepness = (A_.array() * k_.array()).maxCoeff();
