@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
 
   t = 0.0;
 
-  TestType test_type = PM_STOKES;
+  TestType test_type = JONSWAP;
   if (test_type == TestType::GERSTEN) {
     while (t < test_duration) {
       float zero_mean_gauss_noise = dist(generator);
@@ -212,9 +212,9 @@ int main(int argc, char *argv[]) {
       t += delta_t;
     }
   } else if (test_type == TestType::JONSWAP) {
-    Jonswap3dStokesWaves<256> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, 0.02, 0.8, 2.0, g_std, 15.0);
+    auto waveModel = std::make_unique<Jonswap3dStokesWaves<256>>(w->amplitude(), w->period(), 30.0 /*dir*/, 0.02, 0.8, 2.0, g_std, 15.0);
     while (t < test_duration) {
-       Jonswap3dStokesWaves<>::WaveState state = waveModel.getLagrangianState(0.0, 0.0, t);
+       Jonswap3dStokesWaves<>::WaveState state = waveModel->getLagrangianState(0.0, 0.0, t);
        float zero_mean_gauss_noise = dist(generator);
        float a = state.acceleration.z() + bias + zero_mean_gauss_noise;
        float v = state.velocity.z();
