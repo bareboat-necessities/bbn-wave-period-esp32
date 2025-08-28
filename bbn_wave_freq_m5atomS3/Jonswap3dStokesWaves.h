@@ -417,15 +417,18 @@ void generateWaveJonswapCSV(const std::string& filename,
     const int N_time = static_cast<int>(duration / dt) + 1;
     Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
 
-    // Output matrices
+    // Output arrays: 3 x N_time
     Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
 
-    // Vectorized over time
-    for (int i = 0; i < N_time; ++i) {
+    // --- Parallel over time steps ---
+#pragma omp parallel for
+    for(int i = 0; i < N_time; ++i) {
         auto state = waveModel->getLagrangianState(0.0, 0.0, time(i));
-        disp.col(i) = state.displacement;
-        vel.col(i) = state.velocity;
-        acc.col(i) = state.acceleration;
+        for(int j = 0; j < 3; ++j) {
+            disp(j,i) = state.displacement(j);
+            vel(j,i)  = state.velocity(j);
+            acc(j,i)  = state.acceleration(j);
+        }
     }
 
     std::ofstream file(filename);
@@ -444,4 +447,3 @@ void Jonswap_testWavePatterns() {
     generateWaveJonswapCSV("long_waves_stokes.csv", 4.0, 12.0, 30.0);
 }
 #endif
-
