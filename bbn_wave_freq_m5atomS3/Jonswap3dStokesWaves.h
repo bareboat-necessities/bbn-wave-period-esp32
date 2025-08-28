@@ -423,3 +423,43 @@ private:
             throw std::runtime_error("Wave too steep (>0.4), unstable");
     }
 };
+
+#ifdef JONSWAP_TEST
+void generateWaveJonswapCSV(const std::string& filename,
+                            double Hs, double Tp, double mean_dir_deg,
+                            double duration = 40.0, double dt = 0.005) {
+
+    constexpr int N_FREQ = 256;
+    auto waveModel = std::make_unique<Jonswap3dStokesWaves<N_FREQ>>(Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0);
+
+    const int N_time = static_cast<int>(duration / dt) + 1;
+    Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
+
+    // Output matrices
+    Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
+
+    // Vectorized over time
+    for (int i = 0; i < N_time; ++i) {
+        auto state = waveModel->getLagrangianState(0.0, 0.0, time(i));
+        disp.col(i) = state.displacement;
+        vel.col(i) = state.velocity;
+        acc.col(i) = state.acceleration;
+    }
+
+    std::ofstream file(filename);
+    file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z\n";
+    for (int i = 0; i < N_time; ++i) {
+        file << time(i) << ","
+             << disp(0,i) << "," << disp(1,i) << "," << disp(2,i) << ","
+             << vel(0,i)  << "," << vel(1,i)  << "," << vel(2,i)  << ","
+             << acc(0,i)  << "," << acc(1,i)  << "," << acc(2,i)  << "\n";
+    }
+}
+
+void Jonswap_testWavePatterns() {
+    generateWaveJonswapCSV("short_waves_stokes.csv", 0.5, 3.0, 30.0);
+    generateWaveJonswapCSV("medium_waves_stokes.csv", 2.0, 7.0, 30.0);
+    generateWaveJonswapCSV("long_waves_stokes.csv", 4.0, 12.0, 30.0);
+}
+#endif
+
