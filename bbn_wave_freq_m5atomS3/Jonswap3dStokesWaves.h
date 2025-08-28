@@ -5,11 +5,20 @@
 #else
 #include <ArduinoEigenDense.h>
 #endif
+
 #include <random>
 #include <cmath>
 #include <stdexcept>
 #include <string>
 #include <algorithm>
+#include <limits>
+#include <vector>
+
+#ifndef PI
+static constexpr double PI = 3.14159265358979323846264338327950288;
+#else
+static constexpr double PI = M_PI;
+#endif
 
 #ifdef JONSWAP_TEST
 #include <iostream>
@@ -91,7 +100,7 @@ private:
             double f = frequencies_(i);
             double sigma = (f <= fp) ? 0.07 : 0.09;
             double r = std::exp(-std::pow(f - fp, 2) / (2.0 * sigma * sigma * fp * fp));
-            double base = (g_ * g_) / std::pow(2.0 * M_PI, 4.0) * std::pow(f, -5.0)
+            double base = (g_ * g_) / std::pow(2.0 * PI, 4.0) * std::pow(f, -5.0)
                           * std::exp(-1.25 * std::pow(fp / f, 4.0));
             S0(i) = base * std::pow(gamma_, r);
         }
@@ -140,18 +149,23 @@ public:
                          double gamma = 2.0, double g = 9.81,
                          double spreading_exponent = 15.0,
                          unsigned int seed = 239u)
-        : Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
+        : Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * PI / 180.0),
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
           seed_(seed), pairwise_size_((size_t)N_FREQ*(N_FREQ+1)/2),
           spectrum_(Hs, Tp, f_min, f_max, gamma, g),
-          exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN())
+          theta2_cache_(pairwise_size_, std::numeric_limits<double>::quiet_NaN()),
+          exp_kz_freq_cache_(N_FREQ, std::numeric_limits<double>::quiet_NaN()),
+          exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
+          theta2_cached_x_(std::numeric_limits<double>::quiet_NaN()),
+          theta2_cached_y_(std::numeric_limits<double>::quiet_NaN()),
+          exp_kz_cached_z_flag_(false)
     {
         frequencies_ = spectrum_.frequencies();
         S_ = spectrum_.spectrum();
         A_ = spectrum_.amplitudes();
         df_ = spectrum_.df();
 
-        omega_ = 2.0 * M_PI * frequencies_;
+        omega_ = 2.0 * PI * frequencies_;
         k_ = omega_.array().square() / g_;
 
         dir_x_.setZero();
@@ -166,6 +180,12 @@ public:
         computePerComponentStokesDriftEstimate();
         precomputePairwise();
         checkSteepness();
+
+        // --- allocate trig caches once ---
+        trig_cache_.sin_first.resize(N_FREQ);
+        trig_cache_.cos_first.resize(N_FREQ);
+        trig_cache_.sin_second.resize(static_cast<int>(pairwise_size_));
+        trig_cache_.cos_second.resize(static_cast<int>(pairwise_size_));
     }
 
     // Get Lagrangian state at single point (x,y) and time t
@@ -215,7 +235,8 @@ public:
                 acc.x() += factor * Bij_flat_[idx] * sum_omega2 * cos_th * hx;
                 acc.y() += factor * Bij_flat_[idx] * sum_omega2 * cos_th * hy;
                 acc.z() += factor * Bij_flat_[idx] * sum_omega2 * cos_th;
-            }
+            },
+            z   // <-- depth passed here
         );
     }
 
@@ -233,8 +254,12 @@ private:
     Eigen::Vector2d stokes_drift_mean_xy_;
 
     std::vector<double> Bij_flat_, kx_sum_flat_, ky_sum_flat_, k_sum_flat_, omega_sum_flat_, phi_sum_flat_;
-    mutable std::vector<double> exp_kz_cache_;
+    mutable std::vector<double> theta2_cache_;   // per-instance 2nd-order theta (depends on x,y)
+    mutable double theta2_cached_x_, theta2_cached_y_;
+
+    mutable std::vector<double> exp_kz_freq_cache_;   // per-frequency exp(k*z)
     mutable double exp_kz_cached_z_;
+    mutable bool exp_kz_cached_z_flag_;
 
     // Trig caching per time
     struct TrigCache {
@@ -247,16 +272,17 @@ private:
     // --- Initialization helpers ---
     void initializeRandomPhases() {
         std::mt19937 gen(seed_);
-        std::uniform_real_distribution<double> dist(0.0, 2.0*M_PI);
+        std::uniform_real_distribution<double> dist(0.0, 2.0*PI);
         for(int i=0;i<N_FREQ;++i) phi_(i) = dist(gen);
     }
 
     void initializeDirectionalSpread() {
         std::mt19937 gen(seed_+1);
-        std::uniform_real_distribution<double> u_dist(0.0, 2.0*M_PI);
+        std::uniform_real_distribution<double> u_dist(0.0, 2.0*PI);
         std::uniform_real_distribution<double> y_dist(0.0, 1.0);
         for(int i=0;i<N_FREQ;++i){
             double theta=0.0;
+            // accept-reject; note: for large spreading_exponent this can be slow
             while(true){
                 double candidate=u_dist(gen);
                 double clamped=std::max(0.0,std::cos(candidate-mean_dir_rad_));
@@ -279,7 +305,7 @@ private:
         stokes_drift_scalar_.setZero();
         stokes_drift_mean_xy_.setZero();
         for(int i=0;i<N_FREQ;++i){
-            double Usi=0.5*A_(i)*A_(i)*k_(i)*omega_(i);
+            double Usi=0.5*A_(i)*A_(i)*k_(i)*omega_(i); // surface value
             stokes_drift_scalar_(i)=Usi;
             stokes_drift_mean_xy_.x() += Usi*dir_x_(i);
             stokes_drift_mean_xy_.y() += Usi*dir_y_(i);
@@ -314,8 +340,6 @@ private:
                 phi_sum_flat_[idx]=phi_sum;
             }
         }
-        exp_kz_cache_.assign(pairwise_size_, std::numeric_limits<double>::quiet_NaN());
-        exp_kz_cached_z_ = std::numeric_limits<double>::quiet_NaN();
     }
 
     void checkSteepness() const {
@@ -326,57 +350,93 @@ private:
     inline size_t upper_index(int i,int j) const {
         const size_t N = (size_t)N_FREQ;
         size_t ii = (size_t)i;
-        return ii*N-(ii*(ii-1))/2 + (size_t)(j-i);
+        return ii*N - (ii*(ii-1))/2 + (size_t)(j-i);
     }
 
     // --- Core cached evaluation ---
     template<typename FuncFirst, typename FuncSecond>
     WaveState evalLagrangianCached(double x, double y, double t,
                                    FuncFirst computeFirst,
-                                   FuncSecond computeSecond) const
+                                   FuncSecond computeSecond,
+                                   double z = 0.0) const
     {
         Eigen::Vector3d disp=Eigen::Vector3d::Zero();
         Eigen::Vector3d vel=Eigen::Vector3d::Zero();
         Eigen::Vector3d acc=Eigen::Vector3d::Zero();
 
-        Eigen::ArrayXd theta0 = kx_.array()*x + ky_.array()*y + phi_.array();
-        static std::vector<double> theta2_static;
-        if(theta2_static.size() != pairwise_size_){
-            theta2_static.resize(pairwise_size_);
-            for(int i=0;i<N_FREQ;++i)
-                for(int j=i;j<N_FREQ;++j)
-                    theta2_static[upper_index(i,j)] = kx_sum_flat_[upper_index(i,j)]*x +
-                                                     ky_sum_flat_[upper_index(i,j)]*y +
-                                                     phi_sum_flat_[upper_index(i,j)];
+        // --- per-frequency exp(k*z) cache ---
+        if (!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z) {
+            for (int i = 0; i < N_FREQ; ++i)
+                exp_kz_freq_cache_[i] = std::exp(k_(i) * z);   // exp(k*z)
+            exp_kz_cached_z_ = z;
+            exp_kz_cached_z_flag_ = true;
         }
 
+        // First-order theta
+        Eigen::ArrayXd theta0 = kx_.array()*x + ky_.array()*y + phi_.array();
+
+        // Ensure 2nd-order theta is computed for this (x,y)
+        if (std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
+            theta2_cached_x_ != x || theta2_cached_y_ != y) {
+            for(int i=0;i<N_FREQ;++i) {
+                for(int j=i;j<N_FREQ;++j) {
+                    size_t idx = upper_index(i,j);
+                    theta2_cache_[idx] = kx_sum_flat_[idx]*x +
+                                         ky_sum_flat_[idx]*y +
+                                         phi_sum_flat_[idx];
+                }
+            }
+            theta2_cached_x_ = x;
+            theta2_cached_y_ = y;
+        }
+
+        // Update trig cache if time changed
         if(trig_cache_.last_t != t){
             trig_cache_.sin_first = (theta0 - omega_.array()*t).sin();
             trig_cache_.cos_first = (theta0 - omega_.array()*t).cos();
 
-            trig_cache_.sin_second.resize(pairwise_size_);
-            trig_cache_.cos_second.resize(pairwise_size_);
             for(size_t idx=0; idx<pairwise_size_; ++idx){
-                double th = theta2_static[idx] - omega_sum_flat_[idx]*t;
-                trig_cache_.sin_second(idx) = std::sin(th);
-                trig_cache_.cos_second(idx) = std::cos(th);
+                double th = theta2_cache_[idx] - omega_sum_flat_[idx]*t;
+                trig_cache_.sin_second(static_cast<int>(idx)) = std::sin(th);
+                trig_cache_.cos_second(static_cast<int>(idx)) = std::cos(th);
             }
             trig_cache_.last_t = t;
         }
 
-        for(int i=0;i<N_FREQ;++i)
-            computeFirst(disp, vel, acc, i, trig_cache_.sin_first(i), trig_cache_.cos_first(i));
+        // --- First-order contributions (with exp(k*z)) ---
+        for(int i=0;i<N_FREQ;++i) {
+            double decay = exp_kz_freq_cache_[i];
+            computeFirst(disp, vel, acc, i,
+                         trig_cache_.sin_first(i) * decay,
+                         trig_cache_.cos_first(i) * decay);
+        }
 
+        // --- Second-order contributions (with exp(k_sum*z)) ---
         for(int i=0;i<N_FREQ;++i)
             for(int j=i;j<N_FREQ;++j){
                 size_t idx=upper_index(i,j);
                 double factor=(i==j)?1.0:2.0;
+
+                double ksum = k_sum_flat_[idx];
+                double decay = std::exp(ksum * z);
+
                 computeSecond(disp, vel, acc, idx, factor,
-                              trig_cache_.sin_second(idx), trig_cache_.cos_second(idx));
+                              trig_cache_.sin_second(static_cast<int>(idx)) * decay,
+                              trig_cache_.cos_second(static_cast<int>(idx)) * decay);
             }
 
-        vel.x() += stokes_drift_mean_xy_.x();
-        vel.y() += stokes_drift_mean_xy_.y();
+        // --- Depth-dependent Stokes drift (decays as exp(2*k*z)) ---
+        // compute the mean Stokes drift at depth z by summing per-component
+        Eigen::Vector2d stokes_drift_mean_xy_z(0.0, 0.0);
+        for (int i = 0; i < N_FREQ; ++i) {
+            double exp2 = exp_kz_freq_cache_[i] * exp_kz_freq_cache_[i]; // exp(2*k*z)
+            double Usi_z = stokes_drift_scalar_(i) * exp2;              // depth-weighted
+            stokes_drift_mean_xy_z.x() += Usi_z * dir_x_(i);
+            stokes_drift_mean_xy_z.y() += Usi_z * dir_y_(i);
+        }
+
+        vel.x() += stokes_drift_mean_xy_z.x();
+        vel.y() += stokes_drift_mean_xy_z.y();
 
         return {disp, vel, acc};
     }
