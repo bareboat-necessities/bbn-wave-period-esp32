@@ -155,10 +155,13 @@ public:
           spectrum_(Hs, Tp, f_min, f_max, gamma, g),
           theta2_cache_(pairwise_size_, std::numeric_limits<double>::quiet_NaN()),
           exp_kz_freq_cache_(N_FREQ, std::numeric_limits<double>::quiet_NaN()),
+          exp_kz_pair_cache_(pairwise_size_, std::numeric_limits<double>::quiet_NaN()),
           exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
           theta2_cached_x_(std::numeric_limits<double>::quiet_NaN()),
           theta2_cached_y_(std::numeric_limits<double>::quiet_NaN()),
-          exp_kz_cached_z_flag_(false)
+          exp_kz_cached_z_flag_(false),
+          stokes_drift_mean_xy_cache_(0.0, 0.0),
+          stokes_drift_mean_xy_cache_z_flag_(false)
     {
         frequencies_ = spectrum_.frequencies();
         S_ = spectrum_.spectrum();
@@ -258,8 +261,13 @@ private:
     mutable double theta2_cached_x_, theta2_cached_y_;
 
     mutable std::vector<double> exp_kz_freq_cache_;   // per-frequency exp(k*z)
+    mutable std::vector<double> exp_kz_pair_cache_;   // per-pair exp(k_sum*z)
     mutable double exp_kz_cached_z_;
     mutable bool exp_kz_cached_z_flag_;
+
+    // cached depth-dependent Stokes drift mean and flag for z
+    mutable Eigen::Vector2d stokes_drift_mean_xy_cache_;
+    mutable bool stokes_drift_mean_xy_cache_z_flag_;
 
     // Trig caching per time
     struct TrigCache {
@@ -364,12 +372,18 @@ private:
         Eigen::Vector3d vel=Eigen::Vector3d::Zero();
         Eigen::Vector3d acc=Eigen::Vector3d::Zero();
 
-        // --- per-frequency exp(k*z) cache ---
+        // --- per-frequency exp(k*z) and per-pair exp(k_sum*z) cache ---
         if (!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z) {
+            // per-frequency
             for (int i = 0; i < N_FREQ; ++i)
                 exp_kz_freq_cache_[i] = std::exp(k_(i) * z);   // exp(k*z)
+            // per-pair
+            for (size_t idx = 0; idx < pairwise_size_; ++idx)
+                exp_kz_pair_cache_[idx] = std::exp(k_sum_flat_[idx] * z); // exp(k_sum*z)
             exp_kz_cached_z_ = z;
             exp_kz_cached_z_flag_ = true;
+            // invalidate stokes drift cache for this z
+            stokes_drift_mean_xy_cache_z_flag_ = false;
         }
 
         // First-order theta
@@ -397,6 +411,7 @@ private:
 
             for(size_t idx=0; idx<pairwise_size_; ++idx){
                 double th = theta2_cache_[idx] - omega_sum_flat_[idx]*t;
+                // compute sin/cos once per angle (portable)
                 trig_cache_.sin_second(static_cast<int>(idx)) = std::sin(th);
                 trig_cache_.cos_second(static_cast<int>(idx)) = std::cos(th);
             }
@@ -411,32 +426,32 @@ private:
                          trig_cache_.cos_first(i) * decay);
         }
 
-        // --- Second-order contributions (with exp(k_sum*z)) ---
+        // --- Second-order contributions (with cached exp(k_sum*z)) ---
         for(int i=0;i<N_FREQ;++i)
             for(int j=i;j<N_FREQ;++j){
                 size_t idx=upper_index(i,j);
                 double factor=(i==j)?1.0:2.0;
-
-                double ksum = k_sum_flat_[idx];
-                double decay = std::exp(ksum * z);
-
+                double decay = exp_kz_pair_cache_[idx];
                 computeSecond(disp, vel, acc, idx, factor,
                               trig_cache_.sin_second(static_cast<int>(idx)) * decay,
                               trig_cache_.cos_second(static_cast<int>(idx)) * decay);
             }
 
         // --- Depth-dependent Stokes drift (decays as exp(2*k*z)) ---
-        // compute the mean Stokes drift at depth z by summing per-component
-        Eigen::Vector2d stokes_drift_mean_xy_z(0.0, 0.0);
-        for (int i = 0; i < N_FREQ; ++i) {
-            double exp2 = exp_kz_freq_cache_[i] * exp_kz_freq_cache_[i]; // exp(2*k*z)
-            double Usi_z = stokes_drift_scalar_(i) * exp2;              // depth-weighted
-            stokes_drift_mean_xy_z.x() += Usi_z * dir_x_(i);
-            stokes_drift_mean_xy_z.y() += Usi_z * dir_y_(i);
+        // use cached stokes drift mean at depth z if available
+        if (!stokes_drift_mean_xy_cache_z_flag_) {
+            stokes_drift_mean_xy_cache_.setZero();
+            for (int i = 0; i < N_FREQ; ++i) {
+                double exp2 = exp_kz_freq_cache_[i] * exp_kz_freq_cache_[i]; // exp(2*k*z)
+                double Usi_z = stokes_drift_scalar_(i) * exp2;              // depth-weighted
+                stokes_drift_mean_xy_cache_.x() += Usi_z * dir_x_(i);
+                stokes_drift_mean_xy_cache_.y() += Usi_z * dir_y_(i);
+            }
+            stokes_drift_mean_xy_cache_z_flag_ = true;
         }
 
-        vel.x() += stokes_drift_mean_xy_z.x();
-        vel.y() += stokes_drift_mean_xy_z.y();
+        vel.x() += stokes_drift_mean_xy_cache_.x();
+        vel.y() += stokes_drift_mean_xy_cache_.y();
 
         return {disp, vel, acc};
     }
