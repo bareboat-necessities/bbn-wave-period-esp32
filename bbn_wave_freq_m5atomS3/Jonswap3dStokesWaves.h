@@ -34,6 +34,10 @@ static constexpr double PI = M_PI;
 #include <fstream>
 #endif
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 // Portable fast_sincos helper
 inline void fast_sincos(double x, double &s, double &c) {
 #if defined(__GNUC__) || defined(__clang__)
@@ -132,6 +136,7 @@ private:
         S_ = S0 * alpha;
         A_ = (2.0 * S_.cwiseProduct(df_)).cwiseSqrt();
 
+        // Adjust amplitudes to match exact Hs
         double Hs_est = 4.0 * std::sqrt(0.5 * A_.squaredNorm());
         if (Hs_est <= 0.0) throw std::runtime_error("JonswapSpectrum: Hs_est <= 0");
         double rel_err = std::abs(Hs_est - Hs_) / Hs_;
@@ -155,7 +160,6 @@ public:
         Eigen::Vector3d acceleration;
     };
 
-    // Constructor
     Jonswap3dStokesWaves(double Hs, double Tp,
                          double mean_direction_deg = 0.0,
                          double f_min = 0.02, double f_max = 0.8,
@@ -167,37 +171,39 @@ public:
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
           seed_(seed), pairwise_size_((size_t)N_FREQ*(N_FREQ+1)/2),
           spectrum_(Hs, Tp, f_min, f_max, gamma, g),
-          theta2_cache_(pairwise_size_, std::numeric_limits<double>::quiet_NaN()),
-          exp_kz_freq_cache_(N_FREQ, std::numeric_limits<double>::quiet_NaN()),
-          exp_kz_pair_cache_(pairwise_size_, std::numeric_limits<double>::quiet_NaN()),
-          skip_pair_mask_(pairwise_size_, 0),
-          exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
-          exp_kz_cached_z_flag_(false),
           theta2_cached_x_(std::numeric_limits<double>::quiet_NaN()),
           theta2_cached_y_(std::numeric_limits<double>::quiet_NaN()),
-          cutoff_tol_(cutoff_tol),
-          stokes_drift_mean_xy_cache_(0.0, 0.0),
-          stokes_drift_mean_xy_cache_z_flag_(false)
+          exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
+          exp_kz_cached_z_flag_(false),
+          stokes_drift_mean_xy_cache_(0.0,0.0),
+          stokes_drift_mean_xy_cache_z_flag_(false),
+          cutoff_tol_(cutoff_tol)
     {
+        // Copy spectrum
         frequencies_ = spectrum_.frequencies();
         S_ = spectrum_.spectrum();
         A_ = spectrum_.amplitudes();
         df_ = spectrum_.df();
 
         omega_ = 2.0 * PI * frequencies_;
-        k_ = omega_.array().square() / g_;
+        k_     = omega_.array().square() / g_;
 
         dir_x_.setZero();
         dir_y_.setZero();
         kx_.setZero();
         ky_.setZero();
         phi_.setZero();
+        stokes_drift_scalar_.setZero();
 
+        // Initialize random phases, directional spreading, and wave vectors
         initializeRandomPhases();
         initializeDirectionalSpread();
         computeWaveDirectionComponents();
         computePerComponentStokesDriftEstimate();
+
+        // Precompute pairwise sums as Eigen arrays (fully vectorized)
         precomputePairwise();
+
         checkSteepness();
 
         // Preallocate trig cache arrays
@@ -214,25 +220,23 @@ public:
         Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
         Eigen::Vector3d acc  = Eigen::Vector3d::Zero();
 
-        // --- Depth-dependent caches ---
+        // --- Depth-dependent exp(k z) cache ---
         if(!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z){
-            for(int i=0;i<N_FREQ;++i) exp_kz_freq_cache_[i] = std::exp(k_(i)*z);
+            exp_kz_freq_cache_ = (k_ * z).array().exp();
+            exp_kz_pair_cache_ = (k_sum_flat_ * z).array().exp();
+#pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx){
-                exp_kz_pair_cache_[idx] = std::exp(k_sum_flat_[idx]*z);
-                skip_pair_mask_[idx] = (cutoff_tol_>0.0 && std::abs(Bij_flat_[idx])*exp_kz_pair_cache_[idx]<cutoff_tol_)?1:0;
+                skip_pair_mask_(idx) = (cutoff_tol_>0.0 && std::abs(Bij_flat_(idx))*exp_kz_pair_cache_(idx)<cutoff_tol_)?1:0;
             }
             exp_kz_cached_z_ = z;
             exp_kz_cached_z_flag_ = true;
             stokes_drift_mean_xy_cache_z_flag_ = false;
         }
 
-        // --- First-order theta and trig ---
+        // --- First-order theta ---
         Eigen::ArrayXd theta0 = kx_.array()*x + ky_.array()*y + phi_.array();
-        Eigen::ArrayXd sin0 = (theta0 - omega_.array()*t).sin();
-        Eigen::ArrayXd cos0 = (theta0 - omega_.array()*t).cos();
-        Eigen::ArrayXd decay0 = Eigen::Map<Eigen::ArrayXd>(exp_kz_freq_cache_.data(), N_FREQ);
-        sin0 *= decay0;
-        cos0 *= decay0;
+        Eigen::ArrayXd sin0 = (theta0 - omega_.array()*t).sin() * exp_kz_freq_cache_;
+        Eigen::ArrayXd cos0 = (theta0 - omega_.array()*t).cos() * exp_kz_freq_cache_;
 
         // --- First-order contributions ---
         disp.x() = -(A_.array()*cos0*dir_x_.array()).sum();
@@ -253,22 +257,20 @@ public:
         if(std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
            theta2_cached_x_ != x || theta2_cached_y_ != y)
         {
-            for(size_t idx=0; idx<pairwise_size_; ++idx){
-                if(skip_pair_mask_[idx]) theta2_cache_[idx] = std::numeric_limits<double>::quiet_NaN();
-                else theta2_cache_[idx] = kx_sum_flat_[idx]*x + ky_sum_flat_[idx]*y + phi_sum_flat_[idx];
-            }
+            theta2_cache_ = kx_sum_flat_*x + ky_sum_flat_*y + phi_sum_flat_;
             theta2_cached_x_ = x;
             theta2_cached_y_ = y;
         }
 
         // --- Trig cache for second-order ---
         if(trig_cache_.last_t != t){
+#pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx){
-                if(skip_pair_mask_[idx]){
+                if(skip_pair_mask_(idx)){
                     trig_cache_.sin_second(idx)=0.0;
                     trig_cache_.cos_second(idx)=0.0;
                 } else {
-                    fast_sincos(theta2_cache_[idx]-omega_sum_flat_[idx]*t,
+                    fast_sincos(theta2_cache_(idx)-omega_sum_flat_(idx)*t,
                                 trig_cache_.sin_second(idx),
                                 trig_cache_.cos_second(idx));
                 }
@@ -277,40 +279,29 @@ public:
         }
 
         // --- Fully vectorized second-order contributions ---
-        Eigen::Map<Eigen::ArrayXd> sin2(trig_cache_.sin_second.data(), pairwise_size_);
-        Eigen::Map<Eigen::ArrayXd> cos2(trig_cache_.cos_second.data(), pairwise_size_);
-        Eigen::Map<Eigen::ArrayXd> Bij(Bij_flat_.data(), pairwise_size_);
-        Eigen::Map<Eigen::ArrayXd> kxsum(kx_sum_flat_.data(), pairwise_size_);
-        Eigen::Map<Eigen::ArrayXd> kysum(ky_sum_flat_.data(), pairwise_size_);
-        Eigen::Map<Eigen::ArrayXd> ksum(k_sum_flat_.data(), pairwise_size_);
-        Eigen::Map<Eigen::ArrayXd> omega_sum(omega_sum_flat_.data(), pairwise_size_);
-        Eigen::Map<Eigen::ArrayXd> exp2nd(exp_kz_pair_cache_.data(), pairwise_size_);
-        Eigen::Map<Eigen::Array<char>> skip(skip_pair_mask_.data(), pairwise_size_);
-        Eigen::Map<Eigen::ArrayXd> factor(factor_flat_.data(), pairwise_size_); // precomputed
+        Eigen::ArrayXd coeff = factor_flat_ * exp_kz_pair_cache_ * (1.0 - skip_pair_mask_.cast<double>());
+        Eigen::ArrayXd ksum2  = k_sum_flat_.square();
+        Eigen::ArrayXd hx = (ksum2>1e-18).select(kx_sum_flat_/k_sum_flat_,0.0);
+        Eigen::ArrayXd hy = (ksum2>1e-18).select(ky_sum_flat_/k_sum_flat_,0.0);
+        Eigen::ArrayXd omega2 = omega_sum_flat_.square();
 
-        Eigen::ArrayXd coeff = factor * exp2nd * (1.0 - skip.cast<double>());
-        Eigen::ArrayXd ksum2 = ksum.square();
-        Eigen::ArrayXd hx = (ksum2>1e-18).select(kxsum/ksum,0.0);
-        Eigen::ArrayXd hy = (ksum2>1e-18).select(kysum/ksum,0.0);
+        disp.z() += (coeff*Bij_flat_*trig_cache_.cos_second).sum();
+        disp.x() += (-coeff*Bij_flat_*trig_cache_.cos_second*hx).sum();
+        disp.y() += (-coeff*Bij_flat_*trig_cache_.cos_second*hy).sum();
 
-        disp.z() += (coeff*Bij*cos2).sum();
-        disp.x() += (-coeff*Bij*cos2*hx).sum();
-        disp.y() += (-coeff*Bij*cos2*hy).sum();
+        vel.z() += (-coeff*omega_sum_flat_*Bij_flat_*trig_cache_.sin_second).sum();
+        vel.x() += (-coeff*omega_sum_flat_*Bij_flat_*trig_cache_.sin_second*hx).sum();
+        vel.y() += (-coeff*omega_sum_flat_*Bij_flat_*trig_cache_.sin_second*hy).sum();
 
-        vel.z() += (-coeff*omega_sum*Bij*sin2).sum();
-        vel.x() += (-coeff*omega_sum*Bij*sin2*hx).sum();
-        vel.y() += (-coeff*omega_sum*Bij*sin2*hy).sum();
-
-        Eigen::ArrayXd omega2 = omega_sum.square();
-        acc.z() += (coeff*Bij*omega2*cos2).sum();
-        acc.x() += (coeff*Bij*omega2*cos2*hx).sum();
-        acc.y() += (coeff*Bij*omega2*cos2*hy).sum();
+        acc.z() += (coeff*Bij_flat_*omega2*trig_cache_.cos_second).sum();
+        acc.x() += (coeff*Bij_flat_*omega2*trig_cache_.cos_second*hx).sum();
+        acc.y() += (coeff*Bij_flat_*omega2*trig_cache_.cos_second*hy).sum();
 
         // --- Depth-dependent Stokes drift ---
         if(!stokes_drift_mean_xy_cache_z_flag_){
             stokes_drift_mean_xy_cache_.setZero();
             for(int i=0;i<N_FREQ;++i){
-                double exp2 = exp_kz_freq_cache_[i]*exp_kz_freq_cache_[i];
+                double exp2 = exp_kz_freq_cache_(i)*exp_kz_freq_cache_(i);
                 double Usi_z = stokes_drift_scalar_(i)*exp2;
                 stokes_drift_mean_xy_cache_.x() += Usi_z*dir_x_(i);
                 stokes_drift_mean_xy_cache_.y() += Usi_z*dir_y_(i);
@@ -324,11 +315,12 @@ public:
     }
 
 private:
-    // Member variables
+    // ---------------- Member variables ----------------
     JonswapSpectrum<N_FREQ> spectrum_;
     double Hs_, Tp_, mean_dir_rad_, gamma_, g_, spreading_exponent_;
     unsigned int seed_;
     size_t pairwise_size_;
+    double cutoff_tol_;
 
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, S_, A_, df_;
     Eigen::Matrix<double, N_FREQ, 1> omega_, k_, phi_;
@@ -336,12 +328,14 @@ private:
     Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
     Eigen::Vector2d stokes_drift_mean_xy_;
 
-    std::vector<double> Bij_flat_, kx_sum_flat_, ky_sum_flat_, k_sum_flat_, omega_sum_flat_, phi_sum_flat_, factor_flat_;
-    mutable std::vector<double> theta2_cache_;
+    // Pairwise upper-triangle arrays for second-order
+    Eigen::ArrayXd Bij_flat_, kx_sum_flat_, ky_sum_flat_, k_sum_flat_, omega_sum_flat_, phi_sum_flat_, factor_flat_;
+
+    // Caches
+    mutable Eigen::ArrayXd theta2_cache_;
     mutable double theta2_cached_x_, theta2_cached_y_;
-    mutable std::vector<double> exp_kz_freq_cache_;
-    mutable std::vector<double> exp_kz_pair_cache_;
-    mutable std::vector<char> skip_pair_mask_;
+    mutable Eigen::ArrayXd exp_kz_freq_cache_, exp_kz_pair_cache_;
+    mutable Eigen::Array<char> skip_pair_mask_;
     mutable double exp_kz_cached_z_;
     mutable bool exp_kz_cached_z_flag_;
     mutable Eigen::Vector2d stokes_drift_mean_xy_cache_;
@@ -354,6 +348,7 @@ private:
     };
     mutable TrigCache trig_cache_;
 
+    // ---------------- Helper functions ----------------
     void initializeRandomPhases() {
         std::mt19937 rng(seed_);
         std::uniform_real_distribution<double> dist(0.0, 2.0*PI);
@@ -381,24 +376,28 @@ private:
     }
 
     void precomputePairwise() {
-        Bij_flat_.resize(pairwise_size_);
-        kx_sum_flat_.resize(pairwise_size_);
-        ky_sum_flat_.resize(pairwise_size_);
-        k_sum_flat_.resize(pairwise_size_);
-        omega_sum_flat_.resize(pairwise_size_);
-        phi_sum_flat_.resize(pairwise_size_);
-        factor_flat_.resize(pairwise_size_);
+        // Allocate Eigen arrays for all pairwise quantities
+        Bij_flat_      = Eigen::ArrayXd(pairwise_size_);
+        kx_sum_flat_   = Eigen::ArrayXd(pairwise_size_);
+        ky_sum_flat_   = Eigen::ArrayXd(pairwise_size_);
+        k_sum_flat_    = Eigen::ArrayXd(pairwise_size_);
+        omega_sum_flat_= Eigen::ArrayXd(pairwise_size_);
+        phi_sum_flat_  = Eigen::ArrayXd(pairwise_size_);
+        factor_flat_   = Eigen::ArrayXd(pairwise_size_);
+        theta2_cache_  = Eigen::ArrayXd(pairwise_size_);
+        exp_kz_pair_cache_ = Eigen::ArrayXd(pairwise_size_);
+        skip_pair_mask_    = Eigen::Array<char>(pairwise_size_);
 
         size_t idx=0;
         for(int i=0;i<N_FREQ;++i){
             for(int j=i;j<N_FREQ;++j,++idx){
-                Bij_flat_[idx] = A_(i)*A_(j)/2.0;
-                kx_sum_flat_[idx] = kx_(i)+kx_(j);
-                ky_sum_flat_[idx] = ky_(i)+ky_(j);
-                k_sum_flat_[idx] = k_(i)+k_(j);
-                omega_sum_flat_[idx] = omega_(i)+omega_(j);
-                phi_sum_flat_[idx] = phi_(i)+phi_(j);
-                factor_flat_[idx] = (i==j)?1.0:2.0;
+                Bij_flat_(idx)       = A_(i)*A_(j)/2.0;
+                kx_sum_flat_(idx)    = kx_(i)+kx_(j);
+                ky_sum_flat_(idx)    = ky_(i)+ky_(j);
+                k_sum_flat_(idx)     = k_(i)+k_(j);
+                omega_sum_flat_(idx) = omega_(i)+omega_(j);
+                phi_sum_flat_(idx)   = phi_(i)+phi_(j);
+                factor_flat_(idx)    = (i==j)?1.0:2.0;
             }
         }
     }
