@@ -179,10 +179,8 @@ public:
           exp_kz_cached_z_flag_(false),
           theta2_cached_x_(std::numeric_limits<double>::quiet_NaN()),
           theta2_cached_y_(std::numeric_limits<double>::quiet_NaN()),
-          cutoff_tol_(cutoff_tol),
           stokes_drift_mean_xy_cache_(0.0,0.0),
-          stokes_drift_mean_xy_cache_z_flag_(false),
-          theta0_(N_FREQ), sin0_(N_FREQ), cos0_(N_FREQ)
+          stokes_drift_mean_xy_cache_z_flag_(false)
     {
         frequencies_ = spectrum_.frequencies();
         S_ = spectrum_.spectrum();
@@ -198,6 +196,16 @@ public:
         ky_.setZero();
         phi_.setZero();
 
+        // First-order temporary arrays
+        theta0_.resize(N_FREQ);
+        sin0_.resize(N_FREQ);
+        cos0_.resize(N_FREQ);
+
+        // Second-order trig cache
+        trig_cache_.sin_second.resize(pairwise_size_);
+        trig_cache_.cos_second.resize(pairwise_size_);
+        trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
+
         initializeRandomPhases();
         initializeDirectionalSpread();
         computeWaveDirectionComponents();
@@ -211,10 +219,14 @@ public:
         Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
         Eigen::Vector3d acc  = Eigen::Vector3d::Zero();
 
-        // Depth-dependent exp(k z)
+        // --- Depth-dependent exp(k z) ---
         if(!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z){
-            exp_kz_freq_cache_ = (k_ * z).array().exp();
-            exp_kz_pair_cache_ = (k_sum_flat_.array() * z).exp();
+            for(int i=0;i<N_FREQ;++i)
+                exp_kz_freq_cache_[i] = std::exp(k_(i) * z);
+
+#pragma omp parallel for
+            for(size_t idx=0; idx<pairwise_size_; ++idx)
+                exp_kz_pair_cache_[idx] = std::exp(k_sum_flat_[idx] * z);
 
 #pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx){
@@ -227,13 +239,17 @@ public:
         }
 
         // --- First-order theta & trig ---
-        theta0_ = kx_.array()*x + ky_.array()*y + phi_.array();
+        for(int i=0;i<N_FREQ;++i)
+            theta0_(i) = kx_(i)*x + ky_(i)*y + phi_(i);
+
 #pragma omp parallel for
         for(int i=0;i<N_FREQ;++i)
             fast_sincos(theta0_(i) - omega_(i)*t, sin0_(i), cos0_(i));
 
-        sin0_ *= exp_kz_freq_cache_;
-        cos0_ *= exp_kz_freq_cache_;
+        for(int i=0;i<N_FREQ;++i){
+            sin0_(i) *= exp_kz_freq_cache_[i];
+            cos0_(i) *= exp_kz_freq_cache_[i];
+        }
 
         // --- First-order contributions ---
         Eigen::Vector3d disp_first=Eigen::Vector3d::Zero(), vel_first=Eigen::Vector3d::Zero(), acc_first=Eigen::Vector3d::Zero();
@@ -257,6 +273,7 @@ public:
         if(std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
            theta2_cached_x_ != x || theta2_cached_y_ != y)
         {
+#pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx)
                 theta2_cache_[idx] = kx_sum_flat_[idx]*x + ky_sum_flat_[idx]*y + phi_sum_flat_[idx];
             theta2_cached_x_ = x;
@@ -347,11 +364,10 @@ private:
 
     struct TrigCache {
         Eigen::ArrayXd sin_second, cos_second;
-        double last_t = std::numeric_limits<double>::quiet_NaN();
+        double last_t;
     };
     mutable TrigCache trig_cache_;
 
-    // Temporary arrays preallocated for first-order computations
     mutable Eigen::ArrayXd theta0_, sin0_, cos0_;
 
     void initializeRandomPhases() {
