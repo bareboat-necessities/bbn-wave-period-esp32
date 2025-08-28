@@ -1,5 +1,14 @@
 #pragma once
 
+/*
+  Copyright 2025, Mikhail Grushinskiy
+
+  JONSWAP-spectrum 3D Stokes-corrected waves simulation (surface, deep-water).
+  - 1st order: Airy (linear) components
+  - 2nd order: simplified deep-water sum-frequency bound harmonics + simple
+    estimate of surface Stokes drift (monochromatic approximation)
+*/
+
 #ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
 #else
@@ -25,19 +34,38 @@ static constexpr double PI = M_PI;
 #include <fstream>
 #endif
 
-/*
-  Copyright 2025, Mikhail Grushinskiy
+// portable fast_sincos helper
+inline void fast_sincos(double x, double &s, double &c) {
+#if defined(__GNUC__) || defined(__clang__)
+    // sincos is commonly available on glibc; this calls the C-library sincos
+    // If unavailable on your toolchain, this falls back to std::sin/std::cos.
+    // Many compilers also optimize separate sin/cos to one call when possible.
+    #if defined(__GLIBC__) || defined(_GNU_SOURCE)
+        ::sincos(x, &s, &c);
+    #else
+        s = std::sin(x);
+        c = std::cos(x);
+    #endif
+#elif defined(_MSC_VER)
+    // MSVC: _sincos exists on MSVC CRT
+    #ifdef _MSC_VER
+        double cs;
+        _sincos(x, &s, &cs);
+        c = cs;
+    #else
+        s = std::sin(x);
+        c = std::cos(x);
+    #endif
+#else
+    s = std::sin(x);
+    c = std::cos(x);
+#endif
+}
 
-  JONSWAP-spectrum 3D Stokes-corrected waves simulation (surface, deep-water).
-  - 1st order: Airy (linear) components
-  - 2nd order: simplified deep-water sum-frequency bound harmonics + simple
-    estimate of surface Stokes drift (monochromatic approximation)
-*/
-
-// JonswapSpectrum 
+// -------------------- JonswapSpectrum --------------------
 template<int N_FREQ = 256>
 class JonswapSpectrum {
-public:    
+public:
     JonswapSpectrum(double Hs, double Tp,
                     double f_min = 0.02, double f_max = 0.8,
                     double gamma = 2.0, double g = 9.81)
@@ -59,13 +87,11 @@ public:
         computeJonswapSpectrumFromHs();
     }
 
-    // Accessors (fixed-size Eigen vectors)
     const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { return frequencies_; }
     const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const { return S_; }
     const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const { return A_; }
     const Eigen::Matrix<double, N_FREQ, 1>& df() const { return df_; }
 
-    // Diagnostics
     double integratedVariance() const {
         return (S_.cwiseProduct(df_)).sum();
     }
@@ -130,7 +156,7 @@ private:
     }
 };
 
-// Jonswap3dStokesWaves
+// -------------------- Jonswap3dStokesWaves --------------------
 template<int N_FREQ = 256>
 class Jonswap3dStokesWaves {
 public:
@@ -142,13 +168,14 @@ public:
         Eigen::Vector3d acceleration;
     };
 
-    // Constructor
+    // Constructor: added cutoff_tol (default 1e-6)
     Jonswap3dStokesWaves(double Hs, double Tp,
                          double mean_direction_deg = 0.0,
                          double f_min = 0.02, double f_max = 0.8,
                          double gamma = 2.0, double g = 9.81,
                          double spreading_exponent = 15.0,
-                         unsigned int seed = 239u)
+                         unsigned int seed = 239u,
+                         double cutoff_tol = 1e-6)
         : Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * PI / 180.0),
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
           seed_(seed), pairwise_size_((size_t)N_FREQ*(N_FREQ+1)/2),
@@ -156,10 +183,12 @@ public:
           theta2_cache_(pairwise_size_, std::numeric_limits<double>::quiet_NaN()),
           exp_kz_freq_cache_(N_FREQ, std::numeric_limits<double>::quiet_NaN()),
           exp_kz_pair_cache_(pairwise_size_, std::numeric_limits<double>::quiet_NaN()),
+          skip_pair_mask_(pairwise_size_, 0),
           exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
+          exp_kz_cached_z_flag_(false),
           theta2_cached_x_(std::numeric_limits<double>::quiet_NaN()),
           theta2_cached_y_(std::numeric_limits<double>::quiet_NaN()),
-          exp_kz_cached_z_flag_(false),
+          cutoff_tol_(cutoff_tol),
           stokes_drift_mean_xy_cache_(0.0, 0.0),
           stokes_drift_mean_xy_cache_z_flag_(false)
     {
@@ -200,6 +229,7 @@ public:
             [&](Eigen::Vector3d &disp, Eigen::Vector3d &vel, Eigen::Vector3d &acc,
                 int i, double sin_th, double cos_th)
             {
+                // note: sin_th and cos_th already include exp(k*z) decay
                 disp.x() += -A_(i) * cos_th * dir_x_(i);
                 disp.y() += -A_(i) * cos_th * dir_y_(i);
                 disp.z() +=  A_(i) * sin_th;
@@ -218,6 +248,7 @@ public:
             [&](Eigen::Vector3d &disp, Eigen::Vector3d &vel, Eigen::Vector3d &acc,
                 size_t idx, double factor, double sin_th, double cos_th)
             {
+                // here sin_th/cos_th include the exp(k_sum * z) decay already
                 disp.z() += factor * Bij_flat_[idx] * cos_th;
                 double ksum2 = k_sum_flat_[idx]*k_sum_flat_[idx];
                 if(ksum2>1e-18){
@@ -262,6 +293,8 @@ private:
 
     mutable std::vector<double> exp_kz_freq_cache_;   // per-frequency exp(k*z)
     mutable std::vector<double> exp_kz_pair_cache_;   // per-pair exp(k_sum*z)
+    mutable std::vector<char> skip_pair_mask_;        // 1=skip, 0=use
+
     mutable double exp_kz_cached_z_;
     mutable bool exp_kz_cached_z_flag_;
 
@@ -276,6 +309,9 @@ private:
         double last_t = std::numeric_limits<double>::quiet_NaN();
     };
     mutable TrigCache trig_cache_;
+
+    // cutoff tolerance
+    double cutoff_tol_;
 
     // --- Initialization helpers ---
     void initializeRandomPhases() {
@@ -372,32 +408,43 @@ private:
         Eigen::Vector3d vel=Eigen::Vector3d::Zero();
         Eigen::Vector3d acc=Eigen::Vector3d::Zero();
 
-        // --- per-frequency exp(k*z) and per-pair exp(k_sum*z) cache ---
+        // --- per-frequency exp(k*z) and per-pair exp(k_sum*z) cache + skip mask ---
         if (!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z) {
             // per-frequency
             for (int i = 0; i < N_FREQ; ++i)
                 exp_kz_freq_cache_[i] = std::exp(k_(i) * z);   // exp(k*z)
-            // per-pair
-            for (size_t idx = 0; idx < pairwise_size_; ++idx)
+
+            // per-pair + skip mask (uses Bij_flat_)
+            for (size_t idx = 0; idx < pairwise_size_; ++idx) {
                 exp_kz_pair_cache_[idx] = std::exp(k_sum_flat_[idx] * z); // exp(k_sum*z)
+                if (cutoff_tol_ > 0.0) {
+                    // cutoff criterion uses magnitude of Bij * decay (approx. pair contribution)
+                    skip_pair_mask_[idx] = (std::abs(Bij_flat_[idx]) * exp_kz_pair_cache_[idx] < cutoff_tol_) ? 1 : 0;
+                } else {
+                    skip_pair_mask_[idx] = 0;
+                }
+            }
             exp_kz_cached_z_ = z;
             exp_kz_cached_z_flag_ = true;
-            // invalidate stokes drift cache for this z
-            stokes_drift_mean_xy_cache_z_flag_ = false;
+            stokes_drift_mean_xy_cache_z_flag_ = false; // will need recompute for new z
         }
 
         // First-order theta
         Eigen::ArrayXd theta0 = kx_.array()*x + ky_.array()*y + phi_.array();
 
-        // Ensure 2nd-order theta is computed for this (x,y)
+        // Ensure 2nd-order theta is computed for this (x,y) but only for non-skipped pairs
         if (std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
             theta2_cached_x_ != x || theta2_cached_y_ != y) {
             for(int i=0;i<N_FREQ;++i) {
                 for(int j=i;j<N_FREQ;++j) {
                     size_t idx = upper_index(i,j);
-                    theta2_cache_[idx] = kx_sum_flat_[idx]*x +
-                                         ky_sum_flat_[idx]*y +
-                                         phi_sum_flat_[idx];
+                    if (skip_pair_mask_[idx]) {
+                        theta2_cache_[idx] = std::numeric_limits<double>::quiet_NaN();
+                    } else {
+                        theta2_cache_[idx] = kx_sum_flat_[idx]*x +
+                                             ky_sum_flat_[idx]*y +
+                                             phi_sum_flat_[idx];
+                    }
                 }
             }
             theta2_cached_x_ = x;
@@ -410,10 +457,16 @@ private:
             trig_cache_.cos_first = (theta0 - omega_.array()*t).cos();
 
             for(size_t idx=0; idx<pairwise_size_; ++idx){
-                double th = theta2_cache_[idx] - omega_sum_flat_[idx]*t;
-                // compute sin/cos once per angle (portable)
-                trig_cache_.sin_second(static_cast<int>(idx)) = std::sin(th);
-                trig_cache_.cos_second(static_cast<int>(idx)) = std::cos(th);
+                if (skip_pair_mask_[idx]) {
+                    trig_cache_.sin_second(static_cast<int>(idx)) = 0.0;
+                    trig_cache_.cos_second(static_cast<int>(idx)) = 0.0;
+                } else {
+                    double th = theta2_cache_[idx] - omega_sum_flat_[idx]*t;
+                    double s, c;
+                    fast_sincos(th, s, c);
+                    trig_cache_.sin_second(static_cast<int>(idx)) = s;
+                    trig_cache_.cos_second(static_cast<int>(idx)) = c;
+                }
             }
             trig_cache_.last_t = t;
         }
@@ -426,10 +479,11 @@ private:
                          trig_cache_.cos_first(i) * decay);
         }
 
-        // --- Second-order contributions (with cached exp(k_sum*z)) ---
+        // --- Second-order contributions (skip masked pairs) ---
         for(int i=0;i<N_FREQ;++i)
             for(int j=i;j<N_FREQ;++j){
-                size_t idx=upper_index(i,j);
+                size_t idx = upper_index(i,j);
+                if (skip_pair_mask_[idx]) continue;
                 double factor=(i==j)?1.0:2.0;
                 double decay = exp_kz_pair_cache_[idx];
                 computeSecond(disp, vel, acc, idx, factor,
@@ -438,7 +492,6 @@ private:
             }
 
         // --- Depth-dependent Stokes drift (decays as exp(2*k*z)) ---
-        // use cached stokes drift mean at depth z if available
         if (!stokes_drift_mean_xy_cache_z_flag_) {
             stokes_drift_mean_xy_cache_.setZero();
             for (int i = 0; i < N_FREQ; ++i) {
