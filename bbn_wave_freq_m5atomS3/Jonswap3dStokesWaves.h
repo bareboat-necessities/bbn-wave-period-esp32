@@ -62,7 +62,7 @@ inline void fast_sincos(double x, double &s, double &c) {
 #endif
 }
 
-// -------------------- JonswapSpectrum --------------------
+// JonswapSpectrum
 template<int N_FREQ = 256>
 class JonswapSpectrum {
 public:
@@ -148,8 +148,7 @@ private:
     }
 };
 
-// -------------------- Jonswap3dStokesWaves --------------------
-// -------------------- Jonswap3dStokesWaves --------------------
+// Jonswap3dStokesWaves
 template<int N_FREQ = 256>
 class Jonswap3dStokesWaves {
 public:
@@ -167,7 +166,7 @@ public:
                          double gamma = 2.0, double g = 9.81,
                          double spreading_exponent = 15.0,
                          unsigned int seed = 239u,
-                         double cutoff_tol = 1e-6)
+                         double cutoff_tol = 1e-8)
         : Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg*PI/180.0),
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
           seed_(seed), cutoff_tol_(cutoff_tol),
@@ -221,7 +220,7 @@ public:
         Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
         Eigen::Vector3d acc  = Eigen::Vector3d::Zero();
 
-        // --- Depth-dependent exp(k z) ---
+        // Depth-dependent exp(k z)
         if(!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z){
             for(int i=0;i<N_FREQ;++i)
                 exp_kz_freq_cache_[i] = std::exp(k_(i) * z);
@@ -240,7 +239,7 @@ public:
             stokes_drift_mean_xy_cache_z_flag_ = false;
         }
 
-        // --- First-order theta & trig ---
+        // First-order theta & trig
         for(int i=0;i<N_FREQ;++i)
             theta0_(i) = kx_(i)*x + ky_(i)*y + phi_(i);
 
@@ -253,7 +252,7 @@ public:
             cos0_(i) *= exp_kz_freq_cache_[i];
         }
 
-        // --- First-order contributions ---
+        // First-order contributions
         Eigen::Vector3d disp_first=Eigen::Vector3d::Zero(), vel_first=Eigen::Vector3d::Zero(), acc_first=Eigen::Vector3d::Zero();
         #pragma omp parallel for reduction(+:disp_first,vel_first,acc_first)
         for(int i=0;i<N_FREQ;++i){
@@ -271,7 +270,7 @@ public:
         }
         disp += disp_first; vel += vel_first; acc += acc_first;
 
-        // --- Second-order theta caching ---
+        // Second-order theta caching
         if(std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
            theta2_cached_x_ != x || theta2_cached_y_ != y)
         {
@@ -282,7 +281,7 @@ public:
             theta2_cached_y_ = y;
         }
 
-        // --- Trig cache second-order ---
+        // Trig cache second-order
         if(trig_cache_.last_t != t){
             #pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx){
@@ -298,7 +297,7 @@ public:
             trig_cache_.last_t = t;
         }
 
-        // --- Second-order contributions ---
+        // Second-order contributions
         Eigen::Vector3d disp_second=Eigen::Vector3d::Zero(), vel_second=Eigen::Vector3d::Zero(), acc_second=Eigen::Vector3d::Zero();
         #pragma omp parallel for reduction(+:disp_second,vel_second,acc_second)
         for(size_t idx=0; idx<pairwise_size_; ++idx){
@@ -322,7 +321,7 @@ public:
         }
         disp += disp_second; vel += vel_second; acc += acc_second;
 
-        // --- Depth-dependent Stokes drift ---
+        // Depth-dependent Stokes drift
         if(!stokes_drift_mean_xy_cache_z_flag_){
             double sum_x = 0.0, sum_y = 0.0;
             #pragma omp parallel for reduction(+:sum_x, sum_y)
@@ -445,7 +444,7 @@ void generateWaveJonswapCSV(const std::string& filename,
     // Output arrays: 3 x N_time
     Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
 
-    // --- Parallel over time steps ---
+    // Parallel over time steps
 #pragma omp parallel for
     for(int i = 0; i < N_time; ++i) {
         auto state = waveModel->getLagrangianState(0.0, 0.0, time(i));
