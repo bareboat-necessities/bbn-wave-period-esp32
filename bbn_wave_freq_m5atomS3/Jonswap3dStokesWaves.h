@@ -160,7 +160,6 @@ public:
         Eigen::Vector3d acceleration;
     };
 
-    // Constructor
     Jonswap3dStokesWaves(double Hs, double Tp,
                          double mean_direction_deg = 0.0,
                          double f_min = 0.02, double f_max = 0.8,
@@ -182,7 +181,8 @@ public:
           theta2_cached_y_(std::numeric_limits<double>::quiet_NaN()),
           cutoff_tol_(cutoff_tol),
           stokes_drift_mean_xy_cache_(0.0,0.0),
-          stokes_drift_mean_xy_cache_z_flag_(false)
+          stokes_drift_mean_xy_cache_z_flag_(false),
+          theta0_(N_FREQ), sin0_(N_FREQ), cos0_(N_FREQ)
     {
         frequencies_ = spectrum_.frequencies();
         S_ = spectrum_.spectrum();
@@ -204,14 +204,8 @@ public:
         computePerComponentStokesDriftEstimate();
         precomputePairwise();
         checkSteepness();
-
-        trig_cache_.sin_first.resize(N_FREQ);
-        trig_cache_.cos_first.resize(N_FREQ);
-        trig_cache_.sin_second.resize(static_cast<int>(pairwise_size_));
-        trig_cache_.cos_second.resize(static_cast<int>(pairwise_size_));
     }
 
-    // -------------------- Multithreaded Lagrangian evaluation --------------------
     WaveState getLagrangianState(double x, double y, double t, double z=0.0) const {
         Eigen::Vector3d disp = Eigen::Vector3d::Zero();
         Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
@@ -220,7 +214,7 @@ public:
         // Depth-dependent exp(k z)
         if(!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z){
             exp_kz_freq_cache_ = (k_ * z).array().exp();
-            exp_kz_pair_cache_ = (k_sum_flat_ * z).array().exp();
+            exp_kz_pair_cache_ = (k_sum_flat_.array() * z).exp();
 
 #pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx){
@@ -232,38 +226,30 @@ public:
             stokes_drift_mean_xy_cache_z_flag_ = false;
         }
 
-        // --- First-order theta ---
-        Eigen::ArrayXd theta0 = kx_.array()*x + ky_.array()*y + phi_.array();
-        Eigen::ArrayXd sin0(N_FREQ), cos0(N_FREQ);
-
+        // --- First-order theta & trig ---
+        theta0_ = kx_.array()*x + ky_.array()*y + phi_.array();
 #pragma omp parallel for
         for(int i=0;i<N_FREQ;++i)
-            fast_sincos(theta0(i) - omega_(i)*t, sin0(i), cos0(i));
+            fast_sincos(theta0_(i) - omega_(i)*t, sin0_(i), cos0_(i));
 
-        sin0 *= exp_kz_freq_cache_;
-        cos0 *= exp_kz_freq_cache_;
+        sin0_ *= exp_kz_freq_cache_;
+        cos0_ *= exp_kz_freq_cache_;
 
         // --- First-order contributions ---
         Eigen::Vector3d disp_first=Eigen::Vector3d::Zero(), vel_first=Eigen::Vector3d::Zero(), acc_first=Eigen::Vector3d::Zero();
-#pragma omp parallel
-        {
-            Eigen::Vector3d disp_priv=Eigen::Vector3d::Zero(), vel_priv=Eigen::Vector3d::Zero(), acc_priv=Eigen::Vector3d::Zero();
-#pragma omp for nowait
-            for(int i=0;i<N_FREQ;++i){
-                double Ai=A_(i), wi=omega_(i), dirx=dir_x_(i), diry=dir_y_(i);
-                double s=sin0(i), c=cos0(i);
-                disp_priv.x() += -Ai*c*dirx;
-                disp_priv.y() += -Ai*c*diry;
-                disp_priv.z() +=  Ai*s;
-                vel_priv.x() += Ai*wi*s*dirx;
-                vel_priv.y() += Ai*wi*s*diry;
-                vel_priv.z() += Ai*wi*c;
-                acc_priv.x() += Ai*wi*wi*c*dirx;
-                acc_priv.y() += Ai*wi*wi*c*diry;
-                acc_priv.z() += -Ai*wi*wi*s;
-            }
-#pragma omp critical
-            { disp_first+=disp_priv; vel_first+=vel_priv; acc_first+=acc_priv; }
+#pragma omp parallel for reduction(+:disp_first,vel_first,acc_first)
+        for(int i=0;i<N_FREQ;++i){
+            double Ai=A_(i), wi=omega_(i), dirx=dir_x_(i), diry=dir_y_(i);
+            double s=sin0_(i), c=cos0_(i);
+            disp_first.x() += -Ai*c*dirx;
+            disp_first.y() += -Ai*c*diry;
+            disp_first.z() +=  Ai*s;
+            vel_first.x() += Ai*wi*s*dirx;
+            vel_first.y() += Ai*wi*s*diry;
+            vel_first.z() += Ai*wi*c;
+            acc_first.x() += Ai*wi*wi*c*dirx;
+            acc_first.y() += Ai*wi*wi*c*diry;
+            acc_first.z() += -Ai*wi*wi*s;
         }
         disp += disp_first; vel += vel_first; acc += acc_first;
 
@@ -295,31 +281,25 @@ public:
 
         // --- Second-order contributions ---
         Eigen::Vector3d disp_second=Eigen::Vector3d::Zero(), vel_second=Eigen::Vector3d::Zero(), acc_second=Eigen::Vector3d::Zero();
-#pragma omp parallel
-        {
-            Eigen::Vector3d disp_priv=Eigen::Vector3d::Zero(), vel_priv=Eigen::Vector3d::Zero(), acc_priv=Eigen::Vector3d::Zero();
-#pragma omp for
-            for(size_t idx=0; idx<pairwise_size_; ++idx){
-                if(skip_pair_mask_[idx]) continue;
-                double coeff=factor_flat_[idx]*exp_kz_pair_cache_[idx];
-                double Bij=Bij_flat_[idx], omega_sum=omega_sum_flat_[idx];
-                double ksum=k_sum_flat_[idx], kxsum=kx_sum_flat_[idx], kysum=ky_sum_flat_[idx];
-                double cos2=trig_cache_.cos_second(idx), sin2=trig_cache_.sin_second(idx);
-                double hx=(ksum>1e-18)? kxsum/ksum : 0.0;
-                double hy=(ksum>1e-18)? kysum/ksum : 0.0;
-                double omega2=omega_sum*omega_sum;
-                disp_priv.z() += coeff*Bij*cos2;
-                disp_priv.x() += -coeff*Bij*cos2*hx;
-                disp_priv.y() += -coeff*Bij*cos2*hy;
-                vel_priv.z() += -coeff*omega_sum*Bij*sin2;
-                vel_priv.x() += -coeff*omega_sum*Bij*sin2*hx;
-                vel_priv.y() += -coeff*omega_sum*Bij*sin2*hy;
-                acc_priv.z() += coeff*Bij*omega2*cos2;
-                acc_priv.x() += coeff*Bij*omega2*cos2*hx;
-                acc_priv.y() += coeff*Bij*omega2*cos2*hy;
-            }
-#pragma omp critical
-            { disp_second+=disp_priv; vel_second+=vel_priv; acc_second+=acc_priv; }
+#pragma omp parallel for reduction(+:disp_second,vel_second,acc_second)
+        for(size_t idx=0; idx<pairwise_size_; ++idx){
+            if(skip_pair_mask_[idx]) continue;
+            double coeff=factor_flat_[idx]*exp_kz_pair_cache_[idx];
+            double Bij=Bij_flat_[idx], omega_sum=omega_sum_flat_[idx];
+            double ksum=k_sum_flat_[idx], kxsum=kx_sum_flat_[idx], kysum=ky_sum_flat_[idx];
+            double cos2=trig_cache_.cos_second(idx), sin2=trig_cache_.sin_second(idx);
+            double hx=(ksum>1e-18)? kxsum/ksum : 0.0;
+            double hy=(ksum>1e-18)? kysum/ksum : 0.0;
+            double omega2=omega_sum*omega_sum;
+            disp_second.z() += coeff*Bij*cos2;
+            disp_second.x() += -coeff*Bij*cos2*hx;
+            disp_second.y() += -coeff*Bij*cos2*hy;
+            vel_second.z() += -coeff*omega_sum*Bij*sin2;
+            vel_second.x() += -coeff*omega_sum*Bij*sin2*hx;
+            vel_second.y() += -coeff*omega_sum*Bij*sin2*hy;
+            acc_second.z() += coeff*Bij*omega2*cos2;
+            acc_second.x() += coeff*Bij*omega2*cos2*hx;
+            acc_second.y() += coeff*Bij*omega2*cos2*hy;
         }
         disp += disp_second; vel += vel_second; acc += acc_second;
 
@@ -356,7 +336,7 @@ private:
     mutable Eigen::Vector2d stokes_drift_mean_xy_cache_;
     mutable bool stokes_drift_mean_xy_cache_z_flag_;
 
-    std::vector<double> Bij_flat_, kx_sum_flat_, ky_sum_flat_, k_sum_flat_, omega_sum_flat_, phi_sum_flat_, factor_flat_;
+    std::vector<double, Eigen::aligned_allocator<double>> Bij_flat_, kx_sum_flat_, ky_sum_flat_, k_sum_flat_, omega_sum_flat_, phi_sum_flat_, factor_flat_;
     mutable std::vector<double> theta2_cache_;
     mutable double theta2_cached_x_, theta2_cached_y_;
     mutable std::vector<double> exp_kz_freq_cache_;
@@ -366,11 +346,13 @@ private:
     mutable bool exp_kz_cached_z_flag_;
 
     struct TrigCache {
-        Eigen::ArrayXd sin_first, cos_first;
         Eigen::ArrayXd sin_second, cos_second;
         double last_t = std::numeric_limits<double>::quiet_NaN();
     };
     mutable TrigCache trig_cache_;
+
+    // Temporary arrays preallocated for first-order computations
+    mutable Eigen::ArrayXd theta0_, sin0_, cos0_;
 
     void initializeRandomPhases() {
         std::mt19937 rng(seed_);
