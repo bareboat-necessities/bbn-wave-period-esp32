@@ -34,7 +34,7 @@ static constexpr double PI = M_PI;
 #include <fstream>
 #endif
 
-// portable fast_sincos helper
+// Portable fast_sincos helper
 inline void fast_sincos(double x, double &s, double &c) {
 #if defined(__GNUC__) || defined(__clang__)
     #if defined(__GLIBC__) || defined(_GNU_SOURCE)
@@ -200,6 +200,7 @@ public:
         precomputePairwise();
         checkSteepness();
 
+        // Preallocate trig cache arrays
         trig_cache_.sin_first.resize(N_FREQ);
         trig_cache_.cos_first.resize(N_FREQ);
         trig_cache_.sin_second.resize(static_cast<int>(pairwise_size_));
@@ -209,7 +210,6 @@ public:
     // -------------------- Vectorized Lagrangian evaluation --------------------
     WaveState getLagrangianState(double x, double y, double t, double z=0.0) const
     {
-        // Fully vectorized implementation for first- and second-order contributions
         Eigen::Vector3d disp = Eigen::Vector3d::Zero();
         Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
         Eigen::Vector3d acc  = Eigen::Vector3d::Zero();
@@ -217,7 +217,7 @@ public:
         // --- Depth-dependent caches ---
         if(!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z){
             for(int i=0;i<N_FREQ;++i) exp_kz_freq_cache_[i] = std::exp(k_(i)*z);
-            for(size_t idx=0;idx<pairwise_size_;++idx){
+            for(size_t idx=0; idx<pairwise_size_; ++idx){
                 exp_kz_pair_cache_[idx] = std::exp(k_sum_flat_[idx]*z);
                 skip_pair_mask_[idx] = (cutoff_tol_>0.0 && std::abs(Bij_flat_[idx])*exp_kz_pair_cache_[idx]<cutoff_tol_)?1:0;
             }
@@ -253,12 +253,10 @@ public:
         if(std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
            theta2_cached_x_ != x || theta2_cached_y_ != y)
         {
-            for(int i=0;i<N_FREQ;++i)
-                for(int j=i;j<N_FREQ;++j){
-                    size_t idx = upper_index(i,j);
-                    if(skip_pair_mask_[idx]) theta2_cache_[idx] = std::numeric_limits<double>::quiet_NaN();
-                    else theta2_cache_[idx] = kx_sum_flat_[idx]*x + ky_sum_flat_[idx]*y + phi_sum_flat_[idx];
-                }
+            for(size_t idx=0; idx<pairwise_size_; ++idx){
+                if(skip_pair_mask_[idx]) theta2_cache_[idx] = std::numeric_limits<double>::quiet_NaN();
+                else theta2_cache_[idx] = kx_sum_flat_[idx]*x + ky_sum_flat_[idx]*y + phi_sum_flat_[idx];
+            }
             theta2_cached_x_ = x;
             theta2_cached_y_ = y;
         }
@@ -278,7 +276,7 @@ public:
             trig_cache_.last_t = t;
         }
 
-        // --- Vectorized second-order contribution ---
+        // --- Fully vectorized second-order contributions ---
         Eigen::Map<Eigen::ArrayXd> sin2(trig_cache_.sin_second.data(), pairwise_size_);
         Eigen::Map<Eigen::ArrayXd> cos2(trig_cache_.cos_second.data(), pairwise_size_);
         Eigen::Map<Eigen::ArrayXd> Bij(Bij_flat_.data(), pairwise_size_);
@@ -288,14 +286,9 @@ public:
         Eigen::Map<Eigen::ArrayXd> omega_sum(omega_sum_flat_.data(), pairwise_size_);
         Eigen::Map<Eigen::ArrayXd> exp2nd(exp_kz_pair_cache_.data(), pairwise_size_);
         Eigen::Map<Eigen::Array<char>> skip(skip_pair_mask_.data(), pairwise_size_);
+        Eigen::Map<Eigen::ArrayXd> factor(factor_flat_.data(), pairwise_size_); // precomputed
 
-        Eigen::ArrayXd factor(pairwise_size_);
-        size_t idx=0;
-        for(int i=0;i<N_FREQ;++i)
-            for(int j=i;j<N_FREQ;++j,++idx)
-                factor(idx) = (i==j)?1.0:2.0;
-
-        Eigen::ArrayXd coeff = factor*exp2nd*(1.0-skip.cast<double>());
+        Eigen::ArrayXd coeff = factor * exp2nd * (1.0 - skip.cast<double>());
         Eigen::ArrayXd ksum2 = ksum.square();
         Eigen::ArrayXd hx = (ksum2>1e-18).select(kxsum/ksum,0.0);
         Eigen::ArrayXd hy = (ksum2>1e-18).select(kysum/ksum,0.0);
@@ -343,7 +336,7 @@ private:
     Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
     Eigen::Vector2d stokes_drift_mean_xy_;
 
-    std::vector<double> Bij_flat_, kx_sum_flat_, ky_sum_flat_, k_sum_flat_, omega_sum_flat_, phi_sum_flat_;
+    std::vector<double> Bij_flat_, kx_sum_flat_, ky_sum_flat_, k_sum_flat_, omega_sum_flat_, phi_sum_flat_, factor_flat_;
     mutable std::vector<double> theta2_cache_;
     mutable double theta2_cached_x_, theta2_cached_y_;
     mutable std::vector<double> exp_kz_freq_cache_;
@@ -394,6 +387,8 @@ private:
         k_sum_flat_.resize(pairwise_size_);
         omega_sum_flat_.resize(pairwise_size_);
         phi_sum_flat_.resize(pairwise_size_);
+        factor_flat_.resize(pairwise_size_);
+
         size_t idx=0;
         for(int i=0;i<N_FREQ;++i){
             for(int j=i;j<N_FREQ;++j,++idx){
@@ -403,6 +398,7 @@ private:
                 k_sum_flat_[idx] = k_(i)+k_(j);
                 omega_sum_flat_[idx] = omega_(i)+omega_(j);
                 phi_sum_flat_[idx] = phi_(i)+phi_(j);
+                factor_flat_[idx] = (i==j)?1.0:2.0;
             }
         }
     }
