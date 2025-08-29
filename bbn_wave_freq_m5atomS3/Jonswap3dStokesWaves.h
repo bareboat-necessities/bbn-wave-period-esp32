@@ -73,7 +73,7 @@ inline void robust_sincos(double theta, double omega, double t, double &s, doubl
 }
 
 // JonswapSpectrum
-template<int N_FREQ = 256>
+template<int N_FREQ = 128>
 class JonswapSpectrum {
 public:
     JonswapSpectrum(double Hs, double Tp,
@@ -176,7 +176,7 @@ private:
 };
 
 // Jonswap3dStokesWaves
-template<int N_FREQ = 256>
+template<int N_FREQ = 128>
 class Jonswap3dStokesWaves {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -529,7 +529,7 @@ void generateWaveJonswapCSV(const std::string& filename,
                             double Hs, double Tp, double mean_dir_deg,
                             double duration = 40.0, double dt = 0.005) {
 
-    constexpr int N_FREQ = 256;
+    constexpr int N_FREQ = 128;
     auto waveModel = std::make_unique<Jonswap3dStokesWaves<N_FREQ>>(Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0);
 
     const int N_time = static_cast<int>(duration / dt) + 1;
