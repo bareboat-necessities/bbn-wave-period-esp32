@@ -67,7 +67,7 @@ void init_aranovskiy(AranovskiyFilter<double>* ar_filter) {
   double k_gain = 20.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
   double x1_0 = 0.0;
   double omega_init = (FREQ_GUESS / 1.5) * 2 * M_PI;
-  double theta_0 = -(omega_init * omega_init / 4.0);
+  double theta_0 = -(omega_init * omega_init);
   double sigma_0 = theta_0;
   ar_filter->setParams(omega_up, k_gain);
   ar_filter->setState(x1_0, theta_0, sigma_0);
