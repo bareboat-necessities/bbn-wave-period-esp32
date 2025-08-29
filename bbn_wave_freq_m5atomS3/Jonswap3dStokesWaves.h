@@ -172,7 +172,6 @@ public:
           seed_(seed), cutoff_tol_(cutoff_tol),
           pairwise_size_((size_t)N_FREQ*(N_FREQ+1)/2),
           spectrum_(Hs, Tp, f_min, f_max, gamma, g),
-          // Initialize all mutable members
           theta2_cache_(pairwise_size_),
           exp_kz_freq_cache_(N_FREQ),
           exp_kz_pair_cache_(pairwise_size_),
@@ -202,7 +201,6 @@ public:
         phi_.setZero();
         stokes_drift_scalar_.setZero();
 
-        // Initialize trig cache
         trig_cache_.sin_second.resize(pairwise_size_);
         trig_cache_.cos_second.resize(pairwise_size_);
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
@@ -228,9 +226,8 @@ public:
             for(size_t idx=0; idx<pairwise_size_; ++idx)
                 exp_kz_pair_cache_[idx] = std::exp(k_sum_flat_[idx] * z);
 
-            for(size_t idx=0; idx<pairwise_size_; ++idx){
+            for(size_t idx=0; idx<pairwise_size_; ++idx)
                 skip_pair_mask_[idx] = (cutoff_tol_>0.0 && std::abs(Bij_flat_[idx])*exp_kz_pair_cache_[idx]<cutoff_tol_)?1:0;
-            }
 
             exp_kz_cached_z_ = z;
             exp_kz_cached_z_flag_ = true;
@@ -249,64 +246,21 @@ public:
             cos0_(i) *= exp_kz_freq_cache_[i];
         }
 
-        // --- REPLACED: First-order contributions (thread-local long double + Kahan combine) ---
-        struct AccLong { long double x=0.0L, y=0.0L, z=0.0L; };
-
-        std::vector<AccLong> disp_p(nthreads), vel_p(nthreads), acc_p(nthreads);
-
-        {
-            AccLong ld_disp{0,0,0}, ld_vel{0,0,0}, ld_acc{0,0,0};
-            for(int i=0;i<N_FREQ;++i){
-                double Ai=A_(i), wi=omega_(i), dirx=dir_x_(i), diry=dir_y_(i);
-                double s=sin0_(i), c=cos0_(i);
-                // accumulate in long double locally
-                ld_disp.x -= (long double)Ai * (long double)c * (long double)dirx;
-                ld_disp.y -= (long double)Ai * (long double)c * (long double)diry;
-                ld_disp.z += (long double)Ai * (long double)s;
-                ld_vel.x += (long double)Ai * (long double)wi * (long double)s * (long double)dirx;
-                ld_vel.y += (long double)Ai * (long double)wi * (long double)s * (long double)diry;
-                ld_vel.z += (long double)Ai * (long double)wi * (long double)c;
-                ld_acc.x += (long double)Ai * (long double)wi * (long double)wi * (long double)c * (long double)dirx;
-                ld_acc.y += (long double)Ai * (long double)wi * (long double)wi * (long double)c * (long double)diry;
-                ld_acc.z -= (long double)Ai * (long double)wi * (long double)wi * (long double)s;
-            }
-            // store per-thread partials
-            disp_p[tid].x = ld_disp.x; disp_p[tid].y = ld_disp.y; disp_p[tid].z = ld_disp.z;
-            vel_p[tid].x  = ld_vel.x;  vel_p[tid].y  = ld_vel.y;  vel_p[tid].z  = ld_vel.z;
-            acc_p[tid].x  = ld_acc.x;  acc_p[tid].y  = ld_acc.y;  acc_p[tid].z  = ld_acc.z;
+        // --- SERIAL FIRST-ORDER ---
+        for(int i=0;i<N_FREQ;++i){
+            double Ai=A_(i), wi=omega_(i);
+            double dirx=dir_x_(i), diry=dir_y_(i);
+            double s=sin0_(i), c=cos0_(i);
+            disp.x() -= Ai*c*dirx;
+            disp.y() -= Ai*c*diry;
+            disp.z() += Ai*s;
+            vel.x()  += Ai*wi*s*dirx;
+            vel.y()  += Ai*wi*s*diry;
+            vel.z()  += Ai*wi*c;
+            acc.x()  += Ai*wi*wi*c*dirx;
+            acc.y()  += Ai*wi*wi*c*diry;
+            acc.z()  -= Ai*wi*wi*s;
         }
-
-        // Combine per-thread partials using Kahan-style compensated summation (serial)
-        auto kahan_combine = [](const std::vector<AccLong>& parts) {
-            AccLong sum{0,0,0}, c{0,0,0};
-            for (const auto &p : parts) {
-                long double yx = p.x - c.x;
-                long double tx = sum.x + yx;
-                c.x = (tx - sum.x) - yx;
-                sum.x = tx;
-
-                long double yy = p.y - c.y;
-                long double ty = sum.y + yy;
-                c.y = (ty - sum.y) - yy;
-                sum.y = ty;
-
-                long double yz = p.z - c.z;
-                long double tz = sum.z + yz;
-                c.z = (tz - sum.z) - yz;
-                sum.z = tz;
-            }
-            return sum;
-        };
-
-        AccLong sum_disp = kahan_combine(disp_p);
-        AccLong sum_vel  = kahan_combine(vel_p);
-        AccLong sum_acc  = kahan_combine(acc_p);
-
-        Eigen::Vector3d disp_first((double)sum_disp.x, (double)sum_disp.y, (double)sum_disp.z),
-                        vel_first((double)sum_vel.x,   (double)sum_vel.y,   (double)sum_vel.z),
-                        acc_first((double)sum_acc.x,   (double)sum_acc.y,   (double)sum_acc.z);
-        disp += disp_first; vel += vel_first; acc += acc_first;
-        // --- END FIRST-ORDER PATCH ---
 
         // Second-order theta caching
         if(std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
@@ -333,80 +287,38 @@ public:
             trig_cache_.last_t = t;
         }
 
-        // --- REPLACED: Second-order contributions (thread-local long double + Kahan combine) ---
-        std::vector<AccLong> disp2_p(nthreads), vel2_p(nthreads), acc2_p(nthreads);
-
-        {
-            AccLong ld_disp{0,0,0}, ld_vel{0,0,0}, ld_acc{0,0,0};
-            for(size_t idx=0; idx<pairwise_size_; ++idx){
-                if(skip_pair_mask_[idx]) continue;
-                double coeff=(double)factor_flat_[idx]*exp_kz_pair_cache_[idx];
-                double Bij=Bij_flat_[idx], omega_sum=omega_sum_flat_[idx];
-                double ksum=k_sum_flat_[idx], kxsum=kx_sum_flat_[idx], kysum=ky_sum_flat_[idx];
-                double cos2=trig_cache_.cos_second(idx), sin2=trig_cache_.sin_second(idx);
-                double hx=(ksum>1e-18)? kxsum/ksum : 0.0;
-                double hy=(ksum>1e-18)? kysum/ksum : 0.0;
-                double omega2=omega_sum*omega_sum;
-                // accumulate in long double
-                ld_disp.z += (long double)coeff * (long double)Bij * (long double)cos2;
-                ld_disp.x += -(long double)coeff * (long double)Bij * (long double)cos2 * (long double)hx;
-                ld_disp.y += -(long double)coeff * (long double)Bij * (long double)cos2 * (long double)hy;
-                ld_vel.z += -(long double)coeff * (long double)omega_sum * (long double)Bij * (long double)sin2;
-                ld_vel.x += -(long double)coeff * (long double)omega_sum * (long double)Bij * (long double)sin2 * (long double)hx;
-                ld_vel.y += -(long double)coeff * (long double)omega_sum * (long double)Bij * (long double)sin2 * (long double)hy;
-                ld_acc.z += (long double)coeff * (long double)Bij * (long double)omega2 * (long double)cos2;
-                ld_acc.x += (long double)coeff * (long double)Bij * (long double)omega2 * (long double)cos2 * (long double)hx;
-                ld_acc.y += (long double)coeff * (long double)Bij * (long double)omega2 * (long double)cos2 * (long double)hy;
-            }
-            disp2_p[tid].x = ld_disp.x; disp2_p[tid].y = ld_disp.y; disp2_p[tid].z = ld_disp.z;
-            vel2_p[tid].x  = ld_vel.x;  vel2_p[tid].y  = ld_vel.y;  vel2_p[tid].z  = ld_vel.z;
-            acc2_p[tid].x  = ld_acc.x;  acc2_p[tid].y  = ld_acc.y;  acc2_p[tid].z  = ld_acc.z;
+        // --- SERIAL SECOND-ORDER ---
+        for(size_t idx=0; idx<pairwise_size_; ++idx){
+            if(skip_pair_mask_[idx]) continue;
+            double coeff=factor_flat_[idx]*exp_kz_pair_cache_[idx];
+            double Bij=Bij_flat_[idx];
+            double omega_sum=omega_sum_flat_[idx];
+            double ksum=k_sum_flat_[idx], kxsum=kx_sum_flat_[idx], kysum=ky_sum_flat_[idx];
+            double cos2=trig_cache_.cos_second(idx), sin2=trig_cache_.sin_second(idx);
+            double hx=(ksum>1e-18)? kxsum/ksum : 0.0;
+            double hy=(ksum>1e-18)? kysum/ksum : 0.0;
+            double omega2=omega_sum*omega_sum;
+            disp.z() += coeff * Bij * cos2;
+            disp.x() -= coeff * Bij * cos2 * hx;
+            disp.y() -= coeff * Bij * cos2 * hy;
+            vel.z() -= coeff * omega_sum * Bij * sin2;
+            vel.x() -= coeff * omega_sum * Bij * sin2 * hx;
+            vel.y() -= coeff * omega_sum * Bij * sin2 * hy;
+            acc.z() += coeff * Bij * omega2 * cos2;
+            acc.x() += coeff * Bij * omega2 * cos2 * hx;
+            acc.y() += coeff * Bij * omega2 * cos2 * hy;
         }
-
-        AccLong sum_disp2 = kahan_combine(disp2_p);
-        AccLong sum_vel2  = kahan_combine(vel2_p);
-        AccLong sum_acc2  = kahan_combine(acc2_p);
-
-        Eigen::Vector3d disp_second((double)sum_disp2.x, (double)sum_disp2.y, (double)sum_disp2.z),
-                        vel_second((double)sum_vel2.x,   (double)sum_vel2.y,   (double)sum_vel2.z),
-                        acc_second((double)sum_acc2.x,   (double)sum_acc2.y,   (double)sum_acc2.z);
-        disp += disp_second; vel += vel_second; acc += acc_second;
-        // --- END SECOND-ORDER PATCH ---
 
         // Depth-dependent Stokes drift
         if(!stokes_drift_mean_xy_cache_z_flag_){
-            // --- REPLACED: Stokes drift accumulation (thread-local long double + Kahan combine) ---
-            std::vector<std::pair<long double,long double>> stokes_p(nthreads, {0.0L,0.0L});
-
-            {
-                long double lx = 0.0L, ly = 0.0L;
-                for(int i=0;i<N_FREQ;++i){
-                    double exp2 = exp_kz_freq_cache_[i]*exp_kz_freq_cache_[i];
-                    double Usi_z = stokes_drift_scalar_(i)*exp2;
-                    lx += (long double)Usi_z * (long double)dir_x_(i);
-                    ly += (long double)Usi_z * (long double)dir_y_(i);
-                }
-                stokes_p[tid].first = lx;
-                stokes_p[tid].second = ly;
+            stokes_drift_mean_xy_cache_.setZero();
+            for(int i=0;i<N_FREQ;++i){
+                double exp2 = exp_kz_freq_cache_[i]*exp_kz_freq_cache_[i];
+                double Usi_z = stokes_drift_scalar_(i)*exp2;
+                stokes_drift_mean_xy_cache_.x() += Usi_z*dir_x_(i);
+                stokes_drift_mean_xy_cache_.y() += Usi_z*dir_y_(i);
             }
-
-            // Kahan combine stokes components
-            long double stx = 0.0L, cstx = 0.0L;
-            long double sty = 0.0L, csty = 0.0L;
-            for (int tt = 0; tt < nthreads; ++tt) {
-                long double yx = stokes_p[tt].first - cstx;
-                long double tx = stx + yx;
-                cstx = (tx - stx) - yx;
-                stx = tx;
-
-                long double yy = stokes_p[tt].second - csty;
-                long double ty = sty + yy;
-                csty = (ty - sty) - yy;
-                sty = ty;
-            }
-            stokes_drift_mean_xy_cache_ = Eigen::Vector2d((double)stx, (double)sty);
             stokes_drift_mean_xy_cache_z_flag_ = true;
-            // --- END STOKES PATCH ---
         }
 
         vel.x() += stokes_drift_mean_xy_cache_.x();
@@ -427,11 +339,9 @@ private:
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
     Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
 
-    // Pairwise arrays with aligned allocator
     std::vector<double, Eigen::aligned_allocator<double>> Bij_flat_, kx_sum_flat_, ky_sum_flat_, 
                                                          k_sum_flat_, omega_sum_flat_, phi_sum_flat_, factor_flat_;
     
-    // Mutable caches
     mutable std::vector<double> theta2_cache_;
     mutable std::vector<double> exp_kz_freq_cache_;
     mutable std::vector<double> exp_kz_pair_cache_;
@@ -456,30 +366,20 @@ private:
     }
 
     void initializeDirectionalSpread() {
-        // Build a reproducible RNG for directions (use a different stream than phases to keep them independent).
         std::mt19937 rng_dir(seed_ + 1234567u);
-        // We'll draw uniform deviations in [-1,1] which we then scale by spread_angle.
         std::uniform_real_distribution<double> u01(-1.0, 1.0);
-
-        // amplitude_ratio in [0..1], higher amplitude -> narrower spread (if exponent>0)
         Eigen::ArrayXd amplitude_ratio = A_.array() / A_.maxCoeff();
-        Eigen::ArrayXd spread_scale = amplitude_ratio.pow(spreading_exponent_); // in [0..1]
-
-        // Decide on a maximum angular spread (radians). Choose e.g. pi/2 (90°) as a sensible cap,
-        // but you can tune this constant or make it a parameter. Using pi/2 keeps spread_scale=1 -> ±90°.
+        Eigen::ArrayXd spread_scale = amplitude_ratio.pow(spreading_exponent_);
         const double max_spread = PI * 0.5;
 
-        // Resize dir_x_, dir_y_ already exist; fill angle per-frequency
         for (int i = 0; i < N_FREQ; ++i) {
-            double dev = u01(rng_dir);                         // in [-1,1]
-            double delta = dev * (spread_scale(i) * max_spread); // symmetric deviation
-            double angle = mean_dir_rad_ + delta;              // centered around mean_dir_rad_
+            double dev = u01(rng_dir);
+            double delta = dev * (spread_scale(i) * max_spread);
+            double angle = mean_dir_rad_ + delta;
             dir_x_(i) = std::cos(angle);
             dir_y_(i) = std::sin(angle);
         }
 
-        // Ensure numerical normalization (cos/sin already produce unit length but rounding could be off)
-        // This also allows later code to assume dir_x_/dir_y_ are unit vectors.
         for (int i = 0; i < N_FREQ; ++i) {
             double norm = std::hypot(dir_x_(i), dir_y_(i));
             if (norm > 0.0) {
@@ -493,7 +393,6 @@ private:
     }
 
     void computeWaveDirectionComponents() {
-        // kx, ky are just k * direction unit vector components
         kx_ = k_.array() * dir_x_.array();
         ky_ = k_.array() * dir_y_.array();
     }
