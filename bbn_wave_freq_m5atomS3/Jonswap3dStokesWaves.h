@@ -240,6 +240,7 @@ public:
         checkSteepness();
     }
 
+    // Note: z = 0 at surface, z < 0 below surface (into water).
     WaveState getLagrangianState(double x, double y, double t, double z = 0.0) const {
         Eigen::Vector3d disp = Eigen::Vector3d::Zero();
         Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
