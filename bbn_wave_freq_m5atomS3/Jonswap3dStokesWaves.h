@@ -252,18 +252,9 @@ public:
         // --- REPLACED: First-order contributions (thread-local long double + Kahan combine) ---
         struct AccLong { long double x=0.0L, y=0.0L, z=0.0L; };
 
-#if defined(_OPENMP)
-        int nthreads = omp_get_max_threads();
-#else
-        int nthreads = 1;
-#endif
         std::vector<AccLong> disp_p(nthreads), vel_p(nthreads), acc_p(nthreads);
 
         {
-            int tid = 0;
-    #ifdef _OPENMP
-            tid = omp_get_thread_num();
-    #endif
             AccLong ld_disp{0,0,0}, ld_vel{0,0,0}, ld_acc{0,0,0};
             for(int i=0;i<N_FREQ;++i){
                 double Ai=A_(i), wi=omega_(i), dirx=dir_x_(i), diry=dir_y_(i);
