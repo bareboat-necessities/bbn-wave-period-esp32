@@ -11,7 +11,6 @@
   - z = 0 at the free surface; z < 0 is below the surface (into water).
   - First-order horizontal velocity signs are negative to match disp = -A cos(theta).
   - Second-order velocity/acceleration signs consistent with d/dt cos(theta - omega t).
-
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -40,37 +39,37 @@ static constexpr double PI = M_PI;
 #include <fstream>
 #endif
 
-// Portable fast_sincos helper
+// ----------------- Portable fast_sincos helper -----------------
 inline void fast_sincos(double x, double &s, double &c) {
 #if defined(__GNUC__) || defined(__clang__)
-    #if defined(__GLIBC__) || defined(_GNU_SOURCE)
-        ::sincos(x, &s, &c);
-    #else
-        s = std::sin(x);
-        c = std::cos(x);
-    #endif
-#elif defined(_MSC_VER)
-    double cs;
-    _sincos(x, &s, &cs);
-    c = cs;
-#else
+  #if defined(__GLIBC__) || defined(_GNU_SOURCE)
+    ::sincos(x, &s, &c);
+  #else
     s = std::sin(x);
     c = std::cos(x);
+  #endif
+#elif defined(_MSC_VER)
+  double cs;
+  _sincos(x, &s, &cs);
+  c = cs;
+#else
+  s = std::sin(x);
+  c = std::cos(x);
 #endif
 }
 
 inline void robust_sincos(double theta, double omega, double t, double &s, double &c) {
-    constexpr double LONG_WAVE_THRESHOLD = 1e-4;
-    double arg = theta - omega * t;
-    if (std::abs(omega) < LONG_WAVE_THRESHOLD) {
-        s = std::sin(arg);
-        c = std::cos(arg);
-    } else {
-        fast_sincos(arg, s, c);
-    }
+  constexpr double LONG_WAVE_THRESHOLD = 1e-4;
+  double arg = theta - omega * t;
+  if (std::abs(omega) < LONG_WAVE_THRESHOLD) {
+    s = std::sin(arg);
+    c = std::cos(arg);
+  } else {
+    fast_sincos(arg, s, c);
+  }
 }
 
-// ====================== JonswapSpectrum (vectorized) ======================
+// ====================== JonswapSpectrum ======================
 template<int N_FREQ = 128>
 class JonswapSpectrum {
 public:
@@ -109,7 +108,8 @@ private:
     const double log_f_min = std::log(f_min_);
     const double log_f_max = std::log(f_max_);
     const double step = (log_f_max - log_f_min) / (N_FREQ - 1);
-    Eigen::Array<double, N_FREQ, 1> idx = Eigen::Array<double, N_FREQ, 1>::LinSpaced(N_FREQ, 0.0, double(N_FREQ-1));
+    Eigen::Array<double, N_FREQ, 1> idx =
+        Eigen::Array<double, N_FREQ, 1>::LinSpaced(N_FREQ, 0.0, double(N_FREQ - 1));
     frequencies_ = ((log_f_min + step * idx).exp()).matrix();
   }
 
@@ -118,7 +118,7 @@ private:
     df_(N_FREQ - 1) = frequencies_(N_FREQ - 1) - frequencies_(N_FREQ - 2);
     if constexpr (N_FREQ > 2) {
       df_.segment(1, N_FREQ - 2) =
-        0.5 * (frequencies_.segment(2, N_FREQ - 2) - frequencies_.segment(0, N_FREQ - 2));
+          0.5 * (frequencies_.segment(2, N_FREQ - 2) - frequencies_.segment(0, N_FREQ - 2));
     }
   }
 
@@ -134,17 +134,18 @@ private:
 
     const Eigen::Array<double, N_FREQ, 1> dfreq  = f - fp;
     const Eigen::Array<double, N_FREQ, 1> denom  = 2.0 * sigma.square() * fp * fp;
-    const Eigen::Array<double, N_FREQ, 1> r      = (- (dfreq.square()) / denom).exp();
+    const Eigen::Array<double, N_FREQ, 1> r      = (-(dfreq.square()) / denom).exp();
 
     const double g2_over_2pi4 = (g_ * g_) / std::pow(2.0 * PI, 4);
-    const Eigen::Array<double, N_FREQ, 1> ratio4 = ((fp*fp) / f2).square();
+    const Eigen::Array<double, N_FREQ, 1> ratio4 = ((fp * fp) / f2).square();
     const Eigen::Array<double, N_FREQ, 1> base   = g2_over_2pi4 * inv_f5 * (-1.25 * ratio4).exp();
 
     const Eigen::Array<double, N_FREQ, 1> gamma_r = (r * std::log(gamma_)).exp();
     Eigen::Array<double, N_FREQ, 1> S0 = base * gamma_r;
 
     double variance_unit = (S0.matrix().cwiseProduct(df_)).sum();
-    if (!(variance_unit > 0.0)) throw std::runtime_error("JonswapSpectrum: zero/negative variance");
+    if (!(variance_unit > 0.0))
+      throw std::runtime_error("JonswapSpectrum: zero/negative variance");
 
     const double variance_target = (Hs_ * Hs_) / 16.0;
     const double alpha = variance_target / variance_unit;
@@ -162,7 +163,7 @@ private:
   }
 };
 
-// =================== Jonswap3dStokesWaves (vectorized + tuned) ====================
+// =================== Jonswap3dStokesWaves ====================
 template<int N_FREQ = 128>
 class Jonswap3dStokesWaves {
 public:
@@ -181,14 +182,11 @@ public:
                        double spreading_exponent = 15.0,
                        unsigned int seed = 239u,
                        double cutoff_tol = 1e-8)
-    : Hs_(Hs),
-      Tp_(Tp),
+    : Hs_(Hs), Tp_(Tp),
       mean_dir_rad_(mean_direction_deg * PI / 180.0),
-      gamma_(gamma),
-      g_(g),
+      gamma_(gamma), g_(g),
       spreading_exponent_(spreading_exponent),
-      seed_(seed),
-      cutoff_tol_(cutoff_tol),
+      seed_(seed), cutoff_tol_(cutoff_tol),
       pairwise_size_(static_cast<size_t>(N_FREQ) * (N_FREQ + 1) / 2),
       spectrum_(Hs, Tp, f_min, f_max, gamma, g),
       exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
@@ -196,30 +194,22 @@ public:
       stokes_drift_mean_xy_cache_valid_(false),
       trig_last_t_(std::numeric_limits<double>::quiet_NaN())
   {
-    // Spectrum data
     frequencies_ = spectrum_.frequencies();
     A_           = spectrum_.amplitudes();
     df_          = spectrum_.df();
 
-    // Dispersion (deep water)
     omega_ = 2.0 * PI * frequencies_;
     k_     = omega_.array().square() / g_;
 
-    // Direction & phase
     dir_x_.setZero(); dir_y_.setZero();
     kx_.setZero();    ky_.setZero();
     phi_.setZero();
 
-    // First-order derived arrays
     Aomega_  = A_.array() * omega_.array();
     Aomega2_ = A_.array() * omega_.array().square();
-
     stokes_drift_scalar_.setZero();
 
-    // Allocate per-pair arrays and caches
     allocatePairArrays();
-
-    // Initialize content
     initializeRandomPhases();
     initializeDirectionalSpread();
     computeWaveDirectionComponents();
@@ -228,8 +218,6 @@ public:
     checkSteepness();
   }
 
-  // Get displacement/velocity/acceleration at (x,y,z,t)
-  // z = 0 at surface; z < 0 below surface
   WaveState getLagrangianState(double x, double y, double t, double z = 0.0) const {
     // ---- depth caches ----
     if (std::isnan(exp_kz_cached_z_) || exp_kz_cached_z_ != z) {
@@ -243,7 +231,9 @@ public:
       }
 
       exp_kz_cached_z_ = z;
-      stokes_drift_mean_xy_cache_valid_ = false; // depth-dependent
+      stokes_drift_mean_xy_cache_valid_ = false;
+      // FIX #1: depth affects masking → force trig recalc
+      trig_last_t_ = std::numeric_limits<double>::quiet_NaN();
     }
 
     // ---- first-order ----
@@ -256,17 +246,14 @@ public:
     Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
     Eigen::Vector3d acc  = Eigen::Vector3d::Zero();
 
-    // Displacement (1st)
     disp.x() -= (A_.array() * cos0 * dir_x_.array()).sum();
     disp.y() -= (A_.array() * cos0 * dir_y_.array()).sum();
     disp.z() += (A_.array() * sin0).sum();
 
-    // Velocity (1st)
     vel.x()  -= (Aomega_  * sin0 * dir_x_.array()).sum();
     vel.y()  -= (Aomega_  * sin0 * dir_y_.array()).sum();
     vel.z()  -= (Aomega_  * cos0).sum();
 
-    // Acceleration (1st)
     acc.x()  += (Aomega2_ * cos0 * dir_x_.array()).sum();
     acc.y()  += (Aomega2_ * cos0 * dir_y_.array()).sum();
     acc.z()  -= (Aomega2_ * sin0).sum();
@@ -276,6 +263,8 @@ public:
       Eigen::Matrix<double, 2, 1> xy; xy << x, y;
       theta2_cache_ = (Ksum2_ * xy).array() + phi_sum_;
       x_cached_ = x; y_cached_ = y;
+      // FIX #2: theta changed → force trig recalc
+      trig_last_t_ = std::numeric_limits<double>::quiet_NaN();
     }
 
     // ---- second-order trig cache ----
@@ -286,7 +275,6 @@ public:
       trig_last_t_ = t;
     }
 
-    // ---- second-order contributions ----
     const Eigen::ArrayXd coeff = (factor_ * Bij_) * exp_kz_pairs_;
     const Eigen::ArrayXd C     = coeff * cos2_;
     const Eigen::ArrayXd S     = coeff * sin2_;
@@ -303,12 +291,10 @@ public:
     const double ax2 = -(C * omega_sum2_ * hx_).sum();
     const double ay2 = -(C * omega_sum2_ * hy_).sum();
 
-    // Accumulate 2nd order
     disp.x() += dx2; disp.y() += dy2; disp.z() += dz2;
     vel.x()  += vx2; vel.y()  += vy2; vel.z()  += vz2;
     acc.x()  += ax2; acc.y()  += ay2; acc.z()  += az2;
 
-    // ---- Stokes drift (depth-dependent, cached per z) ----
     if (!stokes_drift_mean_xy_cache_valid_) {
       const Eigen::Array<double, N_FREQ, 1> exp2 = exp_kz_ * exp_kz_;
       const Eigen::Array<double, N_FREQ, 1> Us_z = stokes_drift_scalar_.array() * exp2;
@@ -323,8 +309,6 @@ public:
   }
 
 private:
-  // ===================== members =====================
-
   // Inputs / parameters
   JonswapSpectrum<N_FREQ> spectrum_;
   double Hs_, Tp_, mean_dir_rad_, gamma_, g_, spreading_exponent_;
@@ -332,7 +316,7 @@ private:
   double cutoff_tol_;
   size_t pairwise_size_;
 
-  // Per-frequency (size N_FREQ)
+  // Per-frequency
   Eigen::Matrix<double, N_FREQ, 1> frequencies_;
   Eigen::Matrix<double, N_FREQ, 1> A_, df_;
   Eigen::Matrix<double, N_FREQ, 1> omega_, k_, phi_;
@@ -340,88 +324,57 @@ private:
   Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
   Eigen::Array<double, N_FREQ, 1>  Aomega_, Aomega2_;
 
-  // Per-pair (size pairwise_size_)
+  // Per-pair
   Eigen::ArrayXd Bij_, kx_sum_, ky_sum_, k_sum_;
   Eigen::ArrayXd omega_sum_, omega_sum2_, phi_sum_, factor_;
   Eigen::ArrayXd hx_, hy_;
   Eigen::Matrix<double, Eigen::Dynamic, 2, Eigen::ColMajor> Ksum2_;
 
-  // Caches (mutable)
-  mutable Eigen::Array<double, N_FREQ, 1> exp_kz_;     // e^{k z}
-  mutable Eigen::ArrayXd exp_kz_pairs_;                 // e^{(k_i+k_j) z}
-  mutable Eigen::ArrayXd theta2_cache_;                 // kx_sum*x + ky_sum*y + phi_sum
-  mutable Eigen::ArrayXd sin2_, cos2_;                  // sin/cos(theta2 - wsum t)
-  mutable Eigen::ArrayXd pair_mask_;                    // numeric {0,1}
-
+  // Caches
+  mutable Eigen::Array<double, N_FREQ, 1> exp_kz_;
+  mutable Eigen::ArrayXd exp_kz_pairs_, theta2_cache_, sin2_, cos2_, pair_mask_;
   mutable Eigen::Vector2d stokes_drift_mean_xy_cache_;
   mutable bool   stokes_drift_mean_xy_cache_valid_;
+  mutable double exp_kz_cached_z_, x_cached_, y_cached_, trig_last_t_;
 
-  mutable double exp_kz_cached_z_;
-  mutable double x_cached_, y_cached_;
-  mutable double trig_last_t_;
-
-  // ===================== helpers =====================
-
+  // Helpers
   void allocatePairArrays() {
     const ptrdiff_t P = static_cast<ptrdiff_t>(pairwise_size_);
-    Bij_.resize(P);
-    kx_sum_.resize(P);
-    ky_sum_.resize(P);
-    k_sum_.resize(P);
-    omega_sum_.resize(P);
-    omega_sum2_.resize(P);
-    phi_sum_.resize(P);
-    factor_.resize(P);
-    hx_.resize(P);
-    hy_.resize(P);
-    Ksum2_.resize(P, 2);
+    Bij_.resize(P); kx_sum_.resize(P); ky_sum_.resize(P); k_sum_.resize(P);
+    omega_sum_.resize(P); omega_sum2_.resize(P); phi_sum_.resize(P);
+    factor_.resize(P); hx_.resize(P); hy_.resize(P); Ksum2_.resize(P, 2);
+    exp_kz_pairs_.resize(P); theta2_cache_.resize(P);
+    sin2_.resize(P); cos2_.resize(P); pair_mask_.resize(P);
 
-    exp_kz_pairs_.resize(P);
-    theta2_cache_.resize(P);
-    sin2_.resize(P);
-    cos2_.resize(P);
-    pair_mask_.resize(P);
-
-    // Initialize to zero for safety
     Bij_.setZero(); kx_sum_.setZero(); ky_sum_.setZero(); k_sum_.setZero();
-    omega_sum_.setZero(); omega_sum2_.setZero();
-    phi_sum_.setZero(); factor_.setZero();
+    omega_sum_.setZero(); omega_sum2_.setZero(); phi_sum_.setZero(); factor_.setZero();
     hx_.setZero(); hy_.setZero(); Ksum2_.setZero();
-
-    exp_kz_pairs_.setZero(); theta2_cache_.setZero();
-    sin2_.setZero(); cos2_.setZero(); pair_mask_.setZero();
-
-    exp_kz_.setZero();
+    exp_kz_pairs_.setZero(); theta2_cache_.setZero(); sin2_.setZero(); cos2_.setZero();
+    pair_mask_.setZero(); exp_kz_.setZero();
     x_cached_ = y_cached_ = std::numeric_limits<double>::quiet_NaN();
   }
 
   void initializeRandomPhases() {
     std::mt19937 rng(seed_);
     std::uniform_real_distribution<double> dist(0.0, 2.0 * PI);
-
     for (int i = 0; i < N_FREQ / 2; ++i) {
       const double ph = dist(rng);
       phi_(i) = ph;
       phi_(N_FREQ - 1 - i) = -ph;
     }
-    if (N_FREQ % 2 == 1) {
-      phi_(N_FREQ / 2) = dist(rng);
-    }
+    if (N_FREQ % 2 == 1) phi_(N_FREQ / 2) = dist(rng);
   }
 
   void initializeDirectionalSpread() {
     std::mt19937 rng_dir(seed_ + 1234567u);
     std::uniform_real_distribution<double> u01(-1.0, 1.0);
-
-    const Eigen::Array<double, N_FREQ, 1> amplitude_ratio = A_.array() / A_.maxCoeff();
-    const Eigen::Array<double, N_FREQ, 1> spread_scale    = amplitude_ratio.pow(spreading_exponent_);
+    const Eigen::Array<double, N_FREQ, 1> amp_ratio = A_.array() / A_.maxCoeff();
+    const Eigen::Array<double, N_FREQ, 1> spread_scale = amp_ratio.pow(spreading_exponent_);
     constexpr double max_spread = PI * 0.5;
 
     for (int i = 0; i < N_FREQ / 2; ++i) {
-      const double dev   = u01(rng_dir);
-      const double delta = dev * (spread_scale(i) * max_spread);
+      const double delta = u01(rng_dir) * (spread_scale(i) * max_spread);
       const double angle = mean_dir_rad_ + delta;
-
       dir_x_(i) = std::cos(angle);
       dir_y_(i) = std::sin(angle);
 
@@ -430,26 +383,17 @@ private:
       dir_x_(j) = std::cos(angle_j);
       dir_y_(j) = std::sin(angle_j);
     }
-
     if (N_FREQ % 2 == 1) {
       const int mid = N_FREQ / 2;
-      const double dev   = u01(rng_dir);
-      const double delta = dev * (spread_scale(mid) * max_spread);
+      const double delta = u01(rng_dir) * (spread_scale(mid) * max_spread);
       const double angle = mean_dir_rad_ + delta;
       dir_x_(mid) = std::cos(angle);
       dir_y_(mid) = std::sin(angle);
     }
-
-    // Normalize direction vectors
     for (int i = 0; i < N_FREQ; ++i) {
       const double norm = std::hypot(dir_x_(i), dir_y_(i));
-      if (norm > 0.0) {
-        dir_x_(i) /= norm;
-        dir_y_(i) /= norm;
-      } else {
-        dir_x_(i) = std::cos(mean_dir_rad_);
-        dir_y_(i) = std::sin(mean_dir_rad_);
-      }
+      if (norm > 0.0) { dir_x_(i) /= norm; dir_y_(i) /= norm; }
+      else { dir_x_(i) = std::cos(mean_dir_rad_); dir_y_(i) = std::sin(mean_dir_rad_); }
     }
   }
 
@@ -461,98 +405,72 @@ private:
   }
 
   void computePerComponentStokesDriftEstimate() {
-    // Deep-water Stokes drift at surface: U_s0 = omega * k * a^2
-    for (int i = 0; i < N_FREQ; ++i) {
+    for (int i = 0; i < N_FREQ; ++i)
       stokes_drift_scalar_(i) = omega_(i) * k_(i) * A_(i) * A_(i);
-    }
   }
 
   void precomputePairwise() {
     constexpr double tiny = 1e-18;
     ptrdiff_t idx = 0;
-
     for (int i = 0; i < N_FREQ; ++i) {
       const double ki = k_(i);
       for (int j = i; j < N_FREQ; ++j) {
-        const double kj   = k_(j);
+        const double kj = k_(j);
         const double ksum = ki + kj;
         const double kij  = ki * kj;
-
-        // Simplified deep-water T^+ kernel
         const double T_plus = (ksum > tiny) ? (kij / ksum) : 0.0;
-
-        const double kxsum  = kx_(i) + kx_(j);
-        const double kysum  = ky_(i) + ky_(j);
-        const double wsum   = omega_(i) + omega_(j);
+        const double kxsum = kx_(i) + kx_(j);
+        const double kysum = ky_(i) + ky_(j);
+        const double wsum  = omega_(i) + omega_(j);
 
         Bij_(idx)        = T_plus * A_(i) * A_(j);
-        kx_sum_(idx)     = kxsum;
-        ky_sum_(idx)     = kysum;
-        k_sum_(idx)      = ksum;
-        omega_sum_(idx)  = wsum;
-        omega_sum2_(idx) = wsum * wsum;
+        kx_sum_(idx)     = kxsum; ky_sum_(idx) = kysum; k_sum_(idx) = ksum;
+        omega_sum_(idx)  = wsum; omega_sum2_(idx) = wsum * wsum;
         phi_sum_(idx)    = phi_(i) + phi_(j);
         factor_(idx)     = (i == j) ? 1.0 : 2.0;
-
-        if (ksum > tiny) {
-          hx_(idx) = kxsum / ksum;
-          hy_(idx) = kysum / ksum;
-        } else {
-          hx_(idx) = 0.0;
-          hy_(idx) = 0.0;
-        }
-
-        // Fused matrix for theta2
-        Ksum2_(idx, 0) = kxsum;
-        Ksum2_(idx, 1) = kysum;
-
+        hx_(idx)         = (ksum > tiny) ? (kxsum / ksum) : 0.0;
+        hy_(idx)         = (ksum > tiny) ? (kysum / ksum) : 0.0;
+        Ksum2_(idx,0)    = kxsum; Ksum2_(idx,1) = kysum;
         ++idx;
       }
     }
   }
 
   void checkSteepness() {
-    const double max_steepness = (k_.array() * A_.array()).maxCoeff();
-    if (max_steepness > 0.4) {
+    const double max_steep = (k_.array() * A_.array()).maxCoeff();
+    if (max_steep > 0.4)
       throw std::runtime_error("Jonswap3dStokesWaves: wave too steep (>0.4), unstable");
-    }
   }
 };
 
 #ifdef JONSWAP_TEST
+// CSV generator for testing
 static void generateWaveJonswapCSV(const std::string& filename,
                                    double Hs, double Tp, double mean_dir_deg,
                                    double duration = 40.0, double dt = 0.005) {
-    constexpr int N_FREQ = 128;
-    auto waveModel = std::make_unique<Jonswap3dStokesWaves<N_FREQ>>(Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0);
+  constexpr int N_FREQ = 128;
+  auto waveModel = std::make_unique<Jonswap3dStokesWaves<N_FREQ>>(Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0);
 
-    const int N_time = static_cast<int>(duration / dt) + 1;
-    Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
+  const int N_time = static_cast<int>(duration / dt) + 1;
+  Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
 
-    Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
-
-    for (int i = 0; i < N_time; ++i) {
-        auto state = waveModel->getLagrangianState(0.0, 0.0, time(i));
-        for (int j = 0; j < 3; ++j) {
-            disp(j, i) = state.displacement(j);
-            vel(j, i)  = state.velocity(j);
-            acc(j, i)  = state.acceleration(j);
-        }
+  Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
+  for (int i = 0; i < N_time; ++i) {
+    auto state = waveModel->getLagrangianState(0.0, 0.0, time(i));
+    for (int j = 0; j < 3; ++j) {
+      disp(j, i) = state.displacement(j);
+      vel(j, i)  = state.velocity(j);
+      acc(j, i)  = state.acceleration(j);
     }
+  }
 
-    std::ofstream file(filename);
-    file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z\n";
-    for (int i = 0; i < N_time; ++i) {
-        file << time(i) << ","
-             << disp(0, i) << "," << disp(1, i) << "," << disp(2, i) << ","
-             << vel(0, i)  << "," << vel(1, i)  << "," << vel(2, i)  << ","
-             << acc(0, i)  << "," << acc(1, i)  << "," << acc(2, i)  << "\n";
-    }
-}
-
-static void Jonswap_testWavePatterns() {
-    generateWaveJonswapCSV("short_waves_stokes.csv", 0.5, 3.0, 30.0);
-    generateWaveJonswapCSV("medium_waves_stokes.csv", 2.0, 7.0, 30.0);
-    generateWaveJonswapCSV("long_waves_stokes.csv", 4.0, 12.0, 30.0);
+  std::ofstream file(filename);
+  file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z\n";
+  for (int i = 0; i < N_time; ++i) {
+    file << time(i) << ","
+         << disp(0, i) << "," << disp(1, i) << "," << disp(2, i) << ","
+         << vel(0, i)  << "," << vel(1, i)  << "," << vel(2, i)  << ","
+         << acc(0, i)  << "," << acc(1, i)  << "," << acc(2, i)  << "\n";
+  }
 }
 #endif
