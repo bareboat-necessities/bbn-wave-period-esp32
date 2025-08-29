@@ -20,7 +20,7 @@ jobs:
         required-libraries: M5Unified@0.2.7,M5GFX@0.2.9,Eigen@0.3.2
         sketch-names: "*.ino"
         sketch-names-find-start: bbn_*/*
-        extra-arduino-cli-args: "--warnings default --build-property compiler.libraries.ldflags=-Wl,--allow-multiple-definition --build-property --build-property compiler.cpp.extra_flag=-mvector -funroll-loops -funsafe-math-optimizations"
+        extra-arduino-cli-args: "--warnings default --build-property compiler.libraries.ldflags=-Wl,--allow-multiple-definition --build-property --build-property compiler.cpp.extra_flag=-mvector compiler.cpp.extra_flag=-funroll-loops"
         set-build-path: true
 
     - name: Make merged .bin
