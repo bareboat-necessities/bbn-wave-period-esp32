@@ -474,7 +474,7 @@ static void generateWaveJonswapCSV(const std::string& filename,
 
   Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
   for (int i = 0; i < N_time; ++i) {
-    auto state = waveModel->getLagrangianState(0.0, 0.0, time(i));
+    auto state = waveModel->getSurfaceState(0.0, 0.0, time(i));
     for (int j = 0; j < 3; ++j) {
       disp(j, i) = state.displacement(j);
       vel(j, i)  = state.velocity(j);
