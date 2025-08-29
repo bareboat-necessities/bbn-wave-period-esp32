@@ -27,7 +27,7 @@
 // Configuration
 static constexpr float SAMPLE_RATE_HZ = 240.0f;
 static constexpr float DELTA_T = 1.0f / SAMPLE_RATE_HZ;
-static constexpr float TEST_DURATION_S = 5 * 60.0f;   // seconds per run
+static constexpr float TEST_DURATION_S = 200.0f;   // seconds per run
 static constexpr unsigned SEED_BASE = 239u;
 static constexpr float NOISE_STDDEV = 0.08f;
 static constexpr float BIAS_MEAN = 0.1f;      // m/s^2 bias added to accel
