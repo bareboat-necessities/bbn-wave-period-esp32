@@ -182,20 +182,14 @@ public:
                        double spreading_exponent = 15.0,
                        unsigned int seed = 239u,
                        double cutoff_tol = 1e-8)
-    : Hs_(Hs), Tp_(Tp),
+    : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
       mean_dir_rad_(mean_direction_deg * PI / 180.0),
-      gamma_(gamma), g_(g),
-      spreading_exponent_(spreading_exponent),
-      seed_(seed), cutoff_tol_(cutoff_tol),
-      pairwise_size_(static_cast<size_t>(N_FREQ) * (N_FREQ + 1) / 2),
-      spectrum_(Hs, Tp, f_min, f_max, gamma, g),
-      exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
-      stokes_drift_mean_xy_cache_(0.0, 0.0),
-      stokes_drift_mean_xy_cache_valid_(false),
-      trig_last_t_(std::numeric_limits<double>::quiet_NaN())
+      g_(g), spreading_exponent_(spreading_exponent),
+      cutoff_tol_(cutoff_tol),
+      pairwise_size_(size_t(N_FREQ) * (N_FREQ + 1) / 2)
   {
     frequencies_ = spectrum_.frequencies();
-    A_           = spectrum_.amplitudes();
+    A_ = spectrum_.amplitudes();
 
     omega_ = 2.0 * PI * frequencies_;
     k_     = omega_.array().square() / g_;
@@ -209,37 +203,89 @@ public:
     stokes_drift_scalar_.setZero();
 
     allocatePairArrays();
-    initializeRandomPhases();
-    initializeDirectionalSpread();
+    initializeRandomPhases(seed);
+    initializeDirectionalSpread(seed);
     computeWaveDirectionComponents();
     computePerComponentStokesDriftEstimate();
     precomputePairwise();
+    precomputeSurfaceConstants();
     checkSteepness();
   }
 
+  // General (any depth)
   WaveState getLagrangianState(double x, double y, double t, double z = 0.0) const {
-    // ---- depth caches ----
     if (std::isnan(exp_kz_cached_z_) || exp_kz_cached_z_ != z) {
       exp_kz_       = (k_.array() * z).exp();
       exp_kz_pairs_ = (k_sum_ * z).exp();
-
-      if (cutoff_tol_ > 0.0) {
-        pair_mask_ = ((Bij_.abs() * exp_kz_pairs_) >= cutoff_tol_).select(1.0, 0.0);
-      } else {
-        pair_mask_.setOnes();
-      }
-
+      pair_mask_    = (cutoff_tol_ > 0.0)
+                    ? ((Bij_.abs() * exp_kz_pairs_) >= cutoff_tol_).select(1.0, 0.0)
+                    : Eigen::ArrayXd::Ones(pairwise_size_);
       exp_kz_cached_z_ = z;
-      stokes_drift_mean_xy_cache_valid_ = false;
-      // FIX #1: depth affects masking → force trig recalc
+      stokes_drift_mean_xy_valid_ = false;
       trig_last_t_ = std::numeric_limits<double>::quiet_NaN();
     }
+    return computeState(x, y, t,
+                        exp_kz_, exp_kz_pairs_, pair_mask_,
+                        stokes_drift_mean_xy_, stokes_drift_mean_xy_valid_);
+  }
 
+  // Fast path for surface
+  WaveState getSurfaceState(double x, double y, double t) const {
+    return computeState(x, y, t,
+                        exp_kz_surface_, exp_kz_pairs_surface_, pair_mask_surface_,
+                        stokes_drift_surface_xy_, stokes_drift_surface_valid_);
+  }
+
+private:
+  // Spectrum
+  JonswapSpectrum<N_FREQ> spectrum_;
+
+  // Parameters
+  double mean_dir_rad_, g_, spreading_exponent_, cutoff_tol_;
+  size_t pairwise_size_;
+
+  // Per-frequency
+  Eigen::Matrix<double, N_FREQ, 1> frequencies_, A_, omega_, k_, phi_;
+  Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
+  Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
+  Eigen::Array<double, N_FREQ, 1>  Aomega_, Aomega2_;
+
+  // Per-pair
+  Eigen::ArrayXd Bij_, kx_sum_, ky_sum_, k_sum_;
+  Eigen::ArrayXd omega_sum_, omega_sum2_, phi_sum_, factor_;
+  Eigen::ArrayXd hx_, hy_;
+  Eigen::Matrix<double, Eigen::Dynamic, 2, Eigen::ColMajor> Ksum2_;
+
+  // Depth caches
+  mutable Eigen::Array<double, N_FREQ, 1> exp_kz_;
+  mutable Eigen::ArrayXd exp_kz_pairs_, theta2_cache_, sin2_, cos2_, pair_mask_;
+  mutable Eigen::Vector2d stokes_drift_mean_xy_;
+  mutable bool   stokes_drift_mean_xy_valid_ = false;
+  mutable double exp_kz_cached_z_ = std::numeric_limits<double>::quiet_NaN();
+  mutable double trig_last_t_ = std::numeric_limits<double>::quiet_NaN();
+  mutable double x_cached_ = std::numeric_limits<double>::quiet_NaN();
+  mutable double y_cached_ = std::numeric_limits<double>::quiet_NaN();
+
+  // Surface caches (constant)
+  Eigen::Array<double, N_FREQ, 1> exp_kz_surface_;
+  Eigen::ArrayXd exp_kz_pairs_surface_, pair_mask_surface_;
+  Eigen::Vector2d stokes_drift_surface_xy_;
+  mutable bool stokes_drift_surface_valid_ = true;
+
+  // Core computation (shared) — templated to accept either fixed-size or dynamic Eigen arrays
+  template<typename ArrN, typename ArrP>
+  WaveState computeState(double x, double y, double t,
+                         const ArrN &exp_kz,
+                         const ArrP &exp_kz_pairs,
+                         const ArrP &pair_mask,
+                         Eigen::Vector2d &stokes_xy_cache,
+                         bool &stokes_xy_valid) const
+  {
     // ---- first-order ----
     const Eigen::Array<double, N_FREQ, 1> theta0 = kx_.array() * x + ky_.array() * y + phi_.array();
     const Eigen::Array<double, N_FREQ, 1> arg0   = theta0 - omega_.array() * t;
-    const Eigen::Array<double, N_FREQ, 1> sin0   = arg0.sin() * exp_kz_;
-    const Eigen::Array<double, N_FREQ, 1> cos0   = arg0.cos() * exp_kz_;
+    const auto sin0 = arg0.sin() * exp_kz.array();
+    const auto cos0 = arg0.cos() * exp_kz.array();
 
     Eigen::Vector3d disp = Eigen::Vector3d::Zero();
     Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
@@ -262,79 +308,47 @@ public:
       Eigen::Matrix<double, 2, 1> xy; xy << x, y;
       theta2_cache_ = (Ksum2_ * xy).array() + phi_sum_;
       x_cached_ = x; y_cached_ = y;
-      // FIX #2: theta changed → force trig recalc
       trig_last_t_ = std::numeric_limits<double>::quiet_NaN();
     }
 
     // ---- second-order trig cache ----
     if (std::isnan(trig_last_t_) || trig_last_t_ != t) {
       const Eigen::ArrayXd arg2 = theta2_cache_ - omega_sum_ * t;
-      sin2_ = arg2.sin() * pair_mask_;
-      cos2_ = arg2.cos() * pair_mask_;
+      sin2_ = arg2.sin() * pair_mask.array();
+      cos2_ = arg2.cos() * pair_mask.array();
       trig_last_t_ = t;
     }
 
-    const Eigen::ArrayXd coeff = (factor_ * Bij_) * exp_kz_pairs_;
+    // ---- second-order contributions ----
+    const Eigen::ArrayXd coeff = (factor_ * Bij_) * exp_kz_pairs.array();
     const Eigen::ArrayXd C     = coeff * cos2_;
     const Eigen::ArrayXd S     = coeff * sin2_;
 
-    const double dz2 = C.sum();
-    const double dx2 = -(C * hx_).sum();
-    const double dy2 = -(C * hy_).sum();
+    disp.x() += -(C * hx_).sum();
+    disp.y() += -(C * hy_).sum();
+    disp.z() +=  C.sum();
 
-    const double vz2 = (S * omega_sum_).sum();
-    const double vx2 = (S * omega_sum_ * hx_).sum();
-    const double vy2 = (S * omega_sum_ * hy_).sum();
+    vel.x()  += (S * omega_sum_ * hx_).sum();
+    vel.y()  += (S * omega_sum_ * hy_).sum();
+    vel.z()  += (S * omega_sum_).sum();
 
-    const double az2 = -(C * omega_sum2_).sum();
-    const double ax2 = -(C * omega_sum2_ * hx_).sum();
-    const double ay2 = -(C * omega_sum2_ * hy_).sum();
+    acc.x()  += -(C * omega_sum2_ * hx_).sum();
+    acc.y()  += -(C * omega_sum2_ * hy_).sum();
+    acc.z()  += -(C * omega_sum2_).sum();
 
-    disp.x() += dx2; disp.y() += dy2; disp.z() += dz2;
-    vel.x()  += vx2; vel.y()  += vy2; vel.z()  += vz2;
-    acc.x()  += ax2; acc.y()  += ay2; acc.z()  += az2;
-
-    if (!stokes_drift_mean_xy_cache_valid_) {
-      const Eigen::Array<double, N_FREQ, 1> exp2 = exp_kz_ * exp_kz_;
-      const Eigen::Array<double, N_FREQ, 1> Us_z = stokes_drift_scalar_.array() * exp2;
-      stokes_drift_mean_xy_cache_.x() = (Us_z * dir_x_.array()).sum();
-      stokes_drift_mean_xy_cache_.y() = (Us_z * dir_y_.array()).sum();
-      stokes_drift_mean_xy_cache_valid_ = true;
+    // ---- Stokes drift ----
+    if (!stokes_xy_valid) {
+      const auto exp2 = exp_kz.array() * exp_kz.array();
+      const auto Us_z = stokes_drift_scalar_.array() * exp2;
+      stokes_xy_cache.x() = (Us_z * dir_x_.array()).sum();
+      stokes_xy_cache.y() = (Us_z * dir_y_.array()).sum();
+      stokes_xy_valid = true;
     }
-    vel.x() += stokes_drift_mean_xy_cache_.x();
-    vel.y() += stokes_drift_mean_xy_cache_.y();
+    vel.x() += stokes_xy_cache.x();
+    vel.y() += stokes_xy_cache.y();
 
     return {disp, vel, acc};
   }
-
-private:
-  // Inputs / parameters
-  JonswapSpectrum<N_FREQ> spectrum_;
-  double Hs_, Tp_, mean_dir_rad_, gamma_, g_, spreading_exponent_;
-  unsigned int seed_;
-  double cutoff_tol_;
-  size_t pairwise_size_;
-
-  // Per-frequency
-  Eigen::Matrix<double, N_FREQ, 1> frequencies_;
-  Eigen::Matrix<double, N_FREQ, 1> A_;
-  Eigen::Matrix<double, N_FREQ, 1> omega_, k_, phi_;
-  Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
-  Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
-  Eigen::Array<double, N_FREQ, 1>  Aomega_, Aomega2_;
-
-  // Per-pair
-  Eigen::ArrayXd Bij_, kx_sum_, ky_sum_, k_sum_;
-  Eigen::ArrayXd omega_sum_, omega_sum2_, phi_sum_, factor_;
-  Eigen::ArrayXd hx_, hy_;
-  Eigen::Matrix<double, Eigen::Dynamic, 2, Eigen::ColMajor> Ksum2_;
-
-  // Caches
-  mutable Eigen::Array<double, N_FREQ, 1> exp_kz_;
-  mutable Eigen::ArrayXd exp_kz_pairs_, theta2_cache_, sin2_, cos2_, pair_mask_;
-  mutable Eigen::Vector2d stokes_drift_mean_xy_cache_;
-  mutable bool   stokes_drift_mean_xy_cache_valid_;
-  mutable double exp_kz_cached_z_, x_cached_, y_cached_, trig_last_t_;
 
   // Helpers
   void allocatePairArrays() {
@@ -344,17 +358,10 @@ private:
     factor_.resize(P); hx_.resize(P); hy_.resize(P); Ksum2_.resize(P, 2);
     exp_kz_pairs_.resize(P); theta2_cache_.resize(P);
     sin2_.resize(P); cos2_.resize(P); pair_mask_.resize(P);
-
-    Bij_.setZero(); kx_sum_.setZero(); ky_sum_.setZero(); k_sum_.setZero();
-    omega_sum_.setZero(); omega_sum2_.setZero(); phi_sum_.setZero(); factor_.setZero();
-    hx_.setZero(); hy_.setZero(); Ksum2_.setZero();
-    exp_kz_pairs_.setZero(); theta2_cache_.setZero(); sin2_.setZero(); cos2_.setZero();
-    pair_mask_.setZero(); exp_kz_.setZero();
-    x_cached_ = y_cached_ = std::numeric_limits<double>::quiet_NaN();
   }
 
-  void initializeRandomPhases() {
-    std::mt19937 rng(seed_);
+  void initializeRandomPhases(unsigned int seed) {
+    std::mt19937 rng(seed);
     std::uniform_real_distribution<double> dist(0.0, 2.0 * PI);
     for (int i = 0; i < N_FREQ / 2; ++i) {
       const double ph = dist(rng);
@@ -364,20 +371,18 @@ private:
     if (N_FREQ % 2 == 1) phi_(N_FREQ / 2) = dist(rng);
   }
 
-  void initializeDirectionalSpread() {
-    std::mt19937 rng_dir(seed_ + 1234567u);
+  void initializeDirectionalSpread(unsigned int seed) {
+    std::mt19937 rng_dir(seed + 1234567u);
     std::uniform_real_distribution<double> u01(-1.0, 1.0);
     const Eigen::Array<double, N_FREQ, 1> amp_ratio = A_.array() / A_.maxCoeff();
     const Eigen::Array<double, N_FREQ, 1> spread_scale = amp_ratio.pow(spreading_exponent_);
     constexpr double max_spread = PI * 0.5;
-
     for (int i = 0; i < N_FREQ / 2; ++i) {
       const double delta = u01(rng_dir) * (spread_scale(i) * max_spread);
       const double angle = mean_dir_rad_ + delta;
       dir_x_(i) = std::cos(angle);
       dir_y_(i) = std::sin(angle);
-
-      const int j = N_FREQ - 1 - i;
+      int j = N_FREQ - 1 - i;
       const double angle_j = angle + PI;
       dir_x_(j) = std::cos(angle_j);
       dir_y_(j) = std::sin(angle_j);
@@ -389,23 +394,20 @@ private:
       dir_x_(mid) = std::cos(angle);
       dir_y_(mid) = std::sin(angle);
     }
+    // normalize (safety)
     for (int i = 0; i < N_FREQ; ++i) {
-      const double norm = std::hypot(dir_x_(i), dir_y_(i));
-      if (norm > 0.0) { dir_x_(i) /= norm; dir_y_(i) /= norm; }
+      const double n = std::hypot(dir_x_(i), dir_y_(i));
+      if (n > 0.0) { dir_x_(i) /= n; dir_y_(i) /= n; }
       else { dir_x_(i) = std::cos(mean_dir_rad_); dir_y_(i) = std::sin(mean_dir_rad_); }
     }
   }
 
   void computeWaveDirectionComponents() {
-    for (int i = 0; i < N_FREQ; ++i) {
-      kx_(i) = k_(i) * dir_x_(i);
-      ky_(i) = k_(i) * dir_y_(i);
-    }
+    for (int i = 0; i < N_FREQ; ++i) { kx_(i) = k_(i) * dir_x_(i); ky_(i) = k_(i) * dir_y_(i); }
   }
 
   void computePerComponentStokesDriftEstimate() {
-    for (int i = 0; i < N_FREQ; ++i)
-      stokes_drift_scalar_(i) = omega_(i) * k_(i) * A_(i) * A_(i);
+    for (int i = 0; i < N_FREQ; ++i) stokes_drift_scalar_(i) = omega_(i) * k_(i) * A_(i) * A_(i);
   }
 
   void precomputePairwise() {
@@ -414,10 +416,11 @@ private:
     for (int i = 0; i < N_FREQ; ++i) {
       const double ki = k_(i);
       for (int j = i; j < N_FREQ; ++j) {
-        const double kj = k_(j);
+        const double kj   = k_(j);
         const double ksum = ki + kj;
         const double kij  = ki * kj;
         const double T_plus = (ksum > tiny) ? (kij / ksum) : 0.0;
+
         const double kxsum = kx_(i) + kx_(j);
         const double kysum = ky_(i) + ky_(j);
         const double wsum  = omega_(i) + omega_(j);
@@ -429,10 +432,26 @@ private:
         factor_(idx)     = (i == j) ? 1.0 : 2.0;
         hx_(idx)         = (ksum > tiny) ? (kxsum / ksum) : 0.0;
         hy_(idx)         = (ksum > tiny) ? (kysum / ksum) : 0.0;
+
         Ksum2_(idx,0)    = kxsum; Ksum2_(idx,1) = kysum;
         ++idx;
       }
     }
+  }
+
+  void precomputeSurfaceConstants() {
+    exp_kz_surface_ = Eigen::Array<double, N_FREQ, 1>::Ones();
+    exp_kz_pairs_surface_ = Eigen::ArrayXd::Ones(pairwise_size_);
+    pair_mask_surface_ = (cutoff_tol_ > 0.0)
+                       ? (Bij_.abs() >= cutoff_tol_).select(1.0, 0.0)
+                       : Eigen::ArrayXd::Ones(pairwise_size_);
+    stokes_drift_surface_xy_ = Eigen::Vector2d::Zero();
+    for (int i = 0; i < N_FREQ; ++i) {
+      double Us0 = stokes_drift_scalar_(i); // exp(0)^2 = 1
+      stokes_drift_surface_xy_.x() += Us0 * dir_x_(i);
+      stokes_drift_surface_xy_.y() += Us0 * dir_y_(i);
+    }
+    stokes_drift_surface_valid_ = true;
   }
 
   void checkSteepness() {
