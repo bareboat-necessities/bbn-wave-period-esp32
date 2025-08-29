@@ -17,4 +17,4 @@ tests_freq: tests_freq.o
 
 .PHONY:	clean
 clean:
-	rm -f *.o tests tests.exe tests_freq tests_freq.exe
+	rm -f *.o *.csv tests tests.exe tests_freq tests_freq.exe
