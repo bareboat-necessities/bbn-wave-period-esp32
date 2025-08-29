@@ -386,16 +386,14 @@ private:
         std::mt19937 rng(seed_);
         std::uniform_real_distribution<double> dist(0.0, 2.0*PI);
 
-        // Create symmetric paired phases to ensure zero-mean (avoid DC bias under -ffast-math)
-        // For even N_FREQ: pair i with N_FREQ-1-i using phi and -phi.
-        // For odd N_FREQ: middle element gets its own phase.
         for (int i = 0; i < N_FREQ/2; ++i) {
             double phi = dist(rng);
-            phi_(i) = phi;
-            phi_(N_FREQ - 1 - i) = -phi;
+            long double ph = static_cast<long double>(phi);
+            phi_(i) = static_cast<double>(ph);
+            phi_(N_FREQ - 1 - i) = static_cast<double>(-ph);
         }
+
         if (N_FREQ % 2 == 1) {
-            // middle index
             int mid = N_FREQ / 2;
             phi_(mid) = dist(rng);
         }
@@ -408,17 +406,17 @@ private:
         Eigen::ArrayXd spread_scale = amplitude_ratio.pow(spreading_exponent_);
         const double max_spread = PI * 0.5;
 
-        // Generate paired opposite directions so mean direction cancels exactly
         for (int i = 0; i < N_FREQ/2; ++i) {
             double dev = u01(rng_dir);
             double delta = dev * (spread_scale(i) * max_spread);
             double angle = mean_dir_rad_ + delta;
             dir_x_(i) = std::cos(angle);
             dir_y_(i) = std::sin(angle);
-            // opposite partner
+
             int j = N_FREQ - 1 - i;
-            dir_x_(j) = -dir_x_(i);
-            dir_y_(j) = -dir_y_(i);
+            double angle_j = angle + PI;
+            dir_x_(j) = std::cos(angle_j);
+            dir_y_(j) = std::sin(angle_j);
         }
 
         if (N_FREQ % 2 == 1) {
@@ -430,7 +428,6 @@ private:
             dir_y_(mid) = std::sin(angle);
         }
 
-        // Normalize directions (should already be unit but keep just in case)
         for (int i = 0; i < N_FREQ; ++i) {
             double norm = std::hypot(dir_x_(i), dir_y_(i));
             if (norm > 0.0) {
@@ -444,12 +441,15 @@ private:
     }
 
     void computeWaveDirectionComponents() {
-        kx_ = k_.array() * dir_x_.array();
-        ky_ = k_.array() * dir_y_.array();
+        for(int i=0;i<N_FREQ;++i){
+            kx_(i) = k_(i)*dir_x_(i);
+            ky_(i) = k_(i)*dir_y_(i);
+        }
     }
 
     void computePerComponentStokesDriftEstimate() {
-        stokes_drift_scalar_ = (A_.array().square() * omega_.array()) / 2.0;
+        for(int i=0;i<N_FREQ;++i)
+            stokes_drift_scalar_(i) = 0.5*A_(i)*A_(i)*omega_(i);
     }
 
     void precomputePairwise() {
