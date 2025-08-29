@@ -476,30 +476,32 @@ private:
             stokes_drift_scalar_(i) = 0.5*A_(i)*A_(i)*omega_(i);
     }
 
-    void precomputePairwise() {
-        Bij_flat_.resize(pairwise_size_);
-        kx_sum_flat_.resize(pairwise_size_);
-        ky_sum_flat_.resize(pairwise_size_);
-        k_sum_flat_.resize(pairwise_size_);
-        omega_sum_flat_.resize(pairwise_size_);
-        phi_sum_flat_.resize(pairwise_size_);
-        factor_flat_.resize(pairwise_size_);
-        
-        size_t idx=0;
-        for(int i=0;i<N_FREQ;++i){
-            for(int j=i;j<N_FREQ;++j,++idx){
-                // store Bij as A_i * A_j (no division here) and set factor to 0.5 on diagonal,
-                // 1.0 for off-diagonals. This avoids tiny asymmetries due to /2.0 under -ffast-math.
-                Bij_flat_[idx] = A_(i) * A_(j);
-                kx_sum_flat_[idx] = kx_(i)+kx_(j);
-                ky_sum_flat_[idx] = ky_(i)+ky_(j);
-                k_sum_flat_[idx] = k_(i)+k_(j);
-                omega_sum_flat_[idx] = omega_(i)+omega_(j);
-                phi_sum_flat_[idx] = phi_(i)+phi_(j);
-                factor_flat_[idx] = (i==j) ? 0.5 : 1.0;
-            }
+void precomputePairwise() {
+    Bij_flat_.resize(pairwise_size_);
+    kx_sum_flat_.resize(pairwise_size_);
+    ky_sum_flat_.resize(pairwise_size_);
+    k_sum_flat_.resize(pairwise_size_);
+    omega_sum_flat_.resize(pairwise_size_);
+    phi_sum_flat_.resize(pairwise_size_);
+    factor_flat_.resize(pairwise_size_);
+    
+    size_t idx = 0;
+    for(int i = 0; i < N_FREQ; ++i){
+        for(int j = i; j < N_FREQ; ++j, ++idx){
+            // store Bij as A_i * A_j (no division anywhere)
+            Bij_flat_[idx] = A_(i) * A_(j);
+
+            kx_sum_flat_[idx] = kx_(i) + kx_(j);
+            ky_sum_flat_[idx] = ky_(i) + ky_(j);
+            k_sum_flat_[idx] = k_(i) + k_(j);
+            omega_sum_flat_[idx] = omega_(i) + omega_(j);
+            phi_sum_flat_[idx] = phi_(i) + phi_(j);
+
+            // Ensure exact factor: 0.5 for diagonal, 1.0 for off-diagonals
+            factor_flat_[idx] = (i == j) ? 0.5 : 1.0;
         }
     }
+}
 
     void checkSteepness() {
         double max_steepness = (k_.array()*A_.array()).maxCoeff();
