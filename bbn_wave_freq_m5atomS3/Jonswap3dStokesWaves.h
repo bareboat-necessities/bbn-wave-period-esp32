@@ -237,14 +237,14 @@ public:
                 // compute exp(k*z) with long double intermediate to be robust under -ffast-math
                 long double kv = static_cast<long double>(k_(i));
                 long double zv = static_cast<long double>(z);
-                long double ev = std::expl(kv * zv);
+                long double ev = static_cast<double>(std::exp(kv * zv));
                 exp_kz_freq_cache_[i] = static_cast<double>(ev);
             }
 
             for(size_t idx=0; idx<pairwise_size_; ++idx) {
                 long double kval = static_cast<long double>(k_sum_flat_[idx]);
                 long double zv = static_cast<long double>(z);
-                long double ev = std::expl(kval * zv);
+                long double ev = static_cast<double>(std::exp(kval * zv));
                 exp_kz_pair_cache_[idx] = static_cast<double>(ev);
             }
 
