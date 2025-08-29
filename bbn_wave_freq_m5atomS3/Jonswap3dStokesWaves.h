@@ -11,6 +11,9 @@
   - z = 0 at the free surface; z < 0 is below the surface (into water).
   - First-order horizontal velocity signs are negative to match disp = -A cos(theta).
   - Second-order velocity/acceleration signs consistent with d/dt cos(theta - omega t).
+
+  With OpenMP: add -DJONSWAP_USE_OPENMP -fopenmp
+
 */
 
 #ifdef EIGEN_NON_ARDUINO
