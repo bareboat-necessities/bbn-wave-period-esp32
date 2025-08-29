@@ -116,11 +116,28 @@ private:
         Eigen::Matrix<double, N_FREQ, 1> S0;
         for (int i = 0; i < N_FREQ; ++i) {
             double f = frequencies_(i);
+            // avoid std::pow for squares and fourths to be robust with -ffast-math
             double sigma = (f <= fp) ? 0.07 : 0.09;
-            double r = std::exp(-std::pow(f - fp, 2) / (2.0 * sigma * sigma * fp * fp));
-            double base = (g_ * g_) / std::pow(2.0 * PI, 4.0) * std::pow(f, -5.0)
-                          * std::exp(-1.25 * std::pow(fp / f, 4.0));
-            S0(i) = base * std::pow(gamma_, r);
+            double dfreq = f - fp;
+            double denom = 2.0 * sigma * sigma * fp * fp;
+            double r = std::exp(-(dfreq * dfreq) / denom);
+
+            // compute 1/f^5 as explicit multiplication to avoid pow instabilities
+            double f2 = f * f;
+            double f4 = f2 * f2;
+            double inv_f5 = 1.0 / (f * f4); // 1 / f^5
+
+            // compute exp(-1.25 * (fp/f)^4) using manual multiplications
+            double fp2 = fp * fp;
+            double ratio2 = fp2 / f2; // (fp/f)^2
+            double ratio4 = ratio2 * ratio2; // (fp/f)^4
+
+            double base = (g_ * g_) / ( (2.0 * PI) * (2.0 * PI) * (2.0 * PI) * (2.0 * PI) ) * inv_f5
+                          * std::exp(-1.25 * ratio4);
+
+            // use exp(log(gamma) * r) instead of pow for slightly better numerical behavior
+            double gamma_r = std::exp(r * std::log(gamma_));
+            S0(i) = base * gamma_r;
         }
 
         double variance_unit = (S0.cwiseProduct(df_)).sum();
@@ -216,11 +233,20 @@ public:
 
         // Depth-dependent exp(k z)
         if(!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z){
-            for(int i=0;i<N_FREQ;++i)
-                exp_kz_freq_cache_[i] = std::exp(k_(i) * z);
+            for(int i=0;i<N_FREQ;++i) {
+                // compute exp(k*z) with long double intermediate to be robust under -ffast-math
+                long double kv = static_cast<long double>(k_(i));
+                long double zv = static_cast<long double>(z);
+                long double ev = std::expl(kv * zv);
+                exp_kz_freq_cache_[i] = static_cast<double>(ev);
+            }
 
-            for(size_t idx=0; idx<pairwise_size_; ++idx)
-                exp_kz_pair_cache_[idx] = std::exp(k_sum_flat_[idx] * z);
+            for(size_t idx=0; idx<pairwise_size_; ++idx) {
+                long double kval = static_cast<long double>(k_sum_flat_[idx]);
+                long double zv = static_cast<long double>(z);
+                long double ev = std::expl(kval * zv);
+                exp_kz_pair_cache_[idx] = static_cast<double>(ev);
+            }
 
             for(size_t idx=0; idx<pairwise_size_; ++idx)
                 skip_pair_mask_[idx] = (cutoff_tol_>0.0 && std::abs(Bij_flat_[idx])*exp_kz_pair_cache_[idx]<cutoff_tol_)?1:0;
@@ -358,7 +384,20 @@ private:
     void initializeRandomPhases() {
         std::mt19937 rng(seed_);
         std::uniform_real_distribution<double> dist(0.0, 2.0*PI);
-        for(int i=0;i<N_FREQ;++i) phi_(i)=dist(rng);
+
+        // Create symmetric paired phases to ensure zero-mean (avoid DC bias under -ffast-math)
+        // For even N_FREQ: pair i with N_FREQ-1-i using phi and -phi.
+        // For odd N_FREQ: middle element gets its own phase.
+        for (int i = 0; i < N_FREQ/2; ++i) {
+            double phi = dist(rng);
+            phi_(i) = phi;
+            phi_(N_FREQ - 1 - i) = -phi;
+        }
+        if (N_FREQ % 2 == 1) {
+            // middle index
+            int mid = N_FREQ / 2;
+            phi_(mid) = dist(rng);
+        }
     }
 
     void initializeDirectionalSpread() {
