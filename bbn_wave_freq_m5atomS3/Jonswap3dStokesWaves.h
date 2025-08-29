@@ -433,7 +433,7 @@ private:
     mutable Eigen::Array<double, N_FREQ, 1> exp_kz_freq_cache_;
     mutable Eigen::ArrayXd exp_kz_pair_cache_;        // size = pairwise_size_padded_
     mutable Eigen::ArrayXd theta2_cache_;             // size = pairwise_size_padded_
-    mutable Eigen::Array<bool, Eigen::Dynamic, 1> pair_mask_;
+    mutable Eigen::ArrayXd pair_mask_;
 
     mutable Eigen::Array<double, N_FREQ, 1> theta0_, sin0_, cos0_;
     mutable double exp_kz_cached_z_;
@@ -547,10 +547,12 @@ private:
         hy_.resize(pairwise_size_padded_);
         Ksum2_.resize(pairwise_size_padded_, 2);
 
+        exp_kz_pair_cache_.resize(pairwise_size_padded_);
+        theta2_cache_.resize(pairwise_size_padded_);
         trig_cache_.sin_second.resize(pairwise_size_padded_);
         trig_cache_.cos_second.resize(pairwise_size_padded_);
         pair_mask_.resize(pairwise_size_padded_);
-
+      
         constexpr double tiny = 1e-18;
 
         ptrdiff_t idx_lin = 0;
