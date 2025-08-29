@@ -34,10 +34,6 @@ static constexpr double PI = M_PI;
 #include <fstream>
 #endif
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
 // Portable fast_sincos helper
 inline void fast_sincos(double x, double &s, double &c) {
 #if defined(__GNUC__) || defined(__clang__)
