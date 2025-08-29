@@ -196,7 +196,6 @@ public:
   {
     frequencies_ = spectrum_.frequencies();
     A_           = spectrum_.amplitudes();
-    df_          = spectrum_.df();
 
     omega_ = 2.0 * PI * frequencies_;
     k_     = omega_.array().square() / g_;
@@ -318,7 +317,7 @@ private:
 
   // Per-frequency
   Eigen::Matrix<double, N_FREQ, 1> frequencies_;
-  Eigen::Matrix<double, N_FREQ, 1> A_, df_;
+  Eigen::Matrix<double, N_FREQ, 1> A_;
   Eigen::Matrix<double, N_FREQ, 1> omega_, k_, phi_;
   Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
   Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
