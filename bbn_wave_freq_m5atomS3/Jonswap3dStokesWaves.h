@@ -243,9 +243,9 @@ public:
 
             // Build boolean pair mask using cutoff
             if (cutoff_tol_ > 0.0) {
-                pair_mask_ = (Bij_.abs() * exp_kz_pair_cache_ >= cutoff_tol_);
+                pair_mask_ = (Bij_.abs() * exp_kz_pair_cache_ >= cutoff_tol_).cast<double>();
             } else {
-                pair_mask_.setConstant(true);
+                pair_mask_.setOnes();
             }
 
             exp_kz_cached_z_ = z;
