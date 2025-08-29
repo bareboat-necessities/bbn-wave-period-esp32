@@ -58,6 +58,19 @@ inline void fast_sincos(double x, double &s, double &c) {
 #endif
 }
 
+inline void robust_sincos(double theta, double omega, double t, double &s, double &c) {
+    constexpr double LONG_WAVE_THRESHOLD = 1e-4; // small omega threshold
+
+    double arg = theta - omega * t;
+
+    if (std::abs(omega) < LONG_WAVE_THRESHOLD) {
+        s = std::sin(arg);
+        c = std::cos(arg);
+    } else {
+        fast_sincos(arg, s, c);
+    }
+}
+
 // JonswapSpectrum
 template<int N_FREQ = 256>
 class JonswapSpectrum {
@@ -260,8 +273,8 @@ WaveState getLagrangianState(double x, double y, double t, double z=0.0) const {
         theta0_(i) = kx_(i)*x + ky_(i)*y + phi_(i);
 
     for(int i=0;i<N_FREQ;++i)
-        fast_sincos(theta0_(i) - omega_(i)*t, sin0_(i), cos0_(i));
-
+        robust_sincos(theta0_(i), omega_(i), t, sin0_(i), cos0_(i));
+  
     for(int i=0;i<N_FREQ;++i){
         sin0_(i) *= exp_kz_freq_cache_[i];
         cos0_(i) *= exp_kz_freq_cache_[i];
@@ -300,9 +313,9 @@ WaveState getLagrangianState(double x, double y, double t, double z=0.0) const {
                 trig_cache_.sin_second(idx)=0.0;
                 trig_cache_.cos_second(idx)=0.0;
             } else {
-                fast_sincos(theta2_cache_[idx]-omega_sum_flat_[idx]*t,
-                            trig_cache_.sin_second(idx),
-                            trig_cache_.cos_second(idx));
+                robust_sincos(theta2_cache_[idx], omega_sum_flat_[idx], t,
+                    trig_cache_.sin_second(idx),
+                    trig_cache_.cos_second(idx));
             }
         }
         trig_cache_.last_t = t;
