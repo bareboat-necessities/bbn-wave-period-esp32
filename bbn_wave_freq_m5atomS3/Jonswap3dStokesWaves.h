@@ -1,4 +1,5 @@
 #pragma once
+#pragma GCC optimize ("no-fast-math")
 
 /*
   Copyright 2025, Mikhail Grushinskiy
