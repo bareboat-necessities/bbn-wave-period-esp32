@@ -490,6 +490,11 @@ private:
             stokes_drift_scalar_(i) = 0.5*A_(i)*A_(i)*omega_(i);
     }
 
+inline size_t pairIndex(int i, int j) const {
+    if(i > j) std::swap(i,j);
+    return i * N_FREQ - i*(i-1)/2 + (j - i);
+}
+
 void precomputePairwise() {
     Bij_flat_.resize(pairwise_size_);
     kx_sum_flat_.resize(pairwise_size_);
@@ -499,11 +504,12 @@ void precomputePairwise() {
     phi_sum_flat_.resize(pairwise_size_);
     factor_flat_.resize(pairwise_size_);
     
-    size_t idx = 0;
     for(int i = 0; i < N_FREQ; ++i){
-        for(int j = i; j < N_FREQ; ++j, ++idx){
-            // store Bij as A_i * A_j (no division anywhere)
-            Bij_flat_[idx] = A_(i) * A_(j);
+        for(int j = i; j < N_FREQ; ++j){
+            size_t idx = pairIndex(i,j);
+
+            // Include wave-number scaling for second-order amplitude
+            Bij_flat_[idx] = (k_(i) + k_(j)) * A_(i) * A_(j);
 
             kx_sum_flat_[idx] = kx_(i) + kx_(j);
             ky_sum_flat_[idx] = ky_(i) + ky_(j);
@@ -511,7 +517,6 @@ void precomputePairwise() {
             omega_sum_flat_[idx] = omega_(i) + omega_(j);
             phi_sum_flat_[idx] = phi_(i) + phi_(j);
 
-            // Ensure exact factor: 0.5 for diagonal, 1.0 for off-diagonals
             factor_flat_[idx] = (i == j) ? 0.5 : 1.0;
         }
     }
