@@ -12,7 +12,6 @@
   - First-order horizontal velocity signs are negative to match disp = -A cos(theta).
   - Second-order velocity/acceleration signs consistent with d/dt cos(theta - omega t).
 
-  With OpenMP: add -DJONSWAP_USE_OPENMP -DJONSWAP_THREADSAFE -fopenmp
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -29,13 +28,6 @@
 #include <limits>
 #include <vector>
 #include <memory>
-
-#ifdef JONSWAP_USE_OPENMP
-  #include <omp.h>
-#endif
-#ifdef JONSWAP_THREADSAFE
-  #include <mutex>
-#endif
 
 #ifndef PI
 static constexpr double PI = 3.14159265358979323846;
