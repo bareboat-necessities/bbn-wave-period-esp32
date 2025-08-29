@@ -327,9 +327,11 @@ public:
 
         // Trig cache for second-order at time t (masked by pair_mask_)
         if (trig_cache_.last_t != t) {
-            const Eigen::ArrayXd arg2 = theta2_cache_ - omega_sum_ * t;
-            trig_cache_.sin_second = pair_mask_.select(arg2.sin(), 0.0);
-            trig_cache_.cos_second = pair_mask_.select(arg2.cos(), 0.0);
+            const Eigen::ArrayXd arg2      = theta2_cache_ - omega_sum_ * t;
+            const Eigen::ArrayXd s_unmasked = arg2.sin();
+            const Eigen::ArrayXd c_unmasked = arg2.cos();
+            trig_cache_.sin_second = s_unmasked * pair_mask_;
+            trig_cache_.cos_second = c_unmasked * pair_mask_;
             trig_cache_.last_t = t;
         }
 
