@@ -321,7 +321,7 @@ WaveState getLagrangianState(double x, double y, double t, double z=0.0) const {
 
     for(int i = 0; i < N_FREQ; ++i){
         for(int j = i; j < N_FREQ; ++j){
-            size_t idx = i*(2*N_FREQ-i+1)/2 + j; // flat index in upper-triangle
+            size_t idx = i * N_FREQ - i*(i-1)/2 + (j - i); // flat index in upper-triangle
             if(skip_pair_mask_[idx]) continue;
 
             double coeff = factor_flat_[idx] * Bij_flat_[idx] * exp_kz_pair_cache_[idx];
