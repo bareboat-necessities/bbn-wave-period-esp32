@@ -603,9 +603,11 @@ private:
             hx_(p) = hy_(p) = 0.0;
             Ksum2_(p, 0) = 0.0;
             Ksum2_(p, 1) = 0.0;
+            exp_kz_pair_cache_(p) = 0.0;
+            theta2_cache_(p) = 0.0;
             trig_cache_.sin_second(p) = 0.0;
             trig_cache_.cos_second(p) = 0.0;
-            pair_mask_(p) = false;
+            pair_mask_(p) = 0.0; // numeric mask
         }
     }
 
