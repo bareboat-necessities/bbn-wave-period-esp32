@@ -237,14 +237,14 @@ public:
                 // compute exp(k*z) with long double intermediate to be robust under -ffast-math
                 long double kv = static_cast<long double>(k_(i));
                 long double zv = static_cast<long double>(z);
-                long double ev = static_cast<double>(std::exp(kv * zv));
+                long double ev = std::exp(kv * zv); // calls overload for long double
                 exp_kz_freq_cache_[i] = static_cast<double>(ev);
             }
 
             for(size_t idx=0; idx<pairwise_size_; ++idx) {
                 long double kval = static_cast<long double>(k_sum_flat_[idx]);
                 long double zv = static_cast<long double>(z);
-                long double ev = static_cast<double>(std::exp(kval * zv));
+                long double ev = std::exp(kval * zv);
                 exp_kz_pair_cache_[idx] = static_cast<double>(ev);
             }
 
@@ -320,6 +320,7 @@ public:
             double hx=(ksum>1e-18)? kxsum/ksum : 0.0;
             double hy=(ksum>1e-18)? kysum/ksum : 0.0;
             double omega2=omega_sum*omega_sum;
+            // Note: Bij_flat_ stores A_i * A_j and factor_flat_ is 0.5 for diagonal, 1.0 for off-diagonals
             disp.z() += coeff * Bij * cos2;
             disp.x() -= coeff * Bij * cos2 * hx;
             disp.y() -= coeff * Bij * cos2 * hy;
@@ -407,14 +408,29 @@ private:
         Eigen::ArrayXd spread_scale = amplitude_ratio.pow(spreading_exponent_);
         const double max_spread = PI * 0.5;
 
-        for (int i = 0; i < N_FREQ; ++i) {
+        // Generate paired opposite directions so mean direction cancels exactly
+        for (int i = 0; i < N_FREQ/2; ++i) {
             double dev = u01(rng_dir);
             double delta = dev * (spread_scale(i) * max_spread);
             double angle = mean_dir_rad_ + delta;
             dir_x_(i) = std::cos(angle);
             dir_y_(i) = std::sin(angle);
+            // opposite partner
+            int j = N_FREQ - 1 - i;
+            dir_x_(j) = -dir_x_(i);
+            dir_y_(j) = -dir_y_(i);
         }
 
+        if (N_FREQ % 2 == 1) {
+            int mid = N_FREQ / 2;
+            double dev = u01(rng_dir);
+            double delta = dev * (spread_scale(mid) * max_spread);
+            double angle = mean_dir_rad_ + delta;
+            dir_x_(mid) = std::cos(angle);
+            dir_y_(mid) = std::sin(angle);
+        }
+
+        // Normalize directions (should already be unit but keep just in case)
         for (int i = 0; i < N_FREQ; ++i) {
             double norm = std::hypot(dir_x_(i), dir_y_(i));
             if (norm > 0.0) {
@@ -448,13 +464,15 @@ private:
         size_t idx=0;
         for(int i=0;i<N_FREQ;++i){
             for(int j=i;j<N_FREQ;++j,++idx){
-                Bij_flat_[idx] = A_(i)*A_(j)/2.0;
+                // store Bij as A_i * A_j (no division here) and set factor to 0.5 on diagonal,
+                // 1.0 for off-diagonals. This avoids tiny asymmetries due to /2.0 under -ffast-math.
+                Bij_flat_[idx] = A_(i) * A_(j);
                 kx_sum_flat_[idx] = kx_(i)+kx_(j);
                 ky_sum_flat_[idx] = ky_(i)+ky_(j);
                 k_sum_flat_[idx] = k_(i)+k_(j);
                 omega_sum_flat_[idx] = omega_(i)+omega_(j);
                 phi_sum_flat_[idx] = phi_(i)+phi_(j);
-                factor_flat_[idx] = (i==j)?1.0:2.0;
+                factor_flat_[idx] = (i==j) ? 0.5 : 1.0;
             }
         }
     }
