@@ -74,90 +74,92 @@ inline void robust_sincos(double theta, double omega, double t, double &s, doubl
 template<int N_FREQ = 128>
 class JonswapSpectrum {
 public:
-    JonswapSpectrum(double Hs, double Tp,
-                    double f_min = 0.02, double f_max = 0.8,
-                    double gamma = 2.0, double g = 9.81)
-        : Hs_(Hs), Tp_(Tp), f_min_(f_min), f_max_(f_max), gamma_(gamma), g_(g)
-    {
-        if (N_FREQ < 2) throw std::runtime_error("N_FREQ must be >= 2");
-        if (!(Hs_ > 0.0)) throw std::runtime_error("Hs must be > 0");
-        if (!(Tp_ > 0.0)) throw std::runtime_error("Tp must be > 0");
-        if (!(f_min_ > 0.0) || !(f_max_ > f_min_)) throw std::runtime_error("Invalid frequency range");
-        if (!(1.0/Tp >= f_min_ && 1.0/Tp <= f_max_)) throw std::runtime_error("1/Tp must be within [f_min, f_max]");
+  static_assert(N_FREQ >= 2, "N_FREQ must be >= 2");
 
-        computeLogFrequencySpacing();
-        computeFrequencyIncrements();
-        computeJonswapSpectrumFromHs();
-    }
+  JonswapSpectrum(double Hs, double Tp,
+                  double f_min = 0.02, double f_max = 0.8,
+                  double gamma = 2.0, double g = 9.81)
+    : Hs_(Hs), Tp_(Tp), f_min_(f_min), f_max_(f_max), gamma_(gamma), g_(g)
+  {
+    if (!(Hs_ > 0.0)) throw std::runtime_error("Hs must be > 0");
+    if (!(Tp_ > 0.0)) throw std::runtime_error("Tp must be > 0");
+    if (!(f_min_ > 0.0) || !(f_max_ > f_min_)) throw std::runtime_error("Invalid frequency range");
+    if (!((1.0 / Tp_) >= f_min_ && (1.0 / Tp_) <= f_max_))
+      throw std::runtime_error("1/Tp must be within [f_min, f_max]");
 
-    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { return frequencies_; }
-    const Eigen::Matrix<double, N_FREQ, 1>& spectrum()    const { return S_; }
-    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes()  const { return A_; }
-    const Eigen::Matrix<double, N_FREQ, 1>& df()          const { return df_; }
+    computeLogFrequencySpacing();
+    computeFrequencyIncrements();
+    computeJonswapSpectrumFromHs();
+  }
 
-    double integratedVariance() const {
-        return (S_.cwiseProduct(df_)).sum();
-    }
+  const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { return frequencies_; }
+  const Eigen::Matrix<double, N_FREQ, 1>& spectrum()    const { return S_; }
+  const Eigen::Matrix<double, N_FREQ, 1>& amplitudes()  const { return A_; }
+  const Eigen::Matrix<double, N_FREQ, 1>& df()          const { return df_; }
+
+  double integratedVariance() const {
+    return (S_.cwiseProduct(df_)).sum();
+  }
 
 private:
-    double Hs_, Tp_, f_min_, f_max_, gamma_, g_;
-    Eigen::Matrix<double, N_FREQ, 1> frequencies_, S_, A_, df_;
+  double Hs_, Tp_, f_min_, f_max_, gamma_, g_;
+  Eigen::Matrix<double, N_FREQ, 1> frequencies_, S_, A_, df_;
 
-    void computeLogFrequencySpacing() {
-        const double log_f_min = std::log(f_min_);
-        const double log_f_max = std::log(f_max_);
-        const double step = (log_f_max - log_f_min) / (N_FREQ - 1);
-        Eigen::Array<double, N_FREQ, 1> idx = Eigen::Array<double, N_FREQ, 1>::LinSpaced(N_FREQ, 0.0, double(N_FREQ-1));
-        frequencies_ = ((log_f_min + step * idx).exp()).matrix();
+  void computeLogFrequencySpacing() {
+    const double log_f_min = std::log(f_min_);
+    const double log_f_max = std::log(f_max_);
+    const double step = (log_f_max - log_f_min) / (N_FREQ - 1);
+    Eigen::Array<double, N_FREQ, 1> idx = Eigen::Array<double, N_FREQ, 1>::LinSpaced(N_FREQ, 0.0, double(N_FREQ-1));
+    frequencies_ = ((log_f_min + step * idx).exp()).matrix();
+  }
+
+  void computeFrequencyIncrements() {
+    df_(0) = frequencies_(1) - frequencies_(0);
+    df_(N_FREQ - 1) = frequencies_(N_FREQ - 1) - frequencies_(N_FREQ - 2);
+    if constexpr (N_FREQ > 2) {
+      df_.segment(1, N_FREQ - 2) =
+        0.5 * (frequencies_.segment(2, N_FREQ - 2) - frequencies_.segment(0, N_FREQ - 2));
     }
+  }
 
-    void computeFrequencyIncrements() {
-        df_(0) = frequencies_(1) - frequencies_(0);
-        df_(N_FREQ - 1) = frequencies_(N_FREQ - 1) - frequencies_(N_FREQ - 2);
-        if constexpr (N_FREQ > 2) {
-            df_.segment(1, N_FREQ - 2) =
-                0.5 * (frequencies_.segment(2, N_FREQ - 2) - frequencies_.segment(0, N_FREQ - 2));
-        }
+  void computeJonswapSpectrumFromHs() {
+    const double fp = 1.0 / Tp_;
+    const Eigen::Array<double, N_FREQ, 1> f  = frequencies_.array();
+    const Eigen::Array<double, N_FREQ, 1> f2 = f.square();
+    const Eigen::Array<double, N_FREQ, 1> f4 = f2.square();
+    const Eigen::Array<double, N_FREQ, 1> inv_f5 = 1.0 / (f * f4);
+
+    Eigen::Array<double, N_FREQ, 1> sigma = Eigen::Array<double, N_FREQ, 1>::Constant(0.09);
+    sigma = (f <= fp).select(0.07, sigma);
+
+    const Eigen::Array<double, N_FREQ, 1> dfreq  = f - fp;
+    const Eigen::Array<double, N_FREQ, 1> denom  = 2.0 * sigma.square() * fp * fp;
+    const Eigen::Array<double, N_FREQ, 1> r      = (- (dfreq.square()) / denom).exp();
+
+    const double g2_over_2pi4 = (g_ * g_) / std::pow(2.0 * PI, 4);
+    const Eigen::Array<double, N_FREQ, 1> ratio4 = ((fp*fp) / f2).square();
+    const Eigen::Array<double, N_FREQ, 1> base   = g2_over_2pi4 * inv_f5 * (-1.25 * ratio4).exp();
+
+    const Eigen::Array<double, N_FREQ, 1> gamma_r = (r * std::log(gamma_)).exp();
+    Eigen::Array<double, N_FREQ, 1> S0 = base * gamma_r;
+
+    double variance_unit = (S0.matrix().cwiseProduct(df_)).sum();
+    if (!(variance_unit > 0.0)) throw std::runtime_error("JonswapSpectrum: zero/negative variance");
+
+    const double variance_target = (Hs_ * Hs_) / 16.0;
+    const double alpha = variance_target / variance_unit;
+
+    S_ = (S0 * alpha).matrix();
+    A_ = (2.0 * S_.array() * df_.array()).sqrt().matrix();
+
+    const double Hs_est = 4.0 * std::sqrt(0.5 * A_.squaredNorm());
+    if (!(Hs_est > 0.0)) throw std::runtime_error("JonswapSpectrum: Hs_est <= 0");
+    const double rel_err = std::abs(Hs_est - Hs_) / Hs_;
+    if (rel_err > 1e-3) {
+      A_ *= (Hs_ / Hs_est);
+      S_ = (0.5 * A_.array().square() / df_.array()).matrix();
     }
-
-    void computeJonswapSpectrumFromHs() {
-        const double fp = 1.0 / Tp_;
-        const Eigen::Array<double, N_FREQ, 1> f  = frequencies_.array();
-        const Eigen::Array<double, N_FREQ, 1> f2 = f.square();
-        const Eigen::Array<double, N_FREQ, 1> f4 = f2.square();
-        const Eigen::Array<double, N_FREQ, 1> inv_f5 = 1.0 / (f * f4);
-
-        Eigen::Array<double, N_FREQ, 1> sigma = Eigen::Array<double, N_FREQ, 1>::Constant(0.09);
-        sigma = (f <= fp).select(0.07, sigma);
-
-        const Eigen::Array<double, N_FREQ, 1> dfreq  = f - fp;
-        const Eigen::Array<double, N_FREQ, 1> denom  = 2.0 * sigma.square() * fp * fp;
-        const Eigen::Array<double, N_FREQ, 1> r      = (- (dfreq.square()) / denom).exp();
-
-        const double g4_over_2pi4 = (g_*g_) / std::pow(2.0 * PI, 4);
-        const Eigen::Array<double, N_FREQ, 1> ratio4 = ((fp*fp) / f2).square();
-        const Eigen::Array<double, N_FREQ, 1> base   = g4_over_2pi4 * inv_f5 * (-1.25 * ratio4).exp();
-
-        const Eigen::Array<double, N_FREQ, 1> gamma_r = (r * std::log(gamma_)).exp();
-        Eigen::Array<double, N_FREQ, 1> S0 = base * gamma_r;
-
-        double variance_unit = (S0.matrix().cwiseProduct(df_)).sum();
-        if (!(variance_unit > 0.0)) throw std::runtime_error("JonswapSpectrum: zero/negative variance");
-
-        const double variance_target = (Hs_ * Hs_) / 16.0;
-        const double alpha = variance_target / variance_unit;
-
-        S_ = (S0 * alpha).matrix();
-        A_ = (2.0 * S_.array() * df_.array()).sqrt().matrix();
-
-        const double Hs_est = 4.0 * std::sqrt(0.5 * A_.squaredNorm());
-        if (!(Hs_est > 0.0)) throw std::runtime_error("JonswapSpectrum: Hs_est <= 0");
-        const double rel_err = std::abs(Hs_est - Hs_) / Hs_;
-        if (rel_err > 1e-3) {
-            A_ *= (Hs_ / Hs_est);
-            S_ = (0.5 * A_.array().square() / df_.array()).matrix();
-        }
-    }
+  }
 };
 
 // =================== Jonswap3dStokesWaves (vectorized + tuned) ====================
