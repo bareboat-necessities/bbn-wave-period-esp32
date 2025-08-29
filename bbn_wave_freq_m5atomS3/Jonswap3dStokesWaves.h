@@ -294,9 +294,9 @@ public:
             disp.y() -= Ai * c * diry;
             disp.z() += Ai * s;
 
-            // Velocity (NOTE: vertical sign fix)
-            vel.x()  += Ai * wi * s * dirx;
-            vel.y()  += Ai * wi * s * diry;
+            // Velocity (horizontal sign fix)
+            vel.x()  -= Ai * wi * s * dirx;
+            vel.y()  -= Ai * wi * s * diry;
             vel.z()  -= Ai * wi * c;
 
             // Acceleration
@@ -349,7 +349,6 @@ public:
                 const double wsum    = omega_sum_flat_[idx];
                 const double wsum2   = wsum * wsum;
 
-                // Unit vector along the sum wavevector
                 const double hx = (ksum > 1e-18) ? (kxsum / ksum) : 0.0;
                 const double hy = (ksum > 1e-18) ? (kysum / ksum) : 0.0;
 
@@ -358,15 +357,15 @@ public:
                 dx -= coeff * cos2 * hx;
                 dy -= coeff * cos2 * hy;
 
-                // Velocity (d/dt cos(θ0 - ωt) = +ω sin(θ0 - ωt); we keep minus here for dz=dcos)
-                vz -= coeff * wsum * sin2;
-                vx -= coeff * wsum * sin2 * hx;
-                vy -= coeff * wsum * sin2 * hy;
+                // Velocity (sign fix)
+                vz += coeff * wsum * sin2;
+                vx += coeff * wsum * sin2 * hx;
+                vy += coeff * wsum * sin2 * hy;
 
-                // Acceleration
-                az += coeff * wsum2 * cos2;
-                ax += coeff * wsum2 * cos2 * hx;
-                ay += coeff * wsum2 * cos2 * hy;
+                // Acceleration (sign fix)
+                az -= coeff * wsum2 * cos2;
+                ax -= coeff * wsum2 * cos2 * hx;
+                ay -= coeff * wsum2 * cos2 * hy;
             }
         }
 
