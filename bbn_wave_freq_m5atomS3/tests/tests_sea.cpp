@@ -84,7 +84,7 @@ static Wave_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     return s;
 }
 
-template<int N=256>
+template<int N=128>
 static Wave_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model) {
     Wave_Sample s;
     auto state = model.getLagrangianState(0.0f, 0.0f, static_cast<float>(t));
@@ -164,7 +164,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     }
     else if (waveType == WaveType::JONSWAP) {
         float period = 1.0f / wp.freqHz;
-        Jonswap3dStokesWaves<256> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
+        Jonswap3dStokesWaves<128> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_jonswap(sim_t, jonswap_model);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
