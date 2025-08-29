@@ -197,7 +197,7 @@ public:
         : Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg*PI/180.0),
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
           seed_(seed), cutoff_tol_(cutoff_tol),
-          pairwise_size_((size_t)N_FREQ*(N_FREQ+1)/2),
+          pairwise_size_(static_cast<size_t>(N_FREQ) * (N_FREQ + 1) / 2),
           spectrum_(Hs, Tp, f_min, f_max, gamma, g),
           theta2_cache_(pairwise_size_),
           exp_kz_freq_cache_(N_FREQ),
@@ -219,7 +219,7 @@ public:
         df_ = spectrum_.df();
 
         omega_ = 2.0 * PI * frequencies_;
-        k_ = omega_.array().square() / g_;
+        k_     = omega_.array().square() / g_;
 
         dir_x_.setZero();
         dir_y_.setZero();
@@ -235,160 +235,166 @@ public:
         initializeRandomPhases();
         initializeDirectionalSpread();
         computeWaveDirectionComponents();
-        computePerComponentStokesDriftEstimate();
-        precomputePairwise();
+        computePerComponentStokesDriftEstimate(); // uses omega*k*A^2
+        precomputePairwise();                     // uses T_plus = (ki*kj)/(ki+kj), factor: self=1, cross=2
         checkSteepness();
     }
 
-WaveState getLagrangianState(double x, double y, double t, double z=0.0) const {
-    Eigen::Vector3d disp = Eigen::Vector3d::Zero();
-    Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
-    Eigen::Vector3d acc  = Eigen::Vector3d::Zero();
+    WaveState getLagrangianState(double x, double y, double t, double z = 0.0) const {
+        Eigen::Vector3d disp = Eigen::Vector3d::Zero();
+        Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
+        Eigen::Vector3d acc  = Eigen::Vector3d::Zero();
 
-    // Depth-dependent exp(k z)
-    if(!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z){
-        for(int i=0;i<N_FREQ;++i) {
-            long double kv = static_cast<long double>(k_(i));
-            long double zv = static_cast<long double>(z);
-            long double ev = std::exp(kv * zv);
-            exp_kz_freq_cache_[i] = static_cast<double>(ev);
+        // Depth-dependent exp(k z)
+        if (!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z) {
+            for (int i = 0; i < N_FREQ; ++i) {
+                long double kv = static_cast<long double>(k_(i));
+                long double zv = static_cast<long double>(z);
+                long double ev = std::exp(kv * zv);
+                exp_kz_freq_cache_[i] = static_cast<double>(ev);
+            }
+            for (size_t idx = 0; idx < pairwise_size_; ++idx) {
+                long double kval = static_cast<long double>(k_sum_flat_[idx]);
+                long double zv   = static_cast<long double>(z);
+                long double ev   = std::exp(kval * zv);
+                exp_kz_pair_cache_[idx] = static_cast<double>(ev);
+            }
+            for (size_t idx = 0; idx < pairwise_size_; ++idx) {
+                skip_pair_mask_[idx] = (cutoff_tol_ > 0.0 &&
+                    std::abs(Bij_flat_[idx]) * exp_kz_pair_cache_[idx] < cutoff_tol_)
+                    ? 1 : 0;
+            }
+
+            exp_kz_cached_z_ = z;
+            exp_kz_cached_z_flag_ = true;
+            stokes_drift_mean_xy_cache_z_flag_ = false;
         }
 
-        for(size_t idx=0; idx<pairwise_size_; ++idx) {
-            long double kval = static_cast<long double>(k_sum_flat_[idx]);
-            long double zv = static_cast<long double>(z);
-            long double ev = std::exp(kval * zv);
-            exp_kz_pair_cache_[idx] = static_cast<double>(ev);
+        // First-order phases & trig
+        for (int i = 0; i < N_FREQ; ++i)
+            theta0_(i) = kx_(i) * x + ky_(i) * y + phi_(i);
+
+        for (int i = 0; i < N_FREQ; ++i)
+            robust_sincos(theta0_(i), omega_(i), t, sin0_(i), cos0_(i));
+
+        for (int i = 0; i < N_FREQ; ++i) {
+            sin0_(i) *= exp_kz_freq_cache_[i];
+            cos0_(i) *= exp_kz_freq_cache_[i];
         }
 
-        for(size_t idx=0; idx<pairwise_size_; ++idx)
-            skip_pair_mask_[idx] = (cutoff_tol_>0.0 && std::abs(Bij_flat_[idx])*exp_kz_pair_cache_[idx]<cutoff_tol_)?1:0;
+        // --- First-order (Airy) ---
+        for (int i = 0; i < N_FREQ; ++i) {
+            const double Ai  = A_(i);
+            const double wi  = omega_(i);
+            const double dirx = dir_x_(i), diry = dir_y_(i);
+            const double s = sin0_(i), c = cos0_(i);
 
-        exp_kz_cached_z_ = z;
-        exp_kz_cached_z_flag_ = true;
-        stokes_drift_mean_xy_cache_z_flag_ = false;
-    }
+            // Displacement
+            disp.x() -= Ai * c * dirx;
+            disp.y() -= Ai * c * diry;
+            disp.z() += Ai * s;
 
-    // First-order theta & trig
-    for(int i=0;i<N_FREQ;++i)
-        theta0_(i) = kx_(i)*x + ky_(i)*y + phi_(i);
+            // Velocity (NOTE: vertical sign fix)
+            vel.x()  += Ai * wi * s * dirx;
+            vel.y()  += Ai * wi * s * diry;
+            vel.z()  -= Ai * wi * c;
 
-    for(int i=0;i<N_FREQ;++i)
-        robust_sincos(theta0_(i), omega_(i), t, sin0_(i), cos0_(i));
-  
-    for(int i=0;i<N_FREQ;++i){
-        sin0_(i) *= exp_kz_freq_cache_[i];
-        cos0_(i) *= exp_kz_freq_cache_[i];
-    }
+            // Acceleration
+            acc.x()  += Ai * wi * wi * c * dirx;
+            acc.y()  += Ai * wi * wi * c * diry;
+            acc.z()  -= Ai * wi * wi * s;
+        }
 
-    // --- SERIAL FIRST-ORDER ---
-    for(int i=0;i<N_FREQ;++i){
-        double Ai=A_(i), wi=omega_(i);
-        double dirx=dir_x_(i), diry=dir_y_(i);
-        double s=sin0_(i), c=cos0_(i);
-        disp.x() -= Ai*c*dirx;
-        disp.y() -= Ai*c*diry;
-        disp.z() += Ai*s;
-        vel.x()  += Ai*wi*s*dirx;
-        vel.y()  += Ai*wi*s*diry;
-        vel.z()  += Ai*wi*c;
-        acc.x()  += Ai*wi*wi*c*dirx;
-        acc.y()  += Ai*wi*wi*c*diry;
-        acc.z()  -= Ai*wi*wi*s;
-    }
+        // Second-order phase cache for current (x,y)
+        if (std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
+            theta2_cached_x_ != x || theta2_cached_y_ != y)
+        {
+            for (size_t idx = 0; idx < pairwise_size_; ++idx)
+                theta2_cache_[idx] = kx_sum_flat_[idx] * x + ky_sum_flat_[idx] * y + phi_sum_flat_[idx];
+            theta2_cached_x_ = x;
+            theta2_cached_y_ = y;
+        }
 
-    // Second-order theta caching
-    if(std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
-       theta2_cached_x_ != x || theta2_cached_y_ != y)
-    {
-        for(size_t idx=0; idx<pairwise_size_; ++idx)
-            theta2_cache_[idx] = kx_sum_flat_[idx]*x + ky_sum_flat_[idx]*y + phi_sum_flat_[idx];
-        theta2_cached_x_ = x;
-        theta2_cached_y_ = y;
-    }
+        // Trig cache for second-order at time t
+        if (trig_cache_.last_t != t) {
+            for (size_t idx = 0; idx < pairwise_size_; ++idx) {
+                if (skip_pair_mask_[idx]) {
+                    trig_cache_.sin_second(idx) = 0.0;
+                    trig_cache_.cos_second(idx) = 0.0;
+                } else {
+                    robust_sincos(theta2_cache_[idx], omega_sum_flat_[idx], t,
+                                  trig_cache_.sin_second(idx),
+                                  trig_cache_.cos_second(idx));
+                }
+            }
+            trig_cache_.last_t = t;
+        }
 
-    // Trig cache second-order
-    if(trig_cache_.last_t != t){
-        for(size_t idx=0; idx<pairwise_size_; ++idx){
-            if(skip_pair_mask_[idx]){
-                trig_cache_.sin_second(idx)=0.0;
-                trig_cache_.cos_second(idx)=0.0;
-            } else {
-                robust_sincos(theta2_cache_[idx], omega_sum_flat_[idx], t,
-                    trig_cache_.sin_second(idx),
-                    trig_cache_.cos_second(idx));
+        // --- Second-order (sum-frequency bound harmonics) ---
+        double dz = 0.0, dx = 0.0, dy = 0.0;
+        double vz = 0.0, vx = 0.0, vy = 0.0;
+        double az = 0.0, ax = 0.0, ay = 0.0;
+
+        for (int i = 0; i < N_FREQ; ++i) {
+            for (int j = i; j < N_FREQ; ++j) {
+                const size_t idx = pairIndex(i, j);
+                if (skip_pair_mask_[idx]) continue;
+
+                const double coeff   = factor_flat_[idx] * Bij_flat_[idx] * exp_kz_pair_cache_[idx];
+                const double cos2    = trig_cache_.cos_second(idx);
+                const double sin2    = trig_cache_.sin_second(idx);
+                const double ksum    = k_sum_flat_[idx];
+                const double kxsum   = kx_sum_flat_[idx];
+                const double kysum   = ky_sum_flat_[idx];
+                const double wsum    = omega_sum_flat_[idx];
+                const double wsum2   = wsum * wsum;
+
+                // Unit vector along the sum wavevector
+                const double hx = (ksum > 1e-18) ? (kxsum / ksum) : 0.0;
+                const double hy = (ksum > 1e-18) ? (kysum / ksum) : 0.0;
+
+                // Displacement
+                dz += coeff * cos2;
+                dx -= coeff * cos2 * hx;
+                dy -= coeff * cos2 * hy;
+
+                // Velocity (d/dt cos(θ0 - ωt) = +ω sin(θ0 - ωt); we keep minus here for dz=dcos)
+                vz -= coeff * wsum * sin2;
+                vx -= coeff * wsum * sin2 * hx;
+                vy -= coeff * wsum * sin2 * hy;
+
+                // Acceleration
+                az += coeff * wsum2 * cos2;
+                ax += coeff * wsum2 * cos2 * hx;
+                ay += coeff * wsum2 * cos2 * hy;
             }
         }
-        trig_cache_.last_t = t;
-    }
 
-    // --- SERIAL SECOND-ORDER (DC-free, robust under -ffast-math) ---
-    double dz = 0.0;
-    double dx = 0.0;
-    double dy = 0.0;
-    double vz = 0.0;
-    double vx = 0.0;
-    double vy = 0.0;
-    double az = 0.0;
-    double ax = 0.0;
-    double ay = 0.0;
+        // Assign 2nd order back to state
+        disp.z() += dz; disp.x() += dx; disp.y() += dy;
+        vel.z()  += vz; vel.x() += vx; vel.y() += vy;
+        acc.z()  += az; acc.x() += ax; acc.y() += ay;
 
-    for(int i = 0; i < N_FREQ; ++i){
-        for(int j = i; j < N_FREQ; ++j){
-            size_t idx = i * N_FREQ - i*(i-1)/2 + (j - i); 
-            if(skip_pair_mask_[idx]) continue;
-
-            double coeff = factor_flat_[idx] * Bij_flat_[idx] * exp_kz_pair_cache_[idx];
-            double cos2  = trig_cache_.cos_second(idx);
-            double sin2  = trig_cache_.sin_second(idx);
-
-            double ksum = k_sum_flat_[idx];
-            double kxsum = kx_sum_flat_[idx];
-            double kysum = ky_sum_flat_[idx];
-
-            double hx = (ksum > 1e-18) ? kxsum / ksum : 0.0;
-            double hy = (ksum > 1e-18) ? kysum / ksum : 0.0;
-
-            double omega2 = omega_sum_flat_[idx] * omega_sum_flat_[idx];
-
-            dz += coeff * cos2;
-            dx -= coeff * cos2 * hx;
-            dy -= coeff * cos2 * hy;
-
-            vz -= coeff * omega_sum_flat_[idx] * sin2;
-            vx -= coeff * omega_sum_flat_[idx] * sin2 * hx;
-            vy -= coeff * omega_sum_flat_[idx] * sin2 * hy;
-
-            az += coeff * omega2 * cos2;
-            ax += coeff * omega2 * cos2 * hx;
-            ay += coeff * omega2 * cos2 * hy;
+        // Depth-dependent Stokes drift (cached per z)
+        if (!stokes_drift_mean_xy_cache_z_flag_) {
+            stokes_drift_mean_xy_cache_.setZero();
+            for (int i = 0; i < N_FREQ; ++i) {
+                const double exp2 = exp_kz_freq_cache_[i] * exp_kz_freq_cache_[i]; // e^{2kz}
+                const double Usi_z = stokes_drift_scalar_(i) * exp2;               // (ω k a^2) e^{2kz}
+                stokes_drift_mean_xy_cache_.x() += Usi_z * dir_x_(i);
+                stokes_drift_mean_xy_cache_.y() += Usi_z * dir_y_(i);
+            }
+            stokes_drift_mean_xy_cache_z_flag_ = true;
         }
+
+        vel.x() += stokes_drift_mean_xy_cache_.x();
+        vel.y() += stokes_drift_mean_xy_cache_.y();
+
+        return {disp, vel, acc};
     }
-
-    // Assign back to state
-    disp.z() += dz; disp.x() += dx; disp.y() += dy;
-    vel.z()  += vz; vel.x() += vx; vel.y() += vy;
-    acc.z()  += az; acc.x() += ax; acc.y() += ay;
-
-    // Depth-dependent Stokes drift
-    if(!stokes_drift_mean_xy_cache_z_flag_){
-        stokes_drift_mean_xy_cache_.setZero();
-        for(int i=0;i<N_FREQ;++i){
-            double exp2 = exp_kz_freq_cache_[i]*exp_kz_freq_cache_[i];
-            double Usi_z = stokes_drift_scalar_(i)*exp2;
-            stokes_drift_mean_xy_cache_.x() += Usi_z*dir_x_(i);
-            stokes_drift_mean_xy_cache_.y() += Usi_z*dir_y_(i);
-        }
-        stokes_drift_mean_xy_cache_z_flag_ = true;
-    }
-
-    vel.x() += stokes_drift_mean_xy_cache_.x();
-    vel.y() += stokes_drift_mean_xy_cache_.y();
-
-    return {disp, vel, acc};
-}
 
 private:
+    // -------- Parameters & storage --------
     JonswapSpectrum<N_FREQ> spectrum_;
     double Hs_, Tp_, mean_dir_rad_, gamma_, g_, spreading_exponent_;
     unsigned int seed_;
@@ -400,19 +406,21 @@ private:
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
     Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
 
-    std::vector<double, Eigen::aligned_allocator<double>> Bij_flat_, kx_sum_flat_, ky_sum_flat_, 
+    // Flattened upper-triangle arrays (i<=j)
+    std::vector<double, Eigen::aligned_allocator<double>> Bij_flat_, kx_sum_flat_, ky_sum_flat_,
                                                          k_sum_flat_, omega_sum_flat_, phi_sum_flat_, factor_flat_;
-    
+
+    // Mutable caches
     mutable std::vector<double> theta2_cache_;
     mutable std::vector<double> exp_kz_freq_cache_;
     mutable std::vector<double> exp_kz_pair_cache_;
-    mutable std::vector<char> skip_pair_mask_;
-    mutable Eigen::ArrayXd theta0_, sin0_, cos0_;
+    mutable std::vector<char>   skip_pair_mask_;
+    mutable Eigen::ArrayXd      theta0_, sin0_, cos0_;
     mutable double exp_kz_cached_z_;
-    mutable bool exp_kz_cached_z_flag_;
+    mutable bool   exp_kz_cached_z_flag_;
     mutable double theta2_cached_x_, theta2_cached_y_;
     mutable Eigen::Vector2d stokes_drift_mean_xy_cache_;
-    mutable bool stokes_drift_mean_xy_cache_z_flag_;
+    mutable bool   stokes_drift_mean_xy_cache_z_flag_;
 
     struct TrigCache {
         Eigen::ArrayXd sin_second, cos_second;
@@ -420,19 +428,19 @@ private:
     };
     mutable TrigCache trig_cache_;
 
+    // -------- Helpers --------
     void initializeRandomPhases() {
         std::mt19937 rng(seed_);
-        std::uniform_real_distribution<double> dist(0.0, 2.0*PI);
+        std::uniform_real_distribution<double> dist(0.0, 2.0 * PI);
 
-        for (int i = 0; i < N_FREQ/2; ++i) {
+        for (int i = 0; i < N_FREQ / 2; ++i) {
             double phi = dist(rng);
             long double ph = static_cast<long double>(phi);
             phi_(i) = static_cast<double>(ph);
             phi_(N_FREQ - 1 - i) = static_cast<double>(-ph);
         }
-
         if (N_FREQ % 2 == 1) {
-            int mid = N_FREQ / 2;
+            const int mid = N_FREQ / 2;
             phi_(mid) = dist(rng);
         }
     }
@@ -440,28 +448,28 @@ private:
     void initializeDirectionalSpread() {
         std::mt19937 rng_dir(seed_ + 1234567u);
         std::uniform_real_distribution<double> u01(-1.0, 1.0);
-        Eigen::ArrayXd amplitude_ratio = A_.array() / A_.maxCoeff();
-        Eigen::ArrayXd spread_scale = amplitude_ratio.pow(spreading_exponent_);
-        const double max_spread = PI * 0.5;
 
-        for (int i = 0; i < N_FREQ/2; ++i) {
-            double dev = u01(rng_dir);
-            double delta = dev * (spread_scale(i) * max_spread);
-            double angle = mean_dir_rad_ + delta;
+        Eigen::ArrayXd amplitude_ratio = A_.array() / A_.maxCoeff();
+        Eigen::ArrayXd spread_scale    = amplitude_ratio.pow(spreading_exponent_);
+        constexpr double max_spread = PI * 0.5;
+
+        for (int i = 0; i < N_FREQ / 2; ++i) {
+            const double dev   = u01(rng_dir);
+            const double delta = dev * (spread_scale(i) * max_spread);
+            const double angle = mean_dir_rad_ + delta;
             dir_x_(i) = std::cos(angle);
             dir_y_(i) = std::sin(angle);
 
-            int j = N_FREQ - 1 - i;
-            double angle_j = angle + PI;
+            const int j = N_FREQ - 1 - i;
+            const double angle_j = angle + PI;
             dir_x_(j) = std::cos(angle_j);
             dir_y_(j) = std::sin(angle_j);
         }
-
         if (N_FREQ % 2 == 1) {
-            int mid = N_FREQ / 2;
-            double dev = u01(rng_dir);
-            double delta = dev * (spread_scale(mid) * max_spread);
-            double angle = mean_dir_rad_ + delta;
+            const int mid = N_FREQ / 2;
+            const double dev   = u01(rng_dir);
+            const double delta = dev * (spread_scale(mid) * max_spread);
+            const double angle = mean_dir_rad_ + delta;
             dir_x_(mid) = std::cos(angle);
             dir_y_(mid) = std::sin(angle);
         }
@@ -479,52 +487,67 @@ private:
     }
 
     void computeWaveDirectionComponents() {
-        for(int i=0;i<N_FREQ;++i){
-            kx_(i) = k_(i)*dir_x_(i);
-            ky_(i) = k_(i)*dir_y_(i);
+        for (int i = 0; i < N_FREQ; ++i) {
+            kx_(i) = k_(i) * dir_x_(i);
+            ky_(i) = k_(i) * dir_y_(i);
         }
     }
 
     void computePerComponentStokesDriftEstimate() {
-        for(int i=0;i<N_FREQ;++i)
-            stokes_drift_scalar_(i) = 0.5*A_(i)*A_(i)*omega_(i);
-    }
-
-inline size_t pairIndex(int i, int j) const {
-    if(i > j) std::swap(i,j);
-    return i * N_FREQ - i*(i-1)/2 + (j - i);
-}
-
-void precomputePairwise() {
-    Bij_flat_.resize(pairwise_size_);
-    kx_sum_flat_.resize(pairwise_size_);
-    ky_sum_flat_.resize(pairwise_size_);
-    k_sum_flat_.resize(pairwise_size_);
-    omega_sum_flat_.resize(pairwise_size_);
-    phi_sum_flat_.resize(pairwise_size_);
-    factor_flat_.resize(pairwise_size_);
-    
-    for(int i = 0; i < N_FREQ; ++i){
-        for(int j = i; j < N_FREQ; ++j){
-            size_t idx = pairIndex(i,j);
-
-            // Include wave-number scaling for second-order amplitude
-            Bij_flat_[idx] = (k_(i) + k_(j)) * A_(i) * A_(j);
-
-            kx_sum_flat_[idx] = kx_(i) + kx_(j);
-            ky_sum_flat_[idx] = ky_(i) + ky_(j);
-            k_sum_flat_[idx] = k_(i) + k_(j);
-            omega_sum_flat_[idx] = omega_(i) + omega_(j);
-            phi_sum_flat_[idx] = phi_(i) + phi_(j);
-
-            factor_flat_[idx] = (i == j) ? 0.5 : 1.0;
+        // Deep-water Stokes drift at the surface: U_s0 = ω * k * a^2
+        for (int i = 0; i < N_FREQ; ++i) {
+            stokes_drift_scalar_(i) = omega_(i) * k_(i) * A_(i) * A_(i);
         }
     }
-}
+
+    inline size_t pairIndex(int i, int j) const {
+        if (i > j) std::swap(i, j);
+        // Row-major indexing over upper triangle
+        return static_cast<size_t>(i) * static_cast<size_t>(N_FREQ)
+             - static_cast<size_t>(i) * static_cast<size_t>(i - 1) / 2
+             + static_cast<size_t>(j - i);
+    }
+
+    void precomputePairwise() {
+        Bij_flat_.resize(pairwise_size_);
+        kx_sum_flat_.resize(pairwise_size_);
+        ky_sum_flat_.resize(pairwise_size_);
+        k_sum_flat_.resize(pairwise_size_);
+        omega_sum_flat_.resize(pairwise_size_);
+        phi_sum_flat_.resize(pairwise_size_);
+        factor_flat_.resize(pairwise_size_);
+
+        constexpr double tiny = 1e-18;
+
+        for (int i = 0; i < N_FREQ; ++i) {
+            const double ki = k_(i);
+            for (int j = i; j < N_FREQ; ++j) {
+                const size_t idx = pairIndex(i, j);
+
+                const double kj   = k_(j);
+                const double ksum = ki + kj;
+                const double kij  = ki * kj;
+
+                // Deep-water sum-frequency kernel (simplified Hasselmann T^+)
+                // Self term (i=j) => 0.5*k*a^2 in η^(2), which this T^+ reproduces when paired with factor below
+                const double T_plus = (ksum > tiny) ? (kij / ksum) : 0.0;
+
+                Bij_flat_[idx]      = T_plus * A_(i) * A_(j);
+                kx_sum_flat_[idx]   = kx_(i) + kx_(j);
+                ky_sum_flat_[idx]   = ky_(i) + ky_(j);
+                k_sum_flat_[idx]    = ksum;
+                omega_sum_flat_[idx]= omega_(i) + omega_(j);
+                phi_sum_flat_[idx]  = phi_(i) + phi_(j);
+
+                // Pair counting for i<=j traversal: self=1.0, cross=2.0
+                factor_flat_[idx] = (i == j) ? 1.0 : 2.0;
+            }
+        }
+    }
 
     void checkSteepness() {
-        double max_steepness = (k_.array()*A_.array()).maxCoeff();
-        if(max_steepness > 0.4)
+        const double max_steepness = (k_.array() * A_.array()).maxCoeff();
+        if (max_steepness > 0.4)
             throw std::runtime_error("Wave too steep (>0.4), unstable");
     }
 };
