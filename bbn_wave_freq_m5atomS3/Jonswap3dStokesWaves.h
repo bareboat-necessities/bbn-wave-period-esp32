@@ -225,11 +225,9 @@ public:
             for(int i=0;i<N_FREQ;++i)
                 exp_kz_freq_cache_[i] = std::exp(k_(i) * z);
 
-            #pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx)
                 exp_kz_pair_cache_[idx] = std::exp(k_sum_flat_[idx] * z);
 
-            #pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx){
                 skip_pair_mask_[idx] = (cutoff_tol_>0.0 && std::abs(Bij_flat_[idx])*exp_kz_pair_cache_[idx]<cutoff_tol_)?1:0;
             }
@@ -243,7 +241,6 @@ public:
         for(int i=0;i<N_FREQ;++i)
             theta0_(i) = kx_(i)*x + ky_(i)*y + phi_(i);
 
-        #pragma omp parallel for
         for(int i=0;i<N_FREQ;++i)
             fast_sincos(theta0_(i) - omega_(i)*t, sin0_(i), cos0_(i));
 
@@ -262,14 +259,12 @@ public:
 #endif
         std::vector<AccLong> disp_p(nthreads), vel_p(nthreads), acc_p(nthreads);
 
-        #pragma omp parallel
         {
             int tid = 0;
     #ifdef _OPENMP
             tid = omp_get_thread_num();
     #endif
             AccLong ld_disp{0,0,0}, ld_vel{0,0,0}, ld_acc{0,0,0};
-            #pragma omp for nowait
             for(int i=0;i<N_FREQ;++i){
                 double Ai=A_(i), wi=omega_(i), dirx=dir_x_(i), diry=dir_y_(i);
                 double s=sin0_(i), c=cos0_(i);
@@ -326,7 +321,6 @@ public:
         if(std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
            theta2_cached_x_ != x || theta2_cached_y_ != y)
         {
-            #pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx)
                 theta2_cache_[idx] = kx_sum_flat_[idx]*x + ky_sum_flat_[idx]*y + phi_sum_flat_[idx];
             theta2_cached_x_ = x;
@@ -335,7 +329,6 @@ public:
 
         // Trig cache second-order
         if(trig_cache_.last_t != t){
-            #pragma omp parallel for
             for(size_t idx=0; idx<pairwise_size_; ++idx){
                 if(skip_pair_mask_[idx]){
                     trig_cache_.sin_second(idx)=0.0;
@@ -352,15 +345,8 @@ public:
         // --- REPLACED: Second-order contributions (thread-local long double + Kahan combine) ---
         std::vector<AccLong> disp2_p(nthreads), vel2_p(nthreads), acc2_p(nthreads);
 
-        #pragma omp parallel
         {
-            int tid = 0;
-    #ifdef _OPENMP
-            tid = omp_get_thread_num();
-    #endif
             AccLong ld_disp{0,0,0}, ld_vel{0,0,0}, ld_acc{0,0,0};
-
-            #pragma omp for nowait
             for(size_t idx=0; idx<pairwise_size_; ++idx){
                 if(skip_pair_mask_[idx]) continue;
                 double coeff=(double)factor_flat_[idx]*exp_kz_pair_cache_[idx];
@@ -401,14 +387,8 @@ public:
             // --- REPLACED: Stokes drift accumulation (thread-local long double + Kahan combine) ---
             std::vector<std::pair<long double,long double>> stokes_p(nthreads, {0.0L,0.0L});
 
-            #pragma omp parallel
             {
-                int tid = 0;
-    #ifdef _OPENMP
-                tid = omp_get_thread_num();
-    #endif
                 long double lx = 0.0L, ly = 0.0L;
-                #pragma omp for nowait
                 for(int i=0;i<N_FREQ;++i){
                     double exp2 = exp_kz_freq_cache_[i]*exp_kz_freq_cache_[i];
                     double Usi_z = stokes_drift_scalar_(i)*exp2;
@@ -575,8 +555,6 @@ void generateWaveJonswapCSV(const std::string& filename,
     // Output arrays: 3 x N_time
     Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
 
-    // Parallel over time steps
-#pragma omp parallel for
     for(int i = 0; i < N_time; ++i) {
         auto state = waveModel->getLagrangianState(0.0, 0.0, time(i));
         for(int j = 0; j < 3; ++j) {
