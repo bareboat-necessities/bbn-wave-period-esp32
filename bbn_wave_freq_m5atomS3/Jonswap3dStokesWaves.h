@@ -226,129 +226,153 @@ public:
         checkSteepness();
     }
 
-    WaveState getLagrangianState(double x, double y, double t, double z=0.0) const {
-        Eigen::Vector3d disp = Eigen::Vector3d::Zero();
-        Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
-        Eigen::Vector3d acc  = Eigen::Vector3d::Zero();
+WaveState getLagrangianState(double x, double y, double t, double z=0.0) const {
+    Eigen::Vector3d disp = Eigen::Vector3d::Zero();
+    Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
+    Eigen::Vector3d acc  = Eigen::Vector3d::Zero();
 
-        // Depth-dependent exp(k z)
-        if(!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z){
-            for(int i=0;i<N_FREQ;++i) {
-                // compute exp(k*z) with long double intermediate to be robust under -ffast-math
-                long double kv = static_cast<long double>(k_(i));
-                long double zv = static_cast<long double>(z);
-                long double ev = std::exp(kv * zv); // calls overload for long double
-                exp_kz_freq_cache_[i] = static_cast<double>(ev);
-            }
-
-            for(size_t idx=0; idx<pairwise_size_; ++idx) {
-                long double kval = static_cast<long double>(k_sum_flat_[idx]);
-                long double zv = static_cast<long double>(z);
-                long double ev = std::exp(kval * zv);
-                exp_kz_pair_cache_[idx] = static_cast<double>(ev);
-            }
-
-            for(size_t idx=0; idx<pairwise_size_; ++idx)
-                skip_pair_mask_[idx] = (cutoff_tol_>0.0 && std::abs(Bij_flat_[idx])*exp_kz_pair_cache_[idx]<cutoff_tol_)?1:0;
-
-            exp_kz_cached_z_ = z;
-            exp_kz_cached_z_flag_ = true;
-            stokes_drift_mean_xy_cache_z_flag_ = false;
+    // Depth-dependent exp(k z)
+    if(!exp_kz_cached_z_flag_ || exp_kz_cached_z_ != z){
+        for(int i=0;i<N_FREQ;++i) {
+            long double kv = static_cast<long double>(k_(i));
+            long double zv = static_cast<long double>(z);
+            long double ev = std::exp(kv * zv);
+            exp_kz_freq_cache_[i] = static_cast<double>(ev);
         }
 
-        // First-order theta & trig
-        for(int i=0;i<N_FREQ;++i)
-            theta0_(i) = kx_(i)*x + ky_(i)*y + phi_(i);
-
-        for(int i=0;i<N_FREQ;++i)
-            fast_sincos(theta0_(i) - omega_(i)*t, sin0_(i), cos0_(i));
-
-        for(int i=0;i<N_FREQ;++i){
-            sin0_(i) *= exp_kz_freq_cache_[i];
-            cos0_(i) *= exp_kz_freq_cache_[i];
+        for(size_t idx=0; idx<pairwise_size_; ++idx) {
+            long double kval = static_cast<long double>(k_sum_flat_[idx]);
+            long double zv = static_cast<long double>(z);
+            long double ev = std::exp(kval * zv);
+            exp_kz_pair_cache_[idx] = static_cast<double>(ev);
         }
 
-        // --- SERIAL FIRST-ORDER ---
-        for(int i=0;i<N_FREQ;++i){
-            double Ai=A_(i), wi=omega_(i);
-            double dirx=dir_x_(i), diry=dir_y_(i);
-            double s=sin0_(i), c=cos0_(i);
-            disp.x() -= Ai*c*dirx;
-            disp.y() -= Ai*c*diry;
-            disp.z() += Ai*s;
-            vel.x()  += Ai*wi*s*dirx;
-            vel.y()  += Ai*wi*s*diry;
-            vel.z()  += Ai*wi*c;
-            acc.x()  += Ai*wi*wi*c*dirx;
-            acc.y()  += Ai*wi*wi*c*diry;
-            acc.z()  -= Ai*wi*wi*s;
-        }
+        for(size_t idx=0; idx<pairwise_size_; ++idx)
+            skip_pair_mask_[idx] = (cutoff_tol_>0.0 && std::abs(Bij_flat_[idx])*exp_kz_pair_cache_[idx]<cutoff_tol_)?1:0;
 
-        // Second-order theta caching
-        if(std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
-           theta2_cached_x_ != x || theta2_cached_y_ != y)
-        {
-            for(size_t idx=0; idx<pairwise_size_; ++idx)
-                theta2_cache_[idx] = kx_sum_flat_[idx]*x + ky_sum_flat_[idx]*y + phi_sum_flat_[idx];
-            theta2_cached_x_ = x;
-            theta2_cached_y_ = y;
-        }
-
-        // Trig cache second-order
-        if(trig_cache_.last_t != t){
-            for(size_t idx=0; idx<pairwise_size_; ++idx){
-                if(skip_pair_mask_[idx]){
-                    trig_cache_.sin_second(idx)=0.0;
-                    trig_cache_.cos_second(idx)=0.0;
-                } else {
-                    fast_sincos(theta2_cache_[idx]-omega_sum_flat_[idx]*t,
-                                trig_cache_.sin_second(idx),
-                                trig_cache_.cos_second(idx));
-                }
-            }
-            trig_cache_.last_t = t;
-        }
-
-        // --- SERIAL SECOND-ORDER ---
-        for(size_t idx=0; idx<pairwise_size_; ++idx){
-            if(skip_pair_mask_[idx]) continue;
-            double coeff=factor_flat_[idx]*exp_kz_pair_cache_[idx];
-            double Bij=Bij_flat_[idx];
-            double omega_sum=omega_sum_flat_[idx];
-            double ksum=k_sum_flat_[idx], kxsum=kx_sum_flat_[idx], kysum=ky_sum_flat_[idx];
-            double cos2=trig_cache_.cos_second(idx), sin2=trig_cache_.sin_second(idx);
-            double hx=(ksum>1e-18)? kxsum/ksum : 0.0;
-            double hy=(ksum>1e-18)? kysum/ksum : 0.0;
-            double omega2=omega_sum*omega_sum;
-            // Note: Bij_flat_ stores A_i * A_j and factor_flat_ is 0.5 for diagonal, 1.0 for off-diagonals
-            disp.z() += coeff * Bij * cos2;
-            disp.x() -= coeff * Bij * cos2 * hx;
-            disp.y() -= coeff * Bij * cos2 * hy;
-            vel.z() -= coeff * omega_sum * Bij * sin2;
-            vel.x() -= coeff * omega_sum * Bij * sin2 * hx;
-            vel.y() -= coeff * omega_sum * Bij * sin2 * hy;
-            acc.z() += coeff * Bij * omega2 * cos2;
-            acc.x() += coeff * Bij * omega2 * cos2 * hx;
-            acc.y() += coeff * Bij * omega2 * cos2 * hy;
-        }
-
-        // Depth-dependent Stokes drift
-        if(!stokes_drift_mean_xy_cache_z_flag_){
-            stokes_drift_mean_xy_cache_.setZero();
-            for(int i=0;i<N_FREQ;++i){
-                double exp2 = exp_kz_freq_cache_[i]*exp_kz_freq_cache_[i];
-                double Usi_z = stokes_drift_scalar_(i)*exp2;
-                stokes_drift_mean_xy_cache_.x() += Usi_z*dir_x_(i);
-                stokes_drift_mean_xy_cache_.y() += Usi_z*dir_y_(i);
-            }
-            stokes_drift_mean_xy_cache_z_flag_ = true;
-        }
-
-        vel.x() += stokes_drift_mean_xy_cache_.x();
-        vel.y() += stokes_drift_mean_xy_cache_.y();
-
-        return {disp, vel, acc};
+        exp_kz_cached_z_ = z;
+        exp_kz_cached_z_flag_ = true;
+        stokes_drift_mean_xy_cache_z_flag_ = false;
     }
+
+    // First-order theta & trig
+    for(int i=0;i<N_FREQ;++i)
+        theta0_(i) = kx_(i)*x + ky_(i)*y + phi_(i);
+
+    for(int i=0;i<N_FREQ;++i)
+        fast_sincos(theta0_(i) - omega_(i)*t, sin0_(i), cos0_(i));
+
+    for(int i=0;i<N_FREQ;++i){
+        sin0_(i) *= exp_kz_freq_cache_[i];
+        cos0_(i) *= exp_kz_freq_cache_[i];
+    }
+
+    // --- SERIAL FIRST-ORDER ---
+    for(int i=0;i<N_FREQ;++i){
+        double Ai=A_(i), wi=omega_(i);
+        double dirx=dir_x_(i), diry=dir_y_(i);
+        double s=sin0_(i), c=cos0_(i);
+        disp.x() -= Ai*c*dirx;
+        disp.y() -= Ai*c*diry;
+        disp.z() += Ai*s;
+        vel.x()  += Ai*wi*s*dirx;
+        vel.y()  += Ai*wi*s*diry;
+        vel.z()  += Ai*wi*c;
+        acc.x()  += Ai*wi*wi*c*dirx;
+        acc.y()  += Ai*wi*wi*c*diry;
+        acc.z()  -= Ai*wi*wi*s;
+    }
+
+    // Second-order theta caching
+    if(std::isnan(theta2_cached_x_) || std::isnan(theta2_cached_y_) ||
+       theta2_cached_x_ != x || theta2_cached_y_ != y)
+    {
+        for(size_t idx=0; idx<pairwise_size_; ++idx)
+            theta2_cache_[idx] = kx_sum_flat_[idx]*x + ky_sum_flat_[idx]*y + phi_sum_flat_[idx];
+        theta2_cached_x_ = x;
+        theta2_cached_y_ = y;
+    }
+
+    // Trig cache second-order
+    if(trig_cache_.last_t != t){
+        for(size_t idx=0; idx<pairwise_size_; ++idx){
+            if(skip_pair_mask_[idx]){
+                trig_cache_.sin_second(idx)=0.0;
+                trig_cache_.cos_second(idx)=0.0;
+            } else {
+                fast_sincos(theta2_cache_[idx]-omega_sum_flat_[idx]*t,
+                            trig_cache_.sin_second(idx),
+                            trig_cache_.cos_second(idx));
+            }
+        }
+        trig_cache_.last_t = t;
+    }
+
+    // --- SERIAL SECOND-ORDER (DC-free, robust under -ffast-math) ---
+    double dz = 0.0;
+    double dx = 0.0;
+    double dy = 0.0;
+    double vz = 0.0;
+    double vx = 0.0;
+    double vy = 0.0;
+    double az = 0.0;
+    double ax = 0.0;
+    double ay = 0.0;
+
+    for(int i = 0; i < N_FREQ; ++i){
+        for(int j = i; j < N_FREQ; ++j){
+            size_t idx = i*(2*N_FREQ-i+1)/2 + j; // flat index in upper-triangle
+            if(skip_pair_mask_[idx]) continue;
+
+            double coeff = factor_flat_[idx] * Bij_flat_[idx] * exp_kz_pair_cache_[idx];
+            double cos2  = trig_cache_.cos_second(idx);
+            double sin2  = trig_cache_.sin_second(idx);
+
+            double ksum = k_sum_flat_[idx];
+            double kxsum = kx_sum_flat_[idx];
+            double kysum = ky_sum_flat_[idx];
+
+            double hx = (ksum > 1e-18) ? kxsum / ksum : 0.0;
+            double hy = (ksum > 1e-18) ? kysum / ksum : 0.0;
+
+            double omega2 = omega_sum_flat_[idx] * omega_sum_flat_[idx];
+
+            dz += coeff * cos2;
+            dx -= coeff * cos2 * hx;
+            dy -= coeff * cos2 * hy;
+
+            vz -= coeff * omega_sum_flat_[idx] * sin2;
+            vx -= coeff * omega_sum_flat_[idx] * sin2 * hx;
+            vy -= coeff * omega_sum_flat_[idx] * sin2 * hy;
+
+            az += coeff * omega2 * cos2;
+            ax += coeff * omega2 * cos2 * hx;
+            ay += coeff * omega2 * cos2 * hy;
+        }
+    }
+
+    // Assign back to state
+    disp.z() += dz; disp.x() += dx; disp.y() += dy;
+    vel.z()  += vz; vel.x() += vx; vel.y() += vy;
+    acc.z()  += az; acc.x() += ax; acc.y() += ay;
+
+    // Depth-dependent Stokes drift
+    if(!stokes_drift_mean_xy_cache_z_flag_){
+        stokes_drift_mean_xy_cache_.setZero();
+        for(int i=0;i<N_FREQ;++i){
+            double exp2 = exp_kz_freq_cache_[i]*exp_kz_freq_cache_[i];
+            double Usi_z = stokes_drift_scalar_(i)*exp2;
+            stokes_drift_mean_xy_cache_.x() += Usi_z*dir_x_(i);
+            stokes_drift_mean_xy_cache_.y() += Usi_z*dir_y_(i);
+        }
+        stokes_drift_mean_xy_cache_z_flag_ = true;
+    }
+
+    vel.x() += stokes_drift_mean_xy_cache_.x();
+    vel.y() += stokes_drift_mean_xy_cache_.y();
+
+    return {disp, vel, acc};
+}
 
 private:
     JonswapSpectrum<N_FREQ> spectrum_;
