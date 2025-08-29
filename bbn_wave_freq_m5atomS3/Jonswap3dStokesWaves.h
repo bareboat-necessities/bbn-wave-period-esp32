@@ -485,16 +485,44 @@ private:
     }
 
     void initializeDirectionalSpread() {
-        // Use Eigen array operations for better performance
+        // Build a reproducible RNG for directions (use a different stream than phases to keep them independent).
+        std::mt19937 rng_dir(seed_ + 1234567u);
+        // We'll draw uniform deviations in [-1,1] which we then scale by spread_angle.
+        std::uniform_real_distribution<double> u01(-1.0, 1.0);
+
+        // amplitude_ratio in [0..1], higher amplitude -> narrower spread (if exponent>0)
         Eigen::ArrayXd amplitude_ratio = A_.array() / A_.maxCoeff();
-        Eigen::ArrayXd spread_angle = amplitude_ratio.pow(spreading_exponent_);
-        
-        // Convert back to matrix format
-        dir_x_ = spread_angle.cos();
-        dir_y_ = spread_angle.sin();
+        Eigen::ArrayXd spread_scale = amplitude_ratio.pow(spreading_exponent_); // in [0..1]
+
+        // Decide on a maximum angular spread (radians). Choose e.g. pi/2 (90°) as a sensible cap,
+        // but you can tune this constant or make it a parameter. Using pi/2 keeps spread_scale=1 -> ±90°.
+        const double max_spread = PI * 0.5;
+
+        // Resize dir_x_, dir_y_ already exist; fill angle per-frequency
+        for (int i = 0; i < N_FREQ; ++i) {
+            double dev = u01(rng_dir);                         // in [-1,1]
+            double delta = dev * (spread_scale(i) * max_spread); // symmetric deviation
+            double angle = mean_dir_rad_ + delta;              // centered around mean_dir_rad_
+            dir_x_(i) = std::cos(angle);
+            dir_y_(i) = std::sin(angle);
+        }
+
+        // Ensure numerical normalization (cos/sin already produce unit length but rounding could be off)
+        // This also allows later code to assume dir_x_/dir_y_ are unit vectors.
+        for (int i = 0; i < N_FREQ; ++i) {
+            double norm = std::hypot(dir_x_(i), dir_y_(i));
+            if (norm > 0.0) {
+                dir_x_(i) /= norm;
+                dir_y_(i) /= norm;
+            } else {
+                dir_x_(i) = std::cos(mean_dir_rad_);
+                dir_y_(i) = std::sin(mean_dir_rad_);
+            }
+        }
     }
 
     void computeWaveDirectionComponents() {
+        // kx, ky are just k * direction unit vector components
         kx_ = k_.array() * dir_x_.array();
         ky_ = k_.array() * dir_y_.array();
     }
