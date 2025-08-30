@@ -26,6 +26,7 @@
 template<int N_FREQ = 256>
 class JonswapSpectrum {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     JonswapSpectrum(double Hs, double Tp,
                     double f_min = 0.02, double f_max = 0.8,
                     double gamma = 2.0, double g = 9.81)
