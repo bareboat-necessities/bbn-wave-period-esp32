@@ -192,11 +192,10 @@ public:
       exp_kz_pairs_ = (k_sum_ * z).exp();
 
       if (cutoff_tol_ > 0.0) {
-        const Eigen::ArrayXd keep = (Bij_.abs() * exp_kz_pairs_) >= cutoff_tol_;
-        pair_mask_ = keep.cast<double>();
-      } else {
-        pair_mask_ = Eigen::ArrayXd::Ones(Bij_.size());
-      }
+    pair_mask_ = ((Bij_.abs() * exp_kz_pairs_) >= cutoff_tol_).cast<double>();
+} else {
+    pair_mask_.setOnes(Bij_.size());
+}
 
       exp_kz_cached_z_ = z;
       stokes_drift_mean_xy_valid_ = false;
