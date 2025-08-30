@@ -373,11 +373,6 @@ private:
     mutable Eigen::Vector2d stokes_drift_surface_xy_;
     mutable bool stokes_drift_surface_valid_;
 
-    // Precomputed products
-    Eigen::Array<double, N_FREQ, 1> A_dirx_, A_diry_;
-    Eigen::Array<double, N_FREQ, 1> Aomega_dirx_, Aomega_diry_;
-    Eigen::Array<double, N_FREQ, 1> Aomega2_dirx_, Aomega2_diry_;
-
     // amplitude*wavenumber components (for first-order slopes)
     Eigen::Array<double, N_FREQ, 1> Akx_, Aky_;
 
