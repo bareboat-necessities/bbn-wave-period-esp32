@@ -29,6 +29,8 @@
 template<int N_FREQ = 256>
 class PiersonMoskowitzSpectrum {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     PiersonMoskowitzSpectrum(double Hs, double Tp,
                              double f_min = 0.02, double f_max = 0.8,
                              double g = 9.81)
