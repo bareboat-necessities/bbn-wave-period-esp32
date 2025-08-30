@@ -274,6 +274,63 @@ public:
                             stokes_drift_mean_xy_, stokes_drift_mean_xy_valid_);
     }
 
+// Surface slopes (∂η/∂x, ∂η/∂y) at z = 0, including 1st + 2nd order
+Eigen::Vector2d getSurfaceSlopes(double x, double y, double t) const {
+    // --- First-order part: η1(x,y,t) = Σ A_i sin(θ_i), θ_i = kx_i x + ky_i y + φ_i - ω_i t
+    // ∂η1/∂x = Σ A_i kx_i cos(θ_i), ∂η1/∂y = Σ A_i ky_i cos(θ_i)
+    const Eigen::Array<double, N_FREQ, 1> arg0 =
+        (kx_.array() * x + ky_.array() * y + phi_.array() - omega_.array() * t).eval();
+
+    // surface => exp(k z) = 1
+    const Eigen::Array<double, N_FREQ, 1> cos0 = arg0.cos();
+
+    double slope_x = (Akx_ * cos0).sum();
+    double slope_y = (Aky_ * cos0).sum();
+
+    // --- Prepare second-order angle cache θ2 = (k_i + k_j)·(x,y) + (φ_i + φ_j)
+    // Recompute if (x,y) changed
+    if (!std::isfinite(x_cached_) || !std::isfinite(y_cached_) || x_cached_ != x || y_cached_ != y) {
+        Eigen::Matrix<double, 2, 1> xy; xy << x, y;
+        const Eigen::ArrayXd Kxy = (Ksum2_ * xy).array(); // P×1
+        Eigen::Map<Eigen::ArrayXd>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
+            Kxy + Eigen::Map<const Eigen::ArrayXd>(phi_sum_.data(), pairwise_size_);
+        x_cached_ = x; y_cached_ = y;
+        // invalidate shared trig cache; we recompute fresh below
+        trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
+    }
+
+    // --- Second-order part: η2(x,y,t) = Σ coeff_ij cos(θ2_ij - (ω_i+ω_j)t)
+    // where coeff_ij = factor * Bij * exp((k_i+k_j)z) ; at surface z=0 => exp(...) = 1
+    // ∂η2/∂x = - Σ coeff_ij sin(θ2_ij - wsum t) * (kx_i + kx_j)
+    // ∂η2/∂y = - Σ coeff_ij sin(θ2_ij - wsum t) * (ky_i + ky_j)
+
+    const size_t P = pairwise_size_;
+
+    // maps
+    Eigen::Map<const Eigen::ArrayXd> theta2 (theta2_cache_.data(), P);
+    Eigen::Map<const Eigen::ArrayXd> wsum   (omega_sum_.data(),   P);
+    Eigen::Map<const Eigen::ArrayXd> Bij    (Bij_.data(),         P);
+    Eigen::Map<const Eigen::ArrayXd> fact   (factor_.data(),      P);
+    Eigen::Map<const Eigen::ArrayXd> kxsum  (kx_sum_.data(),      P);
+    Eigen::Map<const Eigen::ArrayXd> kysum  (ky_sum_.data(),      P);
+    Eigen::Map<const Eigen::ArrayXd> mask   (pair_mask_surface_.data(), P);
+    Eigen::Map<const Eigen::ArrayXd> expk2  (exp_kz_pairs_surface_.data(), P); // all 1.0, but keep for symmetry
+
+    // angles and trig with surface mask (recompute locally to avoid mixing masks with the depth path)
+    const Eigen::ArrayXd arg2 = (theta2 - wsum * t).eval();
+    const Eigen::ArrayXd sin2 = (arg2.sin() * mask).eval();
+
+    // coefficients
+    const Eigen::ArrayXd coeff = (fact * Bij) * expk2;
+
+    // add second-order slope contributions
+    // note the minus sign from d/dx cos(·) = -sin(·) * d(·)/dx
+    slope_x += -( (coeff * sin2) * kxsum ).sum();
+    slope_y += -( (coeff * sin2) * kysum ).sum();
+
+    return Eigen::Vector2d(slope_x, slope_y);
+}
+
 private:
     using IndexT = Eigen::Index;
 
