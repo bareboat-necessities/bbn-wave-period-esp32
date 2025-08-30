@@ -2,6 +2,8 @@
 #pragma GCC optimize ("no-fast-math")
 
 /*
+  Copyright 2025, Mikhail Grushinskiy
+
   JONSWAP-spectrum 3D Stokes-corrected waves simulation (surface, deep-water).
   - 1st order: Airy (linear) components
   - 2nd order: simplified deep-water sum-frequency bound harmonics + simple
@@ -41,7 +43,7 @@ static constexpr double PI = M_PI;
 // Aligned storage for dynamic arrays
 using AlignedVec = std::vector<double, Eigen::aligned_allocator<double>>;
 
-// ---------- robust sincos ----------
+// robust sincos
 inline void fast_sincos(double x, double &s, double &c) {
 #if defined(__GNUC__) || defined(__clang__)
 # if defined(__GLIBC__) || defined(_GNU_SOURCE)
@@ -63,7 +65,7 @@ inline void robust_sincos(double theta, double omega, double t, double &s, doubl
     else { fast_sincos(arg, s, c); }
 }
 
-// ---------- JonswapSpectrum ----------
+// JonswapSpectrum
 template<int N_FREQ = 128>
 class JonswapSpectrum {
 public:
@@ -160,7 +162,7 @@ private:
     }
 };
 
-// ---------- Jonswap3dStokesWaves ----------
+// Jonswap3dStokesWaves
 template<int N_FREQ = 128>
 class Jonswap3dStokesWaves {
 public:
@@ -310,7 +312,7 @@ private:
     mutable Eigen::Vector2d stokes_drift_surface_xy_;
     mutable bool stokes_drift_surface_valid_;
 
-    // ---- Core compute ----
+    // Core compute
     WaveState computeState(double x, double y, double t,
                            const AlignedVec &exp_kz_v,
                            const AlignedVec &exp_kz_pairs_v,
@@ -411,7 +413,7 @@ private:
         return {disp, vel, acc};
     }
 
-    // ---- Helpers ----
+    // Helpers
     void allocatePairArrays() {
         const IndexT P = static_cast<IndexT>(pairwise_size_);
         Bij_.resize(P); kx_sum_.resize(P); ky_sum_.resize(P); k_sum_.resize(P);
