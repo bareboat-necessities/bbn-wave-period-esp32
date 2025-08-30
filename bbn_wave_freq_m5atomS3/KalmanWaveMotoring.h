@@ -111,6 +111,8 @@
 
 class KalmanWaveMotoring {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     // Type aliases
     using Vector6f = Eigen::Matrix<float, 6, 1>;
     using Matrix6f = Eigen::Matrix<float, 6, 6>;
