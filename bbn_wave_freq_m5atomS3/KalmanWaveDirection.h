@@ -24,6 +24,8 @@
 
 class KalmanWaveDirection {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     KalmanWaveDirection(float initialOmega, float deltaT)
         : omega(initialOmega), phase(0.0f) {
         reset(deltaT);
