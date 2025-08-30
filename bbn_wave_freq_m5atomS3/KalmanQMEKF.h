@@ -48,6 +48,8 @@ class QuaternionMEKF {
     static constexpr T half = T(1) / T(2);
 
   public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12));
     constexpr QuaternionMEKF(T const sigma_a[3], T const sigma_g[3], T const sigma_m[3], T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12));
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
