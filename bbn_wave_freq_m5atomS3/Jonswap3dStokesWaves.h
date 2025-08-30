@@ -409,20 +409,29 @@ private:
   }
 
   void precomputeSurfaceConstants() {
-    exp_kz_surface_       = Eigen::ArrayXd::Ones(N_FREQ);
-    exp_kz_pairs_surface_ = Eigen::ArrayXd::Ones(pairwise_size_);
-    pair_mask_surface_    = (cutoff_tol_ > 0.0)
-                          ? (Bij_.abs() >= cutoff_tol_).cast<double>()
-                          : Eigen::ArrayXd::Ones(pairwise_size_);
+  exp_kz_surface_       = Eigen::ArrayXd::Ones(N_FREQ);
+  exp_kz_pairs_surface_ = Eigen::ArrayXd::Ones(pairwise_size_);
 
-    stokes_drift_surface_xy_.setZero();
-    for (int i = 0; i < N_FREQ; ++i) {
-      const double Us0 = stokes_drift_scalar_(i);
-      stokes_drift_surface_xy_.x() += Us0 * dir_x_(i);
-      stokes_drift_surface_xy_.y() += Us0 * dir_y_(i);
-    }
-    stokes_drift_surface_valid_ = true;
+  // Build pair_mask_surface_ without ?: to avoid Eigen expression type mismatch
+  pair_mask_surface_.resize(pairwise_size_);
+  if (cutoff_tol_ > 0.0) {
+    pair_mask_surface_ =
+        (Bij_.abs() >= cutoff_tol_).select(
+            Eigen::ArrayXd::Ones(pairwise_size_),
+            Eigen::ArrayXd::Zero(pairwise_size_));
+  } else {
+    pair_mask_surface_.setOnes(pairwise_size_);
   }
+
+  // Precompute Stokes drift at the surface
+  stokes_drift_surface_xy_.setZero();
+  for (int i = 0; i < N_FREQ; ++i) {
+    const double Us0 = stokes_drift_scalar_(i); // exp(0)^2 = 1
+    stokes_drift_surface_xy_[0] += Us0 * dir_x_(i);
+    stokes_drift_surface_xy_[1] += Us0 * dir_y_(i);
+  }
+  stokes_drift_surface_valid_ = true;
+}
 };
 
 #ifdef JONSWAP_TEST
