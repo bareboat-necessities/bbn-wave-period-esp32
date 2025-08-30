@@ -232,6 +232,10 @@ public:
         trig_cache_.sin_second.assign(pairwise_size_, 0.0);
         trig_cache_.cos_second.assign(pairwise_size_, 0.0);
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
+
+        // First-order slope helpers: A * kx, A * ky
+        Akx_ = (A_.array() * kx_.array()).eval();
+        Aky_ = (A_.array() * ky_.array()).eval();
     }
 
     // Surface (z = 0)
