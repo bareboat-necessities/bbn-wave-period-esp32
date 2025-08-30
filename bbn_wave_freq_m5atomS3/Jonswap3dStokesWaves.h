@@ -338,9 +338,8 @@ static double spreadingNormalization(int s) {
 // Compute directional spectrum at a given frequency f and angle θ
 double directionalSpectrumValue(double f, double theta) const {
     // Find nearest frequency bin (simple nearest-neighbor for now)
-    int idx = int(std::lower_bound(frequencies_.data(),
-                                   frequencies_.data() + frequencies_.size(),
-                                   f) - frequencies_.data());
+    auto &freqs = spectrum_.frequencies();
+    int idx = int(std::lower_bound(freqs.data(), freqs.data() + freqs.size(), f) - freqs.data());
     if (idx < 0 || idx >= N_FREQ) return 0.0;
 
     const double S_f = spectrum_.spectrum()(idx);
