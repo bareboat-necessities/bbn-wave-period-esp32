@@ -709,7 +709,7 @@ static void exportDirectionalSpectrumCSV(const std::string& filename,
                                              double mean_dir_deg = 0.0,
                                              int N_freq = 128, int N_theta = 72) {
     auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(Hs, Tp, mean_dir_deg);
-    auto freqs = waveModel->spectrum().frequencies();
+    auto freqs = waveModel->frequencies();
     Eigen::MatrixXd E = waveModel->getDirectionalSpectrum(N_theta);
 
     std::ofstream file(filename);
