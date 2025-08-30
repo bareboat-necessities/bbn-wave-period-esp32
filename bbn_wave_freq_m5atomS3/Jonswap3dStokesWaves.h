@@ -578,7 +578,7 @@ private:
         const double amax = A_.maxCoeff();
         Eigen::Array<double, N_FREQ, 1> spread_scale = Eigen::Array<double, N_FREQ, 1>::Ones();
         if (amax > 0.0) {
-            const auto amp_ratio = (A_.array() / amax).eval();
+            const auto amp_ratio = (spectrum_.amplitudes().array() / amax).eval();
             spread_scale = amp_ratio.pow(spreading_exponent_);
         }
 
