@@ -98,6 +98,7 @@ template <unsigned int N, typename Real = float>
 class FentonFFT {  
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
     using Matrix = Eigen::Matrix<Real, N + 1, N + 1>;
 
@@ -143,6 +144,7 @@ class FentonWave {
 
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     struct WaveInitParams {
        Real height;
        Real depth;
@@ -763,6 +765,8 @@ class WaveSurfaceTracker {
     }
 
   public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     WaveSurfaceTracker(Real height, Real depth, Real length, Real x0, Real mass_kg, Real drag_coeff_)
       : wave(height, depth, length), mass(mass_kg), drag_coeff(drag_coeff_)
     {
