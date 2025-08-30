@@ -26,6 +26,8 @@
  */
 class SeaStateRegularity {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     // Configurable constants
     constexpr static float EPSILON = 1e-12f;
     constexpr static float HEIGHT_R_HI = 0.98f;
