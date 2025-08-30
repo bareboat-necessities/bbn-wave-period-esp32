@@ -620,22 +620,29 @@ static void generateWaveJonswapCSV(const std::string& filename,
   const int N_time = static_cast<int>(duration / dt) + 1;
   Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
   Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
-  for (int i = 0; i < N_time; ++i) {
-    auto state = waveModel->getSurfaceState(0.0, 0.0, time(i));
-    for (int j = 0; j < 3; ++j) {
-      disp(j, i) = state.displacement(j);
-      vel(j, i)  = state.velocity(j);
-      acc(j, i)  = state.acceleration(j);
-    }
+Eigen::ArrayXXd slopes(2, N_time);
+
+for (int i = 0; i < N_time; ++i) {
+  auto state  = waveModel->getSurfaceState(0.0, 0.0, time(i));
+  auto sxy    = waveModel->getSurfaceSlopes(0.0, 0.0, time(i));
+  for (int j = 0; j < 3; ++j) {
+    disp(j, i) = state.displacement(j);
+    vel(j, i)  = state.velocity(j);
+    acc(j, i)  = state.acceleration(j);
   }
-  std::ofstream file(filename);
-  file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z\n";
-  for (int i = 0; i < N_time; ++i) {
-    file << time(i) << ","
-         << disp(0, i) << "," << disp(1, i) << "," << disp(2, i) << ","
-         << vel(0, i)  << "," << vel(1, i)  << "," << vel(2, i)  << ","
-         << acc(0, i)  << "," << acc(1, i)  << "," << acc(2, i)  << "\n";
-  }
+  slopes(0, i) = sxy.x();
+  slopes(1, i) = sxy.y();
+}
+
+file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z,slope_x,slope_y\n";
+for (int i = 0; i < N_time; ++i) {
+  file << time(i) << ","
+       << disp(0, i) << "," << disp(1, i) << "," << disp(2, i) << ","
+       << vel(0, i)  << "," << vel(1, i)  << "," << vel(2, i)  << ","
+       << acc(0, i)  << "," << acc(1, i)  << "," << acc(2, i)  << ","
+       << slopes(0, i) << "," << slopes(1, i) << "\n";
+}
+
 }
 
 static void Jonswap_testWavePatterns() {
