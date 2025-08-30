@@ -378,6 +378,88 @@ ECMWF employs hybrid approaches since the 2010s, combining peak finding, watersh
 \subsection{Summary}
 Wave partitioning is the mathematical and algorithmic decomposition of the directional spectrum into constituent systems. Theoretical frameworks range from image-processing analogies (watershed) to optimization (hill climbing, clustering) to hybrid heuristics. Operational implementations emphasize robustness, temporal continuity, and physical interpretability. This capability underpins modern marine forecasting and research, allowing not only bulk wave parameters but detailed separation of wind seas and swells.
 
+\subsection{Construction of the Directional Wave Spectrum}
+\label{subsec:directional-spectrum}
+
+The sea surface elevation $\eta(t)$ is a stochastic process, and its variance can be represented in the frequency domain by the one-dimensional (1D) variance spectrum $S(f)$. The variance is obtained as
+\begin{equation}
+\langle \eta^2 \rangle = \int_{0}^{\infty} S(f) \, df,
+\end{equation}
+with units of $\mathrm{m}^2/\mathrm{Hz}$. The zeroth-order spectral moment is
+\begin{equation}
+m_0 = \int_{0}^{\infty} S(f)\, df,
+\end{equation}
+from which the significant wave height follows as
+\begin{equation}
+H_s \approx 4 \sqrt{m_0}.
+\end{equation}
+
+While $S(f)$ describes the distribution of variance across frequency, it does not contain any directional information. A complete description requires the \emph{directional spectrum}, denoted
+\begin{equation}
+S(f,\theta) = S(f) \, D(f,\theta),
+\end{equation}
+where $\theta$ is the wave direction and $D(f,\theta)$ is the \emph{directional spreading function}. By definition, $D(f,\theta)$ is normalized such that
+\begin{equation}
+\int_{0}^{2\pi} D(f,\theta)\, d\theta = 1, \qquad \forall f.
+\end{equation}
+The units of $S(f,\theta)$ are $\mathrm{m}^2 / (\mathrm{Hz}\cdot \mathrm{rad})$, and the full variance is recovered as
+\begin{equation}
+m_0 = \int_{0}^{\infty}\int_{0}^{2\pi} S(f,\theta)\, d\theta \, df.
+\end{equation}
+
+\paragraph{Common spreading models.}
+Several forms of $D(f,\theta)$ are employed in practice:
+\begin{itemize}
+  \item \textbf{Cosine power model:}
+  \begin{equation}
+  D(f,\theta) = C_n \cos^{2n}\!\left(\tfrac{1}{2}(\theta - \theta_0)\right),
+  \end{equation}
+  where $\theta_0$ is the mean wave direction, $n$ controls the spread (larger $n$ gives narrower distribution), and $C_n$ is a normalization constant
+  \begin{equation}
+  C_n = \frac{\Gamma(n+1)}{\sqrt{\pi}\,\Gamma\!\left(n+\tfrac{1}{2}\right)}.
+  \end{equation}
+
+  \item \textbf{Mitsuyasu–Donelan frequency-dependent spreading:}
+  \begin{equation}
+  D(f,\theta) = \frac{2}{\pi} \cos^{2s(f)}\!\left(\tfrac{1}{2}(\theta - \theta_0)\right),
+  \end{equation}
+  with
+  \begin{equation}
+  s(f) = \alpha \left(\frac{f}{f_p}\right)^{-\beta},
+  \end{equation}
+  where $f_p$ is the spectral peak frequency and $(\alpha,\beta)$ are empirical constants, typically $\alpha \approx 11.5$, $\beta \approx 2.5$.
+
+  \item \textbf{von Mises distribution (circular normal):}
+  \begin{equation}
+  D(f,\theta) = \frac{1}{2\pi I_0(\kappa)} \exp\!\left[\kappa \cos(\theta - \theta_0)\right],
+  \end{equation}
+  where $\kappa$ is the concentration parameter and $I_0$ is the modified Bessel function of the first kind of order zero. Small $\kappa$ yields isotropy, large $\kappa$ produces narrow spreading.
+\end{itemize}
+
+\paragraph{Construction procedure.}
+The steps to construct $S(f,\theta)$ are:
+\begin{enumerate}
+  \item \textbf{Choose $S(f)$:} This may be obtained from field measurements (e.g. FFT of buoy time series) or from parametric spectra such as Pierson–Moskowitz or JONSWAP. For example, the JONSWAP spectrum is
+  \begin{equation}
+  S(f) = \alpha g^2 (2\pi)^{-4} f^{-5} \exp\!\left[-\tfrac{5}{4}\left(\tfrac{f_p}{f}\right)^4\right]
+  \gamma^{\exp\!\left[-\tfrac{(f-f_p)^2}{2\sigma^2 f_p^2}\right]}.
+  \end{equation}
+  \item \textbf{Select mean direction $\theta_0(f)$:} For wind seas, this is aligned with the local wind. For swells, $\theta_0$ corresponds to the great-circle propagation from the storm source.
+  \item \textbf{Choose spreading model $D(f,\theta)$:} Select an appropriate functional form (cosine power, Mitsuyasu–Donelan, von Mises) with parameters calibrated to observations.
+  \item \textbf{Compute $S(f,\theta)$:} Multiply $S(f)$ by $D(f,\theta)$ over the grid $(f_i,\theta_j)$.
+  \item \textbf{Verify normalization:} Ensure that $\int D(f,\theta)\,d\theta = 1$ at each $f$.
+\end{enumerate}
+
+\paragraph{Applications.}
+The directional spectrum is the foundation of modern wave modeling and analysis:
+\begin{itemize}
+  \item \emph{Directional wave buoys} estimate $S(f,\theta)$ from heave–pitch–roll records via cross-spectral methods.
+  \item \emph{Wave models} (e.g. WAVEWATCH~III, SWAN, ECMWF IFS) predict $S(f,\theta)$ on global and regional scales.
+  \item \emph{Engineering applications} require $S(f,\theta)$ to compute directional wave forces on ships and offshore structures.
+  \item \emph{Wave partitioning} algorithms (see Section~\ref{sec:wave-partitioning}) operate directly on $S(f,\theta)$ to separate multiple coexisting systems (wind sea and swells).
+\end{itemize}
+Thus, the construction of $S(f,\theta)$ from a 1D spectrum $S(f)$ and a spreading function $D(f,\theta)$ provides a rigorous, normalized framework to represent the multidirectional nature of ocean waves.
+
 \section{Conclusion}
 The journey from the early statistical observations of wave heights to the modern, spectral-based characterization of the sea surface represents a profound achievement in geophysical fluid dynamics. The foundational work of Longuet-Higgins in establishing the statistical properties of the Gaussian sea and its envelope provided the critical link between time-domain and frequency-domain analyses. The development of parametric models like Pierson-Moskowitz and JONSWAP created powerful, practical tools for engineers and scientists to describe the sea state with just a few parameters.
 
