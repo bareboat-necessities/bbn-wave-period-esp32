@@ -628,7 +628,7 @@ for (int i = 0; i < N_time; ++i) {
   slopes(0, i) = sxy.x();
   slopes(1, i) = sxy.y();
 }
-
+std::ofstream file(filename);
 file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z,slope_x,slope_y\n";
 for (int i = 0; i < N_time; ++i) {
   file << time(i) << ","
