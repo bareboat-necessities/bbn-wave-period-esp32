@@ -95,8 +95,9 @@ T cosh_by_cosh(T a, T b) {
  * Reference: Fenton (1988) "The Numerical Solution of Steady Water Wave Problems"
  */
 template <unsigned int N, typename Real = float>
-class FentonFFT {
+class FentonFFT {  
   public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     using Vector = Eigen::Matrix<Real, N + 1, 1>;
     using Matrix = Eigen::Matrix<Real, N + 1, N + 1>;
 
@@ -141,6 +142,7 @@ class FentonWave {
     using VelocityTerms = Eigen::Array<Real, N, 1>;
 
   public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     struct WaveInitParams {
        Real height;
        Real depth;
