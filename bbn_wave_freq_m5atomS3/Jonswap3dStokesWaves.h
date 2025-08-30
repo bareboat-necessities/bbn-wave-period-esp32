@@ -174,7 +174,7 @@ public:
                          double f_min = 0.02, double f_max = 0.8,
                          double gamma = 2.0, double g = 9.81,
                          double spreading_exponent = 15.0,
-                         unsigned int seed = 239u,
+                         unsigned int seed = 42u,
                          double cutoff_tol = 1e-8)
       : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
         mean_dir_rad_(mean_direction_deg * PI / 180.0),
