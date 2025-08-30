@@ -241,7 +241,7 @@ private:
   // Surface caches
   Eigen::ArrayXd exp_kz_surface_;
   Eigen::ArrayXd exp_kz_pairs_surface_, pair_mask_surface_;
-  Eigen::Vector2d stokes_drift_surface_xy_;
+  mutable Eigen::Vector2d stokes_drift_surface_xy_;
   mutable bool stokes_drift_surface_valid_;
 
   // Core computation
