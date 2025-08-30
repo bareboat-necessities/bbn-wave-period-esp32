@@ -409,7 +409,6 @@ private:
         }
         vel.x() += stokes_xy_cache[0];
         vel.y() += stokes_xy_cache[1];
-
         return {disp, vel, acc};
     }
 
@@ -549,10 +548,8 @@ static void generateWaveJonswapCSV(const std::string& filename,
                                    double duration = 40.0, double dt = 0.005) {
   constexpr int N = 128;
   auto waveModel = std::make_unique<Jonswap3dStokesWaves<N>>(Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0);
-
   const int N_time = static_cast<int>(duration / dt) + 1;
   Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
-
   Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
   for (int i = 0; i < N_time; ++i) {
     auto state = waveModel->getSurfaceState(0.0, 0.0, time(i));
@@ -562,7 +559,6 @@ static void generateWaveJonswapCSV(const std::string& filename,
       acc(j, i)  = state.acceleration(j);
     }
   }
-
   std::ofstream file(filename);
   file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z\n";
   for (int i = 0; i < N_time; ++i) {
