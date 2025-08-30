@@ -110,9 +110,7 @@ private:
     }
 };
 
-// ==============================
 // PMStokesN3dWaves
-// ==============================
 template<int N_FREQ = 256, int ORDER = 5>
 class PMStokesN3dWaves {
     static_assert(ORDER >= 1 && ORDER <= 5, "ORDER supported range is 1..5");
