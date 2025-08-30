@@ -72,6 +72,8 @@
 class KalmanForWaveZC {
 
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     // Type aliases
     using Vector4f = Eigen::Matrix<float, 4, 1>;
     using Matrix4f = Eigen::Matrix<float, 4, 4>;
