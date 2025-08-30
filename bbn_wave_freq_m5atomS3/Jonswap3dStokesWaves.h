@@ -387,6 +387,13 @@ Eigen::MatrixXd getDirectionalSpectrum(int M) const {
     return E;
 }
 
+const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const {
+    return frequencies_;
+}
+const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const {
+    return spectrum_.spectrum();
+}
+
 private:
     using IndexT = Eigen::Index;
 
