@@ -83,6 +83,8 @@
 
 class KalmanWaveNumStableAlt {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     // Type aliases
     using Vector5f = Eigen::Matrix<float, 5, 1>;
     using Matrix5f = Eigen::Matrix<float, 5, 5>;
