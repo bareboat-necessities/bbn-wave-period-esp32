@@ -37,7 +37,7 @@ static constexpr double PI = M_PI;
 #include <fstream>
 #endif
 
-// ====================== JonswapSpectrum ======================
+// JonswapSpectrum
 template<int N_FREQ = 128>
 class JonswapSpectrum {
 public:
@@ -131,7 +131,7 @@ private:
   }
 };
 
-// =================== Jonswap3dStokesWaves ====================
+// Jonswap3dStokesWaves
 template<int N_FREQ = 128>
 class Jonswap3dStokesWaves {
 public:
@@ -417,7 +417,6 @@ private:
       throw std::runtime_error("Jonswap3dStokesWaves: wave too steep (>0.4), unstable");
   }
 };
-
 
 #ifdef JONSWAP_TEST
 // CSV generator for testing
