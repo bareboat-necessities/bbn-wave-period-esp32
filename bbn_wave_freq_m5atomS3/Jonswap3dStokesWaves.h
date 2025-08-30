@@ -366,16 +366,22 @@ Eigen::MatrixXd getDirectionalSpectrum(int M) const {
     Eigen::MatrixXd E(N_FREQ, M);
     const double dtheta = 2.0 * PI / M;
 
-    const int s = static_cast<int>(std::round(spreading_exponent_));
+    const double s = spreading_exponent_; // keep as double
     const double norm = spreadingNormalization(s);
 
+    // Precompute spreading weights (independent of f)
+    std::vector<double> spread(M);
+    for (int m = 0; m < M; ++m) {
+        double theta = -PI + m * dtheta;
+        double dtheta_rel = theta - mean_dir_rad_;
+        spread[m] = norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta_rel)), 2.0 * s);
+    }
+
+    // Apply per frequency
     for (int i = 0; i < N_FREQ; ++i) {
         double S_f = spectrum_.spectrum()(i);
         for (int m = 0; m < M; ++m) {
-            double theta = -PI + m * dtheta;
-            double dtheta_rel = theta - mean_dir_rad_;
-            double spread = norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta_rel)), 2 * s);
-            E(i, m) = S_f * spread;
+            E(i, m) = S_f * spread[m];
         }
     }
     return E;
