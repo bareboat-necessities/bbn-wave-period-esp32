@@ -244,6 +244,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef JONSWAP_TEST
   Jonswap_testWavePatterns();
+  Jonswap_testWaveSpectrum();
 #endif
 
 #ifdef FENTON_TEST
