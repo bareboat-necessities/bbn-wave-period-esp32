@@ -176,8 +176,6 @@ public:
                          unsigned int seed = 42u,
                          double cutoff_tol = 1e-8)
       : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
-        spectrum_ref_(spectrum_.spectrum()),        
-        frequencies_ref_(spectrum_.frequencies()),  
         mean_dir_rad_(mean_direction_deg * PI / 180.0),
         g_(g), spreading_exponent_(spreading_exponent), cutoff_tol_(cutoff_tol),
         pairwise_size_(size_t(N_FREQ) * (N_FREQ + 1) / 2),
@@ -389,21 +387,24 @@ Eigen::MatrixXd getDirectionalSpectrum(int M) const {
     return E;
 }
 
-    const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const {
-        return spectrum_ref_;
-    }
-
-    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const {
-        return frequencies_ref_;
-    }
+const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const {
+    return spectrum_.spectrum();
+}
+const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const {
+    return spectrum_.frequencies();
+}
+const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const {
+    return spectrum_.amplitudes();
+}
+const Eigen::Matrix<double, N_FREQ, 1>& df() const {
+    return spectrum_.df();
+}
 
 private:
     using IndexT = Eigen::Index;
 
     // Spectrum & parameters
     JonswapSpectrum<N_FREQ> spectrum_;
-    const Eigen::Matrix<double, N_FREQ, 1>& spectrum_ref_;
-    const Eigen::Matrix<double, N_FREQ, 1>& frequencies_ref_;
 
     double mean_dir_rad_, g_, spreading_exponent_, cutoff_tol_;
     size_t pairwise_size_;
