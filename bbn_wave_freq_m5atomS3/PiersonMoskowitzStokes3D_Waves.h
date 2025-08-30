@@ -118,6 +118,8 @@ class PMStokesN3dWaves {
     static_assert(ORDER >= 1 && ORDER <= 5, "ORDER supported range is 1..5");
 
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     struct WaveState {
         Eigen::Vector3d displacement;  // [x, y, z] meters
         Eigen::Vector3d velocity;      // [u, v, w] m/s
