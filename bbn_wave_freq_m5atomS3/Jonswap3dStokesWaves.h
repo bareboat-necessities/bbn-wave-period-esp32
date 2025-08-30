@@ -100,19 +100,18 @@ private:
     double Hs_, Tp_, f_min_, f_max_, gamma_, g_;
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, S_, A_, df_;
 
-    void computeLogFrequencySpacing() {
-        const double log_f_min = std::log(f_min_);
-        const double log_f_max = std::log(f_max_);
-        for (int i = 0; i < N_FREQ; ++i)
-            frequencies_(i) = std::exp(log_f_min + (log_f_max - log_f_min) * i / (N_FREQ - 1));
-    }
+void computeLogFrequencySpacing() {
+    const double log_f_min = std::log(f_min_);
+    const double log_f_max = std::log(f_max_);
+    Eigen::ArrayXd idx = Eigen::ArrayXd::LinSpaced(N_FREQ, 0, N_FREQ - 1);
+    frequencies_ = (log_f_min + (log_f_max - log_f_min) * idx / (N_FREQ - 1)).exp().matrix();
+}
 
-    void computeFrequencyIncrements() {
-        df_(0) = frequencies_(1) - frequencies_(0);
-        for (int i = 1; i < N_FREQ - 1; ++i)
-            df_(i) = 0.5 * (frequencies_(i + 1) - frequencies_(i - 1));
-        df_(N_FREQ - 1) = frequencies_(N_FREQ - 1) - frequencies_(N_FREQ - 2);
-    }
+void computeFrequencyIncrements() {
+    df_.head(N_FREQ-1) = (frequencies_.segment(1, N_FREQ-1) - frequencies_.head(N_FREQ-1));
+    df_.segment(1, N_FREQ-2) = 0.5 * (frequencies_.segment(2, N_FREQ-2) - frequencies_.head(N_FREQ-2));
+    df_(N_FREQ-1) = frequencies_(N_FREQ-1) - frequencies_(N_FREQ-2);
+}    
 
     void computeJonswapSpectrumFromHs() {
         const double fp = 1.0 / Tp_;
