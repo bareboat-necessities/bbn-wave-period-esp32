@@ -460,6 +460,159 @@ The directional spectrum is the foundation of modern wave modeling and analysis:
 \end{itemize}
 Thus, the construction of $S(f,\theta)$ from a 1D spectrum $S(f)$ and a spreading function $D(f,\theta)$ provides a rigorous, normalized framework to represent the multidirectional nature of ocean waves.
 
+\subsection{Measuring the Directional Wave Spectrum}
+\label{subsec:measure-directional-spectrum}
+
+The \emph{directional spectrum} $S(f,\theta)$ (units: m$^2$/Hz/rad) distributes surface elevation variance by frequency $f$ and direction $\theta$. It satisfies
+\begin{equation}
+\int_{0}^{\infty}\int_{0}^{2\pi} S(f,\theta)\,d\theta\,df
+= m_0, 
+\qquad H_s \approx 4\sqrt{m_0},
+\end{equation}
+with $m_0$ the total variance. In practice, $S(f,\theta)$ is inferred from \emph{in situ} records (buoys, arrays) or remote sensors (HF/X-band radar, video, SAR) via cross-spectral analysis and inverse methods.
+
+\paragraph{Notation.}
+Let $\mathbf{x}(t) = [x_1(t),\ldots,x_M(t)]^\top$ be $M$ colocated or arrayed measurements (e.g., heave $\eta$, slopes or tilts, pressure $p$, velocities $u,v$). Over blocks assumed stationary and linear, form the $M\times M$ \emph{cross-spectral density} (CSD) matrix at frequency $f$:
+\begin{equation}
+\mathbf{C}(f) 
+= \mathbb{E}\big[ \mathbf{X}(f)\mathbf{X}(f)^{\mathrm{H}} \big],
+\qquad \mathbf{X}(f)=\mathcal{F}\{\mathbf{x}(t)\},
+\end{equation}
+estimated via Welch averaging (windowing, segment overlap). Degrees of freedom $\nu \approx 2K$ for $K$ averages provide confidence intervals.
+
+\subsubsection{Heave--Pitch--Roll (HPR) / Triplet Buoys}
+Directional wave buoys measure heave $\eta$, pitch $\pi$ and roll $\rho$ (or directly estimate surface slopes $\eta_x,\eta_y$). Under linear theory for a plane wave with wavenumber $\mathbf{k}=(k\cos\theta,k\sin\theta)$,
+\begin{equation}
+\eta_x \equiv \frac{\partial\eta}{\partial x} \approx k\cos\theta\,\eta, 
+\qquad
+\eta_y \equiv \frac{\partial\eta}{\partial y} \approx k\sin\theta\,\eta,
+\end{equation}
+with $k$ from the dispersion relation
+\begin{equation}
+\omega^2 = gk\tanh(kh), \qquad \omega=2\pi f,
+\label{eq:dispersion}
+\end{equation}
+($h$ depth). The fundamental idea is that the \emph{first} and \emph{second} directional Fourier moments of $D(f,\theta)$,
+\begin{equation}
+R_n(f) = \int_{0}^{2\pi} D(f,\theta)\, e^{\mathrm{i}n\theta}\, d\theta 
+= a_n(f) + \mathrm{i}\,b_n(f), \quad n=0,1,2,\ldots,
+\qquad R_0\equiv1,
+\end{equation}
+can be related to normalized cross-spectra of $(\eta,\eta_x,\eta_y)$ (or proxies from pitch/roll).
+A widely used set of estimators (Kuik--van~Vledder--Holthuijsen-type) is
+\begin{align}
+a_1(f) &= \frac{\Re\{ S_{\eta\,\eta_x}(f)\}}{k\,S_{\eta\eta}(f)},
+&
+b_1(f) &= \frac{\Re\{ S_{\eta\,\eta_y}(f)\}}{k\,S_{\eta\eta}(f)},
+\\
+a_2(f) &= \frac{S_{\eta_x\eta_x}(f) - S_{\eta_y\eta_y}(f)}{k^2\,S_{\eta\eta}(f)},
+&
+b_2(f) &= \frac{2\,\Re\{ S_{\eta_x\eta_y}(f)\}}{k^2\,S_{\eta\eta}(f)}.
+\label{eq:a1b1a2b2}
+\end{align}
+From $(a_1,b_1)$ one obtains mean direction and first-order spread:
+\begin{equation}
+\bar{\theta}_1(f) = \mathrm{atan2}\!\big(b_1(f),a_1(f)\big), 
+\qquad 
+\sigma_\theta^{(1)}(f) \approx \sqrt{2\big(1-\sqrt{a_1^2+b_1^2}\big)}.
+\end{equation}
+Inverting to a nonnegative $D(f,\theta)$ uses truncated Fourier series with positivity constraints or entropy/likelihood estimators (below).
+
+\emph{Implementation steps.} (i) Detrend, rotate to ENU axes, correct tilt-to-slope calibration; (ii) segment, window (e.g.\ Hanning), FFT; (iii) estimate $S_{\cdot\cdot}(f)$ and $k(f)$ by solving \eqref{eq:dispersion}; (iv) compute $a_1,b_1,a_2,b_2$ via \eqref{eq:a1b1a2b2}; (v) reconstruct $D(f,\theta)$ (e.g.\ Weighted Integral Method, MEM, MLM).
+
+\subsubsection{PUV Tripods and Small Arrays}
+Coastal tripods measure near-bed pressure $p$ and horizontal velocities $(u,v)$. Linear transfer functions relate these to surface elevation at frequency $f$:
+\begin{align}
+\eta &\approx \frac{p}{\rho g}\,\frac{\cosh(kh)}{\cosh\big(k(z+h)\big)},
+&
+u + \mathrm{i}v &\approx \frac{\omega}{k}\,\eta\,\frac{\cosh\big(k(z+h)\big)}{\sinh(kh)}\,e^{\mathrm{i}\theta},
+\end{align}
+with sensor elevation $z<0$. After correcting $p,u,v$ to $\eta,\eta_x,\eta_y$, proceed as in HPR. For \emph{spatial} arrays of $N$ sensors at positions $\{\mathbf{r}_m\}$, the steering (array response) for direction $\theta$ is
+\begin{equation}
+\mathbf{a}(\theta;f) = 
+\big[e^{-\mathrm{i}\,\mathbf{k}(\theta)\cdot\mathbf{r}_1},\ldots,
+e^{-\mathrm{i}\,\mathbf{k}(\theta)\cdot\mathbf{r}_N}\big]^\top,
+\qquad \|\mathbf{k}(\theta)\|=k(f).
+\end{equation}
+This enables likelihood/beamforming estimators of $D(f,\theta)$.
+
+\subsubsection{Directional Spectrum Estimators (Inversion Methods)}
+Given $\mathbf{C}(f)$ and a forward model linking $D(f,\theta)$ to measurements, several estimators are common.
+
+\paragraph{(i) Truncated Fourier/WIM reconstruction.}
+Assume a Fourier series for $D$,
+\begin{equation}
+D(f,\theta) \approx \frac{1}{2\pi}\Bigg[
+1 + 2\sum_{n=1}^{N_h}\Big( a_n(f)\cos n\theta + b_n(f)\sin n\theta\Big)
+\Bigg],
+\qquad N_h \in \{1,2\}.
+\end{equation}
+Use measured $(a_1,b_1,a_2,b_2)$ to reconstruct $D$ (Weighted Integral Method), with post-processing to enforce $D\ge0$, optional tapering or von~Mises fit.
+
+\paragraph{(ii) Maximum Entropy (MEM).}
+Choose $D$ to maximize Shannon entropy subject to matching measured harmonics (constraints):
+\begin{align}
+\max_{D\ge0}\quad & \mathcal{H}[D] = -\int_{0}^{2\pi} D\ln D\, d\theta,
+\\
+\text{s.t.}\quad & \int D\,d\theta=1,\quad 
+\int D \cos n\theta\, d\theta = a_n,\quad 
+\int D \sin n\theta\, d\theta = b_n,\; n=1,\ldots,N_h.
+\end{align}
+The solution has the exponential family form
+\begin{equation}
+D(\theta)\propto 
+\exp\Big(\lambda_0 + \sum_{n=1}^{N_h}\lambda_n\cos n\theta + \mu_n\sin n\theta\Big),
+\end{equation}
+with Lagrange multipliers $(\lambda_n,\mu_n)$ found by solving the constraints.
+
+\paragraph{(iii) Maximum Likelihood/Beamforming (MLM/EMLM).}
+For an array with steering $\mathbf{a}(\theta;f)$ and CSD $\mathbf{C}(f)$, the classic Capon/MLM estimator is
+\begin{equation}
+\widehat{D}_{\text{MLM}}(f,\theta)
+= \frac{1}{\mathbf{a}(\theta;f)^{\mathrm{H}}\,
+\mathbf{C}(f)^{-1}\,\mathbf{a}(\theta;f)}\;\bigg/ \;
+\int_{0}^{2\pi}\frac{d\varphi}{\mathbf{a}(\varphi;f)^{\mathrm{H}}\,
+\mathbf{C}(f)^{-1}\,\mathbf{a}(\varphi;f)},
+\end{equation}
+optionally corrected for bias/noise in EMLM. This provides high directional resolution when aperture and SNR are adequate.
+
+\paragraph{(iv) Nonnegative least squares (NNLS) on a directional grid.}
+Discretize $\theta$ to $\{\theta_\ell\}$ and solve
+\begin{equation}
+\min_{\mathbf{d}\ge0}\;\big\|\mathbf{G}\mathbf{d}-\mathbf{y}\big\|_2^2 
+\quad \text{s.t.}\quad \mathbf{1}^\top\mathbf{d}=1,
+\end{equation}
+where $\mathbf{y}$ stacks selected entries of $\mathbf{C}(f)$ (or $(a_n,b_n)$) and $\mathbf{G}$ contains the corresponding forward kernels at $\theta_\ell$.
+
+\subsubsection{Remote Sensing (Brief)}
+\emph{HF radar} exploits Bragg scattering to infer dominant wave directions and spectra near $f\approx f_B$ and harmonics; \emph{X-band marine radar} and \emph{stereo video} retrieve $S(\mathbf{k},\omega)$ via image sequences and a dispersion filter, then map to $S(f,\theta)$ by integrating along dispersion shells. \emph{Satellite SAR} estimates long-wave swell directions through modulation transfer functions and nonlinear mapping; temporal sampling limits wind-sea retrievals.
+
+\subsubsection{Practical Workflow and QC}
+\begin{enumerate}
+\item \textbf{Preprocessing.} Remove trends/rotations; calibrate tilt-to-slope; correct mooring response if needed.
+\item \textbf{Spectral estimation.} Choose segment length to resolve peak bandwidth; Hanning window; $50$--$75\%$ overlap; Welch averaging (report $\nu$).
+\item \textbf{Depth and current effects.} Solve \eqref{eq:dispersion} for $k(f)$ (Newton iteration); apply pressure/velocity transfer functions; account for Doppler shift if strong currents ($\omega\to\omega-\mathbf{k}\cdot\mathbf{U}$).
+\item \textbf{Directional inversion.} Prefer MEM/MLM when multiple crossing systems or narrow spreads; WIM/2nd-order Fourier adequate for broad wind sea.
+\item \textbf{Uncertainty.} Propagate sampling error using $\nu$; for arrays, use Cramér--Rao bounds or bootstrap across segments; check nonnegativity and energy closure $\int D\,d\theta=1$.
+\item \textbf{Validation.} Compare integral parameters (mean/peak direction, spread) and partitions with model/nearby sensors; investigate bimodality and wrap-around at $\theta=0/2\pi$.
+\end{enumerate}
+
+\paragraph{Outputs and Integral Measures.}
+From $\widehat{S}(f,\theta)$ compute directional moments and spreads:
+\begin{align}
+\bar{\theta}(f) &= \arg\!\Big(\int e^{\mathrm{i}\theta} D(f,\theta)\, d\theta\Big), 
+&
+\sigma_\theta^2(f) &= 2\Big(1-\big|\int e^{\mathrm{i}\theta} D(f,\theta)\, d\theta\big|\Big),
+\\
+m_n &= \int f^n \bigg(\int S(f,\theta)\,d\theta\bigg)\, df,
+&
+H_s &= 4\sqrt{m_0},\quad T_z=\sqrt{m_0/m_2},\quad T_{-10}=m_{-1}/m_0.
+\end{align}
+Directional partitions (wind sea vs.\ swells) can then be obtained by algorithms in Section~\ref{sec:wave-partitioning}.
+
+\paragraph{Common Pitfalls.}
+(1) Underestimation at low $f$ from pressure attenuation without proper transfer correction; (2) directional bias if sensor axes misaligned or slopes miscalibrated; (3) positivity violations from truncated Fourier reconstructions; (4) array aliasing when aperture is too small relative to $k^{-1}$; (5) violating stationarity/linearity assumptions within analysis windows.
+
 \section{Conclusion}
 The journey from the early statistical observations of wave heights to the modern, spectral-based characterization of the sea surface represents a profound achievement in geophysical fluid dynamics. The foundational work of Longuet-Higgins in establishing the statistical properties of the Gaussian sea and its envelope provided the critical link between time-domain and frequency-domain analyses. The development of parametric models like Pierson-Moskowitz and JONSWAP created powerful, practical tools for engineers and scientists to describe the sea state with just a few parameters.
 
