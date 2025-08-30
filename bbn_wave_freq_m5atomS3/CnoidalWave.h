@@ -81,6 +81,8 @@ void jacobi_sn_cn_dn(Real u, Real m, Real &sn, Real &cn, Real &dn) {
 template<typename Real = double>
 class CnoidalWave {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     CnoidalWave(Real depth,
                 Real height,
                 Real period,
