@@ -187,7 +187,6 @@ public:
       g_(g), spreading_exponent_(spreading_exponent),
       cutoff_tol_(cutoff_tol),
       pairwise_size_(size_t(N_FREQ) * (N_FREQ + 1) / 2),
-      // cache init
       exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
       trig_last_t_(std::numeric_limits<double>::quiet_NaN()),
       x_cached_(std::numeric_limits<double>::quiet_NaN()),
@@ -195,50 +194,42 @@ public:
       stokes_drift_mean_xy_valid_(false),
       stokes_drift_surface_valid_(false)
   {
-    // Spectrum data
     frequencies_ = spectrum_.frequencies();
     A_           = spectrum_.amplitudes();
 
-    // Dispersion (deep water)
     omega_ = 2.0 * PI * frequencies_;
     k_     = omega_.array().square() / g_;
 
-    // Direction & phase
     dir_x_.setZero(); dir_y_.setZero();
     kx_.setZero();    ky_.setZero();
     phi_.setZero();
 
-    // First-order derived arrays
     Aomega_  = A_.array() * omega_.array();
     Aomega2_ = A_.array() * omega_.array().square();
-
     stokes_drift_scalar_.setZero();
 
-    // Allocate per-pair arrays and caches
     allocatePairArrays();
     initializeRandomPhases(seed);
     initializeDirectionalSpread(seed);
     computeWaveDirectionComponents();
     computePerComponentStokesDriftEstimate();
     precomputePairwise();
-    precomputeSurfaceConstants();  // constant fast-path for z=0
+    precomputeSurfaceConstants();
     checkSteepness();
   }
 
   // General (any depth)
   WaveState getLagrangianState(double x, double y, double t, double z = 0.0) const {
-    // Recompute depth-dependent factors if z changed
     if (std::isnan(exp_kz_cached_z_) || exp_kz_cached_z_ != z) {
       exp_kz_       = (k_.array() * z).exp();
       exp_kz_pairs_ = (k_sum_ * z).exp();
       pair_mask_    = (cutoff_tol_ > 0.0)
-                    ? ((Bij_.abs() * exp_kz_pairs_) >= cutoff_tol_).select(1.0, 0.0)
+                    ? ((Bij_.abs() * exp_kz_pairs_) >= cutoff_tol_).cast<double>()
                     : Eigen::ArrayXd::Ones(pairwise_size_);
       exp_kz_cached_z_ = z;
       stokes_drift_mean_xy_valid_ = false;
-      trig_last_t_ = std::numeric_limits<double>::quiet_NaN(); // ensure trig recalc
+      trig_last_t_ = std::numeric_limits<double>::quiet_NaN();
     }
-
     return computeState(x, y, t,
                         exp_kz_, exp_kz_pairs_, pair_mask_,
                         stokes_drift_mean_xy_, stokes_drift_mean_xy_valid_);
@@ -246,7 +237,6 @@ public:
 
   // Fast path for surface
   WaveState getSurfaceState(double x, double y, double t) const {
-    // Surface caches are constant; just compute with them
     return computeState(x, y, t,
                         exp_kz_surface_, exp_kz_pairs_surface_, pair_mask_surface_,
                         stokes_drift_surface_xy_, stokes_drift_surface_valid_);
@@ -288,7 +278,7 @@ private:
   Eigen::Vector2d stokes_drift_surface_xy_;
   mutable bool stokes_drift_surface_valid_;
 
-  // Core computation (shared) — accepts either fixed-size or dynamic Eigen arrays
+  // Core computation (shared)
   template<typename ArrN, typename ArrP>
   WaveState computeState(double x, double y, double t,
                          const ArrN &exp_kz,
@@ -300,8 +290,8 @@ private:
     // ---- first-order ----
     const Eigen::Array<double, N_FREQ, 1> theta0 = kx_.array() * x + ky_.array() * y + phi_.array();
     const Eigen::Array<double, N_FREQ, 1> arg0   = theta0 - omega_.array() * t;
-    const Eigen::Array<double, N_FREQ, 1> sin0   = arg0.sin() * exp_kz;
-    const Eigen::Array<double, N_FREQ, 1> cos0   = arg0.cos() * exp_kz;
+    const auto sin0 = arg0.sin() * exp_kz;
+    const auto cos0 = arg0.cos() * exp_kz;
 
     Eigen::Vector3d disp = Eigen::Vector3d::Zero();
     Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
@@ -354,8 +344,8 @@ private:
 
     // ---- Stokes drift ----
     if (!stokes_xy_valid) {
-      const ArrN exp2 = exp_kz * exp_kz;
-      const auto Us_z = stokes_drift_scalar_.array() * exp2;
+      auto exp2 = exp_kz * exp_kz;
+      auto Us_z = stokes_drift_scalar_.array() * exp2;
       stokes_xy_cache.x() = (Us_z * dir_x_.array()).sum();
       stokes_xy_cache.y() = (Us_z * dir_y_.array()).sum();
       stokes_xy_valid = true;
@@ -459,13 +449,13 @@ private:
     exp_kz_surface_        = Eigen::Array<double, N_FREQ, 1>::Ones();
     exp_kz_pairs_surface_  = Eigen::ArrayXd::Ones(pairwise_size_);
     pair_mask_surface_     = (cutoff_tol_ > 0.0)
-                           ? (Bij_.abs() >= cutoff_tol_).select(1.0, 0.0)
+                           ? (Bij_.abs() >= cutoff_tol_).cast<double>()
                            : Eigen::ArrayXd::Ones(pairwise_size_);
 
-    // Precompute depth-independent Stokes drift sum at surface
+    // Stokes drift sum at surface
     stokes_drift_surface_xy_.setZero();
     for (int i = 0; i < N_FREQ; ++i) {
-      const double Us0 = stokes_drift_scalar_(i); // exp(0)^2 = 1
+      const double Us0 = stokes_drift_scalar_(i);
       stokes_drift_surface_xy_.x() += Us0 * dir_x_(i);
       stokes_drift_surface_xy_.y() += Us0 * dir_y_(i);
     }
@@ -478,7 +468,6 @@ private:
       throw std::runtime_error("Jonswap3dStokesWaves: wave too steep (>0.4), unstable");
   }
 };
-
 
 #ifdef JONSWAP_TEST
 // CSV generator for testing
