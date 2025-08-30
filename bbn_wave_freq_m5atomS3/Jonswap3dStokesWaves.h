@@ -182,6 +182,7 @@ public:
     computePerComponentStokesDriftEstimate();
     precomputePairwise();
     precomputeSurfaceConstants();
+    checkSteepness();
   }
 
   // General (any depth)
@@ -432,6 +433,13 @@ private:
   }
   stokes_drift_surface_valid_ = true;
 }
+
+  void checkSteepness() {
+    const double max_steep = (k_.array() * A_.array()).maxCoeff();
+    if (max_steep > 0.4) {
+      throw std::runtime_error("Jonswap3dStokesWaves: wave too steep (>0.4), unstable");
+    }
+  }
 };
 
 #ifdef JONSWAP_TEST
