@@ -575,7 +575,7 @@ private:
         std::mt19937 rng_dir(seed + 1u);
         std::uniform_real_distribution<double> u01(-1.0, 1.0);
 
-        const double amax = A_.maxCoeff();
+        const double amax = spectrum_.amplitudes().maxCoeff();
         Eigen::Array<double, N_FREQ, 1> spread_scale = Eigen::Array<double, N_FREQ, 1>::Ones();
         if (amax > 0.0) {
             const auto amp_ratio = (spectrum_.amplitudes().array() / amax).eval();
