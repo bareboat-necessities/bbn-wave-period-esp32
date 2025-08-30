@@ -66,6 +66,8 @@
 class KalmanForWaveBasic {
 
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     using Vector4f = Eigen::Matrix<float, 4, 1>;
     using Matrix4f = Eigen::Matrix<float, 4, 4>;
 
