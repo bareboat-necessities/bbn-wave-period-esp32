@@ -291,8 +291,8 @@ Eigen::Vector2d getSurfaceSlopes(double x, double y, double t) const {
     if (!std::isfinite(x_cached_) || !std::isfinite(y_cached_) || x_cached_ != x || y_cached_ != y) {
         Eigen::Matrix<double, 2, 1> xy; xy << x, y;
         const Eigen::ArrayXd Kxy = (Ksum2_ * xy).array(); // P×1
-        Eigen::Map<Eigen::ArrayXd>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
-            Kxy + Eigen::Map<const Eigen::ArrayXd>(phi_sum_.data(), pairwise_size_);
+        Eigen::Map<Eigen::ArrayXd, Eigen::Unaligned>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
+            Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned>(phi_sum_.data(), pairwise_size_);
         x_cached_ = x; y_cached_ = y;
         // invalidate shared trig cache; we recompute fresh below
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
@@ -480,8 +480,8 @@ private:
             x_cached_ != x || y_cached_ != y) {
             Eigen::Matrix<double, 2, 1> xy; xy << x, y;
             const Eigen::ArrayXd Kxy = (Ksum2_ * xy).array(); // P×1
-            Eigen::Map<Eigen::ArrayXd>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
-                Kxy + Eigen::Map<const Eigen::ArrayXd>(phi_sum_.data(), pairwise_size_);
+            Eigen::Map<Eigen::ArrayXd, Eigen::Unaligned>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
+                Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned>(phi_sum_.data(), pairwise_size_);
             x_cached_ = x; y_cached_ = y;
             trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
         }
