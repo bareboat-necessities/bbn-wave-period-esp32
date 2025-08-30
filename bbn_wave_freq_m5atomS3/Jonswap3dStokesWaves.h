@@ -691,6 +691,39 @@ for (int i = 0; i < N_time; ++i) {
 
 }
 
+// Export directional spectrum: (frequency × angle grid)
+static void exportDirectionalSpectrumCSV(const std::string& filename,
+                                         double Hs, double Tp,
+                                         double mean_dir_deg = 0.0,
+                                         int N_freq = 128, int N_theta = 72) {
+    // Build model
+    auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(Hs, Tp, mean_dir_deg);
+
+    // Get frequency axis
+    auto freqs = waveModel->spectrum().frequencies();
+
+    // Build directional spectrum matrix
+    Eigen::MatrixXd E = waveModel->getDirectionalSpectrum(N_theta);
+
+    // Write CSV
+    std::ofstream file(filename);
+    file << "f_Hz";
+    for (int m = 0; m < N_theta; ++m) {
+        double theta_deg = -180.0 + (360.0 * m) / N_theta;
+        file << ",theta" << m << "_deg(" << theta_deg << ")";
+    }
+    file << "\n";
+
+    for (int i = 0; i < N_freq; ++i) {
+        file << freqs(i);
+        for (int m = 0; m < N_theta; ++m) {
+            file << "," << E(i, m);
+        }
+        file << "\n";
+    }
+}
+
+
 static void Jonswap_testWavePatterns() {
   generateWaveJonswapCSV("short_waves_stokes.csv",  0.5,  3.0, 30.0);
   generateWaveJonswapCSV("medium_waves_stokes.csv", 2.0,  7.0, 30.0);
