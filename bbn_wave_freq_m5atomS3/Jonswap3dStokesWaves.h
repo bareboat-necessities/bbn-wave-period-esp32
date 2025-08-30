@@ -414,14 +414,12 @@ private:
 
   // Build pair_mask_surface_ without ?: to avoid Eigen expression type mismatch
   pair_mask_surface_.resize(pairwise_size_);
-  if (cutoff_tol_ > 0.0) {
-    pair_mask_surface_ =
-        (Bij_.abs() >= cutoff_tol_).select(
-            Eigen::ArrayXd::Ones(pairwise_size_),
-            Eigen::ArrayXd::Zero(pairwise_size_));
-  } else {
+  pair_mask_surface_.resize(pairwise_size_);
+if (cutoff_tol_ > 0.0) {
+    pair_mask_surface_ = (Bij_.abs() >= cutoff_tol_).cast<double>();
+} else {
     pair_mask_surface_.setOnes(pairwise_size_);
-  }
+}
 
   // Precompute Stokes drift at the surface
   stokes_drift_surface_xy_.setZero();
