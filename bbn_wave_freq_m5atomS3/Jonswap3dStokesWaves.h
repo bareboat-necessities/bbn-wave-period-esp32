@@ -67,7 +67,7 @@ inline void robust_sincos(double theta, double omega, double t, double &s, doubl
 
 // JonswapSpectrum
 template<int N_FREQ = 128>
-class JonswapSpectrum {
+class EIGEN_ALIGN_MAX JonswapSpectrum {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -163,7 +163,7 @@ void computeFrequencyIncrements() {
 
 // Jonswap3dStokesWaves
 template<int N_FREQ = 128>
-class Jonswap3dStokesWaves {
+class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     struct WaveState { Eigen::Vector3d displacement, velocity, acceleration; };
