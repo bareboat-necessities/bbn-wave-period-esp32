@@ -39,36 +39,6 @@ static constexpr double PI = M_PI;
 #include <fstream>
 #endif
 
-// ----------------- Portable fast_sincos helper -----------------
-inline void fast_sincos(double x, double &s, double &c) {
-#if defined(__GNUC__) || defined(__clang__)
-  #if defined(__GLIBC__) || defined(_GNU_SOURCE)
-    ::sincos(x, &s, &c);
-  #else
-    s = std::sin(x);
-    c = std::cos(x);
-  #endif
-#elif defined(_MSC_VER)
-  double cs;
-  _sincos(x, &s, &cs);
-  c = cs;
-#else
-  s = std::sin(x);
-  c = std::cos(x);
-#endif
-}
-
-inline void robust_sincos(double theta, double omega, double t, double &s, double &c) {
-  constexpr double LONG_WAVE_THRESHOLD = 1e-4;
-  double arg = theta - omega * t;
-  if (std::abs(omega) < LONG_WAVE_THRESHOLD) {
-    s = std::sin(arg);
-    c = std::cos(arg);
-  } else {
-    fast_sincos(arg, s, c);
-  }
-}
-
 // ====================== JonswapSpectrum ======================
 template<int N_FREQ = 128>
 class JonswapSpectrum {
