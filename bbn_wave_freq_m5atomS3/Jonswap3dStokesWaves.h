@@ -723,10 +723,16 @@ static void exportDirectionalSpectrumCSV(const std::string& filename,
     }
 }
 
-
 static void Jonswap_testWavePatterns() {
   generateWaveJonswapCSV("short_waves_stokes.csv",  0.5,  3.0, 30.0);
   generateWaveJonswapCSV("medium_waves_stokes.csv", 2.0,  7.0, 30.0);
   generateWaveJonswapCSV("long_waves_stokes.csv",   4.0, 12.0, 30.0);
 }
+
+static void Jonswap_testWaveSpectrum() {
+  exportDirectionalSpectrumCSV("short_waves_stokes.csv",  0.5,  3.0, 30.0, 128, 72);
+  exportDirectionalSpectrumCSV("medium_waves_stokes.csv", 2.0,  7.0, 30.0, 128, 72);
+  exportDirectionalSpectrumCSV("long_waves_stokes.csv",   4.0, 12.0, 30.0, 128, 72);
+}
+
 #endif
