@@ -124,6 +124,8 @@ private:
 template<int N_FREQ = 256>
 class Jonswap3dGerstnerWaves {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     struct WaveState {
         Eigen::Vector3d displacement;
         Eigen::Vector3d velocity;
