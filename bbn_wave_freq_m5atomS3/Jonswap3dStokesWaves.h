@@ -168,74 +168,70 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     struct WaveState { Eigen::Vector3d displacement, velocity, acceleration; };
 
-    Jonswap3dStokesWaves(double Hs, double Tp,
-                         double mean_direction_deg = 0.0,
-                         double f_min = 0.02, double f_max = 0.8,
-                         double gamma = 2.0, double g = 9.81,
-                         double spreading_exponent = 15.0,
-                         unsigned int seed = 42u,
-                         double cutoff_tol = 1e-8)
-      : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
-        mean_dir_rad_(mean_direction_deg * PI / 180.0),
-        g_(g), spreading_exponent_(spreading_exponent), cutoff_tol_(cutoff_tol),
-        pairwise_size_(size_t(N_FREQ) * (N_FREQ + 1) / 2),
-        exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
-        x_cached_(std::numeric_limits<double>::quiet_NaN()),
-        y_cached_(std::numeric_limits<double>::quiet_NaN()),
-        stokes_drift_mean_xy_valid_(false),
-        stokes_drift_surface_valid_(false)
-    {
-        // Spectrum
-        frequencies_ = spectrum_.frequencies();
-        A_           = spectrum_.amplitudes();
+Jonswap3dStokesWaves(double Hs, double Tp,
+                     double mean_direction_deg = 0.0,
+                     double f_min = 0.02, double f_max = 0.8,
+                     double gamma = 2.0, double g = 9.81,
+                     double spreading_exponent = 15.0,
+                     unsigned int seed = 42u,
+                     double cutoff_tol = 1e-8)
+  : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
+    mean_dir_rad_(mean_direction_deg * PI / 180.0),
+    g_(g), spreading_exponent_(spreading_exponent), cutoff_tol_(cutoff_tol),
+    pairwise_size_(size_t(N_FREQ) * (N_FREQ + 1) / 2),
+    exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
+    x_cached_(std::numeric_limits<double>::quiet_NaN()),
+    y_cached_(std::numeric_limits<double>::quiet_NaN()),
+    stokes_drift_mean_xy_valid_(false),
+    stokes_drift_surface_valid_(false)
+{
+    // Deep-water dispersion (use spectrum frequencies directly)
+    omega_ = 2.0 * PI * spectrum_.frequencies();
+    k_     = omega_.array().square() / g_;
 
-        // Deep-water dispersion
-        omega_ = 2.0 * PI * frequencies_;
-        k_     = omega_.array().square() / g_;
+    // Direction & phase
+    dir_x_.setZero(); dir_y_.setZero();
+    kx_.setZero();    ky_.setZero();
+    phi_.setZero();
+    stokes_drift_scalar_.setZero();
 
-        // Direction & phase
-        dir_x_.setZero(); dir_y_.setZero();
-        kx_.setZero();    ky_.setZero();
-        phi_.setZero();
-        stokes_drift_scalar_.setZero();
+    // Derived arrays
+    Aomega_  = spectrum_.amplitudes().array() * omega_.array();
+    Aomega2_ = spectrum_.amplitudes().array() * omega_.array().square();
 
-        // Derived arrays
-        Aomega_  = A_.array() * omega_.array();
-        Aomega2_ = A_.array() * omega_.array().square();
+    // Allocate & init
+    allocatePairArrays();
+    initializeRandomPhases(seed);
+    initializeDirectionalSpread(seed);
+    computeWaveDirectionComponents();
+    computePerComponentStokesDriftEstimate();
 
-        // Allocate & init
-        allocatePairArrays();
-        initializeRandomPhases(seed);
-        initializeDirectionalSpread(seed);
-        computeWaveDirectionComponents();
-        computePerComponentStokesDriftEstimate();
+    // Precompute products
+    A_dirx_       = (spectrum_.amplitudes().array() * dir_x_.array()).eval();
+    A_diry_       = (spectrum_.amplitudes().array() * dir_y_.array()).eval();
+    Aomega_dirx_  = (Aomega_ * dir_x_.array()).eval();
+    Aomega_diry_  = (Aomega_ * dir_y_.array()).eval();
+    Aomega2_dirx_ = (Aomega2_ * dir_x_.array()).eval();
+    Aomega2_diry_ = (Aomega2_ * dir_y_.array()).eval();
 
-        // Precompute products
-        A_dirx_       = (A_.array()      * dir_x_.array()).eval();
-        A_diry_       = (A_.array()      * dir_y_.array()).eval();
-        Aomega_dirx_  = (Aomega_         * dir_x_.array()).eval();
-        Aomega_diry_  = (Aomega_         * dir_y_.array()).eval();
-        Aomega2_dirx_ = (Aomega2_        * dir_x_.array()).eval();
-        Aomega2_diry_ = (Aomega2_        * dir_y_.array()).eval();
+    precomputePairwise();
+    precomputeSurfaceConstants();
+    checkSteepness();
 
-        precomputePairwise();
-        precomputeSurfaceConstants();
-        checkSteepness();
+    // Initialize caches
+    exp_kz_.assign(N_FREQ, 1.0);
+    exp_kz_pairs_.assign(pairwise_size_, 1.0);
+    pair_mask_.assign(pairwise_size_, 1.0);
+    theta2_cache_.assign(pairwise_size_, 0.0);
 
-        // Initialize caches
-        exp_kz_.assign(N_FREQ, 1.0);
-        exp_kz_pairs_.assign(pairwise_size_, 1.0);
-        pair_mask_.assign(pairwise_size_, 1.0);
-        theta2_cache_.assign(pairwise_size_, 0.0);
+    trig_cache_.sin_second.assign(pairwise_size_, 0.0);
+    trig_cache_.cos_second.assign(pairwise_size_, 0.0);
+    trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
 
-        trig_cache_.sin_second.assign(pairwise_size_, 0.0);
-        trig_cache_.cos_second.assign(pairwise_size_, 0.0);
-        trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
-
-        // First-order slope helpers: A * kx, A * ky
-        Akx_ = (A_.array() * kx_.array()).eval();
-        Aky_ = (A_.array() * ky_.array()).eval();
-    }
+    // First-order slope helpers: A * kx, A * ky
+    Akx_ = (spectrum_.amplitudes().array() * kx_.array()).eval();
+    Aky_ = (spectrum_.amplitudes().array() * ky_.array()).eval();
+}
 
     // Surface (z = 0)
     WaveState getSurfaceState(double x, double y, double t) const {
@@ -410,7 +406,7 @@ private:
     size_t pairwise_size_;
 
     // Per-frequency (fixed-size, aligned)
-    Eigen::Matrix<double, N_FREQ, 1> frequencies_, A_, omega_, k_, phi_;
+    Eigen::Matrix<double, N_FREQ, 1> omega_, k_, phi_;
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
     Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
     Eigen::Array<double, N_FREQ, 1>  Aomega_, Aomega2_;
