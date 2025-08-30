@@ -39,6 +39,8 @@
 template<int Nfreq = 32, int Nblock = 1024>
 class WaveSpectrumEstimator {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     static constexpr double g = 9.80665;
     using Vec = Eigen::Matrix<double, Nfreq, 1>;
 
