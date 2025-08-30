@@ -697,7 +697,7 @@ for (int i = 0; i < N_time; ++i) {
 
 }
 
-static void exportDirectionalSpectrumLongCSV(const std::string& filename,
+static void exportDirectionalSpectrumCSV(const std::string& filename,
                                              double Hs, double Tp,
                                              double mean_dir_deg = 0.0,
                                              int N_freq = 128, int N_theta = 72) {
@@ -723,10 +723,10 @@ static void Jonswap_testWavePatterns() {
   generateWaveJonswapCSV("long_waves_stokes.csv",   4.0, 12.0, 30.0);
 }
 
-static void Jonswap_testWaveSpectrumLong() {
-    exportDirectionalSpectrumLongCSV("short_waves_jonswap_spectrum.csv",  0.5,  3.0, 30.0, 128, 72);
-    exportDirectionalSpectrumLongCSV("medium_waves_jonswap_spectrum.csv", 2.0,  7.0, 30.0, 128, 72);
-    exportDirectionalSpectrumLongCSV("long_waves_jonswap_spectrum.csv",   4.0, 12.0, 30.0, 128, 72);
+static void Jonswap_testWaveSpectrum() {
+    exportDirectionalSpectrumCSV("short_waves_jonswap_spectrum.csv",  0.5,  3.0, 30.0, 128, 72);
+    exportDirectionalSpectrumCSV("medium_waves_jonswap_spectrum.csv", 2.0,  7.0, 30.0, 128, 72);
+    exportDirectionalSpectrumCSV("long_waves_jonswap_spectrum.csv",   4.0, 12.0, 30.0, 128, 72);
 }
 
 #endif
