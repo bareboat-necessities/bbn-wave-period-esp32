@@ -147,6 +147,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     std::normal_distribution<float> gauss(0.0f, NOISE_STDDEV);
     float bias = BIAS_MEAN;
 
+    alignas(EIGEN_MAX_ALIGN_BYTES)
     SeaStateRegularity regFilter;
     double sim_t = 0.0;
 
@@ -164,6 +165,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     }
     else if (waveType == WaveType::JONSWAP) {
         float period = 1.0f / wp.freqHz;
+        alignas(EIGEN_MAX_ALIGN_BYTES)
         Jonswap3dStokesWaves<128> jonswap_model(wp.height, period, wp.direction, 0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_jonswap(sim_t, jonswap_model);
@@ -174,7 +176,9 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     }
     else if (waveType == WaveType::FENTON) {
         auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(wp.height, 200.0f, 2.0f * M_PI * wp.freqHz, wp.phase);
+        alignas(EIGEN_MAX_ALIGN_BYTES)
         FentonWave<4> fenton_wave(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x);
+        alignas(EIGEN_MAX_ALIGN_BYTES)
         WaveSurfaceTracker<4> fenton_tracker(
             fenton_params.height,
             fenton_params.depth,
@@ -191,6 +195,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T, callback);
     }
     else if (waveType == WaveType::PMSTOKES) {
+        alignas(EIGEN_MAX_ALIGN_BYTES)
         PMStokesN3dWaves<256,5> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02, 0.8, g_std, 15.0, SEED_BASE+run_seed);
         for (int step = 0; step < total_steps; ++step) {
             Wave_Sample samp = sample_pmstokes(wp, sim_t, model);
