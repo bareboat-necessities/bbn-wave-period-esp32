@@ -613,6 +613,81 @@ Directional partitions (wind sea vs.\ swells) can then be obtained by algorithms
 \paragraph{Common Pitfalls.}
 (1) Underestimation at low $f$ from pressure attenuation without proper transfer correction; (2) directional bias if sensor axes misaligned or slopes miscalibrated; (3) positivity violations from truncated Fourier reconstructions; (4) array aliasing when aperture is too small relative to $k^{-1}$; (5) violating stationarity/linearity assumptions within analysis windows.
 
+
+\subsection{Measuring the Directional Wave Spectrum with an IMU}
+\label{subsec:imu-directional-spectrum}
+
+Modern low-cost inertial measurement units (IMUs), consisting of tri-axial accelerometers, gyroscopes, and magnetometers, allow the estimation of the full directional wave spectrum $S(f,\theta)$ in a manner analogous to classical heave--pitch--roll wave buoys. The IMU provides linear accelerations, angular velocities, and an absolute heading reference (from magnetometer + gyro), from which the heave displacement and surface slopes can be reconstructed.
+
+\paragraph{IMU measurements and orientation estimation.}
+\begin{itemize}
+  \item The \emph{accelerometers} measure specific force. At low frequency the dominant component is gravity, enabling tilt estimation; at wave frequencies the signal contains vertical and horizontal accelerations due to wave orbital motion.
+  \item The \emph{gyroscopes} measure angular velocities, which can be integrated to obtain orientation (roll, pitch, yaw).
+  \item The \emph{magnetometers} provide heading, allowing orientation to be resolved into geographic east--north--up (ENU) coordinates.
+\end{itemize}
+Through sensor fusion (e.g.\ an extended Kalman filter or complementary filter), one obtains the orientation quaternion $\mathbf{q}(t)$, from which roll $\phi(t)$, pitch $\psi(t)$, and yaw $\chi(t)$ can be derived. This is essential for rotating local-frame measurements into an Earth-fixed ENU system.
+
+\paragraph{Heave and slope signals.}
+Directional spectrum methods require time series of the surface elevation $\eta(t)$ and the surface slopes $(\eta_x(t),\eta_y(t))$:
+\begin{enumerate}
+  \item \emph{Heave:} Vertical displacement $\eta(t)$ can be reconstructed from the vertical acceleration $a_z(t)$ after subtracting gravity. Direct double integration of $a_z$ is noise-prone; instead, a band-pass or Kalman filtering approach is used to constrain heave to the ocean-wave frequency band ($0.03$--$0.5$ Hz).
+  \item \emph{Slopes:} Roll and pitch provide local slope estimates under the small-angle approximation
+  \begin{equation}
+  \eta_x(t) \approx \tan(\phi(t)), \qquad \eta_y(t) \approx \tan(\psi(t)).
+  \end{equation}
+  These slopes are then rotated into east--north coordinates using yaw (heading).
+\end{enumerate}
+
+\paragraph{Cross-spectral estimation.}
+Segment the time series into blocks assumed stationary, and compute auto- and cross-spectra using Welch's method. Let $S_{\eta\eta}(f)$ be the autospectrum of heave, and $S_{\eta\eta_x}(f), S_{\eta\eta_y}(f)$ the cross-spectra with slopes. Then, following Kuik, van Vledder \& Holthuijsen (1988), the first- and second-order Fourier coefficients of the directional distribution $D(f,\theta)$ are estimated as
+\begin{align}
+a_1(f) &= \frac{\Re\{S_{\eta\eta_x}(f)\}}{k(f)\,S_{\eta\eta}(f)}, 
+& b_1(f) &= \frac{\Re\{S_{\eta\eta_y}(f)\}}{k(f)\,S_{\eta\eta}(f)}, \\
+a_2(f) &= \frac{S_{\eta_x\eta_x}(f) - S_{\eta_y\eta_y}(f)}{k(f)^2\,S_{\eta\eta}(f)}, 
+& b_2(f) &= \frac{2\,\Re\{S_{\eta_x\eta_y}(f)\}}{k(f)^2\,S_{\eta\eta}(f)}.
+\end{align}
+Here $k(f)$ is the wavenumber obtained from the linear dispersion relation
+\begin{equation}
+\omega^2 = gk \tanh(kh), \qquad \omega=2\pi f,
+\end{equation}
+with water depth $h$.
+
+\paragraph{Directional moments and spreading.}
+From the coefficients $(a_1,b_1)$ the mean wave direction and directional spread at each frequency are estimated as
+\begin{align}
+\bar{\theta}(f) &= \operatorname{atan2}(b_1(f),\,a_1(f)), \\
+\sigma_\theta(f) &\approx \sqrt{2\Big(1 - \sqrt{a_1(f)^2 + b_1(f)^2}\Big)}.
+\end{align}
+The second-order coefficients $(a_2,b_2)$ provide additional information on bimodality and directional kurtosis.
+
+\paragraph{Reconstruction of the directional distribution.}
+The directional spreading function $D(f,\theta)$ can then be reconstructed by inversion methods:
+\begin{itemize}
+  \item \emph{Truncated Fourier series:}
+  \begin{equation}
+  D(f,\theta) \approx \frac{1}{2\pi}\left[1 + 2\sum_{n=1}^{N_h}\big(a_n(f)\cos n\theta + b_n(f)\sin n\theta\big)\right],
+  \end{equation}
+  where $N_h=1$ or $2$.
+  \item \emph{Maximum Entropy Method (MEM):} Estimate $D$ as the distribution with maximum Shannon entropy subject to matching measured $a_n,b_n$.
+  \item \emph{Nonnegative least squares (NNLS):} Fit $D(f,\theta)$ on a discrete grid of directions with positivity constraints.
+\end{itemize}
+Finally, the full directional spectrum is obtained as
+\begin{equation}
+S(f,\theta) = S(f)\, D(f,\theta),
+\end{equation}
+where $S(f)$ is the variance density spectrum estimated from heave.
+
+\paragraph{Practical considerations.}
+\begin{itemize}
+  \item \emph{Integration drift:} Heave estimation must be carefully filtered; naive double integration of $a_z$ is unstable.
+  \item \emph{Calibration:} Magnetometer distortions (hard/soft iron) must be corrected for accurate heading.
+  \item \emph{Mooring motion:} For moored platforms, mooring tension and drift can alias the true wave signal.
+  \item \emph{Sampling rate:} IMU should sample at $\gtrsim 2$--$5$ Hz to capture ocean-wave bands.
+\end{itemize}
+
+\paragraph{Summary.}
+An IMU with accelerometers, gyroscopes, and a magnetometer can be used as a compact directional wave sensor. Sensor fusion yields orientation, from which heave and slopes are reconstructed. Cross-spectral analysis provides directional moments, from which the directional distribution $D(f,\theta)$ is obtained. The combination with the 1D spectrum $S(f)$ yields the full directional spectrum $S(f,\theta)$, enabling the analysis of wind seas and swells with a low-cost instrument.
+
 \section{Conclusion}
 The journey from the early statistical observations of wave heights to the modern, spectral-based characterization of the sea surface represents a profound achievement in geophysical fluid dynamics. The foundational work of Longuet-Higgins in establishing the statistical properties of the Gaussian sea and its envelope provided the critical link between time-domain and frequency-domain analyses. The development of parametric models like Pierson-Moskowitz and JONSWAP created powerful, practical tools for engineers and scientists to describe the sea state with just a few parameters.
 
