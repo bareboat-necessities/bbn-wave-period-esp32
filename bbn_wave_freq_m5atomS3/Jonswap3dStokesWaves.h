@@ -332,7 +332,7 @@ private:
   }
 
   void initializeDirectionalSpread(unsigned int seed) {
-    std::mt19937 rng_dir(seed + 1234567u);
+    std::mt19937 rng_dir(seed + 1u);
     std::uniform_real_distribution<double> u01(-1.0, 1.0);
     const Eigen::Array<double, N_FREQ, 1> amp_ratio = A_.array() / A_.maxCoeff();
     const Eigen::Array<double, N_FREQ, 1> spread_scale = amp_ratio.pow(spreading_exponent_);
