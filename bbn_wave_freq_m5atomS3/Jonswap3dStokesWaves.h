@@ -12,9 +12,9 @@
 */
 
 #ifdef EIGEN_NON_ARDUINO
-#include <Eigen/Dense>
+  #include <Eigen/Dense>
 #else
-#include <ArduinoEigenDense.h>
+  #include <ArduinoEigenDense.h>
 #endif
 
 #include <random>
@@ -25,6 +25,7 @@
 #include <limits>
 #include <vector>
 #include <memory>
+#include <cassert>
 
 #ifndef PI
 static constexpr double PI = 3.14159265358979323846264338327950288;
@@ -33,8 +34,8 @@ static constexpr double PI = M_PI;
 #endif
 
 #ifdef JONSWAP_TEST
-#include <iostream>
-#include <fstream>
+  #include <iostream>
+  #include <fstream>
 #endif
 
 // ---------- robust sincos ----------
@@ -129,7 +130,7 @@ private:
             double denom = 2.0 * sigma * sigma * fp * fp;
             double r = std::exp(-(dfreq * dfreq) / denom);
 
-            // manual powers to be robust with -ffast-math
+            // robust to -ffast-math: manual powers
             double f2 = f * f;
             double f4 = f2 * f2;
             double inv_f5 = 1.0 / (f * f4);
@@ -230,8 +231,8 @@ public:
         precomputeSurfaceConstants();
         checkSteepness();
 
-        trig_cache_.sin_second.resize(pairwise_size_);
-        trig_cache_.cos_second.resize(pairwise_size_);
+        trig_cache_.sin_second.resize(static_cast<Eigen::Index>(pairwise_size_));
+        trig_cache_.cos_second.resize(static_cast<Eigen::Index>(pairwise_size_));
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
     }
 
@@ -265,6 +266,8 @@ public:
     }
 
 private:
+    using IndexT = Eigen::Index;
+
     // Spectrum & parameters
     JonswapSpectrum<N_FREQ> spectrum_;
     double mean_dir_rad_, g_, spreading_exponent_, cutoff_tol_;
@@ -315,11 +318,17 @@ private:
                            Eigen::Vector2d &stokes_xy_cache,
                            bool &stokes_xy_valid) const
     {
+        // Size sanity (catch mis-sizes immediately)
+        assert(exp_kz.size()       == static_cast<IndexT>(N_FREQ));
+        assert(exp_kz_pairs.size() == static_cast<IndexT>(pairwise_size_));
+        assert(pair_mask.size()    == static_cast<IndexT>(pairwise_size_));
+
         // ---- first-order (vectorized) ----
         Eigen::Array<double, N_FREQ, 1> arg0 =
             (kx_.array()*x + ky_.array()*y + phi_.array() - omega_.array()*t).eval();
-        Eigen::Array<double, N_FREQ, 1> sin0 = (arg0.sin() * exp_kz.head(N_FREQ)).eval();
-        Eigen::Array<double, N_FREQ, 1> cos0 = (arg0.cos() * exp_kz.head(N_FREQ)).eval();
+        const auto expk = exp_kz.head(N_FREQ);
+        Eigen::Array<double, N_FREQ, 1> sin0 = (arg0.sin() * expk).eval();
+        Eigen::Array<double, N_FREQ, 1> cos0 = (arg0.cos() * expk).eval();
 
         Eigen::Vector3d disp = Eigen::Vector3d::Zero();
         Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
@@ -371,7 +380,7 @@ private:
 
         // ---- Stokes drift ----
         if (!stokes_xy_valid) {
-            const Eigen::ArrayXd exp2 = (exp_kz.head(N_FREQ) * exp_kz.head(N_FREQ)).eval();
+            const Eigen::ArrayXd exp2 = (expk * expk).eval();
             const Eigen::ArrayXd Us_z = stokes_drift_scalar_.array() * exp2;
             stokes_xy_cache[0] = (Us_z * dir_x_.array()).sum();
             stokes_xy_cache[1] = (Us_z * dir_y_.array()).sum();
@@ -385,13 +394,13 @@ private:
 
     // ---- Helpers ----
     void allocatePairArrays() {
-        const ptrdiff_t P = static_cast<ptrdiff_t>(pairwise_size_);
+        const IndexT P = static_cast<IndexT>(pairwise_size_);
         Bij_.resize(P); kx_sum_.resize(P); ky_sum_.resize(P); k_sum_.resize(P);
         omega_sum_.resize(P); omega_sum2_.resize(P); phi_sum_.resize(P);
         factor_.resize(P); hx_.resize(P); hy_.resize(P); Ksum2_.resize(P, 2);
         exp_kz_pairs_.resize(P); theta2_cache_.resize(P);
         pair_mask_.resize(P);
-        exp_kz_.resize(N_FREQ);
+        exp_kz_.resize(static_cast<IndexT>(N_FREQ));
     }
 
     void initializeRandomPhases(unsigned int seed) {
@@ -451,7 +460,8 @@ private:
 
     void precomputePairwise() {
         constexpr double tiny = 1e-18;
-        ptrdiff_t idx = 0;
+        IndexT idx = 0;
+        const IndexT P = static_cast<IndexT>(pairwise_size_);
         for (int i = 0; i < N_FREQ; ++i) {
             const double ki = k_(i);
             for (int j = i; j < N_FREQ; ++j) {
@@ -476,17 +486,18 @@ private:
                 ++idx;
             }
         }
+        assert(idx == P && "pairwise fill mismatch");
     }
 
     void precomputeSurfaceConstants() {
         exp_kz_surface_       = Eigen::ArrayXd::Ones(N_FREQ);
-        exp_kz_pairs_surface_ = Eigen::ArrayXd::Ones(pairwise_size_);
+        exp_kz_pairs_surface_ = Eigen::ArrayXd::Ones(static_cast<IndexT>(pairwise_size_));
 
-        pair_mask_surface_.resize(pairwise_size_);
+        pair_mask_surface_.resize(static_cast<IndexT>(pairwise_size_));
         if (cutoff_tol_ > 0.0) {
             pair_mask_surface_ = (Bij_.abs() >= cutoff_tol_).cast<double>();
         } else {
-            pair_mask_surface_.setOnes(pairwise_size_);
+            pair_mask_surface_.setOnes(static_cast<IndexT>(pairwise_size_));
         }
 
         // Precompute Stokes drift at the surface
