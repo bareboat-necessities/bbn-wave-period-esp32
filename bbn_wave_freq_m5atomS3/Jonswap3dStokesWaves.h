@@ -697,35 +697,23 @@ for (int i = 0; i < N_time; ++i) {
 
 }
 
-// Export directional spectrum: (frequency × angle grid)
-static void exportDirectionalSpectrumCSV(const std::string& filename,
-                                         double Hs, double Tp,
-                                         double mean_dir_deg = 0.0,
-                                         int N_freq = 128, int N_theta = 72) {
-    // Build model
+static void exportDirectionalSpectrumLongCSV(const std::string& filename,
+                                             double Hs, double Tp,
+                                             double mean_dir_deg = 0.0,
+                                             int N_freq = 128, int N_theta = 72) {
     auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(Hs, Tp, mean_dir_deg);
-
-    // Get frequency axis
     auto freqs = waveModel->spectrum().frequencies();
-
-    // Build directional spectrum matrix
     Eigen::MatrixXd E = waveModel->getDirectionalSpectrum(N_theta);
 
-    // Write CSV
     std::ofstream file(filename);
-    file << "f_Hz";
-    for (int m = 0; m < N_theta; ++m) {
-        double theta_deg = -180.0 + (360.0 * m) / N_theta;
-        file << ",theta" << m << "_deg(" << theta_deg << ")";
-    }
-    file << "\n";
+    file << "f_Hz,theta_deg,E\n";
 
+    const double dtheta = 360.0 / N_theta;
     for (int i = 0; i < N_freq; ++i) {
-        file << freqs(i);
         for (int m = 0; m < N_theta; ++m) {
-            file << "," << E(i, m);
+            double theta_deg = -180.0 + m * dtheta;
+            file << freqs(i) << "," << theta_deg << "," << E(i, m) << "\n";
         }
-        file << "\n";
     }
 }
 
@@ -735,10 +723,10 @@ static void Jonswap_testWavePatterns() {
   generateWaveJonswapCSV("long_waves_stokes.csv",   4.0, 12.0, 30.0);
 }
 
-static void Jonswap_testWaveSpectrum() {
-  exportDirectionalSpectrumCSV("short_waves_stokes.csv",  0.5,  3.0, 30.0, 128, 72);
-  exportDirectionalSpectrumCSV("medium_waves_stokes.csv", 2.0,  7.0, 30.0, 128, 72);
-  exportDirectionalSpectrumCSV("long_waves_stokes.csv",   4.0, 12.0, 30.0, 128, 72);
+static void Jonswap_testWaveSpectrumLong() {
+    exportDirectionalSpectrumLongCSV("short_waves_jonswap_spectrum.csv",  0.5,  3.0, 30.0, 128, 72);
+    exportDirectionalSpectrumLongCSV("medium_waves_jonswap_spectrum.csv", 2.0,  7.0, 30.0, 128, 72);
+    exportDirectionalSpectrumLongCSV("long_waves_jonswap_spectrum.csv",   4.0, 12.0, 30.0, 128, 72);
 }
 
 #endif
