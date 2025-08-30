@@ -5,6 +5,8 @@
 
 class EngineVibrationSim {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     // Constructor with engine RPM and optional gravity (default Earth's gravity)
     EngineVibrationSim(float engineRPM, float gravity = 9.80665f)
       : rpm(engineRPM), g(gravity), time(0.0f) {
