@@ -330,6 +330,57 @@ Eigen::Vector2d getSurfaceSlopes(double x, double y, double t) const {
     return Eigen::Vector2d(slope_x, slope_y);
 }
 
+// --- Directional Spectrum API -------------------------------------
+
+// Helper: normalization factor for cos^{2s} spreading
+// Ensures ∫_0^{2π} D(θ; f) dθ = 1
+static double spreadingNormalization(int s) {
+    // C = Γ(s+0.5) / (√π Γ(s+1))
+    return std::tgamma(s + 0.5) / (std::sqrt(PI) * std::tgamma(s + 1));
+}
+
+// Compute directional spectrum at a given frequency f and angle θ
+double directionalSpectrumValue(double f, double theta) const {
+    // Find nearest frequency bin (simple nearest-neighbor for now)
+    int idx = int(std::lower_bound(frequencies_.data(),
+                                   frequencies_.data() + frequencies_.size(),
+                                   f) - frequencies_.data());
+    if (idx < 0 || idx >= N_FREQ) return 0.0;
+
+    const double S_f = spectrum_.spectrum()(idx);
+
+    // spreading around mean_dir_rad_
+    const double dtheta = theta - mean_dir_rad_;
+
+    // Cosine spreading, exponent = spreading_exponent_
+    const int s = static_cast<int>(std::round(spreading_exponent_));
+    const double spread = spreadingNormalization(s) *
+                          std::pow(std::max(0.0, std::cos(0.5 * dtheta)), 2 * s);
+
+    return S_f * spread;
+}
+
+// Discrete directional spectrum, size N_FREQ × M
+// Rows = frequencies, columns = direction bins
+Eigen::MatrixXd getDirectionalSpectrum(int M) const {
+    Eigen::MatrixXd E(N_FREQ, M);
+    const double dtheta = 2.0 * PI / M;
+
+    const int s = static_cast<int>(std::round(spreading_exponent_));
+    const double norm = spreadingNormalization(s);
+
+    for (int i = 0; i < N_FREQ; ++i) {
+        double S_f = spectrum_.spectrum()(i);
+        for (int m = 0; m < M; ++m) {
+            double theta = -PI + m * dtheta;
+            double dtheta_rel = theta - mean_dir_rad_;
+            double spread = norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta_rel)), 2 * s);
+            E(i, m) = S_f * spread;
+        }
+    }
+    return E;
+}
+
 private:
     using IndexT = Eigen::Index;
 
