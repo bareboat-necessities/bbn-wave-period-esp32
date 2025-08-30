@@ -537,13 +537,14 @@ private:
         }
     }
 
-    void computeWaveDirectionComponents() {
-        for (int i = 0; i < N_FREQ; ++i) { kx_(i) = k_(i) * dir_x_(i); ky_(i) = k_(i) * dir_y_(i); }
-    }
+void computeWaveDirectionComponents() {
+    kx_ = k_.array() * dir_x_.array();
+    ky_ = k_.array() * dir_y_.array();
+}
 
-    void computePerComponentStokesDriftEstimate() {
-        for (int i = 0; i < N_FREQ; ++i) stokes_drift_scalar_(i) = omega_(i) * k_(i) * A_(i) * A_(i);
-    }
+void computePerComponentStokesDriftEstimate() {
+    stokes_drift_scalar_ = omega_.array() * k_.array() * A_.array().square();
+}
 
     void precomputePairwise() {
         constexpr double tiny = 1e-18;
