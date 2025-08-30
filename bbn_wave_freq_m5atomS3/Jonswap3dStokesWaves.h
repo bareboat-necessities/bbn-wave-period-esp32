@@ -467,7 +467,7 @@ private:
 
         disp.x() -= (A_dirx_       * cos0).sum();
         disp.y() -= (A_diry_       * cos0).sum();
-        disp.z() += (A_.array()    * sin0).sum();
+        disp.z() += (spectrum_.amplitudes().array()    * sin0).sum();
 
         vel.x()  -= (Aomega_dirx_  * sin0).sum();
         vel.y()  -= (Aomega_diry_  * sin0).sum();
@@ -610,7 +610,7 @@ void computeWaveDirectionComponents() {
 }
 
 void computePerComponentStokesDriftEstimate() {
-    stokes_drift_scalar_ = omega_.array() * k_.array() * A_.array().square();
+    stokes_drift_scalar_ = omega_.array() * k_.array() * spectrum_.amplitudes().array().square();
 }
 
     void precomputePairwise() {
@@ -629,7 +629,7 @@ void computePerComponentStokesDriftEstimate() {
                 const double kysum = ky_(i) + ky_(j);
                 const double wsum  = omega_(i) + omega_(j);
 
-                Bij_[idx]        = T_plus * A_(i) * A_(j);
+                Bij_[idx]        = T_plus * spectrum_.amplitudes()(i) * spectrum_.amplitudes()(j);
                 kx_sum_[idx]     = kxsum; ky_sum_[idx] = kysum; k_sum_[idx] = ksum;
                 omega_sum_[idx]  = wsum;  omega_sum2_[idx] = wsum * wsum;
                 phi_sum_[idx]    = phi_(i) + phi_(j);
@@ -667,7 +667,7 @@ void computePerComponentStokesDriftEstimate() {
     }
 
     void checkSteepness() {
-        const double max_steep = (k_.array() * A_.array()).maxCoeff();
+        const double max_steep = (k_.array() * spectrum_.amplitudes().array()).maxCoeff();
         if (max_steep > 0.4) throw std::runtime_error("Jonswap3dStokesWaves: wave too steep (>0.4), unstable");
     }
 };
