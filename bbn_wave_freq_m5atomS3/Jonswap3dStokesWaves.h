@@ -71,7 +71,7 @@ using VecD = Eigen::Matrix<double, Eigen::Dynamic, 1, Eigen::ColMajor, Eigen::Dy
 
 // JonswapSpectrum
 template<int N_FREQ = 128>
-class JonswapSpectrum {
+class EIGEN_ALIGN_MAX JonswapSpectrum {
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -167,10 +167,10 @@ class JonswapSpectrum {
 
 // Jonswap3dStokesWaves
 template<int N_FREQ = 128>
-class Jonswap3dStokesWaves {
+class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    struct WaveState {
+    struct EIGEN_ALIGN_MAX WaveState {
       Eigen::Vector3d displacement, velocity, acceleration;
     };
 
