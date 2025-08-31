@@ -236,8 +236,6 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     } else if (waveType == WaveType::FENTON) {
         auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(wp.height, 200.0f, 2.0f*M_PI*wp.freqHz, wp.phase);
         alignas(EIGEN_MAX_ALIGN_BYTES)
-        FentonWave<4> fenton_wave(fenton_params.height, fenton_params.depth, fenton_params.length);
-        alignas(EIGEN_MAX_ALIGN_BYTES)
         WaveSurfaceTracker<4> fenton_tracker(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x, 5.0f, 0.1f);
         auto callback = [&](float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float x, float vx){
             float noisy_accel = vertical_acceleration + bias + gauss(rng);
