@@ -34,13 +34,8 @@ void init_filters(AranovskiyFilter<double>* ar_filter, KalmanSmootherVars* kalma
 void init_filters_alt(KalmANF<double>* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
-alignas(EIGEN_MAX_ALIGN_BYTES)
 KalmanForWaveBasic wave_filter;
-
-alignas(EIGEN_MAX_ALIGN_BYTES)
 KalmanWaveNumStableAlt wave_alt_filter;
-
-alignas(EIGEN_MAX_ALIGN_BYTES)
 KalmanWaveDirection wave_dir_kalman(FREQ_GUESS, 0.004f);
 
 template <typename T> T clamp(T val, T min, T max) {
