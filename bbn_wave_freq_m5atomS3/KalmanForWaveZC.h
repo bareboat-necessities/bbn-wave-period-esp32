@@ -69,7 +69,7 @@
 #define MIN_DIVISOR_VALUE                        1e-12f  // Minimum allowed value for division operations
 #define MAHALANOBIS_GATING_THRESHOLD             13.0f  // low rejection rate for 2D
 
-class KalmanForWaveZC {
+class EIGEN_ALIGN_MAX KalmanForWaveZC {
 
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
