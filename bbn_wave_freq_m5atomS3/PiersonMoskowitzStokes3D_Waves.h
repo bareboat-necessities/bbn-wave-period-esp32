@@ -269,7 +269,7 @@ private:
 void generateWavePMStokesCSV(const std::string& filename,
                              double Hs, double Tp, double mean_dir_deg,
                              double duration = 40.0, double dt = 0.005) {
-
+    alignas(EIGEN_MAX_ALIGN_BYTES)
     PMStokesN3dWaves<256, 5> waveModel(
         Hs, Tp, mean_dir_deg, 0.02, 0.8, 9.81, 15.0, 239u
     );
