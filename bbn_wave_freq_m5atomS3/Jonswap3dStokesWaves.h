@@ -270,7 +270,7 @@ class Jonswap3dStokesWaves {
 
         // attenuation mask
         if (cutoff_tol_ > 0.0) {
-          pair_mask_.resize(pairwise_size_);
+          pair_mask_.assign(pairwise_size_, 1.0);
           for (size_t p = 0; p < pairwise_size_; ++p)
             pair_mask_[p] = (std::abs(Bij_[p]) * exp_kz_pairs_[p] >= cutoff_tol_) ? 1.0 : 0.0;
         } else {
