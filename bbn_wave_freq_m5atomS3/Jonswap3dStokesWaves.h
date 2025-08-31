@@ -674,7 +674,7 @@ class Jonswap3dStokesWaves {
       exp_kz_pairs_surface_.assign(pairwise_size_, 1.0);
 
       if (cutoff_tol_ > 0.0) {
-        pair_mask_surface_.resize(pairwise_size_);
+        pair_mask_surface_.assign(pairwise_size_, 0.0);
         for (size_t p = 0; p < pairwise_size_; ++p)
           pair_mask_surface_[p] = (std::abs(Bij_[p]) >= cutoff_tol_) ? 1.0 : 0.0;
       } else {
