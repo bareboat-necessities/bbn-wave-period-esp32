@@ -27,7 +27,7 @@
 #endif
 
 template<int N_FREQ = 256>
-class PiersonMoskowitzSpectrum {
+class EIGEN_ALIGN_MAX PiersonMoskowitzSpectrum {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -112,7 +112,7 @@ private:
 
 // PMStokesN3dWaves
 template<int N_FREQ = 256, int ORDER = 5>
-class PMStokesN3dWaves {
+class EIGEN_ALIGN_MAX PMStokesN3dWaves {
     static_assert(ORDER >= 1 && ORDER <= 5, "ORDER supported range is 1..5");
 
 public:
