@@ -5,6 +5,8 @@
 
 #ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
+#else
+#include <ArduinoEigenDense.h>
 #endif
 
 namespace Elliptic {
