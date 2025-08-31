@@ -118,7 +118,8 @@ class EIGEN_ALIGN_MAX PMStokesN3dWaves {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    struct WaveState {
+    struct EIGEN_ALIGN_MAX WaveState {
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         Eigen::Vector3d displacement;  // [x, y, z] meters
         Eigen::Vector3d velocity;      // [u, v, w] m/s
         Eigen::Vector3d acceleration;  // [ax, ay, az] m/s^2
