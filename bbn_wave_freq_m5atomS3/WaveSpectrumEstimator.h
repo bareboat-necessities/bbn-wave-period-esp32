@@ -37,7 +37,7 @@
   Copyright 2025, Mikhail Grushinskiy
 */
 template<int Nfreq = 32, int Nblock = 1024>
-class WaveSpectrumEstimator {
+class EIGEN_ALIGN_MAX WaveSpectrumEstimator {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
