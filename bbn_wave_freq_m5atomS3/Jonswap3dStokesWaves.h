@@ -392,7 +392,7 @@ class Jonswap3dStokesWaves {
     VecD Bij_, kx_sum_, ky_sum_, k_sum_;
     VecD omega_sum_, omega_sum2_, phi_sum_, factor_;
     VecD hx_, hy_;
-    Eigen::Matrix<double, Eigen::Dynamic, 2, Eigen::ColMajor> Ksum2_;
+    Eigen::Matrix<double, Eigen::Dynamic, 2, Eigen::ColMajor, Eigen::Dynamic, 2> Ksum2_;
 
     // Depth caches
     mutable Eigen::Array<double, N_FREQ, 1> exp_kz_;
