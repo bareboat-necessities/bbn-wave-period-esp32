@@ -97,7 +97,7 @@ jobs:
         uses: xu-cheng/latex-action@v4
         with:
           root_file: "**/*.tex"
-          latexmk_use_xelatex: true
+          latexmk_use_lualatex: true
           latexmk_shell_escape: true
           extra_system_packages: "inkscape ghostscript plantuml openjdk11-jre"
           
