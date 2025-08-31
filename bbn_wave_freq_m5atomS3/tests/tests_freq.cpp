@@ -217,9 +217,9 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             sim_t += DELTA_T;
         }
     } else if (waveType == WaveType::JONSWAP) {
-        Jonswap3dStokesWaves<128> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02f, 0.8f, 3.3f, g_std, 15.0f);
+        auto model = std::make_unique<Jonswap3dStokesWaves<128>>(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02f, 0.8f, 3.3f, g_std, 15.0f);
         for (int step = 0; step < total_steps; ++step) {
-            Wave_Sample samp = sample_jonswap(wp, sim_t, model);
+            Wave_Sample samp = sample_jonswap(wp, sim_t, *model);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
             process_sample(noisy_accel, DELTA_T, sim_t);
             sim_t += DELTA_T;
