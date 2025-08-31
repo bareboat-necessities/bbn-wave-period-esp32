@@ -56,8 +56,12 @@
          0       ]
 */
 
-
+#ifdef EIGEN_NON_ARDUINO
+#include <Eigen/Dense>
+#else
 #include <ArduinoEigenDense.h>
+#endif
+
 #include <cmath>
 #include <algorithm>
 
