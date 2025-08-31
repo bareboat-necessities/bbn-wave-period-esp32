@@ -215,7 +215,7 @@ int main(int argc, char *argv[]) {
   } else if (test_type == TestType::JONSWAP) {
     auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(w->amplitude(), w->period(), 30.0 /*dir*/, 0.02, 0.8, 2.0, g_std, 15.0);
     while (t < test_duration) {
-       auto state = waveModel->getLagrangianState(0.0, 0.0, t);
+       auto state = waveModel->getSurfaceState(0.0, 0.0, t);
        float zero_mean_gauss_noise = dist(generator);
        float a = state.acceleration.z() + bias + zero_mean_gauss_noise;
        float v = state.velocity.z();
