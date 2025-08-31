@@ -1,4 +1,3 @@
-
 \documentclass{article}
 \usepackage{amsmath}
 \usepackage{amsfonts}
@@ -15,34 +14,34 @@
     line/.style = {draw, -Latex}
     ]
 
+    % Top layer
     \node[block] (imu) {IMU};
     \node[block, below=of imu] (ahrs) {AHRS (Mahony, KalmanQMEKF)};
 
-    \node[block, below=3cm of ahrs, minimum width=4cm] (freq) {Frequency Tracker: \\ Aranovskiy \\ Kalm\_ANF \\ Zero Crossing};
-    
+    % Middle layer
+    \node[block, below=3cm of ahrs, minimum width=4cm] (freq) {Frequency Tracker:\\ Aranovskiy \\ Kalm\_ANF \\ Zero Crossing};
     \node[block, below=3cm of freq, minimum width=3cm] (wave_direction) {Kalman Wave Direction};
-    \node[block, below=3cm of ahrs, left=5cm of wave_direction, minimum width=1.5cm] (roll_pitch) at (-5,-5) {roll \\ pitch \\ yaw \\ rate of turn};
-    \node[block, below=3cm of ahrs, right=5cm of wave_direction, minimum width=2.5cm] (sea_state) {Sea State Detection};
+    \node[block, left=5cm of wave_direction, minimum width=2cm] (roll_pitch) {roll \\ pitch \\ yaw \\ rate of turn};
+    \node[block, right=5cm of wave_direction, minimum width=2.5cm] (sea_state) {Sea State Detection};
     \node[block, below=1.5cm of sea_state, minimum width=3.5cm] (process_noise) {Process Noise Adaptation};
     \node[block, below=3cm of wave_direction, minimum width=8cm] (heave_reconstruction) {Kalman Heave Reconstruction \\ Kalman Integration with Drift Correction \\ Kalman Integration with Drift and Motor Noise Filtering};
 
-    \node[block, below=of heave_reconstruction, minimum width=2.5cm] (minmax) at (-1,-11.5) {MinMaxLemire};
-    \node[block, below=of heave_reconstruction, minimum width=3cm] (wave_profile) at (4,-11.5){Wave Profile Predictor};
-    \node[block, below=of heave_reconstruction, left=5cm of minmax, minimum width=2cm] (angle_dir) at (-7,-7) {angle, dir};    
-    
+    % Bottom layer
+    \node[block, below=of heave_reconstruction, xshift=-3cm, minimum width=2.5cm] (minmax) {MinMaxLemire};
+    \node[block, below=of heave_reconstruction, xshift=3cm, minimum width=3cm] (wave_profile) {Wave Profile Predictor};
+    \node[block, left=5cm of heave_reconstruction, minimum width=2cm] (angle_dir) {angle, dir};    
     \node[block, below=3cm of heave_reconstruction, minimum width=7cm] (nmea) {NMEA Data Stream (XDR Sentences)};
     \node[block, right=of process_noise, minimum width=2cm] (despike) {De-Spike};
-    
+
     % Arrows
-    \draw[line] (imu) -- (ahrs) node[midway, above, sloped] {};
     \draw[line] (ahrs) -- (freq) node[midway, right] {$a_z$};
     \draw[line] (ahrs) -- (roll_pitch) node[midway, above, sloped] {$a_x, a_y$};
     \draw[line] (ahrs) -- (despike) node[midway, right] {$a_z$};
     \draw[line] (freq) -- (wave_direction) node[midway, left] {$f_{est}$};
     \draw[line] (freq) -- (sea_state) node[midway, left] {$f_{est}$};
-    \draw[line] (wave_direction) -- (nmea) node[midway, left] {};
-    \draw[line] (roll_pitch) -- (nmea) node[midway, left] {};
-    \draw[line] (angle_dir) -- (nmea) node[midway, left] {};
+    \draw[line] (wave_direction) -- (nmea);
+    \draw[line] (roll_pitch) -- (nmea);
+    \draw[line] (angle_dir) -- (nmea);
     \draw[line] (despike) -- (heave_reconstruction) node[midway, right] {$a_z$};
     \draw[line] (sea_state) -- (process_noise) node[midway, left] {$R_{reg}, H_{est}$};
     \draw[line] (process_noise) -- (heave_reconstruction) node[midway, left] {$Q$};
@@ -51,10 +50,19 @@
     \draw[line] (heave_reconstruction) -- (wave_profile) node[midway, left] {heave};
     \draw[line] (minmax) -- (nmea) node[midway, right] {wave height};
 
-    \draw[line] (imu.south) -- (ahrs.north) node[midway, left] {gyro};
-    \draw[line] (imu.south) -- (ahrs.north) node[midway, above] {magn};
-    \draw[line] (imu.south) -- (ahrs.north) node[midway, right] {accel};
-    
+    % Multiple IMU → AHRS inputs: clean fan-in
+    \path (imu.south) ++(-1, -0.5) coordinate (gyro_in);
+    \path (imu.south) ++(0, -0.5) coordinate (magn_in);
+    \path (imu.south) ++(1, -0.5) coordinate (accel_in);
+
+    \path (ahrs.north) ++(-1, 0) coordinate (gyro_target);
+    \path (ahrs.north) ++(0, 0) coordinate (magn_target);
+    \path (ahrs.north) ++(1, 0) coordinate (accel_target);
+
+    \draw[line] (imu.south) |- (gyro_in) -- (gyro_target) node[midway, above] {gyro};
+    \draw[line] (imu.south) |- (magn_in) -- (magn_target) node[midway, above] {magn};
+    \draw[line] (imu.south) |- (accel_in) -- (accel_target) node[midway, above] {accel};
+
 \end{tikzpicture}
 \end{center}
 
