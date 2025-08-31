@@ -298,7 +298,6 @@ private:
 void generateWaveJonswapCSV(const std::string& filename,
                             double Hs, double Tp, double mean_dir_deg,
                             double duration = 40.0, double dt = 0.005) {
-    alignas(EIGEN_MAX_ALIGN_BYTES)
     Jonswap3dGerstnerWaves<256> waveModel(
         Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0
     );
