@@ -226,12 +226,12 @@ class Jonswap3dStokesWaves {
 
       // Initialize caches (per-frequency fixed-size, pairwise dynamic)
       exp_kz_.setOnes();
-      exp_kz_pairs_ = Eigen::VectorXd::Ones(pairwise_size_);
-      pair_mask_    = Eigen::VectorXd::Ones(pairwise_size_);
-      theta2_cache_ = Eigen::VectorXd::Zero(pairwise_size_);
+      exp_kz_pairs_ = VecD::Ones(pairwise_size_);
+      pair_mask_    = VecD::Ones(pairwise_size_);
+      theta2_cache_ = VecD::Zero(pairwise_size_);
 
-      trig_cache_.sin_second = Eigen::VectorXd::Zero(pairwise_size_);
-      trig_cache_.cos_second = Eigen::VectorXd::Zero(pairwise_size_);
+      trig_cache_.sin_second = VecD::Zero(pairwise_size_);
+      trig_cache_.cos_second = VecD::Zero(pairwise_size_);
       trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
 
       // First-order slope helpers: A * kx, A * ky
@@ -287,7 +287,7 @@ class Jonswap3dStokesWaves {
       // Recompute if (x,y) changed
       if (!std::isfinite(x_cached_) || !std::isfinite(y_cached_) || x_cached_ != x || y_cached_ != y) {
         Eigen::Vector2d xy; xy << x, y;
-        const Eigen::VectorXd Kxy = Ksum2_ * xy; // P×1
+        const VecD Kxy = Ksum2_ * xy; // P×1
         theta2_cache_ = Kxy + phi_sum_;
         x_cached_ = x; y_cached_ = y;
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
@@ -389,28 +389,28 @@ class Jonswap3dStokesWaves {
     Eigen::Array<double, N_FREQ, 1> Aomega2_dirx_, Aomega2_diry_;
 
     // Per-pair (dynamic Eigen, alignment-safe)
-    Eigen::VectorXd Bij_, kx_sum_, ky_sum_, k_sum_;
-    Eigen::VectorXd omega_sum_, omega_sum2_, phi_sum_, factor_;
-    Eigen::VectorXd hx_, hy_;
+    VecD Bij_, kx_sum_, ky_sum_, k_sum_;
+    VecD omega_sum_, omega_sum2_, phi_sum_, factor_;
+    VecD hx_, hy_;
     Eigen::Matrix<double, Eigen::Dynamic, 2, Eigen::ColMajor> Ksum2_;
 
     // Depth caches
     mutable Eigen::Array<double, N_FREQ, 1> exp_kz_;
-    mutable Eigen::VectorXd exp_kz_pairs_, theta2_cache_, pair_mask_;
+    mutable VecD exp_kz_pairs_, theta2_cache_, pair_mask_;
     mutable Eigen::Vector2d stokes_drift_mean_xy_;
     mutable bool   stokes_drift_mean_xy_valid_;
     mutable double exp_kz_cached_z_, x_cached_, y_cached_;
 
     // Trig cache
     struct TrigCache {
-      Eigen::VectorXd sin_second, cos_second;
+      VecD sin_second, cos_second;
       double last_t;
     };
     mutable TrigCache trig_cache_;
 
     // Surface caches
     Eigen::Array<double, N_FREQ, 1> exp_kz_surface_;
-    Eigen::VectorXd exp_kz_pairs_surface_, pair_mask_surface_;
+    VecD exp_kz_pairs_surface_, pair_mask_surface_;
     mutable Eigen::Vector2d stokes_drift_surface_xy_;
     mutable bool stokes_drift_surface_valid_;
 
@@ -420,8 +420,8 @@ class Jonswap3dStokesWaves {
     // Core compute
     WaveState computeState(double x, double y, double t,
                            const Eigen::Array<double, N_FREQ, 1> &exp_kz_arr,
-                           const Eigen::VectorXd &exp_kz_pairs_v,
-                           const Eigen::VectorXd &pair_mask_v,
+                           const VecD &exp_kz_pairs_v,
+                           const VecD &pair_mask_v,
                            Eigen::Vector2d &stokes_xy_cache,
                            bool &stokes_xy_valid) const
     {
@@ -451,7 +451,7 @@ class Jonswap3dStokesWaves {
       if (!std::isfinite(x_cached_) || !std::isfinite(y_cached_) ||
           x_cached_ != x || y_cached_ != y) {
         Eigen::Vector2d xy; xy << x, y;
-        const Eigen::VectorXd Kxy = Ksum2_ * xy; // P×1
+        const VecD Kxy = Ksum2_ * xy; // P×1
         theta2_cache_ = Kxy + phi_sum_;
         x_cached_ = x; y_cached_ = y;
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
@@ -505,8 +505,8 @@ class Jonswap3dStokesWaves {
       Ksum2_.resize(P, 2);
 
       exp_kz_surface_.setOnes();                           // size = N_FREQ
-      exp_kz_pairs_surface_ = Eigen::VectorXd::Ones(P);    // size = P
-      pair_mask_surface_     = Eigen::VectorXd::Ones(P);
+      exp_kz_pairs_surface_ = VecD::Ones(P);    // size = P
+      pair_mask_surface_     = VecD::Ones(P);
 
       exp_kz_.setOnes();                                   // size = N_FREQ
       exp_kz_pairs_.resize(P);
