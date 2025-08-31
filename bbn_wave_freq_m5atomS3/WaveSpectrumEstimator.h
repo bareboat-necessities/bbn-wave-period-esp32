@@ -316,6 +316,7 @@ void WaveSpectrumEstimator_test() {
     constexpr int Nblock = 256;
 
     double fs = 240.0;
+    alignas(EIGEN_MAX_ALIGN_BYTES)
     WaveSpectrumEstimator<Nfreq, Nblock> estimator(fs, 2, true);
 
     double f_test = 0.2;
