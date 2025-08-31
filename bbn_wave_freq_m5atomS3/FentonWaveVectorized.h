@@ -10,6 +10,7 @@
 #else
 #include <ArduinoEigenDense.h>
 #endif
+
 #include <cmath>
 #include <stdexcept>
 #include <functional>
