@@ -518,9 +518,9 @@ class Jonswap3dStokesWaves {
         Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> wsum (omega_sum_.data(),   pairwise_size_);
         const Eigen::ArrayXd arg2 = (theta2 - wsum * t).eval();
 
-        Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(const_cast<double*>(trig_cache_.sin_second.data()), pairwise_size_) =
+        mapAligned(trig_cache_.sin_second, pairwise_size_) =
           (arg2.sin() * pair_mask);
-        Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(const_cast<double*>(trig_cache_.cos_second.data()), pairwise_size_) =
+        mapAligned(trig_cache_.cos_second, pairwise_size_) =
           (arg2.cos() * pair_mask);
 
         trig_cache_.last_t = t;
