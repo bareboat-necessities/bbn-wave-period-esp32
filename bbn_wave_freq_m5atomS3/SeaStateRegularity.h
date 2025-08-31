@@ -24,7 +24,7 @@
  *  - Displacement frequency estimate
  *
  */
-class SeaStateRegularity {
+class EIGEN_ALIGN_MAX SeaStateRegularity {
 public:
     // Configurable constants
     constexpr static float EPSILON = 1e-12f;
