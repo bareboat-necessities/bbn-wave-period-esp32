@@ -63,7 +63,7 @@
 
 #define MIN_DIVISOR_VALUE 1e-12f
 
-class KalmanForWaveBasic {
+class EIGEN_ALIGN_MAX KalmanForWaveBasic {
 
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
