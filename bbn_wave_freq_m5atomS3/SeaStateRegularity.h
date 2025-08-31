@@ -296,7 +296,6 @@ struct SineWave {
 
 void SeaState_sine_wave_test() {
     SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
-    alignas(EIGEN_MAX_ALIGN_BYTES)
     SeaStateRegularity reg;
     float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f;
     for (int i = 0; i < SIM_DURATION_SEC / DT; i++) {
