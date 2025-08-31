@@ -530,10 +530,10 @@ private:
         // Stokes drift (lazy, depth-dependent)
         if (!stokes_xy_valid) {
             const Eigen::Array<double, N_FREQ, 1> exp2 = expk * expk;
-            const Eigen::Array<double, N_FREQ, 1> Us_z =
-                Eigen::Map<const Eigen::Array<double, N_FREQ, 1>, Eigen::Unaligned>(stokes_drift_scalar_.data()) * exp2;
-            stokes_xy_cache[0] = (Us_z * Eigen::Map<const Eigen::Array<double, N_FREQ, 1>, Eigen::Unaligned>(dir_x_.data())).sum();
-            stokes_xy_cache[1] = (Us_z * Eigen::Map<const Eigen::Array<double, N_FREQ, 1>, Eigen::Unaligned>(dir_y_.data())).sum();
+            const auto Us_z = stokes_drift_scalar_.array() * exp2;
+
+            stokes_xy_cache[0] = (Us_z * dir_x_.array()).sum();
+            stokes_xy_cache[1] = (Us_z * dir_y_.array()).sum();
             stokes_xy_valid = true;
         }
         vel.x() += stokes_xy_cache[0];
