@@ -255,7 +255,7 @@ class Jonswap3dStokesWaves {
 
         // attenuation mask
         if (cutoff_tol_ > 0.0) {
-          pair_mask_ = ((Bij_.array().abs() * exp_kz_pairs_.array()) >= cutoff_tol_).select(1.0, 0.0).cast<double>();
+          pair_mask_ = ((Bij_.array().abs() * exp_kz_pairs_.array()) >= cutoff_tol_).cast<double>().matrix();
         } else {
           pair_mask_.setOnes();
         }
@@ -606,7 +606,7 @@ class Jonswap3dStokesWaves {
       exp_kz_pairs_surface_.setOnes();
 
       if (cutoff_tol_ > 0.0) {
-        pair_mask_surface_ = (Bij_.array().abs() >= cutoff_tol_).select(1.0, 0.0).cast<double>();
+        pair_mask_surface_ = (Bij_.array().abs() >= cutoff_tol_).cast<double>().matrix();
       } else {
         pair_mask_surface_.setOnes();
       }
