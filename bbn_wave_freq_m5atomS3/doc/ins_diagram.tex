@@ -1,99 +1,61 @@
+
 \documentclass{article}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta, positioning}
 
-\tikzset{
-  box/.style={rectangle, draw, fill=gray!10, rounded corners=2pt, minimum width=3cm, minimum height=1cm, align=center},
-  smallbox/.style={rectangle, draw, fill=gray!10, rounded corners=2pt, minimum width=3cm, align=center},
-  arrow/.style={-Latex}
-}
-
 \begin{document}
 
-\begin{tikzpicture}[node distance=1.2cm and 2.2cm]
+\begin{center}
+\begin{tikzpicture}[node distance=2cm,
+    block/.style = {rectangle, draw, align=center, minimum width=3cm, minimum height=1cm},
+    line/.style = {draw, -Latex}
+    ]
 
-% Top IMU
-\node[box, minimum width=2.5cm] (imu) {IMU};
+    \node[block] (imu) {IMU};
+    \node[block, below=of imu] (ahrs) {AHRS (Mahony, KalmanQMEKF)};
 
-% Sensors
-\node[below left=0.6cm and -1.5cm of imu] (gyro) {gyro};
-\node[below=0.6cm of imu] (magn) {magn};
-\node[below right=0.6cm and -1.5cm of imu] (accel) {accel};
+    \node[block, below=3cm of ahrs, minimum width=4cm] (freq) {Frequency Tracker: \\ Aranovskiy \\ Kalm\_ANF \\ Zero Crossing};
+    
+    \node[block, below=3cm of freq, minimum width=3cm] (wave_direction) {Kalman Wave Direction};
+    \node[block, below=3cm of ahrs, left=5cm of wave_direction, minimum width=1.5cm] (roll_pitch) at (-5,-5) {roll \\ pitch \\ yaw \\ rate of turn};
+    \node[block, below=3cm of ahrs, right=5cm of wave_direction, minimum width=2.5cm] (sea_state) {Sea State Detection};
+    \node[block, below=1.5cm of sea_state, minimum width=3.5cm] (process_noise) {Process Noise Adaptation};
+    \node[block, below=3cm of wave_direction, minimum width=8cm] (heave_reconstruction) {Kalman Heave Reconstruction \\ Kalman Integration with Drift Correction \\ Kalman Integration with Drift and Motor Noise Filtering};
 
-% AHRS
-\node[box, below=1.8cm of imu, minimum width=9cm] (ahrs) {AHRS (Mahony, KalmanQMEKF)};
+    \node[block, below=of heave_reconstruction, minimum width=2.5cm] (minmax) at (-1,-11.5) {MinMaxLemire};
+    \node[block, below=of heave_reconstruction, minimum width=3cm] (wave_profile) at (4,-11.5){Wave Profile Predictor};
+    \node[block, below=of heave_reconstruction, left=5cm of minmax, minimum width=2cm] (angle_dir) at (-7,-7) {angle, dir};    
+    
+    \node[block, below=3cm of heave_reconstruction, minimum width=7cm] (nmea) {NMEA Data Stream (XDR Sentences)};
+    \node[block, right=of process_noise, minimum width=2cm] (despike) {De-Spike};
+    
+    % Arrows
+    \draw[line] (imu) -- (ahrs) node[midway, above, sloped] {};
+    \draw[line] (ahrs) -- (freq) node[midway, right] {$a_z$};
+    \draw[line] (ahrs) -- (roll_pitch) node[midway, above, sloped] {$a_x, a_y$};
+    \draw[line] (ahrs) -- (despike) node[midway, right] {$a_z$};
+    \draw[line] (freq) -- (wave_direction) node[midway, left] {$f_{est}$};
+    \draw[line] (freq) -- (sea_state) node[midway, left] {$f_{est}$};
+    \draw[line] (wave_direction) -- (nmea) node[midway, left] {};
+    \draw[line] (roll_pitch) -- (nmea) node[midway, left] {};
+    \draw[line] (angle_dir) -- (nmea) node[midway, left] {};
+    \draw[line] (despike) -- (heave_reconstruction) node[midway, right] {$a_z$};
+    \draw[line] (sea_state) -- (process_noise) node[midway, left] {$R_{reg}, H_{est}$};
+    \draw[line] (process_noise) -- (heave_reconstruction) node[midway, left] {$Q$};
+    \draw[line] (heave_reconstruction) -- (nmea) node[midway, left] {heave \\ period \\ length \\ speed};
+    \draw[line] (heave_reconstruction) -- (minmax) node[midway, right] {heave};
+    \draw[line] (heave_reconstruction) -- (wave_profile) node[midway, left] {heave};
+    \draw[line] (minmax) -- (nmea) node[midway, right] {wave height};
 
-% Connections
-\draw[arrow] (imu.south) |- (gyro.north);
-\draw[arrow] (imu.south) -- (magn.north);
-\draw[arrow] (imu.south) |- (accel.north);
-\draw[arrow] (gyro.south) -- (ahrs.north -| gyro.south);
-\draw[arrow] (magn.south) -- (ahrs.north -| magn.south);
-\draw[arrow] (accel.south) -- (ahrs.north -| accel.south);
-
-% Frequency tracker
-\node[box, below=2.2cm of ahrs, minimum width=4cm] (freq) {Frequency Tracker:\\ Aranovskiy\\ Kalm\_ANF\\ Zero Crossing};
-
-% Kalman Wave Direction
-\node[box, left=of freq, minimum width=4cm] (wavedir) {Kalman Wave Direction};
-
-% Sea state detection
-\node[box, right=of freq, minimum width=4cm] (seastate) {Sea State Detection};
-
-% De-Spike
-\node[box, right=of seastate, minimum width=2.5cm] (despike) {De-Spike};
-
-% Process Noise Adaptation
-\node[box, below=of seastate, minimum width=3.5cm] (noise) {Process Noise Adaptation};
-
-% Kalman Heave
-\node[box, below=of freq, minimum width=8cm] (heave) {Kalman Heave Reconstruction\\ Kalman Integration with Drift Correction\\ Kalman Integration with Drift and Motor Noise Filtering};
-
-% MinMaxLemire
-\node[box, below left=of heave, minimum width=3cm] (minmax) {MinMaxLemire};
-
-% Wave profile predictor
-\node[box, below right=of heave, minimum width=3cm] (predictor) {Wave Profile Predictor};
-
-% NMEA
-\node[box, below=5.5cm of heave, minimum width=8cm] (nmea) {NMEA Data Stream (XDR Sentences)};
-
-% Arrows from AHRS
-\draw[arrow] (ahrs.south) -- ++(-4cm, -0.5cm) -- (wavedir.north);
-\draw[arrow] (ahrs.south) -- (freq.north);
-\draw[arrow] (ahrs.south) -- ++(4cm, -0.5cm) -- (seastate.north);
-\draw[arrow] (ahrs.south) -- ++(6cm, -0.5cm) -- (despike.north);
-
-% Arrows downwards
-\draw[arrow] (freq.south) -- (heave.north);
-\draw[arrow] (wavedir.south) -- (nmea.north -| wavedir.south);
-\draw[arrow] (seastate.south) -- (noise.north);
-\draw[arrow] (noise.south) -- (heave.north);
-\draw[arrow] (despike.south) -- (heave.north);
-
-% Heave outputs
-\draw[arrow] (heave.south west) -- (minmax.north);
-\draw[arrow] (heave.south east) -- (predictor.north);
-\draw[arrow] (heave.south) -- (nmea.north);
-
-% Minmax to NMEA
-\draw[arrow] (minmax.south) -- (nmea.north -| minmax.south);
-\draw[arrow] (predictor.south) -- (nmea.north -| predictor.south);
-
-% Labels
-\node[left=0.2cm of wavedir.west] {${a_x, a_y}$};
-\node[left=0.2cm of wavedir.south west, yshift=1.0cm] {roll, pitch, yaw, rate of turn};
-\node[above=0.1cm of freq.north] {$a_z$};
-\node[right=0.1cm of seastate.north] {$a_z$};
-\node[right=0.1cm of despike.north] {$a_z$};
-\node[left=0.2cm of freq.south west, yshift=0.6cm] {$f_{est}$};
-\node[right=0.2cm of seastate.south east, yshift=0.6cm] {$f_{est}$};
-\node[below=0.0cm of noise.south east, xshift=1.6cm] {$Q$};
-\node[below=0.0cm of seastate.south east, xshift=1.6cm] {$R_{reg}, H_{est}$};
-\node[below=0.1cm of heave.south west, xshift=-1.6cm] {heave, period, length, speed};
-\node[left=0.1cm of minmax.south] {wave height};
-\node[left=0.1cm of wavedir.south] {angle, dir};
-
+    \draw[line] (imu.south) -- (ahrs.north) node[midway, left] {gyro};
+    \draw[line] (imu.south) -- (ahrs.north) node[midway, above] {magn};
+    \draw[line] (imu.south) -- (ahrs.north) node[midway, right] {accel};
+    
 \end{tikzpicture}
+\end{center}
 
 \end{document}
