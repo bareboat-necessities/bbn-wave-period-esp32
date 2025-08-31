@@ -1,17 +1,13 @@
 \documentclass{article}
-\usepackage{amsmath}
-\usepackage{amsfonts}
-\usepackage{amssymb}
-\usepackage{graphicx}
+\usepackage{amsmath, amsfonts, amssymb, graphicx}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta, positioning}
 
 \begin{document}
-
 \begin{center}
 \begin{tikzpicture}[node distance=2cm,
     block/.style = {rectangle, draw, align=center, minimum width=3cm, minimum height=1cm},
-    line/.style = {draw, -Latex}
+    line/.style = {draw, -Latex, thick}
     ]
 
     % Top layer
@@ -33,37 +29,32 @@
     \node[block, below=3cm of heave_reconstruction, minimum width=7cm] (nmea) {NMEA Data Stream (XDR Sentences)};
     \node[block, right=of process_noise, minimum width=2cm] (despike) {De-Spike};
 
-    % Arrows
-    \draw[line] (ahrs) -- (freq) node[midway, right] {$a_z$};
-    \draw[line] (ahrs) -- (roll_pitch) node[midway, above, sloped] {$a_x, a_y$};
-    \draw[line] (ahrs) -- (despike) node[midway, right] {$a_z$};
-    \draw[line] (freq) -- (wave_direction) node[midway, left] {$f_{est}$};
-    \draw[line] (freq) -- (sea_state) node[midway, left] {$f_{est}$};
-    \draw[line] (wave_direction) -- (nmea);
-    \draw[line] (roll_pitch) -- (nmea);
-    \draw[line] (angle_dir) -- (nmea);
-    \draw[line] (despike) -- (heave_reconstruction) node[midway, right] {$a_z$};
-    \draw[line] (sea_state) -- (process_noise) node[midway, left] {$R_{reg}, H_{est}$};
-    \draw[line] (process_noise) -- (heave_reconstruction) node[midway, left] {$Q$};
-    \draw[line] (heave_reconstruction) -- (nmea) node[midway, left] {heave \\ period \\ length \\ speed};
-    \draw[line] (heave_reconstruction) -- (minmax) node[midway, right] {heave};
-    \draw[line] (heave_reconstruction) -- (wave_profile) node[midway, left] {heave};
-    \draw[line] (minmax) -- (nmea) node[midway, right] {wave height};
+    % Arrows with orthogonal routing
+    \draw[line] (ahrs.south) |- (freq.north) node[pos=0.75, right] {$a_z$};
+    \draw[line] (ahrs.west) -| (roll_pitch.north) node[pos=0.75, above, sloped] {$a_x, a_y$};
+    \draw[line] (ahrs.east) -| (despike.north) node[pos=0.75, above] {$a_z$};
 
-    % Multiple IMU → AHRS inputs: clean fan-in
-    \path (imu.south) ++(-1, -0.5) coordinate (gyro_in);
-    \path (imu.south) ++(0, -0.5) coordinate (magn_in);
-    \path (imu.south) ++(1, -0.5) coordinate (accel_in);
+    \draw[line] (freq.south) -- (wave_direction.north) node[midway, left] {$f_{est}$};
+    \draw[line] (freq.east) -| (sea_state.north) node[midway, above] {$f_{est}$};
 
-    \path (ahrs.north) ++(-1, 0) coordinate (gyro_target);
-    \path (ahrs.north) ++(0, 0) coordinate (magn_target);
-    \path (ahrs.north) ++(1, 0) coordinate (accel_target);
+    \draw[line] (wave_direction.south) -- (nmea.north);
+    \draw[line] (roll_pitch.south) |- (nmea.west);
+    \draw[line] (angle_dir.east) -- (nmea.west);
+    \draw[line] (despike.south) |- (heave_reconstruction.east) node[pos=0.75, right] {$a_z$};
 
-    \draw[line] (imu.south) |- (gyro_in) -- (gyro_target) node[midway, above] {gyro};
-    \draw[line] (imu.south) |- (magn_in) -- (magn_target) node[midway, above] {magn};
-    \draw[line] (imu.south) |- (accel_in) -- (accel_target) node[midway, above] {accel};
+    \draw[line] (sea_state.south) -- (process_noise.north) node[midway, left] {$R_{reg}, H_{est}$};
+    \draw[line] (process_noise.south) |- (heave_reconstruction.east) node[pos=0.75, left] {$Q$};
+
+    \draw[line] (heave_reconstruction.south) -- (nmea.north) node[midway, left] {heave \\ period \\ length \\ speed};
+    \draw[line] (heave_reconstruction.south west) -- (minmax.north) node[midway, right] {heave};
+    \draw[line] (heave_reconstruction.south east) -- (wave_profile.north) node[midway, left] {heave};
+    \draw[line] (minmax.south) |- (nmea.west) node[pos=0.75, right] {wave height};
+
+    % Multiple IMU → AHRS inputs: no crossing
+    \draw[line] (imu.south west) |- (ahrs.north west) node[pos=0.75, above] {gyro};
+    \draw[line] (imu.south) -- (ahrs.north) node[midway, right] {magn};
+    \draw[line] (imu.south east) |- (ahrs.north east) node[pos=0.75, above] {accel};
 
 \end{tikzpicture}
 \end{center}
-
 \end{document}
