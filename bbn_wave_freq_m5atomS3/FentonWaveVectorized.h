@@ -95,7 +95,7 @@ T cosh_by_cosh(T a, T b) {
  * Reference: Fenton (1988) "The Numerical Solution of Steady Water Wave Problems"
  */
 template <unsigned int N, typename Real = float>
-class EIGEN_ALIGN_MAX FentonFFT {  
+class FentonFFT {  
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -130,7 +130,7 @@ class EIGEN_ALIGN_MAX FentonFFT {
 };
 
 template <unsigned int N = 5, typename Real = float>
-class EIGEN_ALIGN_MAX FentonWave {
+class FentonWave {
   private:
     static constexpr int StateDim = 2 * (N + 1) + 2;
     using VectorF = Eigen::Matrix<Real, N + 1, 1>;
@@ -702,7 +702,7 @@ class EIGEN_ALIGN_MAX FentonWave {
  * - Linear drag model
  */
 template<unsigned int N = 4, typename Real = float>
-class EIGEN_ALIGN_MAX WaveSurfaceTracker {
+class WaveSurfaceTracker {
   private:
     FentonWave<N> wave;
 
@@ -826,8 +826,7 @@ void FentonWave_test_1() {
   const float height = 2.0f;
   const float depth = 10.0f;
   const float length = 50.0f;
-   
-  alignas(EIGEN_MAX_ALIGN_BYTES)
+
   FentonWave<5> wave(height, depth, length);
 
   std::ofstream out("wave_data.csv");
@@ -854,7 +853,6 @@ void FentonWave_test_2() {
   const float dt = 0.005f;      // Time step (s)
 
   // Create a 5th-order Fenton wave and a surface tracker
-  alignas(EIGEN_MAX_ALIGN_BYTES)
   WaveSurfaceTracker<5> tracker(height, depth, length, init_x, mass, drag);
 
   // Output file
