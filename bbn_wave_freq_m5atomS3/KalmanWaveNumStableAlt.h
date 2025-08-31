@@ -81,7 +81,7 @@
 #define TWO_PI 6.283185307179586476925286766559
 #endif
 
-class KalmanWaveNumStableAlt {
+class EIGEN_ALIGN_MAX KalmanWaveNumStableAlt {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
