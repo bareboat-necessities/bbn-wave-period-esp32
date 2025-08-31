@@ -22,7 +22,7 @@
 #include <random>
 #endif
 
-class KalmanWaveDirection {
+class EIGEN_ALIGN_MAX KalmanWaveDirection {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
