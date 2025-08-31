@@ -826,7 +826,8 @@ void FentonWave_test_1() {
   const float height = 2.0f;
   const float depth = 10.0f;
   const float length = 50.0f;
-
+   
+  alignas(EIGEN_MAX_ALIGN_BYTES)
   FentonWave<5> wave(height, depth, length);
 
   std::ofstream out("wave_data.csv");
@@ -853,6 +854,7 @@ void FentonWave_test_2() {
   const float dt = 0.005f;      // Time step (s)
 
   // Create a 5th-order Fenton wave and a surface tracker
+  alignas(EIGEN_MAX_ALIGN_BYTES)
   WaveSurfaceTracker<5> tracker(height, depth, length, init_x, mass, drag);
 
   // Output file
