@@ -67,6 +67,8 @@ inline void robust_sincos(double theta, double omega, double t, double &s, doubl
   }
 }
 
+using VecD = Eigen::Matrix<double, Eigen::Dynamic, 1, Eigen::ColMajor, Eigen::Dynamic, 1>;
+
 // JonswapSpectrum
 template<int N_FREQ = 128>
 class JonswapSpectrum {
