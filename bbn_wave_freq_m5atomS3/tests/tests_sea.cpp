@@ -165,7 +165,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     }
     else if (waveType == WaveType::JONSWAP) {
         float period = 1.0f / wp.freqHz;
-        alignas(EIGEN_MAX_ALIGN_BYTES)
+        
         auto jonswap_model = std::make_unique<Jonswap3dStokesWaves<128>>(wp.height, period, wp.direction, 0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_jonswap(sim_t, *jonswap_model);
