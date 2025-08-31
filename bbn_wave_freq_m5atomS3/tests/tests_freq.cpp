@@ -225,6 +225,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             sim_t += DELTA_T;
         }
     } else if (waveType == WaveType::PMSTOKES) {
+        alignas(EIGEN_MAX_ALIGN_BYTES)
         PMStokesN3dWaves<256,5> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02, 0.8, g_std, 15.0, SEED_BASE+run_seed);
         for (int step = 0; step < total_steps; ++step) {
             Wave_Sample samp = sample_pmstokes(wp, sim_t, model);
@@ -234,7 +235,9 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         }
     } else if (waveType == WaveType::FENTON) {
         auto fenton_params = FentonWave<4>::infer_fenton_parameters_from_amplitude(wp.height, 200.0f, 2.0f*M_PI*wp.freqHz, wp.phase);
+        alignas(EIGEN_MAX_ALIGN_BYTES)
         FentonWave<4> fenton_wave(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x);
+        alignas(EIGEN_MAX_ALIGN_BYTES)
         WaveSurfaceTracker<4> fenton_tracker(fenton_params.height, fenton_params.depth, fenton_params.length, fenton_params.initial_x, 5.0f, 0.1f);
         auto callback = [&](float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float x, float vx){
             float noisy_accel = vertical_acceleration + bias + gauss(rng);
