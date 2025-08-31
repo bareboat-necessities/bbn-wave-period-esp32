@@ -1,5 +1,5 @@
 CC=g++
-CPPFLAGS=-O3 -march=native -funroll-loops -fno-finite-math-only -I./.. -I/usr/include/eigen3
+CPPFLAGS=-O3 -march=native -fsanitize-address -fno-omit-frame-pointer -funroll-loops -fno-finite-math-only -I./.. -I/usr/include/eigen3
 
 .PHONY: all
 all:	tests tests_freq tests_sea
