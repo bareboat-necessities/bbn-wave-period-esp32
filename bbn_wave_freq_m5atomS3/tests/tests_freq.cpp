@@ -9,6 +9,8 @@
 #include <limits>
 #include <iomanip>
 
+#define EIGEN_NON_ARDUINO
+
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "FrequencySmoother.h"
