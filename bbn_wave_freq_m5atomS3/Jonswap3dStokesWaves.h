@@ -304,8 +304,8 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       if (!std::isfinite(x_cached_) || !std::isfinite(y_cached_) || x_cached_ != x || y_cached_ != y) {
         Eigen::Matrix<double, 2, 1> xy; xy << x, y;
         const Eigen::ArrayXd Kxy = (Ksum2_ * xy).array(); // P×1
-        Eigen::Map<Eigen::ArrayXd, Eigen::Unaligned>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
-          Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned>(phi_sum_.data(), pairwise_size_);
+        Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
+          Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned>(phi_sum_.data(), pairwise_size_);
         x_cached_ = x; y_cached_ = y;
         // invalidate shared trig cache; we recompute fresh below
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
@@ -319,14 +319,14 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       const size_t P = pairwise_size_;
 
       // maps
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> theta2 (theta2_cache_.data(), P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> wsum   (omega_sum_.data(),   P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> Bij    (Bij_.data(),         P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> fact   (factor_.data(),      P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> kxsum  (kx_sum_.data(),      P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> kysum  (ky_sum_.data(),      P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> mask   (pair_mask_surface_.data(), P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> expk2  (exp_kz_pairs_surface_.data(), P); // all 1.0, but keep for symmetry
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> theta2 (theta2_cache_.data(), P);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> wsum   (omega_sum_.data(),   P);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> Bij    (Bij_.data(),         P);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> fact   (factor_.data(),      P);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> kxsum  (kx_sum_.data(),      P);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> kysum  (ky_sum_.data(),      P);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> mask   (pair_mask_surface_.data(), P);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> expk2  (exp_kz_pairs_surface_.data(), P); // all 1.0, but keep for symmetry
 
       // angles and trig with surface mask (recompute locally to avoid mixing masks with the depth path)
       const Eigen::ArrayXd arg2 = (theta2 - wsum * t).eval();
@@ -470,9 +470,9 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
                            bool &stokes_xy_valid) const
     {
       // Map dynamic vectors to Eigen views
-      Eigen::Map<const Eigen::Array<double, N_FREQ, 1>, Eigen::Unaligned> expk(exp_kz_v.data());
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> expk_pairs(exp_kz_pairs_v.data(), pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> pair_mask(pair_mask_v.data(), pairwise_size_);
+      Eigen::Map<const Eigen::Array<double, N_FREQ, 1>, Eigen::Aligned> expk(exp_kz_v.data());
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> expk_pairs(exp_kz_pairs_v.data(), pairwise_size_);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> pair_mask(pair_mask_v.data(), pairwise_size_);
 
       // First-order
       const Eigen::Array<double, N_FREQ, 1> arg0 =
@@ -501,35 +501,35 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
           x_cached_ != x || y_cached_ != y) {
         Eigen::Matrix<double, 2, 1> xy; xy << x, y;
         const Eigen::ArrayXd Kxy = (Ksum2_ * xy).array(); // P×1
-        Eigen::Map<Eigen::ArrayXd, Eigen::Unaligned>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
-          Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned>(phi_sum_.data(), pairwise_size_);
+        Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
+          Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned>(phi_sum_.data(), pairwise_size_);
         x_cached_ = x; y_cached_ = y;
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
       }
 
       // Update second-order trig cache if time changed (with tolerance)
       if (!std::isfinite(trig_cache_.last_t) || std::fabs(trig_cache_.last_t - t) > 1e-12) {
-        Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> theta2(theta2_cache_.data(), pairwise_size_);
-        Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> wsum (omega_sum_.data(),   pairwise_size_);
+        Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> theta2(theta2_cache_.data(), pairwise_size_);
+        Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> wsum (omega_sum_.data(),   pairwise_size_);
         const Eigen::ArrayXd arg2 = (theta2 - wsum * t).eval();
 
-        Eigen::Map<Eigen::ArrayXd, Eigen::Unaligned>(const_cast<double*>(trig_cache_.sin_second.data()), pairwise_size_) =
+        Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(const_cast<double*>(trig_cache_.sin_second.data()), pairwise_size_) =
           (arg2.sin() * pair_mask);
-        Eigen::Map<Eigen::ArrayXd, Eigen::Unaligned>(const_cast<double*>(trig_cache_.cos_second.data()), pairwise_size_) =
+        Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(const_cast<double*>(trig_cache_.cos_second.data()), pairwise_size_) =
           (arg2.cos() * pair_mask);
 
         trig_cache_.last_t = t;
       }
 
       // Second-order contributions
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> Bij   (Bij_.data(),    pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> fact  (factor_.data(), pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> hx_map(hx_.data(),     pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> hy_map(hy_.data(),     pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> wsum  (omega_sum_.data(),   pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> wsum2 (omega_sum2_.data(),  pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> sin2  (trig_cache_.sin_second.data(), pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Unaligned> cos2  (trig_cache_.cos_second.data(), pairwise_size_);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> Bij   (Bij_.data(),    pairwise_size_);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> fact  (factor_.data(), pairwise_size_);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> hx_map(hx_.data(),     pairwise_size_);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> hy_map(hy_.data(),     pairwise_size_);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> wsum  (omega_sum_.data(),   pairwise_size_);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> wsum2 (omega_sum2_.data(),  pairwise_size_);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> sin2  (trig_cache_.sin_second.data(), pairwise_size_);
+      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> cos2  (trig_cache_.cos_second.data(), pairwise_size_);
 
       const Eigen::ArrayXd coeff = (fact * Bij) * expk_pairs;
       const Eigen::ArrayXd C     = coeff * cos2;
