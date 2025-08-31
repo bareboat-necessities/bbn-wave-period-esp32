@@ -201,6 +201,7 @@ int main(int argc, char *argv[]) {
       t = t + delta_t;
     }
   } else if (test_type == TestType::PM_STOKES) {
+    alignas(EIGEN_MAX_ALIGN_BYTES)
     PMStokesN3dWaves<256, 5> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, 0.02, 0.8, g_std, 15.0, seed);
     while (t < test_duration) {
       auto state = waveModel.getLagrangianState(t);
@@ -224,10 +225,12 @@ int main(int argc, char *argv[]) {
     }
   } else {
     // Create a 5th-order Fenton wave and a surface tracker
+    alignas(EIGEN_MAX_ALIGN_BYTES)
     FentonWave<5>::WaveInitParams wave_params = FentonWave<5>::infer_fenton_parameters_from_amplitude(
       amplitude, 200.0f, angularFrequency, phase);
     const float mass = 5.0f;     // Mass (kg)
     const float drag = 0.1f;     // Linear drag coeff opposing velocity
+    alignas(EIGEN_MAX_ALIGN_BYTES)
     WaveSurfaceTracker<5> tracker(wave_params.height, wave_params.depth, wave_params.length, wave_params.initial_x, mass, drag);
     auto kinematics_callback = [&frequency, &delta_t, &bias, &dist, &generator](
         float time, float dt, float elevation, float vertical_velocity, float vertical_acceleration, float horizontal_position, float horizontal_speed) {
