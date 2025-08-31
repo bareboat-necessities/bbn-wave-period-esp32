@@ -24,7 +24,12 @@
   - Accelerometer is expected in IMU/body frame input to time_update(gyr, acc, Ts).
 */
 
+#ifdef EIGEN_NON_ARDUINO
+#include <Eigen/Dense>
+#else
 #include <ArduinoEigenDense.h>
+#endif
+
 #include <limits>
 
 using Eigen::Matrix;
