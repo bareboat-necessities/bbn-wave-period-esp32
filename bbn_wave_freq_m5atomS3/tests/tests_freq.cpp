@@ -143,7 +143,7 @@ static Wave_Sample sample_gerstner(const WaveParameters &p, double t, Trochoidal
 template<int N=128>
 static Wave_Sample sample_jonswap(const WaveParameters &p, double t, Jonswap3dStokesWaves<N> &model) {
     Wave_Sample s;
-    auto state = model.getLagrangianState(0.0f, 0.0f, static_cast<float>(t));
+    auto state = model.getSurfaceState(0.0f, 0.0f, static_cast<float>(t));
     s.accel_z = state.acceleration.z();
     s.vel_z = state.velocity.z();
     s.elev = state.displacement.z();
