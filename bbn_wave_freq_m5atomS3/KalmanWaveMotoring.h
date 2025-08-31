@@ -109,7 +109,7 @@
 #define TWO_PI 6.283185307179586476925286766559
 #endif
 
-class KalmanWaveMotoring {
+class EIGEN_ALIGN_MAX KalmanWaveMotoring {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
