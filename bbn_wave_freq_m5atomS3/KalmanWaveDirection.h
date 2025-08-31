@@ -229,7 +229,6 @@ void KalmanWaveDirection_test_1() {
   generator.seed(239);
   std::normal_distribution<float> dist(mean, stddev);
 
-  alignas(EIGEN_MAX_ALIGN_BYTES)
   KalmanWaveDirection filter(freq, delta_t);
   filter.setMeasurementNoise(0.01f);
   filter.setProcessNoise(1e-6f);
