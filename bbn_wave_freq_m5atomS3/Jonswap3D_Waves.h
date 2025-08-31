@@ -24,7 +24,7 @@
 
 // JonswapSpectrum
 template<int N_FREQ = 256>
-class JonswapSpectrum {
+class EIGEN_ALIGN_MAX JonswapSpectrum {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     JonswapSpectrum(double Hs, double Tp,
