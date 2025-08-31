@@ -40,9 +40,6 @@ static constexpr double PI = M_PI;
 #include <fstream>
 #endif
 
-// Aligned storage for dynamic arrays
-using AlignedVec = std::vector<double, Eigen::aligned_allocator<double>>;
-
 // robust sincos
 inline void fast_sincos(double x, double &s, double &c) {
 #if defined(__GNUC__) || defined(__clang__)
@@ -95,21 +92,11 @@ class JonswapSpectrum {
       computeJonswapSpectrumFromHs();
     }
 
-    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const {
-      return frequencies_;
-    }
-    const Eigen::Matrix<double, N_FREQ, 1>& spectrum()    const {
-      return S_;
-    }
-    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes()  const {
-      return A_;
-    }
-    const Eigen::Matrix<double, N_FREQ, 1>& df()          const {
-      return df_;
-    }
-    double integratedVariance() const {
-      return (S_.cwiseProduct(df_)).sum();
-    }
+    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { return frequencies_; }
+    const Eigen::Matrix<double, N_FREQ, 1>& spectrum()    const { return S_; }
+    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes()  const { return A_; }
+    const Eigen::Matrix<double, N_FREQ, 1>& df()          const { return df_; }
+    double integratedVariance() const { return (S_.cwiseProduct(df_)).sum(); }
 
   private:
     double Hs_, Tp_, f_min_, f_max_, gamma_, g_;
@@ -235,14 +222,14 @@ class Jonswap3dStokesWaves {
       precomputeSurfaceConstants();
       checkSteepness();
 
-      // Initialize caches
-      exp_kz_.assign(N_FREQ, 1.0);
-      exp_kz_pairs_.assign(pairwise_size_, 1.0);
-      pair_mask_.assign(pairwise_size_, 1.0);
-      theta2_cache_.assign(pairwise_size_, 0.0);
+      // Initialize caches (per-frequency fixed-size, pairwise dynamic)
+      exp_kz_.setOnes();
+      exp_kz_pairs_ = Eigen::VectorXd::Ones(pairwise_size_);
+      pair_mask_    = Eigen::VectorXd::Ones(pairwise_size_);
+      theta2_cache_ = Eigen::VectorXd::Zero(pairwise_size_);
 
-      trig_cache_.sin_second.assign(pairwise_size_, 0.0);
-      trig_cache_.cos_second.assign(pairwise_size_, 0.0);
+      trig_cache_.sin_second = Eigen::VectorXd::Zero(pairwise_size_);
+      trig_cache_.cos_second = Eigen::VectorXd::Zero(pairwise_size_);
       trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
 
       // First-order slope helpers: A * kx, A * ky
@@ -260,21 +247,17 @@ class Jonswap3dStokesWaves {
     // Any depth
     WaveState getLagrangianState(double x, double y, double t, double z = 0.0) const {
       if (!std::isfinite(exp_kz_cached_z_) || exp_kz_cached_z_ != z) {
-        // exp(k z)
-        exp_kz_.assign(N_FREQ, 0.0);
-        for (int i = 0; i < N_FREQ; ++i) exp_kz_[i] = std::exp(k_(i) * z);
+        // exp(k z) per-frequency
+        for (int i = 0; i < N_FREQ; ++i) exp_kz_(i) = std::exp(k_(i) * z);
 
-        // exp((k_i + k_j) z)
-        exp_kz_pairs_.assign(pairwise_size_, 0.0);
-        for (size_t p = 0; p < pairwise_size_; ++p) exp_kz_pairs_[p] = std::exp(k_sum_[p] * z);
+        // exp((k_i + k_j) z) pairwise (vectorized)
+        exp_kz_pairs_ = (k_sum_.array() * z).exp().matrix();
 
         // attenuation mask
         if (cutoff_tol_ > 0.0) {
-          pair_mask_.assign(pairwise_size_, 1.0);
-          for (size_t p = 0; p < pairwise_size_; ++p)
-            pair_mask_[p] = (std::abs(Bij_[p]) * exp_kz_pairs_[p] >= cutoff_tol_) ? 1.0 : 0.0;
+          pair_mask_ = ((Bij_.array().abs() * exp_kz_pairs_.array()) >= cutoff_tol_).select(1.0, 0.0).matrix();
         } else {
-          pair_mask_.assign(pairwise_size_, 1.0);
+          pair_mask_.setOnes();
         }
 
         exp_kz_cached_z_ = z;
@@ -288,73 +271,54 @@ class Jonswap3dStokesWaves {
 
     // Surface slopes (∂η/∂x, ∂η/∂y) at z = 0, including 1st + 2nd order
     Eigen::Vector2d getSurfaceSlopes(double x, double y, double t) const {
-      // --- First-order part: η1(x,y,t) = Σ A_i sin(θ_i), θ_i = kx_i x + ky_i y + φ_i - ω_i t
+      // First-order part: η1(x,y,t) = Σ A_i sin(θ_i), θ_i = kx_i x + ky_i y + φ_i - ω_i t
       // ∂η1/∂x = Σ A_i kx_i cos(θ_i), ∂η1/∂y = Σ A_i ky_i cos(θ_i)
       const Eigen::Array<double, N_FREQ, 1> arg0 =
         (kx_.array() * x + ky_.array() * y + phi_.array() - omega_.array() * t).eval();
-
-      // surface => exp(k z) = 1
       const Eigen::Array<double, N_FREQ, 1> cos0 = arg0.cos();
 
+      // surface => exp(k z) = 1
       double slope_x = (Akx_ * cos0).sum();
       double slope_y = (Aky_ * cos0).sum();
 
-      // --- Prepare second-order angle cache θ2 = (k_i + k_j)·(x,y) + (φ_i + φ_j)
+      // Prepare second-order angle cache θ2 = (k_i + k_j)·(x,y) + (φ_i + φ_j)
       // Recompute if (x,y) changed
       if (!std::isfinite(x_cached_) || !std::isfinite(y_cached_) || x_cached_ != x || y_cached_ != y) {
-        Eigen::Matrix<double, 2, 1> xy; xy << x, y;
-        const Eigen::ArrayXd Kxy = (Ksum2_ * xy).array(); // P×1
-        mapAligned(theta2_cache_, pairwise_size_) =
-          Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned>(phi_sum_.data(), pairwise_size_);
+        Eigen::Vector2d xy; xy << x, y;
+        const Eigen::VectorXd Kxy = Ksum2_ * xy; // P×1
+        theta2_cache_ = Kxy + phi_sum_;
         x_cached_ = x; y_cached_ = y;
-        // invalidate shared trig cache; we recompute fresh below
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
       }
 
-      // --- Second-order part: η2(x,y,t) = Σ coeff_ij cos(θ2_ij - (ω_i+ω_j)t)
+      // Second-order: η2 = Σ coeff_ij cos(θ2_ij - (ω_i+ω_j)t)
       // where coeff_ij = factor * Bij * exp((k_i+k_j)z) ; at surface z=0 => exp(...) = 1
       // ∂η2/∂x = - Σ coeff_ij sin(θ2_ij - wsum t) * (kx_i + kx_j)
       // ∂η2/∂y = - Σ coeff_ij sin(θ2_ij - wsum t) * (ky_i + ky_j)
-
-      const size_t P = pairwise_size_;
-
-      // maps
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> theta2 (theta2_cache_.data(), P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> wsum   (omega_sum_.data(),   P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> Bij    (Bij_.data(),         P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> fact   (factor_.data(),      P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> kxsum  (kx_sum_.data(),      P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> kysum  (ky_sum_.data(),      P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> mask   (pair_mask_surface_.data(), P);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> expk2  (exp_kz_pairs_surface_.data(), P); // all 1.0, but keep for symmetry
-
-      // angles and trig with surface mask (recompute locally to avoid mixing masks with the depth path)
-      const Eigen::ArrayXd arg2 = (theta2 - wsum * t).eval();
-      const Eigen::ArrayXd sin2 = (arg2.sin() * mask).eval();
-
-      // coefficients
-      const Eigen::ArrayXd coeff = (fact * Bij) * expk2;
+      
+      const Eigen::ArrayXd arg2  = (theta2_cache_.array() - omega_sum_.array() * t);
+      const Eigen::ArrayXd sin2  = (arg2.sin() * pair_mask_surface_.array());
+      const Eigen::ArrayXd coeff = (factor_.array() * Bij_.array()); // exp(...) = 1 at surface
 
       // add second-order slope contributions
       // note the minus sign from d/dx cos(·) = -sin(·) * d(·)/dx
-      slope_x += -( (coeff * sin2) * kxsum ).sum();
-      slope_y += -( (coeff * sin2) * kysum ).sum();
+      slope_x += -((coeff * sin2) * kx_sum_.array()).sum();
+      slope_y += -((coeff * sin2) * ky_sum_.array()).sum();
 
       return Eigen::Vector2d(slope_x, slope_y);
     }
 
     // Directional Spectrum API
 
-    // Helper: normalization factor for cos^{2s} spreading
+    // Normalization Γ(s+1/2)/(√π Γ(s+1)) for cos^{2s}
     // Ensures ∫_0^{2π} D(θ; f) dθ = 1
-    static double spreadingNormalization(int s) {
-      // C = Γ(s+0.5) / (√π Γ(s+1))
-      return std::tgamma(s + 0.5) / (std::sqrt(PI) * std::tgamma(s + 1));
+    static double spreadingNormalization(double s) {
+      return std::tgamma(s + 0.5) / (std::sqrt(PI) * std::tgamma(s + 1.0));
     }
 
     // Compute directional spectrum at a given frequency f and angle θ
     double directionalSpectrumValue(double f, double theta) const {
-      // Find nearest frequency bin (simple nearest-neighbor for now)
+      // nearest frequency bin
       auto &freqs = spectrum_.frequencies();
       int idx = int(std::lower_bound(freqs.data(), freqs.data() + N_FREQ, f) - freqs.data());
       if (idx < 0 || idx >= N_FREQ) return 0.0;
@@ -364,24 +328,23 @@ class Jonswap3dStokesWaves {
       // spreading around mean_dir_rad_
       const double dtheta = theta - mean_dir_rad_;
 
-      // Cosine spreading, exponent = spreading_exponent_
-      const int s = static_cast<int>(std::round(spreading_exponent_));
+      // Cosine spreading
+      const double s = spreading_exponent_;
       const double spread = spreadingNormalization(s) *
-                            std::pow(std::max(0.0, std::cos(0.5 * dtheta)), 2 * s);
+                            std::pow(std::max(0.0, std::cos(0.5 * dtheta)), 2.0 * s);
 
       return S_f * spread;
     }
 
     // Discrete directional spectrum, size N_FREQ × M
-    // Rows = frequencies, columns = direction bins
     Eigen::MatrixXd getDirectionalSpectrum(int M) const {
       Eigen::MatrixXd E(N_FREQ, M);
       const double dtheta = 2.0 * PI / M;
 
-      const double s = spreading_exponent_; // keep as double
+      const double s = spreading_exponent_;
       const double norm = spreadingNormalization(s);
 
-      // Precompute spreading weights (independent of f)
+      // Precompute spreading weights
       std::vector<double> spread(M);
       for (int m = 0; m < M; ++m) {
         double theta = -PI + m * dtheta;
@@ -389,7 +352,6 @@ class Jonswap3dStokesWaves {
         spread[m] = norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta_rel)), 2.0 * s);
       }
 
-      // Apply per frequency
       for (int i = 0; i < N_FREQ; ++i) {
         double S_f = spectrum_.spectrum()(i);
         for (int m = 0; m < M; ++m) {
@@ -399,18 +361,10 @@ class Jonswap3dStokesWaves {
       return E;
     }
 
-    const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const {
-      return spectrum_.spectrum();
-    }
-    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const {
-      return spectrum_.frequencies();
-    }
-    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const {
-      return spectrum_.amplitudes();
-    }
-    const Eigen::Matrix<double, N_FREQ, 1>& df() const {
-      return spectrum_.df();
-    }
+    const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const    { return spectrum_.spectrum(); }
+    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { return spectrum_.frequencies(); }
+    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const  { return spectrum_.amplitudes(); }
+    const Eigen::Matrix<double, N_FREQ, 1>& df() const          { return spectrum_.df(); }
 
   private:
     using IndexT = Eigen::Index;
@@ -432,58 +386,48 @@ class Jonswap3dStokesWaves {
     Eigen::Array<double, N_FREQ, 1> Aomega_dirx_, Aomega_diry_;
     Eigen::Array<double, N_FREQ, 1> Aomega2_dirx_, Aomega2_diry_;
 
-    // Per-pair (aligned vectors)
-    AlignedVec Bij_, kx_sum_, ky_sum_, k_sum_;
-    AlignedVec omega_sum_, omega_sum2_, phi_sum_, factor_;
-    AlignedVec hx_, hy_;
-    Eigen::Matrix<double, Eigen::Dynamic, 2, Eigen::ColMajor> Ksum2_; // dynamic Eigen ok with aligned new
+    // Per-pair (dynamic Eigen, alignment-safe)
+    Eigen::VectorXd Bij_, kx_sum_, ky_sum_, k_sum_;
+    Eigen::VectorXd omega_sum_, omega_sum2_, phi_sum_, factor_;
+    Eigen::VectorXd hx_, hy_;
+    Eigen::Matrix<double, Eigen::Dynamic, 2, Eigen::ColMajor> Ksum2_;
 
-    // Depth caches (aligned vectors)
-    mutable AlignedVec exp_kz_;
-    mutable AlignedVec exp_kz_pairs_, theta2_cache_, pair_mask_;
+    // Depth caches
+    mutable Eigen::Array<double, N_FREQ, 1> exp_kz_;
+    mutable Eigen::VectorXd exp_kz_pairs_, theta2_cache_, pair_mask_;
     mutable Eigen::Vector2d stokes_drift_mean_xy_;
     mutable bool   stokes_drift_mean_xy_valid_;
     mutable double exp_kz_cached_z_, x_cached_, y_cached_;
 
     // Trig cache
     struct TrigCache {
-      AlignedVec sin_second, cos_second;
+      Eigen::VectorXd sin_second, cos_second;
       double last_t;
     };
     mutable TrigCache trig_cache_;
 
     // Surface caches
-    AlignedVec exp_kz_surface_;
-    AlignedVec exp_kz_pairs_surface_, pair_mask_surface_;
+    Eigen::Array<double, N_FREQ, 1> exp_kz_surface_;
+    Eigen::VectorXd exp_kz_pairs_surface_, pair_mask_surface_;
     mutable Eigen::Vector2d stokes_drift_surface_xy_;
     mutable bool stokes_drift_surface_valid_;
 
     // amplitude*wavenumber components (for first-order slopes)
     Eigen::Array<double, N_FREQ, 1> Akx_, Aky_;
 
-    Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>
-      mapAligned(AlignedVec &vec, size_t n) const {
-      return Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(vec.data(), n);
-    }
-
     // Core compute
     WaveState computeState(double x, double y, double t,
-                           const AlignedVec &exp_kz_v,
-                           const AlignedVec &exp_kz_pairs_v,
-                           const AlignedVec &pair_mask_v,
+                           const Eigen::Array<double, N_FREQ, 1> &exp_kz_arr,
+                           const Eigen::VectorXd &exp_kz_pairs_v,
+                           const Eigen::VectorXd &pair_mask_v,
                            Eigen::Vector2d &stokes_xy_cache,
                            bool &stokes_xy_valid) const
     {
-      // Map dynamic vectors to Eigen views
-      Eigen::Map<const Eigen::Array<double, N_FREQ, 1>, Eigen::Aligned> expk(exp_kz_v.data());
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> expk_pairs(exp_kz_pairs_v.data(), pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> pair_mask(pair_mask_v.data(), pairwise_size_);
-
       // First-order
       const Eigen::Array<double, N_FREQ, 1> arg0 =
         (kx_.array() * x + ky_.array() * y + phi_.array() - omega_.array() * t).eval();
-      const Eigen::Array<double, N_FREQ, 1> sin0 = (arg0.sin() * expk).eval();
-      const Eigen::Array<double, N_FREQ, 1> cos0 = (arg0.cos() * expk).eval();
+      const Eigen::Array<double, N_FREQ, 1> sin0 = (arg0.sin() * exp_kz_arr).eval();
+      const Eigen::Array<double, N_FREQ, 1> cos0 = (arg0.cos() * exp_kz_arr).eval();
 
       Eigen::Vector3d disp = Eigen::Vector3d::Zero();
       Eigen::Vector3d vel  = Eigen::Vector3d::Zero();
@@ -491,7 +435,7 @@ class Jonswap3dStokesWaves {
 
       disp.x() -= (A_dirx_       * cos0).sum();
       disp.y() -= (A_diry_       * cos0).sum();
-      disp.z() += (spectrum_.amplitudes().array()    * sin0).sum();
+      disp.z() += (spectrum_.amplitudes().array() * sin0).sum();
 
       vel.x()  -= (Aomega_dirx_  * sin0).sum();
       vel.y()  -= (Aomega_diry_  * sin0).sum();
@@ -501,60 +445,44 @@ class Jonswap3dStokesWaves {
       acc.y()  += (Aomega2_diry_ * cos0).sum();
       acc.z()  -= (Aomega2_      * sin0).sum();
 
-      // Recompute theta2 if (x,y) changed
+      // Recompute θ2 if (x,y) changed
       if (!std::isfinite(x_cached_) || !std::isfinite(y_cached_) ||
           x_cached_ != x || y_cached_ != y) {
-        Eigen::Matrix<double, 2, 1> xy; xy << x, y;
-        const Eigen::ArrayXd Kxy = (Ksum2_ * xy).array(); // P×1
-        mapAligned(theta2_cache_, pairwise_size_) =
-          Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned>(phi_sum_.data(), pairwise_size_);
+        Eigen::Vector2d xy; xy << x, y;
+        const Eigen::VectorXd Kxy = Ksum2_ * xy; // P×1
+        theta2_cache_ = Kxy + phi_sum_;
         x_cached_ = x; y_cached_ = y;
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
       }
 
-      // Update second-order trig cache if time changed (with tolerance)
+      // Update second-order trig cache if time changed
       if (!std::isfinite(trig_cache_.last_t) || std::fabs(trig_cache_.last_t - t) > 1e-12) {
-        Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> theta2(theta2_cache_.data(), pairwise_size_);
-        Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> wsum (omega_sum_.data(),   pairwise_size_);
-        const Eigen::ArrayXd arg2 = (theta2 - wsum * t).eval();
-
-        mapAligned(trig_cache_.sin_second, pairwise_size_) =
-          (arg2.sin() * pair_mask);
-        mapAligned(trig_cache_.cos_second, pairwise_size_) =
-          (arg2.cos() * pair_mask);
-
+        const Eigen::ArrayXd arg2 = (theta2_cache_.array() - omega_sum_.array() * t);
+        trig_cache_.sin_second = (arg2.sin() * pair_mask_v.array()).matrix();
+        trig_cache_.cos_second = (arg2.cos() * pair_mask_v.array()).matrix();
         trig_cache_.last_t = t;
       }
 
       // Second-order contributions
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> Bij   (Bij_.data(),    pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> fact  (factor_.data(), pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> hx_map(hx_.data(),     pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> hy_map(hy_.data(),     pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> wsum  (omega_sum_.data(),   pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> wsum2 (omega_sum2_.data(),  pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> sin2  (trig_cache_.sin_second.data(), pairwise_size_);
-      Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned> cos2  (trig_cache_.cos_second.data(), pairwise_size_);
+      const Eigen::ArrayXd coeff = (factor_.array() * Bij_.array()) * exp_kz_pairs_v.array();
+      const Eigen::ArrayXd C     = coeff * trig_cache_.cos_second.array();
+      const Eigen::ArrayXd S     = coeff * trig_cache_.sin_second.array();
 
-      const Eigen::ArrayXd coeff = (fact * Bij) * expk_pairs;
-      const Eigen::ArrayXd C     = coeff * cos2;
-      const Eigen::ArrayXd S     = coeff * sin2;
-
-      disp.x() += -(C * hx_map).sum();
-      disp.y() += -(C * hy_map).sum();
+      disp.x() += -(C * hx_.array()).sum();
+      disp.y() += -(C * hy_.array()).sum();
       disp.z() +=   C.sum();
 
-      vel.x()  += (S * wsum * hx_map).sum();
-      vel.y()  += (S * wsum * hy_map).sum();
-      vel.z()  += (S * wsum).sum();
+      vel.x()  += (S * omega_sum_.array() * hx_.array()).sum();
+      vel.y()  += (S * omega_sum_.array() * hy_.array()).sum();
+      vel.z()  += (S * omega_sum_.array()).sum();
 
-      acc.x()  += -(C * wsum2 * hx_map).sum();
-      acc.y()  += -(C * wsum2 * hy_map).sum();
-      acc.z()  += -(C * wsum2).sum();
+      acc.x()  += -(C * omega_sum2_.array() * hx_.array()).sum();
+      acc.y()  += -(C * omega_sum2_.array() * hy_.array()).sum();
+      acc.z()  += -(C * omega_sum2_.array()).sum();
 
       // Stokes drift (lazy, depth-dependent)
       if (!stokes_xy_valid) {
-        const Eigen::Array<double, N_FREQ, 1> exp2 = expk * expk;
+        const Eigen::Array<double, N_FREQ, 1> exp2 = exp_kz_arr * exp_kz_arr;
         const auto Us_z = stokes_drift_scalar_.array() * exp2;
 
         stokes_xy_cache[0] = (Us_z * dir_x_.array()).sum();
@@ -574,11 +502,11 @@ class Jonswap3dStokesWaves {
       factor_.resize(P); hx_.resize(P); hy_.resize(P);
       Ksum2_.resize(P, 2);
 
-      exp_kz_surface_.resize(N_FREQ, 1.0);
-      exp_kz_pairs_surface_.resize(P, 1.0);
-      pair_mask_surface_.resize(P, 1.0);
+      exp_kz_surface_.setOnes();                           // size = N_FREQ
+      exp_kz_pairs_surface_ = Eigen::VectorXd::Ones(P);    // size = P
+      pair_mask_surface_     = Eigen::VectorXd::Ones(P);
 
-      exp_kz_.resize(N_FREQ);
+      exp_kz_.setOnes();                                   // size = N_FREQ
       exp_kz_pairs_.resize(P);
       theta2_cache_.resize(P);
       pair_mask_.resize(P);
@@ -626,8 +554,7 @@ class Jonswap3dStokesWaves {
         if (n > 0.0) {
           dir_x_(i) /= n;
           dir_y_(i) /= n;
-        }
-        else {
+        } else {
           dir_x_(i) = std::cos(mean_dir_rad_);
           dir_y_(i) = std::sin(mean_dir_rad_);
         }
@@ -659,13 +586,13 @@ class Jonswap3dStokesWaves {
           const double kysum = ky_(i) + ky_(j);
           const double wsum  = omega_(i) + omega_(j);
 
-          Bij_[idx]        = T_plus * spectrum_.amplitudes()(i) * spectrum_.amplitudes()(j);
-          kx_sum_[idx]     = kxsum; ky_sum_[idx] = kysum; k_sum_[idx] = ksum;
-          omega_sum_[idx]  = wsum;  omega_sum2_[idx] = wsum * wsum;
-          phi_sum_[idx]    = phi_(i) + phi_(j);
-          factor_[idx]     = (i == j) ? 1.0 : 2.0;
-          hx_[idx]         = (ksum > tiny) ? (kxsum / ksum) : 0.0;
-          hy_[idx]         = (ksum > tiny) ? (kysum / ksum) : 0.0;
+          Bij_(idx)        = T_plus * spectrum_.amplitudes()(i) * spectrum_.amplitudes()(j);
+          kx_sum_(idx)     = kxsum; ky_sum_(idx) = kysum; k_sum_(idx) = ksum;
+          omega_sum_(idx)  = wsum;  omega_sum2_(idx) = wsum * wsum;
+          phi_sum_(idx)    = phi_(i) + phi_(j);
+          factor_(idx)     = (i == j) ? 1.0 : 2.0;
+          hx_(idx)         = (ksum > tiny) ? (kxsum / ksum) : 0.0;
+          hy_(idx)         = (ksum > tiny) ? (kysum / ksum) : 0.0;
 
           Ksum2_(idx, 0)    = kxsum; Ksum2_(idx, 1) = kysum;
           ++idx;
@@ -675,18 +602,16 @@ class Jonswap3dStokesWaves {
     }
 
     void precomputeSurfaceConstants() {
-      exp_kz_surface_.assign(N_FREQ, 1.0);
-      exp_kz_pairs_surface_.assign(pairwise_size_, 1.0);
+      exp_kz_surface_.setOnes();
+      exp_kz_pairs_surface_.setOnes();
 
       if (cutoff_tol_ > 0.0) {
-        pair_mask_surface_.assign(pairwise_size_, 0.0);
-        for (size_t p = 0; p < pairwise_size_; ++p)
-          pair_mask_surface_[p] = (std::abs(Bij_[p]) >= cutoff_tol_) ? 1.0 : 0.0;
+        pair_mask_surface_ = (Bij_.array().abs() >= cutoff_tol_).select(1.0, 0.0).matrix();
       } else {
-        pair_mask_surface_.assign(pairwise_size_, 1.0);
+        pair_mask_surface_.setOnes();
       }
 
-      // precompute Stokes drift at the surface
+      // Stokes drift at the surface
       stokes_drift_surface_xy_.setZero();
       for (int i = 0; i < N_FREQ; ++i) {
         const double Us0 = stokes_drift_scalar_(i); // e^{0}^2 = 1
@@ -734,7 +659,6 @@ static void generateWaveJonswapCSV(const std::string& filename,
          << acc(0, i)  << "," << acc(1, i)  << "," << acc(2, i)  << ","
          << slopes(0, i) << "," << slopes(1, i) << "\n";
   }
-
 }
 
 static void exportDirectionalSpectrumCSV(const std::string& filename,
@@ -768,5 +692,4 @@ static void Jonswap_testWaveSpectrum() {
   exportDirectionalSpectrumCSV("medium_waves_jonswap_spectrum.csv", 2.0,  7.0, 30.0, 128, 72);
   exportDirectionalSpectrumCSV("long_waves_jonswap_spectrum.csv",   4.0, 12.0, 30.0, 128, 72);
 }
-
 #endif
