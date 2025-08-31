@@ -61,7 +61,11 @@
   and vertical velocity is at its max or min.
 */
 
+#ifdef EIGEN_NON_ARDUINO
+#include <Eigen/Dense>
+#else
 #include <ArduinoEigenDense.h>
+#endif
 
 #define ZERO_CROSSINGS_HYSTERESIS_KF             0.04f
 #define ZERO_CROSSINGS_VELOCITY_THRESHOLD_KF     0.6f
