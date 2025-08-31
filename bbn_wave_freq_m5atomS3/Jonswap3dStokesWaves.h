@@ -304,7 +304,7 @@ class Jonswap3dStokesWaves {
       if (!std::isfinite(x_cached_) || !std::isfinite(y_cached_) || x_cached_ != x || y_cached_ != y) {
         Eigen::Matrix<double, 2, 1> xy; xy << x, y;
         const Eigen::ArrayXd Kxy = (Ksum2_ * xy).array(); // P×1
-        Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
+        mapAligned(theta2_cache_, pairwise_size_) =
           Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned>(phi_sum_.data(), pairwise_size_);
         x_cached_ = x; y_cached_ = y;
         // invalidate shared trig cache; we recompute fresh below
@@ -461,6 +461,11 @@ class Jonswap3dStokesWaves {
     // amplitude*wavenumber components (for first-order slopes)
     Eigen::Array<double, N_FREQ, 1> Akx_, Aky_;
 
+    Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>
+      mapAligned(AlignedVec &vec, size_t n) const {
+      return Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(vec.data(), n);
+    }
+
     // Core compute
     WaveState computeState(double x, double y, double t,
                            const AlignedVec &exp_kz_v,
@@ -501,7 +506,7 @@ class Jonswap3dStokesWaves {
           x_cached_ != x || y_cached_ != y) {
         Eigen::Matrix<double, 2, 1> xy; xy << x, y;
         const Eigen::ArrayXd Kxy = (Ksum2_ * xy).array(); // P×1
-        Eigen::Map<Eigen::ArrayXd, Eigen::Aligned>(const_cast<double*>(theta2_cache_.data()), pairwise_size_) =
+        mapAligned(theta2_cache_, pairwise_size_) =
           Kxy + Eigen::Map<const Eigen::ArrayXd, Eigen::Aligned>(phi_sum_.data(), pairwise_size_);
         x_cached_ = x; y_cached_ = y;
         trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
