@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-class EIGEN_ALIGN_MAX EngineVibrationSim {
+class EngineVibrationSim {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
