@@ -1,54 +1,56 @@
 \documentclass{article}
-\usepackage{plantuml}
-\usepackage{graphicx}
-\usepackage{amsmath}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
 
 \begin{document}
 
-\begin{plantuml}
-@startuml
-skinparam linetype ortho
-rectangle "                         IMU                          " as IMU
-rectangle "                                                                AHRS (Mahony, KalmanQMEKF)                                                     " as AHRS
-rectangle "    Frequency Tracker:     \n\n  Aranovskiy\n  Kalm_ANF\n  Zero Crossing" as FreqTracker
-rectangle "    Kalman Wave Direction  " as WaveDir
-rectangle "         Sea State Detection          " as SeaReg
-rectangle "                             Kalman Heave Reconstruction                   \n\n         Kalman Integration with Drift Correction         \nKalman Integration with Drift and Motor Noise Filtering" as KalmanWave
-rectangle "Process Noise Adaptation" as NoiseAdapt
-rectangle "                         NMEA Data Stream (XDR Sentences)                      " as NMEA
-rectangle "         MinMaxLemire      " as MinMax
-rectangle "   De-Spike  " as DeSpike
-rectangle " Wave Profile Predictor " as WavePredictor
+\begin{tikzpicture}[
+  node distance=1.5cm and 2.5cm,
+  box/.style={rectangle, draw, align=center, rounded corners, minimum width=3.5cm, minimum height=1cm},
+  arrow/.style={-{Latex[length=3mm]}, thick}
+]
 
-IMU --> AHRS : " accel "
-IMU --> AHRS : " gyro "
-IMU --> AHRS : " magn "
-AHRS --> FreqTracker : $a_{z}$
+% Nodes
+\node[box] (IMU) {IMU};
+\node[box, right=of IMU] (AHRS) {AHRS\\(Mahony, KalmanQMEKF)};
+\node[box, right=of AHRS] (FreqTracker) {Frequency Tracker:\\Aranovskiy\\Kalm\_ANF\\Zero Crossing};
+\node[box, below=of FreqTracker] (WaveDir) {Kalman Wave Direction};
+\node[box, below=of AHRS] (SeaReg) {Sea State Detection};
+\node[box, right=of SeaReg] (NoiseAdapt) {Process Noise Adaptation};
+\node[box, below=of NoiseAdapt] (KalmanWave) {Kalman Heave Reconstruction\\Kalman Integration with Drift Correction\\Kalman Integration with Drift and Motor Noise Filtering};
+\node[box, right=of KalmanWave] (MinMax) {MinMaxLemire};
+\node[box, below=of KalmanWave] (WavePredictor) {Wave Profile Predictor};
+\node[box, below=of IMU] (DeSpike) {De-Spike};
+\node[box, right=8cm of DeSpike] (NMEA) {NMEA Data Stream\\(XDR Sentences)};
 
-FreqTracker --> SeaReg : $f_{est}$
-AHRS --> SeaReg : $a_{z}$
+% Arrows
+\draw[arrow] (IMU) -- node[above] {accel} (AHRS);
+\draw[arrow] (IMU) to[out=20,in=160] node[above] {gyro} (AHRS);
+\draw[arrow] (IMU) to[out=340,in=200] node[below] {magn} (AHRS);
 
-AHRS --> WaveDir : $a_{x}, a_{y}$
-FreqTracker --> WaveDir : $f_{est}$
+\draw[arrow] (AHRS) -- node[above] {$a_{z}$} (FreqTracker);
+\draw[arrow] (FreqTracker) -- node[right] {$f_{est}$} (SeaReg);
+\draw[arrow] (AHRS) -- node[left] {$a_{z}$} (SeaReg);
 
-SeaReg --> NoiseAdapt : $R_{reg}, H_{est}$
+\draw[arrow] (AHRS) -- node[left] {$a_{x}, a_{y}$} (WaveDir);
+\draw[arrow] (FreqTracker) -- node[right] {$f_{est}$} (WaveDir);
 
-FreqTracker --> KalmanWave : $f_{est}$
-NoiseAdapt --> KalmanWave : $Q$
+\draw[arrow] (SeaReg) -- node[above] {$R_{reg}, H_{est}$} (NoiseAdapt);
 
-AHRS --> DeSpike : $a_{z}$
+\draw[arrow] (FreqTracker) |- (KalmanWave) node[pos=0.25,right] {$f_{est}$};
+\draw[arrow] (NoiseAdapt) -- node[right] {$Q$} (KalmanWave);
 
-DeSpike --> KalmanWave : $a_{z}$
-KalmanWave --> MinMax : " heave "
+\draw[arrow] (AHRS) |- (DeSpike) node[pos=0.25,left] {$a_{z}$};
+\draw[arrow] (DeSpike) -- (KalmanWave) node[midway,left] {$a_{z}$};
 
-KalmanWave --> WavePredictor : " heave "
+\draw[arrow] (KalmanWave) -- (MinMax) node[midway,above] {heave};
+\draw[arrow] (KalmanWave) -- (WavePredictor) node[midway,right] {heave};
 
-WaveDir --> NMEA : " angle, dir "
-MinMax --> NMEA : " wave height "
-KalmanWave --> NMEA : " heave\n period\n length\n speed "
-AHRS --> NMEA : " roll\n pitch\n yaw\n rate of turn "
+\draw[arrow] (WaveDir) -- (NMEA) node[midway,above] {angle, dir};
+\draw[arrow] (MinMax) -- (NMEA) node[midway,above] {wave height};
+\draw[arrow] (KalmanWave) -- (NMEA) node[midway,right] {heave\\period\\length\\speed};
+\draw[arrow] (AHRS) |- (NMEA) node[pos=0.3,left] {roll\\pitch\\yaw\\rate of turn};
 
-@enduml
-\end{plantuml}
+\end{tikzpicture}
 
 \end{document}
