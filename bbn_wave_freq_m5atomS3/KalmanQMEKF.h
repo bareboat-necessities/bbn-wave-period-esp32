@@ -32,7 +32,7 @@ using Eigen::Matrix;
 using Eigen::Map;
 
 template <typename T = float, bool with_bias = true>
-class QuaternionMEKF {
+class EIGEN_ALIGN_MAX QuaternionMEKF {
     // State dimension
     static constexpr int N = with_bias ? 6 : 3;
     // Measurement dimension
