@@ -3,6 +3,7 @@
 */
 
 #define EIGEN_NO_DEBUG
+#define EIGEN_NON_ARDUINO
 //#define EIGEN_DONT_VECTORIZE
 //#define EIGEN_MPL2_ONLY
 
