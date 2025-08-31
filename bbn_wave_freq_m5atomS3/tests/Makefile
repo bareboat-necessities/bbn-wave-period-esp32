@@ -1,10 +1,8 @@
-ARDUINO_HOME=/opt/arduino-1.8.19
-
 CC=g++
-CPPFLAGS=-O3 -funroll-loops -fno-finite-math-only -I./..  -I${ARDUINO_HOME}/libraries/ArxTypeTraits/ -I${ARDUINO_HOME}/libraries/ArduinoJson/extras/tests/Helpers/ -I${ARDUINO_DIRECTORIES_DATA}/packages/esp32/hardware/esp32/3.1.2/cores/esp32/
+CPPFLAGS=-O3 -march=native -funroll-loops -fno-finite-math-only -I./.. -I/usr/include/eigen3
 
 .PHONY: all
-all:	tests tests_freq
+all:	tests tests_freq tests_sea
 
 tests:	tests.o
 	$(CC) $(LDFLAGS) -o $@ $^
@@ -12,9 +10,12 @@ tests:	tests.o
 tests_freq: tests_freq.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
+tests_sea: tests_sea.o
+	$(CC) $(LDFLAGS) -o $@ $^
+
 %.o: %.cpp
 	$(CC) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
 
 .PHONY:	clean
 clean:
-	rm -f *.o *.csv tests tests.exe tests_freq tests_freq.exe
+	rm -f *.o *.csv tests tests.exe tests_freq tests_freq.exe tests_sea tests_sea.exe
