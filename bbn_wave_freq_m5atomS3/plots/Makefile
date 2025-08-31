@@ -1,5 +1,5 @@
 CC=g++
-CPPFLAGS=-I./.. -I/usr/include/eigen3
+CPPFLAGS=-O3 -march=native -funroll-loops -fno-finite-math-only -I./.. -I/usr/include/eigen3
 
 .PHONY:	all
 all:	fenton_plots wave_dir_plots
