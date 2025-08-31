@@ -75,7 +75,11 @@
 
 */
 
+#ifdef EIGEN_NON_ARDUINO
+#include <Eigen/Dense>
+#else
 #include <ArduinoEigenDense.h>
+#endif
 
 #ifndef TWO_PI
 #define TWO_PI 6.283185307179586476925286766559
