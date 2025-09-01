@@ -99,7 +99,7 @@ jobs:
           root_file: "**/*.tex"
           latexmk_use_lualatex: true
           latexmk_shell_escape: true
-          extra_system_packages: "inkscape ghostscript plantuml ncurses openjdk11-jre"
+          extra_system_packages: "inkscape ghostscript plantuml graphviz ncurses openjdk11-jre"
           args: "--output-directory=build"
           
       - name: Upload PDF
