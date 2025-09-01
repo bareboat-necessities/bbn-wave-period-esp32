@@ -99,6 +99,7 @@ jobs:
           root_file: "../**/*.tex"
           pre_compile: "pwd && curl -L https://github.com/plantuml/plantuml/releases/download/v1.2025.4/plantuml.jar --output ./plantuml.jar && export PLANTUML_JAR=$(pwd)/plantuml.jar && chmod 777 . && chmod g+s ."          
           work_in_root_file_dir: true
+          working_directory: bbn_wave_freq_m5atomS3/doc
           latexmk_use_lualatex: true
           latexmk_shell_escape: true
           extra_system_packages: "inkscape ghostscript plantuml graphviz ncurses openjdk11-jre"
