@@ -98,7 +98,7 @@ jobs:
         with:
           root_file: "../**/doc/*.tex"
           pre_compile: "pwd && chmod 777 ../build && chmod g+s ../build"          
-          working_directory: "./build"
+          working_directory: "./bbn_wave_freq_m5atomS3/build"
           work_in_root_file_dir: true
           latexmk_use_lualatex: true
           latexmk_shell_escape: true
