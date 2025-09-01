@@ -98,7 +98,7 @@ jobs:
         with:
           root_file: "*.tex"
           pre_compile: |
-            echo "openout_any = a" | sudo tee -a $(kpsewhich texmf.cnf)
+            echo "openout_any = a" | tee -a $(kpsewhich texmf.cnf)
             pwd && export openout_any=a && curl -L https://github.com/plantuml/plantuml/releases/download/v1.2025.4/plantuml.jar --output ./plantuml.jar && export PLANTUML_JAR=$(pwd)/plantuml.jar && chmod 777 . && chmod g+s .          
           work_in_root_file_dir: true
           working_directory: bbn_wave_freq_m5atomS3/doc
