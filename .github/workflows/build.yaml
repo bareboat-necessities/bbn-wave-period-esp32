@@ -96,7 +96,7 @@ jobs:
       - name: Compile LaTeX document
         uses: xu-cheng/latex-action@v4
         with:
-          root_file: "../**/*.tex"
+          root_file: "*.tex"
           pre_compile: "pwd && curl -L https://github.com/plantuml/plantuml/releases/download/v1.2025.4/plantuml.jar --output ./plantuml.jar && export PLANTUML_JAR=$(pwd)/plantuml.jar && chmod 777 . && chmod g+s ."          
           work_in_root_file_dir: true
           working_directory: bbn_wave_freq_m5atomS3/doc
