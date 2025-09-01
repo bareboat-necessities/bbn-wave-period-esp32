@@ -3,6 +3,16 @@
 \usepackage{amsmath, amssymb}
 \usepackage{plantuml} % requires plantuml + java installed
 
+
+\makeatletter
+\def\plantuml{\@ifnextchar[{\plantuml@}{\plantuml@[png]}}
+\def\plantuml@[#1]#2{%
+  \immediate\write18{plantuml -t#1 -o /tmp/plantuml #2}%
+  \includegraphics{#2.#1}%
+}
+\makeatother
+
+
 % Configure plantuml for output directory
 %\plantumlset{outputdirectory=./}
 
