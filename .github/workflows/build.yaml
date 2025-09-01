@@ -102,6 +102,8 @@ jobs:
           latexmk_use_lualatex: true
           latexmk_shell_escape: true
           extra_system_packages: "inkscape ghostscript plantuml graphviz ncurses openjdk11-jre"
+        env:
+          TEXMFOUTPUT: /tmp/plantuml
           
       - name: Upload PDF
         uses: svenstaro/upload-release-action@v2
