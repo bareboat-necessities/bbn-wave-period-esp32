@@ -104,6 +104,7 @@ jobs:
           latexmk_shell_escape: true
           extra_system_packages: "inkscape ghostscript plantuml graphviz ncurses openjdk11-jre"
         env:
+          openout_any: a
           TEXMFOUTPUT: /tmp/plantuml
           PLANTUML_JAR: ${{ github.workspace }}/bbn_wave_freq_m5atomS3/doc/plantuml.jar
           
