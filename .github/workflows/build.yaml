@@ -99,7 +99,7 @@ jobs:
           root_file: "*.tex"
           pre_compile: |
             echo "openout_any = a" | tee -a $(kpsewhich texmf.cnf)
-            curl -L https://github.com/plantuml/plantuml/releases/download/v1.2025.4/plantuml.jar -o plantuml.jar
+            curl -L https://github.com/plantuml/plantuml/releases/download/v1.2025.4/plantuml.jar -o plantuml.jar && export PLANTUML_JAR=$(pwd)/plantuml.jar
             echo ">> Debug: TeX config patched, now checking PlantUML installation"
             plantuml -version || true
             java -version || true
