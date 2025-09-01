@@ -97,11 +97,11 @@ jobs:
         uses: xu-cheng/latex-action@v4
         with:
           root_file: "../**/doc/*.tex"
-          working_directory: "/home/runner/work/bbn-wave-period-esp32/bbn-wave-period-esp32/build"
+          working_directory: "./build"
           latexmk_use_lualatex: true
           latexmk_shell_escape: true
           extra_system_packages: "inkscape ghostscript plantuml graphviz ncurses openjdk11-jre"
-          args: "--output-directory=/home/runner/work/bbn-wave-period-esp32/bbn-wave-period-esp32/build"
+          args: "--output-directory=./build"
           
       - name: Upload PDF
         uses: svenstaro/upload-release-action@v2
