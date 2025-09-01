@@ -101,7 +101,7 @@ jobs:
             echo "openout_any = a" | tee -a $(kpsewhich texmf.cnf)
             echo ">> Debug: TeX config patched, now checking PlantUML installation"
             plantuml -version || true
-            java -version || tru
+            java -version || true
           work_in_root_file_dir: true
           working_directory: bbn_wave_freq_m5atomS3/doc
           latexmk_use_lualatex: true
