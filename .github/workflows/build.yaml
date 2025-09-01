@@ -99,6 +99,7 @@ jobs:
           root_file: "*.tex"
           pre_compile: |
             echo "openout_any = a" | tee -a $(kpsewhich texmf.cnf)
+            curl -L https://github.com/plantuml/plantuml/releases/download/v1.2025.4/plantuml.jar -o plantuml.jar
             echo ">> Debug: TeX config patched, now checking PlantUML installation"
             plantuml -version || true
             java -version || true
@@ -107,6 +108,8 @@ jobs:
           latexmk_use_lualatex: true
           latexmk_shell_escape: true
           extra_system_packages: "inkscape ghostscript plantuml graphviz ncurses openjdk11-jre"
+        env:
+          PLANTUML_JAR: ${{ github.workspace }}/bbn_wave_freq_m5atomS3/doc/plantuml.jar
                   
       - name: Upload PDF
         uses: svenstaro/upload-release-action@v2
