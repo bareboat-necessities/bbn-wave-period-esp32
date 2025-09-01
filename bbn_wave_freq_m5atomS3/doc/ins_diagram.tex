@@ -8,17 +8,15 @@
 
 \begin{document}
 
-Diagram:
-
 \begin{plantuml}
 @startuml
 skinparam linetype ortho
-rectangle "                         IMU                          " as IMU
-rectangle "                                                      AHRS (Mahony, KalmanQMEKF)                                                     " as AHRS
+rectangle "IMU" as IMU
+rectangle "AHRS (Mahony, KalmanQMEKF)" as AHRS
 
-IMU --> AHRS : " accel "
-IMU --> AHRS : " gyro "
-IMU --> AHRS : " magn "
+IMU --> AHRS : "accel"
+IMU --> AHRS : "gyro"
+IMU --> AHRS : "magn"
 @enduml
 \end{plantuml}
 
