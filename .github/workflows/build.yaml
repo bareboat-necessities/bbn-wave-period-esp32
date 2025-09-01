@@ -97,7 +97,7 @@ jobs:
         uses: xu-cheng/latex-action@v4
         with:
           root_file: "../**/doc/*.tex"
-          pre_compile: "chmod +777 ./build"
+          pre_compile: "chmod +777 ../build"
           working_directory: "./build"
           latexmk_use_lualatex: true
           latexmk_shell_escape: true
