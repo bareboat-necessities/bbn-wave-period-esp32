@@ -232,6 +232,10 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
         stokes_drift_mean_xy_valid_(false),
         stokes_drift_surface_valid_(false)
     {
+      if (!directional_dist_) {
+        throw std::runtime_error("DirectionalDistribution must not be null");
+      }
+
       // Deep-water dispersion (use spectrum frequencies directly)
       omega_ = 2.0 * PI * spectrum_.frequencies();
       k_     = omega_.array().square() / g_;
