@@ -544,44 +544,6 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       if (N_FREQ % 2 == 1) phi_(N_FREQ / 2) = dist(rng);
     }
 
-    void initializeDirectionalSpread(unsigned int seed) {
-      std::mt19937 rng_dir(seed + 1u);
-      std::uniform_real_distribution<double> u01(-1.0, 1.0);
-
-      const double amax = spectrum_.amplitudes().maxCoeff();
-      Eigen::Array<double, N_FREQ, 1> spread_scale = Eigen::Array<double, N_FREQ, 1>::Ones();
-      if (amax > 0.0) {
-        const auto amp_ratio = (spectrum_.amplitudes().array() / amax).eval();
-        spread_scale = amp_ratio.pow(spreading_exponent_);
-      }
-
-      constexpr double max_spread = PI * 0.5;
-      for (int i = 0; i < N_FREQ / 2; ++i) {
-        const double delta = u01(rng_dir) * (spread_scale(i) * max_spread);
-        const double angle = mean_dir_rad_ + delta;
-        dir_x_(i) = std::cos(angle); dir_y_(i) = std::sin(angle);
-        const int j = N_FREQ - 1 - i;
-        const double angle_j = angle + PI;
-        dir_x_(j) = std::cos(angle_j); dir_y_(j) = std::sin(angle_j);
-      }
-      if (N_FREQ % 2 == 1) {
-        const int mid = N_FREQ / 2;
-        const double delta = u01(rng_dir) * (spread_scale(mid) * max_spread);
-        const double angle = mean_dir_rad_ + delta;
-        dir_x_(mid) = std::cos(angle); dir_y_(mid) = std::sin(angle);
-      }
-      for (int i = 0; i < N_FREQ; ++i) {
-        const double n = std::hypot(dir_x_(i), dir_y_(i));
-        if (n > 0.0) {
-          dir_x_(i) /= n;
-          dir_y_(i) /= n;
-        } else {
-          dir_x_(i) = std::cos(mean_dir_rad_);
-          dir_y_(i) = std::sin(mean_dir_rad_);
-        }
-      }
-    }
-
     void computeWaveDirectionComponents() {
       kx_ = k_.array() * dir_x_.array();
       ky_ = k_.array() * dir_y_.array();
