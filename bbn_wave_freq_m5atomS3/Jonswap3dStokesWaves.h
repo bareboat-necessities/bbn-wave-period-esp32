@@ -78,7 +78,7 @@ public:
   virtual double operator()(double theta, double f) const = 0;
 
   // Optional: precompute discrete angular weights
-  virtual std::vector<double> weights(double mean_dir_rad, int M) const = 0;
+  virtual std::vector<double> weights(int M) const = 0;
 };
 
 // Cosine-2s Distribution (default oceanographic spreading)
@@ -93,7 +93,7 @@ public:
     return norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta)), 2.0 * s_);
   }
 
-  std::vector<double> weights(double mean_dir_rad, int M) const override {
+  std::vector<double> weights(int M) const override {
     std::vector<double> spread(M);
     const double dtheta = 2.0 * PI / M;
     
@@ -102,7 +102,7 @@ public:
     const double norm = std::tgamma(s_ + 0.5) / (std::sqrt(PI) * std::tgamma(s_ + 1.0));
     for (int m = 0; m < M; ++m) {
       double theta = -PI + m * dtheta;
-      double dtheta_rel = theta - mean_dir_rad;
+      double dtheta_rel = theta - mean_dir_rad_;
       spread[m] = norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta_rel)), 2.0 * s_);
     }
     return spread;
