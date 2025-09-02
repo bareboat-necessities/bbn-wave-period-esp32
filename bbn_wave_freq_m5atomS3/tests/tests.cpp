@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
       t = t + delta_t;
     }
   } else if (test_type == TestType::PM_STOKES) {
-    PMStokesN3dWaves<256, 5> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, 0.02, 0.8, g_std, 15.0, seed);
+    PMStokesN3dWaves<256, 5> waveModel(w->amplitude(), w->period(), 30.0 /*dir*/, 0.02, 0.8, g_std, 10.0, seed);
     while (t < test_duration) {
       auto state = waveModel.getLagrangianState(t);
       float zero_mean_gauss_noise = dist(generator);
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
     }
   } else if (test_type == TestType::JONSWAP) {
     double mean_dir_deg = 30.0 /*dir*/;
-    auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * PI / 180.0, 10.0, 42u);
+    auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * PI / 180.0, 15.0, 42u);
     auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(w->amplitude(), w->period(), dirDist, 0.02, 0.8, 3.3, g_std);
     while (t < test_duration) {
        auto state = waveModel->getSurfaceState(0.0, 0.0, t);
