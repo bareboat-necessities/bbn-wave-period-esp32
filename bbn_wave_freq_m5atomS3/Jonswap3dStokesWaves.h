@@ -690,7 +690,8 @@ static void exportDirectionalSpectrumCSV(const std::string& filename,
     double Hs, double Tp,
     double mean_dir_deg = 0.0,
     int N_freq = 128, int N_theta = 72) {
-  auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(Hs, Tp, mean_dir_deg);
+  auto dist = std::make_shared<Cosine2sDistribution>(mean_dir_deg * PI / 180.0, 10.0);
+  auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(Hs, Tp, dist);
   auto freqs = waveModel->frequencies();
   Eigen::MatrixXd E = waveModel->getDirectionalSpectrum(N_theta);
 
