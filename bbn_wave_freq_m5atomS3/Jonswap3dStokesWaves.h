@@ -69,6 +69,47 @@ inline void robust_sincos(double theta, double omega, double t, double &s, doubl
 
 using VecD = Eigen::Matrix<double, Eigen::Dynamic, 1, Eigen::ColMajor, Eigen::Dynamic, 1>;
 
+// Directional Distribution Interface
+class DirectionalDistribution {
+public:
+  virtual ~DirectionalDistribution() = default;
+
+  // Evaluate D(theta; f). Must be normalized s.t. ∫ D dθ = 1.
+  virtual double operator()(double theta, double f) const = 0;
+
+  // Optional: precompute discrete angular weights
+  virtual std::vector<double> weights(double mean_dir_rad, int M) const = 0;
+};
+
+// Cosine-2s Distribution (default oceanographic spreading)
+class Cosine2sDistribution : public DirectionalDistribution {
+public:
+  explicit Cosine2sDistribution(double mean_dir_rad, double s)
+    : mean_dir_rad_(mean_dir_rad), s_(s) {}
+
+  double operator()(double theta, double /*f*/) const override {
+    const double dtheta = theta - mean_dir_rad_;
+    const double norm = std::tgamma(s_ + 0.5) / (std::sqrt(PI) * std::tgamma(s_ + 1.0));
+    return norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta)), 2.0 * s_);
+  }
+
+  std::vector<double> weights(double mean_dir_rad, int M) const override {
+    std::vector<double> spread(M);
+    const double dtheta = 2.0 * PI / M;
+    const double norm = std::tgamma(s_ + 0.5) / (std::sqrt(PI) * std::tgamma(s_ + 1.0));
+    for (int m = 0; m < M; ++m) {
+      double theta = -PI + m * dtheta;
+      double dtheta_rel = theta - mean_dir_rad;
+      spread[m] = norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta_rel)), 2.0 * s_);
+    }
+    return spread;
+  }
+
+private:
+  double mean_dir_rad_;
+  double s_;
+};
+
 // JonswapSpectrum
 template<int N_FREQ = 128>
 class EIGEN_ALIGN_MAX JonswapSpectrum {
