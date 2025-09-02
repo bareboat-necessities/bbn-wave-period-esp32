@@ -166,7 +166,8 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     }
     else if (waveType == WaveType::JONSWAP) {
         float period = 1.0f / wp.freqHz;
-        auto jonswap_model = std::make_unique<Jonswap3dStokesWaves<128>>(wp.height, period, wp.direction, 0.02f, 0.8f, 3.3f, 9.81f, 15.0f);
+        auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(wp.direction * PI / 180.0, 15.0, 42u);
+        auto jonswap_model = std::make_unique<Jonswap3dStokesWaves<128>>(wp.height, period, dirDist, 0.02, 0.8, 3.3, g_std);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_jonswap(sim_t, *jonswap_model);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
