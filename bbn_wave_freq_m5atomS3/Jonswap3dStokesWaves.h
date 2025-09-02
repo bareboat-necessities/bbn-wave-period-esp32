@@ -365,22 +365,12 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
 
     // Compute directional spectrum at a given frequency f and angle θ
     double directionalSpectrumValue(double f, double theta) const {
-      // nearest frequency bin
       auto &freqs = spectrum_.frequencies();
       int idx = int(std::lower_bound(freqs.data(), freqs.data() + N_FREQ, f) - freqs.data());
       if (idx < 0 || idx >= N_FREQ) return 0.0;
 
       const double S_f = spectrum_.spectrum()(idx);
-
-      // spreading around mean_dir_rad_
-      const double dtheta = theta - mean_dir_rad_;
-
-      // Cosine spreading
-      const double s = spreading_exponent_;
-      const double spread = spreadingNormalization(s) *
-                            std::pow(std::max(0.0, std::cos(0.5 * dtheta)), 2.0 * s);
-
-      return S_f * spread;
+      return S_f * (*directional_dist_)(theta, f);
     }
 
     // Discrete directional spectrum, size N_FREQ × M
