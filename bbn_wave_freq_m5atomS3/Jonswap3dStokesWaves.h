@@ -661,7 +661,7 @@ static void generateWaveJonswapCSV(const std::string& filename,
                                    double duration = 40.0, double dt = 0.005) {
   constexpr int N = 128;
   // create distribution (cosine-2s as before)
-  auto dist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * PI / 180.0, 10.0, 42u);
+  auto dist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * PI / 180.0, 15.0, 42u);
   auto waveModel = std::make_unique<Jonswap3dStokesWaves<N>>(Hs, Tp, dist);
   const int N_time = static_cast<int>(duration / dt) + 1;
   Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
@@ -694,7 +694,7 @@ static void exportDirectionalSpectrumCSV(const std::string& filename,
     double Hs, double Tp,
     double mean_dir_deg = 0.0,
     int N_freq = 128, int N_theta = 72) {
-  auto dist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * PI / 180.0, 10.0, 42u);
+  auto dist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * PI / 180.0, 15.0, 42u);
   auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(Hs, Tp, dist);
   auto freqs = waveModel->frequencies();
   Eigen::MatrixXd E = waveModel->getDirectionalSpectrum(N_theta);
