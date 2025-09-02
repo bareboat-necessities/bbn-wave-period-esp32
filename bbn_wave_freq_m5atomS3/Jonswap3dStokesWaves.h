@@ -96,6 +96,8 @@ public:
   std::vector<double> weights(double mean_dir_rad, int M) const override {
     std::vector<double> spread(M);
     const double dtheta = 2.0 * PI / M;
+    // Normalization Γ(s+1/2)/(√π Γ(s+1)) for cos^{2s}
+    // Ensures ∫_0^{2π} D(θ; f) dθ = 1
     const double norm = std::tgamma(s_ + 0.5) / (std::sqrt(PI) * std::tgamma(s_ + 1.0));
     for (int m = 0; m < M; ++m) {
       double theta = -PI + m * dtheta;
@@ -357,8 +359,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
 
     // Directional Spectrum API
 
-    // Normalization Γ(s+1/2)/(√π Γ(s+1)) for cos^{2s}
-    // Ensures ∫_0^{2π} D(θ; f) dθ = 1
+   
     static double spreadingNormalization(double s) {
       return std::tgamma(s + 0.5) / (std::sqrt(PI) * std::tgamma(s + 1.0));
     }
