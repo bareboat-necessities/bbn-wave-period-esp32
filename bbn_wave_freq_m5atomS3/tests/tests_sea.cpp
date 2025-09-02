@@ -193,7 +193,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
         fenton_tracker.track_floating_object(TEST_DURATION_S, DELTA_T, callback);
     }
     else if (waveType == WaveType::PMSTOKES) {
-        PMStokesN3dWaves<256,5> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02, 0.8, g_std, 15.0, SEED_BASE + run_seed);
+        PMStokesN3dWaves<256,5> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02, 0.8, g_std, 10.0, SEED_BASE + run_seed);
         for (int step = 0; step < total_steps; ++step) {
             Wave_Sample samp = sample_pmstokes(wp, sim_t, model);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
