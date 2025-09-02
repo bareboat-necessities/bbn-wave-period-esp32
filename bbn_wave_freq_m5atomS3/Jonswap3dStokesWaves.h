@@ -579,6 +579,15 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       if (N_FREQ % 2 == 1) phi_(N_FREQ / 2) = dist(rng);
     }
 
+    // Initialize directions using the active distribution
+    void initializeDirectionsFromDistribution() {
+        auto dirs = directional_dist_->sample_directions(N_FREQ);
+        for (int i = 0; i < N_FREQ; ++i) {
+            dir_x_(i) = std::cos(dirs[i]);
+            dir_y_(i) = std::sin(dirs[i]);
+        }
+    }
+
     void computeWaveDirectionComponents() {
       kx_ = k_.array() * dir_x_.array();
       ky_ = k_.array() * dir_y_.array();
