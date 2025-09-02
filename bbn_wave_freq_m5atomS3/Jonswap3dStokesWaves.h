@@ -289,6 +289,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       // Allocate & init
       allocatePairArrays();
       initializeRandomPhases(seed);
+      initializeDirectionsFromDistribution();
       computeWaveDirectionComponents();
       computePerComponentStokesDriftEstimate();
 
