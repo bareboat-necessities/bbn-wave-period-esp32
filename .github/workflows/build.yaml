@@ -100,7 +100,7 @@ jobs:
           pre_compile: |
             echo "openout_any = a" | tee -a $(kpsewhich texmf.cnf)
             curl -L https://github.com/plantuml/plantuml/releases/download/v1.2025.4/plantuml.jar -o plantuml.jar && export PLANTUML_JAR=$(pwd)/plantuml.jar
-            curl -L https://raw.githubusercontent.com/koppor/plantuml/refs/heads/main/plantuml.sty -o plantuml.sty
+            curl -L https://mirrors.ctan.org/macros/luatex/latex/plantuml/plantuml.sty -o plantuml.sty
             echo ">> Debug: TeX config patched, now checking PlantUML installation"
             plantuml -version || true
             java -version || true
