@@ -219,7 +219,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             sim_t += DELTA_T;
         }
     } else if (waveType == WaveType::JONSWAP) {
-        auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(wp.direction * PI / 180.0, 10.0, 42u);
+        auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(wp.direction * PI / 180.0, 15.0, 42u);
         auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(wp.height, 1.0/wp.freqHz, dirDist, 0.02, 0.8, 3.3, g_std);
         for (int step = 0; step < total_steps; ++step) {
             Wave_Sample samp = sample_jonswap(wp, sim_t, *waveModel);
@@ -228,7 +228,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
             sim_t += DELTA_T;
         }
     } else if (waveType == WaveType::PMSTOKES) {
-        PMStokesN3dWaves<256,5> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02, 0.8, g_std, 15.0, SEED_BASE+run_seed);
+        PMStokesN3dWaves<256,5> model(wp.height, 1.0f/wp.freqHz, wp.direction, 0.02, 0.8, g_std, 10.0, SEED_BASE+run_seed);
         for (int step = 0; step < total_steps; ++step) {
             Wave_Sample samp = sample_pmstokes(wp, sim_t, model);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
