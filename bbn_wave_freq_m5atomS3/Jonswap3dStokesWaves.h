@@ -216,15 +216,15 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     };
 
     Jonswap3dStokesWaves(double Hs, double Tp,
-                         double mean_direction_deg = 0.0,
+                         std::shared_ptr<DirectionalDistribution> dirDist,
                          double f_min = 0.02, double f_max = 0.8,
                          double gamma = 2.0, double g = 9.81,
-                         double spreading_exponent = 15.0,
                          unsigned int seed = 42u,
                          double cutoff_tol = 1e-8)
       : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
         mean_dir_rad_(mean_direction_deg * PI / 180.0),
-        g_(g), spreading_exponent_(spreading_exponent), cutoff_tol_(cutoff_tol),
+        g_(g), cutoff_tol_(cutoff_tol),
+        directional_dist_(std::move(dirDist)),
         pairwise_size_(size_t(N_FREQ) * (N_FREQ + 1) / 2),
         exp_kz_cached_z_(std::numeric_limits<double>::quiet_NaN()),
         x_cached_(std::numeric_limits<double>::quiet_NaN()),
