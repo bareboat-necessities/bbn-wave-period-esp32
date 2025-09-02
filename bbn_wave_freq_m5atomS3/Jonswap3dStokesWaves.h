@@ -72,13 +72,23 @@ using VecD = Eigen::Matrix<double, Eigen::Dynamic, 1, Eigen::ColMajor, Eigen::Dy
 // Directional Distribution Interface
 class DirectionalDistribution {
 public:
-  virtual ~DirectionalDistribution() = default;
+    virtual ~DirectionalDistribution() = default;
 
-  // Evaluate D(theta; f). Must be normalized s.t. ∫ D dθ = 1.
-  virtual double operator()(double theta, double f) const = 0;
+    // --- Theoretical spectrum interface ---
+    // Evaluate continuous D(θ; f) (normalized so ∫ D dθ = 1).
+    virtual double operator()(double theta, double f) const = 0;
 
-  // Optional: precompute discrete angular weights
-  virtual std::vector<double> weights(int M) const = 0;
+    // Precompute discrete angular weights (for exporting spectra).
+    virtual std::vector<double> weights(int M) const = 0;
+
+    // Principal (mean) direction of travel [rad].
+    virtual double principal_direction_rad() const = 0;
+
+    // --- Realization interface ---
+    // Default: no per-frequency randomization → all waves go principal dir.
+    virtual std::vector<double> sample_directions(int N_freq) {
+        return std::vector<double>(N_freq, principal_direction_rad());
+    }
 };
 
 // Cosine-2s Distribution (default oceanographic spreading)
