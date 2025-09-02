@@ -376,23 +376,11 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     // Discrete directional spectrum, size N_FREQ × M
     Eigen::MatrixXd getDirectionalSpectrum(int M) const {
       Eigen::MatrixXd E(N_FREQ, M);
-      const double dtheta = 2.0 * PI / M;
-
-      const double s = spreading_exponent_;
-      const double norm = spreadingNormalization(s);
-
-      // Precompute spreading weights
-      std::vector<double> spread(M);
-      for (int m = 0; m < M; ++m) {
-        double theta = -PI + m * dtheta;
-        double dtheta_rel = theta - mean_dir_rad_;
-        spread[m] = norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta_rel)), 2.0 * s);
-      }
-
+      auto weights = directional_dist_->weights(mean_dir_rad_, M);
       for (int i = 0; i < N_FREQ; ++i) {
         double S_f = spectrum_.spectrum()(i);
         for (int m = 0; m < M; ++m) {
-          E(i, m) = S_f * spread[m];
+          E(i, m) = S_f * weights[m];
         }
       }
       return E;
