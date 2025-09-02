@@ -658,7 +658,7 @@ static void generateWaveJonswapCSV(const std::string& filename,
   constexpr int N = 128;
   // create distribution (cosine-2s as before)
   auto dist = std::make_shared<Cosine2sDistribution>(mean_dir_deg * PI / 180.0, 10.0);
-  auto waveModel = std::make_unique<Jonswap3dStokesWaves<N>>(Hs, Tp, dist, 0.02, 0.8, 2.0, 9.81);
+  auto waveModel = std::make_unique<Jonswap3dStokesWaves<N>>(Hs, Tp, dist);
   const int N_time = static_cast<int>(duration / dt) + 1;
   Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
   Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
