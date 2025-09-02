@@ -419,7 +419,9 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     // Spectrum & parameters
     JonswapSpectrum<N_FREQ> spectrum_;
 
-    double mean_dir_rad_, g_, spreading_exponent_, cutoff_tol_;
+    std::shared_ptr<DirectionalDistribution> directional_dist_;
+
+    double mean_dir_rad_, g_, cutoff_tol_;
     size_t pairwise_size_;
 
     // Per-frequency (fixed-size, aligned)
