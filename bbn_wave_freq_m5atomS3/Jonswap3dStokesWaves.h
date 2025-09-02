@@ -225,7 +225,6 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
                          unsigned int seed = 42u,
                          double cutoff_tol = 1e-8)
       : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
-        mean_dir_rad_(mean_direction_deg * PI / 180.0),
         g_(g), cutoff_tol_(cutoff_tol),
         directional_dist_(std::move(dirDist)),
         pairwise_size_(size_t(N_FREQ) * (N_FREQ + 1) / 2),
