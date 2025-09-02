@@ -213,6 +213,7 @@ int main(int argc, char *argv[]) {
       t += delta_t;
     }
   } else if (test_type == TestType::JONSWAP) {
+    double mean_dir_deg = 15.0;
     auto dist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * PI / 180.0, 10.0, 42u);
     auto waveModel = std::make_unique<Jonswap3dStokesWaves<128>>(w->amplitude(), w->period(), dist, 0.02, 0.8, 2.0, g_std);
     while (t < test_duration) {
