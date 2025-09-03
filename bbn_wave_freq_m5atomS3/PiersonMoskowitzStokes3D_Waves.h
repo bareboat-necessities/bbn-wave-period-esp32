@@ -471,9 +471,7 @@ static void generateWavePMStokesCSV(const std::string& filename,
                                     double Hs, double Tp, double mean_dir_deg,
                                     double duration = 40.0, double dt = 0.005) {
     constexpr int N = 256;
-    auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
-        mean_dir_deg * M_PI / 180.0, 15.0, 239u);
-
+    auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * M_PI / 180.0, 15.0, 239u);
     PMStokesN3dWaves<N, 5> waveModel(Hs, Tp, dirDist, 0.02, 0.8, 9.81, 239u);
 
     const int N_time = static_cast<int>(duration / dt) + 1;
@@ -537,11 +535,8 @@ static void generatePMStokesDirSpectrumCSV(const std::string& filename,
                                            double Hs, double Tp,
                                            double mean_dir_deg = 0.0,
                                            int N_freq = 256, int N_theta = 72) {
-    auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
-        mean_dir_deg * M_PI / 180.0, 15.0, 239u);
-
-    PMStokesN3dWaves<256, 5> waveModel(
-        Hs, Tp, dirDist, 0.02, 0.8, 9.81, 239u);
+    auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * M_PI / 180.0, 15.0, 239u);
+    PMStokesN3dWaves<256, 5> waveModel(Hs, Tp, dirDist, 0.02, 0.8, 9.81, 239u);
 
     auto freqs = waveModel.frequencies();
     Eigen::MatrixXd E = waveModel.getDirectionalSpectrum(N_theta);
