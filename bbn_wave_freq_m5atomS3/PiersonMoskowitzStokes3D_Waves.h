@@ -331,6 +331,20 @@ private:
             }
         }
 
+        // Add Lagrangian mean Stokes drift (2nd order, steady)
+        // Vector form (deep water): U_s(z) = Σ [ (ω_i k_i a_i²) e^{2 k_i z} ] 𝚑𝚊𝚝{k}_i
+        // This affects Lagrangian velocity (and integrated displacement), but not (instantaneous)
+        // oscillatory acceleration; ∂/∂t of the mean is ~0.
+        if (frame == WaveFrame::Lagrangian) {
+            const Eigen::Array<double, N_FREQ, 1> exp2 = (2.0 * k_.array() * z).exp(); // z=0 → 1
+            const double Usx = (stokes_drift_scalar_.array() * exp2 * dir_x_.array()).sum();
+            const double Usy = (stokes_drift_scalar_.array() * exp2 * dir_y_.array()).sum();
+            state.velocity.x() += Usx;
+            state.velocity.y() += Usy;
+            // (Optional) include mean-drift translation in displacement:
+            // state.displacement.x() += Usx * t;
+            // state.displacement.y() += Usy * t;
+        }
         return state;
     }
 
