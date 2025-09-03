@@ -5,13 +5,13 @@
   Directional Wave Spreading Distributions
   -----------------------------------------
   Implements several common directional spreading functions used in oceanography:
-  - Cosine-2s (cos^{2s} law, frequency-independent)
-  - Mitsuyasu (frequency-dependent cos^{2s(f)} law)
-  - Donelan (frequency-dependent cos^{2s(f)} law, different scaling)
+  - Cosine-2s (cos^(2s) law, frequency-independent)
+  - Mitsuyasu (frequency-dependent cos^(2s(f)) law)
+  - Donelan (frequency-dependent cos^(2s(f)) law, different scaling)
   - Sech² (hyperbolic secant squared)
   - Gaussian (wrapped normal approximation)
 
-  Author: Mikhail Grushinskiy, 2025
+  Copyright: Mikhail Grushinskiy, 2025
 */
 
 #include <random>
@@ -37,17 +37,16 @@ public:
     // --- Theoretical spectrum interface ---
     //
     // Evaluate continuous density D(θ; f), normalized so that:
-    //   ∫_{-π}^{π} D(θ; f) dθ = 1
+    //   ∫ D(θ; f) dθ = 1   over [-π, π]
     //
     // θ in radians, f = frequency [Hz]
     virtual double operator()(double theta, double f) const = 0;
 
     // Return unnormalized discrete weights at frequency f
-    // Subclasses must implement this
     virtual std::vector<double> weights(int M, double f) const = 0;
 
     // Return normalized weights (trapezoidal integration)
-    // Ensures ∑ w_i Δθ ≈ 1
+    // Ensures ∑ wᵢ Δθ ≈ 1
     std::vector<double> normalized_weights(int M, double f) const {
         std::vector<double> w = weights(M, f);
         const double dtheta = 2.0 * PI / M;
@@ -81,7 +80,7 @@ public:
 
 protected:
     // Normalize weights with trapezoidal rule:
-    // ∫ D(θ) dθ ≈ Δθ [0.5 w0 + w1 + ... + wN-2 + 0.5 wN-1]
+    // ∫ D(θ) dθ ≈ Δθ [½w₀ + w₁ + … + wₙ₋₂ + ½wₙ₋₁]
     static void normalize_weights(std::vector<double>& w, double dtheta) {
         if (w.empty()) return;
 
@@ -106,11 +105,12 @@ protected:
 // ===============================================================
 //
 // Formula:
-//   D(θ; s) = C_s · cos^{2s}((θ - θ₀)/2)
+//   D(θ; s) = Cₛ · cos^(2s)((θ − θ₀)/2)
 //
-// where
-//   C_s = Γ(s+0.5) / (√π Γ(s+1))
-//   ∫ D(θ) dθ = 1
+// Normalization constant:
+//   Cₛ = Γ(s+½) / (√π · Γ(s+1))
+//
+// Larger s → narrower directional spreading.
 //
 class Cosine2sRandomizedDistribution : public DirectionalDistribution {
 public:
@@ -126,15 +126,12 @@ public:
     std::vector<double> weights(int M, double f) const override {
         std::vector<double> spread(M);
         const double dtheta = 2.0 * PI / M;
-        for (int m = 0; m < M; ++m) {
+        for (int m = 0; m < M; ++m)
             spread[m] = operator()(-PI + m * dtheta, f);
-        }
         return spread;
     }
 
-    double principal_direction_rad() const override {
-        return mean_dir_rad_;
-    }
+    double principal_direction_rad() const override { return mean_dir_rad_; }
 
     // Monte Carlo rejection sampling
     std::vector<double> sample_directions(int N_freq, double f) override {
@@ -143,14 +140,12 @@ public:
 
         std::vector<double> dirs;
         dirs.reserve(N_freq);
-
         double max_val = operator()(mean_dir_rad_, f);
 
         while (dirs.size() < static_cast<size_t>(N_freq)) {
             double theta = angle(rng_);
-            if (u01(rng_) * max_val <= operator()(theta, f)) {
+            if (u01(rng_) * max_val <= operator()(theta, f))
                 dirs.push_back(theta);
-            }
         }
         return dirs;
     }
@@ -162,11 +157,13 @@ private:
 };
 
 // ===============================================================
-// 2. Mitsuyasu Distribution (Mitsuyasu et al., 1975)
+// 2. Mitsuyasu Distribution (1975)
 // ===============================================================
 //
 // Frequency-dependent spreading exponent:
-//   s(f) = s₀ (f/f₀)^m
+//   s(f) = s₀ (f / f₀)ᵐ
+//
+// With typical m ≈ 5.
 //
 class MitsuyasuDistribution : public DirectionalDistribution {
 public:
@@ -183,9 +180,8 @@ public:
     std::vector<double> weights(int M, double f) const override {
         std::vector<double> spread(M);
         const double dtheta = 2.0 * PI / M;
-        for (int m = 0; m < M; ++m) {
+        for (int m = 0; m < M; ++m)
             spread[m] = operator()(-PI + m * dtheta, f);
-        }
         return spread;
     }
 
@@ -197,14 +193,12 @@ public:
 
         std::vector<double> dirs;
         dirs.reserve(N_freq);
-
         double max_val = operator()(mean_dir_rad_, f);
 
         while (dirs.size() < static_cast<size_t>(N_freq)) {
             double theta = angle(rng_);
-            if (u01(rng_) * max_val <= operator()(theta, f)) {
+            if (u01(rng_) * max_val <= operator()(theta, f))
                 dirs.push_back(theta);
-            }
         }
         return dirs;
     }
@@ -216,12 +210,12 @@ private:
 };
 
 // ===============================================================
-// 3. Donelan Distribution (Donelan et al., 1985)
+// 3. Donelan Distribution (1985)
 // ===============================================================
 //
 // Frequency-dependent spreading exponent:
-//   s(f) = s₀ (f/fp)^2   for f < fp
-//   s(f) = s₀ (f/fp)^(-2) for f ≥ fp
+//   s(f) = s₀ (f / fₚ)²   for f < fₚ
+//   s(f) = s₀ (f / fₚ)⁻²  for f ≥ fₚ
 //
 class DonelanDistribution : public DirectionalDistribution {
 public:
@@ -240,9 +234,8 @@ public:
     std::vector<double> weights(int M, double f) const override {
         std::vector<double> spread(M);
         const double dtheta = 2.0 * PI / M;
-        for (int m = 0; m < M; ++m) {
+        for (int m = 0; m < M; ++m)
             spread[m] = operator()(-PI + m * dtheta, f);
-        }
         return spread;
     }
 
@@ -254,14 +247,12 @@ public:
 
         std::vector<double> dirs;
         dirs.reserve(N_freq);
-
         double max_val = operator()(mean_dir_rad_, f);
 
         while (dirs.size() < static_cast<size_t>(N_freq)) {
             double theta = angle(rng_);
-            if (u01(rng_) * max_val <= operator()(theta, f)) {
+            if (u01(rng_) * max_val <= operator()(theta, f))
                 dirs.push_back(theta);
-            }
         }
         return dirs;
     }
@@ -277,7 +268,7 @@ private:
 // ===============================================================
 //
 // Formula:
-//   D(θ) ∝ sech²(β (θ - θ₀))
+//   D(θ) ∝ sech²(β (θ − θ₀))
 //
 class Sech2Distribution : public DirectionalDistribution {
 public:
@@ -293,9 +284,8 @@ public:
     std::vector<double> weights(int M, double f) const override {
         std::vector<double> spread(M);
         const double dtheta = 2.0 * PI / M;
-        for (int m = 0; m < M; ++m) {
+        for (int m = 0; m < M; ++m)
             spread[m] = operator()(-PI + m * dtheta, f);
-        }
         return spread;
     }
 
@@ -307,14 +297,12 @@ public:
 
         std::vector<double> dirs;
         dirs.reserve(N_freq);
-
         double max_val = operator()(mean_dir_rad_, f);
 
         while (dirs.size() < static_cast<size_t>(N_freq)) {
             double theta = angle(rng_);
-            if (u01(rng_) * max_val <= operator()(theta, f)) {
+            if (u01(rng_) * max_val <= operator()(theta, f))
                 dirs.push_back(theta);
-            }
         }
         return dirs;
     }
@@ -330,7 +318,7 @@ private:
 // ===============================================================
 //
 // Formula:
-//   D(θ) = (1 / (σ √(2π))) exp(-(θ - θ₀)² / (2σ²))
+//   D(θ) = (1 / (σ √(2π))) · exp(−(θ − θ₀)² / (2σ²))
 //
 class GaussianDistribution : public DirectionalDistribution {
 public:
@@ -346,9 +334,8 @@ public:
     std::vector<double> weights(int M, double f) const override {
         std::vector<double> spread(M);
         const double dtheta = 2.0 * PI / M;
-        for (int m = 0; m < M; ++m) {
+        for (int m = 0; m < M; ++m)
             spread[m] = operator()(-PI + m * dtheta, f);
-        }
         return spread;
     }
 
@@ -362,7 +349,7 @@ public:
 
         for (int i = 0; i < N_freq; ++i) {
             double theta = normal(rng_);
-            // wrap into [-π, π]
+            // wrap into [−π, π]
             theta = std::fmod(theta + PI, 2 * PI);
             if (theta < 0) theta += 2 * PI;
             dirs.push_back(theta - PI);
