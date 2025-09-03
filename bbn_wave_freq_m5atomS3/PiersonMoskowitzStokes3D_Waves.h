@@ -248,8 +248,8 @@ public:
         const Eigen::Vector3d g_world(0, 0, -g_);
 
         // IMU specific force: f_body = R_WI * (a_world - g_world).
-        // With g_world = (0,0,-g), this becomes state.acceleration + g_world
-        imu.accel_body = R_WI * (state.acceleration + g_world);
+        // With g_world = (0,0,-g), this becomes state.acceleration - g_world
+        imu.accel_body = R_WI * (state.acceleration - g_world);
 
         // Predict advected position at t+dt for gyro (1-step kinematic extrapolation)
         const double px_next = px + state.velocity.x() * dt;
@@ -285,6 +285,7 @@ public:
         Eigen::Matrix3d R_WI; // world->IMU
         R_WI.row(0) = x_axis.transpose();
         R_WI.row(1) = y_axis.transpose();
+        y_axis.normalize();
         R_WI.row(2) = n.transpose();
         return R_WI;
     }
