@@ -300,8 +300,7 @@ public:
                              - std::lgamma(s_f + 1.0)
                              - 0.5 * std::log(PI));
         double dtheta = theta - mean_dir_rad_;
-        return norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta)),
-                               2.0 * s_f);
+        return norm * stable_pow_cos(std::cos(0.5 * dtheta), 2.0 * s_f);
     }    
 
     std::vector<double> weights(int M, double f) const override {
