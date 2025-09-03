@@ -716,14 +716,20 @@ static void generateWaveJonswapCSV(const std::string& filename,
   const int N_time = static_cast<int>(duration / dt) + 1;
   Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
 
+  Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
+
   Eigen::ArrayXXd accel_body(3, N_time), gyro_body(3, N_time);
   Eigen::ArrayXXd euler_deg(3, N_time); // roll, pitch, yaw (yaw constrained = 0)
 
   for (int i = 0; i < N_time; ++i) {
     double t = time(i);
+    auto state  = waveModel->getSurfaceState(0.0, 0.0, t);
     auto imu = waveModel->getIMUReadings(0.0, 0.0, t);
 
     for (int j = 0; j < 3; ++j) {
+      disp(j, i) = state.displacement(j);
+      vel(j, i)  = state.velocity(j);
+      acc(j, i)  = state.acceleration(j);
       accel_body(j, i) = imu.accel_body(j);
       gyro_body(j, i)  = imu.gyro_body(j);
     }
@@ -744,13 +750,14 @@ static void generateWaveJonswapCSV(const std::string& filename,
   }
 
   std::ofstream file(filename);
-  file << "time,"
-       << "accel_x,accel_y,accel_z,"
-       << "gyro_x,gyro_y,gyro_z,"
-       << "roll_deg,pitch_deg,yaw_deg\n";
+  file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z,"
+       << "accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,roll_deg,pitch_deg,yaw_deg\n";
 
   for (int i = 0; i < N_time; ++i) {
     file << time(i) << ","
+         << disp(0, i) << "," << disp(1, i) << "," << disp(2, i) << ","
+         << vel(0, i)  << "," << vel(1, i)  << "," << vel(2, i)  << ","
+         << acc(0, i)  << "," << acc(1, i)  << "," << acc(2, i)  << ","
          << accel_body(0, i) << "," << accel_body(1, i) << "," << accel_body(2, i) << ","
          << gyro_body(0, i)  << "," << gyro_body(1, i)  << "," << gyro_body(2, i) << ","
          << euler_deg(0, i) << "," << euler_deg(1, i) << "," << euler_deg(2, i) << "\n";
