@@ -178,7 +178,9 @@ public:
 
         initializeRandomPhases();
         initializeDirectionsFromDistribution();
+
         computeWaveDirectionComponents();
+        computePerComponentStokesDriftEstimate();  // Lagrangian mean drift (2nd order)
         checkSteepness();
     }
 
@@ -389,6 +391,9 @@ private:
     // Arrays
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, omega_, k_, A1_, phi_, df_;
     Eigen::Matrix<double, N_FREQ, 1> dir_x_, dir_y_, kx_, ky_;
+
+    // Per-component deep-water Stokes drift scalar (surface): U_s0,i = ω_i k_i a_i²
+    Eigen::Matrix<double, N_FREQ, 1> stokes_drift_scalar_;
 };
 
 #ifdef PM_STOKES_TEST
