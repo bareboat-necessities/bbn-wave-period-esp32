@@ -12,6 +12,8 @@
 
 #ifndef PI
 static constexpr double PI = 3.14159265358979323846264338327950288;
+#else
+static constexpr double PI = M_PI;
 #endif
 
 // Directional Distribution Interface
