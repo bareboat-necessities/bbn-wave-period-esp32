@@ -214,7 +214,7 @@ public:
     }
 
     std::vector<double> weights(int M, double f) const override {
-        return cosine2s_weights(M, f, s_);
+        return cosine2s_weights(M, f, s_, mean_dir_rad_);
     }
 
     double principal_direction_rad() const override { return mean_dir_rad_; }
@@ -266,7 +266,7 @@ public:
 
     std::vector<double> weights(int M, double f) const override {
         double s_f = s0_ * std::pow(f / f0_, m_);
-        return cosine2s_weights(M, f, s_f);
+        return cosine2s_weights(M, f, s_f, mean_dir_rad_);
     }
 
     double principal_direction_rad() const override { return mean_dir_rad_; }
@@ -321,7 +321,7 @@ public:
         double ratio = f / fp_;
         double s_f = (f < fp_) ? s0_ * std::pow(ratio, 2.0)
                                : s0_ * std::pow(ratio, -2.0);
-        return cosine2s_weights(M, f, s_f);
+        return cosine2s_weights(M, f, s_f, mean_dir_rad_);
     }
 
     double principal_direction_rad() const override { return mean_dir_rad_; }
