@@ -299,12 +299,16 @@ private:
 #include <fstream>
 #include <string>
 
-void generateWavePMStokesCSV(const std::string& filename,
-                             double Hs, double Tp, double mean_dir_deg,
-                             double duration = 40.0, double dt = 0.005) {
-    
+// CSV generator for testing Pierson–Moskowitz Stokes waves
+static void generateWavePMStokesCSV(const std::string& filename,
+                                    double Hs, double Tp, double mean_dir_deg,
+                                    double duration = 40.0, double dt = 0.005) {
+    // Use a cosine-2s directional distribution by default
+    auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
+        mean_dir_deg * M_PI / 180.0, 15.0, 239u);
+
     PMStokesN3dWaves<256, 5> waveModel(
-        Hs, Tp, mean_dir_deg, 0.02, 0.8, 9.81, 15.0, 239u
+        Hs, Tp, dirDist, 0.02, 0.8, 9.81, 239u
     );
 
     std::ofstream file(filename);
@@ -317,18 +321,19 @@ void generateWavePMStokesCSV(const std::string& filename,
              << state.displacement.x() << ","
              << state.displacement.y() << ","
              << state.displacement.z() << ","
-             << state.velocity.x() << ","
-             << state.velocity.y() << ","
-             << state.velocity.z() << ","
+             << state.velocity.x()     << ","
+             << state.velocity.y()     << ","
+             << state.velocity.z()     << ","
              << state.acceleration.x() << ","
              << state.acceleration.y() << ","
              << state.acceleration.z() << "\n";
     }
 }
 
-void PMStokes_testWavePatterns() {
-    generateWavePMStokesCSV("short_pms_waves.csv", 0.5, 3.0, 30.0);
-    generateWavePMStokesCSV("medium_pms_waves.csv", 2.0, 7.0, 30.0);
-    generateWavePMStokesCSV("long_pms_waves.csv", 7.4, 14.3, 30.0);
+// Batch generator for typical PM test cases
+static void PMStokes_testWavePatterns() {
+    generateWavePMStokesCSV("short_pms_waves.csv",  0.5,  3.0, 30.0);
+    generateWavePMStokesCSV("medium_pms_waves.csv", 2.0,  7.0, 30.0);
+    generateWavePMStokesCSV("long_pms_waves.csv",   7.4, 14.3, 30.0);
 }
 #endif
