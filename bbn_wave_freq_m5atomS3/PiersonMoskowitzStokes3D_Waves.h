@@ -112,6 +112,21 @@ private:
 };
 
 // PMStokesN3dWaves
+// PMStokesN3dWaves
+//
+// Stochastic linear combination of Stokes-N harmonics (deep water) driven
+// by a Pierson–Moskowitz spectrum.
+//
+// ORDER: 1..5 (number of Stokes terms)
+//
+// WaveState reports particle kinematics in global Cartesian coordinates:
+//   displacement = [x, y, z]  (meters)
+//   velocity     = [u, v, w]  (m/s)
+//   acceleration = [ax, ay, az] (m/s²)
+//
+// Horizontal and vertical components included.
+// Eulerian fields at depth z ≤ 0: harmonics multiplied by exp(k z).
+//
 template<int N_FREQ = 256, int ORDER = 5>
 class EIGEN_ALIGN_MAX PMStokesN3dWaves {
     static_assert(ORDER >= 1 && ORDER <= 5, "ORDER supported range is 1..5");
@@ -123,21 +138,23 @@ public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         Eigen::Vector3d displacement;  // [x, y, z] meters
         Eigen::Vector3d velocity;      // [u, v, w] m/s
-        Eigen::Vector3d acceleration;  // [ax, ay, az] m/s^2
+        Eigen::Vector3d acceleration;  // [ax, ay, az] m/s²
     };
 
     PMStokesN3dWaves(double Hs, double Tp,
-                     double mean_direction_deg = 0.0,
+                     std::shared_ptr<DirectionalDistribution> dirDist,
                      double f_min = 0.02,
                      double f_max = 0.8,
                      double g = 9.81,
-                     double spreading_exponent = 15.0,
                      unsigned int seed = 239u)
         : spectrum_(Hs, Tp, f_min, f_max, g),
-          Hs_(Hs), Tp_(Tp),
-          mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
-          g_(g), spreading_exponent_(spreading_exponent), seed_(seed)
+          Hs_(Hs), Tp_(Tp), g_(g), seed_(seed),
+          directional_dist_(std::move(dirDist))
     {
+        if (!directional_dist_) {
+            throw std::runtime_error("DirectionalDistribution must not be null");
+        }
+
         frequencies_ = spectrum_.frequencies();
         A1_          = spectrum_.amplitudes();
         df_          = spectrum_.df();
@@ -150,12 +167,12 @@ public:
         kx_.setZero(); ky_.setZero();
 
         initializeRandomPhases();
-        initializeDirectionalSpreadRejection();
+        initializeDirectionsFromDistribution();
         computeWaveDirectionComponents();
         checkSteepness();
     }
 
-    // Lagrangian particle at surface (x0=y0=0)
+    // Lagrangian particle at surface (x₀ = y₀ = 0)
     WaveState getLagrangianState(double t) const {
         return computeWaveState(0.0, 0.0, 0.0, t, WaveFrame::Lagrangian);
     }
@@ -179,26 +196,36 @@ private:
             const double k_val = k_(i);
             const double w_val = omega_(i);
             const double ka    = k_val * A1_(i);
+
+            // θᵢ(x,y,t) = kₓᵢ x + k_yᵢ y − ωᵢ t + φᵢ
             const double theta = kx_(i) * x + ky_(i) * y - w_val * t + phi_(i);
 
             for (int n = 1; n <= ORDER; ++n) {
+                // Stokes coefficient: cₙ = ctable[n] · A₁ · (k a)^(n−1)
                 const double cn = stokesCoeff(n) * A1_(i) * std::pow(ka, n - 1);
                 const double arg = n * theta;
-                const double depthFactor = (frame == WaveFrame::Eulerian) ? std::exp(n * k_val * z) : 1.0;
+                const double depthFactor = (frame == WaveFrame::Eulerian)
+                    ? std::exp(n * k_val * z) : 1.0;
 
+                // --- Displacement ---
                 if (frame == WaveFrame::Lagrangian) {
                     state.displacement.x() += -cn * std::cos(arg) * dir_x_(i);
                     state.displacement.y() += -cn * std::cos(arg) * dir_y_(i);
                     state.displacement.z() +=  cn * std::sin(arg);
                 } else {
-                    state.displacement.z() += cn * std::sin(arg);
+                    // Eulerian: only vertical displacement relevant
+                    state.displacement.z() += cn * std::sin(arg) * depthFactor;
                 }
 
+                // --- Velocity ---
+                // u,v = n ω cₙ sin(arg) dir;  w = n ω cₙ cos(arg)
                 const double velFactor = n * w_val * cn * depthFactor;
                 state.velocity.x() += velFactor * std::sin(arg) * dir_x_(i);
                 state.velocity.y() += velFactor * std::sin(arg) * dir_y_(i);
                 state.velocity.z() += velFactor * std::cos(arg);
 
+                // --- Acceleration ---
+                // aₓ,a_y = n² ω² cₙ cos(arg) dir;  a_z = −n² ω² cₙ sin(arg)
                 const double accFactor = n * n * w_val * w_val * cn * depthFactor;
                 state.acceleration.x() += accFactor * std::cos(arg) * dir_x_(i);
                 state.acceleration.y() += accFactor * std::cos(arg) * dir_y_(i);
@@ -209,6 +236,14 @@ private:
         return state;
     }
 
+    // Stokes coefficients for expansion order n
+    //
+    // c₁ = 1
+    // c₂ = 1/2
+    // c₃ = 3/8
+    // c₄ = 1/3
+    // c₅ = 125/384
+    //
     static double stokesCoeff(int n) {
         static const double c[6] = {0.0, 1.0, 0.5, 3.0/8.0, 1.0/3.0, 125.0/384.0};
         return (n >= 1 && n <= 5) ? c[n] : 0.0;
@@ -220,21 +255,14 @@ private:
         for (int i = 0; i < N_FREQ; ++i) phi_(i) = dist(gen);
     }
 
-    void initializeDirectionalSpreadRejection() {
-        std::mt19937 gen(seed_ + 1);
-        std::uniform_real_distribution<double> u_dist(0.0, 2.0 * M_PI);
-        std::uniform_real_distribution<double> y_dist(0.0, 1.0);
-
+    // Initialize directions from active directional distribution
+    void initializeDirectionsFromDistribution() {
+        auto dirs = directional_dist_->sample_directions_for_frequencies(
+            std::vector<double>(spectrum_.frequencies().data(),
+                                spectrum_.frequencies().data() + N_FREQ));
         for (int i = 0; i < N_FREQ; ++i) {
-            double theta = 0.0;
-            while (true) {
-                double candidate = u_dist(gen);
-                double base = std::cos(candidate - mean_dir_rad_);
-                double pdf_val = std::pow(std::clamp(base, 0.0, 1.0), spreading_exponent_);
-                if (y_dist(gen) <= pdf_val) { theta = candidate; break; }
-            }
-            dir_x_(i) = std::cos(theta);
-            dir_y_(i) = std::sin(theta);
+            dir_x_(i) = std::cos(dirs[i]);
+            dir_y_(i) = std::sin(dirs[i]);
         }
     }
 
@@ -246,17 +274,21 @@ private:
     }
 
     void checkSteepness() const {
+        // max steepness k a ≤ ~0.20 for validity of Stokes expansion
         const double max_ka = (A1_.array() * k_.array()).maxCoeff();
         if (max_ka > 0.20)
-            throw std::runtime_error("Stokes: max steepness k*a exceeds ~0.2 (validity warning)");
+            throw std::runtime_error("Stokes: max steepness k·a exceeds ~0.20 (validity warning)");
     }
 
     // Spectrum
     PiersonMoskowitzSpectrum<N_FREQ> spectrum_;
 
     // Parameters
-    double Hs_, Tp_, mean_dir_rad_, g_, spreading_exponent_;
+    double Hs_, Tp_, g_;
     unsigned int seed_;
+
+    // Directional distribution
+    std::shared_ptr<DirectionalDistribution> directional_dist_;
 
     // Arrays
     Eigen::Matrix<double, N_FREQ, 1> frequencies_, omega_, k_, A1_, phi_, df_;
