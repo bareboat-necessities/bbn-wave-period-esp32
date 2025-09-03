@@ -466,9 +466,7 @@ public:
         for (int i = 0; i < N_freq; ++i) {
             double theta = normal(rng_);
             // wrap into [−π, π]
-            theta = std::fmod(theta + PI, 2 * PI);
-            if (theta < 0) theta += 2 * PI;
-            dirs.push_back(theta - PI);
+            dirs.push_back(wrap_to_pi(theta));
         }
         return dirs;
     }
@@ -483,9 +481,7 @@ public:
 
         for (size_t i = 0; i < freqs.size(); ++i) {
             double theta = normal(rng_);
-            theta = std::fmod(theta + PI, 2 * PI);
-            if (theta < 0) theta += 2 * PI;
-            dirs.push_back(theta - PI);
+            dirs.push_back(wrap_to_pi(theta));
         }
         return dirs;
     }
