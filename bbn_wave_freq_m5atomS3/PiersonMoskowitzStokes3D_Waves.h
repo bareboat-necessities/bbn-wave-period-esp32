@@ -221,6 +221,15 @@ public:
     }
 
     // IMU readings at (x,y,t,z), consistent with ORDER Stokes slopes
+    // - Lagrangian mode (default in getIMUReadings) → free-floating buoy that follows
+    //   the water surface particle. Acceleration = particle acceleration + gravity.
+    //   Slopes define orientation (local wave-following frame).
+    // - Eulerian mode (via getEulerianState) → fixed sensor at given (x,y,z),
+    //   e.g. mounted on a mooring or pier. Acceleration/velocity/displacement include
+    //   exp(n k z) depth decay factors, orientation not wave-following.
+    //
+    // By design, getIMUReadings() uses the Lagrangian surface case, consistent with
+    // a buoy-mounted IMU.
     IMUReadingsBody getIMUReadings(double x, double y, double t, double z = 0.0,
                                    double dt = 1e-3) const {
         IMUReadingsBody imu;
