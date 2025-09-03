@@ -331,15 +331,7 @@ public:
         dirs.reserve(freqs.size());
 
         for (double f : freqs) {
-            // compute s(f)
-            double ratio = f / fp_;
-            double s_f = (f < fp_) ? s0_ * std::pow(ratio, 2.0)
-                                   : s0_ * std::pow(ratio, -2.0);
-
-            // normalization at θ = θ₀
-            double max_val = operator()(mean_dir_rad_, f);
-
-            // rejection sample one θ
+            double max_val = operator()(mean_dir_rad_, f); // peak at θ₀
             while (true) {
                 double theta = angle(rng_);
                 if (u01(rng_) * max_val <= operator()(theta, f)) {
