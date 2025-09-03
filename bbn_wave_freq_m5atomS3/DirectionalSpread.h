@@ -109,6 +109,19 @@ protected:
             }
         }
     }
+
+    // Wrap an angle into [-π, π]
+    static double wrap_to_pi(double theta) noexcept {
+        theta = std::fmod(theta + PI, 2.0 * PI);
+        if (theta < 0.0) theta += 2.0 * PI;
+        return theta - PI;
+    }
+
+    // Numerically stable cos^(exp) for cosval ∈ [−1, 1]
+    static double stable_pow_cos(double cosval, double exp) noexcept {
+        if (cosval <= 0.0) return 0.0;
+        return std::exp(exp * std::log(cosval));
+    }
 };
 
 // Cosine-2s Distribution
