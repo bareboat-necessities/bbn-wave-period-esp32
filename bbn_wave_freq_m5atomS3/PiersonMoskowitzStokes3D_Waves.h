@@ -29,6 +29,11 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+struct IMUReadingsBody {
+    Eigen::Vector3d accel_body;  // linear acceleration in IMU frame
+    Eigen::Vector3d gyro_body;   // angular velocity in IMU frame (rad/s)
+};
+
 template<int N_FREQ = 256>
 class EIGEN_ALIGN_MAX PiersonMoskowitzSpectrum {
 public:
