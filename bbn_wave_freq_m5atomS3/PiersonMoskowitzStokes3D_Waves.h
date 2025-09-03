@@ -233,25 +233,32 @@ public:
                                    double dt = 1e-3) const {
         IMUReadingsBody imu;
 
-        // Use Lagrangian kinematics (consistent with a surface-following IMU)
-        // Note: we can call the private core directly to pass (x,y) too.
-        auto state  = computeWaveState(x, y, /*z ignored in Lagrangian*/ 0.0, t, WaveFrame::Lagrangian);
+        // Lagrangian particle state (includes Stokes drift in velocity, linear drift in disp)
+        auto state = computeWaveState(x, y, /*z ignored in Lagrangian*/ 0.0, t, WaveFrame::Lagrangian);
 
-        // Orientation from ORDER-consistent slopes at the surface
-        auto slopes = getSurfaceSlopes(x, y, t);
-        Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
+        // Advected surface position for slope/orientation (buoy location)
+        const double px = x + state.displacement.x();
+        const double py = y + state.displacement.y();
 
-        // Gravity in world
-        Eigen::Vector3d g_world(0, 0, -g_);
+        // Orientation from ORDER-consistent slopes at the *advected* position
+        const auto slopes = getSurfaceSlopes(px, py, t);
+        const Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
+
+        // World gravity + particle acceleration → body-frame accelerometer
+        const Eigen::Vector3d g_world(0, 0, -g_);
         imu.accel_body = R_WI * (state.acceleration + g_world);
 
-        // Gyro from orientation finite-difference
-        auto slopes_next = getSurfaceSlopes(x, y, t + dt);
-        Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
-        Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
+        // Predict advected position at t+dt for gyro (1-step kinematic extrapolation)
+        const double px_next = px + state.velocity.x() * dt;
+        const double py_next = py + state.velocity.y() * dt;
 
-        Eigen::Matrix3d dR = (R2 - R1) / dt;
-        Eigen::Matrix3d Omega = dR * R1.transpose();
+        // Orientation finite-difference → body gyro
+        const auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
+        const Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
+        const Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
+
+        const Eigen::Matrix3d dR = (R2 - R1) / dt;
+        const Eigen::Matrix3d Omega = dR * R1.transpose();  // ~ skew(ω)
 
         imu.gyro_body = Eigen::Vector3d(Omega(2,1), Omega(0,2), Omega(1,0));
         return imu;
