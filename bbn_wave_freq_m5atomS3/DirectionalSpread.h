@@ -312,42 +312,19 @@ public:
     double principal_direction_rad() const override { return mean_dir_rad_; }
 
     std::vector<double> sample_directions(int N_freq, double f) override {
-        std::uniform_real_distribution<double> angle(-PI, PI);
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
-
-        std::vector<double> dirs;
-        dirs.reserve(N_freq);
         double max_val = operator()(mean_dir_rad_, f);
-
-        while (dirs.size() < static_cast<size_t>(N_freq)) {
-            double theta = angle(rng_);
-            if (u01(rng_) * max_val <= operator()(theta, f))
-                dirs.push_back(theta);
-        }
-        return dirs;
+        return rejection_sample_generic(N_freq, f, max_val, *this, rng_);
     }
 
     std::vector<double> sample_directions_for_frequencies(
         const std::vector<double>& freqs) override 
     {
-        std::uniform_real_distribution<double> angle(-PI, PI);
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
-
         std::vector<double> dirs;
         dirs.reserve(freqs.size());
-
-        // peak of PDF is always at θ₀
-        double max_val = operator()(mean_dir_rad_, 0.0);
-
+        double max_val = operator()(mean_dir_rad_, 0.0); // peak always at θ₀
         for (double f : freqs) {
-            (void)f; // frequency argument not used, but keeps interface consistent
-            while (true) {
-                double theta = angle(rng_);
-                if (u01(rng_) * max_val <= operator()(theta, f)) {
-                    dirs.push_back(theta);
-                    break;
-                }
-            }
+            auto one = rejection_sample_generic(1, f, max_val, *this, rng_);
+            dirs.push_back(one[0]);
         }
         return dirs;
     }
@@ -386,30 +363,17 @@ public:
     double principal_direction_rad() const override { return mean_dir_rad_; }
 
     std::vector<double> sample_directions(int N_freq, double f) override {
-        std::normal_distribution<double> normal(mean_dir_rad_, sigma_);
-
-        std::vector<double> dirs;
-        dirs.reserve(N_freq);
-
-        for (int i = 0; i < N_freq; ++i) {
-            double theta = normal(rng_);
-            // wrap into [−π, π]
-            dirs.push_back(wrap_to_pi(theta));
-        }
-        return dirs;
+        return gaussian_sample(N_freq, mean_dir_rad_, sigma_, rng_);
     }
 
     std::vector<double> sample_directions_for_frequencies(
         const std::vector<double>& freqs) override 
     {
-        std::normal_distribution<double> normal(mean_dir_rad_, sigma_);
-
         std::vector<double> dirs;
         dirs.reserve(freqs.size());
-
         for (size_t i = 0; i < freqs.size(); ++i) {
-            double theta = normal(rng_);
-            dirs.push_back(wrap_to_pi(theta));
+            auto one = gaussian_sample(1, mean_dir_rad_, sigma_, rng_);
+            dirs.push_back(one[0]);
         }
         return dirs;
     }
