@@ -550,7 +550,9 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
 
     // Initialize directions using the active distribution
     void initializeDirectionsFromDistribution() {
-        auto dirs = directional_dist_->sample_directions(N_FREQ);
+        auto dirs = directional_dist_->sample_directions_for_frequencies(
+            std::vector<double>(spectrum_.frequencies().data(),
+                                spectrum_.frequencies().data() + N_FREQ));
         for (int i = 0; i < N_FREQ; ++i) {
             dir_x_(i) = std::cos(dirs[i]);
             dir_y_(i) = std::sin(dirs[i]);
