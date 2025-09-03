@@ -502,10 +502,10 @@ static void generateWavePMStokesCSV(const std::string& filename,
 }
 
 // Export PM directional spectrum to CSV, aligned with Jonswap3dStokesWaves
-static void exportDirectionalSpectrumCSV(const std::string& filename,
-                                         double Hs, double Tp,
-                                         double mean_dir_deg = 0.0,
-                                         int N_freq = 256, int N_theta = 72) {
+static void generatePMStokesDirSpectrumCSV(const std::string& filename,
+                                           double Hs, double Tp,
+                                           double mean_dir_deg = 0.0,
+                                           int N_freq = 256, int N_theta = 72) {
     auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
         mean_dir_deg * M_PI / 180.0, 15.0, 239u);
 
@@ -529,9 +529,9 @@ static void exportDirectionalSpectrumCSV(const std::string& filename,
 
 // Batch generator for directional spectra
 static void PMStokes_testWaveSpectrum() {
-    exportDirectionalSpectrumCSV("short_pms_spectrum.csv",  0.5,  3.0, 30.0);
-    exportDirectionalSpectrumCSV("medium_pms_spectrum.csv", 2.0,  7.0, 30.0);
-    exportDirectionalSpectrumCSV("long_pms_spectrum.csv",   7.4, 14.3, 30.0);
+    generatePMStokesDirSpectrumCSV("short_pms_spectrum.csv",  0.5,  3.0, 30.0);
+    generatePMStokesDirSpectrumCSV("medium_pms_spectrum.csv", 2.0,  7.0, 30.0);
+    generatePMStokesDirSpectrumCSV("long_pms_spectrum.csv",   7.4, 14.3, 30.0);
 }
 
 // Batch generator
