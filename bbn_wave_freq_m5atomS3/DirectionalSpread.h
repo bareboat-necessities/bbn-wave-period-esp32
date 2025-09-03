@@ -129,6 +129,44 @@ protected:
                       - 0.5 * std::log(PI)
                       - std::log(2.0));
     }
+
+    // Generic rejection sampler for any distribution
+    // Requires max_val ≥ maxθ D(θ; f)
+    template<typename Dist>
+    static std::vector<double> rejection_sample_generic(
+        int N, double f, double max_val,
+        const Dist& dist, std::mt19937& rng)
+    {
+        std::uniform_real_distribution<double> angle(-PI, PI);
+        std::uniform_real_distribution<double> u01(0.0, 1.0);
+
+        std::vector<double> dirs;
+        dirs.reserve(N);
+
+        while (dirs.size() < static_cast<size_t>(N)) {
+            double theta = angle(rng);
+            if (u01(rng) * max_val <= dist(theta, f)) {
+                dirs.push_back(theta);
+            }
+        }
+        return dirs;
+    }
+
+    // Gaussian sampler with wrapping into [−π, π]
+    static std::vector<double> gaussian_sample(
+        int N, double mean, double sigma, std::mt19937& rng)
+    {
+        std::normal_distribution<double> normal(mean, sigma);
+
+        std::vector<double> dirs;
+        dirs.reserve(N);
+
+        for (int i = 0; i < N; ++i) {
+            double theta = normal(rng);
+            dirs.push_back(wrap_to_pi(theta));
+        }
+        return dirs;
+    }
 };
 
 // Cosine-2s Distribution
