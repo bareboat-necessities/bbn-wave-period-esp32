@@ -3,7 +3,7 @@
 
 /*
   Directional Wave Spreading Distributions
-  -----------------------------------------
+
   Implements several common directional spreading functions used in oceanography:
   - Cosine-2s (cos^(2s) law, frequency-independent)
   - Mitsuyasu (frequency-dependent cos^(2s(f)) law)
@@ -27,14 +27,12 @@ static constexpr double PI = 3.14159265358979323846264338327950288;
 static constexpr double PI = M_PI;
 #endif
 
-// ===============================================================
 // Base class for directional distributions
-// ===============================================================
 class DirectionalDistribution {
 public:
     virtual ~DirectionalDistribution() = default;
 
-    // --- Theoretical spectrum interface ---
+    // Theoretical spectrum interface
     //
     // Evaluate continuous density D(θ; f), normalized so that:
     //   ∫ D(θ; f) dθ = 1   over [-π, π]
@@ -72,7 +70,7 @@ public:
     // Principal (mean) direction [rad]
     virtual double principal_direction_rad() const = 0;
 
-    // --- Realization interface ---
+    // Realization interface
     // Default: all samples go in principal direction
     virtual std::vector<double> sample_directions(int N_freq, double f) {
         return std::vector<double>(N_freq, principal_direction_rad());
@@ -100,9 +98,7 @@ protected:
     }
 };
 
-// ===============================================================
-// 1. Cosine-2s Distribution
-// ===============================================================
+// Cosine-2s Distribution
 //
 // Formula:
 //   D(θ; s) = Cₛ · cos^(2s)((θ − θ₀)/2)
@@ -156,9 +152,7 @@ private:
     mutable std::mt19937 rng_;
 };
 
-// ===============================================================
-// 2. Mitsuyasu Distribution (1975)
-// ===============================================================
+// Mitsuyasu Distribution (1975)
 //
 // Frequency-dependent spreading exponent:
 //   s(f) = s₀ (f / f₀)ᵐ
@@ -209,9 +203,7 @@ private:
     mutable std::mt19937 rng_;
 };
 
-// ===============================================================
-// 3. Donelan Distribution (1985)
-// ===============================================================
+// Donelan Distribution (1985)
 //
 // Frequency-dependent spreading exponent:
 //   s(f) = s₀ (f / fₚ)²   for f < fₚ
@@ -263,9 +255,7 @@ private:
     mutable std::mt19937 rng_;
 };
 
-// ===============================================================
-// 4. Sech² Distribution (Longuet-Higgins type)
-// ===============================================================
+// Sech² Distribution (Longuet-Higgins type)
 //
 // Formula:
 //   D(θ) ∝ sech²(β (θ − θ₀))
@@ -313,9 +303,7 @@ private:
     mutable std::mt19937 rng_;
 };
 
-// ===============================================================
-// 5. Gaussian Distribution
-// ===============================================================
+// Gaussian Distribution
 //
 // Formula:
 //   D(θ) = (1 / (σ √(2π))) · exp(−(θ − θ₀)² / (2σ²))
