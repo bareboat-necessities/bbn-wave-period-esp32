@@ -311,9 +311,9 @@ private:
                 // Stokes coefficient: cₙ = ctable[n] · A₁ · (k a)^(n−1)
                 const double cn = stokesCoeff(n) * A1_(i) * std::pow(ka, n - 1);
                 const double arg = n * theta;
-                const double depthFactor = (frame == WaveFrame::Eulerian)
-                    ? std::exp(n * k_val * z) : 1.0;
-
+                // Depth decay for both Eulerian and Lagrangian (z ≤ 0)
+                const double depthFactor = std::exp(n * k_val * z);
+                
                 // Displacement
                 if (frame == WaveFrame::Lagrangian) {
                     state.displacement.x() += -cn * std::cos(arg) * dir_x_(i);
