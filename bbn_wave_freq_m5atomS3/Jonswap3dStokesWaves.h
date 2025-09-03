@@ -363,12 +363,12 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     // Directional Spectrum API
     // Compute directional spectrum at a given frequency f and angle θ
     double directionalSpectrumValue(double f, double theta) const {
-      auto &freqs = spectrum_.frequencies();
-      int idx = int(std::lower_bound(freqs.data(), freqs.data() + N_FREQ, f) - freqs.data());
-      if (idx < 0 || idx >= N_FREQ) return 0.0;
+        auto &freqs = spectrum_.frequencies();
+        int idx = int(std::lower_bound(freqs.data(), freqs.data() + N_FREQ, f) - freqs.data());
+        if (idx < 0 || idx >= N_FREQ) return 0.0;
 
-      const double S_f = spectrum_.spectrum()(idx);
-      return S_f * (*directional_dist_)(theta, f);
+        const double S_f = spectrum_.spectrum()(idx);
+        return S_f * (*directional_dist_)(theta, f);
     }
 
     // Discrete directional spectrum, size N_FREQ × M
