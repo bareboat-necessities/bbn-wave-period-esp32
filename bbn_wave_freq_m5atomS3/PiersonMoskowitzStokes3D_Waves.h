@@ -13,6 +13,8 @@
 #include <memory>
 #include <vector>
 
+#include "DirectionalSpread.h"
+
 /*
   - Stochastic linear combination of Stokes-N harmonics (deep water) driven
     by a Pierson–Moskowitz spectrum.
