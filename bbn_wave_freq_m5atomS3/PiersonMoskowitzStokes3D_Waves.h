@@ -252,15 +252,16 @@ public:
         const double px_next = px + state.velocity.x() * dt;
         const double py_next = py + state.velocity.y() * dt;
 
-        // Orientation finite-difference → body gyro
-        const auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
-        const Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
-        const Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
+        // Gyro from orientation finite-difference
+        auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
+        Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
+        Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
 
-        const Eigen::Matrix3d dR = (R2 - R1) / dt;
-        const Eigen::Matrix3d Omega = dR * R1.transpose();  // ~ skew(ω)
+        Eigen::Matrix3d dR = (R2 - R1) / dt;
+        Eigen::Matrix3d Omega = dR * R1.transpose();
+        Eigen::Matrix3d S = 0.5 * (Omega - Omega.transpose()); // enforce skew-symmetry
 
-        imu.gyro_body = Eigen::Vector3d(Omega(2,1), Omega(0,2), Omega(1,0));
+        imu.gyro_body = Eigen::Vector3d(S(2,1), S(0,2), S(1,0));
         return imu;
     }
 
