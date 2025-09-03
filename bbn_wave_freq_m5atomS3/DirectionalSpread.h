@@ -391,6 +391,23 @@ public:
         return dirs;
     }
 
+    std::vector<double> sample_directions_for_frequencies(
+        const std::vector<double>& freqs) override 
+    {
+        std::normal_distribution<double> normal(mean_dir_rad_, sigma_);
+
+        std::vector<double> dirs;
+        dirs.reserve(freqs.size());
+
+        for (size_t i = 0; i < freqs.size(); ++i) {
+            double theta = normal(rng_);
+            theta = std::fmod(theta + PI, 2 * PI);
+            if (theta < 0) theta += 2 * PI;
+            dirs.push_back(theta - PI);
+        }
+        return dirs;
+    }
+
 private:
     double mean_dir_rad_;
     double sigma_;
