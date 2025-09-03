@@ -368,6 +368,7 @@ public:
         : mean_dir_rad_(mean_dir_rad), beta_(beta), rng_(seed) {}
 
     double operator()(double theta, double f) const override {
+        (void)f; // frequency not used, keeps interface consistent
         double dtheta = theta - mean_dir_rad_;
         double val = 1.0 / std::cosh(beta_ * dtheta);
         return 0.5 * beta_ * val * val;  // normalized form
@@ -418,6 +419,7 @@ public:
         : mean_dir_rad_(mean_dir_rad), sigma_(sigma), rng_(seed) {}
 
     double operator()(double theta, double f) const override {
+        (void)f; // frequency not used, keeps interface consistent
         double dtheta = theta - mean_dir_rad_;
         double norm = 1.0 / (sigma_ * std::sqrt(2.0 * PI));
         return norm * std::exp(-0.5 * (dtheta / sigma_)
