@@ -162,6 +162,29 @@ public:
         return dirs;
     }
 
+    std::vector<double> sample_directions_for_frequencies(
+        const std::vector<double>& freqs) override 
+    {
+        std::uniform_real_distribution<double> angle(-PI, PI);
+        std::uniform_real_distribution<double> u01(0.0, 1.0);
+
+        std::vector<double> dirs;
+        dirs.reserve(freqs.size());
+
+        double max_val = operator()(mean_dir_rad_, 0.0); // independent of f
+
+        for (size_t i = 0; i < freqs.size(); ++i) {
+            while (true) {
+                double theta = angle(rng_);
+                if (u01(rng_) * max_val <= operator()(theta, freqs[i])) {
+                    dirs.push_back(theta);
+                    break;
+                }
+            }
+        }
+        return dirs;
+    }
+
 private:
     double mean_dir_rad_;
     double s_;
