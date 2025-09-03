@@ -197,7 +197,8 @@ public:
 
     // Monte Carlo rejection sampling
     std::vector<double> sample_directions(int N_freq, double f) override {
-        return cosine2s_sample(N_freq, f, s_, rng_);
+        double max_val = cosine2s_norm(s_); // peak at θ₀, cos(0)=1
+        return rejection_sample_generic(N_freq, f, max_val, *this, rng_);
     }
 
     std::vector<double> sample_directions_for_frequencies(
@@ -205,8 +206,11 @@ public:
     {
         std::vector<double> dirs;
         dirs.reserve(freqs.size());
+
+        // peak at θ₀ is frequency-independent for cosine-2s
+        double max_val = cosine2s_norm(s_);
         for (double f : freqs) {
-            auto one = cosine2s_sample(1, f, s_, rng_);
+            auto one = rejection_sample_generic(1, f, max_val, *this, rng_);
             dirs.push_back(one[0]);
         }
         return dirs;
@@ -245,7 +249,8 @@ public:
 
     std::vector<double> sample_directions(int N_freq, double f) override {
         double s_f = s0_ * std::pow(f / f0_, m_);
-        return cosine2s_sample(N_freq, f, s_f, rng_);
+        double max_val = cosine2s_norm(s_f); // peak at θ₀
+        return rejection_sample_generic(N_freq, f, max_val, *this, rng_);
     }
 
     std::vector<double> sample_directions_for_frequencies(
@@ -253,9 +258,11 @@ public:
     {
         std::vector<double> dirs;
         dirs.reserve(freqs.size());
+
         for (double f : freqs) {
             double s_f = s0_ * std::pow(f / f0_, m_);
-            auto one = cosine2s_sample(1, f, s_f, rng_);
+            double max_val = cosine2s_norm(s_f);
+            auto one = rejection_sample_generic(1, f, max_val, *this, rng_);
             dirs.push_back(one[0]);
         }
         return dirs;
@@ -299,7 +306,8 @@ public:
         double ratio = f / fp_;
         double s_f = (f < fp_) ? s0_ * std::pow(ratio, 2.0)
                                : s0_ * std::pow(ratio, -2.0);
-        return cosine2s_sample(N_freq, f, s_f, rng_);
+        double max_val = cosine2s_norm(s_f); // peak at θ₀
+        return rejection_sample_generic(N_freq, f, max_val, *this, rng_);
     }
 
     std::vector<double> sample_directions_for_frequencies(
@@ -307,11 +315,13 @@ public:
     {
         std::vector<double> dirs;
         dirs.reserve(freqs.size());
+
         for (double f : freqs) {
             double ratio = f / fp_;
             double s_f = (f < fp_) ? s0_ * std::pow(ratio, 2.0)
                                    : s0_ * std::pow(ratio, -2.0);
-            auto one = cosine2s_sample(1, f, s_f, rng_);
+            double max_val = cosine2s_norm(s_f);
+            auto one = rejection_sample_generic(1, f, max_val, *this, rng_);
             dirs.push_back(one[0]);
         }
         return dirs;
