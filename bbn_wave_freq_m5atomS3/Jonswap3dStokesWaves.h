@@ -647,7 +647,7 @@ static void generateWaveJonswapCSV(const std::string& filename,
 
   for (int i = 0; i < N_time; ++i) {
     double t = time(i);
-    auto state  = waveModel->getSurfaceState(0.0, 0.0, t);
+    auto state  = waveModel->getLagrangianState(0.0, 0.0, t, 0.0);
     auto imu = waveModel->getIMUReadings(0.0, 0.0, t);
 
     for (int j = 0; j < 3; ++j) {
