@@ -261,7 +261,7 @@ public:
         Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);   // W->B at t+dt
 
         // Relative rotation expressed in body(t): Rdelta = R1 * R2ᵀ
-        Eigen::Matrix3d Rdelta = R1.transpose * R2();
+        Eigen::Matrix3d Rdelta = R1.transpose() * R2;
         Eigen::AngleAxisd aa(Rdelta);
 
         // Angular velocity in IMU/body frame at time t
