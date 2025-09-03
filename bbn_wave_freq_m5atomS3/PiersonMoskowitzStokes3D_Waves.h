@@ -246,6 +246,9 @@ public:
 
         // World gravity + particle acceleration → body-frame accelerometer
         const Eigen::Vector3d g_world(0, 0, -g_);
+
+        // IMU specific force: f_body = R_WI * (a_world - g_world).
+        // With g_world = (0,0,-g), this becomes state.acceleration + g_world
         imu.accel_body = R_WI * (state.acceleration + g_world);
 
         // Predict advected position at t+dt for gyro (1-step kinematic extrapolation)
