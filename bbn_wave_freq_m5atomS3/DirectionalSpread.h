@@ -76,6 +76,19 @@ public:
         return std::vector<double>(N_freq, principal_direction_rad());
     }
 
+    // Convenience: sample one direction per frequency in a batch
+    virtual std::vector<double> sample_directions_for_frequencies(
+        const std::vector<double>& freqs) 
+    {
+        std::vector<double> dirs;
+        dirs.reserve(freqs.size());
+        for (double f : freqs) {
+            auto d = sample_directions(1, f);
+            dirs.push_back(d[0]);
+        }
+        return dirs;
+    }
+
 protected:
     // Normalize weights with trapezoidal rule:
     // ∫ D(θ) dθ ≈ Δθ [½w₀ + w₁ + … + wₙ₋₂ + ½wₙ₋₁]
