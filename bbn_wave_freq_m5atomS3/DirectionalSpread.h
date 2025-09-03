@@ -144,8 +144,7 @@ public:
         double norm = std::exp(std::lgamma(s_ + 0.5)
                              - std::lgamma(s_ + 1.0)
                              - 0.5 * std::log(PI));
-        return norm * std::pow(std::max(0.0, std::cos(0.5 * dtheta)),
-                               2.0 * s_);
+        return norm * stable_pow_cos(std::cos(0.5 * dtheta), 2.0 * s_);
     }
 
     std::vector<double> weights(int M, double f) const override {
