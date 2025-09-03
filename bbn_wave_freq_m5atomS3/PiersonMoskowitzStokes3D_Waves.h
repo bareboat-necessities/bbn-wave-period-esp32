@@ -13,6 +13,11 @@
 #include <memory>
 #include <vector>
 
+#ifdef PM_STOKES_TEST
+#include <iostream>
+#include <fstream>
+#endif
+
 #include "DirectionalSpread.h"
 
 /*
