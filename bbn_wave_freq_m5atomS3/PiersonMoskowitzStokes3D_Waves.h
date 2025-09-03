@@ -225,15 +225,19 @@ public:
                                    double dt = 1e-3) const {
         IMUReadingsBody imu;
 
-        // --- accelerations ---
-        auto state  = getEulerianState(x, y, z, t);
+        // Use Lagrangian kinematics (consistent with a surface-following IMU)
+        // Note: we can call the private core directly to pass (x,y) too.
+        auto state  = computeWaveState(x, y, /*z ignored in Lagrangian*/ 0.0, t, WaveFrame::Lagrangian);
+
+        // Orientation from ORDER-consistent slopes at the surface
         auto slopes = getSurfaceSlopes(x, y, t);
         Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
 
+        // Gravity in world
         Eigen::Vector3d g_world(0, 0, -g_);
         imu.accel_body = R_WI * (state.acceleration + g_world);
 
-        // --- gyro angular velocity ---
+        // Gyro from orientation finite-difference
         auto slopes_next = getSurfaceSlopes(x, y, t + dt);
         Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
         Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
@@ -241,7 +245,6 @@ public:
         Eigen::Matrix3d dR = (R2 - R1) / dt;
         Eigen::Matrix3d Omega = dR * R1.transpose();
 
-        // vee map: skew-symmetric → vector
         imu.gyro_body = Eigen::Vector3d(Omega(2,1), Omega(0,2), Omega(1,0));
         return imu;
     }
