@@ -496,6 +496,39 @@ static void generateWavePMStokesCSV(const std::string& filename,
     }
 }
 
+// Export PM directional spectrum to CSV, aligned with Jonswap3dStokesWaves
+static void exportDirectionalSpectrumCSV(const std::string& filename,
+                                         double Hs, double Tp,
+                                         double mean_dir_deg = 0.0,
+                                         int N_freq = 256, int N_theta = 72) {
+    auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
+        mean_dir_deg * M_PI / 180.0, 15.0, 239u);
+
+    PMStokesN3dWaves<256, 5> waveModel(
+        Hs, Tp, dirDist, 0.02, 0.8, 9.81, 239u);
+
+    auto freqs = waveModel.frequencies();
+    Eigen::MatrixXd E = waveModel.getDirectionalSpectrum(N_theta);
+
+    std::ofstream file(filename);
+    file << "f_Hz,theta_deg,E\n";
+
+    const double dtheta = 360.0 / N_theta;
+    for (int i = 0; i < N_freq; ++i) {
+        for (int m = 0; m < N_theta; ++m) {
+            double theta_deg = -180.0 + m * dtheta;
+            file << freqs(i) << "," << theta_deg << "," << E(i, m) << "\n";
+        }
+    }
+}
+
+// Batch generator for directional spectra
+static void PMStokes_testWaveSpectrum() {
+    exportDirectionalSpectrumCSV("short_pms_spectrum.csv",  0.5,  3.0, 30.0);
+    exportDirectionalSpectrumCSV("medium_pms_spectrum.csv", 2.0,  7.0, 30.0);
+    exportDirectionalSpectrumCSV("long_pms_spectrum.csv",   7.4, 14.3, 30.0);
+}
+
 // Batch generator
 static void PMStokes_testWavePatterns() {
     generateWavePMStokesCSV("short_pms_waves.csv",  0.5,  3.0, 30.0);
