@@ -515,10 +515,9 @@ static void generateWavePMStokesCSV(const std::string& filename,
 
     // CSV output aligned with Jonswap3dStokesWaves
     std::ofstream file(filename);
-    file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,"
-         << "acc_x,acc_y,acc_z,accel_x,accel_y,accel_z,"
-         << "gyro_x,gyro_y,gyro_z,roll_deg,pitch_deg,yaw_deg\n";
-
+    file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z,"
+         << "accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,roll_deg,pitch_deg,yaw_deg\n";
+  
     for (int i = 0; i < N_time; ++i) {
         file << time(i) << ","
              << disp(0, i) << "," << disp(1, i) << "," << disp(2, i) << ","
