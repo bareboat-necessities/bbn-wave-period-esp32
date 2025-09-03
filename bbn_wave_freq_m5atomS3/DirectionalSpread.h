@@ -39,6 +39,14 @@ public:
 };
 
 // Cosine-2s Distribution (default oceanographic spreading)
+// Implements the commonly used directional spreading function in oceanography:
+//
+//   D(θ; θ₀, s) = C_s · cos^(2s) ((θ - θ₀)/2),   for |θ - θ₀| ≤ π
+//
+// where θ₀ is the mean (principal) direction and s ≥ 0 is the spreading parameter.
+// - Normalization constant: C_s = Γ(s+0.5) / (√π Γ(s+1))
+// - Larger s → narrower distribution (s → ∞ collapses to a delta at θ₀).
+// - Typical ocean values: s ≈ 2–10.
 class Cosine2sRandomizedDistribution : public DirectionalDistribution {
 public:
     Cosine2sRandomizedDistribution(double mean_dir_rad, double s, unsigned int seed = 1234)
