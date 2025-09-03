@@ -90,6 +90,9 @@ public:
 
 private:
     double mean_dir_rad_;
+
+    // Spreading parameter: larger s_ → narrower directional distribution
+    // (s_ ≈ 2–10 typical in oceanography, s_ → ∞ gives a delta at mean_dir_rad_)
     double s_;
     mutable std::mt19937 rng_;
 };
