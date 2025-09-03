@@ -298,6 +298,37 @@ public:
         return R_WI;
     }
 
+    // Accessors for spectral data (mirror Jonswap3dStokesWaves API)
+    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { 
+        return spectrum_.frequencies(); 
+    }
+    const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const { 
+        return spectrum_.spectrum(); 
+    }
+    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const { 
+        return spectrum_.amplitudes(); 
+    }
+    const Eigen::Matrix<double, N_FREQ, 1>& df() const { 
+        return spectrum_.df(); 
+    }
+
+    // Discrete directional spectrum, size N_FREQ × M
+    // If normalize = true, weights are normalized so that ∑ D(θ; f) Δθ ≈ 1.
+    Eigen::MatrixXd getDirectionalSpectrum(int M, bool normalize = true) const {
+        Eigen::MatrixXd E(N_FREQ, M);
+        for (int i = 0; i < N_FREQ; ++i) {
+            double f = spectrum_.frequencies()(i);
+            std::vector<double> weights = normalize
+                ? directional_dist_->normalized_weights(M, f)
+                : directional_dist_->weights(M, f);
+            double S_f = spectrum_.spectrum()(i);
+            for (int m = 0; m < M; ++m) {
+                E(i, m) = S_f * weights[m];
+            }
+        }
+        return E;
+    }
+
 private:
     enum class WaveFrame { Lagrangian, Eulerian };
 
