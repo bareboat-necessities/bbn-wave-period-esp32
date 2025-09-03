@@ -190,22 +190,58 @@ public:
         return computeWaveState(x, y, z, t, WaveFrame::Eulerian);
     }
 
-    // First-order surface slopes (∂η/∂x, ∂η/∂y) at z = 0
+    // Surface slopes (∂η/∂x, ∂η/∂y) at z = 0, including up to ORDER terms
     Eigen::Vector2d getSurfaceSlopes(double x, double y, double t) const {
         double slope_x = 0.0;
         double slope_y = 0.0;
 
         for (int i = 0; i < N_FREQ; ++i) {
+            const double k_val = k_(i);
             const double w_val = omega_(i);
+            const double ka    = k_val * A1_(i);
+
             // θᵢ(x,y,t) = kₓᵢ x + k_yᵢ y − ωᵢ t + φᵢ
             const double theta = kx_(i) * x + ky_(i) * y - w_val * t + phi_(i);
 
-            // n = 1 term → linear slope approximation
-            slope_x += A1_(i) * kx_(i) * std::cos(theta);
-            slope_y += A1_(i) * ky_(i) * std::cos(theta);
+            for (int n = 1; n <= ORDER; ++n) {
+                // cₙ = coeff[n] · A₁ · (k a)^(n−1)
+                const double cn  = stokesCoeff(n) * A1_(i) * std::pow(ka, n - 1);
+                const double arg = n * theta;
+
+                // ∂η/∂x = Σ cₙ · n kₓᵢ cos(arg)
+                // ∂η/∂y = Σ cₙ · n k_yᵢ cos(arg)
+                slope_x += n * cn * kx_(i) * std::cos(arg);
+                slope_y += n * cn * ky_(i) * std::cos(arg);
+            }
         }
 
         return Eigen::Vector2d(slope_x, slope_y);
+    }
+
+    // IMU readings at (x,y,t,z), consistent with ORDER Stokes slopes
+    IMUReadingsBody getIMUReadings(double x, double y, double t, double z = 0.0,
+                                   double dt = 1e-3) const {
+        IMUReadingsBody imu;
+
+        // --- accelerations ---
+        auto state  = getEulerianState(x, y, z, t);
+        auto slopes = getSurfaceSlopes(x, y, t);
+        Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
+
+        Eigen::Vector3d g_world(0, 0, -g_);
+        imu.accel_body = R_WI * (state.acceleration + g_world);
+
+        // --- gyro angular velocity ---
+        auto slopes_next = getSurfaceSlopes(x, y, t + dt);
+        Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
+        Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
+
+        Eigen::Matrix3d dR = (R2 - R1) / dt;
+        Eigen::Matrix3d Omega = dR * R1.transpose();
+
+        // vee map: skew-symmetric → vector
+        imu.gyro_body = Eigen::Vector3d(Omega(2,1), Omega(0,2), Omega(1,0));
+        return imu;
     }
 
     // Build local wave IMU orientation from slopes
