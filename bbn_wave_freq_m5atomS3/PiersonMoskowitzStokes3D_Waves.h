@@ -264,32 +264,6 @@ public:
         return R_WI;
     }
 
-    // IMU readings at (x,y,t,z)
-    IMUReadingsBody getIMUReadings(double x, double y, double t, double z = 0.0,
-                                   double dt = 1e-3) const {
-        IMUReadingsBody imu;
-
-        // --- accelerations ---
-        auto state = getEulerianState(x, y, z, t);
-        auto slopes = getSurfaceSlopes(x, y, t);
-        Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
-
-        Eigen::Vector3d g_world(0, 0, -g_);
-        imu.accel_body = R_WI * (state.acceleration + g_world);
-
-        // --- gyro angular velocity ---
-        auto slopes_next = getSurfaceSlopes(x, y, t + dt);
-        Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
-        Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
-
-        Eigen::Matrix3d dR = (R2 - R1) / dt;
-        Eigen::Matrix3d Omega = dR * R1.transpose();
-
-        // vee map: skew-symmetric → vector
-        imu.gyro_body = Eigen::Vector3d(Omega(2,1), Omega(0,2), Omega(1,0));
-        return imu;
-    }
-
 private:
     enum class WaveFrame { Lagrangian, Eulerian };
 
