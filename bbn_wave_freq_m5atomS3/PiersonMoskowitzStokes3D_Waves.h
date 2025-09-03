@@ -302,7 +302,7 @@ private:
                 const double depthFactor = (frame == WaveFrame::Eulerian)
                     ? std::exp(n * k_val * z) : 1.0;
 
-                // --- Displacement ---
+                // Displacement
                 if (frame == WaveFrame::Lagrangian) {
                     state.displacement.x() += -cn * std::cos(arg) * dir_x_(i);
                     state.displacement.y() += -cn * std::cos(arg) * dir_y_(i);
@@ -312,14 +312,14 @@ private:
                     state.displacement.z() += cn * std::sin(arg) * depthFactor;
                 }
 
-                // --- Velocity ---
+                // Velocity
                 // u,v = n ω cₙ sin(arg) dir;  w = n ω cₙ cos(arg)
                 const double velFactor = n * w_val * cn * depthFactor;
                 state.velocity.x() += velFactor * std::sin(arg) * dir_x_(i);
                 state.velocity.y() += velFactor * std::sin(arg) * dir_y_(i);
                 state.velocity.z() += velFactor * std::cos(arg);
 
-                // --- Acceleration ---
+                // Acceleration
                 // aₓ,a_y = n² ω² cₙ cos(arg) dir;  a_z = −n² ω² cₙ sin(arg)
                 const double accFactor = n * n * w_val * w_val * cn * depthFactor;
                 state.acceleration.x() += accFactor * std::cos(arg) * dir_x_(i);
@@ -338,9 +338,9 @@ private:
             const double Usy = (stokes_drift_scalar_.array() * exp2 * dir_y_.array()).sum();
             state.velocity.x() += Usx;
             state.velocity.y() += Usy;
-            // (Optional) include mean-drift translation in displacement:
-            // state.displacement.x() += Usx * t;
-            // state.displacement.y() += Usy * t;
+            /// include mean-drift translation in displacement:
+            state.displacement.x() += Usx * t;
+            state.displacement.y() += Usy * t;
         }
         return state;
     }
