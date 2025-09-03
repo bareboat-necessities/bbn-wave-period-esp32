@@ -29,10 +29,6 @@
 #include <memory>
 #include <cassert>
 
-#ifndef PI
-  #define PI = 3.14159265358979323846264338327950288
-#endif
-
 #include "DirectionalSpread.h"
 
 #ifdef JONSWAP_TEST
