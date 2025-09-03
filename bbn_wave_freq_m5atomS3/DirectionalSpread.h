@@ -277,7 +277,7 @@ public:
     double operator()(double theta, double f) const override {
         double dtheta = theta - mean_dir_rad_;
         double val = 1.0 / std::cosh(beta_ * dtheta);
-        return val * val;
+        return 0.5 * beta_ * val * val;  // normalized form
     }
 
     std::vector<double> weights(int M, double f) const override {
