@@ -430,41 +430,73 @@ private:
 };
 
 #ifdef PM_STOKES_TEST
-#include <fstream>
-#include <string>
-
 // CSV generator for testing Pierson–Moskowitz Stokes waves
 static void generateWavePMStokesCSV(const std::string& filename,
                                     double Hs, double Tp, double mean_dir_deg,
                                     double duration = 40.0, double dt = 0.005) {
-    // Use a cosine-2s directional distribution by default
+    constexpr int N = 256;
     auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
         mean_dir_deg * M_PI / 180.0, 15.0, 239u);
 
-    PMStokesN3dWaves<256, 5> waveModel(
-        Hs, Tp, dirDist, 0.02, 0.8, 9.81, 239u
-    );
+    PMStokesN3dWaves<N, 5> waveModel(Hs, Tp, dirDist, 0.02, 0.8, 9.81, 239u);
 
-    std::ofstream file(filename);
-    file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z\n";
+    const int N_time = static_cast<int>(duration / dt) + 1;
+    Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
 
-    const double x0 = 0.0, y0 = 0.0;
-    for (double t = 0.0; t <= duration; t += dt) {
+    Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
+    Eigen::ArrayXXd accel_body(3, N_time), gyro_body(3, N_time);
+    Eigen::ArrayXXd euler_deg(3, N_time); // roll, pitch, yaw (yaw = 0)
+
+    for (int i = 0; i < N_time; ++i) {
+        double t = time(i);
+
+        // global kinematics (Lagrangian)
         auto state = waveModel.getLagrangianState(t);
-        file << t << ","
-             << state.displacement.x() << ","
-             << state.displacement.y() << ","
-             << state.displacement.z() << ","
-             << state.velocity.x()     << ","
-             << state.velocity.y()     << ","
-             << state.velocity.z()     << ","
-             << state.acceleration.x() << ","
-             << state.acceleration.y() << ","
-             << state.acceleration.z() << "\n";
+
+        // IMU
+        auto imu = waveModel.getIMUReadings(0.0, 0.0, t);
+
+        // store
+        for (int j = 0; j < 3; ++j) {
+            disp(j, i)       = state.displacement(j);
+            vel(j, i)        = state.velocity(j);
+            acc(j, i)        = state.acceleration(j);
+            accel_body(j, i) = imu.accel_body(j);
+            gyro_body(j, i)  = imu.gyro_body(j);
+        }
+
+        // slopes → roll/pitch
+        auto slopes = waveModel.getSurfaceSlopes(0.0, 0.0, t);
+        double slope_x = slopes.x();
+        double slope_y = slopes.y();
+
+        double roll  = std::atan2(slope_y, 1.0) * 180.0 / M_PI;
+        double pitch = std::atan2(-slope_x, 1.0) * 180.0 / M_PI;
+        double yaw   = 0.0;
+
+        euler_deg(0, i) = roll;
+        euler_deg(1, i) = pitch;
+        euler_deg(2, i) = yaw;
+    }
+
+    // CSV output aligned with Jonswap3dStokesWaves
+    std::ofstream file(filename);
+    file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,"
+         << "acc_x,acc_y,acc_z,accel_x,accel_y,accel_z,"
+         << "gyro_x,gyro_y,gyro_z,roll_deg,pitch_deg,yaw_deg\n";
+
+    for (int i = 0; i < N_time; ++i) {
+        file << time(i) << ","
+             << disp(0, i) << "," << disp(1, i) << "," << disp(2, i) << ","
+             << vel(0, i)  << "," << vel(1, i)  << "," << vel(2, i)  << ","
+             << acc(0, i)  << "," << acc(1, i)  << "," << acc(2, i)  << ","
+             << accel_body(0, i) << "," << accel_body(1, i) << "," << accel_body(2, i) << ","
+             << gyro_body(0, i)  << "," << gyro_body(1, i)  << "," << gyro_body(2, i) << ","
+             << euler_deg(0, i) << "," << euler_deg(1, i) << "," << euler_deg(2, i) << "\n";
     }
 }
 
-// Batch generator for typical PM test cases
+// Batch generator
 static void PMStokes_testWavePatterns() {
     generateWavePMStokesCSV("short_pms_waves.csv",  0.5,  3.0, 30.0);
     generateWavePMStokesCSV("medium_pms_waves.csv", 2.0,  7.0, 30.0);
