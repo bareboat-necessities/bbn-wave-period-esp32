@@ -10,6 +10,8 @@
 #include <cmath>
 #include <stdexcept>
 #include <algorithm>
+#include <memory>
+#include <vector>
 
 /*
   - Stochastic linear combination of Stokes-N harmonics (deep water) driven
