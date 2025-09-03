@@ -711,33 +711,49 @@ static void generateWaveJonswapCSV(const std::string& filename,
                                    double Hs, double Tp, double mean_dir_deg,
                                    double duration = 40.0, double dt = 0.005) {
   constexpr int N = 128;
-  // create distribution (cosine-2s as before)
   auto dist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * PI / 180.0, 15.0, 42u);
   auto waveModel = std::make_unique<Jonswap3dStokesWaves<N>>(Hs, Tp, dist);
   const int N_time = static_cast<int>(duration / dt) + 1;
   Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
-  Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
-  Eigen::ArrayXXd slopes(2, N_time);
+
+  Eigen::ArrayXXd accel_body(3, N_time), gyro_body(3, N_time);
+  Eigen::ArrayXXd euler_deg(3, N_time); // roll, pitch, yaw (yaw constrained = 0)
 
   for (int i = 0; i < N_time; ++i) {
-    auto state  = waveModel->getSurfaceState(0.0, 0.0, time(i));
-    auto sxy    = waveModel->getSurfaceSlopes(0.0, 0.0, time(i));
+    double t = time(i);
+    auto imu = waveModel->getIMUReadings(0.0, 0.0, t);
+
     for (int j = 0; j < 3; ++j) {
-      disp(j, i) = state.displacement(j);
-      vel(j, i)  = state.velocity(j);
-      acc(j, i)  = state.acceleration(j);
+      accel_body(j, i) = imu.accel_body(j);
+      gyro_body(j, i)  = imu.gyro_body(j);
     }
-    slopes(0, i) = sxy.x();
-    slopes(1, i) = sxy.y();
+
+    // get surface slopes
+    auto slopes = waveModel->getSurfaceSlopes(0.0, 0.0, t);
+    double slope_x = slopes.x(); // ∂η/∂x
+    double slope_y = slopes.y(); // ∂η/∂y
+
+    // compute tilt angles (in degrees)
+    double roll  = std::atan2(slope_y, 1.0) * 180.0 / PI;   // rotation about x-axis
+    double pitch = std::atan2(-slope_x, 1.0) * 180.0 / PI;  // rotation about y-axis
+    double yaw   = 0.0; // constrained (IMU doesn’t spin with wave heading)
+
+    euler_deg(0, i) = roll;
+    euler_deg(1, i) = pitch;
+    euler_deg(2, i) = yaw;
   }
+
   std::ofstream file(filename);
-  file << "time,disp_x,disp_y,disp_z,vel_x,vel_y,vel_z,acc_x,acc_y,acc_z,slope_x,slope_y\n";
+  file << "time,"
+       << "accel_x,accel_y,accel_z,"
+       << "gyro_x,gyro_y,gyro_z,"
+       << "roll_deg,pitch_deg,yaw_deg\n";
+
   for (int i = 0; i < N_time; ++i) {
     file << time(i) << ","
-         << disp(0, i) << "," << disp(1, i) << "," << disp(2, i) << ","
-         << vel(0, i)  << "," << vel(1, i)  << "," << vel(2, i)  << ","
-         << acc(0, i)  << "," << acc(1, i)  << "," << acc(2, i)  << ","
-         << slopes(0, i) << "," << slopes(1, i) << "\n";
+         << accel_body(0, i) << "," << accel_body(1, i) << "," << accel_body(2, i) << ","
+         << gyro_body(0, i)  << "," << gyro_body(1, i)  << "," << gyro_body(2, i) << ","
+         << euler_deg(0, i) << "," << euler_deg(1, i) << "," << euler_deg(2, i) << "\n";
   }
 }
 
