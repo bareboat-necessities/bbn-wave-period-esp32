@@ -371,6 +371,12 @@ private:
         }
     }
 
+    // Deep-water Stokes drift estimate per component (monochromatic approximation)
+    // U_s(z) = (ω k a²) e^{2 k z} 𝚑𝚊𝚝{k},  z ≤ 0.  Here we store U_s0 = ω k a².
+    void computePerComponentStokesDriftEstimate() {
+        stokes_drift_scalar_ = omega_.array() * k_.array() * A1_.array().square();
+    }
+
     void checkSteepness() const {
         // max steepness k a ≤ ~0.20 for validity of Stokes expansion
         const double max_ka = (A1_.array() * k_.array()).maxCoeff();
