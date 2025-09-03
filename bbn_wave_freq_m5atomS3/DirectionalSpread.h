@@ -130,6 +130,30 @@ protected:
                       - std::log(2.0));
     }
 
+    // Discrete cosine-2s weights helper
+    //
+    // Formula:
+    //   D(θ; s) = Cₛ · cos^(2s)((θ − θ₀)/2)
+    //
+    // Normalization constant:
+    //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
+    //
+    // Returns unnormalized discrete weights for M angles.
+    static std::vector<double> cosine2s_weights(
+        int M, double f, double s_f, double mean_dir_rad)
+    {
+        std::vector<double> spread(M);
+        const double dtheta = 2.0 * PI / M;
+        double norm = cosine2s_norm(s_f);
+
+        for (int m = 0; m < M; ++m) {
+            double theta = -PI + m * dtheta;
+            double dtheta_rel = theta - mean_dir_rad;
+            spread[m] = norm * stable_pow_cos(std::cos(0.5 * dtheta_rel), 2.0 * s_f);
+        }
+        return spread;
+    }
+
     // Generic rejection sampler for any distribution
     // Requires max_val ≥ maxθ D(θ; f)
     template<typename Dist>
