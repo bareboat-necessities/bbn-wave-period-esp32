@@ -255,17 +255,17 @@ public:
         const double px_next = px + state.velocity.x() * dt;
         const double py_next = py + state.velocity.y() * dt;
 
-        // Gyro from orientation finite-difference
+        // Gyro from orientation finite-difference (body-at-t frame)
         auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
-        Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
-        Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
+        Eigen::Matrix3d R1 = orientationFromSlopes(slopes);        // W->B at t
+        Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);   // W->B at t+dt
 
-        // Relative rotation Rdelta = R2 * R1ᵀ
-        Eigen::Matrix3d Rdelta = R2 * R1.transpose();
+        // Relative rotation expressed in body(t): Rdelta = R1 * R2ᵀ
+        Eigen::Matrix3d Rdelta = R1 * R2.transpose();
         Eigen::AngleAxisd aa(Rdelta);
 
-        // Angular velocity in IMU frame (rad/s)
-        imu.gyro_body = (aa.axis() * aa.angle()) / dt;        
+        // Angular velocity in IMU/body frame at time t
+        imu.gyro_body = (aa.axis() * aa.angle()) / dt;      
         return imu;
     }
 
