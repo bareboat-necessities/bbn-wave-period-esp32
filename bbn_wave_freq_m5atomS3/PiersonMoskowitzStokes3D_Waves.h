@@ -247,8 +247,8 @@ public:
         // World gravity + particle acceleration → body-frame accelerometer
         const Eigen::Vector3d g_world(0, 0, -g_);
 
-        // IMU specific force: f_body = R_WI * (a_world - g_world).
-        // With g_world = (0,0,-g), this becomes state.acceleration + g_world
+        // IMU specific force:
+        // With g_world = (0,0,-g), this becomes state.acceleration - g_world
         imu.accel_body = R_WI * (state.acceleration + g_world);
 
         // Predict advected position at t+dt for gyro (1-step kinematic extrapolation)
@@ -260,9 +260,16 @@ public:
         Eigen::Matrix3d R1 = orientationFromSlopes(slopes);        // W->B at t
         Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);   // W->B at t+dt
 
-        // Relative rotation expressed in body(t): Rdelta = R1 * R2ᵀ
+        // Relative rotation from t to t+dt
         Eigen::Matrix3d Rdelta = R1.transpose() * R2;
-        Eigen::AngleAxisd aa(Rdelta);
+
+        // Angular velocity from rotation matrix logarithm
+        Eigen::Matrix3d logR = (Rdelta - Rdelta.transpose()) / 2.0;
+        Eigen::Vector3d omega = Eigen::Vector3d(
+            logR(2,1), logR(0,2), logR(1,0)
+        );
+
+        imu.gyro_body = omega / dt;
 
         // Angular velocity in IMU/body frame at time t
         imu.gyro_body = (aa.axis() * aa.angle()) / dt;      
