@@ -141,9 +141,12 @@ public:
 
     double operator()(double theta, double f) const override {
         double dtheta = theta - mean_dir_rad_;
-        double norm = std::exp(std::lgamma(s_ + 0.5)
-                             - std::lgamma(s_ + 1.0)
-                             - 0.5 * std::log(PI));
+        // Normalization constant:
+        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
+        double norm = std::exp(std::lgamma(s_ + 1.0)
+                             - std::lgamma(s_ + 0.5)
+                             - 0.5 * std::log(PI)
+                             - std::log(2.0));
         return norm * stable_pow_cos(std::cos(0.5 * dtheta), 2.0 * s_);
     }
 
