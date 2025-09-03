@@ -153,8 +153,17 @@ public:
     std::vector<double> weights(int M, double f) const override {
         std::vector<double> spread(M);
         const double dtheta = 2.0 * PI / M;
-        for (int m = 0; m < M; ++m)
-            spread[m] = operator()(-PI + m * dtheta, f);
+        // Normalization constant:
+        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
+        double norm = std::exp(std::lgamma(s_ + 1.0)
+                             - std::lgamma(s_ + 0.5)
+                             - 0.5 * std::log(PI)
+                             - std::log(2.0));
+        for (int m = 0; m < M; ++m) {
+            double theta = -PI + m * dtheta;
+            double dtheta_rel = theta - mean_dir_rad_;
+            spread[m] = norm * stable_pow_cos(std::cos(0.5 * dtheta_rel), 2.0 * s_);
+        }
         return spread;
     }
 
@@ -233,8 +242,18 @@ public:
     std::vector<double> weights(int M, double f) const override {
         std::vector<double> spread(M);
         const double dtheta = 2.0 * PI / M;
-        for (int m = 0; m < M; ++m)
-            spread[m] = operator()(-PI + m * dtheta, f);
+        double s_f = s0_ * std::pow(f / f0_, m_);
+        // Normalization constant:
+        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
+        double norm = std::exp(std::lgamma(s_f + 1.0)
+                             - std::lgamma(s_f + 0.5)
+                             - 0.5 * std::log(PI)
+                             - std::log(2.0));
+        for (int m = 0; m < M; ++m) {
+            double theta = -PI + m * dtheta;
+            double dtheta_rel = theta - mean_dir_rad_;
+            spread[m] = norm * stable_pow_cos(std::cos(0.5 * dtheta_rel), 2.0 * s_f);
+        }
         return spread;
     }
 
@@ -315,8 +334,20 @@ public:
     std::vector<double> weights(int M, double f) const override {
         std::vector<double> spread(M);
         const double dtheta = 2.0 * PI / M;
-        for (int m = 0; m < M; ++m)
-            spread[m] = operator()(-PI + m * dtheta, f);
+        double ratio = f / fp_;
+        double s_f = (f < fp_) ? s0_ * std::pow(ratio, 2.0)
+                               : s0_ * std::pow(ratio, -2.0);
+        // Normalization constant:
+        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
+        double norm = std::exp(std::lgamma(s_f + 1.0)
+                             - std::lgamma(s_f + 0.5)
+                             - 0.5 * std::log(PI)
+                             - std::log(2.0));
+        for (int m = 0; m < M; ++m) {
+            double theta = -PI + m * dtheta;
+            double dtheta_rel = theta - mean_dir_rad_;
+            spread[m] = norm * stable_pow_cos(std::cos(0.5 * dtheta_rel), 2.0 * s_f);
+        }
         return spread;
     }
 
