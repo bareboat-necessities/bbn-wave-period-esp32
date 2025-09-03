@@ -260,11 +260,12 @@ public:
         Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
         Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
 
-        Eigen::Matrix3d dR = (R2 - R1) / dt;
-        Eigen::Matrix3d Omega = dR * R1.transpose();
-        Eigen::Matrix3d S = 0.5 * (Omega - Omega.transpose()); // enforce skew-symmetry
+        // Relative rotation Rdelta = R2 * R1ᵀ
+        Eigen::Matrix3d Rdelta = R2 * R1.transpose();
+        Eigen::AngleAxisd aa(Rdelta);
 
-        imu.gyro_body = Eigen::Vector3d(S(2,1), S(0,2), S(1,0));
+        // Angular velocity in IMU frame (rad/s)
+        imu.gyro_body = (aa.axis() * aa.angle()) / dt;        
         return imu;
     }
 
