@@ -30,9 +30,7 @@
 #include <cassert>
 
 #ifndef PI
-static constexpr double PI = 3.14159265358979323846264338327950288;
-#else
-static constexpr double PI = M_PI;
+  #define PI = 3.14159265358979323846264338327950288
 #endif
 
 #include "DirectionalSpread.h"
