@@ -243,6 +243,11 @@ class EIGEN_ALIGN_MAX JonswapSpectrum {
     }
 };
 
+struct IMUReadings {
+    Eigen::Vector3d accel_body;  // linear acceleration in IMU frame
+    Eigen::Vector3d gyro_body;   // angular velocity in IMU frame (rad/s)
+};
+
 // Jonswap3dStokesWaves
 template<int N_FREQ = 128>
 class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
@@ -389,6 +394,52 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       slope_y += -((coeff * sin2) * ky_sum_.array()).sum();
 
       return Eigen::Vector2d(slope_x, slope_y);
+    }
+
+    // build local wave IMU orientation from slopes
+    Eigen::Matrix3d orientationFromSlopes(const Eigen::Vector2d &slopes) const {
+      Eigen::Vector3d n(-slopes.x(), -slopes.y(), 1.0);
+      n.normalize();
+
+      // project global X onto tangent plane for x-axis
+      Eigen::Vector3d x_axis = Eigen::Vector3d::UnitX();
+      x_axis -= n * (x_axis.dot(n));
+      if (x_axis.norm() < 1e-6) x_axis = Eigen::Vector3d::UnitY(); // fallback
+      x_axis.normalize();
+
+      Eigen::Vector3d y_axis = n.cross(x_axis);
+
+      Eigen::Matrix3d R_WI; // world->IMU
+      R_WI.row(0) = x_axis.transpose();
+      R_WI.row(1) = y_axis.transpose();
+      R_WI.row(2) = n.transpose();
+      return R_WI;
+    }
+
+    IMUReadings getIMUReadings(double x, double y, double t, double z = 0.0,
+                               double dt = 1e-3) const {
+      IMUReadings imu;
+
+      // --- accelerations ---
+      auto state = getLagrangianState(x, y, t, z);
+      auto slopes = getSurfaceSlopes(x, y, t);
+      Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
+
+      Eigen::Vector3d g_world(0, 0, -g_);
+      imu.accel_body = R_WI * (state.acceleration + g_world);
+
+      // --- gyro angular velocity ---
+      // orientation at t and t+dt
+      auto slopes_next = getSurfaceSlopes(x, y, t + dt);
+      Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
+      Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
+
+      Eigen::Matrix3d dR = (R2 - R1) / dt;
+      Eigen::Matrix3d Omega = dR * R1.transpose();
+
+      // vee map: skew-symmetric to vector
+      imu.gyro_body = Eigen::Vector3d(Omega(2,1), Omega(0,2), Omega(1,0));
+      return imu;
     }
 
     // Directional Spectrum API
