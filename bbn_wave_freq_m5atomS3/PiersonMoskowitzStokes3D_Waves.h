@@ -314,12 +314,12 @@ private:
                 const double arg = n * theta;
                 // Depth decay for both Eulerian and Lagrangian (z ≤ 0)
                 const double depthFactor = std::exp(n * k_val * z);
-                
+
                 // Displacement
                 if (frame == WaveFrame::Lagrangian) {
-                    state.displacement.x() += -cn * std::cos(arg) * dir_x_(i);
-                    state.displacement.y() += -cn * std::cos(arg) * dir_y_(i);
-                    state.displacement.z() +=  cn * std::sin(arg);
+                    state.displacement.x() += -cn * std::cos(arg) * dir_x_(i) * depthFactor;
+                    state.displacement.y() += -cn * std::cos(arg) * dir_y_(i) * depthFactor;
+                    state.displacement.z() +=  cn * std::sin(arg) * depthFactor;
                 } else {
                     // Eulerian: only vertical displacement relevant
                     state.displacement.z() += cn * std::sin(arg) * depthFactor;
