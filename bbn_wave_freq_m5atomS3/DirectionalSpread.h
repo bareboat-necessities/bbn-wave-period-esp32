@@ -137,7 +137,7 @@ protected:
 //   D(θ; s) = Cₛ · cos^(2s)((θ − θ₀)/2)
 //
 // Normalization constant:
-//   Cₛ = Γ(s+½) / (√π · Γ(s+1))
+//   Cₛ = Γ(s+1) / (2 √π · Γ(s+½))
 //
 // Larger s → narrower directional spreading.
 //
@@ -148,70 +148,28 @@ public:
 
     double operator()(double theta, double f) const override {
         double dtheta = theta - mean_dir_rad_;
-        // Normalization constant:
-        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
-        double norm = std::exp(std::lgamma(s_ + 1.0)
-                             - std::lgamma(s_ + 0.5)
-                             - 0.5 * std::log(PI)
-                             - std::log(2.0));
-        return norm * stable_pow_cos(std::cos(0.5 * dtheta), 2.0 * s_);
+        return cosine2s_norm(s_) * stable_pow_cos(std::cos(0.5 * dtheta), 2.0 * s_);
     }
 
     std::vector<double> weights(int M, double f) const override {
-        std::vector<double> spread(M);
-        const double dtheta = 2.0 * PI / M;
-        // Normalization constant:
-        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
-        double norm = std::exp(std::lgamma(s_ + 1.0)
-                             - std::lgamma(s_ + 0.5)
-                             - 0.5 * std::log(PI)
-                             - std::log(2.0));
-        for (int m = 0; m < M; ++m) {
-            double theta = -PI + m * dtheta;
-            double dtheta_rel = theta - mean_dir_rad_;
-            spread[m] = norm * stable_pow_cos(std::cos(0.5 * dtheta_rel), 2.0 * s_);
-        }
-        return spread;
+        return cosine2s_weights(M, f, s_);
     }
 
     double principal_direction_rad() const override { return mean_dir_rad_; }
 
     // Monte Carlo rejection sampling
     std::vector<double> sample_directions(int N_freq, double f) override {
-        std::uniform_real_distribution<double> angle(-PI, PI);
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
-
-        std::vector<double> dirs;
-        dirs.reserve(N_freq);
-        double max_val = operator()(mean_dir_rad_, f);
-
-        while (dirs.size() < static_cast<size_t>(N_freq)) {
-            double theta = angle(rng_);
-            if (u01(rng_) * max_val <= operator()(theta, f))
-                dirs.push_back(theta);
-        }
-        return dirs;
+        return cosine2s_sample(N_freq, f, s_, rng_);
     }
 
     std::vector<double> sample_directions_for_frequencies(
         const std::vector<double>& freqs) override 
     {
-        std::uniform_real_distribution<double> angle(-PI, PI);
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
-
         std::vector<double> dirs;
         dirs.reserve(freqs.size());
-
-        double max_val = operator()(mean_dir_rad_, 0.0); // independent of f
-
-        for (size_t i = 0; i < freqs.size(); ++i) {
-            while (true) {
-                double theta = angle(rng_);
-                if (u01(rng_) * max_val <= operator()(theta, freqs[i])) {
-                    dirs.push_back(theta);
-                    break;
-                }
-            }
+        for (double f : freqs) {
+            auto one = cosine2s_sample(1, f, s_, rng_);
+            dirs.push_back(one[0]);
         }
         return dirs;
     }
@@ -236,73 +194,31 @@ public:
 
     double operator()(double theta, double f) const override {
         double s_f = s0_ * std::pow(f / f0_, m_);
-        // Normalization constant:
-        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
-        double norm = std::exp(std::lgamma(s_f + 1.0)
-                             - std::lgamma(s_f + 0.5)
-                             - 0.5 * std::log(PI)
-                             - std::log(2.0));
         double dtheta = theta - mean_dir_rad_;
-        return norm * stable_pow_cos(std::cos(0.5 * dtheta), 2.0 * s_f);
+        return cosine2s_norm(s_f) * stable_pow_cos(std::cos(0.5 * dtheta), 2.0 * s_f);
     }
 
     std::vector<double> weights(int M, double f) const override {
-        std::vector<double> spread(M);
-        const double dtheta = 2.0 * PI / M;
         double s_f = s0_ * std::pow(f / f0_, m_);
-        // Normalization constant:
-        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
-        double norm = std::exp(std::lgamma(s_f + 1.0)
-                             - std::lgamma(s_f + 0.5)
-                             - 0.5 * std::log(PI)
-                             - std::log(2.0));
-        for (int m = 0; m < M; ++m) {
-            double theta = -PI + m * dtheta;
-            double dtheta_rel = theta - mean_dir_rad_;
-            spread[m] = norm * stable_pow_cos(std::cos(0.5 * dtheta_rel), 2.0 * s_f);
-        }
-        return spread;
+        return cosine2s_weights(M, f, s_f);
     }
 
     double principal_direction_rad() const override { return mean_dir_rad_; }
 
     std::vector<double> sample_directions(int N_freq, double f) override {
-        std::uniform_real_distribution<double> angle(-PI, PI);
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
-
-        std::vector<double> dirs;
-        dirs.reserve(N_freq);
-        double max_val = operator()(mean_dir_rad_, f);
-
-        while (dirs.size() < static_cast<size_t>(N_freq)) {
-            double theta = angle(rng_);
-            if (u01(rng_) * max_val <= operator()(theta, f))
-                dirs.push_back(theta);
-        }
-        return dirs;
+        double s_f = s0_ * std::pow(f / f0_, m_);
+        return cosine2s_sample(N_freq, f, s_f, rng_);
     }
 
     std::vector<double> sample_directions_for_frequencies(
         const std::vector<double>& freqs) override 
     {
-        std::uniform_real_distribution<double> angle(-PI, PI);
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
-
         std::vector<double> dirs;
         dirs.reserve(freqs.size());
-
         for (double f : freqs) {
-            // peak value of PDF at θ₀
-            double max_val = operator()(mean_dir_rad_, f);
-
-            // rejection sample one θ
-            while (true) {
-                double theta = angle(rng_);
-                if (u01(rng_) * max_val <= operator()(theta, f)) {
-                    dirs.push_back(theta);
-                    break;
-                }
-            }
+            double s_f = s0_ * std::pow(f / f0_, m_);
+            auto one = cosine2s_sample(1, f, s_f, rng_);
+            dirs.push_back(one[0]);
         }
         return dirs;
     }
@@ -328,72 +244,37 @@ public:
         double ratio = f / fp_;
         double s_f = (f < fp_) ? s0_ * std::pow(ratio, 2.0)
                                : s0_ * std::pow(ratio, -2.0);
-        // Normalization constant:
-        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
-        double norm = std::exp(std::lgamma(s_f + 1.0)
-                             - std::lgamma(s_f + 0.5)
-                             - 0.5 * std::log(PI)
-                             - std::log(2.0));
         double dtheta = theta - mean_dir_rad_;
-        return norm * stable_pow_cos(std::cos(0.5 * dtheta), 2.0 * s_f);
+        return cosine2s_norm(s_f) * stable_pow_cos(std::cos(0.5 * dtheta), 2.0 * s_f);
     }
 
     std::vector<double> weights(int M, double f) const override {
-        std::vector<double> spread(M);
-        const double dtheta = 2.0 * PI / M;
         double ratio = f / fp_;
         double s_f = (f < fp_) ? s0_ * std::pow(ratio, 2.0)
                                : s0_ * std::pow(ratio, -2.0);
-        // Normalization constant:
-        //   Cₛ = Γ(s+1) / (2 √π Γ(s+½))
-        double norm = std::exp(std::lgamma(s_f + 1.0)
-                             - std::lgamma(s_f + 0.5)
-                             - 0.5 * std::log(PI)
-                             - std::log(2.0));
-        for (int m = 0; m < M; ++m) {
-            double theta = -PI + m * dtheta;
-            double dtheta_rel = theta - mean_dir_rad_;
-            spread[m] = norm * stable_pow_cos(std::cos(0.5 * dtheta_rel), 2.0 * s_f);
-        }
-        return spread;
+        return cosine2s_weights(M, f, s_f);
     }
 
     double principal_direction_rad() const override { return mean_dir_rad_; }
 
     std::vector<double> sample_directions(int N_freq, double f) override {
-        std::uniform_real_distribution<double> angle(-PI, PI);
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
-
-        std::vector<double> dirs;
-        dirs.reserve(N_freq);
-        double max_val = operator()(mean_dir_rad_, f);
-
-        while (dirs.size() < static_cast<size_t>(N_freq)) {
-            double theta = angle(rng_);
-            if (u01(rng_) * max_val <= operator()(theta, f))
-                dirs.push_back(theta);
-        }
-        return dirs;
+        double ratio = f / fp_;
+        double s_f = (f < fp_) ? s0_ * std::pow(ratio, 2.0)
+                               : s0_ * std::pow(ratio, -2.0);
+        return cosine2s_sample(N_freq, f, s_f, rng_);
     }
 
     std::vector<double> sample_directions_for_frequencies(
         const std::vector<double>& freqs) override 
     {
-        std::uniform_real_distribution<double> angle(-PI, PI);
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
-
         std::vector<double> dirs;
         dirs.reserve(freqs.size());
-
         for (double f : freqs) {
-            double max_val = operator()(mean_dir_rad_, f); // peak at θ₀
-            while (true) {
-                double theta = angle(rng_);
-                if (u01(rng_) * max_val <= operator()(theta, f)) {
-                    dirs.push_back(theta);
-                    break;
-                }
-            }
+            double ratio = f / fp_;
+            double s_f = (f < fp_) ? s0_ * std::pow(ratio, 2.0)
+                                   : s0_ * std::pow(ratio, -2.0);
+            auto one = cosine2s_sample(1, f, s_f, rng_);
+            dirs.push_back(one[0]);
         }
         return dirs;
     }
