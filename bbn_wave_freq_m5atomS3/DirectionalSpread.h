@@ -249,9 +249,7 @@ public:
         dirs.reserve(freqs.size());
 
         for (double f : freqs) {
-            // compute s(f)
-            double s_f = s0_ * std::pow(f / f0_, m_);
-            // normalization at θ = θ₀
+            // peak value of PDF at θ₀
             double max_val = operator()(mean_dir_rad_, f);
 
             // rejection sample one θ
