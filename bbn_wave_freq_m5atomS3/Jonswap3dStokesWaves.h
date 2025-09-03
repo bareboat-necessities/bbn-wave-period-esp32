@@ -373,15 +373,16 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
 
     // Discrete directional spectrum, size N_FREQ × M
     Eigen::MatrixXd getDirectionalSpectrum(int M) const {
-      Eigen::MatrixXd E(N_FREQ, M);
-      auto weights = directional_dist_->weights(M);
-      for (int i = 0; i < N_FREQ; ++i) {
-        double S_f = spectrum_.spectrum()(i);
-        for (int m = 0; m < M; ++m) {
-          E(i, m) = S_f * weights[m];
+        Eigen::MatrixXd E(N_FREQ, M);
+        for (int i = 0; i < N_FREQ; ++i) {
+            double f = spectrum_.frequencies()(i);
+            auto weights = directional_dist_->weights(M, f);
+            double S_f = spectrum_.spectrum()(i);
+            for (int m = 0; m < M; ++m) {
+                E(i, m) = S_f * weights[m];
+            }
         }
-      }
-      return E;
+        return E;
     }
 
     const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const    { return spectrum_.spectrum(); }
