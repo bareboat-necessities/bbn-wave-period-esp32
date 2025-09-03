@@ -235,7 +235,7 @@ public:
 
         // Use actual sensor depth z for Lagrangian state (attenuates oscillations)
         auto state = computeWaveState(x, y, z, t, WaveFrame::Lagrangian);
-      
+
         // Advected surface position for slope/orientation (buoy location)
         const double px = x + state.displacement.x();
         const double py = y + state.displacement.y();
@@ -247,9 +247,8 @@ public:
         // World gravity + particle acceleration → body-frame accelerometer
         const Eigen::Vector3d g_world(0, 0, -g_);
 
-        // IMU specific force:
-        // With g_world = (0,0,-g), this becomes state.acceleration - g_world
-        imu.accel_body = R_WI * (state.acceleration + g_world);
+        // IMU specific force: f_body = R_WI * (a_world - g_world).
+        imu.accel_body = R_WI * (state.acceleration - g_world);
 
         // Predict advected position at t+dt for gyro (1-step kinematic extrapolation)
         const double px_next = px + state.velocity.x() * dt;
@@ -257,22 +256,16 @@ public:
 
         // Gyro from orientation finite-difference (body-at-t frame)
         auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
-        Eigen::Matrix3d R1 = orientationFromSlopes(slopes);        // W->B at t
-        Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);   // W->B at t+dt
+        Eigen::Matrix3d R1 = orientationFromSlopes(slopes);       // W->B at t
+        Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);  // W->B at t+dt
 
         // Relative rotation from t to t+dt
-        Eigen::Matrix3d Rdelta = R1.transpose() * R2;
-
-        // Angular velocity from rotation matrix logarithm
-        Eigen::Matrix3d logR = (Rdelta - Rdelta.transpose()) / 2.0;
-        Eigen::Vector3d omega = Eigen::Vector3d(
-            logR(2,1), logR(0,2), logR(1,0)
-        );
-
-        imu.gyro_body = omega / dt;
+        Eigen::Matrix3d Rdelta = R2 * R1.transpose();
+        Eigen::AngleAxisd aa(Rdelta);
 
         // Angular velocity in IMU/body frame at time t
-        imu.gyro_body = (aa.axis() * aa.angle()) / dt;      
+        imu.gyro_body = (aa.axis() * aa.angle()) / dt;
+
         return imu;
     }
 
