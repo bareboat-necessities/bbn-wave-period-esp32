@@ -122,6 +122,13 @@ protected:
         if (cosval <= 0.0) return 0.0;
         return std::exp(exp * std::log(cosval));
     }
+
+    static double cosine2s_norm(double s_f) noexcept {
+        return std::exp(std::lgamma(s_f + 1.0)
+                      - std::lgamma(s_f + 0.5)
+                      - 0.5 * std::log(PI)
+                      - std::log(2.0));
+    }
 };
 
 // Cosine-2s Distribution
