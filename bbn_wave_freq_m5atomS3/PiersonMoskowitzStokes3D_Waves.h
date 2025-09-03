@@ -277,14 +277,17 @@ public:
         // project global X onto tangent plane for x-axis
         Eigen::Vector3d x_axis = Eigen::Vector3d::UnitX();
         x_axis -= n * (x_axis.dot(n));
-        if (x_axis.norm() < 1e-6) x_axis = Eigen::Vector3d::UnitY(); // fallback
+        if (x_axis.norm() < 1e-6) {
+            x_axis = Eigen::Vector3d::UnitY(); // fallback
+            x_axis -= n * (x_axis.dot(n));
+        }
         x_axis.normalize();
 
         Eigen::Vector3d y_axis = n.cross(x_axis);
+        y_axis.normalize();
 
         Eigen::Matrix3d R_WI; // world->IMU
         R_WI.row(0) = x_axis.transpose();
-        y_axis.normalize();
         R_WI.row(1) = y_axis.transpose();
         R_WI.row(2) = n.transpose();
         return R_WI;
