@@ -196,14 +196,11 @@ public:
         double slope_y = 0.0;
 
         for (int i = 0; i < N_FREQ; ++i) {
-            const double k_val = k_(i);
             const double w_val = omega_(i);
-            const double ka    = k_val * A1_(i);
-
             // θᵢ(x,y,t) = kₓᵢ x + k_yᵢ y − ωᵢ t + φᵢ
             const double theta = kx_(i) * x + ky_(i) * y - w_val * t + phi_(i);
 
-            // Only n = 1 term for first-order slope approximation
+            // n = 1 term → linear slope approximation
             slope_x += A1_(i) * kx_(i) * std::cos(theta);
             slope_y += A1_(i) * ky_(i) * std::cos(theta);
         }
