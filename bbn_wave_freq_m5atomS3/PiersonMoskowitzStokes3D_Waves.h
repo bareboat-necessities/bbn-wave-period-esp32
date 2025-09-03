@@ -21,6 +21,8 @@
       acceleration = [ax, ay, az] (m/s^2)
     Horizontal and vertical components included.
   - Eulerian fields at depth z <= 0: harmonics multiplied by exp(k z)
+
+  Copyright 2025, Mikhail Grushinskiy
 */
 
 #ifndef M_PI
@@ -111,7 +113,6 @@ private:
     }
 };
 
-// PMStokesN3dWaves
 // PMStokesN3dWaves
 //
 // Stochastic linear combination of Stokes-N harmonics (deep water) driven
