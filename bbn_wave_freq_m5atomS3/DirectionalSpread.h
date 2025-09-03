@@ -325,7 +325,8 @@ public:
     double operator()(double theta, double f) const override {
         double dtheta = theta - mean_dir_rad_;
         double norm = 1.0 / (sigma_ * std::sqrt(2.0 * PI));
-        return norm * std::exp(-0.5 * (dtheta / sigma_) * (dtheta / sigma_));
+        return norm * std::exp(-0.5 * (dtheta / sigma_)
+                                      * (dtheta / sigma_));
     }
 
     std::vector<double> weights(int M, double f) const override {
