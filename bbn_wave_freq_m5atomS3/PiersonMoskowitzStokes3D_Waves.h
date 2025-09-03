@@ -233,9 +233,9 @@ public:
                                    double dt = 1e-3) const {
         IMUReadingsBody imu;
 
-        // Lagrangian particle state (includes Stokes drift in velocity, linear drift in disp)
-        auto state = computeWaveState(x, y, /*z ignored in Lagrangian*/ 0.0, t, WaveFrame::Lagrangian);
-
+        // Use actual sensor depth z for Lagrangian state (attenuates oscillations)
+        auto state = computeWaveState(x, y, z, t, WaveFrame::Lagrangian);
+      
         // Advected surface position for slope/orientation (buoy location)
         const double px = x + state.displacement.x();
         const double py = y + state.displacement.y();
