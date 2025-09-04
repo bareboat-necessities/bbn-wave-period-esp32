@@ -9,13 +9,6 @@
 #include <fstream>
 #include <stdexcept>
 
-// === Math Guard ===
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-// Keep only *globally reusable* constants here
-static constexpr float g_std           = 9.80665f;      // gravitational acceleration
 static constexpr unsigned GLOBAL_SEED  = 42u;           // global seed for reproducibility
 
 // === Wave Types ===
