@@ -41,9 +41,10 @@ const std::vector<WaveParameters> waveParamsList = {
 
 // --- Sampling helpers ---
 struct Wave_Sample {
-    float elevation;
-    float vel_z;
-    float accel_z;
+    // World frame
+    float disp_x, disp_y, elevation;
+    float vel_x, vel_y, vel_z;
+    float acc_x, acc_y, acc_z;
 };
 
 static Wave_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
