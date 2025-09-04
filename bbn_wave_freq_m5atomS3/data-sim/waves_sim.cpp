@@ -20,22 +20,49 @@ const std::vector<WaveParameters> waveParamsList = {
     {14.3f,  7.4f,   static_cast<float>(-M_PI/2.0),  90.0f}
 };
 
+// === Shared Fill Helpers ===
+template<typename State>
+static void fill_wave_sample_from_state(Wave_Sample &dst, const State &st) {
+    dst.disp_x = static_cast<float>(st.displacement.x());
+    dst.disp_y = static_cast<float>(st.displacement.y());
+    dst.disp_z = static_cast<float>(st.displacement.z());
+
+    dst.vel_x  = static_cast<float>(st.velocity.x());
+    dst.vel_y  = static_cast<float>(st.velocity.y());
+    dst.vel_z  = static_cast<float>(st.velocity.z());
+
+    dst.acc_x  = static_cast<float>(st.acceleration.x());
+    dst.acc_y  = static_cast<float>(st.acceleration.y());
+    dst.acc_z  = static_cast<float>(st.acceleration.z());
+}
+
+template<typename IMU>
+static void fill_imu_sample_from_readings(IMU_Sample &dst, const IMU &imu) {
+    dst.acc_bx = static_cast<float>(imu.accel_body.x());
+    dst.acc_by = static_cast<float>(imu.accel_body.y());
+    dst.acc_bz = static_cast<float>(imu.accel_body.z());
+
+    dst.gyro_x = static_cast<float>(imu.gyro_body.x());
+    dst.gyro_y = static_cast<float>(imu.gyro_body.y());
+    dst.gyro_z = static_cast<float>(imu.gyro_body.z());
+}
+
+static void fill_euler_from_slopes(IMU_Sample &dst, const Eigen::Vector2d &slopes) {
+    double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;
+    double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;
+    double yaw   = 0.0;
+    dst.roll_deg  = static_cast<float>(roll);
+    dst.pitch_deg = static_cast<float>(pitch);
+    dst.yaw_deg   = static_cast<float>(yaw);
+}
+
 // === Sampling Helpers ===
 static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     Wave_Data_Sample out{};
     out.time        = t;
-
     out.wave.disp_z = wave_obj.surfaceElevation(static_cast<float>(t));
     out.wave.vel_z  = wave_obj.surfaceVerticalVelocity(static_cast<float>(t));
     out.wave.acc_z  = wave_obj.surfaceVerticalAcceleration(static_cast<float>(t));
-
-    // IMU: flat surface assumption → no tilt
-    out.imu.acc_bx = 0.0f;
-    out.imu.acc_by = 0.0f;
-    out.imu.acc_bz = -g_std;  // gravity
-    out.imu.roll_deg = 0.0f;
-    out.imu.pitch_deg = 0.0f;
-    out.imu.yaw_deg = 0.0f;
     return out;
 }
 
@@ -45,53 +72,31 @@ static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model)
     out.time = t;
 
     auto state = model.getLagrangianState(0.0, 0.0, t, 0.0);
-    out.wave.disp_x = static_cast<float>(state.displacement.x());
-    out.wave.disp_y = static_cast<float>(state.displacement.y());
-    out.wave.disp_z = static_cast<float>(state.displacement.z());
+    fill_wave_sample_from_state(out.wave, state);
 
-    out.wave.vel_x  = static_cast<float>(state.velocity.x());
-    out.wave.vel_y  = static_cast<float>(state.velocity.y());
-    out.wave.vel_z  = static_cast<float>(state.velocity.z());
-
-    out.wave.acc_x  = static_cast<float>(state.acceleration.x());
-    out.wave.acc_y  = static_cast<float>(state.acceleration.y());
-    out.wave.acc_z  = static_cast<float>(state.acceleration.z());
-
-    // IMU frame
     auto imu = model.getIMUReadings(0.0, 0.0, t);
-    out.imu.acc_bx = static_cast<float>(imu.accel_body.x());
-    out.imu.acc_by = static_cast<float>(imu.accel_body.y());
-    out.imu.acc_bz = static_cast<float>(imu.accel_body.z());
+    fill_imu_sample_from_readings(out.imu, imu);
 
-    out.imu.gyro_x = static_cast<float>(imu.gyro_body.x());
-    out.imu.gyro_y = static_cast<float>(imu.gyro_body.y());
-    out.imu.gyro_z = static_cast<float>(imu.gyro_body.z());
-
-    // Euler orientation
     auto slopes = model.getSurfaceSlopes(0.0, 0.0, t);
-    double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;
-    double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;
+    fill_euler_from_slopes(out.imu, slopes);
 
-    out.imu.roll_deg  = static_cast<float>(roll);
-    out.imu.pitch_deg = static_cast<float>(pitch);
-    out.imu.yaw_deg   = 0.0f;
     return out;
 }
 
 template<int N=128, int ORDER=3>
 static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &model) {
-    auto state = model.getLagrangianState(t);
     Wave_Data_Sample out{};
-    out.time        = t;
+    out.time = t;
 
-    out.wave.disp_z = state.position.z();
-    out.wave.vel_z  = state.velocity.z();
-    out.wave.acc_z  = state.acceleration.z();
+    auto state = model.getLagrangianState(t);
+    fill_wave_sample_from_state(out.wave, state);
 
-    out.imu.acc_bx = 0.0f;
-    out.imu.acc_by = 0.0f;
-    out.imu.acc_bz = -g_std;
-    out.imu.roll_deg = out.imu.pitch_deg = out.imu.yaw_deg = 0.0f;
+    auto imu = model.getIMUReadings(0.0, 0.0, t);
+    fill_imu_sample_from_readings(out.imu, imu);
+
+    auto slopes = model.getSurfaceSlopes(0.0, 0.0, t);
+    fill_euler_from_slopes(out.imu, slopes);
+
     return out;
 }
 
@@ -111,19 +116,19 @@ static std::vector<Wave_Data_Sample> sample_fenton(
         fenton_params.depth,
         fenton_params.length,
         fenton_params.initial_x,
-        5.0f, 0.1f);
+        5.0f,    // mass (kg)
+        0.1f     // drag coeff
+    );
 
     auto callback = [&](float time, float dt, float elevation,
                         float vertical_velocity, float vertical_acceleration,
-                        float, float) {
+                        float x, float vx) {
+        (void)dt; (void)x; (void)vx;
         Wave_Data_Sample out{};
         out.time        = time;
         out.wave.disp_z = elevation;
         out.wave.vel_z  = vertical_velocity;
         out.wave.acc_z  = vertical_acceleration;
-        out.imu.acc_bx  = 0.0f;
-        out.imu.acc_by  = 0.0f;
-        out.imu.acc_bz  = -g_std;
         results.push_back(out);
     };
 
@@ -134,15 +139,9 @@ static std::vector<Wave_Data_Sample> sample_fenton(
 static Wave_Data_Sample sample_cnoidal(double t, CnoidalWave<float> &wave) {
     Wave_Data_Sample out{};
     out.time        = t;
-
     out.wave.disp_z = wave.surfaceElevation(0.0f, 0.0f, t);
     out.wave.vel_z  = wave.wVelocity(0.0f, 0.0f, 0.0f, t);
     out.wave.acc_z  = wave.azAcceleration(0.0f, 0.0f, 0.0f, t);
-
-    out.imu.acc_bx = 0.0f;
-    out.imu.acc_by = 0.0f;
-    out.imu.acc_bz = -g_std;
-    out.imu.roll_deg = out.imu.pitch_deg = out.imu.yaw_deg = 0.0f;
     return out;
 }
 
