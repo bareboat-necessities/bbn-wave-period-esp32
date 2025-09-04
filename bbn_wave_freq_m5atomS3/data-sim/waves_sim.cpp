@@ -233,15 +233,38 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     std::cout << "Wrote " << filename << "\n";
 }
 
-// === Main ===
-int main() {
-    for (const auto& wp : waveParamsList) {
-        for (WaveType wt : {WaveType::GERSTNER, WaveType::JONSWAP,
-                            WaveType::FENTON, WaveType::PMSTOKES,
-                            WaveType::CNOIDAL}) {
-            run_one_scenario(wt, wp);
-        }
+// === Helper ===
+static void run_all_wave_types(const WaveParameters &wp, int idx = -1) {
+    for (WaveType wt : {WaveType::GERSTNER, WaveType::JONSWAP,
+                        WaveType::FENTON, WaveType::PMSTOKES,
+                        WaveType::CNOIDAL}) {
+        run_one_scenario(wt, wp);
     }
-    std::cout << "All wave data generation complete.\n";
+    if (idx >= 0) {
+        std::cout << "Wave index " << idx << " complete.\n";
+    }
+}
+
+// === Main ===
+int main(int argc, char** argv) {
+    if (argc > 2) {
+        std::cerr << "Usage: " << argv[0] << " [wave_index]\n";
+        return 1;
+    }
+
+    if (argc == 2) {
+        int idx = std::stoi(argv[1]);
+        if (idx < 0 || idx >= static_cast<int>(waveParamsList.size())) {
+            std::cerr << "Invalid wave_index " << idx
+                      << " (must be 0.." << (waveParamsList.size() - 1) << ")\n";
+            return 1;
+        }
+        run_all_wave_types(waveParamsList[idx], idx);
+    } else {
+        for (size_t idx = 0; idx < waveParamsList.size(); ++idx) {
+            run_all_wave_types(waveParamsList[idx], static_cast<int>(idx));
+        }
+        std::cout << "All wave data generation complete.\n";
+    }
     return 0;
 }
