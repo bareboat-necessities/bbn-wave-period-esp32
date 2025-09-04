@@ -391,9 +391,6 @@ private:
             const double Usy = (stokes_drift_scalar_.array() * exp2 * dir_y_.array()).sum();
             state.velocity.x() += Usx;
             state.velocity.y() += Usy;
-            /// include mean-drift translation in displacement:
-            state.displacement.x() += Usx * t;
-            state.displacement.y() += Usy * t;
         }
         return state;
     }
