@@ -1,4 +1,3 @@
-
 #ifndef KALMAN_WAVE_DIRECTION_H
 #define KALMAN_WAVE_DIRECTION_H
 
@@ -227,7 +226,7 @@ void KalmanWaveDirection_test_1() {
   const double mean = 0.0f;
   const double stddev = 0.08f;
   std::default_random_engine generator;
-  generator.seed(239);
+  generator.seed(42u);
   std::normal_distribution<float> dist(mean, stddev);
 
   KalmanWaveDirection filter(freq, delta_t);
