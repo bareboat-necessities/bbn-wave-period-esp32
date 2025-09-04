@@ -22,7 +22,7 @@ plt.rcParams.update({
 })
 
 # === Explicit list of wave heights to plot ===
-SELECTED_HEIGHTS = [0.27, 1.5, 4.0, 8.5, 14.8]   # adjust as needed
+SELECTED_HEIGHTS = [0.27, 1.5, 8.5]   # adjust as needed
 
 # === Sampling and cutoff ===
 SAMPLE_RATE_HZ = 240
