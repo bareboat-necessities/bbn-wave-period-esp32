@@ -70,7 +70,6 @@ template<int N_FREQ = 128>
 class EIGEN_ALIGN_MAX JonswapSpectrum {
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
     JonswapSpectrum(double Hs, double Tp,
                     double f_min = 0.02, double f_max = 0.8,
                     double gamma = 2.0, double g = 9.81)
@@ -93,13 +92,13 @@ class EIGEN_ALIGN_MAX JonswapSpectrum {
     const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const {
       return frequencies_;
     }
-    const Eigen::Matrix<double, N_FREQ, 1>& spectrum()    const {
+    const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const {
       return S_;
     }
-    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes()  const {
+    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const {
       return A_;
     }
-    const Eigen::Matrix<double, N_FREQ, 1>& df()          const {
+    const Eigen::Matrix<double, N_FREQ, 1>& df() const {
       return df_;
     }
     double integratedVariance() const {
@@ -142,9 +141,7 @@ class EIGEN_ALIGN_MAX JonswapSpectrum {
         const double ratio2 = fp2 / f2;
         const double ratio4 = ratio2 * ratio2;
 
-        const double base = (g_ * g_) / std::pow(2.0 * PI, 4)
-                            * inv_f5 * std::exp(-1.25 * ratio4);
-
+        const double base = (g_ * g_) / std::pow(2.0 * PI, 4) * inv_f5 * std::exp(-1.25 * ratio4);
         const double gamma_r = std::exp(r * std::log(gamma_));
         const double val = base * gamma_r;
 
@@ -291,12 +288,9 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
           trig_cache_surface_.last_t = std::numeric_limits<double>::quiet_NaN();
         }
         if (t != trig_cache_surface_.last_t) {
-          const Eigen::ArrayXd arg2 =
-            theta2_cache_surface_.array() - omega_sum_.array() * t;
-          trig_cache_surface_.sin2 =
-            (arg2.sin() * pair_mask_surface_.array()).matrix();
-          trig_cache_surface_.cos2 =
-            (arg2.cos() * pair_mask_surface_.array()).matrix();
+          const Eigen::ArrayXd arg2 = theta2_cache_surface_.array() - omega_sum_.array() * t;
+          trig_cache_surface_.sin2 = (arg2.sin() * pair_mask_surface_.array()).matrix();
+          trig_cache_surface_.cos2 = (arg2.cos() * pair_mask_surface_.array()).matrix();
           trig_cache_surface_.last_t = t;
         }
         const Eigen::ArrayXd C = coeff_surface_.array() * trig_cache_surface_.cos2.array();
@@ -340,8 +334,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     Eigen::Vector2d getSurfaceSlopes(double x, double y, double t) const {
       // First-order part: η1(x,y,t) = Σ A_i sin(θ_i), θ_i = kx_i x + ky_i y + φ_i - ω_i t
       // ∂η1/∂x = Σ A_i kx_i cos(θ_i), ∂η1/∂y = Σ A_i ky_i cos(θ_i)
-      const Eigen::Array<double, N_FREQ, 1> arg0 =
-        (kx_.array() * x + ky_.array() * y + phi_.array() - omega_.array() * t).eval();
+      const Eigen::Array<double, N_FREQ, 1> arg0 = (kx_.array() * x + ky_.array() * y + phi_.array() - omega_.array() * t).eval();
       const Eigen::Array<double, N_FREQ, 1> cos0 = arg0.cos();
 
       // surface => exp(k z) = 1
@@ -371,7 +364,6 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       // note the minus sign from d/dx cos(·) = -sin(·) * d(·)/dx
       slope_x += -((coeff * sin2) * kx_sum_.array()).sum();
       slope_y += -((coeff * sin2) * ky_sum_.array()).sum();
-
       return Eigen::Vector2d(slope_x, slope_y);
     }
 
@@ -395,8 +387,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       return R_WI;
     }
 
-    IMUReadings getIMUReadings(double x, double y, double t, double z = 0.0,
-                               double dt = 1e-3) const {
+    IMUReadings getIMUReadings(double x, double y, double t, double z = 0.0, double dt = 1e-3) const {
       IMUReadings imu;
 
       // --- accelerations ---
@@ -449,16 +440,16 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       return E;
     }
 
-    const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const    {
+    const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const {
       return spectrum_.spectrum();
     }
     const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const {
       return spectrum_.frequencies();
     }
-    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const  {
+    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const {
       return spectrum_.amplitudes();
     }
-    const Eigen::Matrix<double, N_FREQ, 1>& df() const          {
+    const Eigen::Matrix<double, N_FREQ, 1>& df() const {
       return spectrum_.df();
     }
 
@@ -638,8 +629,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     // Initialize directions using the active distribution
     void initializeDirectionsFromDistribution() {
       auto dirs = directional_dist_->sample_directions_for_frequencies(
-                    std::vector<double>(spectrum_.frequencies().data(),
-                                        spectrum_.frequencies().data() + N_FREQ));
+                    std::vector<double>(spectrum_.frequencies().data(), spectrum_.frequencies().data() + N_FREQ));
       for (int i = 0; i < N_FREQ; ++i) {
         dir_x_(i) = std::cos(dirs[i]);
         dir_y_(i) = std::sin(dirs[i]);
