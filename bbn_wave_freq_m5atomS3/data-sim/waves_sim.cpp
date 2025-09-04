@@ -47,6 +47,15 @@ struct Wave_Sample {
     float acc_x, acc_y, acc_z;
 };
 
+struct IMU_Sample {
+    // Body-frame IMU
+    float acc_bx, acc_by, acc_bz;
+    float gyro_x, gyro_y, gyro_z;
+
+    // Orientation
+    float roll_deg, pitch_deg, yaw_deg;
+}
+
 static Wave_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     Wave_Sample s;
     s.elevation = wave_obj.surfaceElevation(static_cast<float>(t));
