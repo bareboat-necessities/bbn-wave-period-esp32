@@ -6,6 +6,9 @@
 
 */
 
+#include <iostream>
+
+
 #define EIGEN_NON_ARDUINO
 
 #include "WaveFilesSupport.h"
