@@ -15,7 +15,6 @@
 #include "TrochoidalWave.h"
 #include "Jonswap3dStokesWaves.h"
 #include "FentonWaveVectorized.h"
-#include "WaveSurfaceProfile.h"
 #include "PiersonMoskowitzStokes3D_Waves.h"
 
 // Config
