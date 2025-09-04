@@ -24,7 +24,7 @@ plt.rcParams.update({
 # === Wave categories ===
 height_groups = {
     "low":    [0.27],
-    "medium": [4.0],
+    "medium": [1.5],
     "high":   [8.5],
 }
 
