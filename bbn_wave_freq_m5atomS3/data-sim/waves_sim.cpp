@@ -198,7 +198,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
             wp.direction * M_PI / 180.0, 10.0, GLOBAL_SEED);
         auto jonswap_model = std::make_unique<Jonswap3dStokesWaves<128>>(
-            wp.height, wp.period, dirDist, 0.02, 0.8, 3.3, g_std, GLOBAL_SEED);
+            2 * wp.height, wp.period, dirDist, 0.02, 0.8, 3.3, g_std, GLOBAL_SEED);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_jonswap(sim_t, *jonswap_model);
             writer.write(samp);
@@ -213,7 +213,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
             wp.direction * M_PI / 180.0, 10.0, GLOBAL_SEED);
         PMStokesN3dWaves<128, 3> waveModel(
-            wp.height, wp.period, dirDist, 0.02, 0.8, g_std, GLOBAL_SEED);
+            2 * wp.height, wp.period, dirDist, 0.02, 0.8, g_std, GLOBAL_SEED);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_pmstokes(sim_t, waveModel);
             writer.write(samp);
