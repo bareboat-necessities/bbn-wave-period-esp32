@@ -43,7 +43,7 @@ struct IMUReadingsBody {
     Eigen::Vector3d gyro_body;   // angular velocity in IMU frame (rad/s)
 };
 
-template<int N_FREQ = 256>
+template<int N_FREQ = 128>
 class EIGEN_ALIGN_MAX PiersonMoskowitzSpectrum {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -142,7 +142,7 @@ private:
 // Horizontal and vertical components included.
 // Eulerian fields at depth z ≤ 0: harmonics multiplied by exp(k z).
 //
-template<int N_FREQ = 256, int ORDER = 3>
+template<int N_FREQ = 128, int ORDER = 3>
 class EIGEN_ALIGN_MAX PMStokesN3dWaves {
     static_assert(ORDER >= 1 && ORDER <= 5, "ORDER supported range is 1..5");
 
@@ -516,7 +516,7 @@ private:
 static void generateWavePMStokesCSV(const std::string& filename,
                                     double Hs, double Tp, double mean_dir_deg,
                                     double duration = 40.0, double dt = 0.005) {
-    constexpr int N = 256;
+    constexpr int N = 128;
     auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * M_PI / 180.0, 10.0, 42u);
     PMStokesN3dWaves<N, 3> waveModel(Hs, Tp, dirDist, 0.02, 0.8, 9.81, 42u);
 
@@ -579,9 +579,9 @@ static void generateWavePMStokesCSV(const std::string& filename,
 static void generatePMStokesDirSpectrumCSV(const std::string& filename,
                                            double Hs, double Tp,
                                            double mean_dir_deg = 0.0,
-                                           int N_freq = 256, int N_theta = 72) {
+                                           int N_freq = 128, int N_theta = 72) {
     auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * M_PI / 180.0, 10.0, 42u);
-    PMStokesN3dWaves<256, 3> waveModel(Hs, Tp, dirDist, 0.02, 0.8, 9.81, 42u);
+    PMStokesN3dWaves<128, 3> waveModel(Hs, Tp, dirDist, 0.02, 0.8, 9.81, 42u);
 
     auto freqs = waveModel.frequencies();
     Eigen::MatrixXd E = waveModel.getDirectionalSpectrum(N_theta);
