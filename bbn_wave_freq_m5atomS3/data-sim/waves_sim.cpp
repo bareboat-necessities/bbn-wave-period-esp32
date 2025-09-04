@@ -144,6 +144,12 @@ public:
 
     void flush() { ofs.flush(); }
 
+    void close() {
+        if (ofs.is_open()) {
+            ofs.close();
+        }
+    }
+
 private:
     std::ofstream ofs;
 };
