@@ -161,7 +161,7 @@ public:
                      double f_min = 0.02,
                      double f_max = 0.8,
                      double g = 9.81,
-                     unsigned int seed = 239u)
+                     unsigned int seed = 42u)
         : spectrum_(Hs, Tp, f_min, f_max, g),
           Hs_(Hs), Tp_(Tp), g_(g), seed_(seed),
           directional_dist_(std::move(dirDist))
