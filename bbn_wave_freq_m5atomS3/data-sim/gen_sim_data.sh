@@ -1,5 +1,5 @@
 #!/bin/bash -e
 
 make clean
-make all
+make -j4 all
 ./gen_sim_data
