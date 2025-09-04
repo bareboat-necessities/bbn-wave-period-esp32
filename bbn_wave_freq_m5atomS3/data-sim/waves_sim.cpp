@@ -24,6 +24,7 @@
 #include "FentonWaveVectorized.h"
 #include "PiersonMoskowitzStokes3D_Waves.h"
 #include "DirectionalSpread.h"
+#include "CnoidalWave.h"   // <-- include your CnoidalWave header
 
 // === Global Config ===
 static constexpr float SAMPLE_RATE_HZ  = 240.0f;        // IMU sample rate
@@ -33,7 +34,7 @@ static constexpr float g_std           = 9.80665f;      // gravitational acceler
 static constexpr unsigned GLOBAL_SEED  = 42u;           // global seed for reproducibility
 
 // === Wave Types ===
-enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3 };
+enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3, CNOIDAL=4 };
 
 // === Wave Parameters ===
 struct WaveParameters {
@@ -169,6 +170,7 @@ private:
             case WaveType::JONSWAP:   return "jonswap";
             case WaveType::FENTON:    return "fenton";
             case WaveType::PMSTOKES:  return "pmstokes";
+            case WaveType::CNOIDAL:   return "cnoidal";
         }
         return "unknown";
     }
@@ -178,6 +180,7 @@ private:
         if (name == "jonswap")  return WaveType::JONSWAP;
         if (name == "fenton")   return WaveType::FENTON;
         if (name == "pmstokes") return WaveType::PMSTOKES;
+        if (name == "cnoidal")  return WaveType::CNOIDAL;
         return std::nullopt;
     }
 
@@ -192,65 +195,13 @@ private:
     }
 };
 
-// === CSV Reader ===
-static bool read_csv_record(const std::string &line, Wave_Data_Sample &s) {
-    std::istringstream iss(line);
-    char comma;
-    return (
-        iss >> s.time >> comma
-        >> s.wave.disp_x >> comma >> s.wave.disp_y >> comma >> s.wave.disp_z >> comma
-        >> s.wave.vel_x  >> comma >> s.wave.vel_y  >> comma >> s.wave.vel_z >> comma
-        >> s.wave.acc_x  >> comma >> s.wave.acc_y  >> comma >> s.wave.acc_z >> comma
-        >> s.imu.acc_bx  >> comma >> s.imu.acc_by  >> comma >> s.imu.acc_bz >> comma
-        >> s.imu.gyro_x  >> comma >> s.imu.gyro_y  >> comma >> s.imu.gyro_z >> comma
-        >> s.imu.roll_deg >> comma >> s.imu.pitch_deg >> comma >> s.imu.yaw_deg
-    );
-}
-
-class WaveDataCSVReader {
-public:
-    explicit WaveDataCSVReader(const std::string &filename) : ifs(filename) {
-        if (!ifs.is_open()) {
-            throw std::runtime_error("Failed to open " + filename);
-        }
-        std::string header;
-        std::getline(ifs, header); // skip header line
-    }
-
-    template<typename Callback>
-    void for_each_record(Callback cb) {
-        std::string line;
-        while (std::getline(ifs, line)) {
-            if (line.empty()) continue;
-            Wave_Data_Sample rec{};
-            if (read_csv_record(line, rec)) {
-                cb(rec);
-            }
-        }
-    }
-
-    void close() {
-        if (ifs.is_open()) {
-            ifs.close();
-        }
-    }
-
-private:
-    std::ifstream ifs;
-};
-
 // === CSV Writer ===
 class WaveDataCSVWriter {
 public:
     explicit WaveDataCSVWriter(const std::string &filename, bool append = false) {
-        if (append) {
-            ofs.open(filename, std::ios::app);
-        } else {
-            ofs.open(filename, std::ios::trunc);
-        }
-        if (!ofs.is_open()) {
-            throw std::runtime_error("Failed to open " + filename);
-        }
+        if (append) ofs.open(filename, std::ios::app);
+        else ofs.open(filename, std::ios::trunc);
+        if (!ofs.is_open()) throw std::runtime_error("Failed to open " + filename);
     }
 
     void write_header() {
@@ -313,47 +264,20 @@ static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &mo
     return out;
 }
 
-template<int ORDER=4>
-static std::vector<Wave_Data_Sample> sample_fenton(
-        const WaveParameters &wp,
-        double duration,
-        double dt) 
-{
-    std::vector<Wave_Data_Sample> results;
-
-    auto fenton_params = FentonWave<ORDER>::infer_fenton_parameters_from_amplitude(
-        wp.height, 200.0f, 2.0f * M_PI / wp.period, wp.phase);
-
-    WaveSurfaceTracker<ORDER> fenton_tracker(
-        fenton_params.height,
-        fenton_params.depth,
-        fenton_params.length,
-        fenton_params.initial_x,
-        5.0f,    // mass (kg)
-        0.1f     // drag coeff
-    );
-
-    auto callback = [&](float time, float dt, float elevation,
-                        float vertical_velocity, float vertical_acceleration,
-                        float x, float vx) {
-        (void)dt; (void)x; (void)vx;
-        Wave_Data_Sample out{};
-        out.time        = time;
-        out.wave.disp_z = elevation;
-        out.wave.vel_z  = vertical_velocity;
-        out.wave.acc_z  = vertical_acceleration;
-        results.push_back(out);
-    };
-
-    fenton_tracker.track_floating_object(duration, dt, callback);
-    return results;
+static Wave_Data_Sample sample_cnoidal(double t, CnoidalWave<float> &wave) {
+    Wave_Data_Sample out{};
+    out.time        = t;
+    out.wave.disp_z = wave.surfaceElevation(0.0f, 0.0f, t);
+    out.wave.vel_z  = wave.wVelocity(0.0f, 0.0f, 0.0f, t);
+    out.wave.acc_z  = wave.azAcceleration(0.0f, 0.0f, 0.0f, t);
+    return out;
 }
 
 // === Scenario Runner ===
 static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     WaveParameters wp_copy = wp;
-    if (waveType == WaveType::GERSTNER || waveType == WaveType::FENTON) {
-        wp_copy.direction = 0.0f; // zero direction here for Gerstner/Fenton
+    if (waveType == WaveType::GERSTNER || waveType == WaveType::FENTON || waveType == WaveType::CNOIDAL) {
+        wp_copy.direction = 0.0f; // no direction yet
     }
 
     std::string filename = WaveFileNaming::generate(waveType, wp_copy);
@@ -400,6 +324,14 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             sim_t += DELTA_T;
         }
     }
+    else if (waveType == WaveType::CNOIDAL) {
+        CnoidalWave<float> cnoidal(200.0f, wp.height, wp.period, 0.0f, g_std);
+        for (int step = 0; step < total_steps; ++step) {
+            auto samp = sample_cnoidal(sim_t, cnoidal);
+            writer.write(samp);
+            sim_t += DELTA_T;
+        }
+    }
 
     writer.close();
     printf("Wrote %s\n", filename.c_str());
@@ -408,7 +340,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
 // === Main ===
 int main() {
     for (const auto& wp : waveParamsList) {
-        for (int wt = 0; wt <= static_cast<int>(WaveType::PMSTOKES); ++wt) {
+        for (int wt = 0; wt <= static_cast<int>(WaveType::CNOIDAL); ++wt) {
             run_one_scenario(static_cast<WaveType>(wt), wp);
         }
     }
