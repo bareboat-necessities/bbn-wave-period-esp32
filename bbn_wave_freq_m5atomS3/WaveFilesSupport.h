@@ -17,7 +17,7 @@ enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3, CNOIDAL=4 };
 // === Wave Parameters ===
 struct WaveParameters {
     float period;     // wave period in seconds
-    float height;     // wave amplitude in m
+    float height;     // wave height in m
     float phase;      // initial phase in radians
     float direction;  // azimuth in degrees
 };
