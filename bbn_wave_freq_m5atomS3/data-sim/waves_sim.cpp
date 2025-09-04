@@ -3,12 +3,14 @@
 #include <cstdlib>
 #include <cstdint>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <random>
 #include <limits>
 #include <iomanip>
 #include <memory>
+#include <stdexcept>
 
 #define EIGEN_NON_ARDUINO
 
@@ -59,13 +61,77 @@ struct IMU_Sample {
 };
 
 struct Wave_Data_Sample {
+    double time{};   // simulation time
     Wave_Sample wave{};
     IMU_Sample imu{};
+};
+
+// --- CSV helpers ---
+static void write_csv_header(std::ofstream &ofs) {
+    ofs << "time,"
+        << "disp_x,disp_y,disp_z,"
+        << "vel_x,vel_y,vel_z,"
+        << "acc_x,acc_y,acc_z,"
+        << "acc_bx,acc_by,acc_bz,"
+        << "gyro_x,gyro_y,gyro_z,"
+        << "roll_deg,pitch_deg,yaw_deg\n";
+}
+
+static void write_csv_record(std::ofstream &ofs, const Wave_Data_Sample &s) {
+    ofs << s.time << ","
+        << s.wave.disp_x << "," << s.wave.disp_y << "," << s.wave.disp_z << ","
+        << s.wave.vel_x  << "," << s.wave.vel_y  << "," << s.wave.vel_z << ","
+        << s.wave.acc_x  << "," << s.wave.acc_y  << "," << s.wave.acc_z << ","
+        << s.imu.acc_bx  << "," << s.imu.acc_by  << "," << s.imu.acc_bz << ","
+        << s.imu.gyro_x  << "," << s.imu.gyro_y  << "," << s.imu.gyro_z << ","
+        << s.imu.roll_deg << "," << s.imu.pitch_deg << "," << s.imu.yaw_deg
+        << "\n";
+}
+
+static bool read_csv_record(const std::string &line, Wave_Data_Sample &s) {
+    std::istringstream iss(line);
+    char comma;
+    return (
+        iss >> s.time >> comma
+        >> s.wave.disp_x >> comma >> s.wave.disp_y >> comma >> s.wave.disp_z >> comma
+        >> s.wave.vel_x  >> comma >> s.wave.vel_y  >> comma >> s.wave.vel_z >> comma
+        >> s.wave.acc_x  >> comma >> s.wave.acc_y  >> comma >> s.wave.acc_z >> comma
+        >> s.imu.acc_bx  >> comma >> s.imu.acc_by  >> comma >> s.imu.acc_bz >> comma
+        >> s.imu.gyro_x  >> comma >> s.imu.gyro_y  >> comma >> s.imu.gyro_z >> comma
+        >> s.imu.roll_deg >> comma >> s.imu.pitch_deg >> comma >> s.imu.yaw_deg
+    );
+}
+
+class WaveDataCSVReader {
+public:
+    explicit WaveDataCSVReader(const std::string &filename) : ifs(filename) {
+        if (!ifs.is_open()) {
+            throw std::runtime_error("Failed to open " + filename);
+        }
+        std::string header;
+        std::getline(ifs, header); // skip header
+    }
+
+    template<typename Callback>
+    void for_each_record(Callback cb) {
+        std::string line;
+        while (std::getline(ifs, line)) {
+            if (line.empty()) continue;
+            Wave_Data_Sample rec{};
+            if (read_csv_record(line, rec)) {
+                cb(rec);
+            }
+        }
+    }
+
+private:
+    std::ifstream ifs;
 };
 
 // --- Sampling helpers ---
 static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     Wave_Data_Sample out{};
+    out.time        = t;
     out.wave.disp_z = wave_obj.surfaceElevation(static_cast<float>(t));
     out.wave.vel_z  = wave_obj.surfaceVerticalVelocity(static_cast<float>(t));
     out.wave.acc_z  = wave_obj.surfaceVerticalAcceleration(static_cast<float>(t));
@@ -76,6 +142,7 @@ template<int N=128>
 static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model) {
     auto state = model.getLagrangianState(0.0, 0.0, t, 0.0);
     Wave_Data_Sample out{};
+    out.time        = t;
     out.wave.disp_z = state.position.z();
     out.wave.vel_z  = state.velocity.z();
     out.wave.acc_z  = state.acceleration.z();
@@ -86,6 +153,7 @@ template<int N=128, int ORDER=3>
 static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &model) {
     auto state = model.getLagrangianState(t);
     Wave_Data_Sample out{};
+    out.time        = t;
     out.wave.disp_z = state.position.z();
     out.wave.vel_z  = state.velocity.z();
     out.wave.acc_z  = state.acceleration.z();
@@ -117,6 +185,7 @@ static std::vector<Wave_Data_Sample> sample_fenton(
                         float x, float vx) {
         (void)dt; (void)x; (void)vx;
         Wave_Data_Sample out{};
+        out.time        = time;
         out.wave.disp_z = elevation;
         out.wave.vel_z  = vertical_velocity;
         out.wave.acc_z  = vertical_acceleration;
@@ -145,13 +214,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         return;
     }
 
-    ofs << "time,"
-        << "disp_x,disp_y,disp_z,"
-        << "vel_x,vel_y,vel_z,"
-        << "acc_x,acc_y,acc_z,"
-        << "acc_bx,acc_by,acc_bz,"
-        << "gyro_x,gyro_y,gyro_z,"
-        << "roll_deg,pitch_deg,yaw_deg\n";
+    write_csv_header(ofs);
 
     double sim_t = 0.0;
     int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
@@ -161,14 +224,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         TrochoidalWave<float> trocho(wp.height, period, wp.phase);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_gerstner(sim_t, trocho);
-            ofs << sim_t << ","
-                << samp.wave.disp_x << "," << samp.wave.disp_y << "," << samp.wave.disp_z << ","
-                << samp.wave.vel_x  << "," << samp.wave.vel_y  << "," << samp.wave.vel_z << ","
-                << samp.wave.acc_x  << "," << samp.wave.acc_y  << "," << samp.wave.acc_z << ","
-                << samp.imu.acc_bx  << "," << samp.imu.acc_by  << "," << samp.imu.acc_bz << ","
-                << samp.imu.gyro_x  << "," << samp.imu.gyro_y  << "," << samp.imu.gyro_z << ","
-                << samp.imu.roll_deg << "," << samp.imu.pitch_deg << "," << samp.imu.yaw_deg
-                << "\n";
+            write_csv_record(ofs, samp);
             sim_t += DELTA_T;
         }
     }
@@ -180,29 +236,14 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             wp.height, period, dirDist, 0.02, 0.8, 3.3, g_std, 42u);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_jonswap(sim_t, *jonswap_model);
-            ofs << sim_t << ","
-                << samp.wave.disp_x << "," << samp.wave.disp_y << "," << samp.wave.disp_z << ","
-                << samp.wave.vel_x  << "," << samp.wave.vel_y  << "," << samp.wave.vel_z << ","
-                << samp.wave.acc_x  << "," << samp.wave.acc_y  << "," << samp.wave.acc_z << ","
-                << samp.imu.acc_bx  << "," << samp.imu.acc_by  << "," << samp.imu.acc_bz << ","
-                << samp.imu.gyro_x  << "," << samp.imu.gyro_y  << "," << samp.imu.gyro_z << ","
-                << samp.imu.roll_deg << "," << samp.imu.pitch_deg << "," << samp.imu.yaw_deg
-                << "\n";
+            write_csv_record(ofs, samp);
             sim_t += DELTA_T;
         }
     }
     else if (waveType == WaveType::FENTON) {
         auto samples = sample_fenton<4>(wp, TEST_DURATION_S, DELTA_T);
         for (auto &samp : samples) {
-            ofs << sim_t << ","
-                << samp.wave.disp_x << "," << samp.wave.disp_y << "," << samp.wave.disp_z << ","
-                << samp.wave.vel_x  << "," << samp.wave.vel_y  << "," << samp.wave.vel_z << ","
-                << samp.wave.acc_x  << "," << samp.wave.acc_y  << "," << samp.wave.acc_z << ","
-                << samp.imu.acc_bx  << "," << samp.imu.acc_by  << "," << samp.imu.acc_bz << ","
-                << samp.imu.gyro_x  << "," << samp.imu.gyro_y  << "," << samp.imu.gyro_z << ","
-                << samp.imu.roll_deg << "," << samp.imu.pitch_deg << "," << samp.imu.yaw_deg
-                << "\n";
-            sim_t += DELTA_T;
+            write_csv_record(ofs, samp);
         }
     }
     else if (waveType == WaveType::PMSTOKES) {
@@ -212,14 +253,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             wp.height, 1.0f/wp.freqHz, dirDist, 0.02, 0.8, g_std, 42u);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_pmstokes(sim_t, waveModel);
-            ofs << sim_t << ","
-                << samp.wave.disp_x << "," << samp.wave.disp_y << "," << samp.wave.disp_z << ","
-                << samp.wave.vel_x  << "," << samp.wave.vel_y  << "," << samp.wave.vel_z << ","
-                << samp.wave.acc_x  << "," << samp.wave.acc_y  << "," << samp.wave.acc_z << ","
-                << samp.imu.acc_bx  << "," << samp.imu.acc_by  << "," << samp.imu.acc_bz << ","
-                << samp.imu.gyro_x  << "," << samp.imu.gyro_y  << "," << samp.imu.gyro_z << ","
-                << samp.imu.roll_deg << "," << samp.imu.pitch_deg << "," << samp.imu.yaw_deg
-                << "\n";
+            write_csv_record(ofs, samp);
             sim_t += DELTA_T;
         }
     }
