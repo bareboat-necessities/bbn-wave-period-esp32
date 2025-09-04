@@ -23,9 +23,9 @@ plt.rcParams.update({
 
 # === Wave categories ===
 height_groups = {
-    "low":    [0.27, 0.75],
-    "medium": [2.0, 4.0],
-    "high":   [8.5, 14.8],
+    "low":    [0.27],
+    "medium": [2.0],
+    "high":   [8.5],
 }
 
 # Color palettes for each height group (light → dark)
