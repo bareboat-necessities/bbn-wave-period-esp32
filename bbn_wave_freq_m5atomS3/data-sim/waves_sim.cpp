@@ -29,11 +29,11 @@ static constexpr float TEST_DURATION_S = 10 * 60.0f;    // 10 minutes
 
 // Example test cases
 const std::vector<WaveParameters> waveParamsList = {
-    {3.0f,   0.135f, static_cast<float>(M_PI/3.0),   30.0f},
-    {5.7f,   0.75f,  static_cast<float>(M_PI/3.0),  -45.0f},
-    {8.5f,   2.0f,   static_cast<float>(-M_PI/6.0),  60.0f},
-    {11.4f,  4.25f,  static_cast<float>(M_PI/2.0), -120.0f},
-    {14.3f,  7.4f,   static_cast<float>(-M_PI/2.0),  90.0f}
+    {3.0f,   0.27f, static_cast<float>(M_PI/3.0),   30.0f},
+    {5.7f,   1.5f,  static_cast<float>(M_PI/3.0),  -45.0f},
+    {8.5f,   4.0f,   static_cast<float>(-M_PI/6.0),  60.0f},
+    {11.4f,  8.5f,  static_cast<float>(M_PI/2.0), -120.0f},
+    {14.3f,  14.8f,   static_cast<float>(-M_PI/2.0),  90.0f}
 };
 
 // === Shared Fill Helpers ===
@@ -131,7 +131,7 @@ static std::vector<Wave_Data_Sample> sample_fenton(
     std::vector<Wave_Data_Sample> results;
 
     auto fenton_params = FentonWave<ORDER>::infer_fenton_parameters_from_amplitude(
-        wp.height, 200.0f, 2.0f * M_PI / wp.period, wp.phase);
+        wp.height / 2.0f, 200.0f, 2.0f * M_PI / wp.period, wp.phase);
 
     WaveSurfaceTracker<ORDER> fenton_tracker(
         fenton_params.height,
@@ -187,7 +187,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     int total_steps = static_cast<int>(std::round(TEST_DURATION_S / DELTA_T));
 
     if (waveType == WaveType::GERSTNER) {
-        TrochoidalWave<float> trocho(wp.height, wp.period, wp.phase);
+        TrochoidalWave<float> trocho(wp.height / 2.0f, wp.period, wp.phase);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_gerstner(sim_t, trocho);
             writer.write(samp);
@@ -198,7 +198,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
             wp.direction * M_PI / 180.0, 10.0, GLOBAL_SEED);
         auto jonswap_model = std::make_unique<Jonswap3dStokesWaves<128>>(
-            2 * wp.height, wp.period, dirDist, 0.02, 0.8, 3.3, g_std, GLOBAL_SEED);
+            wp.height, wp.period, dirDist, 0.02, 0.8, 3.3, g_std, GLOBAL_SEED);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_jonswap(sim_t, *jonswap_model);
             writer.write(samp);
@@ -213,7 +213,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
             wp.direction * M_PI / 180.0, 10.0, GLOBAL_SEED);
         PMStokesN3dWaves<128, 3> waveModel(
-            2 * wp.height, wp.period, dirDist, 0.02, 0.8, g_std, GLOBAL_SEED);
+            wp.height, wp.period, dirDist, 0.02, 0.8, g_std, GLOBAL_SEED);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_pmstokes(sim_t, waveModel);
             writer.write(samp);
@@ -221,7 +221,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         }
     }
     else if (waveType == WaveType::CNOIDAL) {
-        CnoidalWave<float> cnoidal(200.0f, wp.height, wp.period, 0.0f, g_std);
+        CnoidalWave<float> cnoidal(200.0f, wp.height / 2.0f, wp.period, 0.0f, g_std);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_cnoidal(sim_t, cnoidal);
             writer.write(samp);
