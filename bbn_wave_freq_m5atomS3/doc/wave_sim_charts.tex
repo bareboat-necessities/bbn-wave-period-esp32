@@ -13,54 +13,33 @@
 % Keep this — needed by PGF outputs that reference \mathdefault
 \providecommand{\mathdefault}[1]{#1}
 
-\title{Wave Simulation Charts (All Types, 20 Figures)}
+\title{Wave Simulation Charts (All Types, 11 Figures)}
 \author{}
 \date{}
 
 \begin{document}
 \maketitle
 
-% 1–4: Gerstner
+% 1: Gerstner
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{gerstner_world.pgf}}
+  \resizebox{\textwidth}{!}{\input{gerstner_worldframe.pgf}}
   \caption{Gerstner: World-frame displacement/velocity/acceleration}
   \label{fig:gerstner_world}
 \end{figure}
 \clearpage
 
+% 2–5: JONSWAP Stokes
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{gerstner_imu_accel.pgf}}
-  \caption{Gerstner: IMU body-frame acceleration}
-  \label{fig:gerstner_imu_accel}
-\end{figure}
-\clearpage
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{gerstner_imu_gyro.pgf}}
-  \caption{Gerstner: IMU gyroscope (angular velocity)}
-  \label{fig:gerstner_imu_gyro}
-\end{figure}
-\clearpage
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{gerstner_euler.pgf}}
-  \caption{Gerstner: IMU Euler angles (roll/pitch/yaw)}
-  \label{fig:gerstner_euler}
-\end{figure}
-\clearpage
-
-% 5–8: JONSWAP Stokes
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{jonswap_world.pgf}}
+  \resizebox{\textwidth}{!}{\input{jonswap_worldframe.pgf}}
   \caption{JONSWAP Stokes: World-frame displacement/velocity/acceleration}
   \label{fig:jonswap_world}
 \end{figure}
 \clearpage
 
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{jonswap_imu_accel.pgf}}
+  \resizebox{\textwidth}{!}{\input{jonswap_imu_acc.pgf}}
   \caption{JONSWAP Stokes: IMU body-frame acceleration}
-  \label{fig:jonswap_imu_accel}
+  \label{fig:jonswap_imu_acc}
 \end{figure}
 \clearpage
 
@@ -78,47 +57,26 @@
 \end{figure}
 \clearpage
 
-% 9–12: Fenton
+% 6: Fenton
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{fenton_world.pgf}}
+  \resizebox{\textwidth}{!}{\input{fenton_worldframe.pgf}}
   \caption{Fenton: World-frame displacement/velocity/acceleration}
   \label{fig:fenton_world}
 \end{figure}
 \clearpage
 
+% 7–10: PM Stokes
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{fenton_imu_accel.pgf}}
-  \caption{Fenton: IMU body-frame acceleration}
-  \label{fig:fenton_imu_accel}
-\end{figure}
-\clearpage
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{fenton_imu_gyro.pgf}}
-  \caption{Fenton: IMU gyroscope (angular velocity)}
-  \label{fig:fenton_imu_gyro}
-\end{figure}
-\clearpage
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{fenton_euler.pgf}}
-  \caption{Fenton: IMU Euler angles (roll/pitch/yaw)}
-  \label{fig:fenton_euler}
-\end{figure}
-\clearpage
-
-% 13–16: PM Stokes
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{pmstokes_world.pgf}}
+  \resizebox{\textwidth}{!}{\input{pmstokes_worldframe.pgf}}
   \caption{PM Stokes: World-frame displacement/velocity/acceleration}
   \label{fig:pmstokes_world}
 \end{figure}
 \clearpage
 
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{pmstokes_imu_accel.pgf}}
+  \resizebox{\textwidth}{!}{\input{pmstokes_imu_acc.pgf}}
   \caption{PM Stokes: IMU body-frame acceleration}
-  \label{fig:pmstokes_imu_accel}
+  \label{fig:pmstokes_imu_acc}
 \end{figure}
 \clearpage
 
@@ -136,32 +94,11 @@
 \end{figure}
 \clearpage
 
-% 17–20: Cnoidal
+% 11: Cnoidal
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{cnoidal_world.pgf}}
+  \resizebox{\textwidth}{!}{\input{cnoidal_worldframe.pgf}}
   \caption{Cnoidal: World-frame displacement/velocity/acceleration}
   \label{fig:cnoidal_world}
-\end{figure}
-\clearpage
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{cnoidal_imu_accel.pgf}}
-  \caption{Cnoidal: IMU body-frame acceleration}
-  \label{fig:cnoidal_imu_accel}
-\end{figure}
-\clearpage
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{cnoidal_imu_gyro.pgf}}
-  \caption{Cnoidal: IMU gyroscope (angular velocity)}
-  \label{fig:cnoidal_imu_gyro}
-\end{figure}
-\clearpage
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{cnoidal_euler.pgf}}
-  \caption{Cnoidal: IMU Euler angles (roll/pitch/yaw)}
-  \label{fig:cnoidal_euler}
 \end{figure}
 \clearpage
 
