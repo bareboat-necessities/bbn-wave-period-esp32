@@ -635,6 +635,16 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
         stokes_drift_surface_xy_[1] += Us0 * dir_y_(i);
       }
       stokes_drift_surface_valid_ = true;
+      // Pre-multiply coefficients for z=0
+      coeff_surface_ = (factor_.array() * Bij_.array()).matrix();
+
+      // Prepare surface trig caches
+      const IndexT P = static_cast<IndexT>(pairwise_size_);
+      theta2_cache_surface_.resize(P);
+      trig_cache_surface_.sin2 = VecD::Zero(P);
+      trig_cache_surface_.cos2 = VecD::Zero(P);
+      trig_cache_surface_.last_t = std::numeric_limits<double>::quiet_NaN();
+      x_cached_surface_ = y_cached_surface_ = std::numeric_limits<double>::quiet_NaN();
     }
 
     void checkSteepness() {
