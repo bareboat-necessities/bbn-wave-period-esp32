@@ -66,28 +66,7 @@ struct Wave_Data_Sample {
     IMU_Sample imu{};
 };
 
-// --- CSV helpers ---
-static void write_csv_header(std::ofstream &ofs) {
-    ofs << "time,"
-        << "disp_x,disp_y,disp_z,"
-        << "vel_x,vel_y,vel_z,"
-        << "acc_x,acc_y,acc_z,"
-        << "acc_bx,acc_by,acc_bz,"
-        << "gyro_x,gyro_y,gyro_z,"
-        << "roll_deg,pitch_deg,yaw_deg\n";
-}
-
-static void write_csv_record(std::ofstream &ofs, const Wave_Data_Sample &s) {
-    ofs << s.time << ","
-        << s.wave.disp_x << "," << s.wave.disp_y << "," << s.wave.disp_z << ","
-        << s.wave.vel_x  << "," << s.wave.vel_y  << "," << s.wave.vel_z << ","
-        << s.wave.acc_x  << "," << s.wave.acc_y  << "," << s.wave.acc_z << ","
-        << s.imu.acc_bx  << "," << s.imu.acc_by  << "," << s.imu.acc_bz << ","
-        << s.imu.gyro_x  << "," << s.imu.gyro_y  << "," << s.imu.gyro_z << ","
-        << s.imu.roll_deg << "," << s.imu.pitch_deg << "," << s.imu.yaw_deg
-        << "\n";
-}
-
+// --- CSV Reader ---
 static bool read_csv_record(const std::string &line, Wave_Data_Sample &s) {
     std::istringstream iss(line);
     char comma;
@@ -126,6 +105,47 @@ public:
 
 private:
     std::ifstream ifs;
+};
+
+// --- CSV Writer ---
+class WaveDataCSVWriter {
+public:
+    explicit WaveDataCSVWriter(const std::string &filename, bool append = false) {
+        if (append) {
+            ofs.open(filename, std::ios::app);
+        } else {
+            ofs.open(filename, std::ios::trunc);
+        }
+        if (!ofs.is_open()) {
+            throw std::runtime_error("Failed to open " + filename);
+        }
+    }
+
+    void write_header() {
+        ofs << "time,"
+            << "disp_x,disp_y,disp_z,"
+            << "vel_x,vel_y,vel_z,"
+            << "acc_x,acc_y,acc_z,"
+            << "acc_bx,acc_by,acc_bz,"
+            << "gyro_x,gyro_y,gyro_z,"
+            << "roll_deg,pitch_deg,yaw_deg\n";
+    }
+
+    void write(const Wave_Data_Sample &s) {
+        ofs << s.time << ","
+            << s.wave.disp_x << "," << s.wave.disp_y << "," << s.wave.disp_z << ","
+            << s.wave.vel_x  << "," << s.wave.vel_y  << "," << s.wave.vel_z << ","
+            << s.wave.acc_x  << "," << s.wave.acc_y  << "," << s.wave.acc_z << ","
+            << s.imu.acc_bx  << "," << s.imu.acc_by  << "," << s.imu.acc_bz << ","
+            << s.imu.gyro_x  << "," << s.imu.gyro_y  << "," << s.imu.gyro_z << ","
+            << s.imu.roll_deg << "," << s.imu.pitch_deg << "," << s.imu.yaw_deg
+            << "\n";
+    }
+
+    void flush() { ofs.flush(); }
+
+private:
+    std::ofstream ofs;
 };
 
 // --- Sampling helpers ---
@@ -208,13 +228,9 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     char buf[128];
     std::snprintf(buf, sizeof(buf), "wave_data_%s_h%.3f.csv",
                   waveName.c_str(), wp.height);
-    std::ofstream ofs(buf);
-    if (!ofs.is_open()) {
-        fprintf(stderr, "Failed to open %s\n", buf);
-        return;
-    }
 
-    write_csv_header(ofs);
+    WaveDataCSVWriter writer(buf);
+    writer.write_header();
 
     double sim_t = 0.0;
     int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
@@ -224,7 +240,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         TrochoidalWave<float> trocho(wp.height, period, wp.phase);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_gerstner(sim_t, trocho);
-            write_csv_record(ofs, samp);
+            writer.write(samp);
             sim_t += DELTA_T;
         }
     }
@@ -236,14 +252,14 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             wp.height, period, dirDist, 0.02, 0.8, 3.3, g_std, 42u);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_jonswap(sim_t, *jonswap_model);
-            write_csv_record(ofs, samp);
+            writer.write(samp);
             sim_t += DELTA_T;
         }
     }
     else if (waveType == WaveType::FENTON) {
         auto samples = sample_fenton<4>(wp, TEST_DURATION_S, DELTA_T);
         for (auto &samp : samples) {
-            write_csv_record(ofs, samp);
+            writer.write(samp);
         }
     }
     else if (waveType == WaveType::PMSTOKES) {
@@ -253,15 +269,15 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             wp.height, 1.0f/wp.freqHz, dirDist, 0.02, 0.8, g_std, 42u);
         for (int step = 0; step < total_steps; ++step) {
             auto samp = sample_pmstokes(sim_t, waveModel);
-            write_csv_record(ofs, samp);
+            writer.write(samp);
             sim_t += DELTA_T;
         }
     }
 
-    ofs.close();
     printf("Wrote %s\n", buf);
 }
 
+// --- Main ---
 int main() {
     for (const auto& wp : waveParamsList) {
         for (int wt = 0; wt <= static_cast<int>(WaveType::PMSTOKES); ++wt) {
