@@ -48,6 +48,19 @@ jobs:
         overwrite: true
         file_glob: true
 
+  gen-sim-data:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y make g++ libeigen3-dev texlive-xetex texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra
+    - name: Build code
+      run: |
+        cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
+        chmod +x gen_sim_data.sh
+        ./gen_sim_data.sh
+
   gen-plots:
     runs-on: ubuntu-latest
     steps:
