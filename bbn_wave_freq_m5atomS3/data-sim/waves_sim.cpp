@@ -1,5 +1,4 @@
-#include "WaveSupport.h"
-
+#include "WaveFilesSupport.h"
 #include "TrochoidalWave.h"
 #include "Jonswap3dStokesWaves.h"
 #include "FentonWaveVectorized.h"
