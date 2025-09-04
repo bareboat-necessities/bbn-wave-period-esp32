@@ -15,6 +15,7 @@ wave_colors = {
     'Long PM waves': ['#377eb8', '#184f7d', '#9ecae1'],    # Blues
 }
 
+# === Existing charts: Displacement, Velocity, Acceleration (world frame) ===
 components = {
     'Displacement': ['disp_x', 'disp_y', 'disp_z'],
     'Velocity': ['vel_x', 'vel_y', 'vel_z'],
@@ -37,23 +38,72 @@ for wave_label, filename in files.items():
 
 axes[-1].set_xlabel('Time [s]')
 
-# Create a custom legend with only one entry per wave type and component
+# Custom legend without duplicates
 handles, labels = [], []
 for ax in axes:
     h, l = ax.get_legend_handles_labels()
     handles.extend(h)
     labels.extend(l)
-
-# Remove duplicates while preserving order
 seen = set()
 unique = []
 for h, l in zip(handles, labels):
     if l not in seen:
         unique.append((h, l))
         seen.add(l)
-
 handles, labels = zip(*unique)
 axes[0].legend(handles, labels, loc='upper right', fontsize='small', ncol=3)
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+# === New chart 1: IMU body-frame acceleration ===
+fig1, ax1 = plt.subplots(3, 1, figsize=(14, 8), sharex=True)
+fig1.suptitle('IMU Body-frame Acceleration (PM Waves)')
+
+for wave_label, filename in files.items():
+    data = pd.read_csv(filename)
+    time = data['time']
+    colors = wave_colors[wave_label]
+    for i, comp in enumerate(['accel_x', 'accel_y', 'accel_z']):
+        ax1[i].plot(time, data[comp], label=f'{wave_label} {comp}', color=colors[i], alpha=0.8)
+        ax1[i].set_ylabel(comp)
+        ax1[i].grid(True)
+
+ax1[-1].set_xlabel('Time [s]')
+ax1[0].legend(loc='upper right', fontsize='small', ncol=3)
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+# === New chart 2: IMU gyro ===
+fig2, ax2 = plt.subplots(3, 1, figsize=(14, 8), sharex=True)
+fig2.suptitle('IMU Gyro (Angular Velocity, PM Waves)')
+
+for wave_label, filename in files.items():
+    data = pd.read_csv(filename)
+    time = data['time']
+    colors = wave_colors[wave_label]
+    for i, comp in enumerate(['gyro_x', 'gyro_y', 'gyro_z']):
+        ax2[i].plot(time, data[comp], label=f'{wave_label} {comp}', color=colors[i], alpha=0.8)
+        ax2[i].set_ylabel(comp)
+        ax2[i].grid(True)
+
+ax2[-1].set_xlabel('Time [s]')
+ax2[0].legend(loc='upper right', fontsize='small', ncol=3)
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+# === New chart 3: Euler angles ===
+fig3, ax3 = plt.subplots(3, 1, figsize=(14, 8), sharex=True)
+fig3.suptitle('IMU Euler Angles (degrees, constrained yaw, PM Waves)')
+
+for wave_label, filename in files.items():
+    data = pd.read_csv(filename)
+    time = data['time']
+    colors = wave_colors[wave_label]
+    for i, comp in enumerate(['roll_deg', 'pitch_deg', 'yaw_deg']):
+        ax3[i].plot(time, data[comp], label=f'{wave_label} {comp}', color=colors[i], alpha=0.8)
+        ax3[i].set_ylabel(comp)
+        ax3[i].grid(True)
+
+ax3[-1].set_xlabel('Time [s]')
+ax3[0].legend(loc='upper right', fontsize='small', ncol=3)
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+
 plt.show()
