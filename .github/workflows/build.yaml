@@ -82,6 +82,9 @@ jobs:
       uses: actions/download-artifact@v4
       with: 
         name: sim-data-files
+    - name: Move data files
+      run: |
+        mv *.csv "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots/
     - name: Build code
       run: |
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
