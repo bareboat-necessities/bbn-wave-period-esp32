@@ -54,7 +54,15 @@ struct IMU_Sample {
 
     // Orientation
     float roll_deg, pitch_deg, yaw_deg;
-}
+};
+
+struct Wave_Data_Sample {
+    // Wave in world frame
+    Wave_Sample wave;
+
+    // IMU data
+    IMU_Sample imu;
+};
 
 static Wave_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     Wave_Sample s;
