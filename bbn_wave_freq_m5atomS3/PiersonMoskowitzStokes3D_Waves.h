@@ -185,6 +185,7 @@ public:
         initializeDirectionsFromDistribution();
 
         computeWaveDirectionComponents();
+        renormalizeForStokesElevationVariance();
         computePerComponentStokesDriftEstimate();  // Lagrangian mean drift (2nd order)
         checkSteepness();
     }
@@ -438,6 +439,51 @@ private:
     // U_s(z) = (ω k a²) e^{2 k z} 𝚑𝚊𝚝{k},  z ≤ 0.  Here we store U_s0 = ω k a².
     void computePerComponentStokesDriftEstimate() {
         stokes_drift_scalar_ = omega_.array() * k_.array() * A1_.array().square();
+    }
+
+    // Normalization of Hs
+    void renormalizeForStokesElevationVariance() {
+        if (ORDER <= 1) return; // nothing to do if only linear
+
+        const double m0_target = (Hs_ * Hs_) / 16.0;
+
+        auto m0_from_beta = [&](double beta) {
+            double sum_sq = 0.0;
+            for (int i = 0; i < N_FREQ; ++i) {
+                const double a  = beta * A1_(i);
+                const double ka = k_(i) * a;
+
+                // n=1 term
+                double cn1 = a;
+                sum_sq += cn1 * cn1;
+
+                // higher-order terms
+                for (int n = 2; n <= ORDER; ++n) {
+                    const double c = stokesCoeff(n);
+                    const double cn = c * a * std::pow(ka, n - 1);
+                    sum_sq += cn * cn;
+                }
+            }
+            return 0.5 * sum_sq; // variance
+        };
+
+        const double m0_initial = m0_from_beta(1.0);
+        if (m0_initial <= 0.0) return;
+
+        if (m0_initial > m0_target * 1.0001) {
+            // bisection search for scaling factor beta
+            double lo = 0.0, hi = 1.0;
+            for (int it = 0; it < 60; ++it) {
+                double mid = 0.5 * (lo + hi);
+                if (m0_from_beta(mid) > m0_target) {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            double beta = 0.5 * (lo + hi);
+            A1_ *= beta;
+        }
     }
 
     void checkSteepness() const {
