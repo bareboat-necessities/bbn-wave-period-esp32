@@ -20,7 +20,7 @@
 // Config
 static constexpr float SAMPLE_RATE_HZ = 240.0f;
 static constexpr float DELTA_T = 1.0f / SAMPLE_RATE_HZ;
-static constexpr float TEST_DURATION_S = 5 * 60.0f;
+static constexpr float TEST_DURATION_S = 10 * 60.0f;
 
 enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3 };
 
