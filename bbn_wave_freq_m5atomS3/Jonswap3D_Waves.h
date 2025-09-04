@@ -137,10 +137,10 @@ public:
                            double mean_direction_deg = 0.0,
                            double f_min = 0.02,
                            double f_max = 0.8,
-                           double gamma = 2.0,
+                           double gamma = 3.3,
                            double g = 9.81,
-                           double spreading_exponent = 15.0,
-                           unsigned int seed = 239u)
+                           double spreading_exponent = 10.0,
+                           unsigned int seed = 42u)
         : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
           Hs_(Hs), Tp_(Tp), mean_dir_rad_(mean_direction_deg * M_PI / 180.0),
           gamma_(gamma), g_(g), spreading_exponent_(spreading_exponent),
