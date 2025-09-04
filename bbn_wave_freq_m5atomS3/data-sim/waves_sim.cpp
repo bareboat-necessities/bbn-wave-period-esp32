@@ -11,13 +11,13 @@
 
 #define EIGEN_NON_ARDUINO
 
-#include "WaveFilesSupport.h"
 #include "TrochoidalWave.h"
-#include "Jonswap3dStokesWaves.h"
 #include "FentonWaveVectorized.h"
-#include "PiersonMoskowitzStokes3D_Waves.h"
-#include "DirectionalSpread.h"
 #include "CnoidalWave.h"
+#include "DirectionalSpread.h"
+#include "Jonswap3dStokesWaves.h"
+#include "PiersonMoskowitzStokes3D_Waves.h"
+#include "WaveFilesSupport.h"
 
 // === Experiment Config ===
 static constexpr float SAMPLE_RATE_HZ  = 240.0f;
