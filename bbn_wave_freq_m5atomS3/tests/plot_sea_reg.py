@@ -20,7 +20,7 @@ wave_colors = {
     "fenton": "Blues",
     "gerstner": "Purples",
     "jonswap": "Reds",
-    "pmstokes": "Oranges"
+    "pmstokes": "Greens"
 }
 
 # Map wave type & height to target frequency
@@ -67,7 +67,7 @@ for tracker, tracker_files in tracker_groups.items():
     for f in tracker_files:
         m = pattern.search(os.path.basename(f))
         wave = m.group("wave")
-        if wave == "gerstner" or wave == "jonswap":
+        if wave == "gerstner" :
             continue
         wave_grouped.setdefault(wave, []).append(f)
 
