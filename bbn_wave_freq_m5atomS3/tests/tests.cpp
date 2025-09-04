@@ -244,6 +244,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef PM_STOKES_TEST
   PMStokes_testWavePatterns();
+  PMStokes_testWaveSpectrum();
 #endif
 
 #ifdef JONSWAP_TEST
