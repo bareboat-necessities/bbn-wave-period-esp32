@@ -2,4 +2,7 @@
 
 make clean
 make -j4 all
-./waves_sim
+
+# run each wave height parallel
+seq 0 4 | xargs -n1 -P4 ./waves_sim
+
