@@ -90,11 +90,21 @@ class EIGEN_ALIGN_MAX JonswapSpectrum {
       computeJonswapSpectrumFromHs();
     }
 
-    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { return frequencies_; }
-    const Eigen::Matrix<double, N_FREQ, 1>& spectrum()    const { return S_; }
-    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes()  const { return A_; }
-    const Eigen::Matrix<double, N_FREQ, 1>& df()          const { return df_; }
-    double integratedVariance() const { return (S_.cwiseProduct(df_)).sum(); }
+    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const {
+      return frequencies_;
+    }
+    const Eigen::Matrix<double, N_FREQ, 1>& spectrum()    const {
+      return S_;
+    }
+    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes()  const {
+      return A_;
+    }
+    const Eigen::Matrix<double, N_FREQ, 1>& df()          const {
+      return df_;
+    }
+    double integratedVariance() const {
+      return (S_.cwiseProduct(df_)).sum();
+    }
 
   private:
     double Hs_, Tp_, f_min_, f_max_, gamma_, g_;
@@ -162,8 +172,8 @@ class EIGEN_ALIGN_MAX JonswapSpectrum {
 };
 
 struct IMUReadings {
-    Eigen::Vector3d accel_body;  // linear acceleration in IMU frame
-    Eigen::Vector3d gyro_body;   // angular velocity in IMU frame (rad/s)
+  Eigen::Vector3d accel_body;  // linear acceleration in IMU frame
+  Eigen::Vector3d gyro_body;   // angular velocity in IMU frame (rad/s)
 };
 
 // Jonswap3dStokesWaves
@@ -254,77 +264,77 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     WaveState getLagrangianState(double x, double y, double t, double z = 0.0) const {
       constexpr double z_surface_eps = 1e-12;
       if (std::abs(z) <= z_surface_eps) {
-          WaveState out;
-          out.displacement.setZero();
-          out.velocity.setZero();
-          out.acceleration.setZero();
-  
-          const Eigen::Array<double, N_FREQ, 1> arg0 = (kx_.array() * x + ky_.array() * y + phi_.array() - omega_.array() * t);
-          const Eigen::Array<double, N_FREQ, 1> sin0 = arg0.sin();
-          const Eigen::Array<double, N_FREQ, 1> cos0 = arg0.cos();
-  
-          out.displacement.x() -= (A_dirx_ * cos0).sum();
-          out.displacement.y() -= (A_diry_ * cos0).sum();
-          out.displacement.z() += (spectrum_.amplitudes().array() * sin0).sum();
-          out.velocity.x()     -= (Aomega_dirx_ * sin0).sum();
-          out.velocity.y()     -= (Aomega_diry_ * sin0).sum();
-          out.velocity.z()     -= (Aomega_ * cos0).sum();
-          out.acceleration.x() += (Aomega2_dirx_ * cos0).sum();
-          out.acceleration.y() += (Aomega2_diry_ * cos0).sum();
-          out.acceleration.z() -= (Aomega2_ * sin0).sum();
-  
-          if (!(x == x_cached_surface_ && y == y_cached_surface_)) {
-              const Eigen::Vector2d xy(x, y);
-              theta2_cache_surface_ = Ksum2_ * xy + phi_sum_;
-              x_cached_surface_ = x;
-              y_cached_surface_ = y;
-              trig_cache_surface_.last_t = std::numeric_limits<double>::quiet_NaN();
-          }
-          if (t != trig_cache_surface_.last_t) {
-              const Eigen::ArrayXd arg2 =
-                  theta2_cache_surface_.array() - omega_sum_.array() * t;
-              trig_cache_surface_.sin2 =
-                  (arg2.sin() * pair_mask_surface_.array()).matrix();
-              trig_cache_surface_.cos2 =
-                  (arg2.cos() * pair_mask_surface_.array()).matrix();
-              trig_cache_surface_.last_t = t;
-          }
-          const Eigen::ArrayXd C = coeff_surface_.array() * trig_cache_surface_.cos2.array();
-          const Eigen::ArrayXd S = coeff_surface_.array() * trig_cache_surface_.sin2.array();
-  
-          out.displacement.x() += -(C * hx_.array()).sum();
-          out.displacement.y() += -(C * hy_.array()).sum();
-          out.displacement.z() +=   C.sum();
-  
-          const Eigen::ArrayXd wS  = omega_sum_.array()  * S;
-          const Eigen::ArrayXd w2C = omega_sum2_.array() * C;
-  
-          out.velocity.x()     += (wS * hx_.array()).sum();
-          out.velocity.y()     += (wS * hy_.array()).sum();
-          out.velocity.z()     +=  wS.sum();
-          out.acceleration.x() += -(w2C * hx_.array()).sum();
-          out.acceleration.y() += -(w2C * hy_.array()).sum();
-          out.acceleration.z() += -(w2C.sum());
-          out.velocity.x() += stokes_drift_surface_xy_[0];
-          out.velocity.y() += stokes_drift_surface_xy_[1];
-          return out;
+        WaveState out;
+        out.displacement.setZero();
+        out.velocity.setZero();
+        out.acceleration.setZero();
+
+        const Eigen::Array<double, N_FREQ, 1> arg0 = (kx_.array() * x + ky_.array() * y + phi_.array() - omega_.array() * t);
+        const Eigen::Array<double, N_FREQ, 1> sin0 = arg0.sin();
+        const Eigen::Array<double, N_FREQ, 1> cos0 = arg0.cos();
+
+        out.displacement.x() -= (A_dirx_ * cos0).sum();
+        out.displacement.y() -= (A_diry_ * cos0).sum();
+        out.displacement.z() += (spectrum_.amplitudes().array() * sin0).sum();
+        out.velocity.x()     -= (Aomega_dirx_ * sin0).sum();
+        out.velocity.y()     -= (Aomega_diry_ * sin0).sum();
+        out.velocity.z()     -= (Aomega_ * cos0).sum();
+        out.acceleration.x() += (Aomega2_dirx_ * cos0).sum();
+        out.acceleration.y() += (Aomega2_diry_ * cos0).sum();
+        out.acceleration.z() -= (Aomega2_ * sin0).sum();
+
+        if (!(x == x_cached_surface_ && y == y_cached_surface_)) {
+          const Eigen::Vector2d xy(x, y);
+          theta2_cache_surface_ = Ksum2_ * xy + phi_sum_;
+          x_cached_surface_ = x;
+          y_cached_surface_ = y;
+          trig_cache_surface_.last_t = std::numeric_limits<double>::quiet_NaN();
+        }
+        if (t != trig_cache_surface_.last_t) {
+          const Eigen::ArrayXd arg2 =
+            theta2_cache_surface_.array() - omega_sum_.array() * t;
+          trig_cache_surface_.sin2 =
+            (arg2.sin() * pair_mask_surface_.array()).matrix();
+          trig_cache_surface_.cos2 =
+            (arg2.cos() * pair_mask_surface_.array()).matrix();
+          trig_cache_surface_.last_t = t;
+        }
+        const Eigen::ArrayXd C = coeff_surface_.array() * trig_cache_surface_.cos2.array();
+        const Eigen::ArrayXd S = coeff_surface_.array() * trig_cache_surface_.sin2.array();
+
+        out.displacement.x() += -(C * hx_.array()).sum();
+        out.displacement.y() += -(C * hy_.array()).sum();
+        out.displacement.z() +=   C.sum();
+
+        const Eigen::ArrayXd wS  = omega_sum_.array()  * S;
+        const Eigen::ArrayXd w2C = omega_sum2_.array() * C;
+
+        out.velocity.x()     += (wS * hx_.array()).sum();
+        out.velocity.y()     += (wS * hy_.array()).sum();
+        out.velocity.z()     +=  wS.sum();
+        out.acceleration.x() += -(w2C * hx_.array()).sum();
+        out.acceleration.y() += -(w2C * hy_.array()).sum();
+        out.acceleration.z() += -(w2C.sum());
+        out.velocity.x() += stokes_drift_surface_xy_[0];
+        out.velocity.y() += stokes_drift_surface_xy_[1];
+        return out;
       }
       if (!std::isfinite(exp_kz_cached_z_) || exp_kz_cached_z_ != z) {
-          for (int i = 0; i < N_FREQ; ++i) {
-              exp_kz_(i) = std::exp(k_(i) * z);
-          }
-          exp_kz_pairs_ = (k_sum_.array() * z).exp().matrix();
-          if (cutoff_tol_ > 0.0) {
-              pair_mask_ = ((Bij_.array().abs() * exp_kz_pairs_.array()) >= cutoff_tol_).cast<double>().matrix();
-          } else {
-              pair_mask_.setOnes();
-          }
-          exp_kz_cached_z_ = z;
-          stokes_drift_mean_xy_valid_ = false;
-          trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
+        for (int i = 0; i < N_FREQ; ++i) {
+          exp_kz_(i) = std::exp(k_(i) * z);
+        }
+        exp_kz_pairs_ = (k_sum_.array() * z).exp().matrix();
+        if (cutoff_tol_ > 0.0) {
+          pair_mask_ = ((Bij_.array().abs() * exp_kz_pairs_.array()) >= cutoff_tol_).cast<double>().matrix();
+        } else {
+          pair_mask_.setOnes();
+        }
+        exp_kz_cached_z_ = z;
+        stokes_drift_mean_xy_valid_ = false;
+        trig_cache_.last_t = std::numeric_limits<double>::quiet_NaN();
       }
       return computeState(x, y, t, exp_kz_, exp_kz_pairs_, pair_mask_, stokes_drift_mean_xy_, stokes_drift_mean_xy_valid_);
-  }
+    }
 
     // Surface slopes (∂η/∂x, ∂η/∂y) at z = 0, including 1st + 2nd order
     Eigen::Vector2d getSurfaceSlopes(double x, double y, double t) const {
@@ -352,7 +362,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       // where coeff_ij = factor * Bij * exp((k_i+k_j)z) ; at surface z=0 => exp(...) = 1
       // ∂η2/∂x = - Σ coeff_ij sin(θ2_ij - wsum t) * (kx_i + kx_j)
       // ∂η2/∂y = - Σ coeff_ij sin(θ2_ij - wsum t) * (ky_i + ky_j)
-      
+
       const Eigen::ArrayXd arg2  = (theta2_cache_.array() - omega_sum_.array() * t);
       const Eigen::ArrayXd sin2  = (arg2.sin() * pair_mask_surface_.array());
       const Eigen::ArrayXd coeff = (factor_.array() * Bij_.array()); // exp(...) = 1 at surface
@@ -407,42 +417,50 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       Eigen::Matrix3d Omega = dR * R1.transpose();
 
       // vee map: skew-symmetric to vector
-      imu.gyro_body = Eigen::Vector3d(Omega(2,1), Omega(0,2), Omega(1,0));
+      imu.gyro_body = Eigen::Vector3d(Omega(2, 1), Omega(0, 2), Omega(1, 0));
       return imu;
     }
 
     // Directional Spectrum API
     // Compute directional spectrum at a given frequency f and angle θ
     double directionalSpectrumValue(double f, double theta) const {
-        auto &freqs = spectrum_.frequencies();
-        int idx = int(std::lower_bound(freqs.data(), freqs.data() + N_FREQ, f) - freqs.data());
-        if (idx < 0 || idx >= N_FREQ) return 0.0;
+      auto &freqs = spectrum_.frequencies();
+      int idx = int(std::lower_bound(freqs.data(), freqs.data() + N_FREQ, f) - freqs.data());
+      if (idx < 0 || idx >= N_FREQ) return 0.0;
 
-        const double S_f = spectrum_.spectrum()(idx);
-        return S_f * (*directional_dist_)(theta, f);
+      const double S_f = spectrum_.spectrum()(idx);
+      return S_f * (*directional_dist_)(theta, f);
     }
 
     // Discrete directional spectrum, size N_FREQ × M
     // If normalize = true, weights are normalized so that ∑ D(θ; f) Δθ ≈ 1.
     Eigen::MatrixXd getDirectionalSpectrum(int M, bool normalize = true) const {
-        Eigen::MatrixXd E(N_FREQ, M);
-        for (int i = 0; i < N_FREQ; ++i) {
-            double f = spectrum_.frequencies()(i);
-            std::vector<double> weights = normalize
-                ? directional_dist_->normalized_weights(M, f)
-                : directional_dist_->weights(M, f);
-            double S_f = spectrum_.spectrum()(i);
-            for (int m = 0; m < M; ++m) {
-                E(i, m) = S_f * weights[m];
-            }
+      Eigen::MatrixXd E(N_FREQ, M);
+      for (int i = 0; i < N_FREQ; ++i) {
+        double f = spectrum_.frequencies()(i);
+        std::vector<double> weights = normalize
+                                      ? directional_dist_->normalized_weights(M, f)
+                                      : directional_dist_->weights(M, f);
+        double S_f = spectrum_.spectrum()(i);
+        for (int m = 0; m < M; ++m) {
+          E(i, m) = S_f * weights[m];
         }
-        return E;
+      }
+      return E;
     }
 
-    const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const    { return spectrum_.spectrum(); }
-    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { return spectrum_.frequencies(); }
-    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const  { return spectrum_.amplitudes(); }
-    const Eigen::Matrix<double, N_FREQ, 1>& df() const          { return spectrum_.df(); }
+    const Eigen::Matrix<double, N_FREQ, 1>& spectrum() const    {
+      return spectrum_.spectrum();
+    }
+    const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const {
+      return spectrum_.frequencies();
+    }
+    const Eigen::Matrix<double, N_FREQ, 1>& amplitudes() const  {
+      return spectrum_.amplitudes();
+    }
+    const Eigen::Matrix<double, N_FREQ, 1>& df() const          {
+      return spectrum_.df();
+    }
 
   private:
     using IndexT = Eigen::Index;
@@ -619,13 +637,13 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
 
     // Initialize directions using the active distribution
     void initializeDirectionsFromDistribution() {
-        auto dirs = directional_dist_->sample_directions_for_frequencies(
-            std::vector<double>(spectrum_.frequencies().data(),
-                                spectrum_.frequencies().data() + N_FREQ));
-        for (int i = 0; i < N_FREQ; ++i) {
-            dir_x_(i) = std::cos(dirs[i]);
-            dir_y_(i) = std::sin(dirs[i]);
-        }
+      auto dirs = directional_dist_->sample_directions_for_frequencies(
+                    std::vector<double>(spectrum_.frequencies().data(),
+                                        spectrum_.frequencies().data() + N_FREQ));
+      for (int i = 0; i < N_FREQ; ++i) {
+        dir_x_(i) = std::cos(dirs[i]);
+        dir_y_(i) = std::sin(dirs[i]);
+      }
     }
 
     void computeWaveDirectionComponents() {
