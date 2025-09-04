@@ -82,7 +82,7 @@ static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_ob
     Wave_Data_Sample out{};
     out.time        = t;
     out.wave.disp_z = wave_obj.surfaceElevation(static_cast<float>(t));
-    out.wave.vel_z  = wave_obj.surfaceVerticalVelocity(static_cast<float>(t));
+    out.wave.vel_z  = wave_obj.surfaceVerticalSpeed(static_cast<float>(t));
     out.wave.acc_z  = wave_obj.surfaceVerticalAcceleration(static_cast<float>(t));
     fill_default_imu(out.imu);
     return out;
