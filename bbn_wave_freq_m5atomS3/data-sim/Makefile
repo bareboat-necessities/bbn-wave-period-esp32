@@ -30,4 +30,4 @@ $(TARGET): $(OBJ)
 	$(CC) $(CPPFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(TARGET) $(TARGET).exe
+	rm -f $(OBJ) $(TARGET) $(TARGET).exe *.csv
