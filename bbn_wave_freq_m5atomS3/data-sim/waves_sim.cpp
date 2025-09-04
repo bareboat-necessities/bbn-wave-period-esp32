@@ -32,12 +32,44 @@ static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_ob
 
 template<int N=128>
 static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model) {
-    auto state = model.getLagrangianState(0.0, 0.0, t, 0.0);
     Wave_Data_Sample out{};
-    out.time        = t;
-    out.wave.disp_z = state.position.z();
-    out.wave.vel_z  = state.velocity.z();
-    out.wave.acc_z  = state.acceleration.z();
+    out.time = t;
+
+    // --- World-frame wave kinematics ---
+    auto state = model.getLagrangianState(0.0, 0.0, t, 0.0);
+    out.wave.disp_x = static_cast<float>(state.displacement.x());
+    out.wave.disp_y = static_cast<float>(state.displacement.y());
+    out.wave.disp_z = static_cast<float>(state.displacement.z());
+
+    out.wave.vel_x  = static_cast<float>(state.velocity.x());
+    out.wave.vel_y  = static_cast<float>(state.velocity.y());
+    out.wave.vel_z  = static_cast<float>(state.velocity.z());
+
+    out.wave.acc_x  = static_cast<float>(state.acceleration.x());
+    out.wave.acc_y  = static_cast<float>(state.acceleration.y());
+    out.wave.acc_z  = static_cast<float>(state.acceleration.z());
+
+    // --- IMU frame (accel + gyro) ---
+    auto imu = model.getIMUReadings(0.0, 0.0, t);
+
+    out.imu.acc_bx = static_cast<float>(imu.accel_body.x());
+    out.imu.acc_by = static_cast<float>(imu.accel_body.y());
+    out.imu.acc_bz = static_cast<float>(imu.accel_body.z());
+
+    out.imu.gyro_x = static_cast<float>(imu.gyro_body.x());
+    out.imu.gyro_y = static_cast<float>(imu.gyro_body.y());
+    out.imu.gyro_z = static_cast<float>(imu.gyro_body.z());
+
+    // --- Orientation from slopes ---
+    auto slopes = model.getSurfaceSlopes(0.0, 0.0, t);
+    double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;   // rotation about x-axis
+    double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;  // rotation about y-axis
+    double yaw   = 0.0; // no yaw
+
+    out.imu.roll_deg  = static_cast<float>(roll);
+    out.imu.pitch_deg = static_cast<float>(pitch);
+    out.imu.yaw_deg   = static_cast<float>(yaw);
+
     return out;
 }
 
