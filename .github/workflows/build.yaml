@@ -66,7 +66,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: sim-data-files
-        path: "**/*.cvs"
+        path: "**/*.csv"
 
   gen-plots:
     needs: gen-sim-data
