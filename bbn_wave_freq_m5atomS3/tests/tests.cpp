@@ -203,7 +203,7 @@ int main(int argc, char *argv[]) {
     }
   } else if (test_type == TestType::PM_STOKES) {
     auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(30.0 /*dir*/ * M_PI / 180.0, 10.0, 42u);
-    PMStokesN3dWaves<256, 3> waveModel(w->amplitude(), w->period(), dirDist, 0.02, 0.8, g_std, 42u);
+    PMStokesN3dWaves<128, 3> waveModel(w->amplitude(), w->period(), dirDist, 0.02, 0.8, g_std, 42u);
     while (t < test_duration) {
       auto state = waveModel.getLagrangianState(t);
       float zero_mean_gauss_noise = dist(generator);
