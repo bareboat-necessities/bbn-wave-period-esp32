@@ -103,6 +103,12 @@ public:
         }
     }
 
+    void close() {
+        if (ifs.is_open()) {
+            ifs.close();
+        }
+    }
+
 private:
     std::ifstream ifs;
 };
