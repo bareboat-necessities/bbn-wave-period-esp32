@@ -93,7 +93,7 @@ static Wave_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model) {
     return s;
 }
 
-template<int N=256, int ORDER=3>
+template<int N=128, int ORDER=3>
 static Wave_Sample sample_pmstokes(const WaveParameters &p, double t, PMStokesN3dWaves<N, ORDER> &model) {
     Wave_Sample s;
     auto state = model.getLagrangianState(t);
@@ -193,7 +193,7 @@ static void run_one_scenario(WaveType waveType, TrackerType tracker, const WaveP
     }
     else if (waveType == WaveType::PMSTOKES) {
         auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(wp.direction * M_PI / 180.0, 10.0, 42u);
-        PMStokesN3dWaves<256, 3> waveModel(wp.height, 1.0f/wp.freqHz, dirDist, 0.02, 0.8, g_std, 42u);
+        PMStokesN3dWaves<128, 3> waveModel(wp.height, 1.0f/wp.freqHz, dirDist, 0.02, 0.8, g_std, 42u);
         for (int step = 0; step < total_steps; ++step) {
             Wave_Sample samp = sample_pmstokes(wp, sim_t, waveModel);
             float noisy_accel = samp.accel_z + bias + gauss(rng);
