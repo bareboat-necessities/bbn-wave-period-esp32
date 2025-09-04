@@ -56,6 +56,11 @@ static void fill_euler_from_slopes(IMU_Sample &dst, const Eigen::Vector2d &slope
     dst.yaw_deg   = static_cast<float>(yaw);
 }
 
+// Default IMU filler (zeros)
+static void fill_default_imu(IMU_Sample &imu) {
+    imu = {}; // zero all fields
+}
+
 // === Sampling Helpers ===
 static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     Wave_Data_Sample out{};
@@ -63,6 +68,7 @@ static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_ob
     out.wave.disp_z = wave_obj.surfaceElevation(static_cast<float>(t));
     out.wave.vel_z  = wave_obj.surfaceVerticalVelocity(static_cast<float>(t));
     out.wave.acc_z  = wave_obj.surfaceVerticalAcceleration(static_cast<float>(t));
+    fill_default_imu(out.imu);
     return out;
 }
 
@@ -129,6 +135,7 @@ static std::vector<Wave_Data_Sample> sample_fenton(
         out.wave.disp_z = elevation;
         out.wave.vel_z  = vertical_velocity;
         out.wave.acc_z  = vertical_acceleration;
+        fill_default_imu(out.imu);
         results.push_back(out);
     };
 
@@ -142,6 +149,7 @@ static Wave_Data_Sample sample_cnoidal(double t, CnoidalWave<float> &wave) {
     out.wave.disp_z = wave.surfaceElevation(0.0f, 0.0f, t);
     out.wave.vel_z  = wave.wVelocity(0.0f, 0.0f, 0.0f, t);
     out.wave.acc_z  = wave.azAcceleration(0.0f, 0.0f, 0.0f, t);
+    fill_default_imu(out.imu);
     return out;
 }
 
@@ -160,7 +168,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     writer.write_header();
 
     double sim_t = 0.0;
-    int total_steps = static_cast<int>(std::ceil(TEST_DURATION_S * SAMPLE_RATE_HZ));
+    int total_steps = static_cast<int>(std::round(TEST_DURATION_S / DELTA_T));
 
     if (waveType == WaveType::GERSTNER) {
         TrochoidalWave<float> trocho(wp.height, wp.period, wp.phase);
@@ -206,16 +214,18 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     }
 
     writer.close();
-    printf("Wrote %s\n", filename.c_str());
+    std::cout << "Wrote " << filename << "\n";
 }
 
 // === Main ===
 int main() {
     for (const auto& wp : waveParamsList) {
-        for (int wt = 0; wt <= static_cast<int>(WaveType::CNOIDAL); ++wt) {
-            run_one_scenario(static_cast<WaveType>(wt), wp);
+        for (WaveType wt : {WaveType::GERSTNER, WaveType::JONSWAP,
+                            WaveType::FENTON, WaveType::PMSTOKES,
+                            WaveType::CNOIDAL}) {
+            run_one_scenario(wt, wp);
         }
     }
-    printf("All wave data generation complete.\n");
+    std::cout << "All wave data generation complete.\n";
     return 0;
 }
