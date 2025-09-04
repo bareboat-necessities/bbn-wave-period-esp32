@@ -24,7 +24,7 @@
 */
 
 // JonswapSpectrum
-template<int N_FREQ = 256>
+template<int N_FREQ = 128>
 class EIGEN_ALIGN_MAX JonswapSpectrum {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -122,7 +122,7 @@ private:
 };
 
 // Jonswap3dGerstnerWaves
-template<int N_FREQ = 256>
+template<int N_FREQ = 128>
 class Jonswap3dGerstnerWaves {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -299,7 +299,7 @@ private:
 void generateWaveJonswapCSV(const std::string& filename,
                             double Hs, double Tp, double mean_dir_deg,
                             double duration = 40.0, double dt = 0.005) {
-    Jonswap3dGerstnerWaves<256> waveModel(
+    Jonswap3dGerstnerWaves<128> waveModel(
         Hs, Tp, mean_dir_deg, 0.02, 0.8, 2.0, 9.81, 10.0
     );
 
