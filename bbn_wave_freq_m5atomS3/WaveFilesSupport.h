@@ -169,19 +169,21 @@ public:
 private:
     std::ifstream ifs;
 
-    static bool read_csv_record(const std::string &line, Wave_Data_Sample &s) {
+     static bool read_csv_record(const std::string &line, Wave_Data_Sample &s) {
         std::istringstream iss(line);
         char comma;
-        return (
-            iss >> s.time >> comma
-            >> s.wave.disp_x >> comma >> s.wave.disp_y >> comma >> s.wave.disp_z >> comma
-            >> s.wave.vel_x  >> comma >> s.wave.vel_y  >> comma >> s.wave.vel_z >> comma
-            >> s.wave.acc_x  >> comma >> s.wave.acc_y  >> comma >> s.wave.acc_z >> comma
-            >> s.imu.acc_bx  >> comma >> s.imu.acc_by  >> comma >> s.imu.acc_bz >> comma
-            >> s.imu.gyro_x  >> comma >> s.imu.gyro_y  >> comma >> s.imu.gyro_z >> comma
-            >> s.imu.roll_deg >> comma >> s.imu.pitch_deg >> comma >> s.imu.yaw_deg
-        );
-    }
+
+        bool ok =
+            (iss >> s.time >> comma
+                 >> s.wave.disp_x >> comma >> s.wave.disp_y >> comma >> s.wave.disp_z >> comma
+                 >> s.wave.vel_x  >> comma >> s.wave.vel_y  >> comma >> s.wave.vel_z  >> comma
+                 >> s.wave.acc_x  >> comma >> s.wave.acc_y  >> comma >> s.wave.acc_z  >> comma
+                 >> s.imu.acc_bx  >> comma >> s.imu.acc_by  >> comma >> s.imu.acc_bz  >> comma
+                 >> s.imu.gyro_x  >> comma >> s.imu.gyro_y  >> comma >> s.imu.gyro_z  >> comma
+                 >> s.imu.roll_deg >> comma >> s.imu.pitch_deg >> comma >> s.imu.yaw_deg);
+
+        return static_cast<bool>(ok);
+    }   
 };
 
 // === CSV Writer ===
