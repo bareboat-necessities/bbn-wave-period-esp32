@@ -24,9 +24,18 @@ const std::vector<WaveParameters> waveParamsList = {
 static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     Wave_Data_Sample out{};
     out.time        = t;
+
     out.wave.disp_z = wave_obj.surfaceElevation(static_cast<float>(t));
     out.wave.vel_z  = wave_obj.surfaceVerticalVelocity(static_cast<float>(t));
     out.wave.acc_z  = wave_obj.surfaceVerticalAcceleration(static_cast<float>(t));
+
+    // IMU: flat surface assumption → no tilt
+    out.imu.acc_bx = 0.0f;
+    out.imu.acc_by = 0.0f;
+    out.imu.acc_bz = -g_std;  // gravity
+    out.imu.roll_deg = 0.0f;
+    out.imu.pitch_deg = 0.0f;
+    out.imu.yaw_deg = 0.0f;
     return out;
 }
 
@@ -35,7 +44,6 @@ static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model)
     Wave_Data_Sample out{};
     out.time = t;
 
-    // --- World-frame wave kinematics ---
     auto state = model.getLagrangianState(0.0, 0.0, t, 0.0);
     out.wave.disp_x = static_cast<float>(state.displacement.x());
     out.wave.disp_y = static_cast<float>(state.displacement.y());
@@ -49,9 +57,8 @@ static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model)
     out.wave.acc_y  = static_cast<float>(state.acceleration.y());
     out.wave.acc_z  = static_cast<float>(state.acceleration.z());
 
-    // --- IMU frame (accel + gyro) ---
+    // IMU frame
     auto imu = model.getIMUReadings(0.0, 0.0, t);
-
     out.imu.acc_bx = static_cast<float>(imu.accel_body.x());
     out.imu.acc_by = static_cast<float>(imu.accel_body.y());
     out.imu.acc_bz = static_cast<float>(imu.accel_body.z());
@@ -60,16 +67,14 @@ static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model)
     out.imu.gyro_y = static_cast<float>(imu.gyro_body.y());
     out.imu.gyro_z = static_cast<float>(imu.gyro_body.z());
 
-    // --- Orientation from slopes ---
+    // Euler orientation
     auto slopes = model.getSurfaceSlopes(0.0, 0.0, t);
-    double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;   // rotation about x-axis
-    double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;  // rotation about y-axis
-    double yaw   = 0.0; // no yaw
+    double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;
+    double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;
 
     out.imu.roll_deg  = static_cast<float>(roll);
     out.imu.pitch_deg = static_cast<float>(pitch);
-    out.imu.yaw_deg   = static_cast<float>(yaw);
-
+    out.imu.yaw_deg   = 0.0f;
     return out;
 }
 
@@ -78,9 +83,15 @@ static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &mo
     auto state = model.getLagrangianState(t);
     Wave_Data_Sample out{};
     out.time        = t;
+
     out.wave.disp_z = state.position.z();
     out.wave.vel_z  = state.velocity.z();
     out.wave.acc_z  = state.acceleration.z();
+
+    out.imu.acc_bx = 0.0f;
+    out.imu.acc_by = 0.0f;
+    out.imu.acc_bz = -g_std;
+    out.imu.roll_deg = out.imu.pitch_deg = out.imu.yaw_deg = 0.0f;
     return out;
 }
 
@@ -100,19 +111,19 @@ static std::vector<Wave_Data_Sample> sample_fenton(
         fenton_params.depth,
         fenton_params.length,
         fenton_params.initial_x,
-        5.0f,    // mass (kg)
-        0.1f     // drag coeff
-    );
+        5.0f, 0.1f);
 
     auto callback = [&](float time, float dt, float elevation,
                         float vertical_velocity, float vertical_acceleration,
-                        float x, float vx) {
-        (void)dt; (void)x; (void)vx;
+                        float, float) {
         Wave_Data_Sample out{};
         out.time        = time;
         out.wave.disp_z = elevation;
         out.wave.vel_z  = vertical_velocity;
         out.wave.acc_z  = vertical_acceleration;
+        out.imu.acc_bx  = 0.0f;
+        out.imu.acc_by  = 0.0f;
+        out.imu.acc_bz  = -g_std;
         results.push_back(out);
     };
 
@@ -123,16 +134,21 @@ static std::vector<Wave_Data_Sample> sample_fenton(
 static Wave_Data_Sample sample_cnoidal(double t, CnoidalWave<float> &wave) {
     Wave_Data_Sample out{};
     out.time        = t;
+
     out.wave.disp_z = wave.surfaceElevation(0.0f, 0.0f, t);
     out.wave.vel_z  = wave.wVelocity(0.0f, 0.0f, 0.0f, t);
     out.wave.acc_z  = wave.azAcceleration(0.0f, 0.0f, 0.0f, t);
+
+    out.imu.acc_bx = 0.0f;
+    out.imu.acc_by = 0.0f;
+    out.imu.acc_bz = -g_std;
+    out.imu.roll_deg = out.imu.pitch_deg = out.imu.yaw_deg = 0.0f;
     return out;
 }
 
 // === Scenario Runner ===
 static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     WaveParameters wp_copy = wp;
-    // Zero direction for models that ignore it
     if (waveType == WaveType::GERSTNER || 
         waveType == WaveType::FENTON   || 
         waveType == WaveType::CNOIDAL) {
@@ -168,9 +184,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     }
     else if (waveType == WaveType::FENTON) {
         auto samples = sample_fenton<4>(wp, TEST_DURATION_S, DELTA_T);
-        for (auto &samp : samples) {
-            writer.write(samp);
-        }
+        for (auto &samp : samples) writer.write(samp);
     }
     else if (waveType == WaveType::PMSTOKES) {
         auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
