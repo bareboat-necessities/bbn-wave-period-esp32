@@ -441,6 +441,20 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     mutable Eigen::Vector2d stokes_drift_surface_xy_;
     mutable bool stokes_drift_surface_valid_;
 
+    // --- z≈0 fast-path support ---
+    static constexpr double z_surface_eps_ = 1e-12;
+
+    VecD coeff_surface_;                       // factor_ ⊙ Bij_  (at surface; no exp attenuation)
+    mutable VecD theta2_cache_surface_;        // P×1: (k_i+k_j)·(x,y) + (φ_i+φ_j)
+    mutable double x_cached_surface_ = std::numeric_limits<double>::quiet_NaN();
+    mutable double y_cached_surface_ = std::numeric_limits<double>::quiet_NaN();
+
+    struct SurfaceTrigCache {
+      VecD sin2, cos2;
+      double last_t = std::numeric_limits<double>::quiet_NaN();
+    };
+    mutable SurfaceTrigCache trig_cache_surface_;
+
     // amplitude*wavenumber components (for first-order slopes)
     Eigen::Array<double, N_FREQ, 1> Akx_, Aky_;
 
