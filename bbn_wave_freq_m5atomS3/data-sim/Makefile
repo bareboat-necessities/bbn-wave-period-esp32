@@ -1,7 +1,7 @@
 CC = g++
 
 # Base flags
-BASEFLAGS = -O3 -funroll-loops -fno-finite-math-only -I./.. -I/usr/include/eigen3
+BASEFLAGS = -O3 -std=c++20 -funroll-loops -fno-finite-math-only -I./.. -I/usr/include/eigen3
 
 # Detect platform
 UNAME_S := $(shell uname -s)
