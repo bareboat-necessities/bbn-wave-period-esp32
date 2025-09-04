@@ -203,4 +203,4 @@ def plot_group(wave_type, file_entries):
 for wave_type, entries in groups.items():
     plot_group(wave_type, entries)
 
-print("All combined plots saved as .svg and .pgf (trimmed to 300s of data).")
+print("All combined plots saved as .svg and .pgf")
