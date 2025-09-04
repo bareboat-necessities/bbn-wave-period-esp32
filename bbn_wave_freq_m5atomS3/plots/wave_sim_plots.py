@@ -27,7 +27,7 @@ SELECTED_HEIGHTS = [0.27, 1.5, 8.5]   # adjust as needed
 # === Sampling and cutoff ===
 SAMPLE_RATE_HZ = 240
 TIME_LIMIT_S   = 300
-MAX_RECORDS    = SAMPLE_RATE_HZ * TIME_LIMIT_S   # 72,000 rows
+MAX_RECORDS    = SAMPLE_RATE_HZ * TIME_LIMIT_S
 
 # === Auto-discover CSV files ===
 files = glob.glob("wave_data_*.csv")
