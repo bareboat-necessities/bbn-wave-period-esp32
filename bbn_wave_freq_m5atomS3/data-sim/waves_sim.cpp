@@ -1,3 +1,13 @@
+/*
+
+  Generate simulated waves data
+
+  Copyright 2025, Mikhail Grushinskiy
+
+*/
+
+#define EIGEN_NON_ARDUINO
+
 #include "WaveFilesSupport.h"
 #include "TrochoidalWave.h"
 #include "Jonswap3dStokesWaves.h"
