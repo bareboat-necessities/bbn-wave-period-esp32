@@ -4,15 +4,24 @@
 #include <algorithm>
 #include <limits>
 
+
+/*
+    Copyright 2025, Mikhail Grushinskiy
+*/
+
 #ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
 #else
 #include <ArduinoEigenDense.h>
 #endif
 
+// ===============================================================
+//   Elliptic integrals and Jacobi functions (AGM-based)
+// ===============================================================
 namespace Elliptic {
 
-    // === Complete elliptic integral of the first kind (AGM, safeguarded) ===
+    // --- Complete elliptic integral of the first kind (K) ---
+    // K(m) = ∫₀^(π/2) dφ / √(1 - m sin²φ)
     template<typename Real>
     Real ellipK(Real m) {
         if (!(m >= Real(0) && m <= Real(1))) {
@@ -30,13 +39,14 @@ namespace Elliptic {
         for (int it = 0; it < maxit; ++it) {
             const Real an = (a + b) / Real(2);
             const Real bn = std::sqrt(a * b);
-            if (std::abs(an - bn) <= std::max(atol, atol * an)) { a = an; b = bn; break; }
+            if (std::abs(an - bn) <= std::max(atol, atol * an)) { a = an; break; }
             a = an; b = bn;
         }
         return Real(M_PI) / (Real(2) * a);
     }
 
-    // === Complete elliptic integral of the second kind (AGM, safeguarded) ===
+    // --- Complete elliptic integral of the second kind (E) ---
+    // E(m) = ∫₀^(π/2) √(1 - m sin²φ) dφ
     template<typename Real>
     Real ellipE(Real m) {
         if (!(m >= Real(0) && m <= Real(1))) {
@@ -49,7 +59,7 @@ namespace Elliptic {
         Real b = std::sqrt(Real(1) - m);
 
         Real sum = Real(0);
-        Real pow2 = Real(1);     // 2^n
+        Real pow2 = Real(1);   // 2^n
         const Real atol = Real(1e-15);
         const int  maxit = 50;
 
@@ -61,14 +71,14 @@ namespace Elliptic {
             sum  += pow2 * c * c;
             pow2 *= Real(2);
 
-            if (std::abs(an - bn) <= std::max(atol, atol * an)) { a = an; b = bn; break; }
+            if (std::abs(an - bn) <= std::max(atol, atol * an)) { a = an; break; }
             a = an; b = bn;
         }
         return Real(M_PI) / (Real(2) * a) * (Real(1) - sum / Real(2));
     }
 
-    // === Jacobi sn, cn, dn via Bulirsch / Landen descending (AGM-based) ===
-    // Robust for 0 <= m <= 1, any real u. No hanging; bounded iterations.
+    // --- Jacobi elliptic functions sn, cn, dn (AGM/Landen method) ---
+    // Robust for 0 ≤ m ≤ 1, u ∈ ℝ
     template<typename Real>
     void jacobi_sn_cn_dn(Real u, Real m, Real &sn, Real &cn, Real &dn) {
         if (!(m >= Real(0) && m <= Real(1))) {
@@ -78,7 +88,6 @@ namespace Elliptic {
         if (m == Real(0)) { sn = std::sin(u); cn = std::cos(u); dn = Real(1); return; }
         if (m == Real(1)) { sn = std::tanh(u); cn = Real(1)/std::cosh(u); dn = cn; return; }
 
-        // Landen/AGM descending
         constexpr int NMAX = 32;
         const Real tol = Real(1e-12);
 
@@ -95,13 +104,14 @@ namespace Elliptic {
             const Real an1 = (a_n + b_n) / Real(2);
             const Real bn1 = std::sqrt(a_n * b_n);
 
-            if (std::abs(c[n]) <= tol * an1) { a_n = an1; b_n = bn1; ++n; break; }
+            if (std::abs(c[n]) <= tol * an1) { a_n = an1; ++n; break; }
 
             a_n = an1;
             b_n = bn1;
             twon *= Real(2);
         }
-        // Scale the phase (Bulirsch)
+
+        // Bulirsch scaling of phase
         Real phi = twon * a_n * u;
 
         // Backward recurrence for amplitude
@@ -120,6 +130,13 @@ namespace Elliptic {
 } // namespace Elliptic
 
 
+// ===============================================================
+//   Cnoidal Wave Model
+// ===============================================================
+// Based on periodic cnoidal solutions of KdV. This model ensures
+// crest–trough displacement equals requested H and oscillates
+// around zero mean.
+// ===============================================================
 template<typename Real = double>
 class EIGEN_ALIGN_MAX CnoidalWave {
 public:
@@ -146,19 +163,27 @@ public:
         sinTheta = std::sin(theta);
     }
 
-    // Free surface elevation η(x,y,t)
+    // -----------------------------------------------------------
+    // Free surface elevation:
+    //   η(x,y,t) = Hc [ cn²(θ | m) - E/K ]
+    //   where θ = k(s - ct),  s = x cosθ + y sinθ
+    // This form ensures ⟨η⟩ = 0 and crest–trough = H.
+    // -----------------------------------------------------------
     Real surfaceElevation(Real x, Real y, Real t) const {
-        const Real s = x * cosTheta + y * sinTheta;
+        const Real s   = x * cosTheta + y * sinTheta;
         const Real arg = k * (s - c * t);
         Real sn, cn, dn;
         Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
-        return eta0 + Hc * cn * cn;
+        return Hc * (cn*cn - E/K);
     }
 
-    // Vertical velocity (surface only):  
-    // w = d/dt [ η0 + Hc * cn^2(theta) ],  
-    // theta = k(s - c t), dθ/dt = -kc = -ω,  
-    // d/dθ(cn^2) = -2 sn cn dn → w = 2 Hc ω sn cn dn.
+    // -----------------------------------------------------------
+    // Vertical velocity:
+    //   w = dη/dt = (dη/dθ)(dθ/dt)
+    //   dθ/dt = -kc = -ω
+    //   d/dθ[cn²] = -2 sn cn dn
+    //   → w = 2 Hc ω sn cn dn
+    // -----------------------------------------------------------
     Real wVelocity(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
         const Real arg = k * (s - c * t);
@@ -167,11 +192,13 @@ public:
         return Real(2) * Hc * omega * sn * cn * dn;
     }
 
-    // Vertical acceleration (surface only):  
-    // a = d/dt w = (2 Hc ω) * d/dt(sn cn dn).  
-    // With dθ/dt = -ω,  
-    // d/dθ(sn cn dn) = 1 - 2(1+m) sn² + 3m sn⁴,  
-    // → a = -2 Hc ω² [1 - 2(1+m) sn² + 3m sn⁴].
+    // -----------------------------------------------------------
+    // Vertical acceleration:
+    //   a = d²η/dt² = (d/dt w)
+    //   Using d/dθ(sn cn dn) = 1 - 2(1+m) sn² + 3m sn⁴
+    //   and dθ/dt = -ω:
+    //   → a = -2 Hc ω² [ 1 - 2(1+m) sn² + 3m sn⁴ ]
+    // -----------------------------------------------------------
     Real azAcceleration(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
         const Real arg = k * (s - c * t);
@@ -182,7 +209,7 @@ public:
         return -Real(2) * Hc * omega * omega * term;
     }
 
-    // Unified interface for consistency with JONSWAP/PM models
+    // Unified interface
     State getLagrangianState(Real x, Real y, Real t) const {
         State st;
         st.displacement = Eigen::Vector3d(0.0, 0.0, static_cast<double>(surfaceElevation(x,y,t)));
@@ -206,12 +233,16 @@ private:
     Real h, H, T, theta, g;
 
     // Derived
-    Real m, K, E, k, c, eta0, Hc;
+    Real m, K, E, k, c, Hc;
     Real omega;
     Real cosTheta, sinTheta;
 
+    // -----------------------------------------------------------
+    // Elliptic parameter solver:
+    // Iteratively solves for m to match desired period T
+    // using Newton + secant fallback.
+    // -----------------------------------------------------------
     void solveEllipticParameters() {
-        // Safeguarded solve for modulus m by matching period T
         const Real eps  = Real(1e-8);
         const Real tolF = Real(1e-9);
         const Real tolM = Real(1e-10);
@@ -222,7 +253,7 @@ private:
             return Real(2) * Kloc * std::sqrt(h / (Real(3) * g * (Real(1) - mm)));
         };
 
-        m = Real(0.8);
+        m = Real(0.8); // initial guess
         Real m_prev = m;
         Real f_prev = std::numeric_limits<Real>::quiet_NaN();
 
@@ -234,7 +265,6 @@ private:
             const Real f = Tguess - T;
             if (std::abs(f) < tolF) break;
 
-            // Central-difference derivative (stable)
             const Real dm = Real(1e-4);
             const Real m_plus  = std::min(m + dm, Real(1) - eps);
             const Real m_minus = std::max(m - dm, eps);
@@ -255,8 +285,7 @@ private:
             }
 
             // Damp step to avoid overshoot
-            const Real maxStep = Real(0.25);
-            delta = std::clamp(delta, -maxStep, maxStep);
+            delta = std::clamp(delta, Real(-0.25), Real(0.25));
 
             m_prev = m;
             f_prev = f;
@@ -270,9 +299,10 @@ private:
         K = Elliptic::ellipK(m);
         E = Elliptic::ellipE(m);
         k = Real(M_PI) / (K * h);
-        omega = Real(2 * M_PI) / T;    // fundamental angular frequency
-        c = omega / k;                 // phase speed
-        eta0 = Real(0);
-        Hc   = H;
+        omega = Real(2 * M_PI) / T;
+        c = omega / k;
+
+        // Amplitude normalization: crest–trough = H
+        Hc = H;
     }
 };
