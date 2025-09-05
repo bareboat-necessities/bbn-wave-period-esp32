@@ -83,7 +83,7 @@ MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 def find_file(wave_type, height):
     """Find matching CSV file for wave_type and given height."""
     fname = f"wave_data_{wave_type}_H{height:.3f}"
-    candidates = [f for f in os.listdir(".") if f.startswith(fname) and f.endswith(".csv")]
+    candidates = sorted(f for f in os.listdir(".") if f.startswith(fname) and f.endswith(".csv"))
     return candidates[0] if candidates else None
 
 
@@ -115,7 +115,10 @@ def plot_wave_type(wave_type):
 
             for ax, (comp_label, cols) in zip(axes, comps.items()):
                 for j, col in enumerate(cols):
-                    comp_color = height_colors[group][j % len(height_colors[group])]
+                    if wave_type in ["gerstner", "fenton", "cnoidal"]:
+                        comp_color = height_colors[group][-1]  # strong color for z-only
+                    else:
+                        comp_color = height_colors[group][j % len(height_colors[group])]
                     ax.plot(time, data[col], label=label_for(col, h),
                             color=comp_color, alpha=1.0, linewidth=1.2)
                 ax.set_ylabel(comp_label)
@@ -184,31 +187,37 @@ def plot_wave_type(wave_type):
     fig.savefig(f"{wave_type}_imu_gyro.svg", bbox_inches="tight")
     plt.close(fig)
 
-    # --- Chart 4: Euler angles ---
-    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
-    fig.suptitle(f"{wave_type.capitalize()} - Euler Angles")
+    # --- Chart 4: Euler angles (yaw removed) ---
+    if wave_type in ["jonswap", "pmstokes"]:
+        euler_comps = ['roll_deg', 'pitch_deg']  # skip yaw
+    else:
+        euler_comps = []
 
-    for group, heights in height_groups.items():
-        for h in heights:
-            csv_file = find_file(wave_type, h)
-            if not csv_file:
-                continue
-            data = pd.read_csv(csv_file).head(MAX_RECORDS)
-            time = data["time"]
+    if euler_comps:
+        fig, axes = plt.subplots(len(euler_comps), 1, figsize=(14, 8), sharex=True)
+        fig.suptitle(f"{wave_type.capitalize()} - Euler Angles")
 
-            for i, comp in enumerate(['roll_deg', 'pitch_deg', 'yaw_deg']):
-                comp_color = height_colors[group][i % len(height_colors[group])]
-                axes[i].plot(time, data[comp], label=label_for(comp, h),
-                             color=comp_color, alpha=1.0, linewidth=1.2)
-                axes[i].set_ylabel(latex_labels.get(comp, comp))
-                axes[i].grid(True)
+        for group, heights in height_groups.items():
+            for h in heights:
+                csv_file = find_file(wave_type, h)
+                if not csv_file:
+                    continue
+                data = pd.read_csv(csv_file).head(MAX_RECORDS)
+                time = data["time"]
 
-    axes[-1].set_xlabel("Time [s]")
-    axes[0].legend(fontsize="small", ncol=3)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(f"{wave_type}_euler.pgf", bbox_inches="tight")
-    fig.savefig(f"{wave_type}_euler.svg", bbox_inches="tight")
-    plt.close(fig)
+                for i, comp in enumerate(euler_comps):
+                    comp_color = height_colors[group][i % len(height_colors[group])]
+                    axes[i].plot(time, data[comp], label=label_for(comp, h),
+                                 color=comp_color, alpha=1.0, linewidth=1.2)
+                    axes[i].set_ylabel(latex_labels.get(comp, comp))
+                    axes[i].grid(True)
+
+        axes[-1].set_xlabel("Time [s]")
+        axes[0].legend(fontsize="small", ncol=3)
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        fig.savefig(f"{wave_type}_euler.pgf", bbox_inches="tight")
+        fig.savefig(f"{wave_type}_euler.svg", bbox_inches="tight")
+        plt.close(fig)
 
 
 if __name__ == "__main__":
