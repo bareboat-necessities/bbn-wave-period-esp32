@@ -1,6 +1,12 @@
 #ifndef ENGINE_VIBRATION_SIM_H
 #define ENGINE_VIBRATION_SIM_H
 
+/*
+   Copyright 2025, Mikhail Grushinskiy
+
+   Engine vibration noise simulation for IMU
+*/
+
 class EngineVibrationSim {
 public:
     // Constructor with engine RPM and optional gravity (default Earth's gravity)
