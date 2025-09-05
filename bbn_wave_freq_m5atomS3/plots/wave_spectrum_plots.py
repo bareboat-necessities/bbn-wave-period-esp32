@@ -69,7 +69,12 @@ def make_plots(fname, group_label, meta):
     E = df.pivot(index="f_Hz", columns="theta_deg", values="E").values
     thetas_rad = np.deg2rad(thetas_deg)
 
-    title = fr"{meta['wtype'].capitalize()} spectrum ($H_s={meta['H']:.2f}\,\mathrm{{m}}$)"
+    # --- Title with Hs and Azimuth ---
+    title = (
+        fr"{meta['wtype'].capitalize()} spectrum "
+        fr"($H_s={meta['H']:.2f}\,\mathrm{{m}},\ "
+        fr"\alpha={meta['A']:.0f}^\circ$)"
+    )
     base = f"spectrum_{meta['wtype']}_{group_label}"
 
     # === Polar plot ===
@@ -80,7 +85,8 @@ def make_plots(fname, group_label, meta):
     ax1.set_theta_zero_location("N")
     ax1.set_theta_direction(-1)
     ax1.set_title(title)
-    plt.colorbar(pcm, ax=ax1, orientation="vertical", label=r"$E(f,\theta)\,[m^2/Hz/deg]$")
+    plt.colorbar(pcm, ax=ax1, orientation="vertical",
+                 label=r"$E(f,\theta)\,[m^2/Hz/deg]$")
     save_all(fig1, f"{base}_polar")
     plt.close(fig1)
 
@@ -88,16 +94,18 @@ def make_plots(fname, group_label, meta):
     T_grid, F_grid = np.meshgrid(thetas_deg, freqs)
     fig2 = plt.figure()
     ax2 = fig2.add_subplot(111, projection='3d')
-    surf = ax2.plot_surface(F_grid, T_grid, E, cmap='viridis', linewidth=0, antialiased=True)
-    surf.set_rasterized(True)  # rasterize surface
+    surf = ax2.plot_surface(F_grid, T_grid, E,
+                            cmap='viridis', linewidth=0, antialiased=True)
+    surf.set_rasterized(True)
     ax2.set_xlabel("Frequency [Hz]")
     ax2.set_ylabel("Direction [deg]")
     ax2.set_zlabel(r"$E(f,\theta)$")
     ax2.set_title(title)
-    fig2.colorbar(surf, shrink=0.5, aspect=10, label=r"$E(f,\theta)$")
+    fig2.colorbar(surf, shrink=0.5, aspect=10,
+                  label=r"$E(f,\theta)$")
     save_all(fig2, f"{base}_3d")
     plt.close(fig2)
-
+    
 if __name__ == "__main__":
     files = glob.glob("wave_spectrum_*.csv")
     if not files:
