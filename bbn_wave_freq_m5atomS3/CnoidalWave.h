@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <limits>
 
-
 /*
     Copyright 2025, Mikhail Grushinskiy
 */
@@ -15,12 +14,10 @@
 #include <ArduinoEigenDense.h>
 #endif
 
-// ===============================================================
-//   Elliptic integrals and Jacobi functions (AGM-based)
-// ===============================================================
+// Elliptic integrals and Jacobi functions (AGM-based)
 namespace Elliptic {
 
-    // --- Complete elliptic integral of the first kind (K) ---
+    // Complete elliptic integral of the first kind (K) 
     // K(m) = ∫₀^(π/2) dφ / √(1 - m sin²φ)
     template<typename Real>
     Real ellipK(Real m) {
@@ -45,7 +42,7 @@ namespace Elliptic {
         return Real(M_PI) / (Real(2) * a);
     }
 
-    // --- Complete elliptic integral of the second kind (E) ---
+    // Complete elliptic integral of the second kind (E) 
     // E(m) = ∫₀^(π/2) √(1 - m sin²φ) dφ
     template<typename Real>
     Real ellipE(Real m) {
@@ -77,7 +74,7 @@ namespace Elliptic {
         return Real(M_PI) / (Real(2) * a) * (Real(1) - sum / Real(2));
     }
 
-    // --- Jacobi elliptic functions sn, cn, dn (AGM/Landen method) ---
+    // Jacobi elliptic functions sn, cn, dn (AGM/Landen method) 
     // Robust for 0 ≤ m ≤ 1, u ∈ ℝ
     template<typename Real>
     void jacobi_sn_cn_dn(Real u, Real m, Real &sn, Real &cn, Real &dn) {
@@ -129,14 +126,10 @@ namespace Elliptic {
 
 } // namespace Elliptic
 
-
-// ===============================================================
-//   Cnoidal Wave Model
-// ===============================================================
+// Cnoidal Wave Model
 // Based on periodic cnoidal solutions of KdV. This model ensures
 // crest–trough displacement equals requested H and oscillates
 // around zero mean.
-// ===============================================================
 template<typename Real = double>
 class EIGEN_ALIGN_MAX CnoidalWave {
 public:
@@ -163,12 +156,10 @@ public:
         sinTheta = std::sin(theta);
     }
 
-    // -----------------------------------------------------------
     // Free surface elevation:
     //   η(x,y,t) = Hc [ cn²(θ | m) - E/K ]
     //   where θ = k(s - ct),  s = x cosθ + y sinθ
     // This form ensures ⟨η⟩ = 0 and crest–trough = H.
-    // -----------------------------------------------------------
     Real surfaceElevation(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
         const Real arg = k * (s - c * t);
@@ -177,13 +168,11 @@ public:
         return Hc * (cn*cn - E/K);
     }
 
-    // -----------------------------------------------------------
     // Vertical velocity:
     //   w = dη/dt = (dη/dθ)(dθ/dt)
     //   dθ/dt = -kc = -ω
     //   d/dθ[cn²] = -2 sn cn dn
     //   → w = 2 Hc ω sn cn dn
-    // -----------------------------------------------------------
     Real wVelocity(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
         const Real arg = k * (s - c * t);
@@ -192,13 +181,11 @@ public:
         return Real(2) * Hc * omega * sn * cn * dn;
     }
 
-    // -----------------------------------------------------------
     // Vertical acceleration:
     //   a = d²η/dt² = (d/dt w)
     //   Using d/dθ(sn cn dn) = 1 - 2(1+m) sn² + 3m sn⁴
     //   and dθ/dt = -ω:
     //   → a = -2 Hc ω² [ 1 - 2(1+m) sn² + 3m sn⁴ ]
-    // -----------------------------------------------------------
     Real azAcceleration(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
         const Real arg = k * (s - c * t);
@@ -209,7 +196,6 @@ public:
         return -Real(2) * Hc * omega * omega * term;
     }
 
-    // Unified interface
     State getLagrangianState(Real x, Real y, Real t) const {
         State st;
         st.displacement = Eigen::Vector3d(0.0, 0.0, static_cast<double>(surfaceElevation(x,y,t)));
@@ -237,11 +223,9 @@ private:
     Real omega;
     Real cosTheta, sinTheta;
 
-    // -----------------------------------------------------------
     // Elliptic parameter solver:
     // Iteratively solves for m to match desired period T
     // using Newton + secant fallback.
-    // -----------------------------------------------------------
     void solveEllipticParameters() {
         const Real eps  = Real(1e-8);
         const Real tolF = Real(1e-9);
