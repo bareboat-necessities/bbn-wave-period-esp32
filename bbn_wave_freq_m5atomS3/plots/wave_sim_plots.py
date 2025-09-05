@@ -35,6 +35,28 @@ height_colors = {
     "high":   ['#fcbba1', '#fb6a4a', '#a50f15'],   # Reds
 }
 
+# LaTeX-safe labels (mathtext) for components
+latex_labels = {
+    'disp_x':    r"$\mathrm{disp}_{x}$",
+    'disp_y':    r"$\mathrm{disp}_{y}$",
+    'disp_z':    r"$\mathrm{disp}_{z}$",
+    'vel_x':     r"$\mathrm{vel}_{x}$",
+    'vel_y':     r"$\mathrm{vel}_{y}$",
+    'vel_z':     r"$\mathrm{vel}_{z}$",
+    'acc_x':     r"$\mathrm{acc}_{x}$",
+    'acc_y':     r"$\mathrm{acc}_{y}$",
+    'acc_z':     r"$\mathrm{acc}_{z}$",
+    'acc_bx':    r"$\mathrm{acc}_{b,x}$",
+    'acc_by':    r"$\mathrm{acc}_{b,y}$",
+    'acc_bz':    r"$\mathrm{acc}_{b,z}$",
+    'gyro_x':    r"$\mathrm{gyro}_{x}$",
+    'gyro_y':    r"$\mathrm{gyro}_{y}$",
+    'gyro_z':    r"$\mathrm{gyro}_{z}$",
+    'roll_deg':  r"$\mathrm{roll}^{\circ}$",
+    'pitch_deg': r"$\mathrm{pitch}^{\circ}$",
+    'yaw_deg':   r"$\mathrm{yaw}^{\circ}$",
+}
+
 # Wave types to include (must match filenames)
 wave_types = ["gerstner", "jonswap", "fenton", "pmstokes", "cnoidal"]
 
@@ -58,6 +80,11 @@ def find_file(wave_type, height):
     return candidates[0] if candidates else None
 
 
+def label_for(col, h):
+    """Return pretty mathtext label for component + height."""
+    return f"H={h} {latex_labels.get(col, col)}"
+
+
 def plot_wave_type(wave_type):
     """Generate plots (PGF+SVG) for one wave type."""
 
@@ -76,7 +103,7 @@ def plot_wave_type(wave_type):
             for ax, (comp_label, cols) in zip(axes, components.items()):
                 for j, col in enumerate(cols):
                     comp_color = height_colors[group][j % len(height_colors[group])]
-                    ax.plot(time, data[col], label=f"H={h} {col}",
+                    ax.plot(time, data[col], label=label_for(col, h),
                             color=comp_color, alpha=1.0, linewidth=1.2)
                 ax.set_ylabel(comp_label)
                 ax.grid(True)
@@ -106,9 +133,9 @@ def plot_wave_type(wave_type):
 
             for i, comp in enumerate(['acc_bx', 'acc_by', 'acc_bz']):
                 comp_color = height_colors[group][i % len(height_colors[group])]
-                axes[i].plot(time, data[comp], label=f"H={h} {comp}",
+                axes[i].plot(time, data[comp], label=label_for(comp, h),
                              color=comp_color, alpha=1.0, linewidth=1.2)
-                axes[i].set_ylabel(comp)
+                axes[i].set_ylabel(latex_labels.get(comp, comp))
                 axes[i].grid(True)
 
     axes[-1].set_xlabel("Time [s]")
@@ -132,9 +159,9 @@ def plot_wave_type(wave_type):
 
             for i, comp in enumerate(['gyro_x', 'gyro_y', 'gyro_z']):
                 comp_color = height_colors[group][i % len(height_colors[group])]
-                axes[i].plot(time, data[comp], label=f"H={h} {comp}",
+                axes[i].plot(time, data[comp], label=label_for(comp, h),
                              color=comp_color, alpha=1.0, linewidth=1.2)
-                axes[i].set_ylabel(comp)
+                axes[i].set_ylabel(latex_labels.get(comp, comp))
                 axes[i].grid(True)
 
     axes[-1].set_xlabel("Time [s]")
@@ -158,9 +185,9 @@ def plot_wave_type(wave_type):
 
             for i, comp in enumerate(['roll_deg', 'pitch_deg', 'yaw_deg']):
                 comp_color = height_colors[group][i % len(height_colors[group])]
-                axes[i].plot(time, data[comp], label=f"H={h} {comp}",
+                axes[i].plot(time, data[comp], label=label_for(comp, h),
                              color=comp_color, alpha=1.0, linewidth=1.2)
-                axes[i].set_ylabel(comp)
+                axes[i].set_ylabel(latex_labels.get(comp, comp))
                 axes[i].grid(True)
 
     axes[-1].set_xlabel("Time [s]")
