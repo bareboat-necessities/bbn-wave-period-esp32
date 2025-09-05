@@ -16,6 +16,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "WaveFilesSupport.h"   
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "FrequencySmoother.h"
@@ -24,7 +25,6 @@
 #include "SchmittTriggerFrequencyDetector.h"
 #include "KalmanSmoother.h"
 #include "WaveFilters.h"
-#include "WaveFilesSupport.h"   
 
 // Config
 static constexpr float SAMPLE_RATE_HZ = 240.0f;
