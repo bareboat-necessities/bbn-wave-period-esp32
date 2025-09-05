@@ -42,11 +42,9 @@ static void fill_wave_sample_from_state(Wave_Sample &dst, const State &st) {
     dst.disp_x = static_cast<float>(st.displacement.x());
     dst.disp_y = static_cast<float>(st.displacement.y());
     dst.disp_z = static_cast<float>(st.displacement.z());
-
     dst.vel_x  = static_cast<float>(st.velocity.x());
     dst.vel_y  = static_cast<float>(st.velocity.y());
     dst.vel_z  = static_cast<float>(st.velocity.z());
-
     dst.acc_x  = static_cast<float>(st.acceleration.x());
     dst.acc_y  = static_cast<float>(st.acceleration.y());
     dst.acc_z  = static_cast<float>(st.acceleration.z());
@@ -57,7 +55,6 @@ static void fill_imu_sample_from_readings(IMU_Sample &dst, const IMU &imu) {
     dst.acc_bx = static_cast<float>(imu.accel_body.x());
     dst.acc_by = static_cast<float>(imu.accel_body.y());
     dst.acc_bz = static_cast<float>(imu.accel_body.z());
-
     dst.gyro_x = static_cast<float>(imu.gyro_body.x());
     dst.gyro_y = static_cast<float>(imu.gyro_body.y());
     dst.gyro_z = static_cast<float>(imu.gyro_body.z());
@@ -77,7 +74,7 @@ static void fill_default_imu(IMU_Sample &imu) {
     imu = {}; // zero all fields
 }
 
-// === Sampling Helpers ===
+// Sampling Helpers
 static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     Wave_Data_Sample out{};
     out.time        = t;
@@ -122,11 +119,9 @@ static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &mo
     return out;
 }
 
-template<int ORDER=4>
+template<int ORDER=5>
 static std::vector<Wave_Data_Sample> sample_fenton(
-        const WaveParameters &wp,
-        double duration,
-        double dt) 
+        const WaveParameters &wp, double duration, double dt) 
 {
     std::vector<Wave_Data_Sample> results;
 
@@ -154,7 +149,6 @@ static std::vector<Wave_Data_Sample> sample_fenton(
         fill_default_imu(out.imu);
         results.push_back(out);
     };
-
     fenton_tracker.track_floating_object(duration, dt, callback);
     return results;
 }
@@ -168,7 +162,7 @@ static Wave_Data_Sample sample_cnoidal(double t, CnoidalWave<float> &wave) {
     return out;
 }
 
-// === Scenario Runner ===
+// Scenario Runner
 static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     WaveParameters wp_copy = wp;
     if (waveType == WaveType::GERSTNER || 
@@ -176,7 +170,6 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         waveType == WaveType::CNOIDAL) {
         wp_copy.direction = 0.0f;
     }
-
     std::string filename = WaveFileNaming::generate(waveType, wp_copy);
 
     WaveDataCSVWriter writer(filename);
@@ -205,7 +198,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         }
     }
     else if (waveType == WaveType::FENTON) {
-        auto samples = sample_fenton<4>(wp, TEST_DURATION_S, DELTA_T);
+        auto samples = sample_fenton<5>(wp, TEST_DURATION_S, DELTA_T);
         for (auto &samp : samples) writer.write(samp);
     }
     else if (waveType == WaveType::PMSTOKES) {
@@ -231,7 +224,6 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
     std::cout << "Wrote " << filename << "\n";
 }
 
-// === Helper ===
 static void run_all_wave_types(const WaveParameters &wp, int idx = -1) {
     for (WaveType wt : {WaveType::GERSTNER, WaveType::JONSWAP,
                         WaveType::FENTON, WaveType::PMSTOKES,
@@ -243,13 +235,12 @@ static void run_all_wave_types(const WaveParameters &wp, int idx = -1) {
     }
 }
 
-// === Main ===
+// Main
 int main(int argc, char** argv) {
     if (argc > 2) {
         std::cerr << "Usage: " << argv[0] << " [wave_index]\n";
         return 1;
     }
-
     if (argc == 2) {
         int idx = std::stoi(argv[1]);
         if (idx < 0 || idx >= static_cast<int>(waveParamsList.size())) {
