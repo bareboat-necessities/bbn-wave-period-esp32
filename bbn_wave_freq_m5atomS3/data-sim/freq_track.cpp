@@ -3,7 +3,6 @@
 #include <cstdlib>
 #include <cstdint>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 #include <random>
@@ -25,15 +24,13 @@
 #include "SchmittTriggerFrequencyDetector.h"
 #include "KalmanSmoother.h"
 #include "WaveFilters.h"
+#include "WaveFilesSupport.h"   
 
 // Config
 static constexpr float SAMPLE_RATE_HZ = 240.0f;
 static constexpr float DELTA_T        = 1.0f / SAMPLE_RATE_HZ;
 static constexpr float NOISE_STDDEV   = 0.08f;
 static constexpr float BIAS_MEAN      = 0.10f;
-
-enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3, CNOIDAL=4 };
-enum class TrackerType { ARANOVSKIY=0, KALMANF=1, ZEROCROSS=2 };
 
 // Trackers
 AranovskiyFilter<double> arFilter;
@@ -113,25 +110,11 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker,
 static void run_from_csv(TrackerType tracker,
                          const std::string &csv_file,
                          unsigned run_seed) {
-    // infer wave type + height from filename
-    std::string stem = std::filesystem::path(csv_file).filename().string();
-
-    std::string waveName;
-    if (stem.find("gerstner") != std::string::npos) waveName = "gerstner";
-    else if (stem.find("jonswap") != std::string::npos) waveName = "jonswap";
-    else if (stem.find("fenton") != std::string::npos) waveName = "fenton";
-    else if (stem.find("pmstokes") != std::string::npos) waveName = "pmstokes";
-    else if (stem.find("cnoidal") != std::string::npos) waveName = "cnoidal";
-    else waveName = "unknown";
-
-    float height = 0.0f;
-    {
-        std::size_t posH = stem.find("_H");
-        if (posH != std::string::npos) {
-            std::string sub = stem.substr(posH+2);
-            height = std::stof(sub);
-        }
-    }
+    // Parse metadata from filename
+    auto parsed = WaveFileNaming::parse(csv_file);
+    std::string waveName = parsed ? EnumTraits<WaveType>::to_string(parsed->type)
+                                  : "unknown";
+    double height = parsed ? parsed->height : 0.0;
 
     // output file
     std::string trackerName = (tracker == TrackerType::ARANOVSKIY) ? "aranovskiy" :
@@ -151,22 +134,10 @@ static void run_from_csv(TrackerType tracker,
 
     reset_run_state();
 
-    // open input CSV
-    std::ifstream ifs(csv_file);
-    std::string header;
-    std::getline(ifs, header); // skip header
-
-    std::string line;
-    while (std::getline(ifs, line)) {
-        if (line.empty()) continue;
-        std::stringstream ss(line);
-
-        double t;
-        float disp_z, vel_z, accel_z;
-        char comma;
-
-        ss >> t >> comma >> disp_z >> comma >> vel_z >> comma >> accel_z;
-        if (!ss) continue;
+    // use WaveDataCSVReader instead of manual parsing ✅
+    WaveDataCSVReader reader(csv_file);
+    reader.for_each_record([&](const Wave_Data_Sample &rec) {
+        float accel_z = rec.wave.acc_z;
 
         float noise_val   = gauss(rng);
         float noisy_accel = accel_z + bias + noise_val;
@@ -186,19 +157,20 @@ static void run_from_csv(TrackerType tracker,
         }
         if (!std::isnan(smooth_freq)) smooth_freq = clamp_freq(smooth_freq);
 
-        // NOTE: true frequency is not in the file → can parse from filename if encoded
+        // no true freq available in file
         double true_f = std::numeric_limits<double>::quiet_NaN();
 
-        double error         = std::isnan(est_freq) ? NAN : (est_freq - true_f);
-        double smooth_error  = std::isnan(smooth_freq) ? NAN : (smooth_freq - true_f);
-        double abs_error     = std::isnan(error) ? NAN : std::fabs(error);
+        double error = std::isnan(est_freq) ? NAN : (est_freq - true_f);
+        double smooth_error = std::isnan(smooth_freq) ? NAN : (smooth_freq - true_f);
+        double abs_error = std::isnan(error) ? NAN : std::fabs(error);
         double abs_smooth_error = std::isnan(smooth_error) ? NAN : std::fabs(smooth_error);
 
-        write_csv_line(ofs, t, true_f, est_freq, smooth_freq,
+        write_csv_line(ofs, rec.time, true_f, est_freq, smooth_freq,
                        error, smooth_error, abs_error, abs_smooth_error, updated);
 
-        sim_t = t;
-    }
+        sim_t = rec.time;
+    });
+    reader.close();
 
     ofs.close();
     printf("Wrote %s\n", buf);
