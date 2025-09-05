@@ -227,7 +227,6 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             sim_t += DELTA_T;
         }
     }
-
     writer.close();
     std::cout << "Wrote " << filename << "\n";
 }
