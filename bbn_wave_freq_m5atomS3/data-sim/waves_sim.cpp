@@ -22,7 +22,7 @@
 #include "PiersonMoskowitzStokes3D_Waves.h"
 #include "WaveFilesSupport.h"
 
-// === Experiment Config ===
+// Experiment Config
 static constexpr float SAMPLE_RATE_HZ  = 240.0f;
 static constexpr float DELTA_T         = 1.0f / SAMPLE_RATE_HZ;
 static constexpr float TEST_DURATION_S = 10 * 60.0f;    // 10 minutes
@@ -36,7 +36,7 @@ const std::vector<WaveParameters> waveParamsList = {
     {14.3f,  14.8f, static_cast<float>(-M_PI/2.0), 30.0f}
 };
 
-// === Shared Fill Helpers ===
+// Shared Fill Helpers
 template<typename State>
 static void fill_wave_sample_from_state(Wave_Sample &dst, const State &st) {
     dst.disp_x = static_cast<float>(st.displacement.x());
@@ -75,10 +75,7 @@ static void fill_default_imu(IMU_Sample &imu) {
 }
 
 template<typename Model>
-static void export_spectrum(const WaveParameters &wp,
-                            WaveType type,
-                            Model &model,
-                            int N_theta = 72)
+static void export_spectrum(const WaveParameters &wp, WaveType type, Model &model, int N_theta = 72)
 {
     auto freqs = model.frequencies();
     Eigen::MatrixXd E = model.getDirectionalSpectrum(N_theta);
