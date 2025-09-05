@@ -83,7 +83,7 @@ static void export_spectrum(const WaveParameters &wp,
     auto freqs = model.frequencies();
     Eigen::MatrixXd E = model.getDirectionalSpectrum(N_theta);
 
-    std::string spec_filename = WaveFileNaming::generate_spectrum(type, wp);
+    std::string spec_filename = WaveFileNaming::generate(FileKind::Spectrum, type, wp);
     WaveSpectrumCSVWriter writer(spec_filename);
 
     const double dtheta = 360.0 / N_theta;
@@ -193,7 +193,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
         waveType == WaveType::CNOIDAL) {
         wp_copy.direction = 0.0f;
     }
-    std::string filename = WaveFileNaming::generate(waveType, wp_copy);
+    std::string filename = WaveFileNaming::generate(FileKind::Data, waveType, wp_copy);
 
     WaveDataCSVWriter writer(filename);
     writer.write_header();
