@@ -102,7 +102,7 @@ def plot_wave_type(wave_type):
         comps = components
 
     # --- Chart 1: world-frame disp/vel/acc ---
-    fig, axes = plt.subplots(len(comps), 1, figsize=(14, 10), sharex=True)
+    fig, axes = plt.subplots(len(comps), 1, figsize=(14, 12), sharex=True)
     fig.suptitle(f"{wave_type.capitalize()} - World Frame")
 
     for group, heights in height_groups.items():
@@ -133,7 +133,7 @@ def plot_wave_type(wave_type):
         return
 
     # --- Chart 2: IMU acceleration ---
-    fig, axes = plt.subplots(3, 1, figsize=(14, 8), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
     fig.suptitle(f"{wave_type.capitalize()} - IMU Acceleration")
 
     for group, heights in height_groups.items():
@@ -159,7 +159,7 @@ def plot_wave_type(wave_type):
     plt.close(fig)
 
     # --- Chart 3: IMU gyro ---
-    fig, axes = plt.subplots(3, 1, figsize=(14, 8), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
     fig.suptitle(f"{wave_type.capitalize()} - IMU Gyro")
 
     for group, heights in height_groups.items():
@@ -185,7 +185,7 @@ def plot_wave_type(wave_type):
     plt.close(fig)
 
     # --- Chart 4: Euler angles ---
-    fig, axes = plt.subplots(3, 1, figsize=(14, 8), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
     fig.suptitle(f"{wave_type.capitalize()} - Euler Angles")
 
     for group, heights in height_groups.items():
