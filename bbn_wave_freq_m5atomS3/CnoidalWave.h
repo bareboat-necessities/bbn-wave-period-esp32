@@ -61,7 +61,7 @@ void jacobi_sn_cn_dn(Real u, Real m, Real &sn, Real &cn, Real &dn) {
 
 
 template<typename Real = double>
-class CnoidalWave {
+class EIGEN_ALIGN_MAX CnoidalWave {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     struct State {
