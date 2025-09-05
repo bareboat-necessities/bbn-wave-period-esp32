@@ -108,7 +108,6 @@ namespace Elliptic {
         for (int j = n - 1; j >= 0; --j) {
             const Real s = std::sin(phi);
             const Real t = (c[j] * s) / a[j];
-            // clamp to avoid domain issues
             const Real arg = std::clamp(t, Real(-1), Real(1));
             phi = (std::asin(arg) + phi) / Real(2);
         }
@@ -156,29 +155,34 @@ public:
         return eta0 + Hc * cn * cn;
     }
 
-    // Vertical velocity (surface only)
+    // Vertical velocity (surface only):  
+    // w = d/dt [ η0 + Hc * cn^2(theta) ],  
+    // theta = k(s - c t), dθ/dt = -kc = -ω,  
+    // d/dθ(cn^2) = -2 sn cn dn → w = 2 Hc ω sn cn dn.
     Real wVelocity(Real x, Real y, Real t) const {
-        const Real s = x * cosTheta + y * sinTheta;
+        const Real s   = x * cosTheta + y * sinTheta;
         const Real arg = k * (s - c * t);
         Real sn, cn, dn;
         Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
-        // d/dt [Hc * cn^2] = 2 Hc * cn * (d/dt cn) with d/dt cn = -(sn*dn) * (d/dt am)
-        // For phase θ = k(s - ct), dθ/dt = -k c; and d(am)/dθ = dn
-        // => d/dt cn = -(sn*dn)*(-k c)/dn = sn * k c  (approximation consistent with our kinematics)
-        return Real(2) * Hc * cn * sn * k * c;
+        return Real(2) * Hc * omega * sn * cn * dn;
     }
 
-    // Vertical acceleration (surface only)
+    // Vertical acceleration (surface only):  
+    // a = d/dt w = (2 Hc ω) * d/dt(sn cn dn).  
+    // With dθ/dt = -ω,  
+    // d/dθ(sn cn dn) = 1 - 2(1+m) sn² + 3m sn⁴,  
+    // → a = -2 Hc ω² [1 - 2(1+m) sn² + 3m sn⁴].
     Real azAcceleration(Real x, Real y, Real t) const {
-        const Real s = x * cosTheta + y * sinTheta;
+        const Real s   = x * cosTheta + y * sinTheta;
         const Real arg = k * (s - c * t);
         Real sn, cn, dn;
         Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
-        // Simple second derivative surrogate consistent with above velocity model
-        return -Real(2) * Hc * k * k * c * c * (cn * cn - sn * sn);
+        const Real sn2 = sn * sn;
+        const Real term = Real(1) - Real(2) * (Real(1) + m) * sn2 + Real(3) * m * sn2 * sn2;
+        return -Real(2) * Hc * omega * omega * term;
     }
 
-    // Lagrangian-like surface state (vertical only for this model)
+    // Unified interface for consistency with JONSWAP/PM models
     State getLagrangianState(Real x, Real y, Real t) const {
         State st;
         st.displacement = Eigen::Vector3d(0.0, 0.0, static_cast<double>(surfaceElevation(x,y,t)));
@@ -266,8 +270,8 @@ private:
         K = Elliptic::ellipK(m);
         E = Elliptic::ellipE(m);
         k = Real(M_PI) / (K * h);
-        omega = Real(2 * M_PI) / T;
-        c = omega / k;
+        omega = Real(2 * M_PI) / T;    // fundamental angular frequency
+        c = omega / k;                 // phase speed
         eta0 = Real(0);
         Hc   = H;
     }
