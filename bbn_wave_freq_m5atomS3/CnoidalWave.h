@@ -235,17 +235,46 @@ private:
     // Iteratively solves for m to match desired period T
     // using Newton + secant fallback (no hangs).
     void solveEllipticParameters() {
-        const Real eps  = Real(1e-8);
-        const Real tolF = Real(1e-9);
-        const Real tolM = Real(1e-10);
+        const Real eps   = Real(1e-8);
+        const Real tolF  = Real(1e-9);
+        const Real tolM  = Real(1e-10);
         const int  maxit = 50;
 
+        // --- Physics-aware initial guess for m -------------------------------
+        // T0 = π * sqrt(h / (3 g))  (value of T when m -> 0 and K ~ π/2)
+        const Real T0  = Real(M_PI) * std::sqrt(h / (Real(3) * g));
+        const Real tau = T / T0; // normalized period
+
+        auto clamp01 = [&](Real x) {
+            return std::clamp(x, eps, Real(1) - eps);
+        };
+
+        // If tau <= 1, the linear limit (m≈0) is appropriate.
+        if (tau <= Real(1) + Real(1e-6)) {
+            m = eps; // essentially sinusoidal
+        } else {
+            // First pass ignoring K(m) variation: tau ≈ 1/sqrt(1-m) ⇒ m ≈ 1 - 1/tau^2
+            m = clamp01(Real(1) - Real(1) / (tau * tau));
+
+            // 1–2 fixed-point refinements using actual K(m):
+            // tau = (2K/π) / sqrt(1-m)  ⇒ 1 - m = ( (2K/π) / tau )^2  ⇒ m = 1 - (...)
+            for (int it = 0; it < 2; ++it) {
+                const Real Ktmp = Elliptic::ellipK(m);
+                const Real Ktil = (Real(2) * Ktmp) / Real(M_PI);
+                const Real one_minus_m = (Ktil / tau) * (Ktil / tau);
+                const Real m_new = clamp01(Real(1) - one_minus_m);
+                if (std::abs(m_new - m) < Real(1e-6)) { m = m_new; break; }
+                m = m_new;
+            }
+        }
+        // --------------------------------------------------------------------
+
+        // Newton with secant fallback (your original logic)
         auto T_of_m = [&](Real mm) {
             Real Kloc = Elliptic::ellipK(mm);
             return Real(2) * Kloc * std::sqrt(h / (Real(3) * g * (Real(1) - mm)));
         };
 
-        m = Real(0.8); // initial guess
         Real m_prev = m;
         Real f_prev = std::numeric_limits<Real>::quiet_NaN();
 
@@ -257,7 +286,7 @@ private:
             const Real f = Tguess - T;
             if (std::abs(f) < tolF) break;
 
-            const Real dm = Real(1e-4);
+            const Real dm     = Real(1e-4);
             const Real m_plus  = std::min(m + dm, Real(1) - eps);
             const Real m_minus = std::max(m - dm, eps);
             const Real Tp = T_of_m(m_plus);
@@ -266,17 +295,19 @@ private:
 
             Real delta;
             if (std::abs(df) > Real(1e-14) && std::isfinite(df)) {
-                delta = -f / df;  // Newton
+                // Newton step
+                delta = -f / df;
             } else if (it > 0 && std::isfinite(f_prev)) {
                 // Secant fallback
                 Real denom = (f - f_prev);
                 if (std::abs(denom) < Real(1e-14)) denom = (denom >= 0 ? Real(1e-14) : Real(-1e-14));
                 delta = -f * (m - m_prev) / denom;
             } else {
+                // Gentle nudge if derivative is unusable
                 delta = (f > 0 ? Real(-1e-2) : Real(1e-2));
             }
 
-            // Damp step to avoid overshoot
+            // Damp to avoid overshoot
             delta = std::clamp(delta, Real(-0.25), Real(0.25));
 
             m_prev = m;
