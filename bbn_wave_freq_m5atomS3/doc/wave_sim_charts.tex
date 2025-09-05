@@ -13,14 +13,14 @@
 % Keep this — needed by PGF outputs that reference \mathdefault
 \providecommand{\mathdefault}[1]{#1}
 
-\title{Wave Simulation Charts (All Types, 11 Figures)}
-\author{}
+\title{Wave Simulation Charts}
+\author{Mikhail Grushinskiy}
 \date{}
 
 \begin{document}
 \maketitle
 
-% 1: Gerstner
+% Gerstner
 \begin{figure}[H]\centering
   \resizebox{\textwidth}{!}{\input{gerstner_worldframe.pgf}}
   \caption{Gerstner: World-frame displacement/velocity/acceleration}
@@ -28,36 +28,15 @@
 \end{figure}
 \clearpage
 
-% 2–5: JONSWAP Stokes
+% Cnoidal
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{jonswap_worldframe.pgf}}
-  \caption{JONSWAP Stokes: World-frame displacement/velocity/acceleration}
-  \label{fig:jonswap_world}
+  \resizebox{\textwidth}{!}{\input{cnoidal_worldframe.pgf}}
+  \caption{Cnoidal: World-frame displacement/velocity/acceleration}
+  \label{fig:cnoidal_world}
 \end{figure}
 \clearpage
 
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{jonswap_imu_acc.pgf}}
-  \caption{JONSWAP Stokes: IMU body-frame acceleration}
-  \label{fig:jonswap_imu_acc}
-\end{figure}
-\clearpage
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{jonswap_imu_gyro.pgf}}
-  \caption{JONSWAP Stokes: IMU gyroscope (angular velocity)}
-  \label{fig:jonswap_imu_gyro}
-\end{figure}
-\clearpage
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{jonswap_euler.pgf}}
-  \caption{JONSWAP Stokes: IMU Euler angles (roll/pitch/yaw)}
-  \label{fig:jonswap_euler}
-\end{figure}
-\clearpage
-
-% 6: Fenton
+% Fenton
 \begin{figure}[H]\centering
   \resizebox{\textwidth}{!}{\input{fenton_worldframe.pgf}}
   \caption{Fenton: World-frame displacement/velocity/acceleration}
@@ -65,7 +44,7 @@
 \end{figure}
 \clearpage
 
-% 7–10: PM Stokes
+% Pierson-Moskowitz Stokes
 \begin{figure}[H]\centering
   \resizebox{\textwidth}{!}{\input{pmstokes_worldframe.pgf}}
   \caption{PM Stokes: World-frame displacement/velocity/acceleration}
@@ -94,11 +73,32 @@
 \end{figure}
 \clearpage
 
-% 11: Cnoidal
+% JONSWAP Stokes
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{cnoidal_worldframe.pgf}}
-  \caption{Cnoidal: World-frame displacement/velocity/acceleration}
-  \label{fig:cnoidal_world}
+  \resizebox{\textwidth}{!}{\input{jonswap_worldframe.pgf}}
+  \caption{JONSWAP Stokes: World-frame displacement/velocity/acceleration}
+  \label{fig:jonswap_world}
+\end{figure}
+\clearpage
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{jonswap_imu_acc.pgf}}
+  \caption{JONSWAP Stokes: IMU body-frame acceleration}
+  \label{fig:jonswap_imu_acc}
+\end{figure}
+\clearpage
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{jonswap_imu_gyro.pgf}}
+  \caption{JONSWAP Stokes: IMU gyroscope (angular velocity)}
+  \label{fig:jonswap_imu_gyro}
+\end{figure}
+\clearpage
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{jonswap_euler.pgf}}
+  \caption{JONSWAP Stokes: IMU Euler angles (roll/pitch/yaw)}
+  \label{fig:jonswap_euler}
 \end{figure}
 \clearpage
 
