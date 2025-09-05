@@ -47,7 +47,7 @@ components = {
 
 # Sampling cutoff
 SAMPLE_RATE = 240
-MAX_TIME = 180.0
+MAX_TIME = 120.0
 MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 
 
