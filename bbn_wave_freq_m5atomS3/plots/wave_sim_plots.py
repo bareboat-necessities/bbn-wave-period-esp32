@@ -28,11 +28,11 @@ height_groups = {
     "high":   [8.5],    # always red
 }
 
-# Fixed color mapping by group
+# Color palettes for each group (shades for x,y,z)
 height_colors = {
-    "low":    ['#4daf4a', '#2b7a2b', '#a1d99b'],   # Greens
-    "medium": ['#377eb8', '#184f7d', '#9ecae1'],   # Blues
-    "high":   ['#e41a1c', '#a50f15', '#fb6a4a'],   # Reds
+    "low":    ['#a1d99b', '#41ab5d', '#005a32'],   # Greens
+    "medium": ['#9ecae1', '#3182bd', '#08306b'],   # Blues
+    "high":   ['#fcbba1', '#fb6a4a', '#a50f15'],   # Reds
 }
 
 # Wave types to include (must match filenames)
@@ -66,18 +66,18 @@ def plot_wave_type(wave_type):
     fig.suptitle(f"{wave_type.capitalize()} - World Frame")
 
     for group, heights in height_groups.items():
-        for idx, h in enumerate(heights):
+        for h in heights:
             csv_file = find_file(wave_type, h)
             if not csv_file:
                 continue
             data = pd.read_csv(csv_file).head(MAX_RECORDS)
-            color = height_colors[group][idx % len(height_colors[group])]
             time = data["time"]
 
             for ax, (comp_label, cols) in zip(axes, components.items()):
-                for col in cols:
+                for j, col in enumerate(cols):
+                    comp_color = height_colors[group][j % len(height_colors[group])]
                     ax.plot(time, data[col], label=f"H={h} {col}",
-                            color=color, alpha=1.0, linewidth=1.2)
+                            color=comp_color, alpha=1.0, linewidth=1.2)
                 ax.set_ylabel(comp_label)
                 ax.grid(True)
 
@@ -97,17 +97,17 @@ def plot_wave_type(wave_type):
     fig.suptitle(f"{wave_type.capitalize()} - IMU Acceleration")
 
     for group, heights in height_groups.items():
-        for idx, h in enumerate(heights):
+        for h in heights:
             csv_file = find_file(wave_type, h)
             if not csv_file:
                 continue
             data = pd.read_csv(csv_file).head(MAX_RECORDS)
-            color = height_colors[group][idx % len(height_colors[group])]
             time = data["time"]
 
             for i, comp in enumerate(['acc_bx', 'acc_by', 'acc_bz']):
+                comp_color = height_colors[group][i % len(height_colors[group])]
                 axes[i].plot(time, data[comp], label=f"H={h} {comp}",
-                             color=color, alpha=1.0, linewidth=1.2)
+                             color=comp_color, alpha=1.0, linewidth=1.2)
                 axes[i].set_ylabel(comp)
                 axes[i].grid(True)
 
@@ -123,17 +123,17 @@ def plot_wave_type(wave_type):
     fig.suptitle(f"{wave_type.capitalize()} - IMU Gyro")
 
     for group, heights in height_groups.items():
-        for idx, h in enumerate(heights):
+        for h in heights:
             csv_file = find_file(wave_type, h)
             if not csv_file:
                 continue
             data = pd.read_csv(csv_file).head(MAX_RECORDS)
-            color = height_colors[group][idx % len(height_colors[group])]
             time = data["time"]
 
             for i, comp in enumerate(['gyro_x', 'gyro_y', 'gyro_z']):
+                comp_color = height_colors[group][i % len(height_colors[group])]
                 axes[i].plot(time, data[comp], label=f"H={h} {comp}",
-                             color=color, alpha=1.0, linewidth=1.2)
+                             color=comp_color, alpha=1.0, linewidth=1.2)
                 axes[i].set_ylabel(comp)
                 axes[i].grid(True)
 
@@ -149,17 +149,17 @@ def plot_wave_type(wave_type):
     fig.suptitle(f"{wave_type.capitalize()} - Euler Angles")
 
     for group, heights in height_groups.items():
-        for idx, h in enumerate(heights):
+        for h in heights:
             csv_file = find_file(wave_type, h)
             if not csv_file:
                 continue
             data = pd.read_csv(csv_file).head(MAX_RECORDS)
-            color = height_colors[group][idx % len(height_colors[group])]
             time = data["time"]
 
             for i, comp in enumerate(['roll_deg', 'pitch_deg', 'yaw_deg']):
+                comp_color = height_colors[group][i % len(height_colors[group])]
                 axes[i].plot(time, data[comp], label=f"H={h} {comp}",
-                             color=color, alpha=1.0, linewidth=1.2)
+                             color=comp_color, alpha=1.0, linewidth=1.2)
                 axes[i].set_ylabel(comp)
                 axes[i].grid(True)
 
