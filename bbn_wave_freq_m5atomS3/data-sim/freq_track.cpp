@@ -26,6 +26,7 @@ const float g_std = 9.80665; // standard gravity acceleration m/s²
 #include "KalmanWaveNumStableAlt.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "KalmanSmoother.h"
+#include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
 
 // Config
