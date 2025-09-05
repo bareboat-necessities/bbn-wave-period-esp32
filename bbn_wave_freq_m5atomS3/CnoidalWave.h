@@ -5,6 +5,7 @@
 #include <limits>
 
 /*
+    Cnoidal wave (symmetric cn-form) for zero-mean Lagrangian vertical motion
     Copyright 2025, Mikhail Grushinskiy
 */
 
@@ -14,10 +15,12 @@
 #include <ArduinoEigenDense.h>
 #endif
 
-// Elliptic integrals and Jacobi functions (AGM-based)
+// ===============================================================
+//   Elliptic integrals and Jacobi functions (AGM-based)
+// ===============================================================
 namespace Elliptic {
 
-    // Complete elliptic integral of the first kind (K) 
+    // --- Complete elliptic integral of the first kind (K) ---
     // K(m) = ∫₀^(π/2) dφ / √(1 - m sin²φ)
     template<typename Real>
     Real ellipK(Real m) {
@@ -42,7 +45,7 @@ namespace Elliptic {
         return Real(M_PI) / (Real(2) * a);
     }
 
-    // Complete elliptic integral of the second kind (E) 
+    // --- Complete elliptic integral of the second kind (E) ---
     // E(m) = ∫₀^(π/2) √(1 - m sin²φ) dφ
     template<typename Real>
     Real ellipE(Real m) {
@@ -74,7 +77,7 @@ namespace Elliptic {
         return Real(M_PI) / (Real(2) * a) * (Real(1) - sum / Real(2));
     }
 
-    // Jacobi elliptic functions sn, cn, dn (AGM/Landen method) 
+    // --- Jacobi elliptic functions sn, cn, dn (AGM/Landen method) ---
     // Robust for 0 ≤ m ≤ 1, u ∈ ℝ
     template<typename Real>
     void jacobi_sn_cn_dn(Real u, Real m, Real &sn, Real &cn, Real &dn) {
@@ -126,10 +129,21 @@ namespace Elliptic {
 
 } // namespace Elliptic
 
-// Cnoidal Wave Model
-// Based on periodic cnoidal solutions of KdV. This model ensures
-// crest–trough displacement equals requested H and oscillates
-// around zero mean.
+
+// ===============================================================
+//   Cnoidal Wave Model (symmetric form with cn)
+// ===============================================================
+// We use   η(x,y,t) = A * cn(θ | m),   A = H/2
+// so that:
+//  • mean(η) = 0 over one period,
+//  • crest = +H/2, trough = −H/2 (crest–trough = H),
+//  • simple, stable kinematics for w and a_z.
+//
+// Phase:   θ = k (s − c t),  s = x cos(θ_dir) + y sin(θ_dir)
+// wavenumber: k = π / (K(m) h)
+// angular frequency: ω = 2π / T
+// phase speed: c = ω / k
+// ===============================================================
 template<typename Real = double>
 class EIGEN_ALIGN_MAX CnoidalWave {
 public:
@@ -154,48 +168,52 @@ public:
         solveEllipticParameters();
         cosTheta = std::cos(theta);
         sinTheta = std::sin(theta);
+        A = H / Real(2); // symmetric amplitude
     }
 
+    // -----------------------------------------------------------
     // Free surface elevation:
-    //   η(x,y,t) = Hc [ cn²(θ | m) - E/K ]
-    //   where θ = k(s - ct),  s = x cosθ + y sinθ
-    // This form ensures ⟨η⟩ = 0 and crest–trough = H.
+    //   η(x,y,t) = A * cn(θ | m),  with A = H/2
+    //   mean(η) = 0 over one full period (4K).
+    // -----------------------------------------------------------
     Real surfaceElevation(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
-        const Real arg = k * (s - c * t);
+        const Real th  = k * (s - c * t);
         Real sn, cn, dn;
-        Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
-        return Hc * (cn*cn - E/K);
+        Elliptic::jacobi_sn_cn_dn(th, m, sn, cn, dn);
+        return A * cn;
     }
 
+    // -----------------------------------------------------------
     // Vertical velocity:
-    //   w = dη/dt = (dη/dθ)(dθ/dt)
-    //   dθ/dt = -kc = -ω
-    //   d/dθ[cn²] = -2 sn cn dn
-    //   → w = 2 Hc ω sn cn dn
+    //   w = dη/dt = A * d/dt[cn(θ)] = A * (-sn dn) * (dθ/dt)
+    //   dθ/dt = -kc = -ω  →  w = A * ω * sn * dn
+    // -----------------------------------------------------------
     Real wVelocity(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
-        const Real arg = k * (s - c * t);
+        const Real th  = k * (s - c * t);
         Real sn, cn, dn;
-        Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
-        return Real(2) * Hc * omega * sn * cn * dn;
+        Elliptic::jacobi_sn_cn_dn(th, m, sn, cn, dn);
+        return A * omega * sn * dn;
     }
 
+    // -----------------------------------------------------------
     // Vertical acceleration:
-    //   a = d²η/dt² = (d/dt w)
-    //   Using d/dθ(sn cn dn) = 1 - 2(1+m) sn² + 3m sn⁴
-    //   and dθ/dt = -ω:
-    //   → a = -2 Hc ω² [ 1 - 2(1+m) sn² + 3m sn⁴ ]
+    //   a = d/dt w = A ω * d/dt[sn dn] = A ω * (d(sn dn)/dθ) * (dθ/dt)
+    //   d(sn dn)/dθ = cn dn² - m sn² cn = cn(1 - m sn²) - m sn² cn
+    //                = cn (1 - 2 m sn²)
+    //   dθ/dt = -ω → a = -A ω² cn (1 - 2 m sn²)
+    // -----------------------------------------------------------
     Real azAcceleration(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
-        const Real arg = k * (s - c * t);
+        const Real th  = k * (s - c * t);
         Real sn, cn, dn;
-        Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
+        Elliptic::jacobi_sn_cn_dn(th, m, sn, cn, dn);
         const Real sn2 = sn * sn;
-        const Real term = Real(1) - Real(2) * (Real(1) + m) * sn2 + Real(3) * m * sn2 * sn2;
-        return -Real(2) * Hc * omega * omega * term;
+        return -A * omega * omega * cn * (Real(1) - Real(2) * m * sn2);
     }
 
+    // Unified interface (vertical only for this model)
     State getLagrangianState(Real x, Real y, Real t) const {
         State st;
         st.displacement = Eigen::Vector3d(0.0, 0.0, static_cast<double>(surfaceElevation(x,y,t)));
@@ -219,13 +237,15 @@ private:
     Real h, H, T, theta, g;
 
     // Derived
-    Real m, K, E, k, c, Hc;
-    Real omega;
+    Real m, K, E, k, c, omega;
+    Real A;                  // amplitude = H/2 (symmetric)
     Real cosTheta, sinTheta;
 
+    // -----------------------------------------------------------
     // Elliptic parameter solver:
     // Iteratively solves for m to match desired period T
-    // using Newton + secant fallback.
+    // using Newton + secant fallback (no hangs).
+    // -----------------------------------------------------------
     void solveEllipticParameters() {
         const Real eps  = Real(1e-8);
         const Real tolF = Real(1e-9);
@@ -279,14 +299,11 @@ private:
             if (std::abs(delta) < tolM * std::max(Real(1), std::abs(m))) break;
         }
 
-        // Finalize parameters
+        // Finalize parameters and kinematics
         K = Elliptic::ellipK(m);
         E = Elliptic::ellipE(m);
-        k = Real(M_PI) / (K * h);
-        omega = Real(2 * M_PI) / T;
-        c = omega / k;
-
-        // Amplitude normalization: crest–trough = H
-        Hc = H;
+        k = Real(M_PI) / (K * h);   // pseudo-dispersion for KdV-type cnoidal
+        omega = Real(2 * M_PI) / T; // angular frequency
+        c = omega / k;              // phase speed
     }
 };
