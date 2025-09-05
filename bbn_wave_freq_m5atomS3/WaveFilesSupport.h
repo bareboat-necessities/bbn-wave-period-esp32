@@ -225,3 +225,17 @@ public:
 private:
     std::ofstream ofs;
 };
+
+class WaveSpectrumCSVWriter {
+public:
+    explicit WaveSpectrumCSVWriter(const std::string &filename) : ofs(filename) {
+        if (!ofs.is_open()) throw std::runtime_error("Failed to open " + filename);
+        ofs << "f_Hz,theta_deg,E\n";
+    }
+    void write(double f, double theta_deg, double E) {
+        ofs << f << "," << theta_deg << "," << E << "\n";
+    }
+    void close() { if (ofs.is_open()) ofs.close(); }
+private:
+    std::ofstream ofs;
+};
