@@ -16,9 +16,9 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-const float g_std = 9.80665; // standard gravity acceleration m/s²
+const float g_std = 9.80665f; // standard gravity acceleration m/s²
 
-#include "WaveFilesSupport.h"   
+#include "WaveFilesSupport.h"
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "FrequencySmoother.h"
@@ -40,7 +40,8 @@ AranovskiyFilter<double> arFilter;
 KalmANF<double> kalmANF;
 FrequencySmoother<float> freqSmoother;
 KalmanSmootherVars kalman_freq;
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
+SchmittTriggerFrequencyDetector freqDetector(
+    ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
 static bool kalm_smoother_first = true;
 static double sim_t = 0.0;
@@ -113,38 +114,48 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker,
 static void run_from_csv(TrackerType tracker,
                          const std::string &csv_file,
                          unsigned run_seed) {
-    // Parse metadata from filename
+    // Parse metadata
     auto parsed = WaveFileNaming::parse(csv_file);
-    std::string waveName = parsed ? EnumTraits<WaveType>::to_string(parsed->type)
-                                  : "unknown";
-    double height = parsed ? parsed->height : 0.0;
+    if (!parsed) {
+        fprintf(stderr, "Could not parse metadata from %s\n", csv_file.c_str());
+        return;
+    }
+    WaveFileNaming::ParsedName meta = *parsed;
+    std::string waveName = EnumTraits<WaveType>::to_string(meta.type);
 
-    // output file
-    std::string trackerName = (tracker == TrackerType::ARANOVSKIY) ? "aranovskiy" :
-                              (tracker == TrackerType::KALMANF) ? "kalmanf" :
-                              "zerocrossing";
-    char buf[128];
-    std::snprintf(buf, sizeof(buf), "tracker_%s_%s_H%.3f.csv",
-                  trackerName.c_str(), waveName.c_str(), height);
-    std::ofstream ofs(buf);
-    if (!ofs.is_open()) { fprintf(stderr, "Failed to open %s\n", buf); return; }
+    // Tracker prefix
+    std::string trackerName =
+        (tracker == TrackerType::ARANOVSKIY) ? "aranovskiy" :
+        (tracker == TrackerType::KALMANF)   ? "kalmanf" :
+                                              "zerocross";
+
+    // Grab "_H..._L..._A..._P..." tail
+    std::string stem = std::filesystem::path(csv_file).filename().string();
+    auto posH = stem.find("_H");
+    std::string tail = (posH != std::string::npos) ? stem.substr(posH) : "";
+
+    // Output file
+    std::string outFile = "tracker_" + trackerName + "_" + waveName + tail;
+    std::ofstream ofs(outFile);
+    if (!ofs.is_open()) {
+        fprintf(stderr, "Failed to open %s\n", outFile.c_str());
+        return;
+    }
     write_csv_header(ofs);
 
-    // noise generator
+    // Noise
     std::default_random_engine rng(run_seed);
     std::normal_distribution<float> gauss(0.0f, NOISE_STDDEV);
     float bias = BIAS_MEAN;
 
     reset_run_state();
 
-    // use WaveDataCSVReader instead of manual parsing ✅
+    // Process records
     WaveDataCSVReader reader(csv_file);
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         float accel_z = rec.wave.acc_z;
-
-        float noise_val   = gauss(rng);
-        float noisy_accel = accel_z + bias + noise_val;
-        float a_norm      = noisy_accel / g_std;
+        float noisy_accel = accel_z + bias + gauss(rng);
+        float a_norm = noisy_accel / g_std;
 
         auto [est_freq, updated] = run_tracker_once(tracker, a_norm, noisy_accel, DELTA_T);
 
@@ -160,12 +171,16 @@ static void run_from_csv(TrackerType tracker,
         }
         if (!std::isnan(smooth_freq)) smooth_freq = clamp_freq(smooth_freq);
 
-        // no true freq available in file
+        // True freq if length available
         double true_f = std::numeric_limits<double>::quiet_NaN();
+        if (meta.length > 0.0) {
+            double T = std::sqrt(meta.length / g_std * 2 * M_PI);
+            true_f = 1.0 / T;
+        }
 
-        double error = std::isnan(est_freq) ? NAN : (est_freq - true_f);
-        double smooth_error = std::isnan(smooth_freq) ? NAN : (smooth_freq - true_f);
-        double abs_error = std::isnan(error) ? NAN : std::fabs(error);
+        double error            = std::isnan(est_freq) ? NAN : (est_freq - true_f);
+        double smooth_error     = std::isnan(smooth_freq) ? NAN : (smooth_freq - true_f);
+        double abs_error        = std::isnan(error) ? NAN : std::fabs(error);
         double abs_smooth_error = std::isnan(smooth_error) ? NAN : std::fabs(smooth_error);
 
         write_csv_line(ofs, rec.time, true_f, est_freq, smooth_freq,
@@ -176,7 +191,7 @@ static void run_from_csv(TrackerType tracker,
     reader.close();
 
     ofs.close();
-    printf("Wrote %s\n", buf);
+    printf("Wrote %s\n", outFile.c_str());
 }
 
 // ---------- Main ----------
