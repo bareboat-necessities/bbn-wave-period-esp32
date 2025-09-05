@@ -208,6 +208,7 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             writer.write(samp);
             sim_t += DELTA_T;
         }
+        writer.close();
     }
     else if (waveType == WaveType::JONSWAP) {
         auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
@@ -219,10 +220,13 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             writer.write(samp);
             sim_t += DELTA_T;
         }
+        writer.close();
+        export_spectrum(wp, WaveType::JONSWAP, *jonswap_model);
     }
     else if (waveType == WaveType::FENTON) {
         auto samples = sample_fenton<5>(wp, TEST_DURATION_S, DELTA_T);
         for (auto &samp : samples) writer.write(samp);
+        writer.close();
     }
     else if (waveType == WaveType::PMSTOKES) {
         auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
@@ -234,6 +238,8 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             writer.write(samp);
             sim_t += DELTA_T;
         }
+        writer.close();
+        export_spectrum(wp, WaveType::PMSTOKES, waveModel);
     }
     else if (waveType == WaveType::CNOIDAL) {
         CnoidalWave<float> cnoidal(200.0f, wp.height / 2.0f, wp.period, 0.0f, g_std);
@@ -242,8 +248,8 @@ static void run_one_scenario(WaveType waveType, const WaveParameters &wp) {
             writer.write(samp);
             sim_t += DELTA_T;
         }
+        writer.close();
     }
-    writer.close();
     std::cout << "Wrote " << filename << "\n";
 }
 
