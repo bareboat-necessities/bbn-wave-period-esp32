@@ -16,6 +16,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+const float g_std = 9.80665; // standard gravity acceleration m/s²
+
 #include "WaveFilesSupport.h"   
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
