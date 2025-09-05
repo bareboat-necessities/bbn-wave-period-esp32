@@ -15,10 +15,10 @@
 #include <ArduinoEigenDense.h>
 #endif
 
-//   Elliptic integrals and Jacobi functions (AGM-based)
+// Elliptic integrals and Jacobi functions (AGM-based)
 namespace Elliptic {
 
-    // --- Complete elliptic integral of the first kind (K) ---
+    // Complete elliptic integral of the first kind (K)
     // K(m) = ∫₀^(π/2) dφ / √(1 - m sin²φ)
     template<typename Real>
     Real ellipK(Real m) {
