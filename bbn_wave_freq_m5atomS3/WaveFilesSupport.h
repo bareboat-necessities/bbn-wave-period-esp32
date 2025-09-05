@@ -81,7 +81,7 @@ public:
 
     static std::string generate_spectrum(WaveType type, const WaveParameters &wp) {
         double length = (wp.period > 0.0)
-                      ? (G_GRAV * wp.period * wp.period / (2.0 * PI))
+                      ? (g_std * wp.period * wp.period / (2.0 * PI))
                       : 0.0;
         double phaseDeg = wp.phase * 180.0 / PI;
         std::ostringstream oss;
