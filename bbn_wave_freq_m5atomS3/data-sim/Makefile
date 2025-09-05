@@ -15,19 +15,20 @@ else
 endif
 
 LDFLAGS  =
-TARGET   = waves_sim
-SRC      = waves_sim.cpp
-OBJ      = $(SRC:.cpp=.o)
 
-.PHONY: all clean
+# Targets
+TARGETS = waves_sim freq_track
 
-all: $(TARGET)
+all: $(TARGETS)
 
-$(TARGET): $(OBJ)
+waves_sim: waves_sim.o
+	$(CC) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
+
+freq_track: freq_track.o
 	$(CC) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
 
 %.o: %.cpp
 	$(CC) $(CPPFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(TARGET) $(TARGET).exe *.csv
+	rm -f *.o $(TARGETS) *.exe *.csv
