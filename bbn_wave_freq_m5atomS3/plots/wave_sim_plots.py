@@ -60,11 +60,18 @@ latex_labels = {
 # Wave types to include (must match filenames)
 wave_types = ["gerstner", "jonswap", "fenton", "pmstokes", "cnoidal"]
 
-# Components for world-frame plots
+# Components for world-frame plots (full set)
 components = {
     'Displacement': ['disp_x', 'disp_y', 'disp_z'],
     'Velocity':     ['vel_x', 'vel_y', 'vel_z'],
     'Acceleration': ['acc_x', 'acc_y', 'acc_z'],
+}
+
+# For restricted wave types (z-only)
+z_only_components = {
+    'Displacement': ['disp_z'],
+    'Velocity':     ['vel_z'],
+    'Acceleration': ['acc_z'],
 }
 
 # Sampling cutoff
@@ -88,8 +95,14 @@ def label_for(col, h):
 def plot_wave_type(wave_type):
     """Generate plots (PGF+SVG) for one wave type."""
 
+    # Restrict to z-only for Gerstner, Fenton, and Cnoidal
+    if wave_type in ["gerstner", "fenton", "cnoidal"]:
+        comps = z_only_components
+    else:
+        comps = components
+
     # --- Chart 1: world-frame disp/vel/acc ---
-    fig, axes = plt.subplots(len(components), 1, figsize=(14, 10), sharex=True)
+    fig, axes = plt.subplots(len(comps), 1, figsize=(14, 10), sharex=True)
     fig.suptitle(f"{wave_type.capitalize()} - World Frame")
 
     for group, heights in height_groups.items():
@@ -100,7 +113,7 @@ def plot_wave_type(wave_type):
             data = pd.read_csv(csv_file).head(MAX_RECORDS)
             time = data["time"]
 
-            for ax, (comp_label, cols) in zip(axes, components.items()):
+            for ax, (comp_label, cols) in zip(axes, comps.items()):
                 for j, col in enumerate(cols):
                     comp_color = height_colors[group][j % len(height_colors[group])]
                     ax.plot(time, data[col], label=label_for(col, h),
