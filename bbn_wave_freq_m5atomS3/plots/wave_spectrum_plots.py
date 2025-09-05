@@ -8,7 +8,10 @@ import os
 import re
 
 # === Matplotlib PGF/LaTeX config ===
-mpl.use("pgf")
+from matplotlib.backends.backend_pgf import FigureCanvasPgf
+
+# Register PGF backend
+mpl.backend_bases.register_backend('pgf', FigureCanvasPgf)
 plt.rcParams.update({
     "pgf.texsystem": "xelatex",
     "font.family": "serif",
@@ -52,7 +55,7 @@ def parse_filename(fname):
 
 def save_all(fig, base):
     """Save PGF + SVG + PNG (PNG needed for LaTeX sidecar images)."""
-    fig.savefig(f"{base}.pgf", bbox_inches="tight")
+    fig.savefig(f"{base}.pgf", bbox_inches="tight", backend="pgf")
     fig.savefig(f"{base}.svg", bbox_inches="tight", dpi=150)
     fig.savefig(f"{base}.png", bbox_inches="tight", dpi=300)  # critical for LaTeX
     print(f"  saved {base}.pgf/.svg/.png")
