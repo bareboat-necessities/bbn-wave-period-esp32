@@ -79,6 +79,21 @@ public:
         return oss.str();
     }
 
+    static std::string generate_spectrum(WaveType type, const WaveParameters &wp) {
+        double length = (wp.period > 0.0)
+                      ? (G_GRAV * wp.period * wp.period / (2.0 * PI))
+                      : 0.0;
+        double phaseDeg = wp.phase * 180.0 / PI;
+        std::ostringstream oss;
+        oss << "wave_spectrum_" << type_to_string(type)
+            << "_H" << std::fixed << std::setprecision(3) << wp.height
+            << "_L" << std::fixed << std::setprecision(3) << length
+            << "_A" << std::fixed << std::setprecision(2) << wp.direction
+            << "_P" << std::fixed << std::setprecision(2) << phaseDeg
+            << ".csv";
+        return oss.str();
+    }
+
     static std::optional<ParsedName> parse(const std::string &filename) {
         ParsedName result{};
         std::string stem = filename;
