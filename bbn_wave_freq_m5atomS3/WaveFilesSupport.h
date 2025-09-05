@@ -18,6 +18,7 @@ static constexpr unsigned GLOBAL_SEED  = 42u; // global seed for reproducibility
 // Enums
 enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3, CNOIDAL=4 };
 enum class FileKind { Data=0, Spectrum=1 };
+enum class TrackerType { ARANOVSKIY=0, KALMANF=1, ZEROCROSS=2 };
 
 // EnumTraits
 template <typename T>
