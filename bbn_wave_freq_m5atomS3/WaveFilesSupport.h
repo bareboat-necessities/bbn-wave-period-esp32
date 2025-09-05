@@ -246,3 +246,51 @@ public:
 private:
     std::ofstream ofs;
 };
+
+// CSV Reader for spectrum files
+class WaveSpectrumCSVReader {
+public:
+    explicit WaveSpectrumCSVReader(const std::string &filename) : ifs(filename) {
+        if (!ifs.is_open()) {
+            throw std::runtime_error("Failed to open " + filename);
+        }
+        std::string header;
+        std::getline(ifs, header); // skip header line
+    }
+
+    template<typename Callback>
+    std::size_t for_each_record(Callback cb) {
+        std::size_t count = 0;
+        std::string line;
+        while (std::getline(ifs, line)) {
+            if (line.empty()) continue;
+            WaveSpectrumRecord rec{};
+            if (read_csv_record(line, rec)) {
+                ++count;
+                if constexpr (std::is_same<decltype(cb(rec)), bool>::value) {
+                    if (!cb(rec)) break; // allow early exit if cb returns bool
+                } else {
+                    cb(rec);
+                }
+            }
+        }
+        return count;
+    }
+
+    void close() { if (ifs.is_open()) ifs.close(); }
+
+private:
+    std::ifstream ifs;
+
+    static bool read_csv_record(const std::string &line, WaveSpectrumRecord &rec) {
+        std::istringstream iss(line);
+        char comma;
+        if ((iss >> rec.f_Hz >> comma
+                 >> rec.theta_deg >> comma
+                 >> rec.E)) {
+            return true;
+        }
+        return false;
+    }
+};
+
