@@ -45,6 +45,13 @@ struct Wave_Data_Sample {
     IMU_Sample imu{};
 };
 
+// Data structure for one spectrum bin
+struct WaveSpectrumRecord {
+    double f_Hz{};       // frequency in Hz
+    double theta_deg{};  // direction in degrees
+    double E{};          // spectral density
+};
+
 // Wave File Naming
 class WaveFileNaming {
 public:
