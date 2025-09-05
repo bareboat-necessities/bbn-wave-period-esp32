@@ -140,6 +140,12 @@ namespace Elliptic {
 // wavenumber: k = π / (K(m) h)
 // angular frequency: ω = 2π / T
 // phase speed: c = ω / k
+//
+// (vertical-only implementation)
+// This cnoidal formulation focuses on η, w, a_z. Horizontal displacements
+// and velocities are neglected: in many practical cases, vertical kinematics
+// dominate for buoy motion and spectral reconstruction. For full orbital
+// particle paths, an extended formulation would be required.
 template<typename Real = double>
 class EIGEN_ALIGN_MAX CnoidalWave {
 public:
@@ -320,6 +326,9 @@ private:
         // Finalize parameters and kinematics
         K = Elliptic::ellipK(m);
         E = Elliptic::ellipE(m);
+        // NOTE: dispersion relation here is approximate:
+        // k = π / (K·h) is a KdV-type "cnoidal" relation, not the exact
+        // linear Stokes dispersion relation ω² = gk tanh(kh).
         k = Real(M_PI) / (K * h);   // pseudo-dispersion for KdV-type cnoidal
         omega = Real(2 * M_PI) / T; // angular frequency
         c = omega / k;              // phase speed
