@@ -161,11 +161,10 @@ static std::vector<Wave_Data_Sample> sample_fenton(
 
 static Wave_Data_Sample sample_cnoidal(double t, CnoidalWave<float> &wave) {
     Wave_Data_Sample out{};
-    out.time        = t;
-    out.wave.disp_z = wave.surfaceElevation(0.0f, 0.0f, t);
-    out.wave.vel_z  = wave.wVelocity(0.0f, 0.0f, 0.0f, t);
-    out.wave.acc_z  = wave.azAcceleration(0.0f, 0.0f, 0.0f, t);
-    fill_default_imu(out.imu);
+    out.time = t;
+    auto state = wave.getLagrangianState(0.0f, 0.0f, t);
+    fill_wave_sample_from_state(out.wave, state);
+    fill_default_imu(out.imu); 
     return out;
 }
 
