@@ -74,6 +74,29 @@ static void fill_default_imu(IMU_Sample &imu) {
     imu = {}; // zero all fields
 }
 
+template<typename Model>
+static void export_spectrum(const WaveParameters &wp,
+                            WaveType type,
+                            Model &model,
+                            int N_theta = 72)
+{
+    auto freqs = model.frequencies();
+    Eigen::MatrixXd E = model.getDirectionalSpectrum(N_theta);
+
+    std::string spec_filename = WaveFileNaming::generate_spectrum(type, wp);
+    WaveSpectrumCSVWriter writer(spec_filename);
+
+    const double dtheta = 360.0 / N_theta;
+    for (int i = 0; i < freqs.size(); ++i) {
+        for (int m = 0; m < N_theta; ++m) {
+            double theta_deg = -180.0 + m * dtheta;
+            writer.write(freqs(i), theta_deg, E(i, m));
+        }
+    }
+    writer.close();
+    std::cout << "Wrote " << spec_filename << "\n";
+}
+
 // Sampling Helpers
 static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     Wave_Data_Sample out{};
