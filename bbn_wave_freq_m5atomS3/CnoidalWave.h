@@ -139,31 +139,51 @@ private:
     Real cosTheta, sinTheta;
 
     void solveEllipticParameters() {
-        // crude solve for modulus m by period match
-        m = 0.8;
-        for (int iter = 0; iter < 20; ++iter) {
+        m = 0.8;  // initial guess
+
+        const Real tol = 1e-9;
+        const int max_iter = 50;
+
+        for (int iter = 0; iter < max_iter; ++iter) {
             K = Elliptic::ellipK(m);
             E = Elliptic::ellipE(m);
-            Real Tguess = 2*K * std::sqrt(h/(3*g*(1-m)));
+            Real Tguess = 2 * K * std::sqrt(h / (3 * g * (1 - m)));
             Real f = Tguess - T;
-            Real dm = 1e-6;
-            Real K2 = Elliptic::ellipK(m+dm);
-            Real T2 = 2*K2 * std::sqrt(h/(3*g*(1-(m+dm))));
-            Real df = (T2 - Tguess)/dm;
-            Real delta = -f/df;
+
+            if (std::abs(f) < tol) break;
+
+            // Improved central difference for derivative
+            Real dm = 1e-4;  // slightly larger step
+            Real m_plus = std::min(m + dm, Real(1.0 - 1e-8));
+            Real m_minus = std::max(m - dm, Real(1e-8));
+
+            Real Kp = Elliptic::ellipK(m_plus);
+            Real Tp = 2 * Kp * std::sqrt(h / (3 * g * (1 - m_plus)));
+
+            Real Km = Elliptic::ellipK(m_minus);
+            Real Tm = 2 * Km * std::sqrt(h / (3 * g * (1 - m_minus)));
+
+            Real df = (Tp - Tm) / (m_plus - m_minus);
+            if (df == 0.0) break;
+
+            Real delta = -f / df;
+            if (std::abs(delta) < tol * std::max(Real(1.0), std::abs(m))) {
+                m += delta;
+                break;
+            }
+
             m += delta;
-            if (std::abs(delta) < 1e-12) break;
-            if (m <= 0) m = 1e-8;
-            if (m >= 1) m = 1 - 1e-8;
+            m = std::clamp(m, Real(1e-8), Real(1.0 - 1e-8));
         }
 
+        // Finalize parameters
         K = Elliptic::ellipK(m);
         E = Elliptic::ellipE(m);
 
-        k = M_PI / (K*h);
-        omega = 2*M_PI/T;
-        c = omega/k;
+        k = M_PI / (K * h);
+        omega = 2 * M_PI / T;    // still your definition
+        c = omega / k;
         eta0 = 0.0;
-        Hc   = H;
+        Hc = H;
     }
 };
