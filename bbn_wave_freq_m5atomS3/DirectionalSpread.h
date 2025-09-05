@@ -11,7 +11,7 @@
   - Sech² (hyperbolic secant squared)
   - Gaussian (wrapped normal approximation)
 
-  Copyright: Mikhail Grushinskiy, 2025
+  Copyright: 2025, Mikhail Grushinskiy
 */
 
 #include <random>
