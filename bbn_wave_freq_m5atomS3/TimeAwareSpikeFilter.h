@@ -1,6 +1,10 @@
 #ifndef TIME_AWARE_SPIKE_FILTER_H
 #define TIME_AWARE_SPIKE_FILTER_H
 
+/**
+ * Copyright 2025, Mikhail Grushinskiy
+ */
+
 class TimeAwareSpikeFilter {
   private:
     struct Sample {
