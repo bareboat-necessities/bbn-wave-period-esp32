@@ -23,16 +23,16 @@ plt.rcParams.update({
 
 # === Wave categories (heights to show explicitly) ===
 height_groups = {
-    "low":    [0.27],
-    "medium": [1.5],
-    "high":   [8.5],
+    "low":    [0.27],   # always green
+    "medium": [1.5],    # always blue
+    "high":   [8.5],    # always red
 }
 
-# Stronger color palettes for each height group (light → medium → dark shades)
+# Fixed color mapping by group
 height_colors = {
-    "low":    ['#a1d99b', '#41ab5d', '#005a32'],   # greens
-    "medium": ['#9ecae1', '#3182bd', '#08306b'],   # blues
-    "high":   ['#fcbba1', '#fb6a4a', '#a50f15'],   # reds
+    "low":    ['#4daf4a', '#2b7a2b', '#a1d99b'],   # Greens
+    "medium": ['#377eb8', '#184f7d', '#9ecae1'],   # Blues
+    "high":   ['#e41a1c', '#a50f15', '#fb6a4a'],   # Reds
 }
 
 # Wave types to include (must match filenames)
@@ -77,7 +77,7 @@ def plot_wave_type(wave_type):
             for ax, (comp_label, cols) in zip(axes, components.items()):
                 for col in cols:
                     ax.plot(time, data[col], label=f"H={h} {col}",
-                            color=color, alpha=0.9)
+                            color=color, alpha=1.0, linewidth=1.2)
                 ax.set_ylabel(comp_label)
                 ax.grid(True)
 
@@ -107,7 +107,7 @@ def plot_wave_type(wave_type):
 
             for i, comp in enumerate(['acc_bx', 'acc_by', 'acc_bz']):
                 axes[i].plot(time, data[comp], label=f"H={h} {comp}",
-                             color=color, alpha=0.9)
+                             color=color, alpha=1.0, linewidth=1.2)
                 axes[i].set_ylabel(comp)
                 axes[i].grid(True)
 
@@ -133,7 +133,7 @@ def plot_wave_type(wave_type):
 
             for i, comp in enumerate(['gyro_x', 'gyro_y', 'gyro_z']):
                 axes[i].plot(time, data[comp], label=f"H={h} {comp}",
-                             color=color, alpha=0.9)
+                             color=color, alpha=1.0, linewidth=1.2)
                 axes[i].set_ylabel(comp)
                 axes[i].grid(True)
 
@@ -159,7 +159,7 @@ def plot_wave_type(wave_type):
 
             for i, comp in enumerate(['roll_deg', 'pitch_deg', 'yaw_deg']):
                 axes[i].plot(time, data[comp], label=f"H={h} {comp}",
-                             color=color, alpha=0.9)
+                             color=color, alpha=1.0, linewidth=1.2)
                 axes[i].set_ylabel(comp)
                 axes[i].grid(True)
 
