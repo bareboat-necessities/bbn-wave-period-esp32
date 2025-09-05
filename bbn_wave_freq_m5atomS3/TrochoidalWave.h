@@ -11,6 +11,8 @@ const float g_std = 9.80665; // standard gravity acceleration m/s²
  * Particle trajectories are circular at the surface and decay exponentially with depth.
  * Provides displacement, velocity, acceleration (both horizontal & vertical),
  * plus bulk wave properties and energy density.
+ *
+ * Copyright 2025, Mikhail Grushinskiy
  */
 template<typename Real = float>
 class TrochoidalWave {
@@ -39,7 +41,7 @@ public:
         if (g <= Real(0))      throw std::domain_error("Gravity must be > 0");
     }
 
-    // ── Static utility methods ─────────────────────────────────────────
+    // Static utility methods
     
     /// Compute wavelength (λ) from angular frequency (ω)
     static Real wavelengthFromAngularFrequency(Real omega, Real gravity = Real(g_std)) {
@@ -71,7 +73,7 @@ public:
         return std::sqrt(std::abs(accel / displacement)) / (2.0 * M_PI);
     }
 
-    // ── Surface kinematics ─────────────────────────────────────────────
+    // Surface kinematics
 
     /// η(t) = −A·cos(ωt + φ)
     Real surfaceElevation(Real t) const {
@@ -88,7 +90,7 @@ public:
         return A * omega * omega * std::cos(omega * t + phi);
     }
 
-    // ── Particle kinematics (at reference position x₀, z₀) ─────────────────
+    // Particle kinematics (at reference position x₀, z₀)
 
     /// x(t) = x₀ − A·e^{k z₀}·sin(θ)
     Real horizontalPosition(Real x0, Real z0, Real t) const {
@@ -136,7 +138,7 @@ public:
         return energyDensity(rho) * wave_speed / 2; 
     }
 
-    // ── Bulk wave properties ────────────────────────────────────────────
+    // Bulk wave properties
 
     Real amplitude() const        { return A; }
     Real period() const           { return T; }
