@@ -57,7 +57,8 @@ def save_all(fig, base):
     """Save PGF + SVG + PNG (PNG needed for LaTeX sidecar images)."""
     fig.savefig(f"{base}.pgf", bbox_inches="tight", backend="pgf")
     fig.savefig(f"{base}.svg", bbox_inches="tight", dpi=150)
-    fig.savefig(f"{base}.png", bbox_inches="tight", dpi=300)  # critical for LaTeX
+    with mpl.rc_context({"text.usetex": False}):
+        fig.savefig(f"{base}.png", bbox_inches="tight", dpi=300)  # critical for LaTeX
     print(f"  saved {base}.pgf/.svg/.png")
 
 def make_plots(fname, group_label, meta):
