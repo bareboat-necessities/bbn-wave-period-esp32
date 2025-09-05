@@ -5,8 +5,8 @@
 #include <limits>
 
 /*
-    Cnoidal wave (symmetric cn-form) for zero-mean Lagrangian vertical motion
-    Copyright 2025, Mikhail Grushinskiy
+   Cnoidal wave (symmetric cn-form) for zero-mean Lagrangian vertical motion
+   Copyright 2025, Mikhail Grushinskiy
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -15,9 +15,7 @@
 #include <ArduinoEigenDense.h>
 #endif
 
-// ===============================================================
 //   Elliptic integrals and Jacobi functions (AGM-based)
-// ===============================================================
 namespace Elliptic {
 
     // --- Complete elliptic integral of the first kind (K) ---
@@ -45,7 +43,7 @@ namespace Elliptic {
         return Real(M_PI) / (Real(2) * a);
     }
 
-    // --- Complete elliptic integral of the second kind (E) ---
+    // Complete elliptic integral of the second kind (E)
     // E(m) = ∫₀^(π/2) √(1 - m sin²φ) dφ
     template<typename Real>
     Real ellipE(Real m) {
@@ -77,7 +75,7 @@ namespace Elliptic {
         return Real(M_PI) / (Real(2) * a) * (Real(1) - sum / Real(2));
     }
 
-    // --- Jacobi elliptic functions sn, cn, dn (AGM/Landen method) ---
+    // Jacobi elliptic functions sn, cn, dn (AGM/Landen method)
     // Robust for 0 ≤ m ≤ 1, u ∈ ℝ
     template<typename Real>
     void jacobi_sn_cn_dn(Real u, Real m, Real &sn, Real &cn, Real &dn) {
@@ -130,9 +128,8 @@ namespace Elliptic {
 } // namespace Elliptic
 
 
-// ===============================================================
-//   Cnoidal Wave Model (symmetric form with cn)
-// ===============================================================
+// Cnoidal Wave Model (symmetric form with cn)
+// 
 // We use   η(x,y,t) = A * cn(θ | m),   A = H/2
 // so that:
 //  • mean(η) = 0 over one period,
@@ -143,7 +140,6 @@ namespace Elliptic {
 // wavenumber: k = π / (K(m) h)
 // angular frequency: ω = 2π / T
 // phase speed: c = ω / k
-// ===============================================================
 template<typename Real = double>
 class EIGEN_ALIGN_MAX CnoidalWave {
 public:
@@ -171,11 +167,9 @@ public:
         A = H / Real(2); // symmetric amplitude
     }
 
-    // -----------------------------------------------------------
     // Free surface elevation:
     //   η(x,y,t) = A * cn(θ | m),  with A = H/2
     //   mean(η) = 0 over one full period (4K).
-    // -----------------------------------------------------------
     Real surfaceElevation(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
         const Real th  = k * (s - c * t);
@@ -184,11 +178,9 @@ public:
         return A * cn;
     }
 
-    // -----------------------------------------------------------
     // Vertical velocity:
     //   w = dη/dt = A * d/dt[cn(θ)] = A * (-sn dn) * (dθ/dt)
     //   dθ/dt = -kc = -ω  →  w = A * ω * sn * dn
-    // -----------------------------------------------------------
     Real wVelocity(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
         const Real th  = k * (s - c * t);
@@ -197,13 +189,11 @@ public:
         return A * omega * sn * dn;
     }
 
-    // -----------------------------------------------------------
     // Vertical acceleration:
     //   a = d/dt w = A ω * d/dt[sn dn] = A ω * (d(sn dn)/dθ) * (dθ/dt)
     //   d(sn dn)/dθ = cn dn² - m sn² cn = cn(1 - m sn²) - m sn² cn
     //                = cn (1 - 2 m sn²)
     //   dθ/dt = -ω → a = -A ω² cn (1 - 2 m sn²)
-    // -----------------------------------------------------------
     Real azAcceleration(Real x, Real y, Real t) const {
         const Real s   = x * cosTheta + y * sinTheta;
         const Real th  = k * (s - c * t);
@@ -213,7 +203,7 @@ public:
         return -A * omega * omega * cn * (Real(1) - Real(2) * m * sn2);
     }
 
-    // Unified interface (vertical only for this model)
+    // (vertical only for this model)
     State getLagrangianState(Real x, Real y, Real t) const {
         State st;
         st.displacement = Eigen::Vector3d(0.0, 0.0, static_cast<double>(surfaceElevation(x,y,t)));
@@ -241,11 +231,9 @@ private:
     Real A;                  // amplitude = H/2 (symmetric)
     Real cosTheta, sinTheta;
 
-    // -----------------------------------------------------------
     // Elliptic parameter solver:
     // Iteratively solves for m to match desired period T
     // using Newton + secant fallback (no hangs).
-    // -----------------------------------------------------------
     void solveEllipticParameters() {
         const Real eps  = Real(1e-8);
         const Real tolF = Real(1e-9);
