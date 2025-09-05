@@ -15,21 +15,15 @@
 
 static constexpr unsigned GLOBAL_SEED  = 42u; // global seed for reproducibility
 
-// =======================
 // Enums
-// =======================
-
 enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3, CNOIDAL=4 };
 enum class FileKind { Data=0, Spectrum=1 };
 
-// =======================
 // EnumTraits
-// =======================
-
 template <typename T>
 struct EnumTraits; // base template (undefined)
 
-// ---- WaveType specialization ----
+// WaveType specialization
 template <>
 struct EnumTraits<WaveType> {
     static std::string to_string(WaveType type) {
@@ -63,7 +57,7 @@ struct EnumTraits<WaveType> {
     }
 };
 
-// ---- FileKind specialization ----
+// FileKind specialization
 template <>
 struct EnumTraits<FileKind> {
     static std::string to_string(FileKind kind) {
@@ -85,10 +79,7 @@ struct EnumTraits<FileKind> {
     }
 };
 
-// =======================
 // Core data structures
-// =======================
-
 struct WaveParameters {
     float period;     // wave period in seconds
     float height;     // wave height in m
@@ -121,10 +112,7 @@ struct WaveSpectrumRecord {
     double E{};          // spectral density
 };
 
-// =======================
 // File naming
-// =======================
-
 class WaveFileNaming {
 public:
     struct ParsedName {
@@ -249,11 +237,8 @@ private:
     }
 };
 
-// =======================
 // CSV Writers / Readers
-// =======================
-
-// --- Wave data writer ---
+// Wave data writer
 class WaveDataCSVWriter {
 public:
     explicit WaveDataCSVWriter(const std::string &filename, bool append = false) {
@@ -290,7 +275,7 @@ private:
     std::ofstream ofs;
 };
 
-// --- Wave data reader ---
+// Wave data reader
 class WaveDataCSVReader {
 public:
     explicit WaveDataCSVReader(const std::string &filename) : ifs(filename) {
@@ -327,7 +312,7 @@ private:
     }
 };
 
-// --- Spectrum writer ---
+// Spectrum writer
 class WaveSpectrumCSVWriter {
 public:
     explicit WaveSpectrumCSVWriter(const std::string &filename) : ofs(filename) {
@@ -342,7 +327,7 @@ private:
     std::ofstream ofs;
 };
 
-// --- Spectrum reader ---
+// Spectrum reader
 class WaveSpectrumCSVReader {
 public:
     explicit WaveSpectrumCSVReader(const std::string &filename) : ifs(filename) {
@@ -385,4 +370,3 @@ private:
         return false;
     }
 };
-
