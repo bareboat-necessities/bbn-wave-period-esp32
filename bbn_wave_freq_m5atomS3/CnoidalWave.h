@@ -1,10 +1,11 @@
 #pragma once
-
 #include <cmath>
 #include <stdexcept>
+#include <Eigen/Dense>   // for Vector3d
 
 namespace Elliptic {
 
+// === Complete elliptic integral of the first kind (AGM) ===
 template<typename Real>
 Real ellipK(Real m) {
     if (m < 0 || m > 1) throw std::domain_error("ellipK: m out of range [0,1]");
@@ -12,16 +13,16 @@ Real ellipK(Real m) {
     if (m == 1) return INFINITY;
 
     Real a = 1.0, b = std::sqrt(1.0 - m), c = std::sqrt(m);
-    int n = 0;
-    while (std::abs(c) > 1e-15 && n < 50) {
+    while (std::abs(c) > 1e-15) {
         Real an = (a + b) / 2;
         Real bn = std::sqrt(a * b);
         c = (a - b) / 2;
-        a = an; b = bn; n++;
+        a = an; b = bn;
     }
     return M_PI / (2.0 * a);
 }
 
+// === Complete elliptic integral of the second kind (AGM) ===
 template<typename Real>
 Real ellipE(Real m) {
     if (m < 0 || m > 1) throw std::domain_error("ellipE: m out of range [0,1]");
@@ -30,52 +31,39 @@ Real ellipE(Real m) {
 
     Real a = 1.0, b = std::sqrt(1.0 - m), c = std::sqrt(m);
     Real sum = 0.0, pow2 = 1.0;
-    int n = 0;
-    while (std::abs(c) > 1e-15 && n < 50) {
+    while (std::abs(c) > 1e-15) {
         Real an = (a + b) / 2;
         Real bn = std::sqrt(a * b);
         c = (a - b) / 2;
         pow2 *= 2;
         sum += pow2 * c * c;
-        a = an; b = bn; n++;
+        a = an; b = bn;
     }
     return M_PI/(2.0*a) * (1.0 - sum/2.0);
 }
 
+// === Jacobi elliptic sn, cn, dn (simplified) ===
 template<typename Real>
 void jacobi_sn_cn_dn(Real u, Real m, Real &sn, Real &cn, Real &dn) {
-    if (m < 0 || m > 1) throw std::domain_error("jacobi: m out of range [0,1]");
     if (m == 0) { sn = std::sin(u); cn = std::cos(u); dn = 1.0; return; }
     if (m == 1) { sn = std::tanh(u); cn = 1.0/std::cosh(u); dn = cn; return; }
-
-    const int N = 16;
-    Real a[N], c[N];
-    a[0] = 1.0; c[0] = std::sqrt(m);
-    Real twon = 1.0;
-    int i = 0;
-    for (; i < N-1; ++i) {
-        if (c[i] < 1e-15) break;
-        a[i+1] = (a[i] + c[i]) / 2;
-        c[i+1] = std::sqrt(a[i] * c[i]);
-        twon *= 2;
-    }
-    Real phi = twon * a[i] * u;
-    sn = std::sin(phi);
-    cn = std::cos(phi);
-    for (int j = i; j >= 0; --j) {
-        Real t = (c[j] * sn) / a[j];
-        Real denom = 1 + t*t;
-        sn = (sn*cn) / denom;
-        cn = (cn - sn*t) / denom;
-    }
+    sn = std::sin(u);
+    cn = std::cos(u);
     dn = std::sqrt(1 - m*sn*sn);
 }
 
 } // namespace Elliptic
 
+
 template<typename Real = double>
 class CnoidalWave {
 public:
+    struct State {
+        Eigen::Vector3d displacement;   // (x,y,z)
+        Eigen::Vector3d velocity;       // (vx,vy,vz)
+        Eigen::Vector3d acceleration;   // (ax,ay,az)
+    };
+
     CnoidalWave(Real depth,
                 Real height,
                 Real period,
@@ -89,47 +77,43 @@ public:
         sinTheta = std::sin(theta);
     }
 
+    // Free surface elevation η(x,y,t)
     Real surfaceElevation(Real x, Real y, Real t) const {
         Real s = x*cosTheta + y*sinTheta;
-        Real theta_ = k*(s - c*t);
+        Real arg = k*(s - c*t);
         Real sn, cn, dn;
-        Elliptic::jacobi_sn_cn_dn(theta_, m, sn, cn, dn);
+        Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
         return eta0 + Hc * cn*cn;
     }
 
-    Real uVelocity(Real x, Real y, Real z, Real t) const {
+    // Vertical velocity (surface only)
+    Real wVelocity(Real x, Real y, Real t) const {
         Real s = x*cosTheta + y*sinTheta;
-        Real theta_ = k*(s - c*t);
+        Real arg = k*(s - c*t);
         Real sn, cn, dn;
-        Elliptic::jacobi_sn_cn_dn(theta_, m, sn, cn, dn);
-        return  omega * Hc * sn*cn * cosh(k*(z+h)) / sinh(k*h);
+        Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
+        return +2.0 * Hc * cn * sn * k * c;
     }
 
-    Real wVelocity(Real x, Real y, Real z, Real t) const {
+    // Vertical acceleration (surface only)
+    Real azAcceleration(Real x, Real y, Real t) const {
         Real s = x*cosTheta + y*sinTheta;
-        Real theta_ = k*(s - c*t);
+        Real arg = k*(s - c*t);
         Real sn, cn, dn;
-        Elliptic::jacobi_sn_cn_dn(theta_, m, sn, cn, dn);
-        return  omega * Hc * sn*cn * sinh(k*(z+h)) / sinh(k*h);
+        Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
+        return -2.0 * Hc * k*k * c*c * (cn*cn - sn*sn);
     }
 
-    Real axAcceleration(Real x, Real y, Real z, Real t) const {
-        Real s = x*cosTheta + y*sinTheta;
-        Real theta_ = k*(s - c*t);
-        Real sn, cn, dn;
-        Elliptic::jacobi_sn_cn_dn(theta_, m, sn, cn, dn);
-        return -omega*omega * Hc * (cn*cn - sn*sn) * cosh(k*(z+h)) / sinh(k*h);
+    // Unified interface for consistency with JONSWAP/PM models
+    State getLagrangianState(Real x, Real y, Real t) const {
+        State st;
+        st.displacement = Eigen::Vector3d(0.0, 0.0, surfaceElevation(x,y,t));
+        st.velocity     = Eigen::Vector3d(0.0, 0.0, wVelocity(x,y,t));
+        st.acceleration = Eigen::Vector3d(0.0, 0.0, azAcceleration(x,y,t));
+        return st;
     }
 
-    Real azAcceleration(Real x, Real y, Real z, Real t) const {
-        Real s = x*cosTheta + y*sinTheta;
-        Real theta_ = k*(s - c*t);
-        Real sn, cn, dn;
-        Elliptic::jacobi_sn_cn_dn(theta_, m, sn, cn, dn);
-        return -omega*omega * Hc * (cn*cn - sn*sn) * sinh(k*(z+h)) / sinh(k*h);
-    }
-
-    // Accessors 
+    // Accessors
     Real depth()      const { return h; }
     Real height()     const { return H; }
     Real period()     const { return T; }
@@ -149,7 +133,7 @@ private:
     Real cosTheta, sinTheta;
 
     void solveEllipticParameters() {
-        // crude Newton solve for m
+        // crude solve for modulus m by period match
         m = 0.8;
         for (int iter = 0; iter < 20; ++iter) {
             K = Elliptic::ellipK(m);
