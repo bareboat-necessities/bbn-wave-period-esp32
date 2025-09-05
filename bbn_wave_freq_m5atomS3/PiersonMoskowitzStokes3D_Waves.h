@@ -1,5 +1,19 @@
 #pragma once
 
+/*
+  - Stochastic linear combination of Stokes-N harmonics (deep water) driven
+    by a Pierson–Moskowitz spectrum.
+  - ORDER: 1..5 (number of Stokes terms)
+  - WaveState reports particle kinematics in global Cartesian coordinates:
+      displacement = [x, y, z]  (meters)
+      velocity     = [u, v, w]  (m/s)
+      acceleration = [ax, ay, az] (m/s^2)
+    Horizontal and vertical components included.
+  - Eulerian fields at depth z <= 0: harmonics multiplied by exp(k z)
+
+  Copyright 2025, Mikhail Grushinskiy
+*/
+
 #ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
 #else
@@ -19,20 +33,6 @@
 #endif
 
 #include "DirectionalSpread.h"
-
-/*
-  - Stochastic linear combination of Stokes-N harmonics (deep water) driven
-    by a Pierson–Moskowitz spectrum.
-  - ORDER: 1..5 (number of Stokes terms)
-  - WaveState reports particle kinematics in global Cartesian coordinates:
-      displacement = [x, y, z]  (meters)
-      velocity     = [u, v, w]  (m/s)
-      acceleration = [ax, ay, az] (m/s^2)
-    Horizontal and vertical components included.
-  - Eulerian fields at depth z <= 0: harmonics multiplied by exp(k z)
-
-  Copyright 2025, Mikhail Grushinskiy
-*/
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
