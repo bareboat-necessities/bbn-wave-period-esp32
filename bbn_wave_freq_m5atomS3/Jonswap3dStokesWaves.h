@@ -390,7 +390,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     IMUReadings getIMUReadings(double x, double y, double t, double z = 0.0, double dt = 1e-3) const {
       IMUReadings imu;
 
-      // --- accelerations ---
+      // accelerations
       auto state = getLagrangianState(x, y, t, z);
       auto slopes = getSurfaceSlopes(x, y, t);
       Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
@@ -398,7 +398,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       Eigen::Vector3d g_world(0, 0, -g_);
       imu.accel_body = R_WI * (state.acceleration - g_world);
 
-      // --- gyro angular velocity ---
+      // gyro angular velocity
       // orientation at t and t+dt
       auto slopes_next = getSurfaceSlopes(x, y, t + dt);
       Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
@@ -501,7 +501,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     mutable Eigen::Vector2d stokes_drift_surface_xy_;
     mutable bool stokes_drift_surface_valid_;
 
-    // --- z≈0 fast-path support ---
+    // z≈0 fast-path support
     static constexpr double z_surface_eps_ = 1e-12;
 
     VecD coeff_surface_;                       // factor_ ⊙ Bij_  (at surface; no exp attenuation)
