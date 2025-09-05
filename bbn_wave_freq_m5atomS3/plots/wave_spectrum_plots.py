@@ -50,13 +50,22 @@ def parse_filename(fname):
         "P": float(m.group("P")),
     }
 
+def save_all(fig, base):
+    """Save PGF + SVG + PNG (PNG needed for LaTeX sidecar images)."""
+    fig.savefig(f"{base}.pgf", bbox_inches="tight")
+    fig.savefig(f"{base}.svg", bbox_inches="tight", dpi=150)
+    fig.savefig(f"{base}.png", bbox_inches="tight", dpi=300)  # critical for LaTeX
+    print(f"  saved {base}.pgf/.svg/.png")
+
 def make_plots(fname, group_label, meta):
     df = pd.read_csv(fname)
     freqs = np.sort(df["f_Hz"].unique())
     thetas_deg = np.sort(df["theta_deg"].unique())
     E = df.pivot(index="f_Hz", columns="theta_deg", values="E").values
-
     thetas_rad = np.deg2rad(thetas_deg)
+
+    title = fr"{meta['wtype'].capitalize()} spectrum ($H_s={meta['H']:.2f}\,\mathrm{{m}}$)"
+    base = f"spectrum_{meta['wtype']}_{group_label}"
 
     # === Polar plot ===
     R, T = np.meshgrid(freqs, thetas_rad)
@@ -64,12 +73,9 @@ def make_plots(fname, group_label, meta):
     pcm = ax1.pcolormesh(T, R, E.T, shading='auto', cmap='viridis')
     ax1.set_theta_zero_location("N")
     ax1.set_theta_direction(-1)
-    title = fr"{meta['wtype'].capitalize()} spectrum ($H_s={meta['H']:.2f}\,\mathrm{{m}}$)"
     ax1.set_title(title)
     plt.colorbar(pcm, ax=ax1, orientation="vertical", label=r"$E(f,\theta)\,[m^2/Hz/deg]$")
-    base = f"spectrum_{meta['wtype']}_{group_label}"
-    fig1.savefig(f"{base}_polar.pgf", bbox_inches="tight")
-    fig1.savefig(f"{base}_polar.svg", bbox_inches="tight")
+    save_all(fig1, f"{base}_polar")
     plt.close(fig1)
 
     # === 3D surface plot ===
@@ -82,8 +88,7 @@ def make_plots(fname, group_label, meta):
     ax2.set_zlabel(r"$E(f,\theta)$")
     ax2.set_title(title)
     fig2.colorbar(surf, shrink=0.5, aspect=10, label=r"$E(f,\theta)$")
-    fig2.savefig(f"{base}_3d.pgf", bbox_inches="tight")
-    fig2.savefig(f"{base}_3d.svg", bbox_inches="tight")
+    save_all(fig2, f"{base}_3d")
     plt.close(fig2)
 
 if __name__ == "__main__":
@@ -96,10 +101,9 @@ if __name__ == "__main__":
         meta = parse_filename(fname)
         if not meta:
             continue
-        # Match against the three heights we want
         for group, target_H in height_groups.items():
             if abs(meta["H"] - target_H) < 1e-3:
                 print(f"Processing {fname} as {group} ...")
                 make_plots(fname, group, meta)
 
-    print("All PGF and SVG plots saved.")
+    print("All PGF, SVG, and PNG plots saved.")
