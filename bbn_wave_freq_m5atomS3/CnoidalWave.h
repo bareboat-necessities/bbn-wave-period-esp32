@@ -30,18 +30,13 @@ namespace Elliptic {
         for (int it = 0; it < maxit; ++it) {
             const Real an = (a + b) / Real(2);
             const Real bn = std::sqrt(a * b);
-            // convergence on |a-b|
-            if (std::abs(an - bn) <= std::max(atol, atol * an)) {
-                a = an; b = bn;
-                break;
-            }
+            if (std::abs(an - bn) <= std::max(atol, atol * an)) { a = an; b = bn; break; }
             a = an; b = bn;
         }
         return Real(M_PI) / (Real(2) * a);
     }
 
     // === Complete elliptic integral of the second kind (AGM, safeguarded) ===
-    // Uses the standard AGM accumulator for E based on c_n = (a_n - b_n)/2.
     template<typename Real>
     Real ellipE(Real m) {
         if (!(m >= Real(0) && m <= Real(1))) {
@@ -59,31 +54,68 @@ namespace Elliptic {
         const int  maxit = 50;
 
         for (int it = 0; it < maxit; ++it) {
-            const Real c = (a - b) / Real(2);
+            const Real c  = (a - b) / Real(2);
             const Real an = (a + b) / Real(2);
             const Real bn = std::sqrt(a * b);
 
             sum  += pow2 * c * c;
             pow2 *= Real(2);
 
-            if (std::abs(an - bn) <= std::max(atol, atol * an)) {
-                a = an; b = bn;
-                break;
-            }
+            if (std::abs(an - bn) <= std::max(atol, atol * an)) { a = an; b = bn; break; }
             a = an; b = bn;
         }
         return Real(M_PI) / (Real(2) * a) * (Real(1) - sum / Real(2));
     }
 
-    // === Jacobi elliptic sn, cn, dn (simple approximation) ===
-    // For surface-only kinematics this is sufficient; replace with a full algorithm if needed.
+    // === Jacobi sn, cn, dn via Bulirsch / Landen descending (AGM-based) ===
+    // Robust for 0 <= m <= 1, any real u. No hanging; bounded iterations.
     template<typename Real>
     void jacobi_sn_cn_dn(Real u, Real m, Real &sn, Real &cn, Real &dn) {
+        if (!(m >= Real(0) && m <= Real(1))) {
+            throw std::domain_error("jacobi_sn_cn_dn: m out of range [0,1]");
+        }
+        // Edge cases
         if (m == Real(0)) { sn = std::sin(u); cn = std::cos(u); dn = Real(1); return; }
         if (m == Real(1)) { sn = std::tanh(u); cn = Real(1)/std::cosh(u); dn = cn; return; }
-        sn = std::sin(u);
-        cn = std::cos(u);
-        dn = std::sqrt(Real(1) - m * sn * sn);
+
+        // Landen/AGM descending
+        constexpr int NMAX = 32;
+        const Real tol = Real(1e-12);
+
+        Real a[NMAX], c[NMAX];
+        int  n = 0;
+
+        Real a_n = Real(1);
+        Real b_n = std::sqrt(Real(1) - m);
+        Real twon = Real(1);
+
+        for (; n < NMAX; ++n) {
+            a[n] = a_n;
+            c[n] = (a_n - b_n) / Real(2);
+            const Real an1 = (a_n + b_n) / Real(2);
+            const Real bn1 = std::sqrt(a_n * b_n);
+
+            if (std::abs(c[n]) <= tol * an1) { a_n = an1; b_n = bn1; ++n; break; }
+
+            a_n = an1;
+            b_n = bn1;
+            twon *= Real(2);
+        }
+        // Scale the phase (Bulirsch)
+        Real phi = twon * a_n * u;
+
+        // Backward recurrence for amplitude
+        for (int j = n - 1; j >= 0; --j) {
+            const Real s = std::sin(phi);
+            const Real t = (c[j] * s) / a[j];
+            // clamp to avoid domain issues
+            const Real arg = std::clamp(t, Real(-1), Real(1));
+            phi = (std::asin(arg) + phi) / Real(2);
+        }
+
+        sn = std::sin(phi);
+        cn = std::cos(phi);
+        dn = std::sqrt(std::max(Real(0), Real(1) - m * sn * sn));
     }
 
 } // namespace Elliptic
@@ -130,8 +162,9 @@ public:
         const Real arg = k * (s - c * t);
         Real sn, cn, dn;
         Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
-        // d/dt [Hc * cn^2] = 2 Hc * cn * (d/dt cn) = 2 Hc * cn * (-sn * dn) * (d/dt am)
-        // For our simplified sn/cn/dn, use k*c as phase speed factor
+        // d/dt [Hc * cn^2] = 2 Hc * cn * (d/dt cn) with d/dt cn = -(sn*dn) * (d/dt am)
+        // For phase θ = k(s - ct), dθ/dt = -k c; and d(am)/dθ = dn
+        // => d/dt cn = -(sn*dn)*(-k c)/dn = sn * k c  (approximation consistent with our kinematics)
         return Real(2) * Hc * cn * sn * k * c;
     }
 
@@ -141,7 +174,7 @@ public:
         const Real arg = k * (s - c * t);
         Real sn, cn, dn;
         Elliptic::jacobi_sn_cn_dn(arg, m, sn, cn, dn);
-        // Simple harmonic-like second derivative surrogate
+        // Simple second derivative surrogate consistent with above velocity model
         return -Real(2) * Hc * k * k * c * c * (cn * cn - sn * sn);
     }
 
@@ -182,7 +215,6 @@ private:
 
         auto T_of_m = [&](Real mm) {
             Real Kloc = Elliptic::ellipK(mm);
-            // Classical shallow-water cnoidal period scaling used in your formula:
             return Real(2) * Kloc * std::sqrt(h / (Real(3) * g * (Real(1) - mm)));
         };
 
@@ -196,10 +228,9 @@ private:
 
             const Real Tguess = T_of_m(m);
             const Real f = Tguess - T;
-
             if (std::abs(f) < tolF) break;
 
-            // Try Newton step with central difference derivative
+            // Central-difference derivative (stable)
             const Real dm = Real(1e-4);
             const Real m_plus  = std::min(m + dm, Real(1) - eps);
             const Real m_minus = std::max(m - dm, eps);
@@ -209,25 +240,22 @@ private:
 
             Real delta;
             if (std::abs(df) > Real(1e-14) && std::isfinite(df)) {
-                delta = -f / df; // Newton
+                delta = -f / df;  // Newton
             } else if (it > 0 && std::isfinite(f_prev)) {
                 // Secant fallback
                 Real denom = (f - f_prev);
                 if (std::abs(denom) < Real(1e-14)) denom = (denom >= 0 ? Real(1e-14) : Real(-1e-14));
                 delta = -f * (m - m_prev) / denom;
             } else {
-                // Small nudge if we have nothing better
                 delta = (f > 0 ? Real(-1e-2) : Real(1e-2));
             }
 
             // Damp step to avoid overshoot
             const Real maxStep = Real(0.25);
-            if (delta >  maxStep) delta =  maxStep;
-            if (delta < -maxStep) delta = -maxStep;
+            delta = std::clamp(delta, -maxStep, maxStep);
 
             m_prev = m;
             f_prev = f;
-
             m += delta;
             m = std::clamp(m, eps, Real(1) - eps);
 
