@@ -57,8 +57,9 @@ def save_all(fig, base):
     """Save PGF + SVG + PNG (PNG needed for LaTeX sidecar images)."""
     fig.savefig(f"{base}.pgf", bbox_inches="tight", backend="pgf")
     fig.savefig(f"{base}.svg", bbox_inches="tight", dpi=150)
+    # Disable LaTeX temporarily for PNG export to avoid dvipng dependency
     with mpl.rc_context({"text.usetex": False}):
-        fig.savefig(f"{base}.png", bbox_inches="tight", dpi=300)  # critical for LaTeX
+        fig.savefig(f"{base}.png", bbox_inches="tight", dpi=300)
     print(f"  saved {base}.pgf/.svg/.png")
 
 def make_plots(fname, group_label, meta):
@@ -75,6 +76,7 @@ def make_plots(fname, group_label, meta):
     R, T = np.meshgrid(freqs, thetas_rad)
     fig1, ax1 = plt.subplots(subplot_kw={'projection': 'polar'})
     pcm = ax1.pcolormesh(T, R, E.T, shading='auto', cmap='viridis')
+    pcm.set_rasterized(True)  # rasterize dense mesh
     ax1.set_theta_zero_location("N")
     ax1.set_theta_direction(-1)
     ax1.set_title(title)
@@ -87,6 +89,7 @@ def make_plots(fname, group_label, meta):
     fig2 = plt.figure()
     ax2 = fig2.add_subplot(111, projection='3d')
     surf = ax2.plot_surface(F_grid, T_grid, E, cmap='viridis', linewidth=0, antialiased=True)
+    surf.set_rasterized(True)  # rasterize surface
     ax2.set_xlabel("Frequency [Hz]")
     ax2.set_ylabel("Direction [deg]")
     ax2.set_zlabel(r"$E(f,\theta)$")
