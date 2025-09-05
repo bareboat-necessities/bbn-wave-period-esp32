@@ -9,12 +9,16 @@
 #include <fstream>
 #include <stdexcept>
 
+/*
+  Copyright 2025, Mikhail Grushinskiy
+*/
+
 static constexpr unsigned GLOBAL_SEED  = 42u;           // global seed for reproducibility
 
-// === Wave Types ===
+// Wave Types
 enum class WaveType { GERSTNER=0, JONSWAP=1, FENTON=2, PMSTOKES=3, CNOIDAL=4 };
 
-// === Wave Parameters ===
+// Wave Parameters
 struct WaveParameters {
     float period;     // wave period in seconds
     float height;     // wave height in m
@@ -22,7 +26,7 @@ struct WaveParameters {
     float direction;  // azimuth in degrees
 };
 
-// === Data Structures for Samples ===
+// Data Structures for Samples
 struct Wave_Sample {
     float disp_x{}, disp_y{}, disp_z{};
     float vel_x{}, vel_y{}, vel_z{};
@@ -41,7 +45,7 @@ struct Wave_Data_Sample {
     IMU_Sample imu{};
 };
 
-// === Wave File Naming (inline) ===
+// Wave File Naming
 class WaveFileNaming {
 public:
     struct ParsedName {
@@ -146,7 +150,7 @@ private:
     }
 };
 
-// === CSV Reader ===
+// CSV Reader
 class WaveDataCSVReader {
 public:
     explicit WaveDataCSVReader(const std::string &filename) : ifs(filename) {
@@ -185,7 +189,7 @@ private:
     }     
 };
 
-// === CSV Writer ===
+// CSV Writer
 class WaveDataCSVWriter {
 public:
     explicit WaveDataCSVWriter(const std::string &filename, bool append = false) {
