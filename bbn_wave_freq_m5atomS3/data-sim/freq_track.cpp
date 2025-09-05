@@ -47,7 +47,7 @@ static bool kalm_smoother_first = true;
 static double sim_t = 0.0;
 static uint32_t now_us() { return static_cast<uint32_t>(sim_t * 1e6); }
 
-// ---------- Helpers ----------
+// Helpers
 static void init_tracker_backends() {
     init_filters(&arFilter, &kalman_freq);
     init_filters_alt(&kalmANF, &kalman_freq);
@@ -110,7 +110,7 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker,
     return {freq, !std::isnan(freq)};
 }
 
-// ---------- Main runner ----------
+// Main runner
 static void run_from_csv(TrackerType tracker,
                          const std::string &csv_file,
                          unsigned run_seed) {
@@ -135,7 +135,7 @@ static void run_from_csv(TrackerType tracker,
     std::string tail = (posH != std::string::npos) ? stem.substr(posH) : "";
 
     // Output file
-    std::string outFile = "tracker_" + trackerName + "_" + waveName + tail;
+    std::string outFile = "freq_track_" + trackerName + "_" + waveName + tail;
     std::ofstream ofs(outFile);
     if (!ofs.is_open()) {
         fprintf(stderr, "Failed to open %s\n", outFile.c_str());
@@ -194,7 +194,7 @@ static void run_from_csv(TrackerType tracker,
     printf("Wrote %s\n", outFile.c_str());
 }
 
-// ---------- Main ----------
+// Main
 int main() {
     init_tracker_backends();
 
