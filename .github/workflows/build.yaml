@@ -104,7 +104,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: plot-files
-        path: "**/*.pgf"
+        path: |
+          **/*.pgf
+          **/spectrum_*.png
         
   build_latex:
     needs: gen-plots
@@ -120,6 +122,7 @@ jobs:
 
       - run: |
          cp "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots/*.pgf "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/doc/
+         cp "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots/*.png "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/doc/
       
       - name: Compile LaTeX document
         uses: xu-cheng/latex-action@v4
