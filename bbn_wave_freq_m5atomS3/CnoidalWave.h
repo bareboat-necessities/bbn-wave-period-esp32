@@ -240,7 +240,7 @@ private:
         const Real tolM  = Real(1e-10);
         const int  maxit = 50;
 
-        // --- Physics-aware initial guess for m -------------------------------
+        // Physics-aware initial guess for m
         // T0 = π * sqrt(h / (3 g))  (value of T when m -> 0 and K ~ π/2)
         const Real T0  = Real(M_PI) * std::sqrt(h / (Real(3) * g));
         const Real tau = T / T0; // normalized period
@@ -267,9 +267,8 @@ private:
                 m = m_new;
             }
         }
-        // --------------------------------------------------------------------
 
-        // Newton with secant fallback (your original logic)
+        // Newton with secant fallback 
         auto T_of_m = [&](Real mm) {
             Real Kloc = Elliptic::ellipK(mm);
             return Real(2) * Kloc * std::sqrt(h / (Real(3) * g * (Real(1) - mm)));
