@@ -7,28 +7,31 @@ BASEFLAGS = -O3 -std=c++20 -funroll-loops -fno-finite-math-only -I./.. -I/usr/in
 UNAME_S := $(shell uname -s)
 
 ifeq ($(UNAME_S),Linux)
-    CPPFLAGS = $(BASEFLAGS) -march=native
+    CXXFLAGS = $(BASEFLAGS) -march=native
 else ifeq ($(UNAME_S),Darwin)   # macOS
-    CPPFLAGS = $(BASEFLAGS) -march=native
+    CXXFLAGS = $(BASEFLAGS) -march=native
 else
-    CPPFLAGS = $(BASEFLAGS)    # Windows / Cygwin / others
+    CXXFLAGS = $(BASEFLAGS)    # Windows / Cygwin / others
 endif
 
 LDFLAGS  =
 
 # Targets
-TARGETS = waves_sim freq_track
+TARGETS = waves_sim freq_track sea_reg
 
 all: $(TARGETS)
 
 waves_sim: waves_sim.o
-	$(CC) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 freq_track: freq_track.o
-	$(CC) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+sea_reg: sea_reg.o
+	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 %.o: %.cpp
-	$(CC) $(CPPFLAGS) -c $< -o $@
+	$(CC) $(CXXFLAGS) -c $< -o $@
 
 clean:
 	rm -f *.o $(TARGETS) *.exe *.csv
