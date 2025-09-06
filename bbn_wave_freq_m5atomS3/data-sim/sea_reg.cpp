@@ -9,6 +9,7 @@
 #include <limits>
 #include <iomanip>
 #include <filesystem>
+#include <regex>
 
 #define EIGEN_NON_ARDUINO
 
@@ -83,6 +84,29 @@ static void write_csv_header(std::ofstream &ofs) {
            "significant_wave_height,disp_freq_hz\n";
 }
 
+// Normalize numbers (e.g. H1.500 → H1.5, L12.340 → L12.34)
+static std::string normalize_numbers(const std::string &s) {
+    std::regex num_re(R"(([0-9]+\.[0-9]+))");
+    std::smatch match;
+    std::string result;
+    std::string::const_iterator searchStart(s.cbegin());
+
+    while (std::regex_search(searchStart, s.cend(), match, num_re)) {
+        // Append before number
+        result.append(match.prefix().first, match.prefix().second);
+
+        // Normalize number
+        std::string num = match.str();
+        num.erase(num.find_last_not_of('0') + 1, std::string::npos);
+        if (!num.empty() && num.back() == '.') num.pop_back();
+
+        result.append(num);
+        searchStart = match.suffix().first;
+    }
+    result.append(searchStart, s.cend());
+    return result;
+}
+
 // Main runner from input wave_data_*.csv
 static void run_from_csv(TrackerType tracker,
                          const std::string &csv_file,
@@ -106,6 +130,14 @@ static void run_from_csv(TrackerType tracker,
     std::string stem = std::filesystem::path(csv_file).filename().string();
     auto posH = stem.find("_H");
     std::string tail = (posH != std::string::npos) ? stem.substr(posH) : "";
+
+    // Remove trailing ".csv"
+    if (tail.size() > 4 && tail.substr(tail.size() - 4) == ".csv") {
+        tail = tail.substr(0, tail.size() - 4);
+    }
+
+    // Normalize numbers inside the tail
+    tail = normalize_numbers(tail);
 
     // Append noise and bias into filename
     char noise_bias[64];
