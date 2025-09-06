@@ -63,6 +63,7 @@ jobs:
         chmod +x *.sh
         ./gen_sim_data.sh
         ./freq_track.sh
+        ./sea_reg.sh
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
