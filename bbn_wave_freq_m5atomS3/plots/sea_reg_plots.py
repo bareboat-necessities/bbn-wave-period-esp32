@@ -17,7 +17,7 @@ MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 files = glob.glob(os.path.join(DATA_DIR, "regularity_*.csv"))
 
 pattern = re.compile(
-    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)_H(?P<height>[0-9]+(?:\.[0-9]+)?)\.csv"
+    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)_H(?P<height>[0-9]+(?:\.[0-9]+)?)(?:_[^.]*)?\.csv"
 )
 
 # === Map wave type to base color ===
