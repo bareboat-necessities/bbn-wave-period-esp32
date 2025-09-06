@@ -5,6 +5,24 @@ import glob
 import pandas as pd
 import matplotlib.pyplot as plt
 
+
+# === Matplotlib PGF/LaTeX config ===
+mpl.use("pgf")
+plt.rcParams.update({
+    "pgf.texsystem": "xelatex",
+    "font.family": "serif",
+    "text.usetex": True,
+    "pgf.rcfonts": False,
+    "pgf.preamble": "\n".join([
+        r"\usepackage{fontspec}",
+        r"\usepackage{unicode-math}",
+        r"\usepackage{amsmath}",
+        r"\setmainfont{DejaVu Serif}",
+        r"\setmathfont{Latin Modern Math}",
+        r"\providecommand{\mathdefault}[1]{#1}"
+    ])
+})
+
 # === Folder with tracker CSV files ===
 DATA_FOLDER = "./"
 
