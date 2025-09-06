@@ -4,7 +4,7 @@ import re
 import glob
 import pandas as pd
 import matplotlib.pyplot as plt
-
+import matplotlib as mpl
 
 # === Matplotlib PGF/LaTeX config ===
 mpl.use("pgf")
