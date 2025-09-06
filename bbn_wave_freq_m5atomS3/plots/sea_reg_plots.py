@@ -2,10 +2,28 @@
 import glob
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import re
 import os
 
-# === Directory where CSV files from harness are saved ===
+# === Matplotlib PGF/LaTeX config ===
+mpl.use("pgf")
+plt.rcParams.update({
+    "pgf.texsystem": "xelatex",
+    "font.family": "serif",
+    "text.usetex": True,
+    "pgf.rcfonts": False,
+    "pgf.preamble": "\n".join([
+        r"\usepackage{fontspec}",
+        r"\usepackage{unicode-math}",
+        r"\usepackage{amsmath}",
+        r"\setmainfont{DejaVu Serif}",
+        r"\setmathfont{Latin Modern Math}",
+        r"\providecommand{\mathdefault}[1]{#1}"
+    ])
+})
+
+# === Directory where CSV files are saved ===
 DATA_DIR = "./"
 
 # === Sampling cutoff ===
@@ -13,17 +31,14 @@ SAMPLE_RATE = 240
 MAX_TIME = 600.0
 MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 
-# === Match C++ output: regularity_<tracker>_<wave>_H..._L..._A..._P...csv ===
-pattern = re.compile(
-    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)"
-    r"_H(?P<H>[0-9]+(?:\.[0-9]+)?)"
-    r"_L(?P<L>[0-9]+(?:\.[0-9]+)?)"
-    r"_A(?P<A>-?[0-9]+(?:\.[0-9]+)?)"
-    r"_P(?P<P>-?[0-9]+(?:\.[0-9]+)?)"
-    r"(?:_[^.]*)?\.csv"
-)
-
+# === Match C++ output ===
 files = glob.glob(os.path.join(DATA_DIR, "regularity_*.csv"))
+
+# regex matches:
+# regularity_<tracker>_<wave>_H<height>...csv
+pattern = re.compile(
+    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)_H(?P<height>[0-9]+(?:\.[0-9]+)?)(?:_[^.]*)?\.csv"
+)
 
 # === Map wave type to base color ===
 wave_colors = {
@@ -31,10 +46,10 @@ wave_colors = {
     "gerstner": "Purples",
     "jonswap": "Reds",
     "pmstokes": "Greens",
-    "cnoidal": "Oranges"
+    "cnoidal": "Oranges",
 }
 
-# === Utility: escape dangerous LaTeX characters, but keep $ for math ===
+# === Utility: escape dangerous LaTeX characters (keep $ for math) ===
 def latex_safe(s: str) -> str:
     return (s.replace("&", "\\&")
              .replace("%", "\\%")
@@ -66,8 +81,6 @@ for tracker, tracker_files in tracker_groups.items():
     wave_grouped = {}
     for f in tracker_files:
         m = pattern.search(os.path.basename(f))
-        if not m:
-            continue
         wave = m.group("wave")
         if wave == "gerstner":  # skip Gerstner if desired
             continue
@@ -79,15 +92,7 @@ for tracker, tracker_files in tracker_groups.items():
 
         for idx, f in enumerate(sorted(files_in_wave)):
             m = pattern.search(os.path.basename(f))
-            if not m:
-                continue
-
-            H = m.group("H")
-            L = float(m.group("L"))  # wavelength from filename
-            target_freq = 1.0 / L    # compute from wavelength
-
-            height_label = H.rstrip("0").rstrip(".")  # pretty
-            label = f"{wave}-h{height_label}"
+            height = m.group("height").rstrip('0').rstrip('.')  # normalize
 
             df = pd.read_csv(f).head(MAX_RECORDS)
             if not {"regularity", "significant_wave_height", "disp_freq_hz"}.issubset(df.columns):
@@ -95,6 +100,7 @@ for tracker, tracker_files in tracker_groups.items():
                 continue
 
             color = cmap(0.3 + 0.7 * idx / max(1, n_files - 1))
+            label = f"{wave}-H{height}"
 
             # Top: Regularity
             ax1.plot(df["time"], df["regularity"], label=label, alpha=0.8, color=color)
@@ -104,11 +110,6 @@ for tracker, tracker_files in tracker_groups.items():
 
             # Bottom: Displacement Frequency
             ax3.plot(df["time"], df["disp_freq_hz"], label=label, alpha=0.8, color=color)
-
-            # Add target frequency line
-            ax3.hlines(target_freq,
-                       xmin=df["time"].iloc[0], xmax=df["time"].iloc[-1],
-                       colors=color, linestyles="dashed", alpha=0.5)
 
     # Formatting
     ax1.set_ylabel("Regularity score (R)")
