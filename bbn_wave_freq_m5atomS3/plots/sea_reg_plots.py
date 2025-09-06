@@ -13,44 +13,25 @@ SAMPLE_RATE = 240
 MAX_TIME = 600.0
 MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 
-# === Match C++ output: regularity_<tracker>_<wave>_h<height>.csv ===
-files = glob.glob(os.path.join(DATA_DIR, "regularity_*.csv"))
-
+# === Match C++ output: regularity_<tracker>_<wave>_H..._L..._A..._P...csv ===
 pattern = re.compile(
-    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)_H(?P<height>[0-9]+(?:\.[0-9]+)?)(?:_[^.]*)?\.csv"
+    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)"
+    r"_H(?P<H>[0-9]+(?:\.[0-9]+)?)"
+    r"_L(?P<L>[0-9]+(?:\.[0-9]+)?)"
+    r"_A(?P<A>-?[0-9]+(?:\.[0-9]+)?)"
+    r"_P(?P<P>-?[0-9]+(?:\.[0-9]+)?)"
+    r"(?:_[^.]*)?\.csv"
 )
+
+files = glob.glob(os.path.join(DATA_DIR, "regularity_*.csv"))
 
 # === Map wave type to base color ===
 wave_colors = {
     "fenton": "Blues",
     "gerstner": "Purples",
     "jonswap": "Reds",
-    "pmstokes": "Greens"
-}
-
-# === Map wave type & height to target frequency ===
-# Must match your C++ waveParamsList
-wave_target_freq = {
-    ("gerstner", "0.135"): 1.0/3.0,
-    ("gerstner", "0.75"):  1.0/5.7,
-    ("gerstner", "2"):     1.0/8.5,
-    ("gerstner", "4.25"):  1.0/11.4,
-    ("gerstner", "7.4"):   1.0/14.3,
-    ("jonswap", "0.135"):  1.0/3.0,
-    ("jonswap", "0.75"):   1.0/5.7,
-    ("jonswap", "2"):      1.0/8.5,
-    ("jonswap", "4.25"):   1.0/11.4,
-    ("jonswap", "7.4"):    1.0/14.3,
-    ("fenton", "0.135"):   1.0/3.0,
-    ("fenton", "0.75"):    1.0/5.7,
-    ("fenton", "2"):       1.0/8.5,
-    ("fenton", "4.25"):    1.0/11.4,
-    ("fenton", "7.4"):     1.0/14.3,
-    ("pmstokes", "0.135"): 1.0/3.0,
-    ("pmstokes", "0.75"):  1.0/5.7,
-    ("pmstokes", "2"):     1.0/8.5,
-    ("pmstokes", "4.25"):  1.0/11.4,
-    ("pmstokes", "7.4"):   1.0/14.3,
+    "pmstokes": "Greens",
+    "cnoidal": "Oranges"
 }
 
 # === Utility: escape dangerous LaTeX characters, but keep $ for math ===
@@ -85,6 +66,8 @@ for tracker, tracker_files in tracker_groups.items():
     wave_grouped = {}
     for f in tracker_files:
         m = pattern.search(os.path.basename(f))
+        if not m:
+            continue
         wave = m.group("wave")
         if wave == "gerstner":  # skip Gerstner if desired
             continue
@@ -96,7 +79,15 @@ for tracker, tracker_files in tracker_groups.items():
 
         for idx, f in enumerate(sorted(files_in_wave)):
             m = pattern.search(os.path.basename(f))
-            height = m.group("height").rstrip('0').rstrip('.')  # normalize
+            if not m:
+                continue
+
+            H = m.group("H")
+            L = float(m.group("L"))  # wavelength from filename
+            target_freq = 1.0 / L    # compute from wavelength
+
+            height_label = H.rstrip("0").rstrip(".")  # pretty
+            label = f"{wave}-h{height_label}"
 
             df = pd.read_csv(f).head(MAX_RECORDS)
             if not {"regularity", "significant_wave_height", "disp_freq_hz"}.issubset(df.columns):
@@ -104,7 +95,6 @@ for tracker, tracker_files in tracker_groups.items():
                 continue
 
             color = cmap(0.3 + 0.7 * idx / max(1, n_files - 1))
-            label = f"{wave}-h{height}"
 
             # Top: Regularity
             ax1.plot(df["time"], df["regularity"], label=label, alpha=0.8, color=color)
@@ -116,11 +106,9 @@ for tracker, tracker_files in tracker_groups.items():
             ax3.plot(df["time"], df["disp_freq_hz"], label=label, alpha=0.8, color=color)
 
             # Add target frequency line
-            target_freq = wave_target_freq.get((wave, height))
-            if target_freq:
-                ax3.hlines(target_freq,
-                           xmin=df["time"].iloc[0], xmax=df["time"].iloc[-1],
-                           colors=color, linestyles="dashed", alpha=0.5)
+            ax3.hlines(target_freq,
+                       xmin=df["time"].iloc[0], xmax=df["time"].iloc[-1],
+                       colors=color, linestyles="dashed", alpha=0.5)
 
     # Formatting
     ax1.set_ylabel("Regularity score (R)")
@@ -140,7 +128,3 @@ for tracker, tracker_files in tracker_groups.items():
     base = f"seareg_{tracker}"
     save_all(fig, base, f"Sea State Regularity, Height Envelope & Disp. Freq — {tracker} tracker")
     plt.close(fig)
-
-    # Verify file was written
-    if not os.path.exists(f"{base}.pgf"):
-        print(f"!!! ERROR: {base}.pgf was not created")
