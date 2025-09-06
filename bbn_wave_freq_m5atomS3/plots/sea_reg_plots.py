@@ -61,6 +61,13 @@ def save_all(fig, base, title):
     fig.suptitle(latex_safe(title))
     fig.savefig(f"{base}.pgf", bbox_inches="tight")
     fig.savefig(f"{base}.svg", bbox_inches="tight", dpi=150)
+    # Verify existence
+    pgf_file = f"{base}.pgf"
+    svg_file = f"{base}.svg"
+    if not os.path.exists(pgf_file):
+        raise RuntimeError(f"PGF file not written: {pgf_file}")
+    if not os.path.exists(svg_file):
+        raise RuntimeError(f"SVG file not written: {svg_file}")
     print(f"  saved {base}.pgf/.svg")
 
 # === Group files by tracker ===
