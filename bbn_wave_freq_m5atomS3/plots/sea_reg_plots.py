@@ -34,10 +34,18 @@ MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 # === Match C++ output ===
 files = glob.glob(os.path.join(DATA_DIR, "regularity_*.csv"))
 
-# regex matches:
-# regularity_<tracker>_<wave>_H<height>...csv
+# Regex matches full naming scheme from C++ generator
 pattern = re.compile(
-    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)_H(?P<height>[0-9]+(?:\.[0-9]+)?)(?:_[^.]*)?\.csv"
+    r"regularity_"
+    r"(?P<tracker>[^_]+)_"        # tracker
+    r"(?P<wave>[^_]+)_"           # wave
+    r"H(?P<height>[-0-9\.]+)"     # height
+    r"(?:_L(?P<length>[-0-9\.]+))?"   # optional length
+    r"(?:_A(?P<azimuth>[-0-9\.]+))?"  # optional azimuth
+    r"(?:_P(?P<phase>[-0-9\.]+))?"    # optional phase
+    r"(?:_N(?P<noise>[-0-9\.]+))?"    # optional noise
+    r"(?:_B(?P<bias>[-0-9\.]+))?"     # optional bias
+    r"\.csv"
 )
 
 # === Map wave type to base color ===
