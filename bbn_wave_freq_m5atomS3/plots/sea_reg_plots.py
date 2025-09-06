@@ -140,3 +140,7 @@ for tracker, tracker_files in tracker_groups.items():
     base = f"seareg_{tracker}"
     save_all(fig, base, f"Sea State Regularity, Height Envelope & Disp. Freq — {tracker} tracker")
     plt.close(fig)
+
+    # Verify file was written
+    if not os.path.exists(f"{base}.pgf"):
+        print(f"!!! ERROR: {base}.pgf was not created")
