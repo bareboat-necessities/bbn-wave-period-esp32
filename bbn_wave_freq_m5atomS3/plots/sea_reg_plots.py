@@ -13,11 +13,18 @@ SAMPLE_RATE = 240
 MAX_TIME = 600.0
 MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 
-# === Match C++ output: regularity_<tracker>_<wave>_h<height>.csv ===
+# === Match C++ output:
+#   regularity_<tracker>_<wave>_H<...>_L<...>_A<...>_P<...>_N<noise>_B<bias>.csv
 files = glob.glob(os.path.join(DATA_DIR, "regularity_*.csv"))
 
 pattern = re.compile(
-    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)_h(?P<height>[0-9]+(?:\.[0-9]+)?)\.csv"
+    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)"
+    r"_H(?P<height>[0-9]+(?:\.[0-9]+)?)"
+    r"_L(?P<length>[0-9]+(?:\.[0-9]+)?)"
+    r"_A(?P<angle>[-0-9]+(?:\.[0-9]+)?)"
+    r"_P(?P<phase>[-0-9]+(?:\.[0-9]+)?)"
+    r"_N(?P<noise>[0-9]+(?:\.[0-9]+)?)"
+    r"_B(?P<bias>[0-9]+(?:\.[0-9]+)?)\.csv"
 )
 
 # === Map wave type to base color ===
@@ -25,32 +32,42 @@ wave_colors = {
     "fenton": "Blues",
     "gerstner": "Purples",
     "jonswap": "Reds",
-    "pmstokes": "Greens"
+    "pmstokes": "Greens",
+    "cnoidal": "Oranges"
 }
 
 # === Map wave type & height to target frequency ===
-# Must match your C++ waveParamsList
 wave_target_freq = {
+    # Gerstner
     ("gerstner", "0.135"): 1.0/3.0,
     ("gerstner", "0.75"):  1.0/5.7,
     ("gerstner", "2"):     1.0/8.5,
     ("gerstner", "4.25"):  1.0/11.4,
     ("gerstner", "7.4"):   1.0/14.3,
+    # JONSWAP
     ("jonswap", "0.135"):  1.0/3.0,
     ("jonswap", "0.75"):   1.0/5.7,
     ("jonswap", "2"):      1.0/8.5,
     ("jonswap", "4.25"):   1.0/11.4,
     ("jonswap", "7.4"):    1.0/14.3,
+    # Fenton
     ("fenton", "0.135"):   1.0/3.0,
     ("fenton", "0.75"):    1.0/5.7,
     ("fenton", "2"):       1.0/8.5,
     ("fenton", "4.25"):    1.0/11.4,
     ("fenton", "7.4"):     1.0/14.3,
+    # PM Stokes
     ("pmstokes", "0.135"): 1.0/3.0,
     ("pmstokes", "0.75"):  1.0/5.7,
     ("pmstokes", "2"):     1.0/8.5,
     ("pmstokes", "4.25"):  1.0/11.4,
     ("pmstokes", "7.4"):   1.0/14.3,
+    # Cnoidal — assuming same params as Gerstner for now
+    ("cnoidal", "0.135"):  1.0/3.0,
+    ("cnoidal", "0.75"):   1.0/5.7,
+    ("cnoidal", "2"):      1.0/8.5,
+    ("cnoidal", "4.25"):   1.0/11.4,
+    ("cnoidal", "7.4"):    1.0/14.3,
 }
 
 # === Utility: save figure ===
@@ -73,13 +90,12 @@ for f in files:
 for tracker, tracker_files in tracker_groups.items():
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
-    # Group files by wave type
     wave_grouped = {}
     for f in tracker_files:
         m = pattern.search(os.path.basename(f))
-        wave = m.group("wave")
-        if wave == "gerstner":  # skip Gerstner if desired
+        if not m:
             continue
+        wave = m.group("wave")
         wave_grouped.setdefault(wave, []).append(f)
 
     for wave, files_in_wave in wave_grouped.items():
@@ -88,6 +104,8 @@ for tracker, tracker_files in tracker_groups.items():
 
         for idx, f in enumerate(sorted(files_in_wave)):
             m = pattern.search(os.path.basename(f))
+            if not m:
+                continue
             height = m.group("height").rstrip('0').rstrip('.')  # normalize
 
             df = pd.read_csv(f).head(MAX_RECORDS)
@@ -132,3 +150,4 @@ for tracker, tracker_files in tracker_groups.items():
     base = f"seareg_{tracker}"
     save_all(fig, base)
     plt.close(fig)
+    
