@@ -62,6 +62,7 @@ jobs:
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
         chmod +x gen_sim_data.sh
         ./gen_sim_data.sh
+        ./freq_track.sh
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
