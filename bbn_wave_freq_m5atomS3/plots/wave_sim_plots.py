@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+import glob
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import re
 import os
 
 # === Matplotlib PGF/LaTeX config ===
@@ -21,206 +23,109 @@ plt.rcParams.update({
     ])
 })
 
-# === Wave categories (heights to show explicitly) ===
-height_groups = {
-    "low":    [0.27],   # always green
-    "medium": [1.5],    # always blue
-    "high":   [8.5],    # always red
-}
+# === Directory where CSV files are saved ===
+DATA_DIR = "./"
 
-# Color palettes for each group (shades for x,y,z)
-height_colors = {
-    "low":    ['#a1d99b', '#41ab5d', '#005a32'],   # Greens
-    "medium": ['#9ecae1', '#3182bd', '#08306b'],   # Blues
-    "high":   ['#fcbba1', '#fb6a4a', '#a50f15'],   # Reds
-}
-
-# LaTeX-safe labels (mathtext) for components
-latex_labels = {
-    'disp_x':    r"$\mathrm{disp}_{x}$",
-    'disp_y':    r"$\mathrm{disp}_{y}$",
-    'disp_z':    r"$\mathrm{disp}_{z}$",
-    'vel_x':     r"$\mathrm{vel}_{x}$",
-    'vel_y':     r"$\mathrm{vel}_{y}$",
-    'vel_z':     r"$\mathrm{vel}_{z}$",
-    'acc_x':     r"$\mathrm{acc}_{x}$",
-    'acc_y':     r"$\mathrm{acc}_{y}$",
-    'acc_z':     r"$\mathrm{acc}_{z}$",
-    'acc_bx':    r"$\mathrm{acc}_{b,x}$",
-    'acc_by':    r"$\mathrm{acc}_{b,y}$",
-    'acc_bz':    r"$\mathrm{acc}_{b,z}$",
-    'gyro_x':    r"$\mathrm{gyro}_{x}$",
-    'gyro_y':    r"$\mathrm{gyro}_{y}$",
-    'gyro_z':    r"$\mathrm{gyro}_{z}$",
-    'roll_deg':  r"$\mathrm{roll}^{\circ}$",
-    'pitch_deg': r"$\mathrm{pitch}^{\circ}$",
-    'yaw_deg':   r"$\mathrm{yaw}^{\circ}$",
-}
-
-# Wave types to include (must match filenames)
-wave_types = ["gerstner", "jonswap", "fenton", "pmstokes", "cnoidal"]
-
-# Components for world-frame plots (full set)
-components = {
-    'Displacement': ['disp_x', 'disp_y', 'disp_z'],
-    'Velocity':     ['vel_x', 'vel_y', 'vel_z'],
-    'Acceleration': ['acc_x', 'acc_y', 'acc_z'],
-}
-
-# For restricted wave types (z-only)
-z_only_components = {
-    'Displacement': ['disp_z'],
-    'Velocity':     ['vel_z'],
-    'Acceleration': ['acc_z'],
-}
-
-# Sampling cutoff
+# === Sampling cutoff ===
 SAMPLE_RATE = 240
-MAX_TIME = 60.0
+MAX_TIME = 600.0
 MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 
+# === Match C++ output ===
+files = glob.glob(os.path.join(DATA_DIR, "regularity_*.csv"))
 
-def find_file(wave_type, height):
-    """Find matching CSV file for wave_type and given height."""
-    fname = f"wave_data_{wave_type}_H{height:.3f}"
-    candidates = sorted(f for f in os.listdir(".") if f.startswith(fname) and f.endswith(".csv"))
-    return candidates[0] if candidates else None
+# regex matches:
+# regularity_<tracker>_<wave>_H<height>...csv
+pattern = re.compile(
+    r"regularity_(?P<tracker>[^_]+)_(?P<wave>[^_]+)_H(?P<height>[0-9]+(?:\.[0-9]+)?)(?:_[^.]*)?\.csv"
+)
 
+# === Map wave type to base color ===
+wave_colors = {
+    "fenton": "Blues",
+    "gerstner": "Purples",
+    "jonswap": "Reds",
+    "pmstokes": "Greens",
+    "cnoidal": "Oranges",
+}
 
-def label_for(col, h):
-    """Return pretty mathtext label for component + height."""
-    return f"H={h} {latex_labels.get(col, col)}"
+# === Utility: escape dangerous LaTeX characters (keep $ for math) ===
+def latex_safe(s: str) -> str:
+    return (s.replace("&", "\\&")
+             .replace("%", "\\%")
+             .replace("#", "\\#")
+             .replace("_", "\\_"))
 
+# === Utility: save figure ===
+def save_all(fig, base, title):
+    fig.suptitle(latex_safe(title))
+    fig.savefig(f"{base}.pgf", bbox_inches="tight")
+    fig.savefig(f"{base}.svg", bbox_inches="tight", dpi=150)
+    print(f"  saved {base}.pgf/.svg")
 
-def plot_wave_type(wave_type):
-    """Generate plots (PGF+SVG) for one wave type."""
+# === Group files by tracker ===
+tracker_groups = {}
+for f in files:
+    m = pattern.search(os.path.basename(f))
+    if not m:
+        print(f"Skipping unrecognized filename: {f}")
+        continue
+    tracker = m.group("tracker")
+    tracker_groups.setdefault(tracker, []).append(f)
 
-    # Restrict to z-only for Gerstner, Fenton, and Cnoidal
-    if wave_type in ["gerstner", "fenton", "cnoidal"]:
-        comps = z_only_components
-    else:
-        comps = components
+# === Plot for each tracker ===
+for tracker, tracker_files in tracker_groups.items():
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
-    # --- Chart 1: world-frame disp/vel/acc ---
-    fig, axes = plt.subplots(len(comps), 1, figsize=(14, 12), sharex=True)
-    fig.suptitle(f"{wave_type.capitalize()} - World Frame")
+    # Group files by wave type
+    wave_grouped = {}
+    for f in tracker_files:
+        m = pattern.search(os.path.basename(f))
+        wave = m.group("wave")
+        if wave == "gerstner":  # skip Gerstner if desired
+            continue
+        wave_grouped.setdefault(wave, []).append(f)
 
-    for group, heights in height_groups.items():
-        for h in heights:
-            csv_file = find_file(wave_type, h)
-            if not csv_file:
+    for wave, files_in_wave in wave_grouped.items():
+        cmap = plt.get_cmap(wave_colors.get(wave, "gray"))
+        n_files = len(files_in_wave)
+
+        for idx, f in enumerate(sorted(files_in_wave)):
+            m = pattern.search(os.path.basename(f))
+            height = m.group("height").rstrip('0').rstrip('.')  # normalize
+
+            df = pd.read_csv(f).head(MAX_RECORDS)
+            if not {"regularity", "significant_wave_height", "disp_freq_hz"}.issubset(df.columns):
+                print(f"Skipping {f} (missing required columns)")
                 continue
-            data = pd.read_csv(csv_file).head(MAX_RECORDS)
-            time = data["time"]
 
-            for ax, (comp_label, cols) in zip(axes, comps.items()):
-                for j, col in enumerate(cols):
-                    if wave_type in ["gerstner", "fenton", "cnoidal"]:
-                        comp_color = height_colors[group][-1]  # strong color for z-only
-                    else:
-                        comp_color = height_colors[group][j % len(height_colors[group])]
-                    ax.plot(time, data[col], label=label_for(col, h),
-                            color=comp_color, alpha=1.0, linewidth=1.2)
-                ax.set_ylabel(comp_label)
-                ax.grid(True)
+            color = cmap(0.3 + 0.7 * idx / max(1, n_files - 1))
+            label = f"{wave}-H{height}"
 
-    axes[-1].set_xlabel("Time [s]")
-    axes[0].legend(fontsize="small", ncol=3)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(f"{wave_type}_worldframe.pgf", bbox_inches="tight")
-    fig.savefig(f"{wave_type}_worldframe.svg", bbox_inches="tight")
+            # Top: Regularity
+            ax1.plot(df["time"], df["regularity"], label=label, alpha=0.8, color=color)
+
+            # Middle: Wave Height Envelope
+            ax2.plot(df["time"], df["significant_wave_height"], label=label, alpha=0.8, color=color)
+
+            # Bottom: Displacement Frequency
+            ax3.plot(df["time"], df["disp_freq_hz"], label=label, alpha=0.8, color=color)
+
+    # Formatting
+    ax1.set_ylabel("Regularity score (R)")
+    ax1.set_title(latex_safe(f"Sea State Regularity, Height Envelope & Disp. Freq — {tracker} tracker"))
+    ax1.grid(True, linestyle="--", alpha=0.5)
+    ax1.legend(fontsize=8, ncol=3)
+
+    ax2.set_ylabel("Wave Height Envelope [m]")
+    ax2.grid(True, linestyle="--", alpha=0.5)
+
+    ax3.set_xlabel("Time [s]")
+    ax3.set_ylabel("Displacement Frequency [Hz]")
+    ax3.grid(True, linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
+
+    base = f"seareg_{tracker}"
+    save_all(fig, base, f"Sea State Regularity, Height Envelope & Disp. Freq — {tracker} tracker")
     plt.close(fig)
-
-    # Skip IMU/Euler plots for wave types without them
-    if wave_type in ["fenton", "gerstner", "cnoidal"]:
-        return
-
-    # --- Chart 2: IMU acceleration ---
-    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
-    fig.suptitle(f"{wave_type.capitalize()} - IMU Acceleration")
-
-    for group, heights in height_groups.items():
-        for h in heights:
-            csv_file = find_file(wave_type, h)
-            if not csv_file:
-                continue
-            data = pd.read_csv(csv_file).head(MAX_RECORDS)
-            time = data["time"]
-
-            for i, comp in enumerate(['acc_bx', 'acc_by', 'acc_bz']):
-                comp_color = height_colors[group][i % len(height_colors[group])]
-                axes[i].plot(time, data[comp], label=label_for(comp, h),
-                             color=comp_color, alpha=1.0, linewidth=1.2)
-                axes[i].set_ylabel(latex_labels.get(comp, comp))
-                axes[i].grid(True)
-
-    axes[-1].set_xlabel("Time [s]")
-    axes[0].legend(fontsize="small", ncol=3)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(f"{wave_type}_imu_acc.pgf", bbox_inches="tight")
-    fig.savefig(f"{wave_type}_imu_acc.svg", bbox_inches="tight")
-    plt.close(fig)
-
-    # --- Chart 3: IMU gyro ---
-    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
-    fig.suptitle(f"{wave_type.capitalize()} - IMU Gyro")
-
-    for group, heights in height_groups.items():
-        for h in heights:
-            csv_file = find_file(wave_type, h)
-            if not csv_file:
-                continue
-            data = pd.read_csv(csv_file).head(MAX_RECORDS)
-            time = data["time"]
-
-            for i, comp in enumerate(['gyro_x', 'gyro_y', 'gyro_z']):
-                comp_color = height_colors[group][i % len(height_colors[group])]
-                axes[i].plot(time, data[comp], label=label_for(comp, h),
-                             color=comp_color, alpha=1.0, linewidth=1.2)
-                axes[i].set_ylabel(latex_labels.get(comp, comp))
-                axes[i].grid(True)
-
-    axes[-1].set_xlabel("Time [s]")
-    axes[0].legend(fontsize="small", ncol=3)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(f"{wave_type}_imu_gyro.pgf", bbox_inches="tight")
-    fig.savefig(f"{wave_type}_imu_gyro.svg", bbox_inches="tight")
-    plt.close(fig)
-
-    # --- Chart 4: Euler angles (yaw removed) ---
-    if wave_type in ["jonswap", "pmstokes"]:
-        euler_comps = ['roll_deg', 'pitch_deg']  # skip yaw
-    else:
-        euler_comps = []
-
-    if euler_comps:
-        fig, axes = plt.subplots(len(euler_comps), 1, figsize=(14, 8), sharex=True)
-        fig.suptitle(f"{wave_type.capitalize()} - Euler Angles")
-
-        for group, heights in height_groups.items():
-            for h in heights:
-                csv_file = find_file(wave_type, h)
-                if not csv_file:
-                    continue
-                data = pd.read_csv(csv_file).head(MAX_RECORDS)
-                time = data["time"]
-
-                for i, comp in enumerate(euler_comps):
-                    comp_color = height_colors[group][i % len(height_colors[group])]
-                    axes[i].plot(time, data[comp], label=label_for(comp, h),
-                                 color=comp_color, alpha=1.0, linewidth=1.2)
-                    axes[i].set_ylabel(latex_labels.get(comp, comp))
-                    axes[i].grid(True)
-
-        axes[-1].set_xlabel("Time [s]")
-        axes[0].legend(fontsize="small", ncol=3)
-        plt.tight_layout(rect=[0, 0, 1, 0.95])
-        fig.savefig(f"{wave_type}_euler.pgf", bbox_inches="tight")
-        fig.savefig(f"{wave_type}_euler.svg", bbox_inches="tight")
-        plt.close(fig)
-
-
-if __name__ == "__main__":
-    for wt in wave_types:
-        plot_wave_type(wt)
-    print("All PGF and SVG plots saved.")
