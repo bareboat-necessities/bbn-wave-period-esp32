@@ -134,8 +134,17 @@ static void run_from_csv(TrackerType tracker,
     auto posH = stem.find("_H");
     std::string tail = (posH != std::string::npos) ? stem.substr(posH) : "";
 
+    // Remove .csv extension
+    if (tail.size() > 4 && tail.substr(tail.size()-4) == ".csv") {
+        tail = tail.substr(0, tail.size()-4);
+    }
+
+    // Encode noise & bias
+    char nb[64];
+    std::snprintf(nb, sizeof(nb), "_N%.2f_B%.2f", NOISE_STDDEV, BIAS_MEAN);
+
     // Output file
-    std::string outFile = "freq_track_" + trackerName + "_" + waveName + tail;
+    std::string outFile = "freq_track_" + trackerName + "_" + waveName + tail + nb + ".csv";
     std::ofstream ofs(outFile);
     if (!ofs.is_open()) {
         fprintf(stderr, "Failed to open %s\n", outFile.c_str());
