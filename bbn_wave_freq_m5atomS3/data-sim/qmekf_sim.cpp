@@ -4,6 +4,12 @@
 
 #define EIGEN_NON_ARDUINO
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+const float g_std = 9.80665f; // standard gravity acceleration m/s²
+
 #include "KalmanQMEKF.h"       // Q-MEKF filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
 
