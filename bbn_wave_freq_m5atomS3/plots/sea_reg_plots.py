@@ -55,6 +55,7 @@ wave_colors = {
     "jonswap": "Reds",
     "pmstokes": "Greens",
     "cnoidal": "Oranges",
+    "gerstner": "Yellows",
 }
 
 # === Utility: escape dangerous LaTeX characters (keep $ for math) ===
