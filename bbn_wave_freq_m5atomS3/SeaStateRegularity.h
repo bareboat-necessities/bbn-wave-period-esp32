@@ -59,7 +59,7 @@ public:
         z_real = z_imag = 0.0f;
 
         // Spectral moments and regularities
-        M0 = M1 = M2 = 0.0f;
+        M0 = M1 = M2 = M4 = 0.0f;
         nu = 0.0f;
         R_spec = R_phase = R_safe = R_out = 0.0f;
 
@@ -114,6 +114,16 @@ public:
     float getRegularitySpectral() const { return R_spec; }
     float getRegularityPhase() const { return R_phase; }
 
+    float getCircularVariance() const {
+        // 0 for perfect coherence, 1 for uniform phases
+        return 1.0f - R_phase;
+    }
+
+    float getCircularDispersion() const {
+        if (R_phase < EPSILON) return 0.0f;
+        return (1.0f - std::pow(R_phase, 4)) / (2.0f * R_phase * R_phase);
+    }
+
     float getWaveHeightEnvelopeEst() const {
         if (M0 <= 0.0f || !has_R_out) return 0.0f;
         return 2.0f * std::sqrt(M0) * heightFactorFromR(R_out);
@@ -121,6 +131,11 @@ public:
 
     float getDisplacementFrequencyHz() const {
         return omega_disp_lp / (2.0f * float(M_PI));
+    }
+
+    float getSpectralPeakedness() const {
+        if (M2 <= EPSILON) return 0.0f;
+        return (M0 * M4) / (M2 * M2);
     }
 
     // Optional: scale time constants from dominant period Tp (s)
@@ -149,7 +164,7 @@ private:
     float z_real, z_imag;
 
     // Spectral moments & regularity
-    float M0, M1, M2;
+    float M0, M1, M2, M4;
     float nu;
     float R_spec, R_phase, R_safe, R_out;
 
@@ -261,6 +276,7 @@ private:
             M0 = P_disp_corr;
             M1 = P_disp_corr * omega_norm;
             M2 = P_disp_corr * omega_norm * omega_norm;
+            M4 = P_disp_corr * omega_norm * omega_norm * omega_norm * omega_norm;
             has_moments = true;
         } else {
             M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp_corr;
@@ -270,6 +286,8 @@ private:
             float M2_candidate = P_disp_corr * omega_norm * omega_norm - var_slow * M0;
             if (M2_candidate < 0.0f) M2_candidate = 0.0f;
             M2 = (1.0f - alpha_mom) * M2 + alpha_mom * M2_candidate;
+            M4 = (1.0f - alpha_mom) * M4 + alpha_mom * P_disp_corr *
+                 omega_norm * omega_norm * omega_norm * omega_norm;
         }
 
         // Moment-based mean frequency
