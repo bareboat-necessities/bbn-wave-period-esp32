@@ -98,7 +98,7 @@ for tracker, tracker_files in tracker_groups.items():
     for f in tracker_files:
         m = pattern.search(os.path.basename(f))
         wave = m.group("wave")
-        if wave == "gerstner":  # skip Gerstner if desired
+        if wave in {"gerstner", "cnoidal"}:  # skip if desired
             continue
         wave_grouped.setdefault(wave, []).append(f)
 
