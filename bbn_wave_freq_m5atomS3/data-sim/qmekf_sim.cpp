@@ -1,9 +1,11 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
-#include <Eigen/Dense>
-#include "WaveFilesSupport.h"  // file reader/parser + naming
+
+#define EIGEN_NON_ARDUINO
+
 #include "KalmanQMEKF.h"       // Q-MEKF filter
+#include "WaveFilesSupport.h"  // file reader/parser + naming
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
