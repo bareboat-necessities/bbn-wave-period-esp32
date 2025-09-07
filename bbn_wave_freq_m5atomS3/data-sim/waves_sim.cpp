@@ -60,15 +60,6 @@ static void fill_imu_sample_from_readings(IMU_Sample &dst, const IMU &imu) {
     dst.gyro_z = static_cast<float>(imu.gyro_body.z());
 }
 
-static void fill_euler_from_slopes(IMU_Sample &dst, const Eigen::Vector2d &slopes) {
-    double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;
-    double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;
-    double yaw   = 0.0;
-    dst.roll_deg  = static_cast<float>(roll);
-    dst.pitch_deg = static_cast<float>(pitch);
-    dst.yaw_deg   = static_cast<float>(yaw);
-}
-
 // Default IMU filler (zeros)
 static void fill_default_imu(IMU_Sample &imu) {
     imu = {}; // zero all fields
@@ -116,8 +107,11 @@ static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model)
     auto imu = model.getIMUReadings(0.0, 0.0, t);
     fill_imu_sample_from_readings(out.imu, imu);
 
-    auto slopes = model.getSurfaceSlopes(0.0, 0.0, t);
-    fill_euler_from_slopes(out.imu, slopes);
+    // true world-frame Euler angles
+    auto euler = model.getEulerAngles(0.0, 0.0, t);
+    out.imu.roll_deg  = static_cast<float>(euler.x());
+    out.imu.pitch_deg = static_cast<float>(euler.y());
+    out.imu.yaw_deg   = static_cast<float>(euler.z());
 
     return out;
 }
@@ -133,8 +127,11 @@ static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &mo
     auto imu = model.getIMUReadings(0.0, 0.0, t);
     fill_imu_sample_from_readings(out.imu, imu);
 
-    auto slopes = model.getSurfaceSlopes(0.0, 0.0, t);
-    fill_euler_from_slopes(out.imu, slopes);
+    // true world-frame Euler angles
+    auto euler = model.getEulerAngles(0.0, 0.0, t);
+    out.imu.roll_deg  = static_cast<float>(euler.x());
+    out.imu.pitch_deg = static_cast<float>(euler.y());
+    out.imu.yaw_deg   = static_cast<float>(euler.z());
 
     return out;
 }
