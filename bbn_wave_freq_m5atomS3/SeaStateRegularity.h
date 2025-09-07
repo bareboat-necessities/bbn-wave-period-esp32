@@ -330,29 +330,17 @@ private:
         if (!has_gate) { P_disp_gate = P_disp; has_gate = true; }
         else           { P_disp_gate = (1.0f - alpha_gate) * P_disp_gate + alpha_gate * P_disp; }
 
-        float R_target = R_safe;
+                // Smooth ν-based adjustment instead of P_disp thresholds
+        // nu ≈ 0.0 (narrowband swell) → factor ≈ 1.0 (no change)
+        // nu ≈ 0.5+ (broadband stormy) → factor ≈ 0.9 (10% reduction)
+        const float nu_max  = 0.5f;   // treat this ν as "fully broadband"
+        const float k_broad = 0.10f;  // maximum reduction fraction
+        float broad_frac = std::clamp(nu / nu_max, 0.0f, 1.0f);
+        float adj_factor = 1.0f - k_broad * broad_frac;
 
-        // Broadband reduction with simple hysteresis
-        float BB_TH  = BROADBAND_WAVE_THRESHOLD;
-        float BB_HYS = 0.05f * BB_TH; // 5% hysteresis band
-        bb_active = bb_active ? (P_disp_gate > (BB_TH - BB_HYS)) : (P_disp_gate < BB_TH);
-        if (bb_active) {
-            float x = std::clamp(P_disp_gate / BB_TH, 0.0f, 1.0f);
-            float reduce = BROADBAND_WAVE_REDUCTION_MAX * (1.0f - x);
-            R_target = std::max(R_target - reduce, 0.0f);
-        }
+        float R_target = R_safe * adj_factor;
 
-        // Large-wave boost with hysteresis
-        float LG_TH  = LARGE_WAVE_THRESHOLD;
-        float LG_HYS = 0.05f * LG_TH;
-        lg_active = lg_active ? (P_disp_gate > (LG_TH + LG_HYS)) : (P_disp_gate > LG_TH);
-        if (lg_active) {
-            float x = std::clamp(P_disp_gate / LG_TH, 0.0f, 2.0f);
-            float boost = LARGE_WAVE_BOOST_MAX * x;
-            R_target = std::min(R_target + boost, 1.0f);
-        }
-
-        // Final output smoothing
+        // Final output smoothing (unchanged)
         if (!has_R_out) {
             R_out = R_target;
             has_R_out = true;
