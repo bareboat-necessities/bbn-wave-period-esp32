@@ -31,20 +31,27 @@ SAMPLE_RATE = 240
 MAX_TIME = 600.0
 MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 
+# === Groups we care about (included heights in meters) ===
+height_groups = {
+    "low":    0.27,
+    "medium": 1.50,
+    "high":   8.50,
+}
+INCLUDED_HEIGHTS = set(height_groups.values())
+
 # === Match C++ output ===
 files = glob.glob(os.path.join(DATA_DIR, "regularity_*.csv"))
 
-# Regex matches full naming scheme from C++ generator
 pattern = re.compile(
     r"regularity_"
-    r"(?P<tracker>[^_]+)_"        # tracker
-    r"(?P<wave>[^_]+)_"           # wave
-    r"H(?P<height>[-0-9\.]+)"     # height
-    r"(?:_L(?P<length>[-0-9\.]+))?"   # optional length
-    r"(?:_A(?P<azimuth>[-0-9\.]+))?"  # optional azimuth
-    r"(?:_P(?P<phase>[-0-9\.]+))?"    # optional phase
-    r"(?:_N(?P<noise>[-0-9\.]+))?"    # optional noise
-    r"(?:_B(?P<bias>[-0-9\.]+))?"     # optional bias
+    r"(?P<tracker>[^_]+)_"
+    r"(?P<wave>[^_]+)_"
+    r"H(?P<height>[-0-9\.]+)"
+    r"(?:_L(?P<length>[-0-9\.]+))?"
+    r"(?:_A(?P<azimuth>[-0-9\.]+))?"
+    r"(?:_P(?P<phase>[-0-9\.]+))?"
+    r"(?:_N(?P<noise>[-0-9\.]+))?"
+    r"(?:_B(?P<bias>[-0-9\.]+))?"
     r"\.csv"
 )
 
@@ -69,13 +76,10 @@ def save_all(fig, base, title):
     fig.suptitle(latex_safe(title))
     fig.savefig(f"{base}.pgf", bbox_inches="tight")
     fig.savefig(f"{base}.svg", bbox_inches="tight", dpi=150)
-    # Verify existence
-    pgf_file = f"{base}.pgf"
-    svg_file = f"{base}.svg"
-    if not os.path.exists(pgf_file):
-        raise RuntimeError(f"PGF file not written: {pgf_file}")
-    if not os.path.exists(svg_file):
-        raise RuntimeError(f"SVG file not written: {svg_file}")
+    if not os.path.exists(f"{base}.pgf"):
+        raise RuntimeError(f"PGF file not written: {base}.pgf")
+    if not os.path.exists(f"{base}.svg"):
+        raise RuntimeError(f"SVG file not written: {base}.svg")
     print(f"  saved {base}.pgf/.svg")
 
 # === Group files by tracker ===
@@ -97,7 +101,7 @@ for tracker, tracker_files in tracker_groups.items():
     for f in tracker_files:
         m = pattern.search(os.path.basename(f))
         wave = m.group("wave")
-        if wave in {"gerstner", "cnoidal"}:  # skip if desired
+        if wave in {"gerstner", "cnoidal"}:  # skip wave types if desired
             continue
         wave_grouped.setdefault(wave, []).append(f)
 
@@ -107,7 +111,17 @@ for tracker, tracker_files in tracker_groups.items():
 
         for idx, f in enumerate(sorted(files_in_wave)):
             m = pattern.search(os.path.basename(f))
-            height = m.group("height").rstrip('0').rstrip('.')  # normalize
+            height_str = m.group("height").rstrip('0').rstrip('.')  # for label
+            try:
+                height_val = float(m.group("height"))
+            except (TypeError, ValueError):
+                print(f"Skipping {f} (invalid height value)")
+                continue
+
+            # Keep only included heights
+            if all(abs(height_val - h) > 1e-6 for h in INCLUDED_HEIGHTS):
+                print(f"Skipping {f} (height {height_val} m not in groups)")
+                continue
 
             df = pd.read_csv(f).head(MAX_RECORDS)
             if not {"regularity", "significant_wave_height", "disp_freq_hz"}.issubset(df.columns):
@@ -115,7 +129,7 @@ for tracker, tracker_files in tracker_groups.items():
                 continue
 
             color = cmap(0.3 + 0.7 * idx / max(1, n_files - 1))
-            label = f"{wave}-H{height}"
+            label = f"{wave}-H{height_str}"
 
             # Top: Regularity
             ax1.plot(df["time"], df["regularity"], label=label, alpha=0.8, color=color)
@@ -126,11 +140,10 @@ for tracker, tracker_files in tracker_groups.items():
             # Bottom: Displacement Frequency
             ax3.plot(df["time"], df["disp_freq_hz"], label=label, alpha=0.8, color=color)
 
-    # Formatting
+    # === Formatting ===
     ax1.set_ylabel("Regularity score (R)")
-    #ax1.set_title(latex_safe(f"Sea State Regularity, Height Envelope & Disp. Freq — {tracker} tracker"))
     ax1.grid(True, linestyle="--", alpha=0.5)
-    ax1.legend(fontsize=8, ncol=3)
+    ax1.legend(fontsize=8, ncol=3, loc="lower left")  # single legend, solid frame
 
     ax2.set_ylabel("Wave Height Envelope [m]")
     ax2.grid(True, linestyle="--", alpha=0.5)
