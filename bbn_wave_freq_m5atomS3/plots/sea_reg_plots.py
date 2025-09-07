@@ -73,6 +73,7 @@ def latex_safe(s: str) -> str:
 
 # === Utility: save figure ===
 def save_all(fig, base, title):
+    plt.tight_layout(rect=[0, 0, 1, 0.95]) 
     fig.suptitle(latex_safe(title))
     fig.savefig(f"{base}.pgf", bbox_inches="tight")
     fig.savefig(f"{base}.svg", bbox_inches="tight", dpi=150)
