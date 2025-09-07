@@ -128,7 +128,7 @@ for tracker, tracker_files in tracker_groups.items():
 
     # Formatting
     ax1.set_ylabel("Regularity score (R)")
-    ax1.set_title(latex_safe(f"Sea State Regularity, Height Envelope & Disp. Freq — {tracker} tracker"))
+    #ax1.set_title(latex_safe(f"Sea State Regularity, Height Envelope & Disp. Freq — {tracker} tracker"))
     ax1.grid(True, linestyle="--", alpha=0.5)
     ax1.legend(fontsize=8, ncol=3)
 
