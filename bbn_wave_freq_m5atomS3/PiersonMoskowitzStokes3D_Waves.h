@@ -299,6 +299,30 @@ public:
         return R_WI;
     }
 
+// Return world-frame Euler angles (deg) from surface slopes
+Eigen::Vector3d getEulerAngles(double x, double y, double t) const {
+    auto slopes = getSurfaceSlopes(x, y, t);
+    Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
+
+    // ZYX convention (yaw-pitch-roll)
+    double roll, pitch, yaw;
+    pitch = std::asin(-R_WI(2,0));
+    if (std::abs(std::cos(pitch)) > 1e-6) {
+        roll  = std::atan2(R_WI(2,1), R_WI(2,2));
+        yaw   = std::atan2(R_WI(1,0), R_WI(0,0));
+    } else {
+        // gimbal lock fallback
+        roll = std::atan2(-R_WI(1,2), R_WI(1,1));
+        yaw  = 0.0;
+    }
+
+    return Eigen::Vector3d(
+        roll  * 180.0 / M_PI,
+        pitch * 180.0 / M_PI,
+        yaw   * 180.0 / M_PI
+    );
+}
+
     // Accessors for spectral data (mirror Jonswap3dStokesWaves API)
     const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { 
         return spectrum_.frequencies(); 
