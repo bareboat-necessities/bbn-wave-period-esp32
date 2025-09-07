@@ -319,53 +319,56 @@ private:
         R_phase = std::clamp(std::sqrt(coh_r * coh_r + coh_i * coh_i), 0.0f, 1.0f);
     }
 
-    void computeRegularityOutput() {
-        // Spectral narrowness → R_spec
-        if (M1 > EPSILON && M0 > 0.0f && M2 > 0.0f) {
-            float ratio = (M0 * M2) / (M1 * M1) - 1.0f;
-            if (ratio < 0.0f) ratio = 0.0f;
-            nu = std::sqrt(ratio);
-            R_spec = std::clamp(std::exp(-nu), 0.0f, 1.0f);
-        } else {
-            nu = 0.0f;
-            R_spec = 0.0f;
-        }
-
-        R_safe = std::max(R_spec, R_phase);
-
-        // Use blended omega for displacement normalization here too
-        float omega_norm = 0.7f * omega_lp + 0.3f * omega_disp_lp;
-        omega_norm = std::max(omega_norm, omega_min);
-        float inv_w2 = 1.0f / std::max(omega_norm * omega_norm, EPSILON);
-
-        float disp_real = z_real * inv_w2;
-        float disp_imag = z_imag * inv_w2;
-        float P_disp = disp_real * disp_real + disp_imag * disp_imag;
-
-        // Tiny pre-LP for gating (about 2 s) to avoid flicker near thresholds
-        const float tau_gate = 2.0f;
-        const float alpha_gate = 1.0f - std::exp(-last_dt / std::max(1e-3f, tau_gate));
-        if (!has_gate) { P_disp_gate = P_disp; has_gate = true; }
-        else           { P_disp_gate = (1.0f - alpha_gate) * P_disp_gate + alpha_gate * P_disp; }
-
-                // Smooth ν-based adjustment instead of P_disp thresholds
-        // nu ≈ 0.0 (narrowband swell) → factor ≈ 1.0 (no change)
-        // nu ≈ 0.5+ (broadband stormy) → factor ≈ 0.9 (10% reduction)
-        const float nu_max  = 0.5f;   // treat this ν as "fully broadband"
-        const float k_broad = 0.10f;  // maximum reduction fraction
-        float broad_frac = std::clamp(nu / nu_max, 0.0f, 1.0f);
-        float adj_factor = 1.0f - k_broad * broad_frac;
-
-        float R_target = R_safe * adj_factor;
-
-        // Final output smoothing (unchanged)
-        if (!has_R_out) {
-            R_out = R_target;
-            has_R_out = true;
-        } else {
-            R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target;
-        }
+void computeRegularityOutput() {
+    // === 1) Spectral regularity from bandwidth ===
+    if (M1 > EPSILON && M0 > 0.0f && M2 > 0.0f) {
+        float ratio = (M0 * M2) / (M1 * M1) - 1.0f;
+        if (ratio < 0.0f) ratio = 0.0f;
+        nu = std::sqrt(ratio);
+        R_spec = std::clamp(std::exp(-nu), 0.0f, 1.0f);
+    } else {
+        nu = 0.0f;
+        R_spec = 0.0f;
     }
+
+    // === 2) Combine with phase coherence ===
+    R_safe = std::max(R_spec, R_phase);
+
+    // === 3) Gather extra stats ===
+    float Qp = getSpectralPeakedness();    // ≈1 for narrowband, larger if broadband
+    float circVar = getCircularVariance(); // 0 = coherent, 1 = uniform
+
+    // === 4) Smooth adjustments ===
+    // Baseline = R_safe
+    float R_target = R_safe;
+
+    // ν adjustment (reduce up to 10% if ν >= 0.5)
+    const float nu_max  = 0.5f;
+    const float k_nu    = 0.10f;
+    float adj_nu = 1.0f - k_nu * std::clamp(nu / nu_max, 0.0f, 1.0f);
+
+    // Qp adjustment (reduce up to 15% if Qp >= 2.0)
+    const float Qp_max  = 2.0f;
+    const float k_qp    = 0.15f;
+    float adj_qp = 1.0f / (1.0f + k_qp * std::max(0.0f, (Qp - 1.0f) / (Qp_max - 1.0f)));
+
+    // Circular variance adjustment (reduce up to 20% if V ~ 1)
+    const float k_var   = 0.20f;
+    float adj_var = 1.0f - k_var * circVar;
+
+    // Combine all adjustments multiplicatively
+    float adj_factor = adj_nu * adj_qp * adj_var;
+
+    R_target *= adj_factor;
+
+    // === 5) Final output smoothing ===
+    if (!has_R_out) {
+        R_out = R_target;
+        has_R_out = true;
+    } else {
+        R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target;
+    }
+}
 
     // Gentler mapping from R to height factor to avoid twitchiness
     static float heightFactorFromR(float R_val) {
