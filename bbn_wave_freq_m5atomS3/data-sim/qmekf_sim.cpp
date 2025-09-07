@@ -1,6 +1,7 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>   // for std::clamp
 
 #define EIGEN_NON_ARDUINO
 
@@ -33,6 +34,11 @@ static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float
     yaw = std::atan2(t3, t4) * 180.0f / M_PI;
 }
 
+// IMU frame → QMEKF frame (swap X<->Y, negate Z)
+static inline Vector3f imu_to_qmekf(const Vector3f& v) {
+    return Vector3f(v.y(), v.x(), -v.z());
+}
+
 struct OutputRow {
     double t{};
     // Reference Euler
@@ -59,31 +65,32 @@ void process_wave_file(const std::string &filename, float dt) {
 
     WaveDataCSVReader reader(filename);
 
-    // Kalman filter config
-    float sigma_a[3] = {0.05f, 0.05f, 0.05f};
-    float sigma_g[3] = {0.001f, 0.001f, 0.001f};
-    float sigma_m[3] = {0.1f, 0.1f, 0.1f};
+    // Kalman filter config (std devs — squared internally)
+    const Vector3f sigma_a(0.05f,  0.05f,  0.05f);
+    const Vector3f sigma_g(0.001f, 0.001f, 0.001f);
+    const Vector3f sigma_m(0.10f,  0.10f,  0.10f);
     QuaternionMEKF<float, true> mekf(sigma_a, sigma_g, sigma_m);
 
     bool first = true;
     std::vector<OutputRow> rows;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
+        // Build Eigen vectors from CSV
+        Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
+        Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
+
+        // Convert to QMEKF frame
+        Vector3f acc_f = imu_to_qmekf(acc_b);
+        Vector3f gyr_f = imu_to_qmekf(gyr_b);
+
         if (first) {
-            // Initialize from first accelerometer vector
-            mekf.initialize_from_acc(Vector3f(rec.imu.acc_bx,
-                                              rec.imu.acc_by,
-                                              rec.imu.acc_bz));
+            mekf.initialize_from_acc(acc_f);
             first = false;
         }
 
         // Time + measurement updates
-        mekf.time_update(Vector3f(rec.imu.gyro_x,
-                                  rec.imu.gyro_y,
-                                  rec.imu.gyro_z), dt);
-        mekf.measurement_update_acc_only(Vector3f(rec.imu.acc_bx,
-                                                  rec.imu.acc_by,
-                                                  rec.imu.acc_bz));
+        mekf.time_update(gyr_f, dt);
+        mekf.measurement_update_acc_only(acc_f);
 
         // Convert quaternion → Euler
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
@@ -129,7 +136,7 @@ void process_wave_file(const std::string &filename, float dt) {
 }
 
 int main() {
-    float dt = 1.0f / 240.0f; // your simulator rate
+    float dt = 1.0f / 240.0f; // simulator sample rate
     for (auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
         std::string fname = entry.path().string();
