@@ -403,30 +403,30 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
         );
     }
         
-    IMUReadings getIMUReadings(double x, double y, double t, double z = 0.0, double dt = 1e-3) const {
-        IMUReadings imu;
-    
-        // Lagrangian particle state at sensor depth
-        auto state = getLagrangianState(x, y, t, z);
-    
-        // Orientation at time t
-        Eigen::Matrix3d R1 = rotationMatrixAt(x, y, t);
-    
-        // Accelerometer: specific force in body frame
-        const Eigen::Vector3d g_world(0, 0, -g_);
-        imu.accel_body = R1 * (state.acceleration - g_world);
-    
-        // Predict advected position at t+dt for gyro
-        Eigen::Matrix3d R2 = rotationMatrixAt(x + state.velocity.x() * dt,
-                                              y + state.velocity.y() * dt,
-                                              t + dt);
-    
-        // Angular velocity from finite rotation
-        const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
-        const Eigen::AngleAxisd aa(Rdelta);
-        imu.gyro_body = (aa.axis() * aa.angle()) / dt;
-        return imu;
-    }
+IMUReadings getIMUReadings(double x, double y, double t,
+                           double z = 0.0, double dt = 1e-3) const {
+    IMUReadings imu;
+
+    // Lagrangian particle state at sensor depth
+    auto state = getLagrangianState(x, y, t, z);
+
+    // Orientation at time t
+    Eigen::Matrix3d R1 = rotationMatrixAt(x, y, t);
+
+    // Accelerometer: specific force in body frame
+    const Eigen::Vector3d g_world(0, 0, -g_);
+    imu.accel_body = R1 * (state.acceleration - g_world);
+
+    // Orientation at t + dt (same buoy reference point, no advection!)
+    Eigen::Matrix3d R2 = rotationMatrixAt(x, y, t + dt);
+
+    // Angular velocity from finite rotation
+    Eigen::Matrix3d Rdelta = R2 * R1.transpose();
+    Eigen::AngleAxisd aa(Rdelta);
+    imu.gyro_body = (aa.axis() * aa.angle()) / dt;
+
+    return imu;
+}
 
     // Directional Spectrum API
     // Compute directional spectrum at a given frequency f and angle θ
