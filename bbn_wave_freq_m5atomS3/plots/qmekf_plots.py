@@ -35,11 +35,13 @@ height_groups = {
     "medium": 1.50,
     "high":   8.50,
 }
-INCLUDED_HEIGHTS = set(height_groups.values())
 
-# === Regex to extract height from filename ===
+# === Allowed wave types ===
+ALLOWED_WAVES = {"jonswap", "pmstokes"}
+
+# === Regex to extract wave type and height from filename ===
 pattern = re.compile(
-    r".*?_H(?P<height>[-0-9\.]+).*?_kalman\.csv$"
+    r".*?_(?P<wave>[a-zA-Z0-9]+)_H(?P<height>[-0-9\.]+).*?_kalman\.csv$"
 )
 
 # === Find all *_kalman.csv files ===
@@ -48,13 +50,17 @@ if not files:
     print("No *_kalman.csv files found in", DATA_DIR)
     exit()
 
-pgf_files = []
-
 # === Process each file ===
 for fname in files:
-    m = pattern.match(os.path.basename(fname))
+    basename = os.path.basename(fname)
+    m = pattern.match(basename)
     if not m:
-        print(f"Skipping {fname} (could not extract height)")
+        print(f"Skipping {fname} (could not parse)")
+        continue
+
+    wave_type = m.group("wave").lower()
+    if wave_type not in ALLOWED_WAVES:
+        print(f"Skipping {fname} (wave={wave_type} not included)")
         continue
 
     try:
@@ -63,20 +69,22 @@ for fname in files:
         print(f"Skipping {fname} (invalid height)")
         continue
 
-    # Match height group
+    # Map height to group
     group_name = None
     for name, h in height_groups.items():
         if abs(height_val - h) < 1e-6:
             group_name = name
             break
-
     if group_name is None:
         print(f"Skipping {fname} (height {height_val} m not in groups)")
         continue
 
-    print(f"Plotting {fname} (height={height_val} m, group={group_name}) ...")
+    # Build output base name (strip details like L, A, P, N, B)
+    outbase = os.path.join(DATA_DIR, f"qmekf_{wave_type}_{group_name}")
 
-    # Limit to first MAX_ROWS rows (~60 s of data)
+    print(f"Plotting {fname} → {outbase} ...")
+
+    # Load limited rows
     df = pd.read_csv(fname, nrows=MAX_ROWS)
     time = df["time"]
 
@@ -88,7 +96,7 @@ for fname in files:
     ]
 
     fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
-    fig.suptitle(os.path.basename(fname))
+    fig.suptitle(basename)
 
     for ax, (ref_col, est_col, label) in zip(axes, angles):
         ax.plot(time, df[ref_col], label="Reference", linewidth=1.5)
@@ -98,19 +106,13 @@ for fname in files:
         ax.legend(loc="upper right")
 
     axes[-1].set_xlabel("Time (s)")
-
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-    # === Save to PGF and SVG ===
-    base = os.path.splitext(os.path.basename(fname))[0]
-    outbase = os.path.join(DATA_DIR, f"{base}_{group_name}")
-
+    # Save to PGF and SVG
     pgf_out = f"{outbase}.pgf"
     svg_out = f"{outbase}.svg"
-
     plt.savefig(pgf_out, format="pgf", bbox_inches="tight")
     plt.savefig(svg_out, format="svg", bbox_inches="tight")
     plt.close(fig)
 
-    pgf_files.append((base, pgf_out))
     print(f"Saved {pgf_out} and {svg_out}")
