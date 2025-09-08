@@ -92,24 +92,24 @@ static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_ob
 
     // Reference initial particle location (x0, z0 at the surface)
     float x0 = 0.0f;
-    float z0 = 0.0f;  // surface
+    float z0 = 0.0f;
 
-    // --- Lagrangian displacement ---
+    // Lagrangian absolute positions
     float x = wave_obj.horizontalPosition(x0, z0, static_cast<float>(t));
-    float z = wave_obj.verticalPosition(x0, z0, static_cast<float>(t));
+    float z = wave_obj.verticalPosition  (x0, z0, static_cast<float>(t));
 
-    // --- Lagrangian velocities ---
+    // Lagrangian velocities
     float u = wave_obj.horizontalVelocity(x0, z0, static_cast<float>(t));
-    float w = wave_obj.verticalVelocity(x0, z0, static_cast<float>(t));
+    float w = wave_obj.verticalVelocity  (x0, z0, static_cast<float>(t));
 
-    // --- Lagrangian accelerations ---
+    // Lagrangian accelerations
     float ax = wave_obj.horizontalAcceleration(x0, z0, static_cast<float>(t));
-    float az = wave_obj.verticalAcceleration(x0, z0, static_cast<float>(t));
+    float az = wave_obj.verticalAcceleration  (x0, z0, static_cast<float>(t));
 
-    // Fill into wave sample
-    out.wave.disp_x = x;     // horizontal displacement
-    out.wave.disp_y = 0.0f;  // Gerstner is 2D (x–z plane only)
-    out.wave.disp_z = z;
+    // Write **displacements** (relative to (x0,z0)), not absolute positions
+    out.wave.disp_x = x - x0;
+    out.wave.disp_y = 0.0f;   // 2D Gerstner
+    out.wave.disp_z = z - z0;
 
     out.wave.vel_x  = u;
     out.wave.vel_y  = 0.0f;
@@ -119,9 +119,7 @@ static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_ob
     out.wave.acc_y  = 0.0f;
     out.wave.acc_z  = az;
 
-    // No IMU model for pure Gerstner (keep zeroed)
     fill_default_imu(out.imu);
-
     return out;
 }
 
