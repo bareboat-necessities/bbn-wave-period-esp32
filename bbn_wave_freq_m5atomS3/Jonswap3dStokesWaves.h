@@ -418,7 +418,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
 
       Eigen::Vector3d g_world(0, 0, -g_);
-      imu.accel_body = R_WI * (state.acceleration - g_world);
+      imu.accel_body = R_WI * (- g_world);
 
       // gyro angular velocity
       // orientation at t and t+dt
