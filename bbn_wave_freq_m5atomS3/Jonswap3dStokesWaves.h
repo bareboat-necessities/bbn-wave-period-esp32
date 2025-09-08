@@ -388,24 +388,14 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     }
 
     Eigen::Vector3d getEulerAngles(double x, double y, double t) const {
-        // Use Lagrangian surface particle to get buoy position
-        auto st = getLagrangianState(x, y, t, 0.0);
-        const double px = x + st.displacement.x();
-        const double py = y + st.displacement.y();
-    
-        auto slopes = getSurfaceSlopes(px, py, t);
-        Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
-    
-        // ZYX (yaw-pitch-roll) → return roll,pitch,yaw (deg)
+        Eigen::Matrix3d R_WI = rotationMatrixAt(x, y, t);
+
+        // Convert rotation matrix → ZYX Euler (yaw→pitch→roll)
         double roll, pitch, yaw;
-        pitch = std::asin(-R_WI(2,0));
-        if (std::abs(std::cos(pitch)) > 1e-6) {
-            roll  = std::atan2(R_WI(2,1), R_WI(2,2));
-            yaw   = std::atan2(R_WI(1,0), R_WI(0,0));
-        } else {
-            roll = std::atan2(-R_WI(1,2), R_WI(1,1));
-            yaw  = 0.0;
-        }
+        pitch = std::atan2(-R_WI(2,0), std::sqrt(R_WI(0,0)*R_WI(0,0) + R_WI(1,0)*R_WI(1,0)));
+        roll  = std::atan2(R_WI(2,1), R_WI(2,2));
+        yaw   = std::atan2(R_WI(1,0), R_WI(0,0));
+
         return Eigen::Vector3d(
             roll  * 180.0 / M_PI,
             pitch * 180.0 / M_PI,
