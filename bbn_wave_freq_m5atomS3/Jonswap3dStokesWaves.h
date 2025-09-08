@@ -776,19 +776,12 @@ static void generateWaveJonswapCSV(const std::string& filename,
       gyro_body(j, i)  = imu.gyro_body(j);
     }
 
-    // get surface slopes
-    auto slopes = waveModel->getSurfaceSlopes(0.0, 0.0, t);
-    double slope_x = slopes.x(); // ∂η/∂x
-    double slope_y = slopes.y(); // ∂η/∂y
+    // Reference Euler from full orientation
+    Eigen::Vector3d euler = waveModel->getEulerAngles(0.0, 0.0, t);
 
-    // compute tilt angles (in degrees)
-    double roll  = std::atan2(slope_y, 1.0) * 180.0 / PI;   // rotation about x-axis
-    double pitch = std::atan2(-slope_x, 1.0) * 180.0 / PI;  // rotation about y-axis
-    double yaw   = 0.0; // constrained (IMU doesn’t spin with wave heading)
-
-    euler_deg(0, i) = roll;
-    euler_deg(1, i) = pitch;
-    euler_deg(2, i) = yaw;
+    euler_deg(0, i) = euler.x(); // roll (deg)
+    euler_deg(1, i) = euler.y(); // pitch (deg)
+    euler_deg(2, i) = euler.z(); // yaw (deg, usually near 0)
   }
 
   std::ofstream file(filename);
