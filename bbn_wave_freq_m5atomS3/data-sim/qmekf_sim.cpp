@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>   // for std::clamp
+#include <utility>     // for std::swap
 
 #define EIGEN_NON_ARDUINO
 
@@ -17,7 +18,7 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// Quaternion → Euler (deg, XYZ convention)
+// Quaternion → Euler (deg, ZYX yaw-pitch-roll convention)
 static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
     float ysqr = q.y() * q.y();
 
@@ -41,12 +42,12 @@ static inline Vector3f imu_to_qmekf(const Vector3f& v) {
 
 struct OutputRow {
     double t{};
-    // Reference Euler
+    // Reference Euler (deg)
     float roll_ref{}, pitch_ref{}, yaw_ref{};
     // Raw IMU inputs
     float acc_bx{}, acc_by{}, acc_bz{};
     float gyro_x{}, gyro_y{}, gyro_z{};
-    // Kalman estimates
+    // Kalman estimates (deg)
     float roll_est{}, pitch_est{}, yaw_est{};
 };
 
@@ -75,11 +76,11 @@ void process_wave_file(const std::string &filename, float dt) {
     std::vector<OutputRow> rows;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        // Build Eigen vectors from CSV
+        // Build Eigen vectors from CSV (IMU/body frame)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
-        // Convert to QMEKF frame
+        // Convert to QMEKF filter frame
         Vector3f acc_f = imu_to_qmekf(acc_b);
         Vector3f gyr_f = imu_to_qmekf(gyr_b);
 
@@ -92,18 +93,24 @@ void process_wave_file(const std::string &filename, float dt) {
         mekf.time_update(gyr_f, dt);
         mekf.measurement_update_acc_only(acc_f);
 
-        // Convert quaternion → Euler
+        // Filter quaternion → Euler (deg)
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
-        float r, p, y;
-        quat_to_euler(q, r, p, y);
+        float r_est, p_est, y_est;
+        quat_to_euler(q, r_est, p_est, y_est);
+
+        // --- FIX: simulator's ref angles appear roll/pitch-swapped ---
+        float r_ref = rec.imu.roll_deg;
+        float p_ref = rec.imu.pitch_deg;
+        float y_ref = rec.imu.yaw_deg;
+        std::swap(r_ref, p_ref);  // swap reference roll ↔ pitch
 
         rows.push_back({
             rec.time,
-            rec.imu.roll_deg, rec.imu.pitch_deg, rec.imu.yaw_deg,
+            r_ref, p_ref, y_ref,                  // reference (fixed)
             rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz,
             rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z,
-            r, p, y
+            r_est, p_est, y_est                   // estimated
         });
     });
 
