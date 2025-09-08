@@ -764,20 +764,25 @@ static void generateWaveJonswapCSV(const std::string& filename,
                                    double Hs, double Tp, double mean_dir_deg,
                                    double duration = 40.0, double dt = 0.005) {
   constexpr int N = 128;
-  auto dist = std::make_shared<Cosine2sRandomizedDistribution>(mean_dir_deg * PI / 180.0, 10.0, 42u);
-  auto waveModel = std::make_unique<Jonswap3dStokesWaves<N>>(Hs, Tp, dist, 0.02, 0.8, 3.3, g_std, 42u);
+  auto dist = std::make_shared<Cosine2sRandomizedDistribution>(
+                  mean_dir_deg * PI / 180.0, 10.0, 42u);
+  auto waveModel = std::make_unique<Jonswap3dStokesWaves<N>>(
+                      Hs, Tp, dist, 0.02, 0.8, 3.3, g_std, 42u);
+
   const int N_time = static_cast<int>(duration / dt) + 1;
   Eigen::ArrayXd time = Eigen::ArrayXd::LinSpaced(N_time, 0.0, duration);
 
   Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
-
   Eigen::ArrayXXd accel_body(3, N_time), gyro_body(3, N_time);
-  Eigen::ArrayXXd euler_deg(3, N_time); // roll, pitch, yaw (yaw constrained = 0)
+  Eigen::ArrayXXd euler_deg(3, N_time); // roll, pitch, yaw
 
   for (int i = 0; i < N_time; ++i) {
     double t = time(i);
-    auto state  = waveModel->getLagrangianState(0.0, 0.0, t, 0.0);
-    auto imu = waveModel->getIMUReadings(0.0, 0.0, t);
+
+    auto state = waveModel->getLagrangianState(0.0, 0.0, t, 0.0);
+
+    // use SAME dt as CSV output
+    auto imu = waveModel->getIMUReadings(0.0, 0.0, t, 0.0, dt);
 
     for (int j = 0; j < 3; ++j) {
       disp(j, i) = state.displacement(j);
@@ -790,9 +795,10 @@ static void generateWaveJonswapCSV(const std::string& filename,
     // Reference Euler from full orientation
     Eigen::Vector3d euler = waveModel->getEulerAngles(0.0, 0.0, t);
 
-    euler_deg(0, i) = euler.x(); // roll (deg)
-    euler_deg(1, i) = euler.y(); // pitch (deg)
-    euler_deg(2, i) = euler.z(); // yaw (deg, usually near 0)
+    // zero yaw: project orientation into roll/pitch only
+    euler_deg(0, i) = euler.x(); // roll
+    euler_deg(1, i) = euler.y(); // pitch
+    euler_deg(2, i) = 0.0;       // yaw forced to 0
   }
 
   std::ofstream file(filename);
