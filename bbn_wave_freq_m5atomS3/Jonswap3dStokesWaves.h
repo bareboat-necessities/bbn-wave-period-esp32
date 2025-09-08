@@ -387,65 +387,65 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       return R_WI;
     }
 
-Eigen::Vector3d getEulerAngles(double x, double y, double t) const {
-    // Use Lagrangian surface particle to get buoy position
-    auto st = getLagrangianState(x, y, t, 0.0);
-    const double px = x + st.displacement.x();
-    const double py = y + st.displacement.y();
-
-    auto slopes = getSurfaceSlopes(px, py, t);
-    Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
-
-    // ZYX (yaw-pitch-roll) → return roll,pitch,yaw (deg)
-    double roll, pitch, yaw;
-    pitch = std::asin(-R_WI(2,0));
-    if (std::abs(std::cos(pitch)) > 1e-6) {
-        roll  = std::atan2(R_WI(2,1), R_WI(2,2));
-        yaw   = std::atan2(R_WI(1,0), R_WI(0,0));
-    } else {
-        roll = std::atan2(-R_WI(1,2), R_WI(1,1));
-        yaw  = 0.0;
-    }
-    return Eigen::Vector3d(
-        roll  * 180.0 / M_PI,
-        pitch * 180.0 / M_PI,
-        yaw   * 180.0 / M_PI
-    );
-}
+    Eigen::Vector3d getEulerAngles(double x, double y, double t) const {
+        // Use Lagrangian surface particle to get buoy position
+        auto st = getLagrangianState(x, y, t, 0.0);
+        const double px = x + st.displacement.x();
+        const double py = y + st.displacement.y();
     
-IMUReadings getIMUReadings(double x, double y, double t, double z = 0.0, double dt = 1e-3) const {
-  IMUReadings imu;
-
-  // Lagrangian particle state at sensor depth
-  auto state = getLagrangianState(x, y, t, z);
-
-  // Advected surface position where the buoy sits
-  const double px = x + state.displacement.x();
-  const double py = y + state.displacement.y();
-
-  // Orientation from slopes at the *advected* location
-  const auto slopes = getSurfaceSlopes(px, py, t);
-  const Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
-
-  // Accelerometer: specific force in body frame
-  const Eigen::Vector3d g_world(0, 0, -g_);
-  imu.accel_body = R1 * (state.acceleration - g_world);
-
-  // Predict advected position at t+dt for gyro
-  const double px_next = px + state.velocity.x() * dt;
-  const double py_next = py + state.velocity.y() * dt;
-
-  // Orientation at t+dt from slopes at advected-next location
-  const auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
-  const Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
-
-  // Angular velocity via finite-rotation (AngleAxis) between frames
-  const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
-  const Eigen::AngleAxisd aa(Rdelta);
-  imu.gyro_body = (aa.axis() * aa.angle()) / dt;
-
-  return imu;
-}
+        auto slopes = getSurfaceSlopes(px, py, t);
+        Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
+    
+        // ZYX (yaw-pitch-roll) → return roll,pitch,yaw (deg)
+        double roll, pitch, yaw;
+        pitch = std::asin(-R_WI(2,0));
+        if (std::abs(std::cos(pitch)) > 1e-6) {
+            roll  = std::atan2(R_WI(2,1), R_WI(2,2));
+            yaw   = std::atan2(R_WI(1,0), R_WI(0,0));
+        } else {
+            roll = std::atan2(-R_WI(1,2), R_WI(1,1));
+            yaw  = 0.0;
+        }
+        return Eigen::Vector3d(
+            roll  * 180.0 / M_PI,
+            pitch * 180.0 / M_PI,
+            yaw   * 180.0 / M_PI
+        );
+    }
+        
+    IMUReadings getIMUReadings(double x, double y, double t, double z = 0.0, double dt = 1e-3) const {
+      IMUReadings imu;
+    
+      // Lagrangian particle state at sensor depth
+      auto state = getLagrangianState(x, y, t, z);
+    
+      // Advected surface position where the buoy sits
+      const double px = x + state.displacement.x();
+      const double py = y + state.displacement.y();
+    
+      // Orientation from slopes at the *advected* location
+      const auto slopes = getSurfaceSlopes(px, py, t);
+      const Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
+    
+      // Accelerometer: specific force in body frame
+      const Eigen::Vector3d g_world(0, 0, -g_);
+      imu.accel_body = R1 * (state.acceleration - g_world);
+    
+      // Predict advected position at t+dt for gyro
+      const double px_next = px + state.velocity.x() * dt;
+      const double py_next = py + state.velocity.y() * dt;
+    
+      // Orientation at t+dt from slopes at advected-next location
+      const auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
+      const Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
+    
+      // Angular velocity via finite-rotation (AngleAxis) between frames
+      const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
+      const Eigen::AngleAxisd aa(Rdelta);
+      imu.gyro_body = (aa.axis() * aa.angle()) / dt;
+    
+      return imu;
+    }
 
     // Directional Spectrum API
     // Compute directional spectrum at a given frequency f and angle θ
