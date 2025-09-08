@@ -17,21 +17,20 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// Quaternion → Euler (deg, ZYX yaw-pitch-roll convention (airspace to nautical))
+// Quaternion → Euler (deg), ZYX convention with Z-up (nautical frame)
 static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
-    float ysqr = q.y() * q.y();
+    // Rotation matrix from quaternion
+    Eigen::Matrix3f R = q.toRotationMatrix();
 
-    float t0 = +2.0f * (q.w()*q.x() + q.y()*q.z());
-    float t1 = +1.0f - 2.0f * (q.x()*q.x() + ysqr);
-    roll = std::atan2(t0, t1) * 180.0f / M_PI;
+    // Match simulator’s extraction (same as getEulerAngles)
+    pitch = std::atan2(-R(2,0), std::sqrt(R(0,0)*R(0,0) + R(1,0)*R(1,0)));
+    roll  = std::atan2(R(2,1), R(2,2));
+    yaw   = std::atan2(R(1,0), R(0,0));
 
-    float t2 = +2.0f * (q.w()*q.y() - q.z()*q.x());
-    t2 = std::clamp(t2, -1.0f, 1.0f);
-    pitch = std::asin(t2) * 180.0f / M_PI;
-
-    float t3 = +2.0f * (q.w()*q.z() + q.x()*q.y());
-    float t4 = +1.0f - 2.0f * (ysqr + q.z()*q.z());
-    yaw = std::atan2(t3, t4) * 180.0f / M_PI;
+    // Convert to degrees
+    roll  *= 180.0f / M_PI;
+    pitch *= 180.0f / M_PI;
+    yaw   *= 180.0f / M_PI;
 }
 
 // IMU frame → QMEKF frame
@@ -153,3 +152,4 @@ int main() {
     }
     return 0;
 }
+
