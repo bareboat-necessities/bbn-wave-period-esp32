@@ -4,18 +4,24 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Directory to search (current dir by default)
-DATA_DIR = "./"
+# === Config ===
+DATA_DIR = "./"            # Directory with *_kalman.csv files
+SAMPLE_RATE_HZ = 240       # Simulator sample rate
+MAX_TIME_S = 60.0          # Limit to first 60 seconds
+MAX_ROWS = int(SAMPLE_RATE_HZ * MAX_TIME_S)
 
-# Find all *_kalman.csv files
+# === Find all *_kalman.csv files ===
 files = glob.glob(os.path.join(DATA_DIR, "*_kalman.csv"))
 if not files:
     print("No *_kalman.csv files found in", DATA_DIR)
     exit()
 
+# === Process each file ===
 for fname in files:
     print(f"Plotting {fname} ...")
-    df = pd.read_csv(fname)
+
+    # Limit to first MAX_ROWS rows (~60 s of data)
+    df = pd.read_csv(fname, nrows=MAX_ROWS)
 
     time = df["time"]
 
