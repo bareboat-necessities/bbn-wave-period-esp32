@@ -284,64 +284,42 @@
 
 % === Kalman Filter Euler Angle Comparisons ===
 
+% PM Stokes
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_jonswap_H0.270_L14.047_A30.00_P60.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — JONSWAP, $H_s = 0.270$ m, $L = 14.047$ m, $A = 30.00^\circ$, $P = 60.00^\circ$.}
-  \label{fig:kalman_jonswap_H0_270_L14_047_A30_00_P60_00}
+  \resizebox{\textwidth}{!}{\input{qmekf_pmstokes_low.pgf}}
+  \caption{Kalman filter Euler angle comparison — PM Stokes, low $H_s$.}
+  \label{fig:qmekf_pmstokes_low}
 \end{figure}
 
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_jonswap_H8.500_L202.839_A30.00_P72.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — JONSWAP, $H_s = 8.500$ m, $L = 202.839$ m, $A = 30.00^\circ$, $P = 72.00^\circ$.}
-  \label{fig:kalman_jonswap_H8_500_L202_839_A30_00_P72_00}
+  \resizebox{\textwidth}{!}{\input{qmekf_pmstokes_medium.pgf}}
+  \caption{Kalman filter Euler angle comparison — PM Stokes, medium $H_s$.}
+  \label{fig:qmekf_pmstokes_medium}
 \end{figure}
 
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_pmstokes_H4.000_L112.766_A30.00_P30.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — PM Stokes, $H_s = 4.000$ m, $L = 112.766$ m, $A = 30.00^\circ$, $P = 30.00^\circ$.}
-  \label{fig:kalman_pmstokes_H4_000_L112_766_A30_00_P30_00}
+  \resizebox{\textwidth}{!}{\input{qmekf_pmstokes_high.pgf}}
+  \caption{Kalman filter Euler angle comparison — PM Stokes, high $H_s$.}
+  \label{fig:qmekf_pmstokes_high}
+\end{figure}
+
+% JONSWAP
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{qmekf_jonswap_low.pgf}}
+  \caption{Kalman filter Euler angle comparison — JONSWAP, low $H_s$.}
+  \label{fig:qmekf_jonswap_low}
 \end{figure}
 
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_pmstokes_H1.500_L50.710_A30.00_P120.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — PM Stokes, $H_s = 1.500$ m, $L = 50.710$ m, $A = 30.00^\circ$, $P = 120.00^\circ$.}
-  \label{fig:kalman_pmstokes_H1_500_L50_710_A30_00_P120_00}
+  \resizebox{\textwidth}{!}{\input{qmekf_jonswap_medium.pgf}}
+  \caption{Kalman filter Euler angle comparison — JONSWAP, medium $H_s$.}
+  \label{fig:qmekf_jonswap_medium}
 \end{figure}
 
 \begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_pmstokes_H0.270_L14.047_A30.00_P60.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — PM Stokes, $H_s = 0.270$ m, $L = 14.047$ m, $A = 30.00^\circ$, $P = 60.00^\circ$.}
-  \label{fig:kalman_pmstokes_H0_270_L14_047_A30_00_P60_00}
-\end{figure}
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_jonswap_H14.800_L319.163_A30.00_P36.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — JONSWAP, $H_s = 14.800$ m, $L = 319.163$ m, $A = 30.00^\circ$, $P = 36.00^\circ$.}
-  \label{fig:kalman_jonswap_H14_800_L319_163_A30_00_P36_00}
-\end{figure}
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_pmstokes_H8.500_L202.839_A30.00_P72.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — PM Stokes, $H_s = 8.500$ m, $L = 202.839$ m, $A = 30.00^\circ$, $P = 72.00^\circ$.}
-  \label{fig:kalman_pmstokes_H8_500_L202_839_A30_00_P72_00}
-\end{figure}
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_jonswap_H1.500_L50.710_A30.00_P120.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — JONSWAP, $H_s = 1.500$ m, $L = 50.710$ m, $A = 30.00^\circ$, $P = 120.00^\circ$.}
-  \label{fig:kalman_jonswap_H1_500_L50_710_A30_00_P120_00}
-\end{figure}
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_jonswap_H4.000_L112.766_A30.00_P30.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — JONSWAP, $H_s = 4.000$ m, $L = 112.766$ m, $A = 30.00^\circ$, $P = 30.00^\circ$.}
-  \label{fig:kalman_jonswap_H4_000_L112_766_A30_00_P30_00}
-\end{figure}
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{./{wave_data_pmstokes_H14.800_L319.163_A30.00_P36.00_kalman.pgf}}}
-  \caption{Kalman filter Euler angle comparison — PM Stokes, $H_s = 14.800$ m, $L = 319.163$ m, $A = 30.00^\circ$, $P = 36.00^\circ$.}
-  \label{fig:kalman_pmstokes_H14_800_L319_163_A30_00_P36_00}
+  \resizebox{\textwidth}{!}{\input{qmekf_jonswap_high.pgf}}
+  \caption{Kalman filter Euler angle comparison — JONSWAP, high $H_s$.}
+  \label{fig:qmekf_jonswap_high}
 \end{figure}
 
 \end{document}
