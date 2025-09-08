@@ -745,6 +745,20 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
       const double max_steep = (k_.array() * spectrum_.amplitudes().array()).maxCoeff();
       if (max_steep > 0.4) throw std::runtime_error("Jonswap3dStokesWaves: wave too steep (>0.4), unstable");
     }
+
+    // Compute rigid-body orientation of buoy at advected surface position
+    Eigen::Matrix3d rotationMatrixAt(double x, double y, double t) const {
+        // Advected buoy displacement
+        auto st = getLagrangianState(x, y, t, 0.0);
+        const double px = x + st.displacement.x();
+        const double py = y + st.displacement.y();
+
+        // Local slopes
+        auto slopes = getSurfaceSlopes(px, py, t);
+
+        // Rigid-body orientation from slopes (world -> IMU)
+        return orientationFromSlopes(slopes);
+    }
 };
 
 #ifdef JONSWAP_TEST
