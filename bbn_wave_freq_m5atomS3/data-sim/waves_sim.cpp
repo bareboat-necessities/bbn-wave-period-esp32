@@ -133,10 +133,6 @@ static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &mo
     fill_imu_sample_from_readings(out.imu, imu);
 
     // Reference Euler at *advected* buoy position
-    auto imu = model.getIMUReadings(0.0, 0.0, t);
-    fill_imu_sample_from_readings(out.imu, imu);
-
-    // Reference Euler at *advected* buoy position
     // Replace slope-based roll/pitch/yaw with:
     Eigen::Vector3d euler = model.getEulerAngles(0.0, 0.0, t);
 
