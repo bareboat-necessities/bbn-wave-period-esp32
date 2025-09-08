@@ -403,39 +403,31 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
         );
     }
         
-    IMUReadings getIMUReadings(double x, double y, double t, double z = 0.0, double dt = 1e-3) const {
-      IMUReadings imu;
-    
-      // Lagrangian particle state at sensor depth
-      auto state = getLagrangianState(x, y, t, z);
-    
-      // Advected surface position where the buoy sits
-      const double px = x + state.displacement.x();
-      const double py = y + state.displacement.y();
-    
-      // Orientation from slopes at the *advected* location
-      const auto slopes = getSurfaceSlopes(px, py, t);
-      const Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
-    
-      // Accelerometer: specific force in body frame
-      const Eigen::Vector3d g_world(0, 0, -g_);
-      imu.accel_body = R1 * (state.acceleration - g_world);
-    
-      // Predict advected position at t+dt for gyro
-      const double px_next = px + state.velocity.x() * dt;
-      const double py_next = py + state.velocity.y() * dt;
-    
-      // Orientation at t+dt from slopes at advected-next location
-      const auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
-      const Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
-    
-      // Angular velocity via finite-rotation (AngleAxis) between frames
-      const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
-      const Eigen::AngleAxisd aa(Rdelta);
-      imu.gyro_body = (aa.axis() * aa.angle()) / dt;
-    
-      return imu;
-    }
+IMUReadings getIMUReadings(double x, double y, double t, double z = 0.0, double dt = 1e-3) const {
+    IMUReadings imu;
+
+    // Lagrangian particle state at sensor depth
+    auto state = getLagrangianState(x, y, t, z);
+
+    // Orientation at time t
+    Eigen::Matrix3d R1 = rotationMatrixAt(x, y, t);
+
+    // Accelerometer: specific force in body frame
+    const Eigen::Vector3d g_world(0, 0, -g_);
+    imu.accel_body = R1 * (state.acceleration - g_world);
+
+    // Predict advected position at t+dt for gyro
+    Eigen::Matrix3d R2 = rotationMatrixAt(x + state.velocity.x() * dt,
+                                          y + state.velocity.y() * dt,
+                                          t + dt);
+
+    // Angular velocity from finite rotation
+    const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
+    const Eigen::AngleAxisd aa(Rdelta);
+    imu.gyro_body = (aa.axis() * aa.angle()) / dt;
+
+    return imu;
+}
 
     // Directional Spectrum API
     // Compute directional spectrum at a given frequency f and angle θ
