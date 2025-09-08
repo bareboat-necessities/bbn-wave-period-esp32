@@ -2,7 +2,25 @@
 import glob
 import os
 import pandas as pd
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+
+# === Matplotlib PGF/LaTeX config ===
+mpl.use("pgf")
+plt.rcParams.update({
+    "pgf.texsystem": "xelatex",
+    "font.family": "serif",
+    "text.usetex": True,
+    "pgf.rcfonts": False,
+    "pgf.preamble": "\n".join([
+        r"\usepackage{fontspec}",
+        r"\usepackage{unicode-math}",
+        r"\usepackage{amsmath}",
+        r"\setmainfont{DejaVu Serif}",
+        r"\setmathfont{Latin Modern Math}",
+        r"\providecommand{\mathdefault}[1]{#1}"
+    ])
+})
 
 # === Config ===
 DATA_DIR = "./"            # Directory with *_kalman.csv files
@@ -45,4 +63,16 @@ for fname in files:
     axes[-1].set_xlabel("Time (s)")
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.show()
+
+    # === Save to PGF and SVG ===
+    base = os.path.splitext(os.path.basename(fname))[0]
+    outbase = os.path.join(DATA_DIR, base)
+
+    pgf_out = f"{outbase}.pgf"
+    svg_out = f"{outbase}.svg"
+
+    plt.savefig(pgf_out, format="pgf")
+    plt.savefig(svg_out, format="svg")
+    plt.close(fig)
+
+    print(f"Saved {pgf_out} and {svg_out}")
