@@ -110,18 +110,12 @@ static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model)
     fill_imu_sample_from_readings(out.imu, imu);
 
     // Reference Euler at *advected* buoy position
-    const double px = state.displacement.x();
-    const double py = state.displacement.y();
+    // Replace slope-based roll/pitch/yaw with:
+    Eigen::Vector3d euler = model.getEulerAngles(0.0, 0.0, t);
 
-    auto slopes = model.getSurfaceSlopes(px, py, t);
-    const double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;
-    const double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;
-    const double yaw   = 0.0;
-
-    out.imu.roll_deg  = static_cast<float>(roll);
-    out.imu.pitch_deg = static_cast<float>(pitch);
-    out.imu.yaw_deg   = static_cast<float>(yaw);
-
+    out.imu.roll_deg  = static_cast<float>(euler.x());
+    out.imu.pitch_deg = static_cast<float>(euler.y());
+    out.imu.yaw_deg   = static_cast<float>(euler.z());
     return out;
 }
 
@@ -139,17 +133,16 @@ static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &mo
     fill_imu_sample_from_readings(out.imu, imu);
 
     // Reference Euler at *advected* buoy position
-    const double px = state.displacement.x();
-    const double py = state.displacement.y();
+    auto imu = model.getIMUReadings(0.0, 0.0, t);
+    fill_imu_sample_from_readings(out.imu, imu);
 
-    auto slopes = model.getSurfaceSlopes(px, py, t);
-    const double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;
-    const double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;
-    const double yaw   = 0.0;
+    // Reference Euler at *advected* buoy position
+    // Replace slope-based roll/pitch/yaw with:
+    Eigen::Vector3d euler = model.getEulerAngles(0.0, 0.0, t);
 
-    out.imu.roll_deg  = static_cast<float>(roll);
-    out.imu.pitch_deg = static_cast<float>(pitch);
-    out.imu.yaw_deg   = static_cast<float>(yaw);
+    out.imu.roll_deg  = static_cast<float>(euler.x());
+    out.imu.pitch_deg = static_cast<float>(euler.y());
+    out.imu.yaw_deg   = static_cast<float>(euler.z());
 
     return out;
 }
