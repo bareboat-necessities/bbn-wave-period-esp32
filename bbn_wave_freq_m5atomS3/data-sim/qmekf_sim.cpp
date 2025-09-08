@@ -2,7 +2,6 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>   // for std::clamp
-#include <utility>     // for std::swap
 
 #define EIGEN_NON_ARDUINO
 
@@ -35,9 +34,11 @@ static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float
     yaw = std::atan2(t3, t4) * 180.0f / M_PI;
 }
 
-// IMU frame → QMEKF frame (swap X<->Y, negate Z)
+// IMU frame → QMEKF frame
+// Fix: only flip Z (up→down) to match the filter's gravity convention.
+// (Do NOT swap X/Y — that was causing roll/pitch sign inversions.)
 static inline Vector3f imu_to_qmekf(const Vector3f& v) {
-    return Vector3f(v.y(), v.x(), -v.z());
+    return Vector3f(v.x(), v.y(), -v.z());
 }
 
 struct OutputRow {
@@ -80,7 +81,7 @@ void process_wave_file(const std::string &filename, float dt) {
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
-        // Convert to QMEKF filter frame
+        // Convert to QMEKF filter frame (flip Z only)
         Vector3f acc_f = imu_to_qmekf(acc_b);
         Vector3f gyr_f = imu_to_qmekf(gyr_b);
 
@@ -99,15 +100,14 @@ void process_wave_file(const std::string &filename, float dt) {
         float r_est, p_est, y_est;
         quat_to_euler(q, r_est, p_est, y_est);
 
-        // --- FIX: simulator's ref angles appear roll/pitch-swapped ---
+        // Reference angles from simulator (already in deg, correct ordering)
         float r_ref = rec.imu.roll_deg;
         float p_ref = rec.imu.pitch_deg;
         float y_ref = rec.imu.yaw_deg;
-        std::swap(r_ref, p_ref);  // swap reference roll ↔ pitch
 
         rows.push_back({
             rec.time,
-            r_ref, p_ref, y_ref,                  // reference (fixed)
+            r_ref, p_ref, y_ref,                  // reference
             rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz,
             rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z,
             r_est, p_est, y_est                   // estimated
