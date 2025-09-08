@@ -407,38 +407,43 @@ IMUReadings getIMUReadings(double x, double y, double t,
                            double z = 0.0, double dt = 1e-3) const {
     IMUReadings imu;
 
-    // Lagrangian particle state at sensor depth
-    auto state = getLagrangianState(x, y, t, z);
+    // 1) Lagrangian particle state at sensor depth
+    const auto state = getLagrangianState(x, y, t, z);
 
-    // Orientation at time t
-    Eigen::Matrix3d R1 = rotationMatrixAt(x, y, t);
+    // 2) Orientation at time t
+    const Eigen::Matrix3d R1 = rotationMatrixAt(x, y, t);
 
-    // Accelerometer: specific force in body frame
-    const Eigen::Vector3d g_world(0, 0, -g_);
+    // 3) Accelerometer: specific force in body frame  f_b = R_WI * (a_W - g_W)
+    const Eigen::Vector3d g_world(0.0, 0.0, -g_);
     imu.accel_body = R1 * (state.acceleration - g_world);
 
-    // Orientation at t + dt (same buoy reference point, no advection!)
-    Eigen::Matrix3d R2 = rotationMatrixAt(x, y, t + dt);
+    // 4) Orientation at t + dt (same buoy reference point, no advection)
+    const Eigen::Matrix3d R2 = rotationMatrixAt(x, y, t + dt);
 
-    // Relative rotation
-    Eigen::Matrix3d R_rel = R1.transpose() * R2;
-    Eigen::Matrix3d logR = (R_rel - R_rel.transpose()) * 0.5;
+    // 5) Relative rotation over the sample (expressed in body frame at t)
+    const Eigen::Matrix3d R_rel = R1.transpose() * R2;
 
-    // Extract so(3) log vector
-    Eigen::Vector3d omega_vec(
-        logR(2,1),  // (3,2)
-        logR(0,2),  // (1,3)
-        logR(1,0)   // (2,1)
+    // 6) Matrix–log mapping to angular velocity:
+    //    v = vee(R_rel - R_rel^T) = 2 sin(theta) * u
+    //    theta = acos((trace(R_rel) - 1)/2),  omega = (theta/(2 sin theta)) * v / dt
+    Eigen::Vector3d v(
+        R_rel(2,1) - R_rel(1,2),
+        R_rel(0,2) - R_rel(2,0),
+        R_rel(1,0) - R_rel(0,1)
     );
 
-    double cos_theta = (R_rel.trace() - 1.0) * 0.5;
-    cos_theta = std::clamp(cos_theta, -1.0, 1.0);
-    double theta = std::acos(cos_theta);
+    double c = (R_rel.trace() - 1.0) * 0.5;               // cos(theta)
+    if (c > 1.0) c = 1.0;
+    else if (c < -1.0) c = -1.0;
 
-    if (theta < 1e-12) {
-        imu.gyro_body.setZero();
+    const double theta = std::acos(c);
+    const double s = std::sqrt(std::max(0.0, 1.0 - c * c)); // |sin(theta)|
+
+    if (theta < 1e-12 || s < 1e-12) {
+        // Small-angle limit: R_rel - R_rel^T ≈ 2 theta [u]_x  ⇒ v ≈ 2 theta u
+        imu.gyro_body = v / (2.0 * dt);
     } else {
-        imu.gyro_body = (theta / (2.0 * std::sin(theta))) * omega_vec / dt;
+        imu.gyro_body = (theta / (2.0 * s)) * v / dt;
     }
 
     return imu;
