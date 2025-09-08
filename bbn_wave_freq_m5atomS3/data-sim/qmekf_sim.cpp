@@ -84,17 +84,14 @@ void process_wave_file(const std::string &filename, float dt) {
         Vector3f acc_f = imu_to_qmekf(acc_b);
         Vector3f gyr_f = imu_to_qmekf(gyr_b);
 
-        // Normalize accelerometer vector (gravity direction only)
-        Vector3f acc_n = acc_f.normalized();
-
         if (first) {
-            mekf.initialize_from_acc(acc_n);
+            mekf.initialize_from_acc(acc_f);
             first = false;
         }
 
         // Time + measurement updates
         mekf.time_update(gyr_f, dt);
-        mekf.measurement_update_acc_only(acc_n);
+        mekf.measurement_update_acc_only(acc_f);
 
         // Filter quaternion → Euler (deg)
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
