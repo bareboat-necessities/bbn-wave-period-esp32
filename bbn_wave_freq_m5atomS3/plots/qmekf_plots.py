@@ -73,8 +73,8 @@ for fname in files:
     pgf_out = f"{outbase}.pgf"
     svg_out = f"{outbase}.svg"
 
-    plt.savefig(pgf_out, format="pgf")
-    plt.savefig(svg_out, format="svg")
+    plt.savefig(pgf_out, format="pgf", bbox_inches="tight")
+    plt.savefig(svg_out, format="svg", bbox_inches="tight")
     plt.close(fig)
 
     pgf_files.append((base, pgf_out))
