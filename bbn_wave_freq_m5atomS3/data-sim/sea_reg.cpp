@@ -32,10 +32,11 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 #include "SeaStateRegularity.h"
 
 // Config
-static constexpr float SAMPLE_RATE_HZ = 240.0f;
-static constexpr float DELTA_T        = 1.0f / SAMPLE_RATE_HZ;
-static constexpr float NOISE_STDDEV   = 0.08f;
-static constexpr float BIAS_MEAN      = 0.10f;
+static constexpr float SAMPLE_RATE_HZ   = 240.0f;
+static constexpr float DELTA_T          = 1.0f / SAMPLE_RATE_HZ;
+static constexpr float NOISE_STDDEV     = 0.08f;
+static constexpr float BIAS_MEAN        = 0.10f;
+static constexpr float WARMUP_SECONDS   = 30.0f; // Warmup duration
 
 // Trackers
 AranovskiyFilter<double> arFilter;
@@ -170,15 +171,19 @@ static void run_from_csv(TrackerType tracker,
         float a_norm = noisy_accel / g_std;
 
         double freq = run_tracker_once(tracker, a_norm, DELTA_T);
+
+        // Always run tracker, but only update regFilter after warmup
         if (std::isfinite(freq)) {
-            regFilter.update(DELTA_T, noisy_accel,
-                             static_cast<float>(2.0 * M_PI * freq));
-            ofs << rec.time << ","
-                << (2.0 * M_PI * freq) << ","
-                << regFilter.getNarrowness() << ","
-                << regFilter.getRegularity() << ","
-                << regFilter.getWaveHeightEnvelopeEst() << ","
-                << regFilter.getDisplacementFrequencyHz() << "\n";
+            if (rec.time >= WARMUP_SECONDS) {
+                regFilter.update(DELTA_T, noisy_accel,
+                                 static_cast<float>(2.0 * M_PI * freq));
+                ofs << rec.time << ","
+                    << (2.0 * M_PI * freq) << ","
+                    << regFilter.getNarrowness() << ","
+                    << regFilter.getRegularity() << ","
+                    << regFilter.getWaveHeightEnvelopeEst() << ","
+                    << regFilter.getDisplacementFrequencyHz() << "\n";
+            }
         }
 
         sim_t = rec.time;
