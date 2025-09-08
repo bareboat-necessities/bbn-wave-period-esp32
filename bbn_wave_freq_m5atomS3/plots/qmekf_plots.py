@@ -50,6 +50,8 @@ if not files:
     print("No *_kalman.csv files found in", DATA_DIR)
     exit()
 
+generated = []  # store (wave_type, group_name, pgf_filename)
+
 # === Process each file ===
 for fname in files:
     basename = os.path.basename(fname)
@@ -79,8 +81,10 @@ for fname in files:
         print(f"Skipping {fname} (height {height_val} m not in groups)")
         continue
 
-    # Build output base name (strip details like L, A, P, N, B)
-    outbase = os.path.join(DATA_DIR, f"qmekf_{wave_type}_{group_name}")
+    # Build output base name (safe for LaTeX)
+    outbase = f"qmekf_{wave_type}_{group_name}"
+    outbase = re.sub(r"[^A-Za-z0-9_\-]", "_", outbase)
+    outbase = os.path.join(DATA_DIR, outbase)
 
     print(f"Plotting {fname} → {outbase} ...")
 
@@ -116,3 +120,4 @@ for fname in files:
     plt.close(fig)
 
     print(f"Saved {pgf_out} and {svg_out}")
+    generated.append((wave_type, group_name, os.path.basename(pgf_out)))
