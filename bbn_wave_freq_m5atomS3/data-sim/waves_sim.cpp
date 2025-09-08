@@ -109,13 +109,15 @@ static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model)
     auto imu = model.getIMUReadings(0.0, 0.0, t);
     fill_imu_sample_from_readings(out.imu, imu);
 
-    // Reference Euler at *advected* buoy position
-    // Replace slope-based roll/pitch/yaw with:
-    Eigen::Vector3d euler = model.getEulerAngles(0.0, 0.0, t);
+    // Reference Euler at *advected buoy position*
+    double px = state.displacement.x();
+    double py = state.displacement.y();
+    Eigen::Vector3d euler = model.getEulerAngles(px, py, t);
 
     out.imu.roll_deg  = static_cast<float>(euler.x());
     out.imu.pitch_deg = static_cast<float>(euler.y());
     out.imu.yaw_deg   = static_cast<float>(euler.z());
+
     return out;
 }
 
@@ -128,13 +130,14 @@ static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &mo
     auto state = model.getLagrangianState(t);
     fill_wave_sample_from_state(out.wave, state);
 
-    // IMU (now (a−g), advected slopes, finite-rotation gyro)
+    // IMU
     auto imu = model.getIMUReadings(0.0, 0.0, t);
     fill_imu_sample_from_readings(out.imu, imu);
 
-    // Reference Euler at *advected* buoy position
-    // Replace slope-based roll/pitch/yaw with:
-    Eigen::Vector3d euler = model.getEulerAngles(0.0, 0.0, t);
+    // Reference Euler at *advected buoy position*
+    double px = state.displacement.x();
+    double py = state.displacement.y();
+    Eigen::Vector3d euler = model.getEulerAngles(px, py, t);
 
     out.imu.roll_deg  = static_cast<float>(euler.x());
     out.imu.pitch_deg = static_cast<float>(euler.y());
