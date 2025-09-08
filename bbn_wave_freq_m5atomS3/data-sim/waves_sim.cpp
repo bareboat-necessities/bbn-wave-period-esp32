@@ -132,14 +132,12 @@ static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model)
     auto state = model.getLagrangianState(0.0, 0.0, t, 0.0);
     fill_wave_sample_from_state(out.wave, state);
 
-    // IMU (already buoy-attached)
-    auto imu = model.getIMUReadings(0.0, 0.0, t);
+    // IMU (buoy-attached) – use correct dt for angular velocity
+    auto imu = model.getIMUReadings(0.0, 0.0, t, 0.0, DELTA_T);
     fill_imu_sample_from_readings(out.imu, imu);
 
-    // Reference Euler at *advected buoy position*
-    double px = state.displacement.x();
-    double py = state.displacement.y();
-    Eigen::Vector3d euler = model.getEulerAngles(px, py, t);
+    // Reference Euler at advected buoy (rotationMatrixAt already advects)
+    Eigen::Vector3d euler = model.getEulerAngles(0.0, 0.0, t);
 
     out.imu.roll_deg  = static_cast<float>(euler.x());
     out.imu.pitch_deg = static_cast<float>(euler.y());
@@ -157,14 +155,12 @@ static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &mo
     auto state = model.getLagrangianState(t);
     fill_wave_sample_from_state(out.wave, state);
 
-    // IMU
-    auto imu = model.getIMUReadings(0.0, 0.0, t);
+    // IMU (buoy-attached) – use correct dt
+    auto imu = model.getIMUReadings(0.0, 0.0, t, 0.0, DELTA_T);
     fill_imu_sample_from_readings(out.imu, imu);
 
-    // Reference Euler at *advected buoy position*
-    double px = state.displacement.x();
-    double py = state.displacement.y();
-    Eigen::Vector3d euler = model.getEulerAngles(px, py, t);
+    // Reference Euler (no manual displacement)
+    Eigen::Vector3d euler = model.getEulerAngles(0.0, 0.0, t);
 
     out.imu.roll_deg  = static_cast<float>(euler.x());
     out.imu.pitch_deg = static_cast<float>(euler.y());
