@@ -235,45 +235,40 @@ public:
     //   - Orientation from ORDER-consistent surface slopes (wave-following buoy).
     // By design, getIMUReadings() uses the Lagrangian surface case, consistent with
     // a buoy-mounted IMU.
-    IMUReadingsBody getIMUReadings(double x, double y, double t, double z = 0.0,
-                                   double dt = 1e-3) const {
-        IMUReadingsBody imu;
+IMUReadingsBody getIMUReadings(double x, double y, double t, double z = 0.0,
+                               double dt = 1e-3) const {
+    IMUReadingsBody imu;
 
-        // Use actual sensor depth z for Lagrangian state (attenuates oscillations)
-        auto state = computeWaveState(x, y, z, t, WaveFrame::Lagrangian);
+    // Lagrangian particle at sensor depth (z ≤ 0)
+    auto state = computeWaveState(x, y, z, t, WaveFrame::Lagrangian);
 
-        // Advected surface position for slope/orientation (buoy location)
-        const double px = x + state.displacement.x();
-        const double py = y + state.displacement.y();
+    // Advected surface position for the buoy
+    const double px = x + state.displacement.x();
+    const double py = y + state.displacement.y();
 
-        // Orientation from ORDER-consistent slopes at the *advected* position
-        const auto slopes = getSurfaceSlopes(px, py, t);
-        const Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
+    // Orientation from slopes at *advected* location
+    const auto slopes = getSurfaceSlopes(px, py, t);
+    const Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
 
-        // World gravity + particle acceleration → body-frame accelerometer
-        const Eigen::Vector3d g_world(0, 0, -g_);
+    // Body accelerometer: specific force = R*(a - g)
+    const Eigen::Vector3d g_world(0, 0, -g_);
+    imu.accel_body = R1 * (state.acceleration - g_world);
 
-        // IMU gravity
-        imu.accel_body = R_WI * (-g_world);
+    // Predict advected position at t+dt (simple forward Euler)
+    const double px_next = px + state.velocity.x() * dt;
+    const double py_next = py + state.velocity.y() * dt;
 
-        // Predict advected position at t+dt for gyro (1-step kinematic extrapolation)
-        const double px_next = px + state.velocity.x() * dt;
-        const double py_next = py + state.velocity.y() * dt;
+    // Orientation at t+dt from slopes at advected-next location
+    const auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
+    const Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
 
-        // Gyro from orientation finite-difference (body-at-t frame)
-        auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
-        Eigen::Matrix3d R1 = orientationFromSlopes(slopes);       // W->B at t
-        Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);  // W->B at t+dt
+    // Gyro via finite rotation
+    const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
+    const Eigen::AngleAxisd aa(Rdelta);
+    imu.gyro_body = (aa.axis() * aa.angle()) / dt;
 
-        // Relative rotation from t to t+dt
-        Eigen::Matrix3d Rdelta = R2 * R1.transpose();
-        Eigen::AngleAxisd aa(Rdelta);
-
-        // Angular velocity in IMU/body frame at time t
-        imu.gyro_body = (aa.axis() * aa.angle()) / dt;
-
-        return imu;
-    }
+    return imu;
+}
 
     // Build local wave IMU orientation from slopes
     Eigen::Matrix3d orientationFromSlopes(const Eigen::Vector2d &slopes) const {
@@ -300,27 +295,30 @@ public:
     }
 
     // Return world-frame Euler angles (deg) from surface slopes
-    Eigen::Vector3d getEulerAngles(double x, double y, double t) const {
-        auto slopes = getSurfaceSlopes(x, y, t);
-        Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
-    
-        // ZYX convention (yaw-pitch-roll)
-        double roll, pitch, yaw;
-        pitch = std::asin(-R_WI(2,0));
-        if (std::abs(std::cos(pitch)) > 1e-6) {
-            roll  = std::atan2(R_WI(2,1), R_WI(2,2));
-            yaw   = std::atan2(R_WI(1,0), R_WI(0,0));
-        } else {
-            // gimbal lock fallback
-            roll = std::atan2(-R_WI(1,2), R_WI(1,1));
-            yaw  = 0.0;
-        }
-        return Eigen::Vector3d(
-            roll  * 180.0 / M_PI,
-            pitch * 180.0 / M_PI,
-            yaw   * 180.0 / M_PI
-        );
+Eigen::Vector3d getEulerAngles(double x, double y, double t) const {
+    // Lagrangian surface particle for buoy position
+    auto st = computeWaveState(x, y, 0.0, t, WaveFrame::Lagrangian);
+    const double px = x + st.displacement.x();
+    const double py = y + st.displacement.y();
+
+    auto slopes = getSurfaceSlopes(px, py, t);
+    Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
+
+    double roll, pitch, yaw;
+    pitch = std::asin(-R_WI(2,0));
+    if (std::abs(std::cos(pitch)) > 1e-6) {
+        roll  = std::atan2(R_WI(2,1), R_WI(2,2));
+        yaw   = std::atan2(R_WI(1,0), R_WI(0,0));
+    } else {
+        roll = std::atan2(-R_WI(1,2), R_WI(1,1));
+        yaw  = 0.0;
     }
+    return Eigen::Vector3d(
+        roll  * 180.0 / M_PI,
+        pitch * 180.0 / M_PI,
+        yaw   * 180.0 / M_PI
+    );
+}
     
     // Accessors for spectral data (mirror Jonswap3dStokesWaves API)
     const Eigen::Matrix<double, N_FREQ, 1>& frequencies() const { 
