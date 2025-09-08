@@ -101,17 +101,26 @@ static Wave_Data_Sample sample_jonswap(double t, Jonswap3dStokesWaves<N> &model)
     Wave_Data_Sample out{};
     out.time = t;
 
+    // Lagrangian state at sensor depth z=0
     auto state = model.getLagrangianState(0.0, 0.0, t, 0.0);
     fill_wave_sample_from_state(out.wave, state);
 
+    // IMU (already buoy-attached)
     auto imu = model.getIMUReadings(0.0, 0.0, t);
     fill_imu_sample_from_readings(out.imu, imu);
 
-    // true world-frame Euler angles
-    auto euler = model.getEulerAngles(0.0, 0.0, t);
-    out.imu.roll_deg  = static_cast<float>(euler.x());
-    out.imu.pitch_deg = static_cast<float>(euler.y());
-    out.imu.yaw_deg   = static_cast<float>(euler.z());
+    // Reference Euler at *advected* buoy position
+    const double px = state.displacement.x();
+    const double py = state.displacement.y();
+
+    auto slopes = model.getSurfaceSlopes(px, py, t);
+    const double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;
+    const double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;
+    const double yaw   = 0.0;
+
+    out.imu.roll_deg  = static_cast<float>(roll);
+    out.imu.pitch_deg = static_cast<float>(pitch);
+    out.imu.yaw_deg   = static_cast<float>(yaw);
 
     return out;
 }
@@ -121,17 +130,26 @@ static Wave_Data_Sample sample_pmstokes(double t, PMStokesN3dWaves<N, ORDER> &mo
     Wave_Data_Sample out{};
     out.time = t;
 
+    // Lagrangian surface particle (buoy)
     auto state = model.getLagrangianState(t);
     fill_wave_sample_from_state(out.wave, state);
 
+    // IMU (now (a−g), advected slopes, finite-rotation gyro)
     auto imu = model.getIMUReadings(0.0, 0.0, t);
     fill_imu_sample_from_readings(out.imu, imu);
 
-    // true world-frame Euler angles
-    auto euler = model.getEulerAngles(0.0, 0.0, t);
-    out.imu.roll_deg  = static_cast<float>(euler.x());
-    out.imu.pitch_deg = static_cast<float>(euler.y());
-    out.imu.yaw_deg   = static_cast<float>(euler.z());
+    // Reference Euler at *advected* buoy position
+    const double px = state.displacement.x();
+    const double py = state.displacement.y();
+
+    auto slopes = model.getSurfaceSlopes(px, py, t);
+    const double roll  = std::atan2(slopes.y(), 1.0) * 180.0 / M_PI;
+    const double pitch = std::atan2(-slopes.x(), 1.0) * 180.0 / M_PI;
+    const double yaw   = 0.0;
+
+    out.imu.roll_deg  = static_cast<float>(roll);
+    out.imu.pitch_deg = static_cast<float>(pitch);
+    out.imu.yaw_deg   = static_cast<float>(yaw);
 
     return out;
 }
