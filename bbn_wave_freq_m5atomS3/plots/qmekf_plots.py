@@ -44,6 +44,10 @@ pattern = re.compile(
     r".*?_(?P<wave>[a-zA-Z0-9]+)_H(?P<height>[-0-9\.]+).*?_kalman\.csv$"
 )
 
+# === Escape helper for LaTeX ===
+def latex_safe(s: str) -> str:
+    return s.replace("_", r"\_")
+
 # === Find all *_kalman.csv files ===
 files = glob.glob(os.path.join(DATA_DIR, "*_kalman.csv"))
 if not files:
@@ -81,7 +85,7 @@ for fname in files:
         print(f"Skipping {fname} (height {height_val} m not in groups)")
         continue
 
-    # Build output base name (safe for LaTeX)
+    # Build output base name (safe for filesystem)
     outbase = f"qmekf_{wave_type}_{group_name}"
     outbase = re.sub(r"[^A-Za-z0-9_\-]", "_", outbase)
     outbase = os.path.join(DATA_DIR, outbase)
@@ -100,16 +104,19 @@ for fname in files:
     ]
 
     fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
-    fig.suptitle(basename)
+
+    # Escape underscores in the title
+    fig.suptitle(latex_safe(basename))
 
     for ax, (ref_col, est_col, label) in zip(axes, angles):
-        ax.plot(time, df[ref_col], label="Reference", linewidth=1.5)
-        ax.plot(time, df[est_col], label="Estimated", linewidth=1.0, linestyle="--")
-        ax.set_ylabel(label)
+        ax.plot(time, df[ref_col], label=latex_safe("Reference"), linewidth=1.5)
+        ax.plot(time, df[est_col], label=latex_safe("Estimated"),
+                linewidth=1.0, linestyle="--")
+        ax.set_ylabel(latex_safe(label))
         ax.grid(True)
         ax.legend(loc="upper right")
 
-    axes[-1].set_xlabel("Time (s)")
+    axes[-1].set_xlabel(latex_safe("Time (s)"))
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     # Save to PGF and SVG
