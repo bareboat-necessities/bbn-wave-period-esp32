@@ -421,9 +421,19 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
         Eigen::Matrix3d R2 = rotationMatrixAt(x, y, t + dt);
     
         // Angular velocity from finite rotation
-        Eigen::Matrix3d Rdelta = R2 * R1.transpose();
-        Eigen::AngleAxisd aa(Rdelta);
-        imu.gyro_body = (aa.axis() * aa.angle()) / dt;
+        // body angular velocity (in IMU/body frame at time t)
+        const Eigen::Matrix3d R_rel = R1.transpose() * R2;   // R(t)^T R(t+dt)
+        Eigen::AngleAxisd aa(R_rel);
+
+        // robust small-angle handling (avoid NaNs if angle ~ 0)
+        double angle = aa.angle();
+        Eigen::Vector3d axis = aa.axis();
+        if (!std::isfinite(angle) || angle < 1e-12) {
+            imu.gyro_body.setZero();
+        } else {
+            // angle*axis is the so(3) log vector in the BODY frame
+            imu.gyro_body = axis * (angle / dt);
+        }       
         return imu;
     }
 
