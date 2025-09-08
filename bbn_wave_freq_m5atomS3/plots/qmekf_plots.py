@@ -34,6 +34,8 @@ if not files:
     print("No *_kalman.csv files found in", DATA_DIR)
     exit()
 
+pgf_files = []
+
 # === Process each file ===
 for fname in files:
     print(f"Plotting {fname} ...")
@@ -75,4 +77,5 @@ for fname in files:
     plt.savefig(svg_out, format="svg")
     plt.close(fig)
 
+    pgf_files.append((base, pgf_out))
     print(f"Saved {pgf_out} and {svg_out}")
