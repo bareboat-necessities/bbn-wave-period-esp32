@@ -88,11 +88,40 @@ static void export_spectrum(const WaveParameters &wp, WaveType type, Model &mode
 // Sampling Helpers
 static Wave_Data_Sample sample_gerstner(double t, TrochoidalWave<float> &wave_obj) {
     Wave_Data_Sample out{};
-    out.time        = t;
-    out.wave.disp_z = wave_obj.surfaceElevation(static_cast<float>(t));
-    out.wave.vel_z  = wave_obj.surfaceVerticalSpeed(static_cast<float>(t));
-    out.wave.acc_z  = wave_obj.surfaceVerticalAcceleration(static_cast<float>(t));
+    out.time = t;
+
+    // Reference initial particle location (x0, z0 at the surface)
+    float x0 = 0.0f;
+    float z0 = 0.0f;  // surface
+
+    // --- Lagrangian displacement ---
+    float x = wave_obj.horizontalPosition(x0, z0, static_cast<float>(t));
+    float z = wave_obj.verticalPosition(x0, z0, static_cast<float>(t));
+
+    // --- Lagrangian velocities ---
+    float u = wave_obj.horizontalVelocity(x0, z0, static_cast<float>(t));
+    float w = wave_obj.verticalVelocity(x0, z0, static_cast<float>(t));
+
+    // --- Lagrangian accelerations ---
+    float ax = wave_obj.horizontalAcceleration(x0, z0, static_cast<float>(t));
+    float az = wave_obj.verticalAcceleration(x0, z0, static_cast<float>(t));
+
+    // Fill into wave sample
+    out.wave.disp_x = x;     // horizontal displacement
+    out.wave.disp_y = 0.0f;  // Gerstner is 2D (x–z plane only)
+    out.wave.disp_z = z;
+
+    out.wave.vel_x  = u;
+    out.wave.vel_y  = 0.0f;
+    out.wave.vel_z  = w;
+
+    out.wave.acc_x  = ax;
+    out.wave.acc_y  = 0.0f;
+    out.wave.acc_z  = az;
+
+    // No IMU model for pure Gerstner (keep zeroed)
     fill_default_imu(out.imu);
+
     return out;
 }
 
