@@ -17,7 +17,7 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// Quaternion → Euler (deg, ZYX yaw-pitch-roll convention)
+// Quaternion → Euler (deg, ZYX yaw-pitch-roll convention (airspace to nautical))
 static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
     float ysqr = q.y() * q.y();
 
