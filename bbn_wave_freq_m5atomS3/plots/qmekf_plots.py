@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import glob
 import os
+import re
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -28,6 +29,19 @@ SAMPLE_RATE_HZ = 240       # Simulator sample rate
 MAX_TIME_S = 60.0          # Limit to first 60 seconds
 MAX_ROWS = int(SAMPLE_RATE_HZ * MAX_TIME_S)
 
+# === Groups we care about (included heights in meters) ===
+height_groups = {
+    "low":    0.27,
+    "medium": 1.50,
+    "high":   8.50,
+}
+INCLUDED_HEIGHTS = set(height_groups.values())
+
+# === Regex to extract height from filename ===
+pattern = re.compile(
+    r".*?_H(?P<height>[-0-9\.]+).*?_kalman\.csv$"
+)
+
 # === Find all *_kalman.csv files ===
 files = glob.glob(os.path.join(DATA_DIR, "*_kalman.csv"))
 if not files:
@@ -38,11 +52,32 @@ pgf_files = []
 
 # === Process each file ===
 for fname in files:
-    print(f"Plotting {fname} ...")
+    m = pattern.match(os.path.basename(fname))
+    if not m:
+        print(f"Skipping {fname} (could not extract height)")
+        continue
+
+    try:
+        height_val = float(m.group("height"))
+    except (TypeError, ValueError):
+        print(f"Skipping {fname} (invalid height)")
+        continue
+
+    # Match height group
+    group_name = None
+    for name, h in height_groups.items():
+        if abs(height_val - h) < 1e-6:
+            group_name = name
+            break
+
+    if group_name is None:
+        print(f"Skipping {fname} (height {height_val} m not in groups)")
+        continue
+
+    print(f"Plotting {fname} (height={height_val} m, group={group_name}) ...")
 
     # Limit to first MAX_ROWS rows (~60 s of data)
     df = pd.read_csv(fname, nrows=MAX_ROWS)
-
     time = df["time"]
 
     # Reference vs estimated Euler angles
@@ -68,7 +103,7 @@ for fname in files:
 
     # === Save to PGF and SVG ===
     base = os.path.splitext(os.path.basename(fname))[0]
-    outbase = os.path.join(DATA_DIR, base)
+    outbase = os.path.join(DATA_DIR, f"{base}_{group_name}")
 
     pgf_out = f"{outbase}.pgf"
     svg_out = f"{outbase}.svg"
