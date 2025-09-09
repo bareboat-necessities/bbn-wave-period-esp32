@@ -8,22 +8,7 @@
 #include <vector>
 #include <random>
 #include <stdexcept>
-#include <utility>   // std::pair  ✅
-#endif
-
-// ---- Portability guards ----
-#ifndef M_PI
-#define M_PI 3.14159265358979323846  // ✅ define if not provided by <cmath>
-#endif
-
-// std::clamp polyfill for pre-C++17  ✅
-#if __cplusplus < 201703L
-namespace std {
-template <class T>
-constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
-    return (v < lo) ? lo : (hi < v) ? hi : v;
-}
-}
+#include <utility>
 #endif
 
 /**
@@ -62,6 +47,21 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
  *      We blend via a smoothstep f(R)∈[√2,1] and include a small calibration C_H to offset practical biases:
  *         Hs ≈ C_H · 2√M0 · f(R_out).
  */
+
+// Portability guards
+#ifndef M_PI
+#define M_PI 3.14159265358979323846 
+#endif
+
+// std::clamp polyfill for pre-C++17
+#if __cplusplus < 201703L
+namespace std {
+    template <class T>
+    constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
+        return (v < lo) ? lo : (hi < v) ? hi : v;
+    }
+}
+#endif
 
 class SeaStateRegularity {
 public:
@@ -397,7 +397,6 @@ private:
 };
 
 #ifdef SEA_STATE_TEST
-// ---- Test harness (unchanged API) ----
 constexpr float SAMPLE_FREQ_HZ   = 240.0f;
 constexpr float DT               = 1.0f / SAMPLE_FREQ_HZ;
 constexpr float SIM_DURATION_SEC = 60.0f;
