@@ -37,7 +37,7 @@ using Eigen::Map;
 
 template <typename T = float, bool with_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
-    static constexpr T gravity_magnitude = T(9.81);
+    static const T gravity_magnitude = T(9.81);
 
     // Original base state dimension (attitude-error (3) [+ gyro-bias (3) if with_bias])
     static constexpr int BASE_N = with_bias ? 6 : 3;
@@ -67,18 +67,19 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
                    T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(5e0));
 
-    // Initialization / measurement API preserved
+    // Initialization / measurement API 
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
     void initialize_from_acc(Vector3 const& acc);
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
 
-    // Time update: preserved old signature (no acc) plus new overload (gyr + acc)
     void time_update(Vector3 const& gyr, Vector3 const& acc, T Ts);  // new: uses acc to drive v/p/S
 
     // Measurement updates preserved (operate on extended state internally)
     void measurement_update(Vector3 const& acc, Vector3 const& mag);
     void measurement_update_acc_only(Vector3 const& acc);
     void measurement_update_mag_only(Vector3 const& mag);
+
+    // Extended-only API:
     // Apply zero pseudo-measurement on S (integral drift correction)
     void applyIntegralZeroPseudoMeas();
 
@@ -144,8 +145,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     MatrixNX Qext; // Extended process noise / Q
     Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
-
-    T last_Ts{T(0)};
 
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
@@ -232,7 +231,7 @@ Kalman3D_Wave<T, with_bias>::initialize_Q(typename Kalman3D_Wave<T, with_bias>::
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag) {
   T const anorm = acc.norm();
-  v1ref << 0, 0, -gravity_magnitude;
+  v1ref << 0, 0, -anorm;
 
   Vector3 const acc_normalized = acc / anorm;
   Vector3 const mag_normalized = mag.normalized();
@@ -271,114 +270,56 @@ Eigen::Quaternion<T> Kalman3D_Wave<T, with_bias>::quaternion_from_acc(Vector3 co
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
   T const anorm = acc.norm();
-  v1ref << 0, 0, -gravity_magnitude;
+  v1ref << 0, 0, -anorm;
   qref = quaternion_from_acc(acc);
   qref.normalize();
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::time_update(const Vector3& gyr_m,
-                                              const Vector3& acc_m_b,
-                                              T Ts)
-{
-    // --- 0) Bias-corrected gyro (attitude) ---
-    Vector3 bg = Vector3::Zero();
-    if constexpr (with_bias) bg = xext.template segment<3>(3);
-    const Vector3 omega_b = gyr_m - bg;                // [rad/s] body frame
-    const Eigen::Quaternion<T> qk = qref;              // pre-update attitude
-    const Matrix3 Rk = qk.toRotationMatrix();          // body->world
-
-    // Previous linear states
-    const Vector3 v0 = xext.template segment<3>(BASE_N);
-    const Vector3 p0 = xext.template segment<3>(BASE_N + 3);
-    const Vector3 S0 = xext.template segment<3>(BASE_N + 6);
-
-    // --- 1) Midpoint attitude for force rotation ---
-    auto quat_from_small = [&](const Vector3& dtheta)->Eigen::Quaternion<T> {
-        const T th = dtheta.norm();
-        if (th <= std::numeric_limits<T>::epsilon()) return Eigen::Quaternion<T>::Identity();
-        const T half_th = T(0.5) * th;
-        const Vector3 axis = dtheta / th;
-        return Eigen::Quaternion<T>(std::cos(half_th),
-                                    axis.x()*std::sin(half_th),
-                                    axis.y()*std::sin(half_th),
-                                    axis.z()*std::sin(half_th));
-    };
-    const Eigen::Quaternion<T> dq_half = quat_from_small(omega_b * (T(0.5) * Ts));
-    const Matrix3 Rmid = (qk * dq_half).toRotationMatrix();
-
-    // --- 2) Strapdown mechanization with midpoint force rotation ---
-    const Vector3 gW(0, 0, -gravity_magnitude);
-    const Vector3 aW = Rmid * acc_m_b + gW;            // world acceleration at midpoint
-
-    const Vector3 v1 = v0 + aW * Ts;
-    const Vector3 p1 = p0 + v0 * Ts + T(0.5) * aW * Ts * Ts;
-    const Vector3 S1 = S0 + p0 * Ts + T(0.5) * v0 * Ts * Ts + (Ts*Ts*Ts / T(6)) * aW;
-
-    xext.template segment<3>(BASE_N)       = v1;
-    xext.template segment<3>(BASE_N + 3)   = p1;
-    xext.template segment<3>(BASE_N + 6)   = S1;
-
-    // --- 3) Attitude update with full-step gyro increment ---
-    const Eigen::Quaternion<T> dq_full = quat_from_small(omega_b * Ts);
-    qref = (qk * dq_full).normalized();
-
-    // --- 4) Error-state transition matrix F_ext ---
-    MatrixNX F_ext = MatrixNX::Identity();
-    auto skew = [&](const Vector3& v)->Matrix3 {
-        Matrix3 M; M <<    0, -v.z(),  v.y(),
-                         v.z(),     0, -v.x(),
-                        -v.y(),  v.x(),     0;
-        return M;
-    };
-
-    F_ext.template block<3,3>(0,0) = Matrix3::Identity() - skew(omega_b) * Ts;
+void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
+    // bias-corrected gyro
+    Vector3 gyro_bias;
     if constexpr (with_bias) {
-        F_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
+        gyro_bias = xext.template segment<3>(3); 
+    } else { 
+        gyro_bias = Vector3::Zero(); 
     }
+    last_gyr_bias_corrected = gyr - gyro_bias;
+  
+    // Assemble extended Jacobian and Q
+    MatrixNX F_a_ext, Q_a_ext;
+    assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
 
-    // Attitude → linear coupling via force rotation at midpoint
-    const Matrix3 Rmid_skew_ab = Rmid * skew(acc_m_b);
-    F_ext.template block<3,3>(BASE_N,   0) = -Ts              * Rmid_skew_ab;
-    F_ext.template block<3,3>(BASE_N+3, 0) = -T(0.5)*Ts*Ts    * Rmid_skew_ab;
-    F_ext.template block<3,3>(BASE_N+6, 0) = -(Ts*Ts*Ts/T(6)) * Rmid_skew_ab;
+    // Build quaternion transition matrix
+    set_transition_matrix(last_gyr_bias_corrected, Ts);
 
-    // Linear chain: v→p, (v,p)→S
-    F_ext.template block<3,3>(BASE_N+3, BASE_N)   = Matrix3::Identity() * Ts;
-    F_ext.template block<3,3>(BASE_N+6, BASE_N)   = Matrix3::Identity() * (T(0.5)*Ts*Ts);
-    F_ext.template block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;
+    // Update quaternion
+    qref.coeffs() = F * qref.coeffs();
+    qref.normalize();
 
-    // --- 5) Closed-form discrete Q for [v,p,S] ---
-    const Matrix3 Qa_w = Rmid * Q_Racc_noise * Rmid.transpose();
+    // World-frame linear acceleration
+    Matrix3 Rw = R_from_quat();
+    Vector3 g_world{0, 0, gravity_magnitude};
+    Vector3 a_w = Rw * acc_body - g_world;  // remove gravity
+    Vector3 a_corr = a_w;
+  
+    // Extract current linear states
+    auto v = xext.template segment<3>(BASE_N);
+    auto p = xext.template segment<3>(BASE_N + 3);
+    auto S = xext.template segment<3>(BASE_N + 6);
 
-    const T dt  = Ts, dt2 = dt*dt, dt3 = dt2*dt, dt4 = dt2*dt2, dt5 = dt2*dt3;
+    // Taylor-series propagation
+    xext.template segment<3>(BASE_N)     = v + a_corr * Ts;
+    xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_corr * Ts*Ts;
+    xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_corr;
 
-    const Matrix3 Qvv = Qa_w * dt;
-    const Matrix3 Qvp = Qa_w * (dt2 * T(0.5));
-    const Matrix3 Qpp = Qa_w * (dt3 / T(3));
-    const Matrix3 QvS = Qa_w * (dt3 / T(6));
-    const Matrix3 QpS = Qa_w * (dt4 / T(8));
-    const Matrix3 QSS = Qa_w * (dt5 / T(20));
+    // Covariance propagation using Joseph form
+    Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
 
-    Matrix<T,9,9> Qlin; Qlin.setZero();
-    auto blk = [&](int r,int c)->Eigen::Block<Matrix<T,9,9>,3,3>{ return Qlin.template block<3,3>(r,c); };
-    blk(0,0)=Qvv; blk(0,3)=Qvp; blk(0,6)=QvS;
-    blk(3,0)=Qvp; blk(3,3)=Qpp; blk(3,6)=QpS;
-    blk(6,0)=QvS; blk(6,3)=QpS; blk(6,6)=QSS;
-
-    MatrixNX Qk = Qext;
-    Qk.template block(BASE_N, BASE_N, 9, 9) = Qlin;
-
-    // --- 6) Covariance update (Joseph form) ---
-    MatrixNX I = MatrixNX::Identity();
-    Pext = F_ext * Pext * F_ext.transpose() + Qk;
-    Pext = T(0.5) * (Pext + Pext.transpose());   // enforce symmetry
+    // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
-    // --- 7) Bookkeeping for optional pseudo-meas ---
-    last_gyr_bias_corrected = omega_b;
-    last_Ts = Ts;
-
+    // Drift correction
     applyIntegralZeroPseudoMeas();
 }
 
@@ -591,94 +532,44 @@ void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
 
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
-    const Vector3& acc_body,   // measured specific force in body (f_b ≈ a^W in body + gravity removed)
+    const Vector3& acc_body,
     T Ts,
-    Matrix<T, NX, NX>& F_a_ext,   // OUT: discrete-time error-state transition
-    MatrixNX&          Q_a_ext)   // OUT: discrete-time process covariance
+    Matrix<T, NX, NX>& F_a_ext,
+    MatrixNX& Q_a_ext)
 {
-    // === 0) Setup ===
     F_a_ext.setIdentity();
-    Q_a_ext = Qext;  // start from your template; we'll overwrite the (v,p,S) 9x9 block
+    Q_a_ext = Qext; // start with template
 
-    // Access pre-update attitude (qref is the *current* nominal at call time).
-    // We use the gyroscope bias-corrected rate captured in last_gyr_bias_corrected (set by caller).
-    const Eigen::Quaternion<T> qk = qref;
-    const Matrix3 Rk = qk.toRotationMatrix();
-
-    // Small helper
-    auto skew = [&](const Vector3& v)->Matrix3 {
-        Matrix3 M; M <<    0, -v.z(),  v.y(),
-                         v.z(),     0, -v.x(),
-                        -v.y(),  v.x(),     0;
-        return M;
-    };
-
-    // === 1) Midpoint attitude (for force rotation & Jacobians) ===
-    // R_mid = R_k * Exp(0.5 * (ω_m - b_g) * Ts)
-    const Vector3 omega_b = last_gyr_bias_corrected;  // already gyro-bias corrected by caller
-    const T th = (omega_b * (T(0.5) * Ts)).norm();
-    Eigen::Quaternion<T> dq_half;
-    if (th <= std::numeric_limits<T>::epsilon()) {
-        dq_half = Eigen::Quaternion<T>::Identity();
-    } else {
-        const T half_th = th;
-        const Vector3 axis = (omega_b * (T(0.5) * Ts)) / th;
-        dq_half = Eigen::Quaternion<T>(std::cos(half_th),
-                                       axis.x()*std::sin(half_th),
-                                       axis.y()*std::sin(half_th),
-                                       axis.z()*std::sin(half_th));
-    }
-    const Matrix3 Rmid = (qk * dq_half).toRotationMatrix();
-
-    // === 2) Discrete-time error-state transition F_ext ===
-    // Attitude error sub-block: δθ_{k+1} ≈ (I - [ω_b]× Δt) δθ_k - I Δt δb_g
-    F_a_ext.template block<3,3>(0,0) = Matrix3::Identity() - skew(omega_b) * Ts;
+    // Small-angle attitude error propagation
+    Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
+    F_a_ext.template block<3,3>(0,0) = Atheta;
     if constexpr (with_bias) {
-        F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;   // θ depends on b_g
+        // cross term: attitude error depends on bias error
+        F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
 
-    // Attitude → linear coupling via midpoint rotation:
-    // a^W = R_mid * f_b + g  ⇒ δa^W ≈ - R_mid [f_b]× δθ
-    const Matrix3 Rmid_skew_ab = Rmid * skew(acc_body);
-    F_a_ext.template block<3,3>(BASE_N,   0) = -Ts                  * Rmid_skew_ab;         // into v
-    F_a_ext.template block<3,3>(BASE_N+3, 0) = -T(0.5)*Ts*Ts        * Rmid_skew_ab;         // into p
-    F_a_ext.template block<3,3>(BASE_N+6, 0) = -(Ts*Ts*Ts/T(6))     * Rmid_skew_ab;         // into S
+    // Gravity-free acceleration
+    Matrix3 Rw = R_from_quat();
+    Vector3 g_world{0, 0, gravity_magnitude};
+    Vector3 a_w = Rw * acc_body - g_world; // remove gravity
+    const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // body frame
 
-    // Linear chain (v → p, (v,p) → S)
-    F_a_ext.template block<3,3>(BASE_N+3, BASE_N)     = Matrix3::Identity() * Ts;           // v -> p
-    F_a_ext.template block<3,3>(BASE_N+6, BASE_N)     = Matrix3::Identity() * (T(0.5)*Ts*Ts); // v -> S
-    F_a_ext.template block<3,3>(BASE_N+6, BASE_N+3)   = Matrix3::Identity() * Ts;           // p -> S
+    // Attitude → linear Jacobians
+    F_a_ext.template block<3,3>(BASE_N,0)     = -Ts * (Rw * skew_ab);
+    F_a_ext.template block<3,3>(BASE_N+3,0)   = -T(0.5)*Ts*Ts * (Rw * skew_ab);
+    F_a_ext.template block<3,3>(BASE_N+6,0)   = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
+  
+    // Linear dependencies
+    F_a_ext.template block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
+    F_a_ext.template block<3,3>(BASE_N+6, BASE_N) = Matrix3::Identity() * (0.5*Ts*Ts); // v -> S
+    F_a_ext.template block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;      // p -> S
 
-    // === 3) Closed-form discrete Q_k for [v,p,S] under white accel noise ===
-    // Rotate body-frame accel PSD into world with R_mid
-    const Matrix3 Qa_w = Rmid * Q_Racc_noise * Rmid.transpose();
-
-    const T dt  = Ts;
-    const T dt2 = dt*dt;
-    const T dt3 = dt2*dt;
-    const T dt4 = dt2*dt2;
-    const T dt5 = dt2*dt3;
-
-    // Classic double integrator blocks (v,p)
-    const Matrix3 Qvv = Qa_w * dt;                  // ∫_0^dt 1 dτ
-    const Matrix3 Qvp = Qa_w * (dt2 * T(0.5));      // ∫_0^dt τ dτ = dt^2/2
-    const Matrix3 Qpp = Qa_w * (dt3 / T(3));        // ∫_0^dt τ^2 dτ = dt^3/3
-
-    // Extend to S = ∫ p dt (third integrator)
-    // Coefficients come from integrating the polynomial basis once more.
-    const Matrix3 QvS = Qa_w * (dt3 / T(6));        // cross(v,S)
-    const Matrix3 QpS = Qa_w * (dt4 / T(8));        // cross(p,S)
-    const Matrix3 QSS = Qa_w * (dt5 / T(20));       // var(S)
-
-    Matrix<T,9,9> Qlin; Qlin.setZero();
-    auto blk = [&](int r,int c)->Eigen::Block<Matrix<T,9,9>,3,3>{ return Qlin.template block<3,3>(r,c); };
-    // Order inside the 9×9 block: [v, p, S]
-    blk(0,0) = Qvv;  blk(0,3) = Qvp;  blk(0,6) = QvS;
-    blk(3,0) = Qvp;  blk(3,3) = Qpp;  blk(3,6) = QpS;
-    blk(6,0) = QvS;  blk(6,3) = QpS;  blk(6,6) = QSS;
-
-    // Drop into the extended covariance
-    Q_a_ext.template block(BASE_N, BASE_N, 9, 9) = Qlin;
+    // Process noise
+    Matrix<T,9,3> G; G.setZero();
+    G.template topRows<3>()        = Ts * Rw;
+    G.template middleRows<3>(3)    = (T(0.5) * Ts * Ts) * Rw;
+    G.template bottomRows<3>()     = (Ts*Ts*Ts / T(6)) * Rw;
+    Q_a_ext.template block(BASE_N, BASE_N, 9, 9) = G * Q_Racc_noise * G.transpose();
 }
 
 template<typename T, bool with_bias>
