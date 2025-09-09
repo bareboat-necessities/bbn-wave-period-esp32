@@ -399,30 +399,32 @@ void Kalman3D_Wave<T, with_bias>::measurement_update(
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::measurement_update_acc_dynamic(const Vector3& acc_meas_b)
 {
-    // Rotation and gravity
-    const Matrix3 Rw = R_from_quat();           // body -> world
+    // Need a previous velocity and a valid Ts to form a prediction
+    if (!have_v_prev || last_Ts <= std::numeric_limits<T>::epsilon()) {
+        return; // nothing predictive to do yet
+    }
+
+    const Matrix3 Rw = R_from_quat();            // body -> world
     const Vector3 g_world(0, 0, -gravity_magnitude);
 
-    // Predicted specific force in body frame
-    // Use the world accel cached in time_update()
-    const Vector3 s_world = last_a_w - g_world;     // (a^W - g^W)
-    const Vector3 fhat_b  = Rw.transpose() * s_world;
+    // Predict world linear acceleration from the state (finite difference)
+    const Vector3 v_now   = xext.template segment<3>(BASE_N);
+    const Vector3 a_w_pred = (v_now - v_world_prev) / last_Ts;
 
-    // Build C (3 x NX): only attitude error block is nonzero
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    // For h(q)=R^T s, δh ≈ +[h]_x δθ
+    // Predicted specific force in body frame from state
+    const Vector3 fhat_b = Rw.transpose() * (a_w_pred - g_world);
+
+    // Linearize w.r.t. small attitude error: δh ≈ +[fhat_b]_x δθ
+    Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
     Cext.template block<3,3>(0, 0) = skew_symmetric_matrix(fhat_b);
 
-    // Innovation
+    // Innovation uses the *measured* specific force (accelerometer)
     const Vector3 inno = acc_meas_b - fhat_b;
 
-    // Innovation covariance S = C P C^T + Racc
+    // Kalman update (Joseph form)
     Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
-
-    // PH^T
     Matrix<T, NX, 3> PHt = Pext * Cext.transpose();
 
-    // K = PH^T S^{-1}
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
         S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6));
@@ -431,19 +433,21 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_acc_dynamic(const Vector3& 
     }
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // State & covariance update (Joseph form)
     xext.noalias() += K * inno;
 
-    Matrix<T, NX, NX> I = Matrix<T, NX, NX>::Identity();
+    MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());  // enforce symmetry
 
-    // Apply quaternion correction from attitude error and zero it
+    // Apply quaternion correction and zero attitude-error substate
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
 
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+
+    // Advance the lag so next call uses this step's velocity as "previous"
+    v_world_prev = v_now;
 }
 
 template<typename T, bool with_bias>
