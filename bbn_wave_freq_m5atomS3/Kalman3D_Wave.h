@@ -73,13 +73,65 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
 
     // Time update: preserved old signature (no acc) plus new overload (gyr + acc)
+    void time_update(Vector3 const& gyr, T Ts);                      // original behavior (acc=0)
     void time_update(Vector3 const& gyr, Vector3 const& acc, T Ts);  // new: uses acc to drive v/p/S
 
     // Measurement updates preserved (operate on extended state internally)
     void measurement_update(Vector3 const& acc, Vector3 const& mag);
     void measurement_update_acc_only(Vector3 const& acc);
     void measurement_update_mag_only(Vector3 const& mag);
-    void measurement_update_acc_dynamic(const Vector3& acc_meas_b);
+
+    // Uses the propagated world acceleration to predict the accelerometer signal:
+    //   fhat_b = R^T (a^W - g^W)
+    // and linearizes w.r.t. small attitude error: H_theta = -[fhat_b]_x.
+    void measurement_update_acc_dynamic(const Vector3& acc_meas_b)
+    {
+        // Rotation and gravity
+        const Matrix3 Rw = R_from_quat();           // body -> world
+        const Vector3 g_world(0, 0, -gravity_magnitude);
+    
+        // Predicted specific force in body frame
+        // Use the world accel cached in time_update()
+        const Vector3 s_world = last_a_w - g_world;     // (a^W - g^W)
+        const Vector3 fhat_b  = Rw.transpose() * s_world;
+    
+        // Build C (3 x NX): only attitude error block is nonzero
+        Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+        // For h(q)=R^T s, δh ≈ -[h]_x δθ
+        Cext.template block<3,3>(0, 0) = skew_symmetric_matrix(fhat_b);
+    
+        // Innovation
+        const Vector3 inno = acc_meas_b - fhat_b;
+    
+        // Innovation covariance S = C P C^T + Racc
+        Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
+    
+        // PH^T
+        Matrix<T, NX, 3> PHt = Pext * Cext.transpose();
+    
+        // K = PH^T S^{-1}
+        Eigen::LDLT<Matrix3> ldlt(S_mat);
+        if (ldlt.info() != Eigen::Success) {
+            S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6));
+            ldlt.compute(S_mat);
+            if (ldlt.info() != Eigen::Success) return;
+        }
+        Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
+    
+        // State & covariance update (Joseph form)
+        xext.noalias() += K * inno;
+    
+        Matrix<T, NX, NX> I = Matrix<T, NX, NX>::Identity();
+        Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
+        Pext = T(0.5) * (Pext + Pext.transpose());  // enforce symmetry
+    
+        // Apply quaternion correction from attitude error and zero it
+        applyQuaternionCorrectionFromErrorState();
+        xext.template head<3>().setZero();
+    
+        // Mirror base covariance
+        Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+    }
 
     // Extended-only API:
     // Apply zero pseudo-measurement on S (integral drift correction)
@@ -149,8 +201,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
 
     Vector3 last_a_w{Vector3::Zero()};   // world linear acceleration used for dynamic accel meas
-    Vector3 a_w_prev{Vector3::Zero()};
-    bool    a_w_prev_valid{false};
 
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
@@ -237,7 +287,7 @@ Kalman3D_Wave<T, with_bias>::initialize_Q(typename Kalman3D_Wave<T, with_bias>::
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag) {
   T const anorm = acc.norm();
-  v1ref << 0, 0, -gravity_magnitude;
+  v1ref << 0, 0, -anorm;
 
   Vector3 const acc_normalized = acc / anorm;
   Vector3 const mag_normalized = mag.normalized();
@@ -275,65 +325,69 @@ Eigen::Quaternion<T> Kalman3D_Wave<T, with_bias>::quaternion_from_acc(Vector3 co
 
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
-  v1ref << 0, 0, -gravity_magnitude;
+  T const anorm = acc.norm();
+  v1ref << 0, 0, -anorm;
   qref = quaternion_from_acc(acc);
   qref.normalize();
 }
 
+// original signature preserved: no accel input
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts)
-{
+void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
+  // call new overload with zero acceleration vector for backward compatibility
+  Vector3 acc_zero = Vector3::Zero();
+  time_update(gyr, acc_zero, Ts);
+}
+
+template<typename T, bool with_bias>
+void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
     // bias-corrected gyro
-    Vector3 gyro_bias = Vector3::Zero();
+    Vector3 gyro_bias;
     if constexpr (with_bias) {
-        gyro_bias = xext.template segment<3>(3);
+        gyro_bias = xext.template segment<3>(3); 
+    } else { 
+        gyro_bias = Vector3::Zero(); 
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
-
-    // extended Jacobian and process noise for this step
+  
+    // Assemble extended Jacobian and Q
     MatrixNX F_a_ext, Q_a_ext;
     assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
 
-    // quaternion propagation
+    // Build quaternion transition matrix
     set_transition_matrix(last_gyr_bias_corrected, Ts);
+
+    // Update quaternion
     qref.coeffs() = F * qref.coeffs();
     qref.normalize();
 
-    // world acceleration from current specific force
-    const Matrix3 Rw = R_from_quat();             // body->world
-    const Vector3 g_world(0, 0, -gravity_magnitude);
-    const Vector3 a_w = Rw * acc_body + g_world;  // a^W (current step)
+    // World-frame linear acceleration
+    Matrix3 Rw = R_from_quat();
+    Vector3 g_world{0, 0, -gravity_magnitude};
+    Vector3 a_w = Rw * acc_body + g_world;  // recover world acceleration
+    Vector3 a_corr = a_w;
 
-    // ---- cache for dynamic accelerometer update (one-step look-ahead) ----
-    if (!a_w_prev_valid) {
-        // first step: seed cache
-        last_a_w       = a_w;
-        a_w_prev       = a_w;
-        a_w_prev_valid = true;
-    } else {
-        // shift cache forward
-        a_w_prev = last_a_w;   // expose previous a^W to meas. update
-        last_a_w = a_w;        // keep current for next time
-    }
-    // ---------------------------------------------------------------------
+    // Keep for the dynamic accelerometer measurement
+    last_a_w = a_w;
 
-    // extract linear states
-    const auto v = xext.template segment<3>(BASE_N);
-    const auto p = xext.template segment<3>(BASE_N + 3);
-    const auto S = xext.template segment<3>(BASE_N + 6);
+  
+    // Extract current linear states
+    auto v = xext.template segment<3>(BASE_N);
+    auto p = xext.template segment<3>(BASE_N + 3);
+    auto S = xext.template segment<3>(BASE_N + 6);
 
-    // integrate (Taylor series)
-    xext.template segment<3>(BASE_N)       = v + a_w * Ts;
-    xext.template segment<3>(BASE_N + 3)   = p + v * Ts + T(0.5) * a_w * Ts*Ts;
-    xext.template segment<3>(BASE_N + 6)   = S + p * Ts + T(0.5) * v * Ts*Ts + (Ts*Ts*Ts / T(6)) * a_w;
+    // Taylor-series propagation
+    xext.template segment<3>(BASE_N)     = v + a_corr * Ts;
+    xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_corr * Ts*Ts;
+    xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_corr;
 
-    // covariance propagation
+    // Covariance propagation using Joseph form
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
 
-    // legacy mirror
+    // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
-    // pseudo-meas to keep S bounded
+    // Drift correction
     applyIntegralZeroPseudoMeas();
 }
 
@@ -429,54 +483,6 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
     // Quaternion correction + zero small-angle
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
-}
-
-    // Uses the propagated world acceleration to predict the accelerometer signal:
-    //   fhat_b = R^T (a^W - g^W)
-    // and linearizes w.r.t. small attitude error: H_theta = -[fhat_b]_x.
-template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::measurement_update_acc_dynamic(const Vector3& acc_meas_b)
-{
-    // need a cached a^W from the previous time_update()
-    if (!a_w_prev_valid) return;
-
-    // Rw: body->world ; Rw.transpose(): world->body
-    const Matrix3 Rw = R_from_quat();
-    const Vector3 g_world(0, 0, -gravity_magnitude);
-
-    // predicted specific force from previous-step world acceleration
-    const Vector3 s_world_pred = a_w_prev - g_world;   // (a^W_prev - g^W)
-    const Vector3 fhat_b       = Rw.transpose() * s_world_pred;
-
-    // Right-multiplicative small-angle: H_theta = +[fhat_b]_x
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    Cext.template block<3,3>(0, 0) = skew_symmetric_matrix(fhat_b);
-
-    const Vector3 inno = acc_meas_b - fhat_b;
-
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
-    Matrix<T, NX, 3> PHt = Pext * Cext.transpose();
-
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6));
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
-
-    xext.noalias() += K * inno;
-
-    Matrix<T, NX, NX> I = Matrix<T, NX, NX>::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
-
-    // quaternion correction from attitude error, then zero it
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
-
-    // keep legacy mirror
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_bias>
@@ -600,35 +606,37 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     MatrixNX& Q_a_ext)
 {
     F_a_ext.setIdentity();
-    Q_a_ext = Qext; // start from user/template Q
+    Q_a_ext = Qext; // start with template
 
-    // attitude-error propagation
-    const Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
+    // Small-angle attitude error propagation
+    Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
     F_a_ext.template block<3,3>(0,0) = Atheta;
     if constexpr (with_bias) {
-        // d(theta_err)/d(bias) ≈ -I*Ts
+        // cross term: attitude error depends on bias error
         F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
 
-    // Jacobians from attitude into linear states via specific force
-    const Matrix3 Rw = R_from_quat();                 // body->world
-    const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // in body frame
+    // Gravity-free acceleration
+    Matrix3 Rw = R_from_quat();
+    Vector3 g_world{0, 0, -gravity_magnitude};
+    Vector3 a_w = Rw * acc_body + g_world; // recover world acceleration
+    const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // body frame
 
-    F_a_ext.template block<3,3>(BASE_N,   0) = -Ts              * (Rw * skew_ab);
-    F_a_ext.template block<3,3>(BASE_N+3, 0) = -T(0.5)*Ts*Ts    * (Rw * skew_ab);
-    F_a_ext.template block<3,3>(BASE_N+6, 0) = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
+    // Attitude → linear Jacobians
+    F_a_ext.template block<3,3>(BASE_N,0)     = -Ts * (Rw * skew_ab);
+    F_a_ext.template block<3,3>(BASE_N+3,0)   = -T(0.5)*Ts*Ts * (Rw * skew_ab);
+    F_a_ext.template block<3,3>(BASE_N+6,0)   = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
+  
+    // Linear dependencies
+    F_a_ext.template block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
+    F_a_ext.template block<3,3>(BASE_N+6, BASE_N) = Matrix3::Identity() * (0.5*Ts*Ts); // v -> S
+    F_a_ext.template block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;      // p -> S
 
-    // linear state couplings
-    F_a_ext.template block<3,3>(BASE_N+3,   BASE_N)   = Matrix3::Identity() * Ts;         // v -> p
-    F_a_ext.template block<3,3>(BASE_N+6,   BASE_N)   = Matrix3::Identity() * (T(0.5)*Ts*Ts); // v -> S
-    F_a_ext.template block<3,3>(BASE_N+6,   BASE_N+3) = Matrix3::Identity() * Ts;         // p -> S
-
-    // process noise driven by accel noise, mapped into (v,p,S)
+    // Process noise
     Matrix<T,9,3> G; G.setZero();
-    G.template topRows<3>()        = Ts                * Rw;
-    G.template middleRows<3>(3)    = (T(0.5)*Ts*Ts)    * Rw;
-    G.template bottomRows<3>()     = (Ts*Ts*Ts/T(6))   * Rw;
-
+    G.template topRows<3>()        = Ts * Rw;
+    G.template middleRows<3>(3)    = (T(0.5) * Ts * Ts) * Rw;
+    G.template bottomRows<3>()     = (Ts*Ts*Ts / T(6)) * Rw;
     Q_a_ext.template block(BASE_N, BASE_N, 9, 9) = G * Q_Racc_noise * G.transpose();
 }
 
