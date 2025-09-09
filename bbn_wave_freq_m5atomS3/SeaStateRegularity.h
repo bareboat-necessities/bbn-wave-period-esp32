@@ -3,14 +3,6 @@
 #include <limits>
 #include <algorithm>
 
-#ifdef SEA_STATE_TEST
-#include <iostream>
-#include <vector>
-#include <random>
-#include <stdexcept>
-#include <utility>
-#endif
-
 /**
  * Copyright 2025, Mikhail Grushinskiy
  *
@@ -47,6 +39,14 @@
  *      We blend via a smoothstep f(R)∈[√2,1] and include a small calibration C_H to offset practical biases:
  *         Hs ≈ C_H · 2√M0 · f(R_out).
  */
+
+#ifdef SEA_STATE_TEST
+#include <iostream>
+#include <vector>
+#include <random>
+#include <stdexcept>
+#include <utility>
+#endif
 
 // Portability guards
 #ifndef M_PI
