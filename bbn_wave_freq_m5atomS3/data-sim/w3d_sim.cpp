@@ -112,13 +112,13 @@ void process_wave_file(const std::string &filename, float dt) {
         });
     });
 
-    // Output filename: preserve original name + add "_kalman" before ".csv"
+    // Output filename: preserve original name + add "_w3d" before ".csv"
     std::string outname = filename;
     auto pos = outname.rfind(".csv");
     if (pos != std::string::npos) {
-        outname.insert(pos, "_kalman");
+        outname.insert(pos, "_w3d");
     } else {
-        outname += "_kalman.csv";
+        outname += "_w3d.csv";
     }
 
     std::ofstream ofs(outname);
