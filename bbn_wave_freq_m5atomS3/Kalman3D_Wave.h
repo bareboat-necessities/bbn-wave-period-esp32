@@ -98,7 +98,7 @@ void measurement_update_acc_dynamic(const Vector3& acc_meas_b)
     // Build C (3 x NX): only attitude error block is nonzero
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
     // For h(q)=R^T s, δh ≈ -[h]_x δθ
-    Cext.template block<3,3>(0, 0) = -skew_symmetric_matrix(fhat_b);
+    Cext.template block<3,3>(0, 0) = skew_symmetric_matrix(fhat_b);
 
     // Innovation
     const Vector3 inno = acc_meas_b - fhat_b;
