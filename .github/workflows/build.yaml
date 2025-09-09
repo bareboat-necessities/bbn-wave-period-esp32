@@ -65,6 +65,7 @@ jobs:
         ./freq_track.sh
         ./sea_reg.sh
         ./qmekf_sim.sh
+        ./w3d_sim.sh
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
