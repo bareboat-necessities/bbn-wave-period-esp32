@@ -86,7 +86,7 @@ for fname in files:
         continue
 
     # Build output base name (safe for filesystem)
-    outbase = f"qmekf_{wave_type}_{group_name}"
+    outbase = f"w3d_{wave_type}_{group_name}"
     outbase = re.sub(r"[^A-Za-z0-9_\-]", "_", outbase)
     outbase = os.path.join(DATA_DIR, outbase)
 
