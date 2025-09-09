@@ -608,37 +608,35 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     MatrixNX& Q_a_ext)
 {
     F_a_ext.setIdentity();
-    Q_a_ext = Qext; // start with template
+    Q_a_ext = Qext; // start from user/template Q
 
-    // Small-angle attitude error propagation
-    Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
+    // attitude-error propagation
+    const Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
     F_a_ext.template block<3,3>(0,0) = Atheta;
     if constexpr (with_bias) {
-        // cross term: attitude error depends on bias error
+        // d(theta_err)/d(bias) ≈ -I*Ts
         F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
 
-    // Gravity-free acceleration
-    Matrix3 Rw = R_from_quat();
-    Vector3 g_world{0, 0, -gravity_magnitude};
-    Vector3 a_w = Rw * acc_body + g_world; // recover world acceleration
-    const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // body frame
+    // Jacobians from attitude into linear states via specific force
+    const Matrix3 Rw = R_from_quat();                 // body->world
+    const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // in body frame
 
-    // Attitude → linear Jacobians
-    F_a_ext.template block<3,3>(BASE_N,0)     = -Ts * (Rw * skew_ab);
-    F_a_ext.template block<3,3>(BASE_N+3,0)   = -T(0.5)*Ts*Ts * (Rw * skew_ab);
-    F_a_ext.template block<3,3>(BASE_N+6,0)   = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
-  
-    // Linear dependencies
-    F_a_ext.template block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
-    F_a_ext.template block<3,3>(BASE_N+6, BASE_N) = Matrix3::Identity() * (0.5*Ts*Ts); // v -> S
-    F_a_ext.template block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;      // p -> S
+    F_a_ext.template block<3,3>(BASE_N,   0) = -Ts              * (Rw * skew_ab);
+    F_a_ext.template block<3,3>(BASE_N+3, 0) = -T(0.5)*Ts*Ts    * (Rw * skew_ab);
+    F_a_ext.template block<3,3>(BASE_N+6, 0) = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
 
-    // Process noise
+    // linear state couplings
+    F_a_ext.template block<3,3>(BASE_N+3,   BASE_N)   = Matrix3::Identity() * Ts;         // v -> p
+    F_a_ext.template block<3,3>(BASE_N+6,   BASE_N)   = Matrix3::Identity() * (T(0.5)*Ts*Ts); // v -> S
+    F_a_ext.template block<3,3>(BASE_N+6,   BASE_N+3) = Matrix3::Identity() * Ts;         // p -> S
+
+    // process noise driven by accel noise, mapped into (v,p,S)
     Matrix<T,9,3> G; G.setZero();
-    G.template topRows<3>()        = Ts * Rw;
-    G.template middleRows<3>(3)    = (T(0.5) * Ts * Ts) * Rw;
-    G.template bottomRows<3>()     = (Ts*Ts*Ts / T(6)) * Rw;
+    G.template topRows<3>()        = Ts                * Rw;
+    G.template middleRows<3>(3)    = (T(0.5)*Ts*Ts)    * Rw;
+    G.template bottomRows<3>()     = (Ts*Ts*Ts/T(6))   * Rw;
+
     Q_a_ext.template block(BASE_N, BASE_N, 9, 9) = G * Q_Racc_noise * G.transpose();
 }
 
