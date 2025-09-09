@@ -8,6 +8,22 @@
 #include <vector>
 #include <random>
 #include <stdexcept>
+#include <utility>   // std::pair  ✅
+#endif
+
+// ---- Portability guards ----
+#ifndef M_PI
+#define M_PI 3.14159265358979323846  // ✅ define if not provided by <cmath>
+#endif
+
+// std::clamp polyfill for pre-C++17  ✅
+#if __cplusplus < 201703L
+namespace std {
+template <class T>
+constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
+    return (v < lo) ? lo : (hi < v) ? hi : v;
+}
+}
 #endif
 
 /**
@@ -58,7 +74,7 @@ public:
     constexpr static float K_CIRC_VAR   = 0.20f;  // mild softening: 1 − k · (1 − R_phase)
     constexpr static float HEIGHT_GAMMA = 1.00f;  // shape exponent for height smoothstep
 
-    // NEW: calibrated, time-scaled and bias-control constants
+    // Calibrated, time-scaled and bias-control constants
     constexpr static float OMEGA_DD_MAX = 30.0f;  // rad/s² max slew for demod basis ω (time-scaled)
     constexpr static float H_CAL        = 1.10f;  // mild overall height scale (tune 1.05–1.25 if needed)
     constexpr static float Z_TINY       = 1e-6f;  // magnitude guard for unit-vector phase update
@@ -117,7 +133,7 @@ public:
         // Demod-driving ω slew limiter memory
         omega_phi_last = 0.0f;
 
-        // NEW: two-pole RBW stats
+        // Two-pole RBW stats
         wbar_ema  = 0.0f;
         w2bar_ema = 0.0f;
     }
@@ -203,7 +219,7 @@ private:
     // Demod ω slew limiter memory
     float omega_phi_last;
 
-    // NEW: decoupled running means for RBW (two-pole)
+    // Decoupled running means for RBW (two-pole)
     float wbar_ema;   // ⟨ω⟩
     float w2bar_ema;  // ⟨ω²⟩
 
@@ -299,7 +315,7 @@ private:
             omega_disp_lp = (1.0f - alpha_omega) * omega_disp_lp + alpha_omega * omega_disp;
         }
 
-        // NEW: decoupled RBW stats (reduce cross-terms with P_disp)
+        // Decoupled RBW stats (reduce cross-terms with P_disp)
         wbar_ema  = (1.0f - alpha_mom) * wbar_ema  + alpha_mom * omega_norm;
         w2bar_ema = (1.0f - alpha_mom) * w2bar_ema + alpha_mom * omega_norm * omega_norm;
     }
@@ -381,6 +397,7 @@ private:
 };
 
 #ifdef SEA_STATE_TEST
+// ---- Test harness (unchanged API) ----
 constexpr float SAMPLE_FREQ_HZ   = 240.0f;
 constexpr float DT               = 1.0f / SAMPLE_FREQ_HZ;
 constexpr float SIM_DURATION_SEC = 60.0f;
