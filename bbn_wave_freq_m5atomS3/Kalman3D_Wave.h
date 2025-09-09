@@ -366,10 +366,15 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
     // World-frame linear acceleration
     Matrix3 Rw = R_from_quat();
     Vector3 g_world{0, 0, -gravity_magnitude};
-    Vector3 a_w = Rw * acc_body + g_world;  // recover world acceleration
+
+    // Make the *previous* a^W available to the next measurement update
+    a_w_prev = last_a_w;          // last_a_w still holds the previous step's a^W
+    a_w_prev_valid = true;
+
+    Vector3 a_w = Rw * acc_body + g_world;  // recover world acceleration (current step)
     Vector3 a_corr = a_w;
 
-    // For the dynamic accelerometer measurement
+    // Keep for the dynamic accelerometer measurement (current step)
     last_a_w = a_w;
   
     // Extract current linear states
