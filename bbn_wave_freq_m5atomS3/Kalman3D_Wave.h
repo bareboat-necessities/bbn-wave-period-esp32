@@ -83,7 +83,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Uses the propagated world acceleration to predict the accelerometer signal:
     //   fhat_b = R^T (a^W - g^W)
-    // and linearizes w.r.t. small attitude error: H_theta = -[fhat_b]_x.
+    // and linearizes w.r.t. small attitude error: H_theta = +[fhat_b]_x.
     void measurement_update_acc_dynamic(const Vector3& acc_meas_b)
     {
         // Rotation and gravity
@@ -97,7 +97,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     
         // Build C (3 x NX): only attitude error block is nonzero
         Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-        // For h(q)=R^T s, δh ≈ -[h]_x δθ
+        // For h(q)=R^T s, δh ≈ +[h]_x δθ
         Cext.template block<3,3>(0, 0) = skew_symmetric_matrix(fhat_b);
     
         // Innovation
