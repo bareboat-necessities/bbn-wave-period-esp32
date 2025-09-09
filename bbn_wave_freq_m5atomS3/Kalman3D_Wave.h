@@ -201,6 +201,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
 
     Vector3 last_a_w{Vector3::Zero()};   // world linear acceleration used for dynamic accel meas
+    Vector3 a_w_prev{Vector3::Zero()};
+    bool    a_w_prev_valid{false};
 
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
@@ -367,9 +369,8 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
     Vector3 a_w = Rw * acc_body + g_world;  // recover world acceleration
     Vector3 a_corr = a_w;
 
-    // Keep for the dynamic accelerometer measurement
+    // For the dynamic accelerometer measurement
     last_a_w = a_w;
-
   
     // Extract current linear states
     auto v = xext.template segment<3>(BASE_N);
