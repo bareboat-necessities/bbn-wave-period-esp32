@@ -14,12 +14,11 @@
  * SeaStateRegularity — Online estimator of ocean wave regularity from vertical acceleration.
  *
  * Inputs
- * ──────
  *   • Vertical acceleration a_z(t) [m/s²]
  *   • Instantaneous angular frequency ω_inst(t) [rad/s] from an external tracker
  *
  * Method (sketch)
- * ───────────────
+ *
  * 1) Demodulate acceleration into baseband I/Q
  *      y(t) = a_z(t) · e^(−jφ(t)),     φ̇(t) = ω_φ(t) ≈ LP(ω_inst(t))
  *    Low-pass ⇒ z(t) = (z_r,z_i) (complex envelope of acceleration).
@@ -55,17 +54,6 @@
  *      Hs ≈ 2√M₀ · f(R_out),   where  f : [0,1] → [√2, 1]
  *    is a cubic-smoothstep mapping (threshold-free, differentiable).
  *
- * Interpretation
- * ──────────────
- *   • Fenton / Gerstner / single cnoidal: phase-locked ⇒ R_phase ≈ 1 ⇒ R_out → 1.
- *   • JONSWAP: narrower than PM but random-phase ⇒ moderate rbw, moderate R_phase.
- *   • Pierson–Moskowitz: broader wind-sea ⇒ larger rbw, lower coherence ⇒ smallest R_out.
- *
- * Notes
- * ─────
- *   • No M₄ anywhere (neither computed nor used).
- *   • All transitions are EMA- or smoothstep-based (no hard thresholds).
- *   • ω for demodulation and normalization are low-passed for numerical robustness.
  */
 
 class SeaStateRegularity {
@@ -212,7 +200,7 @@ private:
     // Demod omega slew limiter memory
     float omega_phi_last;
 
-    // ---- Impl ----
+    // Impl
     void updateAlpha(float dt_s) {
         if (dt_s == last_dt) return;
         alpha_env   = 1.0f - std::exp(-dt_s / tau_env);
@@ -320,12 +308,11 @@ private:
             coh_r = (1.0f - alpha_coh) * coh_r + alpha_coh * u_r;
             coh_i = (1.0f - alpha_coh) * coh_i + alpha_coh * u_i;
         }
-
         R_phase = std::clamp(std::sqrt(coh_r * coh_r + coh_i * coh_i), 0.0f, 1.0f);
     }
 
     void computeRegularityOutput() {
-        // 1) Spectral regularity from relative bandwidth rbw = √μ₂ / ω̄
+        // Spectral regularity from relative bandwidth rbw = √μ₂ / ω̄
         //    ω̄ = M1/M0,  μ₂ = (M0*M2 - M1²)/M0 ≥ 0,  R_spec = exp(−β·rbw)
         if (M0 > EPSILON) {
             float omega_bar = M1 / M0;
@@ -340,7 +327,7 @@ private:
             R_spec = 0.0f;
         }
 
-        // 2) Fusion with phase coherence:
+        // Fusion with phase coherence:
         //    R_base = R_phase^w · R_spec^(1−w)  (geometric mean; phase-forward)
         float Rp = std::max(R_phase, 1e-6f);
         float Rs = std::max(R_spec,  1e-6f);
@@ -354,12 +341,12 @@ private:
         // “Harmonic-safe regularity”: expose fused value (no thresholds)
         R_safe = std::clamp(R_base * adj_var, 0.0f, 1.0f);
 
-        // 3) Final output smoothing
+        // Final output smoothing
         float R_target = R_safe;
         if (!has_R_out) { R_out = R_target; has_R_out = true; }
         else            { R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target; }
 
-        // 4) Legacy narrowness diagnostic: ν = √((M0*M2 / M1²) − 1)  when M1>0
+        // Legacy narrowness diagnostic: ν = √((M0*M2 / M1²) − 1)  when M1>0
         if (M1 > EPSILON && M0 > 0.0f && M2 > 0.0f) {
             float ratio = (M0 * M2) / (M1 * M1) - 1.0f;
             nu = (ratio > 0.0f) ? std::sqrt(ratio) : 0.0f;
@@ -379,7 +366,7 @@ private:
 };
 
 #ifdef SEA_STATE_TEST
-// ------------------- Simple sine-wave test harness -------------------
+// Simple sine-wave test harness
 constexpr float SAMPLE_FREQ_HZ = 240.0f;
 constexpr float DT = 1.0f / SAMPLE_FREQ_HZ;
 constexpr float SIM_DURATION_SEC = 60.0f;
