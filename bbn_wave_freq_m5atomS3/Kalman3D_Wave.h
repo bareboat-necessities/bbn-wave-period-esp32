@@ -510,7 +510,7 @@ void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
     // Factor S and compute K = PHt * S^{-1}
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R.norm());  // small jitter; epsilon may be too tiny in practice
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());  // small jitter; epsilon may be too tiny in practice
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
