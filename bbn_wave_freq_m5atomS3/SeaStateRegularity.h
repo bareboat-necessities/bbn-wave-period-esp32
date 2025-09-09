@@ -11,30 +11,71 @@
 #endif
 
 /**
- * Copyright 2025, Mikhail Grushinskiy
+ * SeaStateRegularity — Online estimator of ocean wave regularity from vertical acceleration.
  *
- * @brief Online estimator of ocean wave regularity from vertical acceleration.
+ * Inputs
+ * ──────
+ *   • Vertical acceleration a_z(t) [m/s²]
+ *   • Instantaneous angular frequency ω_inst(t) [rad/s] from an external tracker
  *
- * Computes:
- *  - Spectral regularity R_spec (from spectral moments)
- *  - Phase coherence regularity R_phase
- *  - Harmonic-safe regularity R_safe
- *  - Smoothed output R_out
- *  - Approximate significant wave height estimate
- *  - Displacement frequency estimate
+ * Method (sketch)
+ * ───────────────
+ * 1) Demodulate acceleration into baseband I/Q
+ *      y(t) = a_z(t) · e^(−jφ(t)),     φ̇(t) = ω_φ(t) ≈ LP(ω_inst(t))
+ *    Low-pass ⇒ z(t) = (z_r,z_i) (complex envelope of acceleration).
  *
+ * 2) Form a displacement-envelope proxy using the small-slope relation
+ *      d(t) = z(t) / ω_norm(t)²,       ω_norm ≈ blend( ω_lp,  ω̄_disp )
+ *    Power in displacement envelope:
+ *      P_disp(t) = |d(t)|² .
+ *
+ * 3) Track spectral moments online (exponential moving averages)
+ *      M₀ = ⟨ P_disp ⟩,
+ *      M₁ = ⟨ P_disp · ω ⟩,
+ *      M₂ = ⟨ P_disp · ω² ⟩.
+ *    From these,
+ *      ω̄ = M₁ / M₀                            (mean frequency),
+ *      μ₂ = (M₀M₂ − M₁²) / M₀  ≥ 0            (central variance of frequency).
+ *    Define relative bandwidth (dimensionless)
+ *      rbw = √μ₂ / ω̄ .
+ *
+ * 4) Regularity components (both ∈ [0,1])
+ *      R_spec  = exp( −β · rbw )               (spectral narrowness; smooth & monotone),
+ *      R_phase = ‖ ⟨ u ⟩ ‖,  with  u = z / ‖z‖ (phase coherence; mean resultant length).
+ *
+ * 5) Fusion (phase-forward geometric mean; scale-free)
+ *      R_safe = ( R_phase^w ) · ( R_spec^(1−w) ),   w ∈ [0,1] (default w≈0.75)
+ *      Optional mild softening tied to phase variance:
+ *      R_safe ← R_safe · ( 1 − k · (1 − R_phase) ).
+ *
+ * 6) Significant wave height (smooth blend of edge cases)
+ *      Hs^reg ≈ 2√M₀                  (regular single-tone),
+ *      Hs^irr ≈ 2√2 · √M₀             (Gaussian narrowband, random phase).
+ *    We use
+ *      Hs ≈ 2√M₀ · f(R_out),   where  f : [0,1] → [√2, 1]
+ *    is a cubic-smoothstep mapping (threshold-free, differentiable).
+ *
+ * Interpretation
+ * ──────────────
+ *   • Fenton / Gerstner / single cnoidal: phase-locked ⇒ R_phase ≈ 1 ⇒ R_out → 1.
+ *   • JONSWAP: narrower than PM but random-phase ⇒ moderate rbw, moderate R_phase.
+ *   • Pierson–Moskowitz: broader wind-sea ⇒ larger rbw, lower coherence ⇒ smallest R_out.
+ *
+ * Notes
+ * ─────
+ *   • No M₄ anywhere (neither computed nor used).
+ *   • All transitions are EMA- or smoothstep-based (no hard thresholds).
+ *   • ω for demodulation and normalization are low-passed for numerical robustness.
  */
 
 class SeaStateRegularity {
 public:
-    // Configurable constants
-    constexpr static float EPSILON = 1e-12f;
-    constexpr static float HEIGHT_R_HI = 0.98f;
-    constexpr static float HEIGHT_R_LO = 0.50f;
-    constexpr static float BROADBAND_WAVE_THRESHOLD = 0.3f;
-    constexpr static float BROADBAND_WAVE_REDUCTION_MAX = 0.08f;
-    constexpr static float LARGE_WAVE_THRESHOLD = 0.5f;
-    constexpr static float LARGE_WAVE_BOOST_MAX = 0.12f;
+    // Small constants and weights
+    constexpr static float EPSILON      = 1e-12f;
+    constexpr static float PHASE_WEIGHT = 0.75f;   // fusion weight w in R = R_phase^w · R_spec^(1−w)
+    constexpr static float BETA_SPEC    = 1.00f;   // R_spec = exp(−β · rbw),  rbw = √μ₂/ω̄
+    constexpr static float K_CIRC_VAR   = 0.20f;   // mild softening: 1 − k · (1 − R_phase)
+    constexpr static float HEIGHT_GAMMA = 1.00f;   // shape for smoothstep in f(R)
 
     // Safe defaults for typical ocean waves (PM/JONSWAP)
     SeaStateRegularity(float tau_env_sec   = 15.0f,   // envelope I/Q smoother (~2–3 waves)
@@ -42,7 +83,7 @@ public:
                        float omega_min_hz  = 0.03f,   // cutoff (~33 s period)
                        float tau_coh_sec   = 60.0f,   // steadies R_phase
                        float tau_out_sec   = 30.0f,   // final R_out smoother
-                       float tau_omega_sec = 45.0f)   // protects 1/omega^2 normalization
+                       float tau_omega_sec = 45.0f)   // protects 1/ω² normalization
     {
         tau_env   = tau_env_sec;
         tau_mom   = tau_mom_sec;
@@ -58,8 +99,8 @@ public:
         phi = 0.0f;
         z_real = z_imag = 0.0f;
 
-        // Spectral moments and regularities
-        M0 = M1 = M2 = M4 = 0.0f;
+        // Spectral moments and regularities (no M4)
+        M0 = M1 = M2 = 0.0f;
         nu = 0.0f;
         R_spec = R_phase = R_safe = R_out = 0.0f;
 
@@ -69,6 +110,7 @@ public:
 
         // Phase coherence avg
         coh_r = coh_i = 0.0f;
+        has_coh = false;
 
         // Frequency tracking
         omega_lp = omega_disp_lp = 0.0f;
@@ -82,14 +124,7 @@ public:
         has_omega_lp = false;
         has_omega_disp_lp = false;
         has_moments = false;
-        has_coh = false;
         has_R_out = false;
-
-        // Gating smoother & hysteresis state
-        P_disp_gate = 0.0f;
-        has_gate = false;
-        bb_active = false;
-        lg_active = false;
 
         // Demod-driving omega slew limiter memory
         omega_phi_last = 0.0f;
@@ -98,8 +133,8 @@ public:
     // Main update: dt (s), vertical accel (m/s^2), instantaneous omega (rad/s)
     void update(float dt_s, float accel_z, float omega_inst) {
         if (!(dt_s > 0.0f)) return;
-        if (accel_z != accel_z) accel_z = 0.0f;             // NaN guard
-        if (omega_inst != omega_inst) omega_inst = omega_min;
+        if (accel_z   != accel_z)   accel_z   = 0.0f;            // NaN guard
+        if (omega_inst!= omega_inst)omega_inst= omega_min;
 
         updateAlpha(dt_s);
         demodulateAcceleration(accel_z, omega_inst, dt_s);
@@ -109,45 +144,32 @@ public:
     }
 
     // Readouts
-    float getNarrowness() const { return nu; }
+    float getNarrowness() const { return nu; }                  // ν = √((M0 M2 / M1²) − 1)
     float getRegularity() const { return R_out; }
     float getRegularitySpectral() const { return R_spec; }
     float getRegularityPhase() const { return R_phase; }
 
-    float getCircularVariance() const {
-        // 0 for perfect coherence, 1 for uniform phases
-        return 1.0f - R_phase;
-    }
-
-    float getCircularDispersion() const {
-        if (R_phase < EPSILON) return 0.0f;
-        return (1.0f - std::pow(R_phase, 4)) / (2.0f * R_phase * R_phase);
-    }
+    float getCircularVariance() const { return 1.0f - R_phase; } // 0 for perfect coherence, 1 for uniform
 
     float getWaveHeightEnvelopeEst() const {
         if (M0 <= 0.0f || !has_R_out) return 0.0f;
+        // Hs ≈ 2√M0 · f(R), where f(R): smoothstep from √2 (irregular) to 1 (regular)
         return 2.0f * std::sqrt(M0) * heightFactorFromR(R_out);
     }
 
     float getDisplacementFrequencyHz() const {
-        return omega_disp_lp / (2.0f * float(M_PI));
-    }
-
-    float getSpectralPeakedness() const {
-        if (M2 <= EPSILON) return 0.0f;
-        return (M0 * M4) / (M2 * M2);
+        return omega_disp_lp / (2.0f * float(M_PI));            // f_disp = ω̄/(2π)
     }
 
     // Optional: scale time constants from dominant period Tp (s)
     void set_safe_defaults_from_peak_period(float Tp) {
-        // Clamp Tp to plausible ocean periods
         Tp = std::min(std::max(Tp, 5.0f), 20.0f);
         tau_env   = std::clamp(2.0f  * Tp,  8.0f,  40.0f);
         tau_omega = std::clamp(5.0f  * Tp, 20.0f, 120.0f);
         tau_mom   = std::clamp(12.0f * Tp, 60.0f, 300.0f);
         tau_coh   = std::clamp(6.0f  * Tp, 30.0f, 120.0f);
         tau_out   = std::clamp(4.0f  * Tp, 15.0f,  60.0f);
-        // Alphas will refresh on next updateAlpha() call (e.g., when dt changes).
+        // Alphas refresh in updateAlpha() when dt changes.
     }
 
 private:
@@ -163,13 +185,14 @@ private:
     float phi;
     float z_real, z_imag;
 
-    // Spectral moments & regularity
-    float M0, M1, M2, M4;
+    // Spectral moments & regularity (M4 removed)
+    float M0, M1, M2;
     float nu;
     float R_spec, R_phase, R_safe, R_out;
 
     // Phase coherence
     float coh_r, coh_i;
+    bool  has_coh;
 
     // Frequency tracking
     float omega_lp, omega_disp_lp;
@@ -180,25 +203,16 @@ private:
     bool has_omega_lp;
     bool has_omega_disp_lp;
     bool has_moments;
-    bool has_coh;
     bool has_R_out;
 
-    // Variance adaptation (gentler)
+    // Variance adaptation
     constexpr static float ALPHA_FAST = 0.05f;
     constexpr static float ALPHA_SLOW = 0.02f;
-
-    // Gate smoothing/hysteresis
-    float P_disp_gate;
-    bool has_gate;
-    bool bb_active;
-    bool lg_active;
 
     // Demod omega slew limiter memory
     float omega_phi_last;
 
-    // ----------------------------------------------------
-    // Implementation
-    // ----------------------------------------------------
+    // ---- Impl ----
     void updateAlpha(float dt_s) {
         if (dt_s == last_dt) return;
         alpha_env   = 1.0f - std::exp(-dt_s / tau_env);
@@ -210,28 +224,28 @@ private:
     }
 
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
-        // Use smoothed omega with slew limit to rotate demod basis
+        // Use smoothed ω with a conservative slew limit to rotate demod basis.
+        // This keeps φ(t) well-behaved if the tracker ω_inst jitters.
         float omega_phi = has_omega_lp ? omega_lp : std::max(omega_inst, omega_min);
-        const float domega_max = 0.5f; // rad/s per update (tune 0.2..1.0)
+        const float domega_max = 0.5f; // rad/s per update
         if (!has_omega_lp) omega_phi_last = omega_phi;
         float domega = omega_phi - omega_phi_last;
         if (domega >  domega_max) omega_phi = omega_phi_last + domega_max;
         if (domega < -domega_max) omega_phi = omega_phi_last - domega_max;
         omega_phi_last = omega_phi;
 
+        // Integrate demodulation phase
         phi += omega_phi * dt_s;
         phi = std::fmod(phi, 2.0f * float(M_PI));
 
-        // Rotate accel into baseband I/Q
-        float c = std::cos(-phi);
-        float s = std::sin(-phi);
+        // Rotate acceleration to baseband I/Q: y = a · e^(−jφ)
+        float c = std::cos(-phi), s = std::sin(-phi);
         float y_real = accel_z * c;
         float y_imag = accel_z * s;
 
         // First-time init
         if (!has_omega_lp) {
-            z_real = y_real;
-            z_imag = y_imag;
+            z_real = y_real; z_imag = y_imag;
             omega_lp = std::max(omega_inst, omega_min);
             omega_last = mu_w = omega_lp;
             var_fast = var_slow = 0.0f;
@@ -239,61 +253,54 @@ private:
             return;
         }
 
-        // Envelope EMA (controls per-cycle smoothness)
+        // Envelope EMA (per-cycle smoothness)
         z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
         z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
 
-        // Low-pass the instantaneous omega from external estimator
+        // LP the instantaneous ω from external estimator (stabilizes 1/ω² below)
         float w_inst = std::max(omega_inst, omega_min);
-        if (tau_omega > 0.0f) {
-            omega_lp = (1.0f - alpha_omega) * omega_lp + alpha_omega * w_inst;
-        } else {
-            omega_lp = w_inst;
-        }
+        omega_lp = (tau_omega > 0.0f)
+                 ? (1.0f - alpha_omega) * omega_lp + alpha_omega * w_inst
+                 : w_inst;
 
-        // Variance trackers for omega (used to stabilize M2)
+        // Track slow variance of ω_lp to stabilize M2 (reduces rbw bias from ω noise)
         float delta = omega_lp - mu_w;
-        mu_w += ALPHA_FAST * delta;
+        mu_w    += ALPHA_FAST * delta;
         var_fast = (1.0f - ALPHA_FAST) * var_fast + ALPHA_FAST * delta * delta;
         var_slow = (1.0f - ALPHA_SLOW) * var_slow + ALPHA_SLOW * delta * delta;
         omega_last = omega_lp;
     }
 
     void updateSpectralMoments() {
-        // Blended omega for normalization: mostly omega_lp with a touch of moment-based omega
+        // ω used for accel→disp normalization: ω_norm ~ 0.7·ω_lp + 0.3·ω̄_disp (if available)
         float omega_norm = omega_lp;
         if (has_omega_disp_lp) omega_norm = 0.7f * omega_lp + 0.3f * omega_disp_lp;
         omega_norm = std::max(omega_norm, omega_min);
 
-        // Convert accel-envelope → displacement-envelope via 1/omega^2
+        // Convert accel-envelope → displacement-envelope via 1/ω_norm²
         float inv_w2 = 1.0f / std::max(omega_norm * omega_norm, EPSILON);
-        float disp_real_corr = z_real * inv_w2;
-        float disp_imag_corr = z_imag * inv_w2;
-        float P_disp_corr = disp_real_corr * disp_real_corr + disp_imag_corr * disp_imag_corr;
+        float disp_r = z_real * inv_w2;
+        float disp_i = z_imag * inv_w2;
+        float P_disp = disp_r * disp_r + disp_i * disp_i;
 
-        // Exponential averaging of spectral moments
+        // Exponential averaging of spectral moments (M0..M2)
         if (!has_moments) {
-            M0 = P_disp_corr;
-            M1 = P_disp_corr * omega_norm;
-            M2 = P_disp_corr * omega_norm * omega_norm;
-            M4 = P_disp_corr * omega_norm * omega_norm * omega_norm * omega_norm;
+            M0 = P_disp;
+            M1 = P_disp * omega_norm;
+            // Stabilize M2 by compensating slow ω variance; keep ≥ 0
+            float M2_c = P_disp * omega_norm * omega_norm - var_slow * M0;
+            M2 = (M2_c > 0.0f) ? M2_c : 0.0f;
             has_moments = true;
         } else {
-            M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp_corr;
-            M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp_corr * omega_norm;
-
-            // Stabilize M2 with slow variance compensation on omega
-            float M2_candidate = P_disp_corr * omega_norm * omega_norm - var_slow * M0;
-            if (M2_candidate < 0.0f) M2_candidate = 0.0f;
-            M2 = (1.0f - alpha_mom) * M2 + alpha_mom * M2_candidate;
-            M4 = (1.0f - alpha_mom) * M4 + alpha_mom * P_disp_corr *
-                 omega_norm * omega_norm * omega_norm * omega_norm;
+            M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp;
+            M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp * omega_norm;
+            float M2_c = P_disp * omega_norm * omega_norm - var_slow * M0;
+            if (M2_c < 0.0f) M2_c = 0.0f;
+            M2 = (1.0f - alpha_mom) * M2 + alpha_mom * M2_c;
         }
 
-        // Moment-based mean frequency
+        // Moment-based mean frequency ω̄_disp = M1/M0  (LP for readout/feedback)
         float omega_disp = (M0 > EPSILON) ? (M1 / M0) : omega_min;
-
-        // Low-pass the moment-derived omega as well
         if (!has_omega_disp_lp) {
             omega_disp_lp = omega_disp;
             has_omega_disp_lp = true;
@@ -303,15 +310,13 @@ private:
     }
 
     void updatePhaseCoherence() {
+        // Unit vector u = (z_r, z_i)/‖z‖; R_phase = ‖E[u]‖ (mean resultant length in [0,1])
         float mag = std::sqrt(z_real * z_real + z_imag * z_imag);
-        float u_r = (mag > EPSILON) ? z_real / mag : 1.0f;
-        float u_i = (mag > EPSILON) ? z_imag / mag : 0.0f;
+        float u_r = (mag > EPSILON) ? (z_real / mag) : 1.0f;
+        float u_i = (mag > EPSILON) ? (z_imag / mag) : 0.0f;
 
-        if (!has_coh) {
-            coh_r = u_r;
-            coh_i = u_i;
-            has_coh = true;
-        } else {
+        if (!has_coh) { coh_r = u_r; coh_i = u_i; has_coh = true; }
+        else {
             coh_r = (1.0f - alpha_coh) * coh_r + alpha_coh * u_r;
             coh_i = (1.0f - alpha_coh) * coh_i + alpha_coh * u_i;
         }
@@ -319,64 +324,57 @@ private:
         R_phase = std::clamp(std::sqrt(coh_r * coh_r + coh_i * coh_i), 0.0f, 1.0f);
     }
 
-void computeRegularityOutput() {
-    // === 1) Spectral regularity from bandwidth ===
-    if (M1 > EPSILON && M0 > 0.0f && M2 > 0.0f) {
-        float ratio = (M0 * M2) / (M1 * M1) - 1.0f;
-        if (ratio < 0.0f) ratio = 0.0f;
-        nu = std::sqrt(ratio);
-        R_spec = std::clamp(std::exp(-nu), 0.0f, 1.0f);
-    } else {
-        nu = 0.0f;
-        R_spec = 0.0f;
+    void computeRegularityOutput() {
+        // 1) Spectral regularity from relative bandwidth rbw = √μ₂ / ω̄
+        //    ω̄ = M1/M0,  μ₂ = (M0*M2 - M1²)/M0 ≥ 0,  R_spec = exp(−β·rbw)
+        if (M0 > EPSILON) {
+            float omega_bar = M1 / M0;
+            float num = M0 * M2 - M1 * M1;                       // = M0² Var(ω)
+            if (num < 0.0f) num = 0.0f;                          // numeric guard
+            float mu2 = num / std::max(M0, EPSILON);             // Var(ω)
+            float rbw = (omega_bar > 0.0f)
+                      ? std::sqrt(mu2) / std::max(omega_bar, omega_min)
+                      : 0.0f;
+            R_spec = std::clamp(std::exp(-BETA_SPEC * rbw), 0.0f, 1.0f);
+        } else {
+            R_spec = 0.0f;
+        }
+
+        // 2) Fusion with phase coherence:
+        //    R_base = R_phase^w · R_spec^(1−w)  (geometric mean; phase-forward)
+        float Rp = std::max(R_phase, 1e-6f);
+        float Rs = std::max(R_spec,  1e-6f);
+        float w  = std::clamp(PHASE_WEIGHT, 0.0f, 1.0f);
+        float R_base = std::exp(w * std::log(Rp) + (1.0f - w) * std::log(Rs));
+
+        // Optional mild softening tied to phase variance:
+        // adj_var = 1 − k · (1 − R_phase)
+        float adj_var = 1.0f - K_CIRC_VAR * (1.0f - R_phase);
+
+        // “Harmonic-safe regularity”: expose fused value (no thresholds)
+        R_safe = std::clamp(R_base * adj_var, 0.0f, 1.0f);
+
+        // 3) Final output smoothing
+        float R_target = R_safe;
+        if (!has_R_out) { R_out = R_target; has_R_out = true; }
+        else            { R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target; }
+
+        // 4) Legacy narrowness diagnostic: ν = √((M0*M2 / M1²) − 1)  when M1>0
+        if (M1 > EPSILON && M0 > 0.0f && M2 > 0.0f) {
+            float ratio = (M0 * M2) / (M1 * M1) - 1.0f;
+            nu = (ratio > 0.0f) ? std::sqrt(ratio) : 0.0f;
+        } else {
+            nu = 0.0f;
+        }
     }
 
-    // === 2) Combine with phase coherence ===
-    R_safe = std::max(R_spec, R_phase);
-
-    // === 3) Gather extra stats ===
-    float Qp = getSpectralPeakedness();    // ≈1 for narrowband, larger if broadband
-    float circVar = getCircularVariance(); // 0 = coherent, 1 = uniform
-
-    // === 4) Smooth adjustments ===
-    // Baseline = R_safe
-    float R_target = R_safe;
-
-    // ν adjustment (reduce up to 10% if ν >= 0.5)
-    const float nu_max  = 0.5f;
-    const float k_nu    = 0.10f;
-    float adj_nu = 1.0f - k_nu * std::clamp(nu / nu_max, 0.0f, 1.0f);
-
-    // Qp adjustment (reduce up to 15% if Qp >= 2.0)
-    const float Qp_max  = 2.0f;
-    const float k_qp    = 0.15f;
-    float adj_qp = 1.0f / (1.0f + k_qp * std::max(0.0f, (Qp - 1.0f) / (Qp_max - 1.0f)));
-
-    // Circular variance adjustment (reduce up to 20% if V ~ 1)
-    const float k_var   = 0.20f;
-    float adj_var = 1.0f - k_var * circVar;
-
-    // Combine all adjustments multiplicatively
-    float adj_factor = adj_nu * adj_qp * adj_var;
-
-    R_target *= adj_factor;
-
-    // === 5) Final output smoothing ===
-    if (!has_R_out) {
-        R_out = R_target;
-        has_R_out = true;
-    } else {
-        R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target;
-    }
-}
-
-    // Gentler mapping from R to height factor to avoid twitchiness
-    static float heightFactorFromR(float R_val) {
-        if (R_val >= HEIGHT_R_HI) return 1.0f;
-        if (R_val <= HEIGHT_R_LO) return std::sqrt(2.0f);
-        float x = (HEIGHT_R_HI - R_val) / (HEIGHT_R_HI - HEIGHT_R_LO);
-        const float p = 1.1f; // softer than 1.5
-        return 1.0f + (std::sqrt(2.0f) - 1.0f) * std::pow(x, p);
+    // Smooth height factor f(R): maps R∈[0,1] to f∈[√2, 1] using cubic smoothstep
+    static float heightFactorFromR(float R) {
+        float x = std::clamp(R, 0.0f, 1.0f);
+        float s = x * x * (3.0f - 2.0f * x);                 // smoothstep ∈ [0,1]
+        if (HEIGHT_GAMMA != 1.0f) s = std::pow(s, std::max(0.0f, HEIGHT_GAMMA));
+        const float C_reg = 1.0f, C_irr = std::sqrt(2.0f);
+        return C_irr - (C_irr - C_reg) * s;                  // f(0)=√2 (irreg), f(1)=1 (reg)
     }
 };
 
@@ -417,8 +415,7 @@ inline void SeaState_sine_wave_test() {
         auto za = wave.step(DT);
         float z = za.first;
         float a = za.second;
-        // Feed noisy-ish omega if you want: e.g., wave.omega + noise
-        reg.update(DT, a, wave.omega);
+        reg.update(DT, a, wave.omega);    // feed perfect ω to isolate filter behavior
         R_spec = reg.getRegularitySpectral();
         R_phase = reg.getRegularityPhase();
         Hs_est = reg.getWaveHeightEnvelopeEst();
