@@ -364,7 +364,7 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
     // World-frame linear acceleration
     Matrix3 Rw = R_from_quat();
     Vector3 g_world{0, 0, -gravity_magnitude};
-    Vector3 a_w = Rw * acc_body + g_world;  // remove gravity
+    Vector3 a_w = Rw * acc_body + g_world;  // recover world acceleration
     Vector3 a_corr = a_w;
 
     // Keep for the dynamic accelerometer measurement
@@ -619,7 +619,7 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     // Gravity-free acceleration
     Matrix3 Rw = R_from_quat();
     Vector3 g_world{0, 0, -gravity_magnitude};
-    Vector3 a_w = Rw * acc_body + g_world; // remove gravity
+    Vector3 a_w = Rw * acc_body + g_world; // recover world acceleration
     const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // body frame
 
     // Attitude → linear Jacobians
