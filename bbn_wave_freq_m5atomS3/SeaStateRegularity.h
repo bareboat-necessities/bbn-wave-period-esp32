@@ -81,7 +81,7 @@ public:
     constexpr static float LAMBDA_MIN   = 0.40f;  // min weight on ω_lp in ω_norm blend
     constexpr static float LAMBDA_MAX   = 0.90f;  // max weight on ω_lp in ω_norm blend
 
-    // Safe defaults for typical ocean waves (PM/JONSWAP)
+    // Safe defaults for typical ocean waves
     SeaStateRegularity(float tau_env_sec   = 15.0f,   // envelope I/Q smoother (~2–3 waves)
                        float tau_mom_sec   = 180.0f,  // moments horizon (minutes-scale)
                        float omega_min_hz  = 0.03f,   // cutoff (~33 s period)
