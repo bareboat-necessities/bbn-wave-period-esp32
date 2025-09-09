@@ -78,7 +78,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Measurement updates preserved (operate on extended state internally)
     void measurement_update(Vector3 const& acc, Vector3 const& mag);
     void measurement_update_acc_only(Vector3 const& acc);
-    void measurement_update_mag_only(Vector3 const& 
+    void measurement_update_mag_only(Vector3 const& mag);
     // Apply zero pseudo-measurement on S (integral drift correction)
     void applyIntegralZeroPseudoMeas();
 
