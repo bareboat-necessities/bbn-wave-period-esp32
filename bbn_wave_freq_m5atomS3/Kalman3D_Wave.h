@@ -462,60 +462,6 @@ void Kalman3D_Wave<T, with_bias>::measurement_update(
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::measurement_update_acc_dynamic(const Vector3& acc_meas_b)
-{
-    // Need a previous velocity and a valid Ts to form a prediction
-    if (!have_v_prev || last_Ts <= std::numeric_limits<T>::epsilon()) {
-        return; // nothing predictive to do yet
-    }
-
-    const Matrix3 Rw = R_from_quat();            // body -> world
-    const Vector3 g_world(0, 0, -gravity_magnitude);
-
-    // Predict world linear acceleration from the state (finite difference)
-    const Vector3 v_now   = xext.template segment<3>(BASE_N);
-    const Vector3 a_w_pred = (v_now - v_world_prev) / last_Ts;
-
-    // Predicted specific force in body frame from state
-    const Vector3 fhat_b = Rw.transpose() * (a_w_pred - g_world);
-
-    // Linearize w.r.t. small attitude error: δh ≈ +[fhat_b]_x δθ
-    Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
-    Cext.template block<3,3>(0, 0) = skew_symmetric_matrix(fhat_b);
-
-    // Innovation uses the *measured* specific force (accelerometer)
-    const Vector3 inno = acc_meas_b - fhat_b;
-
-    // Kalman update (Joseph form)
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
-    Matrix<T, NX, 3> PHt = Pext * Cext.transpose();
-
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6));
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
-
-    xext.noalias() += K * inno;
-
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());  // enforce symmetry
-
-    // Apply quaternion correction and zero attitude-error substate
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
-
-    // Mirror base covariance
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
-
-    // Advance the lag so next call uses this step's velocity as "previous"
-    v_world_prev = v_now;
-}
-
-template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
     const Eigen::Ref<const Vector3>& meas,
     const Eigen::Ref<const Vector3>& vhat,
