@@ -37,7 +37,7 @@ using Eigen::Map;
 
 template <typename T = float, bool with_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
-    static const T gravity_magnitude = T(9.81);
+    static constexpr T gravity_magnitude = T(9.81);
 
     // Original base state dimension (attitude-error (3) [+ gyro-bias (3) if with_bias])
     static constexpr int BASE_N = with_bias ? 6 : 3;
