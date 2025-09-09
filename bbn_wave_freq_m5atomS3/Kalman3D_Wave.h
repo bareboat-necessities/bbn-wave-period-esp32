@@ -151,7 +151,10 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     MatrixNX Qext; // Extended process noise / Q
     Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
 
-    Vector3 last_a_w{Vector3::Zero()};   // world linear acceleration used for dynamic accel meas
+    Vector3 last_a_w{Vector3::Zero()};   // world linear acceleration used for dynamic accel 
+    T last_Ts{T(0)};
+    bool have_v_prev{false};
+    Vector3 v_world_prev{Vector3::Zero()};
 
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
@@ -292,7 +295,11 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
         gyro_bias = Vector3::Zero(); 
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
-  
+
+    // capture previous world velocity & Ts for predictive dyn-acc
+    const Vector3 v_prev = xext.template segment<3>(BASE_N);
+    last_Ts = Ts;
+
     // Assemble extended Jacobian and Q
     MatrixNX F_a_ext, Q_a_ext;
     assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
@@ -312,7 +319,6 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
 
     // Keep for the dynamic accelerometer measurement
     last_a_w = a_w;
-
   
     // Extract current linear states
     auto v = xext.template segment<3>(BASE_N);
@@ -330,6 +336,9 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
+    v_world_prev = v_prev;
+    have_v_prev  = true;
+  
     // Drift correction
     applyIntegralZeroPseudoMeas();
 }
