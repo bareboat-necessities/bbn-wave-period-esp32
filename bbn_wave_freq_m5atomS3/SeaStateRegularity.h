@@ -11,6 +11,8 @@
 #endif
 
 /**
+ * Copyright 2025, Mikhail Grushinskiy
+ *
  * SeaStateRegularity — Online estimator of ocean wave regularity from vertical acceleration.
  *
  * Inputs
