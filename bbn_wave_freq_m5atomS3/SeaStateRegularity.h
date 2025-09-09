@@ -219,7 +219,7 @@ private:
     }
 
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
-        // --- Time-scaled slew limiting on ω (rad/s²) for demodulation basis ---
+        // Time-scaled slew limiting on ω (rad/s²) for demodulation basis
         float w_target = std::max(omega_inst, omega_min);
         if (!has_omega_lp) omega_phi_last = std::max(w_target, omega_min);
         float dw = w_target - omega_phi_last;
@@ -381,7 +381,6 @@ private:
 };
 
 #ifdef SEA_STATE_TEST
-// ---------------------------- TEST HARNESS (unchanged API; updated impl is exercised) ----------------------------
 constexpr float SAMPLE_FREQ_HZ   = 240.0f;
 constexpr float DT               = 1.0f / SAMPLE_FREQ_HZ;
 constexpr float SIM_DURATION_SEC = 60.0f;
