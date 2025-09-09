@@ -145,6 +145,7 @@ int main() {
     for (auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
         std::string fname = entry.path().string();
+        if (fname.find("wave_data_") == std::string::npos) continue;
         auto kind = WaveFileNaming::parse_kind_only(fname);
         if (kind && *kind == FileKind::Data) {
             process_wave_file(fname, dt);
