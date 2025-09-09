@@ -84,30 +84,29 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Uses the propagated world acceleration to predict the accelerometer signal:
     //   fhat_b = R^T (a^W - g^W)
     // and linearizes w.r.t. small attitude error: H_theta = -[fhat_b]_x.
-void measurement_update_acc_dynamic(const Vector3& acc_meas_b)
+template<typename T, bool with_bias>
+void Kalman3D_Wave<T, with_bias>::measurement_update_acc_dynamic(const Vector3& acc_meas_b)
 {
-    if (!a_w_prev_valid) return;    // first iteration: nothing cached yet
+    // need a cached a^W from the previous time_update()
+    if (!a_w_prev_valid) return;
 
-    // Rotation and gravity
-    const Matrix3 Rw = R_from_quat();           // body <- world is Rw.transpose()
+    // Rw: body->world ; Rw.transpose(): world->body
+    const Matrix3 Rw = R_from_quat();
     const Vector3 g_world(0, 0, -gravity_magnitude);
 
-    // Predicted specific force from previous-step world accel
-    const Vector3 s_world_pred = a_w_prev - g_world;  // (a^W_prev - g^W)
+    // predicted specific force from previous-step world acceleration
+    const Vector3 s_world_pred = a_w_prev - g_world;   // (a^W_prev - g^W)
     const Vector3 fhat_b       = Rw.transpose() * s_world_pred;
 
-    // For right-multiplicative small-angle error, δh ≈ +[fhat_b]_x δθ
+    // Right-multiplicative small-angle: H_theta = +[fhat_b]_x
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
     Cext.template block<3,3>(0, 0) = skew_symmetric_matrix(fhat_b);
 
-    // Innovation: current accel measurement minus predicted specific force
     const Vector3 inno = acc_meas_b - fhat_b;
 
-    // S = C P C^T + Racc
     Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
-
-    // K = P C^T S^{-1}
     Matrix<T, NX, 3> PHt = Pext * Cext.transpose();
+
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
         S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6));
@@ -116,15 +115,17 @@ void measurement_update_acc_dynamic(const Vector3& acc_meas_b)
     }
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // State & covariance update (Joseph form)
     xext.noalias() += K * inno;
+
     Matrix<T, NX, NX> I = Matrix<T, NX, NX>::Identity();
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
+    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
 
-    // Apply quaternion correction, zero attitude error, mirror base cov
+    // quaternion correction from attitude error, then zero it
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
+
+    // keep legacy mirror
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
