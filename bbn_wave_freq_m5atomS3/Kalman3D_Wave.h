@@ -73,7 +73,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
 
     // Time update: preserved old signature (no acc) plus new overload (gyr + acc)
-    void time_update(Vector3 const& gyr, T Ts);                      // original behavior (acc=0)
     void time_update(Vector3 const& gyr, Vector3 const& acc, T Ts);  // new: uses acc to drive v/p/S
 
     // Measurement updates preserved (operate on extended state internally)
@@ -280,14 +279,6 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
   v1ref << 0, 0, -anorm;
   qref = quaternion_from_acc(acc);
   qref.normalize();
-}
-
-// original signature preserved: no accel input
-template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
-  // call new overload with zero acceleration vector for backward compatibility
-  Vector3 acc_zero = Vector3::Zero();
-  time_update(gyr, acc_zero, Ts);
 }
 
 template<typename T, bool with_bias>
