@@ -7,3 +7,4 @@ python3 wave_spectrum_plots.py
 python3 freq_track_plots.py
 python3 sea_reg_plots.py
 python3 qmekf_plots.py
+python3 w3d_plots.py
