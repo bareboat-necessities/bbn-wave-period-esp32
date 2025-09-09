@@ -338,58 +338,58 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
+void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts)
+{
     // bias-corrected gyro
-    Vector3 gyro_bias;
+    Vector3 gyro_bias = Vector3::Zero();
     if constexpr (with_bias) {
-        gyro_bias = xext.template segment<3>(3); 
-    } else { 
-        gyro_bias = Vector3::Zero(); 
+        gyro_bias = xext.template segment<3>(3);
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
-  
-    // Assemble extended Jacobian and Q
+
+    // extended Jacobian and process noise for this step
     MatrixNX F_a_ext, Q_a_ext;
     assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
 
-    // Build quaternion transition matrix
+    // quaternion propagation
     set_transition_matrix(last_gyr_bias_corrected, Ts);
-
-    // Update quaternion
     qref.coeffs() = F * qref.coeffs();
     qref.normalize();
 
-    // World-frame linear acceleration
-    Matrix3 Rw = R_from_quat();
-    Vector3 g_world{0, 0, -gravity_magnitude};
+    // world acceleration from current specific force
+    const Matrix3 Rw = R_from_quat();             // body->world
+    const Vector3 g_world(0, 0, -gravity_magnitude);
+    const Vector3 a_w = Rw * acc_body + g_world;  // a^W (current step)
 
-    // Make the *previous* a^W available to the next measurement update
-    a_w_prev = last_a_w;          // last_a_w still holds the previous step's a^W
-    a_w_prev_valid = true;
+    // ---- cache for dynamic accelerometer update (one-step look-ahead) ----
+    if (!a_w_prev_valid) {
+        // first step: seed cache
+        last_a_w = a_w;
+        a_w_prev_valid = true;
+    } else {
+        // shift cache forward
+        a_w_prev = last_a_w;   // expose previous a^W to meas. update
+        last_a_w = a_w;        // keep current for next time
+    }
+    // ---------------------------------------------------------------------
 
-    Vector3 a_w = Rw * acc_body + g_world;  // recover world acceleration (current step)
-    Vector3 a_corr = a_w;
+    // extract linear states
+    const auto v = xext.template segment<3>(BASE_N);
+    const auto p = xext.template segment<3>(BASE_N + 3);
+    const auto S = xext.template segment<3>(BASE_N + 6);
 
-    // Keep for the dynamic accelerometer measurement (current step)
-    last_a_w = a_w;
-  
-    // Extract current linear states
-    auto v = xext.template segment<3>(BASE_N);
-    auto p = xext.template segment<3>(BASE_N + 3);
-    auto S = xext.template segment<3>(BASE_N + 6);
+    // integrate (Taylor series)
+    xext.template segment<3>(BASE_N)       = v + a_w * Ts;
+    xext.template segment<3>(BASE_N + 3)   = p + v * Ts + T(0.5) * a_w * Ts*Ts;
+    xext.template segment<3>(BASE_N + 6)   = S + p * Ts + T(0.5) * v * Ts*Ts + (Ts*Ts*Ts / T(6)) * a_w;
 
-    // Taylor-series propagation
-    xext.template segment<3>(BASE_N)     = v + a_corr * Ts;
-    xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_corr * Ts*Ts;
-    xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_corr;
-
-    // Covariance propagation using Joseph form
+    // covariance propagation
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
 
-    // Mirror base covariance
+    // legacy mirror
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
-    // Drift correction
+    // pseudo-meas to keep S bounded
     applyIntegralZeroPseudoMeas();
 }
 
