@@ -41,6 +41,7 @@
 struct IMUReadingsBody {
     Eigen::Vector3d accel_body;  // linear acceleration in IMU frame
     Eigen::Vector3d gyro_body;   // angular velocity in IMU frame (rad/s)
+    Eigen::Vector3d accel_debug; // linear acceleration for debugging AHRS filters
 };
 
 template<int N_FREQ = 128>
@@ -253,6 +254,7 @@ public:
         // Body accelerometer: specific force = R*(a - g)
         const Eigen::Vector3d g_world(0, 0, -g_);
         imu.accel_body = R1 * (state.acceleration - g_world);
+        imu.accel_debug = R1 * (-g_world);
     
         // Predict advected position at t+dt (simple forward Euler)
         const double px_next = px + state.velocity.x() * dt;
