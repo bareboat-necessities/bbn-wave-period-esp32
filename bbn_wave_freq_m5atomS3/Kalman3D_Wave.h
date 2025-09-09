@@ -618,8 +618,8 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
 
     // Gravity-free acceleration
     Matrix3 Rw = R_from_quat();
-    Vector3 g_world{0, 0, gravity_magnitude};
-    Vector3 a_w = Rw * acc_body - g_world; // remove gravity
+    Vector3 g_world{0, 0, -gravity_magnitude};
+    Vector3 a_w = Rw * acc_body + g_world; // remove gravity
     const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // body frame
 
     // Attitude → linear Jacobians
