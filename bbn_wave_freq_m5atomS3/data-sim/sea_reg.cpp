@@ -203,7 +203,6 @@ int main() {
         if (!entry.is_regular_file()) continue;
         auto fname = entry.path().string();
         if (fname.find("wave_data_") == std::string::npos) continue;
-
         for (int tr = 0; tr < 3; ++tr) {
             run_from_csv(static_cast<TrackerType>(tr), fname, run_idx++);
         }
