@@ -81,57 +81,57 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void measurement_update_acc_only(Vector3 const& acc);
     void measurement_update_mag_only(Vector3 const& mag);
 
-// Uses the propagated world acceleration to predict the accelerometer signal:
-//   fhat_b = R^T (a^W - g^W)
-// and linearizes w.r.t. small attitude error: H_theta = -[fhat_b]_x.
-void measurement_update_acc_dynamic(const Vector3& acc_meas_b)
-{
-    // Rotation and gravity
-    const Matrix3 Rw = R_from_quat();           // body -> world
-    const Vector3 g_world(0, 0, -gravity_magnitude);
-
-    // Predicted specific force in body frame
-    // Use the world accel cached in time_update()
-    const Vector3 s_world = last_a_w - g_world;     // (a^W - g^W)
-    const Vector3 fhat_b  = Rw.transpose() * s_world;
-
-    // Build C (3 x NX): only attitude error block is nonzero
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    // For h(q)=R^T s, δh ≈ -[h]_x δθ
-    Cext.template block<3,3>(0, 0) = skew_symmetric_matrix(fhat_b);
-
-    // Innovation
-    const Vector3 inno = acc_meas_b - fhat_b;
-
-    // Innovation covariance S = C P C^T + Racc
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
-
-    // PH^T
-    Matrix<T, NX, 3> PHt = Pext * Cext.transpose();
-
-    // K = PH^T S^{-1}
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6));
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
+    // Uses the propagated world acceleration to predict the accelerometer signal:
+    //   fhat_b = R^T (a^W - g^W)
+    // and linearizes w.r.t. small attitude error: H_theta = -[fhat_b]_x.
+    void measurement_update_acc_dynamic(const Vector3& acc_meas_b)
+    {
+        // Rotation and gravity
+        const Matrix3 Rw = R_from_quat();           // body -> world
+        const Vector3 g_world(0, 0, -gravity_magnitude);
+    
+        // Predicted specific force in body frame
+        // Use the world accel cached in time_update()
+        const Vector3 s_world = last_a_w - g_world;     // (a^W - g^W)
+        const Vector3 fhat_b  = Rw.transpose() * s_world;
+    
+        // Build C (3 x NX): only attitude error block is nonzero
+        Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+        // For h(q)=R^T s, δh ≈ -[h]_x δθ
+        Cext.template block<3,3>(0, 0) = skew_symmetric_matrix(fhat_b);
+    
+        // Innovation
+        const Vector3 inno = acc_meas_b - fhat_b;
+    
+        // Innovation covariance S = C P C^T + Racc
+        Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
+    
+        // PH^T
+        Matrix<T, NX, 3> PHt = Pext * Cext.transpose();
+    
+        // K = PH^T S^{-1}
+        Eigen::LDLT<Matrix3> ldlt(S_mat);
+        if (ldlt.info() != Eigen::Success) {
+            S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6));
+            ldlt.compute(S_mat);
+            if (ldlt.info() != Eigen::Success) return;
+        }
+        Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
+    
+        // State & covariance update (Joseph form)
+        xext.noalias() += K * inno;
+    
+        Matrix<T, NX, NX> I = Matrix<T, NX, NX>::Identity();
+        Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
+        Pext = T(0.5) * (Pext + Pext.transpose());  // enforce symmetry
+    
+        // Apply quaternion correction from attitude error and zero it
+        applyQuaternionCorrectionFromErrorState();
+        xext.template head<3>().setZero();
+    
+        // Mirror base covariance
+        Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
     }
-    Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
-
-    // State & covariance update (Joseph form)
-    xext.noalias() += K * inno;
-
-    Matrix<T, NX, NX> I = Matrix<T, NX, NX>::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());  // enforce symmetry
-
-    // Apply quaternion correction from attitude error and zero it
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
-
-    // Mirror base covariance
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
-}
 
     // Extended-only API:
     // Apply zero pseudo-measurement on S (integral drift correction)
