@@ -74,7 +74,7 @@ public:
     constexpr static float K_CIRC_VAR   = 0.20f;  // mild softening: 1 − k · (1 − R_phase)
     constexpr static float HEIGHT_GAMMA = 1.00f;  // shape exponent for height smoothstep
 
-    // Calibrated, time-scaled and bias-control constants
+    // Time-scaled and bias-control constants
     constexpr static float OMEGA_DD_MAX = 30.0f;  // rad/s² max slew for demod basis ω (time-scaled)
     constexpr static float H_CAL        = 1.10f;  // mild overall height scale (tune 1.05–1.25 if needed)
     constexpr static float Z_TINY       = 1e-6f;  // magnitude guard for unit-vector phase update
