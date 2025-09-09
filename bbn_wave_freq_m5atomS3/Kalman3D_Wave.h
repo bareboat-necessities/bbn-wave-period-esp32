@@ -317,7 +317,8 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const&
     // ---- cache for dynamic accelerometer update (one-step look-ahead) ----
     if (!a_w_prev_valid) {
         // first step: seed cache
-        last_a_w = a_w;
+        last_a_w       = a_w;
+        a_w_prev       = a_w;
         a_w_prev_valid = true;
     } else {
         // shift cache forward
