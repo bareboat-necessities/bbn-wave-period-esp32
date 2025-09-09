@@ -145,6 +145,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     MatrixNX Qext; // Extended process noise / Q
     Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
 
+    T last_Ts{T(0)};
+
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
     void set_transition_matrix(const Eigen::Ref<const Vector3>& gyr, T Ts);
