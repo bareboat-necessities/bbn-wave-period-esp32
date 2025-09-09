@@ -112,14 +112,22 @@ void process_wave_file(const std::string &filename, float dt) {
         });
     });
 
-    // Output filename: preserve original name + add "_w3d" before ".csv"
+    // Output filename: replace prefix "wave_data_" with "qmekf_", then add "_kalman"
     std::string outname = filename;
-    auto pos = outname.rfind(".csv");
-    if (pos != std::string::npos) {
-        outname.insert(pos, "_w3d");
+
+    // Find and replace prefix if present
+    auto pos_prefix = outname.find("wave_data_");
+    if (pos_prefix != std::string::npos) {
+        outname.replace(pos_prefix, std::string("wave_data_").size(), "w3d_");
+    }
+
+    // Append "_kalman" before .csv
+    auto pos_ext = outname.rfind(".csv");
+    if (pos_ext != std::string::npos) {
+        outname.insert(pos_ext, "_w3d");
     } else {
         outname += "_w3d.csv";
-    }
+    }    
 
     std::ofstream ofs(outname);
     ofs << "time,"
