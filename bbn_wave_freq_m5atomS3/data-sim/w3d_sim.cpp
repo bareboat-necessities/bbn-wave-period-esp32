@@ -89,7 +89,7 @@ void process_wave_file(const std::string &filename, float dt) {
         }
 
         // Time + measurement updates
-        mekf.time_update(gyr_f, dt);
+        mekf.time_update(gyr_f, acc_f, dt);
         mekf.measurement_update_acc_dynamic(acc_f);
 
         // Filter quaternion → Euler (deg)
