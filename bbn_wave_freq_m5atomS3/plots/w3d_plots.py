@@ -24,7 +24,7 @@ plt.rcParams.update({
 })
 
 # === Config ===
-DATA_DIR = "./"            # Directory with *_kalman.csv files
+DATA_DIR = "./"            # Directory with *_w3d.csv files
 SAMPLE_RATE_HZ = 240       # Simulator sample rate
 MAX_TIME_S = 60.0          # Limit to first 60 seconds
 MAX_ROWS = int(SAMPLE_RATE_HZ * MAX_TIME_S)
@@ -41,17 +41,17 @@ ALLOWED_WAVES = {"jonswap", "pmstokes"}
 
 # === Regex to extract wave type and height from filename ===
 pattern = re.compile(
-    r".*?_(?P<wave>[a-zA-Z0-9]+)_H(?P<height>[-0-9\.]+).*?_kalman\.csv$"
+    r".*?_(?P<wave>[a-zA-Z0-9]+)_H(?P<height>[-0-9\.]+).*?_w3d\.csv$"
 )
 
 # === Escape helper for LaTeX ===
 def latex_safe(s: str) -> str:
     return s.replace("_", r"\_")
 
-# === Find all *_kalman.csv files ===
-files = glob.glob(os.path.join(DATA_DIR, "*_kalman.csv"))
+# === Find all *_w3d.csv files ===
+files = glob.glob(os.path.join(DATA_DIR, "*_w3d.csv"))
 if not files:
-    print("No *_kalman.csv files found in", DATA_DIR)
+    print("No *_w3d.csv files found in", DATA_DIR)
     exit()
 
 generated = []  # store (wave_type, group_name, pgf_filename)
