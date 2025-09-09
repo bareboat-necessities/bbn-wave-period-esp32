@@ -95,7 +95,7 @@ for f in files:
 
 # === Plot for each tracker ===
 for tracker, tracker_files in tracker_groups.items():
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 16), sharex=True)
 
     # Group files by wave type
     wave_grouped = {}
