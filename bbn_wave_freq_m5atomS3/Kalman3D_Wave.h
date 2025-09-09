@@ -78,13 +78,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Measurement updates preserved (operate on extended state internally)
     void measurement_update(Vector3 const& acc, Vector3 const& mag);
     void measurement_update_acc_only(Vector3 const& acc);
-    void measurement_update_mag_only(Vector3 const& mag);
-
-    // Uses the propagated world acceleration to predict the accelerometer signal:
-    //   fhat_b = R^T (a^W - g^W)
-    // and linearizes w.r.t. small attitude error: H_theta = +[fhat_b]_x.
-    void measurement_update_acc_dynamic(const Vector3& acc_meas_b);
-
+    void measurement_update_mag_only(Vector3 const& 
     // Apply zero pseudo-measurement on S (integral drift correction)
     void applyIntegralZeroPseudoMeas();
 
@@ -150,11 +144,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     MatrixNX Qext; // Extended process noise / Q
     Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
-
-    // for dynamic world accel estimate
-    T last_Ts{T(0)};
-    bool have_v_prev{false};
-    Vector3 v_world_prev{Vector3::Zero()};
 
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
