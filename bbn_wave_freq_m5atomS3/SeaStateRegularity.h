@@ -192,7 +192,7 @@ private:
     float phi;
     float z_real, z_imag;
 
-    // Spectral moments & regularity (legacy M2 kept for diagnostics)
+    // Spectral moments & regularity
     float M0, M1, M2;
     float nu;
     float R_spec, R_phase, R_safe, R_out;
