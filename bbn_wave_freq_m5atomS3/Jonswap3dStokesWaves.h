@@ -276,7 +276,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
         out.displacement.z() += (spectrum_.amplitudes().array() * sin0).sum();
         out.velocity.x()     -= (Aomega_dirx_ * sin0).sum();
         out.velocity.y()     -= (Aomega_diry_ * sin0).sum();
-        out.velocity.z()     += (Aomega_ * cos0).sum();
+        out.velocity.z()     -= (Aomega_ * cos0).sum();  // flipped for z-up
         out.acceleration.x() += (Aomega2_dirx_ * cos0).sum();
         out.acceleration.y() += (Aomega2_diry_ * cos0).sum();
         out.acceleration.z() -= (Aomega2_ * sin0).sum();
@@ -306,7 +306,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
 
         out.velocity.x()     += (wS * hx_.array()).sum();
         out.velocity.y()     += (wS * hy_.array()).sum();
-        out.velocity.z()     -=  wS.sum();
+        out.velocity.z()     +=  wS.sum();              // flipped for z-up
         out.acceleration.x() += -(w2C * hx_.array()).sum();
         out.acceleration.y() += -(w2C * hy_.array()).sum();
         out.acceleration.z() += -(w2C.sum());
@@ -581,7 +581,7 @@ IMUReadings getIMUReadings(double x, double y, double t,
 
       vel.x()  -= (Aomega_dirx_  * sin0).sum();
       vel.y()  -= (Aomega_diry_  * sin0).sum();
-      vel.z()  += (Aomega_       * cos0).sum();
+      vel.z()  -= (Aomega_       * cos0).sum();               // flipped for z-up
 
       acc.x()  += (Aomega2_dirx_ * cos0).sum();
       acc.y()  += (Aomega2_diry_ * cos0).sum();
@@ -616,7 +616,7 @@ IMUReadings getIMUReadings(double x, double y, double t,
 
       vel.x()  += (S * omega_sum_.array() * hx_.array()).sum();
       vel.y()  += (S * omega_sum_.array() * hy_.array()).sum();
-      vel.z()  -= (S * omega_sum_.array()).sum();
+      vel.z()  += (S * omega_sum_.array()).sum();            // flipped for z-up
 
       acc.x()  += -(C * omega_sum2_.array() * hx_.array()).sum();
       acc.y()  += -(C * omega_sum2_.array() * hy_.array()).sum();
