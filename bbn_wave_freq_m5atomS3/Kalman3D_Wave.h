@@ -42,11 +42,16 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Original base state dimension (attitude-error (3) [+ gyro-bias (3) if with_bias])
     static constexpr int BASE_N = with_bias ? 6 : 3;
     // Extended added states: v(3), p(3), S(3)
-    static constexpr int EXT_ADD = 9;
+    static constexpr int EXT_ADD = 12;
     // New full state dimension
     static constexpr int NX = BASE_N + EXT_ADD;
 
-    // Measurement dimension (unchanged)
+    static constexpr int OFF_V  = BASE_N + 0;
+    static constexpr int OFF_P  = BASE_N + 3;
+    static constexpr int OFF_S  = BASE_N + 6;
+    static constexpr int OFF_AW = BASE_N + 9;
+
+    // Measurement dimension
     static constexpr int M = 6;
 
     typedef Matrix<T, 3, 1> Vector3;
@@ -114,6 +119,10 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Tuning setters
     void setLinearProcessNoise(Matrix3 const& Racc_in) { Racc = Racc_in; computeLinearProcessNoiseTemplate(); }
     void setExtendedQ(MatrixNX const& Qext_in) { Qext = Qext_in; }
+    void set_aw_time_constant(T tau_seconds) { tau_aw = std::max(T(1e-3), tau_seconds); }
+    void set_aw_stationary_std(const Vector3& std_aw) {
+        Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
+    }
 
   private:
     // Original MEKF internals (kept nomenclature)
@@ -146,6 +155,17 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     MatrixNX Qext; // Extended process noise / Q
     Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
 
+    // --- World-acceleration OU process a_w dynamics parameters ---
+    T tau_aw = T(1.5);            // correlation time [s], tune 1–5 s for sea states
+    Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(0.8*0.8); // stationary variance diag [ (m/s^2)^2 ]
+
+    // cached per-step discretization (filled each time_update with Ts)
+    T phi_aw = T(1);              // exp(-Ts/tau)
+    Matrix3 Qaw_d;                // discrete process noise for a_w: Sigma_stat*(1 - phi^2)
+
+    // convenience getters
+    Matrix3 Rt_from_quat() const { return R_from_quat().transpose(); }
+  
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
     void set_transition_matrix(const Eigen::Ref<const Vector3>& gyr, T Ts);
