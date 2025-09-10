@@ -224,6 +224,9 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
   // Place original base P into top-left of Pext
   Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
 
+  // Seed covariance for a_w (world acceleration)
+  Pext.block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
+
   // Initialize Qext: top-left is original Qbase; rest zeros until we compute process noise by template
   Qext.setZero();
   Qext.topLeftCorner(BASE_N, BASE_N) = Qbase;
