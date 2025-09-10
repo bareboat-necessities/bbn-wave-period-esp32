@@ -35,6 +35,10 @@
 using Eigen::Matrix;
 using Eigen::Map;
 
+#ifdef EIGEN_NON_ARDUINO
+  #include <unsupported/Eigen/MatrixFunctions>  // enables .exp() on matrices
+#endif
+
 template <typename T = float, bool with_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
     static constexpr T gravity_magnitude = T(9.81);
@@ -571,6 +575,8 @@ void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
+// ---- Exact Van-Loan using Eigen's MatrixFunctions (desktop) ----
+#ifdef EIGEN_NON_ARDUINO
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
     const Eigen::Matrix<T,12,12>& A,
@@ -580,23 +586,79 @@ void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
     Eigen::Matrix<T,12,12>& Phi,
     Eigen::Matrix<T,12,12>& Qd) const
 {
-    // Build Van-Loan block matrix (24x24)
     Eigen::Matrix<T,24,24> M; M.setZero();
     M.block(0,0,12,12)   = -A * Ts;
     M.block(0,12,12,12)  =  G * Sigma_c * G.transpose() * Ts;
     M.block(12,12,12,12) =  A.transpose() * Ts;
 
-    // Matrix exponential
+    // Requires <unsupported/Eigen/MatrixFunctions>
     Eigen::Matrix<T,24,24> expM = M.exp();
 
-    // Extract blocks
-    Eigen::Matrix<T,12,12> PhiT = expM.block(12,12,12,12);
-    Eigen::Matrix<T,12,12> Qblk = expM.block(0,12,12,12);
+    // Van-Loan unpack
+    const auto PhiT = expM.block(12,12,12,12);
+    const auto Qblk = expM.block(0,12,12,12);
 
-    // Van-Loan identities
-    Phi = PhiT.transpose();      // exp(A Ts)
-    Qd  = Phi * Qblk;            // exact discrete process noise
+    Phi = PhiT.transpose();       // exp(A Ts)
+    Qd  = Phi * Qblk;             // exact discrete process noise
 }
+#else
+// ---- Analytic, no-matrix-exponential fallback (embedded) ----
+template<typename T, bool with_bias>
+void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
+    const Eigen::Matrix<T,12,12>& /*A*/,
+    const Eigen::Matrix<T,12,3>&  /*G*/,
+    const Eigen::Matrix<T,3,3>&   /*Sigma_c (unused; we use Sigma_aw_stat directly)*/,
+    T Ts,
+    Eigen::Matrix<T,12,12>& Phi,
+    Eigen::Matrix<T,12,12>& Qd) const
+{
+    // State ordering inside this 12x12 block: [ v(0..2), p(3..5), S(6..8), a_w(9..11) ]
+    // Dynamics: v̇ = a_w; ṗ = v; Ṡ = p; ȧ_w = -(1/τ) a_w + w
+
+    using Mat3 = Eigen::Matrix<T,3,3>;
+    const T tau  = std::max(T(1e-6), tau_aw);
+    const T phi  = std::exp(-Ts / tau);
+
+    const T c1 = tau * (T(1) - phi);                                     // ∫ a_w ds  coefficient
+    const T c2 = tau * (Ts - tau * (T(1) - phi));                        // ∫∫ a_w ds ds  coefficient
+    const T c3 = (tau * Ts * Ts) / T(2) - tau * tau * Ts + tau*tau*tau*(T(1) - phi); // ∫∫∫ a_w ds ds ds
+
+    // Transition Phi
+    Phi.setZero();
+    auto I3 = Mat3::Identity();
+
+    // v' = v + c1 * a_w
+    Phi.block<3,3>(0, 0)   = I3;
+    Phi.block<3,3>(0, 9)   = I3 * c1;
+
+    // p' = p + Ts * v + c2 * a_w
+    Phi.block<3,3>(3, 3)   = I3;
+    Phi.block<3,3>(3, 0)   = I3 * Ts;
+    Phi.block<3,3>(3, 9)   = I3 * c2;
+
+    // S' = S + Ts * p + 0.5 Ts^2 * v + c3 * a_w
+    Phi.block<3,3>(6, 6)   = I3;
+    Phi.block<3,3>(6, 3)   = I3 * Ts;
+    Phi.block<3,3>(6, 0)   = I3 * (Ts*Ts/T(2));
+    Phi.block<3,3>(6, 9)   = I3 * c3;
+
+    // a_w' = phi * a_w
+    Phi.block<3,3>(9, 9)   = I3 * phi;
+
+    // ---- Process noise Qd ----
+    // For embedded simplicity and numerical robustness, we inject *exact* OU noise on a_w
+    // and let it excite v,p,S through the deterministic Phi above across steps.
+    // Discrete OU variance: Qaw = Sigma_aw_stat * (1 - phi^2)
+    const Mat3 Qaw = Sigma_aw_stat * (T(1) - phi*phi);
+
+    Qd.setZero();
+    Qd.block<3,3>(9, 9) = Qaw;
+
+    // If you want tighter modeling, you can add cross terms so that v,p,S also receive
+    // noise directly each step (closed forms exist), but this minimal Q keeps things
+    // stable and compiles without the unsupported module.
+}
+#endif
 
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
