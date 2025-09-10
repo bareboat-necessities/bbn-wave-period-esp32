@@ -234,9 +234,6 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
   R.setZero();
   R.template topLeftCorner<3,3>()  = Racc;     // accelerometer measurement noise
   R.template bottomRightCorner<3,3>() = Rmag;  // magnetometer measurement noise
-
-  // default extra linear noise: small values
-  // computeLinearProcessNoiseTemplate(); // called in time_update when Ts is known
 }
 
 template<typename T, bool with_bias>
@@ -638,16 +635,3 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 }
 
-template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::computeLinearProcessNoiseTemplate() {
-    // Precompute the template for linear-state process noise (v,p,S) using Racc
-    // G_template contains only rotation matrices, without Ts scaling
-    // So for time_update, Qlin = G(Ts) * Racc * G(Ts)^T
-
-    // Just store identity template; actual scaling by Ts^1/2, Ts^2/2 etc. is done in assembleExtendedFandQ
-    // Essentially, we store Racc here for convenience
-    Q_Racc_noise = Racc;
-
-    // zero out bottom-right of Qext to be safe
-    Qext.template block(BASE_N, BASE_N, NX-BASE_N, NX-BASE_N).setZero();
-}
