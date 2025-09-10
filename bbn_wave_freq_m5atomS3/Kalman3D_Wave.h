@@ -119,7 +119,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Vector3 get_world_accel() const { return xext.template segment<3>(OFF_AW); }
 
     // Tuning setters
-    void setLinearProcessNoise(Matrix3 const& Racc_in) { Racc = Racc_in; computeLinearProcessNoiseTemplate(); }
     void setExtendedQ(MatrixNX const& Qext_in) { Qext = Qext_in; }
     void set_aw_time_constant(T tau_seconds) { tau_aw = std::max(T(1e-3), tau_seconds); }
     void set_aw_stationary_std(const Vector3& std_aw) {
