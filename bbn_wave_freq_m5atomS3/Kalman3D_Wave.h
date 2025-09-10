@@ -619,38 +619,46 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
-    const Eigen::Matrix<T,12,12>& A,
-    const Eigen::Matrix<T,12,3>&  G,
-    const Eigen::Matrix<T,3,3>&   Sigma_c,
-    T Ts,
-    Eigen::Matrix<T,12,12>& Phi,
-    Eigen::Matrix<T,12,12>& Qd) const
+void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
+    const Vector3& /*acc_body_unused*/, T Ts,
+    Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext)
 {
-    // Van-Loan block matrix:
-    // exp( [ -A   G Σ Gᵀ ]
-    //      [  0     Aᵀ ] Ts ) = [ Φ⁻¹     Φ⁻¹ Q ]
-    //                             [  0       Φᵀ  ]
-    // We form M = [[-A, GΣGᵀ],[0, Aᵀ]] * Ts and exponentiate.
-    Eigen::Matrix<T,24,24> M; M.setZero();
-    M.template block<12,12>(0,0)   = -A * Ts;
-    M.template block<12,12>(0,12)  = (G * Sigma_c * G.transpose()) * Ts;
-    M.template block<12,12>(12,12) =  A.transpose() * Ts;
+    F_a_ext.setIdentity();
+    Q_a_ext.setZero();
 
-    Eigen::Matrix<T,24,24> expM = M.exp();
+    // === Attitude error (+ optional bias) discrete transition ===
+    Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
+    F_a_ext.template block<3,3>(0,0) = Atheta;
+    if constexpr (with_bias) {
+        F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
+    }
 
-    // Extract blocks
-    const Eigen::Matrix<T,12,12> expM_22 = expM.template block<12,12>(12,12);
-    const Eigen::Matrix<T,12,12> expM_12 = expM.template block<12,12>(0,12);
+    // Process noise for attitude/bias
+    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
-    // Φ = (expM_22)ᵀ⁻¹  and  Q = Φ * expM_12
-    // But we don’t actually need Φ⁻¹ explicitly: Φ = (expM_22)ᵀ⁻¹
-    // Compute Φ via triangular solve for numerical stability.
-    // Since expM_22 is exp(Aᵀ Ts), it’s invertible.
-    Eigen::Matrix<T,12,12> PhiT = expM_22;                // = exp(Aᵀ Ts)
-    // Solve PhiTᵀ * X = I for X = Φ
-    Phi = PhiT.transpose().lu().solve(Eigen::Matrix<T,12,12>::Identity());
-    Qd  = Phi * expM_12;
+    // === Linear subsystem [v, p, S, a_w] exact Van-Loan ===
+    using Mat12   = Eigen::Matrix<T,12,12>;
+    using Mat12x3 = Eigen::Matrix<T,12,3>;
+
+    Mat12 A; A.setZero();
+    // v̇ = a_w
+    A.template block<3,3>(0,9) = Matrix3::Identity();
+    // ṗ = v
+    A.template block<3,3>(3,0) = Matrix3::Identity();
+    // Ṡ = p
+    A.template block<3,3>(6,3) = Matrix3::Identity();
+    // ȧ_w = -(1/τ) a_w
+    A.template block<3,3>(9,9) = -(T(1)/std::max(T(1e-6), tau_aw)) * Matrix3::Identity();
+
+    Mat12x3 G; G.setZero();
+    G.template block<3,3>(9,0) = Matrix3::Identity(); // noise drives a_w
+
+    Mat12 Phi_lin, Qd_lin;
+    vanLoanDiscretization_12x3(A, G, Sigma_aw_stat, Ts, Phi_lin, Qd_lin);
+
+    // Insert into extended transition + process covariance
+    F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
+    Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 }
 
 template<typename T, bool with_bias>
