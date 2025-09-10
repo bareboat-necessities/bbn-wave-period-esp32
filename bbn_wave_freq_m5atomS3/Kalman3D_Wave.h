@@ -116,6 +116,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
        return xext.template segment<3>(BASE_N + 6);
     }
 
+    Vector3 get_world_accel() const { return xext.template segment<3>(OFF_AW); }
+
     // Tuning setters
     void setLinearProcessNoise(Matrix3 const& Racc_in) { Racc = Racc_in; computeLinearProcessNoiseTemplate(); }
     void setExtendedQ(MatrixNX const& Qext_in) { Qext = Qext_in; }
