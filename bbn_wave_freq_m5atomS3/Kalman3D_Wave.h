@@ -581,34 +581,41 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     F_a_ext.setIdentity();
     Q_a_ext.setZero();
 
-    // --- Attitude error propagation (same as before) ---
+    // === Attitude-error (+ optional bias) discrete transition (same as before) ===
     Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
     F_a_ext.template block<3,3>(0,0) = Atheta;
     if constexpr (with_bias) {
         F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
 
-    // --- Linear kinematics driven by a_w (world) ---
-    F_a_ext.template block<3,3>(OFF_P, OFF_V)  = Matrix3::Identity() * Ts;                 // v -> p
-    F_a_ext.template block<3,3>(OFF_S, OFF_V)  = Matrix3::Identity() * (T(0.5)*Ts*Ts);     // v -> S
-    F_a_ext.template block<3,3>(OFF_S, OFF_P)  = Matrix3::Identity() * Ts;                 // p -> S
-    F_a_ext.template block<3,3>(OFF_V, OFF_AW) = Matrix3::Identity() * Ts;                 // a_w -> v
-    F_a_ext.template block<3,3>(OFF_P, OFF_AW) = Matrix3::Identity() * (T(0.5)*Ts*Ts);     // a_w -> p
-    F_a_ext.template block<3,3>(OFF_S, OFF_AW) = Matrix3::Identity() * (Ts*Ts*Ts/T(6));    // a_w -> S
-
-    // --- OU dynamics for a_w ---
-    F_a_ext.template block<3,3>(OFF_AW, OFF_AW) = Matrix3::Identity() * phi_aw;
-
-    // --- Process noise: original Qbase for attitude/bias ---
+    // Process noise for attitude/bias (discrete) — if Qbase already represents discrete RW per Ts,
+    // you can keep it; otherwise scale from continuous. Assuming Qbase is appropriate here:
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
-    // --- OU process noise on a_w (discrete) ---
-    Q_a_ext.template block<3,3>(OFF_AW, OFF_AW) = Qaw_d;
+    // === Exact Van-Loan discretization for linear subsystem [v(0..2), p(3..5), S(6..8), a_w(9..11)] ===
+    using Mat12 = Eigen::Matrix<T,12,12>;
+    using Mat12x3 = Eigen::Matrix<T,12,3>;
 
-    // Note: If you want *exact* continuous-time injection of a_w noise into (v,p,S)
-    // within this same step, you can add cross-cov blocks derived via Van-Loan.
-    // With Ts small, the above is usually sufficient; the coupling will inflate
-    // (v,p,S) over subsequent steps through F.
+    Mat12 A; A.setZero();
+    // v̇ = a_w
+    A.template block<3,3>(0,9) = Matrix3::Identity();
+    // ṗ = v
+    A.template block<3,3>(3,0) = Matrix3::Identity();
+    // Ṡ = p
+    A.template block<3,3>(6,3) = Matrix3::Identity();
+    // ȧ_w = -(1/τ) a_w
+    A.template block<3,3>(9,9) = -(T(1)/std::max(T(1e-6), tau_aw)) * Matrix3::Identity();
+
+    Mat12x3 G; G.setZero();
+    // white noise only drives a_w
+    G.template block<3,3>(9,0) = Matrix3::Identity();
+
+    Mat12 Phi_lin, Qd_lin;
+    vanLoanDiscretization_12x3(A, G, Sigma_aw_stat, Ts, Phi_lin, Qd_lin);
+
+    // Insert exact discrete transition and covariance into extended matrices
+    F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
+    Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 }
 
 template<typename T>
