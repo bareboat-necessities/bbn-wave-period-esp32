@@ -17,6 +17,11 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
+static inline Eigen::Vector3f ned_to_zu(const Eigen::Vector3f& v) {
+    // NED (z down) -> Z-up (nautical): flip Z only
+    return Eigen::Vector3f(v.x(), v.y(), -v.z());
+}
+
 // Quaternion → Euler (deg), ZYX convention with Z-up (nautical frame)
 static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
     // Rotation matrix from quaternion
@@ -125,11 +130,11 @@ void process_wave_file(const std::string &filename, float dt) {
         Vector3f vel_ref (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
         Vector3f acc_ref (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
 
-        // Estimated world states
-        Vector3f disp_est = mekf.get_position();
-        Vector3f vel_est  = mekf.get_velocity();
-        Vector3f acc_est  = mekf.get_world_accel();
-
+        // Estimated world states (convert from NED -> Z-up before comparing to reference)
+        Eigen::Vector3f disp_est = ned_to_zu(mekf.get_position());
+        Eigen::Vector3f vel_est  = ned_to_zu(mekf.get_velocity());
+        Eigen::Vector3f acc_est  = ned_to_zu(mekf.get_world_accel());
+        
         // Errors
         Vector3f disp_err = disp_est - disp_ref;
         Vector3f vel_err  = vel_est  - vel_ref;
