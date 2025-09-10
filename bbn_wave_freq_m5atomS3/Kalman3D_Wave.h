@@ -605,6 +605,29 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     // (v,p,S) over subsequent steps through F.
 }
 
+template<typename T>
+static void vanLoanDiscretization(const Eigen::Matrix<T,12,12>& A,
+                                  const Eigen::Matrix<T,12,3>& G,
+                                  const Eigen::Matrix<T,3,3>& Sigma_c,
+                                  T Ts,
+                                  Eigen::Matrix<T,12,12>& Phi,
+                                  Eigen::Matrix<T,12,12>& Qd)
+{
+    // Build Van-Loan block matrix
+    Eigen::Matrix<T,24,24> M; M.setZero();
+    M.block(0,0,12,12)  = -A * Ts;
+    M.block(0,12,12,12) =  G * Sigma_c * G.transpose() * Ts;
+    M.block(12,12,12,12)=  A.transpose() * Ts;
+
+    // Matrix exponential
+    Eigen::Matrix<T,24,24> expM = M.exp(); // Eigen’s matrix exponential
+
+    // Extract blocks
+    Eigen::Matrix<T,12,12> PhiT = expM.block(12,12,12,12).transpose();
+    Phi = expM.block(12,12,12,12).transpose().inverse(); // actually exp(A Ts)
+    Qd  = Phi * expM.block(0,12,12,12);
+}
+
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::computeLinearProcessNoiseTemplate() {
     // Precompute the template for linear-state process noise (v,p,S) using Racc
