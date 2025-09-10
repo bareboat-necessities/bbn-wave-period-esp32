@@ -268,7 +268,7 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Ve
   qref = Eigen::Quaternion<T>(Rm.transpose());
   qref.normalize();
 
-  v2ref = qref * mag;
+  v2ref = qref * mag; // Store reference magnetic vector in world frame.
 }
 
 template<typename T, bool with_bias>
