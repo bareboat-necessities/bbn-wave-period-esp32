@@ -17,8 +17,8 @@
 
   - The original quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction)
     is preserved *verbatim* where possible.
-  - The extended linear states are integrated with Taylor series (second order for p, first for v,
-    and third-order contribution used in S).
+  - The extended linear states are driven by a latent OU world-acceleration a_w
+    (accelerometer input is used only in the measurement update).
   - A full extended covariance (Pext) and transition Jacobian Fext are constructed; the top-left corner
     contains the original MEKF's P/Q blocks (attitude error + optional gyro bias).
   - Accelerometer is expected in IMU/body frame input to time_update(gyr, acc, Ts).
@@ -263,7 +263,8 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Ve
   Vector3 const Ry = Rz.cross(mag_normalized).normalized();
   Vector3 const Rx = Ry.cross(Rz).normalized();
 
-  Matrix3 const Rm = (Matrix3() << Rx, Ry, Rz).finished();
+  Matrix3 Rm;
+  Rm.col(0) = Rx; Rm.col(1) = Ry; Rm.col(2) = Rz;
   qref = Eigen::Quaternion<T>(Rm.transpose());
   qref.normalize();
 
