@@ -1,0 +1,269 @@
+\documentclass[11pt]{article}
+
+\usepackage{amsmath,amssymb,amssymb,amsfonts}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{microtype}
+
+\geometry{margin=1in}
+
+\title{A Quaternion Multiplicative EKF with Extended Linear Kinematics and Colored World Acceleration}
+\author{Mikhail Grushinskiy}
+\date{2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present an extension of the classic quaternion multiplicative extended Kalman filter (MEKF) for embedded inertial navigation. 
+The filter retains the robust quaternion error representation of Lefferts--Markley--Shuster while augmenting the state with linear kinematics: world-frame velocity, position, and an integral of position. 
+A colored world-acceleration process, modeled as an Ornstein--Uhlenbeck (OU) random field, explains persistent low-frequency accelerations such as those induced by ocean waves. 
+We motivate the design, detail the mathematics, and discuss practical tuning benefits.
+\end{abstract}
+
+\section{Introduction}
+Estimating orientation and linear kinematics from low-cost IMUs is central in robotics, navigation, and oceanographic instrumentation. 
+The quaternion MEKF~\cite{lefferts1982,markley2003} is a gold standard for attitude, owing to its stability and avoidance of singularities. 
+However, naive integration of accelerations into velocity/position diverges rapidly under persistent disturbances (e.g., ocean waves). 
+
+We address this by extending the MEKF with:
+\begin{itemize}
+  \item World-frame velocity $v$, position $p$, and an integral of displacement $S=\int p\,dt$.
+  \item A colored world-acceleration process $a_w$ driven by an OU model.
+  \item A soft pseudo-measurement enforcing $S\approx 0$ to reduce low-frequency drift.
+\end{itemize}
+
+\section{State Vector Definition}
+The extended error-state vector $x\in\mathbb{R}^{N_X}$ is partitioned as
+\[
+x = 
+\begin{bmatrix}
+\delta\theta \\ b_g \\ v \\ p \\ S \\ a_w
+\end{bmatrix},
+\qquad
+N_X = \underbrace{3+3}_{\text{attitude error \& bias}} + \underbrace{3+3+3+3}_{v,p,S,a_w}.
+\]
+
+\begin{itemize}
+  \item $\delta\theta\in\mathbb{R}^3$ (rad): small-angle attitude error in body frame, applied as a right multiplicative quaternion correction.
+  \item $b_g\in\mathbb{R}^3$ (rad/s): gyroscope bias. Optional; if disabled, $N_X=15$.
+  \item $v\in\mathbb{R}^3$ (m/s): velocity in the world (navigation) frame.
+  \item $p\in\mathbb{R}^3$ (m): displacement/position in the world frame relative to initialization.
+  \item $S\in\mathbb{R}^3$ (m·s): integral of displacement, $S(t)=\int_0^t p(\tau)\,d\tau$.  
+        Introduced as a \emph{stability integrator}: we apply a zero pseudo-measurement on $S$ to limit unbounded low-frequency drift.
+  \item $a_w\in\mathbb{R}^3$ (m/s$^2$): world-frame specific acceleration, modeled as an Ornstein--Uhlenbeck (OU) colored noise process.  
+        Captures correlated forcing such as ocean waves, in contrast to white-noise accelerometer models.
+\end{itemize}
+
+\section{Linearization and Jacobians}
+
+The MEKF framework requires linearization of both process and measurement models.  
+We apply a first-order Taylor expansion about the current estimate.
+
+\subsection{Attitude Error Dynamics}
+Quaternion propagation is nonlinear:
+\[
+\dot q = \tfrac{1}{2}\Omega(\omega) q,\qquad
+\Omega(\omega)=\begin{bmatrix}
+-[\omega]_\times & \omega \\ -\omega^\top & 0
+\end{bmatrix}.
+\]
+Expanding the error quaternion $\delta q \approx [1,\tfrac{1}{2}\delta\theta^\top]^\top$,
+and retaining only first-order terms in $\delta\theta$,
+yields the continuous-time error dynamics
+\[
+\dot{\delta\theta} = -[\omega]_\times\,\delta\theta - \delta b_g.
+\]
+
+\subsection{Measurement Jacobians}
+The accelerometer prediction is
+\[
+f_b = R(q)^\top(a_w - g).
+\]
+Linearizing in $\delta\theta$ (using $R(q\!\otimes\!\delta q)\approx R(q)(I-[\delta\theta]_\times)$)
+gives
+\[
+\delta f_b = [\hat f_b]_\times \,\delta\theta + R(q)^\top \delta a_w.
+\]
+Similarly for magnetometer:
+\[
+\delta m_b = [\hat m_b]_\times \,\delta\theta.
+\]
+Thus the stacked measurement Jacobian is
+\[
+H =
+\begin{bmatrix}
+[\hat f_b]_\times & 0 & 0 & 0 & 0 & R(q)^\top \\
+[\hat m_b]_\times & 0 & 0 & 0 & 0 & 0
+\end{bmatrix}.
+\]
+
+\section{Process Model and Discretization}
+
+\subsection{Attitude and Bias Block}
+The quaternion mean is propagated using bias-corrected gyro $\omega=\omega_m-b_g$.  
+For the \emph{error state}, the discretized attitude/bias block is
+\[
+F_{\delta\theta,\delta\theta} = I - [\omega]_\times T_s,\qquad
+F_{\delta\theta,b_g} = -I T_s,\qquad
+F_{b_g,b_g}=I.
+\]
+
+\subsection{Linear Kinematics Block}
+For $x_{lin}=[v^\top\ p^\top\ S^\top\ a_w^\top]^\top$, the continuous dynamics are
+\[
+\dot v = a_w,\quad \dot p = v,\quad \dot S = p,\quad
+\dot a_w = -\tfrac{1}{\tau} a_w + w.
+\]
+
+Stacked,
+\[
+\dot x_{lin} = A x_{lin} + G w,
+\]
+with
+\[
+A = \begin{bmatrix}
+0 & 0 & 0 & I \\
+I & 0 & 0 & 0 \\
+0 & I & 0 & 0 \\
+0 & 0 & 0 & -\tfrac{1}{\tau} I
+\end{bmatrix},\quad
+G=\begin{bmatrix}0\\0\\0\\I\end{bmatrix}.
+\]
+
+\subsection{Van Loan Matrix Exponential (Desktop)}
+The exact discrete-time transition over $T_s$ is obtained by exponentiating
+\[
+M = \begin{bmatrix}
+-AT_s & G\Sigma_{aw}G^\top T_s \\
+0 & A^\top T_s
+\end{bmatrix},
+\]
+then
+\[
+\exp(M) = \begin{bmatrix} M_{11} & M_{12} \\ 0 & M_{22}\end{bmatrix},\quad
+\Phi_{lin}=M_{22}^\top,\quad Q_{lin}=\Phi_{lin} M_{12}.
+\]
+
+\subsection{Closed-Form OU Coefficients (Embedded)}
+To avoid heavy computation, we instead solve the integrals analytically.  
+For an OU process $a_w$, the discrete update is
+\[
+a_w^+ = \phi a_w + \eta,\qquad
+\phi=e^{-T_s/\tau},\quad
+\eta\sim\mathcal{N}(0,(1-\phi^2)\Sigma_{aw}).
+\]
+Carrying out first-, second-, and third-order integrals of $a_w$ yields coefficients
+\[
+c_1=\tau(1-\phi),\quad
+c_2=\tau\!\left(T_s-\tau(1-\phi)\right),\quad
+c_3=\tfrac{\tau T_s^2}{2}-\tau^2T_s+\tau^3(1-\phi).
+\]
+
+These populate the transition blocks:
+\[
+v^+ = v + c_1 a_w,\quad
+p^+ = p + T_s v + c_2 a_w,\quad
+S^+ = S + T_s p + \tfrac{T_s^2}{2}v + c_3 a_w.
+\]
+
+\subsection{Full Extended Process Matrix}
+The complete extended transition is block-structured:
+\[
+F_{ext} =
+\begin{bmatrix}
+F_{\delta\theta,\delta\theta} & F_{\delta\theta,b_g} & 0 & 0 & 0 & 0 \\
+0 & F_{b_g,b_g} & 0 & 0 & 0 & 0 \\
+0 & 0 & \Phi_{vv} & \Phi_{vp} & \Phi_{vS} & \Phi_{va_w} \\
+0 & 0 & \Phi_{pv} & \Phi_{pp} & \Phi_{pS} & \Phi_{pa_w} \\
+0 & 0 & \Phi_{Sv} & \Phi_{Sp} & \Phi_{SS} & \Phi_{Sa_w} \\
+0 & 0 & 0 & 0 & 0 & \Phi_{a_w a_w}
+\end{bmatrix}.
+\]
+
+\subsection{Process Noise Covariance}
+The full process noise covariance $Q_{ext}$ is block-diagonal:
+\[
+Q_{ext} = \mathrm{blkdiag}\big(Q_{att},\ Q_{lin}\big),
+\]
+where
+\[
+Q_{att}=\begin{bmatrix}
+\sigma_g^2 I & 0 \\ 0 & \sigma_b^2 I
+\end{bmatrix},\qquad
+Q_{lin}=\begin{cases}
+\text{from Van Loan,} & \text{desktop} \\[6pt]
+\mathrm{blkdiag}(0,0,0,(1-\phi^2)\Sigma_{aw}), & \text{embedded}.
+\end{cases}
+\]
+
+\section{Zero Pseudo-Measurement on Integral}
+We softly constrain $S$ to zero:
+\[
+z_S = 0 = H_S x + \nu,\qquad
+H_S=[0\ 0\ 0\ I\ 0],\quad \nu\sim\mathcal{N}(0,R_S).
+\]
+
+\section{Benefits and Tuning}
+\begin{itemize}
+  \item \textbf{OU acceleration:} explains persistent sea-induced accelerations, preventing their misattribution to attitude.
+  \item \textbf{Integral state $S$:} provides a “drift leash” via a tunable covariance $R_S$.
+  \item \textbf{Van Loan discretization:} exact on desktop, closed-form efficient on MCU.
+  \item \textbf{Partial updates:} accelerometer-only or magnetometer-only updates enhance robustness to outliers.
+\end{itemize}
+
+\section{Conclusion}
+This extension preserves the quaternion MEKF’s robustness while augmenting it with physically meaningful linear dynamics and colored forcing. 
+It is particularly well-suited to oceanographic buoy estimation, where wave-driven low-frequency accelerations dominate.
+
+\appendix
+\section{Derivation of OU Integral Coefficients}
+
+For the OU acceleration $a_w(t)$ with correlation time $\tau$, the solution is
+\[
+a_w(t) = e^{-t/\tau} a_w(0) + \int_0^t e^{-(t-s)/\tau} w(s)\,ds.
+\]
+
+The integrals that drive velocity, position, and displacement-integral are:
+\[
+I_1=\int_0^{T_s} a_w(s)\,ds,\quad
+I_2=\int_0^{T_s}\!\int_0^u a_w(s)\,ds\,du,\quad
+I_3=\int_0^{T_s}\!\int_0^u\!\int_0^v a_w(s)\,ds\,dv\,du.
+\]
+
+Assuming $a_w$ constant over the step for mean propagation,
+these integrals reduce to coefficients times $a_w$:
+\[
+I_1=c_1 a_w,\qquad I_2=c_2 a_w,\qquad I_3=c_3 a_w.
+\]
+
+Explicitly evaluating the exponentials gives:
+\[
+c_1=\tau(1-e^{-T_s/\tau}),\quad
+c_2=\tau\!\left(T_s-\tau(1-e^{-T_s/\tau})\right),\quad
+c_3=\tfrac{\tau T_s^2}{2}-\tau^2 T_s+\tau^3(1-e^{-T_s/\tau}).
+\]
+
+These are exact for the deterministic mean dynamics of the OU-driven subsystem, and they match the implementation used in embedded builds.
+
+\begin{thebibliography}{9}
+\bibitem{lefferts1982}
+Lefferts, E.~J., Markley, F.~L., and Shuster, M.~D. (1982). 
+``Kalman filtering for spacecraft attitude estimation.'' 
+\emph{Journal of Guidance, Control, and Dynamics}, 5(5):417--429.
+
+\bibitem{markley2003}
+Markley, F.~L. (2003). 
+``Attitude error representations for Kalman filtering.'' 
+\emph{Journal of Guidance, Control, and Dynamics}, 26(2):311--317.
+
+\bibitem{jazwinski1970}
+Jazwinski, A.~H. (1970). 
+\emph{Stochastic Processes and Filtering Theory}. 
+Academic Press.
+\end{thebibliography}
+
+\end{document}
