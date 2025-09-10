@@ -432,9 +432,37 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::measurement_update_acc_only(Vector3 const& acc) {
-    Vector3 const v1hat = accelerometer_measurement_func();
-    measurement_update_partial(acc, v1hat, Racc);
+void Kalman3D_Wave<T, with_bias>::measurement_update_acc_only(Vector3 const& acc_meas) {
+    const Vector3 v1hat = accelerometer_measurement_func();
+
+    // Cext: (3 x NX)
+    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+    // d f_b / d (attitude error)
+    Cext.template block<3,3>(0,0) = skew_symmetric_matrix(v1hat);
+    // d f_b / d a_w
+    Cext.template block<3,3>(0, OFF_AW) = Rt_from_quat();
+
+    Vector3 inno = acc_meas - v1hat;
+
+    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
+    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+
+    Eigen::LDLT<Matrix3> ldlt(S_mat);
+    if (ldlt.info() != Eigen::Success) {
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+
+    xext.noalias() += K * inno;
+
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose());
+
+    applyQuaternionCorrectionFromErrorState();
+    xext.template head<3>().setZero();
 }
 
 template<typename T, bool with_bias>
