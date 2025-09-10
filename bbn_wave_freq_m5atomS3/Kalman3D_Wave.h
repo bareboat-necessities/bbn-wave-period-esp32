@@ -667,8 +667,8 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     Q_a_ext.setZero();
 
     // === Attitude error (+ optional bias) discrete transition ===
-    Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
-    F_a_ext.template block<3,3>(0,0) = Atheta;
+    const Matrix3 Wx = skew_symmetric_matrix(last_gyr_bias_corrected);
+    F_a_ext.block<3,3>(0,0) = Matrix3::Identity() - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
     if constexpr (with_bias) {
         F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
