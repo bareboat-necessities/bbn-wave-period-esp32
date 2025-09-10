@@ -389,10 +389,10 @@ private:
                 }
 
                 // Velocity
-                // u,v = n ω cₙ sin(arg) dir;  w = -n ω cₙ cos(arg)
+                // u,v = -n ω cₙ sin(arg) dir;  w = -n ω cₙ cos(arg)
                 const double velFactor = n * w_val * cn * depthFactor;
-                state.velocity.x() += velFactor * std::sin(arg) * dir_x_(i);
-                state.velocity.y() += velFactor * std::sin(arg) * dir_y_(i);
+                state.velocity.x() -= velFactor * std::sin(arg) * dir_x_(i);
+                state.velocity.y() -= velFactor * std::sin(arg) * dir_y_(i);
                 state.velocity.z() -= velFactor * std::cos(arg);
 
                 // Acceleration
