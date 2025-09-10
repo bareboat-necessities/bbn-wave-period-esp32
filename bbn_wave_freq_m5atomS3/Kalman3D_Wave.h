@@ -174,7 +174,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
 
     // Extended helpers
-    void computeLinearProcessNoiseTemplate(); // computes blocks of Qext from Q_Racc_noise and Ts template (Ts supplied in time_update)
     void assembleExtendedFandQ(const Vector3& acc_body, T Ts, Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext);
     Matrix3 R_from_quat() const { return qref.toRotationMatrix(); }
 
