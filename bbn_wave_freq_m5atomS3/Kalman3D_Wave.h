@@ -307,19 +307,18 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
                                               Vector3 const& /*acc_body_unused*/,
                                               T Ts)
 {
-    // ---- Attitude mean propagation (unchanged) ----
+    // ---- Attitude mean propagation ----
     Vector3 gyro_bias = with_bias ? xext.template segment<3>(3) : Vector3::Zero();
     last_gyr_bias_corrected = gyr - gyro_bias;
     set_transition_matrix(last_gyr_bias_corrected, Ts);   // fills F (4x4)
     qref.coeffs() = F * qref.coeffs();
     qref.normalize();
 
-    // ---- Build exact discrete transition & process Q (including Φ for [v,p,S,a_w]) ----
+    // ---- Build exact discrete transition & process Q ----
     MatrixNX F_a_ext; MatrixNX Q_a_ext;
-    assembleExtendedFandQ(/*acc unused*/ Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
+    assembleExtendedFandQ(Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
 
-    // ---- Linear mean propagation with the same Φ used for covariance ----
-    // x_lin = [v; p; S; a_w]  (12x1)
+    // ---- Mean propagation for linear subsystem [v,p,S,a_w] ----
     Eigen::Matrix<T,12,1> x_lin_prev;
     x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
     x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
@@ -327,7 +326,7 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
     x_lin_prev.template segment<3>(9)  = xext.template segment<3>(OFF_AW);
 
     const auto Phi_lin = F_a_ext.template block<12,12>(OFF_V, OFF_V);
-    const Eigen::Matrix<T,12,1> x_lin_next = Phi_lin * x_lin_prev;
+    Eigen::Matrix<T,12,1> x_lin_next = Phi_lin * x_lin_prev;
 
     // write back mean
     xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
@@ -335,7 +334,7 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
-    // ---- Covariance propagation (Joseph form not needed here; standard discrete step) ----
+    // ---- Covariance propagation ----
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
     Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
 
