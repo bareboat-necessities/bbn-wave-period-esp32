@@ -574,48 +574,30 @@ void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
-    const Vector3& /*acc_body_unused*/, T Ts,
-    Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext)
+void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
+    const Eigen::Matrix<T,12,12>& A,
+    const Eigen::Matrix<T,12,3>&  G,
+    const Eigen::Matrix<T,3,3>&   Sigma_c,
+    T Ts,
+    Eigen::Matrix<T,12,12>& Phi,
+    Eigen::Matrix<T,12,12>& Qd) const
 {
-    F_a_ext.setIdentity();
-    Q_a_ext.setZero();
+    // Build Van-Loan block matrix (24x24)
+    Eigen::Matrix<T,24,24> M; M.setZero();
+    M.block(0,0,12,12)   = -A * Ts;
+    M.block(0,12,12,12)  =  G * Sigma_c * G.transpose() * Ts;
+    M.block(12,12,12,12) =  A.transpose() * Ts;
 
-    // === Attitude-error (+ optional bias) discrete transition (same as before) ===
-    Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
-    F_a_ext.template block<3,3>(0,0) = Atheta;
-    if constexpr (with_bias) {
-        F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
-    }
+    // Matrix exponential
+    Eigen::Matrix<T,24,24> expM = M.exp();
 
-    // Process noise for attitude/bias (discrete) — if Qbase already represents discrete RW per Ts,
-    // you can keep it; otherwise scale from continuous. Assuming Qbase is appropriate here:
-    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
+    // Extract blocks
+    Eigen::Matrix<T,12,12> PhiT = expM.block(12,12,12,12);
+    Eigen::Matrix<T,12,12> Qblk = expM.block(0,12,12,12);
 
-    // === Exact Van-Loan discretization for linear subsystem [v(0..2), p(3..5), S(6..8), a_w(9..11)] ===
-    using Mat12 = Eigen::Matrix<T,12,12>;
-    using Mat12x3 = Eigen::Matrix<T,12,3>;
-
-    Mat12 A; A.setZero();
-    // v̇ = a_w
-    A.template block<3,3>(0,9) = Matrix3::Identity();
-    // ṗ = v
-    A.template block<3,3>(3,0) = Matrix3::Identity();
-    // Ṡ = p
-    A.template block<3,3>(6,3) = Matrix3::Identity();
-    // ȧ_w = -(1/τ) a_w
-    A.template block<3,3>(9,9) = -(T(1)/std::max(T(1e-6), tau_aw)) * Matrix3::Identity();
-
-    Mat12x3 G; G.setZero();
-    // white noise only drives a_w
-    G.template block<3,3>(9,0) = Matrix3::Identity();
-
-    Mat12 Phi_lin, Qd_lin;
-    vanLoanDiscretization_12x3(A, G, Sigma_aw_stat, Ts, Phi_lin, Qd_lin);
-
-    // Insert exact discrete transition and covariance into extended matrices
-    F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
-    Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
+    // Van-Loan identities
+    Phi = PhiT.transpose();      // exp(A Ts)
+    Qd  = Phi * Qblk;            // exact discrete process noise
 }
 
 template<typename T, bool with_bias>
