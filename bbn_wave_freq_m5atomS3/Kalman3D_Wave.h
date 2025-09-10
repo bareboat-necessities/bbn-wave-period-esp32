@@ -337,56 +337,43 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
     applyIntegralZeroPseudoMeas();
 }
 
-// measurement update
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::measurement_update(
-    Vector3 const& acc,
-    Vector3 const& mag)
+void Kalman3D_Wave<T, with_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag)
 {
     // Predicted measurements
-    Vector3 v1hat = accelerometer_measurement_func();
+    Vector3 v1hat = accelerometer_measurement_func(); // depends on a_w now
     Vector3 v2hat = magnetometer_measurement_func();
-    
-    // Cext: (6 x NX)
+
     Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
-    Cext.template block<3,3>(0,0) = skew_symmetric_matrix(v1hat);
-    Cext.template block<3,3>(3,0) = skew_symmetric_matrix(v2hat);
-    
-    // Innovation
+    // accel rows 0..2
+    Cext.template block<3,3>(0,0)        = skew_symmetric_matrix(v1hat); // d f_b / d attitude
+    Cext.template block<3,3>(0,OFF_AW)   = Rt_from_quat();               // d f_b / d a_w
+    // mag rows 3..5 (unchanged)
+    Cext.template block<3,3>(3,0)        = skew_symmetric_matrix(v2hat);
+
     Vector6 yhat; yhat << v1hat, v2hat;
     Vector6 y;    y << acc, mag;
     Vector6 inno = y - yhat;
-    
-    // S = C P C^T + R  (6x6)
+
     MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
-    
-    // PCt = P C^T  (NX x 6)
     Matrix<T, NX, M> PCt = Pext * Cext.transpose();
-    
-    // Factor S (SPD), solve K = PCt * S^{-1}
+
     Eigen::LDLT<MatrixM> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        // small jitter if needed
         S_mat += MatrixM::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
     Matrix<T, NX, M> K = PCt * ldlt.solve(MatrixM::Identity());
-    
-    // State update
+
     xext.noalias() += K * inno;
-    
-    // Joseph covariance update (keeps symmetry/PSD)
+
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
-    // optional: enforce exact symmetry numerically
     Pext = T(0.5) * (Pext + Pext.transpose());
-    
-    // Quaternion correction + zero small-angle
+
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
-    
-    // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
