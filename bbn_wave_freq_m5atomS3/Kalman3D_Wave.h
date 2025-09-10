@@ -311,40 +311,42 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
                                               Vector3 const& /*acc_body_unused*/,
                                               T Ts)
 {
-    // bias-corrected gyro, quaternion kinematics (unchanged)
+    // ---- Attitude mean propagation (unchanged) ----
     Vector3 gyro_bias = with_bias ? xext.template segment<3>(3) : Vector3::Zero();
     last_gyr_bias_corrected = gyr - gyro_bias;
-    set_transition_matrix(last_gyr_bias_corrected, Ts);
+    set_transition_matrix(last_gyr_bias_corrected, Ts);   // fills F (4x4)
     qref.coeffs() = F * qref.coeffs();
     qref.normalize();
 
-    // --- Pull current linear states ---
-    auto v  = xext.template segment<3>(OFF_V);
-    auto p  = xext.template segment<3>(OFF_P);
-    auto S  = xext.template segment<3>(OFF_S);
-    auto aw = xext.template segment<3>(OFF_AW);
-
-    // --- Discretize OU for a_w: phi = exp(-Ts/tau), Qaw = Sigma_stat*(1 - phi^2) ---
-    phi_aw = std::exp(-Ts / std::max(T(1e-6), tau_aw));
-    Qaw_d  = Sigma_aw_stat * (T(1) - phi_aw*phi_aw);
-
-    // --- Deterministic propagation using current a_w state ---
-    xext.template segment<3>(OFF_V)  = v + aw * Ts;
-    xext.template segment<3>(OFF_P)  = p + v * Ts + (T(0.5) * Ts*Ts) * aw;
-    xext.template segment<3>(OFF_S)  = S + p * Ts + (T(0.5) * Ts*Ts) * v + (Ts*Ts*Ts / T(6)) * aw;
-    xext.template segment<3>(OFF_AW) = phi_aw * aw; // mean dynamics; noise enters via Q below
-
-    // --- Build extended state-transition Jacobian F_a_ext and process Q_a_ext ---
+    // ---- Build exact discrete transition & process Q (including Φ for [v,p,S,a_w]) ----
     MatrixNX F_a_ext; MatrixNX Q_a_ext;
-    assembleExtendedFandQ(/*acc_body unused*/ Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
+    assembleExtendedFandQ(/*acc unused*/ Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
 
-    // --- Joseph-form covariance propagation ---
+    // ---- Linear mean propagation with the same Φ used for covariance ----
+    // x_lin = [v; p; S; a_w]  (12x1)
+    Eigen::Matrix<T,12,1> x_lin_prev;
+    x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
+    x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
+    x_lin_prev.template segment<3>(6)  = xext.template segment<3>(OFF_S);
+    x_lin_prev.template segment<3>(9)  = xext.template segment<3>(OFF_AW);
+
+    const auto Phi_lin = F_a_ext.template block<12,12>(OFF_V, OFF_V);
+    const Eigen::Matrix<T,12,1> x_lin_next = Phi_lin * x_lin_prev;
+
+    // write back mean
+    xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
+    xext.template segment<3>(OFF_P)  = x_lin_next.template segment<3>(3);
+    xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
+    xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
+
+    // ---- Covariance propagation (Joseph form not needed here; standard discrete step) ----
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
+    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
 
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
-    // Keep your integral pseudo-measurement if desired
+    // Optional drift correction on S
     applyIntegralZeroPseudoMeas();
 }
 
