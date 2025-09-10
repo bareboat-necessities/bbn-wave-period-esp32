@@ -618,27 +618,39 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 }
 
-template<typename T>
-static void vanLoanDiscretization(const Eigen::Matrix<T,12,12>& A,
-                                  const Eigen::Matrix<T,12,3>& G,
-                                  const Eigen::Matrix<T,3,3>& Sigma_c,
-                                  T Ts,
-                                  Eigen::Matrix<T,12,12>& Phi,
-                                  Eigen::Matrix<T,12,12>& Qd)
+template<typename T, bool with_bias>
+void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
+    const Eigen::Matrix<T,12,12>& A,
+    const Eigen::Matrix<T,12,3>&  G,
+    const Eigen::Matrix<T,3,3>&   Sigma_c,
+    T Ts,
+    Eigen::Matrix<T,12,12>& Phi,
+    Eigen::Matrix<T,12,12>& Qd) const
 {
-    // Build Van-Loan block matrix
+    // Van-Loan block matrix:
+    // exp( [ -A   G Σ Gᵀ ]
+    //      [  0     Aᵀ ] Ts ) = [ Φ⁻¹     Φ⁻¹ Q ]
+    //                             [  0       Φᵀ  ]
+    // We form M = [[-A, GΣGᵀ],[0, Aᵀ]] * Ts and exponentiate.
     Eigen::Matrix<T,24,24> M; M.setZero();
-    M.block(0,0,12,12)  = -A * Ts;
-    M.block(0,12,12,12) =  G * Sigma_c * G.transpose() * Ts;
-    M.block(12,12,12,12)=  A.transpose() * Ts;
+    M.template block<12,12>(0,0)   = -A * Ts;
+    M.template block<12,12>(0,12)  = (G * Sigma_c * G.transpose()) * Ts;
+    M.template block<12,12>(12,12) =  A.transpose() * Ts;
 
-    // Matrix exponential
-    Eigen::Matrix<T,24,24> expM = M.exp(); // Eigen’s matrix exponential
+    Eigen::Matrix<T,24,24> expM = M.exp();
 
     // Extract blocks
-    Eigen::Matrix<T,12,12> PhiT = expM.block(12,12,12,12).transpose();
-    Phi = expM.block(12,12,12,12).transpose().inverse(); // actually exp(A Ts)
-    Qd  = Phi * expM.block(0,12,12,12);
+    const Eigen::Matrix<T,12,12> expM_22 = expM.template block<12,12>(12,12);
+    const Eigen::Matrix<T,12,12> expM_12 = expM.template block<12,12>(0,12);
+
+    // Φ = (expM_22)ᵀ⁻¹  and  Q = Φ * expM_12
+    // But we don’t actually need Φ⁻¹ explicitly: Φ = (expM_22)ᵀ⁻¹
+    // Compute Φ via triangular solve for numerical stability.
+    // Since expM_22 is exp(Aᵀ Ts), it’s invertible.
+    Eigen::Matrix<T,12,12> PhiT = expM_22;                // = exp(Aᵀ Ts)
+    // Solve PhiTᵀ * X = I for X = Φ
+    Phi = PhiT.transpose().lu().solve(Eigen::Matrix<T,12,12>::Identity());
+    Qd  = Phi * expM_12;
 }
 
 template<typename T, bool with_bias>
