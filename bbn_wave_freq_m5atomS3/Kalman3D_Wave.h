@@ -699,5 +699,9 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     // Insert into extended transition + process covariance
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
+
+    // Process noise on v,p (tiny diagonal) can help if τ_aw is long
+    Q_a_ext.template block<3,3>(OFF_V, OFF_V).diagonal().array() += T(1e-8);
+    Q_a_ext.template block<3,3>(OFF_P, OFF_P).diagonal().array() += T(1e-10);
 }
 
