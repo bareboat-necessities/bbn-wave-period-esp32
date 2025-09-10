@@ -296,50 +296,44 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, Vector3 const& acc_body, T Ts) {
-    // bias-corrected gyro
-    Vector3 gyro_bias;
-    if constexpr (with_bias) {
-        gyro_bias = xext.template segment<3>(3); 
-    } else { 
-        gyro_bias = Vector3::Zero(); 
-    }
+void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
+                                              Vector3 const& /*acc_body_unused*/,
+                                              T Ts)
+{
+    // bias-corrected gyro, quaternion kinematics (unchanged)
+    Vector3 gyro_bias = with_bias ? xext.template segment<3>(3) : Vector3::Zero();
     last_gyr_bias_corrected = gyr - gyro_bias;
-  
-    // Assemble extended Jacobian and Q
-    MatrixNX F_a_ext, Q_a_ext;
-    assembleExtendedFandQ(acc_body, Ts, F_a_ext, Q_a_ext);
-
-    // Build quaternion transition matrix
     set_transition_matrix(last_gyr_bias_corrected, Ts);
-
-    // Update quaternion
     qref.coeffs() = F * qref.coeffs();
     qref.normalize();
 
-    // World-frame linear acceleration
-    Matrix3 Rw = R_from_quat();
-    Vector3 g_world{0, 0, gravity_magnitude};
-    Vector3 a_w = Rw * acc_body - g_world;  // remove gravity
-    Vector3 a_corr = a_w;
-  
-    // Extract current linear states
-    auto v = xext.template segment<3>(BASE_N);
-    auto p = xext.template segment<3>(BASE_N + 3);
-    auto S = xext.template segment<3>(BASE_N + 6);
+    // --- Pull current linear states ---
+    auto v  = xext.template segment<3>(OFF_V);
+    auto p  = xext.template segment<3>(OFF_P);
+    auto S  = xext.template segment<3>(OFF_S);
+    auto aw = xext.template segment<3>(OFF_AW);
 
-    // Taylor-series propagation
-    xext.template segment<3>(BASE_N)     = v + a_corr * Ts;
-    xext.template segment<3>(BASE_N + 3) = p + v * Ts + 0.5 * a_corr * Ts*Ts;
-    xext.template segment<3>(BASE_N + 6) = S + p * Ts + 0.5 * v * Ts*Ts + (Ts*Ts*Ts / T(6.0)) * a_corr;
+    // --- Discretize OU for a_w: phi = exp(-Ts/tau), Qaw = Sigma_stat*(1 - phi^2) ---
+    phi_aw = std::exp(-Ts / std::max(T(1e-6), tau_aw));
+    Qaw_d  = Sigma_aw_stat * (T(1) - phi_aw*phi_aw);
 
-    // Covariance propagation using Joseph form
+    // --- Deterministic propagation using current a_w state ---
+    xext.template segment<3>(OFF_V)  = v + aw * Ts;
+    xext.template segment<3>(OFF_P)  = p + v * Ts + (T(0.5) * Ts*Ts) * aw;
+    xext.template segment<3>(OFF_S)  = S + p * Ts + (T(0.5) * Ts*Ts) * v + (Ts*Ts*Ts / T(6)) * aw;
+    xext.template segment<3>(OFF_AW) = phi_aw * aw; // mean dynamics; noise enters via Q below
+
+    // --- Build extended state-transition Jacobian F_a_ext and process Q_a_ext ---
+    MatrixNX F_a_ext; MatrixNX Q_a_ext;
+    assembleExtendedFandQ(/*acc_body unused*/ Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
+
+    // --- Joseph-form covariance propagation ---
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
 
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
-    // Drift correction
+    // Keep your integral pseudo-measurement if desired
     applyIntegralZeroPseudoMeas();
 }
 
