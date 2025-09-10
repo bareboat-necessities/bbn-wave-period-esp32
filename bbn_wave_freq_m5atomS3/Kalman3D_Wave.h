@@ -158,7 +158,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 R_S;  // Triple integration measurement noise
 
     MatrixNX Qext; // Extended process noise / Q
-    Matrix3 Q_Racc_noise; // Process noise for rules using acceleration
 
     // --- World-acceleration OU process a_w dynamics parameters ---
     T tau_aw = T(1.5);            // correlation time [s], tune 1–5 s for sea states
