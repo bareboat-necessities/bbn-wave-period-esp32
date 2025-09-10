@@ -546,44 +546,40 @@ void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
 
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
-    const Vector3& acc_body,
-    T Ts,
-    Matrix<T, NX, NX>& F_a_ext,
-    MatrixNX& Q_a_ext)
+    const Vector3& /*acc_body_unused*/, T Ts,
+    Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext)
 {
     F_a_ext.setIdentity();
-    Q_a_ext = Qext; // start with template
+    Q_a_ext.setZero();
 
-    // Small-angle attitude error propagation
+    // --- Attitude error propagation (same as before) ---
     Matrix3 Atheta = Matrix3::Identity() - skew_symmetric_matrix(last_gyr_bias_corrected) * Ts;
     F_a_ext.template block<3,3>(0,0) = Atheta;
     if constexpr (with_bias) {
-        // cross term: attitude error depends on bias error
         F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
 
-    // Gravity-free acceleration
-    Matrix3 Rw = R_from_quat();
-    Vector3 g_world{0, 0, gravity_magnitude};
-    Vector3 a_w = Rw * acc_body - g_world; // remove gravity
-    const Matrix3 skew_ab = skew_symmetric_matrix(acc_body);  // body frame
+    // --- Linear kinematics driven by a_w (world) ---
+    F_a_ext.template block<3,3>(OFF_P, OFF_V)  = Matrix3::Identity() * Ts;                 // v -> p
+    F_a_ext.template block<3,3>(OFF_S, OFF_V)  = Matrix3::Identity() * (T(0.5)*Ts*Ts);     // v -> S
+    F_a_ext.template block<3,3>(OFF_S, OFF_P)  = Matrix3::Identity() * Ts;                 // p -> S
+    F_a_ext.template block<3,3>(OFF_V, OFF_AW) = Matrix3::Identity() * Ts;                 // a_w -> v
+    F_a_ext.template block<3,3>(OFF_P, OFF_AW) = Matrix3::Identity() * (T(0.5)*Ts*Ts);     // a_w -> p
+    F_a_ext.template block<3,3>(OFF_S, OFF_AW) = Matrix3::Identity() * (Ts*Ts*Ts/T(6));    // a_w -> S
 
-    // Attitude → linear Jacobians
-    F_a_ext.template block<3,3>(BASE_N,0)     = -Ts * (Rw * skew_ab);
-    F_a_ext.template block<3,3>(BASE_N+3,0)   = -T(0.5)*Ts*Ts * (Rw * skew_ab);
-    F_a_ext.template block<3,3>(BASE_N+6,0)   = -(Ts*Ts*Ts/T(6)) * (Rw * skew_ab);
-  
-    // Linear dependencies
-    F_a_ext.template block<3,3>(BASE_N+3, BASE_N) = Matrix3::Identity() * Ts;        // v -> p
-    F_a_ext.template block<3,3>(BASE_N+6, BASE_N) = Matrix3::Identity() * (0.5*Ts*Ts); // v -> S
-    F_a_ext.template block<3,3>(BASE_N+6, BASE_N+3) = Matrix3::Identity() * Ts;      // p -> S
+    // --- OU dynamics for a_w ---
+    F_a_ext.template block<3,3>(OFF_AW, OFF_AW) = Matrix3::Identity() * phi_aw;
 
-    // Process noise
-    Matrix<T,9,3> G; G.setZero();
-    G.template topRows<3>()        = Ts * Rw;
-    G.template middleRows<3>(3)    = (T(0.5) * Ts * Ts) * Rw;
-    G.template bottomRows<3>()     = (Ts*Ts*Ts / T(6)) * Rw;
-    Q_a_ext.template block(BASE_N, BASE_N, 9, 9) = G * Q_Racc_noise * G.transpose();
+    // --- Process noise: original Qbase for attitude/bias ---
+    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
+
+    // --- OU process noise on a_w (discrete) ---
+    Q_a_ext.template block<3,3>(OFF_AW, OFF_AW) = Qaw_d;
+
+    // Note: If you want *exact* continuous-time injection of a_w noise into (v,p,S)
+    // within this same step, you can add cross-cov blocks derived via Van-Loan.
+    // With Ts small, the above is usually sufficient; the coupling will inflate
+    // (v,p,S) over subsequent steps through F.
 }
 
 template<typename T, bool with_bias>
