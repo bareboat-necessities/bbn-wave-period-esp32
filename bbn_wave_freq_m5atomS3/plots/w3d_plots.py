@@ -96,7 +96,7 @@ for fname in files:
     df = pd.read_csv(fname, nrows=MAX_ROWS)
     time = df["time"]
 
-    # Reference vs estimated Euler angles
+    # === Angles (original: reference vs estimated) ===
     angles = [
         ("roll_ref", "roll_est", "Roll (deg)"),
         ("pitch_ref", "pitch_est", "Pitch (deg)"),
@@ -104,8 +104,6 @@ for fname in files:
     ]
 
     fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
-
-    # Escape underscores in the title
     fig.suptitle(latex_safe(basename))
 
     for ax, (ref_col, est_col, label) in zip(axes, angles):
@@ -119,7 +117,6 @@ for fname in files:
     axes[-1].set_xlabel(latex_safe("Time (s)"))
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-    # Save to PGF and SVG
     pgf_out = f"{outbase}.pgf"
     svg_out = f"{outbase}.svg"
     plt.savefig(pgf_out, format="pgf", bbox_inches="tight")
@@ -127,4 +124,88 @@ for fname in files:
     plt.close(fig)
 
     print(f"Saved {pgf_out} and {svg_out}")
-    generated.append((wave_type, group_name, os.path.basename(pgf_out)))
+
+    # === Angle errors (new) ===
+    fig, axes = plt.subplots(4, 1, figsize=(10, 8), sharex=True)
+    fig.suptitle(latex_safe(basename) + " (Angle Errors)")
+
+    axes[0].plot(time, df["err_roll"], color="tab:red")
+    axes[0].set_ylabel(latex_safe("Roll err [deg]"))
+    axes[0].grid(True)
+
+    axes[1].plot(time, df["err_pitch"], color="tab:red")
+    axes[1].set_ylabel(latex_safe("Pitch err [deg]"))
+    axes[1].grid(True)
+
+    axes[2].plot(time, df["err_yaw"], color="tab:red")
+    axes[2].set_ylabel(latex_safe("Yaw err [deg]"))
+    axes[2].grid(True)
+
+    axes[3].plot(time, df["angle_err"], color="tab:purple")
+    axes[3].set_ylabel(latex_safe("Quat err [deg]"))
+    axes[3].set_xlabel(latex_safe("Time (s)"))
+    axes[3].grid(True)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    pgf_out = f"{outbase}_angle_errs.pgf"
+    svg_out = f"{outbase}_angle_errs.svg"
+    plt.savefig(pgf_out, format="pgf", bbox_inches="tight")
+    plt.savefig(svg_out, format="svg", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"Saved {pgf_out} and {svg_out}")
+
+    # === Z-axis kinematics with errors ===
+    fig, axes = plt.subplots(6, 1, figsize=(10, 12), sharex=True)
+    fig.suptitle(latex_safe(basename) + " (Z-axis)")
+
+    for i, prefix in enumerate(["disp", "vel", "acc"]):
+        # Values
+        axes[2*i].plot(time, df[f"{prefix}_ref_z"], label="Ref")
+        axes[2*i].plot(time, df[f"{prefix}_est_z"], label="Est", linestyle="--")
+        axes[2*i].set_ylabel(latex_safe(f"{prefix.capitalize()} Z"))
+        axes[2*i].legend(); axes[2*i].grid(True)
+
+        # Errors
+        axes[2*i+1].plot(time, df[f"{prefix}_err_z"], color="tab:red")
+        axes[2*i+1].set_ylabel(latex_safe("Error"))
+        axes[2*i+1].grid(True)
+
+    axes[-1].set_xlabel(latex_safe("Time (s)"))
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    pgf_out = f"{outbase}_zkin.pgf"
+    svg_out = f"{outbase}_zkin.svg"
+    plt.savefig(pgf_out, format="pgf", bbox_inches="tight")
+    plt.savefig(svg_out, format="svg", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"Saved {pgf_out} and {svg_out}")
+
+    # === XY kinematics with errors ===
+    fig, axes = plt.subplots(6, 1, figsize=(10, 12), sharex=True)
+    fig.suptitle(latex_safe(basename) + " (X/Y axes)")
+
+    for i, prefix in enumerate(["disp", "vel", "acc"]):
+        # Values
+        axes[2*i].plot(time, df[f"{prefix}_ref_x"], label="Ref X", color="tab:blue")
+        axes[2*i].plot(time, df[f"{prefix}_est_x"], label="Est X", linestyle="--", color="tab:blue")
+        axes[2*i].plot(time, df[f"{prefix}_ref_y"], label="Ref Y", color="tab:orange")
+        axes[2*i].plot(time, df[f"{prefix}_est_y"], label="Est Y", linestyle="--", color="tab:orange")
+        axes[2*i].set_ylabel(latex_safe(f"{prefix.capitalize()} XY"))
+        axes[2*i].legend(ncol=2, fontsize=8); axes[2*i].grid(True)
+
+        # Errors
+        axes[2*i+1].plot(time, df[f"{prefix}_err_x"], label="Err X", color="tab:blue")
+        axes[2*i+1].plot(time, df[f"{prefix}_err_y"], label="Err Y", color="tab:orange")
+        axes[2*i+1].set_ylabel(latex_safe("Error"))
+        axes[2*i+1].legend(ncol=2, fontsize=8); axes[2*i+1].grid(True)
+
+    axes[-1].set_xlabel(latex_safe("Time (s)"))
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    pgf_out = f"{outbase}_xykin.pgf"
+    svg_out = f"{outbase}_xykin.svg"
+    plt.savefig(pgf_out, format="pgf", bbox_inches="tight")
+    plt.savefig(svg_out, format="svg", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"Saved {pgf_out} and {svg_out}")
