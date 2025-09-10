@@ -161,10 +161,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     T tau_aw = T(1.5);            // correlation time [s], tune 1–5 s for sea states
     Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(0.8*0.8); // stationary variance diag [ (m/s^2)^2 ]
 
-    // cached per-step discretization (filled each time_update with Ts)
-    T phi_aw = T(1);              // exp(-Ts/tau)
-    Matrix3 Qaw_d;                // discrete process noise for a_w: Sigma_stat*(1 - phi^2)
-
     // convenience getters
     Matrix3 Rt_from_quat() const { return R_from_quat().transpose(); }
   
