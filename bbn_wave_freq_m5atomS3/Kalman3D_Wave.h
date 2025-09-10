@@ -201,9 +201,7 @@ Kalman3D_Wave<T, with_bias>::Kalman3D_Wave(
     T Pq0, T Pb0, T b0, T R_S_noise)
   : Qbase(initialize_Q(sigma_g, b0)),
     Racc(sigma_a.array().square().matrix().asDiagonal()),
-    Rmag(sigma_m.array().square().matrix().asDiagonal()),
-    // initialize Q_Racc_noise from sigma_a as well
-    Q_Racc_noise(sigma_a.array().square().matrix().asDiagonal())
+    Rmag(sigma_m.array().square().matrix().asDiagonal()))
 {
   // quaternion init
   qref.setIdentity();
