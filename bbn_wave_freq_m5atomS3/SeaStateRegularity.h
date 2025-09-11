@@ -360,22 +360,9 @@ private:
         float rbw = (omega_bar > 0.0f) ? (std::sqrt(mu2) / std::max(omega_bar, omega_min)) : 0.0f;
         R_spec = std::clamp(std::exp(-BETA_SPEC * rbw), 0.0f, 1.0f);
 
-        // Fusion with phase coherence (geometric mean; phase-forward)
-        float Rp = std::max(R_phase, 1e-6f);
-        float Rs = std::max(R_spec,  1e-6f);
-        float w  = std::clamp(PHASE_WEIGHT, 0.0f, 1.0f);
-        float R_base = std::exp(w * std::log(Rp) + (1.0f - w) * std::log(Rs));
-
-        // Mild softening tied to phase variance
-        float adj_var = 1.0f - K_CIRC_VAR * (1.0f - R_phase);
-
-        // Harmonic-safe fused regularity
-        R_safe = std::clamp(R_base * adj_var, 0.0f, 1.0f);
-
-        // Final output smoothing
-        float R_target = R_safe;
-        if (!has_R_out) { R_out = R_target; has_R_out = true; }
-        else            { R_out = (1.0f - alpha_out) * R_out + alpha_out * R_target; }
+        // --- New rule: output is max of phase and spectral regularity ---
+        R_out = std::max(R_phase, R_spec);
+        has_R_out = true;
 
         // Legacy narrowness diagnostic ν (use legacy Mk to preserve original readout)
         if (M1 > EPSILON && M0 > 0.0f && M2 > 0.0f) {
