@@ -336,11 +336,17 @@ Kalman3D_Wave<T, with_bias>::quaternion_from_acc(Vector3 const& acc)
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
-  T const anorm = acc.norm();
-  v1ref << 0, 0, +anorm;  // aerospace z-down
-  qref = quaternion_from_acc(acc);
-  qref.normalize();
+void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc)
+{
+    T anorm = acc.norm();
+    Vector3 acc_n = acc / anorm;
+
+    // World gravity vector in NED (z-down)
+    v1ref << 0, 0, +anorm;
+
+    // Use accelerometer to align z axis, yaw remains arbitrary
+    qref = quaternion_from_acc(acc_n);
+    qref.normalize();
 }
 
 template<typename T, bool with_bias>
