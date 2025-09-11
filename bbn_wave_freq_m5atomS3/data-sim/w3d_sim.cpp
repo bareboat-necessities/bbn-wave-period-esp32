@@ -56,8 +56,8 @@ static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float
 
 // Inverse conversion for Euler angles and orientation errors: aerospace → nautical
 static inline void aerospace_to_nautical_euler(float &roll, float &pitch, float &yaw) {
-    roll  = -roll;   // negate back
-    pitch = -pitch;  // negate back
+    roll  = -pitch;   // negate back
+    pitch = -roll;  // negate back
     // yaw unchanged
 }
 
