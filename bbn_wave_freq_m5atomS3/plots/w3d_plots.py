@@ -26,7 +26,7 @@ plt.rcParams.update({
 # === Config ===
 DATA_DIR = "./"             # Directory with *_w3d.csv files
 SAMPLE_RATE_HZ = 240        # Simulator sample rate
-SKIP_TIME_S = 30.0          # Skip first 30 seconds (warmup)
+SKIP_TIME_S = 60.0          # Skip first 30 seconds (warmup)
 PLOT_TIME_S = 120.0         # Plot next 120 seconds
 MAX_TIME_S  = SKIP_TIME_S + PLOT_TIME_S
 MAX_ROWS    = int(SAMPLE_RATE_HZ * MAX_TIME_S)
