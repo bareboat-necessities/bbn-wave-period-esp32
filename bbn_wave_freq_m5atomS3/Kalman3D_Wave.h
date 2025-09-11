@@ -309,38 +309,33 @@ template<typename T, bool with_bias>
 Eigen::Quaternion<T>
 Kalman3D_Wave<T, with_bias>::quaternion_from_acc(Vector3 const& acc)
 {
-    // Normalize accelerometer
+    // Raw accelerometer is specific force; at rest in NED: acc ≈ (0,0,-g) in body
+    // We want body +Z (down) to align with world +Z (down), i.e. align zb to -acc.
     Vector3 an = acc.normalized();
-
-    // In aerospace (z-down): gravity points +Z
-    // If accelerometer measures +Z, body is aligned with world -> identity quaternion
-    // We compute a rotation that aligns body z-axis with measured acc
-
-    // Body z-axis in world frame
     Vector3 zb = Vector3::UnitZ();
 
-    // Rotation axis = cross(zb, acc)
-    Vector3 axis = zb.cross(an);
+    // Rotate zb to (-an)
+    Vector3 target = -an;
+    T cos_theta = zb.dot(target);
+    Vector3 axis = zb.cross(target);
     T norm_axis = axis.norm();
 
     if (norm_axis < T(1e-8)) {
-        // Acc is nearly aligned with world z
-        if (an.z() > 0) {
-            // Same direction -> identity quaternion
-            return Eigen::Quaternion<T>::Identity();
+        // Almost parallel or anti-parallel
+        if (cos_theta > 0) {
+            return Eigen::Quaternion<T>::Identity();        // zb ≈ target
         } else {
-            // Opposite direction -> 180 deg rotation about X
-            return Eigen::Quaternion<T>(0, 1, 0, 0);
+            return Eigen::Quaternion<T>(0, 1, 0, 0);        // 180° about X
         }
     }
 
     axis /= norm_axis;
-    T cos_theta = zb.dot(an);
-    T angle = std::atan2(norm_axis, cos_theta);
+    // clamp to avoid NaNs
+    cos_theta = std::max(T(-1), std::min(T(1), cos_theta));
+    T angle = std::acos(cos_theta);
 
     Eigen::AngleAxis<T> aa(angle, axis);
     Eigen::Quaternion<T> q(aa);
-
     q.normalize();
     return q;
 }
