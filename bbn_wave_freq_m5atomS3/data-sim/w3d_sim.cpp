@@ -19,7 +19,7 @@ using Eigen::Quaternionf;
 
 static inline Eigen::Vector3f ned_to_zu(const Eigen::Vector3f& v) {
     // NED (z down) -> Z-up (nautical): flip Z only
-    return Eigen::Vector3f(v.x(), v.y(), -v.z());
+    return Eigen::Vector3f(v.y(), v.x(), -v.z());
 }
 
 // Quaternion → Euler (deg), ZYX convention with Z-up (nautical frame)
