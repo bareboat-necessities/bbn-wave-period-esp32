@@ -302,7 +302,7 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
     qref.normalize();
 
     // Store reference magnetic vector in world frame
-    v2ref = qref * mag;
+    v2ref = R_from_quat() * mag;
 }
 
 template<typename T, bool with_bias>
@@ -534,7 +534,7 @@ Matrix<T,3,1> Kalman3D_Wave<T, with_bias>::accelerometer_measurement_func() cons
 
 template<typename T, bool with_bias>
 Matrix<T, 3, 1> Kalman3D_Wave<T, with_bias>::magnetometer_measurement_func() const {
-    return qref.inverse() * v2ref;
+    return Rt_from_quat() * v2ref;
 }
 
 // utility functions
