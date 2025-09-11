@@ -357,10 +357,10 @@ void Kalman3D_Wave<T, with_bias>::measurement_update(Vector3 const& acc, Vector3
 
     Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
     // accel rows 0..2
-    Cext.template block<3,3>(0,0)        = skew_symmetric_matrix(v1hat); // d f_b / d attitude
+    Cext.template block<3,3>(0,0)        = -skew_symmetric_matrix(v1hat); // d f_b / d attitude
     Cext.template block<3,3>(0,OFF_AW)   = Rt_from_quat();               // d f_b / d a_w
     // mag rows 3..5 (unchanged)
-    Cext.template block<3,3>(3,0)        = skew_symmetric_matrix(v2hat);
+    Cext.template block<3,3>(3,0)        = -skew_symmetric_matrix(v2hat);
 
     Vector6 yhat; yhat << v1hat, v2hat;
     Vector6 y;    y << acc, mag;
@@ -396,7 +396,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
 {
     // Cext: (3 x NX)
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    Cext.template block<3,3>(0,0) = skew_symmetric_matrix(vhat);
+    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
     
     // Innovation
     Vector3 inno = meas - vhat;
@@ -436,7 +436,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_acc_only(Vector3 const& acc
     // Cext: (3 x NX)
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
     // d f_b / d (attitude error)
-    Cext.template block<3,3>(0,0) = skew_symmetric_matrix(v1hat);
+    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(v1hat);
     // d f_b / d a_w
     Cext.template block<3,3>(0, OFF_AW) = Rt_from_quat();
 
@@ -472,7 +472,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_mag_only(Vector3 const& mag
 // specific force prediction: f_b = R^T (a_w - g)
 template<typename T, bool with_bias>
 Matrix<T,3,1> Kalman3D_Wave<T, with_bias>::accelerometer_measurement_func() const {
-    const Vector3 g_world(0,0,gravity_magnitude);
+    const Vector3 g_world(0, 0, -gravity_magnitude);
     const Vector3 aw = xext.template segment<3>(OFF_AW);
     return Rt_from_quat() * (aw - g_world);
 }
