@@ -275,7 +275,7 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
     v1ref << 0, 0, +anorm;
 
     // World Z axis (down)
-    Vector3 z_world = acc_n;
+    Vector3 z_world = -acc_n;
 
     // Project magnetometer onto horizontal plane (remove z component)
     Vector3 mag_h = mag_n - (mag_n.dot(z_world)) * z_world;
