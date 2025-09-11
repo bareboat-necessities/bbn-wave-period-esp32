@@ -24,10 +24,12 @@ plt.rcParams.update({
 })
 
 # === Config ===
-DATA_DIR = "./"            # Directory with *_w3d.csv files
-SAMPLE_RATE_HZ = 240       # Simulator sample rate
-MAX_TIME_S = 60.0          # Limit to first 60 seconds
-MAX_ROWS = int(SAMPLE_RATE_HZ * MAX_TIME_S)
+DATA_DIR = "./"             # Directory with *_w3d.csv files
+SAMPLE_RATE_HZ = 240        # Simulator sample rate
+SKIP_TIME_S = 30.0          # Skip first 30 seconds (warmup)
+PLOT_TIME_S = 120.0         # Plot next 120 seconds
+MAX_TIME_S  = SKIP_TIME_S + PLOT_TIME_S
+MAX_ROWS    = int(SAMPLE_RATE_HZ * MAX_TIME_S)
 
 # === Groups we care about (included heights in meters) ===
 height_groups = {
@@ -94,6 +96,9 @@ for fname in files:
 
     # Load limited rows
     df = pd.read_csv(fname, nrows=MAX_ROWS)
+
+    # Slice to [30s, 150s]
+    df = df[(df["time"] >= SKIP_TIME_S) & (df["time"] <= MAX_TIME_S)].reset_index(drop=True)
     time = df["time"]
 
     # === Angles (original: reference vs estimated) ===
