@@ -17,6 +17,10 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
+// Input simulation data are in nautical Z-up IMU convention
+// Filter convention id aerospace Z-down 
+// So [Y, X, -Z], [Roll, -Pitch, Yaw]
+
 static inline Eigen::Vector3f ned_to_zu(const Eigen::Vector3f& v) {
     // NED (z down) -> Z-up (nautical): flip Z only
     return Eigen::Vector3f(v.y(), v.x(), -v.z());
