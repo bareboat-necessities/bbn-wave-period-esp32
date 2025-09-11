@@ -314,8 +314,8 @@ Kalman3D_Wave<T, with_bias>::quaternion_from_acc(Vector3 const& acc)
     Vector3 an = acc.normalized();
     Vector3 zb = Vector3::UnitZ();
 
-    // Rotate zb to (-an)
-    Vector3 target = -an;
+    // Rotate zb to an
+    Vector3 target = an;
     T cos_theta = zb.dot(target);
     Vector3 axis = zb.cross(target);
     T norm_axis = axis.norm();
