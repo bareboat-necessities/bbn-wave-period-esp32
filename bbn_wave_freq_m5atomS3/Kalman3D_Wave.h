@@ -130,6 +130,17 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
     }
 
+    template<typename T>
+    static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
+        const T cI = std::cos(I_rad), sI = std::sin(I_rad);
+        const T cD = std::cos(D_rad), sD = std::sin(D_rad);
+        return (Eigen::Matrix<T,3,1>() <<
+            B * cI * cD,   // N
+            B * cI * sD,   // E
+            B * sI         // D (down positive)
+        ).finished();
+    }
+
   private:
     // Original MEKF internals (kept nomenclature)
     Eigen::Quaternion<T> qref;
