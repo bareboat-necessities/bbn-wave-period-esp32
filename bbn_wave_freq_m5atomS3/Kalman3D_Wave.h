@@ -667,10 +667,26 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     Q_a_ext.setZero();
 
     // === Attitude error (+ optional bias) discrete transition ===
-    const Matrix3 Wx = skew_symmetric_matrix(last_gyr_bias_corrected);
-    F_a_ext.template block<3,3>(0,0) = Matrix3::Identity() - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
+    Matrix3 I = Matrix3::Identity();
+    Vector3 w = last_gyr_bias_corrected;   // bias-corrected gyro [rad/s]
+    T omega = w.norm();
+    T theta = omega * Ts;
+
+    if (theta < T(1e-6)) {
+        // Small-angle fallback: 2nd-order series
+        Matrix3 Wx = skew_symmetric_matrix(w);
+        F_a_ext.block<3,3>(0,0) = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
+    } else {
+        // Normal case: exact Rodrigues form
+        Matrix3 W = skew_symmetric_matrix(w / omega);  // normalized axis
+        T s = std::sin(theta);
+        T c = std::cos(theta);
+        F_a_ext.block<3,3>(0,0) = I - s * W + (1 - c) * (W * W);
+    }
+
     if constexpr (with_bias) {
-        F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
+        // Cross term: attitude error driven by bias uncertainty
+        F_a_ext.block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
 
     // Process noise for attitude/bias
