@@ -317,7 +317,7 @@ Kalman3D_Wave<T, with_bias>::quaternion_from_acc(Vector3 const& acc)
     // We compute a rotation that aligns body z-axis with measured acc
 
     // Body z-axis in world frame
-    Vector3 zb = Eigen::Vector3d::UnitZ();
+    Vector3 zb = Vector3::UnitZ();
 
     // Rotation axis = cross(zb, acc)
     Vector3 axis = zb.cross(an);
