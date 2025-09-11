@@ -41,7 +41,7 @@ static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float
 // IMU frame → QMEKF frame
 // Only flip Z (up→down) to match the filter's gravity convention.
 static inline Vector3f imu_to_qmekf(const Vector3f& v) {
-    return Vector3f(v.x(), v.y(), -v.z());
+    return Vector3f(v.y(), v.x(), -v.z());
 }
 
 struct OutputRow {
