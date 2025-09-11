@@ -350,7 +350,7 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc)
     v1ref << 0, 0, +anorm;
 
     // Use accelerometer to align z axis, yaw remains arbitrary
-    qref = quaternion_from_acc(acc_n);
+    qref = quaternion_from_acc(-acc_n);
     qref.normalize();
 }
 
