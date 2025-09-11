@@ -272,23 +272,43 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Ve
 }
 
 template<typename T, bool with_bias>
-Eigen::Quaternion<T> Kalman3D_Wave<T, with_bias>::quaternion_from_acc(Vector3 const& acc) {
-  T qx, qy, qz, qw;
-  if (acc[2] >= 0) {
-    qx = std::sqrt((1 + acc[2]) / 2);
-    qw = acc[1] / (2 * qx);
-    qy = 0;
-    qz = -acc[0] / (2 * qx);
-  }
-  else {
-    qw = std::sqrt((1 - acc[2]) / 2);
-    qx = acc[1] / (2 * qw);
-    qy = -acc[0] / (2 * qw);
-    qz = 0;
-  }
-  Eigen::Quaternion<T> qref_local = Eigen::Quaternion<T>(qw, -qx, -qy, -qz);
-  qref_local.normalize();
-  return qref_local;
+Eigen::Quaternion<T>
+Kalman3D_Wave<T, with_bias>::quaternion_from_acc(Vector3 const& acc)
+{
+    // Normalize accelerometer
+    Vector3 an = acc.normalized();
+
+    // In aerospace (z-down): gravity points +Z
+    // If accelerometer measures +Z, body is aligned with world -> identity quaternion
+    // We compute a rotation that aligns body z-axis with measured acc
+
+    // Body z-axis in world frame
+    Vector3 zb = Eigen::Vector3d::UnitZ();
+
+    // Rotation axis = cross(zb, acc)
+    Vector3 axis = zb.cross(an);
+    T norm_axis = axis.norm();
+
+    if (norm_axis < T(1e-8)) {
+        // Acc is nearly aligned with world z
+        if (an.z() > 0) {
+            // Same direction -> identity quaternion
+            return Eigen::Quaternion<T>::Identity();
+        } else {
+            // Opposite direction -> 180 deg rotation about X
+            return Eigen::Quaternion<T>(0, 1, 0, 0);
+        }
+    }
+
+    axis /= norm_axis;
+    T cos_theta = zb.dot(an);
+    T angle = std::atan2(norm_axis, cos_theta);
+
+    Eigen::AngleAxis<T> aa(angle, axis);
+    Eigen::Quaternion<T> q(aa);
+
+    q.normalize();
+    return q;
 }
 
 template<typename T, bool with_bias>
