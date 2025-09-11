@@ -135,8 +135,8 @@ void process_wave_file(const std::string &filename, float dt) {
         quat_to_euler(q, r_est, p_est, y_est);
 
         // Reference (converted to aerospace convention)
-        float r_ref = -rec.imu.roll_deg;   // NEGATED
-        float p_ref = -rec.imu.pitch_deg;  // NEGATED
+        float r_ref = -rec.imu.pitch_deg;   // NEGATED
+        float p_ref = -rec.imu.roll_deg;  // NEGATED
         float y_ref =  rec.imu.yaw_deg;    // unchanged
 
         // World kinematics (converted to aerospace convention)
