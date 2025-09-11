@@ -272,29 +272,39 @@ public:
         return imu;
     }
 
-    // Build local wave IMU orientation from slopes
-    Eigen::Matrix3d orientationFromSlopes(const Eigen::Vector2d &slopes) const {
-        Eigen::Vector3d n(-slopes.x(), -slopes.y(), 1.0);
-        n.normalize();
+// Build local wave IMU orientation from slopes — Z-DOWN (aerospace/NED) body frame
+// Body axes:
+//   x_body : projection of world +X onto the tangent plane (as before)
+//   z_body : points DOWN, i.e., opposite the surface normal
+//   y_body : z_body × x_body   (right-handed)
+Eigen::Matrix3d orientationFromSlopes(const Eigen::Vector2d &slopes) const {
+    // Surface normal in world (Z-up)
+    Eigen::Vector3d n(-slopes.x(), -slopes.y(), 1.0);
+    n.normalize();
 
-        // project global X onto tangent plane for x-axis
-        Eigen::Vector3d x_axis = Eigen::Vector3d::UnitX();
+    // x_body: project world X onto tangent plane
+    Eigen::Vector3d x_axis = Eigen::Vector3d::UnitX();
+    x_axis -= n * (x_axis.dot(n));
+    if (x_axis.norm() < 1e-6) {
+        x_axis = Eigen::Vector3d::UnitY(); // fallback if world X nearly vertical
         x_axis -= n * (x_axis.dot(n));
-        if (x_axis.norm() < 1e-6) {
-            x_axis = Eigen::Vector3d::UnitY(); // fallback
-            x_axis -= n * (x_axis.dot(n));
-        }
-        x_axis.normalize();
-
-        Eigen::Vector3d y_axis = n.cross(x_axis);
-        y_axis.normalize();
-
-        Eigen::Matrix3d R_WI; // world->IMU
-        R_WI.row(0) = x_axis.transpose();
-        R_WI.row(1) = y_axis.transpose();
-        R_WI.row(2) = n.transpose();
-        return R_WI;
     }
+    x_axis.normalize();
+
+    // z_body: z-down (opposite of the surface normal)
+    Eigen::Vector3d z_axis = -n;
+
+    // y_body to keep right-handed frame
+    Eigen::Vector3d y_axis = z_axis.cross(x_axis);
+    y_axis.normalize();
+
+    // Rotation from World to IMU (rows are body axes expressed in world coords)
+    Eigen::Matrix3d R_WI;
+    R_WI.row(0) = x_axis.transpose();
+    R_WI.row(1) = y_axis.transpose();
+    R_WI.row(2) = z_axis.transpose();
+    return R_WI;
+}
 
     // Return world-frame Euler angles (deg) from surface slopes
     Eigen::Vector3d getEulerAngles(double x, double y, double t) const {
