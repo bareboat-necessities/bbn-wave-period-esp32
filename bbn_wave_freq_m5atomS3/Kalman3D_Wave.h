@@ -16,12 +16,13 @@
      S (3)  : integral of displacement (∫ p dt) — with zero pseudo-measurement for drift correction
 
   - The original quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction)
-    is preserved *verbatim* where possible.
+    is preserved where possible.
   - The extended linear states are driven by a latent OU world-acceleration a_w
     (accelerometer input is used only in the measurement update).
   - A full extended covariance (Pext) and transition Jacobian Fext are constructed; the top-left corner
     contains the original MEKF's P/Q blocks (attitude error + optional gyro bias).
   - Accelerometer is expected in IMU/body frame input to time_update(gyr, acc, Ts).
+  - Accelerometer and magnetometer inputs must be given in aerospace/NED (x north, y east, z down)
 */
 
 #ifdef EIGEN_NON_ARDUINO
