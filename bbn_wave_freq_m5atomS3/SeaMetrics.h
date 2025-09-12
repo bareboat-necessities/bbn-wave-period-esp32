@@ -663,6 +663,10 @@ private:
     // Two-pole RBW stats
     float wbar_ema = 0.0f, w2bar_ema = 0.0f;
 
+    // Phase-increment RBW tracking
+    float dphi_mean = 0.0f;     // running mean of Δφ/dt
+    float dphi_var  = 0.0f;     // running variance of Δφ/dt
+
     // Variance adaptation for ω tracker
     constexpr static float ALPHA_FAST = 0.05f;
     constexpr static float ALPHA_SLOW = 0.02f;
