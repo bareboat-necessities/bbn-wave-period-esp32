@@ -179,6 +179,50 @@ E &= \rho g M_0 \quad \text{(wave energy density)}.
   \item Time to onset: empirical $\propto 1/(\text{accel} \cdot f^{0.7})$.
 \end{itemize}
 
+\section{Extreme Value Analysis}
+
+Beyond Rayleigh and Tayfun probabilities, the system supports:
+\begin{itemize}
+  \item \textbf{Weibull return height:} Fit of a 2-parameter Weibull distribution to block maxima, enabling return-level estimation for a given return period $T_{\text{return}}$.
+  \item \textbf{Peak-over-threshold (POT) mean excess:} Expected average crest height above a specified threshold, useful for storm peak analysis.
+\end{itemize}
+
+\section{Shallow-Water Extensions}
+
+When depth $h$ is finite, dispersion becomes
+\[
+\omega^2 = gk \tanh(kh),
+\]
+solved iteratively for $k$. Additional metrics include:
+\begin{itemize}
+  \item \textbf{Shoaling coefficient $K_s$:} Accounts for change in group velocity with depth.
+  \item \textbf{Refraction coefficient:} Based on Snell’s law using $c=\omega/k$.
+  \item \textbf{Battjes–Janssen breaking probability:} Wave breaking probability parameterized by depth and breaker index $\gamma$.
+\end{itemize}
+
+\section{Data Quality and Diagnostics}
+
+\begin{itemize}
+  \item \textbf{Temporal stability:} Running variance of $H_s$ compared to a reference window, indicating stationarity of sea state.
+  \item \textbf{Signal-to-noise ratio (band-limited):} Ratio of in-band variance to total variance, for arbitrary frequency bands.
+  \item \textbf{Data gap fraction:} Fraction of missing samples detected from invalid inputs.
+\end{itemize}
+
+\section{Integration with Environmental Inputs}
+
+\begin{itemize}
+  \item \textbf{Wave age classification:} Categorical classification (young / mature / old swell) based on $c_p/U_{10}$.
+  \item \textbf{Sea–swell partitioning:} Fraction of total energy attributable to swell, estimated from wave age.
+  \item \textbf{Radiation stresses:} Scalar proxies $S_{xx}, S_{yy}$ proportional to $H_s^2$, relevant for coastal setup and sediment transport.
+\end{itemize}
+
+\section{Application-Specific Metrics}
+
+\begin{itemize}
+  \item \textbf{Bottom orbital velocity:} Near-bed orbital speed at depth $h$, estimated from linear wave theory.
+  \item \textbf{WEC capture width ratio:} Ratio of extracted wave energy converter power to incident wave power per crest length.
+\end{itemize}
+
 \section{Bias Correction}
 
 \subsection{Motivation}
