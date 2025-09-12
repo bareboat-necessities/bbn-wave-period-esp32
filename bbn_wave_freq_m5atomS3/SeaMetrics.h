@@ -359,423 +359,423 @@ public:
         return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
     }
 
-// === Extremes & groupiness ===
-
-// H1/10 crest height (linear Rayleigh model)
-float getCrestHeight_H1over10() const {
-    if (M0 <= EPSILON) return 0.0f;
-    float sigma = std::sqrt(M0);
-    // Rayleigh 90th percentile crest amplitude
-    return sigma * std::sqrt(-2.0f * std::log(0.10f));
-}
-
-// H1/100 crest height
-float getCrestHeight_H1over100() const {
-    if (M0 <= EPSILON) return 0.0f;
-    float sigma = std::sqrt(M0);
-    return sigma * std::sqrt(-2.0f * std::log(0.01f));
-}
-
-// Nonlinear crest exceedance (Tayfun 1980 2nd-order approximation)
-// P(Hc > h) ≈ exp(−h²/(2σ²)) * exp(Λ h³/(σ³)), where Λ ~ steepness factor
-float getExceedanceProbTayfun(float crest_height) const {
-    if (M0 <= EPSILON) return 0.0f;
-    float sigma = std::sqrt(M0);
-    float Hs = 2.0f * std::sqrt(2.0f) * sigma;
-    float steep = getWaveSteepness();
-    float Lambda = 0.5f * steep; // crude param
-    float term1 = std::exp(-(crest_height * crest_height) / (2.0f * sigma * sigma));
-    float term2 = std::exp(Lambda * std::pow(crest_height / sigma, 3));
-    return term1 * term2;
-}
-
-// Groupiness factor = mean group period / mean zero-crossing period
-float getGroupinessFactor() const {
-    float Tg = getMeanGroupPeriod();
-    float Tz = getMeanPeriod_Tz();
-    return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
-}
-
-// Benjamin–Feir Index (deep water, linear est.)
-// BFI = √2 * Hs / (Δf / fp)
-float getBenjaminFeirIndex() const {
-    float Hs = getSignificantWaveHeightRayleigh();
-    float fp = getMeanFrequencyHz();
-    float bw = getRBW();
-    if (fp <= EPSILON || bw <= EPSILON) return 0.0f;
-    float df = bw * fp;
-    return (std::sqrt(2.0f) * Hs) / (df / fp);
-}
-
-
-// === Energy & wave power ===
-
-// Energy flux period Te_flux = M_{-1} / M0 (s)
-float getEnergyFluxPeriod() const {
-    if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
-    if (M0 <= EPSILON) return 0.0f;
-    return M_neg1 / M0;
-}
-
-// Wave power per unit crest length (deep water, kW/m if SI units)
-// P = (ρ g^2 / 64π) * Hs^2 * Te
-float getWavePower(float rho = 1025.0f) const {
-    float Hs = getSignificantWaveHeightRayleigh();
-    float Te = getMeanPeriod_Te();
-    if (Te <= EPSILON) return 0.0f;
-    return (rho * 9.80665f * 9.80665f / (64.0f * float(M_PI))) * (Hs * Hs) * Te;
-}
-
-// === Bias-corrected metrics ===
-//
-// Apply first-order Jensen corrections for inverse ω powers:
-//   E[1/ω^n] ≈ (1/ω̄^n)(1 + c σ²/ω̄²)
-// with coefficients: n=1→c=1, n=2→c=3, n=3→c=6, n=4→c=10
-// Correction factors: 1/(1 + c σ²/ω̄²)
-
-bool isBiasCorrectionSignificant(float threshold = 0.01f) const {
-    if (mu_w <= EPSILON) return false;
-    return (std::max(var_slow, 0.0f) / (mu_w * mu_w)) > threshold;
-}
-
-float getMoment0_BiasCorrected() const {
-    if (M0 <= EPSILON) return 0.0f;
-    float omega_bar = mu_w;
-    float var = std::max(var_slow, 0.0f);
-    if (omega_bar <= EPSILON) return M0;
-    float corr = 1.0f / (1.0f + 10.0f * var / (omega_bar * omega_bar));
-    return M0 * corr;
-}
-
-float getMoment1_BiasCorrected() const {
-    if (M1 <= EPSILON) return 0.0f;
-    float omega_bar = mu_w;
-    float var = std::max(var_slow, 0.0f);
-    if (omega_bar <= EPSILON) return M1;
-    float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
-    return M1 * corr;
-}
-
-float getMoment2_BiasCorrected() const {
-    if (M2 <= EPSILON) return 0.0f;
-    float omega_bar = mu_w;
-    float var = std::max(var_slow, 0.0f);
-    if (omega_bar <= EPSILON) return M2;
-    float corr = 1.0f / (1.0f + 3.0f * var / (omega_bar * omega_bar));
-    return M2 * corr;
-}
-
-float getMoment3_BiasCorrected() const {
-    if (!extended_metrics) throw std::logic_error("M3 not enabled");
-    if (M3 <= EPSILON) return 0.0f;
-    float omega_bar = mu_w;
-    float var = std::max(var_slow, 0.0f);
-    if (omega_bar <= EPSILON) return M3;
-    float corr = 1.0f / (1.0f + 1.0f * var / (omega_bar * omega_bar));
-    return M3 * corr;
-}
-
-float getMoment4_BiasCorrected() const {
-    if (!extended_metrics) throw std::logic_error("M4 not enabled");
-    return M4; // no bias correction needed
-}
-
-float getMomentMinus1_BiasCorrected() const {
-    if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
-    if (M_neg1 <= EPSILON) return 0.0f;
-    float omega_bar = mu_w;
-    float var = std::max(var_slow, 0.0f);
-    if (omega_bar <= EPSILON) return M_neg1;
-    float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
-    return M_neg1 * corr;
-}
-
-// --- Derived bias-corrected metrics ---
-
-float getRMSDisplacement_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    return (M0c > EPSILON) ? std::sqrt(M0c) : 0.0f;
-}
-
-float getSignificantWaveHeightRegular_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    return 2.0f * std::sqrt(M0c);
-}
-
-float getSignificantWaveHeightRayleigh_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    return 2.0f * std::sqrt(2.0f) * std::sqrt(M0c);
-}
-
-float getWaveSteepness_BiasCorrected() const {
-    float Tz = getMeanPeriod_Tz_BiasCorrected();
-    if (Tz <= EPSILON) return 0.0f;
-    float L0 = 9.80665f * Tz * Tz / (2.0f * float(M_PI)); // deep-water wavelength
-    return getSignificantWaveHeightRayleigh_BiasCorrected() / L0;
-}
-
-// Frequencies
-float getMeanFrequencyRad_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float M1c = getMoment1_BiasCorrected();
-    return (M0c > EPSILON) ? (M1c / M0c) : omega_min;
-}
-
-float getMeanFrequencyHz_BiasCorrected() const {
-    return getMeanFrequencyRad_BiasCorrected() / (2.0f * float(M_PI));
-}
-
-// Periods
-float getMeanPeriod_Tz_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    if (M2c <= EPSILON) return 0.0f;
-    return std::sqrt(2.0f * float(M_PI) * float(M_PI) * (M0c / M2c));
-}
-
-float getMeanPeriod_TzUp_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
-float getMeanPeriod_TzDown_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
-
-float getMeanPeriod_Tm02_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    if (M2c <= EPSILON) return 0.0f;
-    return 2.0f * float(M_PI) * std::sqrt(M0c / M2c);
-}
-
-float getMeanPeriod_T1_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float M1c = getMoment1_BiasCorrected();
-    if (M1c <= EPSILON) return 0.0f;
-    return (2.0f * float(M_PI) * M0c) / M1c;
-}
-
-float getMeanPeriod_Te_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float Mneg1c = getMomentMinus1_BiasCorrected();
-    if (M0c <= EPSILON) return 0.0f;
-    return (2.0f * float(M_PI) * Mneg1c) / M0c;
-}
-
-float getMeanPeriod_Tm0m1_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float Mneg1c = getMomentMinus1_BiasCorrected();
-    if (Mneg1c <= EPSILON) return 0.0f;
-    return M0c / Mneg1c;
-}
-
-float getMeanPeriod_Tm1m1_BiasCorrected() const {
-    float M1c = getMoment1_BiasCorrected();
-    float Mneg1c = getMomentMinus1_BiasCorrected();
-    if (Mneg1c <= EPSILON) return 0.0f;
-    return M1c / Mneg1c;
-}
-
-// Rates & counts
-float getUpcrossingRate_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    if (M0c <= EPSILON) return 0.0f;
-    return (1.0f / (2.0f * float(M_PI))) * std::sqrt(M2c / M0c);
-}
-
-float getDowncrossingRate_BiasCorrected() const {
-    return getUpcrossingRate_BiasCorrected();
-}
-
-float estimateWaveCount_BiasCorrected(float duration_s) const {
-    if (duration_s <= 0.0f) return 0.0f;
-    return getUpcrossingRate_BiasCorrected() * duration_s;
-}
-
-WaveCountEstimate estimateWaveCountWithCI_BiasCorrected(
-        float duration_s, float confidence = 0.95f) const 
-{
-    WaveCountEstimate out{0.0f, 0.0f, 0.0f, confidence};
-    if (duration_s <= 0.0f) return out;
-
-    // Expected count from bias-corrected upcrossing rate
-    float Nexp = estimateWaveCount_BiasCorrected(duration_s);
-    int   N    = (int)std::round(Nexp);
-
-    float alpha = std::max(0.0f, std::min(1.0f, 1.0f - confidence));
-    float lower, upper;
-
-    if (N == 0) {
-        lower = 0.0f;
-        upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
-    } else {
-        lower = 0.5f * chi2Quantile(alpha / 2.0f,            2 * N);
-        upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
+    // === Extremes & groupiness ===
+    
+    // H1/10 crest height (linear Rayleigh model)
+    float getCrestHeight_H1over10() const {
+        if (M0 <= EPSILON) return 0.0f;
+        float sigma = std::sqrt(M0);
+        // Rayleigh 90th percentile crest amplitude
+        return sigma * std::sqrt(-2.0f * std::log(0.10f));
     }
-
-    out.expected = Nexp;
-    out.ci_lower = lower;
-    out.ci_upper = upper;
-    return out;
-}
-
-// Bandwidths
-float getBandwidthCLH_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    float M1c = getMoment1_BiasCorrected();
-    if (M0c <= EPSILON || M2c <= EPSILON) return 0.0f;
-    float ratio = (M1c * M1c) / (M0c * M2c);
-    ratio = std::clamp(ratio, 0.0f, 1.0f);
-    return std::sqrt(1.0f - ratio);
-}
-
-float getBandwidthGoda_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    float M1c = getMoment1_BiasCorrected();
-    if (M0c <= EPSILON || M1c <= EPSILON) return 0.0f;
-    float ratio = (M0c * M2c) / (M1c * M1c);
-    return (ratio > 1.0f) ? std::sqrt(ratio - 1.0f) : 0.0f;
-}
-
-float getBandwidthKuik_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    float M1c = getMoment1_BiasCorrected();
-    if (M1c <= EPSILON) return 0.0f;
-    float val = (M0c * M2c) - (M1c * M1c);
-    return (val > 0.0f) ? std::sqrt(val) / M1c : 0.0f;
-}
-
-float getWidthLonguetHiggins_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    float M1c = getMoment1_BiasCorrected();
-    if (M1c <= EPSILON) return 0.0f;
-    float val = (M0c * M2c) / (M1c * M1c);
-    return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
-}
-
-// === Bias-corrected central moments & shape metrics ===
-float getCentralMoment2_BiasCorrected() const {
-    if (!extended_metrics) throw std::logic_error("Central moments not enabled");
-    float M0c = getMoment0_BiasCorrected();
-    float M1c = getMoment1_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    if (M0c <= EPSILON) return 0.0f;
-    float mu = M1c / M0c;
-    float m2 = M2c / M0c;
-    return m2 - mu * mu;
-}
-
-float getCentralMoment3_BiasCorrected() const {
-    if (!extended_metrics) throw std::logic_error("Central moments not enabled");
-    float M0c = getMoment0_BiasCorrected();
-    float M1c = getMoment1_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    float M3c = getMoment3_BiasCorrected();
-    if (M0c <= EPSILON) return 0.0f;
-    float mu = M1c / M0c;
-    float m2 = M2c / M0c;
-    float m3 = M3c / M0c;
-    return m3 - 3.0f * mu * m2 + 2.0f * mu * mu * mu;
-}
-
-float getCentralMoment4_BiasCorrected() const {
-    if (!extended_metrics) throw std::logic_error("Central moments not enabled");
-    float M0c = getMoment0_BiasCorrected();
-    float M1c = getMoment1_BiasCorrected();
-    float M2c = getMoment2_BiasCorrected();
-    float M3c = getMoment3_BiasCorrected();
-    float M4c = getMoment4_BiasCorrected();
-    if (M0c <= EPSILON) return 0.0f;
-    float mu = M1c / M0c;
-    float m2 = M2c / M0c;
-    float m3 = M3c / M0c;
-    float m4 = M4c / M0c;
-    return m4 - 4.0f * mu * m3 + 6.0f * mu * mu * m2 - 3.0f * mu * mu * mu * mu;
-}
-
-// === Bias-corrected shape diagnostics ===
-float getSpectralSkewness_BiasCorrected() const {
-    if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
-    float mu2c = getCentralMoment2_BiasCorrected();
-    float mu3c = getCentralMoment3_BiasCorrected();
-    if (mu2c <= EPSILON) return 0.0f;
-    return mu3c / std::pow(mu2c, 1.5f);
-}
-
-float getSpectralKurtosis_BiasCorrected() const {
-    if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
-    float mu2c = getCentralMoment2_BiasCorrected();
-    float mu4c = getCentralMoment4_BiasCorrected();
-    if (mu2c <= EPSILON) return 0.0f;
-    return mu4c / (mu2c * mu2c);
-}
-
-float getSpectralExcessKurtosis_BiasCorrected() const {
-    if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
-    float mu2c = getCentralMoment2_BiasCorrected();
-    float mu4c = getCentralMoment4_BiasCorrected();
-    if (mu2c <= EPSILON) return 0.0f;
-    return (mu4c / (mu2c * mu2c)) - 3.0f;
-}
-
-// === Bias-corrected extremes & groupiness ===
-
-float getCrestHeight_H1over10_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    if (M0c <= EPSILON) return 0.0f;
-    float sigma = std::sqrt(M0c);
-    return sigma * std::sqrt(-2.0f * std::log(0.10f));
-}
-
-float getCrestHeight_H1over100_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    if (M0c <= EPSILON) return 0.0f;
-    float sigma = std::sqrt(M0c);
-    return sigma * std::sqrt(-2.0f * std::log(0.01f));
-}
-
-float getExceedanceProbTayfun_BiasCorrected(float crest_height) const {
-    float M0c = getMoment0_BiasCorrected();
-    if (M0c <= EPSILON) return 0.0f;
-    float sigma = std::sqrt(M0c);
-    float Hs = 2.0f * std::sqrt(2.0f) * sigma;
-    float steep = getWaveSteepness_BiasCorrected();
-    float Lambda = 0.5f * steep;
-    float term1 = std::exp(-(crest_height * crest_height) / (2.0f * sigma * sigma));
-    float term2 = std::exp(Lambda * std::pow(crest_height / sigma, 3));
-    return term1 * term2;
-}
-
-float getGroupinessFactor_BiasCorrected() const {
-    float Tg = getMeanPeriod_Tz_BiasCorrected(); // group period = Tz in deep water
-    float Tz = getMeanPeriod_Tz_BiasCorrected();
-    return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
-}
-
-float getBenjaminFeirIndex_BiasCorrected() const {
-    float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
-    float fp = getMeanFrequencyHz_BiasCorrected();
-    float bw = getRBW(); // RBW itself not bias-corrected, phase-based
-    if (fp <= EPSILON || bw <= EPSILON) return 0.0f;
-    float df = bw * fp;
-    return (std::sqrt(2.0f) * Hs) / (df / fp);
-}
-
-// === Bias-corrected energy & power ===
-float getEnergyFluxPeriod_BiasCorrected() const {
-    float M0c = getMoment0_BiasCorrected();
-    float Mneg1c = getMomentMinus1_BiasCorrected();
-    if (M0c <= EPSILON) return 0.0f;
-    return Mneg1c / M0c;
-}
-
-float getWavePower_BiasCorrected(float rho = 1025.0f) const {
-    float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
-    float Te = getMeanPeriod_Te_BiasCorrected();
-    if (Te <= EPSILON) return 0.0f;
-    return (rho * 9.80665f * 9.80665f / (64.0f * float(M_PI))) * (Hs * Hs) * Te;
-}
-
+    
+    // H1/100 crest height
+    float getCrestHeight_H1over100() const {
+        if (M0 <= EPSILON) return 0.0f;
+        float sigma = std::sqrt(M0);
+        return sigma * std::sqrt(-2.0f * std::log(0.01f));
+    }
+    
+    // Nonlinear crest exceedance (Tayfun 1980 2nd-order approximation)
+    // P(Hc > h) ≈ exp(−h²/(2σ²)) * exp(Λ h³/(σ³)), where Λ ~ steepness factor
+    float getExceedanceProbTayfun(float crest_height) const {
+        if (M0 <= EPSILON) return 0.0f;
+        float sigma = std::sqrt(M0);
+        float Hs = 2.0f * std::sqrt(2.0f) * sigma;
+        float steep = getWaveSteepness();
+        float Lambda = 0.5f * steep; // crude param
+        float term1 = std::exp(-(crest_height * crest_height) / (2.0f * sigma * sigma));
+        float term2 = std::exp(Lambda * std::pow(crest_height / sigma, 3));
+        return term1 * term2;
+    }
+    
+    // Groupiness factor = mean group period / mean zero-crossing period
+    float getGroupinessFactor() const {
+        float Tg = getMeanGroupPeriod();
+        float Tz = getMeanPeriod_Tz();
+        return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
+    }
+    
+    // Benjamin–Feir Index (deep water, linear est.)
+    // BFI = √2 * Hs / (Δf / fp)
+    float getBenjaminFeirIndex() const {
+        float Hs = getSignificantWaveHeightRayleigh();
+        float fp = getMeanFrequencyHz();
+        float bw = getRBW();
+        if (fp <= EPSILON || bw <= EPSILON) return 0.0f;
+        float df = bw * fp;
+        return (std::sqrt(2.0f) * Hs) / (df / fp);
+    }
+    
+    
+    // === Energy & wave power ===
+    
+    // Energy flux period Te_flux = M_{-1} / M0 (s)
+    float getEnergyFluxPeriod() const {
+        if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
+        if (M0 <= EPSILON) return 0.0f;
+        return M_neg1 / M0;
+    }
+    
+    // Wave power per unit crest length (deep water, kW/m if SI units)
+    // P = (ρ g^2 / 64π) * Hs^2 * Te
+    float getWavePower(float rho = 1025.0f) const {
+        float Hs = getSignificantWaveHeightRayleigh();
+        float Te = getMeanPeriod_Te();
+        if (Te <= EPSILON) return 0.0f;
+        return (rho * 9.80665f * 9.80665f / (64.0f * float(M_PI))) * (Hs * Hs) * Te;
+    }
+    
+    // === Bias-corrected metrics ===
+    //
+    // Apply first-order Jensen corrections for inverse ω powers:
+    //   E[1/ω^n] ≈ (1/ω̄^n)(1 + c σ²/ω̄²)
+    // with coefficients: n=1→c=1, n=2→c=3, n=3→c=6, n=4→c=10
+    // Correction factors: 1/(1 + c σ²/ω̄²)
+    
+    bool isBiasCorrectionSignificant(float threshold = 0.01f) const {
+        if (mu_w <= EPSILON) return false;
+        return (std::max(var_slow, 0.0f) / (mu_w * mu_w)) > threshold;
+    }
+    
+    float getMoment0_BiasCorrected() const {
+        if (M0 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M0;
+        float corr = 1.0f / (1.0f + 10.0f * var / (omega_bar * omega_bar));
+        return M0 * corr;
+    }
+    
+    float getMoment1_BiasCorrected() const {
+        if (M1 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M1;
+        float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
+        return M1 * corr;
+    }
+    
+    float getMoment2_BiasCorrected() const {
+        if (M2 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M2;
+        float corr = 1.0f / (1.0f + 3.0f * var / (omega_bar * omega_bar));
+        return M2 * corr;
+    }
+    
+    float getMoment3_BiasCorrected() const {
+        if (!extended_metrics) throw std::logic_error("M3 not enabled");
+        if (M3 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M3;
+        float corr = 1.0f / (1.0f + 1.0f * var / (omega_bar * omega_bar));
+        return M3 * corr;
+    }
+    
+    float getMoment4_BiasCorrected() const {
+        if (!extended_metrics) throw std::logic_error("M4 not enabled");
+        return M4; // no bias correction needed
+    }
+    
+    float getMomentMinus1_BiasCorrected() const {
+        if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
+        if (M_neg1 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M_neg1;
+        float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
+        return M_neg1 * corr;
+    }
+    
+    // --- Derived bias-corrected metrics ---
+    
+    float getRMSDisplacement_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        return (M0c > EPSILON) ? std::sqrt(M0c) : 0.0f;
+    }
+    
+    float getSignificantWaveHeightRegular_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        return 2.0f * std::sqrt(M0c);
+    }
+    
+    float getSignificantWaveHeightRayleigh_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        return 2.0f * std::sqrt(2.0f) * std::sqrt(M0c);
+    }
+    
+    float getWaveSteepness_BiasCorrected() const {
+        float Tz = getMeanPeriod_Tz_BiasCorrected();
+        if (Tz <= EPSILON) return 0.0f;
+        float L0 = 9.80665f * Tz * Tz / (2.0f * float(M_PI)); // deep-water wavelength
+        return getSignificantWaveHeightRayleigh_BiasCorrected() / L0;
+    }
+    
+    // Frequencies
+    float getMeanFrequencyRad_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M1c = getMoment1_BiasCorrected();
+        return (M0c > EPSILON) ? (M1c / M0c) : omega_min;
+    }
+    
+    float getMeanFrequencyHz_BiasCorrected() const {
+        return getMeanFrequencyRad_BiasCorrected() / (2.0f * float(M_PI));
+    }
+    
+    // Periods
+    float getMeanPeriod_Tz_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M2c <= EPSILON) return 0.0f;
+        return std::sqrt(2.0f * float(M_PI) * float(M_PI) * (M0c / M2c));
+    }
+    
+    float getMeanPeriod_TzUp_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
+    float getMeanPeriod_TzDown_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
+    
+    float getMeanPeriod_Tm02_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M2c <= EPSILON) return 0.0f;
+        return 2.0f * float(M_PI) * std::sqrt(M0c / M2c);
+    }
+    
+    float getMeanPeriod_T1_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M1c = getMoment1_BiasCorrected();
+        if (M1c <= EPSILON) return 0.0f;
+        return (2.0f * float(M_PI) * M0c) / M1c;
+    }
+    
+    float getMeanPeriod_Te_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float Mneg1c = getMomentMinus1_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        return (2.0f * float(M_PI) * Mneg1c) / M0c;
+    }
+    
+    float getMeanPeriod_Tm0m1_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float Mneg1c = getMomentMinus1_BiasCorrected();
+        if (Mneg1c <= EPSILON) return 0.0f;
+        return M0c / Mneg1c;
+    }
+    
+    float getMeanPeriod_Tm1m1_BiasCorrected() const {
+        float M1c = getMoment1_BiasCorrected();
+        float Mneg1c = getMomentMinus1_BiasCorrected();
+        if (Mneg1c <= EPSILON) return 0.0f;
+        return M1c / Mneg1c;
+    }
+    
+    // Rates & counts
+    float getUpcrossingRate_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        return (1.0f / (2.0f * float(M_PI))) * std::sqrt(M2c / M0c);
+    }
+    
+    float getDowncrossingRate_BiasCorrected() const {
+        return getUpcrossingRate_BiasCorrected();
+    }
+    
+    float estimateWaveCount_BiasCorrected(float duration_s) const {
+        if (duration_s <= 0.0f) return 0.0f;
+        return getUpcrossingRate_BiasCorrected() * duration_s;
+    }
+    
+    WaveCountEstimate estimateWaveCountWithCI_BiasCorrected(
+            float duration_s, float confidence = 0.95f) const 
+    {
+        WaveCountEstimate out{0.0f, 0.0f, 0.0f, confidence};
+        if (duration_s <= 0.0f) return out;
+    
+        // Expected count from bias-corrected upcrossing rate
+        float Nexp = estimateWaveCount_BiasCorrected(duration_s);
+        int   N    = (int)std::round(Nexp);
+    
+        float alpha = std::max(0.0f, std::min(1.0f, 1.0f - confidence));
+        float lower, upper;
+    
+        if (N == 0) {
+            lower = 0.0f;
+            upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
+        } else {
+            lower = 0.5f * chi2Quantile(alpha / 2.0f,            2 * N);
+            upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
+        }
+    
+        out.expected = Nexp;
+        out.ci_lower = lower;
+        out.ci_upper = upper;
+        return out;
+    }
+    
+    // Bandwidths
+    float getBandwidthCLH_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        float M1c = getMoment1_BiasCorrected();
+        if (M0c <= EPSILON || M2c <= EPSILON) return 0.0f;
+        float ratio = (M1c * M1c) / (M0c * M2c);
+        ratio = std::clamp(ratio, 0.0f, 1.0f);
+        return std::sqrt(1.0f - ratio);
+    }
+    
+    float getBandwidthGoda_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        float M1c = getMoment1_BiasCorrected();
+        if (M0c <= EPSILON || M1c <= EPSILON) return 0.0f;
+        float ratio = (M0c * M2c) / (M1c * M1c);
+        return (ratio > 1.0f) ? std::sqrt(ratio - 1.0f) : 0.0f;
+    }
+    
+    float getBandwidthKuik_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        float M1c = getMoment1_BiasCorrected();
+        if (M1c <= EPSILON) return 0.0f;
+        float val = (M0c * M2c) - (M1c * M1c);
+        return (val > 0.0f) ? std::sqrt(val) / M1c : 0.0f;
+    }
+    
+    float getWidthLonguetHiggins_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        float M1c = getMoment1_BiasCorrected();
+        if (M1c <= EPSILON) return 0.0f;
+        float val = (M0c * M2c) / (M1c * M1c);
+        return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
+    }
+    
+    // === Bias-corrected central moments & shape metrics ===
+    float getCentralMoment2_BiasCorrected() const {
+        if (!extended_metrics) throw std::logic_error("Central moments not enabled");
+        float M0c = getMoment0_BiasCorrected();
+        float M1c = getMoment1_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        float mu = M1c / M0c;
+        float m2 = M2c / M0c;
+        return m2 - mu * mu;
+    }
+    
+    float getCentralMoment3_BiasCorrected() const {
+        if (!extended_metrics) throw std::logic_error("Central moments not enabled");
+        float M0c = getMoment0_BiasCorrected();
+        float M1c = getMoment1_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        float M3c = getMoment3_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        float mu = M1c / M0c;
+        float m2 = M2c / M0c;
+        float m3 = M3c / M0c;
+        return m3 - 3.0f * mu * m2 + 2.0f * mu * mu * mu;
+    }
+    
+    float getCentralMoment4_BiasCorrected() const {
+        if (!extended_metrics) throw std::logic_error("Central moments not enabled");
+        float M0c = getMoment0_BiasCorrected();
+        float M1c = getMoment1_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        float M3c = getMoment3_BiasCorrected();
+        float M4c = getMoment4_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        float mu = M1c / M0c;
+        float m2 = M2c / M0c;
+        float m3 = M3c / M0c;
+        float m4 = M4c / M0c;
+        return m4 - 4.0f * mu * m3 + 6.0f * mu * mu * m2 - 3.0f * mu * mu * mu * mu;
+    }
+    
+    // === Bias-corrected shape diagnostics ===
+    float getSpectralSkewness_BiasCorrected() const {
+        if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
+        float mu2c = getCentralMoment2_BiasCorrected();
+        float mu3c = getCentralMoment3_BiasCorrected();
+        if (mu2c <= EPSILON) return 0.0f;
+        return mu3c / std::pow(mu2c, 1.5f);
+    }
+    
+    float getSpectralKurtosis_BiasCorrected() const {
+        if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
+        float mu2c = getCentralMoment2_BiasCorrected();
+        float mu4c = getCentralMoment4_BiasCorrected();
+        if (mu2c <= EPSILON) return 0.0f;
+        return mu4c / (mu2c * mu2c);
+    }
+    
+    float getSpectralExcessKurtosis_BiasCorrected() const {
+        if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
+        float mu2c = getCentralMoment2_BiasCorrected();
+        float mu4c = getCentralMoment4_BiasCorrected();
+        if (mu2c <= EPSILON) return 0.0f;
+        return (mu4c / (mu2c * mu2c)) - 3.0f;
+    }
+    
+    // === Bias-corrected extremes & groupiness ===
+    
+    float getCrestHeight_H1over10_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        float sigma = std::sqrt(M0c);
+        return sigma * std::sqrt(-2.0f * std::log(0.10f));
+    }
+    
+    float getCrestHeight_H1over100_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        float sigma = std::sqrt(M0c);
+        return sigma * std::sqrt(-2.0f * std::log(0.01f));
+    }
+    
+    float getExceedanceProbTayfun_BiasCorrected(float crest_height) const {
+        float M0c = getMoment0_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        float sigma = std::sqrt(M0c);
+        float Hs = 2.0f * std::sqrt(2.0f) * sigma;
+        float steep = getWaveSteepness_BiasCorrected();
+        float Lambda = 0.5f * steep;
+        float term1 = std::exp(-(crest_height * crest_height) / (2.0f * sigma * sigma));
+        float term2 = std::exp(Lambda * std::pow(crest_height / sigma, 3));
+        return term1 * term2;
+    }
+    
+    float getGroupinessFactor_BiasCorrected() const {
+        float Tg = getMeanPeriod_Tz_BiasCorrected(); // group period = Tz in deep water
+        float Tz = getMeanPeriod_Tz_BiasCorrected();
+        return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
+    }
+    
+    float getBenjaminFeirIndex_BiasCorrected() const {
+        float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
+        float fp = getMeanFrequencyHz_BiasCorrected();
+        float bw = getRBW(); // RBW itself not bias-corrected, phase-based
+        if (fp <= EPSILON || bw <= EPSILON) return 0.0f;
+        float df = bw * fp;
+        return (std::sqrt(2.0f) * Hs) / (df / fp);
+    }
+    
+    // === Bias-corrected energy & power ===
+    float getEnergyFluxPeriod_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float Mneg1c = getMomentMinus1_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        return Mneg1c / M0c;
+    }
+    
+    float getWavePower_BiasCorrected(float rho = 1025.0f) const {
+        float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
+        float Te = getMeanPeriod_Te_BiasCorrected();
+        if (Te <= EPSILON) return 0.0f;
+        return (rho * 9.80665f * 9.80665f / (64.0f * float(M_PI))) * (Hs * Hs) * Te;
+    }
+    
 private:
     // Flags
     bool extended_metrics;
