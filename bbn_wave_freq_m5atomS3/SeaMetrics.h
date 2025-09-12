@@ -880,19 +880,37 @@ float getSNR() const {
         const float term2  = std::exp(Lambda * std::pow(crest_height / sigma, 3));
         return term1 * term2;
     }
-    float getGroupinessFactor_BiasCorrected() const {
-        const float Tg = getMeanPeriod_Tz_BiasCorrected(); // deep-water: Tg ~ Tz
-        const float Tz = getMeanPeriod_Tz_BiasCorrected();
-        return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
-    }
-    float getBenjaminFeirIndex_BiasCorrected() const {
-        const float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
-        const float fp = getMeanFrequencyHz_BiasCorrected();
-        const float bw = getRBW(); // RBW is phase/two-pole based; unchanged
-        if (fp <= EPSILON || bw <= EPSILON) return 0.0f;
-        const float df = bw * fp;
-        return (std::sqrt(2.0f) * Hs) / (df / fp);
-    }
+ // === Extremes & groupiness (bias-corrected) ===
+
+// Benjamin–Feir Index (bias-corrected)
+// BFI = (√2 * Hs / L0) / (Δf/fp), with Δf ≈ RBW * fp
+float getBenjaminFeirIndex_BiasCorrected() const {
+    const float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
+    const float Tz = getMeanPeriod_Tz_BiasCorrected();
+    if (Hs <= EPSILON || Tz <= EPSILON) return 0.0f;
+
+    // deep-water wavelength
+    const float L0 = g() * Tz * Tz / (2.0f * float(M_PI));
+    if (L0 <= EPSILON) return 0.0f;
+
+    // peak frequency proxy from mean period
+    const float fp = 1.0f / Tz;
+    const float df = rbw * fp; // RBW is phase-based, unchanged by bias correction
+
+    if (df <= EPSILON) return 0.0f;
+    return (std::sqrt(2.0f) * Hs / L0) / (df / fp);
+}
+
+// Groupiness factor (bias-corrected)
+// Tg = 2π M0 / M2 (using bias-corrected moments)
+float getGroupinessFactor_BiasCorrected() const {
+    const float M0c = getMoment0_BiasCorrected();
+    const float M2c = getMoment2_BiasCorrected();
+    if (M0c <= EPSILON || M2c <= EPSILON) return 0.0f;
+    const float Tg = (2.0f * float(M_PI)) * (M0c / M2c);
+    const float Tz = getMeanPeriod_Tz_BiasCorrected();
+    return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
+}   
     float getEnergyFluxPeriod_BiasCorrected() const {
         const float M0c    = getMoment0_BiasCorrected();
         const float Mneg1c = getMomentMinus1_BiasCorrected();
