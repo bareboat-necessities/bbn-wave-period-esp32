@@ -30,6 +30,7 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 #include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
 #include "SeaStateRegularity.h"
+#include "SeaMetrics.h"
 
 // Config
 static constexpr float SAMPLE_RATE_HZ   = 240.0f;
