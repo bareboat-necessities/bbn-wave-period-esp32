@@ -507,6 +507,13 @@ float getSignificantWaveHeightRayleigh_BiasCorrected() const {
     return 2.0f * std::sqrt(2.0f) * std::sqrt(M0c);
 }
 
+float getWaveSteepness_BiasCorrected() const {
+    float Tz = getMeanPeriod_Tz_BiasCorrected();
+    if (Tz <= EPSILON) return 0.0f;
+    float L0 = 9.80665f * Tz * Tz / (2.0f * float(M_PI)); // deep-water wavelength
+    return getSignificantWaveHeightRayleigh_BiasCorrected() / L0;
+}
+
 // Frequencies
 float getMeanFrequencyRad_BiasCorrected() const {
     float M0c = getMoment0_BiasCorrected();
