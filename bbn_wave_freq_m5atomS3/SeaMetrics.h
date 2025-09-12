@@ -197,6 +197,12 @@ public:
     float getMeanFrequencyRad() const { return (M0 > EPSILON) ? (M1 / M0) : omega_min; }
     float getMeanFrequencyHz()  const { return getMeanFrequencyRad() / (2.0f * float(M_PI)); }
     float getRBW() const { return rbw; }
+    float getRBW_PhaseIncrement() const {
+        
+    float omega_bar = (M0 > EPSILON) ? (M1 / M0) : omega_min;
+        if (omega_bar <= EPSILON) return 0.0f;
+        return std::sqrt(std::max(0.0f, dphi_var)) / omega_bar;
+    }
 
     // === Regularity metrics ===
     float getRegularitySpectral() const { return R_spec; }
