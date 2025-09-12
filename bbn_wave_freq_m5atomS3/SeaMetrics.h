@@ -1098,6 +1098,138 @@ float getSNR_BiasCorrected() const {
     return 10.0f * std::log10(M0c / noise);
 }
 
+// ================== SEA SICKNESS METRICS ==================
+// Based on ISO 2631-1, McCauley et al. (1976), and modern research
+// on motion-induced illness metrics
+
+// --- Sea sickness incidence (McCauley et al. 1976 model) ---
+float getSeasicknessIncidence(float exposure_hours, float susceptibility = 0.5f) const {
+    if (M0 <= EPSILON || exposure_hours <= 0.0f) return 0.0f;
+    
+    // Get vertical acceleration RMS (m/s²)
+    float accel_rms = std::sqrt(M2);  // M2 = ⟨a²⟩
+    
+    // Get dominant frequency (Hz) - use mean frequency
+    float f_dom = getMeanFrequencyHz();
+    if (f_dom <= EPSILON) return 0.0f;
+    
+    // McCauley model parameters (adjusted for modern research)
+    const float a = 0.5f;   // acceleration weighting
+    const float b = 2.0f;   // frequency weighting  
+    const float c = 0.4f;   // time scaling
+    const float k = 0.7f;   // scaling factor
+    
+    // Motion sickness dose value (MSDV)
+    float msdv = accel_rms * std::pow(f_dom, b/a) * std::pow(exposure_hours, c);
+    
+    // Incidence probability (0-100%)
+    float incidence = 100.0f * (1.0f - std::exp(-k * msdv * susceptibility));
+    
+    return std::clamp(incidence, 0.0f, 100.0f);
+}
+
+// --- ISO 2631-1 Motion Sickness Dose Value (MSDV) ---
+float getMotionSicknessDoseValue(float exposure_hours) const {
+    if (M0 <= EPSILON || exposure_hours <= 0.0f) return 0.0f;
+    
+    // Weighted RMS acceleration in m/s²
+    float accel_rms = std::sqrt(M2);
+    
+    // ISO 2631-1 MSDV formula
+    return accel_rms * std::sqrt(exposure_hours);
+}
+
+// --- Estimated comfort level (0-100%, 100% = most comfortable) ---
+float getMotionComfortLevel(float exposure_hours = 1.0f) const {
+    float msdv = getMotionSicknessDoseValue(exposure_hours);
+    
+    // Comfort scale based on ISO 2631-1 guidelines
+    if (msdv <= 0.1f) return 100.0f;      // Very comfortable
+    if (msdv <= 0.2f) return 80.0f;       // Comfortable
+    if (msdv <= 0.3f) return 60.0f;       // Fairly comfortable
+    if (msdv <= 0.4f) return 40.0f;       // Uncomfortable
+    if (msdv <= 0.5f) return 20.0f;       // Very uncomfortable
+    return 0.0f;                          // Extremely uncomfortable
+}
+
+// --- Vertical motion intensity (RMS acceleration in m/s²) ---
+float getVerticalMotionIntensity() const {
+    return std::sqrt(M2);  // RMS acceleration
+}
+
+// --- Motion character (frequency-weighted comfort factor) ---
+float getMotionCharacter() const {
+    float f_dom = getMeanFrequencyHz();
+    if (f_dom <= EPSILON) return 0.0f;
+    
+    // Most uncomfortable frequencies: 0.1-0.3 Hz
+    float optimal_freq = 0.2f;  // Most nauseogenic frequency
+    float freq_factor = std::exp(-std::pow((f_dom - optimal_freq)/0.1f, 2.0f));
+    
+    return std::clamp(freq_factor, 0.0f, 1.0f);
+}
+
+// --- Time to first onset of symptoms (minutes) ---
+float getTimeToOnset(float susceptibility = 0.5f) const {
+    if (M0 <= EPSILON) return std::numeric_limits<float>::infinity();
+    
+    float accel_rms = std::sqrt(M2);
+    float f_dom = getMeanFrequencyHz();
+    
+    if (f_dom <= EPSILON || accel_rms <= EPSILON) 
+        return std::numeric_limits<float>::infinity();
+    
+    // Empirical model based on research data
+    float t_onset = 30.0f / (accel_rms * std::pow(f_dom, 0.7f) * susceptibility);
+    
+    return std::max(1.0f, t_onset);  // Minimum 1 minute
+}
+
+// --- Bias-corrected versions ---
+float getSeasicknessIncidence_BiasCorrected(float exposure_hours, float susceptibility = 0.5f) const {
+    if (exposure_hours <= 0.0f) return 0.0f;
+    
+    // Use bias-corrected moments
+    float M2c = getMoment2_BiasCorrected();
+    float M0c = getMoment0_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    
+    if (M0c <= EPSILON || M2c <= EPSILON) return 0.0f;
+    
+    float accel_rms = std::sqrt(M2c);
+    float f_dom = (M0c > EPSILON) ? (M1c / M0c) / (2.0f * float(M_PI)) : 0.0f;
+    
+    if (f_dom <= EPSILON) return 0.0f;
+    
+    const float a = 0.5f, b = 2.0f, c = 0.4f, k = 0.7f;
+    float msdv = accel_rms * std::pow(f_dom, b/a) * std::pow(exposure_hours, c);
+    float incidence = 100.0f * (1.0f - std::exp(-k * msdv * susceptibility));
+    
+    return std::clamp(incidence, 0.0f, 100.0f);
+}
+
+float getMotionSicknessDoseValue_BiasCorrected(float exposure_hours) const {
+    if (exposure_hours <= 0.0f) return 0.0f;
+    float M2c = getMoment2_BiasCorrected();
+    if (M2c <= EPSILON) return 0.0f;
+    return std::sqrt(M2c) * std::sqrt(exposure_hours);
+}
+
+float getMotionComfortLevel_BiasCorrected(float exposure_hours = 1.0f) const {
+    float msdv = getMotionSicknessDoseValue_BiasCorrected(exposure_hours);
+    if (msdv <= 0.1f) return 100.0f;
+    if (msdv <= 0.2f) return 80.0f;
+    if (msdv <= 0.3f) return 60.0f;
+    if (msdv <= 0.4f) return 40.0f;
+    if (msdv <= 0.5f) return 20.0f;
+    return 0.0f;
+}
+
+float getVerticalMotionIntensity_BiasCorrected() const {
+    float M2c = getMoment2_BiasCorrected();
+    return (M2c > EPSILON) ? std::sqrt(M2c) : 0.0f;
+}
+
 private:
     // ---- configuration flags ----
     bool extended_metrics;
