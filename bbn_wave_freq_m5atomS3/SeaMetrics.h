@@ -89,7 +89,7 @@
  *     M1c      = M1 / (1 +  6 σ²/ω̄²)
  *     M2c      = M2 / (1 +  3 σ²/ω̄²)
  *     M3c      = M3 / (1 +  1 σ²/ω̄²)
- *     M4c      = M4 / (1 + 10 σ²/ω̄²)
+ *     M4c      = M4  (no correction needed)
  *     M_{−1}c  = M_{−1} / (1 + 6 σ²/ω̄²)
  *
  * where ω̄ = mu_w (mean ω) and σ² = var_slow (slow variance of ω).
