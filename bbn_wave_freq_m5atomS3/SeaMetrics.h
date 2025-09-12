@@ -309,6 +309,67 @@ public:
         return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
     }
 
+    // === Bias-corrected metrics ===
+    //
+    // Apply first-order Jensen corrections for inverse ω powers:
+    //   E[1/ω²] ≈ (1/ω̄²)(1 + 3σ²/ω̄²)
+    //   E[1/ω⁴] ≈ (1/ω̄⁴)(1 + 10σ²/ω̄²)
+    // => correction factors ≈ 1/(1 + c σ²/ω̄²)
+    // with c = 3 for 1/ω², c = 10 for 1/ω⁴.
+
+    float getMoment0_BiasCorrected() const {
+        if (M0 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M0;
+        float corr = 1.0f / (1.0f + 10.0f * var / (omega_bar * omega_bar));
+        return M0 * corr;
+    }
+
+    float getMoment2_BiasCorrected() const {
+        if (M2 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M2;
+        float corr = 1.0f / (1.0f + 3.0f * var / (omega_bar * omega_bar));
+        return M2 * corr;
+    }
+
+    float getSignificantWaveHeightRegular_BiasCorrected() const {
+        float M0_corr = getMoment0_BiasCorrected();
+        return 2.0f * std::sqrt(M0_corr);
+    }
+
+    float getSignificantWaveHeightRayleigh_BiasCorrected() const {
+        float M0_corr = getMoment0_BiasCorrected();
+        return 2.0f * std::sqrt(2.0f) * std::sqrt(M0_corr);
+    }
+
+    float getBandwidthCLH_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M0c <= EPSILON || M2c <= EPSILON) return 0.0f;
+        float ratio = (M1 * M1) / (M0c * M2c);
+        ratio = std::clamp(ratio, 0.0f, 1.0f);
+        return std::sqrt(1.0f - ratio);
+    }
+
+    float getBandwidthGoda_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M0c <= EPSILON || M1 <= EPSILON) return 0.0f;
+        float ratio = (M0c * M2c) / (M1 * M1);
+        return (ratio > 1.0f) ? std::sqrt(ratio - 1.0f) : 0.0f;
+    }
+
+    float getBandwidthKuik_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M1 <= EPSILON) return 0.0f;
+        float val = (M0c * M2c) - (M1 * M1);
+        return (val > 0.0f) ? std::sqrt(val) / M1 : 0.0f;
+    }
+
 private:
     // Flags
     bool extended_metrics;
