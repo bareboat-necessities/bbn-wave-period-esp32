@@ -28,9 +28,10 @@
  *   • Mean frequency (rad/s): ω̄ = M1/M0
  *   • Mean frequency (Hz):    f̄ = ω̄ / (2π)
  *   • Relative bandwidth (RBW): √μ₂ / ω̄   (μ₂ from decoupled two-pole stats)
+ *   • Phase-increment RBW: variance of Δφ/dt normalized by ω̄
  *
  * === Regularity metrics ===
- *   • R_spec = exp(−β·RBW)
+ *   • R_spec  = exp(−β·RBW)
  *   • R_phase = ‖⟨ z/‖z‖ ⟩‖
  *   • Narrowness ν = √((M0 M2 / M1²) − 1)
  *
@@ -56,14 +57,26 @@
  *
  * === Probability metrics ===
  *   • Crest exceedance (Rayleigh): P(Hc > h)
+ *   • Crest exceedance (Tayfun):  nonlinear approximation
  *
  * === Bandwidths ===
  *   • CLH, Goda, Kuik
  *   • Longuet–Higgins width
  *
+ * === Extremes & groupiness ===
+ *   • H1/10 crest height
+ *   • H1/100 crest height
+ *   • Tayfun exceedance probability
+ *   • Groupiness factor (Tg/Tz)
+ *   • Benjamin–Feir index (BFI)
+ *
+ * === Energy & wave power ===
+ *   • Energy flux period (Te_flux)
+ *   • Wave power per crest length (kW/m)
+ *
  * === Bias-corrected metrics ===
  *
- * These apply first-order Jensen corrections for ω-tracker jitter:
+ * Apply first-order Jensen corrections for ω-tracker jitter:
  *
  *   E[1/ω^n] ≈ (1/ω̄^n)(1 + c_n σ²/ω̄²),   with coefficients
  *     n = 1 → c = 1
@@ -72,23 +85,23 @@
  *     n = 4 → c = 10
  *
  * Implemented by scaling raw spectral moments:
- *     M0c = M0 / (1 + 10 σ²/ω̄²)
- *     M1c = M1 / (1 +  6 σ²/ω̄²)
- *     M2c = M2 / (1 +  3 σ²/ω̄²)
- *     M3c = M3 / (1 +  1 σ²/ω̄²)
- *     M4c = M4 / (1 + 10 σ²/ω̄²)
- *     M_{−1}c = M_{−1} / (1 + 6 σ²/ω̄²)
+ *     M0c      = M0 / (1 + 10 σ²/ω̄²)
+ *     M1c      = M1 / (1 +  6 σ²/ω̄²)
+ *     M2c      = M2 / (1 +  3 σ²/ω̄²)
+ *     M3c      = M3 / (1 +  1 σ²/ω̄²)
+ *     M4c      = M4 / (1 + 10 σ²/ω̄²)
+ *     M_{−1}c  = M_{−1} / (1 + 6 σ²/ω̄²)
  *
  * where ω̄ = mu_w (mean ω) and σ² = var_slow (slow variance of ω).
  *
  * All higher-level bias-corrected getters (heights, periods, bandwidths,
- * counts, central moments, skew/kurtosis) are computed consistently
- * from these corrected moments. Phase-based metrics (e.g. R_phase)
- * are unaffected.
+ * counts, central moments, skew/kurtosis, extremes, power) are computed
+ * consistently from these corrected moments. Phase-based metrics
+ * (e.g. R_phase, RBW_PhaseIncrement) are unaffected.
  *
  * Notes:
- *   – Corrections reduce upward bias of energy and bandwidth metrics
- *     when frequency estimates jitter or acceleration carries DC.
+ *   – Corrections reduce upward bias of energy, bandwidth, and moment-based
+ *     metrics when frequency estimates jitter or acceleration carries DC.
  *   – Bias-corrected and raw getters are provided side-by-side.
  */
 
