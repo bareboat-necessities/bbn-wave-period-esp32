@@ -514,6 +514,71 @@ float getWidthLonguetHiggins_BiasCorrected() const {
     return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
 }
 
+// === Bias-corrected central moments & shape metrics ===
+float getCentralMoment2_BiasCorrected() const {
+    if (!extended_metrics) throw std::logic_error("Central moments not enabled");
+    float M0c = getMoment0_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    float mu = M1c / M0c;
+    float m2 = M2c / M0c;
+    return m2 - mu * mu;
+}
+
+float getCentralMoment3_BiasCorrected() const {
+    if (!extended_metrics) throw std::logic_error("Central moments not enabled");
+    float M0c = getMoment0_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    float M3c = getMoment3_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    float mu = M1c / M0c;
+    float m2 = M2c / M0c;
+    float m3 = M3c / M0c;
+    return m3 - 3.0f * mu * m2 + 2.0f * mu * mu * mu;
+}
+
+float getCentralMoment4_BiasCorrected() const {
+    if (!extended_metrics) throw std::logic_error("Central moments not enabled");
+    float M0c = getMoment0_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    float M3c = getMoment3_BiasCorrected();
+    float M4r = M4; // raw M4 (no correction yet)
+    if (M0c <= EPSILON) return 0.0f;
+    float mu = M1c / M0c;
+    float m2 = M2c / M0c;
+    float m3 = M3c / M0c;
+    float m4 = M4r / M0c; // NB: we don’t have a correction factor for M4 yet
+    return m4 - 4.0f * mu * m3 + 6.0f * mu * mu * m2 - 3.0f * mu * mu * mu * mu;
+}
+
+// === Bias-corrected shape diagnostics ===
+float getSpectralSkewness_BiasCorrected() const {
+    if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
+    float mu2c = getCentralMoment2_BiasCorrected();
+    float mu3c = getCentralMoment3_BiasCorrected();
+    if (mu2c <= EPSILON) return 0.0f;
+    return mu3c / std::pow(mu2c, 1.5f);
+}
+
+float getSpectralKurtosis_BiasCorrected() const {
+    if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
+    float mu2c = getCentralMoment2_BiasCorrected();
+    float mu4c = getCentralMoment4_BiasCorrected();
+    if (mu2c <= EPSILON) return 0.0f;
+    return mu4c / (mu2c * mu2c);
+}
+
+float getSpectralExcessKurtosis_BiasCorrected() const {
+    if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
+    float mu2c = getCentralMoment2_BiasCorrected();
+    float mu4c = getCentralMoment4_BiasCorrected();
+    if (mu2c <= EPSILON) return 0.0f;
+    return (mu4c / (mu2c * mu2c)) - 3.0f;
+}
+
 private:
     // Flags
     bool extended_metrics;
