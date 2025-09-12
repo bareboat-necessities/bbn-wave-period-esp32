@@ -477,12 +477,7 @@ float getMoment3_BiasCorrected() const {
 
 float getMoment4_BiasCorrected() const {
     if (!extended_metrics) throw std::logic_error("M4 not enabled");
-    if (M4 <= EPSILON) return 0.0f;
-    float omega_bar = mu_w;
-    float var = std::max(var_slow, 0.0f);
-    if (omega_bar <= EPSILON) return M4;
-    float corr = 1.0f / (1.0f + 10.0f * var / (omega_bar * omega_bar));
-    return M4 * corr;
+    return M4; // no bias correction needed
 }
 
 float getMomentMinus1_BiasCorrected() const {
