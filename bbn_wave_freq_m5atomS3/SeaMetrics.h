@@ -346,6 +346,54 @@ public:
         return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
     }
 
+// === Extremes & groupiness ===
+
+// H1/10 crest height (linear Rayleigh model)
+float getCrestHeight_H1over10() const {
+    if (M0 <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0);
+    // Rayleigh 90th percentile crest amplitude
+    return sigma * std::sqrt(-2.0f * std::log(0.10f));
+}
+
+// H1/100 crest height
+float getCrestHeight_H1over100() const {
+    if (M0 <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0);
+    return sigma * std::sqrt(-2.0f * std::log(0.01f));
+}
+
+// Nonlinear crest exceedance (Tayfun 1980 2nd-order approximation)
+// P(Hc > h) ≈ exp(−h²/(2σ²)) * exp(Λ h³/(σ³)), where Λ ~ steepness factor
+float getExceedanceProbTayfun(float crest_height) const {
+    if (M0 <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0);
+    float Hs = 2.0f * std::sqrt(2.0f) * sigma;
+    float steep = getWaveSteepness();
+    float Lambda = 0.5f * steep; // crude param
+    float term1 = std::exp(-(crest_height * crest_height) / (2.0f * sigma * sigma));
+    float term2 = std::exp(Lambda * std::pow(crest_height / sigma, 3));
+    return term1 * term2;
+}
+
+// Groupiness factor = mean group period / mean zero-crossing period
+float getGroupinessFactor() const {
+    float Tg = getMeanGroupPeriod();
+    float Tz = getMeanPeriod_Tz();
+    return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
+}
+
+// Benjamin–Feir Index (deep water, linear est.)
+// BFI = √2 * Hs / (Δf / fp)
+float getBenjaminFeirIndex() const {
+    float Hs = getSignificantWaveHeightRayleigh();
+    float fp = getMeanFrequencyHz();
+    float bw = getRBW();
+    if (fp <= EPSILON || bw <= EPSILON) return 0.0f;
+    float df = bw * fp;
+    return (std::sqrt(2.0f) * Hs) / (df / fp);
+}
+
 // === Bias-corrected metrics ===
 //
 // Apply first-order Jensen corrections for inverse ω powers:
