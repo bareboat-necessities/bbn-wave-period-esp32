@@ -1,0 +1,143 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, bm, geometry}
+\geometry{margin=1in}
+
+\title{SeaMetrics: Online Estimator of Ocean Wave Spectral Metrics}
+\author{Mikhail Grushinskiy}
+\date{2025}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+\texttt{SeaMetrics} is a C++17 implementation of an online estimator of ocean wave
+spectral metrics, operating on vertical acceleration $a_z(t)$ from an IMU and an externally
+tracked instantaneous angular frequency $\omega(t)$. 
+
+By demodulating the acceleration signal, normalizing to displacement,
+and tracking exponential running averages, \texttt{SeaMetrics} produces
+a wide range of oceanographic metrics in real time.
+
+\section{Input Signals}
+
+\begin{itemize}
+  \item Vertical acceleration $a_z(t)$ [m/s$^2$]
+  \item Instantaneous frequency estimate $\omega_{\text{inst}}(t)$ [rad/s]
+\end{itemize}
+
+\section{Spectral Moments}
+
+The central quantities are the (normalized) spectral moments:
+\begin{align}
+M_0 &= \langle P_{\eta} \rangle, \\
+M_1 &= \langle P_{\eta} \, \omega \rangle, \\
+M_2 &= \langle P_{\eta} \, \omega^2 \rangle, \\
+M_3 &= \langle P_{\eta} \, \omega^3 \rangle \quad \text{(optional)}, \\
+M_4 &= \langle P_{\eta} \, \omega^4 \rangle \quad \text{(optional)}, \\
+M_{-1} &= \langle P_{\eta} \, \omega^{-1} \rangle \quad \text{(optional)},
+\end{align}
+where $P_{\eta}$ is the estimated displacement envelope power.
+
+\section{Central Moments and Shape (optional)}
+
+Using $M_k$, central moments can be formed:
+\begin{align}
+\mu_2 &= \tfrac{M_2}{M_0} - \left(\tfrac{M_1}{M_0}\right)^2, \\
+\mu_3 &= \tfrac{M_3}{M_0} - 3\mu \tfrac{M_2}{M_0} + 2\mu^3, \\
+\mu_4 &= \tfrac{M_4}{M_0} - 4\mu \tfrac{M_3}{M_0} + 6\mu^2 \tfrac{M_2}{M_0} - 3\mu^4,
+\end{align}
+with $\mu = M_1/M_0$.
+
+From these, spectral shape diagnostics are available:
+\begin{align}
+\text{Skewness} &= \frac{\mu_3}{\mu_2^{3/2}}, \\
+\text{Kurtosis} &= \frac{\mu_4}{\mu_2^2}, \\
+\text{Excess Kurtosis} &= \frac{\mu_4}{\mu_2^2} - 3.
+\end{align}
+
+\section{Frequency Metrics}
+
+\begin{align}
+\bar{\omega} &= \frac{M_1}{M_0}, 
+\qquad \bar{f} = \frac{\bar{\omega}}{2\pi}, \\
+\text{RBW} &= \frac{\sqrt{\mu_2}}{\bar{\omega}}, \\
+\text{RBW}_{\phi} &= \frac{\sqrt{\mathrm{Var}(\Delta \phi / \Delta t)}}{\bar{\omega}}.
+\end{align}
+
+\section{Regularity Metrics}
+
+\begin{align}
+R_{\text{spec}} &= \exp(-\beta \cdot \text{RBW}), \\
+R_{\text{phase}} &= \left\|\left\langle \frac{z}{|z|} \right\rangle\right\|, \\
+\nu &= \sqrt{\frac{M_0 M_2}{M_1^2} - 1}.
+\end{align}
+
+\section{Period Summaries}
+
+\begin{align}
+T_z &= \sqrt{2\pi^2 \frac{M_0}{M_2}}, \\
+T_1 &= \frac{2\pi M_0}{M_1}, \\
+T_{m02} &= 2\pi \sqrt{\frac{M_0}{M_2}}, \\
+T_e &= \frac{2\pi M_{-1}}{M_0}, \\
+T_{m0,-1} &= \frac{M_0}{M_{-1}}, \\
+T_{m1,-1} &= \frac{M_1}{M_{-1}}.
+\end{align}
+
+The upcrossing rate is
+\begin{equation}
+\nu_{\uparrow} = \frac{1}{2\pi} \sqrt{\frac{M_2}{M_0}},
+\end{equation}
+and expected wave counts and confidence intervals are available via Poisson/Garwood formulas.
+
+\section{Heights and Steepness}
+
+\begin{align}
+\sigma &= \sqrt{M_0}, \\
+H_s &= 2\sqrt{2} \, \sigma, \\
+\text{RMS disp.} &= \sigma, \\
+\text{Steepness} &= \frac{H_s}{L_0}, \qquad L_0 = \frac{g T_z^2}{2\pi}.
+\end{align}
+
+\section{Probabilities and Extremes}
+
+\begin{itemize}
+  \item Rayleigh exceedance:
+  \[
+  P(H_c > h) = \exp\!\left(-\frac{h^2}{2\sigma^2}\right).
+  \]
+  \item Tayfun nonlinear exceedance (approx.):
+  \[
+  P(H_c > h) \approx \exp\!\left(-\frac{h^2}{2\sigma^2}\right) \cdot
+  \exp\!\left(\Lambda \frac{h^3}{\sigma^3}\right).
+  \]
+  \item Crest heights: $H_{1/10}, H_{1/100}$.
+\end{itemize}
+
+\section{Bandwidth Metrics}
+
+\begin{align}
+\varepsilon_{\text{CLH}} &= \sqrt{1 - \frac{M_1^2}{M_0 M_2}}, \\
+\varepsilon_{\text{Goda}} &= \sqrt{\frac{M_0 M_2}{M_1^2} - 1}, \\
+\varepsilon_{\text{Kuik}} &= \frac{\sqrt{M_0 M_2 - M_1^2}}{M_1}, \\
+\varepsilon_{\text{LH}} &= \sqrt{\frac{M_0 M_2}{M_1^2} - 1}.
+\end{align}
+
+\section{Energy and Power}
+
+\begin{align}
+T_{e,\text{flux}} &= \frac{M_{-1}}{M_0}, \\
+P &= \frac{\rho g^2}{64 \pi} H_s^2 T_e.
+\end{align}
+
+\section{Bias-Corrected Metrics}
+
+To reduce bias from frequency jitter, Jensen’s inequality correction is applied:
+\[
+E\!\left[\frac{1}{\omega^n}\right] \approx 
+\frac{1}{\bar{\omega}^n}\Big(1 + c_n \frac{\sigma_\omega^2}{\bar{\omega}^2}\Big),
+\]
+with coefficients $c_1=1, c_2=3, c_3=6, c_4=10$.  
+Bias-corrected versions of all major metrics (moments, periods, bandwidths, extremes, power) are provided.
+
+\end{document}
