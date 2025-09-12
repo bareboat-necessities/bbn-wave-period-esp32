@@ -673,7 +673,167 @@ public:
         return std::max(1.0f, t_onset);
     }
 
+    // Spectral Shape Descriptors
+    float getBandwidthEpsilon(bool bias_corrected = true) const {
+        if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
+        float M0c = getMoment0(bias_corrected);
+        float M2c = getMoment2(bias_corrected);
+        float M4c = getMoment4(false); // left uncorrected
+        if (M0c <= EPSILON || M4c <= EPSILON) return 0.0f;
+        float val = 1.0f - (M2c * M2c) / (M0c * M4c);
+        return (val > 0.0f) ? std::sqrt(val) : 0.0f;
+    }
+    float classifySpectrumType(bool bias_corrected = true) const {
+        // Heuristic: 0 = swell, 1 = mixed, 2 = wind-sea
+        float gamma = getPeakEnhancementFactor();
+        float Tz = getMeanPeriod_Tz(bias_corrected);
+        float Tp = 1.0f / std::max(getMeanFrequencyHz(bias_corrected), EPSILON);
+        float ratio = (Tz > EPSILON) ? Tp / Tz : 1.0f;
+        if (gamma < 1.5f && ratio > 1.2f) return 0.0f; // swell
+        if (gamma > 3.0f && ratio < 0.9f) return 2.0f; // wind sea
+        return 1.0f; // mixed
+    }
+
+    // Wave Group Statistics
+    float getMeanGroupLength(bool bias_corrected = true) const {
+        // Approximate: inverse of RBW
+        float rbw_val = getRBW();
+        return (rbw_val > EPSILON) ? (1.0f / rbw_val) : 0.0f;
+    }
+    float getGroupHeightFactor(bool bias_corrected = true) const {
+        // Hs_group / Hs_total ~ inverse of RBW scaling
+        float Hs = getSignificantWaveHeightRayleigh(bias_corrected);
+        float rbw_val = getRBW();
+        return (rbw_val > EPSILON) ? (Hs / (1.0f + rbw_val)) : Hs;
+    }
+    float getRunLengthAboveThreshold(float alpha = 1.0f, bool bias_corrected = true) const {
+        // Expected number of consecutive waves with crest > alpha·Hs
+        float p_exceed = getExceedanceProbRayleigh(alpha * getSignificantWaveHeightRayleigh(bias_corrected),
+                                                  bias_corrected);
+        if (p_exceed <= EPSILON) return 0.0f;
+        return 1.0f / p_exceed;
+    }
+
+    // Extreme Value Analysis (short/medium-term)
+    float getWeibullReturnHeight(float T_return, float duration_s,
+                                 bool bias_corrected = true) const {
+        // Fit simple 2-parameter Weibull to block maxima
+        float Hs = getSignificantWaveHeightRayleigh(bias_corrected);
+        if (Hs <= EPSILON || duration_s <= 0.0f) return 0.0f;
+        float N = estimateWaveCount(duration_s, bias_corrected);
+        if (N <= 0.0f) return 0.0f;
+        // Shape parameter (k) ~ 2, scale λ ~ Hs / sqrt(log 2)
+        float k = 2.0f;
+        float lambda = Hs / std::sqrt(std::log(2.0f));
+        float p = 1.0f - 1.0f / std::max(T_return, 1.0f);
+        return lambda * std::pow(-std::log(1.0f - p), 1.0f / k);
+    }
+    float getPOTMeanExcess(float threshold, bool bias_corrected = true) const {
+        // Peak-over-threshold: mean excess above given crest threshold
+        float Hs = getSignificantWaveHeightRayleigh(bias_corrected);
+        if (Hs <= EPSILON) return 0.0f;
+        if (threshold <= EPSILON) threshold = Hs;
+        float sigma = Hs / std::sqrt(2.0f);
+        float p = std::exp(-threshold * threshold / (2.0f * sigma * sigma));
+        return (p > EPSILON) ? sigma * p / (1.0f - p) : 0.0f;
+    }
+
+    // Shallow-Water Extensions
+    float getWavenumber(float omega, float depth) const {
+        if (depth <= EPSILON) return omega * omega / g(); // deep-water approx
+        // Newton iteration for dispersion ω² = gk tanh(kh)
+        float k = omega * omega / g();
+        for (int i = 0; i < 3; ++i) {
+            float f = g() * k * std::tanh(k * depth) - omega * omega;
+            float df = g() * (std::tanh(k * depth) + k * depth / std::cosh(k * depth) / std::cosh(k * depth));
+            k -= f / std::max(df, EPSILON);
+        }
+        return k;
+    }
+    float getShoalingCoefficient(float omega, float depth) const {
+        float k = getWavenumber(omega, depth);
+        float cg = 0.5f * g() / omega * (1.0f + 2.0f * k * depth / std::sinh(2.0f * k * depth));
+        float cg0 = 0.5f * g() / omega; // deep water group velocity
+        return std::sqrt(cg0 / std::max(cg, EPSILON));
+    }
+    float getRefractionSnell(float theta0, float omega, float depth0, float depth) const {
+        float k0 = getWavenumber(omega, depth0);
+        float k = getWavenumber(omega, depth);
+        float c0 = omega / k0;
+        float c = omega / k;
+        float val = std::sin(theta0) * c0 / c;
+        return std::asin(std::clamp(val, -1.0f, 1.0f));
+    }
+    float getBattjesJanssenBreakingProb(float gamma, float depth, bool bias_corrected = true) const {
+        float Hs = getSignificantWaveHeightRayleigh(bias_corrected);
+        if (depth <= EPSILON || Hs <= EPSILON) return 0.0f;
+        float Hb = gamma * depth;
+        return std::clamp(Hs / Hb, 0.0f, 1.0f);
+    }
+
+    // Data Quality & Diagnostics
+    float getTemporalStability(float window_var) const {
+        // Proxy: compare variance of Hs against supplied reference
+        if (window_var <= EPSILON) return 1.0f;
+        float rel_var = var_slow / window_var;
+        return std::clamp(1.0f - rel_var, 0.0f, 1.0f);
+    }
+    float getBandSNR(float f_low, float f_high, bool bias_corrected = true) const {
+        // Approximate: ratio of M0 in-band vs. total
+        float M0c = getMoment0(bias_corrected);
+        if (M0c <= EPSILON) return 0.0f;
+        float omega_low = 2.0f * float(M_PI) * f_low;
+        float omega_high = 2.0f * float(M_PI) * f_high;
+        float inband = (omega_last >= omega_low && omega_last <= omega_high) ? M0c : 0.0f;
+        return (inband > 0.0f) ? (inband / M0c) : 0.0f;
+    }
+    float getDataGapFraction() const {
+        // Based on missing input samples count (approximate from NaN handling)
+        // For now, return 0 (no internal counter implemented)
+        return 0.0f;
+    }
+
+    // Integration with Environmental Inputs
+    float classifyWaveAge(float U10, bool bias_corrected = true) const {
+        if (U10 <= EPSILON) return 0.0f;
+        float age = getWaveAge(U10, bias_corrected);
+        if (age < 0.8f) return 0.0f; // young
+        if (age > 1.2f) return 2.0f; // old swell
+        return 1.0f; // mature
+    }
+    float getSeaSwellPartition(float U10, bool bias_corrected = true) const {
+        // Return fraction of energy considered "swell"
+        if (U10 <= EPSILON) return 1.0f;
+        float age = getWaveAge(U10, bias_corrected);
+        return (age > 1.2f) ? 1.0f : 0.5f; // heuristic
+    }
+    float getRadiationStressXX(bool bias_corrected = true) const {
+        float Hs = getSignificantWaveHeightRayleigh(bias_corrected);
+        return 0.25f * rho() * g() * Hs * Hs;
+    }
+    float getRadiationStressYY(bool bias_corrected = true) const {
+        return getRadiationStressXX(bias_corrected);
+    }
+    float getRadiationStressXY() const { return 0.0f; } // no directionality
+
+    // Application-Specific Metrics
+    float getBottomOrbitalVelocity(float depth, bool bias_corrected = true) const {
+        if (depth <= EPSILON) return 0.0f;
+        float Hs = getSignificantWaveHeightRayleigh(bias_corrected);
+        float Tz = getMeanPeriod_Tz(bias_corrected);
+        float omega = two_pi() / std::max(Tz, EPSILON);
+        float k = getWavenumber(omega, depth);
+        return (M_PI * Hs / Tz) / std::sinh(k * depth);
+    }
+    float getWECCaptureWidthRatio(float extracted_kWm, bool bias_corrected = true) const {
+        float Pwave = getWavePower(bias_corrected);
+        if (Pwave <= EPSILON) return 0.0f;
+        return extracted_kWm / Pwave;
+    }
+
 private:
+    static constexpr float rho() { return 1025.0f; } // seawater density
+
     bool extended_metrics;
     bool negative_moments;
 
