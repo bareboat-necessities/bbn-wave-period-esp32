@@ -431,6 +431,22 @@ public:
         return out;
     }
 
+    float getBandwidthKuik_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M1 <= EPSILON) return 0.0f;
+        float val = (M0c * M2c) - (M1 * M1);
+        return (val > 0.0f) ? std::sqrt(val) / M1 : 0.0f;
+    }
+
+    float getWidthLonguetHiggins_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M1 <= EPSILON) return 0.0f;
+        float val = (M0c * M2c) / (M1 * M1);
+        return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
+    }
+
 private:
     // Flags
     bool extended_metrics;
