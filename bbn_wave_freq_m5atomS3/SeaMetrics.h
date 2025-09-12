@@ -352,6 +352,15 @@ public:
         return M0 * corr;
     }
 
+    float getMoment1_BiasCorrected() const {
+        if (M1 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M1;
+        float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
+        return M1 * corr;
+    }
+
     float getMoment2_BiasCorrected() const {
         if (M2 <= EPSILON) return 0.0f;
         float omega_bar = mu_w;
@@ -359,6 +368,25 @@ public:
         if (omega_bar <= EPSILON) return M2;
         float corr = 1.0f / (1.0f + 3.0f * var / (omega_bar * omega_bar));
         return M2 * corr;
+    }
+
+    float getMoment1_BiasCorrected() const {
+        if (M1 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M1;
+        float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
+        return M1 * corr;
+    }
+
+    float getMoment3_BiasCorrected() const {
+        if (!extended_metrics) throw std::logic_error("M3 not enabled");
+        if (M3 <= EPSILON) return 0.0f;
+        float omega_bar = mu_w;
+        float var = std::max(var_slow, 0.0f);
+        if (omega_bar <= EPSILON) return M3;
+        float corr = 1.0f / (1.0f + 1.0f * var / (omega_bar * omega_bar));
+        return M3 * corr;
     }
 
     float getSignificantWaveHeightRegular_BiasCorrected() const {
