@@ -890,6 +890,180 @@ float getSNR() const {
         return (rho * g() * g() / (64.0f * float(M_PI))) * (Hs * Hs) * Te;
     }
 
+// ================== ADDITIONS (bias-corrected versions) ==================
+//
+// Place inside the `public:` section of SeaMetrics.
+// All methods reuse the bias-corrected moments already implemented.
+
+// --- 1) Spectral width parameters ---
+
+float getSpectralBandwidth_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    float mu2_est = (M2c / M0c) - (M1c * M1c) / (M0c * M0c);
+    return (mu2_est > 0.0f) ? std::sqrt(mu2_est) : 0.0f;
+}
+
+float getSpectralNarrowness_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    if (M0c <= EPSILON || M2c <= EPSILON) return 0.0f;
+    return (M1c * M1c) / (M0c * M2c);
+}
+
+
+// --- 2) Wave group statistics ---
+
+float getMeanRunLength_BiasCorrected(float threshold_sigma = 1.0f) const {
+    float M0c = getMoment0_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0c);
+    float p = getExceedanceProbRayleigh(threshold_sigma * sigma);
+    return (p > EPSILON) ? (1.0f / p) : 0.0f;
+}
+
+float getGroupDuration_BiasCorrected(float threshold_sigma = 1.0f) const {
+    return getMeanRunLength_BiasCorrected(threshold_sigma) * getMeanPeriod_Tz_BiasCorrected();
+}
+
+
+// --- 3) Nonlinear wave parameters ---
+
+float getUrsellNumber_BiasCorrected(float depth) const {
+    if (depth <= EPSILON) return 0.0f;
+    float Tz = getMeanPeriod_Tz_BiasCorrected();
+    if (Tz <= EPSILON) return 0.0f;
+    float L0 = 9.80665f * Tz * Tz / (2.0f * float(M_PI));
+    float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
+    return (Hs * L0 * L0) / (depth * depth * depth);
+}
+
+float getNonlinearityParameter_BiasCorrected() const {
+    float Tz = getMeanPeriod_Tz_BiasCorrected();
+    if (Tz <= EPSILON) return 0.0f;
+    float L0 = 9.80665f * Tz * Tz / (2.0f * float(M_PI));
+    if (L0 <= EPSILON) return 0.0f;
+    float k  = 2.0f * float(M_PI) / L0;
+    float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
+    return 0.5f * Hs * k;
+}
+
+
+// --- 4) Wave age ---
+
+float getWaveAge_BiasCorrected(float wind_speed) const {
+    if (wind_speed <= EPSILON) return 0.0f;
+    float Tz = getMeanPeriod_Tz_BiasCorrected();
+    if (Tz <= EPSILON) return 0.0f;
+    float cp = 9.80665f * Tz / (2.0f * float(M_PI));
+    return cp / wind_speed;
+}
+
+
+// --- 5) Spectral shape parameters ---
+
+float getPeakEnhancementFactor_BiasCorrected() const {
+    if (!extended_metrics) return 0.0f;
+    float Qp = getPeakednessOchi(); // Ochi already bias-robust by construction
+    float guess = 0.25f + 0.75f * std::sqrt(std::max(0.0f, Qp));
+    if (guess < 1.0f)  guess = 1.0f;
+    if (guess > 10.0f) guess = 10.0f;
+    return guess;
+}
+
+float getPeakednessGoda_BiasCorrected() const {
+    if (!extended_metrics) return 0.0f;
+    return 2.0f * (getPeakednessOchi() - 1.0f);
+}
+
+
+// --- 6) Wave breaking indicators ---
+
+float getBreakingProbability_BiasCorrected(float depth = 0.0f) const {
+    float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
+    if (depth > EPSILON) {
+        if (Hs <= EPSILON) return 0.0f;
+        float ratio = 0.78f * depth / Hs;
+        float x = std::max(0.0f, std::min(5.0f, ratio));
+        return std::exp(-0.5f * x * x);
+    } else {
+        float steepness = getWaveSteepness_BiasCorrected();
+        float p = 10.0f * steepness;
+        if (p < 0.0f) p = 0.0f;
+        if (p > 1.0f) p = 1.0f;
+        return p;
+    }
+}
+
+float getBreakingWaveHeight_BiasCorrected(float depth = 0.0f) const {
+    if (depth > EPSILON) {
+        return 0.78f * depth;
+    }
+    return 0.0f;
+}
+
+
+// --- 7) Statistical extremes ---
+
+float getMostProbableMaxHeight_BiasCorrected(float duration_s) const {
+    float N = estimateWaveCount_BiasCorrected(duration_s);
+    float M0c = getMoment0_BiasCorrected();
+    if (N <= EPSILON || M0c <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0c);
+    return sigma * std::sqrt(2.0f * std::log(N));
+}
+
+float getExpectedMaxCrestHeight_BiasCorrected(float duration_s) const {
+    float N = estimateWaveCount_BiasCorrected(duration_s);
+    float M0c = getMoment0_BiasCorrected();
+    if (N <= EPSILON || M0c <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0c);
+    float aN = std::sqrt(2.0f * std::log(N));
+    if (aN <= EPSILON) return 0.0f;
+    const float gamma = 0.5772f;
+    return sigma * (aN + gamma / aN);
+}
+
+
+// --- 8) Wave energy metrics ---
+
+float getWaveEnergy_BiasCorrected(float rho = 1025.0f) const {
+    float M0c = getMoment0_BiasCorrected();
+    return rho * 9.80665f * std::max(0.0f, M0c);
+}
+
+float getSpectralMeanPeriod_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    if (M1c <= EPSILON) return 0.0f;
+    return (2.0f * float(M_PI)) * (M0c / M1c);
+}
+
+
+// --- 9) Quality-control metrics ---
+
+float getDataQuality_BiasCorrected() const {
+    float quality = 1.0f;
+    quality *= std::max(0.0f, std::min(1.0f, R_phase));
+    quality *= std::exp(-0.5f * std::max(0.0f, rbw));
+    if (isBiasCorrectionSignificant(0.05f)) {
+        quality *= 0.8f;
+    }
+    if (quality < 0.0f) quality = 0.0f;
+    if (quality > 1.0f) quality = 1.0f;
+    return quality;
+}
+
+float getSNR_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    float noise = std::max(var_slow, EPSILON);
+    return 10.0f * std::log10(M0c / noise);
+}
+
 private:
     // ---- configuration flags ----
     bool extended_metrics;
