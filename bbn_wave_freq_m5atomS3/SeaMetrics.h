@@ -106,9 +106,8 @@
  *   • Time to onset of sickness
  *
  * Data quality & diagnostics:
- *   • SNR (global, band-limited)
+ *   • SNR (global)
  *   • Temporal stability of Hs, Tp
- *   • Data gap fraction
  *   • Bias correction significance
  *
  * Application-specific:
