@@ -447,6 +447,11 @@ public:
         return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
     }
 
+    float getRMSDisplacement_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        return (M0c > EPSILON) ? std::sqrt(M0c) : 0.0f;
+    }
+
 private:
     // Flags
     bool extended_metrics;
