@@ -17,7 +17,7 @@ The tool demodulates acceleration, converts it to displacement envelope power, a
 running averages of spectral moments.  
 From these, a broad set of oceanographic quantities can be computed in real time, ranging from
 basic spectral moments to derived parameters such as significant wave height, mean period,
-bandwidth, groupiness, and probability of extreme crests.
+bandwidth, groupiness, nonlinearity, breaking probability, and even human comfort indices.
 
 \section{Spectral Moments}
 
@@ -57,6 +57,13 @@ From these, common diagnostics include:
 \text{Kurtosis} = \frac{\mu_4}{\mu_2^2}, \quad
 \text{Excess Kurtosis} = \frac{\mu_4}{\mu_2^2} - 3.
 \]
+
+Other shape-related parameters include:
+\begin{itemize}
+  \item Ochi peakedness: $Q = \tfrac{M_0 M_4}{M_2^2}$.
+  \item Benassai parameter: same definition, used in engineering design.
+  \item Goda peakedness: $Q_G = 2(Q-1)$.
+\end{itemize}
 
 \section{Frequency Metrics}
 
@@ -113,6 +120,8 @@ H_s &= 2\sqrt{2}\,\sigma \quad \text{(significant wave height, Rayleigh)}, \\
   \]
   with $\Lambda$ proportional to steepness.
   \item Quantile crests: $H_{1/10}, H_{1/100}$.
+  \item Expected maximum crest height in duration $T$:  
+  $E[H_{\max}] \approx \sigma(\sqrt{2\ln N} + \gamma/\sqrt{2\ln N})$, with $N$ wave count, $\gamma$ Euler constant.
 \end{itemize}
 
 \section{Bandwidth Metrics}
@@ -125,12 +134,50 @@ Multiple definitions of spectral bandwidth are available:
 \varepsilon_{\text{LH}} &= \sqrt{\tfrac{M_0 M_2}{M_1^2} - 1} \quad \text{(Longuet–Higgins width)}.
 \end{align}
 
+\section{Groupiness and Instability}
+
+\begin{itemize}
+  \item Groupiness factor: $G = T_g/T_z$, ratio of group period to zero-crossing period.
+  \item Benjamin–Feir Index (BFI): instability measure for modulational growth,
+  \[
+  \text{BFI} = \frac{\sqrt{2}\,H_s/L_0}{\Delta f/f_p},
+  \]
+  where $f_p$ is peak frequency and $\Delta f$ spectral bandwidth.
+\end{itemize}
+
 \section{Energy and Power}
 
 \begin{align}
 T_{e,\text{flux}} &= \frac{M_{-1}}{M_0} \quad \text{(energy flux period)}, \\
-P &= \frac{\rho g^2}{64\pi} H_s^2 T_e \quad \text{(deep-water wave power)}.
+P &= \frac{\rho g^2}{64\pi} H_s^2 T_e \quad \text{(deep-water wave power)}, \\
+E &= \rho g M_0 \quad \text{(wave energy density)}.
 \end{align}
+
+\section{Nonlinear and Development Metrics}
+
+\begin{itemize}
+  \item Ursell number: $Ur = \tfrac{H L^2}{h^3}$, ratio of nonlinearity to dispersion in finite depth $h$.
+  \item Nonlinearity parameter: $n = \tfrac{1}{2}H_s k$, dimensionless steepness at spectral peak.
+  \item Wave age: $c_p/U_{10}$, ratio of phase speed to wind speed, indicates maturity of sea state.
+\end{itemize}
+
+\section{Breaking Indicators}
+
+\begin{itemize}
+  \item Probability of breaking: depth-limited proxy $\exp(-0.5(0.78h/H_s)^2)$ or steepness proxy $10(H_s/L_0)$.
+  \item Breaking height: $H_b \approx 0.78 h$, depth-limited maximum crest.
+\end{itemize}
+
+\section{Comfort and Motion Sickness}
+
+\begin{itemize}
+  \item Motion Sickness Dose Value (MSDV):  
+  $\text{MSDV} = \sqrt{M_2}\sqrt{T}$ over exposure duration $T$.
+  \item Seasickness incidence (ISO-based): logistic function of MSDV, frequency, and susceptibility.
+  \item Comfort level rating: heuristic mapping of MSDV to 0–100 scale.
+  \item Vertical motion intensity: $\sqrt{M_2}$.
+  \item Time to onset: empirical $\propto 1/(\text{accel} \cdot f^{0.7})$.
+\end{itemize}
 
 \section{Bias Correction}
 
@@ -191,7 +238,7 @@ Third, fourth moments & $M_3, M_4$ & Higher-order spectral shape information (sk
 Negative moment & $M_{-1}$ & Defines energy flux and mean wave energy period. \\
 \hline
 Mean frequency & $\bar{\omega}, \bar{f}$ & Central frequency of sea state in rad/s or Hz. \\
-RBW & $\sqrt{\mu_2}/\bar{\omega}$ & Dimensionless measure of spectral width (narrow vs. broadband). \\
+RBW & $\sqrt{\mu_2}/\bar{\omega}$ & Dimensionless measure of spectral width. \\
 Phase RBW & Var$(\Delta \phi / \Delta t)$ & Alternative bandwidth estimate from phase increments. \\
 \hline
 Zero-crossing period & $T_z$ & Average time between successive zero crossings. \\
@@ -204,22 +251,35 @@ Significant wave height & $H_s$ & Standard design height, $H_s \approx 4\sigma$.
 RMS displacement & $\sigma$ & Standard deviation of surface elevation. \\
 Steepness & $H_s/L_0$ & Nonlinearity indicator; $>0.05$ implies steep waves. \\
 \hline
-Bandwidths & CLH, Goda, Kuik & Classical measures of spectral width/spread. \\
+Bandwidths & CLH, Goda, Kuik, LH & Classical measures of spectral width/spread. \\
 Regularity & $R_{\text{spec}}, R_{\text{phase}}$ & Measures of coherence vs. randomness. \\
 Narrowness & $\nu$ & Alternative compactness measure. \\
 \hline
 Crest exceedance & $P(H_c>h)$ & Probability a crest exceeds $h$ (Rayleigh or Tayfun). \\
 Extreme crests & $H_{1/10}, H_{1/100}$ & Expected high crests in 10 or 100 waves. \\
 Benjamin–Feir Index & BFI & Instability index for modulational instability. \\
+Groupiness factor & $G$ & Ratio of group to zero-crossing period. \\
 \hline
 Energy flux period & $T_{e,\text{flux}}$ & Period relevant to wave energy transport. \\
 Wave power & $P$ & Mean wave energy flux per unit crest length. \\
+Wave energy density & $E$ & Energy content per unit surface area. \\
+\hline
+Ursell number & $Ur$ & Balance of nonlinearity vs. dispersion in finite depth. \\
+Nonlinearity parameter & $n$ & Spectral steepness $0.5H_sk$. \\
+Wave age & $c_p/U_{10}$ & Maturity of wind sea vs. swell. \\
+\hline
+Breaking probability & $P_b$ & Probability of wave breaking (depth or steepness). \\
+Breaking height & $H_b$ & Depth-limited crest height, $\approx 0.78 h$. \\
+\hline
+MSDV & -- & Motion Sickness Dose Value, ISO-based exposure index. \\
+Seasickness incidence & -- & Predicted percentage affected during exposure. \\
+Comfort rating & -- & Heuristic 0--100 scale based on MSDV. \\
+Time to onset & -- & Approximate time until discomfort occurs. \\
 \hline
 \end{tabular}
 \caption{Summary of metrics computed by \texttt{SeaMetrics}.}
 \label{tab:metrics}
 \end{table}
-
 
 \begin{thebibliography}{9}
 \bibitem{Cartwright1956}
@@ -251,6 +311,21 @@ J. Geophys. Res., 85(C3):1548–1552, 1980.
 M. K. Ochi,
 \textit{Ocean Waves: The Stochastic Approach},
 Cambridge Univ. Press, 1998.
+
+\bibitem{Battjes1978}
+J. A. Battjes and J. P. F. M. Janssen,
+\textit{Energy loss and set-up due to breaking of random waves},
+Coastal Engineering, 1(1):23--40, 1978.
+
+\bibitem{ISO2631}
+International Organization for Standardization,
+\textit{ISO 2631-1: Mechanical vibration and shock -- Evaluation of human exposure to whole-body vibration},
+ISO, 1997.
+
+\bibitem{BenjaminFeir1967}
+T. B. Benjamin and J. E. Feir,
+\textit{The disintegration of wave trains on deep water. Part 1. Theory},
+J. Fluid Mech., 27(3):417--430, 1967.
 \end{thebibliography}
 
 \end{document}
