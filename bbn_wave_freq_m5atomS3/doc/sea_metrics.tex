@@ -171,6 +171,55 @@ All higher-level corrected metrics (periods, heights, bandwidths, counts, skew/k
 Bias correction reduces spurious inflation of variance-related metrics (e.g. $H_s$, $T_z$, RBW) under jittery frequency tracking or accelerometer DC offset.  
 It ensures stable trends in noisy field conditions.
 
+\section{Summary of Metrics}
+
+Table~\ref{tab:metrics} summarizes the key metrics implemented in
+\texttt{SeaMetrics}, their physical meaning, and typical usage in
+oceanography.
+
+\begin{table}[h!]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{|l|l|p{8cm}|}
+\hline
+\textbf{Metric} & \textbf{Symbol} & \textbf{Physical meaning / use} \\
+\hline
+Zeroth moment & $M_0$ & Total variance of displacement; proportional to wave energy. \\
+First moment & $M_1$ & Energy-weighted frequency; defines mean wave frequency. \\
+Second moment & $M_2$ & Energy-weighted squared frequency; controls upcrossing rate. \\
+Third, fourth moments & $M_3, M_4$ & Higher-order spectral shape information (skewness, kurtosis). \\
+Negative moment & $M_{-1}$ & Defines energy flux and mean wave energy period. \\
+\hline
+Mean frequency & $\bar{\omega}, \bar{f}$ & Central frequency of sea state in rad/s or Hz. \\
+RBW & $\sqrt{\mu_2}/\bar{\omega}$ & Dimensionless measure of spectral width (narrow vs. broadband). \\
+Phase RBW & Var$(\Delta \phi / \Delta t)$ & Alternative bandwidth estimate from phase increments. \\
+\hline
+Zero-crossing period & $T_z$ & Average time between successive zero crossings. \\
+Energy period & $T_e$ & Period linked to wave energy transport. \\
+Mean period & $T_1, T_{m02}$ & Alternative averages; used in design formulas. \\
+Group period & $T_g$ & Average spacing of wave groups. \\
+Upcrossing rate & $\nu_\uparrow$ & Average number of waves per second. \\
+\hline
+Significant wave height & $H_s$ & Standard design height, $H_s \approx 4\sigma$. \\
+RMS displacement & $\sigma$ & Standard deviation of surface elevation. \\
+Steepness & $H_s/L_0$ & Nonlinearity indicator; $>0.05$ implies steep waves. \\
+\hline
+Bandwidths & CLH, Goda, Kuik & Classical measures of spectral width/spread. \\
+Regularity & $R_{\text{spec}}, R_{\text{phase}}$ & Measures of coherence vs. randomness. \\
+Narrowness & $\nu$ & Alternative compactness measure. \\
+\hline
+Crest exceedance & $P(H_c>h)$ & Probability a crest exceeds $h$ (Rayleigh or Tayfun). \\
+Extreme crests & $H_{1/10}, H_{1/100}$ & Expected high crests in 10 or 100 waves. \\
+Benjamin–Feir Index & BFI & Instability index for modulational instability. \\
+\hline
+Energy flux period & $T_{e,\text{flux}}$ & Period relevant to wave energy transport. \\
+Wave power & $P$ & Mean wave energy flux per unit crest length. \\
+\hline
+\end{tabular}
+\caption{Summary of metrics computed by \texttt{SeaMetrics}.}
+\label{tab:metrics}
+\end{table}
+
 \section{References}
 
 \begin{thebibliography}{9}
