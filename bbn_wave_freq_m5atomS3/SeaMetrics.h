@@ -67,8 +67,8 @@
  *   • H1/10 crest height
  *   • H1/100 crest height
  *   • Tayfun exceedance probability
- *   • Groupiness factor (Tg/Tz)
- *   • Benjamin–Feir index (BFI)
+ *   • Groupiness factor G = Tg / Tz  (Longuet–Higgins 1957)
+ *   • Benjamin–Feir index (BFI) = (√2 Hs / L0) / (Δf/fp)
  *
  * === Energy & wave power ===
  *   • Energy flux period (Te_flux)
