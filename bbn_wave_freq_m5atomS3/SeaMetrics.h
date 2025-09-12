@@ -10,99 +10,108 @@
  * SeaMetrics — Online estimator of ocean wave spectral metrics
  * from vertical acceleration and an external frequency tracker.
  *
- * === Raw spectral moments ===
- *   • M0 = ⟨P_disp⟩
- *   • M1 = ⟨P_disp·ω⟩
- *   • M2 = ⟨P_disp·ω²⟩
- *   • M3 = ⟨P_disp·ω³⟩   [extended only]
- *   • M4 = ⟨P_disp·ω⁴⟩   [extended only]
- *   • M_{−1} = ⟨P_disp·ω^{−1}⟩   [negative moments only]
+ * Raw spectral moments:
+ *   • M0      = ⟨P_disp⟩
+ *   • M1      = ⟨P_disp·ω⟩
+ *   • M2      = ⟨P_disp·ω²⟩
+ *   • M3      = ⟨P_disp·ω³⟩   [extended only]
+ *   • M4      = ⟨P_disp·ω⁴⟩   [extended only]
+ *   • M_{−1}  = ⟨P_disp·ω^{−1}⟩   [negative moments only]
  *
- * === Central moments (extended only) ===
+ * Central moments (extended only):
  *   • μ₂ = M2/M0 − (M1/M0)²
  *   • μ₃ = M3/M0 − 3·μ·(M2/M0) + 2·μ³
  *   • μ₄ = M4/M0 − 4·μ·(M3/M0) + 6·μ²·(M2/M0) − 3·μ⁴
  *     where μ = M1/M0
  *
- * === Frequency metrics ===
+ * Frequency metrics:
  *   • Mean frequency (rad/s): ω̄ = M1/M0
  *   • Mean frequency (Hz):    f̄ = ω̄ / (2π)
  *   • Relative bandwidth (RBW): √μ₂ / ω̄   (μ₂ from decoupled two-pole stats)
  *   • Phase-increment RBW: variance of Δφ/dt normalized by ω̄
  *
- * === Regularity metrics ===
+ * Regularity metrics:
  *   • R_spec  = exp(−β·RBW)
  *   • R_phase = ‖⟨ z/‖z‖ ⟩‖
  *   • Narrowness ν = √((M0 M2 / M1²) − 1)
  *
- * === Shape diagnostics (extended only) ===
+ * Shape diagnostics (extended only):
  *   • Spectral skewness        = μ₃ / μ₂^(3/2)
  *   • Spectral kurtosis        = μ₄ / μ₂²
  *   • Spectral excess kurtosis = (μ₄ / μ₂²) − 3
  *   • Ochi peakedness Q        = (M0 M4) / M2²
  *   • Benassai parameter B     = (M0 M4) / M2²
  *
- * === Period summaries (s) ===
+ * Period summaries (s):
  *   • T_z, T_zup, T_zdown
  *   • ν_up, ν_down
  *   • Wave count + Garwood CI
  *   • T_1, T_m02, T_e
- *   • T_{m0,-1}, T_{m1,-1}
+ *   • T_{m0,−1}, T_{m1,−1}
  *   • Mean group period
  *
- * === Heights & steepness ===
+ * Heights & steepness:
  *   • RMS displacement
  *   • Hs (regular, Rayleigh)
  *   • Wave steepness (Hs/L0, deep water)
  *
- * === Probability metrics ===
+ * Probability metrics:
  *   • Crest exceedance (Rayleigh): P(Hc > h)
  *   • Crest exceedance (Tayfun):  nonlinear approximation
  *
- * === Bandwidths ===
+ * Bandwidths:
  *   • CLH, Goda, Kuik
  *   • Longuet–Higgins width
  *
- * === Extremes & groupiness ===
+ * Extremes & groupiness:
  *   • H1/10 crest height
  *   • H1/100 crest height
  *   • Tayfun exceedance probability
- *   • Groupiness factor G = Tg / Tz  (Longuet–Higgins 1957)
+ *   • Groupiness factor G = Tg / Tz   (Longuet–Higgins, 1957)
  *   • Benjamin–Feir index (BFI) = (√2 Hs / L0) / (Δf/fp)
  *
- * === Energy & wave power ===
+ * Energy & wave power:
  *   • Energy flux period (Te_flux)
  *   • Wave power per crest length (kW/m)
  *
- * === Bias-corrected metrics ===
+ * Nonlinear & development:
+ *   • Ursell number (Ur = H L² / h³)
+ *   • Nonlinearity parameter (Hs·k/2)
+ *   • Wave age (c_p / U10)
  *
- * Apply first-order Jensen corrections for ω-tracker jitter:
+ * Breaking indicators:
+ *   • Probability of breaking (depth- or steepness-based proxy)
+ *   • Depth-limited breaking height (≈ 0.78 h)
  *
- *   E[1/ω^n] ≈ (1/ω̄^n)(1 + c_n σ²/ω̄²),   with coefficients
- *     n = 1 → c = 1
- *     n = 2 → c = 3
- *     n = 3 → c = 6
- *     n = 4 → c = 10
+ * Comfort & motion sickness:
+ *   • Motion Sickness Dose Value (MSDV)
+ *   • Seasickness incidence (%) vs. exposure
+ *   • Comfort level rating (0–100)
+ *   • Vertical motion intensity
+ *   • Time to onset of sickness
  *
- * Implemented by scaling raw spectral moments:
- *     M0c      = M0 / (1 + 10 σ²/ω̄²)
- *     M1c      = M1 / (1 +  6 σ²/ω̄²)
- *     M2c      = M2 / (1 +  3 σ²/ω̄²)
- *     M3c      = M3 / (1 +  1 σ²/ω̄²)
- *     M4c      = M4  (no correction needed)
- *     M_{−1}c  = M_{−1} / (1 + 6 σ²/ω̄²)
+ * Bias-correction API:
+ *   All getters accept a boolean argument `bias_corrected` (default = true).
+ *   When true, raw spectral moments (M0, M1, M2, M3, M−1) are adjusted by
+ *   first-order Jensen corrections for ω-tracker jitter:
  *
- * where ω̄ = mu_w (mean ω) and σ² = var_slow (slow variance of ω).
+ *     E[1/ω^n] ≈ (1/ω̄^n)(1 + c_n σ²/ω̄²), with coefficients:
+ *       n = 1 → c = 1
+ *       n = 2 → c = 3
+ *       n = 3 → c = 6
+ *       n = 4 → c = 10
  *
- * All higher-level bias-corrected getters (heights, periods, bandwidths,
- * counts, central moments, skew/kurtosis, extremes, power) are computed
- * consistently from these corrected moments. Phase-based metrics
- * (e.g. R_phase, RBW_PhaseIncrement) are unaffected.
+ *   Derived metrics (periods, heights, bandwidths, skew/kurtosis,
+ *   extremes, power) are computed consistently from these corrected
+ *   moments. Phase-based metrics (R_phase, RBW_PhaseIncrement) are
+ *   unaffected.
  *
  * Notes:
- *   – Corrections reduce upward bias of energy, bandwidth, and moment-based
- *     metrics when frequency estimates jitter or acceleration carries DC.
- *   – Bias-corrected and raw getters are provided side-by-side.
+ *   – Bias correction reduces upward bias of energy, bandwidth, and
+ *     moment-based metrics when frequency estimates jitter or acceleration
+ *     carries DC.
+ *   – Raw (uncorrected) values can be obtained by passing
+ *     `bias_corrected = false`.
  */
 
 #ifndef M_PI
