@@ -716,15 +716,18 @@ public:
         float val = 1.0f - (M2c * M2c) / (M0c * M4c);
         return (val > 0.0f) ? std::sqrt(val) : 0.0f;
     }
-    float classifySpectrumType(bool bias_corrected = true) const {
-        // Heuristic: 0 = swell, 1 = mixed, 2 = wind-sea
+    SpectrumType classifySpectrumType(bool bias_corrected = true) const {
+        if (!extended_metrics) return SpectrumType::Unknown;
+
         float gamma = getPeakEnhancementFactor();
         float Tz = getMeanPeriod_Tz(bias_corrected);
         float Tp = 1.0f / std::max(getMeanFrequencyHz(bias_corrected), EPSILON);
         float ratio = (Tz > EPSILON) ? Tp / Tz : 1.0f;
-        if (gamma < 1.5f && ratio > 1.2f) return 0.0f; // swell
-        if (gamma > 3.0f && ratio < 0.9f) return 2.0f; // wind sea
-        return 1.0f; // mixed
+
+        // Heuristic classification
+        if (gamma < 1.5f && ratio > 1.2f) return SpectrumType::Swell;
+        if (gamma > 3.0f && ratio < 0.9f) return SpectrumType::WindSea;
+        return SpectrumType::Mixed;
     }
 
     // Wave Group Statistics
