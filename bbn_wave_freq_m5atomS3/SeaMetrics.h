@@ -342,17 +342,6 @@ public:
 // with coefficients: n=1→c=1, n=2→c=3, n=3→c=6, n=4→c=10
 // Correction factors: 1/(1 + c σ²/ω̄²)
 
-
-float getMomentMinus1_BiasCorrected() const {
-    if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
-    if (M_neg1 <= EPSILON) return 0.0f;
-    float omega_bar = mu_w;
-    float var = std::max(var_slow, 0.0f);
-    if (omega_bar <= EPSILON) return M_neg1;
-    float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
-    return M_neg1 * corr;
-}
-
 float getMoment0_BiasCorrected() const {
     if (M0 <= EPSILON) return 0.0f;
     float omega_bar = mu_w;
@@ -461,6 +450,27 @@ float getMeanPeriod_T1_BiasCorrected() const {
     float M1c = getMoment1_BiasCorrected();
     if (M1c <= EPSILON) return 0.0f;
     return (2.0f * float(M_PI) * M0c) / M1c;
+}
+
+float getMeanPeriod_Te_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float Mneg1c = getMomentMinus1_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    return (2.0f * float(M_PI) * Mneg1c) / M0c;
+}
+
+float getMeanPeriod_Tm0m1_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float Mneg1c = getMomentMinus1_BiasCorrected();
+    if (Mneg1c <= EPSILON) return 0.0f;
+    return M0c / Mneg1c;
+}
+
+float getMeanPeriod_Tm1m1_BiasCorrected() const {
+    float M1c = getMoment1_BiasCorrected();
+    float Mneg1c = getMomentMinus1_BiasCorrected();
+    if (Mneg1c <= EPSILON) return 0.0f;
+    return M1c / Mneg1c;
 }
 
 // Rates & counts
@@ -576,12 +586,12 @@ float getCentralMoment4_BiasCorrected() const {
     float M1c = getMoment1_BiasCorrected();
     float M2c = getMoment2_BiasCorrected();
     float M3c = getMoment3_BiasCorrected();
-    float M4r = M4; // raw M4 (no correction yet)
+    float M4c = getMoment4_BiasCorrected();
     if (M0c <= EPSILON) return 0.0f;
     float mu = M1c / M0c;
     float m2 = M2c / M0c;
     float m3 = M3c / M0c;
-    float m4 = M4r / M0c; // NB: we don’t have a correction factor for M4 yet
+    float m4 = M4c / M0c;
     return m4 - 4.0f * mu * m3 + 6.0f * mu * mu * m2 - 3.0f * mu * mu * mu * mu;
 }
 
