@@ -4,12 +4,6 @@
 #include <algorithm>
 #include <stdexcept>  // std::logic_error
 
-#pragma once
-#include <cmath>
-#include <limits>
-#include <algorithm>
-#include <stdexcept>  // std::logic_error
-
 /**
  * Copyright 2025, Mikhail Grushinskiy
  *
