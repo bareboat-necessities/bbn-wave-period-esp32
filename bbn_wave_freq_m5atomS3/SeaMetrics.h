@@ -398,19 +398,35 @@ public:
         const float term2  = std::exp(Lambda * std::pow(crest_height / sigma, 3));
         return term1 * term2;
     }
-    float getGroupinessFactor() const {
-        const float Tg = getMeanGroupPeriod();
-        const float Tz = getMeanPeriod_Tz();
-        return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
-    }
-    float getBenjaminFeirIndex() const {
-        const float Hs = getSignificantWaveHeightRayleigh();
-        const float fp = getMeanFrequencyHz();
-        const float bw = getRBW();
-        if (fp <= EPSILON || bw <= EPSILON) return 0.0f;
-        const float df = bw * fp;
-        return (std::sqrt(2.0f) * Hs) / (df / fp);
-    }
+// === Extremes & groupiness ===
+
+// Benjamin–Feir Index (modulational instability criterion)
+// BFI = (√2 * Hs / L0) / (Δf/fp), with Δf ≈ RBW * fp
+float getBenjaminFeirIndex() const {
+    const float Hs = getSignificantWaveHeightRayleigh();
+    const float Tz = getMeanPeriod_Tz();
+    if (Hs <= EPSILON || Tz <= EPSILON) return 0.0f;
+
+    // deep-water wavelength
+    const float L0 = g() * Tz * Tz / (2.0f * float(M_PI));
+    if (L0 <= EPSILON) return 0.0f;
+
+    // peak frequency proxy from mean period
+    const float fp = 1.0f / Tz;
+    const float df = rbw * fp; // bandwidth in Hz
+
+    if (df <= EPSILON) return 0.0f;
+    return (std::sqrt(2.0f) * Hs / L0) / (df / fp);
+}
+
+// Groupiness factor (Longuet–Higgins): Tg/Tz
+// Tg = 2π M0 / M2
+float getGroupinessFactor() const {
+    if (M0 <= EPSILON || M2 <= EPSILON) return 0.0f;
+    const float Tg = (2.0f * float(M_PI)) * (M0 / M2);
+    const float Tz = getMeanPeriod_Tz();
+    return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
+}
 
     // === Energy & wave power ===
     float getEnergyFluxPeriod() const {
