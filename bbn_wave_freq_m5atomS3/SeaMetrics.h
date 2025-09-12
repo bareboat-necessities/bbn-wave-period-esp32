@@ -60,6 +60,32 @@
  * === Bandwidths ===
  *   • CLH, Goda, Kuik
  *   • Longuet–Higgins width
+ *
+ * === Bias-corrected metrics ===
+ *   These apply first-order Jensen corrections for ω-jitter bias:
+ *     E[1/ω²] ≈ (1/ω̄²)(1 + 3σ²/ω̄²),
+ *     E[1/ω⁴] ≈ (1/ω̄⁴)(1 + 10σ²/ω̄²).
+ *   Implemented by scaling M0 and M2 with factors:
+ *     M0_corr = M0 / (1 + 10 σ²/ω̄²),
+ *     M2_corr = M2 / (1 + 3  σ²/ω̄²),
+ *   where ω̄ = mu_w, σ² = var_slow.
+ *
+ *   Provided bias-corrected getters:
+ *     • Moments:          M0_corr, M2_corr
+ *     • RMS displacement: √M0_corr
+ *     • Hs (regular):     2√M0_corr
+ *     • Hs (Rayleigh):    2√2√M0_corr
+ *     • Periods:          Tz_corr, Tm02_corr
+ *     • Rates:            ν_up_corr, ν_down_corr
+ *     • Wave counts:      N_corr(Δt), Garwood CI (bias-corrected)
+ *     • Bandwidths:       CLH_corr, Goda_corr, Kuik_corr, Longuet–Higgins_corr
+ *
+ *   Notes:
+ *     – Phase-based metrics (R_phase) are unaffected and not corrected.
+ *     – M1 and higher moments (M3/M4) are left uncorrected for now
+ *       since their bias expansions are higher-order.
+ *     – These corrected forms help when ω-tracker jitter or accel DC
+ *       bias would otherwise inflate energy estimates.
  */
 
 #ifndef M_PI
