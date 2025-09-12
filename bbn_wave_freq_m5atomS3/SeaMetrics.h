@@ -41,6 +41,9 @@
  *   • Spectral excess kurtosis = (μ₄ / μ₂²) − 3
  *   • Ochi peakedness Q        = (M0 M4) / M2²
  *   • Benassai parameter B     = (M0 M4) / M2²
+ *   • Goda peakedness index    = 2·(Q − 1)
+ *   • Longuet–Higgins ε        = √(1 − M2² / (M0 M4))
+ *   • Spectrum type classifier (swell / mixed / wind-sea, heuristic)
  *
  * Period summaries (s):
  *   • T_z, T_zup, T_zdown
@@ -53,34 +56,46 @@
  * Heights & steepness:
  *   • RMS displacement
  *   • Hs (regular, Rayleigh)
+ *   • H1/10, H1/100 crest heights
+ *   • Most probable & expected max crest height
  *   • Wave steepness (Hs/L0, deep water)
  *
  * Probability metrics:
- *   • Crest exceedance (Rayleigh): P(Hc > h)
- *   • Crest exceedance (Tayfun):  nonlinear approximation
+ *   • Crest exceedance (Rayleigh, Tayfun)
+ *   • Peak-over-threshold mean excess
+ *   • Return-period wave height (Weibull fit, short-term)
  *
  * Bandwidths:
  *   • CLH, Goda, Kuik
  *   • Longuet–Higgins width
+ *   • Spectral narrowness ratio
  *
  * Extremes & groupiness:
- *   • H1/10 crest height
- *   • H1/100 crest height
- *   • Tayfun exceedance probability
- *   • Groupiness factor G = Tg / Tz   (Longuet–Higgins, 1957)
- *   • Benjamin–Feir index (BFI) = (√2 Hs / L0) / (Δf/fp)
+ *   • Groupiness factor G = Tg / Tz
+ *   • Benjamin–Feir index (BFI)
+ *   • Mean group length (≈ 1/RBW)
+ *   • Group height factor (Hs_group / Hs_total)
+ *   • Run length statistics (expected consecutive exceedances)
  *
  * Energy & wave power:
  *   • Energy flux period (Te_flux)
  *   • Wave power per crest length (kW/m)
+ *   • Total spectral wave energy
  *
  * Nonlinear & development:
  *   • Ursell number (Ur = H L² / h³)
  *   • Nonlinearity parameter (Hs·k/2)
- *   • Wave age (c_p / U10)
+ *   • Wave age (c_p / U10, with sea/swell classification)
+ *
+ * Shallow-water extensions:
+ *   • Dispersion ω² = gk tanh(kh), Newton-solved k
+ *   • Shoaling coefficient (K_s)
+ *   • Refraction coefficient (Snell’s law)
+ *   • Battjes–Janssen breaking probability
+ *   • Shallow-water Ursell-like κ (via H, L, h)
  *
  * Breaking indicators:
- *   • Probability of breaking (depth- or steepness-based proxy)
+ *   • Probability of breaking (deep/shallow proxy)
  *   • Depth-limited breaking height (≈ 0.78 h)
  *
  * Comfort & motion sickness:
@@ -89,6 +104,17 @@
  *   • Comfort level rating (0–100)
  *   • Vertical motion intensity
  *   • Time to onset of sickness
+ *
+ * Data quality & diagnostics:
+ *   • SNR (global, band-limited)
+ *   • Temporal stability of Hs, Tp
+ *   • Data gap fraction
+ *   • Bias correction significance
+ *
+ * Application-specific:
+ *   • Bottom orbital velocity (u_b at seabed)
+ *   • Wave Energy Converter (WEC) capture width ratio
+ *   • Radiation stresses Sxx, Syy (scalar proxy)
  *
  * Bias-correction API:
  *   All getters accept a boolean argument `bias_corrected` (default = true).
