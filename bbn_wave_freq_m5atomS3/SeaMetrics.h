@@ -99,7 +99,11 @@
  *       n = 1 → c = 1
  *       n = 2 → c = 3
  *       n = 3 → c = 6
- *       n = 4 → c = 10
+ *
+ *   — Correction is applied only up to M3. —
+ *   Higher-order moments (e.g. M4) are left uncorrected, because literature
+ *   shows they are dominated by high-frequency noise and rarely used in
+ *   operational metrics. (See Holthuijsen 2007; Kuik 1988; Ochi 1976.)
  *
  *   Derived metrics (periods, heights, bandwidths, skew/kurtosis,
  *   extremes, power) are computed consistently from these corrected
