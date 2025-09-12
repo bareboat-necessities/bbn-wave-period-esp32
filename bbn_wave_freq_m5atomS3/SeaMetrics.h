@@ -342,6 +342,17 @@ public:
 // with coefficients: n=1→c=1, n=2→c=3, n=3→c=6, n=4→c=10
 // Correction factors: 1/(1 + c σ²/ω̄²)
 
+
+float getMomentMinus1_BiasCorrected() const {
+    if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
+    if (M_neg1 <= EPSILON) return 0.0f;
+    float omega_bar = mu_w;
+    float var = std::max(var_slow, 0.0f);
+    if (omega_bar <= EPSILON) return M_neg1;
+    float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
+    return M_neg1 * corr;
+}
+
 float getMoment0_BiasCorrected() const {
     if (M0 <= EPSILON) return 0.0f;
     float omega_bar = mu_w;
@@ -377,6 +388,26 @@ float getMoment3_BiasCorrected() const {
     if (omega_bar <= EPSILON) return M3;
     float corr = 1.0f / (1.0f + 1.0f * var / (omega_bar * omega_bar));
     return M3 * corr;
+}
+
+float getMoment4_BiasCorrected() const {
+    if (!extended_metrics) throw std::logic_error("M4 not enabled");
+    if (M4 <= EPSILON) return 0.0f;
+    float omega_bar = mu_w;
+    float var = std::max(var_slow, 0.0f);
+    if (omega_bar <= EPSILON) return M4;
+    float corr = 1.0f / (1.0f + 10.0f * var / (omega_bar * omega_bar));
+    return M4 * corr;
+}
+
+float getMomentMinus1_BiasCorrected() const {
+    if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
+    if (M_neg1 <= EPSILON) return 0.0f;
+    float omega_bar = mu_w;
+    float var = std::max(var_slow, 0.0f);
+    if (omega_bar <= EPSILON) return M_neg1;
+    float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
+    return M_neg1 * corr;
 }
 
 // --- Derived bias-corrected metrics ---
