@@ -1,143 +1,208 @@
 \documentclass[11pt]{article}
-\usepackage{amsmath, amssymb, bm, geometry}
+\usepackage{amsmath, amssymb, bm, geometry, cite}
 \geometry{margin=1in}
 
-\title{SeaMetrics: Online Estimator of Ocean Wave Spectral Metrics}
+\title{SeaMetrics: Online Estimation of Ocean Wave Spectral Metrics}
 \author{Mikhail Grushinskiy}
 \date{2025}
 
 \begin{document}
 \maketitle
 
-\section{Overview}
+\section{Introduction}
 
-\texttt{SeaMetrics} is a C++17 implementation of an online estimator of ocean wave
-spectral metrics, operating on vertical acceleration $a_z(t)$ from an IMU and an externally
-tracked instantaneous angular frequency $\omega(t)$. 
-
-By demodulating the acceleration signal, normalizing to displacement,
-and tracking exponential running averages, \texttt{SeaMetrics} produces
-a wide range of oceanographic metrics in real time.
-
-\section{Input Signals}
-
-\begin{itemize}
-  \item Vertical acceleration $a_z(t)$ [m/s$^2$]
-  \item Instantaneous frequency estimate $\omega_{\text{inst}}(t)$ [rad/s]
-\end{itemize}
+\texttt{SeaMetrics} is an online estimator of ocean wave spectral metrics
+derived from vertical acceleration $a_z(t)$ and an externally tracked instantaneous frequency $\omega_{\text{inst}}(t)$.  
+The tool demodulates acceleration, converts it to displacement envelope power, and tracks
+running averages of spectral moments.  
+From these, a broad set of oceanographic quantities can be computed in real time, ranging from
+basic spectral moments to derived parameters such as significant wave height, mean period,
+bandwidth, groupiness, and probability of extreme crests.
 
 \section{Spectral Moments}
 
-The central quantities are the (normalized) spectral moments:
+The raw spectral moments are
 \begin{align}
-M_0 &= \langle P_{\eta} \rangle, \\
-M_1 &= \langle P_{\eta} \, \omega \rangle, \\
-M_2 &= \langle P_{\eta} \, \omega^2 \rangle, \\
-M_3 &= \langle P_{\eta} \, \omega^3 \rangle \quad \text{(optional)}, \\
-M_4 &= \langle P_{\eta} \, \omega^4 \rangle \quad \text{(optional)}, \\
-M_{-1} &= \langle P_{\eta} \, \omega^{-1} \rangle \quad \text{(optional)},
+M_n = \left\langle P_{\eta}(t)\,\omega(t)^n \right\rangle, \quad n = -1,0,1,2,3,4,
 \end{align}
-where $P_{\eta}$ is the estimated displacement envelope power.
+where $P_{\eta}(t)$ is the instantaneous displacement envelope power.  
 
-\section{Central Moments and Shape (optional)}
+\begin{itemize}
+  \item $M_0$: total variance of surface displacement (``wave energy'').
+  \item $M_1$: energy-weighted mean frequency numerator.
+  \item $M_2$: energy-weighted mean square frequency; linked to wave slopes and upcrossing rate.
+  \item $M_3$, $M_4$: higher moments, enabling skewness, kurtosis, and peakedness diagnostics.
+  \item $M_{-1}$: negative-order moment, used in energy flux and mean wave energy period definitions.
+\end{itemize}
 
-Using $M_k$, central moments can be formed:
+\section{Central Moments and Shape Metrics}
+
+From $M_n$ one can form central moments:
 \begin{align}
-\mu_2 &= \tfrac{M_2}{M_0} - \left(\tfrac{M_1}{M_0}\right)^2, \\
-\mu_3 &= \tfrac{M_3}{M_0} - 3\mu \tfrac{M_2}{M_0} + 2\mu^3, \\
-\mu_4 &= \tfrac{M_4}{M_0} - 4\mu \tfrac{M_3}{M_0} + 6\mu^2 \tfrac{M_2}{M_0} - 3\mu^4,
+\mu_2 &= \frac{M_2}{M_0} - \left(\frac{M_1}{M_0}\right)^2, \\
+\mu_3 &= \frac{M_3}{M_0} - 3\mu\frac{M_2}{M_0} + 2\mu^3, \\
+\mu_4 &= \frac{M_4}{M_0} - 4\mu\frac{M_3}{M_0} + 6\mu^2 \frac{M_2}{M_0} - 3\mu^4,
 \end{align}
-with $\mu = M_1/M_0$.
+with $\mu = M_1/M_0$.  
+They describe spectral \emph{shape}:
+\begin{itemize}
+  \item $\mu_2$: spectral variance (spread around mean frequency).
+  \item $\mu_3$: asymmetry (positive skew $\to$ high-frequency tail dominance).
+  \item $\mu_4$: flatness (kurtosis, peakedness vs. broadness).
+\end{itemize}
 
-From these, spectral shape diagnostics are available:
-\begin{align}
-\text{Skewness} &= \frac{\mu_3}{\mu_2^{3/2}}, \\
-\text{Kurtosis} &= \frac{\mu_4}{\mu_2^2}, \\
-\text{Excess Kurtosis} &= \frac{\mu_4}{\mu_2^2} - 3.
-\end{align}
+From these, common diagnostics include:
+\[
+\text{Skewness} = \frac{\mu_3}{\mu_2^{3/2}}, \quad
+\text{Kurtosis} = \frac{\mu_4}{\mu_2^2}, \quad
+\text{Excess Kurtosis} = \frac{\mu_4}{\mu_2^2} - 3.
+\]
 
 \section{Frequency Metrics}
 
-\begin{align}
-\bar{\omega} &= \frac{M_1}{M_0}, 
-\qquad \bar{f} = \frac{\bar{\omega}}{2\pi}, \\
-\text{RBW} &= \frac{\sqrt{\mu_2}}{\bar{\omega}}, \\
-\text{RBW}_{\phi} &= \frac{\sqrt{\mathrm{Var}(\Delta \phi / \Delta t)}}{\bar{\omega}}.
-\end{align}
+\begin{itemize}
+  \item Mean frequency: $\bar{\omega} = M_1/M_0$, $\bar{f} = \bar{\omega}/(2\pi)$.
+  \item Relative bandwidth (RBW): $\sqrt{\mu_2}/\bar{\omega}$, dimensionless measure of spectral width.
+  \item Phase-increment RBW: variance of $\Delta\phi/\Delta t$ normalized by $\bar{\omega}$; independent check based on phase jitter.
+\end{itemize}
 
 \section{Regularity Metrics}
 
-\begin{align}
-R_{\text{spec}} &= \exp(-\beta \cdot \text{RBW}), \\
-R_{\text{phase}} &= \left\|\left\langle \frac{z}{|z|} \right\rangle\right\|, \\
-\nu &= \sqrt{\frac{M_0 M_2}{M_1^2} - 1}.
-\end{align}
+\begin{itemize}
+  \item Spectral regularity: $R_{\text{spec}} = \exp(-\beta\cdot \text{RBW})$, decays with spectral width.
+  \item Phase regularity: $R_{\text{phase}} = \|\langle z/|z|\rangle\|$, sensitive to phase coherence.
+  \item Narrowness: $\nu = \sqrt{M_0 M_2/M_1^2 - 1}$, classical measure of spectral compactness.
+\end{itemize}
 
 \section{Period Summaries}
 
+Periods summarize average cycle times of waves:
 \begin{align}
-T_z &= \sqrt{2\pi^2 \frac{M_0}{M_2}}, \\
-T_1 &= \frac{2\pi M_0}{M_1}, \\
-T_{m02} &= 2\pi \sqrt{\frac{M_0}{M_2}}, \\
-T_e &= \frac{2\pi M_{-1}}{M_0}, \\
-T_{m0,-1} &= \frac{M_0}{M_{-1}}, \\
-T_{m1,-1} &= \frac{M_1}{M_{-1}}.
+T_z &= \sqrt{2\pi^2 \tfrac{M_0}{M_2}} \quad \text{(mean zero-crossing period)}, \\
+T_1 &= \tfrac{2\pi M_0}{M_1} \quad \text{(mean period)}, \\
+T_{m02} &= 2\pi\sqrt{M_0/M_2} \quad \text{(mean period from variance)}, \\
+T_e &= \tfrac{2\pi M_{-1}}{M_0} \quad \text{(energy period)}, \\
+T_{m0,-1} &= M_0/M_{-1}, \quad
+T_{m1,-1} = M_1/M_{-1}.
 \end{align}
 
-The upcrossing rate is
-\begin{equation}
-\nu_{\uparrow} = \frac{1}{2\pi} \sqrt{\frac{M_2}{M_0}},
-\end{equation}
-and expected wave counts and confidence intervals are available via Poisson/Garwood formulas.
+The upcrossing rate
+\[
+\nu_{\uparrow} = \frac{1}{2\pi}\sqrt{\frac{M_2}{M_0}}
+\]
+gives the expected number of wave cycles per second, enabling wave counting with confidence intervals.
 
 \section{Heights and Steepness}
 
 \begin{align}
-\sigma &= \sqrt{M_0}, \\
-H_s &= 2\sqrt{2} \, \sigma, \\
-\text{RMS disp.} &= \sigma, \\
-\text{Steepness} &= \frac{H_s}{L_0}, \qquad L_0 = \frac{g T_z^2}{2\pi}.
+\sigma &= \sqrt{M_0} \quad \text{(RMS displacement)}, \\
+H_s &= 2\sqrt{2}\,\sigma \quad \text{(significant wave height, Rayleigh)}, \\
+\text{Steepness} &= \frac{H_s}{L_0}, \quad L_0 = \frac{g T_z^2}{2\pi}.
 \end{align}
 
 \section{Probabilities and Extremes}
 
 \begin{itemize}
-  \item Rayleigh exceedance:
+  \item Crest exceedance probability (linear Rayleigh):
   \[
   P(H_c > h) = \exp\!\left(-\frac{h^2}{2\sigma^2}\right).
   \]
-  \item Tayfun nonlinear exceedance (approx.):
+  \item Nonlinear Tayfun exceedance:
   \[
-  P(H_c > h) \approx \exp\!\left(-\frac{h^2}{2\sigma^2}\right) \cdot
-  \exp\!\left(\Lambda \frac{h^3}{\sigma^3}\right).
+  P(H_c > h) \approx \exp\!\left(-\frac{h^2}{2\sigma^2}\right)\exp\!\left(\Lambda \frac{h^3}{\sigma^3}\right),
   \]
-  \item Crest heights: $H_{1/10}, H_{1/100}$.
+  with $\Lambda$ proportional to steepness.
+  \item Quantile crests: $H_{1/10}, H_{1/100}$.
 \end{itemize}
 
 \section{Bandwidth Metrics}
 
+Multiple definitions of spectral bandwidth are available:
 \begin{align}
-\varepsilon_{\text{CLH}} &= \sqrt{1 - \frac{M_1^2}{M_0 M_2}}, \\
-\varepsilon_{\text{Goda}} &= \sqrt{\frac{M_0 M_2}{M_1^2} - 1}, \\
+\varepsilon_{\text{CLH}} &= \sqrt{1 - \tfrac{M_1^2}{M_0 M_2}} \quad \text{(Cartwright–Longuet-Higgins)}, \\
+\varepsilon_{\text{Goda}} &= \sqrt{\tfrac{M_0 M_2}{M_1^2} - 1}, \\
 \varepsilon_{\text{Kuik}} &= \frac{\sqrt{M_0 M_2 - M_1^2}}{M_1}, \\
-\varepsilon_{\text{LH}} &= \sqrt{\frac{M_0 M_2}{M_1^2} - 1}.
+\varepsilon_{\text{LH}} &= \sqrt{\tfrac{M_0 M_2}{M_1^2} - 1} \quad \text{(Longuet–Higgins width)}.
 \end{align}
 
 \section{Energy and Power}
 
 \begin{align}
-T_{e,\text{flux}} &= \frac{M_{-1}}{M_0}, \\
-P &= \frac{\rho g^2}{64 \pi} H_s^2 T_e.
+T_{e,\text{flux}} &= \frac{M_{-1}}{M_0} \quad \text{(energy flux period)}, \\
+P &= \frac{\rho g^2}{64\pi} H_s^2 T_e \quad \text{(deep-water wave power)}.
 \end{align}
 
-\section{Bias-Corrected Metrics}
+\section{Bias Correction}
 
-To reduce bias from frequency jitter, Jensen’s inequality correction is applied:
+\subsection{Motivation}
+
+When frequency estimates $\omega$ are noisy, any metrics involving inverse powers $1/\omega^n$ are biased high due to Jensen’s inequality.  
+For example,
 \[
-E\!\left[\frac{1}{\omega^n}\right] \approx 
-\frac{1}{\bar{\omega}^n}\Big(1 + c_n \frac{\sigma_\omega^2}{\bar{\omega}^2}\Big),
+E\!\left[\frac{1}{\omega^2}\right] \neq \frac{1}{E[\omega]^2}.
 \]
-with coefficients $c_1=1, c_2=3, c_3=6, c_4=10$.  
-Bias-corrected versions of all major metrics (moments, periods, bandwidths, extremes, power) are provided.
+
+\subsection{First-Order Correction}
+
+Expanding about mean $\bar{\omega}$ with variance $\sigma_\omega^2$:
+\[
+E\!\left[\frac{1}{\omega^n}\right] \approx \frac{1}{\bar{\omega}^n}
+\left(1 + c_n \frac{\sigma_\omega^2}{\bar{\omega}^2}\right),
+\]
+with coefficients
+\[
+c_1 = 1,\quad c_2 = 3,\quad c_3 = 6,\quad c_4 = 10.
+\]
+
+Thus bias-corrected moments are:
+\begin{align}
+M_0^c &= \frac{M_0}{1 + 10 \sigma_\omega^2 / \bar{\omega}^2}, \\
+M_1^c &= \frac{M_1}{1 + 6 \sigma_\omega^2 / \bar{\omega}^2}, \\
+M_2^c &= \frac{M_2}{1 + 3 \sigma_\omega^2 / \bar{\omega}^2}, \\
+M_3^c &= \frac{M_3}{1 + 1 \sigma_\omega^2 / \bar{\omega}^2}, \\
+M_4^c &= M_4 \quad (\text{no correction needed}), \\
+M_{-1}^c &= \frac{M_{-1}}{1 + 6 \sigma_\omega^2 / \bar{\omega}^2}.
+\end{align}
+
+All higher-level corrected metrics (periods, heights, bandwidths, counts, skew/kurtosis, energy flux) are computed consistently from $M_n^c$.
+
+\subsection{Interpretation}
+
+Bias correction reduces spurious inflation of variance-related metrics (e.g. $H_s$, $T_z$, RBW) under jittery frequency tracking or accelerometer DC offset.  
+It ensures stable trends in noisy field conditions.
+
+\section{References}
+
+\begin{thebibliography}{9}
+\bibitem{Cartwright1956}
+D. E. Cartwright and M. S. Longuet-Higgins,
+\textit{The statistical distribution of the maxima of a random function},
+Proc. R. Soc. Lond. A, 237(1209):212–232, 1956.
+
+\bibitem{Longuet1963}
+M. S. Longuet-Higgins,
+\textit{The effect of non-linearities on statistical distributions in the theory of sea waves},
+J. Fluid Mech., 17(3):459–480, 1963.
+
+\bibitem{Goda1970}
+Y. Goda,
+\textit{Numerical experiments on wave statistics with spectral simulation},
+Rep. Port Harbour Res. Inst., 9(3):3–57, 1970.
+
+\bibitem{Kuik1988}
+A. J. Kuik, G. P. van Vledder, and L. H. Holthuijsen,
+\textit{A method for the routine analysis of pitch-and-roll buoy wave data},
+J. Phys. Oceanogr., 18:1020–1034, 1988.
+
+\bibitem{Tayfun1980}
+M. A. Tayfun,
+\textit{Narrow-band nonlinear sea waves},
+J. Geophys. Res., 85(C3):1548–1552, 1980.
+
+\bibitem{Ochi1998}
+M. K. Ochi,
+\textit{Ocean Waves: The Stochastic Approach},
+Cambridge Univ. Press, 1998.
+\end{thebibliography}
 
 \end{document}
