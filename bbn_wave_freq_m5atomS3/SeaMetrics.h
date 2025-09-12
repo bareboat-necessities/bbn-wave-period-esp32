@@ -68,12 +68,10 @@
  *   • Longuet–Higgins width
  */
 
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-// std::clamp polyfill for pre-C++17 (kept harmless on C++17+)
 #if __cplusplus < 201703L
 namespace std {
     template <class T>
@@ -85,19 +83,17 @@ namespace std {
 
 class SeaMetrics {
 public:
-    // Numeric constants
     constexpr static float EPSILON      = 1e-12f;
-    constexpr static float BETA_SPEC    = 1.0f;     // R_spec = exp(−β·RBW)
-    constexpr static float OMEGA_DD_MAX = 30.0f;    // rad/s² max slew for demod basis
+    constexpr static float BETA_SPEC    = 1.0f;
+    constexpr static float OMEGA_DD_MAX = 30.0f;
 
     struct WaveCountEstimate {
-        float expected;   // expected count
-        float ci_lower;   // lower bound (Garwood)
-        float ci_upper;   // upper bound (Garwood)
-        float confidence; // confidence level used
+        float expected;
+        float ci_lower;
+        float ci_upper;
+        float confidence;
     };
 
-    // Constructor
     SeaMetrics(float tau_env_sec   = 15.0f,
                float tau_mom_sec   = 180.0f,
                float omega_min_hz  = 0.03f,
@@ -112,50 +108,28 @@ public:
         tau_mom   = tau_mom_sec;
         tau_coh   = std::max(1e-3f, tau_coh_sec);
         tau_omega = std::max(0.0f,  tau_omega_sec);
-        omega_min = 2.0f * float(M_PI) * omega_min_hz; // Hz → rad/s
+        omega_min = 2.0f * float(M_PI) * omega_min_hz;
         reset();
     }
 
     void reset() {
-        // Phase / envelope
         phi = 0.0f; z_real = z_imag = 0.0f;
-
-        // Raw moments & metrics
         M0 = M1 = M2 = 0.0f;
-        nu = 0.0f;
-        R_spec = R_phase = 0.0f;
-        rbw = 0.0f;
-
+        nu = 0.0f; R_spec = R_phase = rbw = 0.0f;
         if (extended_metrics) { M3 = M4 = mu2 = mu3 = mu4 = 0.0f; }
         if (negative_moments) { M_neg1 = 0.0f; }
-
-        // Coherence
-        coh_r = coh_i = 0.0f;
-        has_coh = false;
-
-        // Frequency trackers
-        omega_lp = omega_disp_lp = 0.0f;
-        omega_last = mu_w = 0.0f;
+        coh_r = coh_i = 0.0f; has_coh = false;
+        omega_lp = omega_disp_lp = 0.0f; omega_last = mu_w = 0.0f;
         var_fast = var_slow = 0.0f;
-
-        // Flags
-        has_omega_lp = false;
-        has_omega_disp_lp = false;
-        has_moments = false;
-
-        // Demod ω limiter
+        has_omega_lp = has_omega_disp_lp = has_moments = false;
         omega_phi_last = 0.0f;
-
-        // Two-pole RBW stats
         wbar_ema = w2bar_ema = 0.0f;
     }
 
-    // Main update: dt (s), vertical acceleration (m/s²), instantaneous omega (rad/s)
     void update(float dt_s, float accel_z, float omega_inst) {
         if (!(dt_s > 0.0f)) return;
-        if (accel_z    != accel_z)    accel_z    = 0.0f;   // NaN guards
+        if (accel_z    != accel_z)    accel_z    = 0.0f;
         if (omega_inst != omega_inst) omega_inst = omega_min;
-
         updateAlpha(dt_s);
         demodulateAcceleration(accel_z, omega_inst, dt_s);
         updateSpectralMoments();
@@ -202,7 +176,7 @@ public:
     // === Regularity metrics ===
     float getRegularitySpectral() const { return R_spec; }
     float getRegularityPhase()    const { return R_phase; }
-    float getNarrowness() const { return nu; }
+    float getNarrowness()         const { return nu; }
 
     // === Shape diagnostics (extended only) ===
     float getSpectralSkewness() const {
@@ -220,8 +194,18 @@ public:
         if (mu2 <= EPSILON) return 0.0f;
         return (mu4 / (mu2 * mu2)) - 3.0f;
     }
+    float getPeakednessOchi() const {
+        if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
+        if (M2 <= EPSILON) return 0.0f;
+        return (M0 * M4) / (M2 * M2);
+    }
+    float getBenassaiParameter() const {
+        if (!extended_metrics) throw std::logic_error("Extended metrics not enabled");
+        if (M2 <= EPSILON) return 0.0f;
+        return (M0 * M4) / (M2 * M2);
+    }
 
-    // === Period summaries (s) & rates (Hz) ===
+    // === Period summaries & rates ===
     float getMeanPeriod_Tz() const {
         if (M2 <= EPSILON) return 0.0f;
         return std::sqrt(2.0f * float(M_PI) * float(M_PI) * (M0 / M2));
@@ -278,19 +262,37 @@ public:
         if (M0 <= EPSILON) return 0.0f;
         return (2.0f * float(M_PI) * M_neg1) / M0;
     }
+    float getMeanPeriod_Tm0m1() const {
+        if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
+        if (M_neg1 <= EPSILON) return 0.0f;
+        return M0 / M_neg1;
+    }
+    float getMeanPeriod_Tm1m1() const {
+        if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
+        if (M_neg1 <= EPSILON) return 0.0f;
+        return M1 / M_neg1;
+    }
+    float getMeanGroupPeriod() const { return getMeanPeriod_Tz(); }
 
-    // === Displacement & wave heights ===
-    float getRMSDisplacement() const {
-        return (M0 > EPSILON) ? std::sqrt(M0) : 0.0f;
-    }
-    float getSignificantWaveHeightRegular() const {
-        return 2.0f * getRMSDisplacement(); // 2√M0
-    }
-    float getSignificantWaveHeightRayleigh() const {
-        return 2.0f * std::sqrt(2.0f) * getRMSDisplacement(); // 2√2√M0
+    // === Heights & steepness ===
+    float getRMSDisplacement() const { return (M0 > EPSILON) ? std::sqrt(M0) : 0.0f; }
+    float getSignificantWaveHeightRegular() const { return 2.0f * getRMSDisplacement(); }
+    float getSignificantWaveHeightRayleigh() const { return 2.0f * std::sqrt(2.0f) * getRMSDisplacement(); }
+    float getWaveSteepness() const {
+        float Tz = getMeanPeriod_Tz();
+        if (Tz <= EPSILON) return 0.0f;
+        float L0 = 9.80665f * Tz * Tz / (2.0f * float(M_PI)); // deep-water wavelength
+        return getSignificantWaveHeightRayleigh() / L0;
     }
 
-    // === Classical bandwidth measures ===
+    // === Probability ===
+    float getExceedanceProbRayleigh(float crest_height) const {
+        if (M0 <= EPSILON) return 0.0f;
+        float sigma = std::sqrt(M0);
+        return std::exp(-(crest_height * crest_height) / (2.0f * sigma * sigma));
+    }
+
+    // === Bandwidths ===
     float getBandwidthCLH() const {
         if (M0 <= EPSILON || M2 <= EPSILON) return 0.0f;
         float ratio = (M1 * M1) / (M0 * M2);
@@ -307,35 +309,33 @@ public:
         float val = (M0 * M2) - (M1 * M1);
         return (val > 0.0f) ? std::sqrt(val) / M1 : 0.0f;
     }
+    float getWidthLonguetHiggins() const {
+        if (M1 <= EPSILON) return 0.0f;
+        float val = (M0 * M2) / (M1 * M1);
+        return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
+    }
 
 private:
     // Flags
-    bool extended_metrics;   // enable M3, M4 and central moments/skew/kurt
-    bool negative_moments;   // enable M_{-1} and T_e
+    bool extended_metrics;
+    bool negative_moments;
 
-    // Time constants
-    float tau_env, tau_mom, tau_coh, tau_omega;
-    float omega_min;
-
-    // EMA alphas
+    // Time constants & alphas
+    float tau_env = 0.0f, tau_mom = 0.0f, tau_coh = 0.0f, tau_omega = 0.0f;
+    float omega_min = 0.0f;
     float alpha_env = 0.0f, alpha_mom = 0.0f, alpha_coh = 0.0f, alpha_omega = 0.0f;
 
     // Demod/envelope state
     float phi = 0.0f;
     float z_real = 0.0f, z_imag = 0.0f;
 
-    // Raw moments & metrics
-    float M0 = 0.0f, M1 = 0.0f, M2 = 0.0f;
-    float M3 = 0.0f, M4 = 0.0f;         // extended
-    float M_neg1 = 0.0f;                // negative
-    float mu2 = 0.0f, mu3 = 0.0f, mu4 = 0.0f; // central moments (cached when extended)
-    float nu = 0.0f;
-    float R_spec = 0.0f, R_phase = 0.0f;
-    float rbw = 0.0f;
+    // Moments & metrics
+    float M0 = 0.0f, M1 = 0.0f, M2 = 0.0f, M3 = 0.0f, M4 = 0.0f, M_neg1 = 0.0f;
+    float mu2 = 0.0f, mu3 = 0.0f, mu4 = 0.0f;
+    float nu = 0.0f, R_spec = 0.0f, R_phase = 0.0f, rbw = 0.0f;
 
-    // Phase coherence
-    float coh_r = 0.0f, coh_i = 0.0f;
-    bool  has_coh = false;
+    // Coherence
+    float coh_r = 0.0f, coh_i = 0.0f; bool has_coh = false;
 
     // Frequency tracking
     float omega_lp = 0.0f, omega_disp_lp = 0.0f;
@@ -343,14 +343,13 @@ private:
     float var_fast = 0.0f, var_slow = 0.0f;
     bool  has_omega_lp = false, has_omega_disp_lp = false, has_moments = false;
 
-    // Demod ω slew limiter memory
+    // Demod ω limiter
     float omega_phi_last = 0.0f;
 
-    // Decoupled running means for RBW (two-pole)
-    float wbar_ema = 0.0f;   // ⟨ω⟩
-    float w2bar_ema = 0.0f;  // ⟨ω²⟩
+    // Two-pole RBW stats
+    float wbar_ema = 0.0f, w2bar_ema = 0.0f;
 
-    // Variance adaptation for ω tracker (fast/slow)
+    // Variance adaptation for ω tracker
     constexpr static float ALPHA_FAST = 0.05f;
     constexpr static float ALPHA_SLOW = 0.02f;
 
@@ -408,7 +407,7 @@ private:
     }
 
     void updateSpectralMoments() {
-        // accel→disp envelope via 1/ω_lp² (lean normalization)
+        // accel→disp envelope via 1/ω_lp²
         float omega_norm = std::max(omega_lp, omega_min);
         float inv_w2 = 1.0f / std::max(omega_norm * omega_norm, EPSILON);
         float disp_r = z_real * inv_w2;
@@ -475,13 +474,14 @@ private:
     }
 
     void computeRegularityMetrics() {
-        // RBW via μ2_two_pole / ω̄
+        // Spectral regularity via RBW = √μ₂ / ω̄ using decoupled two-pole μ₂
         float omega_bar = getMeanFrequencyRad();
         float mu2_two_pole = std::max(0.0f, w2bar_ema - wbar_ema * wbar_ema - std::max(var_slow, 0.0f));
-        rbw = (omega_bar > 0.0f) ? (std::sqrt(mu2_two_pole) / omega_bar) : 0.0f;
+
+        rbw   = (omega_bar > 0.0f) ? (std::sqrt(mu2_two_pole) / std::max(omega_bar, omega_min)) : 0.0f;
         R_spec = std::clamp(std::exp(-BETA_SPEC * rbw), 0.0f, 1.0f);
 
-        // Narrowness (legacy)
+        // Narrowness ν (legacy)
         if (M1 > EPSILON && M0 > 0.0f && M2 > 0.0f) {
             float ratio = (M0 * M2) / (M1 * M1) - 1.0f;
             nu = (ratio > 0.0f) ? std::sqrt(ratio) : 0.0f;
@@ -506,13 +506,10 @@ private:
 
     // ---- math helpers ----
 
-    // Fast inverse error function approximation (C++17 compatible).
-    // Winitzki initial approximation + one Halley refinement.
+    // Fast inverse error function approximation (C++17).
+    // Winitzki initial approximation + two Halley refinements.
     static float erfinv_approx(float x) {
-        // clamp domain
         x = std::clamp(x, -0.999999f, 0.999999f);
-
-        // Winitzki (2008) initial guess
         const float a = 0.147f;
         float ln = std::log(1.0f - x * x);
         float tt1 = 2.0f / (float(M_PI) * a) + 0.5f * ln;
@@ -520,12 +517,10 @@ private:
         float sign = (x < 0.0f) ? -1.0f : 1.0f;
         float y = sign * std::sqrt(std::sqrt(tt1 * tt1 - tt2) - tt1);
 
-        // Halley's method refinement on erf(y) - x = 0
-        auto erf_approx = [](float t)->float { return std::erf(t); };
         for (int i = 0; i < 2; ++i) {
-            float ey = erf_approx(y) - x;
-            float dy = (2.0f / std::sqrt(float(M_PI))) * std::exp(-y * y);      // derivative
-            float d2y = -2.0f * y * dy;                                         // second derivative of erf
+            float ey = std::erf(y) - x;
+            float dy = (2.0f / std::sqrt(float(M_PI))) * std::exp(-y * y);
+            float d2y = -2.0f * y * dy;
             float denom = 2.0f * dy * dy - ey * d2y;
             if (std::fabs(denom) < 1e-12f) break;
             y -= (2.0f * ey * dy) / denom;
@@ -534,7 +529,6 @@ private:
     }
 
     static float normalQuantile(float p) {
-        // z = sqrt(2) * erfinv(2p - 1)
         p = std::clamp(p, 1e-7f, 1.0f - 1e-7f);
         return std::sqrt(2.0f) * erfinv_approx(2.0f * p - 1.0f);
     }
