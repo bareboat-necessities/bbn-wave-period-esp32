@@ -185,6 +185,13 @@ public:
         float confidence;
     };
 
+    enum class SpectrumType {
+        Swell,
+        Mixed,
+        WindSea,
+        Unknown
+    };
+
     SeaMetrics(float tau_env_sec   = 15.0f,
                float tau_mom_sec   = 180.0f,
                float omega_min_hz  = 0.03f,
