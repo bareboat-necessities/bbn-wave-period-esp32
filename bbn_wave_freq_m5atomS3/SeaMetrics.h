@@ -112,6 +112,21 @@
  *     carries DC.
  *   – Raw (uncorrected) values can be obtained by passing
  *     `bias_corrected = false`.
+ *
+ * Limitations & assumptions:
+ *   – Deep-water dispersion relation is assumed (ω² = gk); finite-depth
+ *     effects are not included unless depth is explicitly provided in
+ *     formulas (e.g. Ursell number, breaking probability).
+ *   – All metrics are scalar (1-D) and nondirectional; no spreading or
+ *     directional spectra are modeled.
+ *   – Acceleration is assumed to come from a vertical axis sensor with
+ *     Z-up convention; biases and sensor errors must be pre-filtered.
+ *   – Bias correction applies only to frequency-tracker jitter (first-order
+ *     Jensen expansion). It does not address amplitude noise, sensor bias,
+ *     or nonstationarity.
+ *   – Comfort and seasickness models use empirical constants (ISO-based
+ *     approximations) and should be treated as heuristic indicators rather
+ *     than clinical predictions.
  */
 
 #ifndef M_PI
