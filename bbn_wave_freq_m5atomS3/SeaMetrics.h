@@ -693,6 +693,14 @@ private:
         phi += omega_phi * dt_s;
         phi = std::fmod(phi, 2.0f * float(M_PI));
 
+        // Instantaneous frequency estimate from phase increment
+        float inst_freq = omega_phi; // since Δφ/dt = ω_phi
+
+        // Update running mean/variance of inst_freq
+        float delta_f = inst_freq - dphi_mean;
+        dphi_mean += ALPHA_FAST * delta_f;
+        dphi_var  = (1.0f - ALPHA_FAST) * dphi_var + ALPHA_FAST * delta_f * delta_f;
+
         // Rotate acceleration to baseband I/Q: y = a · e^(−jφ)
         float c = std::cos(-phi), s = std::sin(-phi);
         float y_real = accel_z * c;
