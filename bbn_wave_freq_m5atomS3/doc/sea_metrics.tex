@@ -1,5 +1,5 @@
 \documentclass[11pt]{article}
-\usepackage{amsmath, amssymb, bm, geometry, cite, float}
+\usepackage{amsmath, amssymb, bm, geometry, cite, float, longtable}
 \geometry{margin=1in}
 
 \title{SeaMetrics: Online Estimation of Ocean Wave Spectral Metrics}
@@ -224,12 +224,30 @@ Table~\ref{tab:metrics} summarizes the key metrics implemented in
 \texttt{SeaMetrics}, their physical meaning, and typical usage in
 oceanography.
 
-\begin{table}[H]
-\centering
 \renewcommand{\arraystretch}{1.2}
-\begin{tabular}{|l|l|p{8cm}|}
+\begin{longtable}{|l|l|p{8cm}|}
+\caption{Summary of metrics computed by \texttt{SeaMetrics}.} \label{tab:metrics} \\
 \hline
 \textbf{Metric} & \textbf{Symbol} & \textbf{Physical meaning / use} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Metric} & \textbf{Symbol} & \textbf{Physical meaning / use} \\
+\hline
+\endhead
+\hline
+\endfoot
+\hline
+\endlastfoot
+Zeroth moment & $M_0$ & Total variance of displacement; proportional to wave energy. \\
+First moment & $M_1$ & Energy-weighted frequency; defines mean wave frequency. \\
+Second moment & $M_2$ & Energy-weighted squared frequency; controls upcrossing rate. \\
+Third, fourth moments & $M_3, M_4$ & Higher-order spectral shape information (skewness, kurtosis). \\
+Negative moment & $M_{-1}$ & Defines energy flux and mean wave energy period. \\
+\hline
+Mean frequency & $\bar{\omega}, \bar{f}$ & Central frequency of sea state in rad/s or Hz. \\
+RBW & $\sqrt{\mu_2}/\bar{\omega}$ & Dimensionless measure of spectral width. \\
+Phase RBW & Var$(\Delta \phi / \Delta t)$ & Alternative bandwidth estimate from phase increments. \\
 \hline
 Zeroth moment & $M_0$ & Total variance of displacement; proportional to wave energy. \\
 First moment & $M_1$ & Energy-weighted frequency; defines mean wave frequency. \\
@@ -276,10 +294,8 @@ Seasickness incidence & -- & Predicted percentage affected during exposure. \\
 Comfort rating & -- & Heuristic 0--100 scale based on MSDV. \\
 Time to onset & -- & Approximate time until discomfort occurs. \\
 \hline
-\end{tabular}
-\caption{Summary of metrics computed by \texttt{SeaMetrics}.}
-\label{tab:metrics}
-\end{table}
+\end{longtable}
+
 
 \begin{thebibliography}{9}
 \bibitem{Cartwright1956}
