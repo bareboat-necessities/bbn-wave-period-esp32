@@ -335,168 +335,184 @@ public:
         return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
     }
 
-    // === Bias-corrected metrics ===
-    //
-    // Apply first-order Jensen corrections for inverse ω powers:
-    //   E[1/ω²] ≈ (1/ω̄²)(1 + 3σ²/ω̄²)
-    //   E[1/ω⁴] ≈ (1/ω̄⁴)(1 + 10σ²/ω̄²)
-    // => correction factors ≈ 1/(1 + c σ²/ω̄²)
-    // with c = 3 for 1/ω², c = 10 for 1/ω⁴.
+// === Bias-corrected metrics ===
+//
+// Apply first-order Jensen corrections for inverse ω powers:
+//   E[1/ω^n] ≈ (1/ω̄^n)(1 + c σ²/ω̄²)
+// with coefficients: n=1→c=1, n=2→c=3, n=3→c=6, n=4→c=10
+// Correction factors: 1/(1 + c σ²/ω̄²)
 
-    float getMoment0_BiasCorrected() const {
-        if (M0 <= EPSILON) return 0.0f;
-        float omega_bar = mu_w;
-        float var = std::max(var_slow, 0.0f);
-        if (omega_bar <= EPSILON) return M0;
-        float corr = 1.0f / (1.0f + 10.0f * var / (omega_bar * omega_bar));
-        return M0 * corr;
+float getMoment0_BiasCorrected() const {
+    if (M0 <= EPSILON) return 0.0f;
+    float omega_bar = mu_w;
+    float var = std::max(var_slow, 0.0f);
+    if (omega_bar <= EPSILON) return M0;
+    float corr = 1.0f / (1.0f + 10.0f * var / (omega_bar * omega_bar));
+    return M0 * corr;
+}
+
+float getMoment1_BiasCorrected() const {
+    if (M1 <= EPSILON) return 0.0f;
+    float omega_bar = mu_w;
+    float var = std::max(var_slow, 0.0f);
+    if (omega_bar <= EPSILON) return M1;
+    float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
+    return M1 * corr;
+}
+
+float getMoment2_BiasCorrected() const {
+    if (M2 <= EPSILON) return 0.0f;
+    float omega_bar = mu_w;
+    float var = std::max(var_slow, 0.0f);
+    if (omega_bar <= EPSILON) return M2;
+    float corr = 1.0f / (1.0f + 3.0f * var / (omega_bar * omega_bar));
+    return M2 * corr;
+}
+
+float getMoment3_BiasCorrected() const {
+    if (!extended_metrics) throw std::logic_error("M3 not enabled");
+    if (M3 <= EPSILON) return 0.0f;
+    float omega_bar = mu_w;
+    float var = std::max(var_slow, 0.0f);
+    if (omega_bar <= EPSILON) return M3;
+    float corr = 1.0f / (1.0f + 1.0f * var / (omega_bar * omega_bar));
+    return M3 * corr;
+}
+
+// --- Derived bias-corrected metrics ---
+
+float getRMSDisplacement_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    return (M0c > EPSILON) ? std::sqrt(M0c) : 0.0f;
+}
+
+float getSignificantWaveHeightRegular_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    return 2.0f * std::sqrt(M0c);
+}
+
+float getSignificantWaveHeightRayleigh_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    return 2.0f * std::sqrt(2.0f) * std::sqrt(M0c);
+}
+
+// Frequencies
+float getMeanFrequencyRad_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    return (M0c > EPSILON) ? (M1c / M0c) : omega_min;
+}
+
+float getMeanFrequencyHz_BiasCorrected() const {
+    return getMeanFrequencyRad_BiasCorrected() / (2.0f * float(M_PI));
+}
+
+// Periods
+float getMeanPeriod_Tz_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    if (M2c <= EPSILON) return 0.0f;
+    return std::sqrt(2.0f * float(M_PI) * float(M_PI) * (M0c / M2c));
+}
+
+float getMeanPeriod_TzUp_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
+float getMeanPeriod_TzDown_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
+
+float getMeanPeriod_Tm02_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    if (M2c <= EPSILON) return 0.0f;
+    return 2.0f * float(M_PI) * std::sqrt(M0c / M2c);
+}
+
+float getMeanPeriod_T1_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    if (M1c <= EPSILON) return 0.0f;
+    return (2.0f * float(M_PI) * M0c) / M1c;
+}
+
+// Rates & counts
+float getUpcrossingRate_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    return (1.0f / (2.0f * float(M_PI))) * std::sqrt(M2c / M0c);
+}
+
+float getDowncrossingRate_BiasCorrected() const {
+    return getUpcrossingRate_BiasCorrected();
+}
+
+float estimateWaveCount_BiasCorrected(float duration_s) const {
+    if (duration_s <= 0.0f) return 0.0f;
+    return getUpcrossingRate_BiasCorrected() * duration_s;
+}
+
+WaveCountEstimate estimateWaveCountWithCI_BiasCorrected(
+        float duration_s, float confidence = 0.95f) const 
+{
+    WaveCountEstimate out{0.0f, 0.0f, 0.0f, confidence};
+    if (duration_s <= 0.0f) return out;
+
+    // Expected count from bias-corrected upcrossing rate
+    float Nexp = estimateWaveCount_BiasCorrected(duration_s);
+    int   N    = (int)std::round(Nexp);
+
+    float alpha = std::max(0.0f, std::min(1.0f, 1.0f - confidence));
+    float lower, upper;
+
+    if (N == 0) {
+        lower = 0.0f;
+        upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
+    } else {
+        lower = 0.5f * chi2Quantile(alpha / 2.0f,            2 * N);
+        upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
     }
 
-    float getMoment1_BiasCorrected() const {
-        if (M1 <= EPSILON) return 0.0f;
-        float omega_bar = mu_w;
-        float var = std::max(var_slow, 0.0f);
-        if (omega_bar <= EPSILON) return M1;
-        float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
-        return M1 * corr;
-    }
+    out.expected = Nexp;
+    out.ci_lower = lower;
+    out.ci_upper = upper;
+    return out;
+}
 
-    float getMoment2_BiasCorrected() const {
-        if (M2 <= EPSILON) return 0.0f;
-        float omega_bar = mu_w;
-        float var = std::max(var_slow, 0.0f);
-        if (omega_bar <= EPSILON) return M2;
-        float corr = 1.0f / (1.0f + 3.0f * var / (omega_bar * omega_bar));
-        return M2 * corr;
-    }
+// Bandwidths
+float getBandwidthCLH_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    if (M0c <= EPSILON || M2c <= EPSILON) return 0.0f;
+    float ratio = (M1c * M1c) / (M0c * M2c);
+    ratio = std::clamp(ratio, 0.0f, 1.0f);
+    return std::sqrt(1.0f - ratio);
+}
 
-    float getMoment1_BiasCorrected() const {
-        if (M1 <= EPSILON) return 0.0f;
-        float omega_bar = mu_w;
-        float var = std::max(var_slow, 0.0f);
-        if (omega_bar <= EPSILON) return M1;
-        float corr = 1.0f / (1.0f + 6.0f * var / (omega_bar * omega_bar));
-        return M1 * corr;
-    }
+float getBandwidthGoda_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    if (M0c <= EPSILON || M1c <= EPSILON) return 0.0f;
+    float ratio = (M0c * M2c) / (M1c * M1c);
+    return (ratio > 1.0f) ? std::sqrt(ratio - 1.0f) : 0.0f;
+}
 
-    float getMoment3_BiasCorrected() const {
-        if (!extended_metrics) throw std::logic_error("M3 not enabled");
-        if (M3 <= EPSILON) return 0.0f;
-        float omega_bar = mu_w;
-        float var = std::max(var_slow, 0.0f);
-        if (omega_bar <= EPSILON) return M3;
-        float corr = 1.0f / (1.0f + 1.0f * var / (omega_bar * omega_bar));
-        return M3 * corr;
-    }
+float getBandwidthKuik_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    if (M1c <= EPSILON) return 0.0f;
+    float val = (M0c * M2c) - (M1c * M1c);
+    return (val > 0.0f) ? std::sqrt(val) / M1c : 0.0f;
+}
 
-    float getSignificantWaveHeightRegular_BiasCorrected() const {
-        float M0_corr = getMoment0_BiasCorrected();
-        return 2.0f * std::sqrt(M0_corr);
-    }
-
-    float getSignificantWaveHeightRayleigh_BiasCorrected() const {
-        float M0_corr = getMoment0_BiasCorrected();
-        return 2.0f * std::sqrt(2.0f) * std::sqrt(M0_corr);
-    }
-
-    float getBandwidthCLH_BiasCorrected() const {
-        float M0c = getMoment0_BiasCorrected();
-        float M2c = getMoment2_BiasCorrected();
-        if (M0c <= EPSILON || M2c <= EPSILON) return 0.0f;
-        float ratio = (M1 * M1) / (M0c * M2c);
-        ratio = std::clamp(ratio, 0.0f, 1.0f);
-        return std::sqrt(1.0f - ratio);
-    }
-
-    float getBandwidthGoda_BiasCorrected() const {
-        float M0c = getMoment0_BiasCorrected();
-        float M2c = getMoment2_BiasCorrected();
-        if (M0c <= EPSILON || M1 <= EPSILON) return 0.0f;
-        float ratio = (M0c * M2c) / (M1 * M1);
-        return (ratio > 1.0f) ? std::sqrt(ratio - 1.0f) : 0.0f;
-    }
-
-    float getBandwidthKuik_BiasCorrected() const {
-        float M0c = getMoment0_BiasCorrected();
-        float M2c = getMoment2_BiasCorrected();
-        if (M1 <= EPSILON) return 0.0f;
-        float val = (M0c * M2c) - (M1 * M1);
-        return (val > 0.0f) ? std::sqrt(val) / M1 : 0.0f;
-    }
-
-    // === Bias-corrected period summaries ===
-    float getMeanPeriod_Tz_BiasCorrected() const {
-        float M0c = getMoment0_BiasCorrected();
-        float M2c = getMoment2_BiasCorrected();
-        if (M2c <= EPSILON) return 0.0f;
-        return std::sqrt(2.0f * float(M_PI) * float(M_PI) * (M0c / M2c));
-    }
-
-    float getMeanPeriod_TzUp_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
-    float getMeanPeriod_TzDown_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
-
-    float getMeanPeriod_Tm02_BiasCorrected() const {
-        float M0c = getMoment0_BiasCorrected();
-        float M2c = getMoment2_BiasCorrected();
-        if (M2c <= EPSILON) return 0.0f;
-        return 2.0f * float(M_PI) * std::sqrt(M0c / M2c);
-    }
-
-    float getUpcrossingRate_BiasCorrected() const {
-        float M0c = getMoment0_BiasCorrected();
-        float M2c = getMoment2_BiasCorrected();
-        if (M0c <= EPSILON) return 0.0f;
-        return (1.0f / (2.0f * float(M_PI))) * std::sqrt(M2c / M0c);
-    }
-
-    float getDowncrossingRate_BiasCorrected() const {
-        return getUpcrossingRate_BiasCorrected();
-    }
-
-    float estimateWaveCount_BiasCorrected(float duration_s) const {
-        if (duration_s <= 0.0f) return 0.0f;
-        return getUpcrossingRate_BiasCorrected() * duration_s;
-    }
-
-    WaveCountEstimate estimateWaveCountWithCI_BiasCorrected(
-            float duration_s, float confidence = 0.95f) const 
-    {
-        WaveCountEstimate out{0.0f, 0.0f, 0.0f, confidence};
-        if (duration_s <= 0.0f) return out;
-
-        // Expected count from bias-corrected upcrossing rate
-        float Nexp = estimateWaveCount_BiasCorrected(duration_s);
-        int   N    = (int)std::round(Nexp);
-
-        float alpha = std::max(0.0f, std::min(1.0f, 1.0f - confidence));
-        float lower, upper;
-
-        if (N == 0) {
-            lower = 0.0f;
-            upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
-        } else {
-            lower = 0.5f * chi2Quantile(alpha / 2.0f,            2 * N);
-            upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
-        }
-
-        out.expected = Nexp;
-        out.ci_lower = lower;
-        out.ci_upper = upper;
-        return out;
-    }
-
-    float getWidthLonguetHiggins_BiasCorrected() const {
-        float M0c = getMoment0_BiasCorrected();
-        float M2c = getMoment2_BiasCorrected();
-        if (M1 <= EPSILON) return 0.0f;
-        float val = (M0c * M2c) / (M1 * M1);
-        return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
-    }
-
-    float getRMSDisplacement_BiasCorrected() const {
-        float M0c = getMoment0_BiasCorrected();
-        return (M0c > EPSILON) ? std::sqrt(M0c) : 0.0f;
-    }
+float getWidthLonguetHiggins_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float M2c = getMoment2_BiasCorrected();
+    float M1c = getMoment1_BiasCorrected();
+    if (M1c <= EPSILON) return 0.0f;
+    float val = (M0c * M2c) / (M1c * M1c);
+    return (val > 1.0f) ? std::sqrt(val - 1.0f) : 0.0f;
+}
 
 private:
     // Flags
