@@ -346,6 +346,11 @@ public:
 // with coefficients: n=1→c=1, n=2→c=3, n=3→c=6, n=4→c=10
 // Correction factors: 1/(1 + c σ²/ω̄²)
 
+bool isBiasCorrectionSignificant(float threshold = 0.01f) const {
+    if (mu_w <= EPSILON) return false;
+    return (std::max(var_slow, 0.0f) / (mu_w * mu_w)) > threshold;
+}
+
 float getMoment0_BiasCorrected() const {
     if (M0 <= EPSILON) return 0.0f;
     float omega_bar = mu_w;
