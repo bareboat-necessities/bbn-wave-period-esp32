@@ -148,6 +148,7 @@ public:
         has_omega_lp = has_omega_disp_lp = has_moments = false;
         omega_phi_last = 0.0f;
         wbar_ema = w2bar_ema = 0.0f;
+        dphi_mean = dphi_var = 0.0f;
     }
 
     void update(float dt_s, float accel_z, float omega_inst) {
