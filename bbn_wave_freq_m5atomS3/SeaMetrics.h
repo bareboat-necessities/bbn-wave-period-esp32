@@ -370,6 +370,40 @@ public:
         return (val > 0.0f) ? std::sqrt(val) / M1 : 0.0f;
     }
 
+    // === Bias-corrected period summaries ===
+    float getMeanPeriod_Tz_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M2c <= EPSILON) return 0.0f;
+        return std::sqrt(2.0f * float(M_PI) * float(M_PI) * (M0c / M2c));
+    }
+
+    float getMeanPeriod_TzUp_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
+    float getMeanPeriod_TzDown_BiasCorrected() const { return getMeanPeriod_Tz_BiasCorrected(); }
+
+    float getMeanPeriod_Tm02_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M2c <= EPSILON) return 0.0f;
+        return 2.0f * float(M_PI) * std::sqrt(M0c / M2c);
+    }
+
+    float getUpcrossingRate_BiasCorrected() const {
+        float M0c = getMoment0_BiasCorrected();
+        float M2c = getMoment2_BiasCorrected();
+        if (M0c <= EPSILON) return 0.0f;
+        return (1.0f / (2.0f * float(M_PI))) * std::sqrt(M2c / M0c);
+    }
+
+    float getDowncrossingRate_BiasCorrected() const {
+        return getUpcrossingRate_BiasCorrected();
+    }
+
+    float estimateWaveCount_BiasCorrected(float duration_s) const {
+        if (duration_s <= 0.0f) return 0.0f;
+        return getUpcrossingRate_BiasCorrected() * duration_s;
+    }
+
 private:
     // Flags
     bool extended_metrics;
