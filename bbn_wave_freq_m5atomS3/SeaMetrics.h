@@ -394,6 +394,25 @@ float getBenjaminFeirIndex() const {
     return (std::sqrt(2.0f) * Hs) / (df / fp);
 }
 
+
+// === Energy & wave power ===
+
+// Energy flux period Te_flux = M_{-1} / M0 (s)
+float getEnergyFluxPeriod() const {
+    if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
+    if (M0 <= EPSILON) return 0.0f;
+    return M_neg1 / M0;
+}
+
+// Wave power per unit crest length (deep water, kW/m if SI units)
+// P = (ρ g^2 / 64π) * Hs^2 * Te
+float getWavePower(float rho = 1025.0f) const {
+    float Hs = getSignificantWaveHeightRayleigh();
+    float Te = getMeanPeriod_Te();
+    if (Te <= EPSILON) return 0.0f;
+    return (rho * 9.80665f * 9.80665f / (64.0f * float(M_PI))) * (Hs * Hs) * Te;
+}
+
 // === Bias-corrected metrics ===
 //
 // Apply first-order Jensen corrections for inverse ω powers:
