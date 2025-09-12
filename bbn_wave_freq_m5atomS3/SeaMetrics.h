@@ -404,6 +404,33 @@ public:
         return getUpcrossingRate_BiasCorrected() * duration_s;
     }
 
+    WaveCountEstimate estimateWaveCountWithCI_BiasCorrected(
+            float duration_s, float confidence = 0.95f) const 
+    {
+        WaveCountEstimate out{0.0f, 0.0f, 0.0f, confidence};
+        if (duration_s <= 0.0f) return out;
+
+        // Expected count from bias-corrected upcrossing rate
+        float Nexp = estimateWaveCount_BiasCorrected(duration_s);
+        int   N    = (int)std::round(Nexp);
+
+        float alpha = std::max(0.0f, std::min(1.0f, 1.0f - confidence));
+        float lower, upper;
+
+        if (N == 0) {
+            lower = 0.0f;
+            upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
+        } else {
+            lower = 0.5f * chi2Quantile(alpha / 2.0f,            2 * N);
+            upper = 0.5f * chi2Quantile(1.0f - alpha / 2.0f, 2 * (N + 1));
+        }
+
+        out.expected = Nexp;
+        out.ci_lower = lower;
+        out.ci_upper = upper;
+        return out;
+    }
+
 private:
     // Flags
     bool extended_metrics;
