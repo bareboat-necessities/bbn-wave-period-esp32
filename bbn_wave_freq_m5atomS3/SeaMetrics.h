@@ -425,6 +425,194 @@ public:
         return (rho * g() * g() / (64.0f * float(M_PI))) * (Hs * Hs) * Te;
     }
 
+// ================== ADDITIONS (no-bias-corrected) ==================
+//
+// Paste these methods inside the `public:` section of SeaMetrics.
+// They use existing members/fields only (M_PI, EPSILON, R_phase, rbw, etc.).
+
+// --- 1) Spectral width parameters ---
+
+// Cartwright–Longuet-Higgins style spectral bandwidth (≈ √μ2)
+float getSpectralBandwidth() const {
+    if (M0 <= EPSILON) return 0.0f;
+    float mu2_est = (M2 / M0) - (M1 * M1) / (M0 * M0);
+    return (mu2_est > 0.0f) ? std::sqrt(mu2_est) : 0.0f;
+}
+
+// Spectral narrowness parameter (M1^2 / (M0 M2))
+float getSpectralNarrowness() const {
+    if (M0 <= EPSILON || M2 <= EPSILON) return 0.0f;
+    return (M1 * M1) / (M0 * M2);
+}
+
+
+// --- 2) Wave group statistics (thresholded runs; Rayleigh model) ---
+
+// Mean run length (number of successive waves with crest > threshold_sigma·σ)
+float getMeanRunLength(float threshold_sigma = 1.0f) const {
+    if (M0 <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0);
+    float p = getExceedanceProbRayleigh(threshold_sigma * sigma);
+    return (p > EPSILON) ? (1.0f / p) : 0.0f;
+}
+
+// Mean group duration (s) for above-threshold waves
+float getGroupDuration(float threshold_sigma = 1.0f) const {
+    return getMeanRunLength(threshold_sigma) * getMeanPeriod_Tz();
+}
+
+
+// --- 3) Nonlinear wave parameters ---
+
+// Ursell number (long-wave/shallow-water nonlinearity): Ur = H * L^2 / h^3
+// Uses deep-water proxy for L from Tz (L0 = g Tz^2 / (2π)).
+float getUrsellNumber(float depth) const {
+    if (depth <= EPSILON) return 0.0f;
+    float Tz = getMeanPeriod_Tz();
+    if (Tz <= EPSILON) return 0.0f;
+    float L0 = 9.80665f * Tz * Tz / (2.0f * float(M_PI));
+    float Hs = getSignificantWaveHeightRayleigh();
+    return (Hs * L0 * L0) / (depth * depth * depth);
+}
+
+// Simple deep-water nonlinearity parameter: (Hs * k) / 2
+float getNonlinearityParameter() const {
+    float Tz = getMeanPeriod_Tz();
+    if (Tz <= EPSILON) return 0.0f;
+    float L0 = 9.80665f * Tz * Tz / (2.0f * float(M_PI));
+    if (L0 <= EPSILON) return 0.0f;
+    float k  = 2.0f * float(M_PI) / L0;
+    float Hs = getSignificantWaveHeightRayleigh();
+    return 0.5f * Hs * k;
+}
+
+
+// --- 4) Wave age (wind-sea development) ---
+
+// Wave age = c_p / U10, with c_p ≈ g Tz / (2π) as a proxy
+float getWaveAge(float wind_speed) const {
+    if (wind_speed <= EPSILON) return 0.0f;
+    float Tz = getMeanPeriod_Tz();
+    if (Tz <= EPSILON) return 0.0f;
+    float cp = 9.80665f * Tz / (2.0f * float(M_PI)); // deep-water phase speed proxy
+    return cp / wind_speed;
+}
+
+
+// --- 5) Spectral shape parameters ---
+
+// JONSWAP peak enhancement factor (very rough proxy from Ochi peakedness)
+float getPeakEnhancementFactor() const {
+    if (!extended_metrics || M2 <= EPSILON) return 0.0f;
+    float Qp = getPeakednessOchi(); // uses M0,M2,M4; throws if extended disabled
+    // Clamp to a reasonable [1, 10] envelope and compress via sqrt
+    float guess = 0.25f + 0.75f * std::sqrt(std::max(0.0f, Qp));
+    if (guess < 1.0f)  guess = 1.0f;
+    if (guess > 10.0f) guess = 10.0f;
+    return guess;
+}
+
+// Goda-style peakedness (proxy via Ochi; requires M4 → extended)
+float getPeakednessGoda() const {
+    if (!extended_metrics) return 0.0f;
+    // Many definitions exist; we map via Ochi as a simple proxy
+    return 2.0f * (getPeakednessOchi() - 1.0f);
+}
+
+
+// --- 6) Wave breaking indicators ---
+
+// Crude breaking probability (Battjes–Janssen-inspired proxy)
+float getBreakingProbability(float depth = 0.0f) const {
+    float Hs = getSignificantWaveHeightRayleigh();
+    if (depth > EPSILON) {
+        // Finite-depth: probability rises as Hs approaches ~0.78 h
+        if (Hs <= EPSILON) return 0.0f;
+        float ratio = 0.78f * depth / Hs;
+        // Map ratio<1 → high probability; ratio≫1 → low probability
+        float x = std::max(0.0f, std::min(5.0f, ratio));
+        return std::exp(-0.5f * x * x); // heuristic decay
+    } else {
+        // Deep water: relate to overall steepness
+        float steepness = getWaveSteepness();
+        float p = 10.0f * steepness; // heuristic scaling
+        if (p < 0.0f) p = 0.0f;
+        if (p > 1.0f) p = 1.0f;
+        return p;
+    }
+}
+
+// Maximum wave height before depth-limited breaking (Miche-type)
+float getBreakingWaveHeight(float depth = 0.0f) const {
+    if (depth > EPSILON) {
+        return 0.78f * depth;
+    }
+    return 0.0f; // deep water: no simple hard cap without kinematics
+}
+
+
+// --- 7) Statistical extremes (linear/Rayleigh proxies) ---
+
+// Most probable maximum wave height over duration (N waves)
+float getMostProbableMaxHeight(float duration_s) const {
+    float N = estimateWaveCount(duration_s);
+    if (N <= EPSILON || M0 <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0);
+    // For Rayleigh-like crest amplitudes: ~ σ √(2 ln N)
+    return sigma * std::sqrt(2.0f * std::log(N));
+}
+
+// Expected maximum crest height (Gumbel-type refinement)
+float getExpectedMaxCrestHeight(float duration_s) const {
+    float N = estimateWaveCount(duration_s);
+    if (N <= EPSILON || M0 <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0);
+    float aN = std::sqrt(2.0f * std::log(N));
+    if (aN <= EPSILON) return 0.0f;
+    const float gamma = 0.5772f; // Euler–Mascheroni
+    return sigma * (aN + gamma / aN);
+}
+
+
+// --- 8) Wave energy metrics ---
+
+// Total wave energy density per unit surface area (J/m^2): E = ρ g m0
+float getWaveEnergy(float rho = 1025.0f) const {
+    return rho * 9.80665f * std::max(0.0f, M0);
+}
+
+// Spectral mean period Tm01 (= 2π M0 / M1); same as getMeanPeriod_T1()
+float getSpectralMeanPeriod() const {
+    if (M1 <= EPSILON) return 0.0f;
+    return (2.0f * float(M_PI)) * (M0 / M1);
+}
+
+
+// --- 9) Simple quality-control metrics ---
+
+// Aggregate data quality indicator (0–1): coherence × bandwidth penalty × bias flag
+float getDataQuality() const {
+    float quality = 1.0f;
+    // Favor high phase coherence
+    quality *= std::max(0.0f, std::min(1.0f, R_phase));
+    // Penalize broad relative bandwidth
+    quality *= std::exp(-0.5f * std::max(0.0f, rbw));
+    // Penalize if bias corrections would likely be significant (uses internal var_slow/mu_w)
+    if (isBiasCorrectionSignificant(0.05f)) {
+        quality *= 0.8f;
+    }
+    if (quality < 0.0f) quality = 0.0f;
+    if (quality > 1.0f) quality = 1.0f;
+    return quality;
+}
+
+// Crude SNR estimate (dB) using tracked slow variance as a noise proxy
+float getSNR() const {
+    if (M0 <= EPSILON) return 0.0f;
+    float noise = std::max(var_slow, EPSILON);
+    return 10.0f * std::log10(M0 / noise);
+}
+
     // === Bias-corrected metrics ===
     // Significance flag
     bool isBiasCorrectionSignificant(float threshold = 0.01f) const {
