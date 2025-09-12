@@ -804,20 +804,6 @@ public:
         float rel_var = var_slow / window_var;
         return std::clamp(1.0f - rel_var, 0.0f, 1.0f);
     }
-    float getBandSNR(float f_low, float f_high, bool bias_corrected = true) const {
-        // Approximate: ratio of M0 in-band vs. total
-        float M0c = getMoment0(bias_corrected);
-        if (M0c <= EPSILON) return 0.0f;
-        float omega_low = 2.0f * float(M_PI) * f_low;
-        float omega_high = 2.0f * float(M_PI) * f_high;
-        float inband = (omega_last >= omega_low && omega_last <= omega_high) ? M0c : 0.0f;
-        return (inband > 0.0f) ? (inband / M0c) : 0.0f;
-    }
-    float getDataGapFraction() const {
-        // Based on missing input samples count (approximate from NaN handling)
-        // For now, return 0 (no internal counter implemented)
-        return 0.0f;
-    }
 
     // Integration with Environmental Inputs
     float classifyWaveAge(float U10, bool bias_corrected = true) const {
