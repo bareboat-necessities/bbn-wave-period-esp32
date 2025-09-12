@@ -62,30 +62,34 @@
  *   • Longuet–Higgins width
  *
  * === Bias-corrected metrics ===
- *   These apply first-order Jensen corrections for ω-jitter bias:
- *     E[1/ω²] ≈ (1/ω̄²)(1 + 3σ²/ω̄²),
- *     E[1/ω⁴] ≈ (1/ω̄⁴)(1 + 10σ²/ω̄²).
- *   Implemented by scaling M0 and M2 with factors:
- *     M0_corr = M0 / (1 + 10 σ²/ω̄²),
- *     M2_corr = M2 / (1 + 3  σ²/ω̄²),
- *   where ω̄ = mu_w, σ² = var_slow.
  *
- *   Provided bias-corrected getters:
- *     • Moments:          M0_corr, M2_corr
- *     • RMS displacement: √M0_corr
- *     • Hs (regular):     2√M0_corr
- *     • Hs (Rayleigh):    2√2√M0_corr
- *     • Periods:          Tz_corr, Tm02_corr
- *     • Rates:            ν_up_corr, ν_down_corr
- *     • Wave counts:      N_corr(Δt), Garwood CI (bias-corrected)
- *     • Bandwidths:       CLH_corr, Goda_corr, Kuik_corr, Longuet–Higgins_corr
+ * These apply first-order Jensen corrections for ω-tracker jitter:
  *
- *   Notes:
- *     – Phase-based metrics (R_phase) are unaffected and not corrected.
- *     – M1 and higher moments (M3/M4) are left uncorrected for now
- *       since their bias expansions are higher-order.
- *     – These corrected forms help when ω-tracker jitter or accel DC
- *       bias would otherwise inflate energy estimates.
+ *   E[1/ω^n] ≈ (1/ω̄^n)(1 + c_n σ²/ω̄²),   with coefficients
+ *     n = 1 → c = 1
+ *     n = 2 → c = 3
+ *     n = 3 → c = 6
+ *     n = 4 → c = 10
+ *
+ * Implemented by scaling raw spectral moments:
+ *     M0c = M0 / (1 + 10 σ²/ω̄²)
+ *     M1c = M1 / (1 +  6 σ²/ω̄²)
+ *     M2c = M2 / (1 +  3 σ²/ω̄²)
+ *     M3c = M3 / (1 +  1 σ²/ω̄²)
+ *     M4c = M4 / (1 + 10 σ²/ω̄²)
+ *     M_{−1}c = M_{−1} / (1 + 6 σ²/ω̄²)
+ *
+ * where ω̄ = mu_w (mean ω) and σ² = var_slow (slow variance of ω).
+ *
+ * All higher-level bias-corrected getters (heights, periods, bandwidths,
+ * counts, central moments, skew/kurtosis) are computed consistently
+ * from these corrected moments. Phase-based metrics (e.g. R_phase)
+ * are unaffected.
+ *
+ * Notes:
+ *   – Corrections reduce upward bias of energy and bandwidth metrics
+ *     when frequency estimates jitter or acceleration carries DC.
+ *   – Bias-corrected and raw getters are provided side-by-side.
  */
 
 #ifndef M_PI
