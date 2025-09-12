@@ -703,6 +703,64 @@ float getSpectralExcessKurtosis_BiasCorrected() const {
     return (mu4c / (mu2c * mu2c)) - 3.0f;
 }
 
+// === Bias-corrected extremes & groupiness ===
+
+float getCrestHeight_H1over10_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0c);
+    return sigma * std::sqrt(-2.0f * std::log(0.10f));
+}
+
+float getCrestHeight_H1over100_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0c);
+    return sigma * std::sqrt(-2.0f * std::log(0.01f));
+}
+
+float getExceedanceProbTayfun_BiasCorrected(float crest_height) const {
+    float M0c = getMoment0_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    float sigma = std::sqrt(M0c);
+    float Hs = 2.0f * std::sqrt(2.0f) * sigma;
+    float steep = getWaveSteepness_BiasCorrected();
+    float Lambda = 0.5f * steep;
+    float term1 = std::exp(-(crest_height * crest_height) / (2.0f * sigma * sigma));
+    float term2 = std::exp(Lambda * std::pow(crest_height / sigma, 3));
+    return term1 * term2;
+}
+
+float getGroupinessFactor_BiasCorrected() const {
+    float Tg = getMeanPeriod_Tz_BiasCorrected(); // group period = Tz in deep water
+    float Tz = getMeanPeriod_Tz_BiasCorrected();
+    return (Tz > EPSILON) ? (Tg / Tz) : 0.0f;
+}
+
+float getBenjaminFeirIndex_BiasCorrected() const {
+    float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
+    float fp = getMeanFrequencyHz_BiasCorrected();
+    float bw = getRBW(); // RBW itself not bias-corrected, phase-based
+    if (fp <= EPSILON || bw <= EPSILON) return 0.0f;
+    float df = bw * fp;
+    return (std::sqrt(2.0f) * Hs) / (df / fp);
+}
+
+// === Bias-corrected energy & power ===
+float getEnergyFluxPeriod_BiasCorrected() const {
+    float M0c = getMoment0_BiasCorrected();
+    float Mneg1c = getMomentMinus1_BiasCorrected();
+    if (M0c <= EPSILON) return 0.0f;
+    return Mneg1c / M0c;
+}
+
+float getWavePower_BiasCorrected(float rho = 1025.0f) const {
+    float Hs = getSignificantWaveHeightRayleigh_BiasCorrected();
+    float Te = getMeanPeriod_Te_BiasCorrected();
+    if (Te <= EPSILON) return 0.0f;
+    return (rho * 9.80665f * 9.80665f / (64.0f * float(M_PI))) * (Hs * Hs) * Te;
+}
+
 private:
     // Flags
     bool extended_metrics;
