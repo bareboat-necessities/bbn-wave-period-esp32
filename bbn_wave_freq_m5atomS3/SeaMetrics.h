@@ -4,7 +4,15 @@
 #include <algorithm>
 #include <stdexcept>  // std::logic_error
 
+#pragma once
+#include <cmath>
+#include <limits>
+#include <algorithm>
+#include <stdexcept>  // std::logic_error
+
 /**
+ * Copyright 2025, Mikhail Grushinskiy
+ *
  * SeaMetrics — Online estimator of ocean wave spectral metrics
  * from vertical acceleration and an external frequency tracker.
  *
@@ -36,32 +44,30 @@
  *   • Spectral skewness        = μ₃ / μ₂^(3/2)
  *   • Spectral kurtosis        = μ₄ / μ₂²
  *   • Spectral excess kurtosis = (μ₄ / μ₂²) − 3
+ *   • Ochi peakedness Q        = (M0 M4) / M2²
+ *   • Benassai parameter B     = (M0 M4) / M2²
  *
  * === Period summaries (s) ===
- *   • Mean zero-crossing period (spectral): T_z     = √(2π² M0 / M2)
- *   • Mean zero-downcrossing period:        T_zdown = T_z
- *   • Mean zero-upcrossing period:          T_zup   = T_z
- *   • Zero-upcrossing rate (Hz):            ν_up    = (1/2π) √(M2 / M0)
- *   • Zero-downcrossing rate (Hz):          ν_down  = ν_up
- *   • Expected wave count over Δt:          N(Δt)   = ν_up · Δt
- *   • Wave count confidence interval (Garwood exact, χ²-based):
- *        Lower = 0.5 χ²(2N, α/2)
- *        Upper = 0.5 χ²(2(N+1), 1−α/2)
- *        where N = expected count, α = 1 − confidence
- *   • Mean period:                          T_1     = 2π M0 / M1
- *   • Mean-squared period:                  T_m02   = 2π √(M0 / M2)
- *   • Energy period:                        T_e     = (2π M_{−1}) / M0   [requires negative moments]
+ *   • T_z, T_zup, T_zdown
+ *   • ν_up, ν_down
+ *   • Wave count + Garwood CI
+ *   • T_1, T_m02, T_e
+ *   • T_{m0,-1}, T_{m1,-1}
+ *   • Mean group period
  *
- * === Displacement & wave heights ===
- *   • RMS displacement: √M0
- *   • Significant wave height (regular):  2√M0
- *   • Significant wave height (Rayleigh): 2√2√M0
+ * === Heights & steepness ===
+ *   • RMS displacement
+ *   • Hs (regular, Rayleigh)
+ *   • Wave steepness (Hs/L0, deep water)
  *
- * === Classical bandwidth measures ===
- *   • Cartwright–Longuet-Higgins: B_CLH = √(1 − (M1² / (M0 M2)))
- *   • Goda:                       B_Goda = √((M0 M2 / M1²) − 1)
- *   • Kuik:                       B_Kuik = √(M0 M2 − M1²) / M1
+ * === Probability metrics ===
+ *   • Crest exceedance (Rayleigh): P(Hc > h)
+ *
+ * === Bandwidths ===
+ *   • CLH, Goda, Kuik
+ *   • Longuet–Higgins width
  */
+
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
