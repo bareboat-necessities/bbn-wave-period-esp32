@@ -111,6 +111,9 @@ void process_wave_file(const std::string &filename, float dt) {
     const Vector3f sigma_m(0.10f,  0.10f,  0.10f);
     Kalman3D_Wave<float, true> mekf(sigma_a, sigma_g, sigma_m);
 
+    // Earth magnetic field (NED, normalized)
+    const Vector3f mag_ned_unit(0.39f, 0.0f, -0.92f); // example direction
+
     bool first = true;
     std::vector<OutputRow> rows;
 
@@ -122,7 +125,8 @@ void process_wave_file(const std::string &filename, float dt) {
         Vector3f gyr_f = imu_to_qmekf(gyr_b);
 
         if (first) {
-            mekf.initialize_from_acc(acc_f);
+            Vector3f mag_f = mag_ned_unit;
+            mekf.initialize_from_acc_mag(acc_f, mag_f);
             first = false;
         }
 
@@ -145,9 +149,7 @@ void process_wave_file(const std::string &filename, float dt) {
             Eigen::AngleAxisf(p_ref * M_PI/180.0f, Vector3f::UnitY()) *
             Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
 
-        // Earth magnetic field (NED, normalized)
-        static const Vector3f mag_ned_unit(0.39f, 0.0f, -0.92f); // example direction
-
+        
         // Rotate into body frame
         Vector3f mag_b = q_ref2.conjugate() * mag_ned_unit;
 
