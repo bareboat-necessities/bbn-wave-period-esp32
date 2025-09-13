@@ -130,8 +130,19 @@ void process_wave_file(const std::string &filename, float dt) {
             first = false;
         }
 
+        // Rotate into body frame
+        Vector3f mag_b = q_ref2.conjugate() * mag_ned_unit;
+
+        // Add Gaussian noise
+        //for (int i = 0; i < 3; i++) {
+        //    mag_b(i) += sigma_m(i) * noise(rng);
+        //}
+
+        // Convert to filter convention
+        Vector3f mag_f = imu_to_qmekf(mag_b);
+
         mekf.time_update(gyr_f, acc_f, dt);
-        mekf.measurement_update_acc_only(acc_f);
+        mekf.measurement_update_acc_mag(acc_f, mag_f);
 
         auto coeffs = mekf.quaternion().coeffs(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
@@ -148,21 +159,6 @@ void process_wave_file(const std::string &filename, float dt) {
             Eigen::AngleAxisf(r_ref * M_PI/180.0f, Vector3f::UnitX()) *
             Eigen::AngleAxisf(p_ref * M_PI/180.0f, Vector3f::UnitY()) *
             Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
-
-        
-        // Rotate into body frame
-        Vector3f mag_b = q_ref2.conjugate() * mag_ned_unit;
-
-        // Add Gaussian noise
-        //for (int i = 0; i < 3; i++) {
-        //    mag_b(i) += sigma_m(i) * noise(rng);
-        //}
-
-        // Convert to filter convention
-        Vector3f mag_f = imu_to_qmekf(mag_b);
-
-        // Update filter
-        mekf.measurement_update_mag(mag_f);
 
         // World kinematics (converted to aerospace convention)
         Vector3f disp_ref = zu_to_ned(Vector3f(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z));
