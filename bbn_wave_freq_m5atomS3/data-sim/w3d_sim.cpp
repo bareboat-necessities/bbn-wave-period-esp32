@@ -124,6 +124,17 @@ void process_wave_file(const std::string &filename, float dt) {
         Vector3f acc_f = imu_to_qmekf(acc_b);
         Vector3f gyr_f = imu_to_qmekf(gyr_b);
 
+        // Reference (converted to aerospace convention)
+        float r_ref = -rec.imu.pitch_deg;   // NEGATED
+        float p_ref = -rec.imu.roll_deg;  // NEGATED
+        float y_ref =  rec.imu.yaw_deg;    // unchanged
+
+        // True orientation quaternion from sim
+        Quaternionf q_ref2 =
+            Eigen::AngleAxisf(r_ref * M_PI/180.0f, Vector3f::UnitX()) *
+            Eigen::AngleAxisf(p_ref * M_PI/180.0f, Vector3f::UnitY()) *
+            Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
+
         if (first) {
             Vector3f mag_f = mag_ned_unit;
             mekf.initialize_from_acc_mag(acc_f, mag_f);
@@ -148,17 +159,6 @@ void process_wave_file(const std::string &filename, float dt) {
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
         float r_est, p_est, y_est;
         quat_to_euler(q, r_est, p_est, y_est);
-
-        // Reference (converted to aerospace convention)
-        float r_ref = -rec.imu.pitch_deg;   // NEGATED
-        float p_ref = -rec.imu.roll_deg;  // NEGATED
-        float y_ref =  rec.imu.yaw_deg;    // unchanged
-
-        // True orientation quaternion from sim
-        Quaternionf q_ref2 =
-            Eigen::AngleAxisf(r_ref * M_PI/180.0f, Vector3f::UnitX()) *
-            Eigen::AngleAxisf(p_ref * M_PI/180.0f, Vector3f::UnitY()) *
-            Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
 
         // World kinematics (converted to aerospace convention)
         Vector3f disp_ref = zu_to_ned(Vector3f(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z));
