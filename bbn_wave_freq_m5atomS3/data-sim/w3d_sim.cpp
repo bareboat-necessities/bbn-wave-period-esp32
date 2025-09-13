@@ -153,7 +153,8 @@ void process_wave_file(const std::string &filename, float dt) {
         Vector3f mag_f = imu_to_qmekf(mag_b);
 
         mekf.time_update(gyr_f, acc_f, dt);
-        mekf.measurement_update_acc_mag(acc_f, mag_f);
+        mekf.measurement_update_acc_only(acc_f);
+        mekf.measurement_update_mag(mag_f);
 
         auto coeffs = mekf.quaternion().coeffs(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
