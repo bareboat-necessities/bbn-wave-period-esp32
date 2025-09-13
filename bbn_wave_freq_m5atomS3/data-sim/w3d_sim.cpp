@@ -154,7 +154,7 @@ void process_wave_file(const std::string &filename, float dt) {
 
         mekf.time_update(gyr_f, acc_f, dt);
         mekf.measurement_update_acc_only(acc_f);
-        mekf.measurement_update_mag(mag_f);
+        mekf.measurement_update_mag_only(mag_f);
 
         auto coeffs = mekf.quaternion().coeffs(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
