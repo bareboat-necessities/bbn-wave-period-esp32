@@ -136,13 +136,11 @@ void process_wave_file(const std::string &filename, float dt) {
             Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
 
         if (first) {
-            if (first) {
-                 // BODY-frame mag at t=0
-                 Vector3f mag_b0 = q_ref2.conjugate() * mag_ned_unit;
-                 Vector3f mag_f0 = imu_to_qmekf(mag_b0);
-                 mekf.initialize_from_acc_mag(acc_f, mag_f0);
-                 first = false;
-            }
+            // BODY-frame mag at t=0
+            Vector3f mag_b0 = q_ref2.conjugate() * mag_ned_unit;
+            Vector3f mag_f0 = imu_to_qmekf(mag_b0);
+            mekf.initialize_from_acc_mag(acc_f, mag_f0);
+            first = false;
         }
 
         // Rotate into body frame
