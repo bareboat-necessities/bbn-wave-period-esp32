@@ -140,7 +140,7 @@ void process_wave_file(const std::string &filename, float dt) {
         float y_ref =  rec.imu.yaw_deg;    // unchanged
 
         // True orientation quaternion from sim
-        Quaternionf q_ref =
+        Quaternionf q_ref2 =
             Eigen::AngleAxisf(r_ref * M_PI/180.0f, Vector3f::UnitX()) *
             Eigen::AngleAxisf(p_ref * M_PI/180.0f, Vector3f::UnitY()) *
             Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
@@ -149,7 +149,7 @@ void process_wave_file(const std::string &filename, float dt) {
         static const Vector3f mag_ned_unit(0.39f, 0.0f, -0.92f); // example direction
 
         // Rotate into body frame
-        Vector3f mag_b = q_ref.conjugate() * mag_ned_unit;
+        Vector3f mag_b = q_ref2.conjugate() * mag_ned_unit;
 
         // Add Gaussian noise
         //for (int i = 0; i < 3; i++) {
