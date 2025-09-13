@@ -48,8 +48,8 @@ static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float
     yaw   = std::atan2(R(1,0), R(0,0));
 
     // Convert to degrees 
-    roll  *= -180.0f / M_PI;   
-    pitch *= -180.0f / M_PI;   
+    roll  *=  180.0f / M_PI;   
+    pitch *=  180.0f / M_PI;   
     yaw   *=  180.0f / M_PI;  
 }
 
