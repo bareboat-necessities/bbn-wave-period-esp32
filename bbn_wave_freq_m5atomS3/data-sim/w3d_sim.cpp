@@ -139,6 +139,29 @@ void process_wave_file(const std::string &filename, float dt) {
         float p_ref = -rec.imu.roll_deg;  // NEGATED
         float y_ref =  rec.imu.yaw_deg;    // unchanged
 
+        // True orientation quaternion from sim
+        Quaternionf q_ref =
+            Eigen::AngleAxisf(r_ref * M_PI/180.0f, Vector3f::UnitX()) *
+            Eigen::AngleAxisf(p_ref * M_PI/180.0f, Vector3f::UnitY()) *
+            Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
+
+        // Earth magnetic field (NED, normalized)
+        static const Vector3f mag_ned_unit(0.39f, 0.0f, -0.92f); // example direction
+
+        // Rotate into body frame
+        Vector3f mag_b = q_ref.conjugate() * mag_ned_unit;
+
+        // Add Gaussian noise
+        //for (int i = 0; i < 3; i++) {
+        //    mag_b(i) += sigma_m(i) * noise(rng);
+        //}
+
+        // Convert to filter convention
+        Vector3f mag_f = imu_to_qmekf(mag_b);
+
+        // Update filter
+        mekf.measurement_update_mag(mag_f);
+
         // World kinematics (converted to aerospace convention)
         Vector3f disp_ref = zu_to_ned(Vector3f(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z));
         Vector3f vel_ref  = zu_to_ned(Vector3f(rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z));
