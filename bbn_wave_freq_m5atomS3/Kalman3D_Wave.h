@@ -302,7 +302,7 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
     qref.normalize();
 
     // Store reference magnetic vector in world frame
-    v2ref = R_from_quat() * mag;
+    v2ref = mag_n;
 }
 
 template<typename T, bool with_bias>
