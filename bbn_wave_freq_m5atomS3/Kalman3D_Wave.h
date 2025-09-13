@@ -144,7 +144,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Original MEKF internals (kept nomenclature)
     Eigen::Quaternion<T> qref;
     Vector3 v1ref;
-    Vector3 v2ref;
+    Vector3 v2ref = Vector3::UnitX();
 
     // Original base error-state (first BASE_N elements) — now stored inside xext (top portion)
     // But we keep a mirror of original P for compatibility
