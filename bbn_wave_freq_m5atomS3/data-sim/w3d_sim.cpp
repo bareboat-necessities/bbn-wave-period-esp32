@@ -39,8 +39,7 @@ static inline Eigen::Vector3f imu_to_qmekf(const Eigen::Vector3f& v) {
     return zu_to_ned(v);
 }
 
-// Quaternion → Euler (deg), ZYX convention with Z-up (nautical frame)
-// NOTE: Roll and Pitch signs inverted internally for aerospace
+// Quaternion → Euler (deg)
 static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
     Eigen::Matrix3f R = q.toRotationMatrix();
 
@@ -48,10 +47,10 @@ static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float
     roll  = std::atan2(R(2,1), R(2,2));
     yaw   = std::atan2(R(1,0), R(0,0));
 
-    // Convert to degrees and apply aerospace sign convention
-    roll  *= -180.0f / M_PI;   // NEGATED
-    pitch *= -180.0f / M_PI;   // NEGATED
-    yaw   *=  180.0f / M_PI;   // unchanged
+    // Convert to degrees 
+    roll  *= -180.0f / M_PI;   
+    pitch *= -180.0f / M_PI;   
+    yaw   *=  180.0f / M_PI;  
 }
 
 // Inverse conversion for Euler angles and orientation errors: aerospace → nautical
