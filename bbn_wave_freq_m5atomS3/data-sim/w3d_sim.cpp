@@ -247,13 +247,13 @@ void process_wave_file(const std::string &filename, float dt) {
         float r_est_out = r_est;
         float p_est_out = p_est;
         float y_est_out = y_est;
-        aerospace_to_nautical_euler(r_ref_out, p_ref_out, y_ref_out);
-        aerospace_to_nautical_euler(r_est_out, p_est_out, y_est_out);
+        aero_to_nautical(r_ref_out, p_ref_out, y_ref_out);
+        aero_to_nautical(r_est_out, p_est_out, y_est_out);
 
         float err_roll_out  = err_roll;
         float err_pitch_out = err_pitch;
         float err_yaw_out   = err_yaw;
-        aerospace_to_nautical_euler(err_roll_out, err_pitch_out, err_yaw_out);
+        aero_to_nautical(err_roll_out, err_pitch_out, err_yaw_out);
 
         rows.push_back({
             rec.time,
