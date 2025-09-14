@@ -211,7 +211,7 @@ inline int test_frame_conversions() {
     assert_close(r_e, rq, tol_angle, "quat_to_euler_nautical roll");
     assert_close(p_e, pq, tol_angle, "quat_to_euler_nautical pitch");
     assert_close(y_e, yq, tol_angle, "quat_to_euler_nautical yaw");
-
+    
     std::cout << "All frame conversion tests passed\n";
     return 0;
 }
