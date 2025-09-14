@@ -92,6 +92,35 @@ struct OutputRow {
     float angle_err{};
 };
 
+// Debug helper: check initialization consistency
+static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
+                                   const Eigen::Vector3f& acc_meas,
+                                   const Eigen::Vector3f& mag_meas,
+                                   const Eigen::Vector3f& mag_ned_unit) 
+{
+    // Current quaternion from filter [x,y,z,w]
+    auto qvec = mekf.quaternion();
+    Eigen::Quaternionf q(qvec(3), qvec(0), qvec(1), qvec(2));
+
+    // Body->world rotation
+    Eigen::Matrix3f R = q.toRotationMatrix();
+
+    // Predicted accel and mag in body frame
+    Eigen::Vector3f f_pred = R.transpose() * Eigen::Vector3f(0, 0, -g_std);
+    Eigen::Vector3f m_pred = R.transpose() * mag_ned_unit;
+
+    std::cout << "Init Consistency Check\n";
+    std::cout << "Accel measured = " << acc_meas.transpose()
+              << " | predicted = " << f_pred.transpose() << "\n";
+    std::cout << "Mag   measured = " << mag_meas.transpose()
+              << " | predicted = " << m_pred.transpose() << "\n";
+
+    // Optional: print yaw difference vs. sim reference
+    Eigen::Vector3f world_x = m_pred.normalized();
+    float yaw_est = std::atan2(world_x.y(), world_x.x()) * 180.0f / M_PI;
+    std::cout << "Estimated yaw from mag = " << yaw_est << " deg\n";
+}
+
 void process_wave_file(const std::string &filename, float dt) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
