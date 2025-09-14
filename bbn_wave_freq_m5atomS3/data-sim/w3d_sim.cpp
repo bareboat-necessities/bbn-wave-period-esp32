@@ -120,12 +120,16 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         // Estimated Euler (convert aerospace → nautical)
         auto coeffs = mekf.quaternion().coeffs();
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
+        
         float r_est_a, p_est_a, y_est_a;
         quat_to_euler_aero(q, r_est_a, p_est_a, y_est_a);
 
-        float r_est, p_est, y_est;
-        aero_to_nautical(r_est_a, p_est_a, y_est_a, r_est, p_est, y_est);
-
+        // Convert aerospace → nautical (in place)
+        float r_est = r_est_a;
+        float p_est = p_est_a;
+        float y_est = y_est_a;
+        aero_to_nautical(r_est, p_est, y_est);
+        
         // World kinematics
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
         Vector3f vel_ref (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
