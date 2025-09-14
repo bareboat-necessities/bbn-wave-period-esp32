@@ -93,7 +93,7 @@ static inline void quat_to_euler_nautical(const Quaternionf &q, float &roll, flo
 // Helper: simulate magnetometer IMU output (µT)
 // from nautical Euler angles, using WMM inclination & declination
 struct MagSim_WMM {
-    // --- Defaults: Statue of Liberty, Sept 2025 (0 m elevation) ---
+    // Defaults: Statue of Liberty, Sept 2025 (0 m elevation)
     static constexpr float default_declination_deg = -3.44f; // [deg]
     static constexpr float default_inclination_deg =  67.5f; // [deg] dip angle (down)
     static constexpr float default_total_field_uT  = 51.0f;  // [µT] total intensity
