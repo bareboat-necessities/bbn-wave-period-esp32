@@ -1,5 +1,9 @@
 #pragma once
 
+/*
+   Copyright 2025, Mikhail Grushinskiy
+ */
+
 #ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
 #else
