@@ -101,7 +101,8 @@ struct MagSim_WMM {
     static constexpr float default_inclination_deg =  67.5f; // [deg] positive = down
     static constexpr float default_total_field_uT  = 51.0f;  // [µT]
 
-    // World magnetic field vector in Nautical ENU frame (East, North, Up)
+    // World magnetic field in ENU (East, North, Up)
+    // East = X, North = Y, Up = Z
     // Units: microteslas [µT]
     static Eigen::Vector3f mag_world_nautical(
         float declination_deg = default_declination_deg,
