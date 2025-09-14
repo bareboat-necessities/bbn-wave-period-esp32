@@ -271,38 +271,32 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
     Vector3 acc_n = acc / anorm;
     Vector3 mag_n = mag.normalized();
 
-    // Aerospace convention: gravity is +Z (down)
+    // Aerospace: +Z is down (gravity in world is +Z)
     v1ref << 0, 0, +anorm;
 
-    // World Z axis (down)
-    Vector3 z_world = -acc_n;
-
-    // Project magnetometer onto horizontal plane (remove z component)
-    Vector3 mag_h = mag_n - (mag_n.dot(z_world)) * z_world;
+    // Build WORLD axes expressed in BODY coords
+    Vector3 z_world = -acc_n;                         // world Z (down) in body coords
+    Vector3 mag_h   = mag_n - (mag_n.dot(z_world))*z_world;
     if (mag_h.norm() < 1e-6) {
         throw std::runtime_error("Magnetometer vector parallel to gravity — cannot initialize yaw");
     }
     mag_h.normalize();
+    Vector3 x_world = mag_h;                          // world X (north) in body coords
+    Vector3 y_world = z_world.cross(x_world).normalized();
 
-    // World X axis (north) aligned with horizontal component of mag
-    Vector3 x_world = mag_h;
+    // R_wb: world→body rotation (columns are world axes in body coords)
+    Matrix3 R_wb;
+    R_wb.col(0) = x_world;
+    R_wb.col(1) = y_world;
+    R_wb.col(2) = z_world;
 
-    // World Y axis (east) = Z × X
-    Vector3 y_world = z_world.cross(x_world);
-    y_world.normalize();
-
-    // Build world->body rotation (assuming body starts aligned with world)
-    Matrix3 R;
-    R.col(0) = x_world;
-    R.col(1) = y_world;
-    R.col(2) = z_world;
-
-    // Store quaternion (world->body)
-    qref = Eigen::Quaternion<T>(R.transpose());
+    // Store quaternion as world→body  (NOT transpose)
+    qref = Eigen::Quaternion<T>(R_wb);
     qref.normalize();
 
-    // Store reference magnetic vector in world frame
-    v2ref = R_from_quat() * mag;
+    // Store reference magnetic vector in WORLD frame
+    // convert the initial BODY mag into WORLD using body→world = R_wb^T
+    v2ref = R_wb.transpose() * mag;   // equivalently: v2ref = R_from_quat() * mag;
 }
 
 template<typename T, bool with_bias>
