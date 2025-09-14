@@ -54,10 +54,10 @@ static void quat_to_euler_aero(const Quaternionf &q, float &roll, float &pitch, 
 }
 
 // Aerospace Euler → Nautical Euler (for output)
+// Roll and pitch must be swapped + negated due to axis mapping
 static inline void aero_to_nautical(float &roll, float &pitch, float &yaw) {
     float r_a = roll;
     float p_a = pitch;
-    // Swap + negate
     roll  = -p_a;  // nautical roll
     pitch = -r_a;  // nautical pitch
     // yaw unchanged
