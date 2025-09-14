@@ -2,7 +2,10 @@
 #include <iostream>
 #include <Eigen/Dense>
 #include <cmath>
-#include <cassert>
+
+using Eigen::Vector3f;
+using Eigen::Matrix3f;
+using Eigen::Quaternionf;
 
 // ============================================================
 // Coordinate conversions between:
@@ -11,10 +14,6 @@
 //
 // Mapping: (x_a, y_a, z_a) = (y_n, x_n, -z_n)
 // ============================================================
-
-using Eigen::Vector3f;
-using Eigen::Matrix3f;
-using Eigen::Quaternionf;
 
 // -------------------------
 // Vector conversions
@@ -68,6 +67,10 @@ static Quaternionf quat_from_euler(float roll_deg, float pitch_deg, float yaw_de
     q.z() = sy*cp*cr - cy*sp*sr;
     return q.normalized();
 }
+
+#ifdef FRAMECONV_TEST
+#include <cassert>
+#include <cstdlib>
 
 // -------------------------
 // Utility: floating-point assert with tolerance
@@ -160,6 +163,22 @@ inline int test_frame_conversions() {
     float angle_diff = 2.0f * std::acos(std::clamp(q_diff.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
     assert_close(angle_diff, 0.0f, 1e-2f, "Quaternion difference");
 
+    // --- Randomized stress test
+    for (int i = 0; i < 100; ++i) {
+        float rn = (float(rand()) / RAND_MAX - 0.5f) * 180.0f;  // [-90,90]
+        float pn = (float(rand()) / RAND_MAX - 0.5f) * 180.0f;
+        float yn = (float(rand()) / RAND_MAX) * 360.0f;         // [0,360]
+
+        float ra = rn, pa = pn, ya = yn;
+        nautical_to_aero(ra, pa, ya);
+        aero_to_nautical(ra, pa, ya);
+
+        assert_close(ra, rn, tol_angle, "Random roll");
+        assert_close(pa, pn, tol_angle, "Random pitch");
+        assert_close(ya, yn, tol_angle, "Random yaw");
+    }
+
     std::cout << "All frame conversion tests passed ✅\n";
     return 0;
 }
+#endif // FRAMECONV_TEST
