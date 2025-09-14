@@ -13,55 +13,10 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 
 #include "KalmanQMEKF.h"       // Q-MEKF filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
+#include "FrameConversions.h"  // coordinate & quaternion conversions
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
-
-// ============================================================
-// Coordinate conversions
-// Input: simulation data are in nautical Z-up IMU convention
-// Filter: aerospace NED convention (Z-down, X forward, Y right)
-// Mapping: (x_a, y_a, z_a) = (y_n, x_n, -z_n)
-// ============================================================
-
-// Nautical Z-up → Aerospace NED (filter input)
-static inline Eigen::Vector3f zu_to_ned(const Eigen::Vector3f& v) {
-    return Eigen::Vector3f(v.y(), v.x(), -v.z());
-}
-
-// Aerospace NED → Nautical Z-up (for exporting back)
-static inline Eigen::Vector3f ned_to_zu(const Eigen::Vector3f& v) {
-    return Eigen::Vector3f(v.y(), v.x(), -v.z());
-}
-
-// IMU/body frame (nautical) → QMEKF filter (aerospace)
-static inline Eigen::Vector3f imu_to_qmekf(const Eigen::Vector3f& v) {
-    return zu_to_ned(v);
-}
-
-// Quaternion → Euler (aerospace convention, deg)
-static void quat_to_euler_aero(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
-    Eigen::Matrix3f R = q.toRotationMatrix();
-
-    pitch = std::atan2(-R(2,0), std::sqrt(R(0,0)*R(0,0) + R(1,0)*R(1,0)));
-    roll  = std::atan2(R(2,1), R(2,2));
-    yaw   = std::atan2(R(1,0), R(0,0));
-
-    // Convert to degrees 
-    roll  *= 180.0f / M_PI;   
-    pitch *= 180.0f / M_PI;   
-    yaw   *= 180.0f / M_PI;  
-}
-
-// Aerospace Euler → Nautical Euler (for output)
-// Roll and pitch must be swapped + negated due to axis mapping
-static inline void aero_to_nautical(float &roll, float &pitch, float &yaw) {
-    float r_a = roll;
-    float p_a = pitch;
-    roll  = -p_a;  // nautical roll
-    pitch = -r_a;  // nautical pitch
-    // yaw unchanged
-}
 
 struct OutputRow {
     double t{};
@@ -104,8 +59,8 @@ void process_wave_file(const std::string &filename, float dt) {
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
         // Convert to QMEKF filter frame (aerospace NED)
-        Vector3f acc_f = imu_to_qmekf(acc_b);
-        Vector3f gyr_f = imu_to_qmekf(gyr_b);
+        Vector3f acc_f = zu_to_ned(acc_b);
+        Vector3f gyr_f = zu_to_ned(gyr_b);
 
         if (first) {
             mekf.initialize_from_acc(acc_f);
@@ -116,14 +71,11 @@ void process_wave_file(const std::string &filename, float dt) {
         mekf.time_update(gyr_f, dt);
         mekf.measurement_update_acc_only(acc_f);
 
-        // Filter quaternion → Euler (aerospace deg)
+        // Filter quaternion → Euler (nautical deg)
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
         float r_est, p_est, y_est;
-        quat_to_euler_aero(q, r_est, p_est, y_est);
-
-        // Convert estimates back to nautical convention
-        aero_to_nautical(r_est, p_est, y_est);
+        quat_to_euler_nautical(q, r_est, p_est, y_est);
 
         // Reference angles from simulator (already nautical, deg)
         float r_ref = rec.imu.roll_deg;
@@ -142,13 +94,11 @@ void process_wave_file(const std::string &filename, float dt) {
     // Output filename: replace prefix "wave_data_" with "qmekf_", then add "_kalman"
     std::string outname = filename;
 
-    // Find and replace prefix if present
     auto pos_prefix = outname.find("wave_data_");
     if (pos_prefix != std::string::npos) {
         outname.replace(pos_prefix, std::string("wave_data_").size(), "qmekf_");
     }
 
-    // Append "_kalman" before .csv
     auto pos_ext = outname.rfind(".csv");
     if (pos_ext != std::string::npos) {
         outname.insert(pos_ext, "_kalman");
@@ -188,4 +138,3 @@ int main() {
     }
     return 0;
 }
-
