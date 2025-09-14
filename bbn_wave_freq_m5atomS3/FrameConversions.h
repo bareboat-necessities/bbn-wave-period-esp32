@@ -193,14 +193,15 @@ inline int test_frame_conversions() {
     }
 
     // Quaternion consistency test
-    float rq = 30, pq = 20, yq = 45;
-    Quaternionf q_n = quat_from_euler(rq, pq, yq);
+    float rq = 30, pq = 20, yq = 45;             // reference nautical Euler angles
+    Quaternionf q_n = quat_from_euler(rq, pq, yq); // build quaternion in nautical convention
 
-    // Aerospace → nautical via conversion
+    // Convert reference nautical angles → aerospace, then back into quaternion
     float rqa = rq, pqa = pq, yqa = yq;
     nautical_to_aero(rqa, pqa, yqa);
     Quaternionf q_a = quat_from_euler(rqa, pqa, yqa);
 
+    // Compare nautical quaternion with aerospace-converted quaternion
     Quaternionf q_diff = q_n * q_a.inverse();
     float angle_diff = 2.0f * std::acos(std::clamp(q_diff.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
     assert_close(angle_diff, 0.0f, 1e-2f, "Quaternion difference");
