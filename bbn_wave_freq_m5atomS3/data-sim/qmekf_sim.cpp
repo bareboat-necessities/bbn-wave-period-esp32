@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>   // for std::clamp
+#include <string>
 
 #define EIGEN_NON_ARDUINO
 
@@ -29,7 +30,7 @@ struct OutputRow {
     float roll_est{}, pitch_est{}, yaw_est{};
 };
 
-void process_wave_file(const std::string &filename, float dt) {
+void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
     auto [kind, type, wp] = *parsed;
@@ -38,7 +39,8 @@ void process_wave_file(const std::string &filename, float dt) {
     if (!(type == WaveType::JONSWAP || type == WaveType::PMSTOKES)) return;
 
     std::cout << "Processing " << filename
-              << " (" << EnumTraits<WaveType>::to_string(type) << ")\n";
+              << " (" << EnumTraits<WaveType>::to_string(type)
+              << ") with_mag=" << (with_mag ? "true" : "false") << "\n";
 
     WaveDataCSVReader reader(filename);
 
@@ -54,7 +56,6 @@ void process_wave_file(const std::string &filename, float dt) {
     std::vector<OutputRow> rows;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        // IMU vectors in nautical body frame
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
@@ -67,18 +68,29 @@ void process_wave_file(const std::string &filename, float dt) {
         float p_ref_a = rec.imu.pitch_deg;
         float y_ref_a = rec.imu.yaw_deg;
 
-        // Simulate magnetometer in nautical body frame, then convert to filter frame
-        Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_aero(r_ref_a, p_ref_a, y_ref_a);
-        Vector3f mag_f = zu_to_ned(mag_b);
+        // Simulated magnetometer (if enabled)
+        Vector3f mag_f(0,0,0);
+        if (with_mag) {
+            Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_aero(r_ref_a, p_ref_a, y_ref_a);
+            mag_f = zu_to_ned(mag_b);
+        }
 
         if (first) {
-            mekf.initialize_from_acc_mag(acc_f, mag_world_a);
+            if (with_mag)
+                mekf.initialize_from_acc_mag(acc_f, mag_world_a);
+            else
+                mekf.initialize_from_acc(acc_f);
             first = false;
         }
 
-        // Propagation + update
+        // Propagation
         mekf.time_update(gyr_f, dt);
-        mekf.measurement_update(acc_f, mag_f);
+
+        // Update: accel always, mag optional
+        if (with_mag)
+            mekf.measurement_update(acc_f, mag_f);
+        else
+            mekf.measurement_update_acc_only(acc_f);
 
         // Filter quaternion → Euler (nautical deg)
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
@@ -108,9 +120,9 @@ void process_wave_file(const std::string &filename, float dt) {
     }
     auto pos_ext = outname.rfind(".csv");
     if (pos_ext != std::string::npos) {
-        outname.insert(pos_ext, "_kalman");
+        outname.insert(pos_ext, with_mag ? "_kalman_mag" : "_kalman_nomag");
     } else {
-        outname += "_kalman.csv";
+        outname += with_mag ? "_kalman_mag.csv" : "_kalman_nomag.csv";
     }
     
     std::ofstream ofs(outname);
@@ -132,15 +144,29 @@ void process_wave_file(const std::string &filename, float dt) {
     std::cout << "Wrote " << outname << "\n";
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     float dt = 1.0f / 240.0f; // simulator sample rate
+
+    // Default: run with magnetometer
+    bool with_mag = true;
+
+    // Command-line toggle: pass "--nomag" to disable
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--nomag") {
+            with_mag = false;
+        }
+    }
+
+    std::cout << "Simulation starting with_mag=" << (with_mag ? "true" : "false") << "\n";
+
     for (auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
         std::string fname = entry.path().string();
         if (fname.find("wave_data_") == std::string::npos) continue;
         auto kind = WaveFileNaming::parse_kind_only(fname);
         if (kind && *kind == FileKind::Data) {
-            process_wave_file(fname, dt);
+            process_wave_file(fname, dt, with_mag);
         }
     }
     return 0;
