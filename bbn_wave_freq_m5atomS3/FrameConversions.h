@@ -137,16 +137,31 @@ struct MagSim_WMM {
     }
 
     // Simulate body-frame magnetometer [µT] from nautical Euler (deg)
-    static Eigen::Vector3f simulate_mag_from_euler_nautical(
-        float roll_deg, float pitch_deg, float yaw_deg,
-        float declination_deg = default_declination_deg,
-        float inclination_deg = default_inclination_deg,
-        float total_field_uT  = default_total_field_uT)
-    {
-        Quaternionf q_nautical = quat_from_euler(roll_deg, pitch_deg, yaw_deg);
-        Eigen::Vector3f mag_world = mag_world_nautical(declination_deg, inclination_deg, total_field_uT);
-        return q_nautical.inverse() * mag_world;
-    }
+ // Simulate body-frame magnetometer [µT] from nautical Euler (deg)
+// NOTE: Convert nautical → aerospace before building the quaternion.
+//       Rotate the world field in aerospace (NED), then convert back to nautical (ENU) for the return.
+static Eigen::Vector3f simulate_mag_from_euler_nautical(
+    float roll_deg, float pitch_deg, float yaw_deg,
+    float declination_deg = default_declination_deg,
+    float inclination_deg = default_inclination_deg,
+    float total_field_uT  = default_total_field_uT)
+{
+    // 1) nautical → aerospace angles
+    float r_a = roll_deg, p_a = pitch_deg, y_a = yaw_deg;
+    nautical_to_aero(r_a, p_a, y_a);
+
+    // 2) aerospace quaternion (ZYX: yaw→pitch→roll)
+    Quaternionf q_a = quat_from_euler(r_a, p_a, y_a);
+
+    // 3) world magnetic field in aerospace (NED)
+    Eigen::Vector3f mag_world_a = mag_world_aero(declination_deg, inclination_deg, total_field_uT);
+
+    // 4) body-frame mag in aerospace (body NED)
+    Eigen::Vector3f mag_body_a = q_a.inverse() * mag_world_a;
+
+    // 5) convert body NED → body ENU (nautical) for return
+    return ned_to_zu(mag_body_a);
+}   
 
     // Simulate body-frame magnetometer [µT] from aerospace Euler (deg)
     static Eigen::Vector3f simulate_mag_from_euler_aero(
