@@ -122,7 +122,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     if (pos_ext != std::string::npos) {
         outname.insert(pos_ext, with_mag ? "_kalman_mag" : "_kalman_nomag");
     } else {
-        outname += with_mag ? "_kalman_mag.csv" : "_kalman_nomag.csv";
+        outname += with_mag ? "_kalman.csv" : "_kalman_nomag.csv";
     }
     
     std::ofstream ofs(outname);
