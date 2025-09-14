@@ -138,6 +138,23 @@ struct MagSim_WMM {
         Eigen::Vector3f mag_world = mag_world_nautical(declination_deg, inclination_deg, total_field_uT);
         return q_nautical.inverse() * mag_world;
     }
+
+    // Simulate body-frame magnetometer [µT] from aerospace Euler (deg)
+    static Eigen::Vector3f simulate_mag_from_euler_aero(
+        float roll_deg, float pitch_deg, float yaw_deg,
+        float declination_deg = default_declination_deg,
+        float inclination_deg = default_inclination_deg,
+        float total_field_uT  = default_total_field_uT)
+    {
+        // Convert aerospace → nautical first
+        float r_n = roll_deg, p_n = pitch_deg, y_n = yaw_deg;
+        aero_to_nautical(r_n, p_n, y_n);
+
+        return simulate_mag_from_euler_nautical(r_n, p_n, y_n,
+                                                declination_deg,
+                                                inclination_deg,
+                                                total_field_uT);
+    }
 };
 
 #ifdef FRAMECONV_TEST
