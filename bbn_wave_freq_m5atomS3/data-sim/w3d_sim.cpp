@@ -168,6 +168,7 @@ void process_wave_file(const std::string &filename, float dt) {
             Vector3f mag_b0 = q_ref2.conjugate() * mag_ned_unit;
             Vector3f mag_f0 = imu_to_qmekf(mag_b0);
             mekf.initialize_from_acc_mag(acc_f, mag_f0);
+            check_init_consistency(mekf, acc_f, mag_f0, mag_ned_unit); 
             first = false;
         }
 
