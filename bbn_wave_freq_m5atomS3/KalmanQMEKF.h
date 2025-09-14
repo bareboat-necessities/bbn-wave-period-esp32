@@ -195,7 +195,7 @@ void QuaternionMEKF<T, with_bias>::time_update(Vector3 const& gyr, T Ts) {
   }
 
   // Quaternionf.coeffs() get the components in [x,y,z,w] order
-  qref = F * qref.coeffs();
+  qref.coeffs() = F * qref.coeffs();
   qref.normalize();
 
   MatrixN F_a;
