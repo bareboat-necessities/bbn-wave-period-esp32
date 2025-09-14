@@ -61,7 +61,7 @@ static inline void nautical_to_aero(float &roll, float &pitch, float &yaw) {
 
 // Quaternion helpers
 
-// Build quaternion from Euler (deg, aerospace convention 3-2-1: roll→pitch→yaw)
+// Build quaternion from Euler (deg, aerospace convention ZYX: yaw→pitch→roll)
 static Quaternionf quat_from_euler(float roll_deg, float pitch_deg, float yaw_deg) {
     float cr = std::cos(roll_deg * M_PI/180.0f / 2.0f);
     float sr = std::sin(roll_deg * M_PI/180.0f / 2.0f);
