@@ -174,7 +174,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     }
     auto pos_ext = outname.rfind(".csv");
     if (pos_ext != std::string::npos) {
-        outname.insert(pos_ext, with_mag ? "_w3d_mag" : "_w3d_nomag");
+        outname.insert(pos_ext, with_mag ? "_w3d" : "_w3d_nomag");
     } else {
         outname += with_mag ? "_w3d.csv" : "_w3d_nomag.csv";
     }
