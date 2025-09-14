@@ -34,13 +34,13 @@ static inline Eigen::Vector3f ned_to_zu(const Eigen::Vector3f& v) {
     return Eigen::Vector3f(v.y(), v.x(), -v.z());
 }
 
-// IMU frame → QMEKF frame (expects aerospace convention)
+// IMU/body frame (nautical) → QMEKF filter (aerospace)
 static inline Eigen::Vector3f imu_to_qmekf(const Eigen::Vector3f& v) {
     return zu_to_ned(v);
 }
 
-// Quaternion → Euler (deg)
-static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
+// Quaternion → Euler (aerospace convention, deg)
+static void quat_to_euler_aero(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
     Eigen::Matrix3f R = q.toRotationMatrix();
 
     pitch = std::atan2(-R(2,0), std::sqrt(R(0,0)*R(0,0) + R(1,0)*R(1,0)));
@@ -48,27 +48,26 @@ static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float
     yaw   = std::atan2(R(1,0), R(0,0));
 
     // Convert to degrees 
-    roll  *=  180.0f / M_PI;   
-    pitch *=  180.0f / M_PI;   
-    yaw   *=  180.0f / M_PI;  
+    roll  *= 180.0f / M_PI;   
+    pitch *= 180.0f / M_PI;   
+    yaw   *= 180.0f / M_PI;  
 }
 
-// Inverse conversion for Euler angles and orientation errors: aerospace → nautical
-static inline void aerospace_to_nautical_euler(float &roll, float &pitch, float &yaw) {
-    float old_pitch = pitch, old_roll = roll;
-    roll  = -old_roll;   // negate back
-    pitch = -old_pitch;  // negate back
+// Aerospace Euler → Nautical Euler (for output)
+static inline void aero_to_nautical(float &roll, float &pitch, float &yaw) {
+    roll  = -roll;   // negate back
+    pitch = -pitch;  // negate back
     // yaw unchanged
 }
 
 struct OutputRow {
     double t{};
-    // Reference Euler (deg)
+    // Reference Euler (deg, nautical)
     float roll_ref{}, pitch_ref{}, yaw_ref{};
-    // Raw IMU inputs
+    // Raw IMU inputs (nautical, as read from file)
     float acc_bx{}, acc_by{}, acc_bz{};
     float gyro_x{}, gyro_y{}, gyro_z{};
-    // Kalman estimates (deg)
+    // Kalman estimates (deg, nautical)
     float roll_est{}, pitch_est{}, yaw_est{};
 };
 
@@ -97,11 +96,11 @@ void process_wave_file(const std::string &filename, float dt) {
     std::vector<OutputRow> rows;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        // Build Eigen vectors from CSV (IMU/body frame)
+        // Build Eigen vectors from CSV (nautical IMU/body frame)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
-        // Convert to QMEKF filter frame (flip Z only)
+        // Convert to QMEKF filter frame (aerospace NED)
         Vector3f acc_f = imu_to_qmekf(acc_b);
         Vector3f gyr_f = imu_to_qmekf(gyr_b);
 
@@ -114,23 +113,26 @@ void process_wave_file(const std::string &filename, float dt) {
         mekf.time_update(gyr_f, dt);
         mekf.measurement_update_acc_only(acc_f);
 
-        // Filter quaternion → Euler (deg)
+        // Filter quaternion → Euler (aerospace deg)
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
         float r_est, p_est, y_est;
-        quat_to_euler(q, r_est, p_est, y_est);
+        quat_to_euler_aero(q, r_est, p_est, y_est);
 
-        // Reference angles from simulator (already in deg)
+        // Convert estimates back to nautical convention
+        aero_to_nautical(r_est, p_est, y_est);
+
+        // Reference angles from simulator (already nautical, deg)
         float r_ref = rec.imu.roll_deg;
         float p_ref = rec.imu.pitch_deg;
         float y_ref = rec.imu.yaw_deg;
 
         rows.push_back({
             rec.time,
-            r_ref, p_ref, y_ref,                  // reference
-            rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz,
-            rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z,
-            r_est, p_est, y_est                   // estimated
+            r_ref, p_ref, y_ref,                  // reference (nautical)
+            rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz, // raw IMU (nautical)
+            rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z, // raw gyro (nautical)
+            r_est, p_est, y_est                   // estimated (converted to nautical)
         });
     });
 
