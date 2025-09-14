@@ -17,26 +17,48 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// Quaternion → Euler (deg), ZYX convention with Z-up (nautical frame)
+// ============================================================
+// Coordinate conversions
+// Input: simulation data are in nautical Z-up IMU convention
+// Filter: aerospace NED convention (Z-down, X forward, Y right)
+// Mapping: (x_a, y_a, z_a) = (y_n, x_n, -z_n)
+// ============================================================
+
+// Nautical Z-up → Aerospace NED (filter input)
+static inline Eigen::Vector3f zu_to_ned(const Eigen::Vector3f& v) {
+    return Eigen::Vector3f(v.y(), v.x(), -v.z());
+}
+
+// Aerospace NED → Nautical Z-up (for exporting back)
+static inline Eigen::Vector3f ned_to_zu(const Eigen::Vector3f& v) {
+    return Eigen::Vector3f(v.y(), v.x(), -v.z());
+}
+
+// IMU frame → QMEKF frame (expects aerospace convention)
+static inline Eigen::Vector3f imu_to_qmekf(const Eigen::Vector3f& v) {
+    return zu_to_ned(v);
+}
+
+// Quaternion → Euler (deg)
 static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
-    // Rotation matrix from quaternion
     Eigen::Matrix3f R = q.toRotationMatrix();
 
-    // Match simulator’s extraction (same as getEulerAngles)
     pitch = std::atan2(-R(2,0), std::sqrt(R(0,0)*R(0,0) + R(1,0)*R(1,0)));
     roll  = std::atan2(R(2,1), R(2,2));
     yaw   = std::atan2(R(1,0), R(0,0));
 
-    // Convert to degrees
-    roll  *= 180.0f / M_PI;
-    pitch *= 180.0f / M_PI;
-    yaw   *= 180.0f / M_PI;
+    // Convert to degrees 
+    roll  *=  180.0f / M_PI;   
+    pitch *=  180.0f / M_PI;   
+    yaw   *=  180.0f / M_PI;  
 }
 
-// IMU frame → QMEKF frame
-// Fix: only flip Z (up→down) to match the filter's gravity convention.
-static inline Vector3f imu_to_qmekf(const Vector3f& v) {
-    return Vector3f(v.x(), v.y(), -v.z());
+// Inverse conversion for Euler angles and orientation errors: aerospace → nautical
+static inline void aerospace_to_nautical_euler(float &roll, float &pitch, float &yaw) {
+    float old_pitch = pitch, old_roll = roll;
+    roll  = -old_roll;   // negate back
+    pitch = -old_pitch;  // negate back
+    // yaw unchanged
 }
 
 struct OutputRow {
