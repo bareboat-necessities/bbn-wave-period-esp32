@@ -13,35 +13,23 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 
 #include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
-#include "FrameConversions.h"  // coordinate & quaternion conversions
+#include "FrameConversions.h"  // coordinate & quaternion conversions + MagSim_WMM
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
 struct OutputRow {
     double t{};
-
-    // Reference orientation (deg, nautical)
-    float roll_ref{}, pitch_ref{}, yaw_ref{};
-
-    // Reference world kinematics
+    float roll_ref{}, pitch_ref{}, yaw_ref{};     // Reference orientation (deg, nautical)
     float disp_ref_x{}, disp_ref_y{}, disp_ref_z{};
     float vel_ref_x{},  vel_ref_y{},  vel_ref_z{};
     float acc_ref_x{},  acc_ref_y{},  acc_ref_z{};
-
-    // Raw IMU inputs (nautical)
-    float acc_bx{}, acc_by{}, acc_bz{};
+    float acc_bx{}, acc_by{}, acc_bz{};          // Raw IMU inputs (nautical)
     float gyro_x{}, gyro_y{}, gyro_z{};
-
-    // Kalman orientation estimates (deg, nautical)
-    float roll_est{}, pitch_est{}, yaw_est{};
-
-    // Estimated world kinematics
+    float roll_est{}, pitch_est{}, yaw_est{};    // Estimated orientation (deg, nautical)
     float disp_est_x{}, disp_est_y{}, disp_est_z{};
     float vel_est_x{},  vel_est_y{},  vel_est_z{};
     float acc_est_x{},  acc_est_y{},  acc_est_z{};
-
-    // Errors (exported in nautical Z-up)
     float disp_err_x{}, disp_err_y{}, disp_err_z{};
     float vel_err_x{},  vel_err_y{},  vel_err_z{};
     float acc_err_x{},  acc_err_y{},  acc_err_z{};
@@ -52,17 +40,16 @@ struct OutputRow {
 static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
                                    const Eigen::Vector3f& acc_body_meas,
                                    const Eigen::Vector3f& mag_body_meas,
-                                   const Eigen::Vector3f& mag_world_unit)
+                                   const Eigen::Vector3f& mag_world)
 {
     auto qc = mekf.quaternion().coeffs(); // [x,y,z,w]
     Eigen::Quaternionf q(qc(3), qc(0), qc(1), qc(2));
-
     Eigen::Matrix3f R_bw = q.toRotationMatrix();   // body<-world
     Eigen::Matrix3f R_wb = R_bw.transpose();       // world<-body
 
     Eigen::Vector3f g_world(0.f, 0.f, -g_std);
     Eigen::Vector3f f_pred_body = R_wb * g_world;
-    Eigen::Vector3f m_pred_body = R_wb * mag_world_unit;
+    Eigen::Vector3f m_pred_body = R_wb * mag_world;
 
     std::cout << "Init Consistency Check\n";
     std::cout << "Accel measured (body) = " << acc_body_meas.transpose()
@@ -75,7 +62,6 @@ void process_wave_file(const std::string &filename, float dt) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
     auto [kind, type, wp] = *parsed;
-
     if (kind != FileKind::Data) return;
     if (!(type == WaveType::JONSWAP || type == WaveType::PMSTOKES)) return;
 
@@ -89,7 +75,8 @@ void process_wave_file(const std::string &filename, float dt) {
     const Vector3f sigma_m(0.10f,  0.10f,  0.10f);
     Kalman3D_Wave<float, true> mekf(sigma_a, sigma_g, sigma_m);
 
-    const Vector3f mag_ned_unit(0.39f, 0.0f, -0.92f); // example direction
+    // Earth magnetic field in aerospace (NED)
+    const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
     bool first = true;
     std::vector<OutputRow> rows;
@@ -106,26 +93,19 @@ void process_wave_file(const std::string &filename, float dt) {
         float p_ref_a = rec.imu.pitch_deg;
         float y_ref_a = rec.imu.yaw_deg;
 
-        // Convert simulator aerospace → nautical
+        // Convert to nautical for output
         float r_ref_out = r_ref_a, p_ref_out = p_ref_a, y_ref_out = y_ref_a;
         aero_to_nautical(r_ref_out, p_ref_out, y_ref_out);
 
-        Quaternionf q_ref2 =
-            Eigen::AngleAxisf(r_ref_a * M_PI/180.0f, Vector3f::UnitX()) *
-            Eigen::AngleAxisf(p_ref_a * M_PI/180.0f, Vector3f::UnitY()) *
-            Eigen::AngleAxisf(y_ref_a * M_PI/180.0f, Vector3f::UnitZ());
+        // Simulate body-frame magnetometer [µT] using WMM
+        Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_aero(r_ref_a, p_ref_a, y_ref_a);
+        Vector3f mag_f = zu_to_ned(mag_b);
 
         if (first) {
-            Vector3f mag_b0 = q_ref2.conjugate() * mag_ned_unit;
-            Vector3f mag_f0 = zu_to_ned(mag_b0);
-
-            mekf.initialize_from_acc_mag(acc_f, mag_ned_unit);
-            check_init_consistency(mekf, acc_f, mag_f0, mag_ned_unit);
+            mekf.initialize_from_acc_mag(acc_f, mag_world_a);
+            check_init_consistency(mekf, acc_f, mag_f, mag_world_a);
             first = false;
         }
-        
-        Vector3f mag_b = q_ref2.conjugate() * mag_ned_unit;
-        Vector3f mag_f = zu_to_ned(mag_b);
 
         mekf.time_update(gyr_f, acc_f, dt);
         mekf.measurement_update(acc_f, mag_f);
@@ -186,7 +166,7 @@ void process_wave_file(const std::string &filename, float dt) {
         outname.insert(pos_ext, "_w3d");
     } else {
         outname += "_w3d.csv";
-    }    
+    }
 
     std::ofstream ofs(outname);
     ofs << "time,"
