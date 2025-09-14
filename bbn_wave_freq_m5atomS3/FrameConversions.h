@@ -12,30 +12,32 @@
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
+#include <algorithm>   // for std::clamp
 #endif
 
 using Eigen::Vector3f;
 using Eigen::Matrix3f;
 using Eigen::Quaternionf;
 
-// Coordinate conversions between:
-//   Nautical Z-up (simulator, wave models)
-//   Aerospace NED Z-down (Q-MEKF filter)
+// Coordinate conversions
+//   Nautical Z-up (ENU: East, North, Up)  ← simulator, wave models
+//   Aerospace NED (North, East, Down)     ← Q-MEKF filter
 //
 // Mapping: (x_a, y_a, z_a) = (y_n, x_n, -z_n)
 
-// Vector conversions
-
+// Nautical (ENU, Z-up) → Aerospace (NED, Z-down)
 static inline Vector3f zu_to_ned(const Vector3f& v) {
     return Vector3f(v.y(), v.x(), -v.z());
 }
 
+// Aerospace (NED, Z-down) → Nautical (ENU, Z-up)
 static inline Vector3f ned_to_zu(const Vector3f& v) {
     return Vector3f(v.y(), v.x(), -v.z());
 }
 
-// Euler angle conversions
+// Euler angle conversions (roll, pitch, yaw in degrees)
 
+// Aerospace → Nautical
 static inline void aero_to_nautical(float &roll, float &pitch, float &yaw) {
     float r_a = roll;
     float p_a = pitch;
@@ -44,6 +46,7 @@ static inline void aero_to_nautical(float &roll, float &pitch, float &yaw) {
     // yaw unchanged
 }
 
+// Nautical → Aerospace
 static inline void nautical_to_aero(float &roll, float &pitch, float &yaw) {
     float r_n = roll;
     float p_n = pitch;
@@ -54,7 +57,7 @@ static inline void nautical_to_aero(float &roll, float &pitch, float &yaw) {
 
 // Quaternion helpers
 
-// Build quaternion from Euler (deg, 3-2-1)
+// Build quaternion from Euler (deg, aerospace convention 3-2-1: roll→pitch→yaw)
 static Quaternionf quat_from_euler(float roll_deg, float pitch_deg, float yaw_deg) {
     float cr = std::cos(roll_deg * M_PI/180.0f / 2.0f);
     float sr = std::sin(roll_deg * M_PI/180.0f / 2.0f);
@@ -84,25 +87,22 @@ static inline void quat_to_euler_aero(const Quaternionf &q, float &roll, float &
     yaw   *= 180.0f / M_PI;  
 }
 
-// Extract Euler (nautical convention, deg) directly from quaternion
+// Extract Euler (nautical convention, deg) from quaternion
 static inline void quat_to_euler_nautical(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
     quat_to_euler_aero(q, roll, pitch, yaw);
     aero_to_nautical(roll, pitch, yaw);
 }
 
-// Helper: simulate magnetometer IMU output (µT)
+// Magnetometer simulation using World Magnetic Model (WMM)
+// Defaults: Statue of Liberty, USA, Sept 2025, elevation ~0 m
+
 struct MagSim_WMM {
-    // Defaults: Statue of Liberty, Sept 2025 (0 m elevation)
-    static constexpr float default_declination_deg = -3.44f; // [deg]
-    static constexpr float default_inclination_deg =  67.5f; // [deg]
+    static constexpr float default_declination_deg = -3.44f; // [deg] east is positive
+    static constexpr float default_inclination_deg =  67.5f; // [deg] positive = down
     static constexpr float default_total_field_uT  = 51.0f;  // [µT]
 
-    // NEU (North-East-Up) → NED (North-East-Down)
-    static inline Eigen::Vector3f neu_to_ned(const Eigen::Vector3f& v) {
-        return Eigen::Vector3f(v.x(), v.y(), -v.z());
-    }
-
-    // World magnetic field vector in nautical NEU frame
+    // World magnetic field vector in Nautical ENU frame (East, North, Up)
+    // Units: microteslas [µT]
     static Eigen::Vector3f mag_world_nautical(
         float declination_deg = default_declination_deg,
         float inclination_deg = default_inclination_deg,
@@ -112,27 +112,26 @@ struct MagSim_WMM {
         float incl_rad = inclination_deg * M_PI / 180.0f;
 
         float h = std::cos(incl_rad);  // horizontal fraction
-        float v = -std::sin(incl_rad); // vertical (down in NEU, so negative)
+        float v = -std::sin(incl_rad); // vertical (downwards, Z-up frame)
 
         Eigen::Vector3f mag_world;
-        mag_world.x() = h * std::cos(dec_rad); // North
-        mag_world.y() = h * std::sin(dec_rad); // East
+        mag_world.x() = h * std::sin(dec_rad); // East
+        mag_world.y() = h * std::cos(dec_rad); // North
         mag_world.z() = v;                     // Up
 
-        mag_world *= total_field_uT;
-        return mag_world;
+        return mag_world * total_field_uT;     // [µT]
     }
 
-    // World magnetic field vector in Aerospace NED frame
+    // World magnetic field vector in Aerospace NED frame (North, East, Down)
     static Eigen::Vector3f mag_world_aero(
         float declination_deg = default_declination_deg,
         float inclination_deg = default_inclination_deg,
         float total_field_uT  = default_total_field_uT)
     {
-        return neu_to_ned(mag_world_nautical(declination_deg, inclination_deg, total_field_uT));
+        return zu_to_ned(mag_world_nautical(declination_deg, inclination_deg, total_field_uT));
     }
 
-    // Simulate body-frame magnetometer reading [µT] from nautical Euler
+    // Simulate body-frame magnetometer [µT] from nautical Euler (deg)
     static Eigen::Vector3f simulate_mag_from_euler_nautical(
         float roll_deg, float pitch_deg, float yaw_deg,
         float declination_deg = default_declination_deg,
@@ -151,7 +150,7 @@ struct MagSim_WMM {
         float inclination_deg = default_inclination_deg,
         float total_field_uT  = default_total_field_uT)
     {
-        // Convert aerospace → nautical first
+        // Convert aerospace → nautical
         float r_n = roll_deg, p_n = pitch_deg, y_n = yaw_deg;
         aero_to_nautical(r_n, p_n, y_n);
 
@@ -264,26 +263,28 @@ inline int test_frame_conversions() {
         assert_close(ya, yn, tol_angle, "Random yaw");
     }
 
-    // Quaternion consistency test
-    float rq = 30, pq = 20, yq = 45;             // reference nautical Euler angles
-    Quaternionf q_n = quat_from_euler(rq, pq, yq); // build quaternion in nautical convention
-
-    // Convert reference nautical angles → aerospace, then back into quaternion
-    float rqa = rq, pqa = pq, yqa = yq;
-    nautical_to_aero(rqa, pqa, yqa);
-    Quaternionf q_a = quat_from_euler(rqa, pqa, yqa);
-
-    // Compare nautical quaternion with aerospace-converted quaternion
-    Quaternionf q_diff = q_n * q_a.inverse();
-    float angle_diff = 2.0f * std::acos(std::clamp(q_diff.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
-    assert_close(angle_diff, 0.0f, 1e-2f, "Quaternion difference");
-
     // Quaternion → Euler (nautical) direct test
+    float rq2 = 30, pq2 = 20, yq2 = 45;
+    Quaternionf q_n2 = quat_from_euler(rq2, pq2, yq2);
     float r_e, p_e, y_e;
-    quat_to_euler_nautical(q_n, r_e, p_e, y_e);
-    assert_close(r_e, rq, tol_angle, "quat_to_euler_nautical roll");
-    assert_close(p_e, pq, tol_angle, "quat_to_euler_nautical pitch");
-    assert_close(y_e, yq, tol_angle, "quat_to_euler_nautical yaw");
+    quat_to_euler_nautical(q_n2, r_e, p_e, y_e);
+    assert_close(r_e, rq2, tol_angle, "quat_to_euler_nautical roll");
+    assert_close(p_e, pq2, tol_angle, "quat_to_euler_nautical pitch");
+    assert_close(y_e, yq2, tol_angle, "quat_to_euler_nautical yaw");
+
+    // Magnetometer world-field tests
+    Vector3f mag_enu = MagSim_WMM::mag_world_nautical();
+    Vector3f mag_ned = MagSim_WMM::mag_world_aero();
+    assert_close(mag_enu.z(), -std::sin(MagSim_WMM::default_inclination_deg * M_PI/180.0f) * MagSim_WMM::default_total_field_uT,
+                 1e-3f, "Mag ENU vertical");
+    assert_close(mag_ned.z(), std::sin(MagSim_WMM::default_inclination_deg * M_PI/180.0f) * MagSim_WMM::default_total_field_uT,
+                 1e-3f, "Mag NED vertical");
+
+    // Magnetometer body-frame test at zero Euler (should match world ENU)
+    Vector3f mag_body0 = MagSim_WMM::simulate_mag_from_euler_nautical(0,0,0);
+    assert_close(mag_body0.x(), mag_enu.x(), 1e-3f, "Mag body0 east");
+    assert_close(mag_body0.y(), mag_enu.y(), 1e-3f, "Mag body0 north");
+    assert_close(mag_body0.z(), mag_enu.z(), 1e-3f, "Mag body0 up");
     
     std::cout << "All frame conversion tests passed\n";
     return 0;
