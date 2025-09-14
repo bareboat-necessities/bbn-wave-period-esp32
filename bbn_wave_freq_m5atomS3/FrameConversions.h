@@ -97,6 +97,11 @@ struct MagSim_WMM {
     static constexpr float default_inclination_deg =  67.5f; // [deg]
     static constexpr float default_total_field_uT  = 51.0f;  // [µT]
 
+    // NEU (North-East-Up) → NED (North-East-Down)
+    static inline Eigen::Vector3f neu_to_ned(const Eigen::Vector3f& v) {
+        return Eigen::Vector3f(v.x(), v.y(), -v.z());
+    }
+
     // World magnetic field vector in nautical NEU frame
     static Eigen::Vector3f mag_world_nautical(
         float declination_deg = default_declination_deg,
@@ -124,7 +129,7 @@ struct MagSim_WMM {
         float inclination_deg = default_inclination_deg,
         float total_field_uT  = default_total_field_uT)
     {
-        return zu_to_ned(mag_world_nautical(declination_deg, inclination_deg, total_field_uT));
+        return neu_to_ned(mag_world_nautical(declination_deg, inclination_deg, total_field_uT));
     }
 
     // Simulate body-frame magnetometer reading [µT] from nautical Euler
