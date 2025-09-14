@@ -13,7 +13,7 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 
 #include "KalmanQMEKF.h"       // Q-MEKF filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
-#include "FrameConversions.h"  // coordinate & quaternion conversions
+#include "FrameConversions.h"  // conversions + MagSim_WMM
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
@@ -30,12 +30,10 @@ struct OutputRow {
 };
 
 void process_wave_file(const std::string &filename, float dt) {
-    // Parse metadata
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
     auto [kind, type, wp] = *parsed;
 
-    // Restrict to JONSWAP + PMSTOKES
     if (kind != FileKind::Data) return;
     if (!(type == WaveType::JONSWAP || type == WaveType::PMSTOKES)) return;
 
@@ -44,32 +42,43 @@ void process_wave_file(const std::string &filename, float dt) {
 
     WaveDataCSVReader reader(filename);
 
-    // Kalman filter config (std devs — squared internally)
     const Vector3f sigma_a(0.05f,  0.05f,  0.05f);
     const Vector3f sigma_g(0.001f, 0.001f, 0.001f);
     const Vector3f sigma_m(0.10f,  0.10f,  0.10f);
     QuaternionMEKF<float, true> mekf(sigma_a, sigma_g, sigma_m);
 
+    // World magnetic field in aerospace NED
+    const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
+
     bool first = true;
     std::vector<OutputRow> rows;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        // Build Eigen vectors from CSV (nautical IMU/body frame)
+        // IMU vectors in nautical body frame
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
-        // Convert to QMEKF filter frame (aerospace NED)
+        // Convert to filter (aerospace NED)
         Vector3f acc_f = zu_to_ned(acc_b);
         Vector3f gyr_f = zu_to_ned(gyr_b);
 
+        // Reference aerospace Euler from simulator
+        float r_ref_a = rec.imu.roll_deg;
+        float p_ref_a = rec.imu.pitch_deg;
+        float y_ref_a = rec.imu.yaw_deg;
+
+        // Simulate magnetometer in nautical body frame, then convert to filter frame
+        Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_aero(r_ref_a, p_ref_a, y_ref_a);
+        Vector3f mag_f = zu_to_ned(mag_b);
+
         if (first) {
-            mekf.initialize_from_acc(acc_f);
+            mekf.initialize_from_acc_mag(acc_f, mag_world_a);
             first = false;
         }
 
-        // Time + measurement updates
+        // Propagation + update
         mekf.time_update(gyr_f, dt);
-        mekf.measurement_update_acc_only(acc_f);
+        mekf.measurement_update(acc_f, mag_f);
 
         // Filter quaternion → Euler (nautical deg)
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
@@ -77,28 +86,26 @@ void process_wave_file(const std::string &filename, float dt) {
         float r_est, p_est, y_est;
         quat_to_euler_nautical(q, r_est, p_est, y_est);
 
-        // Reference angles from simulator (already nautical, deg)
+        // Reference angles (nautical)
         float r_ref = rec.imu.roll_deg;
         float p_ref = rec.imu.pitch_deg;
         float y_ref = rec.imu.yaw_deg;
 
         rows.push_back({
             rec.time,
-            r_ref, p_ref, y_ref,                  // reference (nautical)
-            rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz, // raw IMU (nautical)
-            rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z, // raw gyro (nautical)
-            r_est, p_est, y_est                   // estimated (converted to nautical)
+            r_ref, p_ref, y_ref,
+            rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz,
+            rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z,
+            r_est, p_est, y_est
         });
     });
 
-    // Output filename: replace prefix "wave_data_" with "qmekf_", then add "_kalman"
+    // Output filename
     std::string outname = filename;
-
     auto pos_prefix = outname.find("wave_data_");
     if (pos_prefix != std::string::npos) {
         outname.replace(pos_prefix, std::string("wave_data_").size(), "qmekf_");
     }
-
     auto pos_ext = outname.rfind(".csv");
     if (pos_ext != std::string::npos) {
         outname.insert(pos_ext, "_kalman");
