@@ -93,32 +93,46 @@ struct OutputRow {
 };
 
 // Debug helper: check initialization consistency
+// Debug helper: check initialization consistency
 static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
-                                   const Eigen::Vector3f& acc_meas,
-                                   const Eigen::Vector3f& mag_meas,
-                                   const Eigen::Vector3f& mag_ned_unit) 
+                                   const Eigen::Vector3f& acc_body_meas,   // body (filter convention)
+                                   const Eigen::Vector3f& mag_body_meas,   // body (filter convention)
+                                   const Eigen::Vector3f& mag_world_unit)  // world (NED)
 {
-    // Current quaternion from filter [x,y,z,w]
-    auto coeffs = mekf.quaternion().coeffs(); // [x,y,z,w]
-    Eigen::Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
-    
-    // Body->world rotation
-    Eigen::Matrix3f R = q.toRotationMatrix();
+    // Filter quaternion is world->body. Eigen stores [x y z w] in coeffs().
+    auto qc = mekf.quaternion().coeffs(); // [x,y,z,w]
+    Eigen::Quaternionf q(qc(3), qc(0), qc(1), qc(2));
 
-    // Predicted accel and mag in body frame
-    Eigen::Vector3f f_pred = R.transpose() * Eigen::Vector3f(0, 0, -g_std);
-    Eigen::Vector3f m_pred = R.transpose() * mag_ned_unit;
+    // Body->world rotation (R_bw) and world->body (R_wb = R_bw^T)
+    Eigen::Matrix3f R_bw = q.toRotationMatrix();
+    Eigen::Matrix3f R_wb = R_bw.transpose();
 
+    // ---- Predicted measurements in body frame (what the filter predicts) ----
+    // Match filter's accel model: f_b = R^T * (a_w + g_world), with g_world = (0,0,-g)
+    // For init check assume a_w ≈ 0
+    Eigen::Vector3f g_world(0.f, 0.f, -g_std);
+    Eigen::Vector3f f_pred_body = R_wb * g_world;
+    Eigen::Vector3f m_pred_body = R_wb * mag_world_unit;
+
+    // ---- Print measured vs predicted (both in body frame) ----
     std::cout << "Init Consistency Check\n";
-    std::cout << "Accel measured = " << acc_meas.transpose()
-              << " | predicted = " << f_pred.transpose() << "\n";
-    std::cout << "Mag   measured = " << mag_meas.transpose()
-              << " | predicted = " << m_pred.transpose() << "\n";
+    std::cout << "Accel measured (body)   = " << acc_body_meas.transpose()
+              << " | predicted (body) = "    << f_pred_body.transpose() << "\n";
+    std::cout << "Mag   measured (body)   = " << mag_body_meas.transpose()
+              << " | predicted (body) = "    << m_pred_body.transpose() << "\n";
 
-    // Optional: print yaw difference vs. sim reference
-    Eigen::Vector3f world_x = m_pred.normalized();
-    float yaw_est = std::atan2(world_x.y(), world_x.x()) * 180.0f / M_PI;
-    std::cout << "Estimated yaw from mag = " << yaw_est << " deg\n";
+    // ---- Yaw from magnetic measurement ----
+    // Rotate measured body mag into world; yaw is atan2(y,x) of world mag projection
+    Eigen::Vector3f m_world_from_meas = R_bw * mag_body_meas;
+    Eigen::Vector3f m_h = m_world_from_meas; m_h.z() = 0.f;  // horizontal projection
+    float yaw_from_mag = std::atan2(m_h.y(), m_h.x()) * 180.0f / float(M_PI);
+
+    // Also show yaw of the *reference* world magnetic vector (for sanity)
+    Eigen::Vector3f B_h = mag_world_unit; B_h.z() = 0.f;
+    float yaw_of_world_B = std::atan2(B_h.y(), B_h.x()) * 180.0f / float(M_PI);
+
+    std::cout << "Yaw from measured mag (deg) = " << yaw_from_mag
+              << " | yaw of world B (deg) = "      << yaw_of_world_B << "\n";
 }
 
 void process_wave_file(const std::string &filename, float dt) {
