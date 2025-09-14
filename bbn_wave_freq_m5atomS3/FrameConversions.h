@@ -18,17 +18,13 @@ using Eigen::Vector3f;
 using Eigen::Matrix3f;
 using Eigen::Quaternionf;
 
-// ============================================================
 // Coordinate conversions between:
 //   Nautical Z-up (simulator, wave models)
 //   Aerospace NED Z-down (Q-MEKF filter)
 //
 // Mapping: (x_a, y_a, z_a) = (y_n, x_n, -z_n)
-// ============================================================
 
-// -------------------------
 // Vector conversions
-// -------------------------
 
 static inline Vector3f zu_to_ned(const Vector3f& v) {
     return Vector3f(v.y(), v.x(), -v.z());
@@ -38,9 +34,7 @@ static inline Vector3f ned_to_zu(const Vector3f& v) {
     return Vector3f(v.y(), v.x(), -v.z());
 }
 
-// -------------------------
 // Euler angle conversions
-// -------------------------
 
 static inline void aero_to_nautical(float &roll, float &pitch, float &yaw) {
     float r_a = roll;
@@ -58,9 +52,7 @@ static inline void nautical_to_aero(float &roll, float &pitch, float &yaw) {
     // yaw unchanged
 }
 
-// -------------------------
 // Quaternion helpers
-// -------------------------
 
 // Build quaternion from Euler (deg, 3-2-1)
 static Quaternionf quat_from_euler(float roll_deg, float pitch_deg, float yaw_deg) {
@@ -81,11 +73,7 @@ static Quaternionf quat_from_euler(float roll_deg, float pitch_deg, float yaw_de
 
 #ifdef FRAMECONV_TEST
 
-
-// -------------------------
 // Utility: floating-point assert with tolerance
-// -------------------------
-
 inline void assert_close(float a, float b, float tol, const char* msg) {
     if (std::fabs(a - b) > tol) {
         std::cerr << "ASSERT FAIL: " << msg
@@ -95,10 +83,7 @@ inline void assert_close(float a, float b, float tol, const char* msg) {
     }
 }
 
-// -------------------------
 // Test entry point
-// -------------------------
-
 inline int test_frame_conversions() {
     const float tol_angle = 1e-3f;   // tolerance for Euler round-trips
     const float tol_vec   = 1e-6f;   // tolerance for vector round-trips
@@ -106,7 +91,7 @@ inline int test_frame_conversions() {
     float r_n, p_n, y_n;
     float r_a, p_a, y_a;
 
-    // --- Flat
+    // Flat
     r_n = 0; p_n = 0; y_n = 0;
     r_a = r_n; p_a = p_n; y_a = y_n;
     nautical_to_aero(r_a, p_a, y_a);
@@ -115,28 +100,28 @@ inline int test_frame_conversions() {
     assert_close(p_a, p_n, tol_angle, "Flat pitch");
     assert_close(y_a, y_n, tol_angle, "Flat yaw");
 
-    // --- 90° roll
+    // 90° roll
     r_n = 90; p_n = 0; y_n = 0;
     r_a = r_n; p_a = p_n; y_a = y_n;
     nautical_to_aero(r_a, p_a, y_a);
     aero_to_nautical(r_a, p_a, y_a);
     assert_close(r_a, r_n, tol_angle, "90 roll");
 
-    // --- 90° pitch
+    // 90° pitch
     r_n = 0; p_n = 90; y_n = 0;
     r_a = r_n; p_a = p_n; y_a = y_n;
     nautical_to_aero(r_a, p_a, y_a);
     aero_to_nautical(r_a, p_a, y_a);
     assert_close(p_a, p_n, tol_angle, "90 pitch");
 
-    // --- 90° yaw
+    // 90° yaw
     r_n = 0; p_n = 0; y_n = 90;
     r_a = r_n; p_a = p_n; y_a = y_n;
     nautical_to_aero(r_a, p_a, y_a);
     aero_to_nautical(r_a, p_a, y_a);
     assert_close(y_a, y_n, tol_angle, "90 yaw");
 
-    // --- General case
+    // General case
     r_n = 30; p_n = 20; y_n = 45;
     r_a = r_n; p_a = p_n; y_a = y_n;
     nautical_to_aero(r_a, p_a, y_a);
@@ -145,7 +130,7 @@ inline int test_frame_conversions() {
     assert_close(p_a, p_n, tol_angle, "General pitch");
     assert_close(y_a, y_n, tol_angle, "General yaw");
 
-    // --- Gravity vector round-trip
+    // Gravity vector round-trip
     Vector3f g_n(0, 0, -9.81f);
     Vector3f g_a = zu_to_ned(g_n);
     Vector3f g_back = ned_to_zu(g_a);
@@ -153,7 +138,7 @@ inline int test_frame_conversions() {
     assert_close(g_back.y(), g_n.y(), tol_vec, "Gravity y");
     assert_close(g_back.z(), g_n.z(), tol_vec, "Gravity z");
 
-    // --- Magnetometer vector round-trip
+    // Magnetometer vector round-trip
     Vector3f m_n(1.0f, 0.0f, 0.0f);
     Vector3f m_a = zu_to_ned(m_n);
     Vector3f m_back = ned_to_zu(m_a);
@@ -161,7 +146,7 @@ inline int test_frame_conversions() {
     assert_close(m_back.y(), m_n.y(), tol_vec, "Mag y");
     assert_close(m_back.z(), m_n.z(), tol_vec, "Mag z");
 
-    // --- Quaternion consistency test
+    // Quaternion consistency test
     float rq = 30, pq = 20, yq = 45;
     Quaternionf q_n = quat_from_euler(rq, pq, yq);
 
@@ -173,7 +158,7 @@ inline int test_frame_conversions() {
     float angle_diff = 2.0f * std::acos(std::clamp(q_diff.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
     assert_close(angle_diff, 0.0f, 1e-2f, "Quaternion difference");
 
-    // --- Randomized stress test
+    // Randomized stress test
     for (int i = 0; i < 100; ++i) {
         float rn = (float(rand()) / RAND_MAX - 0.5f) * 180.0f;  // [-90,90]
         float pn = (float(rand()) / RAND_MAX - 0.5f) * 180.0f;
