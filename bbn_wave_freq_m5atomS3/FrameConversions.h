@@ -192,6 +192,26 @@ inline int test_frame_conversions() {
         assert_close(ya, yn, tol_angle, "Random yaw");
     }
 
+    // Quaternion consistency test
+    float rq = 30, pq = 20, yq = 45;
+    Quaternionf q_n = quat_from_euler(rq, pq, yq);
+
+    // Aerospace → nautical via conversion
+    float rqa = rq, pqa = pq, yqa = yq;
+    nautical_to_aero(rqa, pqa, yqa);
+    Quaternionf q_a = quat_from_euler(rqa, pqa, yqa);
+
+    Quaternionf q_diff = q_n * q_a.inverse();
+    float angle_diff = 2.0f * std::acos(std::clamp(q_diff.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
+    assert_close(angle_diff, 0.0f, 1e-2f, "Quaternion difference");
+
+    // Quaternion → Euler (nautical) direct test
+    float r_e, p_e, y_e;
+    quat_to_euler_nautical(q_n, r_e, p_e, y_e);
+    assert_close(r_e, rq, tol_angle, "quat_to_euler_nautical roll");
+    assert_close(p_e, pq, tol_angle, "quat_to_euler_nautical pitch");
+    assert_close(y_e, yq, tol_angle, "quat_to_euler_nautical yaw");
+
     std::cout << "All frame conversion tests passed\n";
     return 0;
 }
