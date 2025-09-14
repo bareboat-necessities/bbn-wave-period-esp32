@@ -184,6 +184,8 @@ static Eigen::Vector3f simulate_mag_from_euler_aero(
     return ned_to_zu(mag_body_a);
 }
 
+};
+
 #ifdef FRAMECONV_TEST
 
 // Utility: floating-point assert with tolerance
