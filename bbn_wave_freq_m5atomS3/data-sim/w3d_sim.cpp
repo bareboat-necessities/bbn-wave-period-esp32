@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>   // for std::clamp
+#include <string>
 
 #define EIGEN_NON_ARDUINO
 
@@ -58,7 +59,7 @@ static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
               << " | predicted (body) = " << m_pred_body.transpose() << "\n";
 }
 
-void process_wave_file(const std::string &filename, float dt) {
+void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
     auto [kind, type, wp] = *parsed;
@@ -66,7 +67,8 @@ void process_wave_file(const std::string &filename, float dt) {
     if (!(type == WaveType::JONSWAP || type == WaveType::PMSTOKES)) return;
 
     std::cout << "Processing " << filename
-              << " (" << EnumTraits<WaveType>::to_string(type) << ")\n";
+              << " (" << EnumTraits<WaveType>::to_string(type)
+              << ") with_mag=" << (with_mag ? "true" : "false") << "\n";
 
     WaveDataCSVReader reader(filename);
 
@@ -97,18 +99,27 @@ void process_wave_file(const std::string &filename, float dt) {
         float r_ref_out = r_ref_a, p_ref_out = p_ref_a, y_ref_out = y_ref_a;
         aero_to_nautical(r_ref_out, p_ref_out, y_ref_out);
 
-        // Simulate body-frame magnetometer [µT] using WMM
-        Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_aero(r_ref_a, p_ref_a, y_ref_a);
-        Vector3f mag_f = zu_to_ned(mag_b);
+        // Simulated magnetometer [µT]
+        Vector3f mag_f(0,0,0);
+        if (with_mag) {
+            Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_aero(r_ref_a, p_ref_a, y_ref_a);
+            mag_f = zu_to_ned(mag_b);
+        }
 
         if (first) {
-            mekf.initialize_from_acc_mag(acc_f, mag_world_a);
-            check_init_consistency(mekf, acc_f, mag_f, mag_world_a);
+            if (with_mag) {
+                mekf.initialize_from_acc_mag(acc_f, mag_world_a);
+                check_init_consistency(mekf, acc_f, mag_f, mag_world_a);
+            } else {
+                mekf.initialize_from_acc(acc_f);
+            }
             first = false;
         }
 
         mekf.time_update(gyr_f, acc_f, dt);
-        mekf.measurement_update(acc_f, mag_f);
+
+        if (with_mag) mekf.measurement_update(acc_f, mag_f);
+        else          mekf.measurement_update_acc_only(acc_f);
 
         auto coeffs = mekf.quaternion().coeffs(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
@@ -163,9 +174,9 @@ void process_wave_file(const std::string &filename, float dt) {
     }
     auto pos_ext = outname.rfind(".csv");
     if (pos_ext != std::string::npos) {
-        outname.insert(pos_ext, "_w3d");
+        outname.insert(pos_ext, with_mag ? "_w3d_mag" : "_w3d_nomag");
     } else {
-        outname += "_w3d.csv";
+        outname += with_mag ? "_w3d.csv" : "_w3d_nomag.csv";
     }
 
     std::ofstream ofs(outname);
@@ -208,15 +219,24 @@ void process_wave_file(const std::string &filename, float dt) {
     std::cout << "Wrote " << outname << "\n";
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     float dt = 1.0f / 240.0f;
+
+    bool with_mag = true;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--nomag") with_mag = false;
+    }
+
+    std::cout << "Simulation starting with_mag=" << (with_mag ? "true" : "false") << "\n";
+
     for (auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
         std::string fname = entry.path().string();
         if (fname.find("wave_data_") == std::string::npos) continue;
         auto kind = WaveFileNaming::parse_kind_only(fname);
         if (kind && *kind == FileKind::Data) {
-            process_wave_file(fname, dt);
+            process_wave_file(fname, dt, with_mag);
         }
     }
     return 0;
