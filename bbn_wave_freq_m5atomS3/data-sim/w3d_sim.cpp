@@ -93,46 +93,38 @@ struct OutputRow {
 };
 
 // Debug helper: check initialization consistency
-// Debug helper: check initialization consistency
 static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
                                    const Eigen::Vector3f& acc_body_meas,   // body (filter convention)
                                    const Eigen::Vector3f& mag_body_meas,   // body (filter convention)
                                    const Eigen::Vector3f& mag_world_unit)  // world (NED)
 {
-    // Filter quaternion is world->body. Eigen stores [x y z w] in coeffs().
     auto qc = mekf.quaternion().coeffs(); // [x,y,z,w]
     Eigen::Quaternionf q(qc(3), qc(0), qc(1), qc(2));
 
-    // Body->world rotation (R_bw) and world->body (R_wb = R_bw^T)
-    Eigen::Matrix3f R_bw = q.toRotationMatrix();
-    Eigen::Matrix3f R_wb = R_bw.transpose();
+    Eigen::Matrix3f R_bw = q.toRotationMatrix();   // body<-world
+    Eigen::Matrix3f R_wb = R_bw.transpose();       // world<-body
 
-    // ---- Predicted measurements in body frame (what the filter predicts) ----
-    // Match filter's accel model: f_b = R^T * (a_w + g_world), with g_world = (0,0,-g)
-    // For init check assume a_w ≈ 0
+    // Predicted measurements in body frame
     Eigen::Vector3f g_world(0.f, 0.f, -g_std);
     Eigen::Vector3f f_pred_body = R_wb * g_world;
     Eigen::Vector3f m_pred_body = R_wb * mag_world_unit;
 
-    // ---- Print measured vs predicted (both in body frame) ----
     std::cout << "Init Consistency Check\n";
-    std::cout << "Accel measured (body)   = " << acc_body_meas.transpose()
-              << " | predicted (body) = "    << f_pred_body.transpose() << "\n";
-    std::cout << "Mag   measured (body)   = " << mag_body_meas.transpose()
-              << " | predicted (body) = "    << m_pred_body.transpose() << "\n";
+    std::cout << "Accel measured (body) = " << acc_body_meas.transpose()
+              << " | predicted (body) = " << f_pred_body.transpose() << "\n";
+    std::cout << "Mag   measured (body) = " << mag_body_meas.transpose()
+              << " | predicted (body) = " << m_pred_body.transpose() << "\n";
 
-    // ---- Yaw from magnetic measurement ----
-    // Rotate measured body mag into world; yaw is atan2(y,x) of world mag projection
+    // Yaw from measured mag
     Eigen::Vector3f m_world_from_meas = R_bw * mag_body_meas;
-    Eigen::Vector3f m_h = m_world_from_meas; m_h.z() = 0.f;  // horizontal projection
+    Eigen::Vector3f m_h = m_world_from_meas; m_h.z() = 0.f;
     float yaw_from_mag = std::atan2(m_h.y(), m_h.x()) * 180.0f / float(M_PI);
 
-    // Also show yaw of the *reference* world magnetic vector (for sanity)
     Eigen::Vector3f B_h = mag_world_unit; B_h.z() = 0.f;
     float yaw_of_world_B = std::atan2(B_h.y(), B_h.x()) * 180.0f / float(M_PI);
 
-    std::cout << "Yaw from measured mag (deg) = " << yaw_from_mag
-              << " | yaw of world B (deg) = "      << yaw_of_world_B << "\n";
+    std::cout << "Yaw from measured mag = " << yaw_from_mag
+              << " deg | yaw of world B = " << yaw_of_world_B << " deg\n";
 }
 
 void process_wave_file(const std::string &filename, float dt) {
@@ -178,14 +170,18 @@ void process_wave_file(const std::string &filename, float dt) {
             Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
 
         if (first) {
-            // BODY-frame mag at t=0
-            Vector3f mag_b0 = q_ref2.conjugate() * mag_ned_unit;
-            Vector3f mag_f0 = imu_to_qmekf(mag_b0);
-            mekf.initialize_from_acc_mag(acc_f, mag_f0);
-            check_init_consistency(mekf, acc_f, mag_f0, mag_ned_unit); 
+            // BODY-frame mag at t=0 (from sim truth), then convert to filter convention
+            Vector3f mag_b0 = q_ref2.conjugate() * mag_ned_unit;  // body (nautical)
+            Vector3f mag_f0 = imu_to_qmekf(mag_b0);               // body (filter/aerospace)
+
+            // Initialize filter with: accel (body) + magnetic field (WORLD)
+            mekf.initialize_from_acc_mag(acc_f, mag_ned_unit);
+
+            // Debug check: body vs. predicted, world ref for context
+            check_init_consistency(mekf, acc_f, mag_f0, mag_ned_unit);
             first = false;
         }
-
+        
         // Rotate into body frame
         Vector3f mag_b = q_ref2.conjugate() * mag_ned_unit;
 
