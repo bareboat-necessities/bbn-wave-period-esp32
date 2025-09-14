@@ -99,9 +99,9 @@ static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
                                    const Eigen::Vector3f& mag_ned_unit) 
 {
     // Current quaternion from filter [x,y,z,w]
-    auto qvec = mekf.quaternion();
-    Eigen::Quaternionf q(qvec(3), qvec(0), qvec(1), qvec(2));
-
+    auto coeffs = mekf.quaternion().coeffs(); // [x,y,z,w]
+    Eigen::Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
+    
     // Body->world rotation
     Eigen::Matrix3f R = q.toRotationMatrix();
 
