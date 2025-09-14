@@ -11,62 +11,17 @@
 
 const float g_std = 9.80665f; // standard gravity acceleration m/s²
 
-#include "Kalman3D_Wave.h"       // Kalman3D_Wave filter
-#include "WaveFilesSupport.h"    // file reader/parser + naming
+#include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
+#include "WaveFilesSupport.h"  // file reader/parser + naming
+#include "FrameConversions.h"  // coordinate & quaternion conversions
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// ============================================================
-// Coordinate conversions
-// Input: simulation data are in nautical Z-up IMU convention
-// Filter: aerospace NED convention (Z-down, X forward, Y right)
-// Mapping: (x_a, y_a, z_a) = (y_n, x_n, -z_n)
-// ============================================================
-
-// Nautical Z-up → Aerospace NED (filter input)
-static inline Eigen::Vector3f zu_to_ned(const Eigen::Vector3f& v) {
-    return Eigen::Vector3f(v.y(), v.x(), -v.z());
-}
-
-// Aerospace NED → Nautical Z-up (for exporting back)
-static inline Eigen::Vector3f ned_to_zu(const Eigen::Vector3f& v) {
-    return Eigen::Vector3f(v.y(), v.x(), -v.z());
-}
-
-// IMU frame → QMEKF frame (expects aerospace convention)
-static inline Eigen::Vector3f imu_to_qmekf(const Eigen::Vector3f& v) {
-    return zu_to_ned(v);
-}
-
-// Quaternion → Euler (deg)
-static void quat_to_euler(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
-    Eigen::Matrix3f R = q.toRotationMatrix();
-
-    pitch = std::atan2(-R(2,0), std::sqrt(R(0,0)*R(0,0) + R(1,0)*R(1,0)));
-    roll  = std::atan2(R(2,1), R(2,2));
-    yaw   = std::atan2(R(1,0), R(0,0));
-
-    // Convert to degrees 
-    roll  *=  180.0f / M_PI;   
-    pitch *=  180.0f / M_PI;   
-    yaw   *=  180.0f / M_PI;  
-}
-
-// Aerospace Euler → Nautical Euler (for output)
-static inline void aero_to_nautical(float &roll, float &pitch, float &yaw) {
-    float r_a = roll;
-    float p_a = pitch;
-    // Swap + negate
-    roll  = -p_a;  // nautical roll
-    pitch = -r_a;  // nautical pitch
-    // yaw unchanged
-}
-
 struct OutputRow {
     double t{};
 
-    // Reference orientation (deg)
+    // Reference orientation (deg, nautical)
     float roll_ref{}, pitch_ref{}, yaw_ref{};
 
     // Reference world kinematics
@@ -74,11 +29,11 @@ struct OutputRow {
     float vel_ref_x{},  vel_ref_y{},  vel_ref_z{};
     float acc_ref_x{},  acc_ref_y{},  acc_ref_z{};
 
-    // Raw IMU inputs
+    // Raw IMU inputs (nautical)
     float acc_bx{}, acc_by{}, acc_bz{};
     float gyro_x{}, gyro_y{}, gyro_z{};
 
-    // Kalman orientation estimates (deg)
+    // Kalman orientation estimates (deg, nautical)
     float roll_est{}, pitch_est{}, yaw_est{};
 
     // Estimated world kinematics
@@ -94,11 +49,10 @@ struct OutputRow {
     float angle_err{};
 };
 
-// Debug helper: check initialization consistency
 static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
-                                   const Eigen::Vector3f& acc_body_meas,   // body (filter convention)
-                                   const Eigen::Vector3f& mag_body_meas,   // body (filter convention)
-                                   const Eigen::Vector3f& mag_world_unit)  // world (NED)
+                                   const Eigen::Vector3f& acc_body_meas,
+                                   const Eigen::Vector3f& mag_body_meas,
+                                   const Eigen::Vector3f& mag_world_unit)
 {
     auto qc = mekf.quaternion().coeffs(); // [x,y,z,w]
     Eigen::Quaternionf q(qc(3), qc(0), qc(1), qc(2));
@@ -106,7 +60,6 @@ static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
     Eigen::Matrix3f R_bw = q.toRotationMatrix();   // body<-world
     Eigen::Matrix3f R_wb = R_bw.transpose();       // world<-body
 
-    // Predicted measurements in body frame
     Eigen::Vector3f g_world(0.f, 0.f, -g_std);
     Eigen::Vector3f f_pred_body = R_wb * g_world;
     Eigen::Vector3f m_pred_body = R_wb * mag_world_unit;
@@ -116,17 +69,6 @@ static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
               << " | predicted (body) = " << f_pred_body.transpose() << "\n";
     std::cout << "Mag   measured (body) = " << mag_body_meas.transpose()
               << " | predicted (body) = " << m_pred_body.transpose() << "\n";
-
-    // Yaw from measured mag
-    Eigen::Vector3f m_world_from_meas = R_bw * mag_body_meas;
-    Eigen::Vector3f m_h = m_world_from_meas; m_h.z() = 0.f;
-    float yaw_from_mag = std::atan2(m_h.y(), m_h.x()) * 180.0f / float(M_PI);
-
-    Eigen::Vector3f B_h = mag_world_unit; B_h.z() = 0.f;
-    float yaw_of_world_B = std::atan2(B_h.y(), B_h.x()) * 180.0f / float(M_PI);
-
-    std::cout << "Yaw from measured mag = " << yaw_from_mag
-              << " deg | yaw of world B = " << yaw_of_world_B << " deg\n";
 }
 
 void process_wave_file(const std::string &filename, float dt) {
@@ -147,7 +89,6 @@ void process_wave_file(const std::string &filename, float dt) {
     const Vector3f sigma_m(0.10f,  0.10f,  0.10f);
     Kalman3D_Wave<float, true> mekf(sigma_a, sigma_g, sigma_m);
 
-    // Earth magnetic field (NED, normalized)
     const Vector3f mag_ned_unit(0.39f, 0.0f, -0.92f); // example direction
 
     bool first = true;
@@ -157,43 +98,34 @@ void process_wave_file(const std::string &filename, float dt) {
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
-        Vector3f acc_f = imu_to_qmekf(acc_b);
-        Vector3f gyr_f = imu_to_qmekf(gyr_b);
+        Vector3f acc_f = zu_to_ned(acc_b);
+        Vector3f gyr_f = zu_to_ned(gyr_b);
 
-        // Reference (converted to aerospace convention)
-        float r_ref = -rec.imu.pitch_deg;   // NEGATED
-        float p_ref = -rec.imu.roll_deg;  // NEGATED
-        float y_ref =  rec.imu.yaw_deg;    // unchanged
+        // Reference aerospace Euler (from simulator)
+        float r_ref_a = rec.imu.roll_deg;
+        float p_ref_a = rec.imu.pitch_deg;
+        float y_ref_a = rec.imu.yaw_deg;
 
-        // True orientation quaternion from sim
+        // Convert simulator aerospace → nautical
+        float r_ref_out = r_ref_a, p_ref_out = p_ref_a, y_ref_out = y_ref_a;
+        aero_to_nautical(r_ref_out, p_ref_out, y_ref_out);
+
         Quaternionf q_ref2 =
-            Eigen::AngleAxisf(r_ref * M_PI/180.0f, Vector3f::UnitX()) *
-            Eigen::AngleAxisf(p_ref * M_PI/180.0f, Vector3f::UnitY()) *
-            Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
+            Eigen::AngleAxisf(r_ref_a * M_PI/180.0f, Vector3f::UnitX()) *
+            Eigen::AngleAxisf(p_ref_a * M_PI/180.0f, Vector3f::UnitY()) *
+            Eigen::AngleAxisf(y_ref_a * M_PI/180.0f, Vector3f::UnitZ());
 
         if (first) {
-            // BODY-frame mag at t=0 (from sim truth), then convert to filter convention
-            Vector3f mag_b0 = q_ref2.conjugate() * mag_ned_unit;  // body (nautical)
-            Vector3f mag_f0 = imu_to_qmekf(mag_b0);               // body (filter/aerospace)
+            Vector3f mag_b0 = q_ref2.conjugate() * mag_ned_unit;
+            Vector3f mag_f0 = zu_to_ned(mag_b0);
 
-            // Initialize filter with: accel (body) + magnetic field (WORLD)
             mekf.initialize_from_acc_mag(acc_f, mag_ned_unit);
-
-            // Debug check: body vs. predicted, world ref for context
             check_init_consistency(mekf, acc_f, mag_f0, mag_ned_unit);
             first = false;
         }
         
-        // Rotate into body frame
         Vector3f mag_b = q_ref2.conjugate() * mag_ned_unit;
-
-        // Add Gaussian noise
-        //for (int i = 0; i < 3; i++) {
-        //    mag_b(i) += sigma_m(i) * noise(rng);
-        //}
-
-        // Convert to filter convention
-        Vector3f mag_f = imu_to_qmekf(mag_b);
+        Vector3f mag_f = zu_to_ned(mag_b);
 
         mekf.time_update(gyr_f, acc_f, dt);
         mekf.measurement_update(acc_f, mag_f);
@@ -201,79 +133,49 @@ void process_wave_file(const std::string &filename, float dt) {
         auto coeffs = mekf.quaternion().coeffs(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
         float r_est, p_est, y_est;
-        quat_to_euler(q, r_est, p_est, y_est);
+        quat_to_euler_nautical(q, r_est, p_est, y_est);
 
-        // World kinematics (converted to aerospace convention)
+        // World kinematics (convert back to nautical for export)
         Vector3f disp_ref = zu_to_ned(Vector3f(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z));
         Vector3f vel_ref  = zu_to_ned(Vector3f(rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z));
         Vector3f acc_ref  = zu_to_ned(Vector3f(rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z));
 
-        // Estimated world states (aerospace convention)
-        Eigen::Vector3f disp_est = mekf.get_position();
-        Eigen::Vector3f vel_est  = mekf.get_velocity();
-        Eigen::Vector3f acc_est  = mekf.get_world_accel();
-        
-        // Errors (aerospace convention)
+        Vector3f disp_est = mekf.get_position();
+        Vector3f vel_est  = mekf.get_velocity();
+        Vector3f acc_est  = mekf.get_world_accel();
+
         Vector3f disp_err = disp_est - disp_ref;
         Vector3f vel_err  = vel_est  - vel_ref;
         Vector3f acc_err  = acc_est  - acc_ref;
 
-        float err_roll  = r_est - r_ref;
-        float err_pitch = p_est - p_ref;
-        float err_yaw   = y_est - y_ref;
-
         Quaternionf q_ref =
-            Eigen::AngleAxisf(r_ref * M_PI/180.0f, Vector3f::UnitX()) *
-            Eigen::AngleAxisf(p_ref * M_PI/180.0f, Vector3f::UnitY()) *
-            Eigen::AngleAxisf(y_ref * M_PI/180.0f, Vector3f::UnitZ());
-        Quaternionf q_est = q.normalized();
-        Quaternionf q_err = q_ref.conjugate() * q_est;
-        float angle_err = 2.0f * std::acos(std::clamp(q_err.w(), -1.0f, 1.0f)) * 180.0f / M_PI;
-
-        // Convert back to nautical Z-up for export
-        Eigen::Vector3f disp_ref_out = ned_to_zu(disp_ref);
-        Eigen::Vector3f vel_ref_out  = ned_to_zu(vel_ref);
-        Eigen::Vector3f acc_ref_out  = ned_to_zu(acc_ref);
-        Eigen::Vector3f disp_est_out = ned_to_zu(disp_est);
-        Eigen::Vector3f vel_est_out  = ned_to_zu(vel_est);
-        Eigen::Vector3f acc_est_out  = ned_to_zu(acc_est);
-        Eigen::Vector3f disp_err_out = ned_to_zu(disp_err);
-        Eigen::Vector3f vel_err_out  = ned_to_zu(vel_err);
-        Eigen::Vector3f acc_err_out  = ned_to_zu(acc_err);
-
-        float r_ref_out = r_ref;
-        float p_ref_out = p_ref;
-        float y_ref_out = y_ref;
-        float r_est_out = r_est;
-        float p_est_out = p_est;
-        float y_est_out = y_est;
-        aero_to_nautical(r_ref_out, p_ref_out, y_ref_out);
-        aero_to_nautical(r_est_out, p_est_out, y_est_out);
-
-        float err_roll_out  = err_roll;
-        float err_pitch_out = err_pitch;
-        float err_yaw_out   = err_yaw;
-        aero_to_nautical(err_roll_out, err_pitch_out, err_yaw_out);
+            Eigen::AngleAxisf(r_ref_a * M_PI/180.0f, Vector3f::UnitX()) *
+            Eigen::AngleAxisf(p_ref_a * M_PI/180.0f, Vector3f::UnitY()) *
+            Eigen::AngleAxisf(y_ref_a * M_PI/180.0f, Vector3f::UnitZ());
+        Quaternionf q_err = q_ref.conjugate() * q.normalized();
+        float angle_err = 2.0f * std::acos(std::clamp(q_err.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
 
         rows.push_back({
             rec.time,
             r_ref_out, p_ref_out, y_ref_out,
-            disp_ref_out.x(), disp_ref_out.y(), disp_ref_out.z(),
-            vel_ref_out.x(),  vel_ref_out.y(),  vel_ref_out.z(),
-            acc_ref_out.x(),  acc_ref_out.y(),  acc_ref_out.z(),
+            ned_to_zu(disp_ref).x(), ned_to_zu(disp_ref).y(), ned_to_zu(disp_ref).z(),
+            ned_to_zu(vel_ref).x(),  ned_to_zu(vel_ref).y(),  ned_to_zu(vel_ref).z(),
+            ned_to_zu(acc_ref).x(),  ned_to_zu(acc_ref).y(),  ned_to_zu(acc_ref).z(),
             rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz,
             rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z,
-            r_est_out, p_est_out, y_est_out,
-            disp_est_out.x(), disp_est_out.y(), disp_est_out.z(),
-            vel_est_out.x(),  vel_est_out.y(),  vel_est_out.z(),
-            acc_est_out.x(),  acc_est_out.y(),  acc_est_out.z(),
-            disp_err_out.x(), disp_err_out.y(), disp_err_out.z(),
-            vel_err_out.x(),  vel_err_out.y(),  vel_err_out.z(),
-            acc_err_out.x(),  acc_err_out.y(),  acc_err_out.z(),
-            err_roll_out, err_pitch_out, err_yaw_out, angle_err
+            r_est, p_est, y_est,
+            ned_to_zu(disp_est).x(), ned_to_zu(disp_est).y(), ned_to_zu(disp_est).z(),
+            ned_to_zu(vel_est).x(),  ned_to_zu(vel_est).y(),  ned_to_zu(vel_est).z(),
+            ned_to_zu(acc_est).x(),  ned_to_zu(acc_est).y(),  ned_to_zu(acc_est).z(),
+            ned_to_zu(disp_err).x(), ned_to_zu(disp_err).y(), ned_to_zu(disp_err).z(),
+            ned_to_zu(vel_err).x(),  ned_to_zu(vel_err).y(),  ned_to_zu(vel_err).z(),
+            ned_to_zu(acc_err).x(),  ned_to_zu(acc_err).y(),  ned_to_zu(acc_err).z(),
+            r_est - r_ref_out, p_est - p_ref_out, y_est - y_ref_out,
+            angle_err
         });
     });
 
+    // Output filename
     std::string outname = filename;
     auto pos_prefix = outname.find("wave_data_");
     if (pos_prefix != std::string::npos) {
@@ -327,7 +229,7 @@ void process_wave_file(const std::string &filename, float dt) {
 }
 
 int main() {
-    float dt = 1.0f / 240.0f; // simulator sample rate
+    float dt = 1.0f / 240.0f;
     for (auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
         std::string fname = entry.path().string();
