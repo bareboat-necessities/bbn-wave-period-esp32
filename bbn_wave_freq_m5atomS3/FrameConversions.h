@@ -285,6 +285,18 @@ inline int test_frame_conversions() {
     assert_close(mag_body0.x(), mag_enu.x(), 1e-3f, "Mag body0 east");
     assert_close(mag_body0.y(), mag_enu.y(), 1e-3f, "Mag body0 north");
     assert_close(mag_body0.z(), mag_enu.z(), 1e-3f, "Mag body0 up");
+
+    // Rotate yaw by +90° in nautical convention
+    Vector3f mag_body_yaw90 = MagSim_WMM::simulate_mag_from_euler_nautical(0,0,90);
+    // Expect: world east→body forward (x), north→body left (–y)
+    float norm0 = mag_body0.head<2>().norm();
+    float norm90 = mag_body_yaw90.head<2>().norm();
+    assert_close(norm0, norm90, 1e-3f, "Mag yaw rotation preserves horizontal norm");
+
+    // Rotate yaw by 180°: should flip horizontal vector
+    Vector3f mag_body_yaw180 = MagSim_WMM::simulate_mag_from_euler_nautical(0,0,180);
+    assert_close(mag_body_yaw180.x(), -mag_body0.x(), 1e-3f, "Mag yaw180 east");
+    assert_close(mag_body_yaw180.y(), -mag_body0.y(), 1e-3f, "Mag yaw180 north");
     
     std::cout << "All frame conversion tests passed\n";
     return 0;
