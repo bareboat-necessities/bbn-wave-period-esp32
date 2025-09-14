@@ -21,7 +21,7 @@ using Eigen::Quaternionf;
 
 struct OutputRow {
     double t{};
-    // Reference Euler (deg, nautical)
+    // Reference Euler (deg, nautical: ENU/Z-up)
     float roll_ref{}, pitch_ref{}, yaw_ref{};
     // Raw IMU inputs (nautical, as read from file)
     float acc_bx{}, acc_by{}, acc_bz{};
@@ -44,43 +44,46 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
     WaveDataCSVReader reader(filename);
 
+    // Process/measurement standard deviations (squared internally by the filter)
     const Vector3f sigma_a(0.05f,  0.05f,  0.05f);
     const Vector3f sigma_g(0.001f, 0.001f, 0.001f);
     const Vector3f sigma_m(0.10f,  0.10f,  0.10f);
     QuaternionMEKF<float, true> mekf(sigma_a, sigma_g, sigma_m);
 
-    // World magnetic field in aerospace NED
+    // World magnetic field in aerospace NED (North, East, Down)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
     bool first = true;
     std::vector<OutputRow> rows;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
+        // IMU in nautical body ENU
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
-        // Convert to filter (aerospace NED)
+        // Convert to filter frame (aerospace body NED)
         Vector3f acc_f = zu_to_ned(acc_b);
         Vector3f gyr_f = zu_to_ned(gyr_b);
 
-        // Reference aerospace Euler from simulator
-        float r_ref_a = rec.imu.roll_deg;
-        float p_ref_a = rec.imu.pitch_deg;
-        float y_ref_a = rec.imu.yaw_deg;
+        // Reference Euler from simulator (NAUTICAL: ENU/Z-up)
+        float r_ref_n = rec.imu.roll_deg;
+        float p_ref_n = rec.imu.pitch_deg;
+        float y_ref_n = rec.imu.yaw_deg;
 
-        // Simulated magnetometer (if enabled)
+        // Simulated magnetometer in body NED (if enabled):
+        //   1) simulate from nautical eulers → body ENU
+        //   2) convert body ENU → body NED for the filter
         Vector3f mag_f(0,0,0);
         if (with_mag) {
-            Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_nautical(
-                rec.imu.roll_deg,
-                rec.imu.pitch_deg,
-                rec.imu.yaw_deg);   // [µT], body ENU
-            mag_f = zu_to_ned(mag_b); // convert body ENU → body NED for filter
+            Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(
+                r_ref_n, p_ref_n, y_ref_n);   // [µT], body ENU
+            mag_f = zu_to_ned(mag_b_enu);     // body NED for filter
         }
 
+        // Filter initialization
         if (first) {
             if (with_mag)
-                mekf.initialize_from_acc_mag(acc_f, mag_world_a);
+                mekf.initialize_from_acc_mag(acc_f, mag_world_a); // world NED mag
             else
                 mekf.initialize_from_acc(acc_f);
             first = false;
@@ -89,33 +92,28 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         // Propagation
         mekf.time_update(gyr_f, dt);
 
-        // Update: accel always, mag optional
+        // Measurement updates: accel always, mag optional
         if (with_mag)
             mekf.measurement_update(acc_f, mag_f);
         else
             mekf.measurement_update_acc_only(acc_f);
 
-        // Filter quaternion → Euler (nautical deg)
+        // Filter quaternion → Euler (nautical deg) for output
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
         float r_est, p_est, y_est;
         quat_to_euler_nautical(q, r_est, p_est, y_est);
 
-        // Reference angles (nautical)
-        float r_ref = rec.imu.roll_deg;
-        float p_ref = rec.imu.pitch_deg;
-        float y_ref = rec.imu.yaw_deg;
-
         rows.push_back({
             rec.time,
-            r_ref, p_ref, y_ref,
-            rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz,
-            rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z,
-            r_est, p_est, y_est
+            r_ref_n, p_ref_n, y_ref_n,            // ref (nautical)
+            rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz, // raw accel (nautical)
+            rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z, // raw gyro  (nautical)
+            r_est, p_est, y_est                   // est (nautical)
         });
     });
 
-    // Output filename
+    // Output filename: replace "wave_data_" with "qmekf_", add suffix for mag on/off
     std::string outname = filename;
     auto pos_prefix = outname.find("wave_data_");
     if (pos_prefix != std::string::npos) {
