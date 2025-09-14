@@ -173,7 +173,7 @@ inline int test_frame_conversions() {
         assert_close(ya, yn, tol_angle, "Random yaw");
     }
 
-    std::cout << "All frame conversion tests passed ✅\n";
+    std::cout << "All frame conversion tests passed\n";
     return 0;
 }
 #endif // FRAMECONV_TEST
