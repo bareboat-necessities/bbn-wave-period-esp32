@@ -91,15 +91,13 @@ static inline void quat_to_euler_nautical(const Quaternionf &q, float &roll, flo
 }
 
 // Helper: simulate magnetometer IMU output (µT)
-// from nautical Euler angles, using WMM inclination & declination
 struct MagSim_WMM {
     // Defaults: Statue of Liberty, Sept 2025 (0 m elevation)
     static constexpr float default_declination_deg = -3.44f; // [deg]
-    static constexpr float default_inclination_deg =  67.5f; // [deg] dip angle (down)
-    static constexpr float default_total_field_uT  = 51.0f;  // [µT] total intensity
+    static constexpr float default_inclination_deg =  67.5f; // [deg]
+    static constexpr float default_total_field_uT  = 51.0f;  // [µT]
 
-    // Return Earth magnetic field vector in world-nautical frame (North-East-Up)
-    // Units: microteslas [µT]
+    // World magnetic field vector in nautical NEU frame
     static Eigen::Vector3f mag_world_nautical(
         float declination_deg = default_declination_deg,
         float inclination_deg = default_inclination_deg,
@@ -108,38 +106,37 @@ struct MagSim_WMM {
         float dec_rad  = declination_deg * M_PI / 180.0f;
         float incl_rad = inclination_deg * M_PI / 180.0f;
 
-        // Horizontal fraction
-        float h = std::cos(incl_rad);
-        // Vertical (downwards) component: negative because Z = up
-        float v = -std::sin(incl_rad);
+        float h = std::cos(incl_rad);  // horizontal fraction
+        float v = -std::sin(incl_rad); // vertical (down in NEU, so negative)
 
         Eigen::Vector3f mag_world;
         mag_world.x() = h * std::cos(dec_rad); // North
         mag_world.y() = h * std::sin(dec_rad); // East
-        mag_world.z() = v;                     // Up (negative means down)
+        mag_world.z() = v;                     // Up
 
-        // Scale by total field strength [µT]
         mag_world *= total_field_uT;
         return mag_world;
     }
 
-    // Simulate body-frame magnetometer reading [µT]
-    // roll_deg, pitch_deg, yaw_deg: nautical Euler angles (deg)
+    // World magnetic field vector in Aerospace NED frame
+    static Eigen::Vector3f mag_world_aero(
+        float declination_deg = default_declination_deg,
+        float inclination_deg = default_inclination_deg,
+        float total_field_uT  = default_total_field_uT)
+    {
+        return zu_to_ned(mag_world_nautical(declination_deg, inclination_deg, total_field_uT));
+    }
+
+    // Simulate body-frame magnetometer reading [µT] from nautical Euler
     static Eigen::Vector3f simulate_mag_from_euler_nautical(
         float roll_deg, float pitch_deg, float yaw_deg,
         float declination_deg = default_declination_deg,
         float inclination_deg = default_inclination_deg,
         float total_field_uT  = default_total_field_uT)
     {
-        // Orientation quaternion from nautical Euler
         Quaternionf q_nautical = quat_from_euler(roll_deg, pitch_deg, yaw_deg);
-
-        // Get world magnetic field in nautical frame
         Eigen::Vector3f mag_world = mag_world_nautical(declination_deg, inclination_deg, total_field_uT);
-
-        // Rotate into body frame
-        Eigen::Vector3f mag_body = q_nautical.inverse() * mag_world;
-        return mag_body; // [µT]
+        return q_nautical.inverse() * mag_world;
     }
 };
 
