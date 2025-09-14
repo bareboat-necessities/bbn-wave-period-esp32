@@ -90,6 +90,49 @@ static inline void quat_to_euler_nautical(const Quaternionf &q, float &roll, flo
     aero_to_nautical(roll, pitch, yaw);
 }
 
+// Helper: simulate magnetometer IMU output (µT)
+// from nautical Euler angles, using WMM inclination & declination
+struct MagSim_WMM {
+    // roll_deg, pitch_deg, yaw_deg: nautical Euler angles (deg)
+    // returns mag_body (nautical IMU frame), in microteslas [µT]
+    static Eigen::Vector3f simulate_mag_from_euler_nautical(
+        float roll_deg, float pitch_deg, float yaw_deg)
+    {
+        // 1) orientation quaternion
+        Quaternionf q_nautical = quat_from_euler(roll_deg, pitch_deg, yaw_deg);
+
+        // 2) WMM magnetic field in world-nautical frame
+        const float declination_deg = -3.44f;   // NYC ~Sep 2025
+        const float inclination_deg =  67.5f;   // dip angle
+        const float total_field_uT  = 51.0f;    // total intensity [µT]
+
+        float dec_rad  = declination_deg  * M_PI / 180.0f;
+        float incl_rad = inclination_deg * M_PI / 180.0f;
+
+        // horizontal component magnitude
+        float h = std::cos(incl_rad);
+        // vertical (downwards) component
+        float v = -std::sin(incl_rad);
+
+        // Assume world-nautical axes:
+        //   X_world = true north
+        //   Y_world = east
+        //   Z_world = up
+        Eigen::Vector3f mag_world;
+        mag_world.x() = h * std::cos(dec_rad);
+        mag_world.y() = h * std::sin(dec_rad);
+        mag_world.z() = v;
+
+        // scale by total field strength [µT]
+        mag_world *= total_field_uT;
+
+        // 3) Convert into body frame (nautical IMU)
+        Eigen::Vector3f mag_body = q_nautical.inverse() * mag_world;
+
+        return mag_body; // [µT]
+    }
+};
+
 #ifdef FRAMECONV_TEST
 
 // Utility: floating-point assert with tolerance
