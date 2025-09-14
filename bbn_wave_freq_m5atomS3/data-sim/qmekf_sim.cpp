@@ -83,7 +83,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         // Filter initialization
         if (first) {
             if (with_mag)
-                mekf.initialize_from_acc_mag(acc_f, mag_world_a); // world NED mag
+                mekf.initialize_from_acc_mag(acc_f, mag_f); 
             else
                 mekf.initialize_from_acc(acc_f);
             first = false;
