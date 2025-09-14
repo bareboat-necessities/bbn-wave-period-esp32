@@ -1,7 +1,18 @@
 #pragma once
-#include <iostream>
+
+#ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
+#else
+#include <ArduinoEigenDense.h>
+#endif
+
 #include <cmath>
+
+#ifdef FRAMECONV_TEST
+#include <cassert>
+#include <cstdlib>
+#include <iostream>
+#endif
 
 using Eigen::Vector3f;
 using Eigen::Matrix3f;
@@ -69,8 +80,7 @@ static Quaternionf quat_from_euler(float roll_deg, float pitch_deg, float yaw_de
 }
 
 #ifdef FRAMECONV_TEST
-#include <cassert>
-#include <cstdlib>
+
 
 // -------------------------
 // Utility: floating-point assert with tolerance
