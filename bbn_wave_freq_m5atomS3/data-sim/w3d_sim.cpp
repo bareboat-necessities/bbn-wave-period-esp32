@@ -90,20 +90,19 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         Vector3f acc_f = zu_to_ned(acc_b);
         Vector3f gyr_f = zu_to_ned(gyr_b);
 
-        // Reference aerospace Euler (from simulator)
-        float r_ref_a = rec.imu.roll_deg;
-        float p_ref_a = rec.imu.pitch_deg;
-        float y_ref_a = rec.imu.yaw_deg;
+        // Reference Euler from simulator (NAUTICAL: ENU/Z-up)
+        float r_ref_n = rec.imu.roll_deg;
+        float p_ref_n = rec.imu.pitch_deg;
+        float y_ref_n = rec.imu.yaw_deg;
 
-        // Convert to nautical for output
-        float r_ref_out = r_ref_a, p_ref_out = p_ref_a, y_ref_out = y_ref_a;
-        aero_to_nautical(r_ref_out, p_ref_out, y_ref_out);
+        // For output they’re already nautical
+        float r_ref_out = r_ref_n, p_ref_out = p_ref_n, y_ref_out = y_ref_n;
 
-        // Simulated magnetometer [µT]
+        // Simulated magnetometer [µT] from NAUTICAL Eulers → body ENU → convert to NED for filter
         Vector3f mag_f(0,0,0);
         if (with_mag) {
-            Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_aero(r_ref_a, p_ref_a, y_ref_a);
-            mag_f = zu_to_ned(mag_b);
+            Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_n, p_ref_n, y_ref_n);
+            mag_f = zu_to_ned(mag_b_enu);
         }
 
         if (first) {
@@ -139,6 +138,9 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         Vector3f vel_err  = vel_est  - vel_ref;
         Vector3f acc_err  = acc_est  - acc_ref;
 
+        // Build reference quaternion: convert nautical → aerospace, then use AngleAxis
+        float r_ref_a = r_ref_n, p_ref_a = p_ref_n, y_ref_a = y_ref_n;
+        nautical_to_aero(r_ref_a, p_ref_a, y_ref_a);
         Quaternionf q_ref =
             Eigen::AngleAxisf(r_ref_a * M_PI/180.0f, Vector3f::UnitX()) *
             Eigen::AngleAxisf(p_ref_a * M_PI/180.0f, Vector3f::UnitY()) *
