@@ -90,18 +90,16 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         Vector3f acc_f = zu_to_ned(acc_b);
         Vector3f gyr_f = zu_to_ned(gyr_b);
 
-        // Reference Euler from simulator (NAUTICAL: ENU/Z-up)
-        float r_ref_n = rec.imu.roll_deg;
-        float p_ref_n = rec.imu.pitch_deg;
-        float y_ref_n = rec.imu.yaw_deg;
+        // Reference Euler (already nautical ENU/Z-up)
+        float r_ref_out = rec.imu.roll_deg;
+        float p_ref_out = rec.imu.pitch_deg;
+        float y_ref_out = rec.imu.yaw_deg;
 
-        // For output they’re already nautical
-        float r_ref_out = r_ref_n, p_ref_out = p_ref_n, y_ref_out = y_ref_n;
-
-        // Simulated magnetometer [µT] from NAUTICAL Eulers → body ENU → convert to NED for filter
+        // Simulated magnetometer
         Vector3f mag_f(0,0,0);
         if (with_mag) {
-            Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_n, p_ref_n, y_ref_n);
+            Vector3f mag_b_enu =
+                MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
             mag_f = zu_to_ned(mag_b_enu);
         }
 
@@ -116,53 +114,54 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         }
 
         mekf.time_update(gyr_f, acc_f, dt);
-
         if (with_mag) mekf.measurement_update(acc_f, mag_f);
         else          mekf.measurement_update_acc_only(acc_f);
 
-        auto coeffs = mekf.quaternion().coeffs(); // [x,y,z,w]
+        // Estimated Euler (convert aerospace → nautical)
+        auto coeffs = mekf.quaternion().coeffs();
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
+        float r_est_a, p_est_a, y_est_a;
+        quat_to_euler_aero(q, r_est_a, p_est_a, y_est_a);
+
         float r_est, p_est, y_est;
-        quat_to_euler_nautical(q, r_est, p_est, y_est);
+        aero_to_nautical(r_est_a, p_est_a, y_est_a, r_est, p_est, y_est);
 
-        // World kinematics (convert back to nautical for export)
-        Vector3f disp_ref = zu_to_ned(Vector3f(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z));
-        Vector3f vel_ref  = zu_to_ned(Vector3f(rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z));
-        Vector3f acc_ref  = zu_to_ned(Vector3f(rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z));
+        // World kinematics
+        Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
+        Vector3f vel_ref (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
+        Vector3f acc_ref (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
 
-        Vector3f disp_est = mekf.get_position();
-        Vector3f vel_est  = mekf.get_velocity();
-        Vector3f acc_est  = mekf.get_world_accel();
+        Vector3f disp_est = ned_to_zu(mekf.get_position());
+        Vector3f vel_est  = ned_to_zu(mekf.get_velocity());
+        Vector3f acc_est  = ned_to_zu(mekf.get_world_accel());
 
         Vector3f disp_err = disp_est - disp_ref;
         Vector3f vel_err  = vel_est  - vel_ref;
         Vector3f acc_err  = acc_est  - acc_ref;
 
-        // Build reference quaternion: convert nautical → aerospace, then use AngleAxis
-        float r_ref_a = r_ref_n, p_ref_a = p_ref_n, y_ref_a = y_ref_n;
-        nautical_to_aero(r_ref_a, p_ref_a, y_ref_a);
+        // Error quaternion (both in nautical)
         Quaternionf q_ref =
-            Eigen::AngleAxisf(r_ref_a * M_PI/180.0f, Vector3f::UnitX()) *
-            Eigen::AngleAxisf(p_ref_a * M_PI/180.0f, Vector3f::UnitY()) *
-            Eigen::AngleAxisf(y_ref_a * M_PI/180.0f, Vector3f::UnitZ());
+            Eigen::AngleAxisf(r_ref_out*M_PI/180.0f, Vector3f::UnitX()) *
+            Eigen::AngleAxisf(p_ref_out*M_PI/180.0f, Vector3f::UnitY()) *
+            Eigen::AngleAxisf(y_ref_out*M_PI/180.0f, Vector3f::UnitZ());
         Quaternionf q_err = q_ref.conjugate() * q.normalized();
         float angle_err = 2.0f * std::acos(std::clamp(q_err.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
 
         rows.push_back({
             rec.time,
             r_ref_out, p_ref_out, y_ref_out,
-            ned_to_zu(disp_ref).x(), ned_to_zu(disp_ref).y(), ned_to_zu(disp_ref).z(),
-            ned_to_zu(vel_ref).x(),  ned_to_zu(vel_ref).y(),  ned_to_zu(vel_ref).z(),
-            ned_to_zu(acc_ref).x(),  ned_to_zu(acc_ref).y(),  ned_to_zu(acc_ref).z(),
+            disp_ref.x(), disp_ref.y(), disp_ref.z(),
+            vel_ref.x(),  vel_ref.y(),  vel_ref.z(),
+            acc_ref.x(),  acc_ref.y(),  acc_ref.z(),
             rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz,
             rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z,
             r_est, p_est, y_est,
-            ned_to_zu(disp_est).x(), ned_to_zu(disp_est).y(), ned_to_zu(disp_est).z(),
-            ned_to_zu(vel_est).x(),  ned_to_zu(vel_est).y(),  ned_to_zu(vel_est).z(),
-            ned_to_zu(acc_est).x(),  ned_to_zu(acc_est).y(),  ned_to_zu(acc_est).z(),
-            ned_to_zu(disp_err).x(), ned_to_zu(disp_err).y(), ned_to_zu(disp_err).z(),
-            ned_to_zu(vel_err).x(),  ned_to_zu(vel_err).y(),  ned_to_zu(vel_err).z(),
-            ned_to_zu(acc_err).x(),  ned_to_zu(acc_err).y(),  ned_to_zu(acc_err).z(),
+            disp_est.x(), disp_est.y(), disp_est.z(),
+            vel_est.x(),  vel_est.y(),  vel_est.z(),
+            acc_est.x(),  acc_est.y(),  acc_est.z(),
+            disp_err.x(), disp_err.y(), disp_err.z(),
+            vel_err.x(),  vel_err.y(),  vel_err.z(),
+            acc_err.x(),  acc_err.y(),  acc_err.z(),
             r_est - r_ref_out, p_est - p_ref_out, y_est - y_ref_out,
             angle_err
         });
