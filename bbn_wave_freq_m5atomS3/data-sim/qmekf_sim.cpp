@@ -71,8 +71,11 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         // Simulated magnetometer (if enabled)
         Vector3f mag_f(0,0,0);
         if (with_mag) {
-            Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_aero(r_ref_a, p_ref_a, y_ref_a);
-            mag_f = zu_to_ned(mag_b);
+            Vector3f mag_b = MagSim_WMM::simulate_mag_from_euler_nautical(
+                rec.imu.roll_deg,
+                rec.imu.pitch_deg,
+                rec.imu.yaw_deg);   // [µT], body ENU
+            mag_f = zu_to_ned(mag_b); // convert body ENU → body NED for filter
         }
 
         if (first) {
