@@ -140,11 +140,17 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         Vector3f acc_err  = acc_est  - acc_ref;
 
         // Error quaternion (both in nautical)
+        Quaternionf q_est_naut =
+            Eigen::AngleAxisf(r_est*M_PI/180.0f, Vector3f::UnitX()) *
+            Eigen::AngleAxisf(p_est*M_PI/180.0f, Vector3f::UnitY()) *
+            Eigen::AngleAxisf(y_est*M_PI/180.0f, Vector3f::UnitZ());
+
         Quaternionf q_ref =
             Eigen::AngleAxisf(r_ref_out*M_PI/180.0f, Vector3f::UnitX()) *
             Eigen::AngleAxisf(p_ref_out*M_PI/180.0f, Vector3f::UnitY()) *
             Eigen::AngleAxisf(y_ref_out*M_PI/180.0f, Vector3f::UnitZ());
-        Quaternionf q_err = q_ref.conjugate() * q.normalized();
+
+        Quaternionf q_err = q_ref.conjugate() * q_est_naut.normalized();
         float angle_err = 2.0f * std::acos(std::clamp(q_err.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
 
         rows.push_back({
