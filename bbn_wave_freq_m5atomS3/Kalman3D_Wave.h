@@ -264,19 +264,19 @@ Kalman3D_Wave<T, with_bias>::initialize_Q(typename Kalman3D_Wave<T, with_bias>::
 //  initialization helpers
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
-    Vector3 const& acc, Vector3 const& mag)
+    Vector3 const& acc_body,     // accelerometer in body (filter convention)
+    Vector3 const& mag_world)    // magnetic field in world (NED)
 {
     // Normalize inputs
-    T anorm = acc.norm();
-    Vector3 acc_n = acc / anorm;
-    Vector3 mag_n = mag.normalized();
+    T anorm = acc_body.norm();
+    Vector3 acc_n = acc_body / anorm;
 
     // Aerospace: +Z is down (gravity in world is +Z)
     v1ref << 0, 0, +anorm;
 
-    // Build WORLD axes expressed in BODY coords
+    // Build WORLD axes expressed in BODY coords (from accel + mag_world)
     Vector3 z_world = -acc_n;                         // world Z (down) in body coords
-    Vector3 mag_h   = mag_n - (mag_n.dot(z_world))*z_world;
+    Vector3 mag_h   = mag_world - (mag_world.dot(z_world)) * z_world;
     if (mag_h.norm() < 1e-6) {
         throw std::runtime_error("Magnetometer vector parallel to gravity — cannot initialize yaw");
     }
@@ -290,13 +290,12 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
     R_wb.col(1) = y_world;
     R_wb.col(2) = z_world;
 
-    // Store quaternion as world→body  (NOT transpose)
+    // Store quaternion as world→body
     qref = Eigen::Quaternion<T>(R_wb);
     qref.normalize();
 
-    // Store reference magnetic vector in WORLD frame
-    // convert the initial BODY mag into WORLD using body→world = R_wb^T
-    v2ref = R_wb.transpose() * mag;   // equivalently: v2ref = R_from_quat() * mag;
+    // === Store reference magnetic vector in WORLD frame ===
+    v2ref = mag_world.normalized();
 }
 
 template<typename T, bool with_bias>
