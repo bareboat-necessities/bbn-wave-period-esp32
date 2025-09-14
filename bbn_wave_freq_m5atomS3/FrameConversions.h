@@ -84,6 +84,12 @@ static inline void quat_to_euler_aero(const Quaternionf &q, float &roll, float &
     yaw   *= 180.0f / M_PI;  
 }
 
+// Extract Euler (nautical convention, deg) directly from quaternion
+static inline void quat_to_euler_nautical(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
+    quat_to_euler_aero(q, roll, pitch, yaw);
+    aero_to_nautical(roll, pitch, yaw);
+}
+
 #ifdef FRAMECONV_TEST
 
 // Utility: floating-point assert with tolerance
