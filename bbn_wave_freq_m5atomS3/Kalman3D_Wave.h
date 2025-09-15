@@ -15,7 +15,7 @@
      p (3)  : displacement/position in world frame
      S (3)  : integral of displacement (∫ p dt) — with zero pseudo-measurement for drift correction
 
-  - The original quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction)
+  - The quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction)
     is preserved where possible.
   - The extended linear states are driven by a latent OU world-acceleration a_w
     (accelerometer input is used only in the measurement update).
