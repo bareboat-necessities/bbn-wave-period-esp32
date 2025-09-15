@@ -460,7 +460,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_partial(
     // Factor S (SPD) and solve
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R.norm());
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
