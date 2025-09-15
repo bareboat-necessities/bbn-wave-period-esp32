@@ -59,6 +59,8 @@ static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
               << " | predicted (body) = " << m_pred_body.transpose() << "\n";
 }
 
+const double MAG_DELAY_SEC = 10.0; // delay before enabling magnetometer
+
 void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
@@ -77,10 +79,11 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     const Vector3f sigma_m(0.10f,  0.10f,  0.10f);
     Kalman3D_Wave<float, true> mekf(sigma_a, sigma_g, sigma_m);
 
-    // Earth magnetic field in aerospace (NED)
+    // World magnetic field in aerospace (NED)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
     bool first = true;
+    bool mag_enabled = false;
     std::vector<OutputRow> rows;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
@@ -90,7 +93,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         Vector3f acc_f = zu_to_ned(acc_b);
         Vector3f gyr_f = zu_to_ned(gyr_b);
 
-        // Reference Euler (already nautical ENU/Z-up)
+        // Reference Euler (nautical ENU/Z-up)
         float r_ref_out = rec.imu.roll_deg;
         float p_ref_out = rec.imu.pitch_deg;
         float y_ref_out = rec.imu.yaw_deg;
@@ -103,31 +106,35 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             mag_f = zu_to_ned(mag_b_enu);
         }
 
+        // --- Initialization: accel only ---
         if (first) {
-            if (with_mag) {
-                mekf.initialize_from_acc_mag(acc_f, mag_f);
-                check_init_consistency(mekf, acc_f, mag_f, mag_world_a);
-            } else {
-                mekf.initialize_from_acc(acc_f);
-            }
+            mekf.initialize_from_acc(acc_f);
             first = false;
         }
 
+        // --- Propagation ---
         mekf.time_update(gyr_f, dt);
-        if (with_mag) mekf.measurement_update(acc_f, mag_f);
-        else          mekf.measurement_update_acc_only(acc_f);
 
-        // Estimated Euler (convert aerospace → nautical)
+        // --- Measurement updates ---
+        if (with_mag && rec.time >= MAG_DELAY_SEC) {
+            if (!mag_enabled) {
+                mekf.set_mag_world_ref(mag_world_a);
+                mekf.measurement_update_mag_only(mag_f); // one-time lock
+                mag_enabled = true;
+            }
+            mekf.measurement_update_acc_only(acc_f);
+            mekf.measurement_update_mag_only(mag_f);
+        } else {
+            mekf.measurement_update_acc_only(acc_f);
+        }
+
+        // --- Extract quaternion estimate ---
         auto coeffs = mekf.quaternion().coeffs();
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
-        
+
         float r_est_a, p_est_a, y_est_a;
         quat_to_euler_aero(q, r_est_a, p_est_a, y_est_a);
-
-        // Convert aerospace → nautical (in place)
-        float r_est = r_est_a;
-        float p_est = p_est_a;
-        float y_est = y_est_a;
+        float r_est = r_est_a, p_est = p_est_a, y_est = y_est_a;
         aero_to_nautical(r_est, p_est, y_est);
         
         // World kinematics
