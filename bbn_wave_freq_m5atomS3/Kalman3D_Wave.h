@@ -183,7 +183,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
   
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
-    void set_transition_matrix(const Eigen::Ref<const Vector3>& gyr, T Ts);
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
     Vector3 accelerometer_measurement_func() const;
     Vector3 magnetometer_measurement_func() const;
@@ -551,21 +550,6 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_bias>::skew_symmetric_matrix(const Eigen::
        vec(2), 0, -vec(0),
       -vec(1), vec(0), 0;
   return M;
-}
-
-template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::set_transition_matrix(const Eigen::Ref<const Vector3>& gyr, T Ts) {
-  const Vector3 delta_theta = gyr * Ts;
-  T un = delta_theta.norm();
-  if (un == T(0)) un = std::numeric_limits<T>::min();
-
-  Matrix4 Omega; Omega.setZero();
-  Omega.template topLeftCorner<3,3>() = -skew_symmetric_matrix(delta_theta);
-  Omega.template topRightCorner<3,1>() =  delta_theta;
-  Omega.template bottomLeftCorner<1,3>() = -delta_theta.transpose();
-  // Omega(3,3) already zero
-
-  F = std::cos(half * un) * Matrix4::Identity() + std::sin(half * un) / un * Omega;
 }
 
 // quaternion multiplication helper (vector form used rarely in this file)
