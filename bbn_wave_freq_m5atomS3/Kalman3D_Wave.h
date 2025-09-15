@@ -106,21 +106,25 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         }
     }
 
+    // Velocity in world (NED)
     Vector3 get_velocity() const {
         // velocity state at offset BASE_N
         return xext.template segment<3>(BASE_N);
     }
 
+    // Position in world (NED)
     Vector3 get_position() const {
         // position state at offset BASE_N+3
         return xext.template segment<3>(BASE_N + 3);
     }
 
+    // Integral displacement in world (NED)
     Vector3 get_integral_displacement() const {
        // integral of displacement state at offset BASE_N+6
        return xext.template segment<3>(BASE_N + 6);
     }
 
+    // Latent OU world-acceleration a_w (world, NED)
     Vector3 get_world_accel() const { return xext.template segment<3>(OFF_AW); }
 
     // Tuning setters
