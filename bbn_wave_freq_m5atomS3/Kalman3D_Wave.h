@@ -189,7 +189,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void assembleExtendedFandQ(const Vector3& acc_body, T Ts, Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext);
 
     // Quaternion & small-angle helpers (kept)
-    Vector4 quatMultiply(const Vector4& a, const Vector4& b) const;
     void applyQuaternionCorrectionFromErrorState(); // apply correction to qref using xext(0..2)
     void normalizeQuat();
     void vanLoanDiscretization_12x3(const Eigen::Matrix<T,12,12>& A,
@@ -544,17 +543,6 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_bias>::skew_symmetric_matrix(const Eigen::
        vec(2), 0, -vec(0),
       -vec(1), vec(0), 0;
   return M;
-}
-
-// quaternion multiplication helper (vector form used rarely in this file)
-template<typename T, bool with_bias>
-typename Kalman3D_Wave<T, with_bias>::Vector4 Kalman3D_Wave<T, with_bias>::quatMultiply(const Vector4& a, const Vector4& b) const {
-  Vector4 r;
-  Eigen::Matrix<T,3,1> av = a.template head<3>(), bv = b.template head<3>();
-  T aw = a(3), bw = b(3);
-  r.template head<3>() = aw * bv + bw * av + av.cross(bv);
-  r(3) = aw * bw - av.dot(bv);
-  return r;
 }
 
 template<typename T, bool with_bias>
