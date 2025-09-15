@@ -82,7 +82,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void initialize_from_acc(Vector3 const& acc);
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
 
-    void time_update(Vector3 const& gyr, Vector3 const& acc, T Ts);  // new: uses acc to drive v/p/S
+    void time_update(Vector3 const& gyr, Vector3 const& acc, T Ts); 
 
     // Measurement updates preserved (operate on extended state internally)
     void measurement_update(Vector3 const& acc, Vector3 const& mag);
