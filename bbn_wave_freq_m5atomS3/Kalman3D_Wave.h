@@ -81,6 +81,12 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void initialize_from_acc(Vector3 const& acc);
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
 
+    // Set the world-frame magnetic reference vector used by the mag measurement model.
+    // Pass NED units. If you want yaw-only, pass the horizontal field (z = 0).
+    void set_mag_world_ref(const Vector3& B_world) {
+        v2ref = B_world;
+    }
+
     void time_update(Vector3 const& gyr, T Ts); 
 
     // Measurement updates preserved (operate on extended state internally)
