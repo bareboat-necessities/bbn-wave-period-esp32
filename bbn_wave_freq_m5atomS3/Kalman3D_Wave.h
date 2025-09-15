@@ -771,18 +771,22 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
-    // Minimal cross-noise coupling: attitude error ↔ velocity
-    // Use gyro noise variance to scale coupling (σ_g² * g² * Ts³)
-    Matrix3 sigma_g2 = Qbase.template topLeftCorner<3,3>();  // gyro noise covariance
-    T g2 = gravity_magnitude * gravity_magnitude;
+    // Cross-noise: attitude ↔ velocity (discrete, per step)
+    // Q_theta_d is per-step attitude error covariance (from Qbase)
+    const Matrix3 Q_theta_d = Qbase.template topLeftCorner<3,3>();
 
-    // Cross covariance ≈ σ_g² * g² * Ts³ (scaled down by factor to prevent blow-up)
-    constexpr T cross_gain = T(0.1);  // tune 0.01–1.0 depending on stability vs. responsiveness
-    Matrix3 Q_cross = cross_gain * sigma_g2 * (g2 * Ts * Ts * Ts);
+    // [g]_x for g_world = [0,0,+g]^T
+    Matrix3 g_skew; g_skew.setZero();
+    g_skew(0,1) = -gravity_magnitude;
+    g_skew(1,0) =  gravity_magnitude;
 
-    // Insert into off-diagonal blocks
-    Q_a_ext.template block<3,3>(OFF_V, 0) = Q_cross;
-    Q_a_ext.template block<3,3>(0, OFF_V) = Q_cross.transpose();  // symmetric
+    // Theoretically: Q_vθ = (Ts/2)*(-[g]_x)*Q_theta_d  (∝ Ts^2)
+    // Practical: scale down by k_cross
+    const T k_cross = T(0.1);
+    const Matrix3 Q_v_theta = k_cross * (Ts * T(0.5)) * (-g_skew) * Q_theta_d;
+
+    Q_a_ext.template block<3,3>(OFF_V, 0) = Q_v_theta;
+    Q_a_ext.template block<3,3>(0, OFF_V) = Q_v_theta.transpose();
   
     // Linear subsystem [v, p, S, a_w]
     using Mat12   = Eigen::Matrix<T,12,12>;
