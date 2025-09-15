@@ -102,9 +102,9 @@ static inline void quat_to_euler_nautical(const Quaternionf &q, float &roll, flo
 // Defaults: Statue of Liberty, USA, Sept 2025, elevation ~0 m
 
 struct MagSim_WMM {
-    static constexpr float default_declination_deg = -3.44f; // [deg] east is positive
-    static constexpr float default_inclination_deg =  67.5f; // [deg] positive = down
-    static constexpr float default_total_field_uT  = 51.0f;  // [µT]
+    static constexpr float default_declination_deg = -12.6f; // [deg] east is positive
+    static constexpr float default_inclination_deg =  66.5f; // [deg] positive = down
+    static constexpr float default_total_field_uT  = 52.0f;  // [µT]
 
     // World magnetic field in ENU (East, North, Up)
     // East = X, North = Y, Up = Z
