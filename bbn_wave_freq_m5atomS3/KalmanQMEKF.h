@@ -338,7 +338,7 @@ void QuaternionMEKF<T, with_bias>::measurement_update_mag_only(T const mag[3]) {
 
 template<typename T, bool with_bias>
 Matrix<T, 4, 1> const& QuaternionMEKF<T, with_bias>::quaternion() const {
-  return qref.conjugate().coeffs();
+  return qref.coeffs();
 }
 
 template<typename T, bool with_bias>
