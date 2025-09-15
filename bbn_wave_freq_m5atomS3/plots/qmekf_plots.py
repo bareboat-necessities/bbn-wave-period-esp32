@@ -96,6 +96,7 @@ for fname in files:
 
     # Load limited rows
     df = pd.read_csv(fname, nrows=MAX_ROWS)
+    df = df[(df["time"] >= SKIP_TIME_S) & (df["time"] <= MAX_TIME_S)].reset_index(drop=True)
     time = df["time"]
 
     # Reference vs estimated Euler angles
