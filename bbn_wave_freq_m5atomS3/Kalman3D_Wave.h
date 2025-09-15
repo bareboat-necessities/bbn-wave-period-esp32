@@ -361,7 +361,7 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
                                               Vector3 const& /*acc_body_unused*/,
                                               T Ts)
 {
-    // ---- Attitude mean propagation ----
+    // Attitude mean propagation
     Vector3 gyro_bias;
     if constexpr (with_bias) {
         gyro_bias = xext.template segment<3>(3);
@@ -374,11 +374,11 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
     qref = F * qref.coeffs();
     qref.normalize();
 
-    // ---- Build exact discrete transition & process Q ----
+    // Build exact discrete transition & process Q
     MatrixNX F_a_ext; MatrixNX Q_a_ext;
     assembleExtendedFandQ(Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
 
-    // ---- Mean propagation for linear subsystem [v,p,S,a_w] ----
+    // Mean propagation for linear subsystem [v,p,S,a_w]
     Eigen::Matrix<T,12,1> x_lin_prev;
     x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
     x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
@@ -394,7 +394,7 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
-    // ---- Covariance propagation ----
+    // Covariance propagation
     Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
     Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
 
