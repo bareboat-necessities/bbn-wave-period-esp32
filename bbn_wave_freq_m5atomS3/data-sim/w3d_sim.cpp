@@ -113,7 +113,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             first = false;
         }
 
-        mekf.time_update(gyr_f, acc_f, dt);
+        mekf.time_update(gyr_f, dt);
         if (with_mag) mekf.measurement_update(acc_f, mag_f);
         else          mekf.measurement_update_acc_only(acc_f);
 
