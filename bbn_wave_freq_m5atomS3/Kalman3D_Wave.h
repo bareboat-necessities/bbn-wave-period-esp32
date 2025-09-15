@@ -280,7 +280,7 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
     Vector3 acc_n = acc_body / anorm;
 
     // Build WORLD axes expressed in BODY coords
-    Vector3 z_world = -acc_n;                         // world Z (down) in body coords
+    Vector3 z_world = acc_n;                         // world Z (down) in body coord
     Vector3 mag_h   = mag_body - (mag_body.dot(z_world)) * z_world;
     if (mag_h.norm() < 1e-6) {
         throw std::runtime_error("Magnetometer vector parallel to gravity — cannot initialize yaw");
