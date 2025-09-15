@@ -179,8 +179,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(0.5*0.5); // stationary variance diag [ (m/s^2)^2 ]
 
     // convenience getters
-    Matrix3 Rt_from_quat() const { return qref.toRotationMatrix(); }
-    Matrix3 R_from_quat() const { return qref.toRotationMatrix().transpose(); }
+    Matrix3 R_from_quat() const { return qref.toRotationMatrix(); }
+    Matrix3 Rt_from_quat() const { return qref.toRotationMatrix().transpose(); }
   
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
@@ -415,7 +415,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update(Vector3 const& acc, Vector3
     Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
     // accel rows 0..2
     Cext.template block<3,3>(0,0)        = -skew_symmetric_matrix(v1hat); // d f_b / d attitude
-    Cext.template block<3,3>(0,OFF_AW)   = Rt_from_quat();               // d f_b / d a_w
+    Cext.template block<3,3>(0,OFF_AW)   = R_from_quat();               // d f_b / d a_w
     // mag rows 3..5 (unchanged)
     Cext.template block<3,3>(3,0)        = -skew_symmetric_matrix(v2hat);
 
@@ -495,7 +495,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_acc_only(Vector3 const& acc
     // d f_b / d (attitude error)
     Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(v1hat);
     // d f_b / d a_w
-    Cext.template block<3,3>(0, OFF_AW) = Rt_from_quat();
+    Cext.template block<3,3>(0, OFF_AW) = R_from_quat();
 
     Vector3 inno = acc_meas - v1hat;
 
@@ -531,12 +531,12 @@ template<typename T, bool with_bias>
 Matrix<T,3,1> Kalman3D_Wave<T, with_bias>::accelerometer_measurement_func() const {
     const Vector3 g_world(0, 0, -gravity_magnitude);
     const Vector3 aw = xext.template segment<3>(OFF_AW);
-    return Rt_from_quat() * (aw + g_world);
+    return R_from_quat() * (aw + g_world);
 }
 
 template<typename T, bool with_bias>
 Matrix<T, 3, 1> Kalman3D_Wave<T, with_bias>::magnetometer_measurement_func() const {
-    return Rt_from_quat() * v2ref;
+    return R_from_quat() * v2ref;
 }
 
 // utility functions
