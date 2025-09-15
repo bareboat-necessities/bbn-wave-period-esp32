@@ -706,7 +706,6 @@ static void vanLoanAxis4x1(
     Phi = PhiT.transpose();
     Qd  = Phi * Qblk;
 }
-#else
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
     const Eigen::Matrix<T,12,12>& /*A*/,
@@ -739,7 +738,6 @@ void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
     Phi = Phi_lin;
     Qd  = Qd_lin;
 }
-#endif
 #endif
 
 template<typename T, bool with_bias>
