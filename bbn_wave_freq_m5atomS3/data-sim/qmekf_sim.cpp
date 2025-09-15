@@ -98,12 +98,18 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         else
             mekf.measurement_update_acc_only(acc_f);
 
-        // Filter quaternion → Euler (nautical deg) for output
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
-        float r_est, p_est, y_est;
-        quat_to_euler_nautical(q, r_est, p_est, y_est);
 
+        float r_est_a, p_est_a, y_est_a;
+        quat_to_euler_aero(q, r_est_a, p_est_a, y_est_a);
+
+        // Convert aerospace → nautical (ENU / Z-up)
+        float r_est = r_est_a;
+        float p_est = p_est_a;
+        float y_est = y_est_a;
+        aero_to_nautical(r_est, p_est, y_est);
+        
         rows.push_back({
             rec.time,
             r_ref_n, p_ref_n, y_ref_n,            // ref (nautical)
