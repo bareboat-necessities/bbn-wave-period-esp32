@@ -374,12 +374,12 @@ Matrix<T, 3, 3> QuaternionMEKF<T, with_bias>::skew_symmetric_matrix(const Eigen:
 
 template <typename T, bool with_bias>
 Matrix<T, 3, 1> QuaternionMEKF<T, with_bias>::accelerometer_measurement_func() const {
-  return qref.inverse() * v1ref;
+  return qref * v1ref;
 }
 
 template <typename T, bool with_bias>
 Matrix<T, 3, 1> QuaternionMEKF<T, with_bias>::magnetometer_measurement_func() const {
-  return qref.inverse() * v2ref;
+  return qref * v2ref;
 }
 
 template<typename T, bool with_bias>
