@@ -623,7 +623,7 @@ void Kalman3D_Wave<T, with_bias>::applyIntegralZeroPseudoMeas() {
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
-// ---- Exact Van-Loan using Eigen's MatrixFunctions (desktop) ----
+// Exact Van-Loan using Eigen's MatrixFunctions (desktop)
 #ifdef EIGEN_NON_ARDUINO
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
@@ -650,7 +650,7 @@ void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
     Qd  = Phi * Qblk;             // exact discrete process noise
 }
 #else
-// ---- Analytic, no-matrix-exponential fallback (embedded) ----
+// Analytic, no-matrix-exponential fallback (embedded)
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
     const Eigen::Matrix<T,12,12>& /*A*/,
@@ -693,7 +693,7 @@ void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
     // a_w' = phi * a_w
     Phi.block<3,3>(9, 9)   = I3 * phi;
 
-    // ---- Process noise Qd ----
+    // Process noise Qd
     // For embedded simplicity and numerical robustness, we inject *exact* OU noise on a_w
     // and let it excite v,p,S through the deterministic Phi above across steps.
     // Discrete OU variance: Qaw = Sigma_aw_stat * (1 - phi^2)
