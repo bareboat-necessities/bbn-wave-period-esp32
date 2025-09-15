@@ -14,6 +14,7 @@
      v (3)  : velocity in world frame
      p (3)  : displacement/position in world frame
      S (3)  : integral of displacement (∫ p dt) — with zero pseudo-measurement for drift correction
+     a_w (3): estimate of acceleration (specific force)
 
   - The quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction)
     is preserved where possible.
