@@ -93,7 +93,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void applyIntegralZeroPseudoMeas();
 
     // Accessors
-    Eigen::Quaternion<T> quaternion() const { return qref; }
+    Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
     MatrixBaseN const& covariance_base() const { return Pbase; } // top-left original block
     MatrixNX const& covariance_full() const { return Pext; }     // full extended covariance
 
