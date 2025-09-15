@@ -261,22 +261,27 @@ Kalman3D_Wave<T, with_bias>::initialize_Q(typename Kalman3D_Wave<T, with_bias>::
   return Q;
 }
 
-//  initialization helpers
+// initialization helpers
+    
+// Initialization from accelerometer + magnetometer
+// Inputs:
+//   acc_body  — accelerometer specific force in body frame (NED)
+//   mag_body  — magnetometer measurement in body frame (NED)
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
-    Vector3 const& acc_body,     // accelerometer in body (filter convention)
-    Vector3 const& mag_world)    // magnetic field in world (NED)
+    Vector3 const& acc_body,
+    Vector3 const& mag_body)
 {
-    // Normalize inputs
+    // Normalize accelerometer
     T anorm = acc_body.norm();
     Vector3 acc_n = acc_body / anorm;
 
     // Aerospace: +Z is down (gravity in world is +Z)
     v1ref << 0, 0, +anorm;
 
-    // Build WORLD axes expressed in BODY coords (from accel + mag_world)
+    // Build WORLD axes expressed in BODY coords
     Vector3 z_world = -acc_n;                         // world Z (down) in body coords
-    Vector3 mag_h   = mag_world - (mag_world.dot(z_world)) * z_world;
+    Vector3 mag_h   = mag_body - (mag_body.dot(z_world)) * z_world;
     if (mag_h.norm() < 1e-6) {
         throw std::runtime_error("Magnetometer vector parallel to gravity — cannot initialize yaw");
     }
@@ -284,7 +289,7 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
     Vector3 x_world = mag_h;                          // world X (north) in body coords
     Vector3 y_world = z_world.cross(x_world).normalized();
 
-    // R_wb: world→body rotation (columns are world axes in body coords)
+    // R_wb: world→body rotation (columns = world axes in body coords)
     Matrix3 R_wb;
     R_wb.col(0) = x_world;
     R_wb.col(1) = y_world;
@@ -294,7 +299,8 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
     qref = Eigen::Quaternion<T>(R_wb);
     qref.normalize();
 
-    v2ref = qref * mag_world.normalized();
+    // Store reference magnetic vector (in body frame after init)
+    v2ref = qref * mag_body.normalized();
 }
 
 template<typename T, bool with_bias>
