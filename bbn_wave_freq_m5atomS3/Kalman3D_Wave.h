@@ -178,8 +178,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(0.5*0.5); // stationary variance diag [ (m/s^2)^2 ]
 
     // convenience getters
-    Matrix3 R_from_quat() const { return qref.toRotationMatrix(); }
-    Matrix3 Rt_from_quat() const { return qref.toRotationMatrix().transpose(); }
+    Matrix3 R_from_quat() const { return qref.toRotationMatrix(); }                // world→body
+    Matrix3 Rt_from_quat() const { return qref.toRotationMatrix().transpose(); }   // body→world
   
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
