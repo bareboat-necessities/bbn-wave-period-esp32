@@ -180,6 +180,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // convenience getters
     Matrix3 Rt_from_quat() const { return qref.toRotationMatrix(); }
+    Matrix3 R_from_quat() const { return qref.toRotationMatrix().transpose(); }
   
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
@@ -192,7 +193,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Extended helpers
     void assembleExtendedFandQ(const Vector3& acc_body, T Ts, Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext);
-    Matrix3 R_from_quat() const { return qref.toRotationMatrix().transpose(); }
 
     // Quaternion & small-angle helpers (kept)
     Vector4 quatMultiply(const Vector4& a, const Vector4& b) const;
