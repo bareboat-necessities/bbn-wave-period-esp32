@@ -771,6 +771,18 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
+    // Minimal cross-noise coupling: attitude error → velocity
+    // Gravity magnitude is the dominant source: orientation error rotates g into wrong axes
+    Matrix3 G_cross = Matrix3::Identity() * gravity_magnitude;
+
+    // Scale: attitude error variance * Ts^2 (because velocity integrates accel error once)
+    // You can tune the gain factor (here 1.0) if too aggressive
+    Matrix3 Q_cross = G_cross * Ts * Ts;
+
+    // Insert into off-diagonal blocks
+    Q_a_ext.template block<3,3>(OFF_V, 0) = Q_cross;
+    Q_a_ext.template block<3,3>(0, OFF_V) = Q_cross.transpose();  // symmetric
+
     // Linear subsystem [v, p, S, a_w]
     using Mat12   = Eigen::Matrix<T,12,12>;
     using Mat12x3 = Eigen::Matrix<T,12,3>;
