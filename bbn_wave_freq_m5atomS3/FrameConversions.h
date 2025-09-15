@@ -79,16 +79,17 @@ static Quaternionf quat_from_euler(float roll_deg, float pitch_deg, float yaw_de
 }
 
 // Extract Euler (aerospace convention, deg) from quaternion
-static inline void quat_to_euler_aero(const Quaternionf &q, float &roll, float &pitch, float &yaw) {
-    Matrix3f R = q.toRotationMatrix().transpose();
+static inline void quat_to_euler_aero(const Quaternionf &q,
+                                      float &roll, float &pitch, float &yaw) {
+    Matrix3f C_bn = q.toRotationMatrix();  // body->nav/world
+    pitch = std::atan2(-C_bn(2,0), std::sqrt(C_bn(0,0)*C_bn(0,0) + C_bn(1,0)*C_bn(1,0)));
+    roll  = std::atan2(C_bn(2,1), C_bn(2,2));
+    yaw   = std::atan2(C_bn(1,0), C_bn(0,0));
 
-    pitch = std::atan2(-R(2,0), std::sqrt(R(0,0)*R(0,0) + R(1,0)*R(1,0)));
-    roll  = std::atan2(R(2,1), R(2,2));
-    yaw   = std::atan2(R(1,0), R(0,0));
-
-    roll  *= 180.0f / M_PI;   
-    pitch *= 180.0f / M_PI;   
-    yaw   *= 180.0f / M_PI;  
+    const float k = 180.0f/M_PI;
+    roll  *= k;
+    pitch *= k;
+    yaw   *= k;
 }
 
 // Extract Euler (nautical convention, deg) from quaternion
