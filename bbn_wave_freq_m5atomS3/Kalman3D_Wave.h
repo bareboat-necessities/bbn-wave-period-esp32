@@ -771,22 +771,24 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
-    // Cross-noise: attitude ↔ velocity (discrete, per step)
-    // Q_theta_d is per-step attitude error covariance (from Qbase)
+    // Cross-noise and induced velocity variance from attitude error
     const Matrix3 Q_theta_d = Qbase.template topLeftCorner<3,3>();
 
-    // [g]_x for g_world = [0,0,+g]^T
+    // [g]_x for g_world = [0,0,+g]^T (NED, down-positive)
     Matrix3 g_skew; g_skew.setZero();
     g_skew(0,1) = -gravity_magnitude;
     g_skew(1,0) =  gravity_magnitude;
 
-    // Theoretically: Q_vθ = (Ts/2)*(-[g]_x)*Q_theta_d  (∝ Ts^2)
-    // Practical: scale down by k_cross
     const T k_cross = T(0.1);
-    const Matrix3 Q_v_theta = k_cross * (Ts * T(0.5)) * (-g_skew) * Q_theta_d;
 
+    // Cross covariance: Q_vθ ≈ (Ts/2)(-g_skew)Qθθ   (∝ Ts)
+    const Matrix3 Q_v_theta = k_cross * (Ts * T(0.5)) * (-g_skew) * Q_theta_d;
     Q_a_ext.template block<3,3>(OFF_V, 0) = Q_v_theta;
     Q_a_ext.template block<3,3>(0, OFF_V) = Q_v_theta.transpose();
+
+    // Velocity variance: Q_vv ≈ (Ts²/3)[g]_x Qθθ [g]_xᵀ   (∝ Ts²)
+    const Matrix3 Q_vv = k_cross * (Ts*Ts / T(3)) * g_skew * Q_theta_d * g_skew.transpose();
+    Q_a_ext.template block<3,3>(OFF_V, OFF_V) += Q_vv;
   
     // Linear subsystem [v, p, S, a_w]
     using Mat12   = Eigen::Matrix<T,12,12>;
