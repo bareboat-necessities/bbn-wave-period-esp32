@@ -11,7 +11,7 @@
 #endif
 
 const float g_std = 9.80665f; // standard gravity acceleration m/s²
-const double MAG_DELAY_SEC = 10.0; // <-- delay magnetometer use until 5 seconds
+const double MAG_DELAY_SEC = 10.0; // delay magnetometer use 
 
 #include "KalmanQMEKF.h"       // Q-MEKF filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
