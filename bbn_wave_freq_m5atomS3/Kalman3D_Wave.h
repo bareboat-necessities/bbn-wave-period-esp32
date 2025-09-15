@@ -798,7 +798,7 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
 
     Mat12 Phi_lin, Qd_lin;
 
-    // *** Desktop and embedded handle this differently ***
+    // Desktop and embedded handle this differently
 #ifdef EIGEN_NON_ARDUINO
     const Matrix3 Sigma_c = (T(2)/std::max(T(1e-6), tau_aw)) * Sigma_aw_stat;
     vanLoanDiscretization_12x3(A, G, Sigma_c, Ts, Phi_lin, Qd_lin);
