@@ -83,7 +83,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         // Initialization
         if (first) {
             if (with_mag && rec.time >= MAG_DELAY_SEC) {
-                mekf.initialize_from_acc_mag(acc_f, mag_f);
+                mekf.measurement_update_mag_only(mag_f);
                 mag_initialized = true;
             } else {
                 mekf.initialize_from_acc(acc_f);
