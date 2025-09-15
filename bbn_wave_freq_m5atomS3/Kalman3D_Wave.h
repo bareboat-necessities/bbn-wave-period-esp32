@@ -706,62 +706,40 @@ static void vanLoanAxis4x1(
     Phi = PhiT.transpose();
     Qd  = Phi * Qblk;
 }
-// Analytic, no-matrix-exponential fallback (embedded)
+#else
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
     const Eigen::Matrix<T,12,12>& /*A*/,
     const Eigen::Matrix<T,12,3>&  /*G*/,
-    const Eigen::Matrix<T,3,3>&   /*Sigma_c (unused; we use Sigma_aw_stat directly)*/,
+    const Eigen::Matrix<T,3,3>&   /*Sigma_c_unused*/,
     T Ts,
     Eigen::Matrix<T,12,12>& Phi,
     Eigen::Matrix<T,12,12>& Qd) const
 {
-    // State ordering inside this 12x12 block: [ v(0..2), p(3..5), S(6..8), a_w(9..11) ]
-    // Dynamics: v̇ = a_w; ṗ = v; Ṡ = p; ȧ_w = -(1/τ) a_w + w
+    using Mat12 = Eigen::Matrix<T,12,12>;
 
-    using Mat3 = Eigen::Matrix<T,3,3>;
-    const T tau  = std::max(T(1e-6), tau_aw);
-    const T phi  = std::exp(-Ts / tau);
+    Mat12 Phi_lin; Phi_lin.setZero();
+    Mat12 Qd_lin;  Qd_lin.setZero();
 
-    const T c1 = tau * (T(1) - phi);                                     // ∫ a_w ds  coefficient
-    const T c2 = tau * (Ts - tau * (T(1) - phi));                        // ∫∫ a_w ds ds  coefficient
-    const T c3 = (tau * Ts * Ts) / T(2) - tau * tau * Ts + tau*tau*tau*(T(1) - phi); // ∫∫∫ a_w ds ds ds
+    for (int axis=0; axis<3; ++axis) {
+        T tau    = std::max(T(1e-6), tau_aw);
+        T sigma2 = Sigma_aw_stat(axis,axis);
 
-    // Transition Phi
-    Phi.setZero();
-    auto I3 = Mat3::Identity();
+        Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
+        vanLoanAxis4x1(tau, sigma2, Ts, Phi_axis, Qd_axis);
 
-    // v' = v + c1 * a_w
-    Phi.block<3,3>(0, 0)   = I3;
-    Phi.block<3,3>(0, 9)   = I3 * c1;
+        int idx[4] = {0,3,6,9}; // v,p,S,a offsets
+        for (int i=0;i<4;i++)
+            for (int j=0;j<4;j++) {
+                Phi_lin(idx[i]+axis, idx[j]+axis) = Phi_axis(i,j);
+                Qd_lin (idx[i]+axis, idx[j]+axis) = Qd_axis (i,j);
+            }
+    }
 
-    // p' = p + Ts * v + c2 * a_w
-    Phi.block<3,3>(3, 3)   = I3;
-    Phi.block<3,3>(3, 0)   = I3 * Ts;
-    Phi.block<3,3>(3, 9)   = I3 * c2;
-
-    // S' = S + Ts * p + 0.5 Ts^2 * v + c3 * a_w
-    Phi.block<3,3>(6, 6)   = I3;
-    Phi.block<3,3>(6, 3)   = I3 * Ts;
-    Phi.block<3,3>(6, 0)   = I3 * (Ts*Ts/T(2));
-    Phi.block<3,3>(6, 9)   = I3 * c3;
-
-    // a_w' = phi * a_w
-    Phi.block<3,3>(9, 9)   = I3 * phi;
-
-    // Process noise Qd
-    // For embedded simplicity and numerical robustness, we inject *exact* OU noise on a_w
-    // and let it excite v,p,S through the deterministic Phi above across steps.
-    // Discrete OU variance: Qaw = Sigma_aw_stat * (1 - phi^2)
-    const Mat3 Qaw = Sigma_aw_stat * (T(1) - phi*phi);
-
-    Qd.setZero();
-    Qd.block<3,3>(9, 9) = Qaw;
-
-    // If you want tighter modeling, you can add cross terms so that v,p,S also receive
-    // noise directly each step (closed forms exist), but this minimal Q keeps things
-    // stable and compiles without the unsupported module.
+    Phi = Phi_lin;
+    Qd  = Qd_lin;
 }
+#endif
 #endif
 
 template<typename T, bool with_bias>
