@@ -779,51 +779,45 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     T theta = omega * Ts;
 
     if (theta < T(1e-6)) {
-        // Small-angle fallback: 2nd-order series
         Matrix3 Wx = skew_symmetric_matrix(w);
         F_a_ext.template block<3,3>(0,0) = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
     } else {
-        // Normal case: exact Rodrigues form
-        Matrix3 W = skew_symmetric_matrix(w / omega);  // normalized axis
+        Matrix3 W = skew_symmetric_matrix(w / omega);
         T s = std::sin(theta);
         T c = std::cos(theta);
         F_a_ext.template block<3,3>(0,0) = I - s * W + (1 - c) * (W * W);
     }
 
     if constexpr (with_bias) {
-        // Cross term: attitude error driven by bias uncertainty
         F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
 
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
-    // Linear subsystem [v, p, S, a_w] exact Van-Loan
+    // Linear subsystem [v, p, S, a_w]
     using Mat12   = Eigen::Matrix<T,12,12>;
     using Mat12x3 = Eigen::Matrix<T,12,3>;
 
     Mat12 A; A.setZero();
-    // v̇ = a_w
-    A.template block<3,3>(0,9) = Matrix3::Identity();
-    // ṗ = v
-    A.template block<3,3>(3,0) = Matrix3::Identity();
-    // Ṡ = p
-    A.template block<3,3>(6,3) = Matrix3::Identity();
-    // ȧ_w = -(1/τ) a_w
-    A.template block<3,3>(9,9) = -(T(1)/std::max(T(1e-6), tau_aw)) * Matrix3::Identity();
+    A.template block<3,3>(0,9) = Matrix3::Identity();                       // v̇ = a_w
+    A.template block<3,3>(3,0) = Matrix3::Identity();                       // ṗ = v
+    A.template block<3,3>(6,3) = Matrix3::Identity();                       // Ṡ = p
+    A.template block<3,3>(9,9) = -(T(1)/std::max(T(1e-6), tau_aw)) * Matrix3::Identity(); // ȧ_w
 
     Mat12x3 G; G.setZero();
     G.template block<3,3>(9,0) = Matrix3::Identity(); // noise drives a_w
 
     Mat12 Phi_lin, Qd_lin;
-    vanLoanDiscretization_12x3(A, G, Sigma_aw_stat, Ts, Phi_lin, Qd_lin);
 
-    // Insert into extended transition + process covariance
+    // *** Desktop and embedded handle this differently ***
+#ifdef EIGEN_NON_ARDUINO
+    const Matrix3 Sigma_c = (T(2)/std::max(T(1e-6), tau_aw)) * Sigma_aw_stat;
+    vanLoanDiscretization_12x3(A, G, Sigma_c, Ts, Phi_lin, Qd_lin);
+#else
+    vanLoanDiscretization_12x3(A, G, Matrix3::Zero(), Ts, Phi_lin, Qd_lin);
+#endif
+
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
-
-    // Process noise on v,p (tiny diagonal) can help if τ_aw is long
-    Q_a_ext.template block<3,3>(OFF_V, OFF_V).diagonal().array() += T(1e-8);
-    Q_a_ext.template block<3,3>(OFF_P, OFF_P).diagonal().array() += T(1e-10);
 }
-
