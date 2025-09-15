@@ -54,7 +54,6 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
     // World magnetic field in aerospace NED (force horizontal, yaw-only)
     Vector3f B_world = MagSim_WMM::mag_world_aero();
-    B_world.z() = 0.0f;
 
     bool first = true;
     bool mag_enabled = false;
