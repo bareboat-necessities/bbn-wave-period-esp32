@@ -147,7 +147,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
   private:
     // Original MEKF internals (kept nomenclature)
     Eigen::Quaternion<T> qref;
-    Vector3 v1ref = Vector3::UnitZ();
     Vector3 v2ref = Vector3::UnitX();
 
     // Original base error-state (first BASE_N elements) — now stored inside xext (top portion)
@@ -280,9 +279,6 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc_mag(
     T anorm = acc_body.norm();
     Vector3 acc_n = acc_body / anorm;
 
-    // Aerospace: +Z is down (gravity in world is +Z)
-    v1ref << 0, 0, +anorm;
-
     // Build WORLD axes expressed in BODY coords
     Vector3 z_world = -acc_n;                         // world Z (down) in body coords
     Vector3 mag_h   = mag_body - (mag_body.dot(z_world)) * z_world;
@@ -347,9 +343,6 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc)
 {
     T anorm = acc.norm();
     Vector3 acc_n = acc / anorm;
-
-    // World gravity vector in NED (z-down)
-    v1ref << 0, 0, +anorm;
 
     // Use accelerometer to align z axis, yaw remains arbitrary
     qref = quaternion_from_acc(acc_n);
