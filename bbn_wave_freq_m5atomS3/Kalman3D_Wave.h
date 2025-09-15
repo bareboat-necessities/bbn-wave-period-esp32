@@ -74,7 +74,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(2e+0));
+                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(2e+1));
 
     // Initialization / measurement API 
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
