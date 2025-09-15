@@ -21,7 +21,6 @@
     (accelerometer input is used only in the measurement update).
   - A full extended covariance (Pext) and transition Jacobian Fext are constructed; the top-left corner
     contains the original MEKF's P/Q blocks (attitude error + optional gyro bias).
-  - Accelerometer is expected in IMU/body frame input to time_update(gyr, acc, Ts).
   - Accelerometer and magnetometer inputs must be given in aerospace/NED (x north, y east, z down)
 */
 
@@ -82,7 +81,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void initialize_from_acc(Vector3 const& acc);
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
 
-    void time_update(Vector3 const& gyr, Vector3 const& acc, T Ts); 
+    void time_update(Vector3 const& gyr, T Ts); 
 
     // Measurement updates preserved (operate on extended state internally)
     void measurement_update(Vector3 const& acc, Vector3 const& mag);
@@ -349,9 +348,7 @@ void Kalman3D_Wave<T, with_bias>::initialize_from_acc(Vector3 const& acc)
 }
 
 template<typename T, bool with_bias>
-void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
-                                              Vector3 const& /*acc_body_unused*/,
-                                              T Ts)
+void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts)
 {
     // Attitude mean propagation
     Vector3 gyro_bias;
