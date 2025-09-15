@@ -60,6 +60,13 @@ class EIGEN_ALIGN_MAX QuaternionMEKF {
     void initialize_from_acc_mag(T const acc[3], T const mag[3]);
     void initialize_from_acc(Vector3 const& acc);
     void initialize_from_acc(T const acc[3]);
+
+    // Set the world-frame magnetic reference vector used by the mag measurement model.
+    // Pass NED units. If you want yaw-only, pass the horizontal field (z = 0).
+    void set_mag_world_ref(const Vector3& B_world) {
+        v2ref = B_world;
+    }
+
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
     void time_update(Vector3 const& gyr, T Ts);
     void time_update(T const gyr[3], T Ts);
