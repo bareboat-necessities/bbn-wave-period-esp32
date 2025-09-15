@@ -52,6 +52,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
     // World magnetic field in aerospace NED (North, East, Down)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
+    mag_world_a(2) = 0.0f;
 
     bool first = true;
     std::vector<OutputRow> rows;
