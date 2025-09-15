@@ -776,8 +776,9 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     Matrix3 sigma_g2 = Qbase.template topLeftCorner<3,3>();  // gyro noise covariance
     T g2 = gravity_magnitude * gravity_magnitude;
 
-    // Cross covariance ≈ σ_g² * g² * Ts³
-    Matrix3 Q_cross = sigma_g2 * (g2 * Ts * Ts * Ts);
+    // Cross covariance ≈ σ_g² * g² * Ts³ (scaled down by factor to prevent blow-up)
+    constexpr T cross_gain = T(0.1);  // tune 0.01–1.0 depending on stability vs. responsiveness
+    Matrix3 Q_cross = cross_gain * sigma_g2 * (g2 * Ts * Ts * Ts);
 
     // Insert into off-diagonal blocks
     Q_a_ext.template block<3,3>(OFF_V, 0) = Q_cross;
