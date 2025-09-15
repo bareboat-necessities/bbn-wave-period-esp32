@@ -633,6 +633,79 @@ void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
     Qd  = Phi * Qblk;             // exact discrete process noise
 }
 #else
+// Padé(6) matrix exponential with scaling & squaring
+// Works well for small fixed-size matrices (e.g. 8x8)
+template<typename Mat>
+Mat expm_pade6(const Mat& A) {
+    using T = typename Mat::Scalar;
+    const int n = A.rows();
+    assert(n == A.cols());
+
+    const T theta = 3.0;
+    const int max_squarings = 8;
+
+    const T c0 = 1.0;
+    const T c2 = 1.0/2.0;
+    const T c4 = 1.0/24.0;
+    const T c6 = 1.0/720.0;
+
+    // 1-norm estimate
+    T normA = A.cwiseAbs().colwise().sum().maxCoeff();
+    int s = 0;
+    if (normA > theta) {
+        s = std::min(max_squarings, static_cast<int>(std::ceil(std::log2(normA/theta))));
+    }
+    Mat As = A / T(1<<s);
+
+    Mat A2 = As * As;
+    Mat A4 = A2 * A2;
+    Mat A6 = A4 * A2;
+
+    Mat U = As * (c2*Mat::Identity(n,n) + c6*A2);
+    Mat V = c0*Mat::Identity(n,n) + c4*A2 + (1.0/5040.0)*A6;
+
+    Mat P = V + U;
+    Mat Q = V - U;
+
+    Mat R = Q.lu().solve(P);
+
+    for (int i=0;i<s;i++) {
+        R = R * R;
+    }
+    return R;
+}
+template<typename T>
+static void vanLoanAxis4x1(
+    T tau, T sigma2, T Ts,
+    Eigen::Matrix<T,4,4>& Phi, Eigen::Matrix<T,4,4>& Qd)
+{
+    using Mat4 = Eigen::Matrix<T,4,4>;
+    using Mat8 = Eigen::Matrix<T,8,8>;
+
+    Mat4 A; A.setZero();
+    A(0,3) = 1;          // v̇ = a
+    A(1,0) = 1;          // ṗ = v
+    A(2,1) = 1;          // Ṡ = p
+    A(3,3) = -1/tau;     // ȧ = -a/τ
+
+    Eigen::Matrix<T,4,1> G; G.setZero();
+    G(3,0) = 1;
+
+    const T Sigma_c = (2/tau) * sigma2;
+
+    Mat8 M; M.setZero();
+    M.block(0,0,4,4)   = -A * Ts;
+    M.block(0,4,4,4)   = G * (Sigma_c * G.transpose()) * Ts;
+    M.block(4,4,4,4)   = A.transpose() * Ts;
+
+    Mat8 expM = expm_pade6(M);
+
+    Mat4 PhiT = expM.block(4,4,4,4);
+    Mat4 Qblk = expM.block(0,4,4,4);
+
+    Phi = PhiT.transpose();
+    Qd  = Phi * Qblk;
+}
 // Analytic, no-matrix-exponential fallback (embedded)
 template<typename T, bool with_bias>
 void Kalman3D_Wave<T, with_bias>::vanLoanDiscretization_12x3(
