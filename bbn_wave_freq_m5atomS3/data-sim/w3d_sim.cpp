@@ -59,7 +59,7 @@ static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
               << " | predicted (body) = " << m_pred_body.transpose() << "\n";
 }
 
-const double MAG_DELAY_SEC = 10.0; // delay before enabling magnetometer
+const double MAG_DELAY_SEC = 5.0; // delay before enabling magnetometer
 
 void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
