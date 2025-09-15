@@ -371,7 +371,7 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr,
   
     last_gyr_bias_corrected = gyr - gyro_bias;
     set_transition_matrix(last_gyr_bias_corrected, Ts);   // fills F (4x4)
-    qref.coeffs() = F * qref.coeffs();
+    coeffs() = F * qref.coeffs();
     qref.normalize();
 
     // ---- Build exact discrete transition & process Q ----
