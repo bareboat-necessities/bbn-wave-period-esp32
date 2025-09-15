@@ -716,7 +716,7 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     F_a_ext.setIdentity();
     Q_a_ext.setZero();
 
-    // === Attitude error (+ optional bias) discrete transition ===
+    // Attitude error (+ optional bias) discrete transition
     Matrix3 I = Matrix3::Identity();
     Vector3 w = last_gyr_bias_corrected;   // bias-corrected gyro [rad/s]
     T omega = w.norm();
@@ -742,7 +742,7 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
-    // === Linear subsystem [v, p, S, a_w] exact Van-Loan ===
+    // Linear subsystem [v, p, S, a_w] exact Van-Loan
     using Mat12   = Eigen::Matrix<T,12,12>;
     using Mat12x3 = Eigen::Matrix<T,12,3>;
 
