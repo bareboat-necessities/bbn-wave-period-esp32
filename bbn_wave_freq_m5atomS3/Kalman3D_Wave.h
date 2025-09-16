@@ -42,7 +42,6 @@ using Eigen::Map;
 
 template <typename T = float, bool with_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
-    static constexpr T gravity_magnitude = T(9.81);
 
     // Original base state dimension (attitude-error (3) [+ gyro-bias (3) if with_bias])
     static constexpr int BASE_N = with_bias ? 6 : 3;
@@ -75,7 +74,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(2e-1));
+                  T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(2e-1),
+                  T gravity_magnitude = T(9.80665));
 
     // Initialization / measurement API 
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
