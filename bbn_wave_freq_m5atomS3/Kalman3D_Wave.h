@@ -146,11 +146,9 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Pext.template block<3,3>(OFF_S, OFF_S) = Matrix3::Identity() * (sigma_S0 * sigma_S0);   // S (3)
         // X/Y relative to Z
         const T scale_xy = T(0.2);
-        T scale_var = scale_xy;
         for (int blk : {OFF_V, OFF_P, OFF_S}) {
-            Pext(blk+0, blk+0) *= scale_var; // X
-            Pext(blk+1, blk+1) *= scale_var; // Y
-            scale_var *= scale_xy;
+            Pext(blk+0, blk+0) *= scale_xy; // X
+            Pext(blk+1, blk+1) *= scale_xy; // Y
         }
     }
 
