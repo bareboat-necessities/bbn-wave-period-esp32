@@ -1,0 +1,138 @@
+\documentclass[12pt]{book}
+\usepackage[utf8]{inputenc}
+\usepackage{titlesec}
+\usepackage{titletoc}
+\usepackage{amsmath, amssymb} % For mathematical symbols
+\usepackage{geometry} % For adjusting page margins
+\geometry{a4paper, margin=1in}
+
+% Formatting for Chapter titles
+\titleformat{\chapter}[display]
+{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{-30pt}{40pt}
+
+% Formatting for Section titles
+\titleformat{\section}
+{\normalfont\Large\bfseries}{\thesection}{1em}{}
+
+% Formatting for the Table of Contents in the TOC itself
+\usepackage[titles]{tocloft}
+\renewcommand{\cftchapfont}{\normalfont\bfseries}
+\renewcommand{\cftchapleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftchappagefont}{\normalfont}
+
+\begin{document}
+
+\frontmatter
+\tableofcontents
+\mainmatter
+
+% The actual Table of Contents entries
+\chapter*{Contents}
+
+% Part I: Foundations
+\part{Foundations}
+\chapter{Introduction to the Oceanographic System}
+\section{The Oceans: Dimensions, Structure, and Importance}
+\section{The Multi-Disciplinary Nature of Oceanography}
+\section{The Role of Mathematics and Theoretical Models}
+\section{Observational Methods and Data Analysis}
+
+\chapter{Essential Mathematical Tools}
+\section{Scalars, Vectors, and Tensors in Oceanography}
+\section{Calculus Review: Derivatives, Integrals, and Theorems (Gradient, Divergence, Curl)}
+\section{Coordinate Systems: Cartesian, Cylindrical, and Spherical}
+\section{Complex Numbers and Fourier Series}
+\section{Introduction to Ordinary and Partial Differential Equations (ODEs/PDEs)}
+\section{Basic Probability and Statistics for Oceanographic Data}
+
+\chapter{Fluid Dynamics Preliminaries}
+\section{Continuum Hypothesis and Fluid Properties}
+\section{Kinematics: Lagrangian vs. Eulerian Descriptions, Material Derivative}
+\section{Conservation Laws: Mass, Momentum, and Energy}
+\section{Concepts of Vorticity and Circulation}
+
+% Part II: Governing Equations and Simplifications
+\part{Governing Equations and Simplifications}
+\chapter{The Navier-Stokes Equations for Seawater}
+\section{Derivation of the Mass Conservation (Continuity) Equation}
+\section{Derivation of the Momentum Conservation Equations}
+\section{Equation of State for Seawater}
+\section{The Full System of Equations and Its Closure Problem}
+
+\chapter{Simplifications and Scaling}
+\section{The Boussinesq Approximation}
+\section{Hydrostatic Balance}
+\section{The Concept of Turbulence and Reynolds Averaging}
+\section{The Reynolds-Averaged Navier-Stokes (RANS) Equations}
+\section{Non-Dimensional Numbers: Rossby, Reynolds, Froude, Ekman}
+
+% Part III: Oceanic Phenomena and Their Mathematical Descriptions
+\part{Oceanic Phenomena and Their Mathematical Descriptions}
+\chapter{Geostrophic Flow and Thermal Wind}
+\section{The Coriolis Force on a Rotating Earth}
+\section{Scaling for Large-Scale Flow: Geostrophic Balance}
+\section{The Thermal Wind Equations}
+\section{Calculating Geostrophic Currents from Hydrography}
+
+\chapter{Wind-Driven Circulation and Ekman Theory}
+\section{The Surface Wind Stress}
+\section{The Classical Ekman Spiral Solution}
+\section{Ekman Transport and Ekman Pumping}
+\section{Application to Ocean Gyres and Upwelling/Downwelling}
+
+\chapter{Ocean Waves}
+\section{Linear Theory and the Perturbation Method}
+\section{Surface Gravity Waves: Dispersion and Group Velocity}
+\section{Internal Waves: Theory and Observations}
+\section{Long Waves: Tsunamis and Tides}
+\section{Nonlinear Waves: Solitons and Stokes Drift}
+
+\chapter{Instabilities and Turbulence}
+\section{Concept of Dynamic Instability}
+\section{Baroclinic and Barotropic Instabilities}
+\section{Kelvin-Helmholtz Instability}
+\section{Homogeneous vs. Inhomogeneous Turbulence}
+\section{Mixing and Eddy Diffusion Parameterizations}
+
+\chapter{The Ocean's General Circulation}
+\section{The Sverdrup Theory for Interior Flow}
+\section{Western Boundary Currents: The Stommel and Munk Models}
+\section{Abyssal Circulation and Thermohaline Processes}
+\section{Conceptual Box Models and the Overturning Circulation}
+
+% Part IV: Specialized Topics and Numerical Methods
+\part{Specialized Topics and Numerical Methods}
+\chapter{Coastal and Estuarine Dynamics}
+\section{Shallow Water Equations}
+\section{Tides in Coastal Seas and Amphidromic Systems}
+\section{Estuarine Circulation and Salt Wedge Dynamics}
+\section{Coastal Upwelling and River Plumes}
+
+\chapter{Introduction to Numerical Modeling}
+\section{Why Numerical Models? The Discretization Process}
+\section{Finite Difference Methods}
+\section{Finite Volume and Finite Element Methods}
+\section{Grids: Arakawa C-Grid, Terrain-Following, and Isopycnal}
+\section{Overview of Ocean General Circulation Models (OGCMs)}
+
+\chapter{Data Analysis and Inverse Methods}
+\section{Time Series Analysis: Autocorrelation, Spectral Analysis}
+\section{Spatial Analysis: Objective Analysis, Empirical Orthogonal Functions (EOFs)}
+\section{The Inverse Problem: Estimating Unobserved Quantities and Fluxes}
+\section{Data Assimilation: Combining Models and Observations}
+
+\chapter{Coupled Systems and Climate}
+\section{Ocean-Atmosphere Coupling (e.g., El Niño-Southern Oscillation - ENSO)}
+\section{Sea Ice Dynamics and Thermodynamics}
+\section{The Ocean's Role in the Global Carbon Cycle}
+\section{Climate Sensitivity and Ocean Feedbacks}
+
+% Backmatter
+\begin{appendix}
+\chapter{Physical Constants and Properties of Seawater}
+\chapter{Mathematical Formulas and Theorems}
+\chapter{Standard Derivations}
+\end{appendix}
+
+\end{document}
