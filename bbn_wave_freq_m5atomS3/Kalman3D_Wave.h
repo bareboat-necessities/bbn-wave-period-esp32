@@ -140,6 +140,17 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
     }
 
+    void set_initial_linear_uncertainty(T sigma_v0, T sigma_p0, T sigma_S0) {
+        // v (3)
+        Pext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity() * (sigma_v0 * sigma_v0);
+
+        // p (3)
+        Pext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity() * (sigma_p0 * sigma_p0);
+
+        // S (3)
+        Pext.template block<3,3>(OFF_S, OFF_S) = Matrix3::Identity() * (sigma_S0 * sigma_S0);
+    }
+  
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
         const T cI = std::cos(I_rad), sI = std::sin(I_rad);
         const T cD = std::cos(D_rad), sD = std::sin(D_rad);
