@@ -250,9 +250,9 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   // Seed covariance for a_w (world acceleration)
   Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
 
-  const T sigma_v0 = T(1.0);   // m/s
-  const T sigma_p0 = T(5.0);   // m
-  const T sigma_S0 = T(10.0);  // m·s
+  const T sigma_v0 = T(0.5);   // m/s
+  const T sigma_p0 = T(2.0);   // m
+  const T sigma_S0 = T(8.0);   // m·s
   set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
 
   R.setZero();
