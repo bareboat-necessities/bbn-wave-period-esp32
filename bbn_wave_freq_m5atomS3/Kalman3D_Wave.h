@@ -135,7 +135,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Vector3 get_world_accel() const { return xext.template segment<3>(OFF_AW); }
 
     // Tuning setters
-    void setExtendedQ(MatrixNX const& Qext_in) { Qext = Qext_in; }
     void set_aw_time_constant(T tau_seconds) { tau_aw = std::max(T(1e-3), tau_seconds); }
     void set_aw_stationary_std(const Vector3& std_aw) {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
@@ -182,8 +181,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     Matrix3 Racc; // Accelerometer noise (diagonal) stored as Matrix3
     Matrix3 R_S;  // Triple integration measurement noise
-
-    MatrixNX Qext; // Extended process noise / Q
 
     // World-acceleration OU process a_w dynamics parameters
     T tau_aw = T(0.5);            // correlation time [s], tune 1–5 s for sea states
@@ -257,10 +254,6 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   const T sigma_p0 = T(5.0);   // m
   const T sigma_S0 = T(20.0);  // m·s
   set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
-
-  // Initialize Qext: top-left is original Qbase; rest zeros until we compute process noise by template
-  Qext.setZero();
-  Qext.topLeftCorner(BASE_N, BASE_N) = Qbase;
 
   R.setZero();
   R.template topLeftCorner<3,3>()  = Racc;     // accelerometer measurement noise
