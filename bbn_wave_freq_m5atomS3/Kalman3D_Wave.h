@@ -530,7 +530,7 @@ void Kalman3D_Wave<T, with_bias>::measurement_update_mag_only(Vector3 const& mag
     measurement_update_partial(mag, v2hat, Rmag);
 }
 
-// specific force prediction: f_b = R^T (a_w - g)
+// specific force prediction: f_b = R_wb (a_w - g)
 template<typename T, bool with_bias>
 Matrix<T,3,1> Kalman3D_Wave<T, with_bias>::accelerometer_measurement_func() const {
     const Vector3 g_world(0, 0, +gravity_magnitude);  // NED g_world
