@@ -368,15 +368,16 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts)
     Eigen::Quaternion<T> dq;
     if (ang > T(1e-12)) {
         Vector3 axis = last_gyr_bias_corrected.normalized();
-        dq = Eigen::AngleAxis<T>(ang, axis);
+        // Minus sign: consistent with world→body convention
+        dq = Eigen::AngleAxis<T>(-ang, axis);
     } else {
         dq.setIdentity();
     }
 
-    // Propagate: right-multiply, same side as correction
-    qref = qref * dq;
+    // Propagate: pre-multiply for world→body
+    qref = dq * qref;
     qref.normalize();
-
+  
     // Build exact discrete transition & process Q
     MatrixNX F_a_ext; MatrixNX Q_a_ext;
     assembleExtendedFandQ(Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
