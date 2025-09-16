@@ -373,7 +373,7 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts)
         dq.setIdentity();
     }
 
-    // Propagate: right-multiply (matches your correction side and F/J signs)
+    // Propagate: right-multiply (matches correction side and F/Jacobians signs )
     qref = qref * dq;
     qref.normalize();
   
