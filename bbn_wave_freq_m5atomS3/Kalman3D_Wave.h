@@ -142,14 +142,9 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     }
 
     void set_initial_linear_uncertainty(T sigma_v0, T sigma_p0, T sigma_S0) {
-        // v (3)
-        Pext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity() * (sigma_v0 * sigma_v0);
-
-        // p (3)
-        Pext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity() * (sigma_p0 * sigma_p0);
-
-        // S (3)
-        Pext.template block<3,3>(OFF_S, OFF_S) = Matrix3::Identity() * (sigma_S0 * sigma_S0);
+        Pext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity() * (sigma_v0 * sigma_v0);   // v (3)
+        Pext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity() * (sigma_p0 * sigma_p0);   // p (3)
+        Pext.template block<3,3>(OFF_S, OFF_S) = Matrix3::Identity() * (sigma_S0 * sigma_S0);   // S (3)
     }
   
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
@@ -213,11 +208,11 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void applyQuaternionCorrectionFromErrorState(); // apply correction to qref using xext(0..2)
     void normalizeQuat();
     void vanLoanDiscretization_12x3(const Eigen::Matrix<T,12,12>& A,
-                                const Eigen::Matrix<T,12,3>&  G,
-                                const Eigen::Matrix<T,3,3>&   Sigma_c,
-                                T Ts,
-                                Eigen::Matrix<T,12,12>& Phi,
-                                Eigen::Matrix<T,12,12>& Qd) const;
+                                    const Eigen::Matrix<T,12,3>&  G,
+                                    const Eigen::Matrix<T,3,3>&   Sigma_c,
+                                    T Ts,
+                                    Eigen::Matrix<T,12,12>& Phi,
+                                    Eigen::Matrix<T,12,12>& Qd) const;
 };
 
 // Implementation
@@ -386,7 +381,7 @@ void Kalman3D_Wave<T, with_gyro_bias>::time_update(Vector3 const& gyr, T Ts)
     // Build delta quaternion from gyro increment
     T ang = last_gyr_bias_corrected.norm() * Ts;
     Eigen::Quaternion<T> dq;
-    if (ang > T(1e-12)) {
+    if (ang > T(1e-9)) {
         Vector3 axis = last_gyr_bias_corrected.normalized();
         dq = Eigen::AngleAxis<T>(ang, axis);     // +ang
     } else {
