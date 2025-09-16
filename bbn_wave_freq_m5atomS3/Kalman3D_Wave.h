@@ -75,7 +75,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                  T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(1e+3),
+                  T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-9), T R_S_noise = T(1e+3),
                   T gravity_magnitude = T(STD_GRAVITY));
 
     // Initialization / measurement API 
@@ -237,8 +237,8 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   qref.setIdentity();
 
   R_S = Matrix3::Identity() * R_S_noise;
-  R_S(0,0) *= 0.01;
-  R_S(1,1) *= 0.01;
+  R_S(0,0) *= 0.1;
+  R_S(1,1) *= 0.1;
 
   // initialize base / extended states
   Pbase.setZero();
@@ -261,8 +261,8 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
 
   const T sigma_v0 = T(1.0);    // m/s
-  const T sigma_p0 = T(50.0);   // m
-  const T sigma_S0 = T(250.0);  // m·s
+  const T sigma_p0 = T(20.0);   // m
+  const T sigma_S0 = T(100.0);  // m·s
   set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
 
   R.setZero();
