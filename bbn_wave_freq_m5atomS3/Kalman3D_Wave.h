@@ -771,7 +771,7 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     }
 
     // Process noise for attitude/bias
-    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
+    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
   
     // Linear subsystem [v, p, S, a_w]
     using Mat12   = Eigen::Matrix<T,12,12>;
