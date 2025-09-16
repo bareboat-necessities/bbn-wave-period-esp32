@@ -770,7 +770,7 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     }
 
     // Process noise for attitude/bias
-    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
+    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
     // Cross-noise and induced velocity variance from attitude error
     const Matrix3 Q_theta_d = Qbase.template topLeftCorner<3,3>();
