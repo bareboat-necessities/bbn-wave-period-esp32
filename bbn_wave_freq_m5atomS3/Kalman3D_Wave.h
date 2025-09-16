@@ -68,6 +68,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     typedef Matrix<T, M, M> MatrixM;
 
     static constexpr T half = T(1) / T(2);
+    static constexpr T STD_GRAVITY = T(9.80665);  // standard gravity acceleration m/s²
 
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -75,7 +76,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(2e-2),
-                  T gravity_magnitude = T(9.80665));
+                  T gravity_magnitude = T(STD_GRAVITY));
 
     // Initialization / measurement API 
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
@@ -162,6 +163,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     }
 
   private:
+    const T gravity_magnitude_ = T(STD_GRAVITY);
+  
     // Original MEKF internals (kept nomenclature)
     Eigen::Quaternion<T> qref;
     Vector3 v2ref = Vector3::UnitX();
@@ -224,8 +227,9 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
     Vector3 const& sigma_a,
     Vector3 const& sigma_g,
     Vector3 const& sigma_m,
-    T Pq0, T Pb0, T b0, T R_S_noise)
+    T Pq0, T Pb0, T b0, T R_S_noise, T gravity_magnitude)
   : Qbase(initialize_Q(sigma_g, b0)),
+    gravity_magnitude_(gravity_magnitude),
     Racc(sigma_a.array().square().matrix().asDiagonal()),
     Rmag(sigma_m.array().square().matrix().asDiagonal())
 {
@@ -548,7 +552,7 @@ void Kalman3D_Wave<T, with_gyro_bias>::measurement_update_mag_only(Vector3 const
 // specific force prediction: f_b = R_wb (a_w - g)
 template<typename T, bool with_gyro_bias>
 Matrix<T,3,1> Kalman3D_Wave<T, with_gyro_bias>::accelerometer_measurement_func() const {
-    const Vector3 g_world(0, 0, +gravity_magnitude);  // NED g_world
+    const Vector3 g_world(0, 0, +gravity_magnitude_);  // NED g_world
     const Vector3 aw = xext.template segment<3>(OFF_AW);
     return R_wb() * (aw - g_world);
 }
