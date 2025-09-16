@@ -1,0 +1,273 @@
+\documentclass[12pt]{book}
+\usepackage{amsmath, amssymb, bm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\geometry{margin=1in}
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+
+\title{Theoretical Oceanography:\\Mathematical Foundations and Modern Advances}
+\author{Your Name}
+\date{2025}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+% ============================================================
+\part{Volume I: Mathematical and Physical Foundations}
+
+\chapter{Introduction}
+\section{Scope and relevance of theoretical oceanography}
+\section{Scales of motion in the ocean}
+\section{Historical milestones: Ekman, Rossby, Stommel, Munk, Charney, Gill, Pedlosky}
+\section{Observational vs.\ theoretical vs.\ numerical approaches}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Scaling survey.} Tabulate typical spatial/temporal scales for turbulent, mesoscale, basin, and global motions; estimate Rossby, Froude, Reynolds, Burger numbers.
+  \item \textbf{Historical derivations map.} For five milestones (Ekman spiral, Rossby waves, Sverdrup balance, Stommel/Munk gyres, Charney baroclinic instability), write a one-page derivation summary and a diagram of assumptions.
+\end{enumerate}
+
+\chapter{Mathematical Preliminaries}
+\section{Vectors/tensors; Einstein summation; material derivative}
+\section{Differential operators in Cartesian/spherical/curvilinear coords}
+\section{Fourier transforms, normal modes, spectral decomposition}
+\section{Coordinate systems: Cartesian, spherical, sigma, isopycnal}
+\section{Non-dimensionalization and scaling arguments}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Spherical operators.} Derive $\nabla\cdot \mathbf{u}$ and $\nabla^2 \phi$ in spherical coordinates with small-angle $\beta$-plane approximation.
+  \item \textbf{Asymptotics.} Non-dimensionalize the rotating Navier–Stokes equations; identify leading balances for small/large Rossby and Froude numbers.
+\end{enumerate}
+
+\chapter{Thermodynamics of Seawater}
+\section{Equation of state: linear and nonlinear forms}
+\section{Potential temperature, potential density, neutral surfaces}
+\section{Stratification, buoyancy frequency $N(z)$, static stability}
+\section{Cabbeling, thermobaricity (notational intro)}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{$N^2$ profiles.} From $T(z)$ and $S(z)$ profiles, compute $N^2$ using both linearized and TEOS-like coefficients; compare.
+  \item \textbf{Neutral surfaces.} Show conditions under which neutral trajectories deviate from isopycnals for nonlinear EOS.
+\end{enumerate}
+
+\chapter{Governing Equations}
+\section{Continuity, momentum, tracer conservation}
+\section{Navier--Stokes on a rotating sphere; Coriolis and centrifugal terms}
+\section{Primitive equations; Boussinesq and anelastic forms}
+\section{f-plane, $\beta$-plane, spherical forms}
+\section{Shallow-water scaling; hydrostatic and quasi-hydrostatic approximations}
+\section{Non-dimensional parameters: Ro, Fr, Re, Bu, Ek}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Hydrostatic limit.} Starting from vertical momentum, derive hydrostatic balance and first non-hydrostatic correction.
+  \item \textbf{SWEs.} Derive shallow-water equations via depth integration with variable bottom topography.
+\end{enumerate}
+
+% ============================================================
+\part{Volume II: Wave and Oscillatory Dynamics}
+
+\chapter{Surface Gravity Waves}
+\section{Linear (Airy) theory; dispersion; phase/group velocities}
+\section{Energy, radiation stress; wave setup}
+\section{Nonlinear waves: Stokes expansion, cnoidal and solitary solutions}
+\section{Wave--current interaction; Doppler shifting; refraction/shoaling}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Dispersion.} Derive $\omega^2 = gk \tanh(kh)$ and group velocity; compute energy flux.
+  \item \textbf{Stokes drift.} Obtain second-order Stokes drift and discuss Langmuir relevance.
+\end{enumerate}
+
+\chapter{Internal Waves}
+\section{Stratification, polarization relations; dispersion}
+\section{Inertia--gravity and internal tide bands; $N$ and $f$ windows}
+\section{Critical layers, reflection, and breaking}
+\section{Wave--mean flow interactions; induced transports}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Polarization.} Derive velocity/buoyancy relations for plane internal waves.
+  \item \textbf{Critical layer.} Analyze WKB breakdown and Richardson-number criteria.
+\end{enumerate}
+
+\chapter{Planetary and Basin-Scale Waves}
+\section{Rossby waves: barotropic/baroclinic; $\beta$-dispersion}
+\section{Rossby radius of deformation}
+\section{Kelvin waves: coastal and equatorial}
+\section{Poincar\'e (inertia--gravity) and Yanai (mixed Rossby--gravity) waves}
+\section{Basin modes and seiches}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Rossby dispersion.} Derive $\omega = -\beta k/(k^2+\ell^2+1/L_D^2)$ for QG.
+  \item \textbf{Equatorial modes.} Solve equatorial $\beta$-plane for Kelvin and Yanai modes.
+\end{enumerate}
+
+\chapter{Tidal Theory}
+\section{Equilibrium tide; dynamical corrections}
+\section{Laplace tidal equations; amphidromes and resonance}
+\section{Barotropic vs.\ baroclinic tides; internal tide generation/conversion}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{LTE.} Derive Laplace’s tidal equations from SWEs with astronomical forcing.
+  \item \textbf{Conversion.} Estimate internal tide conversion over an idealized ridge.
+\end{enumerate}
+
+% ============================================================
+\part{Volume III: Circulation and Balanced Dynamics}
+
+\chapter{Ekman Dynamics}
+\section{Ekman spiral derivation; surface/bottom layers}
+\section{Ekman transport; pumping/suction}
+\section{Upwelling/downwelling impacts on thermocline}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Spiral.} Solve the constant-eddy-viscosity Ekman problem; compare to log-layer variants.
+  \item \textbf{Pumping.} From wind stress curl, compute vertical velocity and thermocline response.
+\end{enumerate}
+
+\chapter{Wind-Driven Circulation}
+\section{Sverdrup vorticity balance; interior flow}
+\section{Western boundary intensification: Stommel and Munk models}
+\section{Applications: Gulf Stream, Kuroshio, Agulhas}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Sverdrup.} Derive transport from $\beta v = \text{curl}(\tau)/\rho H$.
+  \item \textbf{Munk layer.} Solve boundary layer thickness and streamfunction structure.
+\end{enumerate}
+
+\chapter{Thermohaline Circulation}
+\section{Density-driven overturning; convection}
+\section{Stommel box models; multiple equilibria and hysteresis}
+\section{Global overturning circulation; meridional heat transport}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Two-box.} Analyze bifurcations as freshwater forcing varies.
+  \item \textbf{Overturning scale.} Scale AMOC transport with thermal wind and diapycnal mixing.
+\end{enumerate}
+
+\chapter{Potential Vorticity Dynamics}
+\section{Barotropic/baroclinic PV; Ertel PV; conservation}
+\section{PV inversion methods; Green’s functions}
+\section{Gyres, eddies; interpretation of Rossby waves via PV}
+\section{Lagrangian coherent structures and PV barriers}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{PV conservation.} Show material invariance for adiabatic, inviscid flow.
+  \item \textbf{PV inversion.} Implement QG PV inversion on a beta-plane channel.
+\end{enumerate}
+
+% ============================================================
+\part{Volume IV: Instabilities and Turbulence}
+
+\chapter{Linear Stability}
+\section{Normal-mode analysis; eigenvalue problems}
+\section{Barotropic instability (Rayleigh--Kuo criterion)}
+\section{Baroclinic instability (Eady and Charney models)}
+\section{Mixed-layer instabilities and submesoscale onset}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Eady growth rate.} Derive maximum growth and most unstable wavenumber.
+  \item \textbf{Rayleigh--Kuo.} Prove necessary condition for barotropic instability.
+\end{enumerate}
+
+\chapter{Nonlinear Dynamics}
+\section{Wave triads/quartets; resonance conditions}
+\section{Modulational instability (Benjamin--Feir)}
+\section{Chaotic advection; transport barriers}
+\section{Nonlinear wave--mean flow coupling}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Triad resonance.} Derive interaction coefficients for shallow-water triads.
+  \item \textbf{MI.} Obtain NLS equation and Benjamin--Feir criterion from weak nonlinearity.
+\end{enumerate}
+
+\chapter{Turbulence and Mixing}
+\section{Reynolds decomposition/averaging; closures}
+\section{Energy cascades in 3D/2D; enstrophy}
+\section{Shear instability; Richardson number}
+\section{Double diffusion: salt fingering and diffusive convection}
+\section{Parameterizations: K-profile, eddy diffusivity}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Spectra.} Derive $k^{-5/3}$ and discuss deviations in stratified/rotating flows.
+  \item \textbf{Double diffusion.} Linear stability of a salt-fingering staircase.
+\end{enumerate}
+
+% ============================================================
+\part{Volume V: Modern and Cutting-Edge Topics}
+
+\chapter{Mesoscale and Submesoscale Dynamics}
+\section{Eddies and coherent vortices; rings}
+\section{Frontogenesis; frontal/ageostrophic instabilities}
+\section{Eddy--mean flow interaction and parameterization}
+\section{Lagrangian diagnostics of transport (FTLE, coherent sets)}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Frontogenesis function.} Derive Hoskins’ $F$ and apply to an idealized jet.
+  \item \textbf{Lagrangian tools.} Compute FTLE fields for a QG eddy field; identify transport barriers.
+\end{enumerate}
+
+\chapter{Nonhydrostatic and High-Resolution Modeling}
+\section{Nonhydrostatic primitive equations; pressure decomposition}
+\section{Wave-resolving vs.\ hydrostatic models}
+\section{Adaptive mesh and spectral element methods}
+\section{Machine-learning accelerations in solvers (surrogates, emulators)}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{NHPE.} Derive nonhydrostatic pressure Poisson equation in a Boussinesq model.
+  \item \textbf{Dispersion.} Compare dispersion in hydrostatic vs.\ nonhydrostatic SWEs.
+\end{enumerate}
+
+\chapter{Stochastic and Statistical Theories}
+\section{Stochastic wave models; Langevin and Fokker--Planck forms}
+\section{Kinetic equations for wave spectra; Hasselmann-type closures}
+\section{Random-matrix viewpoints in turbulence (conceptual tools)}
+\section{Stochastic parameterizations of subgrid scales}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Hasselmann eqn.} Derive the wave kinetic equation under weak nonlinearity.
+  \item \textbf{Stochastic closures.} Build a simple AR(1) subgrid parameterization and test energy budgets.
+\end{enumerate}
+
+\chapter{Coupled Atmosphere--Ocean Dynamics}
+\section{Air--sea flux parameterizations; bulk formulae}
+\section{ENSO: delayed oscillator, recharge--discharge models}
+\section{Madden--Julian Oscillation and ocean feedbacks}
+\section{Low-frequency modes: PDO, AMO, SAM, NAO}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Recharge oscillator.} Derive the recharge model and analyze stability/period.
+  \item \textbf{Coupling strength.} Sensitivity analysis of ENSO amplitude to thermocline feedback.
+\end{enumerate}
+
+\chapter{Climate Change and Ocean Circulation}
+\section{Anthropogenic stratification changes}
+\section{AMOC weakening and tipping points}
+\section{Ocean carbon uptake and biogeochemical coupling}
+\section{Ice--ocean interactions in a warming climate}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Tipping analysis.} Reduced-order AMOC model bifurcation diagram under freshwater forcing.
+  \item \textbf{Carbon cycle.} Box-model for ocean CO$_2$ uptake with circulation feedbacks.
+\end{enumerate}
+
+\chapter{Emerging Frontiers}
+\section{Data assimilation and 4D-Var adjoint methods}
+\section{Lagrangian oceanography with floats and drifters}
+\section{Machine-learning parameterizations (neural eddy closures)}
+\section{Quantum-inspired algorithms in ocean modeling (conceptual)}
+\section*{Problems}
+\begin{enumerate}
+  \item \textbf{Adjoint.} Derive the continuous adjoint of a 1D advection--diffusion model; set up 4D-Var.
+  \item \textbf{Neural closures.} Train a LES eddy viscosity surrogate; enforce energy/PV constraints.
+\end{enumerate}
+
+% ============================================================
+\appendix
+\chapter{Appendices}
+\section{Vector/tensor identities (curvilinear and spherical)}
+\section{Common oceanographic parameter values}
+\section{Classical derivations: Ekman spiral, Sverdrup balance, Rossby dispersion, Kelvin/Yanai waves}
+\section{Dimensional analysis: worked examples across Ro/Fr/Bu}
+\section{Bibliography and further reading (placeholders for entries)}
+
+\end{document}
