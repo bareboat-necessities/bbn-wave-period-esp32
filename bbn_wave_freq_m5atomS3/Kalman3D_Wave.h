@@ -75,10 +75,10 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                  T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-9), T R_S_noise = T(5e+3),
+                  T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-9), T R_S_noise = T(2e+1),
                   T gravity_magnitude = T(STD_GRAVITY));
 
-    // Initialization / measurement API 
+    // Initialization / measurement API
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
     void initialize_from_acc(Vector3 const& acc);
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
@@ -89,7 +89,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         v2ref = B_world;
     }
 
-    void time_update(Vector3 const& gyr, T Ts); 
+    void time_update(Vector3 const& gyr, T Ts);
 
     // Measurement updates preserved (operate on extended state internally)
     void measurement_update(Vector3 const& acc, Vector3 const& mag);
@@ -153,7 +153,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
             scale_var *= scale_xy;
         }
     }
-  
+
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
         const T cI = std::cos(I_rad), sI = std::sin(I_rad);
         const T cD = std::cos(D_rad), sD = std::sin(D_rad);
@@ -166,7 +166,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
   private:
     const T gravity_magnitude_ = T(STD_GRAVITY);
-  
+
     // Original MEKF internals (kept nomenclature)
     Eigen::Quaternion<T> qref;
     Vector3 v2ref = Vector3::UnitX();
@@ -179,7 +179,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix<T, NX, 1> xext; // [ att_err(3), (gyro bias 3 optional), v(3), p(3), S(3) ]
     MatrixNX Pext;
 
-    // Last gyro 
+    // Last gyro
     Vector3 last_gyr_bias_corrected{};
 
     // Original constant matrices (kept)
@@ -192,12 +192,12 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // World-acceleration OU process a_w dynamics parameters
     T tau_aw = T(1.0);            // correlation time [s], tune 1–5 s for sea states
-    Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(0.5*0.5); // stationary variance diag [ (m/s^2)^2 ]
+    Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(0.7*0.7); // stationary variance diag [ (m/s^2)^2 ]
 
     // convenience getters
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
     Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body→world
-  
+
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
@@ -243,7 +243,7 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   // initialize base / extended states
   Pbase.setZero();
   Pbase.setIdentity(); // default small initial cov unless user overwrites
-  
+
   // initialize base covariance
   Pbase.template topLeftCorner<3,3>() = Matrix3::Identity() * Pq0;   // attitude error covariance
   if constexpr (with_gyro_bias) {
@@ -253,7 +253,7 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   // Extended state
   xext.setZero();
   Pext.setZero();
-  
+
   // Place original base P into top-left of Pext
   Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
 
@@ -284,7 +284,7 @@ Kalman3D_Wave<T, with_gyro_bias>::initialize_Q(typename Kalman3D_Wave<T, with_gy
 }
 
 // initialization helpers
-    
+
 // Initialization from accelerometer + magnetometer
 // Inputs:
 //   acc_body  — accelerometer specific force in body frame (NED)
@@ -384,7 +384,7 @@ void Kalman3D_Wave<T, with_gyro_bias>::time_update(Vector3 const& gyr, T Ts)
     } else {
         gyro_bias = Vector3::Zero();
     }
-  
+
     last_gyr_bias_corrected = gyr - gyro_bias;
 
     // Build delta quaternion from gyro increment
@@ -400,7 +400,7 @@ void Kalman3D_Wave<T, with_gyro_bias>::time_update(Vector3 const& gyr, T Ts)
     // Propagate: right-multiply (matches correction side and F/Jacobians signs )
     qref = qref * dq;
     qref.normalize();
-  
+
     // Build exact discrete transition & process Q
     MatrixNX F_a_ext; MatrixNX Q_a_ext;
     assembleExtendedFandQ(Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
@@ -436,7 +436,7 @@ template<typename T, bool with_gyro_bias>
 void Kalman3D_Wave<T, with_gyro_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag)
 {
     // Predicted measurements
-    Vector3 v1hat = accelerometer_measurement_func(); // depends on a_w 
+    Vector3 v1hat = accelerometer_measurement_func(); // depends on a_w
     Vector3 v2hat = magnetometer_measurement_func();
 
     Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
@@ -481,16 +481,16 @@ void Kalman3D_Wave<T, with_gyro_bias>::measurement_update_partial(
     // Cext: (3 x NX)
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
     Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
-    
+
     // Innovation
     Vector3 inno = meas - vhat;
-    
+
     // S = C P C^T + Rm  (3x3)
     Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
-    
+
     // PCt = P C^T  (NX x 3)
     Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
-    
+
     // Factor S (SPD) and solve
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
@@ -499,15 +499,15 @@ void Kalman3D_Wave<T, with_gyro_bias>::measurement_update_partial(
         if (ldlt.info() != Eigen::Success) return;
     }
     Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
-    
+
     // State update
     xext.noalias() += K * inno;
-    
+
     // Joseph covariance update
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
-    
+
     // Quaternion correction + zero small-angle
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
@@ -591,7 +591,7 @@ void Kalman3D_Wave<T, with_gyro_bias>::normalizeQuat() {
   qref.normalize();
 }
 
-//  Extended pseudo-measurement: zero S 
+//  Extended pseudo-measurement: zero S
 template<typename T, bool with_gyro_bias>
 void Kalman3D_Wave<T, with_gyro_bias>::applyIntegralZeroPseudoMeas() {
     // Build measurement matrix H (picks S block)
@@ -604,10 +604,10 @@ void Kalman3D_Wave<T, with_gyro_bias>::applyIntegralZeroPseudoMeas() {
 
     // Innovation covariance
     Matrix3 S_mat = H * Pext * H.transpose() + R_S;
-    
+
     // PHt (NX x 3)
     Matrix<T, NX, 3> PHt = Pext * H.transpose();
-    
+
     // Factor S and compute K = PHt * S^{-1}
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
@@ -616,15 +616,15 @@ void Kalman3D_Wave<T, with_gyro_bias>::applyIntegralZeroPseudoMeas() {
         if (ldlt.info() != Eigen::Success) return;
     }
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
-    
+
     // Update
     xext.noalias() += K * inno;
-    
+
     // Joseph form + symmetrize
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
-    
+
     // Quaternion correction + zero small-angle + mirror base
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
@@ -795,7 +795,7 @@ void Kalman3D_Wave<T, with_gyro_bias>::assembleExtendedFandQ(
 
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
-  
+
     // Linear subsystem [v, p, S, a_w]
     using Mat12   = Eigen::Matrix<T,12,12>;
     using Mat12x3 = Eigen::Matrix<T,12,3>;
