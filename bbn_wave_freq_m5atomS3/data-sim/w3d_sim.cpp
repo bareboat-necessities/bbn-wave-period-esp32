@@ -11,6 +11,7 @@
 #endif
 
 const float g_std = 9.80665f; // standard gravity acceleration m/s²
+const double MAG_DELAY_SEC = 5.0; // delay before enabling magnetometer
 
 #include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
@@ -18,8 +19,6 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
-
-const double MAG_DELAY_SEC = 5.0; // delay before enabling magnetometer
 
 struct OutputRow {
     double t{};
