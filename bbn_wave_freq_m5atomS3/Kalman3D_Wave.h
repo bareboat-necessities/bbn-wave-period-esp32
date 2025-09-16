@@ -86,7 +86,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Set the world-frame magnetic reference vector used by the mag measurement model.
     // Pass NED units. If you want yaw-only, pass the horizontal field (z = 0).
     void set_mag_world_ref(const Vector3& B_world) {
-        v2ref = B_world;
+        v2ref = B_world.normalized();
     }
 
     void time_update(Vector3 const& gyr, T Ts);
