@@ -368,14 +368,13 @@ void Kalman3D_Wave<T, with_bias>::time_update(Vector3 const& gyr, T Ts)
     Eigen::Quaternion<T> dq;
     if (ang > T(1e-12)) {
         Vector3 axis = last_gyr_bias_corrected.normalized();
-        // Minus sign: consistent with world→body convention
-        dq = Eigen::AngleAxis<T>(-ang, axis);
+        dq = Eigen::AngleAxis<T>(ang, axis);     // +ang
     } else {
         dq.setIdentity();
     }
 
-    // Propagate: pre-multiply for world→body
-    qref = dq * qref;
+    // Propagate: right-multiply (matches your correction side and F/J signs)
+    qref = qref * dq;
     qref.normalize();
   
     // Build exact discrete transition & process Q
@@ -771,7 +770,7 @@ void Kalman3D_Wave<T, with_bias>::assembleExtendedFandQ(
     }
 
     // Process noise for attitude/bias
-    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase;
+    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
   
     // Linear subsystem [v, p, S, a_w]
     using Mat12   = Eigen::Matrix<T,12,12>;
