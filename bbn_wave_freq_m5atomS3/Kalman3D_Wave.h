@@ -145,10 +145,12 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Pext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity() * (sigma_p0 * sigma_p0);   // p (3)
         Pext.template block<3,3>(OFF_S, OFF_S) = Matrix3::Identity() * (sigma_S0 * sigma_S0);   // S (3)
         // X/Y relative to Z
-        const T boost_xy = T(0.2);
+        const T scale_xy = T(0.2);
+        T scale_var = scale_xy;
         for (int blk : {OFF_V, OFF_P, OFF_S}) {
-            Pext(blk+0, blk+0) *= boost_xy; // X
-            Pext(blk+1, blk+1) *= boost_xy; // Y
+            Pext(blk+0, blk+0) *= scale_var; // X
+            Pext(blk+1, blk+1) *= scale_var; // Y
+            scale_var *= scale_xy;
         }
     }
   
@@ -235,8 +237,8 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   qref.setIdentity();
 
   R_S = Matrix3::Identity() * R_S_noise;
-  R_S(0,0) *= 0.2;
-  R_S(1,1) *= 0.2;
+  R_S(0,0) *= 0.01;
+  R_S(1,1) *= 0.01;
 
   // initialize base / extended states
   Pbase.setZero();
@@ -258,9 +260,9 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   // Seed covariance for a_w (world acceleration)
   Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
 
-  const T sigma_v0 = T(0.5);   // m/s
-  const T sigma_p0 = T(2.0);   // m
-  const T sigma_S0 = T(8.0);   // m·s
+  const T sigma_v0 = T(1.0);    // m/s
+  const T sigma_p0 = T(50.0);   // m
+  const T sigma_S0 = T(250.0);  // m·s
   set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
 
   R.setZero();
