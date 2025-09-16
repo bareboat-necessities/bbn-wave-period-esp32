@@ -10,7 +10,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-const float g_std = 9.80665f; // standard gravity acceleration m/s²
+const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
 #include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
