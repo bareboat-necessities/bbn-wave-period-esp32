@@ -11,10 +11,10 @@
 
   This file merges your original Kalman3D_Wave<T,with_bias> with an extended
   full-matrix Kalman that adds linear navigation states:
-     v (3)  : velocity in world frame
-     p (3)  : displacement/position in world frame
-     S (3)  : integral of displacement (∫ p dt) — with zero pseudo-measurement for drift correction
-     a_w (3): estimate of acceleration (specific force)
+     v (3)   : velocity in world frame
+     p (3)   : displacement/position in world frame
+     S (3)   : integral of displacement (∫ p dt) — with zero pseudo-measurement for drift correction
+     a_w (3) : estimate of acceleration (specific force)
 
   - The quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction)
     is preserved where possible.
@@ -75,7 +75,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(2e+1));
+                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(2e-1));
 
     // Initialization / measurement API 
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
