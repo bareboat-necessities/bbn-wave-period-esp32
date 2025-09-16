@@ -19,6 +19,8 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
+const double MAG_DELAY_SEC = 5.0; // delay before enabling magnetometer
+
 struct OutputRow {
     double t{};
     float roll_ref{}, pitch_ref{}, yaw_ref{};     // Reference orientation (deg, nautical)
@@ -58,8 +60,6 @@ static void check_init_consistency(const Kalman3D_Wave<float,true>& mekf,
     std::cout << "Mag   measured (body) = " << mag_body_meas.transpose()
               << " | predicted (body) = " << m_pred_body.transpose() << "\n";
 }
-
-const double MAG_DELAY_SEC = 10.0; // delay before enabling magnetometer
 
 void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
