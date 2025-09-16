@@ -237,8 +237,8 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   qref.setIdentity();
 
   R_S = Matrix3::Identity() * R_S_noise;
-  R_S(0,0) *= 0.1;
-  R_S(1,1) *= 0.1;
+  R_S(0,0) *= 0.05;
+  R_S(1,1) *= 0.05;
 
   // initialize base / extended states
   Pbase.setZero();
