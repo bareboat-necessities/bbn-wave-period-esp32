@@ -212,3 +212,35 @@ for fname in files:
 
     axes[-1].set_xlabel("Time (s)")
     finalize_plot(fig, outbase, "_xykin")
+
+    # === Accelerometer bias estimates vs true ===
+    acc_pairs = [
+        ("acc_bias_x",  "acc_bias_est_x",  "Accel bias X"),
+        ("acc_bias_y",  "acc_bias_est_y",  "Accel bias Y"),
+        ("acc_bias_z",  "acc_bias_est_z",  "Accel bias Z"),
+    ]
+    fig, axes = make_subplots(len(acc_pairs), latex_safe(basename) + " (Accelerometer Biases)")
+    for ax, (true_col, est_col, label) in zip(axes, acc_pairs):
+        ax.plot(time, df[true_col], label="True", linewidth=1.5)
+        ax.plot(time, df[est_col], label="Estimated", linestyle="--", linewidth=1.0)
+        ax.set_ylabel(latex_safe(label))
+        ax.grid(True)
+        ax.legend(loc="upper right")
+    axes[-1].set_xlabel("Time (s)")
+    finalize_plot(fig, outbase, "_acc_bias")
+
+    # === Gyroscope bias estimates vs true ===
+    gyro_pairs = [
+        ("gyro_bias_x", "gyro_bias_est_x", "Gyro bias X"),
+        ("gyro_bias_y", "gyro_bias_est_y", "Gyro bias Y"),
+        ("gyro_bias_z", "gyro_bias_est_z", "Gyro bias Z"),
+    ]
+    fig, axes = make_subplots(len(gyro_pairs), latex_safe(basename) + " (Gyroscope Biases)")
+    for ax, (true_col, est_col, label) in zip(axes, gyro_pairs):
+        ax.plot(time, df[true_col], label="True", linewidth=1.5)
+        ax.plot(time, df[est_col], label="Estimated", linestyle="--", linewidth=1.0)
+        ax.set_ylabel(latex_safe(label))
+        ax.grid(True)
+        ax.legend(loc="upper right")
+    axes[-1].set_xlabel("Time (s)")
+    finalize_plot(fig, outbase, "_gyro_bias")
