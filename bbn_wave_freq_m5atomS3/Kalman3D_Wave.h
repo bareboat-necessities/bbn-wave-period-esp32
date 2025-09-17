@@ -144,12 +144,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Pext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity() * (sigma_v0 * sigma_v0);   // v (3)
         Pext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity() * (sigma_p0 * sigma_p0);   // p (3)
         Pext.template block<3,3>(OFF_S, OFF_S) = Matrix3::Identity() * (sigma_S0 * sigma_S0);   // S (3)
-        // X/Y relative to Z
-        const T scale_xy = T(0.2);
-        for (int blk : {OFF_V, OFF_P, OFF_S}) {
-            Pext(blk+0, blk+0) *= scale_xy; // X
-            Pext(blk+1, blk+1) *= scale_xy; // Y
-        }
     }
 
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
@@ -235,8 +229,6 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
   qref.setIdentity();
 
   R_S = Matrix3::Identity() * R_S_noise;
-  R_S(0,0) *= 0.05;
-  R_S(1,1) *= 0.05;
 
   // initialize base / extended states
   Pbase.setZero();
