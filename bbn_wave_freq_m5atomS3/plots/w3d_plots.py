@@ -52,6 +52,27 @@ pattern = re.compile(
 def latex_safe(s: str) -> str:
     return s.replace("_", r"\_")
 
+# === Helpers ===
+def make_subplots(nrows: int, title: str, width: float = 10.0, row_height: float = 2.5, sharex: bool = True):
+    """
+    Create a figure with nrows stacked subplots, auto-scaling height.
+    """
+    fig_height = row_height * nrows
+    fig, axes = plt.subplots(nrows, 1, figsize=(width, fig_height), sharex=sharex)
+    fig.suptitle(title)
+    if nrows == 1:
+        axes = [axes]
+    return fig, axes
+
+def finalize_plot(fig, outbase: str, suffix: str = "", exts=("pgf", "svg")):
+    """
+    Finalize a plot: layout, save to multiple formats, and close.
+    """
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    for ext in exts:
+        fig.savefig(f"{outbase}{suffix}.{ext}", format=ext, bbox_inches="tight")
+    plt.close(fig)
+
 # === Find all *_w3d.csv files ===
 files = glob.glob(os.path.join(DATA_DIR, "*_w3d.csv"))
 if not files:
@@ -87,83 +108,107 @@ for fname in files:
     df = df[(df["time"] >= SKIP_TIME_S) & (df["time"] <= MAX_TIME_S)].reset_index(drop=True)
     time = df["time"]
 
-    # === Angles (Reference vs Estimated) ===
-    angles = [
+    # === Angles (Reference vs Estimated, optional errors) ===
+    nrows = 3 if not PLOT_ERRORS else 6
+    fig, axes = make_subplots(nrows, latex_safe(basename))
+    for i, (ref_col, est_col, label) in enumerate([
         ("roll_ref", "roll_est", "Roll (deg)"),
         ("pitch_ref", "pitch_est", "Pitch (deg)"),
-        ("yaw_ref", "yaw_est", "Yaw (deg)"),
-    ]
-    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
-    fig.suptitle(latex_safe(basename))
-    for ax, (ref_col, est_col, label) in zip(axes, angles):
-        ax.plot(time, df[ref_col], label="Reference", linewidth=1.5)
-        ax.plot(time, df[est_col], label="Estimated", linewidth=1.0, linestyle="--")
-        ax.set_ylabel(latex_safe(label))
-        ax.grid(True)
-        ax.legend(loc="upper right")
-    axes[-1].set_xlabel("Time (s)")
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.savefig(f"{outbase}.pgf", format="pgf", bbox_inches="tight")
-    plt.savefig(f"{outbase}.svg", format="svg", bbox_inches="tight")
-    plt.close(fig)
+        ("yaw_ref", "yaw_est", "Yaw (deg)")
+    ]):
+        if PLOT_ERRORS:
+            ax_val = axes[2*i]
+            ax_err = axes[2*i + 1]
+        else:
+            ax_val = axes[i]
+            ax_err = None
 
-    # === Angle errors (optional) ===
+        ax_val.plot(time, df[ref_col], label="Reference", linewidth=1.5)
+        ax_val.plot(time, df[est_col], label="Estimated", linewidth=1.0, linestyle="--")
+        ax_val.set_ylabel(latex_safe(label))
+        ax_val.grid(True)
+        ax_val.legend(loc="upper right")
+
+        if PLOT_ERRORS:
+            err_col = {
+                "Roll (deg)": "err_roll",
+                "Pitch (deg)": "err_pitch",
+                "Yaw (deg)": "err_yaw"
+            }[label]
+            ax_err.plot(time, df[err_col], color="tab:red")
+            ax_err.set_ylabel("Error [deg]")
+            ax_err.grid(True)
+
+    axes[-1].set_xlabel("Time (s)")
+    finalize_plot(fig, outbase)
+
+    # === Angle errors (summary, only if enabled) ===
     if PLOT_ERRORS:
-        fig, axes = plt.subplots(4, 1, figsize=(10, 8), sharex=True)
-        fig.suptitle(latex_safe(basename) + " (Angle Errors)")
-        axes[0].plot(time, df["err_roll"], color="tab:red"); axes[0].set_ylabel("Roll err [deg]"); axes[0].grid(True)
-        axes[1].plot(time, df["err_pitch"], color="tab:red"); axes[1].set_ylabel("Pitch err [deg]"); axes[1].grid(True)
-        axes[2].plot(time, df["err_yaw"], color="tab:red"); axes[2].set_ylabel("Yaw err [deg]"); axes[2].grid(True)
-        axes[3].plot(time, df["angle_err"], color="tab:purple"); axes[3].set_ylabel("Quat err [deg]"); axes[3].set_xlabel("Time (s)"); axes[3].grid(True)
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.savefig(f"{outbase}_angle_errs.pgf", format="pgf", bbox_inches="tight")
-        plt.savefig(f"{outbase}_angle_errs.svg", format="svg", bbox_inches="tight")
-        plt.close(fig)
+        error_cols = [
+            ("err_roll",  "Roll err [deg]",  "tab:red"),
+            ("err_pitch", "Pitch err [deg]", "tab:red"),
+            ("err_yaw",   "Yaw err [deg]",   "tab:red"),
+            ("angle_err", "Quat err [deg]",  "tab:purple"),
+        ]
+        nrows = len(error_cols)
+        fig, axes = make_subplots(nrows, latex_safe(basename) + " (Angle Errors)")
+        for ax, (col, ylabel, color) in zip(axes, error_cols):
+            ax.plot(time, df[col], color=color)
+            ax.set_ylabel(ylabel)
+            ax.grid(True)
+        axes[-1].set_xlabel("Time (s)")
+        finalize_plot(fig, outbase, "_angle_errs")
 
-    # === Z-axis kinematics (always produce) ===
-    fig, axes = plt.subplots(6, 1, figsize=(10, 12), sharex=True)
-    fig.suptitle(latex_safe(basename) + " (Z-axis)")
+    # === Z-axis kinematics ===
+    nrows = 6 if PLOT_ERRORS else 3
+    fig, axes = make_subplots(nrows, latex_safe(basename) + " (Z-axis)")
     for i, prefix in enumerate(["disp", "vel", "acc"]):
-        # Values
-        axes[2*i].plot(time, df[f"{prefix}_ref_z"], label="Ref")
-        axes[2*i].plot(time, df[f"{prefix}_est_z"], label="Est", linestyle="--")
-        axes[2*i].set_ylabel(f"{prefix.capitalize()} Z")
-        axes[2*i].legend(); axes[2*i].grid(True)
-
-        # Errors
         if PLOT_ERRORS:
-            axes[2*i+1].plot(time, df[f"{prefix}_err_z"], color="tab:red")
-            axes[2*i+1].set_ylabel("Error"); axes[2*i+1].grid(True)
+            ax_val = axes[2*i]
+            ax_err = axes[2*i + 1]
         else:
-            axes[2*i+1].set_visible(False)
-    axes[-1].set_xlabel("Time (s)")
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.savefig(f"{outbase}_zkin.pgf", format="pgf", bbox_inches="tight")
-    plt.savefig(f"{outbase}_zkin.svg", format="svg", bbox_inches="tight")
-    plt.close(fig)
+            ax_val = axes[i]
+            ax_err = None
 
-    # === XY kinematics (always produce) ===
-    fig, axes = plt.subplots(6, 1, figsize=(10, 12), sharex=True)
-    fig.suptitle(latex_safe(basename) + " (X/Y axes)")
+        ax_val.plot(time, df[f"{prefix}_ref_z"], label="Ref")
+        ax_val.plot(time, df[f"{prefix}_est_z"], label="Est", linestyle="--")
+        ax_val.set_ylabel(f"{prefix.capitalize()} Z")
+        ax_val.legend()
+        ax_val.grid(True)
+
+        if PLOT_ERRORS:
+            ax_err.plot(time, df[f"{prefix}_err_z"], color="tab:red")
+            ax_err.set_ylabel("Error")
+            ax_err.grid(True)
+
+    axes[-1].set_xlabel("Time (s)")
+    finalize_plot(fig, outbase, "_zkin")
+
+    # === XY kinematics ===
+    nrows = 6 if PLOT_ERRORS else 3
+    fig, axes = make_subplots(nrows, latex_safe(basename) + " (X/Y axes)")
     for i, prefix in enumerate(["disp", "vel", "acc"]):
-        # Values
-        axes[2*i].plot(time, df[f"{prefix}_ref_x"], label="Ref X", color="tab:blue")
-        axes[2*i].plot(time, df[f"{prefix}_est_x"], label="Est X", linestyle="--", color="tab:blue")
-        axes[2*i].plot(time, df[f"{prefix}_ref_y"], label="Ref Y", color="tab:orange")
-        axes[2*i].plot(time, df[f"{prefix}_est_y"], label="Est Y", linestyle="--", color="tab:orange")
-        axes[2*i].set_ylabel(f"{prefix.capitalize()} XY")
-        axes[2*i].legend(ncol=2, fontsize=8); axes[2*i].grid(True)
-
-        # Errors
         if PLOT_ERRORS:
-            axes[2*i+1].plot(time, df[f"{prefix}_err_x"], label="Err X", color="tab:blue")
-            axes[2*i+1].plot(time, df[f"{prefix}_err_y"], label="Err Y", color="tab:orange")
-            axes[2*i+1].set_ylabel("Error")
-            axes[2*i+1].legend(ncol=2, fontsize=8); axes[2*i+1].grid(True)
+            ax_val = axes[2*i]
+            ax_err = axes[2*i + 1]
         else:
-            axes[2*i+1].set_visible(False)
+            ax_val = axes[i]
+            ax_err = None
+
+        ax_val.plot(time, df[f"{prefix}_ref_x"], label="Ref X", color="tab:blue")
+        ax_val.plot(time, df[f"{prefix}_est_x"], label="Est X", linestyle="--", color="tab:blue")
+        ax_val.plot(time, df[f"{prefix}_ref_y"], label="Ref Y", color="tab:orange")
+        ax_val.plot(time, df[f"{prefix}_est_y"], label="Est Y", linestyle="--", color="tab:orange")
+        ax_val.set_ylabel(f"{prefix.capitalize()} XY")
+        ax_val.legend(ncol=2, fontsize=8)
+        ax_val.grid(True)
+
+        if PLOT_ERRORS:
+            ax_err.plot(time, df[f"{prefix}_err_x"], label="Err X", color="tab:blue")
+            ax_err.plot(time, df[f"{prefix}_err_y"], label="Err Y", color="tab:orange")
+            ax_err.set_ylabel("Error")
+            ax_err.legend(ncol=2, fontsize=8)
+            ax_err.grid(True)
+
     axes[-1].set_xlabel("Time (s)")
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.savefig(f"{outbase}_xykin.pgf", format="pgf", bbox_inches="tight")
-    plt.savefig(f"{outbase}_xykin.svg", format="svg", bbox_inches="tight")
-    plt.close(fig)
+    finalize_plot(fig, outbase, "_xykin")
