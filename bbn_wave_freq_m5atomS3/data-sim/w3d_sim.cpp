@@ -92,8 +92,8 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
     // Noise models (fixed params, seeded differently)
-    static NoiseModel accel_noise = make_noise_model(0.02f, 0.01f, 1234);
-    static NoiseModel gyro_noise  = make_noise_model(0.0005f, 0.0002f, 5678);
+    static NoiseModel accel_noise = make_noise_model(0.04f, 0.05f, 1234);
+    static NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
 
     bool first = true;
     bool mag_enabled = false;
