@@ -39,7 +39,7 @@ NoiseModel make_noise_model(float sigma, float bias_range, unsigned seed) {
 }
 
 Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
-    return v + m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
+    return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
 struct OutputRow {
