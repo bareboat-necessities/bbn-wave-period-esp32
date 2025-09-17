@@ -177,6 +177,20 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Pext.template block<3,3>(OFF_S, OFF_S) = Matrix3::Identity() * (sigma_S0 * sigma_S0);   // S (3)
     }
 
+    void set_initial_acc_bias_std(T s) {
+        if constexpr (with_accel_bias) sigma_bacc0_ = std::max(T(0), s);
+    }
+
+    void set_Q_bacc_rw(const Vector3& rw_std_per_sqrt_s) {
+        if constexpr (with_accel_bias)
+            Q_bacc_ = rw_std_per_sqrt_s.array().square().matrix().asDiagonal();
+    }
+
+    void set_initial_acc_bias(const Vector3& b0) {
+        if constexpr (with_accel_bias)
+            xext.template segment<3>(OFF_BA) = b0;
+    }
+
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
         const T cI = std::cos(I_rad), sI = std::sin(I_rad);
         const T cD = std::cos(D_rad), sD = std::sin(D_rad);
