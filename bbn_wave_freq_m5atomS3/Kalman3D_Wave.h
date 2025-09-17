@@ -413,9 +413,12 @@ void Kalman3D_Wave<T, with_gyro_bias>::time_update(Vector3 const& gyr, T Ts)
     } else {
         gyro_bias = Vector3::Zero();
     }
-
     last_gyr_bias_corrected = gyr - gyro_bias;
 
+    if constexpr (with_accel_bias) {
+        Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
+    }
+  
     // Build delta quaternion from gyro increment
     T ang = last_gyr_bias_corrected.norm() * Ts;
     Eigen::Quaternion<T> dq;
