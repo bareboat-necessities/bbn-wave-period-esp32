@@ -287,11 +287,6 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
   if constexpr (with_gyro_bias) {
       Pbase.template block<3,3>(3,3) = Matrix3::Identity() * Pb0;    // bias covariance
   }
-
-  if constexpr (with_accel_bias) {
-      Pext.template block<3,3>(OFF_BA, OFF_BA) =
-          Matrix3::Identity() * sigma_bacc0_ * sigma_bacc0_;
-  }
   
   // Extended state
   xext.setZero();
@@ -302,6 +297,10 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
 
   // Seed covariance for a_w (world acceleration)
   Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
+
+  if constexpr (with_accel_bias) {
+      Pext.template block<3,3>(OFF_BA, OFF_BA) = Matrix3::Identity() * sigma_bacc0_ * sigma_bacc0_;
+  }
 
   const T sigma_v0 = T(1.0);    // m/s
   const T sigma_p0 = T(20.0);   // m
