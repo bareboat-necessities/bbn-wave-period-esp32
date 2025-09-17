@@ -11,7 +11,7 @@
 #endif
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
-const float MAG_DELAY_SEC = 10.0f; // delay before enabling magnetometer
+const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
 #include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
