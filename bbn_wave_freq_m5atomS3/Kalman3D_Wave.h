@@ -137,8 +137,28 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Tuning setters
     void set_aw_time_constant(T tau_seconds) { tau_aw = std::max(T(1e-3), tau_seconds); }
+
+    // OU stationary std [m/s²] for a_w (per axis)
     void set_aw_stationary_std(const Vector3& std_aw) {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
+    }
+
+    // Isotropic covariance for ∫p dt pseudo-measurement
+    void set_RS_noise(T RS_noise) {
+        R_S = Matrix3::Identity() * RS_noise;
+    }
+
+    // Accelerometer measurement noise (std in m/s² per axis)
+    void set_Racc(const Vector3& sigma_acc) {
+        Racc = sigma_acc.array().square().matrix().asDiagonal();
+        R.template topLeftCorner<3,3>() = Racc;
+    }
+
+    // Magnetometer measurement noise (std per axis, μT or unitless)
+    void set_Rmag(const Vector3& sigma_mag) {
+        Matrix3 Rmag_new = sigma_mag.array().square().matrix().asDiagonal();
+        const_cast<Matrix3&>(Rmag) = Rmag_new;
+        R.template bottomRightCorner<3,3>() = Rmag_new;
     }
 
     void set_initial_linear_uncertainty(T sigma_v0, T sigma_p0, T sigma_S0) {
