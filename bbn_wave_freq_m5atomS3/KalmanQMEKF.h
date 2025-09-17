@@ -54,8 +54,8 @@ class EIGEN_ALIGN_MAX QuaternionMEKF {
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-7));
-    constexpr QuaternionMEKF(T const sigma_a[3], T const sigma_g[3], T const sigma_m[3], T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-7));
+    QuaternionMEKF(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m, T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-9));
+    constexpr QuaternionMEKF(T const sigma_a[3], T const sigma_g[3], T const sigma_m[3], T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-9));
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
     void initialize_from_acc_mag(T const acc[3], T const mag[3]);
     void initialize_from_acc(Vector3 const& acc);
