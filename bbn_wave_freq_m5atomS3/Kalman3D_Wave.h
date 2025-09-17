@@ -262,7 +262,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
 // Implementation
 
-template <typename T, bool with_gyro_bias, with_accel_bias>
+template <typename T, bool with_gyro_bias, bool with_accel_bias>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
     Vector3 const& sigma_a,
     Vector3 const& sigma_g,
@@ -313,7 +313,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
   R.template bottomRightCorner<3,3>() = Rmag;  // magnetometer measurement noise
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::MatrixBaseN
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_Q(typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Vector3 sigma_g, T b0) {
   MatrixBaseN Q; Q.setZero();
@@ -332,7 +332,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_Q(typename Kalman3
 // Inputs:
 //   acc_body  — accelerometer specific force in body frame (NED)
 //   mag_body  — magnetometer measurement in body frame (NED)
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc_mag(
     Vector3 const& acc_body,
     Vector3 const& mag_body)
@@ -368,7 +368,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc_mag(
     v2ref = R_bw() * mag_body.normalized();  // body to world
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Eigen::Quaternion<T>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::quaternion_from_acc(Vector3 const& acc)
 {
@@ -403,7 +403,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::quaternion_from_acc(Vector3 c
     return q;
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc(Vector3 const& acc)
 {
     T anorm = acc.norm();
@@ -417,7 +417,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc(Vect
     qref.normalize();
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 const& gyr, T Ts)
 {
     // Attitude mean propagation
@@ -478,7 +478,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     applyIntegralZeroPseudoMeas();
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag)
 {
     // Predicted measurements
@@ -521,7 +521,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vecto
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_partial(
     const Eigen::Ref<const Vector3>& meas,
     const Eigen::Ref<const Vector3>& vhat,
@@ -562,7 +562,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     xext.template head<3>().setZero();
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(Vector3 const& acc_meas) {
     const Vector3 v1hat = accelerometer_measurement_func();
 
@@ -599,7 +599,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     xext.template head<3>().setZero();
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag) {
     Vector3 const v2hat = magnetometer_measurement_func();
     measurement_update_partial(mag, v2hat, Rmag);
@@ -618,13 +618,13 @@ Matrix<T,3,1> Kalman3D_Wave<T, with_gyro_bias, bool with_accel_bias>::accelerome
     return fb;
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T, 3, 1> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::magnetometer_measurement_func() const {
     return R_wb() * v2ref;
 }
 
 // utility functions
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
   Matrix3 M;
   M << 0, -vec(2), vec(1),
@@ -633,7 +633,7 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetri
   return M;
 }
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState() {
   // xext(0..2) contains the small-angle error — same as original code; create corr quaternion and apply
   Eigen::Quaternion<T> corr(T(1), half * xext(0), half * xext(1), half * xext(2));
@@ -643,13 +643,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectio
 }
 
 // normalize quaternion
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
   qref.normalize();
 }
 
 //  Extended pseudo-measurement: zero S
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
     // Build measurement matrix H (picks S block)
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
@@ -690,7 +690,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 
 // Exact Van-Loan using Eigen's MatrixFunctions (desktop)
 #ifdef EIGEN_NON_ARDUINO
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::vanLoanDiscretization_12x3(
     const Eigen::Matrix<T,12,12>& A,
     const Eigen::Matrix<T,12,3>&  G,
@@ -788,7 +788,7 @@ static void vanLoanAxis4x1(
     Phi = PhiT.transpose();
     Qd  = Phi * Qblk;
 }
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::vanLoanDiscretization_12x3(
     const Eigen::Matrix<T,12,12>& /*A*/,
     const Eigen::Matrix<T,12,3>&  /*G*/,
@@ -822,7 +822,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::vanLoanDiscretization_12
 }
 #endif
 
-template<typename T, bool with_gyro_bias, with_accel_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     const Vector3& /*acc_body_unused*/, T Ts,
     Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext)
