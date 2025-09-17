@@ -41,20 +41,22 @@ using Eigen::Map;
   #include <unsupported/Eigen/MatrixFunctions>  // enables .exp() on matrices
 #endif
 
-template <typename T = float, bool with_gyro_bias = true>
+template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = false>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
-    // Original base state dimension (attitude-error (3) [+ gyro-bias (3) if with_gyro_bias])
+    // Original base (att_err + optional gyro bias)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
-    // Extended added states: v(3), p(3), S(3)
-    static constexpr int EXT_ADD = 12;
-    // New full state dimension
-    static constexpr int NX = BASE_N + EXT_ADD;
 
-    static constexpr int OFF_V  = BASE_N + 0;
-    static constexpr int OFF_P  = BASE_N + 3;
-    static constexpr int OFF_S  = BASE_N + 6;
-    static constexpr int OFF_AW = BASE_N + 9;
+    // Extended added states: v(3), p(3), S(3), a_w(3) [+ optional b_acc(3)]
+    static constexpr int EXT_ADD = with_accel_bias ? 15 : 12;
+    static constexpr int NX      = BASE_N + EXT_ADD;
+
+    // Offsets (always defined)
+    static constexpr int OFF_V   = BASE_N + 0;
+    static constexpr int OFF_P   = BASE_N + 3;
+    static constexpr int OFF_S   = BASE_N + 6;
+    static constexpr int OFF_AW  = BASE_N + 9;
+    static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 12) : -1; // -1 = not present
 
     // Measurement dimension
     static constexpr int M = 6;
