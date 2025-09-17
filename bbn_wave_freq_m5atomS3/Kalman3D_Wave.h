@@ -41,7 +41,7 @@ using Eigen::Map;
   #include <unsupported/Eigen/MatrixFunctions>  // enables .exp() on matrices
 #endif
 
-template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = false>
+template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Original base (att_err + optional gyro bias)
