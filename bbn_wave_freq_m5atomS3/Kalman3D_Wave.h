@@ -116,6 +116,14 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         }
     }
 
+    Vector3 get_acc_bias() const {
+        if constexpr (with_accel_bias) {
+            return xext.template segment<3>(OFF_BA);
+        } else {
+            return Vector3::Zero();
+        }
+    }
+
     // Velocity in world (NED)
     Vector3 get_velocity() const {
         // velocity state at offset BASE_N
