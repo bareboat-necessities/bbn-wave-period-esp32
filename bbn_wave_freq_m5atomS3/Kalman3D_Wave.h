@@ -583,11 +583,15 @@ void Kalman3D_Wave<T, with_gyro_bias>::measurement_update_mag_only(Vector3 const
 }
 
 // specific force prediction: f_b = R_wb (a_w - g)
-template<typename T, bool with_gyro_bias>
-Matrix<T,3,1> Kalman3D_Wave<T, with_gyro_bias>::accelerometer_measurement_func() const {
-    const Vector3 g_world(0, 0, +gravity_magnitude_);  // NED g_world
+Matrix<T,3,1> accelerometer_measurement_func() const {
+    const Vector3 g_world(0,0,+gravity_magnitude_);
     const Vector3 aw = xext.template segment<3>(OFF_AW);
-    return R_wb() * (aw - g_world);
+    Vector3 fb = R_wb() * (aw - g_world);
+    if constexpr (with_accel_bias) {
+        const Vector3 ba = xext.template segment<3>(OFF_BA);
+        fb += ba;
+    }
+    return fb;
 }
 
 template<typename T, bool with_gyro_bias>
