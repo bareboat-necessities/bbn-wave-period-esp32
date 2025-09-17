@@ -72,7 +72,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     WaveDataCSVReader reader(filename);
 
     // Process/measurement stddevs (squared internally in the filter)
-    const Vector3f sigma_a(0.04f, 0.04f, 0.04f);
+    const Vector3f sigma_a(0.04f, 0.04f, 0.05f);
     const Vector3f sigma_g(0.00134f, 0.00134f, 0.00134f);
     const Vector3f sigma_m(0.30f, 0.30f, 0.30f);
     QuaternionMEKF<float, true> mekf(sigma_a, sigma_g, sigma_m);
