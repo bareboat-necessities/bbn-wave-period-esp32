@@ -4,6 +4,7 @@
 #include <algorithm>   // for std::clamp
 #include <string>
 #include <vector>
+#include <random>
 
 #define EIGEN_NON_ARDUINO
 
@@ -21,6 +22,26 @@ const float MAG_DELAY_SEC = 5.0f;  // delay before using magnetometer
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
+// Noise model (accel & gyro noisy by default; disable with --no-noise)
+bool add_noise = true;  // default ON
+
+struct NoiseModel {
+    std::default_random_engine rng;
+    std::normal_distribution<float> dist;
+    Vector3f bias;
+};
+
+NoiseModel make_noise_model(float sigma, float bias_range, unsigned seed) {
+    NoiseModel m{std::default_random_engine(seed), std::normal_distribution<float>(0.0f, sigma), Vector3f::Zero()};
+    std::uniform_real_distribution<float> ub(-bias_range, bias_range);
+    m.bias = Vector3f(ub(m.rng), ub(m.rng), ub(m.rng));
+    return m;
+}
+
+Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
+    return v + m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
+}
+
 struct OutputRow {
     double t{};
     // Reference Euler (deg, nautical: ENU/Z-up)
@@ -30,6 +51,9 @@ struct OutputRow {
     float gyro_x{}, gyro_y{}, gyro_z{};
     // Kalman estimates (deg, nautical)
     float roll_est{}, pitch_est{}, yaw_est{};
+    // Noisy IMU (if enabled; else duplicates raw)
+    float acc_noisy_x{}, acc_noisy_y{}, acc_noisy_z{};
+    float gyro_noisy_x{}, gyro_noisy_y{}, gyro_noisy_z{};
 };
 
 void process_wave_file(const std::string &filename, float dt, bool with_mag) {
@@ -42,7 +66,8 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
     std::cout << "Processing " << filename
               << " (" << EnumTraits<WaveType>::to_string(type)
-              << ") with_mag=" << (with_mag ? "true" : "false") << "\n";
+              << ") with_mag=" << (with_mag ? "true" : "false")
+              << ", noise=" << (add_noise ? "true" : "false") << "\n";
 
     WaveDataCSVReader reader(filename);
 
@@ -55,18 +80,30 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     // World magnetic field in aerospace NED (force horizontal, yaw-only)
     Vector3f B_world = MagSim_WMM::mag_world_aero();
 
+    // Noise models (fixed params, seeded differently)
+    static NoiseModel accel_noise = make_noise_model(0.02f, 0.01f, 1234);     // σ=0.02, bias ±0.01
+    static NoiseModel gyro_noise  = make_noise_model(0.0005f, 0.0002f, 5678); // σ=0.0005, bias ±0.0002
+
     bool first = true;
     bool mag_enabled = false;
     std::vector<OutputRow> rows;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        // IMU in nautical body ENU
+        // IMU in nautical body ENU (raw from file)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
+        // Apply optional noise/bias
+        Vector3f acc_noisy = acc_b;
+        Vector3f gyr_noisy = gyr_b;
+        if (add_noise) {
+            acc_noisy = apply_noise(acc_b, accel_noise);
+            gyr_noisy = apply_noise(gyr_b, gyro_noise);
+        }
+
         // Convert to filter frame (aerospace body NED)
-        Vector3f acc_f = zu_to_ned(acc_b);
-        Vector3f gyr_f = zu_to_ned(gyr_b);
+        Vector3f acc_f = zu_to_ned(acc_noisy);
+        Vector3f gyr_f = zu_to_ned(gyr_noisy);
 
         // Reference Euler from simulator (nautical)
         float r_ref_n = rec.imu.roll_deg;
@@ -81,16 +118,16 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             mag_f = zu_to_ned(mag_b_enu);
         }
 
-        // --- Initialization (accel-only) ---
+        // Initialization (accel-only)
         if (first) {
             mekf.initialize_from_acc(acc_f);
             first = false;
         }
 
-        // --- Propagation ---
+        // Propagation
         mekf.time_update(gyr_f, dt);
 
-        // --- Measurement updates ---
+        // Measurement updates
         if (with_mag && rec.time >= MAG_DELAY_SEC) {
             if (!mag_enabled) {
                 // Set magnetic world ref once, do one mag-only update to lock yaw
@@ -104,7 +141,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             mekf.measurement_update_acc_only(acc_f);
         }
 
-        // --- Extract quaternion estimate ---
+        // Extract quaternion estimate
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
 
@@ -119,11 +156,13 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             r_ref_n, p_ref_n, y_ref_n,
             rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz,
             rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z,
-            r_est, p_est, y_est
+            r_est, p_est, y_est,
+            acc_noisy.x(), acc_noisy.y(), acc_noisy.z(),
+            gyr_noisy.x(), gyr_noisy.y(), gyr_noisy.z()
         });
     });
 
-    // --- Write output file ---
+    // Write output file
     std::string outname = filename;
     auto pos_prefix = outname.find("wave_data_");
     if (pos_prefix != std::string::npos) {
@@ -141,14 +180,19 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         << "roll_ref,pitch_ref,yaw_ref,"
         << "acc_bx,acc_by,acc_bz,"
         << "gyro_x,gyro_y,gyro_z,"
-        << "roll_est,pitch_est,yaw_est\n";
+        << "roll_est,pitch_est,yaw_est,"
+        << "acc_noisy_x,acc_noisy_y,acc_noisy_z,"
+        << "gyro_noisy_x,gyro_noisy_y,gyro_noisy_z\n";
 
     for (auto &r : rows) {
         ofs << r.t << ","
             << r.roll_ref << "," << r.pitch_ref << "," << r.yaw_ref << ","
             << r.acc_bx   << "," << r.acc_by    << "," << r.acc_bz << ","
             << r.gyro_x   << "," << r.gyro_y    << "," << r.gyro_z << ","
-            << r.roll_est << "," << r.pitch_est << "," << r.yaw_est << "\n";
+            << r.roll_est << "," << r.pitch_est << "," << r.yaw_est << ","
+            << r.acc_noisy_x << "," << r.acc_noisy_y << "," << r.acc_noisy_z << ","
+            << r.gyro_noisy_x << "," << r.gyro_noisy_y << "," << r.gyro_noisy_z
+            << "\n";
     }
     ofs.close();
 
@@ -159,13 +203,17 @@ int main(int argc, char* argv[]) {
     float dt = 1.0f / 240.0f; // simulator sample rate
 
     bool with_mag = true;
+    add_noise = true;  // default: noisy
+
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--nomag") with_mag = false;
+        if (arg == "--no-noise") add_noise = false;
     }
 
     std::cout << "Simulation starting with_mag=" << (with_mag ? "true" : "false")
-              << ", mag_delay=" << MAG_DELAY_SEC << " sec\n";
+              << ", mag_delay=" << MAG_DELAY_SEC << " sec"
+              << ", noise=" << (add_noise ? "true" : "false") << "\n";
 
     for (auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
