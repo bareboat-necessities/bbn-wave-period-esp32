@@ -44,13 +44,13 @@ Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
 
 struct OutputRow {
     double t{};
-    float roll_ref{}, pitch_ref{}, yaw_ref{};     // Reference orientation (deg, nautical)
+    float roll_ref{}, pitch_ref{}, yaw_ref{};
     float disp_ref_x{}, disp_ref_y{}, disp_ref_z{};
     float vel_ref_x{},  vel_ref_y{},  vel_ref_z{};
     float acc_ref_x{},  acc_ref_y{},  acc_ref_z{};
-    float acc_bx{}, acc_by{}, acc_bz{};          // Raw IMU inputs (nautical)
+    float acc_bx{}, acc_by{}, acc_bz{};
     float gyro_x{}, gyro_y{}, gyro_z{};
-    float roll_est{}, pitch_est{}, yaw_est{};    // Estimated orientation (deg, nautical)
+    float roll_est{}, pitch_est{}, yaw_est{};
     float disp_est_x{}, disp_est_y{}, disp_est_z{};
     float vel_est_x{},  vel_est_y{},  vel_est_z{};
     float acc_est_x{},  acc_est_y{},  acc_est_z{};
@@ -59,12 +59,15 @@ struct OutputRow {
     float acc_err_x{},  acc_err_y{},  acc_err_z{};
     float err_roll{}, err_pitch{}, err_yaw{};
     float angle_err{};
-    // Noisy IMU (if enabled; else duplicates raw)
+    // Noisy IMU
     float acc_noisy_x{}, acc_noisy_y{}, acc_noisy_z{};
     float gyro_noisy_x{}, gyro_noisy_y{}, gyro_noisy_z{};
-    // Bias values
+    // True injected biases
     float acc_bias_x{}, acc_bias_y{}, acc_bias_z{};
     float gyro_bias_x{}, gyro_bias_y{}, gyro_bias_z{};
+    // Estimated biases
+    float acc_bias_est_x{}, acc_bias_est_y{}, acc_bias_est_z{};
+    float gyro_bias_est_x{}, gyro_bias_est_y{}, gyro_bias_est_z{};
 };
 
 void process_wave_file(const std::string &filename, float dt, bool with_mag) {
@@ -84,7 +87,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     const Vector3f sigma_a(0.05f,  0.05f,  0.05f);
     const Vector3f sigma_g(0.001f, 0.001f, 0.001f);
     const Vector3f sigma_m(0.10f,  0.10f,  0.10f);
-    Kalman3D_Wave<float, true> mekf(sigma_a, sigma_g, sigma_m);
+    Kalman3D_Wave<float, true, true> mekf(sigma_a, sigma_g, sigma_m);
 
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
@@ -176,6 +179,10 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         Quaternionf q_err = q_ref.conjugate() * q_est_naut.normalized();
         float angle_err = 2.0f * std::acos(std::clamp(q_err.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
 
+        // Estimated biases
+        Vector3f bacc_est = mekf.get_acc_bias();
+        Vector3f bgyr_est = mekf.gyroscope_bias();
+
         rows.push_back({
             rec.time,
             r_ref_out, p_ref_out, y_ref_out,
@@ -196,7 +203,9 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             acc_noisy.x(), acc_noisy.y(), acc_noisy.z(),
             gyr_noisy.x(), gyr_noisy.y(), gyr_noisy.z(),
             accel_noise.bias.x(), accel_noise.bias.y(), accel_noise.bias.z(),
-            gyro_noise.bias.x(),  gyro_noise.bias.y(),  gyro_noise.bias.z()
+            gyro_noise.bias.x(),  gyro_noise.bias.y(),  gyro_noise.bias.z(),
+            bacc_est.x(), bacc_est.y(), bacc_est.z(),
+            bgyr_est.x(), bgyr_est.y(), bgyr_est.z()
         });
     });
 
@@ -231,7 +240,9 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         << "acc_noisy_x,acc_noisy_y,acc_noisy_z,"
         << "gyro_noisy_x,gyro_noisy_y,gyro_noisy_z,"
         << "acc_bias_x,acc_bias_y,acc_bias_z,"
-        << "gyro_bias_x,gyro_bias_y,gyro_bias_z\n";
+        << "gyro_bias_x,gyro_bias_y,gyro_bias_z,"
+        << "acc_bias_est_x,acc_bias_est_y,acc_bias_est_z,"
+        << "gyro_bias_est_x,gyro_bias_est_y,gyro_bias_est_z\n";
 
     for (auto &r : rows) {
         ofs << r.t << ","
@@ -253,7 +264,9 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             << r.acc_noisy_x << "," << r.acc_noisy_y << "," << r.acc_noisy_z << ","
             << r.gyro_noisy_x << "," << r.gyro_noisy_y << "," << r.gyro_noisy_z << ","
             << r.acc_bias_x << "," << r.acc_bias_y << "," << r.acc_bias_z << ","
-            << r.gyro_bias_x << "," << r.gyro_bias_y << "," << r.gyro_bias_z
+            << r.gyro_bias_x << "," << r.gyro_bias_y << "," << r.gyro_bias_z << ","
+            << r.acc_bias_est_x << "," << r.acc_bias_est_y << "," << r.acc_bias_est_z << ","
+            << r.gyro_bias_est_x << "," << r.gyro_bias_est_y << "," << r.gyro_bias_est_z
             << "\n";
     }
     ofs.close();
