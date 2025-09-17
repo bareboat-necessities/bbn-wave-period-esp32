@@ -24,9 +24,9 @@ plt.rcParams.update({
 })
 
 # === Config ===
-DATA_DIR = "./"            # Directory with *_kalman.csv files
-SAMPLE_RATE_HZ = 240       # Simulator sample rate
-SKIP_TIME_S = 60.0          # Skip first n seconds (warmup)
+DATA_DIR = "./"             # Directory with *_kalman.csv files
+SAMPLE_RATE_HZ = 240        # Simulator sample rate
+SKIP_TIME_S = 120.0         # Skip first n seconds (warmup)
 PLOT_TIME_S = 60.0          # Plot next m seconds
 MAX_TIME_S  = SKIP_TIME_S + PLOT_TIME_S
 MAX_ROWS    = int(SAMPLE_RATE_HZ * MAX_TIME_S)
