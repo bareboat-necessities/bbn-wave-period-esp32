@@ -274,6 +274,11 @@ Kalman3D_Wave<T, with_gyro_bias>::Kalman3D_Wave(
       Pbase.template block<3,3>(3,3) = Matrix3::Identity() * Pb0;    // bias covariance
   }
 
+  if constexpr (with_accel_bias) {
+      Pext.template block<3,3>(OFF_BA, OFF_BA) =
+          Matrix3::Identity() * sigma_bacc0_ * sigma_bacc0_;
+  }
+  
   // Extended state
   xext.setZero();
   Pext.setZero();
