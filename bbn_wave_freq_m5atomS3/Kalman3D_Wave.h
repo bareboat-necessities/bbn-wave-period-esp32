@@ -488,7 +488,10 @@ void Kalman3D_Wave<T, with_gyro_bias>::measurement_update(Vector3 const& acc, Ve
     Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
     // accel rows 0..2
     Cext.template block<3,3>(0,0)        = -skew_symmetric_matrix(v1hat); // d f_b / d attitude
-    Cext.template block<3,3>(0,OFF_AW)   = R_wb();               // d f_b / d a_w
+    Cext.template block<3,3>(0,OFF_AW)   = R_wb(); // d f_b / d a_w
+    if constexpr (with_accel_bias) {
+        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
+    }
     // mag rows 3..5 (unchanged)
     Cext.template block<3,3>(3,0)        = -skew_symmetric_matrix(v2hat);
 
@@ -569,6 +572,9 @@ void Kalman3D_Wave<T, with_gyro_bias>::measurement_update_acc_only(Vector3 const
     Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(v1hat);
     // d f_b / d a_w
     Cext.template block<3,3>(0, OFF_AW) = R_wb();
+    if constexpr (with_accel_bias) {
+        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
+    }
 
     Vector3 inno = acc_meas - v1hat;
 
