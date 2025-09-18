@@ -191,6 +191,10 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
             xext.template segment<3>(OFF_BA) = b0;
     }
 
+    // Set accelerometer bias temperature coefficient k_a  [m/s^2 per °C] per axis.
+    // Model: b_a(tempC) = b_a0 + k_a * (tempC - 30)
+    void set_accel_bias_temp_coeff(const Vector3& ka_per_degC) { k_a_ = ka_per_degC; }
+
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
         const T cI = std::cos(I_rad), sI = std::sin(I_rad);
         const T cD = std::cos(D_rad), sD = std::sin(D_rad);
@@ -221,6 +225,10 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     T sigma_bacc0_ = T(0.1); // initial accel bias std
     Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-5);
+
+    // Accelerometer bias temperature coefficient (per-axis), units: m/s^2 per °C.
+    // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
+    Vector3 k_a_ = Vector3::Constant(T(0.003));
 
     // Original constant matrices (kept)
     const Matrix3 Rmag;
