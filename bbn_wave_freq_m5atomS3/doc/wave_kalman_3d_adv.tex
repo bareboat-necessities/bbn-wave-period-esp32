@@ -599,4 +599,83 @@ $s\in\{0,1,2\}$ is usually sufficient.
 \item \textbf{Embedded Efficiency.} Precompute powers $A^2,A^4,A^6$ for $U,V$; reuse buffers; prefer LU solve for $(V-U)X=(V+U)$ given matrix sizes.
 \end{enumerate}
 
+\section{Sensor Bias Models and Compensation}
+\label{sec:biases}
+
+A central element in inertial navigation Kalman filters is the explicit modeling of 
+\emph{sensor biases}. Without including bias states, residual integration of even tiny 
+constant offsets rapidly dominates wave kinematics. In this section we justify the bias 
+state design of the filter, detail their dynamics, and explain temperature compensation.
+
+\subsection{Gyroscope Bias}
+Let the gyroscope measurement be
+\begin{equation}
+\bm\omega_{\rm meas}(t) \;=\; \bm\omega(t) + \bm b_g(t) + \bm\eta_g(t),
+\label{eq:gyro-meas}
+\end{equation}
+where $\bm\omega(t)$ is the true body angular velocity, $\bm b_g(t)$ is the bias,
+and $\bm\eta_g(t)$ is zero-mean white noise. In the filter, $\bm b_g$ is included as
+a \emph{random walk} process:
+\begin{equation}
+\dot{\bm b}_g(t) = w_{bg}(t),\qquad
+\mathbb{E}[w_{bg}(t)w_{bg}(s)^\top] = Q_{bg}\,\delta(t-s).
+\label{eq:gyro-bias-model}
+\end{equation}
+This is the simplest effective choice: gyroscope biases drift slowly with temperature, vibration,
+and time, and a random walk captures unmodeled bias variation while allowing the filter to absorb
+constant offsets. The discrete process covariance for $\bm b_g$ is
+\begin{equation}
+Q_{bg,d} = Q_{bg}\,\Delta,
+\label{eq:gyro-bias-qd}
+\end{equation}
+consistent with the implementation in the extended process covariance $Q_a$.
+
+\subsection{Accelerometer Bias with Temperature Drift}
+Accelerometer measurement model:
+\begin{equation}
+\bm f_{\rm meas}(t) = \bm f_b(t) + \bm b_a(t,T) + \bm\eta_a(t),
+\label{eq:acc-meas}
+\end{equation}
+where $\bm f_b=R_{wb}(a_w-g)$ is the specific force predicted from states, and 
+$\bm b_a(t,T)$ is the bias dependent on both slow random drift and \emph{temperature} $T$.
+
+\paragraph{Nominal bias.}
+We model the bias at a reference temperature $T_0$ as a state $\bm b_{a0}(t)$,
+propagated as a random walk:
+\begin{equation}
+\dot{\bm b}_{a0}(t) = w_{ba}(t),\qquad
+\mathrm{Cov}[w_{ba}] = Q_{ba}.
+\label{eq:acc-bias-base}
+\end{equation}
+
+\paragraph{Temperature coefficient.}
+Empirically, MEMS accelerometers exhibit nearly linear bias variation with temperature.
+Thus we extend the bias model as
+\begin{equation}
+\bm b_a(t,T) = \bm b_{a0}(t) + K_a\,(T-T_0),
+\label{eq:acc-bias-temp}
+\end{equation}
+where $K_a=\mathrm{diag}(k_x,k_y,k_z)$ is a diagonal matrix of temperature coefficients
+in units of $[\mathrm{m/s^2}/^\circ\mathrm{C}]$.
+
+\paragraph{Filter incorporation.}
+In measurement prediction, \eqref{eq:acc-bias-temp} adds to the predicted force. During
+filter updates, the Jacobian wrt the bias state is identity, while the temperature term
+acts as a known deterministic offset. Explicit modeling prevents spurious innovation
+terms whenever the platform warms or cools.
+
+\subsection{Summary of Bias Roles}
+\begin{itemize}
+\item \textbf{Gyroscope bias:} modeled as random walk, essential for avoiding long-term
+drift in integrated orientation.
+\item \textbf{Accelerometer bias:} modeled as random walk plus linear temperature
+dependence, essential for consistent specific force innovations and preventing systematic
+tilt misestimation.
+\item \textbf{Covariances $Q_{bg},Q_{ba}$:} tuning these governs how fast the filter
+is willing to adapt biases; too small values cause long convergence times, too large values
+inject excess noise.
+\end{itemize}
+The chosen model balances computational simplicity with sufficient realism for IMU-grade
+sensors such as BMI270 and BMM150.
+
 
