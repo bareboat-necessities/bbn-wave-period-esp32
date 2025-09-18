@@ -1298,3 +1298,114 @@ Over multiple steps, $\mathcal{O}_L$ gathers the time variations of $R_{wb}(t)$ 
 to lift additional modes. The result is a detectable system with bounded estimation error covariances.
 
 
+\section{Tuning Guidelines}
+\label{sec:tuning}
+
+This section gives practical tuning rules for the OU parameters $(\tau,\sigma)$,
+process covariances $Q$, measurement covariances $R$, the pseudo-measurement $R_S$,
+and initial covariance $P_0$. Symbols match the code and prior sections.
+
+\subsection{OU Parameters: $\tau$ (Correlation Time) and $\sigma$ (Stationary RMS)}
+\paragraph{Role.}
+$\tau$ sets the temporal correlation of the latent acceleration $a_w$ via the
+autocorrelation $R_a(\Delta)=\sigma^2 e^{-|\Delta|/\tau}$ and the PSD
+$S_a(\omega)=\frac{2\sigma^2\tau}{1+(\omega\tau)^2}$, with half-power cutoff
+$f_c=\frac{1}{2\pi\tau}$. $\sigma$ sets the stationary RMS magnitude of $a_w$.
+
+\paragraph{Mapping to an acceleration period.}
+If the dominant acceleration has period $T_a$, a pragmatic choice is to align the
+OU corner $f_c$ to a fraction of the dominant frequency:
+\begin{equation}
+\tau \;\approx\; \frac{1}{2\pi\,\kappa f_a}
+\;=\;
+\frac{T_a}{2\pi\,\kappa},
+\qquad
+\kappa\in[0.5,\,1].
+\label{eq:tau-map}
+\end{equation}
+Choosing $\kappa=1$ sets $f_c=f_a$; $\kappa=0.5$ pushes the OU correlation longer,
+smoothing more aggressively.
+
+\paragraph{Selecting $\sigma$.}
+Set $\sigma$ to the expected RMS of \emph{non-gravitational} acceleration in the band of interest
+(per axis), e.g.\ sea-state-induced specific force. Typical values:
+\[
+\sigma \in [0.1,\,0.6]\ \mathrm{m/s^2}\quad\text{(calm to rough)}.
+\]
+In 3D, use a diagonal $\Sigma_{aw}^{\rm stat}=\mathrm{diag}(\sigma_x^2,\sigma_y^2,\sigma_z^2)$
+if anisotropy is expected.
+
+\paragraph{Discrete view.}
+Given sample period $\Delta$, the discrete OU parameter is $\rho=e^{-\Delta/\tau}$ and the
+innovation variance is $\sigma^2(1-\rho^2)$. Ensure $\rho$ is not so close to $1$ that
+numerics suffer (e.g., keep $1-\rho \gtrsim 10^{-6}$; if not, increase $\Delta$ or reduce $\tau$ slightly).
+
+\subsection{Process Noise Covariances $Q$}
+\paragraph{Gyro bias $Q_{bg}$.}
+From Allan-variance data, convert the bias random-walk coefficient $\mathrm{BRW}$ to
+\[
+Q_{bg} \approx (\mathrm{BRW})^2 I_3,
+\]
+with $\mathrm{BRW}$ in $\mathrm{(rad/s)/\sqrt{s}}$. As a starting point for MEMS:
+$Q_{bg}^{1/2}\in [3\!\times\!10^{-5},\,3\!\times\!10^{-4}]$ rad/s$/\sqrt{\mathrm{s}}$.
+
+\paragraph{Accel bias $Q_{ba}$.}
+Similarly, from the bias RW coefficient (in $\mathrm{m/s^2}/\sqrt{\mathrm{s}}$),
+set $Q_{ba} \approx (\mathrm{ARW}_{\rm bias})^2 I_3$. Conservative starts:
+$Q_{ba}^{1/2}\in [10^{-4},\,10^{-3}]\,\mathrm{m/s^2}/\sqrt{\mathrm{s}}$.
+
+\paragraph{OU continuous power $\Sigma_c$.}
+Use $\Sigma_c=\frac{2}{\tau}\Sigma_{aw}^{\rm stat}$ (per Section~\ref{sec:ou-detailed});
+the discrete $Q_{d,vpsa}$ is then obtained exactly by Van Loan.
+
+\subsection{Measurement Covariances $R$}
+\paragraph{Accelerometer $R_a$.}
+Set from sensor noise density. If the datasheet gives $\sigma_{\rm acc}$ per axis (RMS),
+use $R_a=\mathrm{diag}(\sigma_{\rm acc,x}^2,\sigma_{\rm acc,y}^2,\sigma_{\rm acc,z}^2)$.
+When significant linear accelerations are present, increase $R_a$ moderately to avoid
+over-trusting accelerometer innovations on attitude.
+
+\paragraph{Magnetometer $R_m$.}
+Use the manufacturer noise floor as baseline. Inflate $R_m$ if the environment is 
+magnetically disturbed. For yaw-only behavior, set $\bm B_w$ horizontal; $R_m$ still
+reflects sensor noise but you avoid pitch/roll magneto-coupling.
+
+\paragraph{$S$ Pseudo $R_S$.}
+$R_S$ is a design regularizer. Smaller values enforce $S\!\approx 0$ more strongly,
+suppressing triple-integral drift. A practical approach is to tie $R_S$ to a
+\emph{maximum acceptable growth rate} of $S$ under propagation; e.g.\ choose
+$\sigma_{S}$ so that a $3\sigma$ excursion corresponds to the largest tolerable $S$
+over time scales of interest.
+
+\subsection{Initialization}
+\begin{itemize}
+\item \textbf{Quaternion.} Initialize from $\{\bm f_{\rm meas}, \bm m_{\rm meas}\}$ using the
+accelerometer/magnetometer alignment; if yaw cannot be trusted initially, use accelerometer-only
+and accept an arbitrary yaw offset until magnetometer updates correct it.
+\item \textbf{Linear states.} Set $\bm v=\bm 0$, $\bm p=\bm 0$, $\bm S=\bm 0$ with conservative
+covariances, e.g.\ $\sigma_v\!\approx\!1$ m/s, $\sigma_p\!\approx\!20$ m, $\sigma_S\!\approx\!50$ m$\cdot$s.
+\item \textbf{Biases.} Use prior calibration if available; otherwise zero-mean with
+$\sigma_{b_g}$ and $\sigma_{b_a}$ broad enough to allow convergence (e.g.\ $0.02$–$0.2$ rad/s for $\bm b_g$,
+$0.02$–$0.1$ m/s$^2$ for $\bm b_a$).
+\item \textbf{OU.} Initialize $\bm a_w=\bm 0$ with covariance equal to $\Sigma_{aw}^{\rm stat}$.
+\end{itemize}
+
+\subsection{Sanity Checks (Residuals and Gains)}
+\begin{itemize}
+\item Verify innovation whiteness: $\tilde y_k$ should be zero-mean and consistent with $S_k$.
+\item Monitor $K_k$: saturation or near-zero gains indicate mis-tuned $R$ or $Q$.
+\item Track $P$: enforce symmetry $P\leftarrow \tfrac12(P+P^\top)$; ensure no negative variances.
+\item Check $\|q\| \approx 1$ after each update (normalize if needed).
+\end{itemize}
+
+\subsection{Practical Numbers (Starting Points)}
+At $\Delta\in[0.01,0.02]$ s:
+\[
+\tau \in [1,\,3]\ \mathrm{s},\qquad
+\sigma \in [0.15,\,0.4]\ \mathrm{m/s^2},\qquad
+R_a^{1/2} \in [0.01,\,0.03]\ \mathrm{m/s^2},\qquad
+R_m^{1/2} \in [50,\,200]\ \mathrm{nT}.
+\]
+These should be adapted to your specific platform and sea state.
+
+
