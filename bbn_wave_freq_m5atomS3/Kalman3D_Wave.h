@@ -240,8 +240,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 R_S;  // Triple integration measurement noise
 
     // World-acceleration OU process a_w dynamics parameters
-    T tau_aw = T(1.5);            // correlation time [s], tune 1–5 s for sea states
-    Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(0.24*0.24); // stationary variance diag [ (m/s^2)^2 ]
+    T tau_aw = T(1.1);            // correlation time [s], tune 1–5 s for sea states
+    Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(0.2*0.2); // stationary variance diag [ (m/s^2)^2 ]
 
     // convenience getters
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
