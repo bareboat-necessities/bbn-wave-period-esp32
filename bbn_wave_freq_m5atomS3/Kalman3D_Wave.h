@@ -95,8 +95,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void time_update(Vector3 const& gyr, T Ts);
 
     // Measurement updates preserved (operate on extended state internally)
-    void measurement_update(Vector3 const& acc, Vector3 const& mag);
-    void measurement_update_acc_only(Vector3 const& acc);
+    void measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC = T(35.0));
+    void measurement_update_acc_only(Vector3 const& acc, T tempC = T(35.0));
     void measurement_update_mag_only(Vector3 const& mag);
 
     // Extended-only API:
@@ -249,7 +249,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
-    Vector3 accelerometer_measurement_func() const;
+    Vector3 accelerometer_measurement_func(T tempC) const;
     Vector3 magnetometer_measurement_func() const;
 
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
