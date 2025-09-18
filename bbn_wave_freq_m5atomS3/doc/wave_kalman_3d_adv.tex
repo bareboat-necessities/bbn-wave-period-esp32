@@ -40,7 +40,7 @@ linear kinematic chain for ocean-wave motion estimation.
 The method augments attitude (with optional gyroscope and accelerometer bias) by the linear states velocity $\bm v$, displacement $\bm p$, 
 and the integral of displacement $\bm S$, driven by a \emph{latent} world-frame acceleration $\bm a_w$ modeled as an Ornstein--Uhlenbeck (OU) process. The OU prior confers stationary variance and realistic temporal correlation for the latent acceleration, which slows the drift growth in integrated states compared to white-noise forcing. It does not strictly bound the variance of integrated displacement, but ensures covariance growth is polynomially slower and numerically manageable.
 Biases are explicitly modeled: gyroscope bias as a random walk, accelerometer bias both as random walk and as systematic temperature-dependent drift. 
-A pseudo-measurement is introduced on $\bm S$ to control triple integral divergence. 
+A pseudo-measurement is introduced on $\bm S$ to control double integral divergence. 
 We derive continuous- and discrete-time process models, show Rodrigues and Van Loan discretizations, 
 explain Pad\'e(6) approximation with scaling and squaring, and derive explicit Jacobians for accelerometer and magnetometer updates. 
 Finally, we discuss tuning strategies and the prospect of adaptive parameter estimation.
@@ -773,7 +773,7 @@ pseudo-measurement provides an artificial observation that stabilizes the filter
 \paragraph{Key insight.} 
 The $S$ pseudo-measurement is not “cheating,” but rather a principled
 regularization. It adds just enough fictitious information to ensure 
-bounded variance in triple integrals of noisy acceleration, 
+bounded variance in double integrals of noisy acceleration, 
 while leaving physically observable states ($q,v,p,a_w$) unbiased.
 
 \section{Measurement Models: Accelerometer and Magnetometer}
@@ -1111,7 +1111,7 @@ remains numerically stable.
 \subsection{Observability and Conditioning}
 With accelerometer and magnetometer, the attitude is fully observable (roll/pitch from gravity, yaw from magnetic field).
 The latent OU \(\bm a_w\) decouples true linear acceleration from gravity so that roll/pitch estimates remain unbiased in motion.
-The $S$-pseudo-measurement ensures detectability of the triple-integrator chain, preventing uncontrolled variance growth.
+The $S$-pseudo-measurement ensures detectability of the double-integrator chain.
 
 \subsection{Post-Update Quaternion Correction}
 After the state update, the small-angle correction is applied multiplicatively to the quaternion:
