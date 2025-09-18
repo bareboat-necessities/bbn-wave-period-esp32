@@ -182,5 +182,245 @@ Equation \eqref{eq:att_err_dyn} highlights two important points:
 \item The dynamics are linear in the small error, allowing standard EKF propagation.
 \end{enumerate}
 
+\section{Ornstein--Uhlenbeck (OU) Process: Mean/Variance, Autocorrelation, Discrete-Time, and Coefficient Integrals}
+\label{sec:ou-detailed}
+
+This section develops the OU dynamics used for the latent world-frame acceleration $a(t)$
+(per axis; the 3D case is component-wise identical). We give the continuous-time SDE,
+solve it in closed form, derive the exact discrete-time equivalent, compute the
+autocorrelation and spectrum, and then derive the integral coefficients that appear
+in the discrete propagation of $(v,p,S)$.
+
+\subsection{Two Equivalent Formulations of OU}
+There are two standard ways to write the OU process.
+
+\paragraph{(i) It\^o SDE form.}
+\begin{equation}
+da(t) \;=\; -\frac{1}{\tau}\,a(t)\,dt \;+\; \sqrt{\frac{2\sigma^2}{\tau}}\; dW_t,
+\label{eq:ou-ito}
+\end{equation}
+where $\tau>0$ is the correlation time, $\sigma^2$ is the stationary variance, and $W_t$
+is a standard Wiener process.
+
+\paragraph{(ii) LTI with white process input.}
+\begin{equation}
+\dot a(t) \;=\; -\frac{1}{\tau}\,a(t) \;+\; w(t),\qquad
+\mathbb{E}\big[w(t)w(s)\big] \;=\; \Sigma_c\,\delta(t-s),
+\label{eq:ou-lti}
+\end{equation}
+with the white-noise \emph{power} chosen as
+\begin{equation}
+\Sigma_c \;=\; \frac{2}{\tau}\,\sigma^2,
+\label{eq:ou-sigmapower}
+\end{equation}
+which makes the stationary variance of $a(t)$ equal to $\sigma^2$ (same as in \eqref{eq:ou-ito}).
+
+Both forms are equivalent; the It\^o diffusion coefficient $\sqrt{2\sigma^2/\tau}$ corresponds to
+the white-noise power $\Sigma_c = 2\sigma^2/\tau$ in the LTI description.
+
+\subsection{Closed-Form Solution and Moments}
+Solving \eqref{eq:ou-lti} with constant $\tau$ over $[t,t+\Delta]$:
+\begin{equation}
+a(t+\Delta) \;=\; \rho\,a(t) \;+\; \int_0^\Delta e^{-(\Delta-s)/\tau}\,w(t+s)\,ds,
+\qquad
+\rho \;\triangleq\; e^{-\Delta/\tau}.
+\label{eq:ou-sol}
+\end{equation}
+Therefore,
+\begin{align}
+\mathbb{E}[\,a(t+\Delta)\,|\,a(t)=a_k] &= \rho\,a_k, \label{eq:ou-mean}\\
+\mathrm{Var}[\,a(t+\Delta)\,|\,a(t)=a_k] 
+&= \int_0^\Delta\!\!\int_0^\Delta e^{-(\Delta-s)/\tau}e^{-(\Delta-u)/\tau}\,\Sigma_c\,\delta(s-u)\,ds\,du
+\nonumber\\
+&= \Sigma_c \int_0^\Delta e^{-2(\Delta-s)/\tau}\,ds
+= \frac{\Sigma_c\tau}{2}\,\big(1-\rho^2\big).
+\end{align}
+Using \eqref{eq:ou-sigmapower} gives the standard result
+\begin{equation}
+\mathrm{Var}[\,a(t+\Delta)\,|\,a(t)=a_k] \;=\; \sigma^2\big(1-\rho^2\big).
+\label{eq:ou-var-step}
+\end{equation}
+
+\subsection{Autocorrelation and Spectrum}
+At stationarity,
+\begin{equation}
+R_a(\Delta) \;\triangleq\; \mathbb{E}\big[a(t)\,a(t+\Delta)\big] \;=\; \sigma^2\,e^{-|\Delta|/\tau}.
+\label{eq:ou-autocorr}
+\end{equation}
+The one-sided power spectral density (PSD) is the Lorentzian
+\begin{equation}
+S_a(\omega) \;=\; \int_{-\infty}^{\infty} R_a(\Delta)\,e^{-j\omega \Delta}\,d\Delta
+\;=\; \frac{2\sigma^2\tau}{1+(\omega\tau)^2}.
+\label{eq:ou-psd}
+\end{equation}
+Hence $\tau$ sets the correlation (and an approximate cutoff $f_c \approx (2\pi\tau)^{-1}$),
+and $\sigma$ sets the RMS magnitude of $a$.
+
+\subsection{Exact Discrete-Time Equivalent (AR(1))}
+Discretizing at step $\Delta$,
+\begin{equation}
+a_{k+1} \;=\; \rho\,a_k \;+\; \eta_k,
+\qquad
+\rho \;=\; e^{-\Delta/\tau}, 
+\qquad
+\eta_k \sim \mathcal{N}\!\big(0,\ \sigma^2(1-\rho^2)\big),
+\label{eq:ou-ar1}
+\end{equation}
+with $\eta_k$ independent of $a_k$. This AR(1) exactly preserves the OU mean, variance,
+and autocorrelation at sampling instants.
+
+\subsection{Integral Functionals of OU: Deterministic Coefficient Derivations}
+Let $a(t)$ follow OU as above. Over one step $[t,t+\Delta]$, define the weighted
+integrals needed by the kinematic chain:
+\begin{equation}
+I_0 \;\triangleq\; \int_0^\Delta a(t+s)\,ds,\qquad
+I_1 \;\triangleq\; \int_0^\Delta (\Delta-s)\,a(t+s)\,ds,\qquad
+I_2 \;\triangleq\; \int_0^\Delta \frac{(\Delta-s)^2}{2}\,a(t+s)\,ds.
+\label{eq:ou-I012}
+\end{equation}
+Using the conditional mean $\mathbb{E}[a(t+s)\mid a(t){=}a_k]=e^{-s/\tau} a_k$,
+the \emph{deterministic coefficients} multiplying $a_k$ in the discrete updates are:
+\begin{align}
+c_v(\Delta,\tau)
+&= \int_0^\Delta e^{-s/\tau}\,ds
+= \tau\big(1-e^{-\Delta/\tau}\big)
+\;=\; \tau E_0, 
+\label{eq:cv-ou}
+\\
+c_p(\Delta,\tau)
+&= \int_0^\Delta (\Delta-s)\,e^{-s/\tau}\,ds
+= \tau\Big(\Delta - \tau\big(1-e^{-\Delta/\tau}\big)\Big)
+\;=\; \tau E_1, 
+\label{eq:cp-ou}
+\\
+c_S(\Delta,\tau)
+&= \int_0^\Delta \frac{(\Delta-s)^2}{2}\,e^{-s/\tau}\,ds
+= \tau\left(\frac{\Delta^2}{2} - \tau\Delta + \tau^2\big(1-e^{-\Delta/\tau}\big)\right)
+\;=\; \tau E_2.
+\label{eq:cS-ou}
+\end{align}
+We have introduced the convenient polynomials
+\begin{equation}
+E_0(\Delta,\tau)=1-\rho,\qquad
+E_1(\Delta,\tau)=\Delta - \tau(1-\rho),\qquad
+E_2(\Delta,\tau)=\frac{\Delta^2}{2} - \tau\Delta + \tau^2(1-\rho),
+\label{eq:E012}
+\end{equation}
+with $\rho=e^{-\Delta/\tau}$. For later use (e.g., in higher-order kernels), also define
+\begin{equation}
+E_3(\Delta,\tau)
+\;\triangleq\;
+\frac{\Delta^3}{6} - \frac{\tau\Delta^2}{2} + \tau^2\Delta - \tau^3(1-\rho).
+\label{eq:E3}
+\end{equation}
+
+\paragraph{Resulting exact conditional means.}
+The discrete kinematic updates with OU-driven acceleration are
+\begin{align}
+v_{k+1} &= v_k + c_v(\Delta,\tau)\,a_k + \varepsilon_v, \label{eq:v-disc-mean}\\
+p_{k+1} &= p_k + \Delta v_k + c_p(\Delta,\tau)\,a_k + \varepsilon_p, \label{eq:p-disc-mean}\\
+S_{k+1} &= S_k + \Delta p_k + \frac{\Delta^2}{2} v_k + c_S(\Delta,\tau)\,a_k + \varepsilon_S, \label{eq:S-disc-mean}
+\end{align}
+where the zero-mean random terms $(\varepsilon_v,\varepsilon_p,\varepsilon_S)$ are jointly Gaussian and arise from the
+stochastic part of $a(t+s)$ (i.e., the integral of the noise term in \eqref{eq:ou-sol} through the integrator kernels).
+
+\subsection{Variances and Covariances of the Integrated OU Terms}
+Let $R_a(\delta)=\sigma^2 e^{-|\delta|/\tau}$ be the stationary autocorrelation \eqref{eq:ou-autocorr}.
+For any weights $w(s)$, $u(s)$ supported on $[0,\Delta]$,
+\begin{equation}
+\mathrm{Cov}\!\left[\int_0^\Delta w(s) a(t+s)\,ds,\ \int_0^\Delta u(s) a(t+s)\,ds\right]
+= \int_0^\Delta\!\!\int_0^\Delta w(s)\,u(u)\,R_a(s-u)\,ds\,du.
+\label{eq:kernel-cov}
+\end{equation}
+Using symmetry $R_a(|s-u|)=\sigma^2 e^{-|s-u|/\tau}$ and splitting the domain $0\le u\le s\le \Delta$,
+\begin{align}
+\mathrm{Cov}
+&= 2\sigma^2 \int_0^\Delta \left(\int_0^s w(s)\,u(u)\,e^{-(s-u)/\tau}\,du\right) ds.
+\label{eq:kernel-cov-2}
+\end{align}
+We now list the key entries needed to build the exact discrete process covariance $Q_d$
+for $(v,p,S,a)$ in one step. Denote $\rho=e^{-\Delta/\tau}$, and recall \eqref{eq:E012}.
+
+\paragraph{Single-integral variance and cross-covariance.}
+With $w_0(s)=1$ and $w_1(s)=\Delta-s$,
+\begin{align}
+\mathrm{Var}\!\left[\int_0^\Delta a\right]
+&= 2\sigma^2 \tau\,E_1,
+\label{eq:var-I0}
+\\
+\mathrm{Cov}\!\left[\int_0^\Delta a,\ \int_0^\Delta (\Delta-s)a\right]
+&= 2\sigma^2 \tau\,E_2,
+\label{eq:cov-I0-I1}
+\\
+\mathrm{Var}\!\left[\int_0^\Delta (\Delta-s)a\right]
+&= 2\sigma^2 \tau\left(\frac{\Delta^3}{3} - \tau\Delta^2 + 2\tau^2\Delta - 2\tau^3(1-\rho)\right).
+\label{eq:var-I1}
+\end{align}
+
+\paragraph{Cross-covariances with $a_{k+1}$.}
+From $\mathrm{cov}\{a(t+s),a(t+\Delta)\}=\sigma^2 e^{-(\Delta-s)/\tau}$:
+\begin{align}
+\mathrm{Cov}\!\left[\int_0^\Delta a(t+s)\,ds,\ a_{k+1}\right]
+&= \sigma^2 \tau (1-\rho)
+= \sigma^2 \tau E_0,
+\label{eq:cov-I0-ak1}
+\\
+\mathrm{Cov}\!\left[\int_0^\Delta (\Delta-s)a(t+s)\,ds,\ a_{k+1}\right]
+&= \sigma^2\left(\tau^2(1-\rho) - \tau\Delta\,\rho\right).
+\label{eq:cov-I1-ak1}
+\end{align}
+(Analogous expressions for the $S$-weighted integral follow the same recipe but are longer; see the coefficient identity below.)
+
+\paragraph{General exponential--polynomial identity.}
+All required integrals reduce to the elementary identity
+\begin{equation}
+\int_0^\Delta s^n e^{-s/\tau} ds
+= \tau^{n+1}\,n!\left(1 - e^{-\Delta/\tau}\sum_{j=0}^{n}\frac{(\Delta/\tau)^j}{j!}\right),
+\qquad n=0,1,2,\dots,
+\label{eq:exp-poly}
+\end{equation}
+together with the binomial expansion $(\Delta-s)^m=\sum_{i=0}^m \binom{m}{i}\Delta^{m-i}(-s)^i$.
+Using \eqref{eq:exp-poly} yields closed forms for \emph{all} entries of $Q_d$ (including the $S$-block).
+
+\subsection{Exact Axis Transition for $(v,p,S,a)$}
+Collecting the deterministic coefficients \eqref{eq:cv-ou}--\eqref{eq:cS-ou} and the OU state update \eqref{eq:ou-ar1},
+the \emph{exact} one-axis transition matrix is
+\begin{equation}
+\Phi_{\text{axis}}(\Delta,\tau) \;=\;
+\begin{bmatrix}
+1 & 0 & 0 & \tau(1-\rho)\\
+0 & 1 & 0 & \tau\big(\Delta - \tau(1-\rho)\big)\\
+0 & 0 & 1 & \tau\left(\tfrac{\Delta^2}{2} - \tau\Delta + \tau^2(1-\rho)\right)\\
+0 & 0 & 0 & \rho
+\end{bmatrix}.
+\label{eq:Phi-axis-ou}
+\end{equation}
+In 3D, $\Phi_{vpsa}=\Phi_{\text{axis}}\otimes I_3$.
+
+\paragraph{Discrete process covariance $Q_d$.}
+The random vector $(\varepsilon_v,\varepsilon_p,\varepsilon_S,\eta_a)$ has covariance determined by
+\eqref{eq:var-I0}--\eqref{eq:var-I1}, \eqref{eq:cov-I0-ak1}--\eqref{eq:cov-I1-ak1}, and their $S$-weighted analogs
+(constructed via \eqref{eq:exp-poly}). For compactness and guaranteed SPD, we also obtain $Q_d$
+by the Van Loan method applied to the continuous pair $(A,G,\Sigma_c)$ (see the discretization section):
+\[
+Q_d \;=\; \int_0^\Delta e^{A s} G \Sigma_c G^\top e^{A^\top s} ds.
+\]
+Both routes are analytically equivalent; Van Loan is the numerically convenient implementation.
+
+\subsection{Small-Step Expansions and Limiting Cases}
+For $\Delta\ll\tau$ ($\rho \approx 1-\Delta/\tau$):
+\begin{align}
+c_v &= \tau(1-\rho) \approx \Delta - \tfrac{\Delta^2}{2\tau} + \mathcal{O}(\Delta^3),\\
+c_p &= \tau\big(\Delta - \tau(1-\rho)\big) \approx \tfrac{\Delta^2}{2} - \tfrac{\Delta^3}{6\tau} + \mathcal{O}(\Delta^4),\\
+c_S &= \tau\!\left(\tfrac{\Delta^2}{2} - \tau\Delta + \tau^2(1-\rho)\right) \approx \tfrac{\Delta^3}{6} - \tfrac{\Delta^4}{24\tau} + \mathcal{O}(\Delta^5).
+\end{align}
+These match the deterministic integrals of a constant acceleration over small intervals.
+
+As $\tau\to\infty$ with $\sigma^2$ fixed, $\rho\to 1$, the innovation variance $\sigma^2(1-\rho^2)\to 0$,
+and $a$ becomes quasi-constant (very slow mean reversion). As $\tau\to 0$, $\rho\to 0$ and
+the process approaches temporally white acceleration (with variance $\sigma^2$ at the sampling instants),
+recovering the uncorrelated case.
+
+
 
 
