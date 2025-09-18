@@ -1588,6 +1588,75 @@ OU parameters, $R$, and $Q$ based on observed residuals and excitation. This wou
 a single filter configuration to robustly handle calm seas, storm seas, and everything in
 between, without manual re-tuning.
 
+\subsection{Alternative Latent Acceleration Models: Second-Order Gauss--Markov (Mat\'ern-3/2)}
+
+The present filter models the latent world-frame acceleration $\bm a_w$ as an Ornstein--Uhlenbeck
+process (Mat\'ern($\tfrac{1}{2}$)), which enforces temporal correlation and bounded variance but
+still leads to quadratic growth in displacement variance. An appealing direction for future work
+is to replace this block with a \emph{second-order Gauss--Markov} model, corresponding to the
+Mat\'ern($\tfrac{3}{2}$) kernel.
+
+\paragraph{Continuous-Time Dynamics.}
+For one spatial axis, define the augmented state
+\[
+x_{\rm axis} =
+\begin{bmatrix}
+v \\ p \\ S \\ a \\ \dot a
+\end{bmatrix},
+\]
+where $a$ is the latent acceleration and $\dot a$ its derivative. The continuous-time SDE is
+\begin{align}
+\dot v &= a, \\
+\dot p &= v, \\
+\dot S &= p, \\
+\dot a &= \dot a, \\
+\ddot a &= -\tfrac{2}{\tau}\,\dot a - \tfrac{1}{\tau^2} a + w(t),
+\end{align}
+with $w(t)$ zero-mean white Gaussian noise. This is equivalent to a damped oscillator driven by
+white noise, whose stationary autocovariance matches the Mat\'ern($3/2$) kernel
+\[
+R_a(\Delta) \;=\; \sigma^2 \left(1 + \frac{|\Delta|}{\tau}\right)e^{-|\Delta|/\tau}.
+\]
+
+\paragraph{State-Space Form.}
+The continuous matrices for one axis are
+\[
+A_{\rm axis} =
+\begin{bmatrix}
+0 & 0 & 0 & 1 & 0 \\
+1 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+0 & 0 & 0 & -\tfrac{1}{\tau^2} & -\tfrac{2}{\tau}
+\end{bmatrix},
+\qquad
+G_{\rm axis} =
+\begin{bmatrix}0\\0\\0\\0\\1\end{bmatrix}.
+\]
+
+In 3D, this block is replicated across axes by a Kronecker product with $I_3$.
+
+\paragraph{Expected Benefits.}
+The Mat\'ern($3/2$) prior has a power spectral density decaying as $1/\omega^4$,
+significantly ``redder'' than the OU spectrum ($1/\omega^2$). Consequently:
+\begin{itemize}
+\item Velocity variance becomes bounded in steady state, rather than linearly divergent.
+\item Displacement variance grows only linearly with $t$, compared to quadratic for OU and cubic for white acceleration.
+\item Integrals exhibit smoother sample paths, with higher-order continuity of acceleration.
+\end{itemize}
+
+\paragraph{Kalman Compatibility.}
+The model is still a finite-dimensional linear SDE with Gaussian forcing, making it
+directly Kalman filter compatible. Discretization via the Van Loan method or Pad\'e(6)
+remains applicable. The only cost is one additional state per axis (18~D for three axes
+instead of 15~D), and tuning requires solving a stationary Lyapunov equation to match
+the desired variance $\sigma^2$ at equilibrium.
+
+\paragraph{Future Direction.}
+Replacing OU with a second-order Gauss--Markov acceleration model is a promising extension:
+it would suppress drift in the integrator chain more strongly, yield more realistic
+wave-acceleration spectra, and retain the Kalman-friendly structure of the present design.
+
 \section{Conclusion}
 \label{sec:conclusion}
 
