@@ -86,7 +86,7 @@ with the following components:
   \bm S(t) = \int_0^t \bm p(\tau)\, d\tau,
   \]
   which, although not physically measured, serves as a control variable for drift suppression.
-\item $\bm a_w \in \mathbb{R}^3$: the latent world-frame acceleration, modeled as an Ornstein--Uhlenbeck (OU) process to enforce stationary variance of acceleration and realistic temporal correlation.
+\item $\bm a_w \in \mathbb{R}^3$: the latent world-frame acceleration, modeled as an Ornstein--Uhlenbeck (OU) process to enforce stationary variance of acceleration and realistic temporal correlation, though its integrals' variances remain unbounded but growing slower than for white noise.
 \item $\bm b_{a0} \in \mathbb{R}^3$: the baseline accelerometer bias at a fixed reference temperature $T_\text{ref}$.
 \end{itemize}
 
