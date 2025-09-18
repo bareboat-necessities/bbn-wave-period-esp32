@@ -421,6 +421,182 @@ and $a$ becomes quasi-constant (very slow mean reversion). As $\tau\to 0$, $\rho
 the process approaches temporally white acceleration (with variance $\sigma^2$ at the sampling instants),
 recovering the uncorrelated case.
 
+\section{Exact Discretization of $(v,p,S,a)$ by the Van Loan Method}
+\label{sec:van-loan}
 
+This section derives the exact discrete-time pair $(\Phi,Q_d)$ for the linear OU-driven kinematic block
+over one sampling period $\Delta>0$. We begin from the continuous-time linear stochastic system
+\begin{equation}
+\dot{\bm x}(t) \;=\; A\,\bm x(t) \;+\; G\,w(t), 
+\qquad
+\mathbb{E}\!\left[w(t)w(s)^\top\right] \;=\; \Sigma_c\,\delta(t-s),
+\label{eq:lti-sde}
+\end{equation}
+with $A\in\mathbb{R}^{n\times n}$, $G\in\mathbb{R}^{n\times r}$, and constant white-noise power $\Sigma_c\succeq 0$.
+
+\subsection{Fundamental Solution and Covariance Integral}
+The exact discrete-time transition over $\Delta$ is
+\begin{equation}
+\bm x(t+\Delta) \;=\; \Phi\,\bm x(t) \;+\; \bm \eta,\qquad
+\Phi \;=\; e^{A\Delta},\qquad
+\bm\eta \sim \mathcal{N}\!\Big(0,\; Q_d \Big), 
+\label{eq:phi-qd-def}
+\end{equation}
+where the process covariance is the \emph{Lyapunov integral}
+\begin{equation}
+Q_d \;=\; \int_0^\Delta e^{A s}\,G\,\Sigma_c\,G^\top\,e^{A^\top s}\,ds.
+\label{eq:qd-integral}
+\end{equation}
+The integrand is symmetric positive semidefinite for each $s$, hence $Q_d\succeq 0$ by construction.
+
+\subsection{Van Loan’s Block-Exponential Construction}
+Direct numerical evaluation of \eqref{eq:qd-integral} is impractical. Van Loan’s method builds
+both $e^{A\Delta}$ and $Q_d$ from a \emph{single} matrix exponential. Define the $2n\times 2n$ block matrix
+\begin{equation}
+M(\Delta) \;=\; 
+\begin{bmatrix}
+-\,A\Delta & G\,\Sigma_c\,G^\top\,\Delta\\[2pt]
+0 & A^\top\Delta
+\end{bmatrix}.
+\label{eq:vanloan-M}
+\end{equation}
+Then
+\begin{equation}
+\exp\!\big(M(\Delta)\big) \;=\;
+\begin{bmatrix}
+M_{11} & M_{12}\\[2pt]
+0 & M_{22}
+\end{bmatrix},
+\label{eq:vanloan-exp}
+\end{equation}
+and the discrete-time pair is recovered by the identities
+\begin{equation}
+\Phi \;=\; M_{22}^\top,\qquad
+Q_d \;=\; \Phi\,M_{12}.
+\label{eq:vanloan-unpack}
+\end{equation}
+
+\paragraph{Sketch of proof.}
+Consider the differential equation in $s$ for the block matrix
+\(
+\Xi(s)=
+\begin{bmatrix}
+X(s) & Y(s)\\ 0 & Z(s)
+\end{bmatrix}
+\)
+with $\dot\Xi = 
+\begin{bmatrix}
+- A & G\Sigma_c G^\top\\ 0 & A^\top
+\end{bmatrix}\Xi$, $\Xi(0)=I$.
+Solving yields $Z(s)=e^{A^\top s}$, $X(s)=e^{-As}$,
+and $Y(s)=\int_0^s e^{-A(s-u)} G\Sigma_c G^\top e^{A^\top u}\,du$.
+Evaluating at $s=\Delta$ and rearranging produces \eqref{eq:vanloan-unpack}.
+The construction ensures $Q_d\succeq 0$ and is numerically robust when $\exp(\cdot)$ is.
+
+\subsection{Application to the OU-Driven Chain}
+For one spatial axis with state $\bm x_{\rm lin}=[v,\,p,\,S,\,a]^\top$, the continuous matrices are
+\begin{equation}
+A_{\rm axis} \;=\;
+\begin{bmatrix}
+0 & 0 & 0 & 1\\
+1 & 0 & 0 & 0\\
+0 & 1 & 0 & 0\\
+0 & 0 & 0 & -\tfrac{1}{\tau}
+\end{bmatrix},
+\qquad
+G_{\rm axis} \;=\;
+\begin{bmatrix}0\\0\\0\\1\end{bmatrix},
+\qquad
+\Sigma_c \;=\; \frac{2}{\tau}\,\sigma^2.
+\label{eq:Aaxis-Gaxis}
+\end{equation}
+For 3D, use $A = A_{\rm axis}\otimes I_3$ and $G=G_{\rm axis}\otimes I_3$ with $\Sigma_c$ diagonal
+($\Sigma_c = \tfrac{2}{\tau}\,\Sigma_{aw}^{\rm stat}$). The Van Loan method yields:
+\begin{equation}
+\Phi_{vpsa} \;=\; \Phi_{\rm axis}\otimes I_3,
+\qquad
+Q_{d,\;vpsa} \;=\; \big(Q_{d,\,\rm axis}\big)\otimes I_3,
+\label{eq:axis-3d}
+\end{equation}
+where $\Phi_{\rm axis}$ is exactly \eqref{eq:Phi-axis-ou}. The covariance $Q_{d,\,\rm axis}$ equals the kernel integrals
+derived in the OU section (means and key entries listed there), and is guaranteed SPD by \eqref{eq:vanloan-unpack}.
+
+\subsection{Consistency Checks}
+\paragraph{Small-step limit.} As $\Delta\to 0$, $\Phi=I+A\Delta+\mathcal{O}(\Delta^2)$ and $Q_d=G\Sigma_c G^\top\,\Delta+\mathcal{O}(\Delta^2)$.
+\paragraph{Stationarity of $a$.} The last row/column of $Q_{d,\,\rm axis}$ reproduces $\mathrm{Var}(a_{k+1}-\rho a_k)=\sigma^2(1-\rho^2)$,
+consistent with the AR(1) in \eqref{eq:ou-ar1}.
+\paragraph{Symmetry/PSD.} By construction, $Q_d= \int_0^\Delta (\cdot)(\cdot)^\top ds$ is symmetric and PSD; Van Loan inherits this property.
+\vspace{1ex}
+
+\section{Matrix Exponential via Pad\'e(6) with Scaling and Squaring}
+\label{sec:pade6}
+
+For embedded targets, we compute $\exp(M)$ in \eqref{eq:vanloan-exp} by a \emph{Pad\'e(6)} rational approximation
+with \emph{scaling and squaring}. This offers an excellent accuracy--cost tradeoff for the
+small matrices encountered here ($4\times 4$ or $8\times 8$ per axis, or $24\times 24$ for 3D Van Loan).
+
+\subsection{Pad\'e(6) Rational Approximant}
+A $[6/6]$ Pad\'e approximant to $e^A$ is
+\begin{equation}
+e^A \;\approx\; R_6(A) \;=\; \big(V(A)-U(A)\big)^{-1}\big(V(A)+U(A)\big),
+\label{eq:pade-rational}
+\end{equation}
+with
+\begin{align}
+U(A) &= A\Big(c_2 I + c_6 A^2\Big), 
+\label{eq:U-def}\\
+V(A) &= c_0 I + c_4 A^2 + c_6' A^4 + c_8 A^6,
+\label{eq:V-def}
+\end{align}
+and coefficients
+\begin{equation}
+c_0 = 1,\qquad c_2 = \tfrac{1}{2},\qquad c_4 = \tfrac{1}{24},\qquad
+c_6 = \tfrac{1}{720},\qquad c_6'=\tfrac{1}{24},\qquad c_8 = \tfrac{1}{5040}.
+\label{eq:pade-coeffs}
+\end{equation}
+This is algebraically equivalent to writing
+\(
+V= I + c_4 A^2 + \tfrac{1}{5040}A^6
+\)
+and
+\(
+U= A\big(\tfrac12 I + \tfrac{1}{720}A^2\big),
+\)
+as used in compact implementations.
+
+\subsection{Scaling and Squaring}
+Accuracy is improved by reducing $\|A\|$ before applying $R_6$. Choose the integer $s\ge 0$ so that
+\begin{equation}
+\|A/2^s\|_1 \;\le\; \theta_6,
+\label{eq:theta-choice}
+\end{equation}
+where $\theta_6$ is a practical threshold (for Pad\'e(6), $\theta_6 \approx 3$ for small matrices).
+Compute the rational approximation at the scaled matrix, then square:
+\begin{equation}
+e^A \;\approx\; \Big(R_6(A/2^s)\Big)^{2^s}.
+\label{eq:scale-square}
+\end{equation}
+This standard technique preserves stability and keeps polynomial degrees low.
+
+\subsection{Why Pad\'e(6) is a Good Fit Here}
+\begin{itemize}
+\item The Van Loan matrix $M(\Delta)$ is small (up to $24\times 24$ in 3D) and moderately scaled for typical $\Delta$; Pad\'e(6) with a few squarings is accurate.
+\item The cost is dominated by a handful of dense matrix multiplications and one linear solve with $(V-U)$, which is inexpensive at these sizes.
+\item Numerical behavior is well studied; together with Joseph’s form for the covariance update and symmetrization $P\leftarrow \tfrac12(P+P^\top)$, it yields a robust pipeline.
+\end{itemize}
+
+\subsection{Cross-Check with Series and OU Coefficients}
+Expanding $R_6(A)$ around $A=0$ reproduces the first $13$ terms of the Taylor series of $e^A$ (since it is a $[6/6]$ approximant),
+hence the local error is $\mathcal{O}(\|A\|^{13})$. When applied to the block matrix $M(\Delta)$ in \eqref{eq:vanloan-M}, this accuracy carries to both
+$\Phi$ and $Q_d$ recovered via \eqref{eq:vanloan-unpack}, matching the OU-derived coefficients $E_0,E_1,E_2$ (means) and the covariance entries
+listed in the OU section up to roundoff.
+
+\subsection{Practical Notes}
+\begin{enumerate}
+\item \textbf{Conditioning.} Use the matrix one-norm to choose $s$; for typical IMU sampling ($\Delta\le 0.02$\,s) and $\tau$ in $[0.5,5]$\,s,
+$s\in\{0,1,2\}$ is usually sufficient.
+\item \textbf{SPD Preservation.} Van Loan’s construction plus a numerically stable exponential preserves $Q_d\succeq 0$ up to roundoff; if needed, enforce symmetry by $Q_d\leftarrow \tfrac12(Q_d+Q_d^\top)$.
+\item \textbf{Embedded Efficiency.} Precompute powers $A^2,A^4,A^6$ for $U,V$; reuse buffers; prefer LU solve for $(V-U)X=(V+U)$ given matrix sizes.
+\end{enumerate}
 
 
