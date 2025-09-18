@@ -1184,40 +1184,77 @@ for linear Gaussian systems.
 For the 12D subsystem $(v,p,S,a_w)$, Van Loan yields the exact coupling
 coefficients between OU acceleration and its integrals. 
 
-\subsection{Pad\'e(6) with Scaling and Squaring}
-When $\exp(A\Delta)$ must be computed on embedded targets without matrix
-function libraries, we approximate via Pad\'e(6):
-\begin{equation}
-\exp(A) \approx (V+U)(V-U)^{-1},
-\label{eq:pade6}
-\end{equation}
-where
-\begin{align}
-% FIX: Consistent Padé(6) definition
+\subsection{Pad\'e(6) Rational Approximant with Scaling and Squaring}
+\label{sec:pade6}
+
+For embedded targets, we compute $\exp(M)$ in \eqref{eq:vanloan-exp} by a 
+\emph{Pad\'e(6)} rational approximation with \emph{scaling and squaring}. 
+This offers an excellent accuracy--cost tradeoff for the small matrices 
+encountered here ($4\times 4$ or $8\times 8$ per axis, or $24\times 24$ 
+for 3D Van Loan).
+
+\paragraph{Pad\'e(6) Rational Approximant.}
 A $[6/6]$ Pad\'e approximant to $e^A$ is
-\[
-e^A \approx (V(A)-U(A))^{-1}(V(A)+U(A)),
-\]
+\begin{equation}
+e^A \;\approx\; R_6(A) \;=\; \big(V(A)-U(A)\big)^{-1}\big(V(A)+U(A)\big),
+\label{eq:pade-rational}
+\end{equation}
 with
-\begin{aligned}
-U(A) &= A\Big(c_1 I + c_3 A^2 + c_5 A^4\Big),\\
-V(A) &= c_0 I + c_2 A^2 + c_4 A^4 + c_6 A^6,
-\end{aligned}
-\]
-and standard coefficients 
-$c_0=1,\ c_1=\tfrac12,\ c_2=\tfrac{1}{10},\ c_3=\tfrac{1}{120},\ 
-c_4=\tfrac{1}{1680},\ c_5=\tfrac{1}{30240},\ c_6=\tfrac{1}{665280}$.
+\begin{align}
+U(A) &= A\Big(c_1 I + c_3 A^2 + c_5 A^4\Big), \label{eq:pade-U}\\
+V(A) &= c_0 I + c_2 A^2 + c_4 A^4 + c_6 A^6, \label{eq:pade-V}
 \end{align}
-with coefficients $c_0=1,\;c_2=\tfrac{1}{2},\;c_4=\tfrac{1}{24},\;c_6=\tfrac{1}{720}$.
+and coefficients
+\begin{equation}
+c_0 = 1,\quad c_1 = \tfrac{1}{2},\quad c_2 = \tfrac{1}{10},\quad
+c_3 = \tfrac{1}{120},\quad c_4 = \tfrac{1}{1680},\quad
+c_5 = \tfrac{1}{30240},\quad c_6 = \tfrac{1}{665280}.
+\label{eq:pade-coeffs}
+\end{equation}
 
-\paragraph{Scaling and squaring.}
-If $\|A\|>\theta$ (with $\theta\approx 3$), set $A\leftarrow A/2^s$,
-compute $\exp(A/2^s)$ via \eqref{eq:pade6}, then square $s$ times.
+\paragraph{Scaling and Squaring.}
+Accuracy is improved by reducing $\|A\|$ before applying $R_6$. 
+Choose an integer $s \geq 0$ so that
+\begin{equation}
+\big\|A/2^s\big\|_1 \;\leq\; \theta_6,
+\label{eq:theta-choice}
+\end{equation}
+where $\theta_6$ is a practical threshold (for Pad\'e(6), $\theta_6 \approx 3$ 
+for small matrices). Compute the rational approximation at the scaled matrix, 
+then square:
+\begin{equation}
+e^A \;\approx\; \Big(R_6(A/2^s)\Big)^{2^s}.
+\label{eq:scale-square}
+\end{equation}
 
-\paragraph{Role.}
-This scheme provides stable, efficient evaluation of $\exp(A\Delta)$ for
-small fixed matrices (up to $12\times 12$), ensuring agreement with the
-desktop Van Loan implementation.
+\paragraph{Why Pad\'e(6) is a Good Fit Here.}
+\begin{itemize}
+\item The Van Loan matrix $M(\Delta)$ is small (up to $24\times 24$ in 3D) and moderately scaled 
+for typical $\Delta$; Pad\'e(6) with a few squarings is accurate.
+\item The cost is dominated by a handful of dense matrix multiplications and one linear solve 
+with $(V-U)$, which is inexpensive at these sizes.
+\item Numerical behavior is well studied; together with Joseph’s form for the covariance update 
+and symmetrization $P\leftarrow \tfrac12(P+P^\top)$, it yields a robust pipeline.
+\end{itemize}
+
+\paragraph{Cross-Check with Series and OU Coefficients.}
+Expanding $R_6(A)$ around $A=0$ reproduces the first $13$ terms of the Taylor series of $e^A$ 
+(since it is a $[6/6]$ approximant), hence the local error is $\mathcal{O}(\|A\|^{13})$. 
+When applied to the block matrix $M(\Delta)$ in \eqref{eq:vanloan-M}, this accuracy carries to 
+both $\Phi$ and $Q_d$ recovered via \eqref{eq:vanloan-unpack}, matching the OU-derived 
+coefficients $E_0,E_1,E_2$ (means) and the covariance entries listed in the OU section up 
+to roundoff.
+
+\paragraph{Practical Notes.}
+\begin{enumerate}
+\item \textbf{Conditioning.} Use the matrix one-norm to choose $s$; for typical IMU sampling 
+($\Delta\le 0.02$\,s) and $\tau$ in $[0.5,5]$\,s, $s\in\{0,1,2\}$ is usually sufficient.
+\item \textbf{SPD Preservation.} Van Loan’s construction plus a numerically stable exponential 
+preserves $Q_d\succeq 0$ up to roundoff; if needed, enforce symmetry by 
+$Q_d\leftarrow \tfrac12(Q_d+Q_d^\top)$.
+\item \textbf{Embedded Efficiency.} Precompute powers $A^2,A^4,A^6$ for $U,V$; reuse buffers; 
+prefer LU solve for $(V-U)X=(V+U)$ given matrix sizes.
+\end{enumerate}
 
 \subsection{Summary}
 \begin{itemize}
