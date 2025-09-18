@@ -71,7 +71,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     typedef Matrix<T, M, M> MatrixM;
 
     static constexpr T half = T(1) / T(2);
-    static constexpr T STD_GRAVITY = T(9.80665);  // standard gravity acceleration m/s²
+    static constexpr T STD_GRAVITY = T(9.80665);  // standard gravity acceleration m/s² 
+    static constexpr T tempC_ref = T(35.0); // Reference temperature for temperature related accel bias drift
 
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -95,8 +96,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void time_update(Vector3 const& gyr, T Ts);
 
     // Measurement updates preserved (operate on extended state internally)
-    void measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC = T(35.0));
-    void measurement_update_acc_only(Vector3 const& acc, T tempC = T(35.0));
+    void measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC = tempC_ref);
+    void measurement_update_acc_only(Vector3 const& acc, T tempC = tempC_ref);
     void measurement_update_mag_only(Vector3 const& mag);
 
     // Extended-only API:
@@ -609,7 +610,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
-// with temp correction: b_a(temp) = b_a0 + k_a * (tempC - tempCref) 
+// with temp correction: b_a(temp) = b_a0 + k_a * (tempC - tempC_ref) 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T,3,1>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_func(T tempC) const {
@@ -620,7 +621,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_fun
 
     if constexpr (with_accel_bias) {
         Vector3 ba0 = xext.template segment<3>(OFF_BA);
-        Vector3 ba  = ba0 + k_a_ * (tempC - T(35.0)); // temperature related drift
+        Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref); // temperature related drift
         fb += ba;
     }
     return fb;
