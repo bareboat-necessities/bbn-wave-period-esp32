@@ -1173,8 +1173,12 @@ the discrete-time equivalent over $\Delta$ is
 \right).
 \label{eq:van-loan-final}
 \end{equation}
-The transition is $\Phi=e^{A\Delta}$ and the discrete covariance is
-$Q_d=\Phi Q\Phi^\top$. This is the \emph{exact} discretization method
+The transition is $\Phi = e^{A\Delta}$, and the discrete covariance is
+\[
+Q_d = \int_0^\Delta e^{As}\,GQ_cG^\top e^{A^\top s}\,ds
+= \Phi\,M_{12},
+\]
+from the block exponential construction. This is the \emph{exact} discretization method
 for linear Gaussian systems.
 
 \paragraph{Application here.}
