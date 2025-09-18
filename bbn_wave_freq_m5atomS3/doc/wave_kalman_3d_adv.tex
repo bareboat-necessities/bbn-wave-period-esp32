@@ -853,4 +853,127 @@ through $\bm a_w$.
 \item Inclusion of $\bm b_a(T)$ makes the innovations insensitive to slow sensor thermal drift.
 \end{itemize}
 
+\section{Extended State Transition Matrix}
+\label{sec:transition}
+
+The extended state vector is
+\begin{equation}
+x = \begin{bmatrix}
+\delta\bm\theta & \bm b_g & \bm v & \bm p & \bm S & \bm a_w & \bm b_a
+\end{bmatrix}^\top,
+\label{eq:state-vector}
+\end{equation}
+where each block is $3\times 1$. Depending on configuration, $\bm b_g$ and $\bm b_a$ may be omitted.
+
+\subsection{Attitude Error Dynamics}
+From \eqref{eq:att_err_dyn}, the linearized error propagation is
+\begin{equation}
+\dot{\delta\bm\theta} = -[\bm\omega_b - \bm b_g]_\times \,\delta\bm\theta - \delta\bm b_g + n_\theta.
+\label{eq:att-err-dyn2}
+\end{equation}
+Discretization via Rodrigues’ formula \eqref{eq:rodrigues} yields the discrete block
+\begin{equation}
+F_{\theta\theta} \;=\; I - \sin\theta [\hat{\bm u}]_\times + (1-\cos\theta)[\hat{\bm u}]_\times^2,
+\label{eq:F-att}
+\end{equation}
+with $\theta = \|\bm\omega_b-\bm b_g\|\Delta$ and $\hat{\bm u}=(\bm\omega_b-\bm b_g)/\|\bm\omega_b-\bm b_g\|$.
+For small $\theta$, expand as
+\[
+F_{\theta\theta} \approx I - [\bm\omega_b-\bm b_g]_\times \Delta + \tfrac{1}{2}[\bm\omega_b-\bm b_g]_\times^2 \Delta^2.
+\]
+
+The cross term wrt gyro bias is
+\begin{equation}
+F_{\theta b_g} = -I\,\Delta.
+\label{eq:F-att-bg}
+\end{equation}
+
+\subsection{Velocity–Position–Integral Chain}
+For one axis, dynamics are
+\[
+\dot v = a_w,\qquad
+\dot p = v,\qquad
+\dot S = p.
+\]
+This yields the companion form matrix
+\begin{equation}
+A_{vps} =
+\begin{bmatrix}
+0 & 0 & 0\\
+1 & 0 & 0\\
+0 & 1 & 0
+\end{bmatrix},\qquad
+B_{vps} = \begin{bmatrix}1\\0\\0\end{bmatrix}.
+\label{eq:Avps}
+\end{equation}
+Coupled with OU acceleration $\dot a_w = -\tfrac{1}{\tau}a_w + w$, the full
+axis dynamics are
+\[
+\dot{\bm x}_{\rm lin} = 
+\underbrace{\begin{bmatrix}
+A_{vps} & B_{vps}\\
+0 & -\tfrac{1}{\tau}
+\end{bmatrix}}_{A_{\rm axis}}
+\bm x_{\rm lin} + 
+\underbrace{\begin{bmatrix}0\\0\\0\\1\end{bmatrix}}_{G_{\rm axis}}w.
+\]
+
+The discrete transition for this $4\times 4$ block is obtained from
+Van Loan discretization (Sec.~\ref{sec:van-loan}), giving
+\begin{equation}
+\Phi_{\rm axis} = e^{A_{\rm axis}\Delta}.
+\label{eq:phi-axis}
+\end{equation}
+Explicit entries involve integrals $E_0,E_1,E_2$ derived in the OU section.
+
+\subsection{OU Acceleration Block}
+For each axis:
+\begin{equation}
+F_{aa} = e^{-\Delta/\tau},\qquad
+Q_{aa} = \sigma^2 \big(1-e^{-2\Delta/\tau}\big).
+\label{eq:ou-discrete}
+\end{equation}
+These match the AR(1) equivalent of the continuous OU process.
+
+\subsection{Accelerometer Bias Block}
+Accelerometer bias $\bm b_a$ evolves as a random walk:
+\begin{equation}
+\dot{\bm b}_a = w_{ba},\qquad
+Q_{ba,d} = Q_{ba}\Delta.
+\label{eq:accel-bias-rw}
+\end{equation}
+Its discrete transition is
+\[
+F_{b_ab_a} = I,\qquad
+Q_{b_ab_a} = Q_{ba}\Delta.
+\]
+
+\subsection{Full Transition Matrix}
+Assembling all blocks yields
+\begin{equation}
+F =
+\begin{bmatrix}
+F_{\theta\theta} & F_{\theta b_g} & 0 & 0 & 0 & 0 & 0\\
+0 & I & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & \Phi_{vv} & \Phi_{vp} & \Phi_{vS} & \Phi_{va} & 0\\
+0 & 0 & \Phi_{pv} & \Phi_{pp} & \Phi_{pS} & \Phi_{pa} & 0\\
+0 & 0 & \Phi_{Sv} & \Phi_{Sp} & \Phi_{SS} & \Phi_{Sa} & 0\\
+0 & 0 & \Phi_{av} & \Phi_{ap} & \Phi_{aS} & \Phi_{aa} & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & I
+\end{bmatrix},
+\label{eq:F-full}
+\end{equation}
+where each $\Phi_{\cdot\cdot}$ block is $3\times 3$ (Kronecker product with $I_3$).
+Cross-couplings from OU integrals populate $\Phi_{va},\Phi_{pa},\Phi_{Sa}$,
+with exact formulas given in the OU derivation.
+
+\subsection{Process Noise Covariance}
+The block structure of $Q$ mirrors that of $F$. In particular:
+\begin{itemize}
+\item $Q_{\theta\theta}$ and $Q_{\theta b_g}$ from gyro noise,
+\item $Q_{vpsa}$ from OU integrals (Eq.~\ref{eq:qd-integral}),
+\item $Q_{b_a}$ from random walk bias (Eq.~\ref{eq:accel-bias-rw}).
+\end{itemize}
+Together these ensure all states remain bounded in variance, even under long integrations.
+
 
