@@ -1456,7 +1456,7 @@ $SO(3)$-consistency.
 
 \subsection{Velocity and Position}
 The OU prior on $\bm a_w$ prevents the double integration of white noise, which would otherwise
-cause variance to grow unbounded with $t^3$. Instead, OU-driven $\bm v,\bm p$ are not strictly stationary: their covariances grow polynomially in time. However, the growth is far slower than with white acceleration (linear vs.\ cubic), which makes the estimates usable over practical time horizons. The latent OU acceleration thus regularizes the chain and delays divergence. This is the mathematical reason
+cause variance to grow unbounded with $t^3$. Instead, OU-driven $\bm v,\bm p$ are not strictly stationary: their covariances grow polynomially in time. However, the growth is far slower than with white acceleration, which makes the estimates usable over practical time horizons. The latent OU acceleration thus regularizes the chain and delays divergence. This is the mathematical reason
 why the filter can produce meaningful $\bm v,\bm p$ estimates even without external aiding.
 
 \subsection{Third Integral $S$}
