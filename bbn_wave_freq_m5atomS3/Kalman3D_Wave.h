@@ -225,7 +225,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Vector3 last_gyr_bias_corrected{};
 
     T sigma_bacc0_ = T(0.1); // initial accel bias std
-    Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-5);
+    Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-8);
 
     // Accelerometer bias temperature coefficient (per-axis), units: m/s^2 per °C.
     // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
