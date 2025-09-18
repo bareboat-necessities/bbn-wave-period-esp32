@@ -608,14 +608,19 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     measurement_update_partial(mag, v2hat, Rmag);
 }
 
-// specific force prediction: f_b = R_wb (a_w - g)
+// specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
+// with temp correction: b_a(temp) = b_a0 + k_a * (tempC - tempCref) 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-Matrix<T,3,1> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_func() const {
+Matrix<T,3,1>
+Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_func(T tempC) const {
     const Vector3 g_world(0,0,+gravity_magnitude_);
     const Vector3 aw = xext.template segment<3>(OFF_AW);
+
     Vector3 fb = R_wb() * (aw - g_world);
+
     if constexpr (with_accel_bias) {
-        const Vector3 ba = xext.template segment<3>(OFF_BA);
+        Vector3 ba0 = xext.template segment<3>(OFF_BA);
+        Vector3 ba  = ba0 + k_a_ * (tempC - T(35.0)); // temperature related drift
         fb += ba;
     }
     return fb;
