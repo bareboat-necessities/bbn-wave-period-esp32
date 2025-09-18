@@ -1190,8 +1190,20 @@ function libraries, we approximate via Pad\'e(6):
 \end{equation}
 where
 \begin{align}
-U &= A\left(c_2 I + c_6 A^2\right),\\
-V &= c_0 I + c_4 A^2 + c_6 A^4,
+% FIX: Consistent Padé(6) definition
+A $[6/6]$ Pad\'e approximant to $e^A$ is
+\[
+e^A \approx (V(A)-U(A))^{-1}(V(A)+U(A)),
+\]
+with
+\begin{aligned}
+U(A) &= A\Big(c_1 I + c_3 A^2 + c_5 A^4\Big),\\
+V(A) &= c_0 I + c_2 A^2 + c_4 A^4 + c_6 A^6,
+\end{aligned}
+\]
+and standard coefficients 
+$c_0=1,\ c_1=\tfrac12,\ c_2=\tfrac{1}{10},\ c_3=\tfrac{1}{120},\ 
+c_4=\tfrac{1}{1680},\ c_5=\tfrac{1}{30240},\ c_6=\tfrac{1}{665280}$.
 \end{align}
 with coefficients $c_0=1,\;c_2=\tfrac{1}{2},\;c_4=\tfrac{1}{24},\;c_6=\tfrac{1}{720}$.
 
