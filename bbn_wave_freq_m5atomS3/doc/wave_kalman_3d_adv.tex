@@ -1105,3 +1105,93 @@ q^+ \;=\; q^- \otimes \delta q(\delta\bm\theta),
 This preserves unit norm and keeps the attitude error minimal (on the tangent space) for the next cycle.
 
 
+\section{Numerical Methods for Discretization and Matrix Exponentials}
+\label{sec:numerical-methods}
+
+The extended filter requires repeated discretization of continuous-time dynamics.
+Three key techniques are employed: Rodrigues’ rotation formula, Van Loan’s
+block-matrix exponential method, and Pad\'e(6) approximants with scaling and
+squaring. We now detail each.
+
+\subsection{Rodrigues’ Formula for Attitude Propagation}
+For a body angular velocity $\bm\omega$ and timestep $\Delta$, the quaternion update
+is
+\[
+q_{k+1} = q_k \otimes \exp\!\left(\tfrac{\Delta}{2}\bm\omega\right).
+\]
+In matrix form, the equivalent rotation matrix update uses Rodrigues’ formula:
+\begin{equation}
+R_{k+1} = R_k\left(I + \sin\theta [\hat{\bm u}]_\times +
+(1-\cos\theta)[\hat{\bm u}]_\times^2\right),
+\label{eq:rodrigues-final}
+\end{equation}
+with $\theta = \|\bm\omega\|\Delta$ and $\hat{\bm u}=\bm\omega/\|\bm\omega\|$.
+For small $\theta$, the series expansion yields
+\[
+R_{k+1} \approx R_k\Big(I + [\bm\omega]_\times \Delta + \tfrac{1}{2}[\bm\omega]_\times^2 \Delta^2\Big),
+\]
+which is consistent with the truncated exponential.
+
+\paragraph{Role.}
+This exact formula avoids numerical drift and provides a consistent
+linearization for Jacobians.
+
+\subsection{Van Loan Discretization for Linear Subsystems}
+For linear SDEs of the form
+\[
+\dot x = A x + G w,\quad \mathbb{E}[w(t)w(s)^\top] = Q_c\delta(t-s),
+\]
+the discrete-time equivalent over $\Delta$ is
+\begin{equation}
+\begin{bmatrix}
+\Phi & Q_d\\ 0 & \Phi^{-\top}
+\end{bmatrix}
+=
+\exp\!\left(
+\begin{bmatrix}
+-A\Delta & GQ_cG^\top\Delta\\
+0 & A^\top\Delta
+\end{bmatrix}
+\right).
+\label{eq:van-loan-final}
+\end{equation}
+The transition is $\Phi=e^{A\Delta}$ and the discrete covariance is
+$Q_d=\Phi Q\Phi^\top$. This is the \emph{exact} discretization method
+for linear Gaussian systems.
+
+\paragraph{Application here.}
+For the 12D subsystem $(v,p,S,a_w)$, Van Loan yields the exact coupling
+coefficients between OU acceleration and its integrals. This guarantees
+bounded variances and eliminates ad-hoc approximations.
+
+\subsection{Pad\'e(6) with Scaling and Squaring}
+When $\exp(A\Delta)$ must be computed on embedded targets without matrix
+function libraries, we approximate via Pad\'e(6):
+\begin{equation}
+\exp(A) \approx (V+U)(V-U)^{-1},
+\label{eq:pade6}
+\end{equation}
+where
+\begin{align}
+U &= A\left(c_2 I + c_6 A^2\right),\\
+V &= c_0 I + c_4 A^2 + c_6 A^4,
+\end{align}
+with coefficients $c_0=1,\;c_2=\tfrac{1}{2},\;c_4=\tfrac{1}{24},\;c_6=\tfrac{1}{720}$.
+
+\paragraph{Scaling and squaring.}
+If $\|A\|>\theta$ (with $\theta\approx 3$), set $A\leftarrow A/2^s$,
+compute $\exp(A/2^s)$ via \eqref{eq:pade6}, then square $s$ times.
+
+\paragraph{Role.}
+This scheme provides stable, efficient evaluation of $\exp(A\Delta)$ for
+small fixed matrices (up to $12\times 12$), ensuring agreement with the
+desktop Van Loan implementation.
+
+\subsection{Summary}
+\begin{itemize}
+\item Rodrigues’ formula: exact, closed-form for SO(3), preserves attitude orthogonality.
+\item Van Loan: exact state+covariance discretization for linear OU-extended systems.
+\item Pad\'e(6): efficient embedded approximation when matrix exponential libraries are unavailable.
+\end{itemize}
+Together, they provide consistency across desktop prototyping and embedded deployment.
+
