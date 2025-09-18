@@ -1449,3 +1449,64 @@ too large $R$ leads to slow convergence. Proper tuning per Section~\ref{sec:tuni
 stable, well-damped innovations.
 
 
+\section{Implementation and Numerical Hygiene}
+\label{sec:implementation}
+
+Robust embedded deployment requires attention to numerical details. We summarize the
+techniques used in this implementation.
+
+\subsection{Quaternion Normalization}
+After every update, the quaternion is normalized:
+\[
+q \leftarrow \frac{q}{\|q\|}.
+\]
+Even small floating-point drift can otherwise cause $q$ to leave $SO(3)$ over long runs.
+
+\subsection{Covariance Symmetrization}
+After propagation and update, the covariance is symmetrized:
+\[
+P \leftarrow \tfrac{1}{2}(P+P^\top).
+\]
+This prevents accumulation of asymmetry due to numerical roundoff, which can otherwise
+lead to negative eigenvalues and breakdowns in square-root or LDLT factorizations.
+
+\subsection{Joseph Form}
+As emphasized in Section~\ref{sec:kalman-update}, the Joseph update
+\[
+P^+ = (I-KC)P^-(I-KC)^\top + KRK^\top
+\]
+is used rather than the simplified $(I-KC)P^-$. This guarantees positive semidefiniteness.
+
+\subsection{Matrix Exponentials}
+On desktop platforms, Van Loan discretization uses $\exp(M)$ from Eigen’s MatrixFunctions.
+On embedded platforms, $\exp(A)$ is approximated with Pad\'e(6) plus scaling and squaring.
+This ensures consistency between simulation and embedded implementations.
+
+\subsection{Handling Small Angles}
+For small $\theta$, Rodrigues’ formula and quaternion increments use Taylor expansions to
+avoid loss of precision. For example,
+\[
+\sin\theta \approx \theta - \tfrac{\theta^3}{6},\qquad
+1-\cos\theta \approx \tfrac{\theta^2}{2} - \tfrac{\theta^4}{24}.
+\]
+
+\subsection{Bias and Temperature Compensation}
+Accelerometer biases are corrected by the model
+\[
+\bm b_a(T) = \bm b_{a0} + K_a\,(T-T_{\rm ref}),
+\]
+with $T_{\rm ref}\approx 35^\circ{\rm C}$. This linear law is simple but captures the
+dominant effect of thermal drift. Gyro biases are assumed temperature-compensated at
+hardware level, or sufficiently stable to treat as RW at the filter level.
+
+\subsection{Sanity Monitoring}
+In practice, one should monitor:
+\begin{itemize}
+\item Innovation covariance consistency ($\tilde y^\top S^{-1}\tilde y \sim \chi^2$).
+\item Gain magnitudes (no saturation or collapse).
+\item Bias estimates (bounded, plausible trends).
+\item Quaternion norms (close to 1).
+\end{itemize}
+These diagnostics help detect sensor faults or mis-tuned parameters.
+
+
