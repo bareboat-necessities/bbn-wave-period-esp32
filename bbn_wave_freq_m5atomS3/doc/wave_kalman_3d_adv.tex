@@ -755,3 +755,102 @@ regularization. It adds just enough fictitious information to ensure
 bounded variance in triple integrals of noisy acceleration, 
 while leaving physically observable states ($q,v,p,a_w$) unbiased.
 
+\section{Measurement Models: Accelerometer and Magnetometer}
+\label{sec:meas-models}
+
+The filter fuses inertial and magnetic measurements to anchor attitude and
+linear states. Here we derive the measurement functions and their Jacobians.
+
+\subsection{Accelerometer Measurement Model}
+The accelerometer provides the specific force in the body frame:
+\begin{equation}
+\bm f_{\rm meas} 
+= R_{wb}\,\big(\bm a_w - \bm g\big) + \bm b_a(T) + \bm\eta_a,
+\label{eq:accel-meas}
+\end{equation}
+where
+\begin{itemize}
+\item $R_{wb}$ is the world-to-body rotation,
+\item $\bm a_w$ is the latent world-frame acceleration (OU state),
+\item $\bm g = (0,0,g)$ is gravity in NED coordinates,
+\item $\bm b_a(T)$ is the accelerometer bias with temperature drift,
+\item $\bm\eta_a \sim \mathcal{N}(0,R_a)$ is zero-mean measurement noise.
+\end{itemize}
+
+\paragraph{Role.}
+At rest, \eqref{eq:accel-meas} reduces to $\bm f_{\rm meas} \approx R_{wb}\,(-\bm g)$,
+which gives roll and pitch observability. During motion, $\bm a_w$ separates wave-induced
+accelerations from gravity, preventing tilt corruption.
+
+\subsection{Accelerometer Jacobians}
+The innovation function is
+\[
+\bm y_a = \bm f_{\rm meas} - \hat{\bm f}_b,
+\qquad
+\hat{\bm f}_b = R_{wb}(\hat{\bm a}_w - \bm g) + \hat{\bm b}_a(T).
+\]
+Linearizing yields Jacobians:
+\begin{align}
+\frac{\partial \hat{\bm f}_b}{\partial \delta\bm\theta} &= -\,[\hat{\bm f}_b]_\times,
+\label{eq:accel-jac-att}\\
+\frac{\partial \hat{\bm f}_b}{\partial \bm a_w} &= R_{wb},
+\label{eq:accel-jac-aw}\\
+\frac{\partial \hat{\bm f}_b}{\partial \bm b_a} &= I_3,
+\label{eq:accel-jac-bias}
+\end{align}
+where $\delta\bm\theta$ is the small-angle error and $[\cdot]_\times$ is the skew-symmetric matrix.
+
+\subsection{Magnetometer Measurement Model}
+The magnetometer senses the geomagnetic field in the body frame:
+\begin{equation}
+\bm m_{\rm meas} = R_{wb}\,\bm B_w + \bm\eta_m,
+\label{eq:mag-meas}
+\end{equation}
+where $\bm B_w$ is the known reference magnetic field in the world frame,
+and $\bm\eta_m \sim \mathcal{N}(0,R_m)$ is measurement noise.
+
+\paragraph{Role.}
+The magnetometer provides yaw observability. By choosing $\bm B_w$ appropriately:
+\begin{itemize}
+\item Use the full geomagnetic vector for full 3D correction,
+\item Use the horizontal projection $(B_N,B_E,0)$ for yaw-only correction.
+\end{itemize}
+
+\subsection{Magnetometer Jacobians}
+Predicted measurement:
+\[
+\hat{\bm m}_b = R_{wb}\bm B_w.
+\]
+Linearization:
+\begin{equation}
+\frac{\partial \hat{\bm m}_b}{\partial \delta\bm\theta} = -\,[\hat{\bm m}_b]_\times.
+\label{eq:mag-jac-att}
+\end{equation}
+No other state appears in \eqref{eq:mag-meas}, so all other Jacobians are zero.
+
+\subsection{Combined Measurement Vector}
+The full measurement vector is
+\[
+\bm y = \begin{bmatrix}\bm f_{\rm meas}\\ \bm m_{\rm meas}\end{bmatrix},
+\qquad
+\hat{\bm y} = \begin{bmatrix}\hat{\bm f}_b\\ \hat{\bm m}_b\end{bmatrix},
+\]
+with innovation covariance
+\begin{equation}
+S = C P C^\top + R,
+\qquad
+R = \begin{bmatrix} R_a & 0 \\ 0 & R_m \end{bmatrix},
+\label{eq:meas-cov}
+\end{equation}
+where $C$ is the stacked Jacobian from \eqref{eq:accel-jac-att}--\eqref{eq:accel-jac-bias} and \eqref{eq:mag-jac-att}.
+
+\subsection{Physical Interpretation}
+\begin{itemize}
+\item The accelerometer primarily constrains roll and pitch, while respecting wave accelerations
+through $\bm a_w$.
+\item The magnetometer anchors yaw against drift, with flexibility to restrict to yaw-only updates.
+\item Together they ensure full 3D attitude observability.
+\item Inclusion of $\bm b_a(T)$ makes the innovations insensitive to slow sensor thermal drift.
+\end{itemize}
+
+
