@@ -482,10 +482,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag)
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC)
 {
     // Predicted measurements
-    Vector3 v1hat = accelerometer_measurement_func(); // depends on a_w
+    Vector3 v1hat = accelerometer_measurement_func(tempC); // depends on a_w
     Vector3 v2hat = magnetometer_measurement_func();
 
     Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
@@ -566,8 +566,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(Vector3 const& acc_meas) {
-    const Vector3 v1hat = accelerometer_measurement_func();
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(Vector3 const& acc_meas, T tempC) {
+    const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
     // Cext: (3 x NX)
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
