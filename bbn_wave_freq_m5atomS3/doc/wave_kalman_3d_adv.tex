@@ -1409,3 +1409,43 @@ R_m^{1/2} \in [50,\,200]\ \mathrm{nT}.
 These should be adapted to your specific platform and sea state.
 
 
+\section{Convergence and Stability}
+\label{sec:convergence}
+
+Beyond observability, practical filtering requires stability of the error dynamics and
+bounded covariance behavior. We discuss the main mechanisms that ensure convergence.
+
+\subsection{Attitude}
+The quaternion MEKF framework ensures that the linearized attitude error dynamics remain
+locally exponentially stable in the absence of noise, provided the gain matrices are bounded.
+With accelerometer and magnetometer updates, roll, pitch, and yaw are all corrected. The use
+of quaternion error states and multiplicative correction avoids singularities and ensures
+$SO(3)$-consistency.
+
+\subsection{Velocity and Position}
+The OU prior on $\bm a_w$ prevents the double integration of white noise, which would otherwise
+cause variance to grow unbounded with $t^3$. Instead, OU-driven $\bm v,\bm p$ form a stationary
+linear Gaussian system with bounded steady-state covariance. This is the mathematical reason
+why the filter can produce meaningful $\bm v,\bm p$ estimates even without external aiding.
+
+\subsection{Third Integral $S$}
+Adding $S$ explicitly and applying the pseudo-measurement renders the system detectable. The
+covariance of $S$ remains finite, and numerical coupling between $(\bm v,\bm p)$ and $S$ is
+regularized. Without this pseudo-measurement, $P$ would inflate in the nullspace of the
+triple integrator.
+
+\subsection{Biases}
+Biases $\bm b_g,\bm b_a$ are modeled as random walks. While RW processes are not stationary,
+their covariance is bounded by construction because $Q_{bg},Q_{ba}$ are finite. Convergence to
+the true biases occurs if there is sufficient excitation: rotation for gyro biases, and tilt
+changes or known excitation spectra for accelerometer biases. Temperature-dependent drift is
+modeled via a known coefficient $K_a$, which further stabilizes bias estimates over varying
+conditions.
+
+\subsection{Effect of Gains and $R$}
+The Joseph form update ensures $P^+\succeq 0$. Gains $K_k$ are finite as long as
+$R\succ 0$. Too small $R$ may cause filter instability (over-trusting noisy sensors);
+too large $R$ leads to slow convergence. Proper tuning per Section~\ref{sec:tuning} ensures
+stable, well-damped innovations.
+
+
