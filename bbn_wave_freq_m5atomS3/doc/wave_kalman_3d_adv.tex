@@ -1566,5 +1566,30 @@ OU parameters, $R$, and $Q$ based on observed residuals and excitation. This wou
 a single filter configuration to robustly handle calm seas, storm seas, and everything in
 between, without manual re-tuning.
 
+\section{Conclusion}
+\label{sec:conclusion}
+
+We have developed and analyzed a multiplicative EKF extended with linear
+states for velocity, displacement, and their integrals, driven by a latent
+Ornstein--Uhlenbeck acceleration model. By combining quaternion-based attitude
+propagation, Van Loan discretization for OU-driven integrators, Pad\'e(6)
+approximants for embedded matrix exponentials, and pseudo-measurements to
+stabilize triple integrals, the filter achieves bounded-error estimates under
+realistic ocean wave conditions. Biases are handled explicitly, with additional
+temperature-dependent compensation for accelerometer drift. Observability and
+stability analyses demonstrate the well-posedness of the approach, and tuning
+guidelines offer practical recipes for deployment.
+
+Future work will focus on adaptive tuning of OU parameters and noise covariances,
+enabling the same filter structure to self-adjust to varying sea states and sensor
+environments without manual reconfiguration.
+
+\vspace{1em}
+\noindent\textbf{Acknowledgments.}  
+The author thanks the open-source community for foundational implementations
+on which this work builds.
+
 \end{document}
+
+
 
