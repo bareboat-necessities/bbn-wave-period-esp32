@@ -37,7 +37,7 @@ Theory, Discretization (Rodrigues, Van Loan, Pad\'e(6)), and Temperature-Depende
 \begin{abstract}
 We present a detailed mathematical development of a quaternion multiplicative EKF (MEKF) fused with an extended 
 linear kinematic chain for ocean-wave motion estimation. 
-The method augments attitude (with optional gyroscope bias) by the linear states velocity $\bm v$, displacement $\bm p$, 
+The method augments attitude (with optional gyroscope and accelerometer bias) by the linear states velocity $\bm v$, displacement $\bm p$, 
 and the integral of displacement $\bm S$, driven by a \emph{latent} world-frame acceleration $\bm a_w$ modeled as an Ornstein--Uhlenbeck (OU) process. 
 The OU prior confers bounded variance and realistic temporal correlation, preventing the drift explosion typical of double integration of noisy accelerometer data. 
 Biases are explicitly modeled: gyroscope bias as a random walk, accelerometer bias both as random walk and as systematic temperature-dependent drift. 
