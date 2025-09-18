@@ -679,3 +679,79 @@ The chosen model balances computational simplicity with sufficient realism for I
 sensors such as BMI270 and BMM150.
 
 
+\section{Pseudo-Measurement on the Third Integral}
+\label{sec:pseudo-S}
+
+A unique element of this filter is the inclusion of the third integral state
+\[
+S(t) \;=\; \int_0^t p(\tau)\,d\tau,
+\]
+where $p(t)$ is the displacement in world coordinates.
+This integral accumulates position over time and thus represents a 
+\emph{triple integration} of acceleration. Without regularization, $S(t)$
+would be dominated by low-frequency drift and quickly diverge.
+
+\subsection{Why Include $S$ at All?}
+One might ask why include $S$ when displacement $p$ already contains drift.
+The answer lies in the structure of stochastic processes: by explicitly modeling
+$S$, we can apply a pseudo-measurement that constrains the lowest-frequency drift
+mode of the integrator chain. This prevents the covariance from exploding in the
+null space of repeated integration.
+
+\subsection{Zero Pseudo-Measurement}
+The pseudo-measurement enforces the soft constraint
+\begin{equation}
+z_S = 0 \;\;\approx\;\; H_S\,x + \nu_S,
+\label{eq:ps-meas}
+\end{equation}
+where $H_S$ selects the $S$ block of the state vector, and $\nu_S\sim\mathcal{N}(0,R_S)$
+is fictitious Gaussian noise. In implementation:
+\begin{equation}
+H_S = \begin{bmatrix}0 & \cdots & I_3 & \cdots & 0\end{bmatrix},
+\qquad
+R_S = \mathrm{diag}(\sigma_{S,x}^2,\,\sigma_{S,y}^2,\,\sigma_{S,z}^2).
+\label{eq:ps-HR}
+\end{equation}
+
+\subsection{Kalman Update}
+The innovation for the pseudo-measurement is simply
+\begin{equation}
+\tilde y = -S_k,
+\end{equation}
+since the measurement is identically zero. The Kalman gain is
+\begin{equation}
+K_S = P H_S^\top (H_S P H_S^\top + R_S)^{-1},
+\end{equation}
+and the update is
+\begin{align}
+x^+ &= x + K_S\tilde y,\\
+P^+ &= (I-K_SH_S)P(I-K_SH_S)^\top + K_SR_SK_S^\top.
+\end{align}
+Thus $S$ is softly driven toward zero, and its covariance is bounded.
+
+\subsection{Interpretation of $R_S$}
+The choice of $R_S$ is critical. A small $R_S$ enforces a tight pseudo-measurement,
+essentially pinning $S\approx 0$ and aggressively damping drift. A large $R_S$ relaxes
+the constraint, letting $S$ wander but still preventing unbounded variance growth.
+
+Physically, $S$ has no direct observable meaning (it is an auxiliary integral).
+Therefore, $R_S$ does not correspond to sensor noise, but rather to a 
+\emph{design knob}:
+\begin{itemize}
+\item If the application tolerates only bounded displacements (e.g.\ buoy motion limited
+by mooring), use smaller $R_S$.
+\item If slow drift is acceptable, increase $R_S$ to reduce artificial feedback.
+\end{itemize}
+
+\subsection{Effect on Stability}
+By including $S$ and its pseudo-measurement, we guarantee that the extended covariance $P$
+does not develop an uncontrollable growth mode. In linear systems terminology, the augmented
+system becomes \emph{detectable}: even though $S$ is unobservable in a strict sense, the 
+pseudo-measurement provides an artificial observation that stabilizes the filter numerics.
+
+\paragraph{Key insight.} 
+The $S$ pseudo-measurement is not “cheating,” but rather a principled
+regularization. It adds just enough fictitious information to ensure 
+bounded variance in triple integrals of noisy acceleration, 
+while leaving physically observable states ($q,v,p,a_w$) unbiased.
+
