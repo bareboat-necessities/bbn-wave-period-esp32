@@ -153,9 +153,9 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
     }
 
-    // Isotropic covariance for ∫p dt pseudo-measurement
-    void set_RS_noise(T RS_noise) {
-        R_S = Matrix3::Identity() * RS_noise;
+    // Covariances for ∫p dt pseudo-measurement
+    void set_RS_noise(const Vector3& sigma_S) {
+        R_S = sigma_S.array().square().matrix().asDiagonal();
     }
 
     // Accelerometer measurement noise (std in m/s² per axis)
