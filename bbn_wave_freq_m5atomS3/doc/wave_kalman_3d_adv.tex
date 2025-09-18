@@ -1,440 +1,340 @@
-\documentclass[11pt,letterpaper]{article}
-
-\usepackage{amsmath,amssymb,amssymb,amsfonts}
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, amsfonts}
 \usepackage{bm}
-\usepackage{graphicx}
-\usepackage{cite}
 \usepackage{geometry}
-\usepackage{hyperref}
-\usepackage{microtype}
-\usepackage{booktabs}
-\usepackage{multirow}
-\usepackage{xcolor}
-\usepackage{siunitx}
-
 \geometry{margin=1in}
 
-\title{A Quaternion Multiplicative EKF with Extended Linear Kinematics and Colored World Acceleration for Marine Navigation}
-\author{Mikhail Grushinskiy}
-\date{2025}
+\title{Mathematical Foundation of the Extended Kalman3D\_Wave Filter}
+\author{Mikhail Grushinskiy \\ 2025}
+\date{}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-This paper presents a comprehensive extension of the classic quaternion multiplicative extended Kalman filter (MEKF) for embedded inertial navigation in dynamic marine environments. The proposed filter retains the robust quaternion error representation of the Lefferts--Markley--Shuster formulation while significantly augmenting the state vector with complete linear kinematics: world-frame velocity, position, and a novel integral-of-position state. A key innovation is the modeling of world acceleration as an Ornstein--Uhlenbeck (OU) random process, which effectively captures persistent low-frequency accelerations characteristic of ocean wave motion. The mathematical formulation, implementation details, and practical tuning methodology are thoroughly presented. Experimental results demonstrate superior performance in marine applications compared to traditional approaches, with particular emphasis on computational efficiency for embedded deployment.
+This document presents the mathematical formulation underlying the 
+\texttt{Kalman3D\_Wave} filter, an extended multiplicative 
+extended Kalman filter (MEKF) designed for ocean-wave sensing. 
+The filter estimates attitude, gyroscope and accelerometer biases, 
+and linear motion states by embedding a latent Ornstein--Uhlenbeck (OU) 
+world-frame acceleration process, and stabilizes long-chain integrations 
+using a pseudo-measurement on the third integral of displacement. 
+All variables are explicitly defined for clarity.
 \end{abstract}
 
-\section{Introduction}
-\label{sec:introduction}
-
-Estimating orientation and linear kinematics from low-cost inertial measurement units (IMUs) represents a fundamental challenge in robotics, autonomous navigation, and oceanographic instrumentation. The quaternion multiplicative extended Kalman filter (MEKF)  has emerged as a gold standard for attitude estimation, owing to its numerical stability, singularity avoidance, and well-understood error properties. However, traditional implementations face significant limitations when extended to full navigation solutions, particularly in marine environments characterized by persistent wave-induced accelerations.
-
-Naive integration of accelerometer measurements into velocity and position estimates diverges rapidly under such persistent disturbances, as low-frequency accelerations are misinterpreted as orientation changes or actual motion. This problem is particularly acute in oceanographic applications where wave motion dominates the acceleration spectrum and can persist for extended periods.
-
-This work addresses these limitations through several key contributions:
-\begin{itemize}
-  \item Extension of the MEKF state vector with world-frame velocity $v$, position $p$, and a novel integral of displacement $S=\int p\,dt$
-  \item Incorporation of a colored world-acceleration process $a_w$ modeled as an Ornstein--Uhlenbeck process to capture wave-induced accelerations
-  \item Development of a soft pseudo-measurement framework enforcing $S\approx 0$ to mitigate low-frequency drift without introducing artificial stiffness
-  \item Implementation of efficient discretization schemes suitable for both desktop and embedded deployment
-  \item Comprehensive experimental validation in simulated and real-world marine environments
-\end{itemize}
-
-The resulting filter maintains the mathematical elegance and robustness of the quaternion MEKF while significantly expanding its capability to handle the challenging dynamics of marine navigation.
-
-\section{Theoretical Background}
-\label{sec:background}
-
-\subsection{Quaternion Multiplicative EKF}
-
-The multiplicative extended Kalman filter represents attitude estimation errors using a minimal three-parameter representation while maintaining the quaternion for global attitude representation. This approach avoids the singularities associated with Euler angles while providing better numerical properties than additive quaternion filters.
-
-The core formulation follows the work of Lefferts, Markley, and Shuster~\cite{lefferts1982,markley2003}, where the attitude error is represented as a small rotation from the current estimate:
-\[
-q_{true} = q_{est} \otimes \delta q(\delta\theta)
-\]
-where $\delta q(\delta\theta) \approx [1, \tfrac{1}{2}\delta\theta^\top]^\top$ for small attitude errors $\delta\theta \in \mathbb{R}^3$.
-
-\subsection{Ornstein-Uhlenbeck Process for Colored Noise}
-
-The Ornstein-Uhlenbeck process~\cite{uhlenbeck1930} provides a mathematically tractable model for colored noise with exponential autocorrelation. For world acceleration modeling, it captures the persistent yet correlated nature of wave-induced accelerations. The continuous-time OU process is defined by the stochastic differential equation:
-\[
-da_w(t) = -\frac{1}{\tau}a_w(t)dt + \sigma dW(t)
-\]
-where $\tau$ is the correlation time, $\sigma$ controls the noise intensity, and $dW(t)$ is a Wiener process.
-
-\section{State Vector Definition and System Architecture}
-\label{sec:state_definition}
-
-The extended error-state vector $x\in\mathbb{R}^{N_X}$ is partitioned as
-\[
-x = 
-\begin{bmatrix}
-\delta\theta \\ b_g \\ v \\ p \\ S \\ a_w
-\end{bmatrix},
-\qquad
-N_X = \underbrace{3}_{\delta\theta} + \underbrace{3}_{b_g} + \underbrace{3}_{v} + \underbrace{3}_{p} + \underbrace{3}_{S} + \underbrace{3}_{a_w} = 18.
-\]
-When gyroscope bias estimation is disabled, the dimension reduces to $N_X = 15$.
+\section{State Definition}
+World frame: NED (North, East, Down).  
+Quaternion $q$ represents the rotation from world to body.  
 
 \begin{itemize}
-  \item $\delta\theta\in\mathbb{R}^3$ (rad): Small-angle attitude error in body frame, applied as a right multiplicative quaternion correction. This minimal representation maintains covariance matrix consistency while avoiding quaternion normalization constraints in the filter core.
-  
-  \item $b_g\in\mathbb{R}^3$ (rad/s): Gyroscope bias, modeled as a random walk process. This optional component allows for online calibration of sensor biases, significantly improving long-term attitude estimation accuracy.
-  
-  \item $v\in\mathbb{R}^3$ (m/s): Velocity in the world (navigation) frame. This state enables dead reckoning between absolute position updates and provides valuable motion information for control systems.
-  
-  \item $p\in\mathbb{R}^3$ (m): Displacement/position in the world frame relative to initialization. Unlike traditional approaches that directly integrate acceleration, this state benefits from the colored noise model of $a_w$, reducing drift from wave motion.
-  
-  \item $S\in\mathbb{R}^3$ (m·s): Integral of displacement, $S(t)=\int_0^t p(\tau)\,d\tau$. This novel state acts as a \emph{stability integrator}: we apply a zero pseudo-measurement on $S$ to limit unbounded low-frequency drift without introducing the high gains associated with traditional integral control.
-  
-  \item $a_w\in\mathbb{R}^3$ (m/s$^2$): World-frame specific acceleration, modeled as an Ornstein--Uhlenbeck (OU) colored noise process. This key innovation captures correlated forcing such as ocean waves, in contrast to white-noise accelerometer models that improperly attribute persistent accelerations to orientation errors or actual motion.
+\item $\delta\bm\theta \in \mathbb{R}^3$ — small attitude error (rad).
+\item $\bm b_g \in \mathbb{R}^3$ — gyroscope bias (rad/s).
+\item $\bm v \in \mathbb{R}^3$ — velocity in world frame (m/s).
+\item $\bm p \in \mathbb{R}^3$ — displacement/position in world frame (m).
+\item $\bm S \in \mathbb{R}^3$ — integral of displacement (m·s).
+\item $\bm a_w \in \mathbb{R}^3$ — latent world acceleration (m/s$^2$).
+\item $\bm b_a \in \mathbb{R}^3$ — accelerometer bias (m/s$^2$).
 \end{itemize}
 
-\section{Mathematical Formulation}
-\label{sec:formulation}
-
-\subsection{Process Model}
-
-The complete system dynamics combine nonlinear quaternion propagation with linear kinematics driven by the OU acceleration process:
-
-\subsubsection{Attitude Propagation}
-
-Quaternion propagation follows the standard kinematic equation:
+State vector:
 \[
-\dot q = \tfrac{1}{2}\Omega(\omega) q,\qquad
-\Omega(\omega)=\begin{bmatrix}
--[\omega]_\times & \omega \\ -\omega^\top & 0
-\end{bmatrix}
-\]
-where $\omega = \omega_m - b_g$ is the bias-corrected gyroscope measurement.
-
-The error state dynamics are derived through first-order linearization:
-\[
-\dot{\delta\theta} = -[\omega]_\times\,\delta\theta - \delta b_g + n_g
-\]
-where $n_g$ represents gyroscope measurement noise.
-
-\subsubsection{Linear Kinematics}
-
-The linear kinematics are governed by:
-\[
-\dot v = a_w + g,\quad \dot p = v,\quad \dot S = p,\quad
-\dot a_w = -\tfrac{1}{\tau} a_w + w_a
-\]
-where $g$ is the gravity vector and $w_a$ is the driving noise of the OU process.
-
-In world coordinates, with gravity explicitly separated, these become:
-\[
-\dot v = a_w,\quad \dot p = v,\quad \dot S = p,\quad
-\dot a_w = -\tfrac{1}{\tau} a_w + w_a
+\bm{x} = \begin{bmatrix}
+\delta\bm\theta & \bm{b}_g & \bm{v} & \bm{p} & \bm{S} & \bm{a}_w & \bm{b}_a
+\end{bmatrix}^\top.
 \]
 
-\subsection{Measurement Model}
-
-The filter incorporates accelerometer and magnetometer measurements with the following models:
-
-\subsubsection{Accelerometer Measurement}
-
-The predicted accelerometer measurement is:
+Small attitude error is right-multiplicative:
 \[
-f_b = R(q)^\top(a_w - g) + n_a
-\]
-where $n_a$ is accelerometer measurement noise.
-
-Linearizing in $\delta\theta$ using the approximation $R(q\!\otimes\!\delta q)\approx R(q)(I-[\delta\theta]_\times)$ gives:
-\[
-\delta f_b = [\hat f_b]_\times \,\delta\theta + R(q)^\top \delta a_w + n_a
+q^+ = q \otimes \delta q(\delta\bm\theta), \qquad 
+\delta q(\delta\bm\theta) \approx [\,1, \tfrac{1}{2}\delta\bm\theta\,].
 \]
 
-\subsubsection{Magnetometer Measurement}
-
-The predicted magnetometer measurement is:
+\section{Process Models}
+\subsection{Attitude}
+Attitude kinematics:
 \[
-m_b = R(q)^\top m_w + n_m
+\dot q = \tfrac{1}{2}\, q \otimes \bm\omega_b, \qquad 
+\bm\omega_b = \bm\omega_m - \bm{b}_g,
 \]
-where $m_w$ is the world magnetic field vector and $n_m$ is magnetometer noise.
+where $\bm\omega_m$ is the measured angular velocity (rad/s).
 
-The linearized form is:
+Linearized error dynamics:
 \[
-\delta m_b = [\hat m_b]_\times \,\delta\theta + n_m
+\dot{\delta\bm\theta} = -[\bm\omega_b]_\times \delta\bm\theta - \delta\bm b_g + \bm{n}_g,
 \]
+with $[\cdot]_\times$ the skew-symmetric operator and $\bm n_g$ gyro noise.
 
-\subsubsection{Measurement Jacobian}
-
-The complete measurement Jacobian is:
+\subsection{Linear Kinematics with OU Acceleration}
 \[
-H =
-\begin{bmatrix}
-[\hat f_b]_\times & 0 & 0 & 0 & 0 & R(q)^\top \\
-[\hat m_b]_\times & 0 & 0 & 0 & 0 & 0
-\end{bmatrix}
+\dot{\bm v} = \bm a_w, \qquad
+\dot{\bm p} = \bm v, \qquad
+\dot{\bm S} = \bm p.
 \]
 
-\section{Discretization and Implementation}
-\label{sec:discretization}
-
-\subsection{Attitude and Bias Discretization}
-
-The quaternion mean is propagated using the closed-form solution for constant angular velocity:
+Latent acceleration $\bm a_w$ follows an Ornstein--Uhlenbeck (OU) process:
 \[
-q_{k+1} = \exp\left(\tfrac{1}{2}\Omega(\omega)T_s\right) q_k
+\dot{\bm a}_w = -\tfrac{1}{\tau_{aw}} \bm a_w + \bm w_{aw}(t),
 \]
-
-For the error state, the discretized attitude/bias block is:
+with correlation time $\tau_{aw}$ (s), excitation noise $\bm w_{aw}(t)$, and
 \[
-F_{\delta\theta,\delta\theta} = I - [\omega]_\times T_s,\qquad
-F_{\delta\theta,b_g} = -I T_s,\qquad
-F_{b_g,b_g}=I
+\Sigma_c = \tfrac{2}{\tau_{aw}} \Sigma_{aw}^{\mathrm{stat}},
 \]
+so that $\Sigma_{aw}^{\mathrm{stat}}$ is the stationary variance of $\bm a_w$.
 
-\subsection{Linear Kinematics Discretization}
-
-For $x_{lin}=[v^\top\ p^\top\ S^\top\ a_w^\top]^\top$, the continuous dynamics are:
+Stacked linear subsystem:
 \[
-\dot x_{lin} = A x_{lin} + G w
+\dot{\bm x}_{lin} = A \bm x_{lin} + G \bm w_{aw},
 \]
 with
 \[
-A = \begin{bmatrix}
-0 & 0 & 0 & I \\
-I & 0 & 0 & 0 \\
-0 & I & 0 & 0 \\
-0 & 0 & 0 & -\tfrac{1}{\tau} I
-\end{bmatrix},\quad
-G=\begin{bmatrix}0\\0\\0\\I\end{bmatrix}
+A =
+\begin{bmatrix}
+0 & 0 & 0 & I\\
+I & 0 & 0 & 0\\
+0 & I & 0 & 0\\
+0 & 0 & 0 & -\tfrac{1}{\tau_{aw}}I
+\end{bmatrix}, \quad
+G = \begin{bmatrix}0\\0\\0\\I\end{bmatrix}.
 \]
 
-\subsubsection{Van Loan Matrix Exponential Method}
+\section{Measurement Models}
+\subsection{Accelerometer}
+Predicted specific force in body frame:
+\[
+\bm f_b = R_{wb}(q)\,(\bm a_w - \bm g) + \bm b_a + \bm n_a,
+\]
+with $R_{wb}$ the world-to-body rotation, $\bm g=(0,0,g_0)^\top$, 
+$g_0=9.80665$ m/s$^2$, and $\bm n_a$ accelerometer noise.
 
-The exact discrete-time transition is obtained through matrix exponential computation:
+Jacobians:
+\[
+\frac{\partial \bm f_b}{\partial \delta\bm\theta} = -[\bm f_b]_\times, \quad
+\frac{\partial \bm f_b}{\partial \bm a_w} = R_{wb}, \quad
+\frac{\partial \bm f_b}{\partial \bm b_a} = I.
+\]
+
+\subsection{Magnetometer}
+Predicted magnetometer measurement:
+\[
+\bm m_b = R_{wb}(q)\,\bm m_w + \bm n_m,
+\]
+with $\bm m_w$ the world-frame magnetic reference vector.
+
+Jacobian:
+\[
+\frac{\partial \bm m_b}{\partial \delta\bm\theta} = -[\bm m_b]_\times.
+\]
+
+\subsection{Pseudo-measurement on $\bm S$}
+\[
+\bm z_S = 0 \approx H_S \bm x + \bm n_S,
+\]
+with $H_S$ extracting the $\bm S$ components.  
+This constrains the triple integral to suppress drift.
+
+\section{Discretization}
+\subsection{Attitude Error Block via Rodrigues Formula}
+Discrete transition:
+\[
+\delta\bm\theta_{k+1} = F_{\theta\theta}\,\delta\bm\theta_k,
+\qquad
+F_{\theta\theta} = \exp(-[\bm\Omega]_\times \Delta t).
+\]
+
+Let $\omega=\|\bm\Omega\|$, $\hat\omega=\bm\Omega/\omega$. Then:
+\[
+F_{\theta\theta} =
+I - \sin(\omega\Delta t)[\hat\omega]_\times 
++ (1-\cos(\omega\Delta t))[\hat\omega]_\times^2.
+\]
+
+Small-angle expansion:
+\[
+F_{\theta\theta} \approx I - [\bm\Omega]_\times \Delta t + \tfrac{1}{2}[\bm\Omega]_\times^2 \Delta t^2.
+\]
+
+\subsection{Linear OU + Integrator Chain via Van Loan}
+For $\dot{\bm x}=A\bm x + G w$ with covariance $\Sigma_c$:
+\[
+\bm x_{k+1} = \Phi \bm x_k + \eta_k, \quad 
+\eta_k\sim \mathcal{N}(0,Q_d),
+\]
+\[
+\Phi = e^{A\Delta t}, \qquad
+Q_d = \int_0^{\Delta t} e^{A\tau} G \Sigma_c G^\top e^{A^\top\tau}\,d\tau.
+\]
+
+Van Loan method: form
 \[
 M = \begin{bmatrix}
--AT_s & G\Sigma_{aw}G^\top T_s \\
-0 & A^\top T_s
-\end{bmatrix}
+- A\Delta t & G \Sigma_c G^\top \Delta t \\
+0 & A^\top \Delta t
+\end{bmatrix}, 
 \]
+compute $\exp(M)$, then extract
 \[
-\exp(M) = \begin{bmatrix} M_{11} & M_{12} \\ 0 & M_{22}\end{bmatrix},\quad
-\Phi_{lin}=M_{22}^\top,\quad Q_{lin}=\Phi_{lin} M_{12}
+\Phi = M_{22}^\top, \qquad Q_d = \Phi M_{12}.
 \]
 
-This approach provides exact discretization but requires substantial computational resources.
+\section{Padé(6) Approximation for Matrix Exponentials}
 
-\subsubsection{Analytical Discretization (Embedded Implementation)}
-
-For embedded deployment, we derive closed-form solutions through direct integration of the OU process. The discrete update for the OU process is:
+\subsection{What is Padé(6)?}
+Padé(6) is a rational approximation to the exponential:
 \[
-a_w^+ = \phi a_w + \eta,\qquad
-\phi=e^{-T_s/\tau},\quad
-\eta\sim\mathcal{N}(0,(1-\phi^2)\Sigma_{aw})
+e^A \approx R_{6}(A) = \left(I - \tfrac{1}{2}A + \tfrac{1}{24}A^2 - \tfrac{1}{720}A^3\right)^{-1}
+\left(I + \tfrac{1}{2}A + \tfrac{1}{24}A^2 + \tfrac{1}{720}A^3\right).
 \]
 
-The integrated effects on velocity, position, and displacement integral are:
-\[
-v^+ = v + c_1 a_w,\quad
-p^+ = p + T_s v + c_2 a_w,\quad
-S^+ = S + T_s p + \tfrac{T_s^2}{2}v + c_3 a_w
-\]
-with coefficients:
-\[
-c_1=\tau(1-\phi),\quad
-c_2=\tau\!\left(T_s-\tau(1-\phi)\right),\quad
-c_3=\tfrac{\tau T_s^2}{2}-\tau^2T_s+\tau^3(1-\phi)
-\]
+\subsection{Scaling and Squaring}
+To extend accuracy:
+\begin{enumerate}
+\item Scale: $A_s = A/2^s$ with $s$ chosen so $\|A_s\|$ small.
+\item Approximate: $R_6(A_s)$.
+\item Square: $(R_6(A_s))^{2^s}$.
+\end{enumerate}
 
-\subsection{Complete Extended Transition Matrix}
-
-The full extended transition matrix is block-structured:
-\[
-F_{ext} =
-\begin{bmatrix}
-F_{\delta\theta,\delta\theta} & F_{\delta\theta,b_g} & 0 & 0 & 0 & 0 \\
-0 & I & 0 & 0 & 0 & 0 \\
-0 & 0 & \Phi_{vv} & \Phi_{vp} & \Phi_{vS} & \Phi_{va_w} \\
-0 & 0 & \Phi_{pv} & \Phi_{pp} & \Phi_{pS} & \Phi_{pa_w} \\
-0 & 0 & \Phi_{Sv} & \Phi_{Sp} & \Phi_{SS} & \Phi_{Sa_w} \\
-0 & 0 & 0 & 0 & 0 & \Phi_{a_w a_w}
-\end{bmatrix}
-\]
-
-\subsection{Process Noise Covariance}
-
-The process noise covariance maintains a block-diagonal structure:
-\[
-Q_{ext} = \mathrm{blkdiag}\big(Q_{att},\ Q_{lin}\big)
-\]
-where
-\[
-Q_{att}=\begin{bmatrix}
-\sigma_g^2 I T_s & 0 \\ 0 & \sigma_b^2 I T_s
-\end{bmatrix}
-\]
-
-For the linear subsystem, the noise covariance depends on the discretization method:
-\[
-Q_{lin}=\begin{cases}
-\text{from Van Loan matrix exponential} & \text{(desktop implementation)} \\
-\mathrm{blkdiag}(0,0,0,(1-\phi^2)\Sigma_{aw}) & \text{(embedded implementation)}
-\end{cases}
-\]
-
-\section{Stability Enhancement via Integral Pseudo-Measurement}
-\label{sec:integral_pseudo_measurement}
-
-A novel aspect of our approach is the incorporation of a pseudo-measurement on the displacement integral state $S$. We softly constrain $S$ to zero:
-\[
-z_S = 0 = H_S x + \nu,\qquad
-H_S=[0\ 0\ 0\ 0\ I\ 0],\quad \nu\sim\mathcal{N}(0,R_S)
-\]
-
-This approach provides several advantages over traditional methods:
+\subsection{Why It Is Needed}
 \begin{itemize}
-\item \textbf{Drift mitigation}: Counteracts low-frequency drift without introducing high-gain feedback that could destabilize the filter
-\item \textbf{Tunability}: The measurement noise covariance $R_S$ allows adjusting the strength of the constraint based on application requirements
-\item \textbf{Physical interpretation}: Maintains physical meaningfulness of the state estimates while preventing unbounded growth
+\item On desktop: full matrix exponential available.
+\item On embedded: Padé(6) is lightweight and stable.
+\item Ensures $\Phi$ is stable and $Q_d$ positive semidefinite.
 \end{itemize}
 
-The measurement update follows the standard Kalman update equations, with careful attention to maintaining proper covariance consistency.
+\subsection{Role in the Filter}
+Padé(6) is used to discretize small fixed-size blocks ($4\times 4$, $8\times 8$)
+in the OU + integrator chain. This preserves stability and accuracy 
+at high sampling rates.
 
-\section{Implementation Considerations}
-\label{sec:implementation}
+\section{The Ornstein--Uhlenbeck (OU) Process for Wave Acceleration}
 
-\subsection{Computational Efficiency}
+\subsection{Definition}
+OU process:
+\[
+\dot{\bm a}_w(t) = -\tfrac{1}{\tau}\bm a_w(t) + \bm w(t).
+\]
+$\tau$ = correlation time (s).  
+$\bm w(t)$ = white noise.  
+$\Sigma_c$ = noise intensity.
 
-The implementation maintains computational efficiency through several strategies:
+\subsection{Stationary Distribution}
+\[
+\mathrm{Var}[\bm a_w] = \tfrac{\tau}{2}\,\Sigma_c.
+\]
+
+\subsection{Autocorrelation and Spectrum}
+\[
+R_{a}(\Delta) = \sigma_{aw}^2 \exp(-|\Delta|/\tau), \qquad
+S_a(\omega) = \frac{2\sigma_{aw}^2 \tau}{1+(\omega\tau)^2}.
+\]
+
+\subsection{Roles of $\tau$ and $\sigma$}
 \begin{itemize}
-\item \textbf{Selective matrix operations}: Exploiting the block structure of matrices to avoid unnecessary computations
-\item \textbf{Embedded optimization}: Using the analytical discretization method on resource-constrained platforms
-\item \textbf{Partial updates}: Supporting accelerometer-only or magnetometer-only updates for computational savings when full measurement is unavailable
+\item $\tau$: controls bandwidth ($f_c=1/(2\pi\tau)$).
+\item $\sigma_{aw}$: sets stationary RMS magnitude.
 \end{itemize}
 
-\subsection{Numerical Stability}
+\subsection{Why OU is a Solid Choice}
+\begin{enumerate}
+\item Stationary and bounded variance.
+\item Mean-reverting, physically plausible.
+\item Markov, compatible with Kalman filter.
+\item Tunable by $(\tau,\sigma)$.
+\end{enumerate}
 
-Numerical robustness is ensured through:
+\section{Pseudo-Measurement of the Third Integral $\bm S$}
+
+\subsection{Definition}
+\[
+\bm z_S = 0 \approx H_S \bm x + \bm n_S,
+\]
+with $H_S$ extracting $\bm S$.
+
+\subsection{Why It Is Needed}
 \begin{itemize}
-\item \textbf{Symmetry enforcement}: Explicit symmetrization of covariance matrices after updates
-\item \textbf{Condition number monitoring}: Checking for ill-conditioned matrices before inversion
-\item \textbf{Regularization}: Adding small diagonal terms to prevent numerical singularity
+\item $(v,p,S)$ chain has three integrators.
+\item $\bm S$ drifts unboundedly and is unobservable.
+\item Anchoring $\bm S\approx 0$ prevents divergence.
 \end{itemize}
 
-\section{Experimental Validation}
-\label{sec:validation}
-
-We evaluated the proposed filter through both simulation and real-world experiments in marine environments. The validation focused on three key aspects:
-
-\subsection{Wave Motion Rejection}
-
-The filter demonstrated significantly improved performance in rejecting wave-induced accelerations compared to traditional approaches. 
-
-
-\section{Conclusion}
-\label{sec:conclusion}
-
-This paper has presented a comprehensive extension of the quaternion MEKF that preserves its theoretical robustness while significantly expanding its capability for marine navigation applications. The key innovations include:
-
+\subsection{Role of $R_S$}
 \begin{itemize}
-\item Augmentation with full linear navigation states (velocity, position, and integral displacement)
-\item Modeling of world acceleration as an Ornstein-Uhlenbeck process to capture wave-induced motions
-\item A novel pseudo-measurement approach for drift mitigation without introducing artificial stiffness
-\item Efficient discretization schemes suitable for both desktop and embedded implementation
+\item Small $R_S$: strong suppression of drift.
+\item Large $R_S$: loose constraint, more freedom.
 \end{itemize}
 
-Experimental results demonstrate significant performance improvements in wave-dominated environments while maintaining computational efficiency suitable for real-time deployment. The filter represents a valuable tool for marine robotics, oceanographic instrumentation, and any application requiring robust navigation in the presence of persistent, correlated accelerations.
-
-Future work will focus on adaptive tuning of the OU process parameters based on observed wave characteristics and extension to multi-sensor fusion including GPS and acoustic positioning systems.
-
-\appendix
-\section{Derivation of OU Integral Coefficients}
-\label{app:ou_coefficients}
-
-For the OU process $a_w(t)$ with correlation time $\tau$, the solution is:
+\subsection{Kalman Interpretation}
 \[
-a_w(t) = e^{-t/\tau} a_w(0) + \int_0^t e^{-(t-s)/\tau} \sigma dW(s)
+K_S = P H_S^\top (H_S P H_S^\top + R_S)^{-1}, \quad
+\bm x^+ = \bm x + K_S (-\bm S).
 \]
 
-The deterministic components of the integrals that drive velocity, position, and displacement-integral are:
+\section{Bias States: Models and Roles}
+
+\subsection{Gyroscope Bias $\bm b_g$}
 \[
-I_1=\int_0^{T_s} a_w(s)\,ds,\quad
-I_2=\int_0^{T_s}\!\int_0^u a_w(s)\,ds\,du,\quad
-I_3=\int_0^{T_s}\!\int_0^u\!\int_0^v a_w(s)\,ds\,dv\,du
+\dot{\bm b}_g = \bm w_{bg}, \qquad 
+\bm w_{bg} \sim \mathcal{N}(0, Q_{bg}).
+\]
+Needed to prevent orientation drift from constant gyro offsets.
+
+\subsection{Accelerometer Bias $\bm b_a$}
+\[
+\dot{\bm b}_a = \bm w_{ba}, \qquad 
+\bm w_{ba} \sim \mathcal{N}(0, Q_{ba}).
+\]
+Prevents misattribution of accelerometer offset to $\bm a_w$ or attitude.
+
+\subsection{Why Biases Are Essential}
+\begin{enumerate}
+\item Long-term stability of attitude and displacement.
+\item Clean separation of sensor error from physical motion.
+\item Degrees of freedom for measurement consistency.
+\end{enumerate}
+
+\section{Kalman Filter Equations}
+\subsection{Time Update}
+\[
+\begin{aligned}
+q_{k|k-1} &= q_{k-1}\otimes\exp\!\left(\tfrac{1}{2}(\bm\omega_m - \bm b_g)\Delta t\right), \\
+\bm x_{k|k-1} &= F \bm x_{k-1|k-1}, \\
+P_{k|k-1} &= F P_{k-1|k-1} F^\top + Q.
+\end{aligned}
 \]
 
-Assuming $a_w$ remains approximately constant over the integration period for mean propagation:
+\subsection{Measurement Update}
 \[
-I_1 \approx c_1 a_w,\qquad I_2 \approx c_2 a_w,\qquad I_3 \approx c_3 a_w
+\begin{aligned}
+\nu &= \bm y_k - h(q,\bm a_w,\bm b_a),\\
+S &= HPH^\top + R,\\
+K &= PH^\top S^{-1},\\
+\bm x^+ &= \bm x + K\nu, \\
+P^+ &= (I-KH)P(I-KH)^\top + K R K^\top.
+\end{aligned}
 \]
 
-Solving the integrals analytically yields:
+Quaternion correction:
 \[
-c_1 = \int_0^{T_s} e^{-s/\tau} ds = \tau(1-e^{-T_s/\tau})
-\]
-\[
-c_2 = \int_0^{T_s} \int_0^u e^{-s/\tau} ds du = \tau\left(T_s-\tau(1-e^{-T_s/\tau})\right)
-\]
-\[
-c_3 = \int_0^{T_s} \int_0^u \int_0^v e^{-s/\tau} ds dv du = \tfrac{\tau T_s^2}{2}-\tau^2 T_s+\tau^3(1-e^{-T_s/\tau})
+q^+ \leftarrow q \otimes \delta q(\delta\bm\theta),\qquad
+\delta\bm\theta\leftarrow 0.
 \]
 
-These coefficients are exact for the deterministic mean dynamics of the OU-driven subsystem and match the implementation used in embedded builds.
-
-\section{Implementation Details}
-\label{app:implementation}
-
-The C++ implementation provides a templated design allowing flexibility in precision and feature selection:
-
+\section{Observability and Roles}
 \begin{itemize}
-\item \textbf{Template parameters}: Floating-point type (T) and bias estimation flag (with\_bias)
-\item \textbf{Eigen integration}: Leverages the Eigen library for matrix operations with optional Arduino compatibility
-\item \textbf{Configurable parameters}: All noise parameters and time constants are user-adjustable
-\item \textbf{Partial update support}: Accelerometer-only or magnetometer-only updates for various operational scenarios
+\item Roll/pitch: observable from accelerometer.
+\item Yaw: observable from magnetometer.
+\item Gyro/accel biases: observable via long-term innovations.
+\item Latent $a_w$: observable through accelerometer + OU prior.
+\item $v,p,S$: indirectly constrained via $a_w$ and pseudo-measure on $S$.
 \end{itemize}
 
-The code maintains the original MEKF structure where possible, ensuring backward compatibility with existing implementations while providing the extended functionality.
-
-\begin{thebibliography}{20}
-\bibitem{lefferts1982}
-Lefferts, E.~J., Markley, F.~L., and Shuster, M.~D. (1982). 
-``Kalman filtering for spacecraft attitude estimation.'' 
-\emph{Journal of Guidance, Control, and Dynamics}, 5(5):417--429.
-
-\bibitem{markley2003}
-Markley, F.~L. (2003). 
-``Attitude error representations for Kalman filtering.'' 
-\emph{Journal of Guidance, Control, and Dynamics}, 26(2):311--317.
-
-\bibitem{uhlenbeck1930}
-Uhlenbeck, G.~E. and Ornstein, L.~S. (1930).
-``On the theory of Brownian motion.''
-\emph{Physical Review}, 36(5):823--841.
-
-\bibitem{jazwinski1970}
-Jazwinski, A.~H. (1970). 
-\emph{Stochastic Processes and Filtering Theory}. 
-Academic Press.
-
-\bibitem{crassidis2011}
-Crassidis, J.~L. and Junkins, J.~L. (2011).
-\emph{Optimal Estimation of Dynamic Systems}.
-Chapman and Hall/CRC.
-
-\bibitem{farrell2008}
-Farrell, J.~A. (2008).
-\emph{Aided Navigation: GPS with High Rate Sensors}.
-McGraw-Hill Professional.
-
-\bibitem{lefferts1982}
-Lefferts, E.~J., Markley, F.~L., and Shuster, M.~D. (1982). 
-``Kalman filtering for spacecraft attitude estimation.'' 
-\emph{Journal of Guidance, Control, and Dynamics}, 5(5):417--429.
-
-\bibitem{markley2003}
-Markley, F.~L. (2003). 
-``Attitude error representations for Kalman filtering.'' 
-\emph{Journal of Guidance, Control, and Dynamics}, 26(2):311--317.
-
-
-\end{thebibliography}
+\section{Tuning Parameters}
+\begin{itemize}
+\item $Q_{bg}$: gyro bias random walk variance.
+\item $Q_{ba}$: accelerometer bias random walk variance.
+\item $\tau_{aw}$: OU correlation time.
+\item $\Sigma_{aw}^{stat}$: OU stationary variance.
+\item $R_{acc},R_{mag}$: sensor noise covariance.
+\item $R_S$: pseudo-measurement covariance for $\bm S$.
+\end{itemize}
 
 \end{document}
