@@ -49,7 +49,7 @@ Finally, we discuss tuning strategies and the prospect of adaptive parameter est
 
 \section{Introduction}
 Estimating wave-induced motion from an IMU is fundamentally challenging. The IMU provides angular velocity and specific force, 
-but extracting displacement requires triple integration if treated naively. Biases and noise cause unbounded drift. 
+but extracting displacement requires double integration if treated naively. Biases and noise cause unbounded drift. 
 Moreover, wave accelerations are not white but correlated in time, reflecting the physics of sea surface gravity waves. 
 Thus, a specialized state-space formulation is required. 
 
