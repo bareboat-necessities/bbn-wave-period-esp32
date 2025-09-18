@@ -976,4 +976,132 @@ The block structure of $Q$ mirrors that of $F$. In particular:
 \end{itemize}
 Together these ensure all states remain bounded in variance, even under long integrations.
 
+\section{Kalman Update, Joseph Form, and the Role of the Measurement Covariance}
+\label{sec:kalman-update}
+
+This section presents the measurement-update step used throughout the filter for (i) the stacked
+accelerometer+magnetometer measurement and (ii) the $S$-pseudo-measurement. We highlight the
+\emph{Joseph} covariance update, which is numerically more robust than the basic $P^+=(I-KC)P$ form,
+and we discuss how the measurement covariance $R$ influences observability, gain magnitude, and
+steady-state performance.
+
+\subsection{General Linearized Measurement Model}
+Let the (possibly stacked) measurement be written as
+\begin{equation}
+\bm y_k = h(x_k) + \bm \nu_k,\qquad \bm \nu_k \sim \mathcal{N}(0,R),
+\label{eq:meas-gen}
+\end{equation}
+with linearization about the predicted state $\hat x_k^-$
+\begin{equation}
+\hat{\bm y}_k^- \;=\; h(\hat x_k^-),\qquad
+C_k \;=\; \left.\frac{\partial h}{\partial x}\right|_{\hat x_k^-}.
+\label{eq:meas-linearization}
+\end{equation}
+The innovation and its covariance are
+\begin{align}
+\tilde{\bm y}_k &= \bm y_k - \hat{\bm y}_k^-,
+\label{eq:innovation}\\
+S_k &= C_k P_k^- C_k^\top + R.
+\label{eq:innovation-cov}
+\end{align}
+The Kalman gain is computed by a symmetric positive-definite solve in $S_k$
+\begin{equation}
+K_k \;=\; P_k^- C_k^\top S_k^{-1}.
+\label{eq:kalman-gain}
+\end{equation}
+
+\subsection{Joseph-Stabilized Covariance Update}
+The \emph{Joseph form} ensures $P_k^+\succeq 0$ up to roundoff and avoids deficit-rank artifacts:
+\begin{equation}
+P_k^+ \;=\; (I - K_k C_k)\,P_k^-\, (I - K_k C_k)^\top + K_k R K_k^\top.
+\label{eq:joseph}
+\end{equation}
+In practice, we also enforce symmetry by
+\begin{equation}
+P_k^+ \leftarrow \tfrac{1}{2}\big(P_k^+ + P_k^{+\top}\big),
+\label{eq:symmetrize}
+\end{equation}
+which is benign and combats small numerical asymmetries.
+
+\subsection{Accelerometer + Magnetometer Stack}
+For the stacked measurement
+\[
+\bm y_k = 
+\begin{bmatrix}
+\bm f_{{\rm meas},k}\\ \bm m_{{\rm meas},k}
+\end{bmatrix},\qquad
+\hat{\bm y}_k^- =
+\begin{bmatrix}
+R_{wb}(\hat{\bm a}_{w,k}^- - \bm g) + \hat{\bm b}_{a,k}^-(T_k)\\[2pt]
+R_{wb}\,\bm B_w
+\end{bmatrix},
+\]
+the Jacobian takes the block form
+\begin{equation}
+C_k \;=\;
+\begin{bmatrix}
+-\,[\hat{\bm f}_{b,k}^-]_\times & 0 & 0 & 0 & 0 & R_{wb} & I_3\\[2pt]
+-\,[\hat{\bm m}_{b,k}^-]_\times & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix},
+\label{eq:C-acc-mag}
+\end{equation}
+where the columns correspond to $(\delta\bm\theta,\ \bm b_g,\ \bm v,\ \bm p,\ \bm S,\ \bm a_w,\ \bm b_a)$.
+The measurement covariance is block diagonal:
+\begin{equation}
+R \;=\; 
+\begin{bmatrix}
+R_a & 0\\ 0 & R_m
+\end{bmatrix}.
+\label{eq:R-acc-mag}
+\end{equation}
+Equation \eqref{eq:C-acc-mag} expresses three key physical couplings:
+(i) attitude enters both sensors via a skew-symmetric sensitivity,
+(ii) the latent world-acceleration \(\bm a_w\) enters the accelerometer through the rotation \(R_{wb}\),
+(iii) the accelerometer bias enters additively.
+
+\subsection{Pseudo-Measurement on $S$}
+The $S$-pseudo-measurement \((z_S=0)\) uses
+\begin{equation}
+C_{S} \;=\; \begin{bmatrix} 0 & 0 & 0 & 0 & I_3 & 0 & 0 \end{bmatrix},\qquad
+R_S \;=\; \mathrm{diag}(\sigma_{S,x}^2,\sigma_{S,y}^2,\sigma_{S,z}^2).
+\label{eq:C-R-S}
+\end{equation}
+Innovation: $\tilde y_S = - \hat S_k^-$. Gain and update follow \eqref{eq:kalman-gain}--\eqref{eq:joseph}.
+
+\subsection{Role of the Measurement Covariance $R$}
+The matrix $R$ determines (i) the relative trust between model and measurements,
+(ii) the steady-state gains, and (iii) the balance between noise rejection and responsiveness.
+
+\paragraph{Accelerometer $R_a$.}
+Larger $R_a$ reduces the accelerometer’s leverage, protecting attitude from transient linear accelerations
+but slowing bias and $a_w$ convergence. Smaller $R_a$ tightens roll/pitch but risks injecting wave-induced
+accelerations into attitude unless $\bm a_w$ is modeled (as here).
+
+\paragraph{Magnetometer $R_m$.}
+Larger $R_m$ weakens yaw correction (useful near magnetic disturbances). If yaw-only updates are desired,
+set the world reference \(\bm B_w\) horizontal; then \([\hat{\bm m}_b]_\times\) only corrects yaw.
+
+\paragraph{Pseudo $R_S$.}
+The parameter $R_S$ is a \emph{design knob}: it is not sensor noise, but a regularization weight. 
+Making $R_S$ small aggressively suppresses triple-integral drift (pinning $S\!\approx\!0$); making it large
+allows slower drift while still bounding covariance growth. In all cases, \eqref{eq:joseph} ensures the update
+remains numerically stable.
+
+\subsection{Observability and Conditioning}
+With accelerometer and magnetometer, the attitude is fully observable (roll/pitch from gravity, yaw from magnetic field).
+The latent OU \(\bm a_w\) decouples true linear acceleration from gravity so that roll/pitch estimates remain unbiased in motion.
+The $S$-pseudo-measurement ensures detectability of the triple-integrator chain, preventing uncontrolled variance growth.
+
+\subsection{Post-Update Quaternion Correction}
+After the state update, the small-angle correction is applied multiplicatively to the quaternion:
+\begin{equation}
+\delta q(\delta\bm\theta) \approx \begin{bmatrix}1\\ \tfrac{1}{2}\delta\bm\theta\end{bmatrix},
+\qquad
+q^+ \;=\; q^- \otimes \delta q(\delta\bm\theta),
+\qquad
+\delta\bm\theta \leftarrow 0.
+\label{eq:quat-correct}
+\end{equation}
+This preserves unit norm and keeps the attitude error minimal (on the tangent space) for the next cycle.
+
 
