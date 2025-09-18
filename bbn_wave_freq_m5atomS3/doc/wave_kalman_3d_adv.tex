@@ -86,7 +86,7 @@ with the following components:
   \bm S(t) = \int_0^t \bm p(\tau)\, d\tau,
   \]
   which, although not physically measured, serves as a control variable for drift suppression.
-\item $\bm a_w \in \mathbb{R}^3$: the latent world-frame acceleration, modeled as an Ornstein--Uhlenbeck (OU) process to enforce bounded variance of acceleration and temporal correlation.
+\item $\bm a_w \in \mathbb{R}^3$: the latent world-frame acceleration, modeled as an Ornstein--Uhlenbeck (OU) process to enforce stationary variance of acceleration and realistic temporal correlation.
 \item $\bm b_{a0} \in \mathbb{R}^3$: the baseline accelerometer bias at a fixed reference temperature $T_\text{ref}$.
 \end{itemize}
 
@@ -764,10 +764,10 @@ by mooring), use smaller $R_S$.
 \end{itemize}
 
 \subsection{Effect on Stability}
-By including $S$ and its pseudo-measurement, we guarantee that the extended covariance $P$
-does not develop an uncontrollable growth mode. In linear systems terminology, the augmented
+By including $S$ and its pseudo-measurement, in linear systems terminology, the augmented
 system becomes \emph{detectable}: even though $S$ is unobservable in a strict sense, the 
-pseudo-measurement provides an artificial observation that stabilizes the filter numerics.
+pseudo-measurement provides an artificial observation that stabilizes the filter numerics and
+uncontrolled growth of displacement.
 
 \paragraph{Key insight.} 
 The $S$ pseudo-measurement is not “cheating,” but rather a principled
