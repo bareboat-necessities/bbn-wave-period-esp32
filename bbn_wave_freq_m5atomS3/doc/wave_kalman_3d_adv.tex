@@ -1510,3 +1510,60 @@ In practice, one should monitor:
 These diagnostics help detect sensor faults or mis-tuned parameters.
 
 
+\section{Future Work}
+\label{sec:future-work}
+
+While the presented filter already produces consistent estimates of attitude,
+velocity, displacement, and biases under realistic sea-state conditions,
+further improvements can be made in the area of \emph{adaptive tuning}.
+
+\subsection{Motivation}
+At present, process and measurement noise covariances ($Q$ and $R$) as well as
+the OU parameters $(\tau,\sigma)$ are chosen \emph{a priori} from datasheets,
+calibration, and sea-state heuristics (see Section~\ref{sec:tuning}).
+However, ocean wave spectra and sensor environments can vary significantly:
+\begin{itemize}
+\item Sea states may shift from calm to rough within hours.
+\item Sensor noise levels may change with temperature, aging, or magnetic interference.
+\item Platform dynamics (e.g.\ moored vs.\ free-floating buoys) alter excitation and bias observability.
+\end{itemize}
+A fixed set of tuning parameters cannot optimally capture all conditions.
+
+\subsection{Adaptive OU Parameters}
+The OU correlation time $\tau$ and stationary variance $\sigma^2$ could be adapted online:
+\begin{itemize}
+\item Estimate dominant acceleration period from recent $\bm a_w$ spectra.
+\item Map this to $\tau$ via the relation $f_c = 1/(2\pi\tau)$ (see Eq.~\ref{eq:tau-map}).
+\item Scale $\sigma$ from the observed RMS of innovations, to reflect actual sea-state accelerations.
+\end{itemize}
+This would preserve bounded covariance while tailoring dynamics to the encountered waves.
+
+\subsection{Adaptive Measurement Covariances}
+Measurement covariances $R_a$ and $R_m$ could be adapted by monitoring residual statistics:
+\begin{equation}
+\hat R = \frac{1}{N}\sum_{k=1}^N \tilde y_k \tilde y_k^\top,
+\end{equation}
+with $\tilde y_k$ the innovations. If $\hat R$ exceeds the nominal $R$, inflate $R$ to
+prevent over-confidence; if $\hat R$ is consistently smaller, reduce $R$ to allow tighter tracking.
+
+\subsection{Adaptive Process Noise for Biases}
+Gyro and accelerometer bias random walks could be adapted based on innovation covariance mismatch.
+For example, when residuals show excess low-frequency drift not captured by current $Q_{bg}$,
+increase it; when residuals are over-smoothed, decrease it. This prevents both filter divergence
+and unnecessary noise injection.
+
+\subsection{Practical Considerations}
+Adaptive tuning must be implemented cautiously:
+\begin{itemize}
+\item Use long-enough windows ($N\gg 1$) for residual statistics to avoid oscillatory gains.
+\item Apply upper and lower bounds on $\tau$, $\sigma$, $Q$, $R$ to ensure stability.
+\item Couple adaptation with sanity monitors (Section~\ref{sec:implementation}).
+\end{itemize}
+
+\subsection{Summary}
+The most promising next step is to replace fixed tuning with adaptive laws that update
+OU parameters, $R$, and $Q$ based on observed residuals and excitation. This would allow
+a single filter configuration to robustly handle calm seas, storm seas, and everything in
+between, without manual re-tuning.
+
+
