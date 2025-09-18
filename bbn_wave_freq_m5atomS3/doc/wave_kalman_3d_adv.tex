@@ -55,7 +55,6 @@ Thus, a specialized state-space formulation is required.
 The \texttt{Kalman3D\_Wave} filter is designed with these challenges in mind. 
 It is a multiplicative EKF in which the quaternion is the central orientation representation, 
 augmented by translational kinematics driven by a latent Ornstein--Uhlenbeck acceleration process. 
-This design provides bounded variance, stability, and physical realism.
 
 The contributions of this paper are:
 \begin{itemize}
@@ -87,7 +86,7 @@ with the following components:
   \bm S(t) = \int_0^t \bm p(\tau)\, d\tau,
   \]
   which, although not physically measured, serves as a control variable for drift suppression.
-\item $\bm a_w \in \mathbb{R}^3$: the latent world-frame acceleration, modeled as an Ornstein--Uhlenbeck (OU) process to enforce bounded variance and temporal correlation.
+\item $\bm a_w \in \mathbb{R}^3$: the latent world-frame acceleration, modeled as an Ornstein--Uhlenbeck (OU) process to enforce bounded variance of acceleration and temporal correlation.
 \item $\bm b_{a0} \in \mathbb{R}^3$: the baseline accelerometer bias at a fixed reference temperature $T_\text{ref}$.
 \end{itemize}
 
@@ -753,7 +752,7 @@ Thus $S$ is softly driven toward zero, and its covariance is bounded.
 \subsection{Interpretation of $R_S$}
 The choice of $R_S$ is critical. A small $R_S$ enforces a tight pseudo-measurement,
 essentially pinning $S\approx 0$ and aggressively damping drift. A large $R_S$ relaxes
-the constraint, letting $S$ wander but still preventing unbounded variance growth.
+the constraint, letting $S$ wander but still suppressing drift.
 
 Physically, $S$ has no direct observable meaning (it is an auxiliary integral).
 Therefore, $R_S$ does not correspond to sensor noise, but rather to a 
@@ -772,8 +771,7 @@ pseudo-measurement provides an artificial observation that stabilizes the filter
 
 \paragraph{Key insight.} 
 The $S$ pseudo-measurement is not “cheating,” but rather a principled
-regularization. It adds just enough fictitious information to ensure 
-bounded variance in double integrals of noisy acceleration, 
+regularization. It adds just enough fictitious information to reduce drift in double integrals of noisy acceleration, 
 while leaving physically observable states ($q,v,p,a_w$) unbiased.
 
 \section{Measurement Models: Accelerometer and Magnetometer}
@@ -1455,8 +1453,7 @@ regularized. Without this pseudo-measurement, $P$ would inflate in the nullspace
 triple integrator.
 
 \subsection{Biases}
-Biases $\bm b_g,\bm b_a$ are modeled as random walks. While RW processes are not stationary,
-their covariance is bounded by construction because $Q_{bg},Q_{ba}$ are finite. Convergence to
+Biases $\bm b_g,\bm b_a$ are modeled as random walks. Convergence to
 the true biases occurs if there is sufficient excitation: rotation for gyro biases, and tilt
 changes or known excitation spectra for accelerometer biases. Temperature-dependent drift is
 modeled via a known coefficient $K_a$, which further stabilizes bias estimates over varying
