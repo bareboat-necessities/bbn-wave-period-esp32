@@ -1195,3 +1195,106 @@ desktop Van Loan implementation.
 \end{itemize}
 Together, they provide consistency across desktop prototyping and embedded deployment.
 
+\section{Observability and Identifiability}
+\label{sec:observability}
+
+This section analyzes what can (and cannot) be inferred from the proposed sensing setup.
+We use a local (linearized) observability perspective for intuition, with emphasis on
+the roles of gravity, magnetic field, the OU latent acceleration, and the $S$ pseudo-measurement.
+
+\subsection{Setup and Linearized Model}
+Let the extended state be
+\[
+x^\top=\begin{bmatrix}
+\delta\bm\theta^\top & \bm b_g^\top & \bm v^\top & \bm p^\top & \bm S^\top & \bm a_w^\top & \bm b_a^\top
+\end{bmatrix}.
+\]
+Over one step (about a nominal trajectory) the linearized dynamics and output read
+\begin{equation}
+\dot x = A x + G w,
+\qquad
+y = C x + \nu,
+\label{eq:lin-obs}
+\end{equation}
+where $A$ is the Jacobian of the continuous dynamics, $G$ the process noise input, and
+$C$ the stacked Jacobian of the accelerometer, magnetometer, and (optionally) $S$ pseudo-measurement.
+The discrete observability matrix over $L$ steps is
+\begin{equation}
+\mathcal{O}_L \;\triangleq\; \begin{bmatrix}
+C\\
+C\Phi\\
+C\Phi^2\\
+\vdots\\
+C\Phi^{L-1}
+\end{bmatrix},
+\qquad
+\Phi = e^{A\Delta},
+\label{eq:obs-matrix}
+\end{equation}
+and local (linear) observability is indicated by $\mathrm{rank}(\mathcal{O}_L)$.
+
+\subsection{Attitude Observability}
+\paragraph{Accelerometer alone.} With $\bm f_{\rm meas}=R_{wb}(\bm a_w-\bm g)+\bm b_a+\eta_a$,
+and \emph{at rest} (i.e.\ $\bm a_w\approx 0$), the accelerometer reduces to
+$\bm f_{\rm meas}\approx -R_{wb}\bm g+\bm b_a$. Thus roll/pitch are locally observable
+from gravity direction, but yaw is not. Under nonzero linear acceleration, gravity is
+confounded by $\bm a_w$; without modeling $\bm a_w$, roll/pitch become biased in motion.
+
+\paragraph{Magnetometer.} With $\bm m_{\rm meas}=R_{wb}\bm B_w+\eta_m$, yaw becomes observable,
+provided that $\bm B_w$ and $\bm g$ are not colinear. If the magnetometer is used in
+yaw-only mode (horizontal field $\bm B_w=(B_N,B_E,0)$), the combination of gravity and
+horizontal field still fully observes attitude.
+
+\paragraph{Conclusion.} \emph{Attitude is locally observable with accelerometer+magnetometer.}
+The OU latent $\bm a_w$ prevents linear acceleration from corrupting roll/pitch:
+accelerations are explained by $\bm a_w$ rather than misattributed to tilt.
+
+\subsection{Bias Observability}
+\paragraph{Gyro bias $\bm b_g$.} It enters the attitude error dynamics as 
+$\dot{\delta\bm\theta}=-[\bm\omega-\bm b_g]_\times\delta\bm\theta - \delta\bm b_g + \cdots$,
+hence persistent excitation in $\bm\omega$ (non-colinear rotations over time) makes
+$\bm b_g$ observable through attitude innovations. With no rotation, $\bm b_g$ is only
+weakly observable via magnetometer/accelerometer corrections, leading to slow convergence.
+
+\paragraph{Accelerometer bias $\bm b_a$.} It is additive in the accelerometer channel.
+Separation between $\bm b_a$ and $\bm a_w$ requires time-varying orientation $R_{wb}(t)$
+and/or spectral separation imposed by the OU prior on $\bm a_w$. Intuitively, $\bm b_a$
+is constant/slow (random walk), while $\bm a_w$ is zero-mean, correlated fluctuations;
+with sufficient attitude excitation, the filter can attribute DC (and very low frequency)
+components to $\bm b_a$ and correlated dynamics to $\bm a_w$. Temperature variation aids
+identifiability of $\bm b_{a0}$ when the linear coefficient $K_a$ is known.
+
+\subsection{Translational States $(\bm v,\bm p,\bm S)$}
+Absent any absolute position sensor, global $\bm p$ is not \emph{absolutely} observable
+(only up to a drift). However:
+\begin{itemize}
+\item The OU prior on $\bm a_w$ ensures \emph{bounded} variance for $\bm v$ and $\bm p$
+under propagation (in contrast with integrating white acceleration).
+\item The $S$ pseudo-measurement renders the triple-integrator chain \emph{detectable}:
+low-frequency drift modes are softly constrained, preventing covariance blow-up.
+\end{itemize}
+Thus the combined system is not fully observable in the strict sense (absolute position
+remains gauge-like), but is \emph{stochastically well-posed}: the covariance remains bounded,
+and estimates remain physically meaningful over long windows.
+
+\subsection{Rank Arguments (Sketches)}
+Let $C_{\rm am}$ be the stacked Jacobian for accelerometer and magnetometer:
+\[
+C_{\rm am}=
+\begin{bmatrix}
+-[\hat{\bm f}_b]_\times & 0 & 0 & 0 & 0 & R_{wb} & I_3\\
+-[\hat{\bm m}_b]_\times & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix}.
+\]
+\begin{itemize}
+\item If $\bm g$ and $\bm B_w$ are not colinear, the columns associated with $\delta\bm\theta$
+span $\mathbb{R}^3$ generically; hence attitude is locally observable.
+\item The columns for $\bm a_w$ (through $R_{wb}$) and for $\bm b_a$ (through $I_3$)
+are linearly independent for time-varying $R_{wb}$, which promotes identifiability.
+\item Appending $C_S=[0\;\,0\;\,0\;\,0\;\,I_3\;\,0\;\,0]$ introduces direct sensitivity to $\bm S$,
+closing the lowest-frequency drift mode of the chain $(\bm v,\bm p,\bm S)$.
+\end{itemize}
+Over multiple steps, $\mathcal{O}_L$ gathers the time variations of $R_{wb}(t)$ and the OU dynamics
+to lift additional modes. The result is a detectable system with bounded estimation error covariances.
+
+
