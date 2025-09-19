@@ -352,7 +352,7 @@ Kalman_INS<T, with_gyro_bias, with_accel_bias>::Kalman_INS(
 
     // Seed latent a (and jerk) covariance to stationary Var[a] for a; modest for jerk
     Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat_;
-    Pext.template block<3,3>(OFF_JW, OFF_JW) = (Matrix3::Identity()* (T(1.0)));
+    Pext.template block<3,3>(OFF_JW, OFF_JW) = (Matrix3::Identity()* (T(0.05)));
 
     if constexpr (with_accel_bias) {
         Pext.template block<3,3>(OFF_BA, OFF_BA) = Matrix3::Identity() * (sigma_bacc0_ * sigma_bacc0_);
