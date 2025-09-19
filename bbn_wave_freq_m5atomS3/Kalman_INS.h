@@ -673,7 +673,6 @@ void Kalman_INS<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas
 }
 
 // ===== Build F and Q (discrete) =====
-
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman_INS<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     T Ts, MatrixNX& F_a_ext, MatrixNX& Q_a_ext)
@@ -681,7 +680,7 @@ void Kalman_INS<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     F_a_ext.setIdentity();
     Q_a_ext.setZero();
 
-    // Attitude error (+ optional gyro bias) transition (Rodrigues small-angle)
+    // --- attitude error (+ optional gyro bias) transition (Rodrigues small-angle) ---
     Matrix3 I3 = Matrix3::Identity();
     Vector3 w = last_gyr_bias_corrected;
     T omega = w.norm();
@@ -695,70 +694,25 @@ void Kalman_INS<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
         T s = std::sin(theta), c = std::cos(theta);
         F_a_ext.template block<3,3>(0,0) = I3 - s*W + (T(1)-c)*(W*W);
     }
+
     if constexpr (with_gyro_bias) {
         F_a_ext.template block<3,3>(0,3) = -I3 * Ts;
     }
 
-    // Process noise for base
+    // --- process noise for base block (attitude error + optional gyro bias) ---
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // Linear subsystem (15 states: v,p,S,a,j), 3 axes (independent)
-#ifdef EIGEN_NON_ARDUINO
-    using Mat15   = Eigen::Matrix<T,15,15>;
-    using Mat15x3 = Eigen::Matrix<T,15,3>;
-
-    Mat15 A; A.setZero();
-    // v̇ = a
-    A.block(0, 9, 3,3) = I3;
-    // ṗ = v
-    A.block(3, 0, 3,3) = I3;
-    // Ṡ = p
-    A.block(6, 3, 3,3) = I3;
-    // ȧ = j
-    A.block(9,12, 3,3) = I3;
-    // j̇ = -(1/τ²) a - (2/τ) j
-    const T tau = std::max(T(1e-6), tau_lat_);
-    A.block(12, 9, 3,3) = -(T(1)/(tau*tau)) * I3;
-    A.block(12,12, 3,3) = -(T(2)/tau) * I3;
-
-    Mat15x3 G; G.setZero();
-    G.block(12,0,3,3) = I3; // noise drives jerk j
-
-    // White-noise power to make Var[a] = Sigma_aw_stat_
-    Matrix3 Sigma_c = (T(4)/(tau*tau*tau)) * Sigma_aw_stat_;
-
-    Mat15 Phi_lin, Qd_lin;
-    vanLoanDiscretization_15x3(A, G, Sigma_c, Ts, Phi_lin, Qd_lin);
-
-    F_a_ext.block(OFF_V, OFF_V, 15,15) = Phi_lin;
-    Q_a_ext.block(OFF_V, OFF_V, 15,15) = Qd_lin;
-
-#else
-    // Embedded: do per-axis 5x5 Van Loan and assemble
+    // --- linear subsystem [v p S a j] (15 states across 3 axes) ---
     using Mat15 = Eigen::Matrix<T,15,15>;
-    Mat15 Phi_lin; Phi_lin.setZero();
-    Mat15 Qd_lin;  Qd_lin.setZero();
+    Mat15 Phi_lin, Qd_lin;
 
     const T tau = std::max(T(1e-6), tau_lat_);
-    for (int axis=0; axis<3; ++axis) {
-        T sigma2 = Sigma_aw_stat_(axis,axis);
-
-        Matrix5 Phi_ax, Qd_ax;
-        vanLoanAxis5x1(tau, sigma2, Ts, Phi_ax, Qd_ax);
-
-        // axis layout indices inside the 15x15 block: [v p S a j] with stride 3
-        int idx[5] = {0,3,6,9,12};
-        for (int i=0;i<5;++i)
-            for (int j=0;j<5;++j) {
-                Phi_lin(idx[i]+axis, idx[j]+axis) = Phi_ax(i,j);
-                Qd_lin (idx[i]+axis, idx[j]+axis) = Qd_ax (i,j);
-            }
-    }
+    assembleLinearBlock15x15(tau, Ts, Sigma_aw_stat_, Phi_lin, Qd_lin);
 
     F_a_ext.block(OFF_V, OFF_V, 15,15) = Phi_lin;
     Q_a_ext.block(OFF_V, OFF_V, 15,15) = Qd_lin;
-#endif
 
+    // --- accelerometer bias random walk (if enabled) ---
     if constexpr (with_accel_bias) {
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
     }
