@@ -966,7 +966,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
-    T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
+    T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis) 
+{
     // States order: [v, p, S, a]
     using std::exp;
     const T Tinv    = T(1) / std::max(T(1e-12), tau);
