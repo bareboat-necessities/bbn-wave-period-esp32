@@ -86,9 +86,12 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
     bool first = true;
     bool mag_enabled = false;
+    int iter = 0;  // iteration counter
     std::vector<OutputRow> rows;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
+        iter++;  // count every accelerometer/gyro record
+
         // IMU in nautical body ENU (raw from file)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
@@ -130,18 +133,24 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         // Measurement updates
         if (with_mag && rec.time >= MAG_DELAY_SEC) {
             if (!mag_enabled) {
-                // Set magnetic world ref once, do one mag-only update to lock yaw
+                // First time: set world ref + immediate mag update
                 mekf.set_mag_world_ref(B_world);
                 mekf.measurement_update_mag_only(mag_f);
                 mag_enabled = true;
             }
+
+            // Always update accel
             mekf.measurement_update_acc_only(acc_f);
-            mekf.measurement_update_mag_only(mag_f);
+
+            // Update mag only every 3rd iteration
+            if (iter % 3 == 0) {
+                mekf.measurement_update_mag_only(mag_f);
+            }
         } else {
             mekf.measurement_update_acc_only(acc_f);
         }
 
-        // Extract quaternion estimate
+        // Extract quaternion estimate...
         auto coeffs = mekf.quaternion(); // [x,y,z,w]
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
 
