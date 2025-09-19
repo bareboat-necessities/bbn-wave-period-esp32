@@ -230,6 +230,10 @@ class EIGEN_ALIGN_MAX Kalman_INS {
 
     static void PhiAxis5x1_analytic(T tau, T h, Eigen::Matrix<T,5,5>& Phi);
     static void QdAxis5x1_analytic(T tau, T h, T sigma2_a, Eigen::Matrix<T,5,5>& Qd);
+    static void assembleLinearBlock15x15(T tau, T Ts,
+                                         const Matrix3& Sigma_aw_stat,
+                                         Matrix<T,15,15>& Phi_lin,
+                                         Matrix<T,15,15>& Qd_lin);
 
     // Van Loan utilities
 #ifdef EIGEN_NON_ARDUINO
@@ -893,3 +897,35 @@ void Kalman_INS<T, with_gyro_bias, with_accel_bias>::QdAxis5x1_analytic(
 
     Qd = qc * K;
 }
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman_INS<T, with_gyro_bias, with_accel_bias>::assembleLinearBlock15x15(
+    T tau, T Ts,
+    const Matrix3& Sigma_aw_stat,
+    Matrix<T,15,15>& Phi_lin,
+    Matrix<T,15,15>& Qd_lin)
+{
+    Phi_lin.setZero();
+    Qd_lin.setZero();
+
+    for (int axis=0; axis<3; ++axis) {
+        T sigma2 = Sigma_aw_stat(axis,axis);
+
+        Matrix5 Phi_ax, Qd_ax;
+
+        if constexpr (USE_ANALYTIC_DISCRETIZATION) {
+            PhiAxis5x1_analytic(tau, Ts, Phi_ax);
+            QdAxis5x1_analytic(tau, Ts, sigma2, Qd_ax);
+        } else {
+            vanLoanAxis5x1(tau, sigma2, Ts, Phi_ax, Qd_ax);
+        }
+
+        int idx[5] = {0,3,6,9,12};
+        for (int i=0;i<5;++i)
+            for (int j=0;j<5;++j) {
+                Phi_lin(idx[i]+axis, idx[j]+axis) = Phi_ax(i,j);
+                Qd_lin (idx[i]+axis, idx[j]+axis) = Qd_ax (i,j);
+            }
+    }
+}
+
