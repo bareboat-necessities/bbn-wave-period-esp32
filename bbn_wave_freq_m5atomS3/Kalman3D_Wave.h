@@ -856,9 +856,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     F_a_ext.setIdentity();
     Q_a_ext.setZero();
 
-    // Attitude error (+ optional bias) discrete transition
+    // === Attitude error (+ optional bias) ===
     Matrix3 I = Matrix3::Identity();
-    Vector3 w = last_gyr_bias_corrected;   // bias-corrected gyro [rad/s]
+    Vector3 w = last_gyr_bias_corrected;
     T omega = w.norm();
     T theta = omega * Ts;
 
@@ -879,28 +879,47 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // Linear subsystem [v, p, S, a_w]
-    using Mat12   = Eigen::Matrix<T,12,12>;
-    using Mat12x3 = Eigen::Matrix<T,12,3>;
+    // === Linear subsystem [v,p,S,a_w] ===
+    using Mat12 = Eigen::Matrix<T,12,12>;
+    Mat12 Phi_lin; Phi_lin.setZero();
+    Mat12 Qd_lin;  Qd_lin.setZero();
 
-    Mat12 A; A.setZero();
-    A.template block<3,3>(0,9) = Matrix3::Identity();                       // v̇ = a_w
-    A.template block<3,3>(3,0) = Matrix3::Identity();                       // ṗ = v
-    A.template block<3,3>(6,3) = Matrix3::Identity();                       // Ṡ = p
-    A.template block<3,3>(9,9) = -(T(1)/std::max(T(1e-6), tau_aw)) * Matrix3::Identity(); // ȧ_w
+    if constexpr (USE_ANALYTIC_DISCRETIZATION) {
+        // --- Use closed-form formulas ---
+        for (int axis = 0; axis < 3; ++axis) {
+            T tau    = std::max(T(1e-6), tau_aw);
+            T sigma2 = Sigma_aw_stat(axis,axis);
 
-    Mat12x3 G; G.setZero();
-    G.template block<3,3>(9,0) = Matrix3::Identity(); // noise drives a_w
+            Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
+            PhiAxis4x1_analytic(tau, Ts, Phi_axis);
+            QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
 
-    Mat12 Phi_lin, Qd_lin;
+            int idx[4] = {0,3,6,9}; // v,p,S,a offsets
+            for (int i=0;i<4;i++)
+                for (int j=0;j<4;j++) {
+                    Phi_lin(idx[i]+axis, idx[j]+axis) = Phi_axis(i,j);
+                    Qd_lin (idx[i]+axis, idx[j]+axis) = Qd_axis(i,j);
+                }
+        }
+    } else {
+        // --- Use Van Loan matrix exponential (legacy reference) ---
+        using Mat12x3 = Eigen::Matrix<T,12,3>;
+        Mat12 A; A.setZero();
+        A.template block<3,3>(0,9) = Matrix3::Identity();
+        A.template block<3,3>(3,0) = Matrix3::Identity();
+        A.template block<3,3>(6,3) = Matrix3::Identity();
+        A.template block<3,3>(9,9) = -(T(1)/std::max(T(1e-6), tau_aw)) * Matrix3::Identity();
 
-    // Desktop and embedded handle this differently
-#ifdef EIGEN_NON_ARDUINO
-    const Matrix3 Sigma_c = (T(2)/std::max(T(1e-6), tau_aw)) * Sigma_aw_stat;
-    vanLoanDiscretization_12x3(A, G, Sigma_c, Ts, Phi_lin, Qd_lin);
-#else
-    vanLoanDiscretization_12x3(A, G, Matrix3::Zero(), Ts, Phi_lin, Qd_lin);
-#endif
+        Mat12x3 G; G.setZero();
+        G.template block<3,3>(9,0) = Matrix3::Identity();
+
+    #ifdef EIGEN_NON_ARDUINO
+        const Matrix3 Sigma_c = (T(2)/std::max(T(1e-6), tau_aw)) * Sigma_aw_stat;
+        vanLoanDiscretization_12x3(A, G, Sigma_c, Ts, Phi_lin, Qd_lin);
+    #else
+        vanLoanDiscretization_12x3(A, G, Matrix3::Zero(), Ts, Phi_lin, Qd_lin);
+    #endif
+    }
 
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
