@@ -81,7 +81,7 @@ class EIGEN_ALIGN_MAX Kalman_INS {
 
     // Constructor (keeps prior signature)
     Kalman_INS(const Vector3& sigma_a, const Vector3& sigma_g, const Vector3& sigma_m,
-               T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(5e-2),
+               T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-11), T R_S_noise = T(5e-2),
                T gravity_magnitude = T(STD_GRAVITY));
 
     // Initialization
@@ -197,7 +197,7 @@ class EIGEN_ALIGN_MAX Kalman_INS {
 
     // Latent acceleration Matérn-3/2 params
     T       tau_lat_      = T(1.5);                              // correlation time [s]
-    Matrix3 Sigma_aw_stat_ = Matrix3::Identity() * T(0.24*0.24); // Var[a] (diag) [(m/s²)²]
+    Matrix3 Sigma_aw_stat_ = Matrix3::Identity() * T(0.25*0.25); // Var[a] (diag) [(m/s²)²]
 
     // Helpers
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }              // world→body
