@@ -226,6 +226,9 @@ class EIGEN_ALIGN_MAX Kalman_INS {
     // Build F and Q (discrete) for the full extended system in one step
     void assembleExtendedFandQ(T Ts, MatrixNX& F_a_ext, MatrixNX& Q_a_ext);
 
+    static void PhiAxis5x1_analytic(T tau, T h, Eigen::Matrix<T,5,5>& Phi);
+    static void QdAxis5x1_analytic(T tau, T h, T sigma2_a, Eigen::Matrix<T,5,5>& Qd);
+
     // Van Loan utilities
 #ifdef EIGEN_NON_ARDUINO
     static void vanLoanDiscretization_15x3(const Eigen::Matrix<T,15,15>& A,
@@ -753,4 +756,136 @@ void Kalman_INS<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     if constexpr (with_accel_bias) {
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
     }
+}
+
+
+template<typename T>
+static void PhiAxis5x1_analytic(T tau, T h, Eigen::Matrix<T,5,5>& Phi) {
+    using std::exp;
+    const T inv_tau = T(1) / std::max(T(1e-12), tau);
+    const T alpha   = exp(-h * inv_tau);
+
+    // Short polynomial integrals over [0,h]
+    const T C0 = h;
+    const T C1 = T(0.5) * h*h;
+
+    // Exp-weighted primitives over [0,h]
+    const T A0 = tau * (T(1) - alpha);
+    const T A1 = tau*tau * (T(1) - alpha) - tau * h * alpha;
+    const T A2 = T(2)*tau*tau*tau * (T(1) - alpha) - tau * h * (h + T(2)*tau) * alpha;
+
+    // Helper coeffs that appear in the v/p/S rows
+    const T phi_va = tau * (T(1) - alpha) + h * alpha;                  // v <- a
+    const T phi_vj = tau * (h - tau * (T(1) - alpha));                  // v <- j
+    const T phi_pa = C0 * phi_va - A1;                                  // p <- a
+    const T phi_pj = C0 * phi_vj - A0 * tau;                            // p <- j
+    const T phi_Sa = C1 * phi_va - C0 * A1 + A2;                        // S <- a
+    const T phi_Sj = C1 * phi_vj - C0 * A0 * tau + A1 * tau;            // S <- j
+
+    Phi.setZero();
+    // kinematics
+    Phi(0,0) = T(1);              // v <- v
+    Phi(1,0) = C0;                // p <- v
+    Phi(1,1) = T(1);              // p <- p
+    Phi(2,0) = C1;                // S <- v
+    Phi(2,1) = C0;                // S <- p
+    Phi(2,2) = T(1);              // S <- S
+
+    // latent a,j block (exact 2x2 exponential)
+    Phi(3,3) = alpha * (T(1) + h * inv_tau);    // a <- a
+    Phi(3,4) = tau * (T(1) - alpha);            // a <- j
+    Phi(4,3) = - (h * alpha) * (inv_tau * inv_tau); // j <- a
+    Phi(4,4) = alpha * (T(1) - h * inv_tau);        // j <- j
+
+    // couplings into v,p,S
+    Phi(0,3) = phi_va;  Phi(0,4) = phi_vj;
+    Phi(1,3) = phi_pa;  Phi(1,4) = phi_pj;
+    Phi(2,3) = phi_Sa;  Phi(2,4) = phi_Sj;
+}
+
+template<typename T>
+static void QdAxis5x1_analytic(T tau, T h, T sigma2_a, Eigen::Matrix<T,5,5>& Qd)
+{
+    using std::exp;
+    const T inv_tau = T(1) / std::max(T(1e-12), tau);
+
+    // ----- primitives -----
+    const T C0 = h;
+    const T C1 = T(0.5)*h*h;
+    const T C2 = (h*h*h)/T(3);
+    const T C3 = (h*h*h*h)/T(4);
+    const T C4 = (h*h*h*h*h)/T(5);
+
+    const T alpha  = exp(-h*inv_tau);
+    const T A0 = tau*(T(1)-alpha);
+    const T A1 = tau*tau*(T(1)-alpha) - tau*h*alpha;
+    const T A2 = T(2)*tau*tau*tau*(T(1)-alpha) - tau*h*(h + T(2)*tau)*alpha;
+    const T A3 = T(6)*tau*tau*tau*tau*(T(1)-alpha)
+               - tau*h*(h*h + T(3)*h*tau + T(6)*tau*tau)*alpha;
+
+    const T alpha2 = exp(-T(2)*h*inv_tau);
+    const T B0 = (tau/T(2)) * (T(1)-alpha2);
+    const T B1 = (tau*tau/T(4)) * (T(1) - alpha2*(T(1) + T(2)*h*inv_tau));
+    const T B2 = (tau*tau*tau/T(4)) * (T(1) - alpha2*(T(1) + T(2)*h*inv_tau + T(2)*h*h*inv_tau*inv_tau));
+
+    // noise power to get Var[a] = sigma2_a at stationarity
+    const T qc = (T(4)*sigma2_a) * inv_tau*inv_tau*inv_tau;
+
+    // Build K (integral) then scale by qc
+    Eigen::Matrix<T,5,5> K; K.setZero();
+
+    // --- a-j 2x2 sub-block (exact) ---
+    const T K_jj = B0;
+    const T K_aj = A0 - B0;
+    const T K_aa = C0 - T(2)*A0 + B0;
+
+    // --- couplings with v (by structure they mirror OU patterns with {Ck,Ak,Bk}) ---
+    const T K_vj = tau * (A0 - B0);
+    const T K_va = tau * (C0 - T(2)*A0 + B0);
+    const T K_vv = tau*tau * (C0 - T(2)*A0 + B0);
+
+    // --- couplings with p ---
+    const T K_pj = tau * (A1 - B1);
+    const T K_pa = tau * (C1 - T(2)*A1 + B1);
+    const T K_pv = tau*tau * (C1 - T(2)*A1 + B1);
+    const T K_pp = tau*tau * (C2 - T(2)*A2 + B2);
+
+    // --- couplings with S ---
+    // These follow from one more integration layer (degree rises by one);
+    // closed forms in terms of Ck/Ak/Bk remain compact:
+    const T K_Sj = tau * (A2 - B2);
+    const T K_Sa = tau * (C2 - T(2)*A2 + B2);
+    const T K_Sv = tau*tau * (C2 - T(2)*A2 + B2);
+    const T K_Sp = tau*tau * (C3 - T(2)*A3 + /*B3*/ (tau*tau*tau*T(3)/T(8))*( // B3:
+                           (T(8)/(T(3)*tau*tau*tau))*(
+                             (tau*tau*tau/T(3)) - alpha2*( (tau*tau*tau/T(3)) + tau*tau*h + tau*h*h + (T(2)/T(3))*h*h*h*inv_tau )
+                           )));
+    // For S–S we can arrange it as polynomial-square + exp cross terms (like OU K_SS).
+    // Compact closed form:
+    const T K_SS =
+        (T(0.25))*tau*tau*C4
+      - tau*tau*tau*C3
+      + T(2)*tau*tau*tau*tau*C2
+      - T(2)*tau*tau*tau*tau*tau*C1
+      + tau*tau*tau*tau*tau*tau*C0
+      - tau*tau*tau*tau*A2 + T(2)*tau*tau*tau*tau*tau*A1 - T(2)*tau*tau*tau*tau*tau*tau*A0
+      + tau*tau*tau*tau*tau*tau*B0;
+
+    // ---- assemble upper triangle ----
+    // vv vp vS va vj
+    K(0,0)=K_vv;  K(0,1)=K_pv;  K(0,2)=K_Sv;  K(0,3)=K_va;  K(0,4)=K_vj;
+    //   pp pS pa pj
+    K(1,1)=K_pp;  K(1,2)=K_Sp;  K(1,3)=K_pa;  K(1,4)=K_pj;
+    //     SS Sa Sj
+    K(2,2)=K_SS;  K(2,3)=K_Sa;  K(2,4)=K_Sj;
+    //         aa aj
+    K(3,3)=K_aa;  K(3,4)=K_aj;
+    //             jj
+    K(4,4)=K_jj;
+
+    // mirror symmetry
+    for (int i=0;i<5;++i)
+      for (int j=i+1;j<5;++j) K(j,i)=K(i,j);
+
+    Qd = qc * K;
 }
