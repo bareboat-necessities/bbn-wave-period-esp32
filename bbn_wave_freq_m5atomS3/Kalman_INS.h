@@ -30,16 +30,15 @@
 #include <limits>
 #include <stdexcept>
 
-using Eigen::Matrix;
-using Eigen::Map;
-
-
 #ifdef EIGEN_NON_ARDUINO
   #include <Eigen/Dense>
   #include <unsupported/Eigen/MatrixFunctions>  // enables .exp() on matrices (desktop)
 #else
   #include <ArduinoEigenDense.h>
 #endif
+
+using Eigen::Matrix;
+using Eigen::Map;
 
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman_INS {
