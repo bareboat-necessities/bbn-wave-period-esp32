@@ -679,7 +679,7 @@ void Kalman_INS<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     T omega = w.norm();
     T theta = omega * Ts;
 
-    if (theta < T(1e-6)) {
+    if (theta < T(1e-8)) {
         Matrix3 Wx = skew_symmetric_matrix(w);
         F_a_ext.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
     } else {
