@@ -931,9 +931,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     }
 }
 
-template<typename T>
-static void PhiAxis4x1_analytic(T tau, T h,
-                                Eigen::Matrix<T,4,4>& Phi_axis)
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
+    T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
 {
     using std::exp;
     const T inv_tau = T(1) / std::max(T(1e-12), tau);
@@ -964,8 +964,9 @@ static void PhiAxis4x1_analytic(T tau, T h,
     Phi_axis(3,3) = alpha;    // a -> a
 }
 
-template<typename T>
-static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis) {
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
+    T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
     // States order: [v, p, S, a]
     using std::exp;
     const T Tinv    = T(1) / std::max(T(1e-12), tau);
