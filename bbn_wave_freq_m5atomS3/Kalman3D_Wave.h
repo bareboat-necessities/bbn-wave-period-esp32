@@ -44,6 +44,9 @@ using Eigen::Map;
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
+    // Compile-time toggle for discretization method
+    static constexpr bool USE_ANALYTIC_DISCRETIZATION = true;
+
     // Original base (att_err + optional gyro bias)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
 
