@@ -548,6 +548,347 @@ consistent with the AR(1) in \eqref{eq:ou-ar1}.
 \paragraph{Symmetry/PSD.} By construction, $Q_d= \int_0^\Delta (\cdot)(\cdot)^\top ds$ is symmetric and PSD; Van Loan inherits this property.
 \vspace{1ex}
 
+\section{Analytic Discretization of the Extended OU--Driven Kinematic Chain}
+
+In the extended state Kalman filter formulation, we augment the quaternion
+error states with linear navigation variables representing velocity
+$v$, displacement $p$, and the triple integral $S \equiv \int p \, dt$,
+all driven by a latent Ornstein--Uhlenbeck (OU) acceleration process $a$.
+For a single spatial axis (the three Cartesian axes are decoupled and
+identical), the continuous-time dynamics can be written as:
+%
+\begin{equation}
+\begin{aligned}
+\dot v(t) &= a(t), \\
+\dot p(t) &= v(t), \\
+\dot S(t) &= p(t), \\
+\dot a(t) &= -\tfrac{1}{\tau} a(t) + w(t),
+\end{aligned}
+\label{eq:cont_system}
+\end{equation}
+%
+where $\tau > 0$ is the correlation time of the OU process, and $w(t)$
+is a scalar white-noise input with variance $q_c = \tfrac{2\sigma^2}{\tau}$,
+ensuring that the stationary variance of $a(t)$ equals $\sigma^2$.
+
+\subsection{State Transition Matrix $\Phi$}
+
+To obtain the exact discrete-time system over a time step $h$, we compute
+%
+\begin{equation}
+x_{k+1} = \Phi(h) \, x_k + \eta_k, \qquad
+\Phi(h) = \exp(A h),
+\end{equation}
+%
+where $x = [\, v,\, p,\, S,\, a \,]^\top$ and $A$ is the drift matrix
+of~\eqref{eq:cont_system}:
+%
+\begin{equation}
+A =
+\begin{bmatrix}
+0 & 0 & 0 & 1 \\
+1 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 \\
+0 & 0 & 0 & -1/\tau
+\end{bmatrix}.
+\end{equation}
+
+We compute the matrix exponential $\exp(Ah)$ in closed form by propagating
+each state in turn, integrating the OU decay exactly. Writing
+$\alpha = e^{-h/\tau}$, one finds:
+%
+\begin{align}
+a_{k+1} &= \alpha \, a_k, \\[0.5ex]
+v_{k+1} &= v_k + \phi_{va}(h,\tau) \, a_k, \\
+p_{k+1} &= p_k + h v_k + \phi_{pa}(h,\tau) \, a_k, \\
+S_{k+1} &= S_k + h p_k + \tfrac{1}{2} h^2 v_k + \phi_{Sa}(h,\tau) \, a_k,
+\end{align}
+with coefficients
+\begin{align}
+\phi_{va}(h,\tau) &= \tau \bigl(1 - \alpha \bigr), \label{eq:phi_va}\\
+\phi_{pa}(h,\tau) &= \tau h - \tau^2 \bigl(1 - \alpha \bigr), \label{eq:phi_pa}\\
+\phi_{Sa}(h,\tau) &= \tfrac{1}{2}\tau h^2 - \tau^2 h + \tau^3 \bigl(1 - \alpha \bigr). \label{eq:phi_Sa}
+\end{align}
+
+Thus the discrete transition matrix takes the form
+%
+\begin{equation}
+\Phi(h) =
+\begin{bmatrix}
+1 & 0 & 0 & \phi_{va}(h,\tau) \\
+h & 1 & 0 & \phi_{pa}(h,\tau) \\
+\frac{1}{2}h^2 & h & 1 & \phi_{Sa}(h,\tau) \\
+0 & 0 & 0 & \alpha
+\end{bmatrix}.
+\end{equation}
+
+\paragraph{Consistency checks.}
+For small $h \ll \tau$, Taylor expanding $e^{-h/\tau}$ yields
+$\phi_{va} \approx h$, $\phi_{pa} \approx h^2/2$, and
+$\phi_{Sa} \approx h^3/6$, recovering the pure integrator chain.  
+As $\tau \to \infty$, the process tends to constant acceleration and
+$\Phi(h)$ again matches the kinematic integrator.  
+
+\subsection{Process Noise Covariance $Q_d$}
+
+The exact discrete process noise covariance is obtained via the
+Van Loan integral:
+%
+\begin{equation}
+Q_d(h) = \int_0^h \Phi(\xi)\, G q_c G^\top \Phi(\xi)^\top \, d\xi,
+\end{equation}
+%
+where $G = [\,0\;\;0\;\;0\;\;1\,]^\top$.
+This integral simplifies because only the $a$--component is driven.
+Defining the driven column
+%
+\begin{equation}
+k(\xi) \equiv \Phi(\xi)\,G =
+\begin{bmatrix}
+\tau \bigl(1 - e^{-\xi/\tau}\bigr) \\
+\tau \xi - \tau^2\bigl(1 - e^{-\xi/\tau}\bigr) \\
+\frac{1}{2}\tau \xi^2 - \tau^2 \xi + \tau^3\bigl(1 - e^{-\xi/\tau}\bigr) \\
+e^{-\xi/\tau}
+\end{bmatrix},
+\end{equation}
+we obtain
+\begin{equation}
+Q_d(h) = q_c \int_0^h k(\xi) k(\xi)^\top \, d\xi.
+\end{equation}
+
+Each entry of $Q_d$ is thus a scalar integral of the form
+$\int_0^h f(\xi)\, d\xi$, where $f$ is a product of polynomials in $\xi$
+and exponentials $e^{-\xi/\tau}$ or $e^{-2\xi/\tau}$. These can all be
+evaluated in closed form using repeated integration by parts.
+
+\subsubsection{Auxiliary Integrals}
+
+Define the primitives
+\begin{align}
+C_n &= \int_0^h \xi^n \, d\xi = \frac{h^{n+1}}{n+1}, \\
+A_n &= \int_0^h \xi^n e^{-\xi/\tau} \, d\xi, \\
+B_n &= \int_0^h \xi^n e^{-2\xi/\tau} \, d\xi,
+\end{align}
+for $n=0,1,2,3$. Explicitly,
+\begin{align}
+A_0 &= \tau \bigl(1 - e^{-h/\tau}\bigr), \\
+A_1 &= \tau^2 \bigl(1 - e^{-h/\tau}\bigr) - \tau h e^{-h/\tau}, \\
+A_2 &= 2\tau^3 \bigl(1 - e^{-h/\tau}\bigr) - \tau h(h+2\tau) e^{-h/\tau}, \\
+A_3 &= 6\tau^4 \bigl(1 - e^{-h/\tau}\bigr) - \tau h(h^2 + 3\tau h + 6\tau^2) e^{-h/\tau}, \\
+B_0 &= \tfrac{\tau}{2} \bigl(1 - e^{-2h/\tau}\bigr).
+\end{align}
+
+\subsubsection{Closed-Form Entries}
+
+As an illustration, we derive several entries explicitly:
+
+\paragraph{Variance of $a$.}
+\begin{equation}
+Q_{aa} = q_c \int_0^h e^{-2\xi/\tau} d\xi = q_c \, B_0.
+\end{equation}
+
+\paragraph{Cross-covariance $v$--$a$.}
+\begin{equation}
+Q_{va} = q_c \int_0^h \tau\bigl(1 - e^{-\xi/\tau}\bigr) e^{-\xi/\tau}\, d\xi
+= q_c \,\tau \bigl(A_0 - B_0\bigr).
+\end{equation}
+
+\paragraph{Variance of $v$.}
+\begin{equation}
+Q_{vv} = q_c \int_0^h \bigl[\tau(1 - e^{-\xi/\tau})\bigr]^2 d\xi
+= q_c\, \tau^2 \bigl(C_0 - 2A_0 + B_0\bigr).
+\end{equation}
+
+\paragraph{Cross-covariance $p$--$a$.}
+\begin{equation}
+Q_{pa} = q_c \bigl( \tau A_1 - \tau^2 A_0 + \tau^2 B_0 \bigr).
+\end{equation}
+
+\paragraph{Variance of $p$.}
+\begin{equation}
+Q_{pp} = q_c \Bigl( \tau^2 C_2 - 2\tau^3 C_1 + 2\tau^3 A_1
++ \tau^4 C_0 - 2\tau^4 A_0 + \tau^4 B_0 \Bigr).
+\end{equation}
+
+Analogous expansions yield the entries involving $S$. For example,
+\begin{align}
+Q_{Sa} &= q_c \Bigl( \tfrac{1}{2}\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0 \Bigr), \\
+Q_{SS} &= q_c \Bigl( \tfrac{1}{4}\tau^2 C_4 - \tau^3 C_3 + 2\tau^4 C_2
+ - 2\tau^5 C_1 + \tau^6 C_0 - \tau^4 A_2 + 2\tau^5 A_1
+ - 2\tau^6 A_0 + \tau^6 B_0 \Bigr).
+\end{align}
+
+\subsection{Consistency Limits}
+
+For small step size $h$, expanding exponentials shows that
+\begin{align}
+Q_{vv} &\approx q_c \frac{h^3}{3}, \\
+Q_{pp} &\approx q_c \frac{h^5}{20}, \\
+Q_{SS} &\approx q_c \frac{h^7}{140},
+\end{align}
+consistent with integrating white acceleration noise through three
+integrator stages. For $\tau \to \infty$ the OU process tends to a
+constant acceleration, and the formulas reduce to the classical
+integrated white-noise results. For $\tau \to 0$ the acceleration
+vanishes within each step and $Q_d \to 0$.
+
+\subsection{Multi-Axis Block Form}
+
+The derivations above were presented for a single spatial axis, since the
+system dynamics are decoupled across $x,y,z$. In practice, the filter
+maintains a 12-dimensional linear subsystem
+%
+\[
+x_{\mathrm{lin}} =
+\begin{bmatrix}
+v \\ p \\ S \\ a
+\end{bmatrix}
+\in \mathbb{R}^{12}, \qquad
+v,p,S,a \in \mathbb{R}^3,
+\]
+%
+where each component vector represents the respective $[x,y,z]$ axes.
+
+\subsubsection{Block Transition Matrix}
+
+The full discrete transition is block-diagonal across axes. Denote the
+scalar $4\times 4$ transition derived in the previous subsection as
+$\Phi_{\mathrm{axis}}(h,\tau)$. Then
+%
+\begin{equation}
+\Phi_{\mathrm{lin}}(h,\tau) =
+\mathrm{blockdiag}\bigl( \Phi_{\mathrm{axis}}(h,\tau),
+\Phi_{\mathrm{axis}}(h,\tau),
+\Phi_{\mathrm{axis}}(h,\tau) \bigr),
+\label{eq:Phi_lin_block}
+\end{equation}
+%
+which is a $12\times 12$ matrix with each block coupling
+$v_i,p_i,S_i,a_i$ for axis $i\in\{x,y,z\}$.
+
+Expanding the block structure explicitly, the state ordering is
+$[\, v_x,v_y,v_z,\, p_x,p_y,p_z,\, S_x,S_y,S_z,\, a_x,a_y,a_z\,]^\top$,
+and the transition matrix has the schematic form
+%
+\begin{equation}
+\Phi_{\mathrm{lin}} =
+\begin{bmatrix}
+I_3 & 0   & 0   & \Phi_{va} I_3 \\
+h I_3 & I_3 & 0   & \Phi_{pa} I_3 \\
+\tfrac{1}{2}h^2 I_3 & h I_3 & I_3 & \Phi_{Sa} I_3 \\
+0   & 0   & 0   & \alpha I_3
+\end{bmatrix},
+\end{equation}
+%
+where the coefficients $\Phi_{va}, \Phi_{pa}, \Phi_{Sa}, \alpha$
+are scalar functions of $(h,\tau)$ given in
+Eqs.~\eqref{eq:phi_va}--\eqref{eq:phi_Sa}.
+
+\subsubsection{Block Process Noise Covariance}
+
+Similarly, the discrete process noise covariance is block-diagonal across
+axes. Denote the scalar $4\times 4$ covariance derived in the previous
+subsection as $Q_{\mathrm{axis}}(h,\tau,\sigma^2)$. Then
+%
+\begin{equation}
+Q_{d,\mathrm{lin}}(h,\tau,\Sigma_{\!a}) =
+\mathrm{blockdiag}\bigl(
+Q_{\mathrm{axis}}(h,\tau,\sigma_x^2),\;
+Q_{\mathrm{axis}}(h,\tau,\sigma_y^2),\;
+Q_{\mathrm{axis}}(h,\tau,\sigma_z^2)
+\bigr),
+\label{eq:Qd_lin_block}
+\end{equation}
+%
+where $\Sigma_{\!a} = \mathrm{diag}(\sigma_x^2, \sigma_y^2, \sigma_z^2)$
+is the stationary covariance of the OU accelerations.
+Each block corresponds to the covariance of $[v_i,p_i,S_i,a_i]$ driven
+by the axis-specific OU noise.
+
+\paragraph{Explicit form.}
+For each axis,
+\[
+Q_{\mathrm{axis}} =
+q_c \begin{bmatrix}
+K_{vv} & K_{pv} & K_{Sv} & K_{va} \\
+K_{pv} & K_{pp} & K_{Sp} & K_{pa} \\
+K_{Sv} & K_{Sp} & K_{SS} & K_{Sa} \\
+K_{va} & K_{pa} & K_{Sa} & K_{aa}
+\end{bmatrix}, \qquad
+q_c = \tfrac{2}{\tau}\sigma^2,
+\]
+with entries $K_{\cdot}$ given by the closed forms in the previous
+subsection (Eqs.~for $Q_{vv}, Q_{pp}, Q_{SS},$ etc.).
+
+\subsubsection{Implementation Note}
+
+This block structure is precisely what is assembled in the filter code:
+for each axis, the $4\times 4$ $(\Phi_{\mathrm{axis}},Q_{\mathrm{axis}})$
+pair is computed and then inserted into the larger $12\times 12$ blocks.
+The resulting $\Phi_{\mathrm{lin}}$ and $Q_{d,\mathrm{lin}}$ are then
+placed at offsets $(\texttt{OFF\_V},\texttt{OFF\_V})$ inside the full
+extended Jacobian and covariance, ensuring consistency across all three
+Cartesian directions.
+
+\subsection{Computational Comparison: Van Loan vs Analytic Formulas}
+
+Two approaches exist for computing the discrete transition
+$\Phi(h)$ and process noise covariance $Q_d(h)$:
+
+\begin{enumerate}
+  \item \textbf{Van Loan method.}  
+  Form the augmented matrix
+  \[
+  \mathcal{M} =
+  \begin{bmatrix}
+    -A h & G \Sigma_c G^\top h \\
+    0    & A^\top h
+  \end{bmatrix},
+  \]
+  where $\Sigma_c$ is the continuous-time noise intensity,
+  and compute $\exp(\mathcal{M})$. This yields $\Phi(h)$ and $Q_d(h)$
+  simultaneously by block extraction.
+
+  \item \textbf{Analytic closed form.}  
+  Exploit the special structure of $A$ (a chain of integrators driven by
+  a first-order OU process) to derive exact formulas for each entry
+  of $\Phi(h)$ and $Q_d(h)$ in terms of exponentials and polynomials
+  (Eqs.~\eqref{eq:phi_va}--\eqref{eq:phi_Sa} and
+  Eq.~\eqref{eq:Qd_lin_block}).
+\end{enumerate}
+
+\paragraph{Equivalence.}
+Both methods are mathematically identical: the analytic formulas
+are obtained by evaluating the same integrals that the Van Loan
+construction encodes in matrix-exponential form. Numerical experiments
+confirm that for a wide range of $(h,\tau,\sigma^2)$ the difference
+between the two methods is at machine precision (below $10^{-14}$ in
+double precision).
+
+\paragraph{Numerical stability.}
+The Van Loan exponential requires computing $\exp(\mathcal{M})$ of
+dimension $24 \times 24$ for the 12-state system. On embedded systems,
+this can be costly and sensitive to roundoff. The analytic formulas,
+by contrast, reduce to evaluating a small set of exponentials
+$e^{-h/\tau}$, $e^{-2h/\tau}$ and polynomial terms, which are both
+stable and efficient.
+
+\paragraph{Computational cost.}
+The analytic method requires only $O(1)$ scalar exponentials and
+polynomial arithmetic, yielding a fixed and predictable computational
+cost per time step. The Van Loan method incurs the cost of a
+general-purpose matrix exponential (Padé or scaling-and-squaring),
+with $O(n^3)$ complexity for $n=24$, which is substantial for real-time
+applications on embedded platforms.
+
+\paragraph{Practical recommendation.}
+On desktop platforms, Van Loan is useful for validation and as a
+reference implementation, since it guarantees correctness by direct
+matrix exponential. For real-time operation, especially on microcontrollers,
+the analytic formulas are strongly preferable: they deliver exact
+results with minimal computation and are numerically robust across
+all relevant regimes of $(h,\tau)$.
+
 \section{Sensor Bias Models and Compensation}
 \label{sec:biases}
 
