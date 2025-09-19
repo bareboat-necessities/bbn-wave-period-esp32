@@ -906,3 +906,38 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
     }
 }
+
+template<typename T>
+static void PhiAxis4x1_analytic(T tau, T h,
+                                Eigen::Matrix<T,4,4>& Phi_axis)
+{
+    using std::exp;
+    const T inv_tau = T(1) / std::max(T(1e-12), tau);
+    const T alpha   = exp(-h * inv_tau);
+
+    // Coefficients (exact)
+    const T phi_va = tau * (T(1) - alpha);
+    const T phi_pa = tau * h - tau * tau * (T(1) - alpha);
+    const T phi_Sa = (T(0.5)*tau*h*h) - (tau*tau*h) + (tau*tau*tau)*(T(1) - alpha);
+
+    Phi_axis.setZero();
+    // v_{k+1} = v_k + phi_va * a_k
+    Phi_axis(0,0) = T(1);     // v -> v
+    Phi_axis(0,3) = phi_va;   // a -> v
+
+    // p_{k+1} = p_k + h v_k + phi_pa * a_k
+    Phi_axis(1,0) = h;        // v -> p
+    Phi_axis(1,1) = T(1);     // p -> p
+    Phi_axis(1,3) = phi_pa;   // a -> p
+
+    // S_{k+1} = S_k + h p_k + 0.5 h^2 v_k + phi_Sa * a_k
+    Phi_axis(2,0) = T(0.5)*h*h;   // v -> S
+    Phi_axis(2,1) = h;            // p -> S
+    Phi_axis(2,2) = T(1);         // S -> S
+    Phi_axis(2,3) = phi_Sa;       // a -> S
+
+    // a_{k+1} = alpha * a_k
+    Phi_axis(3,3) = alpha;    // a -> a
+}
+
+
