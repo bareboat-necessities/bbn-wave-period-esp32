@@ -43,6 +43,8 @@ using Eigen::Map;
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman_INS {
 
+    static constexpr bool USE_ANALYTIC_DISCRETIZATION = true;
+  
     // Base block: attitude error (3) + optional gyro bias (3)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
 
