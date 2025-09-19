@@ -732,35 +732,49 @@ Mat expm_pade6(const Mat& A) {
     const int n = A.rows();
     assert(n == A.cols());
 
-    const T theta = 3.0;
+    // Higham’s threshold for [6/6]; 3.0 is fine for these sizes
+    const T theta = T(3);
     const int max_squarings = 8;
 
-    const T c0 = 1.0;
-    const T c2 = 1.0/2.0;
-    const T c4 = 1.0/24.0;
-    const T c6 = 1.0/720.0;
+    // Correct [6/6] Padé coefficients
+    const T c0 = T(1);
+    const T c1 = T(1)/T(2);
+    const T c2 = T(1)/T(10);
+    const T c3 = T(1)/T(120);
+    const T c4 = T(1)/T(1680);
+    const T c5 = T(1)/T(30240);
+    const T c6 = T(1)/T(665280);
 
-    // 1-norm estimate
+    // 1-norm estimate (max column sum)
     T normA = A.cwiseAbs().colwise().sum().maxCoeff();
+
     int s = 0;
     if (normA > theta) {
-        s = std::min(max_squarings, static_cast<int>(std::ceil(std::log2(normA/theta))));
+        s = std::min(max_squarings,
+                     static_cast<int>(std::ceil(std::log2(normA/theta))));
     }
-    Mat As = A / T(1<<s);
+    Mat As = A / T(1 << s);
 
+    Mat I = Mat::Identity(n,n);
     Mat A2 = As * As;
     Mat A4 = A2 * A2;
     Mat A6 = A4 * A2;
 
-    Mat U = As * (c2*Mat::Identity(n,n) + c6*A2);
-    Mat V = c0*Mat::Identity(n,n) + c4*A2 + (1.0/5040.0)*A6;
+    // U = A (c1 I + c3 A^2 + c5 A^4)
+    Mat U = As * (c1*I + c3*A2 + c5*A4);
 
+    // V = c0 I + c2 A^2 + c4 A^4 + c6 A^6
+    Mat V = c0*I + c2*A2 + c4*A4 + c6*A6;
+
+    // (V - U)^{-1} (V + U)
     Mat P = V + U;
     Mat Q = V - U;
 
-    Mat R = Q.lu().solve(P);
+    // Prefer full pivoting on embedded for robustness
+    Mat R = Q.fullPivLu().solve(P);
 
-    for (int i=0;i<s;i++) {
+    // Squaring
+    for (int i = 0; i < s; ++i) {
         R = R * R;
     }
     return R;
