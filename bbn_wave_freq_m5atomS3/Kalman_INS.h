@@ -125,6 +125,11 @@ class EIGEN_ALIGN_MAX Kalman_INS {
     }
     void set_accel_bias_temp_coeff(const Vector3& ka_per_degC) { k_a_ = ka_per_degC; }
 
+    // Initial covariance for jerk states
+    void set_initial_jerk_std(T s) {
+        Pext.template block<3,3>(OFF_JW, OFF_JW) = Matrix3::Identity() * (s*s);
+    }
+  
     void set_initial_linear_uncertainty(T sigma_v0, T sigma_p0, T sigma_S0) {
         Pext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity() * (sigma_v0 * sigma_v0);
         Pext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity() * (sigma_p0 * sigma_p0);
