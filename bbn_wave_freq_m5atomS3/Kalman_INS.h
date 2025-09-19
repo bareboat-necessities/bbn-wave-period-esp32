@@ -758,9 +758,10 @@ void Kalman_INS<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     }
 }
 
-
-template<typename T>
-static void PhiAxis5x1_analytic(T tau, T h, Eigen::Matrix<T,5,5>& Phi) {
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman_INS<T, with_gyro_bias, with_accel_bias>::PhiAxis5x1_analytic(
+    T tau, T h, Eigen::Matrix<T,5,5>& Phi)
+{
     using std::exp;
     const T inv_tau = T(1) / std::max(T(1e-12), tau);
     const T alpha   = exp(-h * inv_tau);
@@ -803,8 +804,9 @@ static void PhiAxis5x1_analytic(T tau, T h, Eigen::Matrix<T,5,5>& Phi) {
     Phi(2,3) = phi_Sa;  Phi(2,4) = phi_Sj;
 }
 
-template<typename T>
-static void QdAxis5x1_analytic(T tau, T h, T sigma2_a, Eigen::Matrix<T,5,5>& Qd)
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman_INS<T, with_gyro_bias, with_accel_bias>::QdAxis5x1_analytic(
+    T tau, T h, T sigma2_a, Eigen::Matrix<T,5,5>& Qd)
 {
     using std::exp;
     const T inv_tau = T(1) / std::max(T(1e-12), tau);
