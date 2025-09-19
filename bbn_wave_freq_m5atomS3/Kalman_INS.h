@@ -533,9 +533,8 @@ void Kalman_INS<T, with_gyro_bias, with_accel_bias>::measurement_update(
     Cext.template block<3,3>(3,0)       = -skew_symmetric_matrix(v2hat); // d m_b / d (att err)
 
     Vector6 yhat; yhat << v1hat, v2hat;
-    Vector6 y;    y    << acc,   v2hat; // NOTE: we must use 'mag' below; keeping separate for clarity
-    y.template segment<3>(3) = mag;
-
+    Vector6 y;    y    << acc, mag;
+  
     Vector6 inno = y - yhat;
 
     MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
