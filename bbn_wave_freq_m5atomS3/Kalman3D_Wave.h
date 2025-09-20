@@ -656,6 +656,35 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
+// --- helper: exact ∫_0^h exp(-Wx τ) dτ with series guard ---
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+static inline typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3
+integral_exp_neg_skew(const typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3& Wx,
+                      T omega, T h)
+{
+    using Matrix3 = typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3;
+    const Matrix3 I = Matrix3::Identity();
+    const Matrix3 Wx2 = Wx * Wx;
+    const T theta = omega * h;
+
+    if (theta < T(1e-6)) {
+        // series: ∫ (I - Wx τ + 1/2 Wx^2 τ^2 - ...) dτ
+        const T h2 = h*h, h3 = h2*h, h4 = h3*h;
+        // Use Wx^3 = -ω^2 Wx to keep it stable
+        return  h*I
+              - (h2/T(2)) * Wx
+              + (h3/T(6)) * Wx2
+              + (h4 * (omega*omega) / T(24)) * Wx; // from -1/24 Wx^3
+    } else {
+        const T s = std::sin(theta);
+        const T c = std::cos(theta);
+        // ∫_0^h e^{-Wx τ} dτ = h I - ((1-c)/ω^2) Wx + ((h - s/ω)/ω^2) Wx^2
+        return  h*I
+              - ((T(1) - c) / (omega*omega)) * Wx
+              + ((h - s/omega) / (omega*omega)) * Wx2;
+    }
+}
+
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     const Vector3& /*acc_body_unused*/, T Ts,
@@ -665,40 +694,42 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     Q_a_ext.setZero();
 
     const Matrix3 I3 = Matrix3::Identity();
-    const Vector3 w  = last_gyr_bias_corrected;   // bias-corrected gyro
-    const Matrix3 Wx = skew_symmetric_matrix(w);
-    const T omega = w.norm();
-    const T theta = omega * Ts;
+    const Vector3 w  = last_gyr_bias_corrected;   // rad/s
+    const T omega    = w.norm();
+    const T theta    = omega * Ts;
 
-    // Attitude-error subsystem
+    // ===== 1) Attitude error + gyro bias (analytic, closed-form) =====
+    // Φ_θθ = exp(-[w]× Ts)
     if (theta < T(1e-8)) {
-        // 2nd-order series
-        F_a_ext.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
+        const Matrix3 Wx = skew_symmetric_matrix(w);
+        F_a_ext.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts/T(2));
     } else {
-        // Rodrigues closed form
-        Matrix3 W = skew_symmetric_matrix(w / omega);
-        T s = std::sin(theta);
-        T c = std::cos(theta);
-        F_a_ext.template block<3,3>(0,0) = I3 - s*W + (1-c)*(W*W);
+        const Matrix3 Wn = skew_symmetric_matrix(w / omega); // unit axis skew
+        const T s = std::sin(theta), c = std::cos(theta);
+        F_a_ext.template block<3,3>(0,0) = I3 - s*Wn + (T(1)-c)*(Wn*Wn);
     }
 
     if constexpr (with_gyro_bias) {
-        // ∂δθ/∂b_g = -I*Ts   (right-multiplicative convention)
-        F_a_ext.template block<3,3>(0,3) = -I3 * Ts;
-        // Bias random walk (mean dynamics = identity)
+        // Φ_θ,bg = - ∫_0^Ts exp(-[w]× τ) dτ  (exact)
+        const Matrix3 Wx = skew_symmetric_matrix(w);
+        const Matrix3 J  = (omega > T(0))
+            ? integral_exp_neg_skew<T,with_gyro_bias,with_accel_bias>(Wx, omega, Ts)
+            : (Ts * I3);
+        F_a_ext.template block<3,3>(0,3) = -J;
+
+        // Φ_bg,bg = I
         F_a_ext.template block<3,3>(3,3) = I3;
     }
 
-    // Process noise for attitude/bias
+    // Qd for [δθ, δb_g] — keep your discrete base Q (RW gyro + RW bias)
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // Linear [v, p, S, a_w] block (analytic)
+    // ===== 2) Linear [v, p, S, a_w] — analytic per-axis (your functions) =====
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
 
     static const int idx[4] = {0,3,6,9}; // v,p,S,a ordering
-
     for (int axis = 0; axis < 3; ++axis) {
         const T tau    = std::max(T(1e-6), tau_aw);
         const T sigma2 = Sigma_aw_stat(axis,axis);
@@ -717,13 +748,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 
-    // Accelerometer bias (if configured)
+    // ===== 3) Accelerometer bias random walk =====
     if constexpr (with_accel_bias) {
         F_a_ext.template block<3,3>(OFF_BA, OFF_BA) = I3;
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
     }
 
-    // Set identity on remaining diagonals and symmetrize
+    // ===== 4) Fill remaining diagonals with I and symmetrize Q =====
     for (int i = 0; i < NX; ++i)
         if (F_a_ext(i,i) == T(0)) F_a_ext(i,i) = T(1);
 
