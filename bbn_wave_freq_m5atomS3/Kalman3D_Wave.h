@@ -939,35 +939,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     Qd_axis = q_c * K;
 }
 
-
-// ---- Optional: series integral used nowhere now (kept if you still call it)
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3
-Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::integral_exp_neg_skew(
-    const typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3& Wx,
-    T omega,
-    T h)
-{
-    Matrix3 I;  I.setIdentity();
-    Matrix3 Wx2 = Wx * Wx;
-    const T theta = omega * h;
-
-    if (theta < T(1e-6)) {
-        const T h2 = h*h, h3 = h2*h, h4 = h3*h;
-        return  h*I
-              - (h2/T(2)) * Wx
-              + (h3/T(6)) * Wx2
-              + (h4 * (omega*omega) / T(24)) * Wx; // using Wx^3 = -ω^2 Wx
-    } else {
-        const T s = std::sin(theta);
-        const T c = std::cos(theta);
-        return  h*I
-              - ((T(1) - c) / (omega*omega)) * Wx
-              + ((h - s/omega) / (omega*omega)) * Wx2;
-    }
-}
-
-
 // ---- The main builder: exact attitude/bias Φ,Q + analytic linear blocks ----
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
