@@ -33,6 +33,7 @@
 
 #include <limits>
 #include <stdexcept>
+#include <cmath>
 
 using Eigen::Matrix;
 
