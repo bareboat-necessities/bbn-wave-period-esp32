@@ -96,11 +96,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void measurement_update_acc_only(Vector3 const& acc, T tempC = tempC_ref);
     void measurement_update_mag_only(Vector3 const& mag);
 
-    void do_measurement_update(
-        const Eigen::Ref<const Matrix<T,Eigen::Dynamic,NX>>& Cext,
-        const Eigen::Ref<const Matrix<T,Eigen::Dynamic,Eigen::Dynamic>>& Rm,
-        const Eigen::Ref<const Eigen::Matrix<T,Eigen::Dynamic,1>>& inno);
-
     // Extended-only API:
     // Apply zero pseudo-measurement on S (integral drift correction)
     void applyIntegralZeroPseudoMeas();
@@ -252,6 +247,11 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
     Vector3 accelerometer_measurement_func(T tempC) const;
     Vector3 magnetometer_measurement_func() const;
+
+    void do_measurement_update(
+        const Eigen::Ref<const Matrix<T,Eigen::Dynamic,NX>>& Cext,
+        const Eigen::Ref<const Matrix<T,Eigen::Dynamic,Eigen::Dynamic>>& Rm,
+        const Eigen::Ref<const Eigen::Matrix<T,Eigen::Dynamic,1>>& inno);
 
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
 
