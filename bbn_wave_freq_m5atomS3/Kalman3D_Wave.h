@@ -663,62 +663,41 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 namespace k3dw_detail {
 
 // ---- Padé(6) matrix exponential with scaling & squaring (Eigen-only) -----
-template<class Mat>
-Mat expm_pade6(const Mat& A_in)
-{
-    using T = typename Mat::Scalar;
-    const int n = A_in.rows();
-    assert(n == A_in.cols());
+template<typename Mat>
+static Mat expm_pade6(const Mat& A) {
+    using S = typename Mat::Scalar;
+    const int n = A.rows();
+    const S theta = S(3);
+    const int max_squarings = 8;
 
-    // 1-norm (max column sum)
-    auto one_norm = [](const Mat& X)->T {
-        T m = T(0);
-        for (int j = 0; j < X.cols(); ++j) {
-            T colsum = T(0);
-            for (int i = 0; i < X.rows(); ++i)
-                colsum += Eigen::numext::abs(X(i,j));
-            if (colsum > m) m = colsum;
-        }
-        return m;
-    };
+    const S c0 = S(1);
+    const S c1 = S(1)/S(2);
+    const S c2 = S(1)/S(10);
+    const S c3 = S(1)/S(120);
+    const S c4 = S(1)/S(1680);
+    const S c5 = S(1)/S(30240);
+    const S c6 = S(1)/S(665280);
 
-    // Padé(6) coefficients
-    const T c0 = T(1);
-    const T c1 = T(1)/T(2);
-    const T c2 = T(1)/T(10);
-    const T c3 = T(1)/T(120);
-    const T c4 = T(1)/T(1680);
-    const T c5 = T(1)/T(30240);
-    const T c6 = T(1)/T(665280);
-
-    const T theta = T(3);
-    const int max_squarings = 12;
-
-    // Scaling
-    Mat A = A_in;
-    T normA = one_norm(A);
+    S normA = A.cwiseAbs().colwise().sum().maxCoeff();
     int s = 0;
-    if (normA > theta && normA > T(0)) {
-        using std::log2;
-        using std::ceil;
-        s = std::min(max_squarings,
-                     std::max(0, static_cast<int>(ceil(log2(normA/theta)))));
-        A /= std::pow(T(2), s);
+    if (normA > theta) {
+        s = std::min(max_squarings, int(std::ceil(std::log2(normA/theta))));
     }
+    Mat As = A / S(1 << s);
 
-    Mat I = Mat::Identity(n,n);   // <-- FIXED
-    Mat A2 = A * A;
+    Mat I  = Mat::Identity(n,n);
+    Mat A2 = As * As;
     Mat A4 = A2 * A2;
     Mat A6 = A4 * A2;
 
-    Mat U = A * (c1*I + c3*A2 + c5*A4);
+    Mat U = As * (c1*I + c3*A2 + c5*A4);
     Mat V = c0*I + c2*A2 + c4*A4 + c6*A6;
 
     Mat P = V + U;
     Mat Q = V - U;
-    Mat R = Q.fullPivLu().solve(P);
 
-    for (int i = 0; i < s; ++i) R = R * R;
+    Mat R = Q.fullPivLu().solve(P);
+    for (int i=0;i<s;++i) R = R*R;
     return R;
 }
 
