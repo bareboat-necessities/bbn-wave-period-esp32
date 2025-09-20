@@ -658,12 +658,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
-// ========================== DROP-IN BLOCK ==================================
-// Requires: <cmath> included somewhere before this (for std::pow, std::exp).
-
 namespace k3dw_detail {
 
-// ---- Padé(6) matrix exponential with scaling & squaring (Eigen-only) -----
+// Padé(6) matrix exponential with scaling & squaring (Eigen-only)
 template<typename Mat>
 static Mat expm_pade6(const Mat& A) {
     using S = typename Mat::Scalar;
@@ -703,7 +700,7 @@ static Mat expm_pade6(const Mat& A) {
     return R;
 }
 
-// ---- Compute Φθθ and ∫exp(-Wx τ) dτ via one exp() ----
+// Compute Φθθ and ∫exp(-Wx τ) dτ via one exp()
 template<typename T>
 void phi_and_integral_exp_neg_skew(
     const Eigen::Matrix<T,3,3>& Wx, T h,
@@ -723,7 +720,7 @@ void phi_and_integral_exp_neg_skew(
     J      = expBh.template block<3,3>(0,3);
 }
 
-// ---- Van Loan for (Φ,Qd) ----
+// Van Loan for (Φ,Qd)
 template<typename T, int N>
 void van_loan_Qd(
     const Eigen::Matrix<T,N,N>& A,
@@ -752,7 +749,7 @@ void van_loan_Qd(
 } // namespace k3dw_detail
 
 
-// ---- Exact θ–bias block (fixes roll/pitch drift) ----
+// Exact θ–bias block (fixes roll/pitch drift)
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void discretize_theta_bias_exact(
     const Eigen::Matrix<T,3,1>& w, T h,
@@ -788,7 +785,7 @@ void discretize_theta_bias_exact(
     Qd_out = Qd6;
 }
 
-// ---- Exact Φ/Q for per-axis [v,p,S,a] OU-driven chain (closed form) -------
+// Exact Φ/Q for per-axis [v,p,S,a] OU-driven chain (closed form)
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
@@ -905,7 +902,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     Qd_axis = q_c * K;
 }
 
-// ---- The main builder: exact attitude/bias Φ,Q + analytic linear blocks ----
+// The main builder: exact attitude/bias Φ,Q + analytic linear blocks
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     const Vector3& /*acc_body_unused*/, T Ts,
@@ -916,7 +913,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
 
     Matrix3 I3; I3.setIdentity();
 
-    // ===== θ–bias exact discretization (fixes roll/pitch drift) ============
+    // θ–bias exact discretization (fixes roll/pitch drift)
     Eigen::Matrix<T,3,3> Phi_tt, Phi_tb;
     Eigen::Matrix<T,6,6> Qd_tb;
     const Eigen::Matrix<T,3,1> w = last_gyr_bias_corrected;
