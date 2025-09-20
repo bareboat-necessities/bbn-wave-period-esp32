@@ -262,9 +262,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void normalizeQuat();
 
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
-    static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
-    static Matrix3 integral_exp_neg_skew(const Matrix3& Wx, T omega, T h);
-
 };
 
 // Implementation
@@ -658,8 +655,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
-
-
 // ========================== DROP-IN BLOCK ==================================
 // Requires: <cmath> included somewhere before this (for std::pow, std::exp).
 
@@ -697,7 +692,7 @@ Mat expm_pade6(const Mat& A_in)
     const T theta = T(3);         // conservative threshold for [6/6]
     const int max_squarings = 12;
 
-    // Scaling (so that ||A/2^s||_1 <= theta)
+    // Scaling
     Mat A = A_in;
     T normA = one_norm(A);
     int s = 0;
@@ -715,22 +710,18 @@ Mat expm_pade6(const Mat& A_in)
     Mat A4 = A2 * A2;
     Mat A6 = A4 * A2;
 
-    // U = A (c1 I + c3 A^2 + c5 A^4)
     Mat U = A * (c1*I + c3*A2 + c5*A4);
-    // V = c0 I + c2 A^2 + c4 A^4 + c6 A^6
     Mat V = c0*I + c2*A2 + c4*A4 + c6*A6;
 
-    // R = (V - U)^{-1} (V + U)
     Mat P = V + U;
     Mat Q = V - U;
     Mat R = Q.fullPivLu().solve(P);
 
-    // Undo scaling
     for (int i = 0; i < s; ++i) R = R * R;
     return R;
 }
 
-// ---- Compute Φθθ = exp(-[w]× h) and J = ∫0^h exp(-[w]×τ) dτ via one exp() ----
+// ---- Compute Φθθ and ∫exp(-Wx τ) dτ via one exp() ----
 template<typename T>
 void phi_and_integral_exp_neg_skew(
     const Eigen::Matrix<T,3,3>& Wx, T h,
@@ -741,8 +732,6 @@ void phi_and_integral_exp_neg_skew(
     using Mat6 = Eigen::Matrix<T,6,6>;
 
     Mat6 B; B.setZero();
-    // [ -Wx   I ]
-    // [  0    0 ]
     B.template block<3,3>(0,0) = -Wx;
     Mat3 I3; I3.setIdentity();
     B.template block<3,3>(0,3) = I3;
@@ -752,11 +741,11 @@ void phi_and_integral_exp_neg_skew(
     J      = expBh.template block<3,3>(0,3);
 }
 
-// ---- Van Loan block-exponential for (Φ, Qd) of LTI SDE --------------------
+// ---- Van Loan for (Φ,Qd) ----
 template<typename T, int N>
 void van_loan_Qd(
     const Eigen::Matrix<T,N,N>& A,
-    const Eigen::Matrix<T,N,N>& LQLT, // L Q_c L^T
+    const Eigen::Matrix<T,N,N>& LQLT,
     T h,
     Eigen::Matrix<T,N,N>& Phi,
     Eigen::Matrix<T,N,N>& Qd)
@@ -775,169 +764,48 @@ void van_loan_Qd(
     MatN Qblk = expM.template block<N,N>(0,N);
     Phi = PhiT.transpose();
     Qd  = Phi * Qblk;
-    Qd  = T(0.5) * (Qd + Qd.transpose()); // enforce symmetry
+    Qd  = T(0.5) * (Qd + Qd.transpose());
 }
 
 } // namespace k3dw_detail
 
 
-// ---- Exact θ–bias block: fixes roll/pitch drift, uses expm_pade6 everywhere
+// ---- Exact θ–bias block (fixes roll/pitch drift) ----
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 static void discretize_theta_bias_exact(
     const Eigen::Matrix<T,3,1>& w, T h,
-    const Eigen::Matrix<T,3,3>& Sg,   // gyro white PSD (rad^2/s)
-    const Eigen::Matrix<T,3,3>& Sbg,  // bias RW PSD    ((rad/s)^2 / s)
-    Eigen::Matrix<T,3,3>& Phi_tt,     // Φ_θθ
-    Eigen::Matrix<T,3,3>& Phi_tb,     // Φ_θb
-    Eigen::Matrix<T,6,6>& Qd_out)     // Qd for [δθ; b]
+    const Eigen::Matrix<T,3,3>& Sg,
+    const Eigen::Matrix<T,3,3>& Sbg,
+    Eigen::Matrix<T,3,3>& Phi_tt,
+    Eigen::Matrix<T,3,3>& Phi_tb,
+    Eigen::Matrix<T,6,6>& Qd_out)
 {
     using Mat3 = Eigen::Matrix<T,3,3>;
     using Mat6 = Eigen::Matrix<T,6,6>;
 
-    // Cross-product matrix
     Mat3 Wx;
     Wx <<  T(0),   -w.z(),  w.y(),
            w.z(),   T(0),  -w.x(),
           -w.y(),   w.x(),  T(0);
 
-    // Φ_θθ and ∫exp(-Wx τ)dτ (as J)
     Mat3 J;
     k3dw_detail::phi_and_integral_exp_neg_skew(Wx, h, Phi_tt, J);
-    Phi_tb = -J;                           // exact bias coupling
+    Phi_tb = -J;
 
-    // Van Loan for Qd of [δθ; b]
     Mat6 A; A.setZero();
     Mat3 I3; I3.setIdentity();
     A.template block<3,3>(0,0) = -Wx;
-    A.template block<3,3>(0,3) = -I3;      // δθ̇ = -[w]× δθ - b + noise
-    // ḃ = 0
+    A.template block<3,3>(0,3) = -I3;
 
     Mat6 LQLT; LQLT.setZero();
-    LQLT.template block<3,3>(0,0) = Sg;    // gyro white
-    LQLT.template block<3,3>(3,3) = Sbg;   // bias RW
+    LQLT.template block<3,3>(0,0) = Sg;
+    LQLT.template block<3,3>(3,3) = Sbg;
 
     Mat6 Phi6, Qd6;
     k3dw_detail::van_loan_Qd<T,6>(A, LQLT, h, Phi6, Qd6);
     Qd_out = Qd6;
 }
 
-
-// ---- Exact Φ/Q for per-axis [v,p,S,a] OU-driven chain (closed form) -------
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
-    T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
-{
-    using std::exp;
-    const T tau_safe = std::max(T(1e-12), tau);
-    const T x = h / tau_safe;
-
-    T alpha, phi_va, phi_pa, phi_Sa;
-
-    if (x < T(0.1)) {
-        alpha  = T(1) - x + x*x/T(2) - x*x*x/T(6) + x*x*x*x/T(24);
-        phi_va = h - (h*h)/(T(2)*tau_safe) + (h*h*h)/(T(6)*tau_safe*tau_safe)
-                 - (h*h*h*h)/(T(24)*tau_safe*tau_safe*tau_safe);
-        phi_pa = (h*h)/T(2) - (h*h*h)/(T(6)*tau_safe)
-                 + (h*h*h*h)/(T(24)*tau_safe*tau_safe);
-        phi_Sa = (h*h*h)/T(6) - (h*h*h*h)/(T(24)*tau_safe)
-                 + (h*h*h*h*h)/(T(120)*tau_safe*tau_safe);
-    } else {
-        alpha  = exp(-x);
-        phi_va = tau_safe * (T(1) - alpha);
-        phi_pa = tau_safe*h - tau_safe*tau_safe*(T(1) - alpha);
-        phi_Sa = (T(0.5)*tau_safe*h*h) - (tau_safe*tau_safe*h)
-               + (tau_safe*tau_safe*tau_safe)*(T(1) - alpha);
-    }
-
-    Phi_axis.setZero();
-    // v
-    Phi_axis(0,0) = T(1);
-    Phi_axis(0,3) = phi_va;
-    // p
-    Phi_axis(1,0) = h;
-    Phi_axis(1,1) = T(1);
-    Phi_axis(1,3) = phi_pa;
-    // S
-    Phi_axis(2,0) = T(0.5)*h*h;
-    Phi_axis(2,1) = h;
-    Phi_axis(2,2) = T(1);
-    Phi_axis(2,3) = phi_Sa;
-    // a
-    Phi_axis(3,3) = alpha;
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
-    T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
-{
-    using std::exp;
-
-    const T tau_safe = std::max(T(1e-12), tau);
-    const T x   = h / tau_safe;
-    const T q_c = (T(2) / tau_safe) * sigma2;
-
-    T alpha, alpha2, A0, A1, A2, B0;
-
-    if (x < T(0.1)) {
-        alpha  = T(1) - x + x*x/T(2) - x*x*x/T(6) + x*x*x*x/T(24);
-        alpha2 = T(1) - T(2)*x + T(2)*x*x - (T(4)/T(3))*x*x*x + (T(2)/T(3))*x*x*x*x;
-
-        A0 = h - (h*h)/(T(2)*tau_safe) + (h*h*h)/(T(6)*tau_safe*tau_safe)
-           - (h*h*h*h)/(T(24)*tau_safe*tau_safe*tau_safe);
-        A1 = (h*h)/T(2) - (h*h*h)/(T(3)*tau_safe)
-           + (h*h*h*h)/(T(8)*tau_safe*tau_safe);
-        A2 = (h*h*h)/T(3) - (h*h*h*h)/(T(4)*tau_safe)
-           + (h*h*h*h*h)/(T(10)*tau_safe*tau_safe);
-        B0 = h - (h*h)/tau_safe + (T(2)/T(3))*(h*h*h)/(tau_safe*tau_safe)
-           - (h*h*h*h)/(T(3)*tau_safe*tau_safe*tau_safe);
-    } else {
-        alpha  = exp(-x);
-        alpha2 = exp(-T(2)*x);
-
-        A0 = tau_safe * (T(1) - alpha);
-        A1 = tau_safe*tau_safe * (T(1) - alpha) - tau_safe * h * alpha;
-        A2 = T(2)*tau_safe*tau_safe*tau_safe * (T(1) - alpha)
-           - tau_safe * h * (h + T(2)*tau_safe) * alpha;
-        B0 = (tau_safe / T(2)) * (T(1) - alpha2);
-    }
-
-    // poly integrals Cn = ∫ ξ^n dξ on [0,h]
-    const T C0 = h;
-    const T C1 = (h*h)/T(2);
-    const T C2 = (h*h*h)/T(3);
-    const T C3 = (h*h*h*h)/T(4);
-    const T C4 = (h*h*h*h*h)/T(5);
-
-    // powers of τ
-    const T T1 = tau_safe;
-    const T T2 = T1*tau_safe;
-    const T T3 = T2*tau_safe;
-    const T T4 = T3*tau_safe;
-    const T T5 = T4*tau_safe;
-    const T T6 = T5*tau_safe;
-
-    // entries of K = ∫ k k^T dξ (closed form)
-    const T K_aa = B0;
-    const T K_va = T1 * (A0 - B0);
-    const T K_vv = T2 * (C0 - T(2)*A0 + B0);
-    const T K_pv = T2*(C1 - A1) - T3*(C0 - T(2)*A0 + B0);
-    const T K_pa = T1*A1 - T2*A0 + T2*B0;
-    const T K_pp = T2*C2 - T(2)*T3*C1 + T(2)*T3*A1 + T4*C0 - T(2)*T4*A0 + T4*B0;
-    const T K_Sa = T(0.5)*T1*A2 - T2*A1 + T3*A0 - T3*B0;
-    const T K_Sv = T(0.5)*T2*(C2 - A2) - T3*(C1 - A1) + T4*(C0 - T(2)*A0 + B0);
-    const T K_Sp = T(0.5)*T2*C3 - T(1.5)*T3*C2 + T(2)*T4*C1 - T5*C0
-                 + T(0.5)*T3*A2 - T(2)*T4*A1 + T(2)*T5*A0 - T5*B0;
-    const T K_SS = T(0.25)*T2*C4 - T3*C3 + T(2)*T4*C2 - T(2)*T5*C1 + T6*C0
-                 - T4*A2 + T(2)*T5*A1 - T(2)*T6*A0 + T6*B0;
-
-    Eigen::Matrix<T,4,4> K; K.setZero();
-    K(0,0)=K_vv; K(0,1)=K_pv; K(0,2)=K_Sv; K(0,3)=K_va;
-    K(1,0)=K_pv; K(1,1)=K_pp; K(1,2)=K_Sp; K(1,3)=K_pa;
-    K(2,0)=K_Sv; K(2,1)=K_Sp; K(2,2)=K_SS; K(2,3)=K_Sa;
-    K(3,0)=K_va; K(3,1)=K_pa; K(3,2)=K_Sa; K(3,3)=K_aa;
-
-    Qd_axis = q_c * K;
-}
 
 // ---- The main builder: exact attitude/bias Φ,Q + analytic linear blocks ----
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
