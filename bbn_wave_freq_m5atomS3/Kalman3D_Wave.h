@@ -687,7 +687,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     if constexpr (with_gyro_bias) {
         // ∂δθ/∂b_g = -I*Ts   (right-multiplicative convention)
         F_a_ext.template block<3,3>(0,3) = -I3 * Ts;
-        // Bias is random walk (mean dynamics = identity)
+        // Bias random walk (mean dynamics = identity)
         F_a_ext.template block<3,3>(3,3) = I3;
     }
 
