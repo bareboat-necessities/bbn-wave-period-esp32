@@ -475,6 +475,41 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     applyIntegralZeroPseudoMeas();
 }
 
+// Shared core update routine (LDLT solve + Joseph form + quaternion correction)
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::do_measurement_update(
+    const Eigen::Ref<const Matrix<T,Eigen::Dynamic,NX>>& Cext,
+    const Eigen::Ref<const Matrix<T,Eigen::Dynamic,Eigen::Dynamic>>& Rm,
+    const Eigen::Ref<const Eigen::Matrix<T,Eigen::Dynamic,1>>& inno)
+{
+    const int m = inno.size();
+
+    Matrix<T,Eigen::Dynamic,Eigen::Dynamic> S_mat = Cext * Pext * Cext.transpose() + Rm;
+    Matrix<T,NX,Eigen::Dynamic> PCt = Pext * Cext.transpose();
+
+    Eigen::LDLT<Matrix<T,Eigen::Dynamic,Eigen::Dynamic>> ldlt(S_mat);
+    if (ldlt.info() != Eigen::Success) {
+        S_mat += Matrix<T,Eigen::Dynamic,Eigen::Dynamic>::Identity(m,m)
+               * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+    Matrix<T,NX,Eigen::Dynamic> K = PCt * ldlt.solve(Matrix<T,Eigen::Dynamic,Eigen::Dynamic>::Identity(m,m));
+
+    // State update
+    xext.noalias() += K * inno;
+
+    // Joseph covariance update
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
+
+    // Quaternion correction
+    applyQuaternionCorrectionFromErrorState();
+    xext.template head<3>().setZero();
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+}
+
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC)
 {
