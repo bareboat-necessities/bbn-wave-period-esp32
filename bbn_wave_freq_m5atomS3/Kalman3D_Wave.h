@@ -670,9 +670,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     const T omega = w.norm();
     const T theta = omega * Ts;
 
-    // ---------------------------
-    // 1) Attitude-error subsystem
-    // ---------------------------
+    // Attitude-error subsystem
     if (theta < T(1e-8)) {
         // 2nd-order series
         F_a_ext.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
@@ -694,9 +692,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // ------------------------------------------
-    // 2) Linear [v, p, S, a_w] block (analytic)
-    // ------------------------------------------
+    // Linear [v, p, S, a_w] block (analytic)
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
@@ -721,17 +717,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 
-    // -------------------------------------
-    // 3) Accelerometer bias (if configured)
-    // -------------------------------------
+    // Accelerometer bias (if configured)
     if constexpr (with_accel_bias) {
         F_a_ext.template block<3,3>(OFF_BA, OFF_BA) = I3;
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
     }
 
-    // ----------------------------------------------------
-    // 4) Set identity on remaining diagonals and symmetrize
-    // ----------------------------------------------------
+    // Set identity on remaining diagonals and symmetrize
     for (int i = 0; i < NX; ++i)
         if (F_a_ext(i,i) == T(0)) F_a_ext(i,i) = T(1);
 
@@ -889,7 +881,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     const T K_va = T1 * (A0 - B0);
     const T K_vv = T2 * (C0 - T(2)*A0 + B0);
 
-    // ***** FIX 1: Correct K_pv (sign and missing +2A0 term) *****
     // K_pv = τ^2(C1 - A1) - τ^3(C0 - 2A0 + B0)
     const T K_pv = T2*(C1 - A1) - T3*(C0 - T(2)*A0 + B0);
 
@@ -903,7 +894,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     const T K_Sv = T(0.5)*T2*(C2 - A2) - T3*(C1 - A1)
                  + T4*(C0 - T(2)*A0 + B0);
 
-    // ***** FIX 2: Correct final sign in K_Sp (… - τ^5 B0) *****
     const T K_Sp = T(0.5)*T2*C3 - T(1.5)*T3*C2 + T(2)*T4*C1 - T5*C0
                  + T(0.5)*T3*A2 - T(2)*T4*A1 + T(2)*T5*A0 - T5*B0;
 
