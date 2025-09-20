@@ -682,7 +682,8 @@ static Mat expm_pade6(const Mat& A) {
     S normA = A.cwiseAbs().colwise().sum().maxCoeff();
     int s = 0;
     if (normA > theta) {
-        s = std::min(max_squarings, int(std::ceil(std::log2(normA/theta))));
+        S log2x = std::log(normA/theta) / std::log(S(2));
+        s = std::min(max_squarings, int(std::ceil(log2x)));
     }
     Mat As = A / S(1 << s);
 
