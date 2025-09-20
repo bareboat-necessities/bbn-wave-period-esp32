@@ -665,6 +665,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 // Works with small fixed-size Eigen matrices (e.g., 3x3, 6x6, 12x12).
 namespace k3dw_detail {
 
+// Minimal, dependency-free matrix exponential via Padé(6) + scaling & squaring.
+// Works with small fixed-size Eigen matrices (e.g., 3x3, 6x6, 12x12).
 template<class Mat>
 Mat expm_pade6(const Mat& A_in)
 {
@@ -677,7 +679,8 @@ Mat expm_pade6(const Mat& A_in)
         T m = T(0);
         for (int j=0;j<X.cols();++j) {
             T colsum = T(0);
-            for (int i=0;i<X.rows();++i) colsum += std::abs(X(i,j));
+            for (int i=0;i<X.rows();++i)
+                colsum += std::abs(X(i,j));
             if (colsum > m) m = colsum;
         }
         return m;
@@ -692,7 +695,7 @@ Mat expm_pade6(const Mat& A_in)
     const T c5 = T(1)/T(30240);
     const T c6 = T(1)/T(665280);
 
-    // Higham-ish theta for [6/6] (good enough for our sizes)
+    // Higham-ish theta for [6/6]
     const T theta = T(3);
     const int max_squarings = 12;
 
@@ -702,8 +705,10 @@ Mat expm_pade6(const Mat& A_in)
     int s = 0;
     if (normA > theta && normA > T(0)) {
         // choose s so ||A/2^s||_1 <= theta
-        s = std::min(max_squarings, std::max(0, static_cast<int>(std::ceil(std::log2(normA/theta)))));
-        A /= T(T(1) << s);
+        s = std::min(max_squarings,
+                     std::max(0, static_cast<int>(
+                         std::ceil(std::log2(normA/theta)))));
+        A /= std::pow(T(2), s);   // ✅ FIXED: safe for float/double
     }
 
     const Mat I = Mat::Identity(n,n);
@@ -723,9 +728,12 @@ Mat expm_pade6(const Mat& A_in)
     Mat R = Q.fullPivLu().solve(P);
 
     // Squaring back up
-    for (int i=0;i<s;++i) R = R * R;
+    for (int i=0; i<s; ++i)
+        R = R * R;
+
     return R;
 }
+
 
 // Compute both Φ_θθ = exp(-[w]× h) and J(h) = ∫_0^h exp(-[w]× τ) dτ
 // in one shot via a single block-exponential (always using expm_pade6).
