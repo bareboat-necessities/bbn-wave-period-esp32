@@ -621,7 +621,7 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
     // Build measurement matrix H (picks S block)
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
-    H.template block<3,3>(0, BASE_N + 6) = Matrix3::Identity();
+    H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
 
     // Innovation (desired S = 0)
     Vector3 z = Vector3::Zero();
