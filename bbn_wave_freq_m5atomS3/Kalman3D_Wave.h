@@ -660,13 +660,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 
 
 
-// ========================== drop-in helpers ===============================
-// Minimal, dependency-free matrix exponential via Padé(6) + scaling & squaring.
-// Works with small fixed-size Eigen matrices (e.g., 3x3, 6x6, 12x12).
 namespace k3dw_detail {
 
-// Minimal, dependency-free matrix exponential via Padé(6) + scaling & squaring.
-// Works with small fixed-size Eigen matrices (e.g., 3x3, 6x6, 12x12).
+// === Padé(6) exponential with scaling & squaring ===
 template<class Mat>
 Mat expm_pade6(const Mat& A_in)
 {
@@ -677,9 +673,9 @@ Mat expm_pade6(const Mat& A_in)
     // 1-norm (max column sum)
     auto one_norm = [](const Mat& X)->T {
         T m = T(0);
-        for (int j=0;j<X.cols();++j) {
+        for (int j=0; j<X.cols(); ++j) {
             T colsum = T(0);
-            for (int i=0;i<X.rows();++i)
+            for (int i=0; i<X.rows(); ++i)
                 colsum += std::abs(X(i,j));
             if (colsum > m) m = colsum;
         }
@@ -695,8 +691,7 @@ Mat expm_pade6(const Mat& A_in)
     const T c5 = T(1)/T(30240);
     const T c6 = T(1)/T(665280);
 
-    // Higham-ish theta for [6/6]
-    const T theta = T(3);
+    const T theta = T(3);        // bound for [6/6]
     const int max_squarings = 12;
 
     // Scaling
@@ -704,70 +699,63 @@ Mat expm_pade6(const Mat& A_in)
     T normA = one_norm(A);
     int s = 0;
     if (normA > theta && normA > T(0)) {
-        // choose s so ||A/2^s||_1 <= theta
         s = std::min(max_squarings,
                      std::max(0, static_cast<int>(
                          std::ceil(std::log2(normA/theta)))));
-        A /= std::pow(T(2), s);   // ✅ FIXED: safe for float/double
+        A /= std::pow(T(2), s);
     }
 
-    const Mat I = Mat::Identity(n,n);
-    const Mat A2 = A * A;
-    const Mat A4 = A2 * A2;
-    const Mat A6 = A4 * A2;
+    Mat I(n,n); I.setIdentity();
 
-    // U = A (c1 I + c3 A^2 + c5 A^4)
+    Mat A2 = A * A;
+    Mat A4 = A2 * A2;
+    Mat A6 = A4 * A2;
+
     Mat U = A * (c1*I + c3*A2 + c5*A4);
-
-    // V = c0 I + c2 A^2 + c4 A^4 + c6 A^6
     Mat V = c0*I + c2*A2 + c4*A4 + c6*A6;
 
-    // (V - U)^{-1} (V + U)
     Mat P = V + U;
     Mat Q = V - U;
+
+    // Solve (V - U) X = (V + U)
     Mat R = Q.fullPivLu().solve(P);
 
-    // Squaring back up
     for (int i=0; i<s; ++i)
-        R = R * R;
+        R *= R;
 
     return R;
 }
 
-
-// Compute both Φ_θθ = exp(-[w]× h) and J(h) = ∫_0^h exp(-[w]× τ) dτ
-// in one shot via a single block-exponential (always using expm_pade6).
+// === Compute Φθθ and J via block exponential ===
 template<typename T>
 void phi_and_integral_exp_neg_skew(
     const Eigen::Matrix<T,3,3>& Wx, T h,
-    Eigen::Matrix<T,3,3>& Phi_tt,   // exp(-Wx h)
-    Eigen::Matrix<T,3,3>& J)        // ∫_0^h exp(-Wx τ) dτ
+    Eigen::Matrix<T,3,3>& Phi_tt,
+    Eigen::Matrix<T,3,3>& J)
 {
     using Mat3 = Eigen::Matrix<T,3,3>;
     using Mat6 = Eigen::Matrix<T,6,6>;
 
     Mat6 B; B.setZero();
-    //   [ -Wx   I ]
-    //   [  0    0 ]
     B.template block<3,3>(0,0) = -Wx;
-    B.template block<3,3>(0,3) =  Mat3::Identity();
+    B.template block<3,3>(0,3) = Mat3::Identity();
 
     Mat6 expBh = expm_pade6(B * h);
+
     Phi_tt = expBh.template block<3,3>(0,0);
     J      = expBh.template block<3,3>(0,3);
 }
 
-// Exact Van-Loan for Qd of a continuous LTI: xdot = A x + L w,  E[w w^T] = Qc δ(t)
-// Always using expm_pade6.
+// === Van Loan for (Φ,Qd) ===
 template<typename T, int N>
 void van_loan_Qd(
     const Eigen::Matrix<T,N,N>& A,
-    const Eigen::Matrix<T,N,N>& LQLT, // L Qc L^T
+    const Eigen::Matrix<T,N,N>& LQLT,
     T h,
     Eigen::Matrix<T,N,N>& Phi,
     Eigen::Matrix<T,N,N>& Qd)
 {
-    using MatN = Eigen::Matrix<T,N,N>;
+    using MatN  = Eigen::Matrix<T,N,N>;
     using Mat2N = Eigen::Matrix<T,2*N,2*N>;
 
     Mat2N M; M.setZero();
@@ -776,16 +764,16 @@ void van_loan_Qd(
     M.template block<N,N>(N,N) =  A.transpose() * h;
 
     Mat2N expM = expm_pade6(M);
-    const MatN PhiT = expM.template block<N,N>(N,N);
-    const MatN Qblk = expM.template block<N,N>(0,N);
+
+    MatN PhiT = expM.template block<N,N>(N,N);
+    MatN Qblk = expM.template block<N,N>(0,N);
+
     Phi = PhiT.transpose();
     Qd  = Phi * Qblk;
-    Qd  = T(0.5) * (Qd + Qd.transpose());
+    Qd  = T(0.5) * (Qd + Qd.transpose()); // enforce symmetry
 }
 
 } // namespace k3dw_detail
-// ======================== end drop-in helpers =============================
-
 
 
 
