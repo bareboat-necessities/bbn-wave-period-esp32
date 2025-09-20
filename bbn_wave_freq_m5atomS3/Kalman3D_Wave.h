@@ -764,44 +764,44 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
         // α = e^{-x} ≈ 1 - x + x^2/2 - x^3/6 + x^4/24
         alpha = T(1) - x + x*x/T(2) - x*x*x/T(6) + x*x*x*x/T(24);
 
-        // φ_va = τ(1 - α) ≈ h - h^2/(2τ) + h^3/(6τ^2) - h^4/(24τ^3)
+        // φ_va = ∫₀ʰ e^{-ξ/τ} dξ = τ(1 - α)
+        //      ≈ h - h²/(2τ) + h³/(6τ²) - h⁴/(24τ³)
         phi_va = h - (h*h)/(T(2)*tau) + (h*h*h)/(T(6)*tau*tau) - (h*h*h*h)/(T(24)*tau*tau*tau);
 
-        // φ_pa = τh - τ^2(1 - α)
-        //      ≈ 0.5 h^2 - (1/6)(h^3/τ) + (1/24)(h^4/τ^2)
+        // φ_pa = ∫₀ʰ ξ e^{-ξ/τ} dξ = τh - τ²(1 - α)
+        //      ≈ 0.5 h² - (1/6)(h³/τ) + (1/24)(h⁴/τ²)
         phi_pa = (h*h)/T(2) - (h*h*h)/(T(6)*tau) + (h*h*h*h)/(T(24)*tau*tau);
 
-        // φ_Sa = 0.5 τ h^2 - τ^2 h + τ^3(1 - α)
-        //      ≈ (1/6) h^3 - (1/24)(h^4/τ) + (1/120)(h^5/τ^2)
+        // φ_Sa = ∫₀ʰ ξ² e^{-ξ/τ} dξ / 2 = 0.5 τ h² - τ² h + τ³(1 - α)
+        //      ≈ (1/6) h³ - (1/24)(h⁴/τ) + (1/120)(h⁵/τ²)
         phi_Sa = (h*h*h)/T(6) - (h*h*h*h)/(T(24)*tau) + (h*h*h*h*h)/(T(120)*tau*tau);
     } else {
         // --- Exact closed forms ---
         alpha = exp(-x);
 
-        // v_{k+1} = v_k + φ_va a_k, with φ_va = τ(1 - e^{-h/τ})
+        // φ_va = τ(1 - e^{-h/τ})
         phi_va = tau * (T(1) - alpha);
 
-        // p_{k+1} = p_k + h v_k + φ_pa a_k, with φ_pa = τh - τ^2(1 - e^{-h/τ})
+        // φ_pa = τh - τ²(1 - e^{-h/τ})
         phi_pa = tau*h - tau*tau*(T(1) - alpha);
 
-        // S_{k+1} = S_k + h p_k + 0.5 h^2 v_k + φ_Sa a_k
-        // φ_Sa = 0.5 τ h^2 - τ^2 h + τ^3(1 - e^{-h/τ})
+        // φ_Sa = 0.5 τ h² - τ² h + τ³(1 - e^{-h/τ})
         phi_Sa = (T(0.5)*tau*h*h) - (tau*tau*h) + (tau*tau*tau)*(T(1) - alpha);
     }
 
     // Assemble discrete-time state transition matrix for [v, p, S, a]
     Phi_axis.setZero();
 
-    // v_{k+1} = v_k + φ_va * a_k
+    // v_{k+1} = v_k + φ_va a_k
     Phi_axis(0,0) = T(1);     // v -> v
     Phi_axis(0,3) = phi_va;   // a -> v
 
-    // p_{k+1} = p_k + h v_k + φ_pa * a_k
+    // p_{k+1} = p_k + h v_k + φ_pa a_k
     Phi_axis(1,0) = h;        // v -> p
     Phi_axis(1,1) = T(1);     // p -> p
     Phi_axis(1,3) = phi_pa;   // a -> p
 
-    // S_{k+1} = S_k + h p_k + 0.5 h^2 v_k + φ_Sa * a_k
+    // S_{k+1} = S_k + h p_k + 0.5 h² v_k + φ_Sa a_k
     Phi_axis(2,0) = T(0.5)*h*h;   // v -> S
     Phi_axis(2,1) = h;            // p -> S
     Phi_axis(2,2) = T(1);         // S -> S
