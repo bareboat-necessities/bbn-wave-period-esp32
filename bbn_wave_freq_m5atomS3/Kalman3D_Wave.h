@@ -805,10 +805,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     const T A0 = tau * (T(1) - alpha);
     const T A1 = tau*tau * (T(1) - alpha) - tau * h * alpha;
     const T A2 = T(2)*tau*tau*tau * (T(1) - alpha) - tau * h * (h + T(2)*tau) * alpha;
-    // We’ll also need ∫ ξ^3 e^{-ξ/τ} dξ:
-    // ∫ ξ^3 e^{-ξ/τ} dξ = e^{-ξ/τ} * [ -τ ξ^3 - 3 τ^2 ξ^2 - 6 τ^3 ξ - 6 τ^4 ] |_0^h
-    const T A3 = ( -tau * h*h*h - T(3)*tau*tau * h*h - T(6)*tau*tau*tau * h - T(6)*tau*tau*tau*tau ) * alpha
-               + T(6)*tau*tau*tau*tau;
 
     // Primitives with exp(-2ξ/τ) over [0,h]
     // General: ∫ e^{-λ ξ} dξ = (1 - e^{-λ h})/λ;  λ = 2/τ
@@ -880,5 +876,4 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
 
     Qd_axis = q_c * K;
 }
-
 
