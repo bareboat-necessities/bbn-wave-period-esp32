@@ -773,7 +773,7 @@ void van_loan_Qd(
 
 // ---- Exact θ–bias block (fixes roll/pitch drift) ----
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-static void discretize_theta_bias_exact(
+void discretize_theta_bias_exact(
     const Eigen::Matrix<T,3,1>& w, T h,
     const Eigen::Matrix<T,3,3>& Sg,
     const Eigen::Matrix<T,3,3>& Sbg,
