@@ -165,7 +165,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Magnetometer measurement noise (std per axis, μT or unitless)
     void set_Rmag(const Vector3& sigma_mag) {
         Matrix3 Rmag_new = sigma_mag.array().square().matrix().asDiagonal();
-        const_cast<Matrix3&>(Rmag) = Rmag_new;
+        Rmag = Rmag_new;
         R.template bottomRightCorner<3,3>() = Rmag_new;
     }
 
