@@ -661,58 +661,94 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     const Vector3& /*acc_body_unused*/, T Ts,
     Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext)
 {
-    F_a_ext.setIdentity();
+    F_a_ext.setZero();
     Q_a_ext.setZero();
 
-    // Attitude error (+ optional bias)
-    Matrix3 I = Matrix3::Identity();
-    Vector3 w = last_gyr_bias_corrected;
-    T omega = w.norm();
-    T theta = omega * Ts;
+    // ---------------------------
+    // 1) Attitude-error subsystem
+    // ---------------------------
+    // For right-multiplicative quaternion with small-angle error δθ,
+    // the discrete-time error propagation is:
+    //   δθ_{k+1} ≈ (I - [ω]× Ts) δθ_k  -  Ts * δb_g
+    // This matches the measurement Jacobians used elsewhere.
+    const Matrix3 I3 = Matrix3::Identity();
+    const Vector3 w  = last_gyr_bias_corrected;   // body rates with bias removed
+    const Matrix3 Wx = skew_symmetric_matrix(w);
 
-    if (theta < T(1e-8)) {
-        Matrix3 Wx = skew_symmetric_matrix(w);
-        F_a_ext.template block<3,3>(0,0) = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
-    } else {
-        Matrix3 W = skew_symmetric_matrix(w / omega);
-        T s = std::sin(theta);
-        T c = std::cos(theta);
-        F_a_ext.template block<3,3>(0,0) = I - s * W + (1 - c) * (W * W);
-    }
+    // Use first-order form (this avoids tiny bias that can appear if the exact
+    // Rodrigues form is mixed with small-angle measurement Jacobians):
+    F_a_ext.template block<3,3>(0,0) = I3 - Wx * Ts;
 
     if constexpr (with_gyro_bias) {
-        F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
+        // ∂δθ/∂b_g = -I * Ts   (right-multiplicative convention)
+        F_a_ext.template block<3,3>(0,3) = -I3 * Ts;
+        // Bias random walk (mean dynamics = identity)
+        F_a_ext.template block<3,3>(3,3) = I3;
     }
 
-    // Process noise for attitude/bias
+    // Process noise for the base block (Qbase is continuous; discretize as Qd ≈ Qc*Ts)
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // Linear subsystem [v,p,S,a_w]
+    // Put identity on untouched diagonal (att block already set; if no bias, set that too)
+    if constexpr (!with_gyro_bias) {
+        // already set (0,0); nothing else to do for base
+    }
+
+    // ------------------------------------------
+    // 2) Linear [v, p, S, a_w] block (per axis)
+    // ------------------------------------------
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
 
-        for (int axis = 0; axis < 3; ++axis) {
-            T tau    = std::max(T(1e-6), tau_aw);
-            T sigma2 = Sigma_aw_stat(axis,axis);
+    // Offsets per state inside the 12-vector: v(0), p(3), S(6), a(9)
+    static const int idx[4] = {0, 3, 6, 9};
 
-            Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
-            PhiAxis4x1_analytic(tau, Ts, Phi_axis);
-            QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
+    for (int axis = 0; axis < 3; ++axis) {
+        const T tau    = std::max(T(1e-6), tau_aw);
+        const T sigma2 = Sigma_aw_stat(axis,axis);   // stationary variance (per axis)
 
-            static const int idx[4] = {0,3,6,9}; // v,p,S,a offsets
-            for (int i=0;i<4;i++)
-                for (int j=0;j<4;j++) {
-                    Phi_lin(idx[i]+axis, idx[j]+axis) = Phi_axis(i,j);
-                    Qd_lin (idx[i]+axis, idx[j]+axis) = Qd_axis(i,j);
-                }
-        }
+        Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
+        PhiAxis4x1_analytic(tau, Ts, Phi_axis);
+        QdAxis4x1_analytic (tau, Ts, sigma2, Qd_axis);
 
+        // Pack axis-wise into the 12×12 block (preserving v,p,S,a ordering)
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j) {
+                Phi_lin(idx[i] + axis, idx[j] + axis) = Phi_axis(i,j);
+                Qd_lin (idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
+            }
+    }
+
+    // Place the linear block into the full transition
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
+
+    // Add the linear process noise (OU-driven)
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 
+    // -------------------------------------
+    // 3) Accelerometer bias (if configured)
+    // -------------------------------------
     if constexpr (with_accel_bias) {
+        // Bias is a random walk: mean identity, Qd = Q_bacc_ * Ts
+        F_a_ext.template block<3,3>(OFF_BA, OFF_BA) = I3;
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
+    }
+
+    // ----------------------------------------------------
+    // 4) Set identity on any remaining diagonal entries,
+    //    ensure exact symmetry of Q, and mild PSD guard.
+    // ----------------------------------------------------
+    // Identity for everything not explicitly set above
+    for (int i = 0; i < NX; ++i) if (F_a_ext(i,i) == T(0)) F_a_ext(i,i) = T(1);
+
+    // Symmetrize Q to kill tiny numerical skew
+    Q_a_ext = T(0.5) * (Q_a_ext + Q_a_ext.transpose());
+
+    // PSD nudge (only if needed, very small)
+    const T eps = std::max(std::numeric_limits<T>::epsilon(), T(1e-12));
+    for (int i = 0; i < NX; ++i) {
+        if (Q_a_ext(i,i) < eps) Q_a_ext(i,i) += eps;
     }
 }
 
