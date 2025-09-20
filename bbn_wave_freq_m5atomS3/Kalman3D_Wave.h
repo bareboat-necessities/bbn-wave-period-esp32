@@ -35,7 +35,6 @@
 #include <stdexcept>
 
 using Eigen::Matrix;
-using Eigen::Map;
 
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
