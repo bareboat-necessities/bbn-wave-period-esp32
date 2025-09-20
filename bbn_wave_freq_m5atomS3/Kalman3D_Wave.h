@@ -661,8 +661,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 // --- helper: exact ∫_0^h exp(-Wx τ) dτ with series guard ---
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3
-integral_exp_neg_skew(const typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3& Wx,
-                      T omega, T h)
+Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::integral_exp_neg_skew(
+    const typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3& Wx,
+    T omega,
+    T h)
 {
     using Matrix3 = typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3;
     const Matrix3 I = Matrix3::Identity();
