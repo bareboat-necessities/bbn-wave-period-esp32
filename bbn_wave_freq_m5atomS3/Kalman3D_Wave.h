@@ -769,7 +769,7 @@ void discretize_theta_bias_exact(
 
     Mat3 J;
     k3dw_detail::phi_and_integral_exp_neg_skew(Wx, h, Phi_tt, J);
-    Phi_tb = J;
+    Phi_tb = -J;
 
     Mat6 A; A.setZero();
     Mat3 I3; I3.setIdentity();
