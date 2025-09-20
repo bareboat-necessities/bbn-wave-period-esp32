@@ -811,6 +811,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     Phi_axis(3,3) = alpha;        // a -> a
 }
 
+// Primitives with exp(-ξ/τ) and exp(-2ξ/τ):
+//   A0 = ∫₀ʰ e^{-ξ/τ} dξ = τ(1 - e^{-h/τ})
+//   A1 = ∫₀ʰ ξ e^{-ξ/τ} dξ = τ²(1 - e^{-h/τ}) - τh e^{-h/τ}
+//   A2 = ∫₀ʰ ξ² e^{-ξ/τ} dξ = 2τ³(1 - e^{-h/τ}) - τh(h+2τ)e^{-h/τ}
+//   B0 = ∫₀ʰ e^{-2ξ/τ} dξ = (τ/2)(1 - e^{-2h/τ})
+//
+// Series expansions (for h/τ ≪ 1):
+//   A0 ≈ h - h²/(2τ) + h³/(6τ²) - h⁴/(24τ³)
+//   A1 ≈ 0.5 h² - (1/3)(h³/τ) + (1/8)(h⁴/τ²)
+//   A2 ≈ (1/3) h³ - (1/4)(h⁴/τ) + (1/10)(h⁵/τ²)
+//   B0 ≈ h - h²/τ + (2/3)(h³/τ²) - (1/3)(h⁴/τ³)
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis) 
