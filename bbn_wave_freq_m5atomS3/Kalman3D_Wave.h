@@ -717,7 +717,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
         // Φ_θ,bg = - ∫_0^Ts exp(-[w]× τ) dτ  (exact)
         const Matrix3 Wx = skew_symmetric_matrix(w);
         const Matrix3 J  = (omega > T(0))
-            ? integral_exp_neg_skew<T,with_gyro_bias,with_accel_bias>(Wx, omega, Ts)
+            ? Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::integral_exp_neg_skew<T,with_gyro_bias,with_accel_bias>(Wx, omega, Ts)
             : (Ts * I3);
         F_a_ext.template block<3,3>(0,3) = -J;
 
