@@ -263,6 +263,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
+    static Matrix3 integral_exp_neg_skew(const Matrix3& Wx, T omega, T h);
+
 };
 
 // Implementation
@@ -658,7 +660,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 
 // --- helper: exact ∫_0^h exp(-Wx τ) dτ with series guard ---
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-static inline typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3
+typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3
 integral_exp_neg_skew(const typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3& Wx,
                       T omega, T h)
 {
