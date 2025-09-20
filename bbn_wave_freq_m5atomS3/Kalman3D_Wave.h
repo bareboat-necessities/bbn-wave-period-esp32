@@ -675,9 +675,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     const Vector3 w  = last_gyr_bias_corrected;   // body rates with bias removed
     const Matrix3 Wx = skew_symmetric_matrix(w);
 
-    // Use first-order form (this avoids tiny bias that can appear if the exact
-    // Rodrigues form is mixed with small-angle measurement Jacobians):
-    F_a_ext.template block<3,3>(0,0) = I3 - Wx * Ts;
+    Matrix3 I = Matrix3::Identity();
+    T omega = w.norm();
+    T theta = omega * Ts;
+
+    if (theta < T(1e-8)) {
+        F_a_ext.block<3,3>(0,0) = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
+    } else {
+        Matrix3 W = skew_symmetric_matrix(w / omega);
+        T s = std::sin(theta);
+        T c = std::cos(theta);
+        F_a_ext.block<3,3>(0,0) = I - s*W + (1-c)*(W*W);
+    }
 
     if constexpr (with_gyro_bias) {
         // ∂δθ/∂b_g = -I * Ts   (right-multiplicative convention)
