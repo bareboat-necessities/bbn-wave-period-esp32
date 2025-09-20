@@ -740,42 +740,53 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
 //   p_{k+1} = p_k + h v_k + φ_pa a_k
 //   S_{k+1} = S_k + h p_k + 0.5 h² v_k + φ_Sa a_k
 //   a_{k+1} = α a_k
+// Discrete-time state transition Φ for the [v, p, S, a] axis subsystem.
+// Exact in closed form with a small-x series guard.
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
 {
     using std::exp;
-    const T x = h / std::max(T(1e-12), tau);
+    const T tau_safe = std::max(T(1e-12), tau);
+    const T x = h / tau_safe;
 
     T alpha, phi_va, phi_pa, phi_Sa;
 
-    if (x < T(0.1)) { // use series when h/τ is small
-        // α = e^{-x} ≈ 1 - x + x²/2 - x³/6 + x⁴/24
+    if (x < T(0.1)) {
+        // α = e^{-x} series up to x^4
         alpha = T(1) - x + x*x/T(2) - x*x*x/T(6) + x*x*x*x/T(24);
-
         // φ_va ≈ h - h²/(2τ) + h³/(6τ²) - h⁴/(24τ³)
-        phi_va = h - (h*h)/(T(2)*tau) + (h*h*h)/(T(6)*tau*tau)
-                   - (h*h*h*h)/(T(24)*tau*tau*tau);
-
+        phi_va = h - (h*h)/(T(2)*tau_safe) + (h*h*h)/(T(6)*tau_safe*tau_safe)
+                 - (h*h*h*h)/(T(24)*tau_safe*tau_safe*tau_safe);
         // φ_pa ≈ 0.5 h² - (1/6)(h³/τ) + (1/24)(h⁴/τ²)
-        phi_pa = (h*h)/T(2) - (h*h*h)/(T(6)*tau)
-                   + (h*h*h*h)/(T(24)*tau*tau);
-
+        phi_pa = (h*h)/T(2) - (h*h*h)/(T(6)*tau_safe)
+                 + (h*h*h*h)/(T(24)*tau_safe*tau_safe);
         // φ_Sa ≈ (1/6) h³ - (1/24)(h⁴/τ) + (1/120)(h⁵/τ²)
-        phi_Sa = (h*h*h)/T(6) - (h*h*h*h)/(T(24)*tau)
-                   + (h*h*h*h*h)/(T(120)*tau*tau);
+        phi_Sa = (h*h*h)/T(6) - (h*h*h*h)/(T(24)*tau_safe)
+                 + (h*h*h*h*h)/(T(120)*tau_safe*tau_safe);
     } else {
         alpha  = exp(-x);
-        phi_va = tau * (T(1) - alpha);
-        phi_pa = tau*h - tau*tau*(T(1) - alpha);
-        phi_Sa = (T(0.5)*tau*h*h) - (tau*tau*h) + (tau*tau*tau)*(T(1) - alpha);
+        phi_va = tau_safe * (T(1) - alpha);
+        phi_pa = tau_safe*h - tau_safe*tau_safe*(T(1) - alpha);
+        phi_Sa = (T(0.5)*tau_safe*h*h) - (tau_safe*tau_safe*h)
+                 + (tau_safe*tau_safe*tau_safe)*(T(1) - alpha);
     }
 
     Phi_axis.setZero();
-    Phi_axis(0,0) = T(1);     Phi_axis(0,3) = phi_va; // v
-    Phi_axis(1,0) = h;        Phi_axis(1,1) = T(1);   Phi_axis(1,3) = phi_pa; // p
-    Phi_axis(2,0) = T(0.5)*h*h; Phi_axis(2,1) = h;    Phi_axis(2,2) = T(1);   Phi_axis(2,3) = phi_Sa; // S
-    Phi_axis(3,3) = alpha; // a
+    // v
+    Phi_axis(0,0) = T(1);
+    Phi_axis(0,3) = phi_va;
+    // p
+    Phi_axis(1,0) = h;
+    Phi_axis(1,1) = T(1);
+    Phi_axis(1,3) = phi_pa;
+    // S
+    Phi_axis(2,0) = T(0.5)*h*h;
+    Phi_axis(2,1) = h;
+    Phi_axis(2,2) = T(1);
+    Phi_axis(2,3) = phi_Sa;
+    // a
+    Phi_axis(3,3) = alpha;
 }
 
 // Primitives with exp(-ξ/τ) and exp(-2ξ/τ):
@@ -789,71 +800,92 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
 //   A1 ≈ 0.5 h² - (1/3)(h³/τ) + (1/8)(h⁴/τ²)
 //   A2 ≈ (1/3) h³ - (1/4)(h⁴/τ) + (1/10)(h⁵/τ²)
 //   B0 ≈ h - h²/τ + (2/3)(h³/τ²) - (1/3)(h⁴/τ³)
+
+// Exact discrete process covariance Qd for the [v, p, S, a] axis subsystem.
+// Qd = q_c * ∫_0^h k(ξ)k(ξ)^T dξ with q_c = 2σ^2/τ and
+// k(ξ) = [ τ(1-e^{-ξ/τ}),  τξ - τ^2(1-e^{-ξ/τ}),  0.5τξ^2 - τ^2ξ + τ^3(1-e^{-ξ/τ}),  e^{-ξ/τ} ]^T
+// Includes small-x series guards and the corrected K_pv and K_Sp signs.
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
-    T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis) 
+    T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
 {
     using std::exp;
-    const T x   = h / std::max(T(1e-12), tau);
-    const T q_c = (T(2) / tau) * sigma2;
 
-    T A0, A1, A2, B0, alpha, alpha2;
+    const T tau_safe = std::max(T(1e-12), tau);
+    const T x   = h / tau_safe;
+    const T q_c = (T(2) / tau_safe) * sigma2;
+
+    // Exponential helpers
+    T alpha, alpha2;
+    // A_n = ∫ ξ^n e^{-ξ/τ} dξ, B0 = ∫ e^{-2ξ/τ} dξ
+    T A0, A1, A2, B0;
 
     if (x < T(0.1)) {
+        // series for exp(-x) and exp(-2x)
         alpha  = T(1) - x + x*x/T(2) - x*x*x/T(6) + x*x*x*x/T(24);
         alpha2 = T(1) - T(2)*x + T(2)*x*x - (T(4)/T(3))*x*x*x + (T(2)/T(3))*x*x*x*x;
 
-        A0 = h - (h*h)/(T(2)*tau) + (h*h*h)/(T(6)*tau*tau) - (h*h*h*h)/(T(24)*tau*tau*tau);
-        A1 = (h*h)/T(2) - (h*h*h)/(T(3)*tau) + (h*h*h*h)/(T(8)*tau*tau);
-        A2 = (h*h*h)/T(3) - (h*h*h*h)/(T(4)*tau) + (h*h*h*h*h)/(T(10)*tau*tau);
-        B0 = h - (h*h)/tau + (T(2)/T(3))*(h*h*h)/(tau*tau) - (h*h*h*h)/(T(3)*tau*tau*tau);
+        A0 = h - (h*h)/(T(2)*tau_safe) + (h*h*h)/(T(6)*tau_safe*tau_safe)
+             - (h*h*h*h)/(T(24)*tau_safe*tau_safe*tau_safe);
+        A1 = (h*h)/T(2) - (h*h*h)/(T(3)*tau_safe)
+             + (h*h*h*h)/(T(8)*tau_safe*tau_safe);
+        A2 = (h*h*h)/T(3) - (h*h*h*h)/(T(4)*tau_safe)
+             + (h*h*h*h*h)/(T(10)*tau_safe*tau_safe);
+        B0 = h - (h*h)/tau_safe + (T(2)/T(3))*(h*h*h)/(tau_safe*tau_safe)
+             - (h*h*h*h)/(T(3)*tau_safe*tau_safe*tau_safe);
     } else {
         alpha   = exp(-x);
         alpha2  = exp(-T(2)*x);
 
-        A0 = tau * (T(1) - alpha);
-        A1 = tau*tau * (T(1) - alpha) - tau * h * alpha;
-        A2 = T(2)*tau*tau*tau * (T(1) - alpha) - tau * h * (h + T(2)*tau) * alpha;
-        B0 = (tau / T(2)) * (T(1) - alpha2);
+        A0 = tau_safe * (T(1) - alpha);
+        A1 = tau_safe*tau_safe * (T(1) - alpha) - tau_safe * h * alpha;
+        A2 = T(2)*tau_safe*tau_safe*tau_safe * (T(1) - alpha)
+           - tau_safe * h * (h + T(2)*tau_safe) * alpha;
+        B0 = (tau_safe / T(2)) * (T(1) - alpha2);
     }
 
-    // polynomial integrals
+    // Polynomial integrals Cn = ∫ ξ^n dξ
     const T C0 = h;
-    const T C1 = T(0.5)*h*h;
+    const T C1 = (h*h)/T(2);
     const T C2 = (h*h*h)/T(3);
     const T C3 = (h*h*h*h)/T(4);
     const T C4 = (h*h*h*h*h)/T(5);
 
-    const T T1 = tau;
-    const T T2 = tau*tau;
-    const T T3 = T2*tau;
-    const T T4 = T3*tau;
-    const T T5 = T4*tau;
-    const T T6 = T5*tau;
+    // Powers of τ
+    const T T1 = tau_safe;
+    const T T2 = T1*tau_safe;
+    const T T3 = T2*tau_safe;
+    const T T4 = T3*tau_safe;
+    const T T5 = T4*tau_safe;
+    const T T6 = T5*tau_safe;
 
-    // corrected cross-terms
+    // Assemble K = ∫ k k^T
     const T K_aa = B0;
     const T K_va = T1 * (A0 - B0);
     const T K_vv = T2 * (C0 - T(2)*A0 + B0);
 
-    // *** fix: ensure consistent sign on cross-terms ***
+    // ***** FIX 1: Correct K_pv (sign and missing +2A0 term) *****
+    // K_pv = τ^2(C1 - A1) - τ^3(C0 - 2A0 + B0)
+    const T K_pv = T2*(C1 - A1) - T3*(C0 - T(2)*A0 + B0);
+
     const T K_pa = T1*A1 - T2*A0 + T2*B0;
-    const T K_pv = T2*(C1 - A1) + T3*(C0 - A0) + T3*(A0 - B0);  // flipped sign on middle term
-    const T K_pp = T2*C2 - T(2)*T3*C1 + T(2)*T3*A1 + T4*C0 - T(2)*T4*A0 + T4*B0;
+
+    const T K_pp = T2*C2 - T(2)*T3*C1 + T(2)*T3*A1
+                 + T4*C0 - T(2)*T4*A0 + T4*B0;
 
     const T K_Sa = T(0.5)*T1*A2 - T2*A1 + T3*A0 - T3*B0;
-    const T K_Sv = T(0.5)*T2*(C2 - A2) - T3*(C1 - A1) + T4*(C0 - A0) - T4*(A0 - B0);
 
-    // *** fix: cleaned up signs on C2 and B0 terms ***
+    const T K_Sv = T(0.5)*T2*(C2 - A2) - T3*(C1 - A1)
+                 + T4*(C0 - T(2)*A0 + B0);
+
+    // ***** FIX 2: Correct final sign in K_Sp (… - τ^5 B0) *****
     const T K_Sp = T(0.5)*T2*C3 - T(1.5)*T3*C2 + T(2)*T4*C1 - T5*C0
-                 + T(0.5)*T3*A2 - T(2)*T4*A1 + T(2)*T5*A0 + T5*B0;
+                 + T(0.5)*T3*A2 - T(2)*T4*A1 + T(2)*T5*A0 - T5*B0;
 
     const T K_SS = T(0.25)*T2*C4 - T3*C3 + T(2)*T4*C2 - T(2)*T5*C1 + T6*C0
-                 - T4*A2 + T(2)*T5*A1 - T(2)*T6*A0
-                 + T6*B0;
+                 - T4*A2 + T(2)*T5*A1 - T(2)*T6*A0 + T6*B0;
 
-    Eigen::Matrix<T,4,4> K;
-    K.setZero();
+    Eigen::Matrix<T,4,4> K; K.setZero();
     K(0,0)=K_vv; K(0,1)=K_pv; K(0,2)=K_Sv; K(0,3)=K_va;
     K(1,0)=K_pv; K(1,1)=K_pp; K(1,2)=K_Sp; K(1,3)=K_pa;
     K(2,0)=K_Sv; K(2,1)=K_Sp; K(2,2)=K_SS; K(2,3)=K_Sa;
