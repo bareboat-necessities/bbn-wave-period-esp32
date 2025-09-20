@@ -37,15 +37,8 @@
 using Eigen::Matrix;
 using Eigen::Map;
 
-#ifdef EIGEN_NON_ARDUINO
-  #include <unsupported/Eigen/MatrixFunctions>  // enables .exp() on matrices
-#endif
-
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
-
-    // Compile-time toggle for discretization method
-    static constexpr bool USE_ANALYTIC_DISCRETIZATION = true;
 
     // Original base (att_err + optional gyro bias)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
@@ -702,154 +695,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
-// Exact Van-Loan using Eigen's MatrixFunctions (desktop)
-#ifdef EIGEN_NON_ARDUINO
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::vanLoanDiscretization_12x3(
-    const Eigen::Matrix<T,12,12>& A,
-    const Eigen::Matrix<T,12,3>&  G,
-    const Eigen::Matrix<T,3,3>&   Sigma_c,
-    T Ts,
-    Eigen::Matrix<T,12,12>& Phi,
-    Eigen::Matrix<T,12,12>& Qd) const
-{
-    Eigen::Matrix<T,24,24> M; M.setZero();
-    M.block(0,0,12,12)   = -A * Ts;
-    M.block(0,12,12,12)  =  G * Sigma_c * G.transpose() * Ts;
-    M.block(12,12,12,12) =  A.transpose() * Ts;
-
-    // Requires <unsupported/Eigen/MatrixFunctions>
-    Eigen::Matrix<T,24,24> expM = M.exp();
-
-    // Van-Loan unpack
-    const auto PhiT = expM.block(12,12,12,12);
-    const auto Qblk = expM.block(0,12,12,12);
-
-    Phi = PhiT.transpose();       // exp(A Ts)
-    Qd  = Phi * Qblk;             // exact discrete process noise
-}
-#else
-// Padé(6) matrix exponential with scaling & squaring
-// Works well for small fixed-size matrices (e.g. 8x8)
-template<typename Mat>
-Mat expm_pade6(const Mat& A) {
-    using T = typename Mat::Scalar;
-    const int n = A.rows();
-    assert(n == A.cols());
-
-    // Higham’s threshold for [6/6]; 3.0 is fine for these sizes
-    const T theta = T(3);
-    const int max_squarings = 8;
-
-    // Correct [6/6] Padé coefficients
-    const T c0 = T(1);
-    const T c1 = T(1)/T(2);
-    const T c2 = T(1)/T(10);
-    const T c3 = T(1)/T(120);
-    const T c4 = T(1)/T(1680);
-    const T c5 = T(1)/T(30240);
-    const T c6 = T(1)/T(665280);
-
-    // 1-norm estimate (max column sum)
-    T normA = A.cwiseAbs().colwise().sum().maxCoeff();
-
-    int s = 0;
-    if (normA > theta) {
-        s = std::min(max_squarings,
-                     static_cast<int>(std::ceil(std::log2(normA/theta))));
-    }
-    Mat As = A / T(1 << s);
-
-    Mat I = Mat::Identity(n,n);
-    Mat A2 = As * As;
-    Mat A4 = A2 * A2;
-    Mat A6 = A4 * A2;
-
-    // U = A (c1 I + c3 A^2 + c5 A^4)
-    Mat U = As * (c1*I + c3*A2 + c5*A4);
-
-    // V = c0 I + c2 A^2 + c4 A^4 + c6 A^6
-    Mat V = c0*I + c2*A2 + c4*A4 + c6*A6;
-
-    // (V - U)^{-1} (V + U)
-    Mat P = V + U;
-    Mat Q = V - U;
-
-    // Prefer full pivoting on embedded for robustness
-    Mat R = Q.fullPivLu().solve(P);
-
-    // Squaring
-    for (int i = 0; i < s; ++i) {
-        R = R * R;
-    }
-    return R;
-}
-template<typename T>
-static void vanLoanAxis4x1(
-    T tau, T sigma2, T Ts,
-    Eigen::Matrix<T,4,4>& Phi, Eigen::Matrix<T,4,4>& Qd)
-{
-    using Mat4 = Eigen::Matrix<T,4,4>;
-    using Mat8 = Eigen::Matrix<T,8,8>;
-
-    Mat4 A; A.setZero();
-    A(0,3) = 1;          // v̇ = a
-    A(1,0) = 1;          // ṗ = v
-    A(2,1) = 1;          // Ṡ = p
-    A(3,3) = -1/tau;     // ȧ = -a/τ
-
-    Eigen::Matrix<T,4,1> G; G.setZero();
-    G(3,0) = 1;
-
-    const T Sigma_c = (2/tau) * sigma2;
-
-    Mat8 M; M.setZero();
-    M.block(0,0,4,4)   = -A * Ts;
-    M.block(0,4,4,4)   = G * (Sigma_c * G.transpose()) * Ts;
-    M.block(4,4,4,4)   = A.transpose() * Ts;
-
-    Mat8 expM = expm_pade6(M);
-
-    Mat4 PhiT = expM.block(4,4,4,4);
-    Mat4 Qblk = expM.block(0,4,4,4);
-
-    Phi = PhiT.transpose();
-    Qd  = Phi * Qblk;
-}
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::vanLoanDiscretization_12x3(
-    const Eigen::Matrix<T,12,12>& /*A*/,
-    const Eigen::Matrix<T,12,3>&  /*G*/,
-    const Eigen::Matrix<T,3,3>&   /*Sigma_c_unused*/,
-    T Ts,
-    Eigen::Matrix<T,12,12>& Phi,
-    Eigen::Matrix<T,12,12>& Qd) const
-{
-    using Mat12 = Eigen::Matrix<T,12,12>;
-
-    Mat12 Phi_lin; Phi_lin.setZero();
-    Mat12 Qd_lin;  Qd_lin.setZero();
-
-    for (int axis=0; axis<3; ++axis) {
-        T tau    = std::max(T(1e-6), tau_aw);
-        T sigma2 = Sigma_aw_stat(axis,axis);
-
-        Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
-        vanLoanAxis4x1(tau, sigma2, Ts, Phi_axis, Qd_axis);
-
-        int idx[4] = {0,3,6,9}; // v,p,S,a offsets
-        for (int i=0;i<4;i++)
-            for (int j=0;j<4;j++) {
-                Phi_lin(idx[i]+axis, idx[j]+axis) = Phi_axis(i,j);
-                Qd_lin (idx[i]+axis, idx[j]+axis) = Qd_axis (i,j);
-            }
-    }
-
-    Phi = Phi_lin;
-    Qd  = Qd_lin;
-}
-#endif
-
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     const Vector3& /*acc_body_unused*/, T Ts,
@@ -886,7 +731,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
 
-    if constexpr (USE_ANALYTIC_DISCRETIZATION) {
+    
         // --- Use closed-form formulas ---
         for (int axis = 0; axis < 3; ++axis) {
             T tau    = std::max(T(1e-6), tau_aw);
@@ -903,25 +748,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
                     Qd_lin (idx[i]+axis, idx[j]+axis) = Qd_axis(i,j);
                 }
         }
-    } else {
-        // --- Use Van Loan matrix exponential (legacy reference) ---
-        using Mat12x3 = Eigen::Matrix<T,12,3>;
-        Mat12 A; A.setZero();
-        A.template block<3,3>(0,9) = Matrix3::Identity();
-        A.template block<3,3>(3,0) = Matrix3::Identity();
-        A.template block<3,3>(6,3) = Matrix3::Identity();
-        A.template block<3,3>(9,9) = -(T(1)/std::max(T(1e-6), tau_aw)) * Matrix3::Identity();
-
-        Mat12x3 G; G.setZero();
-        G.template block<3,3>(9,0) = Matrix3::Identity();
-
-    #ifdef EIGEN_NON_ARDUINO
-        const Matrix3 Sigma_c = (T(2)/std::max(T(1e-6), tau_aw)) * Sigma_aw_stat;
-        vanLoanDiscretization_12x3(A, G, Sigma_c, Ts, Phi_lin, Qd_lin);
-    #else
-        vanLoanDiscretization_12x3(A, G, Matrix3::Zero(), Ts, Phi_lin, Qd_lin);
-    #endif
-    }
 
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
