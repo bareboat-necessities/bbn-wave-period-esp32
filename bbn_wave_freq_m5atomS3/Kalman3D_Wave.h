@@ -787,33 +787,60 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis) 
 {
-    // States order: [v, p, S, a]
     using std::exp;
-    const T Tinv    = T(1) / std::max(T(1e-12), tau);
-    const T alpha   = exp(-h * Tinv);
-    const T alpha2  = exp(-T(2) * h * Tinv);
-    const T q_c     = (T(2) / tau) * sigma2;  // continuous-time noise intensity
 
-    // Short-hands for simple polynomial integrals over [0,h]
+    const T x   = h / std::max(T(1e-12), tau);
+    const T q_c = (T(2) / tau) * sigma2;  // continuous-time noise intensity
+
+    // Primitives with exp(-ξ/τ) and exp(-2ξ/τ)
+    // For small x = h/τ, the direct form (1 - exp(-x)) suffers cancellation in float,
+    // so we switch to series expansions if x < 1e-3.
+    T A0, A1, A2, B0, alpha, alpha2;
+
+    if (x < T(1e-3)) {
+        // --- Series expansions around x = 0 (safe for float) ---
+        // α = e^{-x} ≈ 1 - x + x^2/2 - x^3/6 + x^4/24
+        alpha  = T(1) - x + x*x/T(2) - x*x*x/T(6) + x*x*x*x/T(24);
+        alpha2 = T(1) - T(2)*x + T(2)*x*x - (T(4)/T(3))*x*x*x + (T(2)/T(3))*x*x*x*x;
+
+        // A0 = τ (1 - α) ≈ h - h^2/(2τ) + h^3/(6τ^2) - h^4/(24τ^3)
+        A0 = h - (h*h)/(T(2)*tau) + (h*h*h)/(T(6)*tau*tau) - (h*h*h*h)/(T(24)*tau*tau*tau);
+
+        // A1 = τ^2(1 - α) - τh α
+        //   ≈ 0.5 h^2 - (1/3)(h^3/τ) + (1/8)(h^4/τ^2)
+        A1 = (h*h)/T(2) - (h*h*h)/(T(3)*tau) + (h*h*h*h)/(T(8)*tau*tau);
+
+        // A2 = 2τ^3(1 - α) - τh(h+2τ) α
+        //   ≈ (1/3) h^3 - (1/4)(h^4/τ) + (1/10)(h^5/τ^2)
+        A2 = (h*h*h)/T(3) - (h*h*h*h)/(T(4)*tau) + (h*h*h*h*h)/(T(10)*tau*tau);
+
+        // B0 = (τ/2)(1 - e^{-2h/τ})
+        //   ≈ h - h^2/τ + (2/3)(h^3/τ^2) - (1/3)(h^4/τ^3)
+        B0 = h - (h*h)/tau + (T(2)/T(3))*(h*h*h)/(tau*tau) - (h*h*h*h)/(T(3)*tau*tau*tau);
+    } else {
+        // --- Exact closed forms ---
+        alpha   = exp(-x);
+        alpha2  = exp(-T(2)*x);
+
+        // A0 = ∫ e^{-ξ/τ} dξ over [0,h] = τ(1 - e^{-h/τ})
+        A0 = tau * (T(1) - alpha);
+
+        // A1 = ∫ ξ e^{-ξ/τ} dξ = τ^2(1 - e^{-h/τ}) - τh e^{-h/τ}
+        A1 = tau*tau * (T(1) - alpha) - tau * h * alpha;
+
+        // A2 = ∫ ξ^2 e^{-ξ/τ} dξ = 2τ^3(1 - e^{-h/τ}) - τh(h+2τ)e^{-h/τ}
+        A2 = T(2)*tau*tau*tau * (T(1) - alpha) - tau * h * (h + T(2)*tau) * alpha;
+
+        // B0 = ∫ e^{-2ξ/τ} dξ = (τ/2)(1 - e^{-2h/τ})
+        B0 = (tau / T(2)) * (T(1) - alpha2);
+    }
+
+    // Short-hands for polynomial integrals over [0,h]
     const T C0 = h;
     const T C1 = T(0.5) * h*h;
     const T C2 = (h*h*h) / T(3);
     const T C3 = (h*h*h*h) / T(4);
     const T C4 = (h*h*h*h*h) / T(5);
-
-    // Primitives with exp(-ξ/τ) over [0,h]
-    const T A0 = tau * (T(1) - alpha);
-    const T A1 = tau*tau * (T(1) - alpha) - tau * h * alpha;
-    const T A2 = T(2)*tau*tau*tau * (T(1) - alpha) - tau * h * (h + T(2)*tau) * alpha;
-
-    // Primitives with exp(-2ξ/τ) over [0,h]
-    // General: ∫ e^{-λ ξ} dξ = (1 - e^{-λ h})/λ;  λ = 2/τ
-    const T B0 = (tau / T(2)) * (T(1) - alpha2);
-
-    // Build k(ξ) components for the driven column (a-column of Φ(ξ)):
-    // k_v = τ (1 - e^{-ξ/τ}); k_p = τ ξ - τ^2 (1 - e^{-ξ/τ});
-    // k_S = 0.5 τ ξ^2 - τ^2 ξ + τ^3 (1 - e^{-ξ/τ}); k_a = e^{-ξ/τ}
-    // Qd = q_c * ∫ k(ξ) k(ξ)^T dξ  (all entries below are the integral K; multiply by q_c at the end)
 
     const T T1 = tau;
     const T T2 = tau*tau;
@@ -822,51 +849,59 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     const T T5 = T4*tau;
     const T T6 = T5*tau;
 
-    // Useful combos
-    // For (1 - e^{-ξ/τ}): integrals reduce to C• - A•
-    const T I1mA0 = C0 - A0;  // ∫ (1 - α) dξ
-    const T Ix1mA1 = C1 - A1; // ∫ ξ (1 - α) dξ
-    const T Ix21mA2 = C2 - A2;// ∫ ξ^2 (1 - α) dξ
+    // Combos: (∫ polynomial - A•) = ∫ polynomial*(1 - e^{-ξ/τ})
+    const T I1mA0   = C0 - A0;   // ∫ (1 - e^{-ξ/τ}) dξ
+    const T Ix1mA1  = C1 - A1;   // ∫ ξ (1 - e^{-ξ/τ}) dξ
+    const T Ix21mA2 = C2 - A2;   // ∫ ξ^2 (1 - e^{-ξ/τ}) dξ
 
-    // K_aa
+    // Build entries of K = ∫ k(ξ)k(ξ)^T dξ for k = [k_v, k_p, k_S, k_a]^T
+    //
+    // k_v(ξ) = τ(1 - e^{-ξ/τ})
+    // k_p(ξ) = τξ - τ^2(1 - e^{-ξ/τ})
+    // k_S(ξ) = 0.5 τ ξ^2 - τ^2 ξ + τ^3(1 - e^{-ξ/τ})
+    // k_a(ξ) = e^{-ξ/τ}
+
+    // K_aa = ∫ k_a^2 = ∫ e^{-2ξ/τ} = B0
     const T K_aa = B0;
 
-    // K_va = ∫ k_v * k_a = τ ∫ (α - α^2) = τ (A0 - B0)
+    // K_va = ∫ k_v k_a = τ ∫ (e^{-ξ/τ} - e^{-2ξ/τ}) = τ(A0 - B0)
     const T K_va = T1 * (A0 - B0);
 
-    // K_vv = ∫ [τ(1 - α)]^2 = τ^2 ∫ (1 - 2α + α^2) = τ^2 (C0 - 2A0 + B0)
+    // K_vv = ∫ [τ(1 - e^{-ξ/τ})]^2 = τ^2 (C0 - 2A0 + B0)
     const T K_vv = T2 * (C0 - T(2)*A0 + B0);
 
-    // K_pa = ∫ k_p * k_a = τ A1 - τ^2 A0 + τ^2 B0
+    // K_pa = ∫ k_p k_a = τ A1 - τ^2 A0 + τ^2 B0
     const T K_pa = T1*A1 - T2*A0 + T2*B0;
 
-    // K_pv = ∫ k_p * k_v = τ^2 ∫ ξ(1-α) - τ^3 ∫ (1-α) + τ^3 ∫ α(1-α)
+    // K_pv = ∫ k_p k_v = τ^2 ∫ ξ(1 - e^{-ξ/τ}) - τ^3 ∫ (1 - e^{-ξ/τ}) + τ^3 ∫ e^{-ξ/τ}(1 - e^{-ξ/τ})
     const T K_pv = T2*Ix1mA1 - T3*I1mA0 + T3*(A0 - B0);
 
-    // K_pp = ∫ (T ξ - T^2 + T^2 α)^2
-    // = T^2 C2 - 2 T^3 C1 + 2 T^3 A1 + T^4 C0 - 2 T^4 A0 + T^4 B0
+    // K_pp = ∫ (τ ξ - τ^2 + τ^2 e^{-ξ/τ})^2
+    //      = τ^2 C2 - 2τ^3 C1 + 2τ^3 A1 + τ^4 C0 - 2τ^4 A0 + τ^4 B0
     const T K_pp = T2*C2 - T(2)*T3*C1 + T(2)*T3*A1 + T4*C0 - T(2)*T4*A0 + T4*B0;
 
-    // K_Sa = 0.5 T A2 - T^2 A1 + T^3 A0 - T^3 B0
+    // K_Sa = ∫ k_S k_a = 0.5 τ A2 - τ^2 A1 + τ^3 A0 - τ^3 B0
     const T K_Sa = T(0.5)*T1*A2 - T2*A1 + T3*A0 - T3*B0;
 
-    // K_Sv = 0.5 T^2 (C2 - A2) - T^3 (C1 - A1) + T^4 (C0 - A0) - T^4 (A0 - B0)
+    // K_Sv = ∫ k_S k_v
+    //      = 0.5 τ^2 (C2 - A2) - τ^3 (C1 - A1) + τ^4 (C0 - A0) - τ^4 (A0 - B0)
     const T K_Sv = T(0.5)*T2*Ix21mA2 - T3*Ix1mA1 + T4*I1mA0 - T4*(A0 - B0);
 
-    // K_Sp = 0.5 T^2 C3 - 1.5 T^3 C2 + 2 T^4 C1 - T^5 C0
-    //       + 0.5 T^3 A2 - 2 T^4 A1 + 2 T^5 A0 - T^5 B0
+    // K_Sp = ∫ k_S k_p
+    //      = 0.5 τ^2 C3 - 1.5 τ^3 C2 + 2 τ^4 C1 - τ^5 C0
+    //      + 0.5 τ^3 A2 - 2 τ^4 A1 + 2 τ^5 A0 - τ^5 B0
     const T K_Sp = T(0.5)*T2*C3 - T(1.5)*T3*C2 + T(2)*T4*C1 - T5*C0
                  + T(0.5)*T3*A2 - T(2)*T4*A1 + T(2)*T5*A0 - T5*B0;
 
-    // K_SS = (poly square) + (cross with α) + (α^2 term)
-    // Poly^2: 0.25 T^2 C4 - T^3 C3 + 2 T^4 C2 - 2 T^5 C1 + T^6 C0
-    // Cross:  - T^4 A2 + 2 T^5 A1 - 2 T^6 A0
-    // Alpha^2: + T^6 B0
+    // K_SS = ∫ k_S^2
+    // Poly^2:   0.25 τ^2 C4 - τ^3 C3 + 2 τ^4 C2 - 2 τ^5 C1 + τ^6 C0
+    // Cross:   -τ^4 A2 + 2 τ^5 A1 - 2 τ^6 A0
+    // Alpha^2: +τ^6 B0
     const T K_SS = T(0.25)*T2*C4 - T3*C3 + T(2)*T4*C2 - T(2)*T5*C1 + T6*C0
                  - T4*A2 + T(2)*T5*A1 - T(2)*T6*A0
                  + T6*B0;
 
-    // Assemble symmetric 4x4 K, then scale by q_c
+    // Assemble symmetric 4x4 covariance
     Eigen::Matrix<T,4,4> K;
     K.setZero();
     K(0,0) = K_vv; K(0,1) = K_pv; K(0,2) = K_Sv; K(0,3) = K_va;
