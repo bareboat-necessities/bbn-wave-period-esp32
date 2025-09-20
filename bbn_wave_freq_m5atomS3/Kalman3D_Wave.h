@@ -750,6 +750,30 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     }
 }
 
+// Discrete-time state transition Φ for the [v, p, S, a] axis subsystem.
+//
+// Definitions (integrals of exp(-ξ/τ)):
+//   α    = e^{-h/τ}
+//
+//   φ_va = ∫₀ʰ e^{-ξ/τ} dξ
+//        = τ (1 - e^{-h/τ})
+//
+//   φ_pa = ∫₀ʰ ξ e^{-ξ/τ} dξ
+//        = τh - τ² (1 - e^{-h/τ})
+//
+//   φ_Sa = ∫₀ʰ ξ² e^{-ξ/τ} dξ / 2
+//        = 0.5 τ h² - τ² h + τ³ (1 - e^{-h/τ})
+//
+// Series expansions (for h/τ ≪ 1):
+//   φ_va ≈ h - h²/(2τ) + h³/(6τ²) - h⁴/(24τ³)
+//   φ_pa ≈ 0.5 h² - (1/6)(h³/τ) + (1/24)(h⁴/τ²)
+//   φ_Sa ≈ (1/6) h³ - (1/24)(h⁴/τ) + (1/120)(h⁵/τ²)
+//
+// State recursion (per axis):
+//   v_{k+1} = v_k + φ_va a_k
+//   p_{k+1} = p_k + h v_k + φ_pa a_k
+//   S_{k+1} = S_k + h p_k + 0.5 h² v_k + φ_Sa a_k
+//   a_{k+1} = α a_k
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
