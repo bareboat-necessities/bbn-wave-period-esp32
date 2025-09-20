@@ -698,7 +698,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     F_a_ext.setIdentity();
     Q_a_ext.setZero();
 
-    // === Attitude error (+ optional bias) ===
+    // Attitude error (+ optional bias)
     Matrix3 I = Matrix3::Identity();
     Vector3 w = last_gyr_bias_corrected;
     T omega = w.norm();
@@ -721,7 +721,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // === Linear subsystem [v,p,S,a_w] ===
+    // Linear subsystem [v,p,S,a_w]
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
@@ -734,7 +734,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
             PhiAxis4x1_analytic(tau, Ts, Phi_axis);
             QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
 
-            int idx[4] = {0,3,6,9}; // v,p,S,a offsets
+            static const int idx[4] = {0,3,6,9}; // v,p,S,a offsets
             for (int i=0;i<4;i++)
                 for (int j=0;j<4;j++) {
                     Phi_lin(idx[i]+axis, idx[j]+axis) = Phi_axis(i,j);
@@ -876,4 +876,3 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
 
     Qd_axis = q_c * K;
 }
-
