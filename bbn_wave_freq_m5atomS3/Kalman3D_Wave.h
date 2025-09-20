@@ -228,7 +228,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Vector3 k_a_ = Vector3::Constant(T(0.003));
 
     // Original constant matrices (kept)
-    const Matrix3 Rmag;
+    Matrix3 Rmag;
     MatrixM R;
     MatrixBaseN Qbase; // original Q for attitude & bias
 
