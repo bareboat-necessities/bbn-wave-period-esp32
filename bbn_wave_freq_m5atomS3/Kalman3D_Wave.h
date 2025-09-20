@@ -658,6 +658,178 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
+
+
+// ========================== drop-in helpers ===============================
+// Minimal, dependency-free matrix exponential via Padé(6) + scaling & squaring.
+// Works with small fixed-size Eigen matrices (e.g., 3x3, 6x6, 12x12).
+namespace k3dw_detail {
+
+template<class Mat>
+Mat expm_pade6(const Mat& A_in)
+{
+    using T = typename Mat::Scalar;
+    const int n = A_in.rows();
+    assert(n == A_in.cols());
+
+    // 1-norm (max column sum)
+    auto one_norm = [](const Mat& X)->T {
+        T m = T(0);
+        for (int j=0;j<X.cols();++j) {
+            T colsum = T(0);
+            for (int i=0;i<X.rows();++i) colsum += std::abs(X(i,j));
+            if (colsum > m) m = colsum;
+        }
+        return m;
+    };
+
+    // Padé(6) coefficients
+    const T c0 = T(1);
+    const T c1 = T(1)/T(2);
+    const T c2 = T(1)/T(10);
+    const T c3 = T(1)/T(120);
+    const T c4 = T(1)/T(1680);
+    const T c5 = T(1)/T(30240);
+    const T c6 = T(1)/T(665280);
+
+    // Higham-ish theta for [6/6] (good enough for our sizes)
+    const T theta = T(3);
+    const int max_squarings = 12;
+
+    // Scaling
+    Mat A = A_in;
+    T normA = one_norm(A);
+    int s = 0;
+    if (normA > theta && normA > T(0)) {
+        // choose s so ||A/2^s||_1 <= theta
+        s = std::min(max_squarings, std::max(0, static_cast<int>(std::ceil(std::log2(normA/theta)))));
+        A /= T(T(1) << s);
+    }
+
+    const Mat I = Mat::Identity(n,n);
+    const Mat A2 = A * A;
+    const Mat A4 = A2 * A2;
+    const Mat A6 = A4 * A2;
+
+    // U = A (c1 I + c3 A^2 + c5 A^4)
+    Mat U = A * (c1*I + c3*A2 + c5*A4);
+
+    // V = c0 I + c2 A^2 + c4 A^4 + c6 A^6
+    Mat V = c0*I + c2*A2 + c4*A4 + c6*A6;
+
+    // (V - U)^{-1} (V + U)
+    Mat P = V + U;
+    Mat Q = V - U;
+    Mat R = Q.fullPivLu().solve(P);
+
+    // Squaring back up
+    for (int i=0;i<s;++i) R = R * R;
+    return R;
+}
+
+// Compute both Φ_θθ = exp(-[w]× h) and J(h) = ∫_0^h exp(-[w]× τ) dτ
+// in one shot via a single block-exponential (always using expm_pade6).
+template<typename T>
+void phi_and_integral_exp_neg_skew(
+    const Eigen::Matrix<T,3,3>& Wx, T h,
+    Eigen::Matrix<T,3,3>& Phi_tt,   // exp(-Wx h)
+    Eigen::Matrix<T,3,3>& J)        // ∫_0^h exp(-Wx τ) dτ
+{
+    using Mat3 = Eigen::Matrix<T,3,3>;
+    using Mat6 = Eigen::Matrix<T,6,6>;
+
+    Mat6 B; B.setZero();
+    //   [ -Wx   I ]
+    //   [  0    0 ]
+    B.template block<3,3>(0,0) = -Wx;
+    B.template block<3,3>(0,3) =  Mat3::Identity();
+
+    Mat6 expBh = expm_pade6(B * h);
+    Phi_tt = expBh.template block<3,3>(0,0);
+    J      = expBh.template block<3,3>(0,3);
+}
+
+// Exact Van-Loan for Qd of a continuous LTI: xdot = A x + L w,  E[w w^T] = Qc δ(t)
+// Always using expm_pade6.
+template<typename T, int N>
+void van_loan_Qd(
+    const Eigen::Matrix<T,N,N>& A,
+    const Eigen::Matrix<T,N,N>& LQLT, // L Qc L^T
+    T h,
+    Eigen::Matrix<T,N,N>& Phi,
+    Eigen::Matrix<T,N,N>& Qd)
+{
+    using MatN = Eigen::Matrix<T,N,N>;
+    using Mat2N = Eigen::Matrix<T,2*N,2*N>;
+
+    Mat2N M; M.setZero();
+    M.template block<N,N>(0,0) = -A * h;
+    M.template block<N,N>(0,N) =  LQLT * h;
+    M.template block<N,N>(N,N) =  A.transpose() * h;
+
+    Mat2N expM = expm_pade6(M);
+    const MatN PhiT = expM.template block<N,N>(N,N);
+    const MatN Qblk = expM.template block<N,N>(0,N);
+    Phi = PhiT.transpose();
+    Qd  = Phi * Qblk;
+    Qd  = T(0.5) * (Qd + Qd.transpose());
+}
+
+} // namespace k3dw_detail
+// ======================== end drop-in helpers =============================
+
+
+
+
+// Exact, closed-form discretization for [δθ, b_g]:
+//   δθ̇ = -[w]× δθ - b_g  +  (gyro white noise)
+//   ḃ_g = 0              +  (bias RW)
+// Uses expm_pade6 for Φ_θθ, the bias integral, and Van-Loan for Qd.
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+static void discretize_theta_bias_exact(
+    const Eigen::Matrix<T,3,1>& w, T h,
+    const Eigen::Matrix<T,3,3>& Sg,   // gyro noise PSD (rad^2/s)
+    const Eigen::Matrix<T,3,3>& Sbg,  // bias RW PSD    ((rad/s)^2/s)
+    Eigen::Matrix<T,3,3>& Phi_tt,     // out: Φ_θθ
+    Eigen::Matrix<T,3,3>& Phi_tb,     // out: Φ_θb
+    Eigen::Matrix<T,6,6>& Qd_out)     // out: Qd for [δθ; b]^T
+{
+    using Mat3 = Eigen::Matrix<T,3,3>;
+    using Mat6 = Eigen::Matrix<T,6,6>;
+    const Mat3 I3 = Mat3::Identity();
+
+    // Build cross-product matrix
+    Mat3 Wx; Wx << T(0),    -w.z(),  w.y(),
+                   w.z(),   T(0),   -w.x(),
+                  -w.y(),    w.x(),  T(0);
+
+    // Φ_θθ and J via a single block exponential
+    Mat3 J;
+    k3dw_detail::phi_and_integral_exp_neg_skew(Wx, h, Phi_tt, J);
+    Phi_tb = -J;
+
+    // Continuous-time A and LQLT for the 6x6 block [δθ; b]
+    Mat6 A; A.setZero();
+    A.template block<3,3>(0,0) = -Wx;
+    A.template block<3,3>(0,3) = -I3;
+    // ḃ = 0
+
+    Mat6 LQLT; LQLT.setZero();
+    // gyro white noise enters δθ dynamics with -I (sign doesn't matter in LQLT)
+    LQLT.template block<3,3>(0,0) = Sg;
+    // bias RW noise on b
+    LQLT.template block<3,3>(3,3) = Sbg;
+
+    Mat6 Phi6, Qd6;
+    k3dw_detail::van_loan_Qd<T,6>(A, LQLT, h, Phi6, Qd6);
+    Qd_out = Qd6;
+}
+
+
+
+
+
+
 // --- helper: exact ∫_0^h exp(-Wx τ) dτ with series guard ---
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 typename Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::Matrix3
@@ -698,42 +870,39 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     Q_a_ext.setZero();
 
     const Matrix3 I3 = Matrix3::Identity();
-    const Vector3 w  = last_gyr_bias_corrected;   // rad/s
-    const T omega    = w.norm();
-    const T theta    = omega * Ts;
 
-    // ===== 1) Attitude error + gyro bias (analytic, closed-form) =====
-    // Φ_θθ = exp(-[w]× Ts)
-    if (theta < T(1e-8)) {
-        const Matrix3 Wx = skew_symmetric_matrix(w);
-        F_a_ext.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts/T(2));
-    } else {
-        const Matrix3 Wn = skew_symmetric_matrix(w / omega); // unit axis skew
-        const T s = std::sin(theta), c = std::cos(theta);
-        F_a_ext.template block<3,3>(0,0) = I3 - s*Wn + (T(1)-c)*(Wn*Wn);
-    }
+    // -------- θ–bias exact discretization via expm_pade6 everywhere --------
+    Eigen::Matrix<T,3,3> Phi_tt, Phi_tb;
+    Eigen::Matrix<T,6,6> Qd_tb;
+    const Eigen::Matrix<T,3,1> w = last_gyr_bias_corrected;
 
+    // Extract continuous-time PSDs from your Qbase (as you already used it)
+    Eigen::Matrix<T,3,3> Sg  = Qbase.template topLeftCorner<3,3>();    // gyro PSD
+    Eigen::Matrix<T,3,3> Sbg = Eigen::Matrix<T,3,3>::Zero();
     if constexpr (with_gyro_bias) {
-        // Φ_θ,bg = - ∫_0^Ts exp(-[w]× τ) dτ  (exact)
-        const Matrix3 Wx = skew_symmetric_matrix(w);
-        const Matrix3 J  = (omega > T(0))
-            ? Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::integral_exp_neg_skew(Wx, omega, Ts)
-            : (Ts * I3);
-        F_a_ext.template block<3,3>(0,3) = -J;
-
-        // Φ_bg,bg = I
-        F_a_ext.template block<3,3>(3,3) = I3;
+        Sbg = Qbase.template block<3,3>(3,3);                           // bias PSD
     }
 
-    // Qd for [δθ, δb_g] — keep your discrete base Q (RW gyro + RW bias)
-    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
+    discretize_theta_bias_exact<T,with_gyro_bias,with_accel_bias>(
+        w, Ts, Sg, Sbg, Phi_tt, Phi_tb, Qd_tb);
 
-    // ===== 2) Linear [v, p, S, a_w] — analytic per-axis (your functions) =====
+    // Fill F and Q for θ–bias
+    F_a_ext.template block<3,3>(0,0) = Phi_tt;
+    if constexpr (with_gyro_bias) {
+        F_a_ext.template block<3,3>(0,3) = Phi_tb;
+        F_a_ext.template block<3,3>(3,3) = I3;
+        Q_a_ext.template block<6,6>(0,0) = Qd_tb;
+    } else {
+        // No bias state: keep just the top-left Qd block
+        Q_a_ext.template block<3,3>(0,0) = Qd_tb.template block<3,3>(0,0);
+    }
+
+    // -------- linear [v, p, S, a_w] block (keep your analytic code) -------
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
 
-    static const int idx[4] = {0,3,6,9}; // v,p,S,a ordering
+    static const int idx[4] = {0,3,6,9}; // v,p,S,a ordering per axis
     for (int axis = 0; axis < 3; ++axis) {
         const T tau    = std::max(T(1e-6), tau_aw);
         const T sigma2 = Sigma_aw_stat(axis,axis);
@@ -752,13 +921,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 
-    // ===== 3) Accelerometer bias random walk =====
+    // -------- accel bias random walk (unchanged) ---------------------------
     if constexpr (with_accel_bias) {
         F_a_ext.template block<3,3>(OFF_BA, OFF_BA) = I3;
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
     }
 
-    // ===== 4) Fill remaining diagonals with I and symmetrize Q =====
+    // Ensure any untouched diagonals are I, and Q is symmetric/positive
     for (int i = 0; i < NX; ++i)
         if (F_a_ext(i,i) == T(0)) F_a_ext(i,i) = T(1);
 
