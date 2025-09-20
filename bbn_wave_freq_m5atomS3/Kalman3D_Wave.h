@@ -718,7 +718,7 @@ void phi_and_integral_exp_neg_skew(
     Mat3 I3; I3.setIdentity();
     B.template block<3,3>(0,3) = I3;
 
-    Mat6 expBh = expm_pade6(B * h);
+    Mat6 expBh = expm_pade6((B * h).eval());
     Phi_tt = expBh.template block<3,3>(0,0);
     J      = expBh.template block<3,3>(0,3);
 }
