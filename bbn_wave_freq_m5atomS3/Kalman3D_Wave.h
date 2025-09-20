@@ -691,7 +691,7 @@ Mat expm_pade6(const Mat& A_in)
     const T c5 = T(1)/T(30240);
     const T c6 = T(1)/T(665280);
 
-    const T theta = T(3);         // conservative threshold for [6/6]
+    const T theta = T(3);
     const int max_squarings = 12;
 
     // Scaling
@@ -706,8 +706,7 @@ Mat expm_pade6(const Mat& A_in)
         A /= std::pow(T(2), s);
     }
 
-    Mat I(n,n); I.setIdentity();
-
+    Mat I = Mat::Identity(n,n);   // <-- FIXED
     Mat A2 = A * A;
     Mat A4 = A2 * A2;
     Mat A6 = A4 * A2;
