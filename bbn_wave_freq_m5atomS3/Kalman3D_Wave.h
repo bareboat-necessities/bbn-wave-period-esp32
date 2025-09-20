@@ -244,7 +244,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body→world
 
     // Helpers and original methods kept
-    void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
     Vector3 accelerometer_measurement_func(T tempC) const;
     Vector3 magnetometer_measurement_func() const;
@@ -510,131 +509,59 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::do_measurement_update(
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
+// Full accel + mag update
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC)
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(
+    Vector3 const& acc, Vector3 const& mag, T tempC)
 {
-    // Predicted measurements
-    Vector3 v1hat = accelerometer_measurement_func(tempC); // depends on a_w
+    Vector3 v1hat = accelerometer_measurement_func(tempC);
     Vector3 v2hat = magnetometer_measurement_func();
 
-    Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
-    // accel rows 0..2
-    Cext.template block<3,3>(0,0)        = -skew_symmetric_matrix(v1hat); // d f_b / d attitude
-    Cext.template block<3,3>(0,OFF_AW)   = R_wb(); // d f_b / d a_w
+    Matrix<T,M,NX> Cext = Matrix<T,M,NX>::Zero();
+    // accelerometer rows
+    Cext.template block<3,3>(0,0)      = -skew_symmetric_matrix(v1hat);
+    Cext.template block<3,3>(0,OFF_AW) = R_wb();
     if constexpr (with_accel_bias) {
-        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
+        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity();
     }
-    // mag rows 3..5 (unchanged)
-    Cext.template block<3,3>(3,0)        = -skew_symmetric_matrix(v2hat);
+    // magnetometer rows
+    Cext.template block<3,3>(3,0)      = -skew_symmetric_matrix(v2hat);
 
-    Vector6 yhat; yhat << v1hat, v2hat;
-    Vector6 y;    y << acc, mag;
-    Vector6 inno = y - yhat;
+    Vector6 inno; inno << (acc - v1hat), (mag - v2hat);
 
-    MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
-    Matrix<T, NX, M> PCt = Pext * Cext.transpose();
-
-    Eigen::LDLT<MatrixM> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += MatrixM::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T, NX, M> K = PCt * ldlt.solve(MatrixM::Identity());
-
-    xext.noalias() += K * inno;
-
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+    do_measurement_update(Cext, R, inno);
 }
 
+// Accelerometer only
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_partial(
-    const Eigen::Ref<const Vector3>& meas,
-    const Eigen::Ref<const Vector3>& vhat,
-    const Eigen::Ref<const Matrix3>& Rm)
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
+    Vector3 const& acc, T tempC)
 {
-    // Cext: (3 x NX)
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
+    Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // Innovation
-    Vector3 inno = meas - vhat;
-
-    // S = C P C^T + Rm  (3x3)
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
-
-    // PCt = P C^T  (NX x 3)
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
-
-    // Factor S (SPD) and solve
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-    // State update
-    xext.noalias() += K * inno;
-
-    // Joseph covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    // Quaternion correction + zero small-angle
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(Vector3 const& acc_meas, T tempC) {
-    const Vector3 v1hat = accelerometer_measurement_func(tempC);
-
-    // Cext: (3 x NX)
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    // d f_b / d (attitude error)
-    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(v1hat);
-    // d f_b / d a_w
-    Cext.template block<3,3>(0, OFF_AW) = R_wb();
+    Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
+    Cext.template block<3,3>(0,0)      = -skew_symmetric_matrix(v1hat);
+    Cext.template block<3,3>(0,OFF_AW) = R_wb();
     if constexpr (with_accel_bias) {
-        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
+        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity();
     }
 
-    Vector3 inno = acc_meas - v1hat;
-
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
-
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-    xext.noalias() += K * inno;
-
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
+    Vector3 inno = acc - v1hat;
+    do_measurement_update(Cext, Racc, inno);
 }
 
+// Magnetometer only
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag) {
-    Vector3 const v2hat = magnetometer_measurement_func();
-    measurement_update_partial(mag, v2hat, Rmag);
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(
+    Vector3 const& mag)
+{
+    Vector3 v2hat = magnetometer_measurement_func();
+
+    Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
+    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(v2hat);
+
+    Vector3 inno = mag - v2hat;
+    do_measurement_update(Cext, Rmag, inno);
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
