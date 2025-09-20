@@ -941,7 +941,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
         Q_a_ext.template block<3,3>(0,0) = Qd_tb.template block<3,3>(0,0);
     }
 
-    // ===== Linear [v, p, S, a_w] per-axis exact Φ and Qd (OU-driven) =======
+    // Linear [v, p, S, a_w] per-axis exact Φ and Qd (OU-driven)
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
@@ -965,13 +965,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 
-    // ===== Accelerometer bias RW ===========================================
+    // Accelerometer bias RW
     if constexpr (with_accel_bias) {
         F_a_ext.template block<3,3>(OFF_BA, OFF_BA) = I3;
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
     }
 
-    // ===== Final touches: identity on untouched diag; symmetrize Q =========
+    // Identity on untouched diag; symmetrize Q
     for (int i = 0; i < NX; ++i)
         if (F_a_ext(i,i) == T(0)) F_a_ext(i,i) = T(1);
 
@@ -981,4 +981,3 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
         if (Q_a_ext(i,i) < eps) Q_a_ext(i,i) += eps;
 }
 
-// ======================== END DROP-IN BLOCK ================================
