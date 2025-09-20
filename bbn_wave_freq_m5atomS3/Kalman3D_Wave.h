@@ -726,8 +726,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
 
-    
-        // --- Use closed-form formulas ---
         for (int axis = 0; axis < 3; ++axis) {
             T tau    = std::max(T(1e-6), tau_aw);
             T sigma2 = Sigma_aw_stat(axis,axis);
