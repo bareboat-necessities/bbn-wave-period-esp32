@@ -694,9 +694,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
-// ==========================================================
 // Helpers: Arduino-safe Padé(6) expm + Van Loan discretization
-// ==========================================================
 namespace k3dw_detail {
 
 // Padé(6) matrix exponential with scaling & squaring
@@ -789,9 +787,7 @@ static void phi_and_integral_exp_neg_skew(
 
 } // namespace k3dw_detail
 
-// ==========================================================
 // Exact θ–bias discretization (Van Loan, uses bias-corrected gyro)
-// ==========================================================
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 static void discretize_theta_bias_exact(
     const Eigen::Matrix<T,3,1>& w, T h,
@@ -827,9 +823,7 @@ static void discretize_theta_bias_exact(
     Qd_out = Qd6;
 }
 
-// ==========================================================
-// Analytic v,p,S,a Phi/Qd (keep as before)
-// ==========================================================
+// Analytic v,p,S,a Phi/Qd 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
@@ -888,9 +882,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     Qd_axis = q_c * K;
 }
 
-// ==========================================================
 // Main builder: assembleExtendedFandQ
-// ==========================================================
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     const Vector3&, T Ts,
