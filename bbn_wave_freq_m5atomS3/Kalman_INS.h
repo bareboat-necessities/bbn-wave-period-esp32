@@ -43,45 +43,36 @@ using Eigen::Matrix;
 
 namespace m32_analytic {
 
-// -------- small helpers (safe numerics near h→0) --------
+// ----- small stable helpers for Φ -----
 template<typename T>
-inline T sqr(T x){ return x*x; }
-
-template<typename T>
-inline T pow3(T x){ return x*x*x; }
-
-// ∫₀ʰ s^n e^{-λ s} ds, n ∈ {0..4}, λ≥0 (closed forms)
-template<typename T>
-inline T integ_pow_exp_0toh(int n, T lambda, T h)
+inline void emoments_E0123(const T th, T& E0, T& E1, T& E2, T& E3)
 {
-    if (lambda <= T(0)) {
-        // plain polynomial integral
-        switch(n){
-            case 0: return h;
-            case 1: return T(0.5)*h*h;
-            case 2: return h*h*h/T(3);
-            case 3: return h*h*h*h/T(4);
-            case 4: return h*h*h*h*h/T(5);
-            default: break;
-        }
+    const T eps = T(1e-6);
+    if (std::abs(th) < eps) {
+        // series expansions near th ~ 0 (to avoid cancellation)
+        const T th2 = th*th, th3 = th2*th, th4 = th2*th2, th5 = th3*th2;
+        E0 = th - th2/T(2) + th3/T(6) - th4/T(24) + th5/T(120);
+        E1 = th2/T(2) - th3/T(3) + th4/T(8) - th5/T(30);
+        E2 = th3/T(6) - th4/T(8) + th5/T(20);
+        E3 = th4/T(24) - th5/T(30);
+        return;
     }
-
-    // Use: ∫ s^n e^{-λ s} ds = n!/λ^{n+1} [1 - e^{-λ h} * Σ_{k=0}^n (λ h)^k/k!]
-    // We only need n ≤ 4 here.
-    const T x = lambda*h;
-    T Sm = T(1), term = T(1);
-    for (int k=1;k<=n;++k){ term *= x/T(k); Sm += term; }
-
-    T fact = T(1);
-    for (int k=2;k<=n;++k) fact *= T(k);
-
-    T lam_pow = std::pow(lambda, T(n+1));
-    return (fact/lam_pow) * (T(1) - std::exp(-x)*Sm);
+    const T alpha = std::exp(-th);
+    const T S1 = 1 + th;
+    const T S2 = S1 + th*th/T(2);
+    const T S3 = S2 + th*th*th/T(6);
+    E0 = 1 - alpha;
+    E1 = 1 - alpha*S1;
+    E2 = 1 - alpha*S2;
+    E3 = 1 - alpha*S3;
 }
 
-// Build Φ(h) and Qd(h) for one axis (5×5), Matérn-3/2
-// Inputs:  h  (step, s),  tau (τ, s),  sigma2_a (stationary Var[a], (m/s²)²)
-// Output:  Phi (5×5), Qd (5×5)
+// ----------------------------------------------------------------------
+// Per-axis Matérn-3/2 (critically damped) closed-form Φ and Qd (5x5)
+// State ordering per axis: x = [v, p, S, a, j]^T
+// Inputs:  h (step), tau (τ), sigma2_a (stationary Var[a])
+// Outputs: Phi (5x5), Qd (5x5)
+// ----------------------------------------------------------------------
 template<typename T>
 inline void phi_Qd_axis_M32(const T h, const T tau, const T sigma2_a,
                             Eigen::Matrix<T,5,5>& Phi,
@@ -89,348 +80,179 @@ inline void phi_Qd_axis_M32(const T h, const T tau, const T sigma2_a,
 {
     using Mat5 = Eigen::Matrix<T,5,5>;
 
-    // Clamp τ > 0
-    const T tau_c = std::max(tau, T(1e-9));
-    const T inv_tau = T(1)/tau_c;
-    const T inv_tau2= inv_tau*inv_tau;
+    // ---------- Φ(h) ----------
+    const T tau_c   = std::max(tau, T(1e-12));
+    const T inv_tau = T(1) / tau_c;
+    const T th      = h * inv_tau;
+    const T alpha   = std::exp(-th);
 
-    // Exponentials
-    const T alpha  = std::exp(-h*inv_tau);
-    const T alpha2 = std::exp(-T(2)*h*inv_tau);
-
-    // “E-moments” (compact combos that show up repeatedly):
-    // E0=1-α, E1=1-α(1+h/τ), E2=1-α(1+h/τ+(h/τ)^2/2), E3=...
-    const T th  = h*inv_tau;
-    const T th2 = th*th;
-    const T th3 = th2*th;
-
-    const T E0 = T(1) - alpha;
-    const T E1 = T(1) - alpha*(T(1) + th);
-    const T E2 = T(1) - alpha*(T(1) + th + th2/T(2));
-    const T E3 = T(1) - alpha*(T(1) + th + th2/T(2) + th3/T(6));
-
-    // ---------- Φ(h) (exact) ----------
-    // a(h), j(h) are exact solutions for a critically-damped pair
-    // a(h) = e^{-h/τ}[(1 + h/τ)a0 + h j0]
-    // j(h) = e^{-h/τ}[      - (h/τ²)a0 + (1 - h/τ) j0]
+    T E0,E1,E2,E3;
+    emoments_E0123(th, E0, E1, E2, E3);
 
     Phi.setZero();
-    // Kinematics base (v,p,S from v0,p0,S0)
-    Phi(0,0) = T(1);          // v <- v
-    Phi(1,0) = h;             // p <- v
-    Phi(1,1) = T(1);          // p <- p
-    Phi(2,0) = T(0.5)*h*h;    // S <- v
-    Phi(2,1) = h;             // S <- p
-    Phi(2,2) = T(1);          // S <- S
+    // kinematics
+    Phi(0,0)=T(1);
+    Phi(1,0)=h;        Phi(1,1)=T(1);
+    Phi(2,0)=T(0.5)*h*h; Phi(2,1)=h; Phi(2,2)=T(1);
 
-    // Couplings from a0, j0 into v(h)
-    // ∫₀ʰ a(s) ds with a(s)=e^{-s/τ}[(1+s/τ)a0 + s j0]
-    const T I_a = tau_c*(E0 + E1);   // coeff of a0
-    const T I_j = tau_c*tau_c*E1;    // coeff of j0
+    // latent (a,j) exact critical-damped block
+    Phi(3,3) = alpha*(T(1) + th);
+    Phi(3,4) = alpha*h;
+    Phi(4,3) = -alpha*(h*inv_tau*inv_tau);
+    Phi(4,4) = alpha*(T(1) - th);
+
+    // couplings from (a0,j0) into (v,p,S)
+    const T I_a = tau_c*(E0 + E1);
+    const T I_j = tau_c*tau_c*E1;
     Phi(0,3) = I_a;
     Phi(0,4) = I_j;
 
-    // Into p(h) = p0 + h v0 + ∫₀ʰ (h-s) a(s) ds
-    // ==> p <- a0:  h*I_a - τ²(E1 + 2E2)
-    //     p <- j0:  h*I_j - 2τ³ E2
     const T J_a = h*I_a - tau_c*tau_c*(E1 + T(2)*E2);
     const T J_j = h*I_j - T(2)*tau_c*tau_c*tau_c*E2;
     Phi(1,3) = J_a;
     Phi(1,4) = J_j;
 
-    // Into S(h) = S0 + h p0 + 0.5 h² v0 + ∫₀ʰ (weight) a(s) ds
-    // Closed-form via repeated integration; compact result:
-    const T Sa = T(0.5)*( h*h*tau_c*(E0+E1)
-                        - T(2)*h*tau_c*tau_c*(E1+T(2)*E2)
-                        + T(2)*tau_c*tau_c*tau_c*(E2+T(3)*E3) );
-    const T Sj = T(0.5)*( h*h*(tau_c*tau_c*E1)
-                        - T(4)*h*(tau_c*tau_c*tau_c*E2)
-                        + T(6)*tau_c*tau_c*tau_c*tau_c*E3 );
-    Phi(2,3) = Sa;
-    Phi(2,4) = Sj;
+    const T S_a = T(0.5)*( h*h*tau_c*(E0+E1)
+                         - T(2)*h*tau_c*tau_c*(E1+T(2)*E2)
+                         + T(2)*tau_c*tau_c*tau_c*(E2+T(3)*E3) );
+    const T S_j = T(0.5)*( h*h*(tau_c*tau_c*E1)
+                         - T(4)*h*(tau_c*tau_c*tau_c*E2)
+                         + T(6)*tau_c*tau_c*tau_c*tau_c*E3 );
+    Phi(2,3) = S_a;
+    Phi(2,4) = S_j;
 
-    // Latent 2×2 block (a,j)
-    Phi(3,3) = alpha*(T(1) + th);
-    Phi(3,4) = alpha*h;
-    Phi(4,3) = -alpha*(h*inv_tau2);
-    Phi(4,4) = alpha*(T(1) - th);
-
-    // ---------- Qd(h) (exact, same integral) ----------
-    // Build g(s)=Φ(s)G for G=[0,0,0,0,1]^T (i.e. initial j0=1, others 0)
-    // Using the same closed-form Φ(s), but with s as variable (0..h):
-    //  a(s) = s e^{-s/τ}
-    //  j(s) = e^{-s/τ}(1 - s/τ)
-    //  v(s) = ∫₀ˢ a(u) du = τ² - τ² e^{-s/τ} - τ s e^{-s/τ}
-    //  p(s) = ∫₀ˢ v(u) du = τ² s - 2τ³ + e^{-s/τ}(2τ³ + τ² s)
-    //  S(s) = ∫₀ˢ p(u) du = 0.5 τ² s² - 2τ³ s + 3τ⁴ + e^{-s/τ}(-3τ⁴ - τ³ s)
-
-    // Each g_i(s) is a linear combo of { s^n e^{-k s/τ} } with k∈{0,1}.
-    // Qd = q_c ∫₀ʰ g(s) g(s)^T ds, with q_c = 4 σ_a² / τ³.
-
-    const T qc = T(4)*sigma2_a/(tau_c*tau_c*tau_c);
-
-    // Pre-integrals (we’ll reuse a lot):
-    auto I0  = [&](int n){ return integ_pow_exp_0toh(n, T(0),     h); };       // ∫ s^n ds
-    auto I1  = [&](int n){ return integ_pow_exp_0toh(n, inv_tau,  h); };       // ∫ s^n e^{-s/τ} ds
-    auto I2  = [&](int n){ return integ_pow_exp_0toh(n, T(2)*inv_tau, h); };   // ∫ s^n e^{-2s/τ} ds
-
-    // For cleaner notation:
-    const T t1 = tau_c;
-    const T t2 = t1*t1;
-    const T t3 = t2*t1;
-    const T t4 = t3*t1;
-
-    // g_v(s) = t2 - t2 e^{-s/τ} - t1 s e^{-s/τ}
-    // g_p(s) = t2 s - 2 t3 + e^{-s/τ}(2 t3 + t2 s)
-    // g_S(s) = 0.5 t2 s^2 - 2 t3 s + 3 t4 + e^{-s/τ}(-3 t4 - t3 s)
-    // g_a(s) = s e^{-s/τ}
-    // g_j(s) = e^{-s/τ}(1 - s/τ)
-
-    // We’ll accumulate upper triangle and mirror.
+    // ---------- Qd(h) ----------
+    // Fully-expanded closed form with α, α^2.
+    // Qd = sigma2_a * [C0 + C1*α + C2*α^2] (per entry), consistent with qc=4σ_a²/τ³.
     Qd.setZero();
+    auto S = [&](int r,int c,T v){ Qd(r,c)=v; if(r!=c) Qd(c,r)=v; };
 
-    auto add_Q = [&](int i, int j, T val){
-        Qd(i,j) = val;
-        if (i!=j) Qd(j,i) = val;
-    };
+    const T a1 = alpha;
+    const T a2 = alpha*alpha;
 
-    // Helper lambdas to integrate pairwise products quickly.
-    // (We expand only the necessary monomials; all closed forms via I0, I1, I2)
+    const T t  = tau_c;
+    const T h2 = h*h, h3 = h2*h, h4 = h2*h2, h5 = h2*h3;
+    const T t2 = t*t,  t3 = t2*t,  t4 = t3*t,  t5 = t4*t,  t6 = t5*t;
 
-    // ---- <v,v> ----
+    // vv
     {
-        // g_v = A + B e^- + C s e^- with A=t2, B= -t2, C= -t1
-        // g_v^2 = A^2 + B^2 e^-2 + C^2 s^2 e^-2 + 2AB e^- + 2AC s e^- + 2BC s e^-2
-        const T A = t2;
-        const T B = -t2;
-        const T C = -t1;
-
-        T val =
-            A*A * I0(0)
-          + B*B * I2(0)
-          + C*C * I2(2)
-          + T(2)*A*B * I1(0)
-          + T(2)*A*C * I1(1)
-          + T(2)*B*C * I2(1);
-
-        add_Q(0,0, qc*val);
+        const T c2 = -(T(2)*h2 + T(6)*h*t + T(5)*t2);
+        const T c1 =  T(8)*t*(h + T(2)*t);
+        const T c0 =  t*(T(4)*h - T(11)*t);
+        S(0,0, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <v,p> ----
+    // vp
     {
-        // g_v = A + B e^- + C s e^-           (A=t2, B=-t2, C=-t1)
-        // g_p = D s + E + (F + G s) e^-       (D=t2, E=-2t3, F=2t3, G=t2)
-        const T A=t2, B=-t2, C=-t1;
-        const T D=t2, E=-T(2)*t3, F=T(2)*t3, G=t2;
-
-        // Expand product and integrate termwise.
-        // Poly × Poly:
-        T val = (A*D) * I0(1) + (A*E) * I0(0);
-
-        // Poly × e^- terms:
-        val += A*F * I1(0) + A*G * I1(1);
-
-        // e^- × Poly:
-        val += B*D * I1(1) + B*E * I1(0);
-
-        // e^- × e^-:
-        val += B*F * I2(0) + B*G * I2(1);
-
-        // (s e^-) × Poly:
-        val += C*D * I1(2) + C*E * I1(1);
-
-        // (s e^-) × e^-:
-        val += C*F * I2(1) + C*G * I2(2);
-
-        add_Q(0,1, qc*val);
+        const T c2 = -(h2 + T(3)*h*t + T(3)*t2);
+        const T c1 =  (h2 + T(2)*h*t + T(10)*t2);
+        const T c0 =  (h2/T(2)) - T(2)*h*t + T(5)*t2;
+        S(0,1, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <v,S> ----
+    // vS
     {
-        // g_S = H s^2 + K s + L + (M + N s) e^-   with H=0.5 t2, K=-2 t3, L=3 t4, M=-3 t4, N=-t3
-        const T A=t2,  B=-t2,  C=-t1;               // g_v
-        const T H=T(0.5)*t2, K=-T(2)*t3, L=T(3)*t4, M=-T(3)*t4, N=-t3;
-
-        T val = T(0);
-        // Poly×Poly:
-        val += A*H * I0(2) + A*K * I0(1) + A*L * I0(0);
-        // Poly×e^-:
-        val += A*M * I1(0) + A*N * I1(1);
-
-        // e^-×Poly:
-        val += B*H * I1(2) + B*K * I1(1) + B*L * I1(0);
-        // e^-×e^-:
-        val += B*M * I2(0) + B*N * I2(1);
-
-        // (s e^-)×Poly:
-        val += C*H * I1(3) + C*K * I1(2) + C*L * I1(1);
-        // (s e^-)×e^-:
-        val += C*M * I2(1) + C*N * I2(2);
-
-        add_Q(0,2, qc*val);
+        const T c2 = -(T(2)*h2*t2 + T(10)*h*t3 + T(11)*t4);
+        const T c1 =  (T(2)*h3*t + T(8)*h*t3 + T(32)*t4);
+        const T c0 =  (T(2)*h3*t/T(3)) - T(4)*h2*t2 + T(12)*h*t3 - T(21)*t4;
+        S(0,2, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <v,a> ----
+    // va
     {
-        // g_a = s e^-
-        const T A=t2, B=-t2, C=-t1; // g_v
-        T val = T(0);
-        // Poly×(s e^-)
-        val += A * I1(1);
-        // e^-×(s e^-)
-        val += B * I2(1);
-        // (s e^-)×(s e^-)
-        val += C * I2(2);
-
-        add_Q(0,3, qc*val);
+        const T c2 =  (T(2)*h + T(5)*t);
+        const T c1 = -T(4)*(h + T(3)*t);
+        const T c0 =  T(3)*t;
+        S(0,3, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <v,j> ----
+    // vj
     {
-        // g_j = e^- (1 - s/τ) = e^- + (-inv_tau) s e^-
-        const T A=t2, B=-t2, C=-t1; // g_v
-        const T J0 = T(1), J1 = -inv_tau;
-
-        T val = T(0);
-        // Poly × e^- and Poly × (s e^-)
-        val += A*J0 * I1(0) + A*J1 * I1(1);
-        // e^- × e^- and e^- × (s e^-)
-        val += B*J0 * I2(0) + B*J1 * I2(1);
-        // (s e^-) × e^- and × (s e^-)
-        val += C*J0 * I2(1) + C*J1 * I2(2);
-
-        add_Q(0,4, qc*val);
+        const T c2 = -(T(2)*h/t + T(3));
+        const T c1 =  T(2)*(T(2)*h/t + T(5));
+        const T c0 = -T(4);
+        S(0,4, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <p,p> ----
+    // pp
     {
-        // g_p = D s + E + (F + G s) e^-  (D=t2, E=-2t3, F=2t3, G=t2)
-        const T D=t2, E=-T(2)*t3, F=T(2)*t3, G=t2;
-
-        T val = T(0);
-        // (Ds+E)^2
-        val += D*D * I0(2) + T(2)*D*E * I0(1) + E*E * I0(0);
-        // 2(Ds+E)(F+Gs) e^-
-        val += T(2)*( D*F * I1(1) + D*G * I1(2) + E*F * I1(0) + E*G * I1(1) );
-        // (F + G s)^2 e^-2
-        val += F*F * I2(0) + T(2)*F*G * I2(1) + G*G * I2(2);
-
-        add_Q(1,1, qc*val);
+        const T c2 =  (T(2)*h2*t + T(8)*h*t2 + T(11)*t3);
+        const T c1 = -(T(2)*h3 + T(2)*h2*t + T(8)*h*t2 - T(36)*t3);
+        const T c0 = -(h4/T(2)) + T(2)*h3*t - T(10)*h2*t2 + T(24)*h*t3 - T(18)*t4;
+        S(1,1, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <p,S> ----
+    // pS
     {
-        const T D=t2, E=-T(2)*t3, F=T(2)*t3, G=t2;                 // g_p
-        const T H=T(0.5)*t2, K=-T(2)*t3, L=T(3)*t4, M=-T(3)*t4, N=-t3; // g_S
-
-        T val = T(0);
-        // Poly×Poly: (Ds+E)*(H s^2 + K s + L)
-        val += D*H * I0(3) + D*K * I0(2) + D*L * I0(1)
-             + E*H * I0(2) + E*K * I0(1) + E*L * I0(0);
-        // Poly×e^-: (Ds+E)*(M + N s) e^-
-        val += D*M * I1(1) + D*N * I1(2) + E*M * I1(0) + E*N * I1(1);
-        // e^-×Poly: (F+Gs)e^- * (H s^2 + K s + L)
-        val += F*H * I1(2) + F*K * I1(1) + F*L * I1(0)
-             + G*H * I1(3) + G*K * I1(2) + G*L * I1(1);
-        // e^-×e^-: (F+Gs)(M+Ns) e^-2
-        val += F*M * I2(0) + F*N * I2(1) + G*M * I2(1) + G*N * I2(2);
-
-        add_Q(1,2, qc*val);
+        const T c2 =  (T(2)*h2*t3 + T(12)*h*t4 + T(18)*t5);
+        const T c1 = -(T(2)*h3*t2) + T(2)*h2*t3 + T(12)*h*t4 - T(36)*t5;
+        const T c0 =   (h4*t/T(2)) - T(4)*h3*t2 + T(14)*h2*t3 - T(24)*h*t4 + T(18)*t5;
+        S(1,2, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <p,a> ----
+    // pa
     {
-        const T D=t2, E=-T(2)*t3, F=T(2)*t3, G=t2; // g_p
-        // g_a = s e^-
-        T val = T(0);
-        // (Ds+E) × s e^-
-        val += D * I1(2) + E * I1(1);
-        // (F+Gs)e^- × s e^-
-        val += F * I2(1) + G * I2(2);
-
-        add_Q(1,3, qc*val);
+        const T c2 = -(h2 + T(3)*h*t + T(4)*t2);
+        const T c1 =  (h2 + T(4)*t2);
+        const T c0 =   (h2/T(2)) - T(3)*h*t + T(6)*t2;
+        S(1,3, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <p,j> ----
+    // pj
     {
-        const T D=t2, E=-T(2)*t3, F=T(2)*t3, G=t2; // g_p
-        const T J0 = T(1), J1 = -inv_tau;          // g_j = J0 e^- + J1 s e^-
-        T val = T(0);
-
-        // (Ds+E) × (J0 e^- + J1 s e^-)
-        val += D*J0 * I1(1) + D*J1 * I1(2) + E*J0 * I1(0) + E*J1 * I1(1);
-        // (F+Gs)e^- × (J0 e^- + J1 s e^-)
-        val += F*J0 * I2(0) + F*J1 * I2(1) + G*J0 * I2(1) + G*J1 * I2(2);
-
-        add_Q(1,4, qc*val);
+        const T c2 =  (h2/t + T(2)*h + T(2)*t);
+        const T c1 = -(h2/t + T(2)*t);
+        const T c0 = -(h2/(T(2)*t)) + T(2)*h - T(6)*t;
+        S(1,4, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <S,S> ----
+    // SS
     {
-        const T H=T(0.5)*t2, K=-T(2)*t3, L=T(3)*t4, M=-T(3)*t4, N=-t3; // g_S = Poly + e^-(M+Ns)
-
-        T val = T(0);
-        // Poly×Poly: (H s^2 + K s + L)^2
-        val += H*H * I0(4) + T(2)*H*K * I0(3) + (T(2)*H*L + K*K) * I0(2)
-             + T(2)*K*L * I0(1) + L*L * I0(0);
-        // 2 Poly×e^-: 2(H s^2 + K s + L)(M + N s) e^-
-        val += T(2)*( H*M * I1(2) + H*N * I1(3)
-                    + K*M * I1(1) + K*N * I1(2)
-                    + L*M * I1(0) + L*N * I1(1) );
-        // e^-×e^-: (M + N s)^2 e^-2
-        val += M*M * I2(0) + T(2)*M*N * I2(1) + N*N * I2(2);
-
-        add_Q(2,2, qc*val);
+        const T c2 = -(T(2)*h2*t4 + T(14)*h*t5 + T(25)*t6);
+        const T c1 =  (T(4)*h3*t3 + T(8)*h2*t4 - T(8)*h*t5 + T(64)*t6);
+        const T c0 =   (h5*t/T(5)) - T(2)*h4*t2 + (T(28)*h3*t3)/T(3)
+                     - T(24)*h2*t4 + T(36)*h*t5 - T(39)*t6;
+        S(2,2, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <S,a> ----
+    // Sa
     {
-        const T H=T(0.5)*t2, K=-T(2)*t3, L=T(3)*t4, M=-T(3)*t4, N=-t3; // g_S
-        // g_a = s e^-
-        T val = T(0);
-        // Poly×(s e^-):
-        val += H * I1(3) + K * I1(2) + L * I1(1);
-        // e^-×(s e^-):
-        val += M * I2(1) + N * I2(2);
-
-        add_Q(2,3, qc*val);
+        const T c2 =  (h3/T(3) + h2*t + T(2)*h*t2 + T(2)*t3);
+        const T c1 = -(h3/T(3)) + T(2)*h*t2 - T(6)*t3;
+        const T c0 = -(h3/T(6)) + (T(3)*h2*t)/T(2) - T(6)*h*t2 + T(12)*t3;
+        S(2,3, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <S,j> ----
+    // Sj
     {
-        const T H=T(0.5)*t2, K=-T(2)*t3, L=T(3)*t4, M=-T(3)*t4, N=-t3; // g_S
-        const T J0=T(1), J1=-inv_tau;                                  // g_j
-        T val = T(0);
-        // Poly×(J0 e^- + J1 s e^-)
-        val += H*J0 * I1(2) + H*J1 * I1(3)
-             + K*J0 * I1(1) + K*J1 * I1(2)
-             + L*J0 * I1(0) + L*J1 * I1(1);
-        // e^-×(J0 e^- + J1 s e^-)
-        val += M*J0 * I2(0) + M*J1 * I2(1) + N*J0 * I2(1) + N*J1 * I2(2);
-
-        add_Q(2,4, qc*val);
+        const T c2 = -(h3/(T(3)*t) + h2 + T(2)*h*t + T(2)*t2);
+        const T c1 =  (h3/(T(3)*t)) - T(2)*h + T(6)*t;
+        const T c0 =  (h3/(T(6)*t)) - (T(3)*h2)/T(2) + T(6)*h - T(12)*t;
+        S(2,4, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <a,a> ----
+    // aa
     {
-        // g_a = s e^-
-        add_Q(3,3, qc * I2(2));
+        const T c2 = -(T(2)*h2/t2 + T(2)*h/t + T(1));
+        const T c1 =  T(0);
+        const T c0 =  T(1);
+        S(3,3, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <a,j> ----
+    // aj
     {
-        // g_j = e^- + (-inv_tau) s e^-
-        const T J0=T(1), J1=-inv_tau;
-        T val = J0 * I2(1) + J1 * I2(2);
-        add_Q(3,4, qc*val);
+        const T c2 =  T(2)*h2/(t*t*t);
+        const T c1 =  T(0);
+        const T c0 =  T(0);
+        S(3,4, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 
-    // ---- <j,j> ----
+    // jj
     {
-        // (J0 e^- + J1 s e^-)^2
-        const T J0=T(1), J1=-inv_tau;
-        T val = J0*J0 * I2(0) + T(2)*J0*J1 * I2(1) + J1*J1 * I2(2);
-        add_Q(4,4, qc*val);
+        const T c2 = -(T(2)*h2/(t2*t2) - T(2)*h/(t*t*t) + T(1)/t2);
+        const T c1 =  T(0);
+        const T c0 =  T(1)/t2;
+        S(4,4, sigma2_a * (c0 + c1*a1 + c2*a2));
     }
 }
 
