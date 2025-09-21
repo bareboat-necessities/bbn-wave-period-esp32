@@ -220,7 +220,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Last gyro
     Vector3 last_gyr_bias_corrected{};
-    Vector3 last_raw_gyr{};
 
     T sigma_bacc0_ = T(0.1); // initial accel bias std
     Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-8);
@@ -435,7 +434,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
         gyro_bias = Vector3::Zero();
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
-    last_raw_gyr = gyr;
   
     // Build delta quaternion from gyro increment
     T ang = last_gyr_bias_corrected.norm() * Ts;
@@ -918,7 +916,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     // θ–bias exact discretization (fixes roll/pitch drift)
     Eigen::Matrix<T,3,3> Phi_tt, Phi_tb;
     Eigen::Matrix<T,6,6> Qd_tb;
-    const Eigen::Matrix<T,3,1> w = last_raw_gyr;
+    const Eigen::Matrix<T,3,1> w = last_gyr_bias_corrected;
 
     // PSDs from Qbase (your convention)
     Eigen::Matrix<T,3,3> Sg  = Qbase.template topLeftCorner<3,3>();    // gyro white PSD
