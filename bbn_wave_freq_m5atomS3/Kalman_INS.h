@@ -43,13 +43,12 @@ using Eigen::Matrix;
 
 namespace m32_analytic {
 
-// ----- small stable helpers for Φ -----
+// ==== stable helpers ====
 template<typename T>
 inline void emoments_E0123(const T th, T& E0, T& E1, T& E2, T& E3)
 {
     const T eps = T(1e-6);
     if (std::abs(th) < eps) {
-        // series expansions near th ~ 0 (to avoid cancellation)
         const T th2 = th*th, th3 = th2*th, th4 = th2*th2, th5 = th3*th2;
         E0 = th - th2/T(2) + th3/T(6) - th4/T(24) + th5/T(120);
         E1 = th2/T(2) - th3/T(3) + th4/T(8) - th5/T(30);
@@ -67,11 +66,31 @@ inline void emoments_E0123(const T th, T& E0, T& E1, T& E2, T& E3)
     E3 = 1 - alpha*S3;
 }
 
+// ∫₀ʰ s^n e^{-λ s} ds, for n=0..4 (closed form, numerically stable)
+template<typename T>
+inline T integ_pow_exp_0toh(int n, T lambda, T h)
+{
+    if (lambda <= T(0)) {
+        switch(n){
+            case 0: return h;
+            case 1: return T(0.5)*h*h;
+            case 2: return h*h*h/T(3);
+            case 3: return h*h*h*h/T(4);
+            case 4: return h*h*h*h*h/T(5);
+        }
+    }
+    const T x = lambda*h;
+    T Sm = T(1), term = T(1);
+    for (int k=1;k<=n;++k){ term *= x/T(k); Sm += term; }
+    T fact = T(1); for (int k=2;k<=n;++k) fact *= T(k);
+    T lam_pow = std::pow(lambda, T(n+1));
+    return (fact/lam_pow) * (T(1) - std::exp(-x)*Sm);
+}
+
 // ----------------------------------------------------------------------
 // Per-axis Matérn-3/2 (critically damped) closed-form Φ and Qd (5x5)
-// State ordering per axis: x = [v, p, S, a, j]^T
-// Inputs:  h (step), tau (τ), sigma2_a (stationary Var[a])
-// Outputs: Phi (5x5), Qd (5x5)
+// x = [v, p, S, a, j]^T
+// j̇ = -(2/τ) j - (1/τ²) a + w,  E[w wᵀ] = q_c δ,  q_c = 4 σ_a² / τ³
 // ----------------------------------------------------------------------
 template<typename T>
 inline void phi_Qd_axis_M32(const T h, const T tau, const T sigma2_a,
@@ -95,7 +114,7 @@ inline void phi_Qd_axis_M32(const T h, const T tau, const T sigma2_a,
     Phi(1,0)=h;        Phi(1,1)=T(1);
     Phi(2,0)=T(0.5)*h*h; Phi(2,1)=h; Phi(2,2)=T(1);
 
-    // latent (a,j) exact critical-damped block
+    // latent (a,j)
     Phi(3,3) = alpha*(T(1) + th);
     Phi(3,4) = alpha*h;
     Phi(4,3) = -alpha*(h*inv_tau*inv_tau);
@@ -121,138 +140,157 @@ inline void phi_Qd_axis_M32(const T h, const T tau, const T sigma2_a,
     Phi(2,3) = S_a;
     Phi(2,4) = S_j;
 
-    // ---------- Qd(h) ----------
-    // Fully-expanded closed form with α, α^2.
-    // Qd = sigma2_a * [C0 + C1*α + C2*α^2] (per entry), consistent with qc=4σ_a²/τ³.
+    // ---------- Qd(h) (exact from g(s)g(s)^T integral) ----------
+    // Build g(s)=Φ(s)G for G=[0,0,0,0,1]^T (noise drives j).
+    // Using the closed-form solutions with s as variable:
+    //  a(s) = s e^{-s/τ}
+    //  j(s) = e^{-s/τ}(1 - s/τ)
+    //  v(s) = τ² - τ² e^{-s/τ} - τ s e^{-s/τ}
+    //  p(s) = τ² s - 2τ³ + e^{-s/τ}(2τ³ + τ² s)
+    //  S(s) = 0.5 τ² s² - 2τ³ s + 3τ⁴ + e^{-s/τ}(-3τ⁴ - τ³ s)
+    //
+    // Qd = q_c ∫₀ʰ g(s) g(s)^T ds,  with  q_c = 4 σ_a² / τ³
+    const T qc = T(4)*sigma2_a/(tau_c*tau_c*tau_c);
+
+    auto I0  = [&](int n){ return integ_pow_exp_0toh(n, T(0),          h); }; // ∫ s^n ds
+    auto I1  = [&](int n){ return integ_pow_exp_0toh(n, inv_tau,       h); }; // ∫ s^n e^{-s/τ} ds
+    auto I2  = [&](int n){ return integ_pow_exp_0toh(n, T(2)*inv_tau,  h); }; // ∫ s^n e^{-2s/τ} ds
+
+    const T t1 = tau_c;
+    const T t2 = t1*t1;
+    const T t3 = t2*t1;
+    const T t4 = t3*t1;
+
+    // g components
+    // v: A + B e^- + C s e^- (A=t2, B=-t2, C=-t1)
+    const T Av=t2, Bv=-t2, Cv=-t1;
+    // p: D s + E + (F + G s) e^- (D=t2, E=-2t3, F=2t3, G=t2)
+    const T Dp=t2, Ep=-T(2)*t3, Fp=T(2)*t3, Gp=t2;
+    // S: H s^2 + K s + L + (M + N s) e^- (H=0.5 t2, K=-2 t3, L=3 t4, M=-3 t4, N=-t3)
+    const T Hs=T(0.5)*t2, Ks=-T(2)*t3, Ls=T(3)*t4, Ms=-T(3)*t4, Ns=-t3;
+    // a: s e^-
+    // j: e^- + (-1/τ) s e^-
+    const T J0=T(1), J1=-inv_tau;
+
     Qd.setZero();
-    auto S = [&](int r,int c,T v){ Qd(r,c)=v; if(r!=c) Qd(c,r)=v; };
+    auto S = [&](int i,int j,T v){ Qd(i,j)=v; if(i!=j) Qd(j,i)=v; };
 
-    const T a1 = alpha;
-    const T a2 = alpha*alpha;
-
-    const T t  = tau_c;
-    const T h2 = h*h, h3 = h2*h, h4 = h2*h2, h5 = h2*h3;
-    const T t2 = t*t,  t3 = t2*t,  t4 = t3*t,  t5 = t4*t,  t6 = t5*t;
-
-    // vv
+    // <v,v>
     {
-        const T c2 = -(T(2)*h2 + T(6)*h*t + T(5)*t2);
-        const T c1 =  T(8)*t*(h + T(2)*t);
-        const T c0 =  t*(T(4)*h - T(11)*t);
-        S(0,0, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Av*Av*I0(0)
+              + Bv*Bv*I2(0)
+              + Cv*Cv*I2(2)
+              + T(2)*Av*Bv*I1(0)
+              + T(2)*Av*Cv*I1(1)
+              + T(2)*Bv*Cv*I2(1);
+        S(0,0, qc*val);
     }
 
-    // vp
+    // <v,p>
     {
-        const T c2 = -(h2 + T(3)*h*t + T(3)*t2);
-        const T c1 =  (h2 + T(2)*h*t + T(10)*t2);
-        const T c0 =  (h2/T(2)) - T(2)*h*t + T(5)*t2;
-        S(0,1, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = (Av*Dp)*I0(1) + (Av*Ep)*I0(0)
+              + Av*Fp*I1(0) + Av*Gp*I1(1)
+              + Bv*Dp*I1(1) + Bv*Ep*I1(0)
+              + Bv*Fp*I2(0) + Bv*Gp*I2(1)
+              + Cv*Dp*I1(2) + Cv*Ep*I1(1)
+              + Cv*Fp*I2(1) + Cv*Gp*I2(2);
+        S(0,1, qc*val);
     }
 
-    // vS
+    // <v,S>
     {
-        const T c2 = -(T(2)*h2*t2 + T(10)*h*t3 + T(11)*t4);
-        const T c1 =  (T(2)*h3*t + T(8)*h*t3 + T(32)*t4);
-        const T c0 =  (T(2)*h3*t/T(3)) - T(4)*h2*t2 + T(12)*h*t3 - T(21)*t4;
-        S(0,2, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Av*Hs*I0(2) + Av*Ks*I0(1) + Av*Ls*I0(0)
+              + Av*Ms*I1(0) + Av*Ns*I1(1)
+              + Bv*Hs*I1(2) + Bv*Ks*I1(1) + Bv*Ls*I1(0)
+              + Bv*Ms*I2(0) + Bv*Ns*I2(1)
+              + Cv*Hs*I1(3) + Cv*Ks*I1(2) + Cv*Ls*I1(1)
+              + Cv*Ms*I2(1) + Cv*Ns*I2(2);
+        S(0,2, qc*val);
     }
 
-    // va
+    // <v,a>
     {
-        const T c2 =  (T(2)*h + T(5)*t);
-        const T c1 = -T(4)*(h + T(3)*t);
-        const T c0 =  T(3)*t;
-        S(0,3, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Av*I1(1) + Bv*I2(1) + Cv*I2(2);
+        S(0,3, qc*val);
     }
 
-    // vj
+    // <v,j>
     {
-        const T c2 = -(T(2)*h/t + T(3));
-        const T c1 =  T(2)*(T(2)*h/t + T(5));
-        const T c0 = -T(4);
-        S(0,4, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Av*J0*I1(0) + Av*J1*I1(1)
+              + Bv*J0*I2(0) + Bv*J1*I2(1)
+              + Cv*J0*I2(1) + Cv*J1*I2(2);
+        S(0,4, qc*val);
     }
 
-    // pp
+    // <p,p>
     {
-        const T c2 =  (T(2)*h2*t + T(8)*h*t2 + T(11)*t3);
-        const T c1 = -(T(2)*h3 + T(2)*h2*t + T(8)*h*t2 - T(36)*t3);
-        const T c0 = -(h4/T(2)) + T(2)*h3*t - T(10)*h2*t2 + T(24)*h*t3 - T(18)*t4;
-        S(1,1, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Dp*Dp*I0(2) + T(2)*Dp*Ep*I0(1) + Ep*Ep*I0(0)
+              + T(2)*( Dp*Fp*I1(1) + Dp*Gp*I1(2) + Ep*Fp*I1(0) + Ep*Gp*I1(1) )
+              + Fp*Fp*I2(0) + T(2)*Fp*Gp*I2(1) + Gp*Gp*I2(2);
+        S(1,1, qc*val);
     }
 
-    // pS
+    // <p,S>
     {
-        const T c2 =  (T(2)*h2*t3 + T(12)*h*t4 + T(18)*t5);
-        const T c1 = -(T(2)*h3*t2) + T(2)*h2*t3 + T(12)*h*t4 - T(36)*t5;
-        const T c0 =   (h4*t/T(2)) - T(4)*h3*t2 + T(14)*h2*t3 - T(24)*h*t4 + T(18)*t5;
-        S(1,2, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Dp*Hs*I0(3) + Dp*Ks*I0(2) + Dp*Ls*I0(1)
+              + Ep*Hs*I0(2) + Ep*Ks*I0(1) + Ep*Ls*I0(0)
+              + Dp*Ms*I1(1) + Dp*Ns*I1(2) + Ep*Ms*I1(0) + Ep*Ns*I1(1)
+              + Fp*Hs*I1(2) + Fp*Ks*I1(1) + Fp*Ls*I1(0)
+              + Gp*Hs*I1(3) + Gp*Ks*I1(2) + Gp*Ls*I1(1)
+              + Fp*Ms*I2(0) + Fp*Ns*I2(1) + Gp*Ms*I2(1) + Gp*Ns*I2(2);
+        S(1,2, qc*val);
     }
 
-    // pa
+    // <p,a>
     {
-        const T c2 = -(h2 + T(3)*h*t + T(4)*t2);
-        const T c1 =  (h2 + T(4)*t2);
-        const T c0 =   (h2/T(2)) - T(3)*h*t + T(6)*t2;
-        S(1,3, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Dp*I1(2) + Ep*I1(1) + Fp*I2(1) + Gp*I2(2);
+        S(1,3, qc*val);
     }
 
-    // pj
+    // <p,j>
     {
-        const T c2 =  (h2/t + T(2)*h + T(2)*t);
-        const T c1 = -(h2/t + T(2)*t);
-        const T c0 = -(h2/(T(2)*t)) + T(2)*h - T(6)*t;
-        S(1,4, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Dp*J0*I1(1) + Dp*J1*I1(2) + Ep*J0*I1(0) + Ep*J1*I1(1)
+              + Fp*J0*I2(0) + Fp*J1*I2(1) + Gp*J0*I2(1) + Gp*J1*I2(2);
+        S(1,4, qc*val);
     }
 
-    // SS
+    // <S,S>
     {
-        const T c2 = -(T(2)*h2*t4 + T(14)*h*t5 + T(25)*t6);
-        const T c1 =  (T(4)*h3*t3 + T(8)*h2*t4 - T(8)*h*t5 + T(64)*t6);
-        const T c0 =   (h5*t/T(5)) - T(2)*h4*t2 + (T(28)*h3*t3)/T(3)
-                     - T(24)*h2*t4 + T(36)*h*t5 - T(39)*t6;
-        S(2,2, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Hs*Hs*I0(4) + T(2)*Hs*Ks*I0(3) + (T(2)*Hs*Ls + Ks*Ks)*I0(2)
+              + T(2)*Ks*Ls*I0(1) + Ls*Ls*I0(0)
+              + T(2)*( Hs*Ms*I1(2) + Hs*Ns*I1(3) + Ks*Ms*I1(1) + Ks*Ns*I1(2) + Ls*Ms*I1(0) + Ls*Ns*I1(1) )
+              + Ms*Ms*I2(0) + T(2)*Ms*Ns*I2(1) + Ns*Ns*I2(2);
+        S(2,2, qc*val);
     }
 
-    // Sa
+    // <S,a>
     {
-        const T c2 =  (h3/T(3) + h2*t + T(2)*h*t2 + T(2)*t3);
-        const T c1 = -(h3/T(3)) + T(2)*h*t2 - T(6)*t3;
-        const T c0 = -(h3/T(6)) + (T(3)*h2*t)/T(2) - T(6)*h*t2 + T(12)*t3;
-        S(2,3, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Hs*I1(3) + Ks*I1(2) + Ls*I1(1) + Ms*I2(1) + Ns*I2(2);
+        S(2,3, qc*val);
     }
 
-    // Sj
+    // <S,j>
     {
-        const T c2 = -(h3/(T(3)*t) + h2 + T(2)*h*t + T(2)*t2);
-        const T c1 =  (h3/(T(3)*t)) - T(2)*h + T(6)*t;
-        const T c0 =  (h3/(T(6)*t)) - (T(3)*h2)/T(2) + T(6)*h - T(12)*t;
-        S(2,4, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = Hs*J0*I1(2) + Hs*J1*I1(3)
+              + Ks*J0*I1(1) + Ks*J1*I1(2)
+              + Ls*J0*I1(0) + Ls*J1*I1(1)
+              + Ms*J0*I2(0) + Ms*J1*I2(1) + Ns*J0*I2(1) + Ns*J1*I2(2);
+        S(2,4, qc*val);
     }
 
-    // aa
+    // <a,a>
+    S(3,3, qc*I2(2));
+
+    // <a,j>
     {
-        const T c2 = -(T(2)*h2/t2 + T(2)*h/t + T(1));
-        const T c1 =  T(0);
-        const T c0 =  T(1);
-        S(3,3, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = J0*I2(1) + J1*I2(2);
+        S(3,4, qc*val);
     }
 
-    // aj
+    // <j,j>
     {
-        const T c2 =  T(2)*h2/(t*t*t);
-        const T c1 =  T(0);
-        const T c0 =  T(0);
-        S(3,4, sigma2_a * (c0 + c1*a1 + c2*a2));
-    }
-
-    // jj
-    {
-        const T c2 = -(T(2)*h2/(t2*t2) - T(2)*h/(t*t*t) + T(1)/t2);
-        const T c1 =  T(0);
-        const T c0 =  T(1)/t2;
-        S(4,4, sigma2_a * (c0 + c1*a1 + c2*a2));
+        T val = J0*J0*I2(0) + T(2)*J0*J1*I2(1) + J1*J1*I2(2);
+        S(4,4, qc*val);
     }
 }
 
