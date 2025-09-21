@@ -1,5 +1,7 @@
 #pragma once
 /*
+  Copyright 2025, Mikhail Grushinskiy
+  
   MEKF + Matérn-3/2 INS extension (Van Loan + Padé(6) expm)
   - Linear [v p S a j] (15x15) block discretized via Van Loan.
   - Matrix exponential is scaling-and-squaring with Padé(6) (correct coefficients).
