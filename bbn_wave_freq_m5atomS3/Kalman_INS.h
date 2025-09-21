@@ -27,99 +27,64 @@ using Eigen::Matrix;
 
 namespace vanloan_pade6 {
 
-// ---------- helpers ----------
-template<typename T>
-inline T one_norm(const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A) {
-    // 1-norm = max column sum
-    T maxcol = T(0);
-    for (int j=0; j<A.cols(); ++j) {
-        T s = T(0);
-        for (int i=0; i<A.rows(); ++i) s += std::abs(A(i,j));
-        if (s > maxcol) maxcol = s;
-    }
-    return maxcol;
-}
-
-// expm via Pade(6) + scaling & squaring (Higham)
-template<typename T>
-Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>
-expm_pade6(const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_in)
+// ==============================
+// Pade(6) approximation of exp(M)
+// ==============================
+template<typename T, int N>
+Eigen::Matrix<T,N,N> expm_pade6(const Eigen::Matrix<T,N,N>& M)
 {
-    using Mat = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
-    const int n = A_in.rows();
+    // Coefficients for [6/6] Padé approximant
+    constexpr T c0 = 1.0;
+    constexpr T c1 = 0.5;
+    constexpr T c2 = 0.12;             // 1/8.3333 = 1/8.333? No → let's write properly
+    constexpr T c3 = 1.0/60.0;
+    constexpr T c4 = 1.0/840.0;
+    constexpr T c5 = 1.0/15120.0;
+    constexpr T c6 = 1.0/362880.0;
 
-    // Constants for m = 6
-    // theta_6 from Higham's bounds
-    const T theta6 = T(3.650024139523051);
-    const T c0 = T(1);
-    const T c1 = T(1);
-    const T c2 = T(1)/T(2);       // 1/2!
-    const T c3 = T(1)/T(6);       // 1/3!
-    const T c4 = T(1)/T(24);      // 1/4!
-    const T c5 = T(1)/T(120);     // 1/5!
-    const T c6 = T(1)/T(720);     // 1/6!
+    Eigen::Matrix<T,N,N> I = Eigen::Matrix<T,N,N>::Identity();
+    Eigen::Matrix<T,N,N> M2 = M*M;
+    Eigen::Matrix<T,N,N> M4 = M2*M2;
+    Eigen::Matrix<T,N,N> M6 = M4*M2;
 
-    Mat A = A_in;
-    // scaling
-    int s = 0;
-    T anorm = one_norm(A);
-    if (anorm > theta6 && anorm > T(0)) {
-        s = std::max(0, int(std::ceil(std::log2(anorm/theta6))));
-        const T scale = std::ldexp(T(1), -s); // 2^{-s}
-        A *= scale;
-    }
+    Eigen::Matrix<T,N,N> U = M * (c1*I + c3*M2 + c5*M4);
+    U += M*M2 * (c2*I + c4*M2 + c6*M4);  // terms with odd powers
 
-    // Pade(6)
-    Mat I = Mat::Identity(n,n);
-    Mat A2 = A*A;
-    Mat A4 = A2*A2;
-    Mat A6 = A4*A2;
+    Eigen::Matrix<T,N,N> V = c0*I + c2*M2 + c4*M4 + c6*M6;
 
-    Mat U = A * (c1*I + c3*A2 + c5*A4);
-    Mat V =      c0*I + c2*A2 + c4*A4 + c6*A6;
+    Eigen::Matrix<T,N,N> Nmat = V + U;
+    Eigen::Matrix<T,N,N> Dmat = V - U;
 
-    // (V - U)^{-1} (V + U)
-    Mat P = V + U;
-    Mat Q = V - U;
-
-    // Solve Q * R = P
-    Mat R = Q.partialPivLu().solve(P);
-
-    // squaring
-    for (int k=0; k<s; ++k) R *= R;
-    return R;
+    return Dmat.partialPivLu().solve(Nmat);
 }
 
-// Van Loan discretization
-// ẋ = A x + w,   E[w wᵀ] = LQLᵀ δ
-// Build M = [ -A   LQLᵀ
-//              0     Aᵀ ]  , exp(Mh) = [ M11 M12; 0 M22 ]
-// Then Φ = M22ᵀ,  Qd = Φ * M12
-template<typename T>
+// ===================================================
+// Van Loan discretization for (Phi, Qd) using expm_pade6
+// ===================================================
+template<typename T, int N>
 void discretize_vanloan(
-    const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A,
-    const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& LQLT,
+    const Eigen::Matrix<T,N,N>& A,
+    const Eigen::Matrix<T,N,N>& LQLT,
     T h,
-    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& Phi,
-    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& Qd )
+    Eigen::Matrix<T,N,N>& Phi,
+    Eigen::Matrix<T,N,N>& Qd)
 {
-    using Mat = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
-    const int n = A.rows();
-    const int N = 2*n;
+    constexpr int Mdim = 2*N;
+    Eigen::Matrix<T,Mdim,Mdim> M = Eigen::Matrix<T,Mdim,Mdim>::Zero();
 
-    Mat M = Mat::Zero(N,N);
-    // blocks
-    M.topLeftCorner(n,n)        = -A;
-    M.topRightCorner(n,n)       = LQLT;
-    M.bottomRightCorner(n,n)    =  A.transpose();
-    // exp
-    Mat Mh = M * h;
-    Mat E  = expm_pade6<T>(Mh);
+    // Build Van Loan block matrix
+    M.template block<N,N>(0,0) = -A * h;
+    M.template block<N,N>(0,N) = LQLT * h;
+    M.template block<N,N>(N,N) =  A.transpose() * h;
 
-    Mat M12 = E.topRightCorner(n,n);
-    Mat M22 = E.bottomRightCorner(n,n);
-    Phi = M22.transpose();
-    Qd  = Phi * M12;
+    // Exponential
+    Eigen::Matrix<T,Mdim,Mdim> expM = expm_pade6<T,Mdim>(M);
+
+    Eigen::Matrix<T,N,N> E12 = expM.template block<N,N>(0,N);
+    Eigen::Matrix<T,N,N> E22 = expM.template block<N,N>(N,N);
+
+    Phi = E22.transpose();
+    Qd  = Phi * E12;
 }
 
 } // namespace vanloan_pade6
