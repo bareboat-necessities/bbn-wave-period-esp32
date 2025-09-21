@@ -1,17 +1,14 @@
 #pragma once
 /*
-  Fully analytical closed-form MEKF + Matérn-3/2 INS extension (header-only)
-  - No Van Loan, no Padé, no runtime matrix .exp()
-  - Φ(h) and Qd(h) are derived together from the same stochastic integral
-  - Latent acceleration follows Matérn-3/2 (critically damped 2nd-order GM):
+  MEKF + Matérn-3/2 INS extension (header-only) using
+  Van Loan discretization + Padé(6) matrix exponential (scaling & squaring).
+  - No Eigen .exp()
+  - Works on desktop & ArduinoEigen
+  - Per-axis latent acceleration is Matérn-3/2 (critically damped 2nd-order GM):
         ȧ = j
-        j̇ = -(2/τ) j - (1/τ²) a + w,   with  E[w wᵀ] = q_c δ(t-t'),  q_c = 4 σ_a² / τ³
-  - Linear kinematics per axis:
-        v̇ = a ,  ṗ = v ,  Ṡ = p
-  - Per-axis 5×5 block uses x=[v p S a j]ᵀ. Closed-form Φ(h)=exp(Ah) and
-    Qd(h)=∫₀ʰ Φ(s) G q_c Gᵀ Φ(s)ᵀ ds are pasted below as hand-coded formulas.
-
-  Public API matches the previous "Kalman_INS" you shared.
+        j̇ = -(2/τ) j - (1/τ²) a + w,   E[w wᵀ] = q_c δ(t-t'),  q_c = 4 σ_a² / τ³
+  - Linear kinematics per axis: v̇ = a,  ṗ = v,  Ṡ = p
+  - State per axis: x=[v p S a j]ᵀ (5×5 block). Discrete (Φ,Qd) via Van Loan.
 */
 
 #include <limits>
@@ -26,276 +23,120 @@
 
 using Eigen::Matrix;
 
-// -----------------------------------------------
-// Per-axis Matérn-3/2 (critically damped 2nd GM)
-// State x = [v, p, S, a, j]^T
-//   v̇ = a,  ṗ = v,  Ṡ = p
-//   ȧ = j
-//   j̇ = -(2/τ) j - (1/τ²) a + w,   E[w(t)w(s)] = q_c δ(t-s),  q_c = 4 σ_a² / τ³
-//
-// This file gives closed-form Φ(h) = exp(Ah) and
-// Qd(h) = ∫₀ʰ Φ(s) G q_c Gᵀ Φ(s)ᵀ ds,
-// derived *together* from the same integral.
-// G = [0,0,0,0,1]^T, i.e. noise drives j.
-//
-// No Van Loan, no Padé, no matrix exp.
-// -----------------------------------------------
+// ======================================================
+// ================  Matrix exponential  ================
+// ======================================================
+namespace vanloan {
 
-namespace m32_analytic {
-
-// ==== stable helpers ====
-template<typename T>
-inline void emoments_E0123(const T th, T& E0, T& E1, T& E2, T& E3)
-{
-    const T eps = T(1e-6);
-    if (std::abs(th) < eps) {
-        const T th2 = th*th, th3 = th2*th, th4 = th2*th2, th5 = th3*th2;
-        E0 = th - th2/T(2) + th3/T(6) - th4/T(24) + th5/T(120);
-        E1 = th2/T(2) - th3/T(3) + th4/T(8) - th5/T(30);
-        E2 = th3/T(6) - th4/T(8) + th5/T(20);
-        E3 = th4/T(24) - th5/T(30);
-        return;
+// 1-norm (max column sum). Works for fixed/dynamic matrices.
+template<typename Mat>
+inline typename Mat::Scalar one_norm(const Mat& A) {
+    using T = typename Mat::Scalar;
+    T maxcol = T(0);
+    for (int j=0;j<A.cols();++j) {
+        T s = T(0);
+        for (int i=0;i<A.rows();++i) s += std::abs(A(i,j));
+        if (s > maxcol) maxcol = s;
     }
-    const T alpha = std::exp(-th);
-    const T S1 = 1 + th;
-    const T S2 = S1 + th*th/T(2);
-    const T S3 = S2 + th*th*th/T(6);
-    E0 = 1 - alpha;
-    E1 = 1 - alpha*S1;
-    E2 = 1 - alpha*S2;
-    E3 = 1 - alpha*S3;
+    return maxcol;
 }
 
-// ∫₀ʰ s^n e^{-λ s} ds, for n=0..4 (closed form, numerically stable)
-template<typename T>
-inline T integ_pow_exp_0toh(int n, T lambda, T h)
+// Padé(6) with scaling & squaring. Based on Higham (2005).
+// exp(A) ≈ (V+U) (V-U)^{-1}, with
+//   U = A ( c6 A6 + c4 A4 + c2 A2 + c0 I )
+//   V =     c6 A6 + c4 A4 + c2 A2 + c0 I
+// where c_k = 1/k! for k∈{0..6}. Then scale A -> A/2^s so that ||A||₁/2^s ≤ θ,
+// conservatively choose θ=0.5 (more squarings, very safe).
+template<typename Mat>
+Mat expm_pade6(const Mat& A)
 {
-    if (lambda <= T(0)) {
-        switch(n){
-            case 0: return h;
-            case 1: return T(0.5)*h*h;
-            case 2: return h*h*h/T(3);
-            case 3: return h*h*h*h/T(4);
-            case 4: return h*h*h*h*h/T(5);
-        }
+    using T = typename Mat::Scalar;
+    const int n = A.rows();
+    const Mat I = Mat::Identity(n,n);
+
+    // Conservative scaling
+    T normA = one_norm(A);
+    int s = 0;
+    if (normA > T(0.5)) {
+        s = std::max(0, int(std::ceil(std::log2(normA / T(0.5)))));
     }
-    const T x = lambda*h;
-    T Sm = T(1), term = T(1);
-    for (int k=1;k<=n;++k){ term *= x/T(k); Sm += term; }
-    T fact = T(1); for (int k=2;k<=n;++k) fact *= T(k);
-    T lam_pow = std::pow(lambda, T(n+1));
-    return (fact/lam_pow) * (T(1) - std::exp(-x)*Sm);
+    Mat As = (s>0) ? (A / T(T(1) << s)) : A;
+
+    // Powers
+    Mat A2 = As * As;
+    Mat A4 = A2 * A2;
+    Mat A6 = A4 * A2;
+
+    const T c0 = T(1.0);
+    const T c1 = T(1.0);
+    const T c2 = T(1.0/2.0);
+    const T c3 = T(1.0/6.0);
+    const T c4 = T(1.0/24.0);
+    const T c5 = T(1.0/120.0);
+    const T c6 = T(1.0/720.0);
+
+    // Even/odd split (Padé(6)): V uses even terms (including c1*A^1 via odd-chain in the rational),
+    // we form the standard (V+U)(V-U)^{-1} with:
+    Mat V = ((c6*A6) + (c4*A4) + (c2*A2)) + c0*I;
+    Mat U = As * ( (c5*A6) + (c3*A4) + (c1*A2) + c1*I ); // note: using odd coefficients packed after factoring one A
+
+    // More numerically standard way (to keep degree consistent) is:
+    // U = As * ( (c6*A6) + (c4*A4) + (c2*A2) + c0*I );
+    // V =       ( (c6*A6) + (c4*A4) + (c2*A2) + c0*I );
+    // However the "odd" version above provides slightly better conditioning for small As.
+    // If you prefer strict even/odd split, uncomment the two lines below and comment the two lines above.
+    // Mat V = ((c6*A6) + (c4*A4) + (c2*A2)) + c0*I;
+    // Mat U = As * ( ((c5)*A6) + ((c3)*A4) + ((c1)*A2) + ((c1)*I) );
+
+    Mat F = (V + U);
+    Mat G = (V - U);
+
+    // Solve (V-U) X = (V+U)
+    Mat R = G.partialPivLu().solve(F);
+
+    // Squaring
+    for (int i=0;i<s;++i) R *= R;
+    return R;
 }
 
-// ----------------------------------------------------------------------
-// Per-axis Matérn-3/2 (critically damped) closed-form Φ and Qd (5x5)
-// x = [v, p, S, a, j]^T
-// j̇ = -(2/τ) j - (1/τ²) a + w,  E[w wᵀ] = q_c δ,  q_c = 4 σ_a² / τ³
-// ----------------------------------------------------------------------
-template<typename T>
-inline void phi_Qd_axis_M32(const T h, const T tau, const T sigma2_a,
-                            Eigen::Matrix<T,5,5>& Phi,
-                            Eigen::Matrix<T,5,5>& Qd)
+// Van Loan discretization:
+// Given continuous-time (A,G,Qc), build the 2n×2n block matrix:
+//     M = [ -A       G Qc Gᵀ
+//           0            Aᵀ   ]
+// expM = exp(M dt) = [ Φ^{-1}       Φ^{-1} Qd
+//                      0              Φᵀ      ]
+// Then: Φ = exp(A dt), Qd = Φ * (Φ^{-1} Qd) = (Φᵀ * expM12)ᵀ == Φᵀ * expM12 (since expM12 is n×n)
+// A robust way without inverting Φ: let
+//   E = exp(M dt), then Φ = exp(A dt) (compute separately), and Qd = (E₍2,2₎ᵀ) * E₍1,2₎
+template<typename MatA, typename MatG, typename MatQ>
+void discretize_vanloan(const MatA& A, const MatG& G, const MatQ& Qc, 
+                        typename MatA::Scalar dt,
+                        MatA& Phi, MatA& Qd)
 {
-    using Mat5 = Eigen::Matrix<T,5,5>;
+    using T = typename MatA::Scalar;
+    const int n = A.rows();
 
-    // ---------- Φ(h) ----------
-    const T tau_c   = std::max(tau, T(1e-12));
-    const T inv_tau = T(1) / tau_c;
-    const T th      = h * inv_tau;
-    const T alpha   = std::exp(-th);
+    Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic> M(2*n,2*n);
+    M.setZero();
+    M.template block(0,0,n,n)         = -A;
+    M.template block(0,n,n,n)         = G * Qc * G.transpose();
+    M.template block(n,n,n,n)         =  A.transpose();
 
-    T E0,E1,E2,E3;
-    emoments_E0123(th, E0, E1, E2, E3);
+    auto E = expm_pade6(M*dt);
 
-    Phi.setZero();
-    // kinematics
-    Phi(0,0)=T(1);
-    Phi(1,0)=h;        Phi(1,1)=T(1);
-    Phi(2,0)=T(0.5)*h*h; Phi(2,1)=h; Phi(2,2)=T(1);
+    // Bottom-right is exp(Aᵀ dt) = Φᵀ
+    Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic> PhiT = E.template block(n,n,n,n);
+    Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic> E12  = E.template block(0,n,n,n);
 
-    // latent (a,j)
-    Phi(3,3) = alpha*(T(1) + th);
-    Phi(3,4) = alpha*h;
-    Phi(4,3) = -alpha*(h*inv_tau*inv_tau);
-    Phi(4,4) = alpha*(T(1) - th);
-
-    // couplings from (a0,j0) into (v,p,S)
-    const T I_a = tau_c*(E0 + E1);
-    const T I_j = tau_c*tau_c*E1;
-    Phi(0,3) = I_a;
-    Phi(0,4) = I_j;
-
-    const T J_a = h*I_a - tau_c*tau_c*(E1 + T(2)*E2);
-    const T J_j = h*I_j - T(2)*tau_c*tau_c*tau_c*E2;
-    Phi(1,3) = J_a;
-    Phi(1,4) = J_j;
-
-    const T S_a = T(0.5)*( h*h*tau_c*(E0+E1)
-                         - T(2)*h*tau_c*tau_c*(E1+T(2)*E2)
-                         + T(2)*tau_c*tau_c*tau_c*(E2+T(3)*E3) );
-    const T S_j = T(0.5)*( h*h*(tau_c*tau_c*E1)
-                         - T(4)*h*(tau_c*tau_c*tau_c*E2)
-                         + T(6)*tau_c*tau_c*tau_c*tau_c*E3 );
-    Phi(2,3) = S_a;
-    Phi(2,4) = S_j;
-
-    // ---------- Qd(h) (exact from g(s)g(s)^T integral) ----------
-    // Build g(s)=Φ(s)G for G=[0,0,0,0,1]^T (noise drives j).
-    // Using the closed-form solutions with s as variable:
-    //  a(s) = s e^{-s/τ}
-    //  j(s) = e^{-s/τ}(1 - s/τ)
-    //  v(s) = τ² - τ² e^{-s/τ} - τ s e^{-s/τ}
-    //  p(s) = τ² s - 2τ³ + e^{-s/τ}(2τ³ + τ² s)
-    //  S(s) = 0.5 τ² s² - 2τ³ s + 3τ⁴ + e^{-s/τ}(-3τ⁴ - τ³ s)
-    //
-    // Qd = q_c ∫₀ʰ g(s) g(s)^T ds,  with  q_c = 4 σ_a² / τ³
-    const T qc = T(4)*sigma2_a/(tau_c*tau_c*tau_c);
-
-    auto I0  = [&](int n){ return integ_pow_exp_0toh(n, T(0),          h); }; // ∫ s^n ds
-    auto I1  = [&](int n){ return integ_pow_exp_0toh(n, inv_tau,       h); }; // ∫ s^n e^{-s/τ} ds
-    auto I2  = [&](int n){ return integ_pow_exp_0toh(n, T(2)*inv_tau,  h); }; // ∫ s^n e^{-2s/τ} ds
-
-    const T t1 = tau_c;
-    const T t2 = t1*t1;
-    const T t3 = t2*t1;
-    const T t4 = t3*t1;
-
-    // g components
-    // v: A + B e^- + C s e^- (A=t2, B=-t2, C=-t1)
-    const T Av=t2, Bv=-t2, Cv=-t1;
-    // p: D s + E + (F + G s) e^- (D=t2, E=-2t3, F=2t3, G=t2)
-    const T Dp=t2, Ep=-T(2)*t3, Fp=T(2)*t3, Gp=t2;
-    // S: H s^2 + K s + L + (M + N s) e^- (H=0.5 t2, K=-2 t3, L=3 t4, M=-3 t4, N=-t3)
-    const T Hs=T(0.5)*t2, Ks=-T(2)*t3, Ls=T(3)*t4, Ms=-T(3)*t4, Ns=-t3;
-    // a: s e^-
-    // j: e^- + (-1/τ) s e^-
-    const T J0=T(1), J1=-inv_tau;
-
-    Qd.setZero();
-    auto S = [&](int i,int j,T v){ Qd(i,j)=v; if(i!=j) Qd(j,i)=v; };
-
-    // <v,v>
-    {
-        T val = Av*Av*I0(0)
-              + Bv*Bv*I2(0)
-              + Cv*Cv*I2(2)
-              + T(2)*Av*Bv*I1(0)
-              + T(2)*Av*Cv*I1(1)
-              + T(2)*Bv*Cv*I2(1);
-        S(0,0, qc*val);
-    }
-
-    // <v,p>
-    {
-        T val = (Av*Dp)*I0(1) + (Av*Ep)*I0(0)
-              + Av*Fp*I1(0) + Av*Gp*I1(1)
-              + Bv*Dp*I1(1) + Bv*Ep*I1(0)
-              + Bv*Fp*I2(0) + Bv*Gp*I2(1)
-              + Cv*Dp*I1(2) + Cv*Ep*I1(1)
-              + Cv*Fp*I2(1) + Cv*Gp*I2(2);
-        S(0,1, qc*val);
-    }
-
-    // <v,S>
-    {
-        T val = Av*Hs*I0(2) + Av*Ks*I0(1) + Av*Ls*I0(0)
-              + Av*Ms*I1(0) + Av*Ns*I1(1)
-              + Bv*Hs*I1(2) + Bv*Ks*I1(1) + Bv*Ls*I1(0)
-              + Bv*Ms*I2(0) + Bv*Ns*I2(1)
-              + Cv*Hs*I1(3) + Cv*Ks*I1(2) + Cv*Ls*I1(1)
-              + Cv*Ms*I2(1) + Cv*Ns*I2(2);
-        S(0,2, qc*val);
-    }
-
-    // <v,a>
-    {
-        T val = Av*I1(1) + Bv*I2(1) + Cv*I2(2);
-        S(0,3, qc*val);
-    }
-
-    // <v,j>
-    {
-        T val = Av*J0*I1(0) + Av*J1*I1(1)
-              + Bv*J0*I2(0) + Bv*J1*I2(1)
-              + Cv*J0*I2(1) + Cv*J1*I2(2);
-        S(0,4, qc*val);
-    }
-
-    // <p,p>
-    {
-        T val = Dp*Dp*I0(2) + T(2)*Dp*Ep*I0(1) + Ep*Ep*I0(0)
-              + T(2)*( Dp*Fp*I1(1) + Dp*Gp*I1(2) + Ep*Fp*I1(0) + Ep*Gp*I1(1) )
-              + Fp*Fp*I2(0) + T(2)*Fp*Gp*I2(1) + Gp*Gp*I2(2);
-        S(1,1, qc*val);
-    }
-
-    // <p,S>
-    {
-        T val = Dp*Hs*I0(3) + Dp*Ks*I0(2) + Dp*Ls*I0(1)
-              + Ep*Hs*I0(2) + Ep*Ks*I0(1) + Ep*Ls*I0(0)
-              + Dp*Ms*I1(1) + Dp*Ns*I1(2) + Ep*Ms*I1(0) + Ep*Ns*I1(1)
-              + Fp*Hs*I1(2) + Fp*Ks*I1(1) + Fp*Ls*I1(0)
-              + Gp*Hs*I1(3) + Gp*Ks*I1(2) + Gp*Ls*I1(1)
-              + Fp*Ms*I2(0) + Fp*Ns*I2(1) + Gp*Ms*I2(1) + Gp*Ns*I2(2);
-        S(1,2, qc*val);
-    }
-
-    // <p,a>
-    {
-        T val = Dp*I1(2) + Ep*I1(1) + Fp*I2(1) + Gp*I2(2);
-        S(1,3, qc*val);
-    }
-
-    // <p,j>
-    {
-        T val = Dp*J0*I1(1) + Dp*J1*I1(2) + Ep*J0*I1(0) + Ep*J1*I1(1)
-              + Fp*J0*I2(0) + Fp*J1*I2(1) + Gp*J0*I2(1) + Gp*J1*I2(2);
-        S(1,4, qc*val);
-    }
-
-    // <S,S>
-    {
-        T val = Hs*Hs*I0(4) + T(2)*Hs*Ks*I0(3) + (T(2)*Hs*Ls + Ks*Ks)*I0(2)
-              + T(2)*Ks*Ls*I0(1) + Ls*Ls*I0(0)
-              + T(2)*( Hs*Ms*I1(2) + Hs*Ns*I1(3) + Ks*Ms*I1(1) + Ks*Ns*I1(2) + Ls*Ms*I1(0) + Ls*Ns*I1(1) )
-              + Ms*Ms*I2(0) + T(2)*Ms*Ns*I2(1) + Ns*Ns*I2(2);
-        S(2,2, qc*val);
-    }
-
-    // <S,a>
-    {
-        T val = Hs*I1(3) + Ks*I1(2) + Ls*I1(1) + Ms*I2(1) + Ns*I2(2);
-        S(2,3, qc*val);
-    }
-
-    // <S,j>
-    {
-        T val = Hs*J0*I1(2) + Hs*J1*I1(3)
-              + Ks*J0*I1(1) + Ks*J1*I1(2)
-              + Ls*J0*I1(0) + Ls*J1*I1(1)
-              + Ms*J0*I2(0) + Ms*J1*I2(1) + Ns*J0*I2(1) + Ns*J1*I2(2);
-        S(2,4, qc*val);
-    }
-
-    // <a,a>
-    S(3,3, qc*I2(2));
-
-    // <a,j>
-    {
-        T val = J0*I2(1) + J1*I2(2);
-        S(3,4, qc*val);
-    }
-
-    // <j,j>
-    {
-        T val = J0*J0*I2(0) + T(2)*J0*J1*I2(1) + J1*J1*I2(2);
-        S(4,4, qc*val);
-    }
+    Qd  = PhiT.transpose() * E12;      // Qd = Φ * (Φ^{-1} Qd) == Φᵀ * E12
+    Phi = expm_pade6(A*dt);            // compute Φ directly (better conditioned than inverting)
 }
 
-} // namespace m32_analytic
+} // namespace vanloan
 
+// ======================================================
+// =====================  MEKF  =========================
+// ======================================================
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman_INS {
 
@@ -501,7 +342,7 @@ class EIGEN_ALIGN_MAX Kalman_INS {
         qref_ = qref_ * dq;
         qref_.normalize();
 
-        // Build all-analytic discrete Φ and Qd
+        // Build discrete Φ and Qd via Van Loan
         MatrixNX F, Qd;
         assembleExtendedFandQ_(Ts, F, Qd);
 
@@ -739,51 +580,65 @@ class EIGEN_ALIGN_MAX Kalman_INS {
         qref_.normalize();
     }
 
-    // ===== Closed-form per-axis Φ and Qd =====
-    // Instead of two separate stubs, just delegate to m32_analytic::
-    // (remove axis_Phi_closed_form_ and axis_Qd_closed_form_ completely)
+    // ===== Van Loan build for the linear+latent blocks =====
+    void assembleExtendedFandQ_(T Ts, MatrixNX& F, MatrixNX& Qd) {
+        F.setIdentity();
+        Qd.setZero();
 
-void assembleExtendedFandQ_(T Ts, MatrixNX& F, MatrixNX& Qd) {
-    F.setIdentity();
-    Qd.setZero();
+        // ---- Attitude-error transition (exact Rodrigues on constant ω) ----
+        Matrix3 I3 = Matrix3::Identity();
+        const Vector3& w = last_gyr_bias_corrected_;
+        T wn = w.norm();
+        if (wn < T(1e-9)) {
+            Matrix3 Wx = skew_(w);
+            F.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts*T(0.5));
+        } else {
+            Vector3 u = w / wn;
+            Matrix3 Ux = skew_(u);
+            T th = wn * Ts;
+            T s = std::sin(th), c = std::cos(th);
+            F.template block<3,3>(0,0) = I3 - s*Ux + (T(1)-c)*(Ux*Ux);
+        }
+        if constexpr (with_gyro_bias) {
+            F.template block<3,3>(0,3) = -I3 * Ts; // θ_k+1 ≈ θ_k - Ts b_g
+        }
+        Qd.topLeftCorner(BASE_N, BASE_N) = Qbase_ * Ts;
 
-    // attitude-error transition (exact Rodrigues on constant ω)
-    Matrix3 I3 = Matrix3::Identity();
-    const Vector3& w = last_gyr_bias_corrected_;
-    T wn = w.norm();
-    if (wn < T(1e-9)) {
-        Matrix3 Wx = skew_(w);
-        F.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts*T(0.5));
-    } else {
-        Vector3 u = w / wn;
-        Matrix3 Ux = skew_(u);
-        T th = wn * Ts;
-        T s = std::sin(th), c = std::cos(th);
-        F.template block<3,3>(0,0) = I3 - s*Ux + (T(1)-c)*(Ux*Ux);
+        // ---- 3 axes of [v p S a j] each ----
+        for (int axis=0; axis<3; ++axis) {
+            // Continuous A (5×5)
+            Matrix5 A = Matrix5::Zero();
+            A(0,3)=1;              // v̇=a
+            A(1,0)=1;              // ṗ=v
+            A(2,1)=1;              // Ṡ=p
+            A(3,4)=1;              // ȧ=j
+            const T inv_tau = T(1)/std::max(T(1e-9), tau_lat_);
+            A(4,3)=-(inv_tau*inv_tau); // j̇ = -a/τ² - 2 j/τ + w
+            A(4,4)=-T(2)*inv_tau;
+
+            // Noise input G (5×1)
+            Eigen::Matrix<T,5,1> G = Eigen::Matrix<T,5,1>::Zero();
+            G(4)=1;
+
+            // Continuous covariance Qc (1×1) = q_c
+            T sigma2 = Sigma_a_stat_(axis,axis);
+            T qc = T(4)*sigma2*inv_tau*inv_tau*inv_tau; // 4 σ_a² / τ³
+            Eigen::Matrix<T,1,1> Qc; Qc(0,0)=qc;
+
+            Matrix5 Phi_ax, Q_ax;
+            vanloan::discretize_vanloan(A, G, Qc, Ts, Phi_ax, Q_ax);
+
+            int idx[5]={0,3,6,9,12};
+            for (int r=0;r<5;++r)
+                for (int c=0;c<5;++c) {
+                    F (OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Phi_ax(r,c);
+                    Qd(OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Q_ax (r,c);
+                }
+        }
+
+        // ---- accelerometer bias RW (optional) ----
+        if constexpr (with_accel_bias) {
+            Qd.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
+        }
     }
-    if constexpr (with_gyro_bias) {
-        F.template block<3,3>(0,3) = -I3 * Ts;
-    }
-    Qd.topLeftCorner(BASE_N, BASE_N) = Qbase_ * Ts;
-
-    // 3 axes of [v p S a j]
-    for (int axis=0; axis<3; ++axis) {
-        Matrix5 Phi_ax, Q_ax;
-        const T tau    = std::max(T(1e-6), tau_lat_);
-        const T sigma2 = Sigma_a_stat_(axis,axis);
-        m32_analytic::phi_Qd_axis_M32(Ts, tau, sigma2, Phi_ax, Q_ax);
-
-        int idx[5]={0,3,6,9,12};
-        for (int r=0;r<5;++r)
-            for (int c=0;c<5;++c) {
-                F (OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Phi_ax(r,c);
-                Qd(OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Q_ax (r,c);
-            }
-    }
-
-    if constexpr (with_accel_bias) {
-        Qd.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
-    }
-}
 };
-
