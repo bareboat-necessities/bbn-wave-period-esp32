@@ -60,7 +60,7 @@ Eigen::Matrix<T,N,N> expm_pade6(const Eigen::Matrix<T,N,N>& A_in)
     const T c6 = T(1)/T(924);
 
     // Simple, conservative theta for Padé(6); smaller → more scaling → safer
-    const T theta = T(1);  // you can relax to ~1.2 if you like
+    const T theta = T(3.5);  
 
     // Scaling: choose s s.t. ||A||_1 / 2^s <= theta
     Eigen::Matrix<T,N,N> A = A_in;
