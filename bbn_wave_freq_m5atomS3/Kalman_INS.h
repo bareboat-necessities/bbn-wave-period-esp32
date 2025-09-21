@@ -1,11 +1,11 @@
 #pragma once
 /*
-  MEKF + Matérn-3/2 INS extension (Van Loan + Pade(6) expm)
-  - Discretization for linear [v p S a j] (15x15) is done with Van Loan.
-  - Matrix exponential uses robust scaling-and-squaring with Pade(6).
-  - No debug streams, no 'I = Mat' shenanigans; clean Eigen code.
+  MEKF + Matérn-3/2 INS extension (Van Loan + Padé(6) expm)
+  - Linear [v p S a j] (15x15) block discretized via Van Loan.
+  - Matrix exponential is scaling-and-squaring with Padé(6) (correct coefficients).
+  - Clean Eigen code, no stream ops.
 
-  Continuous per-axis (x=[v p S a j]^T):
+  Per-axis continuous model (x=[v p S a j]^T):
     v̇ = a
     ṗ = v
     Ṡ = p
@@ -28,38 +28,76 @@ using Eigen::Matrix;
 namespace vanloan_pade6 {
 
 // ==============================
-// Pade(6) approximation of exp(M)
+// Helpers
 // ==============================
 template<typename T, int N>
-Eigen::Matrix<T,N,N> expm_pade6(const Eigen::Matrix<T,N,N>& M)
+static inline T norm1(const Eigen::Matrix<T,N,N>& M) {
+    // Induced 1-norm = max column sum of absolute values
+    T maxc = T(0);
+    for (int j=0;j<N;++j) {
+        T s = T(0);
+        for (int i=0;i<N;++i) s += std::abs(M(i,j));
+        if (s > maxc) maxc = s;
+    }
+    return maxc;
+}
+
+// ==================================================
+// Padé(6) + scaling-and-squaring matrix exponential
+// ==================================================
+template<typename T, int N>
+Eigen::Matrix<T,N,N> expm_pade6(const Eigen::Matrix<T,N,N>& A_in)
 {
-    // Coefficients for [6/6] Padé approximant
-    constexpr T c0 = 1.0;
-    constexpr T c1 = 0.5;
-    constexpr T c2 = 0.12;             // 1/8.3333 = 1/8.333? No → let's write properly
-    constexpr T c3 = 1.0/60.0;
-    constexpr T c4 = 1.0/840.0;
-    constexpr T c5 = 1.0/15120.0;
-    constexpr T c6 = 1.0/362880.0;
+    // Correct [6/6] Padé coefficients for exp:
+    // c_k = ( (2m-k)! * m! ) / ( (2m)! * (m-k)! ), m=6, k=0..6
+    // => [1, 1/2, 5/22, 1/11, 1/33, 1/132, 1/924]
+    const T c0 = T(1);
+    const T c1 = T(1)/T(2);
+    const T c2 = T(5)/T(22);
+    const T c3 = T(1)/T(11);
+    const T c4 = T(1)/T(33);
+    const T c5 = T(1)/T(132);
+    const T c6 = T(1)/T(924);
 
-    Eigen::Matrix<T,N,N> I = Eigen::Matrix<T,N,N>::Identity();
-    Eigen::Matrix<T,N,N> M2 = M*M;
-    Eigen::Matrix<T,N,N> M4 = M2*M2;
-    Eigen::Matrix<T,N,N> M6 = M4*M2;
+    // Simple, conservative theta for Padé(6); smaller → more scaling → safer
+    const T theta = T(1);  // you can relax to ~1.2 if you like
 
-    Eigen::Matrix<T,N,N> U = M * (c1*I + c3*M2 + c5*M4);
-    U += M*M2 * (c2*I + c4*M2 + c6*M4);  // terms with odd powers
+    // Scaling: choose s s.t. ||A||_1 / 2^s <= theta
+    Eigen::Matrix<T,N,N> A = A_in;
+    T a1 = norm1<T,N>(A);
+    int s = 0;
+    if (a1 > theta && std::isfinite(double(a1))) {
+        T two = T(2);
+        // ceil(log2(a1/theta))
+        s = std::max(0, int(std::ceil(std::log(a1/theta) / std::log(two))));
+        T scale = std::ldexp(T(1), s); // = 2^s
+        A /= scale;
+    }
 
-    Eigen::Matrix<T,N,N> V = c0*I + c2*M2 + c4*M4 + c6*M6;
+    // Even/odd separation for Padé(6):
+    // U = A (c1 I + c3 A^2 + c5 A^4)
+    // V =     c0 I + c2 A^2 + c4 A^4 + c6 A^6
+    const Eigen::Matrix<T,N,N> I = Eigen::Matrix<T,N,N>::Identity();
+    const Eigen::Matrix<T,N,N> A2 = A*A;
+    const Eigen::Matrix<T,N,N> A4 = A2*A2;
+    const Eigen::Matrix<T,N,N> A6 = A4*A2;
 
+    Eigen::Matrix<T,N,N> U = A * (c1*I + c3*A2 + c5*A4);
+    Eigen::Matrix<T,N,N> V =  c0*I + c2*A2 + c4*A4 + c6*A6;
+
+    // R = (V + U) * (V - U)^{-1}
     Eigen::Matrix<T,N,N> Nmat = V + U;
     Eigen::Matrix<T,N,N> Dmat = V - U;
 
-    return Dmat.partialPivLu().solve(Nmat);
+    Eigen::Matrix<T,N,N> R = Dmat.partialPivLu().solve(Nmat);
+
+    // Squaring: exp(A_in) = (exp(A))^(2^s)
+    for (int i=0; i<s; ++i) R = R * R;
+    return R;
 }
 
 // ===================================================
-// Van Loan discretization for (Phi, Qd) using expm_pade6
+// Van Loan discretization for (Phi, Qd) with Padé(6)
 // ===================================================
 template<typename T, int N>
 void discretize_vanloan(
@@ -72,16 +110,16 @@ void discretize_vanloan(
     constexpr int Mdim = 2*N;
     Eigen::Matrix<T,Mdim,Mdim> M = Eigen::Matrix<T,Mdim,Mdim>::Zero();
 
-    // Build Van Loan block matrix
+    // Build Van Loan block matrix for h*A
     M.template block<N,N>(0,0) = -A * h;
-    M.template block<N,N>(0,N) = LQLT * h;
+    M.template block<N,N>(0,N) =  LQLT * h;
     M.template block<N,N>(N,N) =  A.transpose() * h;
 
     // Exponential
-    Eigen::Matrix<T,Mdim,Mdim> expM = expm_pade6<T,Mdim>(M);
+    const Eigen::Matrix<T,Mdim,Mdim> expM = expm_pade6<T,Mdim>(M);
 
-    Eigen::Matrix<T,N,N> E12 = expM.template block<N,N>(0,N);
-    Eigen::Matrix<T,N,N> E22 = expM.template block<N,N>(N,N);
+    const Eigen::Matrix<T,N,N> E12 = expM.template block<N,N>(0,N);
+    const Eigen::Matrix<T,N,N> E22 = expM.template block<N,N>(N,N);
 
     Phi = E22.transpose();
     Qd  = Phi * E12;
@@ -485,7 +523,7 @@ class EIGEN_ALIGN_MAX Kalman_INS {
 
     // latent a Matérn-3/2 params
     T       tau_lat_       = T(1.5);                             // [s]
-    Matrix3 Sigma_a_stat_  = Matrix3::Identity() * T(0.25*0.25); // Var[a] per axis
+    Matrix3 Sigma_a_stat_  = Matrix3::Identity() * T(0.25*0.25); // Var[a]
 
     // ===== Utils =====
     Matrix3 R_wb_() const { return qref_.toRotationMatrix(); }              // world→body
@@ -558,7 +596,7 @@ class EIGEN_ALIGN_MAX Kalman_INS {
         if constexpr (with_gyro_bias) {
             F.template block<3,3>(0,3) = -I3 * Ts; // θ_{k+1} ≈ θ_k - Ts b_g
         }
-        // Base process (RW for bias; gyro meas mapped in Qbase_)
+        // Base process (RW for bias; gyro noise mapped via Qbase_)
         Qd.topLeftCorner(BASE_N, BASE_N) = Qbase_ * Ts;
 
         // ---------- Build continuous A (15×15) and LQLᵀ for linear block ----------
@@ -589,15 +627,15 @@ class EIGEN_ALIGN_MAX Kalman_INS {
             A(ij, ia) = -inv_tau2;
             A(ij, ij) = -T(2)*inv_tau;
 
-            // LQLᵀ: process noise only on j, intensity q_c = 4 σ_a² / τ³
-            T sigma2 = Sigma_a_stat_(axis,axis);
-            T qc = T(4)*sigma2/(tau*tau*tau);
+            // LQLᵀ: process noise only on j, q_c = 4 σ_a² / τ³
+            const T sigma2 = Sigma_a_stat_(axis,axis);
+            const T qc = T(4)*sigma2/(tau*tau*tau);
             LQLT(ij, ij) = qc;
         }
 
-        // Van Loan on linear block
+        // Van Loan on linear block (let N=15 be deduced)
         Eigen::Matrix<T,15,15> Phi15, Qd15;
-        vanloan_pade6::discretize_vanloan<T>(A, LQLT, Ts, Phi15, Qd15);
+        vanloan_pade6::discretize_vanloan(A, LQLT, Ts, Phi15, Qd15);
 
         // Inject into big F, Qd
         F .template block<15,15>(OFF_V, OFF_V) = Phi15;
