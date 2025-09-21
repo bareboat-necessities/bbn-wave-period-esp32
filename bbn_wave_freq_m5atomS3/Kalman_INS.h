@@ -85,7 +85,7 @@ Eigen::Matrix<T,N,N> expm_pade6(const Eigen::Matrix<T,N,N>& A_in)
     Eigen::Matrix<T,N,N> U = A * (c1*I + c3*A2 + c5*A4);
     Eigen::Matrix<T,N,N> V =  c0*I + c2*A2 + c4*A4 + c6*A6;
 
-    // R = (V + U) * (V - U)^{-1}
+    // R = (V - U)^{-1} * (V + U)
     Eigen::Matrix<T,N,N> Nmat = V + U;
     Eigen::Matrix<T,N,N> Dmat = V - U;
 
