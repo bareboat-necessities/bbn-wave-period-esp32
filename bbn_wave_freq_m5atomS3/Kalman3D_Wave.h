@@ -723,20 +723,23 @@ static Mat expm_pade6(const Mat& A) {
         s = std::min(max_squarings, int(std::ceil(log2x)));
     }
 
-    Mat As = A / S(1 << s);
+    Mat As = (A / S(1 << s)).eval();
     Mat I  = Mat::Identity(n,n);
-    Mat A2 = As * As;
-    Mat A4 = A2 * A2;
-    Mat A6 = A4 * A2;
+    Mat A2 = (As * As).eval();
+    Mat A4 = (A2 * A2).eval();
+    Mat A6 = (A4 * A2).eval();
 
-    Mat U = As * (c1*I + c3*A2 + c5*A4);
-    Mat V = c0*I + c2*A2 + c4*A4 + c6*A6;
+    Mat U = (As * (c1*I + c3*A2 + c5*A4)).eval();
+    Mat V = (c0*I + c2*A2 + c4*A4 + c6*A6).eval();
 
-    Mat P = V + U;
-    Mat Q = V - U;
-    Mat R = Q.fullPivLu().solve(P);
+    Mat P = (V + U).eval();
+    Mat Q = (V - U).eval();
 
-    for (int i=0;i<s;++i) R = R*R;
+    Mat R = Q.fullPivLu().solve(P).eval();
+
+    for (int i=0; i<s; ++i) {
+        R = (R * R).eval();
+    }
     return R;
 }
 
