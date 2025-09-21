@@ -122,14 +122,14 @@ void discretize_vanloan(const MatA& A, const MatG& G, const MatQ& Qc,
     M.template block(0,n,n,n)         = G * Qc * G.transpose();
     M.template block(n,n,n,n)         =  A.transpose();
 
-    auto E = expm_pade6(M*dt);
+    auto E = expm_pade6((M*dt).eval());
 
     // Bottom-right is exp(Aᵀ dt) = Φᵀ
     Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic> PhiT = E.template block(n,n,n,n);
     Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic> E12  = E.template block(0,n,n,n);
 
     Qd  = PhiT.transpose() * E12;      // Qd = Φ * (Φ^{-1} Qd) == Φᵀ * E12
-    Phi = expm_pade6(A*dt);            // compute Φ directly (better conditioned than inverting)
+    Phi = expm_pade6((A*dt).eval());            // compute Φ directly (better conditioned than inverting)
 }
 
 } // namespace vanloan
