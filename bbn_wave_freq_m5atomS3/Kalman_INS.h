@@ -880,198 +880,15 @@ class EIGEN_ALIGN_MAX Kalman_INS {
     }
 
     // ===== Closed-form per-axis Φ and Qd =====
-    // x = [v p S a j]^T
-    static void axis_Phi_closed_form_(T h, T tau, Matrix5& Phi)
-    {
-        const T inv_tau = T(1) / std::max(T(1e-12), tau);
-        const T alpha   = std::exp(-h * inv_tau);
-
-        // Kinematics base
-        Phi.setZero();
-        Phi(0,0)=T(1);
-        Phi(1,0)=h;     Phi(1,1)=T(1);
-        Phi(2,0)=T(0.5)*h*h; Phi(2,1)=h; Phi(2,2)=T(1);
-
-        // Latent (a,j) exact 2×2 exponential for critical damping
-        Phi(3,3) = alpha * (T(1) + h*inv_tau);
-        Phi(3,4) = alpha * h;
-        Phi(4,3) = -alpha * (h*inv_tau*inv_tau);
-        Phi(4,4) = alpha * (T(1) - h*inv_tau);
-
-        // Couplings into v,p,S via ∫ a(s), ∫∫ a(s), ∫∫∫ a(s) and j(s)
-        // Compact primitives: E0..E3
-        const T E0 = T(1) - alpha;
-        const T E1 = T(1) - alpha*(T(1) + h*inv_tau);
-        const T E2 = T(1) - alpha*(T(1) + h*inv_tau + (h*h)*inv_tau*inv_tau/T(2));
-        const T E3 = T(1) - alpha*(T(1) + h*inv_tau + (h*h)*inv_tau*inv_tau/T(2)
-                                  + (h*h*h)*inv_tau*inv_tau*inv_tau/T(6));
-
-        // v <- [a j]
-        const T I_a = tau*(E0 + E1);
-        const T I_j = tau*tau*E1;
-        Phi(0,3) = I_a;
-        Phi(0,4) = I_j;
-
-        // p <- [a j]
-        const T J_a = h*I_a - tau*tau*(E1 + T(2)*E2);
-        const T J_j = h*I_j - T(2)*tau*tau*tau*E2;
-        Phi(1,3) = J_a;
-        Phi(1,4) = J_j;
-
-        // S <- [a j]
-        const T S_a = T(0.5)*( h*h*tau*(E0+E1)
-                             - T(2)*h*tau*tau*(E1+T(2)*E2)
-                             + T(2)*tau*tau*tau*(E2+T(3)*E3) );
-        const T S_j = T(0.5)*( h*h*(tau*tau*E1)
-                             - T(4)*h*(tau*tau*tau*E2)
-                             + T(6)*tau*tau*tau*tau*E3 );
-        Phi(2,3) = S_a;
-        Phi(2,4) = S_j;
-    }
-
-    // Hand-coded fully expanded Qd entries for one axis (no loops, no integrators at runtime).
-    // Qd = σ_a^2 * [C0 + C1 α + C2 α^2], where α = e^{-h/τ}; the constants Ck below encode the polynomials.
-    static void axis_Qd_closed_form_(T h, T tau, T sigma2_a, Matrix5& Q)
-    {
-        const T alpha = std::exp(-h / std::max(T(1e-12), tau));
-        const T t  = tau;
-        const T h2 = h*h, h3 = h2*h, h4 = h2*h2, h5 = h2*h3;
-        const T t2 = t*t, t3 = t2*t, t4 = t3*t, t5 = t4*t, t6 = t5*t;
-
-        // Helper macro to assign symmetric entries
-        auto S = [&](int r, int c, T v){ Q(r,c)=v; if(r!=c) Q(c,r)=v; };
-
-        // Precompute α, α²
-        const T a1 = alpha;
-        const T a2 = alpha*alpha;
-
-        // vv
-        {
-            const T c2 = -(T(2)*h2 + T(6)*h*t + T(5)*t2);
-            const T c1 =  T(8)*t*(h + T(2)*t);
-            const T c0 =  t*(T(4)*h - T(11)*t);
-            S(0,0, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // vp
-        {
-            const T c2 = -(h2 + T(3)*h*t + T(3)*t2);
-            const T c1 =  (h2 + T(2)*h*t + T(10)*t2);
-            const T c0 =  (h2/T(2)) - T(2)*h*t + T(5)*t2;
-            S(0,1, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // vS
-        {
-            const T c2 = -(T(2)*h2*t2 + T(10)*h*t3 + T(11)*t4);
-            const T c1 =  (T(2)*h3*t + T(8)*h*t3 + T(32)*t4);
-            const T c0 =  (T(2)*h3*t/T(3)) - T(4)*h2*t2 + T(12)*h*t3 - T(21)*t4;
-            S(0,2, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // va
-        {
-            const T c2 =  (T(2)*h + T(5)*t);
-            const T c1 = -T(4)*(h + T(3)*t);
-            const T c0 =  T(3)*t;
-            S(0,3, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // vj
-        {
-            const T c2 = -(T(2)*h/t + T(3));
-            const T c1 =  T(2)*(T(2)*h/t + T(5));
-            const T c0 = -T(4);
-            S(0,4, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // pp
-        {
-            const T c2 =  (T(2)*h2*t + T(8)*h*t2 + T(11)*t3);
-            const T c1 = -(T(2)*h3 + T(2)*h2*t + T(8)*h*t2 - T(36)*t3);
-            const T c0 = -(h4/T(2)) + T(2)*h3*t - T(10)*h2*t2 + T(24)*h*t3 - T(18)*t4;
-            S(1,1, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // pS
-        {
-            const T c2 =  (T(2)*h2*t3 + T(12)*h*t4 + T(18)*t5);
-            const T c1 = -(T(2)*h3*t2) + T(2)*h2*t3 + T(12)*h*t4 - T(36)*t5;
-            const T c0 =   (h4*t/T(2)) - T(4)*h3*t2 + T(14)*h2*t3 - T(24)*h*t4 + T(18)*t5;
-            S(1,2, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // pa
-        {
-            const T c2 = -(h2 + T(3)*h*t + T(4)*t2);
-            const T c1 =  (h2 + T(4)*t2);
-            const T c0 =   (h2/T(2)) - T(3)*h*t + T(6)*t2;
-            S(1,3, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // pj
-        {
-            const T c2 =  (h2/t + T(2)*h + T(2)*t);
-            const T c1 = -(h2/t + T(2)*t);
-            const T c0 = -(h2/(T(2)*t)) + T(2)*h - T(6)*t;
-            S(1,4, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // SS
-        {
-            const T c2 = -(T(2)*h2*t4 + T(14)*h*t5 + T(25)*t6);
-            const T c1 =  (T(4)*h3*t3 + T(8)*h2*t4 - T(8)*h*t5 + T(64)*t6);
-            const T c0 =   (h5*t/T(5)) - T(2)*h4*t2 + (T(28)*h3*t3)/T(3) - T(24)*h2*t4 + T(36)*h*t5 - T(39)*t6;
-            S(2,2, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // Sa
-        {
-            const T c2 =  (h3/T(3) + h2*t + T(2)*h*t2 + T(2)*t3);
-            const T c1 = -(h3/T(3)) + T(2)*h*t2 - T(6)*t3;
-            const T c0 = -(h3/T(6)) + (T(3)*h2*t)/T(2) - T(6)*h*t2 + T(12)*t3;
-            S(2,3, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // Sj
-        {
-            const T c2 = -(h3/(T(3)*t) + h2 + T(2)*h*t + T(2)*t2);
-            const T c1 =  (h3/(T(3)*t)) - T(2)*h + T(6)*t;
-            const T c0 =  (h3/(T(6)*t)) - (T(3)*h2)/T(2) + T(6)*h - T(12)*t;
-            S(2,4, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // aa
-        {
-            const T c2 = -(T(2)*h2/t2 + T(2)*h/t + T(1));
-            const T c1 =  T(0);
-            const T c0 =  T(1);
-            S(3,3, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // aj
-        {
-            const T c2 =  T(2)*h2/(t*t*t);
-            const T c1 =  T(0);
-            const T c0 =  T(0);
-            S(3,4, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-
-        // jj
-        {
-            const T c2 = -(T(2)*h2/(t2*t2) - T(2)*h/(t*t*t) + T(1)/t2);
-            const T c1 =  T(0);
-            const T c0 =  T(1)/t2;
-            S(4,4, sigma2_a * (c0 + c1*a1 + c2*a2));
-        }
-    }
+    // Instead of two separate stubs, just delegate to m32_analytic::
+    // (remove axis_Phi_closed_form_ and axis_Qd_closed_form_ completely)
 
     // Build full NX×NX Φ and Qd
     void assembleExtendedFandQ_(T Ts, MatrixNX& F, MatrixNX& Qd) {
         F.setIdentity();
         Qd.setZero();
 
-        // ---- Attitude-error small-angle transition (exact Rodrigues on constant ω) ----
+        // ---- Attitude-error small-angle transition ----
         Matrix3 I3 = Matrix3::Identity();
         const Vector3& w = last_gyr_bias_corrected_;
         T wn = w.norm();
@@ -1086,19 +903,18 @@ class EIGEN_ALIGN_MAX Kalman_INS {
             F.template block<3,3>(0,0) = I3 - s*Ux + (T(1)-c)*(Ux*Ux);
         }
         if constexpr (with_gyro_bias) {
-            F.template block<3,3>(0,3) = -I3 * Ts; // θ_k+1 ≈ θ_k - Ts b_g
+            F.template block<3,3>(0,3) = -I3 * Ts;
         }
-        // Base process (RW for bias; gyro meas mapped in Qbase_)
         Qd.topLeftCorner(BASE_N, BASE_N) = Qbase_ * Ts;
 
         // ---- 3 axes of [v p S a j] each ----
         for (int axis=0; axis<3; ++axis) {
             Matrix5 Phi_ax, Q_ax;
-            const T tau = std::max(T(1e-6), tau_lat_);
+            const T tau    = std::max(T(1e-6), tau_lat_);
             const T sigma2 = Sigma_a_stat_(axis,axis);
 
-            axis_Phi_closed_form_(Ts, tau, Phi_ax);
-            axis_Qd_closed_form_ (Ts, tau, sigma2, Q_ax);
+            // *** Call the joint closed-form ***
+            m32_analytic::phi_Qd_axis_M32(Ts, tau, sigma2, Phi_ax, Q_ax);
 
             int idx[5]={0,3,6,9,12};
             for (int r=0;r<5;++r)
@@ -1108,7 +924,6 @@ class EIGEN_ALIGN_MAX Kalman_INS {
                 }
         }
 
-        // ---- accelerometer bias RW (optional) ----
         if constexpr (with_accel_bias) {
             Qd.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
         }
