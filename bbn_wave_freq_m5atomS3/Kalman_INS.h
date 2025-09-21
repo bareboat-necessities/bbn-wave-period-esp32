@@ -1,4 +1,5 @@
 #pragma once
+
 /*
   Purely analytic closed-form INS EKF variant
 
