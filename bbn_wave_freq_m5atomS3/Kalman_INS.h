@@ -706,49 +706,50 @@ class EIGEN_ALIGN_MAX Kalman_INS {
     // (remove axis_Phi_closed_form_ and axis_Qd_closed_form_ completely)
 
     // Build full NX×NX Φ and Qd
-    void assembleExtendedFandQ_(T Ts, MatrixNX& F, MatrixNX& Qd) {
-        F.setIdentity();
-        Qd.setZero();
+// Build full NX×NX Φ and Qd
+void assembleExtendedFandQ_(T Ts, MatrixNX& F, MatrixNX& Qd) {
+    F.setIdentity();
+    Qd.setZero();
 
-        // ---- Attitude-error small-angle transition ----
-        Matrix3 I3 = Matrix3::Identity();
-        const Vector3& w = last_gyr_bias_corrected_;
-        T wn = w.norm();
-        if (wn < T(1e-9)) {
-            Matrix3 Wx = skew_(w);
-            F.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts*T(0.5));
-        } else {
-            Vector3 u = w / wn;
-            Matrix3 Ux = skew_(u);
-            T th = wn * Ts;
-            T s = std::sin(th), c = std::cos(th);
-            F.template block<3,3>(0,0) = I3 - s*Ux + (T(1)-c)*(Ux*Ux);
-        }
-        if constexpr (with_gyro_bias) {
-            F.template block<3,3>(0,3) = -I3 * Ts;
-        }
-        Qd.topLeftCorner(BASE_N, BASE_N) = Qbase_ * Ts;
-
-        // ---- 3 axes of [v p S a j] each ----
-        for (int axis=0; axis<3; ++axis) {
-            Matrix5 Phi_ax, Q_ax;
-            const T tau    = std::max(T(1e-6), tau_lat_);
-            const T sigma2 = Sigma_a_stat_(axis,axis);
-
-            // *** Call the joint closed-form ***
-            m32_analytic::phi_Qd_axis_M32(Ts, tau, sigma2, Phi_ax, Q_ax);
-
-            int idx[5]={0,3,6,9,12};
-            for (int r=0;r<5;++r)
-                for (int c=0;c<5;++c) {
-                    F (OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Phi_ax(r,c);
-                    Qd(OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Q_ax (r,c);
-                }
-        }
-
-        if constexpr (with_accel_bias) {
-            Qd.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
-        }
+    // --- Attitude-error transition (small-angle error state) ---
+    Matrix3 I3 = Matrix3::Identity();
+    const Vector3& w = last_gyr_bias_corrected_;
+    T wn = w.norm();
+    if (wn < T(1e-9)) {
+        Matrix3 Wx = skew_(w);
+        F.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts*T(0.5));
+    } else {
+        Vector3 u = w / wn;
+        Matrix3 Ux = skew_(u);
+        T th = wn * Ts;
+        T s = std::sin(th), c = std::cos(th);
+        F.template block<3,3>(0,0) = I3 - s*Ux + (T(1)-c)*(Ux*Ux);
     }
+    if constexpr (with_gyro_bias) {
+        F.template block<3,3>(0,3) = -I3 * Ts;  // θ_{k+1} ≈ θ_k - Ts * b_g
+    }
+    Qd.topLeftCorner(BASE_N, BASE_N) = Qbase_ * Ts;
+
+    // --- 3 axes of [v p S a j] each ---
+    for (int axis=0; axis<3; ++axis) {
+        Matrix5 Phi_ax, Q_ax;
+        const T tau    = std::max(T(1e-6), tau_lat_);
+        const T sigma2 = Sigma_a_stat_(axis,axis);
+
+        m32_analytic::phi_Qd_axis_M32(Ts, tau, sigma2, Phi_ax, Q_ax);
+
+        int idx[5]={0,3,6,9,12};
+        for (int r=0;r<5;++r)
+            for (int c=0;c<5;++c) {
+                F (OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Phi_ax(r,c);
+                Qd(OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Q_ax (r,c);
+            }
+    }
+
+    // --- accelerometer bias RW (optional) ---
+    if constexpr (with_accel_bias) {
+        Qd.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
+    }
+}
 };
 
