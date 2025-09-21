@@ -1,14 +1,16 @@
 #pragma once
 /*
-  MEKF + Matérn-3/2 INS extension (header-only) using
-  Van Loan discretization + Padé(6) matrix exponential (scaling & squaring).
-  - No Eigen .exp()
-  - Works on desktop & ArduinoEigen
-  - Per-axis latent acceleration is Matérn-3/2 (critically damped 2nd-order GM):
-        ȧ = j
-        j̇ = -(2/τ) j - (1/τ²) a + w,   E[w wᵀ] = q_c δ(t-t'),  q_c = 4 σ_a² / τ³
-  - Linear kinematics per axis: v̇ = a,  ṗ = v,  Ṡ = p
-  - State per axis: x=[v p S a j]ᵀ (5×5 block). Discrete (Φ,Qd) via Van Loan.
+  MEKF + Matérn-3/2 INS extension (Van Loan + Pade(6) expm)
+  - Discretization for linear [v p S a j] (15x15) is done with Van Loan.
+  - Matrix exponential uses robust scaling-and-squaring with Pade(6).
+  - No debug streams, no 'I = Mat' shenanigans; clean Eigen code.
+
+  Continuous per-axis (x=[v p S a j]^T):
+    v̇ = a
+    ṗ = v
+    Ṡ = p
+    ȧ = j
+    j̇ = -(1/τ²) a - (2/τ) j + w,   E[w wᵀ] = q_c δ,   q_c = 4 σ_a² / τ³
 */
 
 #include <limits>
@@ -23,131 +25,120 @@
 
 using Eigen::Matrix;
 
-// ======================================================
-// ================  Matrix exponential  ================
-// ======================================================
-namespace vanloan {
+namespace vanloan_pade6 {
 
-// 1-norm (max column sum). Works for fixed/dynamic matrices.
-template<typename Mat>
-inline typename Mat::Scalar one_norm(const Mat& A) {
-    using T = typename Mat::Scalar;
+// ---------- helpers ----------
+template<typename T>
+inline T one_norm(const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A) {
+    // 1-norm = max column sum
     T maxcol = T(0);
-    for (int j=0;j<A.cols();++j) {
+    for (int j=0; j<A.cols(); ++j) {
         T s = T(0);
-        for (int i=0;i<A.rows();++i) s += std::abs(A(i,j));
+        for (int i=0; i<A.rows(); ++i) s += std::abs(A(i,j));
         if (s > maxcol) maxcol = s;
     }
     return maxcol;
 }
 
-// Padé(6) with scaling & squaring. Based on Higham (2005).
-// exp(A) ≈ (V+U) (V-U)^{-1}, with
-//   U = A ( c6 A6 + c4 A4 + c2 A2 + c0 I )
-//   V =     c6 A6 + c4 A4 + c2 A2 + c0 I
-// where c_k = 1/k! for k∈{0..6}. Then scale A -> A/2^s so that ||A||₁/2^s ≤ θ,
-// conservatively choose θ=0.5 (more squarings, very safe).
-template<typename Mat>
-Mat expm_pade6(const Mat& A)
+// expm via Pade(6) + scaling & squaring (Higham)
+template<typename T>
+Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>
+expm_pade6(const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_in)
 {
-    using T = typename Mat::Scalar;
-    const int n = A.rows();
-    const Mat I = Mat::Identity(n,n);
+    using Mat = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
+    const int n = A_in.rows();
 
-    // Conservative scaling
-    T normA = one_norm(A);
+    // Constants for m = 6
+    // theta_6 from Higham's bounds
+    const T theta6 = T(3.650024139523051);
+    const T c0 = T(1);
+    const T c1 = T(1);
+    const T c2 = T(1)/T(2);       // 1/2!
+    const T c3 = T(1)/T(6);       // 1/3!
+    const T c4 = T(1)/T(24);      // 1/4!
+    const T c5 = T(1)/T(120);     // 1/5!
+    const T c6 = T(1)/T(720);     // 1/6!
+
+    Mat A = A_in;
+    // scaling
     int s = 0;
-    if (normA > T(0.5)) {
-        s = std::max(0, int(std::ceil(std::log2(normA / T(0.5)))));
+    T anorm = one_norm(A);
+    if (anorm > theta6 && anorm > T(0)) {
+        s = std::max(0, int(std::ceil(std::log2(anorm/theta6))));
+        const T scale = std::ldexp(T(1), -s); // 2^{-s}
+        A *= scale;
     }
-    Mat As = (s>0) ? (A / T(T(1) << s)) : A;
 
-    // Powers
-    Mat A2 = As * As;
-    Mat A4 = A2 * A2;
-    Mat A6 = A4 * A2;
+    // Pade(6)
+    Mat I = Mat::Identity(n,n);
+    Mat A2 = A*A;
+    Mat A4 = A2*A2;
+    Mat A6 = A4*A2;
 
-    const T c0 = T(1.0);
-    const T c1 = T(1.0);
-    const T c2 = T(1.0/2.0);
-    const T c3 = T(1.0/6.0);
-    const T c4 = T(1.0/24.0);
-    const T c5 = T(1.0/120.0);
-    const T c6 = T(1.0/720.0);
+    Mat U = A * (c1*I + c3*A2 + c5*A4);
+    Mat V =      c0*I + c2*A2 + c4*A4 + c6*A6;
 
-    // Even/odd split (Padé(6)): V uses even terms (including c1*A^1 via odd-chain in the rational),
-    // we form the standard (V+U)(V-U)^{-1} with:
-    Mat V = ((c6*A6) + (c4*A4) + (c2*A2)) + c0*I;
-    Mat U = As * ( (c5*A6) + (c3*A4) + (c1*A2) + c1*I ); // note: using odd coefficients packed after factoring one A
+    // (V - U)^{-1} (V + U)
+    Mat P = V + U;
+    Mat Q = V - U;
 
-    // More numerically standard way (to keep degree consistent) is:
-    // U = As * ( (c6*A6) + (c4*A4) + (c2*A2) + c0*I );
-    // V =       ( (c6*A6) + (c4*A4) + (c2*A2) + c0*I );
-    // However the "odd" version above provides slightly better conditioning for small As.
-    // If you prefer strict even/odd split, uncomment the two lines below and comment the two lines above.
-    // Mat V = ((c6*A6) + (c4*A4) + (c2*A2)) + c0*I;
-    // Mat U = As * ( ((c5)*A6) + ((c3)*A4) + ((c1)*A2) + ((c1)*I) );
+    // Solve Q * R = P
+    Mat R = Q.partialPivLu().solve(P);
 
-    Mat F = (V + U);
-    Mat G = (V - U);
-
-    // Solve (V-U) X = (V+U)
-    Mat R = G.partialPivLu().solve(F);
-
-    // Squaring
-    for (int i=0;i<s;++i) R *= R;
+    // squaring
+    for (int k=0; k<s; ++k) R *= R;
     return R;
 }
 
-// Van Loan discretization:
-// Given continuous-time (A,G,Qc), build the 2n×2n block matrix:
-//     M = [ -A       G Qc Gᵀ
-//           0            Aᵀ   ]
-// expM = exp(M dt) = [ Φ^{-1}       Φ^{-1} Qd
-//                      0              Φᵀ      ]
-// Then: Φ = exp(A dt), Qd = Φ * (Φ^{-1} Qd) = (Φᵀ * expM12)ᵀ == Φᵀ * expM12 (since expM12 is n×n)
-// A robust way without inverting Φ: let
-//   E = exp(M dt), then Φ = exp(A dt) (compute separately), and Qd = (E₍2,2₎ᵀ) * E₍1,2₎
-template<typename MatA, typename MatG, typename MatQ>
-void discretize_vanloan(const MatA& A, const MatG& G, const MatQ& Qc, 
-                        typename MatA::Scalar dt,
-                        MatA& Phi, MatA& Qd)
+// Van Loan discretization
+// ẋ = A x + w,   E[w wᵀ] = LQLᵀ δ
+// Build M = [ -A   LQLᵀ
+//              0     Aᵀ ]  , exp(Mh) = [ M11 M12; 0 M22 ]
+// Then Φ = M22ᵀ,  Qd = Φ * M12
+template<typename T>
+void discretize_vanloan(
+    const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A,
+    const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& LQLT,
+    T h,
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& Phi,
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& Qd )
 {
-    using T = typename MatA::Scalar;
+    using Mat = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
     const int n = A.rows();
+    const int N = 2*n;
 
-    Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic> M(2*n,2*n);
-    M.setZero();
-    M.template block(0,0,n,n)         = -A;
-    M.template block(0,n,n,n)         = G * Qc * G.transpose();
-    M.template block(n,n,n,n)         =  A.transpose();
+    Mat M = Mat::Zero(N,N);
+    // blocks
+    M.topLeftCorner(n,n)        = -A;
+    M.topRightCorner(n,n)       = LQLT;
+    M.bottomRightCorner(n,n)    =  A.transpose();
+    // exp
+    Mat Mh = M * h;
+    Mat E  = expm_pade6<T>(Mh);
 
-    auto E = expm_pade6((M*dt).eval());
-
-    // Bottom-right is exp(Aᵀ dt) = Φᵀ
-    Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic> PhiT = E.template block(n,n,n,n);
-    Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic> E12  = E.template block(0,n,n,n);
-
-    Qd  = PhiT.transpose() * E12;      // Qd = Φ * (Φ^{-1} Qd) == Φᵀ * E12
-    Phi = expm_pade6((A*dt).eval());            // compute Φ directly (better conditioned than inverting)
+    Mat M12 = E.topRightCorner(n,n);
+    Mat M22 = E.bottomRightCorner(n,n);
+    Phi = M22.transpose();
+    Qd  = Phi * M12;
 }
 
-} // namespace vanloan
+} // namespace vanloan_pade6
 
-// ======================================================
-// =====================  MEKF  =========================
-// ======================================================
+
+// =====================================================================================
+//                                Kalman_INS (header-only)
+// =====================================================================================
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman_INS {
 
     // Base: attitude error (3) + optional gyro bias (3)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
 
-    // Extended: v(3), p(3), S(3), a(3), j(3) [+ optional b_a(3)]
+    // Extended linear block: v(3), p(3), S(3), a(3), j(3) [+ optional b_a(3)]
     static constexpr int EXT_ADD = with_accel_bias ? 18 : 15;
     static constexpr int NX      = BASE_N + EXT_ADD;
 
-    // Offsets
+    // Offsets in full state
     static constexpr int OFF_V  = BASE_N + 0;
     static constexpr int OFF_P  = BASE_N + 3;
     static constexpr int OFF_S  = BASE_N + 6;
@@ -195,10 +186,10 @@ class EIGEN_ALIGN_MAX Kalman_INS {
         Pext_.setZero();
         Pext_.topLeftCorner(BASE_N, BASE_N) = Pbase_;
 
-        // Seed linear states
+        // Seed linear-state uncertainty
         set_initial_linear_uncertainty(T(1.0), T(20.0), T(50.0));
 
-        // Latent acceleration stationary variance seed
+        // Latent acceleration stationary variance seed (diag of Var[a])
         Pext_.template block<3,3>(OFF_A, OFF_A) = Sigma_a_stat_;
         Pext_.template block<3,3>(OFF_J, OFF_J) = Matrix3::Identity() * T(0.05);
 
@@ -328,7 +319,7 @@ class EIGEN_ALIGN_MAX Kalman_INS {
 
     // ========== Cycle ==========
     void time_update(const Vector3& gyr, T Ts) {
-        // attitude mean propagation (right-multiply)
+        // attitude mean (right-multiply)
         Vector3 gb = Vector3::Zero();
         if constexpr (with_gyro_bias) gb = xext_.template segment<3>(3);
         last_gyr_bias_corrected_ = gyr - gb;
@@ -342,11 +333,11 @@ class EIGEN_ALIGN_MAX Kalman_INS {
         qref_ = qref_ * dq;
         qref_.normalize();
 
-        // Build discrete Φ and Qd via Van Loan
+        // Build discrete Φ and Qd (Van Loan for linear block)
         MatrixNX F, Qd;
         assembleExtendedFandQ_(Ts, F, Qd);
 
-        // Mean propagation for linear block [v p S a j] per axis (3× of 5 states)
+        // Mean propagation for linear block [v p S a j]
         Eigen::Matrix<T,15,1> xl;
         xl.template segment<3>(0)  = xext_.template segment<3>(OFF_V);
         xl.template segment<3>(3)  = xext_.template segment<3>(OFF_P);
@@ -529,7 +520,7 @@ class EIGEN_ALIGN_MAX Kalman_INS {
 
     // latent a Matérn-3/2 params
     T       tau_lat_       = T(1.5);                             // [s]
-    Matrix3 Sigma_a_stat_  = Matrix3::Identity() * T(0.25*0.25); // Var[a]
+    Matrix3 Sigma_a_stat_  = Matrix3::Identity() * T(0.25*0.25); // Var[a] per axis
 
     // ===== Utils =====
     Matrix3 R_wb_() const { return qref_.toRotationMatrix(); }              // world→body
@@ -580,12 +571,12 @@ class EIGEN_ALIGN_MAX Kalman_INS {
         qref_.normalize();
     }
 
-    // ===== Van Loan build for the linear+latent blocks =====
+    // ---- Van Loan for the 15×15 linear block; base attitude uses small-angle F + RW Q ----
     void assembleExtendedFandQ_(T Ts, MatrixNX& F, MatrixNX& Qd) {
         F.setIdentity();
         Qd.setZero();
 
-        // ---- Attitude-error transition (exact Rodrigues on constant ω) ----
+        // Attitude-error transition (exact Rodrigues on constant ω)
         Matrix3 I3 = Matrix3::Identity();
         const Vector3& w = last_gyr_bias_corrected_;
         T wn = w.norm();
@@ -600,43 +591,54 @@ class EIGEN_ALIGN_MAX Kalman_INS {
             F.template block<3,3>(0,0) = I3 - s*Ux + (T(1)-c)*(Ux*Ux);
         }
         if constexpr (with_gyro_bias) {
-            F.template block<3,3>(0,3) = -I3 * Ts; // θ_k+1 ≈ θ_k - Ts b_g
+            F.template block<3,3>(0,3) = -I3 * Ts; // θ_{k+1} ≈ θ_k - Ts b_g
         }
+        // Base process (RW for bias; gyro meas mapped in Qbase_)
         Qd.topLeftCorner(BASE_N, BASE_N) = Qbase_ * Ts;
 
-        // ---- 3 axes of [v p S a j] each ----
+        // ---------- Build continuous A (15×15) and LQLᵀ for linear block ----------
+        Eigen::Matrix<T,15,15> A = Eigen::Matrix<T,15,15>::Zero();
+        Eigen::Matrix<T,15,15> LQLT = Eigen::Matrix<T,15,15>::Zero();
+
+        const T tau = std::max(T(1e-6), tau_lat_);
+        const T inv_tau = T(1)/tau;
+        const T inv_tau2= inv_tau*inv_tau;
+
+        // Per-axis structure, state order: v(0..2), p(3..5), S(6..8), a(9..11), j(12..14)
         for (int axis=0; axis<3; ++axis) {
-            // Continuous A (5×5)
-            Matrix5 A = Matrix5::Zero();
-            A(0,3)=1;              // v̇=a
-            A(1,0)=1;              // ṗ=v
-            A(2,1)=1;              // Ṡ=p
-            A(3,4)=1;              // ȧ=j
-            const T inv_tau = T(1)/std::max(T(1e-9), tau_lat_);
-            A(4,3)=-(inv_tau*inv_tau); // j̇ = -a/τ² - 2 j/τ + w
-            A(4,4)=-T(2)*inv_tau;
+            int iv = 0 + axis;
+            int ip = 3 + axis;
+            int iS = 6 + axis;
+            int ia = 9 + axis;
+            int ij = 12 + axis;
 
-            // Noise input G (5×1)
-            Eigen::Matrix<T,5,1> G = Eigen::Matrix<T,5,1>::Zero();
-            G(4)=1;
+            // v̇ = a
+            A(iv, ia) = T(1);
+            // ṗ = v
+            A(ip, iv) = T(1);
+            // Ṡ = p
+            A(iS, ip) = T(1);
+            // ȧ = j
+            A(ia, ij) = T(1);
+            // j̇ = -(1/τ²) a - (2/τ) j
+            A(ij, ia) = -inv_tau2;
+            A(ij, ij) = -T(2)*inv_tau;
 
-            // Continuous covariance Qc (1×1) = q_c
+            // LQLᵀ: process noise only on j, intensity q_c = 4 σ_a² / τ³
             T sigma2 = Sigma_a_stat_(axis,axis);
-            T qc = T(4)*sigma2*inv_tau*inv_tau*inv_tau; // 4 σ_a² / τ³
-            Eigen::Matrix<T,1,1> Qc; Qc(0,0)=qc;
-
-            Matrix5 Phi_ax, Q_ax;
-            vanloan::discretize_vanloan(A, G, Qc, Ts, Phi_ax, Q_ax);
-
-            int idx[5]={0,3,6,9,12};
-            for (int r=0;r<5;++r)
-                for (int c=0;c<5;++c) {
-                    F (OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Phi_ax(r,c);
-                    Qd(OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Q_ax (r,c);
-                }
+            T qc = T(4)*sigma2/(tau*tau*tau);
+            LQLT(ij, ij) = qc;
         }
 
-        // ---- accelerometer bias RW (optional) ----
+        // Van Loan on linear block
+        Eigen::Matrix<T,15,15> Phi15, Qd15;
+        vanloan_pade6::discretize_vanloan<T>(A, LQLT, Ts, Phi15, Qd15);
+
+        // Inject into big F, Qd
+        F .template block<15,15>(OFF_V, OFF_V) = Phi15;
+        Qd.template block<15,15>(OFF_V, OFF_V) = Qd15;
+
+        // accelerometer bias RW (optional)
         if constexpr (with_accel_bias) {
             Qd.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
         }
