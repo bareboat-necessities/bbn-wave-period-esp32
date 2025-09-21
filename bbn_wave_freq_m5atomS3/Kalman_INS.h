@@ -1,18 +1,17 @@
 #pragma once
 /*
-  Copyright 2025, Mikhail Grushinskiy
-  All-analytic MEKF + Matérn-3/2 INS extension (header-only)
-
-  - No Van Loan, no Padé, no matrix .exp(): Φ and Qd are derived together.
-  - Latent acceleration follows Matérn-3/2 (critically damped 2nd order GM):
+  Fully analytical closed-form MEKF + Matérn-3/2 INS extension (header-only)
+  - No Van Loan, no Padé, no runtime matrix .exp()
+  - Φ(h) and Qd(h) are derived together from the same stochastic integral
+  - Latent acceleration follows Matérn-3/2 (critically damped 2nd-order GM):
         ȧ = j
         j̇ = -(2/τ) j - (1/τ²) a + w,   with  E[w wᵀ] = q_c δ(t-t'),  q_c = 4 σ_a² / τ³
-  - Linear kinematics (per axis):
+  - Linear kinematics per axis:
         v̇ = a ,  ṗ = v ,  Ṡ = p
-  - The 5x5 axis block is x=[v p S a j]ᵀ. Φ(h)=exp(Ah) is closed-form,
-    and Qd(h)=∫₀ʰ Φ(s) G q_c Gᵀ Φ(s)ᵀ ds is built from analytic primitives.
+  - Per-axis 5×5 block uses x=[v p S a j]ᵀ. Closed-form Φ(h)=exp(Ah) and
+    Qd(h)=∫₀ʰ Φ(s) G q_c Gᵀ Φ(s)ᵀ ds are pasted below as hand-coded formulas.
 
-  Public API matches the previous "Kalman_INS" sketch you shared.
+  Public API matches the previous "Kalman_INS" you shared.
 */
 
 #include <limits>
@@ -470,135 +469,190 @@ class EIGEN_ALIGN_MAX Kalman_INS {
         qref_.normalize();
     }
 
-    // ===== Analytic primitives =====
-    // ∫₀ʰ s^m e^{-λ s} ds, with λ ≥ 0
-    static T integ_pow_exp_(int m, T lambda, T h) {
-        if (lambda <= T(0)) {
-            // ∫ s^m ds
-            return std::pow(h, T(m+1)) / T(m+1);
-        }
-        // m! / λ^{m+1} * [ 1 - e^{-λh} ∑_{k=0}^m (λh)^k/k! ]
-        T fact = T(1);
-        for (int i=2;i<=m;i++) fact *= T(i);
-        T lam_pow = std::pow(lambda, T(m+1));
-        // truncated series S_m(x) = sum_{k=0}^m x^k/k!
-        T x = lambda * h;
-        T Sm = T(1), term = T(1);
-        for (int k=1;k<=m;k++) {
-            term *= x / T(k);
-            Sm += term;
-        }
-        return (fact/lam_pow) * (T(1) - std::exp(-x)*Sm);
-    }
-
-    // Build axis Φ(h) and the "column response" g(s)=Φ(s)G for j-noise;
-    // then Qd = q_c ∫ g(s) g(s)ᵀ ds via termwise analytic integration.
-    static void axis_Phi_and_Qd_(T h, T tau, T sigma2_a,
-                                 Matrix5& Phi, Matrix5& Qd)
+    // ===== Closed-form per-axis Φ and Qd =====
+    // x = [v p S a j]^T
+    static void axis_Phi_closed_form_(T h, T tau, Matrix5& Phi)
     {
-        using Term = struct { T c; int n; T lam; }; // c * s^n * exp(-lam s), lam ∈ {0, 1/τ}
+        const T inv_tau = T(1) / std::max(T(1e-12), tau);
+        const T alpha   = std::exp(-h * inv_tau);
 
-        auto alpha = std::exp(-h / tau);
-
-        // ---- exact latent 2×2 exponential (a,j) with critical damping ----
-        // a(h) = e^{-h/τ}[(1 + h/τ)a0 + h j0]
-        // j(h) = e^{-h/τ}[      - (h/τ²)a0 + (1 - h/τ) j0]
+        // Kinematics base
         Phi.setZero();
-        // kinematics base
-        Phi(0,0)=T(1);               // v<-v
-        Phi(1,0)=h;                  // p<-v
-        Phi(1,1)=T(1);               // p<-p
-        Phi(2,0)=T(0.5)*h*h;         // S<-v
-        Phi(2,1)=h;                  // S<-p
-        Phi(2,2)=T(1);               // S<-S
+        Phi(0,0)=T(1);
+        Phi(1,0)=h;     Phi(1,1)=T(1);
+        Phi(2,0)=T(0.5)*h*h; Phi(2,1)=h; Phi(2,2)=T(1);
 
-        // helper En(h): E0=1-α; E1=1-α(1+h/τ); E2=1-α(1+h/τ+(h²)/(2τ²)); E3=...
-        auto inv_tau = T(1)/tau;
-        auto E0 = T(1) - alpha;
-        auto E1 = T(1) - alpha*(T(1) + h*inv_tau);
-        auto E2 = T(1) - alpha*(T(1) + h*inv_tau + (h*h)*inv_tau*inv_tau/T(2));
-        auto E3 = T(1) - alpha*(T(1) + h*inv_tau + (h*h)*inv_tau*inv_tau/T(2)
-                              + (h*h*h)*inv_tau*inv_tau*inv_tau/T(6));
+        // Latent (a,j) exact 2×2 exponential for critical damping
+        Phi(3,3) = alpha * (T(1) + h*inv_tau);
+        Phi(3,4) = alpha * h;
+        Phi(4,3) = -alpha * (h*inv_tau*inv_tau);
+        Phi(4,4) = alpha * (T(1) - h*inv_tau);
 
-        // Couplings (derived from integrals of a(s), j(s))
-        // v <- a0, j0
-        T I_a = tau*(E0 + E1);             // ∫ (1 + s/τ) e^{-s/τ} ds
-        T I_j = tau*tau*E1;                // ∫ s e^{-s/τ} ds
-        Phi(0,3) = I_a;                    // v<-a
-        Phi(0,4) = I_j;                    // v<-j
+        // Couplings into v,p,S via ∫ a(s), ∫∫ a(s), ∫∫∫ a(s) and j(s)
+        // Compact primitives: E0..E3
+        const T E0 = T(1) - alpha;
+        const T E1 = T(1) - alpha*(T(1) + h*inv_tau);
+        const T E2 = T(1) - alpha*(T(1) + h*inv_tau + (h*h)*inv_tau*inv_tau/T(2));
+        const T E3 = T(1) - alpha*(T(1) + h*inv_tau + (h*h)*inv_tau*inv_tau/T(2)
+                                  + (h*h*h)*inv_tau*inv_tau*inv_tau/T(6));
 
-        // p <- a0, j0
-        T J_a = h*I_a - tau*tau*(E1 + T(2)*E2);
-        T J_j = h*(tau*tau*E1) - T(2)*tau*tau*tau*E2;
+        // v <- [a j]
+        const T I_a = tau*(E0 + E1);
+        const T I_j = tau*tau*E1;
+        Phi(0,3) = I_a;
+        Phi(0,4) = I_j;
+
+        // p <- [a j]
+        const T J_a = h*I_a - tau*tau*(E1 + T(2)*E2);
+        const T J_j = h*I_j - T(2)*tau*tau*tau*E2;
         Phi(1,3) = J_a;
         Phi(1,4) = J_j;
 
-        // S <- a0, j0
-        T Sa  = T(0.5)*( h*h*tau*(E0+E1)
-                       - T(2)*h*tau*tau*(E1+T(2)*E2)
-                       + T(2)*tau*tau*tau*(E2+T(3)*E3) );
-        T Sj  = T(0.5)*( h*h*(tau*tau*E1)
-                       - T(4)*h*(tau*tau*tau*E2)
-                       + T(6)*tau*tau*tau*tau*E3 );
-        Phi(2,3) = Sa;
-        Phi(2,4) = Sj;
+        // S <- [a j]
+        const T S_a = T(0.5)*( h*h*tau*(E0+E1)
+                             - T(2)*h*tau*tau*(E1+T(2)*E2)
+                             + T(2)*tau*tau*tau*(E2+T(3)*E3) );
+        const T S_j = T(0.5)*( h*h*(tau*tau*E1)
+                             - T(4)*h*(tau*tau*tau*E2)
+                             + T(6)*tau*tau*tau*tau*E3 );
+        Phi(2,3) = S_a;
+        Phi(2,4) = S_j;
+    }
 
-        // latent 2×2
-        Phi(3,3) = alpha * (T(1) + h*inv_tau);  // a<-a
-        Phi(3,4) = alpha * h;                   // a<-j
-        Phi(4,3) = alpha * (-h*inv_tau*inv_tau);// j<-a
-        Phi(4,4) = alpha * (T(1) - h*inv_tau);  // j<-j
+    // Hand-coded fully expanded Qd entries for one axis (no loops, no integrators at runtime).
+    // Qd = σ_a^2 * [C0 + C1 α + C2 α^2], where α = e^{-h/τ}; the constants Ck below encode the polynomials.
+    static void axis_Qd_closed_form_(T h, T tau, T sigma2_a, Matrix5& Q)
+    {
+        const T alpha = std::exp(-h / std::max(T(1e-12), tau));
+        const T t  = tau;
+        const T h2 = h*h, h3 = h2*h, h4 = h2*h2, h5 = h2*h3;
+        const T t2 = t*t, t3 = t2*t, t4 = t3*t, t5 = t4*t, t6 = t5*t;
 
-        // ---- build g(s) terms for each state (response to initial j0=1) ----
-        // We express each g_i(s) as sum of Term {c, n, λ} with λ ∈ {0, 1/τ}
-        auto push = [](auto& vec, T c, int n, T lam){ vec.emplace_back(Term{c,n,lam}); };
+        // Helper macro to assign symmetric entries
+        auto S = [&](int r, int c, T v){ Q(r,c)=v; if(r!=c) Q(c,r)=v; };
 
-        // g_v(s) = τ² - τ² e^{-s/τ} - τ s e^{-s/τ}
-        std::array<std::vector<Term>,5> g;
-        g[0].reserve(3); g[1].reserve(4); g[2].reserve(4); g[3].reserve(2); g[4].reserve(2);
+        // Precompute α, α²
+        const T a1 = alpha;
+        const T a2 = alpha*alpha;
 
-        push(g[0],  tau*tau, 0, T(0));
-        push(g[0], -tau*tau, 0, inv_tau);
-        push(g[0], -tau,     1, inv_tau);
+        // vv
+        {
+            const T c2 = -(T(2)*h2 + T(6)*h*t + T(5)*t2);
+            const T c1 =  T(8)*t*(h + T(2)*t);
+            const T c0 =  t*(T(4)*h - T(11)*t);
+            S(0,0, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
 
-        // g_p(s) = τ² s - 2τ³ + e^{-s/τ}(2τ³ + τ² s)
-        push(g[1],  tau*tau, 1, T(0));
-        push(g[1], -T(2)*tau*tau*tau, 0, T(0));
-        push(g[1],  T(2)*tau*tau*tau, 0, inv_tau);
-        push(g[1],  tau*tau, 1, inv_tau);
+        // vp
+        {
+            const T c2 = -(h2 + T(3)*h*t + T(3)*t2);
+            const T c1 =  (h2 + T(2)*h*t + T(10)*t2);
+            const T c0 =  (h2/T(2)) - T(2)*h*t + T(5)*t2;
+            S(0,1, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
 
-        // g_S(s) = 0.5 τ² s² - 2 τ³ s + 3 τ⁴ + e^{-s/τ}( -3 τ⁴ - τ³ s )
-        push(g[2],  T(0.5)*tau*tau, 2, T(0));
-        push(g[2], -T(2)*tau*tau*tau, 1, T(0));
-        push(g[2],  T(3)*tau*tau*tau*tau, 0, T(0));
-        push(g[2], -T(3)*tau*tau*tau*tau, 0, inv_tau);
-        push(g[2], -tau*tau*tau, 1, inv_tau);
+        // vS
+        {
+            const T c2 = -(T(2)*h2*t2 + T(10)*h*t3 + T(11)*t4);
+            const T c1 =  (T(2)*h3*t + T(8)*h*t3 + T(32)*t4);
+            const T c0 =  (T(2)*h3*t/T(3)) - T(4)*h2*t2 + T(12)*h*t3 - T(21)*t4;
+            S(0,2, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
 
-        // g_a(s) = s e^{-s/τ}
-        push(g[3], T(1), 1, inv_tau);
+        // va
+        {
+            const T c2 =  (T(2)*h + T(5)*t);
+            const T c1 = -T(4)*(h + T(3)*t);
+            const T c0 =  T(3)*t;
+            S(0,3, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
 
-        // g_j(s) = e^{-s/τ}(1 - s/τ)
-        push(g[4], T(1), 0, inv_tau);
-        push(g[4], -inv_tau, 1, inv_tau);
+        // vj
+        {
+            const T c2 = -(T(2)*h/t + T(3));
+            const T c1 =  T(2)*(T(2)*h/t + T(5));
+            const T c0 = -T(4);
+            S(0,4, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
 
-        // ---- assemble Qd = q_c ∫ g gᵀ ds ----
-        const T qc = T(4) * sigma2_a / (tau*tau*tau);
-        Qd.setZero();
+        // pp
+        {
+            const T c2 =  (T(2)*h2*t + T(8)*h*t2 + T(11)*t3);
+            const T c1 = -(T(2)*h3 + T(2)*h2*t + T(8)*h*t2 - T(36)*t3);
+            const T c0 = -(h4/T(2)) + T(2)*h3*t - T(10)*h2*t2 + T(24)*h*t3 - T(18)*t4;
+            S(1,1, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
 
-        for (int i=0;i<5;++i) {
-            for (int j=i;j<5;++j) {
-                T acc = T(0);
-                for (const auto& ti : g[i]) {
-                    for (const auto& tj : g[j]) {
-                        T lam = ti.lam + tj.lam;   // ∈ {0, 1/τ, 2/τ}
-                        int n  = ti.n  + tj.n;
-                        acc += ti.c * tj.c * integ_pow_exp_(n, lam, h);
-                    }
-                }
-                T val = qc * acc;
-                Qd(i,j) = val;
-                if (i!=j) Qd(j,i) = val;
-            }
+        // pS
+        {
+            const T c2 =  (T(2)*h2*t3 + T(12)*h*t4 + T(18)*t5);
+            const T c1 = -(T(2)*h3*t2) + T(2)*h2*t3 + T(12)*h*t4 - T(36)*t5;
+            const T c0 =   (h4*t/T(2)) - T(4)*h3*t2 + T(14)*h2*t3 - T(24)*h*t4 + T(18)*t5;
+            S(1,2, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
+
+        // pa
+        {
+            const T c2 = -(h2 + T(3)*h*t + T(4)*t2);
+            const T c1 =  (h2 + T(4)*t2);
+            const T c0 =   (h2/T(2)) - T(3)*h*t + T(6)*t2;
+            S(1,3, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
+
+        // pj
+        {
+            const T c2 =  (h2/t + T(2)*h + T(2)*t);
+            const T c1 = -(h2/t + T(2)*t);
+            const T c0 = -(h2/(T(2)*t)) + T(2)*h - T(6)*t;
+            S(1,4, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
+
+        // SS
+        {
+            const T c2 = -(T(2)*h2*t4 + T(14)*h*t5 + T(25)*t6);
+            const T c1 =  (T(4)*h3*t3 + T(8)*h2*t4 - T(8)*h*t5 + T(64)*t6);
+            const T c0 =   (h5*t/T(5)) - T(2)*h4*t2 + (T(28)*h3*t3)/T(3) - T(24)*h2*t4 + T(36)*h*t5 - T(39)*t6;
+            S(2,2, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
+
+        // Sa
+        {
+            const T c2 =  (h3/T(3) + h2*t + T(2)*h*t2 + T(2)*t3);
+            const T c1 = -(h3/T(3)) + T(2)*h*t2 - T(6)*t3;
+            const T c0 = -(h3/T(6)) + (T(3)*h2*t)/T(2) - T(6)*h*t2 + T(12)*t3;
+            S(2,3, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
+
+        // Sj
+        {
+            const T c2 = -(h3/(T(3)*t) + h2 + T(2)*h*t + T(2)*t2);
+            const T c1 =  (h3/(T(3)*t)) - T(2)*h + T(6)*t;
+            const T c0 =  (h3/(T(6)*t)) - (T(3)*h2)/T(2) + T(6)*h - T(12)*t;
+            S(2,4, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
+
+        // aa
+        {
+            const T c2 = -(T(2)*h2/t2 + T(2)*h/t + T(1));
+            const T c1 =  T(0);
+            const T c0 =  T(1);
+            S(3,3, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
+
+        // aj
+        {
+            const T c2 =  T(2)*h2/(t*t*t);
+            const T c1 =  T(0);
+            const T c0 =  T(0);
+            S(3,4, sigma2_a * (c0 + c1*a1 + c2*a2));
+        }
+
+        // jj
+        {
+            const T c2 = -(T(2)*h2/(t2*t2) - T(2)*h/(t*t*t) + T(1)/t2);
+            const T c1 =  T(0);
+            const T c0 =  T(1)/t2;
+            S(4,4, sigma2_a * (c0 + c1*a1 + c2*a2));
         }
     }
 
@@ -612,7 +666,6 @@ class EIGEN_ALIGN_MAX Kalman_INS {
         const Vector3& w = last_gyr_bias_corrected_;
         T wn = w.norm();
         if (wn < T(1e-9)) {
-            // 2nd-order accurate for tiny angles
             Matrix3 Wx = skew_(w);
             F.template block<3,3>(0,0) = I3 - Wx*Ts + (Wx*Wx)*(Ts*Ts*T(0.5));
         } else {
@@ -623,7 +676,7 @@ class EIGEN_ALIGN_MAX Kalman_INS {
             F.template block<3,3>(0,0) = I3 - s*Ux + (T(1)-c)*(Ux*Ux);
         }
         if constexpr (with_gyro_bias) {
-            F.template block<3,3>(0,3) = -I3 * Ts; // θ_k+1 ≈ θ_k - Ts b_g  (bias in error-state)
+            F.template block<3,3>(0,3) = -I3 * Ts; // θ_k+1 ≈ θ_k - Ts b_g
         }
         // Base process (RW for bias; gyro meas mapped in Qbase_)
         Qd.topLeftCorner(BASE_N, BASE_N) = Qbase_ * Ts;
@@ -633,13 +686,15 @@ class EIGEN_ALIGN_MAX Kalman_INS {
             Matrix5 Phi_ax, Q_ax;
             const T tau = std::max(T(1e-6), tau_lat_);
             const T sigma2 = Sigma_a_stat_(axis,axis);
-            axis_Phi_and_Qd_(Ts, tau, sigma2, Phi_ax, Q_ax);
+
+            axis_Phi_closed_form_(Ts, tau, Phi_ax);
+            axis_Qd_closed_form_ (Ts, tau, sigma2, Q_ax);
 
             int idx[5]={0,3,6,9,12};
             for (int r=0;r<5;++r)
                 for (int c=0;c<5;++c) {
-                    F(OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Phi_ax(r,c);
-                    Qd(OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Q_ax(r,c);
+                    F (OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Phi_ax(r,c);
+                    Qd(OFF_V + idx[r] + axis, OFF_V + idx[c] + axis) = Q_ax (r,c);
                 }
         }
 
