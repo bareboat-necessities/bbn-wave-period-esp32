@@ -211,14 +211,6 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         // Estimated biases
         Vector3f bacc_est = mekf.get_acc_bias();
         Vector3f bgyr_est = mekf.gyroscope_bias();
-
-        rms_disp_x.add(disp_err.x());
-        rms_disp_y.add(disp_err.y());
-        rms_disp_z.add(disp_err.z());
-        rms_roll.add(r_est - r_ref_out);
-        rms_pitch.add(p_est - p_ref_out);
-        rms_yaw.add(y_est - y_ref_out);
-        rms_angle.add(angle_err);
         
         rows.push_back({
             rec.time,
