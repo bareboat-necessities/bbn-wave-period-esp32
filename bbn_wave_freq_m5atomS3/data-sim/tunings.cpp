@@ -119,7 +119,7 @@ static TuningSpec compute_from_spectrum(const Eigen::Matrix<double, N, 1>& freqs
 //   σₐ ≈ ωₚ² √m₀
 //   R_S ≈ 4 m₀
 //
-static TuningHeur compute_heuristic_from_HsTp(double Hs, double Tp, double c_RS = 4.0)
+static TuningHeur compute_heuristic_from_HsTp(double Hs, double Tp, double c_RS = 2.0)
 {
     TuningHeur h{};
     const double m0 = (Hs*Hs)/16.0;
