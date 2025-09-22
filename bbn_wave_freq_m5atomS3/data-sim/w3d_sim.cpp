@@ -93,6 +93,15 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
     }}
 };
 
+int wave_index_from_height(float height) {
+    for (size_t i = 0; i < waveParamsList.size(); i++) {
+        if (std::abs(waveParamsList[i].height - height) < 1e-3f) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1; // not found
+}
+
 // ============================
 // RMS window length [s]
 // ============================
@@ -110,6 +119,21 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
               << ") with_mag=" << (with_mag ? "true" : "false")
               << ", noise=" << (add_noise ? "true" : "false") << "\n";
 
+    int wave_idx = wave_index_from_height(wp.height);
+    if (wave_idx < 0) {
+        std::cerr << "No tuning found for height=" << wp.height << "\n";
+        return;
+    }
+
+    const auto &tune = tuning_map.at(type).at(wave_idx);
+
+    std::cout << "Using tuning for "
+              << EnumTraits<WaveType>::to_string(type)
+              << " wave index " << wave_idx
+              << ": tau=" << tune.tau_eff
+              << ", sigma_a=" << tune.sigma_a_eff
+              << ", R_S=" << tune.R_S_eff << "\n";
+    
     WaveDataCSVReader reader(filename);
 
     const Vector3f sigma_a(0.04f, 0.04f, 0.04f);
