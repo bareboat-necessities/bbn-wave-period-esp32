@@ -11,6 +11,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+const float g_std = 9.80665f; // standard gravity acceleration m/s²
+
 #include "Jonswap3dStokesWaves.h"
 #include "PiersonMoskowitzStokes3D_Waves.h"
 #include "DirectionalSpread.h"
