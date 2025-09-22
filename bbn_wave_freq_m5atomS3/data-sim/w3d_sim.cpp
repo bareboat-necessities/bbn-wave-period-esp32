@@ -120,6 +120,9 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     int iter = 0;  // iteration counter
     std::vector<OutputRow> rows;
 
+    RMSReport rms_disp_x, rms_disp_y, rms_disp_z;
+    RMSReport rms_roll, rms_pitch, rms_yaw, rms_angle;
+
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         iter++;  // count every accelerometer/gyro record
 
@@ -212,6 +215,14 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         Vector3f bacc_est = mekf.get_acc_bias();
         Vector3f bgyr_est = mekf.gyroscope_bias();
 
+        rms_disp_x.add(disp_err.x());
+        rms_disp_y.add(disp_err.y());
+        rms_disp_z.add(disp_err.z());
+        rms_roll.add(r_est - r_ref_out);
+        rms_pitch.add(p_est - p_ref_out);
+        rms_yaw.add(y_est - y_ref_out);
+        rms_angle.add(angle_err);
+        
         rows.push_back({
             rec.time,
             r_ref_out, p_ref_out, y_ref_out,
@@ -301,6 +312,20 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     ofs.close();
 
     std::cout << "Wrote " << outname << "\n";
+
+    // --- Final RMS summary ---
+    std::cout << "=== RMS error summary for " << filename << " ===\n";
+    std::cout << "Displacement RMS (m): "
+              << "X=" << rms_disp_x.rms()
+              << ", Y=" << rms_disp_y.rms()
+              << ", Z=" << rms_disp_z.rms() << "\n";
+    std::cout << "Angles RMS (deg): "
+              << "Roll=" << rms_roll.rms()
+              << ", Pitch=" << rms_pitch.rms()
+              << ", Yaw=" << rms_yaw.rms() << "\n";
+    std::cout << "Absolute angle error RMS (deg): "
+              << rms_angle.rms() << "\n";
+    std::cout << "=============================================\n\n";    
 }
 
 int main(int argc, char* argv[]) {
