@@ -62,6 +62,10 @@ Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
+struct TuningIMU {
+    double tau_eff, sigma_a_eff, R_S_eff;
+};
+
 // ============================
 // RMS window length [s]
 // ============================
