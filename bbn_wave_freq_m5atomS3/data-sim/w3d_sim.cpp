@@ -124,10 +124,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     bool mag_enabled = false;
     int iter = 0;
 
-    // RMS accumulators
-    RMSReport rms_disp_z, rms_roll, rms_pitch, rms_yaw, rms_angle;
-
-    // Prepare output CSV
+    // ---- build outname (legacy scheme) ----
     std::string outname = filename;
     auto pos_prefix = outname.find("wave_data_");
     if (pos_prefix != std::string::npos) {
@@ -155,7 +152,16 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         << "disp_err_x,disp_err_y,disp_err_z,"
         << "vel_err_x,vel_err_y,vel_err_z,"
         << "acc_err_x,acc_err_y,acc_err_z,"
-        << "err_roll,err_pitch,err_yaw,angle_err\n";
+        << "err_roll,err_pitch,err_yaw,angle_err,"
+        << "acc_noisy_x,acc_noisy_y,acc_noisy_z,"
+        << "gyro_noisy_x,gyro_noisy_y,gyro_noisy_z,"
+        << "acc_bias_x,acc_bias_y,acc_bias_z,"
+        << "gyro_bias_x,gyro_bias_y,gyro_bias_z,"
+        << "acc_bias_est_x,acc_bias_est_y,acc_bias_est_z,"
+        << "gyro_bias_est_x,gyro_bias_est_y,gyro_bias_est_z\n";
+
+    // RMS accumulators (for last 60 s)
+    std::vector<float> errs_z, errs_roll, errs_pitch, errs_yaw, errs_angle;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         iter++;
@@ -211,7 +217,6 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         // Estimated quaternion → nautical Euler
         auto coeffs = mekf.quaternion().coeffs();
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
-
         float r_est_a, p_est_a, y_est_a;
         quat_to_euler_aero(q, r_est_a, p_est_a, y_est_a);
         float r_est = r_est_a, p_est = p_est_a, y_est = y_est_a;
@@ -234,23 +239,25 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             Eigen::AngleAxisf(r_est*M_PI/180.0f, Vector3f::UnitX()) *
             Eigen::AngleAxisf(p_est*M_PI/180.0f, Vector3f::UnitY()) *
             Eigen::AngleAxisf(y_est*M_PI/180.0f, Vector3f::UnitZ());
-
         Quaternionf q_ref =
             Eigen::AngleAxisf(r_ref_out*M_PI/180.0f, Vector3f::UnitX()) *
             Eigen::AngleAxisf(p_ref_out*M_PI/180.0f, Vector3f::UnitY()) *
             Eigen::AngleAxisf(y_ref_out*M_PI/180.0f, Vector3f::UnitZ());
-
         Quaternionf q_err = q_ref.conjugate() * q_est_naut.normalized();
         float angle_err = 2.0f * std::acos(std::clamp(q_err.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
 
-        // RMS accumulators
-        rms_disp_z.add(disp_err.z());
-        rms_roll.add(r_est - r_ref_out);
-        rms_pitch.add(p_est - p_ref_out);
-        rms_yaw.add(y_est - y_ref_out);
-        rms_angle.add(angle_err);
+        // Estimated biases
+        Vector3f bacc_est = mekf.get_acc_bias();
+        Vector3f bgyr_est = mekf.gyroscope_bias();
 
-        // Stream row to CSV
+        // Store errors for RMS window
+        errs_z.push_back(disp_err.z());
+        errs_roll.push_back(r_est - r_ref_out);
+        errs_pitch.push_back(p_est - p_ref_out);
+        errs_yaw.push_back(y_est - y_ref_out);
+        errs_angle.push_back(angle_err);
+
+        // ---- stream row to CSV ----
         ofs << rec.time << ","
             << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
             << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
@@ -263,27 +270,48 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             << vel_est.x()  << "," << vel_est.y()  << "," << vel_est.z() << ","
             << acc_est.x()  << "," << acc_est.y()  << "," << acc_est.z() << ","
             << disp_err.x() << "," << disp_err.y() << "," << disp_err.z() << ","
-            << vel_err.x()  << "," << vel_err.y()  << "," << vel_err.z() << ","
-            << acc_err.x()  << "," << acc_err.y()  << "," << acc_err.z() << ","
+            << vel_err.x()  << "," << vel_err.y() << "," << vel_err.z() << ","
+            << acc_err.x()  << "," << acc_err.y() << "," << acc_err.z() << ","
             << (r_est - r_ref_out) << "," << (p_est - p_ref_out) << "," << (y_est - y_ref_out) << ","
-            << angle_err << "\n";
+            << angle_err << ","
+            << acc_noisy.x() << "," << acc_noisy.y() << "," << acc_noisy.z() << ","
+            << gyr_noisy.x() << "," << gyr_noisy.y() << "," << gyr_noisy.z() << ","
+            << accel_noise.bias.x() << "," << accel_noise.bias.y() << "," << accel_noise.bias.z() << ","
+            << gyro_noise.bias.x()  << "," << gyro_noise.bias.y()  << "," << gyro_noise.bias.z()  << ","
+            << bacc_est.x() << "," << bacc_est.y() << "," << bacc_est.z() << ","
+            << bgyr_est.x() << "," << bgyr_est.y() << "," << bgyr_est.z()
+            << "\n";
     });
 
     ofs.close();
-    //std::cout << "Wrote " << outname << "\n";
+    std::cout << "Wrote " << outname << "\n";
 
-    // Final RMS summary (whole run = 60 s)
-    std::cout << "=== RMS summary for " << filename << " ===\n";
-    std::cout << "Z RMS = " << rms_disp_z.rms()
-              << " m (" << 100.0f * rms_disp_z.rms() / wp.height
-              << "% of Hs=" << wp.height << ")\n";
-    std::cout << "Angles RMS (deg): "
-              << "Roll=" << rms_roll.rms()
-              << ", Pitch=" << rms_pitch.rms()
-              << ", Yaw=" << rms_yaw.rms() << "\n";
-    std::cout << "Absolute angle error RMS (deg): "
-              << rms_angle.rms() << "\n";
-    std::cout << "====================================\n\n";
+    // ---- RMS summary for last 60 s ----
+    int N_last = static_cast<int>(60.0f / dt);
+    if (errs_z.size() > static_cast<size_t>(N_last)) {
+        size_t start = errs_z.size() - N_last;
+
+        RMSReport rms_z, rms_roll, rms_pitch, rms_yaw, rms_ang;
+        for (size_t i = start; i < errs_z.size(); ++i) {
+            rms_z.add(errs_z[i]);
+            rms_roll.add(errs_roll[i]);
+            rms_pitch.add(errs_pitch[i]);
+            rms_yaw.add(errs_yaw[i]);
+            rms_ang.add(errs_angle[i]);
+        }
+
+        std::cout << "=== Last 60 s RMS summary for " << filename << " ===\n";
+        std::cout << "Z RMS = " << rms_z.rms()
+                  << " m (" << 100.0f * rms_z.rms() / wp.height
+                  << "% of Hs=" << wp.height << ")\n";
+        std::cout << "Angles RMS (deg): "
+                  << "Roll=" << rms_roll.rms()
+                  << ", Pitch=" << rms_pitch.rms()
+                  << ", Yaw=" << rms_yaw.rms() << "\n";
+        std::cout << "Absolute angle error RMS (deg): "
+                  << rms_ang.rms() << "\n";
+        std::cout << "=============================================\n\n";
+    }
 }
 
 int main(int argc, char* argv[]) {
