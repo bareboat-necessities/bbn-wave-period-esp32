@@ -4,6 +4,7 @@
 #include <algorithm>   // for std::clamp
 #include <string>
 #include <vector>
+#include <map>
 #include <random>
 
 #define EIGEN_NON_ARDUINO
