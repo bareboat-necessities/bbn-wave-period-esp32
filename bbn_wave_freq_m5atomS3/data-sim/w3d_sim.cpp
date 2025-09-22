@@ -90,6 +90,11 @@ struct OutputRow {
     float gyro_bias_est_x{}, gyro_bias_est_y{}, gyro_bias_est_z{};
 };
 
+// ============================
+// RMS window length [s]
+// ============================
+constexpr float RMS_WINDOW_SEC = 60.0f;
+
 void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
@@ -104,7 +109,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
     WaveDataCSVReader reader(filename);
 
-    const Vector3f sigma_a(0.04f,  0.04f,  0.04f);
+    const Vector3f sigma_a(0.04f, 0.04f, 0.04f);
     const Vector3f sigma_g(0.00134f, 0.00134f, 0.00134f);
     const Vector3f sigma_m(0.3f, 0.3f, 0.3f);
     Kalman3D_Wave<float, true, true> mekf(sigma_a, sigma_g, sigma_m);
@@ -117,11 +122,43 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
     bool first = true;
     bool mag_enabled = false;
-    int iter = 0;  // iteration counter
-    std::vector<OutputRow> rows;
+    int iter = 0;
+
+    // RMS accumulators
+    RMSReport rms_disp_z, rms_roll, rms_pitch, rms_yaw, rms_angle;
+
+    // Prepare output CSV
+    std::string outname = filename;
+    auto pos_prefix = outname.find("wave_data_");
+    if (pos_prefix != std::string::npos) {
+        outname.replace(pos_prefix, std::string("wave_data_").size(), "w3d_");
+    }
+    auto pos_ext = outname.rfind(".csv");
+    if (pos_ext != std::string::npos) {
+        outname.insert(pos_ext, with_mag ? "_w3d" : "_w3d_nomag");
+    } else {
+        outname += with_mag ? "_w3d.csv" : "_w3d_nomag.csv";
+    }
+
+    std::ofstream ofs(outname);
+    ofs << "time,"
+        << "roll_ref,pitch_ref,yaw_ref,"
+        << "disp_ref_x,disp_ref_y,disp_ref_z,"
+        << "vel_ref_x,vel_ref_y,vel_ref_z,"
+        << "acc_ref_x,acc_ref_y,acc_ref_z,"
+        << "acc_bx,acc_by,acc_bz,"
+        << "gyro_x,gyro_y,gyro_z,"
+        << "roll_est,pitch_est,yaw_est,"
+        << "disp_est_x,disp_est_y,disp_est_z,"
+        << "vel_est_x,vel_est_y,vel_est_z,"
+        << "acc_est_x,acc_est_y,acc_est_z,"
+        << "disp_err_x,disp_err_y,disp_err_z,"
+        << "vel_err_x,vel_err_y,vel_err_z,"
+        << "acc_err_x,acc_err_y,acc_err_z,"
+        << "err_roll,err_pitch,err_yaw,angle_err\n";
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        iter++;  // count every accelerometer/gyro record
+        iter++;
 
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
@@ -163,11 +200,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
                 mekf.measurement_update_mag_only(mag_f);  // one-time yaw lock
                 mag_enabled = true;
             }
-
-            // Accelerometer always
             mekf.measurement_update_acc_only(acc_f);
-
-            // Magnetometer only every 3rd iteration
             if (iter % 3 == 0) {
                 mekf.measurement_update_mag_only(mag_f);
             }
@@ -175,6 +208,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             mekf.measurement_update_acc_only(acc_f);
         }
 
+        // Estimated quaternion → nautical Euler
         auto coeffs = mekf.quaternion().coeffs();
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
 
@@ -183,6 +217,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         float r_est = r_est_a, p_est = p_est_a, y_est = y_est_a;
         aero_to_nautical(r_est, p_est, y_est);
 
+        // Reference and estimated kinematics
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
         Vector3f vel_ref (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
         Vector3f acc_ref (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
@@ -208,127 +243,47 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         Quaternionf q_err = q_ref.conjugate() * q_est_naut.normalized();
         float angle_err = 2.0f * std::acos(std::clamp(q_err.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
 
-        // Estimated biases
-        Vector3f bacc_est = mekf.get_acc_bias();
-        Vector3f bgyr_est = mekf.gyroscope_bias();
-        
-        rows.push_back({
-            rec.time,
-            r_ref_out, p_ref_out, y_ref_out,
-            disp_ref.x(), disp_ref.y(), disp_ref.z(),
-            vel_ref.x(),  vel_ref.y(),  vel_ref.z(),
-            acc_ref.x(),  acc_ref.y(),  acc_ref.z(),
-            rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz,
-            rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z,
-            r_est, p_est, y_est,
-            disp_est.x(), disp_est.y(), disp_est.z(),
-            vel_est.x(),  vel_est.y(),  vel_est.z(),
-            acc_est.x(),  acc_est.y(),  acc_est.z(),
-            disp_err.x(), disp_err.y(), disp_err.z(),
-            vel_err.x(),  vel_err.y(),  vel_err.z(),
-            acc_err.x(),  acc_err.y(),  acc_err.z(),
-            r_est - r_ref_out, p_est - p_ref_out, y_est - y_ref_out,
-            angle_err,
-            acc_noisy.x(), acc_noisy.y(), acc_noisy.z(),
-            gyr_noisy.x(), gyr_noisy.y(), gyr_noisy.z(),
-            accel_noise.bias.x(), accel_noise.bias.y(), accel_noise.bias.z(),
-            gyro_noise.bias.x(),  gyro_noise.bias.y(),  gyro_noise.bias.z(),
-            bacc_est.x(), bacc_est.y(), bacc_est.z(),
-            bgyr_est.x(), bgyr_est.y(), bgyr_est.z()
-        });
+        // RMS accumulators
+        rms_disp_z.add(disp_err.z());
+        rms_roll.add(r_est - r_ref_out);
+        rms_pitch.add(p_est - p_ref_out);
+        rms_yaw.add(y_est - y_ref_out);
+        rms_angle.add(angle_err);
+
+        // Stream row to CSV
+        ofs << rec.time << ","
+            << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
+            << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
+            << vel_ref.x()  << "," << vel_ref.y()  << "," << vel_ref.z()  << ","
+            << acc_ref.x()  << "," << acc_ref.y()  << "," << acc_ref.z()  << ","
+            << rec.imu.acc_bx << "," << rec.imu.acc_by << "," << rec.imu.acc_bz << ","
+            << rec.imu.gyro_x << "," << rec.imu.gyro_y << "," << rec.imu.gyro_z << ","
+            << r_est << "," << p_est << "," << y_est << ","
+            << disp_est.x() << "," << disp_est.y() << "," << disp_est.z() << ","
+            << vel_est.x()  << "," << vel_est.y()  << "," << vel_est.z() << ","
+            << acc_est.x()  << "," << acc_est.y()  << "," << acc_est.z() << ","
+            << disp_err.x() << "," << disp_err.y() << "," << disp_err.z() << ","
+            << vel_err.x()  << "," << vel_err.y()  << "," << vel_err.z() << ","
+            << acc_err.x()  << "," << acc_err.y()  << "," << acc_err.z() << ","
+            << (r_est - r_ref_out) << "," << (p_est - p_ref_out) << "," << (y_est - y_ref_out) << ","
+            << angle_err << "\n";
     });
 
-    std::string outname = filename;
-    auto pos_prefix = outname.find("wave_data_");
-    if (pos_prefix != std::string::npos) {
-        outname.replace(pos_prefix, std::string("wave_data_").size(), "w3d_");
-    }
-    auto pos_ext = outname.rfind(".csv");
-    if (pos_ext != std::string::npos) {
-        outname.insert(pos_ext, with_mag ? "_w3d" : "_w3d_nomag");
-    } else {
-        outname += with_mag ? "_w3d.csv" : "_w3d_nomag.csv";
-    }
-
-    std::ofstream ofs(outname);
-    ofs << "time,"
-        << "roll_ref,pitch_ref,yaw_ref,"
-        << "disp_ref_x,disp_ref_y,disp_ref_z,"
-        << "vel_ref_x,vel_ref_y,vel_ref_z,"
-        << "acc_ref_x,acc_ref_y,acc_ref_z,"
-        << "acc_bx,acc_by,acc_bz,"
-        << "gyro_x,gyro_y,gyro_z,"
-        << "roll_est,pitch_est,yaw_est,"
-        << "disp_est_x,disp_est_y,disp_est_z,"
-        << "vel_est_x,vel_est_y,vel_est_z,"
-        << "acc_est_x,acc_est_y,acc_est_z,"
-        << "disp_err_x,disp_err_y,disp_err_z,"
-        << "vel_err_x,vel_err_y,vel_err_z,"
-        << "acc_err_x,acc_err_y,acc_err_z,"
-        << "err_roll,err_pitch,err_yaw,angle_err,"
-        << "acc_noisy_x,acc_noisy_y,acc_noisy_z,"
-        << "gyro_noisy_x,gyro_noisy_y,gyro_noisy_z,"
-        << "acc_bias_x,acc_bias_y,acc_bias_z,"
-        << "gyro_bias_x,gyro_bias_y,gyro_bias_z,"
-        << "acc_bias_est_x,acc_bias_est_y,acc_bias_est_z,"
-        << "gyro_bias_est_x,gyro_bias_est_y,gyro_bias_est_z\n";
-
-    for (auto &r : rows) {
-        ofs << r.t << ","
-            << r.roll_ref << "," << r.pitch_ref << "," << r.yaw_ref << ","
-            << r.disp_ref_x << "," << r.disp_ref_y << "," << r.disp_ref_z << ","
-            << r.vel_ref_x  << "," << r.vel_ref_y  << "," << r.vel_ref_z  << ","
-            << r.acc_ref_x  << "," << r.acc_ref_y  << "," << r.acc_ref_z  << ","
-            << r.acc_bx << "," << r.acc_by << "," << r.acc_bz << ","
-            << r.gyro_x << "," << r.gyro_y << "," << r.gyro_z << ","
-            << r.roll_est << "," << r.pitch_est << "," << r.yaw_est << ","
-            << r.disp_est_x << "," << r.disp_est_y << "," << r.disp_est_z << ","
-            << r.vel_est_x  << "," << r.vel_est_y  << "," << r.vel_est_z << ","
-            << r.acc_est_x  << "," << r.acc_est_y  << "," << r.acc_est_z << ","
-            << r.disp_err_x << "," << r.disp_err_y << "," << r.disp_err_z << ","
-            << r.vel_err_x  << "," << r.vel_err_y << "," << r.vel_err_z << ","
-            << r.acc_err_x  << "," << r.acc_err_y << "," << r.acc_err_z << ","
-            << r.err_roll   << "," << r.err_pitch  << "," << r.err_yaw << ","
-            << r.angle_err << ","
-            << r.acc_noisy_x << "," << r.acc_noisy_y << "," << r.acc_noisy_z << ","
-            << r.gyro_noisy_x << "," << r.gyro_noisy_y << "," << r.gyro_noisy_z << ","
-            << r.acc_bias_x << "," << r.acc_bias_y << "," << r.acc_bias_z << ","
-            << r.gyro_bias_x << "," << r.gyro_bias_y << "," << r.gyro_bias_z << ","
-            << r.acc_bias_est_x << "," << r.acc_bias_est_y << "," << r.acc_bias_est_z << ","
-            << r.gyro_bias_est_x << "," << r.gyro_bias_est_y << "," << r.gyro_bias_est_z
-            << "\n";
-    }
     ofs.close();
-
     std::cout << "Wrote " << outname << "\n";
 
-    // Final RMS summary
-    int N_last = static_cast<int>(60.0f / dt);
-    if (rows.size() > static_cast<size_t>(N_last)) {
-        size_t start = rows.size() - N_last;
-
-        RMSReport rms_z, rms_roll, rms_pitch, rms_yaw, rms_angle;
-
-        for (size_t i = start; i < rows.size(); ++i) {
-            rms_z.add(rows[i].disp_err_z);
-            rms_roll.add(rows[i].err_roll);
-            rms_pitch.add(rows[i].err_pitch);
-            rms_yaw.add(rows[i].err_yaw);
-            rms_angle.add(rows[i].angle_err);
-        }
-
-        std::cout << "=== Last 60 s RMS summary for " << filename << " ===\n";
-        std::cout << "Z RMS = " << rms_z.rms()
-                  << " m (" << 100.0f * rms_z.rms() / wp.height
-                  << "% of Hs=" << wp.height << ")\n";
-        std::cout << "Angles RMS (deg): "
-                  << "Roll=" << rms_roll.rms()
-                  << ", Pitch=" << rms_pitch.rms()
-                  << ", Yaw=" << rms_yaw.rms() << "\n";
-        std::cout << "Absolute angle error RMS (deg): "
-                  << rms_angle.rms() << "\n";
-        std::cout << "=============================================\n\n";
-    }
+    // Final RMS summary (whole run = 60 s)
+    std::cout << "=== RMS summary for " << filename << " ===\n";
+    std::cout << "Z RMS = " << rms_disp_z.rms()
+              << " m (" << 100.0f * rms_disp_z.rms() / wp.height
+              << "% of Hs=" << wp.height << ")\n";
+    std::cout << "Angles RMS (deg): "
+              << "Roll=" << rms_roll.rms()
+              << ", Pitch=" << rms_pitch.rms()
+              << ", Yaw=" << rms_yaw.rms() << "\n";
+    std::cout << "Absolute angle error RMS (deg): "
+              << rms_angle.rms() << "\n";
+    std::cout << "====================================\n\n";
 }
 
 int main(int argc, char* argv[]) {
