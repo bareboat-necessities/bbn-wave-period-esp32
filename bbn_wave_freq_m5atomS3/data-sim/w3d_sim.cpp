@@ -66,17 +66,23 @@ struct TuningIMU {
     double tau_eff, sigma_a_eff, R_S_eff;
 };
 
-const std::vector<TuningIMU> all_tunings = {
-    {0.47552, 0.42099, 0.02693},    // Wave 0 (JONSWAP)
-    {0.47552, 0.56576, 0.02693},    // Wave 0 (PMSTOKES)
-    {0.90093, 0.80852, 0.57120},    // Wave 1 (JONSWAP)
-    {0.90093, 1.17877, 0.57120},    // Wave 1 (PMSTOKES)
-    {1.35299, 1.07590, 4.00870},    // Wave 2 (JONSWAP)
-    {1.35299, 1.60890, 4.00870},    // Wave 2 (PMSTOKES)
-    {1.80901, 1.35640, 18.07120},   // Wave 3 (JONSWAP)
-    {1.80901, 2.05467, 18.07120},   // Wave 3 (PMSTOKES)
-    {2.28222, 1.56995, 54.76870},   // Wave 4 (JONSWAP)
-    {2.28222, 2.39718, 54.76870}    // Wave 4 (PMSTOKES)
+enum class WaveType { JONSWAP, PMSTOKES };
+
+const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
+    { WaveType::JONSWAP, {
+        {0.47552, 0.42099, 0.02693},   // Wave 0
+        {0.90093, 0.80852, 0.57120},   // Wave 1
+        {1.35299, 1.07590, 4.00870},   // Wave 2
+        {1.80901, 1.35640, 18.07120},  // Wave 3
+        {2.28222, 1.56995, 54.76870}   // Wave 4
+    }},
+    { WaveType::PMSTOKES, {
+        {0.47552, 0.56576, 0.02693},   // Wave 0
+        {0.90093, 1.17877, 0.57120},   // Wave 1
+        {1.35299, 1.60890, 4.00870},   // Wave 2
+        {1.80901, 2.05467, 18.07120},  // Wave 3
+        {2.28222, 2.39718, 54.76870}   // Wave 4
+    }}
 };
 
 // ============================
