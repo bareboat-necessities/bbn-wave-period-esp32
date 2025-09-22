@@ -141,6 +141,17 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     const Vector3f sigma_m(0.3f, 0.3f, 0.3f);
     Kalman3D_Wave<float, true, true> mekf(sigma_a, sigma_g, sigma_m);
 
+    // Configure filter using selected tuning parameters
+    mekf.set_aw_time_constant(static_cast<float>(tune.tau_eff));
+
+    // sigma_a_eff was scalar in logs — treat isotropic per axis
+    Eigen::Vector3f std_aw = Eigen::Vector3f::Constant(static_cast<float>(tune.sigma_a_eff));
+    mekf.set_aw_stationary_std(std_aw);
+
+    // R_S_eff is scalar too — isotropic pseudo-measurement noise
+    Eigen::Vector3f sigma_S = Eigen::Vector3f::Constant(static_cast<float>(tune.R_S_eff));
+    mekf.set_RS_noise(sigma_S);
+
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
     // Noise models (fixed params, seeded differently)
