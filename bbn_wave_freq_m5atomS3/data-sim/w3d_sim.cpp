@@ -120,9 +120,6 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     int iter = 0;  // iteration counter
     std::vector<OutputRow> rows;
 
-    RMSReport rms_disp_x, rms_disp_y, rms_disp_z;
-    RMSReport rms_roll, rms_pitch, rms_yaw, rms_angle;
-
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         iter++;  // count every accelerometer/gyro record
 
@@ -313,19 +310,33 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
     std::cout << "Wrote " << outname << "\n";
 
-    // --- Final RMS summary ---
-    std::cout << "=== RMS error summary for " << filename << " ===\n";
-    std::cout << "Displacement RMS (m): "
-              << "X=" << rms_disp_x.rms()
-              << ", Y=" << rms_disp_y.rms()
-              << ", Z=" << rms_disp_z.rms() << "\n";
-    std::cout << "Angles RMS (deg): "
-              << "Roll=" << rms_roll.rms()
-              << ", Pitch=" << rms_pitch.rms()
-              << ", Yaw=" << rms_yaw.rms() << "\n";
-    std::cout << "Absolute angle error RMS (deg): "
-              << rms_angle.rms() << "\n";
-    std::cout << "=============================================\n\n";    
+    // Final RMS summary
+    int N_last = static_cast<int>(60.0f / dt);
+    if (rows.size() > static_cast<size_t>(N_last)) {
+        size_t start = rows.size() - N_last;
+
+        RMSReport rms_z, rms_roll, rms_pitch, rms_yaw, rms_angle;
+
+        for (size_t i = start; i < rows.size(); ++i) {
+            rms_z.add(rows[i].disp_err_z);
+            rms_roll.add(rows[i].err_roll);
+            rms_pitch.add(rows[i].err_pitch);
+            rms_yaw.add(rows[i].err_yaw);
+            rms_angle.add(rows[i].angle_err);
+        }
+
+        std::cout << "=== Last 60 s RMS summary for " << filename << " ===\n";
+        std::cout << "Z RMS = " << rms_z.rms()
+                  << " m (" << 100.0f * rms_z.rms() / wp.height
+                  << "% of Hs=" << wp.height << ")\n";
+        std::cout << "Angles RMS (deg): "
+                  << "Roll=" << rms_roll.rms()
+                  << ", Pitch=" << rms_pitch.rms()
+                  << ", Yaw=" << rms_yaw.rms() << "\n";
+        std::cout << "Absolute angle error RMS (deg): "
+                  << rms_angle.rms() << "\n";
+        std::cout << "=============================================\n\n";
+    }
 }
 
 int main(int argc, char* argv[]) {
