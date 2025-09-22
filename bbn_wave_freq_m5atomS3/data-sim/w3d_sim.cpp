@@ -22,6 +22,26 @@ const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
+// ============================
+// Inline RMS accumulator (float)
+// ============================
+class RMSReport {
+public:
+    inline void add(float value) {
+        sum_sq_ += value * value;
+        count_++;
+    }
+
+    inline float rms() const {
+        if (count_ == 0) return NAN;
+        return std::sqrt(sum_sq_ / static_cast<float>(count_));
+    }
+
+private:
+    float sum_sq_ = 0.0f;
+    size_t count_ = 0;
+};
+
 // Noise model (accel & gyro noisy by default; disable with --no-noise)
 bool add_noise = true;
 
