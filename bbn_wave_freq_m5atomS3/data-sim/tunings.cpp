@@ -6,6 +6,7 @@
 #include <vector>
 
 #define EIGEN_NON_ARDUINO
+#include <Eigen/Dense>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -40,6 +41,10 @@ struct TuningHeur {
     double m0_from_Hs;
 };
 
+struct TuningIMU {
+    double tau_eff, sigma_a_eff, R_S_eff;
+};
+
 // === From-spectrum tuning ===
 template<int N>
 static TuningSpec compute_from_spectrum(const Eigen::Matrix<double, N, 1>& freqs,
@@ -50,39 +55,28 @@ static TuningSpec compute_from_spectrum(const Eigen::Matrix<double, N, 1>& freqs
     TuningSpec out{};
     Eigen::Array<double, N, 1> omega = 2.0 * M_PI * freqs.array();
 
-    // Spectral moments:
-    // m₀ = ∫ S(f) df               (displacement variance)
-    // m₁ = ∫ ω S(f) df
-    // m₂ = ∫ ω² S(f) df
-    // m₄ = ∫ ω⁴ S(f) df            (acceleration variance)
-    // m₋₁ = ∫ (1/ω) S(f) df
+    // Spectral moments
     out.m0    = (S.cwiseProduct(df)).sum();
     out.m1    = ((omega * S.array()) * df.array()).sum();
     out.m2    = ((omega.square() * S.array()) * df.array()).sum();
     out.m4    = ((omega.pow(4)   * S.array()) * df.array()).sum();
     out.mneg1 = (((1.0 / omega)  * S.array()) * df.array()).sum();
 
-    // Tuning parameters:
     // τ = 1/ωₚ ≈ Tₚ / (2π)
-    // σₐ = √m₄
-    // R_S ≈ 4 m₀  (pseudo-measurement variance)
     const double omega_p = 2.0 * M_PI / Tp;
     out.tau     = 1.0 / omega_p;
     out.sigma_a = std::sqrt(out.m4);
     out.R_S     = 4.0 * out.m0;
 
-    // Significant wave height from spectrum: Hs_spec = 4√m₀
+    // Hs from spectrum: Hs_spec = 4√m₀
     out.Hs_spec = 4.0 * std::sqrt(out.m0);
 
-    // Spectral mean periods
-    // Tm01 = m₀ / m₁
-    // Tm02 = √(m₀ / m₂)
-    // Tm10 = m₋₁ / m₀
+    // Mean periods
     out.Tm01    = (out.m1 > 0.0) ? (out.m0 / out.m1) : NAN;
     out.Tm02    = (out.m2 > 0.0) ? std::sqrt(out.m0 / out.m2) : NAN;
     out.Tm10    = (out.m0 > 0.0) ? (out.mneg1 / out.m0) : NAN;
 
-    // Mean spectral frequency: f_mean = (m₁/m₀) / (2π)
+    // Mean frequency
     out.f_mean  = (out.m0 > 0.0) ? (out.m1 / out.m0) / (2.0 * M_PI) : NAN;
 
     return out;
@@ -101,12 +95,45 @@ static TuningHeur compute_heuristic_from_HsTp(double Hs, double Tp, double c_RS 
     return h;
 }
 
-// === Generic runner for both spectra ===
+// === IMU-inflated tuning (includes bias drifts) ===
+static TuningIMU compute_with_imu(const TuningSpec& base,
+                                  const Eigen::Vector3d& sigma_acc,
+                                  const Eigen::Vector3d& sigma_gyro,
+                                  double sigma_bacc0,
+                                  double q_bacc,
+                                  double q_bgyr)
+{
+    TuningIMU t{};
+
+    // Effective stationary accel std: ocean sigma_a + sensor white noise
+    double sigma_acc_rms = sigma_acc.norm() / std::sqrt(3.0);
+    double sigma_a_eff = std::sqrt(base.sigma_a * base.sigma_a +
+                                   sigma_acc_rms * sigma_acc_rms +
+                                   sigma_bacc0 * sigma_bacc0);
+    t.sigma_a_eff = sigma_a_eff;
+
+    // Effective tau reduced by gyro noise and bias RW
+    double sigma_gyro_rms = sigma_gyro.norm() / std::sqrt(3.0);
+    double tilt_var = (sigma_gyro_rms * sigma_gyro_rms + q_bgyr) * base.tau;
+    t.tau_eff = base.tau / (1.0 + tilt_var);
+
+    // R_S inflated by accelerometer noise + bias RW
+    t.R_S_eff = base.R_S + 3.0 * (sigma_acc_rms * sigma_acc_rms + q_bacc);
+
+    return t;
+}
+
+// === Generic runner ===
 template<typename WaveModel>
 void process_wave(const WaveParameters& wp,
                   size_t wave_index,
                   const std::string& type,
-                  std::ofstream& file)
+                  std::ofstream& file,
+                  const Eigen::Vector3d& sigma_acc,
+                  const Eigen::Vector3d& sigma_gyro,
+                  double sigma_bacc0,
+                  double q_bacc,
+                  double q_bgyr)
 {
     auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
         wp.direction * M_PI / 180.0, 10.0, 42u);
@@ -116,35 +143,29 @@ void process_wave(const WaveParameters& wp,
     const auto t_spec = compute_from_spectrum<128>(
         model.frequencies(), model.spectrum(), model.df(), wp.period);
     const auto t_heur = compute_heuristic_from_HsTp(wp.height, wp.period);
+    const auto t_imu  = compute_with_imu(t_spec, sigma_acc, sigma_gyro,
+                                         sigma_bacc0, q_bacc, q_bgyr);
 
-    const double tau_ratio   = (t_spec.tau     != 0.0) ? (t_heur.tau     / t_spec.tau)    : NAN;
-    const double sigma_ratio = (t_spec.sigma_a != 0.0) ? (t_heur.sigma_a / t_spec.sigma_a): NAN;
-    const double RS_ratio    = (t_spec.R_S     != 0.0) ? (t_heur.R_S     / t_spec.R_S)    : NAN;
-
-    // Write to CSV
+    // CSV
     file << wave_index << "," << type << ","
          << wp.height << "," << wp.period << ","
          << t_spec.tau << "," << t_spec.sigma_a << "," << t_spec.R_S << "," << t_spec.Hs_spec << ","
-         << t_spec.m0 << "," << t_spec.m2 << "," << t_spec.m4 << "," << t_spec.Tm01 << "," << t_spec.Tm02 << "," << t_spec.Tm10 << "," << t_spec.f_mean << ","
          << t_heur.tau << "," << t_heur.sigma_a << "," << t_heur.R_S << ","
-         << tau_ratio << "," << sigma_ratio << "," << RS_ratio << "\n";
+         << t_imu.tau_eff << "," << t_imu.sigma_a_eff << "," << t_imu.R_S_eff << "\n";
 
-    // Human-readable report
+    // Report
     std::cout << std::fixed << std::setprecision(4);
     std::cout << "Wave " << wave_index << " (" << type << ")\n"
               << "  Input: Hs=" << wp.height << " m, Tp=" << wp.period << " s\n"
               << "  Spectrum-derived: tau=" << t_spec.tau
               << " s, sigma_a=" << t_spec.sigma_a
-              << " m/s², R_S=" << t_spec.R_S
-              << " m², Hs_spec=" << t_spec.Hs_spec
-              << " m, f_mean=" << t_spec.f_mean << " Hz\n"
+              << " m/s², R_S=" << t_spec.R_S << " m²\n"
               << "  Heuristic: tau=" << t_heur.tau
               << " s, sigma_a=" << t_heur.sigma_a
-              << " m/s², R_S=" << t_heur.R_S
-              << " m²\n"
-              << "  Ratios (heur/spec): tau=" << tau_ratio
-              << ", sigma_a=" << sigma_ratio
-              << ", R_S=" << RS_ratio << "\n\n";
+              << " m/s², R_S=" << t_heur.R_S << " m²\n"
+              << "  IMU-inflated: tau_eff=" << t_imu.tau_eff
+              << " s, sigma_a_eff=" << t_imu.sigma_a_eff
+              << " m/s², R_S_eff=" << t_imu.R_S_eff << " m²\n\n";
 }
 
 int main() {
@@ -157,13 +178,23 @@ int main() {
 
     file << "wave_index,wave_type,Hs_input,Tp,"
          << "tau_spec,sigma_a_spec,R_S_spec,Hs_spec,"
-         << "m0,m2,m4,Tm01,Tm02,Tm10,f_mean,"
          << "tau_heur,sigma_a_heur,R_S_heur,"
-         << "tau_ratio,sigma_a_ratio,R_S_ratio\n";
+         << "tau_imu,sigma_a_imu,R_S_imu\n";
+
+    // Example IMU params (should match Kalman3D_Wave)
+    Eigen::Vector3d sigma_acc(0.02, 0.02, 0.02);   // accel noise (m/s²)
+    Eigen::Vector3d sigma_gyro(0.001, 0.001, 0.001); // gyro noise (rad/s)
+    double sigma_bacc0 = 0.1;   // accel bias init std (m/s²)
+    double q_bacc = 1e-8;       // accel bias RW intensity
+    double q_bgyr = 1e-8;       // gyro bias RW intensity
 
     for (size_t idx = 0; idx < waveParamsList.size(); ++idx) {
-        process_wave<Jonswap3dStokesWaves<128>>(waveParamsList[idx], idx, "JONSWAP", file);
-        process_wave<PMStokesN3dWaves<128,3>>(waveParamsList[idx], idx, "PMSTOKES", file);
+        process_wave<Jonswap3dStokesWaves<128>>(waveParamsList[idx], idx, "JONSWAP",
+                                                file, sigma_acc, sigma_gyro,
+                                                sigma_bacc0, q_bacc, q_bgyr);
+        process_wave<PMStokesN3dWaves<128,3>>(waveParamsList[idx], idx, "PMSTOKES",
+                                              file, sigma_acc, sigma_gyro,
+                                              sigma_bacc0, q_bacc, q_bgyr);
     }
 
     file.close();
