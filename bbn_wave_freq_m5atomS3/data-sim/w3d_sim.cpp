@@ -270,7 +270,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     });
 
     ofs.close();
-    std::cout << "Wrote " << outname << "\n";
+    //std::cout << "Wrote " << outname << "\n";
 
     // Final RMS summary (whole run = 60 s)
     std::cout << "=== RMS summary for " << filename << " ===\n";
