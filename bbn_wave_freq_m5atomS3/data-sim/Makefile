@@ -17,7 +17,7 @@ endif
 LDFLAGS  =
 
 # Targets
-TARGETS = waves_sim freq_track sea_reg qmekf_sim w3d_sim
+TARGETS = waves_sim freq_track sea_reg qmekf_sim w3d_sim tunings
 
 all: $(TARGETS)
 
@@ -34,6 +34,9 @@ qmekf_sim: qmekf_sim.o
 	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 w3d_sim: w3d_sim.o
+	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+tunings: tunings.o
 	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 %.o: %.cpp
