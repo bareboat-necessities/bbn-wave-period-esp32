@@ -62,34 +62,6 @@ Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
-struct OutputRow {
-    double t{};
-    float roll_ref{}, pitch_ref{}, yaw_ref{};
-    float disp_ref_x{}, disp_ref_y{}, disp_ref_z{};
-    float vel_ref_x{},  vel_ref_y{},  vel_ref_z{};
-    float acc_ref_x{},  acc_ref_y{},  acc_ref_z{};
-    float acc_bx{}, acc_by{}, acc_bz{};
-    float gyro_x{}, gyro_y{}, gyro_z{};
-    float roll_est{}, pitch_est{}, yaw_est{};
-    float disp_est_x{}, disp_est_y{}, disp_est_z{};
-    float vel_est_x{},  vel_est_y{},  vel_est_z{};
-    float acc_est_x{},  acc_est_y{},  acc_est_z{};
-    float disp_err_x{}, disp_err_y{}, disp_err_z{};
-    float vel_err_x{},  vel_err_y{},  vel_err_z{};
-    float acc_err_x{},  acc_err_y{},  acc_err_z{};
-    float err_roll{}, err_pitch{}, err_yaw{};
-    float angle_err{};
-    // Noisy IMU
-    float acc_noisy_x{}, acc_noisy_y{}, acc_noisy_z{};
-    float gyro_noisy_x{}, gyro_noisy_y{}, gyro_noisy_z{};
-    // True injected biases
-    float acc_bias_x{}, acc_bias_y{}, acc_bias_z{};
-    float gyro_bias_x{}, gyro_bias_y{}, gyro_bias_z{};
-    // Estimated biases
-    float acc_bias_est_x{}, acc_bias_est_y{}, acc_bias_est_z{};
-    float gyro_bias_est_x{}, gyro_bias_est_y{}, gyro_bias_est_z{};
-};
-
 // ============================
 // RMS window length [s]
 // ============================
