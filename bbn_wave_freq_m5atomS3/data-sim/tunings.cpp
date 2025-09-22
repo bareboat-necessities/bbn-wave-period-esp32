@@ -28,12 +28,17 @@ const std::vector<WaveParameters> waveParamsList = {
     {14.3f,  14.8f, static_cast<float>(M_PI/5.0), 30.0f}
 };
 
+// -------------------------------
+// Data structures for tunings
+// -------------------------------
 struct TuningSpec {
     double tau, sigma_a, R_S;
     double Hs_spec;
-    double m0, m1, m2, m4, mneg1;
+    double m0, m1, m2, m4, m5, mneg1;
     double Tm01, Tm02, Tm10;
-    double f_mean;
+    double f_disp_mean, f_acc_mean;
+    double f_disp_peak, f_acc_peak;
+    double f_ratio_mean, f_ratio_peak;
 };
 
 struct TuningHeur {
@@ -45,19 +50,39 @@ struct TuningIMU {
     double tau_eff, sigma_a_eff, R_S_eff;
 };
 
-// === From-spectrum tuning ===
+// -------------------------------
+// From-spectrum tuning
+// -------------------------------
+//
 // Notes (Unicode math):
-// • Spectral moments mₙ = ∫ ωⁿ S(ω) dω  (we integrate over f using ω=2πf and df grid):
-//     m₀  = ∫ S(f) df                      (η-variance)
+// • Spectral moments mₙ = ∫ ωⁿ S(ω) dω
+//   (we integrate over f using ω = 2πf and df grid):
+//     m₀  = ∫ S(f) df                       (η-variance, displacement variance)
 //     m₁  = ∫ ω S(f) df
 //     m₂  = ∫ ω² S(f) df
-//     m₄  = ∫ ω⁴ S(f) df                   (≈ variance of vertical acceleration)
+//     m₄  = ∫ ω⁴ S(f) df                    (≈ variance of vertical acceleration)
+//     m₅  = ∫ ω⁵ S(f) df
 //     m₋₁ = ∫ (1/ω) S(f) df
-// • Tuning:
-//     τ     = 1/ωₚ  ≈ Tₚ/(2π)
+//
+// • Tuning parameters:
+//     τ     = 1/ωₚ ≈ Tₚ/(2π)
 //     σₐ    = √m₄
 //     R_S   ≈ 4 m₀   (pseudo-measurement variance for “∫p dt ≈ 0” constraint)
+//
 // • Hs from spectrum: Hs_spec = 4√m₀
+//
+// • Mean frequencies:
+//     f_disp_mean = (m₁/m₀) / (2π)
+//     f_acc_mean  = (m₅/m₄) / (2π)
+//
+// • Peak frequencies (from spectral maxima):
+//     f_disp_peak = argmax_f S(f)
+//     f_acc_peak  = argmax_f ω⁴ S(f)
+//
+// • Ratios (acceleration vs displacement):
+//     f_ratio_mean = f_acc_mean / f_disp_mean
+//     f_ratio_peak = f_acc_peak / f_disp_peak
+//
 template<int N>
 static TuningSpec compute_from_spectrum(const Eigen::Matrix<double, N, 1>& freqs,
                                         const Eigen::Matrix<double, N, 1>& S,
@@ -71,8 +96,9 @@ static TuningSpec compute_from_spectrum(const Eigen::Matrix<double, N, 1>& freqs
     out.m0    = (S.cwiseProduct(df)).sum();
     out.m1    = ((omega * S.array()) * df.array()).sum();
     out.m2    = ((omega.square() * S.array()) * df.array()).sum();
-    out.m4    = ((omega.pow(4)   * S.array()) * df.array()).sum();
-    out.mneg1 = (((1.0 / omega)  * S.array()) * df.array()).sum();
+    out.m4    = ((omega.pow(4) * S.array()) * df.array()).sum();
+    out.m5    = ((omega.pow(5) * S.array()) * df.array()).sum();
+    out.mneg1 = (((1.0 / omega) * S.array()) * df.array()).sum();
 
     // τ, σₐ, R_S
     const double omega_p = 2.0 * M_PI / Tp;
@@ -86,17 +112,38 @@ static TuningSpec compute_from_spectrum(const Eigen::Matrix<double, N, 1>& freqs
     out.Tm02    = (out.m2 > 0.0) ? std::sqrt(out.m0 / out.m2) : NAN;
     out.Tm10    = (out.m0 > 0.0) ? (out.mneg1 / out.m0) : NAN;
 
-    // Mean spectral frequency: f_mean = (m₁/m₀) / (2π)
-    out.f_mean  = (out.m0 > 0.0) ? (out.m1 / out.m0) / (2.0 * M_PI) : NAN;
+    // Mean spectral frequencies
+    out.f_disp_mean = (out.m0 > 0.0) ? (out.m1 / out.m0) / (2.0 * M_PI) : NAN;
+    out.f_acc_mean  = (out.m4 > 0.0) ? (out.m5 / out.m4) / (2.0 * M_PI) : NAN;
+
+    // Peaks
+    Eigen::ArrayXd disp_spec = S.array();
+    Eigen::ArrayXd acc_spec  = omega.pow(4) * S.array();
+
+    Eigen::Index idx_disp_max, idx_acc_max;
+    disp_spec.maxCoeff(&idx_disp_max);
+    acc_spec.maxCoeff(&idx_acc_max);
+
+    out.f_disp_peak = freqs(idx_disp_max);
+    out.f_acc_peak  = freqs(idx_acc_max);
+
+    // Ratios
+    out.f_ratio_mean = (out.f_disp_mean > 0.0) ? out.f_acc_mean / out.f_disp_mean : NAN;
+    out.f_ratio_peak = (out.f_disp_peak > 0.0) ? out.f_acc_peak / out.f_disp_peak : NAN;
 
     return out;
 }
 
-// === Heuristic from Hs,Tp ===
-// m₀ = Hs² / 16
-// τ  = Tₚ/(2π)
-// σₐ ≈ ωₚ² √m₀
-// R_S ≈ c_RS m₀  (default c_RS=4)
+// -------------------------------
+// Heuristic tuning from Hs, Tp
+// -------------------------------
+//
+// Formulas:
+//   m₀ = Hs² / 16
+//   τ  = Tₚ / (2π)
+//   σₐ ≈ ωₚ² √m₀
+//   R_S ≈ c_RS m₀
+//
 static TuningHeur compute_heuristic_from_HsTp(double Hs, double Tp, double c_RS = 4.0)
 {
     TuningHeur h{};
@@ -109,32 +156,33 @@ static TuningHeur compute_heuristic_from_HsTp(double Hs, double Tp, double c_RS 
     return h;
 }
 
-// === IMU-adjusted tuning using the SAME constants as your sim ===
+// -------------------------------
+// IMU-adjusted tuning (match sim)
+// -------------------------------
 //
-// We follow your simulator values exactly:
+// Using same constants as in your sim:
 //
-//   Filter R (construction of Kalman3D_Wave):
+//   Filter R (Kalman3D_Wave):
 //     σ_a (per axis)   = (0.04, 0.04, 0.04) m/s²
 //     σ_g (per axis)   = (0.00134, 0.00134, 0.00134) rad/s
 //
-//   “True” white noise injected in sim before filtering:
+//   True white noise injected in sim:
 //     accel white σ    = 0.03 m/s²
 //     gyro  white σ    = 0.001 rad/s
 //
 //   Static bias (uniform range):
-//     accel bias range = ±0.02 m/s²   → treat as extra std ≈ 0.02
-//     gyro  bias range = ±0.0004 rad/s → extra std ≈ 0.0004
+//     accel bias range = ±0.02 m/s²
+//     gyro  bias range = ±0.0004 rad/s
 //
-// We combine these into effective inflation terms:
+// Effective inflation terms:
 //
-//   σ_a_eff² = σ_a_spec² + (σ_a_filter)² + (σ_a_true)² + (σ_bacc)^2
-//   τ_eff    = τ / (1 + (σ_g_rms² + σ_g_true² + σ_bgyr²) · τ)
-//   R_S_eff  = R_S + 3 · [ (σ_a_filter)² + (σ_a_true)² + (σ_bacc)² ]
+//   σ_a_eff² = σ_a_spec² + (σ_a_filter)² + (σ_a_true)² + (σ_bacc)²
+//   τ_eff    = τ / (1 + (σ_g_filter² + σ_g_true² + σ_bgyr²) · τ)
+//   R_S_eff  = R_S + 3·[ (σ_a_filter)² + (σ_a_true)² + (σ_bacc)² ]
 //
-// (rms for 3 axes uses ||·||/√3)
 static TuningIMU compute_with_imu_same_as_sim(const TuningSpec& base)
 {
-    // Filter R values (same as in your sim code)
+    // Filter R values (from Kalman3D_Wave)
     const Eigen::Vector3d sigma_acc_filter(0.04, 0.04, 0.04);       // m/s²
     const Eigen::Vector3d sigma_gyro_filter(0.00134, 0.00134, 0.00134); // rad/s
 
@@ -142,11 +190,11 @@ static TuningIMU compute_with_imu_same_as_sim(const TuningSpec& base)
     const double sigma_acc_true = 0.03;   // m/s²
     const double sigma_gyro_true = 0.001; // rad/s
 
-    // Static biases (uniform ranges) used in sim
+    // Static biases
     const double bacc_mag = 0.02;   // m/s²
     const double bgyr_mag = 0.0004; // rad/s
 
-    // Combine per-axis to rms for 3D
+    // RMS across axes
     const double sigma_acc_filter_rms = sigma_acc_filter.norm() / std::sqrt(3.0);
     const double sigma_gyro_filter_rms = sigma_gyro_filter.norm() / std::sqrt(3.0);
 
@@ -161,13 +209,13 @@ static TuningIMU compute_with_imu_same_as_sim(const TuningSpec& base)
     );
     t.sigma_a_eff = sigma_a_eff;
 
-    // Effective tau (tilt diffusion shrinks τ)
+    // Effective tau
     const double tilt_var = (sigma_gyro_filter_rms * sigma_gyro_filter_rms) +
                             (sigma_gyro_true * sigma_gyro_true) +
                             (bgyr_mag * bgyr_mag);
     t.tau_eff = base.tau / (1.0 + tilt_var * base.tau);
 
-    // Inflate R_S for ∫p dt pseudo-measurement (3 axes)
+    // Inflate R_S
     t.R_S_eff = base.R_S + 3.0 * (
         sigma_acc_filter_rms * sigma_acc_filter_rms +
         sigma_acc_true * sigma_acc_true +
@@ -177,7 +225,9 @@ static TuningIMU compute_with_imu_same_as_sim(const TuningSpec& base)
     return t;
 }
 
-// === Generic runner for both spectra ===
+// -------------------------------
+// Generic runner
+// -------------------------------
 template<typename WaveModel>
 void process_wave(const WaveParameters& wp,
                   size_t wave_index,
@@ -194,13 +244,15 @@ void process_wave(const WaveParameters& wp,
     const auto t_heur = compute_heuristic_from_HsTp(wp.height, wp.period);
     const auto t_imu  = compute_with_imu_same_as_sim(t_spec);
 
-    // CSV
+    // CSV output
     file << wave_index << "," << type << ","
          << wp.height << "," << wp.period << ","
          << t_spec.tau << "," << t_spec.sigma_a << "," << t_spec.R_S << "," << t_spec.Hs_spec << ","
-         << t_spec.m0 << "," << t_spec.m2 << "," << t_spec.m4 << "," << t_spec.Tm01 << "," << t_spec.Tm02 << "," << t_spec.Tm10 << "," << t_spec.f_mean << ","
-         << t_heur.tau << "," << t_heur.sigma_a << "," << t_heur.R_S << ","
-         << t_imu.tau_eff << "," << t_imu.sigma_a_eff << "," << t_imu.R_S_eff
+         << t_spec.m0 << "," << t_spec.m2 << "," << t_spec.m4 << "," << t_spec.Tm01 << "," << t_spec.Tm02 << "," << t_spec.Tm10 << ","
+         << t_spec.f_disp_mean << "," << t_spec.f_acc_mean << "," << t_spec.f_disp_peak << "," << t_spec.f_acc_peak
+         << "," << t_spec.f_ratio_mean << "," << t_spec.f_ratio_peak
+         << "," << t_heur.tau << "," << t_heur.sigma_a << "," << t_heur.R_S
+         << "," << t_imu.tau_eff << "," << t_imu.sigma_a_eff << "," << t_imu.R_S_eff
          << "\n";
 
     // Human-readable report
@@ -211,14 +263,17 @@ void process_wave(const WaveParameters& wp,
               << "    tau=" << t_spec.tau << " s, sigma_a=" << t_spec.sigma_a
               << " m/s^2, R_S=" << t_spec.R_S << " m^2, Hs_spec=" << t_spec.Hs_spec << " m\n"
               << "    m0=" << t_spec.m0 << ", m2=" << t_spec.m2 << ", m4=" << t_spec.m4
-              << ", Tm01=" << t_spec.Tm01 << " s, Tm02=" << t_spec.Tm02 << " s, Tm10=" << t_spec.Tm10 << " s"
-              << ", f_mean=" << t_spec.f_mean << " Hz\n"
-              << "  Heuristic (Hs,Tp):\n"
-              << "    tau=" << t_heur.tau << " s, sigma_a=" << t_heur.sigma_a
-              << " m/s^2, R_S=" << t_heur.R_S << " m^2\n"
-              << "  IMU-adjusted (same as sim: σ_a=0.04, σ_g=0.00134; true white: acc 0.03, gyro 0.001; biases: acc ±0.02, gyro ±0.0004):\n"
-              << "    tau_eff=" << t_imu.tau_eff << " s, sigma_a_eff=" << t_imu.sigma_a_eff
-              << " m/s^2, R_S_eff=" << t_imu.R_S_eff << " m^2\n\n";
+              << ", Tm01=" << t_spec.Tm01 << " s, Tm02=" << t_spec.Tm02 << " s, Tm10=" << t_spec.Tm10 << " s\n"
+              << "    f_disp_mean=" << t_spec.f_disp_mean << " Hz, f_acc_mean=" << t_spec.f_acc_mean
+              << " Hz (ratio=" << t_spec.f_ratio_mean << ")\n"
+              << "    f_disp_peak=" << t_spec.f_disp_peak << " Hz, f_acc_peak=" << t_spec.f_acc_peak
+              << " Hz (ratio=" << t_spec.f_ratio_peak << ")\n"
+              << "    [NOTE] KalmANF fed with acceleration will converge near f_acc_peak="
+              << t_spec.f_acc_peak << " Hz (dominant in acceleration spectrum).\n"
+              << "  Heuristic (Hs,Tp): tau=" << t_heur.tau
+              << " s, sigma_a=" << t_heur.sigma_a << " m/s^2, R_S=" << t_heur.R_S << " m^2\n"
+              << "  IMU-adjusted (same as sim): tau_eff=" << t_imu.tau_eff
+              << " s, sigma_a_eff=" << t_imu.sigma_a_eff << " m/s^2, R_S_eff=" << t_imu.R_S_eff << " m^2\n\n";
 }
 
 int main() {
@@ -231,7 +286,9 @@ int main() {
 
     file << "wave_index,wave_type,Hs_input,Tp,"
          << "tau_spec,sigma_a_spec,R_S_spec,Hs_spec,"
-         << "m0,m2,m4,Tm01,Tm02,Tm10,f_mean,"
+         << "m0,m2,m4,Tm01,Tm02,Tm10,"
+         << "f_disp_mean,f_acc_mean,f_disp_peak,f_acc_peak,"
+         << "f_ratio_mean,f_ratio_peak,"
          << "tau_heur,sigma_a_heur,R_S_heur,"
          << "tau_imu,sigma_a_imu,R_S_imu\n";
 
