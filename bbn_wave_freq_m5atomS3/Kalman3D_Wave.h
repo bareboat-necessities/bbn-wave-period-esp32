@@ -692,48 +692,60 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
-    // H selects only the S block
+    // H selects only the S block (∫p dt)
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
     H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
 
-    // Desired S = 0 → innovation
+    // Target S = 0  → innovation
     const Vector3 inno = -xext.template segment<3>(OFF_S);
 
-    Matrix3 S_mat = H * Ptmp * H.transpose() + R_S;
-    Matrix<T, NX, 3> PHt = Ptmp * H.transpose();
+    // Innovation covariance and PHᵀ from the CURRENT full covariance
+    Matrix3 S_mat = H * Pext * H.transpose() + R_S;
+    Matrix<T, NX, 3> PHt = Pext * H.transpose();
 
-    // LDLᵀ with jitter if needed
+    // Robust LDLᵀ (with tiny jitter if needed)
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        xext.template head<3>().setZero();  // clear small angle error
-        K.template block<3,3>(0, 0).setZero();  // block attitude update
-        K.template block<3,3>(OFF_AW, 0).setZero();  // block accel update
         const T eps = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
         S_mat += Matrix3::Identity() * eps;
         ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) {
-            return;
-        }
+        if (ldlt.info() != Eigen::Success) return; // bail cleanly
     }
+
+    // Optional: Mahalanobis gate for rare spikes (≈5σ)
+    const T maha2 = (inno.transpose() * ldlt.solve(inno))(0,0);
+    if (maha2 > T(25)) return;
 
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
+    // HARD BLOCKS: forbid S→(att, gyro bias, a_w) mean updates
+    K.template block<3,3>(0, 0).setZero();           // attitude rows
     if constexpr (with_gyro_bias) {
-        K.template block<3,3>(3, 0).setZero();
+        K.template block<3,3>(3, 0).setZero();       // gyro-bias rows
     }
+    K.template block<3,3>(OFF_AW, 0).setZero();      // a_w rows  <<< critical
 
-    // State update (linear)
+    // (Optional) also block accel-bias if you don't want integral drift to change it:
+    // if constexpr (with_accel_bias) {
+    //     K.template block<3,3>(OFF_BA, 0).setZero();
+    // }
+
+    // State update — linear subsystem only
     xext.noalias() += K * inno;
 
-    // Joseph covariance update with full Pext
+    // Joseph-form covariance update on FULL Pext
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
+    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
 
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
+    // Optional hygiene: decorrelate S ↔ a_w so future S-updates can’t leak into a_w via P
+    Pext.template block<3,3>(OFF_S, OFF_AW).setZero();
+    Pext.template block<3,3>(OFF_AW, OFF_S).setZero();
 
-    // Mirror base covariance
+    // Do NOT touch quaternion or attitude-error here
+    // (no applyQuaternionCorrectionFromErrorState(); no zeroing xext.head<3>())
+
+    // Mirror base block for compatibility
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
