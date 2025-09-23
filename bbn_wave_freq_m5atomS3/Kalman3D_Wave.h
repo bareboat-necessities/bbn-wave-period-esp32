@@ -613,14 +613,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     const T COS_HYST = std::cos(T(20.0) * M_PI / T(180.0)); // ~20°
     if (m_hn.dot(v_hn) < COS_HYST) m_h = -m_h;
 
-    // === FIX: use disambiguated horizontal residual ===
+    // Residual (disambiguated horizontal)
     Vector3 r = m_h - v_h;
 
     // Jacobian: H = Hb * (-skew(v2hat))
     Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
     Cext.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
 
-    // project noise into horizontal plane
+    // Project noise into horizontal plane
     Matrix3 Rproj = Hb * Rmag * Hb.transpose();
 
     // Kalman gain
@@ -640,6 +640,24 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     T dpsi_pred = dx.template head<3>().dot(gb);
     if (std::abs(dpsi_pred) > YAW_STEP_HARD) {
         return; // reject dangerous yaw jump
+    }
+
+    // --- RESIDUAL-IMPROVEMENT TEST ---
+    // Compute predicted horizontal mag before & after applying dx
+    Eigen::Quaternion<T> q_test = qref; 
+    Eigen::Quaternion<T> corr(T(1),
+                              half * dx(0),
+                              half * dx(1),
+                              half * dx(2));
+    q_test = (q_test * corr).normalized();
+
+    Vector3 v2hat_new = (q_test.toRotationMatrix()) * v2ref;
+    Vector3 v_h_new   = Hb * v2hat_new;
+
+    T cos_before = (m_h.normalized()).dot(v_h.normalized());
+    T cos_after  = (m_h.normalized()).dot(v_h_new.normalized());
+    if (cos_after < cos_before) {
+        return; // reject update that moves fit in wrong direction
     }
 
     // State update
