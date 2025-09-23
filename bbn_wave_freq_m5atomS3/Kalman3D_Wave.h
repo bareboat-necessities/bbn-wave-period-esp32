@@ -559,13 +559,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Remove yaw component from small-angle correction coming from accel
-    {
-        const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized(); // gravity dir in body
-        Vector3 dth = xext.template head<3>();
-        // Project out yaw (component along gb)
-        xext.template head<3>() = dth - gb * dth.dot(gb);
-    }
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
 }
@@ -684,43 +677,11 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetri
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState() {
-    using std::cos;
-    using std::sin;
-
-    // 1) Build correction quaternion from the 3×1 attitude error in the error state
-    Eigen::Matrix<T,3,1> dtheta = xext.template head<3>();
-    T a = dtheta.norm();
-
-    Eigen::Quaternion<T> corr;
-    if (a < T(1e-8)) {
-        // first-order for numerical stability
-        corr.w()   = T(1);
-        corr.vec() = T(0.5) * dtheta;
-    } else {
-        T half_a = T(0.5) * a;
-        T s = sin(half_a) / a;
-        corr.w()   = cos(half_a);
-        corr.vec() = s * dtheta;
-    }
-    corr.normalize();
-
-    // 2) Apply to nominal quaternion (right-multiply, consistent with your propagation)
-    qref = qref * corr;
-    qref.normalize();
-
-    // 3) MEKF reset: propagate covariance through the change of linearization point
-    //    G is identity except the 3×3 attitude-error block:
-    //    G_att ≈ I - 0.5 [dθ×]
-    Eigen::Matrix<T, NX, NX> G = Eigen::Matrix<T, NX, NX>::Identity();
-    const Eigen::Matrix<T,3,3> S = skew_symmetric_matrix(dtheta);
-    G.template block<3,3>(0,0) = Eigen::Matrix<T,3,3>::Identity() - T(0.5) * S;
-
-    Pext = G * Pext * G.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());   // enforce symmetry
-
-    // 4) Zero the attitude error in the error-state and mirror Pbase
-    xext.template head<3>().setZero();
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+  // xext(0..2) contains the small-angle error — same as original code; create corr quaternion and apply
+  Eigen::Quaternion<T> corr(T(1), half * xext(0), half * xext(1), half * xext(2));
+  corr.normalize();
+  qref = qref * corr;
+  qref.normalize();
 }
 
 // normalize quaternion
@@ -742,43 +703,34 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Matrix3 S_mat = H * Pext * H.transpose() + R_S;
 
     // Solve for K
-// Solve for K
-Eigen::LDLT<Matrix3> ldlt(S_mat);
-if (ldlt.info() != Eigen::Success) {
-    S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-7) * R_S.norm());
-    ldlt.compute(S_mat);
-    if (ldlt.info() != Eigen::Success) return;
-}
+    Eigen::LDLT<Matrix3> ldlt(S_mat);
+    if (ldlt.info() != Eigen::Success) {
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+    Matrix<T, NX, 3> PHt = Pext * H.transpose();
+    Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-// == block attitude (and optionally gyro bias) BEFORE computing K ==
-Matrix<T, NX, 3> PHt = Pext * H.transpose();
-PHt.template block<3,3>(0,0).setZero();        // no attitude update from S
-if constexpr (with_gyro_bias) {
-    PHt.template block<3,3>(3,0).setZero();    // no gyro-bias update from S
-}
-// If you also want S not to steer a_w, uncomment:
-// PHt.template block<3,3>(OFF_AW,0).setZero();
+    // block attitude from being updated by this pseudo-meas
+    K.template block<3,3>(0, 0).setZero();
+    if constexpr (with_gyro_bias) {
+        K.template block<3,3>(3, 0).setZero();  // block gyro bias update
+    }
 
-Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
+    // State update
+    xext.noalias() += K * inno;
 
-// State update
-xext.noalias() += K * inno;
+    // Joseph covariance update
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose());
 
-// Joseph covariance update
-MatrixNX I = MatrixNX::Identity();
-Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
-Pext = T(0.5) * (Pext + Pext.transpose());
+    applyQuaternionCorrectionFromErrorState();
+    xext.template head<3>().setZero();
 
-// === hard decorrelate S with attitude so it won’t leak back ===
-Pext.template block<3,3>(OFF_S, 0).setZero();
-Pext.template block<3,3>(0,      OFF_S).setZero();
-if constexpr (with_gyro_bias) {
-    Pext.template block<3,3>(OFF_S, 3).setZero();
-    Pext.template block<3,3>(3,      OFF_S).setZero();
-}
-
-// Mirror base covariance
-Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+    // Mirror base covariance
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -812,7 +764,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // === Linear subsystem [v,p,S,a_w] ===
+    // Linear subsystem [v,p,S,a_w]
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
