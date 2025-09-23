@@ -712,12 +712,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Matrix<T, NX, 3> PHt = Pext * H.transpose();
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // block attitude from being updated by this pseudo-meas
-    K.template block<3,3>(0, 0).setZero();
-    if constexpr (with_gyro_bias) {
-        K.template block<3,3>(3, 0).setZero();  // block gyro bias update
-    }
-
     // State update
     xext.noalias() += K * inno;
 
