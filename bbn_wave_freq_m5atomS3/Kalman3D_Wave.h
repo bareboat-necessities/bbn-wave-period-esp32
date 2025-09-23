@@ -91,6 +91,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void time_update(Vector3 const& gyr, T Ts);
 
     // Measurement updates preserved (operate on extended state internally)
+    void measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC = tempC_ref);
     void measurement_update_acc_only(Vector3 const& acc, T tempC = tempC_ref);
     void measurement_update_mag_only(Vector3 const& mag);
 
@@ -242,6 +243,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body→world
 
     // Helpers and original methods kept
+    void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
     Vector3 accelerometer_measurement_func(T tempC) const;
     Vector3 magnetometer_measurement_func() const;
@@ -262,8 +264,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
                                     Eigen::Matrix<T,12,12>& Qd) const;
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
-
-    static T wrap_pi_T(T a);
 };
 
 // Implementation
@@ -480,81 +480,96 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-T Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::wrap_pi_T(T a) {
-    const T pi = std::acos(T(-1));
-    a = std::fmod(a + pi, T(2)*pi);
-    if (a < T(0)) a += T(2)*pi;
-    return a - pi;
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag_meas_body)
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC)
 {
-    // Current body "down" axis (z_b) from attitude (world z is +down)
-    const Vector3 zb_b = R_wb() * Vector3(0,0,1);
+    // Predicted measurements
+    Vector3 v1hat = accelerometer_measurement_func(tempC); // depends on a_w
 
-    // Predicted & measured magnetic vectors in body
-    const Vector3 mhat_b = magnetometer_measurement_func(); // = R_wb() * v2ref
-    Vector3 mb = mag_meas_body;
-
-    // Project both onto the horizontal plane (remove vertical component)
-    Vector3 mb_h    = mb    - (mb.dot(zb_b))   * zb_b;
-    Vector3 mhat_h  = mhat_b - (mhat_b.dot(zb_b)) * zb_b;
-
-    const T n_meas_h = mb_h.norm();
-    const T n_hat_h  = mhat_h.norm();
-    if (n_meas_h < T(1e-6) || n_hat_h < T(1e-6)) {
-        // Yaw is unobservable this step
+    // Accel magnitude sanity check
+    T g_meas = acc.norm();
+    if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
+        // Skip accel part, do mag-only update instead
+        measurement_update_mag_only(mag);
         return;
     }
+ 
+    Vector3 v2hat = magnetometer_measurement_func();
 
-    // Unit horizontals for angle computation
-    mb_h   /= n_meas_h;
-    mhat_h /= n_hat_h;
-
-    // Signed heading error (pred -> meas) about body z:
-    auto yaw_err_from = [&](const Vector3& a, const Vector3& b)->T {
-        const T c = a.dot(b);
-        const T s = (a.cross(b)).dot(zb_b);
-        // clamp c to avoid NaNs from acos/atan2
-        return std::atan2(s, std::max(T(-1), std::min(T(1), c)));
-    };
-
-    // Compute both candidates: using m and using -m (antipodal). Pick the smaller |error|.
-    const T dpsi1 = wrap_pi_T(yaw_err_from(mhat_h,  mb_h));
-    const T dpsi2 = wrap_pi_T(yaw_err_from(mhat_h, -mb_h));
-    const T dpsi  = (std::abs(dpsi1) <= std::abs(dpsi2)) ? dpsi1 : dpsi2;
-
-    // Robust heading gate (prevents huge pulls / snaps)
-    const T gate_rad = T(80.0) * T(M_PI/180.0); // tune 50–90°
-    if (std::abs(dpsi) > gate_rad) {
-        return; // outlier — skip this mag update
+    Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
+    // accel rows 0..2
+    Cext.template block<3,3>(0,0)        = -skew_symmetric_matrix(v1hat); // d f_b / d attitude
+    Cext.template block<3,3>(0,OFF_AW)   = R_wb(); // d f_b / d a_w
+    if constexpr (with_accel_bias) {
+        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
     }
+    // mag rows 3..5 (unchanged)
+    Cext.template block<3,3>(3,0)        = -skew_symmetric_matrix(v2hat);
 
-    // Scalar measurement model: z ≈ 0 = dpsi + n
-    // Sensitivity of yaw residual to small angle error δθ is ~ [0 0 1] in the (body) error coordinates.
-    Eigen::Matrix<T,1,NX> Cext; Cext.setZero();
-    Cext(0, 2) = T(1); // only the z (yaw) small-angle state
+    Vector6 yhat; yhat << v1hat, v2hat;
+    Vector6 y;    y << acc, mag;
+    Vector6 inno = y - yhat;
 
-    // Map 3D mag noise to yaw variance ~ (avg horizontal variance) / |B_h|^2 (before unitization)
-    const T Bh2  = n_hat_h * n_hat_h + T(1e-6);
-    const T Rxy  = (Rmag(0,0) + Rmag(1,1)) * T(0.5);
-    const T Ryaw = std::max(T(1e-6), Rxy / Bh2); // rad^2 approx
+    MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
+    Matrix<T, NX, M> PCt = Pext * Cext.transpose();
 
-    // Kalman gain (scalar)
-    const T S = (Cext * Pext * Cext.transpose())(0,0) + Ryaw;
-    Eigen::Matrix<T,NX,1> K = (Pext * Cext.transpose()) / S;
+    Eigen::LDLT<MatrixM> ldlt(S_mat);
+    if (ldlt.info() != Eigen::Success) {
+        S_mat += MatrixM::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R.norm());
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+    Matrix<T, NX, M> K = PCt * ldlt.solve(MatrixM::Identity());
 
-    // State & covariance update (Joseph form)
-    xext.noalias() += K * (-dpsi); // target is 0 residual
+    xext.noalias() += K * inno;
+
     MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + (K * Ryaw) * K.transpose();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Apply quaternion correction & zero attitude-error substate
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+}
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_partial(
+    const Eigen::Ref<const Vector3>& meas,
+    const Eigen::Ref<const Vector3>& vhat,
+    const Eigen::Ref<const Matrix3>& Rm)
+{
+    // Cext: (3 x NX)
+    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
+
+    // Innovation
+    Vector3 inno = meas - vhat;
+
+    // S = C P C^T + Rm  (3x3)
+    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
+
+    // PCt = P C^T  (NX x 3)
+    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+
+    // Factor S (SPD) and solve
+    Eigen::LDLT<Matrix3> ldlt(S_mat);
+    if (ldlt.info() != Eigen::Success) {
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+
+    // State update
+    xext.noalias() += K * inno;
+
+    // Joseph covariance update
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose());
+
+    // Quaternion correction + zero small-angle
+    applyQuaternionCorrectionFromErrorState();
+    xext.template head<3>().setZero();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -599,6 +614,12 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
+}
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag) {
+    Vector3 const v2hat = magnetometer_measurement_func();
+    measurement_update_partial(mag, v2hat, Rmag);
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
