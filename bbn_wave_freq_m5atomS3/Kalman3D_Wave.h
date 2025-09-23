@@ -740,7 +740,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 
     // Innovation covariance and PHt
     Matrix3 S_mat = H * Pext * H.transpose() + R_S;
-    Matrix<T, NX, 3> PHt = Pext * H.transpose();
 
     // Solve for K
 // Solve for K
