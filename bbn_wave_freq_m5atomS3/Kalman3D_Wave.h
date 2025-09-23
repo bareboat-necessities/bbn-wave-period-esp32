@@ -706,13 +706,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     // Solve for K
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-4) * R_S.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // **** Key: prevent attitude (and optionally gyro bias) from being updated by this pseudo-meas ****
+    // Key: prevent attitude (and optionally gyro bias) from being updated by this pseudo-meas
     // Always block attitude:
     K.template block<3,3>(0, 0).setZero();
     // Optionally also block gyro bias (uncomment the next 3 lines if you want to freeze b_g here):
@@ -728,8 +728,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // *** Do NOT touch quaternion or xext.head<3>() here ***
-    // No applyQuaternionCorrectionFromErrorState(); no zeroing attitude error.
+    applyQuaternionCorrectionFromErrorState(); 
 
     // Mirror base covariance for compatibility
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
