@@ -480,41 +480,61 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_partial(
-    const Eigen::Ref<const Vector3>& meas,
-    const Eigen::Ref<const Vector3>& vhat,
+    const Eigen::Ref<const Vector3>& meas_,
+    const Eigen::Ref<const Vector3>& vhat_,
     const Eigen::Ref<const Matrix3>& Rm)
 {
-    // Cext: (3 x NX)
+    // Normalize inputs (safe for magnetometer usage; keeps residual unitless)
+    Vector3 meas = meas_;
+    Vector3 vhat = vhat_;
+    T nm_meas = meas.norm();
+    T nm_vhat = vhat.norm();
+    if (nm_meas > T(1e-12)) meas /= nm_meas;
+    if (nm_vhat > T(1e-12)) vhat /= nm_vhat;
+
+    // Linearized measurement Jacobian (3 x NX): d(meas) / d(att-error) = -[vhat]_x
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
     Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
 
     // Innovation
     Vector3 inno = meas - vhat;
 
-    // S = C P C^T + Rm  (3x3)
+    // Baseline innovation covariance S = C P C^T + R
     Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
-
-    // PCt = P C^T  (NX x 3)
     Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
 
-    // Factor S (SPD) and solve
+    // Factor S and compute Mahalanobis distance
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
+        // jitter for numerical safety
         S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
+    // md2 = inno^T S^{-1} inno
+    Vector3 Sinv_inno = ldlt.solve(inno);
+    T md2 = inno.dot(Sinv_inno);
+
+    // Innovation gate / adaptive down-weighting
+    // 3 dof chi-square gates: 95% ≈ 7.81, 99% ≈ 11.34, 99.9% ≈ 16.27
+    const T chi2_gate = T(11.34); // fairly strict gate for yaw flips
+    Matrix3 Rm_eff = Rm;
+    if (md2 > chi2_gate) {
+        return; // skip update this step
+    }
+
+    // Kalman gain with (possibly) inflated R
     Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
 
     // State update
     xext.noalias() += K * inno;
 
-    // Joseph covariance update
+    // Joseph-form covariance update (numerically robust) + symmetrize
     MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm_eff * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Quaternion correction + zero small-angle
+    // Apply quaternion small-angle correction & zero the attitude error substate
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
 }
