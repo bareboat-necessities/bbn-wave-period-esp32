@@ -707,7 +707,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     bool with_jitter = false;
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-4) * R_S.norm());
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-7) * R_S.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
         with_jitter = true;
@@ -719,6 +719,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     if constexpr (with_gyro_bias) {
         K.template block<3,3>(3, 0).setZero();  // block gyro bias update
     }
+
+    //K.template block<3,3>(OFF_AW,0).setZero();          // block a_w rows!
+    //if constexpr (with_accel_bias) K.template block<3,3>(OFF_BA,0).setZero();
 
     // State update (linear states only get corrected)
     xext.noalias() += K * inno;
@@ -735,6 +738,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 
     // Mirror base covariance for compatibility
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+
+    //Pext.template block<3,3>(OFF_S,OFF_AW).setZero();
+    //Pext.template block<3,3>(OFF_AW,OFF_S).setZero();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
