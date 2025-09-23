@@ -680,56 +680,40 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectio
     using std::cos;
     using std::sin;
 
-    // Extract small-angle error vector
+    // 1) Build correction quaternion from the 3×1 attitude error in the error state
     Eigen::Matrix<T,3,1> dtheta = xext.template head<3>();
-    T angle = dtheta.norm();
+    T a = dtheta.norm();
 
-    // If nearly zero, fall back to first-order approximation
     Eigen::Quaternion<T> corr;
-    if (angle < T(1e-8)) {
-        corr.w() = T(1);
+    if (a < T(1e-8)) {
+        // first-order for numerical stability
+        corr.w()   = T(1);
         corr.vec() = T(0.5) * dtheta;
     } else {
-        T half_ang = T(0.5) * angle;
-        T s = sin(half_ang) / angle;
-        corr.w()   = cos(half_ang);
+        T half_a = T(0.5) * a;
+        T s = sin(half_a) / a;
+        corr.w()   = cos(half_a);
         corr.vec() = s * dtheta;
     }
-
-    // ====== YAW CLAMP (relative to gravity axis) ======
-    // Gravity in body frame (down unit vector)
-    Eigen::Matrix<T,3,1> g_b = (R_wb() * Eigen::Matrix<T,3,1>(0,0,1)).normalized();
-
-    // Project δθ onto yaw axis
-    T dpsi = dtheta.dot(g_b);
-
-    // Clamp yaw correction (e.g. ±3° per update)
-    const T YAW_CLAMP_RAD = T(3.0 * M_PI / 180.0);
-    if (std::abs(dpsi) > YAW_CLAMP_RAD) {
-        // Remove old yaw part and re-inject clamped yaw
-        dtheta = dtheta - g_b * dpsi + g_b * std::copysign(YAW_CLAMP_RAD, dpsi);
-
-        // Recompute correction quaternion with clamped δθ
-        angle = dtheta.norm();
-        if (angle < T(1e-8)) {
-            corr.w() = T(1);
-            corr.vec() = T(0.5) * dtheta;
-        } else {
-            T half_ang = T(0.5) * angle;
-            T s = sin(half_ang) / angle;
-            corr.w()   = cos(half_ang);
-            corr.vec() = s * dtheta;
-        }
-    }
-
     corr.normalize();
 
-    // Apply correction to reference quaternion
+    // 2) Apply to nominal quaternion (right-multiply, consistent with your propagation)
     qref = qref * corr;
     qref.normalize();
 
-    // Reset attitude error in error-state
+    // 3) MEKF reset: propagate covariance through the change of linearization point
+    //    G is identity except the 3×3 attitude-error block:
+    //    G_att ≈ I - 0.5 [dθ×]
+    Eigen::Matrix<T, NX, NX> G = Eigen::Matrix<T, NX, NX>::Identity();
+    const Eigen::Matrix<T,3,3> S = skew_symmetric_matrix(dtheta);
+    G.template block<3,3>(0,0) = Eigen::Matrix<T,3,3>::Identity() - T(0.5) * S;
+
+    Pext = G * Pext * G.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose());   // enforce symmetry
+
+    // 4) Zero the attitude error in the error-state and mirror Pbase
     xext.template head<3>().setZero();
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 // normalize quaternion
