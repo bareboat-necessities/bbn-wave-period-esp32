@@ -238,7 +238,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(2.4*2.4); // stationary variance diag [ (m/s^2)^2 ]
 
     int pseudo_update_counter_ = 0;   // counts time_update calls
-    static constexpr int PSEUDO_UPDATE_PERIOD = 10; // every 10th update
+    static constexpr int PSEUDO_UPDATE_PERIOD = 2; // every Nth update
 
     // convenience getters
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
@@ -729,6 +729,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     // Mean update (Schmidt): update only the U block
     Eigen::Matrix<T,U,1> dx_U =
         (PHt.template block<U,3>(A,0) * W) * r;
+
+    // Per-axis clamp on a_w component only
+    constexpr int OFF_U_AW = OFF_AW - A;
+    auto dx_aw = dx_U.template segment<3>(OFF_U_AW);
+    const T max_aw_step = T(1.0); // m/s² per pseudo update
+    T na = dx_aw.norm();
+    if (na > max_aw_step) {
+        dx_U.template segment<3>(OFF_U_AW) *= max_aw_step / na;
+    }
+
+    // Apply to state
     xext.template segment<U>(A).noalias() += dx_U;
 
     // Covariance update (strict Schmidt): only P_UU reduced
