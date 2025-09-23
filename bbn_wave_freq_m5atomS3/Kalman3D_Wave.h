@@ -583,7 +583,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     const T YAW_CLAMP     = T(0.35); // ~20° max yaw correction per update
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // ===== SAFE → full 3D update (with hemisphere disambiguation to avoid 180° flips) =====
+        // SAFE → full 3D update (with hemisphere disambiguation to avoid 180° flips)
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
         measurement_update_partial(meas_fixed, v2hat, Rmag);
         return;
@@ -677,32 +677,59 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetri
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState() {
-    using std::sqrt;
-    using std::sin;
     using std::cos;
+    using std::sin;
 
-    // Small-angle error in xext(0..2)
+    // Extract small-angle error vector
     Eigen::Matrix<T,3,1> dtheta = xext.template head<3>();
     T angle = dtheta.norm();
 
+    // If nearly zero, fall back to first-order approximation
     Eigen::Quaternion<T> corr;
     if (angle < T(1e-8)) {
-        // First-order fallback for very small angles
         corr.w() = T(1);
-        corr.x() = T(0.5) * dtheta.x();
-        corr.y() = T(0.5) * dtheta.y();
-        corr.z() = T(0.5) * dtheta.z();
+        corr.vec() = T(0.5) * dtheta;
     } else {
-        // Exact Rodrigues / exponential map
         T half_ang = T(0.5) * angle;
         T s = sin(half_ang) / angle;
-        corr.w() = cos(half_ang);
+        corr.w()   = cos(half_ang);
         corr.vec() = s * dtheta;
     }
 
+    // ====== YAW CLAMP (relative to gravity axis) ======
+    // Gravity in body frame (down unit vector)
+    Eigen::Matrix<T,3,1> g_b = (R_wb() * Eigen::Matrix<T,3,1>(0,0,1)).normalized();
+
+    // Project δθ onto yaw axis
+    T dpsi = dtheta.dot(g_b);
+
+    // Clamp yaw correction (e.g. ±3° per update)
+    const T YAW_CLAMP_RAD = T(3.0 * M_PI / 180.0);
+    if (std::abs(dpsi) > YAW_CLAMP_RAD) {
+        // Remove old yaw part and re-inject clamped yaw
+        dtheta = dtheta - g_b * dpsi + g_b * std::copysign(YAW_CLAMP_RAD, dpsi);
+
+        // Recompute correction quaternion with clamped δθ
+        angle = dtheta.norm();
+        if (angle < T(1e-8)) {
+            corr.w() = T(1);
+            corr.vec() = T(0.5) * dtheta;
+        } else {
+            T half_ang = T(0.5) * angle;
+            T s = sin(half_ang) / angle;
+            corr.w()   = cos(half_ang);
+            corr.vec() = s * dtheta;
+        }
+    }
+
     corr.normalize();
+
+    // Apply correction to reference quaternion
     qref = qref * corr;
     qref.normalize();
+
+    // Reset attitude error in error-state
+    xext.template head<3>().setZero();
 }
 
 // normalize quaternion
