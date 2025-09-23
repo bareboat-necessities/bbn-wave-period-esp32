@@ -617,7 +617,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag) {
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag)
+{
+    // Geometry gate: skip if magnetometer is nearly vertical
+    Vector3 zb_b = R_wb() * Vector3(0,0,1);        // body "down" axis
+    Vector3 mb   = mag.normalized();
+    Vector3 mb_h = mb - (mb.dot(zb_b)) * zb_b;     // horizontal component
+    if (mb_h.norm() < T(0.1)) {
+        return; // yaw unobservable, skip this update
+    }
+
+    // Proceed as normal if geometry is good
     Vector3 const v2hat = magnetometer_measurement_func();
     measurement_update_partial(mag, v2hat, Rmag);
 }
