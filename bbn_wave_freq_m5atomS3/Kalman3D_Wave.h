@@ -588,58 +588,64 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         measurement_update_partial(meas_fixed, v2hat, Rmag);
         return;
     }
-
-    // DANGEROUS → yaw-only (horizontal) update with clamp
-    // body gravity dir (down) from current attitude
+    // DANGEROUS → scalar yaw-only Schmidt update (no K post-solve modification)
+    // Body gravity (down) from current attitude
     const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
-    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose(); // project to horizontal plane
 
-    Vector3 m_h = Hb * mag_meas_body;
-    Vector3 v_h = Hb * v2hat;
+    // Predicted mag in body
+    const Vector3 v_b = v2hat;
 
-    T nm = m_h.norm(), nv = v_h.norm();
-    if (nm < T(1e-6) || nv < T(1e-6)) return; // no horizontal info
+    // Yaw sensitivity direction u = gb × v_b  (horizontal)
+    Vector3 u = gb.cross(v_b);
+    T nu = u.norm();
+    if (nu < T(1e-8)) return;
+    u /= nu;
 
-    // hemisphere disambiguation on horizontal components
-    Vector3 m_hn = m_h / nm, v_hn = v_h / nv;
-    if (m_hn.dot(v_hn) < T(0)) m_h = -m_h;
+    // Scalar residual rψ = uᵀ (m_meas - v_pred)
+    const T rpsi = u.dot(mag_meas_body - v_b);
 
-    // innovation & projected Jacobian: r = H(m - v), C = H * (-skew(v))
-    Vector3 r = Hb * (mag_meas_body - v2hat);
+    // Attitude-only Jacobian: 1×3
+    Eigen::Matrix<T,1,3> H_att = u.transpose() * (-skew_symmetric_matrix(v_b));
 
-    Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
-    Cext.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
+    // Scalar noise projected from Rmag
+    const T Rpsi = (u.transpose() * Rmag * u);
 
-    Matrix3 Rproj = Hb * Rmag * Hb.transpose();
+    // Innovation covariance S = H_att P_aa H_attᵀ + Rpsi
+    const Matrix3 Paa = Pext.template block<3,3>(0,0);
+    const T S = (H_att * Paa * H_att.transpose())(0,0) + Rpsi;
+    if (S <= std::numeric_limits<T>::epsilon()) return;
 
-    // Kalman gain
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rproj;
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rproj.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+    // χ²(1) gate @99%
+    const T chi2_99 = T(6.63);
+    const T mahal2 = (rpsi * rpsi) / S;
+    if (mahal2 > chi2_99) return;
+
+    // Attitude gain (3×1) — ONLY the updated block is solved
+    const Eigen::Matrix<T,3,1> K_att = (Paa * H_att.transpose()) / S;
+
+    // Build full K (NX×1) with zeros elsewhere — no "modify K after solve"
+    Eigen::Matrix<T,NX,1> K_full = Eigen::Matrix<T,NX,1>::Zero();
+    K_full.template topRows<3>() = K_att; // only attitude states update
+
+    // Full H (1×NX), only attitude block active
+    Eigen::Matrix<T,1,NX> H_full = Eigen::Matrix<T,1,NX>::Zero();
+    H_full.template leftCols<3>() = H_att;
 
     // State update
-    xext.noalias() += K * r;
+    xext.noalias() += K_full * rpsi;
 
-    // Limit the attitude error to yaw only and clamp magnitude
-    Vector3 dth = xext.template head<3>();
-    T dpsi = dth.dot(gb);
-    T dpsi_clamped = std::max(-YAW_CLAMP, std::min(YAW_CLAMP, dpsi));
-    xext.template head<3>() = dth - gb * dpsi + gb * dpsi_clamped;
-
-    // Joseph covariance update
+    // Covariance update (Joseph form)
     MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rproj * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
+    Pext = (I - K_full * H_full) * Pext * (I - K_full * H_full).transpose()
+         + (K_full * Rpsi) * K_full.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
 
-    // Apply correction
+    // Apply quaternion correction from small-angle error
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
+
+    // Mirror base covariance
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
