@@ -587,9 +587,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     // thresholds
     const T DOT_DANGEROUS = T(0.2);   // |dot| < 0.2 (~>78°) → ill-conditioned
     const T YAW_CLAMP     = T(0.105); // ~6° max yaw correction per update
+    const T YAW_STEP_HARD = T(0.35);  // ~20° hard gate (reject update)
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // SAFE → full 3D update (with hemisphere disambiguation to avoid 180° flips)
+        // SAFE → full 3D update (with hemisphere disambiguation)
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
         measurement_update_partial(meas_fixed, v2hat, Rmag);
         return;
@@ -634,8 +635,15 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     }
     Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
 
+    // --- PRE-GATE: predict yaw increment before applying
+    Eigen::Matrix<T,NX,1> dx = K * r;
+    T dpsi_pred = dx.template head<3>().dot(gb);
+    if (std::abs(dpsi_pred) > YAW_STEP_HARD) {
+        return; // reject dangerous yaw jump
+    }
+
     // State update
-    xext.noalias() += K * r;
+    xext.noalias() += dx;
 
     // Limit the attitude error to yaw only and clamp magnitude
     Vector3 dth = xext.template head<3>();
