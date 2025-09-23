@@ -698,47 +698,97 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
-    // H picks S block only
-    Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
-    H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
+    // Pseudo-meas: z = 0 for S (3×1)
+    // H picks S columns only
+    constexpr int A = BASE_N;          // protected: attitude (+ gyro bias)
+    constexpr int U = NX - BASE_N;     // updated: everything else (v,p,S,a_w,[b_a])
+    constexpr int SZ = 3;              // size of S block
 
-    // Innovation (target S = 0)
-    Vector3 inno = - xext.template segment<3>(OFF_S);
+    // Quick exit if covariance not sane
+    if (!Pext.allFinite()) return;
 
-    // Innovation covariance
-    Matrix3 S_mat = H * Pext * H.transpose() + R_S;
+    // Build selectors to pull S columns/rows inside the U block
+    // Layout in U: [ v(3) p(3) S(3) a_w(3) (b_a(3)) ]
+    const int OFF_S_U = OFF_S - BASE_N;  // S offset inside U
+    using MatUU = Eigen::Matrix<T, U, U>;
+    using MatUS = Eigen::Matrix<T, U, SZ>;
+    using MatSU = Eigen::Matrix<T, SZ, U>;
 
-    // Robust LDLT
+    // Partition P
+    const auto P_AA = Pext.template block<A,A>(0,0);
+    auto       P_AU = Pext.template block<A,U>(0,BASE_N);
+    auto       P_UA = Pext.template block<U,A>(BASE_N,0);
+    auto       P_UU = Pext.template block<U,U>(BASE_N,BASE_N);
+
+    // Extract the S-related sub-blocks inside U
+    auto       P_US = P_UU.template block<U,SZ>(0, OFF_S_U);     // (U×3)
+    auto       P_SU = P_UU.template block<SZ,U>(OFF_S_U, 0);     // (3×U)
+    auto       P_SS = P_UU.template block<SZ,SZ>(OFF_S_U, OFF_S_U); // (3×3)
+
+    // Innovation: r = z - H x = -S
+    const Vector3 r = - xext.template segment<3>(OFF_S);
+
+    // Innovation covariance S = H P Hᵀ + R = P_SS + R_S
+    Matrix3 S_mat = P_SS + R_S;
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
+        // add tiny diagonal for robustness
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-9) * R_S.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
 
-    // PHt with Schmidt blocking (no mean update into attitude / gyro bias)
-    Matrix<T, NX, 3> PHt = Pext * H.transpose();
-    // block attitude rows
-    PHt.template block<3,3>(0, 0).setZero();
-    if constexpr (with_gyro_bias) {
-        // block gyro-bias rows
-        PHt.template block<3,3>(3, 0).setZero();
+    // Optional: χ² gate to avoid injecting info when the residual is inconsistent
+    // 99% gate for 3 dof ≈ 11.34
+    const T mahal2 = r.dot(ldlt.solve(r));
+    if (!(mahal2 < T(11.34))) {
+        // Reject this pseudo update
+        return;
     }
 
-    // Kalman gain (blocked rows remain zero)
-    Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
+    // Schmidt gain: ONLY for the U block (A block is identically zero)
+    // K_U = P_US S^{-1}
+    MatUS K_U = P_US * ldlt.solve(Matrix3::Identity());
 
-    // State update (attitude/bias rows of K are zero ⇒ no mean change there)
-    xext.noalias() += K * inno;
+    // Mean update: x_U ← x_U + K_U r  ; x_A unchanged
+    auto x_U = xext.template segment<U>(BASE_N);
+    x_U.noalias() += K_U * r;
+    xext.template segment<U>(BASE_N) = x_U;
 
-    // Joseph covariance update (no hard decorrelation)
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
+    // Covariance update — true Schmidt block formulas:
+    // Define I_U
+    MatUU I_U = MatUU::Identity();
 
-    // No quaternion correction here (Schmidt: blocked states’ mean must not move)
+    // 1) Update P_UU with standard Joseph (on U only):
+    // P_UU ← (I - K_U H_S) P_UU (I - K_U H_S)ᵀ + K_U R_S K_Uᵀ,
+    // where H_S selects the S columns inside U → P_UU pieces below do this without forming H_S.
+    //
+    // Since H_S picks the S columns, (I - K_U H_S) * P_UU = P_UU - K_U P_SU
+    MatUU P_UU_new = (P_UU - K_U * P_SU);
+    P_UU_new = P_UU_new * (I_U - (K_U * P_SU).transpose()) + K_U * R_S * K_U.transpose();
+    P_UU_new = T(0.5) * (P_UU_new + P_UU_new.transpose());
 
-    // Mirror base covariance
+    // 2) Cross-covariances:
+    // P_AU ← P_AU - P_AS S^{-1} P_SU  (with P_AS = P_AU(:, S-cols))
+    // P_UA ← P_AUᵀ
+    auto P_AS = P_AU.template block<A,SZ>(0, OFF_S_U);  // (A×3)
+    P_AU.noalias() -= P_AS * ldlt.solve(P_SU);
+    P_UA = P_AU.transpose();
+
+    // 3) Protected covariance (conditional reduction):
+    // P_AA ← P_AA - P_AS S^{-1} P_SA
+    auto P_SA = P_UA.template block<SZ,A>(OFF_S_U, 0);  // (3×A)  NOTE: uses updated P_UA above
+    MatrixBaseN P_AA_new = P_AA - P_AS * ldlt.solve(P_SA);
+    // write back blocks
+    Pext.template block<A,A>(0,0) = T(0.5) * (P_AA_new + P_AA_new.transpose());
+    P_UU = P_UU_new;
+
+    // Keep symmetry
+    Pext = T(0.5) * (Pext + Pext.transpose());
+
+    // NOTE: No quaternion correction here — protected mean is frozen by design.
+
+    // Mirror base covariance (for external API)
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
