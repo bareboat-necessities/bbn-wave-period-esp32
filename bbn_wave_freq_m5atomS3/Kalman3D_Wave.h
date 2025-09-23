@@ -583,7 +583,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     const T YAW_CLAMP     = T(0.35); // ~20° max yaw correction per update
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // full 3D update (with hemisphere disambiguation to avoid 180° flips)
+        // ===== SAFE → full 3D update (with hemisphere disambiguation to avoid 180° flips) =====
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
         measurement_update_partial(meas_fixed, v2hat, Rmag);
         return;
@@ -692,60 +692,44 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
-    // H selects only the S block (∫p dt)
+    // H picks S block only
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
     H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
 
-    // Target S = 0  → innovation
-    const Vector3 inno = -xext.template segment<3>(OFF_S);
+    // Innovation (target S = 0)
+    Vector3 inno = - xext.template segment<3>(OFF_S);
 
-    // Innovation covariance and PHᵀ from the CURRENT full covariance
+    // Innovation covariance and PHt
     Matrix3 S_mat = H * Pext * H.transpose() + R_S;
     Matrix<T, NX, 3> PHt = Pext * H.transpose();
 
-    // Robust LDLᵀ (with tiny jitter if needed)
+    // Solve for K
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        const T eps = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
-        S_mat += Matrix3::Identity() * eps;
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-4) * R_S.norm());
         ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return; // bail cleanly
+        if (ldlt.info() != Eigen::Success) return;
     }
-
-    // Optional: Mahalanobis gate for rare spikes (≈5σ)
-    const T maha2 = (inno.transpose() * ldlt.solve(inno))(0,0);
-    if (maha2 > T(25)) return;
-
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // HARD BLOCKS: forbid S→(att, gyro bias, a_w) mean updates
-    K.template block<3,3>(0, 0).setZero();           // attitude rows
+    // block attitude from being updated by this pseudo-meas
+    K.template block<3,3>(0, 0).setZero();
     if constexpr (with_gyro_bias) {
-        K.template block<3,3>(3, 0).setZero();       // gyro-bias rows
+        K.template block<3,3>(3, 0).setZero();  // block gyro bias update
     }
-    K.template block<3,3>(OFF_AW, 0).setZero();      // a_w rows  <<< critical
 
-    // (Optional) also block accel-bias if you don't want integral drift to change it:
-    // if constexpr (with_accel_bias) {
-    //     K.template block<3,3>(OFF_BA, 0).setZero();
-    // }
-
-    // State update — linear subsystem only
+    // State update (linear states only get corrected)
     xext.noalias() += K * inno;
 
-    // Joseph-form covariance update on FULL Pext
+    // Joseph covariance update
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
+    Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Optional hygiene: decorrelate S ↔ a_w so future S-updates can’t leak into a_w via P
-    Pext.template block<3,3>(OFF_S, OFF_AW).setZero();
-    Pext.template block<3,3>(OFF_AW, OFF_S).setZero();
+    applyQuaternionCorrectionFromErrorState();
+    xext.template head<3>().setZero();
 
-    // Do NOT touch quaternion or attitude-error here
-    // (no applyQuaternionCorrectionFromErrorState(); no zeroing xext.head<3>())
-
-    // Mirror base block for compatibility
+    // Mirror base covariance for compatibility
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
@@ -780,7 +764,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // Linear subsystem [v,p,S,a_w]
+    // === Linear subsystem [v,p,S,a_w] ===
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
