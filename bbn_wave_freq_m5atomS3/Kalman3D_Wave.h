@@ -619,17 +619,23 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag)
 {
-    // Geometry gate: skip if magnetometer is nearly vertical
+    // Geometry gate (skip if yaw is unobservable: mag nearly vertical wrt body "down")
     Vector3 zb_b = R_wb() * Vector3(0,0,1);        // body "down" axis
     Vector3 mb   = mag.normalized();
     Vector3 mb_h = mb - (mb.dot(zb_b)) * zb_b;     // horizontal component
     if (mb_h.norm() < T(0.1)) {
-        return; // yaw unobservable, skip this update
+        return; // yaw unobservable this step; let gyro carry yaw
     }
 
-    // Proceed as normal if geometry is good
-    Vector3 const v2hat = magnetometer_measurement_func();
-    measurement_update_partial(mag, v2hat, Rmag);
+    // Antipodal disambiguation: choose the magnetometer pole closest to prediction
+    const Vector3 v2hat = magnetometer_measurement_func(); // predicted body mag (from qref & v2ref)
+    Vector3 mag_eff = mag;
+    if (v2hat.dot(mag_eff) < T(0)) {
+        mag_eff = -mag_eff; // flip to nearest pole so residual can't request ~180°
+    }
+
+    // Standard 3D mag update (unchanged math/scaling)
+    measurement_update_partial(mag_eff, v2hat, Rmag);
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
