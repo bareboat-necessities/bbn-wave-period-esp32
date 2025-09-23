@@ -750,6 +750,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
+
+    // Require stable attitude
+    const T att_tr = Pext(0,0) + Pext(1,1) + Pext(2,2);
+    if (att_tr > T(0.03)) return; // ~10 deg 1σ-ish; tune
+
+    // Require usable yaw observability at this instant
+    const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
+    const Vector3 v2hat = magnetometer_measurement_func();
+    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
+    const T rel_h = (Hb*v2hat).norm() / std::max(T(1e-6), v2hat.norm());
+    if (rel_h < T(0.2)) return;
+
     // H picks S block only
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
     H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
