@@ -579,25 +579,64 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag)
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_partial(
+    const Eigen::Ref<const Vector3>& meas_,
+    const Eigen::Ref<const Vector3>& vhat_,
+    const Eigen::Ref<const Matrix3>& Rm)
 {
-    // Geometry gate (skip if yaw is unobservable: mag nearly vertical wrt body "down")
-    Vector3 zb_b = R_wb() * Vector3(0,0,1);        // body "down" axis
-    Vector3 mb   = mag.normalized();
-    Vector3 mb_h = mb - (mb.dot(zb_b)) * zb_b;     // horizontal component
-    if (mb_h.norm() < T(0.1)) {
-        return; // yaw unobservable this step; let gyro carry yaw
+    // Normalize inputs (safe for magnetometer usage; keeps residual unitless)
+    Vector3 meas = meas_;
+    Vector3 vhat = vhat_;
+    T nm_meas = meas.norm();
+    T nm_vhat = vhat.norm();
+    if (nm_meas > T(1e-12)) meas /= nm_meas;
+    if (nm_vhat > T(1e-12)) vhat /= nm_vhat;
+
+    // Linearized measurement Jacobian (3 x NX): d(meas) / d(att-error) = -[vhat]_x
+    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
+
+    // Innovation
+    Vector3 inno = meas - vhat;
+
+    // Baseline innovation covariance S = C P C^T + R
+    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
+    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+
+    // Factor S and compute Mahalanobis distance
+    Eigen::LDLT<Matrix3> ldlt(S_mat);
+    if (ldlt.info() != Eigen::Success) {
+        // jitter for numerical safety
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+    // md2 = inno^T S^{-1} inno
+    Vector3 Sinv_inno = ldlt.solve(inno);
+    T md2 = inno.dot(Sinv_inno);
+
+    // Innovation gate / adaptive down-weighting
+    // 3 dof chi-square gates: 95% ≈ 7.81, 99% ≈ 11.34, 99.9% ≈ 16.27
+    const T chi2_gate = T(11.34); // fairly strict gate for yaw flips
+    Matrix3 Rm_eff = Rm;
+    if (md2 > chi2_gate) {
+        return; // skip update this step
     }
 
-    // Antipodal disambiguation: choose the magnetometer pole closest to prediction
-    const Vector3 v2hat = magnetometer_measurement_func(); // predicted body mag (from qref & v2ref)
-    Vector3 mag_eff = mag;
-    if (v2hat.dot(mag_eff) < T(0)) {
-        mag_eff = -mag_eff; // flip to nearest pole so residual can't request ~180°
-    }
+    // Kalman gain with (possibly) inflated R
+    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // Standard 3D mag update (unchanged math/scaling)
-    measurement_update_partial(mag_eff, v2hat, Rmag);
+    // State update
+    xext.noalias() += K * inno;
+
+    // Joseph-form covariance update (numerically robust) + symmetrize
+    MatrixNX I = MatrixNX::Identity();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm_eff * K.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose());
+
+    // Apply quaternion small-angle correction & zero the attitude error substate
+    applyQuaternionCorrectionFromErrorState();
+    xext.template head<3>().setZero();
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
