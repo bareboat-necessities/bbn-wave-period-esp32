@@ -699,31 +699,30 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     // Desired S = 0 → innovation
     const Vector3 inno = -xext.template segment<3>(OFF_S);
 
-    // Use projected covariance to decouple S from attitude/bias
-    MatrixNX Ptmp = Pext;
-    Ptmp.template block<BASE_N,3>(0,     OFF_S).setZero();
-    Ptmp.template block<3,BASE_N>(OFF_S, 0    ).setZero();
-
     Matrix3 S_mat = H * Ptmp * H.transpose() + R_S;
     Matrix<T, NX, 3> PHt = Ptmp * H.transpose();
 
     // LDLᵀ with jitter if needed
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        const T eps = std::max(std::numeric_limits<T>::epsilon(), T(1e-4) * R_S.norm());
+        xext.template head<3>().setZero();  // clear small angle error
+        K.template block<3,3>(0, 0).setZero();  // block attitude update
+        K.template block<3,3>(OFF_AW, 0).setZero();  // block accel update
+        const T eps = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
         S_mat += Matrix3::Identity() * eps;
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) {
-            // Skip update but clear small-angle error so no yaw bomb later
-            xext.template head<3>().setZero();
-            K.template block<3,3>(OFF_AW, 0).setZero();
             return;
         }
     }
 
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // State update (linear only)
+    if constexpr (with_gyro_bias) {
+        K.template block<3,3>(3, 0).setZero();
+    }
+
+    // State update (linear)
     xext.noalias() += K * inno;
 
     // Joseph covariance update with full Pext
