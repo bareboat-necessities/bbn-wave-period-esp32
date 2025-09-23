@@ -692,42 +692,43 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
-    // H picks S block only
+    // H selects only the S block
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
     H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
 
-    // Innovation (target S = 0)
-    Vector3 inno = - xext.template segment<3>(OFF_S);
+    // Desired S = 0  → innovation
+    Vector3 inno = -xext.template segment<3>(OFF_S);
 
-    // Innovation covariance and PHt
+    // Innovation covariance and PHᵀ
     Matrix3 S_mat = H * Pext * H.transpose() + R_S;
     Matrix<T, NX, 3> PHt = Pext * H.transpose();
 
-    // Solve for K
+    // Solve for K with a tiny jitter if needed
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        return;
+        const T eps = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
+        S_mat += Matrix3::Identity() * eps;
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
     }
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // Key: prevent attitude (and optionally gyro bias) from being updated by this pseudo-meas
-    // Always block attitude:
-    K.template block<3,3>(0, 0).setZero();
-    // Optionally also block gyro bias (uncomment the next 3 lines if you want to freeze b_g here):
+    // *** Critical: forbid attitude (and optionally gyro-bias) mean updates from this pseudo-measurement
+    K.template block<3,3>(0, 0).setZero();        // block attitude rows
     if constexpr (with_gyro_bias) {
-        K.template block<3,3>(3, 0).setZero();
+        K.template block<3,3>(3, 0).setZero();    // block gyro-bias rows
     }
 
-    // State update (linear states only get corrected)
+    // State update (linear subsystem only)
     xext.noalias() += K * inno;
 
-    // Joseph covariance update
+    // Joseph-form covariance update (attitude covariance can still change via cross-terms, which is fine)
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
+    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
 
-    applyQuaternionCorrectionFromErrorState(); 
-    xext.template head<3>().setZero();
+    // *** Do NOT touch the quaternion or attitude-error states here ***
+    // (No applyQuaternionCorrectionFromErrorState(); no zeroing xext.head<3>())
 
     // Mirror base covariance for compatibility
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
