@@ -690,43 +690,48 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
   qref.normalize();
 }
 
-//  Extended pseudo-measurement: zero S
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
-    // Build measurement matrix H (picks S block)
+    // H picks S block only
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
     H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
 
-    // Innovation (desired S = 0)
-    Vector3 z = Vector3::Zero();
-    Vector3 inno = z - H * xext;
+    // Innovation (target S = 0)
+    Vector3 inno = - xext.template segment<3>(OFF_S);
 
-    // Innovation covariance
+    // Innovation covariance and PHt
     Matrix3 S_mat = H * Pext * H.transpose() + R_S;
-
-    // PHt (NX x 3)
     Matrix<T, NX, 3> PHt = Pext * H.transpose();
 
-    // Factor S and compute K = PHt * S^{-1}
+    // Solve for K
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());  // small jitter; epsilon may be too tiny in practice
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // Update
+    // **** Key: prevent attitude (and optionally gyro bias) from being updated by this pseudo-meas ****
+    // Always block attitude:
+    K.template block<3,3>(0, 0).setZero();
+    // Optionally also block gyro bias (uncomment the next 3 lines if you want to freeze b_g here):
+    if constexpr (with_gyro_bias) {
+        K.template block<3,3>(3, 0).setZero();
+    }
+
+    // State update (linear states only get corrected)
     xext.noalias() += K * inno;
 
-    // Joseph form + symmetrize
+    // Joseph covariance update
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Quaternion correction + zero small-angle + mirror base
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
+    // *** Do NOT touch quaternion or xext.head<3>() here ***
+    // No applyQuaternionCorrectionFromErrorState(); no zeroing attitude error.
+
+    // Mirror base covariance for compatibility
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
