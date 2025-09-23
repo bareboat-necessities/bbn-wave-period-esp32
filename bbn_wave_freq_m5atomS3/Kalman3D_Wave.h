@@ -677,11 +677,32 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetri
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState() {
-  // xext(0..2) contains the small-angle error — same as original code; create corr quaternion and apply
-  Eigen::Quaternion<T> corr(T(1), half * xext(0), half * xext(1), half * xext(2));
-  corr.normalize();
-  qref = qref * corr;
-  qref.normalize();
+    using std::sqrt;
+    using std::sin;
+    using std::cos;
+
+    // Small-angle error in xext(0..2)
+    Eigen::Matrix<T,3,1> dtheta = xext.template head<3>();
+    T angle = dtheta.norm();
+
+    Eigen::Quaternion<T> corr;
+    if (angle < T(1e-8)) {
+        // First-order fallback for very small angles
+        corr.w() = T(1);
+        corr.x() = T(0.5) * dtheta.x();
+        corr.y() = T(0.5) * dtheta.y();
+        corr.z() = T(0.5) * dtheta.z();
+    } else {
+        // Exact Rodrigues / exponential map
+        T half_ang = T(0.5) * angle;
+        T s = sin(half_ang) / angle;
+        corr.w() = cos(half_ang);
+        corr.vec() = s * dtheta;
+    }
+
+    corr.normalize();
+    qref = qref * corr;
+    qref.normalize();
 }
 
 // normalize quaternion
