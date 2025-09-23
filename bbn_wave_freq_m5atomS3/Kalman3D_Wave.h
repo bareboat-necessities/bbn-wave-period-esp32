@@ -578,7 +578,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
     const T cos_tilt = std::max(T(-1), std::min(T(1), gb.dot(Vector3(0,0,1))));
     const T tilt = std::acos(cos_tilt);
-    const T MAX_TILT = T(60.0 * M_PI / 180.0); // disable mag update when tilt > 60°
+    const T MAX_TILT = T(50.0 * M_PI / 180.0); // disable mag update when tilt > 60°
     if (tilt > MAX_TILT) return;
 
     // -----------------------------------------------------------------------
