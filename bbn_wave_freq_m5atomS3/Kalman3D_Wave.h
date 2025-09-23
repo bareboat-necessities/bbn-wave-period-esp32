@@ -575,7 +575,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 {
     const Vector3 v2hat = magnetometer_measurement_func();
 
-    // Norm/gating on raw 3D vectors
+    // Norm checks
     T n_meas = mag_meas_body.norm();
     T n_pred = v2hat.norm();
     if (n_meas < T(1e-6) || n_pred < T(1e-6)) return;
@@ -587,45 +587,38 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     // thresholds
     const T DOT_DANGEROUS = T(0.2);   // |dot| < 0.2 (~>78°) → ill-conditioned
     const T YAW_CLAMP     = T(0.105); // ~6° max yaw correction per update
-    const T YAW_STEP_HARD = T(0.35);  // ~20° hard gate (reject update)
+    const T YAW_STEP_HARD = T(0.35);  // ~20° hard gate
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // SAFE → full 3D update (with hemisphere disambiguation)
+        // SAFE → full 3D update
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
         measurement_update_partial(meas_fixed, v2hat, Rmag);
         return;
     }
 
     // === DANGEROUS → yaw-only (horizontal) update ===
-
-    // body gravity dir (down) from current attitude
     const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
-    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose(); // project to horizontal plane
+    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
 
     Vector3 m_h = Hb * mag_meas_body;
     Vector3 v_h = Hb * v2hat;
-
     T nm = m_h.norm(), nv = v_h.norm();
-    if (nm < T(1e-6) || nv < T(1e-6)) return; // no horizontal info
+    if (nm < T(1e-6) || nv < T(1e-6)) return;
 
-    // hemisphere disambiguation on horizontal components (with hysteresis)
+    // Hemisphere disambiguation with hysteresis
     Vector3 m_hn = m_h / nm, v_hn = v_h / nv;
-    const T COS_HYST = std::cos(T(20.0) * M_PI / T(180.0)); // ~20°
+    const T COS_HYST = std::cos(T(20.0) * M_PI / T(180.0));
     if (m_hn.dot(v_hn) < COS_HYST) m_h = -m_h;
 
-    // Residual (disambiguated horizontal)
     Vector3 r = m_h - v_h;
 
-    // Jacobian: H = Hb * (-skew(v2hat))
     Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
     Cext.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
 
-    // Project noise into horizontal plane
     Matrix3 Rproj = Hb * Rmag * Hb.transpose();
-
-    // Kalman gain
     Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rproj;
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+    Matrix<T,NX,3> PCt = Pext * Cext.transpose();
+
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
         S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(),
@@ -633,48 +626,42 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+    Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // --- PRE-GATE: predict yaw increment before applying
+    // Proposed update
     Eigen::Matrix<T,NX,1> dx = K * r;
     T dpsi_pred = dx.template head<3>().dot(gb);
-    if (std::abs(dpsi_pred) > YAW_STEP_HARD) {
-        return; // reject dangerous yaw jump
-    }
+    if (std::abs(dpsi_pred) > YAW_STEP_HARD) return;
 
-    // --- RESIDUAL-IMPROVEMENT TEST ---
-    // Compute predicted horizontal mag before & after applying dx
-    Eigen::Quaternion<T> q_test = qref; 
+    // Residual-improvement test (always on)
+    Eigen::Quaternion<T> q_test = qref;
     Eigen::Quaternion<T> corr(T(1),
                               half * dx(0),
                               half * dx(1),
                               half * dx(2));
     q_test = (q_test * corr).normalized();
-
     Vector3 v2hat_new = (q_test.toRotationMatrix()) * v2ref;
     Vector3 v_h_new   = Hb * v2hat_new;
 
     T cos_before = (m_h.normalized()).dot(v_h.normalized());
     T cos_after  = (m_h.normalized()).dot(v_h_new.normalized());
-    if (cos_after < cos_before) {
-        return; // reject update that moves fit in wrong direction
-    }
+    if (cos_after < cos_before) return;
 
-    // State update
+    // Apply update
     xext.noalias() += dx;
 
-    // Limit the attitude error to yaw only and clamp magnitude
+    // Limit to yaw-only and clamp
     Vector3 dth = xext.template head<3>();
     T dpsi = dth.dot(gb);
     T dpsi_clamped = std::max(-YAW_CLAMP, std::min(YAW_CLAMP, dpsi));
     xext.template head<3>() = dth - gb * dpsi + gb * dpsi_clamped;
 
-    // Joseph covariance update
+    // Covariance update
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rproj * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Apply correction
+    // Final quaternion correction
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
 }
