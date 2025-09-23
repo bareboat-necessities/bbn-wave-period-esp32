@@ -487,7 +487,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vecto
 
     // Accel magnitude sanity check
     T g_meas = acc.norm();
-    if (std::abs(g_meas - gravity_magnitude_) > T(1.2 * gravity_magnitude_)) {
+    if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
         // Skip accel part, do mag-only update instead
         measurement_update_mag_only(mag);
         return;
@@ -574,6 +574,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(Vector3 const& acc_meas, T tempC) {
+
+    // Accel magnitude sanity check
+    T g_meas = acc_meas.norm();
+    if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
+        return; // reject this update
+    }
+
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
     // Cext: (3 x NX)
