@@ -716,9 +716,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
         if (ldlt.info() != Eigen::Success) return;
     }
 
-    // χ²(3) gate @99% ≈ 11.34
+    // χ²(3) gate 
     const T mahal2 = r.dot(ldlt.solve(r));
-    if (!(mahal2 < T(11.34))) return;
+    if (!(mahal2 < T(30.0))) return;
 
     // PHt = S columns of P
     Eigen::Matrix<T,NX,3> PHt = Pext.template block<NX,3>(0, OFF_S);
