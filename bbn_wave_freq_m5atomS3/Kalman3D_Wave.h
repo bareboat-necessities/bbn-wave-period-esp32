@@ -704,11 +704,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Matrix<T, NX, 3> PHt = Pext * H.transpose();
 
     // Solve for K
+    bool with_jitter = false;
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
         S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-4) * R_S.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
+        with_jitter = true;
     }
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
@@ -726,8 +728,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
+    if (!with_jitter) {
+        applyQuaternionCorrectionFromErrorState();
+        xext.template head<3>().setZero();
+    }
 
     // Mirror base covariance for compatibility
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
