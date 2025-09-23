@@ -237,6 +237,9 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     T tau_aw = T(2.3);            // correlation time [s], tune 1–5 s for sea states
     Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(2.4*2.4); // stationary variance diag [ (m/s^2)^2 ]
 
+    int pseudo_update_counter_ = 0;   // counts time_update calls
+    static constexpr int PSEUDO_UPDATE_PERIOD = 10; // every 10th update
+
     // convenience getters
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
     Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body→world
@@ -475,7 +478,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
     // Drift correction on S
-    applyIntegralZeroPseudoMeas();
+    if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
+        applyIntegralZeroPseudoMeas();
+        pseudo_update_counter_ = 0;
+    }
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
