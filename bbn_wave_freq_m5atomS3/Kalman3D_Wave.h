@@ -564,9 +564,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag) {
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag_meas_body) {
     Vector3 const v2hat = magnetometer_measurement_func();
-    measurement_update_partial(mag, v2hat, Rmag);
+
+    // If measurement is closer to -v2hat than to +v2hat, flip it.
+    T dotp = mag_meas_body.dot(v2hat);
+    Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
+
+    measurement_update_partial(meas_fixed, v2hat, Rmag);
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
