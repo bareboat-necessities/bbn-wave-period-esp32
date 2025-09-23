@@ -559,6 +559,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
+    // Remove yaw component from small-angle correction coming from accel
+    {
+        const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized(); // gravity dir in body
+        Vector3 dth = xext.template head<3>();
+        // Project out yaw (component along gb)
+        xext.template head<3>() = dth - gb * dth.dot(gb);
+    }
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
 }
