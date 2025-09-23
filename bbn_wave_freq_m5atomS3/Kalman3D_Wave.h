@@ -743,51 +743,43 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Matrix<T, NX, 3> PHt = Pext * H.transpose();
 
     // Solve for K
-    bool with_jitter = false;
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-7) * R_S.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-        with_jitter = true;
-    }
-    Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
+// Solve for K
+Eigen::LDLT<Matrix3> ldlt(S_mat);
+if (ldlt.info() != Eigen::Success) {
+    S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-7) * R_S.norm());
+    ldlt.compute(S_mat);
+    if (ldlt.info() != Eigen::Success) return;
+}
 
-    // === Block attitude from being updated by S pseudo-meas ===
-    // Gravity dir in body frame
-    const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
-    // Projection to remove yaw component (parallel to gb)
-    Matrix3 Proj = Matrix3::Identity() - gb * gb.transpose();
+// == block attitude (and optionally gyro bias) BEFORE computing K ==
+Matrix<T, NX, 3> PHt = Pext * H.transpose();
+PHt.template block<3,3>(0,0).setZero();        // no attitude update from S
+if constexpr (with_gyro_bias) {
+    PHt.template block<3,3>(3,0).setZero();    // no gyro-bias update from S
+}
+// If you also want S not to steer a_w, uncomment:
+// PHt.template block<3,3>(OFF_AW,0).setZero();
 
-    // Project out yaw from the attitude block of K
-    Eigen::Matrix<T,3,3> Katt = K.template block<3,3>(0,0);
-    K.template block<3,3>(0,0) = Proj * Katt;
+Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    if constexpr (with_gyro_bias) {
-        K.template block<3,3>(3,0).setZero();  // block gyro bias update
-    }
-    // Optionally block a_w if you want S to never affect it:
-    // K.template block<3,3>(OFF_AW,0).setZero();
+// State update
+xext.noalias() += K * inno;
 
-    // State update (linear states only get corrected, yaw blocked)
-    xext.noalias() += K * inno;
+// Joseph covariance update
+MatrixNX I = MatrixNX::Identity();
+Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
+Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Joseph covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
+// === hard decorrelate S with attitude so it won’t leak back ===
+Pext.template block<3,3>(OFF_S, 0).setZero();
+Pext.template block<3,3>(0,      OFF_S).setZero();
+if constexpr (with_gyro_bias) {
+    Pext.template block<3,3>(OFF_S, 3).setZero();
+    Pext.template block<3,3>(3,      OFF_S).setZero();
+}
 
-    // === Decorrelate S with yaw so it won’t creep back ===
-    // yaw axis unit vector (same as gb)
-    Eigen::Matrix<T,3,3> gb_outer = gb * gb.transpose();
-    // Zero yaw rows/cols in S–att cross-cov
-    Pext.template block<3,3>(OFF_S,0) =
-        Pext.template block<3,3>(OFF_S,0) * (Matrix3::Identity() - gb_outer);
-    Pext.template block<3,3>(0,OFF_S) =
-        (Matrix3::Identity() - gb_outer) * Pext.template block<3,3>(0,OFF_S);
-
-    // Mirror base covariance for compatibility
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+// Mirror base covariance
+Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
