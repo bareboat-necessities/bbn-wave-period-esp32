@@ -753,8 +753,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pext = T(0.5) * (Pext + Pext.transpose());
 
     if (!with_jitter) {
-        applyQuaternionCorrectionFromErrorState();
-        xext.template head<3>().setZero();
+        //applyQuaternionCorrectionFromErrorState();
+        //xext.template head<3>().setZero();
     }
 
     // Mirror base covariance for compatibility
