@@ -521,8 +521,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     };
 
     // Compute both candidates: using m and using -m (antipodal). Pick the smaller |error|.
-    const T dpsi1 = wrap_pi_T<T>( yaw_err_from(mhat_h,  mb_h) );
-    const T dpsi2 = wrap_pi_T<T>( yaw_err_from(mhat_h, -mb_h) );
+    const T dpsi1 = wrap_pi_T(yaw_err_from(mhat_h,  mb_h));
+    const T dpsi2 = wrap_pi_T(yaw_err_from(mhat_h, -mb_h));
     const T dpsi  = (std::abs(dpsi1) <= std::abs(dpsi2)) ? dpsi1 : dpsi2;
 
     // Robust heading gate (prevents huge pulls / snaps)
