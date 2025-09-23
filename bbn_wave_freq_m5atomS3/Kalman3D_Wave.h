@@ -262,6 +262,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
                                     Eigen::Matrix<T,12,12>& Qd) const;
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
+
+    static T wrap_pi_T(T a);
 };
 
 // Implementation
@@ -478,7 +480,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-static inline T wrap_pi_T(T a) {
+T Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::wrap_pi_T(T a) {
     const T pi = std::acos(T(-1));
     a = std::fmod(a + pi, T(2)*pi);
     if (a < T(0)) a += T(2)*pi;
