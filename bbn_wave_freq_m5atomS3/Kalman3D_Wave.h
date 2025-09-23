@@ -587,7 +587,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 
     // thresholds
     const T DOT_DANGEROUS = T(0.2);  // |dot| < 0.2 (~>78°) → ill-conditioned
-    const T YAW_CLAMP     = T(0.35); // ~20° max yaw correction per update
+    const T YAW_CLAMP     = T(0.105); // ~6° max yaw correction per update
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
         // SAFE → full 3D update (with hemisphere disambiguation to avoid 180° flips)
