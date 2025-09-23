@@ -474,7 +474,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
-    // Optional drift correction on S
+    // Drift correction on S
     applyIntegralZeroPseudoMeas();
 }
 
