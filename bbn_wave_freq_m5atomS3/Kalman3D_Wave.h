@@ -567,7 +567,7 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag_meas_body) {
     Vector3 const v2hat = magnetometer_measurement_func();
 
-    // --- Symmetric gating for dangerous geometry ---
+    // Symmetric gating for dangerous geometry
     T n_meas = mag_meas_body.norm();
     T n_pred = v2hat.norm();
     if (n_meas < T(1e-6) || n_pred < T(1e-6)) {
@@ -583,7 +583,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     if (std::abs(dotp) < T(0.2)) {
         return;
     }
-    // ----------------------------------------------
 
     // Safe → do normal 3D update
     measurement_update_partial(mag_meas_body, v2hat, Rmag);
