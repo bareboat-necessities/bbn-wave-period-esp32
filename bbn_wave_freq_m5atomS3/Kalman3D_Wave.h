@@ -478,56 +478,79 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag)
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag_meas_body)
 {
-    // Body "down" axis from current attitude
-    const Vector3 zb_b = R_wb() * Vector3(0,0,1);
+    // Predicted mag in body
+    const Vector3 v2hat_b = magnetometer_measurement_func(); // = R_wb() * v2ref
 
-    // Measured & predicted mag in body
-    Vector3 mb    = mag;
-    Vector3 mhatb = magnetometer_measurement_func();
+    // 1) Antipodal disambiguation: choose the pole closest to prediction
+    Vector3 mb = mag_meas_body;
+    if (v2hat_b.dot(mb) < T(0)) mb = -mb;
 
-    // Horizontal projections (remove vertical component)
-    Vector3 mb_h    = mb    - (mb.dot(zb_b))   * zb_b;
-    Vector3 mhat_h  = mhatb - (mhatb.dot(zb_b))* zb_b;
+    // 2) Normalize both (unit vector model)
+    T nm_meas = mb.norm();
+    T nm_hat  = v2hat_b.norm();
+    if (nm_meas < T(1e-8) || nm_hat < T(1e-8)) return;
+    mb      /= nm_meas;
+    Vector3 vhat = v2hat_b / nm_hat;
 
-    const T nm_meas_h = mb_h.norm();
-    const T nm_hat_h  = mhat_h.norm();
+    // 3) Build measurement Jacobian Cext (3 x NX) for a unit-vector measurement: d(b)/dδθ ≈ -[vhat]_x
+    Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
+    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
 
-    // Yaw unobservable if horizontal field is tiny
-    if (nm_meas_h < T(1e-6) || nm_hat_h < T(1e-6)) return;
+    // 4) Innovation r = m - vhat (both unit). This is small-angle-consistent for the EKF.
+    Vector3 inno = mb - vhat;
 
-    // Unit horizontals
+    // 5) Down-weight vertical (along body "down" axis) so mag cannot bias roll/pitch
+    //    R_eff = Rmag + sigma_vert^2 * (z_b z_b^T), with z_b = [0,0,1] in body
+    const Vector3 zb_b = R_wb() * Vector3(0,0,1); // body "down" axis from current attitude
+    // choose a big vertical std (in unit-vector space). Tune 0.20..0.50 (rad-equivalent).
+    const T sigma_vert = T(0.35);
+    Matrix3 R_eff = Rmag;
+    R_eff.noalias() += (sigma_vert * sigma_vert) * (zb_b * zb_b.transpose());
+
+    // 6) Heading-based gate (compute yaw residual using horizontals but do full 3D update if sane)
+    Vector3 mb_h   = mb   - (mb.dot(zb_b))   * zb_b;   // measured horizontal
+    Vector3 vhat_h = vhat - (vhat.dot(zb_b)) * zb_b;   // predicted horizontal
+    T nm_meas_h = mb_h.norm();
+    T nm_hat_h  = vhat_h.norm();
+    if (nm_meas_h < T(1e-6) || nm_hat_h < T(1e-6)) {
+        // Yaw unobservable this step
+        return;
+    }
     mb_h   /= nm_meas_h;
-    mhat_h /= nm_hat_h;
+    vhat_h /= nm_hat_h;
 
-    // Signed heading error about body Z:
-    // sin = (mhat × m).z, cos = mhat · m  (z taken along body down axis)
-    const T cos_d = mhat_h.dot(mb_h);
-    const T sin_d = (mhat_h.cross(mb_h)).dot(zb_b);
+    // heading error dpsi in (-pi,pi]
+    const T cos_d = vhat_h.dot(mb_h);
+    const T sin_d = (vhat_h.cross(mb_h)).dot(zb_b);
     const T dpsi  = std::atan2(sin_d, std::max(T(-1), std::min(T(1), cos_d)));
 
-    // EKF scalar update on yaw (δθ_z) only
-    // Measurement model: z = 0 ≈ dpsi + n, with sensitivity to attitude-error ≈ [0 0 1]
-    Eigen::Matrix<T,1,NX> Cext; Cext.setZero();
-    Cext(0, 2) = T(1);  // only the z (yaw) small-angle
+    // gate by heading (e.g., 60 deg). If too large, skip this update to avoid wild pulls.
+    const T gate_deg = T(60.0) * T(M_PI/180.0);
+    if (std::abs(dpsi) > gate_deg) {
+        return; // reject outlier; gyro will carry yaw until mag recovers
+    }
 
-    // Choose yaw noise ~ (mag noise / |B_h|^2). Use avg of horizontal Rmag entries.
-    const T Bh2 = nm_hat_h*nm_hat_h + T(1e-6);
-    const T Rxy = (Rmag(0,0) + Rmag(1,1)) * T(0.5);
-    const T Ryaw = std::max(T(1e-6), Rxy / Bh2);   // units: rad^2 (approx)
+    // 7) Compute S, K, and update (Joseph form)
+    Matrix3 S_mat = Cext * Pext * Cext.transpose() + R_eff;
+    Matrix<T,NX,3> PCt = Pext * Cext.transpose();
 
-    // S, K
-    const T S = (Cext * Pext * Cext.transpose())(0,0) + Ryaw;
-    Eigen::Matrix<T,NX,1> K = (Pext * Cext.transpose()) / S;
+    Eigen::LDLT<Matrix3> ldlt(S_mat);
+    if (ldlt.info() != Eigen::Success) {
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_eff.norm());
+        ldlt.compute(S_mat);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+    Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // State & covariance
-    xext.noalias() += K * (-dpsi);   // target 0, innovation = -dpsi
+    xext.noalias() += K * inno;
+
     MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + (K * Ryaw) * K.transpose();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R_eff * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Apply quaternion correction and zero attitude-error substate
+    // 8) Apply quaternion correction & zero attitude-error substate
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
