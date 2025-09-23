@@ -696,41 +696,50 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
     H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
 
-    // Desired S = 0  → innovation
-    Vector3 inno = -xext.template segment<3>(OFF_S);
+    // Desired S = 0 → innovation
+    const Vector3 inno = -xext.template segment<3>(OFF_S);
 
-    // Innovation covariance and PHᵀ
-    Matrix3 S_mat = H * Pext * H.transpose() + R_S;
-    Matrix<T, NX, 3> PHt = Pext * H.transpose();
+    // Use projected covariance to decouple S from attitude/bias
+    MatrixNX Ptmp = Pext;
+    Ptmp.template block<BASE_N,3>(0,     OFF_S).setZero();
+    Ptmp.template block<3,BASE_N>(OFF_S, 0    ).setZero();
 
-    // Solve for K with a tiny jitter if needed
+    Matrix3 S_mat = H * Ptmp * H.transpose() + R_S;
+    Matrix<T, NX, 3> PHt = Ptmp * H.transpose();
+
+    // LDLᵀ with jitter if needed
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
         const T eps = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
         S_mat += Matrix3::Identity() * eps;
         ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
+        if (ldlt.info() != Eigen::Success) {
+            // Skip update but clear small-angle error so no yaw bomb later
+            xext.template head<3>().setZero();
+            return;
+        }
     }
+
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // *** Critical: forbid attitude (and optionally gyro-bias) mean updates from this pseudo-measurement
-    K.template block<3,3>(0, 0).setZero();        // block attitude rows
+    // Forbid attitude (+gyro bias) mean update
+    K.template block<3,3>(0,0).setZero();
     if constexpr (with_gyro_bias) {
-        K.template block<3,3>(3, 0).setZero();    // block gyro-bias rows
+        K.template block<3,3>(3,0).setZero();
     }
 
-    // State update (linear subsystem only)
+    // State update (linear only)
     xext.noalias() += K * inno;
 
-    // Joseph-form covariance update (attitude covariance can still change via cross-terms, which is fine)
+    // Joseph covariance update with full Pext
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
+    Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // *** Do NOT touch the quaternion or attitude-error states here ***
-    // (No applyQuaternionCorrectionFromErrorState(); no zeroing xext.head<3>())
+    // Do not touch quaternion here, but always zero attitude error vector
+    xext.template head<3>().setZero();
 
-    // Mirror base covariance for compatibility
+    // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
