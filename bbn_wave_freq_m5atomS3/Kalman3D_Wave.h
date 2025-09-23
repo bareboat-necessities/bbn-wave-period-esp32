@@ -91,7 +91,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     void time_update(Vector3 const& gyr, T Ts);
 
     // Measurement updates preserved (operate on extended state internally)
-    void measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC = tempC_ref);
     void measurement_update_acc_only(Vector3 const& acc, T tempC = tempC_ref);
     void measurement_update_mag_only(Vector3 const& mag);
 
@@ -477,58 +476,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
 
     // Optional drift correction on S
     applyIntegralZeroPseudoMeas();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vector3 const& acc, Vector3 const& mag, T tempC)
-{
-    // Predicted measurements
-    Vector3 v1hat = accelerometer_measurement_func(tempC); // depends on a_w
-
-    // Accel magnitude sanity check
-    T g_meas = acc.norm();
-    if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
-        // Skip accel part, do mag-only update instead
-        measurement_update_mag_only(mag);
-        return;
-    }
- 
-    Vector3 v2hat = magnetometer_measurement_func();
-
-    Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
-    // accel rows 0..2
-    Cext.template block<3,3>(0,0)        = -skew_symmetric_matrix(v1hat); // d f_b / d attitude
-    Cext.template block<3,3>(0,OFF_AW)   = R_wb(); // d f_b / d a_w
-    if constexpr (with_accel_bias) {
-        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
-    }
-    // mag rows 3..5 (unchanged)
-    Cext.template block<3,3>(3,0)        = -skew_symmetric_matrix(v2hat);
-
-    Vector6 yhat; yhat << v1hat, v2hat;
-    Vector6 y;    y << acc, mag;
-    Vector6 inno = y - yhat;
-
-    MatrixM S_mat = Cext * Pext * Cext.transpose() + R;
-    Matrix<T, NX, M> PCt = Pext * Cext.transpose();
-
-    Eigen::LDLT<MatrixM> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += MatrixM::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T, NX, M> K = PCt * ldlt.solve(MatrixM::Identity());
-
-    xext.noalias() += K * inno;
-
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * R * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
