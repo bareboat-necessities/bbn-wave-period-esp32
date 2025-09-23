@@ -484,6 +484,15 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update(Vecto
 {
     // Predicted measurements
     Vector3 v1hat = accelerometer_measurement_func(tempC); // depends on a_w
+
+    // Accel magnitude sanity check
+    T g_meas = acc.norm();
+    if (std::abs(g_meas - gravity_magnitude_) > T(1.2 * gravity_magnitude_)) {
+        // Skip accel part, do mag-only update instead
+        measurement_update_mag_only(mag);
+        return;
+    }
+ 
     Vector3 v2hat = magnetometer_measurement_func();
 
     Matrix<T, M, NX> Cext = Matrix<T, M, NX>::Zero();
