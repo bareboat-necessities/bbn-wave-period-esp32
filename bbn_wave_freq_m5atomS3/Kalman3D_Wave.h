@@ -583,7 +583,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     const T YAW_CLAMP     = T(0.35); // ~20° max yaw correction per update
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // ===== SAFE → full 3D update (with hemisphere disambiguation to avoid 180° flips) =====
+        // full 3D update (with hemisphere disambiguation to avoid 180° flips)
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
         measurement_update_partial(meas_fixed, v2hat, Rmag);
         return;
@@ -766,7 +766,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // === Linear subsystem [v,p,S,a_w] ===
+    // Linear subsystem [v,p,S,a_w]
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 Phi_lin; Phi_lin.setZero();
     Mat12 Qd_lin;  Qd_lin.setZero();
