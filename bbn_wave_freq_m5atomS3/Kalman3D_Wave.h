@@ -573,6 +573,16 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(
     Vector3 const& mag_meas_body)
 {
+    // -------- Tilt protection (skip mag when roll/pitch too large) ----------
+    // gb = world +Z (down) expressed in body. If gb aligns with body +Z, tilt=0.
+    const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
+    const T cos_tilt = std::max(T(-1), std::min(T(1), gb.dot(Vector3(0,0,1))));
+    const T tilt = std::acos(cos_tilt);
+    const T MAX_TILT = T(60.0 * M_PI / 180.0); // disable mag update when tilt > 60°
+    if (tilt > MAX_TILT) return;
+
+    // -----------------------------------------------------------------------
+    // Predicted mag in body
     const Vector3 v2hat = magnetometer_measurement_func();
 
     // Norm checks
@@ -580,83 +590,107 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     T n_pred = v2hat.norm();
     if (n_meas < T(1e-6) || n_pred < T(1e-6)) return;
 
-    Vector3 meas_n = mag_meas_body / n_meas;
-    Vector3 pred_n = v2hat       / n_pred;
-    T dotp = meas_n.dot(pred_n);
+    // Normalize for comparison/decoupling from magnitude
+    const Vector3 meas_n = mag_meas_body / n_meas;
+    const Vector3 pred_n = v2hat        / n_pred;
+    const T dotp = meas_n.dot(pred_n);
 
     // thresholds
-    const T DOT_DANGEROUS = T(0.2);   // |dot| < 0.2 (~>78°) → ill-conditioned
-    const T YAW_CLAMP     = T(0.105); // ~6° max yaw correction per update
-    const T YAW_STEP_HARD = T(0.35);  // ~20° hard gate
+    const T DOT_DANGEROUS = T(0.2);   // |dot| < 0.2 (~78°) → 3D update ill-conditioned
+    const T YAW_CLAMP     = T(0.105); // ~6° per update (in rad)
+    const T YAW_STEP_HARD = T(0.35);  // ~20° absolute hard gate (in rad)
 
+    // -------- If geometry is good, do safe full 3D (with hemisphere disamb.) --
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // SAFE → full 3D update
+        // pick hemisphere that agrees with prediction
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
         measurement_update_partial(meas_fixed, v2hat, Rmag);
         return;
     }
 
-    // === DANGEROUS → yaw-only (horizontal) update ===
-    const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
+    // -------------------- Yaw-only (horizontal) update path ------------------
+    // Project onto body horizontal plane (per current gravity direction)
     const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
 
     Vector3 m_h = Hb * mag_meas_body;
     Vector3 v_h = Hb * v2hat;
     T nm = m_h.norm(), nv = v_h.norm();
-    if (nm < T(1e-6) || nv < T(1e-6)) return;
+    if (nm < T(1e-6) || nv < T(1e-6)) return; // no horizontal info
 
-    // Hemisphere disambiguation with hysteresis
-    Vector3 m_hn = m_h / nm, v_hn = v_h / nv;
-    const T COS_HYST = std::cos(T(20.0) * M_PI / T(180.0));
-    if (m_hn.dot(v_hn) < COS_HYST) m_h = -m_h;
+    // Two-hypothesis: try both hemispheres in the horizontal plane
+    // r1 = m_h - v_h, r2 = (-m_h) - v_h
+    const Vector3 r1 = m_h - v_h;
+    const Vector3 r2 = (-m_h) - v_h;
 
-    Vector3 r = m_h - v_h;
-
+    // Jacobian for yaw-only: H = Hb * ( -skew(v2hat) )
     Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
     Cext.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
 
+    // Projected noise
     Matrix3 Rproj = Hb * Rmag * Hb.transpose();
+
+    // Kalman gain (shared for both hypotheses)
     Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rproj;
     Matrix<T,NX,3> PCt = Pext * Cext.transpose();
-
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
         S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(),
-                                               T(1e-6) * Rproj.norm());
+                                                T(1e-6) * Rproj.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
     Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // Proposed update
-    Eigen::Matrix<T,NX,1> dx = K * r;
-    T dpsi_pred = dx.template head<3>().dot(gb);
-    if (std::abs(dpsi_pred) > YAW_STEP_HARD) return;
+    // Build two candidate updates
+    const Eigen::Matrix<T,NX,1> dx1 = K * r1;
+    const Eigen::Matrix<T,NX,1> dx2 = K * r2;
 
-    // Residual-improvement test (always on)
-    Eigen::Quaternion<T> q_test = qref;
-    Eigen::Quaternion<T> corr(T(1),
-                              half * dx(0),
-                              half * dx(1),
-                              half * dx(2));
-    q_test = (q_test * corr).normalized();
-    Vector3 v2hat_new = (q_test.toRotationMatrix()) * v2ref;
-    Vector3 v_h_new   = Hb * v2hat_new;
+    // Hard yaw gate (predicted yaw increment component along gb)
+    const T dpsi1 = dx1.template head<3>().dot(gb);
+    const T dpsi2 = dx2.template head<3>().dot(gb);
+    const bool gate1 = std::abs(dpsi1) <= YAW_STEP_HARD;
+    const bool gate2 = std::abs(dpsi2) <= YAW_STEP_HARD;
 
-    T cos_before = (m_h.normalized()).dot(v_h.normalized());
-    T cos_after  = (m_h.normalized()).dot(v_h_new.normalized());
-    if (cos_after < cos_before) return;
+    if (!gate1 && !gate2) return; // both proposals are too large → reject
 
-    // Apply update
+    // Score each hypothesis by how much it improves horizontal alignment
+    // (cosine between measured and predicted horizontal field after applying dx)
+    auto score_after = [&](const Eigen::Matrix<T,NX,1>& dx)->T {
+        Eigen::Quaternion<T> q_try = qref;
+        Eigen::Quaternion<T> corr_try(T(1),
+                                      half * dx(0),
+                                      half * dx(1),
+                                      half * dx(2));
+        q_try = (q_try * corr_try).normalized();
+        const Vector3 v2_new = (q_try.toRotationMatrix()) * v2ref;
+        const Vector3 v_h_new = Hb * v2_new;
+        const T nv_new = v_h_new.norm();
+        if (nv_new < T(1e-9)) return T(-2); // worst possible
+        return (m_h / nm).dot(v_h_new / nv_new); // cosine in [-1,1]
+    };
+
+    // Only consider hypotheses that pass the gate
+    T s1 = gate1 ? score_after(dx1) : T(-2);
+    T s2 = gate2 ? score_after(dx2) : T(-2);
+
+    // Nothing improves? reject
+    if (s1 <= (m_h/nm).dot(v_h/nv) && s2 <= (m_h/nm).dot(v_h/nv)) return;
+
+    // Choose the better one
+    const bool pick1 = (s1 >= s2);
+    const Eigen::Matrix<T,NX,1>& dx = pick1 ? dx1 : dx2;
+    const T dpsi_pred = pick1 ? dpsi1 : dpsi2;
+
+    // Apply to state
     xext.noalias() += dx;
 
-    // Limit to yaw-only and clamp
+    // Limit to yaw-only + clamp magnitude
     Vector3 dth = xext.template head<3>();
     T dpsi = dth.dot(gb);
     T dpsi_clamped = std::max(-YAW_CLAMP, std::min(YAW_CLAMP, dpsi));
     xext.template head<3>() = dth - gb * dpsi + gb * dpsi_clamped;
 
-    // Covariance update
+    // Joseph covariance update
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rproj * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
