@@ -699,29 +699,38 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     // Innovation (target S = 0)
     Vector3 inno = - xext.template segment<3>(OFF_S);
 
-    // Innovation covariance and PHt
+    // Innovation covariance
     Matrix3 S_mat = H * Pext * H.transpose() + R_S;
 
-    // Solve for K
+    // Robust LDLT
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
         S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
+
+    // PHt with Schmidt blocking (no mean update into attitude / gyro bias)
     Matrix<T, NX, 3> PHt = Pext * H.transpose();
+    // block attitude rows
+    PHt.template block<3,3>(0, 0).setZero();
+    if constexpr (with_gyro_bias) {
+        // block gyro-bias rows
+        PHt.template block<3,3>(3, 0).setZero();
+    }
+
+    // Kalman gain (blocked rows remain zero)
     Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // State update
+    // State update (attitude/bias rows of K are zero ⇒ no mean change there)
     xext.noalias() += K * inno;
 
-    // Joseph covariance update
+    // Joseph covariance update (no hard decorrelation)
     MatrixNX I = MatrixNX::Identity();
     Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
+    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
 
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
+    // No quaternion correction here (Schmidt: blocked states’ mean must not move)
 
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
