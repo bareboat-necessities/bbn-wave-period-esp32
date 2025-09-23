@@ -717,8 +717,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     }
 
     // χ²(3) gate @99% ≈ 11.34
-    //const T mahal2 = r.dot(ldlt.solve(r));
-    //if (!(mahal2 < T(11.34))) return;
+    const T mahal2 = r.dot(ldlt.solve(r));
+    if (!(mahal2 < T(11.34))) return;
 
     // PHt = S columns of P
     Eigen::Matrix<T,NX,3> PHt = Pext.template block<NX,3>(0, OFF_S);
@@ -727,17 +727,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     const Matrix3 W = ldlt.solve(Matrix3::Identity());
 
     // Mean update (Schmidt): update only the U block
-    Eigen::Matrix<T,U,1> dx_U =
-        (PHt.template block<U,3>(A,0) * W) * r;
-
-    // Per-axis clamp on a_w component only
-    constexpr int OFF_U_AW = OFF_AW - A;
-    auto dx_aw = dx_U.template segment<3>(OFF_U_AW);
-    const T max_aw_step = T(1.0); // m/s² per pseudo update
-    T na = dx_aw.norm();
-    if (na > max_aw_step) {
-        dx_U.template segment<3>(OFF_U_AW) *= max_aw_step / na;
-    }
+    Eigen::Matrix<T,U,1> dx_U = (PHt.template block<U,3>(A,0) * W) * r;
 
     // Apply to state
     xext.template segment<U>(A).noalias() += dx_U;
