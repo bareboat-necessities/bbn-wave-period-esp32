@@ -585,7 +585,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     T dotp = meas_n.dot(pred_n);
 
     // thresholds
-    const T DOT_DANGEROUS = T(0.2);  // |dot| < 0.2 (~>78°) → ill-conditioned
+    const T DOT_DANGEROUS = T(0.2);   // |dot| < 0.2 (~>78°) → ill-conditioned
     const T YAW_CLAMP     = T(0.105); // ~6° max yaw correction per update
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
@@ -594,7 +594,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         measurement_update_partial(meas_fixed, v2hat, Rmag);
         return;
     }
-    // DANGEROUS → yaw-only (horizontal) update with clamp
+
+    // === DANGEROUS → yaw-only (horizontal) update ===
+
     // body gravity dir (down) from current attitude
     const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
     const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose(); // project to horizontal plane
@@ -605,16 +607,19 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     T nm = m_h.norm(), nv = v_h.norm();
     if (nm < T(1e-6) || nv < T(1e-6)) return; // no horizontal info
 
-    // hemisphere disambiguation on horizontal components
+    // hemisphere disambiguation on horizontal components (with hysteresis)
     Vector3 m_hn = m_h / nm, v_hn = v_h / nv;
-    if (m_hn.dot(v_hn) < T(0)) m_h = -m_h;
+    const T COS_HYST = std::cos(T(20.0) * M_PI / T(180.0)); // ~20°
+    if (m_hn.dot(v_hn) < COS_HYST) m_h = -m_h;
 
-    // innovation & projected Jacobian: r = H(m - v), C = H * (-skew(v))
-    Vector3 r = Hb * (mag_meas_body - v2hat);
+    // === FIX: use disambiguated horizontal residual ===
+    Vector3 r = m_h - v_h;
 
+    // Jacobian: H = Hb * (-skew(v2hat))
     Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
     Cext.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
 
+    // project noise into horizontal plane
     Matrix3 Rproj = Hb * Rmag * Hb.transpose();
 
     // Kalman gain
@@ -622,7 +627,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rproj.norm());
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(),
+                                               T(1e-6) * Rproj.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
