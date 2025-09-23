@@ -567,11 +567,26 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(Vector3 const& mag_meas_body) {
     Vector3 const v2hat = magnetometer_measurement_func();
 
-    // If measurement is closer to -v2hat than to +v2hat, flip it.
-    T dotp = mag_meas_body.dot(v2hat);
-    Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
+    // --- Symmetric gating for dangerous geometry ---
+    T n_meas = mag_meas_body.norm();
+    T n_pred = v2hat.norm();
+    if (n_meas < T(1e-6) || n_pred < T(1e-6)) {
+        return; // invalid vector
+    }
+    Vector3 meas_n = mag_meas_body / n_meas;
+    Vector3 pred_n = v2hat / n_pred;
 
-    measurement_update_partial(meas_fixed, v2hat, Rmag);
+    T dotp = meas_n.dot(pred_n);
+
+    // Skip update if measurement and prediction are nearly perpendicular/antipodal
+    // |dotp| < 0.2 ≈ angle > 78°
+    if (std::abs(dotp) < T(0.2)) {
+        return;
+    }
+    // ----------------------------------------------
+
+    // Safe → do normal 3D update
+    measurement_update_partial(mag_meas_body, v2hat, Rmag);
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
