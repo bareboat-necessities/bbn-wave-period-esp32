@@ -16,6 +16,8 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
+const float FAIL_ERR_LIMIT_PERCENT = 23.0f; 
+
 #include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
 #include "FrameConversions.h"  // coordinate & quaternion conversions + MagSim_WMM
@@ -356,8 +358,8 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         std::cout << "=============================================\n\n";
 
         // FAIL CHECK
-        if (z_rms_pct < 23.0f) {
-            std::cerr << "ERROR: Z RMS below 23% (" << z_rms_pct << "%). Failing.\n";
+        if (z_rms_pct > FAIL_ERR_LIMIT_PERCENT) {
+            std::cerr << "ERROR: Z RMS above 23% (" << z_rms_pct << "%). Failing.\n";
             std::exit(EXIT_FAILURE);
         }
     }
