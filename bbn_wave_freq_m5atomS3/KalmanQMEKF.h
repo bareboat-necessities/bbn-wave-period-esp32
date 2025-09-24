@@ -263,10 +263,9 @@ void QuaternionMEKF<T, with_bias>::measurement_update(Vector3 const& acc, Vector
     // Joseph form of covariance measurement update
     MatrixN const temp = MatrixN::Identity() - K * C;
     P = temp * P * temp.transpose() + K * R * K.transpose();
-    // Apply correction to qref
-    Eigen::Quaternion<T> corr(1, half * x(0), half * x(1), half * x(2));
-    corr.normalize();
-    qref = qref * corr;
+    
+    // Apply quaternion correction
+    applyQuaternionCorrectionFromErrorState();
 
     // We only want to reset the quaternion part of the state
     x(0) = 0;
@@ -309,10 +308,9 @@ void QuaternionMEKF<T, with_bias>::measurement_update_partial(Eigen::Ref<Vector3
     // Joseph form of covariance measurement update
     MatrixN const temp = MatrixN::Identity() - K * C;
     P = temp * P * temp.transpose() + K * Rm * K.transpose();
-    // Apply correction to qref
-    Eigen::Quaternion<T> corr(1, half * x(0), half * x(1), half * x(2));
-    corr.normalize();
-    qref = qref * corr;
+
+    // Apply quaternion correction
+    applyQuaternionCorrectionFromErrorState();
 
     // We only want to reset the quaternion part of the state
     x(0) = 0;
