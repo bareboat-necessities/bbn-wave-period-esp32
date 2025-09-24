@@ -185,49 +185,49 @@ static TuningHeur compute_heuristic_from_spectral_peak(double Hs,
 
 // ==================== IMU-adjusted tuning ====================
 //
-// Adds noise and bias effects from IMU model.
-// See your earlier sim constants.
+// Intent:
+// - Keep σ_a representing *stochastic* acceleration (white + prefilter), not constant bias.
+// - Soften τ only when gyro noise approaches sea dynamics.
+// - Absorb accelerometer bias via extra slack in R_S (drift pseudo-measurement), not in σ_a.
+//
+// Effective terms:
+//   sigma_a_eff = hypot(sigma_a_bandlimited, sigma_acc_white, sigma_acc_prefilter)
+//   tau_eff = tau / sqrt(1 + (sigma_gyro_eff / (2π f_tau))^2) ,  f_tau ≈ max(f_acc_mean, f_peak_spec)
+//   R_S_eff = R_S + k_bias * bacc_mag^2   (k_bias ≈ 3)
+//
+// Notes:
+// - Uses the same “sim constants” you had; adjust to your measured sensor if needed.
 //
 static TuningIMU compute_with_imu_same_as_sim(const TuningSpec& base)
 {
-    // Filter noise levels
-    const Eigen::Vector3d sigma_acc_filter(0.04, 0.04, 0.04);          // m/s²
+    // Sim / filter noise levels (RMS per axis where applicable)
+    const Eigen::Vector3d sigma_acc_filter(0.04, 0.04, 0.04);          // m/s^2
     const Eigen::Vector3d sigma_gyro_filter(0.00134, 0.00134, 0.00134);// rad/s
 
-    // True injected white noise
-    const double sigma_acc_true = 0.03;   // m/s²
-    const double sigma_gyro_true = 0.001; // rad/s
+    const double sigma_acc_true = 0.03;   // m/s^2 (white)
+    const double sigma_gyro_true = 0.001; // rad/s (white)
 
-    // Static biases
-    const double bacc_mag = 0.02;   // m/s²
-    const double bgyr_mag = 0.0004; // rad/s
+    // Bias magnitudes (do NOT fold into σ_a)
+    const double bacc_mag = 0.02;   // m/s^2
+    const double bgyr_mag = 0.0004; // rad/s (kept for reference; not used directly here)
 
     const double sigma_acc_filter_rms = sigma_acc_filter.norm() / std::sqrt(3.0);
     const double sigma_gyro_filter_rms = sigma_gyro_filter.norm() / std::sqrt(3.0);
 
     TuningIMU t{};
 
-    // Effective accel std
-    const double sigma_a_eff = std::sqrt(
-        base.sigma_a * base.sigma_a +
-        sigma_acc_filter_rms * sigma_acc_filter_rms +
-        sigma_acc_true * sigma_acc_true +
-        bacc_mag * bacc_mag
-    );
-    t.sigma_a_eff = sigma_a_eff;
+    // σ_a: stochastic only (band-limited base + white + prefilter), exclude bias
+    t.sigma_a_eff = std::hypot(base.sigma_a, std::hypot(sigma_acc_true, sigma_acc_filter_rms));
 
-    // Effective tau (tilt diffusion shortens τ)
-    const double tilt_var = (sigma_gyro_filter_rms * sigma_gyro_filter_rms) +
-                            (sigma_gyro_true * sigma_gyro_true) +
-                            (bgyr_mag * bgyr_mag);
-    t.tau_eff = base.tau / (1.0 + tilt_var * base.tau);
+    // τ: gentle trim if gyro noise competes with sea dynamics at f_tau
+    const double f_tau = std::max((std::isfinite(base.f_acc_mean) ? base.f_acc_mean : base.f_peak_spec), 1e-6);
+    const double sigma_gyro_eff = std::hypot(sigma_gyro_true, sigma_gyro_filter_rms);
+    const double factor = std::sqrt(1.0 + std::pow(sigma_gyro_eff / (2.0 * M_PI * f_tau), 2.0));
+    t.tau_eff = base.tau / factor;
 
-    // R_S inflated by noise/bias
-    t.R_S_eff = base.R_S + 3.0 * (
-        sigma_acc_filter_rms * sigma_acc_filter_rms +
-        sigma_acc_true * sigma_acc_true +
-        bacc_mag * bacc_mag
-    );
+    // R_S: absorb accel bias as slow drift via inflation
+    const double k_bias = 3.0;
+    t.R_S_eff = base.R_S + k_bias * (bacc_mag * bacc_mag);
 
     return t;
 }
