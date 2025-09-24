@@ -88,7 +88,7 @@ void expm(const Eigen::Matrix<T,N,N>& A, Eigen::Matrix<T,N,N>& expA)
     // 5. Undo scaling by repeated squaring
     expA = F;
     for (int i = 0; i < s; i++) {
-        expA = expA * expA;
+        expA = (expA * expA).eval();
     }
 }
 
