@@ -538,13 +538,12 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     // Predicted specific force
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // Gravity direction in body, and projectors
+    // Gravity direction in body
     const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
-    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose(); // horizontal projector
-    const Matrix3 Vb = gb * gb.transpose();                        // vertical  projector
+    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose(); // projection ⟂ gb
 
     // ==============================================================
-    // 1) Attitude correction (roll/pitch only, yaw suppressed)
+    // 1. Attitude correction (roll/pitch only, yaw suppressed)
     // ==============================================================
     {
         Vector3 inno_att = Hb * (acc_meas - v1hat);
@@ -565,10 +564,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
         }
         Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-        // Mean update
+        // Update state and covariance
         xext.noalias() += K * inno_att;
-
-        // Joseph covariance update
         MatrixNX I = MatrixNX::Identity();
         Pext = (I - K * C_att) * Pext * (I - K * C_att).transpose() + K * Rproj * K.transpose();
         Pext = T(0.5) * (Pext + Pext.transpose());
@@ -579,43 +576,44 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     }
 
     // ==============================================================
-    // 2) Linear subsystem correction (latent a_w and accel bias)
-    //    *** vertical channel only *** to avoid tilt creep
-    //    Also: explicitly block attitude mean update from this step.
+    // 2. Linear subsystem correction (latent a_w and accel bias)
+    //    (compromise fix: keep only δθ along gb)
     // ==============================================================
     {
-        // Split residual into vertical only
-        const Vector3 inno_total = acc_meas - v1hat;
-        const Vector3 inno_lin   = Vb * inno_total;
+        Vector3 inno_lin = acc_meas - v1hat;
 
-        // Project Jacobian to vertical measurement channel
         Matrix<T,3,NX> C_lin = Matrix<T,3,NX>::Zero();
-        C_lin.template block<3,3>(0,OFF_AW) = Vb * R_wb();  // ∂f/∂a_w projected to vertical
+        C_lin.template block<3,3>(0,OFF_AW) = R_wb();
         if constexpr (with_accel_bias) {
-            C_lin.template block<3,3>(0,OFF_BA) = Vb;       // ∂f/∂b_a projected to vertical
+            C_lin.template block<3,3>(0,OFF_BA) = Matrix3::Identity();
         }
 
-        Matrix3 Rproj = Vb * Racc * Vb.transpose();
-        Matrix3 S_mat = C_lin * Pext * C_lin.transpose() + Rproj;
+        Matrix3 S_mat = C_lin * Pext * C_lin.transpose() + Racc;
         Matrix<T,NX,3> PCt = Pext * C_lin.transpose();
 
         Eigen::LDLT<Matrix3> ldlt(S_mat);
         if (ldlt.info() != Eigen::Success) {
             S_mat += Matrix3::Identity() *
-                     std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rproj.norm());
+                     std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
             ldlt.compute(S_mat);
             if (ldlt.info() != Eigen::Success) return;
         }
         Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-        // *** Block attitude mean update from Stage-2 ***
+        // Candidate update
         Eigen::Matrix<T,NX,1> dx = K * inno_lin;
-        dx.template head<3>().setZero();        // <- critical: no tilt change here
+
+        // Keep only δθ component along gb (blocks horizontal tilt creep, preserves vertical coupling)
+        Vector3 dth = dx.template head<3>();
+        T dth_vert = dth.dot(gb);
+        dx.template head<3>() = gb * dth_vert;
+
+        // Apply update
         xext.noalias() += dx;
 
-        // Covariance update (full Joseph with original K is fine)
+        // Joseph covariance update
         MatrixNX I = MatrixNX::Identity();
-        Pext = (I - K * C_lin) * Pext * (I - K * C_lin).transpose() + K * Rproj * K.transpose();
+        Pext = (I - K * C_lin) * Pext * (I - K * C_lin).transpose() + K * Racc * K.transpose();
         Pext = T(0.5) * (Pext + Pext.transpose());
     }
 }
