@@ -848,7 +848,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
 
     // Exponential with Padé(6) scaling-and-squaring
     Mat24 expM;
-    vanloan_pade6::expm(M * Ts, expM);
+    vanloan_pade6::expm((M * Ts).eval(), expM);
 
     // Extract Phi and Qd
     Mat12 Phi_lin = expM.topLeftCorner(12,12);
