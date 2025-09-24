@@ -853,7 +853,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
 
     // Extract Phi and Qd
     Mat12 Phi_lin = expM.topLeftCorner(12,12);
-    Mat12 Qd_lin  = Phi_lin * expM.topRightCorner(12,12);
+    Mat12 Gamma   = expM.topRightCorner(12,12);
+    Mat12 Qd_lin  = Gamma * Phi_lin.transpose();
 
     // Insert into extended system
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
