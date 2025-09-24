@@ -25,9 +25,7 @@ const float FAIL_ERR_LIMIT_PERCENT = 23.0f;
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// ============================
 // Inline RMS accumulator (float)
-// ============================
 class RMSReport {
 public:
     inline void add(float value) {
@@ -106,9 +104,7 @@ int wave_index_from_height(float height) {
     return -1; // not found
 }
 
-// ============================
 // RMS window length [s]
-// ============================
 constexpr float RMS_WINDOW_SEC = 60.0f;
 
 void process_wave_file(const std::string &filename, float dt, bool with_mag) {
