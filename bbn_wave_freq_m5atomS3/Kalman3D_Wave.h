@@ -555,10 +555,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     Vector3 inno_att = Hb * inno;
 
     Matrix<T,3,NX> C_att = Matrix<T,3,NX>::Zero();
-    C_att.block<3,3>(0,0)      = Hb * (-skew_symmetric_matrix(v1hat));
-    C_att.block<3,3>(0,OFF_AW) = Hb * R_wb();
+    C_att.template block<3,3>(0,0)      = Hb * (-skew_symmetric_matrix(v1hat));
+    C_att.template block<3,3>(0,OFF_AW) = Hb * R_wb();
     if constexpr (with_accel_bias) {
-        C_att.block<3,3>(0,OFF_BA) = Hb;
+        C_att.template block<3,3>(0,OFF_BA) = Hb;
     }
 
     Matrix3 Rproj = Hb * Racc * Hb.transpose();
