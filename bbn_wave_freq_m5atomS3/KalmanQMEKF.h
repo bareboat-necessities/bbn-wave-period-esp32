@@ -102,6 +102,7 @@ class EIGEN_ALIGN_MAX QuaternionMEKF {
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
     void set_transition_matrix(const Eigen::Ref<const Vector3>& gyr, T Ts);
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
+    void applyQuaternionCorrectionFromErrorState();
     Vector3 accelerometer_measurement_func() const;
     Vector3 magnetometer_measurement_func() const;
 
