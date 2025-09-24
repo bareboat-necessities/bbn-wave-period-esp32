@@ -33,67 +33,8 @@
 
 #include <limits>
 #include <stdexcept>
-#include <cmath>
 
 using Eigen::Matrix;
-
-namespace vanloan_pade6 {
-
-// ========================================================
-// Padé(6) matrix exponential, scaling-and-squaring
-// Based on Higham, “Functions of Matrices”
-// ========================================================
-template<typename T, int N>
-void expm(const Eigen::Matrix<T,N,N>& A, Eigen::Matrix<T,N,N>& expA)
-{
-    using Mat = Eigen::Matrix<T,N,N>;
-
-    // 1. Compute 1-norm of A
-    T norm1 = A.cwiseAbs().colwise().sum().maxCoeff();
-
-    // 2. Scaling: choose s so that ||A/2^s||_1 < 0.5
-    int s = 0;
-    if (norm1 > T(0.5)) {
-        s = std::max(0, int(std::ceil(std::log2(norm1 / 0.5))));
-    }
-    Mat Ascaled = A / T(1 << s);
-
-    // 3. Precompute powers
-    Mat A2 = Ascaled * Ascaled;
-    Mat A4 = A2 * A2;
-    Mat A6 = A2 * A4;
-
-    // 4. Padé(6) coefficients
-    // b_k = 1/(k!) for k = 0..6
-    const T b0 = T(1.0);
-    const T b1 = T(1.0);
-    const T b2 = T(0.5);
-    const T b3 = T(1.0/6.0);
-    const T b4 = T(1.0/24.0);
-    const T b5 = T(1.0/120.0);
-    const T b6 = T(1.0/720.0);
-
-    // U = A (b1 I + b3 A2 + b5 A4)
-    Mat U = Ascaled * (b1 * Mat::Identity() + b3 * A2 + b5 * A4);
-
-    // V = b0 I + b2 A2 + b4 A4 + b6 A6
-    Mat V = b0 * Mat::Identity() + b2 * A2 + b4 * A4 + b6 * A6;
-
-    // Numerator/denominator for Padé approximant
-    Mat numer = V + U;
-    Mat denom = V - U;
-
-    // Solve (denom)^{-1} * numer
-    Mat F = denom.partialPivLu().solve(numer);
-
-    // 5. Undo scaling by repeated squaring
-    expA = F;
-    for (int i = 0; i < s; i++) {
-        expA = (expA * expA).eval();
-    }
-}
-
-} // namespace vanloan_pade6
 
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
@@ -317,6 +258,14 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Quaternion & small-angle helpers (kept)
     void applyQuaternionCorrectionFromErrorState(); // apply correction to qref using xext(0..2)
     void normalizeQuat();
+    void vanLoanDiscretization_12x3(const Eigen::Matrix<T,12,12>& A,
+                                    const Eigen::Matrix<T,12,3>&  G,
+                                    const Eigen::Matrix<T,3,3>&   Sigma_c,
+                                    T Ts,
+                                    Eigen::Matrix<T,12,12>& Phi,
+                                    Eigen::Matrix<T,12,12>& Qd) const;
+    static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
+    static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
 };
 
 // Implementation
@@ -791,9 +740,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     F_a_ext.setIdentity();
     Q_a_ext.setZero();
 
-    // ================================
-    // Attitude error (+ optional gyro bias)
-    // ================================
+    // Attitude error (+ optional bias)
     Matrix3 I = Matrix3::Identity();
     Vector3 w = last_gyr_bias_corrected;
     T omega = w.norm();
@@ -816,54 +763,162 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     // Process noise for attitude/bias
     Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
 
-    // ================================
-    // Linear subsystem [v,p,S,a_w] (12x12) via Van Loan + Padé(6)
-    // ================================
-    using Mat12   = Eigen::Matrix<T,12,12>;
-    using Mat12x3 = Eigen::Matrix<T,12,3>;
-    using Mat24   = Eigen::Matrix<T,24,24>;
+    // Linear subsystem [v,p,S,a_w]
+    using Mat12 = Eigen::Matrix<T,12,12>;
+    Mat12 Phi_lin; Phi_lin.setZero();
+    Mat12 Qd_lin;  Qd_lin.setZero();
 
-    Mat12 A; A.setZero();
-    // State order: [v(3), p(3), S(3), a(3)]
-    // v̇ = a
-    A.template block<3,3>(0,9) = Matrix3::Identity();
-    // ṗ = v
-    A.template block<3,3>(3,0) = Matrix3::Identity();
-    // Ṡ = p
-    A.template block<3,3>(6,3) = Matrix3::Identity();
-    // ȧ = -(1/τ) a   (OU drift)
-    A.template block<3,3>(9,9) = -(Matrix3::Identity() / std::max(T(1e-6), tau_aw));
+    for (int axis = 0; axis < 3; ++axis) {
+        T tau    = std::max(T(1e-6), tau_aw);
+        T sigma2 = Sigma_aw_stat(axis,axis);
 
-    // Noise input G (into a only)
-    Mat12x3 G; G.setZero();
-    G.template block<3,3>(9,0) = Matrix3::Identity();
+        Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
+        PhiAxis4x1_analytic(tau, Ts, Phi_axis);
+        QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
 
-    // Continuous covariance intensity Σ_c
-    Matrix3 Sigma_c = (2.0/tau_aw) * Sigma_aw_stat;
+        int idx[4] = {0,3,6,9}; // v,p,S,a offsets
+        for (int i=0;i<4;i++)
+            for (int j=0;j<4;j++) {
+                Phi_lin(idx[i]+axis, idx[j]+axis) = Phi_axis(i,j);
+                Qd_lin (idx[i]+axis, idx[j]+axis) = Qd_axis(i,j);
+            }
+    }
 
-    // Build Van Loan embedding
-    Mat24 M; M.setZero();
-    M.topLeftCorner(12,12)     = A;
-    M.topRightCorner(12,12)    = G * Sigma_c * G.transpose();
-    M.bottomRightCorner(12,12) = -A.transpose();
-
-    // Exponential with Padé(6) scaling-and-squaring
-    Mat24 expM;
-    vanloan_pade6::expm((M * Ts).eval(), expM);
-
-    // Extract Phi and Qd
-    Mat12 Phi_lin = expM.topLeftCorner(12,12);
-    Mat12 Gamma   = expM.topRightCorner(12,12);
-    Mat12 Qd_lin  = Gamma * Phi_lin.transpose();
-
-    // Insert into extended system
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 
-    // ================================
-    // Accel bias random walk (optional)
-    // ================================
     if constexpr (with_accel_bias) {
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
     }
+}
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
+    T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
+{
+    using std::exp;
+    const T inv_tau = T(1) / std::max(T(1e-12), tau);
+    const T alpha   = exp(-h * inv_tau);
+
+    // Coefficients (exact)
+    const T phi_va = tau * (T(1) - alpha);
+    const T phi_pa = tau * h - tau * tau * (T(1) - alpha);
+    const T phi_Sa = (T(0.5)*tau*h*h) - (tau*tau*h) + (tau*tau*tau)*(T(1) - alpha);
+
+    Phi_axis.setZero();
+    // v_{k+1} = v_k + phi_va * a_k
+    Phi_axis(0,0) = T(1);     // v -> v
+    Phi_axis(0,3) = phi_va;   // a -> v
+
+    // p_{k+1} = p_k + h v_k + phi_pa * a_k
+    Phi_axis(1,0) = h;        // v -> p
+    Phi_axis(1,1) = T(1);     // p -> p
+    Phi_axis(1,3) = phi_pa;   // a -> p
+
+    // S_{k+1} = S_k + h p_k + 0.5 h^2 v_k + phi_Sa * a_k
+    Phi_axis(2,0) = T(0.5)*h*h;   // v -> S
+    Phi_axis(2,1) = h;            // p -> S
+    Phi_axis(2,2) = T(1);         // S -> S
+    Phi_axis(2,3) = phi_Sa;       // a -> S
+
+    // a_{k+1} = alpha * a_k
+    Phi_axis(3,3) = alpha;    // a -> a
+}
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
+    T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
+{
+    // States order: [v, p, S, a]
+    using std::exp;
+    const T Tinv    = T(1) / std::max(T(1e-12), tau);
+    const T alpha   = exp(-h * Tinv);
+    const T alpha2  = exp(-T(2) * h * Tinv);
+    const T q_c     = (T(2) / tau) * sigma2;  // continuous-time noise intensity
+
+    // Short-hands for simple polynomial integrals over [0,h]
+    const T C0 = h;
+    const T C1 = T(0.5) * h*h;
+    const T C2 = (h*h*h) / T(3);
+    const T C3 = (h*h*h*h) / T(4);
+    const T C4 = (h*h*h*h*h) / T(5);
+
+    // Primitives with exp(-ξ/τ) over [0,h]
+    const T A0 = tau * (T(1) - alpha);
+    const T A1 = tau*tau * (T(1) - alpha) - tau * h * alpha;
+    const T A2 = T(2)*tau*tau*tau * (T(1) - alpha) - tau * h * (h + T(2)*tau) * alpha;
+    // We’ll also need ∫ ξ^3 e^{-ξ/τ} dξ:
+    // ∫ ξ^3 e^{-ξ/τ} dξ = e^{-ξ/τ} * [ -τ ξ^3 - 3 τ^2 ξ^2 - 6 τ^3 ξ - 6 τ^4 ] |_0^h
+    const T A3 = ( -tau * h*h*h - T(3)*tau*tau * h*h - T(6)*tau*tau*tau * h - T(6)*tau*tau*tau*tau ) * alpha
+               + T(6)*tau*tau*tau*tau;
+
+    // Primitives with exp(-2ξ/τ) over [0,h]
+    // General: ∫ e^{-λ ξ} dξ = (1 - e^{-λ h})/λ;  λ = 2/τ
+    const T B0 = (tau / T(2)) * (T(1) - alpha2);
+
+    // Build k(ξ) components for the driven column (a-column of Φ(ξ)):
+    // k_v = τ (1 - e^{-ξ/τ}); k_p = τ ξ - τ^2 (1 - e^{-ξ/τ});
+    // k_S = 0.5 τ ξ^2 - τ^2 ξ + τ^3 (1 - e^{-ξ/τ}); k_a = e^{-ξ/τ}
+    // Qd = q_c * ∫ k(ξ) k(ξ)^T dξ  (all entries below are the integral K; multiply by q_c at the end)
+
+    const T T1 = tau;
+    const T T2 = tau*tau;
+    const T T3 = T2*tau;
+    const T T4 = T3*tau;
+    const T T5 = T4*tau;
+    const T T6 = T5*tau;
+
+    // Useful combos
+    // For (1 - e^{-ξ/τ}): integrals reduce to C• - A•
+    const T I1mA0 = C0 - A0;  // ∫ (1 - α) dξ
+    const T Ix1mA1 = C1 - A1; // ∫ ξ (1 - α) dξ
+    const T Ix21mA2 = C2 - A2;// ∫ ξ^2 (1 - α) dξ
+
+    // K_aa
+    const T K_aa = B0;
+
+    // K_va = ∫ k_v * k_a = τ ∫ (α - α^2) = τ (A0 - B0)
+    const T K_va = T1 * (A0 - B0);
+
+    // K_vv = ∫ [τ(1 - α)]^2 = τ^2 ∫ (1 - 2α + α^2) = τ^2 (C0 - 2A0 + B0)
+    const T K_vv = T2 * (C0 - T(2)*A0 + B0);
+
+    // K_pa = ∫ k_p * k_a = τ A1 - τ^2 A0 + τ^2 B0
+    const T K_pa = T1*A1 - T2*A0 + T2*B0;
+
+    // K_pv = ∫ k_p * k_v = τ^2 ∫ ξ(1-α) - τ^3 ∫ (1-α) + τ^3 ∫ α(1-α)
+    const T K_pv = T2*Ix1mA1 - T3*I1mA0 + T3*(A0 - B0);
+
+    // K_pp = ∫ (T ξ - T^2 + T^2 α)^2
+    // = T^2 C2 - 2 T^3 C1 + 2 T^3 A1 + T^4 C0 - 2 T^4 A0 + T^4 B0
+    const T K_pp = T2*C2 - T(2)*T3*C1 + T(2)*T3*A1 + T4*C0 - T(2)*T4*A0 + T4*B0;
+
+    // K_Sa = 0.5 T A2 - T^2 A1 + T^3 A0 - T^3 B0
+    const T K_Sa = T(0.5)*T1*A2 - T2*A1 + T3*A0 - T3*B0;
+
+    // K_Sv = 0.5 T^2 (C2 - A2) - T^3 (C1 - A1) + T^4 (C0 - A0) - T^4 (A0 - B0)
+    const T K_Sv = T(0.5)*T2*Ix21mA2 - T3*Ix1mA1 + T4*I1mA0 - T4*(A0 - B0);
+
+    // K_Sp = 0.5 T^2 C3 - 1.5 T^3 C2 + 2 T^4 C1 - T^5 C0
+    //       + 0.5 T^3 A2 - 2 T^4 A1 + 2 T^5 A0 - T^5 B0
+    const T K_Sp = T(0.5)*T2*C3 - T(1.5)*T3*C2 + T(2)*T4*C1 - T5*C0
+                 + T(0.5)*T3*A2 - T(2)*T4*A1 + T(2)*T5*A0 - T5*B0;
+
+    // K_SS = (poly square) + (cross with α) + (α^2 term)
+    // Poly^2: 0.25 T^2 C4 - T^3 C3 + 2 T^4 C2 - 2 T^5 C1 + T^6 C0
+    // Cross:  - T^4 A2 + 2 T^5 A1 - 2 T^6 A0
+    // Alpha^2: + T^6 B0
+    const T K_SS = T(0.25)*T2*C4 - T3*C3 + T(2)*T4*C2 - T(2)*T5*C1 + T6*C0
+                 - T4*A2 + T(2)*T5*A1 - T(2)*T6*A0
+                 + T6*B0;
+
+    // Assemble symmetric 4x4 K, then scale by q_c
+    Eigen::Matrix<T,4,4> K;
+    K.setZero();
+    K(0,0) = K_vv; K(0,1) = K_pv; K(0,2) = K_Sv; K(0,3) = K_va;
+    K(1,0) = K_pv; K(1,1) = K_pp; K(1,2) = K_Sp; K(1,3) = K_pa;
+    K(2,0) = K_Sv; K(2,1) = K_Sp; K(2,2) = K_SS; K(2,3) = K_Sa;
+    K(3,0) = K_va; K(3,1) = K_pa; K(3,2) = K_Sa; K(3,3) = K_aa;
+
+    Qd_axis = q_c * K;
 }
