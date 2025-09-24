@@ -41,8 +41,7 @@ The method augments attitude (with optional gyroscope and accelerometer bias) by
 and the integral of displacement $\bm S$, driven by a \emph{latent} world-frame acceleration $\bm a_w$ modeled as an Ornstein--Uhlenbeck (OU) process. The OU prior confers stationary variance and realistic temporal correlation for the latent acceleration, which slows the drift growth in integrated states compared to white-noise forcing. It does not strictly bound the variance of integrated displacement, but ensures covariance growth of displacement is polynomially slower and numerically manageable.
 Biases are explicitly modeled: gyroscope bias as a random walk, accelerometer bias both as random walk and as systematic temperature-dependent drift. 
 A pseudo-measurement is introduced on $\bm S$ to control double integral divergence. 
-We derive continuous- and discrete-time process models, show Rodrigues and Analytic discretizations, 
-explain Pad\'e(6) approximation with scaling and squaring, and derive explicit Jacobians for accelerometer and magnetometer updates. 
+We derive continuous- and discrete-time process models, show Rodrigues and Analytic discretizations, and derive explicit Jacobians for accelerometer and magnetometer updates. 
 Finally, we discuss tuning strategies and the prospect of adaptive parameter estimation.
 \end{abstract}
 
@@ -59,7 +58,7 @@ augmented by translational kinematics driven by a latent Ornstein--Uhlenbeck acc
 The contributions of this paper are:
 \begin{itemize}
 \item A rigorous derivation of the state-space model with biases and OU latent acceleration.
-\item Exact and approximate discretization methods: Rodrigues, Analytic, Pad\'e(6).
+\item Exact and approximate discretization methods.
 \item Explicit Jacobians for accelerometer and magnetometer updates.
 \item Introduction of a pseudo-measurement on the triple integral to suppress drift.
 \item Discussion of tuning and future adaptive strategies.
@@ -769,10 +768,7 @@ stable and efficient.
 \paragraph{Computational cost.}
 The analytic method requires only $O(1)$ scalar exponentials and
 polynomial arithmetic, yielding a fixed and predictable computational
-cost per time step. The Analytic method incurs the cost of a
-general-purpose matrix exponential (Padé or scaling-and-squaring),
-with $O(n^3)$ complexity for $n=24$, which is substantial for real-time
-applications on embedded platforms.
+cost per time step. 
 
 \paragraph{Practical recommendation.}
 On desktop platforms, Analytic is useful for validation and as a
@@ -1290,8 +1286,7 @@ This preserves unit norm and keeps the attitude error minimal (on the tangent sp
 
 The extended filter requires repeated discretization of continuous-time dynamics.
 Three key techniques are employed: Rodrigues’ rotation formula, Analytic’s
-block-matrix exponential method, and Pad\'e(6) approximants with scaling and
-squaring. We now detail each.
+block-matrix exponential method. We now detail each.
 
 \subsection{Rodrigues’ Formula for Attitude Propagation}
 For a body angular velocity $\bm\omega$ and timestep $\Delta$, the quaternion update
@@ -1347,83 +1342,10 @@ for linear Gaussian systems.
 For the 12D subsystem $(v,p,S,a_w)$, Analytic yields the exact coupling
 coefficients between OU acceleration and its integrals. 
 
-\subsection{Pad\'e(6) Rational Approximant with Scaling and Squaring}
-\label{sec:pade6}
-
-For embedded targets, we compute $\exp(M)$ in \eqref{eq:vanloan-exp} by a 
-\emph{Pad\'e(6)} rational approximation with \emph{scaling and squaring}. 
-This offers an excellent accuracy--cost tradeoff for the small matrices 
-encountered here ($4\times 4$ or $8\times 8$ per axis, or $24\times 24$ 
-for 3D Analytic).
-
-\paragraph{Pad\'e(6) Rational Approximant.}
-A $[6/6]$ Pad\'e approximant to $e^A$ is
-\begin{equation}
-e^A \;\approx\; R_6(A) \;=\; \big(V(A)-U(A)\big)^{-1}\big(V(A)+U(A)\big),
-\label{eq:pade-rational}
-\end{equation}
-with
-\begin{align}
-U(A) &= A\Big(c_1 I + c_3 A^2 + c_5 A^4\Big), \label{eq:pade-U}\\
-V(A) &= c_0 I + c_2 A^2 + c_4 A^4 + c_6 A^6, \label{eq:pade-V}
-\end{align}
-and coefficients
-\begin{equation}
-c_0 = 1,\quad c_1 = \tfrac{1}{2},\quad c_2 = \tfrac{1}{10},\quad
-c_3 = \tfrac{1}{120},\quad c_4 = \tfrac{1}{1680},\quad
-c_5 = \tfrac{1}{30240},\quad c_6 = \tfrac{1}{665280}.
-\label{eq:pade-coeffs}
-\end{equation}
-
-\paragraph{Scaling and Squaring.}
-Accuracy is improved by reducing $\|A\|$ before applying $R_6$. 
-Choose an integer $s \geq 0$ so that
-\begin{equation}
-\big\|A/2^s\big\|_1 \;\leq\; \theta_6,
-\label{eq:theta-choice}
-\end{equation}
-where $\theta_6$ is a practical threshold (for Pad\'e(6), $\theta_6 \approx 3$ 
-for small matrices). Compute the rational approximation at the scaled matrix, 
-then square:
-\begin{equation}
-e^A \;\approx\; \Big(R_6(A/2^s)\Big)^{2^s}.
-\label{eq:scale-square}
-\end{equation}
-
-\paragraph{Why Pad\'e(6) is a Good Fit Here.}
-\begin{itemize}
-\item The Analytic matrix $M(\Delta)$ is small (up to $24\times 24$ in 3D) and moderately scaled 
-for typical $\Delta$; Pad\'e(6) with a few squarings is accurate.
-\item The cost is dominated by a handful of dense matrix multiplications and one linear solve 
-with $(V-U)$, which is inexpensive at these sizes.
-\item Numerical behavior is well studied; together with Joseph’s form for the covariance update 
-and symmetrization $P\leftarrow \tfrac12(P+P^\top)$, it yields a robust pipeline.
-\end{itemize}
-
-\paragraph{Cross-Check with Series and OU Coefficients.}
-Expanding $R_6(A)$ around $A=0$ reproduces the first $13$ terms of the Taylor series of $e^A$ 
-(since it is a $[6/6]$ approximant), hence the local error is $\mathcal{O}(\|A\|^{13})$. 
-When applied to the block matrix $M(\Delta)$ in \eqref{eq:vanloan-M}, this accuracy carries to 
-both $\Phi$ and $Q_d$ recovered via \eqref{eq:vanloan-unpack}, matching the OU-derived 
-coefficients $E_0,E_1,E_2$ (means) and the covariance entries listed in the OU section up 
-to roundoff.
-
-\paragraph{Practical Notes.}
-\begin{enumerate}
-\item \textbf{Conditioning.} Use the matrix one-norm to choose $s$; for typical IMU sampling 
-($\Delta\le 0.02$\,s) and $\tau$ in $[0.5,5]$\,s, $s\in\{0,1,2\}$ is usually sufficient.
-\item \textbf{SPD Preservation.} Analytic’s construction plus a numerically stable exponential 
-preserves $Q_d\succeq 0$ up to roundoff; if needed, enforce symmetry by 
-$Q_d\leftarrow \tfrac12(Q_d+Q_d^\top)$.
-\item \textbf{Embedded Efficiency.} Precompute powers $A^2,A^4,A^6$ for $U,V$; reuse buffers; 
-prefer LU solve for $(V-U)X=(V+U)$ given matrix sizes.
-\end{enumerate}
-
 \subsection{Summary}
 \begin{itemize}
 \item Rodrigues’ formula: exact, closed-form for SO(3), preserves attitude orthogonality.
 \item Analytic: exact state+covariance discretization for linear OU-extended systems.
-\item Pad\'e(6): efficient embedded approximation when matrix exponential libraries are unavailable.
 \end{itemize}
 Together, they provide consistency across desktop prototyping and embedded deployment.
 
@@ -1705,11 +1627,6 @@ P^+ = (I-KC)P^-(I-KC)^\top + KRK^\top
 \]
 is used rather than the simplified $(I-KC)P^-$. This guarantees positive semidefiniteness.
 
-\subsection{Matrix Exponentials}
-On desktop platforms, Analytic discretization uses $\exp(M)$ from Eigen’s MatrixFunctions.
-On embedded platforms, $\exp(A)$ is approximated with Pad\'e(6) plus scaling and squaring.
-This ensures consistency between simulation and embedded implementations.
-
 \subsection{Handling Small Angles}
 For small $\theta$, Rodrigues’ formula and quaternion increments use Taylor expansions to
 avoid loss of precision. For example,
@@ -1852,8 +1769,7 @@ significantly ``redder'' than the OU spectrum ($1/\omega^2$). Consequently:
 
 \paragraph{Kalman Compatibility.}
 The model is still a finite-dimensional linear SDE with Gaussian forcing, making it
-directly Kalman filter compatible. Discretization via the Analytic method or Pad\'e(6)
-remains applicable. The only cost is one additional state per axis (18~D for three axes
+directly Kalman filter compatible. The only cost is one additional state per axis (18~D for three axes
 instead of 15~D), and tuning requires solving a stationary Lyapunov equation to match
 the desired variance $\sigma^2$ at equilibrium.
 
@@ -1868,8 +1784,7 @@ wave-acceleration spectra, and retain the Kalman-friendly structure of the prese
 We have developed and analyzed a multiplicative EKF extended with linear
 states for velocity, displacement, and their integrals, driven by a latent
 Ornstein--Uhlenbeck acceleration model. By combining quaternion-based attitude
-propagation, Analytic discretization for OU-driven integrators, Pad\'e(6)
-approximants for embedded matrix exponentials, and pseudo-measurements to
+propagation, Analytic discretization for OU-driven integrators, and pseudo-measurements to
 stabilize double integrals, the filter achieves bounded-error estimates under
 realistic ocean wave conditions. Biases are handled explicitly, with additional
 temperature-dependent compensation for accelerometer drift. Observability and
@@ -1965,6 +1880,5 @@ Cheng, Y., and Farrell, J. A. (2014).
 \end{thebibliography}
 
 \end{document}
-
 
 
