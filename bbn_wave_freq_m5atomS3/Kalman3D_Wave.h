@@ -680,11 +680,40 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetri
   return M;
 }
 
+// Full exponential-map correction (Rodrigues in quaternion form).
+// Accurate for both small and large |δθ|.
+// Right-multiply convention: q_new = qref ⊗ δq(δθ), where δθ = xext(0..2).
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState() {
-  // xext(0..2) contains the small-angle error — same as original code; create corr quaternion and apply
-  Eigen::Quaternion<T> corr(T(1), half * xext(0), half * xext(1), half * xext(2));
+  // δθ from error-state (small or not)
+  const Eigen::Matrix<T,3,1> dtheta = xext.template segment<3>(0);
+  const T theta = dtheta.norm();
+  const T half_theta = T(0.5) * theta;
+
+  // Build exact correction quaternion:
+  // δq = [ cos(|δθ|/2),  (sin(|δθ|/2)/|δθ|) * δθ ]
+  // Use series when |δθ| is tiny to avoid 0/0 and over-correction.
+  T w;        // scalar part
+  T k;        // vector scale = sin(half_theta)/theta
+  if (theta < T(1e-6)) {
+    // Series:
+    // cos(θ/2) ≈ 1 - (θ^2)/8
+    // sin(θ/2)/θ ≈ 1/2 - (θ^2)/48
+    const T theta2 = theta*theta;
+    w = T(1) - theta2 / T(8);
+    k = T(0.5) - theta2 / T(48);
+  } else {
+    w = std::cos(half_theta);
+    k = std::sin(half_theta) / theta;
+  }
+
+  const Eigen::Matrix<T,3,1> v = k * dtheta;
+  Eigen::Quaternion<T> corr(w, v.x(), v.y(), v.z());
+
+  // (Unit by construction, but normalize to be safe numerically)
   corr.normalize();
+
+  // Apply correction (right-multiply; keep your established convention)
   qref = qref * corr;
   qref.normalize();
 }
