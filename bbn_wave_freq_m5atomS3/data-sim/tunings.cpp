@@ -268,7 +268,7 @@ void process_wave(const WaveParameters& wp,
     std::cout << "Wave " << wave_index << " (" << type << ")\n"
               << "  Input: Hs=" << wp.height << " m, Tp=" << wp.period << " s\n"
               << "  Spectrum-derived:\n"
-              << "    tau=" << t_spec.tau << " s (1/ωp, exact from spectrum)\n"
+              << "    tau=" << t_spec.tau << " s (from spectrum)\n"
               << "    sigma_a=" << t_spec.sigma_a << " m/s^2, R_S=" << t_spec.R_S << " m^2\n"
               << "    Hs_spec=" << t_spec.Hs_spec << " m\n"
               << "    m0=" << t_spec.m0 << ", m2=" << t_spec.m2 << ", m4=" << t_spec.m4 << "\n"
