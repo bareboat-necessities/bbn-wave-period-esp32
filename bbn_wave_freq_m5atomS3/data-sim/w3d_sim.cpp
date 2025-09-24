@@ -82,16 +82,16 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
     { WaveType::JONSWAP, {
         {0.47552, 0.42099, 0.02693 / kf},   // Wave 0
         {0.90093, 0.80852, 0.57120 / kf},   // Wave 1
-        {1.45299, 1.07590, 4.00870 / kf},   // Wave 2
-        {1.80901, 1.35640, 18.07120 / kf},  // Wave 3
-        {2.28222, 1.56995, 54.76870 / kf}   // Wave 4
+        {1.46299, 1.07590, 4.00870 / kf},   // Wave 2
+        {1.80901, 1.35640, 21.07120 / kf},  // Wave 3
+        {2.18222, 1.56995, 58.76870 / kf}   // Wave 4
     }},
     { WaveType::PMSTOKES, {
         {0.47552, 0.56576, 0.02693 / kf},   // Wave 0
         {0.90093, 1.17877, 0.57120 / kf},   // Wave 1
-        {1.45299, 1.60890, 4.00870 / kf},   // Wave 2
-        {1.80901, 2.05467, 18.07120 / kf},  // Wave 3
-        {2.28222, 2.39718, 54.76870 / kf}   // Wave 4
+        {1.46299, 1.70890, 4.00870 / kf},   // Wave 2
+        {1.80901, 2.25467, 21.07120 / kf},  // Wave 3
+        {2.18222, 2.59718, 58.76870 / kf}   // Wave 4
     }}
 };
 
@@ -135,7 +135,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
               << ": tau=" << tune.tau_eff
               << ", sigma_a=" << tune.sigma_a_eff
               << ", R_S=" << tune.R_S_eff << "\n";
-    
+
     WaveDataCSVReader reader(filename);
 
     const Vector3f sigma_a(0.04f, 0.04f, 0.04f);
