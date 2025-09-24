@@ -526,45 +526,57 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(Vector3 const& acc_meas, T tempC) {
-
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
+    Vector3 const& acc_meas, T tempC)
+{
     // Accel magnitude sanity check
     T g_meas = acc_meas.norm();
     if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
         return; // reject this update
     }
 
+    // Predicted specific force
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // Cext: (3 x NX)
+    // Gravity direction in body → world Z in body frame
+    const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
+
+    // Projection matrix onto plane orthogonal to gb (zeroes yaw sensitivity)
+    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
+
+    // Project residual into roll/pitch space only
+    Vector3 inno = Hb * (acc_meas - v1hat);
+
+    // Jacobian projected
     Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    // d f_b / d (attitude error)
-    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(v1hat);
-    // d f_b / d a_w
-    Cext.template block<3,3>(0, OFF_AW) = R_wb();
+    Cext.template block<3,3>(0,0)      = Hb * (-skew_symmetric_matrix(v1hat));
+    Cext.template block<3,3>(0,OFF_AW) = Hb * R_wb();
     if constexpr (with_accel_bias) {
-        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
+        Cext.template block<3,3>(0,OFF_BA) = Hb;
     }
 
-    Vector3 inno = acc_meas - v1hat;
-
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
+    // Innovation covariance
+    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Hb * Racc * Hb.transpose();
     Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
 
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(),
+                                               T(1e-6) * Racc.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
     Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
 
+    // State update
     xext.noalias() += K * inno;
 
+    // Joseph covariance update
     MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * (Hb * Racc * Hb.transpose()) * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
+    // Quaternion correction
     applyQuaternionCorrectionFromErrorState();
     xext.template head<3>().setZero();
 }
