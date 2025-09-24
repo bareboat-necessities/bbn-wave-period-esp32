@@ -584,7 +584,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
         Matrix<T,3,NX> C_lin = Matrix<T,3,NX>::Zero();
         C_lin.template block<3,3>(0,OFF_AW) = R_wb();
         if constexpr (with_accel_bias) {
-            C_lin.block<3,3>(0,OFF_BA) = Matrix3::Identity();
+            C_lin.template block<3,3>(0,OFF_BA) = Matrix3::Identity();
         }
 
         Matrix3 S_mat = C_lin * Pext * C_lin.transpose() + Racc;
