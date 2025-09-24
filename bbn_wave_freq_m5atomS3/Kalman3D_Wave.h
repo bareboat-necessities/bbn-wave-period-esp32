@@ -529,66 +529,55 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas, T tempC)
 {
-    // Accel magnitude sanity check
+    // --- Basic sanity check on accel magnitude ---
     T g_meas = acc_meas.norm();
     if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
-        return; // reject this update
+        return; // reject crazy measurement
     }
 
     // Predicted specific force
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // Gravity direction in body → world Z in body frame
+    // Gravity direction in body
     const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
+    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose(); // projection ⟂ gb
 
-    // Projection matrix onto plane orthogonal to gb (zeroes yaw sensitivity)
-    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
+    // ==============================================================
+    // 1. Attitude correction (roll/pitch only, yaw suppressed)
+    // ==============================================================
+    {
+        Vector3 inno_att = Hb * (acc_meas - v1hat);
 
-// ======================================================================
-// 1. Attitude correction (roll/pitch only, yaw suppressed)
-// ======================================================================
-{
-    Vector3 inno = acc_meas - v1hat;
+        Matrix<T,3,NX> C_att = Matrix<T,3,NX>::Zero();
+        C_att.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v1hat));
 
-    // Project both innovation and Jacobian with Hb
-    Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
-    Vector3 inno_att = Hb * inno;
+        Matrix3 Rproj = Hb * Racc * Hb.transpose();
+        Matrix3 S_mat = C_att * Pext * C_att.transpose() + Rproj;
+        Matrix<T,NX,3> PCt = Pext * C_att.transpose();
 
-    Matrix<T,3,NX> C_att = Matrix<T,3,NX>::Zero();
-    C_att.template block<3,3>(0,0)      = Hb * (-skew_symmetric_matrix(v1hat));
-    C_att.template block<3,3>(0,OFF_AW) = Hb * R_wb();
-    if constexpr (with_accel_bias) {
-        C_att.template block<3,3>(0,OFF_BA) = Hb;
+        Eigen::LDLT<Matrix3> ldlt(S_mat);
+        if (ldlt.info() != Eigen::Success) {
+            S_mat += Matrix3::Identity() *
+                     std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rproj.norm());
+            ldlt.compute(S_mat);
+            if (ldlt.info() != Eigen::Success) return;
+        }
+        Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
+
+        // Update state and covariance
+        xext.noalias() += K * inno_att;
+        MatrixNX I = MatrixNX::Identity();
+        Pext = (I - K * C_att) * Pext * (I - K * C_att).transpose() + K * Rproj * K.transpose();
+        Pext = T(0.5) * (Pext + Pext.transpose());
+
+        // Apply quaternion correction
+        applyQuaternionCorrectionFromErrorState();
+        xext.template head<3>().setZero();
     }
 
-    Matrix3 Rproj = Hb * Racc * Hb.transpose();
-    Matrix3 S_mat = C_att * Pext * C_att.transpose() + Rproj;
-    Matrix<T,NX,3> PCt = Pext * C_att.transpose();
-
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(),
-                                                T(1e-6) * Rproj.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-    // Update
-    xext.noalias() += K * inno_att;
-
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * C_att) * Pext * (I - K * C_att).transpose() + K * Rproj * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    // Apply quaternion correction
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
-}
-
-    // ======================================================================
-    // 2. Linear subsystem correction (use full accel vector)
-    // ======================================================================
+    // ==============================================================
+    // 2. Linear subsystem correction (latent a_w and accel bias)
+    // ==============================================================
     {
         Vector3 inno_lin = acc_meas - v1hat;
 
@@ -603,13 +592,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 
         Eigen::LDLT<Matrix3> ldlt(S_mat);
         if (ldlt.info() != Eigen::Success) {
-            S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(),
-                                                    T(1e-6) * Racc.norm());
+            S_mat += Matrix3::Identity() *
+                     std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
             ldlt.compute(S_mat);
             if (ldlt.info() != Eigen::Success) return;
         }
         Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
+        // Update state and covariance
         xext.noalias() += K * inno_lin;
         MatrixNX I = MatrixNX::Identity();
         Pext = (I - K * C_lin) * Pext * (I - K * C_lin).transpose() + K * Racc * K.transpose();
