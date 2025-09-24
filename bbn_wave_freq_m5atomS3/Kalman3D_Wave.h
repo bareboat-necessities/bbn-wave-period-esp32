@@ -576,33 +576,39 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     }
 
     // ==============================================================
-    // 2. Linear subsystem correction (latent a_w and accel bias)
+    // 2. Linear subsystem correction (a_w, b_a only, ⟂ attitude)
     // ==============================================================
     {
         Vector3 inno_lin = acc_meas - v1hat;
 
+        // Only keep the *component along gravity* (gb) to avoid re-injecting roll/pitch
+        Vector3 inno_g = gb * (gb.dot(inno_lin));
+
         Matrix<T,3,NX> C_lin = Matrix<T,3,NX>::Zero();
-        C_lin.template block<3,3>(0,OFF_AW) = R_wb();
+        // a_w projects onto body via R_wb, but restrict to gravity direction
+        C_lin.template block<3,3>(0,OFF_AW) = gb * gb.transpose() * R_wb();
         if constexpr (with_accel_bias) {
-            C_lin.template block<3,3>(0,OFF_BA) = Matrix3::Identity();
+            C_lin.template block<3,3>(0,OFF_BA) = gb * gb.transpose();
         }
 
-        Matrix3 S_mat = C_lin * Pext * C_lin.transpose() + Racc;
+        // Use restricted covariance too
+        Matrix3 Rg = gb * gb.transpose() * Racc * gb * gb.transpose();
+
+        Matrix3 S_mat = C_lin * Pext * C_lin.transpose() + Rg;
         Matrix<T,NX,3> PCt = Pext * C_lin.transpose();
 
         Eigen::LDLT<Matrix3> ldlt(S_mat);
         if (ldlt.info() != Eigen::Success) {
             S_mat += Matrix3::Identity() *
-                     std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
+                     std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rg.norm());
             ldlt.compute(S_mat);
             if (ldlt.info() != Eigen::Success) return;
         }
         Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-        // Update state and covariance
-        xext.noalias() += K * inno_lin;
+        xext.noalias() += K * inno_g;
         MatrixNX I = MatrixNX::Identity();
-        Pext = (I - K * C_lin) * Pext * (I - K * C_lin).transpose() + K * Racc * K.transpose();
+        Pext = (I - K * C_lin) * Pext * (I - K * C_lin).transpose() + K * Rg * K.transpose();
         Pext = T(0.5) * (Pext + Pext.transpose());
     }
 }
