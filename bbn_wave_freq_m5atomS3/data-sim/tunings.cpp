@@ -49,21 +49,32 @@ struct TuningIMU {
     double tau_eff, sigma_a_eff, R_S_eff;
 };
 
-// ==================== Spectrum-based tuning ====================
+// ==================== Spectrum-based tuning (band-limited) ====================
 //
-// Spectral moments of displacement spectrum Sη(f):
-//   m₀  = ∫ S(f) df
-//   m₁  = ∫ ω S(f) df
-//   m₂  = ∫ ω² S(f) df
-//   m₄  = ∫ ω⁴ S(f) df
-//   m₋₁ = ∫ (1/ω) S(f) df
+// We compute moments of the *displacement* spectrum S_eta(f) after applying a
+// gentle 2nd-order low-pass to avoid overweighting the ω^4 tail (problematic on PM).
 //
-// Acceleration-mean requires m₅ = ∫ ω⁵ S(f) df
+// Filter:
+//   H(f) = 1 / (1 + (f/f_c)^2)^2,   with  f_c = 3 * f_peak_spec
 //
-// Significant wave height: Hs = 4√m₀
-// τ (time constant): τ = 1/ωₚ with ωₚ = 2π f_peak (from spectrum)
-// σₐ = √m₄
-// R_S ≈ 4 m₀  (pseudo-measurement variance)
+// Band-limited moments (using S_bl = S_eta * H):
+//   m0    = ∫ S_bl df
+//   m1    = ∫ ω S_bl df
+//   m2    = ∫ ω^2 S_bl df
+//   m4    = ∫ ω^4 S_bl df
+//   m-1   = ∫ (1/ω) S_bl df
+//   m5    = ∫ ω^5 S_bl df   (for acceleration-mean frequency)
+//
+// Tunings derived from band-limited moments:
+//   sigma_a = sqrt(m4)                                      // process std for a_w
+//   f_disp_mean = (m1/m0)/(2π)
+//   f_acc_mean  = (m5/m4)/(2π)
+//   tau = 0.8 / (2π * min(f_acc_mean, 2 * f_peak_spec))     // shorter than 1/ω_p on broad spectra
+//   R_S = 4 * m0                                            //  pseudo-measurement Kalman R
+//
+// Notes:
+// - On JONSWAP (narrow), the LP has little effect; τ and R_S change slightly.
+// - On PM (broad), this prevents σ_a inflation from ω^4 and shortens τ appropriately.
 //
 template<int N>
 static TuningSpec compute_from_spectrum(const Eigen::Matrix<double, N, 1>& freqs,
@@ -72,41 +83,52 @@ static TuningSpec compute_from_spectrum(const Eigen::Matrix<double, N, 1>& freqs
                                         double Tp_input)
 {
     TuningSpec out{};
+    const double epsf = 1e-6;
+
+    // Angular frequency
     Eigen::Array<double, N, 1> omega = 2.0 * M_PI * freqs.array();
 
-    // Raw spectral moments
-    out.m0    = (S.cwiseProduct(df)).sum();
-    out.m1    = ((omega * S.array()) * df.array()).sum();
-    out.m2    = ((omega.square() * S.array()) * df.array()).sum();
-    out.m4    = ((omega.pow(4)   * S.array()) * df.array()).sum();
-    out.mneg1 = (((1.0 / omega)  * S.array()) * df.array()).sum();
-
-    // m5 for acceleration mean frequency
-    double m5 = ((omega.pow(5) * S.array()) * df.array()).sum();
-
-    // === Spectral peak frequency (displacement spectrum) ===
+    // Displacement spectral peak (for cutoff and reporting)
     int idx_max;
     S.maxCoeff(&idx_max);
-    out.f_peak_spec = freqs(idx_max);          // Hz
-    double omega_p_spec = 2.0 * M_PI * out.f_peak_spec;
+    out.f_peak_spec = freqs(idx_max);                 // Hz
+    const double fp = std::max(out.f_peak_spec, epsf);
 
-    // === Input nominal peak ===
-    out.f_peak_input = 1.0 / Tp_input;         // Hz
+    // Gentle LP to tame ω^4 tail (helps PM, harmless for JONSWAP)
+    const double fc = 3.0 * fp;
+    Eigen::Array<double, N, 1> H = 1.0 / (1.0 + (freqs.array() / fc).square()).square();
+    Eigen::Array<double, N, 1> Sbl = S.array() * H;
 
-    // τ, σₐ, R_S
-    out.tau     = (omega_p_spec > 0.0) ? (1.0 / omega_p_spec) : NAN;
-    out.sigma_a = std::sqrt(out.m4);
-    out.R_S     = 4.0 * out.m0;
+    // Band-limited moments
+    out.m0    = (Sbl.matrix().cwiseProduct(df)).sum();
+    out.m1    = ((omega * Sbl) * df.array()).sum();
+    out.m2    = ((omega.square() * Sbl) * df.array()).sum();
+    out.m4    = ((omega.pow(4)   * Sbl) * df.array()).sum();
+    out.mneg1 = (((1.0 / omega)  * Sbl) * df.array()).sum();
+    const double m5 = ((omega.pow(5) * Sbl) * df.array()).sum();
 
-    // Heights & mean periods
-    out.Hs_spec = 4.0 * std::sqrt(out.m0);
-    out.Tm01    = (out.m1 > 0.0) ? (out.m0 / out.m1) : NAN;
-    out.Tm02    = (out.m2 > 0.0) ? std::sqrt(out.m0 / out.m2) : NAN;
-    out.Tm10    = (out.m0 > 0.0) ? (out.mneg1 / out.m0) : NAN;
+    // Input nominal peak (from provided Tp)
+    out.f_peak_input = (Tp_input > 0.0) ? (1.0 / Tp_input) : std::numeric_limits<double>::quiet_NaN();
 
-    // Mean frequencies
-    out.f_disp_mean = (out.m0 > 0.0) ? (out.m1 / out.m0) / (2.0 * M_PI) : NAN;
-    out.f_acc_mean  = (out.m4 > 0.0) ? (m5 / out.m4) / (2.0 * M_PI) : NAN;
+    // Derived means and tunings
+    out.f_disp_mean = (out.m0 > 0.0) ? (out.m1 / out.m0) / (2.0 * M_PI) : std::numeric_limits<double>::quiet_NaN();
+    out.f_acc_mean  = (out.m4 > 0.0) ? (m5 / out.m4)     / (2.0 * M_PI) : std::numeric_limits<double>::quiet_NaN();
+
+    // sigma_a from band-limited m4
+    out.sigma_a = (out.m4 > 0.0) ? std::sqrt(out.m4) : 0.0;
+
+    // tau shortened toward acceleration content; clamp with 2*fp
+    const double f_tau = std::min(std::max(out.f_acc_mean, epsf), 2.0 * fp);
+    out.tau = 0.8 / (2.0 * M_PI * f_tau);
+
+    // Pseudo-measurement variance relaxed for energetic/broad seas
+    out.R_S = 4.0 * out.m0;
+
+    // Heights & mean periods (band-limited, consistent with above)
+    out.Hs_spec = (out.m0 > 0.0) ? 4.0 * std::sqrt(out.m0) : 0.0;
+    out.Tm01    = (out.m1 > 0.0) ? (out.m0 / out.m1) : std::numeric_limits<double>::quiet_NaN();
+    out.Tm02    = (out.m2 > 0.0) ? std::sqrt(out.m0 / out.m2) : std::numeric_limits<double>::quiet_NaN();
+    out.Tm10    = (out.m0 > 0.0) ? (out.mneg1 / out.m0) : std::numeric_limits<double>::quiet_NaN();
 
     return out;
 }
