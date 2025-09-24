@@ -544,41 +544,66 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     // Projection matrix onto plane orthogonal to gb (zeroes yaw sensitivity)
     const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
 
-    // Project residual into roll/pitch space only
-    Vector3 inno = Hb * (acc_meas - v1hat);
+    // ======================================================================
+    // 1. Attitude correction (roll/pitch only)
+    // ======================================================================
+    {
+        Vector3 inno_att = Hb * (acc_meas - v1hat);
 
-    // Jacobian projected
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    Cext.template block<3,3>(0,0)      = Hb * (-skew_symmetric_matrix(v1hat));
-    Cext.template block<3,3>(0,OFF_AW) = Hb * R_wb();
-    if constexpr (with_accel_bias) {
-        Cext.template block<3,3>(0,OFF_BA) = Hb;
+        Matrix<T,3,NX> C_att = Matrix<T,3,NX>::Zero();
+        C_att.block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v1hat));
+
+        Matrix3 Rproj = Hb * Racc * Hb.transpose();
+        Matrix3 S_mat = C_att * Pext * C_att.transpose() + Rproj;
+        Matrix<T,NX,3> PCt = Pext * C_att.transpose();
+
+        Eigen::LDLT<Matrix3> ldlt(S_mat);
+        if (ldlt.info() != Eigen::Success) {
+            S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(),
+                                                    T(1e-6) * Rproj.norm());
+            ldlt.compute(S_mat);
+            if (ldlt.info() != Eigen::Success) return;
+        }
+        Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
+
+        xext.noalias() += K * inno_att;
+        MatrixNX I = MatrixNX::Identity();
+        Pext = (I - K * C_att) * Pext * (I - K * C_att).transpose() + K * Rproj * K.transpose();
+        Pext = T(0.5) * (Pext + Pext.transpose());
+
+        applyQuaternionCorrectionFromErrorState();
+        xext.template head<3>().setZero();
     }
 
-    // Innovation covariance
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Hb * Racc * Hb.transpose();
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+    // ======================================================================
+    // 2. Linear subsystem correction (use full accel vector)
+    // ======================================================================
+    {
+        Vector3 inno_lin = acc_meas - v1hat;
 
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(),
-                                               T(1e-6) * Racc.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
+        Matrix<T,3,NX> C_lin = Matrix<T,3,NX>::Zero();
+        C_lin.block<3,3>(0,OFF_AW) = R_wb();
+        if constexpr (with_accel_bias) {
+            C_lin.block<3,3>(0,OFF_BA) = Matrix3::Identity();
+        }
+
+        Matrix3 S_mat = C_lin * Pext * C_lin.transpose() + Racc;
+        Matrix<T,NX,3> PCt = Pext * C_lin.transpose();
+
+        Eigen::LDLT<Matrix3> ldlt(S_mat);
+        if (ldlt.info() != Eigen::Success) {
+            S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(),
+                                                    T(1e-6) * Racc.norm());
+            ldlt.compute(S_mat);
+            if (ldlt.info() != Eigen::Success) return;
+        }
+        Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
+
+        xext.noalias() += K * inno_lin;
+        MatrixNX I = MatrixNX::Identity();
+        Pext = (I - K * C_lin) * Pext * (I - K * C_lin).transpose() + K * Racc * K.transpose();
+        Pext = T(0.5) * (Pext + Pext.transpose());
     }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-    // State update
-    xext.noalias() += K * inno;
-
-    // Joseph covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * (Hb * Racc * Hb.transpose()) * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    // Quaternion correction
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
