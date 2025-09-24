@@ -379,6 +379,35 @@ Matrix<T, 3, 3> QuaternionMEKF<T, with_bias>::skew_symmetric_matrix(const Eigen:
   return M;
 }
 
+// Apply full exponential-map quaternion correction from current error-state x(0..2).
+// Safe for both small and large |δθ|.
+template<typename T, bool with_bias>
+void QuaternionMEKF<T, with_bias>::applyQuaternionCorrectionFromErrorState() {
+    Eigen::Matrix<T,3,1> dtheta = x.template head<3>();
+    T theta = dtheta.norm();
+
+    T w, k;
+    if (theta < T(1e-6)) {
+        T theta2 = theta * theta;
+        w = T(1) - theta2 / T(8);
+        k = T(0.5) - theta2 / T(48);
+    } else {
+        T half_theta = T(0.5) * theta;
+        w = std::cos(half_theta);
+        k = std::sin(half_theta) / theta;
+    }
+
+    Eigen::Matrix<T,3,1> v = k * dtheta;
+    Eigen::Quaternion<T> corr(w, v.x(), v.y(), v.z());
+    corr.normalize();
+
+    qref = qref * corr;
+    qref.normalize();
+
+    // Reset attitude error part of the state
+    x.template head<3>().setZero();
+}
+
 template <typename T, bool with_bias>
 Matrix<T, 3, 1> QuaternionMEKF<T, with_bias>::accelerometer_measurement_func() const {
   return qref.inverse() * v1ref;
