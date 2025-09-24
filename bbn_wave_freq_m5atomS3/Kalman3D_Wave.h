@@ -825,17 +825,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     Mat12 A; A.setZero();
     // State order: [v(3), p(3), S(3), a(3)]
     // v̇ = a
-    A.block<3,3>(0,9) = Matrix3::Identity();
+    A.template block<3,3>(0,9) = Matrix3::Identity();
     // ṗ = v
-    A.block<3,3>(3,0) = Matrix3::Identity();
+    A.template block<3,3>(3,0) = Matrix3::Identity();
     // Ṡ = p
-    A.block<3,3>(6,3) = Matrix3::Identity();
+    A.template block<3,3>(6,3) = Matrix3::Identity();
     // ȧ = -(1/τ) a   (OU drift)
-    A.block<3,3>(9,9) = -(Matrix3::Identity() / std::max(T(1e-6), tau_aw));
+    A.template block<3,3>(9,9) = -(Matrix3::Identity() / std::max(T(1e-6), tau_aw));
 
     // Noise input G (into a only)
     Mat12x3 G; G.setZero();
-    G.block<3,3>(9,0) = Matrix3::Identity();
+    G.template block<3,3>(9,0) = Matrix3::Identity();
 
     // Continuous covariance intensity Σ_c
     Matrix3 Sigma_c = (2.0/tau_aw) * Sigma_aw_stat;
