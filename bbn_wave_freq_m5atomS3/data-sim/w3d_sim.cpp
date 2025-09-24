@@ -340,9 +340,12 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             rms_ang.add(errs_angle[i]);
         }
 
+        float z_rms = rms_z.rms();
+        float z_rms_pct = 100.0f * z_rms / wp.height;
+
         std::cout << "=== Last 60 s RMS summary for " << filename << " ===\n";
-        std::cout << "Z RMS = " << rms_z.rms()
-                  << " m (" << 100.0f * rms_z.rms() / wp.height
+        std::cout << "Z RMS = " << z_rms
+                  << " m (" << z_rms_pct
                   << "% of Hs=" << wp.height << ")\n";
         std::cout << "Angles RMS (deg): "
                   << "Roll=" << rms_roll.rms()
@@ -351,6 +354,12 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         std::cout << "Absolute angle error RMS (deg): "
                   << rms_ang.rms() << "\n";
         std::cout << "=============================================\n\n";
+
+        // FAIL CHECK
+        if (z_rms_pct < 23.0f) {
+            std::cerr << "ERROR: Z RMS below 23% (" << z_rms_pct << "%). Failing.\n";
+            std::exit(EXIT_FAILURE);
+        }
     }
 }
 
