@@ -97,7 +97,7 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         {0.91200, 0.97022,   1.302336 / kf},     // Wave 1: Tp=5.7  → f_old=8.77 Hz
         {1.36000, 1.29108,  13.362333 / kf},     // Wave 2: Tp=8.5  → f_old=6.00 Hz
         {4.33200, 1.62768,  70.237333 / kf},     // Wave 3: Tp=11.4 → f_old=6.00 Hz
-        {4.20000, 1.60000,   8.00000 / kf}    // PM Wave 4 (Tp=14.3, Hs=14.8)
+        {4.33200, 1.62768,  70.237333 / kf}    // PM Wave 4 (Tp=14.3, Hs=14.8)
     }}
 };
 
