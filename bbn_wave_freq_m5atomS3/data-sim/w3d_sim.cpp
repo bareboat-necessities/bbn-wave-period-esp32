@@ -91,7 +91,7 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         {0.90093, 0.97022,   0.97104 / kf},   // Wave 1
         {1.46299, 1.29108,   7.21566 / kf},   // Wave 2
         {4.60000, 1.95000,  30.00000 / kf},   // Wave 3 ← UPDATED
-        {2.18222, 1.88394, 117.53740 / kf}    // Wave 4
+        {5.4,     2.35,     95.0 / kf}    // Wave 4
     }}
 };
 
