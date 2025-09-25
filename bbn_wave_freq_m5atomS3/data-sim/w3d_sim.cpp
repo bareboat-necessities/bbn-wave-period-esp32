@@ -18,6 +18,9 @@ const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
 const float FAIL_ERR_LIMIT_PERCENT = 21.0f; 
 
+// RMS window length [s]
+constexpr float RMS_WINDOW_SEC = 120.0f;
+
 #include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
 #include "FrameConversions.h"  // coordinate & quaternion conversions + MagSim_WMM
@@ -106,9 +109,6 @@ int wave_index_from_height(float height) {
     }
     return -1; // not found
 }
-
-// RMS window length [s]
-constexpr float RMS_WINDOW_SEC = 60.0f;
 
 void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
