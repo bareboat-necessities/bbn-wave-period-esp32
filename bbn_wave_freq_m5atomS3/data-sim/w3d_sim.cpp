@@ -78,7 +78,7 @@ const std::vector<WaveParameters> waveParamsList = {
     {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 25.0f}
 };
 
-constexpr float kf = 0.5f;
+constexpr float kf = 0.25f;
 
 const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
     { WaveType::JONSWAP, {
