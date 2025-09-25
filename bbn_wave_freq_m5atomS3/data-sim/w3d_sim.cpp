@@ -92,7 +92,7 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         // { tau_eff,   sigma_a_eff,           R_S_eff }   // R_S_eff = <numerator> / kf
         { 0.47746, 0.52831,   0.0103391 / kf },   // Tp=3.0,  Hs=0.27
         { 0.90718, 0.93033,   0.1250327 / kf },   // Tp=5.7,  Hs=1.5
-        { 1.18282, 0.82348,   0.19070   / kf },   // Tp=8.5,  Hs=4.0
+        { 1.18282, 0.82348,   0.15070   / kf },   // Tp=8.5,  Hs=4.0
         { 1.68437, 0.92874,   0.3612    / kf }    // Tp=11.4, Hs=8.5
     }}
 };
