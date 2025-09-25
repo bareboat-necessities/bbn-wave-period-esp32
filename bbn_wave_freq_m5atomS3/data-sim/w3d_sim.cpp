@@ -87,11 +87,11 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         {2.18222, 1.56995, 58.76870 / kf}   // Wave 4
     }},
     { WaveType::PMSTOKES, {
-        {0.47552, 0.50519,   0.04309 / kf},   // Wave 0 (prev suggestion)
-        {0.90093, 0.97022,   0.97104 / kf},   // Wave 1
-        {1.46299, 1.29108,   7.21566 / kf},   // Wave 2
-        {4.60000, 1.95000,  30.00000 / kf},   // Wave 3 ← UPDATED
-        {5.4,     2.35,     95.0 / kf}    // Wave 4
+        {0.47552, 0.50519,   0.05160 / kf},   // Wave 0 (τ same, σa +20%, R_S scaled for 20 Hz)
+        {0.90093, 0.97022,   2.20691 / kf},   // Wave 1
+        {1.46299, 1.29108,  24.05220 / kf},   // Wave 2
+        {4.60000, 1.95000, 100.00000 / kf},   // Wave 3 (τ longer, σa bumped, R_S rescaled)
+        {5.40000, 2.35000, 391.79133 / kf}    // Wave 4 (τ longer, σa bumped, R_S rescaled)
     }}
 };
 
