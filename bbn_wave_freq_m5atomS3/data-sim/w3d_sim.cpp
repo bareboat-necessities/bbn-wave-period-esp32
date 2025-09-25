@@ -95,10 +95,8 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         // RS_PM = RS_J * (20 / clamp(50/Tp, 6, 25))   [numerators; actual is "/ kf"]
         {0.48000, 0.50519,   0.032316 / kf},     // Wave 0: Tp=3.0  → f_old=16.67 Hz
         {0.91200, 0.97022,   1.302336 / kf},     // Wave 1: Tp=5.7  → f_old=8.77 Hz
-        // >>> STRONG-CLAMP presets for the problematic ones <<<
-        // Shorten/limit τ, lower σ_a a bit (less HF injection), tighten R_S
-        {2.30000, 1.24000,  12.00000 / kf},   // PM Wave 2 (Tp=8.5, Hs=4.0)
-        {4.20000, 1.55000,  12.00000 / kf},   // PM Wave 3 (Tp=11.4, Hs=8.5)
+        {1.36000, 1.29108,  13.362333 / kf},     // Wave 2: Tp=8.5  → f_old=6.00 Hz
+        {4.33200, 1.62768,  70.237333 / kf},     // Wave 3: Tp=11.4 → f_old=6.00 Hz
         {4.20000, 1.60000,   8.00000 / kf}    // PM Wave 4 (Tp=14.3, Hs=14.8)
     }}
 };
