@@ -80,14 +80,6 @@ constexpr float kf = 0.5f;
 
 const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
     { WaveType::JONSWAP, {
-        {0.47552, 0.42099, 0.02693 / kf},   // Wave 0
-        {0.90093, 0.80852, 0.57120 / kf},   // Wave 1
-        {1.46299, 1.07590, 4.00870 / kf},   // Wave 2
-        {1.80901, 1.35640, 21.07120 / kf},  // Wave 3
-        {2.18222, 1.56995, 58.76870 / kf}   // Wave 4
-    }},
-const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
-    { WaveType::JONSWAP, {
         {0.47552, 0.42099, 0.02693 / kf},   // Wave 0 (Tp=3.0)
         {0.90093, 0.80852, 0.57120 / kf},   // Wave 1 (Tp=5.7)
         {1.46299, 1.07590, 4.00870 / kf},   // Wave 2 (Tp=8.5)
@@ -104,7 +96,6 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         {4.33200, 1.62768,  70.237333 / kf},     // Wave 3: Tp=11.4 → f_old=6.00 Hz
         {5.43400, 1.88394, 195.895667 / kf}      // Wave 4: Tp=14.3 → f_old=6.00 Hz
     }}
-};
 };
 
 int wave_index_from_height(float height) {
