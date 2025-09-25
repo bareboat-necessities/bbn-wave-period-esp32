@@ -88,13 +88,10 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         {1.80901, 1.35640, 21.07120 / kf}   // Wave 3 (Tp=11.4)
     }},
     { WaveType::PMSTOKES, {
-        // τ_PM = 0.16*Tp (Tp<=10), else 0.38*Tp
-        // σa_PM = 1.20 * σa_J
-        // RS_PM = RS_J * (20 / clamp(50/Tp, 6, 25))   [numerators; actual is "/ kf"]
-        {0.48000, 0.50519,   0.032316 / kf},     // Wave 0: Tp=3.0  → f_old=16.67 Hz
-        {0.91200, 0.97022,   1.302336 / kf},     // Wave 1: Tp=5.7  → f_old=8.77 Hz
-        {1.36000, 1.29108,  13.362333 / kf},     // Wave 2: Tp=8.5  → f_old=6.00 Hz
-        {4.33200, 1.62768,  70.237333 / kf}      // Wave 3: Tp=11.4 → f_old=6.00 Hz
+        {0.47552, 0.42099, 0.02693 / kf},   // Wave 0 (Tp=3.0)
+        {0.90093, 0.80852, 0.57120 / kf},   // Wave 1 (Tp=5.7)
+        {1.46299, 1.07590, 4.00870 / kf},   // Wave 2 (Tp=8.5)
+        {1.80901, 1.35640, 21.07120 / kf}   // Wave 3 (Tp=11.4)
     }}
 };
 
