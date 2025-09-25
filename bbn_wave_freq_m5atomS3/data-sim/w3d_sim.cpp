@@ -16,7 +16,7 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT = 12.0f; 
+const float FAIL_ERR_LIMIT_PERCENT = 11.0f; 
 
 // RMS window length [s]
 constexpr float RMS_WINDOW_SEC = 60.0f;
@@ -91,8 +91,8 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         // { tau_eff,   sigma_a_eff,           R_S_eff }   // R_S_eff = <numerator> / kf
         { 0.47746, 0.52831,   0.0103391 / kf },   // Tp=3.0,  Hs=0.27
         { 0.90718, 0.93033,   0.1250327 / kf },   // Tp=5.7,  Hs=1.5
-        { 1.35282, 1.26148,   0.26870   / kf },   // Tp=8.5,  Hs=4.0
-        { 1.81437, 1.66874,   0.5212    / kf }    // Tp=11.4, Hs=8.5
+        { 1.35282, 1.26148,   0.27970   / kf },   // Tp=8.5,  Hs=4.0
+        { 1.81437, 1.66874,   0.5412    / kf }    // Tp=11.4, Hs=8.5
     }}
 };
 
