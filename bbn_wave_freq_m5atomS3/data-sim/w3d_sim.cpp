@@ -87,12 +87,13 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         {1.46299, 1.07590, 4.00870 / kf},   // Wave 2 (Tp=8.5)
         {1.80901, 1.35640, 21.07120 / kf}   // Wave 3 (Tp=11.4)
     }},
-    { WaveType::PMSTOKES, {
-        {0.48000, 0.50519,   0.032316 / kf}, // Wave 0: Tp=3.0  → f_old=16.67 Hz
-        {0.91200, 0.97022,   1.202336 / kf}, // Wave 1: Tp=5.7  → f_old=8.77 Hz
-        {1.47299, 1.29108,   4.00870  / kf}, // Wave 2: Tp=8.5  → f_old=6.00 Hz
-        {3.93200, 1.55768,  32.237333 / kf}   // Wave 3: Tp=11.4 → f_old=6.00 Hz
-    }}
+{ WaveType::PMSTOKES, {
+    // { tau_eff,   sigma_a_eff,           R_S_eff }   // R_S_eff is written as <numerator> / kf
+    { 0.47746, 0.52831,   0.0406782 / kf },  // Wave 0: Tp=3.0,  Hs=0.27
+    { 0.90718, 0.93033,   1.5500654 / kf },  // Wave 1: Tp=5.7,  Hs=1.5
+    { 1.35282, 1.26148,  13.70727  / kf },   // Wave 2: Tp=8.5,  Hs=4.0
+    { 1.81437, 1.66874,  70.2696319 / kf }   // Wave 3: Tp=11.4, Hs=8.5
+}}
 };
 
 int wave_index_from_height(float height) {
