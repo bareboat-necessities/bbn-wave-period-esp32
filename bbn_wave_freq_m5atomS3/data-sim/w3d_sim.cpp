@@ -363,7 +363,6 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
                 std::exit(EXIT_FAILURE);
             }
         }
-
     }
 }
 
