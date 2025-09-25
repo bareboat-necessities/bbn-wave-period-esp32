@@ -199,11 +199,21 @@ static void run_from_csv(TrackerType tracker,
 int main() {
     init_tracker_backends();
 
-    unsigned run_idx = 0;
+    // Collect candidate files
+    std::vector<std::string> files;
     for (const auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
         auto fname = entry.path().string();
         if (fname.find("wave_data_") == std::string::npos) continue;
+        files.push_back(fname);
+    }
+
+    // Sort lexicographically for deterministic order
+    std::sort(files.begin(), files.end());
+
+    // Process each file with each tracker
+    unsigned run_idx = 0;
+    for (const auto &fname : files) {
         for (int tr = 0; tr < 3; ++tr) {
             run_from_csv(static_cast<TrackerType>(tr), fname, run_idx++);
         }
