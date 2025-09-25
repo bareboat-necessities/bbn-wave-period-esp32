@@ -224,14 +224,25 @@ int main(int argc, char* argv[]) {
               << ", mag_delay=" << MAG_DELAY_SEC << " sec"
               << ", noise=" << (add_noise ? "true" : "false") << "\n";
 
+    // Collect matching files
+    std::vector<std::string> files;
     for (auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
         std::string fname = entry.path().string();
         if (fname.find("wave_data_") == std::string::npos) continue;
-        auto kind = WaveFileNaming::parse_kind_only(fname);
-        if (kind && *kind == FileKind::Data) {
-            process_wave_file(fname, dt, with_mag);
+        if (auto kind = WaveFileNaming::parse_kind_only(fname);
+            kind && *kind == FileKind::Data) {
+            files.push_back(fname);
         }
     }
+
+    // Sort lexicographically for stable, repeatable order
+    std::sort(files.begin(), files.end());
+
+    // Process files in that fixed order
+    for (const auto &fname : files) {
+        process_wave_file(fname, dt, with_mag);
+    }
+
     return 0;
 }
