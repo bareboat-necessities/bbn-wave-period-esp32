@@ -353,7 +353,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
         // FAIL CHECK
         if (z_rms_pct > FAIL_ERR_LIMIT_PERCENT) {
-            std::cerr << "ERROR: Z RMS above 23% (" << z_rms_pct << "%). Failing.\n";
+            std::cerr << "ERROR: Z RMS above limit (" << z_rms_pct << "%). Failing.\n";
             std::exit(EXIT_FAILURE);
         }
     }
