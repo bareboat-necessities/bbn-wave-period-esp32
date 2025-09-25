@@ -352,10 +352,18 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         std::cout << "=============================================\n\n";
 
         // FAIL CHECK
-        if (z_rms_pct > FAIL_ERR_LIMIT_PERCENT) {
-            std::cerr << "ERROR: Z RMS above limit (" << z_rms_pct << "%). Failing.\n";
-            std::exit(EXIT_FAILURE);
+        if (type == WaveType::JONSWAP) {
+            if (z_rms_pct > FAIL_ERR_LIMIT_PERCENT / 2) {
+                std::cerr << "ERROR: Z RMS above limit (" << z_rms_pct << "%). Failing.\n";
+                std::exit(EXIT_FAILURE);
+            }
+        } else {
+            if (z_rms_pct > FAIL_ERR_LIMIT_PERCENT) {
+                std::cerr << "ERROR: Z RMS above limit (" << z_rms_pct << "%). Failing.\n";
+                std::exit(EXIT_FAILURE);
+            }
         }
+
     }
 }
 
