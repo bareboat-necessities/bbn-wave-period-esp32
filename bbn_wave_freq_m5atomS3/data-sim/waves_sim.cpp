@@ -25,7 +25,7 @@
 // Experiment Config
 static constexpr float SAMPLE_RATE_HZ  = 240.0f;
 static constexpr float DELTA_T         = 1.0f / SAMPLE_RATE_HZ;
-static constexpr float TEST_DURATION_S = 15 * 60.0f;    // 10 minutes
+static constexpr float TEST_DURATION_S = 15 * 60.0f;    // 15 minutes
 
 // Example test cases
 const std::vector<WaveParameters> waveParamsList = {
