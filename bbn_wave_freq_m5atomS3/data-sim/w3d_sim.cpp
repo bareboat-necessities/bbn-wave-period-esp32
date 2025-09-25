@@ -19,7 +19,7 @@ const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 const float FAIL_ERR_LIMIT_PERCENT = 21.0f; 
 
 // RMS window length [s]
-constexpr float RMS_WINDOW_SEC = 120.0f;
+constexpr float RMS_WINDOW_SEC = 60.0f;
 
 #include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
