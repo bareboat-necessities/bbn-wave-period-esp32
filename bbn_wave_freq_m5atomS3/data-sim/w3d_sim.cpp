@@ -86,13 +86,25 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         {1.80901, 1.35640, 21.07120 / kf},  // Wave 3
         {2.18222, 1.56995, 58.76870 / kf}   // Wave 4
     }},
+const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
+    { WaveType::JONSWAP, {
+        {0.47552, 0.42099, 0.02693 / kf},   // Wave 0 (Tp=3.0)
+        {0.90093, 0.80852, 0.57120 / kf},   // Wave 1 (Tp=5.7)
+        {1.46299, 1.07590, 4.00870 / kf},   // Wave 2 (Tp=8.5)
+        {1.80901, 1.35640, 21.07120 / kf},  // Wave 3 (Tp=11.4)
+        {2.18222, 1.56995, 58.76870 / kf}   // Wave 4 (Tp=14.3)
+    }},
     { WaveType::PMSTOKES, {
-        {0.47552, 0.50519,   0.05160 / kf},   // Wave 0 (τ same, σa +20%, R_S scaled for 20 Hz)
-        {0.90093, 0.97022,   2.20691 / kf},   // Wave 1
-        {1.46299, 1.29108,  24.05220 / kf},   // Wave 2
-        {4.60000, 1.95000, 100.00000 / kf},   // Wave 3 (τ longer, σa bumped, R_S rescaled)
-        {5.40000, 2.35000, 391.79133 / kf}    // Wave 4 (τ longer, σa bumped, R_S rescaled)
+        // τ_PM = 0.16*Tp (Tp<=10), else 0.38*Tp
+        // σa_PM = 1.20 * σa_J
+        // RS_PM = RS_J * (20 / clamp(50/Tp, 6, 25))   [numerators; actual is "/ kf"]
+        {0.48000, 0.50519,   0.032316 / kf},     // Wave 0: Tp=3.0  → f_old=16.67 Hz
+        {0.91200, 0.97022,   1.302336 / kf},     // Wave 1: Tp=5.7  → f_old=8.77 Hz
+        {1.36000, 1.29108,  13.362333 / kf},     // Wave 2: Tp=8.5  → f_old=6.00 Hz
+        {4.33200, 1.62768,  70.237333 / kf},     // Wave 3: Tp=11.4 → f_old=6.00 Hz
+        {5.43400, 1.88394, 195.895667 / kf}      // Wave 4: Tp=14.3 → f_old=6.00 Hz
     }}
+};
 };
 
 int wave_index_from_height(float height) {
