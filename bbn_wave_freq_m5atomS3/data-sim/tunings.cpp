@@ -14,7 +14,7 @@
 
 // --- constants ---
 static constexpr double TWO_PI = 2.0 * M_PI;
-static constexpr double G_STD  = 9.80665;
+static constexpr double g_std  = 9.80665;
 
 // ---- wave model headers ----
 #include "Jonswap3dStokesWaves.h"
@@ -154,7 +154,7 @@ static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char*
     auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
         wp.direction * M_PI / 180.0, 10.0, 42u);
 
-    WaveModel model(wp.height, wp.period, dirDist, 0.02, 0.8, G_STD, 42u);
+    WaveModel model(wp.height, wp.period, dirDist, 0.02, 0.8, g_std, 42u);
 
     const auto f   = model.frequencies();
     const auto S   = model.spectrum();
