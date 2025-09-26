@@ -79,21 +79,25 @@ const std::vector<WaveParameters> waveParamsList = {
     {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 25.0f}
 };
 
-constexpr float kf = 0.25f;
+constexpr float kf = 0.748f;
+
+float R_S_law(float Tp, float coeff = kf) {
+   return kf * std::pow(Tp, 1.0 / 3.0);
+}
 
 const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
     { WaveType::JONSWAP, {
-        { 0.475521, 0.417555, 0.02 / kf },  // Wave 0 (Tp=3.0)
-        { 0.900931, 0.806785, 0.13 / kf },  // Wave 1 (Tp=5.7)
-        { 1.352997, 1.074633, 0.39 / kf },  // Wave 2 (Tp=8.5)
-        { 1.809019, 1.355438, 0.42 / kf }   // Wave 3 (Tp=11.4)
+        { 0.475521, 0.417555, R_S_law(3.0)  },  // Wave 0 (Tp=3.0)
+        { 0.900931, 0.806785, R_S_law(5.7)  },  // Wave 1 (Tp=5.7)
+        { 1.352997, 1.074633, R_S_law(8.5)  },  // Wave 2 (Tp=8.5)
+        { 1.809019, 1.355438, R_S_law(11.4) }   // Wave 3 (Tp=11.4)
     }},
     { WaveType::PMSTOKES, {
         // { tau_eff, sigma_a_eff,  R_S_eff }   // R_S_eff = <numerator> / kf
-        { 0.316639, 0.563192, 0.02 / kf },  // Tp=3.0,  Hs=0.27
-        { 0.599911, 1.177536, 0.13 / kf },  // Tp=5.7,  Hs=1.5
-        { 0.900931, 1.607994, 0.39 / kf },  // Tp=8.5,  Hs=4.0
-        { 1.204587, 2.053963, 0.42 / kf }   // Tp=11.4, Hs=8.5
+        { 0.316639, 0.563192, R_S_law(3.0)  },  // Tp=3.0,  Hs=0.27
+        { 0.599911, 1.177536, R_S_law(5.7)  },  // Tp=5.7,  Hs=1.5
+        { 0.900931, 1.607994, R_S_law(8.5)  },  // Tp=8.5,  Hs=4.0
+        { 1.204587, 2.053963, R_S_law(11.4) }   // Tp=11.4, Hs=8.5
     }}
 };
 
