@@ -16,6 +16,12 @@
 static constexpr double TWO_PI = 2.0 * M_PI;
 static constexpr double g_std  = 9.80665;
 
+// --- new R_S law ---
+constexpr float kf = 0.748f;
+inline float R_S_law(float Tp, float coeff = kf) {
+    return coeff * std::pow(Tp, 1.0 / 3.0);
+}
+
 // ---- wave model headers ----
 #include "Jonswap3dStokesWaves.h"
 #include "PiersonMoskowitzStokes3D_Waves.h"
@@ -35,12 +41,11 @@ struct TuningExact {
     double tau_displ;   // s (from displacement peak)
     double tau_accel;   // s (from acceleration peak)
     double sigma_a;     // m/s^2 (RMS)
-    double R_S;         // (m*s)^2
+    double R_S;         // (m*s)^2 from law
     // diagnostics
     double Hs_spec;     // m
     double m0;          // m^2
     double m4;          // m^2 s^-4
-    double m_neg2;      // m^2 s^2
     double f_peak_disp; // Hz
     double f_peak_acc;  // Hz
 };
@@ -48,7 +53,7 @@ struct TuningExact {
 struct TuningHeur {
     double tau;       // s
     double sigma_a;   // m/s^2
-    double R_S;       // (m*s)^2
+    double R_S;       // (m*s)^2 from law
     // diagnostics
     double m0_from_Hs; // m^2
     double omega_p;    // rad/s used
@@ -64,7 +69,8 @@ template<int N>
 static TuningExact compute_exact_from_spectrum(
     const Eigen::Matrix<double, N, 1>& f_Hz,
     const Eigen::Matrix<double, N, 1>& S_eta,
-    const Eigen::Matrix<double, N, 1>& df_Hz
+    const Eigen::Matrix<double, N, 1>& df_Hz,
+    double Tp
 ) {
     TuningExact out{};
 
@@ -89,7 +95,6 @@ static TuningExact compute_exact_from_spectrum(
     const Eigen::Array<double, N, 1> df = df_Hz.array();
     out.m0     = (S_eta.array() * df).sum();                    // m^2
     out.m4     = (w4 * S_eta.array() * df).sum();               // m^2 s^-4
-    out.m_neg2 = ((S_eta.array() / (w2.max(1e-18))) * df).sum();// m^2 s^2
 
     // τ from both peaks
     out.tau_displ = 1.0 / omega_disp;
@@ -97,20 +102,20 @@ static TuningExact compute_exact_from_spectrum(
 
     // sigma_a, R_S, Hs
     out.sigma_a = (out.m4 > 0.0) ? std::sqrt(out.m4) : 0.0;
-    out.R_S     = std::max(out.m_neg2, 0.0);
+    out.R_S     = R_S_law(Tp);   // <--- law
     out.Hs_spec = (out.m0 > 0.0) ? 4.0 * std::sqrt(out.m0) : 0.0;
 
     return out;
 }
 
-// --- heuristic (Hs,Tp) ---
+// --- heuristic (Hs,Tp) using new R_S law ---
 static TuningHeur compute_heur_from_HsTp(double Hs, double Tp) {
     TuningHeur h{};
     h.m0_from_Hs = (Hs*Hs)/16.0;
     h.omega_p    = TWO_PI / std::max(Tp, 1e-9);
     h.tau        = 1.0 / h.omega_p;
     h.sigma_a    = h.omega_p*h.omega_p*std::sqrt(h.m0_from_Hs);
-    h.R_S        = h.m0_from_Hs / (h.omega_p*h.omega_p);
+    h.R_S        = R_S_law(Tp);   // <--- law
     return h;
 }
 
@@ -121,35 +126,29 @@ static void print_report(size_t idx, const char* type, const WaveParameters& wp,
     std::cout << "Wave " << idx << " [" << type << "]  (Hs_in=" << wp.height
               << " m, Tp_in=" << wp.period << " s)\n";
     std::cout << "  --- Peaks ---\n";
-    std::cout << "    f_peak_disp      = " << e.f_peak_disp << " Hz  (ω_disp = " << (TWO_PI*e.f_peak_disp) << " rad/s)\n";
-    std::cout << "    f_peak_acc       = " << e.f_peak_acc  << " Hz  (ω_acc  = " << (TWO_PI*e.f_peak_acc)  << " rad/s)\n";
-    std::cout << "  --- Exact from spectrum ---\n";
+    std::cout << "    f_peak_disp      = " << e.f_peak_disp << " Hz\n";
+    std::cout << "    f_peak_acc       = " << e.f_peak_acc  << " Hz\n";
+    std::cout << "  --- Exact (law applied) ---\n";
     std::cout << "    tau_from_displ   = " << e.tau_displ << " s\n";
-    std::cout << "    tau_from_accel   = " << e.tau_accel << " s   [used for tuning]\n";
+    std::cout << "    tau_from_accel   = " << e.tau_accel << " s\n";
     std::cout << "    sigma_a_exact    = " << e.sigma_a   << " m/s^2\n";
-    std::cout << "    R_S_exact        = " << e.R_S       << " (m*s)^2\n";
+    std::cout << "    R_S (law)        = " << e.R_S       << " (m*s)^2\n";
     std::cout << "    m0               = " << e.m0        << " m^2\n";
     std::cout << "    m4               = " << e.m4        << " m^2·s^-4\n";
-    std::cout << "    m_{-2}           = " << e.m_neg2    << " m^2·s^2\n";
     std::cout << "    Hs_spec          = " << e.Hs_spec   << " m\n";
 
-    std::cout << "  --- Heuristic (Hs,Tp) ---\n";
-    std::cout << "    tau_h            = " << h1.tau
-              << "  | rel.err vs tau_accel = " << rel_err(h1.tau, e.tau_accel) << "\n";
-    std::cout << "    sigma_a_h        = " << h1.sigma_a
-              << "  | rel.err vs exact    = " << rel_err(h1.sigma_a, e.sigma_a) << "\n";
-    std::cout << "    R_S_h            = " << h1.R_S
-              << "  | rel.err vs exact    = " << rel_err(h1.R_S, e.R_S) << "\n";
-    std::cout << "    m0(Hs)           = " << h1.m0_from_Hs << " m^2,  ω_p=" << h1.omega_p << " rad/s\n\n";
+    std::cout << "  --- Heuristic (Hs,Tp with law) ---\n";
+    std::cout << "    tau_h            = " << h1.tau << "\n";
+    std::cout << "    sigma_a_h        = " << h1.sigma_a << "\n";
+    std::cout << "    R_S_h (law)      = " << h1.R_S << " (m*s)^2\n\n";
 }
 
 // ===== CSV writer =====
 static void write_csv_header(std::ofstream& f) {
     f << "wave_index,wave_type,Hs_input,Tp,"
-      << "tau_displ,tau_accel,sigma_a_exact,R_S_exact,Hs_spec,"
-      << "m0,m4,mneg2,f_peak_disp,f_peak_acc,"
-      << "tau_heur,sigma_a_heur,R_S_heur,m0_from_Hs,omega_p,"
-      << "relerr_tau_vs_accel,relerr_sigma_a,relerr_R_S\n";
+      << "tau_displ,tau_accel,sigma_a_exact,R_S_law,Hs_spec,"
+      << "m0,m4,f_peak_disp,f_peak_acc,"
+      << "tau_heur,sigma_a_heur,R_S_law_heur\n";
 }
 
 static void write_csv_row(std::ofstream& f, size_t idx, const char* type,
@@ -159,13 +158,9 @@ static void write_csv_row(std::ofstream& f, size_t idx, const char* type,
       << wp.height << "," << wp.period << ","
       << e.tau_displ << "," << e.tau_accel << ","
       << e.sigma_a << "," << e.R_S << "," << e.Hs_spec << ","
-      << e.m0 << "," << e.m4 << "," << e.m_neg2 << ","
+      << e.m0 << "," << e.m4 << ","
       << e.f_peak_disp << "," << e.f_peak_acc << ","
-      << h1.tau << "," << h1.sigma_a << "," << h1.R_S << ","
-      << h1.m0_from_Hs << "," << h1.omega_p << ","
-      << rel_err(h1.tau, e.tau_accel) << ","
-      << rel_err(h1.sigma_a, e.sigma_a) << ","
-      << rel_err(h1.R_S, e.R_S) << "\n";
+      << h1.tau << "," << h1.sigma_a << "," << h1.R_S << "\n";
 }
 
 // ===== One runner for a model type =====
@@ -180,7 +175,7 @@ static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char*
     const auto S   = model.spectrum();
     const auto df  = model.df();
 
-    const auto exact = compute_exact_from_spectrum<N>(f, S, df);
+    const auto exact = compute_exact_from_spectrum<N>(f, S, df, wp.period);
     const auto heur1 = compute_heur_from_HsTp(wp.height, wp.period);
 
     print_report(idx, tag, wp, exact, heur1);
@@ -197,8 +192,7 @@ int main() {
     write_csv_header(csv);
 
     std::cout << "Exact + Heuristic derivation of tau, sigma_a, R_S\n"
-              << "Definitions: tau_displ=1/ω_disp, tau_accel=1/ω_acc, "
-              << "sigma_a=sqrt∫ω^4 Sη df,  R_S=∫Sη/ω^2 df\n\n";
+              << "R_S law: R_S(Tp) = kf * Tp^(1/3),  kf=" << kf << "\n\n";
 
     for (size_t i = 0; i < waveParamsList.size(); ++i) {
         run_model_for_wave<Jonswap3dStokesWaves<128>, 128>(waveParamsList[i], i, "JONSWAP", csv);
