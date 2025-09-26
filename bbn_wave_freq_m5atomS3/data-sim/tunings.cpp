@@ -1,6 +1,6 @@
 #include <iostream>
-#include <fstream>
 #include <iomanip>
+#include <fstream>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -12,14 +12,17 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-const float g_std = 9.80665f; // standard gravity acceleration m/s²
+// --- constants ---
+static constexpr double TWO_PI = 2.0 * M_PI;
+static constexpr double G_STD  = 9.80665;
 
+// ---- wave model headers ----
 #include "Jonswap3dStokesWaves.h"
 #include "PiersonMoskowitzStokes3D_Waves.h"
 #include "DirectionalSpread.h"
-#include "WaveFilesSupport.h"   // for WaveParameters
+#include "WaveFilesSupport.h"   // WaveParameters (Hs,Tp,phase,dir)
 
-// ==================== Input test waves ====================
+// ===== Input test waves =====
 const std::vector<WaveParameters> waveParamsList = {
     {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 25.0f},
     {5.7f,   1.5f,  static_cast<float>(M_PI/1.5), 25.0f},
@@ -27,288 +30,161 @@ const std::vector<WaveParameters> waveParamsList = {
     {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 25.0f}
 };
 
-// ==================== Data structures ====================
-struct TuningSpec {
-    double tau, sigma_a, R_S;
-    double Hs_spec;
-    double m0, m1, m2, m4, mneg1;
-    double Tm01, Tm02, Tm10;
-    double f_disp_mean;   // (m1/m0)/(2π)  [Hz]
-    double f_acc_mean;    // (m5/m4)/(2π)  [Hz]
-    double f_peak_spec;   // argmax S(f)   [Hz]
-    double f_peak_input;  // 1/Tp_input    [Hz]
+// ===== Results structs =====
+struct TuningExact {
+    double tau;       // s
+    double sigma_a;   // m/s^2 (RMS)
+    double R_S;       // (m*s)^2
+    // diagnostics
+    double Hs_spec;   // m
+    double m0;        // m^2
+    double m4;        // m^2 s^-4
+    double m_neg2;    // m^2 s^2
+    double f_peak;    // Hz
 };
 
 struct TuningHeur {
-    double tau, sigma_a, R_S;
-    double m0_from_Hs;
+    double tau;       // s
+    double sigma_a;   // m/s^2
+    double R_S;       // (m*s)^2
+    // diagnostics
+    double m0_from_Hs; // m^2
+    double omega_p;    // rad/s used
 };
 
-struct TuningIMU {
-    double tau_eff, sigma_a_eff, R_S_eff;
-};
+static double rel_err(double est, double ref) {
+    if (ref == 0.0) return (est == 0.0) ? 0.0 : INFINITY;
+    return std::abs(est - ref) / std::abs(ref);
+}
 
-// ==================== Spectrum-based tuning (band-limited) ====================
-//
-// We compute moments of the *displacement* spectrum S_eta(f) after applying a
-// gentle 2nd-order low-pass to avoid overweighting the ω^4 tail (problematic on PM).
-//
-// Filter:
-//   H(f) = 1 / (1 + (f/f_c)^2)^2,   with  f_c = 3 * f_peak_spec
-//
-// Band-limited moments (using S_bl = S_eta * H):
-//   m0    = ∫ S_bl df
-//   m1    = ∫ ω S_bl df
-//   m2    = ∫ ω^2 S_bl df
-//   m4    = ∫ ω^4 S_bl df
-//   m-1   = ∫ (1/ω) S_bl df
-//   m5    = ∫ ω^5 S_bl df   (for acceleration-mean frequency)
-//
-// Tunings derived from band-limited moments:
-//   sigma_a = sqrt(m4)                                      // process std for a_w
-//   f_disp_mean = (m1/m0)/(2π)
-//   f_acc_mean  = (m5/m4)/(2π)
-//   tau = 0.8 / (2π * min(f_acc_mean, 2 * f_peak_spec))     // shorter than 1/ω_p on broad spectra
-//   R_S = 4 * m0                                            //  pseudo-measurement Kalman R
-//
-// Notes:
-// - On JONSWAP (narrow), the LP has little effect; τ and R_S change slightly.
-// - On PM (broad), this prevents σ_a inflation from ω^4 and shortens τ appropriately.
-//
+// --- exact from spectrum ---
 template<int N>
-static TuningSpec compute_from_spectrum(const Eigen::Matrix<double, N, 1>& freqs,
-                                        const Eigen::Matrix<double, N, 1>& S,
-                                        const Eigen::Matrix<double, N, 1>& df,
-                                        double Tp_input)
-{
-    TuningSpec out{};
-    const double epsf = 1e-6;
+static TuningExact compute_exact_from_spectrum(
+    const Eigen::Matrix<double, N, 1>& f_Hz,
+    const Eigen::Matrix<double, N, 1>& S_eta,
+    const Eigen::Matrix<double, N, 1>& df_Hz
+) {
+    TuningExact out{};
+    int idx_max = 0;
+    S_eta.maxCoeff(&idx_max);
+    out.f_peak = f_Hz(idx_max);
+    const double omega_p = std::max(TWO_PI * out.f_peak, 1e-9);
 
-    // Angular frequency
-    Eigen::Array<double, N, 1> omega = 2.0 * M_PI * freqs.array();
+    const Eigen::Array<double, N, 1> f  = f_Hz.array();
+    const Eigen::Array<double, N, 1> df = df_Hz.array();
+    const Eigen::Array<double, N, 1> w  = TWO_PI * f;
 
-    // Displacement spectral peak (for cutoff and reporting)
-    int idx_max;
-    S.maxCoeff(&idx_max);
-    out.f_peak_spec = freqs(idx_max);                 // Hz
-    const double fp = std::max(out.f_peak_spec, epsf);
+    const Eigen::Array<double, N, 1> S  = S_eta.array();
+    const Eigen::Array<double, N, 1> w2 = w.square();
+    const Eigen::Array<double, N, 1> w4 = w2.square();
 
-    // Gentle LP to tame ω^4 tail (helps PM, harmless for JONSWAP)
-    const double fc = 3.0 * fp;
-    Eigen::Array<double, N, 1> H = 1.0 / (1.0 + (freqs.array() / fc).square()).square();
-    Eigen::Array<double, N, 1> Sbl = S.array() * H;
+    out.m0     = (S * df).sum();                               // m^2
+    out.m4     = (w4 * S * df).sum();                          // m^2 s^-4
+    out.m_neg2 = ((S / (w2.max(1e-18))) * df).sum();           // m^2 s^2
 
-    // Band-limited moments
-    out.m0    = (Sbl.matrix().cwiseProduct(df)).sum();
-    out.m1    = ((omega * Sbl) * df.array()).sum();
-    out.m2    = ((omega.square() * Sbl) * df.array()).sum();
-    out.m4    = ((omega.pow(4)   * Sbl) * df.array()).sum();
-    out.mneg1 = (((1.0 / omega)  * Sbl) * df.array()).sum();
-    const double m5 = ((omega.pow(5) * Sbl) * df.array()).sum();
-
-    // Input nominal peak (from provided Tp)
-    out.f_peak_input = (Tp_input > 0.0) ? (1.0 / Tp_input) : std::numeric_limits<double>::quiet_NaN();
-
-    // Derived means and tunings
-    out.f_disp_mean = (out.m0 > 0.0) ? (out.m1 / out.m0) / (2.0 * M_PI) : std::numeric_limits<double>::quiet_NaN();
-    out.f_acc_mean  = (out.m4 > 0.0) ? (m5 / out.m4)     / (2.0 * M_PI) : std::numeric_limits<double>::quiet_NaN();
-
-    // sigma_a from band-limited m4
+    out.tau     = 1.0 / omega_p;
     out.sigma_a = (out.m4 > 0.0) ? std::sqrt(out.m4) : 0.0;
-
-    // tau shortened toward acceleration content; clamp with 2*fp
-    const double f_tau = std::min(std::max(out.f_acc_mean, epsf), 2.0 * fp);
-    out.tau = 0.8 / (2.0 * M_PI * f_tau);
-
-    // Pseudo-measurement variance relaxed for energetic/broad seas
-    out.R_S = 4.0 * out.m0;
-
-    // Heights & mean periods (band-limited, consistent with above)
+    out.R_S     = std::max(out.m_neg2, 0.0);
     out.Hs_spec = (out.m0 > 0.0) ? 4.0 * std::sqrt(out.m0) : 0.0;
-    out.Tm01    = (out.m1 > 0.0) ? (out.m0 / out.m1) : std::numeric_limits<double>::quiet_NaN();
-    out.Tm02    = (out.m2 > 0.0) ? std::sqrt(out.m0 / out.m2) : std::numeric_limits<double>::quiet_NaN();
-    out.Tm10    = (out.m0 > 0.0) ? (out.mneg1 / out.m0) : std::numeric_limits<double>::quiet_NaN();
-
     return out;
 }
 
-// ==================== Heuristic tuning from Hs,Tp ====================
-//
-// Classic oceanographic formulas:
-//   m₀ = Hs² / 16
-//   τ  = Tₚ / (2π)
-//   σₐ ≈ ωₚ² √m₀
-//   R_S ≈ 4 m₀
-//
-static TuningHeur compute_heuristic_from_HsTp(double Hs, double Tp, double c_RS = 2.0)
-{
+// --- heuristic (Hs,Tp) ---
+static TuningHeur compute_heur_from_HsTp(double Hs, double Tp) {
     TuningHeur h{};
-    const double m0 = (Hs*Hs)/16.0;
-    const double omega_p = 2.0 * M_PI / Tp;
-    h.tau      = 1.0 / omega_p;
-    h.sigma_a  = (omega_p*omega_p) * std::sqrt(m0);
-    h.R_S      = c_RS * m0;
-    h.m0_from_Hs = m0;
+    h.m0_from_Hs = (Hs*Hs)/16.0;
+    h.omega_p    = TWO_PI / std::max(Tp, 1e-9);
+    h.tau        = 1.0 / h.omega_p;
+    h.sigma_a    = h.omega_p*h.omega_p*std::sqrt(h.m0_from_Hs);
+    h.R_S        = h.m0_from_Hs / (h.omega_p*h.omega_p);
     return h;
 }
 
-// ==================== Heuristic tuning from spectral peak (heur2) ====================
-//
-// Using peak frequency f_peak_spec from displacement spectrum:
-//   m₀_from_Hs = Hs² / 16
-//   ωₚ = 2π f_peak_spec
-//   τ     = 1 / ωₚ
-//   σₐ    = ωₚ² √m₀_from_Hs
-//   R_S   = c_RS m₀_from_Hs
-//
-static TuningHeur compute_heuristic_from_spectral_peak(double Hs,
-                                                       double f_peak_spec,
-                                                       double c_RS = 4.0)
-{
-    TuningHeur h{};
-    const double m0_from_Hs = (Hs * Hs) / 16.0;
-    h.m0_from_Hs = m0_from_Hs;
+// ===== Pretty print =====
+static void print_report(size_t idx, const char* type, const WaveParameters& wp,
+                         const TuningExact& e, const TuningHeur& h1) {
+    std::cout << std::fixed << std::setprecision(6);
+    std::cout << "Wave " << idx << " [" << type << "]  (Hs_in=" << wp.height
+              << " m, Tp_in=" << wp.period << " s)\n";
+    std::cout << "  Peak freq f_p     = " << e.f_peak << " Hz  (ω_p = " << (TWO_PI*e.f_peak) << " rad/s)\n";
+    std::cout << "  --- Exact from spectrum ---\n";
+    std::cout << "    tau_exact        = " << e.tau     << " s\n";
+    std::cout << "    sigma_a_exact    = " << e.sigma_a << " m/s^2\n";
+    std::cout << "    R_S_exact        = " << e.R_S     << " (m*s)^2\n";
+    std::cout << "    m0               = " << e.m0      << " m^2\n";
+    std::cout << "    m4               = " << e.m4      << " m^2·s^-4\n";
+    std::cout << "    m_{-2}           = " << e.m_neg2  << " m^2·s^2\n";
+    std::cout << "    Hs_spec          = " << e.Hs_spec << " m\n";
 
-    if (f_peak_spec > 0.0) {
-        const double omega_p = 2.0 * M_PI * f_peak_spec;
-        h.tau     = 1.0 / omega_p;
-        h.sigma_a = (omega_p * omega_p) * std::sqrt(m0_from_Hs);
-    } else {
-        h.tau = std::numeric_limits<double>::quiet_NaN();
-        h.sigma_a = std::numeric_limits<double>::quiet_NaN();
-    }
-
-    h.R_S = c_RS * m0_from_Hs;
-    return h;
+    std::cout << "  --- Heuristic (Hs,Tp) ---\n";
+    std::cout << "    tau_h            = " << h1.tau
+              << "  | rel.err vs exact = " << rel_err(h1.tau, e.tau) << "\n";
+    std::cout << "    sigma_a_h        = " << h1.sigma_a
+              << "  | rel.err vs exact = " << rel_err(h1.sigma_a, e.sigma_a) << "\n";
+    std::cout << "    R_S_h            = " << h1.R_S
+              << "  | rel.err vs exact = " << rel_err(h1.R_S, e.R_S) << "\n";
+    std::cout << "    m0(Hs)           = " << h1.m0_from_Hs << " m^2,  ω_p=" << h1.omega_p << " rad/s\n\n";
 }
 
-// ==================== IMU-adjusted tuning ====================
-//
-// Intent:
-// - Keep σ_a representing *stochastic* acceleration (white + prefilter), not constant bias.
-// - Soften τ only when gyro noise approaches sea dynamics.
-// - Absorb accelerometer bias via extra slack in R_S (drift pseudo-measurement), not in σ_a.
-//
-// Effective terms:
-//   sigma_a_eff = hypot(sigma_a_bandlimited, sigma_acc_white, sigma_acc_prefilter)
-//   tau_eff = tau / sqrt(1 + (sigma_gyro_eff / (2π f_tau))^2) ,  f_tau ≈ max(f_acc_mean, f_peak_spec)
-//   R_S_eff = R_S + k_bias * bacc_mag^2   (k_bias ≈ 3)
-//
-// Notes:
-// - Uses the same “sim constants” you had; adjust to your measured sensor if needed.
-//
-static TuningIMU compute_with_imu_same_as_sim(const TuningSpec& base)
-{
-    // Sim / filter noise levels (RMS per axis where applicable)
-    const Eigen::Vector3d sigma_acc_filter(0.04, 0.04, 0.04);          // m/s^2
-    const Eigen::Vector3d sigma_gyro_filter(0.00134, 0.00134, 0.00134);// rad/s
-
-    const double sigma_acc_true = 0.03;   // m/s^2 (white)
-    const double sigma_gyro_true = 0.001; // rad/s (white)
-
-    // Bias magnitudes (do NOT fold into σ_a)
-    const double bacc_mag = 0.02;   // m/s^2
-    const double bgyr_mag = 0.0004; // rad/s (kept for reference; not used directly here)
-
-    const double sigma_acc_filter_rms = sigma_acc_filter.norm() / std::sqrt(3.0);
-    const double sigma_gyro_filter_rms = sigma_gyro_filter.norm() / std::sqrt(3.0);
-
-    TuningIMU t{};
-
-    // σ_a: stochastic only (band-limited base + white + prefilter), exclude bias
-    t.sigma_a_eff = std::hypot(base.sigma_a, std::hypot(sigma_acc_true, sigma_acc_filter_rms));
-
-    // τ: gentle trim if gyro noise competes with sea dynamics at f_tau
-    const double f_tau = std::max((std::isfinite(base.f_acc_mean) ? base.f_acc_mean : base.f_peak_spec), 1e-6);
-    const double sigma_gyro_eff = std::hypot(sigma_gyro_true, sigma_gyro_filter_rms);
-    const double factor = std::sqrt(1.0 + std::pow(sigma_gyro_eff / (2.0 * M_PI * f_tau), 2.0));
-    t.tau_eff = base.tau / factor;
-
-    // R_S: absorb accel bias as slow drift via inflation
-    const double k_bias = 3.0;
-    t.R_S_eff = base.R_S + k_bias * (bacc_mag * bacc_mag);
-
-    return t;
+// ===== CSV writer =====
+static void write_csv_header(std::ofstream& f) {
+    f << "wave_index,wave_type,Hs_input,Tp,"
+      << "tau_exact,sigma_a_exact,R_S_exact,Hs_spec,m0,m4,mneg2,f_peak,"
+      << "tau_heur,sigma_a_heur,R_S_heur,m0_from_Hs,omega_p,"
+      << "relerr_tau,relerr_sigma_a,relerr_R_S\n";
 }
 
-// ==================== Runner ====================
-template<typename WaveModel>
-void process_wave(const WaveParameters& wp,
-                  size_t wave_index,
-                  const std::string& type,
-                  std::ofstream& file)
-{
+static void write_csv_row(std::ofstream& f, size_t idx, const char* type,
+                          const WaveParameters& wp,
+                          const TuningExact& e, const TuningHeur& h1) {
+    f << idx << "," << type << ","
+      << wp.height << "," << wp.period << ","
+      << e.tau << "," << e.sigma_a << "," << e.R_S << "," << e.Hs_spec << ","
+      << e.m0 << "," << e.m4 << "," << e.m_neg2 << "," << e.f_peak << ","
+      << h1.tau << "," << h1.sigma_a << "," << h1.R_S << ","
+      << h1.m0_from_Hs << "," << h1.omega_p << ","
+      << rel_err(h1.tau, e.tau) << ","
+      << rel_err(h1.sigma_a, e.sigma_a) << ","
+      << rel_err(h1.R_S, e.R_S) << "\n";
+}
+
+// ===== One runner for a model type =====
+template<typename WaveModel, int N>
+static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char* tag, std::ofstream& csv) {
     auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
         wp.direction * M_PI / 180.0, 10.0, 42u);
 
-    WaveModel model(wp.height, wp.period, dirDist, 0.02, 0.8, 9.81, 42u);
+    WaveModel model(wp.height, wp.period, dirDist, 0.02, 0.8, G_STD, 42u);
 
-    const auto t_spec  = compute_from_spectrum<128>(
-        model.frequencies(), model.spectrum(), model.df(), wp.period);
-    const auto t_heur  = compute_heuristic_from_HsTp(wp.height, wp.period);
-    const auto t_heur2 = compute_heuristic_from_spectral_peak(wp.height, t_spec.f_peak_spec);
-    const auto t_imu   = compute_with_imu_same_as_sim(t_spec);
+    const auto f   = model.frequencies();
+    const auto Sη  = model.spectrum();
+    const auto df  = model.df();
 
-    // === CSV output ===
-    file << wave_index << "," << type << ","
-         << wp.height << "," << wp.period << ","
-         << t_spec.tau << "," << t_spec.sigma_a << "," << t_spec.R_S << "," << t_spec.Hs_spec << ","
-         << t_spec.m0 << "," << t_spec.m2 << "," << t_spec.m4
-         << "," << t_spec.Tm01 << "," << t_spec.Tm02 << "," << t_spec.Tm10 << ","
-         << t_spec.f_disp_mean << "," << t_spec.f_acc_mean
-         << "," << t_spec.f_peak_spec << "," << t_spec.f_peak_input << ","
-         << t_heur.tau << "," << t_heur.sigma_a << "," << t_heur.R_S << ","
-         << t_heur2.tau << "," << t_heur2.sigma_a << "," << t_heur2.R_S << ","
-         << t_imu.tau_eff << "," << t_imu.sigma_a_eff << "," << t_imu.R_S_eff
-         << "\n";
+    const auto exact = compute_exact_from_spectrum<N>(f, Sη, df);
+    const auto heur1 = compute_heur_from_HsTp(wp.height, wp.period);
 
-    // === Human-readable report ===
-    std::cout << std::fixed << std::setprecision(5);
-    std::cout << "Wave " << wave_index << " (" << type << ")\n"
-              << "  Input: Hs=" << wp.height << " m, Tp=" << wp.period << " s\n"
-              << "  Spectrum-derived:\n"
-              << "    tau=" << t_spec.tau << " s (from spectrum)\n"
-              << "    sigma_a=" << t_spec.sigma_a << " m/s^2, R_S=" << t_spec.R_S << " m^2\n"
-              << "    Hs_spec=" << t_spec.Hs_spec << " m\n"
-              << "    m0=" << t_spec.m0 << ", m2=" << t_spec.m2 << ", m4=" << t_spec.m4 << "\n"
-              << "    Tm01=" << t_spec.Tm01 << " s, Tm02=" << t_spec.Tm02
-              << " s, Tm10=" << t_spec.Tm10 << " s\n"
-              << "    f_disp_mean=" << t_spec.f_disp_mean << " Hz (displacement mean)\n"
-              << "    f_acc_mean =" << t_spec.f_acc_mean  << " Hz (acceleration mean)\n"
-              << "    f_peak_spec=" << t_spec.f_peak_spec << " Hz (spectrum peak)\n"
-              << "    f_peak_in  =" << t_spec.f_peak_input << " Hz (input nominal)\n"
-              << "  Heuristic (Hs,Tp classic): tau=" << t_heur.tau
-              << " s, sigma_a=" << t_heur.sigma_a << " m/s^2, R_S=" << t_heur.R_S << " m^2\n"
-              << "  Heuristic (Spectral peak, heur2): tau=" << t_heur2.tau
-              << " s, sigma_a=" << t_heur2.sigma_a << " m/s^2, R_S=" << t_heur2.R_S << " m^2\n"
-              << "  IMU-adjusted (same as sim constants): tau_eff=" << t_imu.tau_eff
-              << " s, sigma_a_eff=" << t_imu.sigma_a_eff << " m/s^2, R_S_eff=" << t_imu.R_S_eff << " m^2\n\n";
+    print_report(idx, tag, wp, exact, heur1);
+    write_csv_row(csv, idx, tag, wp, exact, heur1);
 }
 
-// ==================== Main ====================
+// ===== Main =====
 int main() {
-    const std::string out_csv = "wave_tunings.csv";
-    std::ofstream file(out_csv);
-    if (!file.is_open()) {
-        std::cerr << "Failed to open " << out_csv << " for writing\n";
+    std::ofstream csv("wave_tunings.csv");
+    if (!csv.is_open()) {
+        std::cerr << "Cannot open wave_tunings.csv for writing\n";
         return 1;
     }
+    write_csv_header(csv);
 
-    file << "wave_index,wave_type,Hs_input,Tp,"
-         << "tau_spec,sigma_a_spec,R_S_spec,Hs_spec,"
-         << "m0,m2,m4,Tm01,Tm02,Tm10,"
-         << "f_disp_mean,f_acc_mean,f_peak_spec,f_peak_input,"
-         << "tau_heur,sigma_a_heur,R_S_heur,"
-         << "tau_heur2,sigma_a_heur2,R_S_heur2,"
-         << "tau_imu,sigma_a_imu,R_S_imu\n";
+    std::cout << "Exact + Heuristic derivation of tau, sigma_a, R_S\n"
+              << "Definitions: tau=1/ωp,  sigma_a=sqrt∫ω^4 Sη df,  R_S=∫Sη/ω^2 df\n\n";
 
-    for (size_t idx = 0; idx < waveParamsList.size(); ++idx) {
-        process_wave<Jonswap3dStokesWaves<128>>(waveParamsList[idx], idx, "JONSWAP", file);
-        process_wave<PMStokesN3dWaves<128,3>>(waveParamsList[idx], idx, "PMSTOKES", file);
+    for (size_t i = 0; i < waveParamsList.size(); ++i) {
+        run_model_for_wave<Jonswap3dStokesWaves<128>, 128>(waveParamsList[i], i, "JONSWAP", csv);
+        run_model_for_wave<PMStokesN3dWaves<128,3>, 128>(waveParamsList[i], i, "PMSTOKES", csv);
     }
 
-    file.close();
-    std::cout << "Wrote " << out_csv << "\n";
+    csv.close();
+    std::cout << "Wrote wave_tunings.csv\n";
     return 0;
 }
-
