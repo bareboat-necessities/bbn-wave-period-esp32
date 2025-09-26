@@ -32,15 +32,17 @@ const std::vector<WaveParameters> waveParamsList = {
 
 // ===== Results structs =====
 struct TuningExact {
-    double tau;       // s
-    double sigma_a;   // m/s^2 (RMS)
-    double R_S;       // (m*s)^2
+    double tau_displ;   // s (from displacement peak)
+    double tau_accel;   // s (from acceleration peak)
+    double sigma_a;     // m/s^2 (RMS)
+    double R_S;         // (m*s)^2
     // diagnostics
-    double Hs_spec;   // m
-    double m0;        // m^2
-    double m4;        // m^2 s^-4
-    double m_neg2;    // m^2 s^2
-    double f_peak;    // Hz
+    double Hs_spec;     // m
+    double m0;          // m^2
+    double m4;          // m^2 s^-4
+    double m_neg2;      // m^2 s^2
+    double f_peak_disp; // Hz
+    double f_peak_acc;  // Hz
 };
 
 struct TuningHeur {
@@ -65,27 +67,39 @@ static TuningExact compute_exact_from_spectrum(
     const Eigen::Matrix<double, N, 1>& df_Hz
 ) {
     TuningExact out{};
-    int idx_max = 0;
-    S_eta.maxCoeff(&idx_max);
-    out.f_peak = f_Hz(idx_max);
-    const double omega_p = std::max(TWO_PI * out.f_peak, 1e-9);
 
-    const Eigen::Array<double, N, 1> f  = f_Hz.array();
+    // displacement spectrum peak
+    int idx_disp_peak = 0;
+    S_eta.maxCoeff(&idx_disp_peak);
+    out.f_peak_disp = f_Hz(idx_disp_peak);
+    const double omega_disp = std::max(TWO_PI * out.f_peak_disp, 1e-9);
+
+    // acceleration spectrum = ω^4 Sη
+    Eigen::Array<double, N, 1> w  = TWO_PI * f_Hz.array();
+    Eigen::Array<double, N, 1> w2 = w.square();
+    Eigen::Array<double, N, 1> w4 = w2.square();
+    Eigen::Array<double, N, 1> S_acc = w4 * S_eta.array();
+
+    int idx_acc_peak = 0;
+    S_acc.maxCoeff(&idx_acc_peak);
+    out.f_peak_acc = f_Hz(idx_acc_peak);
+    const double omega_acc = std::max(w(idx_acc_peak), 1e-9);
+
+    // moments
     const Eigen::Array<double, N, 1> df = df_Hz.array();
-    const Eigen::Array<double, N, 1> w  = TWO_PI * f;
+    out.m0     = (S_eta.array() * df).sum();                    // m^2
+    out.m4     = (w4 * S_eta.array() * df).sum();               // m^2 s^-4
+    out.m_neg2 = ((S_eta.array() / (w2.max(1e-18))) * df).sum();// m^2 s^2
 
-    const Eigen::Array<double, N, 1> S  = S_eta.array();
-    const Eigen::Array<double, N, 1> w2 = w.square();
-    const Eigen::Array<double, N, 1> w4 = w2.square();
+    // τ from both peaks
+    out.tau_displ = 1.0 / omega_disp;
+    out.tau_accel = 1.0 / omega_acc;
 
-    out.m0     = (S * df).sum();                               // m^2
-    out.m4     = (w4 * S * df).sum();                          // m^2 s^-4
-    out.m_neg2 = ((S / (w2.max(1e-18))) * df).sum();           // m^2 s^2
-
-    out.tau     = 1.0 / omega_p;
+    // sigma_a, R_S, Hs
     out.sigma_a = (out.m4 > 0.0) ? std::sqrt(out.m4) : 0.0;
     out.R_S     = std::max(out.m_neg2, 0.0);
     out.Hs_spec = (out.m0 > 0.0) ? 4.0 * std::sqrt(out.m0) : 0.0;
+
     return out;
 }
 
@@ -106,32 +120,36 @@ static void print_report(size_t idx, const char* type, const WaveParameters& wp,
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "Wave " << idx << " [" << type << "]  (Hs_in=" << wp.height
               << " m, Tp_in=" << wp.period << " s)\n";
-    std::cout << "  Peak freq f_p     = " << e.f_peak << " Hz  (ω_p = " << (TWO_PI*e.f_peak) << " rad/s)\n";
+    std::cout << "  --- Peaks ---\n";
+    std::cout << "    f_peak_disp      = " << e.f_peak_disp << " Hz  (ω_disp = " << (TWO_PI*e.f_peak_disp) << " rad/s)\n";
+    std::cout << "    f_peak_acc       = " << e.f_peak_acc  << " Hz  (ω_acc  = " << (TWO_PI*e.f_peak_acc)  << " rad/s)\n";
     std::cout << "  --- Exact from spectrum ---\n";
-    std::cout << "    tau_exact        = " << e.tau     << " s\n";
-    std::cout << "    sigma_a_exact    = " << e.sigma_a << " m/s^2\n";
-    std::cout << "    R_S_exact        = " << e.R_S     << " (m*s)^2\n";
-    std::cout << "    m0               = " << e.m0      << " m^2\n";
-    std::cout << "    m4               = " << e.m4      << " m^2·s^-4\n";
-    std::cout << "    m_{-2}           = " << e.m_neg2  << " m^2·s^2\n";
-    std::cout << "    Hs_spec          = " << e.Hs_spec << " m\n";
+    std::cout << "    tau_from_displ   = " << e.tau_displ << " s\n";
+    std::cout << "    tau_from_accel   = " << e.tau_accel << " s   [used for tuning]\n";
+    std::cout << "    sigma_a_exact    = " << e.sigma_a   << " m/s^2\n";
+    std::cout << "    R_S_exact        = " << e.R_S       << " (m*s)^2\n";
+    std::cout << "    m0               = " << e.m0        << " m^2\n";
+    std::cout << "    m4               = " << e.m4        << " m^2·s^-4\n";
+    std::cout << "    m_{-2}           = " << e.m_neg2    << " m^2·s^2\n";
+    std::cout << "    Hs_spec          = " << e.Hs_spec   << " m\n";
 
     std::cout << "  --- Heuristic (Hs,Tp) ---\n";
     std::cout << "    tau_h            = " << h1.tau
-              << "  | rel.err vs exact = " << rel_err(h1.tau, e.tau) << "\n";
+              << "  | rel.err vs tau_accel = " << rel_err(h1.tau, e.tau_accel) << "\n";
     std::cout << "    sigma_a_h        = " << h1.sigma_a
-              << "  | rel.err vs exact = " << rel_err(h1.sigma_a, e.sigma_a) << "\n";
+              << "  | rel.err vs exact    = " << rel_err(h1.sigma_a, e.sigma_a) << "\n";
     std::cout << "    R_S_h            = " << h1.R_S
-              << "  | rel.err vs exact = " << rel_err(h1.R_S, e.R_S) << "\n";
+              << "  | rel.err vs exact    = " << rel_err(h1.R_S, e.R_S) << "\n";
     std::cout << "    m0(Hs)           = " << h1.m0_from_Hs << " m^2,  ω_p=" << h1.omega_p << " rad/s\n\n";
 }
 
 // ===== CSV writer =====
 static void write_csv_header(std::ofstream& f) {
     f << "wave_index,wave_type,Hs_input,Tp,"
-      << "tau_exact,sigma_a_exact,R_S_exact,Hs_spec,m0,m4,mneg2,f_peak,"
+      << "tau_displ,tau_accel,sigma_a_exact,R_S_exact,Hs_spec,"
+      << "m0,m4,mneg2,f_peak_disp,f_peak_acc,"
       << "tau_heur,sigma_a_heur,R_S_heur,m0_from_Hs,omega_p,"
-      << "relerr_tau,relerr_sigma_a,relerr_R_S\n";
+      << "relerr_tau_vs_accel,relerr_sigma_a,relerr_R_S\n";
 }
 
 static void write_csv_row(std::ofstream& f, size_t idx, const char* type,
@@ -139,11 +157,13 @@ static void write_csv_row(std::ofstream& f, size_t idx, const char* type,
                           const TuningExact& e, const TuningHeur& h1) {
     f << idx << "," << type << ","
       << wp.height << "," << wp.period << ","
-      << e.tau << "," << e.sigma_a << "," << e.R_S << "," << e.Hs_spec << ","
-      << e.m0 << "," << e.m4 << "," << e.m_neg2 << "," << e.f_peak << ","
+      << e.tau_displ << "," << e.tau_accel << ","
+      << e.sigma_a << "," << e.R_S << "," << e.Hs_spec << ","
+      << e.m0 << "," << e.m4 << "," << e.m_neg2 << ","
+      << e.f_peak_disp << "," << e.f_peak_acc << ","
       << h1.tau << "," << h1.sigma_a << "," << h1.R_S << ","
       << h1.m0_from_Hs << "," << h1.omega_p << ","
-      << rel_err(h1.tau, e.tau) << ","
+      << rel_err(h1.tau, e.tau_accel) << ","
       << rel_err(h1.sigma_a, e.sigma_a) << ","
       << rel_err(h1.R_S, e.R_S) << "\n";
 }
@@ -177,7 +197,8 @@ int main() {
     write_csv_header(csv);
 
     std::cout << "Exact + Heuristic derivation of tau, sigma_a, R_S\n"
-              << "Definitions: tau=1/ωp,  sigma_a=sqrt∫ω^4 Sη df,  R_S=∫Sη/ω^2 df\n\n";
+              << "Definitions: tau_displ=1/ω_disp, tau_accel=1/ω_acc, "
+              << "sigma_a=sqrt∫ω^4 Sη df,  R_S=∫Sη/ω^2 df\n\n";
 
     for (size_t i = 0; i < waveParamsList.size(); ++i) {
         run_model_for_wave<Jonswap3dStokesWaves<128>, 128>(waveParamsList[i], i, "JONSWAP", csv);
