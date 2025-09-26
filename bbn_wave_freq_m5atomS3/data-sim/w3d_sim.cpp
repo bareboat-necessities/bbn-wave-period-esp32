@@ -83,10 +83,10 @@ constexpr float kf = 0.25f;
 
 const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
     { WaveType::JONSWAP, {
-        {0.47552, 0.42099, 0.0103391 / kf},   // Wave 0 (Tp=3.0)
-        {0.90093, 0.80852, 0.1250327 / kf},   // Wave 1 (Tp=5.7)
-        {1.46299, 1.07590, 0.27970 / kf},   // Wave 2 (Tp=8.5)
-        {1.80902, 1.35640, 0.5312 / kf}   // Wave 3 (Tp=11.4)
+        {0.47552, 0.41756, 0.0103391 / kf},   // Wave 0 (Tp=3.0)
+        {0.90093, 0.80679, 0.1250327 / kf},   // Wave 1 (Tp=5.7)
+        {1.46299, 1.07463, 0.27970 / kf},   // Wave 2 (Tp=8.5)
+        {1.80902, 1.35544, 0.5312 / kf}   // Wave 3 (Tp=11.4)
     }},
     { WaveType::PMSTOKES, {
         // { tau_eff,   sigma_a_eff,           R_S_eff }   // R_S_eff = <numerator> / kf
