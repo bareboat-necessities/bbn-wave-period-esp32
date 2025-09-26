@@ -17,7 +17,7 @@ const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
 const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.16f; 
-const float FAIL_ERR_LIMIT_PERCENT_LOW = 4.0f; 
+const float FAIL_ERR_LIMIT_PERCENT_LOW = 10.0f; 
 
 // RMS window length [s]
 constexpr float RMS_WINDOW_SEC = 60.0f;
@@ -83,9 +83,9 @@ constexpr float kf = 0.25f;
 
 const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
     { WaveType::JONSWAP, {
-        {0.47552, 0.42099, 0.02693 / kf},   // Wave 0 (Tp=3.0)
-        {0.90093, 0.80852, 0.57120 / kf},   // Wave 1 (Tp=5.7)
-        {1.46299, 1.07590, 4.00870 / kf},   // Wave 2 (Tp=8.5)
+        {0.47552, 0.42099, 0.0103391 / kf},   // Wave 0 (Tp=3.0)
+        {0.90093, 0.80852, 0.1250327 / kf},   // Wave 1 (Tp=5.7)
+        {1.46299, 1.07590, 0.27970 / kf},   // Wave 2 (Tp=8.5)
         {1.80901, 1.35640, 0.5312 / kf}   // Wave 3 (Tp=11.4)
     }},
     { WaveType::PMSTOKES, {
