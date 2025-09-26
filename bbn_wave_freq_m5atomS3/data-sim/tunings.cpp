@@ -157,10 +157,10 @@ static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char*
     WaveModel model(wp.height, wp.period, dirDist, 0.02, 0.8, G_STD, 42u);
 
     const auto f   = model.frequencies();
-    const auto Sη  = model.spectrum();
+    const auto S   = model.spectrum();
     const auto df  = model.df();
 
-    const auto exact = compute_exact_from_spectrum<N>(f, Sη, df);
+    const auto exact = compute_exact_from_spectrum<N>(f, S, df);
     const auto heur1 = compute_heur_from_HsTp(wp.height, wp.period);
 
     print_report(idx, tag, wp, exact, heur1);
