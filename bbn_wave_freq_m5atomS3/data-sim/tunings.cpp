@@ -17,9 +17,8 @@ static constexpr double TWO_PI = 2.0 * M_PI;
 static constexpr double g_std  = 9.80665;
 
 // --- new R_S law ---
-constexpr float kf = 0.748f;
-inline float R_S_law(float Tp, float coeff = kf) {
-    return coeff * std::pow(Tp, 1.0 / 3.0);
+inline float R_S_law(float Tp, float R_S_base = 1.526539f, float T_p_base=8.5f) {
+    return R_S_base * std::pow(Tp/T_p_base, 1.0 / 3.0);
 }
 
 // ---- wave model headers ----
@@ -192,7 +191,7 @@ int main() {
     write_csv_header(csv);
 
     std::cout << "Exact + Heuristic derivation of tau, sigma_a, R_S\n"
-              << "R_S law: R_S(Tp) = kf * Tp^(1/3),  kf=" << kf << "\n\n";
+              << "R_S law: R_S(Tp) = kf * Tp^(1/3)\n\n";
 
     for (size_t i = 0; i < waveParamsList.size(); ++i) {
         run_model_for_wave<Jonswap3dStokesWaves<128>, 128>(waveParamsList[i], i, "JONSWAP", csv);
