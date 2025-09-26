@@ -16,8 +16,8 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_HIGH = 12.0f; 
-const float FAIL_ERR_LIMIT_PERCENT_LOW = 12.0f; 
+const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.2f; 
+const float FAIL_ERR_LIMIT_PERCENT_LOW = 11.2f; 
 
 // RMS window length [s]
 constexpr float RMS_WINDOW_SEC = 60.0f;
@@ -83,17 +83,17 @@ constexpr float kf = 0.25f;
 
 const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
     { WaveType::JONSWAP, {
-        {0.475521, 0.417555, 0.0103391 / kf},   // Wave 0 (Tp=3.0)
-        {0.900931, 0.806785, 0.1250327 / kf},   // Wave 1 (Tp=5.7)
-        {1.352997, 1.074633, 0.37970 / kf},   // Wave 2 (Tp=8.5)
-        {1.809019, 1.355438, 0.5312 / kf}   // Wave 3 (Tp=11.4)
+        { 0.475521, 0.417555, 0.02 / kf},   // Wave 0 (Tp=3.0)
+        { 0.900931, 0.806785, 0.13  / kf},   // Wave 1 (Tp=5.7)
+        { 1.352997, 1.074633, 0.39  / kf},   // Wave 2 (Tp=8.5)
+        { 1.809019, 1.355438, 0.42  / kf}   // Wave 3 (Tp=11.4)
     }},
     { WaveType::PMSTOKES, {
         // { tau_eff,   sigma_a_eff,           R_S_eff }   // R_S_eff = <numerator> / kf
-        { 0.316639, 0.563192,   0.0103391 / kf },   // Tp=3.0,  Hs=0.27
-        { 0.599911, 1.177536,   0.1250327 / kf },   // Tp=5.7,  Hs=1.5
-        { 0.900931, 1.607994,   0.37970   / kf },   // Tp=8.5,  Hs=4.0
-        { 1.204587, 2.053963,   0.5312    / kf }    // Tp=11.4, Hs=8.5
+        { 0.316639, 0.563192, 0.02 / kf },   // Tp=3.0,  Hs=0.27
+        { 0.599911, 1.177536, 0.13 / kf },   // Tp=5.7,  Hs=1.5
+        { 0.900931, 1.607994, 0.39 / kf },   // Tp=8.5,  Hs=4.0
+        { 1.204587, 2.053963, 0.42 / kf }    // Tp=11.4, Hs=8.5
     }}
 };
 
