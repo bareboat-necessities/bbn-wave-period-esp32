@@ -86,7 +86,7 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         {0.47552, 0.42099, 0.02693 / kf},   // Wave 0 (Tp=3.0)
         {0.90093, 0.80852, 0.57120 / kf},   // Wave 1 (Tp=5.7)
         {1.46299, 1.07590, 4.00870 / kf},   // Wave 2 (Tp=8.5)
-        {1.80901, 1.35640, 21.07120 / kf}   // Wave 3 (Tp=11.4)
+        {1.80901, 1.35640, 0.5312 / kf}   // Wave 3 (Tp=11.4)
     }},
     { WaveType::PMSTOKES, {
         // { tau_eff,   sigma_a_eff,           R_S_eff }   // R_S_eff = <numerator> / kf
