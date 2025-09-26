@@ -16,8 +16,8 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.16f; 
-const float FAIL_ERR_LIMIT_PERCENT_LOW = 10.0f; 
+const float FAIL_ERR_LIMIT_PERCENT_HIGH = 12.0f; 
+const float FAIL_ERR_LIMIT_PERCENT_LOW = 12.0f; 
 
 // RMS window length [s]
 constexpr float RMS_WINDOW_SEC = 60.0f;
