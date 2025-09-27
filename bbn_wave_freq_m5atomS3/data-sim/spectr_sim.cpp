@@ -13,6 +13,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+const float g_std = 9.80665f;     // standard gravity acceleration m/s²
+
 #include "WaveFilesSupport.h"      // WaveDataCSVReader, Wave_Data_Sample, WaveParameters
 #include "FrameConversions.h"      // zu_to_ned
 #include "WaveSpectrumEstimator.h" // estimator
