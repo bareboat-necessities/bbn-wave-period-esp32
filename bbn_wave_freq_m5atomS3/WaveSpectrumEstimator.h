@@ -83,12 +83,16 @@ public:
         // Low-pass biquad (applied at raw Fs)
         double cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor));
         designLowpassBiquad(cutoffHz, fs_raw_);
+
+        // High-pass to remove bias/drift before decimation
+        designHighpassBiquad(hp_f0_hz, fs_raw_);
     }
 
     void reset() {
         buffer_.fill(0.0);
         writeIndex = 0; decimCounter = 0;
         filledSamples = 0; z1 = z2 = 0.0;
+        hz1 = hz2 = 0.0;
         isWarm = false;
         lastSpectrum_.setZero();
     }
@@ -96,6 +100,12 @@ public:
     // feed raw acceleration sample (Hz = fs_raw)
     // returns true when a block-spectrum has been computed
     bool processSample(double x_raw) {
+
+        // --- high-pass @ raw Fs ---
+        double x_hp = hb0 * x_raw + hz1;
+        hz1 = hb1 * x_raw - ha1 * x_hp + hz2;
+        hz2 = hb2 * x_raw - ha2 * x_hp;
+
         // low-pass biquad (TDF-II transposed form)
         double y = b0 * x_raw + z1;
         z1 = b1 * x_raw - a1 * y + z2;  
@@ -217,6 +227,11 @@ public:
 
     void set_regularization_f0(double f0_hz) { reg_f0_hz = std::max(0.0, f0_hz); }
 
+    void set_highpass_f0(double f0_hz) {
+        hp_f0_hz = std::max(0.0, f0_hz);
+        designHighpassBiquad(hp_f0_hz, fs_raw);
+    }
+
 private:
     inline double safeLog(double v) const { return std::log(std::max(v, 1e-18)); }
 
@@ -299,6 +314,23 @@ private:
             lastSpectrum_[i] = S_eta;
         }
     }
+
+    void designHighpassBiquad(double f_cut, double Fs) {
+        if (f_cut <= 0.0) {
+            hb0 = 1.0; hb1 = 0.0; hb2 = 0.0;
+            ha1 = 0.0; ha2 = 0.0;
+            return;
+        }
+        const double Fc = f_cut / Fs;
+        const double K  = std::tan(M_PI * Fc);
+        const double norm = 1.0 / (1.0 + K / Q + K * K);
+        // 2nd-order HP (Butterworth-like), TDF-II transposed
+        hb0 = 1.0 * norm;
+        hb1 = -2.0 * norm;
+        hb2 = 1.0 * norm;
+        ha1 = 2.0 * (K * K - 1.0) * norm;
+        ha2 = (1.0 - K / Q + K * K) * norm;
+    }
     
     double fs_raw, fs;
     int decimFactor;
@@ -315,6 +347,12 @@ private:
 
     double b0, b1, b2, a1, a2;
     double z1 = 0, z2 = 0;
+
+    // input high-pass biquad coeffs & states (raw Fs)
+    double hb0 = 1.0, hb1 = 0.0, hb2 = 0.0;
+    double ha1 = 0.0, ha2 = 0.0;
+    double hz1 = 0.0, hz2 = 0.0;
+    double hp_f0_hz = 0.05;  // Hz; bias-removal corner (tune ~0.04–0.07)
 
     std::array<double, Nfreq> cos1_, sin1_;
     Eigen::Matrix<double, Nfreq, 1> lastSpectrum_;
