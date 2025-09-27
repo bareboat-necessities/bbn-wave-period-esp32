@@ -86,10 +86,10 @@ inline float R_S_law(float Tp, float R_S_base = 1.526539f, float T_p_base=8.5f) 
 
 const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
     { WaveType::JONSWAP, {
-        { 0.475521, 0.417555, R_S_law(3.0)  },  // Wave 0 (Tp=3.0)
-        { 0.900931, 0.806785, R_S_law(5.7)  },  // Wave 1 (Tp=5.7)
-        { 1.352997, 1.074633, R_S_law(8.5)  },  // Wave 2 (Tp=8.5)
-        { 1.809019, 1.355438, R_S_law(11.4) }   // Wave 3 (Tp=11.4)
+        { 0.475521, 0.488792, R_S_law(3.0)  },  // Wave 0 (Tp=3.0)
+        { 0.900931, 0.993007, R_S_law(5.7)  },  // Wave 1 (Tp=5.7)
+        { 1.352997, 1.344122, R_S_law(8.5)  },  // Wave 2 (Tp=8.5)
+        { 1.809019, 1.709363, R_S_law(11.4) }   // Wave 3 (Tp=11.4)
     }},
     { WaveType::PMSTOKES, {
         // { tau_eff, sigma_a_eff,  R_S_eff }   // R_S_eff = <numerator>
