@@ -69,12 +69,18 @@ void process_wave_file(const std::string &filename, float dt) {
     // Reference model spectrum (higher-res, then interpolate to estimator freqs)
     Eigen::Matrix<double,128,1> f_ref, S_ref;
     if (type == WaveType::JONSWAP) {
-        Jonswap3dStokesWaves<128> refModel(wp.height, wp.period, nullptr,
+        auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
+        wp.direction * M_PI / 180.0, 10.0, 42u);
+
+        Jonswap3dStokesWaves<128> refModel(wp.height, wp.period, dirDist,
                                            0.02, 0.8, 9.80665, 42u);
         f_ref = refModel.frequencies();
         S_ref = refModel.spectrum();
     } else if (type == WaveType::PMSTOKES) {
-        PMStokesN3dWaves<128,3> refModel(wp.height, wp.period, nullptr,
+        auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
+        wp.direction * M_PI / 180.0, 10.0, 42u);
+
+        PMStokesN3dWaves<128,3> refModel(wp.height, wp.period, dirDist,
                                          0.02, 0.8, 9.80665, 42u);
         f_ref = refModel.frequencies();
         S_ref = refModel.spectrum();
