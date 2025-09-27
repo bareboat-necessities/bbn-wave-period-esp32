@@ -118,6 +118,15 @@ static TuningHeur compute_heur_from_HsTp(double Hs, double Tp) {
     return h;
 }
 
+// helper: only enabled if model has .gamma()
+template<typename T>
+auto maybe_print_gamma(const T& model) -> decltype(model.gamma(), void()) {
+    std::cout << "    gamma_spec       = " << model.gamma() << "\n";
+}
+
+// fallback: does nothing if no .gamma()
+inline void maybe_print_gamma(...) {}
+
 // Pretty print
 static void print_report(size_t idx, const char* type, const WaveParameters& wp,
                          const TuningExact& e, const TuningHeur& h1) {
@@ -178,10 +187,7 @@ static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char*
     const auto heur1 = compute_heur_from_HsTp(wp.height, wp.period);
 
     print_report(idx, tag, wp, exact, heur1);
-
-    if (std::string(tag) == "JONSWAP") {
-        std::cout << "    gamma_spec       = " << model.gamma() << "\n";
-    }
+    maybe_print_gamma(model);
     
     write_csv_row(csv, idx, tag, wp, exact, heur1);
 }
