@@ -17,6 +17,9 @@
 #endif
 
 /*
+
+  Copyright 2025, Mikhail Grushinskiy
+  
   WaveSpectrumEstimator
 
   This class estimates the ocean wave spectrum from acceleration measurements.
