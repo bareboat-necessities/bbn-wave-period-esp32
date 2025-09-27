@@ -1,16 +1,24 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import glob, os
+import glob
+import os
+
+def load_spectrum_csv(filename):
+    return pd.read_csv(filename)
 
 def plot_last_block(files):
     for fname in files:
         df = pd.read_csv(fname)
 
-        # columns for spectra
+        # spectrum columns
         est_cols = [c for c in df.columns if c.startswith("S_eta_est_f")]
         ref_cols = [c for c in df.columns if c.startswith("S_eta_ref_f")]
 
-        # robust: drop incomplete rows, then pick the row with the largest 'block'
+        if not est_cols or not ref_cols:
+            print(f"[warn] no spectrum columns in {fname}")
+            continue
+
+        # drop incomplete rows, then pick the row with the largest block
         df_clean = df.dropna(subset=est_cols)
         if df_clean.empty:
             print(f"[warn] no complete spectra in {fname}")
@@ -20,14 +28,17 @@ def plot_last_block(files):
             last_row = df_clean.loc[df_clean["block"].idxmax()]
             block_id = int(last_row["block"])
         else:
-            # fallback to last physical row
             last_row = df_clean.iloc[-1]
             block_id = len(df_clean) - 1
 
-        # parse frequencies from header labels "S_eta_est_f{i}_Hz=val"
+        # parse freqs from headers
         freqs = []
         for c in est_cols:
-            freqs.append(float(c.split("Hz=")[1]) if "Hz=" in c else len(freqs))
+            if "Hz=" in c:
+                hz = float(c.split("Hz=")[1])
+                freqs.append(hz)
+            else:
+                freqs.append(len(freqs))
 
         est = last_row[est_cols].to_numpy(dtype=float)
         ref = last_row[ref_cols].to_numpy(dtype=float)
@@ -45,15 +56,25 @@ def plot_last_block(files):
 
     plt.show()
 
+def discover_files():
+    files = sorted(glob.glob("spectrum_*.csv"))
+    # keep only JONSWAP or PM files
+    return [f for f in files if ("JONSWAP" in f.upper() or "PM" in f.upper())]
+
 if __name__ == "__main__":
     import argparse
-    p = argparse.ArgumentParser(description="Plot LAST block (one chart per wave).")
-    p.add_argument("--file", type=str, default=None, help="Single spectrum CSV file")
-    args = p.parse_args()
+    parser = argparse.ArgumentParser(description="Plot last-block spectrum CSVs (only JONSWAP/PM).")
+    parser.add_argument("--file", type=str, default=None,
+                        help="Single spectrum CSV file")
+    args = parser.parse_args()
 
-    files = [args.file] if args.file else sorted(glob.glob("spectrum_*.csv"))
+    if args.file:
+        files = [args.file]
+    else:
+        files = discover_files()
+
     if not files:
-        print("No spectrum_*.csv files found.")
+        print("No JONSWAP/PM spectrum_*.csv files found.")
     else:
         print("Plotting last block for files:", files)
         plot_last_block(files)
