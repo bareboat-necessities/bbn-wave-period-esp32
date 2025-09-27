@@ -215,6 +215,8 @@ public:
 
     std::array<double, Nfreq> getFrequencies() const { return freqs_; }
 
+    void set_regularization_f0(double f0_hz) { reg_f0_hz = std::max(0.0, f0_hz); }
+
 private:
     inline double safeLog(double v) const { return std::log(std::max(v, 1e-18)); }
 
@@ -248,7 +250,7 @@ private:
         {
             int idx = startIdx;
             for (int n = 0; n < blockSize; ++n) {
-                double x = buffer_[idx];
+                const double x = buffer_[idx];
                 sumx  += x;
                 sumn  += n;
                 sumn2 += double(n) * double(n);
@@ -267,31 +269,31 @@ private:
 
         const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
+        // regularization parameter (rad/s)
+        const double lambda = 2.0 * M_PI * std::max(reg_f0_hz, 0.0);
+
         for (int i = 0; i < Nfreq; i++) {
             double s1 = 0.0, s2 = 0.0;
 
             int idx = startIdx;
             for (int n = 0; n < blockSize; n++) {
-                double detrended = buffer_[idx] - (a + b * n);
-                double xw = detrended * window_[n];
-                double s_new = xw + coeffs_[i] * s1 - s2;
+                const double detrended = buffer_[idx] - (a + b * n);
+                const double xw = detrended * window_[n];
+                const double s_new = xw + coeffs_[i] * s1 - s2;
                 s2 = s1; s1 = s_new;
                 idx = (idx + 1) % Nblock;
             }
 
-            // Goertzel recombination
-            double real = s1 - s2 * cos1_[i];
-            double imag = s2 * sin1_[i];
-            double S_aa = (real * real + imag * imag) * scale_factor;
+            // Goertzel recombination -> acceleration PSD
+            const double real = s1 - s2 * cos1_[i];
+            const double imag = s2 * sin1_[i];
+            const double S_aa = (real * real + imag * imag) * scale_factor;
 
-            // acceleration -> displacement PSD
-            double f = freqs_[i];
-            double omega = 2.0 * M_PI * f;
-            double S_eta = (omega > 0.0) ? (S_aa / std::pow(omega, 4)) : 0.0;
-
-            // --- soft high-pass taper ---
-            double w_hp = 1.0 / (1.0 + std::pow(hp_f0 / std::max(f, 1e-9), hp_pow));
-            S_eta *= (w_hp * w_hp);
+            // Regularized inversion: S_eta = S_aa / ((omega^2 + lambda^2)^2)
+            const double f = freqs_[i];
+            const double omega = 2.0 * M_PI * f;
+            const double denom_reg = (omega * omega + lambda * lambda);
+            double S_eta = (denom_reg > 0.0) ? (S_aa / (denom_reg * denom_reg)) : 0.0;
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
             lastSpectrum_[i] = S_eta;
@@ -302,9 +304,8 @@ private:
     int decimFactor;
     bool hannEnabled;
 
-    // soft high-pass settings
-    double hp_f0 = 0.06;   // Hz, soft corner
-    double hp_pow = 6.0;   // slope (order-like)
+    // regularization corner (non-heuristic Tikhonov): lambda = 2*pi*reg_f0_hz
+    double reg_f0_hz = 0.06;  // Hz; set to lowest physically meaningful wave frequency
 
     std::array<double, Nfreq> freqs_;
     std::array<double, Nfreq> coeffs_;
