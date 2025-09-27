@@ -107,9 +107,9 @@ public:
         hz2 = hb2 * x_raw - ha2 * x_hp;
 
         // low-pass biquad (TDF-II transposed form)
-        double y = b0 * x_raw + z1;
-        z1 = b1 * x_raw - a1 * y + z2;  
-        z2 = b2 * x_raw - a2 * y;    
+        double y = b0 * x_hp + z1;
+        z1 = b1 * x_hp - a1 * y + z2;  
+        z2 = b2 * x_hp - a2 * y;    
     
         // Decimation
         if (++decimCounter < decimFactor)
