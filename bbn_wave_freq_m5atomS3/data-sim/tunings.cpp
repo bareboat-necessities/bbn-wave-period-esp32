@@ -178,6 +178,11 @@ static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char*
     const auto heur1 = compute_heur_from_HsTp(wp.height, wp.period);
 
     print_report(idx, tag, wp, exact, heur1);
+
+    if (std::string(tag) == "JONSWAP") {
+        std::cout << "    gamma_spec       = " << model.gamma() << "\n";
+    }
+    
     write_csv_row(csv, idx, tag, wp, exact, heur1);
 }
 
