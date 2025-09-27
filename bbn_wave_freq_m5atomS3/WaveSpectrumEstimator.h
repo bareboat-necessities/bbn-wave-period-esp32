@@ -240,65 +240,71 @@ private:
     }
 
     void computeSpectrum() {
-        // number of valid decimated samples available (use up to Nblock)
         const int blockSize = std::min(filledSamples, Nblock);
-    
-        // start index = oldest sample in circular buffer
         const int startIdx = (writeIndex + Nblock - blockSize) % Nblock;
-    
-        // compute (unwindowed) block mean to remove DC
-        double xmean = 0.0;
+
+        // --- linear detrend (fit y = a + b*n) ---
+        double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumxn = 0.0;
         {
             int idx = startIdx;
-            for (int n = 0; n < blockSize; n++) {
-                xmean += buffer_[idx];
+            for (int n = 0; n < blockSize; ++n) {
+                double x = buffer_[idx];
+                sumx  += x;
+                sumn  += n;
+                sumn2 += double(n) * double(n);
+                sumxn += x * double(n);
                 idx = (idx + 1) % Nblock;
             }
-            xmean /= double(blockSize);
         }
-    
-        // window energy for the actual block size
+        const double N = double(blockSize);
+        const double denom = N * sumn2 - sumn * sumn;
+        const double b = (denom != 0.0) ? (N * sumxn - sumn * sumx) / denom : 0.0;
+        const double a = (sumx - b * sumn) / N;
+
+        // --- window energy ---
         double U = 0.0;
-        for (int n = 0; n < blockSize; n++) U += window_[n] * window_[n];
-    
-        // single-sided PSD scale for acceleration: 2 / (fs * sum(w^2))
+        for (int n = 0; n < blockSize; ++n) U += window_[n] * window_[n];
+
         const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
-    
+
         for (int i = 0; i < Nfreq; i++) {
             double s1 = 0.0, s2 = 0.0;
-    
+
             int idx = startIdx;
             for (int n = 0; n < blockSize; n++) {
-                // NEW: subtract mean before windowing
-                const double xw = (buffer_[idx] - xmean) * window_[n];
-                const double s_new = xw + coeffs_[i] * s1 - s2;
+                double detrended = buffer_[idx] - (a + b * n);
+                double xw = detrended * window_[n];
+                double s_new = xw + coeffs_[i] * s1 - s2;
                 s2 = s1; s1 = s_new;
                 idx = (idx + 1) % Nblock;
             }
-    
-            // standard Goertzel recombination (equivalent to s1^2 + s2^2 - 2cos*w*s1*s2)
-            const double real = s1 - s2 * cos1_[i];
-            const double imag = s2 * sin1_[i];
-    
-            // PSD of acceleration at this frequency ( (m/s^2)^2 / Hz )
-            const double S_aa = (real*real + imag*imag) * scale_factor;
-    
-            // acceleration -> displacement PSD: divide by ω^4
-            const double omega = 2.0 * M_PI * freqs_[i];     // rad/s
-            const double omega_safe = std::max(omega, 2.0 * M_PI * 0.04); 
-            double S_eta = S_aa / (omega_safe * omega_safe * omega_safe * omega_safe);
-    
-            constexpr double hp_cut = 0.06;  // Hz; adjust to taste (0.03–0.06 typical)
-            if (freqs_[i] < hp_cut) S_eta = 0.0;  // or multiply by a soft taper instead
-    
+
+            // Goertzel recombination
+            double real = s1 - s2 * cos1_[i];
+            double imag = s2 * sin1_[i];
+            double S_aa = (real * real + imag * imag) * scale_factor;
+
+            // acceleration -> displacement PSD
+            double f = freqs_[i];
+            double omega = 2.0 * M_PI * f;
+            double S_eta = (omega > 0.0) ? (S_aa / std::pow(omega, 4)) : 0.0;
+
+            // --- soft high-pass taper ---
+            double w_hp = 1.0 / (1.0 + std::pow(hp_f0 / std::max(f, 1e-9), hp_pow));
+            S_eta *= (w_hp * w_hp);
+
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-            lastSpectrum_[i] = S_eta; // [m^2/Hz]
+            lastSpectrum_[i] = S_eta;
         }
     }
     
     double fs_raw, fs;
     int decimFactor;
     bool hannEnabled;
+
+    // soft high-pass settings
+    double hp_f0 = 0.06;   // Hz, soft corner
+    double hp_pow = 6.0;   // slope (order-like)
 
     std::array<double, Nfreq> freqs_;
     std::array<double, Nfreq> coeffs_;
