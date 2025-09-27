@@ -72,7 +72,7 @@ class EIGEN_ALIGN_MAX JonswapSpectrum {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     JonswapSpectrum(double Hs, double Tp,
                     double f_min = 0.02, double f_max = 0.8,
-                    double gamma = 2.0, double g = 9.81)
+                    double gamma = 3.3, double g = 9.81)
       : Hs_(Hs), Tp_(Tp), f_min_(f_min), f_max_(f_max), gamma_(gamma), g_(g)
     {
       if (N_FREQ < 2) throw std::runtime_error("N_FREQ must be >= 2");
@@ -186,7 +186,7 @@ class EIGEN_ALIGN_MAX Jonswap3dStokesWaves {
     Jonswap3dStokesWaves(double Hs, double Tp,
                          std::shared_ptr<DirectionalDistribution> dirDist,
                          double f_min = 0.02, double f_max = 0.8,
-                         double gamma = 2.0, double g = 9.81,
+                         double gamma = 3.3, double g = 9.81,
                          unsigned int seed = 42u,
                          double cutoff_tol = 1e-8)
       : spectrum_(Hs, Tp, f_min, f_max, gamma, g),
