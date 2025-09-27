@@ -213,6 +213,8 @@ public:
 
     bool ready() const { return isWarm; }
 
+    std::array<double, Nfreq> getFrequencies() const { return freqs_; }
+
 private:
     inline double safeLog(double v) const { return std::log(std::max(v, 1e-18)); }
 
