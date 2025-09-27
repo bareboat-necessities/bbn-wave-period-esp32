@@ -24,7 +24,7 @@
 
   This class estimates the ocean wave spectrum from acceleration measurements.
   It implements a decimated, sliding-window Goertzel algorithm with optional
-  Hann windowing and a low-pass biquad filter to reduce high-frequency noise.
+  Hann windowing and cascaded biquad filtering (HP+LP).
 
   Features:
     - Computes the displacement spectrum from vertical acceleration.
@@ -42,7 +42,6 @@
         - estimateFp()
         - fitPiersonMoskowitz()
 
-  Copyright 2025, Mikhail Grushinskiy
 */
 template<int Nfreq = 32, int Nblock = 1024>
 class EIGEN_ALIGN_MAX WaveSpectrumEstimator {
@@ -70,7 +69,7 @@ public:
             sin1_[i]  = std::sin(omega_rs);
         }
 
-        // Hann window and its squared-sum (full-block)
+        // Hann window and its squared-sum
         double sumsq = 0.0;
         for (int n = 0; n < Nblock; n++) {
             window_[n] = hannEnabled ? 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1))) : 1.0;
@@ -80,18 +79,17 @@ public:
 
         reset();
 
-        // Low-pass biquad (applied at raw Fs)
+        // Design filters at raw Fs
         double cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor));
         designLowpassBiquad(cutoffHz, fs_raw_);
-
-        // High-pass to remove bias/drift before decimation
         designHighpassBiquad(hp_f0_hz, fs_raw_);
     }
 
     void reset() {
         buffer_.fill(0.0);
         writeIndex = 0; decimCounter = 0;
-        filledSamples = 0; z1 = z2 = 0.0;
+        filledSamples = 0;
+        z1 = z2 = 0.0;
         hz1 = hz2 = 0.0;
         isWarm = false;
         lastSpectrum_.setZero();
@@ -100,37 +98,34 @@ public:
     // feed raw acceleration sample (Hz = fs_raw)
     // returns true when a block-spectrum has been computed
     bool processSample(double x_raw) {
-
-        // --- high-pass @ raw Fs ---
+        // high-pass
         double x_hp = hb0 * x_raw + hz1;
         hz1 = hb1 * x_raw - ha1 * x_hp + hz2;
         hz2 = hb2 * x_raw - ha2 * x_hp;
 
-        // low-pass biquad (TDF-II transposed form)
+        // low-pass
         double y = b0 * x_hp + z1;
-        z1 = b1 * x_hp - a1 * y + z2;  
-        z2 = b2 * x_hp - a2 * y;    
-    
-        // Decimation
+        z1 = b1 * x_hp - a1 * y + z2;
+        z2 = b2 * x_hp - a2 * y;
+
+        // decimate
         if (++decimCounter < decimFactor)
-            return false;                   // skip until next keep-sample
+            return false;
         decimCounter = 0;
-    
-        // Circular buffer insert
+
+        // circular buffer
         buffer_[writeIndex] = y;
         writeIndex = (writeIndex + 1) % Nblock;
         filledSamples++;
-    
-        // Warm-up flag
+
         if (filledSamples >= Nblock)
             isWarm = true;
-    
-        // Trigger spectrum computation once per full block
+
         if (filledSamples > 0 && (filledSamples % Nblock) == 0) {
-            computeSpectrum();           // (your DC-removed version)
-            return true;                 // new spectrum ready
+            computeSpectrum();
+            return true;
         }
-        return false;                    // no spectrum yet
+        return false;
     }
 
     Vec getDisplacementSpectrum() const { return lastSpectrum_; }
@@ -149,7 +144,6 @@ public:
         for (int i = 0; i < Nfreq; i++) {
             if (lastSpectrum_[i] > maxVal) { maxVal = lastSpectrum_[i]; idx = i; }
         }
-
         if (idx > 0 && idx < Nfreq - 1) {
             double y0 = safeLog(lastSpectrum_[idx - 1]);
             double y1 = safeLog(lastSpectrum_[idx]);
@@ -217,7 +211,6 @@ public:
             c = cost_fn(alpha, fp - stepFp); if (c < bestC) { bestC = c; fp -= stepFp; improved = true; }
             if (!improved) { stepA *= 0.5; stepFp *= 0.5; if (stepA < 1e-12 && stepFp < 1e-12) break; }
         }
-
         return {alpha, fp, bestC};
     }
 
@@ -226,7 +219,6 @@ public:
     std::array<double, Nfreq> getFrequencies() const { return freqs_; }
 
     void set_regularization_f0(double f0_hz) { reg_f0_hz = std::max(0.0, f0_hz); }
-
     void set_highpass_f0(double f0_hz) {
         hp_f0_hz = std::max(0.0, f0_hz);
         designHighpassBiquad(hp_f0_hz, fs_raw);
@@ -256,11 +248,27 @@ private:
         a1 = 2.0 * (K * K - 1.0) * norm; a2 = (1.0 - K / Q + K * K) * norm;
     }
 
+    void designHighpassBiquad(double f_cut, double Fs) {
+        if (f_cut <= 0.0) {
+            hb0 = 1.0; hb1 = 0.0; hb2 = 0.0;
+            ha1 = 0.0; ha2 = 0.0;
+            return;
+        }
+        const double Fc = f_cut / Fs;
+        const double K  = std::tan(M_PI * Fc);
+        const double norm = 1.0 / (1.0 + K / Q + K * K);
+        hb0 = 1.0 * norm;
+        hb1 = -2.0 * norm;
+        hb2 = 1.0 * norm;
+        ha1 = 2.0 * (K * K - 1.0) * norm;
+        ha2 = (1.0 - K / Q + K * K) * norm;
+    }
+
     void computeSpectrum() {
         const int blockSize = std::min(filledSamples, Nblock);
         const int startIdx = (writeIndex + Nblock - blockSize) % Nblock;
 
-        // --- linear detrend (fit y = a + b*n) ---
+        // detrend
         double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumxn = 0.0;
         {
             int idx = startIdx;
@@ -278,18 +286,15 @@ private:
         const double b = (denom != 0.0) ? (N * sumxn - sumn * sumx) / denom : 0.0;
         const double a = (sumx - b * sumn) / N;
 
-        // --- window energy ---
+        // window energy
         double U = 0.0;
         for (int n = 0; n < blockSize; ++n) U += window_[n] * window_[n];
-
         const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
-        // regularization parameter (rad/s)
         const double lambda = 2.0 * M_PI * std::max(reg_f0_hz, 0.0);
 
         for (int i = 0; i < Nfreq; i++) {
             double s1 = 0.0, s2 = 0.0;
-
             int idx = startIdx;
             for (int n = 0; n < blockSize; n++) {
                 const double detrended = buffer_[idx] - (a + b * n);
@@ -298,13 +303,10 @@ private:
                 s2 = s1; s1 = s_new;
                 idx = (idx + 1) % Nblock;
             }
-
-            // Goertzel recombination -> acceleration PSD
             const double real = s1 - s2 * cos1_[i];
             const double imag = s2 * sin1_[i];
             const double S_aa = (real * real + imag * imag) * scale_factor;
 
-            // Regularized inversion: S_eta = S_aa / ((omega^2 + lambda^2)^2)
             const double f = freqs_[i];
             const double omega = 2.0 * M_PI * f;
             const double denom_reg = (omega * omega + lambda * lambda);
@@ -315,29 +317,12 @@ private:
         }
     }
 
-    void designHighpassBiquad(double f_cut, double Fs) {
-        if (f_cut <= 0.0) {
-            hb0 = 1.0; hb1 = 0.0; hb2 = 0.0;
-            ha1 = 0.0; ha2 = 0.0;
-            return;
-        }
-        const double Fc = f_cut / Fs;
-        const double K  = std::tan(M_PI * Fc);
-        const double norm = 1.0 / (1.0 + K / Q + K * K);
-        // 2nd-order HP (Butterworth-like), TDF-II transposed
-        hb0 = 1.0 * norm;
-        hb1 = -2.0 * norm;
-        hb2 = 1.0 * norm;
-        ha1 = 2.0 * (K * K - 1.0) * norm;
-        ha2 = (1.0 - K / Q + K * K) * norm;
-    }
-    
     double fs_raw, fs;
     int decimFactor;
     bool hannEnabled;
 
-    // regularization corner (non-heuristic Tikhonov): lambda = 2*pi*reg_f0_hz
-    double reg_f0_hz = 0.06;  // Hz; set to lowest physically meaningful wave frequency
+    double reg_f0_hz = 0.06;
+    double hp_f0_hz  = 0.05;
 
     std::array<double, Nfreq> freqs_;
     std::array<double, Nfreq> coeffs_;
@@ -348,11 +333,9 @@ private:
     double b0, b1, b2, a1, a2;
     double z1 = 0, z2 = 0;
 
-    // input high-pass biquad coeffs & states (raw Fs)
     double hb0 = 1.0, hb1 = 0.0, hb2 = 0.0;
     double ha1 = 0.0, ha2 = 0.0;
     double hz1 = 0.0, hz2 = 0.0;
-    double hp_f0_hz = 0.05;  // Hz; bias-removal corner (tune ~0.04–0.07)
 
     std::array<double, Nfreq> cos1_, sin1_;
     Eigen::Matrix<double, Nfreq, 1> lastSpectrum_;
@@ -383,16 +366,15 @@ void WaveSpectrumEstimator_test() {
         double acc = A_test * std::sin(2.0 * M_PI * f_test * t);
         if (estimator.processSample(acc)) {
             ready_count++;
-
             auto S = estimator.getDisplacementSpectrum();
             double Hs = estimator.computeHs();
             double Fp = estimator.estimateFp();
             auto pm = estimator.fitPiersonMoskowitz();
 
-            std::cerr << "Spectrum ready: Hs = " << Hs 
-                      << ", Fp = " << Fp 
-                      << ", PM fit: alpha = " << pm.alpha 
-                      << ", fp = " << pm.fp 
+            std::cerr << "Spectrum ready: Hs = " << Hs
+                      << ", Fp = " << Fp
+                      << ", PM fit: alpha = " << pm.alpha
+                      << ", fp = " << pm.fp
                       << ", cost = " << pm.cost << "\n";
 
             assert(Hs > 0);
