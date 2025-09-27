@@ -16,7 +16,7 @@
 static constexpr double TWO_PI = 2.0 * M_PI;
 static constexpr double g_std  = 9.80665;
 
-// new R_S law
+// R_S law
 inline float R_S_law(float Tp, float R_S_base = 1.526539f, float T_p_base=8.5f) {
     return R_S_base * std::pow(Tp/T_p_base, 1.0 / 3.0);
 }
