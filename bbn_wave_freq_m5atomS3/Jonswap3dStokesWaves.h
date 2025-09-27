@@ -104,6 +104,7 @@ class EIGEN_ALIGN_MAX JonswapSpectrum {
     double integratedVariance() const {
       return (S_.cwiseProduct(df_)).sum();
     }
+    double gamma() const { return gamma_; }
 
   private:
     double Hs_, Tp_, f_min_, f_max_, gamma_, g_;
