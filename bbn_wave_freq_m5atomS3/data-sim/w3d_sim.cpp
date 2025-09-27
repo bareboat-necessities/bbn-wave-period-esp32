@@ -165,7 +165,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     bool mag_enabled = false;
     int iter = 0;
 
-    // ---- build outname (legacy scheme) ----
+    // build outname (legacy scheme)
     std::string outname = filename;
     auto pos_prefix = outname.find("wave_data_");
     if (pos_prefix != std::string::npos) {
@@ -298,7 +298,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
         errs_yaw.push_back(y_est - y_ref_out);
         errs_angle.push_back(angle_err);
 
-        // ---- stream row to CSV ----
+        // stream row to CSV
         ofs << rec.time << ","
             << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
             << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
@@ -327,7 +327,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
     ofs.close();
     std::cout << "Wrote " << outname << "\n";
 
-    // ---- RMS summary for last 60 s ----
+    // RMS summary for last 60 s
     int N_last = static_cast<int>(60.0f / dt);
     if (errs_z.size() > static_cast<size_t>(N_last)) {
         size_t start = errs_z.size() - N_last;
