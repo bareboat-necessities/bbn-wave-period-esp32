@@ -494,7 +494,7 @@ IMUReadings getIMUReadings(double x, double y, double t,
     }
 
     double gamma() const {
-      return gamma_;
+      return spectrum_.gamma();
     }
 
   private:
