@@ -492,6 +492,10 @@ IMUReadings getIMUReadings(double x, double y, double t,
       return spectrum_.df();
     }
 
+    double gamma() const {
+      return gamma_;
+    }
+
   private:
     using IndexT = Eigen::Index;
 
