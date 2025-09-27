@@ -148,7 +148,7 @@ static void print_report(size_t idx, const char* type, const WaveParameters& wp,
     std::cout << "  Heuristic (Hs,Tp with law)\n";
     std::cout << "    tau_h            = " << h1.tau << "\n";
     std::cout << "    sigma_a_h        = " << h1.sigma_a << "\n";
-    std::cout << "    R_S_h (law)      = " << h1.R_S << " (m*s)^2\n\n";
+    std::cout << "    R_S_h (law)      = " << h1.R_S << " (m*s)^2\n";
 }
 
 // CSV writer
@@ -173,11 +173,7 @@ static void write_csv_row(std::ofstream& f, size_t idx, const char* type,
 
 // One runner for a model type
 template<typename WaveModel, int N>
-static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char* tag, std::ofstream& csv) {
-    auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
-        wp.direction * M_PI / 180.0, 10.0, 42u);
-
-    WaveModel model(wp.height, wp.period, dirDist, 0.02, 0.8, g_std, 42u);
+static void run_model_for_wave(WaveModel &model, const WaveParameters& wp, size_t idx, const char* tag, std::ofstream& csv) {
 
     const auto f   = model.frequencies();
     const auto S   = model.spectrum();
@@ -188,6 +184,7 @@ static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char*
 
     print_report(idx, tag, wp, exact, heur1);
     maybe_print_gamma(model);
+    std::cout << "\n";
     
     write_csv_row(csv, idx, tag, wp, exact, heur1);
 }
@@ -205,8 +202,14 @@ int main() {
               << "R_S law: R_S(Tp) = kf * Tp^(1/3)\n\n";
 
     for (size_t i = 0; i < waveParamsList.size(); ++i) {
-        run_model_for_wave<Jonswap3dStokesWaves<128>, 128>(waveParamsList[i], i, "JONSWAP", csv);
-        run_model_for_wave<PMStokesN3dWaves<128,3>, 128>(waveParamsList[i], i, "PMSTOKES", csv);
+        auto wp = waveParamsList[i];
+        auto dirDistJ = std::make_shared<Cosine2sRandomizedDistribution>(wp.direction * M_PI / 180.0, 10.0, 42u);
+        Jonswap3dStokesWaves<128> modelJonswap(wp.height, wp.period, dirDistJ, 0.02, 0.8, 3.3, g_std, 42u);
+        run_model_for_wave<Jonswap3dStokesWaves<128>, 128>(modelJonswap, wp, i, "JONSWAP", csv);
+
+        auto dirDistPM = std::make_shared<Cosine2sRandomizedDistribution>(wp.direction * M_PI / 180.0, 10.0, 42u);
+        PMStokesN3dWaves<128, 3> modelPM(wp.height, wp.period, dirDistPM, 0.02, 0.8, g_std, 42u);
+        run_model_for_wave<PMStokesN3dWaves<128,3>, 128>(modelPM, wp, i, "PMSTOKES", csv);
     }
 
     csv.close();
