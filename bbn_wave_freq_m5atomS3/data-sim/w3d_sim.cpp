@@ -79,10 +79,9 @@ const std::vector<WaveParameters> waveParamsList = {
     {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 25.0f}
 };
 
-constexpr float kf = 0.729f;
-
-float R_S_law(float Tp, float coeff = kf) {
-   return kf * std::pow(Tp, 1.0 / 3.0);
+// R_S law
+inline float R_S_law(float Tp, float R_S_base = 1.526539f, float T_p_base=8.5f) {
+    return R_S_base * std::pow(Tp/T_p_base, 1.0 / 3.0);
 }
 
 const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
@@ -93,7 +92,7 @@ const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
         { 1.809019, 1.355438, R_S_law(11.4) }   // Wave 3 (Tp=11.4)
     }},
     { WaveType::PMSTOKES, {
-        // { tau_eff, sigma_a_eff,  R_S_eff }   // R_S_eff = <numerator> / kf
+        // { tau_eff, sigma_a_eff,  R_S_eff }   // R_S_eff = <numerator>
         { 0.316639, 0.563192, R_S_law(3.0)  },  // Tp=3.0,  Hs=0.27
         { 0.599911, 1.177536, R_S_law(5.7)  },  // Tp=5.7,  Hs=1.5
         { 0.900931, 1.607994, R_S_law(8.5)  },  // Tp=8.5,  Hs=4.0
