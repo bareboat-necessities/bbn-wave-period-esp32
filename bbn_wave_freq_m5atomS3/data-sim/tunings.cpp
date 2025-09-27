@@ -12,22 +12,22 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// --- constants ---
+// constants
 static constexpr double TWO_PI = 2.0 * M_PI;
 static constexpr double g_std  = 9.80665;
 
-// --- new R_S law ---
+// new R_S law
 inline float R_S_law(float Tp, float R_S_base = 1.526539f, float T_p_base=8.5f) {
     return R_S_base * std::pow(Tp/T_p_base, 1.0 / 3.0);
 }
 
-// ---- wave model headers ----
+//- wave model headers-
 #include "Jonswap3dStokesWaves.h"
 #include "PiersonMoskowitzStokes3D_Waves.h"
 #include "DirectionalSpread.h"
 #include "WaveFilesSupport.h"   // WaveParameters (Hs,Tp,phase,dir)
 
-// ===== Input test waves =====
+// Input test waves
 const std::vector<WaveParameters> waveParamsList = {
     {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 25.0f},
     {5.7f,   1.5f,  static_cast<float>(M_PI/1.5), 25.0f},
@@ -35,7 +35,7 @@ const std::vector<WaveParameters> waveParamsList = {
     {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 25.0f}
 };
 
-// ===== Results structs =====
+// Results structs
 struct TuningExact {
     double tau_displ;   // s (from displacement peak)
     double tau_accel;   // s (from acceleration peak)
@@ -63,7 +63,7 @@ static double rel_err(double est, double ref) {
     return std::abs(est - ref) / std::abs(ref);
 }
 
-// --- exact from spectrum ---
+// exact from spectrum
 template<int N>
 static TuningExact compute_exact_from_spectrum(
     const Eigen::Matrix<double, N, 1>& f_Hz,
@@ -107,7 +107,7 @@ static TuningExact compute_exact_from_spectrum(
     return out;
 }
 
-// --- heuristic (Hs,Tp) using new R_S law ---
+// heuristic (Hs,Tp) using new R_S law
 static TuningHeur compute_heur_from_HsTp(double Hs, double Tp) {
     TuningHeur h{};
     h.m0_from_Hs = (Hs*Hs)/16.0;
@@ -118,16 +118,16 @@ static TuningHeur compute_heur_from_HsTp(double Hs, double Tp) {
     return h;
 }
 
-// ===== Pretty print =====
+// Pretty print
 static void print_report(size_t idx, const char* type, const WaveParameters& wp,
                          const TuningExact& e, const TuningHeur& h1) {
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "Wave " << idx << " [" << type << "]  (Hs_in=" << wp.height
               << " m, Tp_in=" << wp.period << " s)\n";
-    std::cout << "  --- Peaks ---\n";
+    std::cout << "  Peaks\n";
     std::cout << "    f_peak_disp      = " << e.f_peak_disp << " Hz\n";
     std::cout << "    f_peak_acc       = " << e.f_peak_acc  << " Hz\n";
-    std::cout << "  --- Exact (law applied) ---\n";
+    std::cout << "  Exact (law applied)\n";
     std::cout << "    tau_from_displ   = " << e.tau_displ << " s\n";
     std::cout << "    tau_from_accel   = " << e.tau_accel << " s\n";
     std::cout << "    sigma_a_exact    = " << e.sigma_a   << " m/s^2\n";
@@ -136,13 +136,13 @@ static void print_report(size_t idx, const char* type, const WaveParameters& wp,
     std::cout << "    m4               = " << e.m4        << " m^2·s^-4\n";
     std::cout << "    Hs_spec          = " << e.Hs_spec   << " m\n";
 
-    std::cout << "  --- Heuristic (Hs,Tp with law) ---\n";
+    std::cout << "  Heuristic (Hs,Tp with law)\n";
     std::cout << "    tau_h            = " << h1.tau << "\n";
     std::cout << "    sigma_a_h        = " << h1.sigma_a << "\n";
     std::cout << "    R_S_h (law)      = " << h1.R_S << " (m*s)^2\n\n";
 }
 
-// ===== CSV writer =====
+// CSV writer
 static void write_csv_header(std::ofstream& f) {
     f << "wave_index,wave_type,Hs_input,Tp,"
       << "tau_displ,tau_accel,sigma_a_exact,R_S_law,Hs_spec,"
@@ -162,7 +162,7 @@ static void write_csv_row(std::ofstream& f, size_t idx, const char* type,
       << h1.tau << "," << h1.sigma_a << "," << h1.R_S << "\n";
 }
 
-// ===== One runner for a model type =====
+// One runner for a model type
 template<typename WaveModel, int N>
 static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char* tag, std::ofstream& csv) {
     auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
@@ -181,7 +181,7 @@ static void run_model_for_wave(const WaveParameters& wp, size_t idx, const char*
     write_csv_row(csv, idx, tag, wp, exact, heur1);
 }
 
-// ===== Main =====
+// Main
 int main() {
     std::ofstream csv("wave_tunings.csv");
     if (!csv.is_open()) {
