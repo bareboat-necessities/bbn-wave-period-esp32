@@ -124,48 +124,69 @@ class EIGEN_ALIGN_MAX JonswapSpectrum {
     }
 
     void computeJonswapSpectrumFromHs() {
-      const double fp = 1.0 / Tp_;
-      Eigen::Matrix<double, N_FREQ, 1> S0;
+        const double fp = 1.0 / Tp_;
+        Eigen::Matrix<double, N_FREQ, 1> S0;
 
-      for (int i = 0; i < N_FREQ; ++i) {
-        const double f = frequencies_(i);
-        const double sigma = (f <= fp) ? 0.07 : 0.09;
-        const double dfreq = f - fp;
-        const double denom = 2.0 * sigma * sigma * fp * fp;
-        const double r = std::exp(-(dfreq * dfreq) / denom);
+        for (int i = 0; i < N_FREQ; ++i) {
+            const double f = frequencies_(i);
+            const double sigma = (f <= fp) ? 0.07 : 0.09;
+            const double dfreq = f - fp;
+            const double denom = 2.0 * sigma * sigma * fp * fp;
+            const double r = std::exp(-(dfreq * dfreq) / denom);
 
-        const double f2 = f * f;
-        const double f4 = f2 * f2;
-        const double inv_f5 = 1.0 / (f * f4);
+            const double f2 = f * f;
+            const double f4 = f2 * f2;
+            const double inv_f5 = 1.0 / (f * f4);
 
-        const double fp2 = fp * fp;
-        const double ratio2 = fp2 / f2;
-        const double ratio4 = ratio2 * ratio2;
+            const double fp2 = fp * fp;
+            const double ratio2 = fp2 / f2;
+            const double ratio4 = ratio2 * ratio2;
 
-        const double base = (g_ * g_) / std::pow(2.0 * PI, 4) * inv_f5 * std::exp(-1.25 * ratio4);
-        const double gamma_r = std::exp(r * std::log(gamma_));
-        const double val = base * gamma_r;
+            const double base = (g_ * g_) / std::pow(2.0 * M_PI, 4) * inv_f5 * std::exp(-1.25 * ratio4);
+            const double gamma_r = std::exp(r * std::log(gamma_));
+            const double val = base * gamma_r;
 
-        S0(i) = std::isfinite(val) ? val : 0.0;
-      }
+            S0(i) = std::isfinite(val) ? val : 0.0;
+        }
 
-      const double variance_unit = (S0.cwiseProduct(df_)).sum();
-      if (!(variance_unit > 0.0))
-        throw std::runtime_error("JonswapSpectrum: computed zero/negative variance");
+        const double variance_unit = (S0.cwiseProduct(df_)).sum();
+        if (!(variance_unit > 0.0))
+            throw std::runtime_error("JonswapSpectrum: computed zero/negative variance");
 
-      const double variance_target = (Hs_ * Hs_) / 16.0;
-      const double alpha = variance_target / variance_unit;
+        const double variance_target = (Hs_ * Hs_) / 16.0;
+        const double alpha = variance_target / variance_unit;
 
-      S_ = S0 * alpha;
-      A_ = (2.0 * S_.cwiseProduct(df_)).cwiseSqrt();
+        // Initial scaled spectrum
+        S_ = S0 * alpha;
+        A_ = (2.0 * S_.cwiseProduct(df_)).cwiseSqrt();
 
-      const double Hs_est = 4.0 * std::sqrt(0.5 * A_.squaredNorm());
-      if (Hs_est <= 0.0) throw std::runtime_error("JonswapSpectrum: Hs_est <= 0");
-      const double rel_err = std::abs(Hs_est - Hs_) / Hs_;
-      if (rel_err > 1e-3) {
-        A_ *= (Hs_ / Hs_est);
-        for (int i = 0; i < N_FREQ; ++i) S_(i) = (A_(i) * A_(i)) / (2.0 * df_(i));
-      }
+        // --- Enforce Hs by bisection (same as PM spectrum) ---
+        auto m0_from_beta = [&](double beta) {
+            Eigen::Matrix<double, N_FREQ, 1> A_beta = beta * A_;
+            double sum_sq = A_beta.squaredNorm();
+            return 0.5 * sum_sq; // variance
+        };
+
+        const double m0_target = variance_target;
+        const double m0_initial = m0_from_beta(1.0);
+
+        if (m0_initial > m0_target * 1.0001) {
+            double lo = 0.0, hi = 1.0;
+            for (int it = 0; it < 60; ++it) {
+                double mid = 0.5 * (lo + hi);
+                if (m0_from_beta(mid) > m0_target) {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            double beta = 0.5 * (lo + hi);
+            A_ *= beta;
+            for (int i = 0; i < N_FREQ; ++i) {
+                const double dfi = df_(i) > 0.0 ? df_(i) : 1e-12;
+                S_(i) = (A_(i) * A_(i)) / (2.0 * dfi);
+            }
+        }
     }
 };
 
