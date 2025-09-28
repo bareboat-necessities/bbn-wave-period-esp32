@@ -122,18 +122,17 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag,
     if (kind != FileKind::Data) return;
     if (!(type == WaveType::JONSWAP || type == WaveType::PMSTOKES)) return;
 
+    int wave_idx = wave_index_from_height(wp.height);
+    if (wave_idx < 0) {
+        std::cerr << "No tuning found for height=" << wp.height << "\n";
+        return;
+    }
     const auto &tune = tuning_map.at(type).at(wave_idx);
 
     std::cout << "Processing " << filename
               << " (" << EnumTraits<WaveType>::to_string(type)
               << ") with R_S_base=" << R_S_base_global
               << " -> R_S_eff=" << tune.R_S_eff << "\n";
-    
-    int wave_idx = wave_index_from_height(wp.height);
-    if (wave_idx < 0) {
-        std::cerr << "No tuning found for height=" << wp.height << "\n";
-        return;
-    }
 
     const auto &tune = tuning_map.at(type).at(wave_idx);
 
