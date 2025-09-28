@@ -134,8 +134,6 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag,
               << ") with R_S_base=" << R_S_base_global
               << " -> R_S_eff=" << tune.R_S_eff << "\n";
 
-    const auto &tune = tuning_map.at(type).at(wave_idx);
-
     std::cout << "Using tuning for "
               << EnumTraits<WaveType>::to_string(type)
               << " wave index " << wave_idx
