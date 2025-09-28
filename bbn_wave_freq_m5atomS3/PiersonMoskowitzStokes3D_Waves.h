@@ -239,41 +239,62 @@ public:
     IMUReadingsBody getIMUReadings(double x, double y, double t, double z = 0.0,
                                    double dt = 1e-3) const {
         IMUReadingsBody imu;
-    
-        // Lagrangian particle at sensor depth (z ≤ 0)
-        auto state = computeWaveState(x, y, z, t, WaveFrame::Lagrangian);
-    
-        // Advected surface position for the buoy
-        const double px = x + state.displacement.x();
-        const double py = y + state.displacement.y();
-    
-        // Orientation from slopes at *advected* location
-        const auto slopes = getSurfaceSlopes(px, py, t);
-        Eigen::Vector2d horiz_vel(state.velocity.x(), state.velocity.y());
-        const Eigen::Matrix3d R1 = orientationFromSlopesAndVelocity(slopes, horiz_vel);
-      
+
+        // Lagrangian particle (z ≤ 0)
+        auto st1 = computeWaveState(x, y, z, t, WaveFrame::Lagrangian);
+
+        // Advected surface position
+        const double px1 = x + st1.displacement.x();
+        const double py1 = y + st1.displacement.y();
+
+        // Slopes/normal at t
+        const auto slopes1 = getSurfaceSlopes(px1, py1, t);
+        Eigen::Vector3d n1(-slopes1.x(), -slopes1.y(), 1.0);
+        n1.normalize();
+
+        // Frame R1: east-projected, no twist
+        const Eigen::Matrix3d R1 = frameFromNormalEastBaseline(n1);
+
         // Body accelerometer: specific force = R*(a - g)
         const Eigen::Vector3d g_world(0, 0, -g_);
-        imu.accel_body = R1 * (state.acceleration - g_world);
+        imu.accel_body  = R1 * (st1.acceleration - g_world);
         imu.accel_debug = R1 * (-g_world);
-    
-        // Predict advected position at t+dt (simple forward Euler)
-        const double px_next = px + state.velocity.x() * dt;
-        const double py_next = py + state.velocity.y() * dt;
 
-        // Recompute full Lagrangian state at t+dt for better yaw rate
-        auto state_next = computeWaveState(x, y, z, t + dt, WaveFrame::Lagrangian);
+        // Predict advected position (forward Euler with current velocity)
+        const double px2 = px1 + st1.velocity.x() * dt;
+        const double py2 = py1 + st1.velocity.y() * dt;
 
-        // Orientation at t+dt from slopes at advected-next location
-        const auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
-        Eigen::Vector2d horiz_vel_next(state_next.velocity.x(), state_next.velocity.y());
-        const Eigen::Matrix3d R2 = orientationFromSlopesAndVelocity(slopes_next, horiz_vel_next);
-      
-        // Gyro via finite rotation
+        // Recompute full Lagrangian state at t+dt (for better kinematics)
+        auto st2 = computeWaveState(x, y, z, t + dt, WaveFrame::Lagrangian);
+
+        // Slopes/normal at t+dt
+        const auto slopes2 = getSurfaceSlopes(px2, py2, t + dt);
+        Eigen::Vector3d n2(-slopes2.x(), -slopes2.y(), 1.0);
+        n2.normalize();
+
+        // Minimal rotation that maps n1 → n2 (parallel transport, no twist)
+        const Eigen::Matrix3d Rn = minimalRotation(n1, n2);
+
+        // Transport R1’s x-axis with Rn, then re-orthonormalize on the new tangent
+        Eigen::Vector3d x1 = R1.row(0).transpose();
+        Eigen::Vector3d x2_t = projectToTangent(Rn * x1, n2);
+        if (x2_t.norm() < 1e-9) {
+            // Extremely edge-on; fall back to east-baseline at n2
+            x2_t = projectToTangent(Eigen::Vector3d::UnitX(), n2);
+        }
+        x2_t.normalize();
+        Eigen::Vector3d y2 = (n2.cross(x2_t)).normalized();
+
+        Eigen::Matrix3d R2;
+        R2.row(0) = x2_t.transpose();
+        R2.row(1) = y2.transpose();
+        R2.row(2) = n2.transpose();
+
+        // Gyro via finite rotation over dt
         const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
         const Eigen::AngleAxisd aa(Rdelta);
         imu.gyro_body = (aa.axis() * aa.angle()) / dt;
-    
+
         return imu;
     }
 
@@ -313,32 +334,31 @@ public:
 
     // Return world-frame Euler angles (deg) from surface slopes
     Eigen::Vector3d getEulerAngles(double x, double y, double t) const {
-        // Lagrangian surface particle for buoy position
+        // Lagrangian surface particle (for buoy position)
         auto st = computeWaveState(x, y, 0.0, t, WaveFrame::Lagrangian);
         const double px = x + st.displacement.x();
         const double py = y + st.displacement.y();
-    
-        auto slopes = getSurfaceSlopes(px, py, t);
 
-        // Use the current Lagrangian state's horizontal velocity for heading
-        Eigen::Vector2d horiz_vel(st.velocity.x(), st.velocity.y());
+        // Slopes/normal at t
+        const auto slopes = getSurfaceSlopes(px, py, t);
+        Eigen::Vector3d n(-slopes.x(), -slopes.y(), 1.0);
+        n.normalize();
 
-        Eigen::Matrix3d R_WI = orientationFromSlopesAndVelocity(slopes, horiz_vel);
-      
+        // Build world→IMU frame with east-projected baseline (no twist)
+        const Eigen::Matrix3d R = frameFromNormalEastBaseline(n);
+
         double roll, pitch, yaw;
-        pitch = std::asin(-R_WI(2,0));
+        pitch = std::asin(-R(2,0));
         if (std::abs(std::cos(pitch)) > 1e-6) {
-            roll  = std::atan2(R_WI(2,1), R_WI(2,2));
-            yaw   = std::atan2(R_WI(1,0), R_WI(0,0));
+            roll = std::atan2(R(2,1), R(2,2));
+            yaw  = std::atan2(R(1,0), R(0,0));
         } else {
-            roll = std::atan2(-R_WI(1,2), R_WI(1,1));
+            roll = std::atan2(-R(1,2), R(1,1));
             yaw  = 0.0;
         }
-        return Eigen::Vector3d(
-            roll  * 180.0 / M_PI,
-            pitch * 180.0 / M_PI,
-            yaw   * 180.0 / M_PI
-        );
+        return Eigen::Vector3d(roll * 180.0 / M_PI,
+                               pitch * 180.0 / M_PI,
+                               yaw * 180.0 / M_PI);
     }
     
     // Accessors for spectral data (mirror Jonswap3dStokesWaves API)
@@ -481,7 +501,6 @@ private:
     }
 
     // Normalization of Hs
-    // Normalization of Hs
     void renormalizeForStokesElevationVariance() {
         if (ORDER <= 1) return; // nothing to do if only linear
 
@@ -532,6 +551,36 @@ private:
         const double max_ka = (A1_.array() * k_.array()).maxCoeff();
         if (max_ka > 0.20)
             throw std::runtime_error("Stokes: max steepness k·a exceeds ~0.20 (validity warning)");
+    }
+
+    // Project a vector into the tangent plane of normal n
+    static inline Eigen::Vector3d projectToTangent(const Eigen::Vector3d& v,
+                                                   const Eigen::Vector3d& n) {
+        return v - n * (v.dot(n));
+    }
+
+    // Minimal rotation that maps unit vector a to unit vector b
+    static inline Eigen::Matrix3d minimalRotation(const Eigen::Vector3d& a,
+                                                  const Eigen::Vector3d& b) {
+        Eigen::Quaterniond q = Eigen::Quaterniond::FromTwoVectors(a, b);
+        return q.toRotationMatrix();
+    }
+
+    // Build a world→IMU frame from surface normal with an east-projected baseline (no twist)
+    static inline Eigen::Matrix3d frameFromNormalEastBaseline(const Eigen::Vector3d& n) {
+        Eigen::Vector3d x_axis = projectToTangent(Eigen::Vector3d::UnitX(), n);
+        if (x_axis.norm() < 1e-6) {
+            // If east is nearly vertical, use north
+            x_axis = projectToTangent(Eigen::Vector3d::UnitY(), n);
+        }
+        x_axis.normalize();
+        Eigen::Vector3d y_axis = (n.cross(x_axis)).normalized();
+
+        Eigen::Matrix3d R;
+        R.row(0) = x_axis.transpose();
+        R.row(1) = y_axis.transpose();
+        R.row(2) = n.transpose();
+        return R;
     }
 
     // Spectrum
