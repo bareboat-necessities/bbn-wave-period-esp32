@@ -16,8 +16,8 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.16f;
-const float FAIL_ERR_LIMIT_PERCENT_LOW = 11.16f;
+const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.5f;
+const float FAIL_ERR_LIMIT_PERCENT_LOW = 11.5f;
 
 // RMS window length [s]
 constexpr float RMS_WINDOW_SEC = 60.0f;
@@ -80,7 +80,7 @@ const std::vector<WaveParameters> waveParamsList = {
 };
 
 // R_S law
-inline float R_S_law(float Tp, float R_S_base = 1.526539f, float T_p_base=8.5f) {
+inline float R_S_law(float Tp, float R_S_base = 1.92f, float T_p_base=8.5f) {
     return R_S_base * std::pow(Tp/T_p_base, 1.0 / 3.0);
 }
 
