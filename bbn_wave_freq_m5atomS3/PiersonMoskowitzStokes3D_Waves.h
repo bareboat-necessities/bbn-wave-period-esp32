@@ -252,45 +252,50 @@ public:
         Eigen::Vector3d n1(-slopes1.x(), -slopes1.y(), 1.0);
         n1.normalize();
 
-        // Frame R1: east-projected, no twist
-        const Eigen::Matrix3d R1 = frameFromNormalEastBaseline(n1);
+        // Forward axis from horizontal velocity
+        Eigen::Vector3d x_axis1(st1.velocity.x(), st1.velocity.y(), 0.0);
+        if (x_axis1.norm() < 1e-6) {
+            x_axis1 = Eigen::Vector3d::UnitX(); // fallback
+        }
+        x_axis1 = projectToTangent(x_axis1, n1);
+        x_axis1.normalize();
+        Eigen::Vector3d y_axis1 = (n1.cross(x_axis1)).normalized();
+
+        Eigen::Matrix3d R1;
+        R1.row(0) = x_axis1.transpose();
+        R1.row(1) = y_axis1.transpose();
+        R1.row(2) = n1.transpose();
 
         // Body accelerometer: specific force = R*(a - g)
         const Eigen::Vector3d g_world(0, 0, -g_);
         imu.accel_body  = R1 * (st1.acceleration - g_world);
         imu.accel_debug = R1 * (-g_world);
 
-        // Predict advected position (forward Euler with current velocity)
-        const double px2 = px1 + st1.velocity.x() * dt;
-        const double py2 = py1 + st1.velocity.y() * dt;
-
-        // Recompute full Lagrangian state at t+dt (for better kinematics)
+        // Predict advected position at t+dt
         auto st2 = computeWaveState(x, y, z, t + dt, WaveFrame::Lagrangian);
+        const double px2 = x + st2.displacement.x();
+        const double py2 = y + st2.displacement.y();
 
         // Slopes/normal at t+dt
         const auto slopes2 = getSurfaceSlopes(px2, py2, t + dt);
         Eigen::Vector3d n2(-slopes2.x(), -slopes2.y(), 1.0);
         n2.normalize();
 
-        // Minimal rotation that maps n1 → n2 (parallel transport, no twist)
-        const Eigen::Matrix3d Rn = minimalRotation(n1, n2);
-
-        // Transport R1’s x-axis with Rn, then re-orthonormalize on the new tangent
-        Eigen::Vector3d x1 = R1.row(0).transpose();
-        Eigen::Vector3d x2_t = projectToTangent(Rn * x1, n2);
-        if (x2_t.norm() < 1e-9) {
-            // Extremely edge-on; fall back to east-baseline at n2
-            x2_t = projectToTangent(Eigen::Vector3d::UnitX(), n2);
+        // Forward axis from horizontal velocity at t+dt
+        Eigen::Vector3d x_axis2(st2.velocity.x(), st2.velocity.y(), 0.0);
+        if (x_axis2.norm() < 1e-6) {
+            x_axis2 = Eigen::Vector3d::UnitX();
         }
-        x2_t.normalize();
-        Eigen::Vector3d y2 = (n2.cross(x2_t)).normalized();
+        x_axis2 = projectToTangent(x_axis2, n2);
+        x_axis2.normalize();
+        Eigen::Vector3d y_axis2 = (n2.cross(x_axis2)).normalized();
 
         Eigen::Matrix3d R2;
-        R2.row(0) = x2_t.transpose();
-        R2.row(1) = y2.transpose();
+        R2.row(0) = x_axis2.transpose();
+        R2.row(1) = y_axis2.transpose();
         R2.row(2) = n2.transpose();
 
-        // Gyro via finite rotation over dt
+        // Gyro via finite rotation
         const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
         const Eigen::AngleAxisd aa(Rdelta);
         imu.gyro_body = (aa.axis() * aa.angle()) / dt;
@@ -339,14 +344,26 @@ public:
         const double px = x + st.displacement.x();
         const double py = y + st.displacement.y();
 
-        // Slopes/normal at t
+        // Slopes/normal
         const auto slopes = getSurfaceSlopes(px, py, t);
         Eigen::Vector3d n(-slopes.x(), -slopes.y(), 1.0);
         n.normalize();
 
-        // Build world→IMU frame with east-projected baseline (no twist)
-        const Eigen::Matrix3d R = frameFromNormalEastBaseline(n);
+        // Forward axis from horizontal velocity
+        Eigen::Vector3d x_axis(st.velocity.x(), st.velocity.y(), 0.0);
+        if (x_axis.norm() < 1e-6) {
+            x_axis = Eigen::Vector3d::UnitX();
+        }
+        x_axis = projectToTangent(x_axis, n);
+        x_axis.normalize();
+        Eigen::Vector3d y_axis = (n.cross(x_axis)).normalized();
 
+        Eigen::Matrix3d R;
+        R.row(0) = x_axis.transpose();
+        R.row(1) = y_axis.transpose();
+        R.row(2) = n.transpose();
+
+        // Convert to Euler
         double roll, pitch, yaw;
         pitch = std::asin(-R(2,0));
         if (std::abs(std::cos(pitch)) > 1e-6) {
