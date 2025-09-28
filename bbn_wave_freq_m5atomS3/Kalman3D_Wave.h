@@ -525,49 +525,61 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     xext.template head<3>().setZero();
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(Vector3 const& acc_meas, T tempC) {
+    template<typename T, bool with_gyro_bias, bool with_accel_bias>
+    void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
+        Vector3 const& acc_meas, T tempC) 
+    {
+        // Accel magnitude sanity check
+        T g_meas = acc_meas.norm();
+        if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
+            return; // reject this update
+        }
 
-    // Accel magnitude sanity check
-    T g_meas = acc_meas.norm();
-    if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
-        return; // reject this update
+        const Vector3 v1hat = accelerometer_measurement_func(tempC);
+
+        // Body gravity direction from current attitude
+        const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
+
+        // Projection into plane orthogonal to gravity (removes yaw sensitivity)
+        Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
+
+        // Innovation (projected)
+        Vector3 inno = Hb * (acc_meas - v1hat);
+
+        // Cext: (3 x NX), only roll/pitch columns survive projection
+        Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+        Cext.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v1hat));
+        Cext.template block<3,3>(0, OFF_AW) = Hb * R_wb();
+        if constexpr (with_accel_bias) {
+            Cext.template block<3,3>(0,OFF_BA) = Hb; // accel bias part
+        }
+
+        // Innovation covariance
+        Matrix3 S_mat = Cext * Pext * Cext.transpose() + Hb * Racc * Hb.transpose();
+
+        // Kalman gain
+        Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+        Eigen::LDLT<Matrix3> ldlt(S_mat);
+        if (ldlt.info() != Eigen::Success) {
+            S_mat += Matrix3::Identity() * 
+                     std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
+            ldlt.compute(S_mat);
+            if (ldlt.info() != Eigen::Success) return;
+        }
+        Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+
+        // State update
+        xext.noalias() += K * inno;
+
+        // Joseph covariance update
+        MatrixNX I = MatrixNX::Identity();
+        Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Hb * Racc * Hb.transpose() * K.transpose();
+        Pext = T(0.5) * (Pext + Pext.transpose());
+
+        // Apply correction, zero attitude error
+        applyQuaternionCorrectionFromErrorState();
+        xext.template head<3>().setZero();
     }
-
-    const Vector3 v1hat = accelerometer_measurement_func(tempC);
-
-    // Cext: (3 x NX)
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    // d f_b / d (attitude error)
-    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(v1hat);
-    // d f_b / d a_w
-    Cext.template block<3,3>(0, OFF_AW) = R_wb();
-    if constexpr (with_accel_bias) {
-        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
-    }
-
-    Vector3 inno = acc_meas - v1hat;
-
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
-
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-    xext.noalias() += K * inno;
-
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
-}
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(
