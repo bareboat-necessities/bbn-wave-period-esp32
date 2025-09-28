@@ -566,7 +566,7 @@ static void generateWavePMStokesCSV(const std::string& filename,
 
     Eigen::ArrayXXd disp(3, N_time), vel(3, N_time), acc(3, N_time);
     Eigen::ArrayXXd accel_body(3, N_time), gyro_body(3, N_time);
-    Eigen::ArrayXXd euler_deg(3, N_time); // roll, pitch, yaw (yaw = 0)
+    Eigen::ArrayXXd euler_deg(3, N_time); // roll, pitch, yaw
 
     for (int i = 0; i < N_time; ++i) {
         double t = time(i);
