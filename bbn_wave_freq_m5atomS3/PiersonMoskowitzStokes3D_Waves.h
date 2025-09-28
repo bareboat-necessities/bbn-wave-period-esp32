@@ -249,8 +249,9 @@ public:
     
         // Orientation from slopes at *advected* location
         const auto slopes = getSurfaceSlopes(px, py, t);
-        const Eigen::Matrix3d R1 = orientationFromSlopes(slopes);
-    
+        Eigen::Vector2d horiz_vel(state.velocity.x(), state.velocity.y());
+        const Eigen::Matrix3d R1 = orientationFromSlopesAndVelocity(slopes, horiz_vel);
+      
         // Body accelerometer: specific force = R*(a - g)
         const Eigen::Vector3d g_world(0, 0, -g_);
         imu.accel_body = R1 * (state.acceleration - g_world);
@@ -262,14 +263,49 @@ public:
     
         // Orientation at t+dt from slopes at advected-next location
         const auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
-        const Eigen::Matrix3d R2 = orientationFromSlopes(slopes_next);
-    
+        Eigen::Vector2d horiz_vel_next(state.velocity.x(), state.velocity.y()); // or recompute at t+dt
+        const Eigen::Matrix3d R2 = orientationFromSlopesAndVelocity(slopes_next, horiz_vel_next);
+      
         // Gyro via finite rotation
         const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
         const Eigen::AngleAxisd aa(Rdelta);
         imu.gyro_body = (aa.axis() * aa.angle()) / dt;
     
         return imu;
+    }
+
+    // Orientation from slopes + horizontal velocity
+    Eigen::Matrix3d orientationFromSlopesAndVelocity(
+        const Eigen::Vector2d &slopes,
+        const Eigen::Vector2d &horiz_vel) const
+    {
+        // Surface normal from slopes
+        Eigen::Vector3d n(-slopes.x(), -slopes.y(), 1.0);
+        n.normalize();
+
+        // Forward axis from horizontal velocity (fallback if tiny)
+        Eigen::Vector3d x_axis(horiz_vel.x(), horiz_vel.y(), 0.0);
+        if (x_axis.norm() < 1e-6) {
+            x_axis = Eigen::Vector3d::UnitX();
+        }
+        x_axis.normalize();
+
+        // Project forward axis into tangent plane
+        x_axis -= n * (x_axis.dot(n));
+        if (x_axis.norm() < 1e-6) {
+            x_axis = Eigen::Vector3d::UnitY();
+        }
+        x_axis.normalize();
+
+        // Right-hand axis
+        Eigen::Vector3d y_axis = n.cross(x_axis);
+        y_axis.normalize();
+
+        Eigen::Matrix3d R_WI; // world → IMU
+        R_WI.row(0) = x_axis.transpose();
+        R_WI.row(1) = y_axis.transpose();
+        R_WI.row(2) = n.transpose();
+        return R_WI;
     }
 
     // Build local wave IMU orientation from slopes
@@ -304,8 +340,9 @@ public:
         const double py = y + st.displacement.y();
     
         auto slopes = getSurfaceSlopes(px, py, t);
-        Eigen::Matrix3d R_WI = orientationFromSlopes(slopes);
-    
+        Eigen::Vector2d horiz_vel(st.velocity.x(), st.velocity.y());
+        Eigen::Matrix3d R_WI = orientationFromSlopesAndVelocity(slopes, horiz_vel);
+      
         double roll, pitch, yaw;
         pitch = std::asin(-R_WI(2,0));
         if (std::abs(std::cos(pitch)) > 1e-6) {
