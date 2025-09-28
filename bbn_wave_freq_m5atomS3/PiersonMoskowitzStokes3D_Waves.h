@@ -260,10 +260,13 @@ public:
         // Predict advected position at t+dt (simple forward Euler)
         const double px_next = px + state.velocity.x() * dt;
         const double py_next = py + state.velocity.y() * dt;
-    
+
+        // Recompute full Lagrangian state at t+dt for better yaw rate
+        auto state_next = computeWaveState(x, y, z, t + dt, WaveFrame::Lagrangian);
+
         // Orientation at t+dt from slopes at advected-next location
         const auto slopes_next = getSurfaceSlopes(px_next, py_next, t + dt);
-        Eigen::Vector2d horiz_vel_next(state.velocity.x(), state.velocity.y()); // or recompute at t+dt
+        Eigen::Vector2d horiz_vel_next(state_next.velocity.x(), state_next.velocity.y());
         const Eigen::Matrix3d R2 = orientationFromSlopesAndVelocity(slopes_next, horiz_vel_next);
       
         // Gyro via finite rotation
