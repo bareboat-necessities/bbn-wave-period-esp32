@@ -462,6 +462,7 @@ private:
     }
 
     // Normalization of Hs
+    // Normalization of Hs
     void renormalizeForStokesElevationVariance() {
         if (ORDER <= 1) return; // nothing to do if only linear
 
@@ -490,9 +491,10 @@ private:
         const double m0_initial = m0_from_beta(1.0);
         if (m0_initial <= 0.0) return;
 
-        if (m0_initial > m0_target * 1.0001) {
-            // bisection search for scaling factor beta
-            double lo = 0.0, hi = 1.0;
+        const double rel_err = std::abs(m0_initial - m0_target) / m0_target;
+        if (rel_err > 1e-3) {
+            // bisection search for scaling factor beta (works for over/under)
+            double lo = 0.0, hi = 10.0; // hi extended >1 for up-scaling
             for (int it = 0; it < 60; ++it) {
                 double mid = 0.5 * (lo + hi);
                 if (m0_from_beta(mid) > m0_target) {
