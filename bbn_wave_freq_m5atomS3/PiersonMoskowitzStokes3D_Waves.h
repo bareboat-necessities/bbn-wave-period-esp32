@@ -320,9 +320,8 @@ public:
     
         auto slopes = getSurfaceSlopes(px, py, t);
 
-        // Recompute Lagrangian state at t+dt for velocity direction
-        auto state_next = computeWaveState(x, y, 0.0, t, WaveFrame::Lagrangian);
-        Eigen::Vector2d horiz_vel(state_next.velocity.x(), state_next.velocity.y());
+        // Use the current Lagrangian state's horizontal velocity for heading
+        Eigen::Vector2d horiz_vel(st.velocity.x(), st.velocity.y());
 
         Eigen::Matrix3d R_WI = orientationFromSlopesAndVelocity(slopes, horiz_vel);
       
