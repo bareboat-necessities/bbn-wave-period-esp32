@@ -252,48 +252,36 @@ public:
         Eigen::Vector3d n1(-slopes1.x(), -slopes1.y(), 1.0);
         n1.normalize();
 
-        // Forward axis from horizontal velocity
-        Eigen::Vector3d x_axis1(st1.velocity.x(), st1.velocity.y(), 0.0);
-        if (x_axis1.norm() < 1e-6) {
-            x_axis1 = Eigen::Vector3d::UnitX(); // fallback
-        }
-        x_axis1 = projectToTangent(x_axis1, n1);
-        x_axis1.normalize();
-        Eigen::Vector3d y_axis1 = (n1.cross(x_axis1)).normalized();
+        // ← oscillatory horizontal velocity (remove mean Stokes drift)
+        const Eigen::Vector2d Us1 = stokesDriftXY(z);
+        Eigen::Vector2d vxy1_osc(st1.velocity.x() - Us1.x(),
+                                 st1.velocity.y() - Us1.y());
 
-        Eigen::Matrix3d R1;
-        R1.row(0) = x_axis1.transpose();
-        R1.row(1) = y_axis1.transpose();
-        R1.row(2) = n1.transpose();
+        // Build R1 from slopes + v_osc
+        const Eigen::Matrix3d R1 = orientationFromSlopesAndVelocity(slopes1, vxy1_osc);
 
         // Body accelerometer: specific force = R*(a - g)
         const Eigen::Vector3d g_world(0, 0, -g_);
         imu.accel_body  = R1 * (st1.acceleration - g_world);
         imu.accel_debug = R1 * (-g_world);
 
-        // Predict advected position at t+dt
+        // Predict advected position with full Lagrangian velocity (keep physics)
+        const double px2 = px1 + st1.velocity.x() * dt;
+        const double py2 = py1 + st1.velocity.y() * dt;
+
+        // Recompute kinematics at t+dt
         auto st2 = computeWaveState(x, y, z, t + dt, WaveFrame::Lagrangian);
-        const double px2 = x + st2.displacement.x();
-        const double py2 = y + st2.displacement.y();
 
         // Slopes/normal at t+dt
         const auto slopes2 = getSurfaceSlopes(px2, py2, t + dt);
-        Eigen::Vector3d n2(-slopes2.x(), -slopes2.y(), 1.0);
-        n2.normalize();
 
-        // Forward axis from horizontal velocity at t+dt
-        Eigen::Vector3d x_axis2(st2.velocity.x(), st2.velocity.y(), 0.0);
-        if (x_axis2.norm() < 1e-6) {
-            x_axis2 = Eigen::Vector3d::UnitX();
-        }
-        x_axis2 = projectToTangent(x_axis2, n2);
-        x_axis2.normalize();
-        Eigen::Vector3d y_axis2 = (n2.cross(x_axis2)).normalized();
+        // ← oscillatory horizontal velocity at t+dt
+        const Eigen::Vector2d Us2 = stokesDriftXY(z);
+        Eigen::Vector2d vxy2_osc(st2.velocity.x() - Us2.x(),
+                                 st2.velocity.y() - Us2.y());
 
-        Eigen::Matrix3d R2;
-        R2.row(0) = x_axis2.transpose();
-        R2.row(1) = y_axis2.transpose();
-        R2.row(2) = n2.transpose();
+        // Build R2 from slopes + v_osc
+        const Eigen::Matrix3d R2 = orientationFromSlopesAndVelocity(slopes2, vxy2_osc);
 
         // Gyro via finite rotation
         const Eigen::Matrix3d Rdelta = R2 * R1.transpose();
@@ -344,26 +332,17 @@ public:
         const double px = x + st.displacement.x();
         const double py = y + st.displacement.y();
 
-        // Slopes/normal
+        // Slopes at current (advected) location
         const auto slopes = getSurfaceSlopes(px, py, t);
-        Eigen::Vector3d n(-slopes.x(), -slopes.y(), 1.0);
-        n.normalize();
 
-        // Forward axis from horizontal velocity
-        Eigen::Vector3d x_axis(st.velocity.x(), st.velocity.y(), 0.0);
-        if (x_axis.norm() < 1e-6) {
-            x_axis = Eigen::Vector3d::UnitX();
-        }
-        x_axis = projectToTangent(x_axis, n);
-        x_axis.normalize();
-        Eigen::Vector3d y_axis = (n.cross(x_axis)).normalized();
+        // ← oscillatory horizontal velocity at surface (z=0)
+        const Eigen::Vector2d Us0 = stokesDriftXY(0.0);
+        Eigen::Vector2d vxy_osc(st.velocity.x() - Us0.x(),
+                                st.velocity.y() - Us0.y());
 
-        Eigen::Matrix3d R;
-        R.row(0) = x_axis.transpose();
-        R.row(1) = y_axis.transpose();
-        R.row(2) = n.transpose();
+        // Orientation from slopes + v_osc
+        Eigen::Matrix3d R = orientationFromSlopesAndVelocity(slopes, vxy_osc);
 
-        // Convert to Euler
         double roll, pitch, yaw;
         pitch = std::asin(-R(2,0));
         if (std::abs(std::cos(pitch)) > 1e-6) {
@@ -375,7 +354,7 @@ public:
         }
         return Eigen::Vector3d(roll * 180.0 / M_PI,
                                pitch * 180.0 / M_PI,
-                               yaw * 180.0 / M_PI);
+                               yaw   * 180.0 / M_PI);
     }
     
     // Accessors for spectral data (mirror Jonswap3dStokesWaves API)
@@ -598,6 +577,14 @@ private:
         R.row(1) = y_axis.transpose();
         R.row(2) = n.transpose();
         return R;
+    }
+
+    // Horizontal Stokes drift at depth z (deep water, 2nd order)
+    Eigen::Vector2d stokesDriftXY(double z) const {
+        const Eigen::Array<double, N_FREQ, 1> exp2 = (2.0 * k_.array() * z).exp();
+        const double Usx = (stokes_drift_scalar_.array() * exp2 * dir_x_.array()).sum();
+        const double Usy = (stokes_drift_scalar_.array() * exp2 * dir_y_.array()).sum();
+        return Eigen::Vector2d(Usx, Usy);
     }
 
     // Spectrum
