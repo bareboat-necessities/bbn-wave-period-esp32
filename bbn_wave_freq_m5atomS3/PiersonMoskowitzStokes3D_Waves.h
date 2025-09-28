@@ -311,30 +311,6 @@ public:
         return R_WI;
     }
 
-    // Build local wave IMU orientation from slopes
-    Eigen::Matrix3d orientationFromSlopes(const Eigen::Vector2d &slopes) const {
-        Eigen::Vector3d n(-slopes.x(), -slopes.y(), 1.0);
-        n.normalize();
-
-        // project global X onto tangent plane for x-axis
-        Eigen::Vector3d x_axis = Eigen::Vector3d::UnitX();
-        x_axis -= n * (x_axis.dot(n));
-        if (x_axis.norm() < 1e-6) {
-            x_axis = Eigen::Vector3d::UnitY(); // fallback
-            x_axis -= n * (x_axis.dot(n));
-        }
-        x_axis.normalize();
-
-        Eigen::Vector3d y_axis = n.cross(x_axis);
-        y_axis.normalize();
-
-        Eigen::Matrix3d R_WI; // world->IMU
-        R_WI.row(0) = x_axis.transpose();
-        R_WI.row(1) = y_axis.transpose();
-        R_WI.row(2) = n.transpose();
-        return R_WI;
-    }
-
     // Return world-frame Euler angles (deg) from surface slopes
     Eigen::Vector3d getEulerAngles(double x, double y, double t) const {
         // Lagrangian surface particle for buoy position
@@ -343,7 +319,11 @@ public:
         const double py = y + st.displacement.y();
     
         auto slopes = getSurfaceSlopes(px, py, t);
-        Eigen::Vector2d horiz_vel(st.velocity.x(), st.velocity.y());
+
+        // Recompute Lagrangian state at t+dt for velocity direction
+        auto state_next = computeWaveState(x, y, 0.0, t, WaveFrame::Lagrangian);
+        Eigen::Vector2d horiz_vel(state_next.velocity.x(), state_next.velocity.y());
+
         Eigen::Matrix3d R_WI = orientationFromSlopesAndVelocity(slopes, horiz_vel);
       
         double roll, pitch, yaw;
