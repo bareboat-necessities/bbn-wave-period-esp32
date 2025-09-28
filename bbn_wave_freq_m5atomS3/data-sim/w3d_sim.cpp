@@ -67,10 +67,6 @@ Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
-struct TuningIMU {
-    double tau_eff, sigma_a_eff, R_S_eff;
-};
-
 // Example test cases
 const std::vector<WaveParameters> waveParamsList = {
     {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 25.0f},
@@ -79,26 +75,35 @@ const std::vector<WaveParameters> waveParamsList = {
     {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 25.0f}
 };
 
-// R_S law
-inline float R_S_law(float Tp, float R_S_base = 1.92f, float T_p_base=8.5f) {
-    return R_S_base * std::pow(Tp/T_p_base, 1.0 / 3.0);
+// Global variable set from command line
+float R_S_base_global = 1.92f;   // default
+
+// R_S law now always uses global
+inline float R_S_law(float Tp, float T_p_base=8.5f) {
+    return R_S_base_global * std::pow(Tp/T_p_base, 1.0f / 3.0f);
 }
 
-const std::map<WaveType, std::vector<TuningIMU>> tuning_map = {
-    { WaveType::JONSWAP, {
-        { 0.461907, 0.488792, R_S_law(3.0)  },  // Wave 0 (Tp=3.0)
-        { 0.875139, 0.993007, R_S_law(5.7)  },  // Wave 1 (Tp=5.7)
-        { 1.314262, 1.344122, R_S_law(8.5)  },  // Wave 2 (Tp=8.5)
-        { 1.757230, 1.709363, R_S_law(11.4) }   // Wave 3 (Tp=11.4)
-    }},
-    { WaveType::PMSTOKES, {
-        // { tau_eff, sigma_a_eff,  R_S_eff }   // R_S_eff = <numerator>
-        { 0.316639, 0.563192, R_S_law(3.0)  },  // Tp=3.0,  Hs=0.27
-        { 0.599911, 1.177536, R_S_law(5.7)  },  // Tp=5.7,  Hs=1.5
-        { 0.900931, 1.607994, R_S_law(8.5)  },  // Tp=8.5,  Hs=4.0
-        { 1.204587, 2.053963, R_S_law(11.4) }   // Tp=11.4, Hs=8.5
-    }}
+struct TuningIMU {
+    double tau_eff, sigma_a_eff, R_S_eff;
 };
+
+// Build tuning_map once using current R_S_base_global
+inline std::map<WaveType, std::vector<TuningIMU>> make_tuning_map() {
+    return {
+        { WaveType::JONSWAP, {
+            { 0.461907, 0.488792, R_S_law(3.0)  },
+            { 0.875139, 0.993007, R_S_law(5.7)  },
+            { 1.314262, 1.344122, R_S_law(8.5)  },
+            { 1.757230, 1.709363, R_S_law(11.4) }
+        }},
+        { WaveType::PMSTOKES, {
+            { 0.316639, 0.563192, R_S_law(3.0)  },
+            { 0.599911, 1.177536, R_S_law(5.7)  },
+            { 0.900931, 1.607994, R_S_law(8.5)  },
+            { 1.204587, 2.053963, R_S_law(11.4) }
+        }}
+    };
+}
 
 int wave_index_from_height(float height) {
     for (size_t i = 0; i < waveParamsList.size(); i++) {
@@ -109,18 +114,21 @@ int wave_index_from_height(float height) {
     return -1; // not found
 }
 
-void process_wave_file(const std::string &filename, float dt, bool with_mag) {
+void process_wave_file(const std::string &filename, float dt, bool with_mag,
+    const std::map<WaveType, std::vector<TuningIMU>>& tuning_map) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
     auto [kind, type, wp] = *parsed;
     if (kind != FileKind::Data) return;
     if (!(type == WaveType::JONSWAP || type == WaveType::PMSTOKES)) return;
 
+    const auto &tune = tuning_map.at(type).at(wave_idx);
+
     std::cout << "Processing " << filename
               << " (" << EnumTraits<WaveType>::to_string(type)
-              << ") with_mag=" << (with_mag ? "true" : "false")
-              << ", noise=" << (add_noise ? "true" : "false") << "\n";
-
+              << ") with R_S_base=" << R_S_base_global
+              << " -> R_S_eff=" << tune.R_S_eff << "\n";
+    
     int wave_idx = wave_index_from_height(wp.height);
     if (wave_idx < 0) {
         std::cerr << "No tuning found for height=" << wp.height << "\n";
@@ -379,14 +387,26 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--nomag") with_mag = false;
-        if (arg == "--no-noise") add_noise = false;
+        else if (arg == "--no-noise") add_noise = false;
+        else if (arg.rfind("--rs-base=", 0) == 0) {
+            try {
+                R_S_base_global = std::stof(arg.substr(10));
+            } catch (...) {
+                std::cerr << "Invalid value for --rs-base\n";
+                return EXIT_FAILURE;
+            }
+        }
     }
+
+    // Build tuning map once with the chosen R_S_base
+    auto tuning_map = make_tuning_map();
 
     std::cout << "Simulation starting with_mag=" << (with_mag ? "true" : "false")
               << ", mag_delay=" << MAG_DELAY_SEC << " sec"
-              << ", noise=" << (add_noise ? "true" : "false") << "\n";
+              << ", noise=" << (add_noise ? "true" : "false")
+              << ", R_S_base=" << R_S_base_global << "\n";
 
-    // gather & sort
+    // Gather files
     std::vector<std::string> files;
     for (auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
@@ -397,10 +417,10 @@ int main(int argc, char* argv[]) {
             files.push_back(std::move(fname));
         }
     }
-    std::sort(files.begin(), files.end());  // stable order
+    std::sort(files.begin(), files.end());
 
     for (const auto& fname : files) {
-        process_wave_file(fname, dt, with_mag);
+        process_wave_file(fname, dt, with_mag, tuning_map);
     }
     return 0;
 }
