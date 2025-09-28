@@ -314,8 +314,9 @@ private:
     // Compute the block spectrum (called once per filled block at fs)
     // - linear detrend
     // - Hann window
-    // - Goertzel → S_aa(f) (acceleration PSD)
-    // - Regularized inversion to displacement PSD: S_eta(f)
+    // - Goertzel → S_aa(f) (acceleration PSD, [m^2/s^4 / Hz])
+    // - Regularized inversion to displacement PSD S_eta(f) ([m^2/Hz])
+    //   using 1/f^4 scaling (Hz convention, consistent with PM/JONSWAP)
     // ---------------------------------------------------------------------
     void computeSpectrum() {
         const int blockSize = std::min(filledSamples, Nblock);
@@ -344,8 +345,8 @@ private:
         for (int n = 0; n < blockSize; ++n) U += window_[n] * window_[n];
         const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
-        // Regularization parameter: λ = 2π f_reg  (in rad/s)
-        const double lambda = 2.0 * M_PI * std::max(reg_f0_hz, 0.0);
+        // Regularization parameter f0 (Hz)
+        const double f_reg = std::max(reg_f0_hz, 0.0);
 
         // Goertzel per frequency bin
         for (int i = 0; i < Nfreq; i++) {
@@ -365,10 +366,9 @@ private:
             // Acceleration PSD at frequency bin i
             const double S_aa = (real * real + imag * imag) * scale_factor;
 
-            // Displacement PSD via regularized 1/ω^4
+            // Displacement PSD via regularized 1/f^4 (Hz convention)
             const double f = freqs_[i];
-            const double omega = 2.0 * M_PI * f;
-            const double denom_reg = (omega * omega + lambda * lambda);
+            const double denom_reg = (f * f + f_reg * f_reg);
             double S_eta = (denom_reg > 0.0) ? (S_aa / (denom_reg * denom_reg)) : 0.0;
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
