@@ -76,7 +76,7 @@ const std::vector<WaveParameters> waveParamsList = {
 };
 
 // Global variable set from command line
-float R_S_base_global = 1.129f;   // default
+float R_S_base_global = 1.123f;   // default
 
 // R_S law now always uses global
 inline float R_S_law(float Tp, float T_p_base = 8.5f) {
@@ -145,7 +145,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag,
 
     const Vector3f sigma_a(0.04f, 0.04f, 0.04f);
     const Vector3f sigma_g(0.00134f, 0.00134f, 0.00134f);
-    const Vector3f sigma_m(0.1f, 0.1f, 0.1f);
+    const Vector3f sigma_m(0.3f, 0.3f, 0.3f);
     Kalman3D_Wave<float, true, true> mekf(sigma_a, sigma_g, sigma_m);
 
     // Configure filter using selected tuning parameters
