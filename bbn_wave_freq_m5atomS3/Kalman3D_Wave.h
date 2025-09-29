@@ -729,13 +729,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectio
 
     // w = cos(theta/2)
     // 1 - t2/8 + t4/384
-    T w = T(1);
+    w = T(1);
     w = std::fma(-t2, T(1)/T(8), w);
     w = std::fma( t4, T(1)/T(384), w);
 
     // k = sin(theta/2)/theta
     // 1/2 - t2/48 + t4/3840
-    T k = T(0.5);
+    k = T(0.5);
     k = std::fma(-t2, T(1)/T(48), k);
     k = std::fma( t4, T(1)/T(3840), k);  } else {
     w = std::cos(half_theta);
