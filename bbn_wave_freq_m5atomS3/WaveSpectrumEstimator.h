@@ -386,7 +386,7 @@ private:
     bool hannEnabled = true;
 
     // Regularization and HP corner (Hz)
-    double reg_f0_hz = 0.085;  // set to lowest physically meaningful wave frequency
+    double reg_f0_hz = 0.015;  // set to lowest physically meaningful wave frequency
     double hp_f0_hz  = 0.015;   // bias-removal corner for 4th-order HP cascade
 
     // Spectral grid and Goertzel tables
