@@ -23,9 +23,7 @@ const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
 using Eigen::Vector3f;
 
-// ============================
 // Noise model
-// ============================
 struct NoiseModel {
     std::default_random_engine rng;
     std::normal_distribution<float> dist;
