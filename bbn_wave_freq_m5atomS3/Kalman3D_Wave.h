@@ -722,7 +722,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectio
   // Use series when |δθ| is tiny to avoid 0/0 and over-correction.
   T w;        // scalar part
   T k;        // vector scale = sin(half_theta)/theta
-  if (theta < T(1e-6)) {
+  if (theta < T(1e-3)) {
     // Series:
     // cos(θ/2) ≈ 1 - (θ^2)/8
     // sin(θ/2)/θ ≈ 1/2 - (θ^2)/48
