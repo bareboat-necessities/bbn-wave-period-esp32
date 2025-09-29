@@ -265,7 +265,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(2.4*2.4); // stationary variance diag [ (m/s^2)^2 ]
 
     int pseudo_update_counter_ = 0;   // counts time_update calls
-    static constexpr int PSEUDO_UPDATE_PERIOD = 12; // every N-th update
+    static constexpr int PSEUDO_UPDATE_PERIOD = 9; // every N-th update
 
     // convenience getters
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
