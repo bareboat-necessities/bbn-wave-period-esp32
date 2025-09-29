@@ -723,13 +723,21 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectio
   T w;        // scalar part
   T k;        // vector scale = sin(half_theta)/theta
   if (theta < T(1e-3)) {
-    // Series:
-    // cos(θ/2) ≈ 1 - (θ^2)/8
-    // sin(θ/2)/θ ≈ 1/2 - (θ^2)/48
-    const T theta2 = theta*theta;
-    w = T(1) - theta2 / T(8);
-    k = T(0.5) - theta2 / T(48);
-  } else {
+    // 4th-order Maclaurin
+    const T t2 = theta * theta;
+    const T t4 = t2 * t2;
+
+    // w = cos(theta/2)
+    // 1 - t2/8 + t4/384
+    T w = T(1);
+    w = std::fma(-t2, T(1)/T(8), w);
+    w = std::fma( t4, T(1)/T(384), w);
+
+    // k = sin(theta/2)/theta
+    // 1/2 - t2/48 + t4/3840
+    T k = T(0.5);
+    k = std::fma(-t2, T(1)/T(48), k);
+    k = std::fma( t4, T(1)/T(3840), k);  } else {
     w = std::cos(half_theta);
     k = std::sin(half_theta) / theta;
   }
