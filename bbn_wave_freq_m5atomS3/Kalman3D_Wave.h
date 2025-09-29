@@ -886,94 +886,120 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     Phi_axis(3,3) = P.alpha;
 }
 
+// Discrete OU covariance for [v, p, S, a] axis subsystem.
+// Inputs:
+//   tau     = OU correlation time constant [s]
+//   h       = step size (sampling interval Ts) [s]
+//   sigma2  = stationary variance of a [ (m/s^2)^2 ]
+// Outputs:
+//   Qd_axis = (4x4) discrete covariance contribution for [v, p, S, a]
+//
+// Strategy:
+//   - For general h/tau, use your original expm1-based analytic formulas.
+//   - For small x = h/tau < 1e-3, switch to Maclaurin series expansions to
+//     avoid catastrophic cancellation when subtracting nearly-equal terms.
+//
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
 {
-    // States: [v, p, S, a]
-    const auto P = make_prims<T>(h, tau);
-
-    // continuous-time intensity: q_c = (2/τ) * sigma^2  (as in your code)
-    const T q_c  = (T(2) / tau) * sigma2;
-
-    // Simple poly integrals over [0,h] (these are harmless)
-    const T C0 = h;
-    const T C1 = T(0.5) * h*h;
-    const T C2 = (h*h*h) / T(3);
-    const T C3 = (h*h*h*h) / T(4);
-    const T C4 = (h*h*h*h*h) / T(5);
-
-    // Stable primitives with exp(-x)
-    const T tau2 = tau * tau;
-    const T tau3 = tau2 * tau;
-    const T tau4 = tau3 * tau;
-    const T tau5 = tau4 * tau;
-    const T tau6 = tau5 * tau;
-
-    // A0..A3 (use fma to reduce rounding: fma(a,b,c) = a*b + c in one rounding)
-    const T A0 = -tau * P.em1;                                           // τ(1-α)
-    const T A1 = tau2 * ( -P.em1 - std::fma(P.x, P.alpha, T(0)) );       // τ^2[(1-α) - xα]
-    const T A2 = tau3 * ( -T(2)*P.em1 - P.alpha * ( P.x*(P.x + T(2)) ) );
-    const T A3 = tau4 * ( T(6) - P.alpha * ( T(6) + T(6)*P.x + T(3)*P.x*P.x + P.x*P.x*P.x ) );
-
-    // B0 with expm1(-2x)
-    const T B0 = -(tau / T(2)) * P.em1_2;                                // (τ/2)(1-α^2)
-
-    // k(ξ) components are unchanged, we integrate products into the K-entries
-    // Convenient combos (no cancellation)
-    const T I1mA0   = C0 - A0;   // ∫ (1 - e^{-ξ/τ}) dξ  = h - A0
-    const T Ix1mA1  = C1 - A1;   // ∫ ξ(1 - e^{-ξ/τ}) dξ = C1 - A1
-    const T Ix21mA2 = C2 - A2;   // ∫ ξ^2(1 - e^{-ξ/τ}) dξ
-
-    // T-powers used below
-    const T T1 = tau;
-    const T T2 = tau2;
-    const T T3 = tau3;
-    const T T4 = tau4;
-    const T T5 = tau5;
-    const T T6 = tau6;
-
-    // Build individual entries (same algebra as your original, but with safe A•/B•)
-    const T K_aa = B0;
-
-    // K_va = τ (A0 - B0)
-    const T K_va = T1 * (A0 - B0);
-
-    // K_vv = τ^2 (C0 - 2A0 + B0)
-    const T K_vv = T2 * (C0 - T(2)*A0 + B0);
-
-    // K_pa = τ A1 - τ^2 A0 + τ^2 B0
-    const T K_pa = T1*A1 - T2*A0 + T2*B0;
-
-    // K_pv = τ^2 ∫ ξ(1-α) - τ^3 ∫ (1-α) + τ^3 ∫ α(1-α)
-    //      = T2*(C1 - A1) - T3*(C0 - A0) + T3*(A0 - B0)
-    const T K_pv = T2*Ix1mA1 - T3*I1mA0 + T3*(A0 - B0);
-
-    // K_pp = T^2 C2 - 2 T^3 C1 + 2 T^3 A1 + T^4 C0 - 2 T^4 A0 + T^4 B0
-    const T K_pp = T2*C2 - T(2)*T3*C1 + T(2)*T3*A1 + T4*C0 - T(2)*T4*A0 + T4*B0;
-
-    // K_Sa = 0.5 T A2 - T^2 A1 + T^3 A0 - T^3 B0
-    const T K_Sa = T(0.5)*T1*A2 - T2*A1 + T3*A0 - T3*B0;
-
-    // K_Sv = 0.5 T^2 (C2 - A2) - T^3 (C1 - A1) + T^4 (C0 - A0) - T^4 (A0 - B0)
-    const T K_Sv = T(0.5)*T2*Ix21mA2 - T3*Ix1mA1 + T4*I1mA0 - T4*(A0 - B0);
-
-    // K_Sp = 0.5 T^2 C3 - 1.5 T^3 C2 + 2 T^4 C1 - T^5 C0
-    //       + 0.5 T^3 A2 - 2 T^4 A1 + 2 T^5 A0 - T^5 B0
-    const T K_Sp = T(0.5)*T2*C3 - T(1.5)*T3*C2 + T(2)*T4*C1 - T5*C0
-                 + T(0.5)*T3*A2 - T(2)*T4*A1 + T(2)*T5*A0 - T5*B0;
-
-    // K_SS = 0.25 T^2 C4 - T^3 C3 + 2 T^4 C2 - 2 T^5 C1 + T^6 C0
-    //      - T^4 A2 + 2 T^5 A1 - 2 T^6 A0 + T^6 B0
-    const T K_SS = T(0.25)*T2*C4 - T3*C3 + T(2)*T4*C2 - T(2)*T5*C1 + T6*C0
-                 - T4*A2 + T(2)*T5*A1 - T(2)*T6*A0 + T6*B0;
+    const T x = h / tau;                       // dimensionless step ratio
+    const T q_c  = (T(2) / tau) * sigma2;      // continuous-time OU intensity
 
     Eigen::Matrix<T,4,4> K;
     K.setZero();
-    K(0,0) = K_vv; K(0,1) = K_pv; K(0,2) = K_Sv; K(0,3) = K_va;
-    K(1,0) = K_pv; K(1,1) = K_pp; K(1,2) = K_Sp; K(1,3) = K_pa;
-    K(2,0) = K_Sv; K(2,1) = K_Sp; K(2,2) = K_SS; K(2,3) = K_Sa;
-    K(3,0) = K_va; K(3,1) = K_pa; K(3,2) = K_Sa; K(3,3) = K_aa;
 
+    if (x < T(1e-3)) {
+        // ============================================================
+        // Small-x branch: use series expansions to avoid cancellation
+        // ============================================================
+        // Derived from Maclaurin expansions of exp(-x), expm1(-x), expm1(-2x).
+        // Keep up to O(h^4/τ^3) or higher depending on the entry.
+        const T h2 = h*h;
+        const T h3 = h2*h;
+        const T h4 = h3*h;
+        const T h5 = h4*h;
+        const T h6 = h5*h;
+        const T h7 = h6*h;
+        const T h8 = h7*h;
+
+        // Variance terms
+        const T K_vv = h3 / T(3) - h4 / (T(4)*tau);
+        const T K_pp = h5 / T(20) - h6 / (T(30)*tau);
+        const T K_SS = h7 / T(840) - h8 / (T(960)*tau);
+
+        // Cross-covariance terms
+        const T K_aa = h - h2/tau + (T(2)/3) * h3/(tau*tau) - h4/(T(3)*tau*tau*tau);
+        const T K_va = h2 / T(2) - h3/(T(3)*tau) + h4/(T(8)*tau*tau);
+        const T K_pa = h3 / T(6) - h4/(T(8)*tau);
+        const T K_pv = h4 / T(12) - h5/(T(15)*tau);
+        const T K_Sa = h4 / T(24) - h5/(T(30)*tau);
+        const T K_Sv = h5 / T(60) - h6/(T(72)*tau);
+        const T K_Sp = h6 / T(360) - h7/(T(420)*tau);
+
+        // Fill symmetric K
+        K(0,0) = K_vv; K(0,1) = K_pv; K(0,2) = K_Sv; K(0,3) = K_va;
+        K(1,0) = K_pv; K(1,1) = K_pp; K(1,2) = K_Sp; K(1,3) = K_pa;
+        K(2,0) = K_Sv; K(2,1) = K_Sp; K(2,2) = K_SS; K(2,3) = K_Sa;
+        K(3,0) = K_va; K(3,1) = K_pa; K(3,2) = K_Sa; K(3,3) = K_aa;
+    } else {
+        // ============================================================
+        // General-x branch: stable expm1-based closed forms
+        // ============================================================
+        const auto P = make_prims<T>(h, tau);
+
+        const T tau2 = tau*tau;
+        const T tau3 = tau2*tau;
+        const T tau4 = tau3*tau;
+        const T tau5 = tau4*tau;
+        const T tau6 = tau5*tau;
+
+        // A0..A3 primitives (safe with expm1 for small/moderate x)
+        const T A0 = -tau * P.em1;                                   // τ(1-α)
+        const T A1 = tau2 * (-P.em1 - std::fma(P.x, P.alpha, T(0))); // τ²[(1-α) - xα]
+        const T A2 = tau3 * (-T(2)*P.em1 - P.alpha*(P.x*(P.x+T(2))));
+        const T A3 = tau4 * (T(6) - P.alpha * (T(6) + T(6)*P.x
+                      + T(3)*P.x*P.x + P.x*P.x*P.x));
+
+        // B0 primitive (uses expm1(-2x))
+        const T B0 = -(tau/T(2)) * P.em1_2;                          // (τ/2)(1-α²)
+
+        // Poly integrals
+        const T C0 = h;
+        const T C1 = T(0.5) * h*h;
+        const T C2 = h*h*h / T(3);
+        const T C3 = h*h*h*h / T(4);
+        const T C4 = h*h*h*h*h / T(5);
+
+        // Convenience combos
+        const T I1mA0   = C0 - A0;
+        const T Ix1mA1  = C1 - A1;
+        const T Ix21mA2 = C2 - A2;
+
+        // Build K (same as your original code)
+        const T K_aa = B0;
+        const T K_va = tau * (A0 - B0);
+        const T K_vv = tau2 * (C0 - T(2)*A0 + B0);
+        const T K_pa = tau*A1 - tau2*A0 + tau2*B0;
+        const T K_pv = tau2*Ix1mA1 - tau3*I1mA0 + tau3*(A0 - B0);
+        const T K_pp = tau2*C2 - T(2)*tau3*C1 + T(2)*tau3*A1
+                     + tau4*C0 - T(2)*tau4*A0 + tau4*B0;
+        const T K_Sa = T(0.5)*tau*A2 - tau2*A1 + tau3*A0 - tau3*B0;
+        const T K_Sv = T(0.5)*tau2*Ix21mA2 - tau3*Ix1mA1
+                     + tau4*I1mA0 - tau4*(A0-B0);
+        const T K_Sp = T(0.5)*tau2*C3 - T(1.5)*tau3*C2 + T(2)*tau4*C1
+                     - tau5*C0 + T(0.5)*tau3*A2 - T(2)*tau4*A1
+                     + T(2)*tau5*A0 - tau5*B0;
+        const T K_SS = T(0.25)*tau2*C4 - tau3*C3 + T(2)*tau4*C2
+                     - T(2)*tau5*C1 + tau6*C0 - tau4*A2
+                     + T(2)*tau5*A1 - T(2)*tau6*A0 + tau6*B0;
+
+        K(0,0) = K_vv; K(0,1) = K_pv; K(0,2) = K_Sv; K(0,3) = K_va;
+        K(1,0) = K_pv; K(1,1) = K_pp; K(1,2) = K_Sp; K(1,3) = K_pa;
+        K(2,0) = K_Sv; K(2,1) = K_Sp; K(2,2) = K_SS; K(2,3) = K_Sa;
+        K(3,0) = K_va; K(3,1) = K_pa; K(3,2) = K_Sa; K(3,3) = K_aa;
+    }
+
+    // Final scaling with continuous-time noise intensity
     Qd_axis = q_c * K;
 }
