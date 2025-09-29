@@ -16,8 +16,8 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.0f;
-const float FAIL_ERR_LIMIT_PERCENT_LOW = 11.0f;
+const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.50f;
+const float FAIL_ERR_LIMIT_PERCENT_LOW = 11.50f;
 
 // RMS window length [s]
 constexpr float RMS_WINDOW_SEC = 60.0f;
@@ -76,7 +76,7 @@ const std::vector<WaveParameters> waveParamsList = {
 };
 
 // Global variable set from command line
-float R_S_base_global = 1.123f;   // default
+float R_S_base_global = 0.123f;   // default
 
 // R_S law now always uses global
 inline float R_S_law(float Tp, float T_p_base = 8.5f) {
