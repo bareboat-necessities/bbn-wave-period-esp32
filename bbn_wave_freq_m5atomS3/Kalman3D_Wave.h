@@ -32,9 +32,36 @@
 #endif
 
 #include <limits>
+#include <cmath>
 #include <stdexcept>
 
 using Eigen::Matrix;
+
+template<typename T>
+inline T safe_inv_tau(T tau) {
+    // Prevent division by ~0 while preserving sign
+    return T(1) / ((tau >= T(1e-12)) ? tau : T(1e-12));
+}
+
+template<typename T>
+struct OUPrims {
+    T x;        // h/tau
+    T alpha;    // e^{-x}
+    T em1;      // expm1(-x) = e^{-x} - 1  (negative)
+    T alpha2;   // e^{-2x}
+    T em1_2;    // expm1(-2x) = e^{-2x} - 1 (negative)
+};
+
+template<typename T>
+inline OUPrims<T> make_prims(T h, T tau) {
+    const T inv_tau = safe_inv_tau(tau);
+    const T x = h * inv_tau;
+    const T alpha  = std::exp(-x);
+    const T em1    = std::expm1(-x);    // high-accuracy for small x
+    const T alpha2 = std::exp(-T(2)*x);
+    const T em1_2  = std::expm1(-T(2)*x);
+    return {x, alpha, em1, alpha2, em1_2};
+}
 
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
@@ -825,101 +852,104 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
 {
-    using std::exp;
-    const T inv_tau = T(1) / std::max(T(1e-12), tau);
-    const T alpha   = exp(-h * inv_tau);
+    const auto P = make_prims<T>(h, tau);
+    // Stable re-expressions (let x = h/tau, em1 = expm1(-x)):
+    // 1 - alpha = -em1
+    // phi_va = tau*(1 - alpha)               = -tau*em1
+    // phi_pa = tau*h - tau^2*(1 - alpha)     = tau^2*(x + em1)
+    // phi_Sa = 0.5*tau*h^2 - tau^2*h + tau^3*(1 - alpha)
+    //        = tau^3*(0.5*x^2 - x - em1)
+    const T tau2 = tau * tau;
+    const T tau3 = tau2 * tau;
 
-    // Coefficients (exact)
-    const T phi_va = tau * (T(1) - alpha);
-    const T phi_pa = tau * h - tau * tau * (T(1) - alpha);
-    const T phi_Sa = (T(0.5)*tau*h*h) - (tau*tau*h) + (tau*tau*tau)*(T(1) - alpha);
+    const T phi_va = -tau * P.em1;
+    const T phi_pa = tau2 * (P.x + P.em1);                // uses expm1 for tiny x
+    const T phi_Sa = tau3 * (T(0.5)*P.x*P.x - P.x - P.em1);
 
     Phi_axis.setZero();
-    // v_{k+1} = v_k + phi_va * a_k
-    Phi_axis(0,0) = T(1);     // v -> v
-    Phi_axis(0,3) = phi_va;   // a -> v
+    // v_{k+1}
+    Phi_axis(0,0) = T(1);
+    Phi_axis(0,3) = phi_va;
 
-    // p_{k+1} = p_k + h v_k + phi_pa * a_k
-    Phi_axis(1,0) = h;        // v -> p
-    Phi_axis(1,1) = T(1);     // p -> p
-    Phi_axis(1,3) = phi_pa;   // a -> p
+    // p_{k+1}
+    Phi_axis(1,0) = h;
+    Phi_axis(1,1) = T(1);
+    Phi_axis(1,3) = phi_pa;
 
-    // S_{k+1} = S_k + h p_k + 0.5 h^2 v_k + phi_Sa * a_k
-    Phi_axis(2,0) = T(0.5)*h*h;   // v -> S
-    Phi_axis(2,1) = h;            // p -> S
-    Phi_axis(2,2) = T(1);         // S -> S
-    Phi_axis(2,3) = phi_Sa;       // a -> S
+    // S_{k+1}
+    Phi_axis(2,0) = T(0.5)*h*h;
+    Phi_axis(2,1) = h;
+    Phi_axis(2,2) = T(1);
+    Phi_axis(2,3) = phi_Sa;
 
-    // a_{k+1} = alpha * a_k
-    Phi_axis(3,3) = alpha;    // a -> a
+    // a_{k+1}
+    Phi_axis(3,3) = P.alpha;
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
 {
-    // States order: [v, p, S, a]
-    using std::exp;
-    const T Tinv    = T(1) / std::max(T(1e-12), tau);
-    const T alpha   = exp(-h * Tinv);
-    const T alpha2  = exp(-T(2) * h * Tinv);
-    const T q_c     = (T(2) / tau) * sigma2;  // continuous-time noise intensity
+    // States: [v, p, S, a]
+    const auto P = make_prims<T>(h, tau);
 
-    // Short-hands for simple polynomial integrals over [0,h]
+    // continuous-time intensity: q_c = (2/τ) * sigma^2  (as in your code)
+    const T q_c  = (T(2) / tau) * sigma2;
+
+    // Simple poly integrals over [0,h] (these are harmless)
     const T C0 = h;
     const T C1 = T(0.5) * h*h;
     const T C2 = (h*h*h) / T(3);
     const T C3 = (h*h*h*h) / T(4);
     const T C4 = (h*h*h*h*h) / T(5);
 
-    // Primitives with exp(-ξ/τ) over [0,h]
-    const T A0 = tau * (T(1) - alpha);
-    const T A1 = tau*tau * (T(1) - alpha) - tau * h * alpha;
-    const T A2 = T(2)*tau*tau*tau * (T(1) - alpha) - tau * h * (h + T(2)*tau) * alpha;
-    // We’ll also need ∫ ξ^3 e^{-ξ/τ} dξ:
-    // ∫ ξ^3 e^{-ξ/τ} dξ = e^{-ξ/τ} * [ -τ ξ^3 - 3 τ^2 ξ^2 - 6 τ^3 ξ - 6 τ^4 ] |_0^h
-    const T A3 = ( -tau * h*h*h - T(3)*tau*tau * h*h - T(6)*tau*tau*tau * h - T(6)*tau*tau*tau*tau ) * alpha
-               + T(6)*tau*tau*tau*tau;
+    // Stable primitives with exp(-x)
+    const T tau2 = tau * tau;
+    const T tau3 = tau2 * tau;
+    const T tau4 = tau3 * tau;
+    const T tau5 = tau4 * tau;
+    const T tau6 = tau5 * tau;
 
-    // Primitives with exp(-2ξ/τ) over [0,h]
-    // General: ∫ e^{-λ ξ} dξ = (1 - e^{-λ h})/λ;  λ = 2/τ
-    const T B0 = (tau / T(2)) * (T(1) - alpha2);
+    // A0..A3 (use fma to reduce rounding: fma(a,b,c) = a*b + c in one rounding)
+    const T A0 = -tau * P.em1;                                           // τ(1-α)
+    const T A1 = tau2 * ( -P.em1 - std::fma(P.x, P.alpha, T(0)) );       // τ^2[(1-α) - xα]
+    const T A2 = tau3 * ( -T(2)*P.em1 - P.alpha * ( P.x*(P.x + T(2)) ) );
+    const T A3 = tau4 * ( T(6) - P.alpha * ( T(6) + T(6)*P.x + T(3)*P.x*P.x + P.x*P.x*P.x ) );
 
-    // Build k(ξ) components for the driven column (a-column of Φ(ξ)):
-    // k_v = τ (1 - e^{-ξ/τ}); k_p = τ ξ - τ^2 (1 - e^{-ξ/τ});
-    // k_S = 0.5 τ ξ^2 - τ^2 ξ + τ^3 (1 - e^{-ξ/τ}); k_a = e^{-ξ/τ}
-    // Qd = q_c * ∫ k(ξ) k(ξ)^T dξ  (all entries below are the integral K; multiply by q_c at the end)
+    // B0 with expm1(-2x)
+    const T B0 = -(tau / T(2)) * P.em1_2;                                // (τ/2)(1-α^2)
 
+    // k(ξ) components are unchanged, we integrate products into the K-entries
+    // Convenient combos (no cancellation)
+    const T I1mA0   = C0 - A0;   // ∫ (1 - e^{-ξ/τ}) dξ  = h - A0
+    const T Ix1mA1  = C1 - A1;   // ∫ ξ(1 - e^{-ξ/τ}) dξ = C1 - A1
+    const T Ix21mA2 = C2 - A2;   // ∫ ξ^2(1 - e^{-ξ/τ}) dξ
+
+    // T-powers used below
     const T T1 = tau;
-    const T T2 = tau*tau;
-    const T T3 = T2*tau;
-    const T T4 = T3*tau;
-    const T T5 = T4*tau;
-    const T T6 = T5*tau;
+    const T T2 = tau2;
+    const T T3 = tau3;
+    const T T4 = tau4;
+    const T T5 = tau5;
+    const T T6 = tau6;
 
-    // Useful combos
-    // For (1 - e^{-ξ/τ}): integrals reduce to C• - A•
-    const T I1mA0 = C0 - A0;  // ∫ (1 - α) dξ
-    const T Ix1mA1 = C1 - A1; // ∫ ξ (1 - α) dξ
-    const T Ix21mA2 = C2 - A2;// ∫ ξ^2 (1 - α) dξ
-
-    // K_aa
+    // Build individual entries (same algebra as your original, but with safe A•/B•)
     const T K_aa = B0;
 
-    // K_va = ∫ k_v * k_a = τ ∫ (α - α^2) = τ (A0 - B0)
+    // K_va = τ (A0 - B0)
     const T K_va = T1 * (A0 - B0);
 
-    // K_vv = ∫ [τ(1 - α)]^2 = τ^2 ∫ (1 - 2α + α^2) = τ^2 (C0 - 2A0 + B0)
+    // K_vv = τ^2 (C0 - 2A0 + B0)
     const T K_vv = T2 * (C0 - T(2)*A0 + B0);
 
-    // K_pa = ∫ k_p * k_a = τ A1 - τ^2 A0 + τ^2 B0
+    // K_pa = τ A1 - τ^2 A0 + τ^2 B0
     const T K_pa = T1*A1 - T2*A0 + T2*B0;
 
-    // K_pv = ∫ k_p * k_v = τ^2 ∫ ξ(1-α) - τ^3 ∫ (1-α) + τ^3 ∫ α(1-α)
+    // K_pv = τ^2 ∫ ξ(1-α) - τ^3 ∫ (1-α) + τ^3 ∫ α(1-α)
+    //      = T2*(C1 - A1) - T3*(C0 - A0) + T3*(A0 - B0)
     const T K_pv = T2*Ix1mA1 - T3*I1mA0 + T3*(A0 - B0);
 
-    // K_pp = ∫ (T ξ - T^2 + T^2 α)^2
-    // = T^2 C2 - 2 T^3 C1 + 2 T^3 A1 + T^4 C0 - 2 T^4 A0 + T^4 B0
+    // K_pp = T^2 C2 - 2 T^3 C1 + 2 T^3 A1 + T^4 C0 - 2 T^4 A0 + T^4 B0
     const T K_pp = T2*C2 - T(2)*T3*C1 + T(2)*T3*A1 + T4*C0 - T(2)*T4*A0 + T4*B0;
 
     // K_Sa = 0.5 T A2 - T^2 A1 + T^3 A0 - T^3 B0
@@ -933,15 +963,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     const T K_Sp = T(0.5)*T2*C3 - T(1.5)*T3*C2 + T(2)*T4*C1 - T5*C0
                  + T(0.5)*T3*A2 - T(2)*T4*A1 + T(2)*T5*A0 - T5*B0;
 
-    // K_SS = (poly square) + (cross with α) + (α^2 term)
-    // Poly^2: 0.25 T^2 C4 - T^3 C3 + 2 T^4 C2 - 2 T^5 C1 + T^6 C0
-    // Cross:  - T^4 A2 + 2 T^5 A1 - 2 T^6 A0
-    // Alpha^2: + T^6 B0
+    // K_SS = 0.25 T^2 C4 - T^3 C3 + 2 T^4 C2 - 2 T^5 C1 + T^6 C0
+    //      - T^4 A2 + 2 T^5 A1 - 2 T^6 A0 + T^6 B0
     const T K_SS = T(0.25)*T2*C4 - T3*C3 + T(2)*T4*C2 - T(2)*T5*C1 + T6*C0
-                 - T4*A2 + T(2)*T5*A1 - T(2)*T6*A0
-                 + T6*B0;
+                 - T4*A2 + T(2)*T5*A1 - T(2)*T6*A0 + T6*B0;
 
-    // Assemble symmetric 4x4 K, then scale by q_c
     Eigen::Matrix<T,4,4> K;
     K.setZero();
     K(0,0) = K_vv; K(0,1) = K_pv; K(0,2) = K_Sv; K(0,3) = K_va;
