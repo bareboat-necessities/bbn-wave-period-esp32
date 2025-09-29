@@ -244,6 +244,19 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
     Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body→world
 
+    // world→body rotation that contains only roll & pitch (no yaw)
+    // Constructed by aligning world +Z (down) to the current body +Z,
+    // via the minimal rotation. This eliminates any rotation about +Z (yaw).
+    Matrix3 R_wb_tilt_only() const {
+        const Vector3 ez_w(0,0,1);                 // world down
+        const Matrix3 Rwb = R_wb();                 // full world→body
+        const Vector3 ez_b = (Rwb * ez_w).normalized();  // world down expressed in body
+        // Minimal rotation mapping ez_w -> ez_b
+        Eigen::Quaternion<T> q_tilt = Eigen::Quaternion<T>::FromTwoVectors(ez_w, ez_b);
+        q_tilt.normalize();
+        return q_tilt.toRotationMatrix();          // yaw-free world→body
+    }
+  
     // Helpers and original methods kept
     void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
@@ -527,58 +540,63 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
-    Vector3 const& acc_meas, T tempC) 
+    Vector3 const& acc_meas, T tempC)
 {
-    // Accel magnitude sanity check
+    // Magnitude gate (unchanged)
     T g_meas = acc_meas.norm();
     if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
-        return; // reject this update
+        return;
     }
 
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // Body gravity direction from current attitude
+    // Build Cext
+    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+
+    // Base attitude part before projection
+    Matrix3 J_att = -skew_symmetric_matrix(v1hat);
+
+    // Unit body "down" axis (yaw axis) — columns along this are yaw
     const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
 
-    // Projection into plane orthogonal to gravity (removes yaw sensitivity)
-    Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
+    // Project Jacobian onto the roll/pitch subspace: (I - gb gbᵀ) kills yaw column
+    const Matrix3 Prollpitch = Matrix3::Identity() - gb * gb.transpose();
+    Cext.template block<3,3>(0,0) = Prollpitch * J_att;   // ← yaw-insensitive
 
-    // Innovation (projected)
-    Vector3 inno = Hb * (acc_meas - v1hat);
+    // Sensitivity wrt a_w (unchanged, but use yaw-free rotation in the model)
+    Cext.template block<3,3>(0, OFF_AW) = R_wb_tilt_only();
 
-    // Cext: (3 x NX), only roll/pitch columns survive projection
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    Cext.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v1hat));
-    Cext.template block<3,3>(0, OFF_AW) = Hb * R_wb();
     if constexpr (with_accel_bias) {
-        Cext.template block<3,3>(0,OFF_BA) = Hb; // accel bias part
+        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity();
     }
 
-    // Innovation covariance
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Hb * Racc * Hb.transpose();
+    // Innovation & standard Kalman math (unchanged)
+    Vector3 inno = acc_meas - v1hat;
 
-    // Kalman gain
+    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
     Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * 
-                 std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
+        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
     Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // State update
     xext.noalias() += K * inno;
 
-    // Joseph covariance update
     MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Hb * Racc * Hb.transpose() * K.transpose();
+    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Apply correction, zero attitude error
+    // Apply quaternion correction; then explicitly remove any residual yaw error component
     applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
+
+    // Keep only roll/pitch small-angle error; zero yaw component along gb
+    Eigen::Matrix<T,3,1> dth = xext.template head<3>();
+    T dpsi = dth.dot(gb);
+    xext.template head<3>() = dth - gb * dpsi;  // strip yaw
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -659,19 +677,20 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     xext.template head<3>().setZero();
 }
 
-// specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
-// with temp correction: b_a(temp) = b_a0 + k_a * (tempC - tempC_ref)
+// specific force prediction: f_b = R_tilt (a_w - g) + b_a(temp)
+// NOTE: R_tilt = roll/pitch only. Yaw does not enter this model.
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T,3,1>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_func(T tempC) const {
     const Vector3 g_world(0,0,+gravity_magnitude_);
     const Vector3 aw = xext.template segment<3>(OFF_AW);
 
-    Vector3 fb = R_wb() * (aw - g_world);
+    const Matrix3 Rt = R_wb_tilt_only();   // ← yaw-free rotation
+    Vector3 fb = Rt * (aw - g_world);
 
     if constexpr (with_accel_bias) {
         Vector3 ba0 = xext.template segment<3>(OFF_BA);
-        Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref); // temperature related drift
+        Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref);
         fb += ba;
     }
     return fb;
