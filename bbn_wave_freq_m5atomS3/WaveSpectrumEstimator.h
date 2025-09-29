@@ -368,9 +368,11 @@ private:
 
             // Displacement PSD via regularized 1/f^4 (Hz convention)
             const double f = freqs_[i];
-            const double denom_reg = (f * f + f_reg * f_reg);
-            double S_eta = (denom_reg > 0.0) ? (S_aa / (denom_reg * denom_reg)) : 0.0;
-
+            const double w  = 2.0 * M_PI * f;
+            const double wr = 2.0 * M_PI * reg_f0_hz;
+            const double denom = (w*w + wr*wr);
+            double S_eta = S_aa / (denom * denom);
+            
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
             lastSpectrum_[i] = S_eta;
         }
