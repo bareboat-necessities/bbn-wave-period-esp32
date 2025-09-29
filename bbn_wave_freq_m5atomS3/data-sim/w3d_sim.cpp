@@ -16,8 +16,8 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.5f;
-const float FAIL_ERR_LIMIT_PERCENT_LOW = 11.5f;
+const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.0f;
+const float FAIL_ERR_LIMIT_PERCENT_LOW = 11.0f;
 
 // RMS window length [s]
 constexpr float RMS_WINDOW_SEC = 60.0f;
@@ -149,11 +149,11 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag,
     Kalman3D_Wave<float, true, true> mekf(sigma_a, sigma_g, sigma_m);
 
     // Configure filter using selected tuning parameters
-    mekf.set_aw_time_constant(static_cast<float>(tune.tau_eff));
+    mekf.set_aw_time_constant(static_cast<float>(tune.tau_eff) * 2.0f);
 
     // sigma_a_eff was scalar in logs — treat isotropic per axis
     Eigen::Vector3f std_aw = Eigen::Vector3f::Constant(static_cast<float>(tune.sigma_a_eff));
-    mekf.set_aw_stationary_std(std_aw);
+    mekf.set_aw_stationary_std(std_aw * 1.5f);
 
     // R_S_eff is scalar too — isotropic pseudo-measurement noise
     Eigen::Vector3f sigma_S = Eigen::Vector3f::Constant(static_cast<float>(tune.R_S_eff));
