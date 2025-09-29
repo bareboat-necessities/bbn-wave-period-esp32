@@ -40,7 +40,7 @@ using Eigen::Matrix;
 template<typename T>
 inline T safe_inv_tau(T tau) {
     // Prevent division by ~0 while preserving sign
-    return T(1) / ((tau >= T(1e-12)) ? tau : T(1e-12));
+    return T(1) / ((tau >= T(1e-8)) ? tau : T(1e-8));
 }
 
 template<typename T>
@@ -466,7 +466,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     // Build delta quaternion from gyro increment
     T ang = last_gyr_bias_corrected.norm() * Ts;
     Eigen::Quaternion<T> dq;
-    if (ang > T(1e-9)) {
+    if (ang > T(1e-6)) {
         Vector3 axis = last_gyr_bias_corrected.normalized();
         dq = Eigen::AngleAxis<T>(ang, axis);     // +ang
     } else {
@@ -810,7 +810,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     T omega = w.norm();
     T theta = omega * Ts;
 
-    if (theta < T(1e-8)) {
+    if (theta < T(1e-5)) {
         Matrix3 Wx = skew_symmetric_matrix(w);
         F_a_ext.template block<3,3>(0,0) = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
     } else {
