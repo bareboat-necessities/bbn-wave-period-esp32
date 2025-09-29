@@ -55,7 +55,7 @@
 
 */
 
-template<int Nfreq = 32, int Nblock = 1024>
+template<int Nfreq = 32, int Nblock = 2048>
 class EIGEN_ALIGN_MAX WaveSpectrumEstimator {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
