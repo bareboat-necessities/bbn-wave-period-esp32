@@ -76,10 +76,10 @@ const std::vector<WaveParameters> waveParamsList = {
 };
 
 // Global variable set from command line
-float R_S_base_global = 1.13f;   // default
+float R_S_base_global = 1.129f;   // default
 
 // R_S law now always uses global
-inline float R_S_law(float Tp, float T_p_base=8.5f) {
+inline float R_S_law(float Tp, float T_p_base = 8.5f) {
     return R_S_base_global * std::pow(Tp/T_p_base, 1.0f / 3.0f);
 }
 
