@@ -62,7 +62,7 @@ void process_wave_file(const std::string &filename, float dt) {
     // Estimator
     constexpr int Nfreq = 32;
     constexpr int Nblock = 2048;
-    WaveSpectrumEstimator<Nfreq, Nblock> estimator(240.0, 100, true);
+    WaveSpectrumEstimator<Nfreq, Nblock> estimator(240.0, 50, true);
 
     // Reference model spectrum (higher-res, then interpolate to estimator freqs)
     Eigen::Matrix<double,128,1> f_ref, S_ref;
