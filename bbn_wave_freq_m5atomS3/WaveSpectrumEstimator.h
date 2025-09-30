@@ -322,15 +322,11 @@ private:
 
     // ---------------------------------------------------------------------
     // Compute the block spectrum (called once per filled block at fs)
-    // Steps:
-    //   1. Linear detrend the block
-    //   2. Apply Hann window
-    //   3. Goertzel recursion for each analysis frequency → S_aa(f)
-    //   4. Deconvolve front-end filters (HP cascade + LP) at raw Fs
-    //   5. Convert to displacement PSD via Tikhonov-regularized 1/ω⁴ mapping
-    // ---------------------------------------------------------------------
-    // ---------------------------------------------------------------------
-    // Compute the block spectrum (called once per filled block at fs)
+    //   Changes:
+    //   [1] safer detrend (guard tiny denominator)
+    //   [2] closed-form Goertzel power (no fragile real/imag recombination)
+    //   [3] much higher |H|^2 floor to stop low-f boost (1e-12 instead of 1e-24)
+    //   [4] nonzero regularization floor (>=1e-6) to avoid ω→0 blowups
     // ---------------------------------------------------------------------
     void computeSpectrum() {
         const int blockSize = std::min(filledSamples, Nblock);
@@ -351,7 +347,7 @@ private:
         }
         const double N = double(blockSize);
         const double denom_ls = N * sumn2 - sumn * sumn;
-        const double b = (std::abs(denom_ls) > 1e-18)
+        const double b = (std::abs(denom_ls) > 1e-18)     // [1] safer guard
                            ? (N * sumxn - sumn * sumx) / denom_ls
                            : 0.0;
         const double a = (sumx - b * sumn) / N;
@@ -361,8 +357,8 @@ private:
         const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
         // ---------------- Regularization parameter ------------------------
-        const double f_reg = std::max(reg_f0_hz, 1e-6);
-        const double wr    = 2.0 * M_PI * f_reg; // rad/s regularization
+        const double f_reg = std::max(reg_f0_hz, 1e-6);   // [4] nonzero floor
+        const double wr    = 2.0 * M_PI * f_reg;          // rad/s
 
         // ---------------- Goertzel per frequency bin ----------------------
         for (int i = 0; i < Nfreq; i++) {
@@ -380,7 +376,7 @@ private:
                 idx = (idx + 1) % Nblock;
             }
 
-            // FIX: use closed-form Goertzel power, no fragile real/imag recombination
+            // [2] Closed-form Goertzel power (per classic formulation)
             const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
             const double S_aa_meas = power * scale_factor;
 
@@ -391,7 +387,9 @@ private:
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            const double S_aa_true = (H2 > 1e-24) ? (S_aa_meas / H2) : 0.0;
+            // [3] stronger floor to stop low-f plateau from |H|^2 → 0
+            const double H2_floor = 1e-12;
+            const double S_aa_true = (H2 > H2_floor) ? (S_aa_meas / H2) : 0.0;
 
             // ---------------- ω^{-4} mapping with Tikhonov knee ------------
             const double w       = 2.0 * M_PI * f;
@@ -399,7 +397,6 @@ private:
             double S_eta = (denom_w > 0.0) ? (S_aa_true / (denom_w * denom_w)) : 0.0;
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-
             lastSpectrum_[i] = S_eta;
         }
     }
