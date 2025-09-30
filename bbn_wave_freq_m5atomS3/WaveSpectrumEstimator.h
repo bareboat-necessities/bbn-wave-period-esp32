@@ -84,7 +84,7 @@ public:
     };
 
     WaveSpectrumEstimator(double fs_raw_ = 240.0,
-                          int decimFactor_ = 60,
+                          int decimFactor_ = 100,
                           bool hannEnabled_ = true)
         : fs_raw(fs_raw_), decimFactor(decimFactor_), hannEnabled(hannEnabled_)
     {
