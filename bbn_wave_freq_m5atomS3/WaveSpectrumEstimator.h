@@ -490,6 +490,14 @@ private:
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
 
+            const double f_guard = 0.055;             // ~18 s period
+            const double r = (f / f_guard);
+            if (r < 1.0) {
+                // 2nd-order fade-in of displacement below f_guard
+                const double fade = r * r;            // = (f/f_guard)^2, 0..1
+                S_eta *= fade;
+            }
+
             // ---- FIX: per-bin EMA across blocks (stronger at high f) ----
             if (use_psd_ema) {
                 double a = alpha_for_f(f);
