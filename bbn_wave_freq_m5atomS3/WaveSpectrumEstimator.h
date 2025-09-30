@@ -189,25 +189,49 @@ public:
     }
 
     // Peak frequency using log-parabolic interpolation around the max bin
+    // Peak frequency using proper log-parabolic interpolation
     double estimateFp() const {
-        int idx = 0; double maxVal = 0;
-        for (int i = 0; i < Nfreq; i++) {
-            if (lastSpectrum_[i] > maxVal) { maxVal = lastSpectrum_[i]; idx = i; }
+        int k = 0; double vmax = 0.0;
+        for (int i = 0; i < Nfreq; ++i) {
+            if (lastSpectrum_[i] > vmax) { vmax = lastSpectrum_[i]; k = i; }
         }
-        if (idx > 0 && idx < Nfreq - 1) {
-            double y0 = safeLog(lastSpectrum_[idx - 1]);
-            double y1 = safeLog(lastSpectrum_[idx]);
-            double y2 = safeLog(lastSpectrum_[idx + 1]);
-            double denom = y0 - 2.0 * y1 + y2;
-            if (std::abs(denom) < 1e-12) return freqs_[idx];
-            double p = 0.5 * (y0 - y2) / denom;
-            double df_avg = 0.5 * ((freqs_[idx] - freqs_[idx - 1]) + (freqs_[idx + 1] - freqs_[idx]));
-            return freqs_[idx] + p * df_avg;
-        }
-        return freqs_[idx];
+        if (k == 0 || k == Nfreq - 1) return freqs_[k];
+
+        // Use log-frequency for true log-parabolic interpolation
+        const double f0 = freqs_[k-1], f1 = freqs_[k], f2 = freqs_[k+1];
+        if (f0 <= 0 || f1 <= 0 || f2 <= 0) return f1;
+
+        const double x0 = std::log(f0), x1 = std::log(f1), x2 = std::log(f2);
+        const double y0 = safeLog(lastSpectrum_[k-1]);
+        const double y1 = safeLog(lastSpectrum_[k]);
+        const double y2 = safeLog(lastSpectrum_[k+1]);
+
+        // Quadratic fit y = a x^2 + b x + c
+        const double dx01 = x0 - x1, dx02 = x0 - x2, dx12 = x1 - x2;
+        const double denom = (dx01 * dx02 * dx12);
+        if (std::abs(denom) < 1e-18) return f1;
+
+        // Lagrange-based coefficients
+        const double L0a = 1.0 / (dx01 * dx02);
+        const double L1a = 1.0 / ((x1 - x0) * (x1 - x2));
+        const double L2a = 1.0 / ((x2 - x0) * (x2 - x1));
+        const double a = y0 * L0a + y1 * L1a + y2 * L2a;
+
+        const double b =
+            y0 * (-(x1 + x2) * L0a) +
+            y1 * (-(x0 + x2) * L1a) +
+            y2 * (-(x0 + x1) * L2a);
+
+        if (a >= 0.0) return f1; // not a concave peak
+
+        const double x_peak = -b / (2.0 * a);
+        const double f_peak = std::exp(x_peak);
+
+        if (f_peak <= std::min(f0,f2) || f_peak >= std::max(f0,f2)) return f1;
+        return f_peak;
     }
 
-    // Simple PM log-LS fit (α, f_p). Keeps your previous behavior.
+    // Simple PM log-LS fit (α, f_p) with frequency-weighted cost
     PMFitResult fitPiersonMoskowitz() const {
         Vec S_obs = lastSpectrum_;
         for (int i = 0; i < Nfreq; i++) if (S_obs[i] <= 0) S_obs[i] = 1e-12;
@@ -216,18 +240,20 @@ public:
             double omega_p = 2.0 * M_PI * fp;
             double cost = 0.0;
             constexpr double beta = 0.74;
-            for (int i = 0; i < Nfreq; i++) {
+            for (int i = 0; i < Nfreq - 1; i++) {
+                // Bin width for integration weight
+                double df = freqs_[i+1] - freqs_[i];
                 double f = freqs_[i];
                 double model = a * g * g * std::pow(2.0 * M_PI * f, -5.0)
                                * std::exp(-beta * std::pow(omega_p / (2.0 * M_PI * f), 4.0));
                 if (model <= 0) model = 1e-12;
                 double d = safeLog(S_obs[i]) - safeLog(model);
-                cost += d * d;
+                cost += df * d * d;   // weighted by frequency spacing
             }
             return cost;
         };
 
-        // Coarse grid + coordinate descent refinement (unchanged)
+        // Coarse grid + coordinate descent refinement
         constexpr int N_fp_search = 32;
         constexpr double fp_min = 0.05, fp_transition = 0.1, fp_max = 1.0;
         std::array<double, N_fp_search> fp_grid;
