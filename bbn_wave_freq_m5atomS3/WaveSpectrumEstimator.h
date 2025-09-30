@@ -437,20 +437,17 @@ private:
         const double c1 = std::cos(Omega_raw), s1 = std::sin(Omega_raw);
         const double c2 = std::cos(2 * Omega_raw), s2 = std::sin(2 * Omega_raw);
 
-        // Numerator: b0 + b1 z^-1 + b2 z^-2, with z = e^{jΩ}
         const double num_re = bq.b0 + bq.b1 * c1 + bq.b2 * c2;
         const double num_im = -(bq.b1 * s1 + bq.b2 * s2);
 
-        // Denominator: 1 + a1 z^-1 + a2 z^-2
         const double den_re = 1.0 + bq.a1 * c1 + bq.a2 * c2;
         const double den_im = -(bq.a1 * s1 + bq.a2 * s2);
 
         const double num2 = num_re * num_re + num_im * num_im;
         const double den2 = den_re * den_re + den_im * den_im;
 
-        // Stronger floor to prevent division by tiny |H|² (matches computeSpectrum)
-        const double den_floor = 1e-12;
-        return (den2 > den_floor) ? (num2 / den2) : 0.0;
+        // Clamp instead of zeroing → prevents log-scale dropouts at low f
+        return num2 / std::max(den2, 1e-16);
     }
 
     // ------------------------- Members / State ----------------------------
