@@ -71,7 +71,7 @@ void process_wave_file(const std::string &filename, float dt) {
         wp.direction * M_PI / 180.0, 10.0, 42u);
 
         Jonswap3dStokesWaves<128> refModel(wp.height, wp.period, dirDist,
-                                           0.03, 0.8, 3.3, g_std, 42u);
+                                           0.03, 1.8, 3.3, g_std, 42u);
         f_ref = refModel.frequencies();
         S_ref = refModel.spectrum();
     } else if (type == WaveType::PMSTOKES) {
@@ -79,7 +79,7 @@ void process_wave_file(const std::string &filename, float dt) {
         wp.direction * M_PI / 180.0, 10.0, 42u);
 
         PMStokesN3dWaves<128,3> refModel(wp.height, wp.period, dirDist,
-                                         0.03, 0.8, g_std, 42u);
+                                         0.03, 1.8, g_std, 42u);
         f_ref = refModel.frequencies();
         S_ref = refModel.spectrum();
     }
