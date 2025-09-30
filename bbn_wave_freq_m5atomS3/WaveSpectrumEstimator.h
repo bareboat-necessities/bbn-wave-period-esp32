@@ -267,7 +267,10 @@ public:
     }
 
     // Runtime knobs
-    void set_regularization_f0(double f0_hz) { reg_f0_hz = std::max(0.0, f0_hz); }
+    void set_regularization_f0(double f0_hz) {
+        reg_f0_hz = std::max(1e-6, f0_hz);
+    }
+
     void set_highpass_f0(double f0_hz) {
         hp_f0_hz = std::max(0.0, f0_hz);
         designHighpassBiquad(hp1_, hp_f0_hz, fs_raw);
@@ -326,6 +329,9 @@ private:
     //   4. Deconvolve front-end filters (HP cascade + LP) at raw Fs
     //   5. Convert to displacement PSD via Tikhonov-regularized 1/ω⁴ mapping
     // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // Compute the block spectrum (called once per filled block at fs)
+    // ---------------------------------------------------------------------
     void computeSpectrum() {
         const int blockSize = std::min(filledSamples, Nblock);
         const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
@@ -345,23 +351,24 @@ private:
         }
         const double N = double(blockSize);
         const double denom_ls = N * sumn2 - sumn * sumn;
-        const double b = (denom_ls != 0.0) ? (N * sumxn - sumn * sumx) / denom_ls : 0.0;
+        const double b = (std::abs(denom_ls) > 1e-18)
+                           ? (N * sumxn - sumn * sumx) / denom_ls
+                           : 0.0;
         const double a = (sumx - b * sumn) / N;
 
         // ---------------- Window energy for PSD scaling -------------------
-        // Use precomputed sum of squares (window is fixed)
         const double U = window_sum_sq;
         const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
         // ---------------- Regularization parameter ------------------------
-        const double f_reg = std::max(reg_f0_hz, 0.0);
+        const double f_reg = std::max(reg_f0_hz, 1e-6);
         const double wr    = 2.0 * M_PI * f_reg; // rad/s regularization
 
         // ---------------- Goertzel per frequency bin ----------------------
         for (int i = 0; i < Nfreq; i++) {
             const double f = freqs_[i]; // analysis frequency (Hz)
 
-            // Goertzel recursion (single bin)
+            // Goertzel recursion
             double s1 = 0.0, s2 = 0.0;
             int idx = startIdx;
             for (int n = 0; n < blockSize; n++) {
@@ -373,33 +380,27 @@ private:
                 idx = (idx + 1) % Nblock;
             }
 
-            // Equivalent complex coefficient at bin frequency
-            const double real = s1 - s2 * cos1_[i];
-            const double imag = s2 * sin1_[i];
-
-            // Acceleration PSD (measured, after analog front-end filters)
-            const double S_aa_meas = (real * real + imag * imag) * scale_factor;
+            // FIX: use closed-form Goertzel power, no fragile real/imag recombination
+            const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
+            const double S_aa_meas = power * scale_factor;
 
             // ---------------- Deconvolve front-end filters ----------------
-            // Evaluate cascaded HP/LP transfer at raw sampling rate (fs_raw)
             const double Omega_raw = 2.0 * M_PI * f / fs_raw; // rad/sample at raw Fs
             const double H2 =
                 biquad_mag2_raw(hp1_, Omega_raw) *
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            // Recover true acceleration PSD (pre-filter)
             const double S_aa_true = (H2 > 1e-24) ? (S_aa_meas / H2) : 0.0;
 
             // ---------------- ω^{-4} mapping with Tikhonov knee ------------
-            const double w       = 2.0 * M_PI * f;          // rad/s
+            const double w       = 2.0 * M_PI * f;
             const double denom_w = (w * w + wr * wr);
             double S_eta = (denom_w > 0.0) ? (S_aa_true / (denom_w * denom_w)) : 0.0;
 
-            // Sanity guards
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
 
-            lastSpectrum_[i] = S_eta; // displacement PSD at this bin
+            lastSpectrum_[i] = S_eta;
         }
     }
 
