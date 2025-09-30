@@ -349,40 +349,45 @@ private:
         const double f_reg = std::max(reg_f0_hz, 0.0);
 
         // Goertzel per frequency bin
-        for (int i = 0; i < Nfreq; i++) {
-            double s1 = 0.0, s2 = 0.0;
-            int idx = startIdx;
-            for (int n = 0; n < blockSize; n++) {
-                const double detrended = buffer_[idx] - (a + b * n);
-                const double xw = detrended * window_[n];
-                const double s_new = xw + coeffs_[i] * s1 - s2;
-                s2 = s1; s1 = s_new;
-                idx = (idx + 1) % Nblock;
-            }
-            // Recombine to complex bin
-            const double real = s1 - s2 * cos1_[i];
-            const double imag = s2 * sin1_[i];
+for (int i = 0; i < Nfreq; i++) {
+    // --- frequency for this bin (define FIRST) ---
+    const double f = freqs_[i];
 
-            // Acceleration PSD at frequency bin i
-            const double S_aa_meas = (real * real + imag * imag) * scale_factor;
+    double s1 = 0.0, s2 = 0.0;
+    int idx = startIdx;
+    for (int n = 0; n < blockSize; n++) {
+        const double detrended = buffer_[idx] - (a + b * n);
+        const double xw = detrended * window_[n];
+        const double s_new = xw + coeffs_[i] * s1 - s2;
+        s2 = s1; s1 = s_new;
+        idx = (idx + 1) % Nblock;
+    }
 
-            // Deconvolve front-end filters (two HPs + LP) — all designed at fs_raw
-            const double Omega_raw = 2.0 * M_PI * f / fs_raw; // radians/sample at raw rate
-            const double H2 =
-                biquad_mag2_raw(hp1_, Omega_raw) *
-                biquad_mag2_raw(hp2_, Omega_raw) *
-                biquad_mag2_raw(lp_ , Omega_raw);
-            const double S_aa_true = (H2 > 1e-24) ? (S_aa_meas / H2) : 0.0;
+    // Recombine to complex bin
+    const double real = s1 - s2 * cos1_[i];
+    const double imag = s2 * sin1_[i];
 
-            // Now do the physically correct ω^{-4} mapping with Tikhonov knee
-            const double w  = 2.0 * M_PI * f;
-            const double wr = 2.0 * M_PI * reg_f0_hz;
-            const double denom_w = (w*w + wr*wr);
-            double S_eta = (denom_w > 0.0) ? (S_aa_true / (denom_w * denom_w)) : 0.0;
-            
-            if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-            lastSpectrum_[i] = S_eta;
-        }
+    // Acceleration PSD at analysis bin i (measured after front-end filters)
+    const double S_aa_meas = (real * real + imag * imag) * scale_factor;
+
+    // --- Deconvolve front-end IIR magnitude (HP1 * HP2 * LP) at RAW Fs ---
+    const double Omega_raw = 2.0 * M_PI * f / fs_raw; // rad/sample at 240 Hz
+    const double H2 =
+        biquad_mag2_raw(hp1_, Omega_raw) *
+        biquad_mag2_raw(hp2_, Omega_raw) *
+        biquad_mag2_raw(lp_ , Omega_raw);
+
+    const double S_aa_true = (H2 > 1e-24) ? (S_aa_meas / H2) : 0.0;
+
+    // --- Physically correct ω^{-4} mapping with Tikhonov knee ---
+    const double w  = 2.0 * M_PI * f;
+    const double wr = 2.0 * M_PI * reg_f0_hz;
+    const double denom_w = (w*w + wr*wr);
+    double S_eta = (denom_w > 0.0) ? (S_aa_true / (denom_w * denom_w)) : 0.0;
+
+    if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
+    lastSpectrum_[i] = S_eta;
+}
     }
 
     inline double biquad_mag2_raw(const Biquad& bq, double Omega_raw) const {
