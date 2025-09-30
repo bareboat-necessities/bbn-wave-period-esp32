@@ -376,33 +376,49 @@ private:
         const int blockSize = std::min(filledSamples, Nblock);
         const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
 
-        // ---- Mean-only detrend ----
-        double sumx = 0.0;
+        // ---- Linear detrend the block (remove DC and slope) ----
+        // FIX: true linear detrend (mean-only lets slope leak into lowest bins)
+        const int N = blockSize;
+        double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumnx = 0.0;
         {
             int idx = startIdx;
-            for (int n = 0; n < blockSize; ++n) {
-                sumx += buffer_[idx];
+            for (int n = 0; n < N; ++n) {
+                const double xn = buffer_[idx];
+                sumx  += xn;
+                sumn  += n;
+                sumn2 += double(n) * double(n);
+                sumnx += double(n) * xn;
                 idx = (idx + 1) % Nblock;
             }
         }
-        const double mean = sumx / double(blockSize);
+        const double denom = double(N) * sumn2 - sumn * sumn;
+        const double a_lin = (denom != 0.0) ? (double(N) * sumnx - sumn * sumx) / denom : 0.0;
+        const double b_lin = (sumx - a_lin * sumn) / double(N);
 
         // ---- Per-Hz periodogram scaling (one-sided) ----
-        const double U = window_sum_sq;                         
-        const double base_scale = (U > 0.0 && fs > 0.0) ? (2.0 / (fs * U)) : 0.0;
+        const double U = window_sum_sq; // sum of window^2 over Nblock (precomputed)
+        // FIX: include N^2 because Goertzel sum here omits 1/N normalization
+        const double base_scale = (U > 0.0 && fs > 0.0 && N > 0)
+                                  ? (2.0 / (fs * U * double(N) * double(N)))
+                                  : 0.0;
 
         // ---- Regularization knee for η-from-a mapping ----
-        const double f_reg = std::max(reg_f0_hz, 1e-6);         
-        const double wr    = 2.0 * M_PI * f_reg;                
+        // FIX: block-aware knee to avoid ultra-low-f plateau on very long blocks
+        const double Tblk = (fs > 0.0) ? (double(N) / fs) : 0.0;      // seconds
+        const double f_blk = (Tblk > 0.0) ? (1.0 / (6.0 * Tblk)) : 0.0;
+        const double f_reg = std::max(reg_f0_hz, f_blk);
+        const double wr    = 2.0 * M_PI * f_reg;
 
         for (int i = 0; i < Nfreq; i++) {
             const double f = freqs_[i]; // Hz
 
-            // ---- Goertzel at f ----
+            // ---- Goertzel at f (with detrend + window) ----
             double s1 = 0.0, s2 = 0.0;
             int idx = startIdx;
-            for (int n = 0; n < blockSize; n++) {
-                const double xw = (buffer_[idx] - mean) * window_[n];
+            for (int n = 0; n < N; n++) {
+                const double xn   = buffer_[idx];
+                const double xdet = xn - (a_lin * n + b_lin); // remove line
+                const double xw   = xdet * window_[n];
                 const double s_new = xw + coeffs_[i] * s1 - s2;
                 s2 = s1;
                 s1 = s_new;
@@ -416,25 +432,23 @@ private:
             double S_aa_meas = power * base_scale;
 
             // ---- Deconvolve front-end filters with frequency-dependent regularization ----
-            const double Omega_raw = 2.0 * M_PI * f / fs_raw;
+            const double Omega_raw = 2.0 * M_PI * f / fs_raw; // normalized rad/sample at raw Fs
             const double H2 =
                 biquad_mag2_raw(hp1_, Omega_raw) *
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            const double eps = (H2 + 1e-12) * (H2 + 1e-12);
-
-            const double S_aa_true = (H2 > 0.0)
-                ? (S_aa_meas * H2 / (H2 * H2 + eps))
-                : 0.0;
+            // FIX: standard Tikhonov: divide by |H|^2 + epsilon_H
+            const double epsilon_H = 1e-6; // floor for deconvolution gain near HP corner
+            const double S_aa_true = S_aa_meas / (H2 + epsilon_H);
 
             // ---- Map acceleration PSD → displacement PSD (adaptive knee) ----
             const double w = 2.0 * M_PI * f;
-            const double w_eff = std::sqrt(w * w + wr * wr); // adaptive regularization
-            double S_eta = (w_eff > 0.0) ? (S_aa_true / (w_eff * w_eff * w_eff * w_eff)) : 0.0;
+            const double w_eff2 = w * w + wr * wr;
+            double S_eta = (w_eff2 > 0.0) ? (S_aa_true / (w_eff2 * w_eff2)) : 0.0;
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-            lastSpectrum_[i] = S_eta;                             
+            lastSpectrum_[i] = S_eta;
         }
     }
 
@@ -469,7 +483,7 @@ private:
 
     // Regularization and HP corner (Hz)
     double reg_f0_hz = 0.015;  // set to lowest physically meaningful wave frequency
-    double hp_f0_hz  = 0.015;   // bias-removal corner for 4th-order HP cascade
+    double hp_f0_hz  = 0.015;  // bias-removal corner for 4th-order HP cascade
 
     // Spectral grid and Goertzel tables
     std::array<double, Nfreq> freqs_{};
