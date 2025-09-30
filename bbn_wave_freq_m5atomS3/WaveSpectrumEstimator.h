@@ -355,75 +355,68 @@ private:
     //   [3] much higher |H|^2 floor to stop low-f boost (1e-12 instead of 1e-24)
     //   [4] nonzero regularization floor (>=1e-6) to avoid ω→0 blowups
     // ---------------------------------------------------------------------
-    void computeSpectrum() {
-        const int blockSize = std::min(filledSamples, Nblock);
-        const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
+        // ---------------- Compute the block spectrum ----------------------
+        void computeSpectrum() {
+            const int blockSize = std::min(filledSamples, Nblock);
+            const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
 
-        // ---------------- Block mean removal (DC only) ----------------
-        double sumx = 0.0;
-        {
-            int idx = startIdx;
-            for (int n = 0; n < blockSize; ++n) {
-                sumx += buffer_[idx];
-                idx = (idx + 1) % Nblock;
+            // -------- Mean-only detrend (don’t mix with slope fit) --------
+            double sumx = 0.0;
+            {
+                int idx = startIdx;
+                for (int n = 0; n < blockSize; ++n) {
+                    sumx += buffer_[idx];
+                    idx = (idx + 1) % Nblock;
+                }
+            }
+            const double mean = sumx / double(blockSize);
+
+            // -------- Window energy for PSD scaling (per-Hz density) ------
+            // PSD_xx(f) ≈ (2 / (fs * ∑w^2)) * |∑ w[n](x[n]-mean) e^{-jωn}|^2
+            const double U = window_sum_sq;
+            const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
+
+            // -------- Regularization for η from a (ω^{-4} with knee) ------
+            const double f_reg = std::max(reg_f0_hz, 1e-6);
+            const double wr    = 2.0 * M_PI * f_reg;
+
+            // -------- Per-bin Goertzel (arbitrary, log or linear grids) ---
+            for (int i = 0; i < Nfreq; i++) {
+                const double f = freqs_[i];                 // Hz at decimated rate
+                double s1 = 0.0, s2 = 0.0;
+                int idx = startIdx;
+                for (int n = 0; n < blockSize; n++) {
+                    const double xw = (buffer_[idx] - mean) * window_[n];
+                    const double s_new = xw + coeffs_[i] * s1 - s2;
+                    s2 = s1;
+                    s1 = s_new;
+                    idx = (idx + 1) % Nblock;
+                }
+
+                // Closed-form Goertzel power → |DTFT at f|^2
+                const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
+                double S_aa_meas = power * scale_factor;   // per-Hz PSD (one-sided)
+
+                // -------- Deconvolve raw-rate IIR front-end ----------------
+                const double Omega_raw = 2.0 * M_PI * f / fs_raw; // rad/sample @ raw Fs
+                const double H2 =
+                    biquad_mag2_raw(hp1_, Omega_raw) *
+                    biquad_mag2_raw(hp2_, Omega_raw) *
+                    biquad_mag2_raw(lp_ , Omega_raw);
+
+                // Never zero-out |H|^2 → prevents low-f log “holes”
+                constexpr double H2_floor = 1e-12;          // tuned small, not huge
+                const double S_aa_true = S_aa_meas / std::max(H2, H2_floor);
+
+                // -------- Map acceleration PSD to displacement PSD ----------
+                const double w = 2.0 * M_PI * f;
+                const double denom = (w * w + wr * wr);
+                double S_eta = (denom > 0.0) ? (S_aa_true / (denom * denom)) : 0.0;
+
+                if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
+                lastSpectrum_[i] = S_eta;
             }
         }
-        const double mean = sumx / double(blockSize);
-        
-        const double N = double(blockSize);
-        const double denom_ls = N * sumn2 - sumn * sumn;
-        const double b = (std::abs(denom_ls) > 1e-18)     // [1] safer guard
-                           ? (N * sumxn - sumn * sumx) / denom_ls
-                           : 0.0;
-        const double a = (sumx - b * sumn) / N;
-
-        // ---------------- Window energy for PSD scaling -------------------
-        const double U = window_sum_sq;
-        const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
-
-        // ---------------- Regularization parameter ------------------------
-        const double f_reg = std::max(reg_f0_hz, 1e-6);   // [4] nonzero floor
-        const double wr    = 2.0 * M_PI * f_reg;          // rad/s
-
-        // ---------------- Goertzel per frequency bin ----------------------
-        for (int i = 0; i < Nfreq; i++) {
-            const double f = freqs_[i]; // analysis frequency (Hz)
-
-            // Goertzel recursion
-            double s1 = 0.0, s2 = 0.0;
-            int idx = startIdx;
-            for (int n = 0; n < blockSize; n++) {
-                const double detrended = buffer_[idx] - mean;
-                const double xw = detrended * window_[n];
-                const double s_new = xw + coeffs_[i] * s1 - s2;
-                s2 = s1;
-                s1 = s_new;
-                idx = (idx + 1) % Nblock;
-            }
-
-            // [2] Closed-form Goertzel power (per classic formulation)
-            const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
-            const double S_aa_meas = power * scale_factor;
-
-            // ---------------- Deconvolve front-end filters ----------------
-            const double Omega_raw = 2.0 * M_PI * f / fs_raw; // rad/sample at raw Fs
-            const double H2 =
-                biquad_mag2_raw(hp1_, Omega_raw) *
-                biquad_mag2_raw(hp2_, Omega_raw) *
-                biquad_mag2_raw(lp_ , Omega_raw);
-
-            constexpr double H2_floor = 1e-10;                // tune if needed (1e-10…1e-8)
-            const double S_aa_true = S_aa_meas / std::max(H2, H2_floor);
-            
-            // ---------------- ω^{-4} mapping with Tikhonov knee ------------
-            const double w       = 2.0 * M_PI * f;
-            const double denom_w = (w * w + wr * wr);
-            double S_eta = (denom_w > 0.0) ? (S_aa_true / (denom_w * denom_w)) : 0.0;
-
-            if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-            lastSpectrum_[i] = S_eta;
-        }
-    }
 
     // ---------------------------------------------------------------------
     // Magnitude-squared frequency response of a biquad at raw Fs
