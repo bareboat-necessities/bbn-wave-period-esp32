@@ -179,12 +179,10 @@ public:
     bool ready() const { return isWarm; }
 
     // Significant wave height from m0 (trapezoidal over the discrete grid)
-    // Significant wave height from m0 (trapezoidal with df weights)
     double computeHs() const {
         double m0 = 0.0;
-        for (int i = 0; i < Nfreq - 1; i++) {
-            double df = freqs_[i + 1] - freqs_[i];
-            m0 += 0.5 * (lastSpectrum_[i] + lastSpectrum_[i + 1]) * df;
+        for (int i = 0; i < Nfreq; i++) {
+            m0 += lastSpectrum_[i] * df_[i];
         }
         return 4.0 * std::sqrt(std::max(m0, 0.0));
     }
@@ -243,7 +241,7 @@ public:
             constexpr double beta = 0.74;
             for (int i = 0; i < Nfreq - 1; i++) {
                 // Bin width for integration weight
-                double df = freqs_[i+1] - freqs_[i];
+                double df = df_[i];
                 double f = freqs_[i];
                 double model = a * g * g * std::pow(2.0 * M_PI * f, -5.0)
                                * std::exp(-beta * std::pow(omega_p / (2.0 * M_PI * f), 4.0));
@@ -307,17 +305,31 @@ public:
 private:
     inline double safeLog(double v) const { return std::log(std::max(v, 1e-18)); }
 
-    // Frequency grid: hybrid log (low f) + linear (mid/high f)
     void buildFrequencyGrid() {
         constexpr double f_min = 0.04, f_transition = 0.1, f_max = 0.75;
         int n_log = int(Nfreq * 0.4), n_lin = Nfreq - n_log;
-        for (int i = 0; i < n_log; i++) {
-            double t = double(i) / (n_log - 1);
-            freqs_[i] = f_min * std::pow(f_transition / f_min, t);
+
+        // --- log edges ---
+        for (int i = 0; i <= n_log; i++) {
+            double t = double(i) / double(n_log);
+            f_edges_[i] = f_min * std::pow(f_transition / f_min, t);
         }
-        for (int i = 0; i < n_lin; i++) {
-            double t = double(i) / (n_lin - 1);
-            freqs_[n_log + i] = f_transition + t * (f_max - f_transition);
+        // --- linear edges ---
+        for (int i = 1; i <= n_lin; i++) {
+            double t = double(i) / double(n_lin);
+            f_edges_[n_log + i] = f_transition + t * (f_max - f_transition);
+        }
+
+        // --- centers and widths ---
+        for (int i = 0; i < Nfreq; i++) {
+            if (i < n_log) {
+                // geometric mean for log bins
+                freqs_[i] = std::sqrt(f_edges_[i] * f_edges_[i+1]);
+            } else {
+                // arithmetic mean for linear bins
+                freqs_[i] = 0.5 * (f_edges_[i] + f_edges_[i+1]);
+            }
+            df_[i] = f_edges_[i+1] - f_edges_[i];
         }
     }
 
@@ -455,6 +467,10 @@ private:
     std::array<double, Nfreq> freqs_{};
     std::array<double, Nfreq> coeffs_{};
     std::array<double, Nfreq> cos1_{}, sin1_{};
+
+    // Frequency grid edges and bin widths
+    std::array<double, Nfreq+1> f_edges_{};
+    std::array<double, Nfreq>   df_{};
 
     // Block buffer (post-decimation) and window
     std::array<double, Nblock> buffer_{};
