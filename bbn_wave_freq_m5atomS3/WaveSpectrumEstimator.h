@@ -378,6 +378,19 @@ private:
         }
     }
 
+    inline double biquad_mag2_raw(const Biquad& bq, double Omega_raw) const {
+        const double c1 = std::cos(Omega_raw), s1 = std::sin(Omega_raw);
+        const double c2 = std::cos(2*Omega_raw), s2 = std::sin(2*Omega_raw);
+        // H(z) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2), z=e^{jΩ}
+        const double num_re = bq.b0 + bq.b1 * c1 + bq.b2 * c2;
+        const double num_im = -(bq.b1 * s1 + bq.b2 * s2);
+        const double den_re = 1.0 + bq.a1 * c1 + bq.a2 * c2;
+        const double den_im = -(bq.a1 * s1 + bq.a2 * s2);
+        const double num2 = num_re*num_re + num_im*num_im;
+        const double den2 = den_re*den_re + den_im*den_im;
+        return (den2 > 0.0) ? (num2 / den2) : 1.0; // 1.0 = neutral if den2 ill-conditioned
+    }
+
     // ------------------------- Members / State ----------------------------
 
     // Rates and decimation
