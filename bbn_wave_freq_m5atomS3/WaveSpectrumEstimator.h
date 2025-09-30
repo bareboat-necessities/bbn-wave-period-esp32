@@ -179,6 +179,7 @@ public:
     bool ready() const { return isWarm; }
 
     // Significant wave height from m0 (trapezoidal over the discrete grid)
+    // Significant wave height from m0 (trapezoidal with df weights)
     double computeHs() const {
         double m0 = 0.0;
         for (int i = 0; i < Nfreq - 1; i++) {
