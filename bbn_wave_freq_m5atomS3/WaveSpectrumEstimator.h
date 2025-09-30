@@ -90,9 +90,12 @@ public:
         // Effective (post-decimation) sample rate for spectral block
         fs = fs_raw / decimFactor;
 
+        // ---------------- Build analysis frequency grid -----------------
         buildFrequencyGrid();
 
-        // Precompute Goertzel coefficients for each target frequency (rad/sample at fs)
+        // ---------------- Precompute Goertzel coefficients ---------------
+        // Each frequency bin is represented by a single Goertzel recursion
+        // with rad/sample omega_rs defined at the decimated rate.
         for (int i = 0; i < Nfreq; i++) {
             double omega_rs = 2.0 * M_PI * freqs_[i] / fs; // rad/sample
             coeffs_[i] = 2.0 * std::cos(omega_rs);
@@ -100,22 +103,26 @@ public:
             sin1_[i]   = std::sin(omega_rs);
         }
 
-        // Hann window and its energy (for proper PSD scaling)
+        // ---------------- Hann window (or rectangular) -------------------
+        // Precompute window shape and its total energy sum of squares (U).
         double sumsq = 0.0;
         for (int n = 0; n < Nblock; n++) {
-            window_[n] = hannEnabled ? 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1))) : 1.0;
+            if (hannEnabled) {
+                window_[n] = 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1)));
+            } else {
+                window_[n] = 1.0;
+            }
             sumsq += window_[n] * window_[n];
         }
-        window_sum_sq = sumsq;
+        window_sum_sq = sumsq; // used in PSD scaling
 
+        // ---------------- Reset runtime state ----------------------------
         reset();
 
-        // -----------------------------------------------------------------
-        // Filter design at RAW Fs:
-        //  - LP near pre-decimation Nyquist to suppress imaging/aliasing
-        //  - Two identical HP sections cascaded → 4th-order high-pass
-        // -----------------------------------------------------------------
-        double lp_cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor)); // conservative guard
+        // ---------------- Design raw-rate biquads ------------------------
+        // LP near pre-decimation Nyquist to suppress imaging/aliasing.
+        // Two identical HP sections cascaded → 4th-order high-pass.
+        const double lp_cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor)); // conservative guard
         designLowpassBiquad(lp_, lp_cutoffHz, fs_raw_);
         designHighpassBiquad(hp1_, hp_f0_hz, fs_raw_);
         designHighpassBiquad(hp2_, hp_f0_hz, fs_raw_);
