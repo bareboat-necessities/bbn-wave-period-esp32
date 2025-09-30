@@ -414,10 +414,9 @@ private:
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            // [3] stronger floor to stop low-f plateau from |H|^2 → 0
-            const double H2_floor = 1e-12;
-            const double S_aa_true = (H2 > H2_floor) ? (S_aa_meas / H2) : 0.0;
-
+            constexpr double H2_floor = 1e-10;                // tune if needed (1e-10…1e-8)
+            const double S_aa_true = S_aa_meas / std::max(H2, H2_floor);
+            
             // ---------------- ω^{-4} mapping with Tikhonov knee ------------
             const double w       = 2.0 * M_PI * f;
             const double denom_w = (w * w + wr * wr);
