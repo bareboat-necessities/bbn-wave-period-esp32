@@ -367,74 +367,73 @@ private:
     //   [3] much higher |H|^2 floor to stop low-f boost (1e-12 instead of 1e-24)
     //   [4] nonzero regularization floor (>=1e-6) to avoid ω→0 blowups
     // ---------------------------------------------------------------------
-        // ---------------- Compute the block spectrum ----------------------
-        void computeSpectrum() {
-            const int blockSize = std::min(filledSamples, Nblock);
-            const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
+// ---------------------------------------------------------------------
+// Compute the block spectrum (called once per filled block at fs)
+// Correct: PSD scaling is per-Hz using fs and window energy, no df_[i] here
+// ---------------------------------------------------------------------
+void computeSpectrum() {
+    const int blockSize = std::min(filledSamples, Nblock);
+    const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
 
-            // -------- Mean-only detrend (don’t mix with slope fit) --------
-            double sumx = 0.0;
-            {
-                int idx = startIdx;
-                for (int n = 0; n < blockSize; ++n) {
-                    sumx += buffer_[idx];
-                    idx = (idx + 1) % Nblock;
-                }
-            }
-            const double mean = sumx / double(blockSize);
-
-            // -------- Window energy for PSD scaling (per-Hz density) ------
-            // PSD_xx(f) ≈ (2 / (fs * ∑w^2)) * |∑ w[n](x[n]-mean) e^{-jωn}|^2
-            const double U = window_sum_sq;
-            const double scale_factor = (U > 0.0) ? (2.0 / (fs * U)) : 0.0;
-
-            // -------- Regularization for η from a (ω^{-4} with knee) ------
-            const double f_reg = std::max(reg_f0_hz, 1e-6);
-            const double wr    = 2.0 * M_PI * f_reg;
-
-            // -------- Per-bin Goertzel (arbitrary, log or linear grids) ---
-
-    // inside computeSpectrum()
-
-for (int i = 0; i < Nfreq; i++) {
-    const double f = freqs_[i];
-
-    // --- Goertzel recursion ---
-    double s1 = 0.0, s2 = 0.0;
-    int idx = startIdx;
-    for (int n = 0; n < blockSize; n++) {
-        const double xw = (buffer_[idx] - mean) * window_[n];
-        const double s_new = xw + coeffs_[i] * s1 - s2;
-        s2 = s1;
-        s1 = s_new;
-        idx = (idx + 1) % Nblock;
-    }
-
-    const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
-
-    // --- FIX: PSD scaling with variable bin width ---
-    // PSD_aa(fᵢ) = (2 * |X(fᵢ)|²) / (U * Δfᵢ)
-    const double S_aa_meas = (2.0 * power) / (window_sum_sq * df_[i]);
-
-    // --- filter deconvolution & ω⁻⁴ mapping as before ---
-    const double Omega_raw = 2.0 * M_PI * f / fs_raw;
-    const double H2 =
-        biquad_mag2_raw(hp1_, Omega_raw) *
-        biquad_mag2_raw(hp2_, Omega_raw) *
-        biquad_mag2_raw(lp_,  Omega_raw);
-
-    constexpr double H2_floor = 1e-12;
-    const double S_aa_true = S_aa_meas / std::max(H2, H2_floor);
-
-    const double w = 2.0 * M_PI * f;
-    const double denom = (w * w + wr * wr);
-    double S_eta = (denom > 0.0) ? (S_aa_true / (denom * denom)) : 0.0;
-
-    if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-    lastSpectrum_[i] = S_eta;
-}
-            
+    // ---- Mean-only detrend ----
+    double sumx = 0.0;
+    {
+        int idx = startIdx;
+        for (int n = 0; n < blockSize; ++n) {
+            sumx += buffer_[idx];
+            idx = (idx + 1) % Nblock;
         }
+    }
+    const double mean = sumx / double(blockSize);
+
+    // ---- Per-Hz periodogram scaling (one-sided) ----
+    // PSD_xx(f) = (2 / (fs * Σ w[n]^2)) * |Σ w[n](x[n]-mean) e^{-jωn}|^2
+    const double U = window_sum_sq;                               // Σ w^2
+    const double base_scale = (U > 0.0 && fs > 0.0) ? (2.0 / (fs * U)) : 0.0;
+
+    // ---- Tikhonov knee for η from a ----
+    const double f_reg = std::max(reg_f0_hz, 1e-6);
+    const double wr    = 2.0 * M_PI * f_reg;
+
+    for (int i = 0; i < Nfreq; i++) {
+        const double f = freqs_[i];
+
+        // Goertzel
+        double s1 = 0.0, s2 = 0.0;
+        int idx = startIdx;
+        for (int n = 0; n < blockSize; n++) {
+            const double xw = (buffer_[idx] - mean) * window_[n];
+            const double s_new = xw + coeffs_[i] * s1 - s2;
+            s2 = s1;
+            s1 = s_new;
+            idx = (idx + 1) % Nblock;
+        }
+
+        // Power at f
+        const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
+
+        // Per-Hz acceleration PSD (one-sided)
+        double S_aa_meas = power * base_scale;
+
+        // Deconvolve raw-rate IIR front-end
+        const double Omega_raw = 2.0 * M_PI * f / fs_raw;
+        const double H2 =
+            biquad_mag2_raw(hp1_, Omega_raw) *
+            biquad_mag2_raw(hp2_, Omega_raw) *
+            biquad_mag2_raw(lp_ , Omega_raw);
+
+        constexpr double H2_floor = 1e-12;
+        const double S_aa_true = S_aa_meas / std::max(H2, H2_floor);
+
+        // Map acceleration PSD → displacement PSD
+        const double w = 2.0 * M_PI * f;
+        const double denom = (w * w + wr * wr);
+        double S_eta = (denom > 0.0) ? (S_aa_true / (denom * denom)) : 0.0;
+
+        if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
+        lastSpectrum_[i] = S_eta;   // still per-Hz
+    }
+}
 
     // ---------------------------------------------------------------------
     // Magnitude-squared frequency response of a biquad at raw Fs
