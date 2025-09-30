@@ -84,7 +84,7 @@ public:
     };
 
     WaveSpectrumEstimator(double fs_raw_ = 240.0,
-                          int decimFactor_ = 100,
+                          int decimFactor_ = 75,
                           bool hannEnabled_ = true)
         : fs_raw(fs_raw_), decimFactor(decimFactor_), hannEnabled(hannEnabled_)
     {
@@ -536,8 +536,8 @@ private:
     bool hannEnabled = true;
 
     // Regularization and HP corner (Hz)
-    double reg_f0_hz = 0.015;  // set to lowest physically meaningful wave frequency
-    double hp_f0_hz  = 0.015;  // bias-removal corner for 4th-order HP cascade
+    double reg_f0_hz = 0.008;  // set to lowest physically meaningful wave frequency
+    double hp_f0_hz  = 0.025;  // bias-removal corner for 4th-order HP cascade
 
     // Spectral grid and Goertzel tables
     std::array<double, Nfreq> freqs_{};
