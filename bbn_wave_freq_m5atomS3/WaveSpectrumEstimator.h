@@ -369,7 +369,8 @@ private:
     // ---------------------------------------------------------------------
 // ---------------------------------------------------------------------
 // Compute the block spectrum (called once per filled block at fs)
-// Correct: PSD scaling is per-Hz using fs and window energy, no df_[i] here
+// Periodogram is per-Hz (one-sided). HP deconvolution is Tikhonov-regularized
+// so it does NOT blow up at very low f (no low-f plateau on log grid).
 // ---------------------------------------------------------------------
 void computeSpectrum() {
     const int blockSize = std::min(filledSamples, Nblock);
@@ -388,17 +389,24 @@ void computeSpectrum() {
 
     // ---- Per-Hz periodogram scaling (one-sided) ----
     // PSD_xx(f) = (2 / (fs * Σ w[n]^2)) * |Σ w[n](x[n]-mean) e^{-jωn}|^2
-    const double U = window_sum_sq;                               // Σ w^2
+    const double U = window_sum_sq;                         // Σ w^2 over the block
     const double base_scale = (U > 0.0 && fs > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
-    // ---- Tikhonov knee for η from a ----
-    const double f_reg = std::max(reg_f0_hz, 1e-6);
-    const double wr    = 2.0 * M_PI * f_reg;
+    // ---- Regularization knees ----
+    const double f_reg = std::max(reg_f0_hz, 1e-6);         // Hz (η-from-a mapping)
+    const double wr    = 2.0 * M_PI * f_reg;                // rad/s
+    const double Omega_reg = 2.0 * M_PI * f_reg / fs_raw;   // rad/sample at raw Fs
+
+    // Precompute |H|^2 at the regularization knee for deconvolution Tikhonov
+    const double H2_reg =
+        biquad_mag2_raw(hp1_, Omega_reg) *
+        biquad_mag2_raw(hp2_, Omega_reg) *
+        biquad_mag2_raw(lp_ , Omega_reg);
 
     for (int i = 0; i < Nfreq; i++) {
-        const double f = freqs_[i];
+        const double f = freqs_[i]; // Hz
 
-        // Goertzel
+        // ---- Goertzel at f ----
         double s1 = 0.0, s2 = 0.0;
         int idx = startIdx;
         for (int n = 0; n < blockSize; n++) {
@@ -409,29 +417,32 @@ void computeSpectrum() {
             idx = (idx + 1) % Nblock;
         }
 
-        // Power at f
+        // |DTFT|^2 at f
         const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
 
         // Per-Hz acceleration PSD (one-sided)
         double S_aa_meas = power * base_scale;
 
-        // Deconvolve raw-rate IIR front-end
+        // ---- Deconvolve front-end filters with Tikhonov regularization ----
+        // y = |H|^2 x  ⇒  x ≈ y * |H|^2 / (|H|^4 + ε), ε = (|H|^2 at f_reg)^2
         const double Omega_raw = 2.0 * M_PI * f / fs_raw;
         const double H2 =
             biquad_mag2_raw(hp1_, Omega_raw) *
             biquad_mag2_raw(hp2_, Omega_raw) *
             biquad_mag2_raw(lp_ , Omega_raw);
 
-        constexpr double H2_floor = 1e-12;
-        const double S_aa_true = S_aa_meas / std::max(H2, H2_floor);
+        const double eps = H2_reg * H2_reg;                  // Tikhonov ε
+        const double S_aa_true = (H2 > 0.0)
+            ? (S_aa_meas * H2 / (H2 * H2 + eps))
+            : 0.0;                                           // smoothly → 0 as H2→0
 
-        // Map acceleration PSD → displacement PSD
+        // ---- Map acceleration PSD → displacement PSD ----
         const double w = 2.0 * M_PI * f;
-        const double denom = (w * w + wr * wr);
+        const double denom = (w * w + wr * wr);              // knee prevents ω→0 blowup
         double S_eta = (denom > 0.0) ? (S_aa_true / (denom * denom)) : 0.0;
 
         if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-        lastSpectrum_[i] = S_eta;   // still per-Hz
+        lastSpectrum_[i] = S_eta;                             // per-Hz PSD
     }
 }
 
