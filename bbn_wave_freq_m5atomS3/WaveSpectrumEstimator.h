@@ -359,19 +359,17 @@ private:
         const int blockSize = std::min(filledSamples, Nblock);
         const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
 
-        // ---------------- Linear detrend fit: y ≈ a + b*n ----------------
-        double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumxn = 0.0;
+        // ---------------- Block mean removal (DC only) ----------------
+        double sumx = 0.0;
         {
             int idx = startIdx;
             for (int n = 0; n < blockSize; ++n) {
-                const double x = buffer_[idx];
-                sumx  += x;
-                sumn  += n;
-                sumn2 += double(n) * double(n);
-                sumxn += x * double(n);
+                sumx += buffer_[idx];
                 idx = (idx + 1) % Nblock;
             }
         }
+        const double mean = sumx / double(blockSize);
+        
         const double N = double(blockSize);
         const double denom_ls = N * sumn2 - sumn * sumn;
         const double b = (std::abs(denom_ls) > 1e-18)     // [1] safer guard
@@ -395,7 +393,7 @@ private:
             double s1 = 0.0, s2 = 0.0;
             int idx = startIdx;
             for (int n = 0; n < blockSize; n++) {
-                const double detrended = buffer_[idx] - (a + b * n);
+                const double detrended = buffer_[idx] - mean;
                 const double xw = detrended * window_[n];
                 const double s_new = xw + coeffs_[i] * s1 - s2;
                 s2 = s1;
