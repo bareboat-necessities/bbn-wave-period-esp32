@@ -317,13 +317,6 @@ public:
 private:
     inline double safeLog(double v) const { return std::log(std::max(v, 1e-18)); }
 
-    // ---------- Smoothing controls (FIX) ----------
-    bool  use_psd_ema = true;
-    double ema_alpha_low  = 0.45;  // alpha near lowest f
-    double ema_alpha_high = 0.05;  // alpha near highest f (smaller -> stronger smoothing)
-    bool  have_ema = false;
-    Eigen::Matrix<double, Nfreq, 1> psd_ema_;
-
     inline double alpha_for_f(double f) const {
         const double fmin = freqs_[0];
         const double fmax = freqs_[Nfreq-1];
@@ -566,10 +559,10 @@ private:
     // Output spectrum
     Eigen::Matrix<double, Nfreq, 1> lastSpectrum_;
 
-    // ---------- Smoothing state (FIX) ----------
+    // ---------- Smoothing controls (FIX) ----------
     bool  use_psd_ema = true;
-    double ema_alpha_low  = 0.35;
-    double ema_alpha_high = 0.15;
+    double ema_alpha_low  = 0.45;  // alpha near lowest f
+    double ema_alpha_high = 0.05;  // alpha near highest f (smaller -> stronger smoothing)
     bool  have_ema = false;
     Eigen::Matrix<double, Nfreq, 1> psd_ema_;
 
