@@ -446,7 +446,7 @@ private:
         // ---- Regularization knee for η-from-a mapping ----
         const double Tblk = (fs > 0.0) ? (double(N) / fs) : 0.0;      // seconds
         const double f_blk = (Tblk > 0.0) ? (1.0 / (6.0 * Tblk)) : 0.0;
-        const double f_reg = std::max({reg_f0_hz, f_blk, 0.5 * hp_f0_hz});
+        const double f_reg = std::max({reg_f0_hz, f_blk, 0.8 * hp_f0_hz});
         const double wr    = 2.0 * M_PI * f_reg;
 
         for (int i = 0; i < Nfreq; i++) {
