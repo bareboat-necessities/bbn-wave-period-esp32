@@ -179,15 +179,22 @@ public:
     bool ready() const { return isWarm; }
 
     // Significant wave height from m0 (trapezoidal over the discrete grid)
+    // ---------------------------------------------------------------------
+    // Significant wave height Hs = 4 * sqrt(m0)
+    // m0 = ∫ S_eta(f) df approximated by trapezoidal rule
+    // Works for both linear and log-spaced bins (uses Δf[i]).
+    // ---------------------------------------------------------------------
     double computeHs() const {
         double m0 = 0.0;
+
+        // trapezoidal integration over uneven frequency grid
         for (int i = 0; i < Nfreq; i++) {
             m0 += lastSpectrum_[i] * df_[i];
         }
+
         return 4.0 * std::sqrt(std::max(m0, 0.0));
     }
 
-    // Peak frequency using log-parabolic interpolation around the max bin
     // Peak frequency using proper log-parabolic interpolation
     double estimateFp() const {
         int k = 0; double vmax = 0.0;
@@ -362,8 +369,8 @@ private:
     // ---------------------------------------------------------------------
     // Compute the block spectrum (called once per filled block at fs)
     // Periodogram is per-Hz (one-sided). HP deconvolution uses
-    // frequency-dependent Tikhonov regularization so it does NOT
-    // produce a flat low-f plateau on log grids.
+    // frequency-dependent Tikhonov regularization and adaptive η-from-a
+    // mapping, so low-frequency bins do not collapse into a flat plateau.
     // ---------------------------------------------------------------------
     void computeSpectrum() {
         const int blockSize = std::min(filledSamples, Nblock);
@@ -381,13 +388,12 @@ private:
         const double mean = sumx / double(blockSize);
 
         // ---- Per-Hz periodogram scaling (one-sided) ----
-        // PSD_xx(f) = (2 / (fs * Σ w[n]^2)) * |Σ w[n](x[n]-mean) e^{-jωn}|^2
-        const double U = window_sum_sq;                         // Σ w^2 over the block
+        const double U = window_sum_sq;                         
         const double base_scale = (U > 0.0 && fs > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
         // ---- Regularization knee for η-from-a mapping ----
-        const double f_reg = std::max(reg_f0_hz, 1e-6);         // Hz
-        const double wr    = 2.0 * M_PI * f_reg;                // rad/s
+        const double f_reg = std::max(reg_f0_hz, 1e-6);         
+        const double wr    = 2.0 * M_PI * f_reg;                
 
         for (int i = 0; i < Nfreq; i++) {
             const double f = freqs_[i]; // Hz
@@ -416,20 +422,19 @@ private:
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            // Regularization ε(f) tied to local H2 → avoids flat plateau
             const double eps = (H2 + 1e-12) * (H2 + 1e-12);
 
             const double S_aa_true = (H2 > 0.0)
                 ? (S_aa_meas * H2 / (H2 * H2 + eps))
                 : 0.0;
 
-            // ---- Map acceleration PSD → displacement PSD ----
+            // ---- Map acceleration PSD → displacement PSD (adaptive knee) ----
             const double w = 2.0 * M_PI * f;
-            const double denom = (w * w + wr * wr);              // knee prevents ω→0 blowup
-            double S_eta = (denom > 0.0) ? (S_aa_true / (denom * denom)) : 0.0;
+            const double w_eff = std::sqrt(w * w + wr * wr); // adaptive regularization
+            double S_eta = (w_eff > 0.0) ? (S_aa_true / (w_eff * w_eff * w_eff * w_eff)) : 0.0;
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-            lastSpectrum_[i] = S_eta;                             // per-Hz PSD
+            lastSpectrum_[i] = S_eta;                             
         }
     }
 
