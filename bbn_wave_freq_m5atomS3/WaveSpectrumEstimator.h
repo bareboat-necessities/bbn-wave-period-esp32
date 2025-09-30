@@ -420,7 +420,7 @@ private:
         const int blockSize = std::min(filledSamples, Nblock);
         const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
 
-        // ---- Linear detrend the block (remove DC and slope) ----
+        // ---- Linear detrend ----
         const int N = blockSize;
         double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumnx = 0.0;
         {
@@ -438,69 +438,63 @@ private:
         const double a_lin = (denom != 0.0) ? (double(N) * sumnx - sumn * sumx) / denom : 0.0;
         const double b_lin = (sumx - a_lin * sumn) / double(N);
 
-        // ---- Per-Hz periodogram scaling (one-sided) ----
-        const double U = window_sum_sq; // sum of window^2 over Nblock (precomputed)
-        // revert to original scaling (no N^2 factor)
-        const double base_scale = (U > 0.0 && fs > 0.0)
-                                  ? (2.0 / (fs * U))
-                                  : 0.0;
+        // ---- PSD scaling ----
+        const double U = window_sum_sq;
+        const double base_scale = (U > 0.0 && fs > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
-        // ---- Regularization knee for η-from-a mapping ----
-        const double Tblk = (fs > 0.0) ? (double(N) / fs) : 0.0;      // seconds
+        // ---- Block-based knee ----
+        const double Tblk = (fs > 0.0) ? (double(N) / fs) : 0.0;
         const double f_blk = (Tblk > 0.0) ? (1.0 / (6.0 * Tblk)) : 0.0;
-        const double f_reg = std::max({reg_f0_hz, f_blk, 1.2 * hp_f0_hz});
-        const double wr    = 2.0 * M_PI * f_reg;
 
         for (int i = 0; i < Nfreq; i++) {
-            const double f = freqs_[i]; // Hz
+            const double f = freqs_[i];
 
-            // ---- Goertzel at f (with detrend + window) ----
+            // ---- Goertzel ----
             double s1 = 0.0, s2 = 0.0;
             int idx = startIdx;
             for (int n = 0; n < N; n++) {
                 const double xn   = buffer_[idx];
-                const double xdet = xn - (a_lin * n + b_lin); // remove line
+                const double xdet = xn - (a_lin * n + b_lin);
                 const double xw   = xdet * window_[n];
                 const double s_new = xw + coeffs_[i] * s1 - s2;
                 s2 = s1;
                 s1 = s_new;
                 idx = (idx + 1) % Nblock;
             }
-
-            // |DTFT|^2 at f
             const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
-
-            // Per-Hz acceleration PSD (one-sided)
             double S_aa_meas = power * base_scale;
 
-            // ---- Deconvolve front-end filters with frequency-dependent regularization ----
-            const double Omega_raw = 2.0 * M_PI * f / fs_raw; // normalized rad/sample at raw Fs
+            // ---- Deconvolve filters with frequency-scaled epsilon ----
+            const double Omega_raw = 2.0 * M_PI * f / fs_raw;
             const double H2 =
                 biquad_mag2_raw(hp1_, Omega_raw) *
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            double epsilon_H = 0.2 + 0.5 * (0.05 / (f + 1e-6)); // floor for deconvolution gain near HP corner
-            const double S_aa_true = S_aa_meas / (H2 + epsilon_H);
+            double epsilon_H = 0.02 + 0.5 * (0.05 / (f + 1e-6));
+            double S_aa_true = S_aa_meas / (H2 + epsilon_H);
 
-            // ---- Map acceleration PSD → displacement PSD (adaptive knee) ----
+            // ---- Adaptive λ (per frequency) ----
+            double f_knee = std::max({reg_f0_hz, f_blk});
+            double wr = 2.0 * M_PI * std::max(f_knee, 0.5 * f);
+
             const double w = 2.0 * M_PI * f;
             const double w_eff2 = w * w + wr * wr;
             double S_eta = (w_eff2 > 0.0) ? (S_aa_true / (w_eff2 * w_eff2)) : 0.0;
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
 
-            const double f_guard = 0.055;      
+            // ---- Gentle quadratic guard ----
+            const double f_guard = 0.055;
             if (f < f_guard) {
                 double r = f / f_guard;
-                const double fade = r * r;
-                S_eta *= fade;
+                S_eta *= r * r;
             }
 
-            // ---- FIX: per-bin EMA across blocks (stronger at high f) ----
+            // ---- EMA ----
             if (use_psd_ema) {
                 double a = alpha_for_f(f);
-                if (!have_ema) psd_ema_[i] = S_eta;                 // init
+                if (!have_ema) psd_ema_[i] = S_eta;
                 else           psd_ema_[i] = (1.0 - a) * psd_ema_[i] + a * S_eta;
                 lastSpectrum_[i] = psd_ema_[i];
             } else {
@@ -508,10 +502,7 @@ private:
             }
         }
 
-        // EMA now initialized
         have_ema = true;
-
-        // ---- FIX: tiny 3-tap smoothing in log-frequency per block ----
         smooth_logfreq_3tap();
     }
 
