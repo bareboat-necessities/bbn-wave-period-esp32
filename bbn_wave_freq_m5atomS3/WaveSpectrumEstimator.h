@@ -355,7 +355,7 @@ private:
     }
 
     void buildFrequencyGrid() {
-        constexpr double f_min = 0.04, f_transition = 0.1, f_max = 0.75;
+        constexpr double f_min = 0.04, f_transition = 0.1, f_max = 2.0;
         int n_log = int(Nfreq * 0.4), n_lin = Nfreq - n_log;
 
         // --- log edges ---
