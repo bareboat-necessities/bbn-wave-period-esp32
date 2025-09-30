@@ -337,12 +337,14 @@ private:
             double x_ip1 = (i<Nfreq-1)? std::log(std::max(freqs_[i+1], eps)) : std::log(std::max(freqs_[i], eps));
             double dL = std::max(0.0, x_i - x_im1);
             double dR = std::max(0.0, x_ip1 - x_i);
-            double wL = 0.25 * dL;
-            double wC = 0.50 * 0.5 * (dL + dR);
-            double wR = 0.25 * dR;
+            // Slightly stronger constant-Q smoothing (good for D=30)
+            const double k = 0.35;           // neighbor strength (0.30–0.40 is mild)
+            const double minC = 0.40;        // keep at least 40% on the center bin
+            double wL = k * dL;
+            double wR = k * dR;
+            double wC = std::max(minC, 1.0 - (wL + wR));
             double W  = wL + wC + wR;
-            if (W <= 0.0) { wL = 0.0; wC = 1.0; wR = 0.0; W = 1.0; }
-            return std::array<double,3>{ wL/W, wC/W, wR/W };
+            return std::array<double,3>{ wL/W, wC/W, wR/W };        
         };
 
         for (int i = 0; i < Nfreq; ++i) {
