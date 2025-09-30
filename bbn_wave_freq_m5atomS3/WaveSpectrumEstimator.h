@@ -10,6 +10,7 @@
 #include <vector>
 #include <cmath>
 #include <limits>
+#include <algorithm> // for std::clamp
 
 #ifdef SPECTRUM_TEST
 #include <iostream>
@@ -137,6 +138,10 @@ public:
         isWarm = false;
         lastSpectrum_.setZero();
         hp1_.reset(); hp2_.reset(); lp_.reset();
+
+        // FIX: reset EMA state
+        have_ema = false;
+        psd_ema_.setZero();
     }
 
     // ---------------------------------------------------------------------
@@ -312,6 +317,50 @@ public:
 private:
     inline double safeLog(double v) const { return std::log(std::max(v, 1e-18)); }
 
+    // ---------- Smoothing controls (FIX) ----------
+    bool  use_psd_ema = true;
+    double ema_alpha_low  = 0.35;  // alpha near lowest f
+    double ema_alpha_high = 0.15;  // alpha near highest f (smaller -> stronger smoothing)
+    bool  have_ema = false;
+    Eigen::Matrix<double, Nfreq, 1> psd_ema_;
+
+    inline double alpha_for_f(double f) const {
+        const double fmin = freqs_[0];
+        const double fmax = freqs_[Nfreq-1];
+        double t = (f - fmin) / std::max(1e-12, (fmax - fmin));
+        t = std::clamp(t, 0.0, 1.0);
+        return ema_alpha_low + (ema_alpha_high - ema_alpha_low) * t;
+    }
+
+    void smooth_logfreq_3tap() {
+        if (Nfreq < 3) return;
+        Eigen::Matrix<double, Nfreq, 1> S = lastSpectrum_;
+        Eigen::Matrix<double, Nfreq, 1> Sout = S;
+
+        auto wpair = [&](int i) {
+            const double eps = 1e-12;
+            double x_im1 = (i>0) ? std::log(std::max(freqs_[i-1], eps)) : std::log(std::max(freqs_[i], eps));
+            double x_i   = std::log(std::max(freqs_[i],   eps));
+            double x_ip1 = (i<Nfreq-1)? std::log(std::max(freqs_[i+1], eps)) : std::log(std::max(freqs_[i], eps));
+            double dL = std::max(0.0, x_i - x_im1);
+            double dR = std::max(0.0, x_ip1 - x_i);
+            double wL = 0.25 * dL;
+            double wC = 0.50 * 0.5 * (dL + dR);
+            double wR = 0.25 * dR;
+            double W  = wL + wC + wR;
+            if (W <= 0.0) { wL = 0.0; wC = 1.0; wR = 0.0; W = 1.0; }
+            return std::array<double,3>{ wL/W, wC/W, wR/W };
+        };
+
+        for (int i = 0; i < Nfreq; ++i) {
+            auto w = wpair(i);
+            double Sm1 = (i>0)? S[i-1] : S[i];
+            double Sp1 = (i<Nfreq-1)? S[i+1] : S[i];
+            Sout[i] = w[0]*Sm1 + w[1]*S[i] + w[2]*Sp1;
+        }
+        lastSpectrum_ = Sout;
+    }
+
     void buildFrequencyGrid() {
         constexpr double f_min = 0.04, f_transition = 0.1, f_max = 0.75;
         int n_log = int(Nfreq * 0.4), n_lin = Nfreq - n_log;
@@ -377,7 +426,6 @@ private:
         const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
 
         // ---- Linear detrend the block (remove DC and slope) ----
-        // FIX: true linear detrend (mean-only lets slope leak into lowest bins)
         const int N = blockSize;
         double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumnx = 0.0;
         {
@@ -397,13 +445,12 @@ private:
 
         // ---- Per-Hz periodogram scaling (one-sided) ----
         const double U = window_sum_sq; // sum of window^2 over Nblock (precomputed)
-        // FIX: revert to your original scaling (no N^2 factor)
+        // revert to original scaling (no N^2 factor)
         const double base_scale = (U > 0.0 && fs > 0.0)
                                   ? (2.0 / (fs * U))
                                   : 0.0;
 
         // ---- Regularization knee for η-from-a mapping ----
-        // FIX: block-aware knee to avoid ultra-low-f plateau on very long blocks
         const double Tblk = (fs > 0.0) ? (double(N) / fs) : 0.0;      // seconds
         const double f_blk = (Tblk > 0.0) ? (1.0 / (6.0 * Tblk)) : 0.0;
         const double f_reg = std::max(reg_f0_hz, f_blk);
@@ -438,7 +485,6 @@ private:
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            // FIX: standard Tikhonov: divide by |H|^2 + epsilon_H
             const double epsilon_H = 1e-6; // floor for deconvolution gain near HP corner
             const double S_aa_true = S_aa_meas / (H2 + epsilon_H);
 
@@ -448,8 +494,23 @@ private:
             double S_eta = (w_eff2 > 0.0) ? (S_aa_true / (w_eff2 * w_eff2)) : 0.0;
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-            lastSpectrum_[i] = S_eta;
+
+            // ---- FIX: per-bin EMA across blocks (stronger at high f) ----
+            if (use_psd_ema) {
+                double a = alpha_for_f(f);
+                if (!have_ema) psd_ema_[i] = S_eta;                 // init
+                else           psd_ema_[i] = (1.0 - a) * psd_ema_[i] + a * S_eta;
+                lastSpectrum_[i] = psd_ema_[i];
+            } else {
+                lastSpectrum_[i] = S_eta;
+            }
         }
+
+        // EMA now initialized
+        have_ema = true;
+
+        // ---- FIX: tiny 3-tap smoothing in log-frequency per block ----
+        smooth_logfreq_3tap();
     }
 
     // ---------------------------------------------------------------------
@@ -483,7 +544,7 @@ private:
 
     // Regularization and HP corner (Hz)
     double reg_f0_hz = 0.015;  // set to lowest physically meaningful wave frequency
-    double hp_f0_hz  = 0.02;  // bias-removal corner for 4th-order HP cascade
+    double hp_f0_hz  = 0.015;  // bias-removal corner for 4th-order HP cascade
 
     // Spectral grid and Goertzel tables
     std::array<double, Nfreq> freqs_{};
@@ -504,6 +565,13 @@ private:
 
     // Output spectrum
     Eigen::Matrix<double, Nfreq, 1> lastSpectrum_;
+
+    // ---------- Smoothing state (FIX) ----------
+    bool  use_psd_ema = true;
+    double ema_alpha_low  = 0.35;
+    double ema_alpha_high = 0.15;
+    bool  have_ema = false;
+    Eigen::Matrix<double, Nfreq, 1> psd_ema_;
 
     // Circular buffer indices/state
     int writeIndex = 0;
@@ -560,4 +628,3 @@ void WaveSpectrumEstimator_test() {
     assert(ready_count > 0);
 }
 #endif
-
