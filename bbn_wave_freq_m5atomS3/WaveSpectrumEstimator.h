@@ -364,14 +364,21 @@ private:
             const double imag = s2 * sin1_[i];
 
             // Acceleration PSD at frequency bin i
-            const double S_aa = (real * real + imag * imag) * scale_factor;
+            const double S_aa_meas = (real * real + imag * imag) * scale_factor;
 
-            // Displacement PSD via regularized 1/f^4 (Hz convention)
-            const double f = freqs_[i];
+            // Deconvolve front-end filters (two HPs + LP) — all designed at fs_raw
+            const double Omega_raw = 2.0 * M_PI * f / fs_raw; // radians/sample at raw rate
+            const double H2 =
+                biquad_mag2_raw(hp1_, Omega_raw) *
+                biquad_mag2_raw(hp2_, Omega_raw) *
+                biquad_mag2_raw(lp_ , Omega_raw);
+            const double S_aa_true = (H2 > 1e-24) ? (S_aa_meas / H2) : 0.0;
+
+            // Now do the physically correct ω^{-4} mapping with Tikhonov knee
             const double w  = 2.0 * M_PI * f;
             const double wr = 2.0 * M_PI * reg_f0_hz;
-            const double denom = (w*w + wr*wr);
-            double S_eta = S_aa / (denom * denom);
+            const double denom_w = (w*w + wr*wr);
+            double S_eta = (denom_w > 0.0) ? (S_aa_true / (denom_w * denom_w)) : 0.0;
             
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
             lastSpectrum_[i] = S_eta;
