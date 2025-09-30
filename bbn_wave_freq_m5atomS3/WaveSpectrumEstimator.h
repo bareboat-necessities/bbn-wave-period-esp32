@@ -319,8 +319,8 @@ private:
 
     // ---------- Smoothing controls (FIX) ----------
     bool  use_psd_ema = true;
-    double ema_alpha_low  = 0.35;  // alpha near lowest f
-    double ema_alpha_high = 0.15;  // alpha near highest f (smaller -> stronger smoothing)
+    double ema_alpha_low  = 0.45;  // alpha near lowest f
+    double ema_alpha_high = 0.08;  // alpha near highest f (smaller -> stronger smoothing)
     bool  have_ema = false;
     Eigen::Matrix<double, Nfreq, 1> psd_ema_;
 
@@ -485,7 +485,7 @@ private:
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            const double epsilon_H = 1e-6; // floor for deconvolution gain near HP corner
+            const double epsilon_H = 1e-7; // floor for deconvolution gain near HP corner
             const double S_aa_true = S_aa_meas / (H2 + epsilon_H);
 
             // ---- Map acceleration PSD → displacement PSD (adaptive knee) ----
