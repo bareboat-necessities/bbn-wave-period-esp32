@@ -372,6 +372,11 @@ private:
 // Periodogram is per-Hz (one-sided). HP deconvolution is Tikhonov-regularized
 // so it does NOT blow up at very low f (no low-f plateau on log grid).
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Compute the block spectrum (called once per filled block at fs)
+// PSD is per-Hz (one-sided). Filter deconvolution uses frequency-
+// dependent Tikhonov regularization so low-f bins decay smoothly.
+// ---------------------------------------------------------------------
 void computeSpectrum() {
     const int blockSize = std::min(filledSamples, Nblock);
     const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
@@ -388,25 +393,17 @@ void computeSpectrum() {
     const double mean = sumx / double(blockSize);
 
     // ---- Per-Hz periodogram scaling (one-sided) ----
-    // PSD_xx(f) = (2 / (fs * Σ w[n]^2)) * |Σ w[n](x[n]-mean) e^{-jωn}|^2
-    const double U = window_sum_sq;                         // Σ w^2 over the block
+    const double U = window_sum_sq; // Σ w^2
     const double base_scale = (U > 0.0 && fs > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
-    // ---- Regularization knees ----
-    const double f_reg = std::max(reg_f0_hz, 1e-6);         // Hz (η-from-a mapping)
-    const double wr    = 2.0 * M_PI * f_reg;                // rad/s
-    const double Omega_reg = 2.0 * M_PI * f_reg / fs_raw;   // rad/sample at raw Fs
-
-    // Precompute |H|^2 at the regularization knee for deconvolution Tikhonov
-    const double H2_reg =
-        biquad_mag2_raw(hp1_, Omega_reg) *
-        biquad_mag2_raw(hp2_, Omega_reg) *
-        biquad_mag2_raw(lp_ , Omega_reg);
+    // ---- Regularization knee for η-from-a mapping ----
+    const double f_reg = std::max(reg_f0_hz, 1e-6);
+    const double wr    = 2.0 * M_PI * f_reg;
 
     for (int i = 0; i < Nfreq; i++) {
-        const double f = freqs_[i]; // Hz
+        const double f = freqs_[i];
 
-        // ---- Goertzel at f ----
+        // ---- Goertzel recursion ----
         double s1 = 0.0, s2 = 0.0;
         int idx = startIdx;
         for (int n = 0; n < blockSize; n++) {
@@ -420,29 +417,29 @@ void computeSpectrum() {
         // |DTFT|^2 at f
         const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
 
-        // Per-Hz acceleration PSD (one-sided)
+        // Per-Hz acceleration PSD
         double S_aa_meas = power * base_scale;
 
-        // ---- Deconvolve front-end filters with Tikhonov regularization ----
-        // y = |H|^2 x  ⇒  x ≈ y * |H|^2 / (|H|^4 + ε), ε = (|H|^2 at f_reg)^2
+        // ---- Deconvolve front-end filters with f-dependent regularization ----
         const double Omega_raw = 2.0 * M_PI * f / fs_raw;
         const double H2 =
             biquad_mag2_raw(hp1_, Omega_raw) *
             biquad_mag2_raw(hp2_, Omega_raw) *
             biquad_mag2_raw(lp_ , Omega_raw);
 
-        const double eps = H2_reg * H2_reg;                  // Tikhonov ε
+        // frequency-dependent ε ~ H2^2 (local), not a fixed constant
+        const double eps = H2 * H2 + 1e-24;
         const double S_aa_true = (H2 > 0.0)
-            ? (S_aa_meas * H2 / (H2 * H2 + eps))
-            : 0.0;                                           // smoothly → 0 as H2→0
+            ? (S_aa_meas * H2 / (H2*H2 + eps))
+            : 0.0;
 
         // ---- Map acceleration PSD → displacement PSD ----
         const double w = 2.0 * M_PI * f;
-        const double denom = (w * w + wr * wr);              // knee prevents ω→0 blowup
+        const double denom = (w * w + wr * wr);
         double S_eta = (denom > 0.0) ? (S_aa_true / (denom * denom)) : 0.0;
 
         if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-        lastSpectrum_[i] = S_eta;                             // per-Hz PSD
+        lastSpectrum_[i] = S_eta; // per-Hz PSD
     }
 }
 
