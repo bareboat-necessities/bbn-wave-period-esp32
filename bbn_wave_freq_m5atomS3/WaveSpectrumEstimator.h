@@ -393,41 +393,47 @@ private:
             const double wr    = 2.0 * M_PI * f_reg;
 
             // -------- Per-bin Goertzel (arbitrary, log or linear grids) ---
-            for (int i = 0; i < Nfreq; i++) {
-                const double f = freqs_[i];                 // Hz at decimated rate
-                double s1 = 0.0, s2 = 0.0;
-                int idx = startIdx;
-                for (int n = 0; n < blockSize; n++) {
-                    const double xw = (buffer_[idx] - mean) * window_[n];
-                    const double s_new = xw + coeffs_[i] * s1 - s2;
-                    s2 = s1;
-                    s1 = s_new;
-                    idx = (idx + 1) % Nblock;
-                }
 
-                // Closed-form Goertzel power → |DTFT at f|^2
-                const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
-                double S_aa_meas = power * scale_factor;   // per-Hz PSD (one-sided)
+    // inside computeSpectrum()
 
-                // -------- Deconvolve raw-rate IIR front-end ----------------
-                const double Omega_raw = 2.0 * M_PI * f / fs_raw; // rad/sample @ raw Fs
-                const double H2 =
-                    biquad_mag2_raw(hp1_, Omega_raw) *
-                    biquad_mag2_raw(hp2_, Omega_raw) *
-                    biquad_mag2_raw(lp_ , Omega_raw);
+for (int i = 0; i < Nfreq; i++) {
+    const double f = freqs_[i];
 
-                // Never zero-out |H|^2 → prevents low-f log “holes”
-                constexpr double H2_floor = 1e-12;          // tuned small, not huge
-                const double S_aa_true = S_aa_meas / std::max(H2, H2_floor);
+    // --- Goertzel recursion ---
+    double s1 = 0.0, s2 = 0.0;
+    int idx = startIdx;
+    for (int n = 0; n < blockSize; n++) {
+        const double xw = (buffer_[idx] - mean) * window_[n];
+        const double s_new = xw + coeffs_[i] * s1 - s2;
+        s2 = s1;
+        s1 = s_new;
+        idx = (idx + 1) % Nblock;
+    }
 
-                // -------- Map acceleration PSD to displacement PSD ----------
-                const double w = 2.0 * M_PI * f;
-                const double denom = (w * w + wr * wr);
-                double S_eta = (denom > 0.0) ? (S_aa_true / (denom * denom)) : 0.0;
+    const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
 
-                if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-                lastSpectrum_[i] = S_eta;
-            }
+    // --- FIX: PSD scaling with variable bin width ---
+    // PSD_aa(fᵢ) = (2 * |X(fᵢ)|²) / (U * Δfᵢ)
+    const double S_aa_meas = (2.0 * power) / (window_sum_sq * df_[i]);
+
+    // --- filter deconvolution & ω⁻⁴ mapping as before ---
+    const double Omega_raw = 2.0 * M_PI * f / fs_raw;
+    const double H2 =
+        biquad_mag2_raw(hp1_, Omega_raw) *
+        biquad_mag2_raw(hp2_, Omega_raw) *
+        biquad_mag2_raw(lp_,  Omega_raw);
+
+    constexpr double H2_floor = 1e-12;
+    const double S_aa_true = S_aa_meas / std::max(H2, H2_floor);
+
+    const double w = 2.0 * M_PI * f;
+    const double denom = (w * w + wr * wr);
+    double S_eta = (denom > 0.0) ? (S_aa_true / (denom * denom)) : 0.0;
+
+    if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
+    lastSpectrum_[i] = S_eta;
+}
+            
         }
 
     // ---------------------------------------------------------------------
