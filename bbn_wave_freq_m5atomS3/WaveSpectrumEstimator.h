@@ -421,8 +421,9 @@ private:
         const double num2 = num_re * num_re + num_im * num_im;
         const double den2 = den_re * den_re + den_im * den_im;
 
-        // If denominator collapses numerically, return 0 (not 1) to avoid boosting
-        return (den2 > 1e-24) ? (num2 / den2) : 0.0;
+        // Stronger floor to prevent division by tiny |H|² (matches computeSpectrum)
+        const double den_floor = 1e-12;
+        return (den2 > den_floor) ? (num2 / den2) : 0.0;
     }
 
     // ------------------------- Members / State ----------------------------
