@@ -397,9 +397,9 @@ private:
 
         // ---- Per-Hz periodogram scaling (one-sided) ----
         const double U = window_sum_sq; // sum of window^2 over Nblock (precomputed)
-        // FIX: include N^2 because Goertzel sum here omits 1/N normalization
-        const double base_scale = (U > 0.0 && fs > 0.0 && N > 0)
-                                  ? (2.0 / (fs * U * double(N) * double(N)))
+        // FIX: revert to your original scaling (no N^2 factor)
+        const double base_scale = (U > 0.0 && fs > 0.0)
+                                  ? (2.0 / (fs * U))
                                   : 0.0;
 
         // ---- Regularization knee for η-from-a mapping ----
@@ -560,3 +560,4 @@ void WaveSpectrumEstimator_test() {
     assert(ready_count > 0);
 }
 #endif
+
