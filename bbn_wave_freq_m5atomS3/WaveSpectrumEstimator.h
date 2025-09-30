@@ -478,7 +478,7 @@ private:
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            const double epsilon_H = 0.05; // floor for deconvolution gain near HP corner
+            const double epsilon_H = 0.15; // floor for deconvolution gain near HP corner
             const double S_aa_true = S_aa_meas / (H2 + epsilon_H);
 
             // ---- Map acceleration PSD → displacement PSD (adaptive knee) ----
