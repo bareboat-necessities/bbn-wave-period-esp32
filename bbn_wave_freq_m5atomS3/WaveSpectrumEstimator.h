@@ -480,7 +480,7 @@ private:
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            const double epsilon_H = 0.25; // floor for deconvolution gain near HP corner
+            double epsilon_H = 0.2 + 0.5 * (0.05 / (f + 1e-6)); // floor for deconvolution gain near HP corner
             const double S_aa_true = S_aa_meas / (H2 + epsilon_H);
 
             // ---- Map acceleration PSD → displacement PSD (adaptive knee) ----
@@ -490,11 +490,10 @@ private:
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
 
-            const double f_guard = 0.055;             // ~18 s period
-            const double r = (f / f_guard);
-            if (r < 1.0) {
-                // 2nd-order fade-in of displacement below f_guard
-                const double fade = r * r * r * r;            // = (f/f_guard)^4, 0..1
+            const double f_guard = 0.055;      
+            if (f < f_guard) {
+                double r = f / f_guard;
+                const double fade = r * r;
                 S_eta *= fade;
             }
 
