@@ -561,8 +561,8 @@ private:
 
     // ---------- Smoothing controls (FIX) ----------
     bool  use_psd_ema = true;
-    double ema_alpha_low  = 0.25;  // alpha near lowest f
-    double ema_alpha_high = 0.07;  // alpha near highest f (smaller -> stronger smoothing)
+    double ema_alpha_low  = 0.20;  // alpha near lowest f
+    double ema_alpha_high = 0.06;  // alpha near highest f (smaller -> stronger smoothing)
     bool  have_ema = false;
     Eigen::Matrix<double, Nfreq, 1> psd_ema_;
 
