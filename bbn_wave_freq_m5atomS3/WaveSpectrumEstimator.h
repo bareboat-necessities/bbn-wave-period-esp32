@@ -446,7 +446,7 @@ private:
         // ---- Regularization knee for η-from-a mapping ----
         const double Tblk = (fs > 0.0) ? (double(N) / fs) : 0.0;      // seconds
         const double f_blk = (Tblk > 0.0) ? (1.0 / (6.0 * Tblk)) : 0.0;
-        const double f_reg = std::max(reg_f0_hz, f_blk);
+        const double f_reg = std::max({reg_f0_hz, f_blk, 0.5 * hp_f0_hz});
         const double wr    = 2.0 * M_PI * f_reg;
 
         for (int i = 0; i < Nfreq; i++) {
@@ -478,7 +478,7 @@ private:
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            const double epsilon_H = 1e-7; // floor for deconvolution gain near HP corner
+            const double epsilon_H = 0.05; // floor for deconvolution gain near HP corner
             const double S_aa_true = S_aa_meas / (H2 + epsilon_H);
 
             // ---- Map acceleration PSD → displacement PSD (adaptive knee) ----
