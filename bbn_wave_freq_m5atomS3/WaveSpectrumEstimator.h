@@ -483,7 +483,7 @@ private:
 
     // Regularization and HP corner (Hz)
     double reg_f0_hz = 0.015;  // set to lowest physically meaningful wave frequency
-    double hp_f0_hz  = 0.015;  // bias-removal corner for 4th-order HP cascade
+    double hp_f0_hz  = 0.02;  // bias-removal corner for 4th-order HP cascade
 
     // Spectral grid and Goertzel tables
     std::array<double, Nfreq> freqs_{};
