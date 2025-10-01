@@ -917,8 +917,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     const T tau3 = tau2 * tau;
 
     const T phi_va = -tau * P.em1;
-    const T phi_pa = tau2 * (P.x + P.em1);                // uses expm1 for tiny x
-    const T phi_Sa = tau3 * (T(0.5)*P.x*P.x - P.x - P.em1);
+    auto coeffs = safe_phi_A_coeffs<T>(h, tau);
+    const T phi_pa = coeffs.phi_pa;
+    const T phi_Sa = coeffs.phi_Sa;
 
     Phi_axis.setZero();
     // v_{k+1}
