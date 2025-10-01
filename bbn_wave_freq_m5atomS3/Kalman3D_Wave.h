@@ -391,7 +391,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
                                 const Eigen::Matrix<T,BASE_N,BASE_N>& Q_block)
     {
         // Propagate covariance
-        Pblock = (Phi_block * Pblock * Phi_block.transpose()).selfadjointView<Eigen::Lower>();
+        Pblock = Phi_block * Pblock * Phi_block.transpose();
 
         // Add process noise
         Pblock += Q_block;
@@ -409,7 +409,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
                             const Eigen::Matrix<T,4,4>& Qd_axis)
     {
         // Propagate covariance
-        Pblock = (Phi_axis * Pblock * Phi_axis.transpose()).selfadjointView<Eigen::Lower>();
+        Pblock = Phi_axis * Pblock * Phi_axis.transpose();
 
         // Add process noise
         Pblock += Qd_axis;
