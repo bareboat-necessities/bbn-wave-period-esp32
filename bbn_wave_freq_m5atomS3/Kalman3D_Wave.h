@@ -929,32 +929,41 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
-    // H picks S block only
-    Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
-    H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
-
-    // Innovation (target S = 0)
+    // H picks S block only; innovation targets S = 0
     Vector3 inno = - xext.template segment<3>(OFF_S);
 
-    // Innovation covariance and PHt
-    Matrix3 S_mat = H * Pext * H.transpose() + R_S;
+    // Extract the S-related partitions once
+    // P_Scols: entire columns corresponding to S (size NX x 3)
+    Eigen::Matrix<T, NX, 3> P_Scols = Pext.template block<NX,3>(0, OFF_S);
+    // P_Srows: entire rows corresponding to S (size 3 x NX)
+    Eigen::Matrix<T, 3,  NX> P_Srows = Pext.template block<3, NX>(OFF_S, 0);
+    // P_SS: 3x3 S block
+    Matrix3 P_SS = Pext.template block<3,3>(OFF_S, OFF_S);
 
-    // Solve for K
+    // Innovation covariance S = P_SS + R_S  (since H = [0 I])
+    Matrix3 S_mat = P_SS + R_S;
+
+    // Robust factorization
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
+        S_mat += Matrix3::Identity() *
+                 std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
-    Matrix<T, NX, 3> PHt = Pext * H.transpose();
-    Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
 
-    // State update
+    // Kalman gain K = P * H^T * S^{-1} = P_Scols * S^{-1}   (size NX x 3)
+    Eigen::Matrix<T, NX, 3> K = P_Scols * ldlt.solve(Matrix3::Identity());
+
+    // State update: x += K * r   (only S states actually move, but writing full is fine)
     xext.noalias() += K * inno;
 
-    // Joseph covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
+    // Joseph covariance update in rank-3 form:
+    // P' = P - K P_Srows - (K P_Srows)^T + K R_S K^T
+    Eigen::Matrix<T, NX, NX> KP = K * P_Srows;        // NX x NX (rank-3)
+    Pext.noalias() = Pext - KP - KP.transpose() + K * R_S * K.transpose();
+
+    // Enforce symmetry (cheap insurance)
     Pext = T(0.5) * (Pext + Pext.transpose());
 
     applyQuaternionCorrectionFromErrorState();
