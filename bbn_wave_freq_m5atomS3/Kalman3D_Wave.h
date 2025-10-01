@@ -74,7 +74,7 @@ inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dt
     const T half_theta = T(0.5) * theta;
 
     T w, k; // scalar part, vector scale = sin(|δθ|/2)/|δθ|
-    if (theta < T(1e-3)) {
+    if (theta < T(1e-2)) {
         // Maclaurin expansion (FMA-friendly)
         const T t2 = theta * theta;
         const T t4 = t2 * t2;
@@ -908,7 +908,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     Eigen::Matrix<T,4,4> K;
     K.setZero();
 
-    if (x < T(1e-3)) {
+    if (x < T(1e-2)) {
         // Small-x branch: use series expansions to avoid cancellation
         // Derived from Maclaurin expansions of exp(-x), expm1(-x), expm1(-2x).
         // Keep up to O(h^4/τ^3) or higher depending on the entry.
