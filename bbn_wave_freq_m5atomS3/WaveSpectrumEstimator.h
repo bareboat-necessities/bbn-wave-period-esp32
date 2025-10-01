@@ -267,7 +267,7 @@ public:
         double bestA = 1e-5, bestFp = fp_grid[0], bestC = std::numeric_limits<double>::infinity();
         for (int ia = 0; ia < 8; ia++) {
             double a = 1e-5 + ia * (1.0 - 1e-5) / 7.0;
-            for (int ifp = 0; if (ifp < N_fp_search); ifp++) {
+            for (int ifp = 0; ifp < N_fp_search; ifp++) {
                 double fp = fp_grid[ifp];
                 double c = cost_fn(a, fp);
                 if (c < bestC) { bestC = c; bestA = a; bestFp = fp; }
