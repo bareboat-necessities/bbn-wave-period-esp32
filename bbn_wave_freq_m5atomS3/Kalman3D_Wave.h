@@ -703,53 +703,64 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas, T tempC)
 {
-    // Sanity check on accel magnitude
+    // Accel magnitude sanity check
     T g_meas = acc_meas.norm();
     if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
-        return; // reject
+        return; // reject this update
     }
 
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
+    // Build reduced measurement Jacobian C_sub (3 x n_sub)
     constexpr int n_att = 3; // attitude error
     constexpr int n_aw  = 3; // world accel state
     constexpr int n_ba  = with_accel_bias ? 3 : 0;
     constexpr int n_sub = n_att + n_aw + n_ba;
 
-    // Build reduced measurement Jacobian C_sub (3×n_sub)
     Eigen::Matrix<T,3,n_sub> C_sub;
-    C_sub.template block<3,3>(0,0)     = -skew_symmetric_matrix(v1hat); // attitude
-    C_sub.template block<3,3>(0,n_att) = R_wb();                        // a_w
+    C_sub.template block<3,3>(0,0)      = -skew_symmetric_matrix(v1hat); // attitude
+    C_sub.template block<3,3>(0,n_att)  = R_wb();                        // a_w
     if constexpr (with_accel_bias) {
-        C_sub.template block<3,3>(0,n_att+n_aw) = Matrix3::Identity();  // bias
+        C_sub.template block<3,3>(0,n_att+n_aw) = Matrix3::Identity();   // bias
     }
 
     // Innovation
     Vector3 inno = acc_meas - v1hat;
 
-    // Extract sub-covariance P_sub from Pext
-    Eigen::Matrix<T,n_sub,n_sub> P_sub;
-    // att
-    P_sub.template block<3,3>(0,0) = Pext.template block<3,3>(0,0);
-    // a_w
-    P_sub.template block<3,3>(n_att,n_att) = Pext.template block<3,3>(OFF_AW,OFF_AW);
+    // Gather P slices once:
+    // P_cols = P_{:S}  (NX x n_sub),  P_rows = P_{S:}  (n_sub x NX),  P_sub = P_{SS} (n_sub x n_sub)
+    Eigen::Matrix<T, NX, n_sub> P_cols;
+    Eigen::Matrix<T, n_sub, NX> P_rows;
+    Eigen::Matrix<T, n_sub, n_sub> P_sub;
+
+    // att columns/rows
+    P_cols.template block<NX,3>(0,0)  = Pext.template block<NX,3>(0,0);
+    P_rows.template block<3,NX>(0,0)  = Pext.template block<3,NX>(0,0);
+    P_sub .template block<3,3>(0,0)   = Pext.template block<3,3>(0,0);
+
+    // a_w columns/rows
+    P_cols.template block<NX,3>(0,n_att) = Pext.template block<NX,3>(0,OFF_AW);
+    P_rows.template block<3,NX>(n_att,0) = Pext.template block<3,NX>(OFF_AW,0);
+    P_sub .template block<3,3>(n_att,n_att) = Pext.template block<3,3>(OFF_AW,OFF_AW);
     // cross att↔a_w
-    P_sub.template block<3,3>(0,n_att) = Pext.template block<3,3>(0,OFF_AW);
-    P_sub.template block<3,3>(n_att,0) = P_sub.template block<3,3>(0,n_att).transpose();
+    P_sub.template block<3,3>(0,n_att)     = Pext.template block<3,3>(0,OFF_AW);
+    P_sub.template block<3,3>(n_att,0)     = Pext.template block<3,3>(OFF_AW,0);
 
     if constexpr (with_accel_bias) {
-        // b_acc
-        P_sub.template block<3,3>(n_att+n_aw,n_att+n_aw) =
+        // b_acc columns/rows
+        P_cols.template block<NX,3>(0,n_att+n_aw) = Pext.template block<NX,3>(0,OFF_BA);
+        P_rows.template block<3,NX>(n_att+n_aw,0) = Pext.template block<3,NX>(OFF_BA,0);
+        P_sub .template block<3,3>(n_att+n_aw,n_att+n_aw) =
             Pext.template block<3,3>(OFF_BA,OFF_BA);
         // cross att↔b_acc
-        P_sub.template block<3,3>(0,n_att+n_aw) = Pext.template block<3,3>(0,OFF_BA);
-        P_sub.template block<3,3>(n_att+n_aw,0) = P_sub.template block<3,3>(0,n_att+n_aw).transpose();
+        P_sub.template block<3,3>(0,n_att+n_aw)     = Pext.template block<3,3>(0,OFF_BA);
+        P_sub.template block<3,3>(n_att+n_aw,0)     = Pext.template block<3,3>(OFF_BA,0);
         // cross a_w↔b_acc
         P_sub.template block<3,3>(n_att,n_att+n_aw) = Pext.template block<3,3>(OFF_AW,OFF_BA);
-        P_sub.template block<3,3>(n_att+n_aw,n_att) = P_sub.template block<3,3>(n_att,n_att+n_aw).transpose();
+        P_sub.template block<3,3>(n_att+n_aw,n_att) = Pext.template block<3,3>(OFF_BA,OFF_AW);
     }
 
-    // Innovation covariance S (3×3)
+    // Innovation covariance S = C_sub * P_sub * C_subᵀ + Racc  (3x3)
     Matrix3 S_mat = C_sub * P_sub * C_sub.transpose() + Racc;
 
     Eigen::LDLT<Matrix3> ldlt(S_mat);
@@ -760,42 +771,20 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
         if (ldlt.info() != Eigen::Success) return;
     }
 
-    // Kalman gain (n_sub×3)
-    Eigen::Matrix<T,n_sub,3> K_sub = P_sub * C_sub.transpose() * ldlt.solve(Matrix3::Identity());
+    // Kalman gain K = P * Cᵀ S⁻¹ = (P_{:S} C_subᵀ) S⁻¹  (NX x 3)
+    Eigen::Matrix<T, NX, 3> K = (P_cols * C_sub.transpose()) * ldlt.solve(Matrix3::Identity());
 
-    // State update (only relevant states)
-    auto dx_sub = K_sub * inno;
-    xext.template segment<3>(0)      += dx_sub.template segment<3>(0);       // attitude error
-    xext.template segment<3>(OFF_AW) += dx_sub.template segment<3>(n_att);   // a_w
-    if constexpr (with_accel_bias) {
-        xext.template segment<3>(OFF_BA) += dx_sub.template segment<3>(n_att+n_aw); // bias
-    }
+    // State update: x += K * inno  (full-state update; only sub-states have direct sensitivity)
+    xext.noalias() += K * inno;
 
-    // Joseph covariance update on sub-block
-    Eigen::Matrix<T,n_sub,n_sub> I_sub = Eigen::Matrix<T,n_sub,n_sub>::Identity();
-    Eigen::Matrix<T,n_sub,n_sub> P_sub_new =
-        (I_sub - K_sub * C_sub) * P_sub * (I_sub - K_sub * C_sub).transpose()
-        + K_sub * Racc * K_sub.transpose();
+    // Joseph covariance update in rank-3 form:
+    // P' = P - K (C_sub P_{S:}) - (K (C_sub P_{S:}))ᵀ + K Racc Kᵀ
+    Eigen::Matrix<T, 3, NX> CP = C_sub * P_rows;  // 3 x NX
+    Eigen::Matrix<T, NX, NX> KC = K * CP;         // NX x NX  (rank-3 product)
+    Pext.noalias() = Pext - KC - KC.transpose() + K * Racc * K.transpose();
 
-    // Write back P_sub_new into Pext
-    // att
-    Pext.template block<3,3>(0,0)             = P_sub_new.template block<3,3>(0,0);
-    // a_w
-    Pext.template block<3,3>(OFF_AW,OFF_AW)   = P_sub_new.template block<3,3>(n_att,n_att);
-    // cross att↔a_w
-    Pext.template block<3,3>(0,OFF_AW)        = P_sub_new.template block<3,3>(0,n_att);
-    Pext.template block<3,3>(OFF_AW,0)        = P_sub_new.template block<3,3>(n_att,0);
-
-    if constexpr (with_accel_bias) {
-        // b_acc
-        Pext.template block<3,3>(OFF_BA,OFF_BA) = P_sub_new.template block<3,3>(n_att+n_aw,n_att+n_aw);
-        // cross att↔b_acc
-        Pext.template block<3,3>(0,OFF_BA)      = P_sub_new.template block<3,3>(0,n_att+n_aw);
-        Pext.template block<3,3>(OFF_BA,0)      = P_sub_new.template block<3,3>(n_att+n_aw,0);
-        // cross a_w↔b_acc
-        Pext.template block<3,3>(OFF_AW,OFF_BA) = P_sub_new.template block<3,3>(n_att,n_att+n_aw);
-        Pext.template block<3,3>(OFF_BA,OFF_AW) = P_sub_new.template block<3,3>(n_att+n_aw,n_att);
-    }
+    // Enforce symmetry (optional)
+    Pext = T(0.5) * (Pext + Pext.transpose());
 
     // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
