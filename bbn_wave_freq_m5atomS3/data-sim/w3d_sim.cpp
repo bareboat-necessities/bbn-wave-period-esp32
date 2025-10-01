@@ -19,6 +19,9 @@ const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.50f;
 const float FAIL_ERR_LIMIT_PERCENT_LOW = 11.50f;
 
+// Global variable set from command line
+float R_S_base_global = 1.9f;   // default
+
 // RMS window length [s]
 constexpr float RMS_WINDOW_SEC = 60.0f;
 
@@ -74,9 +77,6 @@ const std::vector<WaveParameters> waveParamsList = {
     {8.5f,   4.0f,  static_cast<float>(M_PI/6.0), 25.0f},
     {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 25.0f}
 };
-
-// Global variable set from command line
-float R_S_base_global = 1.9f;   // default
 
 // R_S law now always uses global
 inline float R_S_law(float Tp, float T_p_base = 8.5f) {
@@ -153,7 +153,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag,
 
     // sigma_a_eff was scalar in logs — treat isotropic per axis
     Eigen::Vector3f std_aw = Eigen::Vector3f::Constant(static_cast<float>(tune.sigma_a_eff));
-    mekf.set_aw_stationary_std(std_aw * 1.5f);
+    mekf.set_aw_stationary_std(std_aw * 1.3f);
 
     // R_S_eff is scalar too — isotropic pseudo-measurement noise
     Eigen::Vector3f sigma_S = Eigen::Vector3f::Constant(static_cast<float>(tune.R_S_eff));
