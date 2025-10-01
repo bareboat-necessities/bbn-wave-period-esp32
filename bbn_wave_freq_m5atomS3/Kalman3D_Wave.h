@@ -691,7 +691,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     Vector3 dth = xext.template head<3>();
     T dpsi = dth.dot(gb);
     T dpsi_clamped = std::max(-YAW_CLAMP, std::min(YAW_CLAMP, dpsi));
-    xext.template head<3>() = dth - gb * dpsi + gb * dpsi_clamped;
+    xext.template head<3>() = (dth - gb * dpsi + gb * dpsi_clamped).eval();
 
     // Joseph covariance update
     MatrixNX I = MatrixNX::Identity();
