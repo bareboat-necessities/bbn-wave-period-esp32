@@ -63,6 +63,44 @@ inline OUPrims<T> make_prims(T h, T tau) {
     return {x, alpha, em1, alpha2, em1_2};
 }
 
+// Full exponential-map correction (Rodrigues in quaternion form).
+// Accurate for both small and large |δθ|.
+// Right-multiply convention: q_new = qref ⊗ δq(δθ), where δθ = vector increment.
+// Uses Maclaurin expansion with FMA for small |δθ| to avoid 0/0 and cancellation.
+// Series preserves 2nd-order accuracy in propagation and correction.
+template<typename T>
+inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dtheta) {
+    const T theta = dtheta.norm();
+    const T half_theta = T(0.5) * theta;
+
+    T w, k; // scalar part, vector scale = sin(|δθ|/2)/|δθ|
+    if (theta < T(1e-3)) {
+        // Maclaurin expansion (FMA-friendly)
+        const T t2 = theta * theta;
+        const T t4 = t2 * t2;
+
+        // w = cos(theta/2) ≈ 1 - θ²/8 + θ⁴/384
+        w = T(1);
+        w = std::fma(-t2, T(1)/T(8), w);
+        w = std::fma( t4, T(1)/T(384), w);
+
+        // k = sin(theta/2)/θ ≈ 1/2 - θ²/48 + θ⁴/3840
+        k = T(0.5);
+        k = std::fma(-t2, T(1)/T(48), k);
+        k = std::fma( t4, T(1)/T(3840), k);
+    } else {
+        w = std::cos(half_theta);
+        k = std::sin(half_theta) / theta;
+    }
+
+    const Eigen::Matrix<T,3,1> v = k * dtheta;
+    Eigen::Quaternion<T> q(w, v.x(), v.y(), v.z());
+
+    // (Unit by construction, but normalize for safety)
+    q.normalize();
+    return q;
+}
+
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
@@ -463,15 +501,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
 
-    // Build delta quaternion from gyro increment
-    T ang = last_gyr_bias_corrected.norm() * Ts;
-    Eigen::Quaternion<T> dq;
-    if (ang > T(1e-6)) {
-        Vector3 axis = last_gyr_bias_corrected.normalized();
-        dq = Eigen::AngleAxis<T>(ang, axis);     // +ang
-    } else {
-        dq.setIdentity();
-    }
+    // Δθ = ω Ts → quaternion increment
+    Eigen::Quaternion<T> dq = quat_from_delta_theta(last_gyr_bias_corrected * Ts);
 
     // Propagate: right-multiply (matches correction side and F/Jacobians signs )
     qref = qref * dq;
@@ -707,51 +738,14 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetri
   return M;
 }
 
-// Full exponential-map correction (Rodrigues in quaternion form).
-// Accurate for both small and large |δθ|.
-// Right-multiply convention: q_new = qref ⊗ δq(δθ), where δθ = xext(0..2).
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState() {
-  // δθ from error-state (small or not)
-  const Eigen::Matrix<T,3,1> dtheta = xext.template segment<3>(0);
-  const T theta = dtheta.norm();
-  const T half_theta = T(0.5) * theta;
+    Eigen::Quaternion<T> corr = quat_from_delta_theta(xext.template segment<3>(0));
+    qref = qref * corr;
+    qref.normalize();
 
-  // Build exact correction quaternion:
-  // δq = [ cos(|δθ|/2),  (sin(|δθ|/2)/|δθ|) * δθ ]
-  // Use series when |δθ| is tiny to avoid 0/0 and over-correction.
-  T w;        // scalar part
-  T k;        // vector scale = sin(half_theta)/theta
-  if (theta < T(1e-3)) {
-    // 4th-order Maclaurin
-    const T t2 = theta * theta;
-    const T t4 = t2 * t2;
-
-    // w = cos(theta/2)
-    // 1 - t2/8 + t4/384
-    w = T(1);
-    w = std::fma(-t2, T(1)/T(8), w);
-    w = std::fma( t4, T(1)/T(384), w);
-
-    // k = sin(theta/2)/theta
-    // 1/2 - t2/48 + t4/3840
-    k = T(0.5);
-    k = std::fma(-t2, T(1)/T(48), k);
-    k = std::fma( t4, T(1)/T(3840), k);  
-  } else {
-    w = std::cos(half_theta);
-    k = std::sin(half_theta) / theta;
-  }
-
-  const Eigen::Matrix<T,3,1> v = k * dtheta;
-  Eigen::Quaternion<T> corr(w, v.x(), v.y(), v.z());
-
-  // (Unit by construction, but normalize to be safe numerically)
-  corr.normalize();
-
-  // Apply correction (right-multiply; keep your established convention)
-  qref = qref * corr;
-  qref.normalize();
+    // Clear error-state attitude correction after applying
+    xext.template head<3>().setZero();
 }
 
 // normalize quaternion
