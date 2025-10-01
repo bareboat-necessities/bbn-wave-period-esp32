@@ -66,10 +66,8 @@ public:
 
     struct PMFitResult { double alpha, fp, cost; };
 
-    // ---------------------------------------------------------------------
     // Small reusable biquad in TDF-II transposed form (stable, low state)
     // y[n] = b0*x[n] + z1;  z1 = b1*x[n] - a1*y[n] + z2;  z2 = b2*x[n] - a2*y[n]
-    // ---------------------------------------------------------------------
     struct Biquad {
         double b0 = 0, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
         double z1 = 0, z2 = 0;
@@ -91,10 +89,10 @@ public:
         // Effective (post-decimation) sample rate for spectral block
         fs = fs_raw / decimFactor;
 
-        // ---------------- Build analysis frequency grid -----------------
+        // Build analysis frequency grid
         buildFrequencyGrid();
 
-        // ---------------- Precompute Goertzel coefficients ---------------
+        // Precompute Goertzel coefficients
         // Each frequency bin is represented by a single Goertzel recursion
         // with rad/sample omega_rs defined at the decimated rate.
         for (int i = 0; i < Nfreq; i++) {
@@ -104,7 +102,7 @@ public:
             sin1_[i]   = std::sin(omega_rs);
         }
 
-        // ---------------- Hann window (or rectangular) -------------------
+        // Hann window (or rectangular)
         // Precompute window shape and its total energy sum of squares (U).
         double sumsq = 0.0;
         for (int n = 0; n < Nblock; n++) {
@@ -117,10 +115,10 @@ public:
         }
         window_sum_sq = sumsq; // used in PSD scaling
 
-        // ---------------- Reset runtime state ----------------------------
+        // Reset runtime state
         reset();
 
-        // ---------------- Design raw-rate biquads ------------------------
+        // Design raw-rate biquads
         // LP near pre-decimation Nyquist to suppress imaging/aliasing.
         // Two identical HP sections cascaded → 4th-order high-pass.
         const double lp_cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor)); // conservative guard
@@ -139,15 +137,13 @@ public:
         lastSpectrum_.setZero();
         hp1_.reset(); hp2_.reset(); lp_.reset();
 
-        // FIX: reset EMA state
+        // reset EMA state
         have_ema = false;
         psd_ema_.setZero();
     }
 
-    // ---------------------------------------------------------------------
     // Feed ONE raw acceleration sample (units: m/s^2) at fs_raw.
     // Returns true exactly when a new block spectrum has been computed.
-    // ---------------------------------------------------------------------
     bool processSample(double x_raw) {
         // 4th-order high-pass (cascade two identical 2nd-order sections)
         double x_hp = hp2_.process(hp1_.process(x_raw));
@@ -183,20 +179,15 @@ public:
     // True if at least one full block has been accumulated
     bool ready() const { return isWarm; }
 
-    // Significant wave height from m0 (trapezoidal over the discrete grid)
-    // ---------------------------------------------------------------------
     // Significant wave height Hs = 4 * sqrt(m0)
     // m0 = ∫ S_eta(f) df approximated by trapezoidal rule
     // Works for both linear and log-spaced bins (uses Δf[i]).
-    // ---------------------------------------------------------------------
     double computeHs() const {
         double m0 = 0.0;
-
         // trapezoidal integration over uneven frequency grid
         for (int i = 0; i < Nfreq; i++) {
             m0 += lastSpectrum_[i] * df_[i];
         }
-
         return 4.0 * std::sqrt(std::max(m0, 0.0));
     }
 
@@ -360,18 +351,18 @@ private:
         constexpr double f_min = 0.04, f_transition = 0.1, f_max = 1.2;
         int n_log = int(Nfreq * 0.4), n_lin = Nfreq - n_log;
 
-        // --- log edges ---
+        // log edges
         for (int i = 0; i <= n_log; i++) {
             double t = double(i) / double(n_log);
             f_edges_[i] = f_min * std::pow(f_transition / f_min, t);
         }
-        // --- linear edges ---
+        // linear edges
         for (int i = 1; i <= n_lin; i++) {
             double t = double(i) / double(n_lin);
             f_edges_[n_log + i] = f_transition + t * (f_max - f_transition);
         }
 
-        // --- centers and widths ---
+        // centers and widths
         for (int i = 0; i < Nfreq; i++) {
             if (i < n_log) {
                 // geometric mean for log bins
@@ -384,10 +375,8 @@ private:
         }
     }
 
-    // ---------------------------------------------------------------------
     // Bilinear transform (TDF-II transposed) Butterworth-like designs
     // Q≈0.707 per biquad. For HP cascade, two identical sections are used.
-    // ---------------------------------------------------------------------
     void designLowpassBiquad(Biquad &bq, double f_cut, double Fs) {
         double Fc = f_cut / Fs;
         double K = std::tan(M_PI * Fc);
@@ -410,17 +399,15 @@ private:
         bq.reset();
     }
 
-    // ---------------------------------------------------------------------
     // Compute the block spectrum (called once per filled block at fs)
     // Periodogram is per-Hz (one-sided). HP deconvolution uses
     // frequency-dependent Tikhonov regularization and adaptive η-from-a
     // mapping, so low-frequency bins do not collapse into a flat plateau.
-    // ---------------------------------------------------------------------
     void computeSpectrum() {
         const int blockSize = std::min(filledSamples, Nblock);
         const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
 
-        // ---- Linear detrend ----
+        // Linear detrend
         const int N = blockSize;
         double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumnx = 0.0;
         {
@@ -438,18 +425,18 @@ private:
         const double a_lin = (denom != 0.0) ? (double(N) * sumnx - sumn * sumx) / denom : 0.0;
         const double b_lin = (sumx - a_lin * sumn) / double(N);
 
-        // ---- PSD scaling ----
+        // PSD scaling
         const double U = window_sum_sq;
         const double base_scale = (U > 0.0 && fs > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
-        // ---- Block-based knee ----
+        // Block-based knee
         const double Tblk = (fs > 0.0) ? (double(N) / fs) : 0.0;
         const double f_blk = (Tblk > 0.0) ? (1.0 / (6.0 * Tblk)) : 0.0;
 
         for (int i = 0; i < Nfreq; i++) {
             const double f = freqs_[i];
 
-            // ---- Goertzel ----
+            // Goertzel
             double s1 = 0.0, s2 = 0.0;
             int idx = startIdx;
             for (int n = 0; n < N; n++) {
@@ -464,7 +451,7 @@ private:
             const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
             double S_aa_meas = power * base_scale;
 
-            // ---- Deconvolve filters with frequency-scaled epsilon ----
+            // Deconvolve filters with frequency-scaled epsilon
             const double Omega_raw = 2.0 * M_PI * f / fs_raw;
             const double H2 =
                 biquad_mag2_raw(hp1_, Omega_raw) *
@@ -474,7 +461,7 @@ private:
             double epsilon_H = 0.02 + 0.5 * (0.05 / (f + 1e-6));
             double S_aa_true = S_aa_meas / (H2 + epsilon_H);
 
-            // ---- Adaptive λ (per frequency) ----
+            // Adaptive λ (per frequency)
             double f_knee = std::max({reg_f0_hz, f_blk});
             double wr = 2.0 * M_PI * std::max(f_knee, 0.6 * f);
 
@@ -484,14 +471,14 @@ private:
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
 
-            // ---- Gentle quadratic guard ----
+            // Gentle guard
             const double f_guard = 0.055;
             if (f < f_guard) {
                 double r = f / f_guard;
                 S_eta *= r * r;
             }
 
-            // ---- EMA ----
+            // EMA
             if (use_psd_ema) {
                 double a = alpha_for_f(f);
                 if (!have_ema) psd_ema_[i] = S_eta;
@@ -506,11 +493,9 @@ private:
         smooth_logfreq_3tap();
     }
 
-    // ---------------------------------------------------------------------
     // Magnitude-squared frequency response of a biquad at raw Fs
     //   bq: filter coefficients (TDF-II transposed form)
     //   Ω : normalized rad/sample frequency at fs_raw
-    // ---------------------------------------------------------------------
     inline double biquad_mag2_raw(const Biquad& bq, double Omega_raw) const {
         const double c1 = std::cos(Omega_raw), s1 = std::sin(Omega_raw);
         const double c2 = std::cos(2 * Omega_raw), s2 = std::sin(2 * Omega_raw);
@@ -528,7 +513,7 @@ private:
         return num2 / std::max(den2, 1e-16);
     }
 
-    // ------------------------- Members / State ----------------------------
+    // Members / State
 
     // Rates and decimation
     double fs_raw = 0.0, fs = 0.0;
@@ -559,7 +544,7 @@ private:
     // Output spectrum
     Eigen::Matrix<double, Nfreq, 1> lastSpectrum_;
 
-    // ---------- Smoothing controls (FIX) ----------
+    // Smoothing controls
     bool  use_psd_ema = true;
     double ema_alpha_low  = 0.20;  // alpha near lowest f
     double ema_alpha_high = 0.06;  // alpha near highest f (smaller -> stronger smoothing)
@@ -577,10 +562,8 @@ private:
 };
 
 #ifdef SPECTRUM_TEST
-// ---------------------------------------------------------
 // Minimal offline test with a single-tone acceleration.
 // Verifies pipeline runs and returns finite, reasonable stats.
-// ---------------------------------------------------------
 void WaveSpectrumEstimator_test() {
     constexpr int Nfreq = 32;
     constexpr int Nblock = 256;
