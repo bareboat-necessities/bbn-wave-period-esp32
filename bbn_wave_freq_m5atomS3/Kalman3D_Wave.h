@@ -387,56 +387,18 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
 
-    void propagate_axis_cov(Eigen::Ref<Eigen::Matrix<T,4,4>> Pblock,
-                            const Eigen::Matrix<T,4,4>& Phi_axis,
-                            const Eigen::Matrix<T,4,4>& Qd_axis)
-    {
-        // P ← Φ P Φᵀ + Q , enforce symmetry
-        Pblock = (Phi_axis * Pblock * Phi_axis.transpose()).selfadjointView<Eigen::Lower>();
-        Pblock += Qd_axis;
-        Pblock = T(0.5) * (Pblock + Pblock.transpose());
-    }
-
     // Propagate top-left attitude (+ optional gyro bias) covariance block
     // This covers the 3x3 (attitude-only) or 6x6 (attitude+gyro bias) base state.
-    // Equivalent to P ← Φ P Φᵀ + Q with small-angle and large-angle handling.
+    // Equivalent to P ← Φ P Φᵀ + Q
     void propagate_att_bias_cov(Eigen::Ref<MatrixBaseN> Pblock,
-                                const Vector3& w,
-                                T Ts)
+                                const Eigen::Matrix<T,BASE_N,BASE_N>& Phi_block,
+                                const Eigen::Matrix<T,BASE_N,BASE_N>& Q_block)
     {
-        Matrix3 I = Matrix3::Identity();
-        T omega = w.norm();
-        T theta = omega * Ts;
+        // Propagate covariance
+        Pblock = (Phi_block * Pblock * Phi_block.transpose()).selfadjointView<Eigen::Lower>();
 
-        MatrixBaseN Phi; Phi.setIdentity();
-
-        // Attitude error block
-        if (theta < T(1e-5)) {
-            // Small-angle Maclaurin expansion
-            Matrix3 Wx = skew_symmetric_matrix(w);
-            Phi.template block<3,3>(0,0) = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
-        } else {
-            // General Rodrigues formula
-            Matrix3 W = skew_symmetric_matrix(w / omega);
-            T s = std::sin(theta);
-            T c = std::cos(theta);
-            Phi.template block<3,3>(0,0) = I - s * W + (1 - c) * (W * W);
-        }
-
-        if constexpr (with_gyro_bias) {
-            // Coupling from gyro bias to attitude error
-            Phi.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
-        }
-
-        // Propagate: P ← Φ P Φᵀ + Q
-        Pblock = (Phi * Pblock * Phi.transpose()).selfadjointView<Eigen::Lower>();
-
-        // Process noise for attitude/bias
-        Pblock.template topLeftCorner<3,3>() += Qbase.template topLeftCorner<3,3>() * Ts;
-        if constexpr (with_gyro_bias) {
-            Pblock.template block<3,3>(3,3).noalias() +=
-                Matrix3::Identity() * (Qbase(3,3) * Ts);
-        }
+        // Add process noise
+        Pblock += Q_block;
 
         // Enforce symmetry
         Pblock = T(0.5) * (Pblock + Pblock.transpose());
