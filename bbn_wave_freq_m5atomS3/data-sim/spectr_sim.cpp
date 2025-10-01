@@ -43,9 +43,7 @@ Vector3f apply_noise(const Vector3f &v, NoiseModel &m) {
     return v + m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
-// ============================
 // Spectrum simulation
-// ============================
 void process_wave_file(const std::string &filename, float dt) {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
@@ -166,9 +164,6 @@ void process_wave_file(const std::string &filename, float dt) {
               << " spectra → " << outname << "\n\n";
 }
 
-// ============================
-// Main
-// ============================
 int main() {
     float dt = 1.0f / 240.0f;
     std::cout << "Standalone spectrum simulation (IMU → estimator vs ref model)\n";
