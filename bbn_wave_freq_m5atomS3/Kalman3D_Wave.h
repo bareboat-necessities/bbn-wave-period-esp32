@@ -502,7 +502,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     last_gyr_bias_corrected = gyr - gyro_bias;
 
     // Δθ = ω Ts → quaternion increment
-    Eigen::Quaternion<T> dq = quat_from_delta_theta(last_gyr_bias_corrected * Ts);
+    Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
 
     // Propagate: right-multiply (matches correction side and F/Jacobians signs )
     qref = qref * dq;
@@ -737,7 +737,7 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetri
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState() {
-    Eigen::Quaternion<T> corr = quat_from_delta_theta(xext.template segment<3>(0));
+    Eigen::Quaternion<T> corr = quat_from_delta_theta((xext.template segment<3>(0)).eval());
     qref = qref * corr;
     qref.normalize();
 
