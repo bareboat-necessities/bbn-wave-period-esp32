@@ -390,7 +390,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Propagate top-left attitude (+ optional gyro bias) covariance block
     // This covers the 3x3 (attitude-only) or 6x6 (attitude+gyro bias) base state.
     // Equivalent to P ← Φ P Φᵀ + Q
-    void propagate_att_bias_cov(Eigen::Ref<MatrixBaseN> Pblock,
+    void propagate_att_bias_cov(Eigen::Block<MatrixNX,BASE_N,BASE_N> Pblock,
                                 const Eigen::Matrix<T,BASE_N,BASE_N>& Phi_block,
                                 const Eigen::Matrix<T,BASE_N,BASE_N>& Q_block)
     {
@@ -407,7 +407,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Propagate one axis [v, p, S, a] 4x4 covariance
     // Each axis is independent, so we update three 4x4 diagonal blocks separately.
     // Equivalent to P ← Φ P Φᵀ + Q , with symmetry enforced.
-    void propagate_axis_cov(Eigen::Ref<Eigen::Matrix<T,4,4>> Pblock,
+    void propagate_axis_cov(Eigen::Block<MatrixNX,4,4> Pblock,
                             const Eigen::Matrix<T,4,4>& Phi_axis,
                             const Eigen::Matrix<T,4,4>& Qd_axis)
     {
