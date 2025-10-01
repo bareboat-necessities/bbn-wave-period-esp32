@@ -580,7 +580,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
 
     // Quaternion correction + zero small-angle
     applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -624,7 +623,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     Pext = T(0.5) * (Pext + Pext.transpose());
 
     applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -702,7 +700,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 
     // Apply correction
     applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
@@ -785,7 +782,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     Pext = T(0.5) * (Pext + Pext.transpose());
 
     applyQuaternionCorrectionFromErrorState();
-    xext.template head<3>().setZero();
 
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
