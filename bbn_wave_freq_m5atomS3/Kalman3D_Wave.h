@@ -574,7 +574,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc(Vect
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 const& gyr, T Ts)
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
+    Vector3 const& gyr, T Ts)
 {
     // Attitude mean propagation
     Vector3 gyro_bias;
@@ -588,12 +589,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     // Δθ = ω Ts → quaternion increment
     Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
 
-    // Propagate: right-multiply (matches correction side and F/Jacobians signs )
+    // Propagate: right-multiply (matches correction side and F/Jacobians signs)
     qref = qref * dq;
     qref.normalize();
 
     // Build exact discrete transition & process Q
-    MatrixNX F_a_ext; MatrixNX Q_a_ext;
+    MatrixNX F_a_ext; 
+    MatrixNX Q_a_ext;
     assembleExtendedFandQ(Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
 
     // Mean propagation for linear subsystem [v,p,S,a_w]
@@ -606,7 +608,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     const auto Phi_lin = F_a_ext.template block<12,12>(OFF_V, OFF_V);
     Eigen::Matrix<T,12,1> x_lin_next = Phi_lin * x_lin_prev;
 
-    // write back mean
+    // Write back mean
     xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
     xext.template segment<3>(OFF_P)  = x_lin_next.template segment<3>(3);
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
@@ -619,7 +621,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
             Pext.template block<BASE_N,BASE_N>(0,0);
         Eigen::Matrix<T,BASE_N,BASE_N> Phi_block = F_a_ext.topLeftCorner(BASE_N, BASE_N);
         Eigen::Matrix<T,BASE_N,BASE_N> Q_block   = Q_a_ext.topLeftCorner(BASE_N, BASE_N);
-        propagate_att_bias_cov<T,BASE_N>(Pblock, Phi_block, Q_block);
+        propagate_att_bias_cov(Pblock, Phi_block, Q_block);
     }
 
     // three OU [v,p,S,a] blocks (per axis)
@@ -634,7 +636,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
         PhiAxis4x1_analytic(tau, Ts, Phi_axis);
         QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
 
-        propagate_axis_cov<T>(Pblock, Phi_axis, Qd_axis);
+        propagate_axis_cov(Pblock, Phi_axis, Qd_axis);
     }
 
     // Mirror base covariance
