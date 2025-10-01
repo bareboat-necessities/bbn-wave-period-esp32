@@ -651,10 +651,19 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
     // Covariance propagation
+    // attitude/bias block (BASE_N × BASE_N)
+    {
+        Eigen::Ref<Matrix<T,BASE_N,BASE_N>> Pblock =
+            Pext.template block<BASE_N,BASE_N>(0,0);
+        Eigen::Matrix<T,BASE_N,BASE_N> Phi_block = F_a_ext.topLeftCorner(BASE_N, BASE_N);
+        Eigen::Matrix<T,BASE_N,BASE_N> Q_block   = Q_a_ext.topLeftCorner(BASE_N, BASE_N);
+        propagate_att_bias_cov<T,BASE_N>(Pblock, Phi_block, Q_block);
+    }
+
+    // three OU [v,p,S,a] blocks (per axis)
     for (int axis = 0; axis < 3; ++axis) {
-        int base = OFF_V + axis;   // offset into big state
-        Eigen::Ref<Matrix<T,4,4>> Pblock =
-            Pext.template block<4,4>(base, base);
+        int base = OFF_V + axis;
+        Eigen::Ref<Matrix<T,4,4>> Pblock = Pext.template block<4,4>(base, base);
 
         T tau    = std::max(T(1e-6), tau_aw);
         T sigma2 = Sigma_aw_stat(axis,axis);
