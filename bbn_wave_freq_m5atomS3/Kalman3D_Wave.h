@@ -378,12 +378,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Quaternion & small-angle helpers (kept)
     void applyQuaternionCorrectionFromErrorState(); // apply correction to qref using xext(0..2)
     void normalizeQuat();
-    void vanLoanDiscretization_12x3(const Eigen::Matrix<T,12,12>& A,
-                                    const Eigen::Matrix<T,12,3>&  G,
-                                    const Eigen::Matrix<T,3,3>&   Sigma_c,
-                                    T Ts,
-                                    Eigen::Matrix<T,12,12>& Phi,
-                                    Eigen::Matrix<T,12,12>& Qd) const;
+
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
 
