@@ -919,9 +919,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     K.setZero();
 
     if (x < T(1e-3)) {
-        // ============================================================
         // Small-x branch: use series expansions to avoid cancellation
-        // ============================================================
         // Derived from Maclaurin expansions of exp(-x), expm1(-x), expm1(-2x).
         // Keep up to O(h^4/τ^3) or higher depending on the entry.
         const T h2 = h*h;
@@ -952,9 +950,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         K(2,0) = K_Sv; K(2,1) = K_Sp; K(2,2) = K_SS; K(2,3) = K_Sa;
         K(3,0) = K_va; K(3,1) = K_pa; K(3,2) = K_Sa; K(3,3) = K_aa;
     } else {
-        // ============================================================
         // General-x branch: stable expm1-based closed forms
-        // ============================================================
         const auto P = make_prims<T>(h, tau);
 
         const T tau2 = tau*tau;
