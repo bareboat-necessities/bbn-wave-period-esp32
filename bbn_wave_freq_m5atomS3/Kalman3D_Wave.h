@@ -673,15 +673,20 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     S_mat.noalias() += J_aw  * P_aw_aw * J_aw.transpose();
 
     if constexpr (with_accel_bias) {
-        const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
-        const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw,  off_ba);
-        const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba,  off_ba);
+        const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba); // θ–ba
+        const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw, off_ba); // aw–ba
+        const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba, off_ba); // ba–ba
 
+        // Pull the *other orientation* blocks directly (don't rely on transpose of θ–ba / aw–ba)
+        const Matrix3 P_ba_th = Pext.template block<3,3>(off_ba, OFF_TH); // ba–θ
+        const Matrix3 P_ba_aw = Pext.template block<3,3>(off_ba, off_aw); // ba–aw
+
+        // Cross terms
         S_mat.noalias() += J_att * P_th_ba * J_ba.transpose();
         S_mat.noalias() += J_aw  * P_aw_ba * J_ba.transpose();
 
-        S_mat.noalias() += J_ba  * P_th_ba.transpose() * J_att.transpose();
-        S_mat.noalias() += J_ba  * P_aw_ba.transpose() * J_aw.transpose();
+        S_mat.noalias() += J_ba  * P_ba_th * J_att.transpose();
+        S_mat.noalias() += J_ba  * P_ba_aw * J_aw.transpose();
 
         S_mat.noalias() += J_ba  * P_ba_ba * J_ba.transpose();
     }
