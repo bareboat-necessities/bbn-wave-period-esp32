@@ -583,9 +583,71 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
-    // Covariance propagation
-    Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
-    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
+    // Covariance propagation (optimized for current F/Q structure)
+    {
+        constexpr int NA = BASE_N;
+        constexpr int NL = 12;
+
+        const auto F_AA = F_a_ext.template block<NA,NA>(0,0);
+        const auto F_LL = F_a_ext.template block<NL,NL>(OFF_V,OFF_V);
+
+        Eigen::Matrix<T,NA,NA> P_AA = Pext.template block<NA,NA>(0,0);
+        Eigen::Matrix<T,NL,NL> P_LL = Pext.template block<NL,NL>(OFF_V,OFF_V);
+        Eigen::Matrix<T,NA,NL> P_AL = Pext.template block<NA,NL>(0,OFF_V);
+
+        Eigen::Matrix<T,NA,NA> P_AA_new;
+        {
+            Eigen::Matrix<T,NA,NA> tmp;
+            tmp.noalias()       = F_AA * P_AA;
+            P_AA_new.noalias()  = tmp * F_AA.transpose();
+            P_AA_new           += Q_a_ext.template block<NA,NA>(0,0);
+        }
+
+        Eigen::Matrix<T,NL,NL> P_LL_new;
+        {
+            Eigen::Matrix<T,NL,NL> tmp;
+            tmp.noalias()       = F_LL * P_LL;
+            P_LL_new.noalias()  = tmp * F_LL.transpose();
+            P_LL_new           += Q_a_ext.template block<NL,NL>(OFF_V,OFF_V);
+        }
+
+        Eigen::Matrix<T,NA,NL> P_AL_new;
+        {
+            Eigen::Matrix<T,NA,NL> tmp;
+            tmp.noalias()       = F_AA * P_AL;
+            P_AL_new.noalias()  = tmp * F_LL.transpose();
+        }
+
+        if constexpr (with_accel_bias) {
+            constexpr int NB = 3;
+            Eigen::Matrix<T,NB,NB> P_BB = Pext.template block<NB,NB>(OFF_BA,OFF_BA);
+            Eigen::Matrix<T,NA,NB> P_AB = Pext.template block<NA,NB>(0,OFF_BA);
+            Eigen::Matrix<T,NL,NB> P_LB = Pext.template block<NL,NB>(OFF_V,OFF_BA);
+
+            Eigen::Matrix<T,NA,NB> P_AB_new = F_AA * P_AB;
+            Eigen::Matrix<T,NL,NB> P_LB_new = F_LL * P_LB;
+            Eigen::Matrix<T,NB,NB> P_BB_new = P_BB + Q_a_ext.template block<NB,NB>(OFF_BA,OFF_BA);
+
+            Pext.template block<NA,NA>(0,0)             = P_AA_new;
+            Pext.template block<NL,NL>(OFF_V,OFF_V)     = P_LL_new;
+            Pext.template block<NA,NL>(0,OFF_V)         = P_AL_new;
+            Pext.template block<NL,NA>(OFF_V,0)         = P_AL_new.transpose();
+
+            Pext.template block<NA,NB>(0,OFF_BA)        = P_AB_new;
+            Pext.template block<NB,NA>(OFF_BA,0)        = P_AB_new.transpose();
+            Pext.template block<NL,NB>(OFF_V,OFF_BA)    = P_LB_new;
+            Pext.template block<NB,NL>(OFF_BA,OFF_V)    = P_LB_new.transpose();
+            Pext.template block<NB,NB>(OFF_BA,OFF_BA)   = P_BB_new;
+        } else {
+            Pext.template block<NA,NA>(0,0)         = P_AA_new;
+            Pext.template block<NL,NL>(OFF_V,OFF_V) = P_LL_new;
+            Pext.template block<NA,NL>(0,OFF_V)     = P_AL_new;
+            Pext.template block<NL,NA>(OFF_V,0)     = P_AL_new.transpose();
+        }
+
+        // Optional symmetry enforcement (remove once validated):
+        Pext = T(0.5) * (Pext + Pext.transpose());
+    }
 
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
