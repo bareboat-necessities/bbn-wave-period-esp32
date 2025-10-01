@@ -665,37 +665,42 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     const Eigen::Ref<const Vector3>& vhat,
     const Eigen::Ref<const Matrix3>& Rm)
 {
-    // Cext: (3 x NX)
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
+    // Jacobian touches only attitude error
+    Matrix3 C_att = -skew_symmetric_matrix(vhat);
 
     // Innovation
     Vector3 inno = meas - vhat;
 
-    // S = C P C^T + Rm  (3x3)
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
+    // Pre-extract P slices
+    Eigen::Matrix<T, NX, 3> P_att_cols = Pext.template block<NX,3>(0,0); // NX x 3
+    Eigen::Matrix<T, 3, NX> P_att_rows = Pext.template block<3,NX>(0,0); // 3 x NX
+    Matrix3 P_AA = Pext.template block<3,3>(0,0);
 
-    // PCt = P C^T  (NX x 3)
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
-
-    // Factor S (SPD) and solve
+    // Innovation covariance
+    Matrix3 S_mat = C_att * P_AA * C_att.transpose() + Rm;
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
+        S_mat += Matrix3::Identity() *
+                 std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+
+    // Kalman gain: K = P_att_cols * C_attᵀ * S⁻¹
+    Eigen::Matrix<T, NX, 3> K = (P_att_cols * C_att.transpose()) * ldlt.solve(Matrix3::Identity());
 
     // State update
     xext.noalias() += K * inno;
 
-    // Joseph covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
+    // Joseph covariance update (rank-3 form)
+    Eigen::Matrix<T, 3, NX> CP = C_att * P_att_rows; // 3 x NX
+    Eigen::Matrix<T, NX, NX> KC = K * CP;            // NX x NX
+    Pext.noalias() = Pext - KC - KC.transpose() + K * Rm * K.transpose();
+
+    // Symmetrize
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Quaternion correction + zero small-angle
+    // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
 }
 
