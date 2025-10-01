@@ -21,7 +21,7 @@ inline float R_S_law(float Tp, float R_S_base = 1.13f, float T_p_base = 8.5f) {
     return R_S_base * std::pow(Tp/T_p_base, 1.0 / 3.0);
 }
 
-//- wave model headers-
+// wave model headers
 #include "Jonswap3dStokesWaves.h"
 #include "PiersonMoskowitzStokes3D_Waves.h"
 #include "DirectionalSpread.h"
