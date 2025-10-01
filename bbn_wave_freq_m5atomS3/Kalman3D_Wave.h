@@ -579,7 +579,7 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Vector3 const& gyr, T Ts)
 {
-    // ===== Mean propagation (unchanged) =====
+    // ===== Mean propagation =====
     Vector3 gyro_bias;
     if constexpr (with_gyro_bias) {
         gyro_bias = xext.template segment<3>(3);
@@ -588,10 +588,12 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
 
+    // Δθ = ω Ts → quaternion increment
     Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
     qref = qref * dq;
     qref.normalize();
 
+    // Build F, Q
     MatrixNX F_a_ext;
     MatrixNX Q_a_ext;
     assembleExtendedFandQ(Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
@@ -611,82 +613,75 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
-    // ===== Covariance propagation (block-wise, complete) =====
-    constexpr int NA = BASE_N;   // attitude (+ gyro bias if enabled)
+    // ===== Covariance propagation (block-wise exact) =====
+    constexpr int NA = BASE_N;   // attitude (+ gyro bias)
     constexpr int NL = 12;       // [v p S a_w]
     constexpr int NC = with_accel_bias ? 3 : 0;
 
-    // Blocks of F and Q we actually need
+    // F and Q blocks
     const Eigen::Matrix<T,NA,NA> F_AA = F_a_ext.template block<NA,NA>(0,0);
     const Eigen::Matrix<T,NL,NL> F_LL = F_a_ext.template block<NL,NL>(OFF_V, OFF_V);
     Eigen::Matrix<T,NC,NC> F_CC;
-    if constexpr (with_accel_bias) {
-        F_CC.setIdentity(); // accel bias is RW ⇒ F = I
-    }
+    if constexpr (with_accel_bias) F_CC.setIdentity();
 
     const Eigen::Matrix<T,NA,NA> Q_AA = Q_a_ext.template block<NA,NA>(0,0);
     const Eigen::Matrix<T,NL,NL> Q_LL = Q_a_ext.template block<NL,NL>(OFF_V, OFF_V);
     Eigen::Matrix<T,NC,NC> Q_CC;
-    if constexpr (with_accel_bias) {
-        Q_CC = Q_a_ext.template block<NC,NC>(OFF_BA, OFF_BA);
-    }
+    if constexpr (with_accel_bias) Q_CC = Q_a_ext.template block<NC,NC>(OFF_BA, OFF_BA);
 
-    // Take needed P blocks (read-only views)
+    // Old P blocks
     const Eigen::Matrix<T,NA,NA> P_AA = Pext.template block<NA,NA>(0,0);
     const Eigen::Matrix<T,NL,NL> P_LL = Pext.template block<NL,NL>(OFF_V, OFF_V);
-
     Eigen::Matrix<T,NA,NL> P_AL = Pext.template block<NA,NL>(0, OFF_V);
+
+    Eigen::Matrix<T,NC,NC> P_CC;
     Eigen::Matrix<T,NA,NC> P_AC;
     Eigen::Matrix<T,NL,NC> P_LC;
-    Eigen::Matrix<T,NC,NC> P_CC;
     if constexpr (with_accel_bias) {
+        P_CC = Pext.template block<NC,NC>(OFF_BA, OFF_BA);
         P_AC = Pext.template block<NA,NC>(0, OFF_BA);
         P_LC = Pext.template block<NL,NC>(OFF_V, OFF_BA);
-        P_CC = Pext.template block<NC,NC>(OFF_BA, OFF_BA);
     }
 
-    // ---- propagate diagonal blocks ----
+    // Diagonal block updates
     Eigen::Matrix<T,NA,NA> P_AA_new = F_AA * P_AA * F_AA.transpose() + Q_AA;
     Eigen::Matrix<T,NL,NL> P_LL_new = F_LL * P_LL * F_LL.transpose() + Q_LL;
 
     Eigen::Matrix<T,NC,NC> P_CC_new;
     if constexpr (with_accel_bias) {
-        // F_CC = I, so: P_CC' = P_CC + Q_CC
-        P_CC_new = P_CC + Q_CC;
+        P_CC_new = P_CC + Q_CC; // F_CC = I
     }
 
-    // ---- propagate cross blocks (because F is block-diagonal) ----
+    // Cross blocks
     Eigen::Matrix<T,NA,NL> P_AL_new = F_AA * P_AL * F_LL.transpose();
-
     Eigen::Matrix<T,NA,NC> P_AC_new;
     Eigen::Matrix<T,NL,NC> P_LC_new;
     if constexpr (with_accel_bias) {
-        // F_CC = I
         P_AC_new = F_AA * P_AC;
         P_LC_new = F_LL * P_LC;
     }
 
-    // ---- write back (and enforce symmetry) ----
-    Pext.template block<NA,NA>(0,0)                 = P_AA_new;
-    Pext.template block<NL,NL>(OFF_V, OFF_V)        = P_LL_new;
-    Pext.template block<NA,NL>(0, OFF_V)            = P_AL_new;
-    Pext.template block<NL,NA>(OFF_V, 0)            = P_AL_new.transpose();
+    // Write back
+    Pext.template block<NA,NA>(0,0)           = P_AA_new;
+    Pext.template block<NL,NL>(OFF_V,OFF_V)   = P_LL_new;
+    Pext.template block<NA,NL>(0,OFF_V)       = P_AL_new;
+    Pext.template block<NL,NA>(OFF_V,0)       = P_AL_new.transpose();
 
     if constexpr (with_accel_bias) {
-        Pext.template block<NC,NC>(OFF_BA, OFF_BA)      = P_CC_new;
-        Pext.template block<NA,NC>(0, OFF_BA)           = P_AC_new;
-        Pext.template block<NC,NA>(OFF_BA, 0)           = P_AC_new.transpose();
-        Pext.template block<NL,NC>(OFF_V, OFF_BA)       = P_LC_new;
-        Pext.template block<NC,NL>(OFF_BA, OFF_V)       = P_LC_new.transpose();
+        Pext.template block<NC,NC>(OFF_BA,OFF_BA) = P_CC_new;
+        Pext.template block<NA,NC>(0,OFF_BA)      = P_AC_new;
+        Pext.template block<NC,NA>(OFF_BA,0)      = P_AC_new.transpose();
+        Pext.template block<NL,NC>(OFF_V,OFF_BA)  = P_LC_new;
+        Pext.template block<NC,NL>(OFF_BA,OFF_V)  = P_LC_new.transpose();
     }
 
-    // Final symmetry clean-up
+    // Enforce symmetry
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Keep mirror of the base block (for your accessors)
+    // Mirror base block
     Pbase = Pext.topLeftCorner(NA, NA);
 
-    // ===== periodic pseudo-measurement on S (unchanged) =====
+    // ===== periodic pseudo-measurement =====
     if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
         applyIntegralZeroPseudoMeas();
         pseudo_update_counter_ = 0;
