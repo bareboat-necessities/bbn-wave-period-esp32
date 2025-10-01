@@ -386,6 +386,16 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
                                     Eigen::Matrix<T,12,12>& Qd) const;
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
+
+    void propagate_axis_cov(Eigen::Ref<Eigen::Matrix<T,4,4>> Pblock,
+                            const Eigen::Matrix<T,4,4>& Phi_axis,
+                            const Eigen::Matrix<T,4,4>& Qd_axis)
+    {
+        // P ← Φ P Φᵀ + Q , enforce symmetry
+        Pblock = (Phi_axis * Pblock * Phi_axis.transpose()).selfadjointView<Eigen::Lower>();
+        Pblock += Qd_axis;
+        Pblock = T(0.5) * (Pblock + Pblock.transpose());
+    }
 };
 
 // Implementation
@@ -584,8 +594,20 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
     // Covariance propagation
-    Pext = F_a_ext * Pext * F_a_ext.transpose() + Q_a_ext;
-    Pext = T(0.5) * (Pext + Pext.transpose()); // enforce symmetry
+    for (int axis = 0; axis < 3; ++axis) {
+        int base = OFF_V + axis;   // offset into big state
+        Eigen::Ref<Matrix<T,4,4>> Pblock =
+            Pext.template block<4,4>(base, base);
+
+        T tau    = std::max(T(1e-6), tau_aw);
+        T sigma2 = Sigma_aw_stat(axis,axis);
+
+        Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
+        PhiAxis4x1_analytic(tau, Ts, Phi_axis);
+        QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
+
+        propagate_axis_cov<T>(Pblock, Phi_axis, Qd_axis);
+    }
 
     // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
