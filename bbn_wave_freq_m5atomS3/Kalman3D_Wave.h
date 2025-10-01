@@ -381,42 +381,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
-
-    // Propagate top-left attitude (+ optional gyro bias) covariance block
-    // This covers the 3x3 (attitude-only) or 6x6 (attitude+gyro bias) base state.
-    // Equivalent to P ← Φ P Φᵀ + Q
-    template<typename PBlockType>
-    void propagate_att_bias_cov(PBlockType Pblock,
-                                const Eigen::Matrix<T,BASE_N,BASE_N>& Phi_block,
-                                const Eigen::Matrix<T,BASE_N,BASE_N>& Q_block)
-    {
-        // Propagate covariance
-        Pblock = Phi_block * Pblock * Phi_block.transpose();
-
-        // Add process noise
-        Pblock += Q_block;
-
-        // Enforce symmetry
-        Pblock = T(0.5) * (Pblock + Pblock.transpose());
-    }
-
-    // Propagate one axis [v, p, S, a] 4x4 covariance
-    // Each axis is independent, so we update three 4x4 diagonal blocks separately.
-    // Equivalent to P ← Φ P Φᵀ + Q , with symmetry enforced.
-    template<typename PBlockType>
-    void propagate_axis_cov(PBlockType Pblock,
-                            const Eigen::Matrix<T,4,4>& Phi_axis,
-                            const Eigen::Matrix<T,4,4>& Qd_axis)
-    {
-        // Propagate covariance
-        Pblock = Phi_axis * Pblock * Phi_axis.transpose();
-
-        // Add process noise
-        Pblock += Qd_axis;
-
-        // Enforce symmetry
-        Pblock = T(0.5) * (Pblock + Pblock.transpose());
-    }
 };
 
 // Implementation
@@ -589,7 +553,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     last_gyr_bias_corrected = gyr - gyro_bias;
 
     // Δθ = ω Ts → quaternion increment
-    Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
+    Eigen::Quaternion<T> dq =
+        quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
     qref = qref * dq;
     qref.normalize();
 
@@ -613,73 +578,16 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
-    // ===== Covariance propagation (block-wise exact) =====
-    constexpr int NA = BASE_N;   // attitude (+ gyro bias)
-    constexpr int NL = 12;       // [v p S a_w]
-    constexpr int NC = with_accel_bias ? 3 : 0;
+    // ===== Covariance propagation (full, safe) =====
+    {
+        // P ← F P Fᵀ + Q , enforce symmetry
+        Pext = (F_a_ext * Pext * F_a_ext.transpose()).selfadjointView<Eigen::Lower>();
+        Pext += Q_a_ext;
+        Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // F and Q blocks
-    const Eigen::Matrix<T,NA,NA> F_AA = F_a_ext.template block<NA,NA>(0,0);
-    const Eigen::Matrix<T,NL,NL> F_LL = F_a_ext.template block<NL,NL>(OFF_V, OFF_V);
-    Eigen::Matrix<T,NC,NC> F_CC;
-    if constexpr (with_accel_bias) F_CC.setIdentity();
-
-    const Eigen::Matrix<T,NA,NA> Q_AA = Q_a_ext.template block<NA,NA>(0,0);
-    const Eigen::Matrix<T,NL,NL> Q_LL = Q_a_ext.template block<NL,NL>(OFF_V, OFF_V);
-    Eigen::Matrix<T,NC,NC> Q_CC;
-    if constexpr (with_accel_bias) Q_CC = Q_a_ext.template block<NC,NC>(OFF_BA, OFF_BA);
-
-    // Old P blocks
-    const Eigen::Matrix<T,NA,NA> P_AA = Pext.template block<NA,NA>(0,0);
-    const Eigen::Matrix<T,NL,NL> P_LL = Pext.template block<NL,NL>(OFF_V, OFF_V);
-    Eigen::Matrix<T,NA,NL> P_AL = Pext.template block<NA,NL>(0, OFF_V);
-
-    Eigen::Matrix<T,NC,NC> P_CC;
-    Eigen::Matrix<T,NA,NC> P_AC;
-    Eigen::Matrix<T,NL,NC> P_LC;
-    if constexpr (with_accel_bias) {
-        P_CC = Pext.template block<NC,NC>(OFF_BA, OFF_BA);
-        P_AC = Pext.template block<NA,NC>(0, OFF_BA);
-        P_LC = Pext.template block<NL,NC>(OFF_V, OFF_BA);
+        // Mirror base block
+        Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
     }
-
-    // Diagonal block updates
-    Eigen::Matrix<T,NA,NA> P_AA_new = F_AA * P_AA * F_AA.transpose() + Q_AA;
-    Eigen::Matrix<T,NL,NL> P_LL_new = F_LL * P_LL * F_LL.transpose() + Q_LL;
-
-    Eigen::Matrix<T,NC,NC> P_CC_new;
-    if constexpr (with_accel_bias) {
-        P_CC_new = P_CC + Q_CC; // F_CC = I
-    }
-
-    // Cross blocks
-    Eigen::Matrix<T,NA,NL> P_AL_new = F_AA * P_AL * F_LL.transpose();
-    Eigen::Matrix<T,NA,NC> P_AC_new;
-    Eigen::Matrix<T,NL,NC> P_LC_new;
-    if constexpr (with_accel_bias) {
-        P_AC_new = F_AA * P_AC;
-        P_LC_new = F_LL * P_LC;
-    }
-
-    // Write back
-    Pext.template block<NA,NA>(0,0)           = P_AA_new;
-    Pext.template block<NL,NL>(OFF_V,OFF_V)   = P_LL_new;
-    Pext.template block<NA,NL>(0,OFF_V)       = P_AL_new;
-    Pext.template block<NL,NA>(OFF_V,0)       = P_AL_new.transpose();
-
-    if constexpr (with_accel_bias) {
-        Pext.template block<NC,NC>(OFF_BA,OFF_BA) = P_CC_new;
-        Pext.template block<NA,NC>(0,OFF_BA)      = P_AC_new;
-        Pext.template block<NC,NA>(OFF_BA,0)      = P_AC_new.transpose();
-        Pext.template block<NL,NC>(OFF_V,OFF_BA)  = P_LC_new;
-        Pext.template block<NC,NL>(OFF_BA,OFF_V)  = P_LC_new.transpose();
-    }
-
-    // Enforce symmetry
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    // Mirror base block
-    Pbase = Pext.topLeftCorner(NA, NA);
 
     // ===== periodic pseudo-measurement =====
     if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
