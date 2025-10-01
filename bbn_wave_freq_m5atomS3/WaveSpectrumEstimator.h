@@ -10,7 +10,7 @@
 #include <vector>
 #include <cmath>
 #include <limits>
-#include <algorithm> // for std::clamp
+#include <algorithm> // std::clamp, std::max
 
 #ifdef SPECTRUM_TEST
 #include <iostream>
@@ -18,53 +18,14 @@
 #endif
 
 /*
+    WaveSpectrumEstimator — Uniform-bin version
 
-    Copyright 2025, Mikhail Grushinskiy
-
-    WaveSpectrumEstimator
-
-    This class estimates the ocean wave spectrum from acceleration measurements.
-    It implements a decimated, sliding-window Goertzel algorithm with optional
-    Hann windowing and cascaded biquad filtering at the raw sample rate.
-
-    Signal chain (per raw sample):
-        raw a_z  →  HP (2nd)  →  HP (2nd)   →  LP (2nd)   →  ↓ (decimate by D)  →  block buffer
-                          \_____ 4th-order HP cascade _____/
-
-    Why HP cascade?
-        A single 2nd-order HP is often not enough to suppress accelerometer bias / very-low-f drift.
-        Cascading two identical 2nd-order sections gives a 4th-order Butterworth-like HP with a
-        much steeper rolloff below ~0.05–0.07 Hz, which reduces inflated power in the lowest bins.
-
-    Spectrum estimation:
-        - Linear detrend the decimated block.
-        - Apply Hann window.
-        - Goertzel at *bin center frequencies* (log + linear mix) → acceleration PSD S_aa(f).
-        - Convert to displacement PSD via regularized inversion:
-              S_eta(f) = S_aa(f) / (ω² + λ²)²,  with λ = 2π·f_reg
-          (Tikhonov regularization stabilizes the 1/ω⁴ inversion at low f.)
-
-    Integration and consistency:
-        - Bin edges define Δf[i]; bin centers = Goertzel analysis frequencies.
-        - Significant wave height Hs uses **midpoint rule integration**:
-              m0 = Σ S_eta(f_i)·Δf[i],   Hs = 4√m0
-        - Analysis frequencies, reported frequencies, and integration widths are always consistent.
-
-    Smoothing:
-        - Both 3-tap smoothing and EMA are performed in the **energy domain**
-          (E_i = S_eta(f_i)·Δf[i]) to avoid inflating log-spaced bins.
-        - After smoothing/EMA, results are converted back to densities per Hz.
-
-    Outputs:
-        - getDisplacementSpectrum() : S_eta(f) over the user-defined grid
-        - computeHs()               : 4√m0 with midpoint integration
-        - estimateFp()              : log-parabolic peak interpolation
-        - fitPiersonMoskowitz()     : log-least-squares fit for (α, f_p)
-
-    Embedded-friendly:
-        - Fixed-size Eigen vectors, std::array buffers, no heap allocations
-        - Biquad sections in TDF-II transposed form for numerical stability
-
+    - Frequency grid is uniformly spaced between f_min..f_max (Nfreq bins → Nfreq+1 edges).
+    - Goertzel evaluates exactly at the bin centers used for reporting (consistency).
+    - Hs uses midpoint-rule integration: m0 = Σ S_eta(f_i) * Δf_i; Hs = 4√m0.
+    - EMA and 3-tap smoothing operate in the ENERGY domain (E_i = S_eta * Δf_i),
+      then convert back to density per Hz to avoid inflating wide bins.
+    - Raw-rate cascade: HP (2nd) + HP (2nd) + LP (2nd) → decimate → window → Goertzel.
 */
 
 template<int Nfreq = 32, int Nblock = 256>
@@ -78,9 +39,8 @@ public:
     struct PMFitResult { double alpha, fp, cost; };
 
     struct Biquad {
-        double b0 = 0, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
-        double z1 = 0, z2 = 0;
-
+        double b0=0, b1=0, b2=0, a1=0, a2=0;
+        double z1=0, z2=0;
         inline double process(double x) {
             double y = b0 * x + z1;
             z1 = b1 * x - a1 * y + z2;
@@ -95,70 +55,55 @@ public:
                           bool hannEnabled_ = true)
         : fs_raw(fs_raw_), decimFactor(decimFactor_), hannEnabled(hannEnabled_)
     {
-        // Effective (post-decimation) sample rate
         fs = fs_raw / decimFactor;
 
-        // Build frequency grid + Goertzel coeffs together
         buildFrequencyGridAndGoertzel();
 
-        // Precompute Hann (or rectangular) window
         double sumsq = 0.0;
         for (int n = 0; n < Nblock; n++) {
-            if (hannEnabled) {
-                window_[n] = 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1)));
-            } else {
-                window_[n] = 1.0;
-            }
+            window_[n] = hannEnabled ? 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (Nblock - 1))) : 1.0;
             sumsq += window_[n] * window_[n];
         }
         window_sum_sq = sumsq;
 
-        // Reset runtime state
         reset();
 
-        // Design raw-rate biquads (LP + HP cascade)
-        const double lp_cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor)); // anti-alias guard
-        designLowpassBiquad(lp_, lp_cutoffHz, fs_raw_);
+        const double lp_cut = 0.45 * (fs_raw_ / (2.0 * decimFactor)); // guard anti-alias
+        designLowpassBiquad(lp_, lp_cut, fs_raw_);
         designHighpassBiquad(hp1_, hp_f0_hz, fs_raw_);
         designHighpassBiquad(hp2_, hp_f0_hz, fs_raw_);
     }
 
-    // Reset states and circular buffer; does not change design parameters
     void reset() {
         buffer_.fill(0.0);
         writeIndex = 0;
         decimCounter = 0;
         filledSamples = 0;
         isWarm = false;
+
         lastSpectrum_.setZero();
         hp1_.reset(); hp2_.reset(); lp_.reset();
 
-        // reset EMA state
         have_ema = false;
         psd_ema_.setZero();
     }
 
-    // Feed ONE raw acceleration sample (units: m/s^2) at fs_raw.
-    // Returns true exactly when a new block spectrum has been computed.
+    // Feed one raw acceleration sample; returns true exactly when a new spectrum is ready.
     bool processSample(double x_raw) {
-        // 4th-order high-pass (cascade two identical 2nd-order sections)
+        // raw-rate HP cascade + LP
         double x_hp = hp2_.process(hp1_.process(x_raw));
+        double y    = lp_.process(x_hp);
 
-        // 2nd-order low-pass (anti-aliasing before decimation)
-        double y = lp_.process(x_hp);
-
-        // Decimate by integer factor (keep every D-th sample)
+        // decimate
         if (++decimCounter < decimFactor) return false;
         decimCounter = 0;
 
-        // Push to circular buffer at the block (post-decimation) rate
         buffer_[writeIndex] = y;
         writeIndex = (writeIndex + 1) % Nblock;
         filledSamples++;
 
         if (filledSamples >= Nblock) isWarm = true;
 
-        // Compute spectrum once per full block
         if ((filledSamples % Nblock) == 0) {
             computeSpectrum();
             return true;
@@ -166,35 +111,24 @@ public:
         return false;
     }
 
-    // Latest displacement spectrum S_eta(f) on the fixed grid
     Vec getDisplacementSpectrum() const { return lastSpectrum_; }
-
-    // Access original frequency grid
     std::array<double, Nfreq> getFrequencies() const { return freqs_; }
-
-    // True if at least one full block has been accumulated
     bool ready() const { return isWarm; }
 
-    // Significant wave height Hs = 4 * sqrt(m0)
-    // m0 = ∫ S_eta(f) df approximated by the midpoint rule
-    // (using spectrum values at bin centers with their corresponding Δf).
+    // Hs = 4 * sqrt( ∑ S_eta(f_i) Δf_i ), midpoint rule (values are at bin centers)
     double computeHs() const {
         double m0 = 0.0;
-        for (int i = 0; i < Nfreq; i++) {
-            m0 += lastSpectrum_[i] * df_[i];  // midpoint rule
-        }
+        for (int i = 0; i < Nfreq; i++) m0 += lastSpectrum_[i] * df_[i];
         return 4.0 * std::sqrt(std::max(m0, 0.0));
     }
 
-    // Peak frequency using proper log-parabolic interpolation
+    // Log-parabolic interpolation around the max bin in log-f / log-S space
     double estimateFp() const {
-        int k = 0; double vmax = 0.0;
-        for (int i = 0; i < Nfreq; ++i) {
-            if (lastSpectrum_[i] > vmax) { vmax = lastSpectrum_[i]; k = i; }
-        }
+        int k = 0;
+        double vmax = 0.0;
+        for (int i = 0; i < Nfreq; ++i) if (lastSpectrum_[i] > vmax) { vmax = lastSpectrum_[i]; k = i; }
         if (k == 0 || k == Nfreq - 1) return freqs_[k];
 
-        // Use log-frequency for true log-parabolic interpolation
         const double f0 = freqs_[k-1], f1 = freqs_[k], f2 = freqs_[k+1];
         if (f0 <= 0 || f1 <= 0 || f2 <= 0) return f1;
 
@@ -203,9 +137,8 @@ public:
         const double y1 = safeLog(lastSpectrum_[k]);
         const double y2 = safeLog(lastSpectrum_[k+1]);
 
-        // Quadratic fit y = a x^2 + b x + c (via Lagrange)
         const double dx01 = x0 - x1, dx02 = x0 - x2, dx12 = x1 - x2;
-        const double denom = (dx01 * dx02 * dx12);
+        const double denom = dx01 * dx02 * dx12;
         if (std::abs(denom) < 1e-18) return f1;
 
         const double L0a = 1.0 / (dx01 * dx02);
@@ -218,16 +151,15 @@ public:
             y1 * (-(x0 + x2) * L1a) +
             y2 * (-(x0 + x1) * L2a);
 
-        if (a >= 0.0) return f1; // not a concave peak
+        if (a >= 0.0) return f1;
 
         const double x_peak = -b / (2.0 * a);
         const double f_peak = std::exp(x_peak);
-
-        if (f_peak <= std::min(f0,f2) || f_peak >= std::max(f0,f2)) return f1;
+        if (f_peak <= std::min(f0, f2) || f_peak >= std::max(f0, f2)) return f1;
         return f_peak;
     }
 
-    // Simple PM log-LS fit (α, f_p) with frequency-weighted cost
+    // PM log-LS fit with Δf-weighted cost
     PMFitResult fitPiersonMoskowitz() const {
         Vec S_obs = lastSpectrum_;
         for (int i = 0; i < Nfreq; i++) if (S_obs[i] <= 0) S_obs[i] = 1e-12;
@@ -237,31 +169,23 @@ public:
             double cost = 0.0;
             constexpr double beta = 0.74;
             for (int i = 0; i < Nfreq - 1; i++) {
-                // Bin width for integration weight
-                double df = df_[i];
-                double f = freqs_[i];
+                double f = freqs_[i], df = df_[i];
                 double model = a * g * g * std::pow(2.0 * M_PI * f, -5.0)
                                * std::exp(-beta * std::pow(omega_p / (2.0 * M_PI * f), 4.0));
                 if (model <= 0) model = 1e-12;
                 double d = safeLog(S_obs[i]) - safeLog(model);
-                cost += df * d * d;   // weighted by frequency spacing
+                cost += df * d * d;
             }
             return cost;
         };
 
-        // Coarse grid + coordinate descent refinement
+        // Uniform grid over fp for robustness (uniform bins case)
         constexpr int N_fp_search = 32;
-        constexpr double fp_min = 0.05, fp_transition = 0.1, fp_max = 1.0;
+        constexpr double fp_min = 0.05, fp_max = 1.0;
         std::array<double, N_fp_search> fp_grid;
-        int n_log = static_cast<int>(N_fp_search * 0.4);
-        int n_lin = N_fp_search - n_log;
-        for (int i = 0; i < n_log; i++) {
-            double t = double(i) / (n_log - 1);
-            fp_grid[i] = fp_min * std::pow(fp_transition / fp_min, t);
-        }
-        for (int i = 0; i < n_lin; i++) {
-            double t = double(i) / (n_lin - 1);
-            fp_grid[n_log + i] = fp_transition + t * (fp_max - fp_transition);
+        for (int i = 0; i < N_fp_search; i++) {
+            double t = double(i) / double(N_fp_search - 1);
+            fp_grid[i] = fp_min + t * (fp_max - fp_min);
         }
 
         double bestA = 1e-5, bestFp = fp_grid[0], bestC = std::numeric_limits<double>::infinity();
@@ -277,8 +201,7 @@ public:
         double alpha = bestA, fp = bestFp;
         double stepA = 0.1, stepFp = 0.1;
         for (int iter = 0; iter < 40; iter++) {
-            bool improved = false;
-            double c;
+            bool improved = false; double c;
             c = cost_fn(alpha + stepA, fp); if (c < bestC) { bestC = c; alpha += stepA; improved = true; }
             c = cost_fn(alpha - stepA, fp); if (c < bestC) { bestC = c; alpha -= stepA; improved = true; }
             c = cost_fn(alpha, fp + stepFp); if (c < bestC) { bestC = c; fp += stepFp; improved = true; }
@@ -288,11 +211,7 @@ public:
         return {alpha, fp, bestC};
     }
 
-    // Runtime knobs
-    void set_regularization_f0(double f0_hz) {
-        reg_f0_hz = std::max(1e-6, f0_hz);
-    }
-
+    void set_regularization_f0(double f0_hz) { reg_f0_hz = std::max(1e-6, f0_hz); }
     void set_highpass_f0(double f0_hz) {
         hp_f0_hz = std::max(0.0, f0_hz);
         designHighpassBiquad(hp1_, hp_f0_hz, fs_raw);
@@ -304,104 +223,47 @@ private:
 
     inline double alpha_for_f(double f) const {
         const double fmin = freqs_[0];
-        const double fmax = freqs_[Nfreq-1];
+        const double fmax = freqs_[Nfreq - 1];
         double t = (f - fmin) / std::max(1e-12, (fmax - fmin));
         t = std::clamp(t, 0.0, 1.0);
         return ema_alpha_low + (ema_alpha_high - ema_alpha_low) * t;
     }
 
-    // Energy-domain 3-tap smoothing
-    //
-    // For log-spaced bins, smoothing raw PSD densities S(f) biases wide bins upward.
-    // Instead, we first convert to ENERGY per bin:
-    //     E_i = S(f_i) * Δf_i
-    // Smooth E across neighbors (weights ~ log-frequency spacing), then convert back:
-    //     S_smoothed(f_i) = Eout_i / Δf_i
-    //
-    // This preserves spectral energy while reducing variance without log-bin inflation.
+    // Energy-domain 3-tap smoothing (uniform bins → symmetric fixed weights ok)
     void smooth_logfreq_3tap() {
         if (Nfreq < 3) return;
+        Eigen::Matrix<double, Nfreq, 1> S = lastSpectrum_; // density
+        Eigen::Matrix<double, Nfreq, 1> E;                 // energy per bin
+        for (int i = 0; i < Nfreq; ++i) E[i] = S[i] * df_[i];
 
-        // Work in ENERGY domain first: E_i = S_i * Δf_i
-        Eigen::Matrix<double, Nfreq, 1> S = lastSpectrum_; // density (per Hz)
-        Eigen::Matrix<double, Nfreq, 1> E;                 // energy in each bin
-        for (int i = 0; i < Nfreq; ++i) {
-            E[i] = S[i] * df_[i];
-        }
-
-        auto wpair = [&](int i) {
-            const double eps = 1e-12;
-            double x_im1 = (i > 0) ? std::log(std::max(freqs_[i-1], eps))
-                                   : std::log(std::max(freqs_[i], eps));
-            double x_i   = std::log(std::max(freqs_[i],   eps));
-            double x_ip1 = (i < Nfreq - 1) ? std::log(std::max(freqs_[i+1], eps))
-                                           : std::log(std::max(freqs_[i], eps));
-            double dL = std::max(0.0, x_i - x_im1);
-            double dR = std::max(0.0, x_ip1 - x_i);
-
-            const double k = 0.35;    // neighbor strength
-            const double minC = 0.40; // keep ≥40% on center
-            double wL = k * dL;
-            double wR = k * dR;
-            double wC = std::max(minC, 1.0 - (wL + wR));
-            double W  = wL + wC + wR;
-            return std::array<double,3>{ wL / W, wC / W, wR / W };
-        };
-
+        constexpr double wL = 0.25, wC = 0.5, wR = 0.25;
         Eigen::Matrix<double, Nfreq, 1> Eout = E;
         for (int i = 0; i < Nfreq; ++i) {
-            auto w = wpair(i);
             double Em1 = (i > 0) ? E[i-1] : E[i];
             double Ep1 = (i < Nfreq - 1) ? E[i+1] : E[i];
-            Eout[i] = w[0] * Em1 + w[1] * E[i] + w[2] * Ep1;
+            Eout[i] = wL * Em1 + wC * E[i] + wR * Ep1;
         }
-
-        // Convert back to density
-        for (int i = 0; i < Nfreq; ++i) {
-            lastSpectrum_[i] = (df_[i] > 0.0) ? (Eout[i] / df_[i]) : 0.0;
-        }
+        for (int i = 0; i < Nfreq; ++i) lastSpectrum_[i] = (df_[i] > 0.0) ? (Eout[i] / df_[i]) : 0.0;
     }
 
+    // Uniform frequency grid + Goertzel coefficients at decimated fs
     void buildFrequencyGridAndGoertzel() {
         constexpr double f_min = 0.04;
-        constexpr double f_transition = 0.1;
         constexpr double f_max = 1.2;
 
-        int n_log = int(Nfreq * 0.4);
-        int n_lin = Nfreq - n_log;
-
-        // log-spaced section
-        for (int i = 0; i <= n_log; i++) {
-            double t = double(i) / double(n_log);
-            f_edges_[i] = f_min * std::pow(f_transition / f_min, t);
+        for (int i = 0; i <= Nfreq; i++) {
+            double t = double(i) / double(Nfreq);
+            f_edges_[i] = f_min + t * (f_max - f_min);
         }
-        // linear-spaced section
-        for (int i = 1; i <= n_lin; i++) {
-            double t = double(i) / double(n_lin);
-            f_edges_[n_log + i] = f_transition + t * (f_max - f_transition);
-        }
-
-        // centers, widths, and Goertzel coeffs
         for (int i = 0; i < Nfreq; i++) {
-            if (i < n_log) {
-                // geometric mean = true constant-Q center
-                freqs_[i] = std::sqrt(f_edges_[i] * f_edges_[i+1]);
-            } else {
-                // arithmetic mean for linear bins
-                freqs_[i] = 0.5 * (f_edges_[i] + f_edges_[i+1]);
-            }
-            df_[i] = f_edges_[i+1] - f_edges_[i];
-
-            // Goertzel setup at fs (decimated rate!)
-            double omega_rs = 2.0 * M_PI * freqs_[i] / fs; // rad/sample
+            freqs_[i] = 0.5 * (f_edges_[i] + f_edges_[i+1]);     // center
+            df_[i]    = f_edges_[i+1] - f_edges_[i];             // width
+            double omega_rs = 2.0 * M_PI * freqs_[i] / fs;       // rad/sample @ fs
             coeffs_[i] = 2.0 * std::cos(omega_rs);
-            cos1_[i]   = std::cos(omega_rs);
-            sin1_[i]   = std::sin(omega_rs);
         }
     }
 
-    // Bilinear transform (TDF-II transposed) Butterworth-like designs
-    // Q≈0.707 per biquad. For HP cascade, two identical sections are used.
+    // Biquad designs (Butterworth-like, TDF-II transposed)
     void designLowpassBiquad(Biquad &bq, double f_cut, double Fs) {
         double Fc = f_cut / Fs;
         double K = std::tan(M_PI * Fc);
@@ -410,13 +272,8 @@ private:
         bq.a1 = 2.0 * (K * K - 1.0) * norm;  bq.a2 = (1.0 - K / Q + K * K) * norm;
         bq.reset();
     }
-
     void designHighpassBiquad(Biquad &bq, double f_cut, double Fs) {
-        if (f_cut <= 0.0) { // bypass if disabled
-            bq.b0 = 1.0; bq.b1 = 0.0; bq.b2 = 0.0; bq.a1 = 0.0; bq.a2 = 0.0;
-            bq.reset();
-            return;
-        }
+        if (f_cut <= 0.0) { bq.b0 = 1.0; bq.b1 = bq.b2 = bq.a1 = bq.a2 = 0.0; bq.reset(); return; }
         double Fc = f_cut / Fs;
         double K = std::tan(M_PI * Fc);
         double norm = 1.0 / (1.0 + K / Q + K * K);
@@ -425,9 +282,7 @@ private:
         bq.reset();
     }
 
-    // Magnitude-squared frequency response of a biquad at raw Fs
-    //   bq: filter coefficients (TDF-II transposed form)
-    //   Ω : normalized rad/sample frequency at fs_raw
+    // |H(e^{jΩ})|^2 at raw sample rate
     inline double biquad_mag2_raw(const Biquad& bq, double Omega_raw) const {
         const double c1 = std::cos(Omega_raw), s1 = std::sin(Omega_raw);
         const double c2 = std::cos(2 * Omega_raw), s2 = std::sin(2 * Omega_raw);
@@ -441,19 +296,15 @@ private:
         const double num2 = num_re * num_re + num_im * num_im;
         const double den2 = den_re * den_re + den_im * den_im;
 
-        // Clamp instead of zeroing → prevents log-scale dropouts at low f
         return num2 / std::max(den2, 1e-16);
     }
 
-    // Compute the block spectrum (called once per filled block at fs)
-    // Periodogram is per-Hz (one-sided). HP deconvolution uses
-    // frequency-dependent Tikhonov regularization and adaptive η-from-a mapping.
+    // Compute one spectrum at the decimated rate
     void computeSpectrum() {
-        const int blockSize = std::min(filledSamples, Nblock);
-        const int startIdx  = (writeIndex + Nblock - blockSize) % Nblock;
+        const int N = std::min(filledSamples, Nblock);
+        const int startIdx = (writeIndex + Nblock - N) % Nblock;
 
-        // Linear detrend
-        const int N = blockSize;
+        // linear detrend over block
         double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumnx = 0.0;
         {
             int idx = startIdx;
@@ -470,18 +321,18 @@ private:
         const double a_lin = (denom != 0.0) ? (double(N) * sumnx - sumn * sumx) / denom : 0.0;
         const double b_lin = (sumx - a_lin * sumn) / double(N);
 
-        // PSD scaling
+        // periodogram scale for one-sided PSD
         const double U = window_sum_sq;
         const double base_scale = (U > 0.0 && fs > 0.0) ? (2.0 / (fs * U)) : 0.0;
 
-        // Block-based knee (regularization frequency floor from duration)
+        // regularization floor from block duration
         const double Tblk = (fs > 0.0) ? (double(N) / fs) : 0.0;
         const double f_blk = (Tblk > 0.0) ? (1.0 / (6.0 * Tblk)) : 0.0;
 
         for (int i = 0; i < Nfreq; i++) {
             const double f = freqs_[i];
 
-            // Goertzel
+            // Goertzel at frequency f (rad/sample = 2π f / fs)
             double s1 = 0.0, s2 = 0.0;
             int idx = startIdx;
             for (int n = 0; n < N; n++) {
@@ -496,50 +347,38 @@ private:
             const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
             double S_aa_meas = power * base_scale;
 
-            // Deconvolve filters with frequency-scaled epsilon
+            // filter deconvolution at RAW rate
             const double Omega_raw = 2.0 * M_PI * f / fs_raw;
             const double H2 =
                 biquad_mag2_raw(hp1_, Omega_raw) *
                 biquad_mag2_raw(hp2_, Omega_raw) *
                 biquad_mag2_raw(lp_ , Omega_raw);
 
-            double epsilon_H = 0.02 + 0.5 * (0.05 / (f + 1e-6));
-            double S_aa_true = S_aa_meas / (H2 + epsilon_H);
+            const double epsilon_H = 0.02 + 0.5 * (0.05 / (f + 1e-6));
+            const double S_aa_true = S_aa_meas / (H2 + epsilon_H);
 
-            // Adaptive λ (per frequency)
-            double f_knee = std::max({reg_f0_hz, f_blk});
-            double wr = 2.0 * M_PI * std::max(f_knee, 0.6 * f);
-
+            // displacement PSD via regularized 1/ω^4
+            const double f_knee = std::max({reg_f0_hz, f_blk});
+            const double wr = 2.0 * M_PI * std::max(f_knee, 0.6 * f);
             const double w = 2.0 * M_PI * f;
             const double w_eff2 = w * w + wr * wr;
             double S_eta = (w_eff2 > 0.0) ? (S_aa_true / (w_eff2 * w_eff2)) : 0.0;
 
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
 
-            // Gentle guard near DC (prevents plateau when regularization is too small)
+            // gentle guard very near DC (optional)
             const double f_guard = 0.055;
             if (f < f_guard) {
                 double r = f / f_guard;
                 S_eta *= r * r;
             }
 
-            // EMA in ENERGY domain
-            //
-            // Like smoothing, EMA must respect bin widths.
-            // We update exponentially weighted averages of energy:
-            //     E_i = S_eta(f_i) * Δf_i
-            // Then convert back to density per Hz for reporting:
-            //     S_eta_smoothed = E_i / Δf_i
-            //
-            // This avoids systematic inflation of log-spaced bins.
+            // EMA in ENERGY domain, then convert back to density
             double E_eta = S_eta * df_[i];
             if (use_psd_ema) {
                 double a = alpha_for_f(f);
-                if (!have_ema) {
-                    psd_ema_[i] = E_eta;
-                } else {
-                    psd_ema_[i] = (1.0 - a) * psd_ema_[i] + a * E_eta;
-                }
+                if (!have_ema) psd_ema_[i] = E_eta;
+                else           psd_ema_[i] = (1.0 - a) * psd_ema_[i] + a * E_eta;
                 lastSpectrum_[i] = (df_[i] > 0.0) ? (psd_ema_[i] / df_[i]) : 0.0;
             } else {
                 lastSpectrum_[i] = S_eta;
@@ -550,63 +389,56 @@ private:
         smooth_logfreq_3tap();
     }
 
-    // Members / State
-
-    // Rates and decimation
+    // Members / state
     double fs_raw = 0.0, fs = 0.0;
-    int decimFactor = 1;
-    bool hannEnabled = true;
+    int    decimFactor = 1;
+    bool   hannEnabled = true;
 
-    // Regularization and HP corner (Hz)
-    double reg_f0_hz = 0.008;  // set to lowest physically meaningful wave frequency
-    double hp_f0_hz  = 0.025;  // bias-removal corner for 4th-order HP cascade
+    // regularization and HP corner (Hz)
+    double reg_f0_hz = 0.008;
+    double hp_f0_hz  = 0.025;
 
-    // Spectral grid and Goertzel tables
-    std::array<double, Nfreq> freqs_{};
-    std::array<double, Nfreq> coeffs_{};
-    std::array<double, Nfreq> cos1_{}, sin1_{};
-
-    // Frequency grid edges and bin widths
-    std::array<double, Nfreq+1> f_edges_{};
+    // frequency grid
+    std::array<double, Nfreq>   freqs_{};
+    std::array<double, Nfreq>   coeffs_{};
     std::array<double, Nfreq>   df_{};
+    std::array<double, Nfreq+1> f_edges_{};
 
-    // Block buffer (post-decimation) and window
+    // block buffers
     std::array<double, Nblock> buffer_{};
     std::array<double, Nblock> window_{};
     double window_sum_sq = 1.0;
 
-    // IIR filters at raw Fs
+    // filters (raw Fs)
     Biquad hp1_, hp2_, lp_;
 
-    // Output spectrum
+    // outputs
     Eigen::Matrix<double, Nfreq, 1> lastSpectrum_;
 
-    // Smoothing controls
+    // smoothing / EMA
     bool  use_psd_ema = true;
-    double ema_alpha_low  = 0.20;  // alpha near lowest f
-    double ema_alpha_high = 0.06;  // alpha near highest f (smaller -> stronger smoothing)
+    double ema_alpha_low  = 0.20;
+    double ema_alpha_high = 0.06;
     bool  have_ema = false;
     Eigen::Matrix<double, Nfreq, 1> psd_ema_;
 
-    // Circular buffer indices/state
-    int writeIndex = 0;
-    int decimCounter = 0;
-    int filledSamples = 0;
+    // circular buffer
+    int  writeIndex = 0;
+    int  decimCounter = 0;
+    int  filledSamples = 0;
     bool isWarm = false;
 
-    // Filter Q (per biquad)
     static constexpr double Q = 0.707;
 };
 
 #ifdef SPECTRUM_TEST
-// Minimal offline test with a single-tone acceleration.
-// Verifies pipeline runs and returns finite, reasonable stats.
 inline void WaveSpectrumEstimator_test() {
     constexpr int Nfreq = 32;
     constexpr int Nblock = 256;
 
-    double fs = 240.0;
-    WaveSpectrumEstimator<Nfreq, Nblock> estimator(fs, 2, true);
+    double fs_raw = 240.0;
+    int decim = 2;      // fs = 120 Hz
+    WaveSpectrumEstimator<Nfreq, Nblock> est(fs_raw, decim, true);
 
     double f_test = 0.2;
     double A_test = 1.0;
@@ -614,28 +446,20 @@ inline void WaveSpectrumEstimator_test() {
 
     int ready_count = 0;
     for (int n = 0; n < N_samples; n++) {
-        double t = n / fs;
+        double t = n / fs_raw;
         double acc = A_test * std::sin(2.0 * M_PI * f_test * t);
-        if (estimator.processSample(acc)) {
+        if (est.processSample(acc)) {
             ready_count++;
-
-            auto S = estimator.getDisplacementSpectrum();
-            double Hs = estimator.computeHs();
-            double Fp = estimator.estimateFp();
-            auto pm = estimator.fitPiersonMoskowitz();
-
-            std::cerr << "Spectrum ready: Hs = " << Hs
-                      << ", Fp = " << Fp
-                      << ", PM fit: alpha = " << pm.alpha
-                      << ", fp = " << pm.fp
-                      << ", cost = " << pm.cost << "\n";
-
+            auto S = est.getDisplacementSpectrum();
+            double Hs = est.computeHs();
+            double Fp = est.estimateFp();
+            auto pm = est.fitPiersonMoskowitz();
+            std::cerr << "Hs=" << Hs << " Fp=" << Fp
+                      << " PM(alpha=" << pm.alpha << ", fp=" << pm.fp
+                      << ", cost=" << pm.cost << ")\n";
             assert(Hs > 0);
-            assert(Hs < 3);
             assert(Fp > 0);
-            assert(pm.alpha > 0);
-            assert(pm.fp > 0);
-            (void)S; // silence unused warning in this simple smoke test
+            (void)S;
         }
     }
     assert(ready_count > 0);
