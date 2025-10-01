@@ -691,8 +691,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(Vector3 const& acc_meas, T tempC) {
-
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
+    Vector3 const& acc_meas, T tempC)
+{
     // Accel magnitude sanity check
     T g_meas = acc_meas.norm();
     if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
@@ -701,35 +702,76 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // Cext: (3 x NX)
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
+    // Build Jacobian Csub for sub-states: [att_err(3), a_w(3), (opt) b_acc(3)]
+    constexpr int SUB_N = with_accel_bias ? 9 : 6;
+    Eigen::Matrix<T,3,SUB_N> Csub = Eigen::Matrix<T,3,SUB_N>::Zero();
+
     // d f_b / d (attitude error)
-    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(v1hat);
+    Csub.template block<3,3>(0,0) = -skew_symmetric_matrix(v1hat);
+
     // d f_b / d a_w
-    Cext.template block<3,3>(0, OFF_AW) = R_wb();
+    Csub.template block<3,3>(0,3) = R_wb();
+
     if constexpr (with_accel_bias) {
-        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
+        // d f_b / d b_acc
+        Csub.template block<3,3>(0,6) = Matrix3::Identity();
     }
 
+    // Innovation
     Vector3 inno = acc_meas - v1hat;
 
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+    // Innovation covariance
+    Matrix3 S_mat = Csub * Psub * Csub.transpose() + Racc;
 
+    // Cross-covariance
+    Eigen::Matrix<T,SUB_N,3> PCt = Psub * Csub.transpose();
+
+    // Kalman gain
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
+        S_mat += Matrix3::Identity() *
+                 std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+    Eigen::Matrix<T,SUB_N,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    xext.noalias() += K * inno;
+    // State update
+    if constexpr (with_accel_bias) {
+        xext.template head<3>()        += K.template topRows<3>()   * inno; // attitude error
+        xext.template segment<3>(OFF_AW) += K.template block<3,3>(3,0) * inno;
+        xext.template segment<3>(OFF_BA) += K.template bottomRows<3>() * inno;
+    } else {
+        xext.template head<3>()        += K.template topRows<3>()   * inno; // attitude error
+        xext.template segment<3>(OFF_AW) += K.template bottomRows<3>() * inno;
+    }
 
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
+    // Joseph covariance update on sub-block
+    Eigen::Matrix<T,SUB_N,SUB_N> I = Eigen::Matrix<T,SUB_N,SUB_N>::Identity();
+    Psub = (I - K * Csub) * Psub * (I - K * Csub).transpose() + K * Racc * K.transpose();
+    Psub = T(0.5) * (Psub + Psub.transpose());
 
+    // Scatter Psub back into Pext
+    // Attitude–attitude
+    Pext.template block<3,3>(0,0) = Psub.template block<3,3>(0,0);
+
+    // Attitude–a_w and symmetric
+    Pext.template block<3,3>(0,OFF_AW)     = Psub.template block<3,3>(0,3);
+    Pext.template block<3,3>(OFF_AW,0)     = Psub.template block<3,3>(3,0);
+    Pext.template block<3,3>(OFF_AW,OFF_AW)= Psub.template block<3,3>(3,3);
+
+    if constexpr (with_accel_bias) {
+        // Attitude–b_acc and symmetric
+        Pext.template block<3,3>(0,OFF_BA)      = Psub.template block<3,3>(0,6);
+        Pext.template block<3,3>(OFF_BA,0)      = Psub.template block<3,3>(6,0);
+        // a_w–b_acc and symmetric
+        Pext.template block<3,3>(OFF_AW,OFF_BA) = Psub.template block<3,3>(3,6);
+        Pext.template block<3,3>(OFF_BA,OFF_AW) = Psub.template block<3,3>(6,3);
+        // b_acc–b_acc
+        Pext.template block<3,3>(OFF_BA,OFF_BA) = Psub.template block<3,3>(6,6);
+    }
+
+    // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
 }
 
