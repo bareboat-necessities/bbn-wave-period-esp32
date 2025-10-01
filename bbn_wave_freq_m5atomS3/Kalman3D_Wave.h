@@ -156,6 +156,40 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     return c;
 }
 
+// Generic rank-3 Joseph update (3D measurement)
+template<typename T, int NX>
+static inline void joseph_update_rank3(
+    Eigen::Matrix<T,NX,1>& x,            // state vector
+    Eigen::Matrix<T,NX,NX>& P,           // covariance
+    const Eigen::Matrix<T,3,NX>& C,      // measurement Jacobian (3×NX, usually sparse)
+    const Eigen::Matrix<T,3,1>& r,       // innovation
+    const Eigen::Matrix<T,3,3>& R)       // measurement noise
+{
+    // Innovation covariance
+    Eigen::Matrix<T,3,3> S = C * P * C.transpose() + R;
+    Eigen::LDLT<Eigen::Matrix<T,3,3>> ldlt(S);
+    if (ldlt.info() != Eigen::Success) {
+        Eigen::Matrix<T,3,3> S_reg = S + Eigen::Matrix<T,3,3>::Identity() *
+            std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R.norm());
+        ldlt.compute(S_reg);
+        if (ldlt.info() != Eigen::Success) return;
+    }
+
+    // Kalman gain
+    Eigen::Matrix<T,NX,3> K = P * C.transpose() * ldlt.solve(Eigen::Matrix<T,3,3>::Identity());
+
+    // State update
+    x.noalias() += K * r;
+
+    // Joseph covariance update (rank-3 form)
+    Eigen::Matrix<T,3,NX> CP = C * P;   // 3×NX
+    Eigen::Matrix<T,NX,NX> KC = K * CP; // NX×NX, rank ≤ 3
+    P.noalias() = P - KC - KC.transpose() + K * R * K.transpose();
+
+    // Symmetrize
+    P = T(0.5) * (P + P.transpose());
+}
+
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
@@ -666,41 +700,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     const Eigen::Ref<const Matrix3>& Rm)
 {
     // Jacobian touches only attitude error
-    Matrix3 C_att = -skew_symmetric_matrix(vhat);
+    Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
+    C.block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
 
     // Innovation
     Vector3 inno = meas - vhat;
 
-    // Pre-extract P slices
-    Eigen::Matrix<T, NX, 3> P_att_cols = Pext.template block<NX,3>(0,0); // NX x 3
-    Eigen::Matrix<T, 3, NX> P_att_rows = Pext.template block<3,NX>(0,0); // 3 x NX
-    Matrix3 P_AA = Pext.template block<3,3>(0,0);
-
-    // Innovation covariance
-    Matrix3 S_mat = C_att * P_AA * C_att.transpose() + Rm;
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() *
-                 std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-
-    // Kalman gain: K = P_att_cols * C_attᵀ * S⁻¹
-    Eigen::Matrix<T, NX, 3> K = (P_att_cols * C_att.transpose()) * ldlt.solve(Matrix3::Identity());
-
-    // State update
-    xext.noalias() += K * inno;
-
-    // Joseph covariance update (rank-3 form)
-    Eigen::Matrix<T, 3, NX> CP = C_att * P_att_rows; // 3 x NX
-    Eigen::Matrix<T, NX, NX> KC = K * CP;            // NX x NX
-    Pext.noalias() = Pext - KC - KC.transpose() + K * Rm * K.transpose();
-
-    // Symmetrize
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    // Apply quaternion correction
+    // Rank-3 Joseph update
+    joseph_update_rank3<T,NX>(xext, Pext, C, inno, Rm);
     applyQuaternionCorrectionFromErrorState();
 }
 
@@ -710,88 +717,22 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 {
     // Accel magnitude sanity check
     T g_meas = acc_meas.norm();
-    if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
-        return; // reject this update
-    }
+    if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) return;
 
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // Build reduced measurement Jacobian C_sub (3 x n_sub)
-    constexpr int n_att = 3; // attitude error
-    constexpr int n_aw  = 3; // world accel state
-    constexpr int n_ba  = with_accel_bias ? 3 : 0;
-    constexpr int n_sub = n_att + n_aw + n_ba;
-
-    Eigen::Matrix<T,3,n_sub> C_sub;
-    C_sub.template block<3,3>(0,0)      = -skew_symmetric_matrix(v1hat); // attitude
-    C_sub.template block<3,3>(0,n_att)  = R_wb();                        // a_w
-    if constexpr (with_accel_bias) {
-        C_sub.template block<3,3>(0,n_att+n_aw) = Matrix3::Identity();   // bias
-    }
+    // Build Jacobian
+    Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
+    C.block<3,3>(0,0)      = -skew_symmetric_matrix(v1hat); // attitude
+    C.block<3,3>(0,OFF_AW) = R_wb();                        // a_w
+    if constexpr (with_accel_bias)
+        C.block<3,3>(0,OFF_BA) = Matrix3::Identity();       // bias
 
     // Innovation
     Vector3 inno = acc_meas - v1hat;
 
-    // Gather P slices once:
-    // P_cols = P_{:S}  (NX x n_sub),  P_rows = P_{S:}  (n_sub x NX),  P_sub = P_{SS} (n_sub x n_sub)
-    Eigen::Matrix<T, NX, n_sub> P_cols;
-    Eigen::Matrix<T, n_sub, NX> P_rows;
-    Eigen::Matrix<T, n_sub, n_sub> P_sub;
-
-    // att columns/rows
-    P_cols.template block<NX,3>(0,0)  = Pext.template block<NX,3>(0,0);
-    P_rows.template block<3,NX>(0,0)  = Pext.template block<3,NX>(0,0);
-    P_sub .template block<3,3>(0,0)   = Pext.template block<3,3>(0,0);
-
-    // a_w columns/rows
-    P_cols.template block<NX,3>(0,n_att) = Pext.template block<NX,3>(0,OFF_AW);
-    P_rows.template block<3,NX>(n_att,0) = Pext.template block<3,NX>(OFF_AW,0);
-    P_sub .template block<3,3>(n_att,n_att) = Pext.template block<3,3>(OFF_AW,OFF_AW);
-    // cross att↔a_w
-    P_sub.template block<3,3>(0,n_att)     = Pext.template block<3,3>(0,OFF_AW);
-    P_sub.template block<3,3>(n_att,0)     = Pext.template block<3,3>(OFF_AW,0);
-
-    if constexpr (with_accel_bias) {
-        // b_acc columns/rows
-        P_cols.template block<NX,3>(0,n_att+n_aw) = Pext.template block<NX,3>(0,OFF_BA);
-        P_rows.template block<3,NX>(n_att+n_aw,0) = Pext.template block<3,NX>(OFF_BA,0);
-        P_sub .template block<3,3>(n_att+n_aw,n_att+n_aw) =
-            Pext.template block<3,3>(OFF_BA,OFF_BA);
-        // cross att↔b_acc
-        P_sub.template block<3,3>(0,n_att+n_aw)     = Pext.template block<3,3>(0,OFF_BA);
-        P_sub.template block<3,3>(n_att+n_aw,0)     = Pext.template block<3,3>(OFF_BA,0);
-        // cross a_w↔b_acc
-        P_sub.template block<3,3>(n_att,n_att+n_aw) = Pext.template block<3,3>(OFF_AW,OFF_BA);
-        P_sub.template block<3,3>(n_att+n_aw,n_att) = Pext.template block<3,3>(OFF_BA,OFF_AW);
-    }
-
-    // Innovation covariance S = C_sub * P_sub * C_subᵀ + Racc  (3x3)
-    Matrix3 S_mat = C_sub * P_sub * C_sub.transpose() + Racc;
-
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() *
-                 std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-
-    // Kalman gain K = P * Cᵀ S⁻¹ = (P_{:S} C_subᵀ) S⁻¹  (NX x 3)
-    Eigen::Matrix<T, NX, 3> K = (P_cols * C_sub.transpose()) * ldlt.solve(Matrix3::Identity());
-
-    // State update: x += K * inno  (full-state update; only sub-states have direct sensitivity)
-    xext.noalias() += K * inno;
-
-    // Joseph covariance update in rank-3 form:
-    // P' = P - K (C_sub P_{S:}) - (K (C_sub P_{S:}))ᵀ + K Racc Kᵀ
-    Eigen::Matrix<T, 3, NX> CP = C_sub * P_rows;  // 3 x NX
-    Eigen::Matrix<T, NX, NX> KC = K * CP;         // NX x NX  (rank-3 product)
-    Pext.noalias() = Pext - KC - KC.transpose() + K * Racc * K.transpose();
-
-    // Enforce symmetry (optional)
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    // Apply quaternion correction
+    // Rank-3 Joseph update
+    joseph_update_rank3<T,NX>(xext, Pext, C, inno, Racc);
     applyQuaternionCorrectionFromErrorState();
 }
 
@@ -801,7 +742,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 {
     const Vector3 v2hat = magnetometer_measurement_func();
 
-    // Norm/gating on raw 3D vectors
+    // Norm/gating
     T n_meas = mag_meas_body.norm();
     T n_pred = v2hat.norm();
     if (n_meas < T(1e-6) || n_pred < T(1e-6)) return;
@@ -810,106 +751,51 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     Vector3 pred_n = v2hat       / n_pred;
     T dotp = meas_n.dot(pred_n);
 
-    const T DOT_DANGEROUS = T(0.2);   // |dot| < 0.2 (~>78°) → ill-conditioned
-    const T YAW_CLAMP     = T(0.105); // ~6° max yaw correction per update
-
-    // Pre-extract the attitude-related P slices once (used in both branches).
-    // P_att_cols: entire first 3 columns of P (NX x 3)
-    Eigen::Matrix<T, NX, 3> P_att_cols = Pext.template block<NX,3>(0,0);
-    // P_att_rows: entire first 3 rows of P (3 x NX)
-    Eigen::Matrix<T, 3, NX> P_att_rows = Pext.template block<3,NX>(0,0);
-    // P_AA: top-left 3x3 block
-    Matrix3 P_AA = P_att_rows.template block<3,3>(0,0);
+    const T DOT_DANGEROUS = T(0.2);
+    const T YAW_CLAMP     = T(0.105);
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // SAFE → full 3D update (with hemisphere disambiguation to avoid 180° flips)
+        // SAFE → full 3D
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
 
-        // Attitude-only measurement Jacobian (3x3), nonzero columns only on attitude error
-        Matrix3 C_att = -skew_symmetric_matrix(v2hat);
+        Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
+        C.block<3,3>(0,0) = -skew_symmetric_matrix(v2hat);
 
-        // Innovation
         Vector3 inno = meas_fixed - v2hat;
-
-        // Innovation covariance S = C_att P_AA C_attᵀ + Rmag
-        Matrix3 S_mat = C_att * P_AA * C_att.transpose() + Rmag;
-        Eigen::LDLT<Matrix3> ldlt(S_mat);
-        if (ldlt.info() != Eigen::Success) {
-            S_mat += Matrix3::Identity() *
-                     std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rmag.norm());
-            ldlt.compute(S_mat);
-            if (ldlt.info() != Eigen::Success) return;
-        }
-
-        // Kalman gain K = P * C_attᵀ S⁻¹ = (P_att_cols C_attᵀ) S⁻¹  (NX x 3)
-        Eigen::Matrix<T, NX, 3> K = (P_att_cols * C_att.transpose()) * ldlt.solve(Matrix3::Identity());
-
-        // State update
-        xext.noalias() += K * inno;
-
-        // Joseph covariance update in rank-3 form:
-        // P' = P - K (C_att P_att_rows) - [K (C_att P_att_rows)]ᵀ + K Rmag Kᵀ
-        Eigen::Matrix<T, 3, NX> CP = C_att * P_att_rows; // 3 x NX
-        Eigen::Matrix<T, NX, NX> KC = K * CP;            // NX x NX (rank-3)
-        Pext.noalias() = Pext - KC - KC.transpose() + K * Rmag * K.transpose();
-
-        // Enforce symmetry (optional)
-        Pext = T(0.5) * (Pext + Pext.transpose());
-
-        // Apply correction
+        joseph_update_rank3<T,NX>(xext, Pext, C, inno, Rmag);
         applyQuaternionCorrectionFromErrorState();
         return;
     }
 
-    // DANGEROUS → yaw-only (horizontal) update with clamp  [optimized rank-3 Joseph]
+    // DANGEROUS → yaw-only
     const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
-    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose(); // project to horizontal plane
+    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
 
     Vector3 m_h = Hb * mag_meas_body;
     Vector3 v_h = Hb * v2hat;
 
     T nm = m_h.norm(), nv = v_h.norm();
-    if (nm < T(1e-6) || nv < T(1e-6)) return; // no horizontal info
+    if (nm < T(1e-6) || nv < T(1e-6)) return;
 
-    // hemisphere disambiguation on horizontal components
+    // hemisphere disambiguation
     Vector3 m_hn = m_h / nm, v_hn = v_h / nv;
     if (m_hn.dot(v_hn) < T(0)) m_h = -m_h;
 
-    // Innovation r = H (m - v) with H = Hb
     Vector3 r = Hb * (mag_meas_body - v2hat);
 
-    // Attitude-only Jacobian projected to horizontal plane
-    Matrix3 C_att = Hb * (-skew_symmetric_matrix(v2hat));
+    Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
+    C.block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
+
     Matrix3 Rproj = Hb * Rmag * Hb.transpose();
 
-    // Innovation covariance S = C_att P_AA C_attᵀ + Rproj
-    Matrix3 S_mat = C_att * P_AA * C_att.transpose() + Rproj;
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() *
-                 std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rproj.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
+    joseph_update_rank3<T,NX>(xext, Pext, C, r, Rproj);
 
-    // K = (P_att_cols C_attᵀ) S⁻¹
-    Eigen::Matrix<T, NX, 3> K = (P_att_cols * C_att.transpose()) * ldlt.solve(Matrix3::Identity());
-
-    // State update
-    xext.noalias() += K * r;
-
-    // Limit the attitude error to yaw only and clamp magnitude
+    // Clamp yaw error
     Vector3 dth = xext.template head<3>();
     T dpsi = dth.dot(gb);
     T dpsi_clamped = std::max(-YAW_CLAMP, std::min(YAW_CLAMP, dpsi));
     xext.template head<3>() = (dth - gb * dpsi + gb * dpsi_clamped).eval();
 
-    // Joseph covariance update (rank-3)
-    Eigen::Matrix<T, 3, NX> CP = C_att * P_att_rows; // 3 x NX
-    Eigen::Matrix<T, NX, NX> KC = K * CP;            // NX x NX
-    Pext.noalias() = Pext - KC - KC.transpose() + K * Rproj * K.transpose();
-
-    Pext = T(0.5) * (Pext + Pext.transpose());
     applyQuaternionCorrectionFromErrorState();
 }
 
