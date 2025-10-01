@@ -476,7 +476,7 @@ private:
 
             // ---- Adaptive λ (per frequency) ----
             double f_knee = std::max({reg_f0_hz, f_blk});
-            double wr = 2.0 * M_PI * std::max(f_knee, 0.5 * f);
+            double wr = 2.0 * M_PI * std::max(f_knee, 1.0 * f);
 
             const double w = 2.0 * M_PI * f;
             const double w_eff2 = w * w + wr * wr;
