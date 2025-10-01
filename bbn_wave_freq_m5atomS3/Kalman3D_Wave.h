@@ -737,41 +737,32 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas, T tempC)
 {
-    // ---- gate on accel magnitude (unchanged) ----
-    T g_meas = acc_meas.norm();
-    if (std::abs(g_meas - gravity_magnitude_) > T(2.0) * gravity_magnitude_) {
-        return;
-    }
+    // Gate accel magnitude
+    const T g_meas = acc_meas.norm();
+    if (std::abs(g_meas - gravity_magnitude_) > T(2.0) * gravity_magnitude_) return;
 
-    // Predicted specific force f_b
+    // Predicted specific force
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // 3×3 Jacobians for the three sub-groups the accel sees
-    const Matrix3 J_att = -skew_symmetric_matrix(v1hat); // d f_b / d(att_err[3])
-    const Matrix3 J_aw  =  R_wb();                       // d f_b / d(a_w[3])
-    Matrix3       J_ba;                                  // d f_b / d(b_a[3])
+    // Jacobians wrt the only columns C touches
+    const Matrix3 J_att = -skew_symmetric_matrix(v1hat); // d f / d θ
+    const Matrix3 J_aw  =  R_wb();                       // d f / d a_w
+    Matrix3       J_ba;                                  // d f / d b_a
     if constexpr (with_accel_bias) J_ba.setIdentity();
 
-    // Innovation
-    const Vector3 inno = acc_meas - v1hat;
+    const Vector3 r = acc_meas - v1hat;
 
-    // Convenience indices
-    constexpr int NA = BASE_N;   // attitude (+gyro bias)
-    constexpr int NL = 12;       // [v p S a_w]
-    constexpr int NC = with_accel_bias ? 3 : 0;
+    // Column offsets
+    constexpr int OFF_TH = 0;             // attitude error starts at 0
+    const int off_aw = OFF_AW;
+    const int off_ba = OFF_BA;
 
-    // Column offsets inside the full state
-    constexpr int OFF_TH = 0;                 // att_err starts at 0, size 3
-    const int off_aw = OFF_AW;                // a_w starts here, size 3
-    const int off_ba = OFF_BA;                // b_a (if any)
-
-    // ========= Build S = C P Cᵀ + Racc (3×3) using only needed blocks =========
+    // ---------- S = C P Cᵀ + Racc (3×3) ----------
     Matrix3 S_mat = Racc;
 
-    // P blocks needed for S (all are 3×3)
     const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
     const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, off_aw);
-    const Matrix3 P_aw_aw = Pext.template block<3,3>(off_aw, off_aw);
+    const Matrix3 P_aw_aw = Pext.template block<3,3>(off_aw,  off_aw);
 
     S_mat.noalias() += J_att * P_th_th * J_att.transpose();
     S_mat.noalias() += J_att * P_th_aw * J_aw.transpose();
@@ -792,24 +783,21 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
         S_mat.noalias() += J_ba  * P_ba_ba * J_ba.transpose();
     }
 
-    // ========= Build PCᵀ = P Cᵀ (NX×3) as a sum of three thin products =========
-    Eigen::Matrix<T, NX, 3> PCt; PCt.setZero();
+    // ---------- PCᵀ = P Cᵀ (NX×3) ----------
+    Eigen::Matrix<T,NX,3> PCt; PCt.setZero();
+    {
+        const auto P_all_th = Pext.template block<NX,3>(0, OFF_TH);
+        const auto P_all_aw = Pext.template block<NX,3>(0, off_aw);
+        PCt.noalias() += P_all_th * J_att.transpose();
+        PCt.noalias() += P_all_aw * J_aw.transpose();
 
-    // All rows vs. the 3 att_err columns
-    const auto P_all_th = Pext.template block<NX,3>(0, OFF_TH);
-    PCt.noalias() += P_all_th * J_att.transpose();
-
-    // All rows vs. the 3 a_w columns
-    const auto P_all_aw = Pext.template block<NX,3>(0, off_aw);
-    PCt.noalias() += P_all_aw * J_aw.transpose();
-
-    if constexpr (with_accel_bias) {
-        // All rows vs. the 3 b_a columns
-        const auto P_all_ba = Pext.template block<NX,3>(0, off_ba);
-        PCt.noalias() += P_all_ba * J_ba.transpose(); // J_ba = I
+        if constexpr (with_accel_bias) {
+            const auto P_all_ba = Pext.template block<NX,3>(0, off_ba);
+            PCt.noalias() += P_all_ba * J_ba.transpose(); // J_ba = I
+        }
     }
 
-    // ========= Solve for K = P Cᵀ S^{-1} =========
+    // ---------- K = PCᵀ S^{-1} ----------
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
         S_mat += Matrix3::Identity()
@@ -817,28 +805,21 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
-    const Eigen::Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+    const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // ========= State update x ← x + K r =========
-    xext.noalias() += K * inno;
+    // ---------- State & Covariance (Joseph, full P) ----------
+    xext.noalias() += K * r;
 
-    // ========= Joseph covariance update (full, but block-computed) =========
-    // Use: P' = P - K(CP) - (K(CP))ᵀ + K S Kᵀ, with CP = (PCᵀ)ᵀ.
-    const Eigen::Matrix<T, 3, NX> CP = PCt.transpose();
-    Eigen::Matrix<T, NX, NX> KCP;   KCP.noalias() = K * CP;
-    Eigen::Matrix<T, NX, NX> KSKt;  KSKt.noalias() = K * S_mat * K.transpose();
+    const Eigen::Matrix<T,3,NX> CP = PCt.transpose();         // CP = (PCᵀ)ᵀ
+    const Eigen::Matrix<T,NX,NX> KCP = K * CP;
+    const Eigen::Matrix<T,NX,NX> KSKt = K * S_mat * K.transpose();
 
     Pext.noalias() -= KCP;
     Pext.noalias() -= KCP.transpose();
     Pext.noalias() += KSKt;
 
-    // Symmetrize to kill round-off
     Pext = T(0.5) * (Pext + Pext.transpose());
-
-    // Apply quaternion correction and zero the small-angle error
     applyQuaternionCorrectionFromErrorState();
-
-    // Keep mirror of the base block
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
