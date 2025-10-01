@@ -1007,8 +1007,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
 
         // A0..A3 primitives (safe with expm1 for small/moderate x)
         const T A0 = -tau * P.em1;                                   // τ(1-α)
-        const T A1 = tau2 * (-P.em1 - std::fma(P.x, P.alpha, T(0))); // τ²[(1-α) - xα]
-        const T A2 = tau3 * (-T(2)*P.em1 - P.alpha*(P.x*(P.x+T(2))));
+        auto coeffs = safe_phi_A_coeffs<T>(h, tau);
+        const T A1 = coeffs.A1;
+        const T A2 = coeffs.A2;
         const T A3 = tau4 * (T(6) - P.alpha * (T(6) + T(6)*P.x
                       + T(3)*P.x*P.x + P.x*P.x*P.x));
 
