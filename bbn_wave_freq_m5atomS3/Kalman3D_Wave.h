@@ -101,6 +101,61 @@ inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dt
     return q;
 }
 
+// Safe expansions for OU discrete coefficients.
+// Provides phi_pa, phi_Sa, A1, A2 with series fallback for small x = h/tau.
+template<typename T>
+struct OUDiscreteCoeffs {
+    T phi_pa; // coefficient for position vs. accel
+    T phi_Sa; // coefficient for S vs. accel
+    T A1;     // helper for Qd
+    T A2;     // helper for Qd
+};
+
+template<typename T>
+inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
+    OUDiscreteCoeffs<T> c;
+    const T inv_tau = safe_inv_tau(tau);
+    const T x = h * inv_tau;
+    const T tau2 = tau*tau;
+    const T tau3 = tau2*tau;
+
+    if (x < T(1e-2)) {
+        // Maclaurin expansions
+        const T x2 = x*x;
+        const T x3 = x2*x;
+        const T x4 = x3*x;
+        const T x5 = x4*x;
+
+        // phi_pa ≈ τ² (x²/2 - x³/6 + x⁴/24)
+        c.phi_pa = tau2 * (T(0.5)*x2 - T(1.0/6.0)*x3 + T(1.0/24.0)*x4);
+
+        // phi_Sa ≈ τ³ (x³/6 - x⁴/24 + x⁵/120)
+        c.phi_Sa = tau3 * (T(1.0/6.0)*x3 - T(1.0/24.0)*x4 + T(1.0/120.0)*x5);
+
+        // A1 ≈ τ² (x²/2 - x³/3 + x⁴/8)
+        c.A1 = tau2 * (T(0.5)*x2 - T(1.0/3.0)*x3 + T(1.0/8.0)*x4);
+
+        // A2 ≈ τ³ ( -x³/3 + x⁴/4 - x⁵/10 )
+        c.A2 = tau3 * (-(T(1.0/3.0))*x3 + T(1.0/4.0)*x4 - T(1.0/10.0)*x5);
+
+    } else {
+        // General closed-form branch
+        const T alpha  = std::exp(-x);
+        const T em1    = std::expm1(-x);    
+        // reuse for stability
+        const T phi_pa = tau2 * (x + em1);
+        const T phi_Sa = tau3 * (T(0.5)*x*x - x - em1);
+
+        c.phi_pa = phi_pa;
+        c.phi_Sa = phi_Sa;
+
+        // A1, A2 in terms of primitives
+        c.A1 = tau2 * (-em1 - x*alpha);
+        c.A2 = tau3 * (-T(2)*em1 - alpha*(x*(x+T(2))));
+    }
+    return c;
+}
+
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
