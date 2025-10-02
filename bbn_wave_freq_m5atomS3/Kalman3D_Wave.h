@@ -722,109 +722,97 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_partial(
+void Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::measurement_update_partial(
     const Eigen::Ref<const Vector3>& meas,
     const Eigen::Ref<const Vector3>& vhat,
     const Eigen::Ref<const Matrix3>& Rm)
 {
-    // Jacobian touches only attitude error
-    Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
+    Eigen::Matrix<T,3,NX> C = Eigen::Matrix<T,3,NX>::Zero();
     C.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
-
-    // Innovation
     Vector3 inno = meas - vhat;
 
-    // Rank-3 Joseph update
-    joseph_update_rank3(xext, Pext, C, inno, Rm);
+    joseph_update_full(xext, Pext, C, inno, Rm);
     applyQuaternionCorrectionFromErrorState();
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
+void Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas, T tempC)
 {
-    // Accel magnitude sanity check
     T g_meas = acc_meas.norm();
-    if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) return;
+    if (std::abs(g_meas - gravity_magnitude_) > T(2.0) * gravity_magnitude_) return;
 
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // Build Jacobian
-    Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
+    Eigen::Matrix<T,3,NX> C = Eigen::Matrix<T,3,NX>::Zero();
     C.template block<3,3>(0,0)      = -skew_symmetric_matrix(v1hat); // attitude
     C.template block<3,3>(0,OFF_AW) = R_wb();                        // a_w
     if constexpr (with_accel_bias)
-        C.template block<3,3>(0,OFF_BA) = Matrix3::Identity();       // bias
+        C.template block<3,3>(0,OFF_BA) = Matrix3::Identity();
 
-    // Innovation
     Vector3 inno = acc_meas - v1hat;
 
-    // Rank-3 Joseph update
-    joseph_update_rank3(xext, Pext, C, inno, Racc);
+    joseph_update_full(xext, Pext, C, inno, Racc);
     applyQuaternionCorrectionFromErrorState();
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(
+void Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::measurement_update_mag_only(
     Vector3 const& mag_meas_body)
 {
     const Vector3 v2hat = magnetometer_measurement_func();
 
-    // Norm/gating
     T n_meas = mag_meas_body.norm();
     T n_pred = v2hat.norm();
     if (n_meas < T(1e-6) || n_pred < T(1e-6)) return;
 
     Vector3 meas_n = mag_meas_body / n_meas;
-    Vector3 pred_n = v2hat       / n_pred;
+    Vector3 pred_n = v2hat / n_pred;
     T dotp = meas_n.dot(pred_n);
 
     const T DOT_DANGEROUS = T(0.2);
     const T YAW_CLAMP     = T(0.105);
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // SAFE → full 3D
+        // Full 3D branch
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
-
-        Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
-        C.template block<3,3>(0,0) = -skew_symmetric_matrix(v2hat);
-
-        Vector3 inno = meas_fixed - v2hat;
-        joseph_update_rank3(xext, Pext, C, inno, Rmag);
-        applyQuaternionCorrectionFromErrorState();
+        measurement_update_partial(meas_fixed, v2hat, Rmag);
         return;
     }
 
-    // DANGEROUS → yaw-only
+    // Yaw-only branch
     const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
-    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
-
-    Vector3 m_h = Hb * mag_meas_body;
-    Vector3 v_h = Hb * v2hat;
-
-    T nm = m_h.norm(), nv = v_h.norm();
-    if (nm < T(1e-6) || nv < T(1e-6)) return;
-
-    // hemisphere disambiguation
-    Vector3 m_hn = m_h / nm, v_hn = v_h / nv;
-    if (m_hn.dot(v_hn) < T(0)) m_h = -m_h;
+    const Matrix3 Hb = Matrix3::Identity() - gb*gb.transpose();
 
     Vector3 r = Hb * (mag_meas_body - v2hat);
 
-    Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
+    Eigen::Matrix<T,3,NX> C = Eigen::Matrix<T,3,NX>::Zero();
     C.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
 
     Matrix3 Rproj = Hb * Rmag * Hb.transpose();
 
-    joseph_update_rank3(xext, Pext, C, r, Rproj);
+    joseph_update_full(xext, Pext, C, r, Rproj);
 
-    // Clamp yaw error
+    // Clamp to yaw-only correction
     Vector3 dth = xext.template head<3>();
     T dpsi = dth.dot(gb);
     T dpsi_clamped = std::max(-YAW_CLAMP, std::min(YAW_CLAMP, dpsi));
     xext.template head<3>() = (dth - gb * dpsi + gb * dpsi_clamped).eval();
 
     applyQuaternionCorrectionFromErrorState();
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
+}
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T,with_gyro_bias,with_accel_bias>::applyIntegralZeroPseudoMeas()
+{
+    Vector3 inno = -xext.template segment<3>(OFF_S);
+
+    joseph_update_pseudo(xext, Pext, OFF_S, inno, R_S);
+    applyQuaternionCorrectionFromErrorState();
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
@@ -874,51 +862,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectio
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
   qref.normalize();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
-    // H picks S block only; innovation targets S = 0
-    Vector3 inno = - xext.template segment<3>(OFF_S);
-
-    // Extract the S-related partitions once
-    // P_Scols: entire columns corresponding to S (size NX x 3)
-    Eigen::Matrix<T, NX, 3> P_Scols = Pext.template block<NX,3>(0, OFF_S);
-    // P_Srows: entire rows corresponding to S (size 3 x NX)
-    Eigen::Matrix<T, 3,  NX> P_Srows = Pext.template block<3, NX>(OFF_S, 0);
-    // P_SS: 3x3 S block
-    Matrix3 P_SS = Pext.template block<3,3>(OFF_S, OFF_S);
-
-    // Innovation covariance S = P_SS + R_S  (since H = [0 I])
-    Matrix3 S_mat = P_SS + R_S;
-
-    // Robust factorization
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() *
-                 std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-
-    // Kalman gain K = P * H^T * S^{-1} = P_Scols * S^{-1}   (size NX x 3)
-    Eigen::Matrix<T, NX, 3> K = P_Scols * ldlt.solve(Matrix3::Identity());
-
-    // State update: x += K * r   (only S states actually move, but writing full is fine)
-    xext.noalias() += K * inno;
-
-    // Joseph covariance update in rank-3 form:
-    // P' = P - K P_Srows - (K P_Srows)^T + K R_S K^T
-    Eigen::Matrix<T, NX, NX> KP = K * P_Srows;        // NX x NX (rank-3)
-    Pext.noalias() = Pext - KP - KP.transpose() + K * R_S * K.transpose();
-
-    // Enforce symmetry (cheap insurance)
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    applyQuaternionCorrectionFromErrorState();
-
-    // Mirror base covariance
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
