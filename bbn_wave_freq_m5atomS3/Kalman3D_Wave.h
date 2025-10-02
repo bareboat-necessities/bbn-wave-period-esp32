@@ -867,7 +867,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         Pext.noalias() -= KCP;
         Pext.noalias() -= KCP.transpose();
         Pext.noalias() += KSKt;
-        Pext = T(0.5) * (Pext + Pext.transpose());
 
     } else {
         // BRANCH 2: YAW-ONLY PROJECTED UPDATE
@@ -925,8 +924,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         Pext.noalias() -= KCP;
         Pext.noalias() -= KCP.transpose();
         Pext.noalias() += KSKt;
-        Pext = T(0.5) * (Pext + Pext.transpose());
     }
+
+    Pext = T(0.5) * (Pext + Pext.transpose());
 
     // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
