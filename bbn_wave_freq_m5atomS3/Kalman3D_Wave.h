@@ -869,8 +869,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         Pext.noalias() += KSKt;
         Pext = T(0.5) * (Pext + Pext.transpose());
 
-        // Apply quaternion correction
-        applyQuaternionCorrectionFromErrorState();
     } else {
         // BRANCH 2: YAW-ONLY PROJECTED UPDATE
         // Gravity in body, projector to horizontal plane
@@ -928,10 +926,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         Pext.noalias() -= KCP.transpose();
         Pext.noalias() += KSKt;
         Pext = T(0.5) * (Pext + Pext.transpose());
-
-        // Apply quaternion correction
-        applyQuaternionCorrectionFromErrorState();
     }
+
+    // Apply quaternion correction
+    applyQuaternionCorrectionFromErrorState();
 
     // Mirror base covariance always
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
