@@ -660,38 +660,65 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     const Eigen::Ref<const Vector3>& vhat,
     const Eigen::Ref<const Matrix3>& Rm)
 {
-    // Cext: (3 x NX)
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
+    // Residual r = (measured - predicted)
+    const Vector3 r = meas - vhat;
 
-    // Innovation
-    Vector3 inno = meas - vhat;
+    // Jacobian wrt attitude error (right-multiplicative convention)
+    // J_att = -skew(vhat)
+    const Matrix3 J_att = -skew_symmetric_matrix(vhat);
 
-    // S = C P C^T + Rm  (3x3)
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rm;
+    // Column offset for attitude error
+    constexpr int OFF_TH = 0;
 
-    // PCt = P C^T  (NX x 3)
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+    // ---------- Innovation covariance S = C P Cᵀ + Rm (3×3), with C touching only attitude ----------
+    Matrix3 S_mat = Rm;
 
-    // Factor S (SPD) and solve
+    // P blocks used: Pθθ (3×3)
+    const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
+
+    // S += J_att * Pθθ * J_attᵀ
+    S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+
+    // ---------- PCᵀ = P Cᵀ (NX×3) — only attitude columns contribute ----------
+    Eigen::Matrix<T, NX, 3> PCt; PCt.setZero();
+    {
+        const auto P_all_th = Pext.template block<NX,3>(0, OFF_TH);
+        PCt.noalias() += P_all_th * J_att.transpose();
+    }
+
+    // ---------- K = PCᵀ * S^{-1} ----------
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
+        // Gentle diagonal boost if the factorization fails (numerical safety)
+        S_mat += Matrix3::Identity()
+                 * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rm.norm());
         ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
+        if (ldlt.info() != Eigen::Success) return; // give up quietly this step
     }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+    const Eigen::Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // State update
-    xext.noalias() += K * inno;
+    // ---------- State update ----------
+    xext.noalias() += K * r;
 
-    // Joseph covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rm * K.transpose();
+    // Apply small-angle correction to quaternion and zero the attitude error in xext
+    applyQuaternionCorrectionFromErrorState();
+
+    // ---------- Covariance update (Joseph form, but avoiding explicit C) ----------
+    // CP = (PCᵀ)ᵀ
+    const Eigen::Matrix<T, 3, NX> CP   = PCt.transpose();
+    const Eigen::Matrix<T, NX, NX> KCP = K * CP;              // K * C * P
+    const Eigen::Matrix<T, NX, NX> KSKt= K * S_mat * K.transpose();
+
+    // P ← P - KCP - (KCP)ᵀ + K S Kᵀ  (algebraically equivalent to Joseph form)
+    Pext.noalias() -= KCP;
+    Pext.noalias() -= KCP.transpose();
+    Pext.noalias() += KSKt;
+
+    // Enforce symmetry
     Pext = T(0.5) * (Pext + Pext.transpose());
 
-    // Quaternion correction + zero small-angle
-    applyQuaternionCorrectionFromErrorState();
+    // Mirror base block for legacy accessor
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
