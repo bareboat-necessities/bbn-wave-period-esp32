@@ -413,21 +413,18 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     }
 
 // Unified builder for (PCᵀ, S) = (P Cᵀ, C P Cᵀ + R)
-// Handles accel, mag (full & yaw-only), and pseudo-measurement.
-// Summation order mirrors the original per-update code to preserve float precision.
-//   - J_att: 3x3 (may be zero matrix if not needed).
-//   - J_aw : nullptr for mag/pseudo-measurement; 3x3 for accel.
-//   - include_ba: true for accel update (to include accel bias).
-//   - direct_offset: >=0 for directly observed 3-state block (e.g. OFF_S), else -1.
-//   - Rm: 3x3 measurement noise.
-// Notes:
-//   - No symmetrization: relies on safe_ldlt3_ bump as in original code.
-//   - Ordering is θθ → θ–a_w → a_w a_w → θ–b_a → a_w–b_a → b_a b_a → direct.
+// Mirrors the summation order of the original measurement updates
+// to preserve float numerical precision.
+//   - J_att: 3x3 (can be all-zero if not used).
+//   - J_aw : nullptr if not used; 3x3 if used.
+//   - include_ba: include accel bias block.
+//   - direct_offset: >=0 for direct observed 3x1 block (e.g. OFF_S), else -1.
+//   - Rm: measurement noise 3x3.
 EIGEN_STRONG_INLINE void build_PCt_and_S_sparse_(
     const Matrix3& J_att,
     const Matrix3* J_aw,
     bool include_ba,
-    int direct_offset,              // e.g. OFF_S for pseudo-meas, else -1
+    int direct_offset,
     const Matrix3& Rm,
     Eigen::Matrix<T,NX,3>& PCt,
     Matrix3& S_mat) const
@@ -438,55 +435,60 @@ EIGEN_STRONG_INLINE void build_PCt_and_S_sparse_(
     constexpr int OFF_TH = 0;
 
     // --- θ block ---
-    if (!J_att.isZero(0)) {
-        const auto   P_all_th = Pext.template block<NX,3>(0, OFF_TH);
-        const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
-        PCt.noalias() += P_all_th * J_att.transpose();
-        S_mat.noalias() += J_att * P_th_th * J_att.transpose();
-    }
+    {
+        bool use_theta = !J_att.isZero(1e-20); // small tolerance
+        if (use_theta) {
+            const auto   P_all_th = Pext.template block<NX,3>(0, OFF_TH);
+            const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
+            PCt.noalias() += P_all_th * J_att.transpose();
+            S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+        }
 
-    // --- θ–a_w cross terms, then a_w block ---
-    if (J_aw) {
-        const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, OFF_AW);
-        if (!J_att.isZero(0)) {
+        // --- θ–a_w cross terms ---
+        if (J_aw && use_theta) {
+            const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, OFF_AW);
             S_mat.noalias() += J_att * P_th_aw * J_aw->transpose();
             S_mat.noalias() += (*J_aw) * P_th_aw.transpose() * J_att.transpose();
         }
 
-        const auto   P_all_aw = Pext.template block<NX,3>(0, OFF_AW);
-        const Matrix3 P_aw_aw = Pext.template block<3,3>(OFF_AW, OFF_AW);
-        PCt.noalias() += P_all_aw * J_aw->transpose();
-        S_mat.noalias() += (*J_aw) * P_aw_aw * J_aw->transpose();
-    }
-
-    // --- θ–b_a cross, a_w–b_a cross, then b_a block ---
-    if constexpr (with_accel_bias) {
-        if (include_ba) {
-            const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, OFF_BA);
-            const Matrix3 P_aw_ba = (J_aw ? Pext.template block<3,3>(OFF_AW, OFF_BA) : Matrix3::Zero());
-
-            if (!J_att.isZero(0)) {
-                S_mat.noalias() += J_att * P_th_ba;                   // J_att * P(θ,b_a) * Iᵀ
-                S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
-            }
-            if (J_aw) {
-                S_mat.noalias() += (*J_aw) * P_aw_ba;                 // J_aw * P(a_w,b_a) * Iᵀ
-                S_mat.noalias() += P_aw_ba.transpose() * J_aw->transpose();
-            }
-
-            const auto   P_all_ba = Pext.template block<NX,3>(0, OFF_BA);
-            const Matrix3 P_ba_ba = Pext.template block<3,3>(OFF_BA, OFF_BA);
-            PCt.noalias() += P_all_ba; // J_ba = I
-            S_mat.noalias() += P_ba_ba;
+        // --- a_w block ---
+        if (J_aw) {
+            const auto   P_all_aw = Pext.template block<NX,3>(0, OFF_AW);
+            const Matrix3 P_aw_aw = Pext.template block<3,3>(OFF_AW, OFF_AW);
+            PCt.noalias() += P_all_aw * J_aw->transpose();
+            S_mat.noalias() += (*J_aw) * P_aw_aw * J_aw->transpose();
         }
-    }
 
-    // --- Direct observed block (e.g. S pseudo-meas) ---
-    if (direct_offset >= 0) {
-        const auto   P_all_dir = Pext.template block<NX,3>(0, direct_offset);
-        const Matrix3 P_dir_dir = Pext.template block<3,3>(direct_offset, direct_offset);
-        PCt.noalias() += P_all_dir;   // J = I
-        S_mat.noalias() += P_dir_dir;
+        // --- bias block ---
+        if constexpr (with_accel_bias) {
+            if (include_ba) {
+                // θ–b_a cross
+                if (use_theta) {
+                    const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, OFF_BA);
+                    S_mat.noalias() += J_att * P_th_ba;
+                    S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
+                }
+                // a_w–b_a cross
+                if (J_aw) {
+                    const Matrix3 P_aw_ba = Pext.template block<3,3>(OFF_AW, OFF_BA);
+                    S_mat.noalias() += (*J_aw) * P_aw_ba;
+                    S_mat.noalias() += P_aw_ba.transpose() * J_aw->transpose();
+                }
+                // bias block itself
+                const auto   P_all_ba = Pext.template block<NX,3>(0, OFF_BA);
+                const Matrix3 P_ba_ba = Pext.template block<3,3>(OFF_BA, OFF_BA);
+                PCt.noalias() += P_all_ba;
+                S_mat.noalias() += P_ba_ba;
+            }
+        }
+
+        // --- direct observed block (e.g. S pseudo-measurement) ---
+        if (direct_offset >= 0) {
+            const auto   P_all_dir = Pext.template block<NX,3>(0, direct_offset);
+            const Matrix3 P_dir_dir = Pext.template block<3,3>(direct_offset, direct_offset);
+            PCt.noalias() += P_all_dir;
+            S_mat.noalias() += P_dir_dir;
+        }
     }
 }
 };
