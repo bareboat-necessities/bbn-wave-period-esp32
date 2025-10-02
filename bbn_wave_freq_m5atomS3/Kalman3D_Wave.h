@@ -570,9 +570,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc(Vect
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 const& gyr, T Ts)
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
+    Vector3 const& gyr, T Ts)
 {
-    // Attitude mean propagation
+    // ---- Attitude mean propagation (unchanged) ----
     Vector3 gyro_bias;
     if constexpr (with_gyro_bias) {
         gyro_bias = xext.template segment<3>(3);
@@ -581,103 +582,141 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(Vector3 cons
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
 
-    // Δθ = ω Ts → quaternion increment
+    // Δθ = ω Ts → quaternion increment (right-multiplicative)
     Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
-
-    // Propagate: right-multiply (matches correction side and F/Jacobians signs )
     qref = qref * dq;
     qref.normalize();
 
-    // Build exact discrete transition & process Q
-    MatrixNX F_a_ext; MatrixNX Q_a_ext;
-    assembleExtendedFandQ(Vector3::Zero(), Ts, F_a_ext, Q_a_ext);
+    // =====================================================================
+    // Build only the blocks we actually need: F_AA, Q_AA, F_LL, Q_LL
+    // =====================================================================
 
-    // Mean propagation for linear subsystem [v,p,S,a_w]
+    // ---- Attitude error (+ optional gyro bias) block ----
+    Matrix3 I = Matrix3::Identity();
+    const Vector3 w = last_gyr_bias_corrected;
+    const T omega = w.norm();
+    const T theta = omega * Ts;
+
+    // F_AA : BASE_N x BASE_N
+    MatrixBaseN F_AA; F_AA.setIdentity();
+    if (theta < T(1e-5)) {
+        Matrix3 Wx = skew_symmetric_matrix(w);
+        F_AA.template topLeftCorner<3,3>() = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/T(2));
+    } else {
+        Matrix3 W = skew_symmetric_matrix(w / (omega + std::numeric_limits<T>::epsilon()));
+        const T s = std::sin(theta), c = std::cos(theta);
+        F_AA.template topLeftCorner<3,3>() = I - s*W + (T(1)-c)*(W*W);
+    }
+    if constexpr (with_gyro_bias) {
+        F_AA.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
+    }
+
+    MatrixBaseN Q_AA = Qbase * Ts;
+
+    // ---- Linear subsystem [v,p,S,a_w] block: 12x12 ----
+    using Mat12 = Eigen::Matrix<T,12,12>;
+    Mat12 F_LL; F_LL.setZero();
+    Mat12 Q_LL; Q_LL.setZero();
+
+    for (int axis = 0; axis < 3; ++axis) {
+        const T tau    = std::max(T(1e-6), tau_aw);
+        const T sigma2 = Sigma_aw_stat(axis, axis);
+
+        Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
+        PhiAxis4x1_analytic(tau, Ts, Phi_axis);
+        QdAxis4x1_analytic (tau, Ts, sigma2, Qd_axis);
+
+        const int idx[4] = {0,3,6,9}; // v,p,S,a offsets per axis in the 12x12
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j) {
+                F_LL(idx[i] + axis, idx[j] + axis) = Phi_axis(i,j);
+                Q_LL(idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
+            }
+    }
+
+    // =====================================================================
+    // Mean propagation for [v,p,S,a_w] using F_LL (unchanged math)
+    // =====================================================================
     Eigen::Matrix<T,12,1> x_lin_prev;
     x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
     x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
     x_lin_prev.template segment<3>(6)  = xext.template segment<3>(OFF_S);
     x_lin_prev.template segment<3>(9)  = xext.template segment<3>(OFF_AW);
 
-    const auto Phi_lin = F_a_ext.template block<12,12>(OFF_V, OFF_V);
-    Eigen::Matrix<T,12,1> x_lin_next = Phi_lin * x_lin_prev;
+    Eigen::Matrix<T,12,1> x_lin_next = F_LL * x_lin_prev;
 
-    // write back mean
     xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
     xext.template segment<3>(OFF_P)  = x_lin_next.template segment<3>(3);
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
-    // Covariance propagation (optimized for current F/Q structure)
+    // =====================================================================
+    // Covariance propagation: exact block form of P ← FPFᵀ + Q
+    // Keeps ALL cross terms. No NX×NX temporaries are formed.
+    // =====================================================================
     {
         constexpr int NA = BASE_N;
         constexpr int NL = 12;
 
-        const auto F_AA = F_a_ext.template block<NA,NA>(0,0);
-        const auto F_LL = F_a_ext.template block<NL,NL>(OFF_V,OFF_V);
-
+        // Extract current blocks
         Eigen::Matrix<T,NA,NA> P_AA = Pext.template block<NA,NA>(0,0);
         Eigen::Matrix<T,NL,NL> P_LL = Pext.template block<NL,NL>(OFF_V,OFF_V);
         Eigen::Matrix<T,NA,NL> P_AL = Pext.template block<NA,NL>(0,OFF_V);
 
-        Eigen::Matrix<T,NA,NA> P_AA_new;
-        {
-            Eigen::Matrix<T,NA,NA> tmp;
-            tmp.noalias()       = F_AA * P_AA;
-            P_AA_new.noalias()  = tmp * F_AA.transpose();
-            P_AA_new           += Q_a_ext.template block<NA,NA>(0,0);
-        }
+        // AA: P_AA = F_AA P_AA F_AAᵀ + Q_AA
+        Eigen::Matrix<T,NA,NA> tmpAA;
+        tmpAA.noalias() = F_AA * P_AA;
+        P_AA.noalias()  = tmpAA * F_AA.transpose();
+        P_AA.noalias() += Q_AA;
 
-        Eigen::Matrix<T,NL,NL> P_LL_new;
-        {
-            Eigen::Matrix<T,NL,NL> tmp;
-            tmp.noalias()       = F_LL * P_LL;
-            P_LL_new.noalias()  = tmp * F_LL.transpose();
-            P_LL_new           += Q_a_ext.template block<NL,NL>(OFF_V,OFF_V);
-        }
+        // LL: P_LL = F_LL P_LL F_LLᵀ + Q_LL
+        Eigen::Matrix<T,NL,NL> tmpLL;
+        tmpLL.noalias() = F_LL * P_LL;
+        P_LL.noalias()  = tmpLL * F_LL.transpose();
+        P_LL.noalias() += Q_LL;
 
-        Eigen::Matrix<T,NA,NL> P_AL_new;
-        {
-            Eigen::Matrix<T,NA,NL> tmp;
-            tmp.noalias()       = F_AA * P_AL;
-            P_AL_new.noalias()  = tmp * F_LL.transpose();
-        }
+        // AL: P_AL = F_AA P_AL F_LLᵀ
+        Eigen::Matrix<T,NA,NL> tmpAL;
+        tmpAL.noalias() = F_AA * P_AL;
+        P_AL.noalias()  = tmpAL * F_LL.transpose();
+
+        // Write back AA, LL, AL (and symmetric counterpart)
+        Pext.template block<NA,NA>(0,0)         = P_AA;
+        Pext.template block<NL,NL>(OFF_V,OFF_V) = P_LL;
+        Pext.template block<NA,NL>(0,OFF_V)     = P_AL;
+        Pext.template block<NL,NA>(OFF_V,0)     = P_AL.transpose();
 
         if constexpr (with_accel_bias) {
             constexpr int NB = 3;
-            Eigen::Matrix<T,NB,NB> P_BB = Pext.template block<NB,NB>(OFF_BA,OFF_BA);
-            Eigen::Matrix<T,NA,NB> P_AB = Pext.template block<NA,NB>(0,OFF_BA);
-            Eigen::Matrix<T,NL,NB> P_LB = Pext.template block<NL,NB>(OFF_V,OFF_BA);
 
-            Eigen::Matrix<T,NA,NB> P_AB_new = F_AA * P_AB;
-            Eigen::Matrix<T,NL,NB> P_LB_new = F_LL * P_LB;
-            Eigen::Matrix<T,NB,NB> P_BB_new = P_BB + Q_a_ext.template block<NB,NB>(OFF_BA,OFF_BA);
+            // Bias block (random walk): P_BB ← P_BB + Q_bacc_*Ts
+            auto P_BB = Pext.template block<NB,NB>(OFF_BA,OFF_BA);
+            P_BB.noalias() += Q_bacc_ * Ts;
+            Pext.template block<NB,NB>(OFF_BA,OFF_BA) = P_BB;
 
-            Pext.template block<NA,NA>(0,0)             = P_AA_new;
-            Pext.template block<NL,NL>(OFF_V,OFF_V)     = P_LL_new;
-            Pext.template block<NA,NL>(0,OFF_V)         = P_AL_new;
-            Pext.template block<NL,NA>(OFF_V,0)         = P_AL_new.transpose();
+            // Cross terms with bias: because F_BB = I
+            auto P_AB = Pext.template block<NA,NB>(0,OFF_BA);
+            auto P_LB = Pext.template block<NL,NB>(OFF_V,OFF_BA);
 
-            Pext.template block<NA,NB>(0,OFF_BA)        = P_AB_new;
-            Pext.template block<NB,NA>(OFF_BA,0)        = P_AB_new.transpose();
-            Pext.template block<NL,NB>(OFF_V,OFF_BA)    = P_LB_new;
-            Pext.template block<NB,NL>(OFF_BA,OFF_V)    = P_LB_new.transpose();
-            Pext.template block<NB,NB>(OFF_BA,OFF_BA)   = P_BB_new;
-        } else {
-            Pext.template block<NA,NA>(0,0)         = P_AA_new;
-            Pext.template block<NL,NL>(OFF_V,OFF_V) = P_LL_new;
-            Pext.template block<NA,NL>(0,OFF_V)     = P_AL_new;
-            Pext.template block<NL,NA>(OFF_V,0)     = P_AL_new.transpose();
+            // P_AB ← F_AA P_AB ;  P_LB ← F_LL P_LB
+            Eigen::Matrix<T,NA,NB> tmpAB; tmpAB.noalias() = F_AA * P_AB;
+            Eigen::Matrix<T,NL,NB> tmpLB; tmpLB.noalias() = F_LL * P_LB;
+            Pext.template block<NA,NB>(0,OFF_BA) = tmpAB;
+            Pext.template block<NL,NB>(OFF_V,OFF_BA) = tmpLB;
+
+            // Symmetric counterparts
+            Pext.template block<NB,NA>(OFF_BA,0)       = tmpAB.transpose();
+            Pext.template block<NB,NL>(OFF_BA,OFF_V)   = tmpLB.transpose();
         }
 
-        // Optional symmetry enforcement (remove once validated):
+        // Final hygiene (keep symmetry)
         Pext = T(0.5) * (Pext + Pext.transpose());
     }
 
-    // Mirror base covariance
+    // Mirror base covariance for legacy accessor
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
-    // Drift correction on S
+    // Drift correction on S (unchanged)
     if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
         applyIntegralZeroPseudoMeas();
         pseudo_update_counter_ = 0;
