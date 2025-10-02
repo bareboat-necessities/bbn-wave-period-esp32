@@ -156,40 +156,6 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     return c;
 }
 
-// Generic rank-3 Joseph update (3D measurement)
-template<typename T, int NX>
-static inline void joseph_update_rank3(
-    Eigen::Matrix<T,NX,1>& x,            // state vector
-    Eigen::Matrix<T,NX,NX>& P,           // covariance
-    const Eigen::Matrix<T,3,NX>& C,      // measurement Jacobian (3×NX, usually sparse)
-    const Eigen::Matrix<T,3,1>& r,       // innovation
-    const Eigen::Matrix<T,3,3>& R)       // measurement noise
-{
-    // Innovation covariance
-    Eigen::Matrix<T,3,3> S = C * P * C.transpose() + R;
-    Eigen::LDLT<Eigen::Matrix<T,3,3>> ldlt(S);
-    if (ldlt.info() != Eigen::Success) {
-        Eigen::Matrix<T,3,3> S_reg = S + Eigen::Matrix<T,3,3>::Identity() *
-            std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R.norm());
-        ldlt.compute(S_reg);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-
-    // Kalman gain
-    Eigen::Matrix<T,NX,3> K = P * C.transpose() * ldlt.solve(Eigen::Matrix<T,3,3>::Identity());
-
-    // State update
-    x.noalias() += K * r;
-
-    // Joseph covariance update (rank-3 form)
-    Eigen::Matrix<T,3,NX> CP = C * P;   // 3×NX
-    Eigen::Matrix<T,NX,NX> KC = K * CP; // NX×NX, rank ≤ 3
-    P.noalias() = P - KC - KC.transpose() + K * R * K.transpose();
-
-    // Symmetrize
-    P = T(0.5) * (P + P.transpose());
-}
-
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
@@ -420,6 +386,31 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
                                     Eigen::Matrix<T,12,12>& Qd) const;
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
+
+    static inline void joseph_update_rank3(
+        Eigen::Matrix<T,NX,1>& x,
+        Eigen::Matrix<T,NX,NX>& P,
+        const Eigen::Matrix<T,3,NX>& C,
+        const Eigen::Matrix<T,3,1>& r,
+        const Eigen::Matrix<T,3,3>& R)
+    {
+        Eigen::Matrix<T,3,3> S = C * P * C.transpose() + R;
+        Eigen::LDLT<Eigen::Matrix<T,3,3>> ldlt(S);
+        if (ldlt.info() != Eigen::Success) {
+            Eigen::Matrix<T,3,3> S_reg = S + Eigen::Matrix<T,3,3>::Identity() *
+                std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R.norm());
+            ldlt.compute(S_reg);
+            if (ldlt.info() != Eigen::Success) return;
+        }
+
+        Eigen::Matrix<T,NX,3> K = P * C.transpose() * ldlt.solve(Eigen::Matrix<T,3,3>::Identity());
+        x.noalias() += K * r;
+
+        Eigen::Matrix<T,3,NX> CP = C * P;
+        Eigen::Matrix<T,NX,NX> KC = K * CP;
+        P.noalias() = P - KC - KC.transpose() + K * R * K.transpose();
+        P = T(0.5) * (P + P.transpose());
+    }
 };
 
 // Implementation
