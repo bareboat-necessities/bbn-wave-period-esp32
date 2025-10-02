@@ -698,7 +698,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     Vector3 inno = meas - vhat;
 
     // Rank-3 Joseph update
-    joseph_update_rank3<T,NX>(xext, Pext, C, inno, Rm);
+    joseph_update_rank3(xext, Pext, C, inno, Rm);
     applyQuaternionCorrectionFromErrorState();
 }
 
@@ -753,7 +753,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         C.block<3,3>(0,0) = -skew_symmetric_matrix(v2hat);
 
         Vector3 inno = meas_fixed - v2hat;
-        joseph_update_rank3<T,NX>(xext, Pext, C, inno, Rmag);
+        joseph_update_rank3(xext, Pext, C, inno, Rmag);
         applyQuaternionCorrectionFromErrorState();
         return;
     }
@@ -779,7 +779,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 
     Matrix3 Rproj = Hb * Rmag * Hb.transpose();
 
-    joseph_update_rank3<T,NX>(xext, Pext, C, r, Rproj);
+    joseph_update_rank3(xext, Pext, C, r, Rproj);
 
     // Clamp yaw error
     Vector3 dth = xext.template head<3>();
