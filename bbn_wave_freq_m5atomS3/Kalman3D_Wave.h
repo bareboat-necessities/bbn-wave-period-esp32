@@ -786,79 +786,132 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(
-    Vector3 const& mag_meas_body)
+    const Vector3& mag_meas_body)
 {
+    // Predicted magnetic field in body frame
     const Vector3 v2hat = magnetometer_measurement_func();
 
-    // Norm/gating on raw 3D vectors
-    T n_meas = mag_meas_body.norm();
-    T n_pred = v2hat.norm();
+    // Gating on norms
+    const T n_meas = mag_meas_body.norm();
+    const T n_pred = v2hat.norm();
     if (n_meas < T(1e-6) || n_pred < T(1e-6)) return;
 
+    // Unit vectors for dot product check
     Vector3 meas_n = mag_meas_body / n_meas;
     Vector3 pred_n = v2hat       / n_pred;
     T dotp = meas_n.dot(pred_n);
 
-    // thresholds
-    const T DOT_DANGEROUS = T(0.2);  // |dot| < 0.2 (~>78°) → ill-conditioned
-    const T YAW_CLAMP     = T(0.105); // ~6° max yaw correction per update
+    const T DOT_DANGEROUS = T(0.2);   // if |dot| < 0.2 (~>78°) → yaw-only branch
+    const T YAW_CLAMP     = T(0.105); // ~6° clamp per update
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // SAFE → full 3D update (with hemisphere disambiguation to avoid 180° flips)
+        // ------------------------------------------------------------------
+        // BRANCH 1: SAFE FULL 3D UPDATE
+        // ------------------------------------------------------------------
+        // Hemisphere disambiguation
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
-        measurement_update_partial(meas_fixed, v2hat, Rmag);
-        return;
+        const Vector3 r = meas_fixed - v2hat;
+
+        // Jacobian wrt attitude error
+        const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
+
+        // Assemble S = J Pθθ Jᵀ + Rmag
+        Matrix3 S_mat = Rmag;
+        const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
+        S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+
+        // Assemble PCᵀ = P(:,θ) Jᵀ
+        Matrix<T,NX,3> PCt = Pext.template block<NX,3>(0,0) * J_att.transpose();
+
+        // Gain
+        Eigen::LDLT<Matrix3> ldlt(S_mat);
+        if (ldlt.info() != Eigen::Success) {
+            S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rmag.norm());
+            ldlt.compute(S_mat);
+            if (ldlt.info() != Eigen::Success) return;
+        }
+        const Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
+
+        // State update
+        xext.noalias() += K * r;
+
+        // Joseph covariance update (explicit subtract–subtract–add form)
+        const Matrix<T,3,NX> CP = PCt.transpose();
+        const Matrix<T,NX,NX> KCP = K * CP;
+        const Matrix<T,NX,NX> KSKt = K * S_mat * K.transpose();
+        Pext.noalias() -= KCP;
+        Pext.noalias() -= KCP.transpose();
+        Pext.noalias() += KSKt;
+        Pext = T(0.5) * (Pext + Pext.transpose());
+
+        // Apply quaternion correction
+        applyQuaternionCorrectionFromErrorState();
+    } else {
+        // ------------------------------------------------------------------
+        // BRANCH 2: YAW-ONLY PROJECTED UPDATE
+        // ------------------------------------------------------------------
+        // Gravity in body, projector to horizontal plane
+        const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
+        const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
+
+        // Horizontal components
+        Vector3 m_h = Hb * mag_meas_body;
+        Vector3 v_h = Hb * v2hat;
+
+        T nm = m_h.norm(), nv = v_h.norm();
+        if (nm < T(1e-6) || nv < T(1e-6)) return;
+
+        // Hemisphere disambiguation
+        Vector3 m_hn = m_h / nm, v_hn = v_h / nv;
+        if (m_hn.dot(v_hn) < T(0)) m_h = -m_h;
+
+        // Innovation
+        const Vector3 r = Hb * (mag_meas_body - v2hat);
+
+        // Projected Jacobian
+        const Matrix3 J_att_proj = Hb * (-skew_symmetric_matrix(v2hat));
+
+        // Assemble S = J Pθθ Jᵀ + H Rmag Hᵀ
+        Matrix3 S_mat = Hb * Rmag * Hb.transpose();
+        const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
+        S_mat.noalias() += J_att_proj * P_th_th * J_att_proj.transpose();
+
+        // Assemble PCᵀ = P(:,θ) Jᵀ
+        Matrix<T,NX,3> PCt = Pext.template block<NX,3>(0,0) * J_att_proj.transpose();
+
+        // Gain
+        Eigen::LDLT<Matrix3> ldlt(S_mat);
+        if (ldlt.info() != Eigen::Success) {
+            S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * S_mat.norm());
+            ldlt.compute(S_mat);
+            if (ldlt.info() != Eigen::Success) return;
+        }
+        const Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
+
+        // State update
+        xext.noalias() += K * r;
+
+        // Limit correction to yaw only (project along gb, clamp)
+        Vector3 dth = xext.template head<3>();
+        const T dpsi = dth.dot(gb);
+        const T dpsi_clamped = std::max(-YAW_CLAMP, std::min(YAW_CLAMP, dpsi));
+        xext.template head<3>() = (dth - gb * dpsi + gb * dpsi_clamped).eval();
+
+        // Joseph covariance update
+        const Matrix<T,3,NX> CP = PCt.transpose();
+        const Matrix<T,NX,NX> KCP = K * CP;
+        const Matrix<T,NX,NX> KSKt = K * S_mat * K.transpose();
+        Pext.noalias() -= KCP;
+        Pext.noalias() -= KCP.transpose();
+        Pext.noalias() += KSKt;
+        Pext = T(0.5) * (Pext + Pext.transpose());
+
+        // Apply quaternion correction
+        applyQuaternionCorrectionFromErrorState();
     }
-    // DANGEROUS → yaw-only (horizontal) update with clamp
-    // body gravity dir (down) from current attitude
-    const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
-    const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose(); // project to horizontal plane
 
-    Vector3 m_h = Hb * mag_meas_body;
-    Vector3 v_h = Hb * v2hat;
-
-    T nm = m_h.norm(), nv = v_h.norm();
-    if (nm < T(1e-6) || nv < T(1e-6)) return; // no horizontal info
-
-    // hemisphere disambiguation on horizontal components
-    Vector3 m_hn = m_h / nm, v_hn = v_h / nv;
-    if (m_hn.dot(v_hn) < T(0)) m_h = -m_h;
-
-    // innovation & projected Jacobian: r = H(m - v), C = H * (-skew(v))
-    Vector3 r = Hb * (mag_meas_body - v2hat);
-
-    Matrix<T,3,NX> Cext = Matrix<T,3,NX>::Zero();
-    Cext.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
-
-    Matrix3 Rproj = Hb * Rmag * Hb.transpose();
-
-    // Kalman gain
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Rproj;
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
-    Eigen::LDLT<Matrix3> ldlt(S_mat);
-    if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Rproj.norm());
-        ldlt.compute(S_mat);
-        if (ldlt.info() != Eigen::Success) return;
-    }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-    // State update
-    xext.noalias() += K * r;
-
-    // Limit the attitude error to yaw only and clamp magnitude
-    Vector3 dth = xext.template head<3>();
-    T dpsi = dth.dot(gb);
-    T dpsi_clamped = std::max(-YAW_CLAMP, std::min(YAW_CLAMP, dpsi));
-    xext.template head<3>() = (dth - gb * dpsi + gb * dpsi_clamped).eval();
-
-    // Joseph covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Rproj * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    // Apply correction
-    applyQuaternionCorrectionFromErrorState();
+    // Mirror base covariance always
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
