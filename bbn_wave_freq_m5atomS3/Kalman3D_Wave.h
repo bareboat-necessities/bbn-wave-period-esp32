@@ -345,7 +345,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
     Vector3 k_a_ = Vector3::Constant(T(0.003));
 
-    // Original constant matrices (kept)
+    // Original constant matrices
     Matrix3 Rmag;
     MatrixM R;
     MatrixBaseN Qbase; // original Q for attitude & bias
@@ -708,10 +708,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         Pext = T(0.5) * (Pext + Pext.transpose());
     }
 
-    // Mirror base covariance for legacy accessor
+    // Mirror base covariance
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 
-    // Drift correction on S (unchanged)
+    // Drift correction on S
     if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
         applyIntegralZeroPseudoMeas();
         pseudo_update_counter_ = 0;
@@ -756,7 +756,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     // Apply small-angle correction to quaternion and zero the attitude error in xext
     applyQuaternionCorrectionFromErrorState();
 
-    // Mirror base block for legacy accessor
+    // Mirror base block
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
@@ -1194,7 +1194,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         const T Ix1mA1  = C1 - A1;
         const T Ix21mA2 = C2 - A2;
 
-        // Build K (same as your original code)
+        // Build K
         const T K_aa = B0;
         const T K_va = tau * (A0 - B0);
         const T K_vv = tau2 * (C0 - T(2)*A0 + B0);
