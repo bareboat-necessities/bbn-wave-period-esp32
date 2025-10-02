@@ -573,7 +573,7 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Vector3 const& gyr, T Ts)
 {
-    // ---- Attitude mean propagation (unchanged) ----
+    // Attitude mean propagation
     Vector3 gyro_bias;
     if constexpr (with_gyro_bias) {
         gyro_bias = xext.template segment<3>(3);
@@ -587,11 +587,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     qref = qref * dq;
     qref.normalize();
 
-    // =====================================================================
     // Build only the blocks we actually need: F_AA, Q_AA, F_LL, Q_LL
-    // =====================================================================
 
-    // ---- Attitude error (+ optional gyro bias) block ----
+    // Attitude error (+ optional gyro bias) block
     Matrix3 I = Matrix3::Identity();
     const Vector3 w = last_gyr_bias_corrected;
     const T omega = w.norm();
@@ -613,7 +611,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
 
     MatrixBaseN Q_AA = Qbase * Ts;
 
-    // ---- Linear subsystem [v,p,S,a_w] block: 12x12 ----
+    // Linear subsystem [v,p,S,a_w] block: 12x12
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 F_LL; F_LL.setZero();
     Mat12 Q_LL; Q_LL.setZero();
@@ -627,16 +625,15 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         QdAxis4x1_analytic (tau, Ts, sigma2, Qd_axis);
 
         const int idx[4] = {0,3,6,9}; // v,p,S,a offsets per axis in the 12x12
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < 4; ++i)  {
             for (int j = 0; j < 4; ++j) {
                 F_LL(idx[i] + axis, idx[j] + axis) = Phi_axis(i,j);
                 Q_LL(idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
             }
+        }
     }
 
-    // =====================================================================
-    // Mean propagation for [v,p,S,a_w] using F_LL (unchanged math)
-    // =====================================================================
+    // Mean propagation for [v,p,S,a_w] using F_LL
     Eigen::Matrix<T,12,1> x_lin_prev;
     x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
     x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
@@ -650,10 +647,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
-    // =====================================================================
     // Covariance propagation: exact block form of P ← FPFᵀ + Q
     // Keeps ALL cross terms. No NX×NX temporaries are formed.
-    // =====================================================================
     {
         constexpr int NA = BASE_N;
         constexpr int NL = 12;
