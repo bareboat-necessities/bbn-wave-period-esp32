@@ -395,6 +395,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         const Eigen::Matrix<T,3,1>& r,
         const Eigen::Matrix<T,3,3>& R)
     {
+        // Innovation covariance
         Eigen::Matrix<T,3,3> S = C * P * C.transpose() + R;
 
         Eigen::LDLT<Eigen::Matrix<T,3,3>> ldlt(S);
@@ -405,14 +406,21 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
             if (ldlt.info() != Eigen::Success) return;
         }
 
+        // Kalman gain
         Eigen::Matrix<T,NX,3> K = P * C.transpose() *
             ldlt.solve(Eigen::Matrix<T,3,3>::Identity());
 
+        // State update
         x.noalias() += K * r;
 
-        Eigen::Matrix<T,3,NX> CP = C * P;
-        Eigen::Matrix<T,NX,NX> KC = K * CP;
-        P.noalias() = P - KC - KC.transpose() + K * R * K.transpose();
+        // Covariance update (Joseph form, numerically stable)
+        const Eigen::Matrix<T,3,NX> CP = C * P;
+        const Eigen::Matrix<T,NX,NX> KCP = K * CP;
+        const Eigen::Matrix<T,NX,NX> KSKt = K * R * K.transpose();
+
+        P.noalias() -= KCP;
+        P.noalias() -= KCP.transpose();
+        P.noalias() += KSKt;
 
         P = T(0.5) * (P + P.transpose());
     }
@@ -425,10 +433,12 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         const Eigen::Matrix<T,3,1>& inno,
         const Eigen::Matrix<T,3,3>& R_S)
     {
+        // Pull out S-block only
         Eigen::Matrix<T,NX,3> P_Scols = P.template block<NX,3>(0, off_S);
         Eigen::Matrix<T,3,NX> P_Srows = P.template block<3,NX>(off_S, 0);
         Eigen::Matrix<T,3,3>  P_SS    = P.template block<3,3>(off_S, off_S);
 
+        // Innovation covariance
         Eigen::Matrix<T,3,3> S_mat = P_SS + R_S;
         Eigen::LDLT<Eigen::Matrix<T,3,3>> ldlt(S_mat);
         if (ldlt.info() != Eigen::Success) {
@@ -438,13 +448,20 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
             if (ldlt.info() != Eigen::Success) return;
         }
 
+        // Kalman gain
         Eigen::Matrix<T,NX,3> K = P_Scols *
             ldlt.solve(Eigen::Matrix<T,3,3>::Identity());
 
+        // State update
         x.noalias() += K * inno;
 
-        Eigen::Matrix<T,NX,NX> KP = K * P_Srows;
-        P.noalias() = P - KP - KP.transpose() + K * R_S * K.transpose();
+        // Covariance update (Joseph form, consistent with accel/mag)
+        const Eigen::Matrix<T,NX,NX> KCP = K * P_Srows;
+        const Eigen::Matrix<T,NX,NX> KSKt = K * R_S * K.transpose();
+
+        P.noalias() -= KCP;
+        P.noalias() -= KCP.transpose();
+        P.noalias() += KSKt;
 
         P = T(0.5) * (P + P.transpose());
     }
