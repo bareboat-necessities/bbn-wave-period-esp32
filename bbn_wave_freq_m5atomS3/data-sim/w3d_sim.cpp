@@ -31,12 +31,20 @@ using Eigen::Quaterniond;
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// === Double wrappers for float-only frame conversion helpers ===
+// ===== Simple converters (avoid Eigen .cast<> expression templates) =====
+inline Eigen::Vector3d to_d(const Eigen::Vector3f& a) {
+    return Eigen::Vector3d((double)a.x(), (double)a.y(), (double)a.z());
+}
+inline Eigen::Vector3f to_f(const Eigen::Vector3d& a) {
+    return Eigen::Vector3f((float)a.x(), (float)a.y(), (float)a.z());
+}
+
+// Double wrappers for float-only frame conversion helpers
 inline Eigen::Vector3d zu_to_ned_d(const Eigen::Vector3d& v) {
-    return zu_to_ned(v.cast<float>()).cast<double>();
+    return to_d(zu_to_ned(to_f(v)));
 }
 inline Eigen::Vector3d ned_to_zu_d(const Eigen::Vector3d& v) {
-    return ned_to_zu(v.cast<float>()).cast<double>();
+    return to_d(ned_to_zu(to_f(v)));
 }
 
 // RMS accumulator (double)
@@ -51,20 +59,17 @@ private:
 
 // Noise model
 bool add_noise = true;
-
 struct NoiseModel {
     std::default_random_engine rng;
     std::normal_distribution<double> dist;
     Vector3d bias;
 };
-
 NoiseModel make_noise_model(double sigma, double bias_range, unsigned seed) {
     NoiseModel m{std::default_random_engine(seed), std::normal_distribution<double>(0.0, sigma), Vector3d::Zero()};
     std::uniform_real_distribution<double> ub(-bias_range, bias_range);
     m.bias = Vector3d(ub(m.rng), ub(m.rng), ub(m.rng));
     return m;
 }
-
 Vector3d apply_noise(const Vector3d& v, NoiseModel& m) {
     return v - m.bias + Vector3d(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
@@ -143,7 +148,7 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
     mekf.set_aw_stationary_std(Vector3d::Constant(tune.sigma_a_eff) * 1.3);
     mekf.set_RS_noise(Vector3d::Constant(tune.R_S_eff));
 
-    const Vector3d mag_world_a = MagSim_WMM::mag_world_aero().cast<double>();
+    const Vector3d mag_world_a = to_d(MagSim_WMM::mag_world_aero());
 
     static NoiseModel accel_noise = make_noise_model(0.03, 0.02, 1234);
     static NoiseModel gyro_noise  = make_noise_model(0.001, 0.0004, 5678);
@@ -163,7 +168,27 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
         outname += with_mag ? "_w3d.csv" : "_w3d_nomag.csv";
 
     std::ofstream ofs(outname);
-    ofs << "time,roll_ref,pitch_ref,yaw_ref,...\n"; // header truncated for brevity
+    ofs << "time,"
+        << "roll_ref,pitch_ref,yaw_ref,"
+        << "disp_ref_x,disp_ref_y,disp_ref_z,"
+        << "vel_ref_x,vel_ref_y,vel_ref_z,"
+        << "acc_ref_x,acc_ref_y,acc_ref_z,"
+        << "acc_bx,acc_by,acc_bz,"
+        << "gyro_x,gyro_y,gyro_z,"
+        << "roll_est,pitch_est,yaw_est,"
+        << "disp_est_x,disp_est_y,disp_est_z,"
+        << "vel_est_x,vel_est_y,vel_est_z,"
+        << "acc_est_x,acc_est_y,acc_est_z,"
+        << "disp_err_x,disp_err_y,disp_err_z,"
+        << "vel_err_x,vel_err_y,vel_err_z,"
+        << "acc_err_x,acc_err_y,acc_err_z,"
+        << "err_roll,err_pitch,err_yaw,angle_err,"
+        << "acc_noisy_x,acc_noisy_y,acc_noisy_z,"
+        << "gyro_noisy_x,gyro_noisy_y,gyro_noisy_z,"
+        << "acc_bias_x,acc_bias_y,acc_bias_z,"
+        << "gyro_bias_x,gyro_bias_y,gyro_bias_z,"
+        << "acc_bias_est_x,acc_bias_est_y,acc_bias_est_z,"
+        << "gyro_bias_est_x,gyro_bias_est_y,gyro_bias_est_z\n";
 
     std::vector<double> errs_z, errs_roll, errs_pitch, errs_yaw, errs_angle;
 
@@ -188,7 +213,7 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
             Vector3f mag_b_enu_f =
                 MagSim_WMM::simulate_mag_from_euler_nautical(
                     (float)r_ref_out,(float)p_ref_out,(float)y_ref_out);
-            mag_f = zu_to_ned(mag_b_enu_f).cast<double>();
+            mag_f = zu_to_ned_d(to_d(mag_b_enu_f));
         }
 
         if (first) { mekf.initialize_from_acc(acc_f); first = false; }
@@ -209,7 +234,7 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
         // Quaternion → Euler (float bridge)
         auto coeffs = mekf.quaternion().coeffs();
         Quaterniond q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
-        Quaternionf qf = q.cast<float>();
+        Quaternionf qf((float)q.w(), (float)q.x(), (float)q.y(), (float)q.z());
         float r_tmp, p_tmp, y_tmp;
         quat_to_euler_aero(qf, r_tmp, p_tmp, y_tmp);
         aero_to_nautical(r_tmp, p_tmp, y_tmp);
@@ -236,13 +261,13 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
             Eigen::AngleAxisf((float)r_ref_out*M_PI/180.0f, Vector3f::UnitX()) *
             Eigen::AngleAxisf((float)p_ref_out*M_PI/180.0f, Vector3f::UnitY()) *
             Eigen::AngleAxisf((float)y_ref_out*M_PI/180.0f, Vector3f::UnitZ());
-        Quaterniond q_ref = q_ref_f.cast<double>();
+        Quaterniond q_ref(q_ref_f.w(), q_ref_f.x(), q_ref_f.y(), q_ref_f.z());
 
         Quaterniond q_err = q_ref.conjugate() * q_est_naut.normalized();
         double angle_err = 2.0 * std::acos(std::clamp(q_err.w(), -1.0, 1.0)) * 180.0/M_PI;
 
-        Vector3d bacc_est = mekf.get_acc_bias().cast<double>();
-        Vector3d bgyr_est = mekf.gyroscope_bias().cast<double>();
+        Vector3d bacc_est = to_d(mekf.get_acc_bias());
+        Vector3d bgyr_est = to_d(mekf.gyroscope_bias());
 
         errs_z.push_back(disp_err.z());
         errs_roll.push_back(r_est - r_ref_out);
@@ -250,7 +275,29 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
         errs_yaw.push_back(y_est - y_ref_out);
         errs_angle.push_back(angle_err);
 
-        // (CSV streaming block goes here — unchanged except values are now double)
+        ofs << rec.time << ","
+            << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
+            << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
+            << vel_ref.x()  << "," << vel_ref.y()  << "," << vel_ref.z()  << ","
+            << acc_ref.x()  << "," << acc_ref.y()  << "," << acc_ref.z()  << ","
+            << rec.imu.acc_bx << "," << rec.imu.acc_by << "," << rec.imu.acc_bz << ","
+            << rec.imu.gyro_x << "," << rec.imu.gyro_y << "," << rec.imu.gyro_z << ","
+            << r_est << "," << p_est << "," << y_est << ","
+            << disp_est.x() << "," << disp_est.y() << "," << disp_est.z() << ","
+            << vel_est.x()  << "," << vel_est.y()  << "," << vel_est.z() << ","
+            << acc_est.x()  << "," << acc_est.y()  << "," << acc_est.z() << ","
+            << disp_err.x() << "," << disp_err.y() << "," << disp_err.z() << ","
+            << vel_err.x()  << "," << vel_err.y() << "," << vel_err.z() << ","
+            << acc_err.x()  << "," << acc_err.y()  << "," << acc_err.z() << ","
+            << (r_est - r_ref_out) << "," << (p_est - p_ref_out) << "," << (y_est - y_ref_out) << ","
+            << angle_err << ","
+            << acc_noisy.x() << "," << acc_noisy.y() << "," << acc_noisy.z() << ","
+            << gyr_noisy.x() << "," << gyr_noisy.y() << "," << gyr_noisy.z() << ","
+            << accel_noise.bias.x() << "," << accel_noise.bias.y() << "," << accel_noise.bias.z() << ","
+            << gyro_noise.bias.x()  << "," << gyro_noise.bias.y()  << "," << gyro_noise.bias.z()  << ","
+            << bacc_est.x() << "," << bacc_est.y() << "," << bacc_est.z() << ","
+            << bgyr_est.x() << "," << bgyr_est.y() << "," << bgyr_est.z()
+            << "\n";
     });
 
     ofs.close();
@@ -292,3 +339,4 @@ int main(int argc, char* argv[]) {
     for (const auto& fname : files) process_wave_file(fname, dt, with_mag, tuning_map);
     return 0;
 }
+
