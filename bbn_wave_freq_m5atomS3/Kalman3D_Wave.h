@@ -395,7 +395,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         const Eigen::Matrix<T,3,1>& r,
         const Eigen::Matrix<T,3,3>& R)
     {
-        // Innovation covariance
         Eigen::Matrix<T,3,3> S = C * P * C.transpose() + R;
 
         Eigen::LDLT<Eigen::Matrix<T,3,3>> ldlt(S);
@@ -406,22 +405,17 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
             if (ldlt.info() != Eigen::Success) return;
         }
 
-        // Kalman gain
         Eigen::Matrix<T,NX,3> K = P * C.transpose() *
             ldlt.solve(Eigen::Matrix<T,3,3>::Identity());
 
-        // State update
+        // state update
         x.noalias() += K * r;
 
-        // Covariance update (Joseph form, numerically stable)
-        const Eigen::Matrix<T,3,NX> CP = C * P;
-        const Eigen::Matrix<T,NX,NX> KCP = K * CP;
-        const Eigen::Matrix<T,NX,NX> KSKt = K * R * K.transpose();
+        // covariance update (safe Joseph form)
+        Eigen::Matrix<T,NX,NX> I_KC = MatrixNX::Identity() - K * C;
+        P.noalias() = I_KC * P * I_KC.transpose() + K * R * K.transpose();
 
-        P.noalias() -= KCP;
-        P.noalias() -= KCP.transpose();
-        P.noalias() += KSKt;
-
+        // enforce symmetry
         P = T(0.5) * (P + P.transpose());
     }
 
@@ -433,13 +427,11 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         const Eigen::Matrix<T,3,1>& inno,
         const Eigen::Matrix<T,3,3>& R_S)
     {
-        // Pull out S-block only
-        Eigen::Matrix<T,NX,3> P_Scols = P.template block<NX,3>(0, off_S);
-        Eigen::Matrix<T,3,NX> P_Srows = P.template block<3,NX>(off_S, 0);
-        Eigen::Matrix<T,3,3>  P_SS    = P.template block<3,3>(off_S, off_S);
+        // Measurement matrix for pseudo: H selects the S block
+        Eigen::Matrix<T,3,NX> H = Eigen::Matrix<T,3,NX>::Zero();
+        H.template block<3,3>(0, off_S) = Matrix3::Identity();
 
-        // Innovation covariance
-        Eigen::Matrix<T,3,3> S_mat = P_SS + R_S;
+        Eigen::Matrix<T,3,3> S_mat = H * P * H.transpose() + R_S;
         Eigen::LDLT<Eigen::Matrix<T,3,3>> ldlt(S_mat);
         if (ldlt.info() != Eigen::Success) {
             S_mat += Eigen::Matrix<T,3,3>::Identity() *
@@ -448,21 +440,17 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
             if (ldlt.info() != Eigen::Success) return;
         }
 
-        // Kalman gain
-        Eigen::Matrix<T,NX,3> K = P_Scols *
+        Eigen::Matrix<T,NX,3> K = P * H.transpose() *
             ldlt.solve(Eigen::Matrix<T,3,3>::Identity());
 
-        // State update
+        // state update
         x.noalias() += K * inno;
 
-        // Covariance update (Joseph form, consistent with accel/mag)
-        const Eigen::Matrix<T,NX,NX> KCP = K * P_Srows;
-        const Eigen::Matrix<T,NX,NX> KSKt = K * R_S * K.transpose();
+        // covariance update (safe Joseph form)
+        Eigen::Matrix<T,NX,NX> I_KH = MatrixNX::Identity() - K * H;
+        P.noalias() = I_KH * P * I_KH.transpose() + K * R_S * K.transpose();
 
-        P.noalias() -= KCP;
-        P.noalias() -= KCP.transpose();
-        P.noalias() += KSKt;
-
+        // enforce symmetry
         P = T(0.5) * (P + P.transpose());
     }
 };
