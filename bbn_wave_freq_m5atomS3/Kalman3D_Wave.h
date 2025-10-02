@@ -991,38 +991,47 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas() {
-    // H picks S block only
-    Matrix<T,3,NX> H = Matrix<T,3,NX>::Zero();
-    H.template block<3,3>(0, OFF_S) = Matrix3::Identity();
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas()
+{
+    constexpr int off_S = OFF_S;   // offset of S block (3 states)
 
-    // Innovation (target S = 0)
-    Vector3 inno = - xext.template segment<3>(OFF_S);
+    // Innovation: target S = 0
+    const Vector3 r = -xext.template segment<3>(off_S);
 
-    // Innovation covariance and PHt
-    Matrix3 S_mat = H * Pext * H.transpose() + R_S;
+    // Measurement Jacobian H only touches S → block = I
+    // S = P_SS + R_S   (since H=I on S block)
+    Matrix3 S_mat = Pext.template block<3,3>(off_S, off_S) + R_S;
+
+    // Cross covariance PCᵀ = P(:,S) (NX×3)
+    Eigen::Matrix<T,NX,3> PCt = Pext.template block<NX,3>(0, off_S);
 
     // Solve for K
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
+        S_mat += Matrix3::Identity() *
+                 std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * R_S.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
-    Matrix<T, NX, 3> PHt = Pext * H.transpose();
-    Matrix<T, NX, 3> K = PHt * ldlt.solve(Matrix3::Identity());
+    const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // State update
-    xext.noalias() += K * inno;
+    // ---------- State update ----------
+    xext.noalias() += K * r;
 
-    // Joseph covariance update
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * H) * Pext * (I - K * H).transpose() + K * R_S * K.transpose();
+    // ---------- Covariance update (Joseph form, block style) ----------
+    const Eigen::Matrix<T,3,NX> CP   = PCt.transpose();    // 3×NX
+    const Eigen::Matrix<T,NX,NX> KCP = K * CP;
+    const Eigen::Matrix<T,NX,NX> KSKt= K * S_mat * K.transpose();
+
+    Pext.noalias() -= KCP;
+    Pext.noalias() -= KCP.transpose();
+    Pext.noalias() += KSKt;
     Pext = T(0.5) * (Pext + Pext.transpose());
 
+    // Apply any small-angle correction (though attitude error unaffected by this update)
     applyQuaternionCorrectionFromErrorState();
 
-    // Mirror base covariance
+    // Mirror base block
     Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
