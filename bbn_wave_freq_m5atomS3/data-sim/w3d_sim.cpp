@@ -19,30 +19,23 @@ const double MAG_DELAY_SEC = 5.0; // delay before enabling magnetometer
 const double FAIL_ERR_LIMIT_PERCENT_HIGH = 11.50;
 const double FAIL_ERR_LIMIT_PERCENT_LOW  = 11.50;
 
-// Global variable set from command line
-double R_S_base_global = 1.9;   // default
-
-// RMS window length [s]
+double R_S_base_global = 1.9;     // default
 constexpr double RMS_WINDOW_SEC = 60.0;
 
-#include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
-#include "WaveFilesSupport.h"  // file reader/parser + naming
-#include "FrameConversions.h"  // coordinate & quaternion conversions + MagSim_WMM
+#include "Kalman3D_Wave.h"
+#include "WaveFilesSupport.h"
+#include "FrameConversions.h"
 
 using Eigen::Vector3d;
 using Eigen::Quaterniond;
+using Eigen::Vector3f;
+using Eigen::Quaternionf;
 
-// Inline RMS accumulator (double)
+// RMS accumulator (double)
 class RMSReport {
 public:
-    inline void add(double value) {
-        sum_sq_ += value * value;
-        count_++;
-    }
-    inline double rms() const {
-        if (count_ == 0) return NAN;
-        return std::sqrt(sum_sq_ / static_cast<double>(count_));
-    }
+    inline void add(double value) { sum_sq_ += value * value; count_++; }
+    inline double rms() const { return count_ ? std::sqrt(sum_sq_ / (double)count_) : NAN; }
 private:
     double sum_sq_ = 0.0;
     size_t count_ = 0;
@@ -58,9 +51,7 @@ struct NoiseModel {
 };
 
 NoiseModel make_noise_model(double sigma, double bias_range, unsigned seed) {
-    NoiseModel m{std::default_random_engine(seed),
-                 std::normal_distribution<double>(0.0, sigma),
-                 Vector3d::Zero()};
+    NoiseModel m{std::default_random_engine(seed), std::normal_distribution<double>(0.0, sigma), Vector3d::Zero()};
     std::uniform_real_distribution<double> ub(-bias_range, bias_range);
     m.bias = Vector3d(ub(m.rng), ub(m.rng), ub(m.rng));
     return m;
@@ -134,13 +125,6 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
               << ") with R_S_base=" << R_S_base_global
               << " -> R_S_eff=" << tune.R_S_eff << "\n";
 
-    std::cout << "Using tuning for "
-              << EnumTraits<WaveType>::to_string(type)
-              << " wave index " << wave_idx
-              << ": tau=" << tune.tau_eff
-              << ", sigma_a=" << tune.sigma_a_eff
-              << ", R_S=" << tune.R_S_eff << "\n";
-
     WaveDataCSVReader reader(filename);
 
     const Vector3d sigma_a(0.04, 0.04, 0.04);
@@ -159,7 +143,7 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
     Eigen::Vector3d sigma_S = Eigen::Vector3d::Constant(tune.R_S_eff);
     mekf.set_RS_noise(sigma_S);
 
-    const Vector3d mag_world_a = MagSim_WMM::mag_world_aero();
+    const Vector3d mag_world_a = MagSim_WMM::mag_world_aero().cast<double>();
 
     // Noise models (fixed params, seeded differently)
     static NoiseModel accel_noise = make_noise_model(0.03, 0.02, 1234);
@@ -183,7 +167,27 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
     }
 
     std::ofstream ofs(outname);
-    ofs << "time, ... (headers unchanged) ... \n";  // keep your CSV headers
+    ofs << "time,"
+        << "roll_ref,pitch_ref,yaw_ref,"
+        << "disp_ref_x,disp_ref_y,disp_ref_z,"
+        << "vel_ref_x,vel_ref_y,vel_ref_z,"
+        << "acc_ref_x,acc_ref_y,acc_ref_z,"
+        << "acc_bx,acc_by,acc_bz,"
+        << "gyro_x,gyro_y,gyro_z,"
+        << "roll_est,pitch_est,yaw_est,"
+        << "disp_est_x,disp_est_y,disp_est_z,"
+        << "vel_est_x,vel_est_y,vel_est_z,"
+        << "acc_est_x,acc_est_y,acc_est_z,"
+        << "disp_err_x,disp_err_y,disp_err_z,"
+        << "vel_err_x,vel_err_y,vel_err_z,"
+        << "acc_err_x,acc_err_y,acc_err_z,"
+        << "err_roll,err_pitch,err_yaw,angle_err,"
+        << "acc_noisy_x,acc_noisy_y,acc_noisy_z,"
+        << "gyro_noisy_x,gyro_noisy_y,gyro_noisy_z,"
+        << "acc_bias_x,acc_bias_y,acc_bias_z,"
+        << "gyro_bias_x,gyro_bias_y,gyro_bias_z,"
+        << "acc_bias_est_x,acc_bias_est_y,acc_bias_est_z,"
+        << "gyro_bias_est_x,gyro_bias_est_y,gyro_bias_est_z\n";
 
     // RMS accumulators (for last 60 s)
     std::vector<double> errs_z, errs_roll, errs_pitch, errs_yaw, errs_angle;
@@ -195,12 +199,8 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
         Vector3d gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
         // Apply optional noise/bias
-        Vector3d acc_noisy = acc_b;
-        Vector3d gyr_noisy = gyr_b;
-        if (add_noise) {
-            acc_noisy = apply_noise(acc_b, accel_noise);
-            gyr_noisy = apply_noise(gyr_b, gyro_noise);
-        }
+        Vector3d acc_noisy = add_noise ? apply_noise(acc_b, accel_noise) : acc_b;
+        Vector3d gyr_noisy = add_noise ? apply_noise(gyr_b, gyro_noise) : gyr_b;
 
         Vector3d acc_f = zu_to_ned(acc_noisy);
         Vector3d gyr_f = zu_to_ned(gyr_noisy);
@@ -213,9 +213,15 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
         // Simulated magnetometer
         Vector3d mag_f(0,0,0);
         if (with_mag) {
-            Vector3d mag_b_enu =
-                MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
-            mag_f = zu_to_ned(mag_b_enu);
+            // If simulate_mag_from_euler_nautical returns Vector3f, cast appropriately
+            Vector3f mag_b_enu_f =
+                MagSim_WMM::simulate_mag_from_euler_nautical(
+                    static_cast<float>(r_ref_out),
+                    static_cast<float>(p_ref_out),
+                    static_cast<float>(y_ref_out));
+
+            // Convert to NED, then cast to double
+            mag_f = zu_to_ned(mag_b_enu_f).cast<double>();
         }
 
         if (first) {
@@ -239,13 +245,21 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
             mekf.measurement_update_acc_only(acc_f);
         }
 
-        // Estimated quaternion → nautical Euler
+        // === Quaternion → Euler (with float bridge) ===
         auto coeffs = mekf.quaternion().coeffs();
         Quaterniond q(coeffs(3), coeffs(0), coeffs(1), coeffs(2));
-        double r_est_a, p_est_a, y_est_a;
-        quat_to_euler_aero(q, r_est_a, p_est_a, y_est_a);
-        double r_est = r_est_a, p_est = p_est_a, y_est = y_est_a;
-        aero_to_nautical(r_est, p_est, y_est);
+
+        // Cast double quaternion → float for helper
+        Quaternionf qf = q.cast<float>();
+
+        float r_tmp, p_tmp, y_tmp;
+        quat_to_euler_aero(qf, r_tmp, p_tmp, y_tmp);
+        aero_to_nautical(r_tmp, p_tmp, y_tmp);
+
+        // Promote back to double
+        double r_est = static_cast<double>(r_tmp);
+        double p_est = static_cast<double>(p_tmp);
+        double y_est = static_cast<double>(y_tmp);
 
         // Reference and estimated kinematics
         Vector3d disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
@@ -260,30 +274,56 @@ void process_wave_file(const std::string &filename, double dt, bool with_mag,
         Vector3d vel_err  = vel_est  - vel_ref;
         Vector3d acc_err  = acc_est  - acc_ref;
 
+        // === Quaternion error (ensure same type) ===
         Quaterniond q_est_naut =
             Eigen::AngleAxisd(r_est*M_PI/180.0, Vector3d::UnitX()) *
             Eigen::AngleAxisd(p_est*M_PI/180.0, Vector3d::UnitY()) *
             Eigen::AngleAxisd(y_est*M_PI/180.0, Vector3d::UnitZ());
+
         Quaterniond q_ref =
-            Eigen::AngleAxisd(r_ref_out*M_PI/180.0, Vector3d::UnitX()) *
-            Eigen::AngleAxisd(p_ref_out*M_PI/180.0, Vector3d::UnitY()) *
-            Eigen::AngleAxisd(y_ref_out*M_PI/180.0, Vector3d::UnitZ());
+            (Eigen::AngleAxisf(static_cast<float>(r_ref_out)*M_PI/180.0f, Vector3f::UnitX()) *
+             Eigen::AngleAxisf(static_cast<float>(p_ref_out)*M_PI/180.0f, Vector3f::UnitY()) *
+             Eigen::AngleAxisf(static_cast<float>(y_ref_out)*M_PI/180.0f, Vector3f::UnitZ()))
+            .cast<double>();
+
         Quaterniond q_err = q_ref.conjugate() * q_est_naut.normalized();
         double angle_err = 2.0 * std::acos(std::clamp(q_err.w(), -1.0, 1.0)) * 180.0/M_PI;
 
-        // Estimated biases
-        Vector3d bacc_est = mekf.get_acc_bias();
-        Vector3d bgyr_est = mekf.gyroscope_bias();
+        // Estimated biases (cast if float-returning)
+        Vector3d bacc_est = mekf.get_acc_bias().cast<double>();
+        Vector3d bgyr_est = mekf.gyroscope_bias().cast<double>();
 
-        // Store errors
+        // Store errors for RMS window
         errs_z.push_back(disp_err.z());
         errs_roll.push_back(r_est - r_ref_out);
         errs_pitch.push_back(p_est - p_ref_out);
         errs_yaw.push_back(y_est - y_ref_out);
         errs_angle.push_back(angle_err);
 
-        // Stream row to CSV (unchanged except types)
-        ofs << rec.time << "," ... << "\n"; // keep same fields
+        // stream row to CSV
+        ofs << rec.time << ","
+            << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
+            << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
+            << vel_ref.x()  << "," << vel_ref.y()  << "," << vel_ref.z()  << ","
+            << acc_ref.x()  << "," << acc_ref.y()  << "," << acc_ref.z()  << ","
+            << rec.imu.acc_bx << "," << rec.imu.acc_by << "," << rec.imu.acc_bz << ","
+            << rec.imu.gyro_x << "," << rec.imu.gyro_y << "," << rec.imu.gyro_z << ","
+            << r_est << "," << p_est << "," << y_est << ","
+            << disp_est.x() << "," << disp_est.y() << "," << disp_est.z() << ","
+            << vel_est.x()  << "," << vel_est.y()  << "," << vel_est.z() << ","
+            << acc_est.x()  << "," << acc_est.y()  << "," << acc_est.z() << ","
+            << disp_err.x() << "," << disp_err.y() << "," << disp_err.z() << ","
+            << vel_err.x()  << "," << vel_err.y() << "," << vel_err.z() << ","
+            << acc_err.x()  << "," << acc_err.y()  << "," << acc_err.z()  << ","
+            << (r_est - r_ref_out) << "," << (p_est - p_ref_out) << "," << (y_est - y_ref_out) << ","
+            << angle_err << ","
+            << acc_noisy.x() << "," << acc_noisy.y() << "," << acc_noisy.z() << ","
+            << gyr_noisy.x() << "," << gyr_noisy.y() << "," << gyr_noisy.z() << ","
+            << accel_noise.bias.x() << "," << accel_noise.bias.y() << "," << accel_noise.bias.z() << ","
+            << gyro_noise.bias.x()  << "," << gyro_noise.bias.y()  << "," << gyro_noise.bias.z()  << ","
+            << bacc_est.x() << "," << bacc_est.y() << "," << bacc_est.z() << ","
+            << bgyr_est.x() << "," << bgyr_est.y() << "," << bgyr_est.z()
+            << "\n";
     });
 
     ofs.close();
