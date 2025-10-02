@@ -220,7 +220,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Accessors
     Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
-    MatrixBaseN const& covariance_base() const { return Pbase; } // top-left original block
+    MatrixBaseN const& covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left original block
     MatrixNX const& covariance_full() const { return Pext; }     // full extended covariance
 
     Vector3 gyroscope_bias() const {
@@ -327,10 +327,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     Eigen::Quaternion<T> qref;
     Vector3 v2ref = Vector3::UnitX();
 
-    // Original base error-state (first BASE_N elements) — now stored inside xext (top portion)
-    // But we keep a mirror of original P for compatibility
-    MatrixBaseN Pbase;
-
     // Extended full state xext and Pext (NX x NX)
     Matrix<T, NX, 1> xext; // [ att_err(3), (gyro bias 3 optional), v(3), p(3), S(3) ]
     MatrixNX Pext;
@@ -432,6 +428,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
   R_S = Matrix3::Identity() * R_S_noise;
 
   // initialize base / extended states
+  MatrixBaseN Pbase;
   Pbase.setZero();
   Pbase.setIdentity(); // default small initial cov unless user overwrites
 
@@ -708,9 +705,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         Pext = T(0.5) * (Pext + Pext.transpose());
     }
 
-    // Mirror base covariance
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
-
     // Drift correction on S
     if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
         applyIntegralZeroPseudoMeas();
@@ -755,9 +749,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
 
     // Apply small-angle correction to quaternion and zero the attitude error in xext
     applyQuaternionCorrectionFromErrorState();
-
-    // Mirror base block
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -838,9 +829,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 
     // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
-
-    // Mirror base block
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -923,9 +911,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 
     // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
-
-    // Mirror base block
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 // specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
@@ -1003,9 +988,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 
     // Apply quaternion correction (attitude may get nudged via cross-covariances)
     applyQuaternionCorrectionFromErrorState();
-
-    // Mirror base block
-    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
