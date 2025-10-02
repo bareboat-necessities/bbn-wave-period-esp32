@@ -387,8 +387,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-inline void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::joseph_update_rank3(
+inline void joseph_update_rank3(
     Eigen::Matrix<T,NX,1>& x,
     Eigen::Matrix<T,NX,NX>& P,
     const Eigen::Matrix<T,3,NX>& C,
