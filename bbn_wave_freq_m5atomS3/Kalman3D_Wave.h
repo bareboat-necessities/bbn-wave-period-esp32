@@ -670,7 +670,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     // Column offset for attitude error
     constexpr int OFF_TH = 0;
 
-    // ---------- Innovation covariance S = C P Cᵀ + Rm (3×3), with C touching only attitude ----------
+    // Innovation covariance S = C P Cᵀ + Rm (3×3), with C touching only attitude
     Matrix3 S_mat = Rm;
 
     // P blocks used: Pθθ (3×3)
@@ -679,14 +679,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     // S += J_att * Pθθ * J_attᵀ
     S_mat.noalias() += J_att * P_th_th * J_att.transpose();
 
-    // ---------- PCᵀ = P Cᵀ (NX×3) — only attitude columns contribute ----------
+    // PCᵀ = P Cᵀ (NX×3) — only attitude columns contribute
     Eigen::Matrix<T, NX, 3> PCt; PCt.setZero();
     {
         const auto P_all_th = Pext.template block<NX,3>(0, OFF_TH);
         PCt.noalias() += P_all_th * J_att.transpose();
     }
 
-    // ---------- K = PCᵀ * S^{-1} ----------
+    // K = PCᵀ * S^{-1}
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
         // Gentle diagonal boost if the factorization fails (numerical safety)
@@ -697,13 +697,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
     }
     const Eigen::Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // ---------- State update ----------
+    // State update
     xext.noalias() += K * r;
 
     // Apply small-angle correction to quaternion and zero the attitude error in xext
     applyQuaternionCorrectionFromErrorState();
 
-    // ---------- Covariance update (Joseph form, but avoiding explicit C) ----------
+    // Covariance update (Joseph form, but avoiding explicit C)
     // CP = (PCᵀ)ᵀ
     const Eigen::Matrix<T, 3, NX> CP   = PCt.transpose();
     const Eigen::Matrix<T, NX, NX> KCP = K * CP;              // K * C * P
@@ -832,9 +832,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     const T YAW_CLAMP     = T(0.105); // ~6° clamp per update
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // ------------------------------------------------------------------
         // BRANCH 1: SAFE FULL 3D UPDATE
-        // ------------------------------------------------------------------
         // Hemisphere disambiguation
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
         const Vector3 r = meas_fixed - v2hat;
@@ -874,9 +872,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         // Apply quaternion correction
         applyQuaternionCorrectionFromErrorState();
     } else {
-        // ------------------------------------------------------------------
         // BRANCH 2: YAW-ONLY PROJECTED UPDATE
-        // ------------------------------------------------------------------
         // Gravity in body, projector to horizontal plane
         const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
         const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
@@ -1015,10 +1011,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     }
     const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    // ---------- State update ----------
+    // State update
     xext.noalias() += K * r;
 
-    // ---------- Covariance update (Joseph form, block style) ----------
+    // Covariance update (Joseph form, block style)
     const Eigen::Matrix<T,3,NX> CP   = PCt.transpose();    // 3×NX
     const Eigen::Matrix<T,NX,NX> KCP = K * CP;
     const Eigen::Matrix<T,NX,NX> KSKt= K * S_mat * K.transpose();
