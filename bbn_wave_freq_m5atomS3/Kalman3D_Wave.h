@@ -387,12 +387,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
 
-    inline void joseph_update_rank3(
-        Eigen::Matrix<T,NX,1>& x,
-        Eigen::Matrix<T,NX,NX>& P,
-        const Eigen::Matrix<T,3,NX>& C,
-        const Eigen::Matrix<T,3,1>& r,
-        const Eigen::Matrix<T,3,3>& R)
+    inline void joseph_update_rank3(Eigen::Matrix<T,NX,1>& x, Eigen::Matrix<T,NX,NX>& P,
+        const Eigen::Matrix<T,3,NX>& C, const Eigen::Matrix<T,3,1>& r, const Eigen::Matrix<T,3,3>& R)
     {
         // Innovation covariance
         Eigen::Matrix<T,3,3> S = C * P * C.transpose() + R;
