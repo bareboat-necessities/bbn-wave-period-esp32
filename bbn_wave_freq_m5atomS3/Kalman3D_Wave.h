@@ -381,6 +381,41 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
+
+// --- Reusable helpers for all 3×3 measurement updates ---
+
+// Factor S with LDLT and a diagonal safety boost if needed.
+// The `noise_scale` argument should be something like R.norm() or S.norm() from the branch.
+EIGEN_STRONG_INLINE bool safe_ldlt3_(Matrix3& S,
+                                     Eigen::LDLT<Matrix3>& ldlt,
+                                     T noise_scale) const {
+    ldlt.compute(S);
+    if (ldlt.info() == Eigen::Success) return true;
+
+    // Minimum positive bump
+    const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * std::max(noise_scale, T(1)));
+    S.diagonal().array() += bump;
+
+    ldlt.compute(S);
+    return (ldlt.info() == Eigen::Success);
+}
+
+// Joseph covariance update: P ← P - KCP - (KCP)ᵀ + K S Kᵀ, enforce symmetry.
+EIGEN_STRONG_INLINE void joseph_update3_(const Eigen::Matrix<T,NX,3>& K,
+                                         const Matrix3& S,
+                                         const Eigen::Matrix<T,NX,3>& PCt) {
+    const Eigen::Matrix<T,3,NX> CP  = PCt.transpose();
+    const Eigen::Matrix<T,NX,NX> KCP = K * CP;
+    const Eigen::Matrix<T,NX,NX> KSKt= K * S * K.transpose();
+
+    Pext.noalias() -= KCP;
+    Pext.noalias() -= KCP.transpose();
+    Pext.noalias() += KSKt;
+
+    // Symmetrize for numerical hygiene
+    Pext = T(0.5) * (Pext + Pext.transpose());
+}
+  
 };
 
 // Implementation
