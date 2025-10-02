@@ -692,7 +692,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
 {
     // Jacobian touches only attitude error
     Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
-    C.block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
+    C.template block<3,3>(0,0) = -skew_symmetric_matrix(vhat);
 
     // Innovation
     Vector3 inno = meas - vhat;
@@ -714,10 +714,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 
     // Build Jacobian
     Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
-    C.block<3,3>(0,0)      = -skew_symmetric_matrix(v1hat); // attitude
-    C.block<3,3>(0,OFF_AW) = R_wb();                        // a_w
+    C.template block<3,3>(0,0)      = -skew_symmetric_matrix(v1hat); // attitude
+    C.template block<3,3>(0,OFF_AW) = R_wb();                        // a_w
     if constexpr (with_accel_bias)
-        C.block<3,3>(0,OFF_BA) = Matrix3::Identity();       // bias
+        C.template block<3,3>(0,OFF_BA) = Matrix3::Identity();       // bias
 
     // Innovation
     Vector3 inno = acc_meas - v1hat;
@@ -750,7 +750,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
         const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
 
         Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
-        C.block<3,3>(0,0) = -skew_symmetric_matrix(v2hat);
+        C.template block<3,3>(0,0) = -skew_symmetric_matrix(v2hat);
 
         Vector3 inno = meas_fixed - v2hat;
         joseph_update_rank3(xext, Pext, C, inno, Rmag);
@@ -775,7 +775,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     Vector3 r = Hb * (mag_meas_body - v2hat);
 
     Matrix<T,3,NX> C = Matrix<T,3,NX>::Zero();
-    C.block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
+    C.template block<3,3>(0,0) = Hb * (-skew_symmetric_matrix(v2hat));
 
     Matrix3 Rproj = Hb * Rmag * Hb.transpose();
 
