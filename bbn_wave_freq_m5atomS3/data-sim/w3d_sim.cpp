@@ -31,15 +31,23 @@ using Eigen::Quaterniond;
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// ===== Simple converters (avoid Eigen .cast<> expression templates) =====
+// ===== Safe converters between Vector3f and Vector3d =====
+
+// Float → Double (explicit scalar copy)
 inline Eigen::Vector3d to_d(const Eigen::Vector3f& a) {
     return Eigen::Vector3d((double)a.x(), (double)a.y(), (double)a.z());
 }
+
+// Double → Float (explicit scalar copy)
 inline Eigen::Vector3f to_f(const Eigen::Vector3d& a) {
     return Eigen::Vector3f((float)a.x(), (float)a.y(), (float)a.z());
 }
 
-// Double wrappers for float-only frame conversion helpers
+// No-op overloads (prevent unwanted implicit conversions by Eigen)
+inline const Eigen::Vector3d& to_d(const Eigen::Vector3d& a) { return a; }
+inline const Eigen::Vector3f& to_f(const Eigen::Vector3f& a) { return a; }
+
+// ===== Wrappers for frame conversion helpers (zu_to_ned / ned_to_zu only take float) =====
 inline Eigen::Vector3d zu_to_ned_d(const Eigen::Vector3d& v) {
     return to_d(zu_to_ned(to_f(v)));
 }
