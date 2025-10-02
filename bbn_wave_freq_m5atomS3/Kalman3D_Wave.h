@@ -695,46 +695,93 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_parti
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(Vector3 const& acc_meas, T tempC) {
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
+    Vector3 const& acc_meas, T tempC)
+{
+    // Gate accel magnitude
+    const T g_meas = acc_meas.norm();
+    if (std::abs(g_meas - gravity_magnitude_) > T(2.0) * gravity_magnitude_) return;
 
-    // Accel magnitude sanity check
-    T g_meas = acc_meas.norm();
-    if (std::abs(g_meas - gravity_magnitude_) > T(2.0 * gravity_magnitude_)) {
-        return; // reject this update
-    }
-
+    // Predicted specific force
     const Vector3 v1hat = accelerometer_measurement_func(tempC);
 
-    // Cext: (3 x NX)
-    Matrix<T, 3, NX> Cext = Matrix<T, 3, NX>::Zero();
-    // d f_b / d (attitude error)
-    Cext.template block<3,3>(0,0) = -skew_symmetric_matrix(v1hat);
-    // d f_b / d a_w
-    Cext.template block<3,3>(0, OFF_AW) = R_wb();
+    // Jacobians wrt the only columns C touches
+    const Matrix3 J_att = -skew_symmetric_matrix(v1hat); // d f / d θ
+    const Matrix3 J_aw  =  R_wb();                       // d f / d a_w
+    Matrix3       J_ba;                                  // d f / d b_a
+    if constexpr (with_accel_bias) J_ba.setIdentity();
+
+    const Vector3 r = acc_meas - v1hat;
+
+    // Column offsets
+    constexpr int OFF_TH = 0;             // attitude error starts at 0
+    const int off_aw = OFF_AW;
+    const int off_ba = OFF_BA;
+
+    // S = C P Cᵀ + Racc (3×3)
+    Matrix3 S_mat = Racc;
+
+    const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
+    const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, off_aw);
+    const Matrix3 P_aw_aw = Pext.template block<3,3>(off_aw,  off_aw);
+
+    S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+    S_mat.noalias() += J_att * P_th_aw * J_aw.transpose();
+    S_mat.noalias() += J_aw  * P_th_aw.transpose() * J_att.transpose();
+    S_mat.noalias() += J_aw  * P_aw_aw * J_aw.transpose();
+
     if constexpr (with_accel_bias) {
-        Cext.template block<3,3>(0,OFF_BA) = Matrix3::Identity(); // d f_b / d b_acc
+        const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
+        const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw,  off_ba);
+        const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba,  off_ba);
+
+        S_mat.noalias() += J_att * P_th_ba * J_ba.transpose();
+        S_mat.noalias() += J_aw  * P_aw_ba * J_ba.transpose();
+
+        S_mat.noalias() += J_ba  * P_th_ba.transpose() * J_att.transpose();
+        S_mat.noalias() += J_ba  * P_aw_ba.transpose() * J_aw.transpose();
+
+        S_mat.noalias() += J_ba  * P_ba_ba * J_ba.transpose();
     }
 
-    Vector3 inno = acc_meas - v1hat;
+    // PCᵀ = P Cᵀ (NX×3)
+    Eigen::Matrix<T,NX,3> PCt; PCt.setZero();
+    {
+        const auto P_all_th = Pext.template block<NX,3>(0, OFF_TH);
+        const auto P_all_aw = Pext.template block<NX,3>(0, off_aw);
+        PCt.noalias() += P_all_th * J_att.transpose();
+        PCt.noalias() += P_all_aw * J_aw.transpose();
 
-    Matrix3 S_mat = Cext * Pext * Cext.transpose() + Racc;
-    Matrix<T, NX, 3> PCt = Pext * Cext.transpose();
+        if constexpr (with_accel_bias) {
+            const auto P_all_ba = Pext.template block<NX,3>(0, off_ba);
+            PCt.noalias() += P_all_ba * J_ba.transpose(); // J_ba = I
+        }
+    }
 
+    // K = PCᵀ S^{-1}
     Eigen::LDLT<Matrix3> ldlt(S_mat);
     if (ldlt.info() != Eigen::Success) {
-        S_mat += Matrix3::Identity() * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
+        S_mat += Matrix3::Identity()
+                 * std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * Racc.norm());
         ldlt.compute(S_mat);
         if (ldlt.info() != Eigen::Success) return;
     }
-    Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
+    const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-    xext.noalias() += K * inno;
+    // State & Covariance (Joseph, full P)
+    xext.noalias() += K * r;
 
-    MatrixNX I = MatrixNX::Identity();
-    Pext = (I - K * Cext) * Pext * (I - K * Cext).transpose() + K * Racc * K.transpose();
+    const Eigen::Matrix<T,3,NX> CP = PCt.transpose();         // CP = (PCᵀ)ᵀ
+    const Eigen::Matrix<T,NX,NX> KCP = K * CP;
+    const Eigen::Matrix<T,NX,NX> KSKt = K * S_mat * K.transpose();
+
+    Pext.noalias() -= KCP;
+    Pext.noalias() -= KCP.transpose();
+    Pext.noalias() += KSKt;
+
     Pext = T(0.5) * (Pext + Pext.transpose());
-
     applyQuaternionCorrectionFromErrorState();
+    Pbase = Pext.topLeftCorner(BASE_N, BASE_N);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
