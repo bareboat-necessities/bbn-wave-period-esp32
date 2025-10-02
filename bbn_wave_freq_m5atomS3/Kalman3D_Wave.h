@@ -414,14 +414,15 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
 // Unified builder for (PCᵀ, S) = (P Cᵀ, C P Cᵀ + R)
 // Handles accel, mag (full & yaw-only), and pseudo-measurement.
-//   - J_att: 3x3 (may be exactly zero for pseudo-measurement).
+// Summation order mirrors the original per-update code to preserve float precision.
+//   - J_att: 3x3 (may be zero matrix if not needed).
 //   - J_aw : nullptr for mag/pseudo-measurement; 3x3 for accel.
-//   - include_ba: include accel-bias block (true for accel).
-//   - direct_offset: >=0 to directly observe a 3-state block (e.g. OFF_S), else -1.
+//   - include_ba: true for accel update (to include accel bias).
+//   - direct_offset: >=0 for directly observed 3-state block (e.g. OFF_S), else -1.
 //   - Rm: 3x3 measurement noise.
 // Notes:
-//   - This builds PCᵀ and S in one pass over Pext.
-//   - All cross terms are included explicitly to match S = C P Cᵀ.
+//   - No symmetrization: relies on safe_ldlt3_ bump as in original code.
+//   - Ordering is θθ → θ–a_w → a_w a_w → θ–b_a → a_w–b_a → b_a b_a → direct.
 EIGEN_STRONG_INLINE void build_PCt_and_S_sparse_(
     const Matrix3& J_att,
     const Matrix3* J_aw,
@@ -436,80 +437,57 @@ EIGEN_STRONG_INLINE void build_PCt_and_S_sparse_(
 
     constexpr int OFF_TH = 0;
 
-    // ---------- θ (attitude error) block ----------
+    // --- θ block ---
     if (!J_att.isZero(0)) {
         const auto   P_all_th = Pext.template block<NX,3>(0, OFF_TH);
         const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
-
-        // PCᵀ += P(:,θ) * J_attᵀ
         PCt.noalias() += P_all_th * J_att.transpose();
-        // S   += J_att * P(θ,θ) * J_attᵀ
         S_mat.noalias() += J_att * P_th_th * J_att.transpose();
     }
 
-    // ---------- a_w (world-accel OU) block ----------
+    // --- θ–a_w cross terms, then a_w block ---
     if (J_aw) {
-        const auto   P_all_aw = Pext.template block<NX,3>(0, OFF_AW);
-        const Matrix3 P_aw_aw = Pext.template block<3,3>(OFF_AW, OFF_AW);
-
-        // PCᵀ += P(:,a_w) * J_awᵀ
-        PCt.noalias() += P_all_aw * J_aw->transpose();
-        // S   += J_aw * P(a_w,a_w) * J_awᵀ
-        S_mat.noalias() += (*J_aw) * P_aw_aw * J_aw->transpose();
-
-        // ---------- Mixed θ–a_w cross terms (CRITICAL) ----------
+        const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, OFF_AW);
         if (!J_att.isZero(0)) {
-            const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, OFF_AW);
-            // S += J_att * P(θ,a_w) * J_awᵀ
             S_mat.noalias() += J_att * P_th_aw * J_aw->transpose();
-            // S += J_aw  * P(a_w,θ) * J_attᵀ = J_aw * P(θ,a_w)ᵀ * J_attᵀ
             S_mat.noalias() += (*J_aw) * P_th_aw.transpose() * J_att.transpose();
         }
+
+        const auto   P_all_aw = Pext.template block<NX,3>(0, OFF_AW);
+        const Matrix3 P_aw_aw = Pext.template block<3,3>(OFF_AW, OFF_AW);
+        PCt.noalias() += P_all_aw * J_aw->transpose();
+        S_mat.noalias() += (*J_aw) * P_aw_aw * J_aw->transpose();
     }
 
-    // ---------- accel bias block ----------
+    // --- θ–b_a cross, a_w–b_a cross, then b_a block ---
     if constexpr (with_accel_bias) {
         if (include_ba) {
+            const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, OFF_BA);
+            const Matrix3 P_aw_ba = (J_aw ? Pext.template block<3,3>(OFF_AW, OFF_BA) : Matrix3::Zero());
+
+            if (!J_att.isZero(0)) {
+                S_mat.noalias() += J_att * P_th_ba;                   // J_att * P(θ,b_a) * Iᵀ
+                S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
+            }
+            if (J_aw) {
+                S_mat.noalias() += (*J_aw) * P_aw_ba;                 // J_aw * P(a_w,b_a) * Iᵀ
+                S_mat.noalias() += P_aw_ba.transpose() * J_aw->transpose();
+            }
+
             const auto   P_all_ba = Pext.template block<NX,3>(0, OFF_BA);
             const Matrix3 P_ba_ba = Pext.template block<3,3>(OFF_BA, OFF_BA);
-
-            // PCᵀ += P(:,b_a) * Iᵀ  (J_ba = I)
-            PCt.noalias() += P_all_ba;
-            // S   += I * P(b_a,b_a) * Iᵀ
+            PCt.noalias() += P_all_ba; // J_ba = I
             S_mat.noalias() += P_ba_ba;
-
-            // Mixed θ–b_a terms
-            if (!J_att.isZero(0)) {
-                const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, OFF_BA);
-                S_mat.noalias() += J_att * P_th_ba;                 // J_att * P(θ,b_a) * Iᵀ
-                S_mat.noalias() += P_th_ba.transpose() * J_att.transpose(); // transpose
-            }
-            // Mixed a_w–b_a terms
-            if (J_aw) {
-                const Matrix3 P_aw_ba = Pext.template block<3,3>(OFF_AW, OFF_BA);
-                S_mat.noalias() += (*J_aw) * P_aw_ba;               // J_aw * P(a_w,b_a) * Iᵀ
-                S_mat.noalias() += P_aw_ba.transpose() * J_aw->transpose(); // transpose
-            }
         }
     }
 
-    // ---------- Direct observed 3-state block (e.g. S) ----------
+    // --- Direct observed block (e.g. S pseudo-meas) ---
     if (direct_offset >= 0) {
         const auto   P_all_dir = Pext.template block<NX,3>(0, direct_offset);
         const Matrix3 P_dir_dir = Pext.template block<3,3>(direct_offset, direct_offset);
-
-        // PCᵀ += P(:,dir) * Iᵀ
-        PCt.noalias() += P_all_dir;
-        // S   += I * P(dir,dir) * Iᵀ
+        PCt.noalias() += P_all_dir;   // J = I
         S_mat.noalias() += P_dir_dir;
-
-        // Note: If a future measurement touches BOTH dir and (θ or a_w),
-        // you'd add the corresponding mixed terms here. For current pseudo-meas (dir=S),
-        // J_att=0 and J_aw=nullptr so no extra cross terms are needed.
     }
-
-    // Optional tiny symmetrization guard (floating-point hygiene)
-    S_mat = T(0.5) * (S_mat + S_mat.transpose());
 }
 };
 
