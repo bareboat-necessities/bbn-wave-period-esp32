@@ -723,7 +723,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     Vector3 inno = acc_meas - v1hat;
 
     // Rank-3 Joseph update
-    joseph_update_rank3<T,NX>(xext, Pext, C, inno, Racc);
+    joseph_update_rank3(xext, Pext, C, inno, Racc);
     applyQuaternionCorrectionFromErrorState();
 }
 
