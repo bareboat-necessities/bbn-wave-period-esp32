@@ -254,21 +254,21 @@ int main() {
     std::cout << std::setw(10) << "Reg(Aran)"
               << std::setw(10) << "Reg(Kalm)"
               << std::setw(10) << "Reg(Zero)"
-              << std::setw(10) << "Hs(Aran)"
-              << std::setw(10) << "Hs(Kalm)"
-              << std::setw(10) << "Hs(Zero)"
-              << std::setw(10) << "Freq(Aran)"
-              << std::setw(10) << "Freq(Kalm)"
-              << std::setw(10) << "Freq(Zero)"
-              << std::setw(10) << "Tp(Aran)"
-              << std::setw(10) << "Tp(Kalm)"
-              << std::setw(10) << "Tp(Zero)"
-              << std::setw(10) << "Nu(Aran)"
-              << std::setw(10) << "Nu(Kalm)"
-              << std::setw(10) << "Nu(Zero)"
-              << std::setw(14) << "TrackF(Aran)"
-              << std::setw(14) << "TrackF(Kalm)"
-              << std::setw(14) << "TrackF(Zero)"
+              << std::setw(9)  << "Hs(Aran)"
+              << std::setw(9)  << "Hs(Kalm)"
+              << std::setw(9)  << "Hs(Zero)"
+              << std::setw(11) << "Freq(Aran)"
+              << std::setw(11) << "Freq(Kalm)"
+              << std::setw(11) << "Freq(Zero)"
+              << std::setw(9)  << "Tp(Aran)"
+              << std::setw(9)  << "Tp(Kalm)"
+              << std::setw(9)  << "Tp(Zero)"
+              << std::setw(9)  << "Nu(Aran)"
+              << std::setw(9)  << "Nu(Kalm)"
+              << std::setw(9)  << "Nu(Zero)"
+              << std::setw(11) << "TrkF(Aran)"
+              << std::setw(11) << "TrkF(Kalm)"
+              << std::setw(11) << "TrkF(Zero)"
               << std::setw(22) << "Wave"
               << "\n";
 
@@ -276,21 +276,21 @@ int main() {
         std::cout << std::setw(10) << s.stats[0].regularity
                   << std::setw(10) << s.stats[1].regularity
                   << std::setw(10) << s.stats[2].regularity
-                  << std::setw(10) << s.stats[0].Hs
-                  << std::setw(10) << s.stats[1].Hs
-                  << std::setw(10) << s.stats[2].Hs
-                  << std::setw(10) << s.stats[0].disp_freq_hz
-                  << std::setw(10) << s.stats[1].disp_freq_hz
-                  << std::setw(10) << s.stats[2].disp_freq_hz
-                  << std::setw(10) << s.stats[0].disp_period_s
-                  << std::setw(10) << s.stats[1].disp_period_s
-                  << std::setw(10) << s.stats[2].disp_period_s
-                  << std::setw(10) << s.stats[0].narrowness
-                  << std::setw(10) << s.stats[1].narrowness
-                  << std::setw(10) << s.stats[2].narrowness
-                  << std::setw(14) << s.stats[0].tracker_freq_hz
-                  << std::setw(14) << s.stats[1].tracker_freq_hz
-                  << std::setw(14) << s.stats[2].tracker_freq_hz
+                  << std::setw(9)  << s.stats[0].Hs
+                  << std::setw(9)  << s.stats[1].Hs
+                  << std::setw(9)  << s.stats[2].Hs
+                  << std::setw(11) << s.stats[0].disp_freq_hz
+                  << std::setw(11) << s.stats[1].disp_freq_hz
+                  << std::setw(11) << s.stats[2].disp_freq_hz
+                  << std::setw(9)  << s.stats[0].disp_period_s
+                  << std::setw(9)  << s.stats[1].disp_period_s
+                  << std::setw(9)  << s.stats[2].disp_period_s
+                  << std::setw(9)  << s.stats[0].narrowness
+                  << std::setw(9)  << s.stats[1].narrowness
+                  << std::setw(9)  << s.stats[2].narrowness
+                  << std::setw(11) << s.stats[0].tracker_freq_hz
+                  << std::setw(11) << s.stats[1].tracker_freq_hz
+                  << std::setw(11) << s.stats[2].tracker_freq_hz
                   << std::setw(22) << s.label
                   << "\n";
     }
