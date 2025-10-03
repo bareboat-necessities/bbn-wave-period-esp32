@@ -15,16 +15,24 @@
  * Pipeline
  *   1) Demodulate acceleration by φ(t) = ∫ ω_inst dt to obtain baseband z(t).
  *   2) Normalize by ω²: η_env(t) = z(t)/ω²(t).
- *   3) Exponentially average spectral moments:
- *        M0 = ⟨|η_env|²⟩,
- *        M1 = ⟨|η_env|² ω⟩,
- *        M2 = ⟨|η_env|² ω²⟩.
- *      Also accumulate Q0,Q1,Q2 for bias correction.
+ *      ⇒ This converts acceleration to displacement envelope.
+ *   3) Exponentially average:
+ *        A0 = ⟨|z|²⟩             (acceleration variance, diagnostic only)
+ *        M0 = ⟨|η_env|²⟩         (displacement variance)
+ *        M1 = ⟨|η_env|² ω⟩
+ *        M2 = ⟨|η_env|² ω²⟩
+ *      (Q0,Q1,Q2 kept internally for Jensen bias correction.)
  *   4) Mean frequency ω̄ and variance μ₂ computed with Jensen-aware corrections.
  *   5) Spectral regularity: R_spec = exp(−β · √μ₂/ω̄).
  *   6) Phase regularity: R_phase = mean resultant length of demodulated phase.
  *   7) Final regularity: R = max(R_phase, R_spec).
- *   8) Significant wave height: Hs ≈ 2√M0 (monochromatic assumption).
+ *   8) Narrowness ν = √μ₂/ω̄ (dimensionless).
+ *   9) Significant wave height: Hs ≈ 4√M0 (oceanographic convention).
+ *
+ * Notes
+ *   • Although the input is acceleration, all reported spectral moments (M0,M1,M2)
+ *     are for displacement, consistent with oceanographic definitions of Hs, Tp, and bandwidth.
+ *   • A0 is separately provided as the variance of acceleration envelope for diagnostics.
  */
 
 #ifndef M_PI
@@ -62,6 +70,7 @@ public:
         z_real = z_imag = 0.0f;
         M0 = M1 = M2 = 0.0f;
         Q0 = Q1 = Q2 = 0.0f;
+        A0 = 0.0f;
         R_spec = R_phase = R_out = 0.0f;
         coh_r = coh_i = 0.0f;
         has_coh = false;
@@ -69,6 +78,9 @@ public:
         alpha_env = alpha_mom = alpha_coh = alpha_out = 0.0f;
         has_moments = false;
         has_R_out = false;
+        nu = 0.0f;
+        omega_bar_corr = 0.0f;
+        omega_bar_naive = 0.0f;
     }
 
     void update(float dt_s, float accel_z, float omega_inst) {
@@ -86,14 +98,34 @@ public:
     float getRegularity() const { return R_out; }
     float getRegularitySpectral() const { return R_spec; }
     float getRegularityPhase() const { return R_phase; }
+    float getNarrowness() const { return nu; }
 
+    // Backward-compatible API: now returns oceanographic definition
     float getWaveHeightEnvelopeEst() const {
         if (M0 <= 0.0f) return 0.0f;
-        return 2.0f * std::sqrt(M0); // monochromatic assumption
+        // Oceanographic convention: Hs = 4√M0
+        // (will later be fused with 2√M0 depending on regularity)
+        return 4.0f * std::sqrt(M0);
     }
 
+    // Jensen-corrected displacement frequency in Hz
     float getDisplacementFrequencyHz() const {
-        return (M0 > EPSILON) ? (M1 / M0) / (2.0f * float(M_PI)) : 0.0f;
+        return (omega_bar_corr > EPSILON) ? (omega_bar_corr / (2.0f * float(M_PI))) : 0.0f;
+    }
+
+    // Naive (uncorrected) displacement frequency in Hz = (M1/M0)/(2π)
+    float getDisplacementFrequencyNaiveHz() const {
+        return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * float(M_PI))) : 0.0f;
+    }
+
+    // Displacement peak period Tp = 2π/ω̄ [s]
+    float getDisplacementPeriodSec() const {
+        return (omega_bar_corr > EPSILON) ? (2.0f * float(M_PI) / omega_bar_corr) : 0.0f;
+    }
+
+    // Diagnostic: variance of acceleration envelope (before 1/ω² normalization).
+    float getAccelerationVariance() const {
+        return A0;
     }
 
 private:
@@ -108,15 +140,24 @@ private:
     float phi;
     float z_real, z_imag;
 
-    // moments
+    // displacement spectral moments
     float M0, M1, M2;
     // second-order helpers for Jensen-aware correction
     float Q0, Q1, Q2;
+    // acceleration variance (diagnostic)
+    float A0;
     bool has_moments;
 
     // regularity
     float R_spec, R_phase, R_out;
     bool  has_R_out;
+
+    // legacy narrowness
+    float nu;
+
+    // cached corrected ω̄ and naive ω̄
+    float omega_bar_corr;
+    float omega_bar_naive;
 
     // phase coherence
     float coh_r, coh_i;
@@ -150,6 +191,22 @@ private:
     }
 
     void updateSpectralMoments(float omega) {
+        // --- Accel → Displacement conversion ---
+        // Input signal is vertical acceleration a_z.
+        // For a narrowband component at ω:
+        //     a_z ≈ −ω² η   ⇒   η ≈ −a_z / ω²
+        // We demodulate a_z into baseband z, then normalize:
+        //     η_env = z / ω²
+        // Power of η_env is proportional to displacement variance at ω.
+        //
+        // Moments below are displacement-based (M0,M1,M2),
+        // consistent with Hs and spectral bandwidth definitions.
+        // A0 is tracked separately as the variance of acceleration envelope.
+
+        // Acceleration envelope power
+        float P_acc = z_real * z_real + z_imag * z_imag;
+
+        // Displacement envelope power
         float inv_w2 = 1.0f / std::max(omega * omega, EPSILON);
         float disp_r = z_real * inv_w2;
         float disp_i = z_imag * inv_w2;
@@ -157,6 +214,7 @@ private:
         float P2 = P_disp * P_disp;
 
         if (!has_moments) {
+            A0 = P_acc;
             M0 = P_disp;
             M1 = P_disp * omega;
             M2 = P_disp * omega * omega;
@@ -165,6 +223,7 @@ private:
             Q2 = P2 * omega * omega;
             has_moments = true;
         } else {
+            A0 = (1.0f - alpha_mom) * A0 + alpha_mom * P_acc;
             M0 = (1.0f - alpha_mom) * M0 + alpha_mom * P_disp;
             M1 = (1.0f - alpha_mom) * M1 + alpha_mom * P_disp * omega;
             M2 = (1.0f - alpha_mom) * M2 + alpha_mom * P_disp * omega * omega;
@@ -194,7 +253,7 @@ private:
     }
 
     void computeRegularityOutput() {
-        if (!(M0 > EPSILON)) { R_spec = R_out = R_phase; return; }
+        if (!(M0 > EPSILON)) { R_spec = R_out = R_phase; nu = 0.0f; omega_bar_corr = 0.0f; omega_bar_naive = 0.0f; return; }
 
         float invM0   = 1.0f / M0;
         float invM0_2 = invM0 * invM0;
@@ -202,7 +261,7 @@ private:
         float cov10   = Q1 - M1 * M0;
         float cov20   = Q2 - M2 * M0;
 
-        float omega_bar_naive  = M1 * invM0;
+        omega_bar_naive  = (M0 > EPSILON) ? (M1 / M0) : 0.0f;
         float omega2_bar_naive = M2 * invM0;
 
         // delta-method corrections
@@ -216,6 +275,9 @@ private:
 
         R_out = std::max(R_phase, R_spec);
         has_R_out = true;
+        nu = rbw; // legacy narrowness
+
+        omega_bar_corr = (omega_bar > 0.0f) ? omega_bar : 0.0f;
     }
 };
 
@@ -247,23 +309,34 @@ struct SineWave {
 inline void SeaState_sine_wave_test() {
     SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
     SeaStateRegularity reg;
-    float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f;
+    float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f, nu = 0.0f;
+    float f_disp_corr = 0.0f, f_disp_naive = 0.0f, Tp = 0.0f;
     for (int i = 0; i < int(SIM_DURATION_SEC / DT); i++) {
         auto za = wave.step(DT);
         float a = za.second;
         reg.update(DT, a, wave.omega);
-        R_spec  = reg.getRegularitySpectral();
-        R_phase = reg.getRegularityPhase();
-        Hs_est  = reg.getWaveHeightEnvelopeEst();
+        R_spec      = reg.getRegularitySpectral();
+        R_phase     = reg.getRegularityPhase();
+        Hs_est      = reg.getWaveHeightEnvelopeEst();
+        nu          = reg.getNarrowness();
+        f_disp_corr = reg.getDisplacementFrequencyHz();
+        f_disp_naive= reg.getDisplacementFrequencyNaiveHz();
+        Tp          = reg.getDisplacementPeriodSec();
     }
-    const float Hs_expected = 2.0f * SINE_AMPLITUDE;
+    const float Hs_expected = 2.0f * SINE_AMPLITUDE; // pure mono
     if (!(R_spec > 0.90f))
         throw std::runtime_error("Sine: R_spec did not converge near 1.");
     if (!(R_phase > 0.80f))
         throw std::runtime_error("Sine: R_phase did not converge near 1.");
     if (!(std::fabs(Hs_est - Hs_expected) < 0.6f * Hs_expected))
         throw std::runtime_error("Sine: Hs estimate not within tolerance.");
-    std::cerr << "[PASS] Sine wave test passed. Hs_est=" << Hs_est
-              << " (expected ~" << Hs_expected << ")\n";
+    if (!(nu < 0.05f))
+        throw std::runtime_error("Sine: Narrowness should be close to 0 for a pure tone.");
+    std::cerr << "[PASS] Sine wave test passed. "
+              << "Hs_est=" << Hs_est
+              << " (expected ~" << Hs_expected << "), Narrowness=" << nu
+              << ", f_disp_corr=" << f_disp_corr << " Hz"
+              << ", f_disp_naive=" << f_disp_naive << " Hz"
+              << ", Tp=" << Tp << " s\n";
 }
 #endif
