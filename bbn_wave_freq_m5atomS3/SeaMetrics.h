@@ -239,7 +239,7 @@ public:
     // Spectral moments
     float getMomentMinus1(bool bias_corrected = true) const {
         if (!negative_moments) throw std::logic_error("M_{-1} not enabled");
-        return bias_corrected ? applyMomentCorrection(M_neg1, 6.0f) : M_neg1;
+        return bias_corrected ? applyMomentCorrection(M_neg1, 15.0f) : M_neg1;
     }
     float getMoment0(bool bias_corrected = true) const {
         return bias_corrected ? applyMomentCorrection(M0, 10.0f) : M0;
