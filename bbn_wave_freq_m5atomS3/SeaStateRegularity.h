@@ -3,6 +3,10 @@
 #include <limits>
 #include <algorithm>
 
+/*
+    Copyright 2025, Mikhail Grushinskiy
+*/
+
 // Debiased EMA
 struct DebiasedEMA {
     float value  = 0.0f;
