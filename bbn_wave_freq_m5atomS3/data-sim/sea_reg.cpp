@@ -269,7 +269,7 @@ int main() {
               << std::setw(11) << "TrkF(Aran)"
               << std::setw(11) << "TrkF(Kalm)"
               << std::setw(11) << "TrkF(Zero)"
-              << std::setw(22) << "Wave"
+              << std::setw(23) << "Wave"
               << "\n";
 
     for (const auto& s : all_summaries) {
@@ -291,7 +291,7 @@ int main() {
                   << std::setw(11) << s.stats[0].tracker_freq_hz
                   << std::setw(11) << s.stats[1].tracker_freq_hz
                   << std::setw(11) << s.stats[2].tracker_freq_hz
-                  << std::setw(22) << s.label
+                  << std::setw(23) << s.label
                   << "\n";
     }
 
