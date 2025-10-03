@@ -94,10 +94,8 @@ static std::string normalize_numbers(const std::string &s) {
     std::string::const_iterator searchStart(s.cbegin());
 
     while (std::regex_search(searchStart, s.cend(), match, num_re)) {
-        // Append before number
         result.append(match.prefix().first, match.prefix().second);
 
-        // Normalize number
         std::string num = match.str();
         num.erase(num.find_last_not_of('0') + 1, std::string::npos);
         if (!num.empty() && num.back() == '.') num.pop_back();
@@ -109,53 +107,62 @@ static std::string normalize_numbers(const std::string &s) {
     return result;
 }
 
+// Struct to capture converged values
+struct ConvergedStats {
+    float regularity = 0.0f;
+    float narrowness = 0.0f;
+    float Hs = 0.0f;
+    float disp_freq_hz = 0.0f;
+    float disp_period_s = 0.0f;
+    double tracker_freq_hz = 0.0;
+};
+
+// Per-file summary
+struct FileSummary {
+    std::string fname;
+    std::array<ConvergedStats,3> stats; // Aranovskiy, KalmanF, ZeroCross
+};
+
 // Main runner from input wave_data_*.csv
-static void run_from_csv(TrackerType tracker,
-                         const std::string &csv_file,
-                         unsigned run_seed) {
-    // Parse metadata
+static ConvergedStats run_from_csv(TrackerType tracker,
+                                   const std::string &csv_file,
+                                   unsigned run_seed) {
+    ConvergedStats stats;
     auto parsed = WaveFileNaming::parse(csv_file);
     if (!parsed) {
         fprintf(stderr, "Could not parse metadata from %s\n", csv_file.c_str());
-        return;
+        return stats;
     }
     WaveFileNaming::ParsedName meta = *parsed;
     std::string waveName = EnumTraits<WaveType>::to_string(meta.type);
 
-    // Tracker prefix
     std::string trackerName =
         (tracker == TrackerType::ARANOVSKIY) ? "aranovskiy" :
         (tracker == TrackerType::KALMANF)   ? "kalmanf" :
                                               "zerocross";
 
-    // Grab "_H..._L..._A..._P..." tail
     std::string stem = std::filesystem::path(csv_file).filename().string();
     auto posH = stem.find("_H");
     std::string tail = (posH != std::string::npos) ? stem.substr(posH) : "";
 
-    // Remove trailing ".csv"
     if (tail.size() > 4 && tail.substr(tail.size() - 4) == ".csv") {
         tail = tail.substr(0, tail.size() - 4);
     }
 
-    // Normalize numbers inside the tail
     tail = normalize_numbers(tail);
 
-    // Append noise and bias into filename
     char noise_bias[64];
     std::snprintf(noise_bias, sizeof(noise_bias),
                   "_N%.3f_B%.3f", NOISE_STDDEV, BIAS_MEAN);
 
-    // Output file
     std::string outFile = "regularity_" + trackerName + "_" + waveName + tail + noise_bias + ".csv";
     std::ofstream ofs(outFile);
     if (!ofs.is_open()) {
         fprintf(stderr, "Failed to open %s\n", outFile.c_str());
-        return;
+        return stats;
     }
     write_csv_header(ofs);
 
-    // Noise
     std::default_random_engine rng(run_seed);
     std::normal_distribution<float> gauss(0.0f, NOISE_STDDEV);
     float bias = BIAS_MEAN;
@@ -163,8 +170,8 @@ static void run_from_csv(TrackerType tracker,
     reset_run_state();
 
     SeaStateRegularity regFilter;
+    double last_freq = std::numeric_limits<double>::quiet_NaN();
 
-    // Process records
     WaveDataCSVReader reader(csv_file);
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         float accel_z = rec.wave.acc_z;
@@ -172,9 +179,8 @@ static void run_from_csv(TrackerType tracker,
         float a_norm = noisy_accel / g_std;
 
         double freq = run_tracker_once(tracker, a_norm, DELTA_T);
-
-        // Always run tracker, but only update regFilter after warmup
         if (std::isfinite(freq)) {
+            last_freq = freq;
             if (rec.time >= WARMUP_SECONDS) {
                 regFilter.update(DELTA_T, noisy_accel,
                                  static_cast<float>(2.0 * M_PI * freq));
@@ -186,20 +192,27 @@ static void run_from_csv(TrackerType tracker,
                     << regFilter.getDisplacementFrequencyHz() << "\n";
             }
         }
-
         sim_t = rec.time;
     });
     reader.close();
-
     ofs.close();
+
+    // capture last values
+    stats.regularity    = regFilter.getRegularity();
+    stats.narrowness    = regFilter.getNarrowness();
+    stats.Hs            = regFilter.getWaveHeightEnvelopeEst();
+    stats.disp_freq_hz  = regFilter.getDisplacementFrequencyHz();
+    stats.disp_period_s = regFilter.getDisplacementPeriodSec();
+    stats.tracker_freq_hz = last_freq;
+
     printf("Wrote %s\n", outFile.c_str());
+    return stats;
 }
 
 // Main
 int main() {
     init_tracker_backends();
 
-    // Collect candidate files
     std::vector<std::string> files;
     for (const auto &entry : std::filesystem::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
@@ -207,18 +220,67 @@ int main() {
         if (fname.find("wave_data_") == std::string::npos) continue;
         files.push_back(fname);
     }
-
-    // Sort lexicographically for deterministic order
     std::sort(files.begin(), files.end());
 
-    // Process each file with each tracker
     unsigned run_idx = 0;
+    std::vector<FileSummary> all_summaries;
+
     for (const auto &fname : files) {
+        FileSummary summary;
+        summary.fname = std::filesystem::path(fname).filename().string();
         for (int tr = 0; tr < 3; ++tr) {
-            run_from_csv(static_cast<TrackerType>(tr), fname, run_idx++);
+            summary.stats[tr] = run_from_csv(static_cast<TrackerType>(tr), fname, run_idx++);
         }
+        all_summaries.push_back(summary);
     }
 
-    printf("All SeaStateRegularity runs complete.\n");
+    // Final summary
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "\n=== Final Comparison Summary ===\n";
+    std::cout << std::setw(12) << "Reg(Aran)"
+              << std::setw(12) << "Reg(Kalm)"
+              << std::setw(12) << "Reg(Zero)"
+              << std::setw(12) << "Hs(Aran)"
+              << std::setw(12) << "Hs(Kalm)"
+              << std::setw(12) << "Hs(Zero)"
+              << std::setw(12) << "Freq(Aran)"
+              << std::setw(12) << "Freq(Kalm)"
+              << std::setw(12) << "Freq(Zero)"
+              << std::setw(12) << "Tp(Aran)"
+              << std::setw(12) << "Tp(Kalm)"
+              << std::setw(12) << "Tp(Zero)"
+              << std::setw(12) << "Nu(Aran)"
+              << std::setw(12) << "Nu(Kalm)"
+              << std::setw(12) << "Nu(Zero)"
+              << std::setw(16) << "TrackFreq(Aran)"
+              << std::setw(16) << "TrackFreq(Kalm)"
+              << std::setw(16) << "TrackFreq(Zero)"
+              << std::setw(25) << "File"
+              << "\n";
+
+    for (const auto& s : all_summaries) {
+        std::cout << std::setw(12) << s.stats[0].regularity
+                  << std::setw(12) << s.stats[1].regularity
+                  << std::setw(12) << s.stats[2].regularity
+                  << std::setw(12) << s.stats[0].Hs
+                  << std::setw(12) << s.stats[1].Hs
+                  << std::setw(12) << s.stats[2].Hs
+                  << std::setw(12) << s.stats[0].disp_freq_hz
+                  << std::setw(12) << s.stats[1].disp_freq_hz
+                  << std::setw(12) << s.stats[2].disp_freq_hz
+                  << std::setw(12) << s.stats[0].disp_period_s
+                  << std::setw(12) << s.stats[1].disp_period_s
+                  << std::setw(12) << s.stats[2].disp_period_s
+                  << std::setw(12) << s.stats[0].narrowness
+                  << std::setw(12) << s.stats[1].narrowness
+                  << std::setw(12) << s.stats[2].narrowness
+                  << std::setw(16) << s.stats[0].tracker_freq_hz
+                  << std::setw(16) << s.stats[1].tracker_freq_hz
+                  << std::setw(16) << s.stats[2].tracker_freq_hz
+                  << std::setw(25) << s.fname
+                  << "\n";
+    }
+
+    std::cout << "All SeaStateRegularity runs complete.\n";
     return 0;
 }
