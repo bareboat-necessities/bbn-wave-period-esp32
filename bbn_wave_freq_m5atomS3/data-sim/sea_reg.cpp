@@ -291,7 +291,7 @@ int main() {
                   << std::setw(11) << s.stats[0].tracker_freq_hz
                   << std::setw(11) << s.stats[1].tracker_freq_hz
                   << std::setw(11) << s.stats[2].tracker_freq_hz
-                  << std::left << std::setw(23) << s.label
+                  << std::left << " " << std::setw(23) << s.label
                   << std::right << "\n";
     }
 
