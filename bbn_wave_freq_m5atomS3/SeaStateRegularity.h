@@ -22,12 +22,20 @@ public:
     // Numerics / mapping
     constexpr static float EPSILON    = 1e-12f;
     constexpr static float BETA_SPEC  = 1.0f;     // exponent in ν
-    constexpr static float K_EFF      = 1.0f;     // fixed envelope→variance scale
+    constexpr static float K_EFF      = 1.0f;
+    constexpr static float K_EFF_MIX  = 2.0f;     // fix for I/Q half-energy
 
     // Tracker-robust ω clamp and smoothing
     constexpr static float OMEGA_MIN_HZ = 0.03f;
     constexpr static float OMEGA_MAX_HZ = 1.50f;
     constexpr static float TAU_W_SEC    = 15.0f;  // EMA time-constant for ω_used
+
+    // Multi-bin params
+    constexpr static int   MAX_K       = 4;       // up to ±4 bins
+    constexpr static int   NBINS       = 2*MAX_K + 1;
+    constexpr static float STEP_NARROW = 0.10f;
+    constexpr static float STEP_BROAD  = 0.05f;
+    constexpr static float MIN_FC_HZ   = 0.02f;
 
     SeaStateRegularity(float tau_env_sec = 15.0f,
                        float tau_mom_sec = 180.0f,
@@ -65,6 +73,10 @@ public:
         has_moments = false;
         last_dt = -1.0f;
         alpha_env = alpha_mom = alpha_coh = alpha_out = 0.0f;
+
+        for (int i=0;i<NBINS;i++){ bin_zr[i]=bin_zi[i]=0.0f; bin_c[i]=1.0f; bin_s[i]=0.0f; }
+        bins_init=false;
+        last_accel=0.0f;
     }
 
     // Main update
@@ -73,11 +85,13 @@ public:
         if (accel_z    != accel_z)    accel_z    = 0.0f;
         if (omega_inst != omega_inst) return;
 
-        t_abs += dt_s; // accumulate absolute time
+        t_abs += dt_s;
+        last_accel = accel_z;
+
         updateAlpha(dt_s);
-        demodulateAcceleration(accel_z, omega_inst, dt_s);
+        demodulateAcceleration(accel_z, omega_inst, dt_s); // narrow diagnostic path
         updatePhaseCoherence();
-        updateSpectralMoments(omega_inst);   // now adaptive multi-bin
+        updateSpectralMoments(omega_inst);
         computeRegularityOutput();
     }
 
@@ -87,7 +101,7 @@ public:
     float getRegularityPhase() const { return R_phase; }
     float getNarrowness() const { return nu; }
 
-    float getWaveHeightEnvelopeEst() const { // Hs ≈ 4√M0
+    float getWaveHeightEnvelopeEst() const {
         float m0 = M0.get();
         return (m0 > 0.0f) ? 4.0f * std::sqrt(m0) : 0.0f;
     }
@@ -112,10 +126,18 @@ private:
     float omega_used;
     float alpha_w;
 
-    // demod state
+    // demod state (narrow diagnostic)
     float phi;
     float z_real, z_imag;
-    float t_abs; // NEW: absolute time accumulator
+    float t_abs;
+
+    // raw accel cache for multi-bin
+    float last_accel;
+
+    // per-bin demod states
+    float bin_zr[NBINS], bin_zi[NBINS];
+    float bin_c[NBINS],  bin_s[NBINS];
+    bool  bins_init;
 
     // moments
     DebiasedEMA M0, M1, M2;
@@ -173,68 +195,79 @@ private:
         if (omega_used > 0.0f) {
             float ratio = w_obs / omega_used;
             if (ratio < 0.7f || ratio > 1.3f) {
-                float P_acc_skip = z_real * z_real + z_imag * z_imag;
+                float P_acc_skip = z_real*z_real + z_imag*z_imag;
                 A0.update(P_acc_skip, alpha_mom);
                 return;
             }
         }
 
-        // Diagnostic acceleration variance
-        float P_acc = z_real * z_real + z_imag * z_imag;
+        // Diagnostic acceleration variance (narrow path)
+        float P_acc = z_real*z_real + z_imag*z_imag;
         A0.update(P_acc, alpha_mom);
 
-        // === Adaptive multi-bin integration ===
+        // Adaptive binning
         int   K    = 0;
         float STEP = 0.0f;
+        if      (nu < 0.05f) { K = 0; STEP = 0.0f; }
+        else if (nu < 0.15f) { K = 2; STEP = STEP_NARROW; }
+        else                 { K = 4; STEP = STEP_BROAD;  }
 
-        if (nu < 0.05f) {
-            K = 0; STEP = 0.0f;        // pure-tone
-        } else if (nu < 0.15f) {
-            K = 2; STEP = 0.10f;       // moderate
-        } else {
-            K = 4; STEP = 0.05f;       // broadband
+        if (!bins_init) {
+            for (int i=0;i<NBINS;i++){ bin_c[i]=1.0f; bin_s[i]=0.0f; }
+            bins_init=true;
         }
+
+        float f_used_hz = omega_used / (2.0f * float(M_PI));
+        float fc_hz     = std::max(MIN_FC_HZ, STEP * f_used_hz);
+        float alpha_env_bin = 1.0f - std::exp(-last_dt * 2.0f * float(M_PI) * fc_hz);
+        alpha_env_bin = std::clamp(alpha_env_bin, 0.0f, 1.0f);
 
         float Y_sum  = 0.0f;
         float Y2_sum = 0.0f;
-        int count    = 0;
 
-        for (int k = -K; k <= K; k++) {
+        for (int k = -K; k <= K; ++k) {
+            int idx = k + MAX_K;
             float omega_k = omega_used * (1.0f + STEP * k);
             if (omega_k <= EPSILON) continue;
 
-            float phi_shift = (omega_k - omega_used) * t_abs;
-            float c = std::cos(phi_shift);
-            float s = std::sin(phi_shift);
+            // Oscillator step
+            float dphi = omega_k * last_dt;
+            float cd = std::cos(dphi), sd = std::sin(dphi);
+            float c0 = bin_c[idx], s0 = bin_s[idx];
+            float c1 =  c0*cd - s0*sd;
+            float s1 =  c0*sd + s0*cd;
+            bin_c[idx]=c1; bin_s[idx]=s1;
 
-            float z_r_k =  z_real * c - z_imag * s;
-            float z_i_k =  z_real * s + z_imag * c;
+            // Mix raw accel to baseband
+            float y_r =  last_accel * c1;
+            float y_i = -last_accel * s1;
 
-            float inv_w2 = 1.0f / (omega_k * omega_k);
-            float disp_r = -z_r_k * inv_w2;
-            float disp_i = -z_i_k * inv_w2;
+            // LP
+            bin_zr[idx] = (1.0f - alpha_env_bin) * bin_zr[idx] + alpha_env_bin * y_r;
+            bin_zi[idx] = (1.0f - alpha_env_bin) * bin_zi[idx] + alpha_env_bin * y_i;
 
-            float P_disp = disp_r * disp_r + disp_i * disp_i;
-            float Y      = K_EFF * P_disp;
-            float Y2     = (K_EFF * K_EFF) * P_disp * P_disp;
+            // Displacement power
+            float inv_w2 = 1.0f / std::max(omega_k*omega_k, EPSILON);
+            float dr = -bin_zr[idx] * inv_w2;
+            float di = -bin_zi[idx] * inv_w2;
+
+            float P_disp = dr*dr + di*di;
+            float Y  = K_EFF_MIX * P_disp;
+            float Y2 = (K_EFF_MIX*K_EFF_MIX) * P_disp * P_disp;
 
             Y_sum  += Y;
             Y2_sum += Y2;
-            count++;
         }
-
-        float Y_final  = (count > 0) ? (Y_sum  / count) : 0.0f;
-        float Y2_final = (count > 0) ? (Y2_sum / count) : 0.0f;
 
         if (!has_moments) has_moments = true;
 
-        M0.update(Y_final, alpha_mom);
-        M1.update(Y_final * omega_used, alpha_mom);
-        M2.update(Y_final * omega_used * omega_used, alpha_mom);
+        M0.update(Y_sum, alpha_mom);
+        M1.update(Y_sum * omega_used, alpha_mom);
+        M2.update(Y_sum * omega_used*omega_used, alpha_mom);
 
-        Q0.update(Y2_final, alpha_mom);
-        Q1.update(Y2_final * omega_used, alpha_mom);
-        Q2.update(Y2_final * omega_used * omega_used, alpha_mom);
+        Q0.update(Y2_sum, alpha_mom);
+        Q1.update(Y2_sum * omega_used, alpha_mom);
+        Q2.update(Y2_sum * omega_used*omega_used, alpha_mom);
     }
 
     void updatePhaseCoherence() {
