@@ -268,7 +268,7 @@ private:
         nu = rbw;
         omega_bar_corr = (omega_bar > 0.0f) ? omega_bar : 0.0f;
 
-        float R_now = std::max(R_phase, R_spec);
+        float R_now = R_spec; //std::max(R_phase, R_spec);
         R_out.update(R_now, alpha_out);
     }
 };
