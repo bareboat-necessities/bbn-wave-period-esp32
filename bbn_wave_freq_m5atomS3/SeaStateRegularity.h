@@ -4,8 +4,6 @@
 #include <algorithm>
 
 /**
- * Copyright 2025, Mikhail Grushinskiy
- *
  * SeaStateRegularity — Online estimator of ocean wave regularity and height.
  *
  * Inputs
@@ -14,33 +12,30 @@
  *
  * Pipeline
  *   1) Demodulate acceleration by φ(t) = ∫ ω_inst dt to obtain baseband z(t).
- *   2) Normalize by ω²: η_env(t) = z(t)/ω²(t).
- *      ⇒ This converts acceleration to displacement envelope.
- *   3) Track power and spectral moments with **bias-corrected exponential averages (DebiasedEMA)**:
- *        A0 = ⟨|z|²⟩             (acceleration variance, diagnostic only)
- *        M0 = ⟨|η_env|²⟩         (displacement variance)
- *        M1 = ⟨|η_env|² ω⟩
- *        M2 = ⟨|η_env|² ω²⟩
- *      (Q0,Q1,Q2 also tracked with DebiasedEMA for Jensen bias correction.)
- *   4) Compute mean frequency ω̄ and variance μ₂ using **Jensen-aware corrections**
- *      applied to the bias-corrected moments.
- *   5) Spectral regularity: R_spec = exp(−β · √μ₂/ω̄).
- *   6) Phase regularity: R_phase = mean resultant length of demodulated phase,
- *      tracked via **bias-corrected EMA** of phase unit vectors.
- *   7) Final regularity: R = max(R_phase, R_spec), smoothed by a **bias-corrected EMA**.
- *   8) Narrowness ν = √μ₂/ω̄ (dimensionless bandwidth).
- *   9) Significant wave height: Hs ≈ 4√M0, using bias-corrected M0 (oceanographic convention).
+ *   2) Normalize by ω²: η_env(t) = z(t)/ω²(t) to approximate displacement envelope.
+ *   3) Track power and displacement spectral moments with bias-corrected EMAs (DebiasedEMA):
+ *        A0 = ⟨|z|²⟩                (acceleration envelope variance, diagnostic)
+ *        M0 = ⟨Y⟩                   (displacement variance proxy, scaled — see K_ENV)
+ *        M1 = ⟨Y·ω⟩
+ *        M2 = ⟨Y·ω²⟩
+ *      (Q0,Q1,Q2 = ⟨Y²⟩, ⟨Y²·ω⟩, ⟨Y²·ω²⟩ retained, but NOT used in the current output
+ *       because Jensen delta-method is disabled pending re-verification.)
+ *   4) Mean frequency ω̄ and variance μ₂ are computed from the NAIVE moments:
+ *        ω̄ = M1/M0,   μ₂ = M2/M0 − (M1/M0)²
+ *   5) Spectral regularity (spectral-only): R_spec = exp(−β · ν),  ν = √μ₂/ω̄.
+ *   6) Phase regularity (diagnostic): mean resultant length of demodulated phase.
+ *   7) Final regularity: R_out = EMA(R_spec)  (no fusion with phase).
+ *   8) Significant wave height: Hs ≈ 4√M0, using the scaled M0.
  *
  * Notes
- *   • Although the input is acceleration, all reported spectral moments (M0,M1,M2)
- *     are for displacement, consistent with oceanographic definitions of Hs, Tp, and bandwidth.
- *   • A0 is separately provided as the variance of acceleration envelope for diagnostics.
- *   • Bias-corrected EMAs eliminate startup underestimation: outputs are unbiased in
- *     expectation from the very first sample.
+ *   • K_ENV=2 accounts for I/Q envelope-to-variance conversion so that M0 is on
+ *     the same scale as displacement variance for narrowband content.
+ *   • To reduce tracker dependence, ω_inst is used for DEMODULATION only.
+ *     Moments use a blended ω_used that favors our own mean (ω̄) when available.
  */
 
 #ifndef M_PI
-#define M_PI 3.14159265358979323846 
+#define M_PI 3.14159265358979323846
 #endif
 
 #if __cplusplus < 201703L
@@ -52,30 +47,36 @@ namespace std {
 }
 #endif
 
-// Bias-corrected EMA helper
+// ---------------- Debiased EMA ----------------
 struct DebiasedEMA {
     float value  = 0.0f;
     float weight = 0.0f;
     void reset() { value = 0.0f; weight = 0.0f; }
-    void update(float x, float alpha) {
+    inline void update(float x, float alpha) {
         value  = (1.0f - alpha) * value + alpha * x;
         weight = (1.0f - alpha) * weight + alpha;
     }
-    float get() const {
-        return (weight > 1e-12f) ? value / weight : 0.0f;
-    }
-    bool isReady() const { return weight > 1e-6f; }
+    inline float get() const { return (weight > 1e-12f) ? value / weight : 0.0f; }
+    inline bool  isReady() const { return weight > 1e-6f; }
 };
 
+// ---------------- SeaStateRegularity ----------------
 class SeaStateRegularity {
 public:
-    constexpr static float EPSILON   = 1e-12f;
-    constexpr static float BETA_SPEC = 1.0f;
+    // Numerics / mapping
+    constexpr static float EPSILON    = 1e-12f;
+    constexpr static float BETA_SPEC  = 1.0f;     // linear exponent in ν
+    constexpr static float K_ENV      = 2.0f;     // envelope->variance power scale
 
-    SeaStateRegularity(float tau_env_sec   = 15.0f,
-                       float tau_mom_sec   = 180.0f,
-                       float tau_coh_sec   = 60.0f,
-                       float tau_out_sec   = 30.0f)
+    // Tracker-robust ω used for moments (blend + clamp)
+    constexpr static float GAMMA_BLEND = 0.80f;   // weight for our ω̂ vs. instant ω
+    constexpr static float OMEGA_MIN_HZ = 0.03f;  // 0.03 Hz
+    constexpr static float OMEGA_MAX_HZ = 1.50f;  // 1.5 Hz
+
+    SeaStateRegularity(float tau_env_sec = 15.0f,
+                       float tau_mom_sec = 180.0f,
+                       float tau_coh_sec = 60.0f,
+                       float tau_out_sec = 30.0f)
     {
         tau_env = tau_env_sec;
         tau_mom = tau_mom_sec;
@@ -87,20 +88,27 @@ public:
     void reset() {
         phi = 0.0f;
         z_real = z_imag = 0.0f;
+
         M0.reset(); M1.reset(); M2.reset();
         Q0.reset(); Q1.reset(); Q2.reset();
         A0.reset();
+
         R_out.reset();
         coh_r.reset(); coh_i.reset();
+
         R_spec = R_phase = 0.0f;
+        nu = 0.0f;
+
+        omega_bar_corr = 0.0f;
+        omega_bar_naive = 0.0f;
+        omega_used_prev = 0.0f;
+
         has_moments = false;
         last_dt = -1.0f;
         alpha_env = alpha_mom = alpha_coh = alpha_out = 0.0f;
-        nu = 0.0f;
-        omega_bar_corr = 0.0f;
-        omega_bar_naive = 0.0f;
     }
 
+    // Main update
     void update(float dt_s, float accel_z, float omega_inst) {
         if (!(dt_s > 0.0f)) return;
         if (accel_z    != accel_z)    accel_z    = 0.0f;
@@ -109,52 +117,37 @@ public:
         updateAlpha(dt_s);
         demodulateAcceleration(accel_z, omega_inst, dt_s);
         updatePhaseCoherence();
-        updateSpectralMoments(omega_inst);
-        computeRegularityOutput();
+        updateSpectralMoments(omega_inst);   // robust ω_used inside
+        computeRegularityOutput();           // NAIVE μ₂/ω̄ mapping (no Jensen)
     }
 
-    // Public getters
+    // Getters
+    float getRegularity() const { return R_out.get(); }              // spectral-only, smoothed
+    float getRegularitySpectral() const { return R_spec; }           // instantaneous spectral R
+    float getRegularityPhase() const { return R_phase; }             // diagnostic only
+    float getNarrowness() const { return nu; }                       // ν = √μ₂/ω̄
 
-    // Final regularity index R (bias-corrected, smoothed EMA of max(R_phase,R_spec)).
-    float getRegularity() const { return R_out.get(); }
-
-    // Spectral regularity R_spec = exp(−β · √μ₂/ω̄), from bias-corrected moments.
-    float getRegularitySpectral() const { return R_spec; }
-
-    // Phase regularity R_phase = mean resultant length of demodulated phase
-    // (tracked via bias-corrected EMA of phase unit vectors).
-    float getRegularityPhase() const { return R_phase; }
-
-    // Narrowness ν = √μ₂ / ω̄, dimensionless bandwidth from bias-corrected moments.
-    float getNarrowness() const { return nu; }
-
-    // Significant wave height estimate Hs = 4√M0, using bias-corrected M0 (oceanographic convention).
-    float getWaveHeightEnvelopeEst() const {
+    float getWaveHeightEnvelopeEst() const {                        // Hs ≈ 4√M0
         float m0 = M0.get();
         return (m0 > 0.0f) ? 4.0f * std::sqrt(m0) : 0.0f;
     }
 
-    // Jensen-corrected displacement mean frequency [Hz], from bias-corrected moments.
-    float getDisplacementFrequencyHz() const {
+    float getDisplacementFrequencyHz() const {                      // Jensen OFF: returns ω̄_naive/(2π)
         return (omega_bar_corr > EPSILON) ? (omega_bar_corr / (2.0f * float(M_PI))) : 0.0f;
     }
 
-    // Naive (uncorrected) displacement frequency [Hz] = (M1/M0)/(2π), from bias-corrected M0,M1.
-    float getDisplacementFrequencyNaiveHz() const {
+    float getDisplacementFrequencyNaiveHz() const {                 // same as above while Jensen OFF
         return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * float(M_PI))) : 0.0f;
     }
 
-    // Displacement peak period Tp = 2π/ω̄ [s], based on Jensen-corrected, bias-corrected ω̄.
-    float getDisplacementPeriodSec() const {
+    float getDisplacementPeriodSec() const {                        // Tp = 2π/ω̄
         return (omega_bar_corr > EPSILON) ? (2.0f * float(M_PI) / omega_bar_corr) : 0.0f;
     }
 
-    // Diagnostic: variance of acceleration envelope (before 1/ω² normalization),
-    // tracked with bias-corrected EMA.
-    float getAccelerationVariance() const { return A0.get(); }
+    float getAccelerationVariance() const { return A0.get(); }      // diagnostic
 
 private:
-    // time constants
+    // time constants and alphas
     float tau_env, tau_mom, tau_coh, tau_out;
     float last_dt;
     float alpha_env, alpha_mom, alpha_coh, alpha_out;
@@ -163,21 +156,24 @@ private:
     float phi;
     float z_real, z_imag;
 
-    // displacement spectral moments (bias-corrected EMAs)
+    // moments (bias-corrected EMAs)
     DebiasedEMA M0, M1, M2;
-    DebiasedEMA Q0, Q1, Q2;
+    DebiasedEMA Q0, Q1, Q2;   // retained for future Jensen re-enable
     DebiasedEMA A0;
 
-    // coherence and regularity
+    // coherence + output
     DebiasedEMA coh_r, coh_i;
     DebiasedEMA R_out;
     float R_spec, R_phase;
 
-    // cached narrowness and mean freq
-    float nu;
-    float omega_bar_corr, omega_bar_naive;
-    bool has_moments;
+    // cached
+    float nu;                 // √μ₂/ω̄
+    float omega_bar_corr;     // currently equals ω̄_naive (Jensen off)
+    float omega_bar_naive;    // M1/M0
+    float omega_used_prev;    // for debugging / potential future smoothing
+    bool  has_moments;
 
+    // helpers
     void updateAlpha(float dt_s) {
         if (dt_s == last_dt) return;
         alpha_env = 1.0f - std::exp(-dt_s / tau_env);
@@ -191,6 +187,8 @@ private:
         phi += omega_inst * dt_s;
         float phi_wrapped = std::fmod(phi, 2.0f * float(M_PI));
         float c = std::cos(phi_wrapped), s = std::sin(phi_wrapped);
+
+        // Quadrature baseband (acceleration envelope)
         float y_real =  accel_z * c;
         float y_imag = -accel_z * s;
 
@@ -199,34 +197,55 @@ private:
             z_imag = y_imag;
             return;
         }
+        // EMA for envelope
         z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
         z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
     }
 
-    void updateSpectralMoments(float omega) {
+    void updateSpectralMoments(float omega_inst) {
+        // --- Build ω_used (robust to tracker idiosyncrasies) ---
+        const float OMEGA_MIN = 2.0f * float(M_PI) * OMEGA_MIN_HZ;
+        const float OMEGA_MAX = 2.0f * float(M_PI) * OMEGA_MAX_HZ;
+
+        // Use our own mean when available; otherwise fall back to instant ω
+        float omega_hat = (omega_bar_corr > 0.0f) ? omega_bar_corr : omega_inst;
+        float omega_used = GAMMA_BLEND * omega_hat + (1.0f - GAMMA_BLEND) * omega_inst;
+        omega_used = std::clamp(omega_used, OMEGA_MIN, OMEGA_MAX);
+        omega_used_prev = omega_used;
+
+        // --- Accel envelope power (diagnostic) ---
         float P_acc = z_real * z_real + z_imag * z_imag;
-        float inv_w2 = 1.0f / std::max(omega * omega, EPSILON);
+        A0.update(P_acc, alpha_mom);
+
+        // --- Displacement envelope via 1/ω² and scale to variance proxy ---
+        float inv_w2 = 1.0f / std::max(omega_used * omega_used, EPSILON);
         float disp_r = z_real * inv_w2;
         float disp_i = z_imag * inv_w2;
+
+        // Envelope power; scale so that M0 tracks displacement variance
         float P_disp = disp_r * disp_r + disp_i * disp_i;
-        float P2 = P_disp * P_disp;
+        float Y      = K_ENV * P_disp;            // first order (variance proxy)
+        float Y2     = (K_ENV * K_ENV) * P_disp * P_disp; // second order
 
-        A0.update(P_acc, alpha_mom);
-        M0.update(P_disp, alpha_mom);
-        M1.update(P_disp * omega, alpha_mom);
-        M2.update(P_disp * omega * omega, alpha_mom);
-        Q0.update(P2, alpha_mom);
-        Q1.update(P2 * omega, alpha_mom);
-        Q2.update(P2 * omega * omega, alpha_mom);
+        if (!has_moments) has_moments = true;
 
-        has_moments = true;
+        // --- Debiased EMA updates for moments ---
+        M0.update(Y,                   alpha_mom);
+        M1.update(Y * omega_used,      alpha_mom);
+        M2.update(Y * omega_used * omega_used, alpha_mom);
+
+        // Keep Q* updated for future Jensen correction (currently not used)
+        Q0.update(Y2,                         alpha_mom);
+        Q1.update(Y2 * omega_used,            alpha_mom);
+        Q2.update(Y2 * omega_used * omega_used, alpha_mom);
     }
 
     void updatePhaseCoherence() {
         float mag = std::hypot(z_real, z_imag);
         if (mag <= EPSILON) {
+            // Keep prior running estimate if present; else 0
             if (coh_r.isReady() && coh_i.isReady())
-                R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() + coh_i.get()*coh_i.get()),0.0f,1.0f);
+                R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() + coh_i.get()*coh_i.get()), 0.0f, 1.0f);
             else
                 R_phase = 0.0f;
             return;
@@ -235,11 +254,12 @@ private:
         float u_i = z_imag / mag;
         coh_r.update(u_r, alpha_coh);
         coh_i.update(u_i, alpha_coh);
-        R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() + coh_i.get()*coh_i.get()),0.0f,1.0f);
+        R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() + coh_i.get()*coh_i.get()), 0.0f, 1.0f);
     }
 
     void computeRegularityOutput() {
         if (!M0.isReady()) {
+            // Early startup: just smooth diagnostic phase
             R_out.update(R_phase, alpha_out);
             R_spec = R_phase;
             nu = 0.0f;
@@ -247,29 +267,24 @@ private:
             return;
         }
 
-        float m0 = M0.get(), m1 = M1.get(), m2 = M2.get();
-        float q0 = Q0.get(), q1 = Q1.get(), q2 = Q2.get();
+        // --- Naive moments (Jensen disabled) ---
+        float m0 = M0.get();
+        float m1 = M1.get();
+        float m2 = M2.get();
 
         omega_bar_naive  = (m0 > EPSILON) ? (m1 / m0) : 0.0f;
-        float omega2_bar_naive = m2 / m0;
+        float omega2_bar = (m0 > EPSILON) ? (m2 / m0) : 0.0f;
 
-        float varY  = std::max(0.0f, q0 - m0*m0);
-        float cov10 = q1 - m1*m0;
-        float cov20 = q2 - m2*m0;
-        float invm0_2 = 1.0f / (m0*m0);
+        float mu2 = std::max(0.0f, omega2_bar - omega_bar_naive * omega_bar_naive);
+        omega_bar_corr = omega_bar_naive; // while Jensen is OFF
 
-        float omega_bar  = omega_bar_naive  + omega_bar_naive  * invm0_2 * varY - cov10 * invm0_2;
-        float omega2_bar = omega2_bar_naive + omega2_bar_naive * invm0_2 * varY - cov20 * invm0_2;
+        float rbw = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
 
-        float mu2 = std::max(0.0f, omega2_bar - omega_bar * omega_bar);
-        float rbw = (omega_bar > EPSILON) ? (std::sqrt(mu2) / omega_bar) : 0.0f;
-
+        // Spectral-only, linear exponent
         R_spec = std::clamp(std::exp(-BETA_SPEC * rbw), 0.0f, 1.0f);
         nu = rbw;
-        omega_bar_corr = (omega_bar > 0.0f) ? omega_bar : 0.0f;
 
-        float R_now = R_spec; //std::max(R_phase, R_spec);
-        R_out.update(R_now, alpha_out);
+        R_out.update(R_spec, alpha_out);
     }
 };
 
@@ -278,19 +293,11 @@ private:
 #include <stdexcept>
 
 /**
- * SeaState_sine_wave_test
- *
- * Validates SeaStateRegularity on a pure sine displacement of amplitude A and
- * frequency f:
- *   • Ensures R_spec → 1 and R_phase → 1 (high regularity).
- *   • Checks Hs ≈ 2√2·A (true oceanographic significant wave height for a sine).
- *   • Verifies narrowness ν → 0 for a monochromatic signal.
- *   • Confirms displacement frequency estimates match the input frequency.
- *
- * This test also implicitly validates:
- *   • Jensen corrections applied to bias-corrected spectral moments (M0,M1,M2).
- *   • Bias-corrected EMA startup behavior — estimates converge immediately without
- *     the typical exponential warm-up lag.
+ * Simple sine test (monochromatic):
+ *  - R_spec → ~1, R_phase → ~1
+ *  - Hs ≈ 2√2·A (oceanographic)
+ *  - ν → ~0
+ *  - f and Tp correct
  */
 constexpr float SAMPLE_FREQ_HZ   = 240.0f;
 constexpr float DT               = 1.0f / SAMPLE_FREQ_HZ;
@@ -331,7 +338,6 @@ inline void SeaState_sine_wave_test() {
         Tp          = reg.getDisplacementPeriodSec();
     }
 
-    // Correct oceanographic Hs for a sine: Hs = 2√2·A
     const float Hs_expected = 2.0f * std::sqrt(2.0f) * SINE_AMPLITUDE;
 
     if (!(R_spec > 0.90f))
