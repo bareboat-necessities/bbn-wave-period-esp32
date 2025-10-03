@@ -3,7 +3,7 @@
 #include <limits>
 #include <algorithm>
 
-// ---------------- Debiased EMA ----------------
+// Debiased EMA
 struct DebiasedEMA {
     float value  = 0.0f;
     float weight = 0.0f;
@@ -16,7 +16,7 @@ struct DebiasedEMA {
     inline bool  isReady() const { return weight > 1e-6f; }
 };
 
-// ---------------- SeaStateRegularity ----------------
+// SeaStateRegularity
 class SeaStateRegularity {
 public:
     // Numerics / mapping
