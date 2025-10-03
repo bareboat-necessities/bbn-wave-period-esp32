@@ -249,7 +249,7 @@ int main() {
     }
 
     // Final summary
-    std::cout << std::fixed << std::setprecision(3);
+    std::cout << std::fixed << std::setprecision(5);
     std::cout << "\n=== Final Comparison Summary ===\n";
     std::cout << std::setw(10) << "Reg(Aran)"
               << std::setw(10) << "Reg(Kalm)"
