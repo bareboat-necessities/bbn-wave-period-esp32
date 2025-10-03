@@ -3,48 +3,6 @@
 #include <limits>
 #include <algorithm>
 
-/**
- * SeaStateRegularity — Online estimator of ocean wave regularity and height.
- *
- * Inputs
- *   • Vertical acceleration a_z(t) [m/s²]
- *   • Instantaneous angular frequency ω_inst(t) [rad/s] from an external tracker
- *
- * Pipeline
- *   1) Demodulate acceleration by φ(t) = ∫ ω_inst dt to obtain baseband z(t).
- *   2) Normalize by ω²: η_env(t) = z(t)/ω²(t) to approximate displacement envelope.
- *   3) Track power and displacement spectral moments with bias-corrected EMAs (DebiasedEMA):
- *        A0 = ⟨|z|²⟩                (acceleration envelope variance, diagnostic)
- *        M0 = ⟨Y⟩                   (displacement variance proxy; K_eff fixed to 1)
- *        M1 = ⟨Y·ω⟩
- *        M2 = ⟨Y·ω²⟩
- *        Q0 = ⟨Y²⟩, Q1 = ⟨Y²·ω⟩, Q2 = ⟨Y²·ω²⟩ (kept for future, not used in output)
- *   4) Mean frequency and variance (NAIVE, Jensen disabled for robustness):
- *        ω̄ = M1/M0,   μ₂ = M2/M0 − (M1/M0)²
- *   5) Spectral regularity: R_spec = exp(−β · ν),  ν = √μ₂/ω̄.
- *   6) Phase regularity: mean resultant length of demodulated phase (diagnostic only).
- *   7) Final regularity: R_out = EMA(R_spec).
- *   8) Significant wave height: Hs ≈ 4√M0.
- *
- * Notes
- *   • K_eff = 1.0 (no analytic signal double-counting).
- *   • ω_inst is used for demodulation and is also EMA-smoothed (tracker-only, no blending
- *     with moment ratios) to form ω_used for both 1/ω² normalization and for M1/M2.
- */
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-#if __cplusplus < 201703L
-namespace std {
-    template <class T>
-    constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
-        return (v < lo) ? lo : (hi < v) ? hi : v;
-    }
-}
-#endif
-
 // ---------------- Debiased EMA ----------------
 struct DebiasedEMA {
     float value  = 0.0f;
@@ -63,10 +21,10 @@ class SeaStateRegularity {
 public:
     // Numerics / mapping
     constexpr static float EPSILON    = 1e-12f;
-    constexpr static float BETA_SPEC  = 1.0f;     // linear exponent in ν
+    constexpr static float BETA_SPEC  = 1.0f;     // exponent in ν
     constexpr static float K_EFF      = 1.0f;     // fixed envelope→variance scale
 
-    // Tracker-robust ω clamp and smoothing (hardcoded)
+    // Tracker-robust ω clamp and smoothing
     constexpr static float OMEGA_MIN_HZ = 0.03f;
     constexpr static float OMEGA_MAX_HZ = 1.50f;
     constexpr static float TAU_W_SEC    = 15.0f;  // EMA time-constant for ω_used
@@ -85,6 +43,7 @@ public:
 
     void reset() {
         phi = 0.0f;
+        t_abs = 0.0f;
         z_real = z_imag = 0.0f;
 
         M0.reset(); M1.reset(); M2.reset();
@@ -100,8 +59,8 @@ public:
         omega_bar_corr = 0.0f;
         omega_bar_naive = 0.0f;
 
-        omega_used = 0.0f;   // smoothed tracker frequency
-        alpha_w    = 0.0f;   // EMA coeff for ω_used
+        omega_used = 0.0f;
+        alpha_w    = 0.0f;
 
         has_moments = false;
         last_dt = -1.0f;
@@ -114,37 +73,34 @@ public:
         if (accel_z    != accel_z)    accel_z    = 0.0f;
         if (omega_inst != omega_inst) return;
 
+        t_abs += dt_s; // accumulate absolute time
         updateAlpha(dt_s);
         demodulateAcceleration(accel_z, omega_inst, dt_s);
         updatePhaseCoherence();
-        updateSpectralMoments(omega_inst);   // tracker-only ω_used (EMA + clamp)
-        computeRegularityOutput();           // NAIVE μ₂/ω̄ mapping (Jensen OFF)
+        updateSpectralMoments(omega_inst);   // now adaptive multi-bin
+        computeRegularityOutput();
     }
 
     // Getters
-    float getRegularity() const { return R_out.get(); }              // spectral-only, smoothed
-    float getRegularitySpectral() const { return R_spec; }           // instantaneous spectral R
-    float getRegularityPhase() const { return R_phase; }             // diagnostic only
-    float getNarrowness() const { return nu; }                       // ν = √μ₂/ω̄
+    float getRegularity() const { return R_out.get(); }
+    float getRegularitySpectral() const { return R_spec; }
+    float getRegularityPhase() const { return R_phase; }
+    float getNarrowness() const { return nu; }
 
-    float getWaveHeightEnvelopeEst() const {                        // Hs ≈ 4√M0
+    float getWaveHeightEnvelopeEst() const { // Hs ≈ 4√M0
         float m0 = M0.get();
         return (m0 > 0.0f) ? 4.0f * std::sqrt(m0) : 0.0f;
     }
 
-    float getDisplacementFrequencyHz() const {                      // equals ω̄_naive/(2π) (Jensen OFF)
+    float getDisplacementFrequencyHz() const {
         return (omega_bar_corr > EPSILON) ? (omega_bar_corr / (2.0f * float(M_PI))) : 0.0f;
     }
 
-    float getDisplacementFrequencyNaiveHz() const {                 // same as above while Jensen OFF
-        return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * float(M_PI))) : 0.0f;
-    }
-
-    float getDisplacementPeriodSec() const {                        // Tp = 2π/ω̄
+    float getDisplacementPeriodSec() const {
         return (omega_bar_corr > EPSILON) ? (2.0f * float(M_PI) / omega_bar_corr) : 0.0f;
     }
 
-    float getAccelerationVariance() const { return A0.get(); }      // diagnostic
+    float getAccelerationVariance() const { return A0.get(); }
 
 private:
     // time constants and alphas
@@ -153,16 +109,17 @@ private:
     float alpha_env, alpha_mom, alpha_coh, alpha_out;
 
     // ω_used smoothing
-    float omega_used; // EMA-smoothed tracker ω for both normalization and moment weights
-    float alpha_w;    // EMA coefficient for ω_used
+    float omega_used;
+    float alpha_w;
 
     // demod state
     float phi;
     float z_real, z_imag;
+    float t_abs; // NEW: absolute time accumulator
 
     // moments
     DebiasedEMA M0, M1, M2;
-    DebiasedEMA Q0, Q1, Q2;   // retained (not used in output)
+    DebiasedEMA Q0, Q1, Q2;
     DebiasedEMA A0;
 
     // coherence + output
@@ -172,7 +129,7 @@ private:
 
     // cached
     float nu;
-    float omega_bar_corr;   // equals ω̄_naive with Jensen OFF
+    float omega_bar_corr;
     float omega_bar_naive;
     bool  has_moments;
 
@@ -188,7 +145,6 @@ private:
     }
 
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
-        // phase accumulation uses raw tracker ω_inst
         phi += omega_inst * dt_s;
         float phi_wrapped = std::fmod(phi, 2.0f * float(M_PI));
         float c = std::cos(phi_wrapped), s = std::sin(phi_wrapped);
@@ -206,7 +162,6 @@ private:
     }
 
     void updateSpectralMoments(float omega_inst) {
-        // --- Build ω_used from tracker ONLY (EMA + clamp) ---
         const float OMEGA_MIN = 2.0f * float(M_PI) * OMEGA_MIN_HZ;
         const float OMEGA_MAX = 2.0f * float(M_PI) * OMEGA_MAX_HZ;
 
@@ -214,7 +169,7 @@ private:
         if (omega_used <= 0.0f) omega_used = w_obs;
         else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
-        // Optional outlier gate
+        // Outlier gate
         if (omega_used > 0.0f) {
             float ratio = w_obs / omega_used;
             if (ratio < 0.7f || ratio > 1.3f) {
@@ -224,36 +179,70 @@ private:
             }
         }
 
-        // --- Acceleration envelope power (diagnostic) ---
+        // Diagnostic acceleration variance
         float P_acc = z_real * z_real + z_imag * z_imag;
         A0.update(P_acc, alpha_mom);
 
-        // --- Displacement envelope via 1/ω_used², fixed K_EFF=1 ---
-        float inv_w2 = 1.0f / std::max(omega_used * omega_used, EPSILON);
-        float disp_r = -z_real * inv_w2;
-        float disp_i = -z_imag * inv_w2;
+        // === Adaptive multi-bin integration ===
+        int   K    = 0;
+        float STEP = 0.0f;
 
-        float P_disp = disp_r * disp_r + disp_i * disp_i;
-        float Y      = K_EFF * P_disp;
-        float Y2     = (K_EFF * K_EFF) * P_disp * P_disp;
+        if (nu < 0.05f) {
+            K = 0; STEP = 0.0f;        // pure-tone
+        } else if (nu < 0.15f) {
+            K = 2; STEP = 0.10f;       // moderate
+        } else {
+            K = 4; STEP = 0.05f;       // broadband
+        }
+
+        float Y_sum  = 0.0f;
+        float Y2_sum = 0.0f;
+        int count    = 0;
+
+        for (int k = -K; k <= K; k++) {
+            float omega_k = omega_used * (1.0f + STEP * k);
+            if (omega_k <= EPSILON) continue;
+
+            float phi_shift = (omega_k - omega_used) * t_abs;
+            float c = std::cos(phi_shift);
+            float s = std::sin(phi_shift);
+
+            float z_r_k =  z_real * c - z_imag * s;
+            float z_i_k =  z_real * s + z_imag * c;
+
+            float inv_w2 = 1.0f / (omega_k * omega_k);
+            float disp_r = -z_r_k * inv_w2;
+            float disp_i = -z_i_k * inv_w2;
+
+            float P_disp = disp_r * disp_r + disp_i * disp_i;
+            float Y      = K_EFF * P_disp;
+            float Y2     = (K_EFF * K_EFF) * P_disp * P_disp;
+
+            Y_sum  += Y;
+            Y2_sum += Y2;
+            count++;
+        }
+
+        float Y_final  = (count > 0) ? (Y_sum  / count) : 0.0f;
+        float Y2_final = (count > 0) ? (Y2_sum / count) : 0.0f;
 
         if (!has_moments) has_moments = true;
 
-        // --- Debiased EMA updates for moments ---
-        M0.update(Y,                         alpha_mom);
-        M1.update(Y * omega_used,            alpha_mom);
-        M2.update(Y * omega_used * omega_used, alpha_mom);
+        M0.update(Y_final, alpha_mom);
+        M1.update(Y_final * omega_used, alpha_mom);
+        M2.update(Y_final * omega_used * omega_used, alpha_mom);
 
-        Q0.update(Y2,                           alpha_mom);
-        Q1.update(Y2 * omega_used,              alpha_mom);
-        Q2.update(Y2 * omega_used * omega_used, alpha_mom);
+        Q0.update(Y2_final, alpha_mom);
+        Q1.update(Y2_final * omega_used, alpha_mom);
+        Q2.update(Y2_final * omega_used * omega_used, alpha_mom);
     }
 
     void updatePhaseCoherence() {
         float mag = std::hypot(z_real, z_imag);
         if (mag <= EPSILON) {
             if (coh_r.isReady() && coh_i.isReady())
-                R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() + coh_i.get()*coh_i.get()), 0.0f, 1.0f);
+                R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() +
+                                               coh_i.get()*coh_i.get()), 0.0f, 1.0f);
             else
                 R_phase = 0.0f;
             return;
@@ -262,7 +251,8 @@ private:
         float u_i = z_imag / mag;
         coh_r.update(u_r, alpha_coh);
         coh_i.update(u_i, alpha_coh);
-        R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() + coh_i.get()*coh_i.get()), 0.0f, 1.0f);
+        R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() +
+                                       coh_i.get()*coh_i.get()), 0.0f, 1.0f);
     }
 
     void computeRegularityOutput() {
