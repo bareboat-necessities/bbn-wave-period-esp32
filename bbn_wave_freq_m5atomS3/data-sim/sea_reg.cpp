@@ -120,8 +120,8 @@ struct ConvergedStats {
 
 // Per-file summary
 struct FileSummary {
-    std::string fname;
-    std::array<ConvergedStats,3> stats; // Aranovskiy, KalmanF, ZeroCross
+    std::string label; // wave type, height, period
+    std::array<ConvergedStats,3> stats;
 };
 
 // Main runner from input wave_data_*.csv
@@ -227,8 +227,22 @@ int main() {
     std::vector<FileSummary> all_summaries;
 
     for (const auto &fname : files) {
+        auto parsed = WaveFileNaming::parse(fname);
+        std::string label;
+        if (parsed) {
+            auto meta = *parsed;
+            std::ostringstream oss;
+            oss << EnumTraits<WaveType>::to_string(meta.type);
+            if (meta.height > 0) oss << " H" << meta.height;
+            if (meta.period > 0) oss << " P" << meta.period;
+            if (meta.length > 0) oss << " L" << meta.length;
+            label = oss.str();
+        } else {
+            label = std::filesystem::path(fname).filename().string();
+        }
+
         FileSummary summary;
-        summary.fname = std::filesystem::path(fname).filename().string();
+        summary.label = label;
         for (int tr = 0; tr < 3; ++tr) {
             summary.stats[tr] = run_from_csv(static_cast<TrackerType>(tr), fname, run_idx++);
         }
@@ -238,47 +252,47 @@ int main() {
     // Final summary
     std::cout << std::fixed << std::setprecision(3);
     std::cout << "\n=== Final Comparison Summary ===\n";
-    std::cout << std::setw(12) << "Reg(Aran)"
-              << std::setw(12) << "Reg(Kalm)"
-              << std::setw(12) << "Reg(Zero)"
-              << std::setw(12) << "Hs(Aran)"
-              << std::setw(12) << "Hs(Kalm)"
-              << std::setw(12) << "Hs(Zero)"
-              << std::setw(12) << "Freq(Aran)"
-              << std::setw(12) << "Freq(Kalm)"
-              << std::setw(12) << "Freq(Zero)"
-              << std::setw(12) << "Tp(Aran)"
-              << std::setw(12) << "Tp(Kalm)"
-              << std::setw(12) << "Tp(Zero)"
-              << std::setw(12) << "Nu(Aran)"
-              << std::setw(12) << "Nu(Kalm)"
-              << std::setw(12) << "Nu(Zero)"
-              << std::setw(16) << "TrackFreq(Aran)"
-              << std::setw(16) << "TrackFreq(Kalm)"
-              << std::setw(16) << "TrackFreq(Zero)"
-              << std::setw(25) << "File"
+    std::cout << std::setw(10) << "Reg(Aran)"
+              << std::setw(10) << "Reg(Kalm)"
+              << std::setw(10) << "Reg(Zero)"
+              << std::setw(10) << "Hs(Aran)"
+              << std::setw(10) << "Hs(Kalm)"
+              << std::setw(10) << "Hs(Zero)"
+              << std::setw(10) << "Freq(Aran)"
+              << std::setw(10) << "Freq(Kalm)"
+              << std::setw(10) << "Freq(Zero)"
+              << std::setw(10) << "Tp(Aran)"
+              << std::setw(10) << "Tp(Kalm)"
+              << std::setw(10) << "Tp(Zero)"
+              << std::setw(10) << "Nu(Aran)"
+              << std::setw(10) << "Nu(Kalm)"
+              << std::setw(10) << "Nu(Zero)"
+              << std::setw(14) << "TrackF(Aran)"
+              << std::setw(14) << "TrackF(Kalm)"
+              << std::setw(14) << "TrackF(Zero)"
+              << std::setw(22) << "Wave"
               << "\n";
 
     for (const auto& s : all_summaries) {
-        std::cout << std::setw(12) << s.stats[0].regularity
-                  << std::setw(12) << s.stats[1].regularity
-                  << std::setw(12) << s.stats[2].regularity
-                  << std::setw(12) << s.stats[0].Hs
-                  << std::setw(12) << s.stats[1].Hs
-                  << std::setw(12) << s.stats[2].Hs
-                  << std::setw(12) << s.stats[0].disp_freq_hz
-                  << std::setw(12) << s.stats[1].disp_freq_hz
-                  << std::setw(12) << s.stats[2].disp_freq_hz
-                  << std::setw(12) << s.stats[0].disp_period_s
-                  << std::setw(12) << s.stats[1].disp_period_s
-                  << std::setw(12) << s.stats[2].disp_period_s
-                  << std::setw(12) << s.stats[0].narrowness
-                  << std::setw(12) << s.stats[1].narrowness
-                  << std::setw(12) << s.stats[2].narrowness
-                  << std::setw(16) << s.stats[0].tracker_freq_hz
-                  << std::setw(16) << s.stats[1].tracker_freq_hz
-                  << std::setw(16) << s.stats[2].tracker_freq_hz
-                  << std::setw(25) << s.fname
+        std::cout << std::setw(10) << s.stats[0].regularity
+                  << std::setw(10) << s.stats[1].regularity
+                  << std::setw(10) << s.stats[2].regularity
+                  << std::setw(10) << s.stats[0].Hs
+                  << std::setw(10) << s.stats[1].Hs
+                  << std::setw(10) << s.stats[2].Hs
+                  << std::setw(10) << s.stats[0].disp_freq_hz
+                  << std::setw(10) << s.stats[1].disp_freq_hz
+                  << std::setw(10) << s.stats[2].disp_freq_hz
+                  << std::setw(10) << s.stats[0].disp_period_s
+                  << std::setw(10) << s.stats[1].disp_period_s
+                  << std::setw(10) << s.stats[2].disp_period_s
+                  << std::setw(10) << s.stats[0].narrowness
+                  << std::setw(10) << s.stats[1].narrowness
+                  << std::setw(10) << s.stats[2].narrowness
+                  << std::setw(14) << s.stats[0].tracker_freq_hz
+                  << std::setw(14) << s.stats[1].tracker_freq_hz
+                  << std::setw(14) << s.stats[2].tracker_freq_hz
+                  << std::setw(22) << s.label
                   << "\n";
     }
 
