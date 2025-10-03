@@ -120,15 +120,25 @@
  *   When true, raw spectral moments (M0, M1, M2, M3, M−1) are adjusted by
  *   first-order Jensen corrections for ω-tracker jitter:
  *
- *     E[1/ω^n] ≈ (1/ω̄^n)(1 + c_n σ²/ω̄²), with coefficients:
- *       n = 1 → c = 1
- *       n = 2 → c = 3
- *       n = 3 → c = 6
+ *     General expansion:
+ *       E[ω^{−n}] ≈ (1 / ω̄^n) · ( 1 + c_n · σ² / ω̄² )
+ *       with  c_n = ½ · n · (n+1).
+ *
+ *     Example derivation:
+ *       For n=2: E[1/ω²] ≈ 1/ω̄² · (1 + 3 σ²/ω̄²).
  *
  *   — Correction is applied only up to M3. —
  *   Higher-order moments (e.g. M4) are left uncorrected, because literature
  *   shows they are dominated by high-frequency noise and rarely used in
  *   operational metrics. (See Holthuijsen 2007; Kuik 1988; Ochi 1976.)
+ *
+ *   Coefficients by moment (since M_m ∼ ω^{m−4}):
+ *     • M_{−1} : ω^{−5} → n=5 → c = ½·5·6 = 15
+ *     • M0     : ω^{−4} → n=4 → c = ½·4·5 = 10
+ *     • M1     : ω^{−3} → n=3 → c = ½·3·4 = 6
+ *     • M2     : ω^{−2} → n=2 → c = ½·2·3 = 3
+ *     • M3     : ω^{−1} → n=1 → c = ½·1·2 = 1
+ *     • M4     : ω⁰     → n=0 → c = 0  (no correction)
  *
  *   Derived metrics (periods, heights, bandwidths, skew/kurtosis,
  *   extremes, power) are computed consistently from these corrected
