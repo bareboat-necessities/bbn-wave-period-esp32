@@ -52,7 +52,7 @@ namespace std {
 }
 #endif
 
-// ---- Bias-corrected EMA helper ----
+// Bias-corrected EMA helper
 struct DebiasedEMA {
     float value  = 0.0f;
     float weight = 0.0f;
@@ -113,44 +113,44 @@ public:
         computeRegularityOutput();
     }
 
-    // === Public getters ===
+    // Public getters
 
-    /// Final regularity index R (bias-corrected, smoothed EMA of max(R_phase,R_spec)).
+    // Final regularity index R (bias-corrected, smoothed EMA of max(R_phase,R_spec)).
     float getRegularity() const { return R_out.get(); }
 
-    /// Spectral regularity R_spec = exp(−β · √μ₂/ω̄), from bias-corrected moments.
+    // Spectral regularity R_spec = exp(−β · √μ₂/ω̄), from bias-corrected moments.
     float getRegularitySpectral() const { return R_spec; }
 
-    /// Phase regularity R_phase = mean resultant length of demodulated phase
-    /// (tracked via bias-corrected EMA of phase unit vectors).
+    // Phase regularity R_phase = mean resultant length of demodulated phase
+    // (tracked via bias-corrected EMA of phase unit vectors).
     float getRegularityPhase() const { return R_phase; }
 
-    /// Narrowness ν = √μ₂ / ω̄, dimensionless bandwidth from bias-corrected moments.
+    // Narrowness ν = √μ₂ / ω̄, dimensionless bandwidth from bias-corrected moments.
     float getNarrowness() const { return nu; }
 
-    /// Significant wave height estimate Hs = 4√M0, using bias-corrected M0 (oceanographic convention).
+    // Significant wave height estimate Hs = 4√M0, using bias-corrected M0 (oceanographic convention).
     float getWaveHeightEnvelopeEst() const {
         float m0 = M0.get();
         return (m0 > 0.0f) ? 4.0f * std::sqrt(m0) : 0.0f;
     }
 
-    /// Jensen-corrected displacement mean frequency [Hz], from bias-corrected moments.
+    // Jensen-corrected displacement mean frequency [Hz], from bias-corrected moments.
     float getDisplacementFrequencyHz() const {
         return (omega_bar_corr > EPSILON) ? (omega_bar_corr / (2.0f * float(M_PI))) : 0.0f;
     }
 
-    /// Naive (uncorrected) displacement frequency [Hz] = (M1/M0)/(2π), from bias-corrected M0,M1.
+    // Naive (uncorrected) displacement frequency [Hz] = (M1/M0)/(2π), from bias-corrected M0,M1.
     float getDisplacementFrequencyNaiveHz() const {
         return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * float(M_PI))) : 0.0f;
     }
 
-    /// Displacement peak period Tp = 2π/ω̄ [s], based on Jensen-corrected, bias-corrected ω̄.
+    // Displacement peak period Tp = 2π/ω̄ [s], based on Jensen-corrected, bias-corrected ω̄.
     float getDisplacementPeriodSec() const {
         return (omega_bar_corr > EPSILON) ? (2.0f * float(M_PI) / omega_bar_corr) : 0.0f;
     }
 
-    /// Diagnostic: variance of acceleration envelope (before 1/ω² normalization),
-    /// tracked with bias-corrected EMA.
+    // Diagnostic: variance of acceleration envelope (before 1/ω² normalization),
+    // tracked with bias-corrected EMA.
     float getAccelerationVariance() const { return A0.get(); }
 
 private:
