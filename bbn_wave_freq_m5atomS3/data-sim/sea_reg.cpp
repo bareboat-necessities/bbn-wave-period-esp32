@@ -234,7 +234,6 @@ int main() {
             std::ostringstream oss;
             oss << EnumTraits<WaveType>::to_string(meta.type);
             if (meta.height > 0) oss << " H" << meta.height;
-            if (meta.period > 0) oss << " P" << meta.period;
             if (meta.length > 0) oss << " L" << meta.length;
             label = oss.str();
         } else {
