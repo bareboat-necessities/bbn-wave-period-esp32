@@ -221,7 +221,7 @@ private:
         else                 { K = 4; STEP = STEP_BROAD;  }
 
         if (!bins_init) {
-            for (int i=0;i<NBINS;i++){ bin_c[i]=1.0f; bin_s[i]=0.0f; }
+            for (int i = 0; i < NBINS; i++) { bin_c[i] = 1.0f; bin_s[i] = 0.0f; }
             bins_init=true;
         }
 
@@ -244,7 +244,7 @@ private:
             float c0 = bin_c[idx], s0 = bin_s[idx];
             float c1 =  c0*cd - s0*sd;
             float s1 =  c0*sd + s0*cd;
-            bin_c[idx]=c1; bin_s[idx]=s1;
+            bin_c[idx] = c1; bin_s[idx] = s1;
 
             // Mix raw accel to baseband
             float y_r =  last_accel * c1;
