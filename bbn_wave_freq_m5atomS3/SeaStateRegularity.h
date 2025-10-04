@@ -229,9 +229,9 @@ private:
         // Multi-bin extent
         int   K    = 0;
         float STEP = 0.0f;
-        if      (nu < 0.05f) { K = 0; STEP = 0.0f; }
-        else if (nu < 0.15f) { K = 2; STEP = STEP_NARROW; }
-        else                 { K = MAX_K; STEP = STEP_BROAD; }
+        if      (nu < 0.05f) { K = 0;         STEP = 0.0f;        }
+        else if (nu < 0.15f) { K = 2;         STEP = STEP_NARROW; }
+        else                 { K = MAX_K;     STEP = STEP_BROAD;  }
 
         if (!bins_init) {
             for (int i = 0; i < NBINS; i++) {
@@ -243,38 +243,46 @@ private:
             bins_init = true;
         }
 
-        // Compute bin centers (linear ratio grid)
-        float omega_k_arr[NBINS];
+        // Bin centers (linear-in-ratio grid around omega_used)
+        float omega_k_arr[NBINS] = {};
         for (int k = -K; k <= K; ++k) {
             int idx = k + MAX_K;
             omega_k_arr[idx] = omega_used * (1.0f + STEP * k);
         }
 
-        // Compute per-bin widths domega (central diff, one-sided at edges)
-        float domega_k_arr[NBINS];
-        for (int k = -K; k <= K; ++k) {
-            int idx = k + MAX_K;
-            float wL, wR;
-            if (k == -K) {
-                wL = omega_k_arr[idx];
-                wR = omega_k_arr[idx + 1];
-                domega_k_arr[idx] = std::max(EPSILON, wR - wL);
-            } else if (k == K) {
-                wL = omega_k_arr[idx - 1];
-                wR = omega_k_arr[idx];
-                domega_k_arr[idx] = std::max(EPSILON, wR - wL);
-            } else {
-                wL = omega_k_arr[idx - 1];
-                wR = omega_k_arr[idx + 1];
-                domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
-            }
-        }
-
-        // Baseband LPF alpha (shared across bins; constant ENBW factor)
+        // LPF alpha for baseband; shared across bins
         float f_used_hz     = omega_used / (2.0f * float(M_PI));
         float fc_hz         = std::max(MIN_FC_HZ, STEP * f_used_hz);
         float alpha_env_bin = 1.0f - std::exp(-last_dt * 2.0f * float(M_PI) * fc_hz);
         alpha_env_bin       = std::clamp(alpha_env_bin, 0.0f, 1.0f);
+
+        // Equivalent Noise Bandwidth (ENBW) of 1st-order LPF in rad/s:
+        // ENBW_rad = π² * fc_hz  (since ENBW_Hz = (π/2)*fc and ENBW_rad = 2π*ENBW_Hz)
+        const float enbw_rad = float(M_PI) * float(M_PI) * fc_hz;
+
+        // Bin widths Δω via central differences (safe for edges + K==0)
+        float domega_k_arr[NBINS] = {};
+        if (K == 0) {
+            // Single-bin case: use ENBW as Δω proxy so the bin represents its own effective band
+            domega_k_arr[MAX_K] = std::max(EPSILON, enbw_rad);
+        } else {
+            for (int k = -K; k <= K; ++k) {
+                int idx = k + MAX_K;
+                if (k == -K) {
+                    float wL = omega_k_arr[idx];
+                    float wR = omega_k_arr[idx + 1];
+                    domega_k_arr[idx] = std::max(EPSILON, wR - wL);
+                } else if (k == K) {
+                    float wL = omega_k_arr[idx - 1];
+                    float wR = omega_k_arr[idx];
+                    domega_k_arr[idx] = std::max(EPSILON, wR - wL);
+                } else {
+                    float wL = omega_k_arr[idx - 1];
+                    float wR = omega_k_arr[idx + 1];
+                    domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
+                }
+            }
+        }
 
         float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
         float A_var = 0.0f; // acceleration variance accumulator
@@ -285,7 +293,7 @@ private:
             float omega_k = omega_k_arr[idx];
             if (omega_k <= EPSILON) continue;
 
-            // Advance oscillator
+            // Advance oscillator for this bin
             float dphi = omega_k * last_dt;
             float cd = std::cos(dphi), sd = std::sin(dphi);
             float c0 = bin_c[idx], s0 = bin_s[idx];
@@ -293,40 +301,47 @@ private:
             float s1 =  c0*sd + s0*cd;
             bin_c[idx] = c1; bin_s[idx] = s1;
 
-            // Mix to baseband
+            // Mix acceleration to baseband
             float y_r =  last_accel * c1;
             float y_i = -last_accel * s1;
 
-            // LP filter
+            // Low-pass baseband (shared alpha → shared ENBW)
             bin_zr[idx] = (1.0f - alpha_env_bin) * bin_zr[idx] + alpha_env_bin * y_r;
             bin_zi[idx] = (1.0f - alpha_env_bin) * bin_zi[idx] + alpha_env_bin * y_i;
 
-            // Accel → displacement (z = −a/omega^2)
+            // Accel → displacement (a = −ω² η  ⇒  η = −a/ω²)
             float inv_w2 = 1.0f / std::max(omega_k*omega_k, EPSILON);
             float dr = bin_zr[idx] * inv_w2;
             float di = bin_zi[idx] * inv_w2;
 
+            // Baseband bin power (variance-like, includes ENBW)
             float P_disp = dr*dr + di*di;
-            float Yk = K_EFF_MIX * P_disp; // displacement spectrum proxy
 
+            // Convert to PSD estimate: S_eta_hat ≈ (K_EFF_MIX * P_disp) / ENBW
+            float S_eta_hat = (enbw_rad > EPSILON) ? (K_EFF_MIX * P_disp / enbw_rad) : 0.0f;
+
+            // Integrate spectral moments over Δω
             float domega = domega_k_arr[idx];
-            S0 += Yk * domega;
-            S1 += Yk * omega_k * domega;
-            S2 += Yk * omega_k * omega_k * domega;
+            S0    += S_eta_hat * domega;
+            S1    += S_eta_hat * omega_k * domega;
+            S2    += S_eta_hat * omega_k * omega_k * domega;
 
-            // Acceleration variance contribution: omega^4 * S_eta(omega) * domega
-            A_var += (omega_k*omega_k*omega_k*omega_k) * Yk * domega;
+            // Acceleration variance: ∫ ω⁴ S_eta(ω) dω
+            A_var += (omega_k*omega_k*omega_k*omega_k) * S_eta_hat * domega;
         }
 
         if (!has_moments) has_moments = true;
 
+        // Update EMAs
         M0.update(S0, alpha_mom);
         M1.update(S1, alpha_mom);
         M2.update(S2, alpha_mom);
 
+        // Jensen correction helpers
         Q00.update(S0 * S0, alpha_mom);
         Q10.update(S0 * S1, alpha_mom);
 
+        // Broadband acceleration variance (σ²[a])
         A0.update(A_var, alpha_mom);
     }
 
