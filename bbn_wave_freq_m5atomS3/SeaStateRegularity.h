@@ -16,7 +16,7 @@ struct DebiasedEMA {
         value  = (1.0f - alpha) * value + alpha * x;
         weight = (1.0f - alpha) * weight + alpha;
     }
-    inline void decay(float alpha) {              // <-- add this
+    inline void decay(float alpha) {         
         value  = (1.0f - alpha) * value;
         weight = (1.0f - alpha) * weight;
     }
@@ -38,10 +38,10 @@ public:
     constexpr static float TAU_W_SEC    = 15.0f;  // EMA time-constant for ω_used
 
     // Multi-bin params
-    constexpr static int   MAX_K       = 12;       // up to ±12 bins
-    constexpr static int   NBINS       = 2*MAX_K + 1;
-    constexpr static float STEP_NARROW = 0.10f;
-    constexpr static float STEP_BROAD  = 0.05f;
+    constexpr static int   MAX_K       = 15;       // up to ±15 bins
+    constexpr static int   NBINS       = 2 * MAX_K + 1;
+    constexpr static float STEP_NARROW = 0.08f;
+    constexpr static float STEP_BROAD  = 0.03f;
     constexpr static float MIN_FC_HZ   = 0.02f;
 
     SeaStateRegularity(float tau_env_sec = 15.0f,
