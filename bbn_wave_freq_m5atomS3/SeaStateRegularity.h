@@ -7,7 +7,7 @@
     Copyright 2025, Mikhail Grushinskiy
 */
 
-// Debiased EMA
+// Debiased EMA (bias-corrected by tracking weight)
 struct DebiasedEMA {
     float value  = 0.0f;
     float weight = 0.0f;
@@ -60,6 +60,10 @@ public:
         M0.reset(); M1.reset(); M2.reset();
         A0.reset();
 
+        // For Jensen correction
+        Q00.reset();  // ⟨S0^2⟩
+        Q10.reset();  // ⟨S0*S1⟩
+
         R_out.reset();
         coh_r.reset(); coh_i.reset();
 
@@ -105,7 +109,7 @@ public:
 
     float getWaveHeightEnvelopeEst() const {
         float m0 = M0.get();
-        return (m0 > 0.0f) ? 4.0f * std::sqrt(m0) : 0.0f;
+        return (m0 > 0.0f) ? 4.0f * std::sqrt(std::max(0.0f, m0)) : 0.0f;
     }
 
     float getDisplacementFrequencyHz() const {
@@ -125,6 +129,10 @@ public:
     float getAccelerationVariance() const { return A0.get(); }
 
 private:
+    // Precomputed rad/s clamps
+    static constexpr float OMEGA_MIN_RAD = 2.0f * float(M_PI) * OMEGA_MIN_HZ;
+    static constexpr float OMEGA_MAX_RAD = 2.0f * float(M_PI) * OMEGA_MAX_HZ;
+
     // time constants and alphas
     float tau_env, tau_mom, tau_coh, tau_out;
     float last_dt;
@@ -147,9 +155,13 @@ private:
     float bin_c[NBINS],  bin_s[NBINS];
     bool  bins_init;
 
-    // moments
+    // moments (primary)
     DebiasedEMA M0, M1, M2;
     DebiasedEMA A0;
+
+    // moments for Jensen correction
+    // Q00 ≈ ⟨S0^2⟩, Q10 ≈ ⟨S0*S1⟩, where S0=ΣYk, S1=Σ(Yk*ωk)
+    DebiasedEMA Q00, Q10;
 
     // coherence + output
     DebiasedEMA coh_r, coh_i;
@@ -175,8 +187,13 @@ private:
 
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
         phi += omega_inst * dt_s;
-        float phi_wrapped = std::fmod(phi, 2.0f * float(M_PI));
-        float c = std::cos(phi_wrapped), s = std::sin(phi_wrapped);
+        // Robust wrapping without fmod (avoid cumulative growth)
+        const float TWO_PI = 2.0f * float(M_PI);
+        if (phi >= TWO_PI) phi -= TWO_PI;
+        if (phi <  0.0f)   phi += TWO_PI;
+
+        float c = std::cos(phi);
+        float s = std::sin(phi);
 
         float y_real =  accel_z * c;
         float y_imag = -accel_z * s;
@@ -191,10 +208,7 @@ private:
     }
 
     void updateSpectralMoments(float omega_inst) {
-        const float OMEGA_MIN = 2.0f * float(M_PI) * OMEGA_MIN_HZ;
-        const float OMEGA_MAX = 2.0f * float(M_PI) * OMEGA_MAX_HZ;
-
-        float w_obs = std::clamp(omega_inst, OMEGA_MIN, OMEGA_MAX);
+        float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
         if (omega_used <= 0.0f) omega_used = w_obs;
         else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
@@ -216,7 +230,12 @@ private:
         else                 { K = 4; STEP = STEP_BROAD;  }
 
         if (!bins_init) {
-            for (int i = 0; i < NBINS; i++) { bin_c[i] = 1.0f; bin_s[i] = 0.0f; }
+            for (int i = 0; i < NBINS; i++) {
+                bin_c[i]  = 1.0f;
+                bin_s[i]  = 0.0f;
+                bin_zr[i] = 0.0f;
+                bin_zi[i] = 0.0f;
+            }
             bins_init = true;
         }
 
@@ -232,7 +251,7 @@ private:
             float omega_k = omega_used * (1.0f + STEP * k);
             if (omega_k <= EPSILON) continue;
 
-            // Oscillator step
+            // Oscillator step (2x2 rotation)
             float dphi = omega_k * last_dt;
             float cd = std::cos(dphi), sd = std::sin(dphi);
             float c0 = bin_c[idx], s0 = bin_s[idx];
@@ -248,10 +267,10 @@ private:
             bin_zr[idx] = (1.0f - alpha_env_bin) * bin_zr[idx] + alpha_env_bin * y_r;
             bin_zi[idx] = (1.0f - alpha_env_bin) * bin_zi[idx] + alpha_env_bin * y_i;
 
-            // Displacement power
+            // Accel -> disp (a = -ω² z; demod already carries sign, divide by ω²)
             float inv_w2 = 1.0f / std::max(omega_k*omega_k, EPSILON);
-            float dr = -bin_zr[idx] * inv_w2;
-            float di = -bin_zi[idx] * inv_w2;
+            float dr = bin_zr[idx] * inv_w2;   // sign fixed
+            float di = bin_zi[idx] * inv_w2;
 
             float P_disp = dr*dr + di*di;
             float Yk  = K_EFF_MIX * P_disp;
@@ -263,9 +282,14 @@ private:
 
         if (!has_moments) has_moments = true;
 
+        // Primary moment EMAs
         M0.update(S0, alpha_mom);
         M1.update(S1, alpha_mom);
         M2.update(S2, alpha_mom);
+
+        // Second-order EMAs for Jensen correction
+        Q00.update(S0 * S0,   alpha_mom);   // ⟨S0^2⟩
+        Q10.update(S0 * S1,   alpha_mom);   // ⟨S0*S1⟩
 
         // Diagnostic acceleration variance (from center bin)
         if (K >= 0) {
@@ -314,15 +338,24 @@ private:
             return;
         }
 
+        // Naive mean and variance of ω
         omega_bar_naive  =  m1 / m0;
         float omega2_bar =  m2 / m0;
-
         float mu2 = std::max(0.0f, omega2_bar - omega_bar_naive * omega_bar_naive);
-        omega_bar_corr = omega_bar_naive;
 
+        // Jensen correction for ratio E[M1/M0]
+        // Var[M0] ≈ E[S0^2] - M0^2,  Cov[M1,M0] ≈ E[S0*S1] - M1*M0
+        float q00 = Q00.get();   // ⟨S0^2⟩
+        float q10 = Q10.get();   // ⟨S0*S1⟩
+        float varM0  = std::max(0.0f, q00 - m0*m0);
+        float cov10  = q10 - m1*m0;
+        float invM0_2 = 1.0f / std::max(m0*m0, EPSILON);
+
+        omega_bar_corr = omega_bar_naive + (omega_bar_naive * varM0 - cov10) * invM0_2;
+
+        // Narrowness ν and spectral regularity
         nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
         nu = std::max(0.0f, nu);
-
         R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
 
         // Output = max of phase vs spectral
