@@ -164,5 +164,7 @@ for (wave, height), recs in waveheight_groups.items():
 
     h_str = str(height).rstrip("0").rstrip(".")
     base = f"seareg_{wave}_H{h_str}"
+    title = f"Sea State Regularity — {wave}, H={h_str} m"
+    
     save_all(fig, base, f"Sea State Regularity — {wave}, H={h_str} m (all trackers)")
     plt.close(fig)
