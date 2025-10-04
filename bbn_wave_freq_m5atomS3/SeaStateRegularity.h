@@ -188,9 +188,9 @@ private:
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
         phi += omega_inst * dt_s;
         // Robust wrapping without fmod (avoid cumulative growth)
-        const float TWO_PI = 2.0f * float(M_PI);
-        if (phi >= TWO_PI) phi -= TWO_PI;
-        if (phi <  0.0f)   phi += TWO_PI;
+        const float TWO_PI_ = 2.0f * float(M_PI);
+        if (phi >= TWO_PI_) phi -= TWO_PI_;
+        if (phi <  0.0f)    phi += TWO_PI_;
 
         float c = std::cos(phi);
         float s = std::sin(phi);
