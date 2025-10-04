@@ -222,7 +222,7 @@ private:
 
         if (!bins_init) {
             for (int i = 0; i < NBINS; i++) { bin_c[i] = 1.0f; bin_s[i] = 0.0f; }
-            bins_init=true;
+            bins_init = true;
         }
 
         float f_used_hz = omega_used / (2.0f * float(M_PI));
