@@ -275,6 +275,7 @@ private:
         alpha_env_bin       = std::clamp(alpha_env_bin, 0.0f, 1.0f);
 
         float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
+        float A_var = 0.0f; // acceleration variance accumulator
 
         // Loop over bins
         for (int k = -K; k <= K; ++k) {
@@ -298,19 +299,22 @@ private:
             bin_zr[idx] = (1.0f - alpha_env_bin) * bin_zr[idx] + alpha_env_bin * y_r;
             bin_zi[idx] = (1.0f - alpha_env_bin) * bin_zi[idx] + alpha_env_bin * y_i;
 
-            // Accel → displacement (a = −ω² η ⇒ η = −a/ω²)
+            // Accel → displacement (z = −a/ω²)
             float inv_w2 = 1.0f / std::max(omega_k*omega_k, EPSILON);
             float dr = bin_zr[idx] * inv_w2;
             float di = bin_zi[idx] * inv_w2;
 
             float P_disp = dr*dr + di*di;
-            float Yk = K_EFF_MIX * P_disp;
+            float Yk = K_EFF_MIX * P_disp; // displacement spectrum proxy
 
-            // Weighted contributions with Δω
+            // Weighted displacement moments
             float dω = domega_k_arr[idx];
             S0 += Yk * dω;
             S1 += Yk * omega_k * dω;
             S2 += Yk * omega_k * omega_k * dω;
+
+            // Acceleration variance contribution: ω^4 * S_eta(ω) * Δω
+            A_var += (omega_k*omega_k*omega_k*omega_k) * Yk;
         }
 
         if (!has_moments) has_moments = true;
@@ -324,12 +328,8 @@ private:
         Q00.update(S0 * S0, alpha_mom);
         Q10.update(S0 * S1, alpha_mom);
 
-        // Diagnostic acceleration variance (center bin only)
-        if (K >= 0) {
-            int idx0 = MAX_K;
-            float acc_baseband2 = bin_zr[idx0]*bin_zr[idx0] + bin_zi[idx0]*bin_zi[idx0];
-            A0.update(acc_baseband2, alpha_mom);
-        }
+        // Update broadband acceleration variance (σ²[a])
+        A0.update(A_var, alpha_mom);
     }
 
     void updatePhaseCoherence() {
