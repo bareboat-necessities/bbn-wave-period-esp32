@@ -255,10 +255,8 @@ private:
 
             float P_disp = dr*dr + di*di;
             float Y  = K_EFF_MIX * P_disp;
-            float Y2 = (K_EFF_MIX*K_EFF_MIX) * P_disp * P_disp;
 
             Y_sum  += Y;
-            Y2_sum += Y2;
         }
 
         if (!has_moments) has_moments = true;
@@ -266,10 +264,6 @@ private:
         M0.update(Y_sum, alpha_mom);
         M1.update(Y_sum * omega_used, alpha_mom);
         M2.update(Y_sum * omega_used*omega_used, alpha_mom);
-
-        Q0.update(Y2_sum, alpha_mom);
-        Q1.update(Y2_sum * omega_used, alpha_mom);
-        Q2.update(Y2_sum * omega_used*omega_used, alpha_mom);
     }
 
     void updatePhaseCoherence() {
