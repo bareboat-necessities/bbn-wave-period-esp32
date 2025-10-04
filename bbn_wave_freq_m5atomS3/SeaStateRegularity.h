@@ -214,7 +214,7 @@ private:
     void updateSpectralMoments(float omega_inst) {
         float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-        // Smooth ω_used
+        // Smooth omega_used
         if (omega_used <= 0.0f) omega_used = w_obs;
         else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
@@ -222,10 +222,6 @@ private:
         if (omega_used > 0.0f) {
             float ratio = w_obs / omega_used;
             if (ratio < 0.7f || ratio > 1.3f) {
-                //A0.decay(alpha_mom);
-                //M0.decay(alpha_mom);
-                //M1.decay(alpha_mom);
-                //M2.decay(alpha_mom);
                 return;
             }
         }
@@ -254,7 +250,7 @@ private:
             omega_k_arr[idx] = omega_used * (1.0f + STEP * k);
         }
 
-        // Compute per-bin widths Δω (central diff, one-sided at edges)
+        // Compute per-bin widths domega (central diff, one-sided at edges)
         float domega_k_arr[NBINS];
         for (int k = -K; k <= K; ++k) {
             int idx = k + MAX_K;
@@ -276,7 +272,7 @@ private:
 
         // Baseband LPF alpha (shared across bins; constant ENBW factor)
         float f_used_hz     = omega_used / (2.0f * float(M_PI));
-        float fc_hz         = std::max(0.05f, STEP * f_used_hz);
+        float fc_hz         = std::max(MIN_FC_HZ, STEP * f_used_hz);
         float alpha_env_bin = 1.0f - std::exp(-last_dt * 2.0f * float(M_PI) * fc_hz);
         alpha_env_bin       = std::clamp(alpha_env_bin, 0.0f, 1.0f);
 
@@ -305,7 +301,7 @@ private:
             bin_zr[idx] = (1.0f - alpha_env_bin) * bin_zr[idx] + alpha_env_bin * y_r;
             bin_zi[idx] = (1.0f - alpha_env_bin) * bin_zi[idx] + alpha_env_bin * y_i;
 
-            // Accel → displacement (z = −a/ω²)
+            // Accel → displacement (z = −a/omega^2)
             float inv_w2 = 1.0f / std::max(omega_k*omega_k, EPSILON);
             float dr = bin_zr[idx] * inv_w2;
             float di = bin_zi[idx] * inv_w2;
@@ -313,28 +309,24 @@ private:
             float P_disp = dr*dr + di*di;
             float Yk = K_EFF_MIX * P_disp; // displacement spectrum proxy
 
-            // Weighted displacement moments
-            float dω = domega_k_arr[idx];
-            S0 += Yk * dω;
-            S1 += Yk * omega_k * dω;
-            S2 += Yk * omega_k * omega_k * dω;
+            float domega = domega_k_arr[idx];
+            S0 += Yk * domega;
+            S1 += Yk * omega_k * domega;
+            S2 += Yk * omega_k * omega_k * domega;
 
-            // Acceleration variance contribution: ω^4 * S_eta(ω) * Δω
-            A_var += (omega_k*omega_k*omega_k*omega_k) * Yk;
+            // Acceleration variance contribution: omega^4 * S_eta(omega) * domega
+            A_var += (omega_k*omega_k*omega_k*omega_k) * Yk * domega;
         }
 
         if (!has_moments) has_moments = true;
 
-        // Primary moment EMAs
         M0.update(S0, alpha_mom);
         M1.update(S1, alpha_mom);
         M2.update(S2, alpha_mom);
 
-        // Jensen correction helpers
         Q00.update(S0 * S0, alpha_mom);
         Q10.update(S0 * S1, alpha_mom);
 
-        // Update broadband acceleration variance (σ²[a])
         A0.update(A_var, alpha_mom);
     }
 
