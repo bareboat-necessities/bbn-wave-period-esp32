@@ -223,6 +223,9 @@ private:
             float ratio = w_obs / omega_used;
             if (ratio < 0.7f || ratio > 1.3f) {
                 A0.decay(alpha_mom);
+                M0.decay(alpha_mom);
+                M1.decay(alpha_mom);
+                M2.decay(alpha_mom);
                 return;
             }
         }
