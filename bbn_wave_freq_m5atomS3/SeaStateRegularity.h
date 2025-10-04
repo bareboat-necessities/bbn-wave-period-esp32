@@ -113,6 +113,12 @@ public:
         return (omega_bar_corr > EPSILON) ? (omega_bar_corr / (2.0f * float(M_PI))) : 0.0f;
     }
 
+    float getDisplacementFrequencyNaiveHz() const {
+        return (omega_bar_naive > EPSILON)
+             ? (omega_bar_naive / (2.0f * float(M_PI)))
+             : 0.0f;
+    }
+
     float getDisplacementPeriodSec() const {
         return (omega_bar_corr > EPSILON) ? (2.0f * float(M_PI) / omega_bar_corr) : 0.0f;
     }
