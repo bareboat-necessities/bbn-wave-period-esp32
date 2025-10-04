@@ -34,7 +34,7 @@ public:
     constexpr static float TAU_W_SEC    = 15.0f;  // EMA time-constant for ω_used
 
     // Multi-bin params
-    constexpr static int   MAX_K       = 4;       // up to ±4 bins
+    constexpr static int   MAX_K       = 12;       // up to ±12 bins
     constexpr static int   NBINS       = 2*MAX_K + 1;
     constexpr static float STEP_NARROW = 0.10f;
     constexpr static float STEP_BROAD  = 0.05f;
@@ -209,10 +209,12 @@ private:
 
     void updateSpectralMoments(float omega_inst) {
         float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+
+        // Smooth ω_used
         if (omega_used <= 0.0f) omega_used = w_obs;
         else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
-        // Outlier gate
+        // Outlier gate: skip updates if tracker jumps too far
         if (omega_used > 0.0f) {
             float ratio = w_obs / omega_used;
             if (ratio < 0.7f || ratio > 1.3f) {
@@ -222,12 +224,12 @@ private:
             }
         }
 
-        // Multi-bin accumulation
+        // Multi-bin extent
         int   K    = 0;
         float STEP = 0.0f;
         if      (nu < 0.05f) { K = 0; STEP = 0.0f; }
         else if (nu < 0.15f) { K = 2; STEP = STEP_NARROW; }
-        else                 { K = 4; STEP = STEP_BROAD;  }
+        else                 { K = MAX_K; STEP = STEP_BROAD; }
 
         if (!bins_init) {
             for (int i = 0; i < NBINS; i++) {
@@ -239,19 +241,48 @@ private:
             bins_init = true;
         }
 
-        float f_used_hz = omega_used / (2.0f * float(M_PI));
-        float fc_hz     = std::max(MIN_FC_HZ, STEP * f_used_hz);
+        // Compute bin centers (linear ratio grid)
+        float omega_k_arr[NBINS];
+        for (int k = -K; k <= K; ++k) {
+            int idx = k + MAX_K;
+            omega_k_arr[idx] = omega_used * (1.0f + STEP * k);
+        }
+
+        // Compute per-bin widths Δω (central diff, one-sided at edges)
+        float domega_k_arr[NBINS];
+        for (int k = -K; k <= K; ++k) {
+            int idx = k + MAX_K;
+            float wL, wR;
+            if (k == -K) {
+                wL = omega_k_arr[idx];
+                wR = omega_k_arr[idx + 1];
+                domega_k_arr[idx] = std::max(EPSILON, wR - wL);
+            } else if (k == K) {
+                wL = omega_k_arr[idx - 1];
+                wR = omega_k_arr[idx];
+                domega_k_arr[idx] = std::max(EPSILON, wR - wL);
+            } else {
+                wL = omega_k_arr[idx - 1];
+                wR = omega_k_arr[idx + 1];
+                domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
+            }
+        }
+
+        // Baseband LPF alpha (shared across bins; constant ENBW factor)
+        float f_used_hz     = omega_used / (2.0f * float(M_PI));
+        float fc_hz         = std::max(0.05f, STEP * f_used_hz);
         float alpha_env_bin = 1.0f - std::exp(-last_dt * 2.0f * float(M_PI) * fc_hz);
-        alpha_env_bin = std::clamp(alpha_env_bin, 0.0f, 1.0f);
+        alpha_env_bin       = std::clamp(alpha_env_bin, 0.0f, 1.0f);
 
         float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
 
+        // Loop over bins
         for (int k = -K; k <= K; ++k) {
             int idx = k + MAX_K;
-            float omega_k = omega_used * (1.0f + STEP * k);
+            float omega_k = omega_k_arr[idx];
             if (omega_k <= EPSILON) continue;
 
-            // Oscillator step (2x2 rotation)
+            // Advance oscillator
             float dphi = omega_k * last_dt;
             float cd = std::cos(dphi), sd = std::sin(dphi);
             float c0 = bin_c[idx], s0 = bin_s[idx];
@@ -259,25 +290,27 @@ private:
             float s1 =  c0*sd + s0*cd;
             bin_c[idx] = c1; bin_s[idx] = s1;
 
-            // Mix raw accel to baseband
+            // Mix to baseband
             float y_r =  last_accel * c1;
             float y_i = -last_accel * s1;
 
-            // LP
+            // LP filter
             bin_zr[idx] = (1.0f - alpha_env_bin) * bin_zr[idx] + alpha_env_bin * y_r;
             bin_zi[idx] = (1.0f - alpha_env_bin) * bin_zi[idx] + alpha_env_bin * y_i;
 
-            // Accel -> disp (a = -ω² z; demod already carries sign, divide by ω²)
+            // Accel → displacement (a = −ω² η ⇒ η = −a/ω²)
             float inv_w2 = 1.0f / std::max(omega_k*omega_k, EPSILON);
-            float dr = bin_zr[idx] * inv_w2;   // sign fixed
+            float dr = bin_zr[idx] * inv_w2;
             float di = bin_zi[idx] * inv_w2;
 
             float P_disp = dr*dr + di*di;
-            float Yk  = K_EFF_MIX * P_disp;
+            float Yk = K_EFF_MIX * P_disp;
 
-            S0 += Yk;
-            S1 += Yk * omega_k;
-            S2 += Yk * omega_k * omega_k;
+            // Weighted contributions with Δω
+            float dω = domega_k_arr[idx];
+            S0 += Yk * dω;
+            S1 += Yk * omega_k * dω;
+            S2 += Yk * omega_k * omega_k * dω;
         }
 
         if (!has_moments) has_moments = true;
@@ -287,11 +320,11 @@ private:
         M1.update(S1, alpha_mom);
         M2.update(S2, alpha_mom);
 
-        // Second-order EMAs for Jensen correction
-        Q00.update(S0 * S0,   alpha_mom);   // ⟨S0^2⟩
-        Q10.update(S0 * S1,   alpha_mom);   // ⟨S0*S1⟩
+        // Jensen correction helpers
+        Q00.update(S0 * S0, alpha_mom);
+        Q10.update(S0 * S1, alpha_mom);
 
-        // Diagnostic acceleration variance (from center bin)
+        // Diagnostic acceleration variance (center bin only)
         if (K >= 0) {
             int idx0 = MAX_K;
             float acc_baseband2 = bin_zr[idx0]*bin_zr[idx0] + bin_zi[idx0]*bin_zi[idx0];
