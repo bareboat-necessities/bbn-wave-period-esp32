@@ -222,8 +222,7 @@ private:
         if (omega_used > 0.0f) {
             float ratio = w_obs / omega_used;
             if (ratio < 0.7f || ratio > 1.3f) {
-                float P_acc_skip = z_real*z_real + z_imag*z_imag;
-                A0.update(P_acc_skip, alpha_mom);
+                A0.decay(alpha_mom);
                 return;
             }
         }
