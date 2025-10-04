@@ -16,6 +16,10 @@ struct DebiasedEMA {
         value  = (1.0f - alpha) * value + alpha * x;
         weight = (1.0f - alpha) * weight + alpha;
     }
+    inline void decay(float alpha) {              // <-- add this
+        value  = (1.0f - alpha) * value;
+        weight = (1.0f - alpha) * weight;
+    }
     inline float get() const { return (weight > 1e-12f) ? value / weight : 0.0f; }
     inline bool  isReady() const { return weight > 1e-6f; }
 };
