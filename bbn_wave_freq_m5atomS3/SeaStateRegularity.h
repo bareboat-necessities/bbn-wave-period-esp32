@@ -230,7 +230,6 @@ private:
         alpha_env_bin = std::clamp(alpha_env_bin, 0.0f, 1.0f);
 
         float Y_sum  = 0.0f;
-        float Y2_sum = 0.0f;
 
         for (int k = -K; k <= K; ++k) {
             int idx = k + MAX_K;
