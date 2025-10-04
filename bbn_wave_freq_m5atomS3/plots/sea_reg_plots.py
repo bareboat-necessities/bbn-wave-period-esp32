@@ -125,6 +125,7 @@ for tracker, tracker_files in tracker_groups.items():
                 continue
 
             df = pd.read_csv(f).head(MAX_RECORDS)
+            df = df[(df["time"] >= 40.0)].reset_index(drop=True)
             if not {"regularity", "significant_wave_height", "disp_freq_hz"}.issubset(df.columns):
                 print(f"Skipping {f} (missing required columns)")
                 continue
