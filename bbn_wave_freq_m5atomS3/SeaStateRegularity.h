@@ -26,7 +26,6 @@ public:
     // Numerics / mapping
     constexpr static float EPSILON    = 1e-12f;
     constexpr static float BETA_SPEC  = 1.0f;     // exponent in ν
-    constexpr static float K_EFF      = 1.0f;
     constexpr static float K_EFF_MIX  = 2.0f;     // fix for I/Q half-energy
 
     // Tracker-robust ω clamp and smoothing
