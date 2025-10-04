@@ -359,7 +359,7 @@ private:
         R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
 
         // Output = max of phase vs spectral
-        float R_combined = std::max(R_phase, R_spec);
+        float R_combined = R_spec; //std::max(R_phase, R_spec);
         R_out.update(R_combined, alpha_out);
     }
 };
