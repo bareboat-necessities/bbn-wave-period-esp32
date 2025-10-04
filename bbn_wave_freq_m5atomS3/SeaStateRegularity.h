@@ -26,7 +26,7 @@ public:
     // Numerics / mapping
     constexpr static float EPSILON    = 1e-12f;
     constexpr static float BETA_SPEC  = 1.0f;     // exponent in ν
-    constexpr static float K_EFF_MIX  = 2.0f;     // fix for I/Q half-energy
+    constexpr static float K_EFF_MIX  = 2.0f;     // extra scale (calibration)
 
     // Tracker-robust ω clamp and smoothing
     constexpr static float OMEGA_MIN_HZ = 0.03f;
@@ -91,7 +91,7 @@ public:
         last_accel = accel_z;
 
         updateAlpha(dt_s);
-        demodulateAcceleration(accel_z, omega_inst, dt_s); // narrow diagnostic path
+        demodulateAcceleration(accel_z, omega_inst, dt_s);
         updatePhaseCoherence();
         updateSpectralMoments(omega_inst);
         computeRegularityOutput();
@@ -208,11 +208,7 @@ private:
             }
         }
 
-        // Diagnostic acceleration variance (narrow path)
-        float P_acc = z_real*z_real + z_imag*z_imag;
-        A0.update(P_acc, alpha_mom);
-
-        // Adaptive binning
+        // Multi-bin accumulation
         int   K    = 0;
         float STEP = 0.0f;
         if      (nu < 0.05f) { K = 0; STEP = 0.0f; }
@@ -229,7 +225,7 @@ private:
         float alpha_env_bin = 1.0f - std::exp(-last_dt * 2.0f * float(M_PI) * fc_hz);
         alpha_env_bin = std::clamp(alpha_env_bin, 0.0f, 1.0f);
 
-        float Y_sum  = 0.0f;
+        float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
 
         for (int k = -K; k <= K; ++k) {
             int idx = k + MAX_K;
@@ -258,16 +254,25 @@ private:
             float di = -bin_zi[idx] * inv_w2;
 
             float P_disp = dr*dr + di*di;
-            float Y  = K_EFF_MIX * P_disp;
+            float Yk  = K_EFF_MIX * P_disp;
 
-            Y_sum  += Y;
+            S0 += Yk;
+            S1 += Yk * omega_k;
+            S2 += Yk * omega_k * omega_k;
         }
 
         if (!has_moments) has_moments = true;
 
-        M0.update(Y_sum, alpha_mom);
-        M1.update(Y_sum * omega_used, alpha_mom);
-        M2.update(Y_sum * omega_used*omega_used, alpha_mom);
+        M0.update(S0, alpha_mom);
+        M1.update(S1, alpha_mom);
+        M2.update(S2, alpha_mom);
+
+        // Diagnostic acceleration variance (from center bin)
+        if (K >= 0) {
+            int idx0 = MAX_K;
+            float acc_baseband2 = bin_zr[idx0]*bin_zr[idx0] + bin_zi[idx0]*bin_zi[idx0];
+            A0.update(acc_baseband2, alpha_mom);
+        }
     }
 
     void updatePhaseCoherence() {
@@ -319,7 +324,10 @@ private:
         nu = std::max(0.0f, nu);
 
         R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
-        R_out.update(R_spec, alpha_out);
+
+        // Output = max of phase vs spectral
+        float R_combined = std::max(R_phase, R_spec);
+        R_out.update(R_combined, alpha_out);
     }
 };
 
@@ -385,4 +393,5 @@ inline void SeaState_sine_wave_test() {
               << ", Tp=" << Tp << " s\n";
 }
 #endif
+
 
