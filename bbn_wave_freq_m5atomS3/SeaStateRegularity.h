@@ -59,7 +59,6 @@ public:
         z_real = z_imag = 0.0f;
 
         M0.reset(); M1.reset(); M2.reset();
-        Q0.reset(); Q1.reset(); Q2.reset();
         A0.reset();
 
         R_out.reset();
@@ -145,7 +144,6 @@ private:
 
     // moments
     DebiasedEMA M0, M1, M2;
-    DebiasedEMA Q0, Q1, Q2;
     DebiasedEMA A0;
 
     // coherence + output
