@@ -1,11 +1,13 @@
 #pragma once
+
 #include <cmath>
 #include <algorithm>
 #include <limits>
 
 /**
+ * Copyright 2025, Mikhail Grushinskiy
+ *
  * MiniTuningEstimator
- * --------------------
  *
  * Purpose:
  *   Tracks RMS acceleration σₐ and the smoothed acceleration-domain peak frequency ωₚₑₐₖ
@@ -42,7 +44,7 @@ public:
         reset();
     }
 
-    // === Reset internal state ===
+    // Reset internal state
     void reset() noexcept {
         M2_ = 0.0f;
         weight_mom_ = 0.0f;
@@ -51,16 +53,16 @@ public:
         has_peak_ = false;
     }
 
-    // === Update with one sample ===
+    // Update with one sample
     void update(float dt_s, float accel_z, float omega_inst) noexcept {
         if (!(dt_s > 0.0f)) return;
 
-        // --- Clamp and validate ω_inst ---
+        // Clamp and validate ω_inst
         if (!(omega_inst > 0.0f))
             omega_inst = OMEGA_MIN;
         omega_inst = std::clamp(omega_inst, OMEGA_MIN, OMEGA_MAX);
 
-        // --- Accel variance (σₐ², bias-corrected) ---
+        // Accel variance (σₐ², bias-corrected)
         const float a2 = accel_z * accel_z;
         const float a_m = alpha(dt_s, tau_mom_);
         const float b_m = 1.0f - a_m;
@@ -73,7 +75,7 @@ public:
             weight_mom_ = b_m * weight_mom_ + a_m;
         }
 
-        // --- Peak frequency tracker (smoothed accel ω) ---
+        // Peak frequency tracker (smoothed accel ω)
         const float a_pk = alpha(dt_s, tau_peak_smooth_);
         if (!has_peak_) {
             omega_peak_smooth_ = omega_inst;
@@ -88,7 +90,7 @@ public:
         }
     }
 
-    // === Outputs ===
+    // Outputs
     [[nodiscard]] float getSigmaA() const noexcept {
         return (weight_mom_ > EPS && M2_ > EPS)
                    ? std::sqrt(M2_ / weight_mom_)
@@ -111,13 +113,12 @@ public:
         return (w > EPS) ? (2.0f * static_cast<float>(M_PI) / w) : 0.0f;
     }
 
-    // === Heuristic pseudo-measurement noise scaling law ===
+    // Heuristic pseudo-measurement noise scaling law
     //
     // R_S(Tₚ) = R_S_base * (Tₚ / Tₚ_base)^(1/3)
     //
     // Interpretation:
-    //   • R_S is not a physical Reynolds–Stewart constant.
-    //   • It provides a dimensionally consistent scaling term for the
+    //   • R_S provides a dimensionally consistent scaling term for the
     //     displacement pseudo-measurement covariance used to regularize
     //     integral drift in the Kalman update.
     //
@@ -134,26 +135,26 @@ public:
     }
 
 private:
-    // --- Accel variance state ---
+    // Accel variance state
     float M2_ = 0.0f;
     float weight_mom_ = 0.0f;
     bool  has_moments_ = false;
 
-    // --- Peak frequency (acceleration domain) ---
+    // Peak frequency (acceleration domain)
     float omega_peak_smooth_ = 0.0f;
     bool  has_peak_          = false;
 
-    // --- Time constants ---
+    // Time constants
     float tau_mom_ = 120.0f;
     float tau_peak_smooth_ = 12.0f;
     float c_tau_ = 1.0f;
 
-    // --- Numeric limits ---
+    // Numeric limits
     static constexpr float OMEGA_MIN = 0.2f;   // rad/s (accel freq lower bound)
     static constexpr float OMEGA_MAX = 8.0f;   // rad/s (accel freq upper bound)
     static constexpr float EPS       = 1e-12f;
 
-    // --- Helper function ---
+    // Helper function
     static constexpr float alpha(float dt, float tau) noexcept {
         return 1.0f - std::exp(-dt / std::max(tau, 1e-6f));
     }
