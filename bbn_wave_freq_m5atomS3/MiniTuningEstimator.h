@@ -113,6 +113,10 @@ public:
         return (w > EPS) ? (2.0f * static_cast<float>(M_PI) / w) : 0.0f;
     }
 
+    [[nodiscard]] float getR_S() const noexcept {
+        return R_S_law(getPeriodPeak());
+    }
+
     // Heuristic pseudo-measurement noise scaling law
     //
     // R_S(Tₚ) = R_S_base * (Tₚ / Tₚ_base)^(1/3)
