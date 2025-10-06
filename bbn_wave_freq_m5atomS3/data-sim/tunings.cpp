@@ -96,8 +96,8 @@ static TuningExact compute_exact_from_spectrum(
     out.m4     = (w4 * S_eta.array() * df).sum();               // m^2 s^-4
 
     // τ from both peaks
-    out.tau_displ = 1.0 / omega_disp;
-    out.tau_accel = 1.0 / omega_acc;
+    out.tau_displ = static_cast<float>(M_PI) / omega_disp;
+    out.tau_accel = static_cast<float>(M_PI) / omega_acc;
 
     // sigma_a, R_S, Hs
     out.sigma_a = (out.m4 > 0.0) ? std::sqrt(out.m4) : 0.0;
