@@ -232,35 +232,35 @@ int main() {
     std::cout << std::fixed << std::setprecision(5);
     std::cout << "\n=== Final MiniTuningEstimator Summary ===\n";
     std::cout << std::right 
-              << std::setw(13) << "sigmaA(Aran)"
-              << std::setw(13) << "sigmaA(Kalm)"
-              << std::setw(13) << "sigmaA(Zero)"
-              << std::setw(11) << "tau(Aran)"
-              << std::setw(11) << "tau(Kalm)"
-              << std::setw(11) << "tau(Zero)"
+              << std::setw(12) << "sigmA(Aran)"
+              << std::setw(12) << "sigmA(Kalm)"
+              << std::setw(12) << "sigmA(Zero)"
+              << std::setw(10) << "tau(Aran)"
+              << std::setw(10) << "tau(Kalm)"
+              << std::setw(10) << "tau(Zero)"
               << std::setw(11) << "T(Aran)"
               << std::setw(11) << "T(Kalm)"
               << std::setw(11) << "T(Zero)"
-              << std::setw(13) << "TrkF(Aran)"
-              << std::setw(13) << "TrkF(Kalm)"
-              << std::setw(13) << "TrkF(Zero)"
+              << std::setw(11) << "TrkF(Aran)"
+              << std::setw(11) << "TrkF(Kalm)"
+              << std::setw(11) << "TrkF(Zero)"
               << std::left << " " << std::setw(22) << "Wave"
               << std::right << "\n";
     
     for (const auto &s : all_summaries) {
         std::cout << std::right
-                  << std::setw(13) << s.stats[0].sigma_a
-                  << std::setw(13) << s.stats[1].sigma_a
-                  << std::setw(13) << s.stats[2].sigma_a
-                  << std::setw(11) << s.stats[0].tau
-                  << std::setw(11) << s.stats[1].tau
-                  << std::setw(11) << s.stats[2].tau
+                  << std::setw(12) << s.stats[0].sigma_a
+                  << std::setw(12) << s.stats[1].sigma_a
+                  << std::setw(12) << s.stats[2].sigma_a
+                  << std::setw(10) << s.stats[0].tau
+                  << std::setw(10) << s.stats[1].tau
+                  << std::setw(10) << s.stats[2].tau
                   << std::setw(11) << s.stats[0].period_s
                   << std::setw(11) << s.stats[1].period_s
                   << std::setw(11) << s.stats[2].period_s
-                  << std::setw(13) << s.stats[0].tracker_freq_hz
-                  << std::setw(13) << s.stats[1].tracker_freq_hz
-                  << std::setw(13) << s.stats[2].tracker_freq_hz
+                  << std::setw(11) << s.stats[0].tracker_freq_hz
+                  << std::setw(11) << s.stats[1].tracker_freq_hz
+                  << std::setw(11) << s.stats[2].tracker_freq_hz
                   << std::left << " " << std::setw(22) << s.label
                   << std::right << "\n";
     }
