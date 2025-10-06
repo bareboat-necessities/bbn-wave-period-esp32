@@ -75,7 +75,7 @@ static double run_tracker_once(TrackerType tracker, float a_norm, float dt) {
     return freq;
 }
 
-// === CSV header ===
+// CSV header
 static void write_csv_header(std::ofstream &ofs) {
     ofs << "time,omega_inst,sigma_a,tau,period_s,R_S_acc\n";
 }
@@ -99,7 +99,7 @@ static std::string normalize_numbers(const std::string &s) {
     return result;
 }
 
-// === Converged output ===
+// Converged output
 struct ConvergedStats {
     float sigma_a = 0.0f;
     float tau = 0.0f;
@@ -108,13 +108,13 @@ struct ConvergedStats {
     double tracker_freq_hz = 0.0;
 };
 
-// === Summary per file ===
+// Summary per file
 struct FileSummary {
     std::string label;
     std::array<ConvergedStats,3> stats;
 };
 
-// === Core runner ===
+// Core runner
 static ConvergedStats run_from_csv(TrackerType tracker,
                                    const std::string &csv_file,
                                    unsigned run_seed)
@@ -195,7 +195,7 @@ static ConvergedStats run_from_csv(TrackerType tracker,
     return stats;
 }
 
-// === Main ===
+// Main
 int main() {
     init_tracker_backends();
 
