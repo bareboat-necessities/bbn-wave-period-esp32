@@ -4,7 +4,14 @@
 #include <limits>
 
 /**
- * MiniTuningEstimator (robust version)
+ * MiniTuningEstimator
+ * --------------------
+ *
+ * Purpose:
+ *   Tracks RMS acceleration σₐ and the smoothed acceleration-domain peak frequency ωₚₑₐₖ
+ *   from streaming acceleration data. Derived quantities include correlation time τ,
+ *   dominant period Tₚ, and a heuristic pseudo-measurement noise coefficient R_S
+ *   used for stabilizing displacement integral drift correction in Kalman filters.
  *
  * Inputs per sample:
  *   dt_s [s]          : timestep
@@ -13,18 +20,21 @@
  *
  * Outputs:
  *   σₐ [m/s²]         : RMS acceleration (bias-corrected)
- *   τ  [s]            : correlation time ≈ c_tau / ω_peak
+ *   τ  [s]            : correlation time ≈ c_tau / ωₚₑₐₖ
+ *   Tₚ [s]            : acceleration-domain period = 2π / ωₚₑₐₖ
+ *   R_S [m²·s²]       : heuristic pseudo-measurement noise scale for displacement integral drift
  *
  * Notes:
- *   • ω_peak refers to the *acceleration* spectral peak, not displacement.
- *   • If you want displacement-domain frequency, use getDisplacementOmegaPeak().
+ *   • ωₚₑₐₖ here refers to the *acceleration* spectral peak, not displacement.
+ *   • R_S acts as a dynamic noise “prior” — not a true physical Reynolds–Stewart constant.
+ *   • For displacement-domain equivalents, use getDisplacementOmegaPeak() (~0.6× mapping).
  */
 
 class MiniTuningEstimator {
 public:
-    explicit MiniTuningEstimator(float tau_mom_sec        = 120.0f,  // averaging for accel variance
-                                 float tau_peak_smooth_sec = 12.0f,   // smoothing for accel ω_peak
-                                 float c_tau               = 1.0f)    // τ = c_tau / ω_peak
+    explicit MiniTuningEstimator(float tau_mom_sec        = 120.0f,  // averaging window for accel variance
+                                 float tau_peak_smooth_sec = 12.0f,   // smoothing window for ωₚₑₐₖ
+                                 float c_tau               = 1.0f)    // τ = c_tau / ωₚₑₐₖ
         : c_tau_(c_tau)
     {
         tau_mom_         = std::max(1e-3f, tau_mom_sec);
@@ -32,6 +42,7 @@ public:
         reset();
     }
 
+    // === Reset internal state ===
     void reset() noexcept {
         M2_ = 0.0f;
         weight_mom_ = 0.0f;
@@ -49,7 +60,7 @@ public:
             omega_inst = OMEGA_MIN;
         omega_inst = std::clamp(omega_inst, OMEGA_MIN, OMEGA_MAX);
 
-        // --- Accel variance (σa², bias-corrected) ---
+        // --- Accel variance (σₐ², bias-corrected) ---
         const float a2 = accel_z * accel_z;
         const float a_m = alpha(dt_s, tau_mom_);
         const float b_m = 1.0f - a_m;
@@ -68,7 +79,7 @@ public:
             omega_peak_smooth_ = omega_inst;
             has_peak_ = true;
         } else {
-            // Robust smoothing: slower update when ω_inst drops abnormally
+            // Robust smoothing: slower update when ω_inst drops sharply
             const float rel = std::clamp(
                 omega_inst / std::max(omega_peak_smooth_, OMEGA_MIN), 0.25f, 4.0f);
             const float adj_alpha = a_pk * std::pow(rel, 0.3f);
@@ -95,7 +106,6 @@ public:
         return (std::isfinite(wpk) && wpk > EPS) ? (c_tau_ / wpk) : 0.0f;
     }
 
-    // Optional helpers for readability / integration
     [[nodiscard]] float getPeriodPeak() const noexcept {
         const float w = getOmegaPeak();
         return (w > EPS) ? (2.0f * static_cast<float>(M_PI) / w) : 0.0f;
@@ -103,11 +113,34 @@ public:
 
     [[nodiscard]] float getDisplacementOmegaPeak() const noexcept {
         // Empirical mapping accel-domain → displacement-domain frequency
+        // For JONSWAP-like seas ω_disp ≈ 0.6 * ω_acc
         return 0.6f * getOmegaPeak();
     }
 
+    // === Heuristic pseudo-measurement noise scaling law ===
+    //
+    // R_S(Tₚ) = R_S_base * (Tₚ / Tₚ_base)^(1/3)
+    //
+    // Interpretation:
+    //   • R_S is not a physical Reynolds–Stewart constant.
+    //   • It provides a dimensionally consistent scaling term for the
+    //     displacement pseudo-measurement covariance used to regularize
+    //     integral drift in the Kalman update.
+    //
+    // Defaults:
+    //   R_S_base ≈ 1.13 (m·s)²   — tuned baseline
+    //   Tₚ_base  ≈ 8.5 s         — nominal sea-state period
+    [[nodiscard]] static float R_S_law(float T_p,
+                                       float R_S_base = 1.13f,
+                                       float T_p_base = 8.5f) noexcept
+    {
+        if (!(T_p > 1e-6f))
+            return 0.0f;
+        return R_S_base * std::pow(T_p / T_p_base, 1.0f / 3.0f);
+    }
+
 private:
-    // --- Accel variance ---
+    // --- Accel variance state ---
     float M2_ = 0.0f;
     float weight_mom_ = 0.0f;
     bool  has_moments_ = false;
@@ -126,7 +159,7 @@ private:
     static constexpr float OMEGA_MAX = 8.0f;   // rad/s (accel freq upper bound)
     static constexpr float EPS       = 1e-12f;
 
-    // --- Utility ---
+    // --- Helper function ---
     static constexpr float alpha(float dt, float tau) noexcept {
         return 1.0f - std::exp(-dt / std::max(tau, 1e-6f));
     }
