@@ -35,7 +35,7 @@ public:
     explicit MiniTuningEstimator(float tau_mom_sec        = 120.0f,  // averaging window for accel variance
                                  float tau_peak_smooth_sec = 12.0f,   // smoothing window for ωₚₑₐₖ
                                  float c_tau               = 1.0f,    // τ = c_tau / ωₚₑₐₖ
-                                 float R_S_base            = 1.13f,   // baseline pseudo-noise (m·s)²
+                                 float R_S_base            = 2.26f,   // baseline pseudo-noise (m·s)²
                                  float T_p_base            = 8.5f)    // reference period [s]
         : c_tau_(c_tau),
           R_S_base_(R_S_base),
