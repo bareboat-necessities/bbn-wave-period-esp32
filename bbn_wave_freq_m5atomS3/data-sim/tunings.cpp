@@ -112,9 +112,9 @@ static TuningHeur compute_heur_from_HsTp(double Hs, double Tp) {
     TuningHeur h{};
     h.m0_from_Hs = (Hs*Hs)/16.0;
     h.omega_p    = TWO_PI / std::max(Tp, 1e-9);
-    h.tau        = 1.0 / h.omega_p;
+    h.tau        = static_cast<float>(M_PI) / h.omega_p;
     h.sigma_a    = h.omega_p*h.omega_p*std::sqrt(h.m0_from_Hs);
-    h.R_S        = R_S_law(Tp);   // <--- law
+    h.R_S        = R_S_law(Tp);  
     return h;
 }
 
