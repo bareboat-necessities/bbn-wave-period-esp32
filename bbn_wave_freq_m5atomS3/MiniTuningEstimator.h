@@ -28,8 +28,6 @@
  *
  * Notes:
  *   • ωₚₑₐₖ refers to the *acceleration* spectral peak, not displacement.
- *   • R_S acts as a dynamic noise “prior”, not a physical Reynolds–Stewart constant.
- *   • For displacement-domain equivalents, use getDisplacementOmegaPeak() (~0.6× mapping).
  */
 
 class MiniTuningEstimator {
@@ -119,7 +117,7 @@ public:
 
     // Heuristic pseudo-measurement noise scaling law
     //
-    // R_S(Tₚ) = R_S_base_ * (Tₚ / Tₚ_base_)^(1/3)
+    // R_S(Tₚ) = R_S_base_ * (Tₚ / Tₚ_base_)^(2/3)
     //
     // Interpretation:
     //   • R_S provides a dimensionally consistent scaling term for the
@@ -132,7 +130,7 @@ public:
     [[nodiscard]] float R_S_law(float T_p) const noexcept {
         if (!(T_p > 1e-6f))
             return 0.0f;
-        return R_S_base_ * std::pow(T_p / T_p_base_, 1.0f / 3.0f);
+        return R_S_base_ * std::pow(T_p / T_p_base_, 2.0f / 3.0f);
     }
 
 private:
