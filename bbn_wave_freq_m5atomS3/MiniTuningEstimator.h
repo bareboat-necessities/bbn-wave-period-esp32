@@ -35,8 +35,8 @@ public:
     explicit MiniTuningEstimator(float tau_mom_sec        = 120.0f,  // averaging window for accel variance
                                  float tau_peak_smooth_sec = 12.0f,   // smoothing window for ωₚₑₐₖ
                                  float c_tau               = 1.0f,    // τ = c_tau / ωₚₑₐₖ
-                                 float R_S_base            = 2.26f,   // baseline pseudo-noise (m·s)²
-                                 float T_p_base            = 8.5f)    // reference period [s]
+                                 float R_S_base            = 1.13f,   // baseline pseudo-noise (m·s)²
+                                 float T_p_base            = 2.6f)    // reference period [s]
         : c_tau_(c_tau),
           R_S_base_(R_S_base),
           T_p_base_(T_p_base)
@@ -117,8 +117,6 @@ public:
 
     // Heuristic pseudo-measurement noise scaling law
     //
-    // R_S(Tₚ) = R_S_base_ * (Tₚ / Tₚ_base_)^(2/3)
-    //
     // Interpretation:
     //   • R_S provides a dimensionally consistent scaling term for the
     //     displacement pseudo-measurement covariance used to regularize
@@ -127,10 +125,11 @@ public:
         return R_S_law(getPeriodPeak());
     }
 
+    // R_S(Tₚ) = R_S_base_ * (Tₚ / Tₚ_base_)^(1/3)
     [[nodiscard]] float R_S_law(float T_p) const noexcept {
         if (!(T_p > 1e-6f))
             return 0.0f;
-        return R_S_base_ * std::pow(T_p / T_p_base_, 2.0f / 3.0f);
+        return R_S_base_ * std::pow(T_p / T_p_base_, 1.0f / 3.0f);
     }
 
 private:
