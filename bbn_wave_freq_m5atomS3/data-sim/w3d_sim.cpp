@@ -91,10 +91,10 @@ struct TuningIMU {
 inline std::map<WaveType, std::vector<TuningIMU>> make_tuning_map() {
     return {
         { WaveType::JONSWAP, {
-            { 0.93367, 0.488792, R_S_law(3.0)  },
-            { 1.17722, 0.993007, R_S_law(5.7)  },
-            { 1.43084, 1.344122, R_S_law(8.5)  },
-            { 1.52335, 1.709363, R_S_law(11.4) }
+            { 0.93367, 0.50540, R_S_law(3.0)  },
+            { 1.17722, 1.05237, R_S_law(5.7)  },
+            { 1.43084, 1.52669, R_S_law(8.5)  },
+            { 1.52335, 2.01986, R_S_law(11.4) }
         }},
         { WaveType::PMSTOKES, {
             { 0.92128, 0.58012, R_S_law(3.0)  },
