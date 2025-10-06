@@ -241,9 +241,9 @@ int main() {
               << std::setw(11) << "T(Aran)"
               << std::setw(11) << "T(Kalm)"
               << std::setw(11) << "T(Zero)"
-              << std::setw(13) << "TrkF(Aran)"
-              << std::setw(13) << "TrkF(Kalm)"
-              << std::setw(13) << "TrkF(Zero)"
+              << std::setw(11) << "TrkF(Aran)"
+              << std::setw(11) << "TrkF(Kalm)"
+              << std::setw(11) << "TrkF(Zero)"
               << std::left << " " << std::setw(22) << "Wave"
               << std::right << "\n";
     
@@ -257,9 +257,9 @@ int main() {
                   << std::setw(11) << s.stats[0].period_s
                   << std::setw(11) << s.stats[1].period_s
                   << std::setw(11) << s.stats[2].period_s
-                  << std::setw(13) << s.stats[0].tracker_freq_hz
-                  << std::setw(13) << s.stats[1].tracker_freq_hz
-                  << std::setw(13) << s.stats[2].tracker_freq_hz
+                  << std::setw(11) << s.stats[0].tracker_freq_hz
+                  << std::setw(11) << s.stats[1].tracker_freq_hz
+                  << std::setw(11) << s.stats[2].tracker_freq_hz
                   << std::left << " " << std::setw(22) << s.label
                   << std::right << "\n";
     }
