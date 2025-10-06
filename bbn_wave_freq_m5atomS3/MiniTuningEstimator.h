@@ -92,7 +92,7 @@ public:
         }
     }
 
-    // === Outputs ===
+    // Outputs
     [[nodiscard]] float getSigmaA() const noexcept {
         return (weight_mom_ > EPS && M2_ > EPS)
                    ? std::sqrt(M2_ / weight_mom_)
@@ -107,7 +107,7 @@ public:
 
     [[nodiscard]] float getTau() const noexcept {
         const float wpk = getOmegaPeak();
-        return (std::isfinite(wpk) && wpk > EPS) ? (c_tau_ / wpk) : 0.0f;
+        return (std::isfinite(wpk) && wpk > EPS) ? (c_tau_ * static_cast<float>(M_PI) / wpk) : 0.0f;
     }
 
     [[nodiscard]] float getPeriodPeak() const noexcept {
