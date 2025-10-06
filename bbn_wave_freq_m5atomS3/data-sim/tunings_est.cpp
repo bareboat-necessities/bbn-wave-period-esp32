@@ -30,8 +30,8 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 #include "KalmanSmoother.h"
 #include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
-#include "MiniTuningEstimator.h"   // <-- swapped here
-#include "SeaMetrics.h"            // keep if still needed elsewhere
+#include "MiniTuningEstimator.h"
+#include "SeaMetrics.h"
 
 // Config
 static constexpr float SAMPLE_RATE_HZ   = 240.0f;
@@ -77,7 +77,7 @@ static double run_tracker_once(TrackerType tracker, float a_norm, float dt) {
 
 // === CSV header ===
 static void write_csv_header(std::ofstream &ofs) {
-    ofs << "time,omega_inst,sigma_a,tau,period_s\n";
+    ofs << "time,omega_inst,sigma_a,tau,period_s,R_S_acc\n";
 }
 
 // Normalize numbers (for filenames)
@@ -104,6 +104,7 @@ struct ConvergedStats {
     float sigma_a = 0.0f;
     float tau = 0.0f;
     float period_s = 0.0f;
+    float R_S_acc = 0.0f;
     double tracker_freq_hz = 0.0;
 };
 
@@ -155,7 +156,7 @@ static ConvergedStats run_from_csv(TrackerType tracker,
 
     reset_run_state();
 
-    MiniTuningEstimator tuning;   // <-- swapped in place of SeaStateRegularity
+    MiniTuningEstimator tuning;
     double last_freq = std::numeric_limits<double>::quiet_NaN();
 
     WaveDataCSVReader reader(csv_file);
@@ -170,11 +171,13 @@ static ConvergedStats run_from_csv(TrackerType tracker,
             if (rec.time >= WARMUP_SECONDS) {
                 tuning.update(DELTA_T, noisy_accel,
                               static_cast<float>(2.0 * M_PI * freq));
+
                 ofs << rec.time << ","
                     << (2.0 * M_PI * freq) << ","
                     << tuning.getSigmaA() << ","
                     << tuning.getTau() << ","
-                    << tuning.getPeriodPeak() << "\n";
+                    << tuning.getPeriodPeak() << ","
+                    << tuning.getR_S() << "\n";
             }
         }
         sim_t = rec.time;
@@ -185,6 +188,7 @@ static ConvergedStats run_from_csv(TrackerType tracker,
     stats.sigma_a = tuning.getSigmaA();
     stats.tau     = tuning.getTau();
     stats.period_s = tuning.getPeriodPeak();
+    stats.R_S_acc = tuning.getR_S();
     stats.tracker_freq_hz = last_freq;
 
     printf("Wrote %s\n", outFile.c_str());
@@ -241,6 +245,9 @@ int main() {
               << std::setw(10) << "T(Aran)"
               << std::setw(10) << "T(Kalm)"
               << std::setw(10) << "T(Zero)"
+              << std::setw(10) << "R_S(Aran)"
+              << std::setw(10) << "R_S(Kalm)"
+              << std::setw(10) << "R_S(Zero)"
               << std::setw(11) << "TrkF(Aran)"
               << std::setw(11) << "TrkF(Kalm)"
               << std::setw(11) << "TrkF(Zero)"
@@ -258,6 +265,9 @@ int main() {
                   << std::setw(10) << s.stats[0].period_s
                   << std::setw(10) << s.stats[1].period_s
                   << std::setw(10) << s.stats[2].period_s
+                  << std::setw(10) << s.stats[0].R_S_acc
+                  << std::setw(10) << s.stats[1].R_S_acc
+                  << std::setw(10) << s.stats[2].R_S_acc
                   << std::setw(11) << s.stats[0].tracker_freq_hz
                   << std::setw(11) << s.stats[1].tracker_freq_hz
                   << std::setw(11) << s.stats[2].tracker_freq_hz
