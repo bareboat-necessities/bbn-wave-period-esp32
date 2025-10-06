@@ -248,7 +248,8 @@ int main() {
               << std::right << "\n";
     
     for (const auto &s : all_summaries) {
-        std::cout << std::setw(11) << s.stats[0].sigma_a
+        std::cout << std::right
+                  << std::setw(11) << s.stats[0].sigma_a
                   << std::setw(11) << s.stats[1].sigma_a
                   << std::setw(11) << s.stats[2].sigma_a
                   << std::setw(11) << s.stats[0].tau
