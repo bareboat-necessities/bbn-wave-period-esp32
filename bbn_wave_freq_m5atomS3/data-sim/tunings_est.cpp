@@ -231,7 +231,8 @@ int main() {
     // === Final summary ===
     std::cout << std::fixed << std::setprecision(5);
     std::cout << "\n=== Final MiniTuningEstimator Summary ===\n";
-    std::cout << std::setw(11) << "σa(Aran)"
+    std::cout << std::right 
+              << std::setw(11) << "σa(Aran)"
               << std::setw(11) << "σa(Kalm)"
               << std::setw(11) << "σa(Zero)"
               << std::setw(11) << "τ(Aran)"
@@ -243,8 +244,9 @@ int main() {
               << std::setw(13) << "TrkF(Aran)"
               << std::setw(13) << "TrkF(Kalm)"
               << std::setw(13) << "TrkF(Zero)"
-              << std::setw(22) << "Wave" << "\n";
-
+              << std::left << " " << std::setw(22) << "Wave"
+              << std::right << "\n";
+    
     for (const auto &s : all_summaries) {
         std::cout << std::setw(11) << s.stats[0].sigma_a
                   << std::setw(11) << s.stats[1].sigma_a
