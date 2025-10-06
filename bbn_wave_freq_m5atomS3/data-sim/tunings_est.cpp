@@ -238,9 +238,9 @@ int main() {
               << std::setw(10) << "tau(Aran)"
               << std::setw(10) << "tau(Kalm)"
               << std::setw(10) << "tau(Zero)"
-              << std::setw(11) << "T(Aran)"
-              << std::setw(11) << "T(Kalm)"
-              << std::setw(11) << "T(Zero)"
+              << std::setw(10) << "T(Aran)"
+              << std::setw(10) << "T(Kalm)"
+              << std::setw(10) << "T(Zero)"
               << std::setw(11) << "TrkF(Aran)"
               << std::setw(11) << "TrkF(Kalm)"
               << std::setw(11) << "TrkF(Zero)"
@@ -255,9 +255,9 @@ int main() {
                   << std::setw(10) << s.stats[0].tau
                   << std::setw(10) << s.stats[1].tau
                   << std::setw(10) << s.stats[2].tau
-                  << std::setw(11) << s.stats[0].period_s
-                  << std::setw(11) << s.stats[1].period_s
-                  << std::setw(11) << s.stats[2].period_s
+                  << std::setw(10) << s.stats[0].period_s
+                  << std::setw(10) << s.stats[1].period_s
+                  << std::setw(10) << s.stats[2].period_s
                   << std::setw(11) << s.stats[0].tracker_freq_hz
                   << std::setw(11) << s.stats[1].tracker_freq_hz
                   << std::setw(11) << s.stats[2].tracker_freq_hz
