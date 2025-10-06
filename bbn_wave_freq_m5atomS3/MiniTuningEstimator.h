@@ -111,12 +111,6 @@ public:
         return (w > EPS) ? (2.0f * static_cast<float>(M_PI) / w) : 0.0f;
     }
 
-    [[nodiscard]] float getDisplacementOmegaPeak() const noexcept {
-        // Empirical mapping accel-domain → displacement-domain frequency
-        // For JONSWAP-like seas ω_disp ≈ 0.6 * ω_acc
-        return 0.6f * getOmegaPeak();
-    }
-
     // === Heuristic pseudo-measurement noise scaling law ===
     //
     // R_S(Tₚ) = R_S_base * (Tₚ / Tₚ_base)^(1/3)
