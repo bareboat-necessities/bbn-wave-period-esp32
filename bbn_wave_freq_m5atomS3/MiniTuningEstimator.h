@@ -125,14 +125,14 @@ public:
     //   • R_S provides a dimensionally consistent scaling term for the
     //     displacement pseudo-measurement covariance used to regularize
     //     integral drift in the Kalman update.
+    [[nodiscard]] float getR_S() const noexcept {
+        return R_S_law(getPeriodPeak());
+    }
+
     [[nodiscard]] float R_S_law(float T_p) const noexcept {
         if (!(T_p > 1e-6f))
             return 0.0f;
         return R_S_base_ * std::pow(T_p / T_p_base_, 1.0f / 3.0f);
-    }
-
-    [[nodiscard]] float getR_S() const noexcept {
-        return R_S_law(getPeriodPeak());
     }
 
 private:
