@@ -418,10 +418,8 @@ float getDisplacementPeriodSec() const {
         float inv_w4 = 1.0f / std::max(omega_k * omega_k * omega_k * omega_k, EPSILON);
         float P_disp = (bin_zr[idx] * bin_zr[idx] + bin_zi[idx] * bin_zi[idx]) * inv_w4;
 
-        // PSD estimate (unbiased, normalized by ENBW)
-        float w_narrow = std::clamp(1.0f - (nu / 0.1f), 0.0f, 1.0f);  // fade out by ν≈0.1
-        float norm = w_narrow * 1.0f + (1.0f - w_narrow) * enbw_k;
-        float S_eta_hat = K_EFF_MIX * P_disp / norm;
+        // PSD estimate: P ≈ S * ENBW ⇒ S ≈ P / ENBW
+        float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON);
         last_S_eta_hat[idx] = S_eta_hat;
 
         // Integrate moments
