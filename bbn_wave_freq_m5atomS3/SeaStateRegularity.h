@@ -407,7 +407,7 @@ float getDisplacementPeriodSec() const {
         float f_k_hz  = omega_k / TWO_PI;
         float fc_k_hz = std::max(MIN_FC_HZ, (K > 0 ? STEP * f_k_hz : MIN_FC_HZ));
         float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI * fc_k_hz);
-        float enbw_k  = PI * fc_k_hz; // [rad/s]
+        float enbw_k  = PI * PI * fc_k_hz; // [rad/s]
 
         // Low-pass baseband envelope
         bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
