@@ -484,8 +484,10 @@ for (int idx = left; idx <= right; ++idx) {
         // PSD estimate: P ≈ S * ENBW ⇒ S ≈ P / ENBW
 // Correct high-frequency leakage of 1-pole LPF envelope
 float leak_corr = 1.0f / (1.0f + (omega_k / (TWO_PI_ * fc_k_hz)) * (omega_k / (TWO_PI_ * fc_k_hz)));
-float S_eta_hat = (K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON)) * leak_corr;
-        last_S_eta_hat[idx] = S_eta_hat;
+float R = std::clamp(R_phase, 0.0f, 1.0f);
+float K_eff_dyn = 2.0f + (1.0f - R) * 2.0f;   // 2→4 depending on coherence
+float S_eta_hat = (K_eff_dyn * P_disp / std::max(enbw_k, EPSILON)) * leak_corr;
+          last_S_eta_hat[idx] = S_eta_hat;
 
         // Integrate moments
         float domega = (K == 0) ? std::max(EPSILON, enbw_k) : domega_k_arr[idx];
