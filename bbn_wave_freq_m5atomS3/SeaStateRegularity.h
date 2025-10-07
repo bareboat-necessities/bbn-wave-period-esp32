@@ -498,7 +498,16 @@ float S_eta_hat = K_EFF_MIX * P_disp / norm;
 
         // Narrowness ν and spectral regularity
         nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
-        nu = std::max(0.0f, nu);
+// --- after computing nu ---
+if (nu < 0.0f || !std::isfinite(nu)) nu = 0.0f;
+
+// --- add this new correction ---
+if (R_phase > 0.95f && nu < 0.15f) {
+    // Phase coherence near unity → deterministic narrow wave
+    // Fade ν toward 0 as coherence approaches 1
+    float w_coh = std::clamp((R_phase - 0.95f) / 0.05f, 0.0f, 1.0f); // linear ramp 0→1 between 0.95–1.0
+    nu *= (1.0f - w_coh);  // suppress artificial bandwidth
+}
         R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
 
         // Output = max of phase vs spectral (as you requested earlier)
