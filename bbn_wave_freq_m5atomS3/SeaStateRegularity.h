@@ -523,7 +523,7 @@ float getDisplacementPeriodSec() const {
       nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
       if (nu < 0.0f || !std::isfinite(nu)) nu = 0.0f;
 
-      if (R_phase > 0.95f && nu < 0.15f) {
+      if (R_phase > 0.9f && nu < 0.2f) {
         // Phase coherence near unity → deterministic narrow wave
         // Fade ν toward 0 as coherence approaches 1
         float w_coh = std::clamp((R_phase - 0.95f) / 0.05f, 0.0f, 1.0f); // linear ramp 0→1 between 0.95–1.0
