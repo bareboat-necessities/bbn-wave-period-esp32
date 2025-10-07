@@ -121,173 +121,181 @@ public:
         accel_var_ = 0.0f;
     }
 
-    inline void update(float dt, float accel_z) {
-        if (!(dt > 0.0f) || !std::isfinite(accel_z)) return;
-        const bool recompute = std::fabs(dt - dt_nom_) > tol_dt_;
-       
-        // Bias KF on raw a: a = b + noise (process var per second)
-        b_P_ += b_Q_ * dt;
-        float S_b   = b_P_ + b_R_;
-        float K_b   = b_P_ / std::max(S_b, 1e-20f);
-        float innov_b = accel_z - b_mu_;
-        b_mu_ += K_b * innov_b;
-        b_P_   = (1.0f - K_b) * b_P_;
+inline void update(float dt, float accel_z) {
+    if (!(dt > 0.0f) || !std::isfinite(accel_z)) return;
+    const bool recompute = std::fabs(dt - dt_nom_) > tol_dt_;
+    if (recompute) dt_nom_ = dt;
 
-        // High-passed acceleration for demod
-        const float a_hp = accel_z - b_mu_;
+    // If dt changed: update oscillators and per-bin filter dynamics
+    if (recompute) {
+        // update oscillator increments
+        for (int i = 0; i < NBINS; ++i) {
+            const float dphi = w_[i] * dt_nom_;
+            cd_[i] = std::cos(dphi);
+            sd_[i] = std::sin(dphi);
+        }
 
-        // Measurement noise for demod: sensor noise ONLY (no signal bleed)
-        a2_ema_.update(a_hp * a_hp, 1.0f - std::exp(-dt / 2.0f)); // diagnostics
-        const float R_demod = 0.5f * b_R_;                        // per I/Q LPF branch
+        // recompute per-bin filter dynamics and ENBW (exact ρ-based mapping)
+        const float r = std::pow(w_[NBINS - 1] / w_[0], 1.0f / float(NBINS - 1));
+        for (int i = 0; i < NBINS; ++i) {
+            const float f_i_hz = w_[i] / TWO_PI_;
+            const float df_bin = (r - 1.0f) * f_i_hz;
+            const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
+            const float fc     = std::min(fc_raw, MAX_FC_HZ);
 
-if (recompute) {
-    // update oscillator increments
-    for (int i = 0; i < NBINS; ++i) {
-        const float dphi = w_[i] * dt_nom_;
-        cd_[i] = std::cos(dphi);
-        sd_[i] = std::sin(dphi);
+            const float rho = rho_from_fc(fc, dt_nom_, pole_map_);
+            rho_k_[i] = rho;
+            Qk_[i]    = (1.0f - rho * rho) * (SIGMA_X0 * SIGMA_X0);
+
+            fc_[i]       = fc;
+            enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));  // exact one-sided ENBW (rad/s)
+        }
     }
 
-    // recompute per-bin filter dynamics and ENBW
-    const float r = std::pow(w_[NBINS-1] / w_[0], 1.0f / float(NBINS - 1));
+    // === Bias KF on raw acceleration: a = b + noise ===
+    b_P_ += b_Q_ * dt;
+    const float S_b = b_P_ + b_R_;
+    const float K_b = b_P_ / std::max(S_b, 1e-20f);
+    const float innov_b = accel_z - b_mu_;
+    b_mu_ += K_b * innov_b;
+    b_P_   = (1.0f - K_b) * b_P_;
+
+    // High-pass acceleration (bias removed)
+    const float a_hp = accel_z - b_mu_;
+
+    // Measurement noise for demod: sensor noise only (no signal bleed)
+    a2_ema_.update(a_hp * a_hp, 1.0f - std::exp(-dt / 2.0f)); // diagnostics
+    const float R_demod = 0.5f * b_R_; // per I/Q LPF branch
+
+    // === Per-bin Kalman demodulation chain ===
     for (int i = 0; i < NBINS; ++i) {
-        const float f_i_hz = w_[i] / TWO_PI_;
-        const float df_bin = (r - 1.0f) * f_i_hz;
-        const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
-        const float fc     = std::min(fc_raw, MAX_FC_HZ);
+        // advance local oscillator
+        const float c0 = c_[i], s0 = s_[i];
+        const float c1 = c0 * cd_[i] - s0 * sd_[i];
+        const float s1 = c0 * sd_[i] + s0 * cd_[i];
+        c_[i] = c1; s_[i] = s1;
 
-        const float rho = rho_from_fc(fc, dt_nom_, pole_map_);
-        rho_k_[i] = rho;
-        Qk_[i]    = (1.0f - rho * rho) * (SIGMA_X0 * SIGMA_X0);
+        // demodulated measurements (pre-normalization)
+        const float y_r =  a_hp * c1;
+        const float y_i = -a_hp * s1;
 
-        fc_[i]       = fc;
-        enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));
-    }
-}
-        // Advance oscillators + per-bin scalar KFs with normalized measurement (H=1)
-        for (int i = 0; i < NBINS; ++i) {
-            // advance local oscillator
-            const float c0 = c_[i], s0 = s_[i];
-            const float c1 = c0 * cd_[i] - s0 * sd_[i];
-            const float s1 = c0 * sd_[i] + s0 * cd_[i];
-            c_[i] = c1; s_[i] = s1;
+        // AR(1) prediction
+        const float rho = rho_k_[i];
+        mu_r_[i] *= rho;  mu_i_[i] *= rho;
+        P_rr_[i] = rho * rho * P_rr_[i] + Qk_[i];
+        P_ii_[i] = rho * rho * P_ii_[i] + Qk_[i];
 
-            // demodulated measurements (pre-normalization)
-            const float y_r =  a_hp * c1;
-            const float y_i = -a_hp * s1;
+        // Normalization: g = 2 / ω²  →  H = +1 (sign absorbed in innovation)
+        const float w2 = w2_[i];
+        const float g  = (w2 > EPS) ? (2.0f / w2) : 0.0f;
+        const float Rm = (g * g) * R_demod; // mapped noise variance
 
-            // AR(1) prediction
-            const float rho = rho_k_[i];
-            mu_r_[i] *= rho;  mu_i_[i] *= rho;
-            P_rr_[i] = rho*rho*P_rr_[i] + Qk_[i];
-            P_ii_[i] = rho*rho*P_ii_[i] + Qk_[i];
-
-            // Normalization: g = 2 / ω^2  -> H = +1 with sign handled in innovation
-            const float w2  = w2_[i];
-            const float g   = (w2 > EPS) ? (2.0f / w2) : 0.0f;
-            const float Rm  = (g * g) * R_demod; // mapped noise variance
-
-            // real channel: y_r ≈ (−0.5 ω²) x_r  -> ỹ_r = g·y_r ≈ −x_r
-            {
-                const float y_tilde = g * y_r;
-                const float innov   = -(y_tilde) - mu_r_[i];  // absorb minus: H=+1
-                const float S       = P_rr_[i] + Rm;
-                const float K       = (S > 1e-20f) ? (P_rr_[i] / S) : 0.0f;
-                mu_r_[i] += K * innov;
-                const float I_K     = 1.0f - K;
-                P_rr_[i] = I_K * P_rr_[i] * I_K + K * Rm * K; // Joseph form
-                if (P_rr_[i] < 0.0f) P_rr_[i] = 0.0f;
-            }
-            // imag channel: y_i ≈ (+0.5 ω²) x_i  -> ỹ_i = g·y_i ≈ +x_i
-            {
-                const float y_tilde = g * y_i;
-                const float innov   = y_tilde - mu_i_[i];      // H=+1
-                const float S       = P_ii_[i] + Rm;
-                const float K       = (S > 1e-20f) ? (P_ii_[i] / S) : 0.0f;
-                mu_i_[i] += K * innov;
-                const float I_K     = 1.0f - K;
-                P_ii_[i] = I_K * P_ii_[i] * I_K + K * Rm * K; // Joseph form
-                if (P_ii_[i] < 0.0f) P_ii_[i] = 0.0f;
-            }
-
-            // Posterior displacement PSD (ENBW-compensated)
-            const float mu2  = mu_r_[i]*mu_r_[i] + mu_i_[i]*mu_i_[i];
-            const float trP  = P_rr_[i] + P_ii_[i];
-            const float Seta = 0.5f * (mu2 + trP) / enbw_rad_[i];
-
-            // Peak metric on ω·Sη prevents low-ω bias; moments use Sη
-            Epow_pk_[i]   = w_[i] * Seta;
-            Seta_last_[i] = Seta;
-        }
-
-        // spectral moments
-        float M0 = 0.0f, M1 = 0.0f, M2 = 0.0f, Avar = 0.0f;
-        for (int i = 0; i < NBINS; ++i) {
-            const float mass = Seta_last_[i] * d_omega_[i];
-            M0 += mass;
-            M1 += mass * w_[i];
-            M2 += mass * w2_[i];
-            Avar += mass * w2_[i] * w2_[i];  // ⟨a²⟩ = ∫ ω⁴ Sη dω
-        }
-
-        // peak frequency (log-parabolic refinement)
-        int ipk = 0; float smax = Epow_pk_[0];
-        for (int i = 1; i < NBINS; ++i) if (Epow_pk_[i] > smax) { smax = Epow_pk_[i]; ipk = i; }
-        float wpk = w_[ipk];
-        if (ipk > 0 && ipk < NBINS - 1) {
-            const float hlog = std::log(w_[ipk + 1] / w_[ipk]);
-            const float yL = Epow_pk_[ipk - 1], y0 = Epow_pk_[ipk], yR = Epow_pk_[ipk + 1];
-            const float denom = std::max(EPS, (yL - 2.0f * y0 + yR));
-            float delta = 0.5f * (yL - yR) / denom;
-            delta = std::clamp(delta, -1.0f, 1.0f);
-            wpk = std::exp(std::log(w_[ipk]) + delta * hlog);
-        }
-        omega_peak_ = wpk;
-
-        // peak smoothing (slightly slower for stability)
-        const float alpha_pk = 1.0f - std::exp(-dt / 3.0f);  // τ≈3 s
-        omega_peak_smooth_ = (omega_peak_smooth_ <= 0.0f)
-                           ? wpk
-                           : omega_peak_smooth_ + alpha_pk * (wpk - omega_peak_smooth_);
-        if (omega_peak_smooth_ > 0.0f) w_disp_ = omega_peak_smooth_;
-
-        // phase coherence around peak (±3 ENBWs)
+        // --- Real channel ---
         {
-            const float span = 3.0f * enbw_rad_[ipk];
-            int i0 = ipk, i1 = ipk;
-            while (i0 > 0         && std::fabs(w_[i0-1] - wpk) <= span) --i0;
-            while (i1 < NBINS-1   && std::fabs(w_[i1+1] - wpk) <= span) ++i1;
-
-            float Ur = 0.0f, Ui = 0.0f, Wm = 0.0f;
-            for (int i = i0; i <= i1; ++i) {
-                const float mr = mu_r_[i], mi = mu_i_[i];
-                const float amp = std::sqrt(mr*mr + mi*mi);
-                if (amp > 1e-12f) {
-                    const float ur = mr / amp, ui = mi / amp;
-                    const float mass = Seta_last_[i] * d_omega_[i];
-                    Ur += mass * ur; Ui += mass * ui; Wm += mass;
-                }
-            }
-            if (Wm > 0.0f) R_phase_ = std::clamp(std::hypot(Ur / Wm, Ui / Wm), 0.0f, 1.0f);
+            const float y_tilde = g * y_r;
+            const float innov   = -(y_tilde) - mu_r_[i];  // absorb minus: H = +1
+            const float S       = P_rr_[i] + Rm;
+            const float K       = (S > 1e-20f) ? (P_rr_[i] / S) : 0.0f;
+            mu_r_[i] += K * innov;
+            const float I_K     = 1.0f - K;
+            P_rr_[i] = I_K * P_rr_[i] * I_K + K * Rm * K; // Joseph-stable form
+            if (P_rr_[i] < 0.0f) P_rr_[i] = 0.0f;
         }
 
-        // ν, R_spec, and fused regularity (max)
-        if (M0 > EPS) {
-            const float omega_bar  = M1 / M0;
-            const float omega2_bar = M2 / M0;
-            const float var_omega  = std::max(0.0f, omega2_bar - omega_bar * omega_bar);
-            nu_ = (omega_bar > EPS) ? (std::sqrt(var_omega) / omega_bar) : 0.0f;
-            if (!(std::isfinite(nu_) && nu_ >= 0.0f)) nu_ = 0.0f;
-
-            R_spec_ = std::clamp(std::exp(-BETA_SPEC * nu_), 0.0f, 1.0f);
-
-            const float R_comb = (R_phase_ > R_spec_) ? R_phase_ : R_spec_;
-            const float alpha_out = 1.0f - std::exp(-dt / tau_out_);
-            R_out_.update(R_comb, alpha_out);
+        // --- Imag channel ---
+        {
+            const float y_tilde = g * y_i;
+            const float innov   = y_tilde - mu_i_[i];     // H = +1
+            const float S       = P_ii_[i] + Rm;
+            const float K       = (S > 1e-20f) ? (P_ii_[i] / S) : 0.0f;
+            mu_i_[i] += K * innov;
+            const float I_K     = 1.0f - K;
+            P_ii_[i] = I_K * P_ii_[i] * I_K + K * Rm * K; // Joseph-stable form
+            if (P_ii_[i] < 0.0f) P_ii_[i] = 0.0f;
         }
 
-        accel_var_ = Avar;  // instantaneous ⟨a²⟩ from posterior spectrum
+        // Posterior displacement PSD (ENBW-compensated)
+        const float mu2  = mu_r_[i] * mu_r_[i] + mu_i_[i] * mu_i_[i];
+        const float trP  = P_rr_[i] + P_ii_[i];
+        const float Seta = 0.5f * (mu2 + trP) / enbw_rad_[i];
+
+        // Peak metric on ω·Sη prevents low-ω bias
+        Epow_pk_[i]   = w_[i] * Seta;
+        Seta_last_[i] = Seta;
     }
+
+    // === Spectral moments and regularity ===
+    float M0 = 0.0f, M1 = 0.0f, M2 = 0.0f, Avar = 0.0f;
+    for (int i = 0; i < NBINS; ++i) {
+        const float mass = Seta_last_[i] * d_omega_[i];
+        M0 += mass;
+        M1 += mass * w_[i];
+        M2 += mass * w2_[i];
+        Avar += mass * w2_[i] * w2_[i];
+    }
+
+    // peak frequency (log-parabolic refinement)
+    int ipk = 0; float smax = Epow_pk_[0];
+    for (int i = 1; i < NBINS; ++i)
+        if (Epow_pk_[i] > smax) { smax = Epow_pk_[i]; ipk = i; }
+
+    float wpk = w_[ipk];
+    if (ipk > 0 && ipk < NBINS - 1) {
+        const float hlog = std::log(w_[ipk + 1] / w_[ipk]);
+        const float yL = Epow_pk_[ipk - 1], y0 = Epow_pk_[ipk], yR = Epow_pk_[ipk + 1];
+        const float denom = std::max(EPS, (yL - 2.0f * y0 + yR));
+        float delta = 0.5f * (yL - yR) / denom;
+        delta = std::clamp(delta, -1.0f, 1.0f);
+        wpk = std::exp(std::log(w_[ipk]) + delta * hlog);
+    }
+    omega_peak_ = wpk;
+
+    // smooth frequency (τ≈3s)
+    const float alpha_pk = 1.0f - std::exp(-dt / 3.0f);
+    omega_peak_smooth_ = (omega_peak_smooth_ <= 0.0f)
+        ? wpk
+        : omega_peak_smooth_ + alpha_pk * (wpk - omega_peak_smooth_);
+    if (omega_peak_smooth_ > 0.0f)
+        w_disp_ = omega_peak_smooth_;
+
+    // === Phase coherence around peak (±3 ENBWs) ===
+    {
+        const float span = 3.0f * enbw_rad_[ipk];
+        int i0 = ipk, i1 = ipk;
+        while (i0 > 0 && std::fabs(w_[i0 - 1] - wpk) <= span) --i0;
+        while (i1 < NBINS - 1 && std::fabs(w_[i1 + 1] - wpk) <= span) ++i1;
+
+        float Ur = 0.0f, Ui = 0.0f, Wm = 0.0f;
+        for (int i = i0; i <= i1; ++i) {
+            const float mr = mu_r_[i], mi = mu_i_[i];
+            const float amp = std::sqrt(mr * mr + mi * mi);
+            if (amp > 1e-12f) {
+                const float ur = mr / amp, ui = mi / amp;
+                const float mass = Seta_last_[i] * d_omega_[i];
+                Ur += mass * ur; Ui += mass * ui; Wm += mass;
+            }
+        }
+        if (Wm > 0.0f)
+            R_phase_ = std::clamp(std::hypot(Ur / Wm, Ui / Wm), 0.0f, 1.0f);
+    }
+
+    // === Spectral narrowness and regularity fusion ===
+    if (M0 > EPS) {
+        const float omega_bar  = M1 / M0;
+        const float omega2_bar = M2 / M0;
+        const float var_omega  = std::max(0.0f, omega2_bar - omega_bar * omega_bar);
+        nu_ = (omega_bar > EPS) ? (std::sqrt(var_omega) / omega_bar) : 0.0f;
+        if (!(std::isfinite(nu_) && nu_ >= 0.0f)) nu_ = 0.0f;
+
+        R_spec_ = std::clamp(std::exp(-BETA_SPEC * nu_), 0.0f, 1.0f);
+
+        const float R_comb = std::max(R_phase_, R_spec_);
+        const float alpha_out = 1.0f - std::exp(-dt / tau_out_);
+        R_out_.update(R_comb, alpha_out);
+    }
+
+    accel_var_ = Avar;  // instantaneous ⟨a²⟩ from posterior spectrum
+}
 
     // getters
     inline float getRegularity() const             { return R_out_.get(); }
