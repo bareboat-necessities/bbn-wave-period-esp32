@@ -41,6 +41,22 @@
 enum class PoleMap { EXPONENTIAL, TUSTIN };
 PoleMap pole_map_ = PoleMap::EXPONENTIAL;   // or TUSTIN if you use bilinear
 
+static inline float rho_from_fc(float fc, float dt, PoleMap map) {
+    fc = std::max(0.0f, fc);
+    if (map == PoleMap::EXPONENTIAL)
+        return std::exp(-2.0f * float(M_PI) * fc * dt);
+    const float alpha = float(M_PI) * fc * dt;
+    const float denom = 1.0f + alpha;
+    return (denom > 1e-20f) ? std::max(0.0f, (1.0f - alpha) / denom) : 0.0f;
+}
+
+static inline float enbw_from_rho(float rho, float dt) {
+    const float num = 1.0f - rho;
+    const float den = 1.0f + rho;
+    const float ratio = (den > 1e-20f) ? (num / den) : 0.0f;
+    return float(M_PI) * ratio / dt;     // exact one-sided ENBW in rad/s
+}
+
 struct DebiasedEMA {
     float value = 0.0f, weight = 0.0f;
     void reset() { value = 0.0f; weight = 0.0f; }
