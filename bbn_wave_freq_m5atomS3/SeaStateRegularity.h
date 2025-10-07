@@ -97,7 +97,7 @@ public:
         const bool recompute = std::fabs(dt - dt_nom_) > tol_dt_;
         if (recompute) dt_nom_ = dt;  // track actual dt
 
-        // --- Bias KF on raw a: a = b + noise (random walk) ---
+        // Bias KF on raw a: a = b + noise (random walk)
         b_P_ += b_Q_ * dt;                                 // predict
         float S_b   = b_P_ + b_R_;
         float K_b   = b_P_ / std::max(S_b, 1e-20f);   // gain
@@ -136,7 +136,7 @@ public:
             }
         }
 
-        // --- advance oscillators + per-bin scalar KFs ---
+        // advance oscillators + per-bin scalar KFs
         for (int i = 0; i < NBINS; ++i) {
             // advance local oscillator
             const float c0 = c_[i], s0 = s_[i];
@@ -187,7 +187,7 @@ public:
             Seta_last_[i] = Seta;
         }
 
-        // --- spectral moments from posterior ---
+        // spectral moments from posterior
         float M0 = 0.0f, M1 = 0.0f, M2 = 0.0f, Avar = 0.0f;
         for (int i = 0; i < NBINS; ++i) {
             const float mass = Seta_last_[i] * d_omega_[i];
@@ -197,7 +197,7 @@ public:
             Avar += mass * w2_[i] * w2_[i];  // ⟨a²⟩ = ∫ ω⁴ Sη dω
         }
 
-        // --- peak frequency (log-parabolic refinement on ENBW-compensated power) ---
+        // peak frequency (log-parabolic refinement on ENBW-compensated power)
         int ipk = 0; float smax = Epow_pk_[0];
         for (int i = 1; i < NBINS; ++i) if (Epow_pk_[i] > smax) { smax = Epow_pk_[i]; ipk = i; }
         float wpk = w_[ipk];
@@ -211,14 +211,14 @@ public:
         }
         omega_peak_ = wpk;
 
-        // --- peak smoothing (no centroid mixing; quicker response)
+        // peak smoothing (no centroid mixing; quicker response)
         const float alpha_pk = 1.0f - std::exp(-dt / 2.0f);  // ~2 s
         omega_peak_smooth_ = (omega_peak_smooth_ <= 0.0f)
                            ? wpk
                            : omega_peak_smooth_ + alpha_pk * (wpk - omega_peak_smooth_);
         if (omega_peak_smooth_ > 0.0f) w_disp_ = omega_peak_smooth_;
 
-        // --- phase coherence around peak using ω-span window (frequency-invariant)
+        // phase coherence around peak using ω-span window (frequency-invariant)
         {
             const float span = 3.0f * enbw_rad_[ipk];   // integrate about ±3 ENBWs
             int i0 = ipk, i1 = ipk;
@@ -238,7 +238,7 @@ public:
             if (Wm > 0.0f) R_phase_ = std::clamp(std::hypot(Ur / Wm, Ui / Wm), 0.0f, 1.0f);
         }
 
-        // --- compute ν, R_spec, and fused regularity from current posterior ---
+        // compute ν, R_spec, and fused regularity from current posterior
         if (M0 > EPS) {
             const float omega_bar  = M1 / M0;
             const float omega2_bar = M2 / M0;
@@ -257,7 +257,7 @@ public:
         A0_inst_ = Avar;  // instantaneous ⟨a²⟩ implied by posterior spectrum
     }
 
-    // --- getters (unchanged API) ---
+    // getters
     inline float getRegularity() const             { return R_out_.get(); }
     inline float getRegularitySpectral() const     { return R_spec_; }
     inline float getRegularityPhase() const        { return R_phase_; }
