@@ -211,103 +211,138 @@ private:
         z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
     }
 
-    void updateSpectralMoments(float omega_inst) {
-        // Clamp and smooth input ω
-        float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-        if (omega_used <= 0.0f) omega_used = w_obs;
-        else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
+// ---------------------------------------------------------------------
+// Correct, non-heuristic spectral moment accumulation:
+//   • Per-bin ENBW (first-order LPF): ENBW_k = π²·fc_k  [rad/s]
+//   • Per-bin Δω_k via Voronoi cell from the ω-grid
+//   • Sη(ω_k) ≈ (K_EFF_MIX * P_disp_k) / ENBW_k
+//   • Moments: M_n = Σ_k Sη(ω_k) · ω_k^n · Δω_k
+// ---------------------------------------------------------------------
+void updateSpectralMoments(float omega_inst) {
+    // If your tracker outputs Hz, define EXPECT_OMEGA_HZ to auto-convert.
+    // (Leaving this off uses rad/s as before.)
+#ifdef EXPECT_OMEGA_HZ
+    omega_inst *= 2.0f * float(M_PI);
+#endif
 
-        // Outlier gate
-        if (omega_used > 0.0f) {
-            float ratio = w_obs / omega_used;
-            if (ratio < 0.7f || ratio > 1.3f) return;
-        }
+    // Clamp & smooth observed ω
+    float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+    if (omega_used <= 0.0f) omega_used = w_obs;
+    else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
-        // Multi-bin extent based on narrowness
-        int   K    = 0;
-        float STEP = 0.0f;
-        if      (nu < 0.05f) { K = 0;         STEP = 0.0f;        }
-        else if (nu < 0.15f) { K = 2;         STEP = STEP_NARROW; }
-        else                 { K = MAX_K;     STEP = STEP_BROAD;  }
-
-        if (!bins_init) {
-            for (int i = 0; i < NBINS; ++i) {
-                bin_c[i] = 1.0f; bin_s[i] = 0.0f;
-                bin_zr[i] = bin_zi[i] = 0.0f;
-            }
-            bins_init = true;
-        }
-
-        // Build ω grid for bins
-        float omega_k_arr[NBINS] = {};
-        for (int k = -K; k <= K; ++k) {
-            int idx = k + MAX_K;
-            omega_k_arr[idx] = omega_used * (1.0f + STEP * k);
-        }
-
-        // Accumulators
-        float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
-        float A_var = 0.0f;
-
-        // Main loop over bins
-        for (int k = -K; k <= K; ++k) {
-            int idx = k + MAX_K;
-            float omega_k = omega_k_arr[idx];
-            if (omega_k <= EPSILON) continue;
-
-            // Advance oscillator
-            float dphi = omega_k * last_dt;
-            float cd = std::cos(dphi), sd = std::sin(dphi);
-            float c0 = bin_c[idx], s0 = bin_s[idx];
-            float c1 = c0 * cd - s0 * sd;
-            float s1 = c0 * sd + s0 * cd;
-            bin_c[idx] = c1; bin_s[idx] = s1;
-
-            // Mix acceleration to baseband
-            float y_r =  last_accel * c1;
-            float y_i = -last_accel * s1;
-
-            // Per-bin low-pass (α and ENBW per ω_k)
-            float f_k_hz  = omega_k / (2.0f * float(M_PI));
-            float fc_k_hz = std::max(MIN_FC_HZ, STEP * f_k_hz);
-            float alpha_k = 1.0f - std::exp(-last_dt * 2.0f * float(M_PI) * fc_k_hz);
-            float enbw_k  = float(M_PI) * float(M_PI) * fc_k_hz; // rad/s
-
-            bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
-            bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
-
-            // Accel → displacement
-            float inv_w2 = 1.0f / std::max(omega_k * omega_k, EPSILON);
-            float dr = bin_zr[idx] * inv_w2;
-            float di = bin_zi[idx] * inv_w2;
-
-            // Variance captured in this bin
-            float P_disp = dr * dr + di * di;
-            float contrib = K_EFF_MIX * P_disp;
-
-            // Integrate spectral moments
-            S0 += contrib;
-            S1 += contrib * omega_k;
-            S2 += contrib * omega_k * omega_k;
-
-            // Optional acceleration variance (for diagnostics)
-            if (enbw_k > EPSILON) {
-                float S_eta_hat_k = P_disp / enbw_k;
-                A_var += (omega_k * omega_k * omega_k * omega_k) *
-                         S_eta_hat_k * enbw_k;
-            }
-        }
-
-        if (!has_moments) has_moments = true;
-
-        // Update EMAs (moments + Jensen helpers)
-        M0.update(S0, alpha_mom);
-        M1.update(S1, alpha_mom);
-        M2.update(S2, alpha_mom);
-        Q00.update(S0 * S0, alpha_mom);
-        Q10.update(S0 * S1, alpha_mom);
-        A0.update(A_var, alpha_mom);
+    // Outlier gate vs smoothed ω
+    if (omega_used > 0.0f) {
+        float ratio = w_obs / omega_used;
+        if (ratio < 0.7f || ratio > 1.3f) return;
     }
+
+    // Bin layout from current narrowness ν
+    int   K    = 0;
+    float STEP = 0.0f;
+    if      (nu < 0.05f) { K = 0;         STEP = 0.0f;        }
+    else if (nu < 0.15f) { K = 2;         STEP = STEP_NARROW; }
+    else                 { K = MAX_K;     STEP = STEP_BROAD;  }
+
+    if (!bins_init) {
+        for (int i = 0; i < NBINS; ++i) {
+            bin_c[i] = 1.0f; bin_s[i] = 0.0f;
+            bin_zr[i] = bin_zi[i] = 0.0f;
+        }
+        bins_init = true;
+    }
+
+    // Build ω-grid around ω_used (ratio-spaced)
+    float omega_k_arr[NBINS] = {};
+    int left = MAX_K - K, right = MAX_K + K;
+    for (int k = -K; k <= K; ++k) {
+        int idx = MAX_K + k;
+        omega_k_arr[idx] = omega_used * (1.0f + STEP * k);
+        if (omega_k_arr[idx] <= EPSILON) omega_k_arr[idx] = OMEGA_MIN_RAD; // guard
+    }
+
+    // Compute Voronoi Δω_k per bin (edges use one-sided gaps)
+    float domega_k_arr[NBINS] = {};
+    if (K == 0) {
+        // Single bin: Δω = ENBW_k (set later after fc_k known)
+        domega_k_arr[MAX_K] = 0.0f; // mark; we’ll set it after fc_k is known
+    } else {
+        for (int idx = left; idx <= right; ++idx) {
+            if (idx == left) {
+                float w0 = omega_k_arr[idx], w1 = omega_k_arr[idx + 1];
+                domega_k_arr[idx] = std::max(EPSILON, (w1 - w0));
+            } else if (idx == right) {
+                float w_1 = omega_k_arr[idx - 1], w0 = omega_k_arr[idx];
+                domega_k_arr[idx] = std::max(EPSILON, (w0 - w_1));
+            } else {
+                float w_1 = omega_k_arr[idx - 1], w1 = omega_k_arr[idx + 1];
+                domega_k_arr[idx] = std::max(EPSILON, 0.5f * (w1 - w_1));
+            }
+        }
+    }
+
+    // Accumulators
+    float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
+    float A_var = 0.0f;
+
+    // Main bin loop
+    for (int idx = left; idx <= right; ++idx) {
+        float omega_k = omega_k_arr[idx];
+        if (omega_k <= EPSILON) continue;
+
+        // Advance oscillator for this bin
+        float dphi = omega_k * last_dt;
+        float cd = std::cos(dphi), sd = std::sin(dphi);
+        float c0 = bin_c[idx], s0 = bin_s[idx];
+        float c1 =  c0*cd - s0*sd;
+        float s1 =  c0*sd + s0*cd;
+        bin_c[idx] = c1; bin_s[idx] = s1;
+
+        // Mix acceleration to baseband
+        float y_r =  last_accel * c1;
+        float y_i = -last_accel * s1;
+
+        // Per-bin LPF and ENBW (Hz → rad/s)
+        float f_k_hz  = omega_k / (2.0f * float(M_PI));
+        float fc_k_hz = std::max(MIN_FC_HZ, (K > 0 ? STEP * f_k_hz : MIN_FC_HZ));
+        float alpha_k = 1.0f - std::exp(-last_dt * 2.0f * float(M_PI) * fc_k_hz);
+        float enbw_k  = float(M_PI) * float(M_PI) * fc_k_hz; // rad/s
+
+        bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
+        bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
+
+        // a → η conversion per bin (a = −ω² η)
+        float inv_w2 = 1.0f / std::max(omega_k * omega_k, EPSILON);
+        float dr = bin_zr[idx] * inv_w2;
+        float di = bin_zi[idx] * inv_w2;
+
+        // Displacement power captured by this bin
+        float P_disp = dr*dr + di*di;
+
+        // If single-bin mode, set Δω = ENBW_k so S0 contribution = K_EFF_MIX * P_disp
+        float domega_k = domega_k_arr[idx];
+        if (K == 0) domega_k = std::max(EPSILON, enbw_k);
+
+        // PSD estimate at ω_k and moment contributions
+        float S_eta_hat_k = (enbw_k > EPSILON) ? (K_EFF_MIX * P_disp / enbw_k) : 0.0f;
+
+        S0 += S_eta_hat_k * domega_k;
+        S1 += S_eta_hat_k * omega_k * domega_k;
+        S2 += S_eta_hat_k * omega_k * omega_k * domega_k;
+
+        // Acceleration variance proxy: ∫ ω⁴ Sη(ω) dω
+        A_var += (omega_k*omega_k*omega_k*omega_k) * S_eta_hat_k * domega_k;
+    }
+
+    if (!has_moments) has_moments = true;
+
+    // EMA updates (moments + Jensen helpers)
+    M0.update(S0, alpha_mom);
+    M1.update(S1, alpha_mom);
+    M2.update(S2, alpha_mom);
+    Q00.update(S0 * S0, alpha_mom);
+    Q10.update(S0 * S1, alpha_mom);
+    A0.update(A_var, alpha_mom);
+}
 
     void updatePhaseCoherence() {
         float mag = std::hypot(z_real, z_imag);
