@@ -38,6 +38,9 @@
        Hs_blend = max(R_phase, R_spec)·Hs_mono + (1−max)·Hs_rand
 */
 
+enum class PoleMap { EXPONENTIAL, TUSTIN };
+PoleMap pole_map_ = PoleMap::EXPONENTIAL;   // or TUSTIN if you use bilinear
+
 struct DebiasedEMA {
     float value = 0.0f, weight = 0.0f;
     void reset() { value = 0.0f; weight = 0.0f; }
