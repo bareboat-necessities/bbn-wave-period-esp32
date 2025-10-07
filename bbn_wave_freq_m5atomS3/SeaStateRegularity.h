@@ -173,11 +173,23 @@ class SeaStateRegularity {
       return nu;
     }
 
-    // Oceanographic significant height from variance
-    float getWaveHeightEnvelopeEst() const {
-      float m0 = M0.get();
-      return (m0 > 0.0f) ? 4.0f * std::sqrt(std::max(0.0f, m0)) : 0.0f;
-    }
+// Oceanographically correct Hs for random seas,
+// physically correct 2A for coherent waves.
+// Smooth fusion using phase coherence as weight.
+float getWaveHeightEnvelopeEst() const {
+    float m0 = M0.get();
+    if (!(m0 > 0.0f)) return 0.0f;
+
+    // Oceanographic "significant height" for random sea
+    float Hs_ocean = 4.0f * std::sqrt(std::max(0.0f, m0));
+    // Deterministic single-wave height = 2A = 2√(2M₀)
+    float Hs_mono  = 2.0f * std::sqrt(2.0f * std::max(0.0f, m0));
+
+    // Use phase coherence as blend weight
+    float w_coh = std::clamp(R_phase, 0.0f, 1.0f);
+    // Blend: coherent → Hs_mono, random → Hs_ocean
+    return w_coh * Hs_mono + (1.0f - w_coh) * Hs_ocean;
+}
 
     float getDisplacementFrequencyNaiveHz() const {
       return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
