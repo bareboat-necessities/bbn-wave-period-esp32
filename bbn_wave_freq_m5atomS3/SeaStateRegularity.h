@@ -204,18 +204,27 @@ float getWaveHeightEnvelopeEst() const {
     }
 
     // Peak (mode) of S_eta(ω)  → f_p and T_p
-    float getDisplacementFrequencyHz() const {
-      return (omega_peak_smooth > EPSILON) ? (omega_peak_smooth / (2.0f * PI)) : 0.0f;
-    }
+// --- Frequency (Hz) and Period (s) from coherence-weighted fusion ---
+float getDisplacementFrequencyHz() const {
+    // Physically meaningful average frequency (moments-based)
+    float w_mean = omega_bar_corr;
+    float w_peak = omega_peak_smooth;
+    if (w_mean <= EPSILON && w_peak <= EPSILON) return 0.0f;
+
+    float R = std::clamp(R_phase, 0.0f, 1.0f);
+    // Blend: random → ω_peak, coherent → ω_mean (more stable)
+    float w_blend = R * w_mean + (1.0f - R) * w_peak;
+
+    // Guard against downward bias for nearly coherent waves
+    if (R > 0.95f)
+        w_blend = std::max(w_blend, w_peak * 0.9f); // prevent Tp explosion
+
+    return w_blend / (2.0f * PI);
+}
 
 float getDisplacementPeriodSec() const {
-    if (omega_peak_smooth <= EPSILON) return 0.0f;
-    float Tp = 2.0f * PI / omega_peak_smooth;
-
-    // Limit runaway Tp for highly regular states
-    if (R_phase > 0.95f)
-        Tp = std::clamp(Tp, 0.0f, 1.2f * (2.0f * PI / omega_bar_corr));
-    return Tp;
+    float f = getDisplacementFrequencyHz();
+    return (f > EPSILON) ? (1.0f / f) : 0.0f;
 }
 
     float getAccelerationVariance() const {
