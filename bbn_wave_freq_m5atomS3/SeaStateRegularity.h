@@ -5,58 +5,10 @@
 #include <algorithm>
 
 /*
-    Copyright 2025, Mikhail Grushinskiy
+   Copyright 2025, Mikhail Grushinskiy
 
-    SeaStateRegularity — Online estimator of ocean wave regularity from vertical acceleration.
-
-    Inputs
-      • Vertical acceleration a_z(t) [m/s²]
-      • Instantaneous angular frequency ω_inst(t) [rad/s] from an external tracker
-
-    Physics & Spectral Relations (solid math, not heuristics)
-      a_z(t) = d²η/dt² = −ω² η(t)
-      ⇒ S_a(ω) = ω⁴ S_η(ω),   S_η(ω) = S_a(ω) / ω⁴
-
-    Moments of the displacement spectrum (continuous):
-      M₀ = ∫ S_η(ω) dω       (variance of η)
-      M₁ = ∫ ω S_η(ω) dω
-      M₂ = ∫ ω² S_η(ω) dω
-      Narrowness: ν = sqrt( M₂/M₀ − (M₁/M₀)² ) / (M₁/M₀)
-      Oceanographic significant height: H_s ≈ 4√M₀
-      Mean/“displacement” frequency: \bar{ω} = M₁/M₀  (Hz = \bar{ω}/2π)
-
-    Discrete, per-bin estimator used here
-      • Demodulate a_z at candidate ω_k → baseband Y_k (I/Q), then 1st-order LPF with cutoff f_c,k.
-      • Convert to displacement envelope via η̂_k = −Y_k / ω_k².
-      • Per-bin captured power P_k = |η̂_k|² (m²).
-      • 1st-order LPF ENBW in rad/s: ENBW_k = π² f_c,k  (with f_c,k in Hz).
-      • PSD estimate Ŝ_η(ω_k) ≈ (K_EFF_MIX * P_k) / ENBW_k, where K_EFF_MIX≈2 compensates the I/Q halving.
-      • Integrate moments with each bin’s Voronoi width Δω_k in linear ω:
-            M_n ≈ Σ_k Ŝ_η(ω_k) · ω_k^n · Δω_k
-
-    Jensen correction for ratio bias:
-      Let S0=∫S_η dω, S1=∫ω S_η dω. We track ⟨S0²⟩ and ⟨S0·S1⟩ to approximate
-      Var[M0] and Cov[M1,M0]. Then
-        \bar{ω}_naive = M1/M0
-        \bar{ω}_corr  = \bar{ω}_naive + ( \bar{ω}_naive Var[M0] − Cov[M1,M0] ) / M0²
-
-    Regularity score:
-      • Spectral (bandwidth-based): R_spec = exp(−β ν), β≈1
-      • Phase coherence R_phase from unit envelope vector averaging
-      • Final: R_out = EMA{ max(R_phase, R_spec) }
-
-    NOTE: All ω here are radians per second. Your caller already passes ω_inst = 2π·freq(Hz).
-*/
-
-#pragma once
-#include <cmath>
-#include <algorithm>
-#include <limits>
-
-/*
-  =========================================================================
    SeaStateRegularity : no-tracker, dt-aware, MCU-optimized spectral estimator
-  =========================================================================
+
    Input:
        a_z(t)  - vertical acceleration [m/s^2]
        dt      - time step [s]
