@@ -427,24 +427,23 @@ class SeaStateRegularity {
       for (int idx = left; idx <= right; ++idx)
         omega_k_arr[idx] = std::clamp(omega_k_arr[idx], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-      // Voronoi Δω_k in linear ω
-      float domega_k_arr[NBINS] = {};
-      if (K == 0) {
-        domega_k_arr[MAX_K] = 0.0f;  // will use ENBW later
-      } else {
-        for (int idx = left; idx <= right; ++idx) {
-          if (idx == left) {
-            float w0 = omega_k_arr[idx], w1 = omega_k_arr[idx + 1];
-            domega_k_arr[idx] = std::max(EPSILON, w1 - w0);
-          } else if (idx == right) {
-            float wL = omega_k_arr[idx - 1], w0 = omega_k_arr[idx];
-            domega_k_arr[idx] = std::max(EPSILON, w0 - wL);
-          } else {
-            float wL = omega_k_arr[idx - 1], wR = omega_k_arr[idx + 1];
-            domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
-          }
-        }
-      }
+// Log-frequency Voronoi widths (ratio-spaced grid)
+float domega_k_arr[NBINS] = {};
+const float h_log  = std::log(1.0f + STEP);
+const float wfac   = 2.0f * std::sinh(0.5f * h_log);  // exact log-cell width factor
+
+for (int idx = left; idx <= right; ++idx) {
+    // interior bins use symmetric Voronoi width ≈ ω_k * wfac
+    float domega = omega_k_arr[idx] * wfac;
+
+    // edge bins get half-cell (one-sided) correction
+    if (idx == left)
+        domega = omega_k_arr[idx] * (std::exp(0.5f * h_log) - 1.0f);
+    else if (idx == right)
+        domega = omega_k_arr[idx] * (1.0f - std::exp(-0.5f * h_log));
+
+    domega_k_arr[idx] = std::max(EPSILON, domega);
+}
 
       float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
       float A_var = 0.0f;
