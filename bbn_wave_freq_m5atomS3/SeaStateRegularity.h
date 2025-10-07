@@ -213,10 +213,10 @@ const float Rm = (g * g) * R_demod_eff;
     if (P_rr_[i] < 0.0f) P_rr_[i] = 0.0f;
 }
 
-// --- Imag channel ---
+// --- Imag channel ---  (make it symmetrical with the real channel)
 {
     const float y_tilde = g * y_i_lp_[i];
-    const float innov   = y_tilde - mu_i_[i];
+    const float innov   = -(y_tilde) - mu_i_[i];  // <-- was: y_tilde - mu_i_[i]
     const float S = P_ii_[i] + Rm;
     const float K = (S > 1e-20f) ? (P_ii_[i] / S) : 0.0f;
     mu_i_[i] += K * innov;
@@ -224,7 +224,7 @@ const float Rm = (g * g) * R_demod_eff;
     P_ii_[i] = I_K * P_ii_[i] * I_K + K * Rm * K;
     if (P_ii_[i] < 0.0f) P_ii_[i] = 0.0f;
 }
-
+       
         // Posterior displacement PSD (ENBW-compensated)
         const float mu2  = mu_r_[i] * mu_r_[i] + mu_i_[i] * mu_i_[i];
         const float trP  = P_rr_[i] + P_ii_[i];
