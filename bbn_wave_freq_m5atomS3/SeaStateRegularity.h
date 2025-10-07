@@ -1,13 +1,54 @@
 #pragma once
+
 #include <cmath>
 #include <limits>
 #include <algorithm>
 
 /*
     Copyright 2025, Mikhail Grushinskiy
+
+    SeaStateRegularity — Online estimator of ocean wave regularity from vertical acceleration.
+
+    Inputs
+      • Vertical acceleration a_z(t) [m/s²]
+      • Instantaneous angular frequency ω_inst(t) [rad/s] from an external tracker
+
+    Physics & Spectral Relations (solid math, not heuristics)
+      a_z(t) = d²η/dt² = −ω² η(t)
+      ⇒ S_a(ω) = ω⁴ S_η(ω),   S_η(ω) = S_a(ω) / ω⁴
+
+    Moments of the displacement spectrum (continuous):
+      M₀ = ∫ S_η(ω) dω       (variance of η)
+      M₁ = ∫ ω S_η(ω) dω
+      M₂ = ∫ ω² S_η(ω) dω
+      Narrowness: ν = sqrt( M₂/M₀ − (M₁/M₀)² ) / (M₁/M₀)
+      Oceanographic significant height: H_s ≈ 4√M₀
+      Mean/“displacement” frequency: \bar{ω} = M₁/M₀  (Hz = \bar{ω}/2π)
+
+    Discrete, per-bin estimator used here
+      • Demodulate a_z at candidate ω_k → baseband Y_k (I/Q), then 1st-order LPF with cutoff f_c,k.
+      • Convert to displacement envelope via η̂_k = −Y_k / ω_k².
+      • Per-bin captured power P_k = |η̂_k|² (m²).
+      • 1st-order LPF ENBW in rad/s: ENBW_k = π² f_c,k  (with f_c,k in Hz).
+      • PSD estimate Ŝ_η(ω_k) ≈ (K_EFF_MIX * P_k) / ENBW_k, where K_EFF_MIX≈2 compensates the I/Q halving.
+      • Integrate moments with each bin’s Voronoi width Δω_k in linear ω:
+            M_n ≈ Σ_k Ŝ_η(ω_k) · ω_k^n · Δω_k
+
+    Jensen correction for ratio bias:
+      Let S0=∫S_η dω, S1=∫ω S_η dω. We track ⟨S0²⟩ and ⟨S0·S1⟩ to approximate
+      Var[M0] and Cov[M1,M0]. Then
+        \bar{ω}_naive = M1/M0
+        \bar{ω}_corr  = \bar{ω}_naive + ( \bar{ω}_naive Var[M0] − Cov[M1,M0] ) / M0²
+
+    Regularity score:
+      • Spectral (bandwidth-based): R_spec = exp(−β ν), β≈1
+      • Phase coherence R_phase from unit envelope vector averaging
+      • Final: R_out = EMA{ max(R_phase, R_spec) }
+
+    NOTE: All ω here are radians per second. Your caller already passes ω_inst = 2π·freq(Hz).
 */
 
-// Debiased EMA (bias-corrected by tracking weight)
+// =============================== Debiased EMA ===============================
 struct DebiasedEMA {
     float value  = 0.0f;
     float weight = 0.0f;
@@ -16,7 +57,7 @@ struct DebiasedEMA {
         value  = (1.0f - alpha) * value + alpha * x;
         weight = (1.0f - alpha) * weight + alpha;
     }
-    inline void decay(float alpha) {         
+    inline void decay(float alpha) {         // optional decay hook
         value  = (1.0f - alpha) * value;
         weight = (1.0f - alpha) * weight;
     }
@@ -24,24 +65,24 @@ struct DebiasedEMA {
     inline bool  isReady() const { return weight > 1e-6f; }
 };
 
-// SeaStateRegularity
+// =========================== SeaStateRegularity =============================
 class SeaStateRegularity {
 public:
     // Numerics / mapping
     constexpr static float EPSILON    = 1e-12f;
     constexpr static float BETA_SPEC  = 1.0f;     // exponent in ν
-    constexpr static float K_EFF_MIX  = 2.0f;     // extra scale (calibration)
+    constexpr static float K_EFF_MIX  = 2.0f;     // amplitude calibration (I/Q → variance)
 
-    // Tracker-robust ω clamp and smoothing
-    constexpr static float OMEGA_MIN_HZ = 0.03f;
-    constexpr static float OMEGA_MAX_HZ = 1.50f;
+    // Tracker-robust ω clamp and smoothing (Hz range widened for real seas)
+    constexpr static float OMEGA_MIN_HZ = 0.01f;  // 100 s swell
+    constexpr static float OMEGA_MAX_HZ = 3.00f;  // 0.33 s wind chop
     constexpr static float TAU_W_SEC    = 15.0f;  // EMA time-constant for ω_used
 
-    // Multi-bin params
-    constexpr static int   MAX_K       = 15;       // up to ±15 bins
+    // Multi-bin params (ratio spacing)
+    constexpr static int   MAX_K       = 25;      // up to ±25 bins → 51 bins total
     constexpr static int   NBINS       = 2 * MAX_K + 1;
-    constexpr static float STEP_NARROW = 0.08f;
-    constexpr static float STEP_BROAD  = 0.03f;
+    constexpr static float STEP_NARROW = 0.02f;   // ≈2%
+    constexpr static float STEP_BROAD  = 0.01f;   // ≈1%
     constexpr static float MIN_FC_HZ   = 0.02f;
 
     SeaStateRegularity(float tau_env_sec = 15.0f,
@@ -92,8 +133,7 @@ public:
     // Main update
     void update(float dt_s, float accel_z, float omega_inst) {
         if (!(dt_s > 0.0f)) return;
-        if (accel_z    != accel_z)    accel_z    = 0.0f;
-        if (omega_inst != omega_inst) return;
+        if (!std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
 
         t_abs += dt_s;
         last_accel = accel_z;
@@ -105,37 +145,38 @@ public:
         computeRegularityOutput();
     }
 
-    // Getters
+    // === Getters (API preserved) ==========================================
     float getRegularity() const { return R_out.get(); }
     float getRegularitySpectral() const { return R_spec; }
     float getRegularityPhase() const { return R_phase; }
     float getNarrowness() const { return nu; }
 
+    // Oceanographic significant height from variance
     float getWaveHeightEnvelopeEst() const {
         float m0 = M0.get();
         return (m0 > 0.0f) ? 4.0f * std::sqrt(std::max(0.0f, m0)) : 0.0f;
     }
 
     float getDisplacementFrequencyHz() const {
-        return (omega_bar_corr > EPSILON) ? (omega_bar_corr / (2.0f * float(M_PI))) : 0.0f;
+        return (omega_bar_corr > EPSILON) ? (omega_bar_corr / (2.0f * PI)) : 0.0f;
     }
 
     float getDisplacementFrequencyNaiveHz() const {
-        return (omega_bar_naive > EPSILON)
-             ? (omega_bar_naive / (2.0f * float(M_PI)))
-             : 0.0f;
+        return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
     }
 
     float getDisplacementPeriodSec() const {
-        return (omega_bar_corr > EPSILON) ? (2.0f * float(M_PI) / omega_bar_corr) : 0.0f;
+        return (omega_bar_corr > EPSILON) ? (2.0f * PI / omega_bar_corr) : 0.0f;
     }
 
     float getAccelerationVariance() const { return A0.get(); }
 
 private:
-    // Precomputed rad/s clamps
-    static constexpr float OMEGA_MIN_RAD = 2.0f * float(M_PI) * OMEGA_MIN_HZ;
-    static constexpr float OMEGA_MAX_RAD = 2.0f * float(M_PI) * OMEGA_MAX_HZ;
+    // Constants
+    static constexpr float PI             = 3.14159265358979323846f;
+    static constexpr float TWO_PI         = 2.0f * PI;
+    static constexpr float OMEGA_MIN_RAD  = TWO_PI * OMEGA_MIN_HZ;
+    static constexpr float OMEGA_MAX_RAD  = TWO_PI * OMEGA_MAX_HZ;
 
     // time constants and alphas
     float tau_env, tau_mom, tau_coh, tau_out;
@@ -178,7 +219,7 @@ private:
     float omega_bar_naive;
     bool  has_moments;
 
-    // helpers
+    // === Helpers ===========================================================
     void updateAlpha(float dt_s) {
         if (dt_s == last_dt) return;
         alpha_env = 1.0f - std::exp(-dt_s / tau_env);
@@ -192,9 +233,8 @@ private:
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
         phi += omega_inst * dt_s;
         // Robust wrapping without fmod (avoid cumulative growth)
-        const float TWO_PI_ = 2.0f * float(M_PI);
-        if (phi >= TWO_PI_) phi -= TWO_PI_;
-        if (phi <  0.0f)    phi += TWO_PI_;
+        if (phi >= TWO_PI) phi -= TWO_PI;
+        if (phi <  0.0f)   phi += TWO_PI;
 
         float c = std::cos(phi);
         float s = std::sin(phi);
@@ -210,139 +250,6 @@ private:
         z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
         z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
     }
-
-// ---------------------------------------------------------------------
-// Correct, non-heuristic spectral moment accumulation:
-//   • Per-bin ENBW (first-order LPF): ENBW_k = π²·fc_k  [rad/s]
-//   • Per-bin Δω_k via Voronoi cell from the ω-grid
-//   • Sη(ω_k) ≈ (K_EFF_MIX * P_disp_k) / ENBW_k
-//   • Moments: M_n = Σ_k Sη(ω_k) · ω_k^n · Δω_k
-// ---------------------------------------------------------------------
-void updateSpectralMoments(float omega_inst) {
-    // If your tracker outputs Hz, define EXPECT_OMEGA_HZ to auto-convert.
-    // (Leaving this off uses rad/s as before.)
-#ifdef EXPECT_OMEGA_HZ
-    omega_inst *= 2.0f * float(M_PI);
-#endif
-
-    // Clamp & smooth observed ω
-    float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-    if (omega_used <= 0.0f) omega_used = w_obs;
-    else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
-
-    // Outlier gate vs smoothed ω
-    if (omega_used > 0.0f) {
-        float ratio = w_obs / omega_used;
-        if (ratio < 0.7f || ratio > 1.3f) return;
-    }
-
-    // Bin layout from current narrowness ν
-    int   K    = 0;
-    float STEP = 0.0f;
-    if      (nu < 0.05f) { K = 0;         STEP = 0.0f;        }
-    else if (nu < 0.15f) { K = 2;         STEP = STEP_NARROW; }
-    else                 { K = MAX_K;     STEP = STEP_BROAD;  }
-
-    if (!bins_init) {
-        for (int i = 0; i < NBINS; ++i) {
-            bin_c[i] = 1.0f; bin_s[i] = 0.0f;
-            bin_zr[i] = bin_zi[i] = 0.0f;
-        }
-        bins_init = true;
-    }
-
-    // Build ω-grid around ω_used (ratio-spaced)
-    float omega_k_arr[NBINS] = {};
-    int left = MAX_K - K, right = MAX_K + K;
-    for (int k = -K; k <= K; ++k) {
-        int idx = MAX_K + k;
-        omega_k_arr[idx] = omega_used * (1.0f + STEP * k);
-        if (omega_k_arr[idx] <= EPSILON) omega_k_arr[idx] = OMEGA_MIN_RAD; // guard
-    }
-
-    // Compute Voronoi Δω_k per bin (edges use one-sided gaps)
-    float domega_k_arr[NBINS] = {};
-    if (K == 0) {
-        // Single bin: Δω = ENBW_k (set later after fc_k known)
-        domega_k_arr[MAX_K] = 0.0f; // mark; we’ll set it after fc_k is known
-    } else {
-        for (int idx = left; idx <= right; ++idx) {
-            if (idx == left) {
-                float w0 = omega_k_arr[idx], w1 = omega_k_arr[idx + 1];
-                domega_k_arr[idx] = std::max(EPSILON, (w1 - w0));
-            } else if (idx == right) {
-                float w_1 = omega_k_arr[idx - 1], w0 = omega_k_arr[idx];
-                domega_k_arr[idx] = std::max(EPSILON, (w0 - w_1));
-            } else {
-                float w_1 = omega_k_arr[idx - 1], w1 = omega_k_arr[idx + 1];
-                domega_k_arr[idx] = std::max(EPSILON, 0.5f * (w1 - w_1));
-            }
-        }
-    }
-
-    // Accumulators
-    float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
-    float A_var = 0.0f;
-
-    // Main bin loop
-    for (int idx = left; idx <= right; ++idx) {
-        float omega_k = omega_k_arr[idx];
-        if (omega_k <= EPSILON) continue;
-
-        // Advance oscillator for this bin
-        float dphi = omega_k * last_dt;
-        float cd = std::cos(dphi), sd = std::sin(dphi);
-        float c0 = bin_c[idx], s0 = bin_s[idx];
-        float c1 =  c0*cd - s0*sd;
-        float s1 =  c0*sd + s0*cd;
-        bin_c[idx] = c1; bin_s[idx] = s1;
-
-        // Mix acceleration to baseband
-        float y_r =  last_accel * c1;
-        float y_i = -last_accel * s1;
-
-        // Per-bin LPF and ENBW (Hz → rad/s)
-        float f_k_hz  = omega_k / (2.0f * float(M_PI));
-        float fc_k_hz = std::max(MIN_FC_HZ, (K > 0 ? STEP * f_k_hz : MIN_FC_HZ));
-        float alpha_k = 1.0f - std::exp(-last_dt * 2.0f * float(M_PI) * fc_k_hz);
-        float enbw_k  = float(M_PI) * float(M_PI) * fc_k_hz; // rad/s
-
-        bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
-        bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
-
-        // a → η conversion per bin (a = −ω² η)
-        float inv_w2 = 1.0f / std::max(omega_k * omega_k, EPSILON);
-        float dr = bin_zr[idx] * inv_w2;
-        float di = bin_zi[idx] * inv_w2;
-
-        // Displacement power captured by this bin
-        float P_disp = dr*dr + di*di;
-
-        // If single-bin mode, set Δω = ENBW_k so S0 contribution = K_EFF_MIX * P_disp
-        float domega_k = domega_k_arr[idx];
-        if (K == 0) domega_k = std::max(EPSILON, enbw_k);
-
-        // PSD estimate at ω_k and moment contributions
-        float S_eta_hat_k = (enbw_k > EPSILON) ? (K_EFF_MIX * P_disp / enbw_k) : 0.0f;
-
-        S0 += S_eta_hat_k * domega_k;
-        S1 += S_eta_hat_k * omega_k * domega_k;
-        S2 += S_eta_hat_k * omega_k * omega_k * domega_k;
-
-        // Acceleration variance proxy: ∫ ω⁴ Sη(ω) dω
-        A_var += (omega_k*omega_k*omega_k*omega_k) * S_eta_hat_k * domega_k;
-    }
-
-    if (!has_moments) has_moments = true;
-
-    // EMA updates (moments + Jensen helpers)
-    M0.update(S0, alpha_mom);
-    M1.update(S1, alpha_mom);
-    M2.update(S2, alpha_mom);
-    Q00.update(S0 * S0, alpha_mom);
-    Q10.update(S0 * S1, alpha_mom);
-    A0.update(A_var, alpha_mom);
-}
 
     void updatePhaseCoherence() {
         float mag = std::hypot(z_real, z_imag);
@@ -360,6 +267,141 @@ void updateSpectralMoments(float omega_inst) {
         coh_i.update(u_i, alpha_coh);
         R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() +
                                        coh_i.get()*coh_i.get()), 0.0f, 1.0f);
+    }
+
+    // --------- Spectral moments: per-bin ENBW × Δω (ratio-spaced grid) ----
+    void updateSpectralMoments(float omega_inst) {
+        float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+
+        // Smooth omega_used
+        if (omega_used <= 0.0f) omega_used = w_obs;
+        else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
+
+        // Outlier gate: skip updates if tracker jumps too far
+        if (omega_used > 0.0f) {
+            float ratio = w_obs / omega_used;
+            if (ratio < 0.7f || ratio > 1.3f) {
+                return;
+            }
+        }
+
+        // Multi-bin extent (adaptive to narrowness)
+        int   K    = 0;
+        float STEP = 0.0f;
+        if      (nu < 0.05f) { K =  8; STEP = STEP_NARROW; }
+        else if (nu < 0.10f) { K = 15; STEP = STEP_NARROW; }
+        else if (nu < 0.20f) { K = 20; STEP = STEP_BROAD;  }
+        else                 { K = MAX_K; STEP = STEP_BROAD; }
+
+        if (!bins_init) {
+            for (int i = 0; i < NBINS; i++) {
+                bin_c[i]  = 1.0f;
+                bin_s[i]  = 0.0f;
+                bin_zr[i] = 0.0f;
+                bin_zi[i] = 0.0f;
+            }
+            bins_init = true;
+        }
+
+        // Ratio-spaced ω grid around omega_used
+        const float r = 1.0f + STEP;
+        const int left  = MAX_K - K;
+        const int right = MAX_K + K;
+
+        float omega_k_arr[NBINS] = {};
+        omega_k_arr[MAX_K] = omega_used;
+        for (int k = 1; k <= K; ++k) {
+            omega_k_arr[MAX_K + k] = omega_k_arr[MAX_K + k - 1] * r;
+            omega_k_arr[MAX_K - k] = omega_k_arr[MAX_K - k + 1] / r;
+        }
+        for (int idx = left; idx <= right; ++idx) {
+            omega_k_arr[idx] = std::clamp(omega_k_arr[idx], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+        }
+
+        // Voronoi Δω_k in linear ω (edges one-sided)
+        float domega_k_arr[NBINS] = {};
+        if (K == 0) {
+            domega_k_arr[MAX_K] = 0.0f;  // will be set to ENBW_k
+        } else {
+            for (int idx = left; idx <= right; ++idx) {
+                if (idx == left) {
+                    float w0 = omega_k_arr[idx], w1 = omega_k_arr[idx + 1];
+                    domega_k_arr[idx] = std::max(EPSILON, (w1 - w0));
+                } else if (idx == right) {
+                    float w_1 = omega_k_arr[idx - 1], w0 = omega_k_arr[idx];
+                    domega_k_arr[idx] = std::max(EPSILON, (w0 - w_1));
+                } else {
+                    float w_1 = omega_k_arr[idx - 1], w1 = omega_k_arr[idx + 1];
+                    domega_k_arr[idx] = std::max(EPSILON, 0.5f * (w1 - w_1));
+                }
+            }
+        }
+
+        float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
+        float A_var = 0.0f;
+
+        // Loop over bins
+        for (int idx = left; idx <= right; ++idx) {
+            float omega_k = omega_k_arr[idx];
+            if (omega_k <= EPSILON) continue;
+
+            // Advance oscillator for this bin
+            float dphi = omega_k * last_dt;
+            float cd = std::cos(dphi), sd = std::sin(dphi);
+            float c0 = bin_c[idx], s0 = bin_s[idx];
+            float c1 =  c0*cd - s0*sd;
+            float s1 =  c0*sd + s0*cd;
+            bin_c[idx] = c1; bin_s[idx] = s1;
+
+            // Mix acceleration to baseband
+            float y_r =  last_accel * c1;
+            float y_i = -last_accel * s1;
+
+            // Per-bin LPF and ENBW (Hz→ENBW in rad/s)
+            float f_k_hz  = omega_k / TWO_PI;
+            float fc_k_hz = std::max(MIN_FC_HZ, (K > 0 ? STEP * f_k_hz : MIN_FC_HZ));
+            float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI * fc_k_hz);
+            float enbw_k  = PI * PI * fc_k_hz; // [rad/s]
+
+            bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
+            bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
+
+            // Accel → displacement (a = −ω² η  ⇒  η = −a/ω²)
+            float inv_w2 = 1.0f / std::max(omega_k*omega_k, EPSILON);
+            float dr = -bin_zr[idx] * inv_w2;
+            float di = -bin_zi[idx] * inv_w2;
+
+            // Baseband bin power (variance-like)
+            float P_disp = dr*dr + di*di;
+
+            // Single-bin: use ENBW as Δω proxy so the bin represents its own effective band
+            float domega = (K == 0) ? std::max(EPSILON, enbw_k) : domega_k_arr[idx];
+
+            // Convert captured power to PSD using this bin’s ENBW
+            float S_eta_hat = (enbw_k > EPSILON) ? (K_EFF_MIX * P_disp / enbw_k) : 0.0f;
+
+            // Integrate spectral moments over Δω
+            S0    += S_eta_hat * domega;
+            S1    += S_eta_hat * omega_k * domega;
+            S2    += S_eta_hat * omega_k * omega_k * domega;
+
+            // Acceleration variance: ∫ ω⁴ S_η(ω) dω
+            A_var += (omega_k*omega_k*omega_k*omega_k) * S_eta_hat * domega;
+        }
+
+        has_moments = true;
+
+        // Update EMAs
+        M0.update(S0, alpha_mom);
+        M1.update(S1, alpha_mom);
+        M2.update(S2, alpha_mom);
+
+        // Jensen correction helpers
+        Q00.update(S0 * S0, alpha_mom);
+        Q10.update(S0 * S1, alpha_mom);
+
+        // Broadband acceleration variance (σ²[a])
+        A0.update(A_var, alpha_mom);
     }
 
     void computeRegularityOutput() {
@@ -389,7 +431,6 @@ void updateSpectralMoments(float omega_inst) {
         float mu2 = std::max(0.0f, omega2_bar - omega_bar_naive * omega_bar_naive);
 
         // Jensen correction for ratio E[M1/M0]
-        // Var[M0] ≈ E[S0^2] - M0^2,  Cov[M1,M0] ≈ E[S0*S1] - M1*M0
         float q00 = Q00.get();   // ⟨S0^2⟩
         float q10 = Q10.get();   // ⟨S0*S1⟩
         float varM0  = std::max(0.0f, q00 - m0*m0);
@@ -403,8 +444,8 @@ void updateSpectralMoments(float omega_inst) {
         nu = std::max(0.0f, nu);
         R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
 
-        // Output = max of phase vs spectral
-        float R_combined = R_spec; //std::max(R_phase, R_spec);
+        // Output = max of phase vs spectral (as you requested earlier)
+        float R_combined = std::max(R_phase, R_spec);
         R_out.update(R_combined, alpha_out);
     }
 };
