@@ -12,7 +12,7 @@
        a = −ω² η
        Demod with cos(ω_k t), +sin(ω_k t):
          y_r = LPF[a·cos(ω_k t)]
-         y_i = LPF[a·(−sin(ω_k t))]
+         y_i = LPF[a·sin(ω_k t)]
 
        Normalize measurement with g_k = 2/ω_k² so each bin has H=+1:
          ỹ_r = g_k · y_r ≈ (−1)·x_r + ṽ,   ỹ_i = g_k · y_i ≈ (+1)·x_i + ṽ
@@ -176,8 +176,8 @@ inline void update(float dt, float accel_z) {
         c_[i] = c1; s_[i] = s1;
 
         // demodulated measurements (pre-normalization)
-        const float y_r =  a_hp * c1;
-        const float y_i = -a_hp * s1;
+        const float y_r = a_hp * c1;
+        const float y_i = a_hp * s1;
 
         // AR(1) prediction
         const float rho = rho_k_[i];
