@@ -173,23 +173,23 @@ class SeaStateRegularity {
       return nu;
     }
 
-// Oceanographically correct Hs for random seas,
-// physically correct 2A for coherent waves.
-// Smooth fusion using phase coherence as weight.
-float getWaveHeightEnvelopeEst() const {
-    float m0 = M0.get();
-    if (!(m0 > 0.0f)) return 0.0f;
+    // Oceanographically correct Hs for random seas,
+    // physically correct 2A for coherent waves.
+    // Smooth fusion using phase coherence as weight.
+    float getWaveHeightEnvelopeEst() const {
+      float m0 = M0.get();
+      if (!(m0 > 0.0f)) return 0.0f;
 
-    // Oceanographic "significant height" for random sea
-    float Hs_ocean = 4.0f * std::sqrt(std::max(0.0f, m0));
-    // Deterministic single-wave height = 2A = 2√(2M₀)
-    float Hs_mono  = 2.0f * std::sqrt(2.0f * std::max(0.0f, m0));
+      // Oceanographic "significant height" for random sea
+      float Hs_ocean = 4.0f * std::sqrt(std::max(0.0f, m0));
+      // Deterministic single-wave height = 2A = 2√(2M₀)
+      float Hs_mono  = 2.0f * std::sqrt(2.0f * std::max(0.0f, m0));
 
-    // Use phase coherence as blend weight
-    float w_coh = std::clamp(R_phase, 0.0f, 1.0f);
-    // Blend: coherent → Hs_mono, random → Hs_ocean
-    return w_coh * Hs_mono + (1.0f - w_coh) * Hs_ocean;
-}
+      // Use phase coherence as blend weight
+      float w_coh = std::clamp(R_phase, 0.0f, 1.0f);
+      // Blend: coherent → Hs_mono, random → Hs_ocean
+      return w_coh * Hs_mono + (1.0f - w_coh) * Hs_ocean;
+    }
 
     float getDisplacementFrequencyNaiveHz() const {
       return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
@@ -534,7 +534,7 @@ float getWaveHeightEnvelopeEst() const {
       // Narrowness ν and spectral regularity
       nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
       if (nu < 0.0f || !std::isfinite(nu)) nu = 0.0f;
-        
+
       if (R_phase > 0.95f && nu < 0.15f) {
         // Phase coherence near unity → deterministic narrow wave
         // Fade ν toward 0 as coherence approaches 1
@@ -612,4 +612,3 @@ inline void SeaState_sine_wave_test() {
             << ", Tp=" << Tp << " s\n";
 }
 #endif
-
