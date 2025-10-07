@@ -5,9 +5,7 @@
 #include <algorithm>
 
 /*
-   Copyright 2025, Mikhail Grushinskiy
-
-   SeaStateRegularity : no-tracker, dt-aware, MCU-optimized spectral estimator (Bayesian per-bin KFs)
+   SeaStateRegularity : dt-aware, MCU-optimized spectral estimator (Bayesian per-bin KFs)
 
    Input:
        a_z(t)  - vertical acceleration [m/s^2]
@@ -24,24 +22,26 @@
        getAccelerationSigma()        - RMS acceleration σ_a = √⟨a²⟩
        getWaveHeightEnvelopeEst()    - blended significant wave height Hs
 
-   Physical basis:
-       a = −ω² η,   demod y_r = a·cos(ωt), y_i = −a·sin(ωt)
-       Measurement model per bin k:
-         y_r ≈ −ω_k² x_r + v,   y_i ≈ −ω_k² x_i + v
-       State evolution per component:
-         x_{r,i}[n+1] = ρ_k x_{r,i}[n] + w,   ρ_k = exp(−2π f_c,k dt)
-
-   Spectral moments from posterior (one-sided real):
-       ΔM0(k) = 0.5 · (μ_r² + μ_i² + P_rr + P_ii) · Δω_k
-       M0 = Σ ΔM0(k),   M1 = Σ ω_k ΔM0(k),   M2 = Σ ω_k² ΔM0(k)
-       ν  = sqrt(M2/M0 − (M1/M0)²) / (M1/M0)
-       Hs_rand = 4√M0,  Hs_mono = 2√(2M0),  Hs_blend = R_phase·Hs_mono + (1−R_phase)·Hs_rand
+   Physical basis (Bayesian per-bin model):
+       a = −ω² η.
+       Demod per bin k with cos(ω_k t), −sin(ω_k t):
+          y_r ≈ −ω_k² x_r + v,   y_i ≈ −ω_k² x_i + v,
+          x_{r,i}[n+1] = ρ_k x_{r,i}[n] + w,  ρ_k = exp(−2π f_c,k dt).
+       Posterior power (one-sided real):
+          ΔM0(k) = 0.5 * (μ_r² + μ_i² + P_rr + P_ii) * Δω_k
+       Moments:
+          M0 = Σ ΔM0(k),   M1 = Σ ω_k ΔM0(k),   M2 = Σ ω_k² ΔM0(k)
+          ν  = sqrt(M2/M0 − (M1/M0)²) / (M1/M0)
+          Hs_rand = 4√M0,  Hs_mono = 2√(2M0),  Hs_blend = R_phase·Hs_mono + (1−R_phase)·Hs_rand
 */
 
 struct DebiasedEMA {
     float value = 0.0f, weight = 0.0f;
     void reset() { value = 0.0f; weight = 0.0f; }
-    inline void update(float x, float a) { value = (1 - a) * value + a * x; weight = (1 - a) * weight + a; }
+    inline void update(float x, float a) {
+        value  = (1 - a) * value + a * x;
+        weight = (1 - a) * weight + a;
+    }
     inline float get() const { return (weight > 1e-12f) ? value / weight : 0.0f; }
     inline bool  isReady() const { return weight > 1e-6f; }
 };
@@ -53,7 +53,6 @@ public:
     static constexpr float PI_         = 3.14159265358979323846f;
     static constexpr float TWO_PI_     = 2.0f * PI_;
     static constexpr float EPS         = 1e-12f;
-    static constexpr float STEP_LOG    = 0.06f;
     static constexpr float F_MIN_HZ    = 0.01f;
     static constexpr float F_MAX_HZ    = 3.00f;
     static constexpr float MIN_FC_HZ   = 0.02f;
@@ -61,8 +60,7 @@ public:
 
     // Noise/tuning
     static constexpr float G_STD       = 9.80665f;
-    static constexpr float ACC_NOISE_G = 0.02f;                 // 0.02 g rms
-    static constexpr float R_MEAS      = (ACC_NOISE_G*G_STD)*(ACC_NOISE_G*G_STD);
+    static constexpr float ACC_NOISE_G = 0.02f;                 // IMU noise ≈ 0.02 g RMS
     static constexpr float SIGMA_X0    = 0.10f;                 // prior disp envelope scale [m]
     static constexpr float FC_FRAC     = 0.35f;                 // linewidth = 0.35 * Δf_bin
 
@@ -77,12 +75,18 @@ public:
         for (int i = 0; i < NBINS; ++i) {
             c_[i] = 1.0f; s_[i] = 0.0f;
             mu_r_[i] = mu_i_[i] = 0.0f;
-            P_rr_[i] = P_ii_[i] = SIGMA_X0 * SIGMA_X0;
+            P_rr_[i] = P_ii_[i] = 4.0f * SIGMA_X0 * SIGMA_X0; // inflate start → gentle lock
             Seta_last_[i] = 0.0f;
+            Epow_pk_[i] = 0.0f;
         }
+        // Bias KF init
+        b_mu_ = 0.0f;
+        b_P_  = (0.10f * G_STD) * (0.10f * G_STD);     // prior var ~ (0.10 g)^2
+
         R_out_.reset();
         R_spec_ = R_phase_ = nu_ = 0.0f;
         omega_peak_ = omega_peak_smooth_ = w_disp_ = 0.0f;
+        A0_inst_ = 0.0f;
     }
 
     inline void update(float dt, float accel_z) {
@@ -90,7 +94,21 @@ public:
         const bool recompute = std::fabs(dt - dt_nom_) > tol_dt_;
         if (recompute) dt_nom_ = dt;  // keep oscillators consistent if dt wanders
 
-        // advance oscillators (cos/sin) and perform per-bin KF updates
+        // --- Bias KF on raw a: a = b + noise (random walk) ---
+        b_P_ += b_Q_;                                 // predict
+        float S_b   = b_P_ + b_R_;
+        float K_b   = b_P_ / std::max(S_b, 1e-20f);   // gain
+        float innov_b = accel_z - b_mu_;
+        b_mu_ += K_b * innov_b;
+        b_P_   = (1.0f - K_b) * b_P_;
+
+        // High-passed acceleration for demod
+        const float a_hp = accel_z - b_mu_;
+
+        // Demod measurement variance: Var(a*cos)=0.5 Var(a)
+        const float R_demod = 0.5f * b_R_;
+
+        // --- advance oscillators + per-bin scalar KFs ---
         for (int i = 0; i < NBINS; ++i) {
             // advance local oscillator
             float cd = cd_[i], sd = sd_[i];
@@ -105,9 +123,9 @@ public:
             const float s1 = c0 * sd + s0 * cd;
             c_[i] = c1; s_[i] = s1;
 
-            // demodulated measurements (no LPF; KF does the smoothing)
-            const float y_r =  accel_z * c1;
-            const float y_i = -accel_z * s1;
+            // demodulated measurements (Kalman does the smoothing)
+            const float y_r =  a_hp * c1;
+            const float y_i = -a_hp * s1;
 
             // per-component AR(1) prediction
             const float rho = rho_k_[i];
@@ -120,7 +138,7 @@ public:
 
             // real
             {
-                const float S = H*H*P_rr_[i] + R_MEAS;
+                const float S = H*H*P_rr_[i] + R_demod;
                 const float K = (P_rr_[i] * H) / std::max(S, 1e-20f);
                 const float innov = y_r - H * mu_r_[i];
                 mu_r_[i] += K * innov;
@@ -128,51 +146,55 @@ public:
             }
             // imag
             {
-                const float S = H*H*P_ii_[i] + R_MEAS;
+                const float S = H*H*P_ii_[i] + R_demod;
                 const float K = (P_ii_[i] * H) / std::max(S, 1e-20f);
                 const float innov = y_i - H * mu_i_[i];
                 mu_i_[i] += K * innov;
                 P_ii_[i] = std::max(0.0f, (1.0f - K*H) * P_ii_[i]);
             }
 
-            // posterior power for displacement envelope (one-sided real)
+            // posterior power (two uses):
             const float mu2 = mu_r_[i]*mu_r_[i] + mu_i_[i]*mu_i_[i];
             const float trP = P_rr_[i] + P_ii_[i];
-            const float Epow = 0.5f * (mu2 + trP);     // meters^2 of envelope power
-            Seta_last_[i] = Epow;                      // store for peak picking
+
+            Epow_pk_[i]   = 0.5f * mu2;                 // for peak picking ONLY (stable)
+            Seta_last_[i] = 0.5f * (mu2 + trP);         // for moments (unbiased expectation)
         }
 
-        // spectral moments from posterior
+        // --- spectral moments from posterior ---
         float M0 = 0.0f, M1 = 0.0f, M2 = 0.0f, Avar = 0.0f;
-        float smax = Seta_last_[0]; int ipk = 0;
         for (int i = 0; i < NBINS; ++i) {
             const float mass = Seta_last_[i] * d_omega_[i];
             M0 += mass;
             M1 += mass * w_[i];
             M2 += mass * w2_[i];
             Avar += mass * w2_[i] * w2_[i];           // ⟨a²⟩ from displacement spectrum
-            if (Seta_last_[i] > smax) { smax = Seta_last_[i]; ipk = i; }
         }
 
-        // sub-bin peak refine (log-parabolic)
+        // --- peak on μ²-only (refined), then blend with centroid ---
+        int ipk = 0; float smax = Epow_pk_[0];
+        for (int i = 1; i < NBINS; ++i) if (Epow_pk_[i] > smax) { smax = Epow_pk_[i]; ipk = i; }
         float wpk = w_[ipk];
         if (ipk > 0 && ipk < NBINS - 1) {
             const float hlog = std::log(w_[ipk + 1] / w_[ipk]);
-            const float yL = Seta_last_[ipk - 1], y0 = Seta_last_[ipk], yR = Seta_last_[ipk + 1];
+            const float yL = Epow_pk_[ipk - 1], y0 = Epow_pk_[ipk], yR = Epow_pk_[ipk + 1];
             const float denom = std::max(EPS, (yL - 2.0f * y0 + yR));
             float delta = 0.5f * (yL - yR) / denom;
             delta = std::clamp(delta, -1.0f, 1.0f);
             wpk = std::exp(std::log(w_[ipk]) + delta * hlog);
         }
         omega_peak_ = wpk;
-        // smooth outputs
+
+        float w_centroid = (M0 > EPS) ? (M1 / M0) : wpk;
+        float w_target   = 0.7f * wpk + 0.3f * w_centroid;
+
         const float alpha_disp = 1.0f - std::exp(-dt / 7.0f);
         omega_peak_smooth_ = (omega_peak_smooth_ <= 0.0f)
-                           ? omega_peak_
-                           : omega_peak_smooth_ + alpha_disp * (omega_peak_ - omega_peak_smooth_);
+                           ? w_target
+                           : omega_peak_smooth_ + alpha_disp * (w_target - omega_peak_smooth_);
         if (omega_peak_smooth_ > 0.0f) w_disp_ = omega_peak_smooth_;
 
-        // phase coherence around peak using posterior means
+        // --- phase coherence around peak using posterior means ---
         {
             const int i0 = std::max(0, ipk - 2);
             const int i1 = std::min(NBINS - 1, ipk + 2);
@@ -182,21 +204,22 @@ public:
                 const float amp = std::sqrt(mr*mr + mi*mi);
                 if (amp > 1e-12f) {
                     const float ur = mr / amp, ui = mi / amp;
-                    const float mass = (0.5f * (mr*mr + mi*mi + P_rr_[i] + P_ii_[i])) * d_omega_[i];
+                    const float mass = Seta_last_[i] * d_omega_[i];
                     Ur += mass * ur; Ui += mass * ui; Wm += mass;
                 }
             }
-            R_phase_ = (Wm > 0.0f) ? std::clamp(std::hypot(Ur / Wm, Ui / Wm), 0.0f, 1.0f) : R_phase_;
+            if (Wm > 0.0f) R_phase_ = std::clamp(std::hypot(Ur / Wm, Ui / Wm), 0.0f, 1.0f);
         }
 
-        // compute ν, R_spec, and fused regularity from current posterior
+        // --- compute ν, R_spec, and fused regularity from current posterior ---
         if (M0 > EPS) {
             const float omega_bar = M1 / M0;
             const float omega2_bar = M2 / M0;
             const float mu2 = std::max(0.0f, omega2_bar - omega_bar * omega_bar);
             nu_ = (omega_bar > EPS) ? (std::sqrt(mu2) / omega_bar) : 0.0f;
             if (!(std::isfinite(nu_) && nu_ >= 0.0f)) nu_ = 0.0f;
-            // deterministic bias relief when phase is very high and spectrum is very narrow
+
+            // deterministic bias relief when phase is very high and spectrum very narrow
             if (R_phase_ > 0.9f && nu_ < 0.2f) {
                 const float w = std::clamp((R_phase_ - 0.9f) / 0.1f, 0.0f, 1.0f);
                 nu_ *= (1.0f - w);
@@ -208,21 +231,28 @@ public:
             R_out_.update(R_comb, alpha_out);
         }
 
-        A0_inst_ = Avar;  // instantaneous ⟨a²⟩ (already time-smoothed by the KFs)
+        A0_inst_ = Avar;  // instantaneous ⟨a²⟩ implied by posterior spectrum
     }
 
-    // getters
+    // --- getters (unchanged API) ---
     inline float getRegularity() const             { return R_out_.get(); }
     inline float getRegularitySpectral() const     { return R_spec_; }
     inline float getRegularityPhase() const        { return R_phase_; }
     inline float getNarrowness() const             { return nu_; }
-    inline float getDisplacementFrequencyHz() const{ return (w_disp_ > EPS) ? w_disp_ / TWO_PI_ : 0.0f; }
-    inline float getDisplacementPeriodSec() const  { return (w_disp_ > EPS) ? (TWO_PI_ / w_disp_) : 0.0f; }
-    inline float getAccelerationVariance() const   { return A0_inst_; }
-    inline float getAccelerationSigma() const      { return (A0_inst_ > 0.0f) ? std::sqrt(A0_inst_) : 0.0f; }
+
+    inline float getDisplacementFrequencyHz() const {
+        return (w_disp_ > EPS) ? w_disp_ / TWO_PI_ : 0.0f;
+    }
+    inline float getDisplacementPeriodSec() const {
+        return (w_disp_ > EPS) ? (TWO_PI_ / w_disp_) : 0.0f;
+    }
+
+    inline float getAccelerationVariance() const { return A0_inst_; }
+    inline float getAccelerationSigma() const {
+        return (A0_inst_ > 0.0f) ? std::sqrt(A0_inst_) : 0.0f;
+    }
 
     inline float getWaveHeightEnvelopeEst() const {
-        // Compute Hs from current posterior moments (no extra smoothing)
         float M0 = 0.0f;
         for (int i = 0; i < NBINS; ++i) M0 += Seta_last_[i] * d_omega_[i];
         if (!(M0 > 0.0f)) return 0.0f;
@@ -253,8 +283,15 @@ private:
     float mu_r_[NBINS]{}, mu_i_[NBINS]{};
     float P_rr_[NBINS]{}, P_ii_[NBINS]{};
 
-    // posterior “displacement spectrum mass density” (per bin)
+    // posterior power (moments) and μ²-only (peak)
     float Seta_last_[NBINS]{};
+    float Epow_pk_[NBINS]{};
+
+    // bias (DC/tilt) scalar KF on raw acceleration: a = b + noise
+    float b_mu_ = 0.0f;
+    float b_P_  = (0.10f * G_STD) * (0.10f * G_STD);           // prior variance
+    float b_Q_  = (0.002f * G_STD) * (0.002f * G_STD);         // process var per sample (slow drift)
+    float b_R_  = (ACC_NOISE_G * G_STD) * (ACC_NOISE_G * G_STD); // measurement variance
 
     // outputs
     DebiasedEMA R_out_;
@@ -292,7 +329,7 @@ private:
             const float rho    = std::exp(-2.0f * PI_ * fc * dt_nom_);
             rho_k_[i] = rho;
             const float sigma_x2 = SIGMA_X0 * SIGMA_X0;
-            Qk_[i] = (1.0f - rho*rho) * sigma_x2;  // keeps AR(1) stationary
+            Qk_[i] = (1.0f - rho*rho) * sigma_x2;  // AR(1) stationary
         }
     }
 };
@@ -300,11 +337,13 @@ private:
 #ifdef SEA_STATE_TEST
 #include <iostream>
 #include <stdexcept>
+
 constexpr float SAMPLE_FREQ_HZ   = 240.0f;
 constexpr float DT               = 1.0f / SAMPLE_FREQ_HZ;
 constexpr float SIM_DURATION_SEC = 60.0f;
 constexpr float SINE_AMPLITUDE   = 1.0f;
 constexpr float SINE_FREQ_HZ     = 0.3f;
+
 struct SineWave {
     float amplitude; float omega; float phi;
     SineWave(float A, float f_hz) : amplitude(A), omega(2.0f * float(M_PI) * f_hz), phi(0.0f) {}
@@ -315,10 +354,12 @@ struct SineWave {
         return {z, a};
     }
 };
+
 inline void SeaState_sine_wave_test() {
     SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
     SeaStateRegularity<> reg;
     float R_spec=0, R_phase=0, Hs_est=0, nu=0, f_disp=0, Tp=0;
+
     for (int i = 0; i < int(SIM_DURATION_SEC / DT); i++) {
         auto za = wave.step(DT);
         reg.update(DT, za.second);
@@ -329,12 +370,18 @@ inline void SeaState_sine_wave_test() {
         f_disp  = reg.getDisplacementFrequencyHz();
         Tp      = reg.getDisplacementPeriodSec();
     }
+
     const float Hs_expected = 4.0f * SINE_AMPLITUDE;
-    if (!(R_spec > 0.90f))  throw std::runtime_error("Sine: R_spec did not converge near 1.");
-    if (!(R_phase > 0.80f)) throw std::runtime_error("Sine: R_phase did not converge near 1.");
+
+    if (!(R_spec > 0.90f))
+        throw std::runtime_error("Sine: R_spec did not converge near 1.");
+    if (!(R_phase > 0.80f))
+        throw std::runtime_error("Sine: R_phase did not converge near 1.");
     if (!(std::fabs(Hs_est - Hs_expected) < 0.25f * Hs_expected))
         throw std::runtime_error("Sine: Hs estimate not within tolerance.");
-    if (!(nu < 0.05f)) throw std::runtime_error("Sine: Narrowness should be close to 0 for a pure tone.");
+    if (!(nu < 0.05f))
+        throw std::runtime_error("Sine: Narrowness should be close to 0 for a pure tone.");
+
     std::cerr << "[PASS] Sine wave test passed. "
               << "Hs_est=" << Hs_est
               << ", Narrowness=" << nu
