@@ -58,7 +58,7 @@ class SeaStateRegularity {
 public:
     static constexpr int   NBINS       = 2 * MAX_K + 1;
     static constexpr float PI          = 3.14159265358979323846f;
-    static constexpr float TWO_PI      = 2.0f * PI;
+    static constexpr float TWO_PI_      = 2.0f * PI;
     static constexpr float EPS         = 1e-12f;
     static constexpr float STEP_LOG    = 0.06f;
     static constexpr float F_MIN_HZ    = 0.01f;
@@ -113,7 +113,7 @@ public:
             float a = alpha_k_[i];
             if (recompute) {
                 const float fc_hz = fc_k_[i];
-                a = 1.0f - std::exp(-dt * TWO_PI * fc_hz);
+                a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
             }
             float zr = zr_[i] + a * (y_r - zr_[i]);
             float zi = zi_[i] + a * (y_i - zi_[i]);
@@ -147,10 +147,10 @@ public:
     inline float getNarrowness() const             { return nu_; }
 
     inline float getDisplacementFrequencyHz() const {
-        return (w_disp_ > EPS) ? w_disp_ / TWO_PI : 0.0f;
+        return (w_disp_ > EPS) ? w_disp_ / TWO_PI_ : 0.0f;
     }
     inline float getDisplacementPeriodSec() const {
-        return (w_disp_ > EPS) ? (TWO_PI / w_disp_) : 0.0f;
+        return (w_disp_ > EPS) ? (TWO_PI_ / w_disp_) : 0.0f;
     }
 
     inline float getAccelerationVariance() const { return A0_.get(); }
@@ -185,8 +185,8 @@ private:
     float omega_peak_ = 0, omega_peak_smooth_ = 0, w_disp_ = 0;
 
     void buildGrid() {
-        const float w_min = TWO_PI * F_MIN_HZ;
-        const float w_max = TWO_PI * F_MAX_HZ;
+        const float w_min = TWO_PI_ * F_MIN_HZ;
+        const float w_max = TWO_PI_ * F_MAX_HZ;
         const float w_geo = std::sqrt(w_min * w_max);
         const float r = 1.0f + STEP_LOG;
         const float hlog = std::log(r);
@@ -214,8 +214,8 @@ private:
         }
 
         for (int i = 0; i < NBINS; ++i) {
-            fc_k_[i] = std::max(MIN_FC_HZ, STEP_LOG * (w_[i] / TWO_PI));
-            alpha_k_[i] = 1.0f - std::exp(-dt_nom_ * TWO_PI * fc_k_[i]);
+            fc_k_[i] = std::max(MIN_FC_HZ, STEP_LOG * (w_[i] / TWO_PI_));
+            alpha_k_[i] = 1.0f - std::exp(-dt_nom_ * TWO_PI_ * fc_k_[i]);
             float ENBW = PI * PI * fc_k_[i];
             KEFF_over_ENBW_[i] = K_EFF_MIX / std::max(ENBW, EPS);
             float dphi = w_[i] * dt_nom_;
