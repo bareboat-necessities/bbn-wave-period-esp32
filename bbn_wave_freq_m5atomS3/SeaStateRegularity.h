@@ -104,7 +104,7 @@ class SeaStateRegularity {
     // Numerics / mapping
     constexpr static float EPSILON    = 1e-12f;
     constexpr static float BETA_SPEC  = 1.0f;     // exponent in ν
-    constexpr static float K_EFF_MIX  = 1.4f;     // amplitude calibration (I/Q → variance)
+    constexpr static float K_EFF_MIX  = 2.0f;     // amplitude calibration (I/Q → variance)
 
     // Tracker-robust ω clamp and smoothing (Hz range widened for real seas)
     constexpr static float OMEGA_MIN_HZ = 0.01f;  // 100 s swell
