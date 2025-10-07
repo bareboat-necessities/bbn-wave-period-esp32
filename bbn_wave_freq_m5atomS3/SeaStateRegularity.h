@@ -375,7 +375,14 @@ float STEP = 0.06f;        // ≈6 % spacing → covers ~4.3× up/down ⇒ handl
         float P_disp = (bin_zr[idx]*bin_zr[idx] + bin_zi[idx]*bin_zi[idx]) * inv_w4;
 
         // PSD estimate (unbiased, normalized by ENBW)
-        float S_eta_hat = (enbw_k > EPSILON) ? (K_EFF_MIX * P_disp / enbw_k) : 0.0f;
+float S_eta_hat = 0.0f;
+if (enbw_k > EPSILON) {
+    // Hybrid normalization:
+    // For broadband seas use ENBW, for narrow deterministic waves (ν < 0.05) use unity gain.
+    const bool narrow = (nu < 0.05f);
+    const float norm = narrow ? 1.0f : enbw_k;
+    S_eta_hat = K_EFF_MIX * P_disp / norm;
+}     
         last_S_eta_hat[idx] = S_eta_hat;
 
         // Integrate moments
