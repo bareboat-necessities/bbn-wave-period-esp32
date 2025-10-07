@@ -359,46 +359,49 @@ private:
     float omega_peak_ = 0.0f, omega_peak_smooth_ = 0.0f, w_disp_ = 0.0f;
     float accel_var_ = 0.0f;
 
-    void buildGrid() {
-        // exact log grid
-        const float w_min = TWO_PI_ * F_MIN_HZ;
-        const float w_max = TWO_PI_ * F_MAX_HZ;
-        const float r     = std::pow(w_max / w_min, 1.0f / float(NBINS - 1));
-        const float hlog  = std::log(r);
+void buildGrid() {
+    // exact log grid
+    const float w_min = TWO_PI_ * F_MIN_HZ;
+    const float w_max = TWO_PI_ * F_MAX_HZ;
+    const float r     = std::pow(w_max / w_min, 1.0f / float(NBINS - 1));
+    const float hlog  = std::log(r);
 
-        for (int i = 0; i < NBINS; ++i) {
-            w_[i]  = w_min * std::pow(r, float(i));
-            w2_[i] = w_[i] * w_[i];
-        }
-        // Δω from log grid spacing
-        const float wfac = 2.0f * std::sinh(0.5f * hlog);
-        for (int i = 0; i < NBINS; ++i)
-            d_omega_[i] = std::max(EPS, w_[i] * wfac);
-
-        // initialize oscillators for nominal dt
-        for (int i = 0; i < NBINS; ++i) {
-            const float dphi = w_[i] * dt_nom_;
-            cd_[i] = std::cos(dphi);
-            sd_[i] = std::sin(dphi);
-            c_[i]  = 1.0f; s_[i] = 0.0f;
-        }
-
-        // per-bin dynamics (apply both fractional & relative floors, plus upper clamp)
-        for (int i = 0; i < NBINS; ++i) {
-            const float f_i_hz = w_[i] / TWO_PI_;
-            const float r      = std::pow(w_[NBINS-1] / w_[0], 1.0f / float(NBINS - 1));
-            const float df_bin = (r - 1.0f) * f_i_hz;
-            const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
-            const float fc     = std::min(fc_raw, MAX_FC_HZ);
-
-            const float rho    = std::exp(-2.0f * PI_ * fc * dt_nom_);
-            rho_k_[i] = rho;
-            Qk_[i]    = (1.0f - rho*rho) * (SIGMA_X0 * SIGMA_X0);
-
-            fc_[i]       = fc;
-            enbw_rad_[i] = std::max(EPS, float(M_PI) * float(M_PI) * fc); // π²·fc
-        }
+    // frequency grid and ω²
+    for (int i = 0; i < NBINS; ++i) {
+        w_[i]  = w_min * std::pow(r, float(i));
+        w2_[i] = w_[i] * w_[i];
     }
+
+    // Δω from log grid spacing (accurate second-order)
+    const float wfac = 2.0f * std::sinh(0.5f * hlog);
+    for (int i = 0; i < NBINS; ++i)
+        d_omega_[i] = std::max(EPS, w_[i] * wfac);
+
+    // initialize oscillators for nominal dt
+    for (int i = 0; i < NBINS; ++i) {
+        const float dphi = w_[i] * dt_nom_;
+        cd_[i] = std::cos(dphi);
+        sd_[i] = std::sin(dphi);
+        c_[i]  = 1.0f; s_[i] = 0.0f;
+    }
+
+    // per-bin dynamics and ENBW (using exact rho-based mapping)
+    for (int i = 0; i < NBINS; ++i) {
+        const float f_i_hz = w_[i] / TWO_PI_;
+        const float r      = std::pow(w_[NBINS-1] / w_[0], 1.0f / float(NBINS - 1));
+        const float df_bin = (r - 1.0f) * f_i_hz;
+        const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
+        const float fc     = std::min(fc_raw, MAX_FC_HZ);
+
+        const float rho = rho_from_fc(fc, dt_nom_, pole_map_);
+        rho_k_[i] = rho;
+        Qk_[i]    = (1.0f - rho * rho) * (SIGMA_X0 * SIGMA_X0);
+
+        fc_[i]       = fc;
+        enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));   // exact one-sided ENBW (rad/s)
+    }
+}
+
 };
 
 #ifdef SEA_STATE_TEST
