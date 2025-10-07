@@ -54,14 +54,17 @@ public:
     static constexpr float EPS         = 1e-12f;
     static constexpr float F_MIN_HZ    = 0.01f;
     static constexpr float F_MAX_HZ    = 3.00f;
-    static constexpr float MIN_FC_HZ   = 0.002f;   // ↓ lower floor to avoid low-ω shrinkage
     static constexpr float BETA_SPEC   = 1.0f;
 
-    // Noise/tuning
+    // Noise/tuning tuned for full sea-state range
     static constexpr float G_STD       = 9.80665f;
-    static constexpr float ACC_NOISE_G = 0.02f;    // IMU noise ≈ 0.02 g RMS
-    static constexpr float SIGMA_X0    = 0.10f;    // prior disp envelope [m]
-    static constexpr float FC_FRAC     = 0.15f;    // ↓ narrower envelopes than 0.35
+    static constexpr float ACC_NOISE_G = 0.02f;
+    static constexpr float SIGMA_X0    = 0.10f;     // initial disp envelope [m]
+
+    // fc range: smoother for low ω, faster for high ω
+    static constexpr float MIN_FC_HZ   = 0.0015f;   // 1.5 mHz floor (long swells)
+    static constexpr float MAX_FC_HZ   = 0.30f;     // 0.3 Hz ceiling (short waves)
+    static constexpr float FC_FRAC     = 0.20f;     // nominal fractional linewidth
 
     explicit SeaStateRegularity(float sample_rate_hz = 240.0f) {
         fs_nom_ = sample_rate_hz;
