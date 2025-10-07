@@ -452,36 +452,17 @@ float getDisplacementPeriodSec() const {
           // Edge: take bin center
           w_pk = omega_k_arr[i_max];
         } else {
-          // Quadratic in x = ln ω (ratio grid ≈ uniform in x)
-          const float wL = omega_k_arr[i_max - 1];
+          // Quadratic peak in x = ln ω with uniform step h = ln(r)
+          const float h  = std::log(r);
           const float w0 = omega_k_arr[i_max];
-          const float wR = omega_k_arr[i_max + 1];
-
-          const float xL = std::log(wL);
-          const float x0 = std::log(w0);
-          const float xR = std::log(wR);
-
           const float yL = last_S_eta_hat[i_max - 1];
           const float y0 = last_S_eta_hat[i_max];
           const float yR = last_S_eta_hat[i_max + 1];
 
-          // Fit parabola y = a x^2 + b x + c through (xL,yL),(x0,y0),(xR,yR)
-          // Solve for vertex x* = -b/(2a). Closed form for 3 points:
-          const float dL = xL - x0;
-          const float dR = xR - x0;
-          const float denom = std::max(EPSILON, (dL * dL * (yR - y0) - dR * dR * (yL - y0)) / (dL * dR * (dL - dR)));
-          // Above “denom” is actually 2a; derive safely:
-          // Compute a,b via finite differences (stable form):
-          float A = ( (yR - y0) / (dR * (xR - xL)) - (yL - y0) / (dL * (xR - xL)) );
-          float B = (yR - y0) / dR - A * (xR + x0);
-          float a = A;                       // a
-          float b = B;                       // b
-          float x_star = x0;                 // default
-          if (std::fabs(a) > EPSILON) {
-            x_star = -b / (2.0f * a);
-            // Clamp within neighbors to avoid overshoot
-            x_star = std::clamp(x_star, std::min(xL, xR), std::max(xL, xR));
-          }
+          const float denom = std::max(EPSILON, (yL - 2.0f * y0 + yR));
+          float delta = 0.5f * (yL - yR) / denom;   // vertex offset (in units of h)
+          delta = std::clamp(delta, -1.0f, 1.0f);   // keep between neighbors
+          const float x_star = std::log(w0) + delta * h;
           w_pk = std::exp(x_star);
         }
         omega_peak = w_pk;
