@@ -270,6 +270,10 @@ private:
         Q10_.update(S0 * S1, alpha_mom);
         A0_.update(Avar, alpha_mom);
 
+        // detect dominant peak first
+        pickPeak();
+
+        // Phase coherence around the dominant peak only
         int i0 = std::max(0, i_peak_ - 2);
         int i1 = std::min(NBINS - 1, i_peak_ + 2);
 
@@ -293,7 +297,6 @@ private:
             R_phase_ = std::clamp(std::hypot(coh_r_.get(), coh_i_.get()), 0.0f, 1.0f);
         }
 
-        pickPeak();
         computeRegularity(alpha_out, alpha_disp);
     }
 
