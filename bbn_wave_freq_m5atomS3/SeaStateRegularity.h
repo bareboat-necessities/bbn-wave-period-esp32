@@ -48,7 +48,7 @@
     NOTE: All ω here are radians per second. Your caller already passes ω_inst = 2π·freq(Hz).
 */
 
-// --- Scalar random-walk Kalman filter for ω (angular frequency, rad/s)
+// Scalar random-walk Kalman filter for ω (angular frequency, rad/s)
 struct OmegaFilter {
   float w_hat = 0.0f;  // posterior mean of ω
   float P     = 1.0f;  // posterior variance of ω
@@ -86,7 +86,7 @@ struct DebiasedEMA {
     value  = (1.0f - alpha) * value + alpha * x;
     weight = (1.0f - alpha) * weight + alpha;
   }
-  inline void decay(float alpha) {         // optional decay hook
+  inline void decay(float alpha) {       
     value  = (1.0f - alpha) * value;
     weight = (1.0f - alpha) * weight;
   }
@@ -174,10 +174,10 @@ class SeaStateRegularity {
 
   updateAlpha(dt_s);
 
-  // --- Kalman update for ω (input is the noisy tracker)
+  // Kalman update for ω (input is the noisy tracker)
   omega_kf.update(omega_inst, dt_s);
         
-// --- blend Kalman ω with spectral peak if available ---
+// blend Kalman ω with spectral peak if available
 float omega_center = omega_kf.w_hat;
 if (omega_peak_smooth > 0.0f) {
     float gamma = std::clamp(1.0f - R_phase, 0.0f, 1.0f);  // random seas -> rely on spectrum
@@ -188,10 +188,10 @@ omega_center = std::clamp(omega_center, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
   demodulateAcceleration(accel_z, omega_center, dt_s);
   updatePhaseCoherence();
 
-  // --- Use filtered ω for spectral grid centering & gates
+  // Use filtered ω for spectral grid centering & gates
   updateSpectralMoments(omega_center);
 
-        // --- smooth display frequency (does not affect estimation) ---
+        // smooth display frequency (does not affect estimation)
 w_disp = (w_disp <= 0.0f)
            ? omega_center
            : (1.0f - alpha_disp) * w_disp + alpha_disp * omega_center;
@@ -275,7 +275,7 @@ float getDisplacementPeriodSec() const {
     float bin_c[NBINS],  bin_s[NBINS];
     bool  bins_init;
 
-    // --- Kalman filter for ω
+    // Kalman filter for ω
     OmegaFilter omega_kf;
     // KF defaults: tune by sensor (units rad/s)
     float kf_Q = 1e-7f;  // process noise density
@@ -305,13 +305,13 @@ float getDisplacementPeriodSec() const {
     float omega_peak_smooth = 0.0f;
     float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
 
-// --- residual de-rotation state for phase coherence robustness ---
+// residual de-rotation state for phase coherence robustness
 float z_prev_r = 0.0f, z_prev_i = 0.0f;
 float w_res_ema = 0.0f;   // estimated residual angular velocity [rad/s]
 float alpha_wres = 0.0f;  // smoothing coefficient
 float theta_res = 0.0f;   // accumulated residual angle
 
-// --- display smoother for reported frequency (optional cosmetic) ---
+// display smoother for reported frequency
 float w_disp = 0.0f;
 float alpha_disp = 0.0f;
 
@@ -323,7 +323,7 @@ float alpha_disp = 0.0f;
       alpha_coh = 1.0f - std::exp(-dt_s / tau_coh);
       alpha_out = 1.0f - std::exp(-dt_s / tau_out);
 
-//resi dual bias tracking, display smoothing
+// residual bias tracking, display smoothing
         const float tau_dis = 15.0f;
 alpha_wres = 1.0f - std::exp(-dt_s / tau_dis);
 alpha_disp = 1.0f - std::exp(-dt_s / tau_dis);
@@ -353,7 +353,7 @@ alpha_disp = 1.0f - std::exp(-dt_s / tau_dis);
     }
 
 void updatePhaseCoherence() {
-    // --- estimate residual angular velocity from consecutive envelopes ---
+    // estimate residual angular velocity from consecutive envelopes
     float dot = z_prev_r * z_real + z_prev_i * z_imag;
     float crs = z_prev_r * z_imag - z_prev_i * z_real;
     float dtheta = std::atan2(crs, dot);
@@ -367,12 +367,12 @@ void updatePhaseCoherence() {
     z_prev_r = z_real;
     z_prev_i = z_imag;
 
-    // --- de-rotate envelope by estimated residual ---
+    // de-rotate envelope by estimated residual
     float cR = std::cos(theta_res), sR = std::sin(theta_res);
     float zr =  cR * z_real + sR * z_imag;
     float zi = -sR * z_real + cR * z_imag;
 
-    // --- compute coherence on corrected envelope ---
+    // compute coherence on corrected envelope
     float mag = std::hypot(zr, zi);
     if (mag <= EPSILON) {
         R_phase = (coh_r.isReady() && coh_i.isReady())
@@ -392,12 +392,11 @@ void updatePhaseCoherence() {
     void updateSpectralMoments(float omega_inst) {
       float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-  // Optional outlier guard vs current KF mean (kept but using KF state):
-  // If your incoming tracker spikes briefly, KF already damps it,
-  // but keep a mild gate to avoid spectral thrash if dt is large.
+  // Outlier guard vs current KF mean (kept but using KF state):
+  // keep a mild gate to avoid spectral thrash if dt is large.
   if (omega_kf.w_hat > 0.0f) {
     float ratio = w_obs / omega_kf.w_hat;
-    if (ratio < 0.75f || ratio > 1.33f) return; // a bit tighter than 0.7..1.3
+    if (ratio < 0.7f || ratio > 1.3f) return;
   }
 
       // Multi-bin extent (adaptive to narrowness)
