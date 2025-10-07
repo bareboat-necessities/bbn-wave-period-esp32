@@ -218,26 +218,38 @@ class SeaStateRegularity {
       return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
     }
 
-    // Wave height envelope and frequency blending
-    float getWaveHeightEnvelopeEst() const {
-      float m0 = M0.get();
-      if (!(m0 > 0.0f)) return 0.0f;
+// === Wave height envelope estimate ===
+// Returns an effective "significant height" that transitions
+// smoothly between deterministic (single-wave) and random-sea regimes.
+float getWaveHeightEnvelopeEst() const {
+    float m0 = M0.get();
+    if (!(m0 > 0.0f))
+        return 0.0f;
 
-      // Random-sea (Rayleigh) significant height
-      float Hs_rand = 4.0f * std::sqrt(m0);
+    // --- 1. Oceanographic random-sea definition (Rayleigh envelope)
+    // Hs_rand = 4 * sqrt(M0)
+    float Hs_rand = 4.0f * std::sqrt(m0);
 
-      // Deterministic single-wave height (2A = 2√(2M₀))
-      float Hs_mono = 2.0f * std::sqrt(2.0f * m0);
+    // --- 2. Deterministic mono-wave limit
+    // For η(t) = A·sin(ωt), var(η) = A²/2 ⇒ M0 = A²/2 ⇒ A = sqrt(2M0)
+    // Total crest-to-trough height H = 2A = 2√(2M0)
+    float Hs_mono = 2.0f * std::sqrt(2.0f * m0);
 
-      // Correction for harmonic over-amplification under strong coherence
-      float R = std::clamp(R_phase, 0.0f, 1.0f);
-      float R2 = R * R;
-      float correction = 1.0f / (1.0f + 2.0f * R2);  // softened suppression (was 4.0f)
-      Hs_mono *= correction;
+    // --- 3. Coherence-based blending
+    // Phase coherence near 1 → deterministic; near 0 → random-sea
+    float R = std::clamp(R_phase, 0.0f, 1.0f);
 
-      // Blend: coherent → corrected mono-wave, random → oceanographic
-      return R * Hs_mono + (1.0f - R) * Hs_rand;
-    }
+    // Linear fusion is physically reasonable:
+    //   R = 1 ⇒ Hs = Hs_mono
+    //   R = 0 ⇒ Hs = Hs_rand
+    float Hs_blend = R * Hs_mono + (1.0f - R) * Hs_rand;
+
+    // --- 4. Optional consistency clamp (prevents NaN)
+    if (!std::isfinite(Hs_blend) || Hs_blend <= 0.0f)
+        return 0.0f;
+
+    return Hs_blend;
+}
 
     float getDisplacementFrequencyHz() const {
       return (w_disp > EPSILON) ? (w_disp / (2.0f * PI)) : 0.0f;
