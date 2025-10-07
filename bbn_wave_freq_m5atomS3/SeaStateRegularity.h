@@ -48,6 +48,32 @@
     NOTE: All ω here are radians per second. Your caller already passes ω_inst = 2π·freq(Hz).
 */
 
+// --- Scalar random-walk Kalman filter for ω (angular frequency, rad/s)
+struct OmegaFilter {
+  float w_hat = 0.0f;  // posterior mean of ω
+  float P     = 1.0f;  // posterior variance of ω
+  float Q     = 1e-5f; // process noise density (rad^2/s^3) × dt → rad^2/s^2
+  float R     = 1e-3f; // measurement noise variance (rad^2/s^2)
+
+  OmegaFilter() = default;
+  OmegaFilter(float q, float r) : Q(q), R(r) {}
+
+  inline void reset(float w0 = 0.0f, float P0 = 1.0f) {
+    w_hat = w0; P = P0;
+  }
+
+  inline void update(float w_meas, float dt) {
+    // Predict (random-walk on ω): w_k|k-1 = w_{k-1}, P += Q*dt
+    P += std::max(0.0f, Q) * std::max(dt, 0.0f);
+
+    // Measurement update
+    const float S = P + std::max(R, 1e-12f); // innovation variance
+    const float K = P / S;                   // Kalman gain
+    w_hat += K * (w_meas - w_hat);
+    P = (1.0f - K) * P;
+  }
+};
+
 // Debiased EMA
 struct DebiasedEMA {
   float value  = 0.0f;
