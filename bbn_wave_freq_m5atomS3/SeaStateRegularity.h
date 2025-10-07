@@ -109,7 +109,6 @@ class SeaStateRegularity {
     // Tracker-robust ω clamp and smoothing (Hz range widened for real seas)
     constexpr static float OMEGA_MIN_HZ = 0.01f;  // 100 s swell
     constexpr static float OMEGA_MAX_HZ = 3.00f;  // 0.33 s wind chop
-    constexpr static float TAU_W_SEC    = 30.0f;  // EMA time-constant for ω_used
 
     // Multi-bin params (ratio spacing)
     constexpr static int   MAX_K       = 25;      // up to ±25 bins → 51 bins total
@@ -125,6 +124,7 @@ class SeaStateRegularity {
       tau_mom = tau_mom_sec;
       tau_coh = std::max(1e-3f, tau_coh_sec);
       tau_out = std::max(1e-3f, tau_out_sec);
+      omega_kf = OmegaFilter(kf_Q, kf_R);
       reset();
     }
 
@@ -148,9 +148,6 @@ class SeaStateRegularity {
       omega_bar_corr = 0.0f;
       omega_bar_naive = 0.0f;
 
-      omega_used = 0.0f;
-      alpha_w    = 0.0f;
-
       has_moments = false;
       last_dt = -1.0f;
       alpha_env = alpha_mom = alpha_coh = alpha_out = 0.0f;
@@ -169,16 +166,28 @@ class SeaStateRegularity {
 
     // Main update
     void update(float dt_s, float accel_z, float omega_inst) {
-      if (!(dt_s > 0.0f)) return;
-      if (!std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
 
-      last_accel = accel_z;
+  if (!(dt_s > 0.0f)) return;
+  if (!std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
 
-      updateAlpha(dt_s);
-      demodulateAcceleration(accel_z, omega_inst, dt_s);
-      updatePhaseCoherence();
-      updateSpectralMoments(omega_inst);
-      computeRegularityOutput();
+  last_accel = accel_z;
+
+  updateAlpha(dt_s);
+
+  // --- Kalman update for ω (input is the noisy tracker)
+  omega_kf.update(omega_inst, dt_s);
+
+  // --- Use filtered ω for demodulation (reduces residual baseband rotation)
+  const float omega_demod = std::clamp(omega_kf.w_hat, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+
+  demodulateAcceleration(accel_z, omega_demod, dt_s);
+  updatePhaseCoherence();
+
+  // --- Use filtered ω for spectral grid centering & gates
+  updateSpectralMoments(omega_demod);
+
+  computeRegularityOutput();
+
     }
 
     // Getters
@@ -254,10 +263,6 @@ float getDisplacementPeriodSec() const {
     float last_dt;
     float alpha_env, alpha_mom, alpha_coh, alpha_out;
 
-    // ω_used smoothing
-    float omega_used;
-    float alpha_w;
-
     // demod state (narrow diagnostic)
     float phi;
     float z_real, z_imag;
@@ -269,6 +274,12 @@ float getDisplacementPeriodSec() const {
     float bin_zr[NBINS], bin_zi[NBINS];
     float bin_c[NBINS],  bin_s[NBINS];
     bool  bins_init;
+
+    // --- Kalman filter for ω
+    OmegaFilter omega_kf;
+    // KF defaults: tune by sensor (units rad/s)
+    float kf_Q = 1e-5f;  // process noise density
+    float kf_R = 1e-3f;  // measurement variance
 
     // moments (primary)
     DebiasedEMA M0, M1, M2;
@@ -301,7 +312,6 @@ float getDisplacementPeriodSec() const {
       alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
       alpha_coh = 1.0f - std::exp(-dt_s / tau_coh);
       alpha_out = 1.0f - std::exp(-dt_s / tau_out);
-      alpha_w   = 1.0f - std::exp(-dt_s / TAU_W_SEC);
       last_dt = dt_s;
     }
 
