@@ -45,7 +45,7 @@ struct DebiasedEMA {
     inline bool  isReady() const { return weight > 1e-6f; }
 };
 
-template<int MAX_K = 20>  // 41 bins by default (2*20+1); use 25 for 51 bins
+template<int MAX_K = 15>  // 31 bins by default (2*20+1); use 25 for 51 bins
 class SeaStateRegularity {
 public:
     static constexpr int   NBINS       = 2 * MAX_K + 1;
