@@ -128,6 +128,9 @@ public:
         for (int i=0;i<NBINS;i++){ bin_zr[i]=bin_zi[i]=0.0f; bin_c[i]=1.0f; bin_s[i]=0.0f; }
         bins_init=false;
         last_accel=0.0f;
+
+        omega_peak = 0.0f;
+        for (int i = 0; i < NBINS; ++i) last_S_eta_hat[i] = 0.0f;
     }
 
     // Main update
@@ -158,7 +161,8 @@ public:
     }
 
     float getDisplacementFrequencyHz() const {
-        return (omega_bar_corr > EPSILON) ? (omega_bar_corr / (2.0f * PI)) : 0.0f;
+         // Report the spectral peak (mode) of S_eta(ω), matching PM/JONSWAP fp/Tp
+         return (omega_peak > EPSILON) ? (omega_peak / (2.0f * PI)) : 0.0f;
     }
 
     float getDisplacementFrequencyNaiveHz() const {
@@ -217,6 +221,10 @@ private:
     float omega_bar_corr;
     float omega_bar_naive;
     bool  has_moments;
+
+     // Peak tracking for S_eta(ω)
+     float omega_peak = 0.0f;                 // spectral-peak (mode) of S_eta
+     float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
 
     // === Helpers ===========================================================
     void updateAlpha(float dt_s) {
@@ -370,6 +378,7 @@ void updateSpectralMoments(float omega_inst) {
 
         // PSD estimate (unbiased, normalized by ENBW)
         float S_eta_hat = (enbw_k > EPSILON) ? (K_EFF_MIX * P_disp / enbw_k) : 0.0f;
+        last_S_eta_hat[idx] = S_eta_hat;
 
         // Integrate moments
         float domega = (K == 0) ? std::max(EPSILON, enbw_k) : domega_k_arr[idx];
@@ -380,6 +389,58 @@ void updateSpectralMoments(float omega_inst) {
         // Acceleration variance (σ²[a]) = ∫ ω⁴ S_η dω
         A_var += (omega_k*omega_k*omega_k*omega_k) * S_eta_hat * domega;
     }
+
+    // ---- Find spectral peak ω_pk of S_eta via quadratic interpolation in log-ω ----
+{
+    // Find max bin within the active window
+    int i_max = -1;
+    float s_max = -1.0f;
+    for (int i = left; i <= right; ++i) {
+        float s = last_S_eta_hat[i];
+        if (s > s_max) { s_max = s; i_max = i; }
+    }
+
+    float w_pk = 0.0f;
+    if (i_max < 0) {
+        w_pk = 0.0f;
+    } else if (i_max == left || i_max == right) {
+        // Edge: take bin center
+        w_pk = omega_k_arr[i_max];
+    } else {
+        // Quadratic in x = ln ω (ratio grid ≈ uniform in x)
+        const float wL = omega_k_arr[i_max - 1];
+        const float w0 = omega_k_arr[i_max];
+        const float wR = omega_k_arr[i_max + 1];
+
+        const float xL = std::log(wL);
+        const float x0 = std::log(w0);
+        const float xR = std::log(wR);
+
+        const float yL = last_S_eta_hat[i_max - 1];
+        const float y0 = last_S_eta_hat[i_max];
+        const float yR = last_S_eta_hat[i_max + 1];
+
+        // Fit parabola y = a x^2 + b x + c through (xL,yL),(x0,y0),(xR,yR)
+        // Solve for vertex x* = -b/(2a). Closed form for 3 points:
+        const float dL = xL - x0;
+        const float dR = xR - x0;
+        const float denom = std::max(EPSILON, (dL*dL*(yR - y0) - dR*dR*(yL - y0)) / (dL*dR*(dL - dR)));
+        // Above “denom” is actually 2a; derive safely:
+        // Compute a,b via finite differences (stable form):
+        float A = ( (yR - y0)/(dR*(xR - xL)) - (yL - y0)/(dL*(xR - xL)) );
+        float B = (yR - y0)/dR - A*(xR + x0);
+        float a = A;                       // a
+        float b = B;                       // b
+        float x_star = x0;                 // default
+        if (std::fabs(a) > EPSILON) {
+            x_star = -b / (2.0f * a);
+            // Clamp within neighbors to avoid overshoot
+            x_star = std::clamp(x_star, std::min(xL,xR), std::max(xL,xR));
+        }
+        w_pk = std::exp(x_star);
+    }
+    omega_peak = w_pk;
+}
 
     has_moments = true;
 
