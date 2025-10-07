@@ -352,8 +352,11 @@ private:
         // per-bin dynamic + process noise (stationary variance σ_x^2)
         for (int i = 0; i < NBINS; ++i) {
             const float f_i_hz = w_[i] / TWO_PI_;
+      
+            // adaptive per-bin linewidth: fc = clamp(FC_FRAC * df_bin, MIN_FC_HZ, MAX_FC_HZ)
             const float df_bin = (r - 1.0f) * f_i_hz;
-            const float fc     = std::max(MIN_FC_HZ, FC_FRAC * df_bin);
+            const float fc     = std::clamp(FC_FRAC * df_bin, MIN_FC_HZ, MAX_FC_HZ);
+           
             const float rho    = std::exp(-2.0f * PI_ * fc * dt_nom_);
             rho_k_[i] = rho;
             const float sigma_x2 = SIGMA_X0 * SIGMA_X0;
