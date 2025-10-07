@@ -508,8 +508,9 @@ if (R_phase > 0.95f && nu < 0.15f) {
     float w_coh = std::clamp((R_phase - 0.95f) / 0.05f, 0.0f, 1.0f); // linear ramp 0→1 between 0.95–1.0
     nu *= (1.0f - w_coh);  // suppress artificial bandwidth
 }
-        R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
 
+        R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
+        
         // Output = max of phase vs spectral (as you requested earlier)
         float R_combined = std::max(R_phase, R_spec);
         R_out.update(R_combined, alpha_out);
