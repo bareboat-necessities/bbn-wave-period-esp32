@@ -53,7 +53,7 @@ struct OmegaFilter {
   float w_hat = 0.0f;  // posterior mean of ω
   float P     = 1.0f;  // posterior variance of ω
   float Q     = 1e-7f; // process noise density (rad^2/s^3) × dt → rad^2/s^2
-  float R     = 1e-1f; // measurement noise variance (rad^2/s^2)
+  float R     = 9e-1f; // measurement noise variance (rad^2/s^2)
 
   OmegaFilter() = default;
   OmegaFilter(float q, float r) : Q(q), R(r) {}
@@ -269,7 +269,7 @@ float getDisplacementPeriodSec() const {
     OmegaFilter omega_kf;
     // KF defaults: tune by sensor (units rad/s)
     float kf_Q = 1e-7f;  // process noise density
-    float kf_R = 1e-1f;  // measurement variance
+    float kf_R = 9e-1f;  // measurement variance
 
     // moments (primary)
     DebiasedEMA M0, M1, M2;
