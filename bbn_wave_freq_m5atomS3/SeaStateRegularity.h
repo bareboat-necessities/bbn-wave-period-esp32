@@ -323,9 +323,10 @@ float alpha_disp = 0.0f;
       alpha_coh = 1.0f - std::exp(-dt_s / tau_coh);
       alpha_out = 1.0f - std::exp(-dt_s / tau_out);
 
-// 5-s residual bias tracking, 5-s display smoothing
-alpha_wres = 1.0f - std::exp(-dt_s / 5.0f);
-alpha_disp = 1.0f - std::exp(-dt_s / 5.0f);
+//resi dual bias tracking, display smoothing
+        const float tau_dis = 15.0f;
+alpha_wres = 1.0f - std::exp(-dt_s / tau_dis);
+alpha_disp = 1.0f - std::exp(-dt_s / tau_dis);
         
       last_dt = dt_s;
     }
