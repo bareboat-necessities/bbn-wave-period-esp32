@@ -358,15 +358,13 @@ float getDisplacementPeriodSec() const {
     void updateSpectralMoments(float omega_inst) {
       float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-      // Smooth ω_used
-      if (omega_used <= 0.0f) omega_used = w_obs;
-      else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
-
-      // Outlier gate: skip updates if tracker jumps too far
-      if (omega_used > 0.0f) {
-        float ratio = w_obs / omega_used;
-        if (ratio < 0.7f || ratio > 1.3f) return;
-      }
+  // Optional outlier guard vs current KF mean (kept but using KF state):
+  // If your incoming tracker spikes briefly, KF already damps it,
+  // but keep a mild gate to avoid spectral thrash if dt is large.
+  if (omega_kf.w_hat > 0.0f) {
+    float ratio = w_obs / omega_kf.w_hat;
+    if (ratio < 0.75f || ratio > 1.33f) return; // a bit tighter than 0.7..1.3
+  }
 
       // Multi-bin extent (adaptive to narrowness)
       int   K    = MAX_K;        // always use full span
