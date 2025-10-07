@@ -45,7 +45,7 @@ struct DebiasedEMA {
     inline bool  isReady() const { return weight > 1e-6f; }
 };
 
-template<int MAX_K = 20>  // 41 bins by default (2*20+1)
+template<int MAX_K = 20>  // 41 bins by default (2*20+1); use 25 for 51 bins
 class SeaStateRegularity {
 public:
     static constexpr int   NBINS       = 2 * MAX_K + 1;
@@ -54,14 +54,14 @@ public:
     static constexpr float EPS         = 1e-12f;
     static constexpr float F_MIN_HZ    = 0.01f;
     static constexpr float F_MAX_HZ    = 3.00f;
-    static constexpr float MIN_FC_HZ   = 0.02f;
+    static constexpr float MIN_FC_HZ   = 0.002f;   // ↓ lower floor to avoid low-ω shrinkage
     static constexpr float BETA_SPEC   = 1.0f;
 
     // Noise/tuning
     static constexpr float G_STD       = 9.80665f;
     static constexpr float ACC_NOISE_G = 0.02f;    // IMU noise ≈ 0.02 g RMS
     static constexpr float SIGMA_X0    = 0.10f;    // prior disp envelope [m]
-    static constexpr float FC_FRAC     = 0.35f;    // linewidth = 0.35 * Δf_bin
+    static constexpr float FC_FRAC     = 0.15f;    // ↓ narrower envelopes than 0.35
 
     explicit SeaStateRegularity(float sample_rate_hz = 240.0f) {
         fs_nom_ = sample_rate_hz;
@@ -92,7 +92,7 @@ public:
     inline void update(float dt, float accel_z) {
         if (!(dt > 0.0f) || !std::isfinite(accel_z)) return;
         const bool recompute = std::fabs(dt - dt_nom_) > tol_dt_;
-        if (recompute) dt_nom_ = dt;  // keep oscillators consistent if dt wanders
+        if (recompute) dt_nom_ = dt;  // track actual dt
 
         // --- Bias KF on raw a: a = b + noise (random walk) ---
         b_P_ += b_Q_;                                 // predict
@@ -110,17 +110,34 @@ public:
         const float Var_hp  = std::max(a2_ema_.get(), b_P_ + b_R_);
         const float R_demod = 0.5f * Var_hp;  // cos/sin halve variance
 
+        // If dt changed: refresh per-bin dynamics and ENBW consistently
+        if (recompute) {
+            // refresh oscillator steps
+            for (int i = 0; i < NBINS; ++i) {
+                const float dphi = w_[i] * dt_nom_;
+                cd_[i] = std::cos(dphi);
+                sd_[i] = std::sin(dphi);
+            }
+            // refresh dynamics tied to dt (ρ, Q) and ENBW (π²·f_c)
+            const float r = std::pow(w_[NBINS-1] / w_[0], 1.0f / float(NBINS - 1));
+            for (int i = 0; i < NBINS; ++i) {
+                const float f_i_hz = w_[i] / TWO_PI_;
+                const float df_bin = (r - 1.0f) * f_i_hz;
+                const float fc     = std::max(MIN_FC_HZ, FC_FRAC * df_bin);
+                const float rho    = std::exp(-2.0f * PI_ * fc * dt_nom_);
+                rho_k_[i] = rho;
+                const float sigma_x2 = SIGMA_X0 * SIGMA_X0;
+                Qk_[i] = (1.0f - rho*rho) * sigma_x2;   // AR(1) stationary
+                fc_[i]       = fc;
+                enbw_rad_[i] = std::max(EPS, float(M_PI) * float(M_PI) * fc); // π²·fc (rad/s)
+            }
+        }
+
         // --- advance oscillators + per-bin scalar KFs ---
         for (int i = 0; i < NBINS; ++i) {
             // advance local oscillator
-            float cd = cd_[i], sd = sd_[i];
-            if (recompute) {
-                const float dphi = w_[i] * dt;
-                cd = std::cos(dphi);
-                sd = std::sin(dphi);
-                cd_[i] = cd; sd_[i] = sd;
-            }
             const float c0 = c_[i], s0 = s_[i];
+            const float cd = cd_[i], sd = sd_[i];
             const float c1 = c0 * cd - s0 * sd;
             const float s1 = c0 * sd + s0 * cd;
             c_[i] = c1; s_[i] = s1;
@@ -157,13 +174,14 @@ public:
                 P_ii_[i] = std::max(P_ii_[i], 0.0f);
             }
 
-            // posterior power (ENBW-compensated displacement spectrum)
+            // Posterior displacement-spectrum (ENBW-compensated)
             const float mu2 = mu_r_[i]*mu_r_[i] + mu_i_[i]*mu_i_[i];
             const float trP = P_rr_[i] + P_ii_[i];
-            const float Seta = 0.5f * (mu2 + trP) / enbw_rad_[i]; // PSD at ω_k
+            const float Seta = 0.5f * (mu2 + trP) / enbw_rad_[i]; // PSD at ω_k  [m²·s]
 
-            Epow_pk_[i]   = 0.5f * mu2;  // for peak picking ONLY (stable)
-            Seta_last_[i] = Seta;        // for moments (unbiased expectation)
+            // Use the SAME power for both peak picking and moments (no bias)
+            Epow_pk_[i]   = Seta;
+            Seta_last_[i] = Seta;
         }
 
         // --- spectral moments from posterior ---
@@ -173,10 +191,10 @@ public:
             M0 += mass;
             M1 += mass * w_[i];
             M2 += mass * w2_[i];
-            Avar += mass * w2_[i] * w2_[i];  // ⟨a²⟩ = ∫ ω⁴ Sη dω (here integrated via mass*ω⁴)
+            Avar += mass * w2_[i] * w2_[i];  // ⟨a²⟩ = ∫ ω⁴ Sη dω
         }
 
-        // --- peak on μ²-only (refined)
+        // --- peak frequency (log-parabolic refinement on ENBW-compensated power) ---
         int ipk = 0; float smax = Epow_pk_[0];
         for (int i = 1; i < NBINS; ++i) if (Epow_pk_[i] > smax) { smax = Epow_pk_[i]; ipk = i; }
         float wpk = w_[ipk];
@@ -197,10 +215,13 @@ public:
                            : omega_peak_smooth_ + alpha_pk * (wpk - omega_peak_smooth_);
         if (omega_peak_smooth_ > 0.0f) w_disp_ = omega_peak_smooth_;
 
-        // --- phase coherence around peak using posterior means ---
+        // --- phase coherence around peak using ω-span window (frequency-invariant)
         {
-            const int i0 = std::max(0, ipk - 2);
-            const int i1 = std::min(NBINS - 1, ipk + 2);
+            const float span = 3.0f * enbw_rad_[ipk];   // integrate about ±3 ENBWs
+            int i0 = ipk, i1 = ipk;
+            while (i0 > 0            && std::fabs(w_[i0-1] - wpk) <= span) --i0;
+            while (i1 < NBINS - 1    && std::fabs(w_[i1+1] - wpk) <= span) ++i1;
+
             float Ur = 0.0f, Ui = 0.0f, Wm = 0.0f;
             for (int i = i0; i <= i1; ++i) {
                 const float mr = mu_r_[i], mi = mu_i_[i];
@@ -283,15 +304,15 @@ private:
     float mu_r_[NBINS]{}, mu_i_[NBINS]{};
     float P_rr_[NBINS]{}, P_ii_[NBINS]{};
 
-    // posterior power (moments) and μ²-only (peak)
+    // posterior power (moments) and power used for peak (same quantity now)
     float Seta_last_[NBINS]{};
     float Epow_pk_[NBINS]{};
 
     // bias (DC/tilt) scalar KF on raw acceleration: a = b + noise
     float b_mu_ = 0.0f;
-    float b_P_  = (0.10f * G_STD) * (0.10f * G_STD);            // prior variance
-    float b_Q_  = (0.002f * G_STD) * (0.002f * G_STD);          // process var per sample (slow drift)
-    float b_R_  = (ACC_NOISE_G * G_STD) * (ACC_NOISE_G * G_STD);// measurement variance
+    float b_P_  = (0.10f * G_STD) * (0.10f * G_STD);             // prior variance
+    float b_Q_  = (0.002f * G_STD) * (0.002f * G_STD);           // process var per sample (slow drift)
+    float b_R_  = (ACC_NOISE_G * G_STD) * (ACC_NOISE_G * G_STD); // measurement variance
 
     // trackers
     DebiasedEMA a2_ema_;
