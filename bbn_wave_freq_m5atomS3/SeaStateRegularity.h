@@ -205,19 +205,36 @@ float getWaveHeightEnvelopeEst() const {
 
     // Peak (mode) of S_eta(ω)  → f_p and T_p
 // --- Frequency (Hz) and Period (s) from coherence-weighted fusion ---
+// --- Wave height envelope and frequency blending corrected version ---
+float getWaveHeightEnvelopeEst() const {
+    float m0 = M0.get();
+    if (!(m0 > 0.0f)) return 0.0f;
+
+    // Random-sea (Rayleigh) significant height
+    float Hs_rand = 4.0f * std::sqrt(m0);
+
+    // Deterministic single-wave height (2A = 2√(2M₀))
+    float Hs_mono = 2.0f * std::sqrt(2.0f * m0);
+
+    // Correction for harmonic over-amplification under strong coherence
+    float R = std::clamp(R_phase, 0.0f, 1.0f);
+    float R2 = R * R;
+    float correction = 1.0f / (1.0f + 2.0f * R2);  // softened suppression (was 4.0f)
+    Hs_mono *= correction;
+
+    // Blend: coherent → corrected mono-wave, random → oceanographic
+    return R * Hs_mono + (1.0f - R) * Hs_rand;
+}
+
+// --- Frequency (Hz) and Period (s) from coherence-weighted fusion ---
 float getDisplacementFrequencyHz() const {
-    // Physically meaningful average frequency (moments-based)
     float w_mean = omega_bar_corr;
     float w_peak = omega_peak_smooth;
     if (w_mean <= EPSILON && w_peak <= EPSILON) return 0.0f;
 
     float R = std::clamp(R_phase, 0.0f, 1.0f);
-    // Blend: random → ω_peak, coherent → ω_mean (more stable)
+    // Blend: coherent → mean, random → peak
     float w_blend = R * w_mean + (1.0f - R) * w_peak;
-
-    // Guard against downward bias for nearly coherent waves
-    if (R > 0.95f)
-        w_blend = std::max(w_blend, w_peak * 0.9f); // prevent Tp explosion
 
     return w_blend / (2.0f * PI);
 }
