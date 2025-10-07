@@ -160,18 +160,18 @@ public:
         return (m0 > 0.0f) ? 4.0f * std::sqrt(std::max(0.0f, m0)) : 0.0f;
     }
 
-    float getDisplacementFrequencyHz() const {
-         // Report the spectral peak (mode) of S_eta(ω), matching PM/JONSWAP fp/Tp
-         return (omega_peak > EPSILON) ? (omega_peak / (2.0f * PI)) : 0.0f;
-    }
-
     float getDisplacementFrequencyNaiveHz() const {
         return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
     }
 
-    float getDisplacementPeriodSec() const {
-        return (omega_bar_corr > EPSILON) ? (2.0f * PI / omega_bar_corr) : 0.0f;
-    }
+ // Peak (mode) of S_eta(ω)  → f_p and T_p
+float getDisplacementFrequencyHz() const {
+    return (omega_peak_smooth > EPSILON) ? (omega_peak_smooth / (2.0f * PI)) : 0.0f;
+}
+
+float getDisplacementPeriodSec() const {
+    return (omega_peak_smooth > EPSILON) ? (2.0f * PI / omega_peak_smooth) : 0.0f;
+}
 
     float getAccelerationVariance() const { return A0.get(); }
 
