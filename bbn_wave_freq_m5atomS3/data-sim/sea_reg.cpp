@@ -183,8 +183,7 @@ static ConvergedStats run_from_csv(TrackerType tracker,
         if (std::isfinite(freq)) {
             last_freq = freq;
             if (rec.time >= WARMUP_SECONDS) {
-                regFilter.update(DELTA_T, noisy_accel,
-                                 static_cast<float>(2.0 * M_PI * freq));
+                regFilter.update(DELTA_T, noisy_accel /*, static_cast<float>(2.0 * M_PI * freq)*/);
                 ofs << rec.time << ","
                     << (2.0 * M_PI * freq) << ","
                     << regFilter.getNarrowness() << ","
