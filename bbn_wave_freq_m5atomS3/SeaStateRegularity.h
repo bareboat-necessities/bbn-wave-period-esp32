@@ -176,20 +176,28 @@ class SeaStateRegularity {
     // Oceanographically correct Hs for random seas,
     // physically correct 2A for coherent waves.
     // Smooth fusion using phase coherence as weight.
-    float getWaveHeightEnvelopeEst() const {
-      float m0 = M0.get();
-      if (!(m0 > 0.0f)) return 0.0f;
+float getWaveHeightEnvelopeEst() const {
+    float m0 = M0.get();
+    if (!(m0 > 0.0f)) return 0.0f;
 
-      // Oceanographic "significant height" for random sea
-      float Hs_ocean = 4.0f * std::sqrt(std::max(0.0f, m0));
-      // Deterministic single-wave height = 2A = 2√(2M₀)
-      float Hs_mono  = 2.0f * std::sqrt(2.0f * std::max(0.0f, m0));
+    // Oceanographic random-sea estimate (Rayleigh envelope)
+    float Hs_rand = 4.0f * std::sqrt(m0);
 
-      // Use phase coherence as blend weight
-      float w_coh = std::clamp(R_phase, 0.0f, 1.0f);
-      // Blend: coherent → Hs_mono, random → Hs_ocean
-      return w_coh * Hs_mono + (1.0f - w_coh) * Hs_ocean;
-    }
+    // Deterministic (mono-wave) estimate: 2 * mean envelope amplitude
+    // amplitude ≈ sqrt(2*M0) for pure sine, but measured phase-coherence envelope is cleaner
+    float Hs_mono = 2.0f * std::sqrt(2.0f * m0);
+
+    // Additional correction: suppress unrealistically large M0 for coherent waves
+    // (caused by harmonic 1/ω^4 amplification)
+    float R = std::clamp(R_phase, 0.0f, 1.0f);
+    float R2 = R * R;
+    // Limit the scaling gain as wave becomes regular
+    float correction = 1.0f / (1.0f + 4.0f * R2);   // 1→1/5 range
+    Hs_mono *= correction;
+
+    // Blend: coherent → corrected mono-wave, random → oceanographic
+    return R * Hs_mono + (1.0f - R) * Hs_rand;
+}
 
     float getDisplacementFrequencyNaiveHz() const {
       return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
