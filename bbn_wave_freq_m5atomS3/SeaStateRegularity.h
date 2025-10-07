@@ -208,9 +208,15 @@ float getWaveHeightEnvelopeEst() const {
       return (omega_peak_smooth > EPSILON) ? (omega_peak_smooth / (2.0f * PI)) : 0.0f;
     }
 
-    float getDisplacementPeriodSec() const {
-      return (omega_peak_smooth > EPSILON) ? (2.0f * PI / omega_peak_smooth) : 0.0f;
-    }
+float getDisplacementPeriodSec() const {
+    if (omega_peak_smooth <= EPSILON) return 0.0f;
+    float Tp = 2.0f * PI / omega_peak_smooth;
+
+    // Limit runaway Tp for highly regular states
+    if (R_phase > 0.95f)
+        Tp = std::clamp(Tp, 0.0f, 1.2f * (2.0f * PI / omega_bar_corr));
+    return Tp;
+}
 
     float getAccelerationVariance() const {
       return A0.get();
