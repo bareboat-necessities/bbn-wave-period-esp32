@@ -57,8 +57,8 @@ template<int MAX_K = 20>  // 41 bins (2*20+1). Use 25 for 51-bin version.
 class SeaStateRegularity {
 public:
     static constexpr int   NBINS       = 2 * MAX_K + 1;
-    static constexpr float PI          = 3.14159265358979323846f;
-    static constexpr float TWO_PI_      = 2.0f * PI;
+    static constexpr float PI_         = 3.14159265358979323846f;
+    static constexpr float TWO_PI_     = 2.0f * PI_;
     static constexpr float EPS         = 1e-12f;
     static constexpr float STEP_LOG    = 0.06f;
     static constexpr float F_MIN_HZ    = 0.01f;
@@ -216,7 +216,7 @@ private:
         for (int i = 0; i < NBINS; ++i) {
             fc_k_[i] = std::max(MIN_FC_HZ, STEP_LOG * (w_[i] / TWO_PI_));
             alpha_k_[i] = 1.0f - std::exp(-dt_nom_ * TWO_PI_ * fc_k_[i]);
-            float ENBW = PI * PI * fc_k_[i];
+            float ENBW = PI_ * PI_ * fc_k_[i];
             KEFF_over_ENBW_[i] = K_EFF_MIX / std::max(ENBW, EPS);
             float dphi = w_[i] * dt_nom_;
             cd_[i] = std::cos(dphi);
