@@ -191,6 +191,11 @@ omega_center = std::clamp(omega_center, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
   // --- Use filtered ω for spectral grid centering & gates
   updateSpectralMoments(omega_center);
 
+        // --- smooth display frequency (does not affect estimation) ---
+w_disp = (w_disp <= 0.0f)
+           ? omega_center
+           : (1.0f - alpha_disp) * w_disp + alpha_disp * omega_center;
+
   computeRegularityOutput();
 
     }
@@ -235,11 +240,11 @@ float getWaveHeightEnvelopeEst() const {
 }
 
 float getDisplacementFrequencyHz() const {
-  return (omega_kf.w_hat > EPSILON) ? (omega_kf.w_hat / (2.0f * PI)) : 0.0f;
+    return (w_disp > EPSILON) ? (w_disp / (2.0f * PI)) : 0.0f;
 }
 
 float getDisplacementPeriodSec() const {
-  return (omega_kf.w_hat > EPSILON) ? (2.0f * PI / omega_kf.w_hat) : 0.0f;
+    return (w_disp > EPSILON) ? (2.0f * PI / w_disp) : 0.0f;
 }
 
     float getAccelerationVariance() const {
