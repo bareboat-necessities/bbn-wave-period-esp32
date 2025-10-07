@@ -184,44 +184,76 @@ private:
     float omega_bar_naive_ = 0, omega_bar_corr_ = 0;
     float omega_peak_ = 0, omega_peak_smooth_ = 0, w_disp_ = 0;
 
+    int i_peak_ = 0;
+
     void buildGrid() {
         const float w_min = TWO_PI_ * F_MIN_HZ;
         const float w_max = TWO_PI_ * F_MAX_HZ;
-        const float w_geo = std::sqrt(w_min * w_max);
-        const float r = 1.0f + STEP_LOG;
+
+        // Exact log grid over [w_min, w_max]
+        const float r    = std::pow(w_max / w_min, 1.0f / float(NBINS - 1));
         const float hlog = std::log(r);
 
-        w_[MAX_K] = w_geo;
-        for (int k = 1; k <= MAX_K; ++k) {
-            w_[MAX_K + k] = w_[MAX_K + k - 1] * r;
-            w_[MAX_K - k] = w_[MAX_K - k + 1] / r;
-        }
-
         for (int i = 0; i < NBINS; ++i) {
-            w_[i] = std::clamp(w_[i], w_min, w_max);
-            w2_[i] = w_[i] * w_[i];
+            w_[i]   = w_min * std::pow(r, float(i));
+            w2_[i]  = w_[i] * w_[i];
             inv_w4_[i] = 1.0f / std::max(w2_[i] * w2_[i], EPS);
         }
 
-        const float wfac = 2.0f * std::sinh(0.5f * hlog);
+        // Midpoint-based Δω for a log grid: dω ≈ w * (√r − 1/√r)
+        const float wfac = 2.0f * std::sinh(0.5f * hlog);      // = √r − 1/√r
         for (int i = 0; i < NBINS; ++i) {
-            float domega = w_[i] * wfac;
-            if (i == 0) domega = w_[i] * (std::exp(0.5f * hlog) - 1);
-            else if (i == NBINS - 1) domega = w_[i] * (1 - std::exp(-0.5f * hlog));
-            d_omega_[i] = std::max(domega, EPS);
-            w2domega_[i] = w2_[i] * d_omega_[i];
-            w4domega_[i] = w2_[i] * w2_[i] * d_omega_[i];
+            const float domega = std::max(EPS, w_[i] * wfac);
+            d_omega_[i]  = domega;
+            w2domega_[i] = w2_[i] * domega;
+            w4domega_[i] = w2_[i] * w2_[i] * domega;
         }
 
+        // LPF cutoff: narrower than bin spacing (good isolation, high R_phase)
+        // Δf_bin ≈ (r − 1) * f
+        constexpr float C_FC = 0.35f;   // 0.3–0.5 works; 0.35 is a solid start
         for (int i = 0; i < NBINS; ++i) {
-            fc_k_[i] = std::max(MIN_FC_HZ, STEP_LOG * (w_[i] / TWO_PI_));
-            alpha_k_[i] = 1.0f - std::exp(-dt_nom_ * TWO_PI_ * fc_k_[i]);
-            float ENBW = PI_ * PI_ * fc_k_[i];
-            KEFF_over_ENBW_[i] = K_EFF_MIX / std::max(ENBW, EPS);
-            float dphi = w_[i] * dt_nom_;
+            const float f_i_hz  = w_[i] / TWO_PI_;
+            const float df_bin  = (r - 1.0f) * f_i_hz;               // Hz
+            const float fc_hz   = std::max(MIN_FC_HZ, C_FC * df_bin);
+            fc_k_[i]   = fc_hz;
+            alpha_k_[i]= 1.0f - std::exp(-dt_nom_ * TWO_PI_ * fc_hz);
+
+            // ENBW in rad/s, single-sided: ENBW_ω = (π/2)*ω_c = π² * fc
+            const float ENBW_omega = PI_ * PI_ * fc_hz;
+            KEFF_over_ENBW_[i] = K_EFF_MIX / std::max(ENBW_omega, EPS);
+
+            const float dphi = w_[i] * dt_nom_;
             cd_[i] = std::cos(dphi);
             sd_[i] = std::sin(dphi);
         }
+    }
+
+    void pickPeak() {
+        int i_max = 0; float s_max = Seta_last_[0];
+        for (int i = 1; i < NBINS; ++i)
+            if (Seta_last_[i] > s_max) { s_max = Seta_last_[i]; i_max = i; }
+
+        // Log-parabolic refine around the local max
+        float wpk = w_[i_max];
+        if (i_max > 0 && i_max < NBINS - 1) {
+            float hlog = std::log(w_[i_max + 1] / w_[i_max]); // == log(r)
+            float yL = Seta_last_[i_max - 1];
+            float y0 = Seta_last_[i_max];
+            float yR = Seta_last_[i_max + 1];
+            float denom = std::max(EPS, (yL - 2 * y0 + yR));
+            float delta = 0.5f * (yL - yR) / denom;
+            delta = std::clamp(delta, -1.0f, 1.0f);
+            float xstar = std::log(w_[i_max]) + delta * hlog;
+            wpk = std::exp(xstar);
+        }
+        i_peak_ = i_max;                                    // <— remember it
+        omega_peak_ = wpk;
+
+        const float alpha_mom = 1.0f - std::exp(-dt_nom_ / tau_mom_);
+        omega_peak_smooth_ = (omega_peak_smooth_ <= 0.0f)
+                             ? omega_peak_
+                             : omega_peak_smooth_ + alpha_mom * (omega_peak_ - omega_peak_smooth_);
     }
 
     void updateMomentsAndRegularity(float S0, float S1, float S2, float Avar,
@@ -238,8 +270,24 @@ private:
         Q10_.update(S0 * S1, alpha_mom);
         A0_.update(Avar, alpha_mom);
 
-        if (W > EPS) {
-            float urW = sumWr / W, uiW = sumWi / W;
+        int i0 = std::max(0, i_peak_ - 2);
+        int i1 = std::min(NBINS - 1, i_peak_ + 2);
+
+        float sum_r = 0.0f, sum_i = 0.0f, Wloc = 0.0f;
+        for (int i = i0; i <= i1; ++i) {
+            const float zr = zr_[i], zi = zi_[i];
+            const float m  = std::sqrt(zr * zr + zi * zi);
+            if (m > EPS) {
+                const float ur = zr / m, ui = zi / m;
+                const float mass = Seta_last_[i] * d_omega_[i];
+                sum_r += mass * ur;
+                sum_i += mass * ui;
+                Wloc  += mass;
+            }
+        }
+        if (Wloc > EPS) {
+            const float urW = sum_r / Wloc;
+            const float uiW = sum_i / Wloc;
             coh_r_.update(urW, alpha_coh);
             coh_i_.update(uiW, alpha_coh);
             R_phase_ = std::clamp(std::hypot(coh_r_.get(), coh_i_.get()), 0.0f, 1.0f);
@@ -247,30 +295,6 @@ private:
 
         pickPeak();
         computeRegularity(alpha_out, alpha_disp);
-    }
-
-    void pickPeak() {
-        int i_max = 0; float s_max = Seta_last_[0];
-        for (int i = 1; i < NBINS; ++i)
-            if (Seta_last_[i] > s_max) { s_max = Seta_last_[i]; i_max = i; }
-
-        float wpk = w_[i_max];
-        if (i_max > 0 && i_max < NBINS - 1) {
-            float hlog = std::log(1.0f + STEP_LOG);
-            float yL = Seta_last_[i_max - 1];
-            float y0 = Seta_last_[i_max];
-            float yR = Seta_last_[i_max + 1];
-            float denom = std::max(EPS, (yL - 2 * y0 + yR));
-            float delta = 0.5f * (yL - yR) / denom;
-            delta = std::clamp(delta, -1.0f, 1.0f);
-            float xstar = std::log(w_[i_max]) + delta * hlog;
-            wpk = std::exp(xstar);
-        }
-        omega_peak_ = wpk;
-        float alpha_mom = 1.0f - std::exp(-dt_nom_ / tau_mom_);
-        omega_peak_smooth_ = (omega_peak_smooth_ <= 0.0f)
-                             ? omega_peak_
-                             : omega_peak_smooth_ + alpha_mom * (omega_peak_ - omega_peak_smooth_);
     }
 
     void computeRegularity(float alpha_out, float alpha_disp) {
