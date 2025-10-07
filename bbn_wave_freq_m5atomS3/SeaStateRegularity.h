@@ -174,7 +174,6 @@ public:
 private:
     // Constants
     static constexpr float PI             = 3.14159265358979323846f;
-    static constexpr float TWO_PI         = 2.0f * PI;
     static constexpr float OMEGA_MIN_RAD  = TWO_PI * OMEGA_MIN_HZ;
     static constexpr float OMEGA_MAX_RAD  = TWO_PI * OMEGA_MAX_HZ;
 
