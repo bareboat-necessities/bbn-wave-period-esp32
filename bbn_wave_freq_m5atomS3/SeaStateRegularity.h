@@ -195,7 +195,7 @@ inline void update(float dt, float accel_z) {
         // Normalization: g = 2 / ω²  →  H = +1 (sign absorbed in innovation)
         const float w2 = w2_[i];
         // Include pole attenuation correction
-const float g = (w2 > EPS) ? (2.0f / w2) : 0.0f;
+const float g = (w2 > EPS) ? (2.0f / (w2 * (1.0f - rho))) : 0.0f;
 
 // Effective measurement noise after LPF: (1−ρ)/(1+ρ)
 const float R_demod_eff = 0.5f * b_R_ * ((1.0f - rho) / (1.0f + rho));
