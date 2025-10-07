@@ -109,6 +109,8 @@ public:
             P_rr_[i] = P_ii_[i] = 4.0f * SIGMA_X0 * SIGMA_X0;
             Seta_last_[i] = 0.0f;
             Epow_pk_[i] = 0.0f;
+            y_r_lp_[i] = 0.0f;
+            y_i_lp_[i] = 0.0f;
         }
         // Bias KF init (raw accel)
         b_mu_ = 0.0f;
