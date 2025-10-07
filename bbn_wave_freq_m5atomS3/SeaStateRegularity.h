@@ -291,12 +291,9 @@ void updateSpectralMoments(float omega_inst) {
     }
 
     // Multi-bin extent (adaptive to narrowness)
-    int   K    = 0;
-    float STEP = 0.0f;
-    if      (nu < 0.05f) { K =  8; STEP = STEP_NARROW; }
-    else if (nu < 0.10f) { K = 15; STEP = STEP_NARROW; }
-    else if (nu < 0.20f) { K = 20; STEP = STEP_BROAD;  }
-    else                 { K = MAX_K; STEP = STEP_BROAD; }
+// --- new code ---
+int   K    = MAX_K;        // always use full span
+float STEP = 0.06f;        // ≈6 % spacing → covers ~4.3× up/down ⇒ handles 3× f-shift
 
     if (!bins_init) {
         for (int i = 0; i < NBINS; i++) {
