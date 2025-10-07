@@ -332,6 +332,9 @@ private:
 
     PoleMap pole_map_ = PoleMap::EXPONENTIAL;   // or TUSTIN if you use bilinear
 
+    // LPF state for demodulated I/Q (matched to bin pole ρ)
+    float y_r_lp_[NBINS]{}, y_i_lp_[NBINS]{};
+
     // timing
     float fs_nom_ = 240.0f, dt_nom_ = 1.0f / 240.0f, tol_dt_ = 0.0005f;
 
