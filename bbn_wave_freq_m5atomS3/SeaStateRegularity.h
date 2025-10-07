@@ -268,8 +268,8 @@ float getDisplacementPeriodSec() const {
     // --- Kalman filter for ω
     OmegaFilter omega_kf;
     // KF defaults: tune by sensor (units rad/s)
-    float kf_Q = 1e-5f;  // process noise density
-    float kf_R = 1e-3f;  // measurement variance
+    float kf_Q = 1e-7f;  // process noise density
+    float kf_R = 1e-2f;  // measurement variance
 
     // moments (primary)
     DebiasedEMA M0, M1, M2;
