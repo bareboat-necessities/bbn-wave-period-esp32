@@ -284,11 +284,11 @@ float getDisplacementPeriodSec() const {
     }
 
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
+      // Safer wrap: handles large omega_inst*dt_s jumps gracefully
       phi += omega_inst * dt_s;
-      // Robust wrapping without fmod (avoid cumulative growth)
-      if (phi >= TWO_PI) phi -= TWO_PI;
-      if (phi <  0.0f)   phi += TWO_PI;
-
+      phi = std::fmod(phi, TWO_PI);
+      if (phi < 0.0f) phi += TWO_PI;
+        
       float c = std::cos(phi);
       float s = std::sin(phi);
 
