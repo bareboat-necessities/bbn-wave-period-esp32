@@ -38,9 +38,6 @@
        Hs_blend = max(R_phase, R_spec)·Hs_mono + (1−max)·Hs_rand
 */
 
-enum class PoleMap { EXPONENTIAL, TUSTIN };
-PoleMap pole_map_ = PoleMap::EXPONENTIAL;   // or TUSTIN if you use bilinear
-
 static inline float rho_from_fc(float fc, float dt, PoleMap map) {
     fc = std::max(0.0f, fc);
     if (map == PoleMap::EXPONENTIAL)
@@ -75,6 +72,9 @@ struct DebiasedEMA {
 template<int MAX_K = 15>
 class SeaStateRegularity {
 public:
+
+    enum class PoleMap { EXPONENTIAL, TUSTIN };
+
     // Grid
     static constexpr int   NBINS       = 2 * MAX_K + 1;
     static constexpr float PI_         = 3.14159265358979323846f;
@@ -317,6 +317,9 @@ public:
     }
 
 private:
+
+    PoleMap pole_map_ = PoleMap::EXPONENTIAL;   // or TUSTIN if you use bilinear
+
     // timing
     float fs_nom_ = 240.0f, dt_nom_ = 1.0f / 240.0f, tol_dt_ = 0.0005f;
 
