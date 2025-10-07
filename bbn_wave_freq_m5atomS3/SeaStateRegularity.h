@@ -411,7 +411,8 @@ float getDisplacementPeriodSec() const {
 
         // Physically correct acceleration→displacement normalization
         // a = −ω²η ⇒ S_η = S_a / ω⁴
-        float inv_w4 = 1.0f / std::max(omega_k * omega_k * omega_k * omega_k, EPSILON);
+        float w2 = omega_k * omega_k;
+        float inv_w4 = 1.0f / std::max(w2 * w2, EPSILON);
         float P_disp = (bin_zr[idx] * bin_zr[idx] + bin_zi[idx] * bin_zi[idx]) * inv_w4;
 
         // PSD estimate: P ≈ S * ENBW ⇒ S ≈ P / ENBW
