@@ -90,7 +90,7 @@ public:
         const bool recompute = std::fabs(dt - dt_nom_) > tol_dt_;
         if (recompute) dt_nom_ = dt;  // keep oscillators consistent if dt wanders
 
-        // --- advance oscillators (cos/sin) and perform per-bin KF updates ---
+        // advance oscillators (cos/sin) and perform per-bin KF updates
         for (int i = 0; i < NBINS; ++i) {
             // advance local oscillator
             float cd = cd_[i], sd = sd_[i];
@@ -142,7 +142,7 @@ public:
             Seta_last_[i] = Epow;                      // store for peak picking
         }
 
-        // --- spectral moments from posterior ---
+        // spectral moments from posterior
         float M0 = 0.0f, M1 = 0.0f, M2 = 0.0f, Avar = 0.0f;
         float smax = Seta_last_[0]; int ipk = 0;
         for (int i = 0; i < NBINS; ++i) {
@@ -154,7 +154,7 @@ public:
             if (Seta_last_[i] > smax) { smax = Seta_last_[i]; ipk = i; }
         }
 
-        // --- sub-bin peak refine (log-parabolic) ---
+        // sub-bin peak refine (log-parabolic)
         float wpk = w_[ipk];
         if (ipk > 0 && ipk < NBINS - 1) {
             const float hlog = std::log(w_[ipk + 1] / w_[ipk]);
@@ -172,7 +172,7 @@ public:
                            : omega_peak_smooth_ + alpha_disp * (omega_peak_ - omega_peak_smooth_);
         if (omega_peak_smooth_ > 0.0f) w_disp_ = omega_peak_smooth_;
 
-        // --- phase coherence around peak using posterior means ---
+        // phase coherence around peak using posterior means
         {
             const int i0 = std::max(0, ipk - 2);
             const int i1 = std::min(NBINS - 1, ipk + 2);
@@ -189,7 +189,7 @@ public:
             R_phase_ = (Wm > 0.0f) ? std::clamp(std::hypot(Ur / Wm, Ui / Wm), 0.0f, 1.0f) : R_phase_;
         }
 
-        // --- compute ν, R_spec, and fused regularity from current posterior ---
+        // compute ν, R_spec, and fused regularity from current posterior
         if (M0 > EPS) {
             const float omega_bar = M1 / M0;
             const float omega2_bar = M2 / M0;
@@ -211,7 +211,7 @@ public:
         A0_inst_ = Avar;  // instantaneous ⟨a²⟩ (already time-smoothed by the KFs)
     }
 
-    // --- getters (unchanged API) ---
+    // getters (unchanged API)
     inline float getRegularity() const             { return R_out_.get(); }
     inline float getRegularitySpectral() const     { return R_spec_; }
     inline float getRegularityPhase() const        { return R_phase_; }
