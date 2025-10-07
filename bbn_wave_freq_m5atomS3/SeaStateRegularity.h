@@ -219,8 +219,9 @@ float getDisplacementPeriodSec() const {
   private:
     // Constants
     static constexpr float PI             = 3.14159265358979323846f;
-    static constexpr float OMEGA_MIN_RAD  = TWO_PI * OMEGA_MIN_HZ;
-    static constexpr float OMEGA_MAX_RAD  = TWO_PI * OMEGA_MAX_HZ;
+    static constexpr float TWO_PI_  = 2.0f * PI;  
+    static constexpr float OMEGA_MIN_RAD  = TWO_PI_ * OMEGA_MIN_HZ;
+    static constexpr float OMEGA_MAX_RAD  = TWO_PI_ * OMEGA_MAX_HZ;
 
     // time constants and alphas
     float tau_env, tau_mom, tau_coh, tau_out;
