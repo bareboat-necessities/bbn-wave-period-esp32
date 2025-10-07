@@ -482,7 +482,9 @@ for (int idx = left; idx <= right; ++idx) {
         float P_disp = (bin_zr[idx] * bin_zr[idx] + bin_zi[idx] * bin_zi[idx]) * inv_w4;
 
         // PSD estimate: P ≈ S * ENBW ⇒ S ≈ P / ENBW
-        float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON);
+// Correct high-frequency leakage of 1-pole LPF envelope
+float leak_corr = 1.0f / (1.0f + (omega_k / (TWO_PI_ * fc_k_hz)) * (omega_k / (TWO_PI_ * fc_k_hz)));
+float S_eta_hat = (K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON)) * leak_corr;
         last_S_eta_hat[idx] = S_eta_hat;
 
         // Integrate moments
