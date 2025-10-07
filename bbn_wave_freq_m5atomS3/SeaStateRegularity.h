@@ -170,7 +170,7 @@ public:
     }
 
 private:
-    float fs_nom_ = 240.0f, dt_nom_ = 1.0f / 240.0f, tol_dt_ = 0.0005f;
+    float fs_nom_ = 240.0f, dt_nom_ = 1.0f / 240.0f, tol_dt_ = 0.001f;
     float tau_mom_ = 180.0f, tau_coh_ = 60.0f, tau_out_ = 45.0f;
 
     float w_[NBINS]{}, w2_[NBINS]{}, inv_w4_[NBINS]{};
