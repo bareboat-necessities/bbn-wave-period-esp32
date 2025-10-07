@@ -388,11 +388,9 @@ private:
 
 void buildGrid() {
     // exact log grid
-void buildGrid() {
-    // exact log grid
     const float w_min = TWO_PI_ * F_MIN_HZ;
     const float w_max = TWO_PI_ * F_MAX_HZ;
-    const float r     = std::pow(w_max / w_min, 1.0f / float(NBINS - 1));
+    const float r     = std::pow(w_max / w_min, 1.0f / float(NBINS - 1));   // FIXED
     const float hlog  = std::log(r);
 
     // frequency grid and ω²
@@ -414,24 +412,22 @@ void buildGrid() {
         c_[i]  = 1.0f; s_[i] = 0.0f;
     }
 
-// per-bin dynamics and ENBW (using exact rho-based mapping)
+    // per-bin dynamics and ENBW (using exact rho-based mapping)
+    for (int i = 0; i < NBINS; ++i) {
+        const float f_i_hz = w_[i] / TWO_PI_;
+        const float df_bin = (r - 1.0f) * f_i_hz;
 
-for (int i = 0; i < NBINS; ++i) {
-    const float f_i_hz = w_[i] / TWO_PI_;
-    const float df_bin = (r - 1.0f) * f_i_hz;
+        // --- unified linewidth rule (identical to update()) ---
+        const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
+        const float fc     = std::min(fc_raw, MAX_FC_HZ);
 
-    // --- unified linewidth rule (identical to update()) ---
-    const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
-    const float fc     = std::min(fc_raw, MAX_FC_HZ);
+        const float rho = rho_from_fc(fc, dt_nom_, pole_map_);
+        rho_k_[i] = rho;
+        Qk_[i]    = (1.0f - rho * rho) * (SIGMA_X0 * SIGMA_X0);
 
-    const float rho = rho_from_fc(fc, dt_nom_, pole_map_);
-    rho_k_[i] = rho;
-    Qk_[i]    = (1.0f - rho * rho) * (SIGMA_X0 * SIGMA_X0);
-
-    fc_[i]       = fc;
-    enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));   // exact one-sided ENBW (rad/s)
-}
-
+        fc_[i]       = fc;
+        enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));
+    }
 }
 
 };
