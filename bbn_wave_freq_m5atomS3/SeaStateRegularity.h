@@ -511,8 +511,8 @@ if (R_phase > 0.95f && nu < 0.15f) {
 
         R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
         
-        // Output = max of phase vs spectral (as you requested earlier)
-        float R_combined = std::max(R_phase, R_spec);
+        // Output = fusion phase vs spectral 
+float R_combined = std::clamp(0.5f * (R_phase + R_spec) + 0.5f * std::fabs(R_phase - R_spec), 0.0f, 1.0f);       
         R_out.update(R_combined, alpha_out);
     }
 };
