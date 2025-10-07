@@ -376,7 +376,7 @@ float getDisplacementPeriodSec() const {
       const int right = MAX_K + K;
 
       float omega_k_arr[NBINS] = {};
-      omega_k_arr[MAX_K] = omega_used;
+      omega_k_arr[MAX_K] = w_obs;  // centered on filtered ω
       for (int k = 1; k <= K; ++k) {
         omega_k_arr[MAX_K + k] = omega_k_arr[MAX_K + k - 1] * r;
         omega_k_arr[MAX_K - k] = omega_k_arr[MAX_K - k + 1] / r;
