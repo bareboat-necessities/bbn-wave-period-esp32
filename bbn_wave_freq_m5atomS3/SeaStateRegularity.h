@@ -222,9 +222,10 @@ private:
     float omega_bar_naive;
     bool  has_moments;
 
-     // Peak tracking for S_eta(ω)
-     float omega_peak = 0.0f;                 // spectral-peak (mode) of S_eta
-     float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
+    // Peak tracking for S_eta(ω)
+    float omega_peak = 0.0f;   // spectral-peak (mode) of S_eta
+    float omega_peak_smooth = 0.0f;
+    float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
 
     // === Helpers ===========================================================
     void updateAlpha(float dt_s) {
