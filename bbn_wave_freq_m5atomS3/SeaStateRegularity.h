@@ -211,7 +211,7 @@ public:
         A0_inst_ = Avar;  // instantaneous ⟨a²⟩ (already time-smoothed by the KFs)
     }
 
-    // getters (unchanged API)
+    // getters
     inline float getRegularity() const             { return R_out_.get(); }
     inline float getRegularitySpectral() const     { return R_spec_; }
     inline float getRegularityPhase() const        { return R_phase_; }
