@@ -390,7 +390,7 @@ void buildGrid() {
     // exact log grid
     const float w_min = TWO_PI_ * F_MIN_HZ;
     const float w_max = TWO_PI_ * F_MAX_HZ;
-    const float r     = std::pow(w_max / w_min, 1.0f / float(NBINS - 1));
+    const float r = std::pow(w_[NBINS - 1] / w_[0], 1.0f / float(NBINS - 1));
     const float hlog  = std::log(r);
 
     // frequency grid and ω²
@@ -413,7 +413,7 @@ void buildGrid() {
     }
 
 // per-bin dynamics and ENBW (using exact rho-based mapping)
-const float r = std::pow(w_[NBINS - 1] / w_[0], 1.0f / float(NBINS - 1));
+
 for (int i = 0; i < NBINS; ++i) {
     const float f_i_hz = w_[i] / TWO_PI_;
     const float df_bin = (r - 1.0f) * f_i_hz;
