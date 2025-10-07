@@ -86,7 +86,7 @@ struct DebiasedEMA {
     value  = (1.0f - alpha) * value + alpha * x;
     weight = (1.0f - alpha) * weight + alpha;
   }
-  inline void decay(float alpha) {       
+  inline void decay(float alpha) {
     value  = (1.0f - alpha) * value;
     weight = (1.0f - alpha) * weight;
   }
@@ -167,36 +167,36 @@ class SeaStateRegularity {
     // Main update
     void update(float dt_s, float accel_z, float omega_inst) {
 
-  if (!(dt_s > 0.0f)) return;
-  if (!std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
+      if (!(dt_s > 0.0f)) return;
+      if (!std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
 
-  last_accel = accel_z;
+      last_accel = accel_z;
 
-  updateAlpha(dt_s);
+      updateAlpha(dt_s);
 
-  // Kalman update for ω (input is the noisy tracker)
-  omega_kf.update(omega_inst, dt_s);
-        
-// blend Kalman ω with spectral peak if available
-float omega_center = omega_kf.w_hat;
-if (omega_peak_smooth > 0.0f) {
-    float gamma = std::clamp(1.0f - R_phase, 0.0f, 1.0f);  // random seas -> rely on spectrum
-    omega_center = (1.0f - gamma) * omega_kf.w_hat + gamma * omega_peak_smooth;
-}
-omega_center = std::clamp(omega_center, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-        
-  demodulateAcceleration(accel_z, omega_center, dt_s);
-  updatePhaseCoherence();
+      // Kalman update for ω (input is the noisy tracker)
+      omega_kf.update(omega_inst, dt_s);
 
-  // Use filtered ω for spectral grid centering & gates
-  updateSpectralMoments(omega_center);
+      // blend Kalman ω with spectral peak if available
+      float omega_center = omega_kf.w_hat;
+      if (omega_peak_smooth > 0.0f) {
+        float gamma = std::clamp(1.0f - R_phase, 0.0f, 1.0f);  // random seas -> rely on spectrum
+        omega_center = (1.0f - gamma) * omega_kf.w_hat + gamma * omega_peak_smooth;
+      }
+      omega_center = std::clamp(omega_center, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-        // smooth display frequency (does not affect estimation)
-w_disp = (w_disp <= 0.0f)
-           ? omega_center
-           : (1.0f - alpha_disp) * w_disp + alpha_disp * omega_center;
+      demodulateAcceleration(accel_z, omega_center, dt_s);
+      updatePhaseCoherence();
 
-  computeRegularityOutput();
+      // Use filtered ω for spectral grid centering & gates
+      updateSpectralMoments(omega_center);
+
+      // smooth display frequency (does not affect estimation)
+      w_disp = (w_disp <= 0.0f)
+               ? omega_center
+               : (1.0f - alpha_disp) * w_disp + alpha_disp * omega_center;
+
+      computeRegularityOutput();
 
     }
 
@@ -218,34 +218,34 @@ w_disp = (w_disp <= 0.0f)
       return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
     }
 
-// Wave height envelope and frequency blending
-float getWaveHeightEnvelopeEst() const {
-    float m0 = M0.get();
-    if (!(m0 > 0.0f)) return 0.0f;
+    // Wave height envelope and frequency blending
+    float getWaveHeightEnvelopeEst() const {
+      float m0 = M0.get();
+      if (!(m0 > 0.0f)) return 0.0f;
 
-    // Random-sea (Rayleigh) significant height
-    float Hs_rand = 4.0f * std::sqrt(m0);
+      // Random-sea (Rayleigh) significant height
+      float Hs_rand = 4.0f * std::sqrt(m0);
 
-    // Deterministic single-wave height (2A = 2√(2M₀))
-    float Hs_mono = 2.0f * std::sqrt(2.0f * m0);
+      // Deterministic single-wave height (2A = 2√(2M₀))
+      float Hs_mono = 2.0f * std::sqrt(2.0f * m0);
 
-    // Correction for harmonic over-amplification under strong coherence
-    float R = std::clamp(R_phase, 0.0f, 1.0f);
-    float R2 = R * R;
-    float correction = 1.0f / (1.0f + 2.0f * R2);  // softened suppression (was 4.0f)
-    Hs_mono *= correction;
+      // Correction for harmonic over-amplification under strong coherence
+      float R = std::clamp(R_phase, 0.0f, 1.0f);
+      float R2 = R * R;
+      float correction = 1.0f / (1.0f + 2.0f * R2);  // softened suppression (was 4.0f)
+      Hs_mono *= correction;
 
-    // Blend: coherent → corrected mono-wave, random → oceanographic
-    return R * Hs_mono + (1.0f - R) * Hs_rand;
-}
+      // Blend: coherent → corrected mono-wave, random → oceanographic
+      return R * Hs_mono + (1.0f - R) * Hs_rand;
+    }
 
-float getDisplacementFrequencyHz() const {
-    return (w_disp > EPSILON) ? (w_disp / (2.0f * PI)) : 0.0f;
-}
+    float getDisplacementFrequencyHz() const {
+      return (w_disp > EPSILON) ? (w_disp / (2.0f * PI)) : 0.0f;
+    }
 
-float getDisplacementPeriodSec() const {
-    return (w_disp > EPSILON) ? (2.0f * PI / w_disp) : 0.0f;
-}
+    float getDisplacementPeriodSec() const {
+      return (w_disp > EPSILON) ? (2.0f * PI / w_disp) : 0.0f;
+    }
 
     float getAccelerationVariance() const {
       return A0.get();
@@ -254,7 +254,7 @@ float getDisplacementPeriodSec() const {
   private:
     // Constants
     static constexpr float PI             = 3.14159265358979323846f;
-    static constexpr float TWO_PI_        = 2.0f * PI;  
+    static constexpr float TWO_PI_        = 2.0f * PI;
     static constexpr float OMEGA_MIN_RAD  = TWO_PI_ * OMEGA_MIN_HZ;
     static constexpr float OMEGA_MAX_RAD  = TWO_PI_ * OMEGA_MAX_HZ;
 
@@ -305,15 +305,15 @@ float getDisplacementPeriodSec() const {
     float omega_peak_smooth = 0.0f;
     float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
 
-// residual de-rotation state for phase coherence robustness
-float z_prev_r = 0.0f, z_prev_i = 0.0f;
-float w_res_ema = 0.0f;   // estimated residual angular velocity [rad/s]
-float alpha_wres = 0.0f;  // smoothing coefficient
-float theta_res = 0.0f;   // accumulated residual angle
+    // residual de-rotation state for phase coherence robustness
+    float z_prev_r = 0.0f, z_prev_i = 0.0f;
+    float w_res_ema = 0.0f;   // estimated residual angular velocity [rad/s]
+    float alpha_wres = 0.0f;  // smoothing coefficient
+    float theta_res = 0.0f;   // accumulated residual angle
 
-// display smoother for reported frequency
-float w_disp = 0.0f;
-float alpha_disp = 0.0f;
+    // display smoother for reported frequency
+    float w_disp = 0.0f;
+    float alpha_disp = 0.0f;
 
     // Helpers
     void updateAlpha(float dt_s) {
@@ -323,11 +323,11 @@ float alpha_disp = 0.0f;
       alpha_coh = 1.0f - std::exp(-dt_s / tau_coh);
       alpha_out = 1.0f - std::exp(-dt_s / tau_out);
 
-// residual bias tracking, display smoothing
-        const float tau_dis = 15.0f;
-alpha_wres = 1.0f - std::exp(-dt_s / tau_dis);
-alpha_disp = 1.0f - std::exp(-dt_s / tau_dis);
-        
+      // residual bias tracking, display smoothing
+      const float tau_dis = 15.0f;
+      alpha_wres = 1.0f - std::exp(-dt_s / tau_dis);
+      alpha_disp = 1.0f - std::exp(-dt_s / tau_dis);
+
       last_dt = dt_s;
     }
 
@@ -336,7 +336,7 @@ alpha_disp = 1.0f - std::exp(-dt_s / tau_dis);
       phi += omega_inst * dt_s;
       phi = std::fmod(phi, TWO_PI_);
       if (phi < 0.0f) phi += TWO_PI_;
-        
+
       float c = std::cos(phi);
       float s = std::sin(phi);
 
@@ -352,52 +352,52 @@ alpha_disp = 1.0f - std::exp(-dt_s / tau_dis);
       z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
     }
 
-void updatePhaseCoherence() {
-    // estimate residual angular velocity from consecutive envelopes
-    float dot = z_prev_r * z_real + z_prev_i * z_imag;
-    float crs = z_prev_r * z_imag - z_prev_i * z_real;
-    float dtheta = std::atan2(crs, dot);
-    float w_res = (last_dt > 0.0f) ? (dtheta / last_dt) : 0.0f;
+    void updatePhaseCoherence() {
+      // estimate residual angular velocity from consecutive envelopes
+      float dot = z_prev_r * z_real + z_prev_i * z_imag;
+      float crs = z_prev_r * z_imag - z_prev_i * z_real;
+      float dtheta = std::atan2(crs, dot);
+      float w_res = (last_dt > 0.0f) ? (dtheta / last_dt) : 0.0f;
 
-    // low-pass residual ω
-    w_res_ema = (1.0f - alpha_wres) * w_res_ema + alpha_wres * w_res;
-    theta_res += w_res_ema * last_dt;
+      // low-pass residual ω
+      w_res_ema = (1.0f - alpha_wres) * w_res_ema + alpha_wres * w_res;
+      theta_res += w_res_ema * last_dt;
 
-    // store for next frame
-    z_prev_r = z_real;
-    z_prev_i = z_imag;
+      // store for next frame
+      z_prev_r = z_real;
+      z_prev_i = z_imag;
 
-    // de-rotate envelope by estimated residual
-    float cR = std::cos(theta_res), sR = std::sin(theta_res);
-    float zr =  cR * z_real + sR * z_imag;
-    float zi = -sR * z_real + cR * z_imag;
+      // de-rotate envelope by estimated residual
+      float cR = std::cos(theta_res), sR = std::sin(theta_res);
+      float zr =  cR * z_real + sR * z_imag;
+      float zi = -sR * z_real + cR * z_imag;
 
-    // compute coherence on corrected envelope
-    float mag = std::hypot(zr, zi);
-    if (mag <= EPSILON) {
+      // compute coherence on corrected envelope
+      float mag = std::hypot(zr, zi);
+      if (mag <= EPSILON) {
         R_phase = (coh_r.isReady() && coh_i.isReady())
-            ? std::clamp(std::hypot(coh_r.get(), coh_i.get()), 0.0f, 1.0f)
-            : 0.0f;
+                  ? std::clamp(std::hypot(coh_r.get(), coh_i.get()), 0.0f, 1.0f)
+                  : 0.0f;
         return;
-    }
+      }
 
-    float u_r = zr / mag;
-    float u_i = zi / mag;
-    coh_r.update(u_r, alpha_coh);
-    coh_i.update(u_i, alpha_coh);
-    R_phase = std::clamp(std::hypot(coh_r.get(), coh_i.get()), 0.0f, 1.0f);
-}
+      float u_r = zr / mag;
+      float u_i = zi / mag;
+      coh_r.update(u_r, alpha_coh);
+      coh_i.update(u_i, alpha_coh);
+      R_phase = std::clamp(std::hypot(coh_r.get(), coh_i.get()), 0.0f, 1.0f);
+    }
 
     // Spectral moments: physically correct a→η conversion (1/ω⁴)
     void updateSpectralMoments(float omega_inst) {
       float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-  // Outlier guard vs current KF mean (kept but using KF state):
-  // keep a mild gate to avoid spectral thrash if dt is large.
-  if (omega_kf.w_hat > 0.0f) {
-    float ratio = w_obs / omega_kf.w_hat;
-    if (ratio < 0.7f || ratio > 1.3f) return;
-  }
+      // Outlier guard vs current KF mean (kept but using KF state):
+      // keep a mild gate to avoid spectral thrash if dt is large.
+      if (omega_kf.w_hat > 0.0f) {
+        float ratio = w_obs / omega_kf.w_hat;
+        if (ratio < 0.7f || ratio > 1.3f) return;
+      }
 
       // Multi-bin extent (adaptive to narrowness)
       int   K    = MAX_K;        // always use full span
