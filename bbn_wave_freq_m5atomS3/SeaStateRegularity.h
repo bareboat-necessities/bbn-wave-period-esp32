@@ -176,7 +176,15 @@ class SeaStateRegularity {
 
   // --- Kalman update for ω (input is the noisy tracker)
   omega_kf.update(omega_inst, dt_s);
-
+        
+// --- blend Kalman ω with spectral peak if available ---
+float omega_center = omega_kf.w_hat;
+if (omega_peak_smooth > 0.0f) {
+    float gamma = std::clamp(1.0f - R_phase, 0.0f, 1.0f);  // random seas -> rely on spectrum
+    omega_center = (1.0f - gamma) * omega_kf.w_hat + gamma * omega_peak_smooth;
+}
+omega_center = std::clamp(omega_center, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+        
   // --- Use filtered ω for demodulation (reduces residual baseband rotation)
   const float omega_demod = std::clamp(omega_kf.w_hat, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
