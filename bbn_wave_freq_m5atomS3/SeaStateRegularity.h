@@ -282,8 +282,8 @@ float getDisplacementPeriodSec() const {
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
       // Safer wrap: handles large omega_inst*dt_s jumps gracefully
       phi += omega_inst * dt_s;
-      phi = std::fmod(phi, TWO_PI);
-      if (phi < 0.0f) phi += TWO_PI;
+      phi = std::fmod(phi, TWO_PI_);
+      if (phi < 0.0f) phi += TWO_PI_;
         
       float c = std::cos(phi);
       float s = std::sin(phi);
@@ -400,9 +400,9 @@ float getDisplacementPeriodSec() const {
         float y_i = -last_accel * s1;
 
         // Per-bin LPF and ENBW (Hz→rad/s)
-        float f_k_hz  = omega_k / TWO_PI;
+        float f_k_hz  = omega_k / TWO_PI_;
         float fc_k_hz = std::max(MIN_FC_HZ, (K > 0 ? STEP * f_k_hz : MIN_FC_HZ));
-        float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI * fc_k_hz);
+        float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_k_hz);
         float enbw_k  = PI * PI * fc_k_hz; // [rad/s]
 
         // Low-pass baseband envelope
