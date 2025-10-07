@@ -196,31 +196,34 @@ inline void update(float dt, float accel_z) {
         const float w2 = w2_[i];
         // Include pole attenuation correction: true gain ≈ 2 / (ω² (1−ρ))
         const float g = (w2 > EPS) ? (2.0f / w2) : 0.0f;
-        const float Rm = (g * g) * R_demod; // mapped noise variance
 
-        // --- Real channel ---
-        {
-            const float y_tilde = g * y_r;
-            const float innov   = -(y_tilde) - mu_r_[i];  // absorb minus: H = +1
-            const float S       = P_rr_[i] + Rm;
-            const float K       = (S > 1e-20f) ? (P_rr_[i] / S) : 0.0f;
-            mu_r_[i] += K * innov;
-            const float I_K     = 1.0f - K;
-            P_rr_[i] = I_K * P_rr_[i] * I_K + K * Rm * K; // Joseph-stable form
-            if (P_rr_[i] < 0.0f) P_rr_[i] = 0.0f;
-        }
+// Effective measurement noise after LPF: (1−ρ)/(1+ρ)
+const float R_demod_eff = 0.5f * b_R_ * ((1.0f - rho) / (1.0f + rho));
+const float Rm = (g * g) * R_demod_eff;
 
-        // --- Imag channel ---
-        {
-            const float y_tilde = g * y_i;
-            const float innov   = y_tilde - mu_i_[i];     // H = +1
-            const float S       = P_ii_[i] + Rm;
-            const float K       = (S > 1e-20f) ? (P_ii_[i] / S) : 0.0f;
-            mu_i_[i] += K * innov;
-            const float I_K     = 1.0f - K;
-            P_ii_[i] = I_K * P_ii_[i] * I_K + K * Rm * K; // Joseph-stable form
-            if (P_ii_[i] < 0.0f) P_ii_[i] = 0.0f;
-        }
+// --- Real channel ---
+{
+    const float y_tilde = g * y_r_lp_[i];
+    const float innov   = -(y_tilde) - mu_r_[i];
+    const float S = P_rr_[i] + Rm;
+    const float K = (S > 1e-20f) ? (P_rr_[i] / S) : 0.0f;
+    mu_r_[i] += K * innov;
+    const float I_K = 1.0f - K;
+    P_rr_[i] = I_K * P_rr_[i] * I_K + K * Rm * K;
+    if (P_rr_[i] < 0.0f) P_rr_[i] = 0.0f;
+}
+
+// --- Imag channel ---
+{
+    const float y_tilde = g * y_i_lp_[i];
+    const float innov   = y_tilde - mu_i_[i];
+    const float S = P_ii_[i] + Rm;
+    const float K = (S > 1e-20f) ? (P_ii_[i] / S) : 0.0f;
+    mu_i_[i] += K * innov;
+    const float I_K = 1.0f - K;
+    P_ii_[i] = I_K * P_ii_[i] * I_K + K * Rm * K;
+    if (P_ii_[i] < 0.0f) P_ii_[i] = 0.0f;
+}
 
         // Posterior displacement PSD (ENBW-compensated)
         const float mu2  = mu_r_[i] * mu_r_[i] + mu_i_[i] * mu_i_[i];
