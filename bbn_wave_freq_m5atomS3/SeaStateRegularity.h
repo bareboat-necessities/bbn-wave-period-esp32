@@ -324,54 +324,53 @@ constexpr float SINE_AMPLITUDE   = 1.0f;
 constexpr float SINE_FREQ_HZ     = 0.3f;
 
 struct SineWave {
-  float amplitude;
-  float omega;
-  float phi;
-  SineWave(float A, float f_hz)
-    : amplitude(A), omega(2.0f * float(M_PI) * f_hz), phi(0.0f) {}
-  std::pair<float, float> step(float dt) {
-    phi += omega * dt;
-    if (phi > 2.0f * float(M_PI)) phi -= 2.0f * float(M_PI);
-    float z = amplitude * std::sin(phi);
-    float a = -amplitude * omega * omega * std::sin(phi);
-    return {z, a};
-  }
+    float amplitude;
+    float omega;
+    float phi;
+    SineWave(float A, float f_hz)
+        : amplitude(A), omega(2.0f * float(M_PI) * f_hz), phi(0.0f) {}
+    std::pair<float, float> step(float dt) {
+        phi += omega * dt;
+        if (phi > 2.0f * float(M_PI)) phi -= 2.0f * float(M_PI);
+        float z = amplitude * std::sin(phi);
+        float a = -amplitude * omega * omega * std::sin(phi);
+        return {z, a};
+    }
 };
 
 inline void SeaState_sine_wave_test() {
-  SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
-  SeaStateRegularity reg;
-  float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f, nu = 0.0f;
-  float f_disp_corr = 0.0f, f_disp_naive = 0.0f, Tp = 0.0f;
-  for (int i = 0; i < int(SIM_DURATION_SEC / DT); i++) {
-    auto za = wave.step(DT);
-    float a = za.second;
-    reg.update(DT, a, wave.omega);
-    R_spec      = reg.getRegularitySpectral();
-    R_phase     = reg.getRegularityPhase();
-    Hs_est      = reg.getWaveHeightEnvelopeEst();
-    nu          = reg.getNarrowness();
-    f_disp_corr = reg.getDisplacementFrequencyHz();
-    f_disp_naive = reg.getDisplacementFrequencyNaiveHz();
-    Tp          = reg.getDisplacementPeriodSec();
-  }
+    SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
+    SeaStateRegularity<> reg;
+    float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f, nu = 0.0f;
+    float f_disp_corr = 0.0f, Tp = 0.0f;
 
-  const float Hs_expected = 4.0f * SINE_AMPLITUDE;
+    for (int i = 0; i < int(SIM_DURATION_SEC / DT); i++) {
+        auto za = wave.step(DT);
+        float a = za.second;
+        reg.update(DT, a);
+        R_spec      = reg.getRegularitySpectral();
+        R_phase     = reg.getRegularityPhase();
+        Hs_est      = reg.getWaveHeightEnvelopeEst();
+        nu          = reg.getNarrowness();
+        f_disp_corr = reg.getDisplacementFrequencyHz();
+        Tp          = reg.getDisplacementPeriodSec();
+    }
 
-  if (!(R_spec > 0.90f))
-    throw std::runtime_error("Sine: R_spec did not converge near 1.");
-  if (!(R_phase > 0.80f))
-    throw std::runtime_error("Sine: R_phase did not converge near 1.");
-  if (!(std::fabs(Hs_est - Hs_expected) < 0.25f * Hs_expected))
-    throw std::runtime_error("Sine: Hs estimate not within tolerance.");
-  if (!(nu < 0.05f))
-    throw std::runtime_error("Sine: Narrowness should be close to 0 for a pure tone.");
+    const float Hs_expected = 4.0f * SINE_AMPLITUDE;
 
-  std::cerr << "[PASS] Sine wave test passed. "
-            << "Hs_est=" << Hs_est
-            << " (expected ~" << Hs_expected << "), Narrowness=" << nu
-            << ", f_disp_corr=" << f_disp_corr << " Hz"
-            << ", f_disp_naive=" << f_disp_naive << " Hz"
-            << ", Tp=" << Tp << " s\n";
+    if (!(R_spec > 0.90f))
+        throw std::runtime_error("Sine: R_spec did not converge near 1.");
+    if (!(R_phase > 0.80f))
+        throw std::runtime_error("Sine: R_phase did not converge near 1.");
+    if (!(std::fabs(Hs_est - Hs_expected) < 0.25f * Hs_expected))
+        throw std::runtime_error("Sine: Hs estimate not within tolerance.");
+    if (!(nu < 0.05f))
+        throw std::runtime_error("Sine: Narrowness should be close to 0 for a pure tone.");
+
+    std::cerr << "[PASS] Sine wave test passed. "
+              << "Hs_est=" << Hs_est
+              << " (expected ~" << Hs_expected << "), Narrowness=" << nu
+              << ", f_disp_corr=" << f_disp_corr << " Hz"
+              << ", Tp=" << Tp << " s\n";
 }
 #endif
