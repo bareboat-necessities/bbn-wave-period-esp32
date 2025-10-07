@@ -10,7 +10,7 @@
    Model per bin k (acceleration → displacement demod, normalized):
 
        a = −ω² η
-       Demod with cos(ω_k t), −sin(ω_k t):
+       Demod with cos(ω_k t), +sin(ω_k t):
          y_r = LPF[a·cos(ω_k t)]
          y_i = LPF[a·(−sin(ω_k t))]
 
@@ -188,7 +188,7 @@ inline void update(float dt, float accel_z) {
         // Normalization: g = 2 / ω²  →  H = +1 (sign absorbed in innovation)
         const float w2 = w2_[i];
         // Include pole attenuation correction: true gain ≈ 2 / (ω² (1−ρ))
-        const float g = (w2 > EPS) ? (2.0f / (w2 * (1.0f - rho_k_[i] + 1e-6f))) : 0.0f;
+        const float g = (w2 > EPS) ? (2.0f / w2) : 0.0f;
         const float Rm = (g * g) * R_demod; // mapped noise variance
 
         // --- Real channel ---
