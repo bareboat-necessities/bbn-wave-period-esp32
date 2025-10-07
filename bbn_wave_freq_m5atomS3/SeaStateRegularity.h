@@ -218,8 +218,9 @@ inline void update(float dt, float accel_z) {
         // Posterior displacement PSD (ENBW-compensated)
         const float mu2  = mu_r_[i] * mu_r_[i] + mu_i_[i] * mu_i_[i];
         const float trP  = P_rr_[i] + P_ii_[i];
-        const float Seta = 0.5f * (mu2 + trP) / enbw_rad_[i];
-
+        // Convert ENBW from rad/s → Hz (avoid 2π duplication when integrating in ω)
+        const float Seta = 0.5f * (mu2 + trP) / (enbw_rad_[i] / TWO_PI_);
+       
         // Peak metric on ω·Sη prevents low-ω bias
         Epow_pk_[i]   = w_[i] * Seta;
         Seta_last_[i] = Seta;
