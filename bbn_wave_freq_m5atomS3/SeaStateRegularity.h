@@ -187,6 +187,11 @@ inline void update(float dt, float accel_z) {
         P_rr_[i] = rho * rho * P_rr_[i] + Qk_[i];
         P_ii_[i] = rho * rho * P_ii_[i] + Qk_[i];
 
+        // LPF the demodulated measurements with the bin pole (α = 1 − ρ)
+        const float alpha_lp = 1.0f - rho;
+        y_r_lp_[i] += alpha_lp * (y_r - y_r_lp_[i]);
+        y_i_lp_[i] += alpha_lp * (y_i - y_i_lp_[i]);
+
         // Normalization: g = 2 / ω²  →  H = +1 (sign absorbed in innovation)
         const float w2 = w2_[i];
         // Include pole attenuation correction: true gain ≈ 2 / (ω² (1−ρ))
