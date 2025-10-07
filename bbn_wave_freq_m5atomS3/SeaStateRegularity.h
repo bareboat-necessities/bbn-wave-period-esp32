@@ -83,7 +83,7 @@ class SeaStateRegularity {
     // Tracker-robust ω clamp and smoothing (Hz range widened for real seas)
     constexpr static float OMEGA_MIN_HZ = 0.01f;  // 100 s swell
     constexpr static float OMEGA_MAX_HZ = 3.00f;  // 0.33 s wind chop
-    constexpr static float TAU_W_SEC    = 15.0f;  // EMA time-constant for ω_used
+    constexpr static float TAU_W_SEC    = 30.0f;  // EMA time-constant for ω_used
 
     // Multi-bin params (ratio spacing)
     constexpr static int   MAX_K       = 25;      // up to ±25 bins → 51 bins total
@@ -92,8 +92,8 @@ class SeaStateRegularity {
 
     SeaStateRegularity(float tau_env_sec = 15.0f,
                        float tau_mom_sec = 180.0f,
-                       float tau_coh_sec = 60.0f,
-                       float tau_out_sec = 30.0f)
+                       float tau_coh_sec = 90.0f,
+                       float tau_out_sec = 45.0f)
     {
       tau_env = tau_env_sec;
       tau_mom = tau_mom_sec;
