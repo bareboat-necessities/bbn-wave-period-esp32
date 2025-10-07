@@ -98,7 +98,7 @@ public:
         if (recompute) dt_nom_ = dt;  // track actual dt
 
         // --- Bias KF on raw a: a = b + noise (random walk) ---
-        b_P_ += b_Q_;                                 // predict
+        b_P_ += b_Q_ * dt;                                 // predict
         float S_b   = b_P_ + b_R_;
         float K_b   = b_P_ / std::max(S_b, 1e-20f);   // gain
         float innov_b = accel_z - b_mu_;
