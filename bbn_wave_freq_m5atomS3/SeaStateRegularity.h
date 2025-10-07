@@ -124,6 +124,21 @@ public:
     inline void update(float dt, float accel_z) {
         if (!(dt > 0.0f) || !std::isfinite(accel_z)) return;
         const bool recompute = std::fabs(dt - dt_nom_) > tol_dt_;
+       
+        // Bias KF on raw a: a = b + noise (process var per second)
+        b_P_ += b_Q_ * dt;
+        float S_b   = b_P_ + b_R_;
+        float K_b   = b_P_ / std::max(S_b, 1e-20f);
+        float innov_b = accel_z - b_mu_;
+        b_mu_ += K_b * innov_b;
+        b_P_   = (1.0f - K_b) * b_P_;
+
+        // High-passed acceleration for demod
+        const float a_hp = accel_z - b_mu_;
+
+        // Measurement noise for demod: sensor noise ONLY (no signal bleed)
+        a2_ema_.update(a_hp * a_hp, 1.0f - std::exp(-dt / 2.0f)); // diagnostics
+        const float R_demod = 0.5f * b_R_;                        // per I/Q LPF branch
 
 if (recompute) {
     // update oscillator increments
@@ -149,43 +164,6 @@ if (recompute) {
         enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));
     }
 }
-       
-        // Bias KF on raw a: a = b + noise (process var per second)
-        b_P_ += b_Q_ * dt;
-        float S_b   = b_P_ + b_R_;
-        float K_b   = b_P_ / std::max(S_b, 1e-20f);
-        float innov_b = accel_z - b_mu_;
-        b_mu_ += K_b * innov_b;
-        b_P_   = (1.0f - K_b) * b_P_;
-
-        // High-passed acceleration for demod
-        const float a_hp = accel_z - b_mu_;
-
-        // Measurement noise for demod: sensor noise ONLY (no signal bleed)
-        a2_ema_.update(a_hp * a_hp, 1.0f - std::exp(-dt / 2.0f)); // diagnostics
-        const float R_demod = 0.5f * b_R_;                        // per I/Q LPF branch
-
-        // If dt changed: refresh per-bin dynamics and ENBW consistently
-        if (recompute) {
-            for (int i = 0; i < NBINS; ++i) {
-                const float dphi = w_[i] * dt_nom_;
-                cd_[i] = std::cos(dphi);
-                sd_[i] = std::sin(dphi);
-            }
-            const float r = std::pow(w_[NBINS-1] / w_[0], 1.0f / float(NBINS - 1));
-            for (int i = 0; i < NBINS; ++i) {
-                const float f_i_hz = w_[i] / TWO_PI_;
-                const float df_bin = (r - 1.0f) * f_i_hz;
-                const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
-                const float fc     = std::min(fc_raw, MAX_FC_HZ);
-                const float rho    = std::exp(-2.0f * PI_ * fc * dt_nom_);
-                rho_k_[i] = rho;
-                Qk_[i]    = (1.0f - rho*rho) * (SIGMA_X0 * SIGMA_X0);
-                fc_[i]       = fc;
-                enbw_rad_[i] = std::max(EPS, float(M_PI) * float(M_PI) * fc); // π²·fc
-            }
-        }
-
         // Advance oscillators + per-bin scalar KFs with normalized measurement (H=1)
         for (int i = 0; i < NBINS; ++i) {
             // advance local oscillator
