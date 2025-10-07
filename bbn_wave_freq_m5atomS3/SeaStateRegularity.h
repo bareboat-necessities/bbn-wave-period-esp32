@@ -124,8 +124,32 @@ public:
     inline void update(float dt, float accel_z) {
         if (!(dt > 0.0f) || !std::isfinite(accel_z)) return;
         const bool recompute = std::fabs(dt - dt_nom_) > tol_dt_;
-        if (recompute) dt_nom_ = dt;
 
+if (recompute) {
+    // update oscillator increments
+    for (int i = 0; i < NBINS; ++i) {
+        const float dphi = w_[i] * dt_nom_;
+        cd_[i] = std::cos(dphi);
+        sd_[i] = std::sin(dphi);
+    }
+
+    // recompute per-bin filter dynamics and ENBW
+    const float r = std::pow(w_[NBINS-1] / w_[0], 1.0f / float(NBINS - 1));
+    for (int i = 0; i < NBINS; ++i) {
+        const float f_i_hz = w_[i] / TWO_PI_;
+        const float df_bin = (r - 1.0f) * f_i_hz;
+        const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
+        const float fc     = std::min(fc_raw, MAX_FC_HZ);
+
+        const float rho = rho_from_fc(fc, dt_nom_, pole_map_);
+        rho_k_[i] = rho;
+        Qk_[i]    = (1.0f - rho * rho) * (SIGMA_X0 * SIGMA_X0);
+
+        fc_[i]       = fc;
+        enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));
+    }
+}
+       
         // Bias KF on raw a: a = b + noise (process var per second)
         b_P_ += b_Q_ * dt;
         float S_b   = b_P_ + b_R_;
