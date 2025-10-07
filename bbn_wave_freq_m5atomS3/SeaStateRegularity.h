@@ -171,7 +171,7 @@ public:
 
 private:
     float fs_nom_ = 240.0f, dt_nom_ = 1.0f / 240.0f, tol_dt_ = 0.0005f;
-    float tau_mom_ = 180.0f, tau_coh_ = 90.0f, tau_out_ = 45.0f;
+    float tau_mom_ = 180.0f, tau_coh_ = 60.0f, tau_out_ = 45.0f;
 
     float w_[NBINS]{}, w2_[NBINS]{}, inv_w4_[NBINS]{};
     float d_omega_[NBINS]{}, w2domega_[NBINS]{}, w4domega_[NBINS]{};
@@ -261,7 +261,7 @@ private:
         float alpha_mom  = 1.0f - std::exp(-dt / tau_mom_);
         float alpha_coh  = 1.0f - std::exp(-dt / tau_coh_);
         float alpha_out  = 1.0f - std::exp(-dt / tau_out_);
-        float alpha_disp = 1.0f - std::exp(-dt / 15.0f);
+        float alpha_disp = 1.0f - std::exp(-dt / 7.0f);
 
         M0_.update(S0, alpha_mom);
         M1_.update(S1, alpha_mom);
