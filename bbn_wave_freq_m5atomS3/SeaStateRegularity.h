@@ -185,14 +185,11 @@ if (omega_peak_smooth > 0.0f) {
 }
 omega_center = std::clamp(omega_center, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
         
-  // --- Use filtered ω for demodulation (reduces residual baseband rotation)
-  const float omega_demod = std::clamp(omega_kf.w_hat, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-
-  demodulateAcceleration(accel_z, omega_demod, dt_s);
+  demodulateAcceleration(accel_z, omega_center, dt_s);
   updatePhaseCoherence();
 
   // --- Use filtered ω for spectral grid centering & gates
-  updateSpectralMoments(omega_demod);
+  updateSpectralMoments(omega_center);
 
   computeRegularityOutput();
 
