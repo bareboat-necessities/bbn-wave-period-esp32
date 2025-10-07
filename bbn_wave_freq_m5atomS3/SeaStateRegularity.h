@@ -48,7 +48,7 @@
     NOTE: All ω here are radians per second. Your caller already passes ω_inst = 2π·freq(Hz).
 */
 
-// =============================== Debiased EMA ===============================
+// Debiased EMA
 struct DebiasedEMA {
   float value  = 0.0f;
   float weight = 0.0f;
@@ -72,7 +72,7 @@ struct DebiasedEMA {
   }
 };
 
-// =========================== SeaStateRegularity =============================
+// SeaStateRegularity
 class SeaStateRegularity {
   public:
     // Numerics / mapping
@@ -159,7 +159,7 @@ class SeaStateRegularity {
       computeRegularityOutput();
     }
 
-    // === Getters (API preserved) ==========================================
+    // Getters
     float getRegularity() const {
       return R_out.get();
     }
@@ -248,7 +248,7 @@ class SeaStateRegularity {
     float omega_peak_smooth = 0.0f;
     float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
 
-    // === Helpers ===========================================================
+    // Helpers
     void updateAlpha(float dt_s) {
       if (dt_s == last_dt) return;
       alpha_env = 1.0f - std::exp(-dt_s / tau_env);
@@ -298,7 +298,7 @@ class SeaStateRegularity {
                                      coh_i.get() * coh_i.get()), 0.0f, 1.0f);
     }
 
-    // --------- Spectral moments: physically correct a→η conversion (1/ω⁴) ----
+    // Spectral moments: physically correct a→η conversion (1/ω⁴)
     void updateSpectralMoments(float omega_inst) {
       float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
@@ -313,7 +313,6 @@ class SeaStateRegularity {
       }
 
       // Multi-bin extent (adaptive to narrowness)
-      // --- new code ---
       int   K    = MAX_K;        // always use full span
       float STEP = 0.06f;        // ≈6 % spacing → covers ~4.3× up/down ⇒ handles 3× f-shift
 
@@ -363,7 +362,7 @@ class SeaStateRegularity {
       float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
       float A_var = 0.0f;
 
-      // ---- Bin loop ----
+      // Bin loop
       for (int idx = left; idx <= right; ++idx) {
         float omega_k = omega_k_arr[idx];
         if (omega_k <= EPSILON) continue;
@@ -390,7 +389,7 @@ class SeaStateRegularity {
         bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
         bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
 
-        // === Physically correct acceleration→displacement normalization ===
+        // Physically correct acceleration→displacement normalization
         // a = −ω²η ⇒ S_η = S_a / ω⁴
         float inv_w4 = 1.0f / std::max(omega_k * omega_k * omega_k * omega_k, EPSILON);
         float P_disp = (bin_zr[idx] * bin_zr[idx] + bin_zi[idx] * bin_zi[idx]) * inv_w4;
@@ -411,7 +410,7 @@ class SeaStateRegularity {
         A_var += (omega_k * omega_k * omega_k * omega_k) * S_eta_hat * domega;
       }
 
-      // ---- Find spectral peak ω_pk of S_eta via quadratic interpolation in log-ω ----
+      // Find spectral peak ω_pk of S_eta via quadratic interpolation in log-ω
       {
         // Find max bin within the active window
         int i_max = -1;
@@ -522,10 +521,8 @@ class SeaStateRegularity {
 
       // Narrowness ν and spectral regularity
       nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
-      // --- after computing nu ---
       if (nu < 0.0f || !std::isfinite(nu)) nu = 0.0f;
-
-      // --- add this new correction ---
+        
       if (R_phase > 0.95f && nu < 0.15f) {
         // Phase coherence near unity → deterministic narrow wave
         // Fade ν toward 0 as coherence approaches 1
