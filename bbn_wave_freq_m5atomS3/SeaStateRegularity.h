@@ -104,7 +104,6 @@ class SeaStateRegularity {
 
     void reset() {
       phi = 0.0f;
-      t_abs = 0.0f;
       z_real = z_imag = 0.0f;
 
       M0.reset(); M1.reset(); M2.reset();
@@ -147,7 +146,6 @@ class SeaStateRegularity {
       if (!(dt_s > 0.0f)) return;
       if (!std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
 
-      t_abs += dt_s;
       last_accel = accel_z;
 
       updateAlpha(dt_s);
@@ -236,7 +234,6 @@ float getDisplacementPeriodSec() const {
     // demod state (narrow diagnostic)
     float phi;
     float z_real, z_imag;
-    float t_abs;
 
     // raw accel cache for multi-bin
     float last_accel;
