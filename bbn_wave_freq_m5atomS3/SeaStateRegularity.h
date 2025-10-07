@@ -295,6 +295,16 @@ float getDisplacementPeriodSec() const {
     float omega_peak_smooth = 0.0f;
     float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
 
+// --- residual de-rotation state for phase coherence robustness ---
+float z_prev_r = 0.0f, z_prev_i = 0.0f;
+float w_res_ema = 0.0f;   // estimated residual angular velocity [rad/s]
+float alpha_wres = 0.0f;  // smoothing coefficient
+float theta_res = 0.0f;   // accumulated residual angle
+
+// --- display smoother for reported frequency (optional cosmetic) ---
+float w_disp = 0.0f;
+float alpha_disp = 0.0f;
+
     // Helpers
     void updateAlpha(float dt_s) {
       if (dt_s == last_dt) return;
@@ -302,6 +312,11 @@ float getDisplacementPeriodSec() const {
       alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
       alpha_coh = 1.0f - std::exp(-dt_s / tau_coh);
       alpha_out = 1.0f - std::exp(-dt_s / tau_out);
+
+// 5-s residual bias tracking, 5-s display smoothing
+alpha_wres = 1.0f - std::exp(-dt_s / 5.0f);
+alpha_disp = 1.0f - std::exp(-dt_s / 5.0f);
+        
       last_dt = dt_s;
     }
 
@@ -326,23 +341,41 @@ float getDisplacementPeriodSec() const {
       z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
     }
 
-    void updatePhaseCoherence() {
-      float mag = std::hypot(z_real, z_imag);
-      if (mag <= EPSILON) {
-        if (coh_r.isReady() && coh_i.isReady())
-          R_phase = std::clamp(std::sqrt(coh_r.get() * coh_r.get() +
-                                         coh_i.get() * coh_i.get()), 0.0f, 1.0f);
-        else
-          R_phase = 0.0f;
+void updatePhaseCoherence() {
+    // --- estimate residual angular velocity from consecutive envelopes ---
+    float dot = z_prev_r * z_real + z_prev_i * z_imag;
+    float crs = z_prev_r * z_imag - z_prev_i * z_real;
+    float dtheta = std::atan2(crs, dot);
+    float w_res = (last_dt > 0.0f) ? (dtheta / last_dt) : 0.0f;
+
+    // low-pass residual ω
+    w_res_ema = (1.0f - alpha_wres) * w_res_ema + alpha_wres * w_res;
+    theta_res += w_res_ema * last_dt;
+
+    // store for next frame
+    z_prev_r = z_real;
+    z_prev_i = z_imag;
+
+    // --- de-rotate envelope by estimated residual ---
+    float cR = std::cos(theta_res), sR = std::sin(theta_res);
+    float zr =  cR * z_real + sR * z_imag;
+    float zi = -sR * z_real + cR * z_imag;
+
+    // --- compute coherence on corrected envelope ---
+    float mag = std::hypot(zr, zi);
+    if (mag <= EPSILON) {
+        R_phase = (coh_r.isReady() && coh_i.isReady())
+            ? std::clamp(std::hypot(coh_r.get(), coh_i.get()), 0.0f, 1.0f)
+            : 0.0f;
         return;
-      }
-      float u_r = z_real / mag;
-      float u_i = z_imag / mag;
-      coh_r.update(u_r, alpha_coh);
-      coh_i.update(u_i, alpha_coh);
-      R_phase = std::clamp(std::sqrt(coh_r.get() * coh_r.get() +
-                                     coh_i.get() * coh_i.get()), 0.0f, 1.0f);
     }
+
+    float u_r = zr / mag;
+    float u_i = zi / mag;
+    coh_r.update(u_r, alpha_coh);
+    coh_i.update(u_i, alpha_coh);
+    R_phase = std::clamp(std::hypot(coh_r.get(), coh_i.get()), 0.0f, 1.0f);
+}
 
     // Spectral moments: physically correct a→η conversion (1/ω⁴)
     void updateSpectralMoments(float omega_inst) {
