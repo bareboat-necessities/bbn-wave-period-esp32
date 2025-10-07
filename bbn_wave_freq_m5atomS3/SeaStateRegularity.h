@@ -550,7 +550,7 @@ float getDisplacementPeriodSec() const {
       if (R_phase > 0.9f && nu < 0.2f) {
         // Phase coherence near unity → deterministic narrow wave
         // Fade ν toward 0 as coherence approaches 1
-        float w_coh = std::clamp((R_phase - 0.95f) / 0.05f, 0.0f, 1.0f); // linear ramp 0→1 between 0.95–1.0
+        float w_coh = std::clamp((R_phase - 0.9f) / 0.1f, 0.0f, 1.0f); // linear ramp 0→1 between 0.95–1.0
         nu *= (1.0f - w_coh);  // suppress artificial bandwidth
       }
 
