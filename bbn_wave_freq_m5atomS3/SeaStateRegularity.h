@@ -156,7 +156,7 @@ public:
             P_ii_[i] = rho*rho*P_ii_[i] + Qk_[i];
 
             // measurement update: y ≈ H * x + v, H = -ω^2
-            const float H = -w2_[i];
+            const float H = -0.5 * w2_[i];
 
             // real (Joseph-stable)
             {
