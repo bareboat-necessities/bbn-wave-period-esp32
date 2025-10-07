@@ -93,7 +93,7 @@ public:
     static constexpr float MIN_FC_HZ   = 0.0015f;
     static constexpr float MAX_FC_HZ   = 0.30f;
     static constexpr float FC_FRAC     = 0.20f;     // fraction of bin spacing
-    static constexpr float FC_REL      = 0.08f;     // relative floor: fc ≥ FC_REL * f
+    static constexpr float FC_REL      = 0.15f;     // relative floor: fc ≥ FC_REL * f
 
     explicit SeaStateRegularity(float sample_rate_hz = 240.0f) {
         fs_nom_ = sample_rate_hz;
