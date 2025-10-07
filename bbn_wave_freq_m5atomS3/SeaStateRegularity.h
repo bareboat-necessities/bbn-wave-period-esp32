@@ -50,24 +50,31 @@
 
 // =============================== Debiased EMA ===============================
 struct DebiasedEMA {
-    float value  = 0.0f;
-    float weight = 0.0f;
-    void reset() { value = 0.0f; weight = 0.0f; }
-    inline void update(float x, float alpha) {
-        value  = (1.0f - alpha) * value + alpha * x;
-        weight = (1.0f - alpha) * weight + alpha;
-    }
-    inline void decay(float alpha) {         // optional decay hook
-        value  = (1.0f - alpha) * value;
-        weight = (1.0f - alpha) * weight;
-    }
-    inline float get() const { return (weight > 1e-12f) ? value / weight : 0.0f; }
-    inline bool  isReady() const { return weight > 1e-6f; }
+  float value  = 0.0f;
+  float weight = 0.0f;
+  void reset() {
+    value = 0.0f;
+    weight = 0.0f;
+  }
+  inline void update(float x, float alpha) {
+    value  = (1.0f - alpha) * value + alpha * x;
+    weight = (1.0f - alpha) * weight + alpha;
+  }
+  inline void decay(float alpha) {         // optional decay hook
+    value  = (1.0f - alpha) * value;
+    weight = (1.0f - alpha) * weight;
+  }
+  inline float get() const {
+    return (weight > 1e-12f) ? value / weight : 0.0f;
+  }
+  inline bool  isReady() const {
+    return weight > 1e-6f;
+  }
 };
 
 // =========================== SeaStateRegularity =============================
 class SeaStateRegularity {
-public:
+  public:
     // Numerics / mapping
     constexpr static float EPSILON    = 1e-12f;
     constexpr static float BETA_SPEC  = 1.0f;     // exponent in ν
@@ -90,92 +97,106 @@ public:
                        float tau_coh_sec = 60.0f,
                        float tau_out_sec = 30.0f)
     {
-        tau_env = tau_env_sec;
-        tau_mom = tau_mom_sec;
-        tau_coh = std::max(1e-3f, tau_coh_sec);
-        tau_out = std::max(1e-3f, tau_out_sec);
-        reset();
+      tau_env = tau_env_sec;
+      tau_mom = tau_mom_sec;
+      tau_coh = std::max(1e-3f, tau_coh_sec);
+      tau_out = std::max(1e-3f, tau_out_sec);
+      reset();
     }
 
     void reset() {
-        phi = 0.0f;
-        t_abs = 0.0f;
-        z_real = z_imag = 0.0f;
+      phi = 0.0f;
+      t_abs = 0.0f;
+      z_real = z_imag = 0.0f;
 
-        M0.reset(); M1.reset(); M2.reset();
-        A0.reset();
+      M0.reset(); M1.reset(); M2.reset();
+      A0.reset();
 
-        // For Jensen correction
-        Q00.reset();  // ⟨S0^2⟩
-        Q10.reset();  // ⟨S0*S1⟩
+      // For Jensen correction
+      Q00.reset();  // ⟨S0^2⟩
+      Q10.reset();  // ⟨S0*S1⟩
 
-        R_out.reset();
-        coh_r.reset(); coh_i.reset();
+      R_out.reset();
+      coh_r.reset(); coh_i.reset();
 
-        R_spec = R_phase = 0.0f;
-        nu = 0.0f;
+      R_spec = R_phase = 0.0f;
+      nu = 0.0f;
 
-        omega_bar_corr = 0.0f;
-        omega_bar_naive = 0.0f;
+      omega_bar_corr = 0.0f;
+      omega_bar_naive = 0.0f;
 
-        omega_used = 0.0f;
-        alpha_w    = 0.0f;
+      omega_used = 0.0f;
+      alpha_w    = 0.0f;
 
-        has_moments = false;
-        last_dt = -1.0f;
-        alpha_env = alpha_mom = alpha_coh = alpha_out = 0.0f;
+      has_moments = false;
+      last_dt = -1.0f;
+      alpha_env = alpha_mom = alpha_coh = alpha_out = 0.0f;
 
-        for (int i=0;i<NBINS;i++){ bin_zr[i]=bin_zi[i]=0.0f; bin_c[i]=1.0f; bin_s[i]=0.0f; }
-        bins_init=false;
-        last_accel=0.0f;
+      for (int i = 0; i < NBINS; i++) {
+        bin_zr[i] = bin_zi[i] = 0.0f;
+        bin_c[i] = 1.0f;
+        bin_s[i] = 0.0f;
+      }
+      bins_init = false;
+      last_accel = 0.0f;
 
-        omega_peak = omega_peak_smooth = 0.0f;
-        for (int i = 0; i < NBINS; ++i) last_S_eta_hat[i] = 0.0f;
+      omega_peak = omega_peak_smooth = 0.0f;
+      for (int i = 0; i < NBINS; ++i) last_S_eta_hat[i] = 0.0f;
     }
 
     // Main update
     void update(float dt_s, float accel_z, float omega_inst) {
-        if (!(dt_s > 0.0f)) return;
-        if (!std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
+      if (!(dt_s > 0.0f)) return;
+      if (!std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
 
-        t_abs += dt_s;
-        last_accel = accel_z;
+      t_abs += dt_s;
+      last_accel = accel_z;
 
-        updateAlpha(dt_s);
-        demodulateAcceleration(accel_z, omega_inst, dt_s);
-        updatePhaseCoherence();
-        updateSpectralMoments(omega_inst);
-        computeRegularityOutput();
+      updateAlpha(dt_s);
+      demodulateAcceleration(accel_z, omega_inst, dt_s);
+      updatePhaseCoherence();
+      updateSpectralMoments(omega_inst);
+      computeRegularityOutput();
     }
 
     // === Getters (API preserved) ==========================================
-    float getRegularity() const { return R_out.get(); }
-    float getRegularitySpectral() const { return R_spec; }
-    float getRegularityPhase() const { return R_phase; }
-    float getNarrowness() const { return nu; }
+    float getRegularity() const {
+      return R_out.get();
+    }
+    float getRegularitySpectral() const {
+      return R_spec;
+    }
+    float getRegularityPhase() const {
+      return R_phase;
+    }
+    float getNarrowness() const {
+      return nu;
+    }
 
     // Oceanographic significant height from variance
     float getWaveHeightEnvelopeEst() const {
-        float m0 = M0.get();
-        return (m0 > 0.0f) ? 4.0f * std::sqrt(std::max(0.0f, m0)) : 0.0f;
+      float m0 = M0.get();
+      return (m0 > 0.0f) ? 4.0f * std::sqrt(std::max(0.0f, m0)) : 0.0f;
     }
 
     float getDisplacementFrequencyNaiveHz() const {
-        return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
+      return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
     }
 
- // Peak (mode) of S_eta(ω)  → f_p and T_p
-float getDisplacementFrequencyHz() const {
-    return (omega_peak_smooth > EPSILON) ? (omega_peak_smooth / (2.0f * PI)) : 0.0f;
-}
+    // Peak (mode) of S_eta(ω)  → f_p and T_p
+    float getDisplacementFrequencyHz() const {
+      return (omega_peak_smooth > EPSILON) ? (omega_peak_smooth / (2.0f * PI)) : 0.0f;
+    }
 
-float getDisplacementPeriodSec() const {
-    return (omega_peak_smooth > EPSILON) ? (2.0f * PI / omega_peak_smooth) : 0.0f;
-}
+    float getDisplacementPeriodSec() const {
+      return (omega_peak_smooth > EPSILON) ? (2.0f * PI / omega_peak_smooth) : 0.0f;
+    }
 
-    float getAccelerationVariance() const { return A0.get(); }
+    float getAccelerationVariance() const {
+      return A0.get();
+    }
 
-private:
+  private:
     // Constants
     static constexpr float PI             = 3.14159265358979323846f;
     static constexpr float OMEGA_MIN_RAD  = TWO_PI * OMEGA_MIN_HZ;
@@ -229,121 +250,121 @@ private:
 
     // === Helpers ===========================================================
     void updateAlpha(float dt_s) {
-        if (dt_s == last_dt) return;
-        alpha_env = 1.0f - std::exp(-dt_s / tau_env);
-        alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
-        alpha_coh = 1.0f - std::exp(-dt_s / tau_coh);
-        alpha_out = 1.0f - std::exp(-dt_s / tau_out);
-        alpha_w   = 1.0f - std::exp(-dt_s / TAU_W_SEC);
-        last_dt = dt_s;
+      if (dt_s == last_dt) return;
+      alpha_env = 1.0f - std::exp(-dt_s / tau_env);
+      alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
+      alpha_coh = 1.0f - std::exp(-dt_s / tau_coh);
+      alpha_out = 1.0f - std::exp(-dt_s / tau_out);
+      alpha_w   = 1.0f - std::exp(-dt_s / TAU_W_SEC);
+      last_dt = dt_s;
     }
 
     void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
-        phi += omega_inst * dt_s;
-        // Robust wrapping without fmod (avoid cumulative growth)
-        if (phi >= TWO_PI) phi -= TWO_PI;
-        if (phi <  0.0f)   phi += TWO_PI;
+      phi += omega_inst * dt_s;
+      // Robust wrapping without fmod (avoid cumulative growth)
+      if (phi >= TWO_PI) phi -= TWO_PI;
+      if (phi <  0.0f)   phi += TWO_PI;
 
-        float c = std::cos(phi);
-        float s = std::sin(phi);
+      float c = std::cos(phi);
+      float s = std::sin(phi);
 
-        float y_real =  accel_z * c;
-        float y_imag = -accel_z * s;
+      float y_real =  accel_z * c;
+      float y_imag = -accel_z * s;
 
-        if (!has_moments) {
-            z_real = y_real;
-            z_imag = y_imag;
-            return;
-        }
-        z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
-        z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
+      if (!has_moments) {
+        z_real = y_real;
+        z_imag = y_imag;
+        return;
+      }
+      z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
+      z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
     }
 
     void updatePhaseCoherence() {
-        float mag = std::hypot(z_real, z_imag);
-        if (mag <= EPSILON) {
-            if (coh_r.isReady() && coh_i.isReady())
-                R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() +
-                                               coh_i.get()*coh_i.get()), 0.0f, 1.0f);
-            else
-                R_phase = 0.0f;
-            return;
-        }
-        float u_r = z_real / mag;
-        float u_i = z_imag / mag;
-        coh_r.update(u_r, alpha_coh);
-        coh_i.update(u_i, alpha_coh);
-        R_phase = std::clamp(std::sqrt(coh_r.get()*coh_r.get() +
-                                       coh_i.get()*coh_i.get()), 0.0f, 1.0f);
+      float mag = std::hypot(z_real, z_imag);
+      if (mag <= EPSILON) {
+        if (coh_r.isReady() && coh_i.isReady())
+          R_phase = std::clamp(std::sqrt(coh_r.get() * coh_r.get() +
+                                         coh_i.get() * coh_i.get()), 0.0f, 1.0f);
+        else
+          R_phase = 0.0f;
+        return;
+      }
+      float u_r = z_real / mag;
+      float u_i = z_imag / mag;
+      coh_r.update(u_r, alpha_coh);
+      coh_i.update(u_i, alpha_coh);
+      R_phase = std::clamp(std::sqrt(coh_r.get() * coh_r.get() +
+                                     coh_i.get() * coh_i.get()), 0.0f, 1.0f);
     }
 
-// --------- Spectral moments: physically correct a→η conversion (1/ω⁴) ----
-void updateSpectralMoments(float omega_inst) {
-    float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+    // --------- Spectral moments: physically correct a→η conversion (1/ω⁴) ----
+    void updateSpectralMoments(float omega_inst) {
+      float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-    // Smooth ω_used
-    if (omega_used <= 0.0f) omega_used = w_obs;
-    else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
+      // Smooth ω_used
+      if (omega_used <= 0.0f) omega_used = w_obs;
+      else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
-    // Outlier gate: skip updates if tracker jumps too far
-    if (omega_used > 0.0f) {
+      // Outlier gate: skip updates if tracker jumps too far
+      if (omega_used > 0.0f) {
         float ratio = w_obs / omega_used;
         if (ratio < 0.7f || ratio > 1.3f) return;
-    }
+      }
 
-    // Multi-bin extent (adaptive to narrowness)
-// --- new code ---
-int   K    = MAX_K;        // always use full span
-float STEP = 0.06f;        // ≈6 % spacing → covers ~4.3× up/down ⇒ handles 3× f-shift
+      // Multi-bin extent (adaptive to narrowness)
+      // --- new code ---
+      int   K    = MAX_K;        // always use full span
+      float STEP = 0.06f;        // ≈6 % spacing → covers ~4.3× up/down ⇒ handles 3× f-shift
 
-    if (!bins_init) {
+      if (!bins_init) {
         for (int i = 0; i < NBINS; i++) {
-            bin_c[i]  = 1.0f;
-            bin_s[i]  = 0.0f;
-            bin_zr[i] = 0.0f;
-            bin_zi[i] = 0.0f;
+          bin_c[i]  = 1.0f;
+          bin_s[i]  = 0.0f;
+          bin_zr[i] = 0.0f;
+          bin_zi[i] = 0.0f;
         }
         bins_init = true;
-    }
+      }
 
-    // Ratio-spaced ω grid around ω_used
-    const float r = 1.0f + STEP;
-    const int left  = MAX_K - K;
-    const int right = MAX_K + K;
+      // Ratio-spaced ω grid around ω_used
+      const float r = 1.0f + STEP;
+      const int left  = MAX_K - K;
+      const int right = MAX_K + K;
 
-    float omega_k_arr[NBINS] = {};
-    omega_k_arr[MAX_K] = omega_used;
-    for (int k = 1; k <= K; ++k) {
+      float omega_k_arr[NBINS] = {};
+      omega_k_arr[MAX_K] = omega_used;
+      for (int k = 1; k <= K; ++k) {
         omega_k_arr[MAX_K + k] = omega_k_arr[MAX_K + k - 1] * r;
         omega_k_arr[MAX_K - k] = omega_k_arr[MAX_K - k + 1] / r;
-    }
-    for (int idx = left; idx <= right; ++idx)
+      }
+      for (int idx = left; idx <= right; ++idx)
         omega_k_arr[idx] = std::clamp(omega_k_arr[idx], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-    // Voronoi Δω_k in linear ω
-    float domega_k_arr[NBINS] = {};
-    if (K == 0) {
+      // Voronoi Δω_k in linear ω
+      float domega_k_arr[NBINS] = {};
+      if (K == 0) {
         domega_k_arr[MAX_K] = 0.0f;  // will use ENBW later
-    } else {
+      } else {
         for (int idx = left; idx <= right; ++idx) {
-            if (idx == left) {
-                float w0 = omega_k_arr[idx], w1 = omega_k_arr[idx + 1];
-                domega_k_arr[idx] = std::max(EPSILON, w1 - w0);
-            } else if (idx == right) {
-                float wL = omega_k_arr[idx - 1], w0 = omega_k_arr[idx];
-                domega_k_arr[idx] = std::max(EPSILON, w0 - wL);
-            } else {
-                float wL = omega_k_arr[idx - 1], wR = omega_k_arr[idx + 1];
-                domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
-            }
+          if (idx == left) {
+            float w0 = omega_k_arr[idx], w1 = omega_k_arr[idx + 1];
+            domega_k_arr[idx] = std::max(EPSILON, w1 - w0);
+          } else if (idx == right) {
+            float wL = omega_k_arr[idx - 1], w0 = omega_k_arr[idx];
+            domega_k_arr[idx] = std::max(EPSILON, w0 - wL);
+          } else {
+            float wL = omega_k_arr[idx - 1], wR = omega_k_arr[idx + 1];
+            domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
+          }
         }
-    }
+      }
 
-    float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
-    float A_var = 0.0f;
+      float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
+      float A_var = 0.0f;
 
-    // ---- Bin loop ----
-    for (int idx = left; idx <= right; ++idx) {
+      // ---- Bin loop ----
+      for (int idx = left; idx <= right; ++idx) {
         float omega_k = omega_k_arr[idx];
         if (omega_k <= EPSILON) continue;
 
@@ -351,8 +372,8 @@ float STEP = 0.06f;        // ≈6 % spacing → covers ~4.3× up/down ⇒ handl
         float dphi = omega_k * last_dt;
         float cd = std::cos(dphi), sd = std::sin(dphi);
         float c0 = bin_c[idx], s0 = bin_s[idx];
-        float c1 =  c0*cd - s0*sd;
-        float s1 =  c0*sd + s0*cd;
+        float c1 =  c0 * cd - s0 * sd;
+        float s1 =  c0 * sd + s0 * cd;
         bin_c[idx] = c1; bin_s[idx] = s1;
 
         // Mix acceleration to baseband
@@ -371,13 +392,13 @@ float STEP = 0.06f;        // ≈6 % spacing → covers ~4.3× up/down ⇒ handl
 
         // === Physically correct acceleration→displacement normalization ===
         // a = −ω²η ⇒ S_η = S_a / ω⁴
-        float inv_w4 = 1.0f / std::max(omega_k*omega_k*omega_k*omega_k, EPSILON);
-        float P_disp = (bin_zr[idx]*bin_zr[idx] + bin_zi[idx]*bin_zi[idx]) * inv_w4;
+        float inv_w4 = 1.0f / std::max(omega_k * omega_k * omega_k * omega_k, EPSILON);
+        float P_disp = (bin_zr[idx] * bin_zr[idx] + bin_zi[idx] * bin_zi[idx]) * inv_w4;
 
         // PSD estimate (unbiased, normalized by ENBW)
-float w_narrow = std::clamp(1.0f - (nu / 0.1f), 0.0f, 1.0f);  // fade out by ν≈0.1
-float norm = w_narrow * 1.0f + (1.0f - w_narrow) * enbw_k;
-float S_eta_hat = K_EFF_MIX * P_disp / norm;     
+        float w_narrow = std::clamp(1.0f - (nu / 0.1f), 0.0f, 1.0f);  // fade out by ν≈0.1
+        float norm = w_narrow * 1.0f + (1.0f - w_narrow) * enbw_k;
+        float S_eta_hat = K_EFF_MIX * P_disp / norm;
         last_S_eta_hat[idx] = S_eta_hat;
 
         // Integrate moments
@@ -387,133 +408,136 @@ float S_eta_hat = K_EFF_MIX * P_disp / norm;
         S2 += S_eta_hat * omega_k * omega_k * domega;
 
         // Acceleration variance (σ²[a]) = ∫ ω⁴ S_η dω
-        A_var += (omega_k*omega_k*omega_k*omega_k) * S_eta_hat * domega;
-    }
+        A_var += (omega_k * omega_k * omega_k * omega_k) * S_eta_hat * domega;
+      }
 
-    // ---- Find spectral peak ω_pk of S_eta via quadratic interpolation in log-ω ----
-{
-    // Find max bin within the active window
-    int i_max = -1;
-    float s_max = -1.0f;
-    for (int i = left; i <= right; ++i) {
-        float s = last_S_eta_hat[i];
-        if (s > s_max) { s_max = s; i_max = i; }
-    }
+      // ---- Find spectral peak ω_pk of S_eta via quadratic interpolation in log-ω ----
+      {
+        // Find max bin within the active window
+        int i_max = -1;
+        float s_max = -1.0f;
+        for (int i = left; i <= right; ++i) {
+          float s = last_S_eta_hat[i];
+          if (s > s_max) {
+            s_max = s;
+            i_max = i;
+          }
+        }
 
-    float w_pk = 0.0f;
-    if (i_max < 0) {
-        w_pk = 0.0f;
-    } else if (i_max == left || i_max == right) {
-        // Edge: take bin center
-        w_pk = omega_k_arr[i_max];
-    } else {
-        // Quadratic in x = ln ω (ratio grid ≈ uniform in x)
-        const float wL = omega_k_arr[i_max - 1];
-        const float w0 = omega_k_arr[i_max];
-        const float wR = omega_k_arr[i_max + 1];
+        float w_pk = 0.0f;
+        if (i_max < 0) {
+          w_pk = 0.0f;
+        } else if (i_max == left || i_max == right) {
+          // Edge: take bin center
+          w_pk = omega_k_arr[i_max];
+        } else {
+          // Quadratic in x = ln ω (ratio grid ≈ uniform in x)
+          const float wL = omega_k_arr[i_max - 1];
+          const float w0 = omega_k_arr[i_max];
+          const float wR = omega_k_arr[i_max + 1];
 
-        const float xL = std::log(wL);
-        const float x0 = std::log(w0);
-        const float xR = std::log(wR);
+          const float xL = std::log(wL);
+          const float x0 = std::log(w0);
+          const float xR = std::log(wR);
 
-        const float yL = last_S_eta_hat[i_max - 1];
-        const float y0 = last_S_eta_hat[i_max];
-        const float yR = last_S_eta_hat[i_max + 1];
+          const float yL = last_S_eta_hat[i_max - 1];
+          const float y0 = last_S_eta_hat[i_max];
+          const float yR = last_S_eta_hat[i_max + 1];
 
-        // Fit parabola y = a x^2 + b x + c through (xL,yL),(x0,y0),(xR,yR)
-        // Solve for vertex x* = -b/(2a). Closed form for 3 points:
-        const float dL = xL - x0;
-        const float dR = xR - x0;
-        const float denom = std::max(EPSILON, (dL*dL*(yR - y0) - dR*dR*(yL - y0)) / (dL*dR*(dL - dR)));
-        // Above “denom” is actually 2a; derive safely:
-        // Compute a,b via finite differences (stable form):
-        float A = ( (yR - y0)/(dR*(xR - xL)) - (yL - y0)/(dL*(xR - xL)) );
-        float B = (yR - y0)/dR - A*(xR + x0);
-        float a = A;                       // a
-        float b = B;                       // b
-        float x_star = x0;                 // default
-        if (std::fabs(a) > EPSILON) {
+          // Fit parabola y = a x^2 + b x + c through (xL,yL),(x0,y0),(xR,yR)
+          // Solve for vertex x* = -b/(2a). Closed form for 3 points:
+          const float dL = xL - x0;
+          const float dR = xR - x0;
+          const float denom = std::max(EPSILON, (dL * dL * (yR - y0) - dR * dR * (yL - y0)) / (dL * dR * (dL - dR)));
+          // Above “denom” is actually 2a; derive safely:
+          // Compute a,b via finite differences (stable form):
+          float A = ( (yR - y0) / (dR * (xR - xL)) - (yL - y0) / (dL * (xR - xL)) );
+          float B = (yR - y0) / dR - A * (xR + x0);
+          float a = A;                       // a
+          float b = B;                       // b
+          float x_star = x0;                 // default
+          if (std::fabs(a) > EPSILON) {
             x_star = -b / (2.0f * a);
             // Clamp within neighbors to avoid overshoot
-            x_star = std::clamp(x_star, std::min(xL,xR), std::max(xL,xR));
+            x_star = std::clamp(x_star, std::min(xL, xR), std::max(xL, xR));
+          }
+          w_pk = std::exp(x_star);
         }
-        w_pk = std::exp(x_star);
+        omega_peak = w_pk;
+        // Smooth the spectral peak for stability
+        omega_peak_smooth = (omega_peak_smooth <= 0.0f)
+                            ? omega_peak
+                            : (1.0f - alpha_mom) * omega_peak_smooth + alpha_mom * omega_peak;
+      }
+
+      has_moments = true;
+
+      // Update EMAs
+      M0.update(S0, alpha_mom);
+      M1.update(S1, alpha_mom);
+      M2.update(S2, alpha_mom);
+
+      // Jensen correction helpers
+      Q00.update(S0 * S0, alpha_mom);
+      Q10.update(S0 * S1, alpha_mom);
+
+      // Broadband acceleration variance
+      A0.update(A_var, alpha_mom);
     }
-    omega_peak = w_pk;
-    // Smooth the spectral peak for stability
-    omega_peak_smooth = (omega_peak_smooth <= 0.0f)
-        ? omega_peak
-        : (1.0f - alpha_mom) * omega_peak_smooth + alpha_mom * omega_peak;
-}
-
-    has_moments = true;
-
-    // Update EMAs
-    M0.update(S0, alpha_mom);
-    M1.update(S1, alpha_mom);
-    M2.update(S2, alpha_mom);
-
-    // Jensen correction helpers
-    Q00.update(S0 * S0, alpha_mom);
-    Q10.update(S0 * S1, alpha_mom);
-
-    // Broadband acceleration variance
-    A0.update(A_var, alpha_mom);
-}
 
     void computeRegularityOutput() {
-        if (!M0.isReady()) {
-            R_out.update(R_phase, alpha_out);
-            R_spec = R_phase;
-            nu = 0.0f;
-            omega_bar_corr = omega_bar_naive = 0.0f;
-            return;
-        }
+      if (!M0.isReady()) {
+        R_out.update(R_phase, alpha_out);
+        R_spec = R_phase;
+        nu = 0.0f;
+        omega_bar_corr = omega_bar_naive = 0.0f;
+        return;
+      }
 
-        float m0 = M0.get();
-        float m1 = M1.get();
-        float m2 = M2.get();
+      float m0 = M0.get();
+      float m1 = M1.get();
+      float m2 = M2.get();
 
-        if (!(m0 > EPSILON)) {
-            R_out.update(0.0f, alpha_out);
-            R_spec = 0.0f;
-            nu = 0.0f;
-            omega_bar_corr = omega_bar_naive = 0.0f;
-            return;
-        }
+      if (!(m0 > EPSILON)) {
+        R_out.update(0.0f, alpha_out);
+        R_spec = 0.0f;
+        nu = 0.0f;
+        omega_bar_corr = omega_bar_naive = 0.0f;
+        return;
+      }
 
-        // Naive mean and variance of ω
-        omega_bar_naive  =  m1 / m0;
-        float omega2_bar =  m2 / m0;
-        float mu2 = std::max(0.0f, omega2_bar - omega_bar_naive * omega_bar_naive);
+      // Naive mean and variance of ω
+      omega_bar_naive  =  m1 / m0;
+      float omega2_bar =  m2 / m0;
+      float mu2 = std::max(0.0f, omega2_bar - omega_bar_naive * omega_bar_naive);
 
-        // Jensen correction for ratio E[M1/M0]
-        float q00 = Q00.get();   // ⟨S0^2⟩
-        float q10 = Q10.get();   // ⟨S0*S1⟩
-        float varM0  = std::max(0.0f, q00 - m0*m0);
-        float cov10  = q10 - m1*m0;
-        float invM0_2 = 1.0f / std::max(m0*m0, EPSILON);
+      // Jensen correction for ratio E[M1/M0]
+      float q00 = Q00.get();   // ⟨S0^2⟩
+      float q10 = Q10.get();   // ⟨S0*S1⟩
+      float varM0  = std::max(0.0f, q00 - m0 * m0);
+      float cov10  = q10 - m1 * m0;
+      float invM0_2 = 1.0f / std::max(m0 * m0, EPSILON);
 
-        omega_bar_corr = omega_bar_naive + (omega_bar_naive * varM0 - cov10) * invM0_2;
+      omega_bar_corr = omega_bar_naive + (omega_bar_naive * varM0 - cov10) * invM0_2;
 
-        // Narrowness ν and spectral regularity
-        nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
-// --- after computing nu ---
-if (nu < 0.0f || !std::isfinite(nu)) nu = 0.0f;
+      // Narrowness ν and spectral regularity
+      nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
+      // --- after computing nu ---
+      if (nu < 0.0f || !std::isfinite(nu)) nu = 0.0f;
 
-// --- add this new correction ---
-if (R_phase > 0.95f && nu < 0.15f) {
-    // Phase coherence near unity → deterministic narrow wave
-    // Fade ν toward 0 as coherence approaches 1
-    float w_coh = std::clamp((R_phase - 0.95f) / 0.05f, 0.0f, 1.0f); // linear ramp 0→1 between 0.95–1.0
-    nu *= (1.0f - w_coh);  // suppress artificial bandwidth
-}
+      // --- add this new correction ---
+      if (R_phase > 0.95f && nu < 0.15f) {
+        // Phase coherence near unity → deterministic narrow wave
+        // Fade ν toward 0 as coherence approaches 1
+        float w_coh = std::clamp((R_phase - 0.95f) / 0.05f, 0.0f, 1.0f); // linear ramp 0→1 between 0.95–1.0
+        nu *= (1.0f - w_coh);  // suppress artificial bandwidth
+      }
 
-        R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
-        
-        // Output = fusion phase vs spectral 
-float R_combined = std::clamp(0.5f * (R_phase + R_spec) + 0.5f * std::fabs(R_phase - R_spec), 0.0f, 1.0f);       
-        R_out.update(R_combined, alpha_out);
+      R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
+
+      // Output = fusion phase vs spectral
+      float R_combined = std::clamp(0.5f * (R_phase + R_spec) + 0.5f * std::fabs(R_phase - R_spec), 0.0f, 1.0f);
+      R_out.update(R_combined, alpha_out);
     }
 };
 
@@ -528,56 +552,55 @@ constexpr float SINE_AMPLITUDE   = 1.0f;
 constexpr float SINE_FREQ_HZ     = 0.3f;
 
 struct SineWave {
-    float amplitude;
-    float omega;
-    float phi;
-    SineWave(float A, float f_hz)
-        : amplitude(A), omega(2.0f * float(M_PI) * f_hz), phi(0.0f) {}
-    std::pair<float,float> step(float dt) {
-        phi += omega * dt;
-        if (phi > 2.0f * float(M_PI)) phi -= 2.0f * float(M_PI);
-        float z = amplitude * std::sin(phi);
-        float a = -amplitude * omega * omega * std::sin(phi);
-        return {z, a};
-    }
+  float amplitude;
+  float omega;
+  float phi;
+  SineWave(float A, float f_hz)
+    : amplitude(A), omega(2.0f * float(M_PI) * f_hz), phi(0.0f) {}
+  std::pair<float, float> step(float dt) {
+    phi += omega * dt;
+    if (phi > 2.0f * float(M_PI)) phi -= 2.0f * float(M_PI);
+    float z = amplitude * std::sin(phi);
+    float a = -amplitude * omega * omega * std::sin(phi);
+    return {z, a};
+  }
 };
 
 inline void SeaState_sine_wave_test() {
-    SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
-    SeaStateRegularity reg;
-    float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f, nu = 0.0f;
-    float f_disp_corr = 0.0f, f_disp_naive = 0.0f, Tp = 0.0f;
-    for (int i = 0; i < int(SIM_DURATION_SEC / DT); i++) {
-        auto za = wave.step(DT);
-        float a = za.second;
-        reg.update(DT, a, wave.omega);
-        R_spec      = reg.getRegularitySpectral();
-        R_phase     = reg.getRegularityPhase();
-        Hs_est      = reg.getWaveHeightEnvelopeEst();
-        nu          = reg.getNarrowness();
-        f_disp_corr = reg.getDisplacementFrequencyHz();
-        f_disp_naive= reg.getDisplacementFrequencyNaiveHz();
-        Tp          = reg.getDisplacementPeriodSec();
-    }
+  SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
+  SeaStateRegularity reg;
+  float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f, nu = 0.0f;
+  float f_disp_corr = 0.0f, f_disp_naive = 0.0f, Tp = 0.0f;
+  for (int i = 0; i < int(SIM_DURATION_SEC / DT); i++) {
+    auto za = wave.step(DT);
+    float a = za.second;
+    reg.update(DT, a, wave.omega);
+    R_spec      = reg.getRegularitySpectral();
+    R_phase     = reg.getRegularityPhase();
+    Hs_est      = reg.getWaveHeightEnvelopeEst();
+    nu          = reg.getNarrowness();
+    f_disp_corr = reg.getDisplacementFrequencyHz();
+    f_disp_naive = reg.getDisplacementFrequencyNaiveHz();
+    Tp          = reg.getDisplacementPeriodSec();
+  }
 
-    const float Hs_expected = 4.0f * SINE_AMPLITUDE;
+  const float Hs_expected = 4.0f * SINE_AMPLITUDE;
 
-    if (!(R_spec > 0.90f))
-        throw std::runtime_error("Sine: R_spec did not converge near 1.");
-    if (!(R_phase > 0.80f))
-        throw std::runtime_error("Sine: R_phase did not converge near 1.");
-    if (!(std::fabs(Hs_est - Hs_expected) < 0.25f * Hs_expected))
-        throw std::runtime_error("Sine: Hs estimate not within tolerance.");
-    if (!(nu < 0.05f))
-        throw std::runtime_error("Sine: Narrowness should be close to 0 for a pure tone.");
+  if (!(R_spec > 0.90f))
+    throw std::runtime_error("Sine: R_spec did not converge near 1.");
+  if (!(R_phase > 0.80f))
+    throw std::runtime_error("Sine: R_phase did not converge near 1.");
+  if (!(std::fabs(Hs_est - Hs_expected) < 0.25f * Hs_expected))
+    throw std::runtime_error("Sine: Hs estimate not within tolerance.");
+  if (!(nu < 0.05f))
+    throw std::runtime_error("Sine: Narrowness should be close to 0 for a pure tone.");
 
-    std::cerr << "[PASS] Sine wave test passed. "
-              << "Hs_est=" << Hs_est
-              << " (expected ~" << Hs_expected << "), Narrowness=" << nu
-              << ", f_disp_corr=" << f_disp_corr << " Hz"
-              << ", f_disp_naive=" << f_disp_naive << " Hz"
-              << ", Tp=" << Tp << " s\n";
+  std::cerr << "[PASS] Sine wave test passed. "
+            << "Hs_est=" << Hs_est
+            << " (expected ~" << Hs_expected << "), Narrowness=" << nu
+            << ", f_disp_corr=" << f_disp_corr << " Hz"
+            << ", f_disp_naive=" << f_disp_naive << " Hz"
+            << ", Tp=" << Tp << " s\n";
 }
 #endif
-
 
