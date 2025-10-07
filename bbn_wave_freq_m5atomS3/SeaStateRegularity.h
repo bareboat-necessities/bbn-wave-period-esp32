@@ -129,7 +129,7 @@ public:
         bins_init=false;
         last_accel=0.0f;
 
-        omega_peak = 0.0f;
+        omega_peak = omega_peak_smooth = 0.0f;
         for (int i = 0; i < NBINS; ++i) last_S_eta_hat[i] = 0.0f;
     }
 
