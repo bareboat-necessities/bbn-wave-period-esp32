@@ -313,65 +313,82 @@ float omega_peak_smooth = 0.0f;
     }
 
 void updatePhaseCoherence() {
-    // If we have no energy yet, just decay
-    float smax_acc = 0.0f;
-    for (int i = 0; i < NBINS; ++i) smax_acc = std::max(smax_acc, last_P_acc[i]);
-    if (!(smax_acc > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
-
-    // --- Choose the fundamental reference by displacement PSD peak ---
-    int i_ref = 0;
-    float smax_eta = last_S_eta_hat[0];
-    for (int i = 1; i < NBINS; ++i) {
-        if (last_S_eta_hat[i] > smax_eta) { smax_eta = last_S_eta_hat[i]; i_ref = i; }
+    // --- Energy check ---
+    float smax_eta = 0.0f;
+    for (int i = 0; i < NBINS; ++i)
+        smax_eta = std::max(smax_eta, last_S_eta_hat[i]);
+    if (!(smax_eta > EPSILON)) {
+        R_phase *= (1.0f - alpha_coh);
+        return;
     }
-    // Reference phasor (unit)
+
+    // --- Choose reference: displacement PSD peak (fundamental) ---
+    int i_ref = 0;
+    float s_ref = last_S_eta_hat[0];
+    for (int i = 1; i < NBINS; ++i) {
+        if (last_S_eta_hat[i] > s_ref) { s_ref = last_S_eta_hat[i]; i_ref = i; }
+    }
+
+    // --- Reference phasor & phase ---
     float zr_ref = bin_zr[i_ref], zi_ref = bin_zi[i_ref];
-    float mag_ref = std::sqrt(zr_ref*zr_ref + zi_ref*zi_ref);
-    if (!(mag_ref > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
+    float mag_ref = std::hypot(zr_ref, zi_ref);
+    if (!(mag_ref > EPSILON)) {
+        R_phase *= (1.0f - alpha_coh);
+        return;
+    }
     zr_ref /= mag_ref; zi_ref /= mag_ref;
     const float phi_ref = std::atan2(zi_ref, zr_ref);
 
-    // Reference LPF phase at the fundamental bin
-    const float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
-    const float omega_k_ref = omega_k_mem[i_ref];
-    const float n_ref = 1.0f; // by construction (fundamental)
-    const float domega_ref = n_ref * w0 - omega_k_ref;
+    // --- Reference LPF parameters ---
+    const float w0       = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
+    const float omega_ref = omega_k_mem[i_ref];
+    const float domega_ref = omega_ref - w0;  // Δω = ω_ref − ω₀
     const float omegac_ref = std::max(omega_c_k[i_ref], 1e-6f);
     const float phiH_ref = -std::atan(domega_ref / omegac_ref);
+    const float taug_ref = omegac_ref / (omegac_ref * omegac_ref + domega_ref * domega_ref);
+    const float phiGD_ref = domega_ref * taug_ref;  // group-delay phase shift
 
-    // Contribution gate & accumulation
-    const float THRESH = 0.02f * smax_acc;   // ignore tiny/noisy bins
-    const float PHASE_TRUST = 2.0f;          // |Δω| <= 2 ωc → usable phase
+    // --- Accumulators ---
+    const float THRESH = 0.02f * smax_eta;   // 2% of max power → ignore noise
+    const float PHASE_TRUST = 2.0f;          // |Δω| <= 2 ωc → coherent region
 
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
 
     for (int i = 0; i < NBINS; ++i) {
-        float w_acc = last_P_acc[i];
-        if (w_acc < THRESH) continue;
+        float w_disp = last_S_eta_hat[i];
+        if (w_disp < THRESH) continue;
 
-        // Determine nearest harmonic of w0 for this bin
         float wk = omega_k_mem[i];
         float ratio = wk / w0;
-        int n = (int)std::lround(ratio);
-        if (n < 1) n = 1; if (n > 8) n = 8;
+        float n_real = std::max(ratio, 1e-6f);  // fractional harmonic
 
-        // LPF phase compensation for this bin
-        float domega = n * w0 - wk;
+        // LPF parameters for this bin
+        float domega = wk - n_real * w0;       // signed detuning from harmonic
         float omegac = std::max(omega_c_k[i], 1e-6f);
-        if (std::fabs(domega) > PHASE_TRUST * omegac) continue; // off-tuned → skip
+        if (std::fabs(domega) > PHASE_TRUST * omegac) continue; // skip off-tuned bins
 
+        // Instantaneous bin phase
         float phi_k = std::atan2(bin_zi[i], bin_zr[i]);
-        float phiH_k = -std::atan(domega / omegac);
 
-        // Expected relation: phi_k - phiH_k ≈ n*(phi_ref - phiH_ref)
-        float delta = (phi_k - phiH_k) - n * (phi_ref - phiH_ref);
-        // Wrap to [-π, π] for numerical stability
+        // LPF phase + group delay corrections
+        float phiH_k  = -std::atan(domega / omegac);
+        float taug_k  = omegac / (omegac * omegac + domega * domega);
+        float phiGD_k = domega * taug_k;
+
+        // Total LPF correction (lag + group delay)
+        float phi_corr_k = phiH_k + phiGD_k;
+        float phi_corr_ref = phiH_ref + phiGD_ref;
+
+        // Expected harmonic relation: φ_k − φ_corr_k ≈ n_real (φ_ref − φ_corr_ref)
+        float delta = (phi_k - phi_corr_k) - n_real * (phi_ref - phi_corr_ref);
+
+        // Wrap to [−π, π]
         if (delta >  PI) delta -= 2.0f * PI;
         if (delta < -PI) delta += 2.0f * PI;
 
-        sum_r += double(w_acc) * std::cos(delta);
-        sum_i += double(w_acc) * std::sin(delta);
-        sum_w += double(w_acc);
+        sum_r += double(w_disp) * std::cos(delta);
+        sum_i += double(w_disp) * std::sin(delta);
+        sum_w += double(w_disp);
     }
 
     float R_now = (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
