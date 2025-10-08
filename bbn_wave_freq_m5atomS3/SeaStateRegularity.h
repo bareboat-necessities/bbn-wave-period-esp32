@@ -383,10 +383,11 @@ void updatePhaseCoherence() {
         if (ratio < 0.7f || ratio > 1.3f) return;
       }
 
-      // Multi-bin extent (adaptive to narrowness)
-      int   K    = MAX_K;        // always use full span
-      float STEP = 0.06f;        // ≈6 % spacing → covers ~4.3× up/down ⇒ handles 3× f-shift
-
+      int   K = MAX_K;                   // keep full span
+      // Choose target upward span to capture Fenton/cnoidal harmonics (≥5× recommended)
+      constexpr float TARGET_SPAN_UP = 6.0f;   // cover to ~6·ω_used (includes 5th harmonic)
+      const float r = std::exp(std::log(TARGET_SPAN_UP) / float(K));  // ratio step
+        
       if (!bins_init) {
         for (int i = 0; i < NBINS; i++) {
           bin_c[i]  = 1.0f;
