@@ -90,9 +90,9 @@ class SeaStateRegularity {
     constexpr static int   NBINS       = 2 * MAX_K + 1;
     constexpr static float MIN_FC_HZ   = 0.04f;
 
-    SeaStateRegularity(float tau_mom_sec = 180.0f,
-                       float tau_coh_sec = 60.0f,
-                       float tau_out_sec = 30.0f)
+    SeaStateRegularity(float tau_mom_sec = 120.0f,
+                       float tau_coh_sec = 30.0f,
+                       float tau_out_sec = 45.0f)
     {
       tau_mom = tau_mom_sec;
       tau_coh = std::max(1e-3f, tau_coh_sec);
