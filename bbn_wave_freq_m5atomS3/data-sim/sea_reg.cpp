@@ -84,7 +84,7 @@ static double run_tracker_once(TrackerType tracker,
 // Write CSV header
 static void write_csv_header(std::ofstream &ofs) {
     ofs << "time,omega_inst,narrowness,regularity,"
-           "significant_wave_height,disp_freq_hz\n";
+           "significant_wave_height,disp_freq_hz,accel_var\n";
 }
 
 // Normalize numbers (e.g. H1.500 → H1.5, L12.340 → L12.34)
@@ -183,14 +183,14 @@ static ConvergedStats run_from_csv(TrackerType tracker,
         if (std::isfinite(freq)) {
             last_freq = freq;
             if (rec.time >= WARMUP_SECONDS) {
-                regFilter.update(DELTA_T, noisy_accel,
-                                 static_cast<float>(2.0 * M_PI * freq));
+                regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
                 ofs << rec.time << ","
                     << (2.0 * M_PI * freq) << ","
                     << regFilter.getNarrowness() << ","
                     << regFilter.getRegularity() << ","
                     << regFilter.getWaveHeightEnvelopeEst() << ","
-                    << regFilter.getDisplacementFrequencyHz() << "\n";
+                    << regFilter.getDisplacementFrequencyHz() << ","
+                    << regFilter.getAccelerationVariance() << "\n";
             }
         }
         sim_t = rec.time;
