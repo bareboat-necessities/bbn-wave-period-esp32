@@ -313,18 +313,14 @@ void updatePhaseCoherence() {
     for (int i = 0; i < NBINS; ++i) smax = std::max(smax, last_P_acc[i]);
     const float THRESH = 0.01f * smax;
 
-    // Precompute cos(n·θ_ref), sin(n·θ_ref) on the fly (n ≤ ~8)
-    auto cos_sin_n = [&](int n, float &cn, float &sn) {
-        if (n <= 1) { cn = ref_c; sn = ref_s; return; }
-        float c = ref_c, s = ref_s;
-        for (int k = 2; k <= n; ++k) {
-            float c_new = c*ref_c - s*ref_s;
-            float s_new = c*ref_s + s*ref_c;
-            c = c_new; s = s_new;
-        }
-        cn = c; sn = s;
-    };
-
+// Compute cos(n·θ_ref), sin(n·θ_ref) directly (no iterative drift)
+auto cos_sin_n = [&](int n, float &cn, float &sn) {
+    float theta_ref = std::atan2(ref_s, ref_c);
+    float ntheta = n * theta_ref;
+    cn = std::cos(ntheta);
+    sn = std::sin(ntheta);
+};
+    
     // Temporal EMA of de-rotated unit phasors, locked to harmonic n_i·θ_ref
     for (int i = 0; i < NBINS; ++i) {
         float w = last_P_acc[i];
