@@ -296,32 +296,30 @@ float getDisplacementPeriodSec() const {
     }
 
 void updatePhaseCoherence() {
+    // Find max acceleration-domain power
     float smax = 0.0f;
     for (int i = 0; i < NBINS; ++i)
-        smax = std::max(smax, last_S_eta_hat[i]);
-    const float THRESH = 0.005f * smax;
+        smax = std::max(smax, last_P_acc[i]);
+    const float THRESH = 0.01f * smax;   // ignore <1% bins
 
-    // --- temporal update per bin ---
+    // Update each bin’s unit phasor EMA
     for (int i = 0; i < NBINS; ++i) {
-        float w = last_S_eta_hat[i];
+        float w = last_P_acc[i];
         if (!(w > THRESH)) continue;
 
-        float zr = bin_zr[i];
-        float zi = bin_zi[i];
+        float zr = bin_zr[i], zi = bin_zi[i];
         float mag = std::hypot(zr, zi);
         if (mag <= EPSILON) continue;
 
-        float ur = zr / mag;
-        float ui = zi / mag;
-
+        float ur = zr / mag, ui = zi / mag;
         coh_r_k[i] = (1.0f - alpha_coh) * coh_r_k[i] + alpha_coh * ur;
         coh_i_k[i] = (1.0f - alpha_coh) * coh_i_k[i] + alpha_coh * ui;
     }
 
-    // --- global coherence across bins ---
+    // Weighted vector average over bins
     float sum_cr = 0.0f, sum_ci = 0.0f, sum_w = 0.0f;
     for (int i = 0; i < NBINS; ++i) {
-        float w = last_S_eta_hat[i];
+        float w = last_P_acc[i];
         if (!(w > THRESH)) continue;
         sum_cr += w * coh_r_k[i];
         sum_ci += w * coh_i_k[i];
@@ -332,127 +330,105 @@ void updatePhaseCoherence() {
     R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
 
-    // Spectral moments: physically correct a→η conversion (1/ω⁴)
-    void updateSpectralMoments(float omega_inst) {
-      float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+void updateSpectralMoments(float omega_inst) {
+    float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-      // Smooth ω_used
-      if (omega_used <= 0.0f) omega_used = w_obs;
-      else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
+    // Smooth ω_used
+    if (omega_used <= 0.0f) omega_used = w_obs;
+    else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
-      // Outlier gate: skip updates if tracker jumps too far
-      if (omega_used > 0.0f) {
+    // Outlier gate
+    if (omega_used > 0.0f) {
         float ratio = w_obs / omega_used;
         if (ratio < 0.7f || ratio > 1.3f) return;
-      }
+    }
 
-      int   K = MAX_K;                   // keep full span
-      // Choose target upward span to capture Fenton/cnoidal harmonics (≥5× recommended)
-      constexpr float TARGET_SPAN_UP = 6.0f;   // cover to ~6·ω_used (includes 5th harmonic)
-      const float r = std::exp(std::log(TARGET_SPAN_UP) / float(K));  // ratio step
-        
-      if (!bins_init) {
+    int K = MAX_K;
+    constexpr float TARGET_SPAN_UP = 6.0f;           // covers harmonics up to 6×
+    const float r = std::exp(std::log(TARGET_SPAN_UP) / float(K));
+
+    if (!bins_init) {
         for (int i = 0; i < NBINS; i++) {
-          bin_c[i]  = 1.0f;
-          bin_s[i]  = 0.0f;
-          bin_zr[i] = 0.0f;
-          bin_zi[i] = 0.0f;
-          coh_r_k[i] = 0.0f;
-          coh_i_k[i] = 0.0f;
+            bin_c[i]  = 1.0f;
+            bin_s[i]  = 0.0f;
+            bin_zr[i] = 0.0f;
+            bin_zi[i] = 0.0f;
+            coh_r_k[i] = coh_i_k[i] = 0.0f;
+            last_P_acc[i] = 0.0f;
         }
         bins_init = true;
-      }
+    }
 
-      // Ratio-spaced ω grid around ω_used
-      const int left  = MAX_K - K;
-      const int right = MAX_K + K;
-
-      float omega_k_arr[NBINS] = {};
-      omega_k_arr[MAX_K] = omega_used;
-      for (int k = 1; k <= K; ++k) {
+    // Ratio-spaced ω grid
+    const int left = MAX_K - K, right = MAX_K + K;
+    float omega_k_arr[NBINS] = {};
+    omega_k_arr[MAX_K] = omega_used;
+    for (int k = 1; k <= K; ++k) {
         omega_k_arr[MAX_K + k] = omega_k_arr[MAX_K + k - 1] * r;
         omega_k_arr[MAX_K - k] = omega_k_arr[MAX_K - k + 1] / r;
-      }
-      for (int idx = left; idx <= right; ++idx)
+    }
+    for (int idx = left; idx <= right; ++idx)
         omega_k_arr[idx] = std::clamp(omega_k_arr[idx], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-      // Voronoi Δω_k in linear ω
-      float domega_k_arr[NBINS] = {};
-      if (K == 0) {
-        domega_k_arr[MAX_K] = 0.0f;  // will use ENBW later
-      } else {
-        for (int idx = left; idx <= right; ++idx) {
-          if (idx == left) {
-            float w0 = omega_k_arr[idx], w1 = omega_k_arr[idx + 1];
-            domega_k_arr[idx] = std::max(EPSILON, w1 - w0);
-          } else if (idx == right) {
-            float wL = omega_k_arr[idx - 1], w0 = omega_k_arr[idx];
-            domega_k_arr[idx] = std::max(EPSILON, w0 - wL);
-          } else {
-            float wL = omega_k_arr[idx - 1], wR = omega_k_arr[idx + 1];
-            domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
-          }
-        }
-      }
+    // Voronoi Δω_k
+    float domega_k_arr[NBINS] = {};
+    for (int idx = left; idx <= right; ++idx) {
+        float wL = (idx > left) ? omega_k_arr[idx - 1] : omega_k_arr[idx];
+        float wR = (idx < right) ? omega_k_arr[idx + 1] : omega_k_arr[idx];
+        domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
+    }
 
-      float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
+    float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
 
-      // Bin loop
-      for (int idx = left; idx <= right; ++idx) {
+    for (int idx = left; idx <= right; ++idx) {
         float omega_k = omega_k_arr[idx];
         if (omega_k <= EPSILON) continue;
 
-        // Advance oscillator for this bin
+        // advance oscillator
         float dphi = omega_k * last_dt;
         float cd = std::cos(dphi), sd = std::sin(dphi);
         float c0 = bin_c[idx], s0 = bin_s[idx];
-        float c1 =  c0 * cd - s0 * sd;
-        float s1 =  c0 * sd + s0 * cd;
-        bin_c[idx] = c1; bin_s[idx] = s1;
+        bin_c[idx] = c0 * cd - s0 * sd;
+        bin_s[idx] = c0 * sd + s0 * cd;
 
-        // Mix acceleration to baseband
-        float y_r =  last_accel * c1;
-        float y_i = -last_accel * s1;
+        // baseband mix
+        float y_r = last_accel * bin_c[idx];
+        float y_i = -last_accel * bin_s[idx];
 
-        // Per-bin LPF and ENBW (Hz→rad/s)
+        // LPF
         float f_k_hz  = omega_k / TWO_PI_;
-        float fc_k_hz = std::max(MIN_FC_HZ, (K > 0 ? (r - 1.0f) * f_k_hz : MIN_FC_HZ));
+        float fc_k_hz = std::max(MIN_FC_HZ, (r - 1.0f) * f_k_hz);
         float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_k_hz);
-        float enbw_k  = PI * PI * fc_k_hz; // [rad/s]
+        float enbw_k  = PI * PI * fc_k_hz;
 
-        // Low-pass baseband envelope
         bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
         bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
 
-        // Physically correct acceleration→displacement normalization
-        // a = −ω²η ⇒ S_η = S_a / ω⁴
+        // --- NEW: acceleration-domain baseband power (for phase coherence weighting)
+        float P_acc = bin_zr[idx]*bin_zr[idx] + bin_zi[idx]*bin_zi[idx];
+        last_P_acc[idx] = P_acc;
+
+        // displacement-domain power (for spectral moments)
         float w2 = omega_k * omega_k;
         float inv_w4 = 1.0f / std::max(w2 * w2, EPSILON);
-        float P_disp = (bin_zr[idx] * bin_zr[idx] + bin_zi[idx] * bin_zi[idx]) * inv_w4;
+        float P_disp = P_acc * inv_w4;
 
-        // PSD estimate: P ≈ S * ENBW ⇒ S ≈ P / ENBW
         float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON);
         last_S_eta_hat[idx] = S_eta_hat;
 
-        // Integrate moments
-        float domega = (K == 0) ? std::max(EPSILON, enbw_k) : domega_k_arr[idx];
+        float domega = domega_k_arr[idx];
         S0 += S_eta_hat * domega;
         S1 += S_eta_hat * omega_k * domega;
         S2 += S_eta_hat * omega_k * omega_k * domega;
-      }
-
-      has_moments = true;
-
-      // Update EMAs
-      M0.update(S0, alpha_mom);
-      M1.update(S1, alpha_mom);
-      M2.update(S2, alpha_mom);
-
-      // Jensen correction helpers
-      Q00.update(S0 * S0, alpha_mom);
-      Q10.update(S0 * S1, alpha_mom); 
-      Q20.update(S0 * S2, alpha_mom);
     }
+
+    M0.update(S0, alpha_mom);
+    M1.update(S1, alpha_mom);
+    M2.update(S2, alpha_mom);
+    Q00.update(S0 * S0, alpha_mom);
+    Q10.update(S0 * S1, alpha_mom);
+    Q20.update(S0 * S2, alpha_mom);
+}
 
 void computeRegularityOutput() {
     if (!M0.isReady()) {
