@@ -326,7 +326,7 @@ void updatePhaseCoherence() {
     float smax = 0.0f;
     for (int i = 0; i < NBINS; ++i)
         smax = std::max(smax, last_S_eta_hat[i]);
-    const float THRESH = 0.01f * smax;   // 1% of peak
+    const float THRESH = 0.005f * smax;   // 0.5% of peak
 
     float sum_w  = 0.0f;
     float sum_rw = 0.0f;
