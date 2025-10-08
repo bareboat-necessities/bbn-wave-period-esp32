@@ -81,9 +81,9 @@ class SeaStateRegularity {
     constexpr static float K_EFF_MIX  = 2.0f;     // amplitude calibration (I/Q → variance)
 
     // Tracker-robust ω clamp and smoothing (Hz range widened for real seas)
-    constexpr static float OMEGA_MIN_HZ = 0.01f;  // 100 s swell
-    constexpr static float OMEGA_MAX_HZ = 3.00f;  // 0.33 s wind chop
-    constexpr static float TAU_W_SEC    = 15.0f;  // EMA time-constant for ω_used
+    constexpr static float OMEGA_MIN_HZ = 0.02f;  // 50 s swell
+    constexpr static float OMEGA_MAX_HZ = 6.00f;  // 0.17 s wind chop
+    constexpr static float TAU_W_SEC    = 30.0f;  // EMA time-constant for ω_used
 
     // Multi-bin params (ratio spacing)
     constexpr static int   MAX_K       = 25;      // up to ±25 bins → 51 bins total
@@ -187,25 +187,34 @@ A0.update(a_var, alpha_mom);   // keep A0 as your variance cache
       return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
     }
 
-// Wave height envelope and frequency blending
+// Wave height envelope blending
 float getWaveHeightEnvelopeEst() const {
     float m0 = M0.get();
     if (!(m0 > 0.0f)) return 0.0f;
 
-    // Random-sea (Rayleigh) significant height
-    float Hs_rand = 4.0f * std::sqrt(m0);
+    // --- Base formulas ---
+    const float Hs_rand = 4.0f * std::sqrt(m0);        // Rayleigh sea
+    const float Hs_mono = 2.0f * std::sqrt(2.0f * m0); // deterministic sine
 
-    // Deterministic single-wave height (2A = 2√(2M₀))
-    float Hs_mono = 2.0f * std::sqrt(2.0f * m0);
+    // --- Phase coherence weighting ---
+    const float R = std::clamp(R_phase, 0.0f, 1.0f);
 
-    // Correction for harmonic over-amplification under strong coherence
-    float R = std::clamp(R_phase, 0.0f, 1.0f);
-    float R2 = R * R;
-    float correction = 1.0f / (1.0f + 2.0f * R2);  // softened suppression (was 4.0f)
-    Hs_mono *= correction;
+    // Pivot around R=0.7 → mostly deterministic beyond that
+    const float R_pivot = 0.7f;
+    const float k_sharp = 12.0f;   // slope of logistic transition (tune 8–20)
+    const float w_mono = 1.0f / (1.0f + std::exp(-k_sharp * (R - R_pivot)));
+    const float w_rand = 1.0f - w_mono;
 
-    // Blend: coherent → corrected mono-wave, random → oceanographic
-    return R * Hs_mono + (1.0f - R) * Hs_rand;
+    // harmonic suppression for strongly coherent multi-harmonic signals
+    const float correction = 1.0f / (1.0f + 2.0f * R * R);
+    const float Hs_mono_corr = Hs_mono * correction;
+
+    // --- Blend in energy (variance) domain ---
+    const double Hs2 =
+        w_mono * double(Hs_mono_corr) * double(Hs_mono_corr) +
+        w_rand * double(Hs_rand) * double(Hs_rand);
+
+    return std::sqrt(Hs2);
 }
 
 float getDisplacementFrequencyHz() const {
