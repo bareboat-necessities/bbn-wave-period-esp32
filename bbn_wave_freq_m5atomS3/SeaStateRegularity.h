@@ -293,6 +293,9 @@ float getDisplacementPeriodSec() const {
 float omega_k_mem[NBINS] = {0.0f};
 int   n_harm[NBINS] = {0};
 
+// LPF corner (rad/s) per bin, updated each step
+float omega_c_k[NBINS] = {0.0f};
+
 // Reference oscillator for θ_ref (fundamental)
 float ref_c = 1.0f, ref_s = 0.0f;
 
