@@ -88,7 +88,7 @@ class SeaStateRegularity {
     // Multi-bin params (ratio spacing)
     constexpr static int   MAX_K       = 25;      // up to ±25 bins → 51 bins total
     constexpr static int   NBINS       = 2 * MAX_K + 1;
-    constexpr static float MIN_FC_HZ   = 0.03f;
+    constexpr static float MIN_FC_HZ   = 0.04f;
 
     SeaStateRegularity(float tau_mom_sec = 180.0f,
                        float tau_coh_sec = 60.0f,
