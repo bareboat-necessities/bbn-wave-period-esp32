@@ -283,18 +283,13 @@ float getDisplacementPeriodSec() const {
       last_dt = dt_s;
     }
 
-// --- Per-bin temporal phase coherence, then power-averaged across bins ---
 void updatePhaseCoherence() {
-    // SNR gate from current spectrum
     float smax = 0.0f;
     for (int i = 0; i < NBINS; ++i)
         smax = std::max(smax, last_S_eta_hat[i]);
-    const float THRESH = 0.005f * smax;   // 0.5% of peak
+    const float THRESH = 0.005f * smax;
 
-    float sum_w  = 0.0f;
-    float sum_rw = 0.0f;
-
-    // Update each bin's unit-phasor EMA and accumulate its coherence magnitude
+    // --- temporal update per bin ---
     for (int i = 0; i < NBINS; ++i) {
         float w = last_S_eta_hat[i];
         if (!(w > THRESH)) continue;
@@ -304,32 +299,25 @@ void updatePhaseCoherence() {
         float mag = std::hypot(zr, zi);
         if (mag <= EPSILON) continue;
 
-        // Unit phasor of current bin
         float ur = zr / mag;
         float ui = zi / mag;
 
-        // Per-bin temporal EMA of unit phasor
         coh_r_k[i] = (1.0f - alpha_coh) * coh_r_k[i] + alpha_coh * ur;
         coh_i_k[i] = (1.0f - alpha_coh) * coh_i_k[i] + alpha_coh * ui;
-
-        // Bin's temporal coherence magnitude
-        float rk = std::hypot(coh_r_k[i], coh_i_k[i]);
-
-        sum_w  += w;
-        sum_rw += w * rk;
     }
 
-    float R_now = 0.0f;
-    if (sum_w > EPSILON) R_now = sum_rw / sum_w;
+    // --- global coherence across bins ---
+    float sum_cr = 0.0f, sum_ci = 0.0f, sum_w = 0.0f;
+    for (int i = 0; i < NBINS; ++i) {
+        float w = last_S_eta_hat[i];
+        if (!(w > THRESH)) continue;
+        sum_cr += w * coh_r_k[i];
+        sum_ci += w * coh_i_k[i];
+        sum_w  += w;
+    }
 
-    // No extra smoothing needed (each rk is already EMA'd),
-    // but keeping a light EMA here is fine. Choose one of the two lines below:
-
-    // Option A (recommended): use R_now directly
-    R_phase = R_now;
-
-    // Option B: keep a small extra EMA if you prefer
-    // R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
+    float R_now = (sum_w > EPSILON) ? (std::hypot(sum_cr, sum_ci) / sum_w) : 0.0f;
+    R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
 
     // Spectral moments: physically correct a→η conversion (1/ω⁴)
