@@ -310,33 +310,62 @@ float omega_peak_smooth = 0.0f;
     }
 
 void updatePhaseCoherence() {
-    // Power weight from acceleration domain
+    // Power weighting
     float smax = 0.0f;
-    for (int i = 0; i < NBINS; ++i) smax = std::max(smax, last_P_acc[i]);
+    for (int i = 0; i < NBINS; ++i)
+        smax = std::max(smax, last_P_acc[i]);
     if (!(smax > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
-    const float THRESH = 0.01f * smax;
+    const float THRESH = 0.02f * smax;
 
-    // Weighted vector sum of instantaneous baseband phasors
+    // Determine harmonic family of interest (based on omega_peak_smooth)
+    const float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
+    const float HARM_TOL = 0.15f; // ±15% tolerance
+
+    // Find the fundamental-phase reference (dominant bin)
+    int i_ref = -1;
+    float p_ref = 0.0f;
+    for (int i = 0; i < NBINS; ++i) {
+        if (last_P_acc[i] > p_ref) { p_ref = last_P_acc[i]; i_ref = i; }
+    }
+    if (i_ref < 0) { R_phase *= (1.0f - alpha_coh); return; }
+
+    // Reference phasor (fundamental frame)
+    float zr_ref = bin_zr[i_ref], zi_ref = bin_zi[i_ref];
+    float mag_ref = std::hypot(zr_ref, zi_ref);
+    if (!(mag_ref > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
+    zr_ref /= mag_ref; zi_ref /= mag_ref;
+
+    // Vector sum of harmonically related bins
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
     for (int i = 0; i < NBINS; ++i) {
         float w = last_P_acc[i];
         if (!(w > THRESH)) continue;
+
+        float ratio = omega_k_mem[i] / w0;
+        float nearest_h = std::round(ratio);
+        if (std::fabs(ratio - nearest_h) > HARM_TOL) continue; // skip non-harmonic bins
+
         float zr = bin_zr[i], zi = bin_zi[i];
         float mag = std::hypot(zr, zi);
-        if (mag <= EPSILON) continue;
+        if (!(mag > EPSILON)) continue;
+        zr /= mag; zi /= mag;
 
-        // normalize phasor to unit magnitude
-        zr /= mag;  zi /= mag;
-        sum_r += double(w) * double(zr);
-        sum_i += double(w) * double(zi);
+        // Rotate each bin back to the fundamental frame (remove n·φ_ref)
+        float n = nearest_h;
+        float cn = std::cosf((n - 1.0f) * std::atan2(zi_ref, zr_ref));
+        float sn = std::sinf((n - 1.0f) * std::atan2(zi_ref, zr_ref));
+
+        // De-rotate
+        float zr_rot = zr * cn + zi * sn;
+        float zi_rot = -zr * sn + zi * cn;
+
+        sum_r += double(w) * double(zr_rot);
+        sum_i += double(w) * double(zi_rot);
         sum_w += double(w);
     }
 
-    float R_inst = (sum_w > EPSILON) ?
-        float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
-
-    // light EMA for stability
-    R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_inst;
+    float R_now = (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
+    R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
 
 void updateSpectralMoments(float omega_inst) {
