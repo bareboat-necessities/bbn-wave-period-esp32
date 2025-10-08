@@ -323,70 +323,148 @@ float omega_peak_smooth = 0.0f;
       last_dt = dt_s;
     }
 
-void updatePhaseCoherence() {
-    // --- Energy gate (unchanged idea) ---
-    float smax = 0.0f;
-    for (int i = 0; i < NBINS; ++i)
-        smax = std::max(smax, last_S_eta_hat[i]);
-    if (!(smax > EPSILON)) {
-        R_phase *= (1.0f - alpha_coh);
-        return;
+void updateSpectralMoments(float omega_inst) {
+    float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+
+    // Smooth ω_used
+    if (omega_used <= 0.0f) omega_used = w_obs;
+    else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
+
+    // Outlier gate
+    if (omega_used > 0.0f) {
+        float ratio = w_obs / omega_used;
+        if (ratio < 0.7f || ratio > 1.3f) return;
     }
 
-    // --- Reference bin: max PSD (unchanged idea) ---
-    int i_ref = 0;
-    for (int i = 1; i < NBINS; ++i)
-        if (last_S_eta_hat[i] > last_S_eta_hat[i_ref]) i_ref = i;
-
-    const float phi_ref_now = std::atan2(bin_zi[i_ref], bin_zr[i_ref]);
-
-    // --- Accumulators ---
-    const float THRESH = 0.02f * smax;
-    double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
-
-    // --- Very slow per-bin bias detrend (static state) ---
-    static float resid_mean[NBINS] = {0.0f};
-    const float bias_tau_sec = 300.0f; // ~5 min; set <=0 to disable detrend
-    const float beta = (bias_tau_sec > 0.0f)
-        ? (1.0f - std::exp(-std::max(last_dt, 1e-6f) / bias_tau_sec))
-        : 1.0f; // immediate overwrite if disabled
-
-    for (int i = 0; i < NBINS; ++i) {
-        const float S_eta = last_S_eta_hat[i];
-        if (S_eta < THRESH) continue;
-
-        // instantaneous phase of this bin
-        const float phi_now = std::atan2(bin_zi[i], bin_zr[i]);
-
-        // harmonic mapping (unchanged logic)
-        int n = n_harm[i];
-        if (n < 1) n = 1;
-        if (n > 8) n = 8;
-
-        // instantaneous residual relative to n-th harmonic of the ref
-        float resid = phi_now - float(n) * phi_ref_now;
-        if (resid >  PI) resid -= 2.0f * PI;
-        if (resid < -PI) resid += 2.0f * PI;
-
-        // grid-invariant energy weight: w_k = S_eta(ω_k) * Δω_k
-        const float w_k = S_eta * std::max(domega_k_mem[i], EPSILON);
-
-        // slow per-bin bias removal (optional but recommended)
-        resid_mean[i] = (1.0f - beta) * resid_mean[i] + beta * resid;
-        const float resid_detr = resid - resid_mean[i];
-
-        // weighted unit phasor sum
-        sum_r += double(w_k) * std::cos(resid_detr);
-        sum_i += double(w_k) * std::sin(resid_detr);
-        sum_w += double(w_k);
+    // Advance reference oscillator (drift-free global phase frame)
+    {
+        float dphi_ref = omega_used * last_dt;
+        float cd = std::cos(dphi_ref), sd = std::sin(dphi_ref);
+        float c0 = ref_c, s0 = ref_s;
+        ref_c = c0 * cd - s0 * sd;
+        ref_s = c0 * sd + s0 * cd;
     }
 
-    const float R_now = (sum_w > EPSILON)
-        ? float(std::hypot(sum_r, sum_i) / sum_w)
-        : 0.0f;
+    // Ratio grid spanning harmonics up to ~6×
+    int K = MAX_K;
+    constexpr float TARGET_SPAN_UP = 6.0f;
+    const float r = std::exp(std::log(TARGET_SPAN_UP) / float(K));
 
-    // EMA smoothing (unchanged)
-    R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
+    if (!bins_init) {
+        for (int i = 0; i < NBINS; i++) {
+            bin_c[i] = 1.0f; bin_s[i] = 0.0f;
+            bin_zr[i] = 0.0f; bin_zi[i] = 0.0f;
+            coh_r_k[i] = 0.0f; coh_i_k[i] = 0.0f;
+            last_P_acc[i] = 0.0f; last_S_eta_hat[i] = 0.0f;
+            omega_k_mem[i] = 0.0f; n_harm[i] = 1; domega_k_mem[i] = 0.0f;
+        }
+        bins_init = true;
+    }
+
+    const int left = MAX_K - K, right = MAX_K + K;
+
+    // --- Build ω_k grid (ratio spaced) ---
+    float omega_k_arr[NBINS] = {};
+    omega_k_arr[MAX_K] = omega_used;
+    for (int k = 1; k <= K; ++k) {
+        omega_k_arr[MAX_K + k] = omega_k_arr[MAX_K + k - 1] * r;
+        omega_k_arr[MAX_K - k] = omega_k_arr[MAX_K - k + 1] / r;
+    }
+    for (int idx = left; idx <= right; ++idx) {
+        omega_k_arr[idx] = std::clamp(omega_k_arr[idx], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+        omega_k_mem[idx] = omega_k_arr[idx];
+    }
+
+    // --- Compute Voronoi Δω_k (grid-invariant weights) ---
+    float domega_k_arr[NBINS] = {};
+    for (int idx = left; idx <= right; ++idx) {
+        float wL = (idx > left)  ? omega_k_arr[idx - 1] : omega_k_arr[idx];
+        float wR = (idx < right) ? omega_k_arr[idx + 1] : omega_k_arr[idx];
+        domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
+        domega_k_mem[idx] = domega_k_arr[idx];  // persist for phase coherence weighting
+    }
+
+    float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
+
+    // --- Per-bin demodulation and PSD estimation ---
+    for (int idx = left; idx <= right; ++idx) {
+        float omega_k = omega_k_arr[idx];
+        if (!(omega_k > EPSILON)) continue;
+
+        // advance oscillator
+        float dphi = omega_k * last_dt;
+        float cd = std::cos(dphi), sd = std::sin(dphi);
+        float c0 = bin_c[idx], s0 = bin_s[idx];
+        bin_c[idx] = c0 * cd - s0 * sd;
+        bin_s[idx] = c0 * sd + s0 * cd;
+
+        // baseband mix
+        float y_r = last_accel * bin_c[idx];
+        float y_i = -last_accel * bin_s[idx];
+
+        // LPF + ENBW
+        float f_k_hz  = omega_k / TWO_PI_;
+        float fc_k_hz = std::max(MIN_FC_HZ, (r - 1.0f) * f_k_hz);
+        float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_k_hz);
+        float enbw_k  = PI * PI * fc_k_hz;
+
+        // keep ωc for phase compensation
+        omega_c_k[idx] = TWO_PI_ * fc_k_hz;
+
+        // LPF state update
+        bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
+        bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
+
+        // acceleration-domain power (for coherence weighting)
+        float P_acc = bin_zr[idx]*bin_zr[idx] + bin_zi[idx]*bin_zi[idx];
+        last_P_acc[idx] = P_acc;
+
+        // displacement PSD estimate
+        float w2 = omega_k * omega_k;
+        float inv_w4 = 1.0f / std::max(w2 * w2, EPSILON);
+        float P_disp = P_acc * inv_w4;
+
+        float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON);
+        last_S_eta_hat[idx] = S_eta_hat;
+
+        float domega = domega_k_arr[idx];
+        S0 += S_eta_hat * domega;
+        S1 += S_eta_hat * omega_k * domega;
+        S2 += S_eta_hat * omega_k * omega_k * domega;
+    }
+
+    // --- Track spectral peak and harmonic mapping ---
+    {
+        int i_max = left; float s_max = last_S_eta_hat[left];
+        for (int i = left + 1; i <= right; ++i) {
+            if (last_S_eta_hat[i] > s_max) { s_max = last_S_eta_hat[i]; i_max = i; }
+        }
+        float omega_peak_now = omega_k_arr[i_max];
+        constexpr float ALPHA_PEAK = 0.05f; // ≈20 s time constant
+        omega_peak_smooth = (omega_peak_smooth <= 0.0f)
+                          ? omega_peak_now
+                          : (1.0f - ALPHA_PEAK)*omega_peak_smooth + ALPHA_PEAK*omega_peak_now;
+
+        // Assign per-bin harmonic index n_harm ≈ round(ω_k / ω̂₀)
+        float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
+        for (int i = left; i <= right; ++i) {
+            float ratio = omega_k_arr[i] / w0;
+            int n = (int)std::lround(ratio);
+            if (n < 1) n = 1;
+            if (n > 8) n = 8; // safety clamp
+            n_harm[i] = n;
+        }
+    }
+
+    has_moments = true;
+
+    // --- Moment EMAs + Jensen helpers ---
+    M0.update(S0, alpha_mom);
+    M1.update(S1, alpha_mom);
+    M2.update(S2, alpha_mom);
+    Q00.update(S0 * S0, alpha_mom);
+    Q10.update(S0 * S1, alpha_mom);
+    Q20.update(S0 * S2, alpha_mom);
 }
 
 void updateSpectralMoments(float omega_inst) {
