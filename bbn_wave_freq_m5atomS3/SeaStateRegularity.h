@@ -481,11 +481,6 @@ void updatePhaseCoherence() {
           const float x_star = std::log(w0) + delta * h;
           w_pk = std::exp(x_star);
         }
-        omega_peak = w_pk;
-        // Smooth the spectral peak for stability
-        omega_peak_smooth = (omega_peak_smooth <= 0.0f)
-                            ? omega_peak
-                            : (1.0f - alpha_mom) * omega_peak_smooth + alpha_mom * omega_peak;
       }
 
       has_moments = true;
