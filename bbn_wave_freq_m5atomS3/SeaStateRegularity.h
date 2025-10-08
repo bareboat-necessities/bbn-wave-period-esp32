@@ -340,8 +340,8 @@ auto cos_sin_n = [&](int n, float &cn, float &sn) {
         cos_sin_n(n_harm[i], cn, sn);
 
         // Rotate by -(nθ_ref): [ur,ui]·R(-(nθ))
-        float ur_rot =  ur*cn + ui*sn;
-        float ui_rot = -ur*sn + ui*cn;
+        float ur_rot =  ur*cn - ui*sn;
+        float ui_rot =  ur*sn + ui*cn;
 
         // Temporal EMA in the common harmonic-locked frame
         coh_r_k[i] = (1.0f - alpha_coh) * coh_r_k[i] + alpha_coh * ur_rot;
