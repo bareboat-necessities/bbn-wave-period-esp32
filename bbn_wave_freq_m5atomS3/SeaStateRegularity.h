@@ -148,6 +148,19 @@ class SeaStateRegularity {
 
       last_accel = accel_z;
 
+// --- Direct time-domain acceleration variance ---
+A1_mean.update(accel_z,           alpha_mom);
+A2_second.update(accel_z*accel_z, alpha_mom);
+
+float a_mean = A1_mean.get();
+float a_var  = std::max(0.0f, A2_second.get() - a_mean * a_mean);
+
+// Optional: subtract known sensor noise floor if available
+// const float NOISE_VAR = n_a * n_a * B_eff;
+// a_var = std::max(0.0f, a_var - NOISE_VAR);
+
+A0.update(a_var, alpha_mom);   // keep A0 as your variance cache
+
       updateAlpha(dt_s);
       demodulateAcceleration(accel_z, omega_inst, dt_s);
       updatePhaseCoherence();
@@ -244,6 +257,10 @@ float getDisplacementPeriodSec() const {
     // moments (primary)
     DebiasedEMA M0, M1, M2;
     DebiasedEMA A0;
+
+    // Direct time-domain acceleration variance helpers
+    DebiasedEMA A1_mean;   // mean of acceleration
+    DebiasedEMA A2_second; // mean of a^2
 
     // moments for Jensen correction
     // Q00 ≈ ⟨S0^2⟩, Q10 ≈ ⟨S0*S1⟩, where S0=ΣYk, S1=Σ(Yk*ωk)
@@ -377,7 +394,6 @@ float getDisplacementPeriodSec() const {
       }
 
       float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
-      float A_var = 0.0f;
 
       // Bin loop
       for (int idx = left; idx <= right; ++idx) {
@@ -421,9 +437,6 @@ float getDisplacementPeriodSec() const {
         S0 += S_eta_hat * domega;
         S1 += S_eta_hat * omega_k * domega;
         S2 += S_eta_hat * omega_k * omega_k * domega;
-
-        // Acceleration variance (σ²[a]) = ∫ ω⁴ S_η dω
-        A_var += (omega_k * omega_k * omega_k * omega_k) * S_eta_hat * domega;
       }
 
       // Find spectral peak ω_pk of S_eta via quadratic interpolation in log-ω
@@ -475,10 +488,7 @@ float getDisplacementPeriodSec() const {
 
       // Jensen correction helpers
       Q00.update(S0 * S0, alpha_mom);
-      Q10.update(S0 * S1, alpha_mom);
-
-      // Broadband acceleration variance
-      A0.update(A_var, alpha_mom);
+      Q10.update(S0 * S1, alpha_mom); mi
     }
 
     void computeRegularityOutput() {
