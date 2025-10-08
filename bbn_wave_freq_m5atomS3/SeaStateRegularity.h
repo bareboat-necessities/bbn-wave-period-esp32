@@ -107,7 +107,7 @@ class SeaStateRegularity {
       z_real = z_imag = 0.0f;
 
       M0.reset(); M1.reset(); M2.reset();
-      A0.reset();
+      A0.reset(); A1_mean.reset(); A2_second.reset();
 
       // For Jensen correction
       Q00.reset();  // ⟨S0^2⟩
