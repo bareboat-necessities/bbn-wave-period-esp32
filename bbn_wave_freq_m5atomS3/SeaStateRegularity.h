@@ -494,7 +494,6 @@ omega_c_k[idx] = TWO_PI_ * fc_k_hz;
         float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON);
         last_S_eta_hat[idx] = S_eta_hat;
 
-        float domega = domega_k_arr[idx];
         S0 += S_eta_hat * domega;
         S1 += S_eta_hat * omega_k * domega;
         S2 += S_eta_hat * omega_k * omega_k * domega;
