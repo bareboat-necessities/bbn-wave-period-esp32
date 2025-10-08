@@ -313,63 +313,57 @@ float omega_peak_smooth = 0.0f;
     }
 
 void updatePhaseCoherence() {
-    // --- Skip if no energy ---
-    float smax_eta = 0.0f;
-    for (int i = 0; i < NBINS; ++i)
-        smax_eta = std::max(smax_eta, last_S_eta_hat[i]);
-    if (!(smax_eta > EPSILON)) {
-        R_phase *= (1.0f - alpha_coh);
-        return;
-    }
+    static float last_phi_k[NBINS] = {0.0f};
+    static bool phi_init = false;
 
-    // --- Reference bin: peak of displacement PSD ---
+    float smax = 0.0f;
+    for (int i = 0; i < NBINS; ++i) smax = std::max(smax, last_S_eta_hat[i]);
+    if (!(smax > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
+
+    // Reference = fundamental bin (max PSD)
     int i_ref = 0;
-    float s_ref = last_S_eta_hat[0];
     for (int i = 1; i < NBINS; ++i)
-        if (last_S_eta_hat[i] > s_ref) { s_ref = last_S_eta_hat[i]; i_ref = i; }
+        if (last_S_eta_hat[i] > last_S_eta_hat[i_ref]) i_ref = i;
 
-    // --- Reference phase ---
-    float zr_ref = bin_zr[i_ref], zi_ref = bin_zi[i_ref];
-    float mag_ref = std::hypot(zr_ref, zi_ref);
-    if (!(mag_ref > EPSILON)) {
-        R_phase *= (1.0f - alpha_coh);
-        return;
-    }
-    const float phi_ref = std::atan2(zi_ref, zr_ref);
-
-    // --- Harmonic-locked complex summation (Option B) ---
     const float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
-    const float THRESH = 0.02f * smax_eta;
+    const float phi_ref_now = std::atan2(bin_zi[i_ref], bin_zr[i_ref]);
+    static float phi_ref_last = phi_ref_now;
+    const float dphi_ref = phi_ref_now - phi_ref_last;
+    phi_ref_last = phi_ref_now;
+
+    const float omegac_ref = std::max(omega_c_k[i_ref], 1e-6f);
+    const float dphi_ref_norm = dphi_ref / (omegac_ref * last_dt);
 
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
 
     for (int i = 0; i < NBINS; ++i) {
         float w_eta = last_S_eta_hat[i];
-        if (w_eta < THRESH) continue;
+        if (w_eta < 0.02f * smax) continue;
 
-        float wk = omega_k_mem[i];
+        float phi_now = std::atan2(bin_zi[i], bin_zr[i]);
+        if (!phi_init) { last_phi_k[i] = phi_now; continue; }
+
+        float dphi = phi_now - last_phi_k[i];
+        last_phi_k[i] = phi_now;
+        if (dphi > PI) dphi -= 2*PI;
+        if (dphi < -PI) dphi += 2*PI;
+
+        float omegac = std::max(omega_c_k[i], 1e-6f);
+        float dphi_norm = dphi / (omegac * last_dt);
+
         int n = n_harm[i];
         if (n < 1) n = 1; if (n > 8) n = 8;
 
-        // Bin phasor and its phase
-        float zr = bin_zr[i], zi = bin_zi[i];
-        float mag = std::hypot(zr, zi);
-        if (!(mag > EPSILON)) continue;
+        float delta = dphi_norm - n * dphi_ref_norm;
+        if (delta > PI) delta -= 2*PI;
+        if (delta < -PI) delta += 2*PI;
 
-        // Relative phase to fundamental (harmonic locking)
-        float phi_k = std::atan2(zi, zr);
-        float delta = phi_k - n * phi_ref;
-
-        // Wrap to [−π, π]
-        if (delta > PI) delta -= 2.0f * PI;
-        if (delta < -PI) delta += 2.0f * PI;
-
-        // Accumulate weighted complex sum
         sum_r += double(w_eta) * std::cos(delta);
         sum_i += double(w_eta) * std::sin(delta);
         sum_w += double(w_eta);
     }
 
+    phi_init = true;
     float R_now = (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
     R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
