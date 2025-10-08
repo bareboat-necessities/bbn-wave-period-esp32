@@ -452,7 +452,7 @@ void updatePhaseCoherence() {
 
         // Per-bin LPF and ENBW (Hz→rad/s)
         float f_k_hz  = omega_k / TWO_PI_;
-        float fc_k_hz = std::max(MIN_FC_HZ, (K > 0 ? STEP * f_k_hz : MIN_FC_HZ));
+        float fc_k_hz = std::max(MIN_FC_HZ, (K > 0 ? (r - 1.0f) * f_k_hz : MIN_FC_HZ));
         float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_k_hz);
         float enbw_k  = PI * PI * fc_k_hz; // [rad/s]
 
