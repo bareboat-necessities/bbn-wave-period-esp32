@@ -448,41 +448,6 @@ void updatePhaseCoherence() {
         S2 += S_eta_hat * omega_k * omega_k * domega;
       }
 
-      // Find spectral peak ω_pk of S_eta via quadratic interpolation in log-ω
-      {
-        // Find max bin within the active window
-        int i_max = -1;
-        float s_max = -1.0f;
-        for (int i = left; i <= right; ++i) {
-          float s = last_S_eta_hat[i];
-          if (s > s_max) {
-            s_max = s;
-            i_max = i;
-          }
-        }
-
-        float w_pk = 0.0f;
-        if (i_max < 0) {
-          w_pk = 0.0f;
-        } else if (i_max == left || i_max == right) {
-          // Edge: take bin center
-          w_pk = omega_k_arr[i_max];
-        } else {
-          // Quadratic peak in x = ln ω with uniform step h = ln(r)
-          const float h  = std::log(r);
-          const float w0 = omega_k_arr[i_max];
-          const float yL = last_S_eta_hat[i_max - 1];
-          const float y0 = last_S_eta_hat[i_max];
-          const float yR = last_S_eta_hat[i_max + 1];
-
-          const float denom = std::max(EPSILON, (yL - 2.0f * y0 + yR));
-          float delta = 0.5f * (yL - yR) / denom;   // vertex offset (in units of h)
-          delta = std::clamp(delta, -1.0f, 1.0f);   // keep between neighbors
-          const float x_star = std::log(w0) + delta * h;
-          w_pk = std::exp(x_star);
-        }
-      }
-
       has_moments = true;
 
       // Update EMAs
