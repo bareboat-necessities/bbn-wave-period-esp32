@@ -165,7 +165,6 @@ float a_var  = std::max(0.0f, A2_second.get() - a_mean * a_mean);
 
 A0.update(a_var, alpha_mom);   // keep A0 as your variance cache
 
-      demodulateAcceleration(accel_z, omega_inst, dt_s);
       updateSpectralMoments(omega_inst);
         updatePhaseCoherence();
       computeRegularityOutput();
@@ -289,27 +288,6 @@ float getDisplacementPeriodSec() const {
       alpha_out = 1.0f - std::exp(-dt_s / tau_out);
       alpha_w   = 1.0f - std::exp(-dt_s / TAU_W_SEC);
       last_dt = dt_s;
-    }
-
-    void demodulateAcceleration(float accel_z, float omega_inst, float dt_s) {
-      // Safer wrap: handles large omega_inst*dt_s jumps gracefully
-      phi += omega_inst * dt_s;
-      phi = std::fmod(phi, TWO_PI_);
-      if (phi < 0.0f) phi += TWO_PI_;
-        
-      float c = std::cos(phi);
-      float s = std::sin(phi);
-
-      float y_real =  accel_z * c;
-      float y_imag = -accel_z * s;
-
-      if (!has_moments) {
-        z_real = y_real;
-        z_imag = y_imag;
-        return;
-      }
-      z_real = (1.0f - alpha_env) * z_real + alpha_env * y_real;
-      z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
     }
 
 // --- Per-bin temporal phase coherence, then power-averaged across bins ---
