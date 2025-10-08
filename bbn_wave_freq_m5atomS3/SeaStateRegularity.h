@@ -164,8 +164,8 @@ float a_var  = std::max(0.0f, A2_second.get() - a_mean * a_mean);
 A0.update(a_var, alpha_mom);   // keep A0 as your variance cache
 
       demodulateAcceleration(accel_z, omega_inst, dt_s);
-      updatePhaseCoherence();
       updateSpectralMoments(omega_inst);
+        updatePhaseCoherence();
       computeRegularityOutput();
     }
 
