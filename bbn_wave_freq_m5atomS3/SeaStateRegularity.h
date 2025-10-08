@@ -102,6 +102,8 @@ class SeaStateRegularity {
 
     void reset() {
 
+        ref_c = 1.0f; ref_s = 0.0f;
+
       M0.reset(); M1.reset(); M2.reset();
       A0.reset(); A1_mean.reset(); A2_second.reset();
 
@@ -285,6 +287,8 @@ float getDisplacementPeriodSec() const {
     float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
     float last_P_acc[NBINS] = {0.0f};   // baseband power in acceleration units
 
+    float ref_c = 1.0f, ref_s = 0.0f;  // reference oscillator for ω_used
+
     // Helpers
     void updateAlpha(float dt_s) {
       if (dt_s == last_dt) return;
@@ -296,13 +300,13 @@ float getDisplacementPeriodSec() const {
     }
 
 void updatePhaseCoherence() {
-    // Find max acceleration-domain power
+    // Weight in acceleration domain to avoid 1/ω⁴ bias
     float smax = 0.0f;
     for (int i = 0; i < NBINS; ++i)
         smax = std::max(smax, last_P_acc[i]);
     const float THRESH = 0.01f * smax;   // ignore <1% bins
 
-    // Update each bin’s unit phasor EMA
+    // Per-bin temporal EMA of de-rotated unit phasors (drift-free)
     for (int i = 0; i < NBINS; ++i) {
         float w = last_P_acc[i];
         if (!(w > THRESH)) continue;
@@ -311,12 +315,23 @@ void updatePhaseCoherence() {
         float mag = std::hypot(zr, zi);
         if (mag <= EPSILON) continue;
 
+        // Unit phasor of current bin
         float ur = zr / mag, ui = zi / mag;
-        coh_r_k[i] = (1.0f - alpha_coh) * coh_r_k[i] + alpha_coh * ur;
-        coh_i_k[i] = (1.0f - alpha_coh) * coh_i_k[i] + alpha_coh * ui;
+
+        // Compute Δ_i = θ_i - θ_ref from oscillators (no time accumulation)
+        float cosD = bin_c[i]*ref_c + bin_s[i]*ref_s;   // cos(θ_i-θ_ref)
+        float sinD = bin_s[i]*ref_c - bin_c[i]*ref_s;   // sin(θ_i-θ_ref)
+
+        // Rotate by -Δ_i
+        float ur_rot =  ur * cosD + ui * sinD;
+        float ui_rot = -ur * sinD + ui * cosD;
+
+        // Temporal EMA in common reference frame
+        coh_r_k[i] = (1.0f - alpha_coh) * coh_r_k[i] + alpha_coh * ur_rot;
+        coh_i_k[i] = (1.0f - alpha_coh) * coh_i_k[i] + alpha_coh * ui_rot;
     }
 
-    // Weighted vector average over bins
+    // Power-weighted global coherence
     float sum_cr = 0.0f, sum_ci = 0.0f, sum_w = 0.0f;
     for (int i = 0; i < NBINS; ++i) {
         float w = last_P_acc[i];
@@ -341,6 +356,15 @@ void updateSpectralMoments(float omega_inst) {
     if (omega_used > 0.0f) {
         float ratio = w_obs / omega_used;
         if (ratio < 0.7f || ratio > 1.3f) return;
+    }
+
+    // Advance reference oscillator for ω_used (drift-free phase frame)
+    {
+        float dphi_ref = omega_used * last_dt;
+        float cd = std::cos(dphi_ref), sd = std::sin(dphi_ref);
+        float c0 = ref_c, s0 = ref_s;
+        ref_c = c0 * cd - s0 * sd;
+        ref_s = c0 * sd + s0 * cd;
     }
 
     int K = MAX_K;
@@ -404,7 +428,7 @@ void updateSpectralMoments(float omega_inst) {
         bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
         bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
 
-        // --- NEW: acceleration-domain baseband power (for phase coherence weighting)
+        // --- acceleration-domain baseband power (for phase coherence weighting)
         float P_acc = bin_zr[idx]*bin_zr[idx] + bin_zi[idx]*bin_zi[idx];
         last_P_acc[idx] = P_acc;
 
