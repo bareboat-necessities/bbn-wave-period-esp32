@@ -475,10 +475,11 @@ void updateSpectralMoments(float omega_inst) {
             if (last_S_eta_hat[i] > s_max) { s_max = last_S_eta_hat[i]; i_max = i; }
         }
         float omega_peak_now = omega_k_arr[i_max];
-        omega_peak_smooth = (omega_peak_smooth <= 0.0f)
-                          ? omega_peak_now
-                          : (1.0f - alpha_mom)*omega_peak_smooth + alpha_mom*omega_peak_now;
-
+constexpr float ALPHA_PEAK = 0.05f; // ≈20 s time constant
+omega_peak_smooth = (omega_peak_smooth <= 0.0f)
+                  ? omega_peak_now
+                  : (1.0f - ALPHA_PEAK)*omega_peak_smooth + ALPHA_PEAK*omega_peak_now;
+        
         // Assign per-bin harmonic index n_harm ≈ round(ω_k / ω̂₀)
         float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
         for (int i = left; i <= right; ++i) {
