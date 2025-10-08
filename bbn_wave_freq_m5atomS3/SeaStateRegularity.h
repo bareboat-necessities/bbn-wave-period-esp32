@@ -148,6 +148,8 @@ class SeaStateRegularity {
 
       last_accel = accel_z;
 
+      updateAlpha(dt_s);
+
 // --- Direct time-domain acceleration variance ---
 A1_mean.update(accel_z,           alpha_mom);
 A2_second.update(accel_z*accel_z, alpha_mom);
@@ -161,7 +163,6 @@ float a_var  = std::max(0.0f, A2_second.get() - a_mean * a_mean);
 
 A0.update(a_var, alpha_mom);   // keep A0 as your variance cache
 
-      updateAlpha(dt_s);
       demodulateAcceleration(accel_z, omega_inst, dt_s);
       updatePhaseCoherence();
       updateSpectralMoments(omega_inst);
