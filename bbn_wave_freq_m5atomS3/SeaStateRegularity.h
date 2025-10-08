@@ -88,7 +88,7 @@ class SeaStateRegularity {
     // Multi-bin params (ratio spacing)
     constexpr static int   MAX_K       = 25;      // up to ±25 bins → 51 bins total
     constexpr static int   NBINS       = 2 * MAX_K + 1;
-    constexpr static float MIN_FC_HZ   = 0.02f;
+    constexpr static float MIN_FC_HZ   = 0.03f;
 
     SeaStateRegularity(float tau_mom_sec = 180.0f,
                        float tau_coh_sec = 60.0f,
@@ -256,8 +256,8 @@ float getDisplacementPeriodSec() const {
     float last_accel;
 
     // per-bin demod states
-    float bin_zr[NBINS], bin_zi[NBINS];
-    float bin_c[NBINS],  bin_s[NBINS];
+    double bin_zr[NBINS], bin_zi[NBINS];
+    double bin_c[NBINS],  bin_s[NBINS];
     bool  bins_init;
 
     // Per-bin phase-coherence EMAs (unit-phasor averages)
