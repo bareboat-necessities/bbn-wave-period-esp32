@@ -90,12 +90,10 @@ class SeaStateRegularity {
     constexpr static int   NBINS       = 2 * MAX_K + 1;
     constexpr static float MIN_FC_HZ   = 0.02f;
 
-    SeaStateRegularity(float tau_env_sec = 15.0f,
-                       float tau_mom_sec = 180.0f,
+    SeaStateRegularity(float tau_mom_sec = 180.0f,
                        float tau_coh_sec = 10.0f,
                        float tau_out_sec = 30.0f)
     {
-      tau_env = tau_env_sec;
       tau_mom = tau_mom_sec;
       tau_coh = std::max(1e-3f, tau_coh_sec);
       tau_out = std::max(1e-3f, tau_out_sec);
@@ -103,8 +101,6 @@ class SeaStateRegularity {
     }
 
     void reset() {
-      phi = 0.0f;
-      z_real = z_imag = 0.0f;
 
       M0.reset(); M1.reset(); M2.reset();
       A0.reset(); A1_mean.reset(); A2_second.reset();
@@ -127,7 +123,7 @@ class SeaStateRegularity {
 
       has_moments = false;
       last_dt = -1.0f;
-      alpha_env = alpha_mom = alpha_coh = alpha_out = 0.0f;
+      alpha_mom = alpha_coh = alpha_out = 0.0f;
 
       for (int i = 0; i < NBINS; i++) {
         bin_zr[i] = bin_zi[i] = 0.0f;
@@ -139,7 +135,6 @@ class SeaStateRegularity {
       bins_init = false;
       last_accel = 0.0f;
 
-      omega_peak = omega_peak_smooth = 0.0f;
       for (int i = 0; i < NBINS; ++i) last_S_eta_hat[i] = 0.0f;
     }
 
@@ -236,9 +231,9 @@ float getDisplacementPeriodSec() const {
     static constexpr float OMEGA_MAX_RAD  = TWO_PI_ * OMEGA_MAX_HZ;
 
     // time constants and alphas
-    float tau_env, tau_mom, tau_coh, tau_out;
+    float tau_mom, tau_coh, tau_out;
     float last_dt;
-    float alpha_env, alpha_mom, alpha_coh, alpha_out;
+    float alpha_mom, alpha_coh, alpha_out;
 
     // ω_used smoothing
     float omega_used;
@@ -282,7 +277,6 @@ float getDisplacementPeriodSec() const {
     // Helpers
     void updateAlpha(float dt_s) {
       if (dt_s == last_dt) return;
-      alpha_env = 1.0f - std::exp(-dt_s / tau_env);
       alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
       alpha_coh = 1.0f - std::exp(-dt_s / tau_coh);
       alpha_out = 1.0f - std::exp(-dt_s / tau_out);
