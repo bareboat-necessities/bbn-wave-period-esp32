@@ -359,6 +359,14 @@ void updatePhaseCoherence() {
         if (dphi >  PI) dphi -= 2.0f*PI;
         if (dphi < -PI) dphi += 2.0f*PI;
 
+        // --- LPF phase lag compensation ---
+float omega_k = omega_k_mem[i];
+float omegac  = std::max(omega_c_k[i], 1e-6f);
+float domega  = omega_k - n_harm[i] * omega_peak_smooth;
+float phiH    = -std::atan(domega / omegac);         // filter phase lag
+float phiGD   = domega * omegac / (omegac*omegac + domega*domega); // group delay term
+dphi += (phiH + phiGD);  // compensate lag + delay
+        
         // harmonic index (already tracked)
         int n = n_harm[i];
         if (n < 1) n = 1; if (n > 8) n = 8;
