@@ -315,23 +315,37 @@ float getDisplacementPeriodSec() const {
       z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
     }
 
-    void updatePhaseCoherence() {
-      float mag = std::hypot(z_real, z_imag);
-      if (mag <= EPSILON) {
-        if (coh_r.isReady() && coh_i.isReady())
-          R_phase = std::clamp(std::sqrt(coh_r.get() * coh_r.get() +
-                                         coh_i.get() * coh_i.get()), 0.0f, 1.0f);
-        else
-          R_phase = 0.0f;
-        return;
-      }
-      float u_r = z_real / mag;
-      float u_i = z_imag / mag;
-      coh_r.update(u_r, alpha_coh);
-      coh_i.update(u_i, alpha_coh);
-      R_phase = std::clamp(std::sqrt(coh_r.get() * coh_r.get() +
-                                     coh_i.get() * coh_i.get()), 0.0f, 1.0f);
+// --- Power-weighted multi-bin phase coherence ---
+void updatePhaseCoherence() {
+    float sum_r = 0.0f, sum_i = 0.0f;
+    float sum_w = 0.0f;
+
+    // Accumulate weighted complex phasors across bins
+    for (int i = 0; i < NBINS; ++i) {
+        float w = last_S_eta_hat[i];
+        if (!(w > EPSILON)) continue;
+
+        float zr = bin_zr[i];
+        float zi = bin_zi[i];
+        float mag = std::hypot(zr, zi);
+        if (mag <= EPSILON) continue;
+
+        float ur = zr / mag;
+        float ui = zi / mag;
+
+        sum_r += w * ur;
+        sum_i += w * ui;
+        sum_w += w;
     }
+
+    // Compute instantaneous coherence magnitude
+    float R_now = 0.0f;
+    if (sum_w > EPSILON)
+        R_now = std::sqrt(sum_r * sum_r + sum_i * sum_i) / sum_w;
+
+    // EMA update for phase regularity (uses short tau_coh)
+    R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
+}
 
     // Spectral moments: physically correct a→η conversion (1/ω⁴)
     void updateSpectralMoments(float omega_inst) {
