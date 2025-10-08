@@ -207,11 +207,20 @@ float getWaveHeightEnvelopeEst() const {
 float getDisplacementFrequencyHz() const {
     float m0 = M0.get();
     float m2 = M2.get();
-    if (!(m0 > EPSILON && m2 > EPSILON))
-        return 0.0f;
-    // Zero-upcrossing frequency from spectral moments
-    float omega_z = std::sqrt(m2 / m0);
-    return omega_z / (2.0f * PI);   // [Hz]
+    if (!(m0 > EPSILON)) return 0.0f;
+
+    float q00 = Q00.get();
+    float q20 = Q20.get();
+    float varM0  = std::max(0.0f, q00 - m0 * m0);
+    float cov20  = q20 - m2 * m0;
+    float invM0_2 = 1.0f / std::max(m0 * m0, EPSILON);
+
+    float r2_naive = m2 / m0;
+    float r2_corr  = r2_naive + (r2_naive * varM0 - cov20) * invM0_2;
+    r2_corr = std::max(r2_corr, 0.0f);
+
+    float omega_z = std::sqrt(r2_corr);
+    return omega_z / (2.0f * PI);
 }
 
 float getDisplacementPeriodSec() const {
