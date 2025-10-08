@@ -356,7 +356,7 @@ void updateSpectralMoments(float omega_inst) {
             bin_zr[i] = 0.0f; bin_zi[i] = 0.0f;
             coh_r_k[i] = 0.0f; coh_i_k[i] = 0.0f;
             last_P_acc[i] = 0.0f; last_S_eta_hat[i] = 0.0f;
-            omega_k_mem[i] = 0.0f; n_harm[i] = 1; domega_k_mem[i] = 0.0f;
+            omega_k_mem[i] = 0.0f; domega_k_mem[i] = 0.0f; n_harm[i] = 1;
         }
         bins_init = true;
     }
@@ -375,13 +375,13 @@ void updateSpectralMoments(float omega_inst) {
         omega_k_mem[idx] = omega_k_arr[idx];
     }
 
-    // --- Compute Voronoi Δω_k (grid-invariant weights) ---
+    // --- Compute Voronoi Δω_k and persist to member ---
     float domega_k_arr[NBINS] = {};
     for (int idx = left; idx <= right; ++idx) {
         float wL = (idx > left)  ? omega_k_arr[idx - 1] : omega_k_arr[idx];
         float wR = (idx < right) ? omega_k_arr[idx + 1] : omega_k_arr[idx];
         domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
-        domega_k_mem[idx] = domega_k_arr[idx];  // persist for phase coherence weighting
+        domega_k_mem[idx] = domega_k_arr[idx];
     }
 
     float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
@@ -459,150 +459,6 @@ void updateSpectralMoments(float omega_inst) {
     has_moments = true;
 
     // --- Moment EMAs + Jensen helpers ---
-    M0.update(S0, alpha_mom);
-    M1.update(S1, alpha_mom);
-    M2.update(S2, alpha_mom);
-    Q00.update(S0 * S0, alpha_mom);
-    Q10.update(S0 * S1, alpha_mom);
-    Q20.update(S0 * S2, alpha_mom);
-}
-
-void updateSpectralMoments(float omega_inst) {
-    float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-
-    // Smooth ω_used
-    if (omega_used <= 0.0f) omega_used = w_obs;
-    else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
-
-    // Outlier gate
-    if (omega_used > 0.0f) {
-        float ratio = w_obs / omega_used;
-        if (ratio < 0.7f || ratio > 1.3f) return;
-    }
-
-    // Advance reference oscillator (drift-free global phase frame)
-    {
-        float dphi_ref = omega_used * last_dt;
-        float cd = std::cos(dphi_ref), sd = std::sin(dphi_ref);
-        float c0 = ref_c, s0 = ref_s;
-        ref_c = c0 * cd - s0 * sd;
-        ref_s = c0 * sd + s0 * cd;
-    }
-
-    // Ratio grid spanning harmonics up to ~6×
-    int K = MAX_K;
-    constexpr float TARGET_SPAN_UP = 6.0f;
-    const float r = std::exp(std::log(TARGET_SPAN_UP) / float(K));
-
-    if (!bins_init) {
-        for (int i = 0; i < NBINS; i++) {
-            bin_c[i] = 1.0f; bin_s[i] = 0.0f;
-            bin_zr[i] = 0.0f; bin_zi[i] = 0.0f;
-            coh_r_k[i] = 0.0f; coh_i_k[i] = 0.0f;
-            last_P_acc[i] = 0.0f; last_S_eta_hat[i] = 0.0f;
-            omega_k_mem[i] = 0.0f; n_harm[i] = 1;
-        }
-        bins_init = true;
-    }
-
-    const int left = MAX_K - K, right = MAX_K + K;
-
-    // Build ω_k grid and persist it
-    float omega_k_arr[NBINS] = {};
-    omega_k_arr[MAX_K] = omega_used;
-    for (int k = 1; k <= K; ++k) {
-        omega_k_arr[MAX_K + k] = omega_k_arr[MAX_K + k - 1] * r;
-        omega_k_arr[MAX_K - k] = omega_k_arr[MAX_K - k + 1] / r;
-        domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
-        domega_k_mem[idx] = domega_k_arr[idx];   // <- add this line
-    }
-    for (int idx = left; idx <= right; ++idx) {
-        omega_k_arr[idx] = std::clamp(omega_k_arr[idx], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-        omega_k_mem[idx] = omega_k_arr[idx];
-    }
-
-    // Voronoi Δω_k
-    float domega_k_arr[NBINS] = {};
-    for (int idx = left; idx <= right; ++idx) {
-        float wL = (idx > left)  ? omega_k_arr[idx - 1] : omega_k_arr[idx];
-        float wR = (idx < right) ? omega_k_arr[idx + 1] : omega_k_arr[idx];
-        domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
-    }
-
-    float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
-
-    // Bin loop
-    for (int idx = left; idx <= right; ++idx) {
-        float omega_k = omega_k_arr[idx];
-        if (!(omega_k > EPSILON)) continue;
-
-        // advance oscillator
-        float dphi = omega_k * last_dt;
-        float cd = std::cos(dphi), sd = std::sin(dphi);
-        float c0 = bin_c[idx], s0 = bin_s[idx];
-        bin_c[idx] = c0 * cd - s0 * sd;
-        bin_s[idx] = c0 * sd + s0 * cd;
-
-        // baseband mix
-        float y_r = last_accel * bin_c[idx];
-        float y_i = -last_accel * bin_s[idx];
-
-        // LPF + ENBW
-        float f_k_hz  = omega_k / TWO_PI_;
-        float fc_k_hz = std::max(MIN_FC_HZ, (r - 1.0f) * f_k_hz);
-        float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_k_hz);
-        float enbw_k  = PI * PI * fc_k_hz;
-
-        
-// keep ωc for phase compensation
-omega_c_k[idx] = TWO_PI_ * fc_k_hz;
-
-        bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
-        bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
-
-        // acceleration-domain power (for coherence weighting)
-        float P_acc = bin_zr[idx]*bin_zr[idx] + bin_zi[idx]*bin_zi[idx];
-        last_P_acc[idx] = P_acc;
-
-        // displacement PSD estimate
-        float w2 = omega_k * omega_k;
-        float inv_w4 = 1.0f / std::max(w2 * w2, EPSILON);
-        float P_disp = P_acc * inv_w4;
-
-        float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON);
-        last_S_eta_hat[idx] = S_eta_hat;
-
-        S0 += S_eta_hat * domega;
-        S1 += S_eta_hat * omega_k * domega;
-        S2 += S_eta_hat * omega_k * omega_k * domega;
-    }
-
-    // Track spectral peak (fundamental) and smooth it
-    {
-        int i_max = left; float s_max = last_S_eta_hat[left];
-        for (int i = left + 1; i <= right; ++i) {
-            if (last_S_eta_hat[i] > s_max) { s_max = last_S_eta_hat[i]; i_max = i; }
-        }
-        float omega_peak_now = omega_k_arr[i_max];
-constexpr float ALPHA_PEAK = 0.05f; // ≈20 s time constant
-omega_peak_smooth = (omega_peak_smooth <= 0.0f)
-                  ? omega_peak_now
-                  : (1.0f - ALPHA_PEAK)*omega_peak_smooth + ALPHA_PEAK*omega_peak_now;
-        
-        // Assign per-bin harmonic index n_harm ≈ round(ω_k / ω̂₀)
-        float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
-        for (int i = left; i <= right; ++i) {
-            float ratio = omega_k_arr[i] / w0;
-            int n = (int)std::lround(ratio);
-            if (n < 1) n = 1;
-            if (n > 8) n = 8; // safety clamp
-            n_harm[i] = n;
-        }
-    }
-
-    has_moments = true;
-
-    // Moment EMAs + Jensen helpers
     M0.update(S0, alpha_mom);
     M1.update(S1, alpha_mom);
     M2.update(S2, alpha_mom);
