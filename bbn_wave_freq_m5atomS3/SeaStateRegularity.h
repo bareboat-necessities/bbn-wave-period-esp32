@@ -371,7 +371,6 @@ void updatePhaseCoherence() {
       }
 
       // Ratio-spaced ω grid around ω_used
-      const float r = 1.0f + STEP;
       const int left  = MAX_K - K;
       const int right = MAX_K + K;
 
