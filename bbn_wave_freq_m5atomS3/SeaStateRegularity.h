@@ -396,7 +396,7 @@ void updateSpectralMoments(float omega_inst) {
             bin_zr[i] = 0.0f; bin_zi[i] = 0.0f;
             coh_r_k[i] = 0.0f; coh_i_k[i] = 0.0f;
             last_P_acc[i] = 0.0f; last_S_eta_hat[i] = 0.0f;
-            omega_k_mem[i] = 0.0f; n_harm[i] = 0;
+            omega_k_mem[i] = 0.0f; n_harm[i] = 1;
         }
         bins_init = true;
     }
