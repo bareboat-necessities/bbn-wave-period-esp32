@@ -208,6 +208,11 @@ const float w_rand = 1.0f - w_mono;
     const float correction = 1.0f / (1.0f + 4.0f * R * R);
     const float Hs_mono_corr = Hs_mono * correction;
 
+
+  // Store Voronoi width Δω_k to get grid-invariant weighting
+float domega_k_mem[NBINS] = {0.0f};
+
+    
     // Blend in energy (variance) domain
     const double Hs2 =
         w_mono * double(Hs_mono_corr) * double(Hs_mono_corr) +
@@ -321,11 +326,7 @@ float omega_peak_smooth = 0.0f;
     }
 
 void updatePhaseCoherence() {
-    static float last_phi_k[NBINS] = {0.0f};
-    static bool  phi_init = false;
-    static float phi_ref_last = 0.0f;
-
-    // energy check
+    // --- Energy gate (unchanged idea) ---
     float smax = 0.0f;
     for (int i = 0; i < NBINS; ++i)
         smax = std::max(smax, last_S_eta_hat[i]);
@@ -334,69 +335,59 @@ void updatePhaseCoherence() {
         return;
     }
 
-    // fundamental reference = max PSD bin
+    // --- Reference bin: max PSD (unchanged idea) ---
     int i_ref = 0;
     for (int i = 1; i < NBINS; ++i)
         if (last_S_eta_hat[i] > last_S_eta_hat[i_ref]) i_ref = i;
 
-    // current ref phase
     const float phi_ref_now = std::atan2(bin_zi[i_ref], bin_zr[i_ref]);
 
-    // initialize on first call
-    if (!phi_init) {
-        for (int i = 0; i < NBINS; ++i)
-            last_phi_k[i] = std::atan2(bin_zi[i], bin_zr[i]);
-        phi_ref_last = phi_ref_now;
-        phi_init = true;
-        return;
-    }
-
-    // unwrap reference increment
-    float dphi_ref = phi_ref_now - phi_ref_last;
-    phi_ref_last = phi_ref_now;
-    if (dphi_ref >  PI) dphi_ref -= 2.0f * PI;
-    if (dphi_ref < -PI) dphi_ref += 2.0f * PI;
-
-    // === NEW: reference normalization ===
-    const float dt_safe     = std::max(last_dt, 1e-6f);
-    const float omega_c_ref = std::max(omega_c_k[i_ref], 1e-6f);
-    const float denom_ref   = omega_c_ref * dt_safe;
-
-    // accumulators
+    // --- Accumulators ---
     const float THRESH = 0.02f * smax;
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
+
+    // --- Very slow per-bin bias detrend (static state) ---
+    static float resid_mean[NBINS] = {0.0f};
+    const float bias_tau_sec = 300.0f; // ~5 min; set <=0 to disable detrend
+    const float beta = (bias_tau_sec > 0.0f)
+        ? (1.0f - std::exp(-std::max(last_dt, 1e-6f) / bias_tau_sec))
+        : 1.0f; // immediate overwrite if disabled
 
     for (int i = 0; i < NBINS; ++i) {
         const float S_eta = last_S_eta_hat[i];
         if (S_eta < THRESH) continue;
 
-        // bin phase and increment (unwrap)
+        // instantaneous phase of this bin
         const float phi_now = std::atan2(bin_zi[i], bin_zr[i]);
-        float dphi = phi_now - last_phi_k[i];
-        last_phi_k[i] = phi_now;
-        if (dphi >  PI) dphi -= 2.0f * PI;
-        if (dphi < -PI) dphi += 2.0f * PI;
 
-        // harmonic index
+        // harmonic mapping (unchanged logic)
         int n = n_harm[i];
         if (n < 1) n = 1;
         if (n > 8) n = 8;
 
-        // per-bin normalization (unchanged)
-        const float omega_c_bin = std::max(omega_c_k[i], 1e-6f);
-        const float denom_bin   = omega_c_bin * dt_safe;
+        // instantaneous residual relative to n-th harmonic of the ref
+        float resid = phi_now - float(n) * phi_ref_now;
+        if (resid >  PI) resid -= 2.0f * PI;
+        if (resid < -PI) resid += 2.0f * PI;
 
-        // === NEW: both terms normalized in their own RBW units ===
-        const float delta = (dphi / denom_bin) - float(n) * (dphi_ref / denom_ref);
+        // grid-invariant energy weight: w_k = S_eta(ω_k) * Δω_k
+        const float w_k = S_eta * std::max(domega_k_mem[i], EPSILON);
 
-        // weight by displacement PSD
-        sum_r += double(S_eta) * std::cos(delta);
-        sum_i += double(S_eta) * std::sin(delta);
-        sum_w += double(S_eta);
+        // slow per-bin bias removal (optional but recommended)
+        resid_mean[i] = (1.0f - beta) * resid_mean[i] + beta * resid;
+        const float resid_detr = resid - resid_mean[i];
+
+        // weighted unit phasor sum
+        sum_r += double(w_k) * std::cos(resid_detr);
+        sum_i += double(w_k) * std::sin(resid_detr);
+        sum_w += double(w_k);
     }
 
-    const float R_now =
-        (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
+    const float R_now = (sum_w > EPSILON)
+        ? float(std::hypot(sum_r, sum_i) / sum_w)
+        : 0.0f;
+
+    // EMA smoothing (unchanged)
     R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
 
@@ -446,6 +437,8 @@ void updateSpectralMoments(float omega_inst) {
     for (int k = 1; k <= K; ++k) {
         omega_k_arr[MAX_K + k] = omega_k_arr[MAX_K + k - 1] * r;
         omega_k_arr[MAX_K - k] = omega_k_arr[MAX_K - k + 1] / r;
+        domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
+        domega_k_mem[idx] = domega_k_arr[idx];   // <- add this line
     }
     for (int idx = left; idx <= right; ++idx) {
         omega_k_arr[idx] = std::clamp(omega_k_arr[idx], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
