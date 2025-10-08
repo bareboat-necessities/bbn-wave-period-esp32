@@ -289,6 +289,16 @@ float getDisplacementPeriodSec() const {
 
     float ref_c = 1.0f, ref_s = 0.0f;  // reference oscillator for ω_used
 
+// Store current ω grid and per-bin harmonic indices
+float omega_k_mem[NBINS] = {0.0f};
+int   n_harm[NBINS] = {0};
+
+// Reference oscillator for θ_ref (fundamental)
+float ref_c = 1.0f, ref_s = 0.0f;
+
+// Smoothed spectral-peak frequency (fundamental)
+float omega_peak_smooth = 0.0f;
+
     // Helpers
     void updateAlpha(float dt_s) {
       if (dt_s == last_dt) return;
