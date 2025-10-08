@@ -455,6 +455,10 @@ void updateSpectralMoments(float omega_inst) {
         float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_k_hz);
         float enbw_k  = PI * PI * fc_k_hz;
 
+        
+// keep ωc for phase compensation
+omega_c_k[idx] = TWO_PI_ * fc_k_hz;
+
         bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
         bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
 
