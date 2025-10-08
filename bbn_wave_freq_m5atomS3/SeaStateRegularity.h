@@ -199,11 +199,11 @@ float getWaveHeightEnvelopeEst() const {
     // --- Phase coherence weighting ---
     const float R = std::clamp(R_phase, 0.0f, 1.0f);
 
-    const float R_pivot = 0.45f;
-    const float k_sharp = 12.0f;   // slope of logistic transition (tune 8–20)
-    const float w_mono = 1.0f / (1.0f + std::exp(-k_sharp * (R - R_pivot)));
-    const float w_rand = 1.0f - w_mono;
-
+const float k_sharp = 50.0f;      // large slope → nearly binary
+const float R_pivot = 0.72f;
+const float w_mono = 1.0f / (1.0f + std::exp(-k_sharp * (R - R_pivot))); // sigmoid
+const float w_rand = 1.0f - w_mono;
+    
     // harmonic suppression for strongly coherent multi-harmonic signals
     const float correction = 1.0f / (1.0f + 4.0f * R * R);
     const float Hs_mono_corr = Hs_mono * correction;
