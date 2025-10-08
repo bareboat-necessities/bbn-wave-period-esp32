@@ -91,7 +91,7 @@ class SeaStateRegularity {
     constexpr static float MIN_FC_HZ   = 0.02f;
 
     SeaStateRegularity(float tau_mom_sec = 180.0f,
-                       float tau_coh_sec = 10.0f,
+                       float tau_coh_sec = 60.0f,
                        float tau_out_sec = 30.0f)
     {
       tau_mom = tau_mom_sec;
