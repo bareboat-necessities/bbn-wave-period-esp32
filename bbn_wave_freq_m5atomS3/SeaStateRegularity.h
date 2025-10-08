@@ -200,7 +200,7 @@ float getWaveHeightEnvelopeEst() const {
     const float R = std::clamp(R_phase, 0.0f, 1.0f);
 
 const float k_sharp = 350.0f;      // large slope → nearly binary
-const float R_pivot = 0.72f;
+const float R_pivot = 0.8f;
 const float w_mono = 1.0f / (1.0f + std::exp(-k_sharp * (R - R_pivot))); // sigmoid
 const float w_rand = 1.0f - w_mono;
     
