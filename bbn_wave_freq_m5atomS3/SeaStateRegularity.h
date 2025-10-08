@@ -313,7 +313,7 @@ float omega_peak_smooth = 0.0f;
     }
 
 void updatePhaseCoherence() {
-    // --- 1. Skip if no spectral energy ---
+    // --- Skip if no energy ---
     float smax_eta = 0.0f;
     for (int i = 0; i < NBINS; ++i)
         smax_eta = std::max(smax_eta, last_S_eta_hat[i]);
@@ -322,79 +322,54 @@ void updatePhaseCoherence() {
         return;
     }
 
-    // --- 2. Find the fundamental bin (peak of displacement PSD) ---
+    // --- Reference bin: peak of displacement PSD ---
     int i_ref = 0;
     float s_ref = last_S_eta_hat[0];
     for (int i = 1; i < NBINS; ++i)
         if (last_S_eta_hat[i] > s_ref) { s_ref = last_S_eta_hat[i]; i_ref = i; }
 
-    // Reference phasor (normalize to unit vector)
+    // --- Reference phase ---
     float zr_ref = bin_zr[i_ref], zi_ref = bin_zi[i_ref];
     float mag_ref = std::hypot(zr_ref, zi_ref);
-    if (!(mag_ref > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
-    zr_ref /= mag_ref; zi_ref /= mag_ref;
+    if (!(mag_ref > EPSILON)) {
+        R_phase *= (1.0f - alpha_coh);
+        return;
+    }
     const float phi_ref = std::atan2(zi_ref, zr_ref);
 
-    // Reference frequency and LPF params
+    // --- Harmonic-locked complex summation (Option B) ---
     const float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
-    const float omega_ref = omega_k_mem[i_ref];
-    const float domega_ref = omega_ref - w0;
-    const float omegac_ref = std::max(omega_c_k[i_ref], 1e-6f);
-
-    // Compute complex LPF correction for reference bin
-    const float H_ref_r =  omegac_ref * omegac_ref /
-                          (omegac_ref * omegac_ref + domega_ref * domega_ref);
-    const float H_ref_i = -omegac_ref * domega_ref /
-                          (omegac_ref * omegac_ref + domega_ref * domega_ref);
-    const float magH_ref = std::sqrt(H_ref_r * H_ref_r + H_ref_i * H_ref_i);
-    const float phi_corr_ref = std::atan2(H_ref_i, H_ref_r);
-
-    // --- 3. Harmonic-locked phase coherence computation ---
-    const float THRESH = 0.02f * smax_eta;   // Ignore bins below 2% of max power
-    const float PHASE_TRUST = 2.0f;          // Accept |Δω| ≤ 2 ω_c
+    const float THRESH = 0.02f * smax_eta;
 
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
 
     for (int i = 0; i < NBINS; ++i) {
-        float w_disp = last_S_eta_hat[i];
-        if (w_disp < THRESH) continue;
+        float w_eta = last_S_eta_hat[i];
+        if (w_eta < THRESH) continue;
 
-        // Frequency ratio to fundamental → harmonic number
         float wk = omega_k_mem[i];
-        float ratio = wk / w0;
-        int n = std::max(1, std::min(8, int(std::lround(ratio))));
+        int n = n_harm[i];
+        if (n < 1) n = 1; if (n > 8) n = 8;
 
-        // LPF params for this bin
-        float domega = wk - n * w0;
-        float omegac = std::max(omega_c_k[i], 1e-6f);
-        if (std::fabs(domega) > PHASE_TRUST * omegac) continue;
-
-        // --- Complex LPF correction ---
-        float H_r =  omegac * omegac / (omegac * omegac + domega * domega);
-        float H_i = -omegac * domega / (omegac * omegac + domega * domega);
-        float magH = std::sqrt(H_r * H_r + H_i * H_i);
-        float phi_corr = std::atan2(H_i, H_r);
-
-        // Apply correction (divide phasor by complex H)
+        // Bin phasor and its phase
         float zr = bin_zr[i], zi = bin_zi[i];
-        float zr_corr = (zr * H_r + zi * H_i) / magH;
-        float zi_corr = (zi * H_r - zr * H_i) / magH;
+        float mag = std::hypot(zr, zi);
+        if (!(mag > EPSILON)) continue;
 
-        // Compute phase after correction and harmonic alignment
-        float phi_k = std::atan2(zi_corr, zr_corr);
-        float phi_rot = phi_k - n * (phi_ref - phi_corr_ref) - phi_corr;
+        // Relative phase to fundamental (harmonic locking)
+        float phi_k = std::atan2(zi, zr);
+        float delta = phi_k - n * phi_ref;
 
         // Wrap to [−π, π]
-        if (phi_rot >  PI) phi_rot -= 2.0f * PI;
-        if (phi_rot < -PI) phi_rot += 2.0f * PI;
+        if (delta > PI) delta -= 2.0f * PI;
+        if (delta < -PI) delta += 2.0f * PI;
 
-        // Weighted vector sum
-        sum_r += double(w_disp) * std::cos(phi_rot);
-        sum_i += double(w_disp) * std::sin(phi_rot);
-        sum_w += double(w_disp);
+        // Accumulate weighted complex sum
+        sum_r += double(w_eta) * std::cos(delta);
+        sum_i += double(w_eta) * std::sin(delta);
+        sum_w += double(w_eta);
     }
 
-    // --- 4. Update phase coherence with smoothing ---
     float R_now = (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
     R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
