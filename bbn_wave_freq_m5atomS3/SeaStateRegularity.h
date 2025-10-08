@@ -206,7 +206,7 @@ float getWaveHeightEnvelopeEst() const {
     const float w_rand = 1.0f - w_mono;
 
     // harmonic suppression for strongly coherent multi-harmonic signals
-    const float correction = 1.0f / (1.0f + 2.0f * R * R);
+    const float correction = 1.0f / (1.0f + 4.0f * R * R);
     const float Hs_mono_corr = Hs_mono * correction;
 
     // --- Blend in energy (variance) domain ---
