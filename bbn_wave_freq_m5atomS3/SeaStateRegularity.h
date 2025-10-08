@@ -327,18 +327,23 @@ void updatePhaseCoherence() {
 
     // energy check
     float smax = 0.0f;
-    for (int i = 0; i < NBINS; ++i) smax = std::max(smax, last_S_eta_hat[i]);
-    if (!(smax > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
+    for (int i = 0; i < NBINS; ++i)
+        smax = std::max(smax, last_S_eta_hat[i]);
+    if (!(smax > EPSILON)) {
+        R_phase *= (1.0f - alpha_coh);
+        return;
+    }
 
     // fundamental reference = max PSD bin
     int i_ref = 0;
     for (int i = 1; i < NBINS; ++i)
         if (last_S_eta_hat[i] > last_S_eta_hat[i_ref]) i_ref = i;
 
-    // current phases
+    // current ref phase
     const float phi_ref_now = std::atan2(bin_zi[i_ref], bin_zr[i_ref]);
+
+    // initialize on first call
     if (!phi_init) {
-        // first call: seed history for all bins + ref, no output yet
         for (int i = 0; i < NBINS; ++i)
             last_phi_k[i] = std::atan2(bin_zi[i], bin_zr[i]);
         phi_ref_last = phi_ref_now;
@@ -346,11 +351,16 @@ void updatePhaseCoherence() {
         return;
     }
 
-    // unwrap ref increment
+    // unwrap reference increment
     float dphi_ref = phi_ref_now - phi_ref_last;
     phi_ref_last = phi_ref_now;
-    if (dphi_ref >  PI) dphi_ref -= 2.0f*PI;
-    if (dphi_ref < -PI) dphi_ref += 2.0f*PI;
+    if (dphi_ref >  PI) dphi_ref -= 2.0f * PI;
+    if (dphi_ref < -PI) dphi_ref += 2.0f * PI;
+
+    // === NEW: reference normalization ===
+    const float dt_safe     = std::max(last_dt, 1e-6f);
+    const float omega_c_ref = std::max(omega_c_k[i_ref], 1e-6f);
+    const float denom_ref   = omega_c_ref * dt_safe;
 
     // accumulators
     const float THRESH = 0.02f * smax;
@@ -364,30 +374,29 @@ void updatePhaseCoherence() {
         const float phi_now = std::atan2(bin_zi[i], bin_zr[i]);
         float dphi = phi_now - last_phi_k[i];
         last_phi_k[i] = phi_now;
-        if (dphi >  PI) dphi -= 2.0f*PI;
-        if (dphi < -PI) dphi += 2.0f*PI;
+        if (dphi >  PI) dphi -= 2.0f * PI;
+        if (dphi < -PI) dphi += 2.0f * PI;
 
-        // harmonic index (already tracked)
+        // harmonic index
         int n = n_harm[i];
-        if (n < 1) n = 1; if (n > 8) n = 8;
+        if (n < 1) n = 1;
+        if (n > 8) n = 8;
 
-        // *** key fix: SAME normalization for both terms (per-bin RBW) ***
-        const float omegac_k = std::max(omega_c_k[i], 1e-6f);
-        const float denom    = omegac_k * std::max(last_dt, 1e-6f);
+        // per-bin normalization (unchanged)
+        const float omega_c_bin = std::max(omega_c_k[i], 1e-6f);
+        const float denom_bin   = omega_c_bin * dt_safe;
 
-        // compare increments in the bin's RBW units
-        float delta = (dphi - n * dphi_ref) / denom;
+        // === NEW: both terms normalized in their own RBW units ===
+        const float delta = (dphi / denom_bin) - float(n) * (dphi_ref / denom_ref);
 
-        // soft guard against outliers (optional)
-        // if (std::fabs(delta) > 6.0f) delta = (delta > 0 ? 6.0f : -6.0f);
-
-        // weight by displacement PSD (good SNR, avoids ω^-4 bias in phase)
+        // weight by displacement PSD
         sum_r += double(S_eta) * std::cos(delta);
         sum_i += double(S_eta) * std::sin(delta);
         sum_w += double(S_eta);
     }
 
-    const float R_now = (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
+    const float R_now =
+        (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
     R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
 
