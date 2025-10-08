@@ -207,11 +207,6 @@ const float w_rand = 1.0f - w_mono;
     // harmonic suppression for strongly coherent multi-harmonic signals
     const float correction = 1.0f / (1.0f + 4.0f * R * R);
     const float Hs_mono_corr = Hs_mono * correction;
-
-
-  // Store Voronoi width Δω_k to get grid-invariant weighting
-float domega_k_mem[NBINS] = {0.0f};
-
     
     // Blend in energy (variance) domain
     const double Hs2 =
@@ -255,6 +250,9 @@ float getDisplacementPeriodSec() const {
     static constexpr float TWO_PI_  = 2.0f * PI;  
     static constexpr float OMEGA_MIN_RAD  = TWO_PI_ * OMEGA_MIN_HZ;
     static constexpr float OMEGA_MAX_RAD  = TWO_PI_ * OMEGA_MAX_HZ;
+
+  // Store Voronoi width Δω_k to get grid-invariant weighting
+float domega_k_mem[NBINS] = {0.0f};
 
     // time constants and alphas
     float tau_mom, tau_coh, tau_out;
