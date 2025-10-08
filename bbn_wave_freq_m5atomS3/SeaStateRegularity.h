@@ -320,7 +320,7 @@ void updatePhaseCoherence() {
     for (int i = 0; i < NBINS; ++i) smax = std::max(smax, last_S_eta_hat[i]);
     if (!(smax > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
 
-    // Reference = fundamental bin (max PSD)
+    // Fundamental reference
     int i_ref = 0;
     for (int i = 1; i < NBINS; ++i)
         if (last_S_eta_hat[i] > last_S_eta_hat[i_ref]) i_ref = i;
@@ -331,14 +331,15 @@ void updatePhaseCoherence() {
     const float dphi_ref = phi_ref_now - phi_ref_last;
     phi_ref_last = phi_ref_now;
 
-    const float omegac_ref = std::max(omega_c_k[i_ref], 1e-6f);
-    const float dphi_ref_norm = dphi_ref / (omegac_ref * last_dt);
+    float fc_ref_hz = std::max(MIN_FC_HZ, omega_c_k[i_ref] / TWO_PI_);
+    float enbw_ref = PI * PI * fc_ref_hz;
+    float dphi_ref_norm = dphi_ref / (enbw_ref * last_dt);
 
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
 
     for (int i = 0; i < NBINS; ++i) {
-        float w_eta = last_S_eta_hat[i];
-        if (w_eta < 0.02f * smax) continue;
+        float S_eta = last_S_eta_hat[i];
+        if (S_eta < 0.02f * smax) continue;
 
         float phi_now = std::atan2(bin_zi[i], bin_zr[i]);
         if (!phi_init) { last_phi_k[i] = phi_now; continue; }
@@ -348,19 +349,22 @@ void updatePhaseCoherence() {
         if (dphi > PI) dphi -= 2*PI;
         if (dphi < -PI) dphi += 2*PI;
 
-        float omegac = std::max(omega_c_k[i], 1e-6f);
-        float dphi_norm = dphi / (omegac * last_dt);
+        float fc_hz = std::max(MIN_FC_HZ, omega_c_k[i] / TWO_PI_);
+        float enbw = PI * PI * fc_hz;
+        float dphi_norm = dphi / (enbw * last_dt);
 
-        int n = n_harm[i];
-        if (n < 1) n = 1; if (n > 8) n = 8;
-
-        float delta = dphi_norm - n * dphi_ref_norm;
+        // fractional harmonic ratio (not integer)
+        float n_frac = std::clamp(omega_k_mem[i] / w0, 0.5f, 8.0f);
+        float delta = dphi_norm - n_frac * dphi_ref_norm;
         if (delta > PI) delta -= 2*PI;
         if (delta < -PI) delta += 2*PI;
 
-        sum_r += double(w_eta) * std::cos(delta);
-        sum_i += double(w_eta) * std::sin(delta);
-        sum_w += double(w_eta);
+        // amplitude weighting for SNR
+        float amp = std::hypot(bin_zr[i], bin_zi[i]);
+        float w = amp * amp;
+        sum_r += double(w) * std::cos(delta);
+        sum_i += double(w) * std::sin(delta);
+        sum_w += double(w);
     }
 
     phi_init = true;
