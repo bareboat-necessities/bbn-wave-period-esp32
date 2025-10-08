@@ -133,6 +133,8 @@ class SeaStateRegularity {
         bin_zr[i] = bin_zi[i] = 0.0f;
         bin_c[i] = 1.0f;
         bin_s[i] = 0.0f;
+        coh_r_k[i] = 0.0f;
+        coh_i_k[i] = 0.0f;
       }
       bins_init = false;
       last_accel = 0.0f;
@@ -254,6 +256,9 @@ float getDisplacementPeriodSec() const {
     float bin_zr[NBINS], bin_zi[NBINS];
     float bin_c[NBINS],  bin_s[NBINS];
     bool  bins_init;
+
+    // Per-bin phase-coherence EMAs (unit-phasor averages)
+    float coh_r_k[NBINS], coh_i_k[NBINS];
 
     // moments (primary)
     DebiasedEMA M0, M1, M2;
