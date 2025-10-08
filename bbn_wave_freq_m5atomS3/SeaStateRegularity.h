@@ -82,7 +82,7 @@ class SeaStateRegularity {
 
     // Tracker-robust ω clamp and smoothing (Hz range widened for real seas)
     constexpr static float OMEGA_MIN_HZ = 0.02f;  // 50 s swell
-    constexpr static float OMEGA_MAX_HZ = 6.00f;  // 0.17 s wind chop
+    constexpr static float OMEGA_MAX_HZ = 4.00f;  // 0.25 s wind chop
     constexpr static float TAU_W_SEC    = 30.0f;  // EMA time-constant for ω_used
 
     // Multi-bin params (ratio spacing)
