@@ -110,7 +110,6 @@ class SeaStateRegularity {
       Q10.reset();  // ⟨S0*S1⟩
 
       R_out.reset();
-      coh_r.reset(); coh_i.reset();
 
       R_spec = R_phase = 0.0f;
       nu = 0.0f;
