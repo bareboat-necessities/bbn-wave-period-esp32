@@ -313,58 +313,65 @@ float omega_peak_smooth = 0.0f;
     }
 
 void updatePhaseCoherence() {
-    // Power weighting
-    float smax = 0.0f;
-    for (int i = 0; i < NBINS; ++i)
-        smax = std::max(smax, last_P_acc[i]);
-    if (!(smax > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
-    const float THRESH = 0.02f * smax;
+    // If we have no energy yet, just decay
+    float smax_acc = 0.0f;
+    for (int i = 0; i < NBINS; ++i) smax_acc = std::max(smax_acc, last_P_acc[i]);
+    if (!(smax_acc > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
 
-    // Determine harmonic family of interest (based on omega_peak_smooth)
-    const float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
-    const float HARM_TOL = 0.15f; // ±15% tolerance
-
-    // Find the fundamental-phase reference (dominant bin)
-    int i_ref = -1;
-    float p_ref = 0.0f;
-    for (int i = 0; i < NBINS; ++i) {
-        if (last_P_acc[i] > p_ref) { p_ref = last_P_acc[i]; i_ref = i; }
+    // --- Choose the fundamental reference by displacement PSD peak ---
+    int i_ref = 0;
+    float smax_eta = last_S_eta_hat[0];
+    for (int i = 1; i < NBINS; ++i) {
+        if (last_S_eta_hat[i] > smax_eta) { smax_eta = last_S_eta_hat[i]; i_ref = i; }
     }
-    if (i_ref < 0) { R_phase *= (1.0f - alpha_coh); return; }
-
-    // Reference phasor (fundamental frame)
+    // Reference phasor (unit)
     float zr_ref = bin_zr[i_ref], zi_ref = bin_zi[i_ref];
-    float mag_ref = std::hypot(zr_ref, zi_ref);
+    float mag_ref = std::sqrt(zr_ref*zr_ref + zi_ref*zi_ref);
     if (!(mag_ref > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
     zr_ref /= mag_ref; zi_ref /= mag_ref;
+    const float phi_ref = std::atan2(zi_ref, zr_ref);
 
-    // Vector sum of harmonically related bins
+    // Reference LPF phase at the fundamental bin
+    const float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
+    const float omega_k_ref = omega_k_mem[i_ref];
+    const float n_ref = 1.0f; // by construction (fundamental)
+    const float domega_ref = n_ref * w0 - omega_k_ref;
+    const float omegac_ref = std::max(omega_c_k[i_ref], 1e-6f);
+    const float phiH_ref = -std::atan(domega_ref / omegac_ref);
+
+    // Contribution gate & accumulation
+    const float THRESH = 0.02f * smax_acc;   // ignore tiny/noisy bins
+    const float PHASE_TRUST = 2.0f;          // |Δω| <= 2 ωc → usable phase
+
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
+
     for (int i = 0; i < NBINS; ++i) {
-        float w = last_P_acc[i];
-        if (!(w > THRESH)) continue;
+        float w_acc = last_P_acc[i];
+        if (w_acc < THRESH) continue;
 
-        float ratio = omega_k_mem[i] / w0;
-        float nearest_h = std::round(ratio);
-        if (std::fabs(ratio - nearest_h) > HARM_TOL) continue; // skip non-harmonic bins
+        // Determine nearest harmonic of w0 for this bin
+        float wk = omega_k_mem[i];
+        float ratio = wk / w0;
+        int n = (int)std::lround(ratio);
+        if (n < 1) n = 1; if (n > 8) n = 8;
 
-        float zr = bin_zr[i], zi = bin_zi[i];
-        float mag = std::hypot(zr, zi);
-        if (!(mag > EPSILON)) continue;
-        zr /= mag; zi /= mag;
+        // LPF phase compensation for this bin
+        float domega = n * w0 - wk;
+        float omegac = std::max(omega_c_k[i], 1e-6f);
+        if (std::fabs(domega) > PHASE_TRUST * omegac) continue; // off-tuned → skip
 
-        // Rotate each bin back to the fundamental frame (remove n·φ_ref)
-        float n = nearest_h;
-        float cn = std::cosf((n - 1.0f) * std::atan2(zi_ref, zr_ref));
-        float sn = std::sinf((n - 1.0f) * std::atan2(zi_ref, zr_ref));
+        float phi_k = std::atan2(bin_zi[i], bin_zr[i]);
+        float phiH_k = -std::atan(domega / omegac);
 
-        // De-rotate
-        float zr_rot = zr * cn + zi * sn;
-        float zi_rot = -zr * sn + zi * cn;
+        // Expected relation: phi_k - phiH_k ≈ n*(phi_ref - phiH_ref)
+        float delta = (phi_k - phiH_k) - n * (phi_ref - phiH_ref);
+        // Wrap to [-π, π] for numerical stability
+        if (delta >  PI) delta -= 2.0f * PI;
+        if (delta < -PI) delta += 2.0f * PI;
 
-        sum_r += double(w) * double(zr_rot);
-        sum_i += double(w) * double(zi_rot);
-        sum_w += double(w);
+        sum_r += double(w_acc) * std::cos(delta);
+        sum_i += double(w_acc) * std::sin(delta);
+        sum_w += double(w_acc);
     }
 
     float R_now = (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
