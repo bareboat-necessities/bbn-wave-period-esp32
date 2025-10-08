@@ -489,7 +489,7 @@ float getDisplacementPeriodSec() const {
 
       // Jensen correction helpers
       Q00.update(S0 * S0, alpha_mom);
-      Q10.update(S0 * S1, alpha_mom); mi
+      Q10.update(S0 * S1, alpha_mom); 
     }
 
     void computeRegularityOutput() {
