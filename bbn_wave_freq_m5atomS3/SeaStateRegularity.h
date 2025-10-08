@@ -309,62 +309,33 @@ float omega_peak_smooth = 0.0f;
       last_dt = dt_s;
     }
 
-// --- DROP-IN REPLACEMENT ---
-// Replace the whole updatePhaseCoherence() with this version.
-
 void updatePhaseCoherence() {
-    // Use acceleration-domain power to avoid ω⁻⁴ bias
+    // Power weight from acceleration domain
     float smax = 0.0f;
     for (int i = 0; i < NBINS; ++i) smax = std::max(smax, last_P_acc[i]);
-    if (!(smax > EPSILON)) {                 // no energy; gently decay
-        R_phase = (1.0f - alpha_coh) * R_phase;
-        return;
-    }
-    const float THRESH = 0.01f * smax;       // ignore bins <1% peak
+    if (!(smax > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
+    const float THRESH = 0.01f * smax;
 
-    // 1) Find dominant bin (reference)
-    int   i_dom = -1;
-    float p_dom = 0.0f;
-    for (int i = 0; i < NBINS; ++i) {
-        float p = last_P_acc[i];
-        if (p > THRESH && p >= p_dom) { p_dom = p; i_dom = i; }
-    }
-    if (i_dom < 0) {
-        R_phase = (1.0f - alpha_coh) * R_phase;
-        return;
-    }
-
-    // 2) Instantaneous reference phase from dominant bin (NO time accumulation)
-    float phi_ref = std::atan2(bin_zi[i_dom], bin_zr[i_dom]);
-
-    // 3) Phase-locked coherence across bins this frame
-    //    Compare each bin’s phase φ_k to n_harm[i] · φ_ref
-    double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;   // use double for accumulation robustness
+    // Weighted vector sum of instantaneous baseband phasors
+    double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
     for (int i = 0; i < NBINS; ++i) {
         float w = last_P_acc[i];
         if (!(w > THRESH)) continue;
+        float zr = bin_zr[i], zi = bin_zi[i];
+        float mag = std::hypot(zr, zi);
+        if (mag <= EPSILON) continue;
 
-        float phi_k = std::atan2(bin_zi[i], bin_zr[i]);
-        int   n     = n_harm[i] > 0 ? n_harm[i] : 1;
-
-        // phase error δ_i = φ_k − n·φ_ref
-        float delta = phi_k - (float(n) * phi_ref);
-        // No need to wrap for cos/sin, but wrapping helps numerically when n is large:
-        // Bring delta to [-π, π] to limit floating error accumulation.
-        if (delta >  PI) delta -= 2.0f * PI;
-        if (delta < -PI) delta += 2.0f * PI;
-
-        float cr = std::cos(delta);
-        float ci = std::sin(delta);
-
-        sum_r += double(w) * double(cr);
-        sum_i += double(w) * double(ci);
+        // normalize phasor to unit magnitude
+        zr /= mag;  zi /= mag;
+        sum_r += double(w) * double(zr);
+        sum_i += double(w) * double(zi);
         sum_w += double(w);
     }
 
-    float R_inst = (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
+    float R_inst = (sum_w > EPSILON) ?
+        float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
 
-    // 4) Light global EMA for stability
+    // light EMA for stability
     R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_inst;
 }
 
