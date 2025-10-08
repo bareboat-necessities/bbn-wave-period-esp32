@@ -441,58 +441,54 @@ void updatePhaseCoherence() {
       Q10.update(S0 * S1, alpha_mom); 
     }
 
-    void computeRegularityOutput() {
-      if (!M0.isReady()) {
+void computeRegularityOutput() {
+    if (!M0.isReady()) {
         R_out.update(R_phase, alpha_out);
         R_spec = R_phase;
         nu = 0.0f;
         omega_bar_corr = omega_bar_naive = 0.0f;
         return;
-      }
+    }
 
-      float m0 = M0.get();
-      float m1 = M1.get();
-      float m2 = M2.get();
+    float m0 = M0.get();
+    float m1 = M1.get();
+    float m2 = M2.get();
 
-      if (!(m0 > EPSILON)) {
+    if (!(m0 > EPSILON)) {
         R_out.update(0.0f, alpha_out);
         R_spec = 0.0f;
         nu = 0.0f;
         omega_bar_corr = omega_bar_naive = 0.0f;
         return;
-      }
-
-      // Naive mean and variance of ω
-      omega_bar_naive  =  m1 / m0;
-      float omega2_bar =  m2 / m0;
-      float mu2 = std::max(0.0f, omega2_bar - omega_bar_naive * omega_bar_naive);
-
-      // Jensen correction for ratio E[M1/M0]
-      float q00 = Q00.get();   // ⟨S0^2⟩
-      float q10 = Q10.get();   // ⟨S0*S1⟩
-      float varM0  = std::max(0.0f, q00 - m0 * m0);
-      float cov10  = q10 - m1 * m0;
-      float invM0_2 = 1.0f / std::max(m0 * m0, EPSILON);
-
-      omega_bar_corr = omega_bar_naive + (omega_bar_naive * varM0 - cov10) * invM0_2;
-
-      // Narrowness ν and spectral regularity
-      nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
-      if (nu < 0.0f || !std::isfinite(nu)) nu = 0.0f;
-
-      if (R_phase > 0.95f && nu < 0.15f) {
-        // Phase coherence near unity → deterministic narrow wave
-        // Fade ν toward 0 as coherence approaches 1
-        float w_coh = std::clamp((R_phase - 0.95f) / 0.05f, 0.0f, 1.0f); // linear ramp 0→1 between 0.95–1.0
-        nu *= (1.0f - w_coh);  // suppress artificial bandwidth
-      }
-
-      R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
-
-      // Output = fusion phase vs spectral
-      float R_combined = std::clamp(0.5f * (R_phase + R_spec) + 0.5f * std::fabs(R_phase - R_spec), 0.0f, 1.0f);
-      R_out.update(R_combined, alpha_out);
     }
+
+    // --- Mean frequency and variance ---
+    omega_bar_naive  = m1 / m0;
+    float omega2_bar = m2 / m0;
+    float mu2 = std::max(0.0f, omega2_bar - omega_bar_naive * omega_bar_naive);
+
+    // --- Jensen correction ---
+    float q00 = Q00.get();
+    float q10 = Q10.get();
+    float varM0  = std::max(0.0f, q00 - m0 * m0);
+    float cov10  = q10 - m1 * m0;
+    float invM0_2 = 1.0f / std::max(m0 * m0, EPSILON);
+
+    omega_bar_corr = omega_bar_naive + (omega_bar_naive * varM0 - cov10) * invM0_2;
+
+    // --- Spectral narrowness and R_spec ---
+    nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
+    if (nu < 0.0f || !std::isfinite(nu)) nu = 0.0f;
+
+    R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
+
+    // --- Simple fusion: use the stronger of the two ---
+    float R_combined = std::max(R_phase, R_spec);
+
+    // --- Smooth output ---
+    R_out.update(R_combined, alpha_out);
+}
+
 };
 
 #ifdef SEA_STATE_TEST
