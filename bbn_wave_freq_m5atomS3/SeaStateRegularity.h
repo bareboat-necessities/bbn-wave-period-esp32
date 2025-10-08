@@ -194,22 +194,19 @@ float getWaveHeightEnvelopeEst() const {
     return R * Hs_mono + (1.0f - R) * Hs_rand;
 }
 
-// Frequency (Hz) and Period (s) from coherence-weighted fusion
 float getDisplacementFrequencyHz() const {
-    float w_mean = omega_bar_corr;
-    float w_peak = omega_peak_smooth;
-    if (w_mean <= EPSILON && w_peak <= EPSILON) return 0.0f;
-
-    float R = std::clamp(R_phase, 0.0f, 1.0f);
-    // Blend: coherent → mean, random → peak
-    float w_blend = R * w_mean + (1.0f - R) * w_peak;
-
-    return w_blend / (2.0f * PI);
+    float m0 = M0.get();
+    float m2 = M2.get();
+    if (!(m0 > EPSILON && m2 > EPSILON))
+        return 0.0f;
+    // Zero-upcrossing frequency from spectral moments
+    float omega_z = std::sqrt(m2 / m0);
+    return omega_z / (2.0f * PI);   // [Hz]
 }
 
 float getDisplacementPeriodSec() const {
-    float f = getDisplacementFrequencyHz();
-    return (f > EPSILON) ? (1.0f / f) : 0.0f;
+    float fz = getDisplacementFrequencyHz();
+    return (fz > EPSILON) ? (1.0f / fz) : 0.0f;
 }
 
     float getAccelerationVariance() const {
