@@ -283,6 +283,7 @@ float getDisplacementPeriodSec() const {
     bool  has_moments;
 
     float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
+    float last_P_acc[NBINS] = {0.0f};   // baseband power in acceleration units
 
     // Helpers
     void updateAlpha(float dt_s) {
