@@ -394,6 +394,8 @@ void updatePhaseCoherence() {
           bin_s[i]  = 0.0f;
           bin_zr[i] = 0.0f;
           bin_zi[i] = 0.0f;
+          coh_r_k[i] = 0.0f;
+          coh_i_k[i] = 0.0f;
         }
         bins_init = true;
       }
