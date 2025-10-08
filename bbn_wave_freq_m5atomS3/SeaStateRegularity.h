@@ -314,80 +314,73 @@ float omega_peak_smooth = 0.0f;
 
 void updatePhaseCoherence() {
     static float last_phi_k[NBINS] = {0.0f};
-    static bool phi_init = false;
+    static bool  phi_init = false;
+    static float phi_ref_last = 0.0f;
 
-    // --- energy check ---
+    // energy check
     float smax = 0.0f;
     for (int i = 0; i < NBINS; ++i) smax = std::max(smax, last_S_eta_hat[i]);
     if (!(smax > EPSILON)) { R_phase *= (1.0f - alpha_coh); return; }
 
-    // --- reference: dominant displacement bin (fundamental) ---
+    // fundamental reference = max PSD bin
     int i_ref = 0;
     for (int i = 1; i < NBINS; ++i)
         if (last_S_eta_hat[i] > last_S_eta_hat[i_ref]) i_ref = i;
 
-    const float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
+    // current phases
     const float phi_ref_now = std::atan2(bin_zi[i_ref], bin_zr[i_ref]);
-    static float phi_ref_last = phi_ref_now;
-    const float dphi_ref = phi_ref_now - phi_ref_last;
+    if (!phi_init) {
+        // first call: seed history for all bins + ref, no output yet
+        for (int i = 0; i < NBINS; ++i)
+            last_phi_k[i] = std::atan2(bin_zi[i], bin_zr[i]);
+        phi_ref_last = phi_ref_now;
+        phi_init = true;
+        return;
+    }
+
+    // unwrap ref increment
+    float dphi_ref = phi_ref_now - phi_ref_last;
     phi_ref_last = phi_ref_now;
+    if (dphi_ref >  PI) dphi_ref -= 2.0f*PI;
+    if (dphi_ref < -PI) dphi_ref += 2.0f*PI;
 
-    // --- normalize phase increment by ENBW ---
-    float fc_ref_hz = std::max(MIN_FC_HZ, omega_c_k[i_ref] / TWO_PI_);
-    float enbw_ref = PI * PI * fc_ref_hz;
-    float dphi_ref_norm = dphi_ref / (enbw_ref * last_dt);
-
-    // --- adaptive α_coh for slow waves ---
-    float omega_ratio = w0 / OMEGA_MIN_RAD;
-    float alpha_coh_eff = alpha_coh * (1.0f + 0.5f * std::min(omega_ratio, 5.0f));
-    alpha_coh_eff = std::clamp(alpha_coh_eff, 0.1f * alpha_coh, 3.0f * alpha_coh);
-
+    // accumulators
+    const float THRESH = 0.02f * smax;
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
 
     for (int i = 0; i < NBINS; ++i) {
-        float S_eta = last_S_eta_hat[i];
-        if (S_eta < 0.02f * smax) continue;
+        const float S_eta = last_S_eta_hat[i];
+        if (S_eta < THRESH) continue;
 
-        float phi_now = std::atan2(bin_zi[i], bin_zr[i]);
-        if (!phi_init) { last_phi_k[i] = phi_now; continue; }
-
+        // bin phase and increment (unwrap)
+        const float phi_now = std::atan2(bin_zi[i], bin_zr[i]);
         float dphi = phi_now - last_phi_k[i];
         last_phi_k[i] = phi_now;
-        if (dphi > PI) dphi -= 2 * PI;
-        if (dphi < -PI) dphi += 2 * PI;
+        if (dphi >  PI) dphi -= 2.0f*PI;
+        if (dphi < -PI) dphi += 2.0f*PI;
 
-        // normalize per-bin phase increment
-        float fc_hz = std::max(MIN_FC_HZ, omega_c_k[i] / TWO_PI_);
-        float enbw = PI * PI * fc_hz;
-        float dphi_norm = dphi / (enbw * last_dt);
+        // harmonic index (already tracked)
+        int n = n_harm[i];
+        if (n < 1) n = 1; if (n > 8) n = 8;
 
-        // harmonic ratio (not necessarily integer)
-        float n_frac = std::clamp(omega_k_mem[i] / w0, 0.5f, 8.0f);
-        float delta = dphi_norm - n_frac * dphi_ref_norm;
+        // *** key fix: SAME normalization for both terms (per-bin RBW) ***
+        const float omegac_k = std::max(omega_c_k[i], 1e-6f);
+        const float denom    = omegac_k * std::max(last_dt, 1e-6f);
 
-        // --- phase RBW weighting (coherence bandwidth) ---
-        float domega = omega_k_mem[i] - n_frac * w0;
-        float rbw_phi = 2.0f * PI * (0.03f * (w0 / TWO_PI_)); // 3% of carrier freq
-        float coh_weight = 1.0f / (1.0f + (domega / rbw_phi) * (domega / rbw_phi));
-        delta *= coh_weight;
+        // compare increments in the bin's RBW units
+        float delta = (dphi - n * dphi_ref) / denom;
 
-        // wrap to [-π, π]
-        if (delta > PI) delta -= 2 * PI;
-        if (delta < -PI) delta += 2 * PI;
+        // soft guard against outliers (optional)
+        // if (std::fabs(delta) > 6.0f) delta = (delta > 0 ? 6.0f : -6.0f);
 
-        // amplitude weight (energy-based)
-        float amp = std::hypot(bin_zr[i], bin_zi[i]);
-        float w = amp * amp;
-        sum_r += double(w) * std::cos(delta);
-        sum_i += double(w) * std::sin(delta);
-        sum_w += double(w);
+        // weight by displacement PSD (good SNR, avoids ω^-4 bias in phase)
+        sum_r += double(S_eta) * std::cos(delta);
+        sum_i += double(S_eta) * std::sin(delta);
+        sum_w += double(S_eta);
     }
 
-    phi_init = true;
-    float R_now = (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
-
-    // smoother update using adaptive α
-    R_phase = (1.0f - alpha_coh_eff) * R_phase + alpha_coh_eff * R_now;
+    const float R_now = (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
+    R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
 
 void updateSpectralMoments(float omega_inst) {
