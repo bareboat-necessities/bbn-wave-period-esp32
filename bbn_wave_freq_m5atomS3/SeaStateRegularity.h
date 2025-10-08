@@ -108,6 +108,7 @@ class SeaStateRegularity {
       // For Jensen correction
       Q00.reset();  // ⟨S0^2⟩
       Q10.reset();  // ⟨S0*S1⟩
+      Q20.reset();
 
       R_out.reset();
 
@@ -260,6 +261,7 @@ float getDisplacementPeriodSec() const {
     // moments for Jensen correction
     // Q00 ≈ ⟨S0^2⟩, Q10 ≈ ⟨S0*S1⟩, where S0=ΣYk, S1=Σ(Yk*ωk)
     DebiasedEMA Q00, Q10;
+    DebiasedEMA Q20;  // ⟨S0*S2⟩ for Jensen correction of M2/M0
 
     // output
     DebiasedEMA R_out;
@@ -439,6 +441,7 @@ void updatePhaseCoherence() {
       // Jensen correction helpers
       Q00.update(S0 * S0, alpha_mom);
       Q10.update(S0 * S1, alpha_mom); 
+      Q20.update(S0 * S2, alpha_mom);
     }
 
 void computeRegularityOutput() {
@@ -462,30 +465,32 @@ void computeRegularityOutput() {
         return;
     }
 
-    // --- Mean frequency and variance ---
+    // --- Raw means and variances ---
     omega_bar_naive  = m1 / m0;
-    float omega2_bar = m2 / m0;
-    float mu2 = std::max(0.0f, omega2_bar - omega_bar_naive * omega_bar_naive);
+    float omega2_bar_naive = m2 / m0;
 
-    // --- Jensen correction ---
+    // --- Jensen corrections ---
     float q00 = Q00.get();
     float q10 = Q10.get();
+    float q20 = Q20.get();
+
     float varM0  = std::max(0.0f, q00 - m0 * m0);
     float cov10  = q10 - m1 * m0;
+    float cov20  = q20 - m2 * m0;
     float invM0_2 = 1.0f / std::max(m0 * m0, EPSILON);
 
-    omega_bar_corr = omega_bar_naive + (omega_bar_naive * varM0 - cov10) * invM0_2;
+    omega_bar_corr  = omega_bar_naive  + (omega_bar_naive  * varM0 - cov10) * invM0_2;
+    float omega2_bar_corr = omega2_bar_naive + (omega2_bar_naive * varM0 - cov20) * invM0_2;
 
-    // --- Spectral narrowness and R_spec ---
-    nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2) / omega_bar_corr) : 0.0f;
-    if (nu < 0.0f || !std::isfinite(nu)) nu = 0.0f;
+    // --- Spectral narrowness ν (all debiased) ---
+    float mu2_corr = std::max(0.0f, omega2_bar_corr - omega_bar_corr * omega_bar_corr);
+    nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2_corr) / omega_bar_corr) : 0.0f;
+    if (!std::isfinite(nu) || nu < 0.0f) nu = 0.0f;
 
     R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
 
-    // --- Simple fusion: use the stronger of the two ---
+    // --- Fusion: stronger component dominates ---
     float R_combined = std::max(R_phase, R_spec);
-
-    // --- Smooth output ---
     R_out.update(R_combined, alpha_out);
 }
 
