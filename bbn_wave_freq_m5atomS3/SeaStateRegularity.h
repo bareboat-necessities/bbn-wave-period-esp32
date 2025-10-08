@@ -287,8 +287,6 @@ float getDisplacementPeriodSec() const {
     float last_S_eta_hat[NBINS] = {0.0f};    // PSD per bin from last update
     float last_P_acc[NBINS] = {0.0f};   // baseband power in acceleration units
 
-    float ref_c = 1.0f, ref_s = 0.0f;  // reference oscillator for ω_used
-
 // Store current ω grid and per-bin harmonic indices
 float omega_k_mem[NBINS] = {0.0f};
 int   n_harm[NBINS] = {0};
