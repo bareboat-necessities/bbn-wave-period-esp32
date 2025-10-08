@@ -199,8 +199,7 @@ float getWaveHeightEnvelopeEst() const {
     // --- Phase coherence weighting ---
     const float R = std::clamp(R_phase, 0.0f, 1.0f);
 
-    // Pivot around R=0.7 → mostly deterministic beyond that
-    const float R_pivot = 0.7f;
+    const float R_pivot = 0.45f;
     const float k_sharp = 12.0f;   // slope of logistic transition (tune 8–20)
     const float w_mono = 1.0f / (1.0f + std::exp(-k_sharp * (R - R_pivot)));
     const float w_rand = 1.0f - w_mono;
@@ -209,7 +208,7 @@ float getWaveHeightEnvelopeEst() const {
     const float correction = 1.0f / (1.0f + 4.0f * R * R);
     const float Hs_mono_corr = Hs_mono * correction;
 
-    // --- Blend in energy (variance) domain ---
+    // Blend in energy (variance) domain
     const double Hs2 =
         w_mono * double(Hs_mono_corr) * double(Hs_mono_corr) +
         w_rand * double(Hs_rand) * double(Hs_rand);
