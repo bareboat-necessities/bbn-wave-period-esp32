@@ -315,15 +315,21 @@ float getDisplacementPeriodSec() const {
       z_imag = (1.0f - alpha_env) * z_imag + alpha_env * y_imag;
     }
 
-// --- Power-weighted multi-bin phase coherence ---
+// --- Power-weighted multi-bin phase coherence with SNR gating ---
 void updatePhaseCoherence() {
     float sum_r = 0.0f, sum_i = 0.0f;
     float sum_w = 0.0f;
 
+    // Find spectral peak to set gating threshold (≈1% of max)
+    float smax = 0.0f;
+    for (int i = 0; i < NBINS; ++i)
+        smax = std::max(smax, last_S_eta_hat[i]);
+    const float THRESH = 0.01f * smax;
+
     // Accumulate weighted complex phasors across bins
     for (int i = 0; i < NBINS; ++i) {
         float w = last_S_eta_hat[i];
-        if (!(w > EPSILON)) continue;
+        if (!(w > THRESH)) continue;   // ignore low-power bins
 
         float zr = bin_zr[i];
         float zi = bin_zi[i];
@@ -343,7 +349,7 @@ void updatePhaseCoherence() {
     if (sum_w > EPSILON)
         R_now = std::sqrt(sum_r * sum_r + sum_i * sum_i) / sum_w;
 
-    // EMA update for phase regularity (uses short tau_coh)
+    // EMA update for phase regularity (uses tau_coh ≈ 3–5 s)
     R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
 
