@@ -7,27 +7,27 @@
 /*
    SeaStateRegularity : dt-aware, MCU-optimized Bayesian spectral estimator
    -----------------------------------------------------------
-   Signal model per bin k (accel → displacement demod, normalized):
+   Per-bin model (accel → displacement demod, normalized):
 
-       a = −ω² η
+     a = −ω² η
 
-   Demodulate with cos(ω_k t), sin(ω_k t), then LPF with bin pole ρ_k:
-       y_r = LPF{ a · cos(ω_k t) }
-       y_i = LPF{ a · sin(ω_k t) }
+     Demod with cos(ω_k t), sin(ω_k t):
+       y_r = LPF[a·cos(ω_k t)]
+       y_i = LPF[a·sin(ω_k t)]
 
-   Normalize measurement with g_k = 2/ω_k² so each bin has DC gain ≈ +1 to displacement:
-       ỹ_r = g_k · y_r ≈ (−1)·x_r + v,   ỹ_i = g_k · y_i ≈ (+1)·x_i + v
-       Var[v] = g_k² · R_demod_eff,   with   R_demod_eff = 0.5·R_a·(1−ρ)/(1+ρ)
+     Normalize measurement with g_k = 2/ω_k² so each bin has H = +1 (sign handled in innovation):
+       ỹ_r = g_k · y_r ≈ (−1)·x_r + ṽ,   ỹ_i = g_k · y_i ≈ (+1)·x_i + ṽ
+       Var[ṽ] per I/Q branch after LPF = (g_k²) · (0.5 b_R) · ((1−ρ)/(1+ρ))
 
-   State (per bin, real/imag independently):
-       x_{r,i}[n+1] = ρ_k·x_{r,i}[n] + w,    with   ρ_k = exp(−2π f_c,k dt)
+     State (per bin, real/imag independently):
+       x_{r,i}[n+1] = ρ_k x_{r,i}[n] + w,   with   ρ_k = exp(−2π f_c,k dt)
        Q_k = (1 − ρ_k²) σ_x²
 
-   Posterior displacement PSD (per bin):
-       Sη(ω_k) = 0.5 · (μ_r² + μ_i²) / ENBW_k
-       ENBW_k (rad/s, one-sided) = π · (1−ρ_k)/(1+ρ_k)
+   Posterior displacement PSD (unbiased, ENBW-compensated):
+       Sη(ω_k) = 0.5 · (μ_r² + μ_i² + P_rr + P_ii) / ENBW_k
+       ENBW_k (rad/s, one-sided) = π · (1−ρ_k)/(1+ρ_k) / dt
 
-   Moments (discrete Riemann over ω):
+   Moments (discrete):
        M₀ = Σ Sη Δω
        M₁ = Σ ω Sη Δω
        M₂ = Σ ω² Sη Δω
@@ -45,14 +45,13 @@ static inline float rho_from_fc(float fc, float dt, PoleMap map) {
     fc = std::max(0.0f, fc);
     if (map == PoleMap::EXPONENTIAL)
         return std::exp(-2.0f * float(M_PI) * fc * dt);
-    // (Tustin)  z = (1+α)/(1−α), with α=π f_c dt  →  ρ = (1−α)/(1+α)
     const float alpha = float(M_PI) * fc * dt;
     const float denom = 1.0f + alpha;
     return (denom > 1e-20f) ? std::max(0.0f, (1.0f - alpha) / denom) : 0.0f;
 }
 
-// Exact one-sided ENBW in rad/s for the AR(1) LPF with pole ρ
 static inline float enbw_from_rho(float rho, float dt) {
+    // exact one-sided ENBW in rad/s for a first-order pole with parameter ρ
     const float num = 1.0f - rho;
     const float den = 1.0f + rho;
     const float ratio = (den > 1e-20f) ? (num / den) : 0.0f;
@@ -86,20 +85,16 @@ public:
     static constexpr float F_MAX_HZ    = 3.00f;
     static constexpr float BETA_SPEC   = 1.0f;
 
-    // Output clamp for ω (prevents absurd Tp during transients)
-    static constexpr float F_OUT_MIN_HZ = 0.05f;  // clamp band for published displacement freq
-    static constexpr float F_OUT_MAX_HZ = 1.50f;
-
     // Noise/tuning
     static constexpr float G_STD       = 9.80665f;
     static constexpr float ACC_NOISE_G = 0.02f;     // sensor white noise [g_rms]
     static constexpr float SIGMA_X0    = 0.10f;     // prior displacement envelope scale
 
-    // fc: fractional linewidth and floors (used both in buildGrid and update)
+    // fc: fractional linewidth and floors (UNIFIED RULE used in both buildGrid() and update())
     static constexpr float MIN_FC_HZ   = 0.0015f;
     static constexpr float MAX_FC_HZ   = 0.30f;
     static constexpr float FC_FRAC     = 0.20f;     // fraction of bin spacing
-    static constexpr float FC_REL      = 0.15f;     // relative floor: fc ≥ FC_REL * f
+    static constexpr float FC_REL      = 0.25f;     // relative floor: fc ≥ FC_REL * f
 
     explicit SeaStateRegularity(float sample_rate_hz = 240.0f) {
         fs_nom_ = sample_rate_hz;
@@ -136,6 +131,7 @@ public:
 
         // If dt changed: update oscillators and per-bin filter dynamics
         if (recompute) {
+            // update oscillator increments
             for (int i = 0; i < NBINS; ++i) {
                 const float dphi = w_[i] * dt_nom_;
                 cd_[i] = std::cos(dphi);
@@ -147,6 +143,8 @@ public:
             for (int i = 0; i < NBINS; ++i) {
                 const float f_i_hz = w_[i] / TWO_PI_;
                 const float df_bin = (r - 1.0f) * f_i_hz;
+
+                // --- UNIFIED LINEWIDTH RULE (must match buildGrid) ---
                 const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
                 const float fc     = std::min(fc_raw, MAX_FC_HZ);
 
@@ -155,7 +153,7 @@ public:
                 Qk_[i]    = (1.0f - rho * rho) * (SIGMA_X0 * SIGMA_X0);
 
                 fc_[i]       = fc;
-                enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));
+                enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));   // one-sided ENBW (rad/s)
             }
         }
 
@@ -170,8 +168,10 @@ public:
         // High-pass acceleration (bias removed)
         const float a_hp = accel_z - b_mu_;
 
-        // Measurement noise for demod (per I/Q branch)
-        a2_ema_.update(a_hp * a_hp, 1.0f - std::exp(-dt / 2.0f)); // diagnostics only
+        // Measurement noise diagnostics
+        a2_ema_.update(a_hp * a_hp, 1.0f - std::exp(-dt / 2.0f)); // optional
+
+        // Base demod measurement noise (per I/Q path before filter-shaping)
         const float R_demod = 0.5f * b_R_;
 
         // === Per-bin Kalman demodulation chain ===
@@ -199,7 +199,7 @@ public:
 
             // Normalization: g = 2 / ω²  →  H = +1 (sign absorbed in innovation)
             const float w2 = w2_[i];
-            const float g  = (w2 > EPS) ? (2.0f / w2) : 0.0f;
+            const float g = (w2 > EPS) ? (2.0f / w2) : 0.0f;
 
             // Effective measurement noise after LPF: (1−ρ)/(1+ρ)
             const float R_demod_eff = R_demod * ((1.0f - rho) / (1.0f + rho));
@@ -217,10 +217,10 @@ public:
                 if (P_rr_[i] < 0.0f) P_rr_[i] = 0.0f;
             }
 
-            // --- Imag channel (same sign convention as real) ---
+            // --- Imag channel ---
             {
                 const float y_tilde = g * y_i_lp_[i];
-                const float innov   = -(y_tilde) - mu_i_[i];
+                const float innov   = -(y_tilde) - mu_i_[i]; // symmetric sign with real channel
                 const float S = P_ii_[i] + Rm;
                 const float K = (S > 1e-20f) ? (P_ii_[i] / S) : 0.0f;
                 mu_i_[i] += K * innov;
@@ -229,9 +229,10 @@ public:
                 if (P_ii_[i] < 0.0f) P_ii_[i] = 0.0f;
             }
 
-            // Posterior displacement PSD (ENBW-compensated)
+            // Posterior displacement PSD (UNBIASED: include covariance terms)
             const float mu2  = mu_r_[i] * mu_r_[i] + mu_i_[i] * mu_i_[i];
-            const float Seta = 0.5f * (mu2) / (enbw_rad_[i]);
+            const float trP  = P_rr_[i] + P_ii_[i];
+            const float Seta = 0.5f * (mu2 + trP) / (enbw_rad_[i]);
 
             // Peak metric on ω·Sη prevents low-ω bias
             Epow_pk_[i]   = w_[i] * Seta;
@@ -245,17 +246,14 @@ public:
             M0 += mass;
             M1 += mass * w_[i];
             M2 += mass * w2_[i];
-            Avar += mass * w2_[i] * w2_[i]; // ∫ ω^4 Sη dω  (accel variance)
+            Avar += mass * w2_[i] * w2_[i]; // ∫ ω⁴ Sη dω (acceleration power)
         }
 
-        // --- robust peak select (avoid edge bin), with fallback ---
-        int ipk = 1; 
-        float smax = Epow_pk_[1];
-        for (int i = 2; i <= NBINS - 2; ++i) {
+        // peak frequency (log-parabolic refinement on ω·Sη)
+        int ipk = 0; float smax = Epow_pk_[0];
+        for (int i = 1; i < NBINS; ++i)
             if (Epow_pk_[i] > smax) { smax = Epow_pk_[i]; ipk = i; }
-        }
 
-        // log-parabolic refinement if strictly interior
         float wpk = w_[ipk];
         if (ipk > 0 && ipk < NBINS - 1) {
             const float hlog = std::log(w_[ipk + 1] / w_[ipk]);
@@ -265,20 +263,9 @@ public:
             delta = std::clamp(delta, -1.0f, 1.0f);
             wpk = std::exp(std::log(w_[ipk]) + delta * hlog);
         }
-
-        // Fallback to centroid if suspicious
-        if (ipk <= 0 || ipk >= NBINS - 1 || !(smax > 0.0f) || !std::isfinite(wpk)) {
-            if (M0 > EPS) wpk = std::max(EPS, M1 / M0);
-        }
-
-        // Clamp to plausible ocean band to avoid absurd Tp during transients
-        const float OMEGA_MIN_OUT = TWO_PI_ * F_OUT_MIN_HZ;
-        const float OMEGA_MAX_OUT = TWO_PI_ * F_OUT_MAX_HZ;
-        wpk = std::clamp(wpk, OMEGA_MIN_OUT, OMEGA_MAX_OUT);
-
         omega_peak_ = wpk;
 
-        // smooth frequency (τ≈3s) and publish
+        // smooth frequency (τ≈3s)
         const float alpha_pk = 1.0f - std::exp(-dt / 3.0f);
         omega_peak_smooth_ = (omega_peak_smooth_ <= 0.0f)
             ? wpk
@@ -286,11 +273,10 @@ public:
         if (omega_peak_smooth_ > 0.0f)
             w_disp_ = omega_peak_smooth_;
 
-        // === Phase coherence around peak (±3 ENBWs around refined wpk) ===
+        // === Phase coherence around peak (±3 ENBWs) ===
         {
-            const int ipk_ref = ipk;
-            const float span = 3.0f * enbw_rad_[ipk_ref];
-            int i0 = ipk_ref, i1 = ipk_ref;
+            const float span = 3.0f * enbw_rad_[ipk];
+            int i0 = ipk, i1 = ipk;
             while (i0 > 0 && std::fabs(w_[i0 - 1] - wpk) <= span) --i0;
             while (i1 < NBINS - 1 && std::fabs(w_[i1 + 1] - wpk) <= span) ++i1;
 
@@ -388,8 +374,7 @@ private:
     // bias (DC/tilt) scalar KF on raw acceleration: a = b + noise
     float b_mu_ = 0.0f;
     float b_P_  = (0.10f * G_STD) * (0.10f * G_STD);
-    // Slightly faster bias tracking helps keep low-ω bins clean
-    float b_Q_  = (0.01f * G_STD) * (0.01f * G_STD); // per second; integrated with + b_Q_*dt
+    float b_Q_  = (0.002f * G_STD) * (0.002f * G_STD); // per second; integrated with + b_Q_*dt
     float b_R_  = (ACC_NOISE_G * G_STD) * (ACC_NOISE_G * G_STD); // measurement variance
 
     // trackers
@@ -405,12 +390,12 @@ private:
         // exact log grid
         const float w_min = TWO_PI_ * F_MIN_HZ;
         const float w_max = TWO_PI_ * F_MAX_HZ;
-        const float r     = std::pow(w_max / w_min, 1.0f / float(NBINS - 1));
-        const float hlog  = std::log(r);
+        const float r_log = std::pow(w_max / w_min, 1.0f / float(NBINS - 1)); // <-- FIX: use bounds, not w_[]
+        const float hlog  = std::log(r_log);
 
         // frequency grid and ω²
         for (int i = 0; i < NBINS; ++i) {
-            w_[i]  = w_min * std::pow(r, float(i));
+            w_[i]  = w_min * std::pow(r_log, float(i));
             w2_[i] = w_[i] * w_[i];
         }
 
@@ -430,9 +415,9 @@ private:
         // per-bin dynamics and ENBW (using exact rho-based mapping)
         for (int i = 0; i < NBINS; ++i) {
             const float f_i_hz = w_[i] / TWO_PI_;
-            const float df_bin = (r - 1.0f) * f_i_hz;
+            const float df_bin = (r_log - 1.0f) * f_i_hz;
 
-            // unified linewidth rule (same as update())
+            // --- UNIFIED LINEWIDTH RULE (identical to update()) ---
             const float fc_raw = std::max({ MIN_FC_HZ, FC_FRAC * df_bin, FC_REL * f_i_hz });
             const float fc     = std::min(fc_raw, MAX_FC_HZ);
 
@@ -441,7 +426,7 @@ private:
             Qk_[i]    = (1.0f - rho * rho) * (SIGMA_X0 * SIGMA_X0);
 
             fc_[i]       = fc;
-            enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));
+            enbw_rad_[i] = std::max(EPS, enbw_from_rho(rho, dt_nom_));   // one-sided ENBW (rad/s)
         }
     }
 };
