@@ -325,7 +325,7 @@ float omega_peak_smooth = 0.0f;
 
 
 void updatePhaseCoherence() {
-    // --- Energy gate ---
+    // --- Skip if no spectral power ---
     float smax = 0.0f;
     for (int i = 0; i < NBINS; ++i)
         smax = std::max(smax, last_S_eta_hat[i]);
@@ -334,59 +334,77 @@ void updatePhaseCoherence() {
         return;
     }
 
-    // --- Reference bin: where PSD is max ---
+    // --- Reference bin (strongest PSD) ---
     int i_ref = 0;
     for (int i = 1; i < NBINS; ++i)
         if (last_S_eta_hat[i] > last_S_eta_hat[i_ref]) i_ref = i;
 
+    // --- Current and previous phases ---
+    static float phi_prev_ref = 0.0f;
     const float phi_ref_now = std::atan2(bin_zi[i_ref], bin_zr[i_ref]);
+    const float dphi_ref = phi_ref_now - phi_prev_ref;
+    phi_prev_ref = phi_ref_now;
 
-    // --- Accumulators ---
+    const float omega_cref = std::max(omega_c_k[i_ref], EPSILON);
+
+    // --- Initialize per-bin previous phases on first call ---
+    static bool init = false;
+    static float phi_prev[NBINS] = {0.0f};
+    if (!init) {
+        for (int i = 0; i < NBINS; ++i)
+            phi_prev[i] = std::atan2(bin_zi[i], bin_zr[i]);
+        init = true;
+    }
+
+    // --- Accumulators for weighted phasor sum ---
     const float THRESH = 0.02f * smax;
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
 
-    // --- Very slow per-bin bias detrend (persistent) ---
+    // --- Slow per-bin bias detrend (persistent) ---
     static float resid_mean[NBINS] = {0.0f};
-    const float bias_tau_sec = 300.0f; // ~5 min; set <=0 to disable detrend
-    const float beta = (bias_tau_sec > 0.0f)
-        ? (1.0f - std::exp(-std::max(last_dt, 1e-6f) / bias_tau_sec))
-        : 1.0f; // immediate overwrite if disabled
+    const float bias_tau_sec = 300.0f;
+    const float beta = 1.0f - std::exp(-std::max(last_dt, 1e-6f) / bias_tau_sec);
 
     for (int i = 0; i < NBINS; ++i) {
         const float S_eta = last_S_eta_hat[i];
         if (S_eta < THRESH) continue;
 
-        // instantaneous phase of this bin
         const float phi_now = std::atan2(bin_zi[i], bin_zr[i]);
+        const float dphi_k  = phi_now - phi_prev[i];
+        phi_prev[i] = phi_now;
 
-        // harmonic mapping (clamped)
+        // --- Harmonic order (clamped) ---
         int n = n_harm[i];
         if (n < 1) n = 1;
         if (n > 8) n = 8;
 
-        // residual phase relative to n-th harmonic of the ref
-        float resid = phi_now - float(n) * phi_ref_now;
+        // --- Phase-lag normalization (LPF bandwidth compensation) ---
+        const float omega_ck = std::max(omega_c_k[i], EPSILON);
+        float resid = (dphi_k / (omega_ck * last_dt))
+                    - float(n) * (dphi_ref / (omega_cref * last_dt));
+
+        // Wrap to (−π, π]
         if (resid >  PI) resid -= 2.0f * PI;
         if (resid < -PI) resid += 2.0f * PI;
 
-        // grid-invariant energy weight: w_k = S_eta(ω_k) * Δω_k
+        // --- Weight by local spectral energy ---
         const float w_k = S_eta * std::max(domega_k_mem[i], EPSILON);
 
-        // slow per-bin bias removal
+        // --- Slow bias removal ---
         resid_mean[i] = (1.0f - beta) * resid_mean[i] + beta * resid;
         const float resid_detr = resid - resid_mean[i];
 
-        // weighted unit phasor sum
         sum_r += double(w_k) * std::cos(resid_detr);
         sum_i += double(w_k) * std::sin(resid_detr);
         sum_w += double(w_k);
     }
 
+    // --- Compute coherence magnitude ---
     const float R_now = (sum_w > EPSILON)
         ? float(std::hypot(sum_r, sum_i) / sum_w)
         : 0.0f;
 
-    // EMA smoothing
+    // --- Smooth over time ---
     R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
 
