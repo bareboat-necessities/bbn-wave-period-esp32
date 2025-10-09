@@ -229,7 +229,7 @@ private:
 
     // Log-spaced ω grid around ω_used
     const int   K = MAX_K;
-    constexpr float TARGET_SPAN_UP = 8.0f;
+    constexpr float TARGET_SPAN_UP = 6.0f;
     const float r = std::exp(std::log(TARGET_SPAN_UP) / float(K));
 
     float omega_k[NBINS];
