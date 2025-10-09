@@ -239,7 +239,10 @@ private:
       omega_k[MAX_K + k] = omega_k[MAX_K + k - 1] * r;
       omega_k[MAX_K - k] = omega_k[MAX_K - k + 1] / r;
     }
-
+    for (int i = 0; i < NBINS; ++i) {
+      omega_k[i] = std::clamp(omega_k[i], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+    }
+      
     // Voronoi bin widths Δω (linear-ω integration)
     float domega_k[NBINS];
     for (int i = 0; i < NBINS; ++i) {
