@@ -285,10 +285,10 @@ private:
       const float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw, EPSILON);
 
       // Accumulate spectral moments over Δω
-      const float dω = domega_k[i];
-      S0 += S_eta_hat * dω;
-      S1 += S_eta_hat * wk * dω;
-      S2 += S_eta_hat * wk * wk * dω;
+      const float domega = domega_k[i];
+      S0 += S_eta_hat * domega;
+      S1 += S_eta_hat * wk * domega;
+      S2 += S_eta_hat * wk * wk * domega;
     }
 
     // === Update EMAs and Jensen helper moments ===
