@@ -61,6 +61,7 @@ struct DebiasedEMA {
 };
 
 // SeaStateRegularity
+template <int MAX_K_ = 25>
 class SeaStateRegularity {
 public:
   // Numerics & mapping
@@ -74,7 +75,7 @@ public:
   constexpr static float TAU_W_SEC    = 30.0f; // smoothing time for ω_used
 
   // Multi-bin spectral grid parameters
-  constexpr static int   MAX_K     = 25;      // ±25 bins → 51 total
+  constexpr static int   MAX_K     = MAX_K_;      // ±MAX_K_ bins
   constexpr static int   NBINS     = 2 * MAX_K + 1;
 
   // Constructor
