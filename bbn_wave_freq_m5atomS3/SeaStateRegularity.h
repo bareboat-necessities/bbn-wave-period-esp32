@@ -255,7 +255,7 @@ private:
     for (int i = 0; i < NBINS; ++i) {
       const float wk     = omega_k[i];
       const float f_hz   = wk / TWO_PI_;
-      const float fc_hz  = std::max(MIN_FC_HZ, (r - 1.0f) * f_hz);
+      const float fc_hz  = std::max(0.06f * f_hz, (r - 1.0f) * f_hz);
       const float alpha  = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_hz);
       const float enbw   = PI * PI * fc_hz;   // ENBW in rad/s for 1st-order LPF
 
