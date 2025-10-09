@@ -253,20 +253,15 @@ private:
     // Accumulators
     float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
 
+    const float fs = (last_dt > 0.0f) ? (1.0f / last_dt) : 0.0f;
+
     // Bin loop: advance LO, demodulate, LPF, integrate
     for (int i = 0; i < NBINS; ++i) {
       const float wk     = omega_k[i];
       const float f_hz   = wk / TWO_PI_;
       const float fc_hz  = std::max(0.06f * f_hz, (r - 1.0f) * f_hz);
       const float alpha  = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_hz);
-
-      // Exact discrete-time ENBW (rad/s) for EMA one-pole:
-      // ENBW_rad = pi * fs * tanh(pi*fc/fs) .
-      // Equivalently: ENBW_rad = (pi*pi)*fc * g, where g = tanh(pi*fc/fs)/(pi*fc/fs).
-      const float fs      = (last_dt > 0.0f) ? (1.0f / last_dt) : 0.0f;
-      const float u       = (fs > 0.0f) ? (PI * fc_hz / fs) : 0.0f;
-      const float g       = (u > 1e-8f) ? (std::tanh(u) / u) : 1.0f;
-      const float enbw    = (PI * PI) * fc_hz * g;  // rad/s
+      const float enbw    = (PI * PI) * fc_hz;  // rad/s
         
       // Advance per-bin oscillator phase and wrap to keep it bounded
       phi_k[i] += wk * last_dt;
