@@ -231,7 +231,7 @@ public:
 
     // rebuild Spectrum grid if drifted; then prep per-dt constants
     const float ratio = (omega_used > 0.0f) ? (w_obs / omega_used) : 1.0f;
-    if (!grid_valid || ratio < 0.80f || ratio > 1.25f) {
+    if (!grid_valid || ratio < 0.95f || ratio > 1.05f) {
       spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
       grid_valid = true;
     }
