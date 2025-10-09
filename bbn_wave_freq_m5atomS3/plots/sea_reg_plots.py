@@ -73,7 +73,7 @@ def latex_safe(s: str) -> str:
 
 # === Utility: save figure ===
 def save_all(fig, base, title):
-    plt.tight_layout(rect=[0, 0, 1, 0.95]) 
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
     fig.suptitle(latex_safe(title))
     fig.savefig(f"{base}.pgf", bbox_inches="tight")
     fig.savefig(f"{base}.svg", bbox_inches="tight", dpi=150)
@@ -95,7 +95,7 @@ for f in files:
 
 # === Plot for each tracker ===
 for tracker, tracker_files in tracker_groups.items():
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 16), sharex=True)
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(14, 20), sharex=True)
 
     # Group files by wave type
     wave_grouped = {}
@@ -130,32 +130,37 @@ for tracker, tracker_files in tracker_groups.items():
                 print(f"Skipping {f} (missing required columns)")
                 continue
 
+            # Compute displacement period safely (avoid div by zero)
+            df["disp_period_s"] = df["disp_freq_hz"].apply(lambda f: 1.0 / f if f > 1e-6 else float("nan"))
+
             color = cmap(0.3 + 0.7 * idx / max(1, n_files - 1))
             label = f"{wave}-H{height_str}"
 
-            # Top: Regularity
+            # Regularity
             ax1.plot(df["time"], df["regularity"], label=label, alpha=0.8, color=color)
-
-            # Middle: Wave Height Envelope
+            # Height envelope
             ax2.plot(df["time"], df["significant_wave_height"], label=label, alpha=0.8, color=color)
-
-            # Bottom: Displacement Frequency
+            # Displacement frequency
             ax3.plot(df["time"], df["disp_freq_hz"], label=label, alpha=0.8, color=color)
+            # Displacement period
+            ax4.plot(df["time"], df["disp_period_s"], label=label, alpha=0.8, color=color)
 
     # === Formatting ===
     ax1.set_ylabel("Regularity score (R)")
     ax1.grid(True, linestyle="--", alpha=0.5)
-    ax1.legend(fontsize=8, ncol=3, loc="lower left")  # single legend, solid frame
+    ax1.legend(fontsize=8, ncol=3, loc="lower left")
 
     ax2.set_ylabel("Wave Height Envelope [m]")
     ax2.grid(True, linestyle="--", alpha=0.5)
 
-    ax3.set_xlabel("Time [s]")
     ax3.set_ylabel("Displacement Frequency [Hz]")
     ax3.grid(True, linestyle="--", alpha=0.5)
 
-    plt.tight_layout()
+    ax4.set_xlabel("Time [s]")
+    ax4.set_ylabel("Displacement Period [s]")
+    ax4.grid(True, linestyle="--", alpha=0.5)
 
+    plt.tight_layout()
     base = f"seareg_{tracker}"
-    save_all(fig, base, f"Sea State Regularity, Height Envelope & Disp. Freq — {tracker} tracker")
+    save_all(fig, base, f"Sea State Regularity, Height, Freq & Period — {tracker} tracker")
     plt.close(fig)
