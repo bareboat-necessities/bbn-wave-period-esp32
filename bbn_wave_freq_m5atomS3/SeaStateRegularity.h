@@ -1,4 +1,5 @@
 #pragma once
+
 #include <cmath>
 #include <limits>
 #include <algorithm>
@@ -7,7 +8,7 @@
     Copyright 2025, Mikhail Grushinskiy
 
     SeaStateRegularity — Online estimator of ocean wave regularity
-    --------------------------------------------------------------
+
     Momentum-based version (no phase coherence or heuristic blending).
 
     Purpose
@@ -40,7 +41,7 @@
       • Accumulate {M₀,M₁,M₂} and Jensen correction helpers each step.
 */
 
-// ================== Debiased Exponential Moving Average ==================
+// Debiased Exponential Moving Average
 struct DebiasedEMA {
   float value  = 0.0f;
   float weight = 0.0f;
@@ -59,7 +60,7 @@ struct DebiasedEMA {
   inline bool isReady() const { return weight > 1e-6f; }
 };
 
-// ============================ SeaStateRegularity ==========================
+// SeaStateRegularity
 class SeaStateRegularity {
 public:
   // Numerics & mapping
@@ -118,21 +119,21 @@ public:
     last_accel = accel_z;
     updateAlpha(dt_s);
 
-    // --- Direct acceleration variance estimation ---
+    // Direct acceleration variance estimation
     A1_mean.update(accel_z, alpha_mom);
     A2_second.update(accel_z * accel_z, alpha_mom);
     const float a_mean = A1_mean.get();
     const float a_var  = std::max(0.0f, A2_second.get() - a_mean * a_mean);
     A0.update(a_var, alpha_mom);
 
-    // --- Spectral integration and moment update ---
+    // Spectral integration and moment update
     updateSpectralMoments(omega_inst);
 
-    // --- Moment-based regularity computation ---
+    // Moment-based regularity computation
     computeRegularityOutput();
   }
 
-  // === Getters =========================================================
+  // Getters
   float getRegularity() const         { return R_out.get(); }
   float getRegularitySpectral() const { return R_spec; }
   float getNarrowness() const         { return nu; }
@@ -227,7 +228,7 @@ private:
       if (ratio < 0.7f || ratio > 1.3f) return;
     }
 
-    // === Log-spaced ω grid around ω_used ===
+    // Log-spaced ω grid around ω_used
     const int   K = MAX_K;
     constexpr float TARGET_SPAN_UP = 6.0f;
     const float r = std::exp(std::log(TARGET_SPAN_UP) / float(K));
@@ -250,7 +251,7 @@ private:
     // Accumulators
     float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
 
-    // === Bin loop: advance LO, demodulate, LPF, integrate ===
+    // Bin loop: advance LO, demodulate, LPF, integrate
     for (int i = 0; i < NBINS; ++i) {
       const float wk     = omega_k[i];
       const float f_hz   = wk / TWO_PI_;
@@ -291,7 +292,7 @@ private:
       S2 += S_eta_hat * wk * wk * domega;
     }
 
-    // === Update EMAs and Jensen helper moments ===
+    // Update EMAs and Jensen helper moments
     M0.update(S0, alpha_mom);
     M1.update(S1, alpha_mom);
     M2.update(S2, alpha_mom);
