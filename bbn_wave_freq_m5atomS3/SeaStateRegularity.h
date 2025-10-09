@@ -144,15 +144,17 @@ public:
   float getDisplacementFrequencyM01Hz() const {
     const float m0 = M0.get(), m1 = M1.get();
     if (!(m0 > EPSILON)) return 0.0f;
+      
     const float q00 = Q00.get(), q10 = Q10.get();
     const float varM0 = std::max(0.0f, q00 - m0*m0);
     const float cov10 = q10 - m1*m0;
     const float invM0_2 = 1.0f / std::max(m0*m0, EPSILON);
     const float omega_bar = (m1/m0) + ((m1/m0)*varM0 - cov10) * invM0_2;
+      
     return (omega_bar > 0.0f) ? (omega_bar / (2.0f*PI)) : 0.0f;
   }
 
-  float getDisplacementFrequencyHz() const {
+  float getDisplacementFrequencyM02Hz() const {
     const float m0 = M0.get();
     const float m2 = M2.get();
     if (!(m0 > EPSILON)) return 0.0f;
@@ -168,6 +170,10 @@ public:
 
     const float omega_z = std::sqrt(r2_corr);
     return omega_z / (2.0f * PI);
+  }
+
+  float getDisplacementFrequencyHz() const {
+    return getDisplacementFrequencyM01Hz();
   }
 
   float getDisplacementPeriodSec() const {
