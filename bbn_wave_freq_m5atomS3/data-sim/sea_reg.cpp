@@ -206,7 +206,7 @@ static ConvergedStats run_from_csv(TrackerType tracker,
         std::ofstream spec(specFile);
         if (spec.is_open()) {
             spec << "omega_rad,s_eta_rad,s_eta_hz,domega,inv_w4,inv_enbw\n";
-            for (int i = 0; i < S.NBINS; ++i) {
+            for (int i = 0; i < SeaStateRegularity<>::NBINS; ++i) {
                 spec << S.omega[i] << ","
                      << S.S_eta_rad[i] << ","
                      << S.S_eta_hz[i] << ","
