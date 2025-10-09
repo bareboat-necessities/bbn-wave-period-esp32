@@ -257,11 +257,21 @@ private:
 
     // Bin loop: advance LO, demodulate, LPF, integrate
     for (int i = 0; i < NBINS; ++i) {
-      const float wk     = omega_k[i];
-      const float f_hz   = wk / TWO_PI_;
-      const float fc_hz  = std::max(0.06f * f_hz, (r - 1.0f) * f_hz);
-      const float alpha  = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_hz);
-      const float enbw    = (PI * PI) * fc_hz;  // rad/s
+
+      const float wk   = omega_k[i];
+
+      // Make ENBW exactly match the Voronoi cell width Δω (principled, removes tilt)
+      const float enbw = domega_k[i];                 // [rad/s]
+
+      // Invert the discrete-time EMA ENBW to get fc_hz for a stable alpha.
+      // ENBW_discrete(rad/s) = π * fs * tanh(π*fc/fs)  ⇒  fc = (fs/π) * atanh(ENBW/(π*fs))
+      const float fs       = (last_dt > 0.0f) ? (1.0f / last_dt) : 0.0f;
+      float       ratio    = (fs > 0.0f) ? (enbw / (PI * fs)) : 0.0f;
+      ratio = std::clamp(ratio, 1e-9f, 0.999999f);
+      const float fc_hz    = (fs > 0.0f) ? ((fs / PI) * 0.5f * std::log((1.0f + ratio) / (1.0f - ratio))) : 0.0f;
+
+      // Compute alpha from fc_hz
+      const float alpha    = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_hz);
         
       // Advance per-bin oscillator phase and wrap to keep it bounded
       phi_k[i] += wk * last_dt;
