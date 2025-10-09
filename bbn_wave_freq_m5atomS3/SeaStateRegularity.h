@@ -76,7 +76,6 @@ public:
   // Multi-bin spectral grid parameters
   constexpr static int   MAX_K     = 25;      // ±25 bins → 51 total
   constexpr static int   NBINS     = 2 * MAX_K + 1;
-  constexpr static float MIN_FC_HZ = 0.04f;   // minimum LPF cutoff per bin
 
   // Constructor
   SeaStateRegularity(float tau_mom_sec = 180.0f, float tau_out_sec = 60.0f) {
