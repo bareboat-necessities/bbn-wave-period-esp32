@@ -210,7 +210,6 @@ static ConvergedStats run_from_csv(TrackerType tracker,
     return stats;
 }
 
-// === MAIN ===
 int main() {
     init_tracker_backends();
 
@@ -235,10 +234,8 @@ int main() {
 
         const auto meta = *parsed;
 
-        // --- only keep JONSWAP and PMSTOKES ---
+        // only keep JONSWAP and PMSTOKES
         if (meta.type != WaveType::JONSWAP && meta.type != WaveType::PMSTOKES) {
-            std::cout << "Skipping non-JONSWAP/PM wave: " << fname
-                      << " [" << EnumTraits<WaveType>::to_string(meta.type) << "]\n";
             continue;
         }
 
