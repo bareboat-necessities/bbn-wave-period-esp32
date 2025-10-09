@@ -78,6 +78,29 @@ public:
   constexpr static int   MAX_K     = MAX_K_;      // ±MAX_K_ bins
   constexpr static int   NBINS     = 2 * MAX_K + 1;
 
+  // -------- Live spectrum snapshot type (per update) --------
+  struct SpectrumSnapshot {
+    static constexpr int MAX_BINS = NBINS;
+
+    bool  ready = false;                  // becomes true after first successful update
+    float omega[MAX_BINS]{};              // ω_k    [rad/s]
+    float domega[MAX_BINS]{};             // Δω_k   [rad/s]
+    float Seta_rad[MAX_BINS]{};           // S_η(ω) per-rad/s
+    float freq[MAX_BINS]{};               // f_k    [Hz]
+    float df[MAX_BINS]{};                 // Δf_k   [Hz]
+    float Seta_hz[MAX_BINS]{};            // S_η(f) per-Hz  ( = 2π * S_η(ω) )
+
+    // Optional helper: instantaneous (pre-EMA) m0 from the snapshot
+    float integrateM0() const {
+      if (!ready) return 0.0f;
+      double m0 = 0.0;
+      for (int i = 0; i < MAX_BINS; ++i) {
+        m0 += double(Seta_rad[i]) * double(domega[i]);
+      }
+      return float(m0);
+    }
+  };
+
   // Constructor
   SeaStateRegularity(float tau_mom_sec = 180.0f, float tau_out_sec = 60.0f) {
     tau_mom = tau_mom_sec;
@@ -109,6 +132,8 @@ public:
       phi_k[i] = 0.0f;
       zr[i] = zi[i] = 0.0;
     }
+
+    spectrum_.ready = false; // snapshot invalid after reset
   }
 
   // Main update per sample
@@ -199,6 +224,10 @@ public:
 
   float getAccelerationVariance() const { return A0.get(); }
 
+  // -------- Spectrum getter (const reference to snapshot) --------
+  const SpectrumSnapshot& getSpectrum() const { return spectrum_; }
+  bool spectrumReady() const { return spectrum_.ready; }
+
 private:
   // Internal constants
   static constexpr float PI            = 3.14159265358979323846f;
@@ -229,6 +258,9 @@ private:
   // Outputs and cached quantities
   float R_spec = 0.0f, nu = 0.0f;
   float omega_bar_corr = 0.0f, omega_bar_naive = 0.0f;
+
+  // Live spectrum snapshot (per update)
+  SpectrumSnapshot spectrum_{};
 
   // Update exponential smoothing coefficients
   void updateAlpha(float dt_s) {
@@ -279,8 +311,6 @@ private:
     // Accumulators
     float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
 
-    const float fs = (last_dt > 0.0f) ? (1.0f / last_dt) : 0.0f;
-
     // Bin loop: advance LO, demodulate, LPF, integrate
     for (int i = 0; i < NBINS; ++i) {
 
@@ -323,6 +353,16 @@ private:
       S0 += S_eta_hat * domega;
       S1 += S_eta_hat * wk * domega;
       S2 += S_eta_hat * wk * wk * domega;
+
+      // ---- Save spectrum snapshot (per-bin) ----
+      spectrum_.omega[i]    = wk;
+      spectrum_.domega[i]   = domega;
+      spectrum_.Seta_rad[i] = S_eta_hat;                        // per-rad/s
+      const float fk        = wk / (2.0f * PI);
+      const float dfk       = domega / (2.0f * PI);
+      spectrum_.freq[i]     = fk;
+      spectrum_.df[i]       = dfk;
+      spectrum_.Seta_hz[i]  = S_eta_hat * (2.0f * PI);          // per-Hz
     }
 
     // Update EMAs and Jensen helper moments
@@ -333,6 +373,7 @@ private:
     Q10.update(S0 * S1, alpha_mom);
     Q20.update(S0 * S2, alpha_mom);
 
+    spectrum_.ready = true;
     has_moments = true;
   }
 
@@ -433,5 +474,12 @@ inline void SeaState_sine_wave_test() {
             << ", f_disp_corr=" << f_disp_corr << " Hz"
             << ", f_disp_naive=" << f_disp_naive << " Hz"
             << ", Tp=" << Tp << " s, R_spec=" << R_spec << "\n";
+
+  // Example of using the spectrum snapshot (optional)
+  if (reg.spectrumReady()) {
+    const auto& S = reg.getSpectrum();
+    float m0_snap = S.integrateM0();
+    (void)m0_snap; // for debugging/validation if needed
+  }
 }
 #endif
