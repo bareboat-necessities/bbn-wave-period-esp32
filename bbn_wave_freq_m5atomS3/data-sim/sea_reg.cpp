@@ -84,7 +84,7 @@ static double run_tracker_once(TrackerType tracker,
 // Write CSV header
 static void write_csv_header(std::ofstream &ofs) {
     ofs << "time,omega_inst,narrowness,regularity,"
-           "significant_wave_height,disp_freq_hz,accel_var\n";
+           "significant_wave_height,disp_freq_hz,disp_period_s,accel_var\n";
 }
 
 // Normalize numbers (e.g. H1.500 → H1.5, L12.340 → L12.34)
@@ -190,6 +190,7 @@ static ConvergedStats run_from_csv(TrackerType tracker,
                     << regFilter.getRegularity() << ","
                     << regFilter.getWaveHeightEnvelopeEst() << ","
                     << regFilter.getDisplacementFrequencyHz() << ","
+                    << regFilter.getDisplacementPeriodSec() << ","
                     << regFilter.getAccelerationVariance() << "\n";
             }
         }
@@ -197,6 +198,37 @@ static ConvergedStats run_from_csv(TrackerType tracker,
     });
     reader.close();
     ofs.close();
+
+    // === Write final converged spectrum ===
+    if (regFilter.spectrumReady()) {
+        const auto &S = regFilter.getSpectrum();
+        std::string specFile = "reg_spectrum_" + trackerName + "_" + waveName + tail + noise_bias + ".csv";
+        std::ofstream spec(specFile);
+        if (spec.is_open()) {
+            spec << "omega_rad,s_eta_rad,s_eta_hz,domega,inv_w4,inv_enbw\n";
+            for (int i = 0; i < S.NBINS; ++i) {
+                spec << S.omega[i] << ","
+                     << S.S_eta_rad[i] << ","
+                     << S.S_eta_hz[i] << ","
+                     << S.domega[i] << ","
+                     << S.inv_w4[i] << ","
+                     << S.inv_enbw[i] << "\n";
+            }
+
+            // Optional summary footer
+            spec << "\n# M0=" << S.integrateMoment(0)
+                 << ", M1=" << S.integrateMoment(1)
+                 << ", M2=" << S.integrateMoment(2)
+                 << ", Hs=" << regFilter.getWaveHeightEnvelopeEst()
+                 << ", nu=" << regFilter.getNarrowness()
+                 << ", f_disp=" << regFilter.getDisplacementFrequencyHz() << " Hz\n";
+
+            spec.close();
+            printf("Wrote %s\n", specFile.c_str());
+        } else {
+            fprintf(stderr, "Failed to open %s\n", specFile.c_str());
+        }
+    }
 
     // capture last values
     stats.regularity    = regFilter.getRegularity();
