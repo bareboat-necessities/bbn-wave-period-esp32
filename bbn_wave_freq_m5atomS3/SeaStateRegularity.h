@@ -65,7 +65,7 @@ class SeaStateRegularity {
 public:
   // Numerics & mapping
   constexpr static float EPSILON    = 1e-12f;
-  constexpr static float BETA_SPEC  = 1.7f;    // spectral regularity exponent
+  constexpr static float BETA_SPEC  = 1.5f;    // spectral regularity exponent
   constexpr static float K_EFF_MIX  = 1.7f;    // compensates I/Q demod halving
 
   // Tracker and frequency limits
