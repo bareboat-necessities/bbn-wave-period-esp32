@@ -240,7 +240,7 @@ public:
       last_bins_dt = dt_s;
     }
 
-    // ---- hot loop: rotator + 1st-order IIR using precomputed constants ----
+    // hot loop: rotator + 1st-order IIR using precomputed constants
     double S0 = 0.0, S1 = 0.0, S2 = 0.0;  // double only for accumulation
     for (int i = 0; i < NBINS; ++i) {
       // rotate (c,s) by Δφ
