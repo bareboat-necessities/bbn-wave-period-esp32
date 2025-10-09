@@ -32,9 +32,9 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 #include "WaveFilters.h"
 #include "SeaStateRegularity.h"
 #include "SeaMetrics.h"
-#include "DirectionalDistribution.h"        // defines Cosine2sRandomizedDistribution
-#include "Jonswap3dStokesWaves.h"           // defines Jonswap3dStokesWaves<>
-#include "PiersonMoskowitzStokes3D_Waves.h" // defines PMStokesN3dWaves<>
+#include "DirectionalSpread.h"       
+#include "Jonswap3dStokesWaves.h"       
+#include "PiersonMoskowitzStokes3D_Waves.h" 
 
 // Config
 static constexpr float SAMPLE_RATE_HZ   = 240.0f;
