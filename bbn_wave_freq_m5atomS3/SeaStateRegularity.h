@@ -7,7 +7,7 @@
     Copyright 2025, Mikhail Grushinskiy
 
     SeaStateRegularity — Online estimator of ocean wave regularity
-    --------------------------------------------------------------
+
     Momentum-based version (no phase coherence or heuristic blending).
 
     Purpose
@@ -61,25 +61,20 @@ struct DebiasedEMA {
 template <int MAX_K_ = 25>
 class SeaStateRegularity {
 public:
-  // ---------------------------------------------
   // Constants
-  // ---------------------------------------------
   constexpr static int   MAX_K   = MAX_K_;
   constexpr static int   NBINS   = 2 * MAX_K + 1;
   constexpr static float EPSILON = 1e-12f;
-  constexpr static float PI      = 3.14159265358979323846f;
-  constexpr static float TWO_PI  = 2.0f * PI;
+  constexpr static float PI_     = 3.14159265358979323846f;
+  constexpr static float TWO_PI_ = 2.0f * PI_;
 
   // Behavior knobs
   constexpr static float BETA_SPEC     = 1.5f;
   constexpr static float K_EFF_MIX     = 1.6f;
   constexpr static float OMEGA_MIN_HZ  = 0.02f;
   constexpr static float OMEGA_MAX_HZ  = 4.00f;
-  constexpr static float TAU_W_SEC     = 30.0f;
 
-  // ---------------------------------------------
   // Nested Spectrum struct (encapsulates grid + PSD)
-  // ---------------------------------------------
   struct Spectrum {
     // Grid parameters
     bool  ready        = false;
@@ -109,7 +104,7 @@ public:
     float S_eta_rad[NBINS]{};
     float S_eta_hz[NBINS]{};
 
-    // --------- API expected by caller ---------
+    // API expected by caller
     inline void clear() { ready = false; }
 
     // Build a symmetric log grid around ω_center; compute Δω, inv_w4, inv_enbw.
@@ -156,12 +151,12 @@ public:
 
     // Prepare per-bin α_k and rotator step for a given dt (call when dt changes or after buildGrid()).
     inline void precomputeForDt(float dt) {
-      const float PI = 3.14159265358979323846f;
-      const float TWO_PI = 2.0f * PI;
+      const float PI_ = 3.14159265358979323846f;
+      const float TWO_PI_ = 2.0f * PI_;
       for (int i = 0; i < NBINS; ++i) {
         // LPF alpha per bin: fc = ENBW/π² (Hz); α = 1 − exp(−dt·2π·fc)
-        const float fc_hz = domega[i] / (PI * PI);
-        float a = 1.0f - std::exp(-dt * TWO_PI * fc_hz);
+        const float fc_hz = domega[i] / (PI_ * PI_);
+        float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
         if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
         alpha_k[i] = a;
 
@@ -188,11 +183,13 @@ public:
     }
   };
 
-  // ---------------------------------------------
   // Constructor / Reset
-  // ---------------------------------------------
-  explicit SeaStateRegularity(float tau_mom_sec = 180.0f, float tau_out_sec = 60.0f)
-  : tau_mom(tau_mom_sec), tau_out((tau_out_sec > 1e-3f) ? tau_out_sec : 1e-3f) {
+  explicit SeaStateRegularity(float tau_mom_sec = 180.0f,
+                              float tau_out_sec = 60.0f,
+                              float tau_w_sec   = 30.0f)
+  : tau_mom(tau_mom_sec),
+    tau_out((tau_out_sec > 1e-3f) ? tau_out_sec : 1e-3f),
+    tau_w(tau_w_sec) {
     reset();
   }
 
@@ -214,9 +211,7 @@ public:
     grid_valid = false;
   }
 
-  // ---------------------------------------------
   // Main update
-  // ---------------------------------------------
   inline void update(float dt_s, float accel_z, float omega_inst) {
     if (!(dt_s > 0.0f) || !std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
 
@@ -268,7 +263,7 @@ public:
       const float S_hat  = K_EFF_MIX * P_disp * spectrum_.inv_enbw[i];
 
       spectrum_.S_eta_rad[i] = S_hat;
-      spectrum_.S_eta_hz[i]  = S_hat * (2.0f * PI);
+      spectrum_.S_eta_hz[i]  = S_hat * (2.0f * PI_);
 
       const float w  = spectrum_.omega[i];
       const float dw = spectrum_.domega[i];
@@ -293,9 +288,7 @@ public:
     computeRegularityOutput();
   }
 
-  // ---------------------------------------------
   // Public Getters
-  // ---------------------------------------------
   inline float getRegularity()         const { return R_out.get(); }
   inline float getRegularitySpectral() const { return R_spec; }
   inline float getNarrowness()         const { return nu; }
@@ -309,14 +302,14 @@ public:
     const float cov10  = q10 - m1 * m0;
     const float invM0_2 = 1.0f / fmaxf(m0 * m0, EPSILON);
     const float wbar_corr = (m1 / m0) + ((m1 / m0) * varM0 - cov10) * invM0_2;
-    return (wbar_corr > 0.0f) ? (wbar_corr / (2.0f * PI)) : 0.0f;
+    return (wbar_corr > 0.0f) ? (wbar_corr / (2.0f * PI_)) : 0.0f;
   }
 
   inline float getDisplacementFrequencyNaiveHz() const {
     // Uncorrected ω̄ = M1/M0 (handy for debugging)
     const float m0 = M0.get(), m1 = M1.get();
     if (!(m0 > EPSILON) || !(m1 > 0.0f)) return 0.0f;
-    return (m1 / m0) / (2.0f * PI);
+    return (m1 / m0) / (2.0f * PI_);
   }
 
   inline float getDisplacementPeriodSec() const {
@@ -336,16 +329,12 @@ public:
   inline bool spectrumReady() const { return spectrum_.ready; }
 
 private:
-  // ---------------------------------------------
   // Internal constants
-  // ---------------------------------------------
-  constexpr static float OMEGA_MIN_RAD = TWO_PI * OMEGA_MIN_HZ;
-  constexpr static float OMEGA_MAX_RAD = TWO_PI * OMEGA_MAX_HZ;
+  constexpr static float OMEGA_MIN_RAD = TWO_PI_ * OMEGA_MIN_HZ;
+  constexpr static float OMEGA_MAX_RAD = TWO_PI_ * OMEGA_MAX_HZ;
 
-  // ---------------------------------------------
   // State variables
-  // ---------------------------------------------
-  float tau_mom = 180.0f, tau_out = 60.0f;
+  float tau_mom = 180.0f, tau_out = 60.0f, tau_w = 30.0f;
   float last_dt = -1.0f;
   float last_bins_dt = -1.0f;
   float alpha_mom = 0.0f, alpha_out = 0.0f, alpha_w = 0.0f;
@@ -362,9 +351,7 @@ private:
 
   Spectrum spectrum_;
 
-  // ---------------------------------------------
   // Internal helpers
-  // ---------------------------------------------
   static inline float clampf(float x, float lo, float hi) {
     return (x < lo) ? lo : ((x > hi) ? hi : x);
   }
@@ -374,7 +361,7 @@ private:
     last_dt   = dt_s;
     alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
     alpha_out = 1.0f - std::exp(-dt_s / tau_out);
-    alpha_w   = 1.0f - std::exp(-dt_s / TAU_W_SEC);
+    alpha_w   = 1.0f - std::exp(-dt_s / tau_w);
   }
 
   inline void computeRegularityOutput() {
@@ -474,7 +461,7 @@ inline void SeaState_sine_wave_test() {
   // Example of using the spectrum snapshot (optional)
   if (reg.spectrumReady()) {
     const auto& S = reg.getSpectrum();
-    float m0_snap = S.integrateM0();
+    float m0_snap = S.integrateMoment(0);
     (void)m0_snap; // for debugging/validation if needed
   }
 }
