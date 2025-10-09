@@ -210,7 +210,7 @@ static ConvergedStats run_from_csv(TrackerType tracker,
     return stats;
 }
 
-// Main
+// === MAIN ===
 int main() {
     init_tracker_backends();
 
@@ -228,27 +228,37 @@ int main() {
 
     for (const auto &fname : files) {
         auto parsed = WaveFileNaming::parse(fname);
-        std::string label;
-        if (parsed) {
-            auto meta = *parsed;
-            std::ostringstream oss;
-            oss << EnumTraits<WaveType>::to_string(meta.type);
-            if (meta.height > 0) oss << " H" << meta.height;
-            if (meta.length > 0) oss << " L" << meta.length;
-            label = oss.str();
-        } else {
-            label = std::filesystem::path(fname).filename().string();
+        if (!parsed) {
+            std::cout << "Skipping (unparsed): " << fname << "\n";
+            continue;
         }
+
+        const auto meta = *parsed;
+
+        // --- only keep JONSWAP and PMSTOKES ---
+        if (meta.type != WaveType::JONSWAP && meta.type != WaveType::PMSTOKES) {
+            std::cout << "Skipping non-JONSWAP/PM wave: " << fname
+                      << " [" << EnumTraits<WaveType>::to_string(meta.type) << "]\n";
+            continue;
+        }
+
+        std::ostringstream oss;
+        oss << EnumTraits<WaveType>::to_string(meta.type);
+        if (meta.height > 0) oss << " H" << meta.height;
+        if (meta.length > 0) oss << " L" << meta.length;
+        const std::string label = oss.str();
 
         FileSummary summary;
         summary.label = label;
+
         for (int tr = 0; tr < 3; ++tr) {
             summary.stats[tr] = run_from_csv(static_cast<TrackerType>(tr), fname, run_idx++);
         }
+
         all_summaries.push_back(summary);
     }
 
-    // Final summary
+    // === Final summary ===
     std::cout << std::fixed << std::setprecision(5);
     std::cout << "\n=== Final Comparison Summary ===\n";
     std::cout << std::setw(10) << "Reg(Aran)"
