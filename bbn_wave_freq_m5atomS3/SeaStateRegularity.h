@@ -66,7 +66,7 @@ public:
   // Numerics & mapping
   constexpr static float EPSILON    = 1e-12f;
   constexpr static float BETA_SPEC  = 1.5f;    // spectral regularity exponent
-  constexpr static float K_EFF_MIX  = 2.0f;    // compensates I/Q demod halving
+  constexpr static float K_EFF_MIX  = 1.0f;    // compensates I/Q demod halving
 
   // Tracker and frequency limits
   constexpr static float OMEGA_MIN_HZ = 0.02f; // ~50 s swell
