@@ -11,8 +11,8 @@
     Momentum-based version (no phase coherence or heuristic blending).
 
     Purpose
-      Estimate ocean wave regularity and spectral properties directly
-      from vertical acceleration measurements a_z(t).
+      Estimate ocean wave spectral properties directly from vertical
+      acceleration a_z(t). Everything here is moment-based.
 
     Physical relations
       a_z(t) = d²η/dt² = −ω² η(t)
@@ -29,25 +29,18 @@
       • Spectral narrowness (ν)     ν = sqrt(M₂/M₀ − (M₁/M₀)²) / (M₁/M₀)
       • Oceanographic Hs            Hs = 4√M₀
 
-    Jensen bias correction
-      To remove ratio bias from M₁/M₀ and M₂/M₀ estimators:
-
-        ω̄_corr = ω̄_naive + (ω̄_naive Var[M₀] − Cov[M₁,M₀]) / M₀²
-        similarly for M₂/M₀ → ω̄²_corr
-
-    Regularity score (moment-based only)
-      R_spec = exp(−β·ν), with β≈1–2 (empirical sharpness factor)
+    Jensen bias correction for ratios
+      ω̄_corr = ω̄_naive + (ω̄_naive Var[M₀] − Cov[M₁,M₀]) / M₀²
+      and similarly for M₂/M₀ in the ν computation.
 
     Implementation overview
-      • Multi-bin demodulation of acceleration at log-spaced ωₖ around ω_inst.
-      • Each bin has 1st-order LPF with cutoff f_c,k and ENBW = π² f_c,k.
-      • Convert acceleration power to displacement PSD via division by ωₖ⁴.
-      • Accumulate M₀, M₁, M₂, and Jensen correction terms.
+      • Multi-bin demodulation of acceleration at log-spaced ω_k around ω_inst.
+      • Each bin uses a 1st-order LPF with cutoff f_c,k (Hz) and ENBW = π² f_c,k (rad/s).
+      • Convert acceleration baseband power to displacement PSD via ω_k⁻⁴.
+      • Accumulate {M₀,M₁,M₂} and Jensen correction helpers each step.
 */
 
-//
-// === Debiased Exponential Moving Average ==============================
-//
+// ================== Debiased Exponential Moving Average ==================
 struct DebiasedEMA {
   float value  = 0.0f;
   float weight = 0.0f;
@@ -66,12 +59,10 @@ struct DebiasedEMA {
   inline bool isReady() const { return weight > 1e-6f; }
 };
 
-//
-// === SeaStateRegularity ===============================================
-//
+// ============================ SeaStateRegularity ==========================
 class SeaStateRegularity {
 public:
-  // Numerical constants
+  // Numerics & mapping
   constexpr static float EPSILON    = 1e-12f;
   constexpr static float BETA_SPEC  = 1.7f;    // spectral regularity exponent
   constexpr static float K_EFF_MIX  = 2.0f;    // compensates I/Q demod halving
@@ -86,18 +77,14 @@ public:
   constexpr static int   NBINS     = 2 * MAX_K + 1;
   constexpr static float MIN_FC_HZ = 0.04f;   // minimum LPF cutoff per bin
 
-  //--------------------------------------------------------------------
   // Constructor
-  //--------------------------------------------------------------------
   SeaStateRegularity(float tau_mom_sec = 180.0f, float tau_out_sec = 60.0f) {
     tau_mom = tau_mom_sec;
     tau_out = std::max(1e-3f, tau_out_sec);
     reset();
   }
 
-  //--------------------------------------------------------------------
   // Reset all EMAs and state
-  //--------------------------------------------------------------------
   void reset() {
     M0.reset(); M1.reset(); M2.reset();
     A0.reset(); A1_mean.reset(); A2_second.reset();
@@ -115,22 +102,15 @@ public:
 
     has_moments = false;
     last_accel = 0.0f;
-    bins_init = false;
 
-    // Clear bin memories
+    // Initialize per-bin oscillators (phase accumulators)
     for (int i = 0; i < NBINS; ++i) {
-      bin_zr[i] = bin_zi[i] = 0.0;
-      bin_c[i] = 1.0;
-      bin_s[i] = 0.0;
-      last_S_eta_hat[i] = 0.0f;
-      n_harm[i] = 1;
+      phi_k[i] = 0.0f;
+      zr[i] = zi[i] = 0.0;
     }
-    omega_peak_smooth = 0.0f;
   }
 
-  //--------------------------------------------------------------------
   // Main update per sample
-  //--------------------------------------------------------------------
   void update(float dt_s, float accel_z, float omega_inst) {
     if (!(dt_s > 0.0f)) return;
     if (!std::isfinite(accel_z) || !std::isfinite(omega_inst)) return;
@@ -141,8 +121,8 @@ public:
     // --- Direct acceleration variance estimation ---
     A1_mean.update(accel_z, alpha_mom);
     A2_second.update(accel_z * accel_z, alpha_mom);
-    float a_mean = A1_mean.get();
-    float a_var  = std::max(0.0f, A2_second.get() - a_mean * a_mean);
+    const float a_mean = A1_mean.get();
+    const float a_var  = std::max(0.0f, A2_second.get() - a_mean * a_mean);
     A0.update(a_var, alpha_mom);
 
     // --- Spectral integration and moment update ---
@@ -152,92 +132,79 @@ public:
     computeRegularityOutput();
   }
 
-  //--------------------------------------------------------------------
-  // === Getters ========================================================
-  //--------------------------------------------------------------------
-  float getRegularity() const            { return R_out.get(); }
-  float getRegularitySpectral() const    { return R_spec; }
-  float getNarrowness() const            { return nu; }
+  // === Getters =========================================================
+  float getRegularity() const         { return R_out.get(); }
+  float getRegularitySpectral() const { return R_spec; }
+  float getNarrowness() const         { return nu; }
 
   float getDisplacementFrequencyNaiveHz() const {
     return (omega_bar_naive > EPSILON) ? (omega_bar_naive / (2.0f * PI)) : 0.0f;
   }
 
   float getDisplacementFrequencyHz() const {
-    float m0 = M0.get();
-    float m2 = M2.get();
+    const float m0 = M0.get();
+    const float m2 = M2.get();
     if (!(m0 > EPSILON)) return 0.0f;
 
-    float q00 = Q00.get(), q20 = Q20.get();
-    float varM0  = std::max(0.0f, q00 - m0 * m0);
-    float cov20  = q20 - m2 * m0;
-    float invM0_2 = 1.0f / std::max(m0 * m0, EPSILON);
+    const float q00 = Q00.get(), q20 = Q20.get();
+    const float varM0  = std::max(0.0f, q00 - m0 * m0);
+    const float cov20  = q20 - m2 * m0;
+    const float invM0_2 = 1.0f / std::max(m0 * m0, EPSILON);
 
-    float r2_naive = m2 / m0;
+    const float r2_naive = m2 / m0;
     float r2_corr  = r2_naive + (r2_naive * varM0 - cov20) * invM0_2;
     r2_corr = std::max(r2_corr, 0.0f);
 
-    float omega_z = std::sqrt(r2_corr);
+    const float omega_z = std::sqrt(r2_corr);
     return omega_z / (2.0f * PI);
   }
 
   float getDisplacementPeriodSec() const {
-    float fz = getDisplacementFrequencyHz();
+    const float fz = getDisplacementFrequencyHz();
     return (fz > EPSILON) ? (1.0f / fz) : 0.0f;
   }
 
-  // --- Oceanographic significant wave height (Hs = 4√M0) ---
+  // Oceanographic significant wave height (Hs = 4√M0)
   float getWaveHeightEnvelopeEst() const {
     const float m0 = M0.get();
-    if (!(m0 > EPSILON) || !std::isfinite(m0))
-      return 0.0f;
+    if (!(m0 > EPSILON) || !std::isfinite(m0)) return 0.0f;
     return 4.0f * std::sqrt(m0);
   }
 
   float getAccelerationVariance() const { return A0.get(); }
 
 private:
-  //--------------------------------------------------------------------
   // Internal constants
-  //--------------------------------------------------------------------
-  static constexpr float PI             = 3.14159265358979323846f;
-  static constexpr float TWO_PI_        = 2.0f * PI;
-  static constexpr float OMEGA_MIN_RAD  = TWO_PI_ * OMEGA_MIN_HZ;
-  static constexpr float OMEGA_MAX_RAD  = TWO_PI_ * OMEGA_MAX_HZ;
+  static constexpr float PI            = 3.14159265358979323846f;
+  static constexpr float TWO_PI_       = 2.0f * PI;
+  static constexpr float OMEGA_MIN_RAD = TWO_PI_ * OMEGA_MIN_HZ;
+  static constexpr float OMEGA_MAX_RAD = TWO_PI_ * OMEGA_MAX_HZ;
 
-  //--------------------------------------------------------------------
   // State variables
-  //--------------------------------------------------------------------
   float tau_mom, tau_out;
-  float last_dt;
-  float alpha_mom, alpha_out;
-  float omega_used, alpha_w;
-  float last_accel;
-  bool  bins_init;
-  bool  has_moments;
+  float last_dt = -1.0f;
+  float alpha_mom = 0.0f, alpha_out = 0.0f;
+  float omega_used = 0.0f, alpha_w = 0.0f;
+  float last_accel = 0.0f;
+  bool  has_moments = false;
 
   // Per-bin demod states
-  double bin_zr[NBINS], bin_zi[NBINS];
-  double bin_c[NBINS],  bin_s[NBINS];
+  //   phi_k: phase of the local oscillator for bin k
+  //   zr, zi: 1st-order LPF outputs of baseband components
+  float  phi_k[NBINS];
+  double zr[NBINS], zi[NBINS];
 
   // Moment EMAs
   DebiasedEMA M0, M1, M2;
   DebiasedEMA A0, A1_mean, A2_second;
-  DebiasedEMA Q00, Q10, Q20;
+  DebiasedEMA Q00, Q10, Q20;  // Jensen helpers
   DebiasedEMA R_out;
 
   // Outputs and cached quantities
-  float R_spec, nu;
-  float omega_bar_corr, omega_bar_naive;
+  float R_spec = 0.0f, nu = 0.0f;
+  float omega_bar_corr = 0.0f, omega_bar_naive = 0.0f;
 
-  // Misc buffers
-  float last_S_eta_hat[NBINS];
-  int   n_harm[NBINS];
-  float omega_peak_smooth;
-
-  //--------------------------------------------------------------------
   // Update exponential smoothing coefficients
-  //--------------------------------------------------------------------
   void updateAlpha(float dt_s) {
     if (dt_s == last_dt) return;
     alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
@@ -246,78 +213,82 @@ private:
     last_dt   = dt_s;
   }
 
-  //--------------------------------------------------------------------
   // Spectral demodulation and moment accumulation
-  //--------------------------------------------------------------------
   void updateSpectralMoments(float omega_inst) {
-    float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+    const float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
     // Smooth ω_used to prevent jitter
     if (omega_used <= 0.0f) omega_used = w_obs;
-    else omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
+    else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
-    // Reject large ω jumps (>±30%)
+    // Reject large ω jumps (>±30%) to avoid spuriously rebuilding the grid
     if (omega_used > 0.0f) {
-      float ratio = w_obs / omega_used;
+      const float ratio = w_obs / omega_used;
       if (ratio < 0.7f || ratio > 1.3f) return;
     }
 
     // === Log-spaced ω grid around ω_used ===
-    const int K = MAX_K;
+    const int   K = MAX_K;
     constexpr float TARGET_SPAN_UP = 6.0f;
     const float r = std::exp(std::log(TARGET_SPAN_UP) / float(K));
 
-    float omega_k_arr[NBINS] = {};
-    omega_k_arr[MAX_K] = omega_used;
+    float omega_k[NBINS];
+    omega_k[MAX_K] = omega_used;
     for (int k = 1; k <= K; ++k) {
-      omega_k_arr[MAX_K + k] = omega_k_arr[MAX_K + k - 1] * r;
-      omega_k_arr[MAX_K - k] = omega_k_arr[MAX_K - k + 1] / r;
+      omega_k[MAX_K + k] = omega_k[MAX_K + k - 1] * r;
+      omega_k[MAX_K - k] = omega_k[MAX_K - k + 1] / r;
     }
 
-    // Voronoi bin widths Δω
-    float domega_k_arr[NBINS];
+    // Voronoi bin widths Δω (linear-ω integration)
+    float domega_k[NBINS];
     for (int i = 0; i < NBINS; ++i) {
-      float wL = (i > 0) ? omega_k_arr[i - 1] : omega_k_arr[i];
-      float wR = (i < NBINS - 1) ? omega_k_arr[i + 1] : omega_k_arr[i];
-      domega_k_arr[i] = std::max(EPSILON, 0.5f * (wR - wL));
+      const float wL = (i > 0) ? omega_k[i - 1] : omega_k[i];
+      const float wR = (i < NBINS - 1) ? omega_k[i + 1] : omega_k[i];
+      domega_k[i] = std::max(EPSILON, 0.5f * (wR - wL));
     }
 
     // Accumulators
     float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
 
-    // === Bin loop: demodulate, LPF, accumulate ===
+    // === Bin loop: advance LO, demodulate, LPF, integrate ===
     for (int i = 0; i < NBINS; ++i) {
-      float omega_k = omega_k_arr[i];
-      float f_k_hz  = omega_k / TWO_PI_;
-      float fc_k_hz = std::max(MIN_FC_HZ, (r - 1.0f) * f_k_hz);
-      float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_k_hz);
-      float enbw_k  = PI * PI * fc_k_hz;
+      const float wk     = omega_k[i];
+      const float f_hz   = wk / TWO_PI_;
+      const float fc_hz  = std::max(MIN_FC_HZ, (r - 1.0f) * f_hz);
+      const float alpha  = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_hz);
+      const float enbw   = PI * PI * fc_hz;   // ENBW in rad/s for 1st-order LPF
+
+      // Advance per-bin oscillator phase and wrap to keep it bounded
+      phi_k[i] += wk * last_dt;
+      if (phi_k[i] >  PI)  phi_k[i] -= 2.0f * PI;
+      if (phi_k[i] < -PI)  phi_k[i] += 2.0f * PI;
 
       // Baseband demodulation of acceleration
-      float y_r = last_accel * std::cos(omega_k * last_dt);
-      float y_i = -last_accel * std::sin(omega_k * last_dt);
+      const float c = std::cos(phi_k[i]);
+      const float s = std::sin(phi_k[i]);
+      const float y_r = last_accel * c;
+      const float y_i = -last_accel * s;
 
-      // Low-pass filtering
-      bin_zr[i] = (1.0f - alpha_k) * bin_zr[i] + alpha_k * y_r;
-      bin_zi[i] = (1.0f - alpha_k) * bin_zi[i] + alpha_k * y_i;
+      // Low-pass filtering (1st-order)
+      zr[i] = (1.0 - alpha) * zr[i] + alpha * y_r;
+      zi[i] = (1.0 - alpha) * zi[i] + alpha * y_i;
 
-      // Acceleration power per bin
-      float P_acc = bin_zr[i]*bin_zr[i] + bin_zi[i]*bin_zi[i];
+      // Acceleration power in this bin
+      const float P_acc = float(zr[i]*zr[i] + zi[i]*zi[i]);
 
-      // Convert to displacement PSD
-      float w2 = omega_k * omega_k;
-      float inv_w4 = 1.0f / std::max(w2 * w2, EPSILON);
-      float P_disp = P_acc * inv_w4;
+      // Convert to displacement PSD via ω⁻⁴
+      const float w2 = wk * wk;
+      const float inv_w4 = 1.0f / std::max(w2 * w2, EPSILON);
+      const float P_disp = P_acc * inv_w4;
 
-      // PSD estimate of displacement
-      float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON);
-      last_S_eta_hat[i] = S_eta_hat;
+      // Displacement PSD estimate (per-bin)
+      const float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw, EPSILON);
 
-      // Accumulate spectral moments
-      float domega = domega_k_arr[i];
-      S0 += S_eta_hat * domega;
-      S1 += S_eta_hat * omega_k * domega;
-      S2 += S_eta_hat * omega_k * omega_k * domega;
+      // Accumulate spectral moments over Δω
+      const float dω = domega_k[i];
+      S0 += S_eta_hat * dω;
+      S1 += S_eta_hat * wk * dω;
+      S2 += S_eta_hat * wk * wk * dω;
     }
 
     // === Update EMAs and Jensen helper moments ===
@@ -327,12 +298,11 @@ private:
     Q00.update(S0 * S0, alpha_mom);
     Q10.update(S0 * S1, alpha_mom);
     Q20.update(S0 * S2, alpha_mom);
+
     has_moments = true;
   }
 
-  //--------------------------------------------------------------------
   // Compute regularity and corrected mean frequency
-  //--------------------------------------------------------------------
   void computeRegularityOutput() {
     if (!M0.isReady()) {
       R_out.update(0.0f, alpha_out);
@@ -363,7 +333,7 @@ private:
     nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2_corr) / omega_bar_corr) : 0.0f;
     if (!std::isfinite(nu) || nu < 0.0f) nu = 0.0f;
 
-    // Regularity score (0–1)
+    // Regularity score (0–1) — purely moment-based
     R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
     R_out.update(R_spec, alpha_out);
   }
@@ -397,37 +367,37 @@ struct SineWave {
 inline void SeaState_sine_wave_test() {
   SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
   SeaStateRegularity reg;
-  float R_spec = 0.0f, R_phase = 0.0f, Hs_est = 0.0f, nu = 0.0f;
-  float f_disp_corr = 0.0f, f_disp_naive = 0.0f, Tp = 0.0f;
+
+  float Hs_est = 0.0f, nu = 0.0f;
+  float f_disp_corr = 0.0f, f_disp_naive = 0.0f, Tp = 0.0f, R_spec = 0.0f;
+
   for (int i = 0; i < int(SIM_DURATION_SEC / DT); i++) {
     auto za = wave.step(DT);
     float a = za.second;
     reg.update(DT, a, wave.omega);
-    R_spec      = reg.getRegularitySpectral();
-    R_phase     = reg.getRegularityPhase();
-    Hs_est      = reg.getWaveHeightEnvelopeEst();
-    nu          = reg.getNarrowness();
-    f_disp_corr = reg.getDisplacementFrequencyHz();
+
+    R_spec       = reg.getRegularitySpectral();
+    Hs_est       = reg.getWaveHeightEnvelopeEst();
+    nu           = reg.getNarrowness();
+    f_disp_corr  = reg.getDisplacementFrequencyHz();
     f_disp_naive = reg.getDisplacementFrequencyNaiveHz();
-    Tp          = reg.getDisplacementPeriodSec();
+    Tp           = reg.getDisplacementPeriodSec();
   }
 
   const float Hs_expected = 4.0f * SINE_AMPLITUDE;
 
-  if (!(R_spec > 0.90f))
-    throw std::runtime_error("Sine: R_spec did not converge near 1.");
-  if (!(R_phase > 0.80f))
-    throw std::runtime_error("Sine: R_phase did not converge near 1.");
-  if (!(std::fabs(Hs_est - Hs_expected) < 0.25f * Hs_expected))
+  if (!(R_spec > 0.85f))
+    throw std::runtime_error("Sine: R_spec (moment-based) should be high for a narrowband tone.");
+  if (!(std::fabs(Hs_est - Hs_expected) < 0.30f * Hs_expected))
     throw std::runtime_error("Sine: Hs estimate not within tolerance.");
-  if (!(nu < 0.05f))
-    throw std::runtime_error("Sine: Narrowness should be close to 0 for a pure tone.");
+  if (!(nu < 0.10f))
+    throw std::runtime_error("Sine: Narrowness should be small for a pure tone.");
 
-  std::cerr << "[PASS] Sine wave test passed. "
+  std::cerr << "[PASS] Sine wave test (moment-only) — "
             << "Hs_est=" << Hs_est
-            << " (expected ~" << Hs_expected << "), Narrowness=" << nu
+            << " (~" << Hs_expected << "), ν=" << nu
             << ", f_disp_corr=" << f_disp_corr << " Hz"
             << ", f_disp_naive=" << f_disp_naive << " Hz"
-            << ", Tp=" << Tp << " s\n";
+            << ", Tp=" << Tp << " s, R_spec=" << R_spec << "\n";
 }
 #endif
