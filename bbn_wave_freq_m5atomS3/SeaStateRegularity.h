@@ -265,7 +265,6 @@ private:
 
       // Invert the discrete-time EMA ENBW to get fc_hz for a stable alpha.
       // ENBW_discrete(rad/s) = π * fs * tanh(π*fc/fs)  ⇒  fc = (fs/π) * atanh(ENBW/(π*fs))
-      const float fs       = (last_dt > 0.0f) ? (1.0f / last_dt) : 0.0f;
       float       ratio    = (fs > 0.0f) ? (enbw / (PI * fs)) : 0.0f;
       ratio = std::clamp(ratio, 1e-9f, 0.999999f);
       const float fc_hz    = (fs > 0.0f) ? ((fs / PI) * 0.5f * std::log((1.0f + ratio) / (1.0f - ratio))) : 0.0f;
@@ -273,11 +272,12 @@ private:
       // Compute alpha from fc_hz
       const float alpha    = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_hz);
         
-      // Advance per-bin oscillator phase and wrap to keep it bounded
+      // Advance and safely wrap phase to [-π, π]
       phi_k[i] += wk * last_dt;
+      phi_k[i] = std::fmod(phi_k[i], 2.0f * PI);
       if (phi_k[i] >  PI)  phi_k[i] -= 2.0f * PI;
       if (phi_k[i] < -PI)  phi_k[i] += 2.0f * PI;
-
+        
       // Baseband demodulation of acceleration
       const float c = std::cos(phi_k[i]);
       const float s = std::sin(phi_k[i]);
