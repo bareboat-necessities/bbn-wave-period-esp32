@@ -260,17 +260,10 @@ private:
 
       const float wk   = omega_k[i];
 
-      // Make ENBW exactly match the Voronoi cell width Δω (principled, removes tilt)
-      const float enbw = domega_k[i];                 // [rad/s]
-
-      // Invert the discrete-time EMA ENBW to get fc_hz for a stable alpha.
-      // ENBW_discrete(rad/s) = π * fs * tanh(π*fc/fs)  ⇒  fc = (fs/π) * atanh(ENBW/(π*fs))
-      float       ratio    = (fs > 0.0f) ? (enbw / (PI * fs)) : 0.0f;
-      ratio = std::clamp(ratio, 1e-9f, 0.999999f);
-      const float fc_hz    = (fs > 0.0f) ? ((fs / PI) * 0.5f * std::log((1.0f + ratio) / (1.0f - ratio))) : 0.0f;
-
-      // Compute alpha from fc_hz
-      const float alpha    = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_hz);
+      // Make ENBW exactly the Voronoi width (one-sided, rad/s)
+      const float enbw  = domega_k[i];            // [rad/s]
+      const float fc_hz = enbw / (PI * PI);       // ENBW = π² fc  ⇒ fc = ENBW/π²
+      const float alpha = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_hz);
         
       // Advance and safely wrap phase to [-π, π]
       phi_k[i] += wk * last_dt;
