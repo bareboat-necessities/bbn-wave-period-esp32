@@ -145,18 +145,16 @@ static ConvergedStats run_from_csv(TrackerType tracker,
     std::string stem = std::filesystem::path(csv_file).filename().string();
     auto posH = stem.find("_H");
     std::string tail = (posH != std::string::npos) ? stem.substr(posH) : "";
-
-    if (tail.size() > 4 && tail.substr(tail.size() - 4) == ".csv") {
+    if (tail.size() > 4 && tail.substr(tail.size() - 4) == ".csv")
         tail = tail.substr(0, tail.size() - 4);
-    }
-
     tail = normalize_numbers(tail);
 
     char noise_bias[64];
     std::snprintf(noise_bias, sizeof(noise_bias),
                   "_N%.3f_B%.3f", NOISE_STDDEV, BIAS_MEAN);
 
-    std::string outFile = "regularity_" + trackerName + "_" + waveName + tail + noise_bias + ".csv";
+    std::string outFile =
+        "regularity_" + trackerName + "_" + waveName + tail + noise_bias + ".csv";
     std::ofstream ofs(outFile);
     if (!ofs.is_open()) {
         fprintf(stderr, "Failed to open %s\n", outFile.c_str());
@@ -183,7 +181,8 @@ static ConvergedStats run_from_csv(TrackerType tracker,
         if (std::isfinite(freq)) {
             last_freq = freq;
             if (rec.time >= WARMUP_SECONDS) {
-                regFilter.update(DELTA_T, noisy_accel, static_cast<float>(2.0 * M_PI * freq));
+                regFilter.update(DELTA_T, noisy_accel,
+                                 static_cast<float>(2.0 * M_PI * freq));
                 ofs << rec.time << ","
                     << (2.0 * M_PI * freq) << ","
                     << regFilter.getNarrowness() << ","
@@ -199,38 +198,123 @@ static ConvergedStats run_from_csv(TrackerType tracker,
     reader.close();
     ofs.close();
 
-    // === Write final converged spectrum ===
+    // === Write final converged spectrum with reference built from model ===
     if (regFilter.spectrumReady()) {
         const auto &S = regFilter.getSpectrum();
-        std::string specFile = "reg_spectrum_" + trackerName + "_" + waveName + tail + noise_bias + ".csv";
+
+        std::string specFile = "reg_spectrum_" + trackerName + "_" +
+                               waveName + tail + noise_bias + ".csv";
         std::ofstream spec(specFile);
-        if (spec.is_open()) {
-            spec << "omega_rad,s_eta_rad,s_eta_hz,domega,inv_w4,inv_enbw\n";
-            for (int i = 0; i < SeaStateRegularity<>::NBINS; ++i) {
-                spec << S.omega[i] << ","
-                     << S.S_eta_rad[i] << ","
-                     << S.S_eta_hz[i] << ","
-                     << S.domega[i] << ","
-                     << S.inv_w4[i] << ","
-                     << S.inv_enbw[i] << "\n";
+        if (!spec.is_open()) {
+            fprintf(stderr, "Failed to open %s\n", specFile.c_str());
+            return stats;
+        }
+
+        // Build theoretical reference spectrum from parsed wave parameters
+        std::vector<double> f_ref_hz_vec, S_ref_hz_vec;
+        if (auto parsed_params = WaveFileNaming::parse_to_params(csv_file)) {
+            auto [kind_ref, type_ref, wp] = *parsed_params;
+            auto dirDist = std::make_shared<Cosine2sRandomizedDistribution>(
+                wp.direction * M_PI / 180.0, 10.0, 42u);
+
+            Eigen::Matrix<double,128,1> f_ref, S_ref;
+            if (type_ref == WaveType::JONSWAP) {
+                Jonswap3dStokesWaves<128> refModel(
+                    wp.height, wp.period, dirDist,
+                    0.03, 1.5, 3.3, g_std, 42u);
+                f_ref = refModel.frequencies();
+                S_ref = refModel.spectrum();
+            } else if (type_ref == WaveType::PMSTOKES) {
+                PMStokesN3dWaves<128,3> refModel(
+                    wp.height, wp.period, dirDist,
+                    0.03, 1.5, g_std, 42u);
+                f_ref = refModel.frequencies();
+                S_ref = refModel.spectrum();
             }
 
-            // Optional summary footer
-            spec << "\n# M0=" << S.integrateMoment(0)
-                 << ", M1=" << S.integrateMoment(1)
-                 << ", M2=" << S.integrateMoment(2)
-                 << ", Hs=" << regFilter.getWaveHeightEnvelopeEst()
-                 << ", nu=" << regFilter.getNarrowness()
-                 << ", f_disp=" << regFilter.getDisplacementFrequencyHz() << " Hz\n";
-
-            spec.close();
-            printf("Wrote %s\n", specFile.c_str());
-        } else {
-            fprintf(stderr, "Failed to open %s\n", specFile.c_str());
+            if (f_ref.size() > 0) {
+                f_ref_hz_vec.resize(f_ref.size());
+                S_ref_hz_vec.resize(S_ref.size());
+                for (int i = 0; i < f_ref.size(); ++i) {
+                    f_ref_hz_vec[i] = f_ref(i);
+                    S_ref_hz_vec[i] = S_ref(i);
+                }
+            }
         }
+
+        // CSV header
+        spec << "omega_rad,freq_hz,S_eta_rad,S_eta_hz,domega,inv_w4,inv_enbw,"
+              << "S_ref_interp,S_ref_ratio,"
+              << "A_eta_est,A_eta_ref,"
+              << "E_eta_est,E_eta_ref,"
+              << "CumVar_est,CumVar_ref\n";
+
+        double cum_est = 0.0, cum_ref = 0.0;
+
+        for (int i = 0; i < SeaStateRegularity<>::NBINS; ++i) {
+            double omega = S.omega[i];
+            double f_est = omega / (2.0 * M_PI);
+            double delta_f = S.domega[i] / (2.0 * M_PI);
+
+            // Interpolate theoretical reference S_eta
+            double s_ref_interp = 0.0;
+            if (f_ref_hz_vec.size() >= 2) {
+                if (f_est <= f_ref_hz_vec.front())
+                    s_ref_interp = S_ref_hz_vec.front();
+                else if (f_est >= f_ref_hz_vec.back())
+                    s_ref_interp = S_ref_hz_vec.back();
+                else {
+                    size_t j = 0;
+                    while (j + 1 < f_ref_hz_vec.size() &&
+                           f_ref_hz_vec[j + 1] < f_est)
+                        ++j;
+                    double f0 = f_ref_hz_vec[j], f1 = f_ref_hz_vec[j + 1];
+                    double s0 = S_ref_hz_vec[j], s1 = S_ref_hz_vec[j + 1];
+                    double t = (f_est - f0) / (f1 - f0);
+                    s_ref_interp = (1.0 - t) * s0 + t * s1;
+                }
+            }
+
+            double ratio = (s_ref_interp > 0.0)
+                               ? (S.S_eta_hz[i] / s_ref_interp)
+                               : 0.0;
+
+            // Log-bin aware amplitudes
+            double A_eta_est = std::sqrt(std::max(0.0, 2.0 *
+                S.S_eta_hz[i] * delta_f * f_est));
+            double A_eta_ref = std::sqrt(std::max(0.0, 2.0 *
+                s_ref_interp  * delta_f * f_est));
+
+            // Energy per log frequency
+            double E_eta_est = f_est * S.S_eta_hz[i];
+            double E_eta_ref = f_est * s_ref_interp;
+
+            // Cumulative integrals
+            cum_est += S.S_eta_hz[i] * delta_f;
+            cum_ref += s_ref_interp * delta_f;
+
+            spec << omega << "," << f_est << ","
+                 << S.S_eta_rad[i] << "," << S.S_eta_hz[i] << ","
+                 << S.domega[i] << "," << S.inv_w4[i] << "," << S.inv_enbw[i] << ","
+                 << s_ref_interp << "," << ratio << ","
+                 << A_eta_est << "," << A_eta_ref << ","
+                 << E_eta_est << "," << E_eta_ref << ","
+                 << cum_est << "," << cum_ref << "\n";
+        }
+
+        // Footer
+        spec << "\n# M0=" << S.integrateMoment(0)
+             << ", M1=" << S.integrateMoment(1)
+             << ", M2=" << S.integrateMoment(2)
+             << ", Hs=" << regFilter.getWaveHeightEnvelopeEst()
+             << ", nu=" << regFilter.getNarrowness()
+             << ", f_disp=" << regFilter.getDisplacementFrequencyHz() << " Hz\n";
+
+        spec.close();
+        printf("Wrote %s\n", specFile.c_str());
     }
 
-    // capture last values
+    // Capture final convergence stats
     stats.regularity    = regFilter.getRegularity();
     stats.narrowness    = regFilter.getNarrowness();
     stats.Hs            = regFilter.getWaveHeightEnvelopeEst();
