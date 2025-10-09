@@ -200,14 +200,14 @@ float getWaveHeightEnvelopeEst() const {
     const float R = std::clamp(R_phase, 0.0f, 1.0f);
 
 const float k_sharp = 350.0f;      // large slope → nearly binary
-const float R_pivot = 0.7f;
+const float R_pivot = 0.8f;
 const float w_mono = 1.0f / (1.0f + std::exp(-k_sharp * (R - R_pivot))); // sigmoid
 const float w_rand = 1.0f - w_mono;
     
     // harmonic suppression for strongly coherent multi-harmonic signals
     const float correction = 1.0f / (1.0f + 4.0f * R * R);
     const float Hs_mono_corr = Hs_mono * correction;
-    
+
     // Blend in energy (variance) domain
     const double Hs2 =
         w_mono * double(Hs_mono_corr) * double(Hs_mono_corr) +
@@ -250,9 +250,6 @@ float getDisplacementPeriodSec() const {
     static constexpr float TWO_PI_  = 2.0f * PI;  
     static constexpr float OMEGA_MIN_RAD  = TWO_PI_ * OMEGA_MIN_HZ;
     static constexpr float OMEGA_MAX_RAD  = TWO_PI_ * OMEGA_MAX_HZ;
-
-  // Store Voronoi width Δω_k to get grid-invariant weighting
-float domega_k_mem[NBINS] = {0.0f};
 
     // time constants and alphas
     float tau_mom, tau_coh, tau_out;
@@ -323,9 +320,12 @@ float omega_peak_smooth = 0.0f;
       last_dt = dt_s;
     }
 
-
 void updatePhaseCoherence() {
-    // --- Skip if no spectral power ---
+    static float last_phi_k[NBINS] = {0.0f};
+    static bool  phi_init = false;
+    static float phi_ref_last = 0.0f;
+
+    // energy check
     float smax = 0.0f;
     for (int i = 0; i < NBINS; ++i)
         smax = std::max(smax, last_S_eta_hat[i]);
@@ -334,84 +334,76 @@ void updatePhaseCoherence() {
         return;
     }
 
-    // --- Reference bin (strongest PSD) ---
+    // fundamental reference = max PSD bin
     int i_ref = 0;
     for (int i = 1; i < NBINS; ++i)
         if (last_S_eta_hat[i] > last_S_eta_hat[i_ref]) i_ref = i;
 
-    // --- Current and previous phases ---
-    static float phi_prev_ref = 0.0f;
+    // current ref phase
     const float phi_ref_now = std::atan2(bin_zi[i_ref], bin_zr[i_ref]);
-    const float dphi_ref = phi_ref_now - phi_prev_ref;
-    phi_prev_ref = phi_ref_now;
 
-    const float omega_cref = std::max(omega_c_k[i_ref], EPSILON);
-
-    // --- Initialize per-bin previous phases on first call ---
-    static bool init = false;
-    static float phi_prev[NBINS] = {0.0f};
-    if (!init) {
+    // initialize on first call
+    if (!phi_init) {
         for (int i = 0; i < NBINS; ++i)
-            phi_prev[i] = std::atan2(bin_zi[i], bin_zr[i]);
-        init = true;
+            last_phi_k[i] = std::atan2(bin_zi[i], bin_zr[i]);
+        phi_ref_last = phi_ref_now;
+        phi_init = true;
+        return;
     }
 
-    // --- Accumulators for weighted phasor sum ---
+    // unwrap reference increment
+    float dphi_ref = phi_ref_now - phi_ref_last;
+    phi_ref_last = phi_ref_now;
+    if (dphi_ref >  PI) dphi_ref -= 2.0f * PI;
+    if (dphi_ref < -PI) dphi_ref += 2.0f * PI;
+
+    // === NEW: reference normalization ===
+    const float dt_safe     = std::max(last_dt, 1e-6f);
+    const float omega_c_ref = std::max(omega_c_k[i_ref], 1e-6f);
+    const float denom_ref   = omega_c_ref * dt_safe;
+
+    // accumulators
     const float THRESH = 0.02f * smax;
     double sum_r = 0.0, sum_i = 0.0, sum_w = 0.0;
-
-    // --- Slow per-bin bias detrend (persistent) ---
-    static float resid_mean[NBINS] = {0.0f};
-    const float bias_tau_sec = 300.0f;
-    const float beta = 1.0f - std::exp(-std::max(last_dt, 1e-6f) / bias_tau_sec);
 
     for (int i = 0; i < NBINS; ++i) {
         const float S_eta = last_S_eta_hat[i];
         if (S_eta < THRESH) continue;
 
+        // bin phase and increment (unwrap)
         const float phi_now = std::atan2(bin_zi[i], bin_zr[i]);
-        const float dphi_k  = phi_now - phi_prev[i];
-        phi_prev[i] = phi_now;
+        float dphi = phi_now - last_phi_k[i];
+        last_phi_k[i] = phi_now;
+        if (dphi >  PI) dphi -= 2.0f * PI;
+        if (dphi < -PI) dphi += 2.0f * PI;
 
-        // --- Harmonic order (clamped) ---
+        // harmonic index
         int n = n_harm[i];
         if (n < 1) n = 1;
         if (n > 8) n = 8;
 
-        // --- Phase-lag normalization (LPF bandwidth compensation) ---
-        const float omega_ck = std::max(omega_c_k[i], EPSILON);
-        float resid = (dphi_k / (omega_ck * last_dt))
-                    - float(n) * (dphi_ref / (omega_cref * last_dt));
+        // per-bin normalization (unchanged)
+        const float omega_c_bin = std::max(omega_c_k[i], 1e-6f);
+        const float denom_bin   = omega_c_bin * dt_safe;
 
-        // Wrap to (−π, π]
-        if (resid >  PI) resid -= 2.0f * PI;
-        if (resid < -PI) resid += 2.0f * PI;
+        // === NEW: both terms normalized in their own RBW units ===
+        const float delta = (dphi / denom_bin) - float(n) * (dphi_ref / denom_ref);
 
-        // --- Weight by local spectral energy ---
-        const float w_k = S_eta * std::max(domega_k_mem[i], EPSILON);
-
-        // --- Slow bias removal ---
-        resid_mean[i] = (1.0f - beta) * resid_mean[i] + beta * resid;
-        const float resid_detr = resid - resid_mean[i];
-
-        sum_r += double(w_k) * std::cos(resid_detr);
-        sum_i += double(w_k) * std::sin(resid_detr);
-        sum_w += double(w_k);
+        // weight by displacement PSD
+        sum_r += double(S_eta) * std::cos(delta);
+        sum_i += double(S_eta) * std::sin(delta);
+        sum_w += double(S_eta);
     }
 
-    // --- Compute coherence magnitude ---
-    const float R_now = (sum_w > EPSILON)
-        ? float(std::hypot(sum_r, sum_i) / sum_w)
-        : 0.0f;
-
-    // --- Smooth over time ---
+    const float R_now =
+        (sum_w > EPSILON) ? float(std::hypot(sum_r, sum_i) / sum_w) : 0.0f;
     R_phase = (1.0f - alpha_coh) * R_phase + alpha_coh * R_now;
 }
 
 void updateSpectralMoments(float omega_inst) {
     float w_obs = std::clamp(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 
-    // --- Smooth ω_used ---
+    // Smooth ω_used
     if (omega_used <= 0.0f) omega_used = w_obs;
     else                    omega_used = (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
@@ -421,7 +413,7 @@ void updateSpectralMoments(float omega_inst) {
         if (ratio < 0.7f || ratio > 1.3f) return;
     }
 
-    // --- Advance reference oscillator (drift-free global phase frame) ---
+    // Advance reference oscillator (drift-free global phase frame)
     {
         float dphi_ref = omega_used * last_dt;
         float cd = std::cos(dphi_ref), sd = std::sin(dphi_ref);
@@ -430,122 +422,125 @@ void updateSpectralMoments(float omega_inst) {
         ref_s = c0 * sd + s0 * cd;
     }
 
-    // --- Build fixed ratio grid around ω_used ---
-    const int K = MAX_K;
-    constexpr float TARGET_SPAN_UP = 6.0f;             // ≈6× harmonic span
+    // Ratio grid spanning harmonics up to ~6×
+    int K = MAX_K;
+    constexpr float TARGET_SPAN_UP = 6.0f;
     const float r = std::exp(std::log(TARGET_SPAN_UP) / float(K));
-    const int left = MAX_K - K, right = MAX_K + K;
 
     if (!bins_init) {
-        for (int i = 0; i < NBINS; ++i) {
+        for (int i = 0; i < NBINS; i++) {
             bin_c[i] = 1.0f; bin_s[i] = 0.0f;
-            bin_zr[i] = bin_zi[i] = 0.0f;
-            coh_r_k[i] = coh_i_k[i] = 0.0f;
-            last_P_acc[i] = last_S_eta_hat[i] = 0.0f;
-            omega_k_mem[i] = domega_k_mem[i] = 0.0f;
-            n_harm[i] = 1;
+            bin_zr[i] = 0.0f; bin_zi[i] = 0.0f;
+            coh_r_k[i] = 0.0f; coh_i_k[i] = 0.0f;
+            last_P_acc[i] = 0.0f; last_S_eta_hat[i] = 0.0f;
+            omega_k_mem[i] = 0.0f; n_harm[i] = 1;
         }
         bins_init = true;
     }
 
+    const int left = MAX_K - K, right = MAX_K + K;
+
+    // Build ω_k grid and persist it
     float omega_k_arr[NBINS] = {};
     omega_k_arr[MAX_K] = omega_used;
     for (int k = 1; k <= K; ++k) {
         omega_k_arr[MAX_K + k] = omega_k_arr[MAX_K + k - 1] * r;
         omega_k_arr[MAX_K - k] = omega_k_arr[MAX_K - k + 1] / r;
     }
-    for (int i = left; i <= right; ++i) {
-        omega_k_arr[i] = std::clamp(omega_k_arr[i], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-        omega_k_mem[i] = omega_k_arr[i];
+    for (int idx = left; idx <= right; ++idx) {
+        omega_k_arr[idx] = std::clamp(omega_k_arr[idx], OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+        omega_k_mem[idx] = omega_k_arr[idx];
     }
 
-    // --- Compute Voronoi widths Δω_k ---
+    // Voronoi Δω_k
     float domega_k_arr[NBINS] = {};
-    for (int i = left; i <= right; ++i) {
-        float wL = (i > left)  ? omega_k_arr[i - 1] : omega_k_arr[i];
-        float wR = (i < right) ? omega_k_arr[i + 1] : omega_k_arr[i];
-        domega_k_arr[i] = std::max(EPSILON, 0.5f * (wR - wL));
-        domega_k_mem[i] = domega_k_arr[i];
+    for (int idx = left; idx <= right; ++idx) {
+        float wL = (idx > left)  ? omega_k_arr[idx - 1] : omega_k_arr[idx];
+        float wR = (idx < right) ? omega_k_arr[idx + 1] : omega_k_arr[idx];
+        domega_k_arr[idx] = std::max(EPSILON, 0.5f * (wR - wL));
     }
 
-    // --- Moment accumulators ---
     float S0 = 0.0f, S1 = 0.0f, S2 = 0.0f;
 
-    // --- Per-bin demodulation and PSD estimation ---
-    for (int i = left; i <= right; ++i) {
-        const float omega_k = omega_k_arr[i];
+    // Bin loop
+    for (int idx = left; idx <= right; ++idx) {
+        float omega_k = omega_k_arr[idx];
         if (!(omega_k > EPSILON)) continue;
 
-        // Oscillator advance
+        // advance oscillator
         float dphi = omega_k * last_dt;
         float cd = std::cos(dphi), sd = std::sin(dphi);
-        float c0 = bin_c[i], s0 = bin_s[i];
-        bin_c[i] = c0 * cd - s0 * sd;
-        bin_s[i] = c0 * sd + s0 * cd;
+        float c0 = bin_c[idx], s0 = bin_s[idx];
+        bin_c[idx] = c0 * cd - s0 * sd;
+        bin_s[idx] = c0 * sd + s0 * cd;
 
-        // Baseband mix
-        const float y_r = last_accel * bin_c[i];
-        const float y_i = -last_accel * bin_s[i];
+        // baseband mix
+        float y_r = last_accel * bin_c[idx];
+        float y_i = -last_accel * bin_s[idx];
 
-        // LPF parameters — fixed fractional BW per bin
-        const float f_k_hz  = omega_k / TWO_PI_;
-        const float fc_k_hz = std::max(MIN_FC_HZ, (r - 1.0f) * f_k_hz);
-        const float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_k_hz);
-        const float enbw_k  = (PI * PI) * (fc_k_hz * TWO_PI_);   // ENBW in rad/s
+        // LPF + ENBW
+        float f_k_hz  = omega_k / TWO_PI_;
+        float fc_k_hz = std::max(MIN_FC_HZ, (r - 1.0f) * f_k_hz);
+        float alpha_k = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_k_hz);
+        float enbw_k  = PI * PI * fc_k_hz;
 
-        // Save ω_c for phase lag normalization
-        omega_c_k[i] = TWO_PI_ * fc_k_hz;
+        
+// keep ωc for phase compensation
+omega_c_k[idx] = TWO_PI_ * fc_k_hz;
 
-        // LPF state update
-        bin_zr[i] = (1.0f - alpha_k) * bin_zr[i] + alpha_k * y_r;
-        bin_zi[i] = (1.0f - alpha_k) * bin_zi[i] + alpha_k * y_i;
+        bin_zr[idx] = (1.0f - alpha_k) * bin_zr[idx] + alpha_k * y_r;
+        bin_zi[idx] = (1.0f - alpha_k) * bin_zi[idx] + alpha_k * y_i;
 
-        // Acceleration-domain power
-        const float P_acc = bin_zr[i]*bin_zr[i] + bin_zi[i]*bin_zi[i];
-        last_P_acc[i] = P_acc;
+        // acceleration-domain power (for coherence weighting)
+        float P_acc = bin_zr[idx]*bin_zr[idx] + bin_zi[idx]*bin_zi[idx];
+        last_P_acc[idx] = P_acc;
 
-        // Displacement PSD (convert via ω⁻⁴, divide by ENBW)
-        const float inv_w4 = 1.0f / std::max(omega_k*omega_k*omega_k*omega_k, EPSILON);
-        const float P_disp = P_acc * inv_w4;
-        const float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON);
-        last_S_eta_hat[i] = S_eta_hat;
+        // displacement PSD estimate
+        float w2 = omega_k * omega_k;
+        float inv_w4 = 1.0f / std::max(w2 * w2, EPSILON);
+        float P_disp = P_acc * inv_w4;
 
-        const float domega = domega_k_arr[i];
+        float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw_k, EPSILON);
+        last_S_eta_hat[idx] = S_eta_hat;
+
+        float domega = domega_k_arr[idx];
         S0 += S_eta_hat * domega;
         S1 += S_eta_hat * omega_k * domega;
         S2 += S_eta_hat * omega_k * omega_k * domega;
     }
 
-    // --- Spectral-peak smoothing & harmonic tagging ---
+    // Track spectral peak (fundamental) and smooth it
     {
         int i_max = left; float s_max = last_S_eta_hat[left];
-        for (int i = left + 1; i <= right; ++i)
+        for (int i = left + 1; i <= right; ++i) {
             if (last_S_eta_hat[i] > s_max) { s_max = last_S_eta_hat[i]; i_max = i; }
-
-        const float omega_peak_now = omega_k_arr[i_max];
-        constexpr float ALPHA_PEAK = 0.05f;
-        omega_peak_smooth = (omega_peak_smooth <= 0.0f)
-                          ? omega_peak_now
-                          : (1.0f - ALPHA_PEAK) * omega_peak_smooth + ALPHA_PEAK * omega_peak_now;
-
-        const float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
+        }
+        float omega_peak_now = omega_k_arr[i_max];
+constexpr float ALPHA_PEAK = 0.05f; // ≈20 s time constant
+omega_peak_smooth = (omega_peak_smooth <= 0.0f)
+                  ? omega_peak_now
+                  : (1.0f - ALPHA_PEAK)*omega_peak_smooth + ALPHA_PEAK*omega_peak_now;
+        
+        // Assign per-bin harmonic index n_harm ≈ round(ω_k / ω̂₀)
+        float w0 = std::max(omega_peak_smooth, OMEGA_MIN_RAD);
         for (int i = left; i <= right; ++i) {
             float ratio = omega_k_arr[i] / w0;
             int n = (int)std::lround(ratio);
-            n = std::clamp(n, 1, 8);
+            if (n < 1) n = 1;
+            if (n > 8) n = 8; // safety clamp
             n_harm[i] = n;
         }
     }
 
-    // --- Update EMAs (moments and Jensen helpers) ---
+    has_moments = true;
+
+    // Moment EMAs + Jensen helpers
     M0.update(S0, alpha_mom);
     M1.update(S1, alpha_mom);
     M2.update(S2, alpha_mom);
-    Q00.update(S0*S0, alpha_mom);
-    Q10.update(S0*S1, alpha_mom);
-    Q20.update(S0*S2, alpha_mom);
-
-    has_moments = true;
+    Q00.update(S0 * S0, alpha_mom);
+    Q10.update(S0 * S1, alpha_mom);
+    Q20.update(S0 * S2, alpha_mom);
 }
 
 void computeRegularityOutput() {
