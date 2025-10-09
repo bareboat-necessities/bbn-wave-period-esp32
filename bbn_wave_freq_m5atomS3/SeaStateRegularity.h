@@ -259,8 +259,15 @@ private:
       const float f_hz   = wk / TWO_PI_;
       const float fc_hz  = std::max(0.06f * f_hz, (r - 1.0f) * f_hz);
       const float alpha  = 1.0f - std::exp(-last_dt * TWO_PI_ * fc_hz);
-      const float enbw   = PI * PI * fc_hz;   // ENBW in rad/s for 1st-order LPF
 
+      // Exact discrete-time ENBW (rad/s) for EMA one-pole:
+      // ENBW_rad = pi * fs * tanh(pi*fc/fs) .
+      // Equivalently: ENBW_rad = (pi*pi)*fc * g, where g = tanh(pi*fc/fs)/(pi*fc/fs).
+      const float fs      = (last_dt > 0.0f) ? (1.0f / last_dt) : 0.0f;
+      const float u       = (fs > 0.0f) ? (PI * fc_hz / fs) : 0.0f;
+      const float g       = (u > 1e-8f) ? (std::tanh(u) / u) : 1.0f;
+      const float enbw    = (PI * PI) * fc_hz * g;  // rad/s
+        
       // Advance per-bin oscillator phase and wrap to keep it bounded
       phi_k[i] += wk * last_dt;
       if (phi_k[i] >  PI)  phi_k[i] -= 2.0f * PI;
