@@ -291,14 +291,18 @@ private:
       // Acceleration power in this bin
       const float P_acc = float(zr[i]*zr[i] + zi[i]*zi[i]);
 
-      // Convert to displacement PSD via ω⁻⁴
-      const float w2 = wk * wk;
-      const float inv_w4 = 1.0f / std::max(w2 * w2, EPSILON);
+      // Convert acceleration power to displacement PSD via ω⁻⁴, but compensate
+      // for the discrete-time leakage of the LPF (≈ |H(jω_k)|² ≈ 1 / (1 + (ω_k / ω_c)²))
+      // so low-ω bins are not overweighted.
+      const float w2     = wk * wk;
+      const float wc     = 2.0f * PI * fc_hz;
+      const float Hcorr  = 1.0f + (wk / std::max(wc, EPSILON)) * (wk / std::max(wc, EPSILON));
+      const float inv_w4 = 1.0f / std::max(w2 * w2 * Hcorr, EPSILON);
       const float P_disp = P_acc * inv_w4;
 
       // Displacement PSD estimate (per-bin)
       const float S_eta_hat = K_EFF_MIX * P_disp / std::max(enbw, EPSILON);
-
+        
       // Accumulate spectral moments over Δω
       const float domega = domega_k[i];
       S0 += S_eta_hat * domega;
