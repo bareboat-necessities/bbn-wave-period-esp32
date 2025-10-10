@@ -253,47 +253,50 @@ inline void precomputeForDt(float dt) {
       return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
 
-    // main accumulation
-    template <int NK>
-    inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
-                           float dt_s) {
-      if (!initialized) buildGrid();
-      if (!(tau_spec > 1e-3f)) return;
+// main accumulation
+template <int NK>
+inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
+                       float dt_s) {
+  if (!initialized) buildGrid();
+  if (!(tau_spec > 1e-3f)) return;
 
-      // Exponential averaging weight
-      const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
+  // Exponential averaging weight
+  const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
 
-      // Loop over source bins (arbitrary, possibly nonuniform grid)
-      for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
-        const float Srad = S.S_eta_rad[i];   // [m²/(rad/s)]
-        if (!(Srad > 0.0f)) continue;
+  // Loop over source bins (arbitrary, possibly nonuniform grid)
+  for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
+    const float Srad = S.S_eta_rad[i];   // [m²/(rad/s)]
+    if (!(Srad > 0.0f)) continue;
 
-        const float w_c  = S.omega[i];
-        const float dw_c = S.domega[i];
-        const float wL_i = w_c - dw_c;
-        const float wR_i = w_c + dw_c;
-        const float E_src = Srad * (2.0f * dw_c);  // total energy in that band
+    const float w_c  = S.omega[i];
+    const float dw_c = S.domega[i];
+    const float wL_i = w_c - dw_c;
+    const float wR_i = w_c + dw_c;
+    const float E_src = Srad * (2.0f * dw_c);  // total energy in that band
 
-        // advance j until upper edge of destination exceeds lower edge of source
-        for (int j = 0; j < N_BINS; ++j) {
-          const float f_c = freq_hz[j];
-          const float dw_j = domega[j];
-          const float wL_j = 2.0f * float(M_PI) * (f_c - 0.5f * dw_j / (2.0f * float(M_PI)));
-          const float wR_j = 2.0f * float(M_PI) * (f_c + 0.5f * dw_j / (2.0f * float(M_PI)));
+    // map to destination bins (fixed log grid in Hz)
+    for (int j = 0; j < N_BINS; ++j) {
+      const float f_c  = freq_hz[j];           // Hz
+      const float dw_j = domega[j];            // half-width in rad/s
+      const float w_center = TWO_PI_ * f_c;    // rad/s center
+      const float wL_j = w_center - dw_j;      // lower edge
+      const float wR_j = w_center + dw_j;      // upper edge
 
-          const float overlap = std::max(0.0f, std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
-          if (overlap <= 0.0f) continue;
+      // Overlap between source and destination in rad/s
+      const float overlap = std::max(0.0f,
+          std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
+      if (overlap <= 0.0f) continue;
 
-          const float frac = overlap / (wR_i - wL_i);
-          const float E_part = E_src * frac;
-          const float S_part = E_part / std::max(dw_j, 1e-12f);
+      const float frac   = overlap / (wR_i - wL_i);
+      const float E_part = E_src * frac;
+      const float S_part = E_part / std::max(2.0f * dw_j, 1e-12f); // full width denominator
 
-          // Exponential moving average update
-          S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
-          weight[j] = (1.0f - alpha) * weight[j] + alpha;
-        }
-      }
+      // Exponential moving average update
+      S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
+      weight[j] = (1.0f - alpha) * weight[j] + alpha;
     }
+  }
+}
 
     // accessors
     inline float valueRad(int k) const {
