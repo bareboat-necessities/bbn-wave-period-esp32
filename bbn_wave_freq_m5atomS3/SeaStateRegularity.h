@@ -137,8 +137,8 @@ public:
           zr[i] = 0.0f;
           zi[i] = 0.0f;
         }
+        ready = true;
       }       
-      ready = true;
     }
 
     // LPF alphas and rotator steps — identical mapping (ENBW = pi^2 fc)
