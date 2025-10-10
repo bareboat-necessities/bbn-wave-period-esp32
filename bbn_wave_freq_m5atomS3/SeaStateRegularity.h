@@ -377,7 +377,7 @@ public:
     has_moments = true;
 
     // accumulate into fixed-grid averaged spectrum
-    fixed_avg_.accumulate(spectrum_, 0.002f);  // adjust alpha as desired
+    fixed_avg_.accumulate(spectrum_, ds_s); 
 
     computeRegularityOutput();
   }
