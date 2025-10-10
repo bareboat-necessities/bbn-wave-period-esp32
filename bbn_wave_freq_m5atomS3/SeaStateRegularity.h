@@ -229,33 +229,56 @@ public:
       const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
 
       for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
-        float f_i = S.omega[i] / (2.0f * float(M_PI));  // Hz
-        float Srad = S.S_eta_rad[i];                    // m²/(rad/s)
-        if (!(Srad > 0.0f)) continue;
+        
+ // --- energy-conservative, log-domain 2-bin projection ---
+float f_i = S.omega[i] / (2.0f * float(M_PI));   // Hz
+float Srad = S.S_eta_rad[i];                      // m^2/(rad/s)
+if (!(Srad > 0.0f)) continue;
 
-        // improved two-bin projection to reduce low-frequency bias
-        int j1 = lowerBound(freq_hz, NBINS, f_i);
-        int j0 = (j1 > 0) ? (j1 - 1) : 0;
-        if (j1 >= NBINS) { j1 = NBINS - 1; j0 = j1; }
+// Energy in source (rad/s domain)
+const float E_src = Srad * S.domega[i];
+
+// Find bracketing bins in log-frequency
+const float xi = std::log(f_i);
+int jR = lowerBound(freq_hz, NBINS, f_i);
+int jL = jR - 1;
+
+// Clamp to edges: deposit all energy to the edge bin if out of range
+if (jL < 0) {
+  const float S_dst = E_src / std::max(domega[jR], 1e-12f);
+  S_avg[jR]  = (1.0f - alpha) * S_avg[jR]  + alpha * S_dst;
+  weight[jR] = (1.0f - alpha) * weight[jR] + alpha;
+  continue;
+}
+if (jR >= NBINS) {
+  jL = NBINS - 1;
+  const float S_dst = E_src / std::max(domega[jL], 1e-12f);
+  S_avg[jL]  = (1.0f - alpha) * S_avg[jL]  + alpha * S_dst;
+  weight[jL] = (1.0f - alpha) * weight[jL] + alpha;
+  continue;
+}
+
+// Interpolate in log-frequency (barycentric)
+const float xL = std::log(freq_hz[jL]);
+const float xR = std::log(freq_hz[jR]);
+const float denom = std::max(xR - xL, 1e-12f);
+float t = (xi - xL) / denom;    // 0..1
+t = (t < 0.0f) ? 0.0f : (t > 1.0f ? 1.0f : t);
+
+// Split energy conservatively, then normalize by destination Δω
+const float E_L = E_src * (1.0f - t);
+const float E_R = E_src * t;
+
+const float S_L = E_L / std::max(domega[jL], 1e-12f);
+const float S_R = E_R / std::max(domega[jR], 1e-12f);
+
+// EMA update per destination bin
+S_avg[jL]  = (1.0f - alpha) * S_avg[jL]  + alpha * S_L;
+weight[jL] = (1.0f - alpha) * weight[jL] + alpha;
+
+S_avg[jR]  = (1.0f - alpha) * S_avg[jR]  + alpha * S_R;
+weight[jR] = (1.0f - alpha) * weight[jR] + alpha;     
       
-        float f0 = freq_hz[j0];
-        float f1 = freq_hz[j1];
-        float t  = (f1 > f0) ? ((f_i - f0) / (f1 - f0)) : 0.0f;
-        t = clampf(t, 0.0f, 1.0f);
-      
-        // conserve total energy: split into neighboring bins
-        float E_src = Srad * S.domega[i];
-        float E0 = (1.0f - t) * E_src;
-        float E1 = t * E_src;
-      
-        float S0 = E0 / std::max(domega[j0], 1e-12f);
-        float S1 = E1 / std::max(domega[j1], 1e-12f);
-      
-        S_avg[j0]  = (1.0f - alpha) * S_avg[j0]  + alpha * S0;
-        weight[j0] = (1.0f - alpha) * weight[j0] + alpha;
-      
-        S_avg[j1]  = (1.0f - alpha) * S_avg[j1]  + alpha * S1;
-        weight[j1] = (1.0f - alpha) * weight[j1] + alpha;
       }
     }
 
