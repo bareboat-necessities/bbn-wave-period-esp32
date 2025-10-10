@@ -254,6 +254,7 @@ public:
 
     has_moments = false;
     spectrum_.clear();
+    fixed_avg_.reset();
     grid_valid = false;
   }
 
