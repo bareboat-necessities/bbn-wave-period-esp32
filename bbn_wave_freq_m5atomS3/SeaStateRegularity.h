@@ -179,7 +179,7 @@ public:
     bool  initialized = false;
 
     // time constant for averaging (seconds)
-    float tau_spec = 30.0f;  // exponential average, tune as needed
+    float tau_spec = 120.0f;  // exponential average, tune as needed
 
     // grid setup / housekeeping
     inline void reset() {
