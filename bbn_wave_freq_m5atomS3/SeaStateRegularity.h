@@ -181,13 +181,12 @@ public:
           sin_dphi[i] = std::sin(dphi);
         }
 
-        // Discrete one-pole ENBW (Hz): ENBW = (α / (2 - α)) * (fs/2)
-        // ⇒ in rad/s multiply by 2π.
+        // discrete one-pole ENBW (rad/s)
+        //     ENBW_rad = π * fs * α / (2 − α)
         const float fs = 1.0f / std::max(dt, 1e-9f);
-        const float enbw_hz = (a > 0.0f && a < 2.0f)
-                              ? (a / (2.0f - a)) * (fs * 0.5f)
-                              : FC_MIN_HZ * (float)PI_ * 0.5f; // safe fallback
-        enbw_rad[i] = enbw_hz * TWO_PI_;
+        enbw_rad[i] = (a > 0.0f && a < 2.0f)
+              ? (PI_ * fs * a) / (2.0f - a)
+              : TWO_PI_ * FC_MIN_HZ;  // fallback in rad/s
       }
 
       // keep your "mean-alpha normalization"
