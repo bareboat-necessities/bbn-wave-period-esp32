@@ -172,13 +172,18 @@ public:
     static constexpr float FMIN_HZ = 0.02f;
     static constexpr float FMAX_HZ = 4.0f;
 
+    // --- persistent state ---
     float freq_hz[NBINS];
-    float domega[NBINS];
-    float S_avg[NBINS];
+    float domega[NBINS];     // bin widths (rad/s)
+    float S_avg[NBINS];      // exponentially averaged PSD (rad/s)
     float weight[NBINS];
     bool  initialized = false;
 
-    void reset() {
+    // time constant for averaging (seconds)
+    float tau_spec = 60.0f;  // ≈ 1-min exponential average, tune as needed
+
+    // --- grid setup / housekeeping ---
+    inline void reset() {
       initialized = false;
       for (int i = 0; i < NBINS; ++i) {
         freq_hz[i] = domega[i] = 0.0f;
@@ -186,7 +191,7 @@ public:
       }
     }
 
-    void buildGrid() {
+    inline void buildGrid() {
       float ratio = std::exp(std::log(FMAX_HZ / FMIN_HZ) / (NBINS - 1));
       freq_hz[0] = FMIN_HZ;
       for (int i = 1; i < NBINS; ++i)
@@ -194,38 +199,65 @@ public:
       for (int i = 0; i < NBINS; ++i) {
         float fL = (i > 0) ? freq_hz[i - 1] : freq_hz[i];
         float fR = (i < NBINS - 1) ? freq_hz[i + 1] : freq_hz[i];
-        domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);
+        domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);  // Δω (rad/s)
       }
       initialized = true;
     }
 
-    // Online exponential averaging accumulation
+    // --- helpers ---
+    static inline int lowerBound(const float* arr, int n, float x) {
+      int lo = 0, hi = n - 1;
+      while (lo < hi) {
+        int mid = (lo + hi) >> 1;
+        if (arr[mid] < x) lo = mid + 1; else hi = mid;
+      }
+      return lo;
+    }
+
+    inline static float clampf(float x, float lo, float hi) {
+      return (x < lo) ? lo : ((x > hi) ? hi : x);
+    }
+
+    // --- main accumulation ---
     template <int NK>
-    void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
-                    float alpha = 0.002f) {
+    inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
+                           float dt_s) {
       if (!initialized) buildGrid();
+      if (!(tau_spec > 1e-3f)) return;
+
+      // derive exponential weight α from time constant
+      const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
+
       for (int i = 0; i < S.NBINS; ++i) {
-        float f_i = S.omega[i] / (2.0f * float(M_PI));
-        float val = S.S_eta_rad[i];
-        if (!(val > 0.0f)) continue;
+        float f_i = S.omega[i] / (2.0f * float(M_PI));  // Hz
+        float Srad = S.S_eta_rad[i];                    // m²/(rad/s)
+        if (!(Srad > 0.0f)) continue;
 
-        // nearest-bin projection (cheap and stable)
-        int j_best = 0;
-        float df_best = std::abs(f_i - freq_hz[0]);
-        for (int j = 1; j < NBINS; ++j) {
-          float df = std::abs(f_i - freq_hz[j]);
-          if (df < df_best) { df_best = df; j_best = j; }
-        }
+        // find nearest destination bin
+        int j = lowerBound(freq_hz, NBINS, f_i);
+        if (j > 0 && std::fabs(f_i - freq_hz[j - 1]) < std::fabs(f_i - freq_hz[j])) j--;
 
-        S_avg[j_best]  = (1.0f - alpha) * S_avg[j_best]  + alpha * val;
-        weight[j_best] = (1.0f - alpha) * weight[j_best] + alpha;
+        // energy projection → normalize to destination bin width
+        float E_src = Srad * S.domega[i];
+        float S_dst = E_src / std::max(domega[j], 1e-12f);
+
+        S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_dst;
+        weight[j] = (1.0f - alpha) * weight[j] + alpha;
       }
     }
 
-    float get(int k) const {
+    // --- accessors ---
+    inline float valueRad(int k) const {
       if (k < 0 || k >= NBINS) return 0.0f;
       return (weight[k] > 1e-6f) ? S_avg[k] / weight[k] : 0.0f;
     }
+
+    inline float valueHz(int k) const {
+      // convert m²/(rad/s) → m²/Hz by multiplying 2π
+      return valueRad(k) * (2.0f * float(M_PI));
+    }
+
+    inline int size() const { return NBINS; }
   };
 
   // Constructor / Reset
