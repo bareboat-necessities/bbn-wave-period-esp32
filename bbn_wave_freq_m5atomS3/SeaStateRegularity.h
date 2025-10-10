@@ -402,7 +402,6 @@ if (mean_a > 1e-9f) {
         S_hat *= 0.5f;   // edge correction
 
       spectrum_.S_eta_rad[i] = S_hat;
-      spectrum_.S_eta_hz[i]  = S_hat * (2.0f * PI_);
 
       const float w  = spectrum_.omega[i];
       const float dw = spectrum_.domega[i];
