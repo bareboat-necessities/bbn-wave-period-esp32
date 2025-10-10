@@ -130,14 +130,6 @@ public:
         // ENBW = domega (rad/s). Store its inverse for convenience.
         inv_enbw[i] = 1.0f / domega[i];
       }
-
-      // Gentle reinit of rotator/IIR state
-      for (int i = 0; i < NBINS; ++i) {
-        c[i]  = 1.0f;
-        s[i]  = 0.0f;
-        zr[i] *= 0.95f;
-        zi[i] *= 0.95f;
-      }
       ready = true;
     }
 
@@ -218,17 +210,10 @@ public:
     const float w_obs = clampf(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
     omega_used = (omega_used <= 0.0f) ? w_obs : (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
-    // rebuild Spectrum grid if drifted; then prep per-dt constants
-    const float ratio = (omega_used > 0.0f) ? (w_obs / omega_used) : 1.0f;
-    if (!grid_valid || ratio < 0.995f || ratio > 1.005f) {
-      spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-      spectrum_.precomputeForDt(dt_s);
-      grid_valid = true;
-      last_bins_dt = dt_s;
-    } else if (dt_s != last_bins_dt) {
-      spectrum_.precomputeForDt(dt_s);
-      last_bins_dt = dt_s;
-    }
+    spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+    spectrum_.precomputeForDt(dt_s);
+    grid_valid = true;
+    last_bins_dt = dt_s;
 
     // hot loop: rotator + 1st-order IIR using precomputed constants
     double S0 = 0.0, S1 = 0.0, S2 = 0.0;
