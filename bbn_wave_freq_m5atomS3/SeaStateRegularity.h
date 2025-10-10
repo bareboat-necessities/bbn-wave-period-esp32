@@ -328,12 +328,14 @@ inline void precomputeForDt(float dt) {
     omega_used = (omega_used <= 0.0f) ? w_obs : (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
     const float a_demean = accel_z - a_mean;
 
-    // Skip update on large ω jumps (>±30%) – matches old version behavior
+    // Handle update on large ω jumps 
     if (omega_used > 0.0f) {
       const float ratio = w_obs / omega_used;
-      if (ratio < 0.75f || ratio > 1.25f) {
-        computeRegularityOutput();
-        return;
+      if (ratio < 0.67f || ratio > 1.50f) {        // wider tolerance + hard recenter
+        omega_used = w_obs;                         // snap center
+        spectrum_.clear();                          // force fresh phases/gains
+        spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+        spectrum_.precomputeForDt(dt_s);
       }
     }
       
