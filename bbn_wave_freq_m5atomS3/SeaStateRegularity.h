@@ -166,6 +166,68 @@ public:
     }
   };
 
+  // Fixed-grid online averaged spectrum (absolute Hz grid)
+  struct FixedGridAvg {
+    static constexpr int NBINS = 80;
+    static constexpr float FMIN_HZ = 0.02f;
+    static constexpr float FMAX_HZ = 4.0f;
+
+    float freq_hz[NBINS];
+    float domega[NBINS];
+    float S_avg[NBINS];
+    float weight[NBINS];
+    bool  initialized = false;
+
+    void reset() {
+      initialized = false;
+      for (int i = 0; i < NBINS; ++i) {
+        freq_hz[i] = domega[i] = 0.0f;
+        S_avg[i] = weight[i] = 0.0f;
+      }
+    }
+
+    void buildGrid() {
+      float ratio = std::exp(std::log(FMAX_HZ / FMIN_HZ) / (NBINS - 1));
+      freq_hz[0] = FMIN_HZ;
+      for (int i = 1; i < NBINS; ++i)
+        freq_hz[i] = freq_hz[i - 1] * ratio;
+      for (int i = 0; i < NBINS; ++i) {
+        float fL = (i > 0) ? freq_hz[i - 1] : freq_hz[i];
+        float fR = (i < NBINS - 1) ? freq_hz[i + 1] : freq_hz[i];
+        domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);
+      }
+      initialized = true;
+    }
+
+    // Online exponential averaging accumulation
+    template <int NK>
+    void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
+                    float alpha = 0.002f) {
+      if (!initialized) buildGrid();
+      for (int i = 0; i < S.NBINS; ++i) {
+        float f_i = S.omega[i] / (2.0f * float(M_PI));
+        float val = S.S_eta_rad[i];
+        if (!(val > 0.0f)) continue;
+
+        // nearest-bin projection (cheap and stable)
+        int j_best = 0;
+        float df_best = std::abs(f_i - freq_hz[0]);
+        for (int j = 1; j < NBINS; ++j) {
+          float df = std::abs(f_i - freq_hz[j]);
+          if (df < df_best) { df_best = df; j_best = j; }
+        }
+
+        S_avg[j_best]  = (1.0f - alpha) * S_avg[j_best]  + alpha * val;
+        weight[j_best] = (1.0f - alpha) * weight[j_best] + alpha;
+      }
+    }
+
+    float get(int k) const {
+      if (k < 0 || k >= NBINS) return 0.0f;
+      return (weight[k] > 1e-6f) ? S_avg[k] / weight[k] : 0.0f;
+    }
+  };
+
   // Constructor / Reset
   explicit SeaStateRegularity(float tau_mom_sec = 180.0f,
                               float tau_out_sec = 60.0f,
