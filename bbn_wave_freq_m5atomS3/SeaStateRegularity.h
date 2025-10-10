@@ -7,7 +7,7 @@
     Copyright 2025, Mikhail Grushinskiy
 
     SeaStateRegularity — Online estimator of ocean wave regularity
-
+    --------------------------------------------------------------
     Momentum-based version (no phase coherence or heuristic blending).
 
     Purpose
@@ -15,35 +15,29 @@
       acceleration a_z(t). Everything here is moment-based.
 
     Physical relations
-      a_z(t) = d²η/dt² = −ω² η(t)
-      ⇒ S_a(ω) = ω⁴ S_η(ω)
-         S_η(ω) = S_a(ω) / ω⁴
+      a_z(t) = d^2 eta/dt^2 = -omega^2 eta(t)
+      => S_a(omega) = omega^4 S_eta(omega)
+         S_eta(omega) = S_a(omega) / omega^4
 
     Spectral moments (displacement spectrum)
-      M₀ = ∫ S_η(ω) dω         — variance of displacement η
-      M₁ = ∫ ω S_η(ω) dω
-      M₂ = ∫ ω² S_η(ω) dω
+      M0 = integral S_eta(omega) d omega        — variance of displacement eta
+      M1 = integral omega S_eta(omega) d omega
+      M2 = integral omega^2 S_eta(omega) d omega
 
     Derived quantities
-      • Mean angular frequency      ω̄ = M₁ / M₀
-      • Spectral narrowness (ν)     ν = sqrt(M₂/M₀ − (M₁/M₀)²) / (M₁/M₀)
-      • Oceanographic Hs            Hs = 4√M₀
+      • Mean angular frequency      omega_bar = M1 / M0
+      • Spectral narrowness (nu)    nu = sqrt(M2/M0 - (M1/M0)^2) / (M1/M0)
+      • Oceanographic Hs            Hs = 4*sqrt(M0)
 
     Jensen bias correction for ratios
-      ω̄_corr = ω̄_naive + (ω̄_naive Var[M₀] − Cov[M₁,M₀]) / M₀²
-      and similarly for M₂/M₀ in the ν computation.
+      omega_bar_corr = omega_bar_naive + (omega_bar_naive Var[M0] - Cov[M1,M0]) / M0^2
+      and similarly for M2/M0 in the nu computation.
 
     Implementation overview
-      • Multi-bin demodulation of acceleration at log-spaced ω_k around ω_inst.
-      • Each bin uses a 1st-order LPF with cutoff f_c,k (Hz) and ENBW = π² f_c,k (rad/s).
-      • Convert acceleration baseband power to displacement PSD via ω_k⁻⁴.
-      • Accumulate {M₀,M₁,M₂} and Jensen correction helpers each step.
-
-    Embedded optimizations (hot path)
-      • Rotator recurrence per bin (no per-sample sin/cos/fmod).
-      • Per-bin α_k, 1/ENBW_k and 1/ω_k⁴ precomputed at grid build.
-      • Float state with double accumulators only for moment sums.
-      • Hysteresis on grid rebuild to avoid thrashing.
+      • Multi-bin demodulation of acceleration at log-spaced omega_k around omega_inst.
+      • Each bin uses a 1st-order LPF with cutoff f_c,k (Hz) and ENBW = pi^2 f_c,k (rad/s).
+      • Convert acceleration baseband power to displacement PSD via omega_k^-4.
+      • Accumulate {M0,M1,M2} and Jensen correction helpers each step.
 */
 
 struct DebiasedEMA {
@@ -74,96 +68,87 @@ public:
   constexpr static float OMEGA_MIN_HZ  = 0.02f;
   constexpr static float OMEGA_MAX_HZ  = 4.00f;
 
-  // Nested Spectrum struct (encapsulates grid + PSD)
+  // Nested Spectrum struct (grid + demod state)
   struct Spectrum {
-    // Grid parameters
     bool  ready        = false;
     float omega_center = 0.0f;
     float ratio_r      = 1.0f;
 
-    // Grid arrays (structure-of-arrays, cache friendly)
     float omega[NBINS]{};
     float domega[NBINS]{};
 
-    // Per-bin precomputes from grid
-    float inv_w4[NBINS]{};     // 1 / ω_k^4
-    float inv_enbw[NBINS]{};   // 1 / ENBW_k  (rad/s)
+    float inv_w4[NBINS]{};
+    float inv_enbw[NBINS]{};
 
-    // Per-sample precomputes (depend on dt)
-    float alpha_k[NBINS]{};    // LPF α per bin
+    float alpha_k[NBINS]{};
     float cos_dphi[NBINS]{};
     float sin_dphi[NBINS]{};
 
-    // Rotator state (cos,sin) and IIR state
     float c[NBINS]{};
     float s[NBINS]{};
     float zr[NBINS]{};
     float zi[NBINS]{};
 
-    // Live PSD snapshot (for inspection/plotting)
     float S_eta_rad[NBINS]{};
     float S_eta_hz[NBINS]{};
 
-    // API expected by caller
     inline void clear() { ready = false; }
 
-inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
-  constexpr float TARGET_SPAN_UP = 6.0f; // multiplicative span upward
-  omega_center = omega_ctr;
-  ratio_r = std::exp(std::log(TARGET_SPAN_UP) / float(MAX_K));
+    // Fixed grid build — matches working code behavior
+    inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
+      constexpr float TARGET_SPAN_UP = 6.0f;
+      omega_center = omega_ctr;
+      ratio_r = std::exp(std::log(TARGET_SPAN_UP) / float(MAX_K));
 
-  // Clamp center so entire ±K range fits in [omega_min, omega_max]
-  const float rK = std::pow(ratio_r, float(MAX_K));
-  const float min_center = omega_min * rK;
-  const float max_center = omega_max / rK;
-  if (omega_center < min_center) omega_center = min_center;
-  if (omega_center > max_center) omega_center = max_center;
+      // Clamp center so entire +/-K span fits in [omega_min, omega_max]
+      const float rK = std::pow(ratio_r, float(MAX_K));
+      const float min_center = omega_min * rK;
+      const float max_center = omega_max / rK;
+      if (omega_center < min_center) omega_center = min_center;
+      if (omega_center > max_center) omega_center = max_center;
 
-  // Geometric grid identical to old code
-  omega[MAX_K] = omega_center;
-  for (int k = 1; k <= MAX_K; ++k) {
-    omega[MAX_K + k] = omega[MAX_K + k - 1] * ratio_r;
-    omega[MAX_K - k] = omega[MAX_K - k + 1] / ratio_r;
-  }
+      // Geometric grid (no per-bin clamping)
+      omega[MAX_K] = omega_center;
+      for (int k = 1; k <= MAX_K; ++k) {
+        omega[MAX_K + k] = omega[MAX_K + k - 1] * ratio_r;
+        omega[MAX_K - k] = omega[MAX_K - k + 1] / ratio_r;
+      }
 
-  // Voronoi-style Δω computation (with ghost neighbors)
-  for (int i = 0; i < NBINS; ++i) {
-    const float w    = omega[i];
-    const float wL_g = (i > 0)         ? omega[i - 1] : (w / ratio_r);
-    const float wR_g = (i < NBINS - 1) ? omega[i + 1] : (w * ratio_r);
-    const float wL   = 0.5f * (w + wL_g);
-    const float wR   = 0.5f * (w + wR_g);
-    const float dW   = wR - wL;
-    domega[i] = (dW > 1e-12f) ? dW : 1e-12f;
-
-    const float w2 = w * w;
-    inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
-
-    inv_enbw[i] = 1.0f / domega[i]; // identical to old Δω
-  }
-
-  // Gentle reset for IIR/rotators
-  for (int i = 0; i < NBINS; ++i) {
-    c[i]  = 1.0f;
-    s[i]  = 0.0f;
-    zr[i] *= 0.95f;
-    zi[i] *= 0.95f;
-  }
-  ready = true;
-}
-
-    // Prepare per-bin α_k and rotator step for a given dt (call when dt changes or after buildGrid()).
-    inline void precomputeForDt(float dt) {
-      const float PI_ = 3.14159265358979323846f;
-      const float TWO_PI_ = 2.0f * PI_;
+      // Voronoi bin widths using ghost neighbors at edges
       for (int i = 0; i < NBINS; ++i) {
-        // LPF alpha per bin: fc = ENBW/π² (Hz); α = 1 − exp(−dt·2π·fc)
-        const float fc_hz = domega[i] / (PI_ * PI_);
+        const float w    = omega[i];
+        const float wL_g = (i > 0)         ? omega[i - 1] : (w / ratio_r);
+        const float wR_g = (i < NBINS - 1) ? omega[i + 1] : (w * ratio_r);
+        const float wL   = 0.5f * (w + wL_g);
+        const float wR   = 0.5f * (w + wR_g);
+        const float dW   = wR - wL;
+        domega[i] = (dW > 1e-12f) ? dW : 1e-12f;
+
+        const float w2 = w * w;
+        inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
+
+        // ENBW = domega (rad/s). Store its inverse for convenience.
+        inv_enbw[i] = 1.0f / domega[i];
+      }
+
+      // Gentle reinit of rotator/IIR state
+      for (int i = 0; i < NBINS; ++i) {
+        c[i]  = 1.0f;
+        s[i]  = 0.0f;
+        zr[i] *= 0.95f;
+        zi[i] *= 0.95f;
+      }
+      ready = true;
+    }
+
+    // LPF alphas and rotator steps — identical mapping (ENBW = pi^2 fc)
+    inline void precomputeForDt(float dt) {
+      for (int i = 0; i < NBINS; ++i) {
+        const float fc_hz = domega[i] / (PI_ * PI_);  // fc = ENBW/pi^2
         float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
         if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
         alpha_k[i] = a;
 
-        // Rotator step Δφ = ω·dt; small-angle fallback
         const float dphi = omega[i] * dt;
         if (std::fabs(dphi) < 1e-3f) {
           cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
@@ -175,12 +160,12 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
       }
     }
 
-    // Compute instantaneous m_n = ∑ ωⁿ Sη(ω) Δω from the snapshot
     inline float integrateMoment(int n) const {
       if (!ready) return 0.0f;
       double acc = 0.0;
       for (int i = 0; i < NBINS; ++i) {
-        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(domega[i]);
+        acc += std::pow(double(omega[i]), n)
+             * double(S_eta_rad[i]) * double(domega[i]);
       }
       return float(acc);
     }
@@ -207,6 +192,7 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
     omega_used = 0.0f; last_accel = 0.0f;
 
     last_dt = -1.0f;
+    last_bins_dt = -1.0f;
     alpha_mom = alpha_out = alpha_w = 0.0f;
 
     has_moments = false;
@@ -221,14 +207,14 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
     last_accel = accel_z;
     updateGlobalAlphas(dt_s);
 
-    // running accel stats (kept from your version)
+    // running accel stats
     A1_mean.update(accel_z, alpha_mom);
     A2_second.update(accel_z * accel_z, alpha_mom);
     const float a_mean = A1_mean.get();
     const float a_var  = A2_second.get() - a_mean * a_mean;
     A0.update((a_var > 0.0f) ? a_var : 0.0f, alpha_mom);
 
-    // smoothed center ω
+    // smoothed center omega
     const float w_obs = clampf(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
     omega_used = (omega_used <= 0.0f) ? w_obs : (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
@@ -236,17 +222,18 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
     const float ratio = (omega_used > 0.0f) ? (w_obs / omega_used) : 1.0f;
     if (!grid_valid || ratio < 0.995f || ratio > 1.005f) {
       spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+      spectrum_.precomputeForDt(dt_s);
       grid_valid = true;
-    }
-    if (dt_s != last_bins_dt) {
+      last_bins_dt = dt_s;
+    } else if (dt_s != last_bins_dt) {
       spectrum_.precomputeForDt(dt_s);
       last_bins_dt = dt_s;
     }
 
     // hot loop: rotator + 1st-order IIR using precomputed constants
-    double S0 = 0.0, S1 = 0.0, S2 = 0.0;  // double only for accumulation
+    double S0 = 0.0, S1 = 0.0, S2 = 0.0;
     for (int i = 0; i < NBINS; ++i) {
-      // rotate (c,s) by Δφ
+      // rotate (c,s) by dphi
       const float c_next = spectrum_.c[i] * spectrum_.cos_dphi[i] - spectrum_.s[i] * spectrum_.sin_dphi[i];
       const float s_next = spectrum_.s[i] * spectrum_.cos_dphi[i] + spectrum_.c[i] * spectrum_.sin_dphi[i];
       spectrum_.c[i] = c_next;
@@ -255,16 +242,16 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
       const float y_r = last_accel * c_next;
       const float y_i = -last_accel * s_next;
 
-      // 1st-order IIR with α_k
+      // 1st-order IIR with alpha_k
       const float a = spectrum_.alpha_k[i];
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
       spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
 
-      // convert to S_η via ω⁻⁴ and ENBW compensation
+      // convert to S_eta via omega^-4 and ENBW compensation
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
-      const float S_hat  = K_EFF_MIX * P_disp * (1.0f / std::max(spectrum_.domega[i], 1e-12f));
-        
+      const float S_hat  = K_EFF_MIX * P_disp / std::max(spectrum_.domega[i], 1e-12f);
+
       spectrum_.S_eta_rad[i] = S_hat;
       spectrum_.S_eta_hz[i]  = S_hat * (2.0f * PI_);
 
@@ -274,6 +261,15 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
       S0 += double(S_hat) * double(dw);
       S1 += double(S_hat) * double(w)  * double(dw);
       S2 += double(S_hat) * double(w)  * double(w) * double(dw);
+
+      // keep rotator on the unit circle (prevents drift)
+      if ((i & 7) == 0) {
+        float nrm = std::sqrt(spectrum_.c[i]*spectrum_.c[i] + spectrum_.s[i]*spectrum_.s[i]);
+        if (nrm > 0.0f) {
+          spectrum_.c[i] /= nrm;
+          spectrum_.s[i] /= nrm;
+        }
+      }
     }
 
     // moments + Jensen helpers
@@ -297,7 +293,6 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
   inline float getNarrowness()         const { return nu; }
 
   inline float getDisplacementFrequencyHz() const {
-    // Jensen-corrected ω̄
     const float m0 = M0.get(), m1 = M1.get();
     if (!(m0 > EPSILON)) return 0.0f;
     const float q00 = Q00.get(), q10 = Q10.get();
@@ -309,7 +304,6 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
   }
 
   inline float getDisplacementFrequencyNaiveHz() const {
-    // Uncorrected ω̄ = M1/M0 (handy for debugging)
     const float m0 = M0.get(), m1 = M1.get();
     if (!(m0 > EPSILON) || !(m1 > 0.0f)) return 0.0f;
     return (m1 / m0) / (2.0f * PI_);
@@ -323,11 +317,11 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
   inline float getWaveHeightEnvelopeEst() const {
     const float m0 = M0.get();
     return (m0 > EPSILON) ? 4.0f * std::sqrt(m0) : 0.0f;
+    // matches working code: Hs = 4 sqrt(M0)
   }
 
   inline float getAccelerationVariance() const { return A0.get(); }
 
-  // Spectrum snapshot access
   inline const Spectrum& getSpectrum() const { return spectrum_; }
   inline bool spectrumReady() const { return spectrum_.ready; }
 
@@ -389,7 +383,7 @@ private:
     omega_bar_corr = omega_bar_naive + (omega_bar_naive * varM0 - cov10) * invM0_2;
     const float omega2_bar_corr = omega2_bar_naive + (omega2_bar_naive * varM0 - cov20) * invM0_2;
 
-    // narrowness ν from corrected central moment μ₂
+    // narrowness nu from corrected central moment mu2
     const float mu2_corr = fmaxf(0.0f, omega2_bar_corr - omega_bar_corr * omega_bar_corr);
     nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2_corr) / omega_bar_corr) : 0.0f;
     if (!std::isfinite(nu) || nu < 0.0f) nu = 0.0f;
@@ -429,17 +423,17 @@ inline void SeaState_sine_wave_test() {
   SineWave wave(SINE_AMPLITUDE, SINE_FREQ_HZ);
   SeaStateRegularity reg;
 
-  float Hs_est = 0.0f, nu = 0.0f;
-  float f_disp_corr = 0.0f, f_disp_naive = 0.0f, Tp = 0.0f, R_spec = 0.0f;
+  float Hs_est = 0.0f, nu_val = 0.0f;
+  float f_disp_corr = 0.0f, f_disp_naive = 0.0f, Tp = 0.0f, R_spec_val = 0.0f;
 
   for (int i = 0; i < int(SIM_DURATION_SEC / DT); i++) {
     auto za = wave.step(DT);
     float a = za.second;
     reg.update(DT, a, wave.omega);
 
-    R_spec       = reg.getRegularitySpectral();
+    R_spec_val   = reg.getRegularitySpectral();
     Hs_est       = reg.getWaveHeightEnvelopeEst();
-    nu           = reg.getNarrowness();
+    nu_val       = reg.getNarrowness();
     f_disp_corr  = reg.getDisplacementFrequencyHz();
     f_disp_naive = reg.getDisplacementFrequencyNaiveHz();
     Tp           = reg.getDisplacementPeriodSec();
@@ -447,25 +441,24 @@ inline void SeaState_sine_wave_test() {
 
   const float Hs_expected = 4.0f * SINE_AMPLITUDE;
 
-  if (!(R_spec > 0.85f))
+  if (!(R_spec_val > 0.85f))
     throw std::runtime_error("Sine: R_spec (moment-based) should be high for a narrowband tone.");
   if (!(std::fabs(Hs_est - Hs_expected) < 0.30f * Hs_expected))
     throw std::runtime_error("Sine: Hs estimate not within tolerance.");
-  if (!(nu < 0.10f))
+  if (!(nu_val < 0.10f))
     throw std::runtime_error("Sine: Narrowness should be small for a pure tone.");
 
   std::cerr << "[PASS] Sine wave test (moment-only) — "
             << "Hs_est=" << Hs_est
-            << " (~" << Hs_expected << "), ν=" << nu
+            << " (~" << Hs_expected << "), nu=" << nu_val
             << ", f_disp_corr=" << f_disp_corr << " Hz"
             << ", f_disp_naive=" << f_disp_naive << " Hz"
-            << ", Tp=" << Tp << " s, R_spec=" << R_spec << "\n";
+            << ", Tp=" << Tp << " s, R_spec=" << R_spec_val << "\n";
 
-  // Example of using the spectrum snapshot (optional)
   if (reg.spectrumReady()) {
     const auto& S = reg.getSpectrum();
     float m0_snap = S.integrateMoment(0);
-    (void)m0_snap; // for debugging/validation if needed
+    (void)m0_snap;
   }
 }
 #endif
