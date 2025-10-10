@@ -167,15 +167,15 @@ public:
 
   // Fixed-grid online averaged spectrum (absolute Hz grid)
   struct FixedGridAvg {
-    static constexpr int NBINS = 80;
+    static constexpr int N_BINS = 80;
     static constexpr float FMIN_HZ = 0.01f;
     static constexpr float FMAX_HZ = 4.0f;
 
     // persistent state
-    float freq_hz[NBINS];
-    float domega[NBINS];     // bin widths (rad/s)
-    float S_avg[NBINS];      // exponentially averaged PSD (rad/s)
-    float weight[NBINS];
+    float freq_hz[N_BINS];
+    float domega[N_BINS];     // bin widths (rad/s)
+    float S_avg[N_BINS];      // exponentially averaged PSD (rad/s)
+    float weight[N_BINS];
     bool  initialized = false;
 
     // time constant for averaging (seconds)
@@ -184,20 +184,20 @@ public:
     // grid setup / housekeeping
     inline void reset() {
       initialized = false;
-      for (int i = 0; i < NBINS; ++i) {
+      for (int i = 0; i < N_BINS; ++i) {
         freq_hz[i] = domega[i] = 0.0f;
         S_avg[i] = weight[i] = 0.0f;
       }
     }
 
     inline void buildGrid() {
-      float ratio = std::exp(std::log(FMAX_HZ / FMIN_HZ) / (NBINS - 1));
+      float ratio = std::exp(std::log(FMAX_HZ / FMIN_HZ) / (N_BINS - 1));
       freq_hz[0] = FMIN_HZ;
-      for (int i = 1; i < NBINS; ++i)
+      for (int i = 1; i < N_BINS; ++i)
         freq_hz[i] = freq_hz[i - 1] * ratio;
-      for (int i = 0; i < NBINS; ++i) {
+      for (int i = 0; i < N_BINS; ++i) {
         float fL = (i > 0) ? freq_hz[i - 1] : freq_hz[i];
-        float fR = (i < NBINS - 1) ? freq_hz[i + 1] : freq_hz[i];
+        float fR = (i < N_BINS - 1) ? freq_hz[i + 1] : freq_hz[i];
         domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);  // Δω (rad/s)
       }
       initialized = true;
@@ -238,7 +238,7 @@ public:
         
         // Find bracketing bins in log-frequency
         const float xi = std::log(f_i);
-        int jR = lowerBound(freq_hz, NBINS, f_i);
+        int jR = lowerBound(freq_hz, N_BINS, f_i);
         int jL = jR - 1;
         
         // Clamp to edges: deposit all energy to the edge bin if out of range
@@ -248,8 +248,8 @@ public:
           weight[jR] = (1.0f - alpha) * weight[jR] + alpha;
           continue;
         }
-        if (jR >= NBINS) {
-          jL = NBINS - 1;
+        if (jR >= N_BINS) {
+          jL = N_BINS - 1;
           const float S_dst = E_src / std::max(domega[jL], 1e-12f);
           S_avg[jL]  = (1.0f - alpha) * S_avg[jL]  + alpha * S_dst;
           weight[jL] = (1.0f - alpha) * weight[jL] + alpha;
@@ -281,7 +281,7 @@ public:
 
     // accessors
     inline float valueRad(int k) const {
-      if (k < 0 || k >= NBINS) return 0.0f;
+      if (k < 0 || k >= N_BINS) return 0.0f;
       return (weight[k] > 1e-6f) ? S_avg[k] / weight[k] : 0.0f;
     }
 
@@ -290,7 +290,7 @@ public:
       return valueRad(k) * (2.0f * float(M_PI));
     }
 
-    inline int size() const { return NBINS; }
+    inline int size() const { return N_BINS; }
   };
 
   // Constructor / Reset
