@@ -213,6 +213,15 @@ public:
     const float w_obs = omega_inst;
     omega_used = (omega_used <= 0.0f) ? w_obs : (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
+    // Skip update on large ω jumps (>±30%) – matches old version behavior
+    if (omega_used > 0.0f) {
+      const float ratio = w_obs / omega_used;
+      if (ratio < 0.7f || ratio > 1.3f) {
+        computeRegularityOutput();
+        return;
+      }
+    }
+      
     spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
     spectrum_.precomputeForDt(dt_s);
     grid_valid = true;
