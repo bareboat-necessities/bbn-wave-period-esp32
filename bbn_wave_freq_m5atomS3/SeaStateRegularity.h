@@ -93,38 +93,39 @@ public:
 
     inline void clear() { ready = false; }
 
-    // Fixed grid build — matches working code behavior
+    // Fixed grid build — cosine-tapered geometric spacing (denser near center)
     inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
-      constexpr float TARGET_SPAN_UP = 5.0f;
+      constexpr float TARGET_SPAN_UP = 6.0f;  // total upper span (adjustable)
       omega_center = omega_ctr;
       ratio_r = std::exp(std::log(TARGET_SPAN_UP) / float(MAX_K));
 
-      //const float rK = std::pow(ratio_r, float(MAX_K));
-      //const float min_center = omega_min * rK;
-      //const float max_center = omega_max / rK;
-      //if (omega_center < min_center) omega_center = min_center;
-      //if (omega_center > max_center) omega_center = max_center;
-
-      // Geometric grid (no per-bin clamping)
+      // Center frequency
       omega[MAX_K] = omega_center;
+
+      // Generate upper/lower branches with tapered exponent
       for (int k = 1; k <= MAX_K; ++k) {
-        omega[MAX_K + k] = omega[MAX_K + k - 1] * ratio_r;
-        omega[MAX_K - k] = omega[MAX_K - k + 1] / ratio_r;
+        // taper = 1 at center → 0 at edges; halves step size near center
+        float taper = 0.5f * (1.0f + std::cos((float(k) / float(MAX_K)) * PI_));
+        float local_ratio = std::pow(ratio_r, taper);
+        omega[MAX_K + k] = omega[MAX_K + k - 1] * local_ratio;
+        omega[MAX_K - k] = omega[MAX_K - k + 1] / local_ratio;
       }
-      // Clamp every omega_k to physical min/max range
+
+      // Clamp every ωₖ to physical range
       for (int i = 0; i < NBINS; ++i)
         omega[i] = clampf(omega[i], omega_min, omega_max);
 
-      // Voronoi bin widths 
+      // Voronoi bin widths and ω⁻⁴ normalization
       for (int i = 0; i < NBINS; ++i) {
         const float w  = omega[i];
         const float wL = (i > 0) ? omega[i - 1] : w;
         const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
-        const float dW = 0.5f * (wR - wL);       
+        const float dW = 0.5f * (wR - wL);
         domega[i] = (dW > 1e-12f) ? dW : 1e-12f;
         const float w2 = w * w;
         inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
       }
+
       if (!ready) {
         for (int i = 0; i < NBINS; ++i) {
           c[i] = 1.0f;
@@ -133,7 +134,7 @@ public:
           zi[i] = 0.0f;
         }
         ready = true;
-      }       
+      }
     }
 
     // LPF alphas and rotator steps — identical mapping (ENBW = pi^2 fc)
