@@ -343,6 +343,9 @@ public:
     spectrum_.ready = true;
     has_moments = true;
 
+    // accumulate into fixed-grid averaged spectrum
+    fixed_avg_.accumulate(spectrum_, 0.002f);  // adjust alpha as desired
+
     computeRegularityOutput();
   }
 
