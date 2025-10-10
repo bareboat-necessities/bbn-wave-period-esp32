@@ -331,8 +331,9 @@ public:
       spectrum_.c[i] = c_next;
       spectrum_.s[i] = s_next;
 
-      const float y_r = last_accel * c_next;
-      const float y_i = -last_accel * s_next;
+      const float a_demean = last_accel - A1_mean.get();
+      const float y_r = a_demean * c_next;
+      const float y_i = -a_demean * s_next;
 
       // 1st-order IIR with alpha_k
       const float a = spectrum_.alpha_k[i];
