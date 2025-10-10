@@ -208,7 +208,7 @@ public:
     A0.update((a_var > 0.0f) ? a_var : 0.0f, alpha_mom);
 
     // smoothed center omega
-    const float w_obs = clampf(omega_inst, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+    const float w_obs = omega_inst;
     omega_used = (omega_used <= 0.0f) ? w_obs : (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
 
     spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
