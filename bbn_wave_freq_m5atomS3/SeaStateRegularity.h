@@ -160,20 +160,6 @@ inline void precomputeForDt(float dt) {
   }
 }
 
-  // second pass: equalize average alpha so densified bins near the peak
-  // don't over-smooth relative to sparse bins
-  float mean_a = 0.0f;
-  for (int i = 0; i < NBINS; ++i) mean_a += alpha_k[i];
-  mean_a /= float(NBINS);
-  if (mean_a > 1e-6f) {
-    const float norm = 1.0f / mean_a;
-    for (int i = 0; i < NBINS; ++i) {
-      float a = alpha_k[i] * norm;
-      alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
-    }
-  }
-}
-
     inline float integrateMoment(int n) const {
       if (!ready) return 0.0f;
       double acc = 0.0;
