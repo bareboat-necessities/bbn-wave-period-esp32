@@ -260,8 +260,8 @@ public:
       // convert to S_η via ω⁻⁴ and ENBW compensation
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
-      const float S_hat  = K_EFF_MIX * P_disp * spectrum_.inv_enbw[i];
-
+      const float S_hat  = K_EFF_MIX * P_disp * (1.0f / std::max(spectrum_.domega[i], 1e-12f));
+        
       spectrum_.S_eta_rad[i] = S_hat;
       spectrum_.S_eta_hz[i]  = S_hat * (2.0f * PI_);
 
