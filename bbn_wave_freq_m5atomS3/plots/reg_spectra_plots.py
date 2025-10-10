@@ -45,11 +45,15 @@ if not files:
 # === Extract info from filename ===
 pattern = re.compile(
     r"reg_spectrum_"
-    r"(?P<tracker>[^_]+)_"
-    r"(?P<wave>[A-Za-z0-9]+)"
-    r"_H(?P<height>[-0-9\.]+)"
-    r"(?:_L(?P<length>[-0-9\.]+))?"
-    r"_N(?P<noise>[-0-9\.]+)_B(?P<bias>[-0-9\.]+)\.csv"
+    r"(?P<tracker>[^_]+)_"            # tracker name (aranovskiy, kalmanf, etc.)
+    r"(?P<wave>[A-Za-z0-9]+)_"        # wave type (jonswap, pmstokes, etc.)
+    r"H(?P<height>[-0-9\.]+)"         # height (H0.27)
+    r"(?:_L(?P<length>[-0-9\.]+))?"   # optional length (L14.047)
+    r"(?:_A(?P<azimuth>[-0-9\.]+))?"  # optional azimuth (A25)
+    r"(?:_P(?P<phase>[-0-9\.]+))?"    # optional phase (P60)
+    r"_N(?P<noise>[-0-9\.]+)"         # noise (N0.080)
+    r"_B(?P<bias>[-0-9\.]+)"          # bias (B0.100)
+    r"\.csv"                          # extension
 )
 
 # === Load CSV ===
