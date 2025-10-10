@@ -377,6 +377,8 @@ public:
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
       const float S_hat  = K_EFF_MIX * P_disp / std::max(spectrum_.domega[i], 1e-12f);
+      if (i == 0 || i == NBINS - 1)
+        spectrum_.S_eta_rad[i] *= 0.5f;   // edge correction
 
       spectrum_.S_eta_rad[i] = S_hat;
       spectrum_.S_eta_hz[i]  = S_hat * (2.0f * PI_);
