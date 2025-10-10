@@ -41,7 +41,7 @@ static constexpr float SAMPLE_RATE_HZ   = 240.0f;
 static constexpr float DELTA_T          = 1.0f / SAMPLE_RATE_HZ;
 static constexpr float NOISE_STDDEV     = 0.08f;
 static constexpr float BIAS_MEAN        = 0.10f;
-static constexpr float WARMUP_SECONDS   = 30.0f; // Warmup duration
+static constexpr float WARMUP_SECONDS   = 60.0f; // Warmup duration
 
 // Trackers
 AranovskiyFilter<double> arFilter;
