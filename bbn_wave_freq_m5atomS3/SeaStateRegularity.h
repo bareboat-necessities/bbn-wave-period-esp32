@@ -295,9 +295,10 @@ public:
 
   // Constructor / Reset
   explicit SeaStateRegularity(float tau_mom_sec = 180.0f,
+                              float tau_a_mom_sec = 60.0f,
                               float tau_out_sec = 30.0f,
                               float tau_w_sec   = 30.0f)
-  : tau_mom(tau_mom_sec),
+  : tau_mom(tau_mom_sec), tau_a_mom(tau_a_mom_sec),
     tau_out((tau_out_sec > 1e-3f) ? tau_out_sec : 1e-3f),
     tau_w(tau_w_sec) {
     reset();
@@ -315,7 +316,7 @@ public:
 
     last_dt = -1.0f;
     last_bins_dt = -1.0f;
-    alpha_mom = alpha_out = alpha_w = 0.0f;
+    alpha_mom = alpha_a_mom = alpha_out = alpha_w = 0.0f;
 
     has_moments = false;
     spectrum_.clear();
@@ -331,11 +332,11 @@ public:
     updateGlobalAlphas(dt_s);
 
     // running accel stats
-    A1_mean.update(accel_z, alpha_mom);
-    A2_second.update(accel_z * accel_z, alpha_mom);
+    A1_mean.update(accel_z, alpha_a_mom);
+    A2_second.update(accel_z * accel_z, alpha_a_mom);
     const float a_mean = A1_mean.get();
     const float a_var  = A2_second.get() - a_mean * a_mean;
-    A0.update((a_var > 0.0f) ? a_var : 0.0f, alpha_mom);
+    A0.update((a_var > 0.0f) ? a_var : 0.0f, alpha_a_mom);
 
     // smoothed center omega
     const float w_obs = omega_inst;
@@ -463,10 +464,10 @@ private:
   constexpr static float OMEGA_MAX_RAD = TWO_PI_ * OMEGA_MAX_HZ;
 
   // State variables
-  float tau_mom = 180.0f, tau_out = 60.0f, tau_w = 30.0f;
+  float tau_mom = 180.0f, tau_a_mom = 60.0f, tau_out = 60.0f, tau_w = 30.0f;
   float last_dt = -1.0f;
   float last_bins_dt = -1.0f;
-  float alpha_mom = 0.0f, alpha_out = 0.0f, alpha_w = 0.0f;
+  float alpha_mom = 0.0f, alpha_a_mom = 0.0f, alpha_out = 0.0f, alpha_w = 0.0f;
   float omega_used = 0.0f, last_accel = 0.0f;
   bool  has_moments = false, grid_valid = false;
 
@@ -490,6 +491,7 @@ private:
     if (dt_s == last_dt) return;
     last_dt   = dt_s;
     alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
+    alpha_a_mom = 1.0f - std::exp(-dt_s / tau_a_mom);
     alpha_out = 1.0f - std::exp(-dt_s / tau_out);
     alpha_w   = 1.0f - std::exp(-dt_s / tau_w);
   }
