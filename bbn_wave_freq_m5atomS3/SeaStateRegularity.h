@@ -107,47 +107,50 @@ public:
     // API expected by caller
     inline void clear() { ready = false; }
 
-    // Build a symmetric log grid around ω_center; compute Δω, inv_w4, inv_enbw.
-    inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
-      constexpr float TARGET_SPAN_UP = 6.0f;                   // multiplicative span upward
-      omega_center = omega_ctr;
-      ratio_r = std::exp(std::log(TARGET_SPAN_UP) / float(MAX_K));
+inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
+  constexpr float TARGET_SPAN_UP = 6.0f; // multiplicative span upward
+  omega_center = omega_ctr;
+  ratio_r = std::exp(std::log(TARGET_SPAN_UP) / float(MAX_K));
 
-      omega[MAX_K] = omega_center;
-      for (int k = 1; k <= MAX_K; ++k) {
-        omega[MAX_K + k] = omega[MAX_K + k - 1] * ratio_r;
-        omega[MAX_K - k] = omega[MAX_K - k + 1] / ratio_r;
-      }
-      // clamp to bounds
-      for (int i = 0; i < NBINS; ++i) {
-        float w = omega[i];
-        if (w < omega_min) w = omega_min;
-        if (w > omega_max) w = omega_max;
-        omega[i] = w;
-      }
-      // Δω and per-bin invariants from the grid
-      for (int i = 0; i < NBINS; ++i) {
-        const float wL = (i > 0) ? omega[i - 1] : omega[i];
-        const float wR = (i < NBINS - 1) ? omega[i + 1] : omega[i];
-        const float domeg = 0.5f * (wR - wL);
-        domega[i]    = (domeg > 1e-12f) ? domeg : 1e-12f;
+  // Clamp center so entire ±K range fits in [omega_min, omega_max]
+  const float rK = std::pow(ratio_r, float(MAX_K));
+  const float min_center = omega_min * rK;
+  const float max_center = omega_max / rK;
+  if (omega_center < min_center) omega_center = min_center;
+  if (omega_center > max_center) omega_center = max_center;
 
-        const float w  = omega[i];
-        const float w2 = w * w;
-        inv_w4[i]   = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
+  // Geometric grid identical to old code
+  omega[MAX_K] = omega_center;
+  for (int k = 1; k <= MAX_K; ++k) {
+    omega[MAX_K + k] = omega[MAX_K + k - 1] * ratio_r;
+    omega[MAX_K - k] = omega[MAX_K - k + 1] / ratio_r;
+  }
 
-        // ENBW (rad/s) ~ Δω; store inverse for hot loop
-        inv_enbw[i] = 1.0f / domega[i];
-      }
-      // rotator/IIR init stays gentle (keep states if rebuilds are frequent)
-      for (int i = 0; i < NBINS; ++i) {
-        c[i]  = 1.0f;  // aligned phase seed
-        s[i]  = 0.0f;
-        zr[i] *= 0.95f;
-        zi[i] *= 0.95f;
-      }
-      ready = true;
-    }
+  // Voronoi-style Δω computation (with ghost neighbors)
+  for (int i = 0; i < NBINS; ++i) {
+    const float w    = omega[i];
+    const float wL_g = (i > 0)         ? omega[i - 1] : (w / ratio_r);
+    const float wR_g = (i < NBINS - 1) ? omega[i + 1] : (w * ratio_r);
+    const float wL   = 0.5f * (w + wL_g);
+    const float wR   = 0.5f * (w + wR_g);
+    const float dW   = wR - wL;
+    domega[i] = (dW > 1e-12f) ? dW : 1e-12f;
+
+    const float w2 = w * w;
+    inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
+
+    inv_enbw[i] = 1.0f / domega[i]; // identical to old Δω
+  }
+
+  // Gentle reset for IIR/rotators
+  for (int i = 0; i < NBINS; ++i) {
+    c[i]  = 1.0f;
+    s[i]  = 0.0f;
+    zr[i] *= 0.95f;
+    zi[i] *= 0.95f;
+  }
+  ready = true;
+}
 
     // Prepare per-bin α_k and rotator step for a given dt (call when dt changes or after buildGrid()).
     inline void precomputeForDt(float dt) {
