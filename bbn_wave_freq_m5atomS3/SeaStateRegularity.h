@@ -111,6 +111,9 @@ public:
         omega[MAX_K + k] = omega[MAX_K + k - 1] * ratio_r;
         omega[MAX_K - k] = omega[MAX_K - k + 1] / ratio_r;
       }
+      // Clamp every omega_k to physical min/max range
+      for (int i = 0; i < NBINS; ++i)
+        omega[i] = clampf(omega[i], omega_min, omega_max);
 
       // Voronoi bin widths using ghost neighbors at edges
       for (int i = 0; i < NBINS; ++i) {
