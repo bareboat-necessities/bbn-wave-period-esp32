@@ -233,16 +233,29 @@ public:
         float Srad = S.S_eta_rad[i];                    // m²/(rad/s)
         if (!(Srad > 0.0f)) continue;
 
-        // find nearest destination bin
-        int j = lowerBound(freq_hz, NBINS, f_i);
-        if (j > 0 && std::fabs(f_i - freq_hz[j - 1]) < std::fabs(f_i - freq_hz[j])) j--;
+  // --- improved two-bin projection to reduce low-frequency bias ---
+  int j1 = lowerBound(freq_hz, NBINS, f_i);
+  int j0 = (j1 > 0) ? (j1 - 1) : 0;
+  if (j1 >= NBINS) { j1 = NBINS - 1; j0 = j1; }
 
-        // energy projection → normalize to destination bin width
-        float E_src = Srad * S.domega[i];
-        float S_dst = E_src / std::max(domega[j], 1e-12f);
+  float f0 = freq_hz[j0];
+  float f1 = freq_hz[j1];
+  float t  = (f1 > f0) ? ((f_i - f0) / (f1 - f0)) : 0.0f;
+  t = clampf(t, 0.0f, 1.0f);
 
-        S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_dst;
-        weight[j] = (1.0f - alpha) * weight[j] + alpha;
+  // conserve total energy: split into neighboring bins
+  float E_src = Srad * S.domega[i];
+  float E0 = (1.0f - t) * E_src;
+  float E1 = t * E_src;
+
+  float S0 = E0 / std::max(domega[j0], 1e-12f);
+  float S1 = E1 / std::max(domega[j1], 1e-12f);
+
+  S_avg[j0]  = (1.0f - alpha) * S_avg[j0]  + alpha * S0;
+  weight[j0] = (1.0f - alpha) * weight[j0] + alpha;
+
+  S_avg[j1]  = (1.0f - alpha) * S_avg[j1]  + alpha * S1;
+  weight[j1] = (1.0f - alpha) * weight[j1] + alpha;
       }
     }
 
