@@ -59,7 +59,6 @@ static uint32_t now_us() { return static_cast<uint32_t>(sim_t * 1e6); }
 static void init_tracker_backends() {
     init_filters(&arFilter, &kalman_freq);
     init_filters_alt(&kalmANF, &kalman_freq);
-
 }
 
 static void reset_run_state() {
