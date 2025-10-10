@@ -228,7 +228,7 @@ public:
       // derive exponential weight α from time constant
       const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
 
-      for (int i = 0; i < S.NBINS; ++i) {
+      for (int i = 0; i < NBINS; ++i) {
         float f_i = S.omega[i] / (2.0f * float(M_PI));  // Hz
         float Srad = S.S_eta_rad[i];                    // m²/(rad/s)
         if (!(Srad > 0.0f)) continue;
