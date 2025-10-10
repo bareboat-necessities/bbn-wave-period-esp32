@@ -168,7 +168,7 @@ public:
   // Fixed-grid online averaged spectrum (absolute Hz grid)
   struct FixedGridAvg {
     static constexpr int NBINS = 80;
-    static constexpr float FMIN_HZ = 0.02f;
+    static constexpr float FMIN_HZ = 0.04f;
     static constexpr float FMAX_HZ = 4.0f;
 
     // persistent state
