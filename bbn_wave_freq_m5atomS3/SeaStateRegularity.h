@@ -7,7 +7,7 @@
     Copyright 2025, Mikhail Grushinskiy
 
     SeaStateRegularity — Online estimator of ocean wave regularity
-   -----------------------------------------------------------
+
     Momentum-based version (no phase coherence or heuristic blending).
 
     Purpose
@@ -122,7 +122,7 @@ public:
         const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
         const float dW = 0.5f * (wR - wL);       
         domega[i] = (dW > 1e-12f) ? dW : 1e-12f;
-        const float w2 = w * w + 1e-4f;
+        const float w2 = w * w;
         inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
       }
       if (!ready) {
