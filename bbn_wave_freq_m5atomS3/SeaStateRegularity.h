@@ -7,7 +7,7 @@
     Copyright 2025, Mikhail Grushinskiy
 
     SeaStateRegularity — Online estimator of ocean wave regularity
-    --------------------------------------------------------------
+   -----------------------------------------------------------
     Momentum-based version (no phase coherence or heuristic blending).
 
     Purpose
@@ -172,7 +172,7 @@ public:
     static constexpr float FMIN_HZ = 0.02f;
     static constexpr float FMAX_HZ = 4.0f;
 
-    // --- persistent state ---
+    // persistent state
     float freq_hz[NBINS];
     float domega[NBINS];     // bin widths (rad/s)
     float S_avg[NBINS];      // exponentially averaged PSD (rad/s)
@@ -182,7 +182,7 @@ public:
     // time constant for averaging (seconds)
     float tau_spec = 60.0f;  // ≈ 1-min exponential average, tune as needed
 
-    // --- grid setup / housekeeping ---
+    // grid setup / housekeeping
     inline void reset() {
       initialized = false;
       for (int i = 0; i < NBINS; ++i) {
@@ -204,7 +204,7 @@ public:
       initialized = true;
     }
 
-    // --- helpers ---
+    // helpers
     static inline int lowerBound(const float* arr, int n, float x) {
       int lo = 0, hi = n - 1;
       while (lo < hi) {
@@ -218,7 +218,7 @@ public:
       return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
 
-    // --- main accumulation ---
+    // main accumulation
     template <int NK>
     inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
                            float dt_s) {
@@ -233,33 +233,33 @@ public:
         float Srad = S.S_eta_rad[i];                    // m²/(rad/s)
         if (!(Srad > 0.0f)) continue;
 
-  // --- improved two-bin projection to reduce low-frequency bias ---
-  int j1 = lowerBound(freq_hz, NBINS, f_i);
-  int j0 = (j1 > 0) ? (j1 - 1) : 0;
-  if (j1 >= NBINS) { j1 = NBINS - 1; j0 = j1; }
-
-  float f0 = freq_hz[j0];
-  float f1 = freq_hz[j1];
-  float t  = (f1 > f0) ? ((f_i - f0) / (f1 - f0)) : 0.0f;
-  t = clampf(t, 0.0f, 1.0f);
-
-  // conserve total energy: split into neighboring bins
-  float E_src = Srad * S.domega[i];
-  float E0 = (1.0f - t) * E_src;
-  float E1 = t * E_src;
-
-  float S0 = E0 / std::max(domega[j0], 1e-12f);
-  float S1 = E1 / std::max(domega[j1], 1e-12f);
-
-  S_avg[j0]  = (1.0f - alpha) * S_avg[j0]  + alpha * S0;
-  weight[j0] = (1.0f - alpha) * weight[j0] + alpha;
-
-  S_avg[j1]  = (1.0f - alpha) * S_avg[j1]  + alpha * S1;
-  weight[j1] = (1.0f - alpha) * weight[j1] + alpha;
+        // improved two-bin projection to reduce low-frequency bias
+        int j1 = lowerBound(freq_hz, NBINS, f_i);
+        int j0 = (j1 > 0) ? (j1 - 1) : 0;
+        if (j1 >= NBINS) { j1 = NBINS - 1; j0 = j1; }
+      
+        float f0 = freq_hz[j0];
+        float f1 = freq_hz[j1];
+        float t  = (f1 > f0) ? ((f_i - f0) / (f1 - f0)) : 0.0f;
+        t = clampf(t, 0.0f, 1.0f);
+      
+        // conserve total energy: split into neighboring bins
+        float E_src = Srad * S.domega[i];
+        float E0 = (1.0f - t) * E_src;
+        float E1 = t * E_src;
+      
+        float S0 = E0 / std::max(domega[j0], 1e-12f);
+        float S1 = E1 / std::max(domega[j1], 1e-12f);
+      
+        S_avg[j0]  = (1.0f - alpha) * S_avg[j0]  + alpha * S0;
+        weight[j0] = (1.0f - alpha) * weight[j0] + alpha;
+      
+        S_avg[j1]  = (1.0f - alpha) * S_avg[j1]  + alpha * S1;
+        weight[j1] = (1.0f - alpha) * weight[j1] + alpha;
       }
     }
 
-    // --- accessors ---
+    // accessors
     inline float valueRad(int k) const {
       if (k < 0 || k >= NBINS) return 0.0f;
       return (weight[k] > 1e-6f) ? S_avg[k] / weight[k] : 0.0f;
