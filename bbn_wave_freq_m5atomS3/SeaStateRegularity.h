@@ -130,6 +130,14 @@ public:
         // ENBW = domega (rad/s). Store its inverse for convenience.
         inv_enbw[i] = 1.0f / domega[i];
       }
+      if (!ready) {
+        for (int i = 0; i < NBINS; ++i) {
+          c[i] = 1.0f;
+          s[i] = 0.0f;
+          zr[i] = 0.0f;
+          zi[i] = 0.0f;
+        }
+      }       
       ready = true;
     }
 
