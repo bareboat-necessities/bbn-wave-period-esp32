@@ -367,8 +367,15 @@ public:
       spectrum_.c[i] = c_next;
       spectrum_.s[i] = s_next;
 
-      const float y_r = a_demean * c_next;
-      const float y_i = -a_demean * s_next;
+      // keep rotator on unit circle (prevents drift)
+      float nrm = std::sqrt(spectrum_.c[i]*spectrum_.c[i] + spectrum_.s[i]*spectrum_.s[i]);
+      if (nrm > 0.0f) {
+        spectrum_.c[i] /= nrm;
+        spectrum_.s[i] /= nrm;
+      }
+
+      const float y_r = a_demean * spectrum_.c[i];
+      const float y_i = -a_demean * spectrum_.s[i];
 
       // 1st-order IIR with alpha_k
       const float a = spectrum_.alpha_k[i];
