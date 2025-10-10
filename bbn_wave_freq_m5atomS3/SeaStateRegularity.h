@@ -342,7 +342,7 @@ public:
     // smoothed center omega
     const float w_obs = omega_inst;
     omega_used = (omega_used <= 0.0f) ? w_obs : (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
-    const float a_demean = accel_z - A1_mean.get();
+    const float a_demean = accel_z - a_mean;
 
     // Skip update on large ω jumps (>±30%) – matches old version behavior
     if (omega_used > 0.0f) {
