@@ -50,6 +50,12 @@ public:
 
         Real T_meas = Real(1) / freq_measured_hz;
 
+        if (T <= Real(0)) {
+            T = T_meas;
+            p = estimated_error_;   // reset
+            return freq_measured_hz; // no smoothing on first sample
+        }
+
         // Interpolate process noise q based on current period estimate T
         Real q = interpolateProcessNoise(T);
 
