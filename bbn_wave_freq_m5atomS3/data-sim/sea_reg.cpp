@@ -201,9 +201,9 @@ static ConvergedStats run_from_csv(TrackerType tracker,
     reader.close();
     ofs.close();
 
-    // === Write final converged spectrum with reference built from model ===
-    if (regFilter.spectrumReady()) {
-        const auto &S = regFilter.getSpectrum();
+    // === Write final converged *averaged* spectrum with reference built from model ===
+    {
+        const auto &A = regFilter.getAveragedSpectrum();
 
         std::string specFile = "reg_spectrum_" + trackerName + "_" +
                                waveName + tail + noise_bias + ".csv";
@@ -246,18 +246,16 @@ static ConvergedStats run_from_csv(TrackerType tracker,
         }
 
         // CSV header
-        spec << "omega_rad,freq_hz,S_eta_rad,S_eta_hz,domega,inv_w4,"
-              << "S_ref_interp,S_ref_ratio,"
-              << "A_eta_est,A_eta_ref,"
-              << "E_eta_est,E_eta_ref,"
-              << "CumVar_est,CumVar_ref\n";
+        spec << "freq_hz,S_eta_hz,S_ref_interp,S_ratio,"
+                 "A_eta_est,A_eta_ref,E_eta_est,E_eta_ref,"
+                 "CumVar_est,CumVar_ref\n";
 
         double cum_est = 0.0, cum_ref = 0.0;
 
-        for (int i = 0; i < SeaStateRegularity<>::NBINS; ++i) {
-            double omega = S.omega[i];
-            double f_est = omega / (2.0 * M_PI);
-            double delta_f = S.domega[i] / (2.0 * M_PI);
+        for (int k = 0; k < A.size(); ++k) {
+            double f_est = A.freq_hz[k];
+            double S_eta_hz = A.valueHz(k);
+            double delta_f = A.domega[k] / (2.0 * M_PI);
 
             // Interpolate theoretical reference S_eta
             double s_ref_interp = 0.0;
@@ -278,27 +276,21 @@ static ConvergedStats run_from_csv(TrackerType tracker,
                 }
             }
 
-            double ratio = (s_ref_interp > 0.0)
-                               ? (S.S_eta_hz[i] / s_ref_interp)
-                               : 0.0;
+            double ratio = (s_ref_interp > 0.0) ? (S_eta_hz / s_ref_interp) : 0.0;
 
             // Log-bin aware amplitudes
-            double A_eta_est = std::sqrt(std::max(0.0, 2.0 *
-                S.S_eta_hz[i] * delta_f * f_est));
-            double A_eta_ref = std::sqrt(std::max(0.0, 2.0 *
-                s_ref_interp  * delta_f * f_est));
+            double A_eta_est = std::sqrt(std::max(0.0, 2.0 * S_eta_hz * delta_f * f_est));
+            double A_eta_ref = std::sqrt(std::max(0.0, 2.0 * s_ref_interp * delta_f * f_est));
 
             // Energy per log frequency
-            double E_eta_est = f_est * S.S_eta_hz[i];
+            double E_eta_est = f_est * S_eta_hz;
             double E_eta_ref = f_est * s_ref_interp;
 
             // Cumulative integrals
-            cum_est += S.S_eta_hz[i] * delta_f;
+            cum_est += S_eta_hz * delta_f;
             cum_ref += s_ref_interp * delta_f;
 
-            spec << omega << "," << f_est << ","
-                 << S.S_eta_rad[i] << "," << S.S_eta_hz[i] << ","
-                 << S.domega[i] << "," << S.inv_w4[i] << "," 
+            spec << f_est << "," << S_eta_hz << ","
                  << s_ref_interp << "," << ratio << ","
                  << A_eta_est << "," << A_eta_ref << ","
                  << E_eta_est << "," << E_eta_ref << ","
@@ -306,17 +298,14 @@ static ConvergedStats run_from_csv(TrackerType tracker,
         }
 
         // Footer
-        spec << "\n# M0=" << S.integrateMoment(0)
-             << ", M1=" << S.integrateMoment(1)
-             << ", M2=" << S.integrateMoment(2)
-             << ", Hs=" << regFilter.getWaveHeightEnvelopeEst()
+        spec << "\n# Hs=" << regFilter.getWaveHeightEnvelopeEst()
              << ", nu=" << regFilter.getNarrowness()
              << ", f_disp=" << regFilter.getDisplacementFrequencyHz() << " Hz\n";
 
         spec.close();
         printf("Wrote %s\n", specFile.c_str());
     }
-
+    
     // Capture final convergence stats
     stats.regularity    = regFilter.getRegularity();
     stats.narrowness    = regFilter.getNarrowness();
