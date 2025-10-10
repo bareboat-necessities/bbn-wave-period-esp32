@@ -406,6 +406,7 @@ private:
   float omega_bar_corr = 0.0f, omega_bar_naive = 0.0f;
 
   Spectrum spectrum_;
+  FixedGridAvg fixed_avg_;
 
   // Internal helpers
   static inline float clampf(float x, float lo, float hi) {
