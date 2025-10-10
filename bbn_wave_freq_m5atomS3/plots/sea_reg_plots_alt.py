@@ -129,7 +129,7 @@ for (wave, height), recs in waveheight_groups.items():
 
     for idx, rec in enumerate(sorted(recs, key=lambda r: r["tracker"])):
         df = pd.read_csv(rec["file"]).head(MAX_RECORDS)
-        df = df[(df["time"] >= 40.0)].reset_index(drop=True)
+        df = df[(df["time"] >= 70.0)].reset_index(drop=True)
         if not {"regularity", "significant_wave_height", "disp_freq_hz"}.issubset(df.columns):
             continue
 
