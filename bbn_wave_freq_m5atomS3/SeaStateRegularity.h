@@ -137,24 +137,40 @@ public:
       }
     }
 
-    // LPF alphas and rotator steps — identical mapping (ENBW = pi^2 fc)
-    inline void precomputeForDt(float dt) {
-      for (int i = 0; i < NBINS; ++i) {
-        const float fc_hz = domega[i] / (PI_ * PI_);  // fc = ENBW/pi^2
-        float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
-        if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
-        alpha_k[i] = a;
+// LPF alphas and rotator steps — energy/time-constant normalized
+inline void precomputeForDt(float dt) {
+  // fc is tied to bin bandwidth via ENBW ≈ π²·fc (rad/s)  →  fc[Hz] = Δω / π²
+  constexpr float K_ENBW = 1.0f / (PI_ * PI_);  // fc_hz = domega / (π²)
 
-        const float dphi = omega[i] * dt;
-        if (std::fabs(dphi) < 1e-3f) {
-          cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
-          sin_dphi[i] = dphi;
-        } else {
-          cos_dphi[i] = std::cos(dphi);
-          sin_dphi[i] = std::sin(dphi);
-        }
-      }
+  // first pass: per-bin alpha from local Δω
+  for (int i = 0; i < NBINS; ++i) {
+    const float fc_hz = domega[i] * K_ENBW;       // Hz
+    const float a = 1.0f - std::exp(-TWO_PI_ * fc_hz * dt);
+    alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
+
+    const float dphi = omega[i] * dt;
+    if (std::fabs(dphi) < 1e-3f) {
+      cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
+      sin_dphi[i] = dphi;
+    } else {
+      cos_dphi[i] = std::cos(dphi);
+      sin_dphi[i] = std::sin(dphi);
     }
+  }
+
+  // second pass: equalize average alpha so densified bins near the peak
+  // don't over-smooth relative to sparse bins
+  float mean_a = 0.0f;
+  for (int i = 0; i < NBINS; ++i) mean_a += alpha_k[i];
+  mean_a /= float(NBINS);
+  if (mean_a > 1e-6f) {
+    const float norm = 1.0f / mean_a;
+    for (int i = 0; i < NBINS; ++i) {
+      float a = alpha_k[i] * norm;
+      alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
+    }
+  }
+}
 
     inline float integrateMoment(int n) const {
       if (!ready) return 0.0f;
