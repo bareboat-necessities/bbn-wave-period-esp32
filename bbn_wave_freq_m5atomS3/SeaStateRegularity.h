@@ -95,7 +95,7 @@ public:
 
     // Fixed grid build — matches working code behavior
     inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
-      constexpr float TARGET_SPAN_UP = 6.0f;
+      constexpr float TARGET_SPAN_UP = 4.0f;
       omega_center = omega_ctr;
       ratio_r = std::exp(std::log(TARGET_SPAN_UP) / float(MAX_K));
 
