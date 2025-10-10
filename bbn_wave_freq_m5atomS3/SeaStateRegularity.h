@@ -115,16 +115,13 @@ public:
       for (int i = 0; i < NBINS; ++i)
         omega[i] = clampf(omega[i], omega_min, omega_max);
 
-      // Voronoi bin widths using ghost neighbors at edges
+      // Voronoi bin widths 
       for (int i = 0; i < NBINS; ++i) {
-        const float w    = omega[i];
-        const float wL_g = (i > 0)         ? omega[i - 1] : (w / ratio_r);
-        const float wR_g = (i < NBINS - 1) ? omega[i + 1] : (w * ratio_r);
-        const float wL   = 0.5f * (w + wL_g);
-        const float wR   = 0.5f * (w + wR_g);
-        const float dW   = wR - wL;
+        const float w  = omega[i];
+        const float wL = (i > 0) ? omega[i - 1] : w;
+        const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
+        const float dW = 0.5f * (wR - wL);       
         domega[i] = (dW > 1e-12f) ? dW : 1e-12f;
-
         const float w2 = w * w;
         inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
       }
