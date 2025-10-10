@@ -16,8 +16,8 @@ public:
      * @param rel_threshold Relative deviation threshold for outlier detection
      * @param noise_scale Factor to inflate R for suspicious samples
      */
-    FrequencySmoother(Real q_short_ = Real(0.0001),
-                      Real q_long_  = Real(0.0025),
+    FrequencySmoother(Real q_short_ = Real(0.00001),
+                      Real q_long_  = Real(0.00025),
                       Real T_min_   = Real(0.33),
                       Real T_max_   = Real(15.0),
                       Real measurement_noise_ = Real(0.05),
