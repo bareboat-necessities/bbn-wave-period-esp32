@@ -78,7 +78,6 @@ public:
     float domega[NBINS]{};
 
     float inv_w4[NBINS]{};
-    float inv_enbw[NBINS]{};
 
     float alpha_k[NBINS]{};
     float cos_dphi[NBINS]{};
@@ -119,9 +118,6 @@ public:
 
         const float w2 = w * w;
         inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
-
-        // ENBW = domega (rad/s). Store its inverse for convenience.
-        inv_enbw[i] = 1.0f / domega[i];
       }
       if (!ready) {
         for (int i = 0; i < NBINS; ++i) {
