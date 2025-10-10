@@ -52,7 +52,6 @@ public:
 
         if (T <= Real(0)) {
             T = T_meas;
-            p = estimated_error_;   // reset
             return freq_measured_hz; // no smoothing on first sample
         }
 
