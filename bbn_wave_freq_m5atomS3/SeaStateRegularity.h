@@ -156,13 +156,16 @@ for (int i = 0; i < NBINS; ++i) {
 
 // LPF alphas and rotator steps — physically correct mapping (ENBW = π²·f_c)
 inline void precomputeForDt(float dt) {
+  // minimum cutoff to avoid near-DC bandwidth that explodes PSD for tones
+  constexpr float FC_MIN_HZ = 0.02f; // ~50 s time constant; tune to taste
+
   for (int i = 0; i < NBINS; ++i) {
-    // Each bin’s low-pass cutoff f_c,k (Hz) is tied to its Voronoi bandwidth
-    // ENBW (rad/s) = π² f_c  ⇒  f_c = Δω / π²
-    const float fc_hz = domega[i] / (PI_ * PI_);
-    float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
-    if (a < 0.0f) a = 0.0f;
-    else if (a > 1.0f) a = 1.0f;
+    // Δω is HALF-width (rad/s) from patch #1
+    float fc_hz = domega[i] / (PI_ * PI_);      // ENBW(rad/s)=π² f_c  ⇒ f_c=Δω/π²
+    if (fc_hz < FC_MIN_HZ) fc_hz = FC_MIN_HZ;   // floor the analysis bandwidth
+
+    float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);  // discrete one-pole
+    if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
     alpha_k[i] = a;
 
     const float dphi = omega[i] * dt;
@@ -175,18 +178,17 @@ inline void precomputeForDt(float dt) {
     }
   }
 
-// equalize mean alpha across bins so dense bins don’t over-smooth
-float mean_a = 0.0f;
-for (int i = 0; i < NBINS; ++i) mean_a += alpha_k[i];
-mean_a /= float(NBINS);
-if (mean_a > 1e-9f) {
-  const float s = 1.0f / mean_a;
-  for (int i = 0; i < NBINS; ++i) {
-    float a = alpha_k[i] * s;
-    alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
+  // mean-alpha normalization you added
+  float mean_a = 0.0f;
+  for (int i = 0; i < NBINS; ++i) mean_a += alpha_k[i];
+  mean_a /= float(NBINS);
+  if (mean_a > 1e-9f) {
+    const float s = 1.0f / mean_a;
+    for (int i = 0; i < NBINS; ++i) {
+      float a = alpha_k[i] * s;
+      alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
+    }
   }
-}
-    
 }
 
     inline float integrateMoment(int n) const {
