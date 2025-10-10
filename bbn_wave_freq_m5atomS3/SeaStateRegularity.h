@@ -138,15 +138,16 @@ public:
     }
 
 // LPF alphas and rotator steps — energy/time-constant normalized
+// LPF alphas and rotator steps — physically correct mapping (ENBW = π²·f_c)
 inline void precomputeForDt(float dt) {
-  // fc is tied to bin bandwidth via ENBW ≈ π²·fc (rad/s)  →  fc[Hz] = Δω / π²
-  constexpr float K_ENBW = 1.0f / (PI_ * PI_);  // fc_hz = domega / (π²)
-
-  // first pass: per-bin alpha from local Δω
   for (int i = 0; i < NBINS; ++i) {
-    const float fc_hz = domega[i] * K_ENBW;       // Hz
-    const float a = 1.0f - std::exp(-TWO_PI_ * fc_hz * dt);
-    alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
+    // Each bin’s low-pass cutoff f_c,k (Hz) is tied to its Voronoi bandwidth
+    // ENBW (rad/s) = π² f_c  ⇒  f_c = Δω / π²
+    const float fc_hz = domega[i] / (PI_ * PI_);
+    float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
+    if (a < 0.0f) a = 0.0f;
+    else if (a > 1.0f) a = 1.0f;
+    alpha_k[i] = a;
 
     const float dphi = omega[i] * dt;
     if (std::fabs(dphi) < 1e-3f) {
@@ -157,6 +158,7 @@ inline void precomputeForDt(float dt) {
       sin_dphi[i] = std::sin(dphi);
     }
   }
+}
 
   // second pass: equalize average alpha so densified bins near the peak
   // don't over-smooth relative to sparse bins
