@@ -64,7 +64,7 @@ public:
 
   // Behavior knobs
   constexpr static float BETA_SPEC     = 1.5f;
-  constexpr static float K_EFF_MIX     = 1.6f;
+  constexpr static float K_EFF_MIX     = 2.0f;
   constexpr static float OMEGA_MIN_HZ  = 0.02f;
   constexpr static float OMEGA_MAX_HZ  = 4.00f;
 
