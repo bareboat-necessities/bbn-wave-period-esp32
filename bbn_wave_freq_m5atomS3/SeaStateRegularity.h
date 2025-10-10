@@ -89,7 +89,6 @@ public:
     float zi[NBINS]{};
 
     float S_eta_rad[NBINS]{};
-    float S_eta_hz[NBINS]{};
 
     inline void clear() { ready = false; }
 
