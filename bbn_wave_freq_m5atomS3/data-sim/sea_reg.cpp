@@ -246,7 +246,7 @@ static ConvergedStats run_from_csv(TrackerType tracker,
         }
 
         // CSV header
-        spec << "omega_rad,freq_hz,S_eta_rad,S_eta_hz,domega,inv_w4,inv_enbw,"
+        spec << "omega_rad,freq_hz,S_eta_rad,S_eta_hz,domega,inv_w4,"
               << "S_ref_interp,S_ref_ratio,"
               << "A_eta_est,A_eta_ref,"
               << "E_eta_est,E_eta_ref,"
@@ -298,7 +298,7 @@ static ConvergedStats run_from_csv(TrackerType tracker,
 
             spec << omega << "," << f_est << ","
                  << S.S_eta_rad[i] << "," << S.S_eta_hz[i] << ","
-                 << S.domega[i] << "," << S.inv_w4[i] << "," << S.inv_enbw[i] << ","
+                 << S.domega[i] << "," << S.inv_w4[i] << "," 
                  << s_ref_interp << "," << ratio << ","
                  << A_eta_est << "," << A_eta_ref << ","
                  << E_eta_est << "," << E_eta_ref << ","
