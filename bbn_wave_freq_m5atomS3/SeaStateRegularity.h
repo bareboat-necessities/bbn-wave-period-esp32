@@ -133,17 +133,20 @@ inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
     omega[MAX_K - k] = clampf(w_dn, omega_min, omega_max);
   }
 
-  // --- Voronoi widths and ω^-4 ---
-  for (int i = 0; i < NBINS; ++i) {
-    const float w  = omega[i];
-    const float wL = (i > 0)         ? 0.5f * (omega[i - 1] + omega[i]) : std::max(omega_min,  w - 0.5f * (omega[i + 1] - w));
-    const float wR = (i < NBINS - 1) ? 0.5f * (omega[i] + omega[i + 1]) : std::min(omega_max,  w + 0.5f * (w - omega[i - 1]));
-    float dW = std::max(wR - wL, 1e-9f); // robust edge width
-    domega[i] = dW;
+// --- Voronoi half-widths (rad/s) and ω^-4 ---
+for (int i = 0; i < NBINS; ++i) {
+  const float w  = omega[i];
+  const float wL = (i > 0)         ? omega[i - 1] : w;
+  const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
 
-    const float w2 = w * w;
-    inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
-  }
+  float dW = 0.5f * (wR - wL);                 // HALF-width in rad/s
+  // bandwidth floor: prevents 1/Δω blow-ups when bins get very dense
+  if (dW < 1e-3f) dW = 1e-3f;                  // tune if you like; ~0.001 rad/s
+  domega[i] = dW;
+
+  const float w2 = w * w;
+  inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
+}
 
   if (!ready) {
     for (int i = 0; i < NBINS; ++i) { c[i] = 1.0f; s[i] = 0.0f; zr[i] = zi[i] = 0.0f; }
