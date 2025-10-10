@@ -99,6 +99,12 @@ public:
       omega_center = omega_ctr;
       ratio_r = std::exp(std::log(TARGET_SPAN_UP) / float(MAX_K));
 
+      const float rK = std::pow(ratio_r, float(MAX_K));
+      const float min_center = omega_min * rK;
+      const float max_center = omega_max / rK;
+      if (omega_center < min_center) omega_center = min_center;
+      if (omega_center > max_center) omega_center = max_center;
+
       // Geometric grid (no per-bin clamping)
       omega[MAX_K] = omega_center;
       for (int k = 1; k <= MAX_K; ++k) {
