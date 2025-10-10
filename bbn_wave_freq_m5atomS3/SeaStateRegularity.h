@@ -398,15 +398,6 @@ public:
       S0 += double(S_hat) * double(dw);
       S1 += double(S_hat) * double(w)  * double(dw);
       S2 += double(S_hat) * double(w)  * double(w) * double(dw);
-
-      // keep rotator on the unit circle (prevents drift)
-      if ((i & 7) == 0) {
-        float nrm = std::sqrt(spectrum_.c[i]*spectrum_.c[i] + spectrum_.s[i]*spectrum_.s[i]);
-        if (nrm > 0.0f) {
-          spectrum_.c[i] /= nrm;
-          spectrum_.s[i] /= nrm;
-        }
-      }
     }
 
     // moments + Jensen helpers
