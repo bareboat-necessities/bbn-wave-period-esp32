@@ -35,8 +35,8 @@
 
     Implementation overview
       • Multi-bin demodulation of acceleration at log-spaced omega_k around omega_inst.
-      • Each bin uses a 1st-order LPF with cutoff f_c,k (Hz) and ENBW = pi^2 f_c,k (rad/s).
-      • Convert acceleration baseband power to displacement PSD via omega_k^-4.
+      • Each bin uses a 1st-order LPF with cutoff f_c,k (Hz) and ENBW derived from the discrete α.
+      • Convert acceleration baseband power to displacement PSD via omega_k^-4 (with a small ω floor).
       • Accumulate {M0,M1,M2} and Jensen correction helpers each step.
 */
 
@@ -83,6 +83,9 @@ public:
     float cos_dphi[NBINS]{};
     float sin_dphi[NBINS]{};
 
+    // ENBW per bin (rad/s) derived from discrete alpha
+    float enbw_rad[NBINS]{};
+
     float c[NBINS]{};
     float s[NBINS]{};
     float zr[NBINS]{};
@@ -92,110 +95,120 @@ public:
 
     inline void clear() { ready = false; }
 
+    // Local clamp (nested classes are NOT friends by default)
+    static inline float clampf_(float x, float lo, float hi) {
+      return (x < lo) ? lo : ((x > hi) ? hi : x);
+    }
+
     // Fixed grid build — cosine-tapered geometric spacing (denser near center)
-inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
-  constexpr float TARGET_SPAN_UP = 6.0f; // keep your constant
-  omega_center = clampf(omega_ctr, omega_min, omega_max);
+    inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
+      constexpr float TARGET_SPAN_UP = 6.0f;
+      omega_center = clampf_(omega_ctr, omega_min, omega_max);
 
-  // --- precompute tapers and their sum ---
-  float taper[MAX_K + 1];
-  float sum_w = 0.0f;
-  taper[0] = 0.0f; // unused
-  for (int k = 1; k <= MAX_K; ++k) {
-    // 1 at center -> 0 at edges
-    float t = 0.5f * (1.0f + std::cos((float(k) / float(MAX_K)) * PI_));
-    taper[k] = t;
-    sum_w += t;
-  }
+      // precompute tapers and their sum
+      float taper[MAX_K + 1];
+      float sum_w = 0.0f;
+      taper[0] = 0.0f;
+      for (int k = 1; k <= MAX_K; ++k) {
+        float t = 0.5f * (1.0f + std::cos((float(k) / float(MAX_K)) * PI_));
+        taper[k] = t;
+        sum_w += t;
+      }
 
-  // --- target spans per side, clipped to physical limits ---
-  float span_up = std::min(TARGET_SPAN_UP, omega_max / std::max(omega_center, 1e-20f));
-  float span_dn = std::min(TARGET_SPAN_UP, std::max(omega_center, 1e-20f) / std::max(omega_min, 1e-20f));
+      float span_up = std::min(TARGET_SPAN_UP, omega_max / std::max(omega_center, 1e-20f));
+      float span_dn = std::min(TARGET_SPAN_UP, std::max(omega_center, 1e-20f) / std::max(omega_min, 1e-20f));
 
-  // choose base ratios so that product_k pow(base, taper[k]) == span_side
-  float base_up = (span_up  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_up) / sum_w) : 1.0f;
-  float base_dn = (span_dn  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_dn) / sum_w) : 1.0f;
+      float base_up = (span_up  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_up) / sum_w) : 1.0f;
+      float base_dn = (span_dn  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_dn) / sum_w) : 1.0f;
 
-  // --- fill centers ---
-  omega[MAX_K] = omega_center;
+      omega[MAX_K] = omega_center;
 
-  // upper branch
-  float w_up = omega_center;
-  for (int k = 1; k <= MAX_K; ++k) {
-    w_up *= std::pow(base_up, taper[k]);
-    omega[MAX_K + k] = clampf(w_up, omega_min, omega_max);
-  }
+      float w_up = omega_center;
+      for (int k = 1; k <= MAX_K; ++k) {
+        w_up *= std::pow(base_up, taper[k]);
+        omega[MAX_K + k] = clampf_(w_up, omega_min, omega_max);
+      }
 
-  // lower branch
-  float w_dn = omega_center;
-  for (int k = 1; k <= MAX_K; ++k) {
-    w_dn /= std::pow(base_dn, taper[k]);
-    omega[MAX_K - k] = clampf(w_dn, omega_min, omega_max);
-  }
+      float w_dn = omega_center;
+      for (int k = 1; k <= MAX_K; ++k) {
+        w_dn /= std::pow(base_dn, taper[k]);
+        omega[MAX_K - k] = clampf_(w_dn, omega_min, omega_max);
+      }
 
-// --- Voronoi half-widths (rad/s) and ω^-4 ---
-for (int i = 0; i < NBINS; ++i) {
-  const float w  = omega[i];
-  const float wL = (i > 0)         ? omega[i - 1] : w;
-  const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
+      // Voronoi half-widths (rad/s) and stabilized ω^-4
+      // Add a tiny ω floor inside ω^4 to prevent blow-ups at very low ω.
+      constexpr float W_FLOOR = 1e-2f; // rad/s (tiny; << typical ω)
+      for (int i = 0; i < NBINS; ++i) {
+        const float w  = omega[i];
+        const float wL = (i > 0)         ? omega[i - 1] : w;
+        const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
 
-  float dW = 0.5f * (wR - wL);                 // HALF-width in rad/s
-  // bandwidth floor: prevents 1/Δω blow-ups when bins get very dense
-  if (dW < 1e-3f) dW = 1e-3f;                  // tune if you like; ~0.001 rad/s
-  domega[i] = dW;
+        float dW = 0.5f * (wR - wL);
+        if (dW < 1e-3f) dW = 1e-3f; // bandwidth floor
+        domega[i] = dW;
 
-  const float w2 = w * w;
-  inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
-}
+        const float w2 = w * w;
+        const float w4 = (w2 + W_FLOOR * W_FLOOR) * (w2 + W_FLOOR * W_FLOOR);
+        inv_w4[i] = (w4 > 0.0f) ? 1.0f / w4 : 0.0f;
+      }
 
-  if (!ready) {
-    for (int i = 0; i < NBINS; ++i) { c[i] = 1.0f; s[i] = 0.0f; zr[i] = zi[i] = 0.0f; }
-    ready = true;
-  }
-}
-
-// LPF alphas and rotator steps — physically correct mapping (ENBW = π²·f_c)
-inline void precomputeForDt(float dt) {
-  // minimum cutoff to avoid near-DC bandwidth that explodes PSD for tones
-  constexpr float FC_MIN_HZ = 0.02f; // ~50 s time constant; tune to taste
-
-  for (int i = 0; i < NBINS; ++i) {
-    // Δω is HALF-width (rad/s) from patch #1
-    float fc_hz = domega[i] / (PI_ * PI_);      // ENBW(rad/s)=π² f_c  ⇒ f_c=Δω/π²
-    if (fc_hz < FC_MIN_HZ) fc_hz = FC_MIN_HZ;   // floor the analysis bandwidth
-
-    float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);  // discrete one-pole
-    if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
-    alpha_k[i] = a;
-
-    const float dphi = omega[i] * dt;
-    if (std::fabs(dphi) < 1e-3f) {
-      cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
-      sin_dphi[i] = dphi;
-    } else {
-      cos_dphi[i] = std::cos(dphi);
-      sin_dphi[i] = std::sin(dphi);
+      if (!ready) {
+        for (int i = 0; i < NBINS; ++i) { c[i] = 1.0f; s[i] = 0.0f; zr[i] = zi[i] = 0.0f; }
+        ready = true;
+      }
     }
-  }
 
-  // mean-alpha normalization you added
-  float mean_a = 0.0f;
-  for (int i = 0; i < NBINS; ++i) mean_a += alpha_k[i];
-  mean_a /= float(NBINS);
-  if (mean_a > 1e-9f) {
-    const float s = 1.0f / mean_a;
-    for (int i = 0; i < NBINS; ++i) {
-      float a = alpha_k[i] * s;
-      alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
+    // LPF alphas, rotator steps, and ENBW (from discrete α)
+    inline void precomputeForDt(float dt) {
+      constexpr float FC_MIN_HZ = 0.02f; // avoid near-DC bandwidth → PSD blowups
+
+      for (int i = 0; i < NBINS; ++i) {
+        // Map target "analysis bandwidth" from local bin size to an fc, but we
+        // actually use the *discrete α* below to derive ENBW precisely.
+        float fc_hz = domega[i] / (PI_ * PI_);      // placeholder fc (kept from your idea)
+        if (fc_hz < FC_MIN_HZ) fc_hz = FC_MIN_HZ;
+
+        float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);  // one-pole α
+        if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
+        alpha_k[i] = a;
+
+        const float dphi = omega[i] * dt;
+        if (std::fabs(dphi) < 1e-3f) {
+          cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
+          sin_dphi[i] = dphi;
+        } else {
+          cos_dphi[i] = std::cos(dphi);
+          sin_dphi[i] = std::sin(dphi);
+        }
+
+        // Discrete one-pole ENBW (Hz): ENBW = (α / (2 - α)) * (fs/2)
+        // ⇒ in rad/s multiply by 2π.
+        const float fs = 1.0f / std::max(dt, 1e-9f);
+        const float enbw_hz = (a > 0.0f && a < 2.0f)
+                              ? (a / (2.0f - a)) * (fs * 0.5f)
+                              : FC_MIN_HZ * (float)PI_ * 0.5f; // safe fallback
+        enbw_rad[i] = enbw_hz * TWO_PI_;
+      }
+
+      // keep your "mean-alpha normalization"
+      float mean_a = 0.0f;
+      for (int i = 0; i < NBINS; ++i) mean_a += alpha_k[i];
+      mean_a /= float(NBINS);
+      if (mean_a > 1e-9f) {
+        const float s = 1.0f / mean_a;
+        for (int i = 0; i < NBINS; ++i) {
+          float a = alpha_k[i] * s;
+          alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
+        }
+      }
     }
-  }
-}
 
     inline float integrateMoment(int n) const {
       if (!ready) return 0.0f;
       double acc = 0.0;
       for (int i = 0; i < NBINS; ++i) {
-        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(domega[i]);
+        // FULL width = 2·domega[i]
+        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(2.0f * domega[i]);
       }
       return float(acc);
     }
@@ -209,13 +222,13 @@ inline void precomputeForDt(float dt) {
 
     // persistent state
     float freq_hz[N_BINS];
-    float domega[N_BINS];     // bin widths (rad/s)
+    float domega[N_BINS];     // bin half-widths (rad/s)
     float S_avg[N_BINS];      // exponentially averaged PSD (rad/s)
     float weight[N_BINS];
     bool  initialized = false;
 
     // time constant for averaging (seconds)
-    float tau_spec = 120.0f;  // exponential average, tune as needed
+    float tau_spec = 120.0f;
 
     // grid setup / housekeeping
     inline void reset() {
@@ -234,69 +247,55 @@ inline void precomputeForDt(float dt) {
       for (int i = 0; i < N_BINS; ++i) {
         float fL = (i > 0) ? freq_hz[i - 1] : freq_hz[i];
         float fR = (i < N_BINS - 1) ? freq_hz[i + 1] : freq_hz[i];
-        domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);  // Δω (rad/s)
+        domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);  // Δω half-width
       }
       initialized = true;
     }
 
     // helpers
-    static inline int lowerBound(const float* arr, int n, float x) {
-      int lo = 0, hi = n - 1;
-      while (lo < hi) {
-        int mid = (lo + hi) >> 1;
-        if (arr[mid] < x) lo = mid + 1; else hi = mid;
-      }
-      return lo;
-    }
-
     inline static float clampf(float x, float lo, float hi) {
       return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
 
-// main accumulation
-template <int NK>
-inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
-                       float dt_s) {
-  if (!initialized) buildGrid();
-  if (!(tau_spec > 1e-3f)) return;
+    // main accumulation (unchanged math; already uses full 2·dω)
+    template <int NK>
+    inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
+                           float dt_s) {
+      if (!initialized) buildGrid();
+      if (!(tau_spec > 1e-3f)) return;
 
-  // Exponential averaging weight
-  const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
+      const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
 
-  // Loop over source bins (arbitrary, possibly nonuniform grid)
-  for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
-    const float Srad = S.S_eta_rad[i];   // [m²/(rad/s)]
-    if (!(Srad > 0.0f)) continue;
+      for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
+        const float Srad = S.S_eta_rad[i];
+        if (!(Srad > 0.0f)) continue;
 
-    const float w_c  = S.omega[i];
-    const float dw_c = S.domega[i];
-    const float wL_i = w_c - dw_c;
-    const float wR_i = w_c + dw_c;
-    const float E_src = Srad * (2.0f * dw_c);  // total energy in that band
+        const float w_c  = S.omega[i];
+        const float dw_c = S.domega[i];
+        const float wL_i = w_c - dw_c;
+        const float wR_i = w_c + dw_c;
+        const float E_src = Srad * (2.0f * dw_c);
 
-    // map to destination bins (fixed log grid in Hz)
-    for (int j = 0; j < N_BINS; ++j) {
-      const float f_c  = freq_hz[j];           // Hz
-      const float dw_j = domega[j];            // half-width in rad/s
-      const float w_center = TWO_PI_ * f_c;    // rad/s center
-      const float wL_j = w_center - dw_j;      // lower edge
-      const float wR_j = w_center + dw_j;      // upper edge
+        for (int j = 0; j < N_BINS; ++j) {
+          const float f_c  = freq_hz[j];
+          const float dw_j = domega[j];
+          const float w_center = TWO_PI_ * f_c;
+          const float wL_j = w_center - dw_j;
+          const float wR_j = w_center + dw_j;
 
-      // Overlap between source and destination in rad/s
-      const float overlap = std::max(0.0f,
-          std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
-      if (overlap <= 0.0f) continue;
+          const float overlap = std::max(0.0f,
+              std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
+          if (overlap <= 0.0f) continue;
 
-      const float frac   = overlap / (wR_i - wL_i);
-      const float E_part = E_src * frac;
-      const float S_part = E_part / std::max(2.0f * dw_j, 1e-12f); // full width denominator
+          const float frac   = overlap / (wR_i - wL_i);
+          const float E_part = E_src * frac;
+          const float S_part = E_part / std::max(2.0f * dw_j, 1e-12f);
 
-      // Exponential moving average update
-      S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
-      weight[j] = (1.0f - alpha) * weight[j] + alpha;
+          S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
+          weight[j] = (1.0f - alpha) * weight[j] + alpha;
+        }
+      }
     }
-  }
-}
 
     // accessors
     inline float valueRad(int k) const {
@@ -365,9 +364,9 @@ inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
     // Handle update on large ω jumps 
     if (omega_used > 0.0f) {
       const float ratio = w_obs / omega_used;
-      if (ratio < 0.67f || ratio > 1.50f) {        // wider tolerance + hard recenter
-        omega_used = w_obs;                         // snap center
-        spectrum_.clear();                          // force fresh phases/gains
+      if (ratio < 0.67f || ratio > 1.50f) {
+        omega_used = w_obs;
+        spectrum_.clear();
         spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
         spectrum_.precomputeForDt(dt_s);
       }
@@ -387,7 +386,7 @@ inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
       spectrum_.c[i] = c_next;
       spectrum_.s[i] = s_next;
 
-      // keep rotator on unit circle (prevents drift)
+      // keep rotator on unit circle
       float nrm = std::sqrt(spectrum_.c[i]*spectrum_.c[i] + spectrum_.s[i]*spectrum_.s[i]);
       if (nrm > 0.0f) {
         spectrum_.c[i] /= nrm;
@@ -402,21 +401,24 @@ inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
       spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
 
-      // convert to S_eta via omega^-4 and ENBW compensation
+      // convert to S_eta via ω^-4 and **ENBW compensation from α**
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
-      float S_hat  = K_EFF_MIX * P_disp / std::max(spectrum_.domega[i], 1e-12f);
-      if (i == 0 || i == NBINS - 1)
-        S_hat *= 0.5f;   // edge correction
+
+      // ENBW in rad/s was precomputed as enbw_rad[i]
+      const float enbw = std::max(spectrum_.enbw_rad[i], 1e-9f);
+      float S_hat  = K_EFF_MIX * (P_disp / enbw); // m^2 / (rad/s)
 
       spectrum_.S_eta_rad[i] = S_hat;
 
       const float w  = spectrum_.omega[i];
       const float dw = spectrum_.domega[i];
 
-      S0 += double(S_hat) * double(dw);
-      S1 += double(S_hat) * double(w)  * double(dw);
-      S2 += double(S_hat) * double(w)  * double(w) * double(dw);
+      // **FULL width** contribution to moments
+      const float fullW = 2.0f * dw;
+      S0 += double(S_hat) * double(fullW);
+      S1 += double(S_hat) * double(w)  * double(fullW);
+      S2 += double(S_hat) * double(w)  * double(w) * double(fullW);
     }
 
     // moments + Jensen helpers
@@ -467,7 +469,6 @@ inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
   inline float getWaveHeightEnvelopeEst() const {
     const float m0 = M0.get();
     return (m0 > EPSILON) ? 4.0f * std::sqrt(m0) : 0.0f;
-    // matches working code: Hs = 4 sqrt(M0)
   }
 
   inline float getAccelerationVariance() const { return A0.get(); }
@@ -497,14 +498,10 @@ private:
   float R_spec = 0.0f, nu = 0.0f;
   float omega_bar_corr = 0.0f, omega_bar_naive = 0.0f;
 
-  Spectrum spectrum_;
-  FixedGridAvg fixed_avg_;
+  struct Spectrum spectrum_;
+  struct FixedGridAvg fixed_avg_;
 
   // Internal helpers
-  static inline float clampf(float x, float lo, float hi) {
-    return (x < lo) ? lo : ((x > hi) ? hi : x);
-  }
-
   inline void updateGlobalAlphas(float dt_s) {
     if (dt_s == last_dt) return;
     last_dt   = dt_s;
