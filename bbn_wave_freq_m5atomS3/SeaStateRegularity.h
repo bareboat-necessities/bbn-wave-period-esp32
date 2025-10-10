@@ -94,50 +94,64 @@ public:
     inline void clear() { ready = false; }
 
     // Fixed grid build — cosine-tapered geometric spacing (denser near center)
-    inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
-      constexpr float TARGET_SPAN_UP = 6.0f;  // total upper span (adjustable)
-      omega_center = omega_ctr;
-      ratio_r = std::exp(std::log(TARGET_SPAN_UP) / float(MAX_K));
+inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
+  constexpr float TARGET_SPAN_UP = 6.0f; // keep your constant
+  omega_center = clampf(omega_ctr, omega_min, omega_max);
 
-      // Center frequency
-      omega[MAX_K] = omega_center;
+  // --- precompute tapers and their sum ---
+  float taper[MAX_K + 1];
+  float sum_w = 0.0f;
+  taper[0] = 0.0f; // unused
+  for (int k = 1; k <= MAX_K; ++k) {
+    // 1 at center -> 0 at edges
+    float t = 0.5f * (1.0f + std::cos((float(k) / float(MAX_K)) * PI_));
+    taper[k] = t;
+    sum_w += t;
+  }
 
-      // Generate upper/lower branches with tapered exponent
-      for (int k = 1; k <= MAX_K; ++k) {
-        // taper = 1 at center → 0 at edges; halves step size near center
-        float taper = 0.5f * (1.0f + std::cos((float(k) / float(MAX_K)) * PI_));
-        float local_ratio = std::pow(ratio_r, taper);
-        omega[MAX_K + k] = omega[MAX_K + k - 1] * local_ratio;
-        omega[MAX_K - k] = omega[MAX_K - k + 1] / local_ratio;
-      }
+  // --- target spans per side, clipped to physical limits ---
+  float span_up = std::min(TARGET_SPAN_UP, omega_max / std::max(omega_center, 1e-20f));
+  float span_dn = std::min(TARGET_SPAN_UP, std::max(omega_center, 1e-20f) / std::max(omega_min, 1e-20f));
 
-      // Clamp every ωₖ to physical range
-      for (int i = 0; i < NBINS; ++i)
-        omega[i] = clampf(omega[i], omega_min, omega_max);
+  // choose base ratios so that product_k pow(base, taper[k]) == span_side
+  float base_up = (span_up  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_up) / sum_w) : 1.0f;
+  float base_dn = (span_dn  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_dn) / sum_w) : 1.0f;
 
-      // Voronoi bin widths and ω⁻⁴ normalization
-      for (int i = 0; i < NBINS; ++i) {
-        const float w  = omega[i];
-        const float wL = (i > 0) ? omega[i - 1] : w;
-        const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
-        const float dW = 0.5f * (wR - wL);
-        domega[i] = (dW > 1e-12f) ? dW : 1e-12f;
-        const float w2 = w * w;
-        inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
-      }
+  // --- fill centers ---
+  omega[MAX_K] = omega_center;
 
-      if (!ready) {
-        for (int i = 0; i < NBINS; ++i) {
-          c[i] = 1.0f;
-          s[i] = 0.0f;
-          zr[i] = 0.0f;
-          zi[i] = 0.0f;
-        }
-        ready = true;
-      }
-    }
+  // upper branch
+  float w_up = omega_center;
+  for (int k = 1; k <= MAX_K; ++k) {
+    w_up *= std::pow(base_up, taper[k]);
+    omega[MAX_K + k] = clampf(w_up, omega_min, omega_max);
+  }
 
-// LPF alphas and rotator steps — energy/time-constant normalized
+  // lower branch
+  float w_dn = omega_center;
+  for (int k = 1; k <= MAX_K; ++k) {
+    w_dn /= std::pow(base_dn, taper[k]);
+    omega[MAX_K - k] = clampf(w_dn, omega_min, omega_max);
+  }
+
+  // --- Voronoi widths and ω^-4 ---
+  for (int i = 0; i < NBINS; ++i) {
+    const float w  = omega[i];
+    const float wL = (i > 0)         ? 0.5f * (omega[i - 1] + omega[i]) : std::max(omega_min,  w - 0.5f * (omega[i + 1] - w));
+    const float wR = (i < NBINS - 1) ? 0.5f * (omega[i] + omega[i + 1]) : std::min(omega_max,  w + 0.5f * (w - omega[i - 1]));
+    float dW = std::max(wR - wL, 1e-9f); // robust edge width
+    domega[i] = dW;
+
+    const float w2 = w * w;
+    inv_w4[i] = (w2 > 0.0f) ? 1.0f / (w2 * w2) : 0.0f;
+  }
+
+  if (!ready) {
+    for (int i = 0; i < NBINS; ++i) { c[i] = 1.0f; s[i] = 0.0f; zr[i] = zi[i] = 0.0f; }
+    ready = true;
+  }
+}
+
 // LPF alphas and rotator steps — physically correct mapping (ENBW = π²·f_c)
 inline void precomputeForDt(float dt) {
   for (int i = 0; i < NBINS; ++i) {
@@ -158,6 +172,19 @@ inline void precomputeForDt(float dt) {
       sin_dphi[i] = std::sin(dphi);
     }
   }
+
+// equalize mean alpha across bins so dense bins don’t over-smooth
+float mean_a = 0.0f;
+for (int i = 0; i < NBINS; ++i) mean_a += alpha_k[i];
+mean_a /= float(NBINS);
+if (mean_a > 1e-9f) {
+  const float s = 1.0f / mean_a;
+  for (int i = 0; i < NBINS; ++i) {
+    float a = alpha_k[i] * s;
+    alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
+  }
+}
+    
 }
 
     inline float integrateMoment(int n) const {
