@@ -129,8 +129,8 @@ public:
       for (int i = 0; i < NBINS; ++i) {
         const float wL = (i > 0) ? omega[i - 1] : omega[i];
         const float wR = (i < NBINS - 1) ? omega[i + 1] : omega[i];
-        const float dω = 0.5f * (wR - wL);
-        domega[i]    = (dω > 1e-12f) ? dω : 1e-12f;
+        const float domeg = 0.5f * (wR - wL);
+        domega[i]    = (domeg > 1e-12f) ? domeg : 1e-12f;
 
         const float w  = omega[i];
         const float w2 = w * w;
