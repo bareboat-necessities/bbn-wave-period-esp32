@@ -98,9 +98,9 @@ for wave_id, fnames in waves.items():
     fig.suptitle(f"Wave: {wave_id}", fontsize=11, y=0.97)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
 
-    out_pdf = f"reg_spectrum_plot_{wave_id}.pdf"
-    plt.savefig(out_pdf)
-    print(f"Saved → {out_pdf}")
+    out_pgf = f"reg_spectrum_plot_{wave_id}.pgf"
+    plt.savefig(out_pgf)
+    print(f"Saved → {out_pgf}")
 
     # Optional: uncomment to display interactively
     # plt.show()
