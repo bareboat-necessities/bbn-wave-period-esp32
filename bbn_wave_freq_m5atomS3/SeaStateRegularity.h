@@ -387,6 +387,12 @@ public:
   inline const Spectrum& getSpectrum() const { return spectrum_; }
   inline bool spectrumReady() const { return spectrum_.ready; }
 
+  inline const float* getAveragedSpectrumHz(size_t& n, const float*& freq_hz_out) const {
+    n = FixedGridAvg::NBINS;
+    freq_hz_out = fixed_avg_.freq_hz;
+    return fixed_avg_.S_avg;  // raw EMA numerator (divide by weights if needed)
+  }
+
 private:
   // Internal constants
   constexpr static float OMEGA_MIN_RAD = TWO_PI_ * OMEGA_MIN_HZ;
