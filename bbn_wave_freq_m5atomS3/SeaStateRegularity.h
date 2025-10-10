@@ -385,7 +385,7 @@ public:
       // convert to S_eta via omega^-4 and ENBW compensation
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
-      const float S_hat  = K_EFF_MIX * P_disp / std::max(spectrum_.domega[i], 1e-12f);
+      float S_hat  = K_EFF_MIX * P_disp / std::max(spectrum_.domega[i], 1e-12f);
       if (i == 0 || i == NBINS - 1)
         S_hat *= 0.5f;   // edge correction
 
