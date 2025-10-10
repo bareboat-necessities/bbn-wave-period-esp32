@@ -241,58 +241,38 @@ inline void precomputeForDt(float dt) {
       if (!initialized) buildGrid();
       if (!(tau_spec > 1e-3f)) return;
 
-      // derive exponential weight α from time constant
+      // Exponential averaging weight
       const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
 
+      // Loop over source bins (arbitrary, possibly nonuniform grid)
       for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
-        // energy-conservative, log-domain 2-bin projection
-        float f_i = S.omega[i] / (2.0f * float(M_PI));   // Hz
-        float Srad = S.S_eta_rad[i];                      // m^2/(rad/s)
+        const float Srad = S.S_eta_rad[i];   // [m²/(rad/s)]
         if (!(Srad > 0.0f)) continue;
-        
-        // Energy in source (rad/s domain)
-        const float E_src = Srad * S.domega[i];
-        
-        // Find bracketing bins in log-frequency
-        const float xi = std::log(f_i);
-        int jR = lowerBound(freq_hz, N_BINS, f_i);
-        int jL = jR - 1;
-        
-        // Clamp to edges: deposit all energy to the edge bin if out of range
-        if (jL < 0) {
-          const float S_dst = E_src / std::max(domega[jR], 1e-12f);
-          S_avg[jR]  = (1.0f - alpha) * S_avg[jR]  + alpha * S_dst;
-          weight[jR] = (1.0f - alpha) * weight[jR] + alpha;
-          continue;
+
+        const float w_c  = S.omega[i];
+        const float dw_c = S.domega[i];
+        const float wL_i = w_c - dw_c;
+        const float wR_i = w_c + dw_c;
+        const float E_src = Srad * (2.0f * dw_c);  // total energy in that band
+
+        // advance j until upper edge of destination exceeds lower edge of source
+        for (int j = 0; j < N_BINS; ++j) {
+          const float f_c = freq_hz[j];
+          const float dw_j = domega[j];
+          const float wL_j = 2.0f * float(M_PI) * (f_c - 0.5f * dw_j / (2.0f * float(M_PI)));
+          const float wR_j = 2.0f * float(M_PI) * (f_c + 0.5f * dw_j / (2.0f * float(M_PI)));
+
+          const float overlap = std::max(0.0f, std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
+          if (overlap <= 0.0f) continue;
+
+          const float frac = overlap / (wR_i - wL_i);
+          const float E_part = E_src * frac;
+          const float S_part = E_part / std::max(dw_j, 1e-12f);
+
+          // Exponential moving average update
+          S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
+          weight[j] = (1.0f - alpha) * weight[j] + alpha;
         }
-        if (jR >= N_BINS) {
-          jL = N_BINS - 1;
-          const float S_dst = E_src / std::max(domega[jL], 1e-12f);
-          S_avg[jL]  = (1.0f - alpha) * S_avg[jL]  + alpha * S_dst;
-          weight[jL] = (1.0f - alpha) * weight[jL] + alpha;
-          continue;
-        }
-        
-        // Interpolate in log-frequency (barycentric)
-        const float xL = std::log(freq_hz[jL]);
-        const float xR = std::log(freq_hz[jR]);
-        const float denom = std::max(xR - xL, 1e-12f);
-        float t = (xi - xL) / denom;    // 0..1
-        t = (t < 0.0f) ? 0.0f : (t > 1.0f ? 1.0f : t);
-        
-        // Split energy conservatively, then normalize by destination Δω
-        const float E_L = E_src * (1.0f - t);
-        const float E_R = E_src * t;
-        
-        const float S_L = E_L / std::max(domega[jL], 1e-12f);
-        const float S_R = E_R / std::max(domega[jR], 1e-12f);
-        
-        // EMA update per destination bin
-        S_avg[jL]  = (1.0f - alpha) * S_avg[jL]  + alpha * S_L;
-        weight[jL] = (1.0f - alpha) * weight[jL] + alpha;
-        
-        S_avg[jR]  = (1.0f - alpha) * S_avg[jR]  + alpha * S_R;
-        weight[jR] = (1.0f - alpha) * weight[jR] + alpha;           
       }
     }
 
