@@ -46,7 +46,7 @@ static constexpr float WARMUP_SECONDS   = 30.0f; // Warmup duration
 // Trackers
 AranovskiyFilter<double> arFilter;
 KalmANF<double> kalmANF;
-KalmanSmootherVars kalman_freq;
+//KalmanSmootherVars kalman_freq;
 SchmittTriggerFrequencyDetector freqDetector(
     ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
@@ -81,7 +81,15 @@ static double run_tracker_once(TrackerType tracker,
         freq = estimate_freq(ZeroCrossing, &arFilter, &kalmANF,
                              &freqDetector, a_norm, a_norm, dt, now_us());
     }
-    return freq;
+    float smooth_freq;
+    if (kalm_smoother_first) {
+        kalm_smoother_first = false;
+        freqSmoother.setInitial(freq);
+        smooth_freq = freq;
+    } else {
+        smooth_freq = freqSmoother.update(freq);
+    }
+    return smooth_freq;
 }
 
 // Write CSV header
