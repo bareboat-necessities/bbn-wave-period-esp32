@@ -46,7 +46,8 @@ static constexpr float WARMUP_SECONDS   = 30.0f; // Warmup duration
 // Trackers
 AranovskiyFilter<double> arFilter;
 KalmANF<double> kalmANF;
-//KalmanSmootherVars kalman_freq;
+FrequencySmoother<float> freqSmoother;
+KalmanSmootherVars kalman_freq;
 SchmittTriggerFrequencyDetector freqDetector(
     ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
@@ -58,12 +59,14 @@ static uint32_t now_us() { return static_cast<uint32_t>(sim_t * 1e6); }
 static void init_tracker_backends() {
     init_filters(&arFilter, &kalman_freq);
     init_filters_alt(&kalmANF, &kalman_freq);
+
 }
 
 static void reset_run_state() {
     sim_t = 0.0;
     kalm_smoother_first = true;
     kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
+    freqSmoother = FrequencySmoother<float>();
     freqDetector.reset();
 }
 
