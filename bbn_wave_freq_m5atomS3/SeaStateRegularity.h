@@ -158,24 +158,29 @@ public:
       }
     }
 
-    // LPF alphas and rotator steps — Δω-based with gentle frequency-dependent clamp
+    // LPF alphas and rotator steps — keep Δω law, smooth fc variation to reduce end bias
     inline void precomputeForDt(float dt) {
-        constexpr float FC_MIN_HZ = 0.015f;  // absolute floor for low seas
-        constexpr float FC_MAX_HZ = 1.20f;   // absolute cap for short seas
+        // Scaling constants (very gentle limits, not invasive)
+        constexpr float FC_MIN_HZ = 0.008f;   // absolute floor for very low ω
+        constexpr float FC_MAX_HZ = 1.50f;    // absolute cap to avoid runaway at high ω
+        constexpr float SMOOTH_FRAC = 0.25f;  // how strongly to smooth fc across bins
 
+        float fc_prev = 0.0f;
         for (int i = 0; i < NBINS; ++i) {
-            // Base mapping that gave correct Hs
-            float fc_hz = domega[i] / (PI_ * PI_);
+            // Your working physical mapping
+            float fc_raw = domega[i] / (PI_ * PI_);
 
-            // Clamp by reasonable physical limits
-            const float f_center = omega[i] / TWO_PI_;
-            const float fc_lo = std::max(FC_MIN_HZ, 0.05f * f_center);   // ≥5% of center freq
-            const float fc_hi = std::min(FC_MAX_HZ, 0.30f * f_center);   // ≤30% of center freq
-            if (fc_hz < fc_lo) fc_hz = fc_lo;
-            if (fc_hz > fc_hi) fc_hz = fc_hi;
+            // Clamp absolute bounds
+            if (fc_raw < FC_MIN_HZ) fc_raw = FC_MIN_HZ;
+            if (fc_raw > FC_MAX_HZ) fc_raw = FC_MAX_HZ;
 
-            // Convert to discrete α
-            float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
+            // Gentle smoothing vs previous bin to reduce extreme slope
+            if (i > 0)
+                fc_raw = (1.0f - SMOOTH_FRAC) * fc_raw + SMOOTH_FRAC * fc_prev;
+            fc_prev = fc_raw;
+
+            // Discrete α
+            float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_raw);
             if (a < 0.0f) a = 0.0f;
             else if (a > 1.0f) a = 1.0f;
             alpha_k[i] = a;
