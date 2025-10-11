@@ -158,16 +158,33 @@ public:
       }
     }
 
-    // LPF alphas and rotator steps — corrected to use constant relative bandwidth
+    // LPF alphas and rotator steps — keep Δω mapping, clamp relative BW to avoid skew/leak
     inline void precomputeForDt(float dt) {
-        constexpr float REL_BW = 0.15f; // relative bandwidth (~15% of bin center frequency)
+        constexpr float FC_MIN_HZ = 0.02f;   // absolute floor
+        constexpr float REL_MIN   = 0.06f;   // min BW = 6% of f_center
+        constexpr float REL_MAX   = 0.25f;   // max BW = 25% of f_center
+
         for (int i = 0; i < NBINS; ++i) {
-            const float fc_hz = REL_BW * (omega[i] / TWO_PI_);  // proportional to ω
+            // Your working mapping (Δω → fc), which preserves Hs calibration with /domega later.
+            float fc_from_dw = domega[i] / (PI_ * PI_);   // Hz-ish calibration you liked
+
+            // Clamp by relative bandwidth to reduce bias at both ends and stop LF leak on big seas.
+            const float f_center = omega[i] / TWO_PI_;
+            const float fc_lo = REL_MIN * f_center;
+            const float fc_hi = REL_MAX * f_center;
+
+            float fc_hz = fc_from_dw;
+            if (!std::isfinite(fc_hz)) fc_hz = fc_lo;
+            if (fc_hz < fc_lo) fc_hz = fc_lo;
+            if (fc_hz > fc_hi) fc_hz = fc_hi;
+            if (fc_hz < FC_MIN_HZ) fc_hz = FC_MIN_HZ;
+
+            // Discrete one-pole α
             float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
-            if (a < 0.0f) a = 0.0f;
-            else if (a > 1.0f) a = 1.0f;
+            if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
             alpha_k[i] = a;
 
+            // Rotator step
             const float dphi = omega[i] * dt;
             if (std::fabs(dphi) < 1e-3f) {
                 cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
