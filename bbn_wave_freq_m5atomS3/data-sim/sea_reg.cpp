@@ -297,8 +297,8 @@ static ConvergedStats run_from_csv(TrackerType tracker,
             double E_eta_ref = f_est * s_ref_interp;
 
             // Cumulative integrals
-            cum_est += S_eta_hz * delta_f;
-            cum_ref += s_ref_interp * delta_f;
+            cum_est += S_eta_hz * 2.0 * delta_f;
+            cum_ref += s_ref_interp * 2.0 * delta_f;
 
             spec << f_est << "," << S_eta_hz << ","
                  << s_ref_interp << "," << ratio << ","
