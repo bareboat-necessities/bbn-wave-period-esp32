@@ -386,9 +386,9 @@ public:
       const float dw = spectrum_.domega[i];
 
       // width contribution to moments
-      S0 += double(S_hat) * double(dw);
-      S1 += double(S_hat) * double(w)  * double(dw);
-      S2 += double(S_hat) * double(w)  * double(w) * double(dw);
+      S0 += double(S_hat) * double(2.0f * dw);
+      S1 += double(S_hat) * double(w)  * double(2.0f * dw);
+      S2 += double(S_hat) * double(w)  * double(w) * double(2.0f * dw);
     }
 
     // moments + Jensen helpers
