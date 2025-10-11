@@ -83,9 +83,6 @@ public:
     float cos_dphi[NBINS]{};
     float sin_dphi[NBINS]{};
 
-    // ENBW per bin (rad/s) derived from discrete alpha
-    float enbw_rad[NBINS]{};
-
     float c[NBINS]{};
     float s[NBINS]{};
     float zr[NBINS]{};
