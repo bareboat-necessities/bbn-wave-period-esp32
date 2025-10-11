@@ -375,20 +375,22 @@ public:
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
       spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
 
-      // convert to S_eta via ω^-4 and **ENBW compensation from α**
+      // convert to S_eta via omega^-4 and ENBW-like compensation using Δω (half-width)
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
 
-      // ENBW in rad/s was precomputed as enbw_rad[i]
-      const float enbw = std::max(spectrum_.enbw_rad[i], 1e-9f);
-      float S_hat  = K_EFF_MIX * (P_disp / enbw); // m^2 / (rad/s)
+      // Working calibration: divide by half-width Δω and use K_EFF_MIX = 2.0f
+      float S_hat = K_EFF_MIX * P_disp / std::max(spectrum_.domega[i], 1e-12f);
+
+      // (optional) edge correction, but do it BEFORE storing:
+      if (i == 0 || i == NBINS - 1) S_hat *= 0.5f;
 
       spectrum_.S_eta_rad[i] = S_hat;
 
       const float w  = spectrum_.omega[i];
       const float dw = spectrum_.domega[i];
 
-      // **FULL width** contribution to moments
+      // FULL width contribution to moments
       const float fullW = 2.0f * dw;
       S0 += double(S_hat) * double(fullW);
       S1 += double(S_hat) * double(w)  * double(fullW);
