@@ -285,7 +285,7 @@ public:
 
   // Constructor / Reset
   explicit SeaStateRegularity(float tau_mom_sec = 180.0f,
-                              float tau_a_mom_sec = 30.0f,
+                              float tau_a_mom_sec = 90.0f,
                               float tau_out_sec = 30.0f,
                               float tau_w_sec   = 30.0f)
   : tau_mom(tau_mom_sec), tau_a_mom(tau_a_mom_sec),
