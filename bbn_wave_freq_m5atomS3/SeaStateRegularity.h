@@ -141,7 +141,7 @@ public:
 
         float dW = 0.5f * (wR - wL);
         // adaptive floor: prevent tiny ω bins from dominating
-        const float dW_min_rel = 0.0025f * std::max(w, 0.0f); // 0.25% of ω
+        const float dW_min_rel = 0.01f * std::max(w, 0.0f); // 0.25% of ω
         const float dW_min_abs = 1e-5f;
         if (dW < std::max(dW_min_abs, dW_min_rel))
           dW = std::max(dW_min_abs, dW_min_rel);
