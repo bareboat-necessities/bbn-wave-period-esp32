@@ -158,12 +158,14 @@ public:
       }
     }
 
-    // LPF alphas and rotator steps — (ENBW = pi^2 fc)
+    // LPF alphas and rotator steps — corrected to use constant relative bandwidth
     inline void precomputeForDt(float dt) {
+        constexpr float REL_BW = 0.15f; // relative bandwidth (~15% of bin center frequency)
         for (int i = 0; i < NBINS; ++i) {
-            const float fc_hz = domega[i] / (PI_ * PI_);  // fc = ENBW/pi^2 (analog-calibrated)
+            const float fc_hz = REL_BW * (omega[i] / TWO_PI_);  // proportional to ω
             float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
-            if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
+            if (a < 0.0f) a = 0.0f;
+            else if (a > 1.0f) a = 1.0f;
             alpha_k[i] = a;
 
             const float dphi = omega[i] * dt;
