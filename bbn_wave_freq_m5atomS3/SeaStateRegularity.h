@@ -4,40 +4,13 @@
 #include <algorithm>
 
 /*
-    Copyright 2025, Mikhail Grushinskiy
-
     SeaStateRegularity — Online estimator of ocean wave regularity
-
     Momentum-based version (no phase coherence or heuristic blending).
 
-    Purpose
-      Estimate ocean wave spectral properties directly from vertical
-      acceleration a_z(t). Everything here is moment-based.
-
-    Physical relations
-      a_z(t) = d^2 eta/dt^2 = -omega^2 eta(t)
-      => S_a(omega) = omega^4 S_eta(omega)
-         S_eta(omega) = S_a(omega) / omega^4
-
-    Spectral moments (displacement spectrum)
-      M0 = integral S_eta(omega) d omega        — variance of displacement eta
-      M1 = integral omega S_eta(omega) d omega
-      M2 = integral omega^2 S_eta(omega) d omega
-
-    Derived quantities
-      • Mean angular frequency      omega_bar = M1 / M0
-      • Spectral narrowness (nu)    nu = sqrt(M2/M0 - (M1/M0)^2) / (M1/M0)
-      • Oceanographic Hs            Hs = 4*sqrt(M0)
-
-    Jensen bias correction for ratios
-      omega_bar_corr = omega_bar_naive + (omega_bar_naive Var[M0] - Cov[M1,M0]) / M0^2
-      and similarly for M2/M0 in the nu computation.
-
-    Implementation overview
-      • Multi-bin demodulation of acceleration at log-spaced omega_k around omega_inst.
-      • Each bin uses a 1st-order LPF with cutoff f_c,k (Hz) and ENBW derived from the discrete α.
-      • Convert acceleration baseband power to displacement PSD via omega_k^-4 (with a small ω floor).
-      • Accumulate {M0,M1,M2} and Jensen correction helpers each step.
+    Key correction vs prior version:
+      • Per-bin PSD normalization uses the filter’s ENBW (a/(2−a)·π/dt) instead of geometric Δω.
+        This removes the persistent “porcupine” pattern in the averaged spectrum while preserving
+        correct energy and moment integrations.
 */
 
 struct DebiasedEMA {
@@ -74,7 +47,7 @@ public:
     float omega_center = 0.0f;
 
     float omega[NBINS]{};
-    float domega[NBINS]{};   // Voronoi FULL width (rad/s)
+    float domega[NBINS]{};   // Voronoi FULL width (rad/s): 0.5*(w_{i+1} - w_{i-1})
 
     float inv_w4[NBINS]{};
 
@@ -91,7 +64,6 @@ public:
 
     inline void clear() { ready = false; }
 
-    // Local clamp (nested classes are NOT friends by default)
     static inline float clampf_(float x, float lo, float hi) {
       return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
@@ -131,22 +103,21 @@ public:
         omega[MAX_K - k] = clampf_(w_dn, omega_min, omega_max);
       }
 
-      // Voronoi FULL widths (rad/s) and stabilized ω^-4
-      // Add a tiny ω floor inside ω^4 to prevent blow-ups at very low ω.
+      // Voronoi full widths and stabilized ω^-4
       constexpr float W_FLOOR = 2e-2f; // rad/s (tiny; << typical ω)
       for (int i = 0; i < NBINS; ++i) {
         const float w  = omega[i];
         const float wL = (i > 0)         ? omega[i - 1] : w;
         const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
 
-        // Voronoi full width: (wR - wL)/2
-        float dW = (wR - wL);
+        // Full Voronoi width = 0.5*(w_{i+1}-w_{i-1})
+        float dW = 0.5f * (wR - wL);
         // adaptive floor: prevent tiny ω bins from dominating
         const float dW_min_rel = 0.01f * std::max(w, 0.0f);
         const float dW_min_abs = 1e-5f;
         if (dW < std::max(dW_min_abs, dW_min_rel))
           dW = std::max(dW_min_abs, dW_min_rel);
-        domega[i] = dW; // FULL Voronoi width
+        domega[i] = dW;
 
         const float w2 = w * w;
         const float w4 = (w2 + W_FLOOR * W_FLOOR) * (w2 + W_FLOOR * W_FLOOR);
@@ -159,10 +130,10 @@ public:
       }
     }
 
-    // LPF alphas and rotator steps — (ENBW = pi^2 fc)
+    // LPF alphas and rotator steps — (original mapping kept)
     inline void precomputeForDt(float dt) {
       for (int i = 0; i < NBINS; ++i) {
-        const float fc_hz = domega[i] / (PI_ * PI_);  // fc = ENBW/pi^2 (analog-calibrated)
+        const float fc_hz = domega[i] / (PI_ * PI_);  // fc ≈ ENBW/pi^2 (analog-calibrated heuristic)
         float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
         if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
         alpha_k[i] = a;
@@ -182,7 +153,6 @@ public:
       if (!ready) return 0.0f;
       double acc = 0.0;
       for (int i = 0; i < NBINS; ++i) {
-        // Riemann sum: Σ ω^n * S(ω) * Δω, where Δω = domega[i] (FULL Voronoi width)
         acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(domega[i]);
       }
       return float(acc);
@@ -205,7 +175,6 @@ public:
     // time constant for averaging (seconds)
     float tau_spec = 120.0f;
 
-    // grid setup / housekeeping
     inline void reset() {
       initialized = false;
       for (int i = 0; i < N_BINS; ++i) {
@@ -219,21 +188,17 @@ public:
       freq_hz[0] = FMIN_HZ;
       for (int i = 1; i < N_BINS; ++i)
         freq_hz[i] = freq_hz[i - 1] * ratio;
+
       for (int i = 0; i < N_BINS; ++i) {
         float fL = (i > 0) ? freq_hz[i - 1] : freq_hz[i];
         float fR = (i < N_BINS - 1) ? freq_hz[i + 1] : freq_hz[i];
-        // FULL Voronoi width in rad/s: 2π * 0.5*(fR - fL) = π*(fR - fL)
+        // FULL Voronoi width in rad/s = 2π * 0.5*(fR - fL)
         domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);
       }
       initialized = true;
     }
 
-    // helpers
-    inline static float clampf(float x, float lo, float hi) {
-      return (x < lo) ? lo : ((x > hi) ? hi : x);
-    }
-
-    // main accumulation (energy-conserving rebinning with correct bounds & widths)
+    // main accumulation (energy-conserving rebinning with correct bounds)
     template <int NK>
     inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float dt_s) {
       if (!initialized) buildGrid();
@@ -243,41 +208,30 @@ public:
 
       for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
         const float Srad = S.S_eta_rad[i];
-        if (!(Srad > 0.0f) || !std::isfinite(Srad)) continue;
+        if (!(Srad > 0.0f)) continue;
 
-        // --- Source bin interval (center ± half of FULL width) ---
         const float w_c  = S.omega[i];
-        const float dw_c = S.domega[i];            // FULL width (rad/s)
-        if (!(dw_c > 1e-10f)) continue;            // skip degenerate bins
+        const float dw_c = S.domega[i];                 // FULL source width
         const float wL_i = w_c - 0.5f * dw_c;
         const float wR_i = w_c + 0.5f * dw_c;
-        const float width_i = wR_i - wL_i;         // == dw_c
-
-        // Energy carried by source bin i (m²)
-        const float E_src = Srad * width_i;
+        const float width_i = std::max(wR_i - wL_i, 1e-12f);  // == dw_c
+        const float E_src   = Srad * width_i;                  // energy (m²)
 
         for (int j = 0; j < N_BINS; ++j) {
-          // --- Target bin interval (center ± half of FULL width) ---
           const float f_c   = freq_hz[j];
           const float w_c_j = TWO_PI_ * f_c;
-          const float dw_j  = domega[j];           // FULL width (rad/s)
-          if (!(dw_j > 1e-10f)) continue;
+          const float dw_j  = domega[j];               // FULL target width
           const float wL_j  = w_c_j - 0.5f * dw_j;
           const float wR_j  = w_c_j + 0.5f * dw_j;
 
-          // Overlap length in rad/s
-          const float wL = (wL_i > wL_j) ? wL_i : wL_j;
-          const float wR = (wR_i < wR_j) ? wR_i : wR_j;
-          const float overlap = wR - wL;
-          if (!(overlap > 0.0f)) continue;
+          const float overlap = std::max(0.0f,
+              std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
+          if (overlap <= 0.0f) continue;
 
-          // Split source energy by geometric overlap
-          const float frac   = overlap / width_i;   // ∈ (0,1]
-          const float E_part = E_src * frac;        // m²
-
-          // Back to PSD in target bin (m² per rad/s)
-          const float width_j = wR_j - wL_j;        // == dw_j
-          const float S_part  = E_part / width_j;
+          const float frac    = overlap / width_i;
+          const float E_part  = E_src * frac;
+          const float width_j = std::max(wR_j - wL_j, 1e-12f);  // == dw_j
+          const float S_part  = E_part / width_j;               // PSD in target bin
 
           S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
           weight[j] = (1.0f - alpha) * weight[j] + alpha;
@@ -285,15 +239,13 @@ public:
       }
     }
 
-    // accessors
     inline float valueRad(int k) const {
       if (k < 0 || k >= N_BINS) return 0.0f;
       return (weight[k] > 1e-6f) ? S_avg[k] / weight[k] : 0.0f;
     }
 
     inline float valueHz(int k) const {
-      // convert m²/(rad/s) → m²/Hz by multiplying 2π
-      return valueRad(k) * (2.0f * float(M_PI));
+      return valueRad(k) * (2.0f * float(M_PI)); // m²/(rad/s) -> m²/Hz
     }
 
     inline int size() const { return N_BINS; }
@@ -389,20 +341,23 @@ public:
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
       spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
 
-      // convert to S_eta via omega^-4 and ENBW-like compensation using Δω (FULL width)
+      // convert to displacement power via ω^-4
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
 
-      // Correct normalization: divide by true bin width (domega is FULL Voronoi width)
-      const float width = spectrum_.domega[i];
-      if (!(width > 1e-12f)) continue;
-      float S_hat = K_EFF_MIX * P_disp / width;   // PSD m^2/(rad/s)
+      // ************ IMPORTANT CHANGE: ENBW-based PSD normalization ************
+      // Discrete-time ENBW (rad/s) for EMA with coefficient a and sample period dt_s:
+      // ENBW_rad ≈ (a/(2 - a)) * (π / dt_s)
+      const float enbw_rad = (a / std::max(2.0f - a, 1e-6f)) * (PI_ / std::max(dt_s, 1e-9f));
+      if (!(enbw_rad > 0.0f) || !std::isfinite(enbw_rad)) continue;
 
+      const float S_hat = K_EFF_MIX * P_disp / enbw_rad;  // PSD m^2/(rad/s)
       spectrum_.S_eta_rad[i] = S_hat;
 
       const float w = spectrum_.omega[i];
+      const float width = spectrum_.domega[i];            // FULL Voronoi width (rad/s)
 
-      // width contribution to moments (use the same 'width' for consistency)
+      // Riemann sums for moments (Σ S·Δω, Σ ωS·Δω, Σ ω²S·Δω)
       S0 += double(S_hat) * double(width);
       S1 += double(S_hat) * double(w)  * double(width);
       S2 += double(S_hat) * double(w)  * double(w) * double(width);
@@ -488,7 +443,6 @@ private:
   struct Spectrum spectrum_;
   struct FixedGridAvg fixed_avg_;
 
-  // Internal helpers
   inline void updateGlobalAlphas(float dt_s) {
     if (dt_s == last_dt) return;
     last_dt   = dt_s;
@@ -599,4 +553,5 @@ inline void SeaState_sine_wave_test() {
   }
 }
 #endif
+
 
