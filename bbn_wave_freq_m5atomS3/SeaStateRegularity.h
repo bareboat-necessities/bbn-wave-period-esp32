@@ -230,48 +230,55 @@ public:
       return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
 
-    // main accumulation (energy-conserving rebinning with correct bounds)
-    template <int NK>
-    inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float dt_s) {
-      if (!initialized) buildGrid();
-      if (!(tau_spec > 1e-3f)) return;
+// main accumulation (energy-conserving rebinning with correct bounds & widths)
+template <int NK>
+inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float dt_s) {
+  if (!initialized) buildGrid();
+  if (!(tau_spec > 1e-3f)) return;
 
-      const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
+  const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
 
-      for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
-        const float Srad = S.S_eta_rad[i];
-        if (!(Srad > 0.0f)) continue;
+  for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
+    const float Srad = S.S_eta_rad[i];
+    if (!(Srad > 0.0f) || !std::isfinite(Srad)) continue;
 
-        const float w_c  = S.omega[i];
-        const float dw_c = S.domega[i];                 // full source width
-        const float wL_i = w_c - 0.5f * dw_c;           // use half to form bounds
-        const float wR_i = w_c + 0.5f * dw_c;
+    // --- Source bin interval (center ± half of full width) ---
+    const float w_c  = S.omega[i];
+    const float dw_c = S.domega[i];            // FULL Voronoi width (rad/s)
+    const float wL_i = w_c - 0.5f * dw_c;
+    const float wR_i = w_c + 0.5f * dw_c;
+    const float width_i = std::max(wR_i - wL_i, 1e-12f);   // == dw_c
 
-        const float width_i = std::max(wR_i - wL_i, 1e-12f);  // equals dw_c
-        const float E_src   = Srad * width_i;                  // total source energy
+    // Energy carried by source bin i (m²)
+    const float E_src = Srad * width_i;
 
-        for (int j = 0; j < N_BINS; ++j) {
-          const float f_c   = freq_hz[j];
-          const float dw_j  = domega[j];               // full target width
-          const float w_c_j = TWO_PI_ * f_c;
-          const float wL_j  = w_c_j - 0.5f * dw_j;     // use half to form bounds
-          const float wR_j  = w_c_j + 0.5f * dw_j;
+    for (int j = 0; j < N_BINS; ++j) {
+      // --- Target bin interval (center ± half of full width) ---
+      const float f_c   = freq_hz[j];
+      const float w_c_j = TWO_PI_ * f_c;
+      const float dw_j  = domega[j];           // FULL Voronoi width (rad/s)
+      const float wL_j  = w_c_j - 0.5f * dw_j;
+      const float wR_j  = w_c_j + 0.5f * dw_j;
 
-          const float overlap = std::max(0.0f,
-              std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
-          if (overlap <= 0.0f) continue;
+      // Overlap length in rad/s
+      const float wL = (wL_i > wL_j) ? wL_i : wL_j;
+      const float wR = (wR_i < wR_j) ? wR_i : wR_j;
+      const float overlap = wR - wL;
+      if (!(overlap > 0.0f)) continue;
 
-          const float frac    = overlap / width_i;     // fraction of source bin energy
-          const float E_part  = E_src * frac;
+      // Split source energy by geometric overlap
+      const float frac   = overlap / width_i;       // ∈ (0,1]
+      const float E_part = E_src * frac;            // m²
 
-          const float width_j = std::max(wR_j - wL_j, 1e-12f);  // equals dw_j
-          const float S_part  = E_part / width_j;               // PSD in target bin
+      // Back to PSD in target bin (m² per rad/s)
+      const float width_j = std::max(wR_j - wL_j, 1e-12f); // == dw_j
+      const float S_part  = E_part / width_j;
 
-          S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
-          weight[j] = (1.0f - alpha) * weight[j] + alpha;
-        }
-      }
+      S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
+      weight[j] = (1.0f - alpha) * weight[j] + alpha;
     }
+  }
+}
 
     // accessors
     inline float valueRad(int k) const {
