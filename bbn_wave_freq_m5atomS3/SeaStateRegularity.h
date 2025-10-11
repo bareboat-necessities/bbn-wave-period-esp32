@@ -246,8 +246,7 @@ public:
         const float dw_c = S.domega[i];
         const float wL_i = w_c - dw_c;
         const float wR_i = w_c + dw_c;
-        const float full_i = 2.0 * dw_c;
-        const float E_src = Srad * full_i;
+        const float E_src = Srad * dw_c;
 
         for (int j = 0; j < N_BINS; ++j) {
           const float f_c  = freq_hz[j];
@@ -262,8 +261,7 @@ public:
 
           const float frac   = overlap / (wR_i - wL_i);
           const float E_part = E_src * frac;
-          const float full_j = 2.0f * dw_j;
-          const float S_part = E_part / std::max(full_j, 1e-12f);
+          const float S_part = E_part / std::max(dw_j, 1e-12f);
 
           S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
           weight[j] = (1.0f - alpha) * weight[j] + alpha;
@@ -385,7 +383,7 @@ public:
       spectrum_.S_eta_rad[i] = S_hat;
 
       const float w  = spectrum_.omega[i];
-      const float dw = 2.0f * spectrum_.domega[i];
+      const float dw = spectrum_.domega[i];
 
       // width contribution to moments
       S0 += double(S_hat) * double(dw);
