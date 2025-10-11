@@ -247,7 +247,7 @@ public:
         const float dw_c = S.domega[i];
         const float wL_i = w_c - dw_c;
         const float wR_i = w_c + dw_c;
-        const float E_src = Srad * (2.0f * dw_c);
+        const float E_src = Srad * dw_c;
 
         for (int j = 0; j < N_BINS; ++j) {
           const float f_c  = freq_hz[j];
