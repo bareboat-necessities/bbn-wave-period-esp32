@@ -181,7 +181,7 @@ public:
       if (!ready) return 0.0f;
       double acc = 0.0;
       for (int i = 0; i < NBINS; ++i) {
-        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(domega[i]);
+        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(2.0f * domega[i]);
       }
       return float(acc);
     }
@@ -246,7 +246,7 @@ public:
         const float dw_c = S.domega[i];
         const float wL_i = w_c - dw_c;
         const float wR_i = w_c + dw_c;
-        const float E_src = Srad * dw_c;
+        const float E_src = Srad * (2.0f * dw_c);
 
         for (int j = 0; j < N_BINS; ++j) {
           const float f_c  = freq_hz[j];
@@ -261,7 +261,7 @@ public:
 
           const float frac   = overlap / (wR_i - wL_i);
           const float E_part = E_src * frac;
-          const float S_part = E_part / std::max(dw_j, 1e-12f);
+          const float S_part = E_part / std::max(2.0f * dw_j, 1e-12f);
 
           S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
           weight[j] = (1.0f - alpha) * weight[j] + alpha;
@@ -378,7 +378,7 @@ public:
       const float P_disp = P_acc * spectrum_.inv_w4[i];
 
       // Working calibration: divide by half-width Δω and use K_EFF_MIX = 2.0f
-      float S_hat = 0.5f * K_EFF_MIX * P_disp / std::max(spectrum_.domega[i], 1e-12f);
+      float S_hat = 0.5f * K_EFF_MIX * P_disp / std::max(2.0f * spectrum_.domega[i], 1e-12f);
 
       spectrum_.S_eta_rad[i] = S_hat;
 
