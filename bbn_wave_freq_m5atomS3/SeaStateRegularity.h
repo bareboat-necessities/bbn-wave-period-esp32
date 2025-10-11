@@ -385,7 +385,7 @@ public:
       spectrum_.S_eta_rad[i] = S_hat;
 
       const float w  = spectrum_.omega[i];
-      const float dw = spectrum_.domega[i];
+      const float dw = 2.0f * spectrum_.domega[i];
 
       // width contribution to moments
       S0 += double(S_hat) * double(dw);
