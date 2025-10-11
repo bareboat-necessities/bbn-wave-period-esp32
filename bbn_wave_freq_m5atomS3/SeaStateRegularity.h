@@ -100,7 +100,7 @@ public:
       return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
 
-    // Fixed grid build — cosine-tapered geometric spacing (denser near center)
+    // Cosine-tapered geometric spacing (denser near center)
     inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
       constexpr float TARGET_SPAN_UP = 6.0f;
       omega_center = clampf_(omega_ctr, omega_min, omega_max);
@@ -158,16 +158,11 @@ public:
       }
     }
 
-    // LPF alphas, rotator steps, and ENBW (from discrete α)
+    // LPF alphas and rotator steps — (ENBW = pi^2 fc)
     inline void precomputeForDt(float dt) {
-        constexpr float FC_MIN_HZ = 0.02f; // avoid near-DC bandwidth → PSD blowups
-
-        // --- 1. Compute α and rotators ---
         for (int i = 0; i < NBINS; ++i) {
-            float fc_hz = domega[i] / (PI_ * PI_);      // placeholder fc (kept for continuity)
-            if (fc_hz < FC_MIN_HZ) fc_hz = FC_MIN_HZ;
-
-            float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);  // one-pole α
+            const float fc_hz = domega[i] / (PI_ * PI_);  // fc = ENBW/pi^2 (analog-calibrated)
+            float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
             if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
             alpha_k[i] = a;
 
@@ -179,27 +174,6 @@ public:
                 cos_dphi[i] = std::cos(dphi);
                 sin_dphi[i] = std::sin(dphi);
             }
-        }
-
-        // --- 2. Mean-alpha normalization (kept as before) ---
-        float mean_a = 0.0f;
-        for (int i = 0; i < NBINS; ++i) mean_a += alpha_k[i];
-        mean_a /= float(NBINS);
-        if (mean_a > 1e-9f) {
-            const float s = 1.0f / mean_a;
-            for (int i = 0; i < NBINS; ++i) {
-                float a = alpha_k[i] * s;
-                alpha_k[i] = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
-            }
-        }
-
-        // --- 3. ENBW derived from final α values ---
-        const float fs = 1.0f / std::max(dt, 1e-9f);
-        for (int i = 0; i < NBINS; ++i) {
-            const float a = alpha_k[i]; // final normalized α
-            enbw_rad[i] = (a > 0.0f && a < 2.0f)
-                          ? (PI_ * fs * a) / (2.0f - a)   // exact discrete ENBW in rad/s
-                          : TWO_PI_ * FC_MIN_HZ;          // fallback in rad/s
         }
     }
 
