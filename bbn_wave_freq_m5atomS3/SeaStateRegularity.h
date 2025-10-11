@@ -181,7 +181,12 @@ public:
       if (!ready) return 0.0f;
       double acc = 0.0;
       for (int i = 0; i < NBINS; ++i) {
-        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(domega[i]);
+        // Use full bin width = wR - wL (energy-conserving)
+        const float w   = omega[i];
+        const float wL  = (i > 0)         ? omega[i - 1] : w;
+        const float wR  = (i < NBINS - 1) ? omega[i + 1] : w;
+        const double width = double(wR) - double(wL);
+        acc += std::pow(double(w), n) * double(S_eta_rad[i]) * width;
       }
       return float(acc);
     }
@@ -230,7 +235,7 @@ public:
       return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
 
-    // main accumulation (unchanged math; already uses full 2·dω)
+    // main accumulation (energy-conserving rebinning with full widths)
     template <int NK>
     inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float dt_s) {
       if (!initialized) buildGrid();
@@ -246,22 +251,29 @@ public:
         const float dw_c = S.domega[i];
         const float wL_i = w_c - dw_c;
         const float wR_i = w_c + dw_c;
-        const float E_src = Srad * dw_c;
+
+        // --- Correct source bin full width and energy ---
+        const float width_i = std::max(wR_i - wL_i, 1e-12f); // full width
+        const float E_src   = Srad * width_i;                 // total energy in source bin
 
         for (int j = 0; j < N_BINS; ++j) {
-          const float f_c  = freq_hz[j];
-          const float dw_j = domega[j];
-          const float w_center = TWO_PI_ * f_c;
-          const float wL_j = w_center - dw_j;
-          const float wR_j = w_center + dw_j;
+          const float f_c   = freq_hz[j];
+          const float dw_j  = domega[j];
+          const float w_c_j = TWO_PI_ * f_c;
+          const float wL_j  = w_c_j - dw_j;
+          const float wR_j  = w_c_j + dw_j;
 
           const float overlap = std::max(0.0f,
               std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
           if (overlap <= 0.0f) continue;
 
-          const float frac   = overlap / (wR_i - wL_i);
-          const float E_part = E_src * frac;
-          const float S_part = E_part / std::max(dw_j, 1e-12f);
+          // Fraction of source energy going into target bin j
+          const float frac    = overlap / width_i;
+          const float E_part  = E_src * frac;
+
+          // Convert overlapped energy back to PSD using TARGET full width
+          const float width_j = std::max(wR_j - wL_j, 1e-12f);
+          const float S_part  = E_part / width_j;
 
           S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
           weight[j] = (1.0f - alpha) * weight[j] + alpha;
@@ -583,3 +595,4 @@ inline void SeaState_sine_wave_test() {
   }
 }
 #endif
+
