@@ -140,7 +140,7 @@ public:
         const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
 
         // Voronoi full width: (wR - wL)/2
-        float dW = 0.5f * (wR - wL);
+        float dW = (wR - wL);
         // adaptive floor: prevent tiny ω bins from dominating
         const float dW_min_rel = 0.01f * std::max(w, 0.0f);
         const float dW_min_abs = 1e-5f;
