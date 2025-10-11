@@ -72,7 +72,6 @@ public:
   struct Spectrum {
     bool  ready        = false;
     float omega_center = 0.0f;
-    float ratio_r      = 1.0f;
 
     float omega[NBINS]{};
     float domega[NBINS]{};
