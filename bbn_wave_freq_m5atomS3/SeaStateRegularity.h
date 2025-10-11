@@ -181,12 +181,7 @@ public:
       if (!ready) return 0.0f;
       double acc = 0.0;
       for (int i = 0; i < NBINS; ++i) {
-        // Use full bin width = wR - wL (energy-conserving)
-        const float w   = omega[i];
-        const float wL  = (i > 0)         ? omega[i - 1] : w;
-        const float wR  = (i < NBINS - 1) ? omega[i + 1] : w;
-        const double width = double(wR) - double(wL);
-        acc += std::pow(double(w), n) * double(S_eta_rad[i]) * width;
+        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(domega[i]);
       }
       return float(acc);
     }
@@ -200,7 +195,7 @@ public:
 
     // persistent state
     float freq_hz[N_BINS];
-    float domega[N_BINS];     // bin half-widths (rad/s)
+    float domega[N_BINS];     // full bin width (rad/s)
     float S_avg[N_BINS];      // exponentially averaged PSD (rad/s)
     float weight[N_BINS];
     bool  initialized = false;
@@ -225,7 +220,7 @@ public:
       for (int i = 0; i < N_BINS; ++i) {
         float fL = (i > 0) ? freq_hz[i - 1] : freq_hz[i];
         float fR = (i < N_BINS - 1) ? freq_hz[i + 1] : freq_hz[i];
-        domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);  // Δω half-width
+        domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);  // full Δω in rad/s for Voronoi bin
       }
       initialized = true;
     }
@@ -235,7 +230,7 @@ public:
       return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
 
-    // main accumulation (energy-conserving rebinning with full widths)
+    // main accumulation (energy-conserving rebinning with correct bounds)
     template <int NK>
     inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float dt_s) {
       if (!initialized) buildGrid();
@@ -248,32 +243,29 @@ public:
         if (!(Srad > 0.0f)) continue;
 
         const float w_c  = S.omega[i];
-        const float dw_c = S.domega[i];
-        const float wL_i = w_c - dw_c;
-        const float wR_i = w_c + dw_c;
+        const float dw_c = S.domega[i];                 // full source width
+        const float wL_i = w_c - 0.5f * dw_c;           // use half to form bounds
+        const float wR_i = w_c + 0.5f * dw_c;
 
-        // --- Correct source bin full width and energy ---
-        const float width_i = std::max(wR_i - wL_i, 1e-12f); // full width
-        const float E_src   = Srad * width_i;                 // total energy in source bin
+        const float width_i = std::max(wR_i - wL_i, 1e-12f);  // equals dw_c
+        const float E_src   = Srad * width_i;                  // total source energy
 
         for (int j = 0; j < N_BINS; ++j) {
           const float f_c   = freq_hz[j];
-          const float dw_j  = domega[j];
+          const float dw_j  = domega[j];               // full target width
           const float w_c_j = TWO_PI_ * f_c;
-          const float wL_j  = w_c_j - dw_j;
-          const float wR_j  = w_c_j + dw_j;
+          const float wL_j  = w_c_j - 0.5f * dw_j;     // use half to form bounds
+          const float wR_j  = w_c_j + 0.5f * dw_j;
 
           const float overlap = std::max(0.0f,
               std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
           if (overlap <= 0.0f) continue;
 
-          // Fraction of source energy going into target bin j
-          const float frac    = overlap / width_i;
+          const float frac    = overlap / width_i;     // fraction of source bin energy
           const float E_part  = E_src * frac;
 
-          // Convert overlapped energy back to PSD using TARGET full width
-          const float width_j = std::max(wR_j - wL_j, 1e-12f);
-          const float S_part  = E_part / width_j;
+          const float width_j = std::max(wR_j - wL_j, 1e-12f);  // equals dw_j
+          const float S_part  = E_part / width_j;               // PSD in target bin
 
           S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
           weight[j] = (1.0f - alpha) * weight[j] + alpha;
@@ -385,13 +377,12 @@ public:
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
       spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
 
-      // convert to S_eta via omega^-4 and ENBW-like compensation using Δω (half-width)
+      // convert to S_eta via omega^-4 and ENBW-like compensation using Δω (full width)
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
 
-      // Correct energy normalization: use actual full bin width = 2 * Δω for internal bins
-      const float dw = spectrum_.domega[i];
-      const float width = (i == 0 || i == NBINS - 1) ? dw : (2.0f * dw);
+      // Correct energy normalization: use the true bin width (domega is full Voronoi width)
+      const float width = spectrum_.domega[i];
       float S_hat = K_EFF_MIX * P_disp / std::max(width, 1e-12f);
 
       spectrum_.S_eta_rad[i] = S_hat;
