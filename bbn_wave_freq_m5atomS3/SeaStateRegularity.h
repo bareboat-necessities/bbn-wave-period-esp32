@@ -182,7 +182,7 @@ public:
       double acc = 0.0;
       for (int i = 0; i < NBINS; ++i) {
         // FULL width = 2·domega[i]
-        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(2.0f * domega[i]);
+        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(domega[i]);
       }
       return float(acc);
     }
