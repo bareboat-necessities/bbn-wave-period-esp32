@@ -158,34 +158,14 @@ public:
       }
     }
 
-    // LPF alphas and rotator steps — keep Δω law, smooth fc variation to reduce end bias
+    // LPF alphas and rotator steps — (ENBW = pi^2 fc)
     inline void precomputeForDt(float dt) {
-        // Scaling constants (very gentle limits, not invasive)
-        constexpr float FC_MIN_HZ = 0.008f;   // absolute floor for very low ω
-        constexpr float FC_MAX_HZ = 1.50f;    // absolute cap to avoid runaway at high ω
-        constexpr float SMOOTH_FRAC = 0.25f;  // how strongly to smooth fc across bins
-
-        float fc_prev = 0.0f;
         for (int i = 0; i < NBINS; ++i) {
-            // Your working physical mapping
-            float fc_raw = domega[i] / (PI_ * PI_);
-
-            // Clamp absolute bounds
-            if (fc_raw < FC_MIN_HZ) fc_raw = FC_MIN_HZ;
-            if (fc_raw > FC_MAX_HZ) fc_raw = FC_MAX_HZ;
-
-            // Gentle smoothing vs previous bin to reduce extreme slope
-            if (i > 0)
-                fc_raw = (1.0f - SMOOTH_FRAC) * fc_raw + SMOOTH_FRAC * fc_prev;
-            fc_prev = fc_raw;
-
-            // Discrete α
-            float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_raw);
-            if (a < 0.0f) a = 0.0f;
-            else if (a > 1.0f) a = 1.0f;
+            const float fc_hz = domega[i] / (PI_ * PI_);  // fc = ENBW/pi^2 (analog-calibrated)
+            float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
+            if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
             alpha_k[i] = a;
 
-            // Rotator
             const float dphi = omega[i] * dt;
             if (std::fabs(dphi) < 1e-3f) {
                 cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
