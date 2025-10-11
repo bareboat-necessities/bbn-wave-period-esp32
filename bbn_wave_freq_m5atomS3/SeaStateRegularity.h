@@ -74,7 +74,7 @@ public:
     float omega_center = 0.0f;
 
     float omega[NBINS]{};
-    float domega[NBINS]{};
+    float domega[NBINS]{};   // Voronoi FULL width (rad/s)
 
     float inv_w4[NBINS]{};
 
@@ -87,7 +87,7 @@ public:
     float zr[NBINS]{};
     float zi[NBINS]{};
 
-    float S_eta_rad[NBINS]{};
+    float S_eta_rad[NBINS]{}; // PSD in m^2 per (rad/s)
 
     inline void clear() { ready = false; }
 
@@ -131,7 +131,7 @@ public:
         omega[MAX_K - k] = clampf_(w_dn, omega_min, omega_max);
       }
 
-      // Voronoi half-widths (rad/s) and stabilized ω^-4
+      // Voronoi FULL widths (rad/s) and stabilized ω^-4
       // Add a tiny ω floor inside ω^4 to prevent blow-ups at very low ω.
       constexpr float W_FLOOR = 2e-2f; // rad/s (tiny; << typical ω)
       for (int i = 0; i < NBINS; ++i) {
@@ -139,13 +139,14 @@ public:
         const float wL = (i > 0)         ? omega[i - 1] : w;
         const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
 
+        // Voronoi full width: (wR - wL)/2
         float dW = 0.5f * (wR - wL);
         // adaptive floor: prevent tiny ω bins from dominating
-        const float dW_min_rel = 0.01f * std::max(w, 0.0f); // 0.25% of ω
+        const float dW_min_rel = 0.01f * std::max(w, 0.0f);
         const float dW_min_abs = 1e-5f;
         if (dW < std::max(dW_min_abs, dW_min_rel))
           dW = std::max(dW_min_abs, dW_min_rel);
-        domega[i] = dW;
+        domega[i] = dW; // FULL Voronoi width
 
         const float w2 = w * w;
         const float w4 = (w2 + W_FLOOR * W_FLOOR) * (w2 + W_FLOOR * W_FLOOR);
@@ -160,27 +161,28 @@ public:
 
     // LPF alphas and rotator steps — (ENBW = pi^2 fc)
     inline void precomputeForDt(float dt) {
-        for (int i = 0; i < NBINS; ++i) {
-            const float fc_hz = domega[i] / (PI_ * PI_);  // fc = ENBW/pi^2 (analog-calibrated)
-            float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
-            if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
-            alpha_k[i] = a;
+      for (int i = 0; i < NBINS; ++i) {
+        const float fc_hz = domega[i] / (PI_ * PI_);  // fc = ENBW/pi^2 (analog-calibrated)
+        float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
+        if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
+        alpha_k[i] = a;
 
-            const float dphi = omega[i] * dt;
-            if (std::fabs(dphi) < 1e-3f) {
-                cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
-                sin_dphi[i] = dphi;
-            } else {
-                cos_dphi[i] = std::cos(dphi);
-                sin_dphi[i] = std::sin(dphi);
-            }
+        const float dphi = omega[i] * dt;
+        if (std::fabs(dphi) < 1e-3f) {
+          cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
+          sin_dphi[i] = dphi;
+        } else {
+          cos_dphi[i] = std::cos(dphi);
+          sin_dphi[i] = std::sin(dphi);
         }
+      }
     }
 
     inline float integrateMoment(int n) const {
       if (!ready) return 0.0f;
       double acc = 0.0;
       for (int i = 0; i < NBINS; ++i) {
+        // Riemann sum: Σ ω^n * S(ω) * Δω, where Δω = domega[i] (FULL Voronoi width)
         acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(domega[i]);
       }
       return float(acc);
@@ -195,8 +197,8 @@ public:
 
     // persistent state
     float freq_hz[N_BINS];
-    float domega[N_BINS];     // full bin width (rad/s)
-    float S_avg[N_BINS];      // exponentially averaged PSD (rad/s)
+    float domega[N_BINS];     // FULL Voronoi bin width (rad/s)
+    float S_avg[N_BINS];      // exponentially averaged PSD (m^2 / (rad/s))
     float weight[N_BINS];
     bool  initialized = false;
 
@@ -220,7 +222,8 @@ public:
       for (int i = 0; i < N_BINS; ++i) {
         float fL = (i > 0) ? freq_hz[i - 1] : freq_hz[i];
         float fR = (i < N_BINS - 1) ? freq_hz[i + 1] : freq_hz[i];
-        domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);  // full Δω in rad/s for Voronoi bin
+        // FULL Voronoi width in rad/s: 2π * 0.5*(fR - fL) = π*(fR - fL)
+        domega[i] = 2.0f * float(M_PI) * 0.5f * (fR - fL);
       }
       initialized = true;
     }
@@ -230,55 +233,57 @@ public:
       return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
 
-// main accumulation (energy-conserving rebinning with correct bounds & widths)
-template <int NK>
-inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float dt_s) {
-  if (!initialized) buildGrid();
-  if (!(tau_spec > 1e-3f)) return;
+    // main accumulation (energy-conserving rebinning with correct bounds & widths)
+    template <int NK>
+    inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float dt_s) {
+      if (!initialized) buildGrid();
+      if (!(tau_spec > 1e-3f)) return;
 
-  const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
+      const float alpha = 1.0f - std::exp(-dt_s / tau_spec);
 
-  for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
-    const float Srad = S.S_eta_rad[i];
-    if (!(Srad > 0.0f) || !std::isfinite(Srad)) continue;
+      for (int i = 0; i < SeaStateRegularity<NK>::NBINS; ++i) {
+        const float Srad = S.S_eta_rad[i];
+        if (!(Srad > 0.0f) || !std::isfinite(Srad)) continue;
 
-    // --- Source bin interval (center ± half of full width) ---
-    const float w_c  = S.omega[i];
-    const float dw_c = S.domega[i];            // FULL Voronoi width (rad/s)
-    const float wL_i = w_c - 0.5f * dw_c;
-    const float wR_i = w_c + 0.5f * dw_c;
-    const float width_i = std::max(wR_i - wL_i, 1e-12f);   // == dw_c
+        // --- Source bin interval (center ± half of FULL width) ---
+        const float w_c  = S.omega[i];
+        const float dw_c = S.domega[i];            // FULL width (rad/s)
+        if (!(dw_c > 1e-10f)) continue;            // skip degenerate bins
+        const float wL_i = w_c - 0.5f * dw_c;
+        const float wR_i = w_c + 0.5f * dw_c;
+        const float width_i = wR_i - wL_i;         // == dw_c
 
-    // Energy carried by source bin i (m²)
-    const float E_src = Srad * width_i;
+        // Energy carried by source bin i (m²)
+        const float E_src = Srad * width_i;
 
-    for (int j = 0; j < N_BINS; ++j) {
-      // --- Target bin interval (center ± half of full width) ---
-      const float f_c   = freq_hz[j];
-      const float w_c_j = TWO_PI_ * f_c;
-      const float dw_j  = domega[j];           // FULL Voronoi width (rad/s)
-      const float wL_j  = w_c_j - 0.5f * dw_j;
-      const float wR_j  = w_c_j + 0.5f * dw_j;
+        for (int j = 0; j < N_BINS; ++j) {
+          // --- Target bin interval (center ± half of FULL width) ---
+          const float f_c   = freq_hz[j];
+          const float w_c_j = TWO_PI_ * f_c;
+          const float dw_j  = domega[j];           // FULL width (rad/s)
+          if (!(dw_j > 1e-10f)) continue;
+          const float wL_j  = w_c_j - 0.5f * dw_j;
+          const float wR_j  = w_c_j + 0.5f * dw_j;
 
-      // Overlap length in rad/s
-      const float wL = (wL_i > wL_j) ? wL_i : wL_j;
-      const float wR = (wR_i < wR_j) ? wR_i : wR_j;
-      const float overlap = wR - wL;
-      if (!(overlap > 0.0f)) continue;
+          // Overlap length in rad/s
+          const float wL = (wL_i > wL_j) ? wL_i : wL_j;
+          const float wR = (wR_i < wR_j) ? wR_i : wR_j;
+          const float overlap = wR - wL;
+          if (!(overlap > 0.0f)) continue;
 
-      // Split source energy by geometric overlap
-      const float frac   = overlap / width_i;       // ∈ (0,1]
-      const float E_part = E_src * frac;            // m²
+          // Split source energy by geometric overlap
+          const float frac   = overlap / width_i;   // ∈ (0,1]
+          const float E_part = E_src * frac;        // m²
 
-      // Back to PSD in target bin (m² per rad/s)
-      const float width_j = std::max(wR_j - wL_j, 1e-12f); // == dw_j
-      const float S_part  = E_part / width_j;
+          // Back to PSD in target bin (m² per rad/s)
+          const float width_j = wR_j - wL_j;        // == dw_j
+          const float S_part  = E_part / width_j;
 
-      S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
-      weight[j] = (1.0f - alpha) * weight[j] + alpha;
+          S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
+          weight[j] = (1.0f - alpha) * weight[j] + alpha;
+        }
+      }
     }
-  }
-}
 
     // accessors
     inline float valueRad(int k) const {
@@ -354,7 +359,7 @@ inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float
         spectrum_.precomputeForDt(dt_s);
       }
     }
-      
+
     spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
     spectrum_.precomputeForDt(dt_s);
     grid_valid = true;
@@ -384,13 +389,14 @@ inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
       spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
 
-      // convert to S_eta via omega^-4 and ENBW-like compensation using Δω (full width)
+      // convert to S_eta via omega^-4 and ENBW-like compensation using Δω (FULL width)
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
 
-      // Correct energy normalization: use the true bin width (domega is full Voronoi width)
+      // Correct normalization: divide by true bin width (domega is FULL Voronoi width)
       const float width = spectrum_.domega[i];
-      float S_hat = K_EFF_MIX * P_disp / std::max(width, 1e-12f);
+      if (!(width > 1e-12f)) continue;
+      float S_hat = K_EFF_MIX * P_disp / width;   // PSD m^2/(rad/s)
 
       spectrum_.S_eta_rad[i] = S_hat;
 
@@ -399,7 +405,7 @@ inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float
       // width contribution to moments (use the same 'width' for consistency)
       S0 += double(S_hat) * double(width);
       S1 += double(S_hat) * double(w)  * double(width);
-      S2 += double(S_hat) * double(w)  * double(w) * double(width); 
+      S2 += double(S_hat) * double(w)  * double(w) * double(width);
     }
 
     // moments + Jensen helpers
@@ -415,7 +421,7 @@ inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float
     has_moments = true;
 
     // accumulate into fixed-grid averaged spectrum
-    fixed_avg_.template accumulate<MAX_K>(spectrum_, dt_s); 
+    fixed_avg_.template accumulate<MAX_K>(spectrum_, dt_s);
 
     computeRegularityOutput();
   }
