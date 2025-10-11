@@ -377,18 +377,19 @@ public:
       const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
       const float P_disp = P_acc * spectrum_.inv_w4[i];
 
-      // Working calibration: divide by half-width Δω and use K_EFF_MIX = 2.0f
-      float S_hat = 0.5f * K_EFF_MIX * P_disp / std::max(spectrum_.domega[i], 1e-12f);
+      // Correct energy normalization: use actual full bin width = 2 * Δω for internal bins
+      const float dw = spectrum_.domega[i];
+      const float width = (i == 0 || i == NBINS - 1) ? dw : (2.0f * dw);
+      float S_hat = K_EFF_MIX * P_disp / std::max(width, 1e-12f);
 
       spectrum_.S_eta_rad[i] = S_hat;
 
-      const float w  = spectrum_.omega[i];
-      const float dw = spectrum_.domega[i];
+      const float w = spectrum_.omega[i];
 
-      // width contribution to moments
-      S0 += double(S_hat) * double(dw);
-      S1 += double(S_hat) * double(w)  * double(dw);
-      S2 += double(S_hat) * double(w)  * double(w) * double(dw);
+      // width contribution to moments (use the same 'width' for consistency)
+      S0 += double(S_hat) * double(width);
+      S1 += double(S_hat) * double(w)  * double(width);
+      S2 += double(S_hat) * double(w)  * double(w) * double(width); 
     }
 
     // moments + Jensen helpers
