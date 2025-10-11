@@ -378,7 +378,7 @@ public:
       const float P_disp = P_acc * spectrum_.inv_w4[i];
 
       // Working calibration: divide by half-width Δω and use K_EFF_MIX = 2.0f
-      float S_hat = 0.5f * K_EFF_MIX * P_disp / std::max(2.0f * spectrum_.domega[i], 1e-12f);
+      float S_hat = K_EFF_MIX * P_disp / std::max(2.0f * spectrum_.domega[i], 1e-12f);
 
       spectrum_.S_eta_rad[i] = S_hat;
 
