@@ -232,8 +232,7 @@ public:
 
     // main accumulation (unchanged math; already uses full 2·dω)
     template <int NK>
-    inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S,
-                           float dt_s) {
+    inline void accumulate(const typename SeaStateRegularity<NK>::Spectrum& S, float dt_s) {
       if (!initialized) buildGrid();
       if (!(tau_spec > 1e-3f)) return;
 
