@@ -389,12 +389,11 @@ public:
 
       const float w  = spectrum_.omega[i];
       const float dw = spectrum_.domega[i];
-      const float edge = (i == 0 || i == NBINS - 1) ? 0.5f : 1.0f;
 
       // width contribution to moments
-      S0 += edge * double(S_hat) * double(dw);
-      S1 += edge * double(S_hat) * double(w)  * double(dw);
-      S2 += edge * double(S_hat) * double(w)  * double(w) * double(dw);
+      S0 += double(S_hat) * double(dw);
+      S1 += double(S_hat) * double(w)  * double(dw);
+      S2 += double(S_hat) * double(w)  * double(w) * double(dw);
     }
 
     // moments + Jensen helpers
