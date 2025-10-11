@@ -63,7 +63,7 @@ public:
   constexpr static float TWO_PI_ = 2.0f * PI_;
 
   // Behavior knobs
-  constexpr static float BETA_SPEC     = 1.5f;
+  constexpr static float BETA_SPEC     = 1.4f;
   constexpr static float K_EFF_MIX     = 2.0f;
   constexpr static float OMEGA_MIN_HZ  = 0.03f;
   constexpr static float OMEGA_MAX_HZ  = 4.00f;
@@ -285,9 +285,9 @@ public:
 
   // Constructor / Reset
   explicit SeaStateRegularity(float tau_mom_sec = 180.0f,
-                              float tau_a_mom_sec = 60.0f,
+                              float tau_a_mom_sec = 45.0f,
                               float tau_out_sec = 30.0f,
-                              float tau_w_sec   = 30.0f)
+                              float tau_w_sec   = 15.0f)
   : tau_mom(tau_mom_sec), tau_a_mom(tau_a_mom_sec),
     tau_out((tau_out_sec > 1e-3f) ? tau_out_sec : 1e-3f),
     tau_w(tau_w_sec) {
@@ -336,7 +336,7 @@ public:
     // Handle update on large ω jumps 
     if (omega_used > 0.0f) {
       const float ratio = w_obs / omega_used;
-      if (ratio < 0.67f || ratio > 1.50f) {
+      if (ratio < 0.7f || ratio > 1.4f) {
         omega_used = w_obs;
         spectrum_.clear();
         spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
