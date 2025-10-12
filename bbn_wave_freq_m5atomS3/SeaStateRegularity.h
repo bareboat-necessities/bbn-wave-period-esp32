@@ -287,7 +287,7 @@ inline float integrateMoment(int n) const {
 
           const float frac   = std::clamp(overlap / (wR_i - wL_i), 0.0f, 1.0f);
           const float E_part = E_src * frac;
-          const float S_part = E_part / std::max(overlap, 1e-12f);
+          const float S_part = E_part / std::max(2.0f * dw_j, 1e-12f);
 
           S_avg[j]  = (1.0f - alpha) * S_avg[j]  + alpha * S_part;
           weight[j] = (1.0f - alpha) * weight[j] + alpha;
