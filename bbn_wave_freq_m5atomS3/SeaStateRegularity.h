@@ -417,6 +417,11 @@ const float warm = (warmup_s > 1e-6f)
     grid_valid = true;
     last_bins_dt = dt_s;
 
+  // --- Regularization shaping constants ---
+const float w0_reg  = (w0_4 > 0.0f) ? std::sqrt(std::sqrt(w0_4))
+                                   : (2.0f * TWO_PI_ * 0.01f);
+const float beta_reg = 1.4f;  // shape factor for low-ω steepness    
+
     // hot loop: rotator + 1st-order IIR using precomputed constants
     double S0 = 0.0, S1 = 0.0, S2 = 0.0;
     for (int i = 0; i < NBINS; ++i) {
@@ -452,8 +457,8 @@ const float S_a_rad = S_a_Hz / TWO_PI_;
 // --- Acceleration → displacement PSD per (rad/s) with Tikhonov regularization ---
 const float w  = spectrum_.omega[i];
 const float w2 = w * w;
-const float denom = (w2 * w2) + w0_4;
-
+const float denom = (w2 * w2) + (beta_reg * w0_reg * w0_reg) * w2 + w0_4;
+        
 // --- Apply warm-up fade to suppress transient low-ω energy ---
 const float S_eta_rad_i = (S_a_rad / std::max(denom, 1e-24f)) * warm;
         
