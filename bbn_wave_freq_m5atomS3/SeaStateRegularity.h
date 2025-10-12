@@ -357,9 +357,11 @@ inline void precomputeForDt(float dt) {
 float a_hp = accel_z - a_mean;  // basic de-mean
 {
     // compute cutoff from regularizer (≈ inverse of averaging horizon)
-    const float w0 = (w0_4 > 0.0f) ? std::sqrt(std::sqrt(w0_4)) : 0.0f;
+    const float w0 = (w0_4 > 0.0f) ? std::sqrt(std::sqrt(w0_4))
+                                   : (2.0f * TWO_PI_ * 0.01f);  // fallback 0.02 Hz
     const float fc_hp = w0 / TWO_PI_;
-    const float a_hp_coef = std::exp(-TWO_PI_ * fc_hp * dt_s);
+    const float a_hp_coef = std::clamp(std::exp(-TWO_PI_ * fc_hp * dt_s), 0.0f, 0.9999f);
+
     // Direct form HP: y[n] = a*(y[n-1] + x[n] - x[n-1])
     a_hp = a_hp_coef * (hp_state + (accel_z - a_mean) - hp_prev_in);
     hp_state   = a_hp;
