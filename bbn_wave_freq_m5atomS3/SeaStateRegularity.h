@@ -187,14 +187,31 @@ inline void precomputeForDt(float dt) {
     }
 }
 
-    inline float integrateMoment(int n) const {
-      if (!ready) return 0.0f;
-      double acc = 0.0;
-      for (int i = 0; i < NBINS; ++i) {
-        acc += std::pow(double(omega[i]), n) * double(S_eta_rad[i]) * double(2.0f * domega[i]);
-      }
-      return float(acc);
+inline float integrateMoment(int n) const {
+  if (!ready) return 0.0f;
+  double acc = 0.0;
+
+  for (int i = 0; i < NBINS; ++i) {
+    const double w = double(omega[i]);
+    const double S = double(S_eta_rad[i]);
+    const double dw2 = double(2.0f * domega[i]);
+
+    double term;
+    switch (n) {
+      case -1: term = (w > 0.0) ? S / w : 0.0; break;
+      case 0:  term = S;           break;
+      case 1:  term = S * w;       break;
+      case 2:  term = S * w * w;   break;
+      case 3:  term = S * w * w * w; break;
+      case 4:  term = S * w * w * w * w; break;
+      default: term = S * std::pow(w, n); break; // fallback for rare cases
     }
+
+    acc += term * dw2;
+  }
+  return float(acc);
+}
+
   };
 
   // Fixed-grid online averaged spectrum (absolute Hz grid)
