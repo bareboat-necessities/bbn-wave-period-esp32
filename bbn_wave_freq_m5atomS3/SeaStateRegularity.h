@@ -149,7 +149,6 @@ public:
 
         const float w2 = w * w;
         const float w4 = (w2 + W_FLOOR * W_FLOOR) * (w2 + W_FLOOR * W_FLOOR);
-        inv_w4[i] = (w4 > 0.0f) ? 1.0f / w4 : 0.0f;
       }
 
       if (!ready) {
