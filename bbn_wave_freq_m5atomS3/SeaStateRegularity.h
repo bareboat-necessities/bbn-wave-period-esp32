@@ -382,9 +382,8 @@ float a_hp = accel_z - a_mean;  // basic de-mean
     a_hp = a_hp_coef * (hp_state + (accel_z - a_mean) - hp_prev_in);
     hp_state   = a_hp;
     hp_prev_in = (accel_z - a_mean);
-}
-// === Warm-up estimation and ramp ===
-{
+
+    // === Warm-up estimation and ramp ===
     // Estimate settling time constants
     const float tau_hp = 1.0f / std::max(TWO_PI_ * fc_hp, 2e-2f);      // HP filter
     const float f_c    = std::max(omega_used / TWO_PI_, 2e-2f);        // Hz
