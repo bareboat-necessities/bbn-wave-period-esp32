@@ -76,8 +76,6 @@ public:
     float omega[NBINS]{};
     float domega[NBINS]{};
 
-    float inv_w4[NBINS]{};
-
     float alpha_k[NBINS]{};
     float cos_dphi[NBINS]{};
     float sin_dphi[NBINS]{};
