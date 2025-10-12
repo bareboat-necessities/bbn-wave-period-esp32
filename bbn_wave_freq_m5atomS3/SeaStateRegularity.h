@@ -425,9 +425,10 @@ spectrum_.S_eta_rad[i] = S_eta_rad_i;
       const float dw = spectrum_.domega[i];
 
       // width contribution to moments
-      S0 += double(S_hat) * double(2.0f * dw);
-      S1 += double(S_hat) * double(w)  * double(2.0f * dw);
-      S2 += double(S_hat) * double(w)  * double(w) * double(2.0f * dw);
+S0 += double(S_eta_rad_i) * double(2.0f * dw);
+S1 += double(S_eta_rad_i) * double(w)  * double(2.0f * dw);
+S2 += double(S_eta_rad_i) * double(w)  * double(w) * double(2.0f * dw);
+        
     }
 
     // moments + Jensen helpers
