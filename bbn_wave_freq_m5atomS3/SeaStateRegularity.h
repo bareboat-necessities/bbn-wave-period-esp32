@@ -413,12 +413,13 @@ const float P_bb = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectru
 // --- Normalize by ENBW (Hz) of this analyzer ---
 const float ENBW_Hz = std::max(spectrum_.enbw_hz[i], 1e-12f);
 const float S_a_Hz  = P_bb / ENBW_Hz;
-
+const float S_a_rad = S_a_Hz / TWO_PI_;
+        
 // --- Acceleration → displacement PSD per (rad/s) with Tikhonov regularization ---
 const float w  = spectrum_.omega[i];
 const float w2 = w * w;
 const float denom = (w2 * w2) + w0_4;
-const float S_eta_rad_i = S_a_Hz / std::max(denom, 1e-24f);
+const float S_eta_rad_i = S_a_rad / std::max(denom, 1e-24f);
 
 // --- Store ---
 spectrum_.S_eta_rad[i] = S_eta_rad_i;
