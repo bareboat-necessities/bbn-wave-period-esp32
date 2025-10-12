@@ -285,7 +285,7 @@ inline float integrateMoment(int n) const {
           const float overlap = std::max(0.0f, std::min(wR_i, wR_j) - std::max(wL_i, wL_j));
           if (overlap <= 0.0f) continue;
 
-          const float frac   = std::clamp(overlap / (wR_i - wL_i), 0.0f, 1.0f);
+          const float frac   = overlap / (wR_i - wL_i);
           const float E_part = E_src * frac;
           const float S_part = E_part / std::max(2.0f * dw_j, 1e-12f);
 
