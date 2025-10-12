@@ -397,9 +397,9 @@ float a_hp = accel_z - a_mean;  // basic de-mean
         spectrum_.s[i] /= nrm;
       }
 
-      const float y_r = a_demean * spectrum_.c[i];
-      const float y_i = -a_demean * spectrum_.s[i];
-
+const float y_r = a_hp * spectrum_.c[i];
+const float y_i = -a_hp * spectrum_.s[i];
+        
       // 1st-order IIR with alpha_k
       const float a = spectrum_.alpha_k[i];
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
