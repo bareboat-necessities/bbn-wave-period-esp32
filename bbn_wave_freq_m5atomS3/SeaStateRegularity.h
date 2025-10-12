@@ -342,8 +342,20 @@ inline void precomputeForDt(float dt) {
     // smoothed center omega
     const float w_obs = omega_inst;
     omega_used = (omega_used <= 0.0f) ? w_obs : (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
-    const float a_demean = accel_z - a_mean;
 
+// --- Detrend and optional high-pass to suppress DC/very-low-ω leakage ---
+float a_hp = accel_z - a_mean;  // basic de-mean
+{
+    // compute cutoff from regularizer (≈ inverse of averaging horizon)
+    const float w0 = (w0_4 > 0.0f) ? std::sqrt(std::sqrt(w0_4)) : 0.0f;
+    const float fc_hp = w0 / TWO_PI_;
+    const float a_hp_coef = std::exp(-TWO_PI_ * fc_hp * dt_s);
+    // Direct form HP: y[n] = a*(y[n-1] + x[n] - x[n-1])
+    a_hp = a_hp_coef * (hp_state + (accel_z - a_mean) - hp_prev_in);
+    hp_state   = a_hp;
+    hp_prev_in = (accel_z - a_mean);
+}
+      
     // Handle update on large ω jumps 
     if (omega_used > 0.0f) {
       const float ratio = w_obs / omega_used;
