@@ -148,7 +148,6 @@ public:
         domega[i] = dW;
 
         const float w2 = w * w;
-        const float w4 = (w2 + W_FLOOR * W_FLOOR) * (w2 + W_FLOOR * W_FLOOR);
       }
 
       if (!ready) {
