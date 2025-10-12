@@ -158,24 +158,35 @@ public:
       }
     }
 
-    // LPF alphas and rotator steps — (ENBW = pi^2 fc)
-    inline void precomputeForDt(float dt) {
-        for (int i = 0; i < NBINS; ++i) {
-            const float fc_hz = domega[i] / (PI_ * PI_);  // fc = ENBW/pi^2 (analog-calibrated)
-            float a = 1.0f - std::exp(-dt * TWO_PI_ * fc_hz);
-            if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
-            alpha_k[i] = a;
+inline void precomputeForDt(float dt) {
+    const float Fs = 1.0f / dt;
+    for (int i = 0; i < NBINS; ++i) {
+        const float fk = omega[i] / TWO_PI_;   // bin center frequency (Hz)
 
-            const float dphi = omega[i] * dt;
-            if (std::fabs(dphi) < 1e-3f) {
-                cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
-                sin_dphi[i] = dphi;
-            } else {
-                cos_dphi[i] = std::cos(dphi);
-                sin_dphi[i] = std::sin(dphi);
-            }
+        // --- Constant-Q target (relative ENBW = r * fk) ---
+        const float r = 0.12f;                 // tune: 0.08..0.20 typical
+        const float ENBW_target = r * std::max(fk, 1e-9f);
+
+        // --- Solve for exact EWMA α with this ENBW ---
+        float alpha = (2.0f * ENBW_target) / (ENBW_target + 0.5f * Fs);
+        if (alpha < 0.0f) alpha = 0.0f;
+        else if (alpha > 1.0f) alpha = 1.0f;
+        alpha_k[i] = alpha;
+
+        // --- Store the actual ENBW for later PSD normalization ---
+        enbw_hz[i] = (alpha / std::max(2.0f - alpha, 1e-12f)) * (0.5f * Fs);
+
+        // --- Rotator step ---
+        const float dphi = omega[i] * dt;
+        if (std::fabs(dphi) < 1e-3f) {
+            cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
+            sin_dphi[i] = dphi;
+        } else {
+            cos_dphi[i] = std::cos(dphi);
+            sin_dphi[i] = std::sin(dphi);
         }
     }
+}
 
     inline float integrateMoment(int n) const {
       if (!ready) return 0.0f;
@@ -346,6 +357,15 @@ public:
       
     spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
     spectrum_.precomputeForDt(dt_s);
+
+// --- Regularization frequency from averaging horizon ---
+{
+  const float Teff = std::max(fixed_avg_.tau_spec, tau_mom);  // seconds
+  const float w0 = (Teff > 1e-3f) ? (TWO_PI_ / Teff) : 0.0f;
+  const float w0_2 = w0 * w0;
+  w0_4 = w0_2 * w0_2;
+}
+      
     grid_valid = true;
     last_bins_dt = dt_s;
 
@@ -373,15 +393,22 @@ public:
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
       spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
 
-      // convert to S_eta via omega^-4 and ENBW-like compensation using Δω (half-width)
-      const float P_acc  = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
-      const float P_disp = P_acc * spectrum_.inv_w4[i];
+// --- Baseband power ---
+const float P_bb = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
 
-      // Working calibration: divide by full-width 2Δω and use K_EFF_MIX = 2.0f
-      float S_hat = K_EFF_MIX * P_disp / std::max(2.0f * spectrum_.domega[i], 1e-12f);
+// --- Normalize by ENBW (Hz) of this analyzer ---
+const float ENBW_Hz = std::max(spectrum_.enbw_hz[i], 1e-12f);
+const float S_a_Hz  = P_bb / ENBW_Hz;
 
-      spectrum_.S_eta_rad[i] = S_hat;
+// --- Acceleration → displacement PSD per (rad/s) with Tikhonov regularization ---
+const float w  = spectrum_.omega[i];
+const float w2 = w * w;
+const float denom = (w2 * w2) + w0_4;
+const float S_eta_rad_i = S_a_Hz / std::max(denom, 1e-24f);
 
+// --- Store ---
+spectrum_.S_eta_rad[i] = S_eta_rad_i;
+        
       const float w  = spectrum_.omega[i];
       const float dw = spectrum_.domega[i];
 
@@ -470,6 +497,11 @@ private:
 
   struct Spectrum spectrum_;
   struct FixedGridAvg fixed_avg_;
+
+  float enbw_hz[NBINS]{};  // exact ENBW (Hz) for each IIR analyzer bin
+  float w0_4 = 0.0f;       // regularization for ω⁻⁴
+  float hp_state = 0.0f;   // high-pass memory
+  float hp_prev_in = 0.0f;
 
   // Internal helpers
   inline void updateGlobalAlphas(float dt_s) {
