@@ -89,6 +89,8 @@ public:
 
     float S_eta_rad[NBINS]{};
 
+    float enbw_hz[NBINS]{};  // exact ENBW (Hz) for each IIR analyzer bin
+
     inline void clear() { ready = false; }
 
     // Local clamp (nested classes are NOT friends by default)
@@ -511,7 +513,6 @@ private:
   struct Spectrum spectrum_;
   struct FixedGridAvg fixed_avg_;
 
-  float enbw_hz[NBINS]{};  // exact ENBW (Hz) for each IIR analyzer bin
   float w0_4 = 0.0f;       // regularization for ω⁻⁴
   float hp_state = 0.0f;   // high-pass memory
   float hp_prev_in = 0.0f;
