@@ -368,7 +368,7 @@ float a_hp = accel_z - a_mean;  // basic de-mean
     // Handle update on large ω jumps 
     if (omega_used > 0.0f) {
       const float ratio = w_obs / omega_used;
-      if (ratio < 0.7f || ratio > 1.4f) {
+      if (ratio < 0.67f || ratio > 1.50f) {
         omega_used = w_obs;
         spectrum_.clear();
         spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
