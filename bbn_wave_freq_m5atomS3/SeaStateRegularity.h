@@ -321,6 +321,9 @@ inline float integrateMoment(int n) const {
   }
 
   inline void reset() {
+    elapsed_s = 0.0f;
+    warmup_s  = 0.0f;
+      
     M0.reset(); M1.reset(); M2.reset();
     A0.reset(); A1_mean.reset(); A2_second.reset();
     Q00.reset(); Q10.reset(); Q20.reset();
@@ -380,6 +383,24 @@ float a_hp = accel_z - a_mean;  // basic de-mean
     hp_state   = a_hp;
     hp_prev_in = (accel_z - a_mean);
 }
+// === Warm-up estimation and ramp ===
+{
+    // Estimate settling time constants
+    const float tau_hp = 1.0f / std::max(TWO_PI_ * fc_hp, 2e-2f);      // HP filter
+    const float f_c    = std::max(omega_used / TWO_PI_, 2e-2f);        // Hz
+    const float r_Q    = 0.12f;                                        // same as constant-Q ratio
+    const float tau_bin = 1.0f / std::max(r_Q * f_c, 2e-2f);           // analyzer bin settling
+    const float tau_m   = tau_mom;                                     // moment smoother
+
+    // Take the slowest and multiply by 3 → 95% settled
+    warmup_s = 3.0f * std::max({tau_hp, tau_bin, 0.5f * tau_m});
+}
+
+// Advance time and compute warm factor [0..1]
+elapsed_s += dt_s;
+const float warm = (warmup_s > 1e-6f)
+                     ? std::clamp(elapsed_s / warmup_s, 0.0f, 1.0f)
+                     : 1.0f;
       
     // Handle update on large ω jumps 
     if (omega_used > 0.0f) {
@@ -434,8 +455,10 @@ const float S_a_rad = S_a_Hz / TWO_PI_;
 const float w  = spectrum_.omega[i];
 const float w2 = w * w;
 const float denom = (w2 * w2) + w0_4;
-const float S_eta_rad_i = S_a_rad / std::max(denom, 1e-24f);
 
+// --- Apply warm-up fade to suppress transient low-ω energy ---
+const float S_eta_rad_i = (S_a_rad / std::max(denom, 1e-24f)) * warm;
+        
 // --- Store ---
 spectrum_.S_eta_rad[i] = S_eta_rad_i;
         
@@ -449,20 +472,25 @@ S2 += double(S_eta_rad_i) * double(w)  * double(w) * double(2.0f * dw);
     }
 
     // moments + Jensen helpers
-    M0.update(float(S0), alpha_mom);
-    M1.update(float(S1), alpha_mom);
-    M2.update(float(S2), alpha_mom);
+// --- Fade-in moment accumulation during warm-up ---
+const float alpha_mom_eff = alpha_mom * warm;
 
-    Q00.update(float(S0 * S0), alpha_mom);
-    Q10.update(float(S0 * S1), alpha_mom);
-    Q20.update(float(S0 * S2), alpha_mom);
+M0.update(float(S0), alpha_mom_eff);
+M1.update(float(S1), alpha_mom_eff);
+M2.update(float(S2), alpha_mom_eff);
+
+Q00.update(float(S0 * S0), alpha_mom_eff);
+Q10.update(float(S0 * S1), alpha_mom_eff);
+Q20.update(float(S0 * S2), alpha_mom_eff);
 
     spectrum_.ready = true;
     has_moments = true;
 
     // accumulate into fixed-grid averaged spectrum
-    fixed_avg_.template accumulate<MAX_K>(spectrum_, dt_s); 
-
+// --- Fade-in averaged spectrum accumulation ---
+if (warm > 0.0f)
+    fixed_avg_.template accumulate<MAX_K>(spectrum_, dt_s * warm);
+      
     computeRegularityOutput();
   }
 
@@ -531,6 +559,10 @@ private:
   float w0_4 = 0.0f;       // regularization for ω⁻⁴
   float hp_state = 0.0f;   // high-pass memory
   float hp_prev_in = 0.0f;
+
+// --- Warmup state ---
+float elapsed_s = 0.0f;     // time since last reset
+float warmup_s  = 0.0f;     // target burn-in horizon (computed online)
 
   // Internal helpers
   inline void updateGlobalAlphas(float dt_s) {
