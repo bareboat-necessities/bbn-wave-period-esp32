@@ -423,7 +423,6 @@ const float S_eta_rad_i = S_a_Hz / std::max(denom, 1e-24f);
 // --- Store ---
 spectrum_.S_eta_rad[i] = S_eta_rad_i;
         
-      const float w  = spectrum_.omega[i];
       const float dw = spectrum_.domega[i];
 
       // width contribution to moments
