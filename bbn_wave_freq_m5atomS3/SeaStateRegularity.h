@@ -344,7 +344,15 @@ inline void precomputeForDt(float dt) {
     // smoothed center omega
     const float w_obs = omega_inst;
     omega_used = (omega_used <= 0.0f) ? w_obs : (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
-
+// --- Regularization frequency from averaging horizon (moved before HP) ---
+{
+    const float Teff = std::max(fixed_avg_.tau_spec, tau_mom);  // seconds
+    const float w0 = (Teff > 1e-3f) ? (TWO_PI_ / Teff)
+                                    : (2.0f * TWO_PI_ * 0.01f);  // fallback 0.02 Hz
+    const float w0_2 = w0 * w0;
+    w0_4 = w0_2 * w0_2;
+}
+      
 // --- Detrend and optional high-pass to suppress DC/very-low-ω leakage ---
 float a_hp = accel_z - a_mean;  // basic de-mean
 {
@@ -372,14 +380,6 @@ float a_hp = accel_z - a_mean;  // basic de-mean
     spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
     spectrum_.precomputeForDt(dt_s);
 
-// --- Regularization frequency from averaging horizon ---
-{
-  const float Teff = std::max(fixed_avg_.tau_spec, tau_mom);  // seconds
-  const float w0 = (Teff > 1e-3f) ? (TWO_PI_ / Teff) : 0.0f;
-  const float w0_2 = w0 * w0;
-  w0_4 = w0_2 * w0_2;
-}
-      
     grid_valid = true;
     last_bins_dt = dt_s;
 
