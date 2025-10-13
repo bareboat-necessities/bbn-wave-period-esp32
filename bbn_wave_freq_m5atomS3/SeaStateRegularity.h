@@ -80,13 +80,13 @@ public:
     float cos_dphi[NBINS]{};
     float sin_dphi[NBINS]{};
 
-    float c[NBINS]{};
-    float s[NBINS]{};
-    float zr[NBINS]{};
-    float zi[NBINS]{};
-float zr_prev[NBINS]{};
-float zi_prev[NBINS]{};
-float omega_eff[NBINS]{};
+    double c[NBINS]{};
+    double s[NBINS]{};
+    double zr[NBINS]{};
+    double zi[NBINS]{};
+double zr_prev[NBINS]{};
+double zi_prev[NBINS]{};
+double omega_eff[NBINS]{};
 
 
     float S_eta_rad[NBINS]{};
@@ -438,27 +438,29 @@ const float beta_reg = 1.4f;  // shape factor for low-ω steepness
     double S0 = 0.0, S1 = 0.0, S2 = 0.0;
 double Sa0 = 0.0, Sa1 = 0.0;
     for (int i = 0; i < NBINS; ++i) {
-      // rotate (c,s) by dphi
-      const float c_next = spectrum_.c[i] * spectrum_.cos_dphi[i] - spectrum_.s[i] * spectrum_.sin_dphi[i];
-      const float s_next = spectrum_.s[i] * spectrum_.cos_dphi[i] + spectrum_.c[i] * spectrum_.sin_dphi[i];
-      spectrum_.c[i] = c_next;
-      spectrum_.s[i] = s_next;
-
-      // keep rotator on unit circle
-      float nrm = std::sqrt(spectrum_.c[i]*spectrum_.c[i] + spectrum_.s[i]*spectrum_.s[i]);
-      if (nrm > 0.0f) {
-        spectrum_.c[i] /= nrm;
-        spectrum_.s[i] /= nrm;
-      }
-
-const float y_r = a_hp * spectrum_.c[i];
-const float y_i = -a_hp * spectrum_.s[i];
         
-      // 1st-order IIR with alpha_k
-      const float a = spectrum_.alpha_k[i];
-      spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
-      spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
+// --- Numerically stable double-precision rotation and IIR update ---
+const double c_next = spectrum_.c[i] * spectrum_.cos_dphi[i] - spectrum_.s[i] * spectrum_.sin_dphi[i];
+const double s_next = spectrum_.s[i] * spectrum_.cos_dphi[i] + spectrum_.c[i] * spectrum_.sin_dphi[i];
+spectrum_.c[i] = c_next;
+spectrum_.s[i] = s_next;
 
+// keep rotator on unit circle
+const double nrm = std::sqrt(spectrum_.c[i]*spectrum_.c[i] + spectrum_.s[i]*spectrum_.s[i]);
+if (nrm > 0.0)
+{
+    spectrum_.c[i] /= nrm;
+    spectrum_.s[i] /= nrm;
+}
+
+// use double for demodulation, but cast accel to double once
+const double y_r = static_cast<double>(a_hp) * spectrum_.c[i];
+const double y_i = -static_cast<double>(a_hp) * spectrum_.s[i];
+
+const double a = static_cast<double>(spectrum_.alpha_k[i]);
+spectrum_.zr[i] = (1.0 - a) * spectrum_.zr[i] + a * y_r;
+spectrum_.zi[i] = (1.0 - a) * spectrum_.zi[i] + a * y_i;
+        
 // --- Estimate residual rotation for reassignment (Auger–Flandrin style) ---
 const float zr_old = spectrum_.zr_prev[i];
 const float zi_old = spectrum_.zi_prev[i];
