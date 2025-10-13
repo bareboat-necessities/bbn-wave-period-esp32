@@ -84,6 +84,10 @@ public:
     float s[NBINS]{};
     float zr[NBINS]{};
     float zi[NBINS]{};
+float zr_prev[NBINS]{};
+float zi_prev[NBINS]{};
+float omega_eff[NBINS]{};
+
 
     float S_eta_rad[NBINS]{};
 
@@ -135,7 +139,7 @@ public:
       // Add a tiny ω floor inside ω^4 to prevent blow-ups at very low ω.
       constexpr float W_FLOOR = 1e-2f; // rad/s (tiny; << typical ω)
       for (int i = 0; i < NBINS; ++i) {
-        const float w  = omega[i];
+        const double w = double(omega_eff[i]);
         const float wL = (i > 0)         ? omega[i - 1] : w;
         const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
 
@@ -191,7 +195,7 @@ inline float integrateMoment(int n) const {
   double acc = 0.0;
 
   for (int i = 0; i < NBINS; ++i) {
-    const double w = double(omega[i]);
+   const double w = double(omega_eff[i]);
     const double S = double(S_eta_rad[i]);
     const double dw2 = double(2.0f * domega[i]);
 
@@ -268,7 +272,7 @@ inline float integrateMoment(int n) const {
         const float Srad = S.S_eta_rad[i];
         if (!(Srad > 0.0f)) continue;
 
-        const float w_c  = S.omega[i];
+        const float w_c  = S.omega_eff[i];
         const float dw_c = S.domega[i];
         const float wL_i = w_c - dw_c;
         const float wR_i = w_c + dw_c;
@@ -446,6 +450,22 @@ const float y_i = -a_hp * spectrum_.s[i];
       const float a = spectrum_.alpha_k[i];
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
       spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
+
+// --- Estimate residual rotation for reassignment ---
+const float zr_old = spectrum_.zr_prev[i];
+const float zi_old = spectrum_.zi_prev[i];
+
+const float dot = spectrum_.zr[i]*zr_old + spectrum_.zi[i]*zi_old;  // Re{z z*}
+const float crs = spectrum_.zi[i]*zr_old - spectrum_.zr[i]*zi_old;  // Im{z z*}
+const float dphi = std::atan2(crs, std::max(dot, 1e-24f));
+const float delta_omega = dphi / dt_s;
+
+float w_eff = spectrum_.omega[i] + delta_omega;
+w_eff = Spectrum::clampf_(w_eff, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+spectrum_.omega_eff[i] = w_eff;
+
+spectrum_.zr_prev[i] = spectrum_.zr[i];
+spectrum_.zi_prev[i] = spectrum_.zi[i];
 
 // --- Baseband power ---
 const float P_bb = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
