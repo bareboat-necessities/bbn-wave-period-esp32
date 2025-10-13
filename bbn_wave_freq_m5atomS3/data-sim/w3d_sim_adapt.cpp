@@ -267,6 +267,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
     // Reset tracker internals (sea_reg style)
     reset_run_state();
 
+    // Targets from online estimators
+    float tau_target   = NAN;
+    float sigma_target = NAN;
+    float RS_target    = tune.RS_applied;
+    
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         iter++;
 
@@ -335,11 +340,6 @@ static void process_wave_file_for_tracker(const std::string &filename,
             Tp_reg = regFilter.getDisplacementPeriodSec();
             accel_var_reg = regFilter.getAccelerationVariance();
         }
-
-        // Targets from online estimators
-        float tau_target   = NAN;
-        float sigma_target = NAN;
-        float RS_target    = tune.RS_applied;
 
         if (std::isfinite(f_hz)) {
             float f_clamped = std::clamp(float(f_hz), MIN_FREQ_HZ, MAX_FREQ_HZ);
