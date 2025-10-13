@@ -506,12 +506,17 @@ if (fk >= 0.7f * f_center && fk <= 1.4f * f_center) {
     Sa0 += double(S_a_rad)      * double(2.0f * dw);
     Sa1 += double(S_a_rad) * double(w) * double(2.0f * dw);
 }
+
+// --- Physically motivated pre-whitening HP window ---
+// This suppresses artificial low-ω lift caused by ω⁻⁴ inversion of noise.
+const float w_hp = 2.0f * w0_reg;  // cutoff tied to Tikhonov regularizer
+const float hp_gain = (w2 / (w2 + w_hp * w_hp));  // 2nd-order HP envelope      
         
 // --- Acceleration → displacement PSD per (rad/s) with Tikhonov regularization ---
 const float denom = (w2 * w2) + (beta_reg * w0_reg * w0_reg) * w2 + w0_4;
         
-// --- Apply warm-up fade to suppress transient low-ω energy ---
-const float S_eta_rad_i = (S_a_rad / std::max(denom, 1e-24f)) * warm;
+// --- Apply high-pass envelope + regularization + warm-up fade ---
+const float S_eta_rad_i = hp_gain * (S_a_rad / std::max(denom, 1e-24f)) * warm;
         
 // --- Store ---
 spectrum_.S_eta_rad[i] = S_eta_rad_i;
