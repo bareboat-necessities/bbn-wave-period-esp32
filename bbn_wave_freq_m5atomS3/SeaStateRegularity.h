@@ -93,7 +93,15 @@ float omega_eff[NBINS]{};
 
     float enbw_hz[NBINS]{};  // exact ENBW (Hz) for each IIR analyzer bin
 
-    inline void clear() { ready = false; }
+inline void clear() {
+    ready = false;
+    for (int i = 0; i < NBINS; ++i) {
+        c[i] = 1.0f; s[i] = 0.0f;
+        zr[i] = zi[i] = zr_prev[i] = zi_prev[i] = 0.0f;
+        omega_eff[i] = omega[i];
+        S_eta_rad[i] = 0.0f;
+    }
+}
 
     // Local clamp (nested classes are NOT friends by default)
     static inline float clampf_(float x, float lo, float hi) {
