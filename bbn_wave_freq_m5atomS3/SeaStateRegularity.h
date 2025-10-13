@@ -475,6 +475,10 @@ const float ENBW_Hz = std::max(spectrum_.enbw_hz[i], 1e-12f);
 const float S_a_Hz  = P_bb / ENBW_Hz;
 const float S_a_rad = S_a_Hz / TWO_PI_;
 
+// --- Use reassigned ω (critical!) ---
+const float w  = spectrum_.omega_eff[i];   // ✅ not spectrum_.omega[i]
+const float w2 = w * w;
+        
 const float dw = spectrum_.domega[i];
 const float fk = w / TWO_PI_;
 
@@ -486,8 +490,6 @@ if (fk >= 0.7f * f_center && fk <= 1.4f * f_center) {
 }
         
 // --- Acceleration → displacement PSD per (rad/s) with Tikhonov regularization ---
-const float w  = spectrum_.omega[i];
-const float w2 = w * w;
 const float denom = (w2 * w2) + (beta_reg * w0_reg * w0_reg) * w2 + w0_4;
         
 // --- Apply warm-up fade to suppress transient low-ω energy ---
