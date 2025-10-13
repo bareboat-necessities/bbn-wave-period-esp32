@@ -139,7 +139,7 @@ float omega_eff[NBINS]{};
       // Add a tiny ω floor inside ω^4 to prevent blow-ups at very low ω.
       constexpr float W_FLOOR = 1e-2f; // rad/s (tiny; << typical ω)
       for (int i = 0; i < NBINS; ++i) {
-        const double w = double(omega_eff[i]);
+        const double w = double(omega[i]);
         const float wL = (i > 0)         ? omega[i - 1] : w;
         const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
 
