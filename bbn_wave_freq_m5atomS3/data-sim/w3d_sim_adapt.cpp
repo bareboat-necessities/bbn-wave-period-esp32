@@ -536,7 +536,7 @@ int main(int argc, char* argv[]) {
         // Run all three trackers
         process_wave_file_for_tracker(fname, dt, with_mag, TrackerType::ARANOVSKIY);
         process_wave_file_for_tracker(fname, dt, with_mag, TrackerType::KALMANF);
-        process_wave_file_for_tracker(fname, dt, with_mag, TrackerType::ZEROCROSS);
+        //process_wave_file_for_tracker(fname, dt, with_mag, TrackerType::ZEROCROSS);
     }
     return 0;
 }
