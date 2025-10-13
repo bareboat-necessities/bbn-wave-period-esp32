@@ -162,8 +162,8 @@ inline float R_S_law(float Tp, float T_p_base = 8.5f) {
 // Per-tracker processing
 // ---------------------------
 struct OnlineTuneState {
-    float tau_applied   = 2.0f;   // s
-    float sigma_applied = 0.30f;  // m/s^2
+    float tau_applied   = 1.15f;   // s
+    float sigma_applied = 1.35f;  // m/s^2
     float RS_applied    =  R_S_law(8.5f); // start from base Tp
 };
 
