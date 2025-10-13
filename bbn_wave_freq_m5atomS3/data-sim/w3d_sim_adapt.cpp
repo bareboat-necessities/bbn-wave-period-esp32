@@ -47,13 +47,15 @@ constexpr float MAX_TAU_S   = 60.0f;
 #include "WaveFilesSupport.h"
 #include "FrameConversions.h"
 
-// === Tracker stack (same as your sea_reg harness) ===
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "FrequencySmoother.h"
-#include "KalmanSmoother.h"
+#include "KalmanForWaveBasic.h"
+#include "KalmanWaveNumStableAlt.h"
 #include "SchmittTriggerFrequencyDetector.h"
-#include "SeaStateRegularity.h"
+#include "KalmanSmoother.h"
+#include "KalmanWaveDirection.h"
+#include "WaveFilters.h"
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
