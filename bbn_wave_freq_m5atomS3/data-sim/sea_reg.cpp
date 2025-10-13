@@ -32,9 +32,9 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 #include "WaveFilters.h"
 #include "SeaStateRegularity.h"
 #include "SeaMetrics.h"
-#include "DirectionalSpread.h"       
-#include "Jonswap3dStokesWaves.h"       
-#include "PiersonMoskowitzStokes3D_Waves.h" 
+#include "DirectionalSpread.h"
+#include "Jonswap3dStokesWaves.h"
+#include "PiersonMoskowitzStokes3D_Waves.h"
 
 // Config
 static constexpr float SAMPLE_RATE_HZ   = 240.0f;
@@ -129,6 +129,7 @@ struct ConvergedStats {
     float disp_freq_hz = 0.0f;
     float disp_period_s = 0.0f;
     double tracker_freq_hz = 0.0;
+    float accel_var = 0.0f;               // <— NEW: converged acceleration variance (m^2/s^4)
 };
 
 // Per-file summary
@@ -315,14 +316,15 @@ static ConvergedStats run_from_csv(TrackerType tracker,
         spec.close();
         printf("Wrote %s\n", specFile.c_str());
     }
-    
+
     // Capture final convergence stats
-    stats.regularity    = regFilter.getRegularity();
-    stats.narrowness    = regFilter.getNarrowness();
-    stats.Hs            = regFilter.getWaveHeightEnvelopeEst();
-    stats.disp_freq_hz  = regFilter.getDisplacementFrequencyHz();
-    stats.disp_period_s = regFilter.getDisplacementPeriodSec();
+    stats.regularity      = regFilter.getRegularity();
+    stats.narrowness      = regFilter.getNarrowness();
+    stats.Hs              = regFilter.getWaveHeightEnvelopeEst();
+    stats.disp_freq_hz    = regFilter.getDisplacementFrequencyHz();
+    stats.disp_period_s   = regFilter.getDisplacementPeriodSec();
     stats.tracker_freq_hz = last_freq;
+    stats.accel_var       = regFilter.getAccelerationVariance(); // <— NEW
 
     printf("Wrote %s\n", outFile.c_str());
     return stats;
@@ -382,6 +384,9 @@ int main() {
               << std::setw(9)  << "Hs(Aran)"
               << std::setw(9)  << "Hs(Kalm)"
               << std::setw(9)  << "Hs(Zero)"
+              << std::setw(12) << "AccVar(Aran)"   // <— NEW headers
+              << std::setw(12) << "AccVar(Kalm)"
+              << std::setw(12) << "AccVar(Zero)"
               << std::setw(11) << "Freq(Aran)"
               << std::setw(11) << "Freq(Kalm)"
               << std::setw(11) << "Freq(Zero)"
@@ -391,9 +396,6 @@ int main() {
               << std::setw(9)  << "Nu(Aran)"
               << std::setw(9)  << "Nu(Kalm)"
               << std::setw(9)  << "Nu(Zero)"
-              << std::setw(11) << "TrkF(Aran)"
-              << std::setw(11) << "TrkF(Kalm)"
-              << std::setw(11) << "TrkF(Zero)"
               << std::setw(23) << "Wave"
               << "\n";
 
@@ -404,6 +406,9 @@ int main() {
                   << std::setw(9)  << s.stats[0].Hs
                   << std::setw(9)  << s.stats[1].Hs
                   << std::setw(9)  << s.stats[2].Hs
+                  << std::setw(12) << s.stats[0].accel_var   // <— NEW fields
+                  << std::setw(12) << s.stats[1].accel_var
+                  << std::setw(12) << s.stats[2].accel_var
                   << std::setw(11) << s.stats[0].disp_freq_hz
                   << std::setw(11) << s.stats[1].disp_freq_hz
                   << std::setw(11) << s.stats[2].disp_freq_hz
@@ -413,9 +418,6 @@ int main() {
                   << std::setw(9)  << s.stats[0].narrowness
                   << std::setw(9)  << s.stats[1].narrowness
                   << std::setw(9)  << s.stats[2].narrowness
-                  << std::setw(11) << s.stats[0].tracker_freq_hz
-                  << std::setw(11) << s.stats[1].tracker_freq_hz
-                  << std::setw(11) << s.stats[2].tracker_freq_hz
                   << std::left << " " << std::setw(23) << s.label
                   << std::right << "\n";
     }
@@ -423,3 +425,4 @@ int main() {
     std::cout << "All SeaStateRegularity runs complete.\n";
     return 0;
 }
+
