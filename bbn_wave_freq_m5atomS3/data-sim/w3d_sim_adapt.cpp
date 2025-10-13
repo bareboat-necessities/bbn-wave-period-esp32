@@ -475,6 +475,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                   << ", Yaw=" << rms_yaw.rms() << "\n";
         std::cout << "Absolute angle error RMS (deg): "
                   << rms_ang.rms() << "\n";
+        std::cout << "tau_target=" << tau_target  << ", sigma_target=" << sigma_target ", RS_target=" << RS_target << "\n";
         std::cout << "=============================================\n\n";
 
         // FAIL CHECK
