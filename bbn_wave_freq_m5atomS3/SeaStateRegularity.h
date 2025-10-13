@@ -386,26 +386,43 @@ inline float integrateMoment(int n) const {
     w0_4 = w0_2 * w0_2;
 }
       
-// --- Robust DC blocker (numerically stable, double precision) ---
-const double x_now = double(accel_z - A1_mean.get());  // already de-meaned via EMA
-const double fc_hp = std::max(std::sqrt(std::sqrt(double(w0_4))) / double(TWO_PI_), 0.01); // Hz cutoff tied to regularizer
-const double r_hp  = std::exp(-2.0 * M_PI * fc_hp * dt_s);  // pole location
+// --- Textbook one-pole high-pass differentiator (discrete-time) ---
+// Purpose: eliminate any DC or sub-ω₀ components before ω⁻⁴ inversion.
+// It follows H_HP(z) = (1 - z⁻¹) / (1 - (1 - α) z⁻¹), α = e^(−2π f_c dt)
 
-// textbook one-pole DC blocker: y[n] = x[n] - x[n-1] + r*y[n-1]
-const double y_hp = (x_now - dc_x1_) + r_hp * dc_y1_;
-dc_x1_ = x_now;
-dc_y1_ = y_hp;
+{
+    // Tie cutoff frequency to Tikhonov regularizer (~inverse horizon)
+    const double fc_hp = std::max(std::sqrt(std::sqrt(double(w0_4))) / double(TWO_PI_), 0.02); // Hz
+    const double alpha_hp = std::exp(-2.0 * M_PI * fc_hp * dt_s);
 
-const float a_hp = float(y_hp);  // back to float for downstream use
+    // Discrete-time differentiator form:
+    // y[n] = α (y[n−1] + x[n] − x[n−1])
+    const double x_now = static_cast<double>(accel_z);
+    const double y_hp  = alpha_hp * (dc_y1_ + x_now - dc_x1_);
 
-// === Warm-up estimation and ramp (unchanged logic) ===
-const float tau_hp = 1.0f / std::max(2.0f * float(M_PI) * float(fc_hp), 2e-2f);
-const float f_c    = std::max(omega_used / TWO_PI_, 2e-2f);
-const float r_Q    = 0.12f;
-const float tau_bin = 1.0f / std::max(r_Q * f_c, 2e-2f);
-const float tau_m   = tau_mom;
-warmup_s = 3.0f * std::max({tau_hp, tau_bin, 0.5f * tau_m});
+    // update memory
+    dc_x1_ = x_now;
+    dc_y1_ = y_hp;
 
+    // return filtered acceleration
+    const float a_hp = static_cast<float>(y_hp);
+
+    // === Warm-up estimation and ramp (leave unchanged below) ===
+    const float tau_hp = 1.0f / std::max(2.0f * float(M_PI) * float(fc_hp), 2e-2f);
+    const float f_c    = std::max(omega_used / TWO_PI_, 2e-2f);
+    const float r_Q    = 0.12f;
+    const float tau_bin = 1.0f / std::max(r_Q * f_c, 2e-2f);
+    const float tau_m   = tau_mom;
+    warmup_s = 3.0f * std::max({tau_hp, tau_bin, 0.5f * tau_m});
+
+    // Advance time and compute warm factor [0..1]
+    elapsed_s += dt_s;
+    const float warm = (warmup_s > 1e-6f)
+                         ? std::clamp(elapsed_s / warmup_s, 0.0f, 1.0f)
+                         : 1.0f;
+
+}
+      
 // Advance time and compute warm factor [0..1]
 elapsed_s += dt_s;
 const float warm = (warmup_s > 1e-6f)
