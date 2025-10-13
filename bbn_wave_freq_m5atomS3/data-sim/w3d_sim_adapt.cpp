@@ -61,9 +61,7 @@ constexpr float MAX_TAU_S   = 5.0f;
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// ---------------------------
 // Helpers
-// ---------------------------
 
 // Inline RMS accumulator (float)
 class RMSReport {
@@ -107,13 +105,12 @@ int wave_index_from_height(float height) {
     return -1;
 }
 
-// === Tracker scaffolding copied from your sea_reg pattern ===
+// Tracker scaffolding copied from your sea_reg pattern
 AranovskiyFilter<double> arFilter;
 KalmANF<double> kalmANF;
 FrequencySmoother<float> freqSmoother;
 KalmanSmootherVars kalman_freq;
-SchmittTriggerFrequencyDetector freqDetector(
-    ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
+SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
 static double sim_t = 0.0;
 static bool kalm_smoother_first = true;
@@ -158,9 +155,7 @@ inline float R_S_law(float Tp, float T_p_base = 8.5f) {
     return R_S_base_global * std::pow(Tp / T_p_base, 1.0f / 3.0f);
 }
 
-// ---------------------------
 // Per-tracker processing
-// ---------------------------
 struct OnlineTuneState {
     float tau_applied   = 1.15f;   // s
     float sigma_applied = 1.35f;  // m/s^2
@@ -297,8 +292,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // Simulated magnetometer
         Vector3f mag_f(0,0,0);
         if (with_mag) {
-            Vector3f mag_b_enu =
-                MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
+            Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
             mag_f = zu_to_ned(mag_b_enu);
         }
 
@@ -323,7 +317,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
             mekf.measurement_update_acc_only(acc_f);
         }
 
-        // === Frequency tracking + SeaStateRegularity ===
+        // Frequency tracking + SeaStateRegularity
         // Use noisy vertical accel in Z-up body frame for consistency with your sea_reg pipeline
         float accel_z_noisy = acc_noisy.z();
         float a_norm = accel_z_noisy / g_std;
@@ -354,7 +348,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
             RS_target = R_S_law(Tp_reg);
         }
 
-        // === Slow adaptation (fixed rate) after warmup ===
+        // Slow adaptation (fixed rate) after warmup
         if (rec.time >= ONLINE_TUNE_WARMUP_SEC) {
             if (std::isfinite(tau_target)) {
                 tune.tau_applied = tune.tau_applied + alpha_step * (tau_target - tune.tau_applied);
@@ -475,7 +469,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                   << ", Yaw=" << rms_yaw.rms() << "\n";
         std::cout << "Absolute angle error RMS (deg): "
                   << rms_ang.rms() << "\n";
-        std::cout << "tau_target=" << tau_target  << ", sigma_target=" << sigma_target ", RS_target=" << RS_target << "\n";
+        std::cout << "tau_target=" << tau_target  << ", sigma_target=" << sigma_target << ", RS_target=" << RS_target << "\n";
         std::cout << "=============================================\n\n";
 
         // FAIL CHECK
@@ -493,9 +487,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     }
 }
 
-// ---------------------------
 // Main
-// ---------------------------
 int main(int argc, char* argv[]) {
     float dt = 1.0f / 240.0f;
 
