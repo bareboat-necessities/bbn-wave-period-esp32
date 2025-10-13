@@ -22,7 +22,7 @@ const float FAIL_ERR_LIMIT_PERCENT_HIGH = 1000.0f;
 const float FAIL_ERR_LIMIT_PERCENT_LOW  = 1000.0f;
 
 // Global variable set from command line
-float R_S_base_global = 0.1f;   // default
+float R_S_base_global = 1.1f;   // default
 
 // Rolling stats window [s] for RMS and online variance
 constexpr float RMS_WINDOW_SEC = 60.0f;
@@ -31,7 +31,7 @@ constexpr float RMS_WINDOW_SEC = 60.0f;
 constexpr float ONLINE_TUNE_WARMUP_SEC = 15.0f;
 
 // Adaptation rate (fixed, per second). Effective per-step alpha is 1-exp(-RATE*dt)
-constexpr float ADAPT_RATE_PER_SEC = 0.03f;  // ~20–30 s time constant
+constexpr float ADAPT_RATE_PER_SEC = 0.1f;  
 
 // Stability clamps
 constexpr float MIN_SIGMA_A = 0.01f;   // m/s^2
