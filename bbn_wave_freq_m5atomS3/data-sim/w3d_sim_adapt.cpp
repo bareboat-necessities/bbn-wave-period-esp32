@@ -56,6 +56,7 @@ constexpr float MAX_TAU_S   = 60.0f;
 #include "KalmanSmoother.h"
 #include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
+#include "SeaStateRegularity.h"
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
