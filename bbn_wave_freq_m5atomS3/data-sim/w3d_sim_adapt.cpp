@@ -18,11 +18,11 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_HIGH = 11.50f;
-const float FAIL_ERR_LIMIT_PERCENT_LOW  = 11.50f;
+const float FAIL_ERR_LIMIT_PERCENT_HIGH = 1000.0f;
+const float FAIL_ERR_LIMIT_PERCENT_LOW  = 1000.0f;
 
 // Global variable set from command line
-float R_S_base_global = 1.9f;   // default
+float R_S_base_global = 0.1f;   // default
 
 // Rolling stats window [s] for RMS and online variance
 constexpr float RMS_WINDOW_SEC = 60.0f;
@@ -187,17 +187,17 @@ static void process_wave_file_for_tracker(const std::string &filename,
     std::string outname = filename;
     auto pos_prefix = outname.find("wave_data_");
     if (pos_prefix != std::string::npos) {
-        outname.replace(pos_prefix, std::string("wave_data_").size(), "w3d");
+        outname.replace(pos_prefix, std::string("wave_data_").size(), "w3d_");
     } else {
-        outname = "w3d";
+        outname = "w3d_";
     }
     auto pos_ext = outname.rfind(".csv");
     if (pos_ext != std::string::npos) {
-        outname.insert(pos_ext, trackerName);
+        //outname.insert(pos_ext, trackerName);
         outname.insert(pos_ext, with_mag ? "_w3d" : "_w3d_nomag");
     } else {
         outname += (with_mag ? "_w3d" : "_w3d_nomag");
-        outname += trackerName;
+        //outname += trackerName;
         outname += ".csv";
     }
 
