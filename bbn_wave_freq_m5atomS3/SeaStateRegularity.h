@@ -386,31 +386,25 @@ inline float integrateMoment(int n) const {
     w0_4 = w0_2 * w0_2;
 }
       
-// --- Detrend and optional high-pass to suppress DC/very-low-ω leakage ---
-float a_hp = accel_z - a_mean;  // basic de-mean
-{
-    // compute cutoff from regularizer (≈ inverse of averaging horizon)
-    const float w0 = (w0_4 > 0.0f) ? std::sqrt(std::sqrt(w0_4))
-                                   : (2.0f * TWO_PI_ * 0.01f);  // fallback 0.02 Hz
-    const float fc_hp = w0 / TWO_PI_;
-    const float a_hp_coef = std::clamp(std::exp(-TWO_PI_ * fc_hp * dt_s), 0.0f, 0.9999f);
+// --- Robust DC blocker (numerically stable, double precision) ---
+const double x_now = double(accel_z - A1_mean.get());  // already de-meaned via EMA
+const double fc_hp = std::max(std::sqrt(std::sqrt(w0_4)) / TWO_PI_, 0.01); // Hz cutoff tied to regularizer
+const double r_hp  = std::exp(-2.0 * M_PI * fc_hp * dt_s);  // pole location
 
-    // Direct form HP: y[n] = a*(y[n-1] + x[n] - x[n-1])
-    a_hp = a_hp_coef * (hp_state + (accel_z - a_mean) - hp_prev_in);
-    hp_state   = a_hp;
-    hp_prev_in = (accel_z - a_mean);
+// textbook one-pole DC blocker: y[n] = x[n] - x[n-1] + r*y[n-1]
+const double y_hp = (x_now - dc_x1_) + r_hp * dc_y1_;
+dc_x1_ = x_now;
+dc_y1_ = y_hp;
 
-    // === Warm-up estimation and ramp ===
-    // Estimate settling time constants
-    const float tau_hp = 1.0f / std::max(TWO_PI_ * fc_hp, 2e-2f);      // HP filter
-    const float f_c    = std::max(omega_used / TWO_PI_, 2e-2f);        // Hz
-    const float r_Q    = 0.12f;                                        // same as constant-Q ratio
-    const float tau_bin = 1.0f / std::max(r_Q * f_c, 2e-2f);           // analyzer bin settling
-    const float tau_m   = tau_mom;                                     // moment smoother
+const float a_hp = float(y_hp);  // back to float for downstream use
 
-    // Take the slowest and multiply by 3 → 95% settled
-    warmup_s = 3.0f * std::max({tau_hp, tau_bin, 0.5f * tau_m});
-}
+// === Warm-up estimation and ramp (unchanged logic) ===
+const float tau_hp = 1.0f / std::max(2.0f * float(M_PI) * float(fc_hp), 2e-2f);
+const float f_c    = std::max(omega_used / TWO_PI_, 2e-2f);
+const float r_Q    = 0.12f;
+const float tau_bin = 1.0f / std::max(r_Q * f_c, 2e-2f);
+const float tau_m   = tau_mom;
+warmup_s = 3.0f * std::max({tau_hp, tau_bin, 0.5f * tau_m});
 
 // Advance time and compute warm factor [0..1]
 elapsed_s += dt_s;
@@ -641,6 +635,10 @@ float alpha_wc = 0.0f; // computed from dt
 // --- Warmup state ---
 float elapsed_s = 0.0f;     // time since last reset
 float warmup_s  = 0.0f;     // target burn-in horizon (computed online)
+
+// --- DC blocker state (double precision) ---
+double dc_x1_ = 0.0;   // x[n-1]
+double dc_y1_ = 0.0;   // y[n-1]
 
   // Internal helpers
   inline void updateGlobalAlphas(float dt_s) {
