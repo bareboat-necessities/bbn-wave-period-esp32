@@ -154,10 +154,15 @@ float omega_eff[NBINS]{};
         const float w2 = w * w;
       }
 
-      if (!ready) {
-        for (int i = 0; i < NBINS; ++i) { c[i] = 1.0f; s[i] = 0.0f; zr[i] = zi[i] = 0.0f; }
-        ready = true;
-      }
+if (!ready) {
+    for (int i = 0; i < NBINS; ++i) {
+        c[i] = 1.0f; s[i] = 0.0f;
+        zr[i] = zi[i] = zr_prev[i] = zi_prev[i] = 0.0f;
+        omega_eff[i] = omega[i];     // ✅ initialize reassigned ω
+    }
+    ready = true;
+}
+        
     }
 
 inline void precomputeForDt(float dt) {
