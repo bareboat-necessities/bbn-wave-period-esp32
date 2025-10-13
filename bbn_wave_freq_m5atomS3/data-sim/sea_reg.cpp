@@ -409,9 +409,9 @@ int main() {
                   << std::setw(12) << s.stats[0].accel_var   // <— NEW fields
                   << std::setw(12) << s.stats[1].accel_var
                   << std::setw(12) << s.stats[2].accel_var
-                  << std::setw(11) << s.stats[0].disp_freq_hz
-                  << std::setw(11) << s.stats[1].disp_freq_hz
-                  << std::setw(11) << s.stats[2].disp_freq_hz
+                  << std::setw(11) << s.stats[0].tracker_freq_hz
+                  << std::setw(11) << s.stats[1].tracker_freq_hz
+                  << std::setw(11) << s.stats[2].tracker_freq_hz
                   << std::setw(9)  << s.stats[0].disp_period_s
                   << std::setw(9)  << s.stats[1].disp_period_s
                   << std::setw(9)  << s.stats[2].disp_period_s
