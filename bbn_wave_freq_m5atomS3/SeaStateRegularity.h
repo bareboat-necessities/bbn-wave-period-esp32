@@ -504,12 +504,14 @@ const float w2 = w * w;
 const float dw = spectrum_.domega[i];
 const float fk = w / TWO_PI_;
 
-// use a relative mask around current center to avoid floor/skirts
+// --- Gaussian taper to reject sidebands and suppress post-peak shelf ---
 const float f_center = std::max(omega_used, 1e-6f) / TWO_PI_;
-if (fk >= 0.7f * f_center && fk <= 1.4f * f_center) {
-    Sa0 += double(S_a_rad)      * double(2.0f * dw);
-    Sa1 += double(S_a_rad) * double(w) * double(2.0f * dw);
-}
+const float sigma_rel = 0.25f; // fractional bandwidth (≈ Q ≈ 2)
+const float x_rel = (fk - f_center) / (sigma_rel * f_center);
+const float w_taper = std::exp(-0.5f * x_rel * x_rel);  // Gaussian weight
+
+Sa0 += double(S_a_rad) * double(2.0f * dw) * w_taper;
+Sa1 += double(S_a_rad) * double(w)        * double(2.0f * dw) * w_taper;
 
 // --- Physically motivated pre-whitening HP window ---
 // This suppresses artificial low-ω lift caused by ω⁻⁴ inversion of noise.
