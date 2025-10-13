@@ -312,7 +312,7 @@ inline float integrateMoment(int n) const {
   explicit SeaStateRegularity(float tau_mom_sec = 180.0f,
                               float tau_a_mom_sec = 60.0f,
                               float tau_out_sec = 30.0f,
-                              float tau_w_sec   = 30.0f)
+                              float tau_w_sec   = 5.0f)
   : tau_mom(tau_mom_sec), tau_a_mom(tau_a_mom_sec),
     tau_out((tau_out_sec > 1e-3f) ? tau_out_sec : 1e-3f),
     tau_w(tau_w_sec) {
@@ -424,6 +424,7 @@ const float beta_reg = 1.4f;  // shape factor for low-ω steepness
 
     // hot loop: rotator + 1st-order IIR using precomputed constants
     double S0 = 0.0, S1 = 0.0, S2 = 0.0;
+double Sa0 = 0.0, Sa1 = 0.0;
     for (int i = 0; i < NBINS; ++i) {
       // rotate (c,s) by dphi
       const float c_next = spectrum_.c[i] * spectrum_.cos_dphi[i] - spectrum_.s[i] * spectrum_.sin_dphi[i];
@@ -453,6 +454,16 @@ const float P_bb = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectru
 const float ENBW_Hz = std::max(spectrum_.enbw_hz[i], 1e-12f);
 const float S_a_Hz  = P_bb / ENBW_Hz;
 const float S_a_rad = S_a_Hz / TWO_PI_;
+
+const float dw = spectrum_.domega[i];
+const float fk = w / TWO_PI_;
+
+// use a relative mask around current center to avoid floor/skirts
+const float f_center = std::max(omega_used, 1e-6f) / TWO_PI_;
+if (fk >= 0.7f * f_center && fk <= 1.4f * f_center) {
+    Sa0 += double(S_a_rad)      * double(2.0f * dw);
+    Sa1 += double(S_a_rad) * double(w) * double(2.0f * dw);
+}
         
 // --- Acceleration → displacement PSD per (rad/s) with Tikhonov regularization ---
 const float w  = spectrum_.omega[i];
@@ -465,8 +476,6 @@ const float S_eta_rad_i = (S_a_rad / std::max(denom, 1e-24f)) * warm;
 // --- Store ---
 spectrum_.S_eta_rad[i] = S_eta_rad_i;
         
-      const float dw = spectrum_.domega[i];
-
       // width contribution to moments
 S0 += double(S_eta_rad_i) * double(2.0f * dw);
 S1 += double(S_eta_rad_i) * double(w)  * double(2.0f * dw);
@@ -474,6 +483,24 @@ S2 += double(S_eta_rad_i) * double(w)  * double(w) * double(2.0f * dw);
         
     }
 
+ if (Sa0 > 0.0) {
+    const float w_cent = float(Sa1 / Sa0);             // rad/s (accel centroid)
+    const float w_obs_blend = (1.0f - 0.35f) * omega_inst + 0.35f * w_cent;
+    // fast complementary correction toward blended observation
+    omega_used = (omega_used <= 0.0f)
+                   ? w_obs_blend
+                   : (1.0f - alpha_wc) * omega_used + alpha_wc * w_obs_blend;
+
+    // tighten jump reset to avoid long mis-centering tails
+    const float ratio = w_obs_blend / std::max(omega_used, 1e-6f);
+    if (ratio < 0.80f || ratio > 1.25f) {
+        omega_used = w_obs_blend;
+        spectrum_.clear();
+        spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+        spectrum_.precomputeForDt(dt_s);
+    }
+}
+      
     // moments + Jensen helpers
 // --- Fade-in moment accumulation during warm-up ---
 const float alpha_mom_eff = alpha_mom * warm;
@@ -563,6 +590,9 @@ private:
   float hp_state = 0.0f;   // high-pass memory
   float hp_prev_in = 0.0f;
 
+float tau_wc = 3.0f;   // centroid follow (s)  — fast
+float alpha_wc = 0.0f; // computed from dt
+
 // --- Warmup state ---
 float elapsed_s = 0.0f;     // time since last reset
 float warmup_s  = 0.0f;     // target burn-in horizon (computed online)
@@ -575,6 +605,8 @@ float warmup_s  = 0.0f;     // target burn-in horizon (computed online)
     alpha_a_mom = 1.0f - std::exp(-dt_s / tau_a_mom);
     alpha_out = 1.0f - std::exp(-dt_s / tau_out);
     alpha_w   = 1.0f - std::exp(-dt_s / tau_w);
+
+alpha_wc = 1.0f - std::exp(-dt_s / tau_wc);      
   }
 
   inline void computeRegularityOutput() {
