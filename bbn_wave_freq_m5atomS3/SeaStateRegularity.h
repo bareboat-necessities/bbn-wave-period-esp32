@@ -421,12 +421,6 @@ inline float integrateMoment(int n) const {
                          ? std::clamp(elapsed_s / warmup_s, 0.0f, 1.0f)
                          : 1.0f;
       
-// Advance time and compute warm factor [0..1]
-elapsed_s += dt_s;
-const float warm = (warmup_s > 1e-6f)
-                     ? std::clamp(elapsed_s / warmup_s, 0.0f, 1.0f)
-                     : 1.0f;
-      
     // Handle update on large ω jumps 
     if (omega_used > 0.0f) {
       const float ratio = w_obs / omega_used;
