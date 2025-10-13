@@ -388,7 +388,7 @@ inline float integrateMoment(int n) const {
       
 // --- Robust DC blocker (numerically stable, double precision) ---
 const double x_now = double(accel_z - A1_mean.get());  // already de-meaned via EMA
-const double fc_hp = std::max(std::sqrt(std::sqrt(w0_4)) / TWO_PI_, 0.01); // Hz cutoff tied to regularizer
+const double fc_hp = std::max(std::sqrt(std::sqrt(double(w0_4))) / double(TWO_PI_), 0.01); // Hz cutoff tied to regularizer
 const double r_hp  = std::exp(-2.0 * M_PI * fc_hp * dt_s);  // pole location
 
 // textbook one-pole DC blocker: y[n] = x[n] - x[n-1] + r*y[n-1]
