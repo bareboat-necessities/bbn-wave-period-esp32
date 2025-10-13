@@ -390,7 +390,7 @@ inline float integrateMoment(int n) const {
 // Purpose: eliminate any DC or sub-ω₀ components before ω⁻⁴ inversion.
 // It follows H_HP(z) = (1 - z⁻¹) / (1 - (1 - α) z⁻¹), α = e^(−2π f_c dt)
 
-{
+
     // Tie cutoff frequency to Tikhonov regularizer (~inverse horizon)
     const double fc_hp = std::max(std::sqrt(std::sqrt(double(w0_4))) / double(TWO_PI_), 0.02); // Hz
     const double alpha_hp = std::exp(-2.0 * M_PI * fc_hp * dt_s);
@@ -420,8 +420,6 @@ inline float integrateMoment(int n) const {
     const float warm = (warmup_s > 1e-6f)
                          ? std::clamp(elapsed_s / warmup_s, 0.0f, 1.0f)
                          : 1.0f;
-
-}
       
 // Advance time and compute warm factor [0..1]
 elapsed_s += dt_s;
