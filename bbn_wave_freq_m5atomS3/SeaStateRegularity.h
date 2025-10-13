@@ -465,22 +465,26 @@ const float y_i = -a_hp * spectrum_.s[i];
       spectrum_.zr[i] = (1.0f - a) * spectrum_.zr[i] + a * y_r;
       spectrum_.zi[i] = (1.0f - a) * spectrum_.zi[i] + a * y_i;
 
-// --- Estimate residual rotation for reassignment ---
+// --- Estimate residual rotation for reassignment (Auger–Flandrin style) ---
 const float zr_old = spectrum_.zr_prev[i];
 const float zi_old = spectrum_.zi_prev[i];
 
-const float dot = spectrum_.zr[i]*zr_old + spectrum_.zi[i]*zi_old;  // Re{z z*}
-const float crs = spectrum_.zi[i]*zr_old - spectrum_.zr[i]*zi_old;  // Im{z z*}
+const float dot = spectrum_.zr[i]*zr_old + spectrum_.zi[i]*zi_old;
+const float crs = spectrum_.zi[i]*zr_old - spectrum_.zr[i]*zi_old;
 const float dphi = std::atan2(crs, std::max(dot, 1e-24f));
 const float delta_omega = dphi / dt_s;
 
-float w_eff = spectrum_.omega[i] + delta_omega;
-w_eff = Spectrum::clampf_(w_eff, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-spectrum_.omega_eff[i] = w_eff;
+// --- Smoothed reassignment to suppress phase jitter ---
+const float alpha_reassign = 0.2f;  // 0.1–0.3 typical; adjust for responsiveness
+const float w_target = Spectrum::clampf_(spectrum_.omega[i] + delta_omega,
+                                         OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+spectrum_.omega_eff[i] = (1.0f - alpha_reassign) * spectrum_.omega_eff[i]
+                       + alpha_reassign * w_target;
 
+// --- Save for next-step phase derivative ---
 spectrum_.zr_prev[i] = spectrum_.zr[i];
 spectrum_.zi_prev[i] = spectrum_.zi[i];
-
+        
 // --- Baseband power ---
 const float P_bb = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
 
