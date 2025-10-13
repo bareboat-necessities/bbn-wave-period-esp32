@@ -34,12 +34,12 @@ constexpr float ONLINE_TUNE_WARMUP_SEC = 15.0f;
 constexpr float ADAPT_RATE_PER_SEC = 0.1f;  
 
 // Stability clamps
-constexpr float MIN_SIGMA_A = 0.01f;   // m/s^2
+constexpr float MIN_SIGMA_A = 0.1f;    // m/s^2
 constexpr float MAX_SIGMA_A = 5.0f;    // m/s^2
-constexpr float MIN_FREQ_HZ = 0.03f;   // ~33 s period
-constexpr float MAX_FREQ_HZ = 3.0f;    // ~0.33 s period
-constexpr float MIN_TAU_S   = 0.1f;
-constexpr float MAX_TAU_S   = 60.0f;
+constexpr float MIN_FREQ_HZ = 0.1f;    // Hz
+constexpr float MAX_FREQ_HZ = 8.0f;    // Hz
+constexpr float MIN_TAU_S   = 0.5f;
+constexpr float MAX_TAU_S   = 5.0f;
 
 // Trackers smoothing is handled by your helpers (FrequencySmoother + Kalman smoother) in estimate_freq()
 
