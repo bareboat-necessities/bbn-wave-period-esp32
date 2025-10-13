@@ -343,7 +343,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         if (std::isfinite(f_hz)) {
             float f_clamped = std::clamp(float(f_hz), MIN_FREQ_HZ, MAX_FREQ_HZ);
-            tau_target = std::clamp(1.0f / f_clamped, MIN_TAU_S, MAX_TAU_S);
+            tau_target = std::clamp(0.5f / f_clamped, MIN_TAU_S, MAX_TAU_S);
         }
         if (std::isfinite(accel_var_reg)) {
             sigma_target = std::clamp(std::sqrt(std::max(0.0f, accel_var_reg)),
