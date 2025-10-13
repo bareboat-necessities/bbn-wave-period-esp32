@@ -180,7 +180,7 @@ inline void precomputeForDt(float dt) {
         const float fk = omega[i] / TWO_PI_;   // bin center frequency (Hz)
 
         // --- Constant-Q target (relative ENBW = r * fk) ---
-        const float r = 0.12f;                 // tune: 0.08..0.20 typical
+        const float r = 0.08f;                 // tune: 0.08..0.20 typical
         const float ENBW_target = r * std::max(fk, 1e-9f);
 
         // --- Solve for exact EWMA α with this ENBW ---
@@ -245,7 +245,7 @@ inline float integrateMoment(int n) const {
     bool  initialized = false;
 
     // time constant for averaging (seconds)
-    float tau_spec = 120.0f;
+    float tau_spec = 40.0f;
 
     // grid setup / housekeeping
     inline void reset() {
@@ -392,7 +392,7 @@ inline float integrateMoment(int n) const {
 
 
     // Tie cutoff frequency to Tikhonov regularizer (~inverse horizon)
-    const double fc_hp = std::max(std::sqrt(std::sqrt(double(w0_4))) / double(TWO_PI_), 0.02); // Hz
+    const double fc_hp = 3.0 * std::max(std::sqrt(std::sqrt(double(w0_4))) / double(TWO_PI_), 0.02); // Hz
     const double alpha_hp = std::exp(-2.0 * M_PI * fc_hp * dt_s);
 
     // Discrete-time differentiator form:
@@ -439,9 +439,8 @@ inline float integrateMoment(int n) const {
     last_bins_dt = dt_s;
 
   // --- Regularization shaping constants ---
-const float w0_reg  = (w0_4 > 0.0f) ? std::sqrt(std::sqrt(w0_4))
-                                   : (2.0f * TWO_PI_ * 0.01f);
-const float beta_reg = 1.4f;  // shape factor for low-ω steepness    
+const float w0_reg  = 3.0f * ((w0_4 > 0.0f) ? std::sqrt(std::sqrt(w0_4)) : (2.0f * TWO_PI_ * 0.01f));
+const float beta_reg = 2.5f;  // shape factor for low-ω steepness    
 
     // hot loop: rotator + 1st-order IIR using precomputed constants
     double S0 = 0.0, S1 = 0.0, S2 = 0.0;
@@ -480,7 +479,7 @@ const float dphi = std::atan2(crs, std::max(dot, 1e-24f));
 const float delta_omega = dphi / dt_s;
 
 // --- Smoothed reassignment to suppress phase jitter ---
-const float alpha_reassign = 0.2f;  // 0.1–0.3 typical; adjust for responsiveness
+const float alpha_reassign = 0.4f;  // 0.1–0.4 typical; adjust for responsiveness
 const float w_target = Spectrum::clampf_(spectrum_.omega[i] + delta_omega,
                                          OMEGA_MIN_RAD, OMEGA_MAX_RAD);
 spectrum_.omega_eff[i] = (1.0f - alpha_reassign) * spectrum_.omega_eff[i]
