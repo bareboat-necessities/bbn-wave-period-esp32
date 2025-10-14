@@ -1225,16 +1225,16 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         K(3,0)=K_va; K(3,1)=K_pa; K(3,2)=K_Sa; K(3,3)=K_aa;
     }
 
-    // New: enforce PSD on K
-    project_psd4<T>(K, T(1e-12));
+    // Build final Qd, symmetrize, scrub, then project *Qd* to PSD
+    Qd_axis = (q_c * (T(0.5) * (K + K.transpose()))).eval();
 
-    // Scale by OU intensity
-    Qd_axis = (q_c * K).eval();
-
-    // Floor diagonals to avoid denorm/neg due to float noise
-    for (int i=0; i<4; ++i) {
-        if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-17);
+    for (int i=0;i<4;++i) for (int j=0;j<4;++j) {
+        const T v = Qd_axis(i,j);
+        if (!(v==v) || std::isinf(v)) Qd_axis(i,j) = T(0);
     }
-    // Symmetrize for hygiene
+
+    project_psd4<T>(Qd_axis, T(1e-16));
+
+    for (int i=0;i<4; ++i) if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-17);
     Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
 }
