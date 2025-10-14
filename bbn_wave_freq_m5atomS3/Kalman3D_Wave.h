@@ -1106,100 +1106,122 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
 {
-    const T x = h / tau;                       // dimensionless step ratio
-    const T q_c  = (T(2) / tau) * sigma2;      // continuous-time OU intensity
+    // Dimensionless step and OU intensity (all float)
+    const T inv_tau = T(1) / std::max(tau, T(1e-8f));
+    const T x = h * inv_tau;
+    const T q_c = (T(2) * sigma2) * inv_tau;
 
-    Eigen::Matrix<T,4,4> K;
-    K.setZero();
+    Eigen::Matrix<T,4,4> K; K.setZero();
 
-    if (x < T(1e-2)) {
-        // Small-x branch: use series expansions to avoid cancellation
-        // Derived from Maclaurin expansions of exp(-x), expm1(-x), expm1(-2x).
-        // Keep up to O(h^4/τ^3) or higher depending on the entry.
-        const T h2 = h*h;
-        const T h3 = h2*h;
-        const T h4 = h3*h;
-        const T h5 = h4*h;
-        const T h6 = h5*h;
-        const T h7 = h6*h;
-        const T h8 = h7*h;
+    if (x < T(1e-3f)) {
+        // -------- Small-x Maclaurin (float) --------
+        const T h2 = h*h, h3 = h2*h, h4 = h3*h, h5 = h4*h, h6 = h5*h, h7 = h6*h, h8 = h7*h;
 
-        // Variance terms
-        const T K_vv = h3 / T(3) - h4 / (T(4)*tau);
-        const T K_pp = h5 / T(20) - h6 / (T(30)*tau);
-        const T K_SS = h7 / T(840) - h8 / (T(960)*tau);
+        // Variances
+        const T K_vv = std::fma(-h4 / (T(4)*tau), T(1), h3 / T(3));
+        const T K_pp = std::fma(-h6 / (T(30)*tau), T(1), h5 / T(20));
+        const T K_SS = std::fma(-h8 / (T(960)*tau), T(1), h7 / T(840));
 
-        // Cross-covariance terms
-        const T K_aa = h - h2/tau + (T(2)/3) * h3/(tau*tau) - h4/(T(3)*tau*tau*tau);
-        const T K_va = h2 / T(2) - h3/(T(3)*tau) + h4/(T(8)*tau*tau);
-        const T K_pa = h3 / T(6) - h4/(T(8)*tau);
-        const T K_pv = h4 / T(12) - h5/(T(15)*tau);
-        const T K_Sa = h4 / T(24) - h5/(T(30)*tau);
-        const T K_Sv = h5 / T(60) - h6/(T(72)*tau);
-        const T K_Sp = h6 / T(360) - h7/(T(420)*tau);
+        // Cross terms (use fma to fuse each short polynomial)
+        const T K_aa = std::fma(std::fma(std::fma(-h4, T(1)/(T(3)*tau*tau*tau), T(2)*h3/(T(3)*tau*tau)), -T(1), h)
+                               , T(1), -h2/tau);
+        const T K_va = std::fma(std::fma(h4, T(1)/(T(8)*tau*tau), -h3/(T(3)*tau)), T(1), h2 / T(2));
+        const T K_pa = std::fma(-h4/(T(8)*tau), T(1), h3 / T(6));
+        const T K_pv = std::fma(-h5/(T(15)*tau), T(1), h4 / T(12));
+        const T K_Sa = std::fma(-h5/(T(30)*tau), T(1), h4 / T(24));
+        const T K_Sv = std::fma(-h6/(T(72)*tau), T(1), h5 / T(60));
+        const T K_Sp = std::fma(-h7/(T(420)*tau), T(1), h6 / T(360));
 
         // Fill symmetric K
-        K(0,0) = K_vv; K(0,1) = K_pv; K(0,2) = K_Sv; K(0,3) = K_va;
-        K(1,0) = K_pv; K(1,1) = K_pp; K(1,2) = K_Sp; K(1,3) = K_pa;
-        K(2,0) = K_Sv; K(2,1) = K_Sp; K(2,2) = K_SS; K(2,3) = K_Sa;
-        K(3,0) = K_va; K(3,1) = K_pa; K(3,2) = K_Sa; K(3,3) = K_aa;
+        K(0,0)=K_vv; K(0,1)=K_pv; K(0,2)=K_Sv; K(0,3)=K_va;
+        K(1,0)=K_pv; K(1,1)=K_pp; K(1,2)=K_Sp; K(1,3)=K_pa;
+        K(2,0)=K_Sv; K(2,1)=K_Sp; K(2,2)=K_SS; K(2,3)=K_Sa;
+        K(3,0)=K_va; K(3,1)=K_pa; K(3,2)=K_Sa; K(3,3)=K_aa;
     } else {
-        // General-x branch: stable expm1-based closed forms
-        const auto P = make_prims<T>(h, tau);
-
+        // -------- General-x (float) with FMA everywhere --------
+        const auto P = make_prims<T>(h, tau);   // {x, alpha, em1, alpha2, em1_2}
         const T tau2 = tau*tau;
         const T tau3 = tau2*tau;
         const T tau4 = tau3*tau;
         const T tau5 = tau4*tau;
         const T tau6 = tau5*tau;
 
-        // A0..A3 primitives (safe with expm1 for small/moderate x)
-        const T A0 = -tau * P.em1;                                   // τ(1-α)
-        auto coeffs = safe_phi_A_coeffs<T>(h, tau);
+        // A0..A2 + B0 with cancellation-proof forms
+        const T A0 = -tau * P.em1;                                      // τ(1-α)
+        const auto coeffs = safe_phi_A_coeffs<T>(h, tau);               // FMA-safe: A1, A2, phi_pa, phi_Sa
         const T A1 = coeffs.A1;
         const T A2 = coeffs.A2;
-        const T A3 = tau4 * (T(6) - P.alpha * (T(6) + T(6)*P.x
-                      + T(3)*P.x*P.x + P.x*P.x*P.x));
+        const T B0 = -(tau * T(0.5f)) * P.em1_2;                         // (τ/2)(1-α²)
 
-        // B0 primitive (uses expm1(-2x))
-        const T B0 = -(tau/T(2)) * P.em1_2;                          // (τ/2)(1-α²)
-
-        // Poly integrals
+        // Poly integrals Ck = ∫ t^k dt over [0,h]
         const T C0 = h;
-        const T C1 = T(0.5) * h*h;
-        const T C2 = h*h*h / T(3);
-        const T C3 = h*h*h*h / T(4);
-        const T C4 = h*h*h*h*h / T(5);
+        const T C1 = T(0.5f) * h*h;
+        const T C2 = (h*h*h) / T(3);
+        const T C3 = (h*h*h*h) / T(4);
+        const T C4 = (h*h*h*h*h) / T(5);
 
-        // Convenience combos
-        const T I1mA0   = C0 - A0;
-        const T Ix1mA1  = C1 - A1;
-        const T Ix21mA2 = C2 - A2;
+        // FMA-protected differences
+        const T I1mA0   = std::fma(-T(1), A0, C0);   // C0 - A0
+        const T Ix1mA1  = std::fma(-T(1), A1, C1);   // C1 - A1
+        const T Ix21mA2 = std::fma(-T(1), A2, C2);   // C2 - A2
 
-        // Build K
+        // Build K with chained FMA to minimize rounding
         const T K_aa = B0;
-        const T K_va = tau * (A0 - B0);
-        const T K_vv = tau2 * (C0 - T(2)*A0 + B0);
-        const T K_pa = tau*A1 - tau2*A0 + tau2*B0;
-        const T K_pv = tau2*Ix1mA1 - tau3*I1mA0 + tau3*(A0 - B0);
-        const T K_pp = tau2*C2 - T(2)*tau3*C1 + T(2)*tau3*A1
-                     + tau4*C0 - T(2)*tau4*A0 + tau4*B0;
-        const T K_Sa = T(0.5)*tau*A2 - tau2*A1 + tau3*A0 - tau3*B0;
-        const T K_Sv = T(0.5)*tau2*Ix21mA2 - tau3*Ix1mA1
-                     + tau4*I1mA0 - tau4*(A0-B0);
-        const T K_Sp = T(0.5)*tau2*C3 - T(1.5)*tau3*C2 + T(2)*tau4*C1
-                     - tau5*C0 + T(0.5)*tau3*A2 - T(2)*tau4*A1
-                     + T(2)*tau5*A0 - tau5*B0;
-        const T K_SS = T(0.25)*tau2*C4 - tau3*C3 + T(2)*tau4*C2
-                     - T(2)*tau5*C1 + tau6*C0 - tau4*A2
-                     + T(2)*tau5*A1 - T(2)*tau6*A0 + tau6*B0;
 
-        K(0,0) = K_vv; K(0,1) = K_pv; K(0,2) = K_Sv; K(0,3) = K_va;
-        K(1,0) = K_pv; K(1,1) = K_pp; K(1,2) = K_Sp; K(1,3) = K_pa;
-        K(2,0) = K_Sv; K(2,1) = K_Sp; K(2,2) = K_SS; K(2,3) = K_Sa;
-        K(3,0) = K_va; K(3,1) = K_pa; K(3,2) = K_Sa; K(3,3) = K_aa;
+        const T K_va = tau * std::fma(T(1), A0, -B0);
+
+        const T K_vv = tau2 * std::fma(T(1),
+                            std::fma(T(1), C0, std::fma(-T(2), A0, B0)),
+                            T(0));
+
+        const T K_pa = std::fma(tau, A1, std::fma(-tau2, A0, tau2*B0));
+
+        const T K_pv = std::fma(tau2, Ix1mA1,
+                        std::fma(-tau3, I1mA0, tau3 * (A0 - B0)));
+
+        const T K_pp = std::fma(tau2, C2,
+                        std::fma(-T(2)*tau3, C1,
+                        std::fma(T(2)*tau3, A1,
+                        std::fma(tau4, C0,
+                        std::fma(-T(2)*tau4, A0, tau4*B0)))));
+
+        const T K_Sa = std::fma(T(0.5f)*tau, A2,
+                        std::fma(-tau2, A1,
+                        std::fma(tau3, A0, -tau3*B0)));
+
+        const T K_Sv = std::fma(T(0.5f)*tau2, Ix21mA2,
+                        std::fma(-tau3, Ix1mA1,
+                        std::fma(tau4, I1mA0, -tau4*(A0 - B0))));
+
+        const T K_Sp = std::fma(T(0.5f)*tau2, C3,
+                        std::fma(-T(1.5f)*tau3, C2,
+                        std::fma(T(2)*tau4, C1,
+                        std::fma(-tau5, C0,
+                        std::fma(T(0.5f)*tau3, A2,
+                        std::fma(-T(2)*tau4, A1,
+                        std::fma(T(2)*tau5, A0, -tau5*B0)))))));
+
+        const T K_SS = std::fma(T(0.25f)*tau2, C4,
+                        std::fma(-tau3, C3,
+                        std::fma(T(2)*tau4, C2,
+                        std::fma(-T(2)*tau5, C1,
+                        std::fma(tau6, C0,
+                        std::fma(-tau4, A2,
+                        std::fma(T(2)*tau5, A1,
+                        std::fma(-T(2)*tau6, A0, tau6*B0))))))));
+
+        // Fill symmetric K
+        K(0,0)=K_vv; K(0,1)=K_pv; K(0,2)=K_Sv; K(0,3)=K_va;
+        K(1,0)=K_pv; K(1,1)=K_pp; K(1,2)=K_Sp; K(1,3)=K_pa;
+        K(2,0)=K_Sv; K(2,1)=K_Sp; K(2,2)=K_SS; K(2,3)=K_Sa;
+        K(3,0)=K_va; K(3,1)=K_pa; K(3,2)=K_Sa; K(3,3)=K_aa;
     }
 
-    // Final scaling with continuous-time noise intensity
-    Qd_axis = q_c * K;
+    // Scale by OU intensity and enforce tiny positive diagonals (float-safe)
+    Qd_axis = (q_c * K).eval();
+    for (int i = 0; i < 4; ++i) {
+        if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-18f);
+    }
+    // Symmetrize for hygiene
+    Qd_axis = T(0.5f) * (Qd_axis + Qd_axis.transpose());
 }
