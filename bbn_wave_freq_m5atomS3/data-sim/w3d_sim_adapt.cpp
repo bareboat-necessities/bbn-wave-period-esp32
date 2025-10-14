@@ -22,7 +22,17 @@ const float FAIL_ERR_LIMIT_PERCENT_HIGH = 20.0f;
 const float FAIL_ERR_LIMIT_PERCENT_LOW  = 20.0f;
 
 // Global variable set from command line
-float R_S_base_global = 3.5f;   // default
+constexpr float R_S_DEFAULT = 3.5f;  // default
+float R_S_base_global = R_S_DEFAULT;
+
+inline constexpr float R_S_law_scale(float r) {
+    return std::pow(r, 1.0f / 3.0f);
+}
+
+// R_S law based on period Tp
+inline float R_S_law(float Tp, float T_p_base = 8.5f) {
+    return R_S_base_global * R_S_law_scale(Tp / T_p_base);
+}
 
 // Rolling stats window [s] for RMS and online variance
 constexpr float RMS_WINDOW_SEC = 60.0f;
@@ -40,6 +50,8 @@ constexpr float MIN_FREQ_HZ = 0.1f;    // Hz
 constexpr float MAX_FREQ_HZ = 8.0f;    // Hz
 constexpr float MIN_TAU_S   = 0.8f;
 constexpr float MAX_TAU_S   = 1.6f;
+constexpr float MIN_R_S     = R_S_DEFAULT * R_S_law_scale(0.02f);
+constexpr float MAX_R_S     = R_S_DEFAULT * R_S_law_scale(1.50f);
 
 // Trackers smoothing is handled by your helpers (FrequencySmoother + Kalman smoother) in estimate_freq()
 
@@ -148,11 +160,6 @@ static double run_tracker_once(TrackerType tracker, float a_norm, float dt) {
         smooth_freq = freqSmoother.update(float(freq));
     }
     return smooth_freq;
-}
-
-// R_S law based on period Tp (same as your earlier helper)
-inline float R_S_law(float Tp, float T_p_base = 8.5f) {
-    return R_S_base_global * std::pow(Tp / T_p_base, 1.0f / 3.0f);
 }
 
 // Per-tracker processing
@@ -340,12 +347,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
             tau_target = std::clamp(0.5f / f_clamped, MIN_TAU_S, MAX_TAU_S);
         }
         if (std::isfinite(accel_var_reg)) {
-            sigma_target = std::clamp(std::sqrt(std::max(0.0f, accel_var_reg)),
-                                      MIN_SIGMA_A, MAX_SIGMA_A);
+            sigma_target = std::clamp(std::sqrt(std::max(0.0f, accel_var_reg)), MIN_SIGMA_A, MAX_SIGMA_A);
         }
         if (std::isfinite(Tp_reg)) {
             // Existing law based on Tp (your helper)
-            RS_target = R_S_law(Tp_reg);
+            RS_target = std::clamp(R_S_law(Tp_reg), MIN_R_S, MAX_R_S);
         }
 
         // Slow adaptation (fixed rate) after warmup
