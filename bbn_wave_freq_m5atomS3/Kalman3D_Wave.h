@@ -1126,14 +1126,14 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
 {
-    const T inv_tau = T(1) / std::max(tau, T(1e-6));
+    const T inv_tau = T(1) / std::max(tau, T(1e-7));
     const T x = h * inv_tau;
     const T q_c = (T(2) * sigma2) * inv_tau;
 
     Eigen::Matrix<T,4,4> K; K.setZero();
 
-    if (x < T(1e-1)) {
-        // --- Small-x Maclaurin with FMAs to reduce rounding ---
+    if (x < T(1e-2)) {
+        // Small-x Maclaurin with FMAs to reduce rounding
         const T h2=h*h, h3=h2*h, h4=h3*h, h5=h4*h, h6=h5*h, h7=h6*h, h8=h7*h;
 
         const T K_vv = std::fma(-h4/(T(4)*tau), T(1), h3/T(3));
@@ -1154,7 +1154,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         K(2,0)=K_Sv; K(2,1)=K_Sp; K(2,2)=K_SS; K(2,3)=K_Sa;
         K(3,0)=K_va; K(3,1)=K_pa; K(3,2)=K_Sa; K(3,3)=K_aa;
     } else {
-        // --- General-x branch with FMA-safe combos ---
+        // General-x branch with FMA-safe combos
         const auto P = make_prims<T>(h, tau); // {x, alpha, em1, alpha2, em1_2}
         const T tau2 = tau*tau, tau3 = tau2*tau, tau4=tau3*tau, tau5=tau4*tau, tau6=tau5*tau;
 
@@ -1225,15 +1225,15 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         K(3,0)=K_va; K(3,1)=K_pa; K(3,2)=K_Sa; K(3,3)=K_aa;
     }
 
-    // === New: enforce PSD on K (float-only) ===
-    project_psd4<T>(K, T(1e-12f));
+    // New: enforce PSD on K
+    project_psd4<T>(K, T(1e-12));
 
     // Scale by OU intensity
     Qd_axis = (q_c * K).eval();
 
     // Floor diagonals to avoid denorm/neg due to float noise
-    for (int i=0;i<4;++i) {
-        if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-18f);
+    for (int i=0; i<4; ++i) {
+        if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-17);
     }
     // Symmetrize for hygiene
     Qd_axis = T(0.5f) * (Qd_axis + Qd_axis.transpose());
