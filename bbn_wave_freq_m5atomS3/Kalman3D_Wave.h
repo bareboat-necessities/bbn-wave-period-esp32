@@ -407,7 +407,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         if (ldlt.info() == Eigen::Success) return true;
     
         // Minimum positive bump
-        const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * std::max(noise_scale, T(1)));
+        const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * (noise_scale + T(1)));
         S.diagonal().array() += bump;
     
         ldlt.compute(S);
@@ -1106,7 +1106,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     Phi_axis(2,3) = phi_Sa;
 
     // a_{k+1}
-    Phi_axis(3,3) = P.alpha;
+    Phi_axis(3,3) = std::min(P.alpha, T(1.0));
 }
 
 // Discrete OU covariance for [v, p, S, a] axis subsystem.
