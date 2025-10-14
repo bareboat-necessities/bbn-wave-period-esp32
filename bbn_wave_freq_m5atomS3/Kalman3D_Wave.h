@@ -1126,13 +1126,13 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
 {
-    const T inv_tau = T(1) / std::max(tau, T(1e-8f));
+    const T inv_tau = T(1) / std::max(tau, T(1e-6));
     const T x = h * inv_tau;
     const T q_c = (T(2) * sigma2) * inv_tau;
 
     Eigen::Matrix<T,4,4> K; K.setZero();
 
-    if (x < T(1e-1f)) {
+    if (x < T(1e-1)) {
         // --- Small-x Maclaurin with FMAs to reduce rounding ---
         const T h2=h*h, h3=h2*h, h4=h3*h, h5=h4*h, h6=h5*h, h7=h6*h, h8=h7*h;
 
