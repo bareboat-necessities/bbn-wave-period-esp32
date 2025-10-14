@@ -153,14 +153,14 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker,
         freq = estimate_freq(ZeroCrossing, &arFilter, &kalmANF,
                              &freqDetector, a_norm, a_norm, dt, now_us());
     }
-    float smooth_freq = FREQ_GUESS;
-        if (!std::isnan(freq)) {
+    float smooth_freq = std::numeric_limits<float>::quiet_NaN();
+    if (!std::isnan(freq)) {
         if (kalm_smoother_first) {
             kalm_smoother_first = false;
-            freqSmoother.setInitial(FREQ_GUESS);
-            smooth_freq = float(FREQ_GUESS);
+            freqSmoother.setInitial(static_cast<float>(freq));  // ✅ use tracker value
+            smooth_freq = static_cast<float>(freq);
         } else {
-            smooth_freq = freqSmoother.update(float(freq));
+            smooth_freq = freqSmoother.update(static_cast<float>(freq));
         }
     }
     return {smooth_freq, !std::isnan(freq)};
