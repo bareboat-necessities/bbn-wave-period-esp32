@@ -46,8 +46,8 @@ constexpr float ADAPT_RATE_PER_SEC = 0.1f;
 // Stability clamps
 constexpr float MIN_SIGMA_A = 0.4f;    // m/s^2
 constexpr float MAX_SIGMA_A = 4.0f;    // m/s^2
-constexpr float MIN_FREQ_HZ = 0.1f;    // Hz
-constexpr float MAX_FREQ_HZ = 8.0f;    // Hz
+constexpr float MIN_FREQ_HZ = 0.25f;   // Hz
+constexpr float MAX_FREQ_HZ = 0.7f;    // Hz
 constexpr float MIN_TAU_S   = 0.8f;
 constexpr float MAX_TAU_S   = 1.6f;
 constexpr float MIN_R_S     = R_S_DEFAULT * R_S_law_scale(0.02f);
@@ -55,10 +55,7 @@ constexpr float MAX_R_S     = R_S_DEFAULT * R_S_law_scale(1.50f);
 
 // Trackers smoothing is handled by your helpers (FrequencySmoother + Kalman smoother) in estimate_freq()
 
-#include "Kalman3D_Wave.h"
 #include "WaveFilesSupport.h"
-#include "FrameConversions.h"
-
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "FrequencySmoother.h"
@@ -68,6 +65,8 @@ constexpr float MAX_R_S     = R_S_DEFAULT * R_S_law_scale(1.50f);
 #include "KalmanSmoother.h"
 #include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
+#include "Kalman3D_Wave.h"
+#include "FrameConversions.h"
 #include "SeaStateRegularity.h"
 
 using Eigen::Vector3f;
@@ -132,6 +131,7 @@ static void init_tracker_backends() {
     init_filters(&arFilter, &kalman_freq);
     init_filters_alt(&kalmANF, &kalman_freq);
 }
+
 static void reset_run_state() {
     sim_t = 0.0;
     kalm_smoother_first = true;
@@ -139,8 +139,10 @@ static void reset_run_state() {
     freqSmoother = FrequencySmoother<float>();
     freqDetector.reset();
 }
-static double run_tracker_once(TrackerType tracker, float a_norm, float dt) {
-    double freq = std::numeric_limits<double>::quiet_NaN();
+
+static std::pair<double,bool> run_tracker_once(TrackerType tracker,
+                                               float a_norm, float a_raw, float dt) {
+    double freq = FREQ_GUESS;
     if (tracker == TrackerType::ARANOVSKIY) {
         freq = estimate_freq(Aranovskiy, &arFilter, &kalmANF,
                              &freqDetector, a_norm, a_norm, dt, now_us());
@@ -151,15 +153,17 @@ static double run_tracker_once(TrackerType tracker, float a_norm, float dt) {
         freq = estimate_freq(ZeroCrossing, &arFilter, &kalmANF,
                              &freqDetector, a_norm, a_norm, dt, now_us());
     }
-    float smooth_freq;
-    if (kalm_smoother_first) {
-        kalm_smoother_first = false;
-        freqSmoother.setInitial(freq);
-        smooth_freq = float(freq);
-    } else {
-        smooth_freq = freqSmoother.update(float(freq));
+    float smooth_freq = FREQ_GUESS;
+        if (!std::isnan(freq)) {
+        if (kalm_smoother_first) {
+            kalm_smoother_first = false;
+            freqSmoother.setInitial(FREQ_GUESS);
+            smooth_freq = float(FREQ_GUESS);
+        } else {
+            smooth_freq = freqSmoother.update(float(freq));
+        }
     }
-    return smooth_freq;
+    return {smooth_freq, !std::isnan(freq)};
 }
 
 // Per-tracker processing
@@ -273,6 +277,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
     float tau_target   = NAN;
     float sigma_target = NAN;
     float RS_target    = tune.RS_applied;
+    float Tp_reg = NAN;
+    float accel_var_reg = NAN;
 
     double f_hz = NAN;
     
@@ -332,12 +338,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
         float a_norm = accel_z_noisy / g_std;
 
         // Tracker smoothed frequency (Hz)
-        f_hz = run_tracker_once(tracker, a_norm, dt);
+        auto [est_freq, updated] = run_tracker_once(tracker, a_norm, accel_z_noisy, dt);
+        if (updated) f_hz = est_freq;
         sim_t = rec.time;  // keep trackers in sync
 
         // Update regFilter after warmup, using ω = 2π f
-        float Tp_reg = NAN;
-        float accel_var_reg = NAN;
         if (std::isfinite(f_hz) && rec.time >= ONLINE_TUNE_WARMUP_SEC) {
             regFilter.update(dt, accel_z_noisy, static_cast<float>(2.0 * M_PI * f_hz));
             Tp_reg = regFilter.getDisplacementPeriodSec();
@@ -352,7 +357,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
             sigma_target = std::clamp(std::sqrt(std::max(0.0f, accel_var_reg)), MIN_SIGMA_A, MAX_SIGMA_A);
         }
         if (std::isfinite(Tp_reg)) {
-            // Existing law based on Tp (your helper)
+            // Existing law based on Tp
             RS_target = std::clamp(R_S_law(Tp_reg), MIN_R_S, MAX_R_S);
         }
 
@@ -472,7 +477,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         std::cout << "Angles RMS (deg): " << "Roll=" << rms_roll.rms() << ", Pitch=" << rms_pitch.rms() << ", Yaw=" << rms_yaw.rms() << "\n";
         std::cout << "Absolute angle error RMS (deg): " << rms_ang.rms() << "\n";
         std::cout << "tau_target=" << tau_target  << ", sigma_target=" << sigma_target << ", RS_target=" << RS_target << "\n";
-        std::cout << "f_hz=" << f_hz << "\n";
+        std::cout << "f_hz=" << f_hz << ", Tp_reg=" << Tp_reg << "\n";
         std::cout << "=============================================\n\n";
 
         // FAIL CHECK
