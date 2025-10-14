@@ -166,7 +166,7 @@ static double run_tracker_once(TrackerType tracker, float a_norm, float dt) {
 struct OnlineTuneState {
     float tau_applied   = 1.15f;   // s
     float sigma_applied = 1.35f;  // m/s^2
-    float RS_applied    =  R_S_law(8.5f); // start from base Tp
+    float RS_applied    = R_S_law(8.5f); // start from base Tp
 };
 
 static void process_wave_file_for_tracker(const std::string &filename,
@@ -273,6 +273,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
     float tau_target   = NAN;
     float sigma_target = NAN;
     float RS_target    = tune.RS_applied;
+
+    double f_hz = NAN;
     
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         iter++;
@@ -330,7 +332,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         float a_norm = accel_z_noisy / g_std;
 
         // Tracker smoothed frequency (Hz)
-        double f_hz = run_tracker_once(tracker, a_norm, dt);
+        f_hz = run_tracker_once(tracker, a_norm, dt);
         sim_t = rec.time;  // keep trackers in sync
 
         // Update regFilter after warmup, using ω = 2π f
@@ -466,16 +468,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
         float z_rms_pct = 100.0f * z_rms / wp.height;
 
         std::cout << "=== Last 60 s RMS summary for " << outname << " ===\n";
-        std::cout << "Z RMS = " << z_rms
-                  << " m (" << z_rms_pct
-                  << "% of Hs=" << wp.height << ")\n";
-        std::cout << "Angles RMS (deg): "
-                  << "Roll=" << rms_roll.rms()
-                  << ", Pitch=" << rms_pitch.rms()
-                  << ", Yaw=" << rms_yaw.rms() << "\n";
-        std::cout << "Absolute angle error RMS (deg): "
-                  << rms_ang.rms() << "\n";
+        std::cout << "Z RMS = " << z_rms << " m (" << z_rms_pct << "% of Hs=" << wp.height << ")\n";
+        std::cout << "Angles RMS (deg): " << "Roll=" << rms_roll.rms() << ", Pitch=" << rms_pitch.rms() << ", Yaw=" << rms_yaw.rms() << "\n";
+        std::cout << "Absolute angle error RMS (deg): " << rms_ang.rms() << "\n";
         std::cout << "tau_target=" << tau_target  << ", sigma_target=" << sigma_target << ", RS_target=" << RS_target << "\n";
+        std::cout << "f_hz=" << f_hz << "\n";
         std::cout << "=============================================\n\n";
 
         // FAIL CHECK
