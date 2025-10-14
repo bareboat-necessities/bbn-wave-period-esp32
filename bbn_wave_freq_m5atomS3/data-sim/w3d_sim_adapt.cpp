@@ -22,7 +22,7 @@ const float FAIL_ERR_LIMIT_PERCENT_HIGH = 20.0f;
 const float FAIL_ERR_LIMIT_PERCENT_LOW  = 20.0f;
 
 // Global variable set from command line
-float R_S_base_global = 3.3f;   // default
+float R_S_base_global = 3.5f;   // default
 
 // Rolling stats window [s] for RMS and online variance
 constexpr float RMS_WINDOW_SEC = 60.0f;
