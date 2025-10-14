@@ -157,7 +157,7 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker,
     if (!std::isnan(freq)) {
         if (kalm_smoother_first) {
             kalm_smoother_first = false;
-            freqSmoother.setInitial(static_cast<float>(freq));  // ✅ use tracker value
+            freqSmoother.setInitial(static_cast<float>(freq)); 
             smooth_freq = static_cast<float>(freq);
         } else {
             smooth_freq = freqSmoother.update(static_cast<float>(freq));
