@@ -22,7 +22,7 @@ const float FAIL_ERR_LIMIT_PERCENT_HIGH = 20.0f;
 const float FAIL_ERR_LIMIT_PERCENT_LOW  = 20.0f;
 
 // Global variable set from command line
-constexpr float R_S_DEFAULT = 3.5f;  // default
+constexpr float R_S_DEFAULT = 2.2f;  // default
 float R_S_base_global = R_S_DEFAULT;
 
 inline constexpr float R_S_law_scale(float r) {
@@ -329,9 +329,9 @@ static void process_wave_file_for_tracker(const std::string &filename,
         }
 
         // Frequency tracking + SeaStateRegularity
-        float accel_ref_z = rec.wave.acc_z;                   // world vertical accel (m/s²)
+        float accel_ref_z = rec.imu.acc_bz - g_std;                   // accel (m/s²)
         float accel_z_noisy = accel_ref_z + accel_noise.dist(accel_noise.rng) + accel_noise.bias.z();
-        float a_norm = accel_z_noisy / g_std; 
+        float a_norm = accel_z_noisy / g_std;
         
         sim_t = rec.time;  // keep trackers in sync
 
