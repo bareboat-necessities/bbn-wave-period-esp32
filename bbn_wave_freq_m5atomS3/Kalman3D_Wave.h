@@ -1132,7 +1132,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
 
     Eigen::Matrix<T,4,4> K; K.setZero();
 
-    if (x < T(1e-2)) {
+    if (x < T(1e-4)) {
         // Small-x Maclaurin with FMAs to reduce rounding
         const T h2=h*h, h3=h2*h, h4=h3*h, h5=h4*h, h6=h5*h, h7=h6*h, h8=h7*h;
 
