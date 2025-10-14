@@ -330,7 +330,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         // Frequency tracking + SeaStateRegularity
         float accel_ref_z = rec.wave.acc_z;                   // world vertical accel (m/s²)
-        float accel_noisy_z = accel_ref_z + accel_noise.dist(accel_noise.rng) + accel_noise.bias.z();
+        float accel_z_noisy = accel_ref_z + accel_noise.dist(accel_noise.rng) + accel_noise.bias.z();
         float a_norm = accel_noisy_z / g_std; 
         
         sim_t = rec.time;  // keep trackers in sync
