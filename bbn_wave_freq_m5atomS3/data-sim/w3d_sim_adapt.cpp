@@ -38,7 +38,7 @@ constexpr float MIN_SIGMA_A = 0.4f;    // m/s^2
 constexpr float MAX_SIGMA_A = 4.0f;    // m/s^2
 constexpr float MIN_FREQ_HZ = 0.1f;    // Hz
 constexpr float MAX_FREQ_HZ = 8.0f;    // Hz
-constexpr float MIN_TAU_S   = 0.5f;
+constexpr float MIN_TAU_S   = 0.8f;
 constexpr float MAX_TAU_S   = 1.6f;
 
 // Trackers smoothing is handled by your helpers (FrequencySmoother + Kalman smoother) in estimate_freq()
