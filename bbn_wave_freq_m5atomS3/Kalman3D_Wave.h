@@ -156,11 +156,11 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     return c;
 }
 
-// Helper: project a symmetric 4x4 to PSD (float-only)
+// Helper: project a symmetric 4x4 to PSD
 template<typename T>
-static inline void project_psd4(Eigen::Matrix<T,4,4>& S, T eps = T(1e-12f)) {
+static inline void project_psd4(Eigen::Matrix<T,4,4>& S, T eps = T(1e-12)) {
     // Ensure symmetry first
-    S = T(0.5f) * (S + S.transpose());
+    S = T(0.5) * (S + S.transpose());
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,4,4>> es(S);
     if (es.info() != Eigen::Success) {
         // Fallback: add small jitter on the diagonal
@@ -173,7 +173,7 @@ static inline void project_psd4(Eigen::Matrix<T,4,4>& S, T eps = T(1e-12f)) {
     }
     S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
     // Re-symmetrize to clean float noise
-    S = T(0.5f) * (S + S.transpose());
+    S = T(0.5) * (S + S.transpose());
 }
 
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
@@ -1162,10 +1162,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         const auto coeffs = safe_phi_A_coeffs<T>(h, tau); // FMA-safe A1/A2/phi_pa/phi_Sa
         const T A1 = coeffs.A1;
         const T A2 = coeffs.A2;
-        const T B0 = (tau * T(0.5f)) * (T(1) + P.alpha) * (-P.em1);
+        const T B0 = (tau * T(0.5)) * (T(1) + P.alpha) * (-P.em1);
 
         const T C0=h;
-        const T C1=T(0.5f)*h*h;
+        const T C1=T(0.5)*h*h;
         const T C2=(h*h*h)/T(3);
         const T C3=(h*h*h*h)/T(4);
         const T C4=(h*h*h*h*h)/T(5);
@@ -1194,23 +1194,23 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
                         std::fma(tau4, C0,
                         std::fma(-T(2)*tau4, A0, tau4*B0)))));
 
-        const T K_Sa = std::fma(T(0.5f)*tau, A2,
+        const T K_Sa = std::fma(T(0.5)*tau, A2,
                         std::fma(-tau2, A1,
                         std::fma(tau3, A0, -tau3*B0)));
 
-        const T K_Sv = std::fma(T(0.5f)*tau2, Ix21mA2,
+        const T K_Sv = std::fma(T(0.5)*tau2, Ix21mA2,
                         std::fma(-tau3, Ix1mA1,
                         std::fma(tau4, I1mA0, -tau4*(A0 - B0))));
 
-        const T K_Sp = std::fma(T(0.5f)*tau2, C3,
-                        std::fma(-T(1.5f)*tau3, C2,
+        const T K_Sp = std::fma(T(0.5)*tau2, C3,
+                        std::fma(-T(1.5)*tau3, C2,
                         std::fma(T(2)*tau4, C1,
                         std::fma(-tau5, C0,
-                        std::fma(T(0.5f)*tau3, A2,
+                        std::fma(T(0.5)*tau3, A2,
                         std::fma(-T(2)*tau4, A1,
                         std::fma(T(2)*tau5, A0, -tau5*B0)))))));
 
-        const T K_SS = std::fma(T(0.25f)*tau2, C4,
+        const T K_SS = std::fma(T(0.25)*tau2, C4,
                         std::fma(-tau3, C3,
                         std::fma(T(2)*tau4, C2,
                         std::fma(-T(2)*tau5, C1,
@@ -1236,5 +1236,5 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-17);
     }
     // Symmetrize for hygiene
-    Qd_axis = T(0.5f) * (Qd_axis + Qd_axis.transpose());
+    Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
 }
