@@ -123,10 +123,12 @@ FrequencySmoother<float> freqSmoother;
 KalmanSmootherVars kalman_freq;
 SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
-static double sim_t = 0.0;
+
 static bool kalm_smoother_first = true;
+static double sim_t = 0.0;
 static uint32_t now_us() { return static_cast<uint32_t>(sim_t * 1e6); }
 
+// Helpers
 static void init_tracker_backends() {
     init_filters(&arFilter, &kalman_freq);
     init_filters_alt(&kalmANF, &kalman_freq);
@@ -138,6 +140,10 @@ static void reset_run_state() {
     kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
     freqSmoother = FrequencySmoother<float>();
     freqDetector.reset();
+}
+
+static double clamp_freq(double v) {
+    return clamp(v, (double)FREQ_LOWER, (double)FREQ_UPPER);
 }
 
 static std::pair<double,bool> run_tracker_once(TrackerType tracker,
@@ -153,17 +159,7 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker,
         freq = estimate_freq(ZeroCrossing, &arFilter, &kalmANF,
                              &freqDetector, a_norm, a_norm, dt, now_us());
     }
-    float smooth_freq = std::numeric_limits<float>::quiet_NaN();
-    if (!std::isnan(freq)) {
-        if (kalm_smoother_first) {
-            kalm_smoother_first = false;
-            freqSmoother.setInitial(static_cast<float>(freq)); 
-            smooth_freq = static_cast<float>(freq);
-        } else {
-            smooth_freq = freqSmoother.update(static_cast<float>(freq));
-        }
-    }
-    return {smooth_freq, !std::isnan(freq)};
+    return {freq, !std::isnan(freq)};
 }
 
 // Per-tracker processing
@@ -337,10 +333,22 @@ static void process_wave_file_for_tracker(const std::string &filename,
         float accel_z_noisy = acc_noisy.z();
         float a_norm = accel_z_noisy / g_std;
 
+        sim_t = rec.time;  // keep trackers in sync
+
         // Tracker smoothed frequency (Hz)
         auto [est_freq, updated] = run_tracker_once(tracker, a_norm, accel_z_noisy, dt);
-        if (updated) f_hz = est_freq;
-        sim_t = rec.time;  // keep trackers in sync
+        double smooth_freq = std::numeric_limits<double>::quiet_NaN();
+        if (!std::isnan(est_freq) && updated) {
+            if (kalm_smoother_first) {
+                kalm_smoother_first = false;
+                freqSmoother.setInitial(est_freq);
+                smooth_freq = est_freq;
+            } else {
+                smooth_freq = freqSmoother.update(est_freq);
+            }
+        }
+        if (!std::isnan(smooth_freq)) smooth_freq = clamp_freq(smooth_freq);
+        f_hz = smooth_freq;
 
         // Update regFilter after warmup, using ω = 2π f
         if (std::isfinite(f_hz) && rec.time >= ONLINE_TUNE_WARMUP_SEC) {
