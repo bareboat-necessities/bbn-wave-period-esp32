@@ -162,7 +162,7 @@ static void run_from_csv(TrackerType tracker,
     // Process records
     WaveDataCSVReader reader(csv_file);
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        float accel_z = rec.wave.acc_z;
+        float accel_z = rec.imu.acc_z;
         float noisy_accel = accel_z + bias + gauss(rng);
         float a_norm = noisy_accel / g_std;
 
