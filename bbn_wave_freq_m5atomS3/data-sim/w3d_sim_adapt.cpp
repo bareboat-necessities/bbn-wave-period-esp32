@@ -329,10 +329,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
         }
 
         // Frequency tracking + SeaStateRegularity
-        // Use noisy vertical accel in Z-up body frame for consistency with your sea_reg pipeline
-        float accel_z_noisy = acc_noisy.z();
-        float a_norm = accel_z_noisy / g_std;
-
+        float accel_ref_z = rec.wave.acc_z;                   // world vertical accel (m/s²)
+        float accel_noisy_z = accel_ref_z + accel_noise.dist(accel_noise.rng) + accel_noise.bias.z();
+        float a_norm = accel_noisy_z / g_std; 
+        
         sim_t = rec.time;  // keep trackers in sync
 
         // Tracker smoothed frequency (Hz)
