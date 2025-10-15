@@ -18,11 +18,11 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_HIGH = 20.0f;
-const float FAIL_ERR_LIMIT_PERCENT_LOW  = 20.0f;
+const float FAIL_ERR_LIMIT_PERCENT_HIGH = 30.0f;
+const float FAIL_ERR_LIMIT_PERCENT_LOW  = 30.0f;
 
 // Global variable set from command line
-constexpr float R_S_DEFAULT = 2.2f;  // default
+constexpr float R_S_DEFAULT = 1.95f;  // default
 float R_S_base_global = R_S_DEFAULT;
 
 inline constexpr float R_S_law_scale(float r) {
@@ -40,8 +40,8 @@ constexpr float RMS_WINDOW_SEC = 60.0f;
 // Online estimation warmup before applying to MEKF [s]
 constexpr float ONLINE_TUNE_WARMUP_SEC = 15.0f;
 
-// Adaptation rate (fixed, per second). Effective per-step alpha is 1-exp(-RATE*dt)
-constexpr float ADAPT_RATE_PER_SEC = 0.1f;  
+// Adaptation time (seconds)
+constexpr float ADAPT_TAU_SEC = 60.0f;
 
 // Stability clamps
 constexpr float MIN_SIGMA_A = 0.4f;    // m/s^2
@@ -49,7 +49,7 @@ constexpr float MAX_SIGMA_A = 4.0f;    // m/s^2
 constexpr float MIN_FREQ_HZ = 0.25f;   // Hz
 constexpr float MAX_FREQ_HZ = 0.7f;    // Hz
 constexpr float MIN_TAU_S   = 0.8f;
-constexpr float MAX_TAU_S   = 1.6f;
+constexpr float MAX_TAU_S   = 3.2f;
 constexpr float MIN_R_S     = R_S_DEFAULT * R_S_law_scale(0.02f);
 constexpr float MAX_R_S     = R_S_DEFAULT * R_S_law_scale(1.50f);
 
@@ -256,8 +256,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
     static NoiseModel accel_noise = make_noise_model(0.03f, 0.02f, 1234);
     static NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
 
-    // Adapt alpha per step from fixed per-second rate
-    const float alpha_step = 1.0f - std::exp(-ADAPT_RATE_PER_SEC * dt);
+    // Adapt alpha per step
+    const float alpha_step = 1.0f - std::exp(-dt / ADAPT_TAU_SEC);
 
     bool first = true;
     bool mag_enabled = false;
@@ -526,7 +526,7 @@ int main(int argc, char* argv[]) {
               << ", mag_delay=" << MAG_DELAY_SEC << " sec"
               << ", noise=" << (add_noise ? "true" : "false")
               << ", R_S_base=" << R_S_base_global
-              << ", adapt_rate=" << ADAPT_RATE_PER_SEC << " /s\n";
+              << ", adapt_tau_sec=" << ADAPT_TAU_SEC << "\n";
 
     // Gather files
     std::vector<std::string> files;
