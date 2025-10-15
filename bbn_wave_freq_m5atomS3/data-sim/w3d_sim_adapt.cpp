@@ -18,30 +18,30 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_HIGH = 30.0f;
-const float FAIL_ERR_LIMIT_PERCENT_LOW  = 30.0f;
+const float FAIL_ERR_LIMIT_PERCENT_HIGH = 17.0f;
+const float FAIL_ERR_LIMIT_PERCENT_LOW  = 17.0f;
 
 // Global variable set from command line
-constexpr float R_S_DEFAULT = 1.95f;  // default
+constexpr float R_S_DEFAULT = 3.0f;  // default
 float R_S_base_global = R_S_DEFAULT;
 
 inline constexpr float R_S_law_scale(float r) {
-    return std::pow(r, 1.0f / 3.0f);
+    return std::pow(r, 3.0f / 3.0f);
 }
 
 // R_S law based on period Tp
-inline float R_S_law(float Tp, float T_p_base = 8.5f) {
-    return R_S_base_global * R_S_law_scale(Tp / T_p_base);
+inline float R_S_law(float Tp, float T_p_base = 6.17158f) {
+    return 0.95f * Tp - 2.0f; //R_S_base_global * R_S_law_scale(Tp / T_p_base);
 }
 
 // Rolling stats window [s] for RMS and online variance
 constexpr float RMS_WINDOW_SEC = 60.0f;
 
 // Online estimation warmup before applying to MEKF [s]
-constexpr float ONLINE_TUNE_WARMUP_SEC = 15.0f;
+constexpr float ONLINE_TUNE_WARMUP_SEC = 80.0f;
 
 // Adaptation time (seconds)
-constexpr float ADAPT_TAU_SEC = 60.0f;
+constexpr float ADAPT_TAU_SEC = 10.0f;
 
 // Stability clamps
 constexpr float MIN_SIGMA_A = 0.4f;    // m/s^2
@@ -49,9 +49,9 @@ constexpr float MAX_SIGMA_A = 4.0f;    // m/s^2
 constexpr float MIN_FREQ_HZ = 0.25f;   // Hz
 constexpr float MAX_FREQ_HZ = 0.7f;    // Hz
 constexpr float MIN_TAU_S   = 0.8f;
-constexpr float MAX_TAU_S   = 3.2f;
+constexpr float MAX_TAU_S   = 11.5f;
 constexpr float MIN_R_S     = R_S_DEFAULT * R_S_law_scale(0.02f);
-constexpr float MAX_R_S     = R_S_DEFAULT * R_S_law_scale(1.50f);
+constexpr float MAX_R_S     = 10* R_S_DEFAULT * R_S_law_scale(1.50f);
 
 // Trackers smoothing is handled by your helpers (FrequencySmoother + Kalman smoother) in estimate_freq()
 
@@ -165,8 +165,8 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker,
 // Per-tracker processing
 struct OnlineTuneState {
     float tau_applied   = 1.15f;   // s
-    float sigma_applied = 1.35f;  // m/s^2
-    float RS_applied    = R_S_law(8.5f); // start from base Tp
+    float sigma_applied = 1.22f;    // m/s^2
+    float RS_applied    = R_S_law(8.17704f); // start from base Tp
 };
 
 static void process_wave_file_for_tracker(const std::string &filename,
@@ -277,7 +277,9 @@ static void process_wave_file_for_tracker(const std::string &filename,
     float accel_var_reg = NAN;
 
     double f_hz = NAN;
-    
+
+    float last_adj = 0.0f;
+
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         iter++;
 
@@ -373,15 +375,22 @@ static void process_wave_file_for_tracker(const std::string &filename,
         if (rec.time >= ONLINE_TUNE_WARMUP_SEC) {
             if (std::isfinite(tau_target)) {
                 tune.tau_applied = tune.tau_applied + alpha_step * (tau_target - tune.tau_applied);
-                mekf.set_aw_time_constant(tune.tau_applied);
+                if (rec.time - last_adj > 30.0) {
+                   mekf.set_aw_time_constant(tune.tau_applied);
+                }
             }
             if (std::isfinite(sigma_target)) {
                 tune.sigma_applied = tune.sigma_applied + alpha_step * (sigma_target - tune.sigma_applied);
-                mekf.set_aw_stationary_std(Vector3f::Constant(tune.sigma_applied));
+                if (rec.time - last_adj > 30.0) {
+                   mekf.set_aw_stationary_std(Vector3f::Constant(tune.sigma_applied));
+                }
             }
             // Always adapt R_S slowly (even if Tp is drifting slowly inside regFilter)
             tune.RS_applied = tune.RS_applied + alpha_step * (RS_target - tune.RS_applied);
-            mekf.set_RS_noise(Vector3f::Constant(tune.RS_applied));
+            if (rec.time - last_adj > 30.0) {
+               mekf.set_RS_noise(Vector3f::Constant(tune.RS_applied));
+               last_adj = rec.time;
+            }
         }
 
         // Estimated quaternion → nautical Euler
