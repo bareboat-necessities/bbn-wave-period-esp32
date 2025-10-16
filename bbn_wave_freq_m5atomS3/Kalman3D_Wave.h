@@ -869,7 +869,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     Vector3 pred_n = v2hat       / n_pred;
     T dotp = meas_n.dot(pred_n);
 
-    const T DOT_DANGEROUS = T(0.2);   // if |dot| < 0.2 (~>78°) → yaw-only branch
+    const T DOT_DANGEROUS = T(0.0);   // if |dot| < 0.2 (~>78°) → yaw-only branch
     const T YAW_CLAMP     = T(0.105); // ~6° clamp per update
 
     if (std::abs(dotp) >= DOT_DANGEROUS) {
