@@ -779,28 +779,26 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     const T g_meas = acc_meas.norm();
     if (std::abs(g_meas - gravity_magnitude_) > T(2.0) * gravity_magnitude_) return;
 
+    // Predicted and measured specific force (m/s²)
     const Vector3 f_pred = accelerometer_measurement_func(tempC);
+    const Vector3 f_meas = acc_meas;
 
-    // Predicted "down" direction in body frame (gravity direction)
+    // Predicted "down" (gravity) direction in body frame
     Vector3 g_pred_b = -f_pred.normalized();
-
     // Measured "down" direction from accelerometer
-    Vector3 g_meas_b = -acc_meas.normalized();
+    Vector3 g_meas_b = -f_meas.normalized();
 
-    // Ensure both are in same hemisphere (avoid 180° flip)
+    // Align hemispheres (avoid 180° flips)
     if (g_pred_b.dot(g_meas_b) < 0)
         g_pred_b = -g_pred_b;
 
-    // Directional residual (sign-invariant)
-    Vector3 r = g_meas_b - g_pred_b;
+    // Directional residual, scaled to m/s² units
+    Vector3 r = gravity_magnitude_ * (g_meas_b - g_pred_b);
 
-    // Scale residual back to m/s² space (optional but stabilizing)
-    r *= gravity_magnitude_;
-
-    // Jacobians wrt the only columns C touches
-    const Matrix3 J_att = -skew_symmetric_matrix(g_pred_b); // d ĝ / d θ
-    const Matrix3 J_aw  =  R_wb();                          // d f / d a_w
-    Matrix3       J_ba;                                     // d f / d b_a
+    // Jacobians (scaled consistently with residual)
+    const Matrix3 J_att = -gravity_magnitude_ * skew_symmetric_matrix(g_pred_b);
+    const Matrix3 J_aw  =  R_wb();
+    Matrix3 J_ba;
     if constexpr (with_accel_bias) J_ba.setIdentity();
 
     // Innovation covariance S = C P Cᵀ + Racc (3×3)
