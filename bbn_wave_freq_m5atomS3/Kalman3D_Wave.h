@@ -119,26 +119,23 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     const T tau2 = tau*tau;
     const T tau3 = tau2*tau;
 
-    if (x < T(1e-2)) {
-        // Maclaurin expansions
-        const T x2 = x*x;
-        const T x3 = x2*x;
-        const T x4 = x3*x;
-        const T x5 = x4*x;
+if (x < T(1e-2)) {
+    const T x2 = x*x;
+    const T x3 = x2*x;
+    const T x4 = x3*x;
+    const T x5 = x4*x;
 
-        // phi_pa ≈ τ² (x²/2 - x³/6 + x⁴/24)
-        c.phi_pa = tau2 * (T(0.5)*x2 - T(1.0/6.0)*x3 + T(1.0/24.0)*x4);
+    // φ_pa and φ_Sa 
+    c.phi_pa = tau2 * (T(0.5)*x2 - T(1.0/6.0)*x3 + T(1.0/24.0)*x4);
+    c.phi_Sa = tau3 * (T(1.0/6.0)*x3 - T(1.0/24.0)*x4 + T(1.0/120.0)*x5);
 
-        // phi_Sa ≈ τ³ (x³/6 - x⁴/24 + x⁵/120)
-        c.phi_Sa = tau3 * (T(1.0/6.0)*x3 - T(1.0/24.0)*x4 + T(1.0/120.0)*x5);
+    // Maclaurin expansions
+    // A1 = τ²( x²/2 − x³/3 + x⁴/8 − x⁵/30 + … )
+    c.A1 = tau2 * (T(0.5)*x2 - T(1.0/3.0)*x3 + T(1.0/8.0)*x4);
 
-        // A1 ≈ τ² (x²/2 - x³/3 + x⁴/8)
-        c.A1 = tau2 * (T(0.5)*x2 - T(1.0/3.0)*x3 + T(1.0/8.0)*x4);
-
-        // A2 ≈ τ³ ( -x³/3 + x⁴/4 - x⁵/10 )
-        c.A2 = tau3 * (-(T(1.0/3.0))*x3 + T(1.0/4.0)*x4 - T(1.0/10.0)*x5);
-
-    } else {
+    // A2 = τ³( x³/3 − x⁴/4 + x⁵/10 + … ) 
+    c.A2 = tau3 * ( T(1.0/3.0)*x3 - T(1.0/4.0)*x4 + T(1.0/10.0)*x5 );
+} else {
         // General closed-form branch
         const T alpha  = std::exp(-x);
         const T em1    = std::expm1(-x);    
