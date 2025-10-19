@@ -253,7 +253,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     const Vector3f sigma_m(0.3f, 0.3f, 0.3f);
     Kalman3D_Wave<float, true, true> mekf(sigma_a_init, sigma_g, sigma_m);
     mekf.set_aw_time_constant(tune.tau_applied);
-    mekf.set_aw_stationary_std(Vector3f::Constant(tune.sigma_applied));
+    mekf.set_aw_stationary_corr_std(Vector3f::Constant(tune.sigma_applied));
     mekf.set_RS_noise(Vector3f::Constant(tune.RS_applied));
 
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
@@ -388,7 +388,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
             if (std::isfinite(sigma_target)) {
                 tune.sigma_applied = tune.sigma_applied + alpha_step * (sigma_target - tune.sigma_applied);
                 if (rec.time - last_adj > ADAPT_EVERY_SECS) {
-                   mekf.set_aw_stationary_std(Vector3f::Constant(tune.sigma_applied));
+                   mekf.set_aw_stationary_corr_std(Vector3f::Constant(tune.sigma_applied));
                 }
             }
             // Always adapt R_S slowly (even if Tp is drifting slowly inside regFilter)
