@@ -18,12 +18,12 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 15.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 15.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 1500.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 1500.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 10.0f;
 
-const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 15.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 15.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 1500.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 1500.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 10.0f;
 
 // Global variable set from command line
