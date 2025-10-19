@@ -301,6 +301,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     //     surface moves upward (negative az), horizontal acceleration is forward.
     //   • Positive rho_corr fits ENU (z up).
     //   • The resulting covariance is projected to SPD for numerical stability.
+    //   • Also reseeds Pext(OFF_AW, OFF_AW) to keep filter covariance consistent.
     void set_aw_stationary_corr_std(const Vector3& std_aw, T rho_corr = T(-0.9)) {
       // Clamp correlation for numerical safety
       rho_corr = std::clamp(rho_corr, T(-0.999), T(0.999));
@@ -329,8 +330,15 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
       } else {
         Sigma_aw_stat = S.diagonal().asDiagonal();  // safe fallback
       }
-    }  
 
+      // Reseed Pext a_w block with new stationary covariance
+      if (Pext.size() > 0) {
+        Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
+        // keep global symmetry
+        Pext = T(0.5) * (Pext + Pext.transpose());
+      }
+    }
+  
     // Covariances for ∫p dt pseudo-measurement
     void set_RS_noise(const Vector3& sigma_S) {
         R_S = sigma_S.array().square().matrix().asDiagonal();
