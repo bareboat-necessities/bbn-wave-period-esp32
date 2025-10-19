@@ -148,7 +148,7 @@ if (x < T(1e-2)) {
 
         // A1, A2 in terms of primitives
         c.A1 = tau2 * (-em1 - x*alpha);
-        c.A2 = tau3 * (-T(2)*em1 - alpha*(x*(x+T(2))));
+        c.A2 = tau3 * (-T(2)*em1 + alpha*(x*(x+T(2))));
     }
     return c;
 }
