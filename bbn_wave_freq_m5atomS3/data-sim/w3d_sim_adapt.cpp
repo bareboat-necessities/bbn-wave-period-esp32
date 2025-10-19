@@ -485,61 +485,54 @@ static void process_wave_file_for_tracker(const std::string &filename,
     if (errs_z.size() > static_cast<size_t>(N_last)) {
         size_t start = errs_z.size() - N_last;
 
-RMSReport rms_x, rms_y, rms_z, rms_roll, rms_pitch, rms_yaw, rms_ang;
-for (size_t i = start; i < errs_z.size(); ++i) {
-    rms_x.add(errs_x[i]);      // NEW
-    rms_y.add(errs_y[i]);      // NEW
-    rms_z.add(errs_z[i]);
-    rms_roll.add(errs_roll[i]);
-    rms_pitch.add(errs_pitch[i]);
-    rms_yaw.add(errs_yaw[i]);
-    rms_ang.add(errs_angle[i]);
-}
-
-float x_rms = rms_x.rms();                    // NEW
-float y_rms = rms_y.rms();                    // NEW
-float z_rms = rms_z.rms();
-
-float x_rms_pct = 100.0f * x_rms / wp.height; // NEW
-float y_rms_pct = 100.0f * y_rms / wp.height; // NEW
-float z_rms_pct = 100.0f * z_rms / wp.height;
-
-std::cout << "=== Last 60 s RMS summary for " << outname << " ===\n";
-std::cout << "XYZ RMS (m) = "
-          << "X=" << x_rms << ", Y=" << y_rms << ", Z=" << z_rms << "\n";          // NEW
-std::cout << "XYZ RMS (% Hs) = "
-          << "X=" << x_rms_pct << "%, Y=" << y_rms_pct << "%, Z=" << z_rms_pct << "% (Hs=" << wp.height << ")\n"; // NEW
-std::cout << "Angles RMS (deg): " << "Roll=" << rms_roll.rms()
-          << ", Pitch=" << rms_pitch.rms() << ", Yaw=" << rms_yaw.rms() << "\n";
-std::cout << "Absolute angle error RMS (deg): " << rms_ang.rms() << "\n";
-std::cout << "tau_target=" << tau_target  << ", sigma_target=" << sigma_target << ", RS_target=" << RS_target << "\n";
-std::cout << "tau_applied=" << tune.tau_applied  << ", sigma_applied=" << tune.sigma_applied << ", RS_applied=" << tune.RS_applied << "\n";
-std::cout << "f_hz=" << f_hz << ", Tp_reg=" << Tp_reg << "\n";
-std::cout << "=============================================\n\n";
+        RMSReport rms_x, rms_y, rms_z, rms_roll, rms_pitch, rms_yaw, rms_ang;
+        for (size_t i = start; i < errs_z.size(); ++i) {
+            rms_x.add(errs_x[i]);     
+            rms_y.add(errs_y[i]);    
+            rms_z.add(errs_z[i]);
+            rms_roll.add(errs_roll[i]);
+            rms_pitch.add(errs_pitch[i]);
+            rms_yaw.add(errs_yaw[i]);
+            rms_ang.add(errs_angle[i]);
+        }
         
-// FAIL CHECK (same limits used for X, Y, Z)
-float limit_x = (type == WaveType::JONSWAP)
-                  ? FAIL_ERR_LIMIT_PERCENT_X_LOW
-                  : FAIL_ERR_LIMIT_PERCENT_X_HIGH;
-float limit_y = (type == WaveType::JONSWAP)
-                  ? FAIL_ERR_LIMIT_PERCENT_Y_LOW
-                  : FAIL_ERR_LIMIT_PERCENT_Y_HIGH;
-float limit_z = (type == WaveType::JONSWAP)
-                  ? FAIL_ERR_LIMIT_PERCENT_Z_LOW
-                  : FAIL_ERR_LIMIT_PERCENT_Z_HIGH;
-
-auto fail_if = [&](const char* axis, float pct, float limit) {
-    if (pct > limit) {
-        std::cerr << "ERROR: " << axis << " RMS above limit ("
-                  << pct << "% > " << limit << "%). Failing.\n";
-        std::exit(EXIT_FAILURE);
-    }
-};
-
-fail_if("X", x_rms_pct, limit_x);
-fail_if("Y", y_rms_pct, limit_y);
-fail_if("Z", z_rms_pct, limit_z);
+        float x_rms = rms_x.rms();                    
+        float y_rms = rms_y.rms();                  
+        float z_rms = rms_z.rms();
         
+        float x_rms_pct = 100.0f * x_rms / wp.height; 
+        float y_rms_pct = 100.0f * y_rms / wp.height; 
+        float z_rms_pct = 100.0f * z_rms / wp.height;
+        
+        std::cout << "=== Last 60 s RMS summary for " << outname << " ===\n";
+        std::cout << "XYZ RMS (m) = "
+                  << "X=" << x_rms << ", Y=" << y_rms << ", Z=" << z_rms << "\n";         
+        std::cout << "XYZ RMS (% Hs) = "
+                  << "X=" << x_rms_pct << "%, Y=" << y_rms_pct << "%, Z=" << z_rms_pct << "% (Hs=" << wp.height << ")\n"; 
+        std::cout << "Angles RMS (deg): " << "Roll=" << rms_roll.rms()
+                  << ", Pitch=" << rms_pitch.rms() << ", Yaw=" << rms_yaw.rms() << "\n";
+        std::cout << "Absolute angle error RMS (deg): " << rms_ang.rms() << "\n";
+        std::cout << "tau_target=" << tau_target  << ", sigma_target=" << sigma_target << ", RS_target=" << RS_target << "\n";
+        std::cout << "tau_applied=" << tune.tau_applied  << ", sigma_applied=" << tune.sigma_applied << ", RS_applied=" << tune.RS_applied << "\n";
+        std::cout << "f_hz=" << f_hz << ", Tp_reg=" << Tp_reg << "\n";
+        std::cout << "=============================================\n\n";
+                
+        // FAIL CHECK (same limits used for X, Y, Z)
+        float limit_x = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_X_LOW : FAIL_ERR_LIMIT_PERCENT_X_HIGH;
+        float limit_y = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_Y_LOW : FAIL_ERR_LIMIT_PERCENT_Y_HIGH;
+        float limit_z = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_Z_LOW : FAIL_ERR_LIMIT_PERCENT_Z_HIGH;
+        
+        auto fail_if = [&](const char* axis, float pct, float limit) {
+            if (pct > limit) {
+                std::cerr << "ERROR: " << axis << " RMS above limit ("
+                          << pct << "% > " << limit << "%). Failing.\n";
+                std::exit(EXIT_FAILURE);
+            }
+        };
+        
+        fail_if("X", x_rms_pct, limit_x);
+        fail_if("Y", y_rms_pct, limit_y);
+        fail_if("Z", z_rms_pct, limit_z);
    }
 }
 
