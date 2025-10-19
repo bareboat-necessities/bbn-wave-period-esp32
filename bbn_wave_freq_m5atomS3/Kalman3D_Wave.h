@@ -1130,7 +1130,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
           const T sigma_ij = Sigma_aw_stat(i,j);
           if (std::abs(sigma_ij) < T(1e-12)) continue;
 
-          const T q_c_ij = T(2) * sigma_ij;
+          const T q_c_ij = T(2) * sigma_ij * inv_tau;
           const Eigen::Matrix<T,4,4> Qcorr = q_c_ij * Ksym;
 
           // Top-left of [v,p,S,a] 12×12 block inside Q_a_ext
@@ -1207,7 +1207,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
 {
     const T inv_tau = T(1) / std::max(tau, T(1e-7));
     const T x = h * inv_tau;
-    const T q_c = (T(2) * sigma2);
+    const T q_c = (T(2) * sigma2) * inv_tau;
 
     Eigen::Matrix<T,4,4> K; K.setZero();
 
