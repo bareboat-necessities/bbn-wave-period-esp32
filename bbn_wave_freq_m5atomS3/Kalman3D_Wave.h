@@ -1215,26 +1215,28 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     Eigen::Matrix<T,4,4> K; K.setZero();
 
     if (x < T(3e-3)) {
-        // Small-x Maclaurin with FMAs to reduce rounding
-        const T h2=h*h, h3=h2*h, h4=h3*h, h5=h4*h, h6=h5*h, h7=h6*h, h8=h7*h;
+        const T h2 = h*h, h3 = h2*h, h4 = h3*h, h5 = h4*h, h6 = h5*h, h7 = h6*h, h8 = h7*h;
+        const T tau2 = tau*tau, tau3 = tau2*tau;
 
-        const T K_vv = std::fma(-h4/(T(4)*tau), T(1), h3/T(3));
-        const T K_pp = std::fma(-h6/(T(30)*tau), T(1), h5/T(20));
-        const T K_SS = std::fma(-h8/(T(960)*tau), T(1), h7/T(840));
+        const T c1 = q_c; // scaling constant = (2σ²)/τ
 
-        const T K_aa = std::fma(std::fma(std::fma(-h4, T(1)/(T(3)*tau*tau*tau), T(2)*h3/(T(3)*tau*tau)), -T(1), h),
-                                 T(1), -h2/tau);
-        const T K_va = std::fma(std::fma(h4, T(1)/(T(8)*tau*tau), -h3/(T(3)*tau)), T(1), h2/T(2));
-        const T K_pa = std::fma(-h4/(T(8)*tau), T(1), h3/T(6));
-        const T K_pv = std::fma(-h5/(T(15)*tau), T(1), h4/T(12));
-        const T K_Sa = std::fma(-h5/(T(30)*tau), T(1), h4/T(24));
-        const T K_Sv = std::fma(-h6/(T(72)*tau), T(1), h5/T(60));
-        const T K_Sp = std::fma(-h7/(T(420)*tau), T(1), h6/T(360));
+        // Correct small-x Taylor expansions (continuous with analytic branch)
+        const T Qvv = c1*(h3/T(3) - h4/(T(4)*tau) + h5/(T(10)*tau2));
+        const T Qpp = c1*(h5/T(20) - h6/(T(30)*tau) + h7/(T(84)*tau2));
+        const T QSS = c1*(h7/T(840) - h8/(T(960)*tau));
+        const T Qaa = c1*(h - h2/tau + h3/(T(3)*tau2));
+        const T Qva = c1*(h2/T(2) - h3/(T(3)*tau) + h4/(T(8)*tau2));
+        const T Qpa = c1*(h3/T(6) - h4/(T(8)*tau) + h5/(T(20)*tau2));
+        const T Qpv = c1*(h4/T(12) - h5/(T(15)*tau) + h6/(T(36)*tau2));
+        const T QSa = c1*(h4/T(24) - h5/(T(30)*tau) + h6/(T(72)*tau2));
+        const T QSp = c1*(h6/T(360) - h7/(T(420)*tau));
 
-        K(0,0)=K_vv; K(0,1)=K_pv; K(0,2)=K_Sv; K(0,3)=K_va;
-        K(1,0)=K_pv; K(1,1)=K_pp; K(1,2)=K_Sp; K(1,3)=K_pa;
-        K(2,0)=K_Sv; K(2,1)=K_Sp; K(2,2)=K_SS; K(2,3)=K_Sa;
-        K(3,0)=K_va; K(3,1)=K_pa; K(3,2)=K_Sa; K(3,3)=K_aa;
+        Qd_axis.setZero();
+
+        Qd_axis(0,0) = Qvv; Qd_axis(0,1) = Qpv; Qd_axis(0,2) = T(0);   Qd_axis(0,3) = Qva;
+        Qd_axis(1,0) = Qpv; Qd_axis(1,1) = Qpp; Qd_axis(1,2) = QSp;   Qd_axis(1,3) = Qpa;
+        Qd_axis(2,0) = T(0);  Qd_axis(2,1) = QSp; Qd_axis(2,2) = QSS; Qd_axis(2,3) = QSa;
+        Qd_axis(3,0) = Qva; Qd_axis(3,1) = Qpa; Qd_axis(3,2) = QSa;   Qd_axis(3,3) = Qaa;
     } else {
         // General-x branch with FMA-safe combos
         const auto P = make_prims<T>(h, tau); // {x, alpha, em1, alpha2, em1_2}
