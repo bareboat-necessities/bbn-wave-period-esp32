@@ -288,6 +288,49 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
     }
 
+    // Set OU stationary covariance for world-acceleration a_w,
+    // using per-axis standard deviations and an optional cross-axis correlation.
+    //
+    // Arguments:
+    //   std_aw     : per-axis standard deviations [m/s²] for (x, y, z)
+    //   rho_corr   : dimensionless correlation coefficient between horizontal
+    //                and vertical accelerations (default -0.9 for NED frames)
+    //
+    // Notes:
+    //   • Negative rho_corr is appropriate for NED (z down), because when the
+    //     surface moves upward (negative az), horizontal acceleration is forward.
+    //   • Positive rho_corr fits ENU (z up).
+    //   • The resulting covariance is projected to SPD for numerical stability.
+    void set_aw_stationary_corr_std(const Vector3& std_aw, T rho_corr = T(-0.9)) {
+      // Clamp correlation for numerical safety
+      rho_corr = std::clamp(rho_corr, T(-0.999), T(0.999));
+
+      const T sx = std::max(T(1e-9), std_aw.x());
+      const T sy = std::max(T(1e-9), std_aw.y());
+      const T sz = std::max(T(1e-9), std_aw.z());
+
+      // Construct correlated covariance (symmetric)
+      Matrix3 S;
+      S <<
+          sx*sx,  T(0),        rho_corr*sx*sz,
+          T(0),   sy*sy,       rho_corr*sy*sz,
+          rho_corr*sx*sz, rho_corr*sy*sz, sz*sz;
+
+      // Symmetrize & project to SPD for robustness
+      S = T(0.5) * (S + S.transpose());
+      Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
+      if (es.info() == Eigen::Success) {
+        auto lam = es.eigenvalues();
+        for (int i = 0; i < 3; ++i)
+          if (!(lam(i) > T(0))) lam(i) = T(1e-12);
+        Sigma_aw_stat =
+            (es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose())
+                .eval();
+      } else {
+        Sigma_aw_stat = S.diagonal().asDiagonal();  // safe fallback
+      }
+    }  
+
     // Covariances for ∫p dt pseudo-measurement
     void set_RS_noise(const Vector3& sigma_S) {
         R_S = sigma_S.array().square().matrix().asDiagonal();
