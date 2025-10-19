@@ -1207,7 +1207,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
 {
     const T inv_tau = T(1) / std::max(tau, T(1e-7));
     const T x = h * inv_tau;
-    const T q_c = (T(2) * sigma2) * inv_tau;
+    const T q_c = (T(2) * sigma2);
 
     Eigen::Matrix<T,4,4> K; K.setZero();
 
