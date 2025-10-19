@@ -1109,6 +1109,36 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 
+    // Inject cross-axis OU correlation into Q_a_ext
+    {
+      const T inv_tau = T(1) / std::max(tau_aw, T(1e-7));
+
+      // Get normalized OU kernel (σ² = 1)
+      Eigen::Matrix<T,4,4> Ksym;
+      QdAxis4x1_analytic(tau_aw, Ts, T(1), Ksym);
+      Ksym = T(0.5) * (Ksym + Ksym.transpose());
+
+      const int idx[4] = {0,3,6,9};
+
+      for (int i = 0; i < 3; ++i) {
+        for (int j = i + 1; j < 3; ++j) {
+          const T sigma_ij = Sigma_aw_stat(i,j);
+          if (std::abs(sigma_ij) < T(1e-12)) continue;
+
+          const T q_c_ij = T(2) * sigma_ij * inv_tau;
+          const Eigen::Matrix<T,4,4> Qcorr = q_c_ij * Ksym;
+
+          // Top-left of [v,p,S,a] 12×12 block inside Q_a_ext
+          const int base_i = OFF_V + i;
+          const int base_j = OFF_V + j;
+
+          // Assign symmetric 4×4 sub-blocks in one shot
+          Q_a_ext.template block<4,4>(base_i, base_j) += Qcorr;
+          Q_a_ext.template block<4,4>(base_j, base_i) += Qcorr.transpose();
+        }
+      }
+    }
+
     if constexpr (with_accel_bias) {
         Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
     }
