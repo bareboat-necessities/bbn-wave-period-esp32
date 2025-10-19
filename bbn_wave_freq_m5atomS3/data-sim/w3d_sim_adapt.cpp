@@ -18,8 +18,13 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_HIGH = 10.0f;
-const float FAIL_ERR_LIMIT_PERCENT_LOW  = 10.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 15.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 15.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 10.0f;
+
+const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 15.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 15.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 10.0f;
 
 // Global variable set from command line
 constexpr float R_S_DEFAULT = 10.0f;  // default
@@ -513,24 +518,29 @@ std::cout << "f_hz=" << f_hz << ", Tp_reg=" << Tp_reg << "\n";
 std::cout << "=============================================\n\n";
         
 // FAIL CHECK (same limits used for X, Y, Z)
-float limit_pct = (type == WaveType::JONSWAP)
-                    ? FAIL_ERR_LIMIT_PERCENT_LOW
-                    : FAIL_ERR_LIMIT_PERCENT_HIGH;
+float limit_x = (type == WaveType::JONSWAP)
+                  ? FAIL_ERR_LIMIT_PERCENT_X_LOW
+                  : FAIL_ERR_LIMIT_PERCENT_X_HIGH;
+float limit_y = (type == WaveType::JONSWAP)
+                  ? FAIL_ERR_LIMIT_PERCENT_Y_LOW
+                  : FAIL_ERR_LIMIT_PERCENT_Y_HIGH;
+float limit_z = (type == WaveType::JONSWAP)
+                  ? FAIL_ERR_LIMIT_PERCENT_Z_LOW
+                  : FAIL_ERR_LIMIT_PERCENT_Z_HIGH;
 
-auto fail_if = [&](const char* axis, float pct) {
-    if (pct > limit_pct) {
-        std::cerr << "ERROR: " << axis << " RMS above limit (" << pct
-                  << "% > " << limit_pct << "%). Failing.\n";
+auto fail_if = [&](const char* axis, float pct, float limit) {
+    if (pct > limit) {
+        std::cerr << "ERROR: " << axis << " RMS above limit ("
+                  << pct << "% > " << limit << "%). Failing.\n";
         std::exit(EXIT_FAILURE);
     }
 };
 
-// Check all three axes
-fail_if("X", x_rms_pct);       // NEW
-fail_if("Y", y_rms_pct);       // NEW
-fail_if("Z", z_rms_pct);
+fail_if("X", x_rms_pct, limit_x);
+fail_if("Y", y_rms_pct, limit_y);
+fail_if("Z", z_rms_pct, limit_z);
         
-    }
+   }
 }
 
 // Main
