@@ -1129,8 +1129,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
           const Eigen::Matrix<T,4,4> Qcorr = q_c_ij * Ksym;
 
           // Top-left of [v,p,S,a] 12×12 block inside Q_a_ext
-          const int base_i = OFF_V + i;
-          const int base_j = OFF_V + j;
+          const int base_i = OFF_V + 3*i;
+          const int base_j = OFF_V + 3*j;
 
           // Assign symmetric 4×4 sub-blocks in one shot
           Q_a_ext.template block<4,4>(base_i, base_j) += Qcorr;
