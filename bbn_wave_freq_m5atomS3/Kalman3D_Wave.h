@@ -1185,7 +1185,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     Phi_axis(2,3) = phi_Sa;
 
     // a_{k+1}
-    Phi_axis(3,3) = P.alpha;
+    Phi_axis(3,3) = std::max(T(0), std::min(P.alpha, T(1)));
 }
 
 // Discrete OU covariance for [v, p, S, a] axis subsystem.
