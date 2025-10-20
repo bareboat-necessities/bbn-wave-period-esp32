@@ -710,6 +710,31 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         }
     }
 
+    // Inject cross-axis OU correlation (optional horizontal coupling)
+    if (has_cross_cov_a_xy) {
+        // Precompute normalized OU kernel (σ² = 1)
+        Eigen::Matrix<T,4,4> Ksym;
+        QdAxis4x1_analytic(tau_aw, Ts, T(1), Ksym);
+        Ksym = T(0.5) * (Ksym + Ksym.transpose());
+
+        for (int i = 0; i < 3; ++i) {
+            for (int j = i + 1; j < 3; ++j) {
+                const T sigma_ij = Sigma_aw_stat(i, j);
+                if (std::abs(sigma_ij) < T(1e-12)) continue;
+
+                const Eigen::Matrix<T,4,4> Qcorr = sigma_ij * Ksym;
+
+                // 12×12 [v,p,S,a] block uses 3-stride per axis: (v,p,S,a) → (0,3,6,9)
+                const int base_i = 3 * i;
+                const int base_j = 3 * j;
+
+                // Add symmetric 4×4 sub-blocks for coupled axes
+                Q_LL.template block<4,4>(base_i, base_j) += Qcorr;
+                Q_LL.template block<4,4>(base_j, base_i) += Qcorr.transpose();
+            }
+        }
+    }
+
     // Mean propagation for [v,p,S,a_w] using F_LL
     Eigen::Matrix<T,12,1> x_lin_prev;
     x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
