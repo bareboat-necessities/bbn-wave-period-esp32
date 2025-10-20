@@ -1095,8 +1095,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
       QdAxis4x1_analytic(tau_aw, Ts, T(1), Ksym);
       Ksym = T(0.5) * (Ksym + Ksym.transpose());
 
-      const int idx[4] = {0,3,6,9};
-
       for (int i = 0; i < 3; ++i) {
         for (int j = i + 1; j < 3; ++j) {
           const T sigma_ij = Sigma_aw_stat(i,j);
