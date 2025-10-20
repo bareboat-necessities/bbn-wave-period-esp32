@@ -205,7 +205,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     typedef Matrix<T, 4, 4> Matrix4;
     typedef Matrix<T, M, M> MatrixM;
 
-    static constexpr T half = T(1) / T(2);
     static constexpr T STD_GRAVITY = T(9.80665);  // standard gravity acceleration m/s²
     static constexpr T tempC_ref = T(35.0); // Reference temperature for temperature related accel bias drift °C
 
