@@ -338,7 +338,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 sigma_target = std::clamp(std::sqrt(std::max(0.0f, accel_var_reg)), MIN_SIGMA_A, MAX_SIGMA_A);
             }
             if (tuner.isReady()) {
-                constexpr float C_adj = 2.8f; // keep your scaling
+                constexpr float C_adj = 2.6f; // scaling
                 RS_target = std::clamp(C_adj * sigma_target * tau_target * tau_target * tau_target, MIN_R_S, MAX_R_S);
             }
         }
