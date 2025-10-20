@@ -625,8 +625,6 @@ private:
     struct FixedGridAvg fixed_avg_;
     
     float w0_4 = 0.0f;       // regularization for ω⁻⁴
-    float hp_state = 0.0f;   // high-pass memory
-    float hp_prev_in = 0.0f;
     
     float tau_wc = 3.0f;   // centroid follow (s)  — fast
     float alpha_wc = 0.0f; // computed from dt
