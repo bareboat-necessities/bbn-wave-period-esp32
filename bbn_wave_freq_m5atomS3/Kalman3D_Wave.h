@@ -454,7 +454,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Quaternion & small-angle helpers (kept)
     void applyQuaternionCorrectionFromErrorState(); // apply correction to qref using xext(0..2)
-    void normalizeQuat();
 
     static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
@@ -994,12 +993,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectio
 
     // Clear error-state attitude correction after applying
     xext.template head<3>().setZero();
-}
-
-// normalize quaternion
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::normalizeQuat() {
-  qref.normalize();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
