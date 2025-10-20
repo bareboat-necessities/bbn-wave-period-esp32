@@ -41,15 +41,15 @@
 */
 
 struct DebiasedEMA {
-  float value  = 0.0f;
-  float weight = 0.0f;
-  inline void reset() { value = 0.0f; weight = 0.0f; }
-  inline void update(float x, float alpha) {
-    value  = (1.0f - alpha) * value + alpha * x;
-    weight = (1.0f - alpha) * weight + alpha;
-  }
-  inline float get() const { return (weight > 1e-12f) ? value / weight : 0.0f; }
-  inline bool  isReady() const { return weight > 1e-6f; }
+    float value  = 0.0f;
+    float weight = 0.0f;
+    inline void reset() { value = 0.0f; weight = 0.0f; }
+    inline void update(float x, float alpha) {
+        value  = (1.0f - alpha) * value + alpha * x;
+        weight = (1.0f - alpha) * weight + alpha;
+    }
+    inline float get() const { return (weight > 1e-12f) ? value / weight : 0.0f; }
+    inline bool  isReady() const { return weight > 1e-6f; }
 };
 
 template <int MAX_K_ = 25>
@@ -109,58 +109,55 @@ public:
 
     // Cosine-tapered geometric spacing (denser near center)
     inline void buildGrid(float omega_ctr, float omega_min, float omega_max) {
-      constexpr float TARGET_SPAN_UP = 6.0f;
-      omega_center = clampf_(omega_ctr, omega_min, omega_max);
-
-      // precompute tapers and their sum
-      float taper[MAX_K + 1];
-      float sum_w = 0.0f;
-      taper[0] = 0.0f;
-      for (int k = 1; k <= MAX_K; ++k) {
-        float t = 0.5f * (1.0f + std::cos((float(k) / float(MAX_K)) * PI_));
-        taper[k] = t;
-        sum_w += t;
-      }
-
-      float span_up = std::min(TARGET_SPAN_UP, omega_max / std::max(omega_center, 1e-20f));
-      float span_dn = std::min(TARGET_SPAN_UP, std::max(omega_center, 1e-20f) / std::max(omega_min, 1e-20f));
-
-      float base_up = (span_up  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_up) / sum_w) : 1.0f;
-      float base_dn = (span_dn  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_dn) / sum_w) : 1.0f;
-
-      omega[MAX_K] = omega_center;
-
-      float w_up = omega_center;
-      for (int k = 1; k <= MAX_K; ++k) {
-        w_up *= std::pow(base_up, taper[k]);
-        omega[MAX_K + k] = clampf_(w_up, omega_min, omega_max);
-      }
-
-      float w_dn = omega_center;
-      for (int k = 1; k <= MAX_K; ++k) {
-        w_dn /= std::pow(base_dn, taper[k]);
-        omega[MAX_K - k] = clampf_(w_dn, omega_min, omega_max);
-      }
-
-      // Voronoi half-widths (rad/s) and stabilized ω^-4
-      // Add a tiny ω floor inside ω^4 to prevent blow-ups at very low ω.
-      constexpr float W_FLOOR = 1e-2f; // rad/s (tiny; << typical ω)
-      for (int i = 0; i < NBINS; ++i) {
-        const double w = double(omega[i]);
-        const float wL = (i > 0)         ? omega[i - 1] : w;
-        const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
-
-        float dW = 0.5f * (wR - wL);
-        // adaptive floor: prevent tiny ω bins from dominating
-        const float dW_min_rel = 0.0025f * std::max(w, 0.0); // 0.25% of ω
-        const float dW_min_abs = 1e-5f;
-        if (dW < std::max(dW_min_abs, dW_min_rel))
-          dW = std::max(dW_min_abs, dW_min_rel);
-        domega[i] = dW;
-
-        const float w2 = w * w;
-      }
-
+        constexpr float TARGET_SPAN_UP = 6.0f;
+        omega_center = clampf_(omega_ctr, omega_min, omega_max);
+        
+        // precompute tapers and their sum
+        float taper[MAX_K + 1];
+        float sum_w = 0.0f;
+        taper[0] = 0.0f;
+        for (int k = 1; k <= MAX_K; ++k) {
+            float t = 0.5f * (1.0f + std::cos((float(k) / float(MAX_K)) * PI_));
+            taper[k] = t;
+            sum_w += t;
+        }
+        
+        float span_up = std::min(TARGET_SPAN_UP, omega_max / std::max(omega_center, 1e-20f));
+        float span_dn = std::min(TARGET_SPAN_UP, std::max(omega_center, 1e-20f) / std::max(omega_min, 1e-20f));
+        
+        float base_up = (span_up  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_up) / sum_w) : 1.0f;
+        float base_dn = (span_dn  > 1.0f && sum_w > 0.0f) ? std::exp(std::log(span_dn) / sum_w) : 1.0f;
+        
+        omega[MAX_K] = omega_center;
+        
+        float w_up = omega_center;
+        for (int k = 1; k <= MAX_K; ++k) {
+            w_up *= std::pow(base_up, taper[k]);
+            omega[MAX_K + k] = clampf_(w_up, omega_min, omega_max);
+        }
+        float w_dn = omega_center;
+        for (int k = 1; k <= MAX_K; ++k) {
+            w_dn /= std::pow(base_dn, taper[k]);
+            omega[MAX_K - k] = clampf_(w_dn, omega_min, omega_max);
+        }
+        
+        // Voronoi half-widths (rad/s) and stabilized ω^-4
+        // Add a tiny ω floor inside ω^4 to prevent blow-ups at very low ω.
+        constexpr float W_FLOOR = 1e-2f; // rad/s (tiny; << typical ω)
+        for (int i = 0; i < NBINS; ++i) {
+            const double w = double(omega[i]);
+            const float wL = (i > 0)         ? omega[i - 1] : w;
+            const float wR = (i < NBINS - 1) ? omega[i + 1] : w;
+            
+            float dW = 0.5f * (wR - wL);
+            // adaptive floor: prevent tiny ω bins from dominating
+            const float dW_min_rel = 0.0025f * std::max(w, 0.0); // 0.25% of ω
+            const float dW_min_abs = 1e-5f;
+            if (dW < std::max(dW_min_abs, dW_min_rel))
+                dW = std::max(dW_min_abs, dW_min_rel);
+            domega[i] = dW;
+        }
+        
         if (!ready) {
             for (int i = 0; i < NBINS; ++i) {
                 c[i] = 1.0f; s[i] = 0.0f;
@@ -204,29 +201,28 @@ public:
     }
 
     inline float integrateMoment(int n) const {
-      if (!ready) return 0.0f;
-      double acc = 0.0;
+        if (!ready) return 0.0f;
+        double acc = 0.0;
     
-      for (int i = 0; i < NBINS; ++i) {
-       const double w = double(omega_eff[i]);
-        const double S = double(S_eta_rad[i]);
-        const double dw2 = double(2.0f * domega[i]);
+        for (int i = 0; i < NBINS; ++i) {
+           const double w = double(omega_eff[i]);
+           const double S = double(S_eta_rad[i]);
+           const double dw2 = double(2.0f * domega[i]);
     
-        double term;
-        switch (n) {
-          case -1: term = (w > 0.0) ? S / w : 0.0; break;
-          case 0:  term = S;           break;
-          case 1:  term = S * w;       break;
-          case 2:  term = S * w * w;   break;
-          case 3:  term = S * w * w * w; break;
-          case 4:  term = S * w * w * w * w; break;
-          default: term = S * std::pow(w, n); break; // fallback for rare cases
+           double term;
+           switch (n) {
+              case -1: term = (w > 0.0) ? S / w : 0.0; break;
+              case 0:  term = S;           break;
+              case 1:  term = S * w;       break;
+              case 2:  term = S * w * w;   break;
+              case 3:  term = S * w * w * w; break;
+              case 4:  term = S * w * w * w * w; break;
+              default: term = S * std::pow(w, n); break; // fallback for rare cases
+          }    
+          acc += term * dw2;
         }
-    
-        acc += term * dw2;
-      }
-      return float(acc);
-    }
+        return float(acc);
+     }
   };
 
   // Fixed-grid online averaged spectrum (absolute Hz grid)
