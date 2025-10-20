@@ -74,7 +74,8 @@ public:
         const float f = Freq_smoothed.get();
         if (f <= 1e-6f || sigma_a <= 0.0f)
             return 0.0f;
-        return sigma_a / (f * f * f);
+        const float tau = 0.5f / f;
+        return sigma_a * (tau * tau * tau);
     }
 
     inline bool isReady() const { return A_var.isReady() && Freq_smoothed.isReady(); }
