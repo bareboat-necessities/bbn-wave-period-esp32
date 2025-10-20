@@ -26,18 +26,6 @@ const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 67.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 67.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 15.0f;
 
-// Global variable set from command line
-constexpr float R_S_DEFAULT = 10.0f;
-float R_S_base_global = R_S_DEFAULT;
-
-inline constexpr float R_S_law_scale(float r) {
-    return std::pow(r, 3.0f / 3.0f);
-}
-
-inline float R_S_law(float /*Tp*/, float /*T_p_base*/ = 6.17158f) {
-    return R_S_base_global;
-}
-
 // Rolling stats window [s] for RMS and online variance
 constexpr float RMS_WINDOW_SEC = 60.0f;
 
@@ -55,8 +43,8 @@ constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 6.0f;
 constexpr float MIN_TAU_S   = 0.1f;
 constexpr float MAX_TAU_S   = 11.5f;
-constexpr float MIN_R_S     = 0.01f * R_S_DEFAULT * R_S_law_scale(0.02f);
-constexpr float MAX_R_S     = 10.0f * R_S_DEFAULT * R_S_law_scale(1.50f);
+constexpr float MIN_R_S     = 0.01f;
+constexpr float MAX_R_S     = 20.0f;
 
 // Your project headers
 #include "WaveFilesSupport.h"
@@ -156,9 +144,9 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker,
 
 // ---------- Online tuning state ----------
 struct OnlineTuneState {
-    float tau_applied   = 1.15f;                          // s
-    float sigma_applied = 1.22f;                          // m/s²
-    float RS_applied    = R_S_law(8.17704f);              // start from base Tp
+    float tau_applied   = 1.15f;              // s
+    float sigma_applied = 1.22f;              // m/s²
+    float RS_applied    = 8.17f;              // m*s
 };
 
 // ---------- main processing ----------
@@ -530,10 +518,6 @@ int main(int argc, char* argv[]) {
         std::string arg = argv[i];
         if (arg == "--nomag") with_mag = false;
         else if (arg == "--no-noise") add_noise = false;
-        else if (arg.rfind("--rs-base=", 0) == 0) {
-            try { R_S_base_global = std::stof(arg.substr(10)); }
-            catch (...) { std::cerr << "Invalid value for --rs-base\n"; return EXIT_FAILURE; }
-        }
     }
 
     init_tracker_backends();
@@ -541,7 +525,6 @@ int main(int argc, char* argv[]) {
     std::cout << "Simulation starting with_mag=" << (with_mag ? "true" : "false")
               << ", mag_delay=" << MAG_DELAY_SEC << " sec"
               << ", noise=" << (add_noise ? "true" : "false")
-              << ", R_S_base=" << R_S_base_global
               << ", adapt_tau_sec=" << ADAPT_TAU_SEC << "\n";
 
     // Gather files
