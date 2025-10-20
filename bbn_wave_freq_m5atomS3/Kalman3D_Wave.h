@@ -449,9 +449,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
 
-    // Extended helpers
-    void assembleExtendedFandQ(const Vector3& acc_body, T Ts, Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext);
-
     // Quaternion & small-angle helpers (kept)
     void applyQuaternionCorrectionFromErrorState(); // apply correction to qref using xext(0..2)
 
@@ -1046,93 +1043,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
 
     // Apply quaternion correction (attitude may get nudged via cross-covariances)
     applyQuaternionCorrectionFromErrorState();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
-    const Vector3& /*acc_body_unused*/, T Ts,
-    Matrix<T, NX, NX>& F_a_ext, MatrixNX& Q_a_ext)
-{
-    F_a_ext.setIdentity();
-    Q_a_ext.setZero();
-
-    // Attitude error (+ optional bias)
-    Matrix3 I = Matrix3::Identity();
-    Vector3 w = last_gyr_bias_corrected;
-    T omega = w.norm();
-    T theta = omega * Ts;
-
-    if (theta < T(1e-5)) {
-        Matrix3 Wx = skew_symmetric_matrix(w);
-        F_a_ext.template block<3,3>(0,0) = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/2);
-    } else {
-        Matrix3 W = skew_symmetric_matrix(w / omega);
-        T s = std::sin(theta);
-        T c = std::cos(theta);
-        F_a_ext.template block<3,3>(0,0) = I - s * W + (1 - c) * (W * W);
-    }
-
-    if constexpr (with_gyro_bias) {
-        F_a_ext.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
-    }
-
-    // Process noise for attitude/bias
-    Q_a_ext.topLeftCorner(BASE_N, BASE_N) = Qbase * Ts;
-
-    // Linear subsystem [v,p,S,a_w]
-    using Mat12 = Eigen::Matrix<T,12,12>;
-    Mat12 Phi_lin; Phi_lin.setZero();
-    Mat12 Qd_lin;  Qd_lin.setZero();
-
-    for (int axis = 0; axis < 3; ++axis) {
-        T tau    = std::max(T(1e-6), tau_aw);
-        T sigma2 = Sigma_aw_stat(axis,axis);
-
-        Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
-        PhiAxis4x1_analytic(tau, Ts, Phi_axis);
-        QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
-
-        int idx[4] = {0,3,6,9}; // v,p,S,a offsets
-        for (int i=0;i<4;i++)
-            for (int j=0;j<4;j++) {
-                Phi_lin(idx[i]+axis, idx[j]+axis) = Phi_axis(i,j);
-                Qd_lin (idx[i]+axis, idx[j]+axis) = Qd_axis(i,j);
-            }
-    }
-
-    F_a_ext.template block<12,12>(OFF_V, OFF_V) = Phi_lin;
-    Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
-
-    // Inject cross-axis OU correlation into Q_a_ext
-    if (has_cross_cov_a_xy) {
-      const T inv_tau = T(1) / std::max(tau_aw, T(1e-7));
-
-      // Get normalized OU kernel (σ² = 1)
-      Eigen::Matrix<T,4,4> Ksym;
-      QdAxis4x1_analytic(tau_aw, Ts, T(1), Ksym);
-      Ksym = T(0.5) * (Ksym + Ksym.transpose());
-
-      for (int i = 0; i < 3; ++i) {
-        for (int j = i + 1; j < 3; ++j) {
-          const T sigma_ij = Sigma_aw_stat(i,j);
-          if (std::abs(sigma_ij) < T(1e-12)) continue;
-
-          const Eigen::Matrix<T,4,4> Qcorr = sigma_ij * Ksym;
-
-          // Top-left of [v,p,S,a] 12×12 block inside Q_a_ext
-          const int base_i = OFF_V + 3*i;
-          const int base_j = OFF_V + 3*j;
-
-          // Assign symmetric 4×4 sub-blocks in one shot
-          Q_a_ext.template block<4,4>(base_i, base_j) += Qcorr;
-          Q_a_ext.template block<4,4>(base_j, base_i) += Qcorr.transpose();
-        }
-      }
-    }
-
-    if constexpr (with_accel_bias) {
-        Q_a_ext.template block<3,3>(OFF_BA, OFF_BA) = Q_bacc_ * Ts;
-    }
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
