@@ -304,7 +304,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     //   • Also reseeds Pext(OFF_AW, OFF_AW) to keep filter covariance consistent.
     void set_aw_stationary_corr_std(const Vector3& std_aw, T rho_corr = T(-0.9)) {
       // Clamp correlation for numerical safety
-      rho_corr = std::clamp(rho_corr, T(-0.999), T(0.999));
+      rho_corr = std::max(T(-0.999), std::min(rho_corr, T(0.999))); 
 
       const T sx = std::max(T(1e-9), std_aw.x());
       const T sy = std::max(T(1e-9), std_aw.y());
