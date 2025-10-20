@@ -338,8 +338,9 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
           Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
         } else {
           // Otherwise, softly merge (blend) to avoid discontinuity
-          auto& Paw = Pext.template block<3,3>(OFF_AW, OFF_AW);
-          Paw = 0.9f * Paw + 0.1f * Sigma_aw_stat;
+          Pext.template block<3,3>(OFF_AW, OFF_AW) =
+              0.9f * Pext.template block<3,3>(OFF_AW, OFF_AW)
+            + 0.1f * Sigma_aw_stat;
         }
         // keep global symmetry
         Pext = T(0.5) * (Pext + Pext.transpose());
