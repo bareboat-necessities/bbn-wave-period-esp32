@@ -915,6 +915,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     const T n_pred = v2hat.norm();
     if (n_meas < T(1e-6) || n_pred < T(1e-6)) return;
 
+    // Unit vectors for dot product check
+    Vector3 meas_n = mag_meas_body / n_meas;
+    Vector3 pred_n = v2hat       / n_pred;
+    T dotp = meas_n.dot(pred_n);
+
     const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
     const Vector3 r = meas_fixed - v2hat;
 
