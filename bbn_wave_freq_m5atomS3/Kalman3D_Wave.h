@@ -915,71 +915,24 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     const T n_pred = v2hat.norm();
     if (n_meas < T(1e-6) || n_pred < T(1e-6)) return;
 
-    // Unit vectors for dot product check
-    Vector3 meas_n = mag_meas_body / n_meas;
-    Vector3 pred_n = v2hat       / n_pred;
-    T dotp = meas_n.dot(pred_n);
+    const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
+    const Vector3 r = meas_fixed - v2hat;
 
-    const T DOT_DANGEROUS = T(0.0);   // if |dot| < 0.2 (~>78°) → yaw-only branch
-    const T YAW_CLAMP     = T(0.105); // ~6° clamp per update
+    const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
 
-    if (std::abs(dotp) >= DOT_DANGEROUS) {
-        // BRANCH 1: SAFE FULL 3D UPDATE
-        const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
-        const Vector3 r = meas_fixed - v2hat;
+    Matrix3 S_mat = Rmag;
+    const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
+    S_mat.noalias() += J_att * P_th_th * J_att.transpose();
 
-        const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
+    Eigen::Matrix<T,NX,3> PCt = Pext.template block<NX,3>(0,0) * J_att.transpose();
 
-        Matrix3 S_mat = Rmag;
-        const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
-        S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+    Eigen::LDLT<Matrix3> ldlt;
+    if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
+    const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
 
-        Eigen::Matrix<T,NX,3> PCt = Pext.template block<NX,3>(0,0) * J_att.transpose();
+    xext.noalias() += K * r;
 
-        Eigen::LDLT<Matrix3> ldlt;
-        if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
-        const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-        xext.noalias() += K * r;
-
-        joseph_update3_(K, S_mat, PCt);
-    } else {
-        // BRANCH 2: YAW-ONLY PROJECTED UPDATE
-        const Vector3 gb = (R_wb() * Vector3(0,0,1)).normalized();
-        const Matrix3 Hb = Matrix3::Identity() - gb * gb.transpose();
-
-        Vector3 m_h = Hb * mag_meas_body;
-        Vector3 v_h = Hb * v2hat;
-
-        T nm = m_h.norm(), nv = v_h.norm();
-        if (nm < T(1e-6) || nv < T(1e-6)) return;
-
-        Vector3 m_hn = m_h / nm, v_hn = v_h / nv;
-        if (m_hn.dot(v_hn) < T(0)) m_h = -m_h;
-
-        const Vector3 r = Hb * (mag_meas_body - v2hat);
-        const Matrix3 J_att_proj = Hb * (-skew_symmetric_matrix(v2hat));
-
-        Matrix3 S_mat = Hb * Rmag * Hb.transpose();
-        const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
-        S_mat.noalias() += J_att_proj * P_th_th * J_att_proj.transpose();
-
-        Eigen::Matrix<T,NX,3> PCt = Pext.template block<NX,3>(0,0) * J_att_proj.transpose();
-
-        Eigen::LDLT<Matrix3> ldlt;
-        if (!safe_ldlt3_(S_mat, ldlt, S_mat.norm())) return;
-        const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-        xext.noalias() += K * r;
-
-        // Limit correction to yaw only
-        Vector3 dth = xext.template head<3>();
-        const T dpsi = dth.dot(gb);
-        const T dpsi_clamped = std::max(-YAW_CLAMP, std::min(YAW_CLAMP, dpsi));
-        xext.template head<3>() = (dth - gb * dpsi + gb * dpsi_clamped).eval();
-
-        joseph_update3_(K, S_mat, PCt);
-    }
+    joseph_update3_(K, S_mat, PCt);
 
     // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
