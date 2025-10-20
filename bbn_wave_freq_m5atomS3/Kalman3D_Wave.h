@@ -135,8 +135,8 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
         // A1 ≈ τ² (x²/2 - x³/3 + x⁴/8)
         c.A1 = tau2 * (T(0.5)*x2 - T(1.0/3.0)*x3 + T(1.0/8.0)*x4);
 
-        // A2 = τ³( x³/3 − x⁴/4 + x⁵/10 + … )
-        c.A2 = tau3 * ( T(1.0/3.0)*x3 - T(1.0/4.0)*x4 + T(1.0/10.0)*x5);
+        // A2 = τ³ (x³/3 − x⁴/4 + x⁵/10 + … )
+        c.A2 = tau3 * (T(1.0/3.0)*x3 - T(1.0/4.0)*x4 + T(1.0/10.0)*x5);
 
     } else {
         // General closed-form branch
@@ -830,7 +830,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     const T g_meas = acc_meas.norm();
     if (std::abs(g_meas - gravity_magnitude_) > T(2.0) * gravity_magnitude_) return;
 
-    // === Correct physical accelerometer measurement model ===
+    // Physical accelerometer measurement model
     // f_b = R_wb * (a_w - g) + b_a + noise
     const Vector3 f_pred = accelerometer_measurement_func(tempC);
     const Vector3 f_meas = acc_meas;
@@ -1268,13 +1268,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     // Build final Qd, symmetrize, scrub, then project *Qd* to PSD
     Qd_axis = (q_c * (T(0.5) * (K + K.transpose()))).eval();
 
-    for (int i=0;i<4;++i) for (int j=0;j<4;++j) {
+    for (int i=0; i<4; ++i) for (int j=0; j<4; ++j) {
         const T v = Qd_axis(i,j);
         if (!(v==v) || std::isinf(v)) Qd_axis(i,j) = T(0);
     }
 
     project_psd4<T>(Qd_axis, T(1e-16));
 
-    for (int i=0;i<4; ++i) if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-17);
+    for (int i=0; i<4; ++i) if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-17);
     Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
 }
