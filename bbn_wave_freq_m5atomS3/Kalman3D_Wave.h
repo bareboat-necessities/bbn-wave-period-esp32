@@ -286,6 +286,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // OU stationary std [m/s²] for a_w (per axis)
     void set_aw_stationary_std(const Vector3& std_aw) {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
+        has_cross_cov_a_xy = false;
     }
 
     // Set OU stationary covariance for world-acceleration a_w,
@@ -313,8 +314,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
       // Construct correlated covariance (symmetric)
       Matrix3 S;
       S <<
-          sx*sx,  T(0),        rho_corr*sx*sz,
-          T(0),   sy*sy,       rho_corr*sy*sz,
+          sx*sx,  T(0),          rho_corr*sx*sz,
+          T(0),   sy*sy,         rho_corr*sy*sz,
           rho_corr*sx*sz, rho_corr*sy*sz, sz*sz;
 
       // Symmetrize & project to SPD for robustness
@@ -322,11 +323,11 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
       Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
       if (es.info() == Eigen::Success) {
         auto lam = es.eigenvalues();
-        for (int i = 0; i < 3; ++i)
+        for (int i = 0; i < 3; ++i) {
           if (!(lam(i) > T(0))) lam(i) = T(1e-12);
+        }
         Sigma_aw_stat =
-            (es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose())
-                .eval();
+            (es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose()).eval();
       } else {
         Sigma_aw_stat = S.diagonal().asDiagonal();  // safe fallback
       }
@@ -337,6 +338,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         // keep global symmetry
         Pext = T(0.5) * (Pext + Pext.transpose());
       }
+      has_cross_cov_a_xy = true;
     }
   
     // Covariances for ∫p dt pseudo-measurement
@@ -426,6 +428,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     int pseudo_update_counter_ = 0;   // counts time_update calls
     static constexpr int PSEUDO_UPDATE_PERIOD = 3; // every N-th update
+
+    bool has_cross_cov_a_xy = false;
 
     // convenience getters
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
@@ -1076,7 +1080,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::assembleExtendedFandQ(
     Q_a_ext.template block<12,12>(OFF_V, OFF_V) = Qd_lin;
 
     // Inject cross-axis OU correlation into Q_a_ext
-    {
+    if (has_cross_cov_a_xy) {
       const T inv_tau = T(1) / std::max(tau_aw, T(1e-7));
 
       // Get normalized OU kernel (σ² = 1)
