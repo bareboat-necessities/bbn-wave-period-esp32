@@ -136,7 +136,7 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
         c.A1 = tau2 * (T(0.5)*x2 - T(1.0/3.0)*x3 + T(1.0/8.0)*x4);
 
         // A2 = τ³( x³/3 − x⁴/4 + x⁵/10 + … )
-        c.A2 = tau3 * ( T(1.0/3.0)*x3 - T(1.0/4.0)*x4 + T(1.0/10.0)*x5
+        c.A2 = tau3 * ( T(1.0/3.0)*x3 - T(1.0/4.0)*x4 + T(1.0/10.0)*x5);
 
     } else {
         // General closed-form branch
