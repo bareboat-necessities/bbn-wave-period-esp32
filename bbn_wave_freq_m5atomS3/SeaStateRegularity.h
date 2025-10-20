@@ -55,57 +55,56 @@ struct DebiasedEMA {
 template <int MAX_K_ = 25>
 class SeaStateRegularity {
 public:
-  // Constants
-  constexpr static int   MAX_K   = MAX_K_;
-  constexpr static int   NBINS   = 2 * MAX_K + 1;
-  constexpr static float EPSILON = 1e-12f;
-  constexpr static float PI_     = 3.14159265358979323846f;
-  constexpr static float TWO_PI_ = 2.0f * PI_;
-
-  // Behavior knobs
-  constexpr static float BETA_SPEC     = 1.4f;
-  constexpr static float K_EFF_MIX     = 2.0f;
-  constexpr static float OMEGA_MIN_HZ  = 0.03f;
-  constexpr static float OMEGA_MAX_HZ  = 4.00f;
-
-  // Nested Spectrum struct (grid + demod state)
-  struct Spectrum {
+    // Constants
+    constexpr static int   MAX_K   = MAX_K_;
+    constexpr static int   NBINS   = 2 * MAX_K + 1;
+    constexpr static float EPSILON = 1e-12f;
+    constexpr static float PI_     = 3.14159265358979323846f;
+    constexpr static float TWO_PI_ = 2.0f * PI_;
+    
+    // Behavior knobs
+    constexpr static float BETA_SPEC     = 1.4f;
+    constexpr static float K_EFF_MIX     = 2.0f;
+    constexpr static float OMEGA_MIN_HZ  = 0.03f;
+    constexpr static float OMEGA_MAX_HZ  = 4.00f;
+    
+    // Nested Spectrum struct (grid + demod state)
+    struct Spectrum {
     bool  ready        = false;
     float omega_center = 0.0f;
-
+    
     float omega[NBINS]{};
     float domega[NBINS]{};
-
+    
     float alpha_k[NBINS]{};
     float cos_dphi[NBINS]{};
     float sin_dphi[NBINS]{};
-
+    
     double c[NBINS]{};
     double s[NBINS]{};
     double zr[NBINS]{};
     double zi[NBINS]{};
-double zr_prev[NBINS]{};
-double zi_prev[NBINS]{};
-double omega_eff[NBINS]{};
-
+    double zr_prev[NBINS]{};
+    double zi_prev[NBINS]{};
+    double omega_eff[NBINS]{};
 
     float S_eta_rad[NBINS]{};
 
     float enbw_hz[NBINS]{};  // exact ENBW (Hz) for each IIR analyzer bin
 
-inline void clear() {
-    ready = false;
-    for (int i = 0; i < NBINS; ++i) {
-        c[i] = 1.0f; s[i] = 0.0f;
-        zr[i] = zi[i] = zr_prev[i] = zi_prev[i] = 0.0f;
-        omega_eff[i] = omega[i];
-        S_eta_rad[i] = 0.0f;
+    inline void clear() {
+        ready = false;
+        for (int i = 0; i < NBINS; ++i) {
+            c[i] = 1.0f; s[i] = 0.0f;
+            zr[i] = zi[i] = zr_prev[i] = zi_prev[i] = 0.0f;
+            omega_eff[i] = omega[i];
+            S_eta_rad[i] = 0.0f;
+        }
     }
-}
 
-    // Local clamp (nested classes are NOT friends by default)
+    // Local clamp
     static inline float clampf_(float x, float lo, float hi) {
-      return (x < lo) ? lo : ((x > hi) ? hi : x);
+        return (x < lo) ? lo : ((x > hi) ? hi : x);
     }
 
     // Cosine-tapered geometric spacing (denser near center)
@@ -162,73 +161,72 @@ inline void clear() {
         const float w2 = w * w;
       }
 
-if (!ready) {
-    for (int i = 0; i < NBINS; ++i) {
-        c[i] = 1.0f; s[i] = 0.0f;
-        zr[i] = zi[i] = zr_prev[i] = zi_prev[i] = 0.0f;
-    }
-    ready = true;
-}
+        if (!ready) {
+            for (int i = 0; i < NBINS; ++i) {
+                c[i] = 1.0f; s[i] = 0.0f;
+                zr[i] = zi[i] = zr_prev[i] = zi_prev[i] = 0.0f;
+            }
+            ready = true;
+        }
         for (int i = 0; i < NBINS; ++i) {
             omega_eff[i] = omega[i];    
         }
     }
 
-inline void precomputeForDt(float dt) {
-    const float Fs = 1.0f / dt;
-    for (int i = 0; i < NBINS; ++i) {
-        const float fk = omega[i] / TWO_PI_;   // bin center frequency (Hz)
-
-        // --- Constant-Q target (relative ENBW = r * fk) ---
-        const float r = 0.08f;                 // tune: 0.08..0.20 typical
-        const float ENBW_target = r * std::max(fk, 1e-9f);
-
-        // --- Solve for exact EWMA α with this ENBW ---
-        float alpha = (2.0f * ENBW_target) / (ENBW_target + 0.5f * Fs);
-        if (alpha < 0.0f) alpha = 0.0f;
-        else if (alpha > 1.0f) alpha = 1.0f;
-        alpha_k[i] = alpha;
-
-        // --- Store the actual ENBW for later PSD normalization ---
-        enbw_hz[i] = (alpha / std::max(2.0f - alpha, 1e-12f)) * (0.5f * Fs);
-
-        // --- Rotator step ---
-        const float dphi = omega[i] * dt;
-        if (std::fabs(dphi) < 1e-3f) {
-            cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
-            sin_dphi[i] = dphi;
-        } else {
-            cos_dphi[i] = std::cos(dphi);
-            sin_dphi[i] = std::sin(dphi);
+    inline void precomputeForDt(float dt) {
+        const float Fs = 1.0f / dt;
+        for (int i = 0; i < NBINS; ++i) {
+            const float fk = omega[i] / TWO_PI_;   // bin center frequency (Hz)
+    
+            // Constant-Q target (relative ENBW = r * fk)
+            const float r = 0.08f;                 // tune: 0.08..0.20 typical
+            const float ENBW_target = r * std::max(fk, 1e-9f);
+    
+            // Solve for exact EWMA α with this ENBW
+            float alpha = (2.0f * ENBW_target) / (ENBW_target + 0.5f * Fs);
+            if (alpha < 0.0f) alpha = 0.0f;
+            else if (alpha > 1.0f) alpha = 1.0f;
+            alpha_k[i] = alpha;
+    
+            // Store the actual ENBW for later PSD normalization
+            enbw_hz[i] = (alpha / std::max(2.0f - alpha, 1e-12f)) * (0.5f * Fs);
+    
+            // Rotator step
+            const float dphi = omega[i] * dt;
+            if (std::fabs(dphi) < 1e-3f) {
+                cos_dphi[i] = 1.0f - 0.5f * dphi * dphi;
+                sin_dphi[i] = dphi;
+            } else {
+                cos_dphi[i] = std::cos(dphi);
+                sin_dphi[i] = std::sin(dphi);
+            }
         }
     }
-}
 
-inline float integrateMoment(int n) const {
-  if (!ready) return 0.0f;
-  double acc = 0.0;
-
-  for (int i = 0; i < NBINS; ++i) {
-   const double w = double(omega_eff[i]);
-    const double S = double(S_eta_rad[i]);
-    const double dw2 = double(2.0f * domega[i]);
-
-    double term;
-    switch (n) {
-      case -1: term = (w > 0.0) ? S / w : 0.0; break;
-      case 0:  term = S;           break;
-      case 1:  term = S * w;       break;
-      case 2:  term = S * w * w;   break;
-      case 3:  term = S * w * w * w; break;
-      case 4:  term = S * w * w * w * w; break;
-      default: term = S * std::pow(w, n); break; // fallback for rare cases
+    inline float integrateMoment(int n) const {
+      if (!ready) return 0.0f;
+      double acc = 0.0;
+    
+      for (int i = 0; i < NBINS; ++i) {
+       const double w = double(omega_eff[i]);
+        const double S = double(S_eta_rad[i]);
+        const double dw2 = double(2.0f * domega[i]);
+    
+        double term;
+        switch (n) {
+          case -1: term = (w > 0.0) ? S / w : 0.0; break;
+          case 0:  term = S;           break;
+          case 1:  term = S * w;       break;
+          case 2:  term = S * w * w;   break;
+          case 3:  term = S * w * w * w; break;
+          case 4:  term = S * w * w * w * w; break;
+          default: term = S * std::pow(w, n); break; // fallback for rare cases
+        }
+    
+        acc += term * dw2;
+      }
+      return float(acc);
     }
-
-    acc += term * dw2;
-  }
-  return float(acc);
-}
-
   };
 
   // Fixed-grid online averaged spectrum (absolute Hz grid)
@@ -377,19 +375,18 @@ inline float integrateMoment(int n) const {
     // smoothed center omega
     const float w_obs = omega_inst;
     omega_used = (omega_used <= 0.0f) ? w_obs : (1.0f - alpha_w) * omega_used + alpha_w * w_obs;
-// --- Regularization frequency from averaging horizon (moved before HP) ---
-{
-    const float Teff = std::max(fixed_avg_.tau_spec, tau_mom);  // seconds
-    const float w0 = (Teff > 1e-3f) ? (TWO_PI_ / Teff)
-                                    : (2.0f * TWO_PI_ * 0.01f);  // fallback 0.02 Hz
-    const float w0_2 = w0 * w0;
-    w0_4 = w0_2 * w0_2;
-}
+    // Regularization frequency from averaging horizon
+    {
+        const float Teff = std::max(fixed_avg_.tau_spec, tau_mom);  // seconds
+        const float w0 = (Teff > 1e-3f) ? (TWO_PI_ / Teff)
+                                        : (2.0f * TWO_PI_ * 0.01f);  // fallback 0.02 Hz
+        const float w0_2 = w0 * w0;
+        w0_4 = w0_2 * w0_2;
+    }
       
-// --- Textbook one-pole high-pass differentiator (discrete-time) ---
-// Purpose: eliminate any DC or sub-ω₀ components before ω⁻⁴ inversion.
-// It follows H_HP(z) = (1 - z⁻¹) / (1 - (1 - α) z⁻¹), α = e^(−2π f_c dt)
-
+    // One-pole high-pass differentiator (discrete-time)
+    // Purpose: eliminate any DC or sub-ω₀ components before ω⁻⁴ inversion.
+    // It follows H_HP(z) = (1 - z⁻¹) / (1 - (1 - α) z⁻¹), α = e^(−2π f_c dt)
 
     // Tie cutoff frequency to Tikhonov regularizer (~inverse horizon)
     const double fc_hp = 3.0 * std::max(std::sqrt(std::sqrt(double(w0_4))) / double(TWO_PI_), 0.02); // Hz
@@ -407,7 +404,7 @@ inline float integrateMoment(int n) const {
     // return filtered acceleration
     const float a_hp = static_cast<float>(y_hp);
 
-    // === Warm-up estimation and ramp (leave unchanged below) ===
+    // Warm-up estimation and ramp
     const float tau_hp = 1.0f / std::max(2.0f * float(M_PI) * float(fc_hp), 2e-2f);
     const float f_c    = std::max(omega_used / TWO_PI_, 2e-2f);
     const float r_Q    = 0.12f;
@@ -438,263 +435,258 @@ inline float integrateMoment(int n) const {
     grid_valid = true;
     last_bins_dt = dt_s;
 
-  // --- Regularization shaping constants ---
-const float w0_reg  = 3.0f * ((w0_4 > 0.0f) ? std::sqrt(std::sqrt(w0_4)) : (2.0f * TWO_PI_ * 0.01f));
-const float beta_reg = 2.5f;  // shape factor for low-ω steepness    
+    // Regularization shaping constants
+    const float w0_reg  = 3.0f * ((w0_4 > 0.0f) ? std::sqrt(std::sqrt(w0_4)) : (2.0f * TWO_PI_ * 0.01f));
+    const float beta_reg = 2.5f;  // shape factor for low-ω steepness    
 
     // hot loop: rotator + 1st-order IIR using precomputed constants
     double S0 = 0.0, S1 = 0.0, S2 = 0.0;
-double Sa0 = 0.0, Sa1 = 0.0;
-    for (int i = 0; i < NBINS; ++i) {
+    double Sa0 = 0.0, Sa1 = 0.0;
+    for (int i = 0; i < NBINS; ++i) {        
+        // Numerically stable rotation and IIR update
+        const double c_next = spectrum_.c[i] * spectrum_.cos_dphi[i] - spectrum_.s[i] * spectrum_.sin_dphi[i];
+        const double s_next = spectrum_.s[i] * spectrum_.cos_dphi[i] + spectrum_.c[i] * spectrum_.sin_dphi[i];
+        spectrum_.c[i] = c_next;
+        spectrum_.s[i] = s_next;
+
+        // keep rotator on unit circle
+        const double nrm = std::sqrt(spectrum_.c[i]*spectrum_.c[i] + spectrum_.s[i]*spectrum_.s[i]);
+        if (nrm > 0.0) {
+            spectrum_.c[i] /= nrm;
+            spectrum_.s[i] /= nrm;
+        }
+
+        // use double for demodulation, but cast accel to double once
+        const double y_r = static_cast<double>(a_hp) * spectrum_.c[i];
+        const double y_i = -static_cast<double>(a_hp) * spectrum_.s[i];
         
-// --- Numerically stable double-precision rotation and IIR update ---
-const double c_next = spectrum_.c[i] * spectrum_.cos_dphi[i] - spectrum_.s[i] * spectrum_.sin_dphi[i];
-const double s_next = spectrum_.s[i] * spectrum_.cos_dphi[i] + spectrum_.c[i] * spectrum_.sin_dphi[i];
-spectrum_.c[i] = c_next;
-spectrum_.s[i] = s_next;
-
-// keep rotator on unit circle
-const double nrm = std::sqrt(spectrum_.c[i]*spectrum_.c[i] + spectrum_.s[i]*spectrum_.s[i]);
-if (nrm > 0.0)
-{
-    spectrum_.c[i] /= nrm;
-    spectrum_.s[i] /= nrm;
-}
-
-// use double for demodulation, but cast accel to double once
-const double y_r = static_cast<double>(a_hp) * spectrum_.c[i];
-const double y_i = -static_cast<double>(a_hp) * spectrum_.s[i];
-
-const double a = static_cast<double>(spectrum_.alpha_k[i]);
-spectrum_.zr[i] = (1.0 - a) * spectrum_.zr[i] + a * y_r;
-spectrum_.zi[i] = (1.0 - a) * spectrum_.zi[i] + a * y_i;
+        const double a = static_cast<double>(spectrum_.alpha_k[i]);
+        spectrum_.zr[i] = (1.0 - a) * spectrum_.zr[i] + a * y_r;
+        spectrum_.zi[i] = (1.0 - a) * spectrum_.zi[i] + a * y_i;
+                
+        // Estimate residual rotation for reassignment (Auger–Flandrin style)
+        const float zr_old = spectrum_.zr_prev[i];
+        const float zi_old = spectrum_.zi_prev[i];
         
-// --- Estimate residual rotation for reassignment (Auger–Flandrin style) ---
-const float zr_old = spectrum_.zr_prev[i];
-const float zi_old = spectrum_.zi_prev[i];
-
-const float dot = spectrum_.zr[i]*zr_old + spectrum_.zi[i]*zi_old;
-const float crs = spectrum_.zi[i]*zr_old - spectrum_.zr[i]*zi_old;
-const float dphi = std::atan2(crs, std::max(dot, 1e-24f));
-const float delta_omega = dphi / dt_s;
-
-// --- Smoothed reassignment to suppress phase jitter ---
-const float alpha_reassign = 0.4f;  // 0.1–0.4 typical; adjust for responsiveness
-const float w_target = Spectrum::clampf_(spectrum_.omega[i] + delta_omega,
-                                         OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-spectrum_.omega_eff[i] = (1.0f - alpha_reassign) * spectrum_.omega_eff[i]
-                       + alpha_reassign * w_target;
-
-// --- Save for next-step phase derivative ---
-spectrum_.zr_prev[i] = spectrum_.zr[i];
-spectrum_.zi_prev[i] = spectrum_.zi[i];
+        const float dot = spectrum_.zr[i]*zr_old + spectrum_.zi[i]*zi_old;
+        const float crs = spectrum_.zi[i]*zr_old - spectrum_.zr[i]*zi_old;
+        const float dphi = std::atan2(crs, std::max(dot, 1e-24f));
+        const float delta_omega = dphi / dt_s;
         
-// --- Baseband power ---
-const float P_bb = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
-
-// --- Normalize by ENBW (Hz) of this analyzer ---
-const float ENBW_Hz = std::max(spectrum_.enbw_hz[i], 1e-12f);
-const float S_a_Hz  = P_bb / ENBW_Hz;
-const float S_a_rad = S_a_Hz / TWO_PI_;
-
-// --- Use reassigned ω (critical!) ---
-const float w  = spectrum_.omega_eff[i];   // ✅ not spectrum_.omega[i]
-const float w2 = w * w;
+        // Smoothed reassignment to suppress phase jitter
+        const float alpha_reassign = 0.4f;  // 0.1–0.4 typical; adjust for responsiveness
+        const float w_target = Spectrum::clampf_(spectrum_.omega[i] + delta_omega,
+                                                 OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+        spectrum_.omega_eff[i] = (1.0f - alpha_reassign) * spectrum_.omega_eff[i]
+                               + alpha_reassign * w_target;
         
-const float dw = spectrum_.domega[i];
-const float fk = w / TWO_PI_;
-
-// --- Gaussian taper to reject sidebands and suppress post-peak shelf ---
-const float f_center = std::max(omega_used, 1e-6f) / TWO_PI_;
-const float sigma_rel = 0.25f; // fractional bandwidth (≈ Q ≈ 2)
-const float x_rel = (fk - f_center) / (sigma_rel * f_center);
-const float w_taper = std::exp(-0.5f * x_rel * x_rel);  // Gaussian weight
-
-Sa0 += double(S_a_rad) * double(2.0f * dw) * w_taper;
-Sa1 += double(S_a_rad) * double(w)        * double(2.0f * dw) * w_taper;
-
-// --- Physically motivated pre-whitening HP window ---
-// This suppresses artificial low-ω lift caused by ω⁻⁴ inversion of noise.
-const float w_hp = 2.0f * w0_reg;  // cutoff tied to Tikhonov regularizer
-const float hp_gain = (w2 / (w2 + w_hp * w_hp));  // 2nd-order HP envelope      
+        // Save for next-step phase derivative
+        spectrum_.zr_prev[i] = spectrum_.zr[i];
+        spectrum_.zi_prev[i] = spectrum_.zi[i];
+                
+        // Baseband power
+        const float P_bb = spectrum_.zr[i] * spectrum_.zr[i] + spectrum_.zi[i] * spectrum_.zi[i];
         
-// --- Acceleration → displacement PSD per (rad/s) with Tikhonov regularization ---
-const float denom = (w2 * w2) + (beta_reg * w0_reg * w0_reg) * w2 + w0_4;
+        // Normalize by ENBW (Hz) of this analyzer
+        const float ENBW_Hz = std::max(spectrum_.enbw_hz[i], 1e-12f);
+        const float S_a_Hz  = P_bb / ENBW_Hz;
+        const float S_a_rad = S_a_Hz / TWO_PI_;
         
-// --- Apply high-pass envelope + regularization + warm-up fade ---
-const float S_eta_rad_i = hp_gain * (S_a_rad / std::max(denom, 1e-24f)) * warm;
+        // Use reassigned ω
+        const float w  = spectrum_.omega_eff[i]; 
+        const float w2 = w * w;
+                
+        const float dw = spectrum_.domega[i];
+        const float fk = w / TWO_PI_;
         
-// --- Store ---
-spectrum_.S_eta_rad[i] = S_eta_rad_i;
+        // Gaussian taper to reject sidebands and suppress post-peak shelf
+        const float f_center = std::max(omega_used, 1e-6f) / TWO_PI_;
+        const float sigma_rel = 0.25f; // fractional bandwidth (≈ Q ≈ 2)
+        const float x_rel = (fk - f_center) / (sigma_rel * f_center);
+        const float w_taper = std::exp(-0.5f * x_rel * x_rel);  // Gaussian weight
         
-      // width contribution to moments
-S0 += double(S_eta_rad_i) * double(2.0f * dw);
-S1 += double(S_eta_rad_i) * double(w)  * double(2.0f * dw);
-S2 += double(S_eta_rad_i) * double(w)  * double(w) * double(2.0f * dw);
+        Sa0 += double(S_a_rad) * double(2.0f * dw) * w_taper;
+        Sa1 += double(S_a_rad) * double(w)        * double(2.0f * dw) * w_taper;
         
+        // Pre-whitening HP window
+        // This suppresses artificial low-ω lift caused by ω⁻⁴ inversion of noise.
+        const float w_hp = 2.0f * w0_reg;  // cutoff tied to Tikhonov regularizer
+        const float hp_gain = (w2 / (w2 + w_hp * w_hp));  // 2nd-order HP envelope      
+                
+        // Acceleration → displacement PSD per (rad/s) with Tikhonov regularization
+        const float denom = (w2 * w2) + (beta_reg * w0_reg * w0_reg) * w2 + w0_4;
+                
+        // Apply high-pass envelope + regularization + warm-up fade
+        const float S_eta_rad_i = hp_gain * (S_a_rad / std::max(denom, 1e-24f)) * warm;
+                
+        // Store
+        spectrum_.S_eta_rad[i] = S_eta_rad_i;
+        
+        // width contribution to moments
+        S0 += double(S_eta_rad_i) * double(2.0f * dw);
+        S1 += double(S_eta_rad_i) * double(w)  * double(2.0f * dw);
+        S2 += double(S_eta_rad_i) * double(w)  * double(w) * double(2.0f * dw);
     }
 
- if (Sa0 > 0.0) {
-    const float w_cent = float(Sa1 / Sa0);             // rad/s (accel centroid)
-    const float w_obs_blend = (1.0f - 0.35f) * omega_inst + 0.35f * w_cent;
-    // fast complementary correction toward blended observation
-    omega_used = (omega_used <= 0.0f)
-                   ? w_obs_blend
-                   : (1.0f - alpha_wc) * omega_used + alpha_wc * w_obs_blend;
-
-    // tighten jump reset to avoid long mis-centering tails
-    const float ratio = w_obs_blend / std::max(omega_used, 1e-6f);
-    if (ratio < 0.80f || ratio > 1.25f) {
-        omega_used = w_obs_blend;
-        spectrum_.clear();
-        spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
-        spectrum_.precomputeForDt(dt_s);
+    if (Sa0 > 0.0) {
+        const float w_cent = float(Sa1 / Sa0);             // rad/s (accel centroid)
+        const float w_obs_blend = (1.0f - 0.35f) * omega_inst + 0.35f * w_cent;
+        // fast complementary correction toward blended observation
+        omega_used = (omega_used <= 0.0f)
+                       ? w_obs_blend
+                       : (1.0f - alpha_wc) * omega_used + alpha_wc * w_obs_blend;
+    
+        // tighten jump reset to avoid long mis-centering tails
+        const float ratio = w_obs_blend / std::max(omega_used, 1e-6f);
+        if (ratio < 0.80f || ratio > 1.25f) {
+            omega_used = w_obs_blend;
+            spectrum_.clear();
+            spectrum_.buildGrid(omega_used, OMEGA_MIN_RAD, OMEGA_MAX_RAD);
+            spectrum_.precomputeForDt(dt_s);
+        }
     }
-}
       
     // moments + Jensen helpers
-// --- Fade-in moment accumulation during warm-up ---
-const float alpha_mom_eff = alpha_mom * warm;
-
-M0.update(float(S0), alpha_mom_eff);
-M1.update(float(S1), alpha_mom_eff);
-M2.update(float(S2), alpha_mom_eff);
-
-Q00.update(float(S0 * S0), alpha_mom_eff);
-Q10.update(float(S0 * S1), alpha_mom_eff);
-Q20.update(float(S0 * S2), alpha_mom_eff);
+    // Fade-in moment accumulation during warm-up
+    const float alpha_mom_eff = alpha_mom * warm;
+    
+    M0.update(float(S0), alpha_mom_eff);
+    M1.update(float(S1), alpha_mom_eff);
+    M2.update(float(S2), alpha_mom_eff);
+    
+    Q00.update(float(S0 * S0), alpha_mom_eff);
+    Q10.update(float(S0 * S1), alpha_mom_eff);
+    Q20.update(float(S0 * S2), alpha_mom_eff);
 
     spectrum_.ready = true;
     has_moments = true;
 
     // accumulate into fixed-grid averaged spectrum
-// --- Fade-in averaged spectrum accumulation ---
-if (warm > 0.0f)
-    fixed_avg_.template accumulate<MAX_K>(spectrum_, dt_s * warm);
-      
-    computeRegularityOutput();
-  }
+    // Fade-in averaged spectrum accumulation
+    if (warm > 0.0f)
+        fixed_avg_.template accumulate<MAX_K>(spectrum_, dt_s * warm);
+        computeRegularityOutput();
+    }
 
-  // Public Getters
-  inline float getRegularity()         const { return R_out.get(); }
-  inline float getRegularitySpectral() const { return R_spec; }
-  inline float getNarrowness()         const { return nu; }
-
-  inline float getDisplacementFrequencyHz() const {
-    const float m0 = M0.get(), m1 = M1.get();
-    if (!(m0 > EPSILON)) return 0.0f;
-    const float q00 = Q00.get(), q10 = Q10.get();
-    const float varM0  = fmaxf(0.0f, q00 - m0 * m0);
-    const float cov10  = q10 - m1 * m0;
-    const float invM0_2 = 1.0f / fmaxf(m0 * m0, EPSILON);
-    const float wbar_corr = (m1 / m0) + ((m1 / m0) * varM0 - cov10) * invM0_2;
-    return (wbar_corr > 0.0f) ? (wbar_corr / (2.0f * PI_)) : 0.0f;
-  }
-
-  inline float getDisplacementFrequencyNaiveHz() const {
-    const float m0 = M0.get(), m1 = M1.get();
-    if (!(m0 > EPSILON) || !(m1 > 0.0f)) return 0.0f;
-    return (m1 / m0) / (2.0f * PI_);
-  }
-
-  inline float getDisplacementPeriodSec() const {
-    const float fz = getDisplacementFrequencyHz();
-    return (fz > EPSILON) ? (1.0f / fz) : 0.0f;
-  }
-
-  inline float getWaveHeightEnvelopeEst() const {
-    const float m0 = M0.get();
-    return (m0 > EPSILON) ? 4.0f * std::sqrt(m0) : 0.0f;
-  }
-
-  inline float getAccelerationVariance() const { return A0.get(); }
-
-  inline const Spectrum& getSpectrum() const { return spectrum_; }
-  inline bool spectrumReady() const { return spectrum_.ready; }
-  inline const FixedGridAvg& getAveragedSpectrum() const { return fixed_avg_; }
+    // Public Getters
+    inline float getRegularity()         const { return R_out.get(); }
+    inline float getRegularitySpectral() const { return R_spec; }
+    inline float getNarrowness()         const { return nu; }
+    
+    inline float getDisplacementFrequencyHz() const {
+        const float m0 = M0.get(), m1 = M1.get();
+        if (!(m0 > EPSILON)) return 0.0f;
+        const float q00 = Q00.get(), q10 = Q10.get();
+        const float varM0  = fmaxf(0.0f, q00 - m0 * m0);
+        const float cov10  = q10 - m1 * m0;
+        const float invM0_2 = 1.0f / fmaxf(m0 * m0, EPSILON);
+        const float wbar_corr = (m1 / m0) + ((m1 / m0) * varM0 - cov10) * invM0_2;
+        return (wbar_corr > 0.0f) ? (wbar_corr / (2.0f * PI_)) : 0.0f;
+    }
+    
+    inline float getDisplacementFrequencyNaiveHz() const {
+        const float m0 = M0.get(), m1 = M1.get();
+        if (!(m0 > EPSILON) || !(m1 > 0.0f)) return 0.0f;
+        return (m1 / m0) / (2.0f * PI_);
+    }
+    
+    inline float getDisplacementPeriodSec() const {
+        const float fz = getDisplacementFrequencyHz();
+        return (fz > EPSILON) ? (1.0f / fz) : 0.0f;
+    }
+    
+    inline float getWaveHeightEnvelopeEst() const {
+        const float m0 = M0.get();
+        return (m0 > EPSILON) ? 4.0f * std::sqrt(m0) : 0.0f;
+    }
+    
+    inline float getAccelerationVariance() const { return A0.get(); }
+    
+    inline const Spectrum& getSpectrum() const { return spectrum_; }
+    inline bool spectrumReady() const { return spectrum_.ready; }
+    inline const FixedGridAvg& getAveragedSpectrum() const { return fixed_avg_; }
 
 private:
-  // Internal constants
-  constexpr static float OMEGA_MIN_RAD = TWO_PI_ * OMEGA_MIN_HZ;
-  constexpr static float OMEGA_MAX_RAD = TWO_PI_ * OMEGA_MAX_HZ;
+    // Internal constants
+    constexpr static float OMEGA_MIN_RAD = TWO_PI_ * OMEGA_MIN_HZ;
+    constexpr static float OMEGA_MAX_RAD = TWO_PI_ * OMEGA_MAX_HZ;
+    
+    // State variables
+    float tau_mom = 180.0f, tau_a_mom = 60.0f, tau_out = 60.0f, tau_w = 30.0f;
+    float last_dt = -1.0f;
+    float last_bins_dt = -1.0f;
+    float alpha_mom = 0.0f, alpha_a_mom = 0.0f, alpha_out = 0.0f, alpha_w = 0.0f;
+    float omega_used = 0.0f, last_accel = 0.0f;
+    bool  has_moments = false, grid_valid = false;
+    
+    DebiasedEMA M0, M1, M2;
+    DebiasedEMA A0, A1_mean, A2_second;
+    DebiasedEMA Q00, Q10, Q20;
+    DebiasedEMA R_out;
+    
+    float R_spec = 0.0f, nu = 0.0f;
+    float omega_bar_corr = 0.0f, omega_bar_naive = 0.0f;
+    
+    struct Spectrum spectrum_;
+    struct FixedGridAvg fixed_avg_;
+    
+    float w0_4 = 0.0f;       // regularization for ω⁻⁴
+    float hp_state = 0.0f;   // high-pass memory
+    float hp_prev_in = 0.0f;
+    
+    float tau_wc = 3.0f;   // centroid follow (s)  — fast
+    float alpha_wc = 0.0f; // computed from dt
 
-  // State variables
-  float tau_mom = 180.0f, tau_a_mom = 60.0f, tau_out = 60.0f, tau_w = 30.0f;
-  float last_dt = -1.0f;
-  float last_bins_dt = -1.0f;
-  float alpha_mom = 0.0f, alpha_a_mom = 0.0f, alpha_out = 0.0f, alpha_w = 0.0f;
-  float omega_used = 0.0f, last_accel = 0.0f;
-  bool  has_moments = false, grid_valid = false;
+    // Warmup state
+    float elapsed_s = 0.0f;     // time since last reset
+    float warmup_s  = 0.0f;     // target burn-in horizon (computed online)
+    
+    // DC blocker state
+    double dc_x1_ = 0.0;   // x[n-1]
+    double dc_y1_ = 0.0;   // y[n-1]
 
-  DebiasedEMA M0, M1, M2;
-  DebiasedEMA A0, A1_mean, A2_second;
-  DebiasedEMA Q00, Q10, Q20;
-  DebiasedEMA R_out;
-
-  float R_spec = 0.0f, nu = 0.0f;
-  float omega_bar_corr = 0.0f, omega_bar_naive = 0.0f;
-
-  struct Spectrum spectrum_;
-  struct FixedGridAvg fixed_avg_;
-
-  float w0_4 = 0.0f;       // regularization for ω⁻⁴
-  float hp_state = 0.0f;   // high-pass memory
-  float hp_prev_in = 0.0f;
-
-float tau_wc = 3.0f;   // centroid follow (s)  — fast
-float alpha_wc = 0.0f; // computed from dt
-
-// --- Warmup state ---
-float elapsed_s = 0.0f;     // time since last reset
-float warmup_s  = 0.0f;     // target burn-in horizon (computed online)
-
-// --- DC blocker state (double precision) ---
-double dc_x1_ = 0.0;   // x[n-1]
-double dc_y1_ = 0.0;   // y[n-1]
-
-  // Internal helpers
-  inline void updateGlobalAlphas(float dt_s) {
-    if (dt_s == last_dt) return;
-    last_dt   = dt_s;
-    alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
-    alpha_a_mom = 1.0f - std::exp(-dt_s / tau_a_mom);
-    alpha_out = 1.0f - std::exp(-dt_s / tau_out);
-    alpha_w   = 1.0f - std::exp(-dt_s / tau_w);
-
-alpha_wc = 1.0f - std::exp(-dt_s / tau_wc);      
-  }
-
-  inline void computeRegularityOutput() {
-    if (!M0.isReady()) {
-      R_out.update(0.0f, alpha_out);
-      R_spec = 0.0f; nu = 0.0f;
-      return;
+    // Internal helpers
+    inline void updateGlobalAlphas(float dt_s) {
+        if (dt_s == last_dt) return;
+        last_dt   = dt_s;
+        alpha_mom = 1.0f - std::exp(-dt_s / tau_mom);
+        alpha_a_mom = 1.0f - std::exp(-dt_s / tau_a_mom);
+        alpha_out = 1.0f - std::exp(-dt_s / tau_out);
+        alpha_w   = 1.0f - std::exp(-dt_s / tau_w);
+        alpha_wc = 1.0f - std::exp(-dt_s / tau_wc);      
     }
-    const float m0 = M0.get(), m1 = M1.get(), m2 = M2.get();
-    if (!(m0 > EPSILON)) { R_out.update(0.0f, alpha_out); return; }
 
-    // naive and corrected frequency moments
-    omega_bar_naive = m1 / m0;
-    const float omega2_bar_naive = m2 / m0;
-
-    const float q00 = Q00.get(), q10 = Q10.get(), q20 = Q20.get();
-    const float varM0  = fmaxf(0.0f, q00 - m0 * m0);
-    const float cov10  = q10 - m1 * m0;
-    const float cov20  = q20 - m2 * m0;
-    const float invM0_2 = 1.0f / fmaxf(m0 * m0, EPSILON);
-
-    omega_bar_corr = omega_bar_naive + (omega_bar_naive * varM0 - cov10) * invM0_2;
-    const float omega2_bar_corr = omega2_bar_naive + (omega2_bar_naive * varM0 - cov20) * invM0_2;
-
-    // narrowness nu from corrected central moment mu2
-    const float mu2_corr = fmaxf(0.0f, omega2_bar_corr - omega_bar_corr * omega_bar_corr);
-    nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2_corr) / omega_bar_corr) : 0.0f;
-    if (!std::isfinite(nu) || nu < 0.0f) nu = 0.0f;
-
-    // spectral regularity
-    R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
-    R_out.update(R_spec, alpha_out);
-  }
+    inline void computeRegularityOutput() {
+        if (!M0.isReady()) {
+            R_out.update(0.0f, alpha_out);
+            R_spec = 0.0f; nu = 0.0f;
+            return;
+        }
+        const float m0 = M0.get(), m1 = M1.get(), m2 = M2.get();
+        if (!(m0 > EPSILON)) { R_out.update(0.0f, alpha_out); return; }
+        
+        // naive and corrected frequency moments
+        omega_bar_naive = m1 / m0;
+        const float omega2_bar_naive = m2 / m0;
+        
+        const float q00 = Q00.get(), q10 = Q10.get(), q20 = Q20.get();
+        const float varM0  = fmaxf(0.0f, q00 - m0 * m0);
+        const float cov10  = q10 - m1 * m0;
+        const float cov20  = q20 - m2 * m0;
+        const float invM0_2 = 1.0f / fmaxf(m0 * m0, EPSILON);
+        
+        omega_bar_corr = omega_bar_naive + (omega_bar_naive * varM0 - cov10) * invM0_2;
+        const float omega2_bar_corr = omega2_bar_naive + (omega2_bar_naive * varM0 - cov20) * invM0_2;
+        
+        // narrowness nu from corrected central moment mu2
+        const float mu2_corr = fmaxf(0.0f, omega2_bar_corr - omega_bar_corr * omega_bar_corr);
+        nu = (omega_bar_corr > EPSILON) ? (std::sqrt(mu2_corr) / omega_bar_corr) : 0.0f;
+        if (!std::isfinite(nu) || nu < 0.0f) nu = 0.0f;
+        
+        // spectral regularity
+        R_spec = std::clamp(std::exp(-BETA_SPEC * nu), 0.0f, 1.0f);
+        R_out.update(R_spec, alpha_out);
+    }
 };
 
 #ifdef SEA_STATE_TEST
