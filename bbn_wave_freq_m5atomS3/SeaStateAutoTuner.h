@@ -41,7 +41,7 @@ public:
         Freq_smoothed.reset();
     }
 
-    // --- main update ---
+    // main update
     inline void update(float dt_s, float accel, float f_input_hz) {
         if (!(dt_s > 0.0f) || !std::isfinite(accel) || !std::isfinite(f_input_hz))
             return;
@@ -59,7 +59,7 @@ public:
         Freq_smoothed.update(f_input_hz, alpha_freq);
     }
 
-    // --- accessors ---
+    // accessors
     inline float getAccelVariance() const { return A_var.get(); }       // σ_a²
     inline float getAccelStd()      const { return std::sqrt(std::max(0.0f, A_var.get())); }
     inline float getFrequencyHz()   const { return Freq_smoothed.get(); }
@@ -101,7 +101,7 @@ private:
     }
 };
 
-#ifdef SEA_STATE_TEST
+#ifdef SEA_STATE_TUNER_TEST
 #include <iostream>
 
 static inline void SeaStateAutoTuner_test() {
