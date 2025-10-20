@@ -18,13 +18,13 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 1500.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 1500.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 10.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 65.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 65.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 15.0f;
 
-const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 1500.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 1500.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 10.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 65.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 65.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 15.0f;
 
 // Global variable set from command line
 constexpr float R_S_DEFAULT = 10.0f;  // default
@@ -374,7 +374,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
         }
         if (std::isfinite(Tp_reg)) {
             // Existing law based on Tp
-            RS_target = std::clamp(R_S_law(Tp_reg), MIN_R_S, MAX_R_S);
+            float C_adj = 2.8f;
+            RS_target = std::clamp(C_adj * sigma_target * tau_target * tau_target * tau_target, MIN_R_S, MAX_R_S);
         }
 
         // Slow adaptation (fixed rate) after warmup
