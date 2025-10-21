@@ -701,7 +701,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
 
     // Build Q_LL
     if (has_cross_cov_a_xy) {
-        // === Correlated vector-OU: exact Kronecker Σ_aw ⊗ Q_axis(σ²=1) ===
+        // Correlated vector-OU: exact Kronecker Σ_aw ⊗ Q_axis(σ²=1)
         Eigen::Matrix<T,4,4> Qaxis_unit;
         QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
         Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
@@ -766,6 +766,30 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     // AL
     Eigen::Matrix<T,NA,NL> tmpAL = F_AA * P_AL;
     P_AL = tmpAL * F_LL.transpose();
+
+    // Cross process-noise injection (only if correlated Σ_aw)
+    if (has_cross_cov_a_xy) {                           
+        Matrix3 Qth = Q_AA.template topLeftCorner<3,3>();    
+        Matrix3 Qa  = Q_LL.template block<3,3>(9,9);        
+
+        auto psd_sqrt = [](const Matrix3& S) {               
+            Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
+            if (es.info() == Eigen::Success) {
+                Matrix3 D = es.eigenvalues().cwiseMax(T(0)).cwiseSqrt().asDiagonal();
+                return es.eigenvectors() * D * es.eigenvectors().transpose();
+            } else {
+                return S.diagonal().cwiseMax(T(0)).cwiseSqrt().asDiagonal();
+            }
+        };
+
+        const Matrix3 Sth = psd_sqrt(Qth);                  
+        const Matrix3 Sa  = psd_sqrt(Qa);                   
+        const T k_cross = T(0.12);                          
+        const Matrix3 Q_theta_a = (k_cross * (Sth * Sa)).eval(); 
+
+        // Inject θ↔a_w correlation (rows 0..2, cols 9..11)
+        P_AL.template block<3,3>(0, 9) += Q_theta_a;        
+    }                                                       
 
     // Write back
     Pext.template block<NA,NA>(0,0)         = P_AA;
