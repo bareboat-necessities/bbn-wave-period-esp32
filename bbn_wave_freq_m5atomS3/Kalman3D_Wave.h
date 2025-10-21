@@ -712,22 +712,27 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         // 4×4 OU kernel for unit variance (σ² = 1)
         Eigen::Matrix<T,4,4> K4;
         QdAxis4x1_analytic(tau_aw, Ts, T(1), K4);
-        K4 = T(0.5) * (K4 + K4.transpose());
+        K4 = T(0.5) * (K4 + K4.transpose()); // hygiene
 
-        // Full 12×12 correlated covariance via Kronecker product:
-        //    Q_kron = Σ_aw_stat ⊗ K4   (mathematically exact vector OU discretization)
-        Eigen::Matrix<T,12,12> Qkron = Eigen::kroneckerProduct(Sigma_aw_stat, K4).eval();
+        // Build Q_kron = Σ_aw_stat ⊗ K4  (12×12) *without* unsupported Eigen
+        Eigen::Matrix<T,12,12> Qkron; Qkron.setZero();
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                Qkron.template block<4,4>(4*i, 4*j).noalias() =
+                    Sigma_aw_stat(i,j) * K4;
+            }
+        }
 
-        // Permute from axis-grouped order [vx,px,Sx,ax, vy,py,Sy,ay, vz,pz,Sz,az]
-        //    to the actual filter state order [vx,vy,vz, px,py,pz, Sx,Sy,Sz, ax,ay,az]
+        // Permute from axis-grouped [vx,px,Sx,ax, vy,py,Sy,ay, vz,pz,Sz,az]
+        //    to state order [vx,vy,vz, px,py,pz, Sx,Sy,Sz, ax,ay,az]
         const int perm[12] = {0,3,6,9, 1,4,7,10, 2,5,8,11};
         Eigen::PermutationMatrix<12> P;
         for (int k = 0; k < 12; ++k) P.indices()[k] = perm[k];
 
-        // Apply permuted correlated covariance
+        // Apply correlated covariance to Q_LL
         Q_LL.noalias() += P * Qkron * P.transpose();
 
-        // Hygiene: symmetrize to suppress tiny float asymmetries
+        // Symmetrize (float noise cleanup)
         Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
     }
 
