@@ -820,33 +820,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Eigen::Matrix<T,NA,NL> tmpAL = F_AA * P_AL;
     P_AL = tmpAL * F_LL.transpose();
 
-    // Cross process-noise injection (only if correlated Σ_aw)
-    if (has_cross_cov_a_xy) {                           
-        Matrix3 Qth = Q_AA.template topLeftCorner<3,3>();    
-        Matrix3 Qa  = Q_LL.template block<3,3>(9,9);        
-
-        auto psd_sqrt = [](const Matrix3& S) -> Matrix3 {
-            Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
-            if (es.info() == Eigen::Success) {
-                Matrix3 D = es.eigenvalues().cwiseMax(T(0)).cwiseSqrt().asDiagonal();
-                return (es.eigenvectors() * D * es.eigenvectors().transpose());
-            } else {
-                // Force diagonal into a concrete 3×3
-                Matrix3 D = Matrix3::Zero();
-                D.diagonal() = S.diagonal().cwiseMax(T(0)).cwiseSqrt();
-                return D;
-            }
-        };
-
-        const Matrix3 Sth = psd_sqrt(Qth);                  
-        const Matrix3 Sa  = psd_sqrt(Qa);                   
-        const T k_cross = T(0.27);                          
-        const Matrix3 Q_theta_a = (k_cross * (Sth * Sa)).eval(); 
-
-        // Inject θ↔a_w correlation (rows 0..2, cols 9..11)
-        P_AL.template block<3,3>(0, 9) += Q_theta_a;        
-    }                                                       
-
     // Write back
     Pext.template block<NA,NA>(0,0)         = P_AA;
     Pext.template block<NL,NL>(OFF_V,OFF_V) = P_LL;
