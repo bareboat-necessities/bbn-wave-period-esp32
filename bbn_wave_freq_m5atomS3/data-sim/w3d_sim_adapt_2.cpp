@@ -34,7 +34,9 @@ constexpr float ONLINE_TUNE_WARMUP_SEC = 20.0f;
 
 // Adaptation time (seconds)
 constexpr float ADAPT_TAU_SEC = 10.0f;
-constexpr float ADAPT_EVERY_SECS = 5.0f;
+constexpr float ADAPT_EVERY_SECS = 3.0f;
+
+const float R_S_coeff = 2.0f; // scaling
 
 // Stability clamps
 constexpr float MIN_SIGMA_A = 0.1f;
@@ -338,8 +340,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 sigma_target = std::clamp(std::sqrt(std::max(0.0f, accel_var_reg)), MIN_SIGMA_A, MAX_SIGMA_A);
             }
             if (tuner.isReady()) {
-                constexpr float C_adj = 4.0f; // scaling
-                RS_target = std::clamp(C_adj * sigma_target * tau_target * tau_target * tau_target, MIN_R_S, MAX_R_S);
+                RS_target = std::clamp(R_S_coeff * sigma_target * tau_target * tau_target * tau_target, MIN_R_S, MAX_R_S);
             }
         }
 
