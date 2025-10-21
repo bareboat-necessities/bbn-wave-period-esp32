@@ -647,7 +647,7 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Vector3 const& gyr, T Ts)
 {
-    // Attitude mean propagation
+    // Attitude propagation
     Vector3 gyro_bias;
     if constexpr (with_gyro_bias) {
         gyro_bias = xext.template segment<3>(3);
@@ -656,20 +656,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
 
-    // Δθ = ω Ts → quaternion increment (right-multiplicative)
+    // Δθ = ω·Ts → right-multiplicative quaternion increment
     Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
     qref = qref * dq;
     qref.normalize();
 
-    // Build only the blocks we actually need: F_AA, Q_AA, F_LL, Q_LL
-
-    // Attitude error (+ optional gyro bias) block
+    // Attitude block F_AA, Q_AA
     Matrix3 I = Matrix3::Identity();
     const Vector3 w = last_gyr_bias_corrected;
     const T omega = w.norm();
     const T theta = omega * Ts;
 
-    // F_AA : BASE_N x BASE_N
     MatrixBaseN F_AA; F_AA.setIdentity();
     if (theta < T(1e-5)) {
         Matrix3 Wx = skew_symmetric_matrix(w);
@@ -682,61 +679,62 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     if constexpr (with_gyro_bias) {
         F_AA.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
-
     MatrixBaseN Q_AA = Qbase * Ts;
 
-    // Linear subsystem [v,p,S,a_w] block: 12x12
+    // Linear subsystem [v,p,S,a_w] (12×12)
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 F_LL; F_LL.setZero();
     Mat12 Q_LL; Q_LL.setZero();
 
+    // Build F_LL per axis
     for (int axis = 0; axis < 3; ++axis) {
-        const T tau    = std::max(T(1e-6), tau_aw);
-        const T sigma2 = Sigma_aw_stat(axis, axis);
+        const T tau = std::max(T(1e-6), tau_aw);
 
-        Eigen::Matrix<T,4,4> Phi_axis, Qd_axis;
+        Eigen::Matrix<T,4,4> Phi_axis;
         PhiAxis4x1_analytic(tau, Ts, Phi_axis);
-        QdAxis4x1_analytic (tau, Ts, sigma2, Qd_axis);
 
-        const int idx[4] = {0,3,6,9}; // v,p,S,a offsets per axis in the 12x12
-        for (int i = 0; i < 4; ++i)  {
-            for (int j = 0; j < 4; ++j) {
+        const int idx[4] = {0,3,6,9}; // [v,p,S,a] offsets
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
                 F_LL(idx[i] + axis, idx[j] + axis) = Phi_axis(i,j);
-                Q_LL(idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
-            }
-        }
     }
 
-    // Inject cross-axis OU correlation (physically consistent vector OU model)
+    // Build Q_LL
     if (has_cross_cov_a_xy) {
-        // 4×4 OU kernel for unit variance (σ² = 1)
-        Eigen::Matrix<T,4,4> K4;
-        QdAxis4x1_analytic(tau_aw, Ts, T(1), K4);
-        K4 = T(0.5) * (K4 + K4.transpose()); // hygiene
+        // === Correlated vector-OU: exact Kronecker Σ_aw ⊗ Q_axis(σ²=1) ===
+        Eigen::Matrix<T,4,4> Qaxis_unit;
+        QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
+        Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
 
-        // Build Q_kron = Σ_aw_stat ⊗ K4  (12×12) *without* unsupported Eigen
-        Eigen::Matrix<T,12,12> Qkron; Qkron.setZero();
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                Qkron.template block<4,4>(4*i, 4*j).noalias() =
-                    Sigma_aw_stat(i,j) * K4;
-            }
-        }
+        Eigen::Matrix<T,12,12> Qkron_full; Qkron_full.setZero();
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                Qkron_full.template block<4,4>(4*i,4*j) = Sigma_aw_stat(i,j) * Qaxis_unit;
 
-        // Permute from axis-grouped [vx,px,Sx,ax, vy,py,Sy,ay, vz,pz,Sz,az]
-        //    to state order [vx,vy,vz, px,py,pz, Sx,Sy,Sz, ax,ay,az]
+        // Permute from axis-grouped [vx,px,Sx,ax | vy,... | vz,...]
+        // to state order [vx,vy,vz, px,py,pz, Sx,Sy,Sz, ax,ay,az]
         const int perm[12] = {0,3,6,9, 1,4,7,10, 2,5,8,11};
-        Eigen::PermutationMatrix<12> P;
-        for (int k = 0; k < 12; ++k) P.indices()[k] = perm[k];
+        Eigen::PermutationMatrix<12> Pperm;
+        for (int k = 0; k < 12; ++k) Pperm.indices()[k] = perm[k];
 
-        // Apply correlated covariance to Q_LL
-        Q_LL.noalias() += P * Qkron * P.transpose();
-
-        // Symmetrize (float noise cleanup)
+        Q_LL = Pperm * Qkron_full * Pperm.transpose();
+        Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
+    } else {
+        // Independent axes (no cross-correlation) — per-axis Qd on the diagonal
+        const int idx[4] = {0,3,6,9};
+        for (int axis = 0; axis < 3; ++axis) {
+            const T tau    = std::max(T(1e-6), tau_aw);
+            const T sigma2 = Sigma_aw_stat(axis, axis);
+            Eigen::Matrix<T,4,4> Qd_axis;
+            QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
+            for (int i = 0; i < 4; ++i)
+                for (int j = 0; j < 4; ++j)
+                    Q_LL(idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
+        }
         Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
     }
 
-    // Mean propagation for [v,p,S,a_w] using F_LL
+    // Mean propagation for [v,p,S,a_w]
     Eigen::Matrix<T,12,1> x_lin_prev;
     x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
     x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
@@ -744,74 +742,57 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     x_lin_prev.template segment<3>(9)  = xext.template segment<3>(OFF_AW);
 
     Eigen::Matrix<T,12,1> x_lin_next = F_LL * x_lin_prev;
-
     xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
     xext.template segment<3>(OFF_P)  = x_lin_next.template segment<3>(3);
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
     xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
 
-    // Covariance propagation: exact block form of P ← FPFᵀ + Q
-    // Keeps ALL cross terms. No NX×NX temporaries are formed.
-    {
-        constexpr int NA = BASE_N;
-        constexpr int NL = 12;
+    // Covariance propagation (blockwise)
+    constexpr int NA = BASE_N;
+    constexpr int NL = 12;
 
-        // Extract current blocks
-        Eigen::Matrix<T,NA,NA> P_AA = Pext.template block<NA,NA>(0,0);
-        Eigen::Matrix<T,NL,NL> P_LL = Pext.template block<NL,NL>(OFF_V,OFF_V);
-        Eigen::Matrix<T,NA,NL> P_AL = Pext.template block<NA,NL>(0,OFF_V);
+    Eigen::Matrix<T,NA,NA> P_AA = Pext.template block<NA,NA>(0,0);
+    Eigen::Matrix<T,NL,NL> P_LL = Pext.template block<NL,NL>(OFF_V,OFF_V);
+    Eigen::Matrix<T,NA,NL> P_AL = Pext.template block<NA,NL>(0,OFF_V);
 
-        // AA: P_AA = F_AA P_AA F_AAᵀ + Q_AA
-        Eigen::Matrix<T,NA,NA> tmpAA;
-        tmpAA.noalias() = F_AA * P_AA;
-        P_AA.noalias()  = tmpAA * F_AA.transpose();
-        P_AA.noalias() += Q_AA;
+    // AA
+    Eigen::Matrix<T,NA,NA> tmpAA = F_AA * P_AA;
+    P_AA = tmpAA * F_AA.transpose() + Q_AA;
 
-        // LL: P_LL = F_LL P_LL F_LLᵀ + Q_LL
-        Eigen::Matrix<T,NL,NL> tmpLL;
-        tmpLL.noalias() = F_LL * P_LL;
-        P_LL.noalias()  = tmpLL * F_LL.transpose();
-        P_LL.noalias() += Q_LL;
+    // LL
+    Eigen::Matrix<T,NL,NL> tmpLL = F_LL * P_LL;
+    P_LL = tmpLL * F_LL.transpose() + Q_LL;
 
-        // AL: P_AL = F_AA P_AL F_LLᵀ
-        Eigen::Matrix<T,NA,NL> tmpAL;
-        tmpAL.noalias() = F_AA * P_AL;
-        P_AL.noalias()  = tmpAL * F_LL.transpose();
+    // AL
+    Eigen::Matrix<T,NA,NL> tmpAL = F_AA * P_AL;
+    P_AL = tmpAL * F_LL.transpose();
 
-        // Write back AA, LL, AL (and symmetric counterpart)
-        Pext.template block<NA,NA>(0,0)         = P_AA;
-        Pext.template block<NL,NL>(OFF_V,OFF_V) = P_LL;
-        Pext.template block<NA,NL>(0,OFF_V)     = P_AL;
-        Pext.template block<NL,NA>(OFF_V,0)     = P_AL.transpose();
+    // Write back
+    Pext.template block<NA,NA>(0,0)         = P_AA;
+    Pext.template block<NL,NL>(OFF_V,OFF_V) = P_LL;
+    Pext.template block<NA,NL>(0,OFF_V)     = P_AL;
+    Pext.template block<NL,NA>(OFF_V,0)     = P_AL.transpose();
 
-        if constexpr (with_accel_bias) {
-            constexpr int NB = 3;
+    // Optional accel bias RW and cross terms (F_BB = I)
+    if constexpr (with_accel_bias) {
+        constexpr int NB = 3;
 
-            // Bias block (random walk): P_BB ← P_BB + Q_bacc_*Ts
-            auto P_BB = Pext.template block<NB,NB>(OFF_BA,OFF_BA);
-            P_BB.noalias() += Q_bacc_ * Ts;
-            Pext.template block<NB,NB>(OFF_BA,OFF_BA) = P_BB;
+        auto P_BB = Pext.template block<NB,NB>(OFF_BA,OFF_BA);
+        P_BB.noalias() += Q_bacc_ * Ts; // ensure Q_bacc_ units match this convention
+        Pext.template block<NB,NB>(OFF_BA,OFF_BA) = P_BB;
 
-            // Cross terms with bias: because F_BB = I
-            auto P_AB = Pext.template block<NA,NB>(0,OFF_BA);
-            auto P_LB = Pext.template block<NL,NB>(OFF_V,OFF_BA);
-
-            // P_AB ← F_AA P_AB ;  P_LB ← F_LL P_LB
-            Eigen::Matrix<T,NA,NB> tmpAB; tmpAB.noalias() = F_AA * P_AB;
-            Eigen::Matrix<T,NL,NB> tmpLB; tmpLB.noalias() = F_LL * P_LB;
-            Pext.template block<NA,NB>(0,OFF_BA) = tmpAB;
-            Pext.template block<NL,NB>(OFF_V,OFF_BA) = tmpLB;
-
-            // Symmetric counterparts
-            Pext.template block<NB,NA>(OFF_BA,0)       = tmpAB.transpose();
-            Pext.template block<NB,NL>(OFF_BA,OFF_V)   = tmpLB.transpose();
-        }
-
-        // Final hygiene (keep symmetry)
-        Pext = T(0.5) * (Pext + Pext.transpose());
+        Eigen::Matrix<T,NA,NB> tmpAB = F_AA * Pext.template block<NA,NB>(0,OFF_BA);
+        Eigen::Matrix<T,NL,NB> tmpLB = F_LL * Pext.template block<NL,NB>(OFF_V,OFF_BA);
+        Pext.template block<NA,NB>(0,OFF_BA) = tmpAB;
+        Pext.template block<NL,NB>(OFF_V,OFF_BA) = tmpLB;
+        Pext.template block<NB,NA>(OFF_BA,0) = tmpAB.transpose();
+        Pext.template block<NB,NL>(OFF_BA,OFF_V) = tmpLB.transpose();
     }
 
-    // Drift correction on S
+    // Symmetry hygiene
+    Pext = T(0.5) * (Pext + Pext.transpose());
+
+    // Integral pseudo-measurement drift correction
     if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
         applyIntegralZeroPseudoMeas();
         pseudo_update_counter_ = 0;
