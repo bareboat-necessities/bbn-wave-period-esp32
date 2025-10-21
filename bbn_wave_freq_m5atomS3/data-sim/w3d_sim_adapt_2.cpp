@@ -64,7 +64,7 @@ constexpr float MAX_R_S     = 20.0f;
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// ---------- RMS helper ----------
+// RMS helper
 class RMSReport {
 public:
     inline void add(float value) { sum_sq_ += value * value; count_++; }
@@ -74,7 +74,7 @@ private:
     size_t count_ = 0;
 };
 
-// ---------- Noise model ----------
+// Noise model
 bool add_noise = true;
 struct NoiseModel {
     std::default_random_engine rng;
@@ -91,7 +91,7 @@ Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
-// ---------- Example waves ----------
+// Example waves
 const std::vector<WaveParameters> waveParamsList = {
     {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 25.0f},
     {5.7f,   1.5f,  static_cast<float>(M_PI/1.5), 25.0f},
@@ -105,7 +105,7 @@ int wave_index_from_height(float height) {
     return -1;
 }
 
-// ---------- Tracker scaffolding ----------
+// Tracker scaffolding
 AranovskiyFilter<double> arFilter;
 KalmANF<double> kalmANF;
 FrequencySmoother<float> freqSmoother;
@@ -142,14 +142,14 @@ static std::pair<double,bool> run_tracker_once(TrackerType tracker,
     return {freq, !std::isnan(freq)};
 }
 
-// ---------- Online tuning state ----------
+// Online tuning state
 struct OnlineTuneState {
     float tau_applied   = 1.15f;              // s
     float sigma_applied = 1.22f;              // m/s²
     float RS_applied    = 8.17f;              // m*s
 };
 
-// ---------- main processing ----------
+// main processing
 static void process_wave_file_for_tracker(const std::string &filename,
                                           float dt,
                                           bool with_mag,
@@ -212,7 +212,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
     WaveDataCSVReader reader(filename);
 
-    // ---- Auto Tuner (replaces SeaStateRegularity) ----
+    // Auto Tuner (replaces SeaStateRegularity)
     SeaStateAutoTuner tuner;                     // σ_a², EMA f, Tp=1/f, R_S = σ_a / f³
     OnlineTuneState tune;
 
@@ -323,7 +323,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         if (!std::isnan(smooth_freq)) smooth_freq = clamp_freq(smooth_freq);
         f_hz = smooth_freq;
 
-        // ---- SeaStateAutoTuner adaptation ----
+        // SeaStateAutoTuner adaptation
         if (std::isfinite(f_hz) && rec.time >= ONLINE_TUNE_WARMUP_SEC) {
             tuner.update(dt, accel_z_noisy, static_cast<float>(f_hz));
             Tp_reg        = tuner.getPeriodSec();      // 1/f
@@ -343,7 +343,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
             }
         }
 
-        // ---- Slow adaptation (fixed rate) ----
+        // Slow adaptation (fixed rate)
         if (rec.time >= ONLINE_TUNE_WARMUP_SEC) {
             if (std::isfinite(tau_target)) {
                 tune.tau_applied += alpha_step * (tau_target - tune.tau_applied);
@@ -364,7 +364,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
             }
         }
 
-        // ---- Outputs ----
+        // Outputs
         // Estimated quaternion -> nautical Euler
         auto coeffs = mekf.quaternion().coeffs(); // (x,y,z,w) in Eigen order
         Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2)); // w,x,y,z
@@ -446,7 +446,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     ofs.close();
     std::cout << "Wrote " << outname << "\n";
 
-    // ---------- RMS summary for last 60 s ----------
+    // RMS summary for last 60 s
     int N_last = static_cast<int>(RMS_WINDOW_SEC / dt);
     if (errs_z.size() > static_cast<size_t>(N_last)) {
         size_t start = errs_z.size() - N_last;
@@ -507,7 +507,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     }
 }
 
-// ---------- Main ----------
+// Main
 int main(int argc, char* argv[]) {
     float dt = 1.0f / 240.0f;
 
