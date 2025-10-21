@@ -714,6 +714,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         QdAxis4x1_analytic(tau_aw, Ts, T(1), Ksym);
         Ksym = T(0.5) * (Ksym + Ksym.transpose());
 
+        // Strided indices per axis: {0+i, 3+i, 6+i, 9+i}
         for (int i = 0; i < 3; ++i) {
             for (int j = i + 1; j < 3; ++j) {
                 const T sigma_ij = Sigma_aw_stat(i, j);
@@ -721,13 +722,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
 
                 const Eigen::Matrix<T,4,4> Qcorr = sigma_ij * Ksym;
 
-                // 12×12 [v,p,S,a] block uses 3-stride per axis: (v,p,S,a) → (0,3,6,9)
-                const int base_i = 3 * i;
-                const int base_j = 3 * j;
+                // Scatter into the strided rows/cols for axis i,j
+                const int ri[4] = { 0 + i, 3 + i, 6 + i, 9 + i };
+                const int rj[4] = { 0 + j, 3 + j, 6 + j, 9 + j };
 
-                // Add symmetric 4×4 sub-blocks for coupled axes
-                Q_LL.template block<4,4>(base_i, base_j) += Qcorr;
-                Q_LL.template block<4,4>(base_j, base_i) += Qcorr.transpose();
+                for (int r = 0; r < 4; ++r) {
+                    for (int c = 0; c < 4; ++c) {
+                        const T v = Qcorr(r, c);
+                        Q_LL(ri[r], rj[c]) += v;
+                        Q_LL(rj[r], ri[c]) += Qcorr(c, r);
+                    }
+                }
             }
         }
     }
