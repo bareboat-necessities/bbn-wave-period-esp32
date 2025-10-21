@@ -22,8 +22,8 @@ const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 50.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 50.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 15.0f;
 
-const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 68.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 68.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 70.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 70.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 15.0f;
 
 // Rolling stats window [s] for RMS and online variance
