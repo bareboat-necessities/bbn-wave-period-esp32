@@ -707,34 +707,28 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         }
     }
 
-    // Inject cross-axis OU correlation (optional horizontal coupling)
+    // Inject cross-axis OU correlation (physically consistent vector OU model)
     if (has_cross_cov_a_xy) {
-        // Precompute normalized OU kernel (σ² = 1)
-        Eigen::Matrix<T,4,4> Ksym;
-        QdAxis4x1_analytic(tau_aw, Ts, T(1), Ksym);
-        Ksym = T(0.5) * (Ksym + Ksym.transpose());
+        // 4×4 OU kernel for unit variance (σ² = 1)
+        Eigen::Matrix<T,4,4> K4;
+        QdAxis4x1_analytic(tau_aw, Ts, T(1), K4);
+        K4 = T(0.5) * (K4 + K4.transpose());
 
-        // Strided indices per axis: {0+i, 3+i, 6+i, 9+i}
-        for (int i = 0; i < 3; ++i) {
-            for (int j = i + 1; j < 3; ++j) {
-                const T sigma_ij = Sigma_aw_stat(i, j);
-                if (std::abs(sigma_ij) < T(1e-12)) continue;
+        // Full 12×12 correlated covariance via Kronecker product:
+        //    Q_kron = Σ_aw_stat ⊗ K4   (mathematically exact vector OU discretization)
+        Eigen::Matrix<T,12,12> Qkron = Eigen::kroneckerProduct(Sigma_aw_stat, K4).eval();
 
-                const Eigen::Matrix<T,4,4> Qcorr = sigma_ij * Ksym;
+        // Permute from axis-grouped order [vx,px,Sx,ax, vy,py,Sy,ay, vz,pz,Sz,az]
+        //    to the actual filter state order [vx,vy,vz, px,py,pz, Sx,Sy,Sz, ax,ay,az]
+        const int perm[12] = {0,3,6,9, 1,4,7,10, 2,5,8,11};
+        Eigen::PermutationMatrix<12> P;
+        for (int k = 0; k < 12; ++k) P.indices()[k] = perm[k];
 
-                // Scatter into the strided rows/cols for axis i,j
-                const int ri[4] = { 0 + i, 3 + i, 6 + i, 9 + i };
-                const int rj[4] = { 0 + j, 3 + j, 6 + j, 9 + j };
+        // Apply permuted correlated covariance
+        Q_LL.noalias() += P * Qkron * P.transpose();
 
-                for (int r = 0; r < 4; ++r) {
-                    for (int c = 0; c < 4; ++c) {
-                        const T v = Qcorr(r, c);
-                        Q_LL(ri[r], rj[c]) += v;
-                        Q_LL(rj[r], ri[c]) += Qcorr(c, r);
-                    }
-                }
-            }
-        }
+        // Hygiene: symmetrize to suppress tiny float asymmetries
+        Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
     }
 
     // Mean propagation for [v,p,S,a_w] using F_LL
