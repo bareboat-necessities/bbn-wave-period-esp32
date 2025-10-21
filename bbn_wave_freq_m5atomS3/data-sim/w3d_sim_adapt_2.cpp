@@ -36,7 +36,7 @@ constexpr float ONLINE_TUNE_WARMUP_SEC = 20.0f;
 constexpr float ADAPT_TAU_SEC = 10.0f;
 constexpr float ADAPT_EVERY_SECS = 3.0f;
 
-const float R_S_coeff = 2.5f; // scaling
+const float R_S_coeff = 2.3f; // scaling
 
 // Stability clamps
 constexpr float MIN_SIGMA_A = 0.1f;
