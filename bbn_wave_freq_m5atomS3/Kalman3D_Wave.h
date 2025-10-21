@@ -302,7 +302,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     //   • Positive rho_corr fits ENU (z up).
     //   • The resulting covariance is projected to SPD for numerical stability.
     //   • Also reseeds Pext(OFF_AW, OFF_AW) to keep filter covariance consistent.
-    void set_aw_stationary_corr_std(const Vector3& std_aw, T rho_corr = T(-0.5)) {
+    void set_aw_stationary_corr_std(const Vector3& std_aw, T rho_corr = T(-0.8)) {
       // Clamp correlation for numerical safety
       rho_corr = std::max(T(-0.999), std::min(rho_corr, T(0.999))); 
 
@@ -787,7 +787,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
 
         const Matrix3 Sth = psd_sqrt(Qth);                  
         const Matrix3 Sa  = psd_sqrt(Qa);                   
-        const T k_cross = T(0.17);                          
+        const T k_cross = T(0.27);                          
         const Matrix3 Q_theta_a = (k_cross * (Sth * Sa)).eval(); 
 
         // Inject θ↔a_w correlation (rows 0..2, cols 9..11)
