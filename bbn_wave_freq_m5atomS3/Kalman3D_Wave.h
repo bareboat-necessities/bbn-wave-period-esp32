@@ -787,7 +787,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
 
         const Matrix3 Sth = psd_sqrt(Qth);                  
         const Matrix3 Sa  = psd_sqrt(Qa);                   
-        const T k_cross = T(0.12);                          
+        const T k_cross = T(0.18);                          
         const Matrix3 Q_theta_a = (k_cross * (Sth * Sa)).eval(); 
 
         // Inject θ↔a_w correlation (rows 0..2, cols 9..11)
