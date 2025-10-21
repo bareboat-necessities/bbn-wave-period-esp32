@@ -772,13 +772,16 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         Matrix3 Qth = Q_AA.template topLeftCorner<3,3>();    
         Matrix3 Qa  = Q_LL.template block<3,3>(9,9);        
 
-        auto psd_sqrt = [](const Matrix3& S) {               
+        auto psd_sqrt = [](const Matrix3& S) -> Matrix3 {
             Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
             if (es.info() == Eigen::Success) {
                 Matrix3 D = es.eigenvalues().cwiseMax(T(0)).cwiseSqrt().asDiagonal();
-                return es.eigenvectors() * D * es.eigenvectors().transpose();
+                return (es.eigenvectors() * D * es.eigenvectors().transpose());
             } else {
-                return S.diagonal().cwiseMax(T(0)).cwiseSqrt().asDiagonal();
+                // Force diagonal into a concrete 3×3
+                Matrix3 D = Matrix3::Zero();
+                D.diagonal() = S.diagonal().cwiseMax(T(0)).cwiseSqrt();
+                return D;
             }
         };
 
