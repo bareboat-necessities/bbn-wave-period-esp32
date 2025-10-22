@@ -163,8 +163,9 @@ static inline void project_psd4(Eigen::Matrix<T,4,4>& S, T eps = T(1e-12)) {
     S = T(0.5) * (S + S.transpose());
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,4,4>> es(S);
     if (es.info() != Eigen::Success) {
-        // Fallback: add small jitter on the diagonal
+        // Fallback: add small jitter on the diagonal and re-symmetrize
         S.diagonal().array() += eps;
+        S = T(0.5) * (S + S.transpose());
         return;
     }
     Eigen::Matrix<T,4,1> lam = es.eigenvalues();
