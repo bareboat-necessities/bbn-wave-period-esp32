@@ -18,13 +18,13 @@
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
-const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 50.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 50.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 15.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 40.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 40.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 13.0f;
 
-const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 70.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 70.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 15.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 40.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 40.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 13.0f;
 
 // Rolling stats window [s] for RMS and online variance
 constexpr float RMS_WINDOW_SEC = 60.0f;
