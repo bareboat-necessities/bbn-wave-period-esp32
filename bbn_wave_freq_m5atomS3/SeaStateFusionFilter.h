@@ -2,6 +2,7 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <memory>
+#include <algorithm>
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "SchmittTriggerFrequencyDetector.h"
@@ -11,7 +12,7 @@
 
 enum class TrackerType { ARANOVSKIY, KALMANF, ZEROCROSS };
 
-// Shared constants
+// Shared constants (synchronized with main)
 constexpr float g_std = 9.80665f;
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 6.0f;
@@ -33,7 +34,7 @@ struct TuneState {
 };
 
 // ---------------------------------------------------------------------------
-// Tracker policy traits
+//  Tracker policy traits
 // ---------------------------------------------------------------------------
 
 template<TrackerType>
@@ -61,26 +62,33 @@ struct TrackerPolicy<TrackerType::KALMANF> {
 template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
     struct Dummy {};
-    using Tracker = Dummy; // no state at all
+    using Tracker = Dummy;
     static double run(Tracker&, float a_norm, float a_raw, float dt) {
         return estimate_freq(ZeroCrossing, nullptr, nullptr, nullptr, a_norm, a_raw, dt, now_us());
     }
 };
 
 // ---------------------------------------------------------------------------
-// Main unified filter
+//  Global simulation clock for frequency estimators
 // ---------------------------------------------------------------------------
-
 inline static uint64_t sim_time_us_ = 0;
 inline static uint32_t now_us() { return static_cast<uint32_t>(sim_time_us_++); }
 
+// ---------------------------------------------------------------------------
+//  Unified SeaState fusion filter
+// ---------------------------------------------------------------------------
 template<TrackerType trackerT>
 class SeaStateFusionFilter {
 public:
     using Policy  = TrackerPolicy<trackerT>;
     using Tracker = typename Policy::Tracker;
 
-    explicit SeaStateFusionFilter(bool with_mag) : with_mag_(with_mag) {}
+    explicit SeaStateFusionFilter(bool with_mag)
+        : with_mag_(with_mag),
+          tuner_(),
+          time_(0.0),
+          freq_hz_(NAN)
+    {}
 
     void initialize(const Eigen::Vector3f& sigma_a,
                     const Eigen::Vector3f& sigma_g,
@@ -94,6 +102,9 @@ public:
         if (mekf_) mekf_->initialize_from_acc(acc_world);
     }
 
+    // -----------------------------------------------------------------------
+    //  Time update (IMU integration + frequency tracking)
+    // -----------------------------------------------------------------------
     void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc)
     {
         if (!mekf_) return;
@@ -112,33 +123,51 @@ public:
         }
     }
 
+    // -----------------------------------------------------------------------
+    //  Magnetometer correction (optional)
+    // -----------------------------------------------------------------------
     void updateMag(const Eigen::Vector3f& mag_world) {
         if (with_mag_ && mekf_ && time_ >= MAG_DELAY_SEC)
             mekf_->measurement_update_mag_only(mag_world);
     }
 
-    // --- Getters ---
-    inline float getFreqHz() const noexcept { return freq_hz_; }
-    inline float getTauApplied() const noexcept { return tune_.tau_applied; }
+    // -----------------------------------------------------------------------
+    //  Exposed getters
+    // -----------------------------------------------------------------------
+    inline float getFreqHz()       const noexcept { return freq_hz_; }
+    inline float getTauApplied()   const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied() const noexcept { return tune_.sigma_applied; }
-    inline float getRSApplied() const noexcept { return tune_.RS_applied; }
+    inline float getRSApplied()    const noexcept { return tune_.RS_applied; }
+    inline float getPeriodSec()    const noexcept { return (freq_hz_ > 1e-6f) ? 1.0f / freq_hz_ : NAN; }
+    inline float getAccelVariance()const noexcept { return tuner_.getAccelVariance(); }
+
+    inline const auto& mekf() const noexcept { return *mekf_; }
+    inline auto& mekf() noexcept { return *mekf_; }
 
 private:
+    // -----------------------------------------------------------------------
+    //  Internal tuning and adaptation
+    // -----------------------------------------------------------------------
     void apply_tune() {
+        if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
         mekf_->set_aw_stationary_corr_std(Eigen::Vector3f::Constant(tune_.sigma_applied));
         mekf_->set_RS_noise(Eigen::Vector3f::Constant(tune_.RS_applied));
     }
 
     void update_tuner(float dt, float a_z) {
-        if (!std::isfinite(freq_hz_) || time_ < ONLINE_TUNE_WARMUP_SEC) return;
+        if (!std::isfinite(freq_hz_) || time_ < ONLINE_TUNE_WARMUP_SEC)
+            return;
 
         tuner_.update(dt, a_z, freq_hz_);
         const float tau_target   = std::clamp(0.5f / freq_hz_, MIN_TAU_S, MAX_TAU_S);
-        const float sigma_target = std::clamp(std::sqrt(std::max(0.0f, tuner_.getAccelVariance())),
-                                              MIN_SIGMA_A, MAX_SIGMA_A);
-        const float RS_target    = std::clamp(R_S_coeff * sigma_target * std::pow(tau_target, 3),
-                                              MIN_R_S, MAX_R_S);
+        const float sigma_target = std::clamp(
+            std::sqrt(std::max(0.0f, tuner_.getAccelVariance())),
+            MIN_SIGMA_A, MAX_SIGMA_A);
+        const float RS_target    = std::clamp(
+            R_S_coeff * sigma_target * std::pow(tau_target, 3),
+            MIN_R_S, MAX_R_S);
+
         adapt_mekf(dt, tau_target, sigma_target, RS_target);
     }
 
@@ -150,11 +179,14 @@ private:
         apply_tune();
     }
 
+    // -----------------------------------------------------------------------
+    //  Members
+    // -----------------------------------------------------------------------
     bool with_mag_;
-    double time_ = 0.0;
-    float freq_hz_ = NAN;
+    double time_;
+    float freq_hz_;
 
-    Tracker tracker_{};                        // ✅ exactly one tracker
+    Tracker tracker_{};  // one instance per filter
     SeaStateAutoTuner tuner_;
     TuneState tune_;
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
