@@ -32,20 +32,15 @@ const float R_S_coeff = 2.0f;
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 6.0f;
 
-// ------------------------------------------------------------------
 //  Project headers
-// ------------------------------------------------------------------
 #include "WaveFilesSupport.h"
 #include "FrameConversions.h"
-#include "SeaStateFusionFilter.h"     // <<< new unified estimator
-#include "MagSim_WMM.h"
+#include "SeaStateFusionFilter.h"
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-// ------------------------------------------------------------------
 //  RMS helper
-// ------------------------------------------------------------------
 class RMSReport {
 public:
     inline void add(float value) { sum_sq_ += value * value; count_++; }
@@ -55,9 +50,7 @@ private:
     size_t count_ = 0;
 };
 
-// ------------------------------------------------------------------
 //  Noise model
-// ------------------------------------------------------------------
 bool add_noise = true;
 struct NoiseModel {
     std::default_random_engine rng;
@@ -76,9 +69,7 @@ Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
-// ------------------------------------------------------------------
 //  Example wave parameter list
-// ------------------------------------------------------------------
 const std::vector<WaveParameters> waveParamsList = {
     {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 25.0f},
     {5.7f,   1.5f,  static_cast<float>(M_PI/1.5), 25.0f},
@@ -91,9 +82,7 @@ int wave_index_from_height(float height) {
     return -1;
 }
 
-// ------------------------------------------------------------------
 //  Main processing
-// ------------------------------------------------------------------
 static void process_wave_file_for_tracker(const std::string &filename,
                                           float dt,
                                           bool with_mag)
@@ -129,9 +118,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         << "tau_applied,sigma_a_applied,R_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
 
-    // ------------------------------------------------------------------
     // Initialize unified fusion filter
-    // ------------------------------------------------------------------
     using Fusion = SeaStateFusionFilter<TrackerType::KALMANF>;
     Fusion filter(with_mag);
 
@@ -181,12 +168,12 @@ static void process_wave_file_for_tracker(const std::string &filename,
             first = false;
         }
 
-        // --- Unified fusion update ---
+        // Unified fusion update
         filter.updateTime(dt, gyr_f, acc_f);
         if (with_mag && rec.time >= MAG_DELAY_SEC)
             filter.updateMag(mag_f);
 
-        // --- Extract results ---
+        // Extract results
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
         Vector3f vel_ref (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
         Vector3f acc_ref (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
@@ -208,7 +195,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         errs_pitch.push_back(eul_est.y() - p_ref_out);
         errs_yaw.push_back(eul_est.z() - y_ref_out);
 
-        // --- Write CSV ---
+        // Write CSV
         ofs << rec.time << ","
             << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
             << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
@@ -229,9 +216,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     ofs.close();
     std::cout << "Wrote " << outname << "\n";
 
-    // ------------------------------------------------------------------
     //  RMS summary (last 60 s)
-    // ------------------------------------------------------------------
     int N_last = static_cast<int>(RMS_WINDOW_SEC / dt);
     if (errs_z.size() > static_cast<size_t>(N_last)) {
         size_t start = errs_z.size() - N_last;
@@ -261,9 +246,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     }
 }
 
-// ------------------------------------------------------------------
 //  Main
-// ------------------------------------------------------------------
 int main(int argc, char* argv[]) {
     float dt = 1.0f / 240.0f;
     bool with_mag = true;
