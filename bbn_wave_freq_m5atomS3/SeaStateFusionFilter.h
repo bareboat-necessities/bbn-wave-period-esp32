@@ -1,8 +1,15 @@
 #pragma once
+
+#ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
+#else
+#include <ArduinoEigenDense.h>
+#endif
+
 #include <cmath>
 #include <memory>
 #include <algorithm>
+
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "SchmittTriggerFrequencyDetector.h"
