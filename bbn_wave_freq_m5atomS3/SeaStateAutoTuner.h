@@ -9,7 +9,7 @@
   Purpose:
     • Estimate acceleration variance σ_a² (time-domain EWMA)
     • Smooth externally provided frequency f_in (Hz) via EMA
-    • Compute R_S estimate = σ_a / f_a³
+    • Compute R_S estimate = σ_a τ³ where τ = 1 / (2f) (half period)
 */
 
 struct DebiasedEMA {
@@ -68,7 +68,7 @@ public:
         return (f > 1e-9f) ? (1.0f / f) : 0.0f;
     }
 
-    // R_S estimate = σ_a / f³
+    // R_S estimate = σ_a τ³ where τ = 1 / (2f) (half period)
     inline float getR_S_est() const {
         const float sigma_a = getAccelStd();
         const float f = Freq_smoothed.get();
