@@ -549,9 +549,9 @@ int main(int argc, char* argv[]) {
 
     for (const auto& fname : files) {
         // Run one tracker (enable others if desired)
-        // process_wave_file_for_tracker(fname, dt, with_mag, TrackerType::KALMANF);
+        process_wave_file_for_tracker(fname, dt, with_mag, TrackerType::KALMANF);
         // process_wave_file_for_tracker(fname, dt, with_mag, TrackerType::ARANOVSKIY);
-        process_wave_file_for_tracker(fname, dt, with_mag, TrackerType::ZEROCROSS);
+        // process_wave_file_for_tracker(fname, dt, with_mag, TrackerType::ZEROCROSS);
     }
     return 0;
 }
