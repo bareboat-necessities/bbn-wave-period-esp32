@@ -1242,9 +1242,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     // Build final Qd, symmetrize, scrub, then project *Qd* to PSD
     Qd_axis = (q_c * (T(0.5) * (K + K.transpose()))).eval();
 
-    for (int i=0; i<4; ++i) for (int j=0; j<4; ++j) {
-        const T v = Qd_axis(i,j);
-        if (!(v==v) || std::isinf(v)) Qd_axis(i,j) = T(0);
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            T& v = Qd_axis(i,j);
+            if (!std::isfinite(v)) {
+                // Preserve SPD: put a tiny positive value on the diagonal only
+                v = (i == j) ? T(1e-18) : T(0);
+            }
+        }
     }
 
     project_psd4<T>(Qd_axis, T(1e-16));
