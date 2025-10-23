@@ -75,7 +75,7 @@ constexpr float MAG_DELAY_SEC = 5.0f;
 struct TuneState {
     float tau_applied   = 1.15f;
     float sigma_applied = 1.22f;
-    float RS_applied    = 8.17f;
+    float RS_applied    = 1.17f;
 };
 
 //  Tracker policy traits
