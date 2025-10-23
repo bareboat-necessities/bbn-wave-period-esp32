@@ -25,7 +25,8 @@
   – σₐ:       Stationary acceleration standard deviation, EWMA-tracked online
   – Rₛ:       Pseudo-measurement noise controlling integral drift suppression
   – Rₛ_xy:    Reduced in X/Y (anisotropic weighting for vertical-dominant seas)
-  – Adaptive update:  exponential smoothing toward targets over ADAPT_TAU_SEC
+  
+  Adaptive update:  exponential smoothing toward targets over ADAPT_TAU_SEC
 
   Features
   • Modular tracker selection via TrackerPolicy template
