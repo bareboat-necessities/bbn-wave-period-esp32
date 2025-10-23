@@ -59,7 +59,7 @@ struct TrackerPolicy<TrackerType::KALMANF> {
     using Tracker = KalmANF<double>;
     static double run(Tracker& t, float a, float dt) {
         double e;
-        double freq = kalmANF->process((double)a, (double)dt, &e);
+        double freq = t.process((double)a, (double)dt, &e);
         return freq;
     }
 };
@@ -80,15 +80,7 @@ struct TrackerPolicy<TrackerType::ZEROCROSS> {
     }
 };
 
-// ---------------------------------------------------------------------------
-//  Global simulation clock for frequency estimators
-// ---------------------------------------------------------------------------
-inline static uint64_t sim_time_us_ = 0;
-inline static uint32_t now_us() { return static_cast<uint32_t>(sim_time_us_++); }
-
-// ---------------------------------------------------------------------------
 //  Unified SeaState fusion filter
-// ---------------------------------------------------------------------------
 template<TrackerType trackerT>
 class SeaStateFusionFilter {
 public:
@@ -114,9 +106,7 @@ public:
         if (mekf_) mekf_->initialize_from_acc(acc_world);
     }
 
-    // -----------------------------------------------------------------------
     //  Time update (IMU integration + frequency tracking)
-    // -----------------------------------------------------------------------
     void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc)
     {
         if (!mekf_) return;
@@ -135,17 +125,13 @@ public:
         }
     }
 
-    // -----------------------------------------------------------------------
-    //  Magnetometer correction (optional)
-    // -----------------------------------------------------------------------
+    //  Magnetometer correction
     void updateMag(const Eigen::Vector3f& mag_world) {
         if (with_mag_ && mekf_ && time_ >= MAG_DELAY_SEC)
             mekf_->measurement_update_mag_only(mag_world);
     }
 
-    // -----------------------------------------------------------------------
     //  Exposed getters
-    // -----------------------------------------------------------------------
     inline float getFreqHz()       const noexcept { return freq_hz_; }
     inline float getTauApplied()   const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied() const noexcept { return tune_.sigma_applied; }
@@ -157,9 +143,7 @@ public:
     inline auto& mekf() noexcept { return *mekf_; }
 
 private:
-    // -----------------------------------------------------------------------
     //  Internal tuning and adaptation
-    // -----------------------------------------------------------------------
     void apply_tune() {
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
@@ -191,9 +175,7 @@ private:
         apply_tune();
     }
 
-    // -----------------------------------------------------------------------
     //  Members
-    // -----------------------------------------------------------------------
     bool with_mag_;
     double time_;
     float freq_hz_;
