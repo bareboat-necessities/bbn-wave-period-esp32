@@ -160,13 +160,13 @@ private:
             return;
 
         tuner_.update(dt, a_z, freq_hz_);
-        const float tau_target   = std::clamp(0.5f / freq_hz_, MIN_TAU_S, MAX_TAU_S);
-        const float sigma_target = std::clamp(
+        const float tau_target   = std::min(std::max(0.5f / freq_hz_, MIN_TAU_S), MAX_TAU_S);
+        const float sigma_target = std::min(std::max(
             std::sqrt(std::max(0.0f, tuner_.getAccelVariance())),
-            MIN_SIGMA_A, MAX_SIGMA_A);
-        const float RS_target    = std::clamp(
+            MIN_SIGMA_A), MAX_SIGMA_A);
+        const float RS_target    = std::min(std::max(
             R_S_coeff * sigma_target * std::pow(tau_target, 3),
-            MIN_R_S, MAX_R_S);
+            MIN_R_S), MAX_R_S);
 
         adapt_mekf(dt, tau_target, sigma_target, RS_target);
     }
