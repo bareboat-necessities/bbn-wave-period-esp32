@@ -7,6 +7,10 @@
 #include <random>
 #include <cmath>
 
+/*
+    Copyright (c) 2025  Mikhail Grushinskiy  
+*/
+
 #define EIGEN_NON_ARDUINO
 
 #ifndef M_PI
