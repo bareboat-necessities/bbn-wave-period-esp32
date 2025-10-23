@@ -134,6 +134,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
 
     bool first = true;
+    bool mag_ref_set = false;   // <-- FIX: reset per wave file
     WaveDataCSVReader reader(filename);
     
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
@@ -171,10 +172,9 @@ static void process_wave_file_for_tracker(const std::string &filename,
         }
 
         // One-time world magnetic reference before using magnetometer
-        static bool mag_ref_set = false;
         if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
             filter.mekf().set_mag_world_ref(mag_world_a);
-            mag_ref_set = true;
+            mag_ref_set = true;   // <-- FIX: normal (non-static) flag
         }
 
         // One time update per sample (propagate + accel update)
