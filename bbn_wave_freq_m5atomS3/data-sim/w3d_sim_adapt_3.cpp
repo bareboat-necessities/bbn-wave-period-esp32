@@ -145,10 +145,13 @@ static void process_wave_file_for_tracker(const std::string &filename,
             gyr_b = apply_noise(gyr_b, gyro_noise);
         }
 
-        // Transform to NED
-        Vector3f acc_f = zu_to_ned(acc_b);
-        Vector3f gyr_f = zu_to_ned(gyr_b);
+// Transform IMU readings (specific force) from Z-up to NED
+Vector3f acc_meas_ned = zu_to_ned(acc_b);  // includes +g, as a real accelerometer would
+Vector3f gyr_meas_ned = zu_to_ned(gyr_b);
 
+// Feed the filter with specific force (includes gravity)
+filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
+        
         // Reference Euler (nautical ENU/Z-up)
         float r_ref_out = rec.imu.roll_deg;
         float p_ref_out = rec.imu.pitch_deg;
@@ -179,8 +182,9 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         Vector3f disp_est = ned_to_zu(filter.mekf().get_position());
         Vector3f vel_est  = ned_to_zu(filter.mekf().get_velocity());
-        Vector3f acc_est  = ned_to_zu(filter.mekf().get_world_accel());
-
+        // Remove gravity from world acceleration before comparing with true motion
+        Vector3f acc_est  = ned_to_zu(filter.mekf().get_world_accel() - Vector3f(0, 0, g_std));
+        
         Eigen::Vector3f eul_est = filter.getEulerNautical(); // roll,pitch,yaw (deg)
 
         Vector3f disp_err = disp_est - disp_ref;
