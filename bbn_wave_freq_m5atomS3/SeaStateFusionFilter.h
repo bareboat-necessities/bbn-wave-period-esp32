@@ -17,8 +17,6 @@
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
 
-enum class TrackerType { ARANOVSKIY, KALMANF, ZEROCROSS };
-
 // Shared constants (synchronized with main)
 constexpr float g_std = 9.80665f;
 constexpr float MIN_FREQ_HZ = 0.1f;
