@@ -26,7 +26,7 @@ constexpr float MIN_SIGMA_A = 0.1f;
 constexpr float MAX_SIGMA_A = 20.0f;
 constexpr float MIN_R_S     = 0.01f;
 constexpr float MAX_R_S     = 20.0f;
-constexpr float R_S_coeff   = 2.0f;
+constexpr float R_S_coeff   = 2.1f;
 constexpr float ADAPT_TAU_SEC = 10.0f;
 constexpr float ONLINE_TUNE_WARMUP_SEC = 20.0f;
 constexpr float MAG_DELAY_SEC = 5.0f;
@@ -37,38 +37,46 @@ struct TuneState {
     float RS_applied    = 8.17f;
 };
 
-// ---------------------------------------------------------------------------
 //  Tracker policy traits
-// ---------------------------------------------------------------------------
 
 template<TrackerType>
 struct TrackerPolicy; // primary template (undefined)
 
-// --- Aranovskiy ---
+// Aranovskiy
 template<>
 struct TrackerPolicy<TrackerType::ARANOVSKIY> {
     using Tracker = AranovskiyFilter<double>;
-    static double run(Tracker& t, float a_norm, float a_raw, float dt) {
-        return estimate_freq(Aranovskiy, &t, nullptr, nullptr, a_norm, a_raw, dt, now_us());
+    static double run(Tracker& t, float a, float dt) {
+        t.update((double)a, (double)dt);
+        double freq = t.getFrequencyHz();
+        return freq;
     }
 };
 
-// --- KalmANF ---
+// KalmANF
 template<>
 struct TrackerPolicy<TrackerType::KALMANF> {
     using Tracker = KalmANF<double>;
-    static double run(Tracker& t, float a_norm, float a_raw, float dt) {
-        return estimate_freq(Kalm_ANF, nullptr, &t, nullptr, a_norm, a_raw, dt, now_us());
+    static double run(Tracker& t, float a, float dt) {
+        double e;
+        double freq = kalmANF->process((double)a, (double)dt, &e);
+        return freq;
     }
 };
 
-// --- ZeroCross ---
+// ZeroCross
 template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
-    struct Dummy {};
-    using Tracker = Dummy;
-    static double run(Tracker&, float a_norm, float a_raw, float dt) {
-        return estimate_freq(ZeroCrossing, nullptr, nullptr, nullptr, a_norm, a_raw, dt, now_us());
+    using Tracker = SchmittTriggerFrequencyDetector;
+    static double run(Tracker& t, float a, float dt) {
+        float f_byZeroCross = t.update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
+                              ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
+        if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
+           freq = FREQ_GUESS;
+        } else {
+           freq = f_byZeroCross;
+        }
+        return freq;
     }
 };
 
