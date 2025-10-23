@@ -17,7 +17,7 @@
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
 
-// Shared constants (synchronized with main)
+// Shared constants
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 6.0f;
 
