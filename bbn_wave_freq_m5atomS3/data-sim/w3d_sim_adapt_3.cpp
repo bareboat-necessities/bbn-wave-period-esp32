@@ -134,7 +134,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
 
     bool first = true;
-    bool mag_ref_set = false;   // <-- FIX: reset per wave file
+    bool mag_ref_set = false;  
     WaveDataCSVReader reader(filename);
     
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
