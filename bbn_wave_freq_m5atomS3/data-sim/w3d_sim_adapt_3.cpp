@@ -14,7 +14,6 @@
 #endif
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
-const float MAG_DELAY_SEC = 5.0f; // delay before enabling magnetometer
 
 const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 50.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 50.0f;
@@ -25,12 +24,6 @@ const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 70.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 15.0f;
 
 constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
-constexpr float ADAPT_TAU_SEC  = 10.0f;
-constexpr float ONLINE_TUNE_WARMUP_SEC = 20.0f;
-
-const float R_S_coeff = 2.0f;
-constexpr float MIN_FREQ_HZ = 0.1f;
-constexpr float MAX_FREQ_HZ = 6.0f;
 
 //  Project headers
 #include "WaveFilesSupport.h"
@@ -103,7 +96,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         outname.insert(pos_ext, with_mag ? "_fusion" : "_fusion_nomag");
     else outname += (with_mag ? "_fusion" : "_fusion_nomag") + std::string(".csv");
 
-    std::cout << "Processing " << filename << " (type=" 
+    std::cout << "Processing " << filename << " (type="
               << EnumTraits<WaveType>::to_string(type) << ")\n";
 
     std::ofstream ofs(outname);
