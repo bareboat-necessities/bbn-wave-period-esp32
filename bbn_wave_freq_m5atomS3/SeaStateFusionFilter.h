@@ -120,6 +120,9 @@ struct TrackerPolicy<TrackerType::KALMANF> {
 };
 
 // ZeroCross
+#define ZERO_CROSSINGS_HYSTERESIS     0.04f
+#define ZERO_CROSSINGS_PERIODS        1
+
 template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
     using Tracker = SchmittTriggerFrequencyDetector;
