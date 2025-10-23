@@ -87,7 +87,8 @@ struct TrackerPolicy; // primary template (undefined)
 template<>
 struct TrackerPolicy<TrackerType::ARANOVSKIY> {
     using Tracker = AranovskiyFilter<double>;
-    static double run(Tracker& t, float a, float dt) {
+    Tracker t = Tracker();
+    static double run(float a, float dt) {
         t.update((double)a, (double)dt);
         double freq = t.getFrequencyHz();
         return freq;
@@ -98,7 +99,8 @@ struct TrackerPolicy<TrackerType::ARANOVSKIY> {
 template<>
 struct TrackerPolicy<TrackerType::KALMANF> {
     using Tracker = KalmANF<double>;
-    static double run(Tracker& t, float a, float dt) {
+    Tracker t = Tracker();
+    static double run(float a, float dt) {
         double e;
         double freq = t.process((double)a, (double)dt, &e);
         return freq;
@@ -109,7 +111,8 @@ struct TrackerPolicy<TrackerType::KALMANF> {
 template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
     using Tracker = SchmittTriggerFrequencyDetector;
-    static double run(Tracker& t, float a, float dt) {
+    Tracker t = Tracker();
+    static double run(float a, float dt) {
         float f_byZeroCross = t.update(a / g_std, ZERO_CROSSINGS_SCALE /* max fractions of g */,
                               ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, dt);
         double freq;
@@ -127,7 +130,6 @@ template<TrackerType trackerT>
 class SeaStateFusionFilter {
 public:
     using Policy  = TrackerPolicy<trackerT>;
-    using Tracker = typename Policy::Tracker;
 
     explicit SeaStateFusionFilter(bool with_mag)
         : with_mag_(with_mag),
@@ -243,7 +245,7 @@ private:
 
     static constexpr float R_S_xy_factor = 0.2f;
 
-    Tracker tracker_{};  // one instance per filter
+    Policy tracker_policy_{};  // one instance per filter
     SeaStateAutoTuner tuner_;
     TuneState tune_;
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
