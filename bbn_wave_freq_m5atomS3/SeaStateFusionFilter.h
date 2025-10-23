@@ -102,8 +102,7 @@ struct TrackerPolicy<TrackerType::ARANOVSKIY> {
 
     double run(float a, float dt) {
         t.update((double)a / g_std, (double)dt);
-        double freq = t.getFrequencyHz();
-        return freq;
+        return t.getFrequencyHz();
     }
 };
 
@@ -130,12 +129,8 @@ struct TrackerPolicy<TrackerType::ZEROCROSS> {
     double run(float a, float dt) {
         float f_byZeroCross = t.update(a / g_std, ZERO_CROSSINGS_SCALE /* max fractions of g */,
                               ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, dt);
-        double freq;
-        if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
-           freq = FREQ_GUESS;
-        } else {
-           freq = f_byZeroCross;
-        }
+        double freq = (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) ?
+           FREQ_GUESS : f_byZeroCross;
         return freq;
     }
 };
@@ -147,10 +142,8 @@ public:
     using TrackingPolicy  = TrackerPolicy<trackerT>;
 
     explicit SeaStateFusionFilter(bool with_mag)
-        : with_mag_(with_mag),
-          tuner_(),
-          time_(0.0),
-          freq_hz_(NAN)
+        : with_mag_(with_mag), tuner_(),
+          time_(0.0), freq_hz_(NAN)
     {}
 
     void initialize(const Eigen::Vector3f& sigma_a,
@@ -166,8 +159,7 @@ public:
     }
 
     //  Time update (IMU integration + frequency tracking)
-    void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc)
-    {
+    void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc) {
         if (!mekf_) return;
         time_ += dt;
 
@@ -230,17 +222,14 @@ private:
     }
 
     void update_tuner(float dt, float a_z) {
-        if (!std::isfinite(freq_hz_) || time_ < ONLINE_TUNE_WARMUP_SEC)
-            return;
+        if (!std::isfinite(freq_hz_) || time_ < ONLINE_TUNE_WARMUP_SEC) return;
 
         tuner_.update(dt, a_z, freq_hz_);
         const float tau_target   = std::min(std::max(0.5f / freq_hz_, MIN_TAU_S), MAX_TAU_S);
         const float sigma_target = std::min(std::max(
-            std::sqrt(std::max(0.0f, tuner_.getAccelVariance())),
-            MIN_SIGMA_A), MAX_SIGMA_A);
+            std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
         const float RS_target    = std::min(std::max(
-            R_S_coeff * sigma_target * tau_target * tau_target * tau_target,
-            MIN_R_S), MAX_R_S);
+            R_S_coeff * sigma_target * tau_target * tau_target * tau_target, MIN_R_S), MAX_R_S);
 
         adapt_mekf(dt, tau_target, sigma_target, RS_target);
     }
