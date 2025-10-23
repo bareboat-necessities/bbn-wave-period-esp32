@@ -73,8 +73,8 @@ constexpr float ONLINE_TUNE_WARMUP_SEC = 20.0f;
 constexpr float MAG_DELAY_SEC = 5.0f;
 
 struct TuneState {
-    float tau_applied   = 1.15f;
-    float sigma_applied = 1.22f;
+    float tau_applied   = 0.92f;
+    float sigma_applied = 0.57f;
     float RS_applied    = 1.17f;
 };
 
