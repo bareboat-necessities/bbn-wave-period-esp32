@@ -165,7 +165,7 @@ private:
             std::sqrt(std::max(0.0f, tuner_.getAccelVariance())),
             MIN_SIGMA_A), MAX_SIGMA_A);
         const float RS_target    = std::min(std::max(
-            R_S_coeff * sigma_target * std::pow(tau_target, 3),
+            R_S_coeff * sigma_target * tau_target * tau_target * tau_target,
             MIN_R_S), MAX_R_S);
 
         adapt_mekf(dt, tau_target, sigma_target, RS_target);
