@@ -251,7 +251,7 @@ private:
     double time_, last_adapt_time_sec_;
     float freq_hz_;
 
-    static constexpr float R_S_xy_factor = 0.2f;
+    static constexpr float R_S_xy_factor = 0.15f;
 
     TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
     SeaStateAutoTuner tuner_;
