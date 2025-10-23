@@ -20,13 +20,16 @@
 // Shared constants (synchronized with main)
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 6.0f;
+
 constexpr float MIN_TAU_S   = 0.1f;
 constexpr float MAX_TAU_S   = 11.5f;
 constexpr float MIN_SIGMA_A = 0.1f;
 constexpr float MAX_SIGMA_A = 20.0f;
 constexpr float MIN_R_S     = 0.01f;
 constexpr float MAX_R_S     = 20.0f;
+
 constexpr float R_S_coeff   = 2.1f;
+
 constexpr float ADAPT_TAU_SEC = 10.0f;
 constexpr float ONLINE_TUNE_WARMUP_SEC = 20.0f;
 constexpr float MAG_DELAY_SEC = 5.0f;
@@ -69,8 +72,8 @@ template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
     using Tracker = SchmittTriggerFrequencyDetector;
     static double run(Tracker& t, float a, float dt) {
-        float f_byZeroCross = t.update(a_noisy, ZERO_CROSSINGS_SCALE /* max fractions of g */,
-                              ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, delta_t);
+        float f_byZeroCross = t.update(a, ZERO_CROSSINGS_SCALE /* max fractions of g */,
+                              ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, dt);
         if (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) {
            freq = FREQ_GUESS;
         } else {
