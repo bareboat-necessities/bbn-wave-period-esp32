@@ -122,7 +122,7 @@ public:
         const float a_z = acc.z() - g_std;
         const float a_norm = a_z / g_std;
 
-        const double f = Policy::run(tracker_, a_norm, a_z, dt);
+        const double f = Policy::run(tracker_, a_z, dt);
         if (!std::isnan(f)) {
             freq_hz_ = std::clamp(static_cast<float>(f), MIN_FREQ_HZ, MAX_FREQ_HZ);
             update_tuner(dt, a_z);
