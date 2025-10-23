@@ -123,7 +123,7 @@ struct TrackerPolicy<TrackerType::KALMANF> {
 template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
     using Tracker = SchmittTriggerFrequencyDetector;
-    Tracker t = Tracker();
+    Tracker t = Tracker(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
     double run(float a, float dt) {
         float f_byZeroCross = t.update(a / g_std, ZERO_CROSSINGS_SCALE /* max fractions of g */,
                               ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, dt);
