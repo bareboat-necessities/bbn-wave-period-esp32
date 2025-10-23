@@ -124,7 +124,7 @@ public:
 
         const double f = Policy::run(tracker_, a_z, dt);
         if (!std::isnan(f)) {
-            freq_hz_ = std::clamp(static_cast<float>(f), MIN_FREQ_HZ, MAX_FREQ_HZ);
+            freq_hz_ = std::min(std::max(static_cast<float>(f), MIN_FREQ_HZ), MAX_FREQ_HZ);
             update_tuner(dt, a_z);
         }
     }
