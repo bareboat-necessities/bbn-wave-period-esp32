@@ -168,20 +168,20 @@ static void process_wave_file_for_tracker(const std::string &filename,
             first = false;
         }
 
-        // One time update per sample (propagate + accel update)
-        filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
-
-        // One-time world mag ref before using magnetometer
+        // One-time world magnetic reference before using magnetometer
         static bool mag_ref_set = false;
         if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
             filter.mekf().set_mag_world_ref(mag_world_a);
             mag_ref_set = true;
         }
 
+        // One time update per sample (propagate + accel update)
+        filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
+
         // Optional yaw correction after mag is available
         if (with_mag && rec.time >= MAG_DELAY_SEC)
             filter.updateMag(mag_body_ned);
-
+        
         // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
         Vector3f vel_ref (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
