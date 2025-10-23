@@ -117,7 +117,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         << "tau_applied,sigma_a_applied,R_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
 
-    // Initialize unified fusion filter (same lifetime as old working code)
+    // Initialize unified fusion filter
     using Fusion = SeaStateFusionFilter<TrackerType::KALMANF>;
     Fusion filter(with_mag);
 
@@ -180,7 +180,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // One time update per sample (propagate + accel update)
         filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
 
-        // Optional yaw correction after mag is available
+        // Yaw correction after mag is available
         if (with_mag && rec.time >= MAG_DELAY_SEC)
             filter.updateMag(mag_body_ned);
         
