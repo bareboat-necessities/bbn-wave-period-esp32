@@ -117,7 +117,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         << "tau_applied,sigma_a_applied,R_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
 
-    // Initialize unified fusion filter
+    // Initialize unified fusion filter (same lifetime as old working code)
     using Fusion = SeaStateFusionFilter<TrackerType::KALMANF>;
     Fusion filter(with_mag);
 
@@ -126,14 +126,16 @@ static void process_wave_file_for_tracker(const std::string &filename,
     const Vector3f sigma_m(0.3f, 0.3f, 0.3f);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
 
+    // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
-    static NoiseModel accel_noise = make_noise_model(0.03f, 0.02f, 1234);
-    static NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
+    // Deterministic but non-static noise — identical to old runner
+    NoiseModel accel_noise = make_noise_model(0.03f, 0.02f, 1234);
+    NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
 
     bool first = true;
     WaveDataCSVReader reader(filename);
-
+    
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
@@ -169,7 +171,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         }
 
         // One-time world magnetic reference before using magnetometer
-        static bool mag_ref_set = false;
+        bool mag_ref_set = false;
         if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
             filter.mekf().set_mag_world_ref(mag_world_a);
             mag_ref_set = true;
