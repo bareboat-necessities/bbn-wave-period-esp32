@@ -137,7 +137,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        // Body-frame noisy sensors
+        // Body-frame raw sensors (Z-up body from CSV)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
         if (add_noise) {
@@ -145,46 +145,50 @@ static void process_wave_file_for_tracker(const std::string &filename,
             gyr_b = apply_noise(gyr_b, gyro_noise);
         }
 
-// Transform IMU readings (specific force) from Z-up to NED
-Vector3f acc_meas_ned = zu_to_ned(acc_b);  // includes +g, as a real accelerometer would
-Vector3f gyr_meas_ned = zu_to_ned(gyr_b);
+        // Map body Z-up -> body NED axes (still BODY, not world)
+        Vector3f acc_meas_ned = zu_to_ned(acc_b);  // specific force (includes +g)
+        Vector3f gyr_meas_ned = zu_to_ned(gyr_b);  // body angular rate
 
-// Feed the filter with specific force (includes gravity)
-filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
-        
-        // Reference Euler (nautical ENU/Z-up)
+        // Reference Euler (nautical, ENU/Z-up)
         float r_ref_out = rec.imu.roll_deg;
         float p_ref_out = rec.imu.pitch_deg;
         float y_ref_out = rec.imu.yaw_deg;
 
-        // Simulated magnetometer
-        Vector3f mag_f(0,0,0);
+        // Simulated magnetometer (BODY, then axis-map to NED body)
+        Vector3f mag_body_ned(0,0,0);
         if (with_mag) {
             Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(
                 r_ref_out, p_ref_out, y_ref_out);
-            mag_f = zu_to_ned(mag_b_enu);
+            mag_body_ned = zu_to_ned(mag_b_enu);
         }
 
+        // First-step init from body accel (specific force)
         if (first) {
-            filter.initialize_from_acc(acc_f);
+            filter.initialize_from_acc(acc_meas_ned);
             first = false;
         }
 
-        // Unified fusion update
-        filter.updateTime(dt, gyr_f, acc_f);
-        if (with_mag && rec.time >= MAG_DELAY_SEC)
-            filter.updateMag(mag_f);
+        // One time update per sample (propagate + accel update)
+        filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
 
-        // Extract results
+        // Optional yaw correction after mag is available
+        if (with_mag && rec.time >= MAG_DELAY_SEC)
+            filter.updateMag(mag_body_ned);
+
+        // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
         Vector3f vel_ref (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
         Vector3f acc_ref (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
 
+        // Estimates: MEKF state is world NED -> convert to Z-up for CSV
         Vector3f disp_est = ned_to_zu(filter.mekf().get_position());
         Vector3f vel_est  = ned_to_zu(filter.mekf().get_velocity());
-        // Remove gravity from world acceleration before comparing with true motion
-        Vector3f acc_est  = ned_to_zu(filter.mekf().get_world_accel() - Vector3f(0, 0, g_std));
-        
+
+        // Accel from filter: world specific force (includes +g) in NED
+        // Remove gravity to compare to linear accel reference, then convert to Z-up
+        Vector3f acc_world_specific_ned = filter.mekf().get_world_accel();
+        Vector3f acc_est = ned_to_zu(acc_world_specific_ned - Vector3f(0, 0, g_std));
+
         Eigen::Vector3f eul_est = filter.getEulerNautical(); // roll,pitch,yaw (deg)
 
         Vector3f disp_err = disp_est - disp_ref;
@@ -198,7 +202,7 @@ filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
         errs_pitch.push_back(eul_est.y() - p_ref_out);
         errs_yaw.push_back(eul_est.z() - y_ref_out);
 
-        // Write CSV
+        // CSV row
         ofs << rec.time << ","
             << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
             << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
@@ -215,7 +219,7 @@ filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
             << filter.getPeriodSec() << ","
             << filter.getAccelVariance() << "\n";
     });
-
+    
     ofs.close();
     std::cout << "Wrote " << outname << "\n";
 
