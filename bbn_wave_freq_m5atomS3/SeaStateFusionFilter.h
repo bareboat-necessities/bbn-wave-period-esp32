@@ -146,11 +146,11 @@ public:
     Eigen::Vector3f getEulerNautical() const {
         if (!mekf_) return Eigen::Vector3f::Zero();
     
-        // 1. Fetch quaternion in Eigen coeff order (x, y, z, w)
+        // Fetch quaternion in Eigen coeff order (x, y, z, w)
         const auto coeffs = mekf_->quaternion().coeffs();  // <-- mekf_->, not mekf_.
         Eigen::Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2)); // w,x,y,z
     
-        // 2. Convert from aerospace (body-to-world, NED) to nautical (Z-up ENU)
+        // Convert from aerospace (body-to-world, NED) to nautical (Z-up ENU)
         float roll_a, pitch_a, yaw_a;
         quat_to_euler_aero(q, roll_a, pitch_a, yaw_a);
     
@@ -171,7 +171,7 @@ private:
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
         mekf_->set_aw_stationary_corr_std(Eigen::Vector3f::Constant(tune_.sigma_applied));
-        mekf_->set_RS_noise(Eigen::Vector3f::Constant(tune_.RS_applied));
+        mekf_->set_RS_noise(Vector3f(tune.RS_applied * 0.2f, tune.RS_applied * 0.2f, tune.RS_applied));
     }
 
     void update_tuner(float dt, float a_z) {
