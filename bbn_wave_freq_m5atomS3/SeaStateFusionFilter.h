@@ -18,7 +18,6 @@
 #include "FrameConversions.h"
 
 // Shared constants (synchronized with main)
-constexpr float g_std = 9.80665f;
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 6.0f;
 constexpr float MIN_TAU_S   = 0.1f;
