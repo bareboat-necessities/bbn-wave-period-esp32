@@ -52,12 +52,12 @@ private:
 //  Noise model
 bool add_noise = true;
 struct NoiseModel {
-    std::default_random_engine rng;
+    std::mt19937 rng;
     std::normal_distribution<float> dist;
     Vector3f bias;
 };
 NoiseModel make_noise_model(float sigma, float bias_range, unsigned seed) {
-    NoiseModel m{std::default_random_engine(seed),
+    NoiseModel m{std::mt19937(seed),
                  std::normal_distribution<float>(0.0f, sigma),
                  Vector3f::Zero()};
     std::uniform_real_distribution<float> ub(-bias_range, bias_range);
