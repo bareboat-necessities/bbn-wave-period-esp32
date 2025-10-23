@@ -129,7 +129,7 @@ struct TrackerPolicy<TrackerType::ZEROCROSS> {
 template<TrackerType trackerT>
 class SeaStateFusionFilter {
 public:
-    using Policy  = TrackerPolicy<trackerT>;
+    using TrackingPolicy  = TrackerPolicy<trackerT>;
 
     explicit SeaStateFusionFilter(bool with_mag)
         : with_mag_(with_mag),
@@ -245,7 +245,7 @@ private:
 
     static constexpr float R_S_xy_factor = 0.2f;
 
-    Policy tracker_policy_{};  // one instance per filter
+    TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
     SeaStateAutoTuner tuner_;
     TuneState tune_;
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
