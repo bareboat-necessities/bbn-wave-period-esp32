@@ -171,8 +171,7 @@ private:
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
         mekf_->set_aw_stationary_corr_std(Eigen::Vector3f::Constant(tune_.sigma_applied));
-        const float R_S_xy_factor = 0.2f;
-        mekf_->set_RS_noise(Vector3f(tune.RS_applied * R_S_xy_factor, tune.RS_applied * R_S_xy_factor, tune.RS_applied));
+        mekf_->set_RS_noise(Vector3f(tune_.RS_applied * R_S_xy_factor, tune_.RS_applied * R_S_xy_factor, tune_.RS_applied));
     }
 
     void update_tuner(float dt, float a_z) {
@@ -203,6 +202,8 @@ private:
     bool with_mag_;
     double time_;
     float freq_hz_;
+
+    const float R_S_xy_factor = 0.2f;
 
     Tracker tracker_{};  // one instance per filter
     SeaStateAutoTuner tuner_;
