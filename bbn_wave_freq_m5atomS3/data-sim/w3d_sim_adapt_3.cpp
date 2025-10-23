@@ -190,8 +190,6 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // Estimates: MEKF state is world NED -> convert to Z-up for CSV
         Vector3f disp_est = ned_to_zu(filter.mekf().get_position());
         Vector3f vel_est  = ned_to_zu(filter.mekf().get_velocity());
-
-        // IMPORTANT: match the previous working code — DO NOT subtract g here
         Vector3f acc_est  = ned_to_zu(filter.mekf().get_world_accel());
 
         Eigen::Vector3f eul_est = filter.getEulerNautical(); // roll,pitch,yaw (deg)
