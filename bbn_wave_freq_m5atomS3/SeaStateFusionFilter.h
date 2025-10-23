@@ -87,7 +87,19 @@ struct TrackerPolicy; // primary template (undefined)
 template<>
 struct TrackerPolicy<TrackerType::ARANOVSKIY> {
     using Tracker = AranovskiyFilter<double>;
-    Tracker t = Tracker();
+    Tracker t;
+
+    TrackerPolicy() : t() {
+        double omega_up = (FREQ_GUESS * 2) * (2 * M_PI);  // upper angular frequency
+        double k_gain = 20.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+        double x1_0 = 0.0;
+        double omega_init = (FREQ_GUESS / 1.5) * 2 * M_PI;
+        double theta_0 = -(omega_init * omega_init);
+        double sigma_0 = theta_0;
+        t.setParams(omega_up, k_gain);
+        t.setState(x1_0, theta_0, sigma_0);
+    }
+
     double run(float a, float dt) {
         t.update((double)a, (double)dt);
         double freq = t.getFrequencyHz();
