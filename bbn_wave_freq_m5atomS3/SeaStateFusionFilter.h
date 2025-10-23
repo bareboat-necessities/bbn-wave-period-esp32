@@ -69,6 +69,7 @@ constexpr float MAX_R_S     = 20.0f;
 constexpr float R_S_coeff   = 2.1f;
 
 constexpr float ADAPT_TAU_SEC = 10.0f;
+constexpr float ADAPT_EVERY_SECS = 3.0f;
 constexpr float ONLINE_TUNE_WARMUP_SEC = 20.0f;
 constexpr float MAG_DELAY_SEC = 5.0f;
 
@@ -141,9 +142,9 @@ class SeaStateFusionFilter {
 public:
     using TrackingPolicy  = TrackerPolicy<trackerT>;
 
-    explicit SeaStateFusionFilter(bool with_mag)
+    explicit SeaStateFusionFilter(bool with_mag = true)
         : with_mag_(with_mag), tuner_(),
-          time_(0.0), freq_hz_(NAN)
+          time_(0.0), last_adapt_time_sec_(0.0), freq_hz_(NAN)
     {}
 
     void initialize(const Eigen::Vector3f& sigma_a,
@@ -218,7 +219,7 @@ private:
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
         mekf_->set_aw_stationary_corr_std(Eigen::Vector3f::Constant(tune_.sigma_applied));
-        mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor, tune_.RS_applied * R_S_xy_factor, tune_.RS_applied));
+        mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor, tune_.RS_applied * R_S_xy_factor, tune_.RS_applied));        
     }
 
     void update_tuner(float dt, float a_z) {
@@ -239,12 +240,15 @@ private:
         tune_.tau_applied   += alpha * (tau_t - tune_.tau_applied);
         tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
         tune_.RS_applied    += alpha * (RS_t - tune_.RS_applied);
-        apply_tune();
+        if (time_ - last_adapt_time_sec_ > ADAPT_EVERY_SECS) {
+            apply_tune();
+            last_adapt_time_sec_ = time_;
+        }
     }
 
     //  Members
     bool with_mag_;
-    double time_;
+    double time_, last_adapt_time_sec_;
     float freq_hz_;
 
     static constexpr float R_S_xy_factor = 0.2f;
