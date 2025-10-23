@@ -88,7 +88,7 @@ template<>
 struct TrackerPolicy<TrackerType::ARANOVSKIY> {
     using Tracker = AranovskiyFilter<double>;
     Tracker t = Tracker();
-    static double run(float a, float dt) {
+    double run(float a, float dt) {
         t.update((double)a, (double)dt);
         double freq = t.getFrequencyHz();
         return freq;
@@ -100,7 +100,7 @@ template<>
 struct TrackerPolicy<TrackerType::KALMANF> {
     using Tracker = KalmANF<double>;
     Tracker t = Tracker();
-    static double run(float a, float dt) {
+    double run(float a, float dt) {
         double e;
         double freq = t.process((double)a, (double)dt, &e);
         return freq;
@@ -112,7 +112,7 @@ template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
     using Tracker = SchmittTriggerFrequencyDetector;
     Tracker t = Tracker();
-    static double run(float a, float dt) {
+    double run(float a, float dt) {
         float f_byZeroCross = t.update(a / g_std, ZERO_CROSSINGS_SCALE /* max fractions of g */,
                               ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, dt);
         double freq;
