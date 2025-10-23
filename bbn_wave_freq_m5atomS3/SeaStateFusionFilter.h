@@ -66,10 +66,10 @@ constexpr float MAX_SIGMA_A = 20.0f;
 constexpr float MIN_R_S     = 0.01f;
 constexpr float MAX_R_S     = 20.0f;
 
-constexpr float R_S_coeff   = 2.1f;
+constexpr float R_S_coeff   = 2.2f;
 
 constexpr float ADAPT_TAU_SEC = 10.0f;
-constexpr float ADAPT_EVERY_SECS = 1.0f;
+constexpr float ADAPT_EVERY_SECS = 0.1f;
 constexpr float ONLINE_TUNE_WARMUP_SEC = 25.0f;
 constexpr float MAG_DELAY_SEC = 5.0f;
 
