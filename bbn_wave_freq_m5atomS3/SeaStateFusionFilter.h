@@ -1,5 +1,42 @@
 #pragma once
 
+/*
+
+  SeaStateFusionFilter
+  
+  Marine Inertial Navigational System (INS) Filter for IMU
+
+  Combines multiple real-time estimators into a cohesive ocean-state tracker:
+
+    • Quaternion-based attitude and linear motion estimation via Kalman3D_Wave  
+      (vOct22 baseline — Joseph-form MEKF with OU acceleration drivers)
+
+    • Dominant frequency tracking using one of:
+          – AranovskiyFilter     (frequency estimator)
+          – KalmANF              (adaptive notch / Kalman frequency tracker)
+          – SchmittTrigger       (zero-cross event detector)
+
+    • Online auto-tuning of Kalman filter parameters (τ, σₐ, Rₛ) through
+      SeaStateAutoTuner, which estimates acceleration variance and applies the
+      σₐ·τ³ regularization law to stabilize displacement drift correction.
+
+  Where
+  – τ (tau):  OU process time constant ≈ ½ · T  (half the dominant period of acceleration)
+  – σₐ:       Stationary acceleration standard deviation, EWMA-tracked online
+  – Rₛ:       Pseudo-measurement noise controlling integral drift suppression
+  – Rₛ_xy:    Reduced in X/Y (anisotropic weighting for vertical-dominant seas)
+  – Adaptive update:  exponential smoothing toward targets over ADAPT_TAU_SEC
+
+  Features
+  • Modular tracker selection via TrackerPolicy template
+  • Quaternion-consistent Euler conversion (aerospace → nautical, ENU frame)
+  • Magnetometer yaw correction with configurable startup delay
+  • Fully compatible with Arduino or native Eigen builds
+
+  Copyright (c) 2025  Mikhail Grushinskiy  
+  Released under the MIT License 
+*/
+
 #ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
 #else
