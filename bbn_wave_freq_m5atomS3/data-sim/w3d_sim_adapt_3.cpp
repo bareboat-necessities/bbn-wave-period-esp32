@@ -13,6 +13,12 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#define ZERO_CROSSINGS_SCALE          1.0f
+#define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
+#define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
+
+#define FREQ_GUESS 0.3f   // frequency guess
+
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
 const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 40.0f;
