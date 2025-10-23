@@ -171,6 +171,13 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // One time update per sample (propagate + accel update)
         filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
 
+        // One-time world mag ref before using magnetometer
+        static bool mag_ref_set = false;
+        if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
+            filter.mekf().set_mag_world_ref(mag_world_a);
+            mag_ref_set = true;
+        }
+
         // Optional yaw correction after mag is available
         if (with_mag && rec.time >= MAG_DELAY_SEC)
             filter.updateMag(mag_body_ned);
@@ -184,10 +191,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
         Vector3f disp_est = ned_to_zu(filter.mekf().get_position());
         Vector3f vel_est  = ned_to_zu(filter.mekf().get_velocity());
 
-        // Accel from filter: world specific force (includes +g) in NED
-        // Remove gravity to compare to linear accel reference, then convert to Z-up
-        Vector3f acc_world_specific_ned = filter.mekf().get_world_accel();
-        Vector3f acc_est = ned_to_zu(acc_world_specific_ned - Vector3f(0, 0, g_std));
+        // IMPORTANT: match the previous working code — DO NOT subtract g here
+        Vector3f acc_est  = ned_to_zu(filter.mekf().get_world_accel());
 
         Eigen::Vector3f eul_est = filter.getEulerNautical(); // roll,pitch,yaw (deg)
 
