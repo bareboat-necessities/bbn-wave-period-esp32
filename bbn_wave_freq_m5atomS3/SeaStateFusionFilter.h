@@ -143,22 +143,22 @@ public:
     inline float getPeriodSec()    const noexcept { return (freq_hz_ > 1e-6f) ? 1.0f / freq_hz_ : NAN; }
     inline float getAccelVariance()const noexcept { return tuner_.getAccelVariance(); }
 
-    Eigen::Vector3f getEulerNautical() const {
-        Eigen::Vector3f eul_deg = Eigen::Vector3f::Zero();
-        if (!mekf_) return eul_deg;
+Eigen::Vector3f getEulerNautical() const {
+    // 1. Fetch quaternion in Eigen coeff order (x, y, z, w)
+    const auto coeffs = mekf_.quaternion().coeffs();
+    Eigen::Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2)); // w,x,y,z
 
-        const auto coeffs = mekf_->quaternion().coeffs(); // (x, y, z, w)
-        Eigen::Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2)); // (w,x,y,z)
+    // 2. Convert from aerospace (body-to-world, NED) to nautical (Z-up ENU)
+    float roll_a, pitch_a, yaw_a;
+    quat_to_euler_aero(q, roll_a, pitch_a, yaw_a);
 
-        float roll_aero, pitch_aero, yaw_aero;
-        quat_to_euler_aero(q, roll_aero, pitch_aero, yaw_aero);
-        aero_to_nautical(roll_aero, pitch_aero, yaw_aero);
+    float roll_n = roll_a;
+    float pitch_n = pitch_a;
+    float yaw_n = yaw_a;
+    aero_to_nautical(roll_n, pitch_n, yaw_n);
 
-        eul_deg << roll_aero, pitch_aero, yaw_aero;
-        eul_deg *= 180.0f / static_cast<float>(M_PI);
-        return eul_deg;
-    }
-
+    return Eigen::Vector3f(roll_n, pitch_n, yaw_n);
+}
 
     inline const auto& mekf() const noexcept { return *mekf_; }
     inline auto& mekf() noexcept { return *mekf_; }
