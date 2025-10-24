@@ -45,7 +45,7 @@ constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 6.0f;
 constexpr float MIN_TAU_S   = 0.1f;
 constexpr float MAX_TAU_S   = 11.5f;
-constexpr float MIN_R_S     = 0.01f;
+constexpr float MIN_R_S     = 0.3f;
 constexpr float MAX_R_S     = 20.0f;
 
 // Your project headers
