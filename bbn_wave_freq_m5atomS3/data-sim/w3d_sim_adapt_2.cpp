@@ -385,7 +385,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 MIN_R_S, MAX_R_S);
 
             // Weighted fusion: early (not ready) = 100% physics; later = blend in covariance
-            float w = tuner.isReady() ? 1.0f : 0.0f;  // tune 0.4–0.8 if desired
+            float w = tuner.isReady() ? 0.3f : 0.0f;  // tune 0.4–0.8 if desired
             float RS_adaptive = (1.0f - w) * RS_pred_phys + w * RS_pred_cov;
 
             // Smooth adaptation
