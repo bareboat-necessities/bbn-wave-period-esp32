@@ -306,8 +306,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     // Get scalar RMS of S-covariance (useful for adaptive R_S)
     T get_integral_cov_rms() const {
-        Matrix3 PS = get_integral_covariance();
-        return std::sqrt((PS.trace() / T(3)));
+        Matrix3 P_S = get_integral_covariance();
+        return std::sqrt((P_S.trace() / T(3)));
     }
 
     // Tuning setters
