@@ -374,15 +374,15 @@ static void process_wave_file_for_tracker(const std::string &filename,
             // --- Adaptive R_S update --------------------------------------------
             // Covariance-driven term from current P_SS (integral displacement covariance)
             float Pss_rms = mekf.get_integral_cov_rms();
+            
+            float RS_pred_phys = std::clamp(
+                static_cast<float>(R_S_coeff * sigma_target * std::pow(tau_target, 3.0f)),
+                MIN_R_S, MAX_R_S);
 
-            // Physics-driven term using σ_a and τ (σ_a · τ^3 scaling)
-            float RS_pred_phys = std::clamp(R_S_coeff * sigma_target * std::pow(tau_target, 3),
-                                            MIN_R_S, MAX_R_S);
-
-            // Covariance-driven term (tracks filter's own uncertainty)
-            float RS_pred_cov  = std::clamp(R_S_coeff * Pss_rms,
-                                            MIN_R_S, MAX_R_S);
-
+            float RS_pred_cov  = std::clamp(
+                static_cast<float>(R_S_coeff * Pss_rms),
+                MIN_R_S, MAX_R_S);
+            
             // Weighted fusion: early (not ready) = 100% physics; later = blend in covariance
             float w = tuner.isReady() ? 1.0f : 0.0f;  // tune 0.4–0.8 if needed
             float RS_adaptive = (1.0f - w) * RS_pred_phys + w * RS_pred_cov;
