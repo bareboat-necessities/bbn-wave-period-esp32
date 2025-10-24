@@ -361,7 +361,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                     mekf.set_aw_stationary_corr_std(Vector3f::Constant(tune.sigma_applied));
                 }
             }
-            /*
+            
             tune.RS_applied += alpha_step * (RS_target - tune.RS_applied);
             if (rec.time - last_adj > ADAPT_EVERY_SECS) {
                 //mekf.set_RS_noise(Vector3f::Constant(tune.RS_applied));
@@ -370,7 +370,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                                            tune.RS_applied));
                 last_adj = rec.time;
             }
-            */
+            /*
             // --- Adaptive R_S update --------------------------------------------
             // Covariance-driven term from current P_SS (integral displacement covariance)
             float Pss_rms = mekf.get_integral_cov_rms();
@@ -400,6 +400,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                     tune.RS_applied));
                 last_adj = rec.time;
             }
+            */
             // ---------------------------------------------------------------------            
         }
 
