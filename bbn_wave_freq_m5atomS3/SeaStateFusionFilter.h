@@ -66,7 +66,7 @@ constexpr float MAX_SIGMA_A = 20.0f;
 constexpr float MIN_R_S     = 0.01f;
 constexpr float MAX_R_S     = 20.0f;
 
-constexpr float R_S_coeff   = 0.65f;
+constexpr float R_S_coeff   = 0.5f;
 
 constexpr float ADAPT_TAU_SEC = 3.0f;
 constexpr float ADAPT_EVERY_SECS = 0.05f;
@@ -74,8 +74,8 @@ constexpr float ONLINE_TUNE_WARMUP_SEC = 40.0f;
 constexpr float MAG_DELAY_SEC = 5.0f;
 
 struct TuneState {
-    float tau_applied   = 1.15f;              // s
-    float sigma_applied = 1.22f;              // m/s²
+    float tau_applied   = 1.05f;              // s
+    float sigma_applied = 0.92f;              // m/s²
     float RS_applied    = 2.17f;              // m*s
     //float tau_applied   = 0.92f;
     //float sigma_applied = 0.57f;
