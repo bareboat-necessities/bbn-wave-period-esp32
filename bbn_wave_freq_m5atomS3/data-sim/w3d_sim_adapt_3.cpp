@@ -258,7 +258,46 @@ static void process_wave_file_for_tracker(const std::string &filename,
         std::cout << "Angles RMS (deg): Roll=" << rms_roll.rms()
                   << " Pitch=" << rms_pitch.rms()
                   << " Yaw=" << rms_yaw.rms() << "\n";
+
+        // Extended diagnostic summary
+        float tau_target   = filter.getTauTarget();
+        float sigma_target = filter.getSigmaTarget();
+        float RS_target    = filter.getRSTarget();
+
+        float tau_applied   = filter.getTauApplied();
+        float sigma_applied = filter.getSigmaApplied();
+        float RS_applied    = filter.getRSApplied();
+
+        float f_hz          = filter.getFreqHz();
+        float Tp_tuner      = filter.getPeriodSec();
+        float accel_var     = filter.getAccelVariance();
+
+        std::cout << "tau_target=" << tau_target
+                  << ", sigma_target=" << sigma_target
+                  << ", RS_target=" << RS_target << "\n";
+        std::cout << "tau_applied=" << tau_applied
+                  << ", sigma_applied=" << sigma_applied
+                  << ", RS_applied=" << RS_applied << "\n";
+        std::cout << "f_hz=" << f_hz
+                  << ", Tp_tuner=" << Tp_tuner
+                  << ", accel_var=" << accel_var << "\n";
         std::cout << "=============================================\n\n";
+
+        // Failure criteria 
+        float limit_x = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_X_HIGH : FAIL_ERR_LIMIT_PERCENT_X_LOW;
+        float limit_y = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_Y_HIGH : FAIL_ERR_LIMIT_PERCENT_Y_LOW;
+        float limit_z = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_Z_HIGH : FAIL_ERR_LIMIT_PERCENT_Z_LOW;
+
+        auto fail_if = [&](const char* axis, float pct, float limit) {
+            if (pct > limit) {
+                std::cerr << "ERROR: " << axis << " RMS above limit ("
+                          << pct << "% > " << limit << "%). Failing.\n";
+                std::exit(EXIT_FAILURE);
+            }
+        };
+        fail_if("X", x_pct, limit_x);
+        fail_if("Y", y_pct, limit_y);
+        fail_if("Z", z_pct, limit_z);
     }
 }
 
