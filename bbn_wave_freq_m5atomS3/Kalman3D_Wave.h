@@ -299,6 +299,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Latent OU world-acceleration a_w (world, NED)
     Vector3 get_world_accel() const { return xext.template segment<3>(OFF_AW); }
 
+/*
     // Get current S (integral displacement) covariance (3x3)
     Matrix3 get_integral_covariance() const {
         return Pext.template block<3,3>(OFF_S, OFF_S);
@@ -309,6 +310,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Matrix3 P_S = get_integral_covariance();
         return std::sqrt((P_S.trace() / T(3)));
     }
+*/
 
     // Tuning setters
     void set_aw_time_constant(T tau_seconds) { tau_aw = std::max(T(1e-3), tau_seconds); }
