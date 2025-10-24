@@ -70,7 +70,7 @@ constexpr float R_S_coeff   = 2.2f;
 
 constexpr float ADAPT_TAU_SEC = 10.0f;
 constexpr float ADAPT_EVERY_SECS = 0.01f;
-constexpr float ONLINE_TUNE_WARMUP_SEC = 25.0f;
+constexpr float ONLINE_TUNE_WARMUP_SEC = 40.0f;
 constexpr float MAG_DELAY_SEC = 5.0f;
 
 struct TuneState {
