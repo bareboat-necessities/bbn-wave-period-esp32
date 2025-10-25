@@ -61,7 +61,7 @@ constexpr float MAX_R_S     = 20.0f;
 #include "WaveFilters.h"
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
-#include "SeaStateAutoTuner.h"   // <<< switched in
+#include "SeaStateAutoTuner.h"   
 
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
