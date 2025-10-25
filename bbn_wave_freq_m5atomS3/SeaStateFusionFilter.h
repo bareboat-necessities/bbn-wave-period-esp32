@@ -231,7 +231,7 @@ private:
 
     void update_tuner(float dt, float a_z) {
         if (!std::isfinite(freq_hz_)) {
-            freqSmoother.init();
+            freqSmoother.setInitial(FREQ_GUESS);
             return;
         }
         float smoothFreq = freqSmoother.update(freq_hz_);
