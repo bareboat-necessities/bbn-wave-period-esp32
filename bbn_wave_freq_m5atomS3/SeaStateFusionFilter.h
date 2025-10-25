@@ -270,7 +270,7 @@ private:
     //  Members
     bool with_mag_;
     double time_, last_adapt_time_sec_;
-    float freq_hz_;
+    float freq_hz_ = FREQ_GUESS;
     bool freq_init_ = false;
 
     static constexpr float R_S_xy_factor = 0.07f;
