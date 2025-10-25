@@ -191,15 +191,9 @@ public:
     inline float getTauApplied()   const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied() const noexcept { return tune_.sigma_applied; }
     inline float getRSApplied()    const noexcept { return tune_.RS_applied; }
-    inline float getTauTarget() const {
-       return tau_target_;
-    }
-    inline float getSigmaTarget() const {
-       return sigma_target_;
-    }
-    inline float getRSTarget() const {
-       return RS_target_;
-    }
+    inline float getTauTarget()    const noexcept { return tau_target_;   }
+    inline float getSigmaTarget()  const noexcept { return sigma_target_; }
+    inline float getRSTarget()     const noexcept { return RS_target_;    }
     inline float getPeriodSec()    const noexcept { return (freq_hz_ > 1e-6f) ? 1.0f / freq_hz_ : NAN; }
     inline float getAccelVariance()const noexcept { return tuner_.getAccelVariance(); }
 
