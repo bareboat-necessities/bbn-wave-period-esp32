@@ -191,6 +191,15 @@ public:
     inline float getTauApplied()   const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied() const noexcept { return tune_.sigma_applied; }
     inline float getRSApplied()    const noexcept { return tune_.RS_applied; }
+    inline float getTauTarget() const {
+       return tau_target_;
+    }
+    inline float getSigmaTarget() const {
+       return sigma_target_;
+    }
+    inline float getRSTarget() const {
+       return RS_target_;
+    }
     inline float getPeriodSec()    const noexcept { return (freq_hz_ > 1e-6f) ? 1.0f / freq_hz_ : NAN; }
     inline float getAccelVariance()const noexcept { return tuner_.getAccelVariance(); }
 
@@ -229,10 +238,10 @@ private:
         if (!std::isfinite(freq_hz_) || time_ < ONLINE_TUNE_WARMUP_SEC) return;
 
         tuner_.update(dt, a_z, freq_hz_);
-        const float tau_target   = std::min(std::max(0.5f / freq_hz_, MIN_TAU_S), MAX_TAU_S);
-        const float sigma_target = std::min(std::max(
+        tau_target_   = std::min(std::max(0.5f / freq_hz_, MIN_TAU_S), MAX_TAU_S);
+        sigma_target_ = std::min(std::max(
             std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
-        const float RS_target    = std::min(std::max(
+        RS_target_    = std::min(std::max(
             R_S_coeff * sigma_target * tau_target * tau_target * tau_target, MIN_R_S), MAX_R_S);
 
         adapt_mekf(dt, tau_target, sigma_target, RS_target);
@@ -259,5 +268,10 @@ private:
     TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
     SeaStateAutoTuner tuner_;
     TuneState tune_;
+
+    float tau_target_   = NAN;
+    float sigma_target_ = NAN;
+    float RS_target_    = NAN;
+
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
 };
