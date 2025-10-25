@@ -370,38 +370,6 @@ static void process_wave_file_for_tracker(const std::string &filename,
                                            tune.RS_applied));
                 last_adj = rec.time;
             }
-            /*
-            // --- Adaptive R_S update --------------------------------------------
-            // Covariance-driven term from current P_SS (integral displacement covariance)
-            float Pss_rms = mekf.get_integral_cov_rms();
-
-            // Explicit template <float> avoids type mismatch (float vs double)
-            float RS_pred_phys = std::clamp<float>(
-                R_S_coeff * sigma_target * (tau_target * tau_target * tau_target),
-                MIN_R_S, MAX_R_S);
-
-            float RS_pred_cov = std::clamp<float>(
-                R_S_coeff * Pss_rms,
-                MIN_R_S, MAX_R_S);
-
-            // Weighted fusion: early (not ready) = 100% physics; later = blend in covariance
-            float w = tuner.isReady() ? 0.01f : 0.0f;  // tune 0.4–0.8 if desired
-            float RS_adaptive = (1.0f - w) * RS_pred_phys + w * RS_pred_cov;
-
-            // Smooth adaptation
-            tune.RS_applied += alpha_step * (RS_adaptive - tune.RS_applied);
-
-            // Push into MEKF (anisotropic XY vs Z as before)
-            if (rec.time - last_adj > ADAPT_EVERY_SECS) {
-                // mekf.set_RS_noise(Vector3f::Constant(tune.RS_applied));
-                mekf.set_RS_noise(Vector3f(
-                    tune.RS_applied * 0.2f,
-                    tune.RS_applied * 0.2f,
-                    tune.RS_applied));
-                last_adj = rec.time;
-            }
-            */
-            // ---------------------------------------------------------------------            
         }
 
         // Outputs
