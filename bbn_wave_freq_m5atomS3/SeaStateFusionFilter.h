@@ -231,7 +231,9 @@ private:
     void update_tuner(float dt, float a_z) {
         if (!std::isfinite(freq_hz_) || time_ < ONLINE_TUNE_WARMUP_SEC) return;
 
-        tuner_.update(dt, a_z, freq_hz_);
+        float smoothFreq = freqSmoother.update(freq_hz_);
+        tuner_.update(dt, a_z, smoothFreq);
+      
         tau_target_   = std::min(std::max(0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
         sigma_target_ = std::min(std::max(
             std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
@@ -260,6 +262,7 @@ private:
     static constexpr float R_S_xy_factor = 0.07f;
 
     TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
+    FrequencySmoother<float> freqSmoother;
     SeaStateAutoTuner tuner_;
     TuneState tune_;
 
