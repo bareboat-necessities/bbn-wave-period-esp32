@@ -177,7 +177,7 @@ public:
         const double f = tracker_policy_.run(a_z, dt);
         if (!std::isnan(f)) {
             freq_hz_ = std::min(std::max(static_cast<float>(f), MIN_FREQ_HZ), MAX_FREQ_HZ);
-            update_tuner(dt, a_z);
+            update_tuner(dt, a_z, freq_hz_);
         }
     }
 
@@ -229,12 +229,12 @@ private:
         mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor, tune_.RS_applied * R_S_xy_factor, tune_.RS_applied));        
     }
 
-    void update_tuner(float dt, float a_z) {
-        if (!std::isfinite(freq_hz_)) {
+    void update_tuner(float dt, float a_z, float freq_hz) {
+        if (!std::isfinite(freq_hz)) {
             freqSmoother.setInitial(FREQ_GUESS);
             return;
         }
-        float smoothFreq = freqSmoother.update(freq_hz_);
+        float smoothFreq = freqSmoother.update(freq_hz);
         if (time_ < ONLINE_TUNE_WARMUP_SEC)  {
             return;
         }
