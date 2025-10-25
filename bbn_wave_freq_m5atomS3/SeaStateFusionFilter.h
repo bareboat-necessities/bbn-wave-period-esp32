@@ -231,11 +231,12 @@ private:
 
     void update_tuner(float dt, float a_z, float freq_hz) {
         if (!std::isfinite(freq_hz)) {
+            freq_init_ = FREQ_GUESS;
             freqSmoother.setInitial(FREQ_GUESS);
             return;
         }
         if (!freq_init_) {
-            freqSmoother.setInitial(freq_hz);  // <-- important
+            freqSmoother.setInitial(freq_hz); 
             freq_init_ = true;
         }
 
