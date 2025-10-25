@@ -66,6 +66,7 @@ jobs:
         ./sea_reg.sh
         ./qmekf_sim.sh
         ./w3d_sim_adapt_2.sh
+        ./w3d_sim_adapt_3.sh
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
