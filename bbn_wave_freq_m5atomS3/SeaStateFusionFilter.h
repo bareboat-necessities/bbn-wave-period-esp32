@@ -234,6 +234,11 @@ private:
             freqSmoother.setInitial(FREQ_GUESS);
             return;
         }
+        if (!freq_init_) {
+            freqSmoother.setInitial(freq_hz);  // <-- important
+            freq_init_ = true;
+        }
+
         float smoothFreq = freqSmoother.update(freq_hz);
         if (time_ < ONLINE_TUNE_WARMUP_SEC)  {
             return;
@@ -264,6 +269,7 @@ private:
     bool with_mag_;
     double time_, last_adapt_time_sec_;
     float freq_hz_;
+    bool freq_init_ = false;
 
     static constexpr float R_S_xy_factor = 0.07f;
 
