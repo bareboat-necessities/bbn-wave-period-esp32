@@ -178,6 +178,8 @@ public:
         if (!std::isnan(f)) {
             freq_hz_ = std::min(std::max(static_cast<float>(f), MIN_FREQ_HZ), MAX_FREQ_HZ);
             update_tuner(dt, a_z, freq_hz_);
+        } else {
+            freq_hz_ = FREQ_GUESS;
         }
     }
 
@@ -231,7 +233,6 @@ private:
 
     void update_tuner(float dt, float a_z, float freq_hz) {
         if (!std::isfinite(freq_hz)) {
-            freq_init_ = FREQ_GUESS;
             freqSmoother.setInitial(FREQ_GUESS);
             return;
         }
