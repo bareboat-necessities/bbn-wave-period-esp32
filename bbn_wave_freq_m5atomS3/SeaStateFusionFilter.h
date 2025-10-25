@@ -236,9 +236,9 @@ private:
         sigma_target_ = std::min(std::max(
             std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
         RS_target_    = std::min(std::max(
-            R_S_coeff * sigma_target * tau_target * tau_target * tau_target, MIN_R_S), MAX_R_S);
+            R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MIN_R_S), MAX_R_S);
 
-        adapt_mekf(dt, tau_target, sigma_target, RS_target);
+        adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
 
     void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
