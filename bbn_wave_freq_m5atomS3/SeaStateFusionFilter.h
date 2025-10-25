@@ -51,6 +51,7 @@
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "SchmittTriggerFrequencyDetector.h"
+#include "FrequencySmoother.h"
 #include "SeaStateAutoTuner.h"
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
