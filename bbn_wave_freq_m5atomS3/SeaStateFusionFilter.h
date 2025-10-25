@@ -247,7 +247,7 @@ private:
         }
         tuner_.update(dt, a_z, smoothFreq);
       
-        tau_target_   = std::min(std::max(0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
+        tau_target_   = std::min(std::max(0.5f / freq_hz /*tuner_.getFrequencyHz()*/, MIN_TAU_S), MAX_TAU_S);
         sigma_target_ = std::min(std::max(
             std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
         RS_target_    = std::min(std::max(
