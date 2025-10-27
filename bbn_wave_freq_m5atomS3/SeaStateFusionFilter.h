@@ -65,9 +65,9 @@ constexpr float MAX_TAU_S   = 11.5f;
 constexpr float MIN_SIGMA_A = 0.3f;
 constexpr float MAX_SIGMA_A = 8.0f;
 constexpr float MIN_R_S     = 0.1f;
-constexpr float MAX_R_S     = 40.0f;
+constexpr float MAX_R_S     = 60.0f;
 
-constexpr float R_S_coeff   = 2.5f;
+constexpr float R_S_coeff   = 2.8f;
 constexpr float tau_coeff   = 1.3f;
 
 constexpr float ADAPT_TAU_SEC = 3.0f;
@@ -203,23 +203,23 @@ public:
 
     Eigen::Vector3f getEulerNautical() const {
         if (!mekf_) return Eigen::Vector3f::Zero();
-    
+
         // Fetch quaternion in Eigen coeff order (x, y, z, w)
-        const auto coeffs = mekf_->quaternion().coeffs(); 
+        const auto coeffs = mekf_->quaternion().coeffs();
         Eigen::Quaternionf q(coeffs(3), coeffs(0), coeffs(1), coeffs(2)); // w,x,y,z
-    
+
         // Convert from aerospace (body-to-world, NED) to nautical (Z-up ENU)
         float roll_a, pitch_a, yaw_a;
         quat_to_euler_aero(q, roll_a, pitch_a, yaw_a);
-    
+
         float roll_n = roll_a;
         float pitch_n = pitch_a;
         float yaw_n = yaw_a;
         aero_to_nautical(roll_n, pitch_n, yaw_n);
-    
+
         return Eigen::Vector3f(roll_n, pitch_n, yaw_n);
     }
-    
+
     inline const auto& mekf() const noexcept { return *mekf_; }
     inline auto& mekf() noexcept { return *mekf_; }
 
@@ -229,7 +229,7 @@ private:
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
         mekf_->set_aw_stationary_corr_std(Eigen::Vector3f::Constant(tune_.sigma_applied));
-        mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor, tune_.RS_applied * R_S_xy_factor, tune_.RS_applied));        
+        mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor, tune_.RS_applied * R_S_xy_factor, tune_.RS_applied));
     }
 
     void update_tuner(float dt, float a_z, float freq_hz) {
@@ -238,7 +238,7 @@ private:
             return;
         }
         if (!freq_init_) {
-            freqSmoother.setInitial(freq_hz); 
+            freqSmoother.setInitial(freq_hz);
             freq_init_ = true;
         }
 
@@ -247,7 +247,7 @@ private:
             return;
         }
         tuner_.update(dt, a_z, smoothFreq);
-      
+
         tau_target_   = std::min(std::max(tau_coeff * 0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
         sigma_target_ = std::min(std::max(
             std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
@@ -274,7 +274,7 @@ private:
     float freq_hz_ = FREQ_GUESS;
     bool freq_init_ = false;
 
-    static constexpr float R_S_xy_factor = 0.07f;
+    static constexpr float R_S_xy_factor = 0.06f;
 
     TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
     FrequencySmoother<float> freqSmoother;
