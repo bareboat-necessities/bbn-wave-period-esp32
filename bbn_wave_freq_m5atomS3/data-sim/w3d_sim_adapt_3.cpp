@@ -178,7 +178,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // One-time world magnetic reference before using magnetometer
         if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
             filter.mekf().set_mag_world_ref(mag_world_a);
-            mag_ref_set = true;   // <-- FIX: normal (non-static) flag
+            mag_ref_set = true; 
         }
 
         // One time update per sample (propagate + accel update)
