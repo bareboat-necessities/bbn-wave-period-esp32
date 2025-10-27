@@ -68,6 +68,7 @@ constexpr float MIN_R_S     = 0.1f;
 constexpr float MAX_R_S     = 20.0f;
 
 constexpr float R_S_coeff   = 2.5f;
+constexpr float tau_coeff   = 1.6f;
 
 constexpr float ADAPT_TAU_SEC = 3.0f;
 constexpr float ADAPT_EVERY_SECS = 0.1f;
@@ -247,7 +248,7 @@ private:
         }
         tuner_.update(dt, a_z, smoothFreq);
       
-        tau_target_   = std::min(std::max(0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
+        tau_target_   = std::min(std::max(tau_coeff * 0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
         sigma_target_ = std::min(std::max(
             std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
         RS_target_    = std::min(std::max(
