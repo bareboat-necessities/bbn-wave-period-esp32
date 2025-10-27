@@ -171,7 +171,7 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc);
 
-        const float a_z = acc.z() - g_std;
+        const float a_z = acc.z() + g_std;
         const float a_norm = a_z / g_std;
 
         const double f = tracker_policy_.run(a_z, dt);
