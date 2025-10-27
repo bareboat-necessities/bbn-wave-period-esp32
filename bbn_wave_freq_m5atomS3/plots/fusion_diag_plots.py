@@ -32,7 +32,7 @@ MAX_TIME_S = SKIP_TIME_S + PLOT_TIME_S
 MAX_ROWS = int(SAMPLE_RATE_HZ * MAX_TIME_S)
 
 # === Regex to find valid files ===
-pattern = re.compile(r".*_w3d.*\.csv$", re.IGNORECASE)
+pattern = re.compile(r".*_fusion.*\.csv$", re.IGNORECASE)
 
 # === Utility ===
 def latex_safe(s):
@@ -53,9 +53,9 @@ def finalize_plot(fig, outbase, suffix=""):
     plt.close(fig)
 
 # === Main ===
-files = [f for f in glob.glob(os.path.join(DATA_DIR, "*_w3d*.csv")) if pattern.match(f)]
+files = [f for f in glob.glob(os.path.join(DATA_DIR, "*_fusion*.csv")) if pattern.match(f)]
 if not files:
-    print("No *_w3d*.csv files found.")
+    print("No *_fusion*.csv files found.")
     exit()
 
 for fname in sorted(files):
