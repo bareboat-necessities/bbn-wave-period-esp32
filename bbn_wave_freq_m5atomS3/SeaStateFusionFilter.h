@@ -68,7 +68,7 @@ constexpr float MIN_R_S     = 0.1f;
 constexpr float MAX_R_S     = 50.0f;
 
 constexpr float R_S_coeff   = 2.5f;
-constexpr float tau_coeff   = 1.25f;
+constexpr float tau_coeff   = 1.5f;
 
 constexpr float ADAPT_TAU_SEC = 3.0f;
 constexpr float ADAPT_EVERY_SECS = 0.1f;
@@ -274,7 +274,7 @@ private:
     float freq_hz_ = FREQ_GUESS;
     bool freq_init_ = false;
 
-    static constexpr float R_S_xy_factor = 0.06f;
+    static constexpr float R_S_xy_factor = 0.05f;
 
     TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
     FrequencySmoother<float> freqSmoother;
