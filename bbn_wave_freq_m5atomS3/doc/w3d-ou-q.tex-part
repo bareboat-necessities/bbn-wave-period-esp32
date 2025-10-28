@@ -1,0 +1,95 @@
+\section*{Appendix B.9: Explicit, Cancellation-Safe Formulas for $Q_d^{(1)}$}
+\label{app:ou-qtable}
+
+We give closed-form expressions for the per-axis discrete process covariance
+\[
+Q_d^{(1)}(h,\tau,\sigma_a^2)
+= \frac{2\sigma_a^2}{\tau}\int_{0}^{h} c(s)c(s)^\top ds,
+\qquad
+c(s)=
+\begin{bmatrix}
+\phi_{va}(s)\\ \phi_{pa}(s)\\ \phi_{Sa}(s)\\ e^{-s/\tau}
+\end{bmatrix},
+\]
+where, for each \(s\in[0,h]\),
+\[
+\phi_{va}(s)=\tau\!\left(1-e^{-s/\tau}\right),\quad
+\phi_{pa}(s)=\tau s+\tau^2\!\left(e^{-s/\tau}-1\right),\quad
+\phi_{Sa}(s)=\tfrac12 s^2-\tau s+\tau^2\!\left(1-e^{-s/\tau}\right).
+\]
+
+\paragraph{Primitives (stable for $x=h/\tau$ small).}
+Let \(x=h/\tau\), \(E_1=e^{-x}\), \(E_2=e^{-2x}\). Define
+\[
+A_0 := \tau(1-E_1),\qquad
+B_0 := \tfrac{\tau}{2}(1-E_2),
+\]
+\[
+I_1 := \int_{0}^{h} s e^{-s/\tau} ds
+    = \tau^2\!\left[1 - E_1(1+x)\right],
+\]
+\[
+I_2 := \int_{0}^{h} s^2 e^{-s/\tau} ds
+    = \tau^3\!\left[2 - E_1\,(2+2x+x^2)\right].
+\]
+Elementary polynomials:
+\[
+\int_0^h s\,ds=\tfrac12 h^2,\quad
+\int_0^h s^2\,ds=\tfrac13 h^3,\quad
+\int_0^h s^3\,ds=\tfrac14 h^4,\quad
+\int_0^h s^4\,ds=\tfrac15 h^5.
+\]
+Also
+\[
+\int_0^h (1-e^{-s/\tau})\,ds = h - A_0,\quad
+\int_0^h (1-e^{-s/\tau})^2 ds = h - 2A_0 + B_0,
+\]
+\[
+\int_0^h s(1-e^{-s/\tau}) ds = \tfrac12 h^2 - I_1,\quad
+\int_0^h s^2(1-e^{-s/\tau}) ds = \tfrac13 h^3 - I_2.
+\]
+
+\paragraph{Entries of $Q_d^{(1)}$ (order $[v,p,S,a]$).}
+With \(q:=\tfrac{2\sigma_a^2}{\tau}\), the entries below give the full matrix;
+use symmetry \(Q_{ij}=Q_{ji}\).
+
+\begin{align*}
+Q_{aa} &= q\,\underbrace{\int_0^h e^{-2s/\tau}\,ds}_{=\,B_0}
+       \;=\; \boxed{\sigma_a^2\,(1-E_2)}.\\[4pt]
+Q_{va} &= q\,\int_0^h \phi_{va}(s)\,e^{-s/\tau} ds
+       \;=\; \boxed{2\sigma_a^2\,(A_0 - B_0)}
+       \;=\; \boxed{\sigma_a^2\,\tau\,(1-E_1)^2}.\\[4pt]
+Q_{vv} &= q\,\int_0^h \phi_{va}(s)^2 ds
+       \;=\; \boxed{2\sigma_a^2\,\tau\Big(h - 2A_0 + B_0\Big)}.\\[6pt]
+Q_{pa} &= q\,\int_0^h \phi_{pa}(s)\,e^{-s/\tau} ds
+       \;=\; \boxed{2\sigma_a^2\Big(I_1 + \tau(B_0 - A_0)\Big)}.\\[4pt]
+Q_{pv} &= q\,\int_0^h \phi_{pa}(s)\,\phi_{va}(s) ds
+       \;=\; \boxed{\frac{2\sigma_a^2}{\tau}\Big(\tau^2(\tfrac12 h^2 - I_1) - \tau^3(h - 2A_0 + B_0)\Big)}\\
+       &= \boxed{2\sigma_a^2\Big(\tfrac12 \tau h^2 - \tfrac{I_1}{\ } - \tau^2(h - 2A_0 + B_0)\Big)}.\\[6pt]
+Q_{pp} &= q\,\int_0^h \phi_{pa}(s)^2 ds \\
+       &= \boxed{\frac{2\sigma_a^2}{\tau}\Big(\tau^2\tfrac{h^3}{3} + 2\tau^3(I_1 - \tfrac12 h^2) + \tau^4(h - 2A_0 + B_0)\Big)}.\\[6pt]
+Q_{Sa} &= q\,\int_0^h \phi_{Sa}(s)\,e^{-s/\tau} ds
+       \;=\; \boxed{\frac{2\sigma_a^2}{\tau}\Big(\tfrac12 I_2 - \tau I_1 + \tau^2(A_0 - B_0)\Big)}.\\[6pt]
+Q_{Sv} &= q\,\int_0^h \phi_{Sa}(s)\,\phi_{va}(s) ds \\
+       &= \boxed{\frac{2\sigma_a^2}{\tau}\Big(\tfrac{\tau}{2}(\tfrac{h^3}{3} - I_2) - \tau^2(\tfrac12 h^2 - I_1) + \tau^3(h - 2A_0 + B_0)\Big)}.\\[6pt]
+Q_{Sp} &= q\,\int_0^h \phi_{Sa}(s)\,\phi_{pa}(s) ds \\
+       &= \boxed{\frac{2\sigma_a^2}{\tau}\Big(\tfrac{\tau}{8}h^4 + \tau^2(\tfrac12 I_2 - \tfrac12 h^3) + \tau^3(h^2 - 2 I_1) - \tau^4(h - 2A_0 + B_0)\Big)}.\\[6pt]
+Q_{SS} &= q\,\int_0^h \phi_{Sa}(s)^2 ds \\
+       &= \boxed{\frac{2\sigma_a^2}{\tau}\Big(\tfrac{1}{20}h^5 - \tfrac{\tau}{4}h^4 + \tau^2(\tfrac{2}{3}h^3 - I_2) - \tau^3 h^2 + 2\tau^3 I_1 + \tau^4(h - 2A_0 + B_0)\Big)}.
+\end{align*}
+
+\paragraph{Checks and small-$x$ series.}
+As \(x\to 0\), the series of each entry matches the Maclaurin branch used in
+the implementation; e.g.,
+\[
+Q_{aa}=\sigma_a^2(2x - 2x^2 + \tfrac{4}{3}x^3 + \cdots),\quad
+Q_{va}=\sigma_a^2\tau\!\left(\tfrac{x^2}{1} - \tfrac{2}{3}x^3 + \tfrac{7}{12}x^4 + \cdots\right),
+\]
+\[
+Q_{vv}=2\sigma_a^2\tau\!\left(h - \tau x + \tfrac{\tau}{2}x^2 - \cdots\right)
+=\sigma_a^2\!\left(\tfrac{2}{3}h^3 - \tfrac{1}{2}\tfrac{h^4}{\tau} + \tfrac{1}{5}\tfrac{h^5}{\tau^2} + \cdots\right),
+\]
+and similarly for the remaining entries when substituting \(A_0,B_0,I_1,I_2\) by
+their series. This confirms numerical consistency with the analytic
+\textit{and} Maclaurin branches.
+
