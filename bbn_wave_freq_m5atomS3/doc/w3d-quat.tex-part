@@ -1,0 +1,95 @@
+\section{Quaternion Correction and Normalization}
+
+The filter represents attitude using a unit quaternion~$q$ that maps
+world coordinates to the body frame.
+Attitude uncertainty is expressed locally as a small-angle vector
+$\delta\boldsymbol{\theta} \in \mathbb{R}^3$ in the tangent space
+$\mathfrak{so}(3)$.
+This minimal representation allows linearization of rotational error
+while preserving global consistency of the quaternion.
+
+\subsection{Right-Multiplicative Error Representation}
+
+The orientation estimate evolves according to the right-multiplicative
+composition
+\begin{equation}
+q = \hat{q} \otimes \delta q,
+\end{equation}
+where $\hat{q}$ is the nominal quaternion carried by the filter, and
+$\delta q$ encodes the small correction implied by
+$\delta\boldsymbol{\theta}$.  Using the quaternion exponential map,
+\begin{equation}
+\delta q = \exp_q\!\left(\tfrac{1}{2}\,\delta\boldsymbol{\theta}\right)
+          = \begin{bmatrix}
+             \cos(\tfrac{\|\delta\boldsymbol{\theta}\|}{2})\\[3pt]
+             \tfrac{\delta\boldsymbol{\theta}}{\|\delta\boldsymbol{\theta}\|}
+             \sin(\tfrac{\|\delta\boldsymbol{\theta}\|}{2})
+            \end{bmatrix}.
+\end{equation}
+For $\|\delta\boldsymbol{\theta}\| \ll 1$, a second-order Maclaurin
+approximation is used:
+\[
+\cos(\tfrac{\theta}{2}) \!\approx\!
+1 - \tfrac{\theta^2}{8} + \tfrac{\theta^4}{384}, \qquad
+\tfrac{\sin(\tfrac{\theta}{2})}{\theta}
+  \!\approx\! \tfrac{1}{2} - \tfrac{\theta^2}{48} + \tfrac{\theta^4}{3840},
+\]
+which avoids division by zero and maintains numerical precision even for
+microradian corrections.
+
+\subsection{Attitude Correction Step}
+
+After each measurement update, the small-angle increment stored in the
+state vector is applied as
+\begin{equation}
+\hat{q}^{+} = \hat{q}^{-} \otimes
+              \exp_q\!\left(\tfrac{1}{2}\,\delta\boldsymbol{\theta}\right),
+\end{equation}
+where $\hat{q}^{-}$ is the quaternion before correction and
+$\hat{q}^{+}$ is the normalized posterior estimate.
+The correction corresponds to rotating the estimated orientation by
+$\delta\boldsymbol{\theta}$ in the body frame, consistent with the
+right-multiplicative convention used throughout the filter.
+
+Immediately after application, the small-angle vector is reset:
+\[
+\delta\boldsymbol{\theta} \leftarrow \mathbf{0},
+\]
+which recenters the linearized error model around the updated quaternion.
+
+\subsection{Normalization and Orthogonality Preservation}
+
+Even under double-precision arithmetic, the quaternion norm can drift
+from unity by several orders of machine epsilon after repeated updates.
+To prevent cumulative distortion, each new quaternion is renormalized:
+\[
+\hat{q}^{+} \leftarrow \frac{\hat{q}^{+}}{\|\hat{q}^{+}\|}.
+\]
+This operation ensures that the rotation matrix
+$\mathbf{R}_{wb}(\hat{q})$ remains orthonormal, preserving the property
+\(
+\mathbf{R}_{wb}\mathbf{R}_{wb}^\top = \mathbf{I}_3.
+\)
+Because the correction $\delta\boldsymbol{\theta}$ is small by design,
+the normalization introduces no measurable bias.
+
+\subsection{Consistency with Error Covariance}
+
+The covariance subblock corresponding to the attitude error is expressed
+in the local tangent space of $SO(3)$.
+After normalization, the Jacobian of the correction map is effectively
+identity to first order, so the covariance remains valid in the new
+frame.  Thus, normalization and error reset do not require an additional
+covariance transformation step.  The resulting linearization around the
+updated quaternion is again centered at $\delta\boldsymbol{\theta}=0$,
+ensuring continued consistency of subsequent updates.
+
+\subsection{Numerical Robustness}
+
+This exponential-map correction combined with explicit normalization
+guarantees second-order accuracy for both small and moderate rotation
+increments and prevents quaternion drift, gimbal locking, and rounding
+artifacts.  The approach ensures that the attitude estimate remains on
+the unit 3-sphere and that all derived rotation matrices remain
+orthogonal to numerical precision throughout prolonged filter operation.
+
