@@ -1,0 +1,147 @@
+\section{Jacobian Structure and Derivation}
+
+Both the process transition and measurement updates rely on explicit
+Jacobian matrices that describe how small perturbations in the state
+affect the propagated and measured quantities.  These Jacobians are
+evaluated analytically and assembled as full matrices at runtime.
+
+\subsection{Process Jacobian \texorpdfstring{$\mathbf{F} = \partial f / \partial x$}{F = df/dx}}
+
+The continuous-time process model
+\(
+\dot{x}=f(x,t)+w
+\)
+defines the state-transition Jacobian
+\(
+\mathbf{F}=\partial f/\partial x
+\)
+used to compute the discrete transition
+\(
+\Phi = e^{\mathbf{F}h}.
+\)
+For the extended state
+\(
+x=[\delta\boldsymbol{\theta},\,\mathbf{b}_g,\,\mathbf{v},\,\mathbf{p},\,\mathbf{S},\,\mathbf{a}_w,\,\mathbf{b}_a]^\top,
+\)
+the matrix has the block structure
+\[
+\mathbf{F} =
+\begin{bmatrix}
+F_{\theta\theta} & F_{\theta b_g} & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & F_{vp} & 0 & F_{va_w} & 0\\
+0 & 0 & 0 & 0 & F_{pS} & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & -\tfrac{1}{\tau_{a_w}}\mathbf{I}_3 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix},
+\]
+where the nonzero subblocks are:
+\[
+F_{\theta\theta}=-[\boldsymbol{\omega}]_\times,\qquad
+F_{\theta b_g}=-\mathbf{I}_3,\qquad
+F_{vp}=\mathbf{I}_3,\qquad
+F_{pS}=\mathbf{I}_3,\qquad
+F_{va_w}=\mathbf{I}_3.
+\]
+This sparse form encodes the kinematic chain
+\( \dot v=a_w,\ \dot p=v,\ \dot S=p \)
+and the OU damping
+\( \dot a_w = -(1/\tau_{a_w}) a_w. \)
+The discrete transition
+\(\Phi = e^{\mathbf{F}h}\) is obtained analytically per axis
+(Sec.~\ref{sec:ou-primitives})
+or by the Rodrigues approximation for rotational states.
+In code, these subblocks are composed into a full \(21\times21\)
+matrix within \texttt{make\_prims()} and \texttt{PhiAxis4x1\_analytic()}.
+
+\subsection{Measurement Jacobian \texorpdfstring{$\mathbf{C} = \partial h / \partial x$}{C = dh/dx}}
+
+For each observation model
+\(
+\mathbf{z}=h(x)+n,
+\)
+the Jacobian
+\(
+\mathbf{C}=\partial h/\partial x
+\)
+maps state perturbations to measurement-space residuals.
+It is evaluated analytically for each sensor:
+
+\paragraph{Accelerometer.}
+\[
+\mathbf{f}_b = \mathbf{R}_{wb}(\mathbf{a}_w - \mathbf{g}_w)
+               + \mathbf{b}_a(T)
+\]
+gives
+\[
+\frac{\partial \mathbf{f}_b}{\partial \boldsymbol{\theta}}
+   = -[\mathbf{f}_b^{\mathrm{pred}}]_\times,\quad
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{a}_w}
+   = \mathbf{R}_{wb},\quad
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{b}_a}
+   = \mathbf{I}_3.
+\]
+Inserted into the global Jacobian, these occupy columns
+corresponding to $\delta\boldsymbol{\theta}$,
+$\mathbf{a}_w$, and $\mathbf{b}_a$ respectively.
+
+\paragraph{Magnetometer.}
+\[
+\mathbf{m}_b = \mathbf{R}_{wb}\mathbf{B}_w
+\quad\Rightarrow\quad
+\frac{\partial \mathbf{m}_b}{\partial \boldsymbol{\theta}}
+   = -[\mathbf{m}_b^{\mathrm{pred}}]_\times.
+\]
+This subblock maps only to the attitude-error states.
+
+\paragraph{Integral Pseudo-Measurement.}
+\[
+\mathbf{z}_S = \mathbf{S} + \mathbf{n}_S
+\quad\Rightarrow\quad
+\frac{\partial \mathbf{z}_S}{\partial \mathbf{S}}
+   = \mathbf{I}_3.
+\]
+This subblock couples solely to the $\mathbf{S}$ states and forms
+a diagonal contribution in $\mathbf{C}$.
+
+\subsection{Full Matrix Assembly}
+
+Each sensor’s Jacobian is embedded into the full matrix~$\mathbf{C}$
+of dimension $m\times N_X$, where $m$ is the number of measurements.
+For example, for the accelerometer:
+\[
+\mathbf{C}_a =
+\begin{bmatrix}
+-\![\mathbf{f}_b]_\times & 0 & 0 & 0 & 0 &
+ \mathbf{R}_{wb} & \mathbf{I}_3
+\end{bmatrix}.
+\]
+Analogously,
+\[
+\mathbf{C}_m =
+\begin{bmatrix}
+-\![\mathbf{m}_b]_\times & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix},\qquad
+\mathbf{C}_S =
+\begin{bmatrix}
+0 & 0 & 0 & 0 & \mathbf{I}_3 & 0 & 0
+\end{bmatrix}.
+\]
+In practice these are stored as full dense matrices and passed to the
+Kalman gain computation
+\(
+\mathbf{K}=P\mathbf{C}^\top(\mathbf{C}P\mathbf{C}^\top+\mathbf{R})^{-1}.
+\)
+Although each measurement affects only a subset of states, the full
+matrix form is retained to maintain consistency of cross-covariances
+and to simplify the Joseph-form covariance update.
+
+\subsection{Interpretation}
+
+The explicit block Jacobians preserve observability structure and avoid
+numerical differentiation.  The skew-symmetric attitude subblocks enforce
+orthogonality of rotational corrections, while the linear blocks maintain
+physical coupling between acceleration, velocity, and displacement.
+This analytic formulation guarantees that updates remain stable and
+energy-consistent across all operating conditions.
