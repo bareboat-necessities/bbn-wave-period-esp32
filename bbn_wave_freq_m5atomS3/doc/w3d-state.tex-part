@@ -48,7 +48,7 @@ N_X =
 \underbrace{3}_{\mathbf{v}} +
 \underbrace{3}_{\mathbf{p}} +
 \underbrace{3}_{\mathbf{S}} +
-\underbrace{3}_{\mathbf{a}_w}}_{15\ \text{linear states}}
+\underbrace{3}_{\mathbf{a}_w}_{15\ \text{linear states}}
 +\underbrace{3}_{\mathbf{b}_a}
 = 21,
 \]
