@@ -1,0 +1,97 @@
+\section{Measurement Noise and Covariance Structure}
+
+Each observation channel introduces measurement noise with distinct physical
+origins and statistical characteristics.  These noises are modeled as
+independent zero-mean Gaussian processes, and their covariance matrices
+are maintained explicitly within the filter to ensure consistent weighting
+across sensing modalities.
+
+\subsection{Accelerometer Measurement Covariance}
+
+The accelerometer measures the specific force acting on the sensor in the
+body frame.  Random errors arise from sensor quantization, scale-factor
+mismatch, and mechanical noise.  The corresponding noise model is
+\[
+\mathbf{n}_a \sim \mathcal{N}(\mathbf{0},\,\mathbf{R}_a),
+\qquad
+\mathbf{R}_a = \mathrm{diag}(\sigma_{ax}^2,\,\sigma_{ay}^2,\,\sigma_{az}^2).
+\]
+This diagonal covariance determines the relative confidence in each body
+axis and directly scales the innovation covariance for the accelerometer
+update.  The entries are expressed in squared physical units
+$(\mathrm{m/s^2})^2$ and are typically derived from static noise floor
+characterization of the IMU.
+
+\subsection{Magnetometer Measurement Covariance}
+
+The magnetometer provides an external yaw reference through observation of
+the Earth’s magnetic field.  Sensor errors include thermal drift and local
+field disturbances.  The noise is modeled as
+\[
+\mathbf{n}_m \sim \mathcal{N}(\mathbf{0},\,\mathbf{R}_m),
+\qquad
+\mathbf{R}_m = \mathrm{diag}(\sigma_{mx}^2,\,\sigma_{my}^2,\,\sigma_{mz}^2).
+\]
+The magnetometer update uses this covariance when forming the innovation
+matrix
+\(
+\mathbf{S}_m = J_\theta P_{\theta\theta} J_\theta^\top + \mathbf{R}_m,
+\)
+ensuring proper normalization of heading corrections.
+
+\subsection{Integral Drift Constraint Covariance}
+
+To stabilize long-term displacement drift, a pseudo-measurement constrains
+the integral of position~$\mathbf{S}$ toward zero.  Its noise covariance
+\[
+\mathbf{R}_S
+= \mathrm{diag}(\sigma_{Sx}^2,\,\sigma_{Sy}^2,\,\sigma_{Sz}^2)
+\]
+sets the effective stiffness of this constraint: smaller values yield
+stronger suppression of low-frequency drift, while larger values preserve
+freer motion at very long periods.  The pseudo-measurement enters the update
+as
+\(
+\mathbf{S}_S = P_{SS} + \mathbf{R}_S.
+\)
+
+\subsection{Composite Measurement Structure}
+
+Although each measurement type is processed independently, all share a
+common structure for residual formation and covariance normalization.
+For any observation
+\(
+\mathbf{z} = h(\mathbf{x}) + \mathbf{n},
+\)
+the linearized update uses
+\begin{align}
+\mathbf{r} &= \mathbf{z} - h(\hat{\mathbf{x}}_{k|k-1}),\\
+\mathbf{S} &= \mathbf{C}\,P_{k|k-1}\,\mathbf{C}^\top + \mathbf{R},\\
+\mathbf{K} &= P_{k|k-1}\,\mathbf{C}^\top\,\mathbf{S}^{-1},
+\end{align}
+where $\mathbf{R}$ corresponds to $\mathbf{R}_a$, $\mathbf{R}_m$, or
+$\mathbf{R}_S$ depending on the active measurement.
+The corrected covariance is obtained using the Joseph symmetric form,
+\[
+P_{k|k} =
+(\mathbf{I}-\mathbf{K}\mathbf{C})\,P_{k|k-1}\,
+(\mathbf{I}-\mathbf{K}\mathbf{C})^\top
++ \mathbf{K}\mathbf{R}\mathbf{K}^\top,
+\]
+which guarantees $P_{k|k}$ remains positive semidefinite even under
+finite-precision arithmetic.
+
+\subsection{Measurement Weighting and Observability Balance}
+
+Relative magnitudes of $\mathbf{R}_a$, $\mathbf{R}_m$, and $\mathbf{R}_S$
+determine how strongly each sensor influences the estimation:
+\begin{itemize}
+  \item small $\mathbf{R}_a$ emphasizes short-term attitude correction and
+        stabilization of roll and pitch;
+  \item small $\mathbf{R}_m$ enforces magnetic heading alignment;
+  \item small $\mathbf{R}_S$ constrains long-term integral drift.
+\end{itemize}
+Proper tuning of these covariances balances observability between
+inertial and environmental cues and preserves stability across different
+sea-state regimes and motion intensities.
+
