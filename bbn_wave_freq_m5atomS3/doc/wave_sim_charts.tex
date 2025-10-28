@@ -611,9 +611,13 @@
 \renewcommand{\arraystretch}{1.1}
 \setlength{\tabcolsep}{3pt}
 \small
-\begin{tabular}{p{1.7cm}ccccccccc p{3.0cm}}
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{1.8cm}  % first column wrapped
+    ccccccccc
+    >{\raggedright\arraybackslash}p{3.2cm}
+}
 \toprule
-\textbf{Sea\\type} &
+\textbf{Sea type} &
 \textbf{$H_s$\\(m)} &
 \textbf{$f_t$\\(Hz)} &
 \textbf{$\tau_{\text{appl}}$\\(s)} &
@@ -626,34 +630,25 @@
 \textbf{Comments}\\
 \midrule
 JONSWAP & 0.27 & 0.59 & 1.57 & 0.50 & 4.86 &
-9.6 & 4.3 & \textbf{5.6} & 0.05 &
-Excellent low-sea stability \\[2pt]
+9.6 & 4.3 & \textbf{5.6} & 0.05 & Excellent low-sea stability \\
 JONSWAP & 1.50 & 0.31 & 1.84 & 1.12 & 17.3 &
-13.3 & 6.0 & \textbf{2.9} & 0.08 &
-Optimal $\tau$--$\sigma$ matching \\[2pt]
+13.3 & 6.0 & \textbf{2.9} & 0.08 & Optimal $\tau$--$\sigma$ matching \\
 JONSWAP & 4.00 & 0.27 & 2.07 & 1.59 & 35.1 &
-27.6 & 13.5 & \textbf{5.4} & 0.09 &
-Within 5--6\%\,$H_s$ vertical band \\[2pt]
+27.6 & 13.5 & \textbf{5.4} & 0.09 & Within 5--6\%\,$H_s$ vertical band \\
 JONSWAP & 8.50 & 0.29 & 2.33 & 2.09 & 40.0 &
-17.8 & 12.2 & \textbf{5.6} & 0.12 &
-Stable at extreme seas \\[2pt]
+17.8 & 12.2 & \textbf{5.6} & 0.12 & Stable at extreme seas \\
 \midrule
 PM--Stokes & 0.27 & 0.57 & 1.49 & 0.57 & 4.71 &
-34.1 & 8.6 & \textbf{5.7} & 0.58 &
-Slightly under-damped low sea \\[2pt]
+34.1 & 8.6 & \textbf{5.7} & 0.58 & Slightly under-damped low sea \\
 PM--Stokes & 1.50 & 0.52 & 1.80 & 1.24 & 18.2 &
-29.4 & 7.7 & \textbf{3.7} & 1.39 &
-Nominal tuning convergence \\[2pt]
+29.4 & 7.7 & \textbf{3.7} & 1.39 & Nominal tuning convergence \\
 PM--Stokes & 4.00 & 0.51 & 2.05 & 1.72 & 37.1 &
-20.8 & 9.3 & \textbf{5.7} & 1.77 &
-Correct $\tau$--$R_S$ scaling \\[2pt]
+20.8 & 9.3 & \textbf{5.7} & 1.77 & Correct $\tau$--$R_S$ scaling \\
 PM--Stokes & 8.50 & 0.45 & 2.38 & 2.14 & 40.0 &
-23.7 & 11.6 & \textbf{9.8} & 2.96 &
-Yaw dominated by mag delay \\
+23.7 & 11.6 & \textbf{9.8} & 2.96 & Yaw dominated by mag delay \\
 \bottomrule
 \end{tabular}
 \end{table*}
-
 
 %=== Table 2: Commercial comparison ===
 \begin{table*}[t]
