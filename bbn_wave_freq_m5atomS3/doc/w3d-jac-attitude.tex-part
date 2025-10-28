@@ -1,0 +1,136 @@
+\section{Attitude Linearization for Right-Multiplicative MEKF}
+\label{sec:attitude-linearization}
+
+We derive the Jacobians of measurements of the form
+\(
+h(q)=\mathbf{R}_{wb}(q)\,\mathbf{v}_w
+\)
+with respect to the small attitude error used in a \emph{right-multiplicative}
+MEKF.  Let the nominal quaternion be \(q\), and let the corrected quaternion be
+\[
+q^+ \;=\; q \otimes \exp_q\!\bigl(\tfrac12\,\delta\boldsymbol{\theta}\bigr),
+\qquad
+\|\delta\boldsymbol{\theta}\|\ll 1.
+\]
+In rotation-matrix form,
+\(
+\mathbf{R}_{wb}(q^+)=\mathbf{R}_{wb}(q)\,\mathbf{R}(\delta\boldsymbol{\theta})
+\),
+and for small angles
+\(
+\mathbf{R}(\delta\boldsymbol{\theta}) \approx
+\mathbf{I}_3 - [\delta\boldsymbol{\theta}]_\times
+\).
+Therefore, for any fixed world vector \(\mathbf{v}_w\),
+\begin{align}
+h(q^+) &= \mathbf{R}_{wb}(q^+)\,\mathbf{v}_w
+       \;\approx\; \mathbf{R}_{wb}(q)\,\bigl(\mathbf{I}-[\delta\boldsymbol{\theta}]_\times\bigr)\,\mathbf{v}_w \\
+       &= \mathbf{R}_{wb}(q)\,\mathbf{v}_w \;-\; \mathbf{R}_{wb}(q)\,[\delta\boldsymbol{\theta}]_\times\,\mathbf{v}_w.
+\end{align}
+Using the identity \( [\delta\boldsymbol{\theta}]_\times\,\mathbf{v}_w
+  = -[\mathbf{v}_w]_\times\,\delta\boldsymbol{\theta}\),
+\[
+h(q^+)
+\;\approx\; \underbrace{\mathbf{R}_{wb}(q)\,\mathbf{v}_w}_{h(q)}
+\;+\; \underbrace{\bigl(-[\mathbf{R}_{wb}(q)\,\mathbf{v}_w]_\times\bigr)}_{\displaystyle
+\frac{\partial h}{\partial \boldsymbol{\theta}}}\,\delta\boldsymbol{\theta}.
+\]
+Hence the attitude Jacobian under \emph{right-multiplicative} convention is
+\begin{equation}
+\label{eq:right-mekf-jac}
+\boxed{%
+\frac{\partial}{\partial \boldsymbol{\theta}}\,
+\bigl(\mathbf{R}_{wb}(q)\,\mathbf{v}_w\bigr)
+= -\bigl[\mathbf{R}_{wb}(q)\,\mathbf{v}_w\bigr]_\times }.
+\end{equation}
+
+\paragraph{Skew operator.}
+For \(\mathbf{x}=[x\ y\ z]^\top\),
+\[
+[\mathbf{x}]_\times
+=
+\begin{bmatrix}
+0 & -z & y\\
+z & 0 & -x\\
+-y & x & 0
+\end{bmatrix},
+\qquad
+[\mathbf{x}]_\times\,\mathbf{y} = \mathbf{x}\times\mathbf{y}.
+\]
+
+\subsection{Accelerometer Jacobians}
+The specific force prediction is
+\[
+\mathbf{f}_b(q,\mathbf{a}_w,\mathbf{b}_a;T)
+= \mathbf{R}_{wb}(q)\,\bigl(\mathbf{a}_w-\mathbf{g}_w\bigr)
+  + \mathbf{b}_a(T),
+\]
+with \(\mathbf{b}_a(T)=\mathbf{b}_{a0}+\mathbf{k}_a(T-T_{\rm ref})\).
+Applying \eqref{eq:right-mekf-jac} with \(\mathbf{v}_w=\mathbf{a}_w-\mathbf{g}_w\}:
+\[
+\frac{\partial \mathbf{f}_b}{\partial \boldsymbol{\theta}}
+= -\bigl[\mathbf{R}_{wb}(\mathbf{a}_w-\mathbf{g}_w)\bigr]_\times
+= -\bigl[\mathbf{f}_b - \mathbf{b}_a(T)\bigr]_\times.
+\]
+The remaining blocks are
+\[
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{a}_w} = \mathbf{R}_{wb},\qquad
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{b}_a} = \mathbf{I}_3,
+\]
+and all other partials are zero.  In the implementation we use the predicted
+specific force \(\mathbf{f}_b^{\rm pred}=\mathbf{R}_{wb}(\mathbf{a}_w-\mathbf{g}_w)+\mathbf{b}_a(T)\),
+so the attitude block is written compactly as
+\[
+\boxed{\;\frac{\partial \mathbf{f}_b}{\partial \boldsymbol{\theta}}
+= -\,[\mathbf{f}_b^{\rm pred}]_\times,\qquad
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{a}_w}=\mathbf{R}_{wb},\qquad
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{b}_a}=\mathbf{I}_3.\;}
+\]
+
+\subsection{Magnetometer Jacobian}
+The magnetometer model is
+\(
+\mathbf{m}_b(q) = \mathbf{R}_{wb}(q)\,\mathbf{B}_w
+\).
+By \eqref{eq:right-mekf-jac},
+\[
+\boxed{\;\frac{\partial \mathbf{m}_b}{\partial \boldsymbol{\theta}}
+= -\bigl[\mathbf{R}_{wb}\mathbf{B}_w\bigr]_\times
+= -\,[\mathbf{m}_b^{\rm pred}]_\times.\;}
+\]
+There are no dependencies on \(\mathbf{a}_w\) or \(\mathbf{b}_a\) in this channel.
+
+\subsection{Integral Pseudo-Measurement Jacobian}
+For the zero constraint on the integral state,
+\(
+\mathbf{z}_S=\mathbf{S}+\mathbf{n}_S
+\),
+the Jacobian is simply
+\[
+\boxed{\;\frac{\partial \mathbf{z}_S}{\partial \mathbf{S}}=\mathbf{I}_3,\;}
+\]
+with zeros elsewhere.
+
+\subsection{Right vs.\ left multiplicative (sign sanity check)}
+If a \emph{left}-multiplicative convention were used
+\(
+q^+ = \exp_q(\tfrac12\,\delta\boldsymbol{\theta})\otimes q
+\),
+the linearization would yield
+\(
+\partial(\mathbf{R}_{wb}\mathbf{v}_w)/\partial\boldsymbol{\theta}
+= +\,[\mathbf{R}_{wb}\mathbf{v}_w]_\times
+\),
+flipping the sign of the attitude block. The negative sign in
+\eqref{eq:right-mekf-jac} therefore uniquely identifies the
+\emph{right}-multiplicative convention implemented here.
+
+\subsection{Finite-difference verification (optional)}
+A practical check is
+\[
+\frac{h\bigl(q\otimes\exp_q(\tfrac12\epsilon\mathbf{e}_i)\bigr) - h(q)}{\epsilon}
+\;\approx\; \Bigl(\frac{\partial h}{\partial \boldsymbol{\theta}}\Bigr)\mathbf{e}_i,
+\quad \epsilon \sim 10^{-6},
+\]
+for \(i=1,2,3\). This validates both the sign and the magnitude of the
+attitude Jacobian blocks in code.
