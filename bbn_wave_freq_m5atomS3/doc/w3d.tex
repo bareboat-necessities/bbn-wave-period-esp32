@@ -1,0 +1,54 @@
+\documentclass[10pt]{extarticle}
+\usepackage{amsmath, amssymb, amsfonts, bm}
+\usepackage{geometry, setspace}
+\usepackage{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{titlesec}
+\usepackage{nccmath, relsize}
+\usepackage{array, booktabs, makecell, adjustbox}
+
+% Make inline math slightly smaller
+\everymath{\smaller}
+
+% Make display equations typeset in \small
+\everydisplay\expandafter{\the\everydisplay\small}
+
+% Reduce spacing before/after headings
+\titlespacing*{\section}{0pt}{1.0ex plus .2ex}{0.6ex}
+\titlespacing*{\subsection}{0pt}{0.8ex plus .2ex}{0.4ex}
+\titlespacing*{\subsubsection}{0pt}{0.6ex plus .2ex}{0.3ex}
+
+% Make section fonts smaller (like textbooks)
+\titleformat{\section}{\normalfont\small\bfseries}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\normalfont\small\itshape}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}{\normalfont\footnotesize\itshape}{\thesubsubsection}{0.8em}{}
+
+\geometry{letterpaper, margin=0.65in}
+\setstretch{0.95}
+
+\title{A Multiplicative EKF with Latent OU Acceleration for Drift-Robust Wave Kinematics: \\
+Theory, Discretization (Rodrigues, Analytic), and Temperature-Dependent Bias Compensation}
+\author{Mikhail Grushinskiy}
+\date{2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a detailed mathematical development of a quaternion multiplicative EKF (MEKF) fused with an extended 
+linear kinematic chain for ocean-wave motion estimation. 
+The method augments attitude (with optional gyroscope and accelerometer bias) by the linear states velocity $\bm v$, displacement $\bm p$, 
+and the integral of displacement $\bm S$, driven by a \emph{latent} world-frame acceleration $\bm a_w$ modeled as an Ornstein--Uhlenbeck (OU) process. The OU prior confers stationary variance and realistic temporal correlation for the latent acceleration, which slows the drift growth in integrated states compared to white-noise forcing. It does not strictly bound the variance of integrated displacement, but ensures covariance growth of displacement is polynomially slower and numerically manageable.
+Biases are explicitly modeled: gyroscope bias as a random walk, accelerometer bias both as random walk and as systematic temperature-dependent drift. 
+A pseudo-measurement is introduced on $\bm S$ to control double integral divergence. 
+We derive continuous- and discrete-time process models, show Rodrigues and Analytic discretizations, and derive explicit Jacobians for accelerometer and magnetometer updates. 
+Finally, we discuss tuning strategies and the prospect of adaptive parameter estimation.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+
+
+\end{document}
