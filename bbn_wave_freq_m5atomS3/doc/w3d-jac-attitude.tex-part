@@ -66,7 +66,7 @@ The specific force prediction is
   + \mathbf{b}_a(T),
 \]
 with \(\mathbf{b}_a(T)=\mathbf{b}_{a0}+\mathbf{k}_a(T-T_{\rm ref})\).
-Applying \eqref{eq:right-mekf-jac} with \(\mathbf{v}_w=\mathbf{a}_w-\mathbf{g}_w\}:
+Applying \eqref{eq:right-mekf-jac} with \(\mathbf{v}_w=(\mathbf{a}_w-\mathbf{g}_w)\):
 \[
 \frac{\partial \mathbf{f}_b}{\partial \boldsymbol{\theta}}
 = -\bigl[\mathbf{R}_{wb}(\mathbf{a}_w-\mathbf{g}_w)\bigr]_\times
