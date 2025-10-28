@@ -1,0 +1,117 @@
+\section{Process Model}
+
+The continuous-time dynamics of the full system are partitioned into two
+subsystems: (i) attitude propagation on the unit quaternion manifold, and
+(ii) a linear translational–stochastic subsystem driven by an
+Ornstein–Uhlenbeck (OU) acceleration process.
+
+\subsection{Attitude Dynamics}
+
+Let $\boldsymbol{\omega}_b$ denote the body-frame angular velocity measured by
+the gyroscope, and $\mathbf{b}_g$ its estimated bias.  The quaternion $q$
+evolves as
+\begin{equation}
+\dot{q}
+= \tfrac{1}{2}\,q \otimes
+  \begin{bmatrix} 0 \\ \boldsymbol{\omega}_b - \mathbf{b}_g \end{bmatrix},
+\end{equation}
+where $\otimes$ is quaternion multiplication.  In discrete time, the update
+over step $h$ is obtained via the exponential map
+\begin{equation}
+q_{k+1}
+= q_k \otimes \exp_q\!\left( \tfrac{1}{2}
+   (\boldsymbol{\omega}_b - \mathbf{b}_g)\,h \right),
+\end{equation}
+using the small-angle expansion of $\exp_q(\cdot)$ for numerical stability.
+The corresponding attitude-error transition matrix $\mathbf{F}_{\theta\theta}$
+is derived from the skew-symmetric form of $\boldsymbol{\omega}_b$ and retained
+in the upper-left block of the covariance.
+
+\subsection{Linear Translational Subsystem}
+
+In the world frame (NED), the translational and stochastic components obey
+\begin{equation}
+\begin{aligned}
+\dot{\mathbf{v}} &= \mathbf{a}_w,\\
+\dot{\mathbf{p}} &= \mathbf{v},\\
+\dot{\mathbf{S}} &= \mathbf{p},\\
+\dot{\mathbf{a}}_w &= -\tfrac{1}{\tau_{a_w}}\,\mathbf{a}_w + \boldsymbol{\eta}(t),
+\end{aligned}
+\label{eq:continuous-linear}
+\end{equation}
+where $\tau_{a_w}$ is the OU correlation time and
+$\boldsymbol{\eta}(t)\!\sim\!\mathcal{N}(\mathbf{0},\,2\Sigma_{a_w}/\tau_{a_w})$
+is zero-mean white noise with stationary covariance $\Sigma_{a_w}$.
+
+\subsection{Discrete-Time Transition Matrix}
+
+Exact moment matching of~\eqref{eq:continuous-linear} over sampling interval
+$h$ yields the per-axis discrete transition
+\begin{equation}
+\Phi_{\mathrm{axis}}(h,\tau) =
+\begin{bmatrix}
+1 & 0 & 0 & \phi_{va} \\
+h & 1 & 0 & \phi_{pa} \\
+\tfrac{1}{2}h^2 & h & 1 & \phi_{Sa} \\
+0 & 0 & 0 & e^{-h/\tau}
+\end{bmatrix},
+\end{equation}
+with coefficients
+\begin{align}
+\phi_{va} &= \tau(1 - e^{-h/\tau}),\\
+\phi_{pa} &= \tau^2\!\left(\tfrac{h}{\tau} + e^{-h/\tau} - 1\right),\\
+\phi_{Sa} &= \tau^3\!\left(\tfrac{1}{2}\!\left(\tfrac{h}{\tau}\right)^2
+              - \tfrac{h}{\tau} - (e^{-h/\tau}-1)\right).
+\end{align}
+For very small $x = h/\tau$, Maclaurin series expansions up to $O(x^5)$
+are used to avoid cancellation and preserve numerical precision.
+
+\subsection{Discrete Process Noise Covariance}
+
+The discrete covariance $\mathbf{Q}_d$ for each axis
+$\bigl[v,\,p,\,S,\,a_w\bigr]$ is obtained by integrating the continuous OU
+spectral density,
+\begin{equation}
+\mathbf{Q}_d
+= \frac{2\,\sigma_{a_w}^2}{\tau}
+  \!\int_0^h\!\!\!\int_0^h
+  e^{-|t-s|/\tau}
+  \mathbf{f}(t)\mathbf{f}^\top(s)\,dt\,ds,
+\end{equation}
+where $\mathbf{f}(t) = [1,\,t,\,t^2/2!,\,a(t)]^\top$ are the integration
+basis functions of~\eqref{eq:continuous-linear}.
+Closed-form expressions are evaluated analytically for general $h/\tau$
+and approximated by high-order series for small ratios.
+
+When $\Sigma_{a_w}$ includes cross-axis correlation, the full $12\times12$
+process covariance is constructed as a Kronecker-type product
+\[
+\mathbf{Q}_{LL}
+= \Sigma_{a_w}^{1/2} \otimes \mathbf{Q}_d^{(1)}
+   \bigl(\Sigma_{a_w}^{1/2}\bigr)^\top,
+\]
+ensuring positive semidefiniteness and realistic coupling between vertical
+and horizontal accelerations.
+
+\subsection{Bias Random Walks}
+
+The gyroscope and accelerometer biases evolve as independent random walks:
+\begin{equation}
+\dot{\mathbf{b}}_g = \boldsymbol{\nu}_g, \qquad
+\dot{\mathbf{b}}_a = \boldsymbol{\nu}_a,
+\end{equation}
+with spectral densities $\mathbf{Q}_{b_g}$ and $\mathbf{Q}_{b_a}$
+specified by the corresponding tunable parameters.
+
+\subsection{Summary of Discrete Propagation}
+
+The overall discrete-time prediction step is therefore
+\begin{align}
+x_{k|k-1} &= \Phi\,x_{k-1|k-1},\\
+P_{k|k-1} &= \Phi\,P_{k-1|k-1}\,\Phi^\top + Q,
+\end{align}
+where $\Phi$ is block-diagonal in attitude and linear subsystems,
+and $Q$ combines $\mathbf{Q}_{LL}$ with the bias random-walk covariances.
+This formulation yields a numerically stable propagation even for
+$h/\tau\!\ll\!1$, ensuring physically consistent evolution of both
+orientation and wave-driven translational dynamics.
