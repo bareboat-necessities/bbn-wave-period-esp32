@@ -1,0 +1,149 @@
+\section{Process Matrix and Blockwise Propagation}
+
+The extended filter operates on a composite state
+\[
+x =
+\begin{bmatrix}
+\delta\boldsymbol{\theta} &
+\mathbf{b}_g &
+\mathbf{v} &
+\mathbf{p} &
+\mathbf{S} &
+\mathbf{a}_w &
+\mathbf{b}_a
+\end{bmatrix}^{\!\top},
+\]
+whose dynamics couple rotational, translational, and bias subsystems.
+The corresponding discrete transition matrix
+$\Phi \in \mathbb{R}^{N_X\times N_X}$ is organized in block form:
+\[
+\Phi =
+\begin{bmatrix}
+\Phi_{\!AA} & \Phi_{\!AB} & \Phi_{\!AL} \\
+0 & \Phi_{\!BB} & 0 \\
+0 & 0 & \Phi_{\!LL}
+\end{bmatrix},
+\]
+where the subblocks represent:
+\begin{itemize}
+  \item $\Phi_{\!AA}$ — attitude error and gyro-bias propagation;
+  \item $\Phi_{\!BB}$ — accelerometer-bias random walk (identity);
+  \item $\Phi_{\!LL}$ — linear translational subsystem
+        $[\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w]$;
+  \item $\Phi_{\!AB}$ and $\Phi_{\!AL}$ — cross-covariance couplings between
+        attitude, biases, and linear states.
+\end{itemize}
+
+\subsection{Attitude and Gyro-Bias Blocks}
+
+For a small rotation increment $\boldsymbol{\omega}h$,
+the local attitude linearization is
+\begin{equation}
+\Phi_{\!AA}
+=
+\begin{bmatrix}
+\mathbf{I}_3 - [\boldsymbol{\omega}]_\times h
+  + \tfrac{1}{2}[\boldsymbol{\omega}]_\times^2 h^2 &
+-\mathbf{I}_3 h \\[3pt]
+\mathbf{0}_{3\times3} & \mathbf{I}_3
+\end{bmatrix}.
+\end{equation}
+The upper-right term $-\mathbf{I}_3 h$ couples gyro-bias uncertainty into
+attitude error over the integration step.
+
+\subsection{Linear Translational Block}
+
+Each axis of the OU-driven translational chain follows
+\[
+\dot{\mathbf{x}}_L
+= \mathbf{A}_L \mathbf{x}_L + \mathbf{w},
+\qquad
+\mathbf{x}_L = [v,\,p,\,S,\,a_w]^\top,
+\]
+whose exact discrete transition over~$h$ is
+\begin{equation}
+\Phi_{\!LL}
+=
+\begin{bmatrix}
+\mathbf{I}_3 & 0 & 0 & \phi_{va}\mathbf{I}_3\\[2pt]
+h\mathbf{I}_3 & \mathbf{I}_3 & 0 & \phi_{pa}\mathbf{I}_3\\[2pt]
+\tfrac{1}{2}h^2\mathbf{I}_3 & h\mathbf{I}_3 & \mathbf{I}_3 & \phi_{Sa}\mathbf{I}_3\\[2pt]
+0 & 0 & 0 & e^{-h/\tau_{a_w}}\mathbf{I}_3
+\end{bmatrix}.
+\end{equation}
+The coefficients $(\phi_{va},\phi_{pa},\phi_{Sa})$ are given by the
+closed-form expressions in~(\ref{eq:ou-chain}) and switch to Maclaurin
+series when $h/\tau_{a_w}$ is small.
+
+\subsection{Full Covariance Propagation}
+
+Denoting by $P$ the covariance matrix of the entire state,
+the discrete prediction step partitions $P$ into the same block structure:
+\[
+P =
+\begin{bmatrix}
+P_{AA} & P_{AL} \\
+P_{AL}^\top & P_{LL}
+\end{bmatrix},
+\]
+where $P_{AA}$ covers attitude and biases, and $P_{LL}$ covers the
+linear subsystem.
+
+The covariance update is then applied block-by-block:
+\begin{align}
+P_{AA}^{+}
+  &= \Phi_{\!AA} P_{AA} \Phi_{\!AA}^\top + Q_{AA},\\
+P_{LL}^{+}
+  &= \Phi_{\!LL} P_{LL} \Phi_{\!LL}^\top + Q_{LL},\\
+P_{AL}^{+}
+  &= \Phi_{\!AA} P_{AL} \Phi_{\!LL}^\top.
+\end{align}
+The cross term $P_{AL}$ preserves the correlation between attitude
+and translational uncertainties, ensuring that rotational misalignment
+feeds correctly into linear-motion uncertainty.
+
+When accelerometer biases are active, additional bias blocks are updated as
+\begin{equation}
+P_{BB}^{+} = P_{BB} + Q_{b_a} h, \qquad
+P_{AB}^{+} = \Phi_{\!AA} P_{AB}, \qquad
+P_{LB}^{+} = \Phi_{\!LL} P_{LB},
+\end{equation}
+and their transposes restore overall symmetry.
+
+\subsection{Assembly of the Complete Transition}
+
+The complete transition matrix is therefore sparse and structured as
+\[
+\Phi =
+\begin{bmatrix}
+\Phi_{\!AA} & 0 & 0\\
+0 & \mathbf{I}_{3} & 0\\
+0 & 0 & \Phi_{\!LL}
+\end{bmatrix}
++
+\text{cross-coupling terms},
+\]
+with a corresponding block-diagonal process noise
+\[
+Q =
+\mathrm{diag}(Q_{AA},\,Q_{LL},\,Q_{b_a}),
+\]
+where $Q_{LL}$ is obtained from the OU discretization and $Q_{AA}$,
+$Q_{b_a}$ are derived from gyro and accelerometer random-walk spectra.
+
+\subsection{Symmetry and Positive-Semidefinite Projection}
+
+After each propagation, the covariance is symmetrized and
+projected to the nearest positive-semidefinite matrix to mitigate
+floating-point asymmetry:
+\[
+P \leftarrow \tfrac{1}{2}(P + P^\top), \qquad
+P \succeq 0.
+\]
+Eigenvalue flooring ensures stability even under strong anisotropy or
+nearly singular correlation structures in~$Q_{LL}$.
+
+This blockwise formulation allows efficient numerical propagation,
+preserving the independence of rotational, translational, and bias
+subsystems while maintaining full cross-covariance consistency.
+
