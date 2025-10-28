@@ -1,0 +1,125 @@
+\section{Summary of Discrete Noise Blocks}
+
+The process covariance matrix~$\mathbf{Q}$ aggregates all sources of
+stochastic excitation acting on the state between two sampling instants.
+It preserves the block structure of the transition matrix~$\Phi$ and is
+assembled from three principal contributions:
+\[
+\mathbf{Q}
+=
+\mathrm{diag}
+\left(
+  \mathbf{Q}_{AA},\;
+  \mathbf{Q}_{LL},\;
+  \mathbf{Q}_{b_a}
+\right)
++
+\text{(cross terms, if enabled)}.
+\]
+
+\subsection{Attitude and Gyro-Bias Noise \texorpdfstring{$\mathbf{Q}_{AA}$}{Q\_AA}}
+
+The rotational subsystem is excited by gyroscope measurement noise and
+gyro-bias random walk.  In continuous time, these are modeled as
+\[
+\dot{\delta\boldsymbol{\theta}} =
+ -[\boldsymbol{\omega}]_\times \delta\boldsymbol{\theta}
+ - \delta\mathbf{b}_g + \boldsymbol{\nu}_g, \qquad
+\dot{\mathbf{b}}_g = \boldsymbol{\xi}_g,
+\]
+with white-noise processes
+$\boldsymbol{\nu}_g \sim \mathcal{N}(0,\Sigma_g)$ and
+$\boldsymbol{\xi}_g \sim \mathcal{N}(0,q_b \mathbf{I})$.
+Discretization over step~$h$ gives
+\begin{equation}
+\mathbf{Q}_{AA}
+=
+\begin{bmatrix}
+\Sigma_g h & 0\\
+0 & q_b h
+\end{bmatrix},
+\end{equation}
+which directly populates the upper-left block of~$\mathbf{Q}$.
+This term governs attitude diffusion during free propagation and is
+typically small compared with translational noise.
+
+\subsection{Linear Translational Noise \texorpdfstring{$\mathbf{Q}_{LL}$}{Q\_LL}}
+
+The OU acceleration process introduces temporally correlated forcing to
+the translational states.
+For a single spatial axis with stationary variance
+$\sigma_{a_w}^2$ and correlation time~$\tau$, the equivalent discrete
+noise covariance is computed as
+\begin{equation}
+\mathbf{Q}_d^{(1)}
+= \frac{2\sigma_{a_w}^2}{\tau}
+  \int_0^h \!\!\int_0^h e^{-|t-s|/\tau}
+     \mathbf{f}(t)\mathbf{f}^\top(s)\,dt\,ds,
+\end{equation}
+where $\mathbf{f}(t)=[1,\,t,\,t^2/2!,\,a(t)]^\top$ corresponds to the
+OU-driven chain $[v,p,S,a_w]$.
+The analytic expression of~$\mathbf{Q}_d^{(1)}$ is evaluated using the
+functions derived in the \emph{OU discretization primitives}, switching
+to a Maclaurin expansion for~$h/\tau<10^{-3}$.
+
+For the three-dimensional vector process with stationary covariance
+$\Sigma_{a_w}$, the full block is constructed as
+\[
+\mathbf{Q}_{LL}
+= \Sigma_{a_w}^{1/2} \otimes \mathbf{Q}_d^{(1)}
+  (\Sigma_{a_w}^{1/2})^\top,
+\]
+followed by explicit symmetrization and eigenvalue flooring to ensure
+positive semidefiniteness:
+\[
+\mathbf{Q}_{LL} \leftarrow
+\tfrac{1}{2}(\mathbf{Q}_{LL} + \mathbf{Q}_{LL}^\top),
+\qquad
+\lambda_i(\mathbf{Q}_{LL}) \ge \varepsilon.
+\]
+This guarantees stable propagation even when cross-axis correlations or
+very small~$\tau$ produce ill-conditioned matrices.
+
+\subsection{Accelerometer-Bias Noise \texorpdfstring{$\mathbf{Q}_{b_a}$}{Q\_b\_a}}
+
+The accelerometer bias evolves as an independent random walk,
+\[
+\dot{\mathbf{b}}_a = \boldsymbol{\xi}_a, \qquad
+\boldsymbol{\xi}_a \sim \mathcal{N}(0,\,\Sigma_{b_a}),
+\]
+with spectral density $\Sigma_{b_a}$ determined by the user-specified
+random-walk standard deviations.  Its discrete form is
+\[
+\mathbf{Q}_{b_a} = \Sigma_{b_a} h.
+\]
+This term directly updates the bias covariance block at each prediction
+step and remains uncoupled from the other subsystems.
+
+\subsection{Assembled Discrete Propagation}
+
+Combining all components, the discrete prediction step for mean and
+covariance can be written as
+\begin{align}
+\hat{\mathbf{x}}_{k+1|k} &= \Phi\,\hat{\mathbf{x}}_{k|k},\\
+\mathbf{P}_{k+1|k}
+ &= \Phi\,\mathbf{P}_{k|k}\,\Phi^\top + \mathbf{Q},
+\end{align}
+with explicit block substitutions:
+\begin{align}
+\mathbf{P}_{AA}^{+}
+ &= \Phi_{AA}\mathbf{P}_{AA}\Phi_{AA}^\top + \mathbf{Q}_{AA},\\
+\mathbf{P}_{LL}^{+}
+ &= \Phi_{LL}\mathbf{P}_{LL}\Phi_{LL}^\top + \mathbf{Q}_{LL},\\
+\mathbf{P}_{b_a b_a}^{+}
+ &= \mathbf{P}_{b_a b_a} + \mathbf{Q}_{b_a},\\
+\mathbf{P}_{AL}^{+}
+ &= \Phi_{AA}\mathbf{P}_{AL}\Phi_{LL}^\top,\\
+\mathbf{P}_{A b_a}^{+}
+ &= \Phi_{AA}\mathbf{P}_{A b_a}, \qquad
+\mathbf{P}_{L b_a}^{+} = \Phi_{LL}\mathbf{P}_{L b_a}.
+\end{align}
+The final covariance is symmetrized,
+$\mathbf{P}\!\leftarrow\!\tfrac{1}{2}(\mathbf{P}+\mathbf{P}^\top)$,
+ensuring that rounding errors never violate
+$\mathbf{P}\succeq 0$.  This completes the discrete process model used
+throughout the propagation cycle.
