@@ -607,7 +607,7 @@
 \caption{Performance of the SeaStateFusion (KalmANF vOct27) Filter Across Simulated Sea States}
 \label{tab:seastate_performance}
 \renewcommand{\arraystretch}{1.1}
-\setlength{\tabcolsep}{5pt}
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{lcccccccccc}
 \hline
 \textbf{Sea type} & \textbf{$H_s$ [m]} & \textbf{$f_t$ [Hz]} &
@@ -623,7 +623,7 @@ JONSWAP & 0.27 & 0.59 & 1.57 & 0.50 & 4.86 &
 0.05 & Excellent low-sea stability \\
 JONSWAP & 1.50 & 0.31 & 1.84 & 1.12 & 17.3 &
 13.3 & 6.0 & \textbf{2.9} &
-0.08 & Optimal τ-σ matching \\
+0.08 & Optimal $\tau-\sigma$ matching \\
 JONSWAP & 4.00 & 0.27 & 2.07 & 1.59 & 35.1 &
 27.6 & 13.5 & \textbf{5.4} &
 0.09 & Within 5–6 \% $H_s$ vertical band \\
@@ -639,7 +639,7 @@ PM–Stokes & 1.50 & 0.52 & 1.80 & 1.24 & 18.2 &
 1.39 & Nominal tuning convergence \\
 PM–Stokes & 4.00 & 0.51 & 2.05 & 1.72 & 37.1 &
 20.8 & 9.3 & \textbf{5.7} &
-1.77 & Correct τ–Rₛ scaling \\
+1.77 & Correct $\tau–R_s$ scaling \\
 PM–Stokes & 8.50 & 0.45 & 2.38 & 2.14 & 40.0 &
 23.7 & 11.6 & \textbf{9.8} &
 2.96 & Yaw dominated by mag delay \\
@@ -652,11 +652,11 @@ PM–Stokes & 8.50 & 0.45 & 2.38 & 2.14 & 40.0 &
 \caption{Comparison of SeaStateFusion (KalmANF vOct27) Performance with Commercial Marine Motion Sensors}
 \label{tab:comparison_commercial}
 \renewcommand{\arraystretch}{1.1}
-\setlength{\tabcolsep}{5pt}
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{lcccccc}
 \hline
-\textbf{System} & \textbf{Vertical RMS} [\%$H_s$] &
-\textbf{Horizontal RMS} [\%$H_s$] &
+\textbf{System} & \textbf{Vert RMS} [\%$H_s$] &
+\textbf{Horiz RMS} [\%$H_s$] &
 \textbf{Attitude RMS} [deg] &
 \textbf{Update Rate} [Hz] &
 \textbf{Sensor Inputs} &
