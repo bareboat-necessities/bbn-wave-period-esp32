@@ -1,0 +1,186 @@
+\section{Appendix: Derivation of OU Integration Coefficients}
+\label{app:ou-coeffs}
+
+This appendix derives the discrete-time coefficients that map the latent
+Ornstein--Uhlenbeck (OU) world acceleration $a_w$ into the kinematic chain
+$[v,\,p,\,S]^\top$ over a sampling interval $h>0$. We first ignore process
+noise to obtain the deterministic part of the state transition (the mean
+propagation). Stochastic contributions are handled separately in the covariance.
+
+\subsection*{A.1 Continuous-time model (per axis)}
+For one spatial axis we write
+\begin{equation}
+\dot v(t) = a(t),\qquad
+\dot p(t) = v(t),\qquad
+\dot S(t) = p(t),\qquad
+\dot a(t) = -\tfrac{1}{\tau} a(t) \;+\; \eta(t),
+\label{eq:ou-ct}
+\end{equation}
+with OU correlation time $\tau>0$ and white process $\eta(t)$. Setting
+$\eta\equiv 0$ gives the noise-free solution needed for the mean update.
+
+Let $x(t)=[\,v(t),\,p(t),\,S(t),\,a(t)\,]^\top$. Over $[t_k,t_k+h]$ we will
+derive the mapping $x_{k+1}=\Phi_{\mathrm{axis}}(h,\tau)\,x_k$ and extract
+the three scalar coefficients
+\[
+\phi_{va},\quad \phi_{pa},\quad \phi_{Sa},
+\]
+which multiply $a_k$ in the $v$, $p$, and $S$ rows respectively.
+
+\subsection*{A.2 Time-domain integral derivation}
+With $\eta\equiv 0$, the OU solution for acceleration is
+\[
+a(t_k+s) \;=\; e^{-s/\tau}\,a_k, \qquad s\in[0,h].
+\]
+Then
+\begin{align}
+v_{k+1}
+&= v_k \;+\; \int_0^h a(t_k+s)\,ds
+ \;=\; v_k \;+\; a_k \int_0^h e^{-s/\tau}\,ds \nonumber\\
+&= v_k \;+\; a_k\,\tau\bigl(1 - e^{-h/\tau}\bigr)
+\;\;\Rightarrow\;\;
+\boxed{\;\phi_{va} \;=\; \tau\bigl(1 - e^{-h/\tau}\bigr)\;}. \label{eq:phi-va}
+\end{align}
+
+Next, position:
+\begin{align}
+p_{k+1}
+&= p_k \;+\; \int_0^h v(t_k+s)\,ds
+ = p_k \;+\; \int_0^h \Bigl(v_k + \int_0^s a(t_k+u)\,du\Bigr) ds \nonumber\\
+&= p_k + v_k h + \int_0^h \int_0^s e^{-u/\tau} a_k\,du\,ds. \label{eq:p-double}
+\end{align}
+Evaluate the double integral by swapping order ($0\le u\le s\le h$ becomes
+$0\le u\le h$ and $u\le s\le h$):
+\[
+\int_0^h \int_0^s e^{-u/\tau}\,du\,ds
+=\int_0^h \Bigl(\int_u^h ds\Bigr) e^{-u/\tau}\,du
+=\int_0^h (h-u)\,e^{-u/\tau}\,du.
+\]
+Split and integrate by parts for the second term:
+\begin{align*}
+\int_0^h (h-u) e^{-u/\tau}\,du
+&= h\underbrace{\int_0^h e^{-u/\tau}\,du}_{=\;\tau(1-e^{-h/\tau})}
+   \;-\;\underbrace{\int_0^h u e^{-u/\tau}\,du}_{=\;\tau^2\bigl(1-e^{-h/\tau}\bigr)-\tau h e^{-h/\tau}}\\
+&= h\tau(1-e^{-h/\tau}) - \tau^2(1-e^{-h/\tau}) + \tau h e^{-h/\tau}.
+\end{align*}
+Hence
+\begin{align}
+p_{k+1}
+&= p_k + v_k h + a_k\Bigl[h\tau(1-e^{-h/\tau}) - \tau^2(1-e^{-h/\tau}) + \tau h e^{-h/\tau}\Bigr] \nonumber\\
+&= p_k + v_k h + a_k\,\tau^2\!\left(\tfrac{h}{\tau} + e^{-h/\tau} - 1\right)
+\;\;\Rightarrow\;\;
+\boxed{\;\phi_{pa} \;=\; \tau^2\!\left(\tfrac{h}{\tau} + e^{-h/\tau} - 1\right)\;}.
+\label{eq:phi-pa}
+\end{align}
+
+Finally, the integral state:
+\begin{align}
+S_{k+1}
+&= S_k \;+\; \int_0^h p(t_k+s)\,ds \nonumber\\
+&= S_k + p_k h + \int_0^h v(t_k+s)\, \tfrac{(h-s)}{1}\,ds
+  \quad\text{(triangle integration identity)} \nonumber\\
+&= S_k + p_k h + v_k \tfrac{h^2}{2} + \int_0^h \Bigl(\int_0^s a(t_k+u)\,du\Bigr) (h-s)\, ds.
+\label{eq:S-triangle}
+\end{align}
+Swap integrals again. Region $0\le u\le s\le h$ becomes $0\le u\le h$ and
+$u\le s\le h$:
+\[
+\int_0^h \!\!\Bigl(\int_0^s \!a(t_k+u)\,du\Bigr) (h-s)\,ds
+ = \int_0^h \!\!\Bigl( \int_u^h (h-s)\,ds \Bigr) a(t_k+u)\,du
+ = \int_0^h \!\!\tfrac{(h-u)^2}{2}\, a_k e^{-u/\tau}\,du.
+\]
+Therefore,
+\[
+S_{k+1}
+= S_k + p_k h + v_k \tfrac{h^2}{2} + a_k \underbrace{\int_0^h \tfrac{(h-u)^2}{2} e^{-u/\tau}\,du}_{\;\phi_{Sa}}.
+\]
+Compute $\phi_{Sa}$ explicitly. Expand $(h-u)^2 = h^2 - 2hu + u^2$ and integrate termwise:
+\begin{align*}
+\phi_{Sa}
+&= \tfrac{1}{2}\Bigl[
+ h^2 \underbrace{\int_0^h e^{-u/\tau}\,du}_{=\;\tau(1-e^{-h/\tau})}
+ - 2h \underbrace{\int_0^h u e^{-u/\tau}\,du}_{=\;\tau^2(1-e^{-h/\tau})-\tau h e^{-h/\tau}}
+ + \underbrace{\int_0^h u^2 e^{-u/\tau}\,du}_{=\;2\tau^3\bigl(1-e^{-h/\tau}\bigr) - \tau h^2 e^{-h/\tau} - 2\tau^2 h e^{-h/\tau}}
+\Bigr]\\[2pt]
+&= \tfrac{1}{2}\Bigl[
+ h^2\tau(1-e^{-h/\tau})
+ - 2h\bigl(\tau^2(1-e^{-h/\tau})-\tau h e^{-h/\tau}\bigr)
+ + 2\tau^3(1-e^{-h/\tau}) - \tau h^2 e^{-h/\tau} - 2\tau^2 h e^{-h/\tau}
+\Bigr].
+\end{align*}
+Collect terms and factor $\tau^3$ with $x=h/\tau$ and $\alpha=e^{-x}$. After simplification,
+\[
+\phi_{Sa} \;=\; \tau^3\!\left(\tfrac{1}{2}x^2 - x - (\alpha-1)\right)
+\;=\;
+\boxed{\;\phi_{Sa} \;=\; \tau^3\!\left(\tfrac{1}{2}\!\left(\tfrac{h}{\tau}\right)^2
+ - \tfrac{h}{\tau} - \bigl(e^{-h/\tau}-1\bigr)\right)\;}. \label{eq:phi-Sa}
+\]
+
+Equations \eqref{eq:phi-va}, \eqref{eq:phi-pa}, \eqref{eq:phi-Sa} yield the exact discrete transition
+\[
+\Phi_{\mathrm{axis}}(h,\tau) \;=\;
+\begin{bmatrix}
+1 & 0 & 0 & \phi_{va}\\
+h & 1 & 0 & \phi_{pa}\\
+\tfrac{1}{2}h^2 & h & 1 & \phi_{Sa}\\
+0 & 0 & 0 & e^{-h/\tau}
+\end{bmatrix},
+\]
+which is the block used along each spatial axis.
+
+\subsection*{A.3 Laplace-domain derivation (equivalent route)}
+Define the state $x=[v,p,S,a]^\top$ and constant system matrix
+\[
+A \;=\;
+\begin{bmatrix}
+0&0&0&1\\
+1&0&0&0\\
+0&1&0&0\\
+0&0&0&-1/\tau
+\end{bmatrix}.
+\]
+With $\eta\equiv 0$, the solution is $x(t_k+s)=e^{As}x_k$. The last column
+of $e^{As}$ gives the response to the $a$ component of $x_k$. Using
+Laplace transforms, $e^{As}$ is recovered from the matrix resolvent
+\[
+\mathcal{L}\!\{e^{As}\}(z) \;=\; (zI-A)^{-1}.
+\]
+Computing the last column of $(zI-A)^{-1}$ and inverting term-by-term
+produces the same time functions found above:
+\[
+\mathcal{L}^{-1}\!\left\{\frac{1}{z+1/\tau}\right\}=e^{-s/\tau},\quad
+\mathcal{L}^{-1}\!\left\{\frac{1}{z^2(z+1/\tau)}\right\}
+=\tau^2\!\Bigl(\tfrac{s}{\tau}+e^{-s/\tau}-1\Bigr),\;\text{etc.}
+\]
+Evaluating these at $s=h$ yields exactly
+$\phi_{va},\phi_{pa},\phi_{Sa}$ as in the time-domain derivation.
+
+\subsection*{A.4 Small-$x$ series (for numerical stability)}
+Let $x=h/\tau$ and $\alpha=e^{-x} = 1 - x + \tfrac{x^2}{2} - \tfrac{x^3}{6}
++ \tfrac{x^4}{24} - \tfrac{x^5}{120} + O(x^6)$. Then
+\begin{align*}
+\phi_{va}
+&= \tau(1-\alpha)
+ = \tau\Bigl(x - \tfrac{x^2}{2} + \tfrac{x^3}{6} - \tfrac{x^4}{24} + \tfrac{x^5}{120}\Bigr) + O(x^6),\\
+\phi_{pa}
+&= \tau^2\!\left(x + \alpha - 1\right)
+ = \tau^2\Bigl(\tfrac{x^2}{2} - \tfrac{x^3}{6} + \tfrac{x^4}{24} - \tfrac{x^5}{120}\Bigr) + O(x^6),\\
+\phi_{Sa}
+&= \tau^3\!\left(\tfrac{x^2}{2} - x - (\alpha-1)\right)
+ = \tau^3\Bigl(\tfrac{x^3}{6} - \tfrac{x^4}{24} + \tfrac{x^5}{120}\Bigr) + O(x^6).
+\end{align*}
+These series are used in the implementation when $x$ is small to avoid
+cancellation and roundoff.
+
+\subsection*{A.5 Summary}
+The OU coefficients that enter the discrete transition along each axis are
+\[
+\boxed{
+\phi_{va}=\tau(1-e^{-h/\tau}),\quad
+\phi_{pa}=\tau^2\!\Bigl(\tfrac{h}{\tau}+e^{-h/\tau}-1\Bigr),\quad
+\phi_{Sa}=\tau^3\!\Bigl(\tfrac{1}{2}\!\left(\tfrac{h}{\tau}\right)^2-\tfrac{h}{\tau}-(e^{-h/\tau}-1)\Bigr).
+}
+\]
+They follow directly from integrating the OU mean $a(t)=e^{-t/\tau}a_k$ into
+$v$, $p$, and $S$, and they agree with the Laplace-domain matrix-exponential
+derivation.
