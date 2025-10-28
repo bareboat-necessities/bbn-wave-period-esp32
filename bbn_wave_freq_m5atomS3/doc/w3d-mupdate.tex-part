@@ -1,0 +1,91 @@
+\section{Measurement Update}
+
+After each prediction step, three complementary observation models are applied
+to correct attitude and translational drift.  Each update operates on a
+linearized residual and uses the Joseph covariance form to preserve
+symmetry and positive semidefiniteness.
+
+\subsection{Accelerometer Update}
+
+The accelerometer provides a direct measurement of the specific force acting
+on the sensor in the body frame.  The predicted value is obtained from the
+estimated orientation, latent world acceleration, and bias model,
+\begin{equation}
+\mathbf{f}_b^{\mathrm{pred}}
+= \mathbf{R}_{wb}(\mathbf{a}_w - \mathbf{g}_w)
+  + \mathbf{b}_a(T),
+\end{equation}
+where $\mathbf{R}_{wb}$ is the world-to-body rotation, $\mathbf{g}_w$ is the
+gravity vector in world coordinates, and $\mathbf{b}_a(T)$ is the
+temperature-dependent accelerometer bias.
+The innovation is the difference between the measured and predicted specific
+forces,
+\[
+\mathbf{r} = \mathbf{f}_b^{\mathrm{meas}} - \mathbf{f}_b^{\mathrm{pred}}.
+\]
+Linearization about the current state yields the measurement Jacobians
+\begin{align}
+\frac{\partial \mathbf{f}_b}{\partial \boldsymbol{\theta}}
+  &= -[\mathbf{f}_b^{\mathrm{pred}}]_\times, &
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{a}_w}
+  &= \mathbf{R}_{wb}, &
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{b}_a}
+  &= \mathbf{I}_3,
+\end{align}
+which couple the measurement to attitude, OU acceleration, and bias states.
+The correction step follows the standard Kalman form using these Jacobians
+and the accelerometer noise covariance~$\mathbf{R}_a$.  This update stabilizes
+roll and pitch and continuously re-anchors the latent acceleration process to
+the gravity direction.
+
+\subsection{Magnetometer Update}
+
+The magnetometer supplies an external heading reference by observing the
+local magnetic field.  The predicted measurement is
+\[
+\mathbf{m}_b^{\mathrm{pred}} = \mathbf{R}_{wb}\,\mathbf{B}_w,
+\]
+where $\mathbf{B}_w$ is the magnetic reference vector expressed in the world
+frame.  The residual is computed as the difference between measured and
+predicted field vectors, corrected for sign ambiguity to ensure alignment in
+the same hemisphere.  Linearization with respect to the attitude error gives
+\[
+\frac{\partial \mathbf{m}_b}{\partial \boldsymbol{\theta}}
+  = -[\mathbf{m}_b^{\mathrm{pred}}]_\times.
+\]
+This update refines yaw and heading without affecting translational states,
+closing the attitude triad defined by gravity and magnetic north.
+
+\subsection{Integral Drift Constraint}
+
+To control long-term drift in the triple-integrated displacement, a
+zero-valued pseudo-measurement is periodically applied to the integral state
+$\mathbf{S}$.  The observation model is
+\begin{equation}
+\mathbf{z}_S = \mathbf{S} + \mathbf{n}_S, \qquad
+\mathbf{R}_S = \mathrm{diag}(\sigma_{Sx}^2,\,\sigma_{Sy}^2,\,\sigma_{Sz}^2).
+\end{equation}
+Its innovation $\mathbf{r} = -\mathbf{S}$ drives the integral toward zero
+while allowing low-frequency motion components to pass unaltered.
+This constraint acts as a weak stabilizer for cumulative drift in velocity and
+position and maintains bounded covariance in calm-sea conditions.
+
+\subsection{Update Cycle}
+
+Each observation channel executes the same normalized correction sequence:
+\begin{enumerate}
+  \item Compute the measurement residual~$\mathbf{r}$.
+  \item Linearize the observation model to form the Jacobian~$\mathbf{C}$.
+  \item Evaluate the innovation covariance
+        $\mathbf{S} = \mathbf{C} P \mathbf{C}^\top + \mathbf{R}$.
+  \item Compute the Kalman gain
+        $\mathbf{K} = P \mathbf{C}^\top \mathbf{S}^{-1}$.
+  \item Apply the state correction
+        $\mathbf{x} \leftarrow \mathbf{x} + \mathbf{K}\mathbf{r}$.
+  \item Update the covariance using the Joseph form to maintain symmetry.
+  \item Re-normalize the quaternion and clear the small-angle error component.
+\end{enumerate}
+This measurement cycle provides bounded corrections across attitude, bias,
+and translational channels, ensuring consistency between the OU-driven
+prediction model and physical sensor observations.
+
