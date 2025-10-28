@@ -1778,6 +1778,151 @@ Replacing OU with a second-order Gauss--Markov acceleration model is a promising
 it would suppress drift in the integrator chain more strongly, yield more realistic
 wave-acceleration spectra, and retain the Kalman-friendly structure of the present design.
 
+\section{Stability of the Kalman\,3D Filter With Slow Adaptation}
+\label{sec:stability}
+
+We analyze the discrete–time closed loop composed of: (i) a Joseph–form
+MEKF with an extended linear block $[v,p,S,a_w]$ driven by an
+Ornstein–Uhlenbeck (OU) world acceleration $a_w$; (ii) a zero
+pseudo–measurement on the integral state $S$; and (iii) a \emph{slow} adaptation
+of the OU correlation time $\tau$, stationary acceleration variance
+$\sigma_a^2$, and pseudo–measurement level $R_S$ according to
+\[
+\tau_{k+1} = \tau_k + \alpha_\tau\!\left(\tau^\star(f_t(k))-\tau_k\right),\quad
+\sigma_{a,k+1}^2 = \sigma_{a,k}^2 + \alpha_\sigma\!\left(\widehat{\mathrm{var}}_a(k)-\sigma_{a,k}^2\right),
+\]
+\[
+R_{S,k+1} = R_{S,k} + \alpha_R\!\left(\kappa\,\sigma_{a,k}\,\tau_k^{3} - R_{S,k}\right),
+\]
+with $0<\alpha_\tau,\alpha_\sigma,\alpha_R\ll 1$ (time–scale separation), target
+$\tau^\star(f_t)=c_\tau\,(2 f_t)^{-1}$, and $\kappa>0$ a design constant
+($R_S$ anisotropy is handled by applying the law axiswise).
+
+\vspace{4pt}
+\noindent\textbf{Assumptions.}
+\begin{enumerate}[label=\textbf{A\arabic*}, leftmargin=2.1em]
+\item \emph{Bounded kinematics and noise.} True specific force and gyro are bounded; sensor noises are zero–mean with bounded covariance. \label{A:bounded}
+\item \emph{OU model validity.} For fixed $(\tau,\sigma_a^2)$, the discrete model for $[v,p,S,a_w]$ uses the exact exponential map (Sec.~\ref{sec:model}) with PSD discrete process covariance $Q_d(\tau,\sigma_a^2)$; the magnetometer model is standard with bounded reference field. \label{A:ou}
+\item \emph{Joseph form.} The covariance update is Joseph–form with symmetry re–projection; process/measurement covariances are positive definite and uniformly bounded away from $0$ and $\infty$.\label{A:joseph}
+\item \emph{Slow adaptation.} There exists $\epsilon\in(0,1)$ such that
+$\alpha_\tau,\alpha_\sigma,\alpha_R=\mathcal{O}(\epsilon)$ while the filter runs at
+sampling period $T_s$. \label{A:slow}
+\item \emph{Well–behaved targets.} The frequency tracker yields $f_t(k)\in[f_\text{min},f_\text{max}]$ with $0<f_\text{min}<f_\text{max}<\infty$; the acceleration variance estimate $\widehat{\mathrm{var}}_a(k)$ is bounded and Lipschitz in time. \label{A:targets}
+\end{enumerate}
+
+\paragraph{Error dynamics at frozen parameters.}
+Let $x_k$ be the true extended state and $\hat{x}_k$ the estimate. With
+parameters $\theta\!\coloneqq\!(\tau,\sigma_a^2,R_S)$ frozen, the linearized estimation error $e_k\!=\!x_k-\hat{x}_k$
+for the translational block (and a standard small–angle vector for attitude)
+evolves as
+\begin{equation}
+e_{k+1} = F(\theta)\,e_k + w_k - K_k(\theta)\,\bigl(H e_k + v_k\bigr),
+\quad
+P_{k+1} = \mathcal{J}\bigl(P_k;\theta\bigr),
+\label{eq:errdynamics}
+\end{equation}
+where $w_k,v_k$ are process/measurement noises, $K_k$ is the Kalman gain,
+$H$ the measurement Jacobian, and $\mathcal{J}$ denotes the Joseph covariance
+recursion with $Q_d(\tau,\sigma_a^2)$ and $R_S$ entering via the pseudo–measurement on $S$.
+By \ref{A:joseph}, $P_k\succeq 0$ for all $k$ and remains bounded.
+
+\begin{lemma}[Mean–square boundedness at frozen $\theta$]
+\label{lem:frozen}
+Under \ref{A:bounded}–\ref{A:joseph}, for any fixed $\theta$ there exists
+$c_1,c_2>0$ such that the Lyapunov function
+$V_e(k)\coloneqq \mathbb{E}\bigl[e_k^\top P_k^{-1} e_k\bigr]$
+satisfies the \emph{stochastic Lyapunov inequality}
+\[
+\Delta V_e \coloneqq V_e(k{+}1)-V_e(k) \le -c_1\,\mathbb{E}\!\left[\|e_k\|^2\right] + c_2,
+\]
+hence $e_k$ is mean–square ultimately bounded (MS–UB). Moreover, with the
+$S$–pseudo–measurement, the integral state $S$ is exponentially mean–square stable.
+\end{lemma}
+\begin{proof}[Sketch]
+Standard discrete Kalman filter theory with Joseph form shows that the innovation is
+a martingale difference and $P_k$ stays bounded and SPD; the $S$–pseudo–measurement adds
+damping on $S$. Completing the squares in the Joseph form yields the stated inequality.
+\end{proof}
+
+\paragraph{Two–time–scale interconnection.}
+Let $\tilde{\theta}_k \!\coloneqq\! \theta_k - \theta_k^\star$, where
+$\theta_k^\star \!=\! \bigl(\tau^\star(f_t(k)), \widehat{\mathrm{var}}_a(k),
+\kappa\,\sigma_{a,k}\tau_k^{3}\bigr)$.
+Write the adaptation compactly as
+\begin{equation}
+\tilde{\theta}_{k+1} = \bigl(I - \Alpha\bigr)\,\tilde{\theta}_k + d_k,
+\qquad
+\Alpha\coloneqq\mathrm{diag}(\alpha_\tau,\alpha_\sigma,\alpha_R),
+\label{eq:param_err}
+\end{equation}
+with a bounded disturbance $d_k$ due to drift of the targets
+(\ref{A:targets}). For $\alpha_i\in(0,1)$ the parameter error subsystem is exponentially input–to–state stable (EISS).
+
+\begin{theorem}[ISS of the slowly–adapted estimator]
+\label{thm:iss}
+Under \ref{A:bounded}–\ref{A:targets}, there exist $\epsilon^\star>0$ and class-$\mathcal{K}\mathcal{L}/\mathcal{K}$ functions
+such that if $\max(\alpha_\tau,\alpha_\sigma,\alpha_R)\le \epsilon^\star$ then the interconnected system
+\eqref{eq:errdynamics}–\eqref{eq:param_err} is input–to–state stable (ISS):
+for all $k$,
+\[
+\|e_k\| \le \beta\bigl(\|e_0\|,k\bigr) + \gamma_1\!\bigl(\|d\|_\infty\bigr) + \gamma_2\!\bigl(\|w\|_\infty{+}\|v\|_\infty\bigr),
+\quad
+\|\tilde{\theta}_k\|\le \beta_\theta\!\bigl(\|\tilde{\theta}_0\|,k\bigr)+\gamma_\theta\!\bigl(\|d\|_\infty\bigr).
+\]
+\end{theorem}
+
+\begin{proof}[Proof sketch (composite Lyapunov)]
+Define the composite function
+\[
+V_k \coloneqq e_k^\top P_k^{-1} e_k \;+\; \tilde{\theta}_k^\top \Alpha^{-1} \tilde{\theta}_k.
+\]
+At frozen $\theta$, Lemma~\ref{lem:frozen} gives
+$\mathbb{E}[V_{k+1}-V_k] \le -c_1 \|e_k\|^2 + c_2$.
+The adaptation step yields
+\(
+\tilde{\theta}_{k+1}^\top \Alpha^{-1} \tilde{\theta}_{k+1}
+= \tilde{\theta}_k^\top \Alpha^{-1} \tilde{\theta}_k
+- \|\tilde{\theta}_k\|^2 + \mathcal{O}(\|\tilde{\theta}_k\|\|d_k\|)+\|d_k\|^2.
+\)
+Because $P_k$ varies slowly with $\theta$ and $Q_d(\tau,\sigma_a^2)$ is smooth and PSD,
+the cross–term variation is $\mathcal{O}(\epsilon)$ by \ref{A:slow}. Choosing
+$\epsilon^\star$ small enough completes a discrete–time singular–perturbation
+argument, giving ISS with ultimate bounds proportional to the noise and target drift.
+\end{proof}
+
+\paragraph{Design implications.}
+\begin{itemize}[leftmargin=1.2em]
+\item \textbf{Time–scale separation.} Select adaptation windows such that
+$\alpha_\bullet \in [T_s/T_\text{adapt},\,2T_s/T_\text{adapt}]$ with
+$T_\text{adapt}\!\gg\! T_s$ (your default $T_\text{adapt}\!\approx\!3\,\mathrm{s}$ at $T_s{=}\!1/240$\,s
+satisfies \ref{A:slow}).
+\item \textbf{Bounds.} Clamp
+$\tau\!\in\![\tau_\text{min},\tau_\text{max}]$, $\sigma_a\!\in\![\sigma_\text{min},\sigma_\text{max}]$,
+$R_S\!\in\![R_{S,\text{min}},R_{S,\text{max}}]$
+to preserve uniform positivity in \ref{A:joseph}; your code already enforces these.
+\item \textbf{Integral drift control.} The $S$–pseudo–measurement creates a direct
+Lyapunov decrement on the $S$–component; the anisotropic choice
+$R_S^{xy}=\rho\,R_S^z$ ($0<\rho<1$) preserves PSD and does not affect the argument.
+\item \textbf{Correlated OU.} Using the Kronecker/SPD $Q_d$ for correlated $a_w$
+does not alter the proof: $Q_d(\tau,\Sigma_{a_w})\succeq 0$ and smooth in $\theta$
+ensures the composite $V_k$ remains valid.
+\end{itemize}
+
+\paragraph{Remark (ultimate bounds).}
+Theorem~\ref{thm:iss} implies mean–square ultimate boundedness:
+there exist constants $B_e,B_\theta$ (computable from $c_1,c_2,\alpha_\bullet$ and noise
+levels) such that $\limsup_{k\to\infty}\mathbb{E}\|e_k\|^2\le B_e$,
+$\limsup_{k\to\infty}\mathbb{E}\|\tilde{\theta}_k\|^2\le B_\theta$.
+In practice, the bounds shrink with slower adaptation (smaller $\alpha_\bullet$),
+better frequency SNR (smaller $\|d\|_\infty$), and tighter $R_S$ on $S$.
+
+\paragraph{Summary.}
+With Joseph form, a PSD discrete OU covariance, a stabilizing $S$ pseudo–measurement,
+and \emph{slow} adaptation of $(\tau,\sigma_a,R_S)$ toward bounded targets, the
+Kalman\,3D fusion is ISS and MS–UB. This formalizes the robustness observed in the simulations
+across JONSWAP and PM–Stokes seas.
+
+
 \section{Conclusion}
 \label{sec:conclusion}
 
