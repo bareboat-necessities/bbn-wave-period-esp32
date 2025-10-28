@@ -1759,14 +1759,6 @@ G_{\rm axis} =
 
 In 3D, this block is replicated across axes by a Kronecker product with $I_3$.
 
-\paragraph{Expected Benefits.}
-The Mat\'ern($3/2$) prior has a power spectral density decaying as $1/\omega^4$,
-significantly ``redder'' than the OU spectrum ($1/\omega^2$). Consequently:
-\begin{itemize}
-\item Displacement variance grows only linearly with $t$, compared to quadratic for OU and cubic for white acceleration.
-\item Integrals exhibit smoother sample paths, with higher-order continuity of acceleration.
-\end{itemize}
-
 \paragraph{Kalman Compatibility.}
 The model is still a finite-dimensional linear SDE with Gaussian forcing, making it
 directly Kalman filter compatible. The only cost is one additional state per axis (18~D for three axes
