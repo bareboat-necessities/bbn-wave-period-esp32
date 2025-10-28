@@ -1,0 +1,65 @@
+\section{Kronecker Structure and Cross-Covariance Propagation}
+
+\subsection{Kronecker Construction of Translational Noise}
+
+The OU-driven translational chain is separable by spatial axis.
+Let $\mathbf{Q}^{(1)}_d$ denote the $4\times4$ discrete covariance for one axis
+as derived in Section~\ref{sec:ou-primitives}.
+For a correlated three-axis driving process with stationary covariance
+$\Sigma_{a_w}$, the full $12\times12$ translational block is constructed as
+\[
+\mathbf{Q}_{LL}
+= (\Sigma_{a_w}^{1/2}\!\otimes I_4)\,
+  (I_3\!\otimes \mathbf{Q}^{(1)}_d)\,
+  (\Sigma_{a_w}^{1/2}\!\otimes I_4)^\top.
+\]
+This Kronecker structure compactly expresses the correlation of OU forcing
+across $x$, $y$, and $z$ directions while preserving the per-axis temporal
+integration dynamics.  In implementation, this is realized by scaling each
+$4\times4$ axis block of $\mathbf{Q}^{(1)}_d$ by the corresponding entry
+$\Sigma_{a_w}(i,j)$ and explicitly symmetrizing the result.
+
+\subsection{Cross-Covariance Evolution Between Subsystems}
+
+Let the covariance be partitioned as
+\[
+P =
+\begin{bmatrix}
+P_{AA} & P_{AL} & P_{A b_a}\\[2pt]
+P_{AL}^\top & P_{LL} & P_{L b_a}\\[2pt]
+P_{A b_a}^\top & P_{L b_a}^\top & P_{b_a b_a}
+\end{bmatrix}.
+\]
+During prediction, the cross terms evolve as
+\begin{align}
+P_{AL}^{+} &= \Phi_{AA}P_{AL}\Phi_{LL}^\top,\\
+P_{A b_a}^{+} &= \Phi_{AA}P_{A b_a},\\
+P_{L b_a}^{+} &= \Phi_{LL}P_{L b_a},
+\end{align}
+and their transposes are restored after symmetrization.  
+These blocks transmit rotational uncertainty into linear motion and bias
+subspaces, ensuring physically correct coupling between orientation drift,
+velocity error, and bias-induced acceleration misalignment.
+
+\subsection{Joseph-Form Update Consistency}
+
+During each measurement update, the full covariance---including
+cross-blocks---is corrected via the Joseph form,
+\[
+P^{+} = P^{-} - K C P^{-} - (K C P^{-})^\top + K R K^\top,
+\]
+so that correlations between attitude and linear states are adjusted
+consistently with the innovation residual.  This preserves observability
+relations: accelerometer updates affect not only attitude but also
+velocity and displacement uncertainty through $P_{AL}$.
+
+\subsection{Numerical Enforcement}
+
+After propagation and update,
+\[
+P \leftarrow \tfrac12(P+P^\top),
+\]
+and the translational block is projected to the nearest positive-semidefinite
+matrix.  These steps prevent loss of symmetry due to finite precision and
+ensure that all cross-covariances remain consistent with the Kronecker-based
+OU noise model.
