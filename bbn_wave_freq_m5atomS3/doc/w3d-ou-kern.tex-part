@@ -1,0 +1,186 @@
+\section*{Appendix B.X: OU Kernel Double-Integral Reduction}
+\label{app:ou-kernel}
+
+We derive the closed-form discrete covariance for the OU-driven axis chain
+$[v,p,S,a]^\top$ over a sampling interval $[0,h]$. Let the latent acceleration
+$a(\cdot)$ be a stationary Ornstein--Uhlenbeck (OU) process with correlation
+time $\tau$ and stationary variance $\sigma_a^2$, so that
+\[
+\mathbb{E}\!\left[a(t)a(s)\right] = \sigma_a^2\,e^{-|t-s|/\tau},\qquad
+t,s\in\mathbb{R}.
+\]
+Define the per-axis state
+\(
+x_L=[v,\,p,\,S,\,a]^\top
+\)
+with continuous dynamics
+\[
+\dot v=a,\qquad \dot p=v,\qquad \dot S=p,\qquad
+\dot a = -\tfrac{1}{\tau} a + \sqrt{\tfrac{2\sigma_a^2}{\tau}}\,\dot w.
+\]
+
+\subsection*{B.X.1  From stochastic integral to kernel double integral}
+Let $G(t)$ be the deterministic impulse responses that map $a(\cdot)$ to $[v,p,S,a]$:
+\[
+\begin{aligned}
+v(t) &= \int_0^t 1\cdot a(s)\,ds,\\
+p(t) &= \int_0^t (t-s)\,a(s)\,ds,\\
+S(t) &= \int_0^t \tfrac{(t-s)^2}{2}\,a(s)\,ds,\\
+a(t) &= \int_0^t e^{-(t-s)/\tau}\,\sqrt{\tfrac{2\sigma_a^2}{\tau}}\,d w(s)\quad
+\text{(It\^o)}, 
+\end{aligned}
+\]
+and for second moments it is convenient to use the deterministic kernel
+vector
+\[
+c(t)=\begin{bmatrix}
+\phi_{va}(t)\\[2pt]\phi_{pa}(t)\\[2pt]\phi_{Sa}(t)\\[2pt]e^{-t/\tau}
+\end{bmatrix}
+\quad\text{with}\quad
+\phi_{va}(t)=\tau(1-e^{-t/\tau}),\;
+\phi_{pa}(t)=\tau t+\tau^2(e^{-t/\tau}-1),\;
+\phi_{Sa}(t)=\tfrac12 t^2-\tau t+\tau^2(1-e^{-t/\tau}).
+\]
+Then the per-axis discrete covariance of the process increment over $[0,h]$ is
+\begin{equation}
+Q_d^{(1)}(h,\tau,\sigma_a^2)
+= \frac{2\sigma_a^2}{\tau}\int_{0}^{h} c(t)\,c(t)^\top dt
+= \frac{2\sigma_a^2}{\tau}\int_{0}^{h}\!\!\int_{0}^{h} e^{-|t-s|/\tau}\,f(t)\,f(s)^\top\,dt\,ds,
+\label{eq:qd1-double}
+\end{equation}
+where $f(t)=[1,\,t,\,t^2/2!,\,a(t)]^\top$ is the building block that produces
+the same entries once the inner convolution with $e^{-|t-s|/\tau}$ is carried
+out.  We will use the single integral on $c(t)$ for compactness, and verify
+equivalence to the double integral by symmetry arguments.
+
+\paragraph{Symmetry reduction.}
+By evenness of $e^{-|t-s|/\tau}$ in $t{-}s$,
+\[
+\int_{0}^{h}\!\!\int_{0}^{h} e^{-|t-s|/\tau}\,\psi(t)\psi(s)\,dt\,ds
+= 2\int_{0}^{h}\!\!\Big(\int_{0}^{t} e^{-(t-s)/\tau}\,\psi(t)\psi(s)\,ds\Big)dt,
+\]
+which is numerically well-conditioned and matches \eqref{eq:qd1-double}.
+
+\subsection*{B.X.2  Cancellation-safe primitives}
+Introduce $x=h/\tau$, $E_1=e^{-x}$, $E_2=e^{-2x}$ and the basic integrals
+\[
+A_0 := \tau(1-E_1),\qquad
+B_0 := \tfrac{\tau}{2}(1-E_2),
+\]
+\[
+I_1 := \int_{0}^{h} t e^{-t/\tau}\,dt
+     = \tau^2\!\big[1 - E_1(1+x)\big],
+\qquad
+I_2 := \int_{0}^{h} t^2 e^{-t/\tau}\,dt
+     = \tau^3\!\big[2 - E_1(2+2x+x^2)\big].
+\]
+Polynomial integrals:
+\(
+\int_0^h t\,dt=\tfrac12 h^2,\,
+\int_0^h t^2 dt=\tfrac13 h^3,\,
+\int_0^h t^3 dt=\tfrac14 h^4,\,
+\int_0^h t^4 dt=\tfrac15 h^5.
+\)
+Useful combinations free of catastrophic cancellation:
+\[
+\int_0^h (1-e^{-t/\tau})\,dt = h - A_0,\quad
+\int_0^h (1-e^{-t/\tau})^2 dt = h - 2A_0 + B_0,
+\]
+\[
+\int_0^h t(1-e^{-t/\tau}) dt = \tfrac12 h^2 - I_1,\quad
+\int_0^h t^2(1-e^{-t/\tau}) dt = \tfrac13 h^3 - I_2.
+\]
+
+\subsection*{B.X.3  Worked example: $Q_{va}$}
+Using the single-integral form,
+\[
+Q_{va} = \frac{2\sigma_a^2}{\tau}\int_0^h \phi_{va}(t)\,e^{-t/\tau}\,dt
+= \frac{2\sigma_a^2}{\tau}\int_0^h \tau(1-e^{-t/\tau})\,e^{-t/\tau}\,dt
+= 2\sigma_a^2 \int_0^h \big(e^{-t/\tau}-e^{-2t/\tau}\big)\,dt.
+\]
+Integrating and simplifying:
+\[
+\int_0^h e^{-t/\tau}dt = A_0,\qquad
+\int_0^h e^{-2t/\tau}dt = B_0,\quad\Rightarrow\quad
+Q_{va} = 2\sigma_a^2 (A_0 - B_0).
+\]
+Equivalently,
+\(
+Q_{va} = \sigma_a^2\,\tau\,(1-E_1)^2
+\)
+since
+\(
+2(A_0 - B_0) = \tau(1-2E_1+E_2) = \tau(1-E_1)^2.
+\)
+This formula is cancellation-safe for small~$x$ and matches the Maclaurin branch.
+
+\subsection*{B.X.4  Sketch: $Q_{vv}$}
+\[
+Q_{vv} = \frac{2\sigma_a^2}{\tau}\int_0^h \phi_{va}(t)^2\,dt
+= \frac{2\sigma_a^2}{\tau}\int_0^h \tau^2\big(1-2e^{-t/\tau}+e^{-2t/\tau}\big)dt
+= 2\sigma_a^2\,\tau\Big[h - 2A_0 + B_0\Big].
+\]
+Expanding for $x\ll1$ reproduces the series used in the small-$x$ branch.
+
+\subsection*{B.X.5  Remaining entries by the same pattern}
+The same algebra (expand the product, integrate each term with the
+primitives above) yields:
+\[
+\boxed{
+\begin{aligned}
+Q_{aa} &= \sigma_a^2(1-E_2),\\
+Q_{va} &= 2\sigma_a^2(A_0 - B_0)=\sigma_a^2\tau(1-E_1)^2,\\
+Q_{vv} &= 2\sigma_a^2\,\tau\,(h - 2A_0 + B_0),\\
+Q_{pa} &= \frac{2\sigma_a^2}{\tau}\big(I_1 + \tau(B_0 - A_0)\big),\\
+Q_{pv} &= \frac{2\sigma_a^2}{\tau}\big(\tau^2(\tfrac12 h^2 - I_1) - \tau^3(h - 2A_0 + B_0)\big),\\
+Q_{pp} &= \frac{2\sigma_a^2}{\tau}\big(\tau^2\tfrac{h^3}{3} + 2\tau^3(I_1 - \tfrac12 h^2) + \tau^4(h - 2A_0 + B_0)\big),\\
+Q_{Sa} &= \frac{2\sigma_a^2}{\tau}\big(\tfrac12 I_2 - \tau I_1 + \tau^2(A_0 - B_0)\big),\\
+Q_{Sv} &= \frac{2\sigma_a^2}{\tau}\big(\tfrac{\tau}{2}(\tfrac{h^3}{3} - I_2) - \tau^2(\tfrac12 h^2 - I_1) + \tau^3(h - 2A_0 + B_0)\big),\\
+Q_{Sp} &= \frac{2\sigma_a^2}{\tau}\big(\tfrac{\tau}{8}h^4 + \tau^2(\tfrac12 I_2 - \tfrac12 h^3) + \tau^3(h^2 - 2 I_1) - \tau^4(h - 2A_0 + B_0)\big),\\
+Q_{SS} &= \frac{2\sigma_a^2}{\tau}\big(\tfrac{1}{20}h^5 - \tfrac{\tau}{4}h^4 + \tau^2(\tfrac{2}{3}h^3 - I_2) - \tau^3 h^2 + 2\tau^3 I_1 + \tau^4(h - 2A_0 + B_0)\big).
+\end{aligned}}
+\]
+
+\subsection*{B.X.6  Equivalence to Van Loan block exponential}
+Let the continuous-time linear SDE be $\dot x = A x + G\,\dot w$ with
+$Q_c = G G^\top$.
+The Van Loan method states that
+\[
+\exp\!\left(
+\begin{bmatrix}
+-A h & Q_c h\\
+0 & A^\top h
+\end{bmatrix}\right)
+=
+\begin{bmatrix}
+\Phi^{-T} & \Phi^{-T} Q_d \\
+0 & \Phi^{\top}
+\end{bmatrix},
+\qquad \Phi=e^{A h},\quad Q_d = \int_{0}^{h}\! \Phi(t)\,Q_c\,\Phi(t)^\top\,dt.
+\]
+For the axis chain $[v,p,S,a]^\top$ with $Q_c = \operatorname{diag}(0,0,0,2\sigma_a^2/\tau)$,
+one recovers exactly the entries above. Hence the kernel double-integral,
+the single-integral in $c(t)$, and the Van Loan block-exponential are all
+analytically equivalent.
+
+\subsection*{B.X.7  Small-$x$ series and numerical robustness}
+For $x=h/\tau\ll1$, use the series
+\(
+E_1=1-x+\tfrac12 x^2-\tfrac16 x^3+\cdots
+\),
+\(
+E_2=1-2x+2x^2-\tfrac{4}{3}x^3+\cdots
+\),
+which imply
+\(
+A_0=\tau(x-\tfrac12 x^2+\tfrac16 x^3-\cdots),\;
+B_0=\tau(x - x^2 + \tfrac{2}{3}x^3-\cdots),
+\)
+and
+\(
+I_1=\tau^2(\tfrac12 x^2 - \tfrac13 x^3 + \cdots),\;
+I_2=\tau^3(\tfrac{2}{3}x^3 - \tfrac{1}{2}x^4 + \cdots).
+\)
+Substituting these into the boxed formulas reproduces the Maclaurin branch
+used in the implementation and avoids cancellation for $x\to 0$.
+
