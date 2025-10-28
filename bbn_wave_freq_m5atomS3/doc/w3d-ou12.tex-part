@@ -1,0 +1,141 @@
+\section*{Appendix A: Practical Assembly of the $12\times12$ OU Covariance (No Kronecker Needed)}
+
+This appendix gives a numerically robust recipe to assemble the translational
+process covariance $\mathbf{Q}_{LL}\in\mathbb{R}^{12\times12}$ for
+$\bigl[\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w\bigr]$ without forming
+explicit Kronecker products.
+
+\subsection*{A.1 Inputs and Axis-Unit Covariance}
+\begin{itemize}
+  \item Sampling step $h>0$, OU time constant $\tau>0$.
+  \item Stationary covariance of the latent acceleration
+        $\Sigma_{a_w}\in\mathbb{R}^{3\times3}$ (not necessarily diagonal).
+  \item The per-axis discrete covariance
+        $\mathbf{Q}^{(1)}_d(h,\tau,\sigma^2)\in\mathbb{R}^{4\times4}$ for
+        the chain $[v,p,S,a]^\top$ driven by an OU process with
+        stationary variance $\sigma^2$, obtained in closed form (with small
+        $x=h/\tau$ series fallback).
+\end{itemize}
+Define the \emph{unit-variance} per-axis block (set $\sigma^2=1$)
+\[
+\mathbf{Q}_{\text{axis}} \;\coloneqq\; \mathbf{Q}^{(1)}_d(h,\tau,1)\in\mathbb{R}^{4\times4}.
+\]
+Apply explicit symmetrization as hygiene:
+\(
+\mathbf{Q}_{\text{axis}} \leftarrow \tfrac{1}{2}
+(\mathbf{Q}_{\text{axis}}+\mathbf{Q}_{\text{axis}}^\top)
+\).
+
+\subsection*{A.2 Build the $12\times12$ Block Matrix in Axis-Packed Layout}
+Work first in the axis-packed order
+\[
+[v_x,p_x,S_x,a_x \mid v_y,p_y,S_y,a_y \mid v_z,p_z,S_z,a_z],
+\]
+where the matrix naturally decomposes into $3\times3$ blocks of size $4\times4$.
+Scale each $4\times4$ block by the corresponding entry of the (symmetrized)
+acceleration covariance:
+\[
+\mathbf{Q}_{\mathrm{axis\mbox{-}packed}}[i,j] \;=\;
+\bigl(\tfrac{1}{2}(\Sigma_{a_w}+\Sigma_{a_w}^\top)\bigr)_{ij}\;\mathbf{Q}_{\text{axis}},
+\qquad i,j\in\{x,y,z\}.
+\]
+Concretely,
+\[
+\mathbf{Q}_{\mathrm{axis\mbox{-}packed}}
+=
+\begin{bmatrix}
+\Sigma_{xx}\mathbf{Q}_{\text{axis}} &
+\Sigma_{xy}\mathbf{Q}_{\text{axis}} &
+\Sigma_{xz}\mathbf{Q}_{\text{axis}}\\[2pt]
+\Sigma_{yx}\mathbf{Q}_{\text{axis}} &
+\Sigma_{yy}\mathbf{Q}_{\text{axis}} &
+\Sigma_{yz}\mathbf{Q}_{\text{axis}}\\[2pt]
+\Sigma_{zx}\mathbf{Q}_{\text{axis}} &
+\Sigma_{zy}\mathbf{Q}_{\text{axis}} &
+\Sigma_{zz}\mathbf{Q}_{\text{axis}}
+\end{bmatrix}.
+\]
+This is algebraically equivalent to
+\(
+(\Sigma_{a_w}\otimes \mathbf{Q}_{\text{axis}})
+\)
+but avoids forming the Kronecker product explicitly.
+
+\subsection*{A.3 Permute to State-Contiguous Layout}
+The filter’s state layout is grouped by \emph{state kind}, not by axis:
+\[
+[\;v_x,v_y,v_z\;\mid\;p_x,p_y,p_z\;\mid\;S_x,S_y,S_z\;\mid\;a_x,a_y,a_z\;].
+\]
+Define the permutation that maps axis-packed indices
+\(
+\{0{:}11\}=\{v_x,p_x,S_x,a_x,\ v_y,p_y,S_y,a_y,\ v_z,p_z,S_z,a_z\}
+\)
+to state-contiguous indices
+\(
+\{v_x,v_y,v_z,\ p_x,p_y,p_z,\ S_x,S_y,S_z,\ a_x,a_y,a_z\}
+\).
+One convenient mapping is
+\[
+\pi = (0,4,8,\ 1,5,9,\ 2,6,10,\ 3,7,11),
+\]
+i.e.
+\[
+\begin{aligned}
+&0\!\to\!0,\; 4\!\to\!1,\; 8\!\to\!2, &&\text{(all $v$)}\\
+&1\!\to\!3,\; 5\!\to\!4,\; 9\!\to\!5, &&\text{(all $p$)}\\
+&2\!\to\!6,\; 6\!\to\!7,\;10\!\to\!8, &&\text{(all $S$)}\\
+&3\!\to\!9,\; 7\!\to\!10,\;11\!\to\!11. &&\text{(all $a$)}
+\end{aligned}
+\]
+Let $P_\pi$ be the $12\times12$ permutation matrix that reorders rows/cols by
+$\pi$. Then
+\[
+\boxed{\;
+\mathbf{Q}_{LL} \;=\; P_\pi\,\mathbf{Q}_{\mathrm{axis\mbox{-}packed}}\,P_\pi^\top.
+\;}
+\]
+
+\subsection*{A.4 Final Hygiene: Symmetrize and PSD-Project}
+To counter roundoff and ensure numerical robustness:
+\[
+\mathbf{Q}_{LL} \leftarrow \tfrac{1}{2}(\mathbf{Q}_{LL}+\mathbf{Q}_{LL}^\top).
+\]
+Optionally project to the nearest PSD matrix by eigenvalue flooring:
+if $\mathbf{Q}_{LL} = V\Lambda V^\top$ then
+\(
+\Lambda \leftarrow \max(\Lambda,\varepsilon I)
+\)
+with a tiny $\varepsilon$ (e.g.\ $10^{-16}$), and
+\(
+\mathbf{Q}_{LL}\leftarrow V\Lambda V^\top
+\).
+This mirrors the implementation’s guarded eigensolvers.
+
+\subsection*{A.5 Notes on Small $h/\tau$ and Stability}
+\begin{itemize}
+  \item For $x=h/\tau\ll1$, compute $\mathbf{Q}_{\text{axis}}$ using
+        Maclaurin series (up to $O(x^5)$) and \texttt{expm1}/\texttt{fma}
+        combinations to avoid cancellation.
+  \item Always sanitize inputs:
+        symmetrize $\Sigma_{a_w}$, clamp its eigenvalues to a tiny positive
+        floor before use, and guard $\tau$ away from zero.
+  \item The procedure above is algebraically identical to
+        \(
+        (\Sigma_{a_w}^{1/2}\!\otimes I_4)\,
+        (I_3\!\otimes \mathbf{Q}^{(1)}_d)\,
+        (\Sigma_{a_w}^{1/2}\!\otimes I_4)^\top
+        \),
+        but avoids explicit square roots or Kronecker expansion.
+\end{itemize}
+
+\subsection*{A.6 Sanity Checks}
+\begin{enumerate}
+  \item If $\Sigma_{a_w}=\sigma^2 I_3$, then
+        $\mathbf{Q}_{LL}=\sigma^2\,\mathrm{blkdiag}
+        (\mathbf{Q}_{\text{axis}},\mathbf{Q}_{\text{axis}},\mathbf{Q}_{\text{axis}})$
+        (up to the permutation).
+  \item As $\tau\to\infty$ (very slow OU), $\mathbf{Q}_{\text{axis}}$ approaches
+        the integrated white-noise covariance of a constant-acceleration model.
+  \item As $\tau\to 0^+$, the OU reduces toward white acceleration; $\mathbf{Q}_{\text{axis}}$
+        tends to the standard integrated white process with step $h$.
+\end{enumerate}
