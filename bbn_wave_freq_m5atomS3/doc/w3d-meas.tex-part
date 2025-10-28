@@ -1,0 +1,114 @@
+\section{Measurement Model}
+
+The filter employs three complementary measurement channels:
+the accelerometer, the magnetometer, and a zero-valued
+pseudo-measurement on the integral displacement~$\mathbf{S}$.
+Each provides an independent correction pathway for attitude
+and translational drift.
+
+\subsection{Accelerometer Model}
+
+The specific force measured in the body frame is modeled as
+\begin{equation}
+\label{eq:acc-meas}
+\mathbf{f}_b
+= \mathbf{R}_{wb}\,(\mathbf{a}_w - \mathbf{g}_w)
+  + \mathbf{b}_a(T)
+  + \mathbf{n}_a,
+\end{equation}
+where
+\begin{itemize}
+  \item $\mathbf{R}_{wb}$ is the world-to-body rotation matrix
+        corresponding to quaternion~$q$,
+  \item $\mathbf{g}_w = [0,\,0,\,g]^\top$ is the gravity vector
+        in world coordinates ($g=9.80665~\mathrm{m/s^2}$),
+  \item $\mathbf{a}_w$ is the latent OU world acceleration,
+  \item $\mathbf{b}_a(T) = \mathbf{b}_{a0}
+        + \mathbf{k}_a\,(T - T_\mathrm{ref})$
+        represents the temperature-dependent accelerometer bias,
+  \item $\mathbf{n}_a \sim \mathcal{N}(\mathbf{0},\,\mathbf{R}_a)$
+        is white measurement noise.
+\end{itemize}
+
+The corresponding Jacobians, consistent with the
+right-multiplicative attitude convention, are
+\begin{align}
+\frac{\partial \mathbf{f}_b}{\partial \boldsymbol{\theta}}
+  &= -[\mathbf{f}_b]_\times, &
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{a}_w}
+  &= \mathbf{R}_{wb}, &
+\frac{\partial \mathbf{f}_b}{\partial \mathbf{b}_a}
+  &= \mathbf{I}_3.
+\end{align}
+
+The accelerometer update corrects both attitude and the OU acceleration
+state, maintaining the physical coupling between tilt, gravity alignment,
+and translational excitation.
+
+\subsection{Magnetometer Model}
+
+The predicted magnetic field in the body frame is
+\begin{equation}
+\label{eq:mag-meas}
+\mathbf{m}_b = \mathbf{R}_{wb}\,\mathbf{B}_w + \mathbf{n}_m,
+\end{equation}
+where $\mathbf{B}_w$ is the calibrated magnetic reference vector
+expressed in world coordinates (usually defined by local
+declination~$D$ and inclination~$I$), and
+$\mathbf{n}_m \sim \mathcal{N}(\mathbf{0},\,\mathbf{R}_m)$
+is magnetometer noise.
+
+Linearization yields the attitude Jacobian
+\begin{equation}
+\frac{\partial \mathbf{m}_b}{\partial \boldsymbol{\theta}}
+  = -[\mathbf{m}_b]_\times,
+\end{equation}
+providing yaw observability once roll and pitch are
+stabilized by the accelerometer channel.
+
+\subsection{Integral Pseudo-Measurement}
+
+To constrain long-term drift of the triple-integrated position
+state~$\mathbf{S}$, the filter applies a zero-valued
+pseudo-measurement:
+\begin{equation}
+\label{eq:zero-pseudo}
+\mathbf{z}_S = \mathbf{0}
+= \mathbf{S} + \mathbf{n}_S,
+\end{equation}
+with covariance $\mathbf{R}_S = \mathrm{diag}(\sigma_{Sx}^2,
+\sigma_{Sy}^2, \sigma_{Sz}^2)$.
+This enforces a soft regularization of displacement drift while
+retaining dynamic responsiveness to low-frequency swell motion.
+The corresponding measurement Jacobian is simply
+\begin{equation}
+\frac{\partial \mathbf{z}_S}{\partial \mathbf{S}} = \mathbf{I}_3.
+\end{equation}
+
+\subsection{Unified Measurement Update}
+
+Each measurement channel is processed through the standard
+linearized Kalman update
+\begin{align}
+\mathbf{r} &= \mathbf{z} - h(\hat{\mathbf{x}}_{k|k-1}),\\
+\mathbf{S} &= \mathbf{C}\,\mathbf{P}\,\mathbf{C}^\top + \mathbf{R},\\
+\mathbf{K} &= \mathbf{P}\,\mathbf{C}^\top\,\mathbf{S}^{-1},\\
+\hat{\mathbf{x}}_{k|k}
+ &= \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}\,\mathbf{r},\\
+\mathbf{P}_{k|k}
+ &= (\mathbf{I}-\mathbf{K}\mathbf{C})\,\mathbf{P}_{k|k-1}\,
+    (\mathbf{I}-\mathbf{K}\mathbf{C})^\top
+    + \mathbf{K}\,\mathbf{R}\,\mathbf{K}^\top,
+\end{align}
+where $\mathbf{C}$ is the linearized measurement Jacobian.
+The Joseph-form covariance update above ensures symmetry and
+positive semidefiniteness under finite precision.
+
+After each correction, the small-angle attitude increment
+$\delta\boldsymbol{\theta}$ is converted back into a unit quaternion
+via
+\[
+q \leftarrow q \otimes \exp_q(\tfrac{1}{2}\delta\boldsymbol{\theta}),
+\qquad \delta\boldsymbol{\theta} \leftarrow \mathbf{0},
+\]
+closing the multiplicative EKF loop on~$SO(3)$.
