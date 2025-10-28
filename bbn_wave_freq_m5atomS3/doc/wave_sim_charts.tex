@@ -614,15 +614,15 @@
 \begin{tabular}{p{1.7cm}ccccccccc p{3.0cm}}
 \toprule
 \textbf{Sea\\type} &
-\textbf{$H_s$\\[m]} &
-\textbf{$f_t$\\[Hz]} &
-\textbf{$\tau_{\text{appl}}$\\[s]} &
-\textbf{$\sigma_a$\\[m/s$^2$]} &
+\textbf{$H_s$\\(m)} &
+\textbf{$f_t$\\(Hz)} &
+\textbf{$\tau_{\text{appl}}$\\(s)} &
+\textbf{$\sigma_a$\\(m/s$^2$)} &
 \textbf{$R_S$} &
-\textbf{RMS$_X$\\[\%\,$H_s$]} &
-\textbf{RMS$_Y$\\[\%\,$H_s$]} &
-\textbf{RMS$_Z$\\[\%\,$H_s$]} &
-\textbf{RMS$_{\text{att}}$\\[deg]} &
+\textbf{RMS$_X$\\(\%\,$H_s$)} &
+\textbf{RMS$_Y$\\(\%\,$H_s$)} &
+\textbf{RMS$_Z$\\(\%\,$H_s$)} &
+\textbf{RMS$_{\text{att}}$\\(deg)} &
 \textbf{Comments}\\
 \midrule
 JONSWAP & 0.27 & 0.59 & 1.57 & 0.50 & 4.86 &
@@ -630,24 +630,24 @@ JONSWAP & 0.27 & 0.59 & 1.57 & 0.50 & 4.86 &
 Excellent low-sea stability \\[2pt]
 JONSWAP & 1.50 & 0.31 & 1.84 & 1.12 & 17.3 &
 13.3 & 6.0 & \textbf{2.9} & 0.08 &
-Optimal $\tau$–$\sigma$ matching \\[2pt]
+Optimal $\tau$--$\sigma$ matching \\[2pt]
 JONSWAP & 4.00 & 0.27 & 2.07 & 1.59 & 35.1 &
 27.6 & 13.5 & \textbf{5.4} & 0.09 &
-Within 5–6\%\,$H_s$ vertical band \\[2pt]
+Within 5--6\%\,$H_s$ vertical band \\[2pt]
 JONSWAP & 8.50 & 0.29 & 2.33 & 2.09 & 40.0 &
 17.8 & 12.2 & \textbf{5.6} & 0.12 &
 Stable at extreme seas \\[2pt]
 \midrule
-PM–Stokes & 0.27 & 0.57 & 1.49 & 0.57 & 4.71 &
+PM--Stokes & 0.27 & 0.57 & 1.49 & 0.57 & 4.71 &
 34.1 & 8.6 & \textbf{5.7} & 0.58 &
 Slightly under-damped low sea \\[2pt]
-PM–Stokes & 1.50 & 0.52 & 1.80 & 1.24 & 18.2 &
+PM--Stokes & 1.50 & 0.52 & 1.80 & 1.24 & 18.2 &
 29.4 & 7.7 & \textbf{3.7} & 1.39 &
 Nominal tuning convergence \\[2pt]
-PM–Stokes & 4.00 & 0.51 & 2.05 & 1.72 & 37.1 &
+PM--Stokes & 4.00 & 0.51 & 2.05 & 1.72 & 37.1 &
 20.8 & 9.3 & \textbf{5.7} & 1.77 &
-Correct $\tau$–$R_S$ scaling \\[2pt]
-PM–Stokes & 8.50 & 0.45 & 2.38 & 2.14 & 40.0 &
+Correct $\tau$--$R_S$ scaling \\[2pt]
+PM--Stokes & 8.50 & 0.45 & 2.38 & 2.14 & 40.0 &
 23.7 & 11.6 & \textbf{9.8} & 2.96 &
 Yaw dominated by mag delay \\
 \bottomrule
@@ -666,40 +666,40 @@ Yaw dominated by mag delay \\
 \begin{tabular}{p{2.8cm}cccccp{4.5cm}}
 \toprule
 \textbf{System} &
-\textbf{Vert.\ RMS\\[\%\,$H_s$]} &
-\textbf{Horiz.\ RMS\\[\%\,$H_s$]} &
-\textbf{Att.\ RMS\\[deg]} &
-\textbf{Rate\\[Hz]} &
+\textbf{Vert.\ RMS\\(\%\,$H_s$)} &
+\textbf{Horiz.\ RMS\\(\%\,$H_s$)} &
+\textbf{Att.\ RMS\\(deg)} &
+\textbf{Rate\\(Hz)} &
 \textbf{Inputs} &
 \textbf{Reference / Notes}\\
 \midrule
 \textbf{SeaStateFusion (KalmANF vOct27)} &
-\textbf{3–6} & 8–25 & 0.05–3.0 & 240 &
+\textbf{3--6} & 8--25 & 0.05--3.0 & 240 &
 IMU (acc, gyro, mag) &
-This work: analytic OU–Joseph MEKF, auto-tuned $\sigma_a\tau^3$ law \\[2pt]
+This work: analytic OU--Joseph MEKF, auto-tuned $\sigma_a\tau^3$ law \\[2pt]
 Sofar \textbf{Spotter G2} &
-5–10 & 10–30 & 0.2–2.0 & 2–10 &
+5--10 & 10--30 & 0.2--2.0 & 2--10 &
 IMU + GPS + barometer &
 Datasheet 2023; NOAA PacIOOS field test \\[2pt]
 Datawell \textbf{DWR-MkIII} &
-4–8 & 15–25 & 0.1–1.0 & 1.28 &
+4--8 & 15--25 & 0.1--1.0 & 1.28 &
 Accelerometer + tilt + compass &
 Manufacturer manual (2022) \\[2pt]
 AXYS \textbf{TriAxys NextWave} &
-4–7 & 10–25 & 0.1–1.5 & 2 &
+4--7 & 10--25 & 0.1--1.5 & 2 &
 IMU + GPS RTK + magnetometer &
 AXYS Tech White Paper (2021) \\[2pt]
 MicroStrain \textbf{3DM-GX5-45} &
-6–12 & 15–35 & 0.5–2.0 & 100–200 &
+6--12 & 15--35 & 0.5--2.0 & 100--200 &
 IMU + magnetometer &
 Lab/field trials (2020) \\[2pt]
 \midrule
 \textbf{Typical commercial mean} &
-5–10 & 10–30 & 0.2–2.0 & 1–10 &
+5--10 & 10--30 & 0.2--2.0 & 1--10 &
 Mixed IMU/GPS/mag &
-Industry average (2020–24) \\[2pt]
+Industry average (2020--2024) \\[2pt]
 \textbf{This work (IMU-only)} &
-\textbf{3–6} & \textbf{8–25} & \textbf{0.05–3.0} &
+\textbf{3--6} & \textbf{8--25} & \textbf{0.05--3.0} &
 \textbf{240} & \textbf{IMU-only fusion} &
 Outperforms average commercial RMS (Z-axis and stability) \\
 \bottomrule
