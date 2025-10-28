@@ -1,0 +1,130 @@
+\section{Time Update}
+
+At each sampling interval~$h$, the filter performs a discrete-time prediction
+that advances both attitude and translational states according to the system's
+continuous dynamics.  The update couples the quaternion kinematics of body
+rotation with an Ornstein–Uhlenbeck (OU) process driving the latent
+world-frame acceleration.  The procedure ensures consistent propagation of
+mean and covariance under finite sampling, while maintaining numerical
+stability for small~$h/\tau$.
+
+\subsection{Attitude Propagation}
+
+The body angular velocity measurement~$\boldsymbol{\omega}_b$ is corrected for
+the current bias estimate~$\mathbf{b}_g$, yielding the bias-compensated rate
+\[
+\boldsymbol{\omega}
+= \boldsymbol{\omega}_b - \mathbf{b}_g.
+\]
+The quaternion describing the world-to-body rotation is advanced using the
+right-multiplicative exponential map
+\begin{equation}
+q_{k+1} = q_k \otimes
+          \exp_q\!\left(\tfrac{1}{2}\,\boldsymbol{\omega}\,h\right),
+\end{equation}
+where $\exp_q(\cdot)$ denotes the quaternion exponential.
+For small rotation increments $\|\boldsymbol{\omega}h\|\!\ll\!1$,
+a second-order Maclaurin approximation is applied to avoid division by
+near-zero angles and loss of orthogonality.
+
+The corresponding local linearization of the attitude error is represented
+by the transition submatrix
+\[
+\mathbf{F}_{\theta\theta}
+\simeq \mathbf{I}_3 - [\boldsymbol{\omega}]_\times h
+     + \tfrac{1}{2}[\boldsymbol{\omega}]_\times^2 h^2,
+\]
+which retains the correct skew-symmetric structure and preserves covariance
+consistency in the small-angle limit.  When the gyroscope bias is estimated,
+the cross-term $\mathbf{F}_{\theta b_g} = -\mathbf{I}_3 h$
+accounts for coupling between bias uncertainty and orientation drift.
+
+\subsection{Linear Translational Propagation}
+
+The translational subsystem evolves under the OU-driven process
+\begin{equation}
+\dot{\mathbf{v}} = \mathbf{a}_w, \qquad
+\dot{\mathbf{p}} = \mathbf{v}, \qquad
+\dot{\mathbf{S}} = \mathbf{p}, \qquad
+\dot{\mathbf{a}}_w = -\tfrac{1}{\tau_{a_w}}\mathbf{a}_w
+                     + \boldsymbol{\eta}(t),
+\label{eq:ou-chain}
+\end{equation}
+where $\boldsymbol{\eta}(t)$ is zero-mean white noise with stationary
+covariance $\Sigma_{a_w}$.
+Exact moment matching over the interval~$h$ gives the discrete transition
+\[
+\begin{bmatrix}
+\mathbf{v}\\[2pt]\mathbf{p}\\[2pt]\mathbf{S}\\[2pt]\mathbf{a}_w
+\end{bmatrix}_{k+1}
+=
+\Phi_{L}(h,\tau_{a_w})
+\begin{bmatrix}
+\mathbf{v}\\[2pt]\mathbf{p}\\[2pt]\mathbf{S}\\[2pt]\mathbf{a}_w
+\end{bmatrix}_{k},
+\]
+with block structure
+\begin{equation}
+\Phi_{L}(h,\tau)
+=
+\begin{bmatrix}
+\mathbf{I}_3 & 0 & 0 & \phi_{va}\mathbf{I}_3\\[3pt]
+h\mathbf{I}_3 & \mathbf{I}_3 & 0 & \phi_{pa}\mathbf{I}_3\\[3pt]
+\tfrac{1}{2}h^2\mathbf{I}_3 & h\mathbf{I}_3 & \mathbf{I}_3 & \phi_{Sa}\mathbf{I}_3\\[3pt]
+0 & 0 & 0 & e^{-h/\tau}\mathbf{I}_3
+\end{bmatrix}.
+\end{equation}
+The coefficients $\phi_{va}$, $\phi_{pa}$, and $\phi_{Sa}$ are defined by
+\begin{align}
+\phi_{va} &= \tau(1 - e^{-h/\tau}),\\
+\phi_{pa} &= \tau^2\!\left(\tfrac{h}{\tau} + e^{-h/\tau} - 1\right),\\
+\phi_{Sa} &= \tau^3\!\left(\tfrac{1}{2}\!\left(\tfrac{h}{\tau}\right)^2
+              - \tfrac{h}{\tau} - (e^{-h/\tau}-1)\right),
+\end{align}
+with high-order series expansions substituted when $h/\tau$ is small.
+
+\subsection{Discrete Process Covariance}
+
+The OU spectral density yields a closed-form discrete covariance for
+$\bigl[\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w\bigr]$:
+\[
+\mathbf{Q}_L(h,\tau,\Sigma_{a_w})
+= \frac{2}{\tau}\,
+  \Sigma_{a_w}\,\mathcal{K}(h,\tau),
+\]
+where $\mathcal{K}$ is the matrix of integrated exponential kernels.
+If $\Sigma_{a_w}$ contains horizontal–vertical correlations,
+the full $12\times12$ block covariance is constructed as
+\[
+\mathbf{Q}_{LL}
+= \Sigma_{a_w}^{1/2} \otimes \mathbf{Q}_L^{(1)}
+  \bigl(\Sigma_{a_w}^{1/2}\bigr)^\top,
+\]
+and projected to the nearest positive semidefinite form to maintain
+numerical stability.
+
+\subsection{Bias and Cross-Covariance Propagation}
+
+Bias states evolve as independent random walks with continuous power
+spectral densities $\mathbf{Q}_{b_g}$ and $\mathbf{Q}_{b_a}$.
+Their covariances are incremented linearly with~$h$, and cross terms with
+attitude and linear blocks are propagated using the same transition
+submatrices as in the main system.
+
+\subsection{Covariance Propagation and Symmetry Enforcement}
+
+Combining all subsystems, the prior covariance at step~$k{+}1$ is computed as
+\begin{equation}
+P_{k+1|k}
+= \Phi P_{k|k} \Phi^\top + Q,
+\end{equation}
+where $\Phi$ is block-diagonal in attitude and linear subsystems,
+and $Q$ contains $\mathbf{Q}_{LL}$ along with the bias random-walk terms.
+To counteract rounding asymmetry, the matrix is explicitly symmetrized:
+\[
+P_{k+1|k} \leftarrow \tfrac{1}{2}
+  (P_{k+1|k} + P_{k+1|k}^\top).
+\]
+This guarantees positive semidefiniteness of $P$ within numerical precision
+and prevents divergence of the filter during long autonomous propagation.
+
