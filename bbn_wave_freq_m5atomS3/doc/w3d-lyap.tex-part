@@ -145,3 +145,95 @@ $\hat\tau\!\in[\underline\tau,\overline\tau]$.
 \item \textbf{Anisotropy:} $R_S=\mathrm{diag}(k_x,k_y,k_z)\,\sigma_a\tau^3$ with $k_x,k_y\!\ll\!k_z$ is admissible; the proof is unchanged.
 \end{enumerate}
 
+
+\section*{Appendix: Why $R_S \propto \sigma_a \tau^3$ (Dimensional and Energy Justification)}
+\label{app:rs-scaling}
+
+\paragraph{Notation and units.}
+Throughout, $a_w$ is the OU driver with stationary standard deviation $\sigma_a$ and correlation time $\tau$,
+\[
+\dot a_w = -\tfrac{1}{\tau} a_w + \sqrt{q_c}\,w, \qquad q_c = \tfrac{2\sigma_a^2}{\tau}.
+\]
+The linear chain is $\dot v = a_w$, $\dot p = v$, $\dot S = p$,
+so $S$ is the \emph{triple time integral} of $a_w$.
+In code, the pseudo-measurement is $z_S = S + n_S$, and the implementation sets a
+\emph{standard deviation} parameter $R_S$; the Kalman covariance uses \(R_S^2\).
+Thus $R_S$ has units of $[S] = \mathrm{m\cdot s}$ and $R_S^2$ has units $\mathrm{m^2 s^2}$.
+
+\begin{lemma}[Dimensional scaling]\label{lem:dim}
+A typical excursion scale of $S$ over one correlation time $\tau$ is
+\(
+\|S\|_{\text{typ}} = \mathcal{O}(\sigma_a \tau^3).
+\)
+\end{lemma}
+
+\begin{proof}
+Over a correlation time $\tau$, $a_w$ is of order $\sigma_a$.
+A single integration over duration $\tau$ yields $v \sim \sigma_a \tau$,
+a second integration $p \sim \sigma_a \tau^2$, and a third $S \sim \sigma_a \tau^3$.
+This argument matches the units: $[\sigma_a] = \mathrm{m/s^2}$, hence
+$[\sigma_a \tau^3] = \mathrm{m\cdot s} = [S]$.
+\end{proof}
+
+\paragraph{Implication for a measurement noise \emph{standard deviation}.}
+Because the innovation term for $S$ penalizes $S^2/R_S^2$, a natural choice that
+keeps the innovation SNR roughly sea-state invariant is to pick
+\[
+\boxed{\,R_S \;\propto\; \sigma_a \tau^3\,}.
+\]
+Equivalently, the covariance used by the filter scales as \(R_S^2 \propto \sigma_a^2 \tau^6\).
+
+\begin{lemma}[Spectral (PSD) justification with OU cutoff]\label{lem:psd}
+Let $S_a(\omega)$ be the PSD of $a_w$: \(S_a(\omega) = \frac{2\sigma_a^2 \tau}{1+\omega^2\tau^2}\).
+The frequency response from $a_w$ to $S$ is $H_S(j\omega)=1/(j\omega)^3$.
+Approximating the effective low-frequency cutoff by the OU pole, $\omega_{\min}\!\asymp\! 1/\tau$,
+the band-limited variance of $S$ is
+\[
+\operatorname{Var}[S]
+\;\approx\; \frac{1}{2\pi}\int_{\omega_{\min}}^{\infty} |H_S(j\omega)|^2\,S_a(\omega)\,d\omega
+\;=\; \frac{1}{2\pi}\!\int_{1/\tau}^{\infty} \frac{2\sigma_a^2\tau}{(1+\omega^2\tau^2)\,\omega^6}\,d\omega
+\;=\; \Theta\!\big(\sigma_a^2 \tau^6\big).
+\]
+More precisely, replacing $1+\omega^2\tau^2$ by $\omega^2\tau^2$ beyond $1/\tau$ gives
+\[
+\operatorname{Var}[S] \;\approx\; \frac{\sigma_a^2 \tau}{\pi}\!\int_{1/\tau}^{\infty} \frac{d\omega}{\omega^6}
+\;=\; \frac{\sigma_a^2 \tau}{\pi}\cdot \frac{1}{5}\,\Big(\frac{1}{\omega^5}\Big)\Big|_{1/\tau}^{\infty}
+\;=\; \frac{\sigma_a^2 \tau^6}{5\pi}.
+\]
+Hence the \emph{standard deviation} scales as
+\(
+\sqrt{\operatorname{Var}[S]} \;\asymp\; C\,\sigma_a \tau^3
+\)
+for a numerical constant $C=\sqrt{1/(5\pi)}$ under this crude cutoff model.
+\end{lemma}
+
+\begin{proof}
+The calculation is shown inline; it uses $|H_S|^2=1/\omega^6$ and the fact that the OU pole at
+$1/\tau$ supplies the effective low-frequency regularization. Any sharper low-frequency model
+(windowed observation, pseudo-measurement, or discrete sampling) produces the same \(\tau^6\) scaling.
+\end{proof}
+
+\paragraph{Corollary (sea-state invariant weighting).}
+Combining Lemma~\ref{lem:dim} and Lemma~\ref{lem:psd}, taking \(R_S\) as a \emph{standard deviation}
+and the Kalman using \(R_S^2\) as the covariance, the choice
+\[
+R_S \;=\; k_i\,\sigma_a \tau^3
+\quad\Longleftrightarrow\quad
+R_S^2 \;=\; k_i^2\,\sigma_a^2 \tau^6
+\]
+keeps the measurement SNR of $S$ approximately invariant under changes in sea-state energy
+($\sigma_a$) and correlation time ($\tau$), while remaining dimensionally consistent.
+
+\paragraph{Relation to the discrete analytic $Q_d^{(1)}$ block.}
+The closed-form $Q_d^{(1)}(h,\tau,\sigma_a^2)$ for the per-axis OU chain (Sec.~\ref{sec:analytic})
+yields entries in the $S$–row/column that are polynomials in $h$ multiplied by powers of $\tau$.
+For any fixed sampling step $h$ and $\tau$ not too small relative to $h$ (your regime),
+the dominant dependence is \(\operatorname{Var\_inj}[S] \sim \sigma_a^2 \tau^6 \cdot \psi(h/\tau)\)
+with a dimensionless $\psi(\cdot)$ bounded on compact sets.
+Thus the spectral and dimensional arguments agree with the exact discrete formulas
+up to a bounded factor $\psi$ that you absorb into the empirical coefficient \(k_i\).
+
+\paragraph{Anisotropy.}
+If vertical motion dominates ($z$), choosing $k_x,k_y \ll k_z$ implements weaker pseudo-measurement
+weighting in $x,y$. The scaling with \(\sigma_a \tau^3\) remains valid per-axis; anisotropy only
+changes the constants \(k_i\).
