@@ -24,7 +24,8 @@
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\T}{\mathsf{T}}
 \newcommand{\I}{\mat{I}}
-\newcommand{\skew}[1]{\left[ #1 \right]_\times}
+% Renamed to avoid conflict with TeX primitive \skew
+\newcommand{\skx}[1]{\left[ #1 \right]_\times}
 
 \title{A Multiplicative EKF with Latent Ornstein--Uhlenbeck Acceleration\\
 for Drift-Robust Wave Kinematics: Full Mathematical Specification,\\
@@ -97,7 +98,7 @@ Let \(\quat{q}\) be the world\(\to\)body quaternion and
 with standard Maclaurin guards for \(\|\vect{r}\|\ll 1\).
 The skew operator for \(\vect{x}=[x\,y\,z]^\T\) is
 \begin{equation}
-  \skew{\vect{x}} \;=\;
+  \skx{\vect{x}} \;=\;
   \begin{bmatrix}
     0 & -z & y\\ z & 0 & -x\\ -y & x & 0
   \end{bmatrix}.
@@ -112,7 +113,7 @@ Let \(\vect{\omega}_b\) be the measured body angular rate and
 \begin{align}
   \dot{\quat{q}} &= \tfrac12\, \quat{q} \otimes \begin{bmatrix} 0 \\ \vect{\omega} \end{bmatrix},
   \label{eq:qdot}\\
-  \dot{\delta\vect{\theta}} &= -\,\skew{\vect{\omega}}\,\delta\vect{\theta} - \delta\vect{b}_g + \vect{\nu}_g,
+  \dot{\delta\vect{\theta}} &= -\,\skx{\vect{\omega}}\,\delta\vect{\theta} - \delta\vect{b}_g + \vect{\nu}_g,
   \quad
   \dot{\vect{b}}_g \;=\; \vect{\xi}_g,
   \label{eq:theta-bg-ct}
@@ -150,7 +151,7 @@ Let \(\mat{R}_{wb}(\quat{q})\) be the world\(\to\)body rotation.
 Right-multiplicative attitude linearization (\Cref{app:att-jac}) gives
 \begin{equation}
   \frac{\partial \vect{f}_b}{\partial \delta\vect{\theta}}
-  \;=\; -\,\skew{\vect{f}_b^{\mathrm{pred}}}, \quad
+  \;=\; -\,\skx{\vect{f}_b^{\mathrm{pred}}}, \quad
   \frac{\partial \vect{f}_b}{\partial \vect{a}_w} \;=\; \mat{R}_{wb}, \quad
   \frac{\partial \vect{f}_b}{\partial \vect{b}_a} \;=\; \I_3.
   \label{eq:acc-jacs}
@@ -162,7 +163,7 @@ Right-multiplicative attitude linearization (\Cref{app:att-jac}) gives
   \vect{n}_m \sim \mathcal{N}(\vect{0},\mat{R}_m),
   \label{eq:mag-meas}\\
   \frac{\partial \vect{m}_b}{\partial \delta\vect{\theta}}
-  &= -\,\skew{\vect{m}_b^{\mathrm{pred}}}.
+  &= -\,\skx{\vect{m}_b^{\mathrm{pred}}}.
   \label{eq:mag-jac}
 \end{align}
 
@@ -182,7 +183,7 @@ With step \(h>0\), the local attitude error transition and bias coupling are
 \begin{equation}
   \Phi_{AA} \;=\;
   \begin{bmatrix}
-    \I_3 - \skew{\vect{\omega}} h + \tfrac12 \skew{\vect{\omega}}^2 h^2 & -\I_3 h \\
+    \I_3 - \skx{\vect{\omega}} h + \tfrac12 \skx{\vect{\omega}}^2 h^2 & -\I_3 h \\
     \mat{0} & \I_3
   \end{bmatrix},
   \label{eq:PhiAA}
@@ -341,7 +342,7 @@ Ordering \(\vect{x}\) as in \eqref{eq:state}, the continuous Jacobian is
 \small
 \mat{A} \;=\;
 \begin{bmatrix}
- -\skew{\vect{\omega}} & -\I_3 & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} \\
+ -\skx{\vect{\omega}} & -\I_3 & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} \\
  \mat{0}               & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} \\
  \mat{0} & \mat{0} & \mat{0} & \I_3 & \mat{0} & \I_3 & \mat{0} \\
  \mat{0} & \mat{0} & \mat{0} & \mat{0} & \I_3 & \mat{0} & \mat{0} \\
@@ -371,7 +372,7 @@ either Van Loan or the supplied OU closed forms.
 \label{sec:meas-update}
 For measurement \(\vect{z}=h(\vect{x})+\vect{n}\) with Jacobian \(\mat{C}\) and noise \(\mat{R}\):
 \begin{align}
- \vect{r} &= \vect{z} - h(\hat{\vect{x}}^-), \label{eq:innov}\\
+ \vect{r} &= \vect{z} - \vect{h}(\hat{\vect{x}}^-), \label{eq:innov}\\
  \mat{S}  &= \mat{C}\mat{P}^- \mat{C}^{\T} + \mat{R}, \label{eq:S}\\
  \mat{K}  &= \mat{P}^- \mat{C}^{\T} \mat{S}^{-1}, \label{eq:K}\\
  \hat{\vect{x}}^+ &= \hat{\vect{x}}^- + \mat{K}\,\vect{r}, \label{eq:x-update}\\
@@ -467,13 +468,13 @@ declination/inclination if needed.\\
 \label{app:att-jac}
 For \(h(\quat{q})=\mat{R}_{wb}(\quat{q})\vect{v}_w\),
 \( \quat{q}^+=\quat{q}\otimes \delta\quat{q}(\tfrac12\delta\vect{\theta}) \),
-\( \mat{R}(\delta\vect{\theta})\approx \I - \skew{\delta\vect{\theta}} \).
+\( \mat{R}(\delta\vect{\theta})\approx \I - \skx{\delta\vect{\theta}} \).
 Then
 \begin{equation}
-  h(\quat{q}^+) \approx h(\quat{q}) - \mat{R}_{wb}\,\skew{\delta\vect{\theta}}\,\vect{v}_w
-  \;=\; h(\quat{q}) + \bigl(-\skew{\mat{R}_{wb}\vect{v}_w}\bigr)\delta\vect{\theta},
+  h(\quat{q}^+) \approx h(\quat{q}) - \mat{R}_{wb}\,\skx{\delta\vect{\theta}}\,\vect{v}_w
+  \;=\; h(\quat{q}) + \bigl(-\skx{\mat{R}_{wb}\vect{v}_w}\bigr)\delta\vect{\theta},
   \quad
-  \frac{\partial h}{\partial \delta\vect{\theta}} = -\,\skew{\mat{R}_{wb}\vect{v}_w}.
+  \frac{\partial h}{\partial \delta\vect{\theta}} = -\,\skx{\mat{R}_{wb}\vect{v}_w}.
   \label{eq:att-jac-appendix}
 \end{equation}
 With \(\vect{v}_w = \vect{a}_w-\vect{g}_w\) and \(\vect{v}_w=\vect{B}_w\) one obtains
@@ -536,10 +537,10 @@ For the OU chain, these reproduce the closed forms in \Cref{app:ou-kernel}.
 Embed sensor blocks into \(m\times 21\) dense \(\mat{C}\):
 \begin{align}
   \mat{C}_a &= \begin{bmatrix}
-     -\skew{\vect{f}_b^{\mathrm{pred}}} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{R}_{wb} & \I_3
+     -\skx{\vect{f}_b^{\mathrm{pred}}} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{R}_{wb} & \I_3
   \end{bmatrix}, \label{eq:C-acc-full}\\
   \mat{C}_m &= \begin{bmatrix}
-     -\skew{\vect{m}_b^{\mathrm{pred}}} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0}
+     -\skx{\vect{m}_b^{\mathrm{pred}}} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0}
   \end{bmatrix}, \label{eq:C-mag-full}\\
   \mat{C}_S &= \begin{bmatrix}
      \mat{0} & \mat{0} & \mat{0} & \mat{0} & \I_3 & \mat{0} & \mat{0}
