@@ -52,28 +52,36 @@ Finally, we discuss tuning strategies and the prospect of adaptive parameter est
 \tableofcontents
 \newpage
 
-\input{w3d-intro.tex-part}
-\input{w3d-state.tex-part}
-\input{w3d-proc.tex-part}
-\input{w3d-meas.tex-part}
-\input{w3d-tupdate.tex-part}
-\input{w3d-init.tex-part}
-\input{w3d-mupdate.tex-part}
-\input{w3d-propag.tex-part}
-\input{w3d-dnoise.tex-part}
-\input{w3d-mnoise.tex-part}
-\input{w3d-joseph.tex-part}
-\input{w3d-quat.tex-part}
-\input{w3d-analytic.tex-part}
-\input{w3d-jacobian.tex-part}
-\input{w3d-jac-attitude.tex-part}
-\input{w3d-cross-cov.tex-part}
-\input{w3d-ou12.tex-part}
-\input{w3d-ou-coeff.tex-part}
-\input{w3d-riccati.tex-part}
-\input{w3d-ou-q.tex-part}
-\input{w3d-ou-kern.tex-part}
-\input{w3d-jac-ag.tex-part}
-\input{w3d-jac-meas.tex-part}
+% === CORE SECTIONS ===
+\input{w3d-intro.tex-part}        % Introduction and motivation
+\input{w3d-state.tex-part}        % State definition and notation
+\input{w3d-proc.tex-part}         % Continuous process model
+\input{w3d-meas.tex-part}         % Unified measurement model + Joseph form update
+\input{w3d-tupdate.tex-part}      % Time-update (attitude + linear propagation)
+\input{w3d-init.tex-part}         % Initialization & warm-up
 
+% === ANALYTIC DISCRETIZATION AND COVARIANCE STRUCTURE ===
+\input{w3d-analytic.tex-part}     % Canonical OU discretization (Φ, Q, series)
+%  → Replaces w3d-ou12.tex-part, w3d-ou-coeff.tex-part, w3d-dnoise.tex-part
+
+\input{w3d-cross-cov.tex-part}    % Cross-covariance + Joseph form + PSD projection
+%  → Replaces w3d-propag.tex-part and w3d-joseph.tex-part
+
+\input{w3d-riccati.tex-part}      % Continuous→discrete Riccati mapping
+
+% === JACOBIANS ===
+\input{w3d-jacobian.tex-part}     % Process Jacobians
+\input{w3d-jac-attitude.tex-part} % Attitude linearization
+\input{w3d-jac-meas.tex-part}     % Measurement Jacobians
+%  → w3d-jac-ag.tex-part removed (duplicate merge)
+
+% === ORIENTATION HANDLING ===
+\input{w3d-quat.tex-part}         % Quaternion correction & normalization
+%  → Replace duplication in w3d-tupdate.tex-part
+
+% === OU APPENDICES ===
+\input{w3d-ou-q.tex-part}         % OU covariance kernel & primitives
+%  → Merge w3d-ou-kern.tex-part here
+
+% === END ===
 \end{document}
