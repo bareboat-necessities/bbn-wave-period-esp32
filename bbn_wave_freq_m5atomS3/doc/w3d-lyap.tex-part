@@ -111,7 +111,7 @@ with $\xi_k$ on the segment between $\theta_k$ and $\theta_{k+1}$ and likewise f
 Use A3–A4 and compactness to bound the Jacobians uniformly and collect terms.
 \end{proof}
 
-\begin{theorem}[ISS of the adaptive estimator]\label{thm:iss}
+\begin{theorem*}[ISS of the adaptive estimator]\label{thm:iss}
 Under \textup{A1–A6}, there exist class-$\mathcal{KL}$ and class-$\mathcal{K}$ functions
 $\beta(\cdot,\cdot)$ and $\gamma(\cdot)$ such that the estimation error satisfies
 \[
@@ -120,7 +120,7 @@ $\beta(\cdot,\cdot)$ and $\gamma(\cdot)$ such that the estimation error satisfie
 In particular, if $d_k$ is bounded and the parameter error is bounded by projection
 (A3) and leakage (A4), then $e_k$ is bounded; and if $d_k\to 0$ and $\tilde\theta_k\to 0$,
 then $e_k\to 0$.
-\end{theorem}
+\end{theorem*}
 
 \begin{proof}
 Define the composite Lyapunov function
