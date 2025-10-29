@@ -1,10 +1,21 @@
-\documentclass{article}
-\usepackage{amsmath}
-\usepackage{amssymb}
+\documentclass[11pt]{article}
+
+% ---------- Preamble: professional but simple ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.05}
+
+\usepackage{amsmath,amssymb,amsthm,mathtools}
 \usepackage{bm}
-\usepackage{algorithm}
-\usepackage{algorithmic}
-\usepackage{enumitem}
+\usepackage{siunitx}
+\usepackage{booktabs,array}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{cleveref}
 
 \newcommand{\vect}[1]{\bm{#1}}
 \newcommand{\mat}[1]{\bm{#1}}
@@ -12,468 +23,545 @@
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\T}{\mathsf{T}}
+\newcommand{\I}{\mat{I}}
+\newcommand{\skew}[1]{\left[ #1 \right]_\times}
+
+\title{A Multiplicative EKF with Latent Ornstein--Uhlenbeck Acceleration\\
+for Drift-Robust Wave Kinematics: Full Mathematical Specification,\\
+Analytic Discretization, and Bias/PSD Safeguards}
+\author{Mikhail Grushinskiy}
+\date{2025}
 
 \begin{document}
-
-\title{Complete Mathematical Formulation of the Multiplicative Extended Kalman Filter with Linear Navigation States}
-\author{}
 \maketitle
 
-\section{State Representation and Coordinate System}
+\begin{abstract}
+We present a complete mathematical specification of a quaternion
+right-multiplicative Extended Kalman Filter (MEKF) coupled to an extended
+linear navigation chain for marine wave kinematics. The state comprises
+attitude error, gyroscope bias, world-frame velocity and displacement, the
+integral of displacement, a latent world acceleration driven by an
+Ornstein--Uhlenbeck (OU) process, and accelerometer bias with optional
+temperature dependence. The OU prior endows the latent acceleration with
+stationary variance and finite correlation time, reducing low-frequency
+drift growth in integrated position while preserving responsiveness to
+swell dynamics. We derive (i) the continuous-time model; (ii) analytic
+discrete transitions for attitude (Rodrigues small-angle form) and the
+OU-driven linear chain; (iii) closed-form discrete process noise via OU
+kernel double-integrals; (iv) the continuous-to-discrete Riccati mapping
+for \(Q_d\) using the Van Loan method; (v) full measurement Jacobians under
+right-multiplicative linearization; and (vi) numerical safeguards:
+Joseph-form updates, explicit symmetry enforcement, positive semidefinite
+(PSD) projection, and innovation conditioning. All expressions match the
+algorithmic structure of the accompanying C++ implementation
+(\textit{Kalman3D\_Wave} with analytic \texttt{PhiAxis4x1\_analytic} and
+\texttt{QdAxis4x1\_analytic}, Kronecker OU coupling, and blockwise
+covariance propagation). The document is self-contained with sequential
+equation numbering and ready for archival compilation.
+\end{abstract}
 
-The filter estimates an extended state vector in NED (North-East-Down) coordinates:
-
+\section{State and Coordinates}
+\label{sec:state}
+The estimator runs in a world NED frame. The extended state is
 \begin{equation}
-\vect{x} = 
-\begin{bmatrix}
-\vect{\theta}_{\text{err}} \\
-\vect{b}_g \\
-\vect{v} \\
-\vect{p} \\
-\vect{S} \\
-\vect{a}_w \\
-\vect{b}_a
-\end{bmatrix}
-\in \R^{N_X}, \quad 
-N_X = 3 + 3\delta_{bg} + 12 + 3\delta_{ba}
+  \vect{x} \;=\;
+  \begin{bmatrix}
+    \delta\vect{\theta} & \vect{b}_g & \vect{v} & \vect{p} & \vect{S} & \vect{a}_w & \vect{b}_a
+  \end{bmatrix}^{\T}
+  \in \R^{N_X}, \quad N_X = 21,
+  \label{eq:state}
 \end{equation}
+where
+\(\delta\vect{\theta}\in\R^3\) is the small attitude-error (right-multiplicative MEKF),
+\(\vect{b}_g\in\R^3\) gyroscope bias,
+\(\vect{v},\vect{p}\in\R^3\) world-frame velocity/position,
+\(\vect{S}\in\R^3\) integral of displacement \( \dot{\vect{S}}=\vect{p} \),
+\(\vect{a}_w\in\R^3\) latent world acceleration (OU),
+and \(\vect{b}_a\in\R^3\) accelerometer bias (optionally temperature dependent).
+Gravity in NED is \(\vect{g}_w = [0,0,g]^\T\) with \(g=\SI{9.80665}{m/s^2}\).
 
-where:
-\begin{align*}
-\vect{\theta}_{\text{err}} &\in \R^3 \quad \text{attitude error vector (right-multiplicative convention)} \\
-\vect{b}_g &\in \R^3 \quad \text{gyroscope bias (rad/s)} \\
-\vect{v} &\in \R^3 \quad \text{velocity in world frame (m/s)} \\
-\vect{p} &\in \R^3 \quad \text{position in world frame (m)} \\
-\vect{S} &\in \R^3 \quad \text{integral of displacement } \vect{S} = \int \vect{p}  dt \text{ (m·s)} \\
-\vect{a}_w &\in \R^3 \quad \text{world acceleration (m/s²)} \\
-\vect{b}_a &\in \R^3 \quad \text{accelerometer bias (m/s²)}
-\end{align*}
-
-The attitude uses multiplicative error formulation:
+\section{Attitude Representation (Right-Multiplicative)}
+\label{sec:attitude}
+Let \(\quat{q}\) be the world\(\to\)body quaternion and
+\(\delta\quat{q}(\delta\vect{\theta})\) the small-angle quaternion:
 \begin{equation}
-\quat{q} = \quat{q}_{\text{ref}} \otimes \delta\quat{q}(\vect{\theta}_{\text{err}})
+  \quat{q}^+ \;=\; \quat{q}\otimes \delta\quat{q}\!\left(\tfrac12\,\delta\vect{\theta}\right), 
+  \qquad
+  \delta\quat{q}(\vect{r}) \;=\;
+  \begin{bmatrix}
+    \cos(\|\vect{r}\|/2)\\
+    \frac{\sin(\|\vect{r}\|/2)}{\|\vect{r}\|}\,\vect{r}
+  \end{bmatrix},
+  \label{eq:quat-update}
 \end{equation}
-
-Gravity vector in NED coordinates:
+with standard Maclaurin guards for \(\|\vect{r}\|\ll 1\).
+The skew operator for \(\vect{x}=[x\,y\,z]^\T\) is
 \begin{equation}
-\vect{g} = [0, 0, +g]^\T, \quad g = 9.80665 \text{ m/s²}
+  \skew{\vect{x}} \;=\;
+  \begin{bmatrix}
+    0 & -z & y\\ z & 0 & -x\\ -y & x & 0
+  \end{bmatrix}.
+  \label{eq:skew}
 \end{equation}
-
-\section{Quaternion Operations and Attitude Representation}
-
-\subsection{Small Rotation Quaternion from Rotation Vector}
-
-\begin{equation}
-\delta\quat{q}(\vect{\theta}) = 
-\begin{cases}
-\begin{bmatrix}
-w \\
-\vect{v}
-\end{bmatrix}
-=
-\begin{bmatrix}
-1 - \frac{\|\vect{\theta}\|^2}{8} + \frac{\|\vect{\theta}\|^4}{384} \\
-\left(\frac{1}{2} - \frac{\|\vect{\theta}\|^2}{48} + \frac{\|\vect{\theta}\|^4}{3840}\right) \vect{\theta}
-\end{bmatrix}
-& \|\vect{\theta}\| < 10^{-2} \\
-\begin{bmatrix}
-\cos(\|\vect{\theta}\|/2) \\
-\frac{\sin(\|\vect{\theta}\|/2)}{\|\vect{\theta}\|} \vect{\theta}
-\end{bmatrix}
-& \text{otherwise}
-\end{cases}
-\end{equation}
-
-\subsection{Quaternion Correction and Error State Reset}
-
-After each measurement update:
-\begin{align}
-\quat{q}_{\text{ref}} &\leftarrow \quat{q}_{\text{ref}} \otimes \delta\quat{q}(\vect{\theta}_{\text{err}}) \\
-\vect{\theta}_{\text{err}} &\leftarrow \vect{0}
-\end{align}
-
-\subsection{Skew-Symmetric Matrix}
-
-\begin{equation}
-[\vect{v}]_\times = 
-\begin{bmatrix}
-0 & -v_z & v_y \\
-v_z & 0 & -v_x \\
--v_y & v_x & 0
-\end{bmatrix}
-\end{equation}
-
-\section{Measurement Models}
-
-\subsection{Accelerometer Measurement Model}
-
-\begin{equation}
-\vect{f}_b = \vect{R}_{wb}(\vect{a}_w - \vect{g}) + \vect{b}_a(T) + \vect{v}_a, \quad \vect{v}_a \sim \mathcal{N}(\vect{0}, \vect{R}_{\text{acc}})
-\end{equation}
-
-Temperature-compensated accelerometer bias:
-\begin{equation}
-\vect{b}_a(T) = \vect{b}_{a0} + \vect{k}_a(T - T_{\text{ref}}), \quad T_{\text{ref}} = 35^\circ\text{C}
-\end{equation}
-
-Measurement Jacobians:
-\begin{align}
-\vect{J}_{\theta} &= \frac{\partial \vect{f}_b}{\partial \vect{\theta}} = -[\vect{f}_b]_\times \\
-\vect{J}_{a_w} &= \frac{\partial \vect{f}_b}{\partial \vect{a}_w} = \vect{R}_{wb} \\
-\vect{J}_{b_a} &= \frac{\partial \vect{f}_b}{\partial \vect{b}_a} = \vect{I}
-\end{align}
-
-\subsection{Magnetometer Measurement Model}
-
-\begin{equation}
-\vect{m}_b = \vect{R}_{wb} \vect{B}_{\text{ref}} + \vect{v}_m, \quad \vect{v}_m \sim \mathcal{N}(\vect{0}, \vect{R}_{\text{mag}})
-\end{equation}
-
-Measurement Jacobian:
-\begin{equation}
-\vect{J}_{\theta} = \frac{\partial \vect{m}_b}{\partial \vect{\theta}} = -[\vect{m}_b]_\times
-\end{equation}
-
-\subsection{Integral State Pseudo-Measurement}
-
-\begin{equation}
-\vect{z}_S = \vect{S} + \vect{v}_S, \quad \vect{v}_S \sim \mathcal{N}(\vect{0}, \vect{R}_S)
-\end{equation}
-Applied every $N$ time updates with innovation $\vect{r}_S = \vect{0} - \vect{S}$.
 
 \section{Continuous-Time Process Model}
-
-\subsection{Attitude Dynamics}
-
+\label{sec:ct-model}
+\subsection{Attitude and Bias}
+Let \(\vect{\omega}_b\) be the measured body angular rate and
+\(\vect{\omega} \coloneqq \vect{\omega}_b - \vect{b}_g\).
 \begin{align}
-\dot{\quat{q}} &= \frac{1}{2} \quat{q} \otimes [0, \vect{\omega}]^\T \\
-\vect{\omega} &= \vect{\omega}_{\text{meas}} - \vect{b}_g \\
-\dot{\vect{\theta}}_{\text{err}} &= -\vect{\omega} \times \vect{\theta}_{\text{err}} - \delta\vect{b}_g + \vect{w}_g \\
-\dot{\vect{b}}_g &= \vect{w}_{bg}, \quad \vect{w}_{bg} \sim \mathcal{N}(\vect{0}, \vect{Q}_{bg})
+  \dot{\quat{q}} &= \tfrac12\, \quat{q} \otimes \begin{bmatrix} 0 \\ \vect{\omega} \end{bmatrix},
+  \label{eq:qdot}\\
+  \dot{\delta\vect{\theta}} &= -\,\skew{\vect{\omega}}\,\delta\vect{\theta} - \delta\vect{b}_g + \vect{\nu}_g,
+  \quad
+  \dot{\vect{b}}_g \;=\; \vect{\xi}_g,
+  \label{eq:theta-bg-ct}
 \end{align}
+with \(\vect{\nu}_g\sim\mathcal{N}(\vect{0},\,\Sigma_g)\) (gyro white noise in error eq.) and
+\(\vect{\xi}_g\sim\mathcal{N}(\vect{0},\,q_{bg}\I_3)\) (bias random walk).
 
-\subsection{Linear Navigation Dynamics}
-
+\subsection{Linear Kinematics and Latent OU Acceleration}
 \begin{align}
-\dot{\vect{v}} &= \vect{a}_w \\
-\dot{\vect{p}} &= \vect{v} \\
-\dot{\vect{S}} &= \vect{p} \\
-\dot{\vect{a}}_w &= -\frac{1}{\tau}\vect{a}_w + \vect{w}_a, \quad \vect{w}_a \sim \mathcal{N}(\vect{0}, \vect{\Sigma}_{\text{aw\_stat}}) \\
-\dot{\vect{b}}_a &= \vect{w}_{ba}, \quad \vect{w}_{ba} \sim \mathcal{N}(\vect{0}, \vect{Q}_{ba})
+  \dot{\vect{v}} &= \vect{a}_w, &
+  \dot{\vect{p}} &= \vect{v}, &
+  \dot{\vect{S}} &= \vect{p},
+  \label{eq:lin-chain}\\
+  \dot{\vect{a}}_w &= -\tfrac{1}{\tau}\,\vect{a}_w + \vect{w}_a, \quad
+  \vect{w}_a \sim \mathcal{N}\!\bigl(\vect{0},\, \tfrac{2}{\tau}\,\Sigma_{aw}\bigr),
+  \label{eq:ou-ct}\\
+  \dot{\vect{b}}_a &= \vect{\xi}_{ba}, \quad \vect{\xi}_{ba} \sim \mathcal{N}(\vect{0},\, q_{ba}\I_3).
+  \label{eq:ba-ct}
 \end{align}
+Here \(\tau>0\) is the OU correlation time and \(\Sigma_{aw}\) its stationary covariance
+(allowing cross-axis correlation).
 
-\section{Discretization of Process Model}
+\section{Measurement Models and Jacobians}
+\label{sec:meas}
+Let \(\mat{R}_{wb}(\quat{q})\) be the world\(\to\)body rotation.
 
-\subsection{Quaternion Discretization}
-
+\subsection{Accelerometer}
+\begin{align}
+  \vect{f}_b &= \mat{R}_{wb}\bigl(\vect{a}_w - \vect{g}_w\bigr) + \vect{b}_a(T) + \vect{n}_a,
+  \qquad \vect{n}_a \sim \mathcal{N}(\vect{0},\mat{R}_a),
+  \label{eq:acc-meas}\\
+  \vect{b}_a(T) &= \vect{b}_{a0} + \mat{K}_a \bigl(T - T_{\mathrm{ref}}\bigr).
+  \label{eq:ba-temp}
+\end{align}
+Right-multiplicative attitude linearization (\Cref{app:att-jac}) gives
 \begin{equation}
-\quat{q}_{k+1} = \quat{q}_k \otimes \quat{q}((\vect{\omega}_{\text{meas}} - \vect{b}_g)\Delta t)
+  \frac{\partial \vect{f}_b}{\partial \delta\vect{\theta}}
+  \;=\; -\,\skew{\vect{f}_b^{\mathrm{pred}}}, \quad
+  \frac{\partial \vect{f}_b}{\partial \vect{a}_w} \;=\; \mat{R}_{wb}, \quad
+  \frac{\partial \vect{f}_b}{\partial \vect{b}_a} \;=\; \I_3.
+  \label{eq:acc-jacs}
 \end{equation}
 
-\subsection{Attitude Error State Transition Matrix}
+\subsection{Magnetometer}
+\begin{align}
+  \vect{m}_b &= \mat{R}_{wb}\,\vect{B}_w + \vect{n}_m, \qquad
+  \vect{n}_m \sim \mathcal{N}(\vect{0},\mat{R}_m),
+  \label{eq:mag-meas}\\
+  \frac{\partial \vect{m}_b}{\partial \delta\vect{\theta}}
+  &= -\,\skew{\vect{m}_b^{\mathrm{pred}}}.
+  \label{eq:mag-jac}
+\end{align}
 
+\subsection{Integral Pseudo-Measurement}
 \begin{equation}
-\vect{F}_{AA} = 
+  \vect{z}_S \;=\; \vect{S} + \vect{n}_S, \qquad
+  \vect{n}_S \sim \mathcal{N}(\vect{0},\mat{R}_S), \qquad
+  \frac{\partial \vect{z}_S}{\partial \vect{S}} \;=\; \I_3.
+  \label{eq:S-pseudo}
+\end{equation}
+
+\section{Discrete Time Update (Prediction)}
+\label{sec:discrete-pred}
+
+\subsection{Attitude Error/Bias Transition}
+With step \(h>0\), the local attitude error transition and bias coupling are
+\begin{equation}
+  \Phi_{AA} \;=\;
+  \begin{bmatrix}
+    \I_3 - \skew{\vect{\omega}} h + \tfrac12 \skew{\vect{\omega}}^2 h^2 & -\I_3 h \\
+    \mat{0} & \I_3
+  \end{bmatrix},
+  \label{eq:PhiAA}
+\end{equation}
+with standard small-angle guards or Rodrigues form for larger angles.
+
+\subsection{OU-Driven Linear Chain (Per-Axis Analytic)}
+For \(x \coloneqq h/\tau\), \(\alpha \coloneqq e^{-x}\). The one-axis chain
+\(\vect{x}_L=[v,p,S,a]^\T\) has exact discrete transition
+\begin{equation}
+  \Phi_{\mathrm{axis}}(h,\tau) \;=\;
+  \begin{bmatrix}
+    1 & 0 & 0 & \phi_{va} \\
+    h & 1 & 0 & \phi_{pa} \\
+    \tfrac12 h^2 & h & 1 & \phi_{Sa} \\
+    0 & 0 & 0 & \alpha
+  \end{bmatrix},
+  \quad
+  \begin{aligned}
+    \phi_{va} &\coloneqq \tau (1-\alpha),\\
+    \phi_{pa} &\coloneqq \tau^2 \bigl(x + \alpha - 1\bigr),\\
+    \phi_{Sa} &\coloneqq \tau^3 \!\left(\tfrac12 x^2 - x - (\alpha-1)\right).
+  \end{aligned}
+  \label{eq:Phi-axis}
+\end{equation}
+High-order Maclaurin for \(x\ll 1\) avoids cancellation:
+\begin{equation}
+  \phi_{va} = h - \tfrac12 \tfrac{h^2}{\tau} + \tfrac16 \tfrac{h^3}{\tau^2} - \tfrac1{24} \tfrac{h^4}{\tau^3} + \cdots,
+  \quad
+  \phi_{pa} = \tfrac12 h^2 - \tfrac16 \tfrac{h^3}{\tau} + \tfrac1{24} \tfrac{h^4}{\tau^2} - \cdots,
+  \quad
+  \phi_{Sa} = \tfrac16 h^3 - \tfrac1{24} \tfrac{h^4}{\tau} + \tfrac1{120} \tfrac{h^5}{\tau^2} - \cdots.
+  \label{eq:Phi-axis-series}
+\end{equation}
+
+\subsection{Three-Axis Assembly and Complete \texorpdfstring{$\Phi$}{Phi}}
+Let \(\Phi_{\mathrm{axis}}\) be as in \eqref{eq:Phi-axis}. Define the block
+for the 3D linear subsystem in \([v,p,S,a_w]\) order per axis and gather via
+Kronecker:
+\begin{equation}
+  \Phi_{LL}^{\mathrm{raw}} \;=\; \I_3 \otimes \Phi_{\mathrm{axis}}(h,\tau).
+  \label{eq:PhiLL-raw}
+\end{equation}
+If the global state stacks \([\,\vect{v}~\vect{p}~\vect{S}~\vect{a}_w\,]\) by components,
+apply a fixed permutation \(\mat{P}\) to map axis-interleaved blocks to the chosen
+state ordering:
+\begin{equation}
+  \Phi_{LL} \;=\; \mat{P}\, \Phi_{LL}^{\mathrm{raw}} \, \mat{P}^{\T}.
+  \label{eq:PhiLL}
+\end{equation}
+Accelerometer-bias is a random walk, so
+\begin{equation}
+  \Phi_{BB} \;=\; \I_3.
+  \label{eq:PhiBB}
+\end{equation}
+Collecting blocks in the order \([\delta\vect{\theta},\vect{b}_g]\), \(\vect{b}_a\), and
+\([\vect{v},\vect{p},\vect{S},\vect{a}_w]\), the full discrete transition is
+\begin{equation}
+  \Phi \;=\;
+  \begin{bmatrix}
+    \Phi_{AA} & \mat{0} & \mat{0} \\
+    \mat{0}   & \Phi_{BB} & \mat{0} \\
+    \mat{0}   & \mat{0}   & \Phi_{LL}
+  \end{bmatrix}.
+  \label{eq:Phi-full}
+\end{equation}
+(If additional small cross-terms are retained in implementation, they enter the
+off-diagonal blocks; the C++ baseline uses the structure above, with cross-covariance
+propagation carried by \(P\), see \Cref{sec:cov-prop}.)
+
+\section{Discrete Process Noise \texorpdfstring{$Q_d$}{Qd}}
+\label{sec:Qd}
+
+\subsection{OU Kernel Double-Integral (Per Axis)}
+For the one-axis chain \( [v,p,S,a]^\T \) driven by OU with stationary covariance
+\(\sigma_a^2\), the discrete covariance is
+\begin{equation}
+  \mat{Q}_d^{(1)}(h,\tau,\sigma_a^2) \;=\; \frac{2\sigma_a^2}{\tau}
+  \int_0^h\!\!\int_0^h e^{-|t-s|/\tau}\,\vect{f}(t)\,\vect{f}(s)^{\T}\,ds\,dt,
+  \quad
+  \vect{f}(t) \coloneqq \begin{bmatrix} 1 & t & \tfrac12 t^2 & \alpha(t) \end{bmatrix}^{\T},
+  \label{eq:Qd-axis-integral}
+\end{equation}
+with \(\alpha(t)=e^{-t/\tau}\). By symmetry,
+\(\int_0^h\!\!\int_0^h e^{-|t-s|/\tau}\cdot = 2\int_0^h \int_0^t e^{-(t-s)/\tau}\cdot \,ds\,dt\),
+reducing all entries to combinations of polynomials times exponentials.
+Closed forms are provided in \Cref{app:ou-kernel}. For numerical stability define
+\(x\coloneqq h/\tau\), \(\alpha\coloneqq e^{-x}\), \(\text{em1}\coloneqq \alpha-1\),
+\(\alpha_2\coloneqq e^{-2x}\).
+Introduce helpers
+\begin{equation}
+  A_0 \coloneqq \tau(1-\alpha),\qquad
+  B_0 \coloneqq \tfrac{\tau}{2}\,(1-\alpha_2),
+  \label{eq:A0B0}
+\end{equation}
+and small-\(x\) series in \Cref{app:series-guards}.
+
+\subsection{Three-Axis Correlated OU via Kronecker}
+Let \(\Sigma_{aw}\in\R^{3\times 3}\) be the stationary covariance (possibly anisotropic,
+correlated). Then
+\begin{equation}
+  \mat{Q}_{LL}^{\mathrm{raw}}
+  \;=\; \Sigma_{aw} \otimes \mat{Q}_d^{(1)}(h,\tau,1),
+  \qquad
+  \mat{Q}_{LL} \;=\; \mat{P}\,\mat{Q}_{LL}^{\mathrm{raw}}\,\mat{P}^{\T}.
+  \label{eq:Qll-kron}
+\end{equation}
+Finally, bias and attitude/bias driving spectra yield
+\begin{equation}
+  \mat{Q}_{AA} \;=\; \mathrm{diag}\!\bigl(\Sigma_g h,\; q_{bg} h\,\I_3\bigr),
+  \qquad
+  \mat{Q}_{BB} \;=\; q_{ba} h\,\I_3.
+  \label{eq:QaaQbb}
+\end{equation}
+Assemble the global
+\begin{equation}
+  \mat{Q}_d \;=\; \mathrm{diag}\!\bigl(\mat{Q}_{AA},\; \mat{Q}_{BB},\; \mat{Q}_{LL}\bigr),
+  \quad
+  \mat{Q}_d \gets \tfrac12\bigl(\mat{Q}_d+\mat{Q}_d^{\T}\bigr),
+  \label{eq:Qd-full}
+\end{equation}
+with PSD floor if needed (\Cref{sec:numerics}).
+
+\subsection{Continuous Riccati \texorpdfstring{$\to$}{} Discrete \texorpdfstring{$Q_d$}{} (Van Loan)}
+\label{sec:vanloan}
+For \(\dot{\vect{x}}=\mat{A}\vect{x}+\mat{G}\vect{w}\), \(\E[\vect{w}\vect{w}^{\T}]=\mat{Q}_c\delta\),
+the exact discretization satisfies
+\begin{equation}
+  \Phi \;=\; e^{\mat{A}h}, \qquad
+  \mat{Q}_d \;=\; \int_0^h e^{\mat{A}\tau}\,\mat{G}\mat{Q}_c \mat{G}^{\T}\, e^{\mat{A}^{\T}\tau}\, d\tau.
+  \label{eq:Qd-def}
+\end{equation}
+Define the Van Loan companion
+\begin{equation}
+  \mat{M} \;=\;
+  \begin{bmatrix}
+    -\mat{A} & \mat{G}\mat{Q}_c\mat{G}^{\T} \\
+    \mat{0}  & \mat{A}^{\T}
+  \end{bmatrix},\qquad
+  e^{\mat{M}h} \;=\;
+  \begin{bmatrix}
+    \mat{M}_{11} & \mat{M}_{12}\\
+    \mat{0}      & \mat{M}_{22}
+  \end{bmatrix}.
+  \label{eq:van-loan}
+\end{equation}
+Then \( \Phi = \mat{M}_{22}^{\T} \) and \( \mat{Q}_d = \mat{M}_{22}^{\T}\mat{M}_{12} \)
+(see \Cref{app:van-loan-derivation}). For the OU chain we supply closed forms
+(\Cref{app:ou-kernel}), which the implementation uses via
+\texttt{PhiAxis4x1\_analytic} and \texttt{QdAxis4x1\_analytic}.
+
+\section{Complete Process Jacobian \texorpdfstring{$\mat{A}=\partial f/\partial x$}{A} and \texorpdfstring{$\mat{G}$}{G}}
+\label{sec:AG}
+Ordering \(\vect{x}\) as in \eqref{eq:state}, the continuous Jacobian is
+\begin{equation}
+\small
+\mat{A} \;=\;
 \begin{bmatrix}
-\vect{F}_{\theta\theta} & \vect{F}_{\theta b_g} \\
-\vect{0} & \vect{I}
-\end{bmatrix}
+ -\skew{\vect{\omega}} & -\I_3 & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} \\
+ \mat{0}               & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} \\
+ \mat{0} & \mat{0} & \mat{0} & \I_3 & \mat{0} & \I_3 & \mat{0} \\
+ \mat{0} & \mat{0} & \mat{0} & \mat{0} & \I_3 & \mat{0} & \mat{0} \\
+ \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} \\
+ \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & -\tfrac{1}{\tau}\I_3 & \mat{0} \\
+ \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0}
+\end{bmatrix}.
+\label{eq:A-ct}
 \end{equation}
-
-For $\theta = \|\vect{\omega}\|\Delta t$:
+The noise input matrix \(\mat{G}\) (shaping white drivers into \(\delta\dot{\vect{\theta}},\dot{\vect{b}}_g,\dot{\vect{a}}_w,\dot{\vect{b}}_a\)) is
 \begin{equation}
-\vect{F}_{\theta\theta} = 
-\begin{cases}
-\vect{I} - [\vect{\omega}]_\times \Delta t + \frac{1}{2}[\vect{\omega}]_\times^2 \Delta t^2 & \theta < 10^{-5} \\
-\vect{I} - \sin\theta \vect{W} + (1-\cos\theta)\vect{W}^2 & \text{otherwise}
-\end{cases}
+\small
+\mat{G} \;=\; \mathrm{blkdiag}\!\left(
+\begin{bmatrix}\I_3\\ \mat{0}\end{bmatrix},\;
+\I_3,\;
+\begin{bmatrix}\mat{0}\\ \mat{0}\\ \mat{0}\\ \I_3\end{bmatrix},\;
+\I_3
+\right),
+\quad
+\mat{Q}_c \;=\; \mathrm{blkdiag}\!\bigl(\Sigma_g,\; q_{bg}\I_3,\; \tfrac{2}{\tau}\Sigma_{aw},\; q_{ba}\I_3\bigr).
+\label{eq:GQc}
 \end{equation}
-where $\vect{W} = \frac{[\vect{\omega}]_\times}{\|\vect{\omega}\|}$, and $\vect{F}_{\theta b_g} = -\vect{I}\Delta t$.
+These \(\mat{A},\mat{G},\mat{Q}_c\) reproduce the block \(Q_d\) of \Cref{sec:Qd} via
+either Van Loan or the supplied OU closed forms.
 
-\subsection{Linear States Discretization}
+\section{Measurement Update (Unified Form)}
+\label{sec:meas-update}
+For measurement \(\vect{z}=h(\vect{x})+\vect{n}\) with Jacobian \(\mat{C}\) and noise \(\mat{R}\):
+\begin{align}
+ \vect{r} &= \vect{z} - h(\hat{\vect{x}}^-), \label{eq:innov}\\
+ \mat{S}  &= \mat{C}\mat{P}^- \mat{C}^{\T} + \mat{R}, \label{eq:S}\\
+ \mat{K}  &= \mat{P}^- \mat{C}^{\T} \mat{S}^{-1}, \label{eq:K}\\
+ \hat{\vect{x}}^+ &= \hat{\vect{x}}^- + \mat{K}\,\vect{r}, \label{eq:x-update}\\
+ \mat{P}^+ &= (\I - \mat{K}\mat{C})\mat{P}^- (\I - \mat{K}\mat{C})^{\T} + \mat{K}\mat{R}\mat{K}^{\T} \quad \text{(Joseph form)}.
+ \label{eq:joseph}
+\end{align}
+After each update, apply quaternion correction and error reset per \eqref{eq:quat-update}.
 
-For each axis, the discrete transition matrix:
+\section{Covariance Propagation and Coupling}
+\label{sec:cov-prop}
+Prediction:
 \begin{equation}
-\vect{F}_{\text{axis}} = 
-\begin{bmatrix}
-1 & 0 & 0 & \phi_{va} \\
-\Delta t & 1 & 0 & \phi_{pa} \\
-\frac{1}{2}\Delta t^2 & \Delta t & 1 & \phi_{Sa} \\
-0 & 0 & 0 & \alpha
-\end{bmatrix}
+  \hat{\vect{x}}^- \;=\; \Phi\,\hat{\vect{x}}^+,
+  \qquad
+  \mat{P}^- \;=\; \Phi \mat{P}^+ \Phi^{\T} + \mat{Q}_d.
+  \label{eq:pred}
 \end{equation}
-
-where for $x = \Delta t/\tau$:
+Partitioning \( \mat{P} \) conformably with \([\delta\vect{\theta},\vect{b}_g]\),
+\(\vect{b}_a\), and \([\vect{v},\vect{p},\vect{S},\vect{a}_w]\), the block prediction is
 \begin{align}
-\alpha &= e^{-x} \\
-\phi_{va} &= -\tau(1 - \alpha) \\
-\phi_{pa} &= \tau^2(x + (1 - \alpha)) \\
-\phi_{Sa} &= \tau^3\left(\frac{1}{2}x^2 - x - (1 - \alpha)\right)
+  P_{AA}^- &= \Phi_{AA} P_{AA}^+ \Phi_{AA}^{\T} + Q_{AA}, \\
+  P_{LL}^- &= \Phi_{LL} P_{LL}^+ \Phi_{LL}^{\T} + Q_{LL}, \\
+  P_{BB}^- &= P_{BB}^+ + Q_{BB}, \\
+  P_{AL}^- &= \Phi_{AA} P_{AL}^+ \Phi_{LL}^{\T}, \quad
+  P_{AB}^- \;=\; \Phi_{AA} P_{AB}^+, \quad
+  P_{LB}^- \;=\; \Phi_{LL} P_{LB}^+.
+  \label{eq:block-prop}
 \end{align}
+Cross-covariances maintain the physical projection of attitude uncertainty into
+linear kinematics; the implementation preserves these blocks.
 
-For small $x < 10^{-2}$, Maclaurin expansions:
-\begin{align}
-\phi_{pa} &\approx \tau^2\left(\frac{1}{2}x^2 - \frac{1}{6}x^3 + \frac{1}{24}x^4\right) \\
-\phi_{Sa} &\approx \tau^3\left(\frac{1}{6}x^3 - \frac{1}{24}x^4 + \frac{1}{120}x^5\right)
-\end{align}
-
-\section{Process Noise Covariance Discretization}
-
-\subsection{Ornstein-Uhlenbeck Process Primitives}
-
-\begin{align}
-x &= \frac{\Delta t}{\max(\tau, 10^{-8})} \\
-\alpha &= e^{-x} \\
-\text{em1} &= e^{-x} - 1 \\
-\alpha_2 &= e^{-2x} \\
-\text{em1}_2 &= e^{-2x} - 1
-\end{align}
-
-\subsection{Discrete OU Coefficients}
-
-Helper coefficients for small $x < 10^{-2}$:
-\begin{align}
-A_1 &\approx \tau^2\left(\frac{1}{2}x^2 - \frac{1}{3}x^3 + \frac{1}{8}x^4\right) \\
-A_2 &\approx \tau^3\left(\frac{1}{3}x^3 - \frac{1}{4}x^4 + \frac{1}{10}x^5\right)
-\end{align}
-
-For general $x$:
-\begin{align}
-A_1 &= \tau^2(-em1 - x\alpha) \\
-A_2 &= \tau^3(-2em1 + \alpha(x(x+2)))
-\end{align}
-
-\subsection{Process Noise per Axis}
-
-For each axis with stationary variance $\sigma_a^2$:
+\section{Measurement Noise Structure}
+\label{sec:meas-noise}
 \begin{equation}
-\vect{Q}_d^{(i)} = \frac{2\sigma_a^2}{\tau} \vect{K}
+  \mat{R}_a = \mathrm{diag}(\sigma_{ax}^2,\sigma_{ay}^2,\sigma_{az}^2),\quad
+  \mat{R}_m = \mathrm{diag}(\sigma_{mx}^2,\sigma_{my}^2,\sigma_{mz}^2),\quad
+  \mat{R}_S = \mathrm{diag}(\sigma_{Sx}^2,\sigma_{Sy}^2,\sigma_{Sz}^2).
+  \label{eq:R-blocks}
 \end{equation}
+Tuning balances short-term attitude correction (\(\mat{R}_a\)), heading anchoring (\(\mat{R}_m\)),
+and long-term drift regularization (\(\mat{R}_S\)).
 
-For small $x = \Delta t/\tau < 3\times10^{-3}$:
-\begin{align}
-K_{vv} &\approx \frac{\Delta t^3}{3} - \frac{\Delta t^4}{4\tau} \\
-K_{pp} &\approx \frac{\Delta t^5}{20} - \frac{\Delta t^6}{30\tau} \\
-K_{SS} &\approx \frac{\Delta t^7}{840} - \frac{\Delta t^8}{960\tau} \\
-K_{aa} &\approx \Delta t - \frac{\Delta t^2}{\tau} + \frac{2\Delta t^3}{3\tau^2} - \frac{\Delta t^4}{3\tau^3} \\
-K_{va} &\approx \frac{\Delta t^2}{2} - \frac{\Delta t^3}{3\tau} + \frac{\Delta t^4}{8\tau^2} \\
-K_{pa} &\approx \frac{\Delta t^3}{6} - \frac{\Delta t^4}{8\tau} \\
-K_{Sa} &\approx \frac{\Delta t^4}{24} - \frac{\Delta t^5}{30\tau} \\
-K_{pv} &\approx \frac{\Delta t^4}{12} - \frac{\Delta t^5}{15\tau} \\
-K_{Sv} &\approx \frac{\Delta t^5}{60} - \frac{\Delta t^6}{72\tau} \\
-K_{Sp} &\approx \frac{\Delta t^6}{360} - \frac{\Delta t^7}{420\tau}
-\end{align}
-
-For general $x$:
-\begin{align}
-K_{vv} &= \tau^2\left[\Delta t - 2A_0 + B_0\right] \\
-K_{pp} &= \tau^2\left[\frac{1}{3}\Delta t^3 - 2\tau^2(x + em1) + B_0\Delta t^2\right] \\
-K_{SS} &= \tau^2\left[\frac{1}{20}\Delta t^5 - 2\tau^3\left(\frac{1}{2}x^2 - x - em1\right) + B_0\frac{1}{4}\Delta t^4\right] \\
-K_{aa} &= B_0 \\
-K_{va} &= \tau\left[A_0 - B_0\right] \\
-K_{pa} &= \tau\left[\tau^2(x + em1) - A_0\Delta t + B_0\Delta t\right] \\
-K_{Sa} &= \tau\left[\frac{1}{2}\tau^3\left(\frac{1}{2}x^2 - x - em1\right) - \tau^2(x + em1)\Delta t + B_0\frac{1}{2}\Delta t^2\right] \\
-K_{pv} &= \tau^2\left[\frac{1}{2}\Delta t^2 - \tau^2(x + em1) + B_0\Delta t\right] \\
-K_{Sv} &= \tau^2\left[\frac{1}{6}\Delta t^3 - \tau^3\left(\frac{1}{2}x^2 - x - em1\right) + B_0\frac{1}{2}\Delta t^2\right] \\
-K_{Sp} &= \tau^2\left[\frac{1}{12}\Delta t^4 - \tau^3\left(\frac{1}{2}x^2 - x - em1\right)\Delta t + B_0\frac{1}{3}\Delta t^3\right]
-\end{align}
-where $A_0 = -\tau(1 - \alpha)$ and $B_0 = -\frac{\tau}{2}(1 - \alpha_2)$.
-
-\subsection{Cross-Axis Correlation}
-
-For correlated world acceleration with correlation coefficient $\rho$:
+\section{Numerical Safeguards}
+\label{sec:numerics}
+\textbf{Symmetry and PSD:}
 \begin{equation}
-\vect{\Sigma}_{\text{aw\_stat}} = 
-\begin{bmatrix}
-\sigma_x^2 & 0 & \rho\sigma_x\sigma_z \\
-0 & \sigma_y^2 & \rho\sigma_y\sigma_z \\
-\rho\sigma_x\sigma_z & \rho\sigma_y\sigma_z & \sigma_z^2
-\end{bmatrix}
+  \mat{P} \leftarrow \tfrac12(\mat{P}+\mat{P}^{\T}),\qquad
+  \mat{P} \succeq 0 \text{ via eigenvalue floor } \lambda_i \leftarrow \max(\lambda_i,\varepsilon),
+  \label{eq:psd}
 \end{equation}
+with \(\varepsilon\approx 10^{-12}\) for \(4\times4\) attitude block, \(10^{-16}\) for \(12\times12\) linear block.
+\textbf{Innovation conditioning:} if \(\mat{S}\) is near-singular, add a small diagonal
+\(\delta \I\) before inversion (LDLT solve), \(\delta \approx 10^{-6}(\|\mat{S}\|+1)\).
+\textbf{Gating:} accept accelerometer when \(|\|\vect{a}_{\mathrm{meas}}\|-g|<2g\);
+accept magnetometer when \(\|\vect{m}_{\mathrm{meas}}\|,\|\vect{m}_{\mathrm{pred}}\|>10^{-6}\).
 
-Full discrete process noise construction:
+\section{Initialization and Defaults}
+\label{sec:init}
+\textbf{Attitude from accel+mag:} form world triad from gravity and horizontal magnetic
+component, then set \(\mat{R}_{wb}\) and \(\quat{q}\). Reference field vector \(\vect{B}_w\) from
+declination/inclination if needed.\\
+\textbf{Initial covariance (typical):}
 \begin{align}
-\vect{\Sigma}_{\text{aw\_stat}} &= \vect{L}\vect{L}^\T \quad \text{(Cholesky decomposition)} \\
-\vect{Q}_{\text{kron}} &= \begin{bmatrix}
-\Sigma_{11}\vect{Q}_{\text{axis}} & \Sigma_{12}\vect{Q}_{\text{axis}} & \Sigma_{13}\vect{Q}_{\text{axis}} \\
-\Sigma_{21}\vect{Q}_{\text{axis}} & \Sigma_{22}\vect{Q}_{\text{axis}} & \Sigma_{23}\vect{Q}_{\text{axis}} \\
-\Sigma_{31}\vect{Q}_{\text{axis}} & \Sigma_{32}\vect{Q}_{\text{axis}} & \Sigma_{33}\vect{Q}_{\text{axis}}
-\end{bmatrix} \\
-\vect{Q}_{LL} &= \vect{P} \vect{Q}_{\text{kron}} \vect{P}^\T \quad \text{(permutation to state ordering)}
+  P_{\theta\theta} &= 10^{-6}\I_3, \quad
+  P_{b_g b_g} = 10^{-1}\I_3, \quad
+  P_{vv} = 1^2\I_3, \quad
+  P_{pp} = 20^2\I_3, \\
+  P_{SS} &= 50^2\I_3, \quad
+  P_{aa} = \Sigma_{aw}, \quad
+  P_{b_a b_a} = 0.1^2\I_3.
+  \label{eq:P0}
 \end{align}
-
-\section{Kalman Filter Equations}
-
-\subsection{Time Update (Prediction)}
-
-State propagation:
-\begin{align}
-\vect{x}_{k+1|k} &= \vect{F} \vect{x}_{k|k} \\
-\vect{P}_{k+1|k} &= \vect{F} \vect{P}_{k|k} \vect{F}^\T + \vect{Q}_d
-\end{align}
-
-Block covariance propagation:
-\begin{align}
-\vect{P}_{AA} &= \vect{F}_{AA} \vect{P}_{AA} \vect{F}_{AA}^\T + \vect{Q}_{AA} \\
-\vect{P}_{LL} &= \vect{F}_{LL} \vect{P}_{LL} \vect{F}_{LL}^\T + \vect{Q}_{LL} \\
-\vect{P}_{AL} &= \vect{F}_{AA} \vect{P}_{AL} \vect{F}_{LL}^\T
-\end{align}
-
-\subsection{Measurement Update (Correction)}
-
-For measurement $\vect{z}$ with model $\vect{h}(\vect{x})$ and Jacobian $\vect{C}$:
-
-Innovation computation:
-\begin{align}
-\vect{r} &= \vect{z} - \vect{h}(\vect{x}) \\
-\vect{S} &= \vect{C} \vect{P} \vect{C}^\T + \vect{R}
-\end{align}
-
-Kalman gain:
+\textbf{Process noise (typical):}
 \begin{equation}
-\vect{K} = \vect{P} \vect{C}^\T \vect{S}^{-1}
+  \Sigma_g = \sigma_g^2 \I_3,\quad q_{bg}\approx 10^{-12},\quad
+  q_{ba}\approx 10^{-8},\quad
+  \tau \approx \SI{2.3}{s},\quad
+  \Sigma_{aw} \approx (2.4^2)\I_3.
+  \label{eq:Q0}
 \end{equation}
-
-State update:
+\textbf{Measurement noise (typical):}
 \begin{equation}
-\vect{x}_{k+1|k+1} = \vect{x}_{k+1|k} + \vect{K} \vect{r}
+  \mat{R}_a = \mathrm{diag}(\sigma_a^2),\quad
+  \mat{R}_m = \mathrm{diag}(\sigma_m^2),\quad
+  \mat{R}_S = 1.5^2 \I_3.
+  \label{eq:R0}
 \end{equation}
 
-Joseph form covariance update:
-\begin{align}
-\vect{P}^+ &= (\vect{I} - \vect{K} \vect{C}) \vect{P}^- (\vect{I} - \vect{K} \vect{C})^\T + \vect{K} \vect{R} \vect{K}^\T \\
-&= \vect{P}^- - \vect{K}\vect{C}\vect{P}^- - (\vect{K}\vect{C}\vect{P}^-)^\T + \vect{K}\vect{S}\vect{K}^\T
-\end{align}
+% ===================== Appendices =====================
+\appendix
 
-\section{Numerical Safeguards and Stability}
-
-\subsection{Positive Semi-Definite Projection}
-
-For any covariance matrix $\vect{S}$:
-\begin{align}
-\vect{S} &\leftarrow \frac{1}{2}(\vect{S} + \vect{S}^\T) \quad \text{(symmetrize)} \\
-\vect{S} &= \vect{V} \vect{\Lambda} \vect{V}^\T \quad \text{(eigen decomposition)} \\
-\lambda_i^+ &= \max(\lambda_i, \epsilon) \quad \text{for } i=1,\dots,n \\
-\vect{S} &\leftarrow \vect{V} \vect{\Lambda}^+ \vect{V}^\T \\
-\vect{S} &\leftarrow \frac{1}{2}(\vect{S} + \vect{S}^\T) \quad \text{(re-symmetrize)}
-\end{align}
-with $\epsilon = 10^{-12}$ for 4×4 matrices, $\epsilon = 10^{-16}$ for 12×12 matrices.
-
-\subsection{Stable Matrix Inversion}
-
-For innovation covariance $\vect{S}$:
-\begin{align}
-\delta &= \max(\epsilon, 10^{-6}(\|\vect{S}\| + 1)) \\
-\vect{S} &\leftarrow \vect{S} + \delta \vect{I} \quad \text{(diagonal boost if LDLT fails)} \\
-\vect{S}^{-1} &\approx \text{LDLT\_solve}(\vect{S})
-\end{align}
-
-\subsection{Measurement Gating}
-
-Accelerometer measurement gate:
+\section{Right-Multiplicative Attitude Jacobian}
+\label{app:att-jac}
+For \(h(\quat{q})=\mat{R}_{wb}(\quat{q})\vect{v}_w\),
+\( \quat{q}^+=\quat{q}\otimes \delta\quat{q}(\tfrac12\delta\vect{\theta}) \),
+\( \mat{R}(\delta\vect{\theta})\approx \I - \skew{\delta\vect{\theta}} \).
+Then
 \begin{equation}
-\text{Accept measurement if } |\|\vect{a}_{\text{meas}}\| - g| < 2g
+  h(\quat{q}^+) \approx h(\quat{q}) - \mat{R}_{wb}\,\skew{\delta\vect{\theta}}\,\vect{v}_w
+  \;=\; h(\quat{q}) + \bigl(-\skew{\mat{R}_{wb}\vect{v}_w}\bigr)\delta\vect{\theta},
+  \quad
+  \frac{\partial h}{\partial \delta\vect{\theta}} = -\,\skew{\mat{R}_{wb}\vect{v}_w}.
+  \label{eq:att-jac-appendix}
 \end{equation}
+With \(\vect{v}_w = \vect{a}_w-\vect{g}_w\) and \(\vect{v}_w=\vect{B}_w\) one obtains
+\eqref{eq:acc-jacs} and \eqref{eq:mag-jac}.
 
-Magnetometer measurement gate:
-\begin{equation}
-\text{Accept measurement if } \|\vect{m}_{\text{meas}}\| > 10^{-6} \text{ and } \|\vect{m}_{\text{pred}}\| > 10^{-6}
-\end{equation}
-
-\section{Initialization Procedures}
-
-\subsection{From Accelerometer and Magnetometer}
-
+\section{Derivation of OU Integration Coefficients}
+\label{app:ou-kernel}
+We evaluate \eqref{eq:Qd-axis-integral} using
+\(
+\int_0^h\!\!\int_0^h e^{-|t-s|/\tau} p(t) q(s)\,ds\,dt
+= 2\int_0^h \int_0^t e^{-(t-s)/\tau} p(t) q(s)\,ds\,dt
+\)
+for polynomials \(p,q\) and \(e^{-t/\tau}\).
+Define \(x=h/\tau\), \(\alpha=e^{-x}\).
+Representative entries (per-axis, unit \(\sigma_a^2=1\)):
 \begin{align}
-\vect{z}_w &= -\frac{\vect{a}_b}{\|\vect{a}_b\|} \quad \text{(world down from accelerometer)} \\
-\vect{m}_h &= \vect{m}_b - (\vect{m}_b \cdot \vect{z}_w)\vect{z}_w \quad \text{(horizontal magnetic component)} \\
-\vect{x}_w &= \frac{\vect{m}_h}{\|\vect{m}_h\|} \quad \text{(world north from magnetometer)} \\
-\vect{y}_w &= \vect{z}_w \times \vect{x}_w \quad \text{(world east)}
+  [\mat{Q}_d^{(1)}]_{vv} &= \tfrac{2}{\tau}\!\left(
+     \tfrac{h^3}{3} - \tfrac{h^4}{4\tau} + \tfrac{h^5}{10\tau^2}
+     - \tfrac{h^3}{\tau^2}A_0 + \tfrac{1}{\tau^2}B_0
+  \right), \label{eq:Qvv}\\
+  [\mat{Q}_d^{(1)}]_{va} &= \tfrac{2}{\tau}\!\left(
+     \tfrac{h^2}{2} - \tfrac{h^3}{3\tau} + \tfrac{h^4}{8\tau^2}
+     - A_0 + \tfrac{B_0}{\tau}
+  \right), \label{eq:Qva}\\
+  [\mat{Q}_d^{(1)}]_{aa} &= \tfrac{2}{\tau}\, B_0,
+  \qquad
+  A_0=\tau(1-\alpha),\; B_0=\tfrac{\tau}{2}(1-\alpha^2),
+  \label{eq:Qaa}
 \end{align}
+with analogous forms for \([pp], [SS], [pv], [pa], [Sa], [Sp], [Sv]\).
+All coefficients arise from integrals of \(t^i s^j e^{-(t-s)/\tau}\) on the
+simplex \(0\le s\le t\le h\); the implementation uses closed forms bundled
+in \texttt{QdAxis4x1\_analytic} with small-\(x\) guards.
 
-World-to-body rotation matrix:
-\begin{equation}
-\vect{R}_{wb} = \begin{bmatrix} \vect{x}_w & \vect{y}_w & \vect{z}_w \end{bmatrix}
-\end{equation}
-
-Quaternion initialization:
-\begin{equation}
-\quat{q}_{\text{ref}} = \text{Quaternion}(\vect{R}_{wb})
-\end{equation}
-
-Magnetic reference vector:
-\begin{equation}
-\vect{B}_{\text{ref}} = \vect{R}_{wb}^\T \vect{m}_b
-\end{equation}
-
-\subsection{From Accelerometer Only}
-
+\section{Small-\texorpdfstring{$x=h/\tau$}{x} Series for Stability}
+\label{app:series-guards}
+For \(x\ll 1\), use Maclaurin expansions to avoid cancellation:
 \begin{align}
-\vect{a}_n &= \frac{\vect{a}}{\|\vect{a}\|} \\
-\cos\theta &= \vect{e}_z \cdot (-\vect{a}_n), \quad \vect{e}_z = [0, 0, 1]^\T \\
-\vect{\text{axis}} &= 
-\begin{cases}
-\vect{e}_x = [1, 0, 0]^\T & \text{if } |\cos\theta + 1| < 10^{-8} \text{ (anti-parallel)} \\
-\frac{\vect{e}_z \times (-\vect{a}_n)}{\|\vect{e}_z \times (-\vect{a}_n)\|} & \text{otherwise}
-\end{cases} \\
-\quat{q} &= 
-\begin{bmatrix}
-\cos(\theta/2) \\
-\sin(\theta/2) \vect{\text{axis}}
-\end{bmatrix}
+  \alpha &= 1 - x + \tfrac{x^2}{2} - \tfrac{x^3}{6} + \tfrac{x^4}{24} - \cdots, \\
+  A_0 &= \tau\!\left(x - \tfrac{x^2}{2} + \tfrac{x^3}{6} - \tfrac{x^4}{24} + \cdots\right),\quad
+  B_0 = \tau\!\left(x - x^2 + \tfrac{2}{3}x^3 - \tfrac{1}{3}x^4 + \cdots\right).
+  \label{eq:series}
 \end{align}
+Substitute into \eqref{eq:Phi-axis}--\eqref{eq:Qaa} as needed.
 
-\subsection{Magnetic Reference from Declination and Inclination}
+\section{Continuous\texorpdfstring{$\to$}{}Discrete Riccati Mapping (Van Loan)}
+\label{app:van-loan-derivation}
+From \eqref{eq:Qd-def}, stack the coupled ODEs
+\(
+\frac{d}{d\tau}\bigl[e^{-\mat{A}\tau}\mat{P}(\tau)e^{-\mat{A}^{\T}\tau}\bigr]
+= e^{-\mat{A}\tau}\mat{G}\mat{Q}_c\mat{G}^{\T} e^{-\mat{A}^{\T}\tau}
+\),
+integrate on \([0,h]\), and use block-matrix exponentials of \(\mat{M}\) in \eqref{eq:van-loan}.
+The identity \(e^{\mat{M}h}=\begin{bmatrix}\mat{M}_{11}&\mat{M}_{12}\\\mat{0}&\mat{M}_{22}\end{bmatrix}\)
+implies \(\Phi=\mat{M}_{22}^{\T}\) and \(\mat{Q}_d=\Phi\,\mat{M}_{12}\).
+For the OU chain, these reproduce the closed forms in \Cref{app:ou-kernel}.
 
-\begin{equation}
-\vect{B}_{\text{ref}} = B \begin{bmatrix}
-\cos I \cos D \\
-\cos I \sin D \\
-\sin I
-\end{bmatrix}
-\end{equation}
-where $D$ is declination (East positive), $I$ is inclination (Down positive), $B$ is field strength.
-
-\section{Parameter Initialization and Default Values}
-
-\subsection{Initial Covariance}
-
+\section{Full Measurement Jacobian Assembly}
+\label{app:full-C}
+Embed sensor blocks into \(m\times 21\) dense \(\mat{C}\):
 \begin{align}
-\vect{P}_{\theta\theta} &= \vect{I} \cdot 10^{-6} \quad \text{(attitude error)} \\
-\vect{P}_{b_g b_g} &= \vect{I} \cdot 10^{-1} \quad \text{(gyro bias)} \\
-\vect{P}_{vv} &= \vect{I} \cdot 1^2 \quad \text{(velocity)} \\
-\vect{P}_{pp} &= \vect{I} \cdot 20^2 \quad \text{(position)} \\
-\vect{P}_{SS} &= \vect{I} \cdot 50^2 \quad \text{(integral)} \\
-\vect{P}_{a_w a_w} &= \vect{\Sigma}_{\text{aw\_stat}} \quad \text{(world acceleration)} \\
-\vect{P}_{b_a b_a} &= \vect{I} \cdot 0.1^2 \quad \text{(accel bias)}
+  \mat{C}_a &= \begin{bmatrix}
+     -\skew{\vect{f}_b^{\mathrm{pred}}} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{R}_{wb} & \I_3
+  \end{bmatrix}, \label{eq:C-acc-full}\\
+  \mat{C}_m &= \begin{bmatrix}
+     -\skew{\vect{m}_b^{\mathrm{pred}}} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0} & \mat{0}
+  \end{bmatrix}, \label{eq:C-mag-full}\\
+  \mat{C}_S &= \begin{bmatrix}
+     \mat{0} & \mat{0} & \mat{0} & \mat{0} & \I_3 & \mat{0} & \mat{0}
+  \end{bmatrix}. \label{eq:C-S-full}
 \end{align}
+These match the C++ full-matrix assembly used in the Kalman gain and Joseph update.
 
-\subsection{Process Noise Defaults}
+\section*{Acknowledgments}
+This document mirrors the implementation of \texttt{Kalman3D\_Wave} (vOct22 baseline) and
+the analytic primitives \texttt{PhiAxis4x1\_analytic} and \texttt{QdAxis4x1\_analytic}, with
+blockwise covariance propagation, OU Kronecker coupling, right-multiplicative attitude
+linearization, Joseph updates, PSD projection, and temperature-dependent accelerometer bias.
+All formulas are aligned one-to-one with the code paths used in the fusion stack.
 
-\begin{align}
-\vect{Q}_{bg} &= \vect{I} \cdot 10^{-12} \quad \text{(gyro bias random walk)} \\
-\vect{Q}_{ba} &= \vect{I} \cdot 10^{-8} \quad \text{(accel bias random walk)} \\
-\tau_{aw} &= 2.3 \text{ seconds} \quad \text{(OU time constant)} \\
-\vect{\Sigma}_{\text{aw\_stat}} &= \vect{I} \cdot (2.4)^2 \quad \text{(world acceleration variance)} \\
-\vect{k}_a &= [0.003, 0.003, 0.003]^\T \quad \text{(temp coeff, m/s²/°C)}
-\end{align}
-
-\subsection{Measurement Noise Defaults}
-
-\begin{align}
-\vect{R}_{\text{acc}} &= \text{diag}(\sigma_a^2) \\
-\vect{R}_{\text{mag}} &= \text{diag}(\sigma_m^2) \\
-\vect{R}_S &= \vect{I} \cdot 1.5^2 \quad \text{(integral state noise)}
-\end{align}
-
-\section{Implementation Constants}
-
-\begin{align*}
-\text{PSEUDO\_UPDATE\_PERIOD} &= 3 \quad \text{(integral correction frequency)} \\
-\text{tempC\_ref} &= 35.0 \quad \text{(reference temperature in °C)} \\
-\delta_{\text{bias}} &= 10^{-8} \quad \text{(minimum time constant)} \\
-\epsilon_{\text{psd4}} &= 10^{-12} \quad \text{(4×4 PSD projection tolerance)} \\
-\epsilon_{\text{psd12}} &= 10^{-16} \quad \text{(12×12 PSD projection tolerance)}
-\end{align*}
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+\bibitem{jazwinski}
+A.~H. Jazwinski, \emph{Stochastic Processes and Filtering Theory}. Academic Press, 1970.
+\bibitem{shuster}
+M.~D. Shuster, ``A survey of attitude representations,'' \emph{J. Astronautical Sciences}, 1983.
+\bibitem{vanloan}
+C.~F. Van Loan, ``Computing Integrals Involving the Matrix Exponential,'' \emph{IEEE TAC}, 1978.
+\end{thebibliography}
 
 \end{document}
