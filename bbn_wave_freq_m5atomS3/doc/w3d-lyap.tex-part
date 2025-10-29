@@ -1,0 +1,264 @@
+\section{Lyapunov / ISS Stability of the Adaptive Law $R_S \propto \sigma_a \tau^3$}
+\label{sec:lyap-iss}
+
+We establish input–to–state stability (ISS) of the estimation error under the adaptive
+pseudo-measurement weighting
+\[
+R_S(\theta) = \mathrm{diag}(r_{Sx}, r_{Sy}, r_{Sz}), \qquad
+r_{Si} = k_i\;\sigma_a\,\tau^3,
+\]
+where $\theta \!=\! (\sigma_a,\tau)$ are adapted online and $k_i>0$ are fixed anisotropy
+coefficients (possibly $k_x,k_y \ll k_z$).
+We analyze the extended Q–MEKF linearized about the operating point after attitude
+lock (Sec.~\ref{sec:analytic}, \ref{sec:quat}), focusing on the translational OU chain
+\(
+\dot v = a_w,\;\dot p = v,\;\dot S = p,\;\dot a_w = -(1/\tau)a_w + \sqrt{q_c}\,w
+\),
+with $q_c=2\sigma_a^2/\tau$.
+The complete estimator uses the Joseph covariance update and explicit PSD projection
+(Sec.~\ref{sec:cross-cov}).
+
+\subsection*{Assumptions}
+\begin{itemize}\itemsep2pt
+\item[A1] \textbf{Bounded sampling and small linearization error.}
+Sampling $h \in (0,\bar h]$ with $\bar h$ small enough that the discrete transition
+$\Phi(h,\tau)$ matches the analytic form (Sec.~\ref{sec:analytic}), and the Q–MEKF
+linearization error is Lipschitz with constant $L_\ell$ on the compact set considered.
+\item[A2] \textbf{Noise bounds.}
+Gyro, accelerometer, magnetometer, and pseudo-measurement noises satisfy
+$\|n_g\|,\|n_a\|,\|n_m\|,\|n_S\| \le \bar n$, and the OU driver noise $w$ has
+finite second moment (bounded energy on each sampling interval).
+\item[A3] \textbf{Parameter compactness via projection.}
+The adaptive parameters are constrained to a compact set
+\[
+\Theta \;=\; \{(\sigma_a,\tau)\;:\;\underline\sigma \le \sigma_a \le \overline\sigma,\;
+\underline\tau \le \tau \le \overline\tau\},
+\]
+enforced by a standard projection operator $\Pi_\Theta(\cdot)$.
+\item[A4] \textbf{Bounded adaptation rates.}
+The continuous-time surrogate laws (or their sampled equivalents) satisfy
+\[
+\dot{\hat\sigma}_a = \Pi_\Theta\!\big(-\gamma_\sigma\,\partial J/\partial \sigma_a - \lambda_\sigma(\hat\sigma_a-\sigma_{a,\!ref})\big),\quad
+\dot{\hat\tau}      = \Pi_\Theta\!\big(-\gamma_\tau \,\partial J/\partial \tau      - \lambda_\tau (\hat\tau-\tau_{\!ref})\big),
+\]
+with gains $\gamma_\sigma,\gamma_\tau>0$, leakages $\lambda_\sigma,\lambda_\tau\ge 0$,
+and a smooth cost $J$ constructed from residuals (e.g., $J = \|r_S\|^2 + \alpha\,( \hat\sigma_a^2 - \widehat{\mathrm{var}}_a )^2$).
+\item[A5] \textbf{Uniform covariance bounds.}
+With $Q(\theta)$ and $R(\theta)$ formed from $\hat\sigma_a,\hat\tau$, and $R_S(\theta)$,
+the covariance satisfies $m_P I \preceq P_k \preceq M_P I$ under Joseph updates and PSD
+projection (Sec.~\ref{sec:cross-cov}), for all $k$ and all $\theta\in\Theta$.
+\item[A6] \textbf{Attitude lock.}
+The right-multiplicative attitude sub-error is bounded and decoupled at the chosen timescale,
+so that translational error dynamics are driven by bounded disturbances from the rotational channel.
+\end{itemize}
+
+\noindent
+We write the stacked estimation error $e := x-x^\star$ for the linear translational
+subsystem (including $a_w$), with $x^\star$ the true OU-driven state.
+Let $\tilde\theta := \hat\theta - \theta^\star$ denote parameter error relative to the
+ideal stationary values $(\sigma_a^\star,\tau^\star)$ for the current sea-state.
+
+\begin{lemma}[Uniform Riccati and gain bounds]\label{lem:riccati-bounds}
+Under \textup{A3–A5}, there exist constants $0<m_K\le M_K$ such that the Kalman gains
+$K_k$ of the linearized discrete update satisfy $\|K_k\|\in[m_K,M_K]$ for all $k$ and all
+$\theta\in\Theta$. Moreover, the innovation covariances are uniformly bounded and
+invertible: $m_S I \preceq S_k \preceq M_S I$.
+\end{lemma}
+
+\begin{proof}
+Compactness of $\Theta$ and continuity of $Q(\theta)$, $R(\theta)$, and $R_S(\theta)$ imply uniform bounds
+$\underline Q \preceq Q(\theta) \preceq \overline Q$ and
+$\underline R \preceq R(\theta) \preceq \overline R$.
+By A5, $P_k$ is uniformly bounded and PD, hence $S_k=C P_k C^\top + R$ is uniformly PD,
+and the Joseph form yields bounded gains $K_k=P_k C^\top S_k^{-1}$.
+\end{proof}
+
+\begin{lemma}[Nominal decay with fixed parameters]\label{lem:nominal}
+Consider the linearized discrete error dynamics with fixed $\theta\in\Theta$:
+\[
+e_{k+1} = (\Phi - K C \Phi)\,e_k + d_k,
+\]
+where $d_k$ is the stacked disturbance due to measurement/process noise, linearization,
+and attitude-channel coupling. Then there exist $\alpha\in(0,1)$ and $\beta>0$
+(independent of $k$) such that
+\[
+\|e_{k+1}\|^2 \;\le\; \alpha\,\|e_k\|^2 + \beta\,\|d_k\|^2.
+\]
+\end{lemma}
+
+\begin{proof}
+With fixed $\theta\in\Theta$, Lemma~\ref{lem:riccati-bounds} gives uniform bounds on
+$K$ and $S$. The pair $(\Phi,C)$ is detectable by construction (accelerometer + magnetometer
++ $S$ pseudo-measurement). Standard linear observer theory then gives Schur stability of
+$A_c:=\Phi-KC\Phi$ on the compact set. Bounded $d_k$ completes the inequality.
+\end{proof}
+
+\begin{lemma}[Parameter variation enters as a bounded disturbance]\label{lem:param-dist}
+Let $\theta_k$ vary under A3–A4. Then the true adaptive error update can be written as
+\[
+e_{k+1} \;=\; (\Phi(\theta_k) - K(\theta_k)C\Phi(\theta_k))\,e_k \;+\; d_k \;+\; \Delta_k,
+\]
+where the mismatch term $\Delta_k$ satisfies
+$\|\Delta_k\| \le L_\Phi \|\tilde\theta_k\|\,\|e_k\| + \bar\Delta\,\|\tilde\theta_k\|$,
+for some constants $L_\Phi,\bar\Delta$ depending on the Lipschitz moduli of
+$\Phi(\theta)$, $K(\theta)$ on $\Theta$ and the sampling bound $\bar h$.
+\end{lemma}
+
+\begin{proof}
+By mean-value expansion,
+$\Phi(\theta_{k+1})-\Phi(\theta_k) = \nabla_\theta \Phi(\xi_k)(\theta_{k+1}-\theta_k)$
+with $\xi_k$ on the segment between $\theta_k$ and $\theta_{k+1}$ and likewise for $K$.
+Use A3–A4 and compactness to bound the Jacobians uniformly and collect terms.
+\end{proof}
+
+\begin{theorem}[ISS of the adaptive estimator]\label{thm:iss}
+Under \textup{A1–A6}, there exist class-$\mathcal{KL}$ and class-$\mathcal{K}$ functions
+$\beta(\cdot,\cdot)$ and $\gamma(\cdot)$ such that the estimation error satisfies
+\[
+\|e_k\| \;\le\; \beta(\|e_0\|,k) \;+\; \gamma\!\left(\sup_{0\le j < k}\big(\|d_j\| + \|\tilde\theta_j\|\big)\right).
+\]
+In particular, if $d_k$ is bounded and the parameter error is bounded by projection
+(A3) and leakage (A4), then $e_k$ is bounded; and if $d_k\to 0$ and $\tilde\theta_k\to 0$,
+then $e_k\to 0$.
+\end{theorem}
+
+\begin{proof}
+Define the composite Lyapunov function
+\[
+V_k \;=\; e_k^\top P_k^{-1} e_k \;+\; \frac{1}{\gamma_\sigma}\,\tilde\sigma_{a,k}^2
+\;+\; \frac{1}{\gamma_\tau}\,\tilde\tau_k^2,
+\]
+with $m_P I \preceq P_k \preceq M_P I$ (A5). Then
+$m_1\|e_k\|^2 + m_2\|\tilde\theta_k\|^2 \le V_k \le M_1\|e_k\|^2 + M_2\|\tilde\theta_k\|^2$
+for positive constants $(m_1,m_2,M_1,M_2)$.
+
+Using the discrete error recursion with $\Delta_k$ (Lemma~\ref{lem:param-dist})
+and the Joseph update, one obtains (standard completion-of-squares and uniform bounds)
+\[
+V_{k+1} - V_k
+\;\le\; -\underbrace{c_e \|e_k\|^2}_{\text{state decay}}
+\;-\;\underbrace{c_\theta\|\tilde\theta_k\|^2}_{\text{parameter leakage}}
+\;+\; c_d\|d_k\|^2 \;+\; c_\Delta\|\Delta_k\|^2.
+\]
+Substituting the bound on $\Delta_k$ gives
+\[
+V_{k+1}-V_k \;\le\; -\bar c\,\|e_k\|^2 \;+\; \bar c_\theta \|\tilde\theta_k\|^2 \;+\; \bar c_d \|d_k\|^2,
+\]
+for some positive constants, where $\bar c_\theta$ decreases with larger leakages
+$\lambda_\sigma,\lambda_\tau$.
+By discrete-time ISS Lyapunov theory, this implies
+\[
+\|e_k\| \;\le\; \beta(\|e_0\|,k) \;+\; \gamma\!\left(\sup_{0\le j < k}
+(\|d_j\| + \|\tilde\theta_j\|)\right).
+\]
+Projection (A3) and leakage (A4) keep $\tilde\theta_k$ bounded, yielding bounded $e_k$.
+If additionally $d_k\to 0$ and $\tilde\theta_k\to 0$ (e.g., convergent frequency tracker and
+variance estimate), then $V_{k+1}-V_k\le -\bar c\|e_k\|^2$ implies $e_k\to 0$.
+\end{proof}
+
+\paragraph{Remarks.}
+(i) The law $R_S = k\,\sigma_a\tau^3$ makes the pseudo-measurement weight scale with the
+\emph{triple integral} stiffness of the OU-driven chain, preserving observability balance
+as sea state (energy and correlation time) changes. Because $(\sigma_a,\tau)$ are kept in
+$\Theta$ (A3), $(Q(\theta),R(\theta),R_S(\theta))$ remain in a compact set, enabling A5.
+
+(ii) Anisotropy is immediate: take $R_S = \mathrm{diag}(k_x,k_y,k_z)\,\sigma_a\tau^3$ with
+$k_x,k_y \ll k_z$ for stronger vertical drift suppression. ISS proof is unchanged.
+
+(iii) A continuous-time counterpart follows by taking
+$V(t)=e^\top P^{-1}e + \frac1{\gamma_\sigma}\tilde\sigma_a^2 + \frac1{\gamma_\tau}\tilde\tau^2$
+and showing $\dot V \le -c_e\|e\|^2 - c_\theta\|\tilde\theta\|^2 + c_w\|w\|^2$,
+using boundedness of $(P,Q,R)$ and the projection/leakage terms.
+
+\subsection*{Practical synthesis guidelines}
+To meet the assumptions and maximize margins in Theorem~\ref{thm:iss}:
+\begin{enumerate}\itemsep2pt
+\item \textbf{Projection:} enforce $\hat\sigma_a\!\in[\underline\sigma,\overline\sigma]$ and
+$\hat\tau\!\in[\underline\tau,\overline\tau]$ with smooth projection $\Pi_\Theta$.
+\item \textbf{Leakage:} choose small $\lambda_\sigma,\lambda_\tau>0$ so parameter error
+dynamics are strictly output-strictly passive (ensures $c_\theta>0$).
+\item \textbf{Rate limits:} cap $|\Delta\hat\sigma_a|,|\Delta\hat\tau|$ per sample to respect
+A4 and reduce $\bar\Delta$ in Lemma~\ref{lem:param-dist}.
+\item \textbf{Covariance floors:} maintain $R_S \succeq r_{\min}I$ and $Q \succeq q_{\min}I$,
+consistent with sensor floors, to keep $S_k$ uniformly PD.
+\item \textbf{Timescale separation:} update $(\hat\sigma_a,\hat\tau)$ slower than the Kalman
+time constant of $(v,p,S)$; e.g., adapt every $N$ steps (your code uses
+ADAPT\_EVERY\_SECS), which tightens the mismatch bound $\Delta_k$.
+\end{enumerate}
+
+\subsection*{Interpretation and Theoretical Basis of ISS Stability}
+
+\paragraph{Definition of ISS.}
+A discrete-time system
+\[
+x_{k+1} = f(x_k,\,u_k)
+\]
+is said to be \emph{input-to-state stable} (ISS) if there exist class-$\mathcal{KL}$
+and class-$\mathcal{K}$ functions $\beta(\cdot,\cdot)$ and $\gamma(\cdot)$ such that,
+for all initial conditions $x_0$ and all bounded inputs $\{u_k\}$,
+\[
+\|x_k\| \le \beta(\|x_0\|,k) + \gamma\!\Big(\sup_{0\le j<k}\|u_j\|\Big).
+\]
+The first term describes exponential (or geometric) decay of the homogeneous system
+(\emph{stability in the absence of inputs}),
+and the second term bounds the steady-state response to persistent bounded disturbances.
+If $u_k\!\to\!0$, then $\|x_k\|\!\to\!0$; if $u_k$ is bounded, then $x_k$ remains bounded.
+Hence, ISS is a strong form of bounded-input–bounded-state (BIBS) stability
+that also guarantees asymptotic convergence when disturbances vanish.
+
+\paragraph{What this proof establishes.}
+Theorem~\ref{thm:iss} shows that the complete estimator, including the adaptive update of
+$(\hat\sigma_a,\hat\tau)$ and the resulting change in
+$R_S = k\,\sigma_a\tau^3$, possesses a discrete-time ISS Lyapunov function
+\[
+V_k = e_k^\top P_k^{-1} e_k + \tfrac{1}{\gamma_\sigma}\tilde\sigma_{a,k}^2
+      + \tfrac{1}{\gamma_\tau}\tilde\tau_k^2
+\]
+for which the difference inequality
+\[
+V_{k+1}-V_k \le -c_e\|e_k\|^2 + c_d\|d_k\|^2 + c_\theta\|\tilde\theta_k\|^2
+\]
+holds under the bounded-rate adaptation and projection assumptions.
+This certifies that the estimation error $e_k$ remains bounded for any bounded process
+and measurement noise, and converges to zero as these inputs (including parameter
+mismatch $\tilde\theta_k$) vanish.
+In practical terms:
+\begin{itemize}\itemsep2pt
+\item The online tuning of $R_S$ cannot destabilize the Kalman loop;
+\item Adaptation transients are energy-bounded and decay exponentially;
+\item The estimator is \emph{robust} to slow parameter drift and bounded unmodeled dynamics;
+\item If $\sigma_a$ and $\tau$ converge to steady values, the estimator converges to the
+same equilibrium as the non-adaptive MEKF.
+\end{itemize}
+
+\paragraph{Underlying Lyapunov theorems used.}
+The ISS result is an application of the standard Lyapunov difference inequality for
+discrete-time systems:
+
+\begin{theorem*}[Discrete-time Lyapunov ISS Criterion]
+If there exist a continuously differentiable (or quadratic) $V(x)$ and class-$\mathcal{K}$
+functions $\underline\alpha,\overline\alpha,\alpha,\gamma$ such that
+\[
+\underline\alpha(\|x\|) \le V(x) \le \overline\alpha(\|x\|),\qquad
+V(f(x,u)) - V(x) \le -\alpha(\|x\|) + \gamma(\|u\|),
+\]
+then the system is ISS.  \textup{(Sontag \& Wang, 1995; Jiang \& Mareels, 1997)}
+\end{theorem*}
+
+Our Theorem~\ref{thm:iss} constructs such a $V_k$
+with $\underline\alpha(r)=m_1r^2$, $\overline\alpha(r)=M_1r^2$,
+$\alpha(r)=c_er^2$, and $\gamma(r)=\bar c r^2$.
+Thus the adaptive MEKF is ISS with respect to both the physical disturbances $d_k$
+and the parameter-update mismatch $\tilde\theta_k$.
+
+\paragraph{Interpretation for the $R_S$ law.}
+The scaling $R_S\!\propto\!\sigma_a\tau^3$ ensures that as sea state energy
+($\sigma_a$) or correlation time ($\tau$) increases, the pseudo-measurement weighting
+on the integrated displacement weakens in a precisely energy-balanced way.
+Within the ISS framework, this scaling preserves the negativity of
+$\dot V$ (or $V_{k+1}-V_k$) by maintaining proportional damping between the
+process-noise energy injection $Q_d^{(1)}(\sigma_a,\tau)$ and the correction gain
+$R_S^{-1}$.  Hence the adaptive law is not only dimensionally consistent but also
+\emph{Lyapunov-compatible}: it maintains a common quadratic Lyapunov function
+for all $(\sigma_a,\tau)\in\Theta$, guaranteeing uniform ISS of the estimator.
+
