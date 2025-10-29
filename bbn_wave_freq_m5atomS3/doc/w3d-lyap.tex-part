@@ -141,7 +141,7 @@ Discretize a grid of $(\sigma_a,\tau)$ in $\Theta$ and solve
 \[
 A(\theta_i)^\top P A(\theta_i) \preceq (1-\mu)P, \qquad P\succ0
 \]
-for a common $P,\mu$ using an LMI solver (e.g.\ \texttt{feasp}, \texttt{cvx}, or YALMIP/MOSEK}).
+for a common $P,\mu$ using an LMI solver (e.g.\ \texttt{feasp}, \texttt{CVX}, or \texttt{YALMIP}/\texttt{MOSEK}).
 If infeasible: (i) narrow $\Theta$; (ii) raise $R_S$ floors; (iii) slow adaptation (reduce $\rho$);
 or (iv) allow a parameter-dependent $P(\theta)$ (LPV approach).
 
