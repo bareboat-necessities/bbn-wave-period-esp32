@@ -25,7 +25,7 @@ rather than relying on separate numerical integration.
 
 \subsection*{Stochastic Forcing and the OU Acceleration Model}
 
-The latent world acceleration \(\vect{a}_w\) is modeled as an
+The latent world acceleration \(\bm{a}_w\) is modeled as an
 Ornstein--Uhlenbeck (OU) process characterized by a stationary variance
 \(\Sigma_{aw}\) and a correlation time constant \(\tau\).  This choice
 captures the colored and temporally correlated nature of ocean-wave
@@ -111,7 +111,7 @@ three-dimensional surface motion.
 \subsection*{Outline of the Paper}
 
 The remainder of this paper is organized as follows:
-\begin{enumerate}[label=\arabic*.]
+\begin{enumerate}
   \item Section~\ref{sec:state} defines the complete state and coordinate conventions.
   \item Section~\ref{sec:ct-model} formulates the continuous-time process
         model with OU acceleration dynamics.
@@ -120,7 +120,7 @@ The remainder of this paper is organized as follows:
         discrete-time transition and noise matrices with small-step
         stability series.
   \item Section~\ref{sec:AG} provides the full continuous Jacobians
-        \(\mat{A}\) and \(\mat{G}\).
+        \(\bm{A}\) and \(\bm{G}\).
   \item Sections~\ref{sec:meas-update}--\ref{sec:cov-prop} describe the
         Kalman recursion, covariance propagation, and Joseph-form
         update.
