@@ -5,8 +5,7 @@ This paper presents a complete mathematical and algorithmic formulation of a
 \emph{quaternion right-multiplicative extended Kalman filter} (Q-MEKF)
 augmented with an Ornstein--Uhlenbeck (OU) process model for latent
 acceleration. The filter is designed for marine inertial sensing and
-wave-kinematics reconstruction, where integrated inertial data are
-subject to severe low-frequency drift.  The proposed framework unifies
+wave-kinematics reconstruction.  The proposed framework unifies
 attitude estimation, translational kinematics, and stochastic excitation
 modeling into a single, analytically tractable structure suitable for
 real-time implementation.
