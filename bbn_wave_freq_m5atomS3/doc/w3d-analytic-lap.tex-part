@@ -1,0 +1,170 @@
+\section{OU Discretization via Laplace Transform (Fully Worked)}
+\label{sec:ou-laplace}
+
+We re-derive the discrete transition $\Phi_{\text{axis}}(h,\tau)$ and the per-axis
+discrete covariance $Q_d^{(1)}(h,\tau,\sigma_a^2)$ for the OU-driven chain
+\[
+\dot v = a,\qquad \dot p = v,\qquad \dot S = p,\qquad \dot a = -\tfrac{1}{\tau}a + \sqrt{q_c}\,w(t),
+\]
+with $q_c = 2\sigma_a^2/\tau$, $w$ unit white noise, and sampling step $h>0$.
+All derivations are per-axis; the $3$D case follows by block replication.
+
+\subsection{State-space and resolvent}
+Let $x=[\,v\;p\;S\;a\,]^\top$ and
+\[
+A =
+\begin{bmatrix}
+0 & 0 & 0 & 1\\
+1 & 0 & 0 & 0\\
+0 & 1 & 0 & 0\\
+0 & 0 & 0 & -\tfrac{1}{\tau}
+\end{bmatrix},
+\qquad
+B = \begin{bmatrix}0\\0\\0\\1\end{bmatrix}.
+\]
+The Laplace transform of $x(t)$ satisfies
+\[
+X(s) = (sI-A)^{-1}x(0) + (sI-A)^{-1}B\,\sqrt{q_c}\,W(s).
+\]
+We first compute $(sI-A)^{-1}$ explicitly. Writing
+\[
+sI-A =
+\begin{bmatrix}
+s & 0 & 0 & -1\\
+-1 & s & 0 & 0\\
+0 & -1 & s & 0\\
+0 & 0 & 0 & s+\tfrac{1}{\tau}
+\end{bmatrix},
+\]
+a direct block back-substitution gives, for the columns relevant to $v,p,S,a$:
+\begin{align}
+\label{eq:resolvent-cols}
+(sI-A)^{-1}\! &= 
+\begin{bmatrix}
+\frac{1}{s} & 0 & 0 & \frac{1}{s(s+\tfrac{1}{\tau})}\\[2pt]
+\frac{1}{s^2} & \frac{1}{s} & 0 & \frac{1}{s^2(s+\tfrac{1}{\tau})}\\[2pt]
+\frac{1}{s^3} & \frac{1}{s^2} & \frac{1}{s} & \frac{1}{s^3(s+\tfrac{1}{\tau})}\\[2pt]
+0 & 0 & 0 & \frac{1}{s+\tfrac{1}{\tau}}
+\end{bmatrix}.
+\end{align}
+(The strictly lower-triangular part follows from the integrator chain; the $a$-column follows from the OU pole.)
+
+\subsection{Deterministic transition $\Phi_{\text{axis}}(h,\tau)$}
+Set $w\equiv 0$. The deterministic solution is
+\[
+x(h) = \Phi_{\text{axis}}(h,\tau)\,x(0)
+\quad\Longleftrightarrow\quad
+\mathcal{L}\{x\}(s) = (sI-A)^{-1}x(0).
+\]
+Taking inverse Laplace term-by-term using \eqref{eq:resolvent-cols} and standard pairs
+$\mathcal{L}^{-1}\{1/s\}=1$, $\mathcal{L}^{-1}\{1/s^2\}=t$, $\mathcal{L}^{-1}\{1/s^3\}=t^2/2$,
+$\mathcal{L}^{-1}\{1/(s+\alpha)\}=e^{-\alpha t}$, and partial fractions
+\[
+\frac{1}{s(s+\frac{1}{\tau})} = \tau\!\left(\frac{1}{s} - \frac{1}{s+\frac{1}{\tau}}\right),\quad
+\frac{1}{s^2(s+\frac{1}{\tau})} = \tau^2\!\left(\frac{1}{s^2} - \frac{1}{s(s+\frac{1}{\tau})}\right),
+\]
+\[
+\frac{1}{s^3(s+\frac{1}{\tau})} = \tau^3\!\left(\frac{1}{s^3}
+ - \frac{1}{s^2(s+\frac{1}{\tau})}\right),
+\]
+we obtain the time-domain kernels at $t=h$:
+\begin{align*}
+a(h) &= e^{-h/\tau}\,a(0),\\
+v(h) &= v(0) + \underbrace{\tau\!\left(1-e^{-h/\tau}\right)}_{\phi_{va}}\,a(0),\\
+p(h) &= p(0) + h\,v(0) + \underbrace{\tau^2\!\left(\frac{h}{\tau} + e^{-h/\tau}-1\right)}_{\phi_{pa}}\,a(0),\\
+S(h) &= S(0) + h\,p(0) + \tfrac{1}{2}h^2 v(0)
+       + \underbrace{\tau^3\!\left(\tfrac{1}{2}\!\left(\tfrac{h}{\tau}\right)^2 - \tfrac{h}{\tau} - (e^{-h/\tau}-1)\right)}_{\phi_{Sa}}\,a(0).
+\end{align*}
+Thus
+\[
+\boxed{
+\Phi_{\text{axis}}(h,\tau)=
+\begin{bmatrix}
+1 & 0 & 0 & \phi_{va}\\
+h & 1 & 0 & \phi_{pa}\\
+\tfrac{1}{2}h^2 & h & 1 & \phi_{Sa}\\
+0 & 0 & 0 & e^{-h/\tau}
+\end{bmatrix}}
+\]
+with $\phi_{va},\phi_{pa},\phi_{Sa}$ as above. For $x=h/\tau\ll 1$, the Maclaurin expansions
+\[
+\phi_{va}=\tau\!\left(x-\tfrac{x^2}{2}+\tfrac{x^3}{6}-\cdots\right),\quad
+\phi_{pa}=\tau^2\!\left(\tfrac{x^2}{2}-\tfrac{x^3}{6}+\tfrac{x^4}{24}-\cdots\right),\quad
+\phi_{Sa}=\tau^3\!\left(\tfrac{x^3}{6}-\tfrac{x^4}{24}+\tfrac{x^5}{120}-\cdots\right)
+\]
+remove cancellation.
+
+\subsection{Stochastic part and discrete covariance $Q_d^{(1)}$}
+With noise, the solution is
+\[
+x(h)=\Phi_{\text{axis}}(h,\tau)\,x(0)
+     + \sqrt{q_c}\int_0^h e^{A(h-s)}B\,w(s)\,ds.
+\]
+The discrete covariance is
+\[
+Q_d^{(1)}(h) = q_c\int_0^h e^{A(h-s)}BB^\top e^{A^\top(h-s)}\,ds
+             = \int_0^h \psi(t)\,\psi(t)^\top\,dt,
+\]
+where $\psi(t) := \sqrt{q_c}\,e^{At}B$ is the vector of impulse responses from $w$ to $[v,p,S,a]$.
+From \eqref{eq:resolvent-cols}, the inverse Laplace of the $B$-column yields
+\[
+\psi(t) =
+\begin{bmatrix}
+\sqrt{q_c}\,\tau\!\left(1-e^{-t/\tau}\right)\\[2pt]
+\sqrt{q_c}\,\tau^2\!\left(\tfrac{t}{\tau}+e^{-t/\tau}-1\right)\\[2pt]
+\sqrt{q_c}\,\tau^3\!\left(\tfrac{1}{2}\!\left(\tfrac{t}{\tau}\right)^2-\tfrac{t}{\tau}-(e^{-t/\tau}-1)\right)\\[2pt]
+\sqrt{q_c}\,e^{-t/\tau}
+\end{bmatrix}.
+\]
+Therefore,
+\[
+\boxed{\,Q_d^{(1)}(h) = \int_0^h \psi(t)\,\psi(t)^\top\,dt\,}
+\]
+and the entries are elementary integrals of polynomials and exponentials.
+Carrying them out gives the cancellation-safe closed forms summarized by the primitives
+\[
+\alpha=e^{-x},\;\alpha_2=e^{-2x},\;e_{-1}=\alpha-1,\;e_{-12}=\alpha_2-1,
+\]
+\[
+A_0:=\tau(1-\alpha),\quad
+A_1:=\tau^2\!\left(1-\alpha - x\alpha\right),\quad
+A_2:=\tau^3\!\left(2-2\alpha - \alpha x(x+2)\right),\quad
+B_0:=\tfrac{\tau}{2}(1-\alpha_2),
+\]
+and monomial integrals $C_k=\tfrac{h^{k+1}}{k+1}$, leading to the symmetric matrix
+\[
+Q_d^{(1)} =
+\begin{bmatrix}
+K_{vv} & K_{pv} & K_{Sv} & K_{va}\\
+\ast & K_{pp} & K_{Sp} & K_{pa}\\
+\ast & \ast & K_{SS} & K_{Sa}\\
+\ast & \ast & \ast & K_{aa}
+\end{bmatrix},
+\]
+with entries
+\begin{align*}
+K_{aa} &= B_0, &
+K_{va} &= \tau(A_0-B_0), &
+K_{vv} &= \tau^2(C_0 - 2A_0 + B_0),\\
+K_{pa} &= \tau A_1 - \tau^2 A_0 + \tau^2 B_0, \qquad
+&K_{pv} &= \tau^2(C_1 - A_1) - \tau^3(C_0 - A_0) + \tau^3(A_0 - B_0),\\
+K_{pp} &= \tau^2 C_2 - 2\tau^3 C_1 + 2\tau^3 A_1 + \tau^4 C_0 - 2\tau^4 A_0 + \tau^4 B_0,\\
+K_{Sa} &= \tfrac{1}{2}\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0,\\
+K_{Sv} &= \tfrac{1}{2}\tau^2(C_2 - A_2) - \tau^3(C_1 - A_1) + \tau^4(C_0 - A_0) - \tau^4(A_0 - B_0),\\
+K_{Sp} &= \tfrac{1}{2}\tau^2 C_3 - \tfrac{3}{2}\tau^3 C_2 + 2\tau^4 C_1 - \tau^5 C_0
+         + \tfrac{1}{2}\tau^3 A_2 - 2\tau^4 A_1 + 2\tau^5 A_0 - \tau^5 B_0,\\
+K_{SS} &= \tfrac{1}{4}\tau^2 C_4 - \tau^3 C_3 + 2\tau^4 C_2 - 2\tau^5 C_1 + \tau^6 C_0
+         - \tau^4 A_2 + 2\tau^5 A_1 - 2\tau^6 A_0 + \tau^6 B_0.
+\end{align*}
+Finally, with $q_c=2\sigma_a^2/\tau$,
+\[
+\boxed{\,Q_d^{(1)}(h,\tau,\sigma_a^2) = \frac{2\sigma_a^2}{\tau}\cdot \frac{K + K^\top}{2}\,}
+\]
+and we apply explicit symmetrization and a small eigenvalue floor to preserve PSD.
+
+\paragraph{Remark (equivalence).}
+The Laplace-transform derivation above yields the same $\Phi_{\text{axis}}$ and $Q_d^{(1)}$
+as the direct-integration method of Sec.~\ref{sec:analytic}. The Laplace route is often shorter:
+(i) compute the resolvent column $(sI-A)^{-1}B$, (ii) invert to impulse responses $\psi(t)$,
+(iii) integrate $\psi\psi^\top$ on $[0,h]$.
+\```
