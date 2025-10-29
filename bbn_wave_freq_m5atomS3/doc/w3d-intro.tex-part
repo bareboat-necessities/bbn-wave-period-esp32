@@ -29,10 +29,8 @@ The latent world acceleration \(\bm{a}_w\) is modeled as an
 Ornstein--Uhlenbeck (OU) process characterized by a stationary variance
 \(\Sigma_{aw}\) and a correlation time constant \(\tau\).  This choice
 captures the colored and temporally correlated nature of ocean-wave
-excitation: broadband but with finite memory and bounded variance.  In
-contrast to white-noise excitation, the OU prior prevents unbounded
-growth of integrated displacement covariance while still allowing
-realistic oscillatory dynamics.  For Lagrangian sensors following
+excitation: broadband but with finite memory and bounded variance. 
+For Lagrangian sensors following
 surface motion, this leads to substantially improved low-frequency
 stability without sacrificing responsiveness to swell-band motion.
 
