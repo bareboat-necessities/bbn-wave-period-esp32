@@ -46,7 +46,7 @@ ALLOWED_WAVES = {"jonswap", "pmstokes"}
 
 # === Regex to extract wave type and height from filename ===
 pattern = re.compile(
-    r".*?_(?P<wave>[a-zA-Z0-9]+)_H(?P<height>[-0-9\.]+).*?_w3d\.csv$"
+    r".*?_(?P<wave>[a-zA-Z0-9]+)_H(?P<height>[-0-9\.]+).*?_fusion\.csv$"
 )
 
 def latex_safe(s: str) -> str:
@@ -74,9 +74,9 @@ def finalize_plot(fig, outbase: str, suffix: str = "", exts=("pgf", "svg")):
     plt.close(fig)
 
 # === Find all *_w3d.csv files ===
-files = glob.glob(os.path.join(DATA_DIR, "*_w3d.csv"))
+files = glob.glob(os.path.join(DATA_DIR, "*_fusion.csv"))
 if not files:
-    print("No *_w3d.csv files found in", DATA_DIR)
+    print("No *_fusion.csv files found in", DATA_DIR)
     exit()
 
 for fname in files:
