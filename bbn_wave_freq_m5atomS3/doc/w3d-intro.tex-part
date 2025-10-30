@@ -105,28 +105,6 @@ frequency-tracking schemes.  The OU-based Q-MEKF achieves
 drift-suppressed yet dynamically faithful reconstruction of
 three-dimensional surface motion.
 
-\subsection*{Outline of the Paper}
-
-The remainder of this paper is organized as follows:
-\begin{enumerate}
-  \item Section~\ref{sec:state} defines the complete state and coordinate conventions.
-  \item Section~\ref{sec:ct-model} formulates the continuous-time process
-        model with OU acceleration dynamics.
-  \item Section~\ref{sec:meas} details the measurement equations and Jacobians.
-  \item Section~\ref{sec:discrete-pred}--\ref{sec:Qd} derive analytic
-        discrete-time transition and noise matrices with small-step
-        stability series.
-  \item Section~\ref{sec:AG} provides the full continuous Jacobians
-        \(\bm{A}\) and \(\bm{G}\).
-  \item Sections~\ref{sec:meas-update}--\ref{sec:cov-prop} describe the
-        Kalman recursion, covariance propagation, and Joseph-form
-        update.
-  \item Section~\ref{sec:numerics} summarizes numerical safeguards.
-  \item Section~\ref{sec:init} provides initialization strategies and default parameters.
-  \item The Appendices supply the OU integral derivations, Van Loan mapping,
-        and small-step series expansions.
-\end{enumerate}
-
 \subsection*{Main Contributions}
 
 The main contributions of this work are:
