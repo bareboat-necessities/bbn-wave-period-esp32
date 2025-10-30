@@ -1,7 +1,7 @@
 \section{Measurement Model}
 
-The filter employs three complementary measurement channels:
-the accelerometer, the magnetometer, and a zero-valued
+The filter employs four complementary measurement channels:
+the accelerometer, the gyroscope, the magnetometer, and a zero-valued
 pseudo-measurement on the integral displacement~$\mathbf{S}$.
 Each provides an independent correction pathway for attitude
 and translational drift.
