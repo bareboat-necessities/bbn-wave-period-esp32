@@ -2,8 +2,8 @@
 
 The continuous-time dynamics of the full system are partitioned into two
 subsystems: (i) attitude propagation on the unit quaternion manifold, and
-(ii) a linear translational–stochastic subsystem driven by an
-Ornstein–Uhlenbeck (OU) acceleration process.
+(ii) a linear kinematics stochastic subsystem driven by an
+Ornstein-Uhlenbeck (OU) acceleration process.
 
 \subsection{Attitude Dynamics}
 
