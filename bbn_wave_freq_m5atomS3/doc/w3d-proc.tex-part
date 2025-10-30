@@ -29,7 +29,7 @@ in the upper-left block of the covariance.
 
 \subsection{Linear Kinematics Subsystem}
 
-In the world frame (NED), the translational and stochastic components in continuous time obey
+In the world frame (NED), the translational and stochastic components in continuous-time obey
 \begin{equation}
 \begin{aligned}
 \dot{\mathbf{v}} &= \mathbf{a}_w,\\
