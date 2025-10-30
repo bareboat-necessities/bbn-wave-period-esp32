@@ -36,7 +36,7 @@ stability without sacrificing responsiveness to swell-band motion.
 \subsection*{Continuous-Time Model Formulation}
 
 The continuous-time model is organized into three independent linear
-chains—one for each axis—linking acceleration, velocity, displacement,
+chains one for each axis linking acceleration, velocity, displacement,
 and integral of displacement.  These linear chains are coupled to the
 quaternion attitude subsystem through the standard small-angle error
 kinematics of the Q-MEKF.  IMU measurements provide specific force and
