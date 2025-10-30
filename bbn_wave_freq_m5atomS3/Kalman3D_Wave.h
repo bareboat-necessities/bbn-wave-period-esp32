@@ -753,7 +753,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
 
         // Final symmetry + PSD projection for numerical safety
         Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
-        project_psd12<T>(Q_LL, T(1e-16));
+        project_psd<T,12>(Q_LL, T(1e-16));
     } else {
         // Independent axes (no cross-correlation) — per-axis Qd on the diagonal
         const int idx[4] = {0,3,6,9};
