@@ -1,0 +1,311 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage{amsmath,amssymb,bm,graphicx,booktabs}
+\usepackage{cite}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\begin{document}
+
+\title{Kalman3D\_Wave: A Block-Structured Quaternion-Multiplicative EKF with Ornstein–Uhlenbeck Sea-State Dynamics}
+\author{Mikhail Grushinskiy}
+\date{2025}
+\maketitle
+
+\tableofcontents
+
+% =====================================================
+\section{Introduction}
+
+Motivation: need for robust IMU-based sea-state estimation with colored acceleration noise and drift.
+Limitations of white-noise Kalman filters in marine dynamics.
+
+\noindent \textbf{Contributions:}
+\begin{enumerate}
+  \item Continuous-time Ornstein–Uhlenbeck (OU) model for world acceleration with analytical discretization.
+  \item Quaternion-Multiplicative EKF (QMEKF) combining rotational and translational motion.
+  \item Block-structured decomposition enabling efficient implementation.
+  \item Adaptive pseudo-measurement regularization $R_S \propto \sigma_a\tau^3$ with ISS proof.
+\end{enumerate}
+
+\noindent \textbf{Key references:}
+\cite{jazwinski1970,maybeck1979,crassidis2012,brown2012,vanloan1978integrating,sontag1996,jiang1997}
+
+% =====================================================
+\section{Coordinate Frames and Notation}
+
+Define world (NED or Z-up) and body frames.
+Quaternion convention: right-multiplicative error, rotation $R_{wb}(q)$.
+State vector:
+\[
+x = [\delta\theta,\, b_g,\, v,\, p,\, S,\, a_w,\, b_a]^\top.
+\]
+Notation for units, dimensions, and covariance matrices.
+
+% =====================================================
+\section{Continuous-Time Process Model}
+
+\subsection{Attitude Kinematics and Gyroscope Model}
+\[
+\dot q = \tfrac12\,q\otimes[0,\,\omega_m - b_g - n_g], \qquad
+\dot b_g = n_{b_g},
+\]
+where $n_g,n_{b_g}$ are zero-mean white noises
+\cite{crassidis2012,maybeck1979}.
+
+\subsection{Translational Ornstein–Uhlenbeck Chain}
+\[
+\dot v = a_w,\quad
+\dot p = v,\quad
+\dot S = p,\quad
+\dot a_w = -\tfrac{1}{\tau}a_w + \eta_a,
+\]
+with covariance density $Q_c=2\sigma_a^2/\tau$
+\cite{uhlenbeck1930,brown2012}.
+
+\subsection{Accelerometer Bias and Thermal Drift}
+\[
+\dot b_a = n_{b_a}, \qquad b_a(T)=b_{a0}+k_a(T-T_0).
+\]
+
+\subsection{Combined Continuous SDE}
+\[
+\dot x = F x + G w, \quad w=[n_g,n_{b_g},\eta_a,n_{b_a}]^\top.
+\]
+
+% =====================================================
+\section{Measurement Models}
+
+\subsection{Gyroscope}
+\[
+\omega_m = \omega_\text{true} + b_g + n_g,\quad R_g=\mathrm{diag}(\sigma_g^2).
+\]
+
+\subsection{Accelerometer}
+\[
+f_b = R_{wb}(a_w - g_w) + b_a + n_a,\quad R_a=\mathrm{diag}(\sigma_a^2).
+\]
+Jacobian derivations $J_\theta, J_{a_w}, J_{b_a}$.
+
+\subsection{Magnetometer}
+\[
+m_b = R_{wb} B_w + n_m, \quad R_m=\mathrm{diag}(\sigma_m^2).
+\]
+
+\subsection{Integral Pseudo-Measurement}
+\[
+z_S = 0 = S + n_S, \quad R_S=\mathrm{diag}(\sigma_S^2).
+\]
+
+% =====================================================
+\section{Linearity and the Matrix Exponential}
+
+For $\dot x = F x + G w$:
+\[
+x_{k+1} = e^{Fh}x_k + w_d,\quad
+Q_d = \int_0^h e^{F(h-s)}GQ_cG^\top e^{F^\top(h-s)}ds.
+\]
+\cite{jazwinski1970,vanloan1978integrating}
+
+Show OU and quaternion error systems are locally LTI.
+Discuss time-varying $F$ and stability of $e^{Fh}$.
+
+% =====================================================
+\section{Discretization of the OU Chain}
+
+\subsection{Derivation of $\Phi_\text{axis}$}
+From $e^{Fh}$ for 4-state [v,p,S,a] subsystem; derive $\phi_{va},\phi_{pa},\phi_{Sa}$.
+
+\subsection{Derivation of $Q_{d,\text{axis}}$}
+Compute covariance integral analytically; introduce $A_1,A_2$.
+
+\subsection{Small-$h/\tau$ Maclaurin Expansions}
+Series expansion up to $O(x^5)$ for numerical stability.
+
+\subsection{3D and Correlated OU Extension}
+Use Kronecker product covariance; allow cross-axis correlation $\rho_{ij}$
+\cite{brown2012}.
+
+\subsection{Summary Table}
+Closed-form and series results.
+
+% =====================================================
+\section{Derivation of the Quaternion-Multiplicative EKF (QMEKF)}
+
+\subsection{Quaternion Error Parameterization}
+True vs. estimated attitude:
+\[
+q_t = q\otimes\delta q,\qquad
+\delta q \approx [1,\,\tfrac12\,\delta\theta^\top]^\top.
+\]
+Linearization:
+\[
+\dot{\delta\theta} = -[\omega_m - b_g]_\times\delta\theta - \delta b_g - n_g.
+\]
+\cite{shuster1993,crassidis2012}
+
+\subsection{Augmented State Dynamics}
+\[
+\dot x = F x + G w,
+\]
+with $F_{\theta\theta}=-[\omega_m-b_g]_\times,\;F_{\theta b_g}=-I_3$, and OU chain blocks.
+
+\subsection{Continuous Covariance Propagation}
+\[
+\dot P = F P + P F^\top + G Q_c G^\top.
+\]
+
+\subsection{Linearized Measurement Models}
+\[
+r = z - h(\hat x) \approx H x + n.
+\]
+Derive $H_\text{acc},H_\text{mag},H_S$.
+
+\subsection{Discrete Prediction}
+\[
+x_{k|k-1} = \Phi x_{k-1|k-1},\quad
+P_{k|k-1} = \Phi P_{k-1|k-1}\Phi^\top + Q_d.
+\]
+
+\subsection{Update and Quaternion Correction}
+\[
+K = P H^\top(HPH^\top+R)^{-1},\quad
+x_{k|k}=x_{k|k-1}+K r.
+\]
+Quaternion update:
+\[
+q_{k|k}=q_{k|k-1}\otimes
+\mathrm{exp}_q\!\left(\tfrac12\,\delta\theta_{k|k}\right),\quad
+\delta\theta_{k|k}\!\leftarrow0.
+\]
+\cite{markley2003,crassidis2012}
+
+\subsection{Connection to Implementation}
+Corresponds to the core update structure in the \texttt{Kalman3D\_Wave} class.
+
+% =====================================================
+\section{Discrete Kalman Filter in Canonical Form}
+
+Standard discrete equations:
+\[
+\begin{aligned}
+\hat x_{k|k-1}&=\Phi\hat x_{k-1|k-1},\\
+P_{k|k-1}&=\Phi P_{k-1|k-1}\Phi^\top+Q_d,\\
+K_k&=P_{k|k-1}H^\top(HP_{k|k-1}H^\top+R)^{-1},\\
+\hat x_{k|k}&=\hat x_{k|k-1}+K_k(z_k-h(\hat x_{k|k-1})),\\
+P_{k|k}&=(I-K_kH)P_{k|k-1}(I-K_kH)^\top+K_kRK_k^\top.
+\end{aligned}
+\]
+Use Joseph form for PSD guarantee
+\cite{maybeck1979,crassidis2012}.
+
+% =====================================================
+\section{From Full Matrices to Block Structure}
+
+\subsection{Block Partitioning}
+\[
+x=[x_\text{att},x_\text{lin},x_\text{bias}]^\top,\quad
+P=\begin{bmatrix}
+P_{aa}&P_{al}&P_{ab}\\
+P_{al}^\top&P_{ll}&P_{lb}\\
+P_{ab}^\top&P_{lb}^\top&P_{bb}
+\end{bmatrix}.
+\]
+
+\subsection{Near-Block-Diagonal Structure}
+\[
+\Phi \approx \mathrm{diag}(\Phi_a,\Phi_l,I),\quad
+Q_d \approx \mathrm{diag}(Q_a,Q_l,Q_b).
+\]
+
+\subsection{Block Covariance Propagation}
+\[
+\begin{aligned}
+P_{aa}' &= \Phi_a P_{aa}\Phi_a^\top + Q_a,\\
+P_{ll}' &= \Phi_l P_{ll}\Phi_l^\top + Q_l,\\
+P_{al}' &= \Phi_a P_{al}\Phi_l^\top,\\
+P_{bb}' &= P_{bb}+Q_b.
+\end{aligned}
+\]
+
+\subsection{Joseph Update by Blocks}
+Show block-wise covariance updates preserve symmetry and PSD.
+
+\subsection{Cross-Covariance Logic}
+Include correlated OU axes using Kronecker construction.
+
+\subsection{PSD Projection}
+\[
+P \leftarrow \tfrac12(P+P^\top),\quad
+P \leftarrow V\max(\Lambda,\epsilon I)V^\top.
+\]
+
+\subsection{Complexity Analysis}
+Show cost reduction $O(N^3)\to O(n_\text{att}^3+n_\text{lin}^3)$.
+
+% =====================================================
+\section{Initialization and Alignment}
+
+Compute quaternion from accelerometer and magnetometer.
+Yaw alignment from magnetic declination.
+Initialize $P_0$ and bias covariances
+\cite{crassidis2012}.
+
+% =====================================================
+\section{Adaptive Tuning Law}
+
+Estimate $\sigma_a$ and dominant frequency $f$.
+Adaptive rule:
+\[
+R_S = \mathrm{diag}(k_i\,\sigma_a\tau^3),\quad k_i>0.
+\]
+Anisotropic scaling $k_x,k_y\ll k_z$.
+Adaptation schedule, warm-up, and physical motivation.
+
+% =====================================================
+\section{Stability Analysis of the Adaptive Law}
+
+Define frozen-parameter linearized system.
+Lyapunov function $V(e,\theta)$.
+Show discrete inequality $\Delta V\le-α‖e‖^2+β‖\Delta\theta‖^2$.
+Apply ISS theorem
+\cite{sontag1996,jiang1997}.
+Conclude boundedness and ISS of adaptive loop.
+
+% =====================================================
+\section{Implementation and Numerical Stability}
+
+Discuss Maclaurin fallback for small $h/τ$,
+Joseph form enforcement,
+PSD projection,
+LDLT fallback,
+warm-up, reinitialization,
+and deterministic seeds for reproducibility.
+
+% =====================================================
+\section{Results and Discussion (optional)}
+
+Include RMS errors, $\%H_s$ metrics, adaptation trajectories,
+and analysis of drift suppression and convergence.
+
+% =====================================================
+\appendix
+\section{Appendix A: Derivation of $Q_d$ Integral}
+Step-by-step integration.
+
+\section{Appendix B: Laplace-Domain Equivalence}
+Compare continuous and discrete spectral densities.
+
+\section{Appendix C: Symbolic Jacobians $F,H$}
+Full matrix forms.
+
+\section{Appendix D: Block Propagation Algebra}
+Extended derivation for Section~IX.
+
+\section{Appendix E: Constants and Simulation Parameters}
+Table of $\tau$, $\sigma_a$, $R_S$, etc.
+
+% =====================================================
+\bibliographystyle{ieeetr}
+\bibliography{kalman3d_refs}
+
+\end{document}
