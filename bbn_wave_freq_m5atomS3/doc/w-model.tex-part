@@ -1,0 +1,196 @@
+% =====================================================
+% File: w-model.tex-part
+% Section 3: Continuous-Time Process Model
+% =====================================================
+
+\section{Continuous-Time Process Model}
+\label{sec:process}
+
+This section derives the continuous-time dynamics of each component of the state vector
+and assembles them into a unified stochastic differential equation of the form
+\(\dot x = F x + G w\).
+No term appearing later in the discrete Kalman formulation is introduced without derivation.
+
+% -----------------------------------------------------
+\subsection{Structure of the Process Model}
+
+The process model consists of three weakly coupled subsystems:
+\begin{enumerate}
+  \item \textbf{Attitude subsystem} governed by quaternion kinematics and driven by the gyroscope measurement.
+  \item \textbf{OU-driven kinematic chain} describing translational motion under colored acceleration noise.
+  \item \textbf{Sensor-bias subsystem} accounting for gyro and accelerometer bias drifts.
+\end{enumerate}
+Each subsystem is linear in the state and driven by independent, zero-mean white noises.
+
+% -----------------------------------------------------
+\subsection{Attitude and Gyroscope Bias Dynamics}
+
+For a rigid body rotating with body angular velocity $\omega$,
+the quaternion kinematics are
+\[
+\dot q = \tfrac{1}{2}\,q \otimes [0,\omega].
+\]
+The gyroscope provides
+\[
+\omega_m = \omega + b_g + n_g,
+\]
+where $b_g$ is a slowly varying bias and $n_g$ is white noise with density
+\(Q_g = \mathrm{diag}(\sigma_g^2)\) [rad\(^2\)/s].
+Substituting the measured value yields
+\[
+\dot q = \tfrac{1}{2}\,q \otimes [0,\,\omega_m - b_g - n_g].
+\]
+
+Linearizing the quaternion error $\delta\theta$ gives
+\[
+\dot{\delta\theta}
+ = -[\,\omega_m - b_g\,]_\times \delta\theta
+   - \delta b_g - n_g.
+\]
+The gyroscope bias is modeled as a random walk:
+\[
+\dot b_g = n_{b_g}, \qquad
+Q_{b_g} = \mathrm{diag}(\sigma_{b_g}^2).
+\]
+
+% -----------------------------------------------------
+\subsection{OU-Driven Kinematic Chain}
+
+The translational states in the world frame are velocity \(v\), position \(p\),
+and the integral of position \(S = \int p\,dt\).
+They obey
+\[
+\dot v = a_w, \qquad
+\dot p = v, \qquad
+\dot S = p,
+\]
+where the latent acceleration \(a_w\) follows an Ornstein--Uhlenbeck (OU) process:
+\[
+\dot a_w = -\tfrac{1}{\tau}\,a_w + \eta_a.
+\]
+Here $\tau$ [s] is the correlation time, and $\eta_a$ is zero-mean white noise
+with covariance density
+\[
+Q_c^{(a)} = \frac{2\sigma_a^2}{\tau}I_3 \quad
+[(\text{m/s}^2)^2/\text{s}].
+\]
+To verify that this choice yields a stationary acceleration variance
+of $\sigma_a^2$, consider a single component \(a\):
+\[
+\frac{d}{dt}\mathbb{E}[a^2]
+   = -\frac{2}{\tau}\mathbb{E}[a^2] + \frac{2\sigma_a^2}{\tau}.
+\]
+At steady state ($\dot z = 0$), \(\mathbb{E}[a^2]=\sigma_a^2\).
+Hence the OU process maintains variance $\sigma_a^2$
+and correlation $\tau$, reproducing the low-frequency coloration
+of ocean-wave accelerations
+\cite{uhlenbeck1930,brown2012,jazwinski1970}.
+
+This OU driver preserves linearity, making the entire translational model
+a linear time-invariant (LTI) system suitable for analytic discretization.
+
+% -----------------------------------------------------
+\subsection{Accelerometer Bias and Thermal Drift}
+
+The accelerometer bias $b_a$ [m/s$^2$] evolves as a random walk with possible
+temperature dependence:
+\[
+\dot b_a = n_{b_a}, \qquad
+b_a(T) = b_{a0} + k_a (T - T_0),
+\]
+where $k_a$ [m/s$^2$/°C] is the temperature coefficient
+and $n_{b_a}$ is zero-mean white noise
+with spectral density \(Q_{b_a} = \mathrm{diag}(\sigma_{b_a}^2)\).
+
+% -----------------------------------------------------
+\subsection{Combined Continuous-Time State Equation}
+
+Collect all states and driving noises:
+\[
+x =
+[\delta\theta,\, b_g,\, v,\, p,\, S,\, a_w,\, b_a]^\top,
+\qquad
+w = [n_g,\, n_{b_g},\, \eta_a,\, n_{b_a}]^\top.
+\]
+The full system is linearized as
+\[
+\dot x = F\,x + G\,w.
+\]
+
+\paragraph{Process matrix \(F\).}
+The block structure is
+\[
+F =
+\begin{bmatrix}
+F_{\theta\theta} & F_{\theta b_g} & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & I_3 & 0 & I_3 & 0\\
+0 & 0 & 0 & 0 & I_3 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & -\tfrac{1}{\tau}I_3 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix},
+\qquad
+F_{\theta\theta} = -[\,\omega_m - b_g\,]_\times,\quad
+F_{\theta b_g} = -I_3.
+\]
+The translational part is lower triangular, representing nested integrations.
+No attitude$\rightarrow$linear coupling appears in $F$;
+attitude influences linear states only through the measurement equations
+in Section~\ref{sec:measurements}.
+
+\paragraph{Noise-input matrix \(G\).}
+Each white noise enters the corresponding derivative directly:
+\[
+G =
+\begin{bmatrix}
+-\!I_3 & 0 & 0 & 0\\
+0 & I_3 & 0 & 0\\
+0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0\\
+0 & 0 & I_3 & 0\\
+0 & 0 & 0 & I_3
+\end{bmatrix}.
+\]
+Columns correspond to $[n_g,\, n_{b_g},\, \eta_a,\, n_{b_a}]$.
+
+\paragraph{Continuous-time noise densities.}
+\[
+Q_c = \mathrm{blkdiag}\!\Big(
+Q_g,\ Q_{b_g},\ \tfrac{2\sigma_a^2}{\tau}I_3,\ Q_{b_a}
+\Big),
+\]
+with physical units:
+\begin{align*}
+Q_g &: [\text{rad}^2/\text{s}], \qquad
+Q_{b_g}: [\text{rad}^2/\text{s}^3],\\
+\tfrac{2\sigma_a^2}{\tau} &: [(\text{m/s}^2)^2/\text{s}], \qquad
+Q_{b_a}: [(\text{m/s}^2)^2/\text{s}].
+\end{align*}
+
+% -----------------------------------------------------
+\subsection{Linearity and Coupling Remarks}
+
+Both the quaternion error system and the OU-driven kinematic chain are
+linear time-invariant over a sampling step $h$ where $\omega_m$ and $\tau$
+can be considered constant.
+The discrete-time transition and process covariance are therefore
+\[
+\Phi = e^{Fh}, \qquad
+Q_d = \int_0^h e^{F(h-s)}\,GQ_cG^\top\,e^{F^\top(h-s)}\,ds,
+\]
+which will be derived analytically in Section~\ref{sec:ou_discretization}.
+Nonlinearities appear only in the measurement model, not in the process propagation,
+allowing exact discretization of the continuous SDE.
+
+% -----------------------------------------------------
+\subsection{Summary of This Section}
+
+This section established:
+\begin{enumerate}
+  \item The explicit continuous-time dynamics of each state variable.
+  \item The construction of $F$, $G$, and $Q_c$ with correct physical units.
+  \item The confirmation that both attitude and OU-driven subsystems are locally LTI,
+        enabling analytic discretization in later sections.
+\end{enumerate}
