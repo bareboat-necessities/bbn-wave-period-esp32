@@ -58,7 +58,7 @@ declination~$D$ and inclination~$I$), and
 $\mathbf{n}_m \sim \mathcal{N}(\mathbf{0},\,\mathbf{R}_m)$
 is magnetometer noise.
 
-Linearization yields the attitude Jacobian
+Linearization yields the attitude Jacobian using matrix skew operator
 \begin{equation}
 \frac{\partial \mathbf{m}_b}{\partial \boldsymbol{\theta}}
   = -[\mathbf{m}_b]_\times,
