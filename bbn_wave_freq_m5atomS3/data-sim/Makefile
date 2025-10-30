@@ -17,7 +17,7 @@ endif
 LDFLAGS  =
 
 # Targets
-TARGETS = waves_sim freq_track sea_reg qmekf_sim w3d_sim w3d_sim_adapt_2 w3d_sim_adapt_3 tunings tunings_est spectr_sim
+TARGETS = waves_sim freq_track sea_reg qmekf_sim w3d_sim_adapt_3 spectr_sim # w3d_sim w3d_sim_adapt_2 tunings tunings_est 
 
 all: $(TARGETS)
 
