@@ -1,6 +1,6 @@
 \section{State Definition}
 
-The extended state vector of the \texttt{Kalman3D\_Wave} filter combines
+The extended state vector of our filter combines
 rotational, translational, and stochastic acceleration subsystems within a
 single nonlinear estimator. It is defined as
 \begin{equation}
@@ -53,7 +53,6 @@ N_X =
 = 21,
 \]
 for the full configuration with both gyro and accelerometer bias enabled.
-Reduced variants omit $\mathbf{b}_g$ and/or $\mathbf{b}_a$ accordingly.
 
 Each subblock evolves under its own continuous-time dynamics, coupled through
 the quaternion attitude and the OU acceleration process, providing a unified
