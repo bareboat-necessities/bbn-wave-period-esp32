@@ -118,6 +118,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
         << "disp_est_x,disp_est_y,disp_est_z,"
         << "vel_est_x,vel_est_y,vel_est_z,"
         << "acc_est_x,acc_est_y,acc_est_z,"
+        << "acc_bias_x,acc_bias_y,acc_bias_z,"
+        << "gyro_bias_x,gyro_bias_y,gyro_bias_z,"
+        << "acc_bias_est_x,acc_bias_est_y,acc_bias_est_z,"
+        << "gyro_bias_est_x,gyro_bias_est_y,gyro_bias_est_z,"
         << "tau_applied,sigma_a_applied,R_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
 
@@ -211,6 +215,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
         errs_pitch.push_back(eul_est.y() - p_ref_out);
         errs_yaw.push_back(eul_est.z() - y_ref_out);
 
+        Vector3f acc_bias_true = accel_noise.bias;
+        Vector3f gyro_bias_true = gyro_noise.bias;
+        Vector3f acc_bias_est = filter.mekf().get_acc_bias();
+        Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
+    
         // CSV row
         ofs << rec.time << ","
             << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
@@ -221,6 +230,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
             << disp_est.x() << "," << disp_est.y() << "," << disp_est.z() << ","
             << vel_est.x()  << "," << vel_est.y()  << "," << vel_est.z() << ","
             << acc_est.x()  << "," << acc_est.y()  << "," << acc_est.z() << ","
+            << acc_bias_true.x() << "," << acc_bias_true.y() << "," << acc_bias_true.z() << ","
+            << gyro_bias_true.x() << "," << gyro_bias_true.y() << "," << gyro_bias_true.z() << ","
+            << acc_bias_est.x()  << "," << acc_bias_est.y()  << "," << acc_bias_est.z()  << ","
+            << gyro_bias_est.x() << "," << gyro_bias_est.y() << "," << gyro_bias_est.z() << ","
             << filter.getTauApplied() << ","
             << filter.getSigmaApplied() << ","
             << filter.getRSApplied() << ","
