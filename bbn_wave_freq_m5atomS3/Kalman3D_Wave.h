@@ -156,43 +156,24 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     return c;
 }
 
-// Helper: project a symmetric 4x4 to PSD
-template<typename T>
-static inline void project_psd4(Eigen::Matrix<T,4,4>& S, T eps = T(1e-12)) {
+// Helper: project a symmetric NxN to PSD
+template<typename T, int N>
+static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
     // Ensure symmetry first
     S = T(0.5) * (S + S.transpose());
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,4,4>> es(S);
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,N,N>> es(S);
     if (es.info() != Eigen::Success) {
         // Fallback: add small jitter on the diagonal and re-symmetrize
         S.diagonal().array() += eps;
         S = T(0.5) * (S + S.transpose());
         return;
     }
-    Eigen::Matrix<T,4,1> lam = es.eigenvalues();
-    for (int i = 0; i < 4; ++i) {
+    Eigen::Matrix<T,N,1> lam = es.eigenvalues();
+    for (int i = 0; i < N; ++i) {
         if (!(lam(i) > T(0))) lam(i) = eps; // clamp negatives/NaNs to small +ve
     }
     S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
     // Re-symmetrize to clean float noise
-    S = T(0.5) * (S + S.transpose());
-}
-
-// Project a symmetric 12x12 to PSD (eigenvalue floor), with hygiene.
-// Uses the same pattern as project_psd4 but for 12×12.
-template<typename T>
-static inline void project_psd12(Eigen::Matrix<T,12,12>& S, T eps = T(1e-16)) {
-    S = T(0.5) * (S + S.transpose());
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,12,12>> es(S);
-    if (es.info() != Eigen::Success) {
-        S.diagonal().array() += eps; // gentle bump
-        S = T(0.5) * (S + S.transpose());
-        return;
-    }
-    Eigen::Matrix<T,12,1> lam = es.eigenvalues();
-    for (int i = 0; i < 12; ++i) {
-        if (!(lam(i) > T(0))) lam(i) = eps; // floor negatives / NaNs
-    }
-    S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
     S = T(0.5) * (S + S.transpose());
 }
 
@@ -1252,7 +1233,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         }
     }
 
-    project_psd4<T>(Qd_axis, T(1e-16));
+    project_psd<T,4>(Qd_axis, T(1e-16));
 
     for (int i=0; i<4; ++i) if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-17);
     Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
