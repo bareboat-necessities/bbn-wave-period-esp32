@@ -110,27 +110,3 @@ the Jacobian is simply
 \boxed{\;\frac{\partial \mathbf{z}_S}{\partial \mathbf{S}}=\mathbf{I}_3,\;}
 \]
 with zeros elsewhere.
-
-\subsection{Right vs.\ left multiplicative (sign sanity check)}
-If a \emph{left}-multiplicative convention were used
-\(
-q^+ = \exp_q(\tfrac12\,\delta\boldsymbol{\theta})\otimes q
-\),
-the linearization would yield
-\(
-\partial(\mathbf{R}_{wb}\mathbf{v}_w)/\partial\boldsymbol{\theta}
-= +\,[\mathbf{R}_{wb}\mathbf{v}_w]_\times
-\),
-flipping the sign of the attitude block. The negative sign in
-\eqref{eq:right-mekf-jac} therefore uniquely identifies the
-\emph{right}-multiplicative convention implemented here.
-
-\subsection{Finite-difference verification (optional)}
-A practical check is
-\[
-\frac{h\bigl(q\otimes\exp_q(\tfrac12\epsilon\mathbf{e}_i)\bigr) - h(q)}{\epsilon}
-\;\approx\; \Bigl(\frac{\partial h}{\partial \boldsymbol{\theta}}\Bigr)\mathbf{e}_i,
-\quad \epsilon \sim 10^{-6},
-\]
-for \(i=1,2,3\). This validates both the sign and the magnitude of the
-attitude Jacobian blocks in code.
