@@ -27,7 +27,7 @@ The corresponding attitude-error transition matrix $\mathbf{F}_{\theta\theta}$
 is derived from the skew-symmetric form of $\boldsymbol{\omega}_b$ and retained
 in the upper-left block of the covariance.
 
-\subsection{Linear Translational Subsystem}
+\subsection{Linear Kinematics Subsystem}
 
 In the world frame (NED), the translational and stochastic components in continuous time obey
 \begin{equation}
