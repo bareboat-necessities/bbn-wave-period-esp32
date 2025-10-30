@@ -93,3 +93,41 @@ artifacts.  The approach ensures that the attitude estimate remains on
 the unit 3-sphere and that all derived rotation matrices remain
 orthogonal to numerical precision throughout prolonged filter operation.
 
+
+\subsection{On Centripetal Acceleration in the World-Frame Process}
+\label{sec:centripetal}
+
+Our translational process integrates in the inertial world frame:
+\[
+\dot v = a_w,\qquad \dot p = v,\qquad \dot S = p,
+\]
+with accelerometer measurement
+\(f_b = R_{wb}(a_w - g_w) + b_a + n_a\).
+Therefore any curvature of the platform trajectory (e.g., a wide turn) manifests directly in the
+inertial acceleration \(a_w\) and does not require an explicit centripetal term in the process model.
+
+When auxiliary navigation variables are available (speed \(v\), yaw rate \(\omega_z\), heading \(\psi\),
+and optionally longitudinal acceleration \(\dot v\)), it is advantageous to inject a known deterministic
+kinematic acceleration in the horizontal plane,
+\[
+a_{\mathrm{det}}(t) = \dot v\, \hat t + v\,\omega_z\, \hat n,\qquad
+\hat t = \begin{bmatrix}\cos\psi\\ \sin\psi\\ 0\end{bmatrix},\quad
+\hat n = \begin{bmatrix}-\sin\psi\\ \cos\psi\\ 0\end{bmatrix},
+\]
+whose centripetal component has magnitude \(v^2/R = v\,\omega_z\).
+We then model the OU driver as a colored residual around this moving mean:
+\begin{equation}
+\dot a_w = -\frac{1}{\tau}\big(a_w - a_{\mathrm{det}}(t)\big) + \eta(t),
+\label{eq:ou_moving_mean}
+\end{equation}
+with the same stationary spectral density for \(\eta\).
+This improves prediction during sustained maneuvers without altering the measurement model.
+
+If the IMU is not located at the body origin, the sensor-point acceleration includes rigid-body
+lever-arm terms, which we add in the body-to-sensor mapping:
+\[
+a_{\text{sensor}} = a_{\text{origin}} +
+R_{wb}\!\left(\dot\omega \times r + \omega \times (\omega \times r)\right).
+\]
+In our world-frame formulation at the IMU origin, these terms are unnecessary.
+
