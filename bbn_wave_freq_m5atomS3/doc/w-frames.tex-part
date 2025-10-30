@@ -1,0 +1,73 @@
+% =====================================================
+% File: w-frames.tex-part
+% Section 2: Coordinate Frames and Notation
+% =====================================================
+
+\section{Coordinate Frames and Notation}
+\label{sec:frames}
+
+This section fixes frames, rotation conventions, operators, the error-state stacking,
+units, and noise notation. Only definitions are introduced here; derivations begin in later sections.
+
+\subsection{Frames and Vectors}
+We use a world frame $W$ (either NED or Z-up; the chosen convention is fixed for the whole paper)
+and a body frame $B$ rigidly attached to the IMU. When ambiguity may arise, vectors are
+annotated by the frame in which their components are expressed, e.g., $g_w$ is the gravity
+vector in $W$.
+
+\subsection{Rotations and Quaternions}
+The rotation from $W$ to $B$ is represented by a unit quaternion $q\in\mathbb{H}$ with
+$\lVert q\rVert=1$, and by its corresponding rotation matrix $R_{wb}(q)\in\mathrm{SO}(3)$.
+Given a vector $u\in\mathbb{R}^3$ expressed in $W$, its coordinates in $B$ are
+$u_b = R_{wb}(q)\,u_w$.
+
+\paragraph{Right-multiplicative attitude error.}
+We use the \emph{right-multiplicative} convention for the small attitude error:
+if $q$ is the estimated attitude and $q_t$ the true attitude, then
+\[
+q_t = q \otimes \delta q, \qquad
+\delta q \in \mathbb{H},\ \lVert \delta q \rVert = 1.
+\]
+For small errors we will later linearize $\delta q$ via a 3-vector $\delta\theta\in\mathbb{R}^3$
+(see Section~\ref{sec:qmekf}); here we only introduce notation.
+
+\subsection{Operators and Notational Shortcuts}
+For $a\in\mathbb{R}^3$, the skew-symmetric matrix $[a]_\times\in\mathbb{R}^{3\times 3}$ satisfies
+$[a]_\times b = a\times b$ for all $b\in\mathbb{R}^3$:
+\[
+[a]_\times =
+\begin{bmatrix}
+0 & -a_3 & a_2\\
+a_3 & 0 & -a_1\\
+-a_2 & a_1 & 0
+\end{bmatrix}.
+\]
+We use $\mathrm{blkdiag}(\cdot)$ for block-diagonal concatenation and $\otimes$ for the Kronecker product.
+
+\subsection{State Vector (Error-State Stacking)}
+The error-state $x\in\mathbb{R}^{21}$ stacks attitude error, biases, linear kinematics,
+and latent acceleration:
+\[
+x \;=\;
+\big[\;\delta\theta,\; b_g,\; v,\; p,\; S,\; a_w,\; b_a\;\big]^\top,
+\]
+where
+\begin{itemize}
+  \item $\delta\theta\in\mathbb{R}^3$ — small attitude error (right-multiplicative parameterization),
+  \item $b_g\in\mathbb{R}^3$ — gyroscope bias (in $B$),
+  \item $v,p,S\in\mathbb{R}^3$ — velocity, position, and the time integral of position (in $W$),
+  \item $a_w\in\mathbb{R}^3$ — latent world-frame acceleration that will be modeled as colored (OU-driven),
+  \item $b_a\in\mathbb{R}^3$ — accelerometer bias (in $B$).
+\end{itemize}
+This stacking is purely a definition; the dynamics linking these components are introduced and derived in Sections~\ref{sec:process}–\ref{sec:ou_discretization}.
+
+\subsection{Units and Conventions}
+Unless stated otherwise, we use SI units:
+m (position), m/s (velocity), m/s$^2$ (acceleration), s (time), and rad (angles).
+Gravity magnitude is denoted $g=\|g_w\|$ with $g\approx 9.80665$\,m/s$^2$.
+
+\subsection{Noise Processes (Continuous- vs. Discrete-Time)}
+We reserve $Q_c$ for \emph{continuous-time} noise \emph{density} matrices (units per second)
+and $Q_d$ for the corresponding \emph{discrete-time} covariances over one sample interval.
+All driving noises introduced later are zero-mean, white, and mutually independent unless explicitly stated otherwise.
+Precise $Q_c$ blocks are given when each process is defined (Sections~\ref{sec:process} and \ref{sec:measurements}).
