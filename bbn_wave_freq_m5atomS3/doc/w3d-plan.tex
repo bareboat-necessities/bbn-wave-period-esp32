@@ -48,15 +48,16 @@ Theory, Discretization, and Bias Compensation}
 \section{Introduction}
 \label{sec:intro}
 
-Motivation: need for robust IMU-based sea-state estimation with colored acceleration noise and drift.
-Limitations of white-noise Kalman filters in marine dynamics.
+Accurate estimation of sea-surface motion from inertial sensors requires filtering algorithms
+that can accommodate colored, correlated acceleration disturbances arising from ocean waves.
+Classical Kalman filters assume white process noise, which causes bias and drift in such conditions.
 
 \noindent \textbf{Contributions:}
 \begin{enumerate}
-  \item Continuous-time Ornstein–Uhlenbeck (OU) model for world acceleration with analytical discretization.
-  \item Quaternion-Multiplicative EKF (QMEKF) combining rotational and translational motion.
-  \item Block-structured decomposition enabling efficient implementation.
-  \item Adaptive pseudo-measurement regularization $R_S \propto \sigma_a\tau^3$ with ISS proof.
+  \item Continuous-time \emph{OU-driven kinematic model} for world acceleration with analytical discretization and stability-preserving small-step series expansion.
+  \item Quaternion-Multiplicative EKF (QMEKF) unifying rotational and translational motion under a single consistent covariance framework.
+  \item Block-structured decomposition enabling efficient implementation and covariance updates in $O(n_\text{att}^3+n_\text{lin}^3)$ time.
+  \item Adaptive pseudo-measurement regularization $R_S \propto \sigma_a\tau^3$ with formal input-to-state stability (ISS) proof.
 \end{enumerate}
 
 \noindent \textbf{Key references:}
@@ -86,15 +87,24 @@ Notation for units, dimensions, and covariance matrices.
 where $n_g,n_{b_g}$ are zero-mean white noises
 \cite{crassidis2012,maybeck1979}.
 
-\subsection{Translational Ornstein–Uhlenbeck Chain}
+\subsection{OU-driven Kinematic Chain}
+We model translational motion as an \emph{OU-driven kinematic chain}:
 \[
 \dot v = a_w,\quad
 \dot p = v,\quad
 \dot S = p,\quad
 \dot a_w = -\tfrac{1}{\tau}a_w + \eta_a,
 \]
-with covariance density $Q_c=2\sigma_a^2/\tau$
-\cite{uhlenbeck1930,brown2012}.
+where $a_w$ follows an Ornstein–Uhlenbeck process with stationary variance $\sigma_a^2$
+and correlation time $\tau$.
+This represents a hierarchy of kinematic derivatives driven by a colored acceleration process,
+linking acceleration, velocity, position, and the integral of position in a continuous-time linear SDE.
+
+The covariance density of the driving white noise $\eta_a$ is
+\[
+Q_c = \frac{2\sigma_a^2}{\tau}.
+\]
+\cite{uhlenbeck1930,brown2012}
 
 \subsection{Accelerometer Bias and Thermal Drift}
 \[
@@ -142,11 +152,11 @@ Q_d = \int_0^h e^{F(h-s)}GQ_cG^\top e^{F^\top(h-s)}ds.
 \]
 \cite{jazwinski1970,vanloan1978integrating}
 
-Show OU and quaternion error systems are locally LTI.
+Show OU-driven kinematic and quaternion error systems are locally LTI.
 Discuss time-varying $F$ and stability of $e^{Fh}$.
 
 % =====================================================
-\section{Discretization of the OU Chain}
+\section{Discretization of the OU-driven Kinematic Chain}
 \label{sec:ou_discretization}
 
 \subsection{Derivation of $\Phi_\text{axis}$}
@@ -185,7 +195,7 @@ Linearization:
 \[
 \dot x = F x + G w,
 \]
-with $F_{\theta\theta}=-[\omega_m-b_g]_\times,\;F_{\theta b_g}=-I_3$, and OU chain blocks.
+with $F_{\theta\theta}=-[\omega_m-b_g]_\times,\;F_{\theta b_g}=-I_3$, and OU-driven kinematic chain blocks.
 
 \subsection{Continuous Covariance Propagation}
 \[
