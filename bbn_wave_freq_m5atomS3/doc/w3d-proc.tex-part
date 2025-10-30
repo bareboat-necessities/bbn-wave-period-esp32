@@ -29,7 +29,7 @@ in the upper-left block of the covariance.
 
 \subsection{Linear Translational Subsystem}
 
-In the world frame (NED), the translational and stochastic components obey
+In the world frame (NED), the translational and stochastic components in continuous time obey
 \begin{equation}
 \begin{aligned}
 \dot{\mathbf{v}} &= \mathbf{a}_w,\\
@@ -42,6 +42,16 @@ In the world frame (NED), the translational and stochastic components obey
 where $\tau_{a_w}$ is the OU correlation time and
 $\boldsymbol{\eta}(t)\!\sim\!\mathcal{N}(\mathbf{0},\,2\Sigma_{a_w}/\tau_{a_w})$
 is zero-mean white noise with stationary covariance $\Sigma_{a_w}$.
+
+\subsection{Bias Random Walks}
+
+The gyroscope and accelerometer biases evolve as independent random walks:
+\begin{equation}
+\dot{\mathbf{b}}_g = \boldsymbol{\nu}_g, \qquad
+\dot{\mathbf{b}}_a = \boldsymbol{\nu}_a,
+\end{equation}
+with spectral densities $\mathbf{Q}_{b_g}$ and $\mathbf{Q}_{b_a}$
+specified by the corresponding tunable parameters.
 
 \subsection{Discrete-Time Transition Matrix}
 
@@ -92,16 +102,6 @@ process covariance is constructed as a Kronecker-type product
 \]
 ensuring positive semidefiniteness and realistic coupling between vertical
 and horizontal accelerations.
-
-\subsection{Bias Random Walks}
-
-The gyroscope and accelerometer biases evolve as independent random walks:
-\begin{equation}
-\dot{\mathbf{b}}_g = \boldsymbol{\nu}_g, \qquad
-\dot{\mathbf{b}}_a = \boldsymbol{\nu}_a,
-\end{equation}
-with spectral densities $\mathbf{Q}_{b_g}$ and $\mathbf{Q}_{b_a}$
-specified by the corresponding tunable parameters.
 
 \subsection{Summary of Discrete Propagation}
 
