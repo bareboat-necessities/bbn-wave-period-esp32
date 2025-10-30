@@ -1,18 +1,47 @@
-\documentclass[11pt,letterpaper]{article}
-\usepackage{amsmath,amssymb,bm,graphicx,booktabs}
-\usepackage{cite}
-\usepackage{geometry}
+\documentclass[10pt]{extarticle}
+
+% === Typography and structure ===
+\usepackage{amsmath, amssymb, amsfonts, bm}
+\usepackage{geometry, setspace}
 \usepackage{hyperref}
-\geometry{margin=1in}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{titlesec}
+\usepackage{nccmath, relsize}
+\usepackage{array, booktabs, makecell, adjustbox}
+\usepackage{mathtools}
+\usepackage{amsthm}
 
-\begin{document}
+% Theorem environments
+\newtheorem{lemma}{Lemma}
+\newtheorem*{theorem*}{Theorem}
 
-\title{Kalman3D\_Wave: A Block-Structured Quaternion-Multiplicative EKF\\
-with Ornstein–Uhlenbeck Sea-State Dynamics}
+% Make inline math slightly smaller
+\everymath{\smaller}
+
+% Make display equations typeset in \small
+\everydisplay\expandafter{\the\everydisplay\small}
+
+% Reduce spacing before/after headings
+\titlespacing*{\section}{0pt}{1.0ex plus .2ex}{0.6ex}
+\titlespacing*{\subsection}{0pt}{0.8ex plus .2ex}{0.4ex}
+\titlespacing*{\subsubsection}{0pt}{0.6ex plus .2ex}{0.3ex}
+
+% Make section fonts smaller (like textbooks)
+\titleformat{\section}{\normalfont\small\bfseries}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\normalfont\small\itshape}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}{\normalfont\footnotesize\itshape}{\thesubsubsection}{0.8em}{}
+
+\geometry{letterpaper, margin=0.65in}
+\setstretch{0.95}
+
+\title{A Multiplicative EKF with Latent OU Acceleration for Drift-Robust Wave Kinematics:\\
+Theory, Discretization, and Bias Compensation}
 \author{Mikhail Grushinskiy}
 \date{2025}
-\maketitle
 
+\begin{document}
+\maketitle
 \tableofcontents
 
 % =====================================================
@@ -194,8 +223,7 @@ Corresponds to the core update structure in the \texttt{Kalman3D\_Wave} class.
 % =====================================================
 \section{Discrete Kalman Filter in Canonical Form}
 \label{sec:canonical}
-
-Standard discrete equations:
+\smallskip
 \[
 \begin{aligned}
 \hat x_{k|k-1}&=\Phi\hat x_{k-1|k-1},\\
@@ -320,7 +348,6 @@ and analysis of drift suppression and convergence.
 \section{Appendix E: Constants and Simulation Parameters}
 \label{app:constants}
 
-% =====================================================
 \bibliographystyle{ieeetr}
 \bibliography{kalman3d_refs}
 
