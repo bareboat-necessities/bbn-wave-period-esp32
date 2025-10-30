@@ -1,3 +1,3 @@
 #!/bin/bash -e
 
-./w3d_sim
+#./w3d_sim
