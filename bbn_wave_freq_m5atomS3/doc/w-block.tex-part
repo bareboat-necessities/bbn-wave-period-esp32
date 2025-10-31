@@ -101,6 +101,137 @@ Section~\ref{sec:ou_discretization}.
 This Kronecker representation compactly encodes horizontal–vertical coupling
 while remaining analytically tractable.
 
+\subsection{Cross-Axis Covariance and Kronecker Construction}
+\label{subsec:crosscov}
+
+The derivations so far assumed that each OU-driven kinematic axis
+$(x,y,z)$ evolves independently, producing a block-diagonal process
+covariance
+$Q_d = \mathrm{diag}(Q_{d,x}, Q_{d,y}, Q_{d,z})$
+with one-dimensional covariance matrices
+$Q_{d,i}\in\mathbb{R}^{4\times 4}$.
+In real ocean motion, however, the world-frame accelerations
+$a_w = [a_x,a_y,a_z]^\top$
+are \emph{not independent}: vertical motion couples to horizontal
+accelerations through the orbital geometry of surface waves.
+This coupling must be captured in the filter covariance to maintain
+realistic cross-axis correlation and prevent drift along the horizontal
+plane.
+
+\paragraph{Stationary covariance of correlated acceleration.}
+Let $\Sigma_{a_w}$ denote the stationary covariance of the OU process
+$a_w(t)$,
+\[
+\Sigma_{a_w} =
+\begin{bmatrix}
+\sigma_x^2 & \rho_{xy}\sigma_x\sigma_y & \rho_{xz}\sigma_x\sigma_z \\
+\rho_{xy}\sigma_x\sigma_y & \sigma_y^2 & \rho_{yz}\sigma_y\sigma_z \\
+\rho_{xz}\sigma_x\sigma_z & \rho_{yz}\sigma_y\sigma_z & \sigma_z^2
+\end{bmatrix},
+\qquad
+-1 < \rho_{ij} < 1.
+\]
+A negative correlation between $(x,z)$ or $(y,z)$ is typical for
+NED frames, since upward motion of the sea surface (negative $a_z$)
+is often accompanied by forward horizontal acceleration.
+
+\paragraph{Uncorrelated one-axis covariance.}
+For each axis, the one-dimensional OU-driven kinematic chain
+\[
+\dot v = a, \quad
+\dot p = v, \quad
+\dot S = p, \quad
+\dot a = -\tfrac{1}{\tau}a + \eta(t)
+\]
+has a known discrete covariance $Q_{d,\text{axis}}(\sigma^2,\tau,h)$,
+derived analytically in Section~\ref{sec:ou_discretization}.
+This covariance expresses the second-order statistics of the 4-state
+subsystem $[v,p,S,a]^\top$ for a single, unit-variance OU driver.
+
+\paragraph{Extending to 3D correlated acceleration.}
+For the three-dimensional case, the linear SDE can be written compactly as
+\[
+\dot x_\text{lin} = F_\text{lin}\,x_\text{lin}
+                   + G_\text{lin}\,\eta(t),
+\quad
+\mathbb{E}[\eta(t)\eta^\top(s)] = Q_c\,\delta(t-s),
+\]
+with $x_\text{lin}\in\mathbb{R}^{12}$ and
+$G_\text{lin} = I_3 \otimes g$, where $g=[0,0,0,1]^\top$
+injects the driving acceleration noise into each axis subsystem.
+If the three acceleration components share cross-correlation
+$\Sigma_{a_w}$, the composite driving covariance becomes
+\[
+Q_c^{(3D)} = \frac{2}{\tau}
+              \bigl(\Sigma_{a_w}\otimes [1]\bigr)
+            = \frac{2}{\tau}\,\Sigma_{a_w}.
+\]
+The corresponding discrete process covariance is then
+\[
+Q_{LL} = \int_0^h e^{F_\text{lin}(h-s)}\,
+         G_\text{lin}\,Q_c^{(3D)}\,
+         G_\text{lin}^\top
+         e^{F_\text{lin}^\top(h-s)} ds.
+\]
+
+\paragraph{Kronecker product formulation.}
+Because the 3D system is separable into independent linear subsystems
+coupled only by the cross-correlation of $\eta(t)$, the integral
+factorizes:
+\[
+Q_{LL} =
+  (\Sigma_{a_w}^{1/2}\otimes I_4)\;
+  Q_{\text{axis},u}\;
+  (\Sigma_{a_w}^{1/2}\otimes I_4)^\top,
+\]
+where $Q_{\text{axis},u}$ is the unit-variance covariance of one axis,
+$Q_{\text{axis},u} = Q_{d,\text{axis}}(\sigma^2\!=\!1)$,
+and $\Sigma_{a_w}^{1/2}$ is the lower-triangular Cholesky factor
+satisfying $\Sigma_{a_w} = LL^\top$.
+This expression constructs a full 12×12 covariance matrix that embeds
+both within-axis kinematic coupling and cross-axis correlations.
+The result can also be expressed as
+\[
+Q_{LL} = (L\otimes I_4)\,
+          \begin{bmatrix}
+            Q_{d,\text{axis}} & 0 & 0\\[3pt]
+            0 & Q_{d,\text{axis}} & 0\\[3pt]
+            0 & 0 & Q_{d,\text{axis}}
+          \end{bmatrix}
+          (L^\top\otimes I_4),
+\]
+followed by a permutation of indices to reorder the block layout from
+axis-major $[v_x,p_x,S_x,a_x \mid v_y,\dots]$
+to state-major $[v_x,v_y,v_z,p_x,p_y,p_z,\dots]$.
+This permutation matrix $P_{xyz}$ is constant and
+can be precomputed once; the final covariance is
+\[
+Q_{LL,\text{perm}} =
+  P_{xyz}\, Q_{LL}\, P_{xyz}^\top.
+\]
+
+\paragraph{Numerical PSD enforcement.}
+After construction, $Q_{LL,\text{perm}}$ should be symmetrized and
+projected to positive semi-definite form:
+\[
+Q_{LL} \leftarrow
+  \tfrac{1}{2}(Q_{LL,\text{perm}}+Q_{LL,\text{perm}}^\top),
+  \quad
+Q_{LL} \leftarrow
+  V\max(\Lambda,\epsilon I)V^\top.
+\]
+This ensures nonnegative eigenvalues and
+mitigates round-off error in the Cholesky and exponential evaluation.
+
+\paragraph{Interpretation.}
+The Kronecker structure has a clear physical meaning:
+each scalar OU driver corresponds to a 4-state temporal kernel,
+while the 3×3 $\Sigma_{a_w}$ defines spatial correlation of these
+drivers. The product $(\Sigma_{a_w}\otimes Q_{d,\text{axis}})$
+thus represents a 3D stochastic field with separable spatial and
+temporal correlation---an accurate statistical model of coupled
+wave-induced acceleration.
+
 \subsection*{PSD Projection and Symmetry Enforcement}
 
 After each propagation or update the covariance is symmetrized and projected
