@@ -194,3 +194,45 @@ This section established:
   \item The confirmation that both attitude and OU-driven subsystems are locally LTI,
         enabling analytic discretization in later sections.
 \end{enumerate}
+
+% -----------------------------------------------------
+\subsection{Centripetal Acceleration and its Treatment}
+\label{sec:centripetal}
+
+For completeness, consider the apparent acceleration observed in the body frame
+when the vehicle executes a curved trajectory with angular velocity~$\bm{\omega}$.
+The total acceleration of the body origin in the world frame can be written as
+\[
+\bm{a}_b
+  = \bm{a}_w
+  + \dot{\bm{\omega}} \times \bm{r}
+  + \bm{\omega} \times (\bm{\omega} \times \bm{r}),
+\]
+where $\bm{r}$ is the lever arm from the instantaneous rotation center to the
+IMU.  The last term represents the \emph{centripetal acceleration}, which is
+quadratic in~$\bm{\omega}$.
+
+In typical marine applications the IMU is placed close to the vessel’s center of
+rotation and the yaw rate is small
+($|\bm{\omega}| \!<\! 0.3$ rad/s for long-period waves), giving centripetal
+magnitudes on the order of $10^{-2}$ m/s$^2$—well below the wave-induced
+specific-force variations of interest.
+Hence this term can be safely neglected in the dynamic model without affecting
+drift or bias estimation.
+
+However, when the platform performs sustained turns or wave-synchronized
+maneuvers, this contribution may no longer be negligible.  In such cases the
+measured accelerometer signal can be corrected by subtracting
+\(
+\bm{a}_c = \bm{\omega} \times (\bm{\omega} \times \bm{r}),
+\)
+where $\bm{r}$ is known from the IMU mounting geometry.  The correction can be
+applied either in preprocessing or incorporated directly in the accelerometer
+measurement model:
+\[
+f_b = R_{wb}\!\left(a_w - g_w - a_c\right) + b_a + n_a.
+\]
+This form remains compatible with the linearized Jacobians derived in
+Section~\ref{sec:measurements} and preserves the local LTI structure of the
+state-space model.
+
