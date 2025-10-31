@@ -1,0 +1,109 @@
+% =====================================================
+% File: w-canonical.tex-part
+% Section 8: Discrete Kalman Filter in Canonical Form
+% =====================================================
+
+\section{Discrete Kalman Filter in Canonical Form}
+\label{sec:canonical}
+
+% --- 8.1 Purpose and context -----------------------------------------------
+\subsection*{Purpose and Context}
+After assembling the continuous model (Sec.~\ref{sec:process}), deriving the OU-driven
+discretization (Sec.~\ref{sec:ou_discretization}), and forming the QMEKF Jacobians
+(Sec.~\ref{sec:qmekf}), the extended filter at each step reduces to the standard
+\emph{discrete} Kalman algebra under first-order linearization. This section records the
+canonical prediction--update equations and motivates the Joseph-form covariance update
+used in our implementation for numerical robustness.
+
+% --- 8.2 Canonical prediction-update ----------------------------------------
+\subsection*{Canonical Prediction--Update Equations}
+
+Let $h$ be the sample period and $k$ the time index. With the discrete transition
+$\Phi_k = e^{F_k h}$ and discrete process covariance $Q_{d,k}$, the prediction is
+\[
+\hat x_{k|k-1}=\Phi_k\,\hat x_{k-1|k-1},\qquad
+P_{k|k-1}=\Phi_k\,P_{k-1|k-1}\,\Phi_k^\top + Q_{d,k}.
+\]
+For a measurement model $z_k = h(\hat x_{k|k-1}) + H_k x + n_k$ with noise covariance
+$R_k\succ 0$, define the innovation and its covariance
+\[
+r_k = z_k - h(\hat x_{k|k-1}),\qquad
+S_k = H_k P_{k|k-1} H_k^\top + R_k.
+\]
+The Kalman gain, state update, and \emph{canonical} covariance update are
+\[
+K_k = P_{k|k-1} H_k^\top S_k^{-1},\qquad
+\hat x_{k|k} = \hat x_{k|k-1} + K_k r_k,
+\]
+\[
+P_{k|k} = (I - K_k H_k)\,P_{k|k-1}.
+\]
+For the EKF, these hold with $H_k$ the Jacobian of the measurement model evaluated at
+$\hat x_{k|k-1}$, and with $(\Phi_k, Q_{d,k})$ as derived for the current linearization.
+
+% --- 8.3 Joseph form (PSD-safe) ---------------------------------------------
+\subsection*{From Canonical to Joseph Form (PSD-Safe)}
+
+In finite precision, the canonical covariance update can lose symmetry or positive
+semidefiniteness (PSD). The \emph{Joseph form} preserves PSD and symmetry:
+\[
+P_{k|k}=(I-K_k H_k) P_{k|k-1} (I-K_k H_k)^\top + K_k R_k K_k^\top.
+\]
+Algebraically, the Joseph and canonical forms are equivalent in exact arithmetic; in
+practice we adopt the Joseph form to guarantee $P_{k|k}\succeq 0$ when $R_k\succ 0$
+and $S_k$ is factored stably (e.g., Cholesky/LDLT). See \cite{maybeck1979,crassidis2012}
+for discussion.
+
+% --- 8.4 Conditioning and numerical notes -----------------------------------
+\subsection*{Conditioning and Numerical Notes}
+
+\begin{itemize}
+  \item \textbf{Innovation factorization.} We compute $K_k$ via a stable factorization of
+  $S_k=H_k P_{k|k-1} H_k^\top + R_k$ (LDLT/Cholesky) rather than explicit inversion.
+  \item \textbf{Symmetry hygiene.} After each propagation/update, enforce
+  $P\leftarrow \tfrac12(P+P^\top)$ to remove roundoff asymmetry.
+  \item \textbf{Jitter injection.} If a factorization fails or $S_k$ is near-singular, add a
+  small diagonal ``jitter'' $\epsilon I$ to $S_k$ (and/or $R_k$) before refactorization.
+  \item \textbf{Units/scale.} Keep consistent physical units (e.g., m/s$^2$ vs.\ rad/s) so
+  that $P$, $Q_{d,k}$, and $R_k$ have compatible magnitudes and $S_k$ is well-conditioned.
+\end{itemize}
+
+% --- 8.5 Mapping to implementation ------------------------------------------
+\subsection*{Relationship to Implementation}
+
+The C++ code mirrors the above equations:
+
+\begin{itemize}
+  \item \texttt{time\_update():} builds blockwise $\Phi_k$ and $Q_{d,k}$.
+    The translational OU blocks use the closed forms from Sec.~\ref{sec:ou_discretization};
+    the attitude block uses a small-angle exponential (Sec.~\ref{sec:qmekf}).
+  \item \texttt{safe\_ldlt3\_():} factors $S_k$ robustly (LDLT) with a small diagonal bump
+    if needed, avoiding explicit matrix inversion.
+  \item \texttt{joseph\_update3\_():} applies the Joseph covariance update per measurement
+    branch, then re-symmetrizes $P$.
+  \item \texttt{applyQuaternionCorrectionFromErrorState():} performs the multiplicative
+    quaternion correction (right-multiplicative error), then normalizes the quaternion.
+\end{itemize}
+
+These choices preserve PSD, improve numerical conditioning, and align the executable
+filter with the canonical EKF algebra.
+
+% --- 8.6 Boxed summary ------------------------------------------------------
+\subsection*{Summary}
+
+\medskip
+\noindent
+\fbox{%
+  \parbox{0.97\linewidth}{\small
+  \textbf{Discrete KF (EKF) Canonical Form.}
+  Prediction: $\hat x_{k|k-1}=\Phi_k\hat x_{k-1|k-1}$,
+  $P_{k|k-1}=\Phi_k P_{k-1|k-1}\Phi_k^\top+Q_{d,k}$.
+  Update: $K_k=P_{k|k-1}H_k^\top(H_k P_{k|k-1} H_k^\top+R_k)^{-1}$,
+  $\hat x_{k|k}=\hat x_{k|k-1}+K_k r_k$.
+  \textbf{PSD-Safe:} Use the Joseph covariance update and stable factorizations of $S_k$.
+  These equations specialize directly to the QMEKF with OU-driven kinematics via the
+  blocks derived in Secs.~\ref{sec:ou_discretization}--\ref{sec:qmekf}.
+  }%
+}
+
+% ================== End of Section 8 ==================
