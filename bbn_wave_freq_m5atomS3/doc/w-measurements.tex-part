@@ -1,0 +1,240 @@
+\section{Process Model}
+
+The continuous-time dynamics of the full system are partitioned into two
+subsystems: (i) attitude propagation on the unit quaternion manifold, and
+(ii) a linear kinematics stochastic subsystem driven by an
+Ornstein-Uhlenbeck (OU) acceleration process.
+
+\subsection{Attitude Dynamics}
+
+Let $\boldsymbol{\omega}_b$ denote the body-frame angular velocity measured by
+the gyroscope, and $\mathbf{b}_g$ its estimated bias.  The quaternion $q$
+evolves as
+\begin{equation}
+\dot{q}
+= \tfrac{1}{2}\,q \otimes
+  \begin{bmatrix} 0 \\ \boldsymbol{\omega}_b - \mathbf{b}_g \end{bmatrix},
+\end{equation}
+where $\otimes$ is quaternion multiplication.  In discrete time, the update
+over step $h$ is obtained via the exponential map
+\begin{equation}
+q_{k+1}
+= q_k \otimes \exp_q\!\left( \tfrac{1}{2}
+   (\boldsymbol{\omega}_b - \mathbf{b}_g)\,h \right),
+\end{equation}
+using the small-angle expansion of $\exp_q(\cdot)$ for numerical stability.
+The corresponding attitude-error transition matrix $\mathbf{F}_{\theta\theta}$
+is derived from the skew-symmetric form of $\boldsymbol{\omega}_b$ and retained
+in the upper-left block of the covariance.
+
+\subsection{Linear Kinematics Subsystem}
+
+In the world frame (NED), the translational and stochastic components in continuous-time obey
+\begin{equation}
+\begin{aligned}
+\dot{\mathbf{v}} &= \mathbf{a}_w,\\
+\dot{\mathbf{p}} &= \mathbf{v},\\
+\dot{\mathbf{S}} &= \mathbf{p},\\
+\dot{\mathbf{a}}_w &= -\tfrac{1}{\tau_{a_w}}\,\mathbf{a}_w + \boldsymbol{\eta}(t),
+\end{aligned}
+\label{eq:continuous-linear}
+\end{equation}
+where $\tau_{a_w}$ is the OU correlation time and
+$\boldsymbol{\eta}(t)\!\sim\!\mathcal{N}(\mathbf{0},\,2\Sigma_{a_w}/\tau_{a_w})$
+is zero-mean white noise with stationary covariance $\Sigma_{a_w}$.
+
+\subsection{Bias Random Walks}
+
+The gyroscope and accelerometer biases evolve as independent random walks:
+\begin{equation}
+\dot{\mathbf{b}}_g = \boldsymbol{\nu}_g, \qquad
+\dot{\mathbf{b}}_a = \boldsymbol{\nu}_a,
+\end{equation}
+with spectral densities $\mathbf{Q}_{b_g}$ and $\mathbf{Q}_{b_a}$
+specified by the corresponding tunable parameters.
+
+\section{Linearity and the Role of the Matrix Exponential}
+\label{sec:lti_exponential}
+
+Before deriving the discrete--time prediction, we clarify why both the translational OU chain and the 
+attitude--error kinematics fit the linear time--invariant (LTI) framework, and why the discrete 
+transition matrix used in the Kalman prediction is the matrix exponential
+\(\Phi = e^{Fh}\).
+
+\subsection{Continuous Linear Systems and Their Exponential Solution}
+
+A continuous linear stochastic system has the form
+\begin{equation}
+\dot x(t) = F\,x(t) + G\,w(t),
+\label{eq:lti_ct}
+\end{equation}
+where \(F\) and \(G\) are constant matrices and \(w(t)\) is white noise with covariance density \(Q_c\).
+The deterministic part of \eqref{eq:lti_ct} is an ordinary differential equation with constant 
+coefficients, whose exact solution over a time step \(h\) is
+\begin{equation}
+x(t{+}h) = e^{Fh}\,x(t) + \int_0^h e^{F(h-s)}G\,w(t{+}s)\,ds.
+\label{eq:lti_solution}
+\end{equation}
+Hence the discrete--time transition matrix used in the Kalman predictor is
+\begin{equation}
+\boxed{\Phi = e^{Fh}},
+\qquad
+Q_d = \int_0^h e^{F(h-s)}G\,Q_c\,G^\top e^{F^\top(h-s)}ds.
+\label{eq:phi_Qd_from_F}
+\end{equation}
+
+Equation~\eqref{eq:phi_Qd_from_F} ensures that the discrete propagation reproduces exactly the first--order
+statistics of the continuous model for any step size \(h\); it is not an approximation but a closed--form mapping.
+
+\subsection{Translational OU Kinematics as an LTI System}
+
+For each Cartesian axis of the translational chain we have
+\begin{equation}
+\dot v = a_w,\qquad
+\dot p = v,\qquad
+\dot S = p,\qquad
+\dot a_w = -\tfrac{1}{\tau}a_w + \eta(t),
+\label{eq:ou_chain_ct_repeat}
+\end{equation}
+which can be written compactly as
+\(
+\dot x_L = A\,x_L + B\,\eta(t)
+\)
+with constant matrices
+\[
+A =
+\begin{bmatrix}
+0 & 0 & 0 & 1\\
+1 & 0 & 0 & 0\\
+0 & 1 & 0 & 0\\
+0 & 0 & 0 & -1/\tau
+\end{bmatrix},
+\qquad
+B =
+\begin{bmatrix}0\\0\\0\\1\end{bmatrix}.
+\]
+This system is strictly linear and time--invariant: all coefficients are constant, and the noise enters additively.
+Consequently the exact finite--step transition is
+\[
+\Phi_\mathrm{OU}(h) = e^{Ah},
+\]
+whose entries yield the coefficients
+\(\phi_{va},\phi_{pa},\phi_{Sa},e^{-h/\tau}\)
+derived later in~Sec.~\ref{sec:phi_ou}.
+The covariance mapping follows the same exponential integral as in~\eqref{eq:phi_Qd_from_F}.
+Hence the OU process fits perfectly the assumptions of the LTI Kalman predictor.
+
+\subsection{Attitude Error Kinematics as a Locally Linear System}
+
+The quaternion kinematics
+\(
+\dot q = \tfrac{1}{2}q\otimes[0,\omega_b-b_g-n_g]
+\)
+are nonlinear in \(q\).
+To obtain a linear error model we represent the true quaternion as
+\(q = \hat q\otimes \delta q\),
+where \(\delta q \approx [1,\tfrac{1}{2}\delta\theta^\top]^\top\)
+for small attitude error \(\delta\theta\).
+Linearizing the differential equation yields
+\begin{equation}
+\dot{\delta\theta} = -[\omega_b - b_g]_\times\,\delta\theta - \delta b_g - n_g.
+\label{eq:attitude_error_dyn}
+\end{equation}
+This is again of the linear form~\eqref{eq:lti_ct} with
+\[
+F_\mathrm{att} =
+\begin{bmatrix}
+-[\omega_b-b_g]_\times & -I_3\\
+0 & 0
+\end{bmatrix},
+\qquad
+G_\mathrm{att} =
+\begin{bmatrix}
+-I_3\\
+I_3
+\end{bmatrix}.
+\]
+If the angular rate \(\omega_b-b_g\) is assumed constant during one integration step,
+\(F_\mathrm{att}\) is constant and the attitude error evolves as
+\[
+\delta\theta(t{+}h) = e^{F_\mathrm{att}h}\,\delta\theta(t) + \text{noise}.
+\]
+Thus the multiplicative EKF treats the quaternion error as a locally LTI subsystem.
+The nominal quaternion \(\hat q\) is propagated nonlinearly,
+while the covariance of the small error uses the exponential of the local Jacobian.
+Recomputing \(F_\mathrm{att}\) each step captures the time variation of the angular rate.
+
+\subsection{Summary}
+
+Both subsystems---the OU translational chain and the quaternion attitude error---have linear
+differential equations with (locally) constant coefficients.
+Therefore, their discrete--time prediction matrices in the Kalman filter are the matrix exponentials
+of their respective continuous--time Jacobians:
+\[
+\boxed{\Phi = e^{Fh}}.
+\]
+This guarantees that the finite--step propagation of mean and covariance is dynamically
+consistent with the underlying continuous model and preserves stability for any sampling rate.
+
+\subsection{Discrete-Time Transition Matrix}
+
+Exact moment matching of~\eqref{eq:continuous-linear} over sampling interval
+$h$ yields the per-axis discrete transition
+\begin{equation}
+\Phi_{\mathrm{axis}}(h,\tau) =
+\begin{bmatrix}
+1 & 0 & 0 & \phi_{va} \\
+h & 1 & 0 & \phi_{pa} \\
+\tfrac{1}{2}h^2 & h & 1 & \phi_{Sa} \\
+0 & 0 & 0 & e^{-h/\tau}
+\end{bmatrix},
+\end{equation}
+with coefficients
+\begin{align}
+\phi_{va} &= \tau(1 - e^{-h/\tau}),\\
+\phi_{pa} &= \tau^2\!\left(\tfrac{h}{\tau} + e^{-h/\tau} - 1\right),\\
+\phi_{Sa} &= \tau^3\!\left(\tfrac{1}{2}\!\left(\tfrac{h}{\tau}\right)^2
+              - \tfrac{h}{\tau} - (e^{-h/\tau}-1)\right).
+\end{align}
+For very small $x = h/\tau$, Maclaurin series expansions up to $O(x^5)$
+are used to avoid cancellation and preserve numerical precision.
+
+\subsection{Discrete Process Noise Covariance}
+
+The discrete covariance $\mathbf{Q}_d$ for each axis
+$\bigl[v,\,p,\,S,\,a_w\bigr]$ is obtained by integrating the continuous OU
+spectral density,
+\begin{equation}
+\mathbf{Q}_d
+= \frac{2\,\sigma_{a_w}^2}{\tau}
+  \!\int_0^h\!\!\!\int_0^h
+  e^{-|t-s|/\tau}
+  \mathbf{f}(t)\mathbf{f}^\top(s)\,dt\,ds,
+\end{equation}
+where $\mathbf{f}(t) = [1,\,t,\,t^2/2!,\,a(t)]^\top$ are the integration
+basis functions of~\eqref{eq:continuous-linear}.
+Closed-form expressions are evaluated analytically for general $h/\tau$
+and approximated by high-order series for small ratios.
+
+When $\Sigma_{a_w}$ includes cross-axis correlation, the full $12\times12$
+process covariance is constructed as a Kronecker-type product
+\[
+\mathbf{Q}_{LL}
+= \Sigma_{a_w}^{1/2} \otimes \mathbf{Q}_d^{(1)}
+   \bigl(\Sigma_{a_w}^{1/2}\bigr)^\top,
+\]
+ensuring positive semidefiniteness and realistic coupling between vertical
+and horizontal accelerations.
+
+\subsection{Summary of Discrete Propagation}
+
+The overall discrete-time prediction step is therefore
+\begin{align}
+x_{k|k-1} &= \Phi\,x_{k-1|k-1},\\
+P_{k|k-1} &= \Phi\,P_{k-1|k-1}\,\Phi^\top + Q,
+\end{align}
+where $\Phi$ is block-diagonal in attitude and linear subsystems,
+and $Q$ combines $\mathbf{Q}_{LL}$ with the bias random-walk covariances.
+This formulation yields a numerically stable propagation even for
+$h/\tau\!\ll\!1$, ensuring physically consistent evolution of both
+orientation and wave-driven translational dynamics.
