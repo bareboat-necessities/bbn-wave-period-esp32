@@ -114,6 +114,137 @@ Because $F$ is block upper-triangular, $P$ remains symmetric,
 and each sub-block (attitude, linear, bias) evolves independently
 to first order.
 
+\subsection{Linearized System and Measurement Jacobians}
+\label{sec:jacobians}
+
+To express the quaternion–multiplicative EKF in standard linear form
+$\dot{\delta x}=F\,\delta x+G\,w$, we linearize the nonlinear process and
+measurement models about the nominal trajectory $\hat x(t)$.
+
+\paragraph{Continuous process equations.}
+The nominal system dynamics are
+\[
+\begin{aligned}
+\dot q &= \tfrac12\,q\otimes[0,\omega_m-b_g-n_g],\\
+\dot v &= a_w, \qquad
+\dot p = v, \qquad
+\dot S = p,\\
+\dot a_w &= -\tfrac{1}{\tau}\,a_w + \eta_a,\\
+\dot b_g &= n_{b_g}, \qquad
+\dot b_a = n_{b_a},
+\end{aligned}
+\]
+where $q$ is the attitude quaternion, $a_w$ the latent
+world acceleration governed by an OU process, and $(b_g,b_a)$ are the
+gyro and accelerometer biases.
+
+\paragraph{Perturbation state.}
+Let the true state be $x=\hat x+\delta x$, where
+\[
+\delta x =
+[\delta\theta,\,
+ \delta b_g,\,
+ \delta v,\,
+ \delta p,\,
+ \delta S,\,
+ \delta a_w,\,
+ \delta b_a]^\top.
+\]
+Quaternion errors use the right–multiplicative parameterization
+$q_t=q\otimes\delta q$, with $\delta q\approx[1,\tfrac12\delta\theta^\top]^\top$.
+
+\paragraph{Linearization of the process model.}
+Differentiating each equation and retaining first-order terms yields
+\[
+\dot{\delta x}=F\,\delta x+G\,w,
+\]
+with the continuous-time Jacobian $F$ partitioned by variable groups:
+\[
+F =
+\begin{bmatrix}
+F_{\theta\theta} & F_{\theta b_g} & 0 & 0 & 0 & 0 & 0\\[2pt]
+0 & 0 & 0 & 0 & 0 & 0 & 0\\[2pt]
+0 & 0 & 0 & 0 & 0 & I_3 & 0\\[2pt]
+0 & 0 & I_3 & 0 & 0 & 0 & 0\\[2pt]
+0 & 0 & 0 & I_3 & 0 & 0 & 0\\[2pt]
+0 & 0 & 0 & 0 & 0 & -\tfrac{1}{\tau}I_3 & 0\\[2pt]
+0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix},
+\]
+where
+\[
+F_{\theta\theta}=-[\omega_m-b_g]_\times, \qquad
+F_{\theta b_g}=-I_3.
+\]
+All other blocks are either kinematic identities or OU decay terms.
+The process–noise input matrix $G$ groups the white drivers
+$w=[n_g,n_{b_g},\eta_a,n_{b_a}]^\top$.
+
+\paragraph{Linearized measurement models.}
+The sensor equations in the body frame are
+\[
+\begin{aligned}
+\omega_m &= \omega_\text{true}+b_g+n_g,\\[2pt]
+f_b &= R_{wb}(a_w-g_w)+b_a+n_a,\\[2pt]
+m_b &= R_{wb}B_w+n_m,\\[2pt]
+z_S &= S+n_S.
+\end{aligned}
+\]
+Linearizing each about $\hat x$ gives residuals
+$r=z-h(\hat x)\approx H\,\delta x+n$ with Jacobians $H$.
+
+\paragraph{Accelerometer Jacobian.}
+Using the small-angle perturbation $\delta R\approx I-[\delta\theta]_\times$
+and noting $f_b=R_{wb}(a_w-g_w)+b_a$, we obtain
+\[
+\begin{aligned}
+J_\theta &= -[f_b]_\times,\\
+J_{a_w} &= R_{wb},\\
+J_{b_a} &= I_3.
+\end{aligned}
+\]
+The negative sign in $J_\theta$ follows from the right–multiplicative convention.
+
+\paragraph{Magnetometer Jacobian.}
+Similarly,
+\[
+m_b=R_{wb}B_w
+\Rightarrow
+J_\theta=-[m_b]_\times,
+\]
+with no dependence on $a_w$ or $b_a$.
+
+\paragraph{Integral pseudo-measurement.}
+For the drift-suppression constraint $z_S=0=S+n_S$, the Jacobian is simply
+\[
+H_S=[0,\dots,0,I_3,0,\dots,0],
+\]
+selecting the $S$ states from $x$.
+
+\paragraph{Assembled measurement matrix.}
+Stacking the three models gives
+\[
+H =
+\begin{bmatrix}
+H_\text{acc}\\[3pt]
+H_\text{mag}\\[3pt]
+H_S
+\end{bmatrix},
+\qquad
+H_\text{acc}=[J_\theta,0,0,0,0,J_{a_w},J_{b_a}],
+\qquad
+H_\text{mag}=[J_\theta,0,0,0,0,0,0].
+\]
+
+\paragraph{Interpretation.}
+The cross-product Jacobians $-[v]_\times$ represent infinitesimal rotations of
+a vector in the body frame.  Each linearized measurement thus constrains
+attitude errors through a geometric coupling between predicted and measured
+directions, while the translational and bias components enter linearly.
+These expressions correspond directly to the matrices implemented in the
+\texttt{measurement\_update\_acc\_only()} and
+\texttt{measurement\_update\_mag\_only()} routines of the reference code.
+
 % --- Discretization ---
 \subsection{Discretization}
 
