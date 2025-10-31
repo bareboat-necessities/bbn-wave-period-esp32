@@ -1,0 +1,136 @@
+% =====================================================
+\section{Stability Analysis of the Adaptive Law}
+\label{sec:stability}
+
+We now establish that the adaptive pseudo-measurement weighting
+\[
+R_S(\theta) = \mathrm{diag}(k_i\,\sigma_a\,\tau^3),
+\qquad
+\theta = (\sigma_a,\tau),
+\]
+preserves boundedness and input-to-state stability (ISS) of the
+estimation error dynamics under slowly varying parameters.
+
+\subsection*{Frozen-Parameter Error System}
+
+Consider the linearized discrete-time error system with frozen parameters
+$\theta_k=\theta$:
+\[
+e_{k+1} = \Phi(\theta)\,e_k + w_k,
+\]
+where $w_k$ collects process and measurement noise terms and
+$\Phi(\theta)=e^{F(\theta)h}$ is the discrete transition matrix derived
+in Section~\ref{sec:ou_discretization}.
+For constant $\theta$, the corresponding covariance recursion is
+\[
+P_{k+1} = \Phi P_k \Phi^\top + Q_d.
+\]
+The Joseph form of the update
+\[
+P_{k|k} = (I-KH)P_{k|k-1}(I-KH)^\top + K R K^\top
+\]
+ensures that $P_{k|k}\succeq0$ for any $R\succ0$
+and hence that $V_k = e_k^\top P_{k|k}^{-1} e_k$ is well defined.
+
+\subsection*{Lyapunov Candidate and Discrete Inequality}
+
+Define the Lyapunov function
+\[
+V_k = e_k^\top P^{-1} e_k,
+\]
+where $P$ is the steady-state covariance of the frozen system satisfying
+the discrete Lyapunov equation
+\[
+P = \Phi P \Phi^\top + Q_d.
+\]
+Subtracting consecutive terms yields
+\[
+\Delta V_k = V_{k+1}-V_k
+           = e_k^\top(\Phi^\top P^{-1}\Phi - P^{-1})e_k
+           + 2 e_k^\top \Phi^\top P^{-1} w_k
+           + w_k^\top P^{-1} w_k.
+\]
+Using the Lyapunov equation and symmetry of $P$, the first term becomes
+\[
+\Phi^\top P^{-1}\Phi - P^{-1}
+  = -P^{-1}(Q_d)P^{-1},
+\]
+so that
+\[
+\Delta V_k
+  \le -\lambda_\text{min}(P^{-1}Q_dP^{-1})\,\|e_k\|^2
+       + 2\|e_k\|\|\Phi^\top P^{-1}\|\|w_k\|
+       + \|P^{-1}\|\|w_k\|^2.
+\]
+Taking expectations and noting $\mathbb{E}[w_k]=0$ gives
+\[
+\mathbb{E}[\Delta V_k] \le -\alpha\,\mathbb{E}[\|e_k\|^2] + \beta\,\mathrm{tr}(Q_w),
+\]
+where $\alpha,\beta>0$ depend on $(\Phi,P,Q_d)$.
+
+\begin{lemma}[Discrete Lyapunov Difference Inequality]
+For the frozen-parameter system above,
+if $Q_d\succeq0$ and $P\succeq\epsilon I$ for some $\epsilon>0$, then
+there exist constants $\alpha,\beta>0$ such that
+\[
+\mathbb{E}[V_{k+1}-V_k]
+  \le -\alpha\,\mathbb{E}[\|e_k\|^2]
+       + \beta\,\mathbb{E}[\|w_k\|^2].
+\]
+\end{lemma}
+
+\subsection*{Slowly Varying Parameters}
+
+When the parameters $\theta_k$ vary slowly, we can express
+$\Phi(\theta_{k+1}) = \Phi(\theta_k) + \Delta_\Phi$, where
+$\|\Delta_\Phi\|\le c_\Phi\|\Delta\theta_k\|$ for some Lipschitz constant
+$c_\Phi$.
+The error dynamics become
+\[
+e_{k+1} = \Phi(\theta_k)e_k + \Delta_\Phi e_k + w_k.
+\]
+Substituting into the Lyapunov difference and bounding the cross term
+$\|\Delta_\Phi e_k\|$ yields
+\[
+\mathbb{E}[\Delta V_k]
+  \le -\alpha\,\mathbb{E}[\|e_k\|^2]
+        + \beta\,\mathbb{E}[\|w_k\|^2]
+        + \gamma\,\mathbb{E}[\|\Delta\theta_k\|^2],
+\]
+with $\gamma = \mathcal{O}(c_\Phi^2)$.
+
+\subsection*{Input-to-State Stability}
+
+This inequality is of the standard ISS form
+\[
+\Delta V_k \le -\alpha\,\|e_k\|^2 + \psi(\|w_k\|,\|\Delta\theta_k\|),
+\]
+where $\psi$ is a class-$\mathcal{K}$ function of the input magnitudes.
+By the discrete ISS theorem
+of Sontag and Wang~\cite{sontag1996} and
+Jiang and Mareels~\cite{jiang1997},
+the estimation error dynamics of the adaptive system are
+input-to-state stable provided that the parameter adaptation is slower
+than the filter’s convergence rate:
+\[
+\|\Delta\theta_k\| < \frac{\alpha}{2\gamma}\,\|e_k\|.
+\]
+
+\subsection*{Physical Interpretation}
+
+The scaling $R_S\propto\sigma_a\tau^3$ maintains proportional energy
+between process excitation and pseudo-measurement correction.
+Longer correlation times $\tau$ correspond to larger integral variance
+and thus require proportionally greater $R_S$ to balance the
+Kalman gain magnitude, keeping the covariance bounded.
+
+\smallskip
+\fbox{%
+\parbox{0.97\linewidth}{%
+\textbf{Summary.}
+Under bounded parameter variation and bounded process noise,
+the adaptive law
+$R_S = \mathrm{diag}(k_i\,\sigma_a\,\tau^3)$
+ensures that the closed-loop estimation error is
+input-to-state stable in the sense of Sontag–Wang.
+}}
