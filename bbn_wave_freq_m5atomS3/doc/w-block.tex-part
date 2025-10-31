@@ -1,0 +1,142 @@
+% =====================================================
+\section{From Full Matrices to Block Structure}
+\label{sec:block}
+
+In practice the complete covariance and transition matrices of the extended
+state can reach dimensions $N_X\!\approx\!21$--$24$.
+Updating the full matrix at every step scales as $O(N_X^3)$ and may introduce
+numerical imbalance between the rotational and translational subsystems.
+Because these subsystems are only weakly coupled, the filter can safely employ
+a \emph{block-structured} form that preserves consistency while reducing
+computational cost.
+
+\subsection*{State Partition and Subsystem Meaning}
+
+We partition the full state as
+\[
+x =
+\begin{bmatrix}
+x_a \\[1ex] x_l \\[1ex] x_b
+\end{bmatrix},
+\]
+where
+\begin{itemize}
+  \item $x_a$ --- \textbf{Attitude and gyroscope bias}  
+  (small-angle quaternion error $\delta\theta$ and optional $b_g$),
+  typically $3$–$6$ states.
+  \item $x_l$ --- \textbf{Linear OU-driven kinematic chain},  
+  containing $v$, $p$, $S$, and $a_w$ (dimension $\approx12$).
+  \item $x_b$ --- \textbf{Accelerometer bias} or other slow sensor biases
+  (dimension $\approx3$).
+\end{itemize}
+
+The corresponding covariance matrix is
+\[
+P =
+\begin{bmatrix}
+P_{aa} & P_{al} & P_{ab}\\
+P_{al}^\top & P_{ll} & P_{lb}\\
+P_{ab}^\top & P_{lb}^\top & P_{bb}
+\end{bmatrix},
+\]
+where each block captures covariance or cross-covariance between the subsystems.
+
+\subsection*{Near-Block-Diagonal Transition and Process Noise}
+
+The continuous matrix $F$ derived in Section~\ref{sec:qmekf} has small
+cross-block terms because attitude errors affect translational motion mainly
+through short-term rotation of the gravity vector, and bias dynamics are
+quasi-independent.  Hence to first order
+\[
+\Phi \approx \mathrm{diag}(\Phi_a,\Phi_l,I), \qquad
+Q_d \approx \mathrm{diag}(Q_a,Q_l,Q_b),
+\]
+neglecting terms $O(\|F_{al}\|h)$ and $O(\|F_{ab}\|h)$.
+This approximation preserves numerical stability while allowing independent
+propagation of each block.
+
+\subsection*{Blockwise Covariance Propagation}
+
+Starting from the full discrete prediction
+\[
+P' = \Phi P \Phi^\top + Q_d,
+\]
+and inserting the block partitions above gives, to first order,
+\[
+\begin{aligned}
+P'_{aa} &= \Phi_a P_{aa} \Phi_a^\top + Q_a,\\[0.4ex]
+P'_{ll} &= \Phi_l P_{ll} \Phi_l^\top + Q_l,\\[0.4ex]
+P'_{al} &= \Phi_a P_{al} \Phi_l^\top,\\[0.4ex]
+P'_{bb} &= P_{bb} + Q_b,
+\end{aligned}
+\qquad
+P'_{la}=P_{al}'{}^\top .
+\]
+These relations correspond directly to the \texttt{P\_AA}, \texttt{P\_LL},
+\texttt{P\_AL}, and \texttt{P\_BB} updates in the implementation.
+
+\subsection*{Block Joseph Update}
+
+When applying a measurement update, the Joseph form is used
+to ensure $P\succeq0$:
+\[
+P \leftarrow P - K(H P)^\top - (H P)K^\top + K R K^\top .
+\]
+For attitude-related sensors (magnetometer or accelerometer),
+only the $x_a$ block participates, whereas the pseudo-measurement on $S$
+affects mainly the $x_l$ block.
+Applying this equation per block preserves symmetry and positive semi-definiteness
+with minimal cost.
+
+\subsection*{Cross-Covariance Logic}
+
+If the OU-driven acceleration components are correlated,
+the linear-block process covariance becomes
+\[
+Q_l = \Sigma_a \otimes Q_{\text{axis}},
+\]
+where $\Sigma_a$ is the stationary covariance of the world acceleration
+and $Q_{\text{axis}}$ is the 4×4 per-axis covariance derived in
+Section~\ref{sec:ou_discretization}.
+This Kronecker representation compactly encodes horizontal–vertical coupling
+while remaining analytically tractable.
+
+\subsection*{PSD Projection and Symmetry Enforcement}
+
+After each propagation or update the covariance is symmetrized and projected
+to the positive-semidefinite cone:
+\[
+P \leftarrow \tfrac12(P+P^\top), \qquad
+P \leftarrow V\,\max(\Lambda,\epsilon I)\,V^\top ,
+\]
+where $P=V\Lambda V^\top$ and $\epsilon\!\approx\!10^{-12}$.
+For small sub-blocks (3×3 or 12×12) this operation is inexpensive yet prevents
+loss of numerical definiteness due to rounding.
+
+\subsection*{Complexity and Implementation Notes}
+
+Under this decomposition the cost of propagation and update reduces from
+$O(N_X^3)$ to roughly
+\[
+O(n_a^3+n_l^3) \approx O(6^3+12^3)\ll O(21^3),
+\]
+and can be parallelized per block.
+Each sub-block is updated using small-dimension LDLT factorizations,
+and the projection routine \texttt{project\_psd()} is applied after every major
+update to maintain symmetry.
+
+\smallskip
+\fbox{%
+\parbox{0.97\linewidth}{%
+\textbf{Summary.}
+The block structure exploits the weak coupling between
+attitude, linear kinematics, and biases to perform
+independent propagation and updates:
+\[
+\Phi\!\approx\!\mathrm{diag}(\Phi_a,\Phi_l,I),\quad
+Q_d\!\approx\!\mathrm{diag}(Q_a,Q_l,Q_b).
+\]
+This reduces computational cost, preserves numerical stability,
+and directly maps to the implementation in
+\texttt{Kalman3D\_Wave}.%
+}}
