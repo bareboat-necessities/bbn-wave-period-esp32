@@ -1,0 +1,263 @@
+% =====================================================
+\section{Derivation of the Quaternion-Multiplicative EKF (QMEKF)}
+\label{sec:qmekf}
+
+% --- Motivation and Overview ---
+The multiplicative extended Kalman filter (MEKF) is used to maintain
+a unit-norm quaternion representation while linearizing attitude errors
+in $\mathbb{R}^3$.  Additive formulations corrupt the quaternion norm
+and can diverge for large rotations, whereas the multiplicative form
+keeps the nominal quaternion on $\mathrm{SO}(3)$ and
+uses a small-angle error $\delta\theta$ for corrections.
+
+\subsection{Quaternion Error Parameterization}
+
+The true attitude $q_t$ and its estimate $q$ are related by a
+right-multiplicative error quaternion
+\[
+q_t = q \otimes \delta q, \qquad
+\delta q \approx [\,1,\;\tfrac12\,\delta\theta^\top\,]^\top ,
+\]
+where $\delta\theta\in\mathbb{R}^3$ represents a small rotation
+vector in body coordinates.
+
+Expanding the quaternion kinematics
+\[
+\dot q = \tfrac12\, q \otimes [\,0,\,\omega_m - b_g - n_g\,],
+\]
+and retaining first-order terms in $\delta\theta$ yields
+\[
+\dot{\delta\theta}
+  = -[\,\omega_m - b_g\,]_\times\,\delta\theta
+    - \delta b_g - n_g ,
+\]
+where $[\,\omega\,]_\times$ denotes the $3\times3$ skew-symmetric matrix
+\(
+[\,\omega\,]_\times =
+\begin{bmatrix}
+0 & -\omega_z & \omega_y\\
+\omega_z & 0 & -\omega_x\\
+-\omega_y & \omega_x & 0
+\end{bmatrix}.
+\)
+
+% --- Gyro Bias and Kinematic Chain ---
+\subsection{Bias and OU-Driven Kinematic Subsystems}
+
+The remaining continuous-time components evolve as
+\[
+\begin{aligned}
+\dot b_g &= n_{b_g},\\
+\dot v &= a_w,\\
+\dot p &= v,\\
+\dot S &= p,\\
+\dot a_w &= -\tfrac{1}{\tau}\,a_w + \eta_a,\\
+\dot b_a &= n_{b_a},
+\end{aligned}
+\]
+where $a_w$ follows the OU process introduced in
+Section~\ref{sec:process} and all driving noises are white and zero-mean.
+
+% --- State Vector and Noise Composition ---
+\subsection{Augmented Continuous-Time State}
+
+The complete linearized state is
+\[
+x = [\,\delta\theta,\; b_g,\; v,\; p,\; S,\; a_w,\; b_a\,]^\top ,
+\qquad
+w = [\,n_g,\,n_{b_g},\,\eta_a,\,n_{b_a}\,]^\top .
+\]
+The continuous SDE is written compactly as
+\[
+\dot x = F\,x + G\,w ,
+\]
+where $F$ and $G$ are block matrices derived below.
+
+% --- Block Structure of F and G ---
+\subsection{Explicit Form of the System Jacobians}
+
+The process Jacobian $F$ has the near-block-diagonal form
+\[
+F =
+\begin{bmatrix}
+F_{\theta\theta} & F_{\theta b_g} & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & I & 0 & I & 0\\
+0 & 0 & 0 & 0 & I & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & -\tfrac{1}{\tau}I & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix},
+\quad
+F_{\theta\theta} = -[\,\omega_m-b_g\,]_\times,\quad
+F_{\theta b_g} = -I .
+\]
+
+The noise-mapping matrix $G$ is block-diagonal,
+linking each driving noise to its subsystem:
+\[
+G = \mathrm{diag}(I,\;I,\;I,\;I),
+\qquad
+Q_c = \mathrm{diag}(Q_g,\;Q_{b_g},\;Q_a,\;Q_{b_a}) .
+\]
+Here $Q_g = \sigma_g^2 I$, $Q_{b_g} = \sigma_{b_g}^2 I$,
+$Q_a = 2\sigma_a^2/\tau\,I$, and $Q_{b_a} = \sigma_{b_a}^2 I$.
+
+% --- Covariance Propagation ---
+\subsection{Continuous-Time Covariance Propagation}
+
+The covariance satisfies the Lyapunov equation
+\[
+\dot P = F P + P F^\top + G Q_c G^\top .
+\]
+Because $F$ is block upper-triangular, $P$ remains symmetric,
+and each sub-block (attitude, linear, bias) evolves independently
+to first order.
+
+% --- Discretization ---
+\subsection{Discretization}
+
+Using results from Section~\ref{sec:ou_discretization},
+the discrete propagation matrices are
+\[
+\Phi = e^{Fh}, \qquad
+Q_d = \int_0^h e^{F(h-s)}G Q_c G^\top e^{F^\top(h-s)}\,ds .
+\]
+For small sampling periods $h$, the rotational block is
+\[
+\Phi_\text{att} \approx I - [\,\omega_m-b_g\,]_\times h,
+\]
+and the translational block employs the analytically derived
+OU coefficients $\phi_{va}$, $\phi_{pa}$, $\phi_{Sa}$ and $A_1$, $A_2$.
+
+% --- Measurement Linearization ---
+\subsection{Linearized Measurement Models}
+
+Each nonlinear sensor model $z=h(x)+n$ is linearized around the current
+estimate as
+\[
+r = z - h(\hat x) \approx H\,x + n.
+\]
+
+\paragraph{Gyroscope.}
+Residual $r_g = \omega_m - (\omega_\text{true}+b_g)$ with
+\(
+H_g = [\,0,\;I,\,0,\ldots,0\,],
+\)
+and noise covariance $R_g=\sigma_g^2 I$.
+
+\paragraph{Accelerometer.}
+The nonlinear model
+\(
+f_b = R_{wb}(a_w - g_w) + b_a + n_a
+\)
+linearizes to
+\[
+r_a = f_b - \hat f_b
+    \approx
+    -[\,R_{wb}(a_w - g_w)\,]_\times\,\delta\theta
+    + R_{wb}\,\delta a_w
+    + \delta b_a
+    + n_a .
+\]
+Hence,
+\[
+H_\text{acc} =
+\begin{bmatrix}
+J_\theta & 0 & 0 & 0 & 0 & J_{a_w} & J_{b_a}
+\end{bmatrix},
+\quad
+J_\theta = -[\,R_{wb}(a_w - g_w)\,]_\times,\;
+J_{a_w}=R_{wb},\;
+J_{b_a}=I .
+\]
+
+\paragraph{Magnetometer.}
+From $m_b = R_{wb}B_w + n_m$,
+\[
+r_m = m_b - \hat m_b
+    \approx
+    -[\,R_{wb}B_w\,]_\times\,\delta\theta + n_m,
+\]
+so
+\[
+H_\text{mag} =
+\begin{bmatrix}
+-[\,R_{wb}B_w\,]_\times & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix},
+\quad
+R_m = \sigma_m^2 I .
+\]
+\emph{Remark:} If $B_w$ is known only up to magnitude,
+normalization of $m_b$ and $B_w$ before the update constrains yaw
+without scaling sensitivity.
+
+\paragraph{Integral Pseudo-Measurement.}
+The constraint $z_S=0=S+n_S$ gives
+\[
+H_S =
+\begin{bmatrix}
+0 & 0 & 0 & 0 & I & 0 & 0
+\end{bmatrix},
+\quad
+R_S=\mathrm{diag}(\sigma_S^2).
+\]
+
+% --- Discrete Prediction and Update ---
+\subsection{Discrete Prediction and Update Equations}
+
+Prediction:
+\[
+\hat x_{k|k-1} = \Phi\,\hat x_{k-1|k-1}, \qquad
+P_{k|k-1} = \Phi P_{k-1|k-1}\Phi^\top + Q_d .
+\]
+
+Update:
+\[
+K = P_{k|k-1}H^\top(HP_{k|k-1}H^\top + R)^{-1}, \qquad
+\hat x_{k|k} = \hat x_{k|k-1} + K r .
+\]
+Quaternion correction:
+\[
+q_{k|k}
+ = q_{k|k-1}\otimes
+   \mathrm{exp}_q\!\left(\tfrac12\,\delta\theta_{k|k}\right),
+\qquad
+\delta\theta_{k|k}\!\leftarrow0,
+\qquad
+q_{k|k}\leftarrow\frac{q_{k|k}}{\|q_{k|k}\|}.
+\]
+
+% --- Implementation Mapping ---
+\subsection{Implementation Mapping}
+
+The corresponding functions in \texttt{Kalman3D\_Wave} are:
+\begin{itemize}
+  \item \texttt{time\_update()} — integrates the propagation
+        using precomputed $\Phi$ and $Q_d$ blocks.
+  \item \texttt{measurement\_update\_acc\_only()} and
+        \texttt{measurement\_update\_mag\_only()} — implement
+        the linearized $H_\text{acc}$ and $H_\text{mag}$ updates.
+  \item \texttt{applyQuaternionCorrectionFromErrorState()} —
+        performs the quaternion correction and re-normalization.
+\end{itemize}
+Each covariance update uses the Joseph form to guarantee PSD symmetry.
+
+% --- Observability and Summary ---
+\subsection{Observability Notes and Summary}
+
+Accelerometer and magnetometer jointly provide full attitude
+observability once yaw excitation exists.
+Biases become observable through persistent motion,
+while the integral pseudo-measurement maintains bounded drift
+in the translational chain.
+
+\medskip
+\noindent
+\textbf{Summary:}  
+This section derived the continuous and discrete
+Quaternion-Multiplicative EKF equations,
+including attitude error dynamics, Jacobians, and measurement models.
+The resulting structure preserves quaternion unit norm, maintains PSD
+covariance through the Joseph form, and directly corresponds
+to the implemented filter logic.
