@@ -245,6 +245,66 @@ These expressions correspond directly to the matrices implemented in the
 \texttt{measurement\_update\_acc\_only()} and
 \texttt{measurement\_update\_mag\_only()} routines of the reference code.
 
+\subsection{Quaternion Correction and Normalization}
+\label{sec:quat_correction}
+
+After each measurement update, the EKF state vector contains a small
+attitude-error estimate $\delta\theta\in\mathbb{R}^3$ representing the
+difference between the nominal quaternion $\hat q$ and the true attitude.
+To maintain consistency between the quaternion and the error state,
+this small rotation must be applied multiplicatively to the nominal
+quaternion, followed by re-normalization.
+
+\paragraph{Right-multiplicative update.}
+For a small error vector $\delta\theta$, define the incremental quaternion
+\[
+\delta q = \mathrm{exp}_q\!\left(\tfrac12\,\delta\theta\right)
+\approx
+\begin{bmatrix}
+1\\[3pt]
+\tfrac12\,\delta\theta
+\end{bmatrix},
+\]
+where $\mathrm{exp}_q(\cdot)$ denotes the quaternion exponential map.
+The corrected attitude estimate is then
+\[
+\hat q^{+} = \hat q^{-}\otimes\delta q,
+\]
+where $(\cdot)^{-}$ and $(\cdot)^{+}$ denote the pre- and post-update
+quaternions, respectively.  This corresponds to a right-multiplicative
+convention consistent with the body-frame error parameterization used
+throughout Section~\ref{sec:qmekf}.
+
+\paragraph{Error-state reset.}
+Because the quaternion correction has been absorbed into $\hat q$,
+the corresponding small-angle components of the state vector are
+reset to zero:
+\[
+\delta\theta^{+} \leftarrow 0.
+\]
+This prevents double-counting the same rotation in subsequent updates.
+
+\paragraph{Normalization.}
+Even though $\delta q$ is unit-norm by construction to first order,
+numerical drift from finite precision can accumulate over many updates.
+Therefore the quaternion is explicitly re-normalized after each correction:
+\[
+\hat q^{+} \leftarrow
+\frac{\hat q^{+}}{\|\hat q^{+}\|}.
+\]
+This guarantees that $\hat q$ remains a valid rotation on~$SO(3)$ and
+prevents growth of spurious covariance components coupled to the quaternion
+constraint.
+
+\paragraph{Implementation equivalence.}
+This procedure is identical to the function
+\texttt{applyQuaternionCorrectionFromErrorState()} in the reference code,
+which performs the update using a numerically stable exponential map
+\texttt{quat\_from\_delta\_theta()} and then normalizes the result.
+In the full EKF cycle, this step is executed after every attitude-related
+measurement update (accelerometer, magnetometer, or integral pseudo-measurement)
+to maintain filter consistency.
+
 % --- Discretization ---
 \subsection{Discretization}
 
