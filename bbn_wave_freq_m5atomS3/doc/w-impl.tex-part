@@ -1,0 +1,142 @@
+% =====================================================
+\section{Implementation and Numerical Stability}
+\label{sec:impl}
+
+The theoretical development of the filter must be realized in a numerically
+stable implementation to remain reliable over long-duration marine motion
+runs.  All matrix operations are performed in finite precision and thus require
+explicit measures to preserve symmetry, positive semidefiniteness (PSD), and
+bounded condition numbers.  The following subsections summarize the safeguards
+and their correspondence to the C++ implementation.
+
+% -----------------------------------------------------
+\subsection{Discretization Stability for the OU Chain}
+
+For small sampling steps $h$ relative to the correlation time~$\tau$,
+direct evaluation of
+\(
+\phi_{pa},\phi_{Sa},A_1,A_2
+\)
+involves differences of nearly equal exponentials,
+causing cancellation.
+Each coefficient is therefore computed with a
+\emph{Maclaurin fallback} that expands
+$\mathrm{e}^{-x}$ and $\mathrm{expm1}(-x)$
+up to fifth order in $x=h/\tau$.
+This ensures that the discrete transition
+and covariance matrices~$\Phi$ and~$Q_d$
+remain well-conditioned even for $x\!\ll\!1$.
+In the reference code these series are produced by
+\texttt{safe\_phi\_A\_coeffs()}, while the general branch uses
+the closed-form exponential expressions in
+\texttt{PhiAxis4x1\_analytic()} and
+\texttt{QdAxis4x1\_analytic()}.
+
+% -----------------------------------------------------
+\subsection{Joseph-Form Covariance Update}
+
+Finite-precision subtraction in the canonical update
+\(
+P_{k|k} = (I-KH)P_{k|k-1}
+\)
+may yield loss of symmetry or slightly negative eigenvalues.
+The filter therefore adopts the Joseph form
+\[
+P_{k|k}
+ = (I-KH)P_{k|k-1}(I-KH)^\top + K R K^\top,
+\]
+which guarantees $P_{k|k}\succeq 0$ for any $R\succ 0$.
+This is implemented in
+\texttt{joseph\_update3\_()} and applied uniformly across
+accelerometer, magnetometer, and pseudo-measurement updates.
+After each update the matrix is explicitly symmetrized as
+$P\!\leftarrow\!\tfrac12(P+P^\top)$.
+
+% -----------------------------------------------------
+\subsection{LDLT Fallback and Safety Boost}
+
+Innovation covariances
+$S = H P H^\top + R$
+are factorized by an $\mathrm{LDL}^\top$
+decomposition to avoid explicit matrix inversion.
+If the solver reports a numerical failure,
+a small diagonal bump
+$\delta I$, with $\delta \!\sim\! 10^{-6}(\|R\|\!+\!1)$,
+is added to~$S$ before recomputing the factorization.
+This logic is encapsulated in
+\texttt{safe\_ldlt3\_()},
+which provides a deterministic recovery path
+for nearly singular innovation matrices.
+
+% -----------------------------------------------------
+\subsection{PSD Projection and Symmetrization}
+
+To maintain positive semidefiniteness of all covariance blocks,
+every update cycle applies
+\[
+P \leftarrow \tfrac12(P+P^\top),
+\qquad
+P \leftarrow V\max(\Lambda,\epsilon I)V^\top,
+\]
+where $(V,\Lambda)$ are the eigenpairs of~$P$
+and $\epsilon\!\approx\!10^{-12}$ ensures strictly positive diagonals.
+This projection is performed by
+\texttt{project\_psd()}, which is also used to sanitize
+the OU covariance~$Q_d$.
+The step is mathematically idempotent and introduces only
+machine-level perturbations.
+
+% -----------------------------------------------------
+\subsection{Warm-Up and Reinitialization}
+
+At start-up the filter postpones pseudo-measurement updates
+until a sufficient warm-up period elapses
+so that acceleration variance and frequency estimates have stabilized.
+The parameter \texttt{pseudo\_update\_counter\_} controls the interval
+between integral-drift corrections,
+typically every few prediction steps.
+If divergence or NaN values are detected,
+state and covariance blocks are safely reinitialized
+while preserving the current orientation quaternion.
+
+% -----------------------------------------------------
+\subsection{Deterministic Random Seeds and Reproducibility}
+
+All stochastic regression tests use deterministic pseudorandom generators
+(\texttt{std::mt19937}) with fixed seeds (e.g.\ 1234, 5678) to ensure that
+numerical outputs, RMS metrics, and convergence traces are reproducible across
+platforms and compiler versions.
+This property is critical for regression validation of adaptive tuning laws.
+
+% -----------------------------------------------------
+\subsection{Performance and Complexity Considerations}
+
+The blockwise propagation described in
+Sec.~\ref{sec:block} reduces the covariance update cost from
+$O(N^3)$ to $O(n_\text{att}^3+n_\text{lin}^3)$,
+where $n_\text{att}=6$ and $n_\text{lin}=12$ in the extended model.
+Combined with selective PSD projection and symmetric storage,
+the full filter executes comfortably in real time
+on embedded-grade CPUs without loss of accuracy.
+
+% -----------------------------------------------------
+\subsection*{Summary of Numerical Safeguards}
+
+\begin{center}
+\begin{tabular}{@{}l l@{}}
+\toprule
+\textbf{Mechanism} & \textbf{Purpose} \\
+\midrule
+Maclaurin fallback ($x{=}h/\tau$) & Prevent cancellation in OU discretization \\
+Joseph-form covariance update & Guarantee $P_{k|k}\!\succeq\!0$ in finite precision \\
+LDLT safety bump & Recover from nearly singular innovation matrices \\
+PSD projection & Restore semidefiniteness after round-off errors \\
+Warm-up scheduling & Delay drift correction until steady-state \\
+Deterministic seeding & Enable cross-platform reproducibility \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Together these mechanisms ensure that the analytic filter derived in
+Sections~\ref{sec:process}--\ref{sec:block} remains numerically stable and
+predictable in implementation, even under long-term marine deployments.
