@@ -1,0 +1,132 @@
+% =====================================================
+\section{Initialization and Alignment}
+\label{sec:init}
+
+Accurate initialization is essential for consistent attitude and bias
+estimation.  The quaternion-based filter requires a physically consistent
+orientation and initial covariance to avoid transient divergence in the early
+updates.
+
+\subsection*{Attitude from Accelerometer}
+
+At rest the accelerometer measures the specific force
+$f_b \approx R_{wb}^\top (0,0,g)^\top$.
+Hence the body $z$-axis is aligned opposite to the measured acceleration.
+Normalizing $a_b=f_b/\|f_b\|$, the direction of gravity in body coordinates is
+$-a_b$.  The quaternion that rotates this vector to the world vertical
+$e_z^w=(0,0,1)$ is obtained from the axis–angle relation:
+\[
+\begin{aligned}
+\text{axis} &= e_z^w \times (-a_b), \qquad
+\cos\theta = e_z^w\!\cdot\!(-a_b),\\
+q_\text{acc} &= 
+\begin{cases}
+[1,\,0,\,0,\,0]^\top, & \text{if }\theta\!\approx\!0,\\[0.6ex]
+[\cos(\tfrac{\theta}{2}),\,\sin(\tfrac{\theta}{2})\,\hat{\text{axis}}^\top]^\top,
+& \text{otherwise.}
+\end{cases}
+\end{aligned}
+\]
+This aligns roll and pitch but leaves yaw undetermined.
+
+\subsection*{Yaw Alignment from Magnetometer}
+
+Let $m_b$ be the magnetic field in the body frame and $B_w$ the known world
+magnetic vector defined by declination $D$ and inclination $I$:
+\[
+B_w =
+\begin{bmatrix}
+\cos I\,\cos D\\[0.2ex]
+\cos I\,\sin D\\[0.2ex]
+\sin I
+\end{bmatrix}.
+\]
+The projection of $m_b$ onto the horizontal plane gives the yaw direction.
+After leveling with $q_\text{acc}$,
+the yaw quaternion $q_\text{mag}$ is obtained from the rotation between
+the predicted and measured horizontal magnetic vectors:
+\[
+q_\text{mag} = \mathrm{rot}(\,\text{proj}_h(R_{wb}(q_\text{acc})B_w),\;
+\text{proj}_h(m_b)\,).
+\]
+The total initialization quaternion is then
+\[
+q_0 = q_\text{acc} \otimes q_\text{mag}.
+\]
+When the magnetometer is unreliable or unavailable, yaw can be initialized
+to an arbitrary heading and later corrected by the magnetometer update.
+
+\subsection*{Combined Initialization from Accelerometer and Magnetometer}
+
+The practical algorithm used in implementation constructs orthogonal world
+axes expressed in body coordinates:
+\[
+\begin{aligned}
+z_w^b &= -\frac{a_b}{\|a_b\|},\\[0.3ex]
+x_w^b &= 
+\frac{m_b - (m_b\!\cdot\!z_w^b)\,z_w^b}
+      {\|m_b - (m_b\!\cdot\!z_w^b)\,z_w^b\|},\\[0.3ex]
+y_w^b &= z_w^b \times x_w^b,
+\end{aligned}
+\]
+and forms the rotation matrix
+$R_{wb} = [x_w^b,\; y_w^b,\; z_w^b]$.
+The quaternion is obtained from $R_{wb}$ via the standard DCM–to–quaternion
+conversion.  This yields full roll–pitch–yaw alignment consistent with both
+gravity and magnetic north.
+
+\subsection*{Initial Covariance Structure}
+
+The initial covariance $P_0$ is chosen block-diagonal:
+\[
+P_0 =
+\mathrm{diag}(P_{aa,0}, P_{ll,0}, P_{bb,0}),
+\]
+where
+\[
+\begin{aligned}
+P_{aa,0} &= \mathrm{diag}(\sigma_{q0}^2,\sigma_{b_g0}^2),\\
+P_{ll,0} &= \mathrm{diag}(\sigma_{v0}^2 I_3,\sigma_{p0}^2 I_3,
+                           \sigma_{S0}^2 I_3,\sigma_{a0}^2 I_3),\\
+P_{bb,0} &= \sigma_{b_a0}^2 I_3.
+\end{aligned}
+\]
+Typical values are
+$\sigma_{q0}\!\approx\!10^{-3}$ rad,
+$\sigma_{v0}\!\approx\!1$ m/s,
+$\sigma_{p0}\!\approx\!20$ m,
+and $\sigma_{S0}\!\approx\!50$ m·s,
+consistent with the defaults in the
+\texttt{Kalman3D\_Wave} constructor.
+
+\subsection*{Bias Initialization and Temperature Compensation}
+
+Gyroscope bias $b_g$ and accelerometer bias $b_a$ are either initialized to zero
+or estimated from short static averages.
+The accelerometer bias is modeled as
+\[
+b_a(T) = b_{a0} + k_a (T - T_0),
+\]
+where $k_a$ is the temperature coefficient vector (m/s$^2$ per °C)
+and $T_0$ is the reference calibration temperature.
+At initialization, $b_{a0}$ is set from prior calibration data,
+and the corresponding covariance $P_{bb,0}$ reflects the expected
+thermal drift uncertainty.
+
+\subsection*{Frame Convention Notes}
+
+For NED (north–east–down) frames gravity is $g_w=(0,0,+g)$,
+whereas for $Z$-up frames it is $(0,0,-g)$.
+The sign convention used throughout the implementation follows NED,
+but results remain invariant under a consistent frame definition.
+
+\smallskip
+\fbox{%
+\parbox{0.97\linewidth}{%
+\textbf{Summary.}
+Initialization establishes a consistent quaternion $q_0$ from
+accelerometer and magnetometer data, seeds the covariance $P_0$
+with physically meaningful uncertainties, and sets the temperature-dependent
+bias model $b_a(T)=b_{a0}+k_a(T-T_0)$.
+This ensures stable early-phase convergence of the filter.%
+}}
