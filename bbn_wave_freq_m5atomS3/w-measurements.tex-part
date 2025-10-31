@@ -1,0 +1,209 @@
+% =====================================================
+% File: w-measurements.tex-part
+% Section 4: Measurement Models (with Jacobian derivations)
+% =====================================================
+
+\section{Measurement Models}
+\label{sec:measurements}
+
+We derive observation equations $z = h(x) + n$ and their linearizations
+$r \approx H\,x + n$ for each sensor.
+Every Jacobian is obtained from first principles using the
+right-multiplicative attitude error convention introduced earlier.
+
+\subsection{Preliminaries: right-multiplicative small-angle linearization}
+Let the true attitude be $q_t = q \otimes \delta q$, with
+$\delta q \approx [1,\tfrac12\delta\theta^\top]^\top$ and $\|\delta\theta\|\ll 1$.
+The associated rotation matrices satisfy the first-order identity
+\begin{equation}
+R_{wb}(q_t)
+= R_{wb}(q)\,R(\delta q)
+\;\approx\;
+R_{wb}(q)\,\bigl(I - [\delta\theta]_\times\bigr).
+\label{eq:small-angle-right-mult}
+\end{equation}
+Therefore, for any world-frame vector $u_w$,
+\begin{equation}
+R_{wb}(q_t)u_w
+\;\approx\;
+R_{wb}(q)\,u_w
+\;-\;[\,R_{wb}(q)u_w\,]_\times\,\delta\theta.
+\label{eq:rot-perturb-rule}
+\end{equation}
+We will repeatedly apply \eqref{eq:rot-perturb-rule} to obtain $H_\theta$ terms.
+
+\medskip
+Noise notations:
+$n_g\!\sim\!\mathcal N(0,R_g)$, $n_a\!\sim\!\mathcal N(0,R_a)$,
+$n_m\!\sim\!\mathcal N(0,R_m)$, $n_S\!\sim\!\mathcal N(0,R_S)$,
+with $R=\mathrm{blkdiag}(R_g,R_a,R_m,R_S)$ when stacked.
+
+% -----------------------------------------------------
+\subsection{Gyroscope (for completeness)}
+The gyroscope reports body angular rate:
+\begin{equation}
+\omega_m \;=\; \omega_{\text{true}} + b_g + n_g.
+\label{eq:gyro-meas}
+\end{equation}
+We do not use \eqref{eq:gyro-meas} as a measurement update (it drives propagation),
+but for completeness the residual $r_g=\omega_m-(\omega_{\text{true}}+b_g)$
+linearizes as
+\[
+H_\theta^{(g)}=0,\qquad H_{b_g}^{(g)}=-I_3,\qquad
+\text{all other blocks } 0.
+\]
+Thus, if one wanted to correct $b_g$ using external angular-rate references,
+the Jacobian is immediate.
+
+% -----------------------------------------------------
+\subsection{Accelerometer: specific force model and Jacobians}
+The specific force in body coordinates is
+\begin{equation}
+f_b \;=\; R_{wb}(q)\,\bigl(a_w - g_w\bigr) + b_a + n_a,
+\qquad n_a\sim\mathcal N(0,R_a).
+\label{eq:acc-meas}
+\end{equation}
+Define the nominal prediction at the linearization point
+\[
+\hat f_b \;\triangleq\; R_{wb}(q)\,\bigl(\hat a_w - g_w\bigr) + \hat b_a.
+\]
+The EKF residual is $r_a = f_b - \hat f_b$.
+Let $\delta\theta$ be the small attitude error, $\delta a_w = a_w-\hat a_w$,
+and $\delta b_a = b_a-\hat b_a$.
+
+\paragraph{Jacobian w.r.t.\ attitude error $\delta\theta$.}
+Apply \eqref{eq:rot-perturb-rule} with $u_w=\hat a_w - g_w$:
+\[
+R_{wb}(q_t)(\hat a_w-g_w)
+\approx
+R_{wb}(q)(\hat a_w-g_w)
+-
+[\,R_{wb}(q)(\hat a_w-g_w)\,]_\times\,\delta\theta.
+\]
+Hence the first-order variation
+\[
+\delta f_b\big|_{\delta\theta}
+=
+-\,[\,R_{wb}(q)(\hat a_w-g_w)\,]_\times\,\delta\theta,
+\]
+so
+\begin{equation}
+\boxed{%
+H_\theta^{(a)} \;=\; -\,[\,R_{wb}(q)\,(\hat a_w - g_w)\,]_\times
+}.
+\label{eq:Ha-theta}
+\end{equation}
+
+\paragraph{Jacobian w.r.t.\ latent acceleration $a_w$.}
+From \eqref{eq:acc-meas}, holding $q$ fixed in the linearization,
+\[
+\delta f_b\big|_{\delta a_w}
+=
+R_{wb}(q)\,\delta a_w
+\;\Rightarrow\;
+\boxed{%
+H_{a_w}^{(a)} \;=\; R_{wb}(q)
+}.
+\label{eq:Ha-aw}
+\]
+
+\paragraph{Jacobian w.r.t.\ accelerometer bias $b_a$.}
+Directly,
+\[
+\delta f_b\big|_{\delta b_a} = \delta b_a
+\;\Rightarrow\;
+\boxed{%
+H_{b_a}^{(a)} \;=\; I_3
+}.
+\label{eq:Ha-ba}
+\]
+
+Collecting, the accelerometer measurement linearization is
+\[
+r_a \;\approx\;
+H_\theta^{(a)}\,\delta\theta
+\;+\;
+H_{a_w}^{(a)}\,\delta a_w
+\;+\;
+H_{b_a}^{(a)}\,\delta b_a
+\;+\; n_a,
+\]
+with $H_\theta^{(a)},H_{a_w}^{(a)},H_{b_a}^{(a)}$ given by
+\eqref{eq:Ha-theta}–\eqref{eq:Ha-ba}.
+
+\paragraph{Optional: unit-norm (normalized) accelerometer residual.}
+If one uses $\tilde f_b = f_b/\|f_b\|$ to suppress magnitude effects,
+let $v\!\triangleq\!f_b$ and $P(v)\!\triangleq\!\frac{1}{\|v\|}\bigl(I-\frac{vv^\top}{\|v\|^2}\bigr)$.
+Then $d\,\tilde f_b \!=\! P(\hat f_b)\,dv$ and the Jacobian blocks become
+$P(\hat f_b)$ multiplied by \eqref{eq:Ha-theta}–\eqref{eq:Ha-ba}.
+We will not use this variant by default, but provide it for completeness.
+
+% -----------------------------------------------------
+\subsection{Magnetometer: field-vector model and Jacobians}
+The magnetometer measures a (possibly scaled) Earth field in body coordinates:
+\begin{equation}
+m_b \;=\; R_{wb}(q)\,B_w + n_m,
+\qquad n_m\sim\mathcal N(0,R_m),
+\label{eq:mag-meas}
+\end{equation}
+where $B_w$ is the world-frame magnetic reference (fixed or slowly varying).
+
+\paragraph{Jacobian w.r.t.\ attitude error $\delta\theta$.}
+Apply \eqref{eq:rot-perturb-rule} with $u_w=B_w$:
+\[
+\delta m_b\big|_{\delta\theta}
+=
+-\,[\,R_{wb}(q)B_w\,]_\times\,\delta\theta,
+\quad\Rightarrow\quad
+\boxed{%
+H_\theta^{(m)} \;=\; -\,[\,R_{wb}(q)\,B_w\,]_\times
+}.
+\label{eq:Hm-theta}
+\]
+
+There is no dependence on $a_w$ or $b_a$ in \eqref{eq:mag-meas}, hence
+$H_{a_w}^{(m)}=0$, $H_{b_a}^{(m)}=0$.
+
+\paragraph{Optional: unit-vector magnetometer residual.}
+For $\tilde m_b = m_b/\|m_b\|$, use the same projection operator
+$P(\hat m_b)$ as above:
+$H_\theta^{(m)} \leftarrow P(\hat m_b)\,H_\theta^{(m)}$.
+
+% -----------------------------------------------------
+\subsection{Integral pseudo-measurement and Jacobian}
+We enforce a soft, zero-mean constraint on the integral of position $S$
+to suppress long-term drift when external position aiding is absent:
+\begin{equation}
+z_S \;=\; 0 \;=\; S + n_S,
+\qquad n_S\sim\mathcal N(0,R_S).
+\label{eq:S-pseudo}
+\end{equation}
+The residual $r_S = 0 - \hat S = -\hat S$ is linear with selector Jacobian
+\begin{equation}
+\boxed{%
+H_S \;=\; \bigl[\,0_{3\times(\text{others})}\;\; I_3\;\; 0_{3\times(\text{others})}\bigr]
+}
+\label{eq:HS}
+\end{equation}
+picking the $S$-block in the stacked error-state.
+
+% -----------------------------------------------------
+\subsection{Stacked measurement and noise structure}
+Stacking the three updates (accelerometer, magnetometer, $S$-pseudo),
+the measurement function is
+\[
+z \;=\; h(x) + n,\qquad
+n \sim \mathcal N(0,R),\qquad
+R = \mathrm{blkdiag}(R_a, R_m, R_S).
+\]
+The corresponding Jacobian is block-stacked from
+\eqref{eq:Ha-theta}–\eqref{eq:Ha-ba}, \eqref{eq:Hm-theta}, and \eqref{eq:HS}.
+
+% -----------------------------------------------------
+\subsection{Remarks on observability and gating}
+Pitch/roll are observable from the accelerometer through gravity,
+yaw from the magnetometer, and $b_g,b_a$ become observable through
+their long-term coupling in the filter.
+The latent $a_w$ is observable through $f_b$ given orientation.
+When the magnitude of $f_b$ deviates far from $g$ (e.g., high dynamics),
+a simple gate on $\|f_b\|$ can skip the accelerometer update.
