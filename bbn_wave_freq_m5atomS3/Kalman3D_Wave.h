@@ -27,6 +27,7 @@
 
 #ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
+#include <Eigen/Eigenvalues>
 #else
 #include <ArduinoEigenDense.h>
 #endif
