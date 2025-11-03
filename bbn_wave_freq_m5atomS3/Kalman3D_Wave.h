@@ -780,7 +780,67 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     if constexpr (with_gyro_bias) {
         F_AA.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
-    MatrixBaseN Q_AA = Qbase * Ts;
+
+MatrixBaseN Q_AA; Q_AA.setZero();
+
+if (!use_exact_att_bias_Qd_) {
+    // Original fast path
+    Q_AA = Qbase * Ts;
+} else {
+    // === Structured/closed-form path for [δθ, b_g] with constant ω over the step ===
+    const Matrix3 Qg  = Qbase.template topLeftCorner<3,3>();
+    Matrix3 Qbg; Qbg.setZero();
+    if constexpr (with_gyro_bias) {
+        Qbg = Qbase.template bottomRightCorner<3,3>();
+    }
+
+    // ∫ R(s) Qg R(s)^T ds  (exact if isotropic; Simpson for anisotropic)
+    Matrix3 I_R;
+    if (is_isotropic3_(Qg)) {
+        I_R = Matrix3::Identity() * (Qg(0,0) * Ts);     // exact
+    } else {
+        I_R = simpson_R_Q_RT_(w, Ts, Qg);               // very accurate, still cheap
+    }
+
+    // ∫ B(s) Qbg B(s)^T ds  (Simpson)
+    Matrix3 I_BB = Matrix3::Zero();
+    if constexpr (with_gyro_bias) {
+        I_BB = simpson_B_Q_BT_(w, Ts, Qbg);
+    }
+
+    // Q_{θθ} = I_R + I_BB
+    const Matrix3 Qtt = I_R + I_BB;
+
+    // Q_{bb} = Qbg * Ts
+    Matrix3 Qbb = Matrix3::Zero();
+    if constexpr (with_gyro_bias) {
+        Qbb = Qbg * Ts;
+    }
+
+    // Q_{θb} = (∫ B(s) ds) * Qbg    (closed form)
+    Matrix3 Qtb = Matrix3::Zero();
+    if constexpr (with_gyro_bias) {
+        Matrix3 IB;
+        integral_B_ds_(w, Ts, IB);
+        Qtb = IB * Qbg;
+    }
+
+    // Pack into BASE_N × BASE_N
+    Q_AA.template topLeftCorner<3,3>() = Qtt;
+    if constexpr (with_gyro_bias) {
+        Q_AA.template topRightCorner<3,3>()    = Qtb;
+        Q_AA.template bottomLeftCorner<3,3>()  = Qtb.transpose();
+        Q_AA.template bottomRightCorner<3,3>() = Qbb;
+    }
+
+    // Hygiene
+    Q_AA = T(0.5) * (Q_AA + Q_AA.transpose());
+    if constexpr (with_gyro_bias) {
+        project_psd<T,6>(Q_AA, T(1e-16));
+    } else {
+        project_psd<T,3>(Q_AA, T(1e-16));
+    }
+}
 
     // Linear subsystem [v,p,S,a_w] (12×12)
     using Mat12 = Eigen::Matrix<T,12,12>;
