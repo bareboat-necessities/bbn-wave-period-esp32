@@ -5,6 +5,182 @@ subsystems: (i) attitude propagation on the unit quaternion manifold, and
 (ii) a linear kinematics stochastic subsystem driven by an
 Ornstein-Uhlenbeck (OU) acceleration process.
 
+\subsection{Attitude Process Model (Right-Multiplicative MEKF)}
+\label{sec:att-proc-mekf}
+
+\paragraph{State subset and notation.}
+We consider the attitude/bias subset
+\[
+x_{\text{att}} = \begin{bmatrix}\delta\theta \\ b_g\end{bmatrix} \in \mathbb{R}^6,
+\]
+where $\delta\theta\in\mathbb{R}^3$ is the small right-multiplicative attitude error and
+$b_g\in\mathbb{R}^3$ is the gyroscope bias. The unit quaternion $q$ represents body$\to$world
+orientation and satisfies $\|q\|=1$. The measured body rate is $\omega_m$.
+
+\subsubsection*{Continuous-time quaternion kinematics}
+The true and nominal quaternion dynamics are
+\begin{align}
+\dot q &= \tfrac{1}{2}\,\Omega(\omega)\,q, \qquad \omega = \omega_m - b_g - n_g, \label{eq:true-q-kin}\\
+\dot{\hat q} &= \tfrac{1}{2}\,\Omega(\hat\omega)\,\hat q, \qquad \hat\omega = \omega_m - \hat b_g, \label{eq:nom-q-kin}
+\end{align}
+with the standard left-multiplication matrix
+\[
+\Omega(\omega) \;=\;
+\begin{bmatrix}
+0 & -\omega^\top\\
+\omega & -[\omega]_\times
+\end{bmatrix}, \qquad
+[\omega]_\times \;=\;
+\begin{bmatrix}
+0 & -\omega_z & \omega_y\\
+\omega_z & 0 & -\omega_x\\
+-\omega_y & \omega_x & 0
+\end{bmatrix}.
+\]
+The bias process can be a random walk $\dot b_g = n_{bg}$ or a first-order OU model
+$\dot b_g = -\tfrac{1}{\tau_g} b_g + n_{bg}$.
+
+\subsubsection*{Right-multiplicative error and small-angle correction}
+Define the right-multiplicative error quaternion
+\[
+\delta q \;:=\; q \otimes \hat q^{-1},
+\]
+where $\otimes$ denotes quaternion multiplication. For small errors,
+\[
+\delta q \;\approx\; \begin{bmatrix} 1 \\ \tfrac{1}{2}\,\delta\theta \end{bmatrix},
+\qquad
+\dot{\delta q} \;\approx\; \begin{bmatrix} 0 \\ \tfrac{1}{2}\,\dot{\delta\theta} \end{bmatrix}.
+\]
+
+\subsubsection*{Deriving the $\dot{\delta\theta}$ equation (skew term)}
+Differentiate $\delta q = q \otimes \hat q^{-1}$ and substitute \eqref{eq:true-q-kin}--\eqref{eq:nom-q-kin}.
+Using left ($L$) and right ($R$) quaternion multiplication matrices,
+\[
+\dot{\delta q} \;=\; \tfrac{1}{2}\big(L(0,\omega) - R(0,\hat\omega)\big)\,\delta q.
+\]
+Write $\delta q = [\varepsilon_w;\,\varepsilon_v]$ with $\varepsilon_w\approx 1$ and
+$\varepsilon_v=\tfrac{1}{2}\delta\theta$. The vector part of $\dot{\delta q}$ is
+\[
+\tfrac{1}{2}\dot{\delta\theta} \;=\; \tfrac{1}{2}\Big((\omega-\hat\omega) + \omega\times\varepsilon_v - \varepsilon_v\times\hat\omega\Big).
+\]
+Keeping only first-order terms (replace $\omega$ by $\hat\omega$ inside the cross terms) and using
+$\omega-\hat\omega = -\delta b_g - n_g$ and $\varepsilon_v=\tfrac{1}{2}\delta\theta$,
+\[
+\dot{\delta\theta} \;=\; -(\delta b_g+n_g) + \hat\omega \times \delta\theta.
+\]
+Introduce the skew (cross) operator via $[\hat\omega]_\times\,x = \hat\omega\times x$ to obtain the compact form
+\begin{equation}
+\boxed{\quad \dot{\delta\theta} \;=\; -[\hat\omega]_\times\,\delta\theta \;-\; \delta b_g \;-\; n_g. \quad}
+\label{eq:dthetadt}
+\end{equation}
+
+\paragraph{Where $[\cdot]_\times$ comes from (complete identity).}
+For any $a,b\in\mathbb{R}^3$, the Levi–Civita form gives
+$(a\times b)_i = \sum_{j,k}\varepsilon_{ijk}a_j b_k$.
+Define $[a]_\times$ by $([a]_\times)_{ij}=\sum_k \varepsilon_{ikj} a_k$; then
+\[
+([a]_\times b)_i = \sum_j ([a]_\times)_{ij} b_j = \sum_{j,k} \varepsilon_{ikj} a_k b_j
+= \sum_{j,k} \varepsilon_{ijk} a_j b_k = (a\times b)_i,
+\]
+so $[a]_\times b = a\times b$ and \eqref{eq:dthetadt} follows.
+
+\subsubsection*{Piecewise-LTI error dynamics and Jacobians}
+Stack the attitude error and bias error into $x_{\text{att}}=[\delta\theta;\,\delta b_g]$ and let the bias model be OU with time constant $\tau_g$ (set $1/\tau_g=0$ for a random walk). Over one propagation step, freeze $\hat\omega$ at its sample value, which makes the error dynamics \emph{piecewise} linear time-invariant (LTI):
+\begin{equation}
+\dot x_{\text{att}} \;=\; F_{\text{att}}\,x_{\text{att}} \;+\; G_{\text{att}}\,w_{\text{att}},
+\qquad
+F_{\text{att}} =
+\begin{bmatrix}
+-[\hat\omega]_\times & -I_3\\
+0 & -\tfrac{1}{\tau_g}I_3
+\end{bmatrix},
+\qquad
+G_{\text{att}} =
+\begin{bmatrix}
+- I_3 & 0\\
+0 & I_3
+\end{bmatrix},
+\label{eq:fatt-gatt}
+\end{equation}
+with white noises $w_{\text{att}}=[\,n_g;\,n_{bg}\,]$ and continuous covariances
+$Q_c=\mathrm{diag}(\sigma_g^2 I_3,\;\sigma_{bg}^2 I_3)$.
+It is LTI over the step because $F_{\text{att}}$ and $G_{\text{att}}$ are constant when $\hat\omega$ is held constant (standard sample-and-hold).
+
+\subsubsection*{Discrete-time propagation (matrix exponential)}
+For a step $h$, the discrete transition and process covariance are
+\[
+\Phi_{\text{att}}(h) \;=\; e^{F_{\text{att}} h}, \qquad
+Q_{d,\text{att}}(h) \;=\; \int_0^h e^{F_{\text{att}} \tau}\, G_{\text{att}} Q_c G_{\text{att}}^\top\, e^{F_{\text{att}}^\top \tau}\, d\tau.
+\]
+Because $F_{\text{att}}$ is block upper-triangular, one can write the exact blocks as
+\[
+\Phi_{\text{att}}(h)=
+\begin{bmatrix}
+e^{Ah} & \;\; \Xi(h)\\[2pt]
+0 & e^{Ch}
+\end{bmatrix},
+\quad
+A=-[\hat\omega]_\times,\;\; C=-\tfrac{1}{\tau_g}I_3,
+\quad
+\Xi(h) \;=\; \int_0^h e^{A(h-s)}(-I_3)\,e^{Cs}\,ds.
+\]
+Equivalently,
+\[
+\Xi(h) \;=\; -\,e^{Ah}\,(C-A)^{-1}\,\big(e^{(C-A)h}-I_3\big),
+\]
+which is numerically robust via a $\phi_1$ function:
+if $C=0$ (random-walk bias) then
+\[
+\Xi(h) \;=\; -\,e^{Ah}\,A^{-1}\!\big(e^{Ah}-I_3\big)
+\;=\; -\,e^{Ah}\,h\,\phi_1(Ah),\qquad
+\phi_1(X)=X^{-1}(e^X-I).
+\]
+
+\paragraph{Rodrigues formula for $e^{Ah}$.}
+Since $A=-[\hat\omega]_\times$ is skew-symmetric, let $\theta=\|\hat\omega\|h$ and $\hat u=\hat\omega/\|\hat\omega\|$ (if $\|\hat\omega\|>0$). Then
+\[
+e^{Ah} \;=\; I_3 \;+\; \operatorname{sinc}(\tfrac{\theta}{2})^2\,(Ah)
+\;+\; \frac{1-\cos\theta}{\theta^2}\,(Ah)^2
+\;=\; I_3 + \frac{\sin\theta}{\theta}\,(Ah) + \frac{1-\cos\theta}{\theta^2}\,(Ah)^2,
+\]
+with the usual small-angle limits for $\theta\to 0$.
+
+\paragraph{Discrete process covariance via Van Loan.}
+Form
+\[
+\mathcal{A} \;=\;
+\begin{bmatrix}
+F_{\text{att}} & G_{\text{att}} Q_c G_{\text{att}}^\top\\
+0 & -F_{\text{att}}^\top
+\end{bmatrix}.
+\]
+Then
+\[
+\exp(\mathcal{A} h) \;=\;
+\begin{bmatrix}
+\Phi_{\text{att}} & \;\Phi_{\text{att}}\,Q_{d,\text{att}}\,\Phi_{\text{att}}^\top\\
+0 & \Phi_{\text{att}}^{-\top}
+\end{bmatrix},
+\]
+from which $Q_{d,\text{att}}$ is read off (this is the standard Van Loan construction).
+
+\subsubsection*{Kalman predict with quaternion propagation}
+Let $\hat{x}_{k|k}$ be the error-state mean and $P_{k|k}$ its covariance.
+Over a step $h$ with frozen $\hat\omega_k=\omega_m(k)-\hat b_g(k)$:
+\begin{align*}
+\Phi_{\text{att}} &\leftarrow \exp\!\big(F_{\text{att}}(\hat\omega_k)\,h\big), \quad
+Q_{d,\text{att}} \leftarrow \text{Van-Loan}\big(F_{\text{att}},G_{\text{att}},Q_c,h\big),\\
+\hat{x}_{k+1|k} &= \Phi_{\text{att}}\,\hat{x}_{k|k}, \qquad
+P_{k+1|k} \;=\; \Phi_{\text{att}}\,P_{k|k}\,\Phi_{\text{att}}^\top \;+\; Q_{d,\text{att}}.
+\end{align*}
+Propagate the \emph{nominal quaternion} with the measured de-biased rate:
+\[
+\delta\varphi_k \;=\; \hat\omega_k\,h, \qquad
+\hat q_{k+1|k} \;=\; \exp\!\Big(\tfrac{1}{2}\,[0,\delta\varphi_k]^\top\Big)\;\otimes\; \hat q_{k|k},
+\]
+where the quaternion exponential uses the standard axis–angle map; for small $\|\delta\varphi_k\|$,
+$\exp(\tfrac{1}{2}[0,\delta\varphi_k]) \approx \big[\,1,\;\tfrac{1}{2}\delta\varphi_k\,\big]$.
+
 \subsection{Attitude Dynamics}
 
 Let $\boldsymbol{\omega}_b$ denote the body-frame angular velocity measured by
