@@ -442,7 +442,7 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     bool has_cross_cov_a_xy = false;
 
-bool use_exact_att_bias_Qd_ = true;
+bool use_exact_att_bias_Qd_ = false;
 
 // Closed-form helpers for rotation & integrals (constant ω over [0, t])
 
