@@ -862,58 +862,39 @@ if (!use_exact_att_bias_Qd_) {
 
     // Build Q_LL
     if (has_cross_cov_a_xy) {
-        // Correlated vector-OU: Kronecker 
-        // Factor Σ_aw = L Lᵀ  (PSD by construction)
-        Eigen::LLT<Matrix3> llt(Sigma_aw_stat);
-        if (llt.info() != Eigen::Success) {
-            // Fallback: small jitter then refactor
-            Matrix3 S = Sigma_aw_stat;
-            S = T(0.5) * (S + S.transpose());
-            S.diagonal().array() += T(1e-12);
-            Eigen::LLT<Matrix3> llt2(S);
-            if (llt2.info() == Eigen::Success) {
-                Sigma_aw_stat = S; // keep the jittered SPD
-                llt = llt2;
-            } else {
-                // If all else fails, degrade to diagonal (still PSD)
-                Sigma_aw_stat = Sigma_aw_stat.diagonal().cwiseMax(T(1e-12)).asDiagonal();
-                llt.compute(Sigma_aw_stat);
-            }
+
+
+    // Correlated vector-OU with a single shared τ:
+    // Q_LL = (Σ_aw ⊗ Qaxis_unit) permuted into state order.
+
+    // Unit-variance 4×4 Q for one axis
+    Eigen::Matrix<T,4,4> Qaxis_unit;
+    QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
+    Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
+
+    // Build 12×12 block matrix (Σ ⊗ Qaxis_unit) in axis-packed order:
+    // [vx,px,Sx,ax | vy,py,Sy,ay | vz,pz,Sz,az]
+    Eigen::Matrix<T,12,12> Qkron_full; Qkron_full.setZero();
+    const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose()); // ensure symmetry
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            Qkron_full.template block<4,4>(4*i, 4*j) = Sig(i,j) * Qaxis_unit;
         }
-        Matrix3 L = llt.matrixL(); // Σ^{1/2}
+    }
 
-        // Unit-variance 4x4 axis covariance for OU subsystem
-        Eigen::Matrix<T,4,4> Qaxis_unit;
-        QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
-        Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
+    // Permute into your state order:
+    // target = [vx,vy,vz, px,py,pz, Sx,Sy,Sz, ax,ay,az]
+    Eigen::PermutationMatrix<12> Pperm;
+    Pperm.indices() << 0,4,8, 1,5,9, 2,6,10, 3,7,11;  // <-- FIXED PERMUTATION
 
-        // Build (I3 ⊗ Qaxis_unit) as a 12x12 block-diagonal
-        Eigen::Matrix<T,12,12> M; M.setZero();
-        for (int b = 0; b < 3; ++b) {
-            M.template block<4,4>(4*b, 4*b) = Qaxis_unit;
-        }
+    Q_LL = Pperm * Qkron_full * Pperm.transpose();
 
-        // Form Qkron_full = (L ⊗ I4) * M * (Lᵀ ⊗ I4)
-        // Implemented in block form: block(i,j) = Σ_aw(i,j)*Qaxis_unit
-        Eigen::Matrix<T,12,12> Qkron_full; Qkron_full.setZero();
-        const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose()); // ensure symmetry
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                Qkron_full.template block<4,4>(4*i, 4*j) = Sig(i,j) * Qaxis_unit;
-            }
-        }
+    // Symmetrize + PSD project for numerical safety
+    Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
+    project_psd<T,12>(Q_LL, T(1e-16));
 
-        // Permute from axis-packed [vx,px,Sx,ax | vy,... | vz,...]
-        // to state order [vx,vy,vz, px,py,pz, Sx,Sy,Sz, ax,ay,az]
-        const int perm[12] = {0,3,6,9, 1,4,7,10, 2,5,8,11};
-        Eigen::PermutationMatrix<12> Pperm;
-        for (int k = 0; k < 12; ++k) Pperm.indices()[k] = perm[k];
 
-        Q_LL = Pperm * Qkron_full * Pperm.transpose();
 
-        // Final symmetry + PSD projection for numerical safety
-        Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
-        project_psd<T,12>(Q_LL, T(1e-16));
     } else {
         // Independent axes (no cross-correlation) — per-axis Qd on the diagonal
         const int idx[4] = {0,3,6,9};
