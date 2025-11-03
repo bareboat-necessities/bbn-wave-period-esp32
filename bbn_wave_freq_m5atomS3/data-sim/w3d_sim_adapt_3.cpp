@@ -147,7 +147,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
     
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
 
+    int sample_idx = -1;
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
+        ++sample_idx;
+
         // Body-frame raw sensors (Z-up body from CSV)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
@@ -189,7 +192,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
 
         // Yaw correction after mag is available
-        if (with_mag && rec.time >= MAG_DELAY_SEC)
+        if (with_mag && rec.time >= MAG_DELAY_SEC && (sample_idx % 3 == 0))
             filter.updateMag(mag_body_ned);
         
         // Reference (world Z-up)
