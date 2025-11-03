@@ -5,6 +5,83 @@ subsystems: (i) attitude propagation on the unit quaternion manifold, and
 (ii) a linear kinematics stochastic subsystem driven by an
 Ornstein-Uhlenbeck (OU) acceleration process.
 
+\subsection{Attitude Process Model (Right–Multiplicative, Small–Angle LTI)}
+\label{sec:att-proc-rmekf}
+
+\paragraph{Quaternion kinematics.}
+Let $q=[q_w\;q_v^\top]^\top$ be the unit quaternion (body$\to$world) and $\omega$ the body-rate.
+The continuous-time kinematics are
+\[
+\dot q = \tfrac{1}{2}\,\Omega(\omega)\,q,\qquad
+\Omega(\omega)=\begin{bmatrix}0&-\omega^\top\\ \omega&-[\omega]_\times\end{bmatrix},\quad
+[\omega]_\times x=\omega\times x.
+\]
+We propagate the nominal quaternion with the de-biased rate
+$\hat\omega=\omega_m-\hat b_g$:
+$\dot{\hat q}=\tfrac{1}{2}\,\Omega(\hat\omega)\,\hat q$.
+
+\paragraph{Right–multiplicative error and small-angle correction.}
+Define the right-multiplicative attitude error $\delta q:=q\otimes\hat q^{-1}$.
+For small attitude error, write $\delta q\approx[\,1\;\;\tfrac{1}{2}\delta\theta^\top\,]^\top$,
+so $\dot{\delta q}\approx[\,0\;\;\tfrac{1}{2}\dot{\delta\theta}^\top\,]^\top$.
+Differentiating $\delta q$ and inserting the kinematics yields
+\[
+\dot{\delta\theta}
+= -(\delta b_g+n_g) + \hat\omega\times\delta\theta
+= -[\hat\omega]_\times\,\delta\theta - \delta b_g - n_g,
+\]
+where $\delta b_g:=b_g-\hat b_g$ and $n_g$ is gyro noise.
+The skew/cross operator $[\cdot]_\times$ appears because the linearization of
+rigid-body rotation about $\hat\omega$ acts as the linear map $x\mapsto\hat\omega\times x$.
+
+\paragraph{Piecewise-LTI error model and Jacobians.}
+Stack $x_{\text{att}}=[\,\delta\theta^\top\;\;\delta b_g^\top\,]^\top$.
+With a random-walk bias ($\dot{\delta b_g}=n_{bg}$) or OU bias
+($\dot{\delta b_g}=-(1/\tau_g)\delta b_g+n_{bg}$) and \emph{holding $\hat\omega$ constant over one sample},
+the attitude error dynamics are \emph{piecewise LTI}:
+\[
+\dot x_{\text{att}} = F_{\text{att}}\,x_{\text{att}} + G_{\text{att}}\,w,\quad
+F_{\text{att}}=
+\begin{bmatrix}
+-[\hat\omega]_\times & -I_3\\
+0 & -\tfrac{1}{\tau_g}I_3\ \text{(or }0\text{)}
+\end{bmatrix},\quad
+G_{\text{att}}=
+\begin{bmatrix}
+- I_3 & 0\\
+0 & I_3
+\end{bmatrix},
+\]
+with $w=[\,n_g^\top\;\;n_{bg}^\top\,]^\top$ and $Q_c=\mathrm{diag}(\sigma_g^2 I_3,\sigma_{bg}^2 I_3)$.
+It is LTI on each step because $\hat\omega$ is frozen (sample–and–hold), so $F_{\text{att}}$ is constant.
+
+\paragraph{Discrete-time maps (per step $h$).}
+Let $A:=-[\hat\omega]_\times$ and $C:=-\tfrac{1}{\tau_g}I_3$ (or $0$ for RW bias).
+Then
+\[
+\Phi_{\text{att}}(h)=e^{F_{\text{att}}h}=
+\begin{bmatrix}
+e^{Ah} & \Xi(h)\\
+0 & e^{Ch}
+\end{bmatrix},\qquad
+\Xi(h)=\int_0^h e^{A(h-s)}(-I_3)e^{Cs}\,ds.
+\]
+For the common random-walk bias case ($C=0$),
+$\;e^{Ah}$ is the Rodrigues rotation matrix with $\theta=\|\hat\omega\|h$ and
+$\;\Xi(h)=-\,h\,\phi_1(Ah)$ where $\phi_1(X)=X^{-1}(e^X-I)$ (use series for small $\|X\|$).
+The discrete process covariance is
+\[
+Q_{d,\text{att}}=\int_0^h e^{F_{\text{att}}\tau} G_{\text{att}} Q_c G_{\text{att}}^\top e^{F_{\text{att}}^\top\tau}\,d\tau
+\]
+(e.g., via the Van Loan block-exponential). The Kalman predict is
+$P_{k+1|k}=\Phi_{\text{att}}P_{k|k}\Phi_{\text{att}}^\top+Q_{d,\text{att}}$.
+
+\paragraph{References (standard Q–MEKF).}
+The right–multiplicative small-angle error model and its use in Kalman filtering are classical; see
+Lefferts–Markley–Shuster (1982) for the original Q–MEKF formulation, and Markley’s notes/papers for
+attitude-error representations and nonlinear attitude filtering. Modern tutorials (e.g., Solà) derive the
+same $-[\hat\omega]_\times$ structure for the attitude error dynamics.
+
 \subsection{Attitude Process Model (Right-Multiplicative MEKF)}
 \label{sec:att-proc-mekf}
 
