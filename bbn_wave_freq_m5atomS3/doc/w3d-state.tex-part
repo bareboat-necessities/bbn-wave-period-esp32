@@ -1,7 +1,7 @@
 \section{State Definition}
 
 The extended state vector of our filter combines
-rotational, translational, and stochastic acceleration subsystems within a
+rotational attitude, linear kinematics, and stochastic acceleration subsystems within a
 single nonlinear estimator. It is defined as
 \begin{equation}
 \label{eq:state-vector}
@@ -20,8 +20,7 @@ where each subvector has the following physical meaning:
 \begin{itemize}
   \item $\delta\boldsymbol{\theta}\in\mathbb{R}^3$ --- small attitude-error
         vector used in the multiplicative EKF formulation
-        (right-multiplicative quaternion correction
-        $q \leftarrow q \otimes \exp_q(\tfrac{1}{2}\delta\boldsymbol{\theta})$).
+        (right-multiplicative quaternion correction).
   \item $\mathbf{b}_g\in\mathbb{R}^3$ --- gyroscope bias, modeled as a
         random-walk process.
   \item $\mathbf{v}\in\mathbb{R}^3$ --- velocity in the world (NED) frame.
@@ -33,10 +32,10 @@ where each subvector has the following physical meaning:
         following an Ornstein--Uhlenbeck (OU) process,
         \(
            \dot{\mathbf{a}}_w = -\tfrac{1}{\tau_{a_w}}\mathbf{a}_w
-           + \boldsymbol{\eta}(t)
+           + \boldsymbol{\eta_{w}}(t)
         \),
         representing correlated ocean-wave forcing.
-  \item $\mathbf{b}_a\in\mathbb{R}^3$ --- accelerometer bias with optional
+  \item $\mathbf{b}_a\in\mathbb{R}^3$ --- random-walk accelerometer bias with optional
         temperature-dependent drift.
 \end{itemize}
 
@@ -48,11 +47,11 @@ N_X =
 \underbrace{3}_{\mathbf{v}} +
 \underbrace{3}_{\mathbf{p}} +
 \underbrace{3}_{\mathbf{S}} +
-\underbrace{3}_{\mathbf{a}_w}
-\underbrace{+3}_{\mathbf{b}_a}
+\underbrace{3}_{\mathbf{a}_w} +
+\underbrace{3}_{\mathbf{b}_a}
 = 21,
 \]
-for the full configuration with both gyro and accelerometer bias enabled.
+with both gyro and accelerometer bias.
 
 Each subblock evolves under its own continuous-time dynamics, coupled through
 the quaternion attitude and the OU acceleration process, providing a unified
