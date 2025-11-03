@@ -158,6 +158,7 @@ public:
     {
         mekf_ = std::make_unique<Kalman3D_Wave<float,true,true>>(sigma_a, sigma_g, sigma_m);
         apply_tune();
+        mekf_->set_aw_stationary_corr_std(sigma_a);
     }
 
     void initialize_from_acc(const Eigen::Vector3f& acc_world) {
