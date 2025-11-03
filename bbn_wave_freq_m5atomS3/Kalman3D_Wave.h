@@ -533,10 +533,15 @@ EIGEN_STRONG_INLINE Matrix3 simpson_B_Q_BT_(const Vector3& w, T Tstep, const Mat
 
 EIGEN_STRONG_INLINE bool is_isotropic3_(const Matrix3& S, T tol = T(1e-9)) const {
     const T a = S(0,0), b = S(1,1), c = S(2,2);
-    const T off = (S.template triangularView<Eigen::StrictlyUpper>().norm()
-                 + S.template triangularView<Eigen::StrictlyLower>().norm());
-    const T mean = (a + b + c)/T(3);
-    return (std::abs(a-mean) + std::abs(b-mean) + std::abs(c-mean) + off) <= tol * (T(1) + std::abs(mean));
+
+    // Sum of absolute values of off-diagonal entries (1-norm of off-diagonal part)
+    Matrix3 Off = S;
+    Off.diagonal().setZero();
+    const T off = Off.cwiseAbs().sum();
+
+    const T mean = (a + b + c) / T(3);
+    return (std::abs(a-mean) + std::abs(b-mean) + std::abs(c-mean) + off)
+           <= tol * (T(1) + std::abs(mean));
 }
         
     // convenience getters
