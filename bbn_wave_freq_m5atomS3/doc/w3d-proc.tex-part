@@ -5,6 +5,93 @@ subsystems: (i) attitude propagation on the unit quaternion manifold, and
 (ii) a linear kinematics stochastic subsystem driven by an
 Ornstein-Uhlenbeck (OU) acceleration process.
 
+
+
+\subsection{From Quaternion ODE to a Local LTI Error Model (Right–Multiplicative)}
+\label{sec:att-lti-derivation}
+
+\paragraph{Quaternion evolution is nonlinear.}
+Let $q$ be the unit quaternion (body$\to$world) and $\omega$ the body angular rate.
+The attitude kinematics are
+\[
+\dot q \;=\; \tfrac{1}{2}\,\Omega(\omega)\,q, 
+\qquad \Omega(\omega)=\begin{bmatrix}0&-\omega^\top\\ \omega & -[\omega]_\times\end{bmatrix},
+\]
+with $[\omega]_\times x=\omega\times x$. This dynamics is \emph{nonlinear} because $q$ lives on the unit sphere and appears multiplicatively.
+
+\paragraph{Q-MEKF trick (what we linearize).}
+Instead of estimating $q$ directly in the Kalman state, the Q-MEKF keeps $q$ \emph{outside} the linear state and estimates a small \emph{error rotation}:
+\[
+\delta q \;:=\; q\otimes \hat q^{-1} \;\approx\; \begin{bmatrix}1\\ \tfrac{1}{2}\,\delta\theta\end{bmatrix},
+\]
+where $\delta\theta\in\mathbb{R}^3$ is the small-angle error. The nominal quaternion is propagated with the de-biased measured rate
+\[
+\dot{\hat q} \;=\; \tfrac{1}{2}\,\Omega(\hat\omega)\,\hat q, 
+\qquad \hat\omega=\omega_m-\hat b_g,
+\]
+and the small-angle \emph{multiplicative} correction is applied after the measurement update:
+\[
+\hat q \leftarrow \exp\!\big(\tfrac{1}{2}[0,\hat{\delta\theta}]^\top\big)\otimes \hat q,
+\quad \hat{\delta\theta}\leftarrow 0.
+\]
+
+\paragraph{Local linearization (what makes it LTI).}
+Differentiate $\delta q=q\otimes\hat q^{-1}$ and keep first-order terms (small $\delta\theta$); also hold $\hat\omega$ \emph{constant over one sample} (sample-and-hold). This yields the continuous-time \emph{local LTI} error model
+\[
+\dot{\delta\theta} \;=\; -[\hat\omega]_\times\,\delta\theta \;-\; \delta b_g \;-\; n_g,
+\qquad
+\dot{\delta b_g} \;=\; 
+\begin{cases}
+0 + n_{bg} & \text{(random-walk bias)},\\
+-\tfrac{1}{\tau_g}\,\delta b_g + n_{bg} & \text{(OU bias)}.
+\end{cases}
+\]
+Stacking $x_{\text{att}}=[\,\delta\theta^\top\;\;\delta b_g^\top\,]^\top$,
+\[
+\dot x_{\text{att}} \;=\; F_{\text{att}}\,x_{\text{att}} + G_{\text{att}}\,w,
+\quad
+F_{\text{att}}=
+\begin{bmatrix}
+-[\hat\omega]_\times & -I_3\\
+0 & -\tfrac{1}{\tau_g}I_3 \;\text{(or }0\text{)}
+\end{bmatrix},\quad
+G_{\text{att}}=
+\begin{bmatrix}
+- I_3 & 0\\
+0 & I_3
+\end{bmatrix}.
+\]
+This is \emph{LTI on the step} because $\hat\omega$ is frozen for that step.
+
+\paragraph{Discrete-time form for the Kalman predict.}
+For a sample period $h$, the exact transition is $\Phi_{\text{att}}(h)=e^{F_{\text{att}}h}$.
+Two practical discretizations are common:
+\begin{itemize}\itemsep2pt
+\item \textbf{First-order (simple and good for small $h$):}
+\[
+\delta\theta_{k+1}\approx \big(I_3 - [\hat\omega_k]_\times h\big)\,\delta\theta_k \;-\; h\,\delta b_{g,k} \;+\; w_{\theta,k},
+\quad
+\delta b_{g,k+1}\approx \delta b_{g,k} \;+\; w_{bg,k}
+\]
+(or $\delta b_{g,k+1}\approx (1-\tfrac{h}{\tau_g})\,\delta b_{g,k}+w_{bg,k}$ for OU bias).
+\item \textbf{Exact rotation for the attitude block (still cheap):}
+use Rodrigues for $e^{-[\hat\omega_k]_\times h}$ instead of $I-[\hat\omega_k]_\times h$,
+and keep the same cross-term $-h\,\delta b_g$; this improves accuracy at larger $\|\hat\omega_k\|h$.
+\end{itemize}
+The discrete process covariance $Q_d$ can be taken from a simple small-$h$ rule
+($Q_d\approx G_{\text{att}}Q_cG_{\text{att}}^\top\,h$) or computed exactly via the standard Van Loan block exponential if you prefer.
+
+\paragraph{Summary for the reader.}
+- The quaternion ODE is nonlinear; Q-MEKF avoids linearizing $q$ itself by estimating a small right-multiplicative angle $\delta\theta$.
+- Over each short sample, we assume $\hat\omega$ is roughly constant and use a first-order small-angle expansion; this makes the error dynamics \emph{locally LTI}.
+- That local LTI form is what we discretize to get $\Phi$ and $Q_d$ for the Kalman predict; the quaternion is corrected multiplicatively after the update.
+
+
+
+
+
+
+
 \subsection{Attitude Process Model (Right–Multiplicative, Small–Angle LTI)}
 \label{sec:att-proc-rmekf}
 
