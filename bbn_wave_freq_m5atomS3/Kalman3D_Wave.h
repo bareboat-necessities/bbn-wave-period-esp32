@@ -793,7 +793,7 @@ if (!use_exact_att_bias_Qd_) {
     // Original fast path
     Q_AA = Qbase * Ts;
 } else {
-    // === Structured/closed-form path for [δθ, b_g] with constant ω over the step ===
+    // Structured/closed-form path for [δθ, b_g] with constant ω over the step
     const Matrix3 Qg  = Qbase.template topLeftCorner<3,3>();
     Matrix3 Qbg; Qbg.setZero();
     if constexpr (with_gyro_bias) {
@@ -870,32 +870,28 @@ if (!use_exact_att_bias_Qd_) {
     if (has_cross_cov_a_xy) {
 
 
-    // Correlated vector-OU with a single shared τ:
-    // Q_LL = (Σ_aw ⊗ Qaxis_unit) permuted into state order.
-
-    // Unit-variance 4×4 Q for one axis
+    // Correlated vector-OU with shared tau: Q_LL = (Σ ⊗ Qaxis_unit)
+    // written directly in group-first order: [v(3), p(3), S(3), a(3)].
     Eigen::Matrix<T,4,4> Qaxis_unit;
     QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
     Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
 
-    // Build 12×12 block matrix (Σ ⊗ Qaxis_unit) in axis-packed order:
-    // [vx,px,Sx,ax | vy,py,Sy,ay | vz,pz,Sz,az]
-    Eigen::Matrix<T,12,12> Qkron_full; Qkron_full.setZero();
-    const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose()); // ensure symmetry
-    for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
-            Qkron_full.template block<4,4>(4*i, 4*j) = Sig(i,j) * Qaxis_unit;
+    // SPD, symmetric copy of Σ_aw (3x3)
+    const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
+
+    Q_LL.setZero();
+    // group offsets in your interleaved state order
+    const int goff[4] = {0, 3, 6, 9}; // v, p, S, a
+
+    // Blockwise assembly: each 3x3 block is Sig scaled by the 4x4 scalar
+    for (int g = 0; g < 4; ++g) {
+        for (int h = 0; h < 4; ++h) {
+            Q_LL.template block<3,3>(goff[g], goff[h]).noalias()
+                = Sig * Qaxis_unit(g,h);
         }
     }
 
-    // Permute into your state order:
-    // target = [vx,vy,vz, px,py,pz, Sx,Sy,Sz, ax,ay,az]
-    Eigen::PermutationMatrix<12> Pperm;
-    Pperm.indices() << 0,4,8, 1,5,9, 2,6,10, 3,7,11;  // <-- FIXED PERMUTATION
-
-    Q_LL = Pperm * Qkron_full * Pperm.transpose();
-
-    // Symmetrize + PSD project for numerical safety
+    // Symmetry + PSD cleanup
     Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
     project_psd<T,12>(Q_LL, T(1e-16));
 
