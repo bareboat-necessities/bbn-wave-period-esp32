@@ -390,6 +390,9 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Model: b_a(tempC) = b_a0 + k_a * (tempC - 30)
     void set_accel_bias_temp_coeff(const Vector3& ka_per_degC) { k_a_ = ka_per_degC; }
 
+    // Toggle exact/structured Qd for the attitude+gyro-bias block (option 3).
+    void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
+        
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
         const T cI = std::cos(I_rad), sI = std::sin(I_rad);
         const T cD = std::cos(D_rad), sD = std::sin(D_rad);
@@ -438,6 +441,103 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
 
     bool has_cross_cov_a_xy = false;
 
+bool use_exact_att_bias_Qd_ = false;
+
+// Closed-form helpers for rotation & integrals (constant ω over [0, t])
+
+// Rodrigues rotation and the integral B(t) = -∫_0^t exp(-[ω]× τ) dτ
+EIGEN_STRONG_INLINE void rot_and_B_from_wt_(const Vector3& w, T t, Matrix3& R, Matrix3& B) const {
+    const T wnorm = w.norm();
+    const Matrix3 W = skew_symmetric_matrix(w);
+
+    if (wnorm < T(1e-7)) {
+        // Series (stable as ω→0)
+        const T t2 = t*t, t3 = t2*t;
+        R = Matrix3::Identity() - W * t + T(0.5) * (W*W) * t2;
+        // B = -( t I - 1/2 W t^2 + 1/6 W^2 t^3 )
+        B = -( Matrix3::Identity()*t - T(0.5)*W*t2 + (W*W)*(t3/T(6)) );
+        return;
+    }
+
+    const T theta = wnorm * t;
+    const T s = std::sin(theta), c = std::cos(theta);
+    const Matrix3 K = W / (wnorm + std::numeric_limits<T>::epsilon()); // [u]×
+
+    // exp(-[ω]× t) = I - sinθ K + (1 - cosθ) K^2
+    R = Matrix3::Identity() - s*K + (T(1)-c)*(K*K);
+
+    // B(t) = - ∫_0^t R(τ) dτ = -[ t I - (1 - cosθ)/ω^2 W + (t - sinθ/ω)/ω^2 W^2 ]
+    const T invw  = T(1) / wnorm;
+    const T invw2 = invw * invw;
+
+    const Matrix3 term1 = Matrix3::Identity() * t;
+    const Matrix3 term2 = ((T(1)-c) * invw2) * W;
+    const Matrix3 term3 = ((t - s*invw) * invw2) * (W*W);
+    B = -( term1 - term2 + term3 );
+}
+
+// ∫_0^T B(s) ds  (closed form; used for Q_{θb})
+EIGEN_STRONG_INLINE void integral_B_ds_(const Vector3& w, T Tstep, Matrix3& IB) const {
+    const T wnorm = w.norm();
+    const Matrix3 W = skew_symmetric_matrix(w);
+
+    if (wnorm < T(1e-7)) {
+        // ∫ B ≈ -[ 1/2 T^2 I - 1/6 W T^3 + 1/24 W^2 T^4 ]
+        const T T2 = Tstep*Tstep, T3 = T2*Tstep, T4 = T3*Tstep;
+        IB = -( Matrix3::Identity()*(T(0.5)*T2)
+              - W*(T(1.0/6.0)*T3)
+              + (W*W)*(T(1.0/24.0)*T4) );
+        return;
+    }
+
+    const T theta = wnorm * Tstep;
+    const T s = std::sin(theta), c = std::cos(theta);
+    const T invw  = T(1) / wnorm;
+    const T invw2 = invw * invw;
+    const T invw4 = invw2 * invw2;
+
+    // IB = ∫_0^T B(s) ds = -[ 1/2 T^2 I - ((T - sinθ/ω)/ω^2) W + ((1/2 T^2) + (cosθ - 1)/ω^2)/ω^2 W^2 ]
+    const Matrix3 termI = Matrix3::Identity() * (T(0.5) * Tstep*Tstep);
+    const Matrix3 termW = ((Tstep - s*invw) * invw2) * W;
+    const Matrix3 termW2 = ( (T(0.5)*Tstep*Tstep) + ((c - T(1)) * invw2) ) * invw2 * (W*W);
+
+    IB = -( termI - termW + termW2 );
+}
+
+// Simpson’s rule for ∫_0^T R(s) Q R(s)^T ds (fast, excellent for anisotropic Q)
+EIGEN_STRONG_INLINE Matrix3 simpson_R_Q_RT_(const Vector3& w, T Tstep, const Matrix3& Q) const {
+    Matrix3 R0, Btmp, Rm, R1;
+    rot_and_B_from_wt_(w, T(0),   R0, Btmp);
+    rot_and_B_from_wt_(w, T(0.5)*Tstep, Rm, Btmp);
+    rot_and_B_from_wt_(w, Tstep, R1, Btmp);
+
+    const Matrix3 f0 = R0 * Q * R0.transpose(); // = Q
+    const Matrix3 f1 = Rm * Q * Rm.transpose();
+    const Matrix3 f2 = R1 * Q * R1.transpose();
+    return (Tstep / T(6)) * (f0 + T(4)*f1 + f2);
+}
+
+// Simpson’s rule for ∫_0^T B(s) Q B(s)^T ds
+EIGEN_STRONG_INLINE Matrix3 simpson_B_Q_BT_(const Vector3& w, T Tstep, const Matrix3& Q) const {
+    Matrix3 Rtmp, B0, Bm, B1;
+    rot_and_B_from_wt_(w, T(0),   Rtmp, B0);           // B(0) = 0
+    rot_and_B_from_wt_(w, T(0.5)*Tstep, Rtmp, Bm);
+    rot_and_B_from_wt_(w, Tstep, Rtmp, B1);
+
+    const Matrix3 g0 = B0 * Q * B0.transpose(); // = 0
+    const Matrix3 g1 = Bm * Q * Bm.transpose();
+    const Matrix3 g2 = B1 * Q * B1.transpose();
+    return (Tstep / T(6)) * (g0 + T(4)*g1 + g2);
+}
+
+EIGEN_STRONG_INLINE bool is_isotropic3_(const Matrix3& S, T tol = T(1e-9)) const {
+    const T a = S(0,0), b = S(1,1), c = S(2,2);
+    const T off = (S.template triangularView<Eigen::StrictlyUpper>().norm()
+                 + S.template triangularView<Eigen::StrictlyLower>().norm());
+    const T mean = (a + b + c)/T(3);
+    return (std::abs(a-mean) + std::abs(b-mean) + std::abs(c-mean) + off) <= tol * (T(1) + std::abs(mean));
+}
+        
     // convenience getters
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
     Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body→world
