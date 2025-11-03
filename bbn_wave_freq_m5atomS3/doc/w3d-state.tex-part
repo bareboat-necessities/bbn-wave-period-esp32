@@ -32,7 +32,7 @@ where each subvector has the following physical meaning:
         following an Ornstein--Uhlenbeck (OU) process,
         \(
            \dot{\mathbf{a}}_w = -\tfrac{1}{\tau_{a_w}}\mathbf{a}_w
-           + \boldsymbol{\eta_{w}}(t)
+           + \boldsymbol{\eta}_{w}(t)
         \),
         representing correlated ocean-wave forcing.
   \item $\mathbf{b}_a\in\mathbb{R}^3$ --- random-walk accelerometer bias with optional
