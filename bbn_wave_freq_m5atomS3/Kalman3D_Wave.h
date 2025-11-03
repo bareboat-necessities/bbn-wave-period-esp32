@@ -287,7 +287,6 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // OU stationary std [m/s²] for a_w (per axis)
     void set_aw_stationary_std(const Vector3& std_aw) {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
-        has_cross_cov_a_xy = false;
     }
 
     // Set OU stationary covariance for world-acceleration a_w,
