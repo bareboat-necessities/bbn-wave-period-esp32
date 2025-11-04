@@ -238,11 +238,11 @@ class Kalman3D_Wave {
     void applyIntegralZeroPseudoMeas();
 
     // Accessors
-    Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
-    MatrixBaseN const& covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left original block
-    MatrixNX const& covariance_full() const { return Pext; }     // full extended covariance
+    [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
+    [[nodiscard]] MatrixBaseN const& covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left original block
+    [[nodiscard]] MatrixNX const& covariance_full() const { return Pext; }     // full extended covariance
 
-    Vector3 gyroscope_bias() const {
+    [[nodiscard]] Vector3 gyroscope_bias() const {
         if constexpr (with_gyro_bias) {
             return xext.template segment<3>(3);
         } else {
@@ -250,7 +250,7 @@ class Kalman3D_Wave {
         }
     }
 
-    Vector3 get_acc_bias() const {
+    [[nodiscard]] Vector3 get_acc_bias() const {
         if constexpr (with_accel_bias) {
             return xext.template segment<3>(OFF_BA);
         } else {
@@ -259,25 +259,25 @@ class Kalman3D_Wave {
     }
 
     // Velocity in world (NED)
-    Vector3 get_velocity() const {
+    [[nodiscard]] Vector3 get_velocity() const {
         // velocity state at offset BASE_N
         return xext.template segment<3>(BASE_N);
     }
 
     // Position in world (NED)
-    Vector3 get_position() const {
+    [[nodiscard]] Vector3 get_position() const {
         // position state at offset BASE_N+3
         return xext.template segment<3>(BASE_N + 3);
     }
 
     // Integral displacement in world (NED)
-    Vector3 get_integral_displacement() const {
+    [[nodiscard]] Vector3 get_integral_displacement() const {
         // integral of displacement state at offset BASE_N+6
         return xext.template segment<3>(BASE_N + 6);
     }
 
     // Latent OU world-acceleration a_w (world, NED)
-    Vector3 get_world_accel() const { return xext.template segment<3>(OFF_AW); }
+    [[nodiscard]] Vector3 get_world_accel() const { return xext.template segment<3>(OFF_AW); }
 
     // Tuning setters
     void set_aw_time_constant(T tau_seconds) { tau_aw = std::max(T(1e-3), tau_seconds); }
