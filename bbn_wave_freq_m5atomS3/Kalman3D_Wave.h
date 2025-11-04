@@ -339,8 +339,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         } else {
           // Otherwise, softly merge (blend) to avoid discontinuity
           Pext.template block<3,3>(OFF_AW, OFF_AW) =
-              0.9f * Pext.template block<3,3>(OFF_AW, OFF_AW)
-            + 0.1f * Sigma_aw_stat;
+              0.8f * Pext.template block<3,3>(OFF_AW, OFF_AW)
+            + 0.2f * Sigma_aw_stat;
         }
         // keep global symmetry
         Pext = T(0.5) * (Pext + Pext.transpose());
