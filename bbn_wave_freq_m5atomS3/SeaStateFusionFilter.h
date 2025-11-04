@@ -228,7 +228,7 @@ private:
     void apply_tune() {
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
-        mekf_->set_aw_stationary_std(Eigen::Vector3f::Constant(tune_.sigma_applied));
+        mekf_->set_aw_stationary_corr_std(Eigen::Vector3f(tune_.sigma_applied * S_factor, tune_.sigma_applied * S_factor, tune_.sigma_applied), 0.0f);
         mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor, tune_.RS_applied * R_S_xy_factor, tune_.RS_applied));
     }
 
@@ -275,6 +275,7 @@ private:
     bool freq_init_ = false;
 
     static constexpr float R_S_xy_factor = 0.05f;
+    static constexpr float S_factor = 2.0f;
 
     TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
     FrequencySmoother<float> freqSmoother;
