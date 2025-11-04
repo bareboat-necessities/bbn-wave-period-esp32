@@ -343,8 +343,8 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         } else {
           // Otherwise, softly merge (blend) to avoid discontinuity
           Pext.template block<3,3>(OFF_AW, OFF_AW) =
-              0.8f * Pext.template block<3,3>(OFF_AW, OFF_AW)
-            + 0.2f * Sigma_aw_stat;
+              T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW)
+            + T(0.2) * Sigma_aw_stat;
         }
         // keep global symmetry
         Pext = T(0.5) * (Pext + Pext.transpose());
@@ -355,14 +355,14 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Covariances for ∫p dt pseudo-measurement
     void set_RS_noise(const Vector3& sigma_S) {
         R_S = sigma_S.array().square().matrix().asDiagonal();
-        R_S = 0.5f * (R_S + R_S.transpose());
+        R_S = T(0.5) * (R_S + R_S.transpose());
     }
 
     void set_RS_noise_matrix(const Eigen::Matrix3& R) {
-        Eigen::Matrix3 S = 0.5f * (R + R.transpose());         // symmetrize
+        Eigen::Matrix3 S = T(0.5) * (R + R.transpose());         // symmetrize
         // project to SPD (very light-touch)
         Eigen::SelfAdjointEigenSolver<Eigen::Matrix3> es(S);
-        Eigen::Vector3 d = es.eigenvalues().cwiseMax(1e-8f);
+        Eigen::Vector3 d = es.eigenvalues().cwiseMax(T(1e-8));
         R_S = es.eigenvectors() * d.asDiagonal() * es.eigenvectors().transpose();
     }
         
