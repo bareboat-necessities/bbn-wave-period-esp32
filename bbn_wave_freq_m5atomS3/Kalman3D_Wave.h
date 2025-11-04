@@ -305,49 +305,47 @@ class Kalman3D_Wave {
     //   • The resulting covariance is projected to SPD for numerical stability.
     //   • Also reseeds Pext(OFF_AW, OFF_AW) to keep filter covariance consistent.
     void set_aw_stationary_corr_std(const Vector3& std_aw, T rho_xz_corr = T(-0.65), T rho_yz_corr = T(-0.65)) {
-      // Clamp correlation for numerical safety
-      rho_xz_corr = std::max(T(-0.999), std::min(rho_xz_corr, T(0.999))); 
-      rho_yz_corr = std::max(T(-0.999), std::min(rho_yz_corr, T(0.999))); 
-
-      const T sx = std::max(T(1e-9), std_aw.x());
-      const T sy = std::max(T(1e-9), std_aw.y());
-      const T sz = std::max(T(1e-9), std_aw.z());
-
-      // Construct correlated covariance (symmetric)
-      Matrix3 S;
-      S <<
-          sx*sx,  T(0),             rho_xz_corr*sx*sz,
-          T(0),   sy*sy,            rho_yz_corr*sy*sz,
-          rho_xz_corr*sx*sz, rho_yz_corr*sy*sz, sz*sz;
-
-      // Symmetrize & project to SPD for robustness
-      S = T(0.5) * (S + S.transpose());
-      Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
-      if (es.info() == Eigen::Success) {
-        auto lam = es.eigenvalues();
-        for (int i = 0; i < 3; ++i) {
-          if (!(lam(i) > T(0))) lam(i) = T(1e-12);
-        }
-        Sigma_aw_stat =
-            (es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose()).eval();
-      } else {
-        Sigma_aw_stat = S.diagonal().asDiagonal();  // safe fallback
-      }
-
-      // Reseed Pext a_w block with new stationary covariance
-      if (Pext.size() > 0) {
-        if (!has_cross_cov_a_xy) {
-          Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
+        // Clamp correlation for numerical safety
+        rho_xz_corr = std::max(T(-0.999), std::min(rho_xz_corr, T(0.999))); 
+        rho_yz_corr = std::max(T(-0.999), std::min(rho_yz_corr, T(0.999))); 
+  
+        const T sx = std::max(T(1e-9), std_aw.x());
+        const T sy = std::max(T(1e-9), std_aw.y());
+        const T sz = std::max(T(1e-9), std_aw.z());
+  
+        // Construct correlated covariance (symmetric)
+        Matrix3 S;
+        S <<
+            sx*sx,  T(0),             rho_xz_corr*sx*sz,
+            T(0),   sy*sy,            rho_yz_corr*sy*sz,
+            rho_xz_corr*sx*sz, rho_yz_corr*sy*sz, sz*sz;
+  
+        // Symmetrize & project to SPD for robustness
+        S = T(0.5) * (S + S.transpose());
+        Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
+        if (es.info() == Eigen::Success) {
+            auto lam = es.eigenvalues();
+            for (int i = 0; i < 3; ++i) {
+              if (!(lam(i) > T(0))) lam(i) = T(1e-12);
+            }
+            Sigma_aw_stat =
+                (es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose()).eval();
         } else {
-          // Otherwise, softly merge (blend) to avoid discontinuity
-          Pext.template block<3,3>(OFF_AW, OFF_AW) =
-              T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW)
-            + T(0.2) * Sigma_aw_stat;
+            Sigma_aw_stat = S.diagonal().asDiagonal();  // safe fallback
+        }
+  
+        // Reseed Pext a_w block with new stationary covariance
+        if (!has_cross_cov_a_xy) {
+            Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
+        } else {
+            // Otherwise, softly merge (blend) to avoid discontinuity
+            Pext.template block<3,3>(OFF_AW, OFF_AW) =
+                T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW)
+              + T(0.2) * Sigma_aw_stat;
         }
         // keep global symmetry
         Pext = T(0.5) * (Pext + Pext.transpose());
-      }
-      has_cross_cov_a_xy = true;
+        has_cross_cov_a_xy = true;
     }
   
     // Covariances for ∫p dt pseudo-measurement
