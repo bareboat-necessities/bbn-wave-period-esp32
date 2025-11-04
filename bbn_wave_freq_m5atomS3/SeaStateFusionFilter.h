@@ -321,11 +321,8 @@ private:
         // WORLD-frame stationary covariance for a_w (XY equal, Z separate).
         const float sZ = std::max(1e-6f, tune_.sigma_applied);
         const float sH = sZ * S_factor; 
-        Eigen::Matrix3f Sigma_world = Eigen::Matrix3f::Zero();
-        Sigma_world(0,0) = sH * sH;   // world X
-        Sigma_world(1,1) = sH * sH;   // world Y
-        Sigma_world(2,2) = sZ * sZ;   // world Z
-        mekf_->set_aw_stationary_cov_full(Sigma_world);  // internally SPD-projects & merges
+        Eigen::Vector3f a_w_std = Eigen::Vector3f(sH, sH, sZ);
+        mekf_->set_aw_stationary_std(a_w_std); 
     
         // WORLD-frame pseudo-measurement noise for S (anisotropic diagonal).
         // Clamp to configured bounds for robustness.
