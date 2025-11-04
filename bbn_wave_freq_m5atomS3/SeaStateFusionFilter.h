@@ -123,6 +123,20 @@ struct CorrXZEstimator {
         theta = std::atan2(v.y(), v.x());
         return true;
     }
+
+    inline bool rhos(float& rho_xz, float& rho_yz) const {
+        if (!ready()) return false;
+        const auto v = var();
+        const float sx = std::sqrt(std::max(0.0f, v.x()));
+        const float sy = std::sqrt(std::max(0.0f, v.y()));
+        const float sz = std::sqrt(std::max(0.0f, v.z()));
+        const float eps = 1e-9f;
+        rho_xz = (sx > eps && sz > eps) ? cov_xz()/(sx*sz) : 0.0f;
+        rho_yz = (sy > eps && sz > eps) ? cov_yz()/(sy*sz) : 0.0f;
+        rho_xz = std::clamp(rho_xz, -0.99f, 0.99f);
+        rho_yz = std::clamp(rho_yz, -0.99f, 0.99f);
+        return true;
+    }
 };
 
 // Shared constants
