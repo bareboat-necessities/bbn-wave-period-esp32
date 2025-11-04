@@ -307,6 +307,9 @@ public:
         tilt_.update(dt, gyro, acc);
         const Eigen::Vector3f a_tilt = tilt_.inertial_accel_tilt(acc);
 
+        // --- NEW: accumulate covariance for ρ in tilt frame
+        corr_.update(dt, a_tilt);
+
         // Feed tracker with world-like vertical acceleration (tilt Z)
         const double f = tracker_policy_.run(a_tilt.z(), dt);
         if (!std::isnan(f)) {
@@ -363,12 +366,12 @@ private:
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
 
-        // Keep anisotropic Σ (XY boosted) with neutral ρ=0 for now
+        // Use measured ρ (smoothed) for correlated OU Σ of a_w
         mekf_->set_aw_stationary_corr_std(
             Eigen::Vector3f(tune_.sigma_applied * S_factor,
                             tune_.sigma_applied * S_factor,
                             tune_.sigma_applied),
-            0.0f);
+            rho_applied_);
 
         // Keep anisotropic R_S (XY reduced)
         mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor,
@@ -387,6 +390,8 @@ private:
         }
 
         float smoothFreq = freqSmoother.update(freq_hz);
+
+        // Warm-up: we still collect covariance/ρ, but skip parameter application
         if (time_ < ONLINE_TUNE_WARMUP_SEC)  {
             return;
         }
@@ -400,14 +405,23 @@ private:
         RS_target_    = std::min(std::max(
             R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MIN_R_S), MAX_R_S);
 
-        adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
+        // --- NEW: target ρ from measured tilt-frame covariance (X/Z and Y/Z)
+        if (corr_.ready()) {
+            rho_target_ = corr_.rho_avg();  // already clipped to ±0.95
+        } else {
+            rho_target_ = 0.0f;
+        }
+
+        adapt_mekf(dt, tau_target_, sigma_target_, RS_target_, rho_target_);
     }
 
-    void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
+    void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t, float rho_t) {
         const float alpha = 1.0f - std::exp(-dt / ADAPT_TAU_SEC);
         tune_.tau_applied   += alpha * (tau_t - tune_.tau_applied);
         tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
         tune_.RS_applied    += alpha * (RS_t - tune_.RS_applied);
+        rho_applied_        += alpha * (rho_t - rho_applied_);
+
         if (time_ - last_adapt_time_sec_ > ADAPT_EVERY_SECS) {
             apply_tune();
             last_adapt_time_sec_ = time_;
@@ -427,7 +441,7 @@ private:
     FrequencySmoother<float> freqSmoother;
     SeaStateAutoTuner tuner_;
     TuneState tune_;
-    TiltMahony tilt_;                   // <<< sensor-only tilt proxy (no MEKF feedback)
+    TiltMahony tilt_;                   // sensor-only tilt proxy (no MEKF feedback)
 
     float tau_target_   = NAN;
     float sigma_target_ = NAN;
@@ -440,4 +454,3 @@ private:
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
 };
-
