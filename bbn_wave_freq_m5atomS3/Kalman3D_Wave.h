@@ -296,7 +296,7 @@ class Kalman3D_Wave {
     // Arguments:
     //   std_aw     : per-axis standard deviations [m/s²] for (x, y, z)
     //   rho_corr   : dimensionless correlation coefficient between horizontal
-    //                and vertical accelerations (default -0.9 for NED frames)
+    //                and vertical accelerations
     //
     // Notes:
     //   • Negative rho_corr is appropriate for NED (z down), because when the
