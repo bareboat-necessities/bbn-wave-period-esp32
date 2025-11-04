@@ -31,7 +31,6 @@
   • Modular tracker selection via TrackerPolicy template
   • Quaternion-consistent Euler conversion (aerospace → nautical, ENU frame)
   • Magnetometer yaw correction with configurable startup delay
-  • Sensor-only Mahony tilt proxy for adaptation (no MEKF feedback)
   • Fully compatible with Arduino or native Eigen builds
 
   Copyright (c) 2025  Mikhail Grushinskiy  
@@ -68,11 +67,11 @@ struct CorrXZEstimator {
     inline void setTau(float t){ tau = std::max(1e-3f, t); last_dt = -1.0f; }
     inline void reset(){ last_dt=-1.0f; alpha=0.0f; w=0.0f; m.setZero(); Exx.setZero(); }
 
-    inline void update(float dt, const Eigen::Vector3f& a_tilt) {
+    inline void update(float dt, const Eigen::Vector3f& a_) {
         if (!(dt > 0)) return;
         if (dt != last_dt) { alpha = 1.0f - std::exp(-dt / tau); last_dt = dt; }
-        m   = (1.0f - alpha) * m   + alpha * a_tilt;
-        Exx = (1.0f - alpha) * Exx + alpha * (a_tilt * a_tilt.transpose());
+        m   = (1.0f - alpha) * m   + alpha * a_;
+        Exx = (1.0f - alpha) * Exx + alpha * (a_ * a_.transpose());
         w   = (1.0f - alpha) * w   + alpha;
     }
 
@@ -218,9 +217,6 @@ public:
         const float a_z = acc.z() + g_std;
         const float a_norm = a_z / g_std;
 
-        // Sensor-only tilt proxy → inertial accel in yaw-free tilt frame
-        tilt_.update(dt, gyro, acc);
-
         // accumulate covariance for ρ 
         corr_.update(dt, acc);
 
@@ -291,7 +287,7 @@ private:
                                             tune_.RS_applied));
     }
 
-    void update_tuner(float dt, float a_vert_tilt_frame, float freq_hz) {
+    void update_tuner(float dt, float a_vert, float freq_hz) {
         if (!std::isfinite(freq_hz)) {
             freqSmoother.setInitial(FREQ_GUESS);
             return;
@@ -308,8 +304,7 @@ private:
             return;
         }
 
-        // Scalar tuner fed with tilt-vertical inertial acceleration
-        tuner_.update(dt, a_vert_tilt_frame, smoothFreq);
+        tuner_.update(dt, a_vert, smoothFreq);
 
         tau_target_   = std::min(std::max(tau_coeff * 0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
         sigma_target_ = std::min(std::max(
@@ -317,7 +312,7 @@ private:
         RS_target_    = std::min(std::max(
             R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MIN_R_S), MAX_R_S);
 
-        // target ρ from measured tilt-frame covariance (X/Z and Y/Z)
+        // target ρ from measured covariance (X/Z and Y/Z)
         if (corr_.ready()) {
             rho_target_ = corr_.rho_avg();  // already clipped to ±0.99
         } else {
