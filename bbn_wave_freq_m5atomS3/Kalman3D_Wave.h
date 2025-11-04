@@ -179,7 +179,7 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
 }
 
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
-class EIGEN_ALIGN_MAX Kalman3D_Wave {
+class Kalman3D_Wave {
 
     // Original base (att_err + optional gyro bias)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
