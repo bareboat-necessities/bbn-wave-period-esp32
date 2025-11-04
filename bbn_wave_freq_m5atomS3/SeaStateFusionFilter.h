@@ -316,11 +316,21 @@ private:
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
 
-        // Use measured correlated OU Σ of a_w
-        mekf_->set_aw_stationary_std(Eigen::Vector3f(tune_.sigma_applied * S_factor, tune_.sigma_applied * S_factor, tune_.sigma_applied));
+        // Pull ρxz, ρyz from recent IMU stats
+        float rho_xz = 0.0f, rho_yz = 0.0f;
+        (void)corr_.rhos(rho_xz, rho_yz);
 
-        // Keep anisotropic R_S (XY reduced)
-        mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor, tune_.RS_applied * R_S_xy_factor, tune_.RS_applied));
+        const float s = tune_.sigma_applied;
+        // Anisotropic stationary std: XY boosted, Z nominal with cross-corr to Z.
+        mekf_->set_aw_stationary_corr_std(
+            Eigen::Vector3f(s * S_factor, s * S_factor, s),
+            rho_xz, rho_yz);
+
+        // Anisotropic pseudo-measurement noise: XY reduced, Z nominal
+        mekf_->set_RS_noise(Eigen::Vector3f(
+           tune_.RS_applied * R_S_xy_factor,
+           tune_.RS_applied * R_S_xy_factor,
+           tune_.RS_applied));
     }
 
     void update_tuner(float dt, float a_vert, float freq_hz) {
