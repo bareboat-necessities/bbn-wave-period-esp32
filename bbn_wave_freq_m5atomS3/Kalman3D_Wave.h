@@ -620,7 +620,6 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
 
   // initialize base / extended states
   MatrixBaseN Pbase;
-  Pbase.setZero();
   Pbase.setIdentity(); // default small initial cov unless user overwrites
 
   // initialize base covariance
