@@ -132,7 +132,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     Fusion filter(with_mag);
 
     const Vector3f sigma_a_init(0.30f, 0.30f, 0.30f);
-    const Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f);
+    const Vector3f sigma_g(0.00134f, 0.00134f, 0.00134f);
     const Vector3f sigma_m(0.3f, 0.3f, 0.3f);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
 
