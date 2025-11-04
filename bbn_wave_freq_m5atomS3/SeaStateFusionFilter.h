@@ -9,7 +9,6 @@
   Combines multiple real-time estimators into a cohesive ocean-state tracker:
 
     • Quaternion-based attitude and linear motion estimation via Kalman3D_Wave  
-      (vOct22 baseline — Joseph-form MEKF with OU acceleration drivers)
 
     • Dominant frequency tracking using one of:
           – AranovskiyFilter     (frequency estimator)
@@ -32,6 +31,7 @@
   • Modular tracker selection via TrackerPolicy template
   • Quaternion-consistent Euler conversion (aerospace → nautical, ENU frame)
   • Magnetometer yaw correction with configurable startup delay
+  • Sensor-only Mahony tilt proxy for adaptation (no MEKF feedback)
   • Fully compatible with Arduino or native Eigen builds
 
   Copyright (c) 2025  Mikhail Grushinskiy  
@@ -48,6 +48,20 @@
 #include <memory>
 #include <algorithm>
 
+// Optional fallbacks if not defined elsewhere
+#ifndef FREQ_GUESS
+#define FREQ_GUESS 0.3f
+#endif
+#ifndef ZERO_CROSSINGS_SCALE
+#define ZERO_CROSSINGS_SCALE 1.0f
+#endif
+#ifndef ZERO_CROSSINGS_DEBOUNCE_TIME
+#define ZERO_CROSSINGS_DEBOUNCE_TIME 0.12f
+#endif
+#ifndef ZERO_CROSSINGS_STEEPNESS_TIME
+#define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
+#endif
+
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "SchmittTriggerFrequencyDetector.h"
@@ -55,6 +69,84 @@
 #include "SeaStateAutoTuner.h"
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
+
+// -------------------------
+// Mahony tilt-only observer
+// -------------------------
+struct TiltMahony {
+    float g_std   = 9.80665f; // m/s^2
+    float kp      = 2.8f;     // P gain for accel correction
+    float ki      = 0.05f;    // I gain for gyro bias
+    float mag_gate= 0.35f;    // accept accel as gravity if |a| in [g*(1±gate)]
+    Eigen::Vector3f zhat_b = {0,0,1}; // world +Z (down) expressed in BODY
+    Eigen::Vector3f bg     = {0,0,0}; // local gyro bias (not shared with MEKF)
+
+    static inline Eigen::Matrix3f skew(const Eigen::Vector3f& v){
+        Eigen::Matrix3f S;
+        S << 0,-v.z(),v.y(), v.z(),0,-v.x(), -v.y(),v.x(),0;
+        return S;
+    }
+
+    inline void update(float dt,
+                       const Eigen::Vector3f& gyr_b_rad_s,
+                       const Eigen::Vector3f& acc_b_mps2)
+    {
+        if (!(dt > 0)) return;
+
+        // Measured down direction when believable (|a|≈g)
+        bool ok=false; Eigen::Vector3f m(0,0,1);
+        const float a = acc_b_mps2.norm();
+        if (a > g_std*(1.0f - mag_gate) && a < g_std*(1.0f + mag_gate)) {
+            m = -acc_b_mps2 / a; // down in BODY
+            ok = true;
+        }
+        // Error for tilt only: e = zhat × m
+        Eigen::Vector3f e = ok ? zhat_b.cross(m) : Eigen::Vector3f::Zero();
+
+        // PI-corrected "virtual" gyro (local bias not shared)
+        Eigen::Vector3f omega = (gyr_b_rad_s - bg) + kp * e;
+
+        // Integrate zhat_b: v̇ = -ω × v  → exp(-[ω]× dt) v
+        const float th = omega.norm() * dt;
+        if (th < 1e-6f) {
+            zhat_b += dt * ( -omega.cross(zhat_b) );
+        } else {
+            const Eigen::Vector3f u = omega / th;
+            const Eigen::Matrix3f K = skew(u);
+            const Eigen::Matrix3f R = Eigen::Matrix3f::Identity()
+                                    - std::sin(th)*K + (1-std::cos(th))*(K*K);
+            zhat_b = R * zhat_b;
+        }
+        zhat_b.normalize();
+
+        // Integrate bias only when accel is trustworthy
+        if (ok) bg += ki * e * dt;
+    }
+
+    inline Eigen::Vector3f g_body() const { return g_std * zhat_b; }
+
+    inline Eigen::Vector3f a_body_inertial(const Eigen::Vector3f& acc_b) const {
+        return acc_b + g_body(); // f_b + g_b
+    }
+
+    // Build yaw-free tilt frame (Z=down, X = body-X projected onto horizontal)
+    inline Eigen::Matrix3f R_tilt_to_body() const {
+        const Eigen::Vector3f z = zhat_b;
+        Eigen::Vector3f x =
+            (Eigen::Matrix3f::Identity() - z*z.transpose()) * Eigen::Vector3f::UnitX();
+        if (x.squaredNorm() < 1e-8f)
+            x = (Eigen::Matrix3f::Identity() - z*z.transpose()) * Eigen::Vector3f::UnitY();
+        x.normalize();
+        Eigen::Vector3f y = z.cross(x); y.normalize();
+        Eigen::Matrix3f R; R.col(0)=x; R.col(1)=y; R.col(2)=z; // tilt→body
+        return R;
+    }
+
+    inline Eigen::Vector3f inertial_accel_tilt(const Eigen::Vector3f& acc_b) const {
+        const Eigen::Vector3f a_b = a_body_inertial(acc_b);
+        return R_tilt_to_body().transpose() * a_b; // body→tilt
+    }
+};
 
 // Shared constants
 constexpr float MIN_FREQ_HZ = 0.1f;
@@ -85,7 +177,6 @@ struct TuneState {
 };
 
 //  Tracker policy traits
-
 template<TrackerType>
 struct TrackerPolicy; // primary template (undefined)
 
@@ -97,7 +188,7 @@ struct TrackerPolicy<TrackerType::ARANOVSKIY> {
 
     TrackerPolicy() : t() {
         double omega_up = (FREQ_GUESS * 2) * (2 * M_PI);  // upper angular frequency
-        double k_gain = 20.0; // Aranovskiy gain. Higher value will give faster convergence, but too high will potentially overflow decimal
+        double k_gain = 20.0; // Higher = faster, but risk overflow if too high
         double x1_0 = 0.0;
         double omega_init = (FREQ_GUESS / 1.5) * 2 * M_PI;
         double theta_0 = -(omega_init * omega_init);
@@ -133,7 +224,7 @@ struct TrackerPolicy<TrackerType::ZEROCROSS> {
     using Tracker = SchmittTriggerFrequencyDetector;
     Tracker t = Tracker(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
     double run(float a, float dt) {
-        float f_byZeroCross = t.update(a / g_std, ZERO_CROSSINGS_SCALE /* max fractions of g */,
+        float f_byZeroCross = t.update(a / g_std, ZERO_CROSSINGS_SCALE /* max g */,
                               ZERO_CROSSINGS_DEBOUNCE_TIME, ZERO_CROSSINGS_STEEPNESS_TIME, dt);
         double freq = (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT || f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ) ?
            FREQ_GUESS : f_byZeroCross;
@@ -169,16 +260,20 @@ public:
         if (!mekf_) return;
         time_ += dt;
 
+        // MEKF updates (independent)
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc);
 
-        const float a_z = acc.z() + g_std;
-        const float a_norm = a_z / g_std;
+        // Sensor-only tilt proxy → inertial accel in yaw-free tilt frame
+        tilt_.update(dt, gyro, acc);
+        const Eigen::Vector3f a_tilt = tilt_.inertial_accel_tilt(acc);
 
-        const double f = tracker_policy_.run(a_z, dt);
+        // Feed tracker with world-like vertical acceleration (tilt Z)
+        const double f = tracker_policy_.run(a_tilt.z(), dt);
         if (!std::isnan(f)) {
             freq_hz_ = std::min(std::max(static_cast<float>(f), MIN_FREQ_HZ), MAX_FREQ_HZ);
-            update_tuner(dt, a_z, freq_hz_);
+            // Keep scalar tuner API, but use tilt-vertical instead of acc.z()+g
+            update_tuner(dt, a_tilt.z(), freq_hz_);
         } else {
             freq_hz_ = FREQ_GUESS;
         }
@@ -228,11 +323,21 @@ private:
     void apply_tune() {
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
-        mekf_->set_aw_stationary_corr_std(Eigen::Vector3f(tune_.sigma_applied * S_factor, tune_.sigma_applied * S_factor, tune_.sigma_applied), 0.0f);
-        mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor, tune_.RS_applied * R_S_xy_factor, tune_.RS_applied));
+
+        // Keep anisotropic Σ (XY boosted) with neutral ρ=0 for now
+        mekf_->set_aw_stationary_corr_std(
+            Eigen::Vector3f(tune_.sigma_applied * S_factor,
+                            tune_.sigma_applied * S_factor,
+                            tune_.sigma_applied),
+            0.0f);
+
+        // Keep anisotropic R_S (XY reduced)
+        mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor,
+                                            tune_.RS_applied * R_S_xy_factor,
+                                            tune_.RS_applied));
     }
 
-    void update_tuner(float dt, float a_z, float freq_hz) {
+    void update_tuner(float dt, float a_vert_tilt_frame, float freq_hz) {
         if (!std::isfinite(freq_hz)) {
             freqSmoother.setInitial(FREQ_GUESS);
             return;
@@ -246,7 +351,9 @@ private:
         if (time_ < ONLINE_TUNE_WARMUP_SEC)  {
             return;
         }
-        tuner_.update(dt, a_z, smoothFreq);
+
+        // Scalar tuner fed with tilt-vertical inertial acceleration
+        tuner_.update(dt, a_vert_tilt_frame, smoothFreq);
 
         tau_target_   = std::min(std::max(tau_coeff * 0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
         sigma_target_ = std::min(std::max(
@@ -281,6 +388,7 @@ private:
     FrequencySmoother<float> freqSmoother;
     SeaStateAutoTuner tuner_;
     TuneState tune_;
+    TiltMahony tilt_;                   // <<< sensor-only tilt proxy (no MEKF feedback)
 
     float tau_target_   = NAN;
     float sigma_target_ = NAN;
@@ -288,3 +396,4 @@ private:
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
 };
+
