@@ -49,7 +49,6 @@ struct OUPrims {
     T x;        // h/tau
     T alpha;    // e^{-x}
     T em1;      // expm1(-x) = e^{-x} - 1  (negative)
-    T alpha2;   // e^{-2x}
     T em1_2;    // expm1(-2x) = e^{-2x} - 1 (negative)
 };
 
@@ -59,9 +58,8 @@ inline OUPrims<T> make_prims(T h, T tau) {
     const T x = h * inv_tau;
     const T alpha  = std::exp(-x);
     const T em1    = std::expm1(-x);    // high-accuracy for small x
-    const T alpha2 = std::exp(-T(2)*x);
     const T em1_2  = std::expm1(-T(2)*x);
-    return {x, alpha, em1, alpha2, em1_2};
+    return {x, alpha, em1, em1_2};
 }
 
 // Full exponential-map correction (Rodrigues in quaternion form).
@@ -1324,7 +1322,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         K(3,0)=K_va; K(3,1)=K_pa; K(3,2)=K_Sa; K(3,3)=K_aa;
     } else {
         // General-x branch with FMA-safe combos
-        const auto P = make_prims<T>(h, tau); // {x, alpha, em1, alpha2, em1_2}
+        const auto P = make_prims<T>(h, tau); // {x, alpha, em1, em1_2}
         const T tau2 = tau*tau, tau3 = tau2*tau, tau4=tau3*tau, tau5=tau4*tau, tau6=tau5*tau;
 
         const T A0 = -tau * P.em1;  // τ(1-α)
