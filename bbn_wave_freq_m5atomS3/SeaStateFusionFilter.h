@@ -223,6 +223,7 @@ public:
                     const Eigen::Vector3f& sigma_m)
     {
         mekf_ = std::make_unique<Kalman3D_Wave<float,true,true>>(sigma_a, sigma_g, sigma_m);
+        mekf_->set_exact_att_bias_Qd(true);
         apply_tune();
     }
 
