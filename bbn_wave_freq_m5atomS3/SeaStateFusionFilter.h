@@ -144,6 +144,49 @@ struct TiltMahony {
     }
 };
 
+struct CorrXZEstimator {
+    float tau = 30.0f;     // EWMA horizon [s] for covariance
+    float last_dt = -1.0f;
+    float alpha = 0.0f;
+    float w = 0.0f;        // debias weight accumulator
+
+    Eigen::Vector3f m = Eigen::Vector3f::Zero();   // E[x]
+    Eigen::Matrix3f Exx = Eigen::Matrix3f::Zero(); // E[xxᵀ]
+
+    inline void setTau(float t){ tau = std::max(1e-3f, t); last_dt = -1.0f; }
+    inline void reset(){ last_dt=-1.0f; alpha=0.0f; w=0.0f; m.setZero(); Exx.setZero(); }
+
+    inline void update(float dt, const Eigen::Vector3f& a_tilt) {
+        if (!(dt > 0)) return;
+        if (dt != last_dt) { alpha = 1.0f - std::exp(-dt / tau); last_dt = dt; }
+        m   = (1.0f - alpha) * m   + alpha * a_tilt;
+        Exx = (1.0f - alpha) * Exx + alpha * (a_tilt * a_tilt.transpose());
+        w   = (1.0f - alpha) * w   + alpha;
+    }
+
+    inline bool ready() const { return w > 1e-3f; }
+
+    inline Eigen::Vector3f var() const {
+        Eigen::Vector3f v = Exx.diagonal() - m.array().square().matrix();
+        return v.cwiseMax(0.0f);
+    }
+
+    inline float cov_xz() const { return Exx(0,2) - m.x()*m.z(); }
+    inline float cov_yz() const { return Exx(1,2) - m.y()*m.z(); }
+
+    inline float rho_avg(float eps=1e-6f) const {
+        auto v = var();
+        const float sx = std::sqrt(v.x() + eps);
+        const float sy = std::sqrt(v.y() + eps);
+        const float sz = std::sqrt(v.z() + eps);
+        const float rx = cov_xz() / (sx*sz + eps);
+        const float ry = cov_yz() / (sy*sz + eps);
+        // clip for PSD safety
+        const float r  = 0.5f * (rx + ry);
+        return std::max(-0.95f, std::min(0.95f, r));
+    }
+};
+
 // Shared constants
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 5.0f;
