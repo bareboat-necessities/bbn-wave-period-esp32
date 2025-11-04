@@ -48,20 +48,6 @@
 #include <memory>
 #include <algorithm>
 
-// Optional fallbacks if not defined elsewhere
-#ifndef FREQ_GUESS
-#define FREQ_GUESS 0.3f
-#endif
-#ifndef ZERO_CROSSINGS_SCALE
-#define ZERO_CROSSINGS_SCALE 1.0f
-#endif
-#ifndef ZERO_CROSSINGS_DEBOUNCE_TIME
-#define ZERO_CROSSINGS_DEBOUNCE_TIME 0.12f
-#endif
-#ifndef ZERO_CROSSINGS_STEEPNESS_TIME
-#define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
-#endif
-
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "SchmittTriggerFrequencyDetector.h"
@@ -70,9 +56,7 @@
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
 
-// -------------------------
 // Mahony tilt-only observer
-// -------------------------
 struct TiltMahony {
     float g_std   = 9.80665f; // m/s^2
     float kp      = 2.8f;     // P gain for accel correction
