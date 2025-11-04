@@ -175,9 +175,6 @@ public:
         const float a_z = acc.z() + g_std;
         const float a_norm = a_z / g_std;
 
-        // accumulate covariance for ρ 
-        corr_.update(dt, acc);
-
         // Feed tracker 
         const double f = tracker_policy_.run(a_z, dt);
         if (!std::isnan(f)) {
