@@ -354,11 +354,11 @@ class Kalman3D_Wave {
         R_S = T(0.5) * (R_S + R_S.transpose());
     }
 
-    void set_RS_noise_matrix(const Eigen::Matrix3& R) {
-        Eigen::Matrix3 S = T(0.5) * (R + R.transpose());         // symmetrize
+    void set_RS_noise_matrix(const Matrix3& R) {
+        Matrix3 S = T(0.5) * (R + R.transpose());         // symmetrize
         // project to SPD (very light-touch)
-        Eigen::SelfAdjointEigenSolver<Eigen::Matrix3> es(S);
-        Eigen::Vector3 d = es.eigenvalues().cwiseMax(T(1e-8));
+        Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
+        Vector3 d = es.eigenvalues().cwiseMax(T(1e-8));
         R_S = es.eigenvectors() * d.asDiagonal() * es.eigenvectors().transpose();
     }
         
