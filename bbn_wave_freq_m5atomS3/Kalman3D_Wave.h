@@ -396,7 +396,7 @@ class Kalman3D_Wave {
     }
 
     // Set accelerometer bias temperature coefficient k_a  [m/s^2 per °C] per axis.
-    // Model: b_a(tempC) = b_a0 + k_a * (tempC - 30)
+    // Model: b_a(tempC) = b_a0 + k_a * (tempC - tempC_ref)
     void set_accel_bias_temp_coeff(const Vector3& ka_per_degC) { k_a_ = ka_per_degC; }
 
     // Toggle exact/structured Qd for the attitude+gyro-bias block (option 3).
