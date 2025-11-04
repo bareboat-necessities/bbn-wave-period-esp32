@@ -25,13 +25,13 @@
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
-const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 37.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 37.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 13.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 33.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 33.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 12.0f;
 
-const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 37.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 37.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 13.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 33.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 33.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 12.0f;
 
 const float FAIL_ERR_LIMIT_YAW_DEG = 3.0f;  
 
@@ -132,7 +132,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     Fusion filter(with_mag);
 
     const Vector3f sigma_a_init(0.30f, 0.30f, 0.30f);
-    const Vector3f sigma_g(0.00134f, 0.00134f, 0.00134f);
+    const Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f);
     const Vector3f sigma_m(0.3f, 0.3f, 0.3f);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
 
