@@ -84,18 +84,6 @@ struct CorrXZEstimator {
 
     inline float cov_xz() const { return Exx(0,2) - m.x()*m.z(); }
     inline float cov_yz() const { return Exx(1,2) - m.y()*m.z(); }
-
-    inline float rho_avg(float eps=1e-6f) const {
-        auto v = var();
-        const float sx = std::sqrt(v.x() + eps);
-        const float sy = std::sqrt(v.y() + eps);
-        const float sz = std::sqrt(v.z() + eps);
-        const float rx = cov_xz() / (sx*sz + eps);
-        const float ry = cov_yz() / (sy*sz + eps);
-        // clip for PSD safety
-        const float r  = 0.5f * (rx + ry);
-        return std::max(-0.99f, std::min(0.99f, r));
-    }
 };
 
 // Shared constants
@@ -306,22 +294,14 @@ private:
         RS_target_    = std::min(std::max(
             R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MIN_R_S), MAX_R_S);
 
-        // target ρ from measured covariance (X/Z and Y/Z)
-        if (corr_.ready()) {
-            rho_target_ = corr_.rho_avg();  // already clipped to ±0.99
-        } else {
-            rho_target_ = 0.0f;
-        }
-
-        adapt_mekf(dt, tau_target_, sigma_target_, RS_target_, rho_target_);
+        adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
 
-    void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t, float rho_t) {
+    void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
         const float alpha = 1.0f - std::exp(-dt / ADAPT_TAU_SEC);
         tune_.tau_applied   += alpha * (tau_t - tune_.tau_applied);
         tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
         tune_.RS_applied    += alpha * (RS_t - tune_.RS_applied);
-        rho_applied_        += alpha * (rho_t - rho_applied_);
 
         if (time_ - last_adapt_time_sec_ > ADAPT_EVERY_SECS) {
             apply_tune();
