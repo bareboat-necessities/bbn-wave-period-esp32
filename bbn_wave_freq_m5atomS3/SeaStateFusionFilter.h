@@ -303,6 +303,9 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc);
 
+        const float a_z = acc.z() + g_std;
+        const float a_norm = a_z / g_std;
+
         // Sensor-only tilt proxy → inertial accel in yaw-free tilt frame
         tilt_.update(dt, gyro, acc);
         const Eigen::Vector3f a_tilt = tilt_.inertial_accel_tilt(acc);
@@ -311,7 +314,7 @@ public:
         corr_.update(dt, a_tilt);
 
         // Feed tracker with world-like vertical acceleration (tilt Z)
-        const double f = tracker_policy_.run(a_tilt.z(), dt);
+        const double f = tracker_policy_.run(a_z, dt);
         if (!std::isnan(f)) {
             freq_hz_ = std::min(std::max(static_cast<float>(f), MIN_FREQ_HZ), MAX_FREQ_HZ);
             // Keep scalar tuner API, but use tilt-vertical instead of acc.z()+g
