@@ -682,12 +682,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::set_aw_stationary_cov_fu
     }
 
     // Reseed/merge Pext a_w block
-    if (Pext.size() > 0) {
-        Pext.template block<3,3>(OFF_AW, OFF_AW) =
-              T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW)
-            + T(0.2) * Sigma_aw_stat;
-        Pext = T(0.5) * (Pext + Pext.transpose());
-    }
+    Pext.template block<3,3>(OFF_AW, OFF_AW) =
+          T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW)
+        + T(0.2) * Sigma_aw_stat;
+    Pext = T(0.5) * (Pext + Pext.transpose());
     has_cross_cov_a_xy = true;
 }
 
