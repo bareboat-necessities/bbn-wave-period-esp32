@@ -83,6 +83,8 @@ struct CorrXZEstimator {
     }
 
     inline float cov_xy() const { return Exx(0,1) - m.x()*m.y(); }
+    inline float cov_xz() const { return Exx(0,2) - m.x()*m.z(); }
+    inline float cov_yz() const { return Exx(1,2) - m.y()*m.z(); }
 
     // 2×2 XY covariance
     inline Eigen::Matrix2f covXY() const {
