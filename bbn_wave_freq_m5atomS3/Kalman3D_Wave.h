@@ -351,8 +351,17 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     // Covariances for ∫p dt pseudo-measurement
     void set_RS_noise(const Vector3& sigma_S) {
         R_S = sigma_S.array().square().matrix().asDiagonal();
+        R_S = 0.5f * (R_S + R_S.transpose());
     }
 
+    void set_RS_noise_matrix(const Eigen::Matrix3f& R) {
+        Eigen::Matrix3f S = 0.5f * (R + R.transpose());         // symmetrize
+        // project to SPD (very light-touch)
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> es(S);
+        Eigen::Vector3f d = es.eigenvalues().cwiseMax(1e-8f);
+        R_S = es.eigenvectors() * d.asDiagonal() * es.eigenvectors().transpose();
+    }
+        
     // Accelerometer measurement noise (std in m/s² per axis)
     void set_Racc(const Vector3& sigma_acc) {
         Racc = sigma_acc.array().square().matrix().asDiagonal();
