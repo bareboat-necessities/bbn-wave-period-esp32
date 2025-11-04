@@ -56,10 +56,10 @@
 #include "FrameConversions.h"
 
 struct CorrXZEstimator {
-    float tau = 1.5f;     // EWMA horizon [s] for covariance
+    float tau = 1.5f;   // EWMA horizon [s]
     float last_dt = -1.0f;
     float alpha = 0.0f;
-    float w = 0.0f;        // debias weight accumulator
+    float w = 0.0f;
 
     Eigen::Vector3f m = Eigen::Vector3f::Zero();   // E[x]
     Eigen::Matrix3f Exx = Eigen::Matrix3f::Zero(); // E[xxᵀ]
@@ -82,8 +82,45 @@ struct CorrXZEstimator {
         return v.cwiseMax(0.0f);
     }
 
-    inline float cov_xz() const { return Exx(0,2) - m.x()*m.z(); }
-    inline float cov_yz() const { return Exx(1,2) - m.y()*m.z(); }
+    inline float cov_xy() const { return Exx(0,1) - m.x()*m.y(); }
+
+    // 2×2 XY covariance
+    inline Eigen::Matrix2f covXY() const {
+        const auto v = var();
+        Eigen::Matrix2f C;
+        C << v.x(), cov_xy(),
+             cov_xy(), v.y();
+        // avoid negative tiny numerics
+        C(0,0) = std::max(C(0,0), 0.0f);
+        C(1,1) = std::max(C(1,1), 0.0f);
+        return C;
+    }
+
+    // PCA of XY: returns theta (rad) of dominant eigenvector (in body XY),
+    // lambda_max, lambda_min. Returns false if not ready or degenerate.
+    inline bool pcaXY(float& theta, float& lambda_max, float& lambda_min) const {
+        if (!ready()) return false;
+        Eigen::Matrix2f C = covXY();
+        // closed-form eig for 2x2 SPD
+        const float tr = C(0,0) + C(1,1);
+        const float det = C(0,0)*C(1,1) - C(0,1)*C(1,0);
+        const float disc = std::sqrt(std::max(0.0f, tr*tr*0.25f - det));
+        lambda_max = tr*0.5f + disc;
+        lambda_min = tr*0.5f - disc;
+        if (!(lambda_max > 0.0f)) return false;
+
+        // dominant eigenvector direction
+        Eigen::Vector2f v;
+        if (std::abs(C(0,1)) > 1e-12f) {
+            v << lambda_max - C(1,1), C(0,1);
+        } else {
+            v << 1.0f, 0.0f;
+        }
+        if (v.squaredNorm() < 1e-20f) return false;
+        v.normalize();
+        theta = std::atan2(v.y(), v.x());
+        return true;
+    }
 };
 
 // Shared constants
