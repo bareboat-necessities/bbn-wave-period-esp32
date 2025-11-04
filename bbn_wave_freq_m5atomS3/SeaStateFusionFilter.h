@@ -310,8 +310,8 @@ public:
         tilt_.update(dt, gyro, acc);
         const Eigen::Vector3f a_tilt = tilt_.inertial_accel_tilt(acc);
 
-        // accumulate covariance for ρ in tilt frame
-        corr_.update(dt, a_tilt);
+        // accumulate covariance for ρ 
+        corr_.update(dt, acc /*a_tilt*/);
 
         // Feed tracker with world-like vertical acceleration (tilt Z)
         const double f = tracker_policy_.run(a_z, dt);
