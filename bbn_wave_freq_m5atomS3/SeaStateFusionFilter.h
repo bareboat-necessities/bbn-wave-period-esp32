@@ -318,7 +318,7 @@ public:
         if (!std::isnan(f)) {
             freq_hz_ = std::min(std::max(static_cast<float>(f), MIN_FREQ_HZ), MAX_FREQ_HZ);
             // Keep scalar tuner API, but use tilt-vertical instead of acc.z()+g
-            update_tuner(dt, a_tilt.z(), freq_hz_);
+            update_tuner(dt, a_z, freq_hz_);
         } else {
             freq_hz_ = FREQ_GUESS;
         }
