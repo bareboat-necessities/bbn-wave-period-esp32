@@ -151,7 +151,7 @@ constexpr float MIN_R_S     = 0.1f;
 constexpr float MAX_R_S     = 40.0f;
 
 constexpr float R_S_coeff   = 2.5f;
-constexpr float tau_coeff   = 1.6f;
+constexpr float tau_coeff   = 1.7f;
 
 constexpr float ADAPT_TAU_SEC = 3.0f;
 constexpr float ADAPT_EVERY_SECS = 0.1f;
