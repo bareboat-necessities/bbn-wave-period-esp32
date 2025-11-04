@@ -316,80 +316,89 @@ private:
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
 
-        // PCA-driven Σ_aw
-        const float sZ = tune_.sigma_applied;                // base vertical std
-        const float eps = 1e-9f;
-        
-        // Build BODY cov from EWMA stats
-        Eigen::Matrix3f Cov_b = corr_.Exx - corr_.m * corr_.m.transpose();
-        Cov_b = 0.5f * (Cov_b + Cov_b.transpose());
-        
-        // Rotate BODY→WORLD
-        const auto qc = mekf_->quaternion().coeffs();        // (x,y,z,w)
-        Eigen::Quaternionf q_wb(qc(3), qc(0), qc(1), qc(2)); // (w,x,y,z), world→body
-        Eigen::Matrix3f R_bw = q_wb.toRotationMatrix().transpose(); // body→world
-        Eigen::Matrix3f Cov_w = R_bw * Cov_b * R_bw.transpose();
-        
-        // PCA of WORLD XY (2×2 closed form)
-        Eigen::Matrix2f Cxy;
-        Cxy << Cov_w(0,0), Cov_w(0,1),
-               Cov_w(1,0), Cov_w(1,1);
-        const float tr  = Cxy(0,0) + Cxy(1,1);
-        const float det = Cxy(0,0)*Cxy(1,1) - Cxy(0,1)*Cxy(1,0);
-        const float disc = std::sqrt(std::max(0.0f, 0.25f*tr*tr - det));
-        const float lam_max = 0.5f*tr + disc;
-        const float lam_min = 0.5f*tr - disc;
-        
-        // dominant eigenvector in WORLD XY
-        Eigen::Vector2f vxy;
-        if (std::abs(Cxy(0,1)) > 1e-12f) {
-            vxy << lam_max - Cxy(1,1), Cxy(0,1);
-        } else {
-            vxy << 1.0f, 0.0f;
-        }
-        if (vxy.squaredNorm() < 1e-20f) vxy << 1.0f, 0.0f;
-        vxy.normalize();
-        
-        Eigen::Vector3f u1_w(vxy.x(), vxy.y(), 0.0f);       // dominant XY dir in WORLD
-        Eigen::Vector3f u2_w(-vxy.y(), vxy.x(), 0.0f);      // orthogonal XY dir
-        Eigen::Vector3f ez_w(0.0f, 0.0f, 1.0f);
-        
-        // Map XY anisotropy level from measured λ’s (relative shaping)
-        const float mean_xy = std::max(eps, 0.5f*(lam_max + lam_min));
-        auto scale_rel = [&](float lam){
-            float r = std::sqrt(std::max(0.0f, lam) / mean_xy);
-            return std::clamp(r, 0.5f, 2.0f);               // guard extremes
-        };
-        const float s1 = sZ * S_factor * scale_rel(lam_max); // std along u1
-        const float s2 = sZ * S_factor * scale_rel(lam_min); // std along u2
-        
-        // Assemble Σ_aw in WORLD with XY rotation
-        Eigen::Matrix3f Sigma_w =
-              (s1*s1) * (u1_w * u1_w.transpose())
-            + (s2*s2) * (u2_w * u2_w.transpose())
-            + (sZ*sZ) * (ez_w * ez_w.transpose());
-        
-        // Inject measured XZ/YZ coupling in WORLD (clamped)
-        auto sx_world = std::sqrt(std::max(eps, Sigma_w(0,0)));
-        auto sy_world = std::sqrt(std::max(eps, Sigma_w(1,1)));
-        auto sz_world = sZ;
-        const float cov_xz_meas = Cov_w(0,2);
-        const float cov_yz_meas = Cov_w(1,2);
-        const float cov_xz_cap  = 0.99f * sx_world * sz_world;
-        const float cov_yz_cap  = 0.99f * sy_world * sz_world;
-        Sigma_w(0,2) = std::clamp(cov_xz_meas, -cov_xz_cap,  cov_xz_cap);
-        Sigma_w(2,0) = Sigma_w(0,2);
-        Sigma_w(1,2) = std::clamp(cov_yz_meas, -cov_yz_cap,  cov_yz_cap);
-        Sigma_w(2,1) = Sigma_w(1,2);
-        
-        // Apply (setter projects to SPD + reseeds P)
-        mekf_->set_aw_stationary_cov_full(Sigma_w);
+    // BODY-frame accel covariance from EWMA stats
+    Eigen::Matrix3f Cov_b = corr_.Exx - corr_.m * corr_.m.transpose();
+    Cov_b = 0.5f * (Cov_b + Cov_b.transpose());
+
+    // --- PCA on BODY XY (no attitude, no tilt, IMU-only) ---
+    float theta=0.0f, lam_max=0.0f, lam_min=0.0f;
+    const bool ok = corr_.pcaXY(theta, lam_max, lam_min);
+
+    // Base vertical std (from tuner), XY scaled by S_factor and PCA energy
+    const float sZ   = tune_.sigma_applied;
+    const float eps  = 1e-9f;
+
+    auto rel = [&](float lam_xy, float mean_xy)->float {
+        if (!(lam_xy > 0.0f) || !(mean_xy > eps)) return 1.0f;
+        float r = std::sqrt(std::max(0.0f, lam_xy) / mean_xy);
+        return std::clamp(r, 0.5f, 2.0f);
+    };
+
+    // Fallback: no PCA yet → old anisotropy on BODY axes
+    if (!ok) {
+        mekf_->set_aw_stationary_cov_full(Eigen::Matrix3f::Identity()); // will override below
+        // Σ_aw: diag([s*S_factor, s*S_factor, s]) in BODY
+        Eigen::Matrix3f Sig = Eigen::Matrix3f::Zero();
+        Sig(0,0) = (sZ*S_factor)*(sZ*S_factor);
+        Sig(1,1) = (sZ*S_factor)*(sZ*S_factor);
+        Sig(2,2) = (sZ)*(sZ);
+        mekf_->set_aw_stationary_cov_full(Sig);
+
+        // R_S: XY reduced, Z nominal (BODY axes, equal X/Y)
+        const float RSb = tune_.RS_applied;
+        mekf_->set_RS_noise(Eigen::Vector3f(RSb * R_S_xy_factor, RSb * R_S_xy_factor, RSb));
+        return;
+    }
+
+    // PCA axes in BODY
+    const float c = std::cos(theta), s = std::sin(theta);
+    Eigen::Vector3f u1(c,  s, 0.0f);      // dominant XY
+    Eigen::Vector3f u2(-s, c, 0.0f);      // orthogonal XY
+    Eigen::Vector3f ez(0.0f,0.0f,1.0f);   // BODY Z
+
+    const float mean_xy = std::max(eps, 0.5f*(lam_max + lam_min));
+    const float k1 = rel(lam_max, mean_xy);
+    const float k2 = rel(lam_min, mean_xy);
+
+    const float s1 = sZ * S_factor * k1;  // std along u1 (dominant)
+    const float s2 = sZ * S_factor * k2;  // std along u2
+
+    // --- Build Σ_aw in BODY using PCA axes + measured XZ/YZ couplings ---
+    Eigen::Matrix3f Sigma_b =
+          (s1*s1) * (u1*u1.transpose())
+        + (s2*s2) * (u2*u2.transpose())
+        + (sZ*sZ) * (ez*ez.transpose());
+
+    // Preserve measured XZ/YZ covariance, but cap to keep SPD
+    {
+        const float sx = std::sqrt(std::max(eps, Sigma_b(0,0)));
+        const float sy = std::sqrt(std::max(eps, Sigma_b(1,1)));
+        const float sz = std::sqrt(std::max(eps, Sigma_b(2,2)));
+        const float cap_xz = 0.99f * sx * sz;
+        const float cap_yz = 0.99f * sy * sz;
+
+        Sigma_b(0,2) = std::clamp(Cov_b(0,2), -cap_xz, cap_xz);
+        Sigma_b(2,0) = Sigma_b(0,2);
+        Sigma_b(1,2) = std::clamp(Cov_b(1,2), -cap_yz, cap_yz);
+        Sigma_b(2,1) = Sigma_b(1,2);
+    }
+
+    // Feed full BODY covariance directly (per your constraint: IMU-only stats)
+    mekf_->set_aw_stationary_cov_full(Sigma_b);
+
+    // --- Anisotropic R_S: allow X≠Y along the same PCA axes ---
+    const float RSb = tune_.RS_applied;
+    const float RS1 = RSb * R_S_xy_factor * k1;   // looser along energetic axis
+    const float RS2 = RSb * R_S_xy_factor * k2;   // tighter orthogonal
+    const float RSz = RSb;
+
+    Eigen::Matrix3f RSm =
+          (RS1*RS1) * (u1*u1.transpose())
+        + (RS2*RS2) * (u2*u2.transpose())
+        + (RSz*RSz) * (ez*ez.transpose());
+
+    mekf_->set_RS_noise_matrix(RSm);
       
-        // Anisotropic pseudo-measurement noise: XY reduced, Z nominal
-        mekf_->set_RS_noise(Eigen::Vector3f(
-           tune_.RS_applied * R_S_xy_factor,
-           tune_.RS_applied * R_S_xy_factor,
-           tune_.RS_applied));
     }
 
     void update_tuner(float dt, float a_vert, float freq_hz) {
