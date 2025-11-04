@@ -33,6 +33,8 @@ const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 36.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 36.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 10.0f;
 
+const float FAIL_ERR_LIMIT_YAW_DEG = 3.0f;  
+
 constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 
 //  Project headers
@@ -314,6 +316,13 @@ static void process_wave_file_for_tracker(const std::string &filename,
         fail_if("X", x_pct, limit_x);
         fail_if("Y", y_pct, limit_y);
         fail_if("Z", z_pct, limit_z);
+
+        if (rms_yaw.rms() > FAIL_ERR_LIMIT_YAW_DEG) {
+            std::cerr << "ERROR: Yaw RMS above limit ("
+                      << rms_yaw.rms() << " deg > " << FAIL_ERR_LIMIT_YAW_DEG
+                      << " deg). Failing.\n";
+            std::exit(EXIT_FAILURE);
+        }
     }
 }
 
