@@ -41,7 +41,7 @@ using Eigen::Matrix;
 template<typename T>
 inline T safe_inv_tau(T tau) {
     // Prevent division by ~0 while preserving sign
-    return T(1) / ((tau >= T(1e-8)) ? tau : T(1e-8));
+    return T(1) / ((std::abs(tau) >= T(1e-8)) ? tau : std::copysign(T(1e-8), tau));
 }
 
 template<typename T>
