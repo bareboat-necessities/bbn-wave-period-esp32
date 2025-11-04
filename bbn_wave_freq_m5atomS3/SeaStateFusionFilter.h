@@ -56,96 +56,8 @@
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
 
-// Mahony tilt-only observer
-struct TiltMahony {
-    float g_std    = 9.80665f; // m/s^2
-    float kp       = 2.8f;     // base P gain
-    float ki       = 0.05f;    // I gain (gyro bias)
-    float gate_rel = 0.18f;    // trust window: accept accel ~ g*(1±gate_rel)
-
-    Eigen::Vector3f zhat_b = {0,0,1}; // world +Z (down) in BODY
-    Eigen::Vector3f bg     = {0,0,0}; // local gyro bias (not shared with MEKF)
-
-    static inline Eigen::Matrix3f skew(const Eigen::Vector3f& v){
-        Eigen::Matrix3f S;
-        S << 0,-v.z(),v.y(), v.z(),0,-v.x(), -v.y(),v.x(),0;
-        return S;
-    }
-
-    inline float trust_from_norm(float a_norm) const {
-        // linear ramp: 1 inside g*(1±gate), fades to 0 outside
-        const float gmin = g_std * (1.0f - gate_rel);
-        const float gmax = g_std * (1.0f + gate_rel);
-        if (a_norm <= gmin || a_norm >= gmax) return 0.0f;
-        const float d = std::min(a_norm - gmin, gmax - a_norm);
-        return std::max(0.0f, std::min(1.0f, d / (g_std * gate_rel)));
-    }
-
-    inline void update(float dt,
-                       const Eigen::Vector3f& gyr_b_rad_s,
-                       const Eigen::Vector3f& acc_b_mps2)
-    {
-        if (!(dt > 0)) return;
-
-        const float a = acc_b_mps2.norm();
-        const float w = trust_from_norm(a);      // 0…1 trust weight
-
-        // "Measured" world-down in BODY when believable
-        Eigen::Vector3f m = (a > 1e-6f) ? (-acc_b_mps2 / a) : zhat_b;
-
-        // Tilt-only error
-        Eigen::Vector3f e = zhat_b.cross(m);
-
-        // PI gyro with TRUST on the correction/bias
-        const float kpw = kp * w;
-        const float kiw = ki * w;
-
-        Eigen::Vector3f omega = (gyr_b_rad_s - bg) + kpw * e;
-
-        // Integrate zhat_b: v̇ = -ω × v
-        const float th = omega.norm() * dt;
-        if (th < 1e-6f) {
-            zhat_b += dt * ( -omega.cross(zhat_b) );
-        } else {
-            const Eigen::Vector3f u = omega / (th + 1e-12f);
-            const Eigen::Matrix3f K = skew(u);
-            const Eigen::Matrix3f R = Eigen::Matrix3f::Identity()
-                                    - std::sin(th)*K + (1-std::cos(th))*(K*K);
-            zhat_b = R * zhat_b;
-        }
-        zhat_b.normalize();
-
-        // Bias only integrates when accel is trustworthy
-        if (kiw > 0.0f) bg += kiw * e * dt;
-    }
-
-    inline Eigen::Vector3f g_body() const { return g_std * zhat_b; }
-
-    // inertial accel in BODY:  a_b(inertial) = f_b + g_b
-    inline Eigen::Vector3f a_body_inertial(const Eigen::Vector3f& acc_b) const {
-        return acc_b + g_body();
-    }
-
-    // yaw-free tilt frame (Z=down)
-    inline Eigen::Matrix3f R_tilt_to_body() const {
-        const Eigen::Vector3f z = zhat_b;
-        Eigen::Vector3f x = (Eigen::Matrix3f::Identity() - z*z.transpose()) * Eigen::Vector3f::UnitX();
-        if (x.squaredNorm() < 1e-8f)
-            x = (Eigen::Matrix3f::Identity() - z*z.transpose()) * Eigen::Vector3f::UnitY();
-        x.normalize();
-        Eigen::Vector3f y = z.cross(x); y.normalize();
-        Eigen::Matrix3f R; R.col(0)=x; R.col(1)=y; R.col(2)=z; // tilt→body
-        return R;
-    }
-
-    inline Eigen::Vector3f inertial_accel_tilt(const Eigen::Vector3f& acc_b) const {
-        const Eigen::Vector3f a_b = a_body_inertial(acc_b);
-        return R_tilt_to_body().transpose() * a_b; // body→tilt
-    }
-};
-
 struct CorrXZEstimator {
-    float tau = 30.0f;     // EWMA horizon [s] for covariance
+    float tau = 1.5f;     // EWMA horizon [s] for covariance
     float last_dt = -1.0f;
     float alpha = 0.0f;
     float w = 0.0f;        // debias weight accumulator
@@ -308,16 +220,14 @@ public:
 
         // Sensor-only tilt proxy → inertial accel in yaw-free tilt frame
         tilt_.update(dt, gyro, acc);
-        const Eigen::Vector3f a_tilt = tilt_.inertial_accel_tilt(acc);
 
         // accumulate covariance for ρ 
-        corr_.update(dt, acc /*a_tilt*/);
+        corr_.update(dt, acc);
 
-        // Feed tracker with world-like vertical acceleration (tilt Z)
+        // Feed tracker 
         const double f = tracker_policy_.run(a_z, dt);
         if (!std::isnan(f)) {
             freq_hz_ = std::min(std::max(static_cast<float>(f), MIN_FREQ_HZ), MAX_FREQ_HZ);
-            // Keep scalar tuner API, but use tilt-vertical instead of acc.z()+g
             update_tuner(dt, a_z, freq_hz_);
         } else {
             freq_hz_ = FREQ_GUESS;
@@ -360,7 +270,6 @@ public:
         return Eigen::Vector3f(roll_n, pitch_n, yaw_n);
     }
 
-    inline const auto& mekf() const noexcept { return *mekf_; }
     inline auto& mekf() noexcept { return *mekf_; }
 
 private:
@@ -444,7 +353,6 @@ private:
     FrequencySmoother<float> freqSmoother;
     SeaStateAutoTuner tuner_;
     TuneState tune_;
-    TiltMahony tilt_;                   // sensor-only tilt proxy (no MEKF feedback)
 
     float tau_target_   = NAN;
     float sigma_target_ = NAN;
