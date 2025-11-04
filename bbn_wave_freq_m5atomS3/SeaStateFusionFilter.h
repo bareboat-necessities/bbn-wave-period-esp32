@@ -433,6 +433,11 @@ private:
     float sigma_target_ = NAN;
     float RS_target_    = NAN;
 
+    // correlation estimation state
+    CorrXZEstimator corr_;
+    float rho_target_  = 0.0f;
+    float rho_applied_ = 0.0f;   // smoothed value we actually apply
+
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
 };
 
