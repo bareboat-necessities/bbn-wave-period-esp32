@@ -1057,8 +1057,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     // Proper Jacobians from linearization of f_b
     const Matrix3 J_att = -skew_symmetric_matrix(f_pred); // ∂f/∂θ = -[f_b]_×
     const Matrix3 J_aw  =  R_wb();                         // ∂f/∂a_w = R_wb
-    Matrix3 J_ba;
-    if constexpr (with_accel_bias) J_ba.setIdentity();      // ∂f/∂b_a = I
 
     // Innovation covariance S = C P Cᵀ + Racc (3×3)
     Matrix3 S_mat = Racc;
@@ -1077,6 +1075,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
         S_mat.noalias() += J_aw  * P_aw_aw * J_aw.transpose();
 
         if constexpr (with_accel_bias) {
+            Matrix3 J_ba = Mayrix3::Identity();      // ∂f/∂b_a = I
             const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
             const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw,  off_ba);
             const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba,  off_ba);
