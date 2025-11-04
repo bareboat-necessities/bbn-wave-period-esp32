@@ -312,32 +312,30 @@ public:
 
 private:
     //  Internal tuning and adaptation
-
-void apply_tune() {
-    if (!mekf_) return;
-
-    // 1) OU time constant
-    mekf_->set_aw_time_constant(tune_.tau_applied);
-
-    // 2) WORLD-frame stationary covariance for a_w (XY equal, Z separate).
-    //    No PCA, no orientation feedback — avoids frame mismatch.
-    const float sZ = std::max(1e-6f, tune_.sigma_applied);
-    const float sH = sZ * S_factor; // keep your XY>Z heuristic
-    Eigen::Matrix3f Sigma_world = Eigen::Matrix3f::Zero();
-    Sigma_world(0,0) = sH * sH;   // world X
-    Sigma_world(1,1) = sH * sH;   // world Y
-    Sigma_world(2,2) = sZ * sZ;   // world Z
-    mekf_->set_aw_stationary_cov_full(Sigma_world);  // internally SPD-projects & merges
-
-    // 3) WORLD-frame pseudo-measurement noise for S (anisotropic diagonal).
-    //    Clamp to configured bounds for robustness.
-    const float RSb = std::min(std::max(tune_.RS_applied, MIN_R_S), MAX_R_S);
-    mekf_->set_RS_noise(Eigen::Vector3f(
-        RSb * R_S_xy_factor,   // world X
-        RSb * R_S_xy_factor,   // world Y
-        RSb                    // world Z
-    ));
-}
+    void apply_tune() {
+        if (!mekf_) return;
+    
+        // OU time constant
+        mekf_->set_aw_time_constant(tune_.tau_applied);
+    
+        // WORLD-frame stationary covariance for a_w (XY equal, Z separate).
+        const float sZ = std::max(1e-6f, tune_.sigma_applied);
+        const float sH = sZ * S_factor; 
+        Eigen::Matrix3f Sigma_world = Eigen::Matrix3f::Zero();
+        Sigma_world(0,0) = sH * sH;   // world X
+        Sigma_world(1,1) = sH * sH;   // world Y
+        Sigma_world(2,2) = sZ * sZ;   // world Z
+        mekf_->set_aw_stationary_cov_full(Sigma_world);  // internally SPD-projects & merges
+    
+        // WORLD-frame pseudo-measurement noise for S (anisotropic diagonal).
+        // Clamp to configured bounds for robustness.
+        const float RSb = std::min(std::max(tune_.RS_applied, MIN_R_S), MAX_R_S);
+        mekf_->set_RS_noise(Eigen::Vector3f(
+            RSb * R_S_xy_factor,   // world X
+            RSb * R_S_xy_factor,   // world Y
+            RSb                    // world Z
+        ));
+    }
 
     void update_tuner(float dt, float a_vert, float freq_hz) {
         if (!std::isfinite(freq_hz)) {
