@@ -58,11 +58,12 @@
 
 // Mahony tilt-only observer
 struct TiltMahony {
-    float g_std   = 9.80665f; // m/s^2
-    float kp      = 2.8f;     // P gain for accel correction
-    float ki      = 0.05f;    // I gain for gyro bias
-    float mag_gate= 0.35f;    // accept accel as gravity if |a| in [g*(1±gate)]
-    Eigen::Vector3f zhat_b = {0,0,1}; // world +Z (down) expressed in BODY
+    float g_std    = 9.80665f; // m/s^2
+    float kp       = 2.8f;     // base P gain
+    float ki       = 0.05f;    // I gain (gyro bias)
+    float gate_rel = 0.18f;    // trust window: accept accel ~ g*(1±gate_rel)
+
+    Eigen::Vector3f zhat_b = {0,0,1}; // world +Z (down) in BODY
     Eigen::Vector3f bg     = {0,0,0}; // local gyro bias (not shared with MEKF)
 
     static inline Eigen::Matrix3f skew(const Eigen::Vector3f& v){
@@ -71,31 +72,42 @@ struct TiltMahony {
         return S;
     }
 
+    inline float trust_from_norm(float a_norm) const {
+        // linear ramp: 1 inside g*(1±gate), fades to 0 outside
+        const float gmin = g_std * (1.0f - gate_rel);
+        const float gmax = g_std * (1.0f + gate_rel);
+        if (a_norm <= gmin || a_norm >= gmax) return 0.0f;
+        const float d = std::min(a_norm - gmin, gmax - a_norm);
+        return std::max(0.0f, std::min(1.0f, d / (g_std * gate_rel)));
+    }
+
     inline void update(float dt,
                        const Eigen::Vector3f& gyr_b_rad_s,
                        const Eigen::Vector3f& acc_b_mps2)
     {
         if (!(dt > 0)) return;
 
-        // Measured down direction when believable (|a|≈g)
-        bool ok=false; Eigen::Vector3f m(0,0,1);
         const float a = acc_b_mps2.norm();
-        if (a > g_std*(1.0f - mag_gate) && a < g_std*(1.0f + mag_gate)) {
-            m = -acc_b_mps2 / a; // down in BODY
-            ok = true;
-        }
-        // Error for tilt only: e = zhat × m
-        Eigen::Vector3f e = ok ? zhat_b.cross(m) : Eigen::Vector3f::Zero();
+        const float w = trust_from_norm(a);      // 0…1 trust weight
 
-        // PI-corrected "virtual" gyro (local bias not shared)
-        Eigen::Vector3f omega = (gyr_b_rad_s - bg) + kp * e;
+        // "Measured" world-down in BODY when believable
+        Eigen::Vector3f m = (a > 1e-6f) ? (-acc_b_mps2 / a) : zhat_b;
 
-        // Integrate zhat_b: v̇ = -ω × v  → exp(-[ω]× dt) v
+        // Tilt-only error
+        Eigen::Vector3f e = zhat_b.cross(m);
+
+        // PI gyro with TRUST on the correction/bias
+        const float kpw = kp * w;
+        const float kiw = ki * w;
+
+        Eigen::Vector3f omega = (gyr_b_rad_s - bg) + kpw * e;
+
+        // Integrate zhat_b: v̇ = -ω × v
         const float th = omega.norm() * dt;
         if (th < 1e-6f) {
             zhat_b += dt * ( -omega.cross(zhat_b) );
         } else {
-            const Eigen::Vector3f u = omega / th;
+            const Eigen::Vector3f u = omega / (th + 1e-12f);
             const Eigen::Matrix3f K = skew(u);
             const Eigen::Matrix3f R = Eigen::Matrix3f::Identity()
                                     - std::sin(th)*K + (1-std::cos(th))*(K*K);
@@ -103,21 +115,21 @@ struct TiltMahony {
         }
         zhat_b.normalize();
 
-        // Integrate bias only when accel is trustworthy
-        if (ok) bg += ki * e * dt;
+        // Bias only integrates when accel is trustworthy
+        if (kiw > 0.0f) bg += kiw * e * dt;
     }
 
     inline Eigen::Vector3f g_body() const { return g_std * zhat_b; }
 
+    // inertial accel in BODY:  a_b(inertial) = f_b + g_b
     inline Eigen::Vector3f a_body_inertial(const Eigen::Vector3f& acc_b) const {
-        return acc_b + g_body(); // f_b + g_b
+        return acc_b + g_body();
     }
 
-    // Build yaw-free tilt frame (Z=down, X = body-X projected onto horizontal)
+    // yaw-free tilt frame (Z=down)
     inline Eigen::Matrix3f R_tilt_to_body() const {
         const Eigen::Vector3f z = zhat_b;
-        Eigen::Vector3f x =
-            (Eigen::Matrix3f::Identity() - z*z.transpose()) * Eigen::Vector3f::UnitX();
+        Eigen::Vector3f x = (Eigen::Matrix3f::Identity() - z*z.transpose()) * Eigen::Vector3f::UnitX();
         if (x.squaredNorm() < 1e-8f)
             x = (Eigen::Matrix3f::Identity() - z*z.transpose()) * Eigen::Vector3f::UnitY();
         x.normalize();
