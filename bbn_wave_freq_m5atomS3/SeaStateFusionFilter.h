@@ -55,90 +55,6 @@
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
 
-struct CorrXZEstimator {
-    float tau = 1.5f;   // EWMA horizon [s]
-    float last_dt = -1.0f;
-    float alpha = 0.0f;
-    float w = 0.0f;
-
-    Eigen::Vector3f m = Eigen::Vector3f::Zero();   // E[x]
-    Eigen::Matrix3f Exx = Eigen::Matrix3f::Zero(); // E[xxᵀ]
-
-    inline void setTau(float t){ tau = std::max(1e-3f, t); last_dt = -1.0f; }
-    inline void reset(){ last_dt=-1.0f; alpha=0.0f; w=0.0f; m.setZero(); Exx.setZero(); }
-
-    inline void update(float dt, const Eigen::Vector3f& a_) {
-        if (!(dt > 0)) return;
-        if (dt != last_dt) { alpha = 1.0f - std::exp(-dt / tau); last_dt = dt; }
-        m   = (1.0f - alpha) * m   + alpha * a_;
-        Exx = (1.0f - alpha) * Exx + alpha * (a_ * a_.transpose());
-        w   = (1.0f - alpha) * w   + alpha;
-    }
-
-    inline bool ready() const { return w > 1e-3f; }
-
-    inline Eigen::Vector3f var() const {
-        Eigen::Vector3f v = Exx.diagonal() - m.array().square().matrix();
-        return v.cwiseMax(0.0f);
-    }
-
-    inline float cov_xy() const { return Exx(0,1) - m.x()*m.y(); }
-    inline float cov_xz() const { return Exx(0,2) - m.x()*m.z(); }
-    inline float cov_yz() const { return Exx(1,2) - m.y()*m.z(); }
-
-    // 2×2 XY covariance
-    inline Eigen::Matrix2f covXY() const {
-        const auto v = var();
-        Eigen::Matrix2f C;
-        C << v.x(), cov_xy(),
-             cov_xy(), v.y();
-        // avoid negative tiny numerics
-        C(0,0) = std::max(C(0,0), 0.0f);
-        C(1,1) = std::max(C(1,1), 0.0f);
-        return C;
-    }
-
-    // PCA of XY: returns theta (rad) of dominant eigenvector (in body XY),
-    // lambda_max, lambda_min. Returns false if not ready or degenerate.
-    inline bool pcaXY(float& theta, float& lambda_max, float& lambda_min) const {
-        if (!ready()) return false;
-        Eigen::Matrix2f C = covXY();
-        // closed-form eig for 2x2 SPD
-        const float tr = C(0,0) + C(1,1);
-        const float det = C(0,0)*C(1,1) - C(0,1)*C(1,0);
-        const float disc = std::sqrt(std::max(0.0f, tr*tr*0.25f - det));
-        lambda_max = tr*0.5f + disc;
-        lambda_min = tr*0.5f - disc;
-        if (!(lambda_max > 0.0f)) return false;
-
-        // dominant eigenvector direction
-        Eigen::Vector2f v;
-        if (std::abs(C(0,1)) > 1e-12f) {
-            v << lambda_max - C(1,1), C(0,1);
-        } else {
-            v << 1.0f, 0.0f;
-        }
-        if (v.squaredNorm() < 1e-20f) return false;
-        v.normalize();
-        theta = std::atan2(v.y(), v.x());
-        return true;
-    }
-
-    inline bool rhos(float& rho_xz, float& rho_yz) const {
-        if (!ready()) return false;
-        const auto v = var();
-        const float sx = std::sqrt(std::max(0.0f, v.x()));
-        const float sy = std::sqrt(std::max(0.0f, v.y()));
-        const float sz = std::sqrt(std::max(0.0f, v.z()));
-        const float eps = 1e-9f;
-        rho_xz = (sx > eps && sz > eps) ? cov_xz()/(sx*sz) : 0.0f;
-        rho_yz = (sy > eps && sz > eps) ? cov_yz()/(sy*sz) : 0.0f;
-        rho_xz = std::clamp(rho_xz, -0.99f, 0.99f);
-        rho_yz = std::clamp(rho_yz, -0.99f, 0.99f);
-        return true;
-    }
-};
-
 // Shared constants
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 5.0f;
@@ -391,9 +307,6 @@ private:
     float tau_target_   = NAN;
     float sigma_target_ = NAN;
     float RS_target_    = NAN;
-
-    // correlation estimation state
-    CorrXZEstimator corr_;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
 };
