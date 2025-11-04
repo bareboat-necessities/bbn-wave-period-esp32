@@ -289,6 +289,9 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
     }
 
+    // Accept a full 3×3 SPD stationary covariance for a_w.
+    void set_aw_stationary_cov_full(const Matrix3& Sigma);
+
     // Set OU stationary covariance for world-acceleration a_w,
     // using per-axis standard deviations and an optional cross-axis correlation.
     //
@@ -665,6 +668,31 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_Q(typename Kalman3
     Q = sigma_g.array().square().matrix().asDiagonal();
   }
   return Q;
+}
+
+template <typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::set_aw_stationary_cov_full(const Matrix3& Sigma_in)
+{
+    // Symmetrize + very light SPD projection
+    Matrix3 S = T(0.5) * (Sigma_in + Sigma_in.transpose());
+    Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
+    if (es.info() == Eigen::Success) {
+        auto d = es.eigenvalues().cwiseMax(T(1e-12));
+        Sigma_aw_stat = es.eigenvectors() * d.asDiagonal() * es.eigenvectors().transpose();
+    } else {
+        // Fallback: keep only diagonal, clamp to tiny+
+        Matrix3 D = S.diagonal().cwiseMax(T(1e-12)).asDiagonal();
+        Sigma_aw_stat = D;
+    }
+
+    // Reseed/merge Pext a_w block
+    if (Pext.size() > 0) {
+        Pext.template block<3,3>(OFF_AW, OFF_AW) =
+              T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW)
+            + T(0.2) * Sigma_aw_stat;
+        Pext = T(0.5) * (Pext + Pext.transpose());
+    }
+    has_cross_cov_a_xy = true;
 }
 
 // initialization helpers
