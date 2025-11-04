@@ -453,7 +453,7 @@ class Kalman3D_Wave {
     static constexpr int PSEUDO_UPDATE_PERIOD = 3; // every N-th update
 
     bool has_cross_cov_a_xy = false;
-    bool use_exact_att_bias_Qd_ = false;
+    bool use_exact_att_bias_Qd_ = true;
     
     // Closed-form helpers for rotation & integrals (constant ω over [0, t])
     
