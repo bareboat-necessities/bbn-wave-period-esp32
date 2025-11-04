@@ -56,7 +56,7 @@
 #include "FrameConversions.h"
 
 struct CorrXZEstimator {
-    float tau = 1.5f;     // EWMA horizon [s] for covariance
+    float tau = 5.0f;     // EWMA horizon [s] for covariance
     float last_dt = -1.0f;
     float alpha = 0.0f;
     float w = 0.0f;        // debias weight accumulator
