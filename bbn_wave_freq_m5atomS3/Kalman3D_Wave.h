@@ -1100,9 +1100,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
         PCt.noalias() += P_all_aw * J_aw.transpose();
 
         if constexpr (with_accel_bias) {
-            Matrix3 J_ba = Matrix3::Identity();      // ∂f/∂b_a = I
             const auto P_all_ba = Pext.template block<NX,3>(0, OFF_BA);
-            PCt.noalias() += P_all_ba * J_ba.transpose(); // J_ba = I
+            PCt.noalias() += P_all_ba; // J_ba = ∂f/∂b_a = I
         }
     }
 
