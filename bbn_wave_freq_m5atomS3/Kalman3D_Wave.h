@@ -303,9 +303,10 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
     //   • Positive rho_corr fits ENU (z up).
     //   • The resulting covariance is projected to SPD for numerical stability.
     //   • Also reseeds Pext(OFF_AW, OFF_AW) to keep filter covariance consistent.
-    void set_aw_stationary_corr_std(const Vector3& std_aw, T rho_corr = T(-0.65)) {
+    void set_aw_stationary_corr_std(const Vector3& std_aw, T rho_xz_corr = T(-0.65), T rho_yz_corr = T(-0.65)) {
       // Clamp correlation for numerical safety
-      rho_corr = std::max(T(-0.999), std::min(rho_corr, T(0.999))); 
+      rho_xz_corr = std::max(T(-0.999), std::min(rho_xz_corr, T(0.999))); 
+      rho_yz_corr = std::max(T(-0.999), std::min(rho_yz_corr, T(0.999))); 
 
       const T sx = std::max(T(1e-9), std_aw.x());
       const T sy = std::max(T(1e-9), std_aw.y());
@@ -314,9 +315,9 @@ class EIGEN_ALIGN_MAX Kalman3D_Wave {
       // Construct correlated covariance (symmetric)
       Matrix3 S;
       S <<
-          sx*sx,  T(0),          rho_corr*sx*sz,
-          T(0),   sy*sy,         rho_corr*sy*sz,
-          rho_corr*sx*sz, rho_corr*sy*sz, sz*sz;
+          sx*sx,  T(0),             rho_xz_corr*sx*sz,
+          T(0),   sy*sy,            rho_yz_corr*sy*sz,
+          rho_xz_corr*sx*sz, rho_yz_corr*sy*sz, sz*sz;
 
       // Symmetrize & project to SPD for robustness
       S = T(0.5) * (S + S.transpose());
