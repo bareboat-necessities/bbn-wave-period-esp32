@@ -183,7 +183,7 @@ struct CorrXZEstimator {
         const float ry = cov_yz() / (sy*sz + eps);
         // clip for PSD safety
         const float r  = 0.5f * (rx + ry);
-        return std::max(-0.95f, std::min(0.95f, r));
+        return std::max(-0.99f, std::min(0.99f, r));
     }
 };
 
@@ -410,7 +410,7 @@ private:
 
         // target ρ from measured tilt-frame covariance (X/Z and Y/Z)
         if (corr_.ready()) {
-            rho_target_ = corr_.rho_avg();  // already clipped to ±0.95
+            rho_target_ = corr_.rho_avg();  // already clipped to ±0.99
         } else {
             rho_target_ = 0.0f;
         }
