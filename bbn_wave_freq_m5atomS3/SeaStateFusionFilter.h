@@ -247,7 +247,7 @@ public:
         if (mekf_) mekf_->initialize_from_acc(acc_world);
     }
 
-    //  Time update (IMU integration + frequency tracking)
+    // Time update (IMU integration + frequency tracking)
     void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc) {
         if (!mekf_) return;
         time_ += dt;
@@ -316,16 +316,75 @@ private:
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
 
-        // Pull ρxz, ρyz from recent IMU stats
-        float rho_xz = 0.0f, rho_yz = 0.0f;
-        (void)corr_.rhos(rho_xz, rho_yz);
+// PCA-driven Σ_aw
+const float sZ = tune_.sigma_applied;                // base vertical std
+const float eps = 1e-9f;
 
-        const float s = tune_.sigma_applied;
-        // Anisotropic stationary std: XY boosted, Z nominal with cross-corr to Z.
-        mekf_->set_aw_stationary_corr_std(
-            Eigen::Vector3f(s * S_factor, s * S_factor, s),
-            rho_xz, rho_yz);
+// 1) Build BODY cov from EWMA stats
+Eigen::Matrix3f Cov_b = corr_.Exx - corr_.m * corr_.m.transpose();
+Cov_b = 0.5f * (Cov_b + Cov_b.transpose());
 
+// 2) Rotate BODY→WORLD
+const auto qc = mekf_->quaternion().coeffs();        // (x,y,z,w)
+Eigen::Quaternionf q_wb(qc(3), qc(0), qc(1), qc(2)); // (w,x,y,z), world→body
+Eigen::Matrix3f R_bw = q_wb.toRotationMatrix().transpose(); // body→world
+Eigen::Matrix3f Cov_w = R_bw * Cov_b * R_bw.transpose();
+
+// 3) PCA of WORLD XY (2×2 closed form)
+Eigen::Matrix2f Cxy;
+Cxy << Cov_w(0,0), Cov_w(0,1),
+       Cov_w(1,0), Cov_w(1,1);
+const float tr  = Cxy(0,0) + Cxy(1,1);
+const float det = Cxy(0,0)*Cxy(1,1) - Cxy(0,1)*Cxy(1,0);
+const float disc = std::sqrt(std::max(0.0f, 0.25f*tr*tr - det));
+const float lam_max = 0.5f*tr + disc;
+const float lam_min = 0.5f*tr - disc;
+
+// dominant eigenvector in WORLD XY
+Eigen::Vector2f vxy;
+if (std::abs(Cxy(0,1)) > 1e-12f) {
+    vxy << lam_max - Cxy(1,1), Cxy(0,1);
+} else {
+    vxy << 1.0f, 0.0f;
+}
+if (vxy.squaredNorm() < 1e-20f) vxy << 1.0f, 0.0f;
+vxy.normalize();
+
+Eigen::Vector3f u1_w(vxy.x(), vxy.y(), 0.0f);       // dominant XY dir in WORLD
+Eigen::Vector3f u2_w(-vxy.y(), vxy.x(), 0.0f);      // orthogonal XY dir
+Eigen::Vector3f ez_w(0.0f, 0.0f, 1.0f);
+
+// 4) Map XY anisotropy level from measured λ’s (relative shaping)
+const float mean_xy = std::max(eps, 0.5f*(lam_max + lam_min));
+auto scale_rel = [&](float lam){
+    float r = std::sqrt(std::max(0.0f, lam) / mean_xy);
+    return std::clamp(r, 0.5f, 2.0f);               // guard extremes
+};
+const float s1 = sZ * S_factor * scale_rel(lam_max); // std along u1
+const float s2 = sZ * S_factor * scale_rel(lam_min); // std along u2
+
+// 5) Assemble Σ_aw in WORLD with XY rotation
+Eigen::Matrix3f Sigma_w =
+      (s1*s1) * (u1_w * u1_w.transpose())
+    + (s2*s2) * (u2_w * u2_w.transpose())
+    + (sZ*sZ) * (ez_w * ez_w.transpose());
+
+// 6) Inject measured XZ/YZ coupling in WORLD (clamped)
+auto sx_world = std::sqrt(std::max(eps, Sigma_w(0,0)));
+auto sy_world = std::sqrt(std::max(eps, Sigma_w(1,1)));
+auto sz_world = sZ;
+const float cov_xz_meas = Cov_w(0,2);
+const float cov_yz_meas = Cov_w(1,2);
+const float cov_xz_cap  = 0.99f * sx_world * sz_world;
+const float cov_yz_cap  = 0.99f * sy_world * sz_world;
+Sigma_w(0,2) = std::clamp(cov_xz_meas, -cov_xz_cap,  cov_xz_cap);
+Sigma_w(2,0) = Sigma_w(0,2);
+Sigma_w(1,2) = std::clamp(cov_yz_meas, -cov_yz_cap,  cov_yz_cap);
+Sigma_w(2,1) = Sigma_w(1,2);
+
+// 7) Apply (setter projects to SPD + reseeds P)
+mekf_->set_aw_stationary_cov_full(Sigma_w);
+      
         // Anisotropic pseudo-measurement noise: XY reduced, Z nominal
         mekf_->set_RS_noise(Eigen::Vector3f(
            tune_.RS_applied * R_S_xy_factor,
