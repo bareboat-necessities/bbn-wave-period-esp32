@@ -275,11 +275,12 @@ private:
         mekf_->set_aw_time_constant(tune_.tau_applied);
 
         // Use measured ρ (smoothed) for correlated OU Σ of a_w
-        mekf_->set_aw_stationary_corr_std(
-            Eigen::Vector3f(tune_.sigma_applied * S_factor,
-                            tune_.sigma_applied * S_factor,
-                            tune_.sigma_applied),
-            rho_applied_);
+        //mekf_->set_aw_stationary_corr_std(
+        //    Eigen::Vector3f(tune_.sigma_applied * S_factor, tune_.sigma_applied * S_factor, tune_.sigma_applied), rho_applied_);
+
+        // Use measured correlated OU Σ of a_w
+        mekf_->set_aw_stationary_std(
+            Eigen::Vector3f(tune_.sigma_applied * S_factor, tune_.sigma_applied * S_factor, tune_.sigma_applied));
 
         // Keep anisotropic R_S (XY reduced)
         mekf_->set_RS_noise(Eigen::Vector3f(tune_.RS_applied * R_S_xy_factor,
