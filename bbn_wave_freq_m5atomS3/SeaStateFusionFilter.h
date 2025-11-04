@@ -307,7 +307,7 @@ public:
         tilt_.update(dt, gyro, acc);
         const Eigen::Vector3f a_tilt = tilt_.inertial_accel_tilt(acc);
 
-        // --- NEW: accumulate covariance for ρ in tilt frame
+        // accumulate covariance for ρ in tilt frame
         corr_.update(dt, a_tilt);
 
         // Feed tracker with world-like vertical acceleration (tilt Z)
@@ -405,7 +405,7 @@ private:
         RS_target_    = std::min(std::max(
             R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MIN_R_S), MAX_R_S);
 
-        // --- NEW: target ρ from measured tilt-frame covariance (X/Z and Y/Z)
+        // target ρ from measured tilt-frame covariance (X/Z and Y/Z)
         if (corr_.ready()) {
             rho_target_ = corr_.rho_avg();  // already clipped to ±0.95
         } else {
