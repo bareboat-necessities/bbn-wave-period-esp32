@@ -275,7 +275,7 @@ private:
     bool freq_init_ = false;
 
     static constexpr float R_S_xy_factor = 0.05f;
-    static constexpr float S_factor = 2.0f;
+    static constexpr float S_factor = 4.0f;
 
     TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
     FrequencySmoother<float> freqSmoother;
