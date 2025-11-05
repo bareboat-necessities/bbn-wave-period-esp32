@@ -164,13 +164,13 @@ public:
     }
 
     // Time update (IMU integration + frequency tracking)
-    void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc) {
+    void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc, float tempC = 35.0f) {
         if (!mekf_) return;
         time_ += dt;
 
         // MEKF updates (independent)
         mekf_->time_update(gyro, dt);
-        mekf_->measurement_update_acc_only(acc);
+        mekf_->measurement_update_acc_only(acc, tempC);
 
         const float a_z = acc.z() + g_std;
         const float a_norm = a_z / g_std;
