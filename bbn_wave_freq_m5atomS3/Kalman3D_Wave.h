@@ -873,9 +873,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         // Hygiene
         Q_AA = T(0.5) * (Q_AA + Q_AA.transpose());
         if constexpr (with_gyro_bias) {
-            project_psd<T,6>(Q_AA, T(1e-16));
+            project_psd<T,6>(Q_AA, T(1e-12));
         } else {
-            project_psd<T,3>(Q_AA, T(1e-16));
+            project_psd<T,3>(Q_AA, T(1e-12));
         }
     }
     
@@ -922,7 +922,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     
         // Symmetry + PSD cleanup
         Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
-        project_psd<T,12>(Q_LL, T(1e-16));
+        project_psd<T,12>(Q_LL, T(1e-12));
     } else {
         // Independent axes (no cross-correlation) — per-axis Qd on the diagonal
         const int idx[4] = {0,3,6,9};
@@ -1399,7 +1399,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         }
     }
 
-    project_psd<T,4>(Qd_axis, T(1e-16));
+    project_psd<T,4>(Qd_axis, T(1e-12));
 
     for (int i=0; i<4; ++i) if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-17);
     Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
