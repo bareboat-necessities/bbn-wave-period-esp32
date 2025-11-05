@@ -64,7 +64,7 @@ constexpr float MAX_TAU_S   = 8.5f;
 constexpr float MIN_SIGMA_A = 0.3f;
 constexpr float MAX_SIGMA_A = 8.0f;
 constexpr float MIN_R_S     = 0.1f;
-constexpr float MAX_R_S     = 40.0f;
+constexpr float MAX_R_S     = 35.0f;
 
 constexpr float R_S_coeff   = 2.4f;
 constexpr float tau_coeff   = 1.6f;
