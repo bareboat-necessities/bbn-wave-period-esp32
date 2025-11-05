@@ -196,13 +196,11 @@ public:
     void setSFactor(float s) {
         if (std::isfinite(s) && s > 0.0f) {
             S_factor = s;
-            if (mekf_) apply_tune();
         }
     }
     void setRSXYFactor(float k) {
         if (std::isfinite(k)) {
             R_S_xy_factor = std::min(std::max(k, 0.0f), 1.0f);
-            if (mekf_) apply_tune();
         }
     }
 
