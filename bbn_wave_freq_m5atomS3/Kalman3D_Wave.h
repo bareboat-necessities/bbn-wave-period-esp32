@@ -477,7 +477,6 @@ class Kalman3D_Wave {
         R = Matrix3::Identity() - s*K + (T(1)-c)*(K*K);
     
         // B(t) = - ∫_0^t R(τ) dτ = -[ t I - (1 - cosθ)/ω^2 W + (t - sinθ/ω)/ω^2 W^2 ]
-        const T invw  = T(1) / wnorm;
         const T invw2 = invw * invw;
     
         const Matrix3 term1 = Matrix3::Identity() * t;
