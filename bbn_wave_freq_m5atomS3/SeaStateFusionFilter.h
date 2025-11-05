@@ -258,14 +258,13 @@ private:
         }
 
         float smoothFreq = freqSmoother.update(freq_hz);
+        tuner_.update(dt, a_vert, smoothFreq);
 
-        // Warm-up: we still collect covariance/ρ, but skip parameter application
+        // Warm-up: we still collect, but skip parameter application
         if (time_ < ONLINE_TUNE_WARMUP_SEC)  {
             return;
         }
-
-        tuner_.update(dt, a_vert, smoothFreq);
-
+        
         tau_target_   = std::min(std::max(tau_coeff * 0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
         sigma_target_ = std::min(std::max(
             std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
