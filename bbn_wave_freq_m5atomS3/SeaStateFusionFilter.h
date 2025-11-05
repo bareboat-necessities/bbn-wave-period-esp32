@@ -186,9 +186,9 @@ public:
     }
 
     //  Magnetometer correction
-    void updateMag(const Eigen::Vector3f& mag_world) {
+    void updateMag(const Eigen::Vector3f& mag_body_ned) {
         if (with_mag_ && mekf_ && time_ >= MAG_DELAY_SEC)
-            mekf_->measurement_update_mag_only(mag_world);
+            mekf_->measurement_update_mag_only(mag_body_ned);
     }
 
     //  Exposed getters
