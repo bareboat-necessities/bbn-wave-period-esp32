@@ -239,8 +239,8 @@ class Kalman3D_Wave {
 
     // Accessors
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
-    [[nodiscard]] MatrixBaseN const covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left original block
-    [[nodiscard]] MatrixNX const covariance_full() const { return Pext; }     // full extended covariance
+    [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left original block
+    [[nodiscard]] MatrixNX covariance_full() const { return Pext; }     // full extended covariance
 
     [[nodiscard]] Vector3 gyroscope_bias() const {
         if constexpr (with_gyro_bias) {
