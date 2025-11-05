@@ -45,6 +45,15 @@ constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
+inline float wrapDeg(float a){
+    a = std::fmod(a + 180.0f, 360.0f);
+    if (a < 0) a += 360.0f;
+    return a - 180.0f;
+}
+inline float diffDeg(float est_deg, float ref_deg){
+    return wrapDeg(est_deg - ref_deg);
+}
+
 //  RMS helper
 class RMSReport {
 public:
@@ -215,11 +224,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         errs_x.push_back(disp_err.x());
         errs_y.push_back(disp_err.y());
-        errs_z.push_back(disp_err.z());
-        errs_roll.push_back(eul_est.x() - r_ref_out);
-        errs_pitch.push_back(eul_est.y() - p_ref_out);
-        errs_yaw.push_back(eul_est.z() - y_ref_out);
-
+        errs_z.push_back(disp_err.z());p
+        errs_roll.push_back(diffDeg(eul_est.x(), r_ref_out));
+        errs_pitch.push_back(diffDeg(eul_est.y(), p_ref_out));
+        errs_yaw.push_back(diffDeg(eul_est.z(), y_ref_out));
+        
         Vector3f acc_bias_true = accel_noise.bias;
         Vector3f gyro_bias_true = gyro_noise.bias;
         Vector3f acc_bias_est = filter.mekf().get_acc_bias();
