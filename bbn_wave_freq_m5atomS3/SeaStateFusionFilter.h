@@ -191,6 +191,22 @@ public:
             mekf_->measurement_update_mag_only(mag_body_ned);
     }
 
+    // Anisotropy configuration (runtime)
+    // S-factor scales horizontal vs vertical stationary std of a_w.
+    // RS XY factor scales pseudo-measurement noise in X/Y vs Z.
+    void setSFactor(float s) {
+        if (std::isfinite(s) && s > 0.0f) {
+            S_factor = s;
+            if (mekf_) apply_tune();
+        }
+    }
+    void setRSXYFactor(float k) {
+        if (std::isfinite(k)) {
+            R_S_xy_factor = std::min(std::max(k, 0.0f), 1.0f);
+            if (mekf_) apply_tune();
+        }
+    }
+
     //  Exposed getters
     inline float getFreqHz()       const noexcept { return freq_hz_; }
     inline float getTauApplied()   const noexcept { return tune_.tau_applied; }
