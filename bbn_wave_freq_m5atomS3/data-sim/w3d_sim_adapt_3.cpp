@@ -224,7 +224,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         errs_x.push_back(disp_err.x());
         errs_y.push_back(disp_err.y());
-        errs_z.push_back(disp_err.z());p
+        errs_z.push_back(disp_err.z());
         errs_roll.push_back(diffDeg(eul_est.x(), r_ref_out));
         errs_pitch.push_back(diffDeg(eul_est.y(), p_ref_out));
         errs_yaw.push_back(diffDeg(eul_est.z(), y_ref_out));
