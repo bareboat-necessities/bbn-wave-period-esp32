@@ -173,7 +173,6 @@ public:
         mekf_->measurement_update_acc_only(acc, tempC);
 
         const float a_z = acc.z() + g_std;
-        const float a_norm = a_z / g_std;
 
         // Feed tracker 
         const double f = tracker_policy_.run(a_z, dt);
@@ -218,26 +217,26 @@ public:
     inline float getPeriodSec()    const noexcept { return (freq_hz_ > 1e-6f) ? 1.0f / freq_hz_ : NAN; }
     inline float getAccelVariance()const noexcept { return tuner_.getAccelVariance(); }
 
-Eigen::Vector3f getEulerNautical() const {
-    if (!mekf_) return Eigen::Vector3f(NAN, NAN, NAN);
-
-    // mekf_->quaternion().coeffs() = (x,y,z,w), representing q_wb (world→body)
-    const auto c = mekf_->quaternion().coeffs();
-    Eigen::Quaternionf q_wb(c(3), c(0), c(1), c(2));  // w,x,y,z
-    q_wb.normalize();
-
-    // Convert to body→world for aerospace Euler
-    const Eigen::Quaternionf q_bw = q_wb.conjugate();
-
-    float roll_a, pitch_a, yaw_a;       // aerospace (body→world, NED)
-    quat_to_euler_aero(q_bw, roll_a, pitch_a, yaw_a);
-
-    // Convert aerospace/NED → nautical/ENU (your helper handles axis/sign)
-    float roll_n = roll_a, pitch_n = pitch_a, yaw_n = yaw_a;
-    aero_to_nautical(roll_n, pitch_n, yaw_n);
-
-    return Eigen::Vector3f(roll_n, pitch_n, yaw_n);
-}
+    Eigen::Vector3f getEulerNautical() const {
+        if (!mekf_) return Eigen::Vector3f(NAN, NAN, NAN);
+    
+        // mekf_->quaternion().coeffs() = (x,y,z,w), representing q_wb (world→body)
+        const auto c = mekf_->quaternion().coeffs();
+        Eigen::Quaternionf q_wb(c(3), c(0), c(1), c(2));  // w,x,y,z
+        q_wb.normalize();
+    
+        // Convert to body→world for aerospace Euler
+        const Eigen::Quaternionf q_bw = q_wb.conjugate();
+    
+        float roll_a, pitch_a, yaw_a;       // aerospace (body→world, NED)
+        quat_to_euler_aero(q_bw, roll_a, pitch_a, yaw_a);
+    
+        // Convert aerospace/NED → nautical/ENU (your helper handles axis/sign)
+        float roll_n = roll_a, pitch_n = pitch_a, yaw_n = yaw_a;
+        aero_to_nautical(roll_n, pitch_n, yaw_n);
+    
+        return Eigen::Vector3f(roll_n, pitch_n, yaw_n);
+    }
 
     inline auto& mekf() noexcept { return *mekf_; }
 
