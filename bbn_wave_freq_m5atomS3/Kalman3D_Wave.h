@@ -285,6 +285,7 @@ class Kalman3D_Wave {
     // OU stationary std [m/s²] for a_w (per axis)
     void set_aw_stationary_std(const Vector3& std_aw) {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
+        has_cross_cov_a_xy = false;
     }
 
     // Accept a full 3×3 SPD stationary covariance for a_w.
