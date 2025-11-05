@@ -292,8 +292,9 @@ private:
     float freq_hz_ = FREQ_GUESS;
     bool freq_init_ = false;
 
-    static constexpr float R_S_xy_factor = 0.07f;
-    static constexpr float S_factor = 1.3f;
+    // Runtime-configurable anisotropy knobs
+    float R_S_xy_factor = 0.07f;  // [0..1] scales XY pseudo-meas vs Z
+    float S_factor = 1.3f;        // (>0) scales Σ_aw horizontal std vs vertical
 
     TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
     FrequencySmoother<float> freqSmoother;
