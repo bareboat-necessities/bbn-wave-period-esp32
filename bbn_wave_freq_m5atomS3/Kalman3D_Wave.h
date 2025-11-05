@@ -470,7 +470,8 @@ class Kalman3D_Wave {
     
         const T theta = wnorm * t;
         const T s = std::sin(theta), c = std::cos(theta);
-        const Matrix3 K = W / (wnorm + std::numeric_limits<T>::epsilon()); // [u]×
+        const T invw = T(1) / wnorm;
+        const Matrix3 K = W * invw; // [u]×
     
         // exp(-[ω]× t) = I - sinθ K + (1 - cosθ) K^2
         R = Matrix3::Identity() - s*K + (T(1)-c)*(K*K);
