@@ -215,26 +215,46 @@ public:
     inline float getPeriodSec()    const noexcept { return (freq_hz_ > 1e-6f) ? 1.0f / freq_hz_ : NAN; }
     inline float getAccelVariance()const noexcept { return tuner_.getAccelVariance(); }
 
-    Eigen::Vector3f getEulerNautical() const {
-        if (!mekf_) return Eigen::Vector3f(NAN, NAN, NAN);
-    
-        // mekf_->quaternion().coeffs() = (x,y,z,w), representing q_wb (world→body)
-        const auto c = mekf_->quaternion().coeffs();
-        Eigen::Quaternionf q_wb(c(3), c(0), c(1), c(2));  // w,x,y,z
-        q_wb.normalize();
-    
-        // Convert to body→world for aerospace Euler
-        const Eigen::Quaternionf q_bw = q_wb.conjugate();
-    
-        float roll_a, pitch_a, yaw_a;       // aerospace (body→world, NED)
-        quat_to_euler_aero(q_bw, roll_a, pitch_a, yaw_a);
-    
-        // Convert aerospace/NED → nautical/ENU (your helper handles axis/sign)
-        float roll_n = roll_a, pitch_n = pitch_a, yaw_n = yaw_a;
-        aero_to_nautical(roll_n, pitch_n, yaw_n);
-    
-        return Eigen::Vector3f(roll_n, pitch_n, yaw_n);
-    }
+Eigen::Vector3f getEulerNautical() const {
+    if (!mekf_) return {NAN, NAN, NAN};
+
+    // MEKF gives q_wb (world→body). coeffs(): (x,y,z,w)
+    const auto c = mekf_->quaternion().coeffs();
+    float x = c(0), y = c(1), z = c(2), w = c(3);
+
+    // Normalize once (float)
+    float n = std::fma(x,x, std::fma(y,y, std::fma(z,z, w*w)));   // x²+y²+z²+w²
+    if (n <= 0.f) return {NAN, NAN, NAN};
+    float invn = 1.0f / std::sqrt(n);
+    x *= invn; y *= invn; z *= invn; w *= invn;
+
+    // Conjugate: q_bw (body→world)
+    x = -x; y = -y; z = -z; // w unchanged
+
+    // ZYX (aerospace) directly from quaternion with fused multiply-adds
+    // yaw = atan2( 2(wz + xy), 1 - 2(y² + z²) )
+    // pitch = asin( 2(wy - zx) ) with clamp
+    // roll = atan2( 2(wx + yz), 1 - 2(x² + y²) )
+    const float two = 2.0f;
+
+    float s_yaw = two * std::fma(w, z, x*y);
+    float c_yaw = 1.0f - two * std::fma(y, y, z*z);
+    float yaw   = std::atan2(s_yaw, c_yaw);
+
+    float s_pitch = two * std::fma(w, y, -z*x);
+    // clamp to avoid NaNs from tiny overshoot
+    s_pitch = std::max(-1.0f, std::min(1.0f, s_pitch));
+    float pitch = std::asin(s_pitch);
+
+    float s_roll = two * std::fma(w, x, y*z);
+    float c_roll = 1.0f - two * std::fma(x, x, y*y);
+    float roll   = std::atan2(s_roll, c_roll);
+
+    // Convert Aerospace/NED → Nautical/ENU using your helper (same units).
+    float roll_n = roll, pitch_n = pitch, yaw_n = yaw;
+    aero_to_nautical(roll_n, pitch_n, yaw_n);
+    return {roll_n, pitch_n, yaw_n};
+}
 
     inline auto& mekf() noexcept { return *mekf_; }
 
