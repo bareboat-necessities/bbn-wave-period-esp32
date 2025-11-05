@@ -191,7 +191,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         }
 
         // One time update per sample (propagate + accel update)
-        filter.updateTime(dt, gyr_meas_ned, acc_meas_ned);
+        filter.updateTime(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
 
         // Yaw correction after mag is available
         if (with_mag && rec.time >= MAG_DELAY_SEC && (sample_idx % 3 == 0))
