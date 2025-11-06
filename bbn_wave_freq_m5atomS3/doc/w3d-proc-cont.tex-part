@@ -143,6 +143,26 @@ Hence the full continuous-time process model compactly reads
 \mathbf Q_c = \mathbf L\,\mathbb E[\mathbf w\mathbf w^\top]\,\mathbf L^\top.
 \label{eq:full-sde}
 \end{equation}
+
+Let $\mathbf P(t)$ be the error covariance. The \emph{propagation} (no measurement)
+obeys the continuous Lyapunov equation
+\begin{equation}
+\dot{\mathbf P} \;=\; \mathbf F\,\mathbf P + \mathbf P\,\mathbf F^\top
+\;+\; \mathbf L\,\mathbf Q_c\,\mathbf L^\top.
+\label{eq:lyap-prop}
+\end{equation}
+If continuous-time measurements $\mathbf z=\mathbf H\,\delta\mathbf x+\boldsymbol\eta$
+with $\mathbb E[\boldsymbol\eta\boldsymbol\eta^\top]=\mathbf R$ are considered,
+the \emph{Kalman–Bucy Riccati} adds the information term
+\begin{equation}
+\dot{\mathbf P} \;=\; \mathbf F\,\mathbf P + \mathbf P\,\mathbf F^\top
+\;+\; \mathbf L\,\mathbf Q_c\,\mathbf L^\top
+\;-\; \mathbf P\,\mathbf H^\top \mathbf R^{-1}\mathbf H\,\mathbf P.
+\label{eq:kbc}
+\end{equation}
+Equations \eqref{eq:lyap-prop}–\eqref{eq:kbc} are the continuous counterparts of
+the discrete Joseph-form covariance update used in implementation.
+
 This unified linear system provides the foundation for analytic
 discretization in the next section: the per-axis exponential of
 $\mathbf F$ yields the transition $\Phi(h)$, and the corresponding
