@@ -12,6 +12,31 @@ subsystems: (i) attitude propagation on the unit quaternion manifold, and
 (ii) a linear kinematics stochastic subsystem driven by an
 Ornstein-Uhlenbeck (OU) acceleration process.
 
+
+\section*{Description of the Q-MEKF Method}
+
+The Quaternion Multiplicative Extended Kalman Filter (Q-MEKF) is a widely adopted algorithm for spacecraft and vehicle attitude estimation. It is designed to efficiently and accurately fuse data from sensors like gyroscopes, star trackers, and sun sensors to determine orientation. The key innovation of the Q-MEKF is its method of handling the unit quaternion, which is a four-dimensional parameter used to represent 3D rotations without singularities. Instead of including the full quaternion directly in the state vector of the Kalman filter---which would violate the filter's assumption of a Gaussian state vector due to the quaternion's unit norm constraint---the Q-MEKF maintains the quaternion as a separate, primary attitude reference. The Kalman filter's state vector is then used to estimate only a small, error angle vector (a 3D perturbation), \(\delta\boldsymbol{\theta}\), which is assumed to be Gaussian. This error quaternion is multiplicatively applied to the primary quaternion estimate to correct it, ensuring the result always respects the unit norm constraint and providing a computationally stable and robust estimation process.
+
+\section*{Quaternion Dynamics in Continuous Time}
+
+The dynamics of a quaternion in continuous time describe how the orientation of a rigid body evolves when it is undergoing rotational motion. The time derivative of the quaternion, \(\dot{\mathbf{q}}\), is fundamentally linked to the body's angular velocity vector, \(\boldsymbol{\omega} = [\omega_x, \omega_y, \omega_z]^T\), measured by a gyroscope. This relationship is governed by a bilinear ordinary differential equation (ODE), which is derived from the kinematics of rotation. The quaternion must maintain its unit norm, \(\|\mathbf{q}\| = 1\), during this propagation to remain a valid representation of attitude.
+
+\section*{Explanation of its Nonlinear ODE}
+
+The nonlinear Ordinary Differential Equation (ODE) that governs quaternion dynamics is:
+%
+\[
+\dot{\mathbf{q}} = \frac{1}{2} \mathbf{q} \otimes \begin{bmatrix} 0 \\ \boldsymbol{\omega} \end{bmatrix}
+\]
+%
+Here, \(\mathbf{q}\) is the unit quaternion representing the attitude, \(\boldsymbol{\omega}\) is the angular velocity vector in the body frame, and \(\otimes\) denotes the quaternion multiplication operation. This ODE is nonlinear because the derivative \(\dot{\mathbf{q}}\) is a function of the product (quaternion multiplication) of \(\mathbf{q}\) itself and the angular velocity. This bilinearity makes it unsuitable for a direct, linear Kalman filter implementation, as the standard KF relies on linear state transition models.
+
+\section*{How Q-MEKF Works Around the Nonlinearity}
+
+The Q-MEKF elegantly circumvents the challenges of the nonlinear quaternion ODE and the unit norm constraint by \textit{not} keeping the full quaternion in the Kalman filter's state vector. Instead, the primary quaternion estimate is propagated separately using the nonlinear ODE (often numerically integrated). The Kalman filter's state vector is reserved for a minimal representation of the \textit{attitude error}: a 3-element small-angle correction vector, \(\delta\boldsymbol{\theta}\). This vector parameterizes a small error quaternion, \(\delta\mathbf{q} \approx \begin{bmatrix} 1 & \frac{1}{2}\delta\boldsymbol{\theta}^T \end{bmatrix}^T\), which is assumed to be Gaussian. During the filter's update step, the estimated error state \(\delta\boldsymbol{\theta}\) is used to correct the primary quaternion via quaternion multiplication. This multiplicative correction ensures the quaternion remains normalized, while the use of a small, linear error state within the Kalman filter framework preserves the validity of the EKF's assumptions and linearizations.
+
+
+
 \subsection{Attitude Model}
 
 Let $q$ be the unit quaternion (body$\to$world) and $\omega$ the body angular rate.
