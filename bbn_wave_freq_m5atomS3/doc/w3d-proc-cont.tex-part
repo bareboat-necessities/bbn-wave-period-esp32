@@ -1,0 +1,132 @@
+\section{Process Model (Continuous Time)}
+\label{sec:proc}
+
+We separate (i) the quaternion attitude subsystem used by the right–multiplicative
+EKF and (ii) the linear OU–driven kinematic chain. The former is propagated on
+the manifold (nominal quaternion); the latter is a vector LTI SDE in continuous time.
+
+\subsection{Attitude subsystem (Q–MEKF nominal and error)}
+Let $\bm\omega_m$ be the measured gyro rate (body), $\mathbf b_g$ the gyro bias,
+and $\mathbf n_g$ gyro noise (white, zero–mean). The \emph{nominal} quaternion
+$\mathbf q$ (world$\to$body) obeys
+\begin{equation}
+\dot{\mathbf q} = \tfrac12\,\Omega\!\left(\bm\omega_m-\mathbf b_g\right)\,\mathbf q,
+\qquad
+\Omega(\bm\omega)=
+\begin{bmatrix}
+0 & -\bm\omega^\top\\[1ex]
+\bm\omega & -\Skew{\bm\omega}
+\end{bmatrix},
+\end{equation}
+with unit–norm enforcement in implementation. The gyro bias follows a random walk
+\begin{equation}
+\dot{\mathbf b}_g = \mathbf w_{bg}, \qquad \mathbf w_{bg}\sim\mathcal N(\mathbf 0,\ \mathbf Q_{bg}),
+\end{equation}
+where $\mathbf Q_{bg}$ is the continuous–time spectral density (per axis).
+
+For the right–multiplicative error state, we use a small rotation vector
+$\delta\bm\theta$ so that $\mathbf q^+ = \mathbf q\otimes\exp(\tfrac12\,\delta\bm\theta)$.
+Linearizing the attitude error dynamics gives the standard Q–MEKF form
+\begin{equation}
+\dot{\delta\bm\theta}
+\;\approx\;
+-\Skew{\bm\omega_m-\mathbf b_g}\,\delta\bm\theta
+\;-\;\mathbf n_g,
+\qquad
+\mathbf n_g\sim\mathcal N(\mathbf 0,\ \mathbf Q_g),
+\label{eq:att-error}
+\end{equation}
+where $\mathbf Q_g$ is the gyro white–noise spectral density in rad$^2$/s.
+
+\subsection{Linear kinematic chain with OU acceleration}
+Let $\mathbf a_w$ be the latent world–frame acceleration (NED). Along each axis
+the chain $\dot{\mathbf v}=\mathbf a_w$, $\dot{\mathbf p}=\mathbf v$,
+$\dot{\mathbf S}=\mathbf p$ is driven by a vector OU process
+\begin{equation}
+\dot{\mathbf a}_w
+= -\tfrac{1}{\tau_a}\,\mathbf a_w
++ \sqrt{\tfrac{2}{\tau_a}}\;\mathbf L_a\,\mathbf w_a(t),
+\qquad
+\mathbf L_a\mathbf L_a^\top = \bm\Sigma_a,\quad
+\mathbf w_a\ \text{standard white noise}.
+\label{eq:ou-ct}
+\end{equation}
+Here $\tau_a>0$ is the correlation time and $\bm\Sigma_a\succ0$ the stationary
+covariance (diagonal or correlated).
+
+We model the accelerometer bias as a (temperature–offset) random walk,
+\begin{equation}
+\dot{\mathbf b}_a = \mathbf w_{ba},\qquad
+\mathbf w_{ba}\sim\mathcal N(\mathbf 0,\ \mathbf Q_{ba}),
+\label{eq:ba-rw}
+\end{equation}
+while its temperature dependence $\mathbf b_a(T)=\mathbf b_{a0}+\mathbf k_a(T-T_0)$
+enters the \emph{measurement} model, not the process.
+
+\subsection{Continuous–time LTI SDE for the linear states}
+Stack the linear states as
+\[
+\mathbf x_{\rm lin}
+=
+\begin{bmatrix}
+\mathbf v\\ \mathbf p\\ \mathbf S\\ \mathbf a_w\\ \mathbf b_a
+\end{bmatrix}
+\in\mathbb R^{15}.
+\]
+Then $\mathbf x_{\rm lin}$ satisfies a vector LTI SDE
+\begin{equation}
+\dot{\mathbf x}_{\rm lin}(t)
+= \mathbf F_{\rm lin}\,\mathbf x_{\rm lin}(t)
++ \mathbf L_{\rm lin}\,\mathbf w_{\rm lin}(t),
+\qquad
+\mathbf w_{\rm lin}=
+\begin{bmatrix}
+\mathbf w_a\\ \mathbf w_{ba}
+\end{bmatrix},
+\label{eq:lti-sde}
+\end{equation}
+with block matrices
+\[
+\mathbf F_{\rm lin} =
+\begingroup\setlength\arraycolsep{6pt}
+\begin{bmatrix}
+\mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf I & \mathbf 0\\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0\\
+\mathbf 0 & \mathbf I & \mathbf 0 & \mathbf 0 & \mathbf 0\\
+\mathbf 0 & \mathbf 0 & \mathbf I & \mathbf 0 & \mathbf 0\\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & -\tfrac{1}{\tau_a}\mathbf I & \mathbf 0\\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0
+\end{bmatrix}
+\endgroup,\quad
+\mathbf L_{\rm lin} =
+\begingroup\setlength\arraycolsep{6pt}
+\begin{bmatrix}
+\mathbf 0 & \mathbf 0\\
+\mathbf 0 & \mathbf 0\\
+\mathbf 0 & \mathbf 0\\
+\mathbf 0 & \mathbf 0\\
+\sqrt{\tfrac{2}{\tau_a}}\;\mathbf L_a & \mathbf 0\\
+\mathbf 0 & \mathbf I
+\end{bmatrix}
+\endgroup,
+\]
+where each block is $3\times3$ and the block rows correspond to
+$[\mathbf v,\mathbf p,\mathbf S,\mathbf a_w,\mathbf b_a]$. The driving white
+noises are independent with spectral density
+\[
+\mathbf Q_c \equiv \mathbb E\!\big[\mathbf w_{\rm lin}\mathbf w_{\rm lin}^\top\big]
+=
+\mathrm{blkdiag}\big(\ \mathbf I_{3},\ \mathbf Q_{ba}\ \big).
+\]
+Equivalently, the \emph{effective} continuous–time diffusion for $\mathbf a_w$
+is $\mathbf Q_{a,\rm eff}= \tfrac{2}{\tau_a}\,\bm\Sigma_a$.
+
+\paragraph{Full process (attitude + linear).}
+The full continuous process combines \eqref{eq:att-error}, \eqref{eq:ou-ct},
+\eqref{eq:ba-rw}, and the kinematic chains. In the MEKF, propagation uses:
+(i) the nominal quaternion ODE and biases; (ii) a linearized error ODE for
+$\delta\bm\theta$ (and $\delta\mathbf b_g$) with spectral densities
+$\mathbf Q_g,\mathbf Q_{bg}$; (iii) the LTI SDE \eqref{eq:lti-sde} for
+$[\mathbf v,\mathbf p,\mathbf S,\mathbf a_w,\mathbf b_a]$ with diffusion
+$\{\tau_a,\bm\Sigma_a,\mathbf Q_{ba}\}$. Gravity $\mathbf g$ and temperature
+enter only through the measurement model, not the process.
