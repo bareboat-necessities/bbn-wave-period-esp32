@@ -71,29 +71,19 @@ $\bm\omega_m-\mathbf b_g$ is constant.  Under this standard Q-MEKF
 approximation, the small-angle attitude error $\delta\bm\theta$ evolves
 linearly, so both the attitude and the linear kinematic chains can be
 combined into a single continuous-time LTI stochastic differential
-equation.
+equation with full error-state vector.
 
-Let the full error-state vector be
 \[
-\mathbf x_{\rm err} =
-\begin{bmatrix}
-\delta\bm\theta\\[0.2ex]
-\mathbf b_g\\[0.2ex]
-\mathbf v\\[0.2ex]
-\mathbf p\\[0.2ex]
-\mathbf S\\[0.2ex]
-\mathbf a_w\\[0.2ex]
-\mathbf b_a
-\end{bmatrix}
-\in\mathbb R^{21},
 \qquad
 \dot{\mathbf x}_{\rm err}
 = \mathbf F\,\mathbf x_{\rm err}
 + \mathbf L\,\mathbf w,
 \]
+
 where $\mathbf w$ collects all driving white noises
 $\mathbf w=[\,\mathbf n_g^\top,\ \mathbf w_{bg}^\top,\
 \mathbf w_a^\top,\ \mathbf w_{ba}^\top\,]^\top$.
+
 The continuous-time dynamics are linearized about the nominal trajectory
 and take the block structure
 \[
@@ -143,6 +133,10 @@ Hence the full continuous-time process model compactly reads
 \mathbf Q_c = \mathbf L\,\mathbb E[\mathbf w\mathbf w^\top]\,\mathbf L^\top.
 \label{eq:full-sde}
 \end{equation}
+where $\mathbf F$ and $\mathbf L$ are the Jacobian (linearized) dynamics and
+noise-input matrices, and $\mathbf Q_c$ is the
+continuous-time spectral density of the driving white noises.
+
 
 Let $\mathbf P(t)$ be the error covariance. The \emph{propagation} (no measurement)
 obeys the continuous Lyapunov equation
@@ -162,6 +156,7 @@ the \emph{Kalman–Bucy Riccati} adds the information term
 \end{equation}
 Equations \eqref{eq:lyap-prop}–\eqref{eq:kbc} are the continuous counterparts of
 the discrete Joseph-form covariance update used in implementation.
+
 
 This unified linear system provides the foundation for analytic
 discretization in the next section: the per-axis exponential of
