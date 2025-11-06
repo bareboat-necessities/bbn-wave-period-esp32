@@ -1,0 +1,78 @@
+\subsection{Discretization of a generic LTI SDE over step $h$}
+\label{sec:lti-disc}
+
+Consider a linear time–invariant SDE
+\begin{equation}
+\dot{\delta\mathbf x}(t) = \mathbf F\,\delta\mathbf x(t) + \mathbf L\,\mathbf w_c(t),
+\qquad
+\mathbb E[\mathbf w_c(t)\mathbf w_c^\top(s)] = \mathbf Q_c\,\delta(t{-}s),
+\end{equation}
+with Jacobian (linearized) dynamics matrix $\mathbf F$, noise–input matrix $\mathbf L$,
+and continuous spectral density $\mathbf Q_c$.
+
+\paragraph{State transition via the matrix exponential.}
+Over a small step $h>0$, the exact discrete transition of the mean is
+\begin{equation}
+\delta\mathbf x(t{+}h) \;=\; \underbrace{e^{\mathbf F h}}_{\displaystyle \Phi(h)}\,\delta\mathbf x(t)
+\;+\; \int_{0}^{h} e^{\mathbf F (h-\tau)}\,\mathbf L\,\mathbf w_c(t{+}\tau)\,d\tau.
+\end{equation}
+The matrix exponential is defined by the absolutely convergent series
+$e^{\mathbf F h}=\sum_{k=0}^{\infty}\frac{(\mathbf F h)^k}{k!}$ and is computed in practice
+by scaling–squaring with Padé approximants. In this setting \(\Phi(h)=e^{\mathbf F h}\) is the
+\emph{discrete state transition}.
+
+\paragraph{Discrete process covariance.}
+Let $\mathbf Q_d(h)$ denote the process noise accrued over $[t,t{+}h]$. From the stochastic
+variation-of-constants formula,
+\begin{equation}
+\mathbf Q_d(h)
+\;=\;
+\int_{0}^{h} e^{\mathbf F \tau}\,\mathbf L\,\mathbf Q_c\,\mathbf L^\top\,e^{\mathbf F^\top \tau}\,d\tau.
+\label{eq:Qd-integral}
+\end{equation}
+This integral is exact for LTI systems and is positive semidefinite.
+
+\paragraph{Van Loan block–exponential construction (exact).}
+Define the $2n\times 2n$ block matrix (with $n$ the state dimension)
+\[
+\mathbf A =
+\begin{bmatrix}
+\mathbf F & \mathbf L\,\mathbf Q_c\,\mathbf L^\top \\
+\mathbf 0 & -\mathbf F^\top
+\end{bmatrix}.
+\]
+Then
+\begin{equation}
+e^{\mathbf A h}
+=
+\begin{bmatrix}
+\Phi(h) & \mathbf S(h)\\
+\mathbf 0 & \Phi(h)^{-\top}
+\end{bmatrix},
+\qquad
+\mathbf Q_d(h) \;=\; \mathbf S(h)\,\Phi(h)^\top.
+\label{eq:van-loan}
+\end{equation}
+This yields \emph{exact} $(\Phi,\mathbf Q_d)$ in one exponential.
+
+\paragraph{Small–step series (useful for $h\!\ll\!1$).}
+For analysis or tiny $h$, the first terms are
+\[
+\Phi(h) = \mathbf I + \mathbf F h + \tfrac12 \mathbf F^2 h^2 + \mathcal O(h^3),\qquad
+\mathbf Q_d(h) = \mathbf L\mathbf Q_c\mathbf L^\top\,h
++ \tfrac12\!\left(\mathbf F\,\mathbf L\mathbf Q_c\mathbf L^\top
++ \mathbf L\mathbf Q_c\mathbf L^\top \mathbf F^\top\right) h^2 + \mathcal O(h^3).
+\]
+(For OU subsystems we later replace these by closed forms to avoid cancellation.)
+
+\paragraph{Discrete Kalman prediction (time update).}
+Given $(\hat{\mathbf x}_k,\mathbf P_k)$ at $t_k$, the prediction to $t_{k+1}=t_k{+}h$ is
+\begin{align}
+\hat{\mathbf x}_{k+1|k} &= \Phi(h)\,\hat{\mathbf x}_k,\\
+\mathbf P_{k+1|k} &= \Phi(h)\,\mathbf P_k\,\Phi(h)^\top \;+\; \mathbf Q_d(h).
+\end{align}
+These equations are the discrete counterparts of the continuous Lyapunov/Riccati
+flow with $\mathbf F$ and $\mathbf L$ the Jacobian dynamics and noise–input matrices
+defined in \S\ref{sec:proc-unified-lti}. In our implementation, $\Phi$ and $\mathbf Q_d$
+are either (i) computed analytically for the OU–driven kinematic blocks, or
+(ii) obtained from the Van Loan construction \eqref{eq:van-loan} for generic blocks.
