@@ -17,11 +17,11 @@ Ornstein-Uhlenbeck (OU) acceleration process.
 
 The Quaternion Multiplicative Extended Kalman Filter (Q-MEKF) is a widely adopted algorithm for spacecraft and vehicle attitude estimation. It is designed to efficiently and accurately fuse data from sensors like gyroscopes, star trackers, and sun sensors to determine orientation. The key innovation of the Q-MEKF is its method of handling the unit quaternion, which is a four-dimensional parameter used to represent 3D rotations without singularities. Instead of including the full quaternion directly in the state vector of the Kalman filter---which would violate the filter's assumption of a Gaussian state vector due to the quaternion's unit norm constraint---the Q-MEKF maintains the quaternion as a separate, primary attitude reference. The Kalman filter's state vector is then used to estimate only a small, error angle vector (a 3D perturbation), \(\delta\boldsymbol{\theta}\), which is assumed to be Gaussian. This error quaternion is multiplicatively applied to the primary quaternion estimate to correct it, ensuring the result always respects the unit norm constraint and providing a computationally stable and robust estimation process.
 
-\section*{Quaternion Dynamics in Continuous Time}
+\subsection*{Quaternion Dynamics in Continuous Time}
 
 The dynamics of a quaternion in continuous time describe how the orientation of a rigid body evolves when it is undergoing rotational motion. The time derivative of the quaternion, \(\dot{\mathbf{q}}\), is fundamentally linked to the body's angular velocity vector, \(\boldsymbol{\omega} = [\omega_x, \omega_y, \omega_z]^T\), measured by a gyroscope. This relationship is governed by a bilinear ordinary differential equation (ODE), which is derived from the kinematics of rotation. The quaternion must maintain its unit norm, \(\|\mathbf{q}\| = 1\), during this propagation to remain a valid representation of attitude.
 
-\section*{Explanation of its Nonlinear ODE}
+\subsection*{Explanation of its Nonlinear ODE}
 
 The nonlinear Ordinary Differential Equation (ODE) that governs quaternion dynamics is:
 %
@@ -34,6 +34,53 @@ Here, \(\mathbf{q}\) is the unit quaternion representing the attitude, \(\boldsy
 \section*{How Q-MEKF Works Around the Nonlinearity}
 
 The Q-MEKF elegantly circumvents the challenges of the nonlinear quaternion ODE and the unit norm constraint by \textit{not} keeping the full quaternion in the Kalman filter's state vector. Instead, the primary quaternion estimate is propagated separately using the nonlinear ODE (often numerically integrated). The Kalman filter's state vector is reserved for a minimal representation of the \textit{attitude error}: a 3-element small-angle correction vector, \(\delta\boldsymbol{\theta}\). This vector parameterizes a small error quaternion, \(\delta\mathbf{q} \approx \begin{bmatrix} 1 & \frac{1}{2}\delta\boldsymbol{\theta}^T \end{bmatrix}^T\), which is assumed to be Gaussian. During the filter's update step, the estimated error state \(\delta\boldsymbol{\theta}\) is used to correct the primary quaternion via quaternion multiplication. This multiplicative correction ensures the quaternion remains normalized, while the use of a small, linear error state within the Kalman filter framework preserves the validity of the EKF's assumptions and linearizations.
+
+
+
+
+\subsection*{Small Angle Error and its Dynamics}
+
+
+The small-angle error is represented by a 3-element vector, \(\delta\boldsymbol{\theta} = [\delta\theta_1, \delta\theta_2, \delta\theta_3]^T\). This vector parameterizes an error quaternion, \(\delta\mathbf{q}\), which represents a small rotation. The exact expression for the error quaternion is:
+%
+\[
+\delta\mathbf{q} = \begin{bmatrix}
+\cos\left(\frac{\|\delta\boldsymbol{\theta}\|}{2}\right) \\
+\frac{\delta\boldsymbol{\theta}}{\|\delta\boldsymbol{\theta}\|} \sin\left(\frac{\|\delta\boldsymbol{\theta}\|}{2}\right)
+\end{bmatrix}.
+\]
+
+Under the assumption of small errors (\(\|\delta\boldsymbol{\theta}\| \ll 1\)), we apply first-order approximations: \(\cos(\alpha) \approx 1\) and \(\sin(\alpha) \approx \alpha\). This simplifies the error quaternion to its linearized form:
+%
+\[
+\delta\mathbf{q} \approx \begin{bmatrix} 1 \\ \frac{1}{2} \delta\boldsymbol{\theta} \end{bmatrix}.
+\]
+
+This first-order approximation is vital as it linearizes the relationship between the vector space of the error state \(\delta\boldsymbol{\theta}\) and the quaternion manifold, making it compatible with the Kalman filter framework.
+
+\subsection*{ODE for Small Angle Error Evolution}
+
+The continuous-time Ordinary Differential Equation (ODE) that governs the evolution of the small-angle error vector \(\delta\boldsymbol{\theta}\) is:
+%
+\[
+\dot{\delta\boldsymbol{\theta}} = - [\boldsymbol{\omega}\times] \, \delta\boldsymbol{\theta} + \delta\boldsymbol{\omega}
+\]
+%
+Where:
+\begin{itemize}
+    \item \(\dot{\delta\boldsymbol{\theta}}\) is the time derivative of the error angle vector.
+    \item \([\boldsymbol{\omega}\times]\) is the skew-symmetric cross-product matrix formed from the nominal angular velocity vector \(\boldsymbol{\omega}\), defined as:
+    \[
+    [\boldsymbol{\omega}\times] = \begin{bmatrix}
+    0 & -\omega_z & \omega_y \\
+    \omega_z & 0 & -\omega_x \\
+    -\omega_y & \omega_x & 0
+    \end{bmatrix}.
+    \]
+    \item \(\delta\boldsymbol{\omega}\) is the error in the gyroscope measurement (typically the gyro bias, which is often estimated as part of the state vector).
+\end{itemize}
+
+A critical assumption in deriving this linear ODE is that the \textbf{angular velocity \(\boldsymbol{\omega}\) is constant over the short sampling period} used for the prediction step. This allows the system to be treated as a linear time-invariant (LTI) system during that brief period, which is a fundamental requirement for the Kalman filter's prediction equations to hold accurately.
 
 
 
