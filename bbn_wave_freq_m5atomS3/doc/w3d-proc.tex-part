@@ -83,6 +83,105 @@ Where:
 A critical assumption in deriving this linear ODE is that the \textbf{angular velocity \(\boldsymbol{\omega}\) is constant over the short sampling period} used for the prediction step. This allows the system to be treated as a linear time-invariant (LTI) system during that brief period, which is a fundamental requirement for the Kalman filter's prediction equations to hold accurately.
 
 
+\section*{Q-MEKF Error State and LTI Formulation}
+
+\subsection*{State Vector and Bias Modeling}
+
+The Q-MEKF's state vector contains only the error states. A typical state vector, \(\bm{x}\), is:
+%
+\[
+\bm{x} = \begin{bmatrix} \delta\bm{\theta} \\ \delta\bm{b} \end{bmatrix}
+\]
+%
+Where:
+\begin{itemize}
+    \item \(\delta\bm{\theta}\) is the \(3 \times 1\) small-angle error vector.
+    \item \(\delta\bm{b}\) is the \(3 \times 1\) gyroscope bias error vector, defined as \(\delta\bm{b} = \bm{b}_{\text{true}} - \bm{b}_{\text{nominal}}\).
+\end{itemize}
+
+The true gyro bias is modeled as a random walk: \(\dot{\bm{b}}_{\text{true}} = \bm{w}_b\), where \(\bm{w}_b\) is a zero-mean Gaussian white noise process.
+
+\subsection*{Formulating the Linear Time-Invariant (LTI) SDE System}
+
+The dynamics of the error state are derived as follows:
+
+1. \textbf{Attitude Error Dynamics}:
+   \[
+   \dot{\delta\bm{\theta}} = - [\bm{\omega}_{\text{nom}}\times] \, \delta\bm{\theta} + \delta\bm{\omega}
+   \]
+   The gyro measurement is \(\bm{\omega}_{\text{meas}} = \bm{\omega}_{\text{true}} + \bm{b}_{\text{true}} + \bm{n}_w\). The nominal rate is \(\bm{\omega}_{\text{nom}} = \bm{\omega}_{\text{meas}} - \bm{b}_{\text{nom}}\). The error is \(\delta\bm{\omega} \approx -\delta\bm{b} - \bm{n}_w\). Substituting:
+   \[
+   \dot{\delta\bm{\theta}} = - [\bm{\omega}_{\text{nom}}\times] \, \delta\bm{\theta} - \delta\bm{b} - \bm{n}_w
+   \]
+
+2. \textbf{Bias Error Dynamics}:
+   \[
+   \dot{\delta\bm{b}} = \dot{\bm{b}}_{\text{true}} - \dot{\bm{b}}_{\text{nom}} = \bm{w}_b
+   \]
+
+Combining into a single LTI State-Space Model:
+%
+\[
+\begin{bmatrix}
+\dot{\delta\bm{\theta}} \\
+\dot{\delta\bm{b}}
+\end{bmatrix}
+=
+\begin{bmatrix}
+- [\bm{\omega}_{\text{nom}}\times] & -\mathbf{I}_3 \\
+\bm{0} & \bm{0}
+\end{bmatrix}
+\begin{bmatrix}
+\delta\bm{\theta} \\
+\delta\bm{b}
+\end{bmatrix}
++
+\begin{bmatrix}
+-\mathbf{I}_3 & \bm{0} \\
+\bm{0} & \mathbf{I}_3
+\end{bmatrix}
+\begin{bmatrix}
+\bm{n}_w \\
+\bm{w}_b
+\end{bmatrix}
+\]
+%
+Or, compactly:
+\[
+\dot{\bm{x}} = \mathbf{F} \bm{x} + \mathbf{G} \bm{w}
+\]
+This is a Linear Time-Invariant (LTI) Stochastic Differential Equation (SDE), valid under the assumption that \(\bm{\omega}_{\text{nom}}\) is constant over the propagation interval.
+
+\subsection*{From LTI SDE to Kalman Filter Model}
+
+The continuous-time model is \(\dot{\bm{x}} = \mathbf{F} \bm{x} + \mathbf{G} \bm{w}\). The discrete-time state transition matrix \(\bm{\Phi}\) is found by solving this LTI system over a time step \(h\):
+%
+\[
+\bm{\Phi} = \exp(\mathbf{F} h)
+\]
+%
+This is how and why matrix exponentials appear; they provide the exact solution for the state transition of an LTI system.
+
+The discrete-time process noise covariance matrix \(\mathbf{Q}_d\) is:
+%
+\[
+\mathbf{Q}_d = \int_{0}^{h} \bm{\Phi}(\tau) \, \mathbf{G} \mathbf{Q} \mathbf{G}^T \, \bm{\Phi}(\tau)^T  d\tau
+\]
+where \(\mathbf{Q}\) is the spectral density of the continuous noise \(\bm{w}\).
+
+\subsection*{Continuous-Time Covariance Formula}
+
+The evolution of the continuous-time error state covariance \(\mathbf{P}\) is given by the Lyapunov differential equation:
+%
+\[
+\dot{\mathbf{P}} = \mathbf{F} \mathbf{P} + \mathbf{P} \mathbf{F}^T + \mathbf{G} \mathbf{Q} \mathbf{G}^T
+\]
+%
+This describes how uncertainty propagates continuously. The discrete prediction \(\mathbf{P}_{k+1} = \bm{\Phi} \mathbf{P}_k \bm{\Phi}^T + \mathbf{Q}_d\) is the discrete-time solution to this equation.
+
+
+
+
 
 \subsection{Attitude Model}
 
