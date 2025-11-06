@@ -396,6 +396,211 @@ Q_{bb}=T Q_{bg},
 and pack $Q_{AA}$ as above; finally symmetrize and project to $\mathrm{PSD}$ lightly for robustness.
 
 
+%===============================================================================
+% Exact Discrete Process Covariance for the Attitude + Gyro-Bias Block
+%===============================================================================
+
+\section{Exact Discrete Process Covariance for the Attitude \texorpdfstring{$+$}{+} Gyro-Bias Block}
+\label{sec:qmekf_QAA_exact}
+
+\paragraph{Model and notation.}
+Let $\delta\theta\in\mathbb{R}^3$ be the right-multiplicative small-angle attitude error,
+$b_g\in\mathbb{R}^3$ the gyroscope bias, and $W=[\omega]_\times$ the skew-symmetric matrix of
+the (bias-corrected) angular rate $\omega\in\mathbb{R}^3$, assumed constant over one sample
+interval of length $T>0$.
+The continuous-time linearized error dynamics with white driving noises are
+\begin{equation}
+\dot{\delta\theta} \;=\; -\,W\,\delta\theta \;-\; b_g \;+\; w_g,
+\qquad
+\dot{b}_g \;=\; w_{bg},
+\label{eq:ct_model}
+\end{equation}
+where $w_g$ and $w_{bg}$ are zero-mean white processes with spectral densities
+$Q_g\succeq 0$ and $Q_{bg}\succeq 0$, respectively.
+In compact form $\dot{x}=F x + G w$ with
+\[
+x=\begin{bmatrix}\delta\theta\\ b_g\end{bmatrix},\quad
+F=\begin{bmatrix}-W & -I\\ 0 & 0\end{bmatrix},\quad
+G=\mathrm{blkdiag}(I,I),\quad
+Q_c=\mathrm{blkdiag}(Q_g, Q_{bg}).
+\]
+
+\paragraph{State transition over one step.}
+Define
+\begin{equation}
+R(t) \;=\; \exp(-W t),
+\qquad
+B(t) \;=\; -\int_0^t R(\tau)\,d\tau .
+\label{eq:R_and_B_def}
+\end{equation}
+Then the fundamental solution is
+\begin{equation}
+\Phi(t)=
+\begin{bmatrix}
+R(t) & B(t)\\
+0 & I
+\end{bmatrix},
+\qquad
+\Phi(T)=
+\begin{bmatrix}
+R(T) & B(T)\\
+0 & I
+\end{bmatrix}.
+\label{eq:Phi_block}
+\end{equation}
+
+\paragraph{Discrete process covariance.}
+The discrete covariance for the step $[0,T]$ is
+\begin{equation}
+Q_d \;=\; \int_{0}^{T} \Phi(T-\tau)\,G\,Q_c\,G^\top\,\Phi(T-\tau)^\top\, d\tau .
+\label{eq:Qd_master}
+\end{equation}
+Since $F$ is constant within the step, with the change of variables $s=T-\tau$ one obtains
+the block integrals
+\begin{equation}
+\boxed{~
+\begin{aligned}
+Q_{\theta\theta} &= \int_0^T R(s)\,Q_g\,R(s)^\top\,ds
+\;+\;
+\int_0^T B(s)\,Q_{bg}\,B(s)^\top\,ds,\\[2pt]
+Q_{\theta b} &= \int_0^T B(s)\,Q_{bg}\,ds,
+\qquad
+Q_{b\theta} = Q_{\theta b}^\top,\\[2pt]
+Q_{bb} &= T\,Q_{bg}.
+\end{aligned}
+~}
+\label{eq:Q_blocks}
+\end{equation}
+Thus the $6\times 6$ discrete covariance for $[\delta\theta^\top,\,b_g^\top]^\top$ is
+\begin{equation}
+Q_{AA}
+=
+\begin{bmatrix}
+Q_{\theta\theta} & Q_{\theta b}\\
+Q_{\theta b}^\top & Q_{bb}
+\end{bmatrix}.
+\label{eq:QAA_pack}
+\end{equation}
+
+\paragraph{Closed forms for $R(t)$, $B(t)$, and $\int B$.}
+Let $\theta(t)=\|\omega\|\,t$, $u=\omega/\|\omega\|$, and $K=[u]_\times$.
+Then
+\begin{equation}
+R(t) \;=\; I \;-\; \sin\theta(t)\,K \;+\; \bigl(1-\cos\theta(t)\bigr)\,K^2 .
+\label{eq:R_closed}
+\end{equation}
+With $W=[\omega]_\times$,
+\begin{equation}
+B(t) \;=\;
+-\Bigl[
+t\,I
+\;-\; \frac{1-\cos(\|\omega\|t)}{\|\omega\|^2}\,W
+\;+\; \frac{t-\frac{\sin(\|\omega\|t)}{\|\omega\|}}{\|\omega\|^2}\,W^2
+\Bigr].
+\label{eq:B_closed}
+\end{equation}
+The integral of $B$ over the step, needed for the cross block $Q_{\theta b}$, is
+\begin{equation}
+I_B \;:=\; \int_0^T B(s)\,ds
+\;=\;
+-\Bigl[
+\tfrac{1}{2}T^2\,I
+\;-\; \frac{T-\frac{\sin(\|\omega\|T)}{\|\omega\|}}{\|\omega\|^2}\,W
+\;+\; \frac{\tfrac{1}{2}T^2 + \frac{\cos(\|\omega\|T)-1}{\|\omega\|^2}}{\|\omega\|^2}\,W^2
+\Bigr].
+\label{eq:intB_closed}
+\end{equation}
+Using \eqref{eq:intB_closed}, the cross term is \(
+Q_{\theta b}=I_B\,Q_{bg}\) and \(Q_{b\theta}=Q_{bg}\,I_B^\top\).
+
+\paragraph{Evaluation of the remaining integrals.}
+The first term in \eqref{eq:Q_blocks} admits a simple exact form when $Q_g$ is isotropic:
+\begin{equation}
+Q_g=\sigma_g^2 I \;\;\Longrightarrow\;\;
+\int_{0}^{T} R(s)\,Q_g\,R(s)^\top ds
+\;=\; \sigma_g^2\,T\,I .
+\label{eq:IR_isotropic}
+\end{equation}
+For general anisotropic $Q_g$ (and likewise for the $BQB^\top$ term), an accurate and efficient
+evaluation is Simpson’s rule with three samples:
+\begin{align}
+I_R &:= \int_{0}^{T} R(s)\,Q_g\,R(s)^\top ds
+\;\approx\;
+\frac{T}{6}\Bigl(R(0)Q_gR(0)^\top + 4\,R(\tfrac{T}{2})Q_gR(\tfrac{T}{2})^\top + R(T)Q_gR(T)^\top\Bigr),
+\label{eq:IR_simpson}
+\\
+I_{BB} &:= \int_{0}^{T} B(s)\,Q_{bg}\,B(s)^\top ds
+\;\approx\;
+\frac{T}{6}\Bigl(B(0)Q_{bg}B(0)^\top + 4\,B(\tfrac{T}{2})Q_{bg}B(\tfrac{T}{2})^\top + B(T)Q_{bg}B(T)^\top\Bigr),
+\label{eq:IBB_simpson}
+\end{align}
+where $B(0)=0$ makes the first term of \eqref{eq:IBB_simpson} vanish.
+Then set
+\begin{equation}
+Q_{\theta\theta} \;\approx\; I_R + I_{BB},\qquad
+Q_{\theta b} = I_B\,Q_{bg},\qquad
+Q_{bb}=T\,Q_{bg}.
+\label{eq:assemble_blocks}
+\end{equation}
+
+\paragraph{Small-rate series (stability as $\|\omega\|\!\to\!0$).}
+When $\theta=\|\omega\|T$ is small, use the series
+\begin{equation}
+R(t) \approx I - W t + \tfrac{1}{2}W^2 t^2,
+\qquad
+B(t) \approx -\Bigl(t I - \tfrac{1}{2}W t^2 + \tfrac{1}{6}W^2 t^3\Bigr),
+\label{eq:small_series_RB}
+\end{equation}
+and
+\begin{equation}
+\int_0^T B(s)\,ds
+\;\approx\;
+-\Bigl(\tfrac{1}{2}T^2 I - \tfrac{1}{6} W T^3 + \tfrac{1}{24} W^2 T^4\Bigr),
+\label{eq:small_series_intB}
+\end{equation}
+which are the $O(T^2)$, $O(T^3)$, and $O(T^4)$-accurate limits of
+\eqref{eq:R_closed}–\eqref{eq:intB_closed}.
+The Simpson evaluations \eqref{eq:IR_simpson}–\eqref{eq:IBB_simpson} remain robust under these series.
+
+\paragraph{Units sanity.}
+$Q_g$ has units $\mathrm{rad}^2/\mathrm{s}$, hence $I_R$ and the gyro-noise part of $Q_{\theta\theta}$
+are in $\mathrm{rad}^2$.
+$Q_{bg}$ has units $\mathrm{rad}^2/\mathrm{s}^3$ (driving $\dot b_g$), so $T Q_{bg}$ has
+$\mathrm{rad}^2/\mathrm{s}^2$ (variance of a rate), and $I_B Q_{bg}$ has $\mathrm{rad}^2/\mathrm{s}$,
+matching the cross-covariance units.
+
+\paragraph{Implementation mapping and hygiene.}
+In the code:
+\begin{itemize}
+\item $Q_g \leftarrow \texttt{Qbase.topLeftCorner<3,3>()}$, \quad
+      $Q_{bg} \leftarrow \texttt{Qbase.bottomRightCorner<3,3>()}$.
+\item $R(t)$ and $B(t)$ are produced by \texttt{rot\_and\_B\_from\_wt\_(\,$\omega$, $t$\,)} using
+      the closed forms \eqref{eq:R_closed}–\eqref{eq:B_closed} with a small-rate series fallback
+      \eqref{eq:small_series_RB}.
+\item $I_R$ via \texttt{simpson\_R\_Q\_RT\_(\,$\omega$, $T$, $Q_g$\,)};
+      exact $I_R=\sigma_g^2 T I$ is used when $Q_g$ is (near) isotropic \eqref{eq:IR_isotropic}.
+\item $I_{BB}$ via \texttt{simpson\_B\_Q\_BT\_(\,$\omega$, $T$, $Q_{bg}$\,)}.
+\item $I_B$ via \texttt{integral\_B\_ds\_(\,$\omega$, $T$\,)} using \eqref{eq:small_series_intB} or
+      the closed form \eqref{eq:intB_closed}, then $Q_{\theta b}=I_B Q_{bg}$.
+\item Pack $Q_{AA}$ as in \eqref{eq:QAA_pack}, symmetrize
+      $Q_{AA}\leftarrow\frac{1}{2}(Q_{AA}+Q_{AA}^\top)$, and apply a light PSD projection
+      to remove tiny negative eigenvalues from rounding.
+\end{itemize}
+
+\paragraph{Summary (attitude+\texorpdfstring{$b_g$}{b\_g} block).}
+With $R$, $B$, $I_R$, $I_{BB}$, and $I_B$ as above,
+\[
+Q_{AA} \;=\;
+\begin{bmatrix}
+I_R + I_{BB} & I_B\,Q_{bg}\\[2pt]
+Q_{bg}\,I_B^\top & T\,Q_{bg}
+\end{bmatrix},
+\]
+which is the exact discrete covariance over one step for the block
+$[\delta\theta^\top,\,b_g^\top]^\top$ under the assumption of constant $\omega$ on $[0,T]$,
+with numerically stable evaluation for small $\|\omega\|T$.
+
+
 
 \subsection{Attitude Model}
 
