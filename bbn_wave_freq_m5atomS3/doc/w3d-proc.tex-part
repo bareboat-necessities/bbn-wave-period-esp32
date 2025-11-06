@@ -600,6 +600,186 @@ which is the exact discrete covariance over one step for the block
 $[\delta\theta^\top,\,b_g^\top]^\top$ under the assumption of constant $\omega$ on $[0,T]$,
 with numerically stable evaluation for small $\|\omega\|T$.
 
+%===============================================================================
+% Appendix: Closed-Form Derivations for R(t), B(t), and \int_0^T B(s)\,ds
+%===============================================================================
+
+\appendix
+\section*{Appendix: Closed-Form Derivations for \texorpdfstring{$R(t)$}{R(t)}, \texorpdfstring{$B(t)$}{B(t)}, and \texorpdfstring{$\int_0^T B(s)\,ds$}{∫ B}}
+\addcontentsline{toc}{section}{Appendix: Closed-Form Derivations for $R(t)$, $B(t)$, and $\int_0^T B(s)\,ds$}
+
+\paragraph{Assumptions and notation.}
+Let $\omega\in\mathbb{R}^3$ be the (bias-corrected) body angular rate, assumed constant on the step $[0,T]$.
+Let $W=[\omega]_\times$ be the $3\times 3$ skew matrix of $\omega$,
+$\Omega:=\|\omega\|$ (possibly $\Omega=0$), and $u:=\omega/\Omega$ if $\Omega>0$,
+with $K:=[u]_\times$.
+We use the right-multiplicative linearized attitude error model, so the attitude sub-dynamics
+use $R(t) = \exp(-W t)$ and
+\begin{equation}
+B(t)\;:=\;-\int_0^t R(\tau)\,d\tau .
+\label{eq:app_B_def}
+\end{equation}
+
+%----------------------------------------------------------------------------
+\subsection*{A. Closed form for \texorpdfstring{$R(t)$}{R(t)}}
+\addcontentsline{toc}{subsection}{A. Closed form for $R(t)$}
+
+When $\Omega>0$, Rodrigues' formula gives
+\begin{equation}
+R(t) \;=\; \exp(-W t) \;=\; I - \sin(\Omega t)\,K \;+\; \bigl(1-\cos(\Omega t)\bigr)\,K^2 .
+\label{eq:app_R_rodrigues}
+\end{equation}
+Equivalently, using $W=\Omega K$,
+\begin{equation}
+R(t) \;=\; I \;-\; \frac{\sin(\Omega t)}{\Omega}\,W
+\;+\; \frac{1-\cos(\Omega t)}{\Omega^2}\,W^2 .
+\label{eq:app_R_in_W}
+\end{equation}
+For $\Omega\to 0$, the Taylor expansion of \eqref{eq:app_R_in_W} yields the standard series
+\begin{equation}
+R(t) \;\approx\; I - W t + \tfrac{1}{2} W^2 t^2 \;+\; O(t^3).
+\label{eq:app_R_series}
+\end{equation}
+
+%----------------------------------------------------------------------------
+\subsection*{B. Closed form for \texorpdfstring{$B(t)$}{B(t)} as an integral of \texorpdfstring{$R$}{R}}
+\addcontentsline{toc}{subsection}{B. Closed form for $B(t)$ as an integral of $R$}
+
+By definition \eqref{eq:app_B_def},
+\[
+B(t) \;=\; - \int_0^t R(\tau)\,d\tau .
+\]
+Insert \eqref{eq:app_R_in_W} and integrate term-by-term. Using
+\[
+\int_0^t 1\,d\tau = t,\qquad
+\int_0^t \!\sin(\Omega\tau)\,d\tau = \frac{1-\cos(\Omega t)}{\Omega},\qquad
+\int_0^t \!\bigl(1-\cos(\Omega\tau)\bigr)\,d\tau = t - \frac{\sin(\Omega t)}{\Omega},
+\]
+we obtain
+\begin{align}
+\int_0^t\! R(\tau)\,d\tau
+&= t\,I \;-\; \frac{1-\cos(\Omega t)}{\Omega}\,\frac{W}{\Omega}
+\;+\; \Bigl( t - \frac{\sin(\Omega t)}{\Omega} \Bigr)\frac{W^2}{\Omega^2} \nonumber\\
+&= t\,I \;+\; \frac{\cos(\Omega t)-1}{\Omega^2}\,W
+\;+\; \frac{t - \frac{\sin(\Omega t)}{\Omega}}{\Omega^2}\,W^2 .
+\label{eq:app_intR}
+\end{align}
+Therefore
+\begin{equation}
+\boxed{~
+B(t) \;=\; -\Biggl[
+t\,I \;-\; \frac{1-\cos(\Omega t)}{\Omega^2}\,W
+\;+\; \frac{t - \frac{\sin(\Omega t)}{\Omega}}{\Omega^2}\,W^2
+\Biggr].
+~}
+\label{eq:app_B_closed}
+\end{equation}
+For $\Omega\to 0$, Taylor-expanding \eqref{eq:app_B_closed} gives the numerically stable series
+\begin{equation}
+B(t) \;\approx\; -\Bigl( t\,I - \tfrac{1}{2} W t^2 + \tfrac{1}{6} W^2 t^3 \Bigr) \;+\; O(t^4).
+\label{eq:app_B_series}
+\end{equation}
+
+%----------------------------------------------------------------------------
+\subsection*{C. Closed form for \texorpdfstring{$I_B=\int_0^T B(s)\,ds$}{IB = ∫ B}}
+\addcontentsline{toc}{subsection}{C. Closed form for $I_B=\int_0^T B(s)\,ds$}
+
+Starting from \eqref{eq:app_B_closed} written as
+\[
+B(s) \;=\; -\,s\,I \;+\; \frac{1-\cos(\Omega s)}{\Omega^2}\,W \;-\; \frac{s - \frac{\sin(\Omega s)}{\Omega}}{\Omega^2}\,W^2,
+\]
+integrate each scalar coefficient from $0$ to $T$:
+\[
+\int_0^T s\,ds = \tfrac{1}{2}T^2,\qquad
+\int_0^T \bigl(1-\cos(\Omega s)\bigr)\,ds
+= T - \frac{\sin(\Omega T)}{\Omega},
+\]
+\[
+\int_0^T \Bigl(s - \frac{\sin(\Omega s)}{\Omega}\Bigr)\,ds
+= \tfrac{1}{2}T^2 + \frac{\cos(\Omega T)-1}{\Omega^2}.
+\]
+Thus
+\begin{align}
+I_B \;:=\; \int_0^T B(s)\,ds
+&= -\,\tfrac{1}{2}T^2\,I \;+\; \frac{T - \frac{\sin(\Omega T)}{\Omega}}{\Omega^2}\,W
+\;-\; \frac{\tfrac{1}{2}T^2 + \frac{\cos(\Omega T)-1}{\Omega^2}}{\Omega^2}\,W^2 \nonumber\\[2pt]
+&= -\Biggl[
+\tfrac{1}{2}T^2\,I
+\;-\; \frac{T - \frac{\sin(\Omega T)}{\Omega}}{\Omega^2}\,W
+\;+\; \frac{\tfrac{1}{2}T^2 + \frac{\cos(\Omega T)-1}{\Omega^2}}{\Omega^2}\,W^2
+\Biggr].
+\label{eq:app_IB_closed}
+\end{align}
+For $\Omega\to 0$, Taylor-expanding \eqref{eq:app_IB_closed} yields
+\begin{equation}
+I_B \;\approx\; -\Bigl( \tfrac{1}{2}T^2\,I - \tfrac{1}{6} W T^3 + \tfrac{1}{24} W^2 T^4 \Bigr) \;+\; O(T^5),
+\label{eq:app_IB_series}
+\end{equation}
+which matches the series used for the small-rate branch.
+
+%----------------------------------------------------------------------------
+\subsection*{D. Consequences for the discrete covariance blocks}
+\addcontentsline{toc}{subsection}{D. Consequences for the discrete covariance blocks}
+
+With gyro white spectral density $Q_g\succeq 0$ and bias RW spectral density $Q_{bg}\succeq 0$,
+the attitude+bias discrete covariance over $[0,T]$ is
+\begin{equation}
+Q_{\theta\theta} \;=\; \int_0^T R(s)\,Q_g\,R(s)^\top ds \;+\; \int_0^T B(s)\,Q_{bg}\,B(s)^\top ds,
+\quad
+Q_{\theta b} \;=\; I_B\,Q_{bg},
+\quad
+Q_{bb} \;=\; T\,Q_{bg},
+\label{eq:app_Q_blocks}
+\end{equation}
+with $I_B$ given by \eqref{eq:app_IB_closed}. In the isotropic case $Q_g=\sigma_g^2 I$,
+\begin{equation}
+\int_0^T R(s)\,Q_g\,R(s)^\top ds
+= \sigma_g^2 \int_0^T R(s)R(s)^\top ds
+= \sigma_g^2 \int_0^T I\, ds
+= \sigma_g^2\,T\,I .
+\label{eq:app_IR_isotropic}
+\end{equation}
+For general anisotropic $Q_g$, a highly accurate, low-cost evaluation is Simpson’s rule:
+\begin{align}
+\int_0^T R(s)\,Q_g\,R(s)^\top ds
+&\approx \frac{T}{6}\Bigl(R(0)Q_gR(0)^\top + 4\,R(\tfrac{T}{2})Q_gR(\tfrac{T}{2})^\top + R(T)Q_gR(T)^\top\Bigr),
+\label{eq:app_IR_simpson}\\
+\int_0^T B(s)\,Q_{bg}\,B(s)^\top ds
+&\approx \frac{T}{6}\Bigl(B(0)Q_{bg}B(0)^\top + 4\,B(\tfrac{T}{2})Q_{bg}B(\tfrac{T}{2})^\top + B(T)Q_{bg}B(T)^\top\Bigr),
+\label{eq:app_IBB_simpson}
+\end{align}
+with $B(0)=0$.
+
+%----------------------------------------------------------------------------
+\subsection*{E. Useful algebraic identities}
+\addcontentsline{toc}{subsection}{E. Useful algebraic identities}
+
+For any $a\in\mathbb{R}^3$ and $A=[a]_\times$:
+\[
+A^\top=-A,\qquad
+A^2 = a a^\top - \|a\|^2 I,\qquad
+K^2 = u u^\top - I \quad(\Omega>0).
+\]
+These identities are handy for series expansions, bounding norms, or expressing $W^2$ terms
+in \eqref{eq:app_B_closed} and \eqref{eq:app_IB_closed}.
+
+%----------------------------------------------------------------------------
+\subsection*{F. Summary}
+\addcontentsline{toc}{subsection}{F. Summary}
+
+Under the constant-$\omega$ assumption on $[0,T]$,
+\[
+R(t) = I - \frac{\sin(\Omega t)}{\Omega}\,W + \frac{1-\cos(\Omega t)}{\Omega^2}\,W^2,\qquad
+B(t) = -\Bigl[t\,I - \frac{1-\cos(\Omega t)}{\Omega^2}\,W + \frac{t-\frac{\sin(\Omega t)}{\Omega}}{\Omega^2}\,W^2\Bigr],
+\]
+\[
+I_B = \int_0^T B(s)\,ds
+= -\Bigl[\tfrac{1}{2}T^2\,I - \frac{T-\frac{\sin(\Omega T)}{\Omega}}{\Omega^2}\,W
++ \frac{\tfrac{1}{2}T^2 + \frac{\cos(\Omega T)-1}{\Omega^2}}{\Omega^2}\,W^2\Bigr],
+\]
+and the discrete covariance blocks for $[\delta\theta^\top,b_g^\top]^\top$ follow from
+\eqref{eq:app_Q_blocks}, with \eqref{eq:app_IR_isotropic}–\eqref{eq:app_IBB_simpson} providing
+exact/efficient evaluations.
 
 
 \subsection{Attitude Model}
