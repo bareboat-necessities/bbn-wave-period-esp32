@@ -270,6 +270,130 @@ where the blocks are:
 \noindent For the case of constant $\bm{\omega}$ along a principal axis and isotropic noises ($\mathbf{Q}_{\omega}=\sigma_{\omega}^2\mathbf{I}_3$, $\mathbf{Q}_{b}=\sigma_{b}^2\mathbf{I}_3$), these integrals yield closed-form expressions involving $\omega$, $\sin(\omega h)$, and $\cos(\omega h)$, providing the exact anisotropic coupling due to rotation.
 
 
+% Attitude + gyro-bias process covariance over one step
+
+\paragraph{Continuous-time model and notation.}
+Let $\delta\theta\in\mathbb{R}^3$ be the right-multiplicative small-angle attitude error,
+$b_g\in\mathbb{R}^3$ the gyro bias, and $W=[\omega]_\times$ the skew matrix of the (bias-corrected)
+body angular rate $\omega$, assumed constant over the step of length $T$.
+Gyro noise $w_g(t)$ and bias RW $w_{bg}(t)$ are zero-mean white with spectral densities
+$Q_g\succeq 0$ and $Q_{bg}\succeq 0$, respectively.
+The linearized error dynamics are
+\[
+\dot{\delta\theta} = -\,W\,\delta\theta \;-\; b_g \;+\; w_g,
+\qquad
+\dot{b}_g = w_{bg}.
+\]
+In compact form $\,\dot{x}=F x + G w\,$ with
+\[
+x=\begin{bmatrix}\delta\theta\\ b_g\end{bmatrix},\quad
+F=\begin{bmatrix}-W & -I\\ 0 & 0\end{bmatrix},\quad
+G=\mathrm{blkdiag}(I,I),\quad
+Q_c=\mathrm{blkdiag}(Q_g,Q_{bg}).
+\]
+
+\paragraph{State transition.}
+Define the rotation
+\[
+R(t)=\exp(-Wt),\qquad
+B(t)=-\int_0^t R(\tau)\,d\tau .
+\]
+Then the fundamental solution is
+\[
+\Phi(t)=\begin{bmatrix}R(t) & B(t)\\ 0 & I\end{bmatrix},
+\quad\Rightarrow\quad
+\Phi(T)=\begin{bmatrix}R(T) & B(T)\\ 0 & I\end{bmatrix}.
+\]
+
+\paragraph{Discrete process covariance.}
+The standard formula gives
+\[
+Q_d \;=\; \int_0^T \Phi(T-\tau)\,G\,Q_c\,G^\top\,\Phi(T-\tau)^\top\,d\tau .
+\]
+Because $F$ is constant within the step, this reduces to block integrals
+(with $s=T-\tau$ and changing variables):
+\[
+\boxed{~
+\begin{aligned}
+Q_{\theta\theta} &= \int_0^T R(s)\,Q_g\,R(s)^\top\,ds
+\;+\; \int_0^T B(s)\,Q_{bg}\,B(s)^\top\,ds,\\[2pt]
+Q_{\theta b} &= \int_0^T B(s)\,Q_{bg}\,ds,\qquad
+Q_{b\theta} = Q_{\theta b}^\top,\\[2pt]
+Q_{bb} &= \int_0^T I\,Q_{bg}\,I^\top\,ds \;=\; T\,Q_{bg}.
+\end{aligned}
+~}
+\]
+Hence the $6\times 6$ discrete covariance for $[\delta\theta^\top, b_g^\top]^\top$ is
+\[
+Q_{AA}
+=
+\begin{bmatrix}
+Q_{\theta\theta} & Q_{\theta b}\\
+Q_{\theta b}^\top & Q_{bb}
+\end{bmatrix}
+=
+\begin{bmatrix}
+I_R + I_{BB} & I_B\,Q_{bg}\\
+Q_{bg}\,I_B^\top & T\,Q_{bg}
+\end{bmatrix},
+\]
+where
+\[
+I_R := \int_0^T R(s)\,Q_g\,R(s)^\top ds,\qquad
+I_{BB} := \int_0^T B(s)\,Q_{bg}\,B(s)^\top ds,\qquad
+I_B := \int_0^T B(s)\,ds .
+\]
+
+\paragraph{Closed forms for $R(t)$, $B(t)$, and $\int B$.}
+Let $\theta=\|\omega\|\,t$, $u=\omega/\|\omega\|$, and $K=[u]_\times$.
+Then
+\[
+R(t)=I - \sin\theta\,K + (1-\cos\theta)\,K^2 .
+\]
+With $W=[\omega]_\times$,
+\[
+B(t) \;=\; -\Big[\, t\,I \;-\; \frac{1-\cos(\|\omega\| t)}{\|\omega\|^2}\,W
+\;+\; \frac{t - \frac{\sin(\|\omega\| t)}{\|\omega\|}}{\|\omega\|^2}\,W^2 \Big].
+\]
+The integral $I_B=\int_0^T B(s)\,ds$ has the closed form
+\[
+I_B \;=\; -\Big[ \tfrac{1}{2}T^2\,I
+\;-\; \frac{T-\frac{\sin(\|\omega\|T)}{\|\omega\|}}{\|\omega\|^2}\,W
+\;+\; \frac{\tfrac{1}{2}T^2 + \frac{\cos(\|\omega\|T)-1}{\|\omega\|^2}}{\|\omega\|^2}\,W^2 \Big].
+\]
+
+\paragraph{Isotropic $Q_g$ and practical evaluation.}
+If $Q_g=\sigma_g^2 I$, then
+\[
+I_R \;=\; \sigma_g^2\,T\,I \quad \text{(exact)}.
+\]
+For general anisotropic $Q_g$ and $Q_{bg}$, a highly accurate and cheap evaluation is Simpson’s rule:
+\[
+I_R \approx \frac{T}{6}\Big( R(0)\,Q_g\,R(0)^\top + 4\,R(\tfrac{T}{2})\,Q_g\,R(\tfrac{T}{2})^\top + R(T)\,Q_g\,R(T)^\top \Big),
+\]
+\[
+I_{BB} \approx \frac{T}{6}\Big( B(0)\,Q_{bg}\,B(0)^\top + 4\,B(\tfrac{T}{2})\,Q_{bg}\,B(\tfrac{T}{2})^\top + B(T)\,Q_{bg}\,B(T)^\top \Big),
+\]
+noting $B(0)=0$.
+
+\paragraph{Small-\(\|\omega\|\) series (for numerical stability).}
+As $\|\omega\|\to 0$,
+\[
+R(t) \approx I - W t + \tfrac{1}{2} W^2 t^2,\qquad
+B(t) \approx -\big( t I - \tfrac{1}{2} W t^2 + \tfrac{1}{6} W^2 t^3 \big),
+\]
+\[
+\int_0^T B(s)\,ds \;\approx\; -\big( \tfrac{1}{2}T^2 I - \tfrac{1}{6} W T^3 + \tfrac{1}{24} W^2 T^4 \big).
+\]
+
+\paragraph{Final assembly.}
+Compute $I_R$, $I_{BB}$, $I_B$, then set
+\[
+Q_{\theta\theta}=I_R+I_{BB},\quad
+Q_{\theta b}=I_B Q_{bg},\quad
+Q_{bb}=T Q_{bg},
+\]
+and pack $Q_{AA}$ as above; finally symmetrize and project to $\mathrm{PSD}$ lightly for robustness.
 
 
 
