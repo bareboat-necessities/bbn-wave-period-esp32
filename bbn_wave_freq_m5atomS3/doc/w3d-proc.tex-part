@@ -183,6 +183,96 @@ This describes how uncertainty propagates continuously. The discrete prediction 
 
 
 
+\section*{Discretization of Process Noise Covariance Q}
+
+\subsection*{Typical Isotropic Discretization}
+
+A common isotropic approximation, valid for small time steps $h$, is:
+%
+\[
+\mathbf{Q}_d \approx 
+\begin{bmatrix}
+\mathbf{Q}_{\theta\theta} & \mathbf{0} \\
+\mathbf{0} & \mathbf{Q}_{bb}
+\end{bmatrix}
+\]
+%
+where
+\[
+\mathbf{Q}_{\theta\theta} = \sigma_{\omega}^2 h \, \mathbf{I}_3, \quad 
+\mathbf{Q}_{bb} = \sigma_{b}^2 h \, \mathbf{I}_3
+\]
+Here, $\sigma_{\omega}^2$ and $\sigma_{b}^2$ are the spectral densities of the gyro angular random walk and bias random walk, respectively. This is a zero-order hold approximation.
+
+\subsection*{Exact Symbolic Integration over Period $h$}
+
+The exact discrete process noise covariance is given by:
+%
+\[
+\mathbf{Q}_d = \int_{0}^{h} \bm{\Phi}(\tau) \, \mathbf{G} \mathbf{Q} \mathbf{G}^T \, \bm{\Phi}(\tau)^T  d\tau
+\]
+
+\noindent \textbf{Step 1: Define Matrices}
+\[
+\mathbf{F} = \begin{bmatrix} -[\bm{\omega}\times] & -\mathbf{I} \\ \mathbf{0} & \mathbf{0} \end{bmatrix}, \quad
+\mathbf{G} = \begin{bmatrix} -\mathbf{I} & \mathbf{0} \\ \mathbf{0} & \mathbf{I} \end{bmatrix}, \quad
+\mathbf{Q} = \begin{bmatrix} \mathbf{Q}_{\omega} & \mathbf{0} \\ \mathbf{0} & \mathbf{Q}_{b} \end{bmatrix}
+\]
+
+\noindent \textbf{Step 2: Compute Constant Term}
+\[
+\mathbf{G}\mathbf{Q}\mathbf{G}^T = 
+\begin{bmatrix} 
+\mathbf{Q}_{\omega} & \mathbf{0} \\
+\mathbf{0} & \mathbf{Q}_{b}
+\end{bmatrix}
+\]
+
+\noindent \textbf{Step 3: State Transition Matrix $\bm{\Phi}(\tau)$}\\
+For $\mathbf{A} = [\bm{\omega}\times]$, the matrix exponential $\bm{\Phi}(\tau) = \exp(\mathbf{F}\tau)$ is:
+\[
+\bm{\Phi}(\tau) = 
+\begin{bmatrix}
+\bm{\Psi}(\tau) & \bm{\Lambda}(\tau) \\
+\mathbf{0} & \mathbf{I}
+\end{bmatrix}
+\]
+where
+\[
+\bm{\Psi}(\tau) = \exp(-\mathbf{A}\tau), \quad
+\bm{\Lambda}(\tau) = -\mathbf{A}^{-1}(\mathbf{I} - \exp(-\mathbf{A}\tau))
+\]
+
+\noindent \textbf{Step 4: Form the Integrand}
+\[
+\bm{\Phi}(\tau) \mathbf{G}\mathbf{Q}\mathbf{G}^T \bm{\Phi}(\tau)^T = 
+\begin{bmatrix}
+\bm{\Psi}(\tau)\mathbf{Q}_{\omega}\bm{\Psi}(\tau)^T + \bm{\Lambda}(\tau)\mathbf{Q}_{b}\bm{\Lambda}(\tau)^T & \bm{\Lambda}(\tau)\mathbf{Q}_{b} \\
+\mathbf{Q}_{b}\bm{\Lambda}(\tau)^T & \mathbf{Q}_{b}
+\end{bmatrix}
+\]
+
+\noindent \textbf{Step 5: Integrate to obtain $\mathbf{Q}_d$}
+\[
+\mathbf{Q}_d = 
+\begin{bmatrix}
+\mathbf{Q}_{\theta\theta} & \mathbf{Q}_{\theta b} \\
+\mathbf{Q}_{\theta b}^T & \mathbf{Q}_{bb}
+\end{bmatrix}
+\]
+where the blocks are:
+\begin{align*}
+\mathbf{Q}_{\theta\theta} &= \int_0^h \left[ \bm{\Psi}(\tau)\mathbf{Q}_{\omega}\bm{\Psi}(\tau)^T + \bm{\Lambda}(\tau)\mathbf{Q}_{b}\bm{\Lambda}(\tau)^T \right] d\tau \\
+\mathbf{Q}_{\theta b} &= \int_0^h \bm{\Lambda}(\tau)\mathbf{Q}_{b}  d\tau \\
+\mathbf{Q}_{bb} &= \int_0^h \mathbf{Q}_{b}  d\tau = \mathbf{Q}_{b} h
+\end{align*}
+
+\noindent For the case of constant $\bm{\omega}$ along a principal axis and isotropic noises ($\mathbf{Q}_{\omega}=\sigma_{\omega}^2\mathbf{I}_3$, $\mathbf{Q}_{b}=\sigma_{b}^2\mathbf{I}_3$), these integrals yield closed-form expressions involving $\omega$, $\sin(\omega h)$, and $\cos(\omega h)$, providing the exact anisotropic coupling due to rotation.
+
+
+
+
+
 \subsection{Attitude Model}
 
 Let $q$ be the unit quaternion (body$\to$world) and $\omega$ the body angular rate.
