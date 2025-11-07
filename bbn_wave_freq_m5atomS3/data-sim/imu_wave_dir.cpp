@@ -245,6 +245,70 @@ template<> struct TrackerPolicy<TrackerType::ZEROCROSS> {
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 5.0f;
 
+static inline float deg_to_rad(float d){ return d * float(M_PI/180.0); }
+static inline float rad_to_deg(float r){ return r * float(180.0/M_PI); }
+
+template<typename T>
+static T mean(const std::vector<T>& v){
+    if (v.empty()) return T(NAN);
+    T s = 0; for (auto& x : v) s += x; return s / T(v.size());
+}
+template<typename T>
+static T median(std::vector<T> v){
+    if (v.empty()) return T(NAN);
+    size_t n = v.size(); std::nth_element(v.begin(), v.begin()+n/2, v.end());
+    if (n%2) return v[n/2];
+    auto lo = *std::max_element(v.begin(), v.begin()+n/2);
+    auto hi = v[n/2];
+    return (lo+hi)/T(2);
+}
+template<typename T>
+static T percentile(std::vector<T> v, double p01){  // p01 in [0,1]
+    if (v.empty()) return T(NAN);
+    if (p01 <= 0) return *std::min_element(v.begin(), v.end());
+    if (p01 >= 1) return *std::max_element(v.begin(), v.end());
+    std::sort(v.begin(), v.end());
+    double idx = p01 * (v.size()-1);
+    size_t i = size_t(std::floor(idx));
+    double frac = idx - double(i);
+    if (i+1 >= v.size()) return v[i];
+    return T(v[i]*(1.0-frac) + v[i+1]*frac);
+}
+
+// Circular mean/std for directions on [0,180):
+// Map θ → 2θ on circle, average, then halve result.
+struct CircStats {
+    float mean_deg = NAN;
+    float std_deg  = NAN;  // approx von Mises std (2σ-ish feel)
+};
+static CircStats circular_stats_180(const std::vector<float>& degs){
+    CircStats cs;
+    if (degs.empty()) return cs;
+    double C=0, S=0;
+    for (float d : degs){
+        double a2 = 2.0 * deg_to_rad(d);
+        C += std::cos(a2);
+        S += std::sin(a2);
+    }
+    C /= double(degs.size());
+    S /= double(degs.size());
+    double R = std::sqrt(C*C + S*S);
+    double a2_mean = std::atan2(S, C);           // in [-π, π]
+    double a_mean  = 0.5 * a2_mean;              // halve back to 180° space
+    float md = float(rad_to_deg(a_mean));
+    if (md < 0) md += 180.0f;                    // wrap to [0,180)
+    cs.mean_deg = md;
+
+    // circular std for doubled angles, then halve
+    // sigma = sqrt(-2 ln R) / 2  (in radians) → deg
+    if (R > 1e-9) {
+        cs.std_deg = float(rad_to_deg(0.5 * std::sqrt(std::max(0.0, -2.0*std::log(R)))));
+    } else {
+        cs.std_deg = 90.0f;
+    }
+    return cs;
+}
+
 template<TrackerType T>
 class WaveDirectionEstimator {
 public:
