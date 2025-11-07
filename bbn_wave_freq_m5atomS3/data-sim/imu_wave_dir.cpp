@@ -484,31 +484,32 @@ static void process_wave_file_direction_only(const std::string& filename,
     ofs.close();
     std::cout << "Wrote " << outname << "\n";
 
-    // Post-run report
+    // Post-run report (LAST 60 s ONLY)
     if (!times.empty()){
-        const float T_total = times.back() - times.front();
         const size_t N = times.size();
-        const float WINDOW_S = 60.0f;
-    
-        auto make_window_idx = [&](float seconds){
-            if (T_total <= seconds) return size_t(0);
-            float t0 = times.back() - seconds;
-            return size_t(std::lower_bound(times.begin(), times.end(), t0) - times.begin());
-        };
-    
+        const float  T_END = times.back();
+        const float  WINDOW_S = 60.0f;
+        const float  T0 = std::max(times.front(), T_END - WINDOW_S);
+
+        // index of first sample >= T0
+        size_t i0 = size_t(std::lower_bound(times.begin(), times.end(), T0) - times.begin());
+        if (i0 > N) i0 = N;
+        const size_t i1 = N;
+
         auto print_block = [&](const char* title, size_t i0, size_t i1){
             if (i0 >= i1) { std::cout << title << ": no data\n"; return; }
-    
+
             std::vector<float> vf(freqs.begin()+i0,    freqs.begin()+i1);
             std::vector<float> vd(dirs_deg.begin()+i0, dirs_deg.begin()+i1);
             std::vector<float> vu(unc_deg.begin()+i0,  unc_deg.begin()+i1);
             std::vector<float> vc(confs.begin()+i0,    confs.begin()+i1);
             std::vector<float> va(amps.begin()+i0,     amps.begin()+i1);
-    
+
             size_t good = 0; for (size_t k=i0; k<i1; ++k) good += good_mask[k];
             auto cs = circular_stats_180(vd);
-    
+
             std::cout << title << "\n";
+            std::cout << "  window_s: " << (times[i1-1] - times[i0]) << "\n";
             std::cout << "  samples: " << (i1 - i0) << "\n";
             std::cout << "  freq_hz: mean=" << mean(vf)
                       << "  median=" << median(vf)
@@ -520,18 +521,14 @@ static void process_wave_file_direction_only(const std::string& filename,
                       << "  median=" << median(vu)
                       << "  p95=" << percentile(vu,0.95) << "\n";
             std::cout << "  confidence: mean=" << mean(vc)
-                      << "  >" << CONF_THRESH << " count=" << good
+                      << "  >" << 20.0f << " count=" << good
                       << " (" << (100.0 * double(good)/double(i1-i0)) << "%)\n";
             std::cout << "  amplitude: mean=" << mean(va)
                       << "  median=" << median(va) << "\n";
         };
-    
-        std::cout << "=== Direction Report for " << outname << " ===\n";
-        std::cout << "  duration: " << T_total << " s, samples: " << N << "\n";
-        print_block("— Overall —", 0, N);
-    
-        size_t i0 = make_window_idx(WINDOW_S);
-        if (i0 < N) print_block("— Last 60 s —", i0, N);
+
+        std::cout << "=== Direction Report (last 60 s only) for " << outname << " ===\n";
+        print_block("— Last 60 s —", i0, i1);
         std::cout << "=============================================\n\n";
     }
 }
