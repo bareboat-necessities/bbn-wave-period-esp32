@@ -118,6 +118,10 @@ The main contributions of this work are:
   \item A unified parameter-adaptive mechanism that continuously tunes
         \(\tau\), \(\sigma_{aw}\), and \(R_S\) based on frequency
         tracking and time-domain variance estimation.
+  \item The method is not built on a physical model. It doesn't rely on any hydrodynamics
+        equations. Assumptions are oscillatory process and relatively constant spectrum of it (both
+        frequency and directional). The method is relying on high frequency of sampling and purely statistical
+        with independent axises.
   \item A Lyapunov-based stability proof for the adaptive update law,
         ensuring boundedness under realistic conditions.
   \item Empirical validation on simulated directional sea spectra,
