@@ -17,13 +17,15 @@
 
 #include <Eigen/Dense>
 
+using Eigen::Vector2f;
+using Eigen::Vector3f;
+using Eigen::Matrix2f;
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-using Eigen::Vector2f;
-using Eigen::Vector3f;
-using Eigen::Matrix2f;
+const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
 #include "WaveFilesSupport.h"
 #include "FrameConversions.h"
@@ -37,8 +39,6 @@ using Eigen::Matrix2f;
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
 
 #define FREQ_GUESS 0.3f   // Hz
-
-const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
 // CLI & sim flags
 static bool add_noise = true;
