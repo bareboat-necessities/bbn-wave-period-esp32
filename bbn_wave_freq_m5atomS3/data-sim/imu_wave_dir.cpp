@@ -433,7 +433,12 @@ static void process_wave_file_direction_only(const std::string& filename,
 
     WaveDataCSVReader reader(filename);
 
-    reader.for_each_record([&](const Wave_Data_Sample &rec) {
+    std::vector<float> times, freqs, dirs_deg, unc_deg, confs, amps;
+    std::vector<int>   good_mask;          // 0/1 mask (no <cstdint> needed)
+    constexpr float CONF_THRESH = 20.0f;   // same gates as your KalmanWaveDirection
+    constexpr float AMP_THRESH  = 0.08f;
+
+    reader.for_each_record([&](const Wave_Data_Sample &rec) {        
         // Raw BODY Z-up from CSV
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         if (add_noise) acc_b = apply_noise(acc_b, accel_noise);
@@ -459,6 +464,14 @@ static void process_wave_file_direction_only(const std::string& filename,
         const Vector2f d        = dir.getDirectionUnit();
         const Vector2f dxy      = dir.getFilteredXY();
 
+        times.push_back(rec.time);
+        freqs.push_back(f_hz);
+        dirs_deg.push_back(dir_deg);
+        unc_deg.push_back(dir_unc_deg);
+        confs.push_back(dir_conf);
+        amps.push_back(dir_amp);
+        good_mask.push_back((dir_conf > CONF_THRESH && dir_amp > AMP_THRESH) ? 1 : 0);
+        
         // CSV row
         ofs << rec.time << ","
             << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
@@ -473,6 +486,57 @@ static void process_wave_file_direction_only(const std::string& filename,
 
     ofs.close();
     std::cout << "Wrote " << outname << "\n";
+
+    // Post-run report
+    if (!times.empty()){
+        const float T_total = times.back() - times.front();
+        const size_t N = times.size();
+        const float WINDOW_S = 60.0f;
+    
+        auto make_window_idx = [&](float seconds){
+            if (T_total <= seconds) return size_t(0);
+            float t0 = times.back() - seconds;
+            return size_t(std::lower_bound(times.begin(), times.end(), t0) - times.begin());
+        };
+    
+        auto print_block = [&](const char* title, size_t i0, size_t i1){
+            if (i0 >= i1) { std::cout << title << ": no data\n"; return; }
+    
+            std::vector<float> vf(freqs.begin()+i0,    freqs.begin()+i1);
+            std::vector<float> vd(dirs_deg.begin()+i0, dirs_deg.begin()+i1);
+            std::vector<float> vu(unc_deg.begin()+i0,  unc_deg.begin()+i1);
+            std::vector<float> vc(confs.begin()+i0,    confs.begin()+i1);
+            std::vector<float> va(amps.begin()+i0,     amps.begin()+i1);
+    
+            size_t good = 0; for (size_t k=i0; k<i1; ++k) good += good_mask[k];
+            auto cs = circular_stats_180(vd);
+    
+            std::cout << title << "\n";
+            std::cout << "  samples: " << (i1 - i0) << "\n";
+            std::cout << "  freq_hz: mean=" << mean(vf)
+                      << "  median=" << median(vf)
+                      << "  p05=" << percentile(vf,0.05)
+                      << "  p95=" << percentile(vf,0.95) << "\n";
+            std::cout << "  dir_deg (0..180): mean_circ=" << cs.mean_deg
+                      << "  circ_std≈" << cs.std_deg << " deg\n";
+            std::cout << "  uncert_deg: mean=" << mean(vu)
+                      << "  median=" << median(vu)
+                      << "  p95=" << percentile(vu,0.95) << "\n";
+            std::cout << "  confidence: mean=" << mean(vc)
+                      << "  >" << CONF_THRESH << " count=" << good
+                      << " (" << (100.0 * double(good)/double(i1-i0)) << "%)\n";
+            std::cout << "  amplitude: mean=" << mean(va)
+                      << "  median=" << median(va) << "\n";
+        };
+    
+        std::cout << "=== Direction Report for " << outname << " ===\n";
+        std::cout << "  duration: " << T_total << " s, samples: " << N << "\n";
+        print_block("— Overall —", 0, N);
+    
+        size_t i0 = make_window_idx(WINDOW_S);
+        if (i0 < N) print_block("— Last 60 s —", i0, N);
+        std::cout << "=============================================\n\n";
+    }
 }
 
 int main(int argc, char* argv[]) {
