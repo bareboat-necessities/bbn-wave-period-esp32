@@ -15,30 +15,22 @@
 #include <memory>
 #include <cmath>
 
-// ===== Eigen (Arduino/non-Arduino) =====
-#ifdef EIGEN_NON_ARDUINO
-  #include <Eigen/Dense>
-#else
-  #include <ArduinoEigenDense.h>
+#include <Eigen/Dense>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
 #endif
 
 using Eigen::Vector2f;
 using Eigen::Vector3f;
 using Eigen::Matrix2f;
 
-// ===== Project headers you already have =====
 #include "WaveFilesSupport.h"
 #include "FrameConversions.h"
-
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "FrequencySmoother.h"
-
-// ===== Shared constants (match your sim) =====
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 #define ZERO_CROSSINGS_SCALE          1.0f
 #define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
@@ -51,7 +43,6 @@ const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 // CLI & sim flags
 static bool add_noise = true;
 
-// ===== Noise model (same style you used) =====
 struct NoiseModel {
     std::mt19937 rng;
     std::normal_distribution<float> dist;
@@ -69,7 +60,6 @@ Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
-// ===== KalmanWaveDirection (inlined from your header, unchanged except minor includes) =====
 class EIGEN_ALIGN_MAX KalmanWaveDirection {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -203,9 +193,6 @@ private:
     mutable Matrix2f  lastStableCovariance = Matrix2f::Identity();
 };
 
-// ===== TrackerPolicy + runtime wrapper =====
-enum class TrackerType { ARANOVSKIY, KALMANF, ZEROCROSS };
-
 template<TrackerType> struct TrackerPolicy; // fwd
 
 // Aranovskiy
@@ -255,7 +242,6 @@ template<> struct TrackerPolicy<TrackerType::ZEROCROSS> {
     }
 };
 
-// WaveDirectionEstimator (templated) + runtime-virtual wrapper
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 5.0f;
 
@@ -343,7 +329,6 @@ static std::unique_ptr<IWaveDir> make_dir_estimator(const std::string& name, flo
     /* default */        return std::make_unique<WaveDirWrap<TrackerType::KALMANF>>(dt);
 }
 
-// ===== Main processing (reads wave_data_*.csv; writes wdir_*.csv) =====
 static void process_wave_file_direction_only(const std::string& filename,
                                              float dt,
                                              IWaveDir& dir)
@@ -426,7 +411,6 @@ static void process_wave_file_direction_only(const std::string& filename,
     std::cout << "Wrote " << outname << "\n";
 }
 
-// ===== Main =====
 int main(int argc, char* argv[]) {
     float dt = 1.0f / 240.0f;
 
