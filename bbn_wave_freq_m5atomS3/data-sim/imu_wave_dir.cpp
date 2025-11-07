@@ -440,14 +440,11 @@ static void process_wave_file_direction_only(const std::string& filename,
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {        
         // Raw BODY Z-up from CSV
-        Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
-        if (add_noise) acc_b = apply_noise(acc_b, accel_noise);
-
-        // Map BODY Z-up → BODY NED
-        Vector3f acc_meas_ned = zu_to_ned(acc_b);
-
-        // Update direction pipeline
-        dir.update(acc_meas_ned);
+        Vector3f acc_body(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
+        if (add_noise) acc_body = apply_noise(acc_body, accel_noise);
+        
+        // Update direction pipeline with BODY-frame accelerations
+        dir.update(acc_body);
 
         // Reference (world Z-up) from file
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
@@ -477,7 +474,7 @@ static void process_wave_file_direction_only(const std::string& filename,
             << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
             << vel_ref.x()  << "," << vel_ref.y()  << "," << vel_ref.z()  << ","
             << acc_ref.x()  << "," << acc_ref.y()  << "," << acc_ref.z()  << ","
-            << acc_meas_ned.x() << "," << acc_meas_ned.y() << "," << acc_meas_ned.z() << ","
+            << acc_body.x() << "," << acc_body.y() << "," << acc_body.z() << ","
             << f_hz << "," << phase << ","
             << dir_deg << "," << dir_unc_deg << "," << dir_conf << "," << dir_amp << ","
             << d.x() << "," << d.y() << ","
