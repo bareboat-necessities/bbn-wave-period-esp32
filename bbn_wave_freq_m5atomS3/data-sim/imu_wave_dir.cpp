@@ -181,14 +181,13 @@ template<TrackerType T>
 class WaveDirectionEstimator {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    WaveDirectionEstimator(float dt,
+    WaveDirectionEstimator(
                            float f_init_hz = FREQ_GUESS,
                            float R_meas    = 0.03f*0.03f,
                            float Q_proc    = 1e-6f)
-    : dt_(dt)
-    , f_smoother_()
+    : f_smoother_()
     , freq_hz_(f_init_hz)
-    , dirFilter_(2.0f * float(M_PI) * f_init_hz, dt)
+    , dirFilter_(2.0f * float(M_PI) * f_init_hz)
     {
         dirFilter_.setMeasurementNoise(R_meas);
         dirFilter_.setProcessNoise(Q_proc);
