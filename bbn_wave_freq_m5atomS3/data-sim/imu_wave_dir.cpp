@@ -130,6 +130,7 @@ struct IFusion {
     virtual float     dir_amp()   const = 0;
     virtual Vector2f  dir_vec()   const = 0;
     virtual Vector2f  dfilt_xy()  const = 0;
+    virtual WaveDirection dir_sign_state() const = 0;
 };
 
 template<TrackerType T>
@@ -138,9 +139,9 @@ struct FusionWrap : IFusion {
 
     FusionWrap() {
         // initialize MEKF noise std devs (tweak as needed)
-        const Vector3f sigma_a(0.03f, 0.03f, 0.03f);
-        const Vector3f sigma_g(0.001f,0.001f,0.001f);
-        const Vector3f sigma_m(0.02f, 0.02f, 0.02f);
+        const Vector3f sigma_a(0.03f,  0.03f,  0.03f);
+        const Vector3f sigma_g(0.001f, 0.001f, 0.001f);
+        const Vector3f sigma_m(0.02f,  0.02f,  0.02f);
         f.initialize(sigma_a, sigma_g, sigma_m);
 
         // Optional: tune dir filter noises (BODY XY)
@@ -161,6 +162,7 @@ struct FusionWrap : IFusion {
     float    dir_amp()   const override { return f.dir().getAmplitude(); }
     Vector2f dir_vec()   const override { return f.dir().getDirection(); }
     Vector2f dfilt_xy()  const override { return f.dir().getFilteredSignal(); }
+    WaveDirection dir_sign_state() const override { return f.getDirSignState(); }
 };
 
 static std::unique_ptr<IFusion> make_fusion(const std::string& name, bool with_mag=false) {
