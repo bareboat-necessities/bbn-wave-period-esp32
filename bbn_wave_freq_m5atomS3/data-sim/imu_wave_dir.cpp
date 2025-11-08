@@ -194,14 +194,14 @@ public:
         f_smoother_.setInitial(f_init_hz);
     }
 
-    inline void update(const Vector3f& acc_body_ned) {
+    inline void update(const Vector3f& acc_body_ned, float dt) {
         const float a_z_inertial = acc_body_ned.z() + g_std;  // vertical inertial accel
         double f_raw = tracker_.run(a_z_inertial, dt_);
         float f_clamped = std::min(std::max(float(f_raw), MIN_FREQ_HZ), MAX_FREQ_HZ);
         freq_hz_ = f_smoother_.update(f_clamped);
 
         const float omega = 2.0f * float(M_PI) * freq_hz_;
-        dirFilter_.update(acc_body_ned.x(), acc_body_ned.y(), omega, dt_);
+        dirFilter_.update(acc_body_ned.x(), acc_body_ned.y(), omega, dt);
     }
 
     // Accessors
@@ -218,7 +218,6 @@ public:
     inline void setQ(float q) { dirFilter_.setProcessNoise(q); }
 
 private:
-    float dt_;
     TrackerPolicy<T> tracker_;
     FrequencySmoother<float> f_smoother_;
     float freq_hz_;
