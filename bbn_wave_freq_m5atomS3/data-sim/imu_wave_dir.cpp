@@ -1,6 +1,7 @@
 /*
-    Copyright (c) 2025
-    Mikhail Grushinskiy
+  Wave direction runner using SeaStateFusionFilter
+  Copyright (c) 2025
+  Mikhail Grushinskiy
 */
 
 #define EIGEN_NON_ARDUINO
@@ -19,27 +20,21 @@
 
 using Eigen::Vector2f;
 using Eigen::Vector3f;
-using Eigen::Matrix2f;
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-const float g_std = 9.80665f;     // standard gravity acceleration m/s²
+// Standard gravity (NED, +Z down)
+const float g_std = 9.80665f;
+
+#ifndef FREQ_GUESS
+#define FREQ_GUESS 0.3f   // Hz (for initial ω inside filters that use it)
+#endif
 
 #include "WaveFilesSupport.h"
 #include "FrameConversions.h"
-#include "AranovskiyFilter.h"
-#include "KalmANF.h"
-#include "SchmittTriggerFrequencyDetector.h"
-#include "FrequencySmoother.h"
-#include "KalmanWaveDirection.h"
-
-#define ZERO_CROSSINGS_SCALE          1.0f
-#define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
-#define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
-
-#define FREQ_GUESS 0.3f   // Hz
+#include "SeaStateFusionFilter.h"   // ← uses internal tracker (KalmANF/Aranovskiy/ZC) + dir filter
 
 // CLI & sim flags
 static bool add_noise = true;
@@ -49,7 +44,7 @@ struct NoiseModel {
     std::normal_distribution<float> dist;
     Vector3f bias;
 };
-NoiseModel make_noise_model(float sigma, float bias_range, unsigned seed) {
+static NoiseModel make_noise_model(float sigma, float bias_range, unsigned seed) {
     NoiseModel m{std::mt19937(seed),
                  std::normal_distribution<float>(0.0f, sigma),
                  Vector3f::Zero()};
@@ -57,65 +52,11 @@ NoiseModel make_noise_model(float sigma, float bias_range, unsigned seed) {
     m.bias = Vector3f(ub(m.rng), ub(m.rng), ub(m.rng));
     return m;
 }
-Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
+static Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
-template<TrackerType> struct TrackerPolicy; // fwd
-
-// Aranovskiy
-template<> struct TrackerPolicy<TrackerType::ARANOVSKIY> {
-    using Tracker = AranovskiyFilter<double>;
-    Tracker t;
-    TrackerPolicy() {
-        const double omega_up   = (FREQ_GUESS * 2.0) * (2.0 * M_PI);
-        const double k_gain     = 20.0;
-        const double x1_0       = 0.0;
-        const double omega_init = (FREQ_GUESS / 1.5) * 2.0 * M_PI;
-        const double theta_0    = -(omega_init * omega_init);
-        const double sigma_0    = theta_0;
-        t.setParams(omega_up, k_gain);
-        t.setState(x1_0, theta_0, sigma_0);
-    }
-    inline double run(float a_vert_inertial, float dt) {
-        t.update(double(a_vert_inertial) / double(g_std), double(dt));
-        return t.getFrequencyHz();
-    }
-};
-
-// KalmANF
-template<> struct TrackerPolicy<TrackerType::KALMANF> {
-    using Tracker = KalmANF<double>;
-    Tracker t = Tracker();
-    inline double run(float a_vert_inertial, float dt) {
-        double e;
-        return t.process(double(a_vert_inertial) / double(g_std), double(dt), &e);
-    }
-};
-
-// ZeroCross
-#define ZERO_CROSSINGS_HYSTERESIS 0.04f
-#define ZERO_CROSSINGS_PERIODS    1
-template<> struct TrackerPolicy<TrackerType::ZEROCROSS> {
-    using Tracker = SchmittTriggerFrequencyDetector;
-    Tracker t = Tracker(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
-    inline double run(float a_vert_inertial, float dt) {
-        const float f = t.update(a_vert_inertial / g_std,
-                                 ZERO_CROSSINGS_SCALE,
-                                 ZERO_CROSSINGS_DEBOUNCE_TIME,
-                                 ZERO_CROSSINGS_STEEPNESS_TIME,
-                                 dt);
-        if (f == SCHMITT_TRIGGER_FREQ_INIT || f == SCHMITT_TRIGGER_FALLBACK_FREQ) return FREQ_GUESS;
-        return f;
-    }
-};
-
-constexpr float MIN_FREQ_HZ = 0.1f;
-constexpr float MAX_FREQ_HZ = 5.0f;
-
-static inline float deg_to_rad(float d){ return d * float(M_PI/180.0); }
-static inline float rad_to_deg(float r){ return r * float(180.0/M_PI); }
-
+// ---------- Stats helpers ----------
 template<typename T>
 static T mean(const std::vector<T>& v){
     if (v.empty()) return T(NAN);
@@ -131,7 +72,7 @@ static T median(std::vector<T> v){
     return (lo+hi)/T(2);
 }
 template<typename T>
-static T percentile(std::vector<T> v, double p01){  // p01 in [0,1]
+static T percentile(std::vector<T> v, double p01){
     if (v.empty()) return T(NAN);
     if (p01 <= 0) return *std::min_element(v.begin(), v.end());
     if (p01 >= 1) return *std::max_element(v.begin(), v.end());
@@ -142,126 +83,93 @@ static T percentile(std::vector<T> v, double p01){  // p01 in [0,1]
     if (i+1 >= v.size()) return v[i];
     return T(v[i]*(1.0-frac) + v[i+1]*frac);
 }
+static inline float deg_to_rad(float d){ return d * float(M_PI/180.0); }
+static inline float rad_to_deg(float r){ return r * float(180.0/M_PI); }
 
-// Circular mean/std for directions on [0,180):
-// Map θ → 2θ on circle, average, then halve result.
+// Circular mean/std on [0,180)
 struct CircStats {
     float mean_deg = NAN;
-    float std_deg  = NAN;  // approx von Mises std (2σ-ish feel)
+    float std_deg  = NAN;
 };
 static CircStats circular_stats_180(const std::vector<float>& degs){
     CircStats cs;
     if (degs.empty()) return cs;
     double C=0, S=0;
     for (float d : degs){
-        double a2 = 2.0 * deg_to_rad(d);
+        const double a2 = 2.0 * deg_to_rad(d);
         C += std::cos(a2);
         S += std::sin(a2);
     }
     C /= double(degs.size());
     S /= double(degs.size());
-    double R = std::sqrt(C*C + S*S);
-    double a2_mean = std::atan2(S, C);           // in [-π, π]
-    double a_mean  = 0.5 * a2_mean;              // halve back to 180° space
+    const double R = std::sqrt(C*C + S*S);
+    const double a2_mean = std::atan2(S, C);
+    double a_mean  = 0.5 * a2_mean;
     float md = float(rad_to_deg(a_mean));
-    if (md < 0) md += 180.0f;                    // wrap to [0,180)
+    if (md < 0) md += 180.0f;
     cs.mean_deg = md;
-
-    // circular std for doubled angles, then halve
-    // sigma = sqrt(-2 ln R) / 2  (in radians) → deg
-    if (R > 1e-9) {
-        cs.std_deg = float(rad_to_deg(0.5 * std::sqrt(std::max(0.0, -2.0*std::log(R)))));
-    } else {
-        cs.std_deg = 90.0f;
-    }
+    cs.std_deg = (R > 1e-9) ? float(rad_to_deg(0.5 * std::sqrt(std::max(0.0, -2.0*std::log(R))))) : 90.0f;
     return cs;
 }
 
-template<TrackerType T>
-class WaveDirectionEstimator {
-public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    WaveDirectionEstimator(
-                           float f_init_hz = FREQ_GUESS,
-                           float R_meas    = 0.03f*0.03f,
-                           float Q_proc    = 1e-6f)
-    : f_smoother_()
-    , freq_hz_(f_init_hz)
-    , dirFilter_(2.0f * float(M_PI) * f_init_hz)
-    {
-        dirFilter_.setMeasurementNoise(R_meas);
-        dirFilter_.setProcessNoise(Q_proc);
-        f_smoother_.setInitial(f_init_hz);
-    }
+// ---------- Runtime wrapper over SeaStateFusionFilter<TrackerType> ----------
+struct IFusion {
+    virtual ~IFusion() = default;
+    virtual void  update(float dt, const Vector3f& gyro_body_ned, const Vector3f& acc_body_ned, float tempC=35.0f) = 0;
 
-    inline void update(const Vector3f& acc_body_ned, float dt) {
-        const float a_z_inertial = acc_body_ned.z() + g_std;  // vertical inertial accel
-        double f_raw = tracker_.run(a_z_inertial, dt);
-        float f_clamped = std::min(std::max(float(f_raw), MIN_FREQ_HZ), MAX_FREQ_HZ);
-        freq_hz_ = f_smoother_.update(f_clamped);
-
-        const float omega = 2.0f * float(M_PI) * freq_hz_;
-        dirFilter_.update(acc_body_ned.x(), acc_body_ned.y(), omega, dt);
-    }
-
-    // Accessors
-    inline float        getFrequencyHz() const { return freq_hz_; }
-    inline float        getDirectionDegrees() const { return dirFilter_.getDirectionDegrees(); }
-    inline float        getDirectionUncertaintyDegrees() const { return dirFilter_.getDirectionUncertaintyDegrees(); }
-    inline float        getConfidence() const { return dirFilter_.getConfidence(); }
-    inline float        getAmplitude() const { return dirFilter_.getAmplitude(); }
-    inline Vector2f     getDirectionUnit() const { return dirFilter_.getDirection(); }
-    inline Vector2f     getFilteredXY() const { return dirFilter_.getFilteredSignal(); }
-    inline float        getPhase() const { return dirFilter_.getPhase(); }
-
-    inline void setR(float r) { dirFilter_.setMeasurementNoise(r); }
-    inline void setQ(float q) { dirFilter_.setProcessNoise(q); }
-
-private:
-    TrackerPolicy<T> tracker_;
-    FrequencySmoother<float> f_smoother_;
-    float freq_hz_;
-    KalmanWaveDirection dirFilter_;
-};
-
-// Runtime interface
-struct IWaveDir {
-    virtual ~IWaveDir() = default;
-    virtual void   update(const Vector3f& acc_body_ned, float dt) = 0;
-    virtual float  getFrequencyHz() const = 0;
-    virtual float  getDirectionDegrees() const = 0;
-    virtual float  getDirectionUncertaintyDegrees() const = 0;
-    virtual float  getConfidence() const = 0;
-    virtual float  getAmplitude() const = 0;
-    virtual Vector2f getDirectionUnit() const = 0;
-    virtual Vector2f getFilteredXY() const = 0;
-    virtual float    getPhase() const = 0;
+    // telemetry
+    virtual float     freq_hz()   const = 0;
+    virtual float     phase()     const = 0;
+    virtual float     dir_deg()   const = 0;
+    virtual float     dir_unc()   const = 0;
+    virtual float     dir_conf()  const = 0;
+    virtual float     dir_amp()   const = 0;
+    virtual Vector2f  dir_vec()   const = 0;
+    virtual Vector2f  dfilt_xy()  const = 0;
 };
 
 template<TrackerType T>
-struct WaveDirWrap : IWaveDir {
-    WaveDirectionEstimator<T> est;
-    explicit WaveDirWrap() : est() {}
-    void update(const Vector3f& a, float dt) override { est.update(a, dt); }
-    float  getFrequencyHz() const override { return est.getFrequencyHz(); }
-    float  getDirectionDegrees() const override { return est.getDirectionDegrees(); }
-    float  getDirectionUncertaintyDegrees() const override { return est.getDirectionUncertaintyDegrees(); }
-    float  getConfidence() const override { return est.getConfidence(); }
-    float  getAmplitude() const override { return est.getAmplitude(); }
-    Vector2f getDirectionUnit() const override { return est.getDirectionUnit(); }
-    Vector2f getFilteredXY() const override { return est.getFilteredXY(); }
-    float    getPhase() const override { return est.getPhase(); }
+struct FusionWrap : IFusion {
+    SeaStateFusionFilter<T> f;
+
+    FusionWrap() {
+        // initialize MEKF noise std devs (tweak as needed)
+        const Vector3f sigma_a(0.03f, 0.03f, 0.03f);
+        const Vector3f sigma_g(0.001f,0.001f,0.001f);
+        const Vector3f sigma_m(0.02f, 0.02f, 0.02f);
+        f.initialize(sigma_a, sigma_g, sigma_m);
+
+        // Optional: tune dir filter noises (BODY XY)
+        f.dir().setMeasurementNoise(0.03f * 0.03f);
+        f.dir().setProcessNoise(1e-6f);
+    }
+
+    void update(float dt, const Vector3f& gyro_body_ned, const Vector3f& acc_body_ned, float tempC=35.0f) override {
+        f.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
+    }
+
+    // Telemetry passthrough
+    float    freq_hz()   const override { return f.getFreqHz(); }
+    float    phase()     const override { return f.dir().getPhase(); }
+    float    dir_deg()   const override { return f.dir().getDirectionDegrees(); }             // [0,180)
+    float    dir_unc()   const override { return f.dir().getDirectionUncertaintyDegrees(); }
+    float    dir_conf()  const override { return f.dir().getLastStableConfidence(); }
+    float    dir_amp()   const override { return f.dir().getAmplitude(); }
+    Vector2f dir_vec()   const override { return f.dir().getDirection(); }
+    Vector2f dfilt_xy()  const override { return f.dir().getFilteredSignal(); }
 };
 
-static std::unique_ptr<IWaveDir> make_dir_estimator(const std::string& name) {
-    if (name == "aran")  return std::make_unique<WaveDirWrap<TrackerType::ARANOVSKIY>>();
-    if (name == "zc")    return std::make_unique<WaveDirWrap<TrackerType::ZEROCROSS>>();
-    /* default */        return std::make_unique<WaveDirWrap<TrackerType::KALMANF>>();
+static std::unique_ptr<IFusion> make_fusion(const std::string& name, bool with_mag=false) {
+    (void)with_mag; // currently unused; SeaStateFusionFilter ctor has with_mag arg if you want it
+    if (name == "aran") return std::make_unique<FusionWrap<TrackerType::ARANOVSKIY>>();
+    if (name == "zc")   return std::make_unique<FusionWrap<TrackerType::ZEROCROSS>>();
+    return std::make_unique<FusionWrap<TrackerType::KALMANF>>(); // default
 }
 
+// ---------- Processing ----------
 static void process_wave_file_direction_only(const std::string& filename,
                                              float dt,
-                                             IWaveDir& dir)
+                                             IFusion& fusion)
 {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
@@ -271,12 +179,12 @@ static void process_wave_file_direction_only(const std::string& filename,
 
     // Output filename: wdir_*.csv
     std::string outname = filename;
-    auto pos_prefix = outname.find("wave_data_");
+    const auto pos_prefix = outname.find("wave_data_");
     if (pos_prefix != std::string::npos)
         outname.replace(pos_prefix, std::string("wave_data_").size(), "wdir_");
     else outname = "wdir_" + outname;
 
-    auto pos_ext = outname.rfind(".csv");
+    const auto pos_ext = outname.rfind(".csv");
     if (pos_ext == std::string::npos) outname += ".csv";
 
     std::cout << "Processing " << filename << " → " << outname << "\n";
@@ -295,37 +203,43 @@ static void process_wave_file_direction_only(const std::string& filename,
     // Noise models
     NoiseModel accel_noise = make_noise_model(0.03f, 0.02f, 1234);
     NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
-    (void)gyro_noise; // not used here, but kept for parity with your sim
 
     WaveDataCSVReader reader(filename);
 
     std::vector<float> times, freqs, dirs_deg, unc_deg, confs, amps;
-    std::vector<int>   good_mask;          // 0/1 mask (no <cstdint> needed)
-    constexpr float CONF_THRESH = 20.0f;   // same gates as your KalmanWaveDirection
+    std::vector<int>   good_mask;
+    constexpr float CONF_THRESH = 20.0f;   // same gates as KalmanWaveDirection
     constexpr float AMP_THRESH  = 0.08f;
 
-    reader.for_each_record([&](const Wave_Data_Sample &rec) {        
-        // Raw BODY Z-up from CSV
+    reader.for_each_record([&](const Wave_Data_Sample &rec) {
+        // BODY-frame IMU from CSV (Z-up in file spec; runner uses NED BODY)
         Vector3f acc_body(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
-        if (add_noise) acc_body = apply_noise(acc_body, accel_noise);
-        
-        // Update direction pipeline with BODY-frame accelerations
-        dir.update(acc_body, dt);
+        Vector3f gyro_body(0.0f, 0.0f, 0.0f);
+        // If you have gyro in CSV (e.g., rec.imu.gyro_bx/by/bz), map it here:
+        // gyro_body = { rec.imu.gyro_bx, rec.imu.gyro_by, rec.imu.gyro_bz };
 
-        // Reference (world Z-up) from file
+        if (add_noise) {
+            acc_body  = apply_noise(acc_body,  accel_noise);
+            gyro_body = apply_noise(gyro_body, gyro_noise);
+        }
+
+        // Run fusion (MEKF + tracker + smoother + direction)
+        fusion.update(dt, gyro_body, acc_body, /*tempC=*/35.0f);
+
+        // Reference WORLD (Z-up) from file
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
         Vector3f vel_ref (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
         Vector3f acc_ref (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
 
         // Results
-        const float f_hz        = dir.getFrequencyHz();
-        const float phase       = dir.getPhase();
-        const float dir_deg     = dir.getDirectionDegrees();
-        const float dir_unc_deg = dir.getDirectionUncertaintyDegrees();
-        const float dir_conf    = dir.getConfidence();
-        const float dir_amp     = dir.getAmplitude();
-        const Vector2f d        = dir.getDirectionUnit();
-        const Vector2f dxy      = dir.getFilteredXY();
+        const float f_hz        = fusion.freq_hz();
+        const float phase       = fusion.phase();
+        const float dir_deg     = fusion.dir_deg();
+        const float dir_unc_deg = fusion.dir_unc();
+        const float dir_conf    = fusion.dir_conf();
+        const float dir_amp     = fusion.dir_amp();
+        const Vector2f d        = fusion.dir_vec();
+        const Vector2f dxy      = fusion.dfilt_xy();
 
         times.push_back(rec.time);
         freqs.push_back(f_hz);
@@ -334,8 +248,7 @@ static void process_wave_file_direction_only(const std::string& filename,
         confs.push_back(dir_conf);
         amps.push_back(dir_amp);
         good_mask.push_back((dir_conf > CONF_THRESH && dir_amp > AMP_THRESH) ? 1 : 0);
-        
-        // CSV row
+
         ofs << rec.time << ","
             << disp_ref.x() << "," << disp_ref.y() << "," << disp_ref.z() << ","
             << vel_ref.x()  << "," << vel_ref.y()  << "," << vel_ref.z()  << ","
@@ -357,7 +270,6 @@ static void process_wave_file_direction_only(const std::string& filename,
         const float  WINDOW_S = 60.0f;
         const float  T0 = std::max(times.front(), T_END - WINDOW_S);
 
-        // index of first sample >= T0
         size_t i0 = size_t(std::lower_bound(times.begin(), times.end(), T0) - times.begin());
         if (i0 > N) i0 = N;
         const size_t i1 = N;
@@ -400,7 +312,7 @@ static void process_wave_file_direction_only(const std::string& filename,
 }
 
 int main(int argc, char* argv[]) {
-    float dt = 1.0f / 240.0f;
+    const float dt = 1.0f / 240.0f;
 
     std::string tracker_name = "kalmf"; // default
     for (int i = 1; i < argc; i++) {
@@ -415,7 +327,7 @@ int main(int argc, char* argv[]) {
               << ", noise=" << (add_noise ? "true" : "false")
               << ", dt=" << dt << " s\n";
 
-    auto dir = make_dir_estimator(tracker_name);
+    auto fusion = make_fusion(tracker_name /*, with_mag=*/false);
 
     std::vector<std::string> files;
     for (auto &entry : std::filesystem::directory_iterator(".")) {
@@ -430,7 +342,8 @@ int main(int argc, char* argv[]) {
     std::sort(files.begin(), files.end());
 
     for (const auto& fname : files)
-        process_wave_file_direction_only(fname, dt, *dir);
+        process_wave_file_direction_only(fname, dt, *fusion);
 
     return 0;
 }
+
