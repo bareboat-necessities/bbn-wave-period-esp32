@@ -36,7 +36,7 @@ void init_wave_filters();
 
 KalmanForWaveBasic wave_filter;
 KalmanWaveNumStableAlt wave_alt_filter;
-KalmanWaveDirection wave_dir_kalman(FREQ_GUESS, 0.004f);
+KalmanWaveDirection wave_dir_kalman(FREQ_GUESS);
 
 template <typename T> T clamp(T val, T min, T max) {
   return (val < min) ? min : (val > max) ? max : val;
