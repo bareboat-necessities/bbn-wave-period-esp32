@@ -194,6 +194,7 @@ public:
         // Direction filter also uses the SAME smoothed freq (ω = 2πf)
         const float omega = 2.0f * static_cast<float>(M_PI) * f_smooth;
         dir_filter_.update(acc.x(), acc.y(), omega, dt);
+        dir_sign_state_ = dir_sign_.update(acc.x(), acc.y(), a_z_inertial, dt);  
     }
 
     //  Magnetometer correction
