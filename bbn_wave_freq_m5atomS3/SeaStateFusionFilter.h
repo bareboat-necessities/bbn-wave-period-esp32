@@ -266,6 +266,9 @@ public:
     inline KalmanWaveDirection& dir() noexcept { return dir_filter_; }
     inline const KalmanWaveDirection& dir() const noexcept { return dir_filter_; }
 
+    inline WaveDirectionDetector<float>& dir_sign() noexcept { return dir_sign_; }
+    inline const WaveDirectionDetector<float>& dir_sign() const noexcept { return dir_sign_; }
+
 private:
     //  Internal tuning and adaptation
     void apply_tune() {
