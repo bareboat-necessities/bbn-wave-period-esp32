@@ -32,6 +32,10 @@ const float g_std = 9.80665f;
 #define FREQ_GUESS 0.3f   // Hz (for initial ω inside filters that use it)
 #endif
 
+#define ZERO_CROSSINGS_SCALE          1.0f
+#define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
+#define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
+
 #include "WaveFilesSupport.h"
 #include "FrameConversions.h"
 #include "SeaStateFusionFilter.h"   // ← uses internal tracker (KalmANF/Aranovskiy/ZC) + dir filter
