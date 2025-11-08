@@ -242,7 +242,7 @@ struct IWaveDir {
 template<TrackerType T>
 struct WaveDirWrap : IWaveDir {
     WaveDirectionEstimator<T> est;
-    explicit WaveDirWrap(float dt) : est(dt) {}
+    explicit WaveDirWrap() : est() {}
     void update(const Vector3f& a) override { est.update(a); }
     float  getFrequencyHz() const override { return est.getFrequencyHz(); }
     float  getDirectionDegrees() const override { return est.getDirectionDegrees(); }
@@ -254,10 +254,10 @@ struct WaveDirWrap : IWaveDir {
     float    getPhase() const override { return est.getPhase(); }
 };
 
-static std::unique_ptr<IWaveDir> make_dir_estimator(const std::string& name, float dt) {
-    if (name == "aran")  return std::make_unique<WaveDirWrap<TrackerType::ARANOVSKIY>>(dt);
-    if (name == "zc")    return std::make_unique<WaveDirWrap<TrackerType::ZEROCROSS>>(dt);
-    /* default */        return std::make_unique<WaveDirWrap<TrackerType::KALMANF>>(dt);
+static std::unique_ptr<IWaveDir> make_dir_estimator(const std::string& name) {
+    if (name == "aran")  return std::make_unique<WaveDirWrap<TrackerType::ARANOVSKIY>>();
+    if (name == "zc")    return std::make_unique<WaveDirWrap<TrackerType::ZEROCROSS>>();
+    /* default */        return std::make_unique<WaveDirWrap<TrackerType::KALMANF>>();
 }
 
 static void process_wave_file_direction_only(const std::string& filename,
@@ -416,7 +416,7 @@ int main(int argc, char* argv[]) {
               << ", noise=" << (add_noise ? "true" : "false")
               << ", dt=" << dt << " s\n";
 
-    auto dir = make_dir_estimator(tracker_name, dt);
+    auto dir = make_dir_estimator(tracker_name);
 
     std::vector<std::string> files;
     for (auto &entry : std::filesystem::directory_iterator(".")) {
