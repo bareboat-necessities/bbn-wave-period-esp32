@@ -259,7 +259,10 @@ public:
     }
 
     inline auto& mekf() noexcept { return *mekf_; }
+    inline const auto& mekf() const noexcept { return *mekf_; }
+
     inline KalmanWaveDirection& dir() noexcept { return dir_filter_; }
+    inline const KalmanWaveDirection& dir() const noexcept { return dir_filter_; }
 
 private:
     //  Internal tuning and adaptation
