@@ -90,6 +90,21 @@ static T percentile(std::vector<T> v, double p01){
 static inline float deg_to_rad(float d){ return d * float(M_PI/180.0); }
 static inline float rad_to_deg(float r){ return r * float(180.0/M_PI); }
 
+static inline const char* wave_dir_to_cstr(WaveDirection w){
+    switch (w){
+        case FORWARD:     return "TOWARD";
+        case BACKWARD:    return "AWAY";
+        default:          return "UNCERTAIN";
+    }
+}
+static inline int wave_dir_to_num(WaveDirection w){
+    switch (w){
+        case FORWARD:     return +1;
+        case BACKWARD:    return -1;
+        default:          return 0;
+    }
+}
+
 // Circular mean/std on [0,180)
 struct CircStats {
     float mean_deg = NAN;
@@ -202,6 +217,7 @@ static void process_wave_file_direction_only(const std::string& filename,
         << "acc_meas_x,acc_meas_y,acc_meas_z,"
         << "freq_hz,phase,"
         << "dir_deg,dir_uncert_deg,dir_conf,dir_amp,"
+        << "dir_sign,dir_sign_num," 
         << "dir_vec_x,dir_vec_y,"
         << "dfilt_ax,dfilt_ay\n";
 
@@ -213,6 +229,8 @@ static void process_wave_file_direction_only(const std::string& filename,
 
     std::vector<float> times, freqs, dirs_deg, unc_deg, confs, amps;
     std::vector<int>   good_mask;
+    std::vector<int>   signs_num;  // -1 AWAY, 0 UNCERTAIN, +1 TOWARD
+  
     constexpr float CONF_THRESH = 20.0f;   // same gates as KalmanWaveDirection
     constexpr float AMP_THRESH  = 0.08f;
 
@@ -237,21 +255,25 @@ static void process_wave_file_direction_only(const std::string& filename,
         Vector3f acc_ref (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
 
         // Results
-        const float f_hz        = fusion.freq_hz();
-        const float phase       = fusion.phase();
-        const float dir_deg     = fusion.dir_deg();
-        const float dir_unc_deg = fusion.dir_unc();
-        const float dir_conf    = fusion.dir_conf();
-        const float dir_amp     = fusion.dir_amp();
-        const Vector2f d        = fusion.dir_vec();
-        const Vector2f dxy      = fusion.dfilt_xy();
-
+        const float f_hz         = fusion.freq_hz();
+        const float phase        = fusion.phase();
+        const float dir_deg      = fusion.dir_deg();
+        const float dir_unc_deg  = fusion.dir_unc();
+        const float dir_conf     = fusion.dir_conf();
+        const float dir_amp      = fusion.dir_amp();
+        const Vector2f d         = fusion.dir_vec();
+        const Vector2f dxy       = fusion.dfilt_xy();
+        const WaveDirection sign = fusion.dir_sign_state();
+        const char* sign_str     = wave_dir_to_cstr(sign);
+        const int   sign_num     = wave_dir_to_num(sign);
+      
         times.push_back(rec.time);
         freqs.push_back(f_hz);
         dirs_deg.push_back(dir_deg);
         unc_deg.push_back(dir_unc_deg);
         confs.push_back(dir_conf);
         amps.push_back(dir_amp);
+        signs_num.push_back(sign_num);
         good_mask.push_back((dir_conf > CONF_THRESH && dir_amp > AMP_THRESH) ? 1 : 0);
 
         ofs << rec.time << ","
@@ -261,6 +283,7 @@ static void process_wave_file_direction_only(const std::string& filename,
             << acc_body.x() << "," << acc_body.y() << "," << acc_body.z() << ","
             << f_hz << "," << phase << ","
             << dir_deg << "," << dir_unc_deg << "," << dir_conf << "," << dir_amp << ","
+            << sign_str << "," << sign_num << "," 
             << d.x() << "," << d.y() << ","
             << dxy.x() << "," << dxy.y() << "\n";
     });
@@ -291,6 +314,14 @@ static void process_wave_file_direction_only(const std::string& filename,
             size_t good = 0; for (size_t k=i0; k<i1; ++k) good += good_mask[k];
             auto cs = circular_stats_180(vd);
 
+            int nToward = 0, nAway = 0, nUnc = 0;
+            for (size_t k=i0; k<i1; ++k){
+                const int s = signs_num[k];
+                if (s > 0) ++nToward; else if (s < 0) ++nAway; else ++nUnc;
+            }
+            const int nWin = int(i1 - i0);
+            auto pct = [&](int n){ return (nWin > 0) ? (100.0 * double(n) / double(nWin)) : 0.0; };
+          
             std::cout << title << "\n";
             std::cout << "  window_s: " << (times[i1-1] - times[i0]) << "\n";
             std::cout << "  samples: " << (i1 - i0) << "\n";
@@ -308,6 +339,9 @@ static void process_wave_file_direction_only(const std::string& filename,
                       << " (" << (100.0 * double(good)/double(i1-i0)) << "%)\n";
             std::cout << "  amplitude: mean=" << mean(va)
                       << "  median=" << median(va) << "\n";
+            std::cout << "  sign: TOWARD=" << nToward << " (" << pct(nToward) << "%)"
+                      << "  AWAY=" << nAway << " (" << pct(nAway) << "%)"
+                      << "  UNCERTAIN=" << nUnc << " (" << pct(nUnc) << "%)\n";
         };
 
         std::cout << "=== Direction Report (last 60 s only) for " << outname << " ===\n";
