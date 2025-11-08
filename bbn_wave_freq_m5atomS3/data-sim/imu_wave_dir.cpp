@@ -196,7 +196,7 @@ public:
 
     inline void update(const Vector3f& acc_body_ned, float dt) {
         const float a_z_inertial = acc_body_ned.z() + g_std;  // vertical inertial accel
-        double f_raw = tracker_.run(a_z_inertial, dt_);
+        double f_raw = tracker_.run(a_z_inertial, dt);
         float f_clamped = std::min(std::max(float(f_raw), MIN_FREQ_HZ), MAX_FREQ_HZ);
         freq_hz_ = f_smoother_.update(f_clamped);
 
@@ -242,7 +242,7 @@ template<TrackerType T>
 struct WaveDirWrap : IWaveDir {
     WaveDirectionEstimator<T> est;
     explicit WaveDirWrap() : est() {}
-    void update(const Vector3f& a, float dt) override { est.update(a); }
+    void update(const Vector3f& a, float dt) override { est.update(a, dt); }
     float  getFrequencyHz() const override { return est.getFrequencyHz(); }
     float  getDirectionDegrees() const override { return est.getDirectionDegrees(); }
     float  getDirectionUncertaintyDegrees() const override { return est.getDirectionUncertaintyDegrees(); }
