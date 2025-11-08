@@ -230,7 +230,7 @@ void KalmanWaveDirection_test_1() {
   filter.setProcessNoise(1e-6f);
 
   std::ofstream out("wave_dir.csv");
-  out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence,deg,uncertaintyDeg\n";
+  out << "t,ax,ay,frequency,amplitude,phase,confidence,deg,uncertaintyDeg\n";
 
   for (int i = 0; i < num_steps; ++i) {
     float t = i * delta_t;
@@ -238,21 +238,18 @@ void KalmanWaveDirection_test_1() {
     KalmanWaveDirection_test_signal(t, freq, ax, ay, dist, generator);
 
     filter.update(ax, ay, freq, delta_t);
-    float filtered_ax = filter.getFilteredSignal().x();
-    float filtered_ay = filter.getFilteredSignal().y();
     float amplitude = filter.getAmplitude();
     float phase = filter.getPhase();
     float confidence = filter.getConfidence();
     float deg = filter.getDirectionDegrees();
     float uncertaintyDeg = filter.getDirectionUncertaintyDegrees();
 
-    out << t << "," << ax << "," << ay << "," << filtered_ax << "," << filtered_ay << ","
+    out << t << "," << ax << "," << ay << "," 
         << freq << "," << amplitude << "," << phase << "," << confidence << ","
         << deg << "," << uncertaintyDeg << "\n";
   }
   out.close();
 }
-
 #endif  // KALMAN_WAVE_DIRECTION_TEST
 
 #endif  // KALMAN_WAVE_DIRECTION_H
