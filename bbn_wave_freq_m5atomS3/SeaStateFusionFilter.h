@@ -54,6 +54,7 @@
 #include "SeaStateAutoTuner.h"
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
+#include "KalmanWaveDirection.h"
 
 // Shared constants
 constexpr float MIN_FREQ_HZ = 0.1f;
@@ -332,4 +333,5 @@ private:
     float RS_target_    = NAN;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
+    KalmanWaveDirection dir_filter_{ 2.0f * static_cast<float>(M_PI) * FREQ_GUESS };  // FREQ_GUESS in Hz → ω0
 };
