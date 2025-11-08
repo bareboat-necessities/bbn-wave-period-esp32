@@ -227,7 +227,7 @@ private:
 // Runtime interface
 struct IWaveDir {
     virtual ~IWaveDir() = default;
-    virtual void   update(const Vector3f& acc_body_ned) = 0;
+    virtual void   update(const Vector3f& acc_body_ned, float dt) = 0;
     virtual float  getFrequencyHz() const = 0;
     virtual float  getDirectionDegrees() const = 0;
     virtual float  getDirectionUncertaintyDegrees() const = 0;
@@ -242,7 +242,7 @@ template<TrackerType T>
 struct WaveDirWrap : IWaveDir {
     WaveDirectionEstimator<T> est;
     explicit WaveDirWrap() : est() {}
-    void update(const Vector3f& a) override { est.update(a); }
+    void update(const Vector3f& a, float dt) override { est.update(a); }
     float  getFrequencyHz() const override { return est.getFrequencyHz(); }
     float  getDirectionDegrees() const override { return est.getDirectionDegrees(); }
     float  getDirectionUncertaintyDegrees() const override { return est.getDirectionUncertaintyDegrees(); }
@@ -310,7 +310,7 @@ static void process_wave_file_direction_only(const std::string& filename,
         if (add_noise) acc_body = apply_noise(acc_body, accel_noise);
         
         // Update direction pipeline with BODY-frame accelerations
-        dir.update(acc_body);
+        dir.update(acc_body, dt);
 
         // Reference (world Z-up) from file
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
