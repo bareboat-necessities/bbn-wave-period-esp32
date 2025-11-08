@@ -60,7 +60,7 @@ static Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
-// ---------- Stats helpers ----------
+// Stats helpers
 template<typename T>
 static T mean(const std::vector<T>& v){
     if (v.empty()) return T(NAN);
@@ -116,7 +116,7 @@ static CircStats circular_stats_180(const std::vector<float>& degs){
     return cs;
 }
 
-// ---------- Runtime wrapper over SeaStateFusionFilter<TrackerType> ----------
+// Runtime wrapper over SeaStateFusionFilter<TrackerType>
 struct IFusion {
     virtual ~IFusion() = default;
     virtual void  update(float dt, const Vector3f& gyro_body_ned, const Vector3f& acc_body_ned, float tempC=35.0f) = 0;
@@ -170,10 +170,9 @@ static std::unique_ptr<IFusion> make_fusion(const std::string& name, bool with_m
     return std::make_unique<FusionWrap<TrackerType::KALMANF>>(); // default
 }
 
-// ---------- Processing ----------
+// Processing
 static void process_wave_file_direction_only(const std::string& filename,
-                                             float dt,
-                                             IFusion& fusion)
+                                             float dt, IFusion& fusion)
 {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
@@ -331,7 +330,7 @@ int main(int argc, char* argv[]) {
               << ", noise=" << (add_noise ? "true" : "false")
               << ", dt=" << dt << " s\n";
 
-    auto fusion = make_fusion(tracker_name /*, with_mag=*/false);
+    auto fusion = make_fusion(tracker_name, /*with_mag*/ false);
 
     std::vector<std::string> files;
     for (auto &entry : std::filesystem::directory_iterator(".")) {
