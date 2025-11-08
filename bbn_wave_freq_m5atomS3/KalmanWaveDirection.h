@@ -26,15 +26,15 @@ class EIGEN_ALIGN_MAX KalmanWaveDirection {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    KalmanWaveDirection(float initialOmega, float deltaT)
+    KalmanWaveDirection(float initialOmega)
         : omega(initialOmega), phase(0.0f) {
-        reset(deltaT);
+        reset();
     }
 
-    void reset(float deltaT) {
+    void reset() {
         A_est.setZero();
         P = Eigen::Matrix2f::Identity() * 1.0f;
-        updatePhase(deltaT);
+        phase = 0.0f;
         confidence = 0.0f;
         lastStableConfidence = 0.0f;
         lastStableCovariance = Eigen::Matrix2f::Identity();
