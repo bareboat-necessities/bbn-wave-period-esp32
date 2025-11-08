@@ -55,6 +55,7 @@
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
 #include "KalmanWaveDirection.h"
+#include "WaveDirectionDetector.h"
 
 // Shared constants
 constexpr float MIN_FREQ_HZ = 0.1f;
@@ -334,4 +335,7 @@ private:
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
     KalmanWaveDirection dir_filter_{ 2.0f * static_cast<float>(M_PI) * FREQ_GUESS };  // FREQ_GUESS in Hz → ω0
+
+    WaveDirectionDetector<float> dir_sign_{ 0.002f, 0.005f }; // smoothing, sensitivity
+    WaveDirection                dir_sign_state_ = UNCERTAIN;
 };
