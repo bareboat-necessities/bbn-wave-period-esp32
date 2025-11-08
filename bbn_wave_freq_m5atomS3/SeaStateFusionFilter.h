@@ -165,25 +165,35 @@ public:
     }
 
     // Time update (IMU integration + frequency tracking)
-    void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc, float tempC = 35.0f) {
-        if (!mekf_) return;
-        time_ += dt;
+void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc, float tempC = 35.0f) {
+    if (!mekf_) return;
+    time_ += dt;
 
-        // MEKF updates (independent)
-        mekf_->time_update(gyro, dt);
-        mekf_->measurement_update_acc_only(acc, tempC);
+    // MEKF
+    mekf_->time_update(gyro, dt);
+    mekf_->measurement_update_acc_only(acc, tempC);
 
-        const float a_z = acc.z() + g_std;
+    // Tracker input: vertical inertial (BODY)
+    const float a_z_inertial = acc.z() + g_std;
 
-        // Feed tracker 
-        const double f = tracker_policy_.run(a_z, dt);
-        if (!std::isnan(f)) {
-            freq_hz_ = std::min(std::max(static_cast<float>(f), MIN_FREQ_HZ), MAX_FREQ_HZ);
-            update_tuner(dt, a_z, freq_hz_);
-        } else {
-            freq_hz_ = FREQ_GUESS;
-        }
-    }
+    // 1) raw freq from tracker, clamp
+    const double f_raw = tracker_policy_.run(a_z_inertial, dt);
+    const float  f_clamped = std::min(std::max(static_cast<float>(f_raw), MIN_FREQ_HZ), MAX_FREQ_HZ);
+
+    // 2) smooth ONCE here
+    if (!freq_init_) { freqSmoother.setInitial(f_clamped); freq_init_ = true; }
+    const float f_smooth = freqSmoother.update(f_clamped);
+
+    // Store the smoothed “truth” for everyone to reuse
+    freq_hz_ = f_smooth;
+
+    // 3) tuner uses the SAME smoothed freq
+    update_tuner(dt, a_z_inertial, f_smooth);
+
+    // 4) direction filter also uses the SAME smoothed freq (ω = 2πf)
+    const float omega = 2.0f * static_cast<float>(M_PI) * f_smooth;
+    dir_filter_.update(acc.x(), acc.y(), omega, dt);
+}
 
     //  Magnetometer correction
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
@@ -275,32 +285,18 @@ private:
         ));
     }
 
-    void update_tuner(float dt, float a_vert, float freq_hz) {
-        if (!std::isfinite(freq_hz)) {
-            freqSmoother.setInitial(FREQ_GUESS);
-            return;
-        }
-        if (!freq_init_) {
-            freqSmoother.setInitial(freq_hz);
-            freq_init_ = true;
-        }
+void update_tuner(float dt, float a_vert_inertial, float freq_hz_smooth) {
+    // No smoothing here – it already happened in updateTime()
+    tuner_.update(dt, a_vert_inertial, freq_hz_smooth);
 
-        float smoothFreq = freqSmoother.update(freq_hz);
-        tuner_.update(dt, a_vert, smoothFreq);
+    if (time_ < ONLINE_TUNE_WARMUP_SEC) return;
 
-        // Warm-up: we still collect, but skip parameter application
-        if (time_ < ONLINE_TUNE_WARMUP_SEC)  {
-            return;
-        }
-        
-        tau_target_   = std::min(std::max(tau_coeff * 0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
-        sigma_target_ = std::min(std::max(
-            std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
-        RS_target_    = std::min(std::max(
-            R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MIN_R_S), MAX_R_S);
+    tau_target_   = std::min(std::max(tau_coeff * 0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
+    sigma_target_ = std::min(std::max(std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
+    RS_target_    = std::min(std::max(R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MIN_R_S), MAX_R_S);
 
-        adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
-    }
+    adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
+}
 
     void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
         const float alpha = 1.0f - std::exp(-dt / ADAPT_TAU_SEC);
