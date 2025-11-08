@@ -33,6 +33,7 @@ const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 #include "KalmANF.h"
 #include "SchmittTriggerFrequencyDetector.h"
 #include "FrequencySmoother.h"
+#include "KalmanWaveDirection.h"
 
 #define ZERO_CROSSINGS_SCALE          1.0f
 #define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
@@ -59,139 +60,6 @@ NoiseModel make_noise_model(float sigma, float bias_range, unsigned seed) {
 Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
-
-class EIGEN_ALIGN_MAX KalmanWaveDirection {
-public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-    KalmanWaveDirection(float initialOmega, float deltaT)
-        : omega(initialOmega), phase(0.0f) {
-        reset(deltaT);
-    }
-
-    void reset(float /*deltaT*/) {
-        A_est.setZero();
-        P = Matrix2f::Identity() * 1.0f;
-        confidence = 0.0f;
-        lastStableConfidence = 0.0f;
-        lastStableCovariance = Matrix2f::Identity();
-        lastStableDir = Vector2f(1.0f, 0.0f);
-        lastStableAmplitude = 0.0f;
-    }
-
-    void update(float ax, float ay, float currentOmega, float deltaT) {
-        if (std::fabs(currentOmega - omega) > 0.01f * std::fabs(omega)) {
-            omega = currentOmega;
-        }
-        // Advance phase
-        updatePhase(deltaT);
-
-        const float c = std::cos(phase);
-        if (std::fabs(c) < 0.001f) {
-            P += Q;
-            P = 0.5f * (P + P.transpose());
-            confidence = 1.0f / (P.trace() + 1e-6f);
-            confidence *= 0.98f;
-            return;
-        }
-        Matrix2f H = c * Matrix2f::Identity();
-
-        // Predict
-        Vector2f A_pred = A_est;
-        Matrix2f P_pred = P + Q;
-
-        // Regularize
-        P_pred = 0.5f * (P_pred + P_pred.transpose());
-        P_pred += Matrix2f::Identity() * 1e-10f;
-
-        // Kalman gain
-        Matrix2f S = H * P_pred * H.transpose() + R;
-        Matrix2f K = P_pred * H.transpose() * S.ldlt().solve(Matrix2f::Identity());
-
-        // Measurement
-        Vector2f z(ax, ay);
-
-        // Update state
-        A_est = A_pred + K * (z - H * A_pred);
-
-        // Joseph covariance update
-        Matrix2f I = Matrix2f::Identity();
-        Matrix2f KH = K * H;
-        P = (I - KH) * P_pred * (I - KH).transpose() + K * R * K.transpose();
-        P = 0.5f * (P + P.transpose());
-
-        confidence = 1.0f / (P.trace() + 1e-6f);
-    }
-
-    Vector2f getDirection() const {
-        float norm = A_est.norm();
-        const float AMP_THRESHOLD = 0.08f;
-        const float CONFIDENCE_THRESHOLD = 20.0f;
-        if (norm > AMP_THRESHOLD && confidence > CONFIDENCE_THRESHOLD) {
-            Vector2f newDir = A_est / norm;
-            if (lastStableDir.dot(newDir) < 0.0f) newDir = -newDir;
-            const float alpha = 0.05f;
-            lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
-            lastStableAmplitude = norm;
-            lastStableConfidence = confidence;
-            lastStableCovariance = P;
-        }
-        return lastStableDir;
-    }
-
-    float getDirectionDegrees() const {
-        Vector2f dir = getDirection();
-        float deg = std::atan2(dir.y(), dir.x()) * (180.0f / float(M_PI));
-        if (deg < 0.0f) deg += 180.0f;
-        if (deg >= 180.0f) deg -= 180.0f;
-        return deg;
-    }
-
-    float getDirectionUncertaintyDegrees() const {
-        const float amp = lastStableAmplitude;
-        if (amp < 1e-6f) return 180.0f;
-        Vector2f dir = A_est / amp;
-        Vector2f tangent(-dir.y(), dir.x());
-        float angular_var = tangent.transpose() * lastStableCovariance * tangent;
-        float angular_std_rad = std::sqrt(std::max(0.0f, angular_var)) / std::max(1e-6f, amp);
-        float angle_deg = (2.0f * angular_std_rad) * (180.0f / float(M_PI));
-        return std::max(0.0f, std::min(angle_deg, 180.0f));
-    }
-
-    float getConfidence() const { return confidence; }
-
-    Vector2f getFilteredSignal() const {
-        return A_est * std::cos(phase) + Vector2f(-A_est.y(), A_est.x()) * std::sin(phase);
-    }
-    Vector2f getOscillationAlongDirection() const { return A_est * std::cos(phase); }
-    Vector2f getAmplitudeVector() const { return A_est; }
-    float getAmplitude() const { return A_est.norm(); }
-    float getPhase() const { return phase; }
-
-    void setProcessNoise(float q) { Q = Matrix2f::Identity() * q; }
-    void setMeasurementNoise(float r) { R = Matrix2f::Identity() * r; }
-
-private:
-    void updatePhase(float deltaT) {
-        phase = std::remainder(phase + omega * deltaT, 2.0f * float(M_PI));
-    }
-
-    // State
-    Vector2f A_est = Vector2f::Zero();
-    Matrix2f P = Matrix2f::Identity();
-    Matrix2f Q = Matrix2f::Identity() * 1e-6f;
-    Matrix2f R = Matrix2f::Identity() * 0.01f;
-
-    float omega = 2.0f * float(M_PI) * FREQ_GUESS; // rad/s
-    float phase = 0.0f;
-    float confidence = 0.0f;
-
-    // Stable (smoothed) info
-    mutable Vector2f  lastStableDir = Vector2f(1.0f, 0.0f);
-    mutable float     lastStableAmplitude = 0.0f;
-    mutable float     lastStableConfidence = 0.0f;
-    mutable Matrix2f  lastStableCovariance = Matrix2f::Identity();
-};
 
 template<TrackerType> struct TrackerPolicy; // fwd
 
