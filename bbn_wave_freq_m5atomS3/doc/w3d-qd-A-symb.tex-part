@@ -1,0 +1,293 @@
+\subsection*{Discrete Process Covariance $Q_{d,AA}(h)$ for Attitude Error \& Gyro Bias}
+
+\paragraph{Error-state LTI SDE (constant $\boldsymbol\omega$ over $[0,h]$).}
+Let $\delta\boldsymbol{\theta}\in\mathbb{R}^3$ be the small attitude error (right-multiplicative)
+and $\delta\mathbf{b}_g\in\mathbb{R}^3$ the gyro-bias error. Over a short step $h$, assume the
+true body rate $\boldsymbol\omega$ is constant. The linearized error dynamics are
+\[
+\dot{\delta\boldsymbol{\theta}} = -[\boldsymbol\omega]_\times\,\delta\boldsymbol{\theta}\;-\;\delta\mathbf{b}_g\;+\; \eta_g(t),
+\qquad
+\dot{\delta\mathbf{b}}_g = \eta_b(t),
+\]
+with spectrally white driving noises
+\[
+\mathbb{E}\big[\eta_g(t)\eta_g(s)^\top\big] = Q_g\,\delta(t-s),\qquad
+\mathbb{E}\big[\eta_b(t)\eta_b(s)^\top\big] = Q_{bg}\,\delta(t-s),\qquad
+\mathbb{E}[\eta_g\,\eta_b^\top]=0,
+\]
+where $Q_g$ is the continuous-time gyro-noise intensity (in the attitude-error channel) and
+$Q_{bg}$ is the bias random-walk intensity.
+
+Stack $z=\begin{bmatrix}\delta\boldsymbol\theta^\top & \delta\mathbf{b}_g^\top\end{bmatrix}^\top$.
+Then
+\[
+\dot z = F_{AA}\,z + L\,\xi(t),\qquad
+F_{AA}=\begin{bmatrix}-W & -I\\ 0 & 0\end{bmatrix},\;
+W\!=\![\boldsymbol\omega]_\times,\quad
+L=\begin{bmatrix}I & 0\\ 0 & I\end{bmatrix},\;
+Q_c=\begin{bmatrix}Q_g & 0\\ 0 & Q_{bg}\end{bmatrix},
+\]
+with $\xi(t)=[\eta_g^\top,\;\eta_b^\top]^\top$ and $\mathbb{E}[\xi\xi^\top]=Q_c\,\delta$.
+
+\paragraph{State transition over the step.}
+Because $F_{AA}$ is block upper triangular,
+\[
+e^{F_{AA}s}=
+\begin{bmatrix}
+R(s) & B(s)\\
+0 & I
+\end{bmatrix},\qquad
+R(s)=e^{-Ws},\qquad
+B(s)=\int_0^s e^{-W(s-u)}(-I)\,du=-\!\int_0^s e^{-Wu}\,du.
+\]
+Let $\omega=\|\boldsymbol\omega\|$, $\theta=\omega s$ and $K=W/\omega=[\hat{\boldsymbol\omega}]_\times$.
+Rodrigues formula gives
+\[
+R(s)=I-\sin\theta\,K + (1-\cos\theta)\,K^2,
+\]
+and integrating termwise,
+\[
+\int_0^s e^{-Wu}\,du
+= s\,I - \frac{1-\cos\theta}{\omega^2}\,W + \frac{s-\frac{\sin\theta}{\omega}}{\omega^2}\,W^2,
+\quad\Rightarrow\quad
+B(s)= -\Big[s\,I - \frac{1-\cos\theta}{\omega^2}W + \frac{s-\frac{\sin\theta}{\omega}}{\omega^2}W^2\Big].
+\]
+
+\paragraph{Discretization formula for $Q_d$.}
+The discrete process covariance over $[0,h]$ is
+\[
+Q_{d,AA}(h)=\int_0^h e^{F_{AA}s}\,L\,Q_c\,L^\top\,e^{F_{AA}^\top s}\,ds
+= \int_0^h
+\begin{bmatrix}
+R & B\\ 0 & I
+\end{bmatrix}
+\begin{bmatrix}
+Q_g & 0\\ 0 & Q_{bg}
+\end{bmatrix}
+\begin{bmatrix}
+R^\top & 0\\ B^\top & I
+\end{bmatrix}ds.
+\]
+Expanding by blocks,
+\[
+Q_{d,AA}(h)=
+\begin{bmatrix}
+\boxed{Q_{\theta\theta}} & \boxed{Q_{\theta b}}\\[2pt]
+\boxed{Q_{b\theta}} & \boxed{Q_{bb}}
+\end{bmatrix}
+\]
+with the four entries given by the \emph{three} fundamental integrals below.
+
+\paragraph{(I) Gyro–driven attitude term.}
+\[
+\boxed{\;Q_{\theta\theta}^{(g)}(h)=\int_0^h R(s)\,Q_g\,R(s)^\top\,ds.\;}
+\]
+This is an \emph{exact rotation integral}. Two useful specializations:
+- If $Q_g=q_g\,I$ (isotropic), then $R(s)Q_gR(s)^\top=q_g I$ and
+  \[
+  \boxed{\;Q_{\theta\theta}^{(g)}(h)=q_g\,h\,I.\;}
+  \]
+- For general $Q_g$, write $R(s)$ in the Rodrigues basis and integrate the scalar
+  coefficients of $I,W,W^2$ against $Q_g$ (closed form exists; in code we use an
+  accurate Simpson rule when $Q_g$ is anisotropic).
+
+\paragraph{(II) Bias–driven attitude term.}
+\[
+\boxed{\;Q_{\theta\theta}^{(b)}(h)=\int_0^h B(s)\,Q_{bg}\,B(s)^\top\,ds.\;}
+\]
+This is the “$BQB^\top$” integral. Substituting the closed form of $B(s)$ above gives an
+explicit expression in the basis $\{I,W,W^2\}$ (used by our implementation via a fast
+quadrature for numerical robustness).
+
+\paragraph{(III) Bias block and cross terms.}
+First, the bias random walk integrates trivially:
+\[
+\boxed{\;Q_{bb}(h)=\int_0^h Q_{bg}\,ds=h\,Q_{bg}.\;}
+\]
+Second, the cross-covariance is
+\[
+Q_{\theta b}(h)=\int_0^h B(s)\,Q_{bg}\,ds
+= \Big(\int_0^h B(s)\,ds\Big) Q_{bg},\qquad Q_{b\theta}(h)=Q_{\theta b}(h)^\top.
+\]
+Define the \emph{integral of $B$}
+\[
+\boxed{\;
+I_B(h):=\int_0^h B(s)\,ds
+= -\Big[
+\tfrac{1}{2}h^2\,I
+-\frac{h-\frac{\sin(\omega h)}{\omega}}{\omega^2}\,W
++\frac{\tfrac{1}{2}h^2+\frac{\cos(\omega h)-1}{\omega^2}}{\omega^2}\,W^2
+\Big],
+\;}
+\]
+obtained by integrating $B(s)$ termwise. Hence
+\[
+\boxed{\;Q_{\theta b}(h)=I_B(h)\,Q_{bg},\qquad Q_{b\theta}(h)=Q_{bg}\,I_B(h)^\top.\;}
+\]
+
+\paragraph{Assembled covariance and “Joseph” symmetry hygiene.}
+Adding the gyro- and bias-driven attitude parts,
+\[
+\boxed{\;
+Q_{\theta\theta}(h)=Q_{\theta\theta}^{(g)}(h)+Q_{\theta\theta}^{(b)}(h),
+\qquad
+Q_{bb}(h)=h\,Q_{bg},\qquad
+Q_{\theta b}(h)=I_B(h)\,Q_{bg}.
+\;}
+\]
+Finally,
+\[
+\boxed{\;
+Q_{d,AA}(h)=
+\begin{bmatrix}
+Q_{\theta\theta}(h) & Q_{\theta b}(h)\\[2pt]
+Q_{\theta b}(h)^\top & Q_{bb}(h)
+\end{bmatrix},
+\qquad
+Q_{d,AA}\;\leftarrow\;\tfrac12\!\left(Q_{d,AA}+Q_{d,AA}^\top\right)
+\text{ (symmetrize).}
+\;}
+\]
+
+\paragraph{Small–rate limit ($\omega\to 0$).}
+Using $\sin\theta=\theta-\theta^3/6+\cdots$, $\cos\theta=1-\theta^2/2+\cdots$,
+\[
+R(s)=I-Ws+\tfrac12 W^2 s^2+\mathcal{O}(s^3),\quad
+B(s)=-\Big[s\,I-\tfrac12 W s^2+\tfrac16 W^2 s^3\Big]+\mathcal{O}(s^4),
+\]
+and the integrals reduce to low-order polynomials in $h$, avoiding loss of significance.
+For isotropic $Q_g=q_g I$ and scalar $Q_{bg}=q_b I$, the leading terms are
+\[
+Q_{\theta\theta}^{(g)}=q_g h\,I+ \mathcal{O}(h^3),\quad
+Q_{\theta\theta}^{(b)}=\tfrac{q_b}{3}h^3\,I+ \mathcal{O}(h^5),\quad
+Q_{\theta b}=-\tfrac{q_b}{2}h^2\,I + \mathcal{O}(h^4),\quad
+Q_{bb}=q_b h\,I,
+\]
+which match the series used in our small-angle branch.
+
+
+\subsection*{Simpson–rule discretization for $Q_{d,AA}(h)$ (matrix integrals)}
+
+\paragraph{Goal.}
+The attitude\,+\,bias discrete covariance
+\[
+Q_{d,AA}(h)=\int_0^h e^{F_{AA}s}LQ_cL^\top e^{F_{AA}^\top s}\,ds
+\quad\text{with}\quad
+e^{F_{AA}s}=\begin{bmatrix}R(s)&B(s)\\0&I\end{bmatrix}
+\]
+contains three matrix integrals:
+\[
+\boxed{
+\begin{aligned}
+I_R(h)   &:= \int_0^h R(s)\,Q_g\,R(s)^\top\,ds,\\
+I_{BB}(h)&:= \int_0^h B(s)\,Q_{bg}\,B(s)^\top\,ds,\\
+I_B(h)   &:= \int_0^h B(s)\,ds.
+\end{aligned}}
+\]
+Closed forms exist (cf.\ previous subsection) but are algebraically long for anisotropic $Q_g$.
+We therefore employ a high–order \emph{matrix-valued Simpson rule} that is exact up to $\mathcal{O}(h^5)$ and
+matches the code paths \texttt{simpson\_R\_Q\_RT\_} and \texttt{simpson\_B\_Q\_BT\_}.
+
+\paragraph{Matrix Simpson rule.}
+Let $M:[0,h]\to\mathbb{R}^{m\times n}$ be $C^4$-smooth entrywise. By linearity,
+apply Simpson’s quadrature to each entry (equivalently, to the matrix function itself):
+\[
+\int_0^h M(s)\,ds
+\;=\;
+\frac{h}{6}\,\Big[M(0)+4M(h/2)+M(h)\Big]\;+\;\mathcal{O}(h^5).
+\]
+We use the constant–rate assumption $\boldsymbol\omega(t)\equiv\boldsymbol\omega$ on $[0,h]$
+so that $R(s)=e^{-[\omega]_\times s}$ and $B(s)=-\int_0^s e^{-[\omega]_\times u}\,du$ are
+$C^\infty$; the Simpson remainder is thus $\mathcal{O}(h^5)$ with coefficients depending
+on $\|\omega\|$.
+
+\paragraph{Nodes and weights.}
+Set $s_0=0$, $s_1=h/2$, $s_2=h$, with weights $w_0=w_2=h/6$, $w_1=4h/6$.
+We will repeatedly use
+\[
+R_0:=R(0)=I,\qquad R_{1/2}:=R(h/2),\qquad R_1:=R(h),
+\]
+\[
+B_0:=B(0)=0,\qquad B_{1/2}:=B(h/2),\qquad B_1:=B(h).
+\]
+
+\paragraph{Rotation integral $I_R(h)$.}
+Define $M_R(s):=R(s)\,Q_g\,R(s)^\top$. Simpson gives
+\[
+\boxed{
+I_R(h)\;\approx\;\frac{h}{6}\Big(R_0Q_gR_0^\top \;+\; 4\,R_{1/2}Q_gR_{1/2}^\top \;+\; R_1Q_gR_1^\top\Big).
+}
+\]
+\emph{Checks.}
+(i) If $Q_g=q_g I$ is isotropic, then $R(s)Q_gR(s)^\top=q_g I$ and the formula is \emph{exact}:
+$I_R(h)=q_g h\,I$.  
+(ii) Small–angle consistency. Using $R(s)=I-Ws+\tfrac12 W^2 s^2+\mathcal{O}(s^3)$ with $W=[\omega]_\times$,
+the Simpson combination reproduces the exact series of $I_R(h)$ up to $\mathcal{O}(h^5)$.
+
+\paragraph{$BQB^\top$ integral $I_{BB}(h)$.}
+Let $M_{BB}(s):=B(s)\,Q_{bg}\,B(s)^\top$. Simpson yields
+\[
+\boxed{
+I_{BB}(h)\;\approx\;\frac{h}{6}\Big(
+B_0Q_{bg}B_0^\top \;+\; 4\,B_{1/2}Q_{bg}B_{1/2}^\top \;+\; B_1Q_{bg}B_1^\top
+\Big)
+\;=\;\frac{h}{6}\Big(
+4\,B_{1/2}Q_{bg}B_{1/2}^\top \;+\; B_1Q_{bg}B_1^\top
+\Big),
+}
+\]
+since $B_0=0$. Using the closed forms
+\[
+\begin{aligned}
+R(s)&=I-\sin(\omega s)\,\frac{W}{\omega}+(1-\cos(\omega s))\frac{W^2}{\omega^2},\\
+B(s)&=-\Big[
+s\,I - \frac{1-\cos(\omega s)}{\omega^2}\,W + \frac{s-\frac{\sin(\omega s)}{\omega}}{\omega^2}\,W^2
+\Big],
+\end{aligned}
+\]
+one evaluates $B_{1/2}$ and $B_1$ once per step and forms the quadratic terms above.
+\emph{Small–angle consistency.} With $B(s)=-[\,sI-\tfrac12 Ws^2+\tfrac16 W^2 s^3\,]+\mathcal{O}(s^4)$,
+Simpson reproduces the exact $I_{BB}(h)$ up to $\mathcal{O}(h^5)$.
+
+\paragraph{Bias–attitude cross integral $I_B(h)$.}
+Simpson on $B(s)$ gives
+\[
+\boxed{
+I_B(h)\;=\;\int_0^h B(s)\,ds
+\;\approx\;\frac{h}{6}\Big(B_0+4B_{1/2}+B_1\Big)
+\;=\;\frac{h}{6}\Big(4B_{1/2}+B_1\Big).
+}
+\]
+This replaces the closed form
+\[
+I_B(h)= -\Big[
+\tfrac{1}{2}h^2\,I
+-\frac{h-\frac{\sin(\omega h)}{\omega}}{\omega^2}\,W
++\frac{\tfrac{1}{2}h^2+\frac{\cos(\omega h)-1}{\omega^2}}{\omega^2}\,W^2
+\Big]
+\]
+with a numerically stable $\mathcal{O}(h^5)$ approximation. In the small–angle limit,
+$I_B(h)=-\tfrac12 h^2 I+\tfrac{1}{6}Wh^3-\tfrac{1}{24}W^2 h^4+\cdots$ is matched to the same order.
+
+\paragraph{Assembly into $Q_{d,AA}(h)$.}
+With the three Simpson approximations,
+\[
+\boxed{
+\begin{aligned}
+Q_{\theta\theta}(h) &\approx I_R(h)\;+\;I_{BB}(h),\\[2pt]
+Q_{\theta b}(h)     &\approx I_B(h)\,Q_{bg},\qquad Q_{b\theta}(h)=Q_{\theta b}(h)^\top,\\[2pt]
+Q_{bb}(h)           &= h\,Q_{bg}\quad\text{(exact)}.
+\end{aligned}}
+\]
+Finally enforce symmetry (Joseph hygiene):
+\[
+Q_{d,AA}\;\leftarrow\;\tfrac12\left(Q_{d,AA}+Q_{d,AA}^\top\right).
+\]
+
+\paragraph{Accuracy and invariances.}
+\begin{itemize}\itemsep2pt
+\item \textbf{Order:} Entrywise $\mathcal{O}(h^5)$ for fixed $\omega$; constants scale with $\|\omega\|^4$.
+\item \textbf{Isotropic $Q_g$:} $I_R(h)=q_g h\,I$ exactly; Simpson is exact in this case.
+\item \textbf{Small–angle regime:} Using series for $R,B$, Simpson matches closed–form integrals through $\mathcal{O}(h^5)$ and avoids cancellation when $\theta=\|\omega\|h\ll1$.
+\end{itemize}
+
