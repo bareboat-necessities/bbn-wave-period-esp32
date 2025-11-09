@@ -1,0 +1,164 @@
+\subsection*{Discrete Process Covariance $Q_d$ from $(F,L)$ for One Axis}
+
+\paragraph{Model and block structure.}
+For one Cartesian axis we stack the linear states
+\[
+\boldsymbol{x}_{\text{axis}}(t)=\begin{bmatrix}v(t) & p(t) & S(t) & a(t)\end{bmatrix}^{\!\top},
+\]
+with continuous LTI SDE
+\[
+\dot{\boldsymbol{x}}_{\text{axis}}(t)=
+\underbrace{\begin{bmatrix}A&B\\[2pt]0&D\end{bmatrix}}_{F}
+\boldsymbol{x}_{\text{axis}}(t)
++\underbrace{\begin{bmatrix}0\\0\\0\\1\end{bmatrix}}_{L}\,w(t),\qquad
+\mathbb{E}[w(t)w(s)]=q_c\,\delta(t-s),
+\]
+where
+\[
+A=\begin{bmatrix}0&0&0\\ 1&0&0\\ 0&1&0\end{bmatrix},\quad
+B=\begin{bmatrix}1\\0\\0\end{bmatrix},\quad
+D=-\frac{1}{\tau},\qquad
+q_c=\frac{2\sigma^2}{\tau}.
+\]
+The matrix $A$ is nilpotent ($A^3=0$); the latent acceleration $a$ is OU.
+
+\paragraph{Block–triangular exponential.}
+Because $F$ is block upper triangular,
+\[
+e^{Fs}=\begin{bmatrix}
+e^{As} & \displaystyle\int_{0}^{s} e^{A(s-u)} B\, e^{Du}\,du\\[6pt]
+0 & e^{Ds}
+\end{bmatrix},
+\qquad
+e^{As}=I + A s + \tfrac12 A^2 s^2,\quad e^{Ds}=e^{-s/\tau}.
+\]
+Define the top feedthrough
+\[
+C_{\text{top}}(s):=\int_{0}^{s} e^{A(s-u)} B\, e^{-u/\tau}\,du \in \mathbb{R}^{3\times 1},\qquad
+C_{\text{bot}}(s):=e^{-s/\tau}\in\mathbb{R}.
+\]
+
+\paragraph{Noise–flow integral.}
+The discrete process covariance over a step $h$ is
+\[
+Q_d(h)=\int_{0}^{h} e^{Fs}\,L\,q_c\,L^{\!\top}\,e^{F^{\!\top}s}\,ds
+=\int_{0}^{h} q_c
+\begin{bmatrix}
+C_{\text{top}}(s)\\ C_{\text{bot}}(s)
+\end{bmatrix}
+\!\!
+\begin{bmatrix}
+C_{\text{top}}(s)^{\!\top} & C_{\text{bot}}(s)
+\end{bmatrix}
+ds.
+\]
+This yields \emph{three} elementary integrals:
+\[
+\boxed{
+\begin{aligned}
+\text{(I)}\;&Q_{vv,pp,SS}(h)=\int_{0}^{h} q_c\, C_{\text{top}}(s)C_{\text{top}}(s)^{\!\top}\,ds,\\[2pt]
+\text{(II)}\;&Q_{\bullet a}(h)=\int_{0}^{h} q_c\, C_{\text{top}}(s) C_{\text{bot}}(s)\,ds,\qquad
+Q_{a\bullet}(h)=Q_{\bullet a}(h)^{\!\top},\\[2pt]
+\text{(III)}\;&Q_{aa}(h)=\int_{0}^{h} q_c\, C_{\text{bot}}(s)^2\,ds
+=\int_{0}^{h} q_c\, e^{-2s/\tau}\,ds.
+\end{aligned}}
+\]
+
+\paragraph{Compact primitives.}
+Let $x=\tfrac{h}{\tau}$ and define the OU primitives
+\[
+\alpha=e^{-x},\qquad \mathrm{em1}=\alpha-1,\qquad \mathrm{em1}_2=e^{-2x}-1,
+\]
+and the kinematic monomials
+\[
+C_0=h,\quad C_1=\tfrac{h^2}{2},\quad C_2=\tfrac{h^3}{3},\quad
+C_3=\tfrac{h^4}{4},\quad C_4=\tfrac{h^5}{5}.
+\]
+We also introduce the mixed poly–exp combinations (used in the code):
+\[
+A_0=-\tau\,\mathrm{em1},\qquad
+A_1=\tau^2(-\mathrm{em1}-x\alpha),\qquad
+A_2=\tau^3\!\left(-2\,\mathrm{em1}+\alpha x(x+2)\right),\qquad
+B_0=-\frac{\tau}{2}\,\mathrm{em1}_2.
+\]
+
+\paragraph{Unit kernel $K(h,\tau)$.}
+Factor $q_c$ as
+\[
+Q_d(h)=\frac{2\sigma^2}{\tau}\;\mathrm{sym}\,K(h,\tau),\qquad
+\mathrm{sym}\,K=\tfrac12\left(K+K^{\!\top}\right),
+\]
+where $K(h,\tau)$ is a $4\times4$ matrix (states ordered as $[v,p,S,a]$) defined by
+\[
+K(h,\tau)=
+\begin{bmatrix}
+K_{vv} & K_{pv} & K_{Sv} & K_{va}\\
+K_{pv} & K_{pp} & K_{Sp} & K_{pa}\\
+K_{Sv} & K_{Sp} & K_{SS} & K_{Sa}\\
+K_{va} & K_{pa} & K_{Sa} & K_{aa}
+\end{bmatrix}.
+\]
+
+\paragraph{Integral (III): $K_{aa}$.}
+\[
+Q_{aa}(h)=\int_{0}^{h} q_c\,e^{-2s/\tau}\,ds
+=\frac{2\sigma^2}{\tau}\left(-\frac{\tau}{2}\mathrm{em1}_2\right)
+\;\Rightarrow\;
+K_{aa}=B_0.
+\]
+
+\paragraph{Integral (II): cross terms with $a$.}
+\[
+Q_{\bullet a}(h)=\int_{0}^{h} q_c\, C_{\text{top}}(s) e^{-s/\tau}\,ds
+=\frac{2\sigma^2}{\tau}
+\begin{bmatrix}
+K_{va}\\ K_{pa}\\ K_{Sa}
+\end{bmatrix},\quad
+\begin{aligned}
+K_{va}&=\tau\,(A_0-B_0),\\
+K_{pa}&=\tau A_1 + \tau^2(B_0-A_0),\\
+K_{Sa}&=\tfrac{1}{2}\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0.
+\end{aligned}
+\]
+
+\paragraph{Integral (I): top-left $3\times3$ block.}
+\[
+Q_{vv,pp,SS}(h)=\int_{0}^{h} q_c\, C_{\text{top}}(s)C_{\text{top}}(s)^{\!\top}\,ds
+=\frac{2\sigma^2}{\tau}
+\begin{bmatrix}
+K_{vv} & K_{pv} & K_{Sv}\\
+K_{pv} & K_{pp} & K_{Sp}\\
+K_{Sv} & K_{Sp} & K_{SS}
+\end{bmatrix}.
+\]
+The entries are
+\[
+\begin{aligned}
+K_{vv}&=\tau^2\Big(C_0-2A_0+B_0\Big),\\[2pt]
+K_{pv}&=\tau^2(C_1-A_1)-\tau^3(C_0-A_0)+\tau^3(A_0-B_0),\\[2pt]
+K_{Sv}&=\tfrac{1}{2}\tau^2(C_2-A_2)-\tau^3(C_1-A_1)+\tau^4(C_0-A_0)-\tau^4(A_0-B_0),\\[4pt]
+K_{pp}&=\tau^2 C_2 - 2\tau^3 C_1 + 2\tau^3 A_1 + \tau^4 C_0 - 2\tau^4 A_0 + \tau^4 B_0,\\[2pt]
+K_{Sp}&=\tfrac{1}{2}\tau^2 C_3 - \tfrac{3}{2}\tau^3 C_2 + 2\tau^4 C_1 - \tau^5 C_0
+        + \tfrac{1}{2}\tau^3 A_2 - 2\tau^4 A_1 + 2\tau^5 A_0 - \tau^5 B_0,\\[4pt]
+K_{SS}&=\tfrac{1}{4}\tau^2 C_4 - \tau^3 C_3 + 2\tau^4 C_2 - 2\tau^5 C_1 + \tau^6 C_0
+        - \tau^4 A_2 + 2\tau^5 A_1 - 2\tau^6 A_0 + \tau^6 B_0.
+\end{aligned}
+\]
+
+\paragraph{Final assembly.}
+Collecting the three integrals yields
+\[
+\boxed{
+Q_{d,\text{axis}}(h)
+=\frac{2\sigma^2}{\tau}\;\mathrm{sym}\,
+\begin{bmatrix}
+K_{vv} & K_{pv} & K_{Sv} & K_{va}\\
+K_{pv} & K_{pp} & K_{Sp} & K_{pa}\\
+K_{Sv} & K_{Sp} & K_{SS} & K_{Sa}\\
+K_{va} & K_{pa} & K_{Sa} & K_{aa}
+\end{bmatrix}},
+\]
+with $K_{ij}$ given explicitly above, and $\mathrm{sym}\,K=\tfrac12(K+K^\top)$
+(Joseph symmetry hygiene).
+For small $x=h/\tau$, replace $(\alpha,\mathrm{em1},\mathrm{em1}_2)$ by their
+Maclaurin expansions to avoid cancellation.
