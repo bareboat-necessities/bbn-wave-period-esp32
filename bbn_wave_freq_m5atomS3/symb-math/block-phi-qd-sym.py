@@ -1,16 +1,11 @@
 # -*- coding: utf-8 -*-
 # Derive Φ(h)=e^{Fh} and Qd(h)=∫_0^h e^{Fs} L Qc L^T e^{F^T s} ds
-# for the OU per-axis chain [v,p,S,a]^T directly from F and L,
-# then reduce to the SAME primitives used in the C++ code:
-#   x=h/τ, α=e^{-x}, em1=α-1, em1_2=e^{-2x}-1,
-#   A0=τ(1-α)=-τ em1, A1=τ²(-em1 - x α), A2=τ³(-2 em1 + α x(x+2)),
-#   B0=-(τ/2) em1_2, and Ck = h^{k+1}/(k+1) for k=0..4
-#
-# Prints human-readable LaTeX for every step.
+# from F and L for the per-axis OU chain x=[v,p,S,a]^T, and reduce to
+# the SAME primitives used in the C++ code. Prints LaTeX and verifies term-wise.
 
 import sympy as sp
 
-# ---------------- Utilities for pretty LaTeX output ----------------
+# ---------------- Utilities ----------------
 def _bmatrix(lx: str) -> str:
     lx = lx.replace(r"\left[\begin{matrix}", r"\begin{bmatrix}")
     lx = lx.replace(r"\end{matrix}\right]", r"\end{bmatrix}")
@@ -26,36 +21,71 @@ def disp(title, expr=None, raw=None):
     lx = sp.latex(expr)
     print(r"\[ \displaystyle " + _bmatrix(lx) + r" \]")
 
+# Robust zero check with lambdify numeric fallback
+def is_zero_expr(expr):
+    z = sp.simplify(sp.together(sp.factor(expr)))
+    if z == 0 or getattr(z, "is_zero", False):
+        return True
+    # numeric fallback via lambdify on the expression's free symbols
+    vars_ = sorted(list(z.free_symbols), key=lambda s: s.name)
+    if not vars_:
+        try:
+            val = complex(sp.N(z))
+            return abs(val) <= 1e-10
+        except Exception:
+            return False
+    f = sp.lambdify(vars_, z, modules="mpmath")
+    import random, mpmath as mp
+    for _ in range(4):
+        subs = []
+        for v in vars_:
+            # Positive generics for h, tau, sigma2; nonneg for s if it ever appears
+            name = v.name
+            if name in ("h",):
+                subs.append(mp.mpf("0.2") + mp.mpf(random.random())*mp.mpf("1.0"))
+            elif name in ("tau",):
+                subs.append(mp.mpf("0.5") + mp.mpf(random.random())*mp.mpf("3.0"))
+            elif name in ("sigma2",):
+                subs.append(mp.mpf("0.3") + mp.mpf(random.random())*mp.mpf("2.0"))
+            else:
+                subs.append(mp.mpf(random.random()))
+        try:
+            val = f(*subs)
+            valc = complex(val)  # mpmath→python complex
+            if abs(valc) > 1e-9:
+                return False
+        except Exception:
+            return False
+    return True
+
+def eq_print(name, lhs, rhs):
+    ok = is_zero_expr(sp.simplify(lhs - rhs))
+    tick = r"\quad(\checkmark)" if ok else r"\quad(\text{mismatch!})"
+    print(r"\[ %s:\; %s \;=\; %s %s \]" %
+          (name, sp.latex(sp.simplify(lhs)), sp.latex(sp.simplify(rhs)), tick))
+
 # ---------------- Symbols ----------------
 h, tau, sigma2 = sp.symbols('h tau sigma2', positive=True, real=True)
 s, u = sp.symbols('s u', real=True, nonnegative=True)
 
 # Per-axis OU chain: state x=[v,p,S,a]^T
-# F is block upper-triangular [[A, B], [0, D]]
 A = sp.Matrix([[0,0,0],
                [1,0,0],
-               [0,1,0]])     # nilpotent (A^3=0)
-B = sp.Matrix([[1],[0],[0]]) # a enters dv
+               [0,1,0]])     # nilpotent, A^3=0
+B = sp.Matrix([[1],[0],[0]]) # a→dv
 D = sp.Matrix([[-1/tau]])    # da/dt = -(1/τ) a + w
+L = sp.Matrix([[0],[0],[0],[1]])  # noise enters a only
 
-# L selects only the a-channel for noise w (Qc scalar later)
-L = sp.Matrix([[0],[0],[0],[1]])
-
-# ---------------- Step 1: e^{F s} by block-triangular formula ----------------
-# For F=[[A,B],[0,D]]:
-#   e^{Fs} = [[ e^{A s}, ∫_0^s e^{A(s-u)} B e^{D u} du ],
-#             [ 0,       e^{D s} ]]
+# ---------------- e^{F s} via block-triangular formula ----------------
 I3 = sp.eye(3)
 A2 = A*A
 
-EA_s = I3 + A*s + A2*(s**2/2)        # e^{A s} because A^3=0
+EA_s = I3 + A*s + A2*(s**2/2)        # e^{A s}
 ED_s = sp.exp(-s/tau)                # e^{D s} (scalar)
 
-# Top-right block E_TR(s) = ∫_0^s e^{A(s-u)} B e^{Du} du
 TR_integrand = (I3 + A*(s-u) + A2*((s-u)**2/2)) * B * sp.exp(-u/tau)
 E_TR = sp.Matrix(3,1, lambda i,j: sp.integrate(TR_integrand[i,0], (u,0,s)))
 
-# Assemble E(s)
 E_s = sp.Matrix.zeros(4,4)
 E_s[0:3,0:3] = EA_s
 E_s[0:3,3:4] = E_TR
@@ -74,17 +104,11 @@ e^{A s} = I + A s + \tfrac12 A^2 s^2,\quad e^{D s} = e^{-s/\tau}.
 \]""")
 disp("Computed e^{Fs}", E_s)
 
-# ---------------- Step 2: Φ(h) = e^{F h} ----------------
-Phi = sp.Matrix(E_s.subs(s, h))   # exact per definition
+# ---------------- Φ(h) ----------------
+Phi = sp.Matrix(E_s.subs(s, h))
 disp("Φ(h) = e^{F h}", Phi)
 
-# Extract the four scalar couplings and present them with primitives
-phi_va = sp.simplify(Phi[0,3])
-phi_pa = sp.simplify(Phi[1,3])
-phi_Sa = sp.simplify(Phi[2,3])
-phi_aa = sp.simplify(Phi[3,3])
-
-disp("Φ-axis block entries (coupling of a into v,p,S and a's own decay)", raw=r"""
+disp("Φ-axis block entries (compact primitives)", raw=r"""
 Let \(x=\frac{h}{\tau}\), \(\alpha=e^{-x}\), \(\mathrm{em1}=\alpha-1\). Then
 \[
 \phi_{va}=\Phi_{1,4}=-\tau\,\mathrm{em1},\quad
@@ -92,18 +116,13 @@ Let \(x=\frac{h}{\tau}\), \(\alpha=e^{-x}\), \(\mathrm{em1}=\alpha-1\). Then
 \phi_{Sa}=\Phi_{3,4}=\tau^3\Big(\tfrac12 x^2 - x - \mathrm{em1}\Big),\quad
 \phi_{aa}=\Phi_{4,4}=\alpha.
 \]
-(These are the closed forms after integrating the top-right block.)
 """)
 
-# ---------------- Step 3: Q_d(h) = ∫_0^h e^{Fs} L Qc L^T e^{F^T s} ds ----------------
-# Continuous spectral density on a-channel: Qc = 2 σ^2 / τ (scalar)
+# ---------------- Q_d(h) ----------------
 qc = (2*sigma2)/tau
+C_top = E_TR
+C_bot = sp.Matrix([[ED_s]])
 
-# C(s) = e^{F s} L = [C_top; C_bot]
-C_top = E_TR            # 3×1
-C_bot = sp.Matrix([[ED_s]])  # 1×1
-
-# Build integrand = C(s) Qc C(s)^T
 integrand = sp.zeros(4,4)
 integrand[0:3,0:3] = qc * (C_top * C_top.T)
 integrand[0:3,3:4] = qc * (C_top * C_bot.T)
@@ -111,20 +130,19 @@ integrand[3:4,0:3] = qc * (C_bot * C_top.T)
 integrand[3,3]     = qc * (C_bot * C_bot.T)[0,0]
 
 Qd = sp.Matrix(4,4, lambda i,j: sp.simplify(sp.integrate(integrand[i,j], (s,0,h))))
-Qd = sp.simplify((Qd + Qd.T)/2)  # symmetry hygiene
+Qd = sp.simplify((Qd + Qd.T)/2)
 disp("Q_d(h) = ∫_0^h e^{Fs} L Q_c L^T e^{F^T s} ds", Qd)
 
-# ---------------- Step 4: Reduce Q_d to (2σ²/τ) * sym(K) with primitive A's and C's ----------------
-# Define primitives (exactly as in C++)
+# ---------------- Reduce to primitives & verify ----------------
 x = sp.Symbol('x', positive=True, real=True)
 alpha = sp.exp(-x)
 em1   = alpha - 1
 em1_2 = sp.exp(-2*x) - 1
 
-A0 = -tau*em1                                   # τ(1-α)
-A1 = tau**2 * (-em1 - x*alpha)                  # τ²(-em1 - x α)
-A2 = tau**3 * (-2*em1 + alpha*x*(x+2))          # τ³(-2 em1 + α x(x+2))
-B0 = -(tau/2)*em1_2                             # -τ/2 (e^{-2x}-1)
+A0 = -tau*em1
+A1 = tau**2 * (-em1 - x*alpha)
+A2 = tau**3 * (-2*em1 + alpha*x*(x+2))
+B0 = -(tau/2)*em1_2
 
 C0 = h
 C1 = h**2/2
@@ -132,23 +150,10 @@ C2 = h**3/3
 C3 = h**4/4
 C4 = h**5/5
 
-# Unit kernel K = (τ/(2σ²)) Qd, then symmetrize
 K_raw = sp.simplify( (tau/(2*sigma2)) * Qd )
 K_sym = sp.simplify( (K_raw + K_raw.T)/2 )
 
-# Extract entries derived from F,L
-Kvva = sp.simplify(K_sym[0,0])                # K_vv
-Kvaa = sp.simplify(K_sym[0,3])                # K_va
-Kppa = sp.simplify(K_sym[1,1])                # K_pp
-Kpaa = sp.simplify(K_sym[1,3])                # K_pa
-Kpva = sp.simplify(K_sym[0,1])                # K_pv
-KSSa = sp.simplify(K_sym[2,2])                # K_SS
-KSaa = sp.simplify(K_sym[2,3])                # K_Sa
-KSpa = sp.simplify(K_sym[1,2])                # K_Sp
-KSva = sp.simplify(K_sym[0,2])                # K_Sv
-Kaaa = sp.simplify(K_sym[3,3])                # K_aa
-
-# Build compact target forms (the EXACT ones your C++ uses), now as expressions of primitives
+# compact targets (your C++)
 K_vv_t = tau**2 * ( C0 - 2*A0 + B0 )
 K_va_t = tau * ( A0 - B0 )
 K_pp_t = ( tau**2*C2 - 2*tau**3*C1 + 2*tau**3*A1 + tau**4*C0 - 2*tau**4*A0 + tau**4*B0 )
@@ -170,51 +175,46 @@ K_target = sp.Matrix([
     [K_va_t, K_pa_t, K_Sa_t, K_aa_t]
 ])
 
-# ---------------- Step 5: Print step-by-step LaTeX explanations ----------------
-disp("Define non-dimensional primitives", raw=r"""
-We normalize by \(x=\tfrac{h}{\tau}\) and define
+disp("Define primitives (matching C++ code)", raw=r"""
+\(x=\tfrac{h}{\tau},\;\alpha=e^{-x},\;\mathrm{em1}=\alpha-1,\;\mathrm{em1}_2=e^{-2x}-1\).
 \[
-\alpha = e^{-x},\quad \mathrm{em1}=\alpha-1,\quad \mathrm{em1}_2=e^{-2x}-1.
-\]
-We also use the short-hands (matching code):
-\[
-A_0=\tau(1-\alpha)=-\tau\,\mathrm{em1},\quad
-A_1=\tau^2(-\mathrm{em1}-x\alpha),\quad
-A_2=\tau^3(-2\,\mathrm{em1}+\alpha x(x+2)),\quad
-B_0=-\tfrac{\tau}{2}\,\mathrm{em1}_2,
+A_0=-\tau\,\mathrm{em1},\;
+A_1=\tau^2(-\mathrm{em1}-x\alpha),\;
+A_2=\tau^3(-2\,\mathrm{em1}+\alpha x(x+2)),\;
+B_0=-\tfrac{\tau}{2}\,\mathrm{em1}_2.
 \]
 \[
-C_0=h,\quad C_1=\tfrac{h^2}{2},\quad C_2=\tfrac{h^3}{3},\quad C_3=\tfrac{h^4}{4},\quad C_4=\tfrac{h^5}{5}.
+C_0=h,\;C_1=\tfrac{h^2}{2},\;C_2=\tfrac{h^3}{3},\;C_3=\tfrac{h^4}{4},\;C_4=\tfrac{h^5}{5}.
 \]
 """)
 
-disp("K(h,τ) derived from F and L (symmetrized unit kernel: K = (τ/2σ²) Q_d)", K_sym)
-disp("Target compact form for K(h,τ) in primitives A_•, B_0, C_•", K_target)
+disp("K(h,τ) derived from F,L (symmetrized unit kernel)", K_sym)
+disp("Target compact K(h,τ) in primitives", K_target)
 
-def eq_latex(name, lhs, rhs):
-    ok = sp.simplify(lhs - rhs) == 0
-    tick = r"\quad(\checkmark)" if ok else r"\quad(\text{mismatch!})"
-    print(r"\[ %s:\quad %s \;=\; %s %s \]" % (name, sp.latex(lhs), sp.latex(rhs), tick))
+# substitute x=h/tau into target & symmetrize
+K_target_ht = sp.simplify(K_target.subs({x: h/tau}))
+K_target_sym = sp.simplify((K_target_ht + K_target_ht.T)/2)
 
-print("\n% === Entry-by-entry verification (symbolic) ===")
-eq_latex("K_{vv}", Kvva, K_vv_t)
-eq_latex("K_{va}", Kvaa, K_va_t)
-eq_latex("K_{pp}", Kppa, K_pp_t)
-eq_latex("K_{pa}", Kpaa, K_pa_t)
-eq_latex("K_{pv}", Kpva, K_pv_t)
-eq_latex("K_{SS}", KSSa, K_SS_t)
-eq_latex("K_{Sa}", KSaa, K_Sa_t)
-eq_latex("K_{Sp}", KSpa, K_Sp_t)
-eq_latex("K_{Sv}", KSva, K_Sv_t)
-eq_latex("K_{aa}", Kaaa, K_aa_t)
+print("\n% === Entry-by-entry verification (after x=h/τ substitution) ===")
+eq_print("K_{vv}", K_sym[0,0], K_target_sym[0,0])
+eq_print("K_{pv}", K_sym[0,1], K_target_sym[0,1])
+eq_print("K_{Sv}", K_sym[0,2], K_target_sym[0,2])
+eq_print("K_{va}", K_sym[0,3], K_target_sym[0,3])
+
+eq_print("K_{pp}", K_sym[1,1], K_target_sym[1,1])
+eq_print("K_{Sp}", K_sym[1,2], K_target_sym[1,2])
+eq_print("K_{pa}", K_sym[1,3], K_target_sym[1,3])
+
+eq_print("K_{SS}", K_sym[2,2], K_target_sym[2,2])
+eq_print("K_{Sa}", K_sym[2,3], K_target_sym[2,3])
+
+eq_print("K_{aa}", K_sym[3,3], K_target_sym[3,3])
 
 disp("Final discrete covariance", raw=r"""
-From the unit kernel we recover the discrete covariance:
 \[
 Q_{d,\text{axis}}(h)\;=\;\frac{2\sigma^2}{\tau}\;\mathrm{sym}\,K(h,\tau),
 \qquad \mathrm{sym}\,K=\tfrac12\bigl(K+K^\top\bigr).
 \]
-This is exactly the form used in the C++ \texttt{QdAxis4x1\_analytic} general branch.
 """)
 
 disp("Per-axis transition Φ_{axis}(h) in compact form", raw=r"""
@@ -228,5 +228,4 @@ h & 1 & 0 & \tau^2(x+\mathrm{em1})\\[2pt]
 0 & 0 & 0 & \alpha
 \end{bmatrix}.
 \]
-This matches the code’s \texttt{PhiAxis4x1\_analytic}.
 """)
