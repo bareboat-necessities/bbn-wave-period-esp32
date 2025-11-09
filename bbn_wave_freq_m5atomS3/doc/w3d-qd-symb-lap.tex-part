@@ -1,4 +1,4 @@
-\section{Discrete Process Covariance for One Axis: Derivation from \texorpdfstring{$(F,L)$}{(F,L)}}
+\section{Discrete Process Covariance for One Axis: Derivation from \texorpdfstring{$(F,L)$}{(F,L)}} via Laplace transform
 
 We consider the per–axis linear chain
 \[
