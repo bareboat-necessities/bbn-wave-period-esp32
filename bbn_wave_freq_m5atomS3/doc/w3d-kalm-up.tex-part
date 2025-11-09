@@ -1,0 +1,114 @@
+\section{Measurement Update: Gain, Rank–3 Structure, and Block Algebra}
+\label{sec:meas-update-structure}
+
+Let the predicted pair be $(\hat{\boldsymbol{x}}^{-},P^{-})$ and a $m$–dimensional measurement model
+\[
+\boldsymbol{z} \;=\; h(\boldsymbol{x}) + \boldsymbol{\nu},\qquad
+\boldsymbol{\nu}\sim\mathcal{N}(0,R),\qquad
+C \;\coloneqq\; \left.\frac{\partial h}{\partial \boldsymbol{x}}\right|_{\hat{\boldsymbol{x}}^{-}}.
+\]
+The EKF update is determined by the residual $\boldsymbol{r}=\boldsymbol{z}-h(\hat{\boldsymbol{x}}^{-})$,
+the innovation covariance
+\[
+S \;=\; C\,P^{-}\,C^\top + R \;\in\; \mathbb{R}^{m\times m},
+\]
+the Kalman gain
+\[
+K \;=\; P^{-}\,C^\top\,S^{-1} \;\in\; \mathbb{R}^{N\times m},
+\]
+and the posterior
+\[
+\hat{\boldsymbol{x}}^{+} \;=\; \hat{\boldsymbol{x}}^{-} + K\,\boldsymbol{r},\qquad
+P^{+} \;=\; P^{-} - K\,S\,K^\top.
+\]
+For numerical robustness, the Joseph form
+\[
+P^{+} \;=\; (I-KC)\,P^{-}\,(I-KC)^\top + K\,R\,K^\top
+\]
+is algebraically equivalent and preserves $P^{+}\succeq 0$ up to roundoff.
+
+\subsection*{Structural rank and block decomposition}
+In this work the measurement dimension is $m=3$ (vector triads), so the correction is intrinsically
+\emph{rank–3}. The state is ordered as
+\[
+\boldsymbol{x}=\bigl[A^\top,L^\top,B^\top\bigr]^\top,\quad
+A=(\delta\boldsymbol{\theta},\mathbf{b}_g)\in\mathbb{R}^6,\;
+L=(\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)\in\mathbb{R}^{12},\;
+B=\mathbf{b}_a\in\mathbb{R}^3,
+\]
+with prior covariance partitioned accordingly,
+\[
+P^{-}=
+\begin{bmatrix}
+P_{AA} & P_{AL} & P_{AB}\\
+P_{LA} & P_{LL} & P_{LB}\\
+P_{BA} & P_{BL} & P_{BB}
+\end{bmatrix}.
+\]
+Both magnetometer and accelerometer updates produce Jacobians $C$ that are at most block-sparse over
+these three groups. The innovation covariance has the canonical form
+\[
+S \;=\; C\,P^{-}\,C^\top + R \;=\; 
+C_A P_{AA} C_A^\top \;+\; C_A P_{AL} C_L^\top \;+\; C_L P_{LA} C_A^\top
+\;+\; C_L P_{LL} C_L^\top
+\;+\; C_B P_{BB} C_B^\top
+\;+\; \text{(cross terms)} \;+\; R,
+\]
+and the cross-covariance factor
+\[
+PC^\top \;=\; P^{-} C^\top \;=\;
+\begin{bmatrix}
+P_{AA} C_A^\top + P_{AL} C_L^\top + P_{AB} C_B^\top\\
+P_{LA} C_A^\top + P_{LL} C_L^\top + P_{LB} C_B^\top\\
+P_{BA} C_A^\top + P_{BL} C_L^\top + P_{BB} C_B^\top
+\end{bmatrix}
+\;\in\; \mathbb{R}^{N\times 3}.
+\]
+Hence the gain \(K\) is \emph{entirely determined} by a single $3\times 3$ solve:
+\[
+K \;=\; (PC^\top)\,S^{-1}.
+\]
+This characterization makes no algorithmic assumption: it is a direct algebraic consequence of the rank–3 measurement and the block partition of $P^{-}$.
+
+\paragraph{Magnetometer (attitude–only).}
+The magnetic field measurement depends on attitude only; with the standard sign fix one has
+\[
+\boldsymbol{z}_{\text{mag}} \;=\; R_{wb}\,\mathbf{B}_w + \boldsymbol{\nu}_m,\qquad
+C=\bigl[\,C_A\ \ 0\ \ 0\,\bigr],\quad
+C_A \;=\; -\bigl[\hat{\boldsymbol{v}}_2\bigr]_\times\in\mathbb{R}^{3\times 3}.
+\]
+It follows that
+\[
+S \;=\; C_A P_{AA} C_A^\top + R_{\text{mag}},\qquad
+PC^\top \;=\; \begin{bmatrix}P_{AA} C_A^\top\\ P_{LA} C_A^\top\\ P_{BA} C_A^\top\end{bmatrix},
+\qquad
+K \;=\; (PC^\top) S^{-1}.
+\]
+The posterior covariance then follows from the Joseph form, and the right–multiplicative attitude correction is applied to the quaternion, after which the attitude error subvector is reset.
+
+\paragraph{Accelerometer (attitude + latent $\mathbf{a}_w$ + bias $\mathbf{b}_a$).}
+For specific force in body coordinates,
+\[
+\boldsymbol{z}_{\text{acc}} \;=\; R_{wb}\bigl(\mathbf{a}_w-\mathbf{g}\bigr) + \mathbf{b}_a + \boldsymbol{\nu}_a,
+\]
+the Jacobian touches three groups:
+\[
+C=\bigl[\,C_A\ \ C_L\ \ C_B\,\bigr],\quad
+C_A = -\bigl[\hat{\boldsymbol{f}}_b\bigr]_\times,\quad
+C_L = \begin{bmatrix}0_{3\times 9} & R_{wb}\end{bmatrix},\quad
+C_B = I_3.
+\]
+The rank–3 structure again yields
+\[
+S \;=\; C P^{-} C^\top + R_{\text{acc}},\qquad
+K \;=\; (PC^\top) S^{-1},
+\]
+with \(PC^\top\) assembled from the covariance blocks as above. The presence of $\mathbf{a}_w$ and $\mathbf{b}_a$ merely enlarges the nonzero columns of \(C\) but does not change the rank-3 character of \(S\).
+
+\subsection*{Numerical form and invariants}
+Because \(S\in\mathbb{R}^{3\times 3}\) is SPD whenever \(R\succ 0\), its factorization (LDL$^\top$ or Cholesky with a diagonal bump if needed) is well-posed. The gain \(K\) is obtained by right-multiplying the $N\times 3$ cross-covariance \(PC^\top\) with the \(3\times 3\) inverse of \(S\). The posterior covariance satisfies the usual invariants:
+\begin{itemize}\itemsep2pt
+\item \(P^{+}\) is symmetric and (to numerical precision) PSD under the Joseph update.
+\item The right–multiplicative quaternion correction preserves unit norm and keeps the linearization point consistent with the reset \(\delta\boldsymbol{\theta}^{+}=0\).
+\end{itemize}
+This is precisely the form realized by the implementation: the block algebra expresses the method’s intrinsic structure rather than a procedural recipe, and the reduction to a single rank–3 solve is a direct consequence of the measurement dimension.
