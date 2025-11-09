@@ -1,171 +1,197 @@
-# block-phi-qd-sym.py
-# Step-by-step symbolic derivation of Φ(h) = exp(F h) and
-# Qd(h) = ∫_0^h e^{F s} L Qc Lᵀ e^{Fᵀ s} ds
-# for the per-axis linear OU chain x = [v, p, S, a]ᵀ with
-#   dv = a, dp = v, dS = p, da = -(1/τ) a + w
-# L injects noise only on 'a', Qc = q_c (scalar); later we set q_c = 2 σ² / τ.
+# -*- coding: utf-8 -*-
+# Step-by-step symbolic derivation of Φ(h)=exp(F h) and Qd(h)=∫_0^h e^{F s} L Qc L^T e^{F^T s} ds
+# for the OU-driven per-axis chain x=[v,p,S,a]^T with
+#   dv = a ,  dp = v ,  dS = p ,  da = -(1/τ) a + w ,  E[w w^T] = Qc dt,  Qc = 2 σ^2 / τ (scalar).
+#
+# The script:
+#   1) Builds F and L.
+#   2) Derives e^{As} using nilpotency of A (A^3=0) and uses block-triangular exponential:
+#        e^{[[A,B],[0,D]] s} = [[e^{A s}, ∫_0^s e^{A(s-u)} B e^{D u} du],[0, e^{D s}]]
+#   3) Forms E(s)L Qc L^T E(s)^T, integrates over s to get Qd(h).
+#   4) Rewrites results in the same primitives and scalar shorthands used in the C++ code:
+#        x=h/τ, α=e^{-x}, em1=α-1, em1_2=e^{-2x}-1,
+#        φ_va, φ_pa, φ_Sa  and K entries (vv,pv,Sv,va,pp,Sp,pa,SS,Sa,aa).
+#   5) Prints LaTeX at each conceptual step (ready to copy-paste).
 
 import sympy as sp
 
-# ----------------------------- controls -----------------------------
-PRINT_INTERMEDIATE_MATRICES = True   # print e^{A s}, TR(h), E_TR(s), integrand blocks, etc.
-PRINT_FINAL_LATEX           = True   # also emit LaTeX (bmatrix) for Φ_axis and Qd_unit
-SIMPLIFY_FINAL_FORMS        = True   # reduce to compact primitives (x, alpha, em1, em1_2)
-# --------------------------------------------------------------------
+# ----------------- basic symbols -----------------
+h, s, u, tau, sigma2 = sp.symbols('h s u tau sigma2', positive=True, real=True)
 
-# Symbols
-h, s, u = sp.symbols('h s u', real=True, nonnegative=True)
-tau, sigma2, qc = sp.symbols('tau sigma2 q_c', positive=True, real=True)
-
-# ------------------ 1) Define F and L by blocks ---------------------
-# State order: [v, p, S, a]
-# Linear tri-chain for (v,p,S); OU for 'a'
+# ----------------- build F and L -----------------
+# State order per axis: x = [v, p, S, a]^T
 A = sp.Matrix([[0,0,0],
                [1,0,0],
-               [0,1,0]])          # nilpotent (A^3 = 0)
-B = sp.Matrix([[1],[0],[0]])      # a -> v channel
-D = sp.Matrix([[-1/tau]])         # OU scalar
-# Assemble F = [[A, B], [0, D]] (4x4)
-F = sp.Matrix([[0,0,0,1],
-               [1,0,0,0],
+               [0,1,0]])               # nilpotent (A^3=0)
+B = sp.Matrix([[1],[0],[0]])           # a enters dv
+D = sp.Matrix([[-1/tau]])              # OU drift on a
+
+F = sp.Matrix([[0,0,0,1],              # [ [A, B],
+               [1,0,0,0],              #   [0, D] ]
                [0,1,0,0],
                [0,0,0,-1/tau]])
 
-# Noise enters only 'a'
-L = sp.Matrix([[0],
-               [0],
-               [0],
-               [1]])
+# Process-noise input only on 'a' channel:
+L = sp.Matrix([[0],[0],[0],[1]])       # w enters 'a' only
+Qc = sp.Matrix([[2*sigma2/tau]])       # scalar (2 σ^2 / τ)
 
-# Keep Qc symbolic first; later set qc = 2*sigma2/tau
-Qc = sp.Matrix([[qc]])
+# ----------------- helpers for LaTeX pretty matrices -----------------
+def bmatrix(expr):
+    return sp.latex(expr).replace(r"\left[\begin{matrix}", r"\begin{bmatrix}") \
+                         .replace(r"\end{matrix}\right]", r"\end{bmatrix}")
 
-# ------------------ 2) Compute e^{A s} (exact by nilpotency) --------
-# e^{A s} = I + A s + (A^2) s^2 / 2
-I3  = sp.eye(3)
-A2  = A*A
-eAs = I3 + A*s + A2*(s**2/2)
+def display_latex(title, expr):
+    print("\n% " + title)
+    print(r"\[ \displaystyle " + bmatrix(expr) + r" \]")
 
-# ------------------ 3) Block exponential e^{F t} --------------------
-# For upper triangular blocks:
-# e^{F t} = [[e^{A t}, ∫_0^t e^{A(t-u)} B e^{D u} du],
-#            [0,       e^{D t}]]
-# We'll build both at argument 'h' (for Φ) and at generic 's' (for Qd).
-eDs = sp.exp(-s/tau)            # scalar
-eDh = sp.exp(-h/tau)
+def display_latex_text(block):
+    print("\n" + block)
 
-# 3a) Φ_TL(h) = e^{A h}
-eAh = I3 + A*h + A2*(h**2/2)
+# ----------------- Step 1: print F and L -----------------
+display_latex_text(r"% ===== Step 1: Continuous-time LTI SDE blocks =====")
+display_latex("F = [[A,B],[0,D]]", F)
+display_latex("L (a-channel)", L)
+display_latex("Q_c (scalar)", Qc)
 
-# 3b) Φ_TR(h) = ∫_0^h e^{A(h-u)} B e^{D u} du.
-# Change variable v = h - u for cleanliness: e^{A(h-u)} = I + A v + A² v² / 2
-v = sp.symbols('v', real=True, nonnegative=True)
-TR_integrand = (I3 + A*v + A2*(v**2/2)) * B * sp.exp(-(h - v)/tau)
-Phi_TR = sp.Matrix(3,1, lambda i,j: sp.integrate(TR_integrand[i,j], (v,0,h)))
+# ----------------- Step 2: e^{F s} by block-triangular exponential -----------------
+# Because A is nilpotent: e^{A s} = I + A s + 1/2 A^2 s^2 .
+I3 = sp.eye(3)
+A2 = A*A
+expAs = I3 + A*s + A2*(s**2/2)              # exact (since A^3=0)
+expDs = sp.exp(-s/tau)
 
-# 3c) Φ_BR(h) = e^{D h}
-Phi_BR = eDh
+# Upper-right block: ∫_0^s e^{A (s-u)} B e^{D u} du
+TR_integrand = (I3 + A*(s-u) + A2*((s-u)**2/2)) * B * sp.exp(-u/tau)
+expF_TR = sp.Matrix(3,1, lambda i,j: sp.integrate(TR_integrand[i,0], (u,0,s)))
 
-# Assemble Φ(h)
-Phi_axis = sp.eye(4)
-Phi_axis[0:3,0:3] = eAh
-Phi_axis[0:3,3:4] = Phi_TR
-Phi_axis[3,3]     = Phi_BR
+# Assemble e^{F s} = E(s)
+E = sp.Matrix.zeros(4,4)
+E[0:3,0:3] = expAs
+E[0:3,3:4] = expF_TR
+E[3,3]     = expDs
 
-# ------------------ 4) Build E(s) = e^{F s} for Qd integrand --------
-# E(s) has the same block form:
-# E_TL(s) = e^{A s}, E_TR(s) = ∫_0^s e^{A(s-u)} B e^{D u} du, E_BR(s) = e^{D s}
-eAs_s = I3 + A*s + A2*(s**2/2)
-TR_s_integrand = (I3 + A*(s-u) + A2*((s-u)**2/2)) * B * sp.exp(-u/tau)
-E_TR = sp.Matrix(3,1, lambda i,j: sp.integrate(TR_s_integrand[i,0], (u,0,s)))
-E_BR = sp.exp(-s/tau)
+display_latex_text(r"% ===== Step 2: Block exponential for the triangular F =====")
+display_latex(r"e^{A s} = I + A s + \tfrac{1}{2}A^2 s^2", expAs)
+display_latex(r"\int_0^s e^{A (s-u)} B e^{D u}\,du", expF_TR)
+display_latex(r"E(s)=e^{F s} = \begin{bmatrix} e^{A s} & \int_0^s e^{A(s-u)} B e^{D u} du \\ 0 & e^{D s} \end{bmatrix}", E)
 
-# E(s) L is simply [E_TR; E_BR] because L = e_a
-C_top = E_TR                 # 3x1
-C_bot = sp.Matrix([[E_BR]])  # 1x1
+# ----------------- Step 3: Φ(h) = E(h) -----------------
+Phi_axis = E.subs(s, h)
+display_latex_text(r"% ===== Step 3: Discrete transition Φ(h) =====")
+display_latex(r"\Phi(h)=e^{F h}", Phi_axis)
 
-# ------------------ 5) Construct integrand and integrate ------------
-# Qd(h) = ∫_0^h E(s) L Qc Lᵀ E(s)ᵀ ds = ∫_0^h [C(s) Qc C(s)ᵀ] ds
-# where C(s) = [C_top; C_bot], Qc is scalar qc.
-integrand = sp.zeros(4,4)
-integrand[0:3,0:3] = qc * (C_top * C_top.T)
-integrand[0:3,3:4] = qc * (C_top * C_bot.T)
-integrand[3:4,0:3] = qc * (C_bot * C_top.T)
-integrand[3,3]     = qc * (C_bot * C_bot.T)[0,0]
+# ----------------- Step 4: Q_d(h) via covariance integral -----------------
+# Q_d(h) = ∫_0^h E(s) L Qc L^T E(s)^T ds .
+C = E * L                       # 4×1
+integrand = C * Qc[0,0] * C.T   # 4×4
+Qd = sp.Matrix(4,4, lambda i,j: sp.integrate(integrand[i,j], (s,0,h)))
+Qd = sp.simplify((Qd + Qd.T)/2)
 
-Qd_unit = sp.Matrix(4,4, lambda i,j: sp.integrate(integrand[i,j], (s,0,h)))
-Qd_unit = sp.simplify((Qd_unit + Qd_unit.T)/2)  # enforce symmetry
+display_latex_text(r"% ===== Step 4: Discrete-time covariance via integral =====")
+display_latex(r"C(s) = E(s)L", C)
+display_latex(r"\int_0^h C(s) Q_c C(s)^{\!\top} ds", Qd)
 
-# ------------------ 6) (Optional) reduce to the C++ primitives ------
-x = sp.symbols('x', positive=True, real=True)        # x = h/tau
-alpha   = sp.exp(-x)                                 # e^{-x}
-em1     = alpha - 1                                  # exp(-x) - 1
-em1_2   = sp.exp(-2*x) - 1                           # exp(-2x) - 1
+# ----------------- Step 5: Rewrite to C++ primitives and scalars -----------------
+# Define primitives and rewrite
+x = sp.symbols('x', positive=True, real=True)       # x = h/tau
+alpha = sp.exp(-x)                                  # e^{-x}
+em1   = alpha - 1                                   # exp(-x) - 1
+em1_2 = sp.exp(-2*x) - 1                            # exp(-2x) - 1
 
-# show Φ entries reduce to code forms:
+subs_small = {
+    sp.exp(-h/tau): alpha,
+    sp.exp(-2*h/tau): sp.exp(-2*x),
+    h/tau: x
+}
+# replace higher exponentials
+Qd_rew = sp.simplify(Qd.xreplace(subs_small))
+Phi_rew = sp.simplify(Phi_axis.xreplace(subs_small))
+
+# Now express the key scalars exactly as in the C++:
+A0 = -tau*em1
+A1 = tau**2 * (-em1 - x*alpha)
+A2 = tau**3 * (-2*em1 + alpha*x*(x+2))
+B0 = -(tau/2)*em1_2
+
 phi_va = -tau*em1
 phi_pa = tau**2 * (x + em1)
 phi_Sa = tau**3 * (sp.Rational(1,2)*x**2 - x - em1)
 phi_aa = alpha
 
-Phi_axis_reduced = sp.simplify(
-    Phi_axis.subs({h: x*tau}).doit()
-)
+Phi_cpp = sp.Matrix([
+    [1,        0,     0,     phi_va],
+    [h,        1,     0,     phi_pa],
+    [h**2/2,   h,     1,     phi_Sa],
+    [0,        0,     0,     phi_aa]
+])
 
-# Build the “K” kernel from the integrated Qd_unit when qc = 1 (unit),
-# then show Qd = (2 σ² / τ) * sym(K) when qc = 2 σ² / τ.
-K_from_integral = sp.simplify(Qd_unit.subs({qc: 1}).subs({h: x*tau}).doit())
-Qd_from_sigma = sp.simplify(Qd_unit.subs({qc: 2*sigma2/tau}).subs({h: x*tau}).doit())
+# Build K entries from the *derived* Qd by factoring out (2 σ^2 / τ)
+K_from_Qd = sp.simplify((tau/(2*sigma2)) * Qd_rew)
 
-# ------------------ 7) Print results -------------------------------
-if PRINT_INTERMEDIATE_MATRICES:
-    print("\n# e^{A s} = I + As + A^2 s^2 / 2")
-    sp.pprint(eAs)
-    print("\n# Φ_TL(h) = e^{A h}")
-    sp.pprint(eAh)
-    print("\n# Φ_TR(h) = ∫_0^h e^{A(h-u)} B e^{D u} du")
-    sp.pprint(Phi_TR)
-    print("\n# Φ_BR(h) = e^{D h}")
-    sp.pprint(Phi_BR)
-    print("\n# Φ_axis(h) = [[e^{A h}, Φ_TR],[0, e^{D h}]]")
-    sp.pprint(Phi_axis)
+# Extract labeled entries to show the match to code:
+K_vv = sp.simplify(K_from_Qd[0,0])
+K_pv = sp.simplify(K_from_Qd[1,0])
+K_Sv = sp.simplify(K_from_Qd[2,0])
+K_va = sp.simplify(K_from_Qd[0,3])
 
-    print("\n# E_TR(s) = ∫_0^s e^{A(s-u)} B e^{D u} du")
-    sp.pprint(E_TR)
-    print("\n# E_BR(s) = e^{D s}")
-    sp.pprint(E_BR)
+K_pp = sp.simplify(K_from_Qd[1,1])
+K_Sp = sp.simplify(K_from_Qd[2,1])
+K_pa = sp.simplify(K_from_Qd[1,3])
 
-    print("\n# integrand(s) = C(s) Qc C(s)^T (symbolic)")
-    sp.pprint(integrand)
-    print("\n# Qd_unit(h) = ∫_0^h integrand(s) ds (with general qc)")
-    sp.pprint(Qd_unit)
+K_SS = sp.simplify(K_from_Qd[2,2])
+K_Sa = sp.simplify(K_from_Qd[2,3])
 
-print("\n# Φ_axis(h) reduced with x=h/τ → matches C++ closed forms")
-sp.pprint(Phi_axis_reduced)
+K_aa = sp.simplify(K_from_Qd[3,3])
 
-print("\n# K(h,τ) obtained from integral (qc=1); Qd = (2 σ² / τ) * K_sym")
-sp.pprint(K_from_integral)
+display_latex_text(r"% ===== Step 5: Rewrite into C++ primitives (x, alpha, em1, em1_2) and C++ scalars =====")
+display_latex_text(r"""
+% Primitives:
+\[
+x=\frac{h}{\tau},\qquad \alpha=e^{-x},\qquad \mathrm{em1}=\alpha-1,\qquad \mathrm{em1}_2=e^{-2x}-1.
+\]
+% Transition scalars (exactly as in C++):
+\[
+\phi_{va}=-\tau\,\mathrm{em1},\qquad
+\phi_{pa}=\tau^2\,(x+\mathrm{em1}),\qquad
+\phi_{Sa}=\tau^3\!\left(\tfrac{1}{2}x^2-x-\mathrm{em1}\right),\qquad
+\phi_{aa}=\alpha.
+\]
+""")
+display_latex(r"\Phi_{\text{axis}}(h)\ \text{(rewritten)}", Phi_cpp)
 
-print("\n# Qd_axis(h) with qc = 2 σ² / τ (directly)")
-sp.pprint(Qd_from_sigma)
+display_latex_text(r"""
+% Discrete covariance structure:
+% Factor out Q_d(h) = (2\sigma^2/\tau) * K(h,\tau), then symmetrize in code.
+% Below are the K entries as derived from the integral:
+""")
 
-# ------------------ 8) Optional LaTeX (clean bmatrix) ---------------
-def _bmat(lx: str) -> str:
-    lx = lx.replace(r"\left[\begin{matrix}", r"\begin{bmatrix}")
-    lx = lx.replace(r"\end{matrix}\right]", r"\end{bmatrix}")
-    lx = lx.replace(r"\left[ \begin{matrix}", r"\begin{bmatrix}")
-    lx = lx.replace(r"\end{matrix} \right]", r"\end{bmatrix}")
-    return lx
+def emit_named(name, expr):
+    print(r"\[%s \;=\; %s\]" % (name, sp.latex(sp.simplify(expr)
+          ).replace(r"\left[\begin{matrix}", r"\begin{bmatrix}"
+          ).replace(r"\end{matrix}\right]", r"\end{bmatrix}")))
 
-if PRINT_FINAL_LATEX:
-    print("\n% ===== LaTeX: Φ_axis(h) (exact from F) =====")
-    print(r"\[ \displaystyle " + _bmat(sp.latex(Phi_axis)) + r" \]")
+emit_named("K_{vv}", K_vv)
+emit_named("K_{pv}", K_pv)
+emit_named("K_{Sv}", K_Sv)
+emit_named("K_{va}", K_va)
+emit_named("K_{pp}", K_pp)
+emit_named("K_{Sp}", K_Sp)
+emit_named("K_{pa}", K_pa)
+emit_named("K_{SS}", K_SS)
+emit_named("K_{Sa}", K_Sa)
+emit_named("K_{aa}", K_aa)
 
-    print("\n% ===== LaTeX: Qd_unit(h) = ∫ E(s) L Qc L^T E(s)^T ds (symbolic) =====")
-    print(r"\[ \displaystyle " + _bmat(sp.latex(Qd_unit)) + r" \]")
-
-    print("\n% ===== LaTeX: K(h,τ) = Qd_unit|_{qc=1, h=x τ} (for Qd = (2 σ^2 / τ) sym K) =====")
-    print(r"\[ \displaystyle " + _bmat(sp.latex(K_from_integral)) + r" \]")
-
-    print("\n% ===== LaTeX: Qd_axis(h) with qc = 2 σ^2 / τ =====")
-    print(r"\[ \displaystyle " + _bmat(sp.latex(Qd_from_sigma)) + r" \]")
+display_latex_text(r"""
+% Final assembly (exactly the C++ pattern):
+\[
+Q_{d,\text{axis}}(h) \;=\; \frac{2\,\sigma^2}{\tau}\,\frac{K(h,\tau)+K(h,\tau)^\top}{2},
+\quad\text{with}\;
+K(h,\tau)=
+\begin{bmatrix}
+K_{vv} & K_{pv} & K_{Sv} & K_{va}\\
+K_{pv} & K_{pp} & K_{Sp} & K_{pa}\\
+K_{Sv} & K_{Sp} & K_{SS} & K_{Sa}\\
+K_{va} & K_{pa} & K_{Sa} & K_{aa}
+\end{bmatrix}.
+\]
+""")
