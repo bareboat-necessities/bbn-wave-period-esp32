@@ -1,0 +1,134 @@
+\section{Final Discrete Assembly \texorpdfstring{$(\Phi,Q_d)$}{(Phi,Qd)} for the Full Process Model}
+
+Let the discrete state at step \(k\) be ordered as
+\[
+\boldsymbol{x}_k \;=\;
+\begin{bmatrix}
+\delta\boldsymbol{\theta} &
+\mathbf{b}_g &
+\mathbf{v} &
+\mathbf{p} &
+\mathbf{S} &
+\mathbf{a}_w &
+\mathbf{b}_a
+\end{bmatrix}^{\!\top}
+\in\mathbb{R}^{21},
+\]
+where \(\delta\boldsymbol{\theta}\in\mathbb{R}^3\) is the (right–multiplicative) attitude error,
+\(\mathbf{b}_g\in\mathbb{R}^3\) the gyro bias,
+\((\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)\in\mathbb{R}^{12}\) the linear OU–driven chain
+stacked as \([v(3),p(3),S(3),a_w(3)]\), and \(\mathbf{b}_a\in\mathbb{R}^3\) the accelerometer bias.
+
+\subsection*{Block transition matrix \(\Phi\)}
+For a sample period \(h>0\), the full transition matrix is block upper–triangular:
+\[
+\Phi(h)=
+\begin{bmatrix}
+\Phi_{AA}(h) & 0                & 0 \\
+0            & \Phi_{LL}(h)     & 0 \\
+0            & 0                & \Phi_{BB}(h)
+\end{bmatrix},
+\qquad
+\text{with blocks indexed by } 
+\underbrace{A}_{(\delta\boldsymbol{\theta},\mathbf{b}_g)},\;
+\underbrace{L}_{(\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)},\;
+\underbrace{B}_{(\mathbf{b}_a)}.
+\]
+\paragraph{Attitude\(+\)gyro–bias block \(\Phi_{AA}(h)\in\mathbb{R}^{6\times 6}\).}
+Using the standard Q–MEKF constant–rate approximation over \([t_k,t_k+h]\), the
+attitude–error subblock implements the right–multiplicative discrete kinematics,
+and the bias is random–walk with identity transition:
+\[
+\Phi_{AA}(h)=
+\begin{bmatrix}
+\Phi_{\theta\theta}(h) & \Phi_{\theta b_g}(h)\\[2pt]
+0 & I_3
+\end{bmatrix},
+\]
+where \(\Phi_{\theta\theta}(h)\) is the \(3\times3\) small–angle propagation induced by the
+body rate (constant over the step), and \(\Phi_{\theta b_g}(h)\) captures the
+first–order coupling from \(b_g\) into attitude error over the step.\footnote{Either
+the exact closed–form structured integral (rotation–integral path) or the fast
+\(\Phi\approx I - [\omega]_\times h\) with \(\Phi_{\theta b_g}\approx -I\,h\).}
+
+\paragraph{Linear OU–driven block \(\Phi_{LL}(h)\in\mathbb{R}^{12\times 12}\).}
+Let \(\Phi_{\text{axis}}(h)\in\mathbb{R}^{4\times4}\) denote the per–axis transition for
+\([v,p,S,a]^\top\) (Section~\emph{OU analytic discretization}); then, with one shared
+\(\tau\),
+\[
+\Phi_{LL}(h)=I_3\;\otimes\;\Phi_{\text{axis}}(h),
+\quad
+\Phi_{\text{axis}}(h)=
+\begin{bmatrix}
+1 & 0 & 0 & \phi_{va} \\
+h & 1 & 0 & \phi_{pa} \\
+\frac{h^2}{2} & h & 1 & \phi_{Sa} \\
+0 & 0 & 0 & \alpha
+\end{bmatrix},
+\qquad
+\alpha=e^{-h/\tau},
+\]
+with feedthroughs
+\(\phi_{va}=-\tau(\alpha-1)\),
+\(\phi_{pa}=\tau^2\bigl(\tfrac{h}{\tau}+(\alpha-1)\bigr)\),
+\(\phi_{Sa}=\tau^3\bigl(\tfrac{1}{2}(\tfrac{h}{\tau})^2-\tfrac{h}{\tau}-(\alpha-1)\bigr)\).
+
+\paragraph{Accelerometer–bias block \(\Phi_{BB}(h)\in\mathbb{R}^{3\times 3}\).}
+Random–walk bias:
+\[
+\Phi_{BB}(h)=I_3.
+\]
+
+\subsection*{Block process covariance \(Q_d\)}
+With mutually independent driving noises (gyro RW, OU forcing, accel–bias RW),
+the discrete process covariance is block diagonal:
+\[
+Q_d(h)=
+\begin{bmatrix}
+Q_{AA}(h) & 0          & 0 \\
+0         & Q_{LL}(h)  & 0 \\
+0         & 0          & Q_{BB}(h)
+\end{bmatrix}.
+\]
+
+\paragraph{Attitude\(+\)gyro–bias block \(Q_{AA}(h)\in\mathbb{R}^{6\times 6}\).}
+Structured discrete covariance for \((\delta\boldsymbol{\theta},\mathbf{b}_g)\) over the step,
+assembled from the continuous gyro–noise and bias–RW intensities via the rotation–integral
+closed forms (or the fast \(Q\approx Q_{\text{cont}}\,h\) path):
+\[
+Q_{AA}(h)=
+\begin{bmatrix}
+Q_{\theta\theta}(h) & Q_{\theta b_g}(h)\\[2pt]
+Q_{\theta b_g}(h)^{\!\top} & Q_{b_gb_g}(h)
+\end{bmatrix}.
+\]
+
+\paragraph{Linear OU–driven block \(Q_{LL}(h)\in\mathbb{R}^{12\times 12}\).}
+Let \(\Sigma_{aw}\in\mathbb{R}^{3\times3}\) be the SPD stationary covariance of the latent
+world acceleration (potentially anisotropic and correlated), common \(\tau\). With the
+unit kernel \(K(h,\tau)\in\mathbb{R}^{4\times4}\) from the one–axis derivation and
+\(\mathrm{sym}\,K=\tfrac12(K+K^\top)\),
+\[
+Q_{LL}(h)\;=\;\frac{2}{\tau}\;\Sigma_{aw}\;\otimes\;\mathrm{sym}\,K(h,\tau).
+\]
+(If \(\Sigma_{aw}=\mathrm{diag}(s_x^2,s_y^2,s_z^2)\), this yields a block–diagonal
+\(Q_{LL}\) with three \(4\times4\) OU covariances scaled by \(s_x^2,s_y^2,s_z^2\).)
+
+\paragraph{Accelerometer–bias block \(Q_{BB}(h)\in\mathbb{R}^{3\times 3}\).}
+Random–walk discretization:
+\[
+Q_{BB}(h)=Q_{b_a}\,h,
+\]
+where \(Q_{b_a}\) is the continuous RW intensity (diagonal typically), optionally
+augmented by temperature–drift modeling in the measurement equation.
+
+\subsection*{Prediction step (context)}
+With these blocks,
+\[
+\hat{\boldsymbol{x}}_{k|k-1}=\Phi(h)\,\hat{\boldsymbol{x}}_{k-1|k-1},\qquad
+P_{k|k-1}=\Phi(h)\,P_{k-1|k-1}\,\Phi(h)^{\!\top}+Q_d(h).
+\]
+The attitude/bias block \((\Phi_{AA},Q_{AA})\) follows the multiplicative EKF
+constant–rate assumption over \([t_k,t_k+h]\); the linear block \((\Phi_{LL},Q_{LL})\) uses
+the analytic OU discretization; the accel–bias block is identity with RW covariance.
+All measurement updates are applied in Joseph form with PSD projection for numerical hygiene.
