@@ -1,4 +1,4 @@
-# phi_from_F.py
+# phi-from-F.py
 from sympy import symbols, Matrix, eye, simplify
 
 def phi_from_F(F, h):
