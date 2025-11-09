@@ -105,7 +105,7 @@ frequency-tracking schemes.  The OU-based Q-MEKF achieves
 drift-suppressed yet dynamically faithful reconstruction of
 three-dimensional surface motion.
 
-\subsection*{Main Contributions}
+\subsection{Main Contributions}
 
 The main contributions of this work are:
 \begin{itemize}
