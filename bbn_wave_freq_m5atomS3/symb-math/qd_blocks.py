@@ -1,14 +1,22 @@
-# qd_blocks.py
-# Block-by-block optimized LTI discretization (Phi, Qd)
-#   - Attitude + gyro-bias (6x6)
-#   - One OU axis [v,p,S,a] (4x4)  → replicate for x,y,z
-#   - 3-axis linear block, uncorrelated OR correlated (via Σ ⊗ Qaxis_unit)
-#   - Accel-bias random walk (3x3)
+# qd_blocks_symbolic.py
+# Block-by-block symbolic discretization using closed forms (fast)
 #
-# Exact LTI Qd via Van Loan per block:
-#   exp( [[F, LQcL^T],[0, -F^T]] h ) = [[Phi, S],[0, Phi^{-T}]],  Qd = S Phi^T
+# Blocks:
+#   1) Attitude error (3) + gyro bias (3): exact Phi from Rodrigues; Qd via symbolic 3x3 integrals
+#   2) OU axis [v,p,S,a] (4x4): analytic Phi and Qd using your closed-form K(h)
+#   3) Linear 3-axis: uncorrelated (blkdiag) or correlated (Σ ⊗ Q_axis_unit)
+#   4) Accel-bias RW (3x3): Phi = I, Qd = q_ba * h * I
+#
+# Assumptions for closed-form attitude Qd:
+#   Q_g  = q_g  * I_3  (gyro white noise isotropic)
+#   Q_bg = q_bg * I_3  (gyro-bias RW isotropic)
+#
+# Python 3.x, SymPy ≥ 1.10
+# ---------------------------------------------------------------
 
-from sympy import symbols, Matrix, eye, diag, simplify, exp
+from sympy import (
+    symbols, Matrix, eye, diag, simplify, sqrt, sin, cos, exp, Rational
+)
 
 # ---------------------------
 # Shared symbols
@@ -16,172 +24,241 @@ from sympy import symbols, Matrix, eye, diag, simplify, exp
 h, tau = symbols('h tau', positive=True)
 wx, wy, wz = symbols('w_x w_y w_z', real=True)
 
-# Attitude/bias spectral densities
-Qg_x, Qg_y, Qg_z = symbols('Qg_x Qg_y Qg_z', positive=True)
-Qbg = symbols('Qbg', positive=True)
-
-# Accel-bias RW spectral density
-Qba = symbols('Qba', positive=True)
-
-# OU stationary std per axis (uncorrelated case)
+# OU stationary std per axis
 sigma_x, sigma_y, sigma_z = symbols('sigma_x sigma_y sigma_z', positive=True)
 
+# Attitude/bias spectral densities (assume isotropic for closed forms)
+qg, qbg = symbols('q_g q_bg', positive=True)     # gyro white-noise, gyro-bias RW
+qba      = symbols('q_ba', positive=True)        # accel-bias RW
+
 # ---------------------------
-# Utilities
+# Helpers
 # ---------------------------
 def skew(wx, wy, wz):
     return Matrix([[0,   -wz,  wy],
                    [wz,   0,  -wx],
                    [-wy, wx,   0]])
 
-def vanloan_phi_qd(F: Matrix, L: Matrix, Qc: Matrix, h_sym):
-    """Exact block discretization for LTI SDE using Van Loan."""
-    n = F.shape[0]
-    G = L * Qc * L.T
-    A = Matrix.zeros(2*n, 2*n)
-    A[:n, :n] = F
-    A[:n, n:] = G
-    A[n:, n:] = -F.T
-    E = (A * h_sym).exp()
-    Phi = simplify(E[:n, :n])
-    S   = E[:n, n:]
-    Qd  = simplify((S * Phi.T + (S * Phi.T).T) / 2)  # symmetrize
+def rodrigues_R(wx, wy, wz, t):
+    """
+    R(t) = exp(-[w]_x t) = I - sin(theta) K + (1 - cos(theta)) K^2,
+    where K = [u]_x, u = w/||w||, theta = ||w|| t.
+    """
+    W  = skew(wx, wy, wz)
+    wn = sqrt(wx**2 + wy**2 + wz**2)
+    I3 = eye(3)
+    # Use W/wn symbolically; for wn→0 the series limit applies
+    K = W / wn
+    theta = wn * t
+    return simplify(I3 - sin(theta)*K + (1 - cos(theta))*(K*K))
+
+def B_of_t(wx, wy, wz, t):
+    """
+    B(t) = - ∫_0^t R(s) ds
+         = -[ t I - (1 - cos θ)/||w||^2 W + (t - sin θ / ||w||)/||w||^2 W^2 ],
+    with θ = ||w|| t, W = [w]_x.
+    """
+    W  = skew(wx, wy, wz)
+    wn = sqrt(wx**2 + wy**2 + wz**2)
+    I3 = eye(3)
+    theta = wn * t
+    invw2 = 1 / (wn**2)
+    term1 = I3 * t
+    term2 = (1 - cos(theta)) * invw2 * W
+    term3 = (t - sin(theta)/wn) * invw2 * (W*W)
+    return simplify(-(term1 - term2 + term3))
+
+def IB_0_h(wx, wy, wz, t):
+    """
+    ∫_0^t B(s) ds (closed form).
+    IB = -[ 1/2 t^2 I - ((t - sinθ/||w||)/||w||^2) W
+            + ((1/2 t^2) + (cosθ - 1)/||w||^2)/||w||^2 W^2 ]
+    """
+    W  = skew(wx, wy, wz)
+    wn = sqrt(wx**2 + wy**2 + wz**2)
+    I3 = eye(3)
+    theta = wn * t
+    invw2 = 1/(wn**2)
+    invw4 = invw2**2
+    termI  = I3 * (t**2/2)
+    termW  = ((t - sin(theta)/wn) * invw2) * W
+    termW2 = ((t**2/2) + (cos(theta) - 1)*invw2) * invw2 * (W*W)
+    return simplify(-(termI - termW + termW2))
+
+# ---------------------------
+# OU axis: analytic Phi and Qd
+# State order: [v, p, S, a]
+# ---------------------------
+def Phi_axis_analytic(h, tau):
+    x = h / tau
+    alpha = exp(-x)  # e^{-x}
+    phi_va = -tau * (alpha - 1)
+    phi_pa = tau**2 * (x + (alpha - 1))
+    phi_Sa = tau**3 * (x**2 / 2 - x - (alpha - 1))
+    return simplify(Matrix([
+        [1,        0,        0,      phi_va],
+        [h,        1,        0,      phi_pa],
+        [h**2/2,   h,        1,      phi_Sa],
+        [0,        0,        0,      alpha ]
+    ]))
+
+def Qd_axis_closed(h, tau, sigma):
+    """
+    Qd_axis = q_c * Sym(K(h)),  q_c = 2*sigma^2/tau.
+    Closed-form K entries (matches your implementation).
+    """
+    x = h / tau
+    alpha  = exp(-x)           # e^{-x}
+    em1    = alpha - 1         # e^{-x} - 1 (negative)
+    em1_2  = exp(-2*x) - 1     # e^{-2x} - 1 (negative)
+
+    tau2 = tau**2
+    tau3 = tau**3
+    A0 = -tau * em1
+    A1 = tau2 * (-em1 - x * alpha)
+    A2 = tau3 * (-2*em1 + alpha * x * (x + 2))
+    B0 = -(tau/2) * em1_2
+
+    C0 = h
+    C1 = h**2 / 2
+    C2 = h**3 / 3
+    C3 = h**4 / 4
+    C4 = h**5 / 5
+
+    I1mA0   = C0 - A0
+    Ix1mA1  = C1 - A1
+    Ix21mA2 = C2 - A2
+
+    K_vv = tau2*(C0 - 2*A0 + B0)
+    K_pv = tau2*Ix1mA1 - tau3*I1mA0 + tau3*(A0 - B0)
+    K_Sv = (tau**2/2)*Ix21mA2 - tau**3*Ix1mA1 + tau**4*I1mA0 - tau**4*(A0 - B0)
+    K_aa = B0
+    K_va = tau*(A0 - B0)
+    K_pa = tau*A1 - tau2*A0 + tau2*B0
+    K_Sa = (tau/2)*A2 - tau**2*A1 + tau**3*A0 - tau**3*B0
+    K_pp = tau2*C2 - 2*tau**3*C1 + 2*tau**3*A1 + tau**4*C0 - 2*tau**4*A0 + tau**4*B0
+    K_Sp = (tau**2/2)*C3 - (3*tau**3/2)*C2 + 2*tau**4*C1 - tau**5*C0 + \
+           (tau**3/2)*A2 - 2*tau**4*A1 + 2*tau**5*A0 - tau**5*B0
+    K_SS = (tau**2/4)*C4 - tau**3*C3 + 2*tau**4*C2 - 2*tau**5*C1 + tau**6*C0 \
+           - tau**4*A2 + 2*tau**5*A1 - 2*tau**6*A0 + tau**6*B0
+
+    K = Matrix([
+        [K_vv, K_pv, K_Sv, K_va],
+        [K_pv, K_pp, K_Sp, K_pa],
+        [K_Sv, K_Sp, K_SS, K_Sa],
+        [K_va, K_pa, K_Sa, K_aa]
+    ])
+    qc = 2 * sigma**2 / tau
+    Qd = simplify(qc * (K + K.T) / 2)
+    return Qd
+
+# ---------------------------
+# Linear 3-axis blocks
+# ---------------------------
+def Phi_Qd_linear_uncorrelated(h, tau, sigx, sigy, sigz):
+    Phi_axis = Phi_axis_analytic(h, tau)
+    Qd_x = Qd_axis_closed(h, tau, sigx)
+    Qd_y = Qd_axis_closed(h, tau, sigy)
+    Qd_z = Qd_axis_closed(h, tau, sigz)
+    Phi_LL = diag(Phi_axis, Phi_axis, Phi_axis)
+    Qd_LL  = diag(Qd_x, Qd_y, Qd_z)
+    return simplify(Phi_LL), simplify(Qd_LL)
+
+def Phi_Qd_linear_correlated(h, tau, Sigma3):
+    """
+    Correlated stationary covariance across axes:
+      Q_LL = Σ ⊗ Q_axis_unit,   with Q_axis_unit = Qd_axis_closed(h,tau, sigma=1).
+    Phi_LL is independent of Σ.
+    """
+    Phi_axis = Phi_axis_analytic(h, tau)
+    Qd_unit  = Qd_axis_closed(h, tau, 1)
+    Qd_LL = Matrix.zeros(12, 12)
+    for i in range(3):
+        for j in range(3):
+            Qd_LL[4*i:4*(i+1), 4*j:4*(j+1)] = simplify(Sigma3[i,j] * Qd_unit)
+    Phi_LL = diag(Phi_axis, Phi_axis, Phi_axis)
+    return simplify(Phi_LL), simplify((Qd_LL + Qd_LL.T) / 2)
+
+# ---------------------------
+# Attitude + gyro-bias (6x6): exact Phi, symbolic Qd
+# ---------------------------
+def Phi_Qd_attitude_bias(h, wx, wy, wz, qg_iso, qbg_iso):
+    """
+    Assumes Q_g = qg_iso * I_3 and Q_bg = qbg_iso * I_3.
+    Returns Phi_AA (exact) and Qd_AA symbolically.
+    """
+    I3 = eye(3)
+
+    # Phi upper-left: R(h); upper-right: B(h)
+    R = rodrigues_R(wx, wy, wz, h)
+    B = B_of_t(wx, wy, wz, h)
+    Phi_AA = Matrix([[*R.row(0), *B.row(0)],
+                     [*R.row(1), *B.row(1)],
+                     [*R.row(2), *B.row(2)],
+                     [0,0,0, 1,0,0],
+                     [0,0,0, 0,1,0],
+                     [0,0,0, 0,0,1]])
+    Phi_AA = simplify(Phi_AA)
+
+    # Q blocks:
+    # Q_tt = ∫ R(s) qg I R(s)^T ds + ∫ B(s) qbg I B(s)^T ds
+    #      = qg * h * I + qbg * ∫ B(s)B(s)^T ds
+    Q_tt_R = qg_iso * h * I3
+
+    # Compute ∫_0^h B(s) B(s)^T ds elementwise (3x3)
+    s = symbols('s', real=True, nonnegative=True)
+    Bs = B_of_t(wx, wy, wz, s)
+    integrand = Bs * Bs.T
+    Q_tt_B = Matrix([[ simplify(qbg_iso * integrand[i,j].integrate((s, 0, h)))
+                       for j in range(3)] for i in range(3)])
+    Q_tt = simplify(Q_tt_R + Q_tt_B)
+
+    # Q_tb = (∫_0^h B(s) ds) qbg I
+    IB = IB_0_h(wx, wy, wz, h)
+    Q_tb = simplify(IB * (qbg_iso * I3))
+
+    # Q_bb = qbg * h I
+    Q_bb = qbg_iso * h * I3
+
+    # Assemble symmetric 6x6
+    top = Q_tt.row_join(Q_tb)
+    bot = Q_tb.T.row_join(Q_bb)
+    Qd_AA = simplify(Matrix.vstack(top, bot))
+    return Phi_AA, Qd_AA
+
+# ---------------------------
+# Accel-bias RW (3x3)
+# ---------------------------
+def Phi_Qd_accel_bias(h, qba_iso):
+    Phi = eye(3)
+    Qd  = qba_iso * h * eye(3)
     return Phi, Qd
 
 # ---------------------------
-# Block 1: Attitude error (3) + gyro bias (3)
-# dθ̇ = -[ω]× dθ - I b_g + (-I) n_g
-# ḃ_g = 0               + ( I) w_bg
-# ---------------------------
-def phi_qd_attitude_bias(wx, wy, wz, h_sym, Qg_diag, Qbg_scalar):
-    I3 = eye(3); Z3 = Matrix.zeros(3,3)
-    W  = skew(wx, wy, wz)
-
-    F_tt = -W
-    F_tb = -I3
-    F_bt = Z3
-    F_bb = Z3
-
-    F = Matrix([[*F_tt.row(0), *F_tb.row(0)],
-                [*F_tt.row(1), *F_tb.row(1)],
-                [*F_tt.row(2), *F_tb.row(2)],
-                [*F_bt.row(0), *F_bb.row(0)],
-                [*F_bt.row(1), *F_bb.row(1)],
-                [*F_bt.row(2), *F_bb.row(2)]])
-
-    # Noise map
-    L = Matrix.zeros(6,6)
-    L[:3,:3] = -I3    # gyro white noise into dθ
-    L[3:,3:] =  I3    # gyro-bias RW into b_g
-
-    Qc = diag(*Qg_diag, Qbg_scalar, Qbg_scalar, Qbg_scalar)
-    return vanloan_phi_qd(F, L, Qc, h_sym)
-
-# ---------------------------
-# Block 2: One OU axis [v, p, S, a]
-# v̇ = a; ṗ = v; Ṡ = p; ȧ = -(1/τ)a + √(2 σ²/τ) w
-# ---------------------------
-def phi_qd_ou_axis(tau_sym, sigma_sym, h_sym):
-    F = Matrix([
-        [0, 0, 0, 1],
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [0, 0, 0, -1/tau_sym]
-    ])
-    # Inject white noise only into 'a'
-    L  = Matrix([[0],[0],[0],[1]])
-    Qc = Matrix([[2 * sigma_sym**2 / tau_sym]])  # scalar spectral density
-    return vanloan_phi_qd(F, L, Qc, h_sym)
-
-# (Optional) Analytic Phi_axis (fast, matches your code) — drop-in if desired:
-def phi_axis_analytic(h_sym, tau_sym):
-    x = h_sym / tau_sym
-    alpha = exp(-x)
-    phi_va = -tau_sym * (alpha - 1)
-    phi_pa = tau_sym**2 * (x + (alpha - 1))
-    phi_Sa = tau_sym**3 * ((1/2)*x**2 - x - (alpha - 1))
-    Phi = Matrix([[1,         0,        0,      phi_va],
-                  [h_sym,     1,        0,      phi_pa],
-                  [h_sym**2/2,h_sym,    1,      phi_Sa],
-                  [0,         0,        0,      alpha ]])
-    return simplify(Phi)
-
-# ---------------------------
-# Block 3a: Three-axis linear block (uncorrelated x/y/z)
-# ---------------------------
-def phi_qd_linear_3axis_uncorr(tau_sym, sig_x, sig_y, sig_z, h_sym):
-    Phi_x, Qd_x = phi_qd_ou_axis(tau_sym, sig_x, h_sym)
-    Phi_y, Qd_y = phi_qd_ou_axis(tau_sym, sig_y, h_sym)
-    Phi_z, Qd_z = phi_qd_ou_axis(tau_sym, sig_z, h_sym)
-    Phi_LL = diag(Phi_x, Phi_y, Phi_z)
-    Qd_LL  = diag(Qd_x,  Qd_y,  Qd_z)
-    return Phi_LL, Qd_LL
-
-# ---------------------------
-# Block 3b: Three-axis linear block (correlated via Σ)
-# Idea: Phi_LL does not depend on Σ → blkdiag(Phi_axis,Phi_axis,Phi_axis)
-#       Qd_LL = Σ ⊗ Qaxis_unit, where Qaxis_unit is Qd_axis with σ²=1.
-# ---------------------------
-def qd_linear_3axis_correlated(tau_sym, Sigma3, h_sym):
-    # Compute unit-axis Qd (σ² = 1) once
-    _, Qd_unit = phi_qd_ou_axis(tau_sym, 1, h_sym)  # 4x4
-    # Kronecker assembly: 12x12
-    Qd_LL = Matrix.zeros(12, 12)
-    # Build Phi_LL (independent of Σ)
-    Phi_axis = phi_axis_analytic(h_sym, tau_sym)     # faster than (F*h).exp()
-    Phi_LL   = diag(Phi_axis, Phi_axis, Phi_axis)
-
-    # Fill 3x3 block structure: each (i,j) block is Σ[i,j] * Qd_unit
-    for i in range(3):
-        for j in range(3):
-            Qd_LL[4*i:4*(i+1), 4*j:4*(j+1)] = Sigma3[i,j] * Qd_unit
-    # Symmetrize (numerical hygiene)
-    Qd_LL = simplify((Qd_LL + Qd_LL.T) / 2)
-    return Phi_LL, Qd_LL
-
-# ---------------------------
-# Block 4: Accel-bias RW (3x3)
-# ḃ_a = w_ba,  with spectral density Qba (per axis)
-# ---------------------------
-def phi_qd_accel_bias(Qba_scalar, h_sym):
-    F = Matrix.zeros(3,3)
-    L = eye(3)
-    Qc = Qba_scalar * eye(3)
-    return vanloan_phi_qd(F, L, Qc, h_sym)
-
-# ---------------------------
-# Example assembly (kept lightweight; remove prints in production)
+# Demo / Assembly
 # ---------------------------
 if __name__ == "__main__":
-    # 1) Attitude + gyro-bias
-    Phi_AA, Qd_AA = phi_qd_attitude_bias(
-        wx, wy, wz, h,
-        Qg_diag=(Qg_x, Qg_y, Qg_z),
-        Qbg_scalar=Qbg
-    )
-    print("Phi_AA shape:", Phi_AA.shape, " Qd_AA shape:", Qd_AA.shape)
+    # Linear block (uncorrelated)
+    Phi_LL_u, Qd_LL_u = Phi_Qd_linear_uncorrelated(h, tau, sigma_x, sigma_y, sigma_z)
+    print("Phi_LL (uncorr) shape:", Phi_LL_u.shape, "Qd_LL (uncorr) shape:", Qd_LL_u.shape)
 
-    # 2) Linear 3-axis (uncorrelated)
-    Phi_LL_u, Qd_LL_u = phi_qd_linear_3axis_uncorr(tau, sigma_x, sigma_y, sigma_z, h)
-    print("Phi_LL (uncorr) shape:", Phi_LL_u.shape, " Qd_LL (uncorr) shape:", Qd_LL_u.shape)
-
-    # 3) Linear 3-axis (correlated Σ)
+    # Linear block (correlated) with symbolic Sigma3
     sxx, syy, szz, sxz, syz = symbols('s_xx s_yy s_zz s_xz s_yz', real=True)
-    Sigma3 = Matrix([[sxx,     0,   sxz],
-                     [0,     syy,   syz],
-                     [sxz,   syz,   szz]])
-    Phi_LL_c, Qd_LL_c = qd_linear_3axis_correlated(tau, Sigma3, h)
-    print("Phi_LL (corr) shape:", Phi_LL_c.shape, " Qd_LL (corr) shape:", Qd_LL_c.shape)
+    Sigma3 = Matrix([[sxx, 0,   sxz],
+                     [0,   syy, syz],
+                     [sxz, syz, szz]])
+    Phi_LL_c, Qd_LL_c = Phi_Qd_linear_correlated(h, tau, Sigma3)
+    print("Phi_LL (corr)   shape:", Phi_LL_c.shape, "Qd_LL (corr)   shape:", Qd_LL_c.shape)
 
-    # 4) Accel-bias RW
-    Phi_ba, Qd_ba = phi_qd_accel_bias(Qba, h)
-    print("Phi_ba shape:", Phi_ba.shape, " Qd_ba shape:", Qd_ba.shape)
+    # Attitude + gyro bias
+    Phi_AA, Qd_AA = Phi_Qd_attitude_bias(h, wx, wy, wz, qg, qbg)
+    print("Phi_AA shape:", Phi_AA.shape, "Qd_AA shape:", Qd_AA.shape)
 
-    # 5) Full (optional): blkdiag the blocks you need
-    Phi_full_uncorr = diag(Phi_AA, Phi_LL_u, Phi_ba)
-    Qd_full_uncorr  = diag(Qd_AA,  Qd_LL_u,  Qd_ba)
-    print("Full (uncorr) Phi shape:", Phi_full_uncorr.shape, " Qd shape:", Qd_full_uncorr.shape)
+    # Accel-bias
+    Phi_ba, Qd_ba = Phi_Qd_accel_bias(h, qba)
+    print("Phi_ba  shape:", Phi_ba.shape, "Qd_ba  shape:", Qd_ba.shape)
 
-    Phi_full_corr = diag(Phi_AA, Phi_LL_c, Phi_ba)
-    Qd_full_corr  = diag(Qd_AA,  Qd_LL_c,  Qd_ba)
-    print("Full (corr)   Phi shape:", Phi_full_corr.shape, " Qd shape:", Qd_full_corr.shape)
+    # Full (uncorrelated OU)
+    Phi_full = diag(Phi_AA, Phi_LL_u, Phi_ba)
+    Qd_full  = diag(Qd_AA,  Qd_LL_u,  Qd_ba)
+    print("Phi_full shape:", Phi_full.shape, "Qd_full shape:", Qd_full.shape)
