@@ -1,0 +1,129 @@
+\subsection*{Discrete Transition $\Phi_{AA}(h)=e^{F_{AA}h}$ for Attitude Error and Gyro Bias}
+
+\paragraph{Error-state model (right-multiplicative, small angle).}
+Let the attitude error be the small vector $\delta\boldsymbol{\theta}\in\mathbb{R}^3$ (so that the
+right-multiplicative correction quaternion is $\delta q(\delta\boldsymbol{\theta})$), and let
+$\delta\mathbf{b}_g\in\mathbb{R}^3$ be the gyroscope bias error. Over a short interval of length
+$h$ we assume the true body angular rate $\boldsymbol{\omega}$ is constant. The linearized
+continuous-time error dynamics are
+\[
+\dot{\delta\boldsymbol{\theta}}
+= -[\boldsymbol{\omega}]_\times\,\delta\boldsymbol{\theta}\;-\;\delta\mathbf{b}_g,
+\qquad
+\dot{\delta\mathbf{b}}_g=\mathbf{0},
+\]
+where $[\boldsymbol{\omega}]_\times$ is the $3\times3$ skew-symmetric matrix
+\[
+[\boldsymbol{\omega}]_\times \;=\;
+\begin{bmatrix}
+0 & -\omega_z & \omega_y\\
+\omega_z & 0 & -\omega_x\\
+-\omega_y & \omega_x & 0
+\end{bmatrix}.
+\]
+In block form,
+\[
+\frac{d}{dt}
+\begin{bmatrix}
+\delta\boldsymbol{\theta}\\[2pt] \delta\mathbf{b}_g
+\end{bmatrix}
+=
+\underbrace{\begin{bmatrix}
+-[\boldsymbol{\omega}]_\times & -I\\
+0 & 0
+\end{bmatrix}}_{F_{AA}}
+\begin{bmatrix}
+\delta\boldsymbol{\theta}\\[2pt] \delta\mathbf{b}_g
+\end{bmatrix}.
+\]
+
+\paragraph{Block–triangular exponential.}
+Since $F_{AA}$ is block upper triangular, its exponential has the standard form
+\[
+e^{F_{AA}s} \;=\;
+\begin{bmatrix}
+e^{-[\boldsymbol{\omega}]_\times s} &
+\displaystyle \int_0^s e^{-[\boldsymbol{\omega}]_\times(s-u)}\,(-I)\,e^{0\cdot u}\,du\\[6pt]
+0 & I
+\end{bmatrix}
+=
+\begin{bmatrix}
+R(s) & B(s)\\
+0 & I
+\end{bmatrix}.
+\]
+Thus $\Phi_{AA}(h)=e^{F_{AA}h}$ is fully determined by
+\[
+R(h)=e^{-[\boldsymbol{\omega}]_\times h},\qquad
+B(h)=\int_0^h e^{-[\boldsymbol{\omega}]_\times(h-u)}(-I)\,du \;=\; -\int_0^h e^{-[\boldsymbol{\omega}]_\times u}\,du.
+\]
+
+\paragraph{Closed form for $R(h)$ (Rodrigues formula).}
+Let $W\equiv [\boldsymbol{\omega}]_\times$, $\omega=\|\boldsymbol{\omega}\|$, and
+$\theta=\omega h$. Using the series
+$e^{-W h}=I-Wh+\tfrac{1}{2!}(Wh)^2-\tfrac{1}{3!}(Wh)^3+\cdots$ and the identities
+$W^3=-\omega^2 W$, $W^4=-\omega^2 W^2$, one can regroup into a linear combination of
+$I$, $W$, and $W^2$ with scalar coefficients that depend only on $\theta$:
+\[
+\boxed{ \;
+R(h)=e^{-Wh}
+= I \;-\; \sin\theta\,\frac{W}{\omega} \;+\; (1-\cos\theta)\,\frac{W^2}{\omega^2}.
+\;}
+\]
+Equivalently, if $K=W/\omega=[\hat{\boldsymbol{\omega}}]_\times$ with
+$\hat{\boldsymbol{\omega}}=\boldsymbol{\omega}/\omega$, then
+\[
+R(h)=I-\sin\theta\,K+(1-\cos\theta)K^2.
+\]
+
+\paragraph{Closed form for $B(h)$ (integral of the exponential).}
+We need $B(h)=-\int_0^h e^{-W u}\,du$. Using the Rodrigues form for $e^{-W u}$,
+\[
+e^{-W u}=I-\sin(\omega u)\,\frac{W}{\omega} + \left(1-\cos(\omega u)\right)\frac{W^2}{\omega^2},
+\]
+integrate termwise over $u\in[0,h]$:
+\[
+\int_0^h e^{-W u}\,du
+= \;h\,I \;-\; \frac{1-\cos\theta}{\omega^2}\,W \;+\; \frac{h-\frac{\sin\theta}{\omega}}{\omega^2}\,W^2.
+\]
+Therefore
+\[
+\boxed{\;
+B(h) \;=\; -\int_0^h e^{-W u}\,du
+\;=\; -\Bigg[
+h\,I \;-\; \frac{1-\cos\theta}{\omega^2}\,W \;+\; \frac{h-\frac{\sin\theta}{\omega}}{\omega^2}\,W^2
+\Bigg].
+\;}
+\]
+
+\paragraph{Assembled discrete transition for the attitude block.}
+Putting the pieces together,
+\[
+\boxed{
+\Phi_{AA}(h)
+=
+\exp(F_{AA}h)
+=
+\begin{bmatrix}
+R(h) & B(h)\\
+0 & I
+\end{bmatrix},
+\qquad
+\begin{aligned}
+R(h)&=I-\sin\theta\,\frac{W}{\omega}+(1-\cos\theta)\frac{W^2}{\omega^2},\\
+B(h)&=-\Big[h\,I - \frac{1-\cos\theta}{\omega^2}W + \frac{h-\frac{\sin\theta}{\omega}}{\omega^2}W^2\Big],
+\end{aligned}
+}
+\]
+with $W=[\boldsymbol{\omega}]_\times$, $\omega=\|\boldsymbol{\omega}\|$, $\theta=\omega h$.
+
+\paragraph{Small–rate (series) limit for numerical robustness.}
+When $\omega\to 0$ (or $\theta\ll 1$), use the Maclaurin expansions
+$\sin\theta=\theta-\theta^3/6+\cdots$, $\cos\theta=1-\theta^2/2+\theta^4/24-\cdots$ to obtain
+\[
+R(h)=I - Wh + \tfrac{1}{2}W^2 h^2 \;+\; \mathcal{O}(h^3),
+\qquad
+B(h)= -\Big[h\,I - \tfrac{1}{2}W h^2 + \tfrac{1}{6}W^2 h^3\Big] \;+\; \mathcal{O}(h^4).
+\]
+These series are algebraically equivalent to the closed forms above and avoid loss of
+significance for very small $\theta$.
