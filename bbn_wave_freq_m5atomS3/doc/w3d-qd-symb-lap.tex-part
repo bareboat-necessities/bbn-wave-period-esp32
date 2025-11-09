@@ -21,7 +21,7 @@ q_c=\frac{2\sigma^2}{\tau}.
 \]
 Let \(h>0\) be the sampling interval and \(x=h/\tau\).
 
-\subsection*{OU and kinematic primitives}
+\subsubsection*{OU and kinematic primitives}
 We introduce compact primitives used throughout:
 \[
 \alpha \coloneqq e^{-x},\qquad
