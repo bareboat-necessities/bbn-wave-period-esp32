@@ -1,4 +1,4 @@
-\subsection*{Discrete Process Covariance $Q_d$ from $(F,L)$ for One Axis}
+\subsection{Discrete Process Covariance $Q_d$ from $(F,L)$ for One Axis}
 
 \paragraph{Model and block structure.}
 For one Cartesian axis we stack the linear states
