@@ -1,4 +1,4 @@
-\section{Final Discrete Assembly \texorpdfstring{$(\Phi,Q_d)$}{(Phi,Qd)} for the Full Process Model}
+\subsection{Final Discrete Assembly \texorpdfstring{$(\Phi,Q_d)$}{(Phi,Qd)} for the Full Process Model}
 
 Let the discrete state at step \(k\) be ordered as
 \[
@@ -19,7 +19,7 @@ where \(\delta\boldsymbol{\theta}\in\mathbb{R}^3\) is the (right–multiplicativ
 \((\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)\in\mathbb{R}^{12}\) the linear OU–driven chain
 stacked as \([v(3),p(3),S(3),a_w(3)]\), and \(\mathbf{b}_a\in\mathbb{R}^3\) the accelerometer bias.
 
-\subsection*{Block transition matrix \(\Phi\)}
+\subsubsection*{Block transition matrix \(\Phi\)}
 For a sample period \(h>0\), the full transition matrix is block upper–triangular:
 \[
 \Phi(h)=
@@ -79,7 +79,7 @@ Random–walk bias:
 \Phi_{BB}(h)=I_3.
 \]
 
-\subsection*{Block process covariance \(Q_d\)}
+\subsubsection*{Block process covariance \(Q_d\)}
 With mutually independent driving noises (gyro RW, OU forcing, accel–bias RW),
 the discrete process covariance is block diagonal:
 \[
@@ -122,7 +122,7 @@ Q_{BB}(h)=Q_{b_a}\,h,
 where \(Q_{b_a}\) is the continuous RW intensity (diagonal typically), optionally
 augmented by temperature–drift modeling in the measurement equation.
 
-\subsection*{Prediction step (context)}
+\subsubsection*{Prediction step (context)}
 With these blocks,
 \[
 \hat{\boldsymbol{x}}_{k|k-1}=\Phi(h)\,\hat{\boldsymbol{x}}_{k-1|k-1},\qquad
