@@ -1,4 +1,4 @@
-\subsection*{Discrete Transition $\Phi_{AA}(h)=e^{F_{AA}h}$ for Attitude Error and Gyro Bias}
+\subsection{Discrete Transition $\Phi_{AA}(h)=e^{F_{AA}h}$ for Attitude Error and Gyro Bias}
 
 \paragraph{Error-state model (right-multiplicative, small angle).}
 Let the attitude error be the small vector $\delta\boldsymbol{\theta}\in\mathbb{R}^3$ (so that the
