@@ -1,203 +1,169 @@
 # block-phi-qd-sym.py
-# SymPy derivations of Phi(h) and Qd(h) from F,L block structure.
-# Fast & fully symbolic for:
-#   (1) OU axis [v,p,S | a]
-#   (2) Attitude + gyro-bias [dθ | b_g] with isotropic Q_g, Q_bg
+# Derives Phi(h) and Qd(h) symbolically from F and L, prints CLEAN LaTeX
 
 import sympy as sp
 
-# ---------- pretty helpers ----------
-def pp(title, M):
-    print("\n" + title + "\n" + "-"*len(title))
-    sp.pprint(sp.simplify(M), wrap_line=False, num_columns=140)
+# ---------- Utilities to emit clean LaTeX ----------
+def _sanitize_matrix_brackets(lx: str) -> str:
+    # Turn \left[\begin{matrix} ... \end{matrix}\right] into \begin{bmatrix} ... \end{bmatrix}
+    lx = lx.replace(r"\left[\begin{matrix}", r"\begin{bmatrix}")
+    lx = lx.replace(r"\end{matrix}\right]", r"\end{bmatrix}")
+    # Also handle nested or variant spacing
+    lx = lx.replace(r"\left[ \begin{matrix}", r"\begin{bmatrix}")
+    lx = lx.replace(r"\end{matrix} \right]", r"\end{bmatrix}")
+    return lx
 
-def to_latex_block(title, M):
-    print("\n%% " + title)
-    print(sp.latex(sp.simplify(M)))
+def latex_block(title: str, expr) -> None:
+    print("\n% " + title)
+    lx = sp.latex(expr)
+    lx = _sanitize_matrix_brackets(lx)
+    print(r"\[ \displaystyle " + lx + r" \]")
 
-# ---------- OU axis: [v,p,S | a] ----------
-def ou_axis_phi_qd(h, tau, sigma2):
-    """
-    State order: x = [v, p, S, a]^T
-      dv = a dt,   dp = v dt,   dS = p dt,
-      da = -(1/tau)a dt + w_a,   with stationary var sigma2 -> q_c = 2*sigma2/tau
-    F = [[A,B],[0,D]], A(3x3) nilpotent chain, B = [1,0,0]^T, D = [-1/tau]
-    L has only the 'a' channel here -> r=1, Qc = [ 2*sigma2/tau ].
-    """
-    t, s = sp.symbols('t s', positive=True, real=True)
+def latex_text_block(text: str) -> None:
+    # For paragraphs or aligned math already provided as LaTeX
+    print(text)
 
-    # A, B, D
+# ============================================================
+# (1) OU per-axis derivation directly from F and L
+#     x = [v, p, S, a]^T
+#     dv = a, dp = v, dS = p;  da = -(1/tau) a + w
+#     F = [[A,B],[0,D]]   with A nilpotent, B = e_v, D = -1/tau
+#     L selects only 'a' noise; Qc_unit = 2/tau  (unit stationary variance)
+# ============================================================
+def derive_ou_axis_phi_and_Kou():
+    h, tau = sp.symbols('h tau', positive=True, real=True)
+    s, u, v = sp.symbols('s u v', real=True, nonnegative=True)
+
     A = sp.Matrix([[0,0,0],
                    [1,0,0],
-                   [0,1,0]])
-    B = sp.Matrix([[1],[0],[0]])
-    D = sp.Matrix([[-1/tau]])
+                   [0,1,0]])          # nilpotent (A^3=0)
+    B = sp.Matrix([[1],[0],[0]])      # a enters dv
+    D = sp.Matrix([[-1/tau]])         # OU a'
 
-    # e^{A s} from nilpotent series: A^3=0
-    I3 = sp.eye(3); A2 = A*A
-    eAs = I3 + A*s + A2*(s**2/2)
-
-    # e^{D s} is scalar exp
-    eDs = sp.exp(-s/tau)
-
-    # Phi blocks
-    Phi_TL = (I3 + A*h + A2*(h**2/2))             # e^{A h}
-    # Phi_TR = ∫_0^h e^{A s} B e^{D s} ds  (3x1)
-    integrand_TR = eAs * B * eDs
-    Phi_TR = sp.Matrix(3,1, lambda i,j: sp.integrate(integrand_TR[i,j], (s,0,h)))
-    Phi_BR = sp.exp(-h/tau)                        # scalar
-
-    # Assemble Phi 4x4
-    Phi = sp.eye(4)
-    Phi[0:3,0:3] = sp.simplify(Phi_TL)
-    Phi[0:3,3:4] = sp.simplify(Phi_TR)
-    Phi[3,3]     = sp.simplify(Phi_BR)
-
-    # Qd = ∫_0^h C(s) Qc C(s)^T ds
-    # Here L_top has 0 cols, L_bot = [1]; so C_top = J(s), C_bot = e^{Ds}
-    # with J(s) = ∫_0^s e^{A u} B e^{D u} du  (3x1).
-    u = sp.symbols('u', positive=True, real=True)
-    eAu = I3 + A*u + A2*(u**2/2)
-    eDu = sp.exp(-u/tau)
-    J_s = sp.Matrix(3,1, lambda i,j: sp.integrate((eAu*B*eDu)[i,0], (u,0,s)))
-    C_top = J_s
-    C_bot = sp.Matrix([[eDs]])   # 1x1
-
-    qc = 2*sigma2/tau
-    Qc = sp.Matrix([[qc]])       # (1x1)
-
-    # integrand = [C_top; C_bot] * qc * [C_top^T, C_bot^T]
-    C_top_simpl = sp.simplify(C_top)
-    integrand_Q = sp.zeros(4,4)
-    # Top-left 3x3
-    integrand_Q[0:3,0:3] = qc * (C_top_simpl * C_top_simpl.T)
-    # Cross 3x1 and 1x3
-    integrand_Q[0:3,3:4] = qc * (C_top_simpl * C_bot.T)
-    integrand_Q[3:4,0:3] = qc * (C_bot * C_top_simpl.T)
-    # Bottom-right 1x1
-    integrand_Q[3,3]     = qc * (C_bot * C_bot.T)[0,0]
-
-    Qd = sp.Matrix(4,4, lambda i,j: sp.integrate(integrand_Q[i,j], (s,0,h)))
-    Qd = sp.simplify((Qd + Qd.T)/2)
-
-    return sp.simplify(Phi), sp.simplify(Qd)
-
-# ---------- Attitude + gyro-bias: [dθ | b_g] ----------
-def skew(wx, wy, wz):
-    return sp.Matrix([[0, -wz,  wy],
-                      [wz,  0, -wx],
-                      [-wy, wx,  0]])
-
-def rodrigues_R(wx, wy, wz, s):
-    W  = skew(wx, wy, wz)
-    wn = sp.sqrt(wx**2 + wy**2 + wz**2)
     I3 = sp.eye(3)
-    theta = wn*s
-    # R(s) = exp(-W s)
-    K = W/wn
-    return sp.simplify(I3 - sp.sin(theta)*K + (1 - sp.cos(theta))*(K*K))
+    A2 = A*A
 
-def att_bias_phi_qd_isotropic(h, wx, wy, wz, qg, qbg):
-    """
-    State [dθ | b_g], with:
-      A = -[ω]_x,  B = -I3,  D = 0.
-      Qg = qg I3,  Qbg = qbg I3 (isotropic).
-    Derivation uses:
-      Phi_TL(h) = R(h) = exp(-W h)
-      Phi_TR(h) = ∫_0^h e^{As} B ds = -∫_0^h R(s) ds
-      Q_tt = ∫_0^h R(s) Qg R(s)^T ds + ∫_0^h B(s) Qbg B(s)^T ds
-            = qg h I + qbg ∫_0^h B(s) B(s)^T ds
-      Q_tb = (∫_0^h B(s) ds) qbg,   Q_bb = qbg h I
-    We represent B(s) in the basis {I, K, K^2} with K=W/||ω|| and integrate only scalar coefficients.
-    """
-    s = sp.symbols('s', positive=True, real=True)
-    W  = skew(wx, wy, wz)
-    wn = sp.sqrt(wx**2 + wy**2 + wz**2)
+    # e^{A h} = I + Ah + A^2 h^2/2
+    Phi_TL = I3 + A*h + A2*(h**2/2)
+
+    # TR(h) = ∫_0^h e^{A(h-u)} B e^{D u} du
+    TR_integrand = (I3 + A*v + A2*(v**2/2)) * B * sp.exp(-(h - v)/tau)
+    Phi_TR = sp.Matrix(3,1, lambda i,j: sp.integrate(TR_integrand[i,j], (v,0,h)))
+
+    Phi_BR = sp.exp(-h/tau)
+
+    Phi_axis = sp.eye(4)
+    Phi_axis[0:3,0:3] = Phi_TL
+    Phi_axis[0:3,3:4] = Phi_TR
+    Phi_axis[3,3]     = Phi_BR
+
+    # Discrete covariance (unit kernel K_ou): Qc_unit = 2/tau on 'a' channel
+    TR_s_integrand = (I3 + A*(s-u) + A2*((s-u)**2/2)) * B * sp.exp(-u/tau)
+    E_TR = sp.Matrix(3,1, lambda i,j: sp.integrate(TR_s_integrand[i,0], (u,0,s)))
+    E_BR = sp.exp(-s/tau)
+
+    C_top = E_TR                 # 3×1
+    C_bot = sp.Matrix([[E_BR]])  # 1×1
+    qc_unit = 2/tau
+
+    integrand = sp.zeros(4,4)
+    integrand[0:3,0:3] = qc_unit * (C_top * C_top.T)        # 3x3
+    integrand[0:3,3:4] = qc_unit * (C_top * C_bot.T)        # 3x1
+    integrand[3:4,0:3] = qc_unit * (C_bot * C_top.T)        # 1x3
+    integrand[3,3]     = qc_unit * (C_bot * C_bot.T)[0,0]   # scalar
+
+    Qd_unit = sp.Matrix(4,4, lambda i,j: sp.integrate(integrand[i,j], (s,0,h)))
+    Qd_unit = (Qd_unit + Qd_unit.T)/2
+
+    K_ou = sp.simplify(Qd_unit)
+    return h, tau, Phi_axis, K_ou
+
+# ============================================================
+# (2) Kronecker 3-axis assembly (shared tau)
+#     Phi_LL = I3 ⊗ Phi_axis
+#     Q_LL   = Sigma_aw ⊗ K_ou(h,tau)
+# ============================================================
+def emit_kronecker_forms():
+    h, tau, Phi_axis, K_ou = derive_ou_axis_phi_and_Kou()
+
+    sxx, sxy, sxz, syy, syz, szz = sp.symbols('s_{xx} s_{xy} s_{xz} s_{yy} s_{yz} s_{zz}', real=True)
+    Sigma_aw = sp.Matrix([[sxx, sxy, sxz],
+                          [sxy, syy, syz],
+                          [sxz, syz, szz]])
     I3 = sp.eye(3)
-    K  = W/wn
 
-    # Rotation R(s)
-    R = rodrigues_R(wx, wy, wz, s)        # 3x3
+    Phi_LL = sp.kronecker_product(I3, Phi_axis)   # 12×12
+    Q_LL   = sp.kronecker_product(Sigma_aw, K_ou) # 12×12
 
-    # Phi blocks
-    Phi_TL = rodrigues_R(wx, wy, wz, h)
-    # Phi_TR = ∫_0^h e^{A s} (-I) ds = -∫_0^h R(s) ds
-    Phi_TR = -sp.Matrix(3,3, lambda i,j: sp.integrate(R[i,j], (s,0,h)))
-    Phi_BR = I3
+    latex_text_block(r"""
+%======================== Kronecker Assembly (shared \tau) ========================
+% Linear 3-axis OU subsystem (axes uncoupled in F, correlated in noise via \Sigma_{aw})
+\[
+\Phi_{LL}(h) \;=\; I_3 \otimes \Phi_{\text{axis}}(h), 
+\qquad
+Q_{LL}(h) \;=\; \Sigma_{aw} \;\otimes\; K_{\text{ou}}(h,\tau),
+\]
+where \(\Phi_{\text{axis}}(h)\in\mathbb{R}^{4\times 4}\) is the per-axis transition for \([v,p,S,a]\),
+and \(K_{\text{ou}}(h,\tau)\in\mathbb{R}^{4\times 4}\) is the axis-unit discrete covariance kernel
+obtained from \(Q_c=(2/\tau)\) on the \(a\)-channel (unit stationary variance), independent of \(\Sigma_{aw}\).
+""")
+    latex_block(r"\Phi_{\text{axis}}(h)", Phi_axis)
+    latex_block(r"K_{\text{ou}}(h,\tau)", K_ou)
 
-    Phi = sp.Matrix.zeros(6,6)
-    Phi[0:3,0:3] = sp.simplify(Phi_TL)
-    Phi[0:3,3:6] = sp.simplify(Phi_TR)
-    Phi[3:6,3:6] = I3
-
-    # B(s) = -∫_0^s R(τ) dτ  = α0(s) I + α1(s) K + α2(s) K^2
-    # Derive α_i(s) by integrating R(τ) in the form I - sin(θ)K + (1-cos θ)K^2:
-    τ = sp.symbols('tau', positive=True, real=True)
-    θ = wn*τ
-    # Coefficients of R(τ) in I, K, K^2:
-    cI  = 1
-    cK  = -sp.sin(θ)
-    cK2 = (1 - sp.cos(θ))
-    # Integrate scalars to get coefficients of ∫R(τ)dτ:
-    I_int  = sp.integrate(cI,  (τ,0,s))           # = s
-    K_int  = sp.integrate(cK,  (τ,0,s))           # = (cos(wn s) - 1)/wn
-    K2_int = sp.integrate(cK2, (τ,0,s))           # = s - sin(wn s)/wn
-    # Hence: ∫_0^s R(τ)dτ = I_int*I + K_int*K + K2_int*K^2
-    # So B(s) = - that:
-    alpha0 = -I_int
-    alpha1 = -K_int
-    alpha2 = -K2_int
-
-    # Now express B(s) and its transpose via the basis:
-    # B(s) = α0 I + α1 K + α2 K^2
-    # Note: K^T = -K, (K^2)^T = K^2, and K^3 = -K (since K^2 = -(I - u u^T) with unit u)
-    # For products, we only need: I*I=I, K*K^T = (-K)*K = -K^2, K^2 * K^2 = K^4 = K^2*K^2.
-    # We will reduce products to a linear combo of I and K^2 (the symmetric subspace).
-    # First build symbolic B(s) in matrix form:
-    B_sym = alpha0*I3 + alpha1*K + alpha2*(K*K)
-
-    # IB = ∫_0^h B(s) ds (matrix, used in Q_tb)
-    IB = sp.Matrix(3,3, lambda i,j: sp.integrate(B_sym[i,j], (s,0,h)))
-
-    # Q components
-    Qtt_gyro = qg * h * I3     # because R(s) I R(s)^T = I
-
-    # For the bias term: ∫_0^h B(s)B(s)^T ds
-    # Instead of expanding entries, integrate basis-wise by taking the matrix-valued integrand:
-    BBt = sp.simplify(B_sym * B_sym.T)
-    Qtt_bias = sp.Matrix(3,3, lambda i,j: sp.integrate(BBt[i,j], (s,0,h))) * qbg
-
-    Qtt = sp.simplify(Qtt_gyro + Qtt_bias)
-    Qbb = sp.simplify(qbg * h * I3)
-    Qtb = sp.simplify(IB * qbg)
-
-    Qd = sp.Matrix.zeros(6,6)
-    Qd[0:3,0:3] = Qtt
-    Qd[0:3,3:6] = Qtb
-    Qd[3:6,0:3] = Qtb.T
-    Qd[3:6,3:6] = Qbb
-    Qd = sp.simplify((Qd + Qd.T)/2)
-
-    return sp.simplify(Phi), sp.simplify(Qd)
-
-# ---------- main demo ----------
-if __name__ == "__main__":
-    # Symbols
-    h, tau = sp.symbols('h tau', positive=True)
-    sigma2 = sp.symbols('sigma2', positive=True)  # stationary variance of a (OU)
-    qg, qbg = sp.symbols('q_g q_bg', positive=True)
+# ============================================================
+# (3) Attitude + gyro-bias block [δθ | b_g]
+#     F = [[A,B],[0,0]],  A = -[ω]_×, B = -I, D = 0
+# ============================================================
+def derive_att_bias_to_latex():
+    h = sp.symbols('h', positive=True, real=True)
     wx, wy, wz = sp.symbols('w_x w_y w_z', real=True)
 
-    # --- OU axis derivation ---
-    Phi_ou, Qd_ou = ou_axis_phi_qd(h, tau, sigma2)
-    pp("Phi_axis(h)  [OU axis v,p,S|a]", Phi_ou)
-    pp("Qd_axis(h)   [OU axis v,p,S|a]", Qd_ou)
-    to_latex_block("Phi_axis(h) latex", Phi_ou)
-    to_latex_block("Qd_axis(h) latex",  Qd_ou)
+    W = sp.Matrix([[0, -wz,  wy],
+                   [wz,  0, -wx],
+                   [-wy, wx,  0]])
+    A = -W
+    I3 = sp.eye(3)
+    B = -I3
 
-    # --- Attitude+bias derivation (isotropic) ---
-    Phi_ab, Qd_ab = att_bias_phi_qd_isotropic(h, wx, wy, wz, qg, qbg)
-    pp("Phi_att+bias(h)  [dθ|b_g]", Phi_ab)
-    pp("Qd_att+bias(h)   [dθ|b_g, isotropic]", Qd_ab)
-    to_latex_block("Phi_att+bias(h) latex", Phi_ab)
-    to_latex_block("Qd_att+bias(h) latex",  Qd_ab)
+    wn = sp.sqrt(wx**2 + wy**2 + wz**2)
+    K = W/wn
+
+    Phi_TL = I3 - sp.sin(wn*h)*K + (1 - sp.cos(wn*h))*(K*K)
+
+    t = sp.symbols('t', positive=True, real=True)
+    Rt = I3 - sp.sin(wn*t)*K + (1 - sp.cos(wn*t))*(K*K)
+    Phi_TR = -sp.Matrix(3,3, lambda i,j: sp.integrate(Rt[i,j], (t,0,h)))
+
+    Phi = sp.Matrix.zeros(6,6)
+    Phi[0:3,0:3] = Phi_TL
+    Phi[0:3,3:6] = Phi_TR
+    Phi[3:6,3:6] = I3
+
+    latex_block("Attitude+Bias: \\Phi(h)=e^{F h} from F = \\begin{bmatrix}A&B\\\\0&0\\end{bmatrix},\\ A=-[\\omega]_\\times,\\ B=-I", Phi)
+
+    latex_text_block(r"""
+% Q_d(h) from F and L (isotropic continuous covariances):
+%   Q_g = q_g I_3  (gyro),  Q_{bg} = q_{bg} I_3  (bias)
+%   L arranged so gyro noise drives attitude block, bias noise drives bias block.
+\[
+\begin{aligned}
+R(s) &= e^{A s} \;=\; I - \sin(\omega_n s)\,K + \bigl(1-\cos(\omega_n s)\bigr)K^2,\\[0.25em]
+B(s) &= \int_0^s e^{A u} B\,du \;=\; -\!\int_0^s R(u)\,du
+     \;=\; \alpha_0(s)\,I + \alpha_1(s)\,K + \alpha_2(s)\,K^2,\\
+\alpha_0(s) &= -\,s,\qquad
+\alpha_1(s) \;=\; -\frac{\cos(\omega_n s)-1}{\omega_n},\qquad
+\alpha_2(s) \;=\; -\Bigl(s - \frac{\sin(\omega_n s)}{\omega_n}\Bigr),\\[0.4em]
+Q_{tt}(h) &= \int_0^h R(s)\,q_g I\,R(s)^\top ds \;+\; \int_0^h B(s)\,q_{bg} I\,B(s)^\top ds
+          \;=\; q_g\,h\,I \;+\; q_{bg}\!\int_0^h B(s)B(s)^\top ds,\\
+Q_{tb}(h) &= \Bigl(\int_0^h B(s)\,ds\Bigr)\,q_{bg},\qquad
+Q_{bb}(h) \;=\; q_{bg}\,h\,I,
+\end{aligned}
+\]
+where \( \omega_n=\|\boldsymbol{\omega}\|,\ K=[\boldsymbol{\omega}]_\times/\omega_n\).
+% Expand these integrals in the appendix if you want explicit sin/cos closed forms.
+""")
+
+# -------------------- main --------------------
+if __name__ == "__main__":
+    emit_kronecker_forms()
+    derive_att_bias_to_latex()
