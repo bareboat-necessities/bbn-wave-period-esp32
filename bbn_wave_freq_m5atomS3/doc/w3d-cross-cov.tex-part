@@ -64,20 +64,3 @@ matrix.  These steps prevent loss of symmetry due to finite precision and
 ensure that all cross-covariances remain consistent with the Kronecker-based
 OU noise model.
 
-
-
-\subsection{Full Covariance Propagation}
-Combining the above blocks, the discrete prediction equations are
-\begin{align*}
-x_{k|k-1} &= \Phi\,x_{k-1|k-1},\\
-P_{k|k-1} &= \Phi P_{k-1|k-1}\Phi^\top + Q_d,
-\end{align*}
-with subblock updates
-\begin{align*}
-P^+_{AA} &= \Phi_{AA}P_{AA}\Phi_{AA}^\top + Q_{AA},\\
-P^+_{LL} &= \Phi_{LL}P_{LL}\Phi_{LL}^\top + Q_{LL},\\
-P^+_{AL} &= \Phi_{AA}P_{AL}\Phi_{LL}^\top ,
-\end{align*}
-and symmetric counterparts for the bias subblocks.
-
-
