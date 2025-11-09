@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 # Derive Φ(h)=e^{Fh} and Qd(h)=∫_0^h e^{Fs} L Qc L^T e^{F^T s} ds
-# from F and L for the per-axis OU chain x=[v,p,S,a]^T, and reduce to
-# the SAME primitives used in the C++ code. Prints LaTeX and verifies term-wise.
+# from F and L for the per-axis OU chain x=[v,p,S,a]^T, reduce to
+# the SAME primitives used in the C++ code, verify entry-by-entry,
+# and emit Kronecker-assembled 3-axis formulas for shared τ.
+#
+# Outputs LaTeX you can paste directly into the paper.
 
 import sympy as sp
 
@@ -26,7 +29,6 @@ def is_zero_expr(expr):
     z = sp.simplify(sp.together(sp.factor(expr)))
     if z == 0 or getattr(z, "is_zero", False):
         return True
-    # numeric fallback via lambdify on the expression's free symbols
     vars_ = sorted(list(z.free_symbols), key=lambda s: s.name)
     if not vars_:
         try:
@@ -39,7 +41,6 @@ def is_zero_expr(expr):
     for _ in range(4):
         subs = []
         for v in vars_:
-            # Positive generics for h, tau, sigma2; nonneg for s if it ever appears
             name = v.name
             if name in ("h",):
                 subs.append(mp.mpf("0.2") + mp.mpf(random.random())*mp.mpf("1.0"))
@@ -51,7 +52,7 @@ def is_zero_expr(expr):
                 subs.append(mp.mpf(random.random()))
         try:
             val = f(*subs)
-            valc = complex(val)  # mpmath→python complex
+            valc = complex(val)
             if abs(valc) > 1e-9:
                 return False
         except Exception:
@@ -227,5 +228,40 @@ h & 1 & 0 & \tau^2(x+\mathrm{em1})\\[2pt]
 \frac{h^2}{2} & h & 1 & \tau^3\bigl(\tfrac12 x^2 - x - \mathrm{em1}\bigr)\\[2pt]
 0 & 0 & 0 & \alpha
 \end{bmatrix}.
+\]
+""")
+
+# ---------------- Kronecker Appendix: 3-axis shared-τ case ----------------
+# Build a symbolic SPD Sigma_aw (kept symbolic; we only emit LaTeX forms).
+s_xx, s_yy, s_zz, s_xy, s_xz, s_yz = sp.symbols('s_xx s_yy s_zz s_xy s_xz s_yz', real=True)
+Sigma_aw = sp.Matrix([[s_xx, s_xy, s_xz],
+                      [s_xy, s_yy, s_yz],
+                      [s_xz, s_yz, s_zz]])
+
+disp("Kronecker assembly for 3-axis OU (shared τ)", raw=r"""
+Let \(\Sigma_{aw}\in\mathbb{R}^{3\times3}\) be the stationary covariance of the
+vector OU world-acceleration (full SPD, possibly correlated). With a shared time
+constant \(\tau\) across axes, the linear 12×12 block \([v(3),p(3),S(3),a(3)]\) has
+\[
+\Phi_{LL}(h)\;=\;I_3\ \otimes\ \Phi_{\text{axis}}(h),
+\]
+and the discrete process covariance
+\[
+Q_{LL}(h)\;=\;\frac{2}{\tau}\;\Sigma_{aw}\ \otimes\ \mathrm{sym}\,K(h,\tau),
+\]
+where \(\mathrm{sym}\,K=\tfrac12\bigl(K+K^\top\bigr)\) and \(K(h,\tau)\) is the unit kernel
+derived above (independent of \(\sigma^2\)). This matches the C++ implementation’s
+correlated-axes branch \(Q_{LL}=\Sigma_{aw}\otimes Q_{\text{axis,unit}}\) with the
+unit per-axis covariance \(Q_{\text{axis,unit}}=\tfrac{2}{\tau}\,\mathrm{sym}\,K(h,\tau)\).
+""")
+
+# Also provide a diagonal anisotropic special case for quick citation
+disp("Diagonal anisotropic special case", raw=r"""
+If \(\Sigma_{aw}=\mathrm{diag}(s_x^2,s_y^2,s_z^2)\), then
+\[
+Q_{LL}(h)=\frac{2}{\tau}\,
+\mathrm{diag}(s_x^2,s_y^2,s_z^2)\ \otimes\ \mathrm{sym}\,K(h,\tau),
+\qquad
+\Phi_{LL}(h)=I_3\otimes \Phi_{\text{axis}}(h).
 \]
 """)
