@@ -1,4 +1,4 @@
-\subsection*{Discrete Process Covariance $Q_{d,AA}(h)$ for Attitude Error \& Gyro Bias}
+\subsection{Discrete Process Covariance $Q_{d,AA}(h)$ for Attitude Error \& Gyro Bias}
 
 \paragraph{Error-state LTI SDE (constant $\boldsymbol\omega$ over $[0,h]$).}
 Let $\delta\boldsymbol{\theta}\in\mathbb{R}^3$ be the small attitude error (right-multiplicative)
