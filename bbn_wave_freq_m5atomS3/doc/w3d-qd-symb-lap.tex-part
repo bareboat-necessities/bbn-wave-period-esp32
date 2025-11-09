@@ -39,7 +39,7 @@ C_0 \coloneqq h,\quad C_1 \coloneqq \frac{h^2}{2},\quad C_2 \coloneqq \frac{h^3}
 C_3 \coloneqq \frac{h^4}{4},\quad C_4 \coloneqq \frac{h^5}{5}.
 \]
 
-\subsection*{Block–triangular exponential and noise flow}
+\subsubsection*{Block–triangular exponential and noise flow}
 Because \(F\) is block upper triangular,
 \[
 e^{Fs}=\begin{bmatrix}
@@ -72,7 +72,7 @@ Thus \(Q_d\) is assembled from three integrals:
 \text{(iii) } \int_{0}^{h}\!q_c\,e^{-2s/\tau}ds.
 \]
 
-\subsection*{Laplace–domain evaluation of the feedthrough}
+\subsubsection*{Laplace–domain evaluation of the feedthrough}
 Define \(f(s)\coloneqq C_{\text{top}}(s)\). By definition,
 \[
 f(s)=\int_0^s e^{A(s-u)}B\,e^{Du}\,du
@@ -101,7 +101,7 @@ Evaluated at \(s=h\) and written in primitives \((x,\alpha,\mathrm{em1})\),
 \phi_{aa}=e^{-h/\tau}=\alpha.
 \]
 
-\subsection*{Three Laplace–assisted integrals}
+\subsubsection*{Three Laplace–assisted integrals}
 \paragraph{(iii) Bottom scalar block.}
 \[
 \int_{0}^{h}\!q_c\,e^{-2s/\tau}ds=\frac{2\sigma^2}{\tau}\cdot\frac{\tau}{2}\bigl(1-e^{-2h/\tau}\bigr)
@@ -141,7 +141,7 @@ K_{Sp}&=\tfrac{1}{2}\tau^2 C_3 - \tfrac{3}{2}\tau^3 C_2 + 2\tau^4 C_1 - \tau^5 C
 \end{aligned}
 \]
 
-\subsection*{Unit kernel and discrete covariance}
+\subsubsection*{Unit kernel and discrete covariance}
 Factor \(q_c=\frac{2\sigma^2}{\tau}\) and define the \emph{unit kernel}
 \[
 K(h,\tau)=\begin{bmatrix}
@@ -159,7 +159,7 @@ Q_{d,\text{axis}}(h)=\frac{2\sigma^2}{\tau}\;\mathrm{sym}\,K(h,\tau),
 \mathrm{sym}\,K=\tfrac12\bigl(K+K^\top\bigr).
 \]
 
-\subsection*{Final list of blocks (per axis)}
+\subsubsection*{Final list of blocks (per axis)}
 \[
 \boxed{
 \begin{aligned}
