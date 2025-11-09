@@ -162,3 +162,19 @@ with $K_{ij}$ given explicitly above, and $\mathrm{sym}\,K=\tfrac12(K+K^\top)$
 (Joseph symmetry hygiene).
 For small $x=h/\tau$, replace $(\alpha,\mathrm{em1},\mathrm{em1}_2)$ by their
 Maclaurin expansions to avoid cancellation.
+
+\paragraph{Small–\(x=h/\tau\) series used in code.}
+For numerical stability at high sampling rates, we use the Maclaurin series
+\[
+\alpha
+=1-x+\frac{x^2}{2}-\frac{x^3}{6}+\frac{x^4}{24}-\cdots,\qquad
+\mathrm{em1}
+=-x+\frac{x^2}{2}-\frac{x^3}{6}+\frac{x^4}{24}-\cdots,
+\]
+\[
+\mathrm{em1}_2
+=e^{-2x}-1
+=-2x+2x^2-\frac{4}{3}x^3+\frac{2}{3}x^4-\cdots,
+\]
+which, when substituted into \(\phi_{\bullet a}\) and \(K_{ij}\), avoid cancellation.
+In implementation we switch to these series below a small threshold on \(x\).
