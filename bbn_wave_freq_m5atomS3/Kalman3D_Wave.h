@@ -1293,33 +1293,33 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     const auto P = make_prims<T>(h, tau);
     // Stable re-expressions (let x = h/tau, em1 = expm1(-x)):
     // 1 - alpha = -em1
-    // phi_va = tau*(1 - alpha)               = -tau*em1
-    // phi_pa = tau*h - tau^2*(1 - alpha)     = tau^2*(x + em1)
-    // phi_Sa = 0.5*tau*h^2 - tau^2*h + tau^3*(1 - alpha)
+    // phi_va_c = tau*(1 - alpha)               = -tau*em1
+    // phi_pa_c = tau*h - tau^2*(1 - alpha)     = tau^2*(x + em1)
+    // phi_Sa_c = 0.5*tau*h^2 - tau^2*h + tau^3*(1 - alpha)
     //        = tau^3*(0.5*x^2 - x - em1)
     const T tau2 = tau * tau;
     const T tau3 = tau2 * tau;
 
-    const T phi_va = -tau * P.em1;
+    const T phi_va_c = -tau * P.em1;
     auto coeffs = safe_phi_A_coeffs<T>(h, tau);
-    const T phi_pa = coeffs.phi_pa;
-    const T phi_Sa = coeffs.phi_Sa;
+    const T phi_pa_c = coeffs.phi_pa;
+    const T phi_Sa_c = coeffs.phi_Sa;
 
     Phi_axis.setZero();
     // v_{k+1}
     Phi_axis(0,0) = T(1);
-    Phi_axis(0,3) = phi_va;
+    Phi_axis(0,3) = phi_va_c;
 
     // p_{k+1}
     Phi_axis(1,0) = h;
     Phi_axis(1,1) = T(1);
-    Phi_axis(1,3) = phi_pa;
+    Phi_axis(1,3) = phi_pa_c;
 
     // S_{k+1}
     Phi_axis(2,0) = T(0.5)*h*h;
     Phi_axis(2,1) = h;
     Phi_axis(2,2) = T(1);
-    Phi_axis(2,3) = phi_Sa;
+    Phi_axis(2,3) = phi_Sa_c;
 
     // a_{k+1}
     Phi_axis(3,3) = std::max(T(1e-7), std::min(P.alpha, T(1)));
