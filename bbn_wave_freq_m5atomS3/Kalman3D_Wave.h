@@ -1088,7 +1088,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
 {
     // Gate accel magnitude
     const T g_meas = acc_meas.norm();
-    if (std::abs(g_meas - gravity_magnitude_) > T(1.8) * gravity_magnitude_) return;
+    if (std::abs(g_meas - gravity_magnitude_) > T(1.9) * gravity_magnitude_) return;
 
     // Physical accelerometer measurement model
     // f_b = R_wb * (a_w - g) + b_a + noise
