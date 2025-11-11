@@ -817,22 +817,22 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
 
-  // IMU lever-arm: estimate angular acceleration α_b (from bias-corrected ω_b)
-  const Vector3 omega_b = last_gyr_bias_corrected;
-  if (have_prev_omega_ && Ts > T(0)) {
-    const Vector3 alpha_raw = (omega_b - prev_omega_b_) / Ts;
-    if (alpha_smooth_tau_ > T(0)) {
-      const T a = T(1) - std::exp(-Ts / alpha_smooth_tau_);
-      alpha_b_ = (T(1) - a) * alpha_b_ + a * alpha_raw;
+    // IMU lever-arm: estimate angular acceleration α_b (from bias-corrected ω_b)
+    const Vector3 omega_b = last_gyr_bias_corrected;
+    if (have_prev_omega_ && Ts > T(0)) {
+        const Vector3 alpha_raw = (omega_b - prev_omega_b_) / Ts;
+        if (alpha_smooth_tau_ > T(0)) {
+            const T a = T(1) - std::exp(-Ts / alpha_smooth_tau_);
+            alpha_b_ = (T(1) - a) * alpha_b_ + a * alpha_raw;
+        } else {
+            alpha_b_ = alpha_raw;
+        }
     } else {
-      alpha_b_ = alpha_raw;
+        alpha_b_.setZero();
+        have_prev_omega_ = true;
     }
-  } else {
-    alpha_b_.setZero();
-    have_prev_omega_ = true;
-  }
-  prev_omega_b_ = omega_b;
-  last_Ts_ = Ts;              
+    prev_omega_b_ = omega_b;
+    last_Ts_ = Ts;              
 
     // Δθ = ω·Ts → right-multiplicative quaternion increment
     Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
