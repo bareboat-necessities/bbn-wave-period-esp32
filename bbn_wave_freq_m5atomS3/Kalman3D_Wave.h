@@ -1084,18 +1084,18 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas, T tempC)
 {
-    // Robust residual gate (lever-arm aware)
-    // Gate at ~5σ using per-axis variances from Racc.
-    const T sigma_r = std::sqrt(Racc.trace() / T(3));
-    if (!std::isfinite(sigma_r) || sigma_r <= T(0)) return;
-    if (r.norm() > T(5.0) * sigma_r) return;
-              
     // Physical accelerometer measurement model
     // f_b = R_wb * (a_w - g) + b_a + noise
     const Vector3 f_pred = accelerometer_measurement_func(tempC);
     const Vector3 f_meas = acc_meas;
     const Vector3 r = f_meas - f_pred; // innovation in true units (m/s²)
 
+    // Residual gate (lever-arm aware)
+    // Gate at ~5σ using per-axis variances from Racc.
+    const T sigma_r = std::sqrt(Racc.trace() / T(3));
+    if (!std::isfinite(sigma_r) || sigma_r <= T(0)) return;
+    if (r.norm() > T(5.0) * sigma_r) return;
+              
     // Proper Jacobians from linearization at CoG-only part (lever-arm is attitude-independent)
     const Vector3 g_world(0,0,+gravity_magnitude_);
     const Vector3 aw = xext.template segment<3>(OFF_AW);
