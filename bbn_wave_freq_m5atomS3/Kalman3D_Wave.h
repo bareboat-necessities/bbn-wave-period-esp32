@@ -525,7 +525,6 @@ class Kalman3D_Wave {
         const T s = std::sin(theta), c = std::cos(theta);
         const T invw  = T(1) / wnorm;
         const T invw2 = invw * invw;
-        const T invw4 = invw2 * invw2;
     
         // IB = ∫_0^T B(s) ds = -[ 1/2 T^2 I - ((T - sinθ/ω)/ω^2) W + ((1/2 T^2) + (cosθ - 1)/ω^2)/ω^2 W^2 ]
         const Matrix3 termI = Matrix3::Identity() * (T(0.5) * Tstep*Tstep);
