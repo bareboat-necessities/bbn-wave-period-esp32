@@ -1205,8 +1205,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     applyQuaternionCorrectionFromErrorState();
 }
 
-// specific force prediction: f_b = R_wb (a_w - g) + b_a(temp)
-// with temp correction: b_a(temp) = b_a0 + k_a * (tempC - tempC_ref)
+// specific force prediction (BODY):
+//   f_b = R_wb (a_w − g) + α_b × r_imu + ω_b × (ω_b × r_imu) + b_a(temp)
+// with temp correction: b_a(temp) = b_a0 + k_a * (tempC − tempC_ref)
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T,3,1>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_func(T tempC) const {
