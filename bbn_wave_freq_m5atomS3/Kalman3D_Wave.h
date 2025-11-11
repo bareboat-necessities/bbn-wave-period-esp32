@@ -471,7 +471,6 @@ class Kalman3D_Wave {
     Vector3 prev_omega_b_ = Vector3::Zero();
     Vector3 alpha_b_      = Vector3::Zero();
     bool    have_prev_omega_ = false;
-    T       last_Ts_ = T(0);
 
     // Optional smoothing for alpha (0 = off)
     T alpha_smooth_tau_ = T(0.05); // seconds
@@ -831,8 +830,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         alpha_b_.setZero();
         have_prev_omega_ = true;
     }
-    prev_omega_b_ = omega_b;
-    last_Ts_ = Ts;              
+    prev_omega_b_ = omega_b;           
 
     // Δθ = ω·Ts → right-multiplicative quaternion increment
     Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
