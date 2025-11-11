@@ -402,7 +402,18 @@ class Kalman3D_Wave {
 
     // Toggle exact/structured Qd for the attitude+gyro-bias block (option 3).
     void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
-        
+
+    // IMU lever-arm API (BODY frame)
+    void set_imu_lever_arm_body(const Vector3& r_b) {
+        r_imu_wrt_cog_b_ = r_b;
+        use_imu_lever_arm_ = (r_b.squaredNorm() > T(0));
+    }
+    void clear_imu_lever_arm() {
+        r_imu_wrt_cog_b_.setZero();
+        use_imu_lever_arm_ = false;
+    }
+    void set_alpha_smoothing_tau(T tau_sec) { alpha_smooth_tau_ = std::max(T(0), tau_sec); }
+              
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
         const T cI = std::cos(I_rad), sI = std::sin(I_rad);
         const T cD = std::cos(D_rad), sD = std::sin(D_rad);
@@ -451,7 +462,20 @@ class Kalman3D_Wave {
 
     bool has_cross_cov_a_xy = false;
     bool use_exact_att_bias_Qd_ = true;
-    
+
+    // IMU lever-arm (off-CoG) support
+    bool use_imu_lever_arm_ = false;
+    Vector3 r_imu_wrt_cog_b_ = Vector3::Zero(); // IMU position w.r.t. CoG, BODY frame [m]
+
+    // Cached kinematics (BODY)
+    Vector3 prev_omega_b_ = Vector3::Zero();
+    Vector3 alpha_b_      = Vector3::Zero();
+    bool    have_prev_omega_ = false;
+    T       last_Ts_ = T(0);
+
+    // Optional smoothing for alpha (0 = off)
+    T alpha_smooth_tau_ = T(0.05); // seconds
+              
     // Closed-form helpers for rotation & integrals (constant ω over [0, t])
     
     // Rodrigues rotation and the integral B(t) = -∫_0^t exp(-[ω]× τ) dτ
@@ -793,6 +817,23 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
 
+  // IMU lever-arm: estimate angular acceleration α_b (from bias-corrected ω_b)
+  const Vector3 omega_b = last_gyr_bias_corrected;
+  if (have_prev_omega_ && Ts > T(0)) {
+    const Vector3 alpha_raw = (omega_b - prev_omega_b_) / Ts;
+    if (alpha_smooth_tau_ > T(0)) {
+      const T a = T(1) - std::exp(-Ts / alpha_smooth_tau_);
+      alpha_b_ = (T(1) - a) * alpha_b_ + a * alpha_raw;
+    } else {
+      alpha_b_ = alpha_raw;
+    }
+  } else {
+    alpha_b_.setZero();
+    have_prev_omega_ = true;
+  }
+  prev_omega_b_ = omega_b;
+  last_Ts_ = Ts;              
+
     // Δθ = ω·Ts → right-multiplicative quaternion increment
     Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
     qref = qref * dq;
@@ -1055,10 +1096,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     const Vector3 f_meas = acc_meas;
     const Vector3 r = f_meas - f_pred; // innovation in true units (m/s²)
 
-    // Proper Jacobians from linearization of f_b
-    const Matrix3 J_att = -skew_symmetric_matrix(f_pred); // ∂f/∂θ = -[f_b]_×
+    // Proper Jacobians from linearization at CoG-only part (lever-arm is attitude-independent)
+    const Vector3 g_world(0,0,+gravity_magnitude_);
+    const Vector3 aw = xext.template segment<3>(OFF_AW);
+    const Vector3 f_cog_b = R_wb() * (aw - g_world);
+    const Matrix3 J_att = -skew_symmetric_matrix(f_cog_b); // ∂f/∂θ = -[f_cog_b]_×
     const Matrix3 J_aw  =  R_wb();                         // ∂f/∂a_w = R_wb
-
+              
     // Innovation covariance S = C P Cᵀ + Racc (3×3)
     Matrix3 S_mat = Racc;
     {
@@ -1164,17 +1208,28 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T,3,1>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_func(T tempC) const {
-    const Vector3 g_world(0,0,+gravity_magnitude_);
-    const Vector3 aw = xext.template segment<3>(OFF_AW);
+  const Vector3 g_world(0,0,+gravity_magnitude_);
+  const Vector3 aw = xext.template segment<3>(OFF_AW);
 
-    Vector3 fb = R_wb() * (aw - g_world);
+  // CoG specific force in BODY
+  const Vector3 f_cog_b = R_wb() * (aw - g_world);
 
-    if constexpr (with_accel_bias) {
-        Vector3 ba0 = xext.template segment<3>(OFF_BA);
-        Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref); // temperature related drift
-        fb += ba;
-    }
-    return fb;
+  Vector3 fb = f_cog_b;
+
+  // Optional IMU lever-arm correction (BODY)
+  if (use_imu_lever_arm_) {
+    const Vector3& omega_b = last_gyr_bias_corrected;
+    const Vector3& alpha_b = alpha_b_;
+    const Vector3& r_imu_b = r_imu_wrt_cog_b_;
+    fb.noalias() += alpha_b.cross(r_imu_b) + omega_b.cross(omega_b.cross(r_imu_b));
+  }
+
+  if constexpr (with_accel_bias) {
+    const Vector3 ba0 = xext.template segment<3>(OFF_BA);
+    const Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref);
+    fb += ba;
+  }
+  return fb;             
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
