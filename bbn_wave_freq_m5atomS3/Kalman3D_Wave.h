@@ -1086,10 +1086,12 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas, T tempC)
 {
-    // Gate accel magnitude
-    const T g_meas = acc_meas.norm();
-    if (std::abs(g_meas - gravity_magnitude_) > T(1.9) * gravity_magnitude_) return;
-
+    // Robust residual gate (lever-arm aware)
+    // Gate at ~5σ using per-axis variances from Racc.
+    const T sigma_r = std::sqrt(Racc.trace() / T(3));
+    if (!std::isfinite(sigma_r) || sigma_r <= T(0)) return;
+    if (r.norm() > T(5.0) * sigma_r) return;
+              
     // Physical accelerometer measurement model
     // f_b = R_wb * (a_w - g) + b_a + noise
     const Vector3 f_pred = accelerometer_measurement_func(tempC);
