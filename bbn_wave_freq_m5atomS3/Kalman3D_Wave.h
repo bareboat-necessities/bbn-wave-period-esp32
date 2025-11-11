@@ -1296,8 +1296,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     // phi_pa_c = tau*h - tau^2*(1 - alpha)     = tau^2*(x + em1)
     // phi_Sa_c = 0.5*tau*h^2 - tau^2*h + tau^3*(1 - alpha)
     //        = tau^3*(0.5*x^2 - x - em1)
-    const T tau2 = tau * tau;
-    const T tau3 = tau2 * tau;
 
     const T phi_va_c = -tau * P.em1;
     auto coeffs = safe_phi_A_coeffs<T>(h, tau);
