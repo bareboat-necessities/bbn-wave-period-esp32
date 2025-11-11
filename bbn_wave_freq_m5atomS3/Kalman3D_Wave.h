@@ -577,8 +577,7 @@ class Kalman3D_Wave {
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
     Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body→world
 
-    // Helpers and original methods kept
-    void measurement_update_partial(const Eigen::Ref<const Vector3>& meas, const Eigen::Ref<const Vector3>& vhat, const Eigen::Ref<const Matrix3>& Rm);
+    // Helpers
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
     Vector3 accelerometer_measurement_func(T tempC) const;
     Vector3 magnetometer_measurement_func() const;
@@ -1037,45 +1036,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         applyIntegralZeroPseudoMeas();
         pseudo_update_counter_ = 0;
     }
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_partial(
-    const Eigen::Ref<const Vector3>& meas,
-    const Eigen::Ref<const Vector3>& vhat,
-    const Eigen::Ref<const Matrix3>& Rm)
-{
-    // Residual r = (measured - predicted)
-    const Vector3 r = meas - vhat;
-
-    // Jacobian wrt attitude error (right-multiplicative convention)
-    // J_att = -skew(vhat)
-    const Matrix3 J_att = -skew_symmetric_matrix(vhat);
-
-    // Innovation covariance S = C P Cᵀ + Rm (3×3), with C touching only attitude
-    Matrix3 S_mat = Rm;
-    {
-        constexpr int OFF_TH = 0;
-        const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
-        S_mat.noalias() += J_att * P_th_th * J_att.transpose();
-    }
-
-    // PCᵀ = P Cᵀ (NX×3) — only attitude columns contribute
-    Eigen::Matrix<T, NX, 3> PCt = Pext.template block<NX,3>(0,0) * J_att.transpose();
-
-    // Gain
-    Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, Rm.norm())) return;
-    const Eigen::Matrix<T, NX, 3> K = PCt * ldlt.solve(Matrix3::Identity());
-
-    // State update
-    xext.noalias() += K * r;
-
-    // Covariance update (Joseph form)
-    joseph_update3_(K, S_mat, PCt);
-
-    // Apply small-angle correction to quaternion and zero the attitude error in xext
-    applyQuaternionCorrectionFromErrorState();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
