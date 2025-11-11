@@ -198,7 +198,6 @@ class Kalman3D_Wave {
     static constexpr int M = 6;
 
     typedef Matrix<T, 3, 1> Vector3;
-    typedef Matrix<T, 6, 1> Vector6;
     typedef Matrix<T, BASE_N, BASE_N> MatrixBaseN;
     typedef Matrix<T, NX, NX> MatrixNX;
     typedef Matrix<T, 3, 3> Matrix3;
