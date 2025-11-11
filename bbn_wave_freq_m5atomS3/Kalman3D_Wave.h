@@ -34,6 +34,7 @@
 
 #include <limits>
 #include <cmath>
+#include <algorithm>
 #include <stdexcept>
 
 using Eigen::Matrix;
