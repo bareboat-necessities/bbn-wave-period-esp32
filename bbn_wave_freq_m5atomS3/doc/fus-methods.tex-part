@@ -1,77 +1,172 @@
-% ===================== 5 =====================
-\section{System Integration: From Frequency and Variance to State Estimation}
-\label{sec:integration}
+% =======================================================
+\section{Implementation and Parameterization}
+\label{sec:impl}
 
-\paragraph{Coupling logic.}
-The frequency tracker (\S\ref{sec:freq-trackers}) and the variance-aware tuner (\S\ref{sec:adaptation}) act as an exogenous supervisor for the multiplicative EKF on \(\mathrm{SO}(3)\times\mathbb{R}^{12}\).
-At each IMU step, the stack computes (i) the smoothed dominant acceleration frequency \(\widehat{f}(t)\) and phase \(\widehat{\phi}(t)\), and (ii) the debiased vertical specific-force variance \(\widehat{\sigma}_a^2(t)\).
-These feed the adaptive law \eqref{eq:rs-law} to set the target pseudo-measurement covariance \(R_S^\star(t)\), with mild anisotropy to reflect horizontal coupling.
-Joseph-form updates ensure numerical symmetry/PSD, magnetometer updates are gated to stabilize yaw observability after the initial transient, and the direction subfilter in \S\ref{sec:direction} consumes \(\widehat{\phi}(t)\) directly to phase-gate horizontal information.
+\paragraph{Sampling.} IMU and estimator run at $f_s=\SI{240}{Hz}$ ($\Delta t=1/f_s$). Magnetometer updates are gated for $T_{\mathrm{mag}}=\SI{5}{s}$ after start.
 
-\paragraph{Identifiability and failure modes.}
-The design emphasizes \emph{phase coherence} over pointwise spectral accuracy: since \(\widehat{f}(t)\) is extracted from the forcing channel \(a_z\), the filter retains observability even when displacement spectra are multicomponent.
-Pathological regimes include (a) extremely low SNR where zero-crossing fallback dominates, (b) near-commensurate dual lines causing slow tracker beating, and (c) abrupt sea-state transitions that temporarily bias \(\widehat{\sigma}_a\).
-All three are mitigated by bounded gains, clamping of \(\tau,\sigma_a,R_S\), and slow application of targets.
+\paragraph{Bounds and guards.} Frequency and OU targets are clamped as
+\[
+f\in[f_{\min},f_{\max}],\quad f_{\min}=\SI{0.1}{Hz},\ f_{\max}=\SI{5.0}{Hz},
+\]
+\[
+\tau\in[\tau_{\min},\tau_{\max}],\quad \tau_{\min}=\SI{0.5}{s},\ \tau_{\max}=\SI{8.5}{s},
+\]
+\[
+\sigma_a\in[\sigma_{\min},\sigma_{\max}],\quad \sigma_{\min}=\SI{0.3}{m/s^2},\ \sigma_{\max}=\SI{8.0}{m/s^2}.
+\]
+Integral pseudo-measurement covariance is bounded $R_S\in[R_{S,\min},R_{S,\max}]$ with $R_{S,\min}=0.1$, $R_{S,\max}=35$ (units consistent with the integral constraint).
 
-\paragraph{Scientific stance.}
-The overarching idea is to \emph{measure what the ocean gives us} in acceleration—period and vertical energy—and translate it into the \emph{minimum regularization} that keeps integral states anchored without dulling swell response. This preserves the physics signal while preventing drift that would otherwise arise from integrating latent acceleration.
+\paragraph{Smoothers.} Debiased EWMA horizons:
+\[
+\tau_{\mathrm{var}}=\SI{60}{s}\quad(\widehat{\sigma}_a^2),\qquad
+\tau_{\mathrm{freq}}=\SI{5}{s}\quad(\bar f).
+\]
+Exponential gains use $\alpha=1-e^{-\Delta t/\tau}$.
 
-% ===================== 6 =====================
-\section{Experimental Results}
-\label{sec:results}
+\paragraph{Adaptation cadence.} Targets $\{\tau_\star,\sigma_{a,\star},R_{S,\star}\}$ are applied every $\Delta t_{\mathrm{apply}}=\SI{0.1}{s}$ with EWMA time constant $\tau_{\mathrm{apply}}=\SI{3.0}{s}$. Online tuning is held off for an initial warm-up $T_{\mathrm{warm}}=\SI{35}{s}$.
 
-\subsection{Setup}
-We use the synthetic dataset and metrics of \S\ref{sec:sim-and-eval}:
-four sea states (W1–W4) across five wave models (Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal); each run is \SI{20}{min} at \SI{240}{Hz}, with body-frame IMU and world-frame reference.
-Performance is reported over the terminal \SI{60}{s} (steady-state).
+\paragraph{Regularization law.} With $c_R$ a dimensionless gain and XY anisotropy $\rho_{xy}\in(0,1)$:
+\[
+R_{S,\star}=c_R\,\sigma_{a,\star}\,\tau_\star^3,\qquad
+R_S=\mathrm{diag}(\rho_{xy}R_{S,\star},\,\rho_{xy}R_{S,\star},\,R_{S,\star}),
+\]
+typical values $c_R\in[2.4,2.5]$, $\rho_{xy}\in[0.05,0.07]$.
 
-\subsection{Displacement and Attitude Accuracy}
-Table~\ref{tab:acc} summarizes per-axis RMS and RMS\%Hs; Table~\ref{tab:attn-tuner} reports roll/pitch/yaw RMS and tuner telemetry (\(\widehat{f}\), applied \(\tau,\sigma_a,R_S\) and targets).
-Across single-component nonlinear waves (Gerstner, Fenton, Cnoidal), vertical accuracy remains well within engineering gates, with bounded horizontal drift despite significant attitude motion.
-In directional seas (JONSWAP, PM-Stokes), accuracy degrades gracefully with increasing \(H_s\) and \(T_p\); the adaptive law raises \(R_S\) with \(\tau^3\) as intended, maintaining phase coherence while limiting low-frequency bias.
+\paragraph{Direction KF defaults.} Process/measurement covariances for the horizontal amplitude vector $\mathbf{A}\in\mathbb{R}^2$:
+\[
+Q=10^{-6} I_2,\qquad R=10^{-2} I_2,
+\]
+phase gate $|\cos\phi|<10^{-3}$ skips the measurement update (Joseph form always). Direction unit-vector smoothing uses EWMA with $\alpha_{\theta}=0.05$ and sign-stabilization via dot-product continuity.
 
-\subsection{Frequency-Tracker Comparison}
-\label{subsec:tracker-comp}
-We compare three policies (Aranovskiy, KalmANF, Schmitt) as front-ends to the same unifier (smoothing horizon \(T_f\)).
-Evaluation uses (i) frequency RMSE against the simulator’s dominant line of \(a_z\), (ii) phase-slip rate relative to the reference phase, and (iii) downstream effect on displacement RMS.
-Aranovskiy exhibits lowest latency and strong phase fidelity at modest SNR; KalmANF yields the cleanest steady estimates under noise with slightly higher agility cost; Schmitt provides a robust safety net with quantized behavior.
-Crucially, once passed through the unifier, downstream displacement differences are second-order except in rapidly time-varying seas, where KalmANF’s larger \(Q\) improves tracking at the expense of small jitter.
-
-\subsection{Adaptive Tuning Dynamics}
-\label{subsec:tuning-dyn}
-Figure~\ref{fig:tuner-dyn} overlays \(\widehat{f}(t)\), \(\widehat{\sigma}_a(t)\), and the applied/target \((\tau,\sigma_a,R_S)\) during representative W2–W4 runs.
-We observe (1) convergence of \(R_S\) to the \(\sigma_a\tau^3\) target, (2) anisotropic stabilization of the integral channel that prevents slow drift, and (3) negligible impact on swell-band amplitude.
-Mis-tracking episodes in \(\widehat{\sigma}_a\) correlate with transient vertical RMS excursions, underscoring the centrality of variance estimation.
-
-\subsection{Wave Direction: Angle and Signed Propagation}
-\label{subsec:dir-results}
-The direction module (\S\ref{sec:direction}) is evaluated with four measures:
-(i) median absolute angular error \(\mathrm{MAE}_{180}\) modulo \(180^\circ\),
-(ii) signed angular error \(\mathrm{MAE}_{\pm}\) using the simulator’s propagation sign,
-(iii) flip rate (fraction of frames where the signed direction changes), and
-(iv) \(95\%\) uncertainty coverage based on \eqref{eq:angle-unc}.
-Results show sub-\(10^\circ\) \(\mathrm{MAE}_{180}\) in W1–W3 and controlled degradation in W4; the signed detector exhibits low flip rates once magnetometer gating stabilizes yaw.
-Coverage closely matches nominal, validating the tangent-space uncertainty projection.
-
-\subsection{Ablations and Stressors}
-\label{subsec:ablations}
-We report three controlled ablations:
-\begin{enumerate}
-  \item \textbf{No adaptation} (\(R_S\) fixed): vertical RMS grows with \(T_p\), confirming the need for \(\tau^3\) scaling.
-  \item \textbf{No unifier} (raw tracker output): increased chattering in \(\tau,\ R_S\) and worsened displacement RMS under multi-component interference.
-  \item \textbf{No phase blackout} in direction KF: loss of angular stability near quadrature and inflated uncertainty.
-\end{enumerate}
-These isolates demonstrate that each ingredient targets a distinct failure mode.
-
-\subsection{Limitations}
-\label{subsec:limits}
-The approach inherits three limitations: reliance on a dominant narrowband in \(a_z\), sensitivity of \(\widehat{\sigma}_a\) to abrupt transients, and reduced signed-direction reliability under extreme yaw drift if magnetometer updates are unavailable.
-We mitigate but do not eliminate these effects with smoothing, clamping, and gating.
-
-\begin{figure}[t]
+\paragraph{Reproducibility table.}
+\begin{table}[t]
   \centering
-  % Placeholder: insert actual plots in production
-  \fbox{\parbox[c][4cm][c]{0.9\linewidth}{\centering \small Tuner dynamics: \(\widehat{f}(t)\), \(\widehat{\sigma}_a(t)\), \(\tau,\sigma_a,R_S\) (target vs.\ applied).}}
-  \caption{Adaptive tuning dynamics in representative runs. The applied \(R_S\) converges to the variance- and period-aware target \(c\,\widehat{\sigma}_a\,\widehat{\tau}^3\) while preserving swell-band response.}
-  \label{fig:tuner-dyn}
-\end{figure}
+  \caption{Parameters used in all experiments (defaults unless stated).}
+  \label{tab:params}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    Quantity & Value \\
+    \midrule
+    Sampling rate $f_s$ & \SI{240}{Hz} \\
+    Frequency bounds $(f_{\min},f_{\max})$ & $(0.1,\,5.0)$ Hz \\
+    OU time constant bounds $(\tau_{\min},\tau_{\max})$ & $(0.5,\,8.5)$ s \\
+    Accel std bounds $(\sigma_{\min},\sigma_{\max})$ & $(0.3,\,8.0)$ m/s$^2$ \\
+    $R_S$ bounds $(R_{S,\min},R_{S,\max})$ & $(0.1,\,35)$ \\
+    Variance horizon $\tau_{\mathrm{var}}$ & \SI{60}{s} \\
+    Freq horizon $\tau_{\mathrm{freq}}$ & \SI{5}{s} \\
+    Apply cadence/time constant & $\Delta t_{\mathrm{apply}}=\SI{0.1}{s}$, $\ \tau_{\mathrm{apply}}=\SI{3}{s}$ \\
+    Warm-up $T_{\mathrm{warm}}$; mag gate $T_{\mathrm{mag}}$ & \SI{35}{s}; \SI{5}{s} \\
+    Regularization $(c_R,\rho_{xy})$ & $(2.4\text{–}2.5,\ 0.05\text{–}0.07)$ \\
+    Direction KF $(Q,R)$ & $(10^{-6}I_2,\ 10^{-2}I_2)$ \\
+    Direction smoothing $\alpha_\theta$; phase gate & $0.05$;\ $|\cos\phi|<10^{-3}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% =======================================================
+\section{Experimental Protocol and Metrics}
+\label{sec:protocol}
+
+\paragraph{Data.} Synthetic runs of \SI{20}{min} at \SI{240}{Hz} for five models (Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal) and four sea states $\mathcal{W}=\{(\SI{0.27}{m},\SI{3.0}{s}),(\SI{1.5}{m},\SI{5.7}{s}),(\SI{4.0}{m},\SI{8.5}{s}),(\SI{8.5}{m},\SI{11.4}{s})\}$; directional seas use randomized $\cos^{2s}$ spreads about a nominal heading.
+
+\paragraph{Windowing.} All metrics computed over the terminal \SI{60}{s} (to remove warm-up transients).
+
+\paragraph{Displacement accuracy.} For $i\in\{x,y,z\}$,
+\[
+\mathrm{RMS}_i=\sqrt{\tfrac{1}{N}\sum_{k=1}^{N}\big(\widehat p_i(t_k)-p_{\mathrm{ref},i}(t_k)\big)^2},\qquad
+\mathrm{RMS\%Hs}_i=100\cdot\mathrm{RMS}_i/H_s.
+\]
+
+\paragraph{Attitude accuracy.} RMS over roll, pitch, yaw (deg) in the same window.
+
+\paragraph{Tracker readouts and tuner telemetry.} Report $\bar f$, $\tau_{\mathrm{appl}}$, $\sigma_{a,\mathrm{appl}}$, $R_{S,\mathrm{appl}}$ and targets $\tau_\star,\sigma_{a,\star},R_{S,\star}$.
+
+\paragraph{Pass/fail gates.} A run fails if any hold:
+\[
+\mathrm{RMS\%Hs}_x>\lambda_x,\quad
+\mathrm{RMS\%Hs}_y>\lambda_y,\quad
+\mathrm{RMS\%Hs}_z>\lambda_z,\quad
+\mathrm{RMS}_{\mathrm{yaw}}>\lambda_\psi,
+\]
+with illustrative limits $(\lambda_x,\lambda_y,\lambda_z,\lambda_\psi)=(33,33,12,3)$.
+
+% =======================================================
+\section{Ablations and Comparative Analyses}
+\label{sec:ablations}
+
+\subsection{Frequency tracker comparison}
+Compare three trackers driven by $u=a_z/g$:
+\begin{enumerate}
+  \item \textbf{Aranovskiy resonator}: $\ddot\xi+2\zeta\omega\dot\xi+\omega^2\xi=u$, $\dot\omega=\gamma_\omega e y$.
+  \item \textbf{\textsc{KalmANF}}: second-order notch with scalar state $a=2\cos\omega$ updated by a Kalman step on the prediction error.
+  \item \textbf{Zero-crossing}: debounced up-crossings through $\pm h$ with period EMA.
+\end{enumerate}
+\paragraph{Readouts.} Smoothed frequency $\bar f$, instantaneous period jitter (MAD of inter-crossing intervals for ZC; innovation variance for others), and impact on downstream $\tau_\star,\sigma_{a,\star},R_{S,\star}$.
+
+\begin{table}[t]
+  \centering
+  \caption{Tracker comparison (terminal \SI{60}{s}). Lower is better for jitter; accuracy is absolute error vs.\ spectral peak for directional seas.}
+  \label{tab:tracker-compare}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Case & Aranovskiy: $|\bar f-f_\mathrm{ref}|$ & \textsc{KalmANF}: $|\bar f-f_\mathrm{ref}|$ & ZC: $|\bar f-f_\mathrm{ref}|$ & Period jitter \\
+    \midrule
+    W1–JONSWAP & — & — & — & — \\
+    W3–PM      & — & — & — & — \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Variance horizon $\tau_{\mathrm{var}}$ sensitivity}
+Hold the tracker fixed; sweep $\tau_{\mathrm{var}}\in\{30,60,120\}$ s and record displacement RMS\%Hs and the stability of $R_{S,\mathrm{appl}}$ (coefficient of variation). Expectation: shorter horizons respond faster but risk $R_S$ over-reaction; longer horizons reduce variance of $R_{S,\mathrm{appl}}$ but lag during sea-state ramps.
+
+\begin{table}[t]
+  \centering
+  \caption{Effect of $\tau_{\mathrm{var}}$ on vertical accuracy and $R_S$ stability (median over seeds).}
+  \label{tab:tauvar-sweep}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    $\tau_{\mathrm{var}}$ [s] & RMS\%Hs$_z$ & CV$(R_{S,\mathrm{appl}})$ & Fail rate \\
+    \midrule
+    30 & — & — & — \\
+    60 & — & — & — \\
+    120& — & — & — \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Anisotropy factor $\rho_{xy}$ sweep}
+Evaluate $\rho_{xy}\in\{0.03,0.05,0.07,0.10\}$ on directional seas. Report horizontal drift (RMS\%Hs$_{x,y}$) vs.\ vertical accuracy. Expectation: increasing $\rho_{xy}$ reduces XY drift at potential cost to $z$ if too aggressive.
+
+\begin{table}[t]
+  \centering
+  \caption{Anisotropy trade-off across $\rho_{xy}$.}
+  \label{tab:anisotropy}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    $\rho_{xy}$ & RMS\%Hs$_x$ & RMS\%Hs$_y$ & RMS\%Hs$_z$ \\
+    \midrule
+    0.03 & — & — & — \\
+    0.05 & — & — & — \\
+    0.07 & — & — & — \\
+    0.10 & — & — & — \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Direction estimator behavior}
+For two representative cases (JONSWAP, PM-Stokes), plot: (i) $\theta(t)$ with $95\%$ band $\theta\pm\theta_{95}$; (ii) sign state with hysteresis thresholds; (iii) amplitude $\|\mathbf{A}\|$ vs.\ $\bar f$ to show the angle is only resolved when the phase gate $|\cos\phi|\ge 10^{-3}$ is active. Summarize steady-state dispersion $\mathrm{std}(\theta)$ and median $\theta_{95}$.
+
+\begin{table}[t]
+  \centering
+  \caption{Direction tracking summary (terminal \SI{60}{s}).}
+  \label{tab:dir}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Case & median $\theta_{95}$ [deg] & std$(\theta)$ [deg] & sign error rate [\%] & amplitude floor \\
+    \midrule
+    W2–JONSWAP & — & — & — & — \\
+    W3–PM      & — & — & — & — \\
+    \bottomrule
+  \end{tabular}
+\end{table}
