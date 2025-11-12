@@ -17,6 +17,10 @@
   labelsep=0.6em, leftmargin=1.8em, itemsep=2pt, topsep=4pt}
 \usepackage{amsthm}       
 \usepackage[nameinlink,capitalise,noabbrev]{cleveref}
+\usepackage{multicol} 
+\setlength{\columnsep}{18pt}
+\newcommand{\fitcol}[1]{\adjustbox{max width=\columnwidth}{$\displaystyle #1$}}
+
 \usepackage{siunitx}
 \sisetup{
   detect-weight = true,
