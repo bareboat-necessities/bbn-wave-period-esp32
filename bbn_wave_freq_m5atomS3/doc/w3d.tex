@@ -19,13 +19,11 @@
   labelsep=0.6em, leftmargin=1.8em, itemsep=2pt, topsep=4pt}
 \usepackage{amsthm}
 \usepackage[nameinlink,capitalise,noabbrev]{cleveref}
+\usepackage{balance} % optional: balance final page columns
 
-% Two-column helpers
-\usepackage{multicol}  % not strictly needed now, but harmless if you want local multi-cols later
-\setlength{\columnsep}{18pt} % spacing between columns
+% Two-column tuning
+\setlength{\columnsep}{18pt} % space between columns
 \newcommand{\fitcol}[1]{\adjustbox{max width=\columnwidth}{$\displaystyle #1$}}
-\usepackage{cuted}     % optional: \begin{strip} ... \end{strip} for full-width inserts
-\usepackage{balance}   % optional: balance last page columns
 
 \usepackage{siunitx}
 \sisetup{
@@ -37,27 +35,22 @@
 % Make math/siunitx safe in PDF bookmarks
 \pdfstringdefDisableCommands{%
   \def\SI#1#2{#1 #2}%
-  \def\bm#1{#1}%  % drop bold in bookmarks
-  \def\Skew#1{[#1]_\text{x}}% safer text-y substitute
+  \def\bm#1{#1}%
+  \def\Skew#1{[#1]_\text{x}}%
   \def\Id{I}%
   \def\pct#1{#1\%}%
 }
 
-% Header bold SMALL; body SMALL upright; compact spacing
-\newtheoremstyle{bodysmall}% name
-  {3pt}{3pt}% space above/below
-  {\normalfont\small}% body font
-  {0pt}% indent
-  {\bfseries\small}% head font
-  {.}% punctuation after head
-  {0.5em}% space after head
-  {}% head spec
+% Theorems: small header/body
+\newtheoremstyle{bodysmall}
+  {3pt}{3pt}{\normalfont\small}{0pt}{\bfseries\small}{.}{0.5em}{}
 \theoremstyle{bodysmall}
 \newtheorem{lemma}{Lemma}
 \newtheorem{theorem}{Theorem}
 \newtheorem*{theorem*}{Theorem}
 
-\newcommand{\Skew}[1]{\left[#1\right]_\times}  % skew-symmetric operator
+% Shortcuts
+\newcommand{\Skew}[1]{\left[#1\right]_\times}
 \newcommand{\Id}{\mathbf{I}}
 \newcommand{\meanstd}[2]{#1\,{\tiny$\pm$}\,#2}
 \newcommand{\pct}[1]{#1\%}
@@ -68,6 +61,7 @@
 \DeclareMathOperator{\wrap}{wrap}
 \DeclareMathOperator{\sgn}{sgn}
 
+% Slightly smaller display math
 \usepackage{etoolbox}
 \AtBeginEnvironment{equation}{\small}
 \AtBeginEnvironment{align}{\small}
@@ -76,19 +70,18 @@
 \AtBeginEnvironment{flalign}{\small}
 \AtBeginEnvironment{alignat}{\small}
 
-% Reduce spacing before/after headings
+% Heading spacing + sizes
 \titlespacing*{\section}{0pt}{1.0ex plus .2ex}{0.6ex}
 \titlespacing*{\subsection}{0pt}{0.8ex plus .2ex}{0.4ex}
 \titlespacing*{\subsubsection}{0pt}{0.6ex plus .2ex}{0.3ex}
 
-% Make section fonts smaller (like textbooks)
 \titleformat{\section}{\normalfont\small\bfseries}{\thesection}{0.8em}{}
 \titleformat{\subsection}{\normalfont\small\itshape}{\thesubsection}{0.8em}{}
 \titleformat{\subsubsection}{\normalfont\footnotesize\itshape}{\thesubsubsection}{0.8em}{}
 \titleformat{\paragraph}{\normalfont\small\bfseries}{\theparagraph}{0.6em}{}[]
 \titlespacing*{\paragraph}{0pt}{0.4ex plus .1ex}{0.8em}
 
-% Make all description labels small & bold
+% Description labels small & bold
 \setlist[description]{font=\footnotesize\bfseries, labelsep=0.6em, leftmargin=1.8em}
 
 \geometry{letterpaper, margin=0.65in}
@@ -101,7 +94,7 @@
   \def\tau{tau}%
   \def\Phi{Phi}%
   \def\omega{omega}%
-  \def\_{}% drop subscripts in bookmarks
+  \def\_{}%
   \def\cdot{}%
   \def\;{ }%
 }
@@ -113,10 +106,9 @@ Theory, Discretization, and Bias Compensation}
 
 \begin{document}
 
-% Make title + abstract + ToC span both columns
+% Full-width title + abstract at top of first page (portable; no cuted needed)
 \twocolumn[
 \maketitle
-\begin{onecolumngrid}
 \begin{abstract}
 We present a detailed mathematical development of a quaternion multiplicative EKF (MEKF) fused with an extended 
 linear kinematic chain for ocean-wave motion estimation. 
@@ -127,51 +119,48 @@ A pseudo-measurement is introduced on $\bm S$ to control double integral diverge
 We derive continuous- and discrete-time process models, show Rodrigues and Analytic discretizations, and derive explicit Jacobians for accelerometer and magnetometer updates. 
 Finally, we discuss tuning strategies and the prospect of adaptive parameter estimation.
 \end{abstract}
+\vspace{1ex}
+]
 
+% If you want a full-width ToC, do a short single-column page:
+\onecolumn
 \tableofcontents
-\end{onecolumngrid}
-] % end twocolumn top matter
+\clearpage
+\twocolumn
 
 % === CORE SECTIONS ===
-\input{w3d-intro.tex-part}        % Introduction and motivation
-\input{w3d-state.tex-part}        % State definition and notation
-\input{w3d-meas.tex-part}         % Unified measurement model + Joseph form update
-\input{w3d-proc-cont.tex-part}         % Continuous process model
-\input{w3d-lti-discrete.tex-part}         % Continuous process model
-%\input{w3d-proc.tex-part}         % Continuous process model
+\input{w3d-intro.tex-part}
+\input{w3d-state.tex-part}
+\input{w3d-meas.tex-part}
+\input{w3d-proc-cont.tex-part}
+\input{w3d-lti-discrete.tex-part}
+%\input{w3d-proc.tex-part}
 \input{w3d-analytic-coeff.tex-part}
-%\input{w3d-tupdate.tex-part}      % Time-update (attitude + linear propagation)
-\input{w3d-kalm-up.tex-part} 
-\input{w3d-init.tex-part}         % Initialization & warm-up
+%\input{w3d-tupdate.tex-part}
+\input{w3d-kalm-up.tex-part}
+\input{w3d-init.tex-part}
 
 % === ANALYTIC DISCRETIZATION AND COVARIANCE STRUCTURE ===
-%\input{w3d-analytic.tex-part}     % Canonical OU discretization (Φ, Q, series)
-%  → Replaces w3d-ou12.tex-part, w3d-ou-coeff.tex-part, w3d-dnoise.tex-part
+%\input{w3d-analytic.tex-part}
 %\input{w3d-analytic-lap.tex-part}
 
-\input{w3d-cross-cov.tex-part}    % Cross-covariance + Joseph form + PSD projection
-%  → Replaces w3d-propag.tex-part and w3d-joseph.tex-part
-
-%\input{w3d-riccati.tex-part}      % Continuous→discrete Riccati mapping
+\input{w3d-cross-cov.tex-part}
+%\input{w3d-riccati.tex-part}
 
 % === JACOBIANS ===
-%\input{w3d-jacobian.tex-part}     % Process Jacobians
-%\input{w3d-jac-attitude.tex-part} % Attitude linearization
-%\input{w3d-jac-meas.tex-part}     % Measurement Jacobians
-%  → w3d-jac-ag.tex-part removed (duplicate merge)
+%\input{w3d-jacobian.tex-part}
+%\input{w3d-jac-attitude.tex-part}
+%\input{w3d-jac-meas.tex-part}
 
 % === ORIENTATION HANDLING ===
-%\input{w3d-quat.tex-part}         % Quaternion correction & normalization
-%  → Replace duplication in w3d-tupdate.tex-part
+%\input{w3d-quat.tex-part}
 
 % === OU APPENDICES ===
-%\input{w3d-ou-q.tex-part}         % OU covariance kernel & primitives
-%  → Merge w3d-ou-kern.tex-part here
+%\input{w3d-ou-q.tex-part}
 
 \input{w3d-lyap.tex-part}
 
 \section{Symbolical Derivations}
-
 \input{w3d-phi-symb.tex-part}
 \input{w3d-qd-symb.tex-part}
 \input{w3d-qd-symb-lap.tex-part}
