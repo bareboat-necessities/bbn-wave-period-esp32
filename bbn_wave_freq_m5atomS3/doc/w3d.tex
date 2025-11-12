@@ -30,18 +30,19 @@
   \def\pct#1{#1\%}%
 }
 
-% Body same size as text, upright; header bold; normal spacing.
-\newtheoremstyle{bodynorm}% name
+% Header bold SMALL; body SMALL upright; compact spacing
+\newtheoremstyle{bodysmall}% name
   {3pt}{3pt}% space above/below
-  {\normalfont}% body font (no italic)
+  {\normalfont\small}% body font
   {0pt}% indent
-  {\bfseries}% head font
+  {\bfseries\small}% head font
   {.}% punctuation after head
   {0.5em}% space after head
   {}% head spec
 
-\theoremstyle{bodynorm}
+\theoremstyle{bodysmall}
 \newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
 \newtheorem*{theorem*}{Theorem}
 
 \newcommand{\Skew}[1]{\left[#1\right]_\times}  % skew-symmetric operator
