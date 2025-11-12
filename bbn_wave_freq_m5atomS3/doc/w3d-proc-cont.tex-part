@@ -74,7 +74,6 @@ combined into a single continuous-time LTI stochastic differential
 equation with full error-state vector.
 
 \[
-\qquad
 \dot{\mathbf x}_{\rm err}
 = \mathbf F\,\mathbf x_{\rm err}
 + \mathbf L\,\mathbf w,
@@ -130,19 +129,18 @@ Hence the full continuous-time process model compactly reads
 = \mathbf F\,\mathbf x_{\rm err}(t)
 + \mathbf L\,\mathbf w(t),
 \qquad
-\mathbf Q_c = \mathbf L\,\mathbb E[\mathbf w\mathbf w^\top]\,\mathbf L^\top.
+\mathbf Q_c = \mathbf L\,\mathbb E[\mathbf w\mathbf w^\top]\,\mathbf L^\top,
 \label{eq:full-sde}
 \end{equation}
 where $\mathbf F$ and $\mathbf L$ are the Jacobian (linearized) dynamics and
 noise-input matrices, and $\mathbf Q_c$ is the
 continuous-time spectral density of the driving white noises.
 
-
 Let $\mathbf P(t)$ be the error covariance. The \emph{propagation} (no measurement)
 obeys the continuous Lyapunov equation
 \begin{equation}
 \dot{\mathbf P} \;=\; \mathbf F\,\mathbf P + \mathbf P\,\mathbf F^\top
-\;+\; \mathbf L\,\mathbf Q_c\,\mathbf L^\top.
+\;+\; \mathbf Q_c.
 \label{eq:lyap-prop}
 \end{equation}
 If continuous-time measurements $\mathbf z=\mathbf H\,\delta\mathbf x+\boldsymbol\eta$
@@ -150,13 +148,12 @@ with $\mathbb E[\boldsymbol\eta\boldsymbol\eta^\top]=\mathbf R$ are considered,
 the \emph{Kalman–Bucy Riccati} adds the information term
 \begin{equation}
 \dot{\mathbf P} \;=\; \mathbf F\,\mathbf P + \mathbf P\,\mathbf F^\top
-\;+\; \mathbf L\,\mathbf Q_c\,\mathbf L^\top
+\;+\; \mathbf Q_c
 \;-\; \mathbf P\,\mathbf H^\top \mathbf R^{-1}\mathbf H\,\mathbf P.
 \label{eq:kbc}
 \end{equation}
 Equations \eqref{eq:lyap-prop}–\eqref{eq:kbc} are the continuous counterparts of
 the discrete Joseph-form covariance update used in implementation.
-
 
 This unified linear system provides the foundation for analytic
 discretization in the next section: the per-axis exponential of
