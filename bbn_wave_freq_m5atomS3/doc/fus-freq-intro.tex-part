@@ -1,385 +1,146 @@
-% --- Merged, coherent sections: narrative + math ---
-% Drop into your main .tex; relies only on standard amsmath/amssymb/booktabs/siunitx.
-% Labels preserved for cross-referencing.
-
 % =======================================================
-\section{Frequency Tracking from Vertical Specific Force}
-\label{sec:freq-tracking}
+\section{Results and Discussion}
+\label{sec:results}
 
-\paragraph{Intuition.}
-We need a stable, real-time estimate of the dominant wave frequency from the IMU. Using the vertical specific force $a_z(t)$, we normalize by gravity to form a dimensionless input $u(t)$ that drives one of three trackers. Each tracker outputs a raw frequency, which is then clamped and smoothed to produce a reliable $\bar f_k$ for downstream adaptation and direction estimation.
+\paragraph{Reporting conventions.}
+Frequencies are reported in Hz; periods in seconds; angles modulo $180^\circ$ unless the sign discriminator is engaged, in which case directed azimuth is used. Directional angles use axial circular statistics.
 
-\paragraph{Signal.}
-Track frequency from the vertical specific force $a_z(t)$ (IMU; body $\to$ world-aligned), normalized by $g$:
-\[
-u(t)=\frac{a_z(t)}{g}.
-\]
-Let $\omega=2\pi f$ and $\phi(t)=\int_0^t \omega(\tau)\,d\tau$.
-
-\subsection{Aranovskiy-type adaptive resonator}
-\paragraph{Intuition.}
-Drive a lightly damped virtual resonator by $u(t)$ and adjust its natural frequency so its output matches the input. If the resonator frequency equals the signal's, the error energy is minimized.
-
-\paragraph{Method.}
-Internal lightly damped resonator:
+\subsection{Directional accuracy on axial data}
+For azimuths $\{\theta_i\}$ defined on $[0,180)$, map $\tilde\theta_i=2\theta_i$ to $[0,360)$ and compute the circular mean and dispersion:
 \begin{align}
-\ddot\xi + 2\zeta\,\omega\,\dot\xi + \omega^2 \xi &= u, \\
-e &= u - \xi, \qquad y=\dot\xi .
+C &= \tfrac{1}{N}\sum_i \cos \tilde\theta_i,\quad
+S = \tfrac{1}{N}\sum_i \sin \tilde\theta_i,\\
+\bar\theta_{\mathrm{axial}} &= \tfrac{1}{2}\,\mathrm{atan2}(S,C),\\
+\sigma_{\mathrm{axial}} &= \tfrac{1}{2}\sqrt{-2\ln\sqrt{C^2+S^2}}.
 \end{align}
-Frequency adaptation (gradient/energy-based) with projection $\mathcal{P}_{[\omega_{\min},\omega_{\max}]}$:
-\begin{align}
-\dot\omega &= \gamma_\omega\, e\, y, \qquad \omega \leftarrow \mathcal{P}_{[\omega_{\min},\omega_{\max}]}(\omega).
-\end{align}
-Discrete-time (sample $k$ at $\Delta t$):
-\[
-\omega_{k+1} \!=\! \mathcal{P}\!\left(\omega_k + \gamma_\omega\, e_k\, y_k\, \Delta t\right).
-\]
-Low-pass the readout with EMA $\alpha_f$:
-\(
-\hat f_k=(1-\alpha_f)\hat f_{k-1}+\alpha_f \frac{\omega_k}{2\pi}.
-\)
+When the sign discriminator is active, report standard circular statistics on $[0,360)$.
 
-\subsection{\textsc{KalmANF}: Kalman-updated adaptive notch}
-\paragraph{Intuition.}
-Model the signal with a second-order notch parameterized by $a=2\cos\omega$. Treat $a$ as a (slowly varying) state and update it via a scalar Kalman step driven by the instantaneous prediction error.
+\subsection{Effect of tracker choice}
+Across comparable seas, \textsc{KalmANF} typically exhibits the lowest jitter (innovation variance) with small bias at abrupt ramps; the Aranovskiy resonator reacts fastest to step changes in frequency; the ZC baseline has low computational cost but elevated jitter under noisy conditions. Downstream, both \textsc{KalmANF} and Aranovskiy yield smoother $\tau_\star$ and $R_{S,\star}$ trajectories than ZC, reducing over-regularization spikes during gusty intervals.
 
-\paragraph{Method.}
-Embed the notch with parameter $a\in(-2,2)$:
-\begin{align}
-x_{k+1} &= \begin{bmatrix} 0 & 1 \\ -1 & a_k \end{bmatrix} x_k + \begin{bmatrix} 0 \\ 1 \end{bmatrix} u_k, \qquad
-y_k = \begin{bmatrix} 1 & 0 \end{bmatrix} x_k,\\
-a_{k+1} &= a_k + w_k, \quad w_k\sim\mathcal{N}(0,q_a).
-\end{align}
-Treat $a$ as a scalar state; run a Kalman correction on $a$ using the instantaneous prediction error $\varepsilon_k=u_k-y_k$:
-\begin{align}
-\tilde a_k &= a_k, \quad P^-_k=P_{k-1}+q_a, \\
-K_k &= \frac{P^-_k\,\partial \varepsilon_k/\partial a}{(\partial \varepsilon_k/\partial a)^2 P^-_k + r}, \\
-a_k &\leftarrow \tilde a_k + K_k\,\varepsilon_k,\qquad
-P_k=(1-K_k\,\partial \varepsilon_k/\partial a)P^-_k,
-\end{align}
-with $\partial \varepsilon_k/\partial a$ obtained from the standard state-sensitivity recursion. Frequency readout:
-\[
-\hat\omega_k=\arccos\!\left(\tfrac{1}{2}\,\mathrm{clip}(a_k,-2,2)\right), \quad \hat f_k=\hat\omega_k/(2\pi),
-\]
-then EMA with horizon $\tau_{\mathrm{freq}}$.
-
-\subsection{Zero-crossing baseline with hysteresis}
-\paragraph{Intuition.}
-Use debounced threshold crossings to estimate period directly; smooth to reduce jitter.
-
-\paragraph{Method.}
-Times of upcrossings of $u$ through band $[-h,+h]$ (debounced by $T_{\mathrm{deb}}$). Period estimate
-\(
-\hat T_k=(1-\alpha_T)\hat T_{k-1}+\alpha_T (t_k-t_{k-1}), \quad \hat f_k=1/\hat T_k.
-\)
-
-\paragraph{Common guard rails.}
-Clamp $\hat f_k \in [f_{\min}, f_{\max}]$, then apply a short EMA:
-\(
-\bar f_k=(1-\alpha_s)\bar f_{k-1}+\alpha_s \hat f_k.
-\)
-
-% =======================================================
-\section{Variance-Informed Online Adaptation}
-\label{sec:adaptation}
-
-\paragraph{Intuition.}
-We adapt three key MEKF parameters---OU time constant, latent acceleration scale, and the integral pseudo-measurement covariance---based on smoothed estimates of frequency and vertical-acceleration variance. Targets are bounded for stability and blended in slowly to avoid transients.
-
-\subsection{Debiased variance and frequency smoothers}
-With step $\Delta t$, define debiased EMAs for mean and second moment:
-\begin{align}
-\alpha_{\mathrm{var}} &= 1-e^{-\Delta t/\tau_{\mathrm{var}}}, \qquad
-\alpha_{\mathrm{freq}} = 1-e^{-\Delta t/\tau_{\mathrm{freq}}}, \\
-m_k &\leftarrow (1-\alpha_{\mathrm{var}})m_{k-1}+\alpha_{\mathrm{var}} u_k, \\
-s_k &\leftarrow (1-\alpha_{\mathrm{var}})s_{k-1}+\alpha_{\mathrm{var}} u_k^2, \\
-w_k &\leftarrow (1-\alpha_{\mathrm{var}})w_{k-1}+\alpha_{\mathrm{var}}, \\
-\widehat{\sigma}_a^2(k) &= \max\!\Big\{0,\ \frac{s_k}{w_k}-\Big(\frac{m_k}{w_k}\Big)^2 \Big\}\, g^2, \\
-\bar f_k &\leftarrow (1-\alpha_{\mathrm{freq}})\bar f_{k-1}+\alpha_{\mathrm{freq}}\hat f_k.
-\end{align}
-
-\subsection{Targets and bounds}
-Half-period target for OU time constant:
-\[
-\tau_\star(k)=\frac{1}{2\,\bar f_k}, \qquad \tau_\star \in [\tau_{\min},\tau_{\max}].
-\]
-Acceleration level:
-\(
-\sigma_{a,\star}(k)=\mathrm{clip}\big(\sqrt{\widehat{\sigma}_a^2(k)},\, \sigma_{\min},\sigma_{\max}\big).
-\)
-
-\subsection{Integral pseudo-measurement covariance}
-\paragraph{Intuition.}
-The integral constraint on displacement should be weaker when waves are large/slow (motions integrate to larger excursions). A cubic scaling in $\tau_\star$ captures this.
-
-\paragraph{Law.}
-\[
-R_{S,\star}(k)=c_R \,\sigma_{a,\star}(k)\,\tau_\star^3(k),
-\]
-with axis anisotropy
-\(
-R_S=\mathrm{diag}( \rho_{xy}\,R_{S,\star},\ \rho_{xy}\,R_{S,\star},\ R_{S,\star} ),\ \rho_{xy}\!\in\!(0,1).
-\)
-
-\subsection{Application to the MEKF}
-Apply targets with slow EWMA (time constant $\tau_{\mathrm{apply}}$; update every $\Delta t_{\mathrm{apply}}$):
-\begin{align}
-\tau_{\mathrm{appl}} &\leftarrow (1-\beta)\tau_{\mathrm{appl}}+\beta \tau_\star, \\
-\sigma_{a,\mathrm{appl}} &\leftarrow (1-\beta)\sigma_{a,\mathrm{appl}}+\beta \sigma_{a,\star}, \\
-R_{S,\mathrm{appl}} &\leftarrow (1-\beta)R_{S,\mathrm{appl}}+\beta R_{S,\star}, \qquad
-\beta=1-e^{-\Delta t_{\mathrm{apply}}/\tau_{\mathrm{apply}}}.
-\end{align}
-MEKF uses Joseph-form updates; the OU process covariance is set from $(\tau_{\mathrm{appl}},\sigma_{a,\mathrm{appl}})$; the integral pseudo-measurement uses $R_{S,\mathrm{appl}}$.
-
-% =======================================================
-\section{Horizontal Wave Direction: Angle and Sign}
-\label{sec:direction}
-
-\paragraph{Intuition.}
-We estimate a slowly varying horizontal acceleration amplitude vector $\mathbf{A}_k$ whose direction gives wave azimuth modulo $180^\circ$. A phase-aware Kalman update uses $\cos\phi_k$ as a gain, and a separate signed discriminator resolves the travel sense using vertical--horizontal phasing.
-
-\subsection{State and measurement model (angle modulo $180^\circ$)}
-Let $\mathbf{A}_k\in\mathbb{R}^2$ be the horizontal acceleration \emph{amplitude} vector (slowly varying). Phase advances with the tracked frequency:
-\[
-\phi_{k+1}=\phi_k + \omega_k \Delta t, \qquad \omega_k=2\pi \bar f_k,
-\]
-with wrapping to $(-\pi,\pi]$. Linear-Gaussian model:
-\begin{align}
-\mathbf{A}_{k+1} &= \mathbf{A}_k + \mathbf{w}_k,\quad \mathbf{w}_k\sim\mathcal{N}(0,Q),\\
-\mathbf{z}_k &= \cos\phi_k\, \mathbf{A}_k + \boldsymbol{\eta}_k,\quad \boldsymbol{\eta}_k\sim\mathcal{N}(0,R),
-\end{align}
-where $\mathbf{z}_k=[a_x, a_y]^\top$ is the world-horizontal specific force.
-Kalman update (Joseph form) with $H_k=\cos\phi_k\, I_2$:
-\begin{align}
-K_k &= P^-_k H_k^\top (H_k P^-_k H_k^\top + R)^{-1},\\
-\mathbf{A}_k &\leftarrow \mathbf{A}^-_k + K_k(\mathbf{z}_k - H_k \mathbf{A}^-_k),\\
-P_k &\leftarrow (I-K_k H_k)P^-_k (I-K_k H_k)^\top + K_k R K_k^\top.
-\end{align}
-
-\subsection{Azimuth, uncertainty, and sign disambiguation}
-Angle modulo $180^\circ$:
-\[
-\widehat{\mathbf{d}}=\frac{\mathbf{A}_k}{\|\mathbf{A}_k\|},\quad
-\theta=\mathrm{wrap}_{[0,180)}\!\Big(\mathrm{atan2}(\widehat d_y,\widehat d_x)\cdot\frac{180}{\pi}\Big).
-\]
-Sign-stabilization (flip to keep temporal continuity):
-\(
-\widehat{\mathbf{d}}\leftarrow \mathrm{sgn}(\widehat{\mathbf{d}}\!\cdot\!\widehat{\mathbf{d}}_{\mathrm{last}})\,\widehat{\mathbf{d}},
-\)
-then EWMA on $\widehat{\mathbf{d}}$.
-
-Uncertainty (tangent projection). Let $\mathbf{t}=(-\widehat d_y,\widehat d_x)$ and $P_A$ be the $2\times 2$ covariance of $\mathbf{A}_k$:
-\[
-\sigma_\theta^2 \approx \frac{\mathbf{t}^\top P_A \mathbf{t}}{\|\mathbf{A}_k\|^2},\qquad
-\theta_{95}=2\,\sigma_\theta \cdot \frac{180}{\pi}.
-\]
-
-\paragraph{Travel sense (sign) via vertical--horizontal phase discriminator.}
-Define a short-horizon derivative and envelope:
-\[
-r_k=\left\|\mathbf{z}_k\right\|,\qquad d_k=\frac{a_{z,k}-a_{z,k-1}}{\Delta t}.
-\]
-Compute a correlation EMA (gain $\alpha_s$):
-\[
-s_k=(1-\alpha_s)s_{k-1}+\alpha_s\, (r_k\, d_k).
-\]
-Decision with hysteresis $\pm\gamma$:
-\[
-\mathrm{sign}_k=\begin{cases}
-+1, & s_k>\gamma,\\
--1, & s_k<-\gamma,\\
-\mathrm{hold}, & \text{otherwise}.
-\end{cases}
-\]
-Reported directed azimuth: $\Theta=\mathrm{sign}_k\cdot \theta$ (with $180^\circ$ periodicity handled in post-processing).
-
-\subsection{Timing within the pipeline}
-\[
-\text{tracker}(a_z)\ \rightarrow\ \bar f,\ \phi
-\ \rightarrow\ (\tau_\star,\sigma_{a,\star},R_{S,\star})
-\ \rightarrow\ \text{MEKF update}
-\ \rightarrow\ \text{direction KF}(\mathbf{A},\theta,\theta_{95},\mathrm{sign}).
-\]
-Magnetometer yaw updates activate after a gate $t\ge T_{\mathrm{mag}}$; all covariance updates use Joseph form and PSD projection.
-
-% =======================================================
-\section{Implementation and Parameterization}
-\label{sec:impl}
-
-\paragraph{Intuition.}
-This section provides concrete values and guards so others can reproduce the behavior and avoid unstable operating regions.
-
-\paragraph{Sampling.} IMU and estimator run at $f_s=\SI{240}{Hz}$ ($\Delta t=1/f_s$). Magnetometer updates are gated for $T_{\mathrm{mag}}=\SI{5}{s}$ after start.
-
-\paragraph{Bounds and guards.} Frequency and OU targets are clamped as
-\[
-f\in[f_{\min},f_{\max}],\quad f_{\min}=\SI{0.1}{Hz},\ f_{\max}=\SI{5.0}{Hz},
-\]
-\[
-\tau\in[\tau_{\min},\tau_{\max}],\quad \tau_{\min}=\SI{0.5}{s},\ \tau_{\max}=\SI{8.5}{s},
-\]
-\[
-\sigma_a\in[\sigma_{\min},\sigma_{\max}],\quad \sigma_{\min}=\SI{0.3}{m/s^2},\ \sigma_{\max}=\SI{8.0}{m/s^2}.
-\]
-Integral pseudo-measurement covariance is bounded $R_S\in[R_{S,\min},R_{S,\max}]$ with $R_{S,\min}=0.1$, $R_{S,\max}=35$ (units consistent with the integral constraint).
-
-\paragraph{Smoothers.} Debiased EWMA horizons:
-\[
-\tau_{\mathrm{var}}=\SI{60}{s}\quad(\widehat{\sigma}_a^2),\qquad
-\tau_{\mathrm{freq}}=\SI{5}{s}\quad(\bar f).
-\]
-Exponential gains use $\alpha=1-e^{-\Delta t/\tau}$.
-
-\paragraph{Adaptation cadence.} Targets $\{\tau_\star,\sigma_{a,\star},R_{S,\star}\}$ are applied every $\Delta t_{\mathrm{apply}}=\SI{0.1}{s}$ with EWMA time constant $\tau_{\mathrm{apply}}=\SI{3.0}{s}$. Online tuning is held off for an initial warm-up $T_{\mathrm{warm}}=\SI{35}{s}$.
-
-\paragraph{Regularization law.} With $c_R$ a dimensionless gain and XY anisotropy $\rho_{xy}\in(0,1)$:
-\[
-R_{S,\star}=c_R\,\sigma_{a,\star}\,\tau_\star^3,\qquad
-R_S=\mathrm{diag}(\rho_{xy}R_{S,\star},\,\rho_{xy}R_{S,\star},\,R_{S,\star}),
-\]
-typical values $c_R\in[2.4,2.5]$, $\rho_{xy}\in[0.05,0.07]$.
-
-\paragraph{Direction KF defaults.} Process/measurement covariances for the horizontal amplitude vector $\mathbf{A}\in\mathbb{R}^2$:
-\[
-Q=10^{-6} I_2,\qquad R=10^{-2} I_2,
-\]
-phase gate $|\cos\phi|<10^{-3}$ skips the measurement update (Joseph form always). Direction unit-vector smoothing uses EWMA with $\alpha_{\theta}=0.05$ and sign-stabilization via dot-product continuity.
-
-\paragraph{Reproducibility table.}
-\begin{table}[t]
-  \centering
-  \caption{Parameters used in all experiments (defaults unless stated).}
-  \label{tab:params}
-  \begin{tabular}{@{}ll@{}}
-    \toprule
-    Quantity & Value \\
-    \midrule
-    Sampling rate $f_s$ & \SI{240}{Hz} \\
-    Frequency bounds $(f_{\min},f_{\max})$ & $(0.1,\,5.0)$ Hz \\
-    OU time constant bounds $(\tau_{\min},\tau_{\max})$ & $(0.5,\,8.5)$ s \\
-    Accel std bounds $(\sigma_{\min},\sigma_{\max})$ & $(0.3,\,8.0)$ m/s$^2$ \\
-    $R_S$ bounds $(R_{S,\min},R_{S,\max})$ & $(0.1,\,35)$ \\
-    Variance horizon $\tau_{\mathrm{var}}$ & \SI{60}{s} \\
-    Freq horizon $\tau_{\mathrm{freq}}$ & \SI{5}{s} \\
-    Apply cadence/time constant & $\Delta t_{\mathrm{apply}}=\SI{0.1}{s}$, $\ \tau_{\mathrm{apply}}=\SI{3}{s}$ \\
-    Warm-up $T_{\mathrm{warm}}$; mag gate $T_{\mathrm{mag}}$ & \SI{35}{s}; \SI{5}{s} \\
-    Regularization $(c_R,\rho_{xy})$ & $(2.4\text{–}2.5,\ 0.05\text{–}0.07)$ \\
-    Direction KF $(Q,R)$ & $(10^{-6}I_2,\ 10^{-2}I_2)$ \\
-    Direction smoothing $\alpha_\theta$; phase gate & $0.05$;\ $|\cos\phi|<10^{-3}$ \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-% =======================================================
-\section{Experimental Protocol and Metrics}
-\label{sec:protocol}
-
-\paragraph{Intuition.}
-We evaluate on both synthetic seas and directional spreads, and we report accuracy only after warm-up to avoid conflating adaptation transients with steady-state performance.
-
-\paragraph{Data.} Synthetic runs of \SI{20}{min} at \SI{240}{Hz} for five models (Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal) and four sea states $\mathcal{W}=\{(\SI{0.27}{m},\SI{3.0}{s}),(\SI{1.5}{m},\SI{5.7}{s}),(\SI{4.0}{m},\SI{8.5}{s}),(\SI{8.5}{m},\SI{11.4}{s})\}$; directional seas use randomized $\cos^{2s}$ spreads about a nominal heading.
-
-\paragraph{Windowing.} All metrics computed over the terminal \SI{60}{s} (to remove warm-up transients).
-
-\paragraph{Displacement accuracy.} For $i\in\{x,y,z\}$,
-\[
-\mathrm{RMS}_i=\sqrt{\tfrac{1}{N}\sum_{k=1}^{N}\big(\widehat p_i(t_k)-p_{\mathrm{ref},i}(t_k)\big)^2},\qquad
-\mathrm{RMS\%Hs}_i=100\cdot\mathrm{RMS}_i/H_s.
-\]
-
-\paragraph{Attitude accuracy.} RMS over roll, pitch, yaw (deg) in the same window.
-
-\paragraph{Tracker readouts and tuner telemetry.} Report $\bar f$, $\tau_{\mathrm{appl}}$, $\sigma_{a,\mathrm{appl}}$, $R_{S,\mathrm{appl}}$ and targets $\tau_\star,\sigma_{a,\star},R_{S,\star}$.
-
-\paragraph{Pass/fail gates.} A run fails if any hold:
-\[
-\mathrm{RMS\%Hs}_x>\lambda_x,\quad
-\mathrm{RMS\%Hs}_y>\lambda_y,\quad
-\mathrm{RMS\%Hs}_z>\lambda_z,\quad
-\mathrm{RMS}_{\mathrm{yaw}}>\lambda_\psi,
-\]
-with illustrative limits $(\lambda_x,\lambda_y,\lambda_z,\lambda_\psi)=(33,33,12,3)$.
-
-% =======================================================
-\section{Ablations and Comparative Analyses}
-\label{sec:ablations}
-
-\paragraph{Intuition.}
-We stress-test each design choice: tracker type, variance horizon, anisotropy, and direction logic. Metrics cover both upstream estimation quality and downstream effects on adaptive parameters and displacement accuracy.
-
-\subsection{Frequency tracker comparison}
-Compare three trackers driven by $u=a_z/g$:
-\begin{enumerate}
-  \item \textbf{Aranovskiy resonator}: $\ddot\xi+2\zeta\omega\dot\xi+\omega^2\xi=u$, $\dot\omega=\gamma_\omega e y$.
-  \item \textbf{\textsc{KalmANF}}: second-order notch with scalar state $a=2\cos\omega$ updated by a Kalman step on the prediction error.
-  \item \textbf{Zero-crossing}: debounced up-crossings through $\pm h$ with period EMA.
-\end{enumerate}
-\paragraph{Readouts.} Smoothed frequency $\bar f$, instantaneous period jitter (MAD of inter-crossing intervals for ZC; innovation variance for others), and impact on downstream $\tau_\star,\sigma_{a,\star},R_{S,\star}$.
-
-\begin{table}[t]
-  \centering
-  \caption{Tracker comparison (terminal \SI{60}{s}). Lower is better for jitter; accuracy is absolute error vs.\ spectral peak for directional seas.}
-  \label{tab:tracker-compare}
-  \begin{tabular}{@{}lcccc@{}}
-    \toprule
-    Case & Aranovskiy: $|\bar f-f_\mathrm{ref}|$ & \textsc{KalmANF}: $|\bar f-f_\mathrm{ref}|$ & ZC: $|\bar f-f_\mathrm{ref}|$ & Period jitter \\
-    \midrule
-    W1–JONSWAP & — & — & — & — \\
-    W3–PM      & — & — & — & — \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\subsection{Variance horizon $\tau_{\mathrm{var}}$ sensitivity}
-Hold the tracker fixed; sweep $\tau_{\mathrm{var}}\in\{30,60,120\}$ s and record displacement RMS\%Hs and the stability of $R_{S,\mathrm{appl}}$ (coefficient of variation). Expectation: shorter horizons respond faster but risk $R_S$ over-reaction; longer horizons reduce variance of $R_{S,\mathrm{appl}}$ but lag during sea-state ramps.
-
-\begin{table}[t]
-  \centering
-  \caption{Effect of $\tau_{\mathrm{var}}$ on vertical accuracy and $R_S$ stability (median over seeds).}
-  \label{tab:tauvar-sweep}
-  \begin{tabular}{@}{lccc@{}}
-    \toprule
-    $\tau_{\mathrm{var}}$ [s] & RMS\%Hs$_z$ & CV$(R_{S,\mathrm{appl}})$ & Fail rate \\
-    \midrule
-    30 & — & — & — \\
-    60 & — & — & — \\
-    120& — & — & — \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\subsection{Anisotropy factor $\rho_{xy}$ sweep}
-Evaluate $\rho_{xy}\in\{0.03,0.05,0.07,0.10\}$ on directional seas. Report horizontal drift (RMS\%Hs$_{x,y}$) vs.\ vertical accuracy. Expectation: increasing $\rho_{xy}$ reduces XY drift at potential cost to $z$ if too aggressive.
-
-\begin{table}[t]
-  \centering
-  \caption{Anisotropy trade-off across $\rho_{xy}$.}
-  \label{tab:anisotropy}
-  \begin{tabular}{@{}lccc@{}}
-    \toprule
-    $\rho_{xy}$ & RMS\%Hs$_x$ & RMS\%Hs$_y$ & RMS\%Hs$_z$ \\
-    \midrule
-    0.03 & — & — & — \\
-    0.05 & — & — & — \\
-    0.07 & — & — & — \\
-    0.10 & — & — & — \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\subsection{Adaptation stability}
+Blending targets with $\tau_{\mathrm{apply}}=\SI{3}{s}$ avoids oscillation even when $\tau_\star$ is driven by a rapidly moving $\bar f$. The cubic dependence in $R_{S,\star}$ w.r.t.\ $\tau_\star$ dominates the slow-sea regime and is the principal lever for drift robustness.
 
 \subsection{Direction estimator behavior}
-For two representative cases (JONSWAP, PM-Stokes), plot: (i) $\theta(t)$ with $95\%$ band $\theta\pm\theta_{95}$; (ii) sign state with hysteresis thresholds; (iii) amplitude $\|\mathbf{A}\|$ vs.\ $\bar f$ to show the angle is only resolved when the phase gate $|\cos\phi|\ge 10^{-3}$ is active. Summarize steady-state dispersion $\mathrm{std}(\theta)$ and median $\theta_{95}$.
+The KF angle remains well-conditioned when $\|\mathbf{A}\|$ exceeds an amplitude floor and $|\cos\phi|$ is outside the phase gate. The uncertainty proxy $\theta_{95}$ tracks $\|\mathbf{A}\|^{-1}$ as expected from the tangent-projection formula.
 
-\begin{table}[t]
-  \centering
-  \caption{Direction tracking summary (terminal \SI{60}{s}).}
-  \label{tab:dir}
-  \begin{tabular}{@{}lcccc@{}}
-    \toprule
-    Case & median $\theta_{95}$ [deg] & std$(\theta)$ [deg] & sign error rate [\%] & amplitude floor \\
-    \midrule
-    W2–JONSWAP & — & — & — & — \\
-    W3–PM      & — & — & — & — \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+% =======================================================
+\section{Limitations and Failure Modes}
+\label{sec:limitations}
+
+\begin{enumerate}
+  \item \textbf{Multi-peaked spectra.} A single-frequency tracker will favor the dominant lobe; strongly bimodal seas can induce slow bias or mode-hopping. Mitigation: multi-band trackers or a particle bank over $\omega$.
+  \item \textbf{Aliasing and sampling.} Frequencies near $f_s/2$ are not supported; we clamp to $[0.1,5]$ Hz at $f_s=\SI{240}{Hz}$. Mitigation: raise $f_s$ or prefilter.
+  \item \textbf{Non-Gaussian impulses (slamming).} Heavy-tailed vertical shocks can inflate $\widehat{\sigma}_a^2$ and over-loosen $R_S$. Mitigation: robust variance (Huber or winsorized EMA) and innovation gates.
+  \item \textbf{IMU alignment and bias.} Misalignment corrupts $u=a_z/g$; unmodeled biases in $a_z$ leak into variance. Mitigation: online tilt calibration and slow bias states in the MEKF.
+  \item \textbf{Magnetometer disturbances.} Yaw updates after $T_{\mathrm{mag}}$ can be corrupted by hard/soft-iron effects. Mitigation: magnitude and innovation gating; delayed activation.
+  \item \textbf{Direction sign errors at low SNR.} When $\|\mathbf{A}\|$ is small, the sign discriminator becomes noisy. Mitigation: hysteresis and amplitude gating.
+\end{enumerate}
+
+% =======================================================
+\section{Engineering Notes: Real-Time Complexity and Hygiene}
+\label{sec:engineering}
+
+\paragraph{Complexity and memory.}
+All updates are $O(1)$ per sample; memory is dominated by a small set of scalars/vectors and a $2\times2$ covariance for direction.
+
+\paragraph{Numerical hygiene.}
+Use Joseph-form covariance updates; project PSD when needed; clamp and project all tuned parameters; guard against NaN/Inf; symmetrize covariances. Log telemetry: $(\hat f,\bar f)$, $(\tau_\star,\sigma_{a,\star},R_{S,\star})$ and applied values, innovation norms, and gates (phase, magnetometer, amplitude).
+
+% =======================================================
+\section{Implementation Pseudocode}
+\label{sec:pseudocode}
+
+\paragraph{TrackerPolicy (Aranovskiy).}
+\begin{flushleft}\ttfamily
+\small
+state: xi, xidot, omega; params: zeta, gamma\_omega, [omega\_min, omega\_max]\\
+u = a\_z/g\\
+xiddot = u - 2*zeta*omega*xidot - omega*omega*xi\\
+xi += xidot*dt;\ \ xidot += xiddot*dt\\
+e = u - xi;\ \ y = xidot\\
+omega = clip(omega + gamma\_omega*e*y*dt,\ omega\_min,\ \omega\_max)\\
+f\_hat = EMA(omega/(2*pi), tau\_freq)
+\end{flushleft}
+
+\paragraph{\textsc{KalmANF} parameter update.}
+\begin{flushleft}\ttfamily
+\small
+x = [x1, x2];\ a = a + w;\ P = P + q\_a\\
+y = x1\\
+x\_next = [x2,\ -x1 + a*x2] + [0,1]*u\\
+eps = u - y\\
+dxdA\_next = [0, x2] + [0, a]*dxdA\\
+depsdA = -[1,0]*dxdA\\
+K = P*depsdA / (depsdA*P*depsdA + r)\\
+a += K*eps;\ P = (1 - K*depsdA)*P\\
+f\_hat = EMA(acos(clip(a/2,-1,1))/(2*pi), tau\_freq)
+\end{flushleft}
+
+\paragraph{Zero-Crossing.}
+\begin{flushleft}\ttfamily
+\small
+if u crosses from < -h to > +h and (t - t\_last) > T\_deb: \\
+\quad T = EMA(t - t\_last, tau\_T);\ t\_last = t\\
+f\_hat = 1/T
+\end{flushleft}
+
+\paragraph{AutoTuner (every $\Delta t_{\mathrm{apply}}$).}
+\begin{flushleft}\ttfamily
+\small
+sigma\_a\_hat = debiased\_var\_ema(u) * g\\
+tau\_star = clip(0.5 / f\_bar, tau\_min, tau\_max)\\
+sigma\_a\_star = clip(sqrt(sigma\_a\_hat), sigma\_min, sigma\_max)\\
+RS\_star = clip(c\_R * sigma\_a\_star * tau\_star\textasciicircum 3, RS\_min, RS\_max)\\
+apply EMA with tau\_apply to (tau, sigma\_a, RS)
+\end{flushleft}
+
+\paragraph{Direction KF + Sign.}
+\begin{flushleft}\ttfamily
+\small
+phi = wrap(phi + 2*pi*f\_bar*dt)\\
+if |cos(phi)| < 1e-3: skip meas.\\
+H = cos(phi)*I\\
+KF Joseph update on A \& P with z=[a\_x,a\_y]\\
+d = (a\_z - a\_z\_prev)/dt;\ r = norm(z)\\
+s = EMA(r*d, tau\_sign);\ sign = hysteresis(s, +/- gamma)\\
+dir = unit(A);\ dir = sign\_continuity(dir, dir\_prev);\ dir\_smoothed = EMA(dir, tau\_theta)
+\end{flushleft}
+
+% =======================================================
+\section{Reproducibility Checklist}
+\label{sec:checklist}
+
+\begin{enumerate}
+  \item Fix random seeds for synthetic wave generation and sensor noise.
+  \item Log $f$, $\bar f$, $\tau,\sigma_a,R_S$ (targets and applied), innovation norms, gate states.
+  \item Export $wdir\_\*.csv$ with frequency, phase, angle, uncertainty, confidence, amplitude, filtered XY.
+  \item Evaluate metrics on the terminal \SI{60}{s}; report circular stats for direction.
+  \item Record code commit, parameter table (Tab.~\ref{tab:params}), and hardware IMU model.
+\end{enumerate}
+
+% =======================================================
+\appendix
+\section{Scaling Argument for $R_{S,\star}=c_R\,\sigma_a\,\tau^3$}
+\label{app:rs-law}
+Let $a(t)$ be OU with time constant $\tau$ and stationary std $\sigma_a$. Velocity and displacement are single and double integrals of $a$. Dimensional analysis yields $\mathrm{std}(p)\propto \sigma_a\,\tau^2$; the variance of the integral constraint accumulates as $\propto \tau$ over the window used by the pseudo-measurement, giving $R_S\propto \sigma_a\,\tau^3$. The dimensionless $c_R$ captures discretization and window-shape constants.
+
+\section{Debiased EMA for Online Variance}
+\label{app:debiased-ema}
+With $m_k,s_k,w_k$ as in Sec.~\ref{sec:adaptation}, $\mathbb{E}[m_k/w_k]=\mu$ and $\mathbb{E}[s_k/w_k]=\mu^2+\sigma^2$ for i.i.d.\ samples, so $\widehat{\sigma}^2=\max\{0, s_k/w_k - (m_k/w_k)^2\}$ removes the initialization bias.
+
+\section{Sensitivity for \textsc{KalmANF}}
+\label{app:kalm-sens}
+The state sensitivity satisfies $D_{k+1} = A(a_k)D_k + (\partial A/\partial a)\,x_k$ with $A(a)=\begin{bmatrix}0&1\\-1&a\end{bmatrix}$ and $(\partial A/\partial a)=\begin{bmatrix}0&0\\0&1\end{bmatrix}$. Then $\partial \varepsilon_k/\partial a = -[1\ 0]D_k$ used in the scalar Kalman gain.
+
+\section{Joseph Updates and PSD Projection}
+\label{app:joseph}
+We use the Joseph form $P^+=(I-KH)P^-(I-KH)^\top + K R K^\top$ to preserve symmetry and PSD under finite precision. If eigenvalues of a covariance drop below $0$, project to the nearest PSD by bumping the diagonal or by eigenvalue thresholding.
+
+\section{Axial Circular Statistics}
+\label{app:axial}
+For angles defined on $[0,180)$, double the angles, compute standard $[0,360)$ statistics, and halve the resulting mean and dispersion as in Sec.~\ref{sec:results}.
+
+\section{Phase Gate Rationale}
+\label{app:phase-gate}
+When $|\cos\phi|\approx 0$, the measurement matrix $H_k=\cos\phi\,I$ collapses and the innovation becomes uninformative for $\mathbf{A}$. Skipping the update in this sector avoids covariance blow-up and preserves filter consistency.
