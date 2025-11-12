@@ -1,3 +1,4 @@
+
 \section{Simulation Dataset and Evaluation Protocol}
 \label{sec:sim-and-eval}
 
@@ -38,6 +39,35 @@ For compactness, we denote each case as \texttt{W1}–\texttt{W4}, spanning from
 For each time $t_k$, the simulator outputs world-frame reference $\big(\mathbf{p}_{\mathrm{ref}},\mathbf{v}_{\mathrm{ref}},\mathbf{a}_{\mathrm{ref}}\big)$ at the surface particle (buoy) and body-frame IMU readings $\big(\mathbf{f}_b,\boldsymbol{\omega}_b\big)$, with optional magnetometer synthesis and gravity $g=\SI{9.80665}{m/s^2}$. The directional sea models produce an Euler attitude for the advected buoy; non-directional models keep heading fixed.
 
 \textbf{Critical implementation detail}: The IMU synthesis incorporates the full kinematic chain—including centripetal and Euler effects from wave-induced rotations—ensuring the specific force measurements reflect real-world sensor physics rather than simplified approximations. This proves particularly important for directional seas where cross-axis coupling introduces subtle but significant biases if neglected.
+
+\subsection{Experimental Protocol and Metrics}
+\label{sec:protocol}
+
+\paragraph{Intuition.}
+We evaluate on both synthetic seas and directional spreads, and we report accuracy only after warm-up to avoid conflating adaptation transients with steady-state performance.
+
+\paragraph{Data.} Synthetic runs of \SI{20}{min} at \SI{240}{Hz} for five models (Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal) and four sea states $\mathcal{W}=\{(\SI{0.27}{m},\SI{3.0}{s}),(\SI{1.5}{m},\SI{5.7}{s}),(\SI{4.0}{m},\SI{8.5}{s}),(\SI{8.5}{m},\SI{11.4}{s})\}$; directional seas use randomized $\cos^{2s}$ spreads about a nominal heading.
+
+\paragraph{Windowing.} All metrics computed over the terminal \SI{60}{s} (to remove warm-up transients).
+
+\paragraph{Displacement accuracy.} For $i\in\{x,y,z\}$,
+\[
+\mathrm{RMS}_i=\sqrt{\tfrac{1}{N}\sum_{k=1}^{N}\big(\widehat p_i(t_k)-p_{\mathrm{ref},i}(t_k)\big)^2},\qquad
+\mathrm{RMS\%Hs}_i=100\cdot\mathrm{RMS}_i/H_s.
+\]
+
+\paragraph{Attitude accuracy.} RMS over roll, pitch, yaw (deg) in the same window.
+
+\paragraph{Tracker readouts and tuner telemetry.} Report $\bar f$, $\tau_{\mathrm{appl}}$, $\sigma_{a,\mathrm{appl}}$, $R_{S,\mathrm{appl}}$ and targets $\tau_\star,\sigma_{a,\star},R_{S,\star}$.
+
+\paragraph{Pass/fail gates.} A run fails if any hold:
+\[
+\mathrm{RMS\%Hs}_x>\lambda_x,\quad
+\mathrm{RMS\%Hs}_y>\lambda_y,\quad
+\mathrm{RMS\%Hs}_z>\lambda_z,\quad
+\mathrm{RMS}_{\mathrm{yaw}}>\lambda_\psi,
+\]
+with illustrative limits $(\lambda_x,\lambda_y,\lambda_z,\lambda_\psi)=(33,33,12,3)$.
 
 \subsection{Filter Configuration: Adaptive Intelligence Meets Robust Estimation}
 The Kalman3D\_Wave estimator runs at the full IMU rate with a sophisticated multi-rate update strategy:
