@@ -32,7 +32,11 @@ Frequency adaptation (gradient/energy-based) with projection $\mathcal{P}_{[\ome
 \end{align}
 Discrete-time (sample $k$ at $\Delta t$):
 \[
-\omega_{k+1} \!=\! \mathcal{P}\!\left(\omega_k + \gamma_\omega\, e_k\, y_k\, \Delta t\right).
+\omega_{k+1}
+ = \mathcal{P}_{[\omega_{\min},\,\omega_{\max}]}
+   \!\left(\omega_k + \gamma_{\omega}\, e_k\, y_k\, \Delta t\right),
+\qquad
+\omega_k \in [\omega_{\min},\,\omega_{\max}].
 \]
 Low-pass the readout with EMA $\alpha_f$:
 \(
