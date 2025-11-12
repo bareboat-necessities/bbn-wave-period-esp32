@@ -26,14 +26,14 @@ Internal lightly damped resonator:
 \ddot\xi + 2\zeta\,\omega\,\dot\xi + \omega^2 \xi &= u, \\
 e &= u - \xi, \qquad y=\dot\xi .
 \end{align}
-Frequency adaptation (gradient/energy-based) with projection $\mathcal{P}_{[\omega_{\min},\omega_{\max}]}$:
+Frequency adaptation (gradient/energy-based) with projection $\proj_{[\omega_{\min},\omega_{\max}]}$:
 \begin{align}
-\dot\omega &= \gamma_\omega\, e\, y, \qquad \omega \leftarrow \mathcal{P}_{[\omega_{\min},\omega_{\max}]}(\omega).
+\dot\omega &= \gamma_\omega\, e\, y, \qquad \omega \leftarrow \proj_{[\omega_{\min},\omega_{\max}]}(\omega).
 \end{align}
 Discrete-time (sample $k$ at $\Delta t$):
 \[
 \omega_{k+1}
- = \mathcal{P}_{[\omega_{\min},\,\omega_{\max}]}
+ = \proj_{[\omega_{\min},\,\omega_{\max}]}
    \!\left(\omega_k + \gamma_{\omega}\, e_k\, y_k\, \Delta t\right),
 \qquad
 \omega_k \in [\omega_{\min},\,\omega_{\max}].
@@ -63,7 +63,7 @@ P_k=(1-K_k\,\partial \varepsilon_k/\partial a)P^-_k,
 \end{align}
 with $\partial \varepsilon_k/\partial a$ obtained from the standard state-sensitivity recursion. Frequency readout:
 \[
-\hat\omega_k=\arccos\!\left(\tfrac{1}{2}\,\mathrm{clip}(a_k,-2,2)\right), \quad \hat f_k=\hat\omega_k/(2\pi),
+\hat\omega_k=\arccos\!\left(\tfrac{1}{2}\,\clip(a_k,-2,2)\right), \quad \hat f_k=\hat\omega_k/(2\pi),
 \]
 then EMA with horizon $\tau_{\mathrm{freq}}$.
 
@@ -109,7 +109,7 @@ Half-period target for OU time constant:
 \]
 Acceleration level:
 \(
-\sigma_{a,\star}(k)=\mathrm{clip}\big(\sqrt{\widehat{\sigma}_a^2(k)},\, \sigma_{\min},\sigma_{\max}\big).
+\sigma_{a,\star}(k)=\clip\big(\sqrt{\widehat{\sigma}_a^2(k)},\, \sigma_{\min},\sigma_{\max}\big).
 \)
 
 \subsection{Integral pseudo-measurement covariance}
@@ -164,11 +164,11 @@ P_k &\leftarrow (I-K_k H_k)P^-_k (I-K_k H_k)^\top + K_k R K_k^\top.
 Angle modulo $180^\circ$:
 \[
 \widehat{\mathbf{d}}=\frac{\mathbf{A}_k}{\|\mathbf{A}_k\|},\quad
-\theta=\mathrm{wrap}_{[0,180)}\!\Big(\mathrm{atan2}(\widehat d_y,\widehat d_x)\cdot\frac{180}{\pi}\Big).
+\theta=\wrap_{[0,180)}\!\Big(\operatorname{atan2}(\widehat d_y,\widehat d_x)\cdot\frac{180}{\pi}\Big).
 \]
 Sign-stabilization (flip to keep temporal continuity):
 \(
-\widehat{\mathbf{d}}\leftarrow \mathrm{sgn}(\widehat{\mathbf{d}}\!\cdot\!\widehat{\mathbf{d}}_{\mathrm{last}})\,\widehat{\mathbf{d}},
+\widehat{\mathbf{d}}\leftarrow \sgn(\widehat{\mathbf{d}}\!\cdot\!\widehat{\mathbf{d}}_{\mathrm{last}})\,\widehat{\mathbf{d}},
 \)
 then EWMA on $\widehat{\mathbf{d}}$.
 
@@ -322,7 +322,7 @@ Compare three trackers driven by $u=a_z/g$:
 
 \begin{table}[t]
   \centering
-  \caption{Tracker comparison (terminal \SI{60}{s}). Lower is better for jitter; accuracy is absolute error vs.\ spectral peak for directional seas.}
+  \caption{Tracker comparison (terminal \SI{60}{s}). Lower is better for jitter; accuracy is \texorpdfstring{$|\bar f-f_{\mathrm{ref}}|$}{abs(fbar - f\_ref)} for directional seas.}
   \label{tab:tracker-compare}
   \begin{tabular}{@{}lcccc@{}}
     \toprule
@@ -376,7 +376,7 @@ For two representative cases (JONSWAP, PM-Stokes), plot: (i) $\theta(t)$ with $9
 
 \begin{table}[t]
   \centering
-  \caption{Direction tracking summary (terminal \SI{60}{s}).}
+  \caption{Direction tracking summary (terminal \SI{60}{s}). Columns: median \texorpdfstring{$\theta_{95}$}{theta95}, \texorpdfstring{$\mathrm{std}(\theta)$}{std(theta)}, sign error rate [\%], and amplitude floor.}
   \label{tab:dir}
   \begin{tabular}{@{}lcccc@{}}
     \toprule
