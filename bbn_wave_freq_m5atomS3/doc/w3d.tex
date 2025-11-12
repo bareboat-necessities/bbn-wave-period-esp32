@@ -1,4 +1,6 @@
-\documentclass[10pt]{extarticle}
+\documentclass[10pt,twocolumn]{extarticle}
+
+% --- Packages ---
 \usepackage{amsmath, amssymb, amsfonts, bm}
 \usepackage{geometry, setspace}
 \usepackage{hyperref}
@@ -15,11 +17,15 @@
 \setlist[enumerate]{before=\normalfont\normalsize, itemsep=2pt, topsep=4pt, leftmargin=*}
 \setlist[description]{before=\normalfont\normalsize, font=\normalfont\bfseries,
   labelsep=0.6em, leftmargin=1.8em, itemsep=2pt, topsep=4pt}
-\usepackage{amsthm}       
+\usepackage{amsthm}
 \usepackage[nameinlink,capitalise,noabbrev]{cleveref}
-\usepackage{multicol} 
-\setlength{\columnsep}{18pt}
+
+% Two-column helpers
+\usepackage{multicol}  % not strictly needed now, but harmless if you want local multi-cols later
+\setlength{\columnsep}{18pt} % spacing between columns
 \newcommand{\fitcol}[1]{\adjustbox{max width=\columnwidth}{$\displaystyle #1$}}
+\usepackage{cuted}     % optional: \begin{strip} ... \end{strip} for full-width inserts
+\usepackage{balance}   % optional: balance last page columns
 
 \usepackage{siunitx}
 \sisetup{
@@ -27,6 +33,7 @@
   detect-family = true,
   per-mode = symbol,
 }
+
 % Make math/siunitx safe in PDF bookmarks
 \pdfstringdefDisableCommands{%
   \def\SI#1#2{#1 #2}%
@@ -45,7 +52,6 @@
   {.}% punctuation after head
   {0.5em}% space after head
   {}% head spec
-
 \theoremstyle{bodysmall}
 \newtheorem{lemma}{Lemma}
 \newtheorem{theorem}{Theorem}
@@ -79,7 +85,6 @@
 \titleformat{\section}{\normalfont\small\bfseries}{\thesection}{0.8em}{}
 \titleformat{\subsection}{\normalfont\small\itshape}{\thesubsection}{0.8em}{}
 \titleformat{\subsubsection}{\normalfont\footnotesize\itshape}{\thesubsubsection}{0.8em}{}
-
 \titleformat{\paragraph}{\normalfont\small\bfseries}{\theparagraph}{0.6em}{}[]
 \titlespacing*{\paragraph}{0pt}{0.4ex plus .1ex}{0.8em}
 
@@ -107,8 +112,11 @@ Theory, Discretization, and Bias Compensation}
 \date{2025}
 
 \begin{document}
-\maketitle
 
+% Make title + abstract + ToC span both columns
+\twocolumn[
+\maketitle
+\begin{onecolumngrid}
 \begin{abstract}
 We present a detailed mathematical development of a quaternion multiplicative EKF (MEKF) fused with an extended 
 linear kinematic chain for ocean-wave motion estimation. 
@@ -121,7 +129,8 @@ Finally, we discuss tuning strategies and the prospect of adaptive parameter est
 \end{abstract}
 
 \tableofcontents
-\newpage
+\end{onecolumngrid}
+] % end twocolumn top matter
 
 % === CORE SECTIONS ===
 \input{w3d-intro.tex-part}        % Introduction and motivation
@@ -172,6 +181,9 @@ Finally, we discuss tuning strategies and the prospect of adaptive parameter est
 
 \input{fus-methods.tex-part}
 \input{sim-results.tex-part}
+
+% Balance final page columns (optional)
+\balance
 
 % === END ===
 \end{document}
