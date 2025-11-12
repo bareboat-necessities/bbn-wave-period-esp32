@@ -32,6 +32,7 @@ with $\xi(t)=[\eta_g^\top,\;\eta_b^\top]^\top$ and $\mathbb{E}[\xi\xi^\top]=Q_c\
 \paragraph{State transition over the step.}
 Because $F_{AA}$ is block upper triangular,
 \[
+\fitcol{
 e^{F_{AA}s}=
 \begin{bmatrix}
 R(s) & B(s)\\
@@ -39,6 +40,7 @@ R(s) & B(s)\\
 \end{bmatrix},\qquad
 R(s)=e^{-Ws},\qquad
 B(s)=\int_0^s e^{-W(s-u)}(-I)\,du=-\!\int_0^s e^{-Wu}\,du.
+}
 \]
 Let $\omega=\|\boldsymbol\omega\|$, $\theta=\omega s$ and $K=W/\omega=[\hat{\boldsymbol\omega}]_\times$.
 Rodrigues formula gives
@@ -47,15 +49,18 @@ R(s)=I-\sin\theta\,K + (1-\cos\theta)\,K^2,
 \]
 and integrating termwise,
 \[
+\fitcol{
 \int_0^s e^{-Wu}\,du
 = s\,I - \frac{1-\cos\theta}{\omega^2}\,W + \frac{s-\frac{\sin\theta}{\omega}}{\omega^2}\,W^2,
 \quad\Rightarrow\quad
 B(s)= -\Big[s\,I - \frac{1-\cos\theta}{\omega^2}W + \frac{s-\frac{\sin\theta}{\omega}}{\omega^2}W^2\Big].
+}
 \]
 
 \paragraph{Discretization formula for $Q_d$.}
 The discrete process covariance over $[0,h]$ is
 \[
+\fitcol{
 Q_{d,AA}(h)=\int_0^h e^{F_{AA}s}\,L\,Q_c\,L^\top\,e^{F_{AA}^\top s}\,ds
 = \int_0^h
 \begin{bmatrix}
@@ -67,6 +72,7 @@ Q_g & 0\\ 0 & Q_{bg}
 \begin{bmatrix}
 R^\top & 0\\ B^\top & I
 \end{bmatrix}ds.
+}
 \]
 Expanding by blocks,
 \[
@@ -106,8 +112,10 @@ First, the bias random walk integrates trivially:
 \]
 Second, the cross-covariance is
 \[
+\fitcol{
 Q_{\theta b}(h)=\int_0^h B(s)\,Q_{bg}\,ds
 = \Big(\int_0^h B(s)\,ds\Big) Q_{bg},\qquad Q_{b\theta}(h)=Q_{\theta b}(h)^\top.
+}
 \]
 Define the \emph{integral of $B$}
 \[
@@ -252,19 +260,23 @@ Simpson reproduces the exact $I_{BB}(h)$ up to $\mathcal{O}(h^5)$.
 \paragraph{Bias–attitude cross integral $I_B(h)$.}
 Simpson on $B(s)$ gives
 \[
+\fitcol{
 \boxed{
 I_B(h)\;=\;\int_0^h B(s)\,ds
 \;\approx\;\frac{h}{6}\Big(B_0+4B_{1/2}+B_1\Big)
 \;=\;\frac{h}{6}\Big(4B_{1/2}+B_1\Big).
 }
+}
 \]
 This replaces the closed form
 \[
+\fitcol{
 I_B(h)= -\Big[
 \tfrac{1}{2}h^2\,I
 -\frac{h-\frac{\sin(\omega h)}{\omega}}{\omega^2}\,W
 +\frac{\tfrac{1}{2}h^2+\frac{\cos(\omega h)-1}{\omega^2}}{\omega^2}\,W^2
 \Big]
+}
 \]
 with a numerically stable $\mathcal{O}(h^5)$ approximation. In the small–angle limit,
 $I_B(h)=-\tfrac12 h^2 I+\tfrac{1}{6}Wh^3-\tfrac{1}{24}W^2 h^4+\cdots$ is matched to the same order.
