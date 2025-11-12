@@ -18,7 +18,7 @@ with $q_c=2\sigma_a^2/\tau$. The complete estimator uses Joseph updates and PSD 
 (Sec.~\ref{sec:cross-cov}).
 
 \subsection*{Assumptions}
-\begin{itemize}\itemsep2pt
+\begin{itemize}[before=\small, itemsep=2pt, topsep=2pt, leftmargin=*]
 \item[A1] \textbf{Bounded sampling and small linearization error.}
 Sampling $h \in (0,\bar h]$ such that the discrete transition $\Phi(h,\tau)$ matches the analytic form
 (Sec.~\ref{sec:analytic}); linearization error is Lipschitz on the compact set considered.
