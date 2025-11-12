@@ -48,66 +48,6 @@ All updates are $O(1)$ per sample; memory is dominated by a small set of scalars
 Use Joseph-form covariance updates; project PSD when needed; clamp and project all tuned parameters; guard against NaN/Inf; symmetrize covariances. Log telemetry: $(\hat f,\bar f)$, $(\tau_\star,\sigma_{a,\star},R_{S,\star})$ and applied values, innovation norms, and gates (phase, magnetometer, amplitude).
 
 % =======================================================
-\section{Implementation Pseudocode}
-\label{sec:pseudocode}
-
-\paragraph{TrackerPolicy (Aranovskiy).}
-\begin{flushleft}\ttfamily
-\small
-state: xi, xidot, omega; params: zeta, gamma\_omega, [omega\_min, omega\_max]\\
-u = a\_z/g\\
-xiddot = u - 2*zeta*omega*xidot - omega*omega*xi\\
-xi += xidot*dt;\ \ xidot += xiddot*dt\\
-e = u - xi;\ \ y = xidot\\
-omega = clip(omega + gamma\_omega*e*y*dt,\ omega\_min,\ \omega\_max)\\
-f\_hat = EMA(omega/(2*pi), tau\_freq)
-\end{flushleft}
-
-\paragraph{\textsc{KalmANF} parameter update.}
-\begin{flushleft}\ttfamily
-\small
-x = [x1, x2];\ a = a + w;\ P = P + q\_a\\
-y = x1\\
-x\_next = [x2,\ -x1 + a*x2] + [0,1]*u\\
-eps = u - y\\
-dxdA\_next = [0, x2] + [0, a]*dxdA\\
-depsdA = -[1,0]*dxdA\\
-K = P*depsdA / (depsdA*P*depsdA + r)\\
-a += K*eps;\ P = (1 - K*depsdA)*P\\
-f\_hat = EMA(acos(clip(a/2,-1,1))/(2*pi), tau\_freq)
-\end{flushleft}
-
-\paragraph{Zero-Crossing.}
-\begin{flushleft}\ttfamily
-\small
-if u crosses from < -h to > +h and (t - t\_last) > T\_deb: \\
-\quad T = EMA(t - t\_last, tau\_T);\ t\_last = t\\
-f\_hat = 1/T
-\end{flushleft}
-
-\paragraph{AutoTuner (every $\Delta t_{\mathrm{apply}}$).}
-\begin{flushleft}\ttfamily
-\small
-sigma\_a\_hat = debiased\_var\_ema(u) * g\\
-tau\_star = clip(0.5 / f\_bar, tau\_min, tau\_max)\\
-sigma\_a\_star = clip(sqrt(sigma\_a\_hat), sigma\_min, sigma\_max)\\
-RS\_star = clip(c\_R * sigma\_a\_star * tau\_star\textasciicircum 3, RS\_min, RS\_max)\\
-apply EMA with tau\_apply to (tau, sigma\_a, RS)
-\end{flushleft}
-
-\paragraph{Direction KF + Sign.}
-\begin{flushleft}\ttfamily
-\small
-phi = wrap(phi + 2*pi*f\_bar*dt)\\
-if |cos(phi)| < 1e-3: skip meas.\\
-H = cos(phi)*I\\
-KF Joseph update on A \& P with z=[a\_x,a\_y]\\
-d = (a\_z - a\_z\_prev)/dt;\ r = norm(z)\\
-s = EMA(r*d, tau\_sign);\ sign = hysteresis(s, +/- gamma)\\
-dir = unit(A);\ dir = sign\_continuity(dir, dir\_prev);\ dir\_smoothed = EMA(dir, tau\_theta)
-\end{flushleft}
-
-% =======================================================
 \section{Reproducibility Checklist}
 \label{sec:checklist}
 
