@@ -1,8 +1,7 @@
-
 \section{Block structure of the discrete transition \texorpdfstring{$\Phi$}{Phi} and covariance \texorpdfstring{$\mathbf Q_d$}{Qd}}
 \label{sec:block-Phi-Qd}
 
-Let $h>0$ be the sampling step and let the error-state be ordered as in \S\ref{sec:state}.
+Let $h>0$ be the sampling step and let the error-state be ordered as in the continuous-time state model.
 We group indices into three blocks:
 \[
 \underbrace{(\delta\boldsymbol\theta,\ \mathbf b_g)}_{\text{attitude\,+\,gyro-bias}} \in \mathbb R^{N_A},\quad
