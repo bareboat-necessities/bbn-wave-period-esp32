@@ -24,9 +24,11 @@ Let \(h>0\) be the sampling interval and \(x=h/\tau\).
 \subsubsection*{OU and kinematic primitives}
 We introduce compact primitives used throughout:
 \[
+\fitcol{
 \alpha \coloneqq e^{-x},\qquad
 \mathrm{em1}\coloneqq \alpha-1,\qquad
 \mathrm{em1}_2\coloneqq e^{-2x}-1,
+}
 \]
 \[
 A_0 \coloneqq -\tau\,\mathrm{em1},\qquad
@@ -42,6 +44,7 @@ C_3 \coloneqq \frac{h^4}{4},\quad C_4 \coloneqq \frac{h^5}{5}.
 \subsubsection*{Block–triangular exponential and noise flow}
 Because \(F\) is block upper triangular,
 \[
+\fitcol{
 e^{Fs}=\begin{bmatrix}
 e^{As} & \displaystyle\int_{0}^{s}\! e^{A(s-u)}B\,e^{Du}\,du\\[6pt]
 0 & e^{Ds}
@@ -53,9 +56,11 @@ e^{As} & C_{\text{top}}(s)\\
 \end{bmatrix},
 \quad
 e^{As}=I+As+\tfrac12A^2s^2\ \ (A^3=0).
+}
 \]
 The discrete covariance over \([0,h]\) is
 \[
+\fitcol{
 Q_d(h)=\int_{0}^{h} e^{Fs}\,L\,q_c\,L^{\!\top}\,e^{F^{\!\top}s}\,ds
 =\int_{0}^{h} q_c
 \begin{bmatrix}
@@ -64,6 +69,7 @@ C_{\text{top}}(s)\\ e^{-s/\tau}
 \begin{bmatrix}
 C_{\text{top}}(s)^{\!\top} & e^{-s/\tau}
 \end{bmatrix}ds.
+}
 \]
 Thus \(Q_d\) is assembled from three integrals:
 \[
@@ -86,12 +92,14 @@ Taking Laplace transforms (\(z\) is the Laplace variable) gives
 \]
 Since \(A\) is nilpotent and \(B=[1,0,0]^{\!\top}\), partial fractions in \(z\) and inverse Laplace yields the scalar components of \(f\):
 \[
+\fitcol{
 f(s)=\begin{bmatrix}
 \phi_{va}(s)\\ \phi_{pa}(s)\\ \phi_{Sa}(s)
 \end{bmatrix},\qquad
 \phi_{va}(s)=\tau\bigl(1-e^{-s/\tau}\bigr),\ \
 \phi_{pa}(s)=s\tau-\tau^2\bigl(1-e^{-s/\tau}\bigr),\ \
 \phi_{Sa}(s)=\tfrac12 s^2\tau-s\tau^2+\tau^3\bigl(1-e^{-s/\tau}\bigr).
+}
 \]
 Evaluated at \(s=h\) and written in primitives \((x,\alpha,\mathrm{em1})\),
 \[
@@ -112,12 +120,14 @@ Hence we define \(B_0\coloneqq -\frac{\tau}{2}\,\mathrm{em1}_2\) so that \(Q_{aa
 \paragraph{(ii) Cross blocks.}
 Using \(\mathcal{L}\{e^{-s/\tau}\}(z)=(z+1/\tau)^{-1}\) and the same rational structure as above,
 \[
+\fitcol{
 \int_{0}^{h}\!q_c\,f(s)e^{-s/\tau}ds=\frac{2\sigma^2}{\tau}
 \begin{bmatrix}
 \tau\bigl(A_0-B_0\bigr)\\
 \tau A_1+\tau^2\bigl(B_0-A_0\bigr)\\
 \frac{1}{2}\tau A_2-\tau^2 A_1+\tau^3 A_0-\tau^3 B_0
 \end{bmatrix}.
+}
 \]
 Thus \(Q_{\bullet a}=\frac{2\sigma^2}{\tau}\begin{bmatrix}K_{va}&K_{pa}&K_{Sa}\end{bmatrix}^{\!\top}\) with
 \[
@@ -129,6 +139,7 @@ K_{Sa}=\tfrac12\tau A_2-\tau^2 A_1+\tau^3 A_0-\tau^3 B_0.
 \paragraph{(i) Top \(3\times 3\) block.}
 Here we need \(\int_0^h\!q_c\,f(s)f(s)^{\!\top}ds\). Each entry is a convolution of a polynomial in \(s\) with exponentials, hence rational in \(z\) in Laplace domain and integrable in closed form. After partial fractions and back–substitution to primitives \((C_k,A_i,B_0)\) one obtains:
 \[
+\fitcol{
 \begin{aligned}
 K_{vv}&=\tau^2\Bigl(C_0-2A_0+B_0\Bigr),\\
 K_{pp}&=\tau^2 C_2 - 2\tau^3 C_1 + 2\tau^3 A_1 + \tau^4 C_0 - 2\tau^4 A_0 + \tau^4 B_0,\\
@@ -139,11 +150,13 @@ K_{Sv}&=\tfrac{1}{2}\tau^2(C_2-A_2) - \tau^3(C_1-A_1) + \tau^4(C_0-A_0) - \tau^4
 K_{Sp}&=\tfrac{1}{2}\tau^2 C_3 - \tfrac{3}{2}\tau^3 C_2 + 2\tau^4 C_1 - \tau^5 C_0
         + \tfrac{1}{2}\tau^3 A_2 - 2\tau^4 A_1 + 2\tau^5 A_0 - \tau^5 B_0.
 \end{aligned}
+}
 \]
 
 \subsubsection*{Unit kernel and discrete covariance}
 Factor \(q_c=\frac{2\sigma^2}{\tau}\) and define the \emph{unit kernel}
 \[
+\fitcol{
 K(h,\tau)=\begin{bmatrix}
 K_{vv} & K_{pv} & K_{Sv} & K_{va}\\
 K_{pv} & K_{pp} & K_{Sp} & K_{pa}\\
@@ -151,6 +164,7 @@ K_{Sv} & K_{Sp} & K_{SS} & K_{Sa}\\
 K_{va} & K_{pa} & K_{Sa} & K_{aa}
 \end{bmatrix},\qquad
 K_{aa}=B_0.
+}
 \]
 Then the per–axis discrete covariance is
 \[
@@ -161,6 +175,7 @@ Q_{d,\text{axis}}(h)=\frac{2\sigma^2}{\tau}\;\mathrm{sym}\,K(h,\tau),
 
 \subsubsection*{Final list of blocks (per axis)}
 \[
+\fitcol{
 \boxed{
 \begin{aligned}
 K_{vv}&=\tau^2\Big(C_0-2A_0+B_0\Big),&
@@ -175,6 +190,7 @@ K_{Sv}&=\tfrac{1}{2}\tau^2(C_2 - A_2) - \tau^3(C_1 - A_1) + \tau^4(C_0 - A_0)
         - \tau^4(A_0 - B_0),\qquad
 K_{aa}=B_0.
 \end{aligned}}
+}
 \]
 Finally,
 \[
