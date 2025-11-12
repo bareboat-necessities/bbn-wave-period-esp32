@@ -91,6 +91,10 @@
 \titleformat{\paragraph}{\normalfont\small\bfseries}{\theparagraph}{0.6em}{}[]
 \titlespacing*{\paragraph}{0pt}{0.4ex plus .1ex}{0.8em}
 
+\usepackage[final]{microtype}   % better spacing/hyphenation
+\emergencystretch=2em           % give TeX extra room before overfull boxes
+\allowdisplaybreaks             % allow multi-line displays to break across columns
+
 % Description labels small & bold
 \setlist[description]{font=\footnotesize\bfseries, labelsep=0.6em, leftmargin=1.8em}
 
