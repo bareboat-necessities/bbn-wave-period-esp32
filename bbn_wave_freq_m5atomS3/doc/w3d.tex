@@ -17,6 +17,14 @@
   detect-family = true,
   per-mode = symbol,
 }
+% Make math/siunitx safe in PDF bookmarks
+\pdfstringdefDisableCommands{%
+  \def\SI#1#2{#1 #2}%
+  \def\bm#1{#1}%  % drop bold in bookmarks
+  \def\Skew#1{[#1]_\text{x}}% safer text-y substitute
+  \def\Id{I}%
+  \def\pct#1{#1\%}%
+}
 \newtheorem{lemma}{Lemma}  % defines what a "lemma" is
 \newtheorem*{theorem*}{Theorem}
 
