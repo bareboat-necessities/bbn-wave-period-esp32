@@ -9,7 +9,7 @@
 \usepackage{array, booktabs, makecell, adjustbox}
 \usepackage{mathtools}
 \usepackage{enumitem}
-\usepackage{amsthm}        % enables theorem/lemma environments
+\usepackage{amsthm}       
 \usepackage[nameinlink,capitalise,noabbrev]{cleveref}
 \usepackage{siunitx}
 \sisetup{
@@ -25,7 +25,19 @@
   \def\Id{I}%
   \def\pct#1{#1\%}%
 }
-\newtheorem{lemma}{Lemma}  % defines what a "lemma" is
+
+% Body same size as text, upright; header bold; normal spacing.
+\newtheoremstyle{bodynorm}% name
+  {3pt}{3pt}% space above/below
+  {\normalfont}% body font (no italic)
+  {0pt}% indent
+  {\bfseries}% head font
+  {.}% punctuation after head
+  {0.5em}% space after head
+  {}% head spec
+
+\theoremstyle{bodynorm}
+\newtheorem{lemma}{Lemma}
 \newtheorem*{theorem*}{Theorem}
 
 \newcommand{\Skew}[1]{\left[#1\right]_\times}  % skew-symmetric operator
