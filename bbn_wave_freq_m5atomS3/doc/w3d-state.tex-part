@@ -1,4 +1,5 @@
 \section{State Definition}
+\label{sec:state}
 
 The extended state vector of our filter combines
 rotational attitude, linear kinematics, and stochastic acceleration subsystems within a
