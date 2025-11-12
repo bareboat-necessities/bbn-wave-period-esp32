@@ -1,4 +1,4 @@
-\subsection{Discretization of a generic LTI SDE over step $h$}
+\subsection{Discretization of a generic LTI SDE over step \texorpdfstring{$h$}{h}}
 \label{sec:lti-disc}
 
 Consider a linear time–invariant SDE
@@ -73,6 +73,6 @@ Given $(\hat{\mathbf x}_k,\mathbf P_k)$ at $t_k$, the prediction to $t_{k+1}=t_k
 \end{align}
 These equations are the discrete counterparts of the continuous Lyapunov/Riccati
 flow with $\mathbf F$ and $\mathbf L$ the Jacobian dynamics and noise–input matrices
-defined in \S\ref{sec:proc-unified-lti}. In our implementation, $\Phi$ and $\mathbf Q_d$
+defined in \S\ref{sec:lti-sde}. In our implementation, $\Phi$ and $\mathbf Q_d$
 are either (i) computed analytically for the OU–driven kinematic blocks, or
 (ii) obtained from the Van Loan construction \eqref{eq:van-loan} for generic blocks.
