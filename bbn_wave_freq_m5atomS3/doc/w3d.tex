@@ -41,9 +41,15 @@
   \def\pct#1{#1\%}%
 }
 
-\usepackage{textcomp} % extra glyphs
-\DeclareUnicodeCharacter{2013}{\textendash}  % map U+2013 to --
-\DeclareUnicodeCharacter{2014}{\textemdash}  % map U+2014 to ---
+
+\usepackage{textcomp} % provides \textendash, \textemdash, \textminus, quotes
+\DeclareUnicodeCharacter{2013}{\textendash}       % –
+\DeclareUnicodeCharacter{2014}{\textemdash}       % —
+\DeclareUnicodeCharacter{2018}{\textquoteleft}    % ‘
+\DeclareUnicodeCharacter{2019}{\textquoteright}   % ’
+\DeclareUnicodeCharacter{201C}{\textquotedblleft} % “
+\DeclareUnicodeCharacter{201D}{\textquotedblright}% ”
+\DeclareUnicodeCharacter{2212}{\textminus}        % − (if you have it)
 
 % Theorems: small header/body
 \newtheoremstyle{bodysmall}
