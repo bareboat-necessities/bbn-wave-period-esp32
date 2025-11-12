@@ -1,0 +1,113 @@
+% ===================== 2 =====================
+\section{Tracker Policies for Dominant Acceleration Frequency}
+\label{sec:freq-trackers}
+
+\paragraph{Problem framing.}
+Let \(a_z(t)\) denote vertical specific force measured by the IMU. In directional, broadband seas, \(a_z(t)\) is well-approximated by a narrowband process with slowly varying envelope and instantaneous frequency:
+\begin{equation}
+a_z(t) \;\approx\; A(t)\cos\!\big(\phi(t)\big) + \varepsilon(t), 
+\qquad \dot{\phi}(t) = \omega(t) = 2\pi f(t),
+\label{eq:az-model}
+\end{equation}
+where \(A(t)\) drifts on time scales longer than the wave period, \(\varepsilon(t)\) aggregates sensor noise and residual broadband energy, and \(f(t)\) is the \emph{dominant temporal frequency of the acceleration}, not the centroid of a displacement spectrum. This distinction is operationally important: the adaptive regularization of our state estimator reacts to the period of the \emph{forcing} (specific force), and the direction module in \S\ref{sec:direction} uses the same phase reference to disambiguate horizontal kinematics.
+
+\paragraph{Design principle.}
+We adopt an interchangeable ``policy'' layer that maps \(a_z(t)\) to a raw estimate \(\widehat{f}_{\mathrm{raw}}(t)\), followed by a lightweight unifier---an exponential smoother with horizon \(T_f\)---to produce a single, shared \(\widehat{f}(t)\) and its phase
+\(\widehat{\phi}(t)=\int_0^t 2\pi\widehat{f}(\tau)\,d\tau\).
+This separation allows us to reason about the observability and noise--tracking tradeoffs of each policy while keeping the rest of the system unchanged.
+
+\subsection{Nonlinear Adaptive Observer (Aranovskiy)}
+\label{subsec:aranovskiy}
+\textbf{Concept.} The observer embeds a sinusoidal regressor and estimates a low-order state that carries the in-phase/quadrature content of \(a_z\), from which the instantaneous phase \(\phi\) (and hence \(\omega\)) is extracted. A stabilizing nonlinear feedback keeps the estimates bounded near zero crossings; internal time scaling renders adaptation gains comparable across periods.
+
+\textbf{Why this path.} Our guiding thought was to privilege \emph{latency} and \emph{phase fidelity} over high-order modeling: by working directly with a narrowband regressor, the observer is inherently sensitive to the dominant line while discarding distant spectral energy. As swells evolve slowly, the additional phase smoothing introduced by the observer is negligible relative to the benefits in robustness.
+
+\textbf{Behavioral summary.} The observer is resilient at modest SNR and tracks slow drifts in \(f(t)\) without excessive lag. It can, however, be mildly biased when multiple components are nearly commensurate and phase-aligned; small gain limits alleviate this regime.
+
+\subsection{Kalman Notch Filter (KalmANF)}
+\label{subsec:kalm-anf}
+\textbf{Concept.} A second-order resonator (``notch'') centered at \(\omega\) is parameterized by a scalar \(a=2\cos\omega\). We treat \(a\) as a random walk and estimate it with a scalar Kalman filter driven by the prediction error of the resonator. Inversion \(a\mapsto \omega\) yields \(\widehat{f}\).
+
+\textbf{Why this path.} Our reasoning here was to leverage the \emph{selectivity} of a narrow filter while letting the KF tune the bias--variance tradeoff through \((Q,R)\). When the sea state shifts, a slightly larger process noise on \(a\) increases agility; in steady seas, a smaller \(Q\) suppresses jitter.
+
+\textbf{Behavioral summary.} With sensible guards near very low frequencies (where \(a\to 2\)), KalmANF provides clean estimates under noisy, slowly drifting conditions. Close-in secondary lines can induce spillover; a modest EMA in the policy unifier eliminates most of the staircase artifacts.
+
+\subsection{Hysteretic Zero-Crossing (Schmitt Trigger)}
+\label{subsec:schmitt}
+\textbf{Concept.} Debounced zero-crossings with amplitude hysteresis convert period to frequency. 
+
+\textbf{Role in the stack.} We include this policy as a safety net for pathological stretches (extremely low SNR or highly non-sinusoidal bursts). Although its quantization leads to staircase behavior, the unified smoother ensures a bounded error signal for the adaptation in \S\ref{sec:adaptation}.
+
+\subsection{Unification by Smoothing}
+\label{subsec:smoothing}
+Across all policies we apply the same exponential smoother with horizon \(T_f\) (typically a few seconds), producing a shared \(\widehat{f}(t)\) and phase \(\widehat{\phi}(t)\). Intellectually, this step is not a mere convenience: it forces the rest of the system to \emph{reason about one frequency}, removing avoidable inconsistencies between modules and making adaptation analysis reproducible.
+
+\vspace{0.5ex}
+\noindent\emph{Takeaway.} The policy layer is about \emph{how} we convert a narrowband acceleration into a usable \(\widehat{f}\). The unifier is about \emph{how stably} the rest of the system should perceive it.
+
+% ===================== 3 =====================
+\section{Variance-Aware Adaptation from Acceleration}
+\label{sec:adaptation}
+
+\paragraph{What the tuner sees.}
+The adaptation engine consumes two statistics derived directly from acceleration:
+(i) the smoothed frequency \(\widehat{f}(t)\) from \S\ref{sec:freq-trackers}, and
+(ii) a debiased exponentially weighted variance \(\widehat{\sigma}_a^2(t)\) of \(a_z(t)\) with horizon \(T_\sigma\) (tens of seconds). We define a half-period proxy \(\widehat{\tau}(t)=1/(2\widehat{f}(t))\).
+
+\paragraph{Design law.}
+Motivated by error growth under double integration of latent OU acceleration, we set the target magnitude of the integral pseudo-measurement regularization to
+\begin{equation}
+R_S^{\star}(t) = c \,\widehat{\sigma}_a(t)\,\widehat{\tau}(t)^3, 
+\qquad \widehat{\tau}(t)=\frac{1}{2\widehat{f}(t)}.
+\label{eq:rs-law}
+\end{equation}
+The \(\tau^3\) factor expresses the intuition that longer swells require stronger low-frequency anchoring of the integral channel, scaled by the observed vertical energy \(\widehat{\sigma}_a\).
+We clamp \(\tau,\sigma_a,R_S\) to engineering bounds to preserve numerical conditioning and physical plausibility.
+
+\paragraph{Application dynamics.}
+Targets are applied with a slow EMA (time constant \(T_{\text{adapt}}\)) to avoid chattering the covariance. We preserve symmetry and positive semidefiniteness with Joseph-form updates, and we use mild anisotropy (XY versus Z) to reflect the kinematics of a surface-following platform. Magnetometer updates are intentionally gated after a short delay and then applied sparsely (every few samples), stabilizing yaw without over-constraining roll/pitch during the initial transient.
+
+\paragraph{Why this works.}
+Our train of thought is to \emph{measure} what the ocean gives us in the forcing channel (variance and period of \(a_z\)) and translate it into the \emph{minimum regularization} needed to keep the integral state from drifting, no more and no less. This emphasis on the acceleration domain lets the filter remain responsive to swell while restraining the long-memory modes that dominate displacement bias.
+
+% ===================== 4 =====================
+\section{Wave Direction Estimation from Horizontal Accelerations}
+\label{sec:direction}
+
+\paragraph{Phase-referenced model.}
+Direction is estimated in the horizontal plane using the shared phase \(\widehat{\phi}(t)\) obtained from acceleration frequency tracking. We model the measured horizontal accelerations as
+\begin{equation}
+\mathbf{z}(t) \;=\; c(t)\,\mathbf{A}(t) + \boldsymbol{\eta}(t), 
+\qquad c(t)=\cos\widehat{\phi}(t),\quad \mathbf{A}(t)\in\mathbb{R}^2,
+\label{eq:dir-meas}
+\end{equation}
+where \(\mathbf{A}(t)\) is the slowly varying \emph{horizontal acceleration amplitude vector}. Intuitively, \(\mathbf{A}\) points along the propagation direction, and the known \(c(t)\) gates information in and out across the wave cycle.
+
+\subsection{2\texorpdfstring{$\times$}{x}2 Kalman Filter on the Amplitude Vector}
+\label{subsec:dir-kf}
+We place a random-walk prior on \(\mathbf{A}\) with covariance \(Q\) and update it with measurement covariance \(R\).
+When \(|c(t)|\) is small (quadrature), the measurement Jacobian degenerates; we therefore \emph{black out} updates in a narrow window around \(c=0\), propagating with process noise only. Outside the blackout, the update is standard linear-Gaussian with Joseph-form covariance. 
+This construction uses ocean physics twice: first to establish a reliable phase reference from \(a_z\), and second to admit horizontal information only when the geometry is favorable.
+
+\subsection{Angle, Confidence, and Uncertainty}
+\label{subsec:angle-unc}
+From the posterior mean \(\widehat{\mathbf{A}}\), we report the unsigned direction
+\[
+\widehat{\theta} \;=\; \mathrm{atan2}\!\big(\widehat{A}_y,\widehat{A}_x\big) \bmod 180^\circ,
+\]
+and a scalar confidence inversely proportional to \(\mathrm{tr}(P)\). To quantify uncertainty, we project the \(2\times2\) covariance onto the tangent of the unit circle at \(\widehat{\mathbf{d}}=\widehat{\mathbf{A}}/\|\widehat{\mathbf{A}}\|\):
+\begin{equation}
+\mathbf{t}=(-\widehat{d}_y,\,\widehat{d}_x)^\top,\qquad
+v_\perp = \mathbf{t}^\top P\,\mathbf{t},\qquad
+\Delta\theta_{95} \approx \frac{2\sqrt{v_\perp}}{\|\widehat{\mathbf{A}}\|}\cdot\frac{180}{\pi}.
+\label{eq:angle-unc}
+\end{equation}
+We publish angles only when both amplitude and confidence exceed calibrated thresholds; otherwise we hold the last stable estimate. This policy reflects the scientific aim to avoid over-interpreting weak-informative segments.
+
+\subsection{Signed Direction via Vertical–Horizontal Phase}
+\label{subsec:sign}
+The sign ambiguity (\(\mathbf{d}\) versus \(-\mathbf{d}\)) is resolved by comparing the phase of horizontal motion with the phase of the vertical acceleration, which defines the reference quadrature. A smoothed left/right detector uses \(\{a_x,a_y,a_z\!+\!g,\widehat{\phi}(t)\}\) and a small hysteresis to prevent flicker. The output is a signed direction vector with a confidence flag. 
+This final step completes the conceptual loop: we estimate \(\widehat{f}\) from \(a_z\), build a phase reference, fit a phase-gated horizontal model, and use the same vertical signal to choose the physically consistent propagation sign.
+
+\vspace{0.5ex}
+\noindent\emph{Scientific narrative.} By anchoring the entire pipeline in the acceleration domain, we avoid fragile inversion through displacement spectra, retain tight phase control, and obtain direction estimates with interpretable uncertainty that remain stable across a broad range of sea states.
