@@ -5,11 +5,8 @@
 We evaluate the proposed Kalman3D\_Wave filter against a comprehensive battery of five canonical wave models spanning the fidelity spectrum from idealized analytical solutions to realistic directional seas. This carefully curated test suite probes different aspects of wave physics and filter behavior:
 
 \begin{itemize}
-    \item \textbf{Gerstner (trochoidal)}: The classical closed-form solution providing pristine 2D kinematics with exact analytical derivatives—our \textit{analytic baseline} for isolating integration drift and frame transformation errors
     \item \textbf{JONSWAP directional seas}: Realistic broadband spectra with randomized directional spreading that mimics North Sea conditions, testing the filter's ability to handle \textit{multicomponent interference} and \textit{cross-coupling} in attitude estimation
     \item \textbf{Pierson–Moskowitz (PM) Stokes seas}: Fully-developed sea state with third-order bound harmonics that introduce \textit{nonlinear wave–wave interactions} and subtle phase coupling effects
-    \item \textbf{Fenton high-order wave}: High-fidelity steady nonlinear solution using fifth-order Stokes expansion, presenting severe \textit{crest–trough asymmetry} and harmonic distortion that challenge linear assumptions
-    \item \textbf{Cnoidal wave}: Shallow-water nonlinear wave with strongly \textit{peaked crests} and long flat troughs, exhibiting fundamentally different kinematics from deep-water formulations
 \end{itemize}
 
 Each scenario undergoes rigorous \SI{20}{min} simulation at \SI{240}{Hz}, producing co-registered time series of world-frame displacement, velocity, and acceleration alongside body-frame IMU measurements (specific force and angular rate). The extended duration ensures statistical stationarity while capturing low-frequency drift dynamics. Directional seas employ a randomized $\cos^{2s}$ spread about a nominal direction, with each spectral component receiving independent phase randomization while maintaining ensemble energy consistency.
@@ -131,7 +128,7 @@ We include, per representative run, a multi-panel diagnostic suite that tells th
 These visual narratives illuminate how the $\sigma_a\tau^3$ law stabilizes low-frequency drift without degrading swell response—a delicate balance that separates robust marine filters from academic curiosities.
 
 \subsection{Discussion: Physics-Informed Filtering Emerges}
-Across non-linear single-component waves (Gerstner, Fenton, cnoidal), the filter captures vertical kinematics with remarkably low RMS\%Hs and maintains bounded horizontal drift despite significant attitude motion—a testament to the anisotropic process model's physical grounding. In directional seas (JONSWAP, PM-Stokes), the combination of anisotropic process noise and the $\tau(f)$ adaptation elegantly tracks the evolving peak period while preserving yaw observability once magnetometer updates engage.
+Across non-linear single-component waves (Fenton, cnoidal), the filter captures vertical kinematics with remarkably low RMS\%Hs and maintains bounded horizontal drift despite significant attitude motion—a testament to the anisotropic process model's physical grounding. In directional seas (JONSWAP, PM-Stokes), the combination of anisotropic process noise and the $\tau(f)$ adaptation elegantly tracks the evolving peak period while preserving yaw observability once magnetometer updates engage.
 
 \textbf{The critical insight}: Terminal \SI{60}{s} statistics correlate strongly with the stabilized tuner state. Performance outliers consistently align with $\sigma_a$ under- or over-estimation episodes, highlighting the profound importance of the EWMA horizons in the auto-tuner design. This suggests that future improvements should focus on even more robust variance estimation during rapid sea-state transitions rather than fundamental filter structure changes.
 
