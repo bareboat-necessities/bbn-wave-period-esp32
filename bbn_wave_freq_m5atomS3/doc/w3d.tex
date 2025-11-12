@@ -34,8 +34,13 @@
 \newcommand{\pct}[1]{#1\%}
 \newcommand{\ci}[2]{#1\,{\tiny(\,#2\,CI\,)}}
 
-% Make display equations typeset in \small
-\everydisplay\expandafter{\the\everydisplay\small}
+\usepackage{etoolbox}
+\AtBeginEnvironment{equation}{\small}
+\AtBeginEnvironment{align}{\small}
+\AtBeginEnvironment{gather}{\small}
+\AtBeginEnvironment{multline}{\small}
+\AtBeginEnvironment{flalign}{\small}
+\AtBeginEnvironment{alignat}{\small}
 
 % Reduce spacing before/after headings
 \titlespacing*{\section}{0pt}{1.0ex plus .2ex}{0.6ex}
