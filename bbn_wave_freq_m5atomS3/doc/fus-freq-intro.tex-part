@@ -1,107 +1,175 @@
 \section{Frequency Tracking from Vertical Specific Force}
 \label{sec:freq-tracking}
 
-\paragraph{Why acceleration, not displacement.}
-We treat the IMU vertical specific force $a_z$ (including the standard gravity sign convention used in the estimator) as the primary observable to infer the dominant \emph{acceleration} frequency $f$ of the sea state. Compared with displacement, $a_z$ offers (i) stronger observability at short horizons, (ii) more favorable SNR under sensor bias/low-frequency drift, and (iii) a direct link to the OU-driven latent acceleration model used by the MEKF. The fusion layer normalizes by $g$ and forwards $a_z/g$ to the trackers.
+\paragraph{Signal.}
+Track frequency from the vertical specific force $a_z(t)$ (IMU, body $\to$ world aligned), normalized by $g$:
+\[
+u(t)=\frac{a_z(t)}{g}.
+\]
+Let $\omega=2\pi f$ and $\phi(t)=\int_0^t \omega(\tau)\,d\tau$.
 
-\subsection{Trackers: complementary designs}
-We maintain interchangeable “tracker policies.” Each outputs a scalar frequency $f$ (and, when available, a phase $\phi$) that feeds adaptation. All trackers operate on the same input $a_z/g$ and are wrapped by a light EMA smoother and safety clamps.
+\subsection{Aranovskiy-type adaptive resonator}
+Internal lightly damped resonator driven by $u$:
+\begin{align}
+\ddot\xi + 2\zeta\,\omega\,\dot\xi + \omega^2 \xi &= u, \\
+e &= u - \xi, \qquad y=\dot\xi .
+\end{align}
+Frequency adaptation (gradient/energy-based) with projection $\mathcal{P}_{[\omega_{\min},\omega_{\max}]}$:
+\begin{align}
+\dot\omega &= \gamma_\omega\, e\, y, \qquad \omega \leftarrow \mathcal{P}_{[\omega_{\min},\omega_{\max}]}(\omega).
+\end{align}
+Discrete-time (sample $k$ at $\Delta t$):
+\[
+\omega_{k+1} \!=\! \mathcal{P}\!\left(\omega_k + \gamma_\omega\, e_k\, y_k\, \Delta t\right).
+\]
+Low-pass the readout with EMA $\alpha_f$:
+\(
+\hat f_k=(1-\alpha_f)\hat f_{k-1}+\alpha_f \frac{\omega_k}{2\pi}.
+\)
 
-\paragraph{Aranovskiy adaptive observer (model-based).}
-Conceptually, this observer instantiates a lightly damped internal oscillator $\ddot{\xi} + 2\zeta\omega\dot{\xi} + \omega^2 \xi = u$ (with $u\!=\!a_z/g$) and adapts its natural frequency $\omega$ so that the internal resonator \emph{co-locks} to the measured tone. The adaptation law can be read as a gradient flow on an energy-shaping error functional: when the resonator is on-tune, the cross-terms vanish and the frequency update stalls; away from resonance, the update drives $\omega$ toward the dominant spectral line. Practically, we (i) bound $\omega \in [\omega_{\min},\omega_{\max}]$, (ii) set a conservative adaptation gain to avoid limit cycles in multimodal seas, and (iii) reset gently after long dropouts. This design is fast to lock given a reasonable initial guess.
+\subsection{\textsc{KalmANF}: Kalman-updated adaptive notch}
+Embed a second-order notch with parameter $a=2\cos\omega \in(-2,2)$:
+\begin{align}
+x_{k+1} &= \begin{bmatrix} 0 & 1 \\ -1 & a_k \end{bmatrix} x_k + \begin{bmatrix} 0 \\ 1 \end{bmatrix} u_k, \qquad
+y_k = \begin{bmatrix} 1 & 0 \end{bmatrix} x_k,\\
+a_{k+1} &= a_k + w_k, \quad w_k\sim\mathcal{N}(0,q_a).
+\end{align}
+Treat $a$ as a scalar state; run a (scalar) Kalman correction on $a$ using the instantaneous prediction error $\varepsilon_k=u_k-y_k$:
+\begin{align}
+\tilde a_k &= a_k, \quad P^-_k=P_{k-1}+q_a, \\
+K_k &= \frac{P^-_k\,\partial \varepsilon_k/\partial a}{(\partial \varepsilon_k/\partial a)^2 P^-_k + r}, \\
+a_k &\leftarrow \tilde a_k + K_k\,\varepsilon_k,\qquad
+P_k=(1-K_k\,\partial \varepsilon_k/\partial a)P^-_k,
+\end{align}
+with $\partial \varepsilon_k/\partial a$ computed from the notch state recursion (one-step sensitivity). Frequency readout:
+\[
+\hat\omega_k=\arccos\!\left(\tfrac{1}{2}\,\mathrm{clip}(a_k,-2,2)\right), \quad \hat f_k=\hat\omega_k/(2\pi).
+\]
+Finally, smooth $\hat f_k$ with EMA horizon $\tau_{\mathrm{freq}}$.
 
-\paragraph{\textsc{KalmANF}: Kalman-updated adaptive notch (data-driven).}
-Here the frequency is encoded by the notch parameter $a = 2\cos\omega$ of a second-order IIR prototype. We embed the notch in a short state machine (two lagged resonator states) and treat $a$ as a \emph{scalar state} corrected by a Kalman update from the instantaneous prediction error. Internal time-scaling and bounding $a \in (-2,2)$ guarantee numerical stability at low frequencies; the readout $\hat{\omega}=\arccos(\hat{a}/2)$ yields $f=\hat{\omega}/(2\pi)$. Intuitively, the filter chooses $a$ that minimizes output energy at the candidate notch: the correct frequency maximally suppresses the line, yielding a steep local optimum.
+\subsection{Zero-crossing baseline with hysteresis}
+Times of upcrossings of $u$ through band $[-h,+h]$ (debounced by $T_{\mathrm{deb}}$). Period estimate
+\(
+\hat T_k=(1-\alpha_T)\hat T_{k-1}+\alpha_T (t_k-t_{k-1}), \quad \hat f_k=1/\hat T_k.
+\)
 
-\paragraph{Schmitt-trigger zero‐crossing (robust baseline).}
-A hysteretic crossing detector with debounce enforces a minimum dwell around each crossing, thereby mitigating chatter under noise. It produces cycle times, a running period estimate, and a crude phase proxy. While it lacks model structure, it is extremely robust and provides a bounded-variance baseline in chop and during transients.
+\paragraph{Common guard rails.}
+Clamp $\hat f_k \in [f_{\min}, f_{\max}]$, then apply a short EMA:
+\(
+\bar f_k=(1-\alpha_s)\bar f_{k-1}+\alpha_s \hat f_k.
+\)
 
-\subsection{Smoothing and guard rails}
-Tracker outputs are smoothed by an exponential moving average with a short horizon (order $5$\,s) and then clamped to a physically plausible band (e.g., $f \in [0.1,\,5]$\,Hz). This prevents the adaptation loop from reacting to spurious excursions and provides a uniform interface to the estimator.
+% =======================================================
 
 \section{Variance-Informed Online Adaptation}
 \label{sec:adaptation}
 
-\paragraph{What we adapt.}
-At runtime we adapt three quantities that control the drift–lag trade-off of the OU-driven integrator chain: (i) the OU time constant $\tau$, (ii) the stationary acceleration level $\sigma_a$, and (iii) the covariance of the integral pseudo-measurement $R_S$ used to softly regularize displacement integrals.
-
-\subsection{Estimators behind adaptation}
-We maintain two de-biased exponential estimators:
+\subsection{Debiased variance and frequency smoothers}
+With step $\Delta t$, define debiased EMAs for mean and second moment:
 \begin{align}
-\widehat{\mu}_a(t) &\leftarrow \text{Debiased-EMA}(a_z;\ \tau_{\text{var}}),\\
-\widehat{\sigma}_a^2(t) &\leftarrow \text{Debiased-EMA}(a_z^2;\ \tau_{\text{var}}) - \widehat{\mu}_a^2(t),\\
-\widehat{f}(t) &\leftarrow \text{EMA}(\text{tracker\_}f;\ \tau_{\text{freq}}).
+\alpha_{\mathrm{var}} &= 1-e^{-\Delta t/\tau_{\mathrm{var}}}, \qquad
+\alpha_{\mathrm{freq}} = 1-e^{-\Delta t/\tau_{\mathrm{freq}}}, \\
+m_k &\leftarrow (1-\alpha_{\mathrm{var}})m_{k-1}+\alpha_{\mathrm{var}} u_k, \\
+s_k &\leftarrow (1-\alpha_{\mathrm{var}})s_{k-1}+\alpha_{\mathrm{var}} u_k^2, \\
+w_k &\leftarrow (1-\alpha_{\mathrm{var}})w_{k-1}+\alpha_{\mathrm{var}}, \\
+\widehat{\sigma}_a^2(k) &= \max\!\Big\{0,\ \frac{s_k}{w_k}-\Big(\frac{m_k}{w_k}\Big)^2 \Big\}\, g^2, \\
+\bar f_k &\leftarrow (1-\alpha_{\mathrm{freq}})\bar f_{k-1}+\alpha_{\mathrm{freq}}\hat f_k.
 \end{align}
-Typical horizons are $\tau_{\text{var}}\!\approx\!60$\,s (variance) and $\tau_{\text{freq}}\!\approx\!5$\,s (frequency). The target OU time constant is tied to the tracked frequency by the \emph{half-period law}
-\begin{equation}
-\tau_{\star}(t) \;=\; \frac{1}{2\,\widehat{f}(t)}\,,
-\end{equation}
-reflecting that the OU process should decorrelate roughly over half a cycle of the dominant swell.
 
-\subsection{The $\sigma_a\tau^3$ regularization law}
-We set the integral pseudo-measurement covariance proportional to
-\begin{equation}
-R_{S,\star}(t) \;\propto\; \widehat{\sigma}_a(t)\;\tau_{\star}^3(t).
-\end{equation}
-The $\tau^3$ scaling follows from the cubic growth of double-integration error for an OU-driven acceleration source: as $\tau$ grows (longer memory), the uncertainty mass transported to displacement increases superlinearly; $R_S$ must grow in lock-step to preserve a constant‐risk constraint on the soft integral penalty. In practice we apply anisotropy $(X/Y \ll Z)$ to reflect physics (vertical constraints are tighter) and enforce bounded targets:
+\subsection{Targets and bounds}
+Half-period target for OU time constant:
 \[
-\tau \in [\tau_{\min},\tau_{\max}],\quad
-\sigma_a \in [\sigma_{\min},\sigma_{\max}],\quad
-R_S \in [R_{S,\min},R_{S,\max}].
+\tau_\star(k)=\frac{1}{2\,\bar f_k}, \qquad \tau_\star \in [\tau_{\min},\tau_{\max}].
 \]
-Targets are applied via a slow EWMA (time constant $\sim\!3$\,s, update every $0.1$\,s) to avoid chattering the MEKF covariances.
+Acceleration level:
+\(
+\sigma_{a,\star}(k)=\mathrm{clip}\big(\sqrt{\widehat{\sigma}_a^2(k)},\, \sigma_{\min},\sigma_{\max}\big).
+\)
 
-\paragraph{Numerical safeguards.}
-All measurement updates use the Joseph form; anisotropic process covariances and pseudo-measurement weights are PSD-projected. These details prevent loss of symmetry/positivity under extreme seas and during frequency ramps.
+\subsection{Integral pseudo-measurement covariance}
+\[
+R_{S,\star}(k)=c_R \,\sigma_{a,\star}(k)\,\tau_\star^3(k),
+\]
+with axis anisotropy
+\(
+R_S=\mathrm{diag}( \rho_{xy}\,R_{S,\star},\ \rho_{xy}\,R_{S,\star},\ R_{S,\star} ),\ \rho_{xy}\!\in\!(0,1).
+\)
+
+\subsection{Application to the MEKF}
+Apply targets with slow EWMA (time constant $\tau_{\mathrm{apply}}$; update every $\Delta t_{\mathrm{apply}}$):
+\begin{align}
+\tau_{\mathrm{appl}} &\leftarrow (1-\beta)\tau_{\mathrm{appl}}+\beta \tau_\star, \\
+\sigma_{a,\mathrm{appl}} &\leftarrow (1-\beta)\sigma_{a,\mathrm{appl}}+\beta \sigma_{a,\star}, \\
+R_{S,\mathrm{appl}} &\leftarrow (1-\beta)R_{S,\mathrm{appl}}+\beta R_{S,\star}, \qquad
+\beta=1-e^{-\Delta t_{\mathrm{apply}}/\tau_{\mathrm{apply}}}.
+\end{align}
+MEKF uses Joseph-form updates; OU process covariance is set from $(\tau_{\mathrm{appl}},\sigma_{a,\mathrm{appl}})$; the integral pseudo-measurement uses $R_{S,\mathrm{appl}}$.
+
+% =======================================================
 
 \section{Horizontal Wave Direction: Angle and Sign}
 \label{sec:direction}
 
-\paragraph{Problem framing.}
-We seek the horizontal propagation azimuth modulo $180^\circ$ from the IMU’s horizontal specific force, and we separately infer the \emph{sign} (forward/backward) using vertical–horizontal coupling. The frequency tracker provides $\widehat{f}(t)$ (and, when available, a phase proxy $\phi(t)$), which time-indexes the oscillation.
+\subsection{State and measurement model (angle modulo $180^\circ$)}
+Let $\mathbf{A}_k\in\mathbb{R}^2$ be the horizontal acceleration \emph{amplitude} vector (slowly varying). Phase advances with the tracked frequency:
+\[
+\phi_{k+1}=\phi_k + \omega_k \Delta t, \qquad \omega_k=2\pi \bar f_k, \qquad \phi\gets \mathrm{wrap}_{(-\pi,\pi]}(\phi).
+\]
+Linear-Gaussian model:
+\begin{align}
+\mathbf{A}_{k+1} &= \mathbf{A}_k + \mathbf{w}_k,\quad \mathbf{w}_k\sim\mathcal{N}(0,Q),\\
+\mathbf{z}_k &= \cos\phi_k\, \mathbf{A}_k + \boldsymbol{\eta}_k,\quad \boldsymbol{\eta}_k\sim\mathcal{N}(0,R),
+\end{align}
+where $\mathbf{z}_k=[a_x, a_y]^\top$ (world horizontal specific force).
+Kalman update (Joseph form) with $H_k=\cos\phi_k\, I_2$:
+\begin{align}
+K_k &= P^-_k H_k^\top (H_k P^-_k H_k^\top + R)^{-1},\\
+\mathbf{A}_k &\leftarrow \mathbf{A}^-_k + K_k(\mathbf{z}_k - H_k \mathbf{A}^-_k),\\
+P_k &\leftarrow (I-K_k H_k)P^-_k (I-K_k H_k)^\top + K_k R K_k^\top.
+\end{align}
 
-\subsection{Kalman wave‐direction filter (angle \& uncertainty)}
-Let $\mathbf{A}\!\in\!\mathbb{R}^2$ denote the (slowly varying) horizontal acceleration amplitude vector. At time $t_k$ we model the measurement
-\begin{equation}
-\mathbf{z}_k \;=\; \cos\!\big(\phi_k\big)\,\mathbf{A}_k \;+\; \boldsymbol{\eta}_k,\qquad
-\boldsymbol{\eta}_k \sim \mathcal{N}(0,R),
-\end{equation}
-where $\phi_k$ is the tracked phase (advanced by $\dot{\phi}=\omega$ with $\omega=2\pi\widehat{f}$). A constant-velocity prior on $\mathbf{A}_k$ with small process noise $Q$ suffices in practice. The filter performs a linear Kalman update with
+\subsection{Azimuth, uncertainty, and sign disambiguation}
+Angle modulo $180^\circ$:
 \[
-H_k = \cos(\phi_k)\,I_2,\qquad
-K_k = P_{k|k-1}H_k^\top\!\big(H_k P_{k|k-1} H_k^\top + R\big)^{-1},
+\widehat{\mathbf{d}}=\frac{\mathbf{A}_k}{\|\mathbf{A}_k\|},\quad
+\theta=\mathrm{wrap}_{[0,180)}\!\Big(\mathrm{atan2}(\widehat d_y,\widehat d_x)\cdot\frac{180}{\pi}\Big).
 \]
-and updates the covariance in Joseph form. The \emph{propagation direction} (mod $180^\circ$) is returned as the unit vector
-\[
-\widehat{\mathbf{d}} \;=\; \frac{\mathbf{A}_{k|k}}{\|\mathbf{A}_{k|k}\|},
-\]
-with a sign-stabilized projection: if $\widehat{\mathbf{d}}\cdot \widehat{\mathbf{d}}_{\text{last}}<0$, we flip $\widehat{\mathbf{d}}\!\leftarrow\!-\widehat{\mathbf{d}}$ and apply a mild EWMA to avoid jitter. The reported \emph{angle} is $\theta = \mathrm{wrap}_{[0,180)}(\mathrm{atan2}(\widehat{d}_y,\widehat{d}_x)\cdot 180/\pi)$.
+Sign-stabilization (flip to keep temporal continuity):
+\(
+\widehat{\mathbf{d}}\leftarrow \mathrm{sgn}(\widehat{\mathbf{d}}\!\cdot\!\widehat{\mathbf{d}}_{\mathrm{last}})\,\widehat{\mathbf{d}},
+\)
+then EWMA on $\widehat{\mathbf{d}}$.
 
-\paragraph{Uncertainty (tangent projection).}
-Let $P_{A}$ be the $2\times2$ covariance of $\mathbf{A}_{k|k}$ and let $\mathbf{t}$ be the unit tangent at $\widehat{\mathbf{d}}$ (i.e., $\mathbf{t}=(-\widehat{d}_y,\widehat{d}_x)$). The angular variance is
+Uncertainty (tangent projection). Let $\mathbf{t}=(-\widehat d_y,\widehat d_x)$ and $P_A$ be the $2\times 2$ covariance of $\mathbf{A}_k$:
 \[
-\sigma_{\theta}^2 \;\approx\; \frac{\mathbf{t}^\top P_{A}\,\mathbf{t}}{\|\mathbf{A}_{k|k}\|^2},
+\sigma_\theta^2 \approx \frac{\mathbf{t}^\top P_A \mathbf{t}}{\|\mathbf{A}_k\|^2},\qquad
+\theta_{95}=2\,\sigma_\theta \cdot \frac{180}{\pi}.
 \]
-and we report a $95\%$ bound $2\sigma_{\theta}$ in degrees. This naturally inflates when the amplitude is weak or the covariance along $\mathbf{t}$ grows.
 
-\subsection{Direction sign (wave travel sense)}
-The “sign” is disambiguated by exploiting phase relations between vertical and horizontal components. We form a scalar discriminator that correlates horizontal magnitude with the \emph{slope} of vertical acceleration,
+Sign (travel sense) via vertical–horizontal phase discriminator.
+Define a short-horizon derivative and envelope:
 \[
-s_k \;=\; \langle \|\mathbf{a}_{\!h}(t)\|,\, \tfrac{d}{dt}a_z(t) \rangle_{\,\text{short EWMA}},
+r_k=\left\|\mathbf{z}_k\right\|,\qquad d_k=\frac{a_{z,k}-a_{z,k-1}}{\Delta t}.
 \]
-and pass it through a symmetric, hysteretic decision rule with thresholds $\pm \gamma$:
+Compute a correlation EMA (gain $\alpha_s$):
 \[
-\text{sign}_k \;=\;
-\begin{cases}
-+1, & s_k > +\gamma \ \text{(FORWARD)}\\
--1, & s_k < -\gamma \ \text{(BACKWARD)}\\
-\text{hold}, & \text{otherwise.}
+s_k=(1-\alpha_s)s_{k-1}+\alpha_s\, (r_k\, d_k).
+\]
+Decision with hysteresis $\pm\gamma$:
+\[
+\mathrm{sign}_k=\begin{cases}
++1, & s_k>\gamma,\\
+-1, & s_k<-\gamma,\\
+\mathrm{hold}, & \text{otherwise}.
 \end{cases}
 \]
-Because $\tfrac{d}{dt}a_z$ leads/lag s $\|\mathbf{a}_{\!h}\|$ differently for opposing travel directions, this discriminator breaks the inherent $180^\circ$ symmetry. Debounce and EWMA avoid chatter under amplitude modulation.
+Reported directed azimuth: $\Theta=\mathrm{sign}_k\cdot \theta$ (with $180^\circ$ periodicity handled in post-processing).
 
-\subsection{Placement in the pipeline}
-The direction module runs at the IMU rate, consuming the same smoothed $\widehat{f}(t)$ (and $\phi(t)$ when available) used by adaptation. Yaw observability is activated after an initial magnetometer gate, ensuring heading stability before relying on horizontal kinematics for azimuth reporting.
-
-\paragraph{Design summary.}
-Frequency is tracked on $a_z$ to control $\tau$; variance on $a_z$ controls $\sigma_a$ and, via $\sigma_a\tau^3$, the integral regularization $R_S$. The direction subsystem leverages the tracked phase to estimate azimuth (mod $180^\circ$) with principled uncertainty and uses a vertical–horizontal phase discriminator for the sign. Together these choices couple physics to estimation in a way that is both interpretable and robust.
+\subsection{Timing within the pipeline}
+\[
+\text{tracker}(a_z)\ \rightarrow\ \bar f,\ \phi
+\ \rightarrow\ (\tau_\star,\sigma_{a,\star},R_{S,\star})
+\ \rightarrow\ \text{MEKF update}
+\ \rightarrow\ \text{direction KF}(\mathbf{A},\theta,\theta_{95},\mathrm{sign}).
+\]
+Magnetometer yaw updates activate after a gate $t\ge T_{\mathrm{mag}}$; all covariance updates use Joseph form and PSD projection.
