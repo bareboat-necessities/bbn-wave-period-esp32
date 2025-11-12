@@ -41,6 +41,10 @@
   \def\pct#1{#1\%}%
 }
 
+\usepackage{textcomp} % extra glyphs
+\DeclareUnicodeCharacter{2013}{\textendash}  % map U+2013 to --
+\DeclareUnicodeCharacter{2014}{\textemdash}  % map U+2014 to ---
+
 % Theorems: small header/body
 \newtheoremstyle{bodysmall}
   {3pt}{3pt}{\normalfont\small}{0pt}{\bfseries\small}{.}{0.5em}{}
