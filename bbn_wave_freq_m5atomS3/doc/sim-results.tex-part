@@ -29,10 +29,10 @@ For compactness, we denote each case as \texttt{W1}–\texttt{W4}, spanning from
     \toprule
     Scenario & Model & $H_s$ [m] & $T_p$ [s] & Directional spread \\
     \midrule
-    W1 & \{Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal\} & 0.27 & 3.0  & fixed / randomized \\
-    W2 & \{Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal\} & 1.50 & 5.7  & fixed / randomized \\
-    W3 & \{Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal\} & 4.00 & 8.5  & fixed / randomized \\
-    W4 & \{Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal\} & 8.50 & 11.4 & fixed / randomized \\
+    W1 & \{JONSWAP, PM-Stokes\} & 0.27 & 3.0  & fixed / randomized \\
+    W2 & \{JONSWAP, PM-Stokes\} & 1.50 & 5.7  & fixed / randomized \\
+    W3 & \{JONSWAP, PM-Stokes\} & 4.00 & 8.5  & fixed / randomized \\
+    W4 & \{JONSWAP, PM-Stokes\} & 8.50 & 11.4 & fixed / randomized \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -96,10 +96,8 @@ For each model $\times$ sea-state, we report displacement/attitude accuracy and 
     \toprule
     Case & RMS$_x$ [m] & RMS$_y$ [m] & RMS$_z$ [m] & RMS\%Hs$_x$ & RMS\%Hs$_y$ & RMS\%Hs$_z$ \\
     \midrule
-    W1–Gerstner & — & — & — & — & — & — \\
     W2–JONSWAP  & — & — & — & — & — & — \\
     W3–PM-Stokes& — & — & — & — & — & — \\
-    W4–Fenton   & — & — & — & — & — & — \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -115,10 +113,8 @@ For each model $\times$ sea-state, we report displacement/attitude accuracy and 
     $f$ [Hz] & $\tau$ [s] & $\sigma_a$ [m/s$^2$] &
     $R_S$ (applied) & $R_S$ (target) \\
     \midrule
-    W1–Gerstner & — & — & — & — & — & — & — & — \\
     W2–JONSWAP  & — & — & — & — & — & — & — & — \\
     W3–PM-Stokes& — & — & — & — & — & — & — & — \\
-    W4–Fenton   & — & — & — & — & — & — & — & — \\
     \bottomrule
   \end{tabular}
 \end{table}
