@@ -83,6 +83,18 @@
 \geometry{letterpaper, margin=0.65in}
 \setstretch{0.95}
 
+% More math→bookmark fallbacks to reduce hyperref warnings
+\pdfstringdefDisableCommands{%
+  \def\propto{∝}%
+  \def\sigma{sigma}%
+  \def\tau{tau}%
+  \def\Phi{Phi}%
+  \def\omega{omega}%
+  \def\_{}% drop subscripts in bookmarks
+  \def\cdot{}%
+  \def\;{ }%
+}
+
 \title{A Multiplicative EKF with Latent OU Acceleration for Drift-Robust Wave Kinematics: \\
 Theory, Discretization, and Bias Compensation}
 \author{Mikhail Grushinskiy}
