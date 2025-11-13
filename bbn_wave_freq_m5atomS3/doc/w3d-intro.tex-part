@@ -96,8 +96,7 @@ second-order Stokes corrections. The simulated IMU represents a
 surface-following (Lagrangian) buoy subject to realistic measurement
 noise. Performance is assessed via RMS displacement errors relative to
 the true wave elevation, and results are compared against
-state-of-the-art commercial wave sensors and alternative Kalman and
-frequency-tracking schemes. The OU-based Q-MEKF achieves
+state-of-the-art commercial wave sensors. The OU-based Q-MEKF achieves
 drift-suppressed yet dynamically faithful reconstruction of
 three-dimensional surface motion.
 
