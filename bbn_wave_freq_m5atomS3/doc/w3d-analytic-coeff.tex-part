@@ -77,15 +77,13 @@ expressions (with small-\(x\) Maclaurin fallback handled internally):
 \paragraph{Linear OU chain covariance block \(\mathbf Q_{\!LL}(h)\).}
 Two assembly modes are supported and used in code:
 
-\begin{enumerate}
-\item \textbf{Uncorrelated axes (diagonal stationary variance).}
+\paragraph{Uncorrelated axes (diagonal stationary variance).}
       For each axis \(j\in\{x,y,z\}\) with stationary variance \(\sigma_j^2\),
       the per-axis \(4\times4\) noise is
       \[
       \mathbf Q_{d,\text{axis}} \;=\; q_c\;\mathrm{sym}\,\mathbf K,\qquad
       q_c \equiv \frac{2\,\sigma^2}{\tau}.
       \]
-
 
       Using \(x=h/\tau\), \(\alpha=e^{-x}\), \(e^{-2x}\), and the helper
       \[
@@ -120,7 +118,7 @@ Two assembly modes are supported and used in code:
       \(4\times4\) matrices for \(x,y,z\) (with \(\sigma^2\) set per axis). This
       is exactly what \texttt{QdAxis4x1\_analytic} computes (plus a PSD projection).
 
-\item \textbf{Correlated axes (full stationary covariance \(\bm\Sigma_a\)).}
+\paragraph{Correlated axes (full stationary covariance \(\bm\Sigma_a\)).}
       When cross-axis correlation is enabled, the code assembles
       \[
       \mathbf Q_{\!LL}(h) \;=\;
@@ -131,7 +129,6 @@ Two assembly modes are supported and used in code:
       Kronecker-like assembly used in the implementation (group order
       \([\mathbf v,\mathbf p,\mathbf S,\mathbf a]\)). The result is then
       symmetrized and PSD-projected for numerical hygiene.
-\end{enumerate}
 
 \paragraph{Accelerometer bias block.}
 The accelerometer bias random walk contributes
