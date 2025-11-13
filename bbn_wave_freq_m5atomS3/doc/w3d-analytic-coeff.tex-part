@@ -34,8 +34,6 @@ path that matches the Q-MEKF with piecewise-constant \(\hat{\boldsymbol\omega}=
         with \(\mathbf R,\mathbf B\) the closed-form functions of \(\hat{\boldsymbol\omega}\)
         (exact for isotropic \(\mathbf Q_g\); Simpson quadrature otherwise).
 \end{itemize}
-These are the formulas used by the code’s “exact/structured” path and are PSD-projected
-(Joseph hygiene) as implemented.
 
 \paragraph{Linear OU chain block \(\Phi_{\!LL}(h)\).}
 The linear \(12\times12\) block corresponds to the stacked axes
@@ -60,8 +58,8 @@ placing three identical \(4\times4\) axis transitions on the block diagonal:
 \end{aligned}
 \end{equation}
 
-where \(x=h/\tau\), \(\alpha=e^{-x}\), and the code uses the following **analytic**
-expressions (with small-\(x\) Maclaurin fallback handled internally):
+where \(x=h/\tau\), \(\alpha=e^{-x}\), and the code uses the following 
+expressions:
 \[
 \fitcol{
 \begin{aligned}
