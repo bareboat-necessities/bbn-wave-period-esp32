@@ -1,0 +1,24 @@
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{w3d_jonswap_medium.pgf}}
+  \caption{Kalman 3D filter Euler angle comparison — JONSWAP, medium $H_s$.}
+  \label{fig:w3d_jonswap_medium}
+\end{figure}
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{w3d_pmstokes_medium.pgf}}
+  \caption{Kalman 3D filter Euler angle comparison — PM Stokes, medium $H_s$.}
+  \label{fig:w3d_pmstokes_medium}
+\end{figure}
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{w3d_jonswap_medium_zkin.pgf}}
+  \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration + errors) — JONSWAP, medium $H_s$.}
+  \label{fig:w3d_jonswap_medium_zkin}
+\end{figure}
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{w3d_pmstokes_medium_zkin.pgf}}
+  \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration + errors) — PM Stokes, medium $H_s$.}
+  \label{fig:w3d_pmstokes_medium_zkin}
+\end{figure}
+
