@@ -43,14 +43,12 @@ Let $\mathbf a_w$ be the latent world–frame acceleration (NED). Along each axi
 the chain $\dot{\mathbf v}=\mathbf a_w$, $\dot{\mathbf p}=\mathbf v$,
 $\dot{\mathbf S}=\mathbf p$ is driven by a vector OU process
 \begin{equation}
-\dot{\mathbf a}_w
-= -\tfrac{1}{\tau_a}\,\mathbf a_w
-+ \sqrt{\tfrac{2}{\tau_a}}\;\mathbf L_a\,\mathbf w_a(t),
-\qquad
-\mathbf L_a\mathbf L_a^\top = \bm\Sigma_a,\\
-\quad
-\mathbf 
-w_a\ \text{standard white noise}.
+\begin{aligned}
+\dot{\bm a}_w &= -\tfrac{1}{\tau_a}\,\bm a_w
++ \sqrt{\tfrac{2}{\tau_a}}\;\bm L_a\,\bm w_a(t),\\
+\bm L_a \bm L_a^\top &= \bm\Sigma_a, \qquad
+\text{$\bm w_a$ is standard white noise.}
+\end{aligned}
 \label{eq:ou-ct}
 \end{equation}
 Here $\tau_a>0$ is the correlation time and $\bm\Sigma_a\succ0$ the stationary
