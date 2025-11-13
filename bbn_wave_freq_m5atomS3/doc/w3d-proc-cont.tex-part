@@ -86,6 +86,7 @@ $\mathbf w=[\,\mathbf n_g^\top,\ \mathbf w_{bg}^\top,\
 The continuous-time dynamics are linearized about the nominal trajectory
 and take the block structure
 \[
+\fitcol{
 \mathbf F =
 \begingroup\setlength\arraycolsep{4pt}
 \begin{bmatrix}
@@ -98,6 +99,7 @@ and take the block structure
 \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0
 \end{bmatrix}
 \endgroup,
+}
 \]
 with each block $3\times3$ and block rows corresponding to
 $[\delta\bm\theta,\,\mathbf b_g,\,\mathbf v,\,\mathbf p,\,\mathbf S,\,\mathbf a_w,\,\mathbf b_a]$.
