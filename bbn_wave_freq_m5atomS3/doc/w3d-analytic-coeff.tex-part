@@ -69,8 +69,6 @@ expressions:
 \end{aligned}
 }
 \]
-(These are exactly the \texttt{safe\_phi\_A\_coeffs} values employed by
-\texttt{PhiAxis4x1\_analytic}.)
 
 \paragraph{Linear OU chain covariance block \(\mathbf Q_{\!LL}(h)\).}
 Two assembly modes are supported and used in code:
