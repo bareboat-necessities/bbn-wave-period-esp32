@@ -197,16 +197,6 @@ Decision with hysteresis $\pm\gamma$:
 \]
 Reported directed azimuth: $\Theta=\mathrm{sign}_k\cdot \theta$ (with $180^\circ$ periodicity handled in post-processing).
 
-\subsection{Timing within the pipeline}
-\[
-\text{tracker}(a_z)\ \rightarrow\ \bar f,\ \phi
-\ \rightarrow\ (\tau_\star,\sigma_{a,\star},R_{S,\star})
-\ \rightarrow\ \text{MEKF update}
-\ \rightarrow\ \text{direction KF}(\mathbf{A},\theta,\theta_{95},\mathrm{sign}).
-\]
-Magnetometer yaw updates activate after a gate $t\ge T_{\mathrm{mag}}$; all covariance updates use Joseph form and PSD projection.
-
-% =======================================================
 \section{Implementation and Parameterization}
 \label{sec:impl}
 
