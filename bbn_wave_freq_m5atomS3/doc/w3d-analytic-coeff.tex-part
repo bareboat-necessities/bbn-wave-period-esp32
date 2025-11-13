@@ -110,8 +110,7 @@ expressions:
       }
       \]
       The full \(\mathbf Q_{\!LL}\) is the block-diagonal stacking of these
-      \(4\times4\) matrices for \(x,y,z\) (with \(\sigma^2\) set per axis). This
-      is exactly what \texttt{QdAxis4x1\_analytic} computes (plus a PSD projection).
+      \(4\times4\) matrices for \(x,y,z\) (with \(\sigma^2\) set per axis).
 
 \paragraph{Accelerometer bias block.}
 The accelerometer bias random walk contributes
