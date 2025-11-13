@@ -109,14 +109,10 @@ Two assembly modes are supported and used in code:
       &K_{pp}= \tau^2\!\tfrac{h^3}{3} - 2\tau^3\!\tfrac{h^2}{2} + 2\tau^3 A_1 + \tau^4 h - 2\tau^4 A_0 + \tau^4 B_0,\\
       &K_{Sa}= \tfrac12\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0,\\
       &K_{Sv}= \tfrac12\tau^2\!\Big(\tfrac{h^3}{3} - A_2\Big) - \tau^3\!\Big(\tfrac{h^2}{2} - A_1\Big) + \tau^4\!\Big(h - A_0\Big) - \tau^4\!\big(A_0 - B_0\big),\\
-      \begin{multline}
       &K_{Sp}= \tfrac12\tau^2\!\tfrac{h^4}{4} - \tfrac32\tau^3\!\tfrac{h^3}{3} + 2\tau^4\!\tfrac{h^2}{2} - \tau^5 h\\
                 + \tfrac12\tau^3 A_2 - 2\tau^4 A_1 + 2\tau^5 A_0 - \tau^5 B_0,\\
-      \end{multline}
-      \begin{multline}
       &K_{SS}= \tfrac14\tau^2\!\tfrac{h^5}{5} - \tau^3\!\tfrac{h^4}{4} + 2\tau^4\!\tfrac{h^3}{3} - 2\tau^5\!\tfrac{h^2}{2} + \tau^6 h\\
                 - \tau^4 A_2 + 2\tau^5 A_1 - 2\tau^6 A_0 + \tau^6 B_0.
-      \end{multline}
       \end{aligned}
       }
       \]
