@@ -64,9 +64,11 @@ where \(x=h/\tau\), \(\alpha=e^{-x}\), and the code uses the following **analyti
 expressions (with small-\(x\) Maclaurin fallback handled internally):
 \[
 \fitcol{
-\phi_{va} = -\tau\,(e^{-x}-1),\qquad
-\phi_{pa} = \tau^2\big(x + (e^{-x}-1)\big),\qquad
-\phi_{Sa} = \tau^3\Big(\tfrac12 x^2 - x - (e^{-x}-1)\Big).
+\begin{aligned}
+\phi_{va} &= -\tau\,(e^{-x}-1),\qquad
+\phi_{pa} = \tau^2\big(x + (e^{-x}-1)\big),\\
+\phi_{Sa} &= \tau^3\Big(\tfrac12 x^2 - x - (e^{-x}-1)\Big).
+\end{aligned}
 }
 \]
 (These are exactly the \texttt{safe\_phi\_A\_coeffs} values employed by
