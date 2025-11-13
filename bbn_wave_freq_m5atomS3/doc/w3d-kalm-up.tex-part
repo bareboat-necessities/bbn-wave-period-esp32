@@ -49,13 +49,19 @@ P_{BA} & P_{BL} & P_{BB}
 \]
 Both magnetometer and accelerometer updates produce Jacobians $C$ that are at most block-sparse over
 these three groups. The innovation covariance has the canonical form
-\[
-S \;=\; C\,P^{-}\,C^\top + R \;=\;\\
-\quad C_A P_{AA} C_A^\top \;+\; C_A P_{AL} C_L^\top \;+\; C_L P_{LA} C_A^\top
-\;+\; C_L P_{LL} C_L^\top\\
-\;+\; C_B P_{BB} C_B^\top
-\;+\; \text{(cross terms)} \;+\; R,
-\]
+\begin{equation}
+\begin{aligned}
+S &= C P^{-} C^\top + R \\
+  &= C_A P_{AA} C_A^\top
+   + C_A P_{AL} C_L^\top
+   + C_L P_{LA} C_A^\top \\
+  &\quad
+   + C_L P_{LL} C_L^\top
+   + C_B P_{BB} C_B^\top
+   + \text{(cross terms)} + R .
+\end{aligned}
+\end{equation}
+
 and the cross-covariance factor
 \[
 \fitcol{
