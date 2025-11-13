@@ -106,6 +106,7 @@ $[\delta\bm\theta,\,\mathbf b_g,\,\mathbf v,\,\mathbf p,\,\mathbf S,\,\mathbf a_
 
 The diffusion matrix $\mathbf L$ injects the independent process noises:
 \[
+\fitcol{
 \mathbf L =
 \begingroup\setlength\arraycolsep{4pt}
 \begin{bmatrix}
@@ -123,6 +124,7 @@ The diffusion matrix $\mathbf L$ injects the independent process noises:
 = \mathrm{blkdiag}\!\left(
 \mathbf Q_g,\ \mathbf Q_{bg},\ \mathbf I_3,\ \mathbf Q_{ba}
 \right).
+}
 \]
 
 Hence the full continuous-time process model compactly reads
