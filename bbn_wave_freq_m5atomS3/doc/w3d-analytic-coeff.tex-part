@@ -41,19 +41,25 @@ These are the formulas used by the code’s “exact/structured” path and are 
 The linear \(12\times12\) block corresponds to the stacked axes
 \([\mathbf v,\mathbf p,\mathbf S,\mathbf a_w]\) (3D). It is formed by
 placing three identical \(4\times4\) axis transitions on the block diagonal:
-\[
-\fitcol{
-\Phi_{\!LL}(h) = \mathrm{blkdiag}\!\big(\Phi_{\text{axis}},\,\Phi_{\text{axis}},\,\Phi_{\text{axis}}\big),
-\quad
-\Phi_{\text{axis}} =
-\begin{bmatrix}
-1 & 0 & 0 & \phi_{va}\\
-h & 1 & 0 & \phi_{pa}\\
-\frac{1}{2}h^2 & h & 1 & \phi_{Sa}\\
-0 & 0 & 0 & \alpha
-\end{bmatrix},
-}
-\]
+\begin{equation}
+\begin{aligned}
+\Phi_{\!LL}(h)
+  &= \mathrm{blkdiag}\!\big(
+      \Phi_{\text{axis}},
+      \Phi_{\text{axis}},
+      \Phi_{\text{axis}}
+     \big),\\[4pt]
+\Phi_{\text{axis}}
+  &=
+  \begin{bmatrix}
+  1 & 0 & 0 & \phi_{va}\\
+  h & 1 & 0 & \phi_{pa}\\
+  \tfrac{1}{2}h^2 & h & 1 & \phi_{Sa}\\
+  0 & 0 & 0 & \alpha
+  \end{bmatrix}.
+\end{aligned}
+\end{equation}
+
 where \(x=h/\tau\), \(\alpha=e^{-x}\), and the code uses the following **analytic**
 expressions (with small-\(x\) Maclaurin fallback handled internally):
 \[
