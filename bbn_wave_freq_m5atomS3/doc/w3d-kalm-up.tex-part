@@ -48,14 +48,17 @@ P_{BA} & P_{BL} & P_{BB}
 Both magnetometer and accelerometer updates produce Jacobians $C$ that are at most block-sparse over
 these three groups. The innovation covariance has the canonical form
 \[
+\fitcol{
 S \;=\; C\,P^{-}\,C^\top + R \;=\; 
 C_A P_{AA} C_A^\top \;+\; C_A P_{AL} C_L^\top \;+\; C_L P_{LA} C_A^\top
 \;+\; C_L P_{LL} C_L^\top
 \;+\; C_B P_{BB} C_B^\top
 \;+\; \text{(cross terms)} \;+\; R,
+}
 \]
 and the cross-covariance factor
 \[
+\fitcol{
 PC^\top \;=\; P^{-} C^\top \;=\;
 \begin{bmatrix}
 P_{AA} C_A^\top + P_{AL} C_L^\top + P_{AB} C_B^\top\\
@@ -63,6 +66,7 @@ P_{LA} C_A^\top + P_{LL} C_L^\top + P_{LB} C_B^\top\\
 P_{BA} C_A^\top + P_{BL} C_L^\top + P_{BB} C_B^\top
 \end{bmatrix}
 \;\in\; \mathbb{R}^{N\times 3}.
+}
 \]
 Hence the gain \(K\) is \emph{entirely determined} by a single $3\times 3$ solve:
 \[
@@ -73,30 +77,38 @@ This characterization makes no algorithmic assumption: it is a direct algebraic 
 \paragraph{Magnetometer (attitude–only).}
 The magnetic field measurement depends on attitude only; with the standard sign fix one has
 \[
+\fitcol{
 \boldsymbol{z}_{\text{mag}} \;=\; R_{wb}\,\mathbf{B}_w + \boldsymbol{\nu}_m,\qquad
 C=\bigl[\,C_A\ \ 0\ \ 0\,\bigr],\quad
 C_A \;=\; -\bigl[\hat{\boldsymbol{v}}_2\bigr]_\times\in\mathbb{R}^{3\times 3}.
+}
 \]
 It follows that
 \[
+\fitcol{
 S \;=\; C_A P_{AA} C_A^\top + R_{\text{mag}},\qquad
 PC^\top \;=\; \begin{bmatrix}P_{AA} C_A^\top\\ P_{LA} C_A^\top\\ P_{BA} C_A^\top\end{bmatrix},
 \qquad
 K \;=\; (PC^\top) S^{-1}.
+}
 \]
 The posterior covariance then follows from the Joseph form, and the right–multiplicative attitude correction is applied to the quaternion, after which the attitude error subvector is reset.
 
 \paragraph{Accelerometer (attitude + latent $\mathbf{a}_w$ + bias $\mathbf{b}_a$).}
 For specific force in body coordinates,
 \[
+\fitcol{
 \boldsymbol{z}_{\text{acc}} \;=\; R_{wb}\bigl(\mathbf{a}_w-\mathbf{g}\bigr) + \mathbf{b}_a + \boldsymbol{\nu}_a,
+}
 \]
 the Jacobian touches three groups:
 \[
+\fitcol{
 C=\bigl[\,C_A\ \ C_L\ \ C_B\,\bigr],\quad
 C_A = -\bigl[\hat{\boldsymbol{f}}_b\bigr]_\times,\quad
 C_L = \begin{bmatrix}0_{3\times 9} & R_{wb}\end{bmatrix},\quad
 C_B = I_3.
+}
 \]
 The rank–3 structure again yields
 \[
