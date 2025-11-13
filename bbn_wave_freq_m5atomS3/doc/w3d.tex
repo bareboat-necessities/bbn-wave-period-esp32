@@ -44,6 +44,11 @@
   \def\pct#1{#1\%}%
   \def\circ{deg}%
   \def\degree{deg}% siunitx \degree if it leaks into bookmarks
+  \def\propto{∝}%
+  \def\sigma{sigma}%
+  \def\tau{tau}%
+  \def\Phi{Phi}%
+  \def\omega{omega}%
   \def\_{}%
   \def\cdot{}%
   \def\;{ }%
@@ -128,20 +133,6 @@
 
 \geometry{letterpaper, margin=0.65in}
 \setstretch{0.95}
-
-\allowdisplaybreaks
-
-% More math→bookmark fallbacks to reduce hyperref warnings
-\pdfstringdefDisableCommands{%
-  \def\propto{∝}%
-  \def\sigma{sigma}%
-  \def\tau{tau}%
-  \def\Phi{Phi}%
-  \def\omega{omega}%
-  \def\_{}%
-  \def\cdot{}%
-  \def\;{ }%
-}
 
 \title{A Multiplicative EKF with Latent OU Acceleration for Drift-Robust Wave Kinematics: \\
 Theory, Discretization, and Bias Compensation}
