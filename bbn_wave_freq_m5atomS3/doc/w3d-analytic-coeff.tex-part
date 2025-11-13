@@ -71,7 +71,6 @@ expressions:
 \]
 
 \paragraph{Linear OU chain covariance block \(\mathbf Q_{\!LL}(h)\).}
-Two assembly modes are supported and used in code:
 
 \paragraph{Uncorrelated axes (diagonal stationary variance).}
       For each axis \(j\in\{x,y,z\}\) with stationary variance \(\sigma_j^2\),
