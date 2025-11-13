@@ -207,39 +207,12 @@ This section provides concrete values and guards so others can reproduce the beh
 
 \paragraph{Sampling.} IMU and estimator run at $f_s=\SI{240}{Hz}$ ($\Delta t=1/f_s$). Magnetometer updates are gated for $T_{\mathrm{mag}}=\SI{5}{s}$ after start.
 
-\paragraph{Bounds and guards.} Frequency and OU targets are clamped as
-\[
-f\in[f_{\min},f_{\max}],\quad f_{\min}=\SI{0.1}{Hz},\ f_{\max}=\SI{5.0}{Hz},
-\]
-\[
-\tau\in[\tau_{\min},\tau_{\max}],\quad \tau_{\min}=\SI{0.5}{s},\ \tau_{\max}=\SI{8.5}{s},
-\]
-\[
-\sigma_a\in[\sigma_{\min},\sigma_{\max}],\quad \sigma_{\min}=\SI{0.3}{m/s^2},\ \sigma_{\max}=\SI{8.0}{m/s^2}.
-\]
-Integral pseudo-measurement covariance is bounded $R_S\in[R_{S,\min},R_{S,\max}]$ with $R_{S,\min}=0.1$, $R_{S,\max}=35$ (units consistent with the integral constraint).
-
-\paragraph{Smoothers.} Debiased EWMA horizons:
-\[
-\tau_{\mathrm{var}}=\SI{60}{s}\quad(\widehat{\sigma}_a^2),\qquad
-\tau_{\mathrm{freq}}=\SI{5}{s}\quad(\bar f).
-\]
-Exponential gains use $\alpha=1-e^{-\Delta t/\tau}$.
-
-\paragraph{Adaptation cadence.} Targets $\{\tau_\star,\sigma_{a,\star},R_{S,\star}\}$ are applied every $\Delta t_{\mathrm{apply}}=\SI{0.1}{s}$ with EWMA time constant $\tau_{\mathrm{apply}}=\SI{3.0}{s}$. Online tuning is held off for an initial warm-up $T_{\mathrm{warm}}=\SI{35}{s}$.
-
 \paragraph{Regularization law.} With $c_R$ a dimensionless gain and XY anisotropy $\rho_{xy}\in(0,1)$:
 \[
 R_{S,\star}=c_R\,\sigma_{a,\star}\,\tau_\star^3,\qquad
 R_S=\mathrm{diag}(\rho_{xy}R_{S,\star},\,\rho_{xy}R_{S,\star},\,R_{S,\star}),
 \]
 typical values $c_R\in[2.4,2.5]$, $\rho_{xy}\in[0.05,0.07]$.
-
-\paragraph{Direction KF defaults.} Process/measurement covariances for the horizontal amplitude vector $\mathbf{A}\in\mathbb{R}^2$:
-\[
-Q=10^{-6} I_2,\qquad R=10^{-2} I_2,
-\]
-phase gate $|\cos\phi|<10^{-3}$ skips the measurement update (Joseph form always). Direction unit-vector smoothing uses EWMA with $\alpha_{\theta}=0.05$ and sign-stabilization via dot-product continuity.
 
 \paragraph{Reproducibility table.}
 \begin{table}[t]
