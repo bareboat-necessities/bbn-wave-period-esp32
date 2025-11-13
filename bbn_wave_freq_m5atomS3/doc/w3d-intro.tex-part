@@ -88,13 +88,9 @@ which links displacement drift suppression to the stochastic excitation
 strength. The resulting filter continuously matches its internal model
 to the prevailing sea state.
 
-\subsection*{Stability and Empirical Validation}
+\subsection*{Validation}
 
-The stability of the adaptive algorithm is analyzed using a Lyapunov
-approach. By defining a candidate function in the joint state--parameter
-space and bounding its time derivative, we show that the estimation
-error dynamics are input-to-state stable (ISS) under bounded adaptation
-rates. The complete filter is validated using synthetic data generated
+The complete filter is validated using synthetic data generated
 from directional JONSWAP and Pierson--Moskowitz wave spectra with
 second-order Stokes corrections. The simulated IMU represents a
 surface-following (Lagrangian) buoy subject to realistic measurement
@@ -121,8 +117,6 @@ The main contributions of this work are:
   \item A formulation that does not rely on hydrodynamic equations; it
         assumes oscillatory kinematics with slowly varying spectra and
         leverages high-rate inertial data.
-  \item A Lyapunov-based stability proof for the adaptive update law,
-        ensuring boundedness under realistic conditions.
   \item Empirical validation on simulated directional sea spectra,
         demonstrating superior drift suppression and physical fidelity
         compared to existing methods.
