@@ -87,9 +87,11 @@ Two assembly modes are supported and used in code:
 
       Using \(x=h/\tau\), \(\alpha=e^{-x}\), \(e^{-2x}\), and the helper
       \[
+      \fitcol{
       A_0=-\tau\,(e^{-x}-1),\quad
       A_1=\tau^2\!\left(\!-(e^{-x}-1)-x\,\alpha\right),\quad
       A_2=\tau^3\!\left(\!-2(e^{-x}-1)+\alpha\,x(x{+}2)\right),
+      }
       \]
       \[
       B_0= -\frac{\tau}{2}\,(e^{-2x}-1),
