@@ -41,5 +41,4 @@ Given $(\hat{\mathbf x}_k,\mathbf P_k)$ at $t_k$, the prediction to $t_{k+1}=t_k
 These equations are the discrete counterparts of the continuous Lyapunov/Riccati
 flow with $\mathbf F$ and $\mathbf L$ the Jacobian dynamics and noise–input matrices
 defined in \S\ref{sec:lti-sde}. In our implementation, $\Phi$ and $\mathbf Q_d$
-are either (i) computed analytically for the OU–driven kinematic blocks, or
-(ii) obtained from the Van Loan construction \eqref{eq:van-loan} for generic blocks.
+are computed analytically for the OU–driven kinematic blocks.
