@@ -18,8 +18,7 @@ Over a small step $h>0$, the exact discrete transition of the mean is
 \;+\; \int_{0}^{h} e^{\mathbf F (h-\tau)}\,\mathbf L\,\mathbf w_c(t{+}\tau)\,d\tau.
 \end{equation}
 The matrix exponential is defined by the absolutely convergent series
-$e^{\mathbf F h}=\sum_{k=0}^{\infty}\frac{(\mathbf F h)^k}{k!}$ and is computed in practice
-by scaling–squaring with Padé approximants. In this setting \(\Phi(h)=e^{\mathbf F h}\) is the
+$e^{\mathbf F h}=\sum_{k=0}^{\infty}\frac{(\mathbf F h)^k}{k!}$ . In this setting \(\Phi(h)=e^{\mathbf F h}\) is the
 \emph{discrete state transition}.
 
 \paragraph{Discrete process covariance.}
