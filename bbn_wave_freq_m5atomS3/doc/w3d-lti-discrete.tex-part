@@ -31,45 +31,6 @@ variation-of-constants formula,
 \int_{0}^{h} e^{\mathbf F \tau}\,\mathbf L\,\mathbf Q_c\,\mathbf L^\top\,e^{\mathbf F^\top \tau}\,d\tau.
 \label{eq:Qd-integral}
 \end{equation}
-This integral is exact for LTI systems and is positive semidefinite.
-
-\paragraph{Van Loan block–exponential construction (exact).}
-Define the $2n\times 2n$ block matrix (with $n$ the state dimension)
-\[
-\mathbf A =
-\begin{bmatrix}
-\mathbf F & \mathbf L\,\mathbf Q_c\,\mathbf L^\top \\
-\mathbf 0 & -\mathbf F^\top
-\end{bmatrix}.
-\]
-Then
-\begin{equation}
-e^{\mathbf A h}
-=
-\begin{bmatrix}
-\Phi(h) & \mathbf S(h)\\
-\mathbf 0 & \Phi(h)^{-\top}
-\end{bmatrix},
-\qquad
-\mathbf Q_d(h) \;=\; \mathbf S(h)\,\Phi(h)^\top.
-\label{eq:van-loan}
-\end{equation}
-This yields \emph{exact} $(\Phi,\mathbf Q_d)$ in one exponential.
-
-\paragraph{Small–step series (useful for $h\!\ll\!1$).}
-For analysis or tiny $h$, the first terms are
-\[
-\fitcol{
-\begin{aligned}
-\Phi(h) &= \mathbf I + \mathbf F h + \tfrac12 \mathbf F^2 h^2 + \mathcal O(h^3),\\
-\mathbf Q_d(h) &= \mathbf L\mathbf Q_c\mathbf L^\top\,h
-+ \tfrac12\!\big(\mathbf F\,\mathbf L\mathbf Q_c\mathbf L^\top
-+ \mathbf L\mathbf Q_c\mathbf L^\top \mathbf F^\top\big)\, h^2
-+ \mathcal O(h^3)
-\end{aligned}
-}
-\]
-(For OU subsystems we later replace these by closed forms to avoid cancellation.)
 
 \paragraph{Discrete Kalman prediction (time update).}
 Given $(\hat{\mathbf x}_k,\mathbf P_k)$ at $t_k$, the prediction to $t_{k+1}=t_k{+}h$ is
