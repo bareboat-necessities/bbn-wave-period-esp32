@@ -2,6 +2,12 @@
 %\documentclass[10pt]
 {extarticle}
 
+\usepackage{pgf}
+\usepackage{float}
+\usepackage{microtype}
+\usepackage{mathrsfs}
+\usepackage{graphicx}
+
 % --- Packages ---
 \usepackage{amsmath, amssymb, amsfonts, bm}
 \usepackage{geometry, setspace}
@@ -17,7 +23,7 @@
 \setlist[description]{before=\normalfont\normalsize, font=\normalfont\bfseries,
   labelsep=0.6em, leftmargin=1.8em, itemsep=2pt, topsep=4pt}
 \usepackage{amsthm}
-\usepackage[nameinlink,capitalise,noabbrev]{cleveref}
+\usepackage[nameinlink, capitalise, noabbrev]{cleveref}
 \usepackage{balance} % optional: balance final page columns
 
 % Two-column tuning
@@ -40,6 +46,8 @@
   \def\pct#1{#1\%}%
 }
 
+% Keep this — needed by PGF outputs that reference \mathdefault
+\providecommand{\mathdefault}[1]{#1}
 
 % --- Engine-safe encoding setup + Unicode punctuation handling ---
 \usepackage{iftex}
@@ -202,7 +210,9 @@ Finally, we discuss tuning strategies and the prospect of adaptive parameter est
 %\input{w3d-proc-symb-assembly.tex-part}
 
 \input{fus-methods.tex-part}
+
 %\input{sim-results.tex-part}
+\input{sim-charts.tex-part}
 
 % Balance final page columns (optional)
 \balance
