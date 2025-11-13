@@ -38,13 +38,13 @@
 
 \begin{figure}[t]\centering
   \adjustbox{max width=\linewidth}{\input{w3d_jonswap_medium_zkin.pgf}}
-  \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration + errors) — JONSWAP, medium $H_s$.}
+  \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration) — JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium_zkin}
 \end{figure}
 
 \begin{figure}[t]\centering
   \adjustbox{max width=\linewidth}{\input{w3d_pmstokes_medium_zkin.pgf}}
-  \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration + errors) — PM Stokes, medium $H_s$.}
+  \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration) — PM Stokes, medium $H_s$.}
   \label{fig:w3d_pmstokes_medium_zkin}
 \end{figure}
 
