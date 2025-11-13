@@ -121,6 +121,7 @@ The diffusion matrix $\mathbf L$ injects the independent process noises:
 \end{bmatrix}
 \endgroup,
 \qquad
+\\
 \mathbb E[\mathbf w\,\mathbf w^\top]
 = \mathrm{blkdiag}\!\left(
 \mathbf Q_g,\ \mathbf Q_{bg},\ \mathbf I_3,\ \mathbf Q_{ba}
