@@ -60,12 +60,13 @@ This yields \emph{exact} $(\Phi,\mathbf Q_d)$ in one exponential.
 For analysis or tiny $h$, the first terms are
 \[
 \fitcol{
-\begin{align}
-\Phi(h) &= \mathbf I + \mathbf F h + \tfrac12 \mathbf F^2 h^2 + \mathcal O(h^3),\qquad\\
+\begin{aligned}
+\Phi(h) &= \mathbf I + \mathbf F h + \tfrac12 \mathbf F^2 h^2 + \mathcal O(h^3),\\
 \mathbf Q_d(h) &= \mathbf L\mathbf Q_c\mathbf L^\top\,h
-+ \tfrac12\!\left(\mathbf F\,\mathbf L\mathbf Q_c\mathbf L^\top
-+ \mathbf L\mathbf Q_c\mathbf L^\top \mathbf F^\top\right) h^2 + \mathcal O(h^3).
-\end{align}
++ \tfrac12\!\big(\mathbf F\,\mathbf L\mathbf Q_c\mathbf L^\top
++ \mathbf L\mathbf Q_c\mathbf L^\top \mathbf F^\top\big)\, h^2
++ \mathcal O(h^3)
+\end{aligned}
 }
 \]
 (For OU subsystems we later replace these by closed forms to avoid cancellation.)
