@@ -114,18 +114,6 @@ Two assembly modes are supported and used in code:
       \(4\times4\) matrices for \(x,y,z\) (with \(\sigma^2\) set per axis). This
       is exactly what \texttt{QdAxis4x1\_analytic} computes (plus a PSD projection).
 
-\paragraph{Correlated axes (full stationary covariance \(\bm\Sigma_a\)).}
-      When cross-axis correlation is enabled, the code assembles
-      \[
-      \mathbf Q_{\!LL}(h) \;=\;
-      \bm\Sigma_a \ \otimes\ \mathbf Q_{\text{axis}}^{(1)}(h),
-      \]
-      where \(\mathbf Q_{\text{axis}}^{(1)}\) is the \(4\times4\) axis covariance
-      computed with unit variance (\(\sigma^2{=}1\)), and \(\otimes\) is the (blockwise)
-      Kronecker-like assembly used in the implementation (group order
-      \([\mathbf v,\mathbf p,\mathbf S,\mathbf a]\)). The result is then
-      symmetrized and PSD-projected for numerical hygiene.
-
 \paragraph{Accelerometer bias block.}
 The accelerometer bias random walk contributes
 \[
