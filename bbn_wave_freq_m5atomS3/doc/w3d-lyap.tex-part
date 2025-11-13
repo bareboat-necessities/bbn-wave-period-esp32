@@ -61,7 +61,9 @@ Disturbances $d_k$ aggregate process/measurement noise, linearization residue, a
 Let $A(\theta)=\Phi(\theta)-K(\theta)C\Phi(\theta)$ and assume \textup{A4–A5}.
 Then for $\Delta_k := A(\theta_{k+1})-A(\theta_k)$,
 \[
+\fitcol{
 \|\Delta_k\| \;\le\; \Big(L_\Phi + L_K\,\|C\|\,\|\Phi\| + \|K\|\,\|C\|\,L_\Phi\Big)\,\rho \;=:\; L_A\,\rho .
+}
 \]
 \end{lemma}
 
@@ -85,7 +87,9 @@ where $c_1=\tfrac{\lambda_{\max}(P)}{\lambda_{\min}(P)}$ and $c_d>0$ depends on 
 \begin{proof}
 Expand
 \[
+\fitcol{
 V(e_{k+1}) = e_k^\top(A_k+\Delta_k)^\top P (A_k+\Delta_k)e_k + 2e_k^\top(A_k+\Delta_k)^\top P d_k + d_k^\top P d_k.
+}
 \]
 Apply \eqref{eq:cqlf}, the Rayleigh quotient
 $\lambda_{\min}(P)\|e_k\|^2 \le e_k^\top P e_k \le \lambda_{\max}(P)\|e_k\|^2$,
@@ -97,7 +101,9 @@ Finally substitute $\|\Delta_k\|\le L_A\rho$.
 \begin{lemma}[Coupled parameter update bound]\label{lem:coupled}
 Assume \textup{A7–A8}. Then for $\tilde\theta_k=\hat\theta_k-\theta^\star$,
 \[
+\fitcol{
 \|\tilde\theta_{k+1}\|^2 \;\le\; (1-\eta)\|\tilde\theta_k\|^2 + c_\theta\|e_k\|^2,
+}
 \]
 where $\eta>0$ depends on the step size $\Gamma$ and the cocoercivity of $\nabla_\theta\mathcal{L}$,
 and $c_\theta$ depends on its $L_\theta$-Lipschitz constant.
@@ -113,8 +119,10 @@ Let $W_k := V(e_k) + \alpha\|\tilde\theta_k\|^2$ for some $\alpha>0$.
 Under \textup{A1–A8} and $\rho<\rho^\star$ from Lemma~\ref{lem:onestep-corrected},
 there exist class-$\mathcal{KL}$ and class-$\mathcal{K}$ functions $\beta,\gamma$ such that
 \[
+\fitcol{
 \|e_k\| + \|\tilde\theta_k\| \le \beta(\|e_0\|+\|\tilde\theta_0\|,k)
  + \gamma\!\Big(\sup_{0\le j<k}\|d_j\|\Big).
+}
 \]
 If $d_k\!\to\!0$ then $(e_k,\tilde\theta_k)\!\to\!0$; if $d_k$ is bounded, both remain bounded.
 \end{theorem*}
@@ -122,8 +130,10 @@ If $d_k\!\to\!0$ then $(e_k,\tilde\theta_k)\!\to\!0$; if $d_k$ is bounded, both 
 \begin{proof}
 Combine Lemmas~\ref{lem:onestep-corrected} and \ref{lem:coupled}:
 \[
+\fitcol{
 W_{k+1} \le (1-\mu+c_1L_A^2\rho^2)V(e_k)
  + c_d\|d_k\|^2 + \alpha((1-\eta)\|\tilde\theta_k\|^2+c_\theta\|e_k\|^2).
+}
 \]
 Select $\alpha$ small enough that the $\|e_k\|^2$ coefficient is negative.
 Then $W_{k+1}-W_k \le -\varepsilon V(e_k) - \alpha\eta\|\tilde\theta_k\|^2 + c_d\|d_k\|^2$,
@@ -162,7 +172,9 @@ $\hat\tau\!\in[\underline\tau,\overline\tau]$.
 \paragraph{Notation and units.}
 $a_w$ is OU with std.\ $\sigma_a$ and correlation $\tau$,
 \[
+\fitcol{
 \dot a_w = -\tfrac{1}{\tau}a_w + \sqrt{q_c}\,w, \qquad q_c = \tfrac{2\sigma_a^2}{\tau}.
+}
 \]
 The chain $\dot v=a_w,\;\dot p=v,\;\dot S=p$ implies $S$ is the triple time integral of $a_w$.
 $R_S$ is treated as a standard deviation ($R_S^2$ used in covariance).
@@ -179,8 +191,10 @@ Each integration multiplies by $\tau$: $v\sim\sigma_a\tau$, $p\sim\sigma_a\tau^2
 PSD of $a_w$: $S_a(\omega)=\tfrac{2\sigma_a^2\tau}{1+\omega^2\tau^2}$.
 Transfer $H_S(j\omega)=1/(j\omega)^3$; with cutoff $\omega_{\min}\!\sim\!1/\tau$,
 \[
+\fitcol{
 \operatorname{Var}[S] \approx \tfrac{1}{2\pi}\!\int_{1/\tau}^{\infty}\!\!\frac{2\sigma_a^2\tau}{(1+\omega^2\tau^2)\omega^6}d\omega
 \;=\;\Theta(\sigma_a^2\tau^6).
+}
 \]
 Hence $\mathrm{std}(S)\sim C\,\sigma_a\tau^3$ with $C\!=\!\sqrt{1/(5\pi)}$.
 
