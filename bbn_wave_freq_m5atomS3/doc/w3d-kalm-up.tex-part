@@ -31,10 +31,12 @@ is algebraically equivalent and preserves $P^{+}\succeq 0$ up to roundoff.
 In this work the measurement dimension is $m=3$ (vector triads), so the correction is intrinsically
 \emph{rank–3}. The state is ordered as
 \[
-\boldsymbol{x}=\bigl[A^\top,L^\top,B^\top\bigr]^\top,\quad
-A=(\delta\boldsymbol{\theta},\mathbf{b}_g)\in\mathbb{R}^6,\;
-L=(\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)\in\mathbb{R}^{12},\;
-B=\mathbf{b}_a\in\mathbb{R}^3,
+\begin{aligned}
+\boldsymbol{x} &=\bigl[A^\top,L^\top,B^\top\bigr]^\top,\quad\\
+A =(\delta\boldsymbol{\theta},\mathbf{b}_g)\in\mathbb{R}^6,\;
+L &=(\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)\in\mathbb{R}^{12},\;\\
+B =\mathbf{b}_a\in\mathbb{R}^3,
+\end{aligned}
 \]
 with prior covariance partitioned accordingly,
 \[
