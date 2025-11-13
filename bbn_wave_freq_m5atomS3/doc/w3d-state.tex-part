@@ -42,6 +42,7 @@ where each subvector has the following physical meaning:
 
 The complete state dimension is
 \[
+\fitcol{
 N_X =
 \underbrace{3}_{\delta\boldsymbol{\theta}} +
 \underbrace{3}_{\mathbf{b}_g} +
@@ -51,6 +52,7 @@ N_X =
 \underbrace{3}_{\mathbf{a}_w} +
 \underbrace{3}_{\mathbf{b}_a}
 = 21,
+}
 \]
 with both gyro and accelerometer bias.
 
