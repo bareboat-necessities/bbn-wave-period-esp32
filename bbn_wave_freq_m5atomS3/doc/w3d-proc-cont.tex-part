@@ -47,8 +47,9 @@ $\dot{\mathbf S}=\mathbf p$ is driven by a vector OU process
 = -\tfrac{1}{\tau_a}\,\mathbf a_w
 + \sqrt{\tfrac{2}{\tau_a}}\;\mathbf L_a\,\mathbf w_a(t),
 \qquad
-\mathbf L_a\mathbf L_a^\top = \bm\Sigma_a,\quad
-\mathbf \\
+\mathbf L_a\mathbf L_a^\top = \bm\Sigma_a,\\
+\quad
+\mathbf 
 w_a\ \text{standard white noise}.
 \label{eq:ou-ct}
 \end{equation}
@@ -120,8 +121,8 @@ The diffusion matrix $\mathbf L$ injects the independent process noises:
 \mathbf 0 & \mathbf 0 & \mathbf 0 & \Id
 \end{bmatrix}
 \endgroup,
-\qquad
 \\
+\qquad
 \mathbb E[\mathbf w\,\mathbf w^\top]
 = \mathrm{blkdiag}\!\left(
 \mathbf Q_g,\ \mathbf Q_{bg},\ \mathbf I_3,\ \mathbf Q_{ba}
