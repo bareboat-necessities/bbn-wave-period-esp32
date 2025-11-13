@@ -214,27 +214,33 @@ R_S=\mathrm{diag}(\rho_{xy}R_{S,\star},\,\rho_{xy}R_{S,\star},\,R_{S,\star}),
 \]
 typical values $c_R\in[2.4,2.5]$, $\rho_{xy}\in[0.05,0.07]$.
 
-\paragraph{Reproducibility table.}
+% --- Reproducibility table (single-column friendly) ---
 \begin{table}[t]
   \centering
   \caption{Parameters used in all experiments (defaults unless stated).}
   \label{tab:params}
-  \begin{tabular}{@{}ll@{}}
+  % tighter spacing + wrapping columns
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \renewcommand{\arraystretch}{1.05}
+  \begin{tabular}{@{}p{0.56\columnwidth}p{0.38\columnwidth}@{}}
     \toprule
-    Quantity & Value \\
+    \textbf{Quantity} & \textbf{Value} \\
     \midrule
     Sampling rate $f_s$ & \SI{240}{Hz} \\
-    Frequency bounds $(f_{\min},f_{\max})$ & $(0.1,\,5.0)$ Hz \\
-    OU time constant bounds $(\tau_{\min},\tau_{\max})$ & $(0.5,\,8.5)$ s \\
-    Accel std bounds $(\sigma_{\min},\sigma_{\max})$ & $(0.3,\,8.0)$ m/s$^2$ \\
-    $R_S$ bounds $(R_{S,\min},R_{S,\max})$ & $(0.1,\,35)$ \\
+    Frequency bounds $(f_{\min},f_{\max})$ & \SIrange{0.1}{5.0}{Hz} \\
+    OU time constant bounds $(\tau_{\min},\tau_{\max})$ & \SIrange{0.5}{8.5}{s} \\
+    Accel std bounds $(\sigma_{\min},\sigma_{\max})$ & \SIrange{0.3}{8.0}{m/s^2} \\
+    $R_S$ bounds $(R_{S,\min},R_{S,\max})$ & 0.1–35 \\
     Variance horizon $\tau_{\mathrm{var}}$ & \SI{60}{s} \\
     Freq horizon $\tau_{\mathrm{freq}}$ & \SI{5}{s} \\
-    Apply cadence/time constant & $\Delta t_{\mathrm{apply}}=\SI{0.1}{s}$, $\ \tau_{\mathrm{apply}}=\SI{3}{s}$ \\
-    Warm-up $T_{\mathrm{warm}}$; mag gate $T_{\mathrm{mag}}$ & \SI{35}{s}; \SI{5}{s} \\
-    Regularization $(c_R,\rho_{xy})$ & $(2.4\text{–}2.5,\ 0.05\text{–}0.07)$ \\
+    Apply cadence / time const &
+      $\Delta t_{\mathrm{apply}}=\SI{0.1}{s}$; $\tau_{\mathrm{apply}}=\SI{3}{s}$ \\
+    Warm-up; mag gate & \SI{35}{s}; \SI{5}{s} \\
+    Regularization $(c_R,\rho_{xy})$ & $2.4$–$2.5$;\ $0.05$–$0.07$ \\
     Direction KF $(Q,R)$ & $(10^{-6}I_2,\ 10^{-2}I_2)$ \\
-    Direction smoothing $\alpha_\theta$; phase gate & $0.05$;\ $|\cos\phi|<10^{-3}$ \\
+    Dir smoothing $\alpha_\theta$; gate & $0.05$; $|\cos\phi|<10^{-3}$ \\
     \bottomrule
   \end{tabular}
 \end{table}
+
