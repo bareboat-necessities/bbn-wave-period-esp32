@@ -48,7 +48,8 @@ $\dot{\mathbf S}=\mathbf p$ is driven by a vector OU process
 + \sqrt{\tfrac{2}{\tau_a}}\;\mathbf L_a\,\mathbf w_a(t),
 \qquad
 \mathbf L_a\mathbf L_a^\top = \bm\Sigma_a,\quad
-\mathbf w_a\ \text{standard white noise}.
+\mathbf \\
+w_a\ \text{standard white noise}.
 \label{eq:ou-ct}
 \end{equation}
 Here $\tau_a>0$ is the correlation time and $\bm\Sigma_a\succ0$ the stationary
