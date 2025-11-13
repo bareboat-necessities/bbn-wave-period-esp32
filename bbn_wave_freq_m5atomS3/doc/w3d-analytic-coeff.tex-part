@@ -4,11 +4,17 @@
 Let $h>0$ be the sampling step and let the error-state be ordered as in the continuous-time state model.
 We group indices into three blocks:
 \[
-\fitcol{
-\underbrace{(\delta\boldsymbol\theta,\ \mathbf b_g)}_{\text{attitude\,+\,gyro-bias}} \in \mathbb R^{N_A},\quad
-\underbrace{(\mathbf v,\ \mathbf p,\ \mathbf S,\ \mathbf a_w)}_{\text{OU-driven linear chain}} \in \mathbb R^{N_L},\quad
-\underbrace{\mathbf b_a}_{\text{accel-bias}}\in \mathbb R^{N_B},
-}
+\begingroup\small
+\setlength{\arraycolsep}{0.4em}
+\begin{aligned}
+&\underbrace{(\delta\boldsymbol\theta,\ \mathbf b_g)}_{\text{attitude\,+\,gyro-bias}}
+ \in \mathbb{R}^{N_A},\\
+&\underbrace{(\mathbf v,\ \mathbf p,\ \mathbf S,\ \mathbf a_w)}_{\text{OU-driven linear chain}}
+ \in \mathbb{R}^{N_L},\\
+&\underbrace{\mathbf b_a}_{\text{accel-bias}}
+ \in \mathbb{R}^{N_B}.
+\end{aligned}
+\endgroup
 \]
 with $N_A=3$ or $6$ (no/with $\mathbf b_g$), $N_L=12$, $N_B=3$.
 
@@ -42,29 +48,28 @@ The linear \(12\times12\) block corresponds to the stacked axes
 \([\mathbf v,\mathbf p,\mathbf S,\mathbf a_w]\) (3D). It is formed by
 placing three identical \(4\times4\) axis transitions on the block diagonal:
 \[
-\fitcol{
-\Phi_{\!LL}(h) = \mathrm{blkdiag}\!\big(\Phi_{\text{axis}},\,\Phi_{\text{axis}},\,\Phi_{\text{axis}}\big),
-\quad
+\Phi_{\!LL}(h)
+= \mathrm{blkdiag}\!\big(\Phi_{\text{axis}},\,\Phi_{\text{axis}},\,\Phi_{\text{axis}}\big),
+\qquad
 \Phi_{\text{axis}} =
+\begingroup\small\setlength{\arraycolsep}{0.35em}
 \begin{bmatrix}
 1 & 0 & 0 & \phi_{va}\\
 h & 1 & 0 & \phi_{pa}\\
 \frac{1}{2}h^2 & h & 1 & \phi_{Sa}\\
 0 & 0 & 0 & \alpha
-\end{bmatrix},
-}
+\end{bmatrix}
+\endgroup
 \]
 where \(x=h/\tau\), \(\alpha=e^{-x}\), and the code uses the following **analytic**
 expressions (with small-\(x\) Maclaurin fallback handled internally):
 \[
-\fitcol{
-\phi_{va} = -\tau\,(e^{-x}-1),\qquad
-\phi_{pa} = \tau^2\big(x + (e^{-x}-1)\big),\qquad
-\phi_{Sa} = \tau^3\Big(\tfrac12 x^2 - x - (e^{-x}-1)\Big).
-}
+\begin{aligned}
+\phi_{va} &= -\tau\,(e^{-x}-1),\\
+\phi_{pa} &= \tau^2\big(x + (e^{-x}-1)\big),\\
+\phi_{Sa} &= \tau^3\!\Big(\tfrac12 x^2 - x - (e^{-x}-1)\Big).
+\end{aligned}
 \]
-(These are exactly the \texttt{safe\_phi\_A\_coeffs} values employed by
-\texttt{PhiAxis4x1\_analytic}.)
 
 \paragraph{Linear OU chain covariance block \(\mathbf Q_{\!LL}(h)\).}
 Two assembly modes are supported and used in code:
@@ -77,37 +82,40 @@ Two assembly modes are supported and used in code:
       \mathbf Q_{d,\text{axis}} \;=\; q_c\;\mathrm{sym}\,\mathbf K,\qquad
       q_c \equiv \frac{2\,\sigma^2}{\tau}.
       \]
-
-
       Using \(x=h/\tau\), \(\alpha=e^{-x}\), \(e^{-2x}\), and the helper
       \[
       A_0=-\tau\,(e^{-x}-1),\quad
       A_1=\tau^2\!\left(\!-(e^{-x}-1)-x\,\alpha\right),\quad
-      A_2=\tau^3\!\left(\!-2(e^{-x}-1)+\alpha\,x(x{+}2)\right),
-      \]
-      \[
+      A_2=\tau^3\!\left(\!-2(e^{-x}-1)+\alpha\,x(x{+}2)\right),\quad
       B_0= -\frac{\tau}{2}\,(e^{-2x}-1),
       \]
       the code fills \(\mathbf K\) with the following entries
       (all \(h\), \(\tau\)–dependent; \(\mathrm{sym}\) means \(\tfrac12(\cdot+\cdot^\top)\)):
-      \[
-      \fitcol{
-      \begin{aligned}
-      &K_{aa}=B_0,\qquad
-      K_{va}= \tau\,(A_0 - B_0),\\
-      &K_{vv}= \tau^2\!\big(h - 2A_0 + B_0\big),\\
-      &K_{pa}= \tau\,A_1 - \tau^2 A_0 + \tau^2 B_0,\\
-      &K_{pv}= \tau^2\!\Big(\tfrac12h^2 - A_1\Big) - \tau^3\!\Big(h - A_0\Big) + \tau^3\!\big(A_0 - B_0\big),\\
-      &K_{pp}= \tau^2\!\tfrac{h^3}{3} - 2\tau^3\!\tfrac{h^2}{2} + 2\tau^3 A_1 + \tau^4 h - 2\tau^4 A_0 + \tau^4 B_0,\\
-      &K_{Sa}= \tfrac12\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0,\\
-      &K_{Sv}= \tfrac12\tau^2\!\Big(\tfrac{h^3}{3} - A_2\Big) - \tau^3\!\Big(\tfrac{h^2}{2} - A_1\Big) + \tau^4\!\Big(h - A_0\Big) - \tau^4\!\big(A_0 - B_0\big),\\
-      &K_{Sp}= \tfrac12\tau^2\!\tfrac{h^4}{4} - \tfrac32\tau^3\!\tfrac{h^3}{3} + 2\tau^4\!\tfrac{h^2}{2} - \tau^5 h
-                + \tfrac12\tau^3 A_2 - 2\tau^4 A_1 + 2\tau^5 A_0 - \tau^5 B_0,\\
-      &K_{SS}= \tfrac14\tau^2\!\tfrac{h^5}{5} - \tau^3\!\tfrac{h^4}{4} + 2\tau^4\!\tfrac{h^3}{3} - 2\tau^5\!\tfrac{h^2}{2} + \tau^6 h
-                - \tau^4 A_2 + 2\tau^5 A_1 - 2\tau^6 A_0 + \tau^6 B_0.
-      \end{aligned}
-      }
-      \]
+\begingroup\small
+\setlength{\jot}{0.25ex}
+\setlength{\arraycolsep}{0.35em}
+\begin{align}
+K_{aa}&= B_0, &
+K_{va}&= \tau\,(A_0 - B_0), \\
+K_{vv}&= \tau^2\!\big(h - 2A_0 + B_0\big), \\
+K_{pa}&= \tau A_1 - \tau^2 A_0 + \tau^2 B_0, \\
+K_{pv}&= \tau^2\!\Big(\tfrac12 h^2 - A_1\Big)
+        - \tau^3\!\Big(h - A_0\Big) + \tau^3\!\big(A_0 - B_0\big), \\
+K_{pp}&= \tau^2\!\tfrac{h^3}{3} - 2\tau^3\!\tfrac{h^2}{2}
+        + 2\tau^3 A_1 + \tau^4 h - 2\tau^4 A_0 + \tau^4 B_0, \\
+K_{Sa}&= \tfrac12\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0, \\
+K_{Sv}&= \tfrac12\tau^2\!\Big(\tfrac{h^3}{3} - A_2\Big)
+        - \tau^3\!\Big(\tfrac{h^2}{2} - A_1\Big)
+        + \tau^4\!\Big(h - A_0\Big) - \tau^4\!\big(A_0 - B_0\big), \\
+K_{Sp}&= \tfrac12\tau^2\!\tfrac{h^4}{4} - \tfrac32\tau^3\!\tfrac{h^3}{3}
+        + 2\tau^4\!\tfrac{h^2}{2} - \tau^5 h
+        + \tfrac12\tau^3 A_2 - 2\tau^4 A_1 + 2\tau^5 A_0 - \tau^5 B_0, \\
+K_{SS}&= \tfrac14\tau^2\!\tfrac{h^5}{5} - \tau^3\!\tfrac{h^4}{4}
+        + 2\tau^4\!\tfrac{h^3}{3} - 2\tau^5\!\tfrac{h^2}{2} + \tau^6 h
+        - \tau^4 A_2 + 2\tau^5 A_1 - 2\tau^6 A_0 + \tau^6 B_0.
+\end{align}
+\endgroup
+
       The full \(\mathbf Q_{\!LL}\) is the block-diagonal stacking of these
       \(4\times4\) matrices for \(x,y,z\) (with \(\sigma^2\) set per axis). This
       is exactly what \texttt{QdAxis4x1\_analytic} computes (plus a PSD projection).
