@@ -6,7 +6,6 @@
 \section{Frequency Tracking from Vertical Specific Force}
 \label{sec:freq-tracking}
 
-\paragraph{Intuition.}
 We need a stable, real-time estimate of the dominant wave frequency from the IMU. Using the vertical specific force $a_z(t)$, we normalize by gravity to form a dimensionless input $u(t)$ that drives one of three trackers. Each tracker outputs a raw frequency, which is then clamped and smoothed to produce a reliable $\bar f_k$ for downstream adaptation and direction estimation.
 
 \paragraph{Signal.}
@@ -17,7 +16,7 @@ u(t)=\frac{a_z(t)}{g}.
 Let $\omega=2\pi f$ and $\phi(t)=\int_0^t \omega(\tau)\,d\tau$.
 
 \subsection{Aranovskiy-type adaptive resonator}
-\paragraph{Intuition.}
+
 Drive a lightly damped virtual resonator by $u(t)$ and adjust its natural frequency so its output matches the input. If the resonator frequency equals the signal's, the error energy is minimized.
 
 \paragraph{Method.}
@@ -46,7 +45,7 @@ Low-pass the readout with EMA $\alpha_f$:
 \)
 
 \subsection{\textsc{KalmANF}: Kalman-updated adaptive notch}
-\paragraph{Intuition.}
+
 Model the signal with a second-order notch parameterized by $a=2\cos\omega$. Treat $a$ as a (slowly varying) state and update it via a scalar Kalman step driven by the instantaneous prediction error.
 
 \paragraph{Method.}
@@ -70,7 +69,7 @@ with $\partial \varepsilon_k/\partial a$ obtained from the standard state-sensit
 then EMA with horizon $\tau_{\mathrm{freq}}$.
 
 \subsection{Zero-crossing baseline with hysteresis}
-\paragraph{Intuition.}
+
 Use debounced threshold crossings to estimate period directly; smooth to reduce jitter.
 
 \paragraph{Method.}
@@ -89,7 +88,7 @@ Clamp $\hat f_k \in [f_{\min}, f_{\max}]$, then apply a short EMA:
 \section{Variance-Informed Online Adaptation}
 \label{sec:adaptation}
 
-\paragraph{Intuition.}
+
 We adapt three key MEKF parameters---OU time constant, latent acceleration scale, and the integral pseudo-measurement covariance---based on smoothed estimates of frequency and vertical-acceleration variance. Targets are bounded for stability and blended in slowly to avoid transients.
 
 \subsection{Debiased variance and frequency smoothers}
@@ -115,7 +114,7 @@ Acceleration level:
 \)
 
 \subsection{Integral pseudo-measurement covariance}
-\paragraph{Intuition.}
+
 The integral constraint on displacement should be weaker when waves are large/slow (motions integrate to larger excursions). A cubic scaling in $\tau_\star$ captures this.
 
 \paragraph{Law.}
@@ -141,7 +140,6 @@ MEKF uses Joseph-form updates; the OU process covariance is set from $(\tau_{\ma
 \section{Horizontal Wave Direction: Angle and Sign}
 \label{sec:direction}
 
-\paragraph{Intuition.}
 We estimate a slowly varying horizontal acceleration amplitude vector $\mathbf{A}_k$ whose direction gives wave azimuth modulo $180^\circ$. A phase-aware Kalman update uses $\cos\phi_k$ as a gain, and a separate signed discriminator resolves the travel sense using vertical--horizontal phasing.
 
 \subsection{State and measurement model (angle modulo $180^\circ$)}
@@ -202,7 +200,6 @@ Reported directed azimuth: $\Theta=\mathrm{sign}_k\cdot \theta$ (with $180^\circ
 \section{Implementation and Parameterization}
 \label{sec:impl}
 
-\paragraph{Intuition.}
 This section provides concrete values and guards so others can reproduce the behavior and avoid unstable operating regions.
 
 \paragraph{Sampling.} IMU and estimator run at $f_s=\SI{240}{Hz}$ ($\Delta t=1/f_s$). Magnetometer updates are gated for $T_{\mathrm{mag}}=\SI{5}{s}$ after start.
