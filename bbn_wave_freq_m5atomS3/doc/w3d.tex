@@ -1,47 +1,40 @@
-\documentclass[10pt,twocolumn]{extarticle}
+\documentclass[conference]{IEEEtran}
 
+% --- Core packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext,newtxmath} % Times-like text + math (IEEE-style)
+\usepackage{textcomp}
+
+\usepackage{amsmath, amssymb, amsfonts, bm}
 \usepackage{pgf}
 \usepackage{float}
 \usepackage{mathrsfs}
 \usepackage{graphicx}
 \usepackage{placeins} % for \FloatBarrier
-\setcounter{topnumber}{9}
-\setcounter{dbltopnumber}{9}
-\setcounter{totalnumber}{20}
-\renewcommand{\topfraction}{0.97}
-\renewcommand{\dbltopfraction}{0.97}
-\renewcommand{\floatpagefraction}{0.85}
-\renewcommand{\textfraction}{0.03}
-
-% --- Packages ---
-\usepackage{amsmath, amssymb, amsfonts, bm}
-\usepackage{geometry, setspace}
-\usepackage[breaklinks=true]{hyperref}
-\usepackage{bookmark}
-\usepackage{titlesec}
-\usepackage{nccmath, relsize}
 \usepackage{array, booktabs, makecell, adjustbox}
 \usepackage{mathtools}
+\usepackage{nccmath, relsize}
 \usepackage{enumitem}
-\setlist[itemize]{before=\normalfont\normalsize, itemsep=2pt, topsep=4pt, leftmargin=*}
-\setlist[enumerate]{before=\normalfont\normalsize, itemsep=2pt, topsep=4pt, leftmargin=*}
-\setlist[description]{before=\normalfont\normalsize, font=\normalfont\bfseries,
-  labelsep=0.6em, leftmargin=1.8em, itemsep=2pt, topsep=4pt}
 \usepackage{amsthm}
-\usepackage[nameinlink, capitalise, noabbrev]{cleveref}
-\usepackage{balance} % optional: balance final page columns
+\usepackage{cite}
+\usepackage[breaklinks=true]{hyperref}
+\usepackage{bookmark}
+\usepackage{nameinlink, capitalise, noabbrev]{cleveref}
+\usepackage{balance} % balance final page columns
 \usepackage{flafter} % figures/tables won’t appear before they’re defined
-
-% Two-column tuning
-\setlength{\columnsep}{18pt} % space between columns
-\newcommand{\fitcol}[1]{\adjustbox{max width=\columnwidth}{$\displaystyle #1$}}
-
 \usepackage{siunitx}
+\usepackage[final]{microtype}   % better spacing/hyphenation
+\usepackage{etoolbox}
+
 \sisetup{
   detect-weight = true,
   detect-family = true,
   per-mode = symbol,
 }
+
+% Description labels small & bold
+\setlist[description]{font=\footnotesize\bfseries, labelsep=0.6em, leftmargin=1.8em}
 
 % Make math/siunitx safe in PDF bookmarks
 \pdfstringdefDisableCommands{%
@@ -65,32 +58,14 @@
 % Keep this — needed by PGF outputs that reference \mathdefault
 \providecommand{\mathdefault}[1]{#1}
 
-% --- Engine-safe encoding setup + Unicode punctuation handling ---
-\usepackage{iftex}
-
-\ifPDFTeX
-  % pdfLaTeX path: need inputenc/fontenc and map Unicode punctuation
-  \usepackage[utf8]{inputenc}
-  \usepackage[T1]{fontenc}
-  \usepackage{lmodern}
-  \usepackage{textcomp} % provides \textendash, \textemdash, quotes, \textminus
-
-  % Map common Unicode punctuation to TeX macros (only in pdfLaTeX)
-  \DeclareUnicodeCharacter{2013}{\textendash}        % –
-  \DeclareUnicodeCharacter{2014}{\textemdash}        % —
-  \DeclareUnicodeCharacter{2018}{\textquoteleft}     % ‘
-  \DeclareUnicodeCharacter{2019}{\textquoteright}    % ’
-  \DeclareUnicodeCharacter{201C}{\textquotedblleft}  % “
-  \DeclareUnicodeCharacter{201D}{\textquotedblright} % ”
-  \DeclareUnicodeCharacter{2212}{\textminus}         % − (math minus)
-\else
-  % LuaLaTeX/XeLaTeX path: native Unicode, no inputenc/fontenc
-  \usepackage{fontspec}
-  \defaultfontfeatures{Ligatures=TeX}
-  \setmainfont{Latin Modern Roman}
-  \setsansfont{Latin Modern Sans}
-  \setmonofont{Latin Modern Mono}
-\fi
+% Unicode punctuation mappings (pdfLaTeX)
+\DeclareUnicodeCharacter{2013}{\textendash}        % –
+\DeclareUnicodeCharacter{2014}{\textemdash}        % —
+\DeclareUnicodeCharacter{2018}{\textquoteleft}     % ‘
+\DeclareUnicodeCharacter{2019}{\textquoteright}    % ’
+\DeclareUnicodeCharacter{201C}{\textquotedblleft}  % “
+\DeclareUnicodeCharacter{201D}{\textquotedblright} % ”
+\DeclareUnicodeCharacter{2212}{\textminus}         % − (math minus)
 
 % Theorems: small header/body
 \newtheoremstyle{bodysmall}
@@ -119,66 +94,44 @@
 \DeclareMathOperator{\diag}{diag}
 \DeclareMathOperator{\sym}{sym}
 
-% Slightly smaller display math
-\usepackage{etoolbox}
-\AtBeginEnvironment{equation}{\small}
-\AtBeginEnvironment{align}{\small}
-\AtBeginEnvironment{gather}{\small}
-\AtBeginEnvironment{multline}{\small}
-\AtBeginEnvironment{flalign}{\small}
-\AtBeginEnvironment{alignat}{\small}
+% Two-column helper (no layout change)
+\newcommand{\fitcol}[1]{\adjustbox{max width=\columnwidth}{$\displaystyle #1$}}
 
-% Heading spacing + sizes
-\titlespacing*{\section}{0pt}{1.0ex plus .2ex}{0.6ex}
-\titlespacing*{\subsection}{0pt}{0.8ex plus .2ex}{0.4ex}
-\titlespacing*{\subsubsection}{0pt}{0.6ex plus .2ex}{0.3ex}
+% Allow multi-line displays to break across columns
+\emergencystretch=2em
+\allowdisplaybreaks
 
-\titleformat{\section}{\normalfont\small\bfseries}{\thesection}{0.8em}{}
-\titleformat{\subsection}{\normalfont\small\itshape}{\thesubsection}{0.8em}{}
-\titleformat{\subsubsection}{\normalfont\footnotesize\itshape}{\thesubsubsection}{0.8em}{}
-\titleformat{\paragraph}{\normalfont\small\bfseries}{\theparagraph}{0.6em}{}[]
-\titlespacing*{\paragraph}{0pt}{0.4ex plus .1ex}{0.8em}
-
-\usepackage[final]{microtype}   % better spacing/hyphenation
-\emergencystretch=2em           % give TeX extra room before overfull boxes
-\allowdisplaybreaks             % allow multi-line displays to break across columns
-
-% Description labels small & bold
-\setlist[description]{font=\footnotesize\bfseries, labelsep=0.6em, leftmargin=1.8em}
-
-\geometry{letterpaper, margin=0.65in}
-\setstretch{0.95}
-
-\title{A Multiplicative EKF with Latent OU Acceleration for Drift-Robust Wave Kinematics: \\
+% ---- Title & authors (IEEEtran conference style) ----
+\title{A Multiplicative EKF with Latent OU Acceleration for Drift-Robust Wave Kinematics:\\
 Theory, Discretization, and Bias Compensation}
-\author{Mikhail Grushinskiy}
-\date{2025}
+
+\author{%
+\IEEEauthorblockN{Mikhail Grushinskiy}
+\IEEEauthorblockA{Affiliation line 1\\
+Affiliation line 2\\
+Email: your.name@domain}%
+}
 
 \begin{document}
-
-% Full-width title + abstract at top of first page (portable; no cuted needed)
-\twocolumn[
 \maketitle
-\begin{abstract}
-We present a detailed mathematical development of a quaternion multiplicative EKF (MEKF) fused with an extended 
-linear kinematic chain for ocean-wave motion estimation. 
-The method augments attitude (with optional gyroscope and accelerometer bias) by the linear states velocity $\bm v$, displacement $\bm p$, 
-and the integral of displacement $\bm S$, driven by a \emph{latent} world-frame acceleration $\bm a_w$ modeled as an Ornstein--Uhlenbeck (OU) process. The OU prior confers stationary variance and realistic temporal correlation for the latent acceleration, which slows the drift growth in integrated states compared to white-noise forcing. It does not strictly bound the variance of integrated displacement, but ensures covariance growth of displacement is polynomially slower and numerically manageable.
-Biases are explicitly modeled: gyroscope bias as a random walk, accelerometer bias both as random walk and as systematic temperature-dependent drift. 
-A pseudo-measurement is introduced on $\bm S$ to control double integral divergence. 
-We derive continuous- and discrete-time process models, show Rodrigues and Analytic discretizations, and derive explicit Jacobians for accelerometer and magnetometer updates. 
-Finally, we discuss tuning strategies and the prospect of adaptive parameter estimation.
-\end{abstract}
-\vspace{1ex}
-]
 
-% If you want a full-width ToC, do a short single-column page:
-\FloatBarrier
-\onecolumn
-\tableofcontents
-\clearpage
-\twocolumn
-\FloatBarrier
+\begin{abstract}
+We present a detailed mathematical development of a quaternion multiplicative extended Kalman filter fused with an extended
+linear kinematic chain for ocean-wave motion estimation. The method augments attitude, with optional gyroscope and
+accelerometer bias, by linear velocity, displacement, and the integral of displacement, driven by a latent world-frame
+acceleration modeled as an Ornstein--Uhlenbeck process. The Ornstein--Uhlenbeck prior provides stationary variance and
+realistic temporal correlation for the latent acceleration, which slows the growth of drift in integrated states compared
+with white-noise forcing. It does not strictly bound the variance of integrated displacement, but it ensures that covariance
+growth of displacement is polynomially slower and numerically manageable. Biases are explicitly modeled: gyroscope bias as a
+random walk and accelerometer bias as both random walk and systematic temperature-dependent drift. A pseudo-measurement is
+introduced on the integral of displacement to control double-integral divergence. We derive continuous-time and discrete-time
+process models, present Rodrigues and analytic discretizations, and give explicit Jacobians for accelerometer and
+magnetometer updates. Finally, we discuss tuning strategies and the prospect of adaptive parameter estimation.
+\end{abstract}
+
+\begin{IEEEkeywords}
+extended Kalman filter, inertial navigation, wave kinematics, Ornstein--Uhlenbeck process, OCEANS
+\end{IEEEkeywords}
 
 % === CORE SECTIONS ===
 \input{w3d-intro.tex-part}
@@ -225,8 +178,11 @@ Finally, we discuss tuning strategies and the prospect of adaptive parameter est
 %\input{sim-results.tex-part}
 \input{sim-charts.tex-part}
 
-% Balance final page columns (optional)
+% Balance final page columns (optional, IEEE-style)
 \balance
 
-% === END ===
+% Uncomment and adjust for your bibliography:
+% \bibliographystyle{IEEEtran}
+% \bibliography{yourbibfile}
+
 \end{document}
