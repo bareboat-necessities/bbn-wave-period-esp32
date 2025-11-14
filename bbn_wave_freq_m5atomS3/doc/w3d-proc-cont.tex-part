@@ -10,6 +10,7 @@ Let $\bm\omega_m$ be the measured gyro rate (body), $\mathbf b_g$ the gyro bias,
 and $\mathbf n_g$ gyro noise (white, zero–mean). The \emph{nominal} quaternion
 $\mathbf q$ (world$\to$body) obeys
 \begin{equation}
+\fitcol{
 \dot{\mathbf q} = \tfrac12\,\Omega\!\left(\bm\omega_m-\mathbf b_g\right)\,\mathbf q,
 \qquad
 \Omega(\bm\omega)=
@@ -23,6 +24,7 @@ $\mathbf q$ (world$\to$body) obeys
 with unit–norm enforcement in implementation. The gyro bias follows a random walk
 \begin{equation}
 \dot{\mathbf b}_g = \mathbf w_{bg}, \qquad \mathbf w_{bg}\sim\mathcal N(\mathbf 0,\ \mathbf Q_{bg}),
+}
 \end{equation}
 where $\mathbf Q_{bg}$ is the continuous–time spectral density (per axis).
 
