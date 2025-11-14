@@ -13,7 +13,7 @@ We group indices into three blocks:
 with $N_A=3$ or $6$ (no/with $\mathbf b_g$), $N_L=12$, $N_B=3$.
 
 \paragraph{Attitude + gyro-bias block \(\Phi_{\!AA}(h)\) and \(\mathbf Q_{\!AA}(h)\).}
-For the attitude error + gyro-bias (size \(3{+}3\)), the code uses a structured
+For the attitude error + gyro-bias (size \(3{+}3\)), the algorithm uses a structured
 path that matches the Q-MEKF with piecewise-constant \(\hat{\boldsymbol\omega}=
 \boldsymbol\omega_m-\mathbf b_g\) over the step:
 \begin{itemize}
@@ -58,7 +58,7 @@ placing three identical \(4\times4\) axis transitions on the block diagonal:
 \end{aligned}
 \end{equation}
 
-where \(x=h/\tau\), \(\alpha=e^{-x}\), and the code uses the following 
+where \(x=h/\tau\), \(\alpha=e^{-x}\), and the algorithm uses the following 
 expressions:
 \[
 \fitcol{
@@ -89,7 +89,7 @@ expressions:
       B_0 &= -\frac{\tau}{2}\,(e^{-2x}-1),\\
       \end{aligned}
       \]
-      the code fills \(\mathbf K\) with the following entries
+      the algorithm fills \(\mathbf K\) with the following entries
       (all \(h\), \(\tau\)–dependent; \(\mathrm{sym}\) means \(\tfrac12(\cdot+\cdot^\top)\)):
       \[
       \fitcol{
@@ -119,7 +119,7 @@ The accelerometer bias random walk contributes
 \]
 
 \paragraph{Summary and appendix.}
-In short, the discrete transition and covariance used by the code are
+In short, the discrete transition and covariance used by the method's algorithm are
 \[
 \begin{aligned}
 \Phi(h) &=\mathrm{blkdiag}\big(\Phi_{\!AA}(h),\,\Phi_{\!LL}(h),\,\mathbf I_3\big),\qquad\\
