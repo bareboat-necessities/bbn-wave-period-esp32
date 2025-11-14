@@ -72,14 +72,16 @@
 % Needed by PGF outputs that reference \mathdefault
 \providecommand{\mathdefault}[1]{#1}
 
-% Unicode punctuation mappings (pdfLaTeX)
-\DeclareUnicodeCharacter{2013}{\textendash}        % –
-\DeclareUnicodeCharacter{2014}{\textemdash}        % —
-\DeclareUnicodeCharacter{2018}{\textquoteleft}     % ‘
-\DeclareUnicodeCharacter{2019}{\textquoteright}    % ’
-\DeclareUnicodeCharacter{201C}{\textquotedblleft}  % “
-\DeclareUnicodeCharacter{201D}{\textquotedblright} % ”
-\DeclareUnicodeCharacter{2212}{\textminus}         % − (math minus)
+% Unicode punctuation mappings (pdfLaTeX only)
+\ifPDFTeX
+  \DeclareUnicodeCharacter{2013}{\textendash}        % –
+  \DeclareUnicodeCharacter{2014}{\textemdash}        % —
+  \DeclareUnicodeCharacter{2018}{\textquoteleft}     % ‘
+  \DeclareUnicodeCharacter{2019}{\textquoteright}    % ’
+  \DeclareUnicodeCharacter{201C}{\textquotedblleft}  % “
+  \DeclareUnicodeCharacter{201D}{\textquotedblright} % ”
+  \DeclareUnicodeCharacter{2212}{\textminus}         % − (math minus)
+\fi
 
 % Theorems: small header/body
 \newtheoremstyle{bodysmall}
