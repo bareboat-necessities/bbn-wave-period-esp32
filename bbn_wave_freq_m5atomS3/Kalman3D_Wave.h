@@ -194,15 +194,11 @@ class Kalman3D_Wave {
     static constexpr int OFF_AW  = BASE_N + 9;
     static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 12) : -1; // -1 = not present
 
-    // Measurement dimension
-    static constexpr int M = 6;
-
     typedef Matrix<T, 3, 1> Vector3;
     typedef Matrix<T, BASE_N, BASE_N> MatrixBaseN;
     typedef Matrix<T, NX, NX> MatrixNX;
     typedef Matrix<T, 3, 3> Matrix3;
     typedef Matrix<T, 4, 4> Matrix4;
-    typedef Matrix<T, M, M> MatrixM;
 
     static constexpr T STD_GRAVITY = T(9.80665);  // standard gravity acceleration m/s²
     static constexpr T tempC_ref = T(35.0); // Reference temperature for temperature related accel bias drift °C
@@ -433,10 +429,9 @@ class Kalman3D_Wave {
     // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
     Vector3 k_a_ = Vector3::Constant(T(0.003));
 
-    // Original constant matrices
+    // Constant matrices
     Matrix3 Rmag;
-    MatrixM R;
-    MatrixBaseN Qbase; // original Q for attitude & bias
+    MatrixBaseN Qbase; // Q for attitude & bias
 
     Matrix3 Racc; // Accelerometer noise (diagonal) stored as Matrix3
     Matrix3 R_S;  // Triple integration measurement noise
