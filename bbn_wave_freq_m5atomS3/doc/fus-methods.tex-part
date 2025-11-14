@@ -1,7 +1,3 @@
-% --- Merged, coherent sections: narrative + math ---
-% Drop into your main .tex; relies only on standard amsmath/amssymb/booktabs/siunitx.
-% Labels preserved for cross-referencing.
-
 % =======================================================
 \section{Frequency Tracking from Vertical Specific Force}
 \label{sec:freq-tracking}
