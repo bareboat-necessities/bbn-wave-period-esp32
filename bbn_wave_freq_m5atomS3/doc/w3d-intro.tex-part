@@ -26,7 +26,7 @@ rather than relying on separate numerical integration.
 
 The latent world acceleration \(\bm{a}_w\) is modeled as an
 Ornstein--Uhlenbeck (OU) process characterized by a stationary variance
-\(\Sigma_{aw}\) and a correlation time constant \(\tau\). This choice
+\(\Sigma_{aw}\) and a correlation time constant \(\tau_{aw}\) referred below simply as \(\tau\). This choice
 captures the colored and temporally correlated nature of ocean-wave
 excitation: broadband but with finite memory and bounded variance.
 For Lagrangian sensors following surface motion, this leads to
