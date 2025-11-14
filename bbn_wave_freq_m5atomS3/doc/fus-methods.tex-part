@@ -195,6 +195,7 @@ J(\mathbf{A})
 \]
 Setting $\partial J/\partial \mathbf{A}=0$ yields
 \begin{equation}
+\fitcol{
 \label{eq:A-ls}
 \sum_{k=1}^N \cos\phi_k\,\mathbf{z}_k
 = \left(\sum_{k=1}^N \cos^2\phi_k\right)\mathbf{A},
@@ -203,6 +204,7 @@ Setting $\partial J/\partial \mathbf{A}=0$ yields
 \mathbf{A}_{\text{LS}}
 = \frac{\sum_k \cos\phi_k\,\mathbf{z}_k}
        {\sum_k \cos^2\phi_k}.
+}
 \end{equation}
 Thus the best–fit amplitude vector is exactly the
 \emph{demodulated and averaged} signal: multiply each sample by $\cos\phi_k$ (projection onto the known carrier), sum over time, and normalise.
