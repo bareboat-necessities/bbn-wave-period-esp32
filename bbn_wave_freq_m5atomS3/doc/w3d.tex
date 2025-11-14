@@ -10,6 +10,8 @@
 
 \usepackage{amsmath, amssymb, bm}
 \usepackage{pgf}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
 \usepackage{float}
 \usepackage{mathrsfs}
 \usepackage{graphicx}
@@ -19,15 +21,17 @@
 \usepackage{nccmath, relsize}
 \usepackage{enumitem}
 \usepackage{amsthm}
-\usepackage{cite}
-\usepackage{bookmark}
-\usepackage[nameinlink,capitalise,noabbrev]{cleveref}
 \usepackage{balance} % balance final page columns
 \usepackage{flafter} % figures/tables won’t appear before they’re defined
 \usepackage{siunitx}
 \usepackage[final]{microtype}   % better spacing/hyphenation
 \usepackage{etoolbox}
+\usepackage{cite}
 \usepackage[breaklinks=true]{hyperref}
+\usepackage[nameinlink,capitalise,noabbrev]{cleveref}
+\usepackage{bookmark}
+
+\hypersetup{hidelinks}
 
 \sisetup{
   detect-weight = true,
