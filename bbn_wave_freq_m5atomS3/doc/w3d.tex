@@ -113,7 +113,9 @@
 \DeclareMathOperator{\sym}{sym}
 
 % Two-column helper (no layout change)
-\newcommand{\fitcol}[1]{\adjustbox{max width=\columnwidth}{$\displaystyle #1$}}
+\newcommand{\fitcol}[1]{%
+  \adjustbox{max width=\columnwidth}{\ensuremath{\displaystyle #1}}%
+}
 
 \makeatletter
 \@ifpackageloaded{cite}{%
