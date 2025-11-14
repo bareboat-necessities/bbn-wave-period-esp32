@@ -18,7 +18,7 @@ $\mathbf q$ (world$\to$body) obeys
 \bm\omega & -\Skew{\bm\omega}
 \end{bmatrix},
 \qquad
-q \in \mathbb{H}_1,
+\mathbf q \in \mathbb{H}_1,
 \end{equation}
 with unit–norm enforcement in implementation. The gyro bias follows a random walk
 \begin{equation}
