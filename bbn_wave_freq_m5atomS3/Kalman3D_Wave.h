@@ -322,18 +322,9 @@ class Kalman3D_Wave {
   
         // Symmetrize & project to SPD for robustness
         S = T(0.5) * (S + S.transpose());
-        Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
-        if (es.info() == Eigen::Success) {
-            auto lam = es.eigenvalues();
-            for (int i = 0; i < 3; ++i) {
-              if (!(lam(i) > T(0))) lam(i) = T(1e-12);
-            }
-            Sigma_aw_stat =
-                (es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose()).eval();
-        } else {
-            Sigma_aw_stat = S.diagonal().asDiagonal();  // safe fallback
-        }
-  
+        project_psd<T,3>(S, T(1e-12));
+        Sigma_aw_stat = S;
+
         // Reseed Pext a_w block with new stationary covariance
         if (!has_cross_cov_a_xy) {
             Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
