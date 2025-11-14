@@ -205,55 +205,84 @@ private:
 
 #ifdef KALMAN_WAVE_DIRECTION_TEST
 
-void KalmanWaveDirection_test_signal(float t, float freq, float& ax, float& ay, 
-    std::normal_distribution<float>& noise, std::default_random_engine& generator) {
+// Generate a test signal: horizontal acceleration from a wave
+// with slowly varying amplitude and fixed propagation direction.
+// freq_hz is in cycles per second (Hz).
+void KalmanWaveDirection_test_signal(float t,
+                                     float freq_hz,
+                                     float& ax,
+                                     float& ay,
+                                     std::normal_distribution<float>& noise,
+                                     std::default_random_engine& generator) {
   float amp = 0.8f + 0.4f * std::sin(0.005f * t);
-  float phase = 2.0f * M_PI * freq * t;
+
+  // Convert frequency in Hz to angular frequency in rad/s
+  float omega = 2.0f * M_PI * freq_hz;
+  float phase = omega * t;
+
   Eigen::Vector2f dir(1.0f, 1.5f);
   dir.normalize();
+
   float signal = amp * std::cos(phase);
+
   float w1 = noise(generator);
   float w2 = noise(generator);
+
   ax = signal * dir.x() + w1;
   ay = signal * dir.y() + w2;
 }
 
 void KalmanWaveDirection_test_1() {
   const float delta_t = 0.02f;
-  const float freq = 0.5f;
+
+  // Frequency of the test wave in Hz
+  const float freq_hz = 0.5f;
+  // Convert to angular frequency in rad/s for the filter
+  const float omega = 2.0f * M_PI * freq_hz;
+
   const int num_steps = 2000;
 
-  const double mean = 0.0f;
-  const double stddev = 0.08f;
+  const double mean   = 0.0;
+  const double stddev = 0.08;
   std::default_random_engine generator;
   generator.seed(42u);
   std::normal_distribution<float> dist(mean, stddev);
 
-  KalmanWaveDirection filter(freq);
+  // The KalmanWaveDirection class expects omega in rad/s
+  KalmanWaveDirection filter(omega);
   filter.setMeasurementNoise(0.01f);
   filter.setProcessNoise(1e-6f);
 
   std::ofstream out("wave_dir.csv");
-  out << "t,ax,ay,filtered_ax,filtered_ay,frequency,amplitude,phase,confidence,deg,uncertaintyDeg\n";
+  out << "t,ax,ay,filtered_ax,filtered_ay,freq_hz,amplitude,phase,confidence,"
+         "deg,uncertaintyDeg\n";
 
   for (int i = 0; i < num_steps; ++i) {
     float t = i * delta_t;
     float ax, ay;
-    KalmanWaveDirection_test_signal(t, freq, ax, ay, dist, generator);
 
-    filter.update(ax, ay, freq, delta_t);
-    float filtered_ax = filter.getFilteredSignal().x();
-    float filtered_ay = filter.getFilteredSignal().y();
-    float amplitude = filter.getAmplitude();
-    float phase = filter.getPhase();
-    float confidence = filter.getConfidence();
-    float deg = filter.getDirectionDegrees();
+    // Generate noisy test signal at freq_hz
+    KalmanWaveDirection_test_signal(t, freq_hz, ax, ay, dist, generator);
+
+    // Update filter with angular frequency
+    filter.update(ax, ay, omega, delta_t);
+
+    Eigen::Vector2f filtered = filter.getFilteredSignal();
+    float filtered_ax = filtered.x();
+    float filtered_ay = filtered.y();
+
+    float amplitude      = filter.getAmplitude();
+    float phase          = filter.getPhase();
+    float confidence     = filter.getConfidence();
+    float deg            = filter.getDirectionDegrees();
     float uncertaintyDeg = filter.getDirectionUncertaintyDegrees();
 
-    out << t << "," << ax << "," << ay << "," << filtered_ax << "," << filtered_ay << ","
-        << freq << "," << amplitude << "," << phase << "," << confidence << ","
-        << deg << "," << uncertaintyDeg << "\n";
+    out << t << "," << ax << "," << ay << ","
+        << filtered_ax << "," << filtered_ay << ","
+        << freq_hz << "," << amplitude << "," << phase << ","
+        << confidence << "," << deg << "," << uncertaintyDeg << "\n";
   }
+
   out.close();
 }
 
