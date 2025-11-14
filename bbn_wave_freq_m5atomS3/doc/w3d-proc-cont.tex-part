@@ -20,9 +20,11 @@ $\mathbf q$ (world$\to$body) obeys
 \end{bmatrix},
 \qquad
 \mathbf q \in \mathbb{H}_1,
+}
 \end{equation}
 with unit–norm enforcement in implementation. The gyro bias follows a random walk
 \begin{equation}
+\fitcol{
 \dot{\mathbf b}_g = \mathbf w_{bg}, \qquad \mathbf w_{bg}\sim\mathcal N(\mathbf 0,\ \mathbf Q_{bg}),
 }
 \end{equation}
