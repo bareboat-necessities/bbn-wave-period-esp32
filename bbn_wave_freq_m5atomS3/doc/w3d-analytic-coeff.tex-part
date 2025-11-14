@@ -118,7 +118,7 @@ The accelerometer bias random walk contributes
 \Phi_{bb}(h)=\mathbf I_3,\qquad \mathbf Q_{bb}(h)=\mathbf Q_{ba}\,h.
 \]
 
-\paragraph{Summary and appendix.}
+\paragraph{Analytic coefficients summary.}
 In short, the discrete transition and covariance used by the method's algorithm are
 \[
 \begin{aligned}
@@ -135,5 +135,4 @@ with \(\Phi_{\text{axis}},\,\phi_{va},\phi_{pa},\phi_{Sa}\) and
 \(\mathbf Q_{d,\text{axis}}=q_c\,\mathrm{sym}\,\mathbf K\) as given above. The
 \emph{step-by-step derivations} of \(\Phi_{\text{axis}}\) and all entries of \(\mathbf K\)
 (including small-\(x=h/\tau\) series) are provided in the Appendix
-(\S\ref{sec:ou-appendix}), along with notes on numerical stability (expm1 forms)
-and PSD projection.
+(\S\ref{sec:ou-appendix}).
