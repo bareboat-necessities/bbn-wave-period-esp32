@@ -17,7 +17,7 @@ Let $\omega=2\pi f$ and $\phi(t)=\int_0^t \omega(\tau)\,d\tau$.
 
 \subsection{Aranovskiy-type adaptive resonator}
 
-Drive a lightly damped virtual resonator by $u(t)$ and adjust its natural frequency so its output matches the input. If the resonator frequency equals the signal's, the error energy is minimized.
+Aranovskiy filter drives a lightly damped virtual resonator by $u(t)$ and adjusts its natural frequency so its output matches the input. If the resonator frequency equals the signal's, the error energy is minimized.
 
 \paragraph{Method.}
 Internal lightly damped resonator:
@@ -46,7 +46,7 @@ Low-pass the readout with EMA $\alpha_f$:
 
 \subsection{\textsc{KalmANF}: Kalman-updated adaptive notch}
 
-Model the signal with a second-order notch parameterized by $a=2\cos\omega$. Treat $a$ as a (slowly varying) state and update it via a scalar Kalman step driven by the instantaneous prediction error.
+KalmANF filter models the signal with a second-order notch parameterized by $a=2\cos\omega$. It treats $a$ as a (slowly varying) state and updates it via a scalar Kalman step driven by the instantaneous prediction error.
 
 \paragraph{Method.}
 Embed the notch with parameter $a\in(-2,2)$:
