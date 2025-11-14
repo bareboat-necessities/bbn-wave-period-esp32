@@ -125,12 +125,10 @@ R_S=\mathrm{diag}( \rho_{xy}\,R_{S,\star},\ \rho_{xy}\,R_{S,\star},\ R_{S,\star}
 \subsection{Application to the MEKF}
 Apply targets with slow EWMA (time constant $\tau_{\mathrm{apply}}$; update every $\Delta t_{\mathrm{apply}}$):
 \begin{align}
-\fitcol{
 \tau_{\mathrm{appl}} &\leftarrow (1-\beta)\tau_{\mathrm{appl}}+\beta \tau_\star, \\
 \sigma_{a,\mathrm{appl}} &\leftarrow (1-\beta)\sigma_{a,\mathrm{appl}}+\beta \sigma_{a,\star}, \\
 R_{S,\mathrm{appl}} &\leftarrow (1-\beta)R_{S,\mathrm{appl}}+\beta R_{S,\star}, \qquad
 \beta=1-e^{-\Delta t_{\mathrm{apply}}/\tau_{\mathrm{apply}}}.
-}
 \end{align}
 MEKF uses Joseph-form updates; the OU process covariance is set from $(\tau_{\mathrm{appl}},\sigma_{a,\mathrm{appl}})$; the integral pseudo-measurement uses $R_{S,\mathrm{appl}}$.
 
