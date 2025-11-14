@@ -320,7 +320,7 @@ R_S=\mathrm{diag}(\rho_{xy}R_{S,\star},\,\rho_{xy}R_{S,\star},\,R_{S,\star}),
 typical values $c_R\in[2.4,2.5]$, $\rho_{xy}\in[0.05,0.07]$.
 
 % --- Reproducibility table (single-column friendly) ---
-\begin{table}[t]
+\begin{table}[htbp]
   \centering
   \caption{Parameters used in all experiments (defaults unless stated).}
   \label{tab:params}
