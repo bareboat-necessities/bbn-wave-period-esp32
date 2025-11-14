@@ -245,10 +245,8 @@ This linear–Gaussian model is exactly a recursive least–squares fit of $\mat
 
 We perform the usual Kalman prediction and Joseph–form update on $\mathbf{A}_k$ and its covariance $P_k$:
 \begin{align}
-\textbf{Predict:}\quad
 &\mathbf{A}_k^- = \mathbf{A}_{k-1},\qquad
 P_k^- = P_{k-1} + Q,\\[2pt]
-\textbf{Update (if }|\cos\phi_k|\ge\varepsilon_{\min}\textbf{):}\quad
 &K_k = P_k^- H_k^\top \bigl(H_k P_k^- H_k^\top + R\bigr)^{-1},\\
 &\mathbf{A}_k \leftarrow \mathbf{A}_k^- + K_k\bigl(\mathbf{z}_k - H_k \mathbf{A}_k^-\bigr),\\
 &P_k \leftarrow (I_2-K_k H_k)P_k^- (I_2-K_k H_k)^\top + K_k R K_k^\top.
