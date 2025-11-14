@@ -648,10 +648,6 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
   const T sigma_p0 = T(20.0);   // m
   const T sigma_S0 = T(50.0);   // m·s
   set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
-
-  R.setZero();
-  R.template topLeftCorner<3,3>()  = Racc;     // accelerometer measurement noise
-  R.template bottomRightCorner<3,3>() = Rmag;  // magnetometer measurement noise
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
