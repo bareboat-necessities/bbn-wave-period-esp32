@@ -99,8 +99,12 @@
 % Two-column helper (no layout change)
 \newcommand{\fitcol}[1]{\adjustbox{max width=\columnwidth}{$\displaystyle #1$}}
 
-\renewcommand{\citepunct}{,\penalty\citepunctpenalty\,}
-\renewcommand{\citedash}{--}
+\makeatletter
+\@ifpackageloaded{cite}{%
+  \renewcommand{\citepunct}{,\penalty\citepunctpenalty\,}%
+  \renewcommand{\citedash}{--}%
+}{}
+\makeatother
 
 % Allow multi-line displays to break across columns
 \emergencystretch=2em
