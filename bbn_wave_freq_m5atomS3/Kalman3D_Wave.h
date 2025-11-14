@@ -350,14 +350,11 @@ class Kalman3D_Wave {
     // Accelerometer measurement noise (std in m/s² per axis)
     void set_Racc(const Vector3& sigma_acc) {
         Racc = sigma_acc.array().square().matrix().asDiagonal();
-        R.template topLeftCorner<3,3>() = Racc;
     }
 
     // Magnetometer measurement noise (std per axis, μT or unitless)
     void set_Rmag(const Vector3& sigma_mag) {
-        Matrix3 Rmag_new = sigma_mag.array().square().matrix().asDiagonal();
-        Rmag = Rmag_new;
-        R.template bottomRightCorner<3,3>() = Rmag_new;
+        Rmag = sigma_mag.array().square().matrix().asDiagonal();
     }
 
     void set_initial_linear_uncertainty(T sigma_v0, T sigma_p0, T sigma_S0) {
