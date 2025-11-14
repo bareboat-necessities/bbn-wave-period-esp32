@@ -347,10 +347,8 @@ class Kalman3D_Wave {
 
     void set_RS_noise_matrix(const Matrix3& R) {
         Matrix3 S = T(0.5) * (R + R.transpose());         // symmetrize
-        // project to SPD (very light-touch)
-        Eigen::SelfAdjointEigenSolver<Matrix3> es(S);
-        Vector3 d = es.eigenvalues().cwiseMax(T(1e-8));
-        R_S = es.eigenvectors() * d.asDiagonal() * es.eigenvectors().transpose();
+        project_psd<T,3>(S, T(1e-8));
+        R_S = S;
     }
         
     // Accelerometer measurement noise (std in m/s² per axis)
