@@ -85,10 +85,10 @@ Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
 
 //  Example wave parameter list
 const std::vector<WaveParameters> waveParamsList = {
-    {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 25.0f},
-    {5.7f,   1.5f,  static_cast<float>(M_PI/1.5), 25.0f},
-    {8.5f,   4.0f,  static_cast<float>(M_PI/6.0), 25.0f},
-    {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 25.0f}
+    {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 30.0f},
+    {5.7f,   1.5f,  static_cast<float>(M_PI/1.5), 30.0f},
+    {8.5f,   4.0f,  static_cast<float>(M_PI/6.0), 30.0f},
+    {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 30.0f}
 };
 int wave_index_from_height(float height) {
     for (size_t i = 0; i < waveParamsList.size(); i++)
