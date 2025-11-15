@@ -85,26 +85,12 @@ public:
         P = (I - KH) * P_pred * (I - KH).transpose() + K * R * K.transpose();
 
         confidence = 1.0f / (P.trace() + 1e-6f);
+
+        updateStableDirection();
     }
 
     // Estimated wave propagation direction (unit vector)
     Eigen::Vector2f getDirection() const {
-        float norm = A_est.norm();
-        const float AMP_THRESHOLD = 0.08f;
-        const float CONFIDENCE_THRESHOLD = 20.0f;
-        if (norm > AMP_THRESHOLD && confidence > CONFIDENCE_THRESHOLD) {
-            Eigen::Vector2f newDir = A_est / norm;
-            if (lastStableDir.dot(newDir) < 0.0f) {
-                newDir = -newDir;
-            } 
-            float alpha = 0.05f;
-            lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
-            lastStableAmplitude = norm;
-
-            // Track last stable confidence and covariance
-            lastStableConfidence = confidence;
-            lastStableCovariance = P;
-        }
         return lastStableDir;
     }
 
@@ -220,10 +206,10 @@ private:
     float phase;
     float confidence;
 
-    mutable Eigen::Vector2f lastStableDir = Eigen::Vector2f(1.0f, 0.0f);
-    mutable float lastStableAmplitude = 0.0f;
-    mutable float lastStableConfidence = 0.0f;
-    mutable Eigen::Matrix2f lastStableCovariance = Eigen::Matrix2f::Identity();
+    Eigen::Vector2f lastStableDir = Eigen::Vector2f(1.0f, 0.0f);
+    float lastStableAmplitude = 0.0f;
+    float lastStableConfidence = 0.0f;
+    Eigen::Matrix2f lastStableCovariance = Eigen::Matrix2f::Identity();
 };
 
 #ifdef KALMAN_WAVE_DIRECTION_TEST
