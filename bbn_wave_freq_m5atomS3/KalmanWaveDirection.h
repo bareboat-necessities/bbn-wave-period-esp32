@@ -121,6 +121,7 @@ public:
         // Project covariance matrix onto the tangent vector
         // This gives the variance of noise in the angular direction
         float angular_var = tangent.transpose() * lastStableCovariance * tangent;
+        angular_var = std::max(angular_var, 0.0f);  // numeric safety
     
         // Angular standard deviation in radians (scaled by amplitude)
         float angular_std_rad = std::sqrt(angular_var) / amp;
