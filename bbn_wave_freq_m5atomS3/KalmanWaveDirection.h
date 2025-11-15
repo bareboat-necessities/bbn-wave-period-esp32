@@ -36,6 +36,7 @@ public:
         P = Eigen::Matrix2f::Identity() * 1.0f;
         phase = 0.0f;
         confidence = 0.0f;
+        lastStableAmplitude = 0.0f;
         lastStableConfidence = 0.0f;
         lastStableCovariance = Eigen::Matrix2f::Identity();
         lastStableDir = Eigen::Vector2f(1.0f, 0.0f);
