@@ -29,10 +29,10 @@ static constexpr float TEST_DURATION_S = 20 * 60.0f;    // 20 minutes
 
 // Example test cases
 const std::vector<WaveParameters> waveParamsList = {
-    {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 40.0f},
-    {5.7f,   1.5f,  static_cast<float>(M_PI/1.5), 40.0f},
-    {8.5f,   4.0f,  static_cast<float>(M_PI/6.0), 40.0f},
-    {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 40.0f}
+    {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 30.0f},
+    {5.7f,   1.5f,  static_cast<float>(M_PI/1.5), 30.0f},
+    {8.5f,   4.0f,  static_cast<float>(M_PI/6.0), 30.0f},
+    {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 30.0f}
 };
 
 // Shared Fill Helpers
