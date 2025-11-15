@@ -151,10 +151,6 @@ public:
     }
 
     Eigen::Vector2f getFilteredSignal() const {
-        return A_est * std::cos(phase) + Eigen::Vector2f(-A_est.y(), A_est.x()) * std::sin(phase);
-    }
-
-    Eigen::Vector2f getOscillationAlongDirection() const {
         return A_est * std::cos(phase);
     }
 
