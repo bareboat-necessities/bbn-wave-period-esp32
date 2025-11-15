@@ -126,8 +126,8 @@ public:
         // If amplitude is too small, direction is meaningless — return full uncertainty
         if (amp < 1e-6f) return 180.0f;
     
-        // Unit direction vector (estimated wave direction)
-        Eigen::Vector2f dir = A_est / amp;
+        // Unit direction vector (last stable direction)
+        Eigen::Vector2f dir = lastStableDir;
     
         // Tangent direction (perpendicular to dir) is where angular deviations occur
         Eigen::Vector2f tangent(-dir.y(), dir.x());
