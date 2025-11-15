@@ -184,6 +184,32 @@ private:
         phase = std::remainder(phase + omega * deltaT, 2.0f * M_PI);
     }
 
+    void updateStableDirection() {
+        const float AMP_THRESHOLD        = 0.08f;
+        const float CONFIDENCE_THRESHOLD = 20.0f;
+
+        float norm = A_est.norm();
+        if (norm <= AMP_THRESHOLD || confidence <= CONFIDENCE_THRESHOLD) {
+            return; // not reliable enough yet
+        }
+
+        Eigen::Vector2f newDir = A_est / norm;
+
+        // Enforce 180° ambiguity consistency
+        if (lastStableDir.dot(newDir) < 0.0f) {
+            newDir = -newDir;
+        }
+
+        // EWMA smoothing of direction
+        const float alpha = 0.05f;
+        lastStableDir = ((1.0f - alpha) * lastStableDir + alpha * newDir).normalized();
+
+        // Snapshot of "stable" state
+        lastStableAmplitude  = norm;
+        lastStableConfidence = confidence;
+        lastStableCovariance = P;
+    }
+
     // State
     Eigen::Vector2f A_est = Eigen::Vector2f::Zero();
     Eigen::Matrix2f P = Eigen::Matrix2f::Identity();
