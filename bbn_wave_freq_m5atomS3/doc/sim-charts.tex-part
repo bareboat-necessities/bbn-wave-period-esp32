@@ -3,10 +3,10 @@
 % JONSWAP - medium
 \begin{figure}[htbp]\centering
   \begin{minipage}{0.49\columnwidth}
-    \adjustbox{max width=\linewidth}{\input{spectrum_jonswap_medium_polar.pgf}}
+    \resizebox{\linewidth}{!}{\input{spectrum_jonswap_medium_polar.pgf}}
   \end{minipage}\hfill
   \begin{minipage}{0.49\columnwidth}
-    \adjustbox{max width=\linewidth}{\input{spectrum_jonswap_medium_3d.pgf}}
+    \resizebox{\linewidth}{!}{\input{spectrum_jonswap_medium_3d.pgf}}
   \end{minipage}
   \caption{JONSWAP: Directional spectrum (medium $H_s$). Left: polar heatmap $E(f,\theta)$; Right: 3D surface.}
   \label{fig:jonswap_spec_medium}
@@ -15,35 +15,35 @@
 % PM Stokes - medium
 \begin{figure}[htbp]\centering
   \begin{minipage}{0.49\columnwidth}
-    \adjustbox{max width=\linewidth}{\input{spectrum_pmstokes_medium_polar.pgf}}
+    \resizebox{\linewidth}{!}{\input{spectrum_pmstokes_medium_polar.pgf}}
   \end{minipage}\hfill
   \begin{minipage}{0.49\columnwidth}
-    \adjustbox{max width=\linewidth}{\input{spectrum_pmstokes_medium_3d.pgf}}
+    \resizebox{\linewidth}{!}{\input{spectrum_pmstokes_medium_3d.pgf}}
   \end{minipage}
   \caption{PM Stokes: Directional spectrum (medium $H_s$). Left: polar heatmap $E(f,\theta)$; Right: 3D surface.}
   \label{fig:pmstokes_spec_medium}
 \end{figure}
 
 \begin{figure}[htbp]\centering
-  \adjustbox{max width=\linewidth}{\input{w3d_jonswap_medium.pgf}}
+  \resizebox{\linewidth}{!}{\input{w3d_jonswap_medium.pgf}}
   \caption{Kalman 3D filter Euler angle comparison — JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium}
 \end{figure}
 
 \begin{figure}[htbp]\centering
-  \adjustbox{max width=\linewidth}{\input{w3d_pmstokes_medium.pgf}}
+  \resizebox{\linewidth}{!}{\input{w3d_pmstokes_medium.pgf}}
   \caption{Kalman 3D filter Euler angle comparison — PM Stokes, medium $H_s$.}
   \label{fig:w3d_pmstokes_medium}
 \end{figure}
 
 \begin{figure}[htbp]\centering
-  \adjustbox{max width=\linewidth}{\input{w3d_jonswap_medium_zkin.pgf}}
+  \resizebox{\linewidth}{!}{\input{w3d_jonswap_medium_zkin.pgf}}
   \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration) — JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium_zkin}
 \end{figure}
 
 \begin{figure}[htbp]\centering
-  \adjustbox{max width=\linewidth}{\input{w3d_pmstokes_medium_zkin.pgf}}
+  \resizebox{\linewidth}{!}{\input{w3d_pmstokes_medium_zkin.pgf}}
   \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration) — PM Stokes, medium $H_s$.}
   \label{fig:w3d_pmstokes_medium_zkin}
 \end{figure}
