@@ -150,12 +150,11 @@ linear kinematic chain for ocean-wave motion estimation. The method augments att
 accelerometer bias, by linear velocity, displacement, and the integral of displacement, driven by a latent world-frame
 acceleration modeled as an Ornstein--Uhlenbeck process. The Ornstein--Uhlenbeck prior provides stationary variance and
 realistic temporal correlation for the latent acceleration, which slows the growth of drift in integrated states compared
-with white-noise forcing. It does not strictly bound the variance of integrated displacement, but it ensures that covariance
-growth of displacement is polynomially slower and numerically manageable. Biases are explicitly modeled: gyroscope bias as a
+with white-noise forcing. Biases are explicitly modeled: gyroscope bias as a
 random walk and accelerometer bias as both random walk and systematic temperature-dependent drift. A pseudo-measurement is
 introduced on the integral of displacement to control double-integral divergence. We derive continuous-time and discrete-time
 process models, present Rodrigues and analytic discretizations, and give explicit Jacobians for accelerometer and
-magnetometer updates. Finally, we discuss tuning strategies and the prospect of adaptive parameter estimation.
+magnetometer updates. Finally, we discuss tuning strategies and adaptive parameter estimation.
 \end{abstract}
 
 \begin{IEEEkeywords}
