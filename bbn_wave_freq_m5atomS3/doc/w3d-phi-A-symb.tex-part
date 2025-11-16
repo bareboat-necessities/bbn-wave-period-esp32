@@ -101,6 +101,7 @@ h\,I \;-\; \frac{1-\cos\theta}{\omega^2}\,W \;+\; \frac{h-\frac{\sin\theta}{\ome
 \paragraph{Assembled discrete transition for the attitude block.}
 Putting the pieces together,
 \[
+\fitcol{
 \boxed{
 \begin{aligned}
 \Phi_{AA}(h)
@@ -116,6 +117,7 @@ R(h) & B(h)\\
 R(h)&=I-\sin\theta\,\frac{W}{\omega}+(1-\cos\theta)\frac{W^2}{\omega^2},\\
 B(h)&=-\Big[h\,I - \frac{1-\cos\theta}{\omega^2}W + \frac{h-\frac{\sin\theta}{\omega}}{\omega^2}W^2\Big],
 \end{aligned}
+}
 }
 \]
 with $W=[\boldsymbol{\omega}]_\times$, $\omega=\|\boldsymbol{\omega}\|$, $\theta=\omega h$.
