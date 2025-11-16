@@ -318,7 +318,7 @@ typical values $c_R\in[2.4,2.5]$, $\rho_{xy}\in[0.05,0.07]$.
 % --- Reproducibility table (single-column friendly) ---
 \begin{table}[htbp]
   \centering
-  \caption{Parameters used in all experiments (defaults unless stated).}
+  \caption{Parameters used in all simulations.}
   \label{tab:params}
   % tighter spacing + wrapping columns
   \footnotesize
