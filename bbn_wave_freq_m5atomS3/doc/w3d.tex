@@ -73,6 +73,9 @@
 % Needed by PGF outputs that reference \mathdefault
 \providecommand{\mathdefault}[1]{#1}
 
+% For including PGF
+\newcommand{\IncludePGF}[1]{\resizebox{\linewidth}{!}{\input{#1}}}
+
 % Unicode punctuation mappings (pdfLaTeX only)
 \ifPDFTeX
   \DeclareUnicodeCharacter{2013}{\textendash}        % –
