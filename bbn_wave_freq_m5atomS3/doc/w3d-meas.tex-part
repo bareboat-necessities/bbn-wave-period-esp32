@@ -134,6 +134,23 @@ The corresponding measurement Jacobian is simply
 \frac{\partial \mathbf{z}_S}{\partial \mathbf{S}} = \mathbf{I}_3.
 \end{equation}
 
+The choice of $R_S$ is critical. A small $R_S$ enforces a tight pseudo-measurement,
+essentially pinning $S\approx 0$ and aggressively damping drift. A large $R_S$ relaxes
+the constraint, letting $S$ wander but still suppressing drift.
+
+Physically, $S$ has no direct observable meaning (it is an auxiliary integral).
+Therefore, $R_S$ does not correspond to sensor noise, but rather to a 
+\emph{design knob}:
+\begin{itemize}
+\item If the the double integral drift is high use smaller $R_S$.
+\item If slow drift is acceptable, increase $R_S$ to reduce artificial feedback.
+\end{itemize}
+
+By including $S$ and its pseudo-measurement, in linear systems terminology, the augmented
+system becomes \emph{detectable}: even though $S$ is unobservable in a strict sense, the 
+pseudo-measurement provides an artificial observation that stabilizes the filter numerics and
+uncontrolled growth of displacement.
+
 \subsection{Unified Measurement Update}
 
 Each measurement channel is processed through the standard
