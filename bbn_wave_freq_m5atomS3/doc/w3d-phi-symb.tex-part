@@ -9,7 +9,7 @@ with continuous LTI dynamics
 \[
 \dot{\boldsymbol{x}}_{\text{axis}}(t)=
 \underbrace{\begin{bmatrix}A&B\\[2pt]0&D\end{bmatrix}}_{F}
-\boldsymbol{x}_{\text{axis}}(t),\qquad
+\boldsymbol{x}_{\text{axis}}(t),\qquad\\
 A=\begin{bmatrix}0&0&0\\ 1&0&0\\ 0&1&0\end{bmatrix},\quad
 B=\begin{bmatrix}1\\0\\0\end{bmatrix},\quad
 D=-\frac{1}{\tau}.
