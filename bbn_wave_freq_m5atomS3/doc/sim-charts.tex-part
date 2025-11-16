@@ -24,6 +24,8 @@
   \label{fig:pmstokes_spec_medium}
 \end{figure}
 
+\FloatBarrier
+
 \begin{figure}[htbp]\centering
   \resizebox{\linewidth}{!}{\input{w3d_jonswap_medium.pgf}}
   \caption{Kalman 3D filter Euler angle comparison — JONSWAP, medium $H_s$.}
