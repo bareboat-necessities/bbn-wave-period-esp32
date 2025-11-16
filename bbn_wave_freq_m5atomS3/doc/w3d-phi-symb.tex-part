@@ -114,13 +114,12 @@ For numerical robustness at high sampling rates, use the Maclaurin series
 \]
 which imply
 \[
-\phi_{va}=\tau\!\left(x-\tfrac{x^2}{2}+\cdots\right)=h-\tfrac{h^2}{2\tau}+\cdots,\quad
-\phi_{pa}=\tau^2\!\left(\tfrac{x^2}{2}-\tfrac{x^3}{6}+\cdots\right)=\tfrac{h^2}{2}-\tfrac{h^3}{6\tau}+\cdots,
-\]
-\[
-\phi_{Sa}=\tau^3\!\left(\tfrac{x^3}{6}-\tfrac{x^4}{24}+\cdots\right)=\tfrac{h^3}{6}-\tfrac{h^4}{24\tau}+\cdots,
-\quad
-\alpha=1-x+\tfrac{x^2}{2}-\cdots.
+\begin{aligned}
+\phi_{va}&=\tau\!\left(x-\tfrac{x^2}{2}+\cdots\right)=h-\tfrac{h^2}{2\tau}+\cdots,\quad\\
+\phi_{pa}&=\tau^2\!\left(\tfrac{x^2}{2}-\tfrac{x^3}{6}+\cdots\right)=\tfrac{h^2}{2}-\tfrac{h^3}{6\tau}+\cdots,\\
+\phi_{Sa}&=\tau^3\!\left(\tfrac{x^3}{6}-\tfrac{x^4}{24}+\cdots\right)=\tfrac{h^3}{6}-\tfrac{h^4}{24\tau}+\cdots,\\
+\alpha&=1-x+\tfrac{x^2}{2}-\cdots.
+\end{aligned}
 \]
 These cancel catastrophic subtraction in the \(x\to 0\) regime and match the
 branching used in code.
