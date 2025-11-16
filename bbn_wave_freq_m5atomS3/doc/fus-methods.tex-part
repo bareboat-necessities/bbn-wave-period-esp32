@@ -118,7 +118,8 @@ R_{S,\star}(k)=c_R \,\sigma_{a,\star}(k)\,\tau_\star^3(k),
 \]
 with axis anisotropy
 \(
-R_S=\mathrm{diag}( \rho_{xy}\,R_{S,\star},\ \rho_{xy}\,R_{S,\star},\ R_{S,\star} ),\ \rho_{xy}\!\in\!(0,1).
+R_S=\mathrm{diag}( \rho_{xy}\,R_{S,\star},\ \rho_{xy}\,R_{S,\star},\ R_{S,\star} ),\ \\
+\rho_{xy}\!\in\!(0,1).
 \)
 
 \subsection{Application to the MEKF}
