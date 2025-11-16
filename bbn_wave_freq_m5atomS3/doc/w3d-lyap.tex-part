@@ -1,4 +1,4 @@
-\section{Lyapunov / ISS Stability of the Adaptive Law $R_S \propto \sigma_a \tau^3$}
+\section*{Lyapunov / ISS Stability of the Adaptive Law $R_S \propto \sigma_a \tau^3$}
 \label{sec:lyap-iss}
 
 We establish input–to–state stability (ISS) of the estimation error under the adaptive
