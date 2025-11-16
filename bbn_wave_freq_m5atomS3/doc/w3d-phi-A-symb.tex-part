@@ -102,16 +102,17 @@ h\,I \;-\; \frac{1-\cos\theta}{\omega^2}\,W \;+\; \frac{h-\frac{\sin\theta}{\ome
 Putting the pieces together,
 \[
 \boxed{
+\begin{aligned}
 \Phi_{AA}(h)
-=
+&=
 \exp(F_{AA}h)
 =
 \begin{bmatrix}
 R(h) & B(h)\\
 0 & I
 \end{bmatrix},
-\qquad
-\begin{aligned}
+\qquad\\
+
 R(h)&=I-\sin\theta\,\frac{W}{\omega}+(1-\cos\theta)\frac{W^2}{\omega^2},\\
 B(h)&=-\Big[h\,I - \frac{1-\cos\theta}{\omega^2}W + \frac{h-\frac{\sin\theta}{\omega}}{\omega^2}W^2\Big],
 \end{aligned}
