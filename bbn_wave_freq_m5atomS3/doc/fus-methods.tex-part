@@ -74,7 +74,6 @@ Times of upcrossings of $u$ through band $[-h,+h]$ (debounced by $T_{\mathrm{deb
 \hat T_k=(1-\alpha_T)\hat T_{k-1}+\alpha_T (t_k-t_{k-1}), \quad \hat f_k=1/\hat T_k.
 \)
 
-\paragraph{Common guard rails.}
 Clamp $\hat f_k \in [f_{\min}, f_{\max}]$, then apply a short EMA:
 \(
 \bar f_k=(1-\alpha_s)\bar f_{k-1}+\alpha_s \hat f_k.
