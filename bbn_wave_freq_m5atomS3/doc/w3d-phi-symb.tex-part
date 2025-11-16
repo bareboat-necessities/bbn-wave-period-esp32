@@ -86,6 +86,7 @@ in implementation yields the exact closed forms
 \paragraph{Assembled per–axis transition.}
 Combining the polynomial kinematics for $(v,p,S)$ with the feedthroughs above gives
 \[
+\fitcol{
 \boxed{
 \Phi_{\text{axis}}(h)=
 \begin{bmatrix}
@@ -101,6 +102,7 @@ h & 1 & 0 & \tau^2(x+\mathrm{em1})\\[2pt]
 \tfrac{h^2}{2} & h & 1 & \tau^3\!\bigl(\tfrac{1}{2}x^2 - x - \mathrm{em1}\bigr)\\[2pt]
 0 & 0 & 0 & \alpha
 \end{bmatrix}.
+}
 }
 \]
 
