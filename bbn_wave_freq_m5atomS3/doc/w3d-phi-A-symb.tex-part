@@ -89,11 +89,13 @@ integrate termwise over $u\in[0,h]$:
 Therefore
 \[
 \boxed{\;
-B(h) \;=\; -\int_0^h e^{-W u}\,du
-\;=\; -\Bigg[
+\begin{aligned}
+B(h) \;&=\; -\int_0^h e^{-W u}\,du\\
+\;&=\; -\Bigg[
 h\,I \;-\; \frac{1-\cos\theta}{\omega^2}\,W \;+\; \frac{h-\frac{\sin\theta}{\omega}}{\omega^2}\,W^2
 \Bigg].
-\;}
+\;
+\end{aligned}}
 \]
 
 \paragraph{Assembled discrete transition for the attitude block.}
