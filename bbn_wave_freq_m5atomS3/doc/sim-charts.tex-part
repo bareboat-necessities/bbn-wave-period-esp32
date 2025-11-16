@@ -1,7 +1,5 @@
 %\section{Charts}
 
-\FloatBarrier
-
 % JONSWAP - medium
 \begin{figure}[!t]\centering
   \begin{minipage}{0.49\columnwidth}\centering
@@ -25,8 +23,6 @@
   \caption{PM Stokes: Directional spectrum (medium $H_s$). Left: polar heatmap $E(f,\theta)$; right: 3D surface.}
   \label{fig:pmstokes_spec_medium}
 \end{figure}
-
-\FloatBarrier
 
 \begin{figure}[!t]\centering
   \IncludePGF{freqtrack_jonswap_H1.500.pgf}
@@ -53,8 +49,6 @@
   \caption{Kalman 3D filter Euler angle comparison -- PM Stokes, medium $H_s$.}
   \label{fig:w3d_pmstokes_medium}
 \end{figure}
-
-\FloatBarrier
 
 \begin{figure}[!t]\centering
   \IncludePGF{w3d_jonswap_medium_zkin.pgf}
