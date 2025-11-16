@@ -5,7 +5,6 @@ Consider a linear time–invariant SDE
 \begin{equation}
 \dot{\delta\mathbf x}(t) = \mathbf F\,\delta\mathbf x(t) + \mathbf L\,\mathbf w_c(t),
 \qquad
-\\
 \mathbb E[\mathbf w_c(t)\mathbf w_c^\top(s)] = \mathbf Q_c\,\delta(t{-}s),
 \end{equation}
 with Jacobian (linearized) dynamics matrix $\mathbf F$, noise–input matrix $\mathbf L$,
