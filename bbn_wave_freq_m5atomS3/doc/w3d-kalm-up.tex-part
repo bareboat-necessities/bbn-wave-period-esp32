@@ -32,9 +32,9 @@ In this work the measurement dimension is $m=3$ (vector triads), so the correcti
 \emph{rank–3}. The state is ordered as
 \[
 \begin{aligned}
-\boldsymbol{x} &=\bigl[A^\top,L^\top,B^\top\bigr]^\top,\quad\\
-A =(\delta\boldsymbol{\theta},\mathbf{b}_g)\in\mathbb{R}^6,\;
-L &=(\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)\in\mathbb{R}^{12},\;\\
+\boldsymbol{x} &=\bigl[A^\top,L^\top,B^\top\bigr]^\top,\quad
+A =(\delta\boldsymbol{\theta},\mathbf{b}_g)\in\mathbb{R}^6,\;\\
+L &=(\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)\in\mathbb{R}^{12},\;\quad
 B =\mathbf{b}_a\in\mathbb{R}^3,
 \end{aligned}
 \]
