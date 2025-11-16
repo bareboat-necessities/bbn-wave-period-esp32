@@ -123,12 +123,7 @@ In short, the discrete transition and covariance used by the method's algorithm 
 \[
 \begin{aligned}
 \Phi(h) &=\mathrm{blkdiag}\big(\Phi_{\!AA}(h),\,\Phi_{\!LL}(h),\,\mathbf I_3\big),\qquad\\
-\mathbf Q_d(h) &=
-\begin{bmatrix}
-\mathbf Q_{\!AA} & & \\
-& \mathbf Q_{\!LL} & \\
-& & \mathbf Q_{bb}
-\end{bmatrix},
+\mathbf Q_d(h) &=\mathrm{blkdiag}\big(\mathbf Q_{\!AA},\,\mathbf Q_{\!LL},\,\mathbf Q_{bb}\big),
 \end{aligned}
 \]
 with \(\Phi_{\text{axis}},\,\phi_{va},\phi_{pa},\phi_{Sa}\) and
