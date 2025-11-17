@@ -143,11 +143,14 @@ obtained by integrating $B(s)$ termwise. Hence
 Adding the gyro- and bias-driven attitude parts,
 \[
 \boxed{\;
-Q_{\theta\theta}(h)=Q_{\theta\theta}^{(g)}(h)+Q_{\theta\theta}^{(b)}(h),
-\qquad
-Q_{bb}(h)=h\,Q_{bg},\qquad
+\begin{aligned}
+Q_{\theta\theta}(h)&=Q_{\theta\theta}^{(g)}(h)+Q_{\theta\theta}^{(b)}(h),
+\qquad\\
+Q_{bb}(h)&=h\,Q_{bg},\qquad
 Q_{\theta b}(h)=I_B(h)\,Q_{bg}.
-\;}
+\;
+\end{aligned}
+}
 \]
 Finally,
 \[
