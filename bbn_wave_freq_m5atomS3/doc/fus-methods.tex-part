@@ -13,7 +13,7 @@ Let $\omega=2\pi f$ and $\phi(t)=\int_0^t \omega(\tau)\,d\tau$.
 
 \subsection{Aranovskiy-type adaptive resonator}
 
-Aranovskiy filter drives a lightly damped virtual resonator by $u(t)$ and adjusts its natural frequency so its output matches the input. If the resonator frequency equals the signal's, the error energy is minimized.
+Aranovskiy filter \cite{Bobtsov2013182} drives a lightly damped virtual resonator by $u(t)$ and adjusts its natural frequency so its output matches the input. If the resonator frequency equals the signal's, the error energy is minimized.
 
 \paragraph{Method.}
 Internal lightly damped resonator:
