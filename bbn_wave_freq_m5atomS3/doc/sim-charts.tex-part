@@ -11,7 +11,22 @@
   \caption{JONSWAP: Directional spectrum (medium $H_s$). Left: polar heatmap $E(f,\theta)$; right: 3D surface.}
   \label{fig:jonswap_spec_medium}
 \end{figure}
+\begin{figure}[!t]\centering
+  \IncludePGF{freqtrack_jonswap_H1.500.pgf}
+  \caption{Frequency tracking comparison for JONSWAP wave, $H_s = 1.500$ m.}
+  \label{fig:freqtrack_jonswap_medium}
+\end{figure}
+\begin{figure}[!t]\centering
+  \IncludePGF{w3d_jonswap_medium.pgf}
+  \caption{Kalman 3D filter Euler angle comparison -- JONSWAP, medium $H_s$.}
+  \label{fig:w3d_jonswap_medium}
+\end{figure}\begin{figure}[!t]\centering
+  \IncludePGF{w3d_jonswap_medium_zkin.pgf}
+  \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration) -- JONSWAP, medium $H_s$.}
+  \label{fig:w3d_jonswap_medium_zkin}
+\end{figure}
 
+\iffalse
 % PM Stokes - medium
 \begin{figure}[!t]\centering
   \begin{minipage}{0.49\columnwidth}\centering
@@ -23,41 +38,19 @@
   \caption{PM Stokes: Directional spectrum (medium $H_s$). Left: polar heatmap $E(f,\theta)$; right: 3D surface.}
   \label{fig:pmstokes_spec_medium}
 \end{figure}
-
-\begin{figure}[!t]\centering
-  \IncludePGF{freqtrack_jonswap_H1.500.pgf}
-  \caption{Frequency tracking comparison for JONSWAP wave, $H_s = 1.500$ m.}
-  \label{fig:freqtrack_jonswap_medium}
-\end{figure}
-
 \begin{figure}[!t]\centering
   \IncludePGF{freqtrack_pmstokes_H1.500.pgf}
   \caption{Frequency tracking comparison for PM Stokes wave, $H_s = 1.500$ m.}
   \label{fig:freqtrack_pmstokes_medium}
 \end{figure}
-
-\FloatBarrier
-
-\begin{figure}[!t]\centering
-  \IncludePGF{w3d_jonswap_medium.pgf}
-  \caption{Kalman 3D filter Euler angle comparison -- JONSWAP, medium $H_s$.}
-  \label{fig:w3d_jonswap_medium}
-\end{figure}
-
-\begin{figure}[!t]\centering
-  \IncludePGF{w3d_pmstokes_medium.pgf}
-  \caption{Kalman 3D filter Euler angle comparison -- PM Stokes, medium $H_s$.}
-  \label{fig:w3d_pmstokes_medium}
-\end{figure}
-
-\begin{figure}[!t]\centering
-  \IncludePGF{w3d_jonswap_medium_zkin.pgf}
-  \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration) -- JONSWAP, medium $H_s$.}
-  \label{fig:w3d_jonswap_medium_zkin}
-\end{figure}
-
 \begin{figure}[!t]\centering
   \IncludePGF{w3d_pmstokes_medium_zkin.pgf}
   \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration) -- PM Stokes, medium $H_s$.}
   \label{fig:w3d_pmstokes_medium_zkin}
 \end{figure}
+\begin{figure}[!t]\centering
+  \IncludePGF{w3d_pmstokes_medium.pgf}
+  \caption{Kalman 3D filter Euler angle comparison -- PM Stokes, medium $H_s$.}
+  \label{fig:w3d_pmstokes_medium}
+\end{figure}
+\fi
