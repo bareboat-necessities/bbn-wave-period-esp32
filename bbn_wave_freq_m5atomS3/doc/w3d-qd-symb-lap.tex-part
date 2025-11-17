@@ -45,7 +45,8 @@ C_3 \coloneqq \frac{h^4}{4},\quad C_4 \coloneqq \frac{h^5}{5}\\
 Because \(F\) is block upper triangular,
 \[
 \fitcol{
-e^{Fs}=\begin{bmatrix}
+\begin{aligned}
+e^{Fs}&=\begin{bmatrix}
 e^{As} & \displaystyle\int_{0}^{s}\! e^{A(s-u)}B\,e^{Du}\,du\\[6pt]
 0 & e^{Ds}
 \end{bmatrix}
@@ -54,8 +55,9 @@ e^{As} & \displaystyle\int_{0}^{s}\! e^{A(s-u)}B\,e^{Du}\,du\\[6pt]
 e^{As} & C_{\text{top}}(s)\\
 0 & e^{-s/\tau}
 \end{bmatrix},
-\quad
-e^{As}=I+As+\tfrac12A^2s^2\ \ (A^3=0).
+\quad\\
+e^{As}&=I+As+\tfrac12A^2s^2\ \quad \ (A^3=0).
+\end{aligned}
 }
 \]
 The discrete covariance over \([0,h]\) is
