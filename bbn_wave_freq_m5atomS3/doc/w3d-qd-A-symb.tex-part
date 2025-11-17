@@ -143,7 +143,7 @@ obtained by integrating $B(s)$ termwise. Hence
 \boxed{\;Q_{\theta b}(h)=I_B(h)\,Q_{bg},\qquad Q_{b\theta}(h)=Q_{bg}\,I_B(h)^\top.\;}
 \]
 
-\paragraph{Assembled covariance and “Joseph” symmetry hygiene.}
+\paragraph{Assembled covariance.}
 Adding the gyro- and bias-driven attitude parts,
 \[
 \boxed{\;
@@ -316,7 +316,7 @@ Q_{\theta b}(h)     &\approx I_B(h)\,Q_{bg},\qquad Q_{b\theta}(h)=Q_{\theta b}(h
 Q_{bb}(h)           &= h\,Q_{bg}\quad\text{(exact)}.
 \end{aligned}}
 \]
-Finally enforce symmetry (Joseph hygiene):
+Finally enforce symmetry:
 \[
 Q_{d,AA}\;\leftarrow\;\tfrac12\left(Q_{d,AA}+Q_{d,AA}^\top\right).
 \]
