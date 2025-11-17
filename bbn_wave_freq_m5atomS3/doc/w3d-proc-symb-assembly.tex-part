@@ -12,7 +12,7 @@ Let the discrete state at step \(k\) be ordered as
 \mathbf{a}_w &
 \mathbf{b}_a
 \end{bmatrix}^{\!\top}
-\in\mathbb{R}^{21},
+\in\mathbb{R}^{21},\\
 \]
 where \(\delta\boldsymbol{\theta}\in\mathbb{R}^3\) is the (right–multiplicative) attitude error,
 \(\mathbf{b}_g\in\mathbb{R}^3\) the gyro bias,
@@ -125,8 +125,10 @@ augmented by temperature–drift modeling in the measurement equation.
 \subsubsection*{Prediction step (context)}
 With these blocks,
 \[
-\hat{\boldsymbol{x}}_{k|k-1}=\Phi(h)\,\hat{\boldsymbol{x}}_{k-1|k-1},\qquad
-P_{k|k-1}=\Phi(h)\,P_{k-1|k-1}\,\Phi(h)^{\!\top}+Q_d(h).
+\begin{aligned}
+\hat{\boldsymbol{x}}_{k|k-1}&=\Phi(h)\,\hat{\boldsymbol{x}}_{k-1|k-1},\qquad\\
+P_{k|k-1}&=\Phi(h)\,P_{k-1|k-1}\,\Phi(h)^{\!\top}+Q_d(h)
+\end{aligned}.
 \]
 The attitude/bias block \((\Phi_{AA},Q_{AA})\) follows the multiplicative EKF
 constant–rate assumption over \([t_k,t_k+h]\); the linear block \((\Phi_{LL},Q_{LL})\) uses
