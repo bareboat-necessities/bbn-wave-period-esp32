@@ -175,7 +175,7 @@ $P(\theta)$ (LPV).
 \item (Optional) For $\tilde\theta_k\!\to\!0$: enforce PE (maneuvers or persistent spectral content).
 \end{enumerate}
 
-\section*{Appendix: Why $R_S \propto \sigma_a \tau^3$ (Dimensional and Spectral Justification)}
+\section*{Why $R_S \propto \sigma_a \tau^3$ (Dimensional and Spectral Justification)}
 \label{app:rs-scaling}
 
 \paragraph{Notation and units.}
@@ -215,9 +215,7 @@ Numerically,
 \[
 \int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6} \approx 0.0812686
 \quad\Rightarrow\quad
-\mathrm{Var}[S] \approx 0.0258686\,\sigma_a^2\tau^6,
 \]
-so
 \[
 \mathrm{std}(S)\approx 0.16084\,\sigma_a\,\tau^3.
 \]
