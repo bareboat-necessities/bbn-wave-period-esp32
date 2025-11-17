@@ -130,16 +130,16 @@ K_{aa}=B_0.
 \paragraph{Integral (II): cross terms with $a$.}
 \[
 \fitcol{
-Q_{\bullet a}(h)=\int_{0}^{h} q_c\, C_{\text{top}}(s) e^{-s/\tau}\,ds
+\begin{aligned}
+Q_{\bullet a}(h)&=\int_{0}^{h} q_c\, C_{\text{top}}(s) e^{-s/\tau}\,ds
 =\frac{2\sigma^2}{\tau}
 \begin{bmatrix}
 K_{va}\\ K_{pa}\\ K_{Sa}
-\end{bmatrix},\quad
-\begin{aligned}
+\end{bmatrix},\quad\\
 K_{va}&=\tau\,(A_0-B_0),\\
 K_{pa}&=\tau A_1 + \tau^2(B_0-A_0),\\
-K_{Sa}&=\tfrac{1}{2}\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0.
-\end{aligned}
+K_{Sa}&=\tfrac{1}{2}\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0
+\end{aligned}.
 }
 \]
 
