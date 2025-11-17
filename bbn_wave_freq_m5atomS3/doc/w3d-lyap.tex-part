@@ -25,8 +25,10 @@ where $\theta=(\sigma_a,\tau)$ are adapted online and $k_i>0$ are fixed anisotro
 coefficients (possibly $k_x,k_y\ll k_z$).
 We analyze the extended Q–MEKF linearized after attitude lock, focusing on the translational OU chain
 \[
-\dot v=a_w,\qquad \dot p=v,\qquad \dot S=p,\qquad
-\dot a_w=-\tfrac{1}{\tau}a_w+\sqrt{q_c}\,w,\quad q_c=2\sigma_a^2/\tau .
+\begin{align}
+\dot v&=a_w,\qquad \dot p=v,\qquad \dot S=p,\qquad\\
+\dot a_w&=-\tfrac{1}{\tau}a_w+\sqrt{q_c}\,w,\quad q_c=2\sigma_a^2/\tau .
+\end{align}
 \]
 
 \subsection*{Assumptions}
