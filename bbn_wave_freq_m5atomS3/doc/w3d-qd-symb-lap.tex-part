@@ -95,12 +95,14 @@ Taking Laplace transforms (\(z\) is the Laplace variable) gives
 Since \(A\) is nilpotent and \(B=[1,0,0]^{\!\top}\), partial fractions in \(z\) and inverse Laplace yields the scalar components of \(f\):
 \[
 \fitcol{
-f(s)=\begin{bmatrix}
+\begin{aligned}
+f(s)&=\begin{bmatrix}
 \phi_{va}(s)\\ \phi_{pa}(s)\\ \phi_{Sa}(s)
-\end{bmatrix},\qquad
-\phi_{va}(s)=\tau\bigl(1-e^{-s/\tau}\bigr),\ \
-\phi_{pa}(s)=s\tau-\tau^2\bigl(1-e^{-s/\tau}\bigr),\ \
-\phi_{Sa}(s)=\tfrac12 s^2\tau-s\tau^2+\tau^3\bigl(1-e^{-s/\tau}\bigr).
+\end{bmatrix},\quad
+\phi_{va}(s)=\tau\bigl(1-e^{-s/\tau}\bigr),\ \quad
+\phi_{pa}(s)=s\tau-\tau^2\bigl(1-e^{-s/\tau}\bigr),\ \\
+\phi_{Sa}(s)&=\tfrac12 s^2\tau-s\tau^2+\tau^3\bigl(1-e^{-s/\tau}\bigr).
+\end{aligned}
 }
 \]
 Evaluated at \(s=h\) and written in primitives \((x,\alpha,\mathrm{em1})\),
