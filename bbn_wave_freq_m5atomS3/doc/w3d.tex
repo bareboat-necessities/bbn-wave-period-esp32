@@ -73,6 +73,14 @@
 % Needed by PGF outputs that reference \mathdefault
 \providecommand{\mathdefault}[1]{#1}
 
+\setcounter{topnumber}{5}
+\setcounter{dbltopnumber}{5}
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\dbltopfraction}{0.95}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.9}
+\renewcommand{\dblfloatpagefraction}{0.9}
+
 % For including PGF
 \newcommand{\IncludePGF}[1]{\resizebox{\linewidth}{!}{\input{#1}}}
 
