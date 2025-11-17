@@ -569,7 +569,7 @@ $Q_{bg}$ has units $\mathrm{rad}^2/\mathrm{s}^3$ (driving $\dot b_g$), so $T Q_{
 $\mathrm{rad}^2/\mathrm{s}^2$ (variance of a rate), and $I_B Q_{bg}$ has $\mathrm{rad}^2/\mathrm{s}$,
 matching the cross-covariance units.
 
-\paragraph{Implementation mapping and hygiene.}
+\paragraph{Implementation mapping.}
 In the code:
 \begin{itemize}
 \item $Q_g \leftarrow \texttt{Qbase.topLeftCorner<3,3>()}$, \quad
