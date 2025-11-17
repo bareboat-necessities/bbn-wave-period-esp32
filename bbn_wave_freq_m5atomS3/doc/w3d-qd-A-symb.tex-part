@@ -124,12 +124,14 @@ Q_{\theta b}(h)=\int_0^h B(s)\,Q_{bg}\,ds
 Define the \emph{integral of $B$}
 \[
 \boxed{\;
-I_B(h):=\int_0^h B(s)\,ds
-= -\Big[
+\begin{aligned}
+I_B(h):&=\int_0^h B(s)\,ds\\
+&= -\Big[
 \tfrac{1}{2}h^2\,I
 -\frac{h-\frac{\sin(\omega h)}{\omega}}{\omega^2}\,W
 +\frac{\tfrac{1}{2}h^2+\frac{\cos(\omega h)-1}{\omega^2}}{\omega^2}\,W^2
-\Big],
+\Big]
+\end{aligned},
 \;}
 \]
 obtained by integrating $B(s)$ termwise. Hence
