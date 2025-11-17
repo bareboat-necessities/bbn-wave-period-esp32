@@ -33,14 +33,14 @@ We introduce compact primitives used throughout:
 }
 \]
 \[
-A_0 \coloneqq -\tau\,\mathrm{em1},\qquad
-A_1 \coloneqq \tau^2\!\bigl(-\mathrm{em1}-x\alpha\bigr),\qquad
-A_2 \coloneqq \tau^3\!\bigl(-2\,\mathrm{em1}+\alpha x(x+2)\bigr),\qquad
-B_0 \coloneqq -\frac{\tau}{2}\,\mathrm{em1}_2,
-\]
-\[
-C_0 \coloneqq h,\quad C_1 \coloneqq \frac{h^2}{2},\quad C_2 \coloneqq \frac{h^3}{3},\quad
-C_3 \coloneqq \frac{h^4}{4},\quad C_4 \coloneqq \frac{h^5}{5}.
+\begin{aligned}
+A_0 &\coloneqq -\tau\,\mathrm{em1},\qquad
+A_1 \coloneqq \tau^2\!\bigl(-\mathrm{em1}-x\alpha\bigr),\qquad\\
+A_2 &\coloneqq \tau^3\!\bigl(-2\,\mathrm{em1}+\alpha x(x+2)\bigr),\qquad
+B_0 \coloneqq -\frac{\tau}{2}\,\mathrm{em1}_2,\\
+C_0 &\coloneqq h,\quad C_1 \coloneqq \frac{h^2}{2},\quad C_2 \coloneqq \frac{h^3}{3},\quad
+C_3 \coloneqq \frac{h^4}{4},\quad C_4 \coloneqq \frac{h^5}{5}\\
+\end{aligned}.
 \]
 
 \subsubsection*{Block–triangular exponential and noise flow}
