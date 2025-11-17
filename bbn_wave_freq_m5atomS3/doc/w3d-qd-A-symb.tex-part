@@ -102,7 +102,7 @@ This is an \emph{exact rotation integral}. Two useful specializations:
   \boxed{\;Q_{\theta\theta}^{(g)}(h)=q_g\,h\,I.\;}
   \]
 - For general $Q_g$, write $R(s)$ in the Rodrigues basis and integrate the scalar
-  coefficients of $I,W,W^2$ against $Q_g$ (closed form exists; in code we use an
+  coefficients of $I,W,W^2$ against $Q_g$ (closed form exists; in the implementation we use an
   accurate Simpson rule when $Q_g$ is anisotropic).
 
 \paragraph{(II) Bias–driven attitude term.}
@@ -215,8 +215,7 @@ I_B(h)   &:= \int_0^h B(s)\,ds.
 \end{aligned}}
 \]
 Closed forms exist (cf.\ previous subsection) but are algebraically long for anisotropic $Q_g$.
-We therefore employ a high–order \emph{matrix-valued Simpson rule} that is exact up to $\mathcal{O}(h^5)$ and
-matches the code paths \texttt{simpson\_R\_Q\_RT\_} and \texttt{simpson\_B\_Q\_BT\_}.
+We therefore employ a high–order \emph{matrix-valued Simpson rule} that is exact up to $\mathcal{O}(h^5)$.
 
 \paragraph{Matrix Simpson rule.}
 Let $M:[0,h]\to\mathbb{R}^{m\times n}$ be $C^4$-smooth entrywise. By linearity,
