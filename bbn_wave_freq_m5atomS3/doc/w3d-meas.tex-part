@@ -140,7 +140,7 @@ the constraint, letting $S$ wander but still suppressing drift.
 
 Physically, $S$ has no direct observable meaning (it is an auxiliary integral).
 Therefore, $R_S$ does not correspond to sensor noise, but rather to a 
-\emph{design knob}:
+\emph{tuning parameter}:
 \begin{itemize}
 \item If the the double integral drift is high use smaller $R_S$.
 \item If slow drift is acceptable, increase $R_S$ to reduce artificial feedback.
