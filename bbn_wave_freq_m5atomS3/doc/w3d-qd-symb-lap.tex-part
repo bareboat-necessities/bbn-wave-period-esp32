@@ -85,8 +85,10 @@ Thus \(Q_d\) is assembled from three integrals:
 \subsubsection*{Laplace–domain evaluation of the feedthrough}
 Define \(f(s)\coloneqq C_{\text{top}}(s)\). By definition,
 \[
+\fitcol{
 f(s)=\int_0^s e^{A(s-u)}B\,e^{Du}\,du
 =\bigl(e^{As}B\bigr)*\bigl(e^{Ds}\bigr)(s)\quad\text{(convolution in }s\text{)}.
+}
 \]
 Taking Laplace transforms (\(z\) is the Laplace variable) gives
 \[
