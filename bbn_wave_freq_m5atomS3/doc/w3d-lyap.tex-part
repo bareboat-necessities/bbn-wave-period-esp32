@@ -1,9 +1,15 @@
 % --- Safe guards (put anywhere before this section, e.g., right above it) ---
 \makeatletter
+% If you're not already loading amsthm in the preamble, make sure you do:
+% \usepackage{amsthm}
 \@ifundefined{remark}{\theoremstyle{remark}\newtheorem{remark}{Remark}}{}
 \@ifundefined{lemma}{\theoremstyle{plain}\newtheorem{lemma}{Lemma}}{}
 \@ifundefined{theorem}{\theoremstyle{plain}\newtheorem{theorem}{Theorem}}{}
+% Unnumbered theorem, used as theorem*
+\@ifundefined{theorem*}{\newtheorem*{theorem*}{Theorem}}{}
 \makeatother
+% Provide a harmless default for \fitcol if not already defined
+\providecommand{\fitcol}[1]{#1}
 % ---------------------------------------------------------------------------
 
 \section*{Lyapunov / ISS Stability of the Adaptive Law $R_S \propto \sigma_a \tau^3$}
@@ -186,4 +192,36 @@ This heuristic matches the spectral calculation below.
 
 \paragraph{Spectral justification with a low-frequency cutoff.}
 With $S_a(\omega)=\tfrac{2\sigma_a^2\tau}{1+\omega^2\tau^2}$ and $H_S(j\omega)=1/(j\omega)^3$,
-the variance of $S$ without a low-frequency cutoff diverges. Using $\omega_{\min}\approx 1/\tau$ (or_
+the variance of $S$ without a low-frequency cutoff diverges. Using a physically motivated cutoff
+$\omega_{\min}\approx 1/\tau$ (or, equivalently, detrending over windows of length $\sim\tau$), we obtain
+\[
+\fitcol{
+\mathrm{Var}[S]
+= \frac{1}{2\pi}\!\int_{\omega_{\min}}^\infty \! S_a(\omega)\,\big|H_S(j\omega)\big|^2\,d\omega
+\approx \frac{1}{2\pi}\!\int_{1/\tau}^\infty \frac{2\sigma_a^2\tau}{1+\omega^2\tau^2}\,\frac{1}{\omega^6}\,d\omega.
+}
+\]
+With the substitution $u = \omega\tau$, $d\omega = du/\tau$, this becomes
+\[
+\fitcol{
+\mathrm{Var}[S] \approx \frac{\sigma_a^2\tau^6}{\pi}\int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6}.
+}
+\]
+Numerically,
+\[
+\int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6} \approx 0.0812686
+\quad\Rightarrow\quad
+\mathrm{Var}[S] \approx 0.0258686\,\sigma_a^2\tau^6,
+\]
+so
+\[
+\mathrm{std}(S)\approx 0.16084\,\sigma_a\,\tau^3.
+\]
+Thus choosing
+\[
+R_S = k_i\,\sigma_a\,\tau^3
+\quad\Longleftrightarrow\quad
+R_S^2 = k_i^2\,\sigma_a^2\,\tau^6
+\]
+makes the innovation SNR roughly invariant to sea-state energy and correlation length, consistent with
+the OU chain’s discrete $Q_d$ scaling.
