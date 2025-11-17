@@ -141,9 +141,11 @@ Using \(\mathcal{L}\{e^{-s/\tau}\}(z)=(z+1/\tau)^{-1}\) and the same rational st
 \]
 Thus \(Q_{\bullet a}=\frac{2\sigma^2}{\tau}\begin{bmatrix}K_{va}&K_{pa}&K_{Sa}\end{bmatrix}^{\!\top}\) with
 \[
-K_{va}=\tau(A_0-B_0),\qquad
-K_{pa}=\tau A_1+\tau^2(B_0-A_0),\qquad
-K_{Sa}=\tfrac12\tau A_2-\tau^2 A_1+\tau^3 A_0-\tau^3 B_0.
+\begin{aligned}
+K_{va}&=\tau(A_0-B_0),\qquad
+K_{pa}=\tau A_1+\tau^2(B_0-A_0),\qquad\\
+K_{Sa}&=\tfrac12\tau A_2-\tau^2 A_1+\tau^3 A_0-\tau^3 B_0.
+\end{aligned}
 \]
 
 \paragraph{(i) Top \(3\times 3\) block.}
