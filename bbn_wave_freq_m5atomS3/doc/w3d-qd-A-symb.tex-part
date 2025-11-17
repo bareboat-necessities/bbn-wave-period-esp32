@@ -252,12 +252,15 @@ the Simpson combination reproduces the exact series of $I_R(h)$ up to $\mathcal{
 Let $M_{BB}(s):=B(s)\,Q_{bg}\,B(s)^\top$. Simpson yields
 \[
 \boxed{
-I_{BB}(h)\;\approx\;\frac{h}{6}\Big(
+\begin{aligned}
+I_{BB}(h)\;&\approx\;\frac{h}{6}\Big(
 B_0Q_{bg}B_0^\top \;+\; 4\,B_{1/2}Q_{bg}B_{1/2}^\top \;+\; B_1Q_{bg}B_1^\top
 \Big)
-\;=\;\frac{h}{6}\Big(
+\;\\
+&=\;\frac{h}{6}\Big(
 4\,B_{1/2}Q_{bg}B_{1/2}^\top \;+\; B_1Q_{bg}B_1^\top
-\Big),
+\Big)
+\end{aligned},
 }
 \]
 since $B_0=0$. Using the closed forms
