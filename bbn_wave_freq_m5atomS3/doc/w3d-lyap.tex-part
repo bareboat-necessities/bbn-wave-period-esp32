@@ -5,55 +5,65 @@ We establish input–to–state stability (ISS) of the estimation error under th
 pseudo-measurement weighting
 \[
 R_S(\theta) = \mathrm{diag}(r_{Sx}, r_{Sy}, r_{Sz}), \qquad
-r_{Si} = k_i\;\sigma_a\,\tau^3,
+r_{Si} = k_i\,\sigma_a\,\tau^3,
 \]
-where $\theta \!=\! (\sigma_a,\tau)$ are adapted online and $k_i>0$ are fixed anisotropy
+where $\theta=(\sigma_a,\tau)$ are adapted online and $k_i>0$ are fixed anisotropy
 coefficients (possibly $k_x,k_y \ll k_z$).
 We analyze the extended Q–MEKF linearized about the operating point after attitude
-lock (Sec.~\ref{sec:analytic}, \ref{sec:quat}), focusing on the translational OU chain
-\(
-\dot v = a_w,\;\dot p = v,\;\dot S = p,\;\dot a_w = -(1/\tau)a_w + \sqrt{q_c}\,w
-\),
+lock (see the analytic discretization and quaternion update sections), focusing on the translational OU chain
+\[
+\dot v = a_w,\qquad \dot p = v,\qquad \dot S = p,\qquad \dot a_w = -\tfrac{1}{\tau}a_w + \sqrt{q_c}\,w,
+\]
 with $q_c=2\sigma_a^2/\tau$.
 
 \subsection*{Assumptions}
 \begin{itemize}[before=\small, itemsep=2pt, topsep=2pt,
   labelsep=0.6em, labelwidth=2.2em, labelindent=0pt, leftmargin=!]
 \item[A1] \textbf{Bounded sampling and small linearization error.}
-Sampling $h \in (0,\bar h]$ such that the discrete transition $\Phi(h,\tau)$ matches the analytic form
-(Sec.~\ref{sec:analytic}); linearization error is Lipschitz on the compact set considered.
-\item[A2] \textbf{Noise bounds.}
-Gyro, accelerometer, magnetometer, and pseudo-measurement noises satisfy
-$\|n_g\|,\|n_a\|,\|n_m\|,\|n_S\| \le \bar n$; the OU driver $w$ has finite second moment on each interval.
+Sampling $h \in (0,\bar h]$ such that the discrete transition $\Phi(h,\tau)$ matches the analytic form; the linearization error is Lipschitz on the compact set considered.
+
+\item[A2] \textbf{Noise moments (nonpathological tails).}
+Gyro, accelerometer, magnetometer, and pseudo-measurement noises have bounded second moments (e.g., are sub-Gaussian with scale $\bar\sigma$). The OU driver $w$ is standard white noise (finite second moment).%
+\footnote{Bounded-\emph{norm} noise is unrealistic for Gaussian sensors; bounded variance or sub-Gaussian tails is the standard assumption.}
+
 \item[A3] \textbf{Parameter compactness via projection.}
 \[
 \Theta \;=\; \{(\sigma_a,\tau)\;:\;\underline\sigma \le \sigma_a \le \overline\sigma,\;
 \underline\tau \le \tau \le \overline\tau\},
 \]
 enforced by a projection $\Pi_\Theta(\cdot)$.
+
 \item[A4] \textbf{Rate-limited adaptation.} There exists $\rho>0$ such that
-$\|\theta_{k+1}-\theta_k\|\le \rho$ for all $k$ (per-step clamp/rate limit).
+$\|\theta_{k+1}-\theta_k\|\le \rho$ for all $k$ (per-step clamp / rate limit).
+
 \item[A5] \textbf{Smooth dependence.}
 $\Phi(\theta)$ and $K(\theta)$ are Lipschitz on $\Theta$ with constants $L_\Phi,L_K$.
+
 \item[A6] \textbf{CQLF for the frozen closed loop.}
 Let $A(\theta):=\Phi(\theta)-K(\theta)C\,\Phi(\theta)$. There exist $P\succ 0$ and $\mu\in(0,1)$ such that
 \begin{equation}
 \label{eq:cqlf}
 A(\theta)^\top P\,A(\theta) \;\preceq\; (1-\mu)\,P \qquad \forall\,\theta\in\Theta .
 \end{equation}
+
 \item[A7] \textbf{Explicit adaptation law.}
-$\theta_{k+1} = \Pi_\Theta(\theta_k - \Gamma\nabla_\theta \mathcal{L}(e_k,\theta_k))$,  
-with step matrix $\Gamma=\mathrm{diag}(\gamma_\sigma,\gamma_\tau)$.
+$\theta_{k+1} = \Pi_\Theta\!\big(\theta_k - \Gamma\nabla_\theta \mathcal{L}(e_k,\theta_k)\big)$,  
+with $\Gamma=\mathrm{diag}(\gamma_\sigma,\gamma_\tau)$.
+
 \item[A8] \textbf{Gradient regularity and small step.}
 $\nabla_\theta\mathcal{L}$ is $L_\theta$-Lipschitz and $\Gamma$ is small enough so that
 $\|\theta_{k+1}-\theta_k\|\le\rho<\rho^\star$ (bounded-rate adaptation).
+
+\item[A9] \textbf{(Optional, for parameter convergence) Persistency of excitation (PE).}
+The regressor(s) driving $\nabla_\theta \mathcal{L}$ are PE on $\Theta$.%
+\footnote{A9 is \emph{not} required for ISS or for $e_k\!\to\!0$; it is only used to claim $\tilde\theta_k\!\to\!0$.}
 \end{itemize}
 
 \noindent
-We write the stacked estimation error $e := x-x^\star$ for the linear translational
+Let $e := x-x^\star$ denote the stacked estimation error for the linear translational
 subsystem (including $a_w$), with $x^\star$ the true OU-driven state.
 Let $\tilde\theta := \hat\theta - \theta^\star$ denote parameter error relative to the
-ideal stationary values $(\sigma_a^\star,\tau^\star)$ for the current sea-state.
+ideal stationary values $(\sigma_a^\star,\tau^\star)$ for the current sea state.
 Disturbances $d_k$ aggregate process/measurement noise, linearization residue, and bounded coupling from attitude.
 
 \begin{lemma}[Parameter-variation mismatch bound]\label{lem:delta}
@@ -67,7 +77,7 @@ Then for $\Delta_k := A(\theta_{k+1})-A(\theta_k)$,
 \end{lemma}
 
 \begin{proof}
-Mean-value expansion of $\Phi,K$ over compact $\Theta$ and the triangle inequality.
+Mean-value expansion of $\Phi,K$ over compact $\Theta$ and triangle inequality.
 \end{proof}
 
 \begin{lemma}[One-step Lyapunov decrement]\label{lem:onestep-corrected}
@@ -78,7 +88,7 @@ e_{k+1} = A(\theta_k)e_k + \Delta_k e_k + d_k
 \]
 satisfies
 \[
-V(e_{k+1}) \le (1-\mu + c_1L_A^2\rho^2)\,V(e_k) + c_d\|d_k\|^2,
+V(e_{k+1}) \le (1-\mu + c_1\|\Delta_k\|^2)\,V(e_k) + c_d\|d_k\|^2,
 \]
 where $c_1=\tfrac{\lambda_{\max}(P)}{\lambda_{\min}(P)}$ and $c_d>0$ depends on bounds of $A(\theta),P$ on $\Theta$.
 \end{lemma}
@@ -86,23 +96,19 @@ where $c_1=\tfrac{\lambda_{\max}(P)}{\lambda_{\min}(P)}$ and $c_d>0$ depends on 
 \begin{proof}
 Expand
 \[
-\fitcol{
-V(e_{k+1}) = e_k^\top(A_k+\Delta_k)^\top P (A_k+\Delta_k)e_k + 2e_k^\top(A_k+\Delta_k)^\top P d_k + d_k^\top P d_k.
-}
+V(e_{k+1}) = e_k^\top(A_k+\Delta_k)^\top P (A_k+\Delta_k)e_k +
+2e_k^\top(A_k+\Delta_k)^\top P d_k + d_k^\top P d_k.
 \]
-Apply \eqref{eq:cqlf}, the Rayleigh quotient
+Apply \eqref{eq:cqlf}, the Rayleigh quotient bounds
 $\lambda_{\min}(P)\|e_k\|^2 \le e_k^\top P e_k \le \lambda_{\max}(P)\|e_k\|^2$,
-and Young’s inequality. Collect terms to obtain
-$V(e_{k+1}) \le (1-\mu + c_1\|\Delta_k\|^2)V(e_k) + c_d\|d_k\|^2$.
-Finally substitute $\|\Delta_k\|\le L_A\rho$.
+and Young’s inequality to absorb linear terms in $\Delta_k$ and the cross term with $d_k$
+into $\|\Delta_k\|^2 V(e_k)$ and $\|d_k\|^2$, respectively. Substitute $\|\Delta_k\|\le L_A\rho$.
 \end{proof}
 
 \begin{lemma}[Coupled parameter update bound]\label{lem:coupled}
 Assume \textup{A7–A8}. Then for $\tilde\theta_k=\hat\theta_k-\theta^\star$,
 \[
-\fitcol{
 \|\tilde\theta_{k+1}\|^2 \;\le\; (1-\eta)\|\tilde\theta_k\|^2 + c_\theta\|e_k\|^2,
-}
 \]
 where $\eta>0$ depends on the step size $\Gamma$ and the cocoercivity of $\nabla_\theta\mathcal{L}$,
 and $c_\theta$ depends on its $L_\theta$-Lipschitz constant.
@@ -110,7 +116,7 @@ and $c_\theta$ depends on its $L_\theta$-Lipschitz constant.
 
 \begin{proof}[Sketch]
 Projection is nonexpansive; gradient steps with small $\Gamma$ are averaged contractions.
-Expanding $\|\tilde\theta_{k+1}\|^2$ and applying Lipschitz and cocoercivity bounds yields the inequality.
+Expand $\|\tilde\theta_{k+1}\|^2$, apply Lipschitz/cocoercivity and the nonexpansiveness of $\Pi_\Theta$.
 \end{proof}
 
 \begin{theorem*}[ISS of the adaptive estimator (augmented state)]\label{thm:iss-aug}
@@ -118,33 +124,30 @@ Let $W_k := V(e_k) + \alpha\|\tilde\theta_k\|^2$ for some $\alpha>0$.
 Under \textup{A1–A8} and $\rho<\rho^\star$ from Lemma~\ref{lem:onestep-corrected},
 there exist class-$\mathcal{KL}$ and class-$\mathcal{K}$ functions $\beta,\gamma$ such that
 \[
-\fitcol{
 \|e_k\| + \|\tilde\theta_k\| \le \beta(\|e_0\|+\|\tilde\theta_0\|,k)
  + \gamma\!\Big(\sup_{0\le j<k}\|d_j\|\Big).
-}
 \]
-If $d_k\!\to\!0$ then $(e_k,\tilde\theta_k)\!\to\!0$; if $d_k$ is bounded, both remain bounded.
+If $d_k\!\to\!0$ then $e_k\!\to\!0$ and $\tilde\theta_k$ remains bounded. If, in addition, \textup{A9} (PE) holds, then $\tilde\theta_k\!\to\!0$.
 \end{theorem*}
 
 \begin{proof}
 Combine Lemmas~\ref{lem:onestep-corrected} and \ref{lem:coupled}:
 \[
-\fitcol{
 W_{k+1} \le (1-\mu+c_1L_A^2\rho^2)V(e_k)
- + c_d\|d_k\|^2 + \alpha((1-\eta)\|\tilde\theta_k\|^2+c_\theta\|e_k\|^2).
-}
+ + c_d\|d_k\|^2 + \alpha\big((1-\eta)\|\tilde\theta_k\|^2+c_\theta\|e_k\|^2\big).
 \]
-Select $\alpha$ small enough that the $\|e_k\|^2$ coefficient is negative.
+Select $\alpha>0$ small enough that the coefficient on $\|e_k\|^2$ is negative.
 Then $W_{k+1}-W_k \le -\varepsilon V(e_k) - \alpha\eta\|\tilde\theta_k\|^2 + c_d\|d_k\|^2$,
-which is an ISS Lyapunov inequality; the discrete ISS theorem (Sontag–Wang, 1995)
-implies the stated bound.
+which is a discrete ISS Lyapunov inequality; the discrete ISS theorem (Sontag–Wang, 1995)
+implies the stated bound. Under PE (A9), standard adaptive arguments imply $\tilde\theta_k\!\to\!0$.
 \end{proof}
 
 \paragraph{Interpretation.}
 The augmented system $(e_k,\tilde\theta_k)$ is input–to–state stable:
-with small per-step parameter change $\rho$ and bounded noise $d_k$, both errors remain bounded,
-and they converge when disturbances vanish. The scaling $R_S=k_i\sigma_a\tau^3$ does not destabilize
-the filter—it maintains uniform stability across sea states.
+with small per-step parameter change $\rho$ and bounded-variance noise $d_k$, both errors remain bounded,
+and the state error $e_k$ converges to zero as disturbances vanish.
+The scaling $R_S=k_i\,\sigma_a\,\tau^3$ \emph{preserves uniform stability provided} the frozen closed loop
+admits a CQLF over $\Theta$ (A6) and adaptation is sufficiently slow (A4–A5, A8).
 
 \subsection*{How to verify the CQLF (A6) in practice}
 Discretize a grid of $(\sigma_a,\tau)$ in $\Theta$ and solve
@@ -155,17 +158,18 @@ for a common $P,\mu$ using an LMI solver (e.g.\ \texttt{feasp}, \texttt{CVX}, or
 If infeasible: (i) narrow $\Theta$; (ii) raise $R_S$ floors; (iii) slow adaptation (reduce $\rho$);
 or (iv) allow a parameter-dependent $P(\theta)$ (LPV approach).
 
-\subsection*{Implementation checklist (A1–A8)}
+\subsection*{Implementation checklist (A1–A9)}
 \begin{enumerate}\itemsep2pt
 \item Projection: enforce $\hat\sigma_a\!\in[\underline\sigma,\overline\sigma]$,
 $\hat\tau\!\in[\underline\tau,\overline\tau]$.
 \item Rate limit: clamp $\|\theta_{k+1}-\theta_k\|\!\le\!\rho<\rho^\star$.
 \item Noise floors: keep $Q\succeq q_{\min}I$, $R,R_S\succeq r_{\min}I$.
-\item Timescale separation: update $(\hat\sigma_a,\hat\tau)$ slower than $(v,p,S)$ filter.
-\item Anisotropy: $R_S=\mathrm{diag}(k_x,k_y,k_z)\sigma_a\tau^3$ with $k_x,k_y\!\ll\!k_z$.
+\item Timescale separation: update $(\hat\sigma_a,\hat\tau)$ slower than the $(v,p,S)$ filter.
+\item Anisotropy: $R_S=\mathrm{diag}(k_x,k_y,k_z)\,\sigma_a\tau^3$ with $k_x,k_y\!\ll\!k_z$ when appropriate.
+\item (Optional) For $\tilde\theta_k\!\to\!0$: ensure PE by design (excitation maneuvers or persistent spectral content).
 \end{enumerate}
 
-\section*{Appendix: Why $R_S \propto \sigma_a \tau^3$ (Dimensional and Energy Justification)}
+\section*{Appendix: Why $R_S \propto \sigma_a \tau^3$ (Dimensional and Spectral Justification)}
 \label{app:rs-scaling}
 
 \paragraph{Notation and units.}
@@ -176,33 +180,15 @@ $a_w$ is OU with std.\ $\sigma_a$ and correlation $\tau$,
 }
 \]
 The chain $\dot v=a_w,\;\dot p=v,\;\dot S=p$ implies $S$ is the triple time integral of $a_w$.
-$R_S$ is treated as a standard deviation ($R_S^2$ used in covariance).
+$R_S$ is a standard deviation (so $R_S^2$ appears in covariance).
 
-\begin{lemma}[Dimensional scaling]\label{lem:dim}
-Typical magnitude over one $\tau$: $\|S\|_{\text{typ}}=\mathcal{O}(\sigma_a\tau^3)$.
-\end{lemma}
+\begin{remark}[Back-of-the-envelope scaling]\label{rem:dim}
+Over one correlation time $\tau$, each integration contributes a factor of order $\tau$ in magnitude:
+$v=\mathcal O(\sigma_a\tau)$, $p=\mathcal O(\sigma_a\tau^2)$, $S=\mathcal O(\sigma_a\tau^3)$.
+This is heuristic (not a rigorous bound) and matches the spectral result below.
+\end{remark}
 
-\begin{proof}
-Each integration multiplies by $\tau$: $v\sim\sigma_a\tau$, $p\sim\sigma_a\tau^2$, $S\sim\sigma_a\tau^3$.
-\end{proof}
-
-\paragraph{Spectral justification.}
-PSD of $a_w$: $S_a(\omega)=\tfrac{2\sigma_a^2\tau}{1+\omega^2\tau^2}$.
-Transfer $H_S(j\omega)=1/(j\omega)^3$; with cutoff $\omega_{\min}\!\sim\!1/\tau$,
-\[
-\fitcol{
-\operatorname{Var}[S] \approx \tfrac{1}{2\pi}\!\int_{1/\tau}^{\infty}\!\!\frac{2\sigma_a^2\tau}{(1+\omega^2\tau^2)\omega^6}d\omega
-\;=\;\Theta(\sigma_a^2\tau^6).
-}
-\]
-Hence $\mathrm{std}(S)\sim C\,\sigma_a\tau^3$ with $C\!=\!\sqrt{1/(5\pi)}$.
-
-\paragraph{Result.}
-Choosing
-\[
-R_S = k_i\sigma_a\tau^3
-\quad\Longleftrightarrow\quad
-R_S^2 = k_i^2\sigma_a^2\tau^6
-\]
-makes the innovation SNR roughly invariant to sea-state energy or correlation length,
-consistent with the discrete $Q_d^{(1)}$ scaling derived in Sec.~\ref{sec:analytic}.
+\paragraph{Spectral justification with a low-frequency cutoff.}
+The PSD of $a_w$ is $S_a(\omega)=\tfrac{2\sigma_a^2\tau}{1+\omega^2\tau^2}$ and the transfer to $S$ is
+$H_S(j\omega)=1/(j\omega)^3$. Without a low-frequency cutoff the variance of $S$ diverges;
+with a physically reasonable cu
