@@ -107,10 +107,12 @@ f(s)&=\begin{bmatrix}
 \]
 Evaluated at \(s=h\) and written in primitives \((x,\alpha,\mathrm{em1})\),
 \[
-\phi_{va}=-\tau\,\mathrm{em1},\qquad
-\phi_{pa}=\tau^2(x+\mathrm{em1}),\qquad
-\phi_{Sa}=\tau^3\!\Bigl(\tfrac12 x^2-x-\mathrm{em1}\Bigr),\qquad
+\begin{aligned}
+\phi_{va}&=-\tau\,\mathrm{em1},\qquad
+\phi_{pa}=\tau^2(x+\mathrm{em1}),\qquad\\
+\phi_{Sa}&=\tau^3\!\Bigl(\tfrac12 x^2-x-\mathrm{em1}\Bigr),\qquad
 \phi_{aa}=e^{-h/\tau}=\alpha.
+\end{aligned}
 \]
 
 \subsubsection*{Three Laplace–assisted integrals}
