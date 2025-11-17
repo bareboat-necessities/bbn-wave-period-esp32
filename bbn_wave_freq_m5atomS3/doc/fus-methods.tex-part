@@ -42,7 +42,7 @@ Low-pass the readout with EMA $\alpha_f$:
 
 \subsection{\textsc{KalmANF}: Kalman-updated adaptive notch}
 
-KalmANF filter models the signal with a second-order notch parameterized by $a=2\cos\omega$. It treats $a$ as a (slowly varying) state and updates it via a scalar Kalman step driven by the instantaneous prediction error.
+KalmANF filter \cite{Ali2023DAFx} models the signal with a second-order notch parameterized by $a=2\cos\omega$. It treats $a$ as a (slowly varying) state and updates it via a scalar Kalman step driven by the instantaneous prediction error.
 
 \paragraph{Method.}
 Embed the notch with parameter $a\in(-2,2)$:
