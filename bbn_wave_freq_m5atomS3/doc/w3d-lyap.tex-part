@@ -14,8 +14,7 @@ lock (Sec.~\ref{sec:analytic}, \ref{sec:quat}), focusing on the translational OU
 \(
 \dot v = a_w,\;\dot p = v,\;\dot S = p,\;\dot a_w = -(1/\tau)a_w + \sqrt{q_c}\,w
 \),
-with $q_c=2\sigma_a^2/\tau$. The complete estimator uses Joseph updates and PSD projection
-(Sec.~\ref{sec:cross-cov}).
+with $q_c=2\sigma_a^2/\tau$.
 
 \subsection*{Assumptions}
 \begin{itemize}[before=\small, itemsep=2pt, topsep=2pt,
@@ -71,7 +70,7 @@ Then for $\Delta_k := A(\theta_{k+1})-A(\theta_k)$,
 Mean-value expansion of $\Phi,K$ over compact $\Theta$ and the triangle inequality.
 \end{proof}
 
-\begin{lemma}[Corrected one-step Lyapunov decrement]\label{lem:onestep-corrected}
+\begin{lemma}[One-step Lyapunov decrement]\label{lem:onestep-corrected}
 Under \textup{A1–A6}, with $V(e)=e^\top P e$ and $P,\mu$ as in \eqref{eq:cqlf}, the true
 time-varying error update
 \[
