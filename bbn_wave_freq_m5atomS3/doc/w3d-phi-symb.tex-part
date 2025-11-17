@@ -51,8 +51,9 @@ Moreover, $e^{A t}B = \begin{bmatrix}1\\ t\\ \tfrac{t^2}{2}\end{bmatrix}$.
 \paragraph{Top–right block \(\displaystyle\int_0^h e^{A(h-u)}B\,e^{-u/\tau}du\).}
 Define the \emph{feedthrough} vector
 \[
-C_{\text{top}}(h)\;:=\;\int_{0}^{h} e^{A(h-u)}\,B\,e^{-u/\tau}\,du\\
-=\int_{0}^{h}
+\begin{aligned}
+C_{\text{top}}(h)\;:&=\;\int_{0}^{h} e^{A(h-u)}\,B\,e^{-u/\tau}\,du\\
+&=\int_{0}^{h}
 \begin{bmatrix}
 1\\[2pt]
 h-u\\[2pt]
@@ -62,7 +63,8 @@ e^{-u/\tau}\,du
 =
 \begin{bmatrix}
 \phi_{va}\\[2pt] \phi_{pa}\\[2pt] \phi_{Sa}
-\end{bmatrix}.
+\end{bmatrix}
+\end{aligned}.
 \]
 Introduce the dimensionless step \(x=\tfrac{h}{\tau}\) and OU primitives
 \[
