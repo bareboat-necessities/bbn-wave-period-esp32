@@ -22,17 +22,19 @@ Note that $A^3=0$ (nilpotent).
 \paragraph{Block–triangular exponential.}
 Because $F$ is block upper triangular,
 \[
-e^{F s}=
+\begin{aligned}
+e^{F s}&=
 \begin{bmatrix}
 e^{A s} & \displaystyle\int_{0}^{s} e^{A(s-u)}\,B\,e^{D u}\,du\\[6pt]
 0 & e^{D s}
 \end{bmatrix}
 \quad\Rightarrow\quad\\
-\Phi(h)=e^{Fh}=
+\Phi(h)=e^{Fh}&=
 \begin{bmatrix}
 e^{A h} & \displaystyle\int_{0}^{h} e^{A(h-u)}\,B\,e^{-u/\tau}\,du\\[6pt]
 0 & e^{-h/\tau}
-\end{bmatrix}.
+\end{bmatrix}
+\end{aligned}.
 \]
 Since $A^3=0$,
 \[
