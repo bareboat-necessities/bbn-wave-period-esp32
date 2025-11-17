@@ -195,9 +195,11 @@ which match the series used in our small-angle branch.
 \paragraph{Goal.}
 The attitude\,+\,bias discrete covariance
 \[
-Q_{d,AA}(h)=\int_0^h e^{F_{AA}s}LQ_cL^\top e^{F_{AA}^\top s}\,ds
-\quad\text{with}\quad
-e^{F_{AA}s}=\begin{bmatrix}R(s)&B(s)\\0&I\end{bmatrix}
+\begin{aligned}
+Q_{d,AA}(h)&=\int_0^h e^{F_{AA}s}LQ_cL^\top e^{F_{AA}^\top s}\,ds
+\quad\text{with}\quad\\
+e^{F_{AA}s}&=\begin{bmatrix}R(s)&B(s)\\0&I\end{bmatrix}
+\end{aligned}
 \]
 contains three matrix integrals:
 \[
