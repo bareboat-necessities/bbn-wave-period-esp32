@@ -12,7 +12,7 @@ real-time implementation.
 
 \subsection*{From Standard Q-MEKF to Extended Kinematics}
 
-We start from a standard Q-MEKF, which estimates body attitude and
+We start from a standard Q-MEKF \cite{Markley2003AttitudeError}, which estimates body attitude and
 gyroscope bias using a right-multiplicative quaternion error
 representation. To enable full wave motion estimation, the state vector
 is augmented to include additional translational quantities:
