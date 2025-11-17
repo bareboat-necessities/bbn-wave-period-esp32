@@ -129,9 +129,11 @@ with $W=[\boldsymbol{\omega}]_\times$, $\omega=\|\boldsymbol{\omega}\|$, $\theta
 When $\omega\to 0$ (or $\theta\ll 1$), use the Maclaurin expansions
 $\sin\theta=\theta-\theta^3/6+\cdots$, $\cos\theta=1-\theta^2/2+\theta^4/24-\cdots$ to obtain
 \[
-R(h)=I - Wh + \tfrac{1}{2}W^2 h^2 \;+\; \mathcal{O}(h^3),
-\qquad
-B(h)= -\Big[h\,I - \tfrac{1}{2}W h^2 + \tfrac{1}{6}W^2 h^3\Big] \;+\; \mathcal{O}(h^4).
+\begin{aligned}
+R(h)&=I - Wh + \tfrac{1}{2}W^2 h^2 \;+\; \mathcal{O}(h^3),
+\qquad\\
+B(h)&= -\Big[h\,I - \tfrac{1}{2}W h^2 + \tfrac{1}{6}W^2 h^3\Big] \;+\; \mathcal{O}(h^4).
+\end{aligned}
 \]
 These series are algebraically equivalent to the closed forms above and avoid loss of
 significance for very small $\theta$.
