@@ -134,7 +134,7 @@ The corresponding measurement Jacobian is simply
 \frac{\partial \mathbf{z}_S}{\partial \mathbf{S}} = \mathbf{I}_3.
 \end{equation}
 
-The choice of $R_S$ is critical. A small $R_S$ enforces a tight pseudo-measurement,
+The choice of $R_S$ is critical. A small $R_S$ enforces \cite{Sharkh2014MEF} a tight pseudo-measurement,
 essentially pinning $S\approx 0$ and aggressively damping drift. A large $R_S$ relaxes
 the constraint, letting $S$ wander but still suppressing drift.
 
