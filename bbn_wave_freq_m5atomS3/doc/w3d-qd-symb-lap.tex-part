@@ -75,9 +75,11 @@ C_{\text{top}}(s)^{\!\top} & e^{-s/\tau}
 \]
 Thus \(Q_d\) is assembled from three integrals:
 \[
-\text{(i) } \int_{0}^{h}\!q_c\,C_{\text{top}}(s)C_{\text{top}}(s)^{\!\top}ds,\qquad
-\text{(ii) } \int_{0}^{h}\!q_c\,C_{\text{top}}(s)e^{-s/\tau}ds,\qquad
-\text{(iii) } \int_{0}^{h}\!q_c\,e^{-2s/\tau}ds.
+\begin{aligned}
+\text{(i) } &\int_{0}^{h}\!q_c\,C_{\text{top}}(s)C_{\text{top}}(s)^{\!\top}ds,\qquad
+\text{(ii) } \int_{0}^{h}\!q_c\,C_{\text{top}}(s)e^{-s/\tau}ds,\qquad\\
+\text{(iii) } &\int_{0}^{h}\!q_c\,e^{-2s/\tau}ds.
+\end{aligned}
 \]
 
 \subsubsection*{Laplace–domain evaluation of the feedthrough}
