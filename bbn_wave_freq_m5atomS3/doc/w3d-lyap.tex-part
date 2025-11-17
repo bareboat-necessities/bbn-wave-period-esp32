@@ -138,7 +138,7 @@ then $\tilde\theta_k\to0$.
 \begin{proof}
 Combine \eqref{eq:Vdec} with Lemma~\ref{lem:coupled}:
 \[
-\fitcol
+\fitcol{
 W_{k+1} \le (1-\mu+c_1L_A^2\rho^2)V(e_k)
 + c_d\|d_k\|^2 + \alpha\big((1-\eta)\|\tilde\theta_k\|^2+c_\theta\|e_k\|^2\big).
 }
