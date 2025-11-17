@@ -2,15 +2,17 @@
 
 We consider the per–axis linear chain
 \[
-\boldsymbol{x}(t)=\begin{bmatrix} v & p & S & a \end{bmatrix}^{\!\top},\qquad
-\dot{\boldsymbol{x}}(t)=
+\begin{aligned}
+\boldsymbol{x}(t)&=\begin{bmatrix} v & p & S & a \end{bmatrix}^{\!\top},\qquad\\
+\dot{\boldsymbol{x}}(t)&=
 \underbrace{\begin{bmatrix}
 A & B\\[2pt]
 0 & D
 \end{bmatrix}}_{F}\boldsymbol{x}(t)
 +\underbrace{\begin{bmatrix}0\\0\\0\\1\end{bmatrix}}_{L}\,w(t),
-\quad
-\mathbb{E}[w(t)w(s)]=q_c\,\delta(t-s),
+\quad\\
+\mathbb{E}[w(t)w(s)]&=q_c\,\delta(t-s),
+\end{aligned}
 \]
 with
 \[
