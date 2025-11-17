@@ -155,15 +155,18 @@ Q_{\theta b}(h)=I_B(h)\,Q_{bg}.
 Finally,
 \[
 \boxed{\;
-Q_{d,AA}(h)=
+\begin{aligned}
+Q_{d,AA}(h)&=
 \begin{bmatrix}
 Q_{\theta\theta}(h) & Q_{\theta b}(h)\\[2pt]
 Q_{\theta b}(h)^\top & Q_{bb}(h)
 \end{bmatrix},
-\qquad
-Q_{d,AA}\;\leftarrow\;\tfrac12\!\left(Q_{d,AA}+Q_{d,AA}^\top\right)
+\qquad\\
+Q_{d,AA}\;\leftarrow\;\tfrac12\!&\left(Q_{d,AA}+Q_{d,AA}^\top\right)
 \text{ (symmetrize).}
-\;}
+\;
+\end{aligned}
+}
 \]
 
 \paragraph{Small–rate limit ($\omega\to 0$).}
