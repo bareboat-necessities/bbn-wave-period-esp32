@@ -22,17 +22,19 @@ stacked as \([v(3),p(3),S(3),a_w(3)]\), and \(\mathbf{b}_a\in\mathbb{R}^3\) the 
 \subsubsection*{Block transition matrix \(\Phi\)}
 For a sample period \(h>0\), the full transition matrix is block upper–triangular:
 \[
-\Phi(h)=
+\begin{aligned}
+\Phi(h)&=
 \begin{bmatrix}
 \Phi_{AA}(h) & 0                & 0 \\
 0            & \Phi_{LL}(h)     & 0 \\
 0            & 0                & \Phi_{BB}(h)
-\end{bmatrix},
-\qquad
-\text{with blocks indexed by } 
+\end{bmatrix},\\
+&\quad
+\text{with blocks indexed by }
 \underbrace{A}_{(\delta\boldsymbol{\theta},\mathbf{b}_g)},\;
 \underbrace{L}_{(\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)},\;
-\underbrace{B}_{(\mathbf{b}_a)}.
+\underbrace{B}_{(\mathbf{b}_a)}
+\end{aligned}.
 \]
 \paragraph{Attitude\(+\)gyro–bias block \(\Phi_{AA}(h)\in\mathbb{R}^{6\times 6}\).}
 Using the standard Q–MEKF constant–rate approximation over \([t_k,t_k+h]\), the
