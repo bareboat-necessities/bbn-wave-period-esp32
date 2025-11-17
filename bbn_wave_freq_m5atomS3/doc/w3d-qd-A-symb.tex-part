@@ -23,11 +23,13 @@ $Q_{bg}$ is the bias random-walk intensity.
 Stack $z=\begin{bmatrix}\delta\boldsymbol\theta^\top & \delta\mathbf{b}_g^\top\end{bmatrix}^\top$.
 Then
 \[
-\dot z = F_{AA}\,z + L\,\xi(t),\qquad
-F_{AA}=\begin{bmatrix}-W & -I\\ 0 & 0\end{bmatrix},\;
-W\!=\![\boldsymbol\omega]_\times,\quad
-L=\begin{bmatrix}I & 0\\ 0 & I\end{bmatrix},\;
-Q_c=\begin{bmatrix}Q_g & 0\\ 0 & Q_{bg}\end{bmatrix},
+\begin{aligned}
+\dot z &= F_{AA}\,z + L\,\xi(t),\quad
+F_{AA}=\begin{bmatrix}-W & -I\\ 0 & 0\end{bmatrix},\;\quad
+W\!=\![\boldsymbol\omega]_\times,\\
+L&=\begin{bmatrix}I & 0\\ 0 & I\end{bmatrix},\;\qquad
+Q_c=\begin{bmatrix}Q_g & 0\\ 0 & Q_{bg}\end{bmatrix}
+\end{aligned},
 \]
 with $\xi(t)=[\eta_g^\top,\;\eta_b^\top]^\top$ and $\mathbb{E}[\xi\xi^\top]=Q_c\,\delta$.
 
