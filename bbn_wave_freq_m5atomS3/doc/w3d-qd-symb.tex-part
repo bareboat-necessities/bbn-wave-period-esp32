@@ -91,10 +91,12 @@ C_3=\tfrac{h^4}{4},\quad C_4=\tfrac{h^5}{5}.
 We also introduce the mixed poly–exp combinations (used in the code):
 \[
 \fitcol{
-A_0=-\tau\,\mathrm{em1},\qquad
-A_1=\tau^2(-\mathrm{em1}-x\alpha),\qquad
-A_2=\tau^3\!\left(-2\,\mathrm{em1}+\alpha x(x+2)\right),\qquad
-B_0=-\frac{\tau}{2}\,\mathrm{em1}_2.
+\begin{aligned}
+A_0&=-\tau\,\mathrm{em1},\qquad
+A_1=\tau^2(-\mathrm{em1}-x\alpha),\qquad\\
+A_2&=\tau^3\!\left(-2\,\mathrm{em1}+\alpha x(x+2)\right),\qquad
+B_0=-\frac{\tau}{2}\,\mathrm{em1}_2
+\end{aligned}.
 }
 \]
 
