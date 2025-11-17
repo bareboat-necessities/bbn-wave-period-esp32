@@ -172,16 +172,20 @@ Q_{d,AA}\;\leftarrow\;\tfrac12\!&\left(Q_{d,AA}+Q_{d,AA}^\top\right)
 \paragraph{Small–rate limit ($\omega\to 0$).}
 Using $\sin\theta=\theta-\theta^3/6+\cdots$, $\cos\theta=1-\theta^2/2+\cdots$,
 \[
-R(s)=I-Ws+\tfrac12 W^2 s^2+\mathcal{O}(s^3),\quad
-B(s)=-\Big[s\,I-\tfrac12 W s^2+\tfrac16 W^2 s^3\Big]+\mathcal{O}(s^4),
+\begin{aligned}
+R(s)&=I-Ws+\tfrac12 W^2 s^2+\mathcal{O}(s^3),\quad\\
+B(s)&=-\Big[s\,I-\tfrac12 W s^2+\tfrac16 W^2 s^3\Big]+\mathcal{O}(s^4)
+\end{aligned},
 \]
 and the integrals reduce to low-order polynomials in $h$, avoiding loss of significance.
 For isotropic $Q_g=q_g I$ and scalar $Q_{bg}=q_b I$, the leading terms are
 \[
-Q_{\theta\theta}^{(g)}=q_g h\,I+ \mathcal{O}(h^3),\quad
-Q_{\theta\theta}^{(b)}=\tfrac{q_b}{3}h^3\,I+ \mathcal{O}(h^5),\quad
-Q_{\theta b}=-\tfrac{q_b}{2}h^2\,I + \mathcal{O}(h^4),\quad
-Q_{bb}=q_b h\,I,
+\begin{aligned}
+Q_{\theta\theta}^{(g)}&=q_g h\,I+ \mathcal{O}(h^3),\quad\\
+Q_{\theta\theta}^{(b)}&=\tfrac{q_b}{3}h^3\,I+ \mathcal{O}(h^5),\quad\\
+Q_{\theta b}&=-\tfrac{q_b}{2}h^2\,I + \mathcal{O}(h^4),\quad\\
+Q_{bb}&=q_b h\,I\\
+\end{aligned},
 \]
 which match the series used in our small-angle branch.
 
