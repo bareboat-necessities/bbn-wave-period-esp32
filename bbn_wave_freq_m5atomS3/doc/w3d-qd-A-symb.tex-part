@@ -37,13 +37,15 @@ with $\xi(t)=[\eta_g^\top,\;\eta_b^\top]^\top$ and $\mathbb{E}[\xi\xi^\top]=Q_c\
 Because $F_{AA}$ is block upper triangular,
 \[
 \fitcol{
-e^{F_{AA}s}=
+\begin{aligned}
+e^{F_{AA}s}&=
 \begin{bmatrix}
 R(s) & B(s)\\
 0 & I
 \end{bmatrix},\qquad
-R(s)=e^{-Ws},\qquad
-B(s)=\int_0^s e^{-W(s-u)}(-I)\,du=-\!\int_0^s e^{-Wu}\,du.
+R(s)=e^{-Ws},\qquad\\
+B(s)&=\int_0^s e^{-W(s-u)}(-I)\,du=-\!\int_0^s e^{-Wu}\,du.
+\end{aligned}
 }
 \]
 Let $\omega=\|\boldsymbol\omega\|$, $\theta=\omega s$ and $K=W/\omega=[\hat{\boldsymbol\omega}]_\times$.
