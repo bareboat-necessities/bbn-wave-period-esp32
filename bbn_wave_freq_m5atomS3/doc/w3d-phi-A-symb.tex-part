@@ -56,8 +56,10 @@ R(s) & B(s)\\
 \]
 Thus $\Phi_{AA}(h)=e^{F_{AA}h}$ is fully determined by
 \[
-R(h)=e^{-[\boldsymbol{\omega}]_\times h},\qquad
-B(h)=\int_0^h e^{-[\boldsymbol{\omega}]_\times(h-u)}(-I)\,du \;=\; -\int_0^h e^{-[\boldsymbol{\omega}]_\times u}\,du.
+\begin{aligned}
+R(h)&=e^{-[\boldsymbol{\omega}]_\times h},\qquad\\
+B(h)&=\int_0^h e^{-[\boldsymbol{\omega}]_\times(h-u)}(-I)\,du \;=\; -\int_0^h e^{-[\boldsymbol{\omega}]_\times u}\,du.
+\end{aligned}
 \]
 
 \paragraph{Closed form for $R(h)$ (Rodrigues formula).}
