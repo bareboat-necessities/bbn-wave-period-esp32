@@ -185,7 +185,7 @@ K_{va} & K_{pa} & K_{Sa} & K_{aa}
 \end{bmatrix}},
 \]
 with $K_{ij}$ given explicitly above, and $\mathrm{sym}\,K=\tfrac12(K+K^\top)$
-(Joseph symmetry hygiene).
+(Joseph symmetry).
 For small $x=h/\tau$, replace $(\alpha,\mathrm{em1},\mathrm{em1}_2)$ by their
 Maclaurin expansions to avoid cancellation.
 
