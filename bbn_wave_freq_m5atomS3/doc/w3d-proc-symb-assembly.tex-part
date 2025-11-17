@@ -58,9 +58,10 @@ Let \(\Phi_{\text{axis}}(h)\in\mathbb{R}^{4\times4}\) denote the per–axis tran
 \([v,p,S,a]^\top\) (Section~\emph{OU analytic discretization}); then, with one shared
 \(\tau\),
 \[
-\Phi_{LL}(h)=I_3\;\otimes\;\Phi_{\text{axis}}(h),
-\quad
-\Phi_{\text{axis}}(h)=
+\begin{aligned}
+\Phi_{LL}(h)&=I_3\;\otimes\;\Phi_{\text{axis}}(h),
+\quad\\
+\Phi_{\text{axis}}(h)&=
 \begin{bmatrix}
 1 & 0 & 0 & \phi_{va} \\
 h & 1 & 0 & \phi_{pa} \\
@@ -68,7 +69,8 @@ h & 1 & 0 & \phi_{pa} \\
 0 & 0 & 0 & \alpha
 \end{bmatrix},
 \qquad
-\alpha=e^{-h/\tau},
+\alpha=e^{-h/\tau}
+\end{aligned},
 \]
 with feedthroughs
 \(\phi_{va}=-\tau(\alpha-1)\),
