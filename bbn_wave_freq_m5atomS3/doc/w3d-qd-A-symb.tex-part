@@ -11,9 +11,11 @@ true body rate $\boldsymbol\omega$ is constant. The linearized error dynamics ar
 \]
 with spectrally white driving noises
 \[
-\mathbb{E}\big[\eta_g(t)\eta_g(s)^\top\big] = Q_g\,\delta(t-s),\qquad
-\mathbb{E}\big[\eta_b(t)\eta_b(s)^\top\big] = Q_{bg}\,\delta(t-s),\qquad
-\mathbb{E}[\eta_g\,\eta_b^\top]=0,
+\begin{aligned}
+\mathbb{E}\big[\eta_g(t)\eta_g(s)^\top\big] &= Q_g\,\delta(t-s),\qquad\\
+\mathbb{E}\big[\eta_b(t)\eta_b(s)^\top\big] &= Q_{bg}\,\delta(t-s),\qquad
+\mathbb{E}[\eta_g\,\eta_b^\top]=0
+\end{aligned},
 \]
 where $Q_g$ is the continuous-time gyro-noise intensity (in the attitude-error channel) and
 $Q_{bg}$ is the bias random-walk intensity.
