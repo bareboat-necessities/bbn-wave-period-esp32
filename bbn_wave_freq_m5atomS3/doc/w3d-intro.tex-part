@@ -113,9 +113,9 @@ The main contributions of this work are:
   \item A unified parameter-adaptive mechanism that continuously tunes
         \(\tau\), \(\sigma_{aw}\), and \(R_S\) based on frequency
         tracking and time-domain variance estimation.
-  \item A formulation that does not rely on hydrodynamic equations; it
-        assumes oscillatory kinematics with slowly varying spectra and
-        leverages high-rate inertial data.
+  \item A formulation independent of hydrodynamic equations, relying instead on
+        oscillatory kinematics with slowly varying spectra and
+        high-rate inertial data measurements.
   \item Empirical validation on simulated directional sea spectra,
         demonstrating superior drift suppression and physical fidelity
         compared to existing methods.
