@@ -54,10 +54,12 @@ R(s)=I-\sin\theta\,K + (1-\cos\theta)\,K^2,
 and integrating termwise,
 \[
 \fitcol{
+\begin{aligned}
 \int_0^s e^{-Wu}\,du
-= s\,I - \frac{1-\cos\theta}{\omega^2}\,W + \frac{s-\frac{\sin\theta}{\omega}}{\omega^2}\,W^2,
+&= s\,I - \frac{1-\cos\theta}{\omega^2}\,W + \frac{s-\frac{\sin\theta}{\omega}}{\omega^2}\,W^2,\\
 \quad\Rightarrow\quad
-B(s)= -\Big[s\,I - \frac{1-\cos\theta}{\omega^2}W + \frac{s-\frac{\sin\theta}{\omega}}{\omega^2}W^2\Big].
+B(s)&= -\Big[s\,I - \frac{1-\cos\theta}{\omega^2}W + \frac{s-\frac{\sin\theta}{\omega}}{\omega^2}W^2\Big].
+\end{aligned}
 }
 \]
 
