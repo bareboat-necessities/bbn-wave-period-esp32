@@ -146,8 +146,8 @@ Therefore, $R_S$ does not correspond to sensor noise, but rather to a
 \item If slow drift is acceptable, increase $R_S$ to reduce artificial feedback.
 \end{itemize}
 
-By including $S$ and its pseudo-measurement, in linear systems terminology, the augmented
-system becomes \emph{detectable}: even though $S$ is unobservable in a strict sense, the 
+In linear systems terminology, the inclusion of $S$ and its pseudo-measurement renders the augmented
+system \emph{detectable}: even though $S$ is unobservable in a strict sense, the 
 pseudo-measurement provides an artificial observation that stabilizes the filter numerics and
 uncontrolled growth of displacement.
 
