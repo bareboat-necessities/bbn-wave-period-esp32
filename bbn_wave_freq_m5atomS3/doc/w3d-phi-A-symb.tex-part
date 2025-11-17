@@ -115,8 +115,8 @@ R(h) & B(h)\\
 \qquad\\
 
 R(h)&=I-\sin\theta\,\frac{W}{\omega}+(1-\cos\theta)\frac{W^2}{\omega^2},\\
-B(h)&=-\Big[h\,I - \frac{1-\cos\theta}{\omega^2}W + \frac{h-\frac{\sin\theta}{\omega}}{\omega^2}W^2\Big],
-\end{aligned}
+B(h)&=-\Big[h\,I - \frac{1-\cos\theta}{\omega^2}W + \frac{h-\frac{\sin\theta}{\omega}}{\omega^2}W^2\Big]
+\end{aligned},
 }
 }
 \]
