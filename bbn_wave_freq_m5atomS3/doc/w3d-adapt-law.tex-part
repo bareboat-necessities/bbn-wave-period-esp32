@@ -788,3 +788,166 @@ energy for the class of spectra (OU, PM, JONSWAP) and the effective cutoff
 $u_{\min}$ induced by the detrending and pseudo-measurement schedule
 implemented in the filter.
 
+\subsection*{Toy leaky-$S$ model: how the pseudo-measurement induces an effective cutoff}
+\label{sec:toy-leaky-S}
+
+The preceding spectral analysis treated the low-frequency cutoff
+$\omega_{\min}$ as an abstract parameter. In the actual Q--MEKF there is no
+explicit high-pass filter, but the repeated pseudo-measurement on the integral
+state $S$,
+\[
+y_S = 0 = S + n_S,\qquad \mathrm{Var}(n_S)=R_S^2,
+\]
+continuously pulls $S$ back toward~$0$. This makes the $S$-subsystem behave as
+a \emph{leaky integrator}, which can be described by an effective leak time
+constant $T_{\mathrm{leak}}$ and an associated high-pass corner
+$\omega_{\mathrm{HP}}\sim 1/T_{\mathrm{leak}}$. We now make this precise in a
+simple continuous-time Kalman--Bucy toy model.
+
+\paragraph{Scalar toy model for the $S$-mode.}
+To isolate the leak mechanism, consider a scalar process $S(t)$ with white
+process noise of intensity $q_S$,
+\begin{equation}
+\label{eq:toy-S-process}
+\dot S = w_S,\qquad \mathbb E[w_S(t)w_S(s)] = q_S\,\delta(t-s),
+\end{equation}
+and a continuous-time pseudo-measurement
+\begin{equation}
+\label{eq:toy-S-meas}
+y_S = S + n_S,\qquad \mathbb E[n_S(t)n_S(s)] = R_S^2\,\delta(t-s),
+\end{equation}
+with $R_S$ the (constant) measurement standard deviation. This is the standard
+Kalman--Bucy setup for a random walk with noisy observations.
+
+The Kalman--Bucy filter for \eqref{eq:toy-S-process}--\eqref{eq:toy-S-meas} is
+\[
+\dot{\hat S} = K\,(y_S-\hat S),
+\qquad K = \frac{P}{R_S^2},
+\]
+where $P$ is the scalar error variance solving the algebraic Riccati equation
+\[
+0 = 2\cdot 0\cdot P + q_S - \frac{P^2}{R_S^2}
+      \;=\; q_S - \frac{P^2}{R_S^2}.
+\]
+Thus $P^2 = q_S R_S^2$ and $P = \sqrt{q_S}\,R_S$ (taking the positive root).
+The steady-state Kalman gain is
+\begin{equation}
+\label{eq:toy-K}
+K = \frac{P}{R_S^2} = \frac{\sqrt{q_S}}{R_S}.
+\end{equation}
+
+The estimation error $e_S := S-\hat S$ then obeys
+\[
+\dot e_S = -K\,e_S + w_S - K n_S.
+\]
+The homogeneous part has the scalar closed-loop eigenvalue
+\begin{equation}
+\label{eq:lambda-slow-toy}
+\lambda_{\mathrm{slow}} = -K = -\frac{\sqrt{q_S}}{R_S},
+\end{equation}
+so the error dynamics are exponentially stable with decay time
+\begin{equation}
+\label{eq:T-leak-def}
+T_{\mathrm{leak}} := \frac{1}{|\lambda_{\mathrm{slow}}|}
+= \frac{R_S}{\sqrt{q_S}}.
+\end{equation}
+Equivalently, the S-mode has an effective high-pass corner
+\begin{equation}
+\label{eq:omega-min-toy}
+\omega_{\min} \;\approx\; \omega_{\mathrm{HP,ps}}
+:= \frac{1}{T_{\mathrm{leak}}}
+= \frac{\sqrt{q_S}}{R_S}.
+\end{equation}
+Low-frequency components of the driving noise with $\omega\ll\omega_{\min}$ are
+heavily attenuated in $S$: the pseudo-measurement has turned the pure
+integrator into a leaky integrator with leak rate $K$.
+
+\paragraph{Dimensionless cutoff $u_{\min}$ and dependence on $R_S$.}
+If we normalize frequencies by a time scale $\tau$ (e.g.\ the OU correlation
+time or an inverse peak frequency), we obtain the dimensionless cutoff
+\[
+u_{\min} = \omega_{\min}\,\tau
+\approx \frac{\tau\sqrt{q_S}}{R_S}.
+\]
+For fixed process intensity $q_S$ and time scale~$\tau$:
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item decreasing $R_S$ (stronger pseudo-measurement) \emph{increases}
+$u_{\min}$: the effective high-pass cutoff moves to higher frequency and more
+slow drift is suppressed in~$S$;
+\item increasing $R_S$ (weaker pseudo-measurement) \emph{decreases} $u_{\min}$:
+the leak is weaker, more low-frequency content leaks into~$S$, and
+$\mathrm{Var}[S]$ grows.
+\end{itemize}
+This toy model makes explicit what was implicit in the spectral formulas:
+$u_{\min}$ is not set by the OU time constant $\tau$ alone; it is primarily a
+function of how strongly $S$ is regularized by the pseudo-measurement
+$R_S$, as quantified here by $T_{\mathrm{leak}}$.
+
+\paragraph{Embedding into the triple-integrator + OU chain.}
+In the full translational OU chain,
+\[
+\dot v = a_w,\quad \dot p = v,\quad \dot S = p,\quad
+\dot a_w = -\tfrac{1}{\tau} a_w + \sqrt{q_c}\,w,
+\]
+the state $S$ is the triple integral of an OU process, not a simple random
+walk. Nonetheless, at very low frequencies the combined process acts as a
+\emph{very red} excitation for~$S$, and the pseudo-measurement on $S$ still
+induces a leak of the form
+\[
+\dot e_S \approx -\lambda_{\mathrm{slow}}\,e_S + \text{(very low-frequency noise)},
+\]
+with $\lambda_{\mathrm{slow}}<0$ a real eigenvalue of the full closed-loop
+Kalman error dynamics.
+
+Rather than solving the $4\times 4$ algebraic Riccati equation in closed form,
+we use the scalar toy model to interpret $\lambda_{\mathrm{slow}}$:
+there exists an \emph{effective} low-frequency intensity $q_S^{\mathrm{eff}}$
+for the S-mode such that
+\begin{equation}
+\label{eq:qS-eff}
+\lambda_{\mathrm{slow}} \;\approx\; -\frac{\sqrt{q_S^{\mathrm{eff}}}}{R_S},
+\qquad
+T_{\mathrm{leak}} \approx \frac{R_S}{\sqrt{q_S^{\mathrm{eff}}}},
+\qquad
+u_{\min} \approx \frac{\tau\sqrt{q_S^{\mathrm{eff}}}}{R_S}.
+\end{equation}
+Dimensional analysis shows that $q_S^{\mathrm{eff}}$ must scale like
+\[
+q_S^{\mathrm{eff}} \;\propto\; \sigma_a^2\,\tau^5
+\]
+(up to a dimensionless spectral shape factor), since $S$ is the triple
+time integral of an acceleration process with typical level $\sigma_a$ and
+correlation time~$\tau$.
+Substituting into \eqref{eq:qS-eff} gives
+\[
+u_{\min} \;\propto\;
+\frac{\tau\,\sigma_a\,\tau^{5/2}}{R_S}
+= \frac{\sigma_a\,\tau^{7/2}}{R_S},
+\]
+again up to a dimensionless constant. Inverting this relation shows that, to
+keep $u_{\min}$ approximately constant as $\sigma_a$ and $\tau$ vary,
+one should choose
+\[
+R_S \;\propto\; \sigma_a\,\tau^3.
+\]
+This recovers the adaptation law used in the main text:
+\[
+R_S = k_i\,\sigma_a\,\tau^3,
+\]
+with $k_i$ interpreted as a dimensionless spectral shape factor that absorbs
+the unknown constant in $q_S^{\mathrm{eff}}$ and reflects the detailed
+spectral characteristics (OU vs.\ PM vs.\ JONSWAP) and the precise
+pseudo-measurement schedule.
+
+\paragraph{Summary.}
+The OU time constant $\tau$ shapes the \emph{open-loop} acceleration spectrum
+$S_a(\omega)$, but it does not by itself suppress low-frequency drift in~$S$:
+the triple-integrator chain alone leads to unbounded growth of $S$.
+The repeated pseudo-measurement on $S$ acts as a leak, inducing an effective
+low-frequency cutoff
+$\omega_{\min}\approx 1/T_{\mathrm{leak}}$ determined primarily by the
+ratio $\sqrt{q_S^{\mathrm{eff}}}/R_S$.
+The law $R_S\propto\sigma_a\tau^3$ can therefore be understood as choosing
+$R_S$ so that this cutoff (and hence $u_{\min}$) remains approximately
+invariant as the sea-state energy $\sigma_a$ and time scale~$\tau$ vary.
+
