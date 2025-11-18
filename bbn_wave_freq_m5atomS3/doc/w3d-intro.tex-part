@@ -54,12 +54,10 @@ performed analytically by integrating the exponential kernel of the OU
 correlation function, yielding closed-form expressions for both the
 transition matrix \(\Phi(h,\tau)\) and the discrete process-noise matrix
 \(Q_d(h,\tau)\). For small \(x = h/\tau\), we construct high-order
-Maclaurin series to prevent numerical cancellation and preserve
+Maclaurin series to prevent numerical floating-point cancellation and preserve
 stability in the limit of small time steps. The derivation exploits the
 block sparsity of the continuous Jacobian to obtain efficient
-expressions and simplify matrix exponentials. Optional cross-axis
-covariance propagation is supported to improve horizontal tracking
-(\(X\)--\(Y\)) in directional seas, and the pseudo-measurement weighting
+expressions and simplify matrix exponentials. The pseudo-measurement weighting
 \(R_S\) can be made anisotropic to reflect different vertical and
 lateral dynamics.
 
