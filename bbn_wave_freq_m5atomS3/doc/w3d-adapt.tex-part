@@ -1,0 +1,663 @@
+% --- Safe guards (leave as-is) ---
+\makeatletter
+\@ifundefined{remark}{\theoremstyle{remark}\newtheorem{remark}{Remark}}{}
+\@ifundefined{lemma}{\theoremstyle{plain}\newtheorem{lemma}{Lemma}}{}
+\@ifundefined{theorem}{\theoremstyle{plain}\newtheorem{theorem}{Theorem}}{}
+\@ifundefined{theorem*}{\newtheorem*{theorem*}{Theorem}}{}
+\makeatother
+\providecommand{\fitcol}[1]{#1}
+% ----------------------------------
+
+\section*{Lyapunov / ISS Stability of the Adaptive Law $R_S \propto \sigma_a \tau^3$}
+\label{sec:lyap-iss}
+
+We establish an input--to--state stability (ISS) bound for the estimation error under the
+adaptive pseudo-measurement weighting
+\[
+R_S(\theta)=\mathrm{diag}(r_{Sx},r_{Sy},r_{Sz}),\qquad
+r_{Si}=k_i\,\sigma_a\,\tau^3,
+\]
+where $\theta=(\sigma_a,\tau)$ are adapted online and $k_i>0$ are fixed anisotropy
+coefficients (possibly $k_x,k_y\ll k_z$).
+We analyze the extended Q--MEKF linearized after attitude lock, focusing on the translational OU chain
+\[
+\begin{aligned}
+\dot v&=a_w,\qquad \dot p=v,\qquad \dot S=p,\qquad\\
+\dot a_w&=-\tfrac{1}{\tau}a_w+\sqrt{q_c}\,w,\quad q_c=2\sigma_a^2/\tau .
+\end{aligned}
+\]
+
+\subsection*{Assumptions}
+\begin{itemize}[before=\small,itemsep=2pt,topsep=2pt,
+  labelsep=0.6em,labelwidth=2.2em,labelindent=0pt,leftmargin=!]
+
+\item[A1] \textbf{Bounded sampling and small linearization error.}
+Sampling $h\in(0,\bar h]$ such that $\Phi(h,\tau)$ matches the analytic form; the
+linearization error is Lipschitz on the compact set considered.
+
+\item[A2] \textbf{Noise moments (SDE sense).}
+Sensor noises have finite second moments (e.g., sub-Gaussian). The OU driver $w$ is standard white noise
+in the SDE sense; discrete innovations are zero-mean with finite covariance.
+
+\item[A2$'$] \textbf{State-dependent disturbance bound.}
+There exist $\bar d\ge 0$ and $L_d\ge 0$ such that the aggregate disturbance in the
+linearized error dynamics satisfies
+\[
+\|d_k\|\;\le\;\bar d + L_d\,\|e_k\|\qquad\text{for all }k.
+\]
+Here $d_k$ collects linearization residuals, model mismatch, and unmodelled couplings.
+(When $d_k$ is exogenous, take $L_d=0$ and $\bar d=\sup_k\|d_k\|$.)
+
+\item[A3] \textbf{Parameter compactness via projection.}
+\[
+\Theta=\{(\sigma_a,\tau):\underline\sigma\le\sigma_a\le\overline\sigma,\;
+\underline\tau\le\tau\le\overline\tau\},
+\]
+enforced by a projection $\Pi_\Theta(\cdot)$, so that $\theta_k\in\Theta$ for all $k$.
+
+\item[A4] \textbf{Rate-limited adaptation (optional for performance).}
+Optionally clamp $\|\theta_{k+1}-\theta_k\|\le\rho$ to improve transients.
+
+\item[A5] \textbf{Smooth dependence.}
+$\Phi(\theta)$ and $K(\theta)$ are Lipschitz on $\Theta$ with constants $L_\Phi,L_K$.
+
+\item[A6] \textbf{CQLF for the frozen closed loop.}
+Let $A(\theta):=\Phi(\theta)-K(\theta)C\,\Phi(\theta)$. There exist $P\succ0$ and $\mu\in(0,1)$ such that
+\begin{equation}
+\label{eq:cqlf}
+A(\theta)^\top P\,A(\theta)\;\preceq\;(1-\mu)\,P\qquad \forall\,\theta\in\Theta .
+\end{equation}
+
+\item[A7] \textbf{Explicit adaptation law (design choice).}
+\[
+\theta_{k+1}=\Pi_\Theta\!\big(\theta_k-\Gamma\nabla_\theta\mathcal{L}(e_k,\theta_k)\big),
+\qquad
+\Gamma=\mathrm{diag}(\gamma_\sigma,\gamma_\tau).
+\]
+This is one convenient way to ensure $\theta_k\in\Theta$; the ISS result below only needs
+$\theta_k\in\Theta$ for all $k$, regardless of the specific update.
+
+\item[A8] \textbf{Gradient regularity and small step (design/verification).}
+$\nabla_\theta\mathcal{L}$ is $L_\theta$-Lipschitz; step sizes in $\Gamma$ are small enough
+that the induced disturbance $d_k$ satisfies A2$'$ with some $(\bar d,L_d)$.
+
+\item[A9] \textbf{(Optional, for parameter convergence) PE.}
+Regressors driving $\nabla_\theta\mathcal{L}$ are persistently exciting on $\Theta$.
+\end{itemize}
+
+Let $e:=x-x^\star$ denote the stacked estimation error for the linear translational
+subsystem (including $a_w$), with $x^\star$ the true OU-driven state.
+Let $\tilde\theta:=\hat\theta-\theta^\star$ be parameter error relative to the
+stationary values $(\sigma_a^\star,\tau^\star)$.
+Define the Rayleigh ratio \(\kappa:=\lambda_{\max}(P)/\lambda_{\min}(P)\ge 1\).
+
+\begin{lemma}[ISS-type one-step bound with state-dependent disturbance]\label{lem:onestep-tight}
+Under \textup{A1}, \textup{A2$'$}, and \textup{A6}, let \(V(e)=e^\top P e\) with \(P\succ0\) and \(\mu\in(0,1)\) from \eqref{eq:cqlf}.
+For any \(\varepsilon\in(0,\mu)\), the update \(e_{k+1}=A(\theta_k)e_k+d_k\) satisfies
+\begin{equation}\label{eq:Vdec-tight}
+V(e_{k+1}) \;\le\; \Big(1-\mu+\varepsilon + 2\kappa L_d^2\big(1+\tfrac{1-\mu}{\varepsilon}\big)\Big)\,V(e_k)
+\;+\; 2\,\lambda_{\max}(P)\,\Big(1+\tfrac{1-\mu}{\varepsilon}\Big)\,\bar d^{\,2}.
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Let \(A_k:=A(\theta_k)\).
+Expand
+\[
+V(e_{k+1}) = e_k^\top A_k^\top P A_k e_k + 2 e_k^\top A_k^\top P d_k + d_k^\top P d_k.
+\]
+By \eqref{eq:cqlf}, \(e_k^\top A_k^\top P A_k e_k \le (1-\mu)V(e_k)\).
+For the cross term, Young’s inequality with any \(\varepsilon\in(0,\mu)\) gives
+\[
+2 e_k^\top A_k^\top P d_k \le \varepsilon V(e_k) + \tfrac{1}{\varepsilon}\, d_k^\top P A_k P^{-1} A_k^\top P d_k.
+\]
+Using \eqref{eq:cqlf} again, \(M_k:=P^{1/2}A_kP^{-1/2}\) satisfies \(M_k^\top M_k\preceq(1-\mu)I\),
+and hence also \(M_k M_k^\top\preceq(1-\mu)I\). Thus
+\[
+d_k^\top P A_k P^{-1} A_k^\top P d_k
+= (P^{1/2}d_k)^\top M_k M_k^\top (P^{1/2}d_k)
+\le (1-\mu)\, d_k^\top P d_k.
+\]
+Therefore
+\[
+V(e_{k+1}) \le (1-\mu+\varepsilon)V(e_k) + \Big(1+\tfrac{1-\mu}{\varepsilon}\Big)\, d_k^\top P d_k.
+\]
+By A2$'$, \(\|d_k\|^2 \le 2 L_d^2\|e_k\|^2 + 2\bar d^{\,2}\).
+Use \(\|e_k\|^2 \le V(e_k)/\lambda_{\min}(P)\) and \(d_k^\top P d_k \le \lambda_{\max}(P)\|d_k\|^2\) to get
+\[
+d_k^\top P d_k \le 2\lambda_{\max}(P)\Big(\tfrac{L_d^2}{\lambda_{\min}(P)}V(e_k)+\bar d^{\,2}\Big)
+= 2\kappa L_d^2 V(e_k) + 2\lambda_{\max}(P)\bar d^{\,2}.
+\]
+Substitute this into the previous inequality and collect terms to obtain \eqref{eq:Vdec-tight}.
+\end{proof}
+
+\begin{theorem*}[Conditional ISS via explicit small gain]\label{thm:iss-tight}
+Assume \textup{A1--A3}, \textup{A2$'$}, and \textup{A6}, and suppose that the adaptation mechanism
+(e.g.\ A7--A8) keeps $\theta_k\in\Theta$ for all $k$ so that \eqref{eq:cqlf} holds uniformly.
+If there exists \(\varepsilon\in(0,\mu)\) such that
+\[
+\boxed{\qquad 1-\mu+\varepsilon + 2\kappa L_d^2\Big(1+\tfrac{1-\mu}{\varepsilon}\Big) \;<\; 1 \qquad}
+\]
+(i.e., \(2\kappa L_d^2\big(1+\tfrac{1-\mu}{\varepsilon}\big) < \mu-\varepsilon\)),
+then the translational estimation error is ISS with respect to~$\bar d$:
+\[
+\|e_k\| \;\le\; \beta(\|e_0\|,k) + \gamma(\bar d),
+\]
+for some class-\(\mathcal{KL}\) function \(\beta\) and class-\(\mathcal{K}\) function \(\gamma\).
+\end{theorem*}
+
+\begin{proof}
+From \eqref{eq:Vdec-tight}, define
+\[
+\alpha:=1-\mu+\varepsilon + 2\kappa L_d^2\Big(1+\tfrac{1-\mu}{\varepsilon}\Big),\quad
+b:=2\,\lambda_{\max}(P)\,\Big(1+\tfrac{1-\mu}{\varepsilon}\Big)\,\bar d^{\,2}.
+\]
+The boxed condition ensures \(0\le\alpha<1\) uniformly on \(\Theta\).
+Iterating gives \(V(e_k)\le \alpha^k V(e_0)+\tfrac{b}{1-\alpha}\).
+Using \(\|e_k\|^2 \le V(e_k)/\lambda_{\min}(P)\) yields the ISS estimate with
+\(\beta(r,k)=\sqrt{\kappa}\,\alpha^{k/2} r\) and \(\gamma(\bar d)=\sqrt{b/[(1-\alpha)\lambda_{\min}(P)]}\).
+\end{proof}
+
+\begin{remark}[Parameter convergence (idealized case)]
+The ISS result above is conditional on A2$'$ and does not, by itself, guarantee
+$\tilde\theta_k\to 0$. In the idealized setting with exact linear model
+($d_k\equiv 0$) and noiseless gradients, projected gradient methods with Lipschitz
+$\nabla_\theta\mathcal L$ and PL/strong convexity on $\Theta$, together with
+persistent excitation (A9), yield $\tilde\theta_k\to 0$ by standard adaptive
+control / stochastic approximation arguments.
+In the practical noisy case with $\bar d>0$, one generally expects
+$\tilde\theta_k$ to converge to a small neighborhood whose size depends on
+$(\bar d,\Gamma)$.
+\end{remark}
+
+\paragraph{Interpretation.}
+A common quadratic Lyapunov function (A6) gives a uniform contraction for each frozen loop
+$e_{k+1}=A(\theta)e_k$.
+If $d_k$ is purely exogenous ($L_d=0$), the growth factor reduces to \(1-\mu+\varepsilon\),
+so any \(\varepsilon\in(0,\mu)\) yields ISS.
+When $d_k$ contains state-dependent residues (linearization, cross-coupling, adaptation),
+A2$'$ leads to the explicit small-gain inequality above.
+The theorem is \emph{conditional}: if the aggregate disturbance can be bounded
+with sufficiently small $L_d$, then the translational error remains ISS.
+In practice, one can satisfy the small-gain condition by
+(i) tightening the linearization window (A1),
+(ii) narrowing \(\Theta\) so that the CQLF is stronger (larger~$\mu$),
+or (iii) increasing the pseudo-measurement floors (larger damping via $R_S$).
+
+\subsection*{How to verify the CQLF (A6) in practice}
+Discretize a grid of $(\sigma_a,\tau)$ in $\Theta$ and solve
+\[
+A(\theta_i)^\top P A(\theta_i) \preceq (1-\mu)P,\qquad P\succ0
+\]
+for a common $P,\mu$ using an LMI solver (e.g.\ \texttt{feasp}, \texttt{CVX}, or \texttt{YALMIP}/\texttt{MOSEK}).
+If infeasible: (i) narrow $\Theta$; (ii) raise $R_S$ floors; (iii) reduce the
+adaptation rate (to shrink $L_d$); or (iv) allow a parameter-dependent
+$P(\theta)$ (LPV analysis).
+
+\subsection*{Implementation checklist (A1--A9)}
+\begin{enumerate}\itemsep2pt
+\item Projection: $\hat\sigma_a\!\in[\underline\sigma,\overline\sigma]$, $\hat\tau\!\in[\underline\tau,\overline\tau]$.
+\item Rate limit (optional, improves transients): clamp $\|\theta_{k+1}-\theta_k\|\!\le\!\rho$.
+\item Noise floors: keep $Q\succeq q_{\min}I$, $R,R_S\succeq r_{\min}I$.
+\item Timescale separation: update $(\hat\sigma_a,\hat\tau)$ slower than $(v,p,S)$.
+\item Anisotropy: $R_S=\mathrm{diag}(k_x,k_y,k_z)\,\sigma_a\tau^3$ with $k_x,k_y\!\ll\!k_z$ when appropriate.
+\item (Optional) For $\tilde\theta_k\!\to\!0$ in the idealized setting: enforce PE (maneuvers/persistent spectra),
+  ensure curvature of $\mathcal L$, and choose small steps in $\Gamma$.
+\end{enumerate}
+
+\section*{Spectral justification of $R_S \propto \sigma_a \tau^3$}
+\label{sec:spectral-Rs}
+\label{app:rs-scaling}
+
+We now justify the scaling law $R_S \propto \sigma_a \tau^3$ using the power
+spectral density (PSD) of vertical motion. The key idea is:
+
+\begin{enumerate}\itemsep2pt
+\item Start from a stationary spectrum: either an acceleration spectrum
+$S_a(\omega)$ (OU model) or a displacement spectrum $S_\eta(\omega)$
+(PM/JONSWAP).
+\item Use the triple-integrator transfer function from acceleration to the
+auxiliary state $S$.
+\item Compute $\mathrm{Var}[S]$ from the spectrum, with a physically motivated
+low-frequency cutoff.
+\item Read off the scaling of $\mathrm{std}(S)$ with acceleration scale
+$\sigma_a$ and time scale~$\tau$.
+\end{enumerate}
+
+\subsection*{General PSD formula for the triple integral}
+
+Let $a(t)$ denote vertical acceleration and let
+\[
+\dot v = a,\qquad \dot p = v,\qquad \dot S = p
+\]
+define velocity $v$, displacement $p$, and the triple integral $S$.
+In the frequency domain, the transfer function from $a$ to $S$ is
+\[
+H_S(j\omega) = \frac{1}{(j\omega)^3},\qquad
+\big|H_S(j\omega)\big|^2 = \frac{1}{\omega^6}.
+\]
+
+\paragraph{From acceleration spectrum $S_a(\omega)$ to $\mathrm{Var}[S]$.}
+
+If $a(t)$ is a zero-mean stationary process with one-sided PSD $S_a(\omega)$,
+then the variance of $S(t)$ is
+\[
+\mathrm{Var}[S]
+= \frac{1}{2\pi} \int_{-\infty}^{\infty} S_a(\omega)\,\big|H_S(j\omega)\big|^2\,d\omega
+= \frac{1}{\pi}\int_{0}^{\infty} \frac{S_a(\omega)}{\omega^6}\,d\omega.
+\]
+This formula applies directly when we model $a(t)$ as an OU process.
+
+\paragraph{From displacement spectrum $S_\eta(\omega)$ (PM/JONSWAP).}
+
+For linear deep-water waves, the vertical displacement $\eta(t)$ and acceleration
+$a(t)$ are related in frequency by
+\[
+a(t) = \ddot\eta(t)
+\quad\Rightarrow\quad
+a(\omega) = -(j\omega)^2 \eta(\omega)
+\quad\Rightarrow\quad
+S_a(\omega) = \omega^4 S_\eta(\omega).
+\]
+Substituting $S_a(\omega) = \omega^4 S_\eta(\omega)$ into the variance formula yields
+\[
+\mathrm{Var}[S]
+= \frac{1}{\pi}\int_{0}^{\infty} \frac{\omega^4 S_\eta(\omega)}{\omega^6}\,d\omega
+= \frac{1}{\pi}\int_{0}^{\infty} \frac{S_\eta(\omega)}{\omega^2}\,d\omega.
+\]
+Thus, for any stationary linear sea with displacement spectrum $S_\eta(\omega)$,
+\begin{equation}
+\label{eq:varS-from-displacement}
+\mathrm{Var}[S] = \frac{1}{\pi}\int_{0}^{\infty} \frac{S_\eta(\omega)}{\omega^2}\,d\omega.
+\end{equation}
+
+\subsection*{Application to PM and JONSWAP seas (generic scaling)}
+
+For wind seas, the elevation spectrum is often modeled as Pierson--Moskowitz
+(PM) or JONSWAP.
+
+\paragraph{Pierson--Moskowitz.}
+A standard deep-water PM spectrum for $\eta$ has the form
+\[
+S_\eta^{\text{PM}}(\omega)
+= \alpha \frac{g^2}{\omega^5}\,\exp\!\Big[-\beta\Big(\frac{\omega_p}{\omega}\Big)^4\Big],
+\]
+where $\omega_p$ is the peak frequency ($\omega_p = 2\pi/T_p$), and $\alpha,\beta$
+are dimensionless constants. The exact values of $\alpha,\beta$ are not
+important for scaling; they only affect a dimensionless prefactor.
+
+Using \eqref{eq:varS-from-displacement},
+\[
+\mathrm{Var}[S]^{\text{PM}}
+= \frac{1}{\pi}\int_0^\infty \frac{S_\eta^{\text{PM}}(\omega)}{\omega^2}\,d\omega.
+\]
+Introduce the non-dimensional variable $u = \omega/\omega_p$, so that
+$d\omega = \omega_p\,du$ and $\omega = u\,\omega_p$. Then
+\[
+\fitcol{
+\mathrm{Var}[S]^{\text{PM}}
+= \frac{\alpha g^2}{\pi\,\omega_p^6}
+\int_0^\infty \frac{1}{u^7}\,
+\exp\!\Big[-\beta\Big(\tfrac{1}{u}\Big)^4\Big]\,du.
+}
+\]
+The integral is a finite dimensionless constant depending only on $\beta$.
+Hence the scaling
+\[
+\mathrm{Var}[S]^{\text{PM}} \;\propto\; \frac{g^2}{\omega_p^6}
+\quad\Longrightarrow\quad
+\mathrm{std}(S)^{\text{PM}} \;\propto\; \frac{g}{\omega_p^3}
+\;\propto\; g\,T_p^3.
+\]
+
+\paragraph{JONSWAP.}
+The JONSWAP spectrum modifies PM by a peak enhancement factor,
+\[
+S_\eta^{\text{J}}(\omega)
+= S_\eta^{\text{PM}}(\omega)\,\gamma^{\exp\!\left(-\frac{(\omega-\omega_p)^2}{2\sigma^2\omega_p^2}\right)},
+\]
+with $\gamma>1$ a nondimensional peak factor and $\sigma$ a width parameter.
+Substituting into \eqref{eq:varS-from-displacement} and repeating the same change
+of variables $\omega=\omega_p u$ yields
+\[
+\mathrm{Var}[S]^{\text{J}}
+= \frac{g^2}{\omega_p^6}\,\underbrace{\Bigg(
+\frac{\alpha}{\pi}\int_0^\infty
+\frac{1}{u^7}\,
+\exp\!\Big[-\beta\Big(\tfrac{1}{u}\Big)^4\Big]\,
+\gamma^{\exp\!\left(-\frac{(u-1)^2}{2\sigma^2}\right)}\,du
+\Bigg)}_{:=\,c_{\text{J}}(\gamma,\sigma)}.
+\]
+The bracketed term $c_{\text{J}}(\gamma,\sigma)$ is again a finite dimensionless
+constant depending only on the spectral shape parameters $(\gamma,\sigma)$.
+Thus
+\[
+\mathrm{std}(S)^{\text{J}} \;\propto\; \frac{g}{\omega_p^3}
+\;\propto\; g\,T_p^3.
+\]
+
+\paragraph{OU surrogate and analytic constant with low-frequency cutoff.}
+The OU model for $a_w$ used in the filter is
+\[
+\dot a_w = -\tfrac{1}{\tau}a_w + \sqrt{q_c}\,w, \qquad q_c=\tfrac{2\sigma_a^2}{\tau},
+\]
+with stationary acceleration PSD
+\[
+S_a^{\text{OU}}(\omega)
+= \frac{2\sigma_a^2\tau}{1+\omega^2\tau^2}.
+\]
+Formally,
+\[
+\mathrm{Var}[S]^{\text{OU}}
+= \frac{1}{\pi}\int_0^\infty
+\frac{2\sigma_a^2\tau}{1+\omega^2\tau^2}\,\frac{1}{\omega^6}\,d\omega
+\]
+diverges at $\omega=0$ because $S_a^{\text{OU}}(0)\neq 0$ and $|H_S|^2\sim 1/\omega^6$.
+In reality, $S$ is not allowed to integrate arbitrarily slow components:
+detrending and pseudo-measurements effectively remove very low-frequency content.
+We model this by introducing a cutoff $\omega_{\min}>0$ and, motivated by the OU
+correlation time, take $\omega_{\min}\approx 1/\tau$.
+
+With this cutoff,
+\[
+\fitcol{
+\mathrm{Var}[S]^{\text{OU}}
+\approx \frac{1}{\pi}\int_{1/\tau}^\infty
+\frac{2\sigma_a^2\tau}{1+\omega^2\tau^2}\,\frac{1}{\omega^6}\,d\omega.
+}
+\]
+Substitute $u=\omega\tau$, $d\omega=du/\tau$:
+\[
+\fitcol{
+\mathrm{Var}[S]^{\text{OU}}
+\approx \frac{\sigma_a^2\tau^6}{\pi}\int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6}.
+}
+\]
+The remaining integral is purely numerical:
+\[
+\int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6} = \frac{13}{15} - \frac{\pi}{4},
+\]
+so
+\[
+\mathrm{std}(S)^{\text{OU}} \approx 0.16084\,\sigma_a\,\tau^3.
+\]
+
+\paragraph{Summary.}
+Across OU, PM, and JONSWAP seas, the triple-integrated state $S$ has a natural
+scale
+\[
+\mathrm{std}(S) \;\sim\; c_{\text{spec}}\,\sigma_a\,\tau^3,
+\]
+where $\sigma_a$ is an acceleration level, $\tau$ a characteristic time scale,
+and $c_{\text{spec}}$ a dimensionless shape factor depending on the spectrum
+and the effective low-frequency cutoff. The OU surrogate yields
+$c_{\text{spec}}\approx 0.16084$ for $\omega_{\min}\approx 1/\tau$ and is
+convenient analytically. This motivates the adaptive law
+\[
+R_S = k_i\,\sigma_a\,\tau^3
+\]
+with $k_i$ chosen on the order of $c_{\text{spec}}$.
+
+\section*{Spectral shape factor, comparison across spectra, and link to detrending}
+\label{sec:spec-k-i-and-cutoff}
+
+\subsection*{Dimensionless shape factor and its role in $k_i$}
+
+We now make the dimensionless spectral factor explicit. Normalize the
+acceleration spectrum as
+\[
+S_a(\omega) = \sigma_a^2\,\tau\,\Phi(\omega\tau),
+\qquad
+\frac{1}{\pi}\int_0^\infty \Phi(u)\,du = 1,
+\]
+where $\sigma_a^2$ is the acceleration variance, $\tau$ a time scale, and
+$\Phi(u)$ a dimensionless shape function (OU, PM, JONSWAP, etc.).
+With an effective low-frequency cutoff $\omega_{\min}$ and
+$u_{\min}:=\omega_{\min}\tau$, the variance of $S$ is
+\[
+\mathrm{Var}[S]
+= \frac{1}{\pi}\int_{\omega_{\min}}^\infty \frac{S_a(\omega)}{\omega^6}\,d\omega
+= \sigma_a^2\tau^6\,
+\underbrace{\Bigg[\frac{1}{\pi}\int_{u_{\min}}^\infty \frac{\Phi(u)}{u^6}\,du\Bigg]}_{=:~c_{\mathrm{spec}}^2(u_{\min})},
+\]
+so
+\begin{equation}
+\label{eq:stdS-cspec-again}
+\mathrm{std}(S) = c_{\mathrm{spec}}(u_{\min})\,\sigma_a\,\tau^3,
+\qquad
+c_{\mathrm{spec}}^2(u_{\min})
+= \frac{1}{\pi}\int_{u_{\min}}^\infty \frac{\Phi(u)}{u^6}\,du.
+\end{equation}
+The dimensionless quantity $c_{\mathrm{spec}}(u_{\min})$ depends only on the
+shape $\Phi(u)$ and on the dimensionless cutoff $u_{\min}$.
+If the pseudo-measurement is chosen to match the natural scale of $S$, then
+\[
+R_S \approx \mathrm{std}(S)
+\quad\Longrightarrow\quad
+k_i \approx c_{\mathrm{spec}}(u_{\min})
+\]
+in the design law $R_S = k_i\,\sigma_a\tau^3$.
+
+\subsection*{OU, PM, and JONSWAP$(\gamma\approx 3.3)$ (qualitative)}
+
+For OU,
+\[
+\Phi_{\mathrm{OU}}(u)=\frac{2}{1+u^2},
+\qquad
+\frac{1}{\pi}\int_0^\infty \Phi_{\mathrm{OU}}(u)\,du = 1,
+\]
+and
+\[
+c_{\mathrm{spec,OU}}^2(u_{\min})
+= \frac{1}{\pi}\int_{u_{\min}}^\infty \frac{2}{(1+u^2)\,u^6}\,du.
+\]
+For $u_{\min}\approx 1$ this recovers $c_{\mathrm{spec,OU}}\approx 0.16084$.
+
+For PM and JONSWAP, one constructs $\Phi_{\mathrm{PM}}(u)$ and
+$\Phi_{\mathrm{J}}(u;\gamma)$ from the corresponding $S_\eta(\omega)$ via
+$S_a(\omega)=\omega^4 S_\eta(\omega)$ and normalization. Qualitatively:
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item PM is relatively broadband, with a noticeable low-frequency tail
+below its peak; in $\Phi_{\mathrm{PM}}(u)$ this means non-negligible mass
+for $u<u_0$.
+\item JONSWAP with $\gamma\approx 3.3$ is more sharply peaked around
+$u\approx 1$ (the peak), with a suppressed high-frequency tail but still
+some low-frequency content.
+\end{itemize}
+The shape factor \eqref{eq:stdS-cspec-again} weights $\Phi(u)$ by $1/u^6$, so
+the region just above $u_{\min}$ dominates:
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item Increasing $u_{\min}$ (stronger effective high-pass / more aggressive
+clamping of slow trends) rapidly decreases $c_{\mathrm{spec}}(u_{\min})$
+for all spectra;
+\item For a fixed $u_{\min}$ near~1, OU produces a slightly larger
+$c_{\mathrm{spec}}(u_{\min})$ than PM/JONSWAP, because of its Lorentzian
+low-frequency tail;
+\item For JONSWAP with $\gamma\approx 3.3$, numerical evaluation (not
+reproduced here) shows $c_{\mathrm{spec,J}}(u_{\min};\gamma)$ modestly
+larger than $c_{\mathrm{spec,PM}}(u_{\min})$ at the same cutoff, since a
+larger fraction of $\sigma_a^2$ sits near the peak where $1/u^6$ still
+amplifies the contribution.
+\end{itemize}
+In summary, for realistic PM/JONSWAP shapes with an effective cutoff
+$u_{\min}$ around 1 (i.e.\ suppressing only the very slowest modes),
+$c_{\mathrm{spec}}(u_{\min})$ is $\mathcal O(10^{-1})$, with OU providing
+a slightly conservative reference.
+
+\subsection*{From detrending / pseudo-measurement schedule to an implied $u_{\min}$}
+
+In the spectral formulas above, $u_{\min}=\omega_{\min}\tau$ appears as a
+parameter. In the actual Q--MEKF there is no explicit high-pass block on~$S$;
+instead, an effective low-frequency cutoff is induced by the combination of:
+\begin{enumerate}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item finite-time detrending or finite observation windows in the statistics,
+\item and the pseudo-measurement on $S$ with variance $R_S^2$.
+\end{enumerate}
+
+\paragraph{Finite-time detrending.}
+Detrending over a sliding window of length $T_{\mathrm{det}}$ (e.g.\ removing a
+local mean or polynomial) behaves approximately like a high-pass filter with
+corner frequency
+\[
+\omega_{\mathrm{HP,det}} \sim \frac{c_{\mathrm{det}}}{T_{\mathrm{det}}},
+\]
+where $c_{\mathrm{det}}$ is a method-dependent constant. Spectral energy with
+$\omega\ll\omega_{\mathrm{HP,det}}$ is strongly attenuated and contributes
+little to $\mathrm{Var}[S]$, so one may identify
+\[
+\omega_{\min} \approx \omega_{\mathrm{HP,det}},
+\qquad
+u_{\min} \approx \omega_{\mathrm{HP,det}}\tau.
+\]
+
+\paragraph{Pseudo-measurement on $S$ and leaky-integrator behaviour.}
+The pseudo-measurement
+\[
+y_S = 0 = S + n_S,\qquad \mathrm{Var}(n_S)=R_S^2
+\]
+is applied repeatedly in the discrete-time filter. At a qualitative level, this
+turns the pure integrator on $S$ into a leaky integrator: OU-driven process
+noise pumps variance into $S$, while the pseudo-update continuously pulls it
+back toward~0. The net effect is a slow but finite decay rate for $S$-errors,
+which can be interpreted as a low-frequency cutoff of order
+$\omega_{\mathrm{HP,ps}}\sim 1/T_{\mathrm{leak}}$ for some leak time
+$T_{\mathrm{leak}}$ depending on $R_S$ and the process intensity. The toy model
+below makes this explicit in a scalar setting.
+
+In practice both mechanisms coexist, so the effective cutoff is of the order
+of the larger of the two:
+\[
+\omega_{\min}
+\;\approx\; \max\{\omega_{\mathrm{HP,det}},\,\omega_{\mathrm{HP,ps}}\},
+\qquad
+u_{\min} \approx \omega_{\min}\tau.
+\]
+
+\paragraph{Design guideline.}
+Given a choice of $\tau$ (e.g.\ from the dominant wave period), and a
+detrending / pseudo-measurement schedule that implies $u_{\min}$, the spectral
+analysis \eqref{eq:stdS-cspec-again} suggests:
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item choose $u_{\min}$ so that $c_{\mathrm{spec}}(u_{\min})$ is moderate
+(suppressing very slow drift but retaining the wave band);
+\item for the expected range of spectral shapes (PM, JONSWAP with
+$\gamma\approx 3.3$), approximate $c_{\mathrm{spec}}(u_{\min})$;
+\item set $k_i$ slightly larger than
+$\max_{\text{spectra in envelope}} c_{\mathrm{spec}}(u_{\min})$, so that
+$R_S = k_i\sigma_a\tau^3$ is at least as large as the natural fluctuation
+scale of $S$ across those sea states.
+\end{itemize}
+
+\subsection*{Toy leaky-$S$ model: how the pseudo-measurement induces an effective cutoff}
+\label{sec:toy-leaky-S}
+
+The spectral analysis above treated $\omega_{\min}$ as an abstract parameter.
+Here we show, on a scalar toy model, how a repeated pseudo-measurement on $S$
+induces a leak and hence an effective low-frequency cutoff. The goal is
+interpretation: the $\sigma_a\tau^3$ scaling itself comes from the PSD
+calculation, while the toy model explains why a finite cutoff exists and how it
+depends on $R_S$.
+
+\paragraph{Scalar toy model for a leaky integral.}
+Consider a scalar process $S(t)$ with white process noise of intensity $q_S$,
+\begin{equation}
+\label{eq:toy-S-process}
+\dot S = w_S,\qquad \mathbb E[w_S(t)w_S(s)] = q_S\,\delta(t-s),
+\end{equation}
+and a continuous-time pseudo-measurement
+\begin{equation}
+\label{eq:toy-S-meas}
+y_S = S + n_S,\qquad \mathbb E[n_S(t)n_S(s)] = R_S^2\,\delta(t-s).
+\end{equation}
+The Kalman--Bucy filter is
+\[
+\dot{\hat S} = K\,(y_S-\hat S),\qquad K = \frac{P}{R_S^2},
+\]
+where $P$ is the scalar error variance solving
+\[
+0 = q_S - \frac{P^2}{R_S^2}
+\quad\Rightarrow\quad
+P = \sqrt{q_S}\,R_S.
+\]
+The steady-state Kalman gain is
+\begin{equation}
+\label{eq:toy-K}
+K = \frac{P}{R_S^2} = \frac{\sqrt{q_S}}{R_S}.
+\end{equation}
+The estimation error $e_S := S-\hat S$ obeys
+\[
+\dot e_S = -K\,e_S + w_S - K n_S,
+\]
+with homogeneous eigenvalue
+\begin{equation}
+\label{eq:lambda-slow-toy}
+\lambda_{\mathrm{slow}} = -K = -\frac{\sqrt{q_S}}{R_S}.
+\end{equation}
+Thus $e_S$ decays with time constant
+\begin{equation}
+\label{eq:T-leak-def}
+T_{\mathrm{leak}} := \frac{1}{|\lambda_{\mathrm{slow}}|}
+= \frac{R_S}{\sqrt{q_S}},
+\end{equation}
+and the S-mode exhibits a high-pass corner
+\begin{equation}
+\label{eq:omega-min-toy}
+\omega_{\mathrm{HP,ps}} \;\approx\; \frac{1}{T_{\mathrm{leak}}}
+= \frac{\sqrt{q_S}}{R_S}.
+\end{equation}
+Low-frequency components of the driving noise with $\omega\ll\omega_{\mathrm{HP,ps}}$
+are strongly attenuated in $S$: the pseudo-measurement has turned the pure
+integrator into a leaky integrator with leak rate $K$.
+
+In terms of the dimensionless cutoff
+\[
+u_{\min} = \omega_{\min}\,\tau,
+\]
+this toy model illustrates that, for given $q_S$ and $\tau$,
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item decreasing $R_S$ (stronger pseudo-measurement) increases
+$\omega_{\mathrm{HP,ps}}$ and thus $u_{\min}$;
+\item increasing $R_S$ (weaker pseudo-measurement) decreases
+$\omega_{\mathrm{HP,ps}}$ and $u_{\min}$, allowing more very low-frequency
+content into~$S$.
+\end{itemize}
+Thus $u_{\min}$ is primarily controlled by how strongly $S$ is regularized by
+its pseudo-measurement, rather than by the OU correlation time~$\tau$ alone.
+
+\paragraph{Interpretation for the full OU + triple-integrator chain.}
+In the full translational model
+\[
+\dot v = a_w,\quad \dot p = v,\quad \dot S = p,\quad
+\dot a_w = -\tfrac{1}{\tau} a_w + \sqrt{q_c}\,w,
+\]
+the state $S$ is the triple integral of an OU acceleration process, not a
+simple random walk. At very low frequencies, the combined process acts as a
+very red excitation for~$S$, and the pseudo-measurement on $S$ still induces a
+leak of the form
+\[
+\dot e_S \approx -\lambda_{\mathrm{slow}}\,e_S + \text{(very low-frequency noise)},
+\]
+with $\lambda_{\mathrm{slow}}<0$ a real eigenvalue of the full closed-loop
+Kalman error dynamics. The precise dependence of $\lambda_{\mathrm{slow}}$ on
+$(\sigma_a,\tau,R_S)$ is algebraically involved and not needed for the
+scaling argument.
+
+Instead, we rely on the spectral calculation of
+Section~\ref{sec:spectral-Rs}: for OU (and likewise for PM/JONSWAP) with an
+effective low-frequency cutoff $\omega_{\min}$ of order $1/\tau$, the $S$-variance
+scales as
+\[
+\mathrm{Var}[S] \;\propto\; \sigma_a^2\,\tau^6
+\quad\Longrightarrow\quad
+\mathrm{std}(S) \;\propto\; \sigma_a\,\tau^3.
+\]
+Choosing
+\[
+R_S = k_i\,\sigma_a\,\tau^3
+\]
+therefore sets the pseudo-measurement noise on the order of the spectrally
+predicted fluctuations of $S$ across sea states. The scalar leaky model
+\eqref{eq:toy-S-process}--\eqref{eq:omega-min-toy} should be read as an
+interpretation: the pseudo-update on $S$ induces a leak with some effective
+cutoff $\omega_{\min}\approx 1/T_{\mathrm{leak}}$, while the
+$\sigma_a\tau^3$ scaling itself comes from the PSD-based variance calculation.
