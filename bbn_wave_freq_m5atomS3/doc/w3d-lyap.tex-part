@@ -11,15 +11,15 @@
 \section*{Lyapunov / ISS Stability of the Adaptive Law $R_S \propto \sigma_a \tau^3$}
 \label{sec:lyap-iss}
 
-We establish input–to–state stability (ISS) of the estimation error under the adaptive
-pseudo-measurement weighting
+We establish an input--to--state stability (ISS) bound for the estimation error under the
+adaptive pseudo-measurement weighting
 \[
 R_S(\theta)=\mathrm{diag}(r_{Sx},r_{Sy},r_{Sz}),\qquad
 r_{Si}=k_i\,\sigma_a\,\tau^3,
 \]
 where $\theta=(\sigma_a,\tau)$ are adapted online and $k_i>0$ are fixed anisotropy
 coefficients (possibly $k_x,k_y\ll k_z$).
-We analyze the extended Q–MEKF linearized after attitude lock, focusing on the translational OU chain
+We analyze the extended Q--MEKF linearized after attitude lock, focusing on the translational OU chain
 \[
 \begin{aligned}
 \dot v&=a_w,\qquad \dot p=v,\qquad \dot S=p,\qquad\\
@@ -39,11 +39,13 @@ linearization error is Lipschitz on the compact set considered.
 Sensor noises have finite second moments (e.g., sub-Gaussian). The OU driver $w$ is standard white noise
 in the SDE sense; discrete innovations are zero-mean with finite covariance.
 
-\item[A2$'$] \textbf{Disturbance decomposition (residuals allowed).}
-There exist $\bar d\ge 0$ and $L_d\ge 0$ such that the aggregate disturbance satisfies
+\item[A2$'$] \textbf{State-dependent disturbance bound.}
+There exist $\bar d\ge 0$ and $L_d\ge 0$ such that the aggregate disturbance in the
+linearized error dynamics satisfies
 \[
 \|d_k\|\;\le\;\bar d + L_d\,\|e_k\|\qquad\text{for all }k.
 \]
+Here $d_k$ collects linearization residuals, model mismatch, and unmodelled couplings.
 (When $d_k$ is exogenous, take $L_d=0$ and $\bar d=\sup_k\|d_k\|$.)
 
 \item[A3] \textbf{Parameter compactness via projection.}
@@ -51,7 +53,7 @@ There exist $\bar d\ge 0$ and $L_d\ge 0$ such that the aggregate disturbance sat
 \Theta=\{(\sigma_a,\tau):\underline\sigma\le\sigma_a\le\overline\sigma,\;
 \underline\tau\le\tau\le\overline\tau\},
 \]
-enforced by a projection $\Pi_\Theta(\cdot)$.
+enforced by a projection $\Pi_\Theta(\cdot)$, so that $\theta_k\in\Theta$ for all $k$.
 
 \item[A4] \textbf{Rate-limited adaptation (optional for performance).}
 Optionally clamp $\|\theta_{k+1}-\theta_k\|\le\rho$ to improve transients.
@@ -66,12 +68,18 @@ Let $A(\theta):=\Phi(\theta)-K(\theta)C\,\Phi(\theta)$. There exist $P\succ0$ an
 A(\theta)^\top P\,A(\theta)\;\preceq\;(1-\mu)\,P\qquad \forall\,\theta\in\Theta .
 \end{equation}
 
-\item[A7] \textbf{Explicit adaptation law.}
-$\theta_{k+1}=\Pi_\Theta\!\big(\theta_k-\Gamma\nabla_\theta\mathcal{L}(e_k,\theta_k)\big)$,
-with $\Gamma=\mathrm{diag}(\gamma_\sigma,\gamma_\tau)$.
+\item[A7] \textbf{Explicit adaptation law (design choice).}
+\[
+\theta_{k+1}=\Pi_\Theta\!\big(\theta_k-\Gamma\nabla_\theta\mathcal{L}(e_k,\theta_k)\big),
+\qquad
+\Gamma=\mathrm{diag}(\gamma_\sigma,\gamma_\tau).
+\]
+This is one convenient way to ensure $\theta_k\in\Theta$; the ISS result below only needs
+$\theta_k\in\Theta$ for all $k$, regardless of the specific update.
 
-\item[A8] \textbf{Gradient regularity and small step.}
-$\nabla_\theta\mathcal{L}$ is $L_\theta$-Lipschitz; $\Gamma$ is small enough for stable updates.
+\item[A8] \textbf{Gradient regularity and small step (design/verification).}
+$\nabla_\theta\mathcal{L}$ is $L_\theta$-Lipschitz; step sizes in $\Gamma$ are small enough
+that the induced disturbance $d_k$ satisfies A2$'$ with some $(\bar d,L_d)$.
 
 \item[A9] \textbf{(Optional, for parameter convergence) PE.}
 Regressors driving $\nabla_\theta\mathcal{L}$ are persistently exciting on $\Theta$.
@@ -83,7 +91,7 @@ Let $\tilde\theta:=\hat\theta-\theta^\star$ be parameter error relative to the
 stationary values $(\sigma_a^\star,\tau^\star)$.
 Define the Rayleigh ratio \(\kappa:=\lambda_{\max}(P)/\lambda_{\min}(P)\ge 1\).
 
-\begin{lemma}[One-step decrement with state-dependent disturbance]\label{lem:onestep-tight}
+\begin{lemma}[ISS-type one-step bound with state-dependent disturbance]\label{lem:onestep-tight}
 Under \textup{A1}, \textup{A2$'$}, and \textup{A6}, let \(V(e)=e^\top P e\) with \(P\succ0\) and \(\mu\in(0,1)\) from \eqref{eq:cqlf}.
 For any \(\varepsilon\in(0,\mu)\), the update \(e_{k+1}=A(\theta_k)e_k+d_k\) satisfies
 \begin{equation}\label{eq:Vdec-tight}
@@ -103,8 +111,13 @@ For the cross term, Young’s inequality with any \(\varepsilon\in(0,\mu)\) give
 \[
 2 e_k^\top A_k^\top P d_k \le \varepsilon V(e_k) + \tfrac{1}{\varepsilon}\, d_k^\top P A_k P^{-1} A_k^\top P d_k.
 \]
-Using \eqref{eq:cqlf} again, \(P^{1/2}A_kP^{-1/2}\) is a contraction with factor \(\sqrt{1-\mu}\), hence
-\(d_k^\top P A_k P^{-1} A_k^\top P d_k \le (1-\mu)\, d_k^\top P d_k\).
+Using \eqref{eq:cqlf} again, \(M_k:=P^{1/2}A_kP^{-1/2}\) satisfies \(M_k^\top M_k\preceq(1-\mu)I\),
+and hence also \(M_k M_k^\top\preceq(1-\mu)I\). Thus
+\[
+d_k^\top P A_k P^{-1} A_k^\top P d_k
+= (P^{1/2}d_k)^\top M_k M_k^\top (P^{1/2}d_k)
+\le (1-\mu)\, d_k^\top P d_k.
+\]
 Therefore
 \[
 V(e_{k+1}) \le (1-\mu+\varepsilon)V(e_k) + \Big(1+\tfrac{1-\mu}{\varepsilon}\Big)\, d_k^\top P d_k.
@@ -112,25 +125,25 @@ V(e_{k+1}) \le (1-\mu+\varepsilon)V(e_k) + \Big(1+\tfrac{1-\mu}{\varepsilon}\Big
 By A2$'$, \(\|d_k\|^2 \le 2 L_d^2\|e_k\|^2 + 2\bar d^{\,2}\).
 Use \(\|e_k\|^2 \le V(e_k)/\lambda_{\min}(P)\) and \(d_k^\top P d_k \le \lambda_{\max}(P)\|d_k\|^2\) to get
 \[
-d_k^\top P d_k \le 2\lambda_{\max}(P)\Big(\tfrac{L_d^2}{\lambda_{\min}(P)}V(e_k)+\bar d^{\,2}\Big).
+d_k^\top P d_k \le 2\lambda_{\max}(P)\Big(\tfrac{L_d^2}{\lambda_{\min}(P)}V(e_k)+\bar d^{\,2}\Big)
+= 2\kappa L_d^2 V(e_k) + 2\lambda_{\max}(P)\bar d^{\,2}.
 \]
 Substitute this into the previous inequality and collect terms to obtain \eqref{eq:Vdec-tight}.
 \end{proof}
 
-\begin{theorem*}[ISS via explicit small gain]\label{thm:iss-tight}
-Assume \textup{A1–A3}, \textup{A2$'$}, \textup{A6}, \textup{A7}.
+\begin{theorem*}[Conditional ISS via explicit small gain]\label{thm:iss-tight}
+Assume \textup{A1--A3}, \textup{A2$'$}, and \textup{A6}, and suppose that the adaptation mechanism
+(e.g.\ A7--A8) keeps $\theta_k\in\Theta$ for all $k$ so that \eqref{eq:cqlf} holds uniformly.
 If there exists \(\varepsilon\in(0,\mu)\) such that
 \[
 \boxed{\qquad 1-\mu+\varepsilon + 2\kappa L_d^2\Big(1+\tfrac{1-\mu}{\varepsilon}\Big) \;<\; 1 \qquad}
 \]
 (i.e., \(2\kappa L_d^2\big(1+\tfrac{1-\mu}{\varepsilon}\big) < \mu-\varepsilon\)),
-then the estimation error is ISS:
+then the translational estimation error is ISS with respect to~$\bar d$:
 \[
 \|e_k\| \;\le\; \beta(\|e_0\|,k) + \gamma(\bar d),
 \]
 for some class-\(\mathcal{KL}\) function \(\beta\) and class-\(\mathcal{K}\) function \(\gamma\).
-Projection (A3) keeps \(\tilde\theta_k\) bounded. Under \textup{A9} and suitable curvature of \(\mathcal L\)
-(PL/strong convexity on \(\Theta\)), \(\tilde\theta_k\to 0\).
 \end{theorem*}
 
 \begin{proof}
@@ -143,17 +156,33 @@ The boxed condition ensures \(0\le\alpha<1\) uniformly on \(\Theta\).
 Iterating gives \(V(e_k)\le \alpha^k V(e_0)+\tfrac{b}{1-\alpha}\).
 Using \(\|e_k\|^2 \le V(e_k)/\lambda_{\min}(P)\) yields the ISS estimate with
 \(\beta(r,k)=\sqrt{\kappa}\,\alpha^{k/2} r\) and \(\gamma(\bar d)=\sqrt{b/[(1-\alpha)\lambda_{\min}(P)]}\).
-Boundedness of \(\tilde\theta_k\) follows from projection (A3).
-Under PE (A9) and PL/strong convexity of \(\mathcal L\) on \(\Theta\), standard adaptive arguments imply \(\tilde\theta_k\to 0\).
 \end{proof}
 
+\begin{remark}[Parameter convergence (idealized case)]
+The ISS result above is conditional on A2$'$ and does not, by itself, guarantee
+$\tilde\theta_k\to 0$. In the idealized setting with exact linear model
+($d_k\equiv 0$) and noiseless gradients, projected gradient methods with Lipschitz
+$\nabla_\theta\mathcal L$ and PL/strong convexity on $\Theta$, together with
+persistent excitation (A9), yield $\tilde\theta_k\to 0$ by standard adaptive
+control / stochastic approximation arguments.
+In the practical noisy case with $\bar d>0$, one generally expects
+$\tilde\theta_k$ to converge to a small neighborhood whose size depends on
+$(\bar d,\Gamma)$.
+\end{remark}
+
 \paragraph{Interpretation.}
-A common quadratic Lyapunov function (A6) gives a uniform contraction for the frozen loop.
+A common quadratic Lyapunov function (A6) gives a uniform contraction for each frozen loop
+$e_{k+1}=A(\theta)e_k$.
 If $d_k$ is purely exogenous ($L_d=0$), the growth factor reduces to \(1-\mu+\varepsilon\),
-so any \(\varepsilon\in(0,\mu)\) yields ISS. When $d_k$ contains state-dependent residues
-(linearization, cross-coupling), A2$'$ leads to the explicit small-gain inequality above.
-You can satisfy it by (i) tightening the linearization window (A1), (ii) narrowing \(\Theta\),
-or (iii) increasing the pseudo-measurement floors (larger \(\mu\) via stronger damping).
+so any \(\varepsilon\in(0,\mu)\) yields ISS.
+When $d_k$ contains state-dependent residues (linearization, cross-coupling, adaptation),
+A2$'$ leads to the explicit small-gain inequality above.
+The theorem is \emph{conditional}: if the aggregate disturbance can be bounded
+with sufficiently small $L_d$, then the translational error remains ISS.
+In practice, one can satisfy the small-gain condition by
+(i) tightening the linearization window (A1),
+(ii) narrowing \(\Theta\) so that the CQLF is stronger (larger~$\mu$),
+or (iii) increasing the pseudo-measurement floors (larger damping via $R_S$).
 
 \subsection*{How to verify the CQLF (A6) in practice}
 Discretize a grid of $(\sigma_a,\tau)$ in $\Theta$ and solve
@@ -161,17 +190,19 @@ Discretize a grid of $(\sigma_a,\tau)$ in $\Theta$ and solve
 A(\theta_i)^\top P A(\theta_i) \preceq (1-\mu)P,\qquad P\succ0
 \]
 for a common $P,\mu$ using an LMI solver (e.g.\ \texttt{feasp}, \texttt{CVX}, or \texttt{YALMIP}/\texttt{MOSEK}).
-If infeasible: (i) narrow $\Theta$; (ii) raise $R_S$ floors; (iii) reduce $\rho$; or (iv) allow a parameter-dependent
-$P(\theta)$ (LPV).
+If infeasible: (i) narrow $\Theta$; (ii) raise $R_S$ floors; (iii) reduce the
+adaptation rate (to shrink $L_d$); or (iv) allow a parameter-dependent
+$P(\theta)$ (LPV analysis).
 
-\subsection*{Implementation checklist (A1–A9)}
+\subsection*{Implementation checklist (A1--A9)}
 \begin{enumerate}\itemsep2pt
 \item Projection: $\hat\sigma_a\!\in[\underline\sigma,\overline\sigma]$, $\hat\tau\!\in[\underline\tau,\overline\tau]$.
 \item Rate limit (optional, improves transients): clamp $\|\theta_{k+1}-\theta_k\|\!\le\!\rho$.
 \item Noise floors: keep $Q\succeq q_{\min}I$, $R,R_S\succeq r_{\min}I$.
 \item Timescale separation: update $(\hat\sigma_a,\hat\tau)$ slower than $(v,p,S)$.
 \item Anisotropy: $R_S=\mathrm{diag}(k_x,k_y,k_z)\,\sigma_a\tau^3$ with $k_x,k_y\!\ll\!k_z$ when appropriate.
-\item (Optional) For $\tilde\theta_k\!\to\!0$: enforce PE (maneuvers/persistent spectra) and ensure curvature of $\mathcal L$.
+\item (Optional) For $\tilde\theta_k\!\to\!0$ in the idealized setting: enforce PE (maneuvers/persistent spectra),
+  ensure curvature of $\mathcal L$, and choose small steps in $\Gamma$.
 \end{enumerate}
 
 \section*{Why $R_S \propto \sigma_a \tau^3$ (Dimensional and Spectral Justification)}
