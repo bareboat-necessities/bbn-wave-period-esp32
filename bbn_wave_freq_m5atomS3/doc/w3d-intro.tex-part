@@ -82,8 +82,7 @@ motivated regularization law,
 R_S \propto \sigma_{aw} \tau^3,
 \]
 which links displacement drift suppression to the stochastic excitation
-strength. The resulting filter continuously matches its internal model
-to the prevailing sea state.
+strength.
 
 \subsection*{Validation}
 
