@@ -211,7 +211,7 @@ With the substitution $u = \omega\tau$, $d\omega = du/\tau$, this becomes
 \mathrm{Var}[S] \approx \frac{\sigma_a^2\tau^6}{\pi}\int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6}.
 }
 \]
-Symbolicaly,
+Symbolically,
 \[
 \int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6} = \frac{13}{15} - \frac{\pi}{4}
 \quad\Rightarrow\quad
