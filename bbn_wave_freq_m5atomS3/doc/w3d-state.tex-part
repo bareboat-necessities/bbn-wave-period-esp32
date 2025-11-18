@@ -56,7 +56,3 @@ N_X =
 \]
 with both gyro and accelerometer bias.
 
-Each subblock evolves under its own continuous-time dynamics, coupled through
-the quaternion attitude and the OU acceleration process, providing a unified
-representation of rotational motion, translational kinematics, and
-wave-correlated stochastic forcing.
