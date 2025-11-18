@@ -127,29 +127,39 @@ pseudo-measurement:
 \end{equation}
 with covariance $\mathbf{R}_S = \mathrm{diag}(\sigma_{Sx}^2,
 \sigma_{Sy}^2, \sigma_{Sz}^2)$.
-This enforces a soft regularization of displacement drift while
-retaining dynamic responsiveness to low-frequency swell motion.
 The corresponding measurement Jacobian is simply
 \begin{equation}
 \frac{\partial \mathbf{z}_S}{\partial \mathbf{S}} = \mathbf{I}_3.
 \end{equation}
 
-The choice of $R_S$ is critical. A small $R_S$ enforces a tight pseudo-measurement,
-essentially pinning $S\approx 0$ and aggressively damping drift \cite{Sharkh2014MEF}. A large $R_S$ relaxes
-the constraint, letting $S$ wander but still suppressing drift.
+This channel is not tied to a physical sensor: it provides a soft
+regularization that prevents uncontrolled growth of $\mathbf{S}$ while still
+allowing slow wave-induced motion. In the discrete-time implementation,
+repeated application of~\eqref{eq:zero-pseudo} turns the pure triple integral
+into a \emph{leaky} integral. In linear systems terms, the $S$-mode acquires a
+real negative eigenvalue whose magnitude depends on~$\mathbf{R}_S$: very
+low-frequency components of the integrated displacement are attenuated, so the
+pseudo-measurement acts as an \emph{effective high-pass} on the $S$-channel.
 
-Physically, $S$ has no direct observable meaning (it is an auxiliary integral).
-Therefore, $R_S$ does not correspond to sensor noise, but rather to a 
-\emph{tuning parameter}:
+The choice of $\mathbf{R}_S$ is therefore critical:
 \begin{itemize}
-\item If the double integral drift is high use smaller $R_S$.
-\item If slow drift is acceptable, increase $R_S$ to reduce artificial feedback.
+\item A small $\mathbf{R}_S$ yields a strong leak (large Kalman gain),
+      effectively pinning $\mathbf{S}\approx\mathbf{0}$ and pushing the
+      high-pass corner upward. This aggressively damps double-integral drift
+      but risks over-regularizing very long swell components.
+\item A large $\mathbf{R}_S$ yields a weak leak (small Kalman gain), so
+      $\mathbf{S}$ behaves closer to an ideal triple integral. Very slow drift
+      is less suppressed, but the filter exerts less artificial feedback on
+      long-period motion.
 \end{itemize}
 
-In linear systems terminology, the inclusion of $S$ and its pseudo-measurement renders the augmented
-system \emph{detectable}: even though $S$ is unobservable in a strict sense, the 
-pseudo-measurement provides an artificial observation that stabilizes the filter numerics and
-uncontrolled growth of displacement.
+In this sense, $\mathbf{R}_S$ is a \emph{tuning parameter} rather than a
+physical noise level: it sets how strongly the filter treats the auxiliary
+state $\mathbf{S}$ as ``should be near zero'' versus ``free to wander''. Proper
+choice of $\mathbf{R}_S$ makes the augmented system effectively detectable:
+although $\mathbf{S}$ is not directly observable from real sensors, the
+pseudo-measurement provides an artificial observation that stabilizes the
+covariance and prevents numerical blow-up of integrated displacement.
 
 \subsection{Unified Measurement Update}
 
