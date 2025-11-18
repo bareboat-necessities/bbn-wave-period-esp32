@@ -51,7 +51,7 @@ In many installations the IMU is not located at the vessel's center of gravity
 but at a fixed lever arm $\mathbf{r}_b \in \mathbb{R}^3$ expressed in the
 body frame. The accelerometer then measures the specific force at the IMU
 location, which differs from the specific force at the center of gravity
-(CoG) by translational contributions due to angular motion.
+(CoG) by contributions due to angular motion.
 
 Let $\boldsymbol{\omega}_b$ denote the body-frame angular velocity from the
 gyroscope after bias correction, and let $\boldsymbol{\alpha}_b$ be an
