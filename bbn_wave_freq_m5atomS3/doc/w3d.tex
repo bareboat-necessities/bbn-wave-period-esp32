@@ -157,16 +157,8 @@ Email: mgrouch@users.github.com}%
 \maketitle
 
 \begin{abstract}
-We present a detailed mathematical development of a quaternion multiplicative extended Kalman filter fused with an extended
-linear kinematic chain for ocean-wave motion estimation. The method augments attitude, with gyroscope and
-accelerometer bias, by linear velocity, displacement, and the integral of displacement, driven by a latent world-frame
-acceleration modeled as an Ornstein--Uhlenbeck process. The Ornstein--Uhlenbeck prior provides stationary variance and
-realistic temporal correlation for the latent acceleration in ocean-wave motion. Biases are explicitly modeled: gyroscope bias as a
-random walk and accelerometer bias as both random walk and systematic temperature-dependent drift. A pseudo-measurement is
-introduced on the integral of displacement to control double-integral divergence. We derive continuous-time and discrete-time
-process models, present Rodrigues and analytic discretizations, and give explicit Jacobians for accelerometer and
-magnetometer updates. We design and present an additional Kalman filter for wave direction estimation. 
-Finally, we discuss tuning strategies and adaptive parameter estimation using frequency trackers.
+We present a detailed mathematical development of a quaternion multiplicative EKF for ocean-wave motion that couples attitude to an extended 
+linear kinematic chain for velocity, displacement, and the integral of displacement. World-frame acceleration is modeled as an Ornstein–Uhlenbeck (OU) process, giving stationary variance and realistic temporal correlation. Gyroscope bias modeled a random walk; accelerometer bias includes random-walk and temperature-dependent drift. To suppress double-integration drift, we add an anisotropic pseudo-measurement on the integral state. We derive continuous- and discrete-time models with Rodrigues/analytic discretizations and provide explicit Jacobians for accelerometer and magnetometer updates. A lightweight Kalman filter estimates horizontal wave direction using the tracked carrier frequency. We also outline practical tuning and an adaptive law that scales the pseudo-measurement variance with the OU parameters, enabling stable behavior across sea states.
 \end{abstract}
 
 \begin{IEEEkeywords}
