@@ -158,7 +158,15 @@ Email: mgrouch@users.github.com}%
 
 \begin{abstract}
 We present a detailed mathematical development of a quaternion multiplicative EKF for ocean-wave motion that couples attitude to an extended 
-linear kinematic chain for velocity, displacement, and the integral of displacement. World-frame acceleration is modeled as an Ornstein–Uhlenbeck (OU) process, giving stationary variance and realistic temporal correlation. Gyroscope bias modeled a random walk; accelerometer bias includes random-walk and temperature-dependent drift. To suppress double-integration drift, we add an anisotropic pseudo-measurement on the integral state. We derive continuous- and discrete-time models with Rodrigues/analytic discretizations and provide explicit Jacobians for accelerometer and magnetometer updates. A lightweight Kalman filter estimates horizontal wave direction using the tracked carrier frequency. We also outline practical tuning and an adaptive law that scales the pseudo-measurement variance with the OU parameters, enabling stable behavior across sea states.
+linear kinematic chain for velocity, displacement, and the integral of displacement. World-frame acceleration is modeled as 
+an Ornstein–Uhlenbeck (OU) process, giving stationary variance and realistic temporal correlation. Gyroscope bias modeled a random walk; 
+accelerometer bias includes random-walk and temperature-dependent drift. To suppress double-integration drift, we add an anisotropic 
+pseudo-measurement on the integral state. We derive continuous- and discrete-time models with Rodrigues/analytic discretizations and 
+provide explicit Jacobians for accelerometer and magnetometer updates. A lightweight Kalman filter estimates horizontal wave direction 
+using the tracked carrier frequency. We also outline practical tuning and an adaptive law that scales the pseudo-measurement 
+variance with the OU parameters, enabling stable behavior across sea states. The approach targets embedded, low-cost IMU deployments, 
+supporting dynamic positioning, weather and wave buoys, maritime safety, and oceanographic studies that require reliable heave 
+and wave direction in real time.
 \end{abstract}
 
 \begin{IEEEkeywords}
