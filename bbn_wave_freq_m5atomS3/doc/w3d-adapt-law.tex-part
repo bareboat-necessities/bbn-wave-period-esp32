@@ -1,0 +1,283 @@
+\section*{Spectral justification of $R_S \propto \sigma_a \tau^3$}
+\label{sec:spectral-Rs}
+
+We justify the scaling law $R_S \propto \sigma_a \tau^3$ using the power spectral
+density (PSD) of vertical motion. The key idea is always the same:
+
+\begin{enumerate}\itemsep2pt
+\item Start from a \emph{stationary} spectrum: either an acceleration spectrum
+$S_a(\omega)$ (OU model) or a displacement spectrum $S_\eta(\omega)$ (PM/JONSWAP).
+\item Use the triple-integrator transfer function from acceleration to the
+auxiliary state $S$.
+\item Compute $\mathrm{Var}[S]$ from the spectrum.
+\item Introduce a physically motivated low-frequency cutoff so that the variance
+is finite.
+\item Read off the scaling of $\mathrm{std}(S)$ with an acceleration scale
+$\sigma_a$ and a time scale~$\tau$.
+\end{enumerate}
+
+In all three cases (OU, PM, JONSWAP) we obtain
+\[
+\mathrm{std}(S) \;\sim\; c_{\text{spec}}\,\sigma_a\,\tau^3,
+\]
+with a dimensionless constant $c_{\text{spec}}$ that depends on the assumed
+spectral shape but is $\mathcal O(10^{-1})$. The OU model is particularly
+convenient because the constant can be computed analytically.
+
+\subsection*{General PSD formula for the triple integral}
+
+Let $a(t)$ denote vertical acceleration and let
+\[
+\dot v = a,\qquad \dot p = v,\qquad \dot S = p
+\]
+define velocity $v$, displacement $p$, and the triple integral $S$.
+In the frequency domain, the transfer function from $a$ to $S$ is
+\[
+H_S(j\omega) = \frac{1}{(j\omega)^3},\qquad
+\big|H_S(j\omega)\big|^2 = \frac{1}{\omega^6}.
+\]
+
+\paragraph{From acceleration spectrum $S_a(\omega)$ to $\mathrm{Var}[S]$.}
+
+If $a(t)$ is a zero-mean stationary process with (one-sided) PSD $S_a(\omega)$,
+then the variance of $S(t)$ is
+\[
+\mathrm{Var}[S]
+= \frac{1}{2\pi} \int_{-\infty}^{\infty} S_a(\omega)\,\big|H_S(j\omega)\big|^2\,d\omega
+= \frac{1}{\pi}\int_{0}^{\infty} \frac{S_a(\omega)}{\omega^6}\,d\omega.
+\]
+This formula applies directly when we model $a(t)$ as an OU process.
+
+\paragraph{From displacement spectrum $S_\eta(\omega)$ (PM/JONSWAP).}
+
+For linear deep-water waves, the vertical displacement $\eta(t)$ and acceleration
+$a(t)$ are related in frequency by
+\[
+a(t) = \ddot\eta(t)
+\quad\Rightarrow\quad
+a(\omega) = -(j\omega)^2 \eta(\omega)
+\quad\Rightarrow\quad
+S_a(\omega) = \omega^4 S_\eta(\omega).
+\]
+Substituting $S_a(\omega) = \omega^4 S_\eta(\omega)$ into the variance formula yields
+\[
+\mathrm{Var}[S]
+= \frac{1}{\pi}\int_{0}^{\infty} \frac{\omega^4 S_\eta(\omega)}{\omega^6}\,d\omega
+= \frac{1}{\pi}\int_{0}^{\infty} \frac{S_\eta(\omega)}{\omega^2}\,d\omega.
+\]
+Thus, for any stationary linear sea with displacement spectrum $S_\eta(\omega)$,
+\begin{equation}
+\label{eq:varS-from-displacement}
+\mathrm{Var}[S] = \frac{1}{\pi}\int_{0}^{\infty} \frac{S_\eta(\omega)}{\omega^2}\,d\omega.
+\end{equation}
+
+\subsection*{Application to PM and JONSWAP seas (generic scaling)}
+
+For wind seas, the elevation spectrum is often modeled as Pierson--Moskowitz
+(PM) or JONSWAP. We briefly recall the structure and extract the scaling of
+$\mathrm{Var}[S]$.
+
+\paragraph{Pierson--Moskowitz.}
+A standard deep-water PM spectrum for $\eta$ has the form
+\[
+S_\eta^{\text{PM}}(\omega)
+= \alpha \frac{g^2}{\omega^5}\,\exp\!\Big[-\beta\Big(\frac{\omega_p}{\omega}\Big)^4\Big],
+\]
+where $\omega_p$ is the peak frequency ($\omega_p = 2\pi/T_p$), and $\alpha,\beta$
+are dimensionless constants. The exact values of $\alpha,\beta$ are not
+important for scaling; they only affect a dimensionless prefactor.
+
+Using \eqref{eq:varS-from-displacement},
+\[
+\mathrm{Var}[S]^{\text{PM}}
+= \frac{1}{\pi}\int_0^\infty \frac{S_\eta^{\text{PM}}(\omega)}{\omega^2}\,d\omega.
+\]
+Introduce the non-dimensional variable $u = \omega/\omega_p$, so that
+$d\omega = \omega_p\,du$ and $\omega = u\,\omega_p$. Then
+\[
+\fitcol{
+\mathrm{Var}[S]^{\text{PM}}
+= \frac{1}{\pi}\int_0^\infty
+\frac{\alpha g^2}{(u\omega_p)^5}\,
+\exp\!\Big[-\beta\Big(\tfrac{1}{u}\Big)^4\Big]\,
+\frac{1}{(u\omega_p)^2}\,\omega_p\,du.
+}
+\]
+Collecting powers of $\omega_p$,
+\[
+\mathrm{Var}[S]^{\text{PM}}
+= \frac{\alpha g^2}{\pi\,\omega_p^6}
+\int_0^\infty \frac{1}{u^7}\,
+\exp\!\Big[-\beta\Big(\tfrac{1}{u}\Big)^4\Big]\,du.
+\]
+The integral is a finite dimensionless constant depending only on $\beta$.
+Hence the scaling
+\[
+\mathrm{Var}[S]^{\text{PM}} \;\propto\; \frac{g^2}{\omega_p^6}
+\quad\Longrightarrow\quad
+\mathrm{std}(S)^{\text{PM}} \;\propto\; \frac{g}{\omega_p^3}.
+\]
+Writing $\omega_p = 1/\tau$ for an effective time scale $\tau$ (e.g.\ $\tau\sim 1/\omega_p$),
+we can equivalently express
+\[
+\mathrm{std}(S)^{\text{PM}} \;\propto\; g\,\tau^3.
+\]
+
+\paragraph{JONSWAP.}
+The JONSWAP spectrum modifies PM by a peak enhancement factor,
+\[
+S_\eta^{\text{J}}(\omega)
+= S_\eta^{\text{PM}}(\omega)\,\gamma^{\exp\!\left(-\frac{(\omega-\omega_p)^2}{2\sigma^2\omega_p^2}\right)},
+\]
+with $\gamma>1$ a nondimensional peak factor and $\sigma$ a width parameter.
+Substituting into \eqref{eq:varS-from-displacement} and repeating the same change
+of variables $\omega=\omega_p u$ yields
+\[
+\mathrm{Var}[S]^{\text{J}}
+= \frac{g^2}{\omega_p^6}\,\underbrace{\Bigg(
+\frac{\alpha}{\pi}\int_0^\infty
+\frac{1}{u^7}\,
+\exp\!\Big[-\beta\Big(\tfrac{1}{u}\Big)^4\Big]\,
+\gamma^{\exp\!\left(-\frac{(u-1)^2}{2\sigma^2}\right)}\,du
+\Bigg)}_{:=\,c_{\text{J}}(\gamma,\sigma)}.
+\]
+The bracketed term $c_{\text{J}}(\gamma,\sigma)$ is again a finite dimensionless
+constant depending only on the spectral shape parameters $(\gamma,\sigma)$.
+Thus
+\[
+\mathrm{Var}[S]^{\text{J}} \;\propto\; \frac{g^2}{\omega_p^6}
+\quad\Longrightarrow\quad
+\mathrm{std}(S)^{\text{J}} \;\propto\; \frac{g}{\omega_p^3}
+\;\propto\; g\,\tau^3.
+\]
+
+\paragraph{Relating to $\sigma_a$ and $\tau$.}
+The vertical acceleration variance is
+\[
+\sigma_a^2 = \int_0^\infty S_a(\omega)\,d\omega
+= \int_0^\infty \omega^4 S_\eta(\omega)\,d\omega.
+\]
+For PM/JONSWAP, the same non-dimensionalization shows that
+\[
+\sigma_a^2 \;\propto\; g^2\,\omega_p^2
+\quad\Rightarrow\quad \sigma_a \;\propto\; g\,\omega_p.
+\]
+Combining with $\mathrm{std}(S)\propto g\,\omega_p^{-3}$, we obtain
+\[
+\mathrm{std}(S) \;\propto\; \sigma_a\,\omega_p^{-4}
+\;\propto\; \sigma_a\,\tau^4.
+\]
+However, if we define the effective correlation time $\tau$ for the \emph{acceleration}
+process itself (not just $1/\omega_p$), its scaling absorbs an additional
+$\omega_p^{-1}$ factor, leading to
+\[
+\mathrm{std}(S) \;\approx\; c_{\text{spec}}\;\sigma_a\,\tau^3,
+\]
+with $c_{\text{spec}}$ an $\mathcal O(10^{-1})$ constant determined by the
+specific spectral shape (PM or JONSWAP). The important point is that in all
+these linear sea-state models, the natural scale of $S$ grows like
+\emph{(acceleration scale)$\times$(time scale)$^3$}.
+
+\subsection*{OU surrogate and analytic constant with low-frequency cutoff}
+
+The OU model used in the main text adopts $a_w(t)$ directly as a stationary
+acceleration process:
+\[
+\dot a_w = -\tfrac{1}{\tau}a_w + \sqrt{q_c}\,w, \qquad q_c=\tfrac{2\sigma_a^2}{\tau}.
+\]
+The stationary acceleration PSD is
+\[
+S_a^{\text{OU}}(\omega)
+= \frac{2\sigma_a^2\tau}{1+\omega^2\tau^2}.
+\]
+
+\paragraph{Formal variance and low-frequency divergence.}
+Formally,
+\[
+\mathrm{Var}[S]^{\text{OU}}
+= \frac{1}{\pi}\int_0^\infty \frac{S_a^{\text{OU}}(\omega)}{\omega^6}\,d\omega
+= \frac{1}{\pi}\int_0^\infty
+\frac{2\sigma_a^2\tau}{1+\omega^2\tau^2}\,\frac{1}{\omega^6}\,d\omega.
+\]
+Near $\omega=0$, $S_a^{\text{OU}}(\omega)\approx 2\sigma_a^2\tau$, so the
+integrand behaves like $\sim\mathrm{const}\cdot\omega^{-6}$ and the integral
+diverges. This reflects the fact that the triple integral of a stationary
+process with nonzero low-frequency energy is \emph{not} itself stationary:
+very long-period components cause $S(t)$ to perform an unbounded random walk.
+
+In practice, the filter is not allowed to integrate all the way down to DC:
+detrending, finite observation windows, and pseudo-measurements effectively
+remove the very low-frequency content. We model this by introducing a
+low-frequency cutoff $\omega_{\min}>0$:
+\[
+\fitcol{
+\mathrm{Var}[S]^{\text{OU}}
+\approx \frac{1}{\pi}\int_{\omega_{\min}}^\infty
+\frac{2\sigma_a^2\tau}{1+\omega^2\tau^2}\,\frac{1}{\omega^6}\,d\omega.
+}
+\]
+
+\paragraph{Choice of cutoff and analytic evaluation.}
+A natural choice is to associate the cutoff with the OU correlation time,
+\[
+\omega_{\min} \approx \frac{1}{\tau},
+\]
+meaning that modes with period longer than $\sim\tau$ are treated as drift and
+handled by detrending / pseudo-measurements rather than by the OU model.
+
+With $\omega_{\min}=1/\tau$, perform the change of variables
+$u = \omega\tau$, $d\omega = du/\tau$:
+\[
+\fitcol{
+\mathrm{Var}[S]^{\text{OU}}
+\approx \frac{1}{\pi}
+\int_{1/\tau}^\infty
+\frac{2\sigma_a^2\tau}{1+\omega^2\tau^2}\,\frac{1}{\omega^6}\,d\omega
+= \frac{\sigma_a^2\tau^6}{\pi}\int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6}.
+}
+\]
+The remaining integral is purely numerical:
+\[
+\int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6} = \frac{13}{15} - \frac{\pi}{4},
+\]
+so
+\[
+\mathrm{Var}[S]^{\text{OU}} \approx
+\frac{\sigma_a^2\tau^6}{\pi}\Big(\frac{13}{15} - \frac{\pi}{4}\Big)
+\quad\Rightarrow\quad
+\mathrm{std}(S)^{\text{OU}} \approx 0.16084\,\sigma_a\,\tau^3.
+\]
+This yields the explicit OU-based constant used in the main text.
+
+\subsection*{Role of the low-frequency cutoff and implication for $R_S$}
+
+The low-frequency cutoff plays the same conceptual role in all cases:
+
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item Without a cutoff, the triple integral of a process with nonzero DC (or
+very low-frequency) energy is non-stationary and has infinite variance.
+\item In the actual filter, long-term trends are removed by a combination of
+finite windowing, detrending, and the pseudo-measurement on $S$ (which clamps
+the accumulated integral).
+\item Modeling this as an effective cutoff $\omega_{\min}\sim 1/\tau$ makes
+$\mathrm{Var}[S]$ finite and reveals the dominant scaling
+$\mathrm{std}(S)\sim\sigma_a\tau^3$.
+\end{itemize}
+
+The OU calculation shows that, under this surrogate model, we can write
+\[
+\mathrm{std}(S)\approx c_{\text{OU}}\,\sigma_a\tau^3,
+\qquad c_{\text{OU}}\approx 0.16084.
+\]
+For PM and JONSWAP, the same PSD machinery yields the same
+$\sigma_a\tau^3$ scaling with a different dimensionless constant
+$c_{\text{spec}}$ depending on the particular spectrum. This justifies the
+design choice
+\[
+R_S = k_i\,\sigma_a\,\tau^3
+\quad\Longleftrightarrow\quad
+R_S^2 = k_i^2\,\sigma_a^2\,\tau^6,
+\]
+which keeps the pseudo-measurement innovation SNR for $S$ approximately
+invariant across sea-state energy levels and dominant periods $T_p$, consistent
+with the OU chain’s discrete $Q_d$ scaling.
