@@ -25,7 +25,7 @@ where
   \item $\mathbf{a}_w$ is the latent OU world acceleration,
   \item $\mathbf{b}_a(T) = \mathbf{b}_{a0}
         + \mathbf{k}_a\,(T - T_\mathrm{ref})$
-        represents the temperature-dependent accelerometer bias,
+        represents the temperature-dependent accelerometer bias with measured IMU chip temperature T,
   \item $\mathbf{n}_a \sim \mathcal{N}(\mathbf{0},\,\mathbf{R}_a)$
         is white measurement noise.
 \end{itemize}
