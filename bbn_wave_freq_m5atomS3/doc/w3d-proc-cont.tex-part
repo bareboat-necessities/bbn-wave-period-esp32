@@ -49,14 +49,14 @@ the chain $\dot{\mathbf v}=\mathbf a_w$, $\dot{\mathbf p}=\mathbf v$,
 $\dot{\mathbf S}=\mathbf p$ is driven by a vector OU process
 \begin{equation}
 \begin{aligned}
-\dot{\bm a}_w &= -\tfrac{1}{\tau_a}\,\bm a_w
-+ \sqrt{\tfrac{2}{\tau_a}}\;\bm L_a\,\bm w_a(t),\\
-\bm L_a \bm L_a^\top &= \bm\Sigma_a, \qquad
+\dot{\bm a}_w &= -\tfrac{1}{\tau}\,\bm a_w
++ \sqrt{\tfrac{2}{\tau}}\;\bm L_a\,\bm w_a(t),\\
+\bm L_a \bm L_a^\top &= \bm\Sigma_{aw}, \qquad
 \text{$\bm w_a$ is standard white noise.}
 \end{aligned}
 \label{eq:ou-ct}
 \end{equation}
-Here $\tau_a>0$ is the correlation time and $\bm\Sigma_a\succ0$ the stationary
+Here $\tau>0$ is the correlation time and $\bm\Sigma_{aw}\succ0$ the stationary
 covariance (diagonal or correlated).
 
 We model the accelerometer bias as a (temperature–offset) random walk,
@@ -71,7 +71,7 @@ enters the \emph{measurement} model, not the process.
 \subsection{Unified Continuous-Time LTI SDE (Attitude + Linear States)}
 \label{sec:lti-sde}
 
-Over each sampling interval we assume the body angular velocity
+Over each small sampling interval we assume the body angular velocity
 $\bm\omega_m-\mathbf b_g$ is constant.  Under this standard Q-MEKF
 approximation, the small-angle attitude error $\delta\bm\theta$ evolves
 linearly, so both the attitude and the linear kinematic chains can be
