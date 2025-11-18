@@ -6,7 +6,7 @@ This paper presents a complete mathematical and algorithmic formulation of a
 augmented with an Ornstein--Uhlenbeck (OU) process model for latent
 acceleration. The filter is designed for marine inertial sensing and
 wave-kinematics reconstruction. The proposed framework unifies
-attitude estimation, translational kinematics, and stochastic excitation
+attitude estimation, 3D kinematics, and stochastic excitation
 modeling into a single, analytically tractable structure suitable for
 real-time implementation.
 
@@ -19,8 +19,7 @@ is augmented to include additional translational quantities:
 world-frame acceleration, velocity, displacement, and the integral of
 displacement in three dimensions, together with accelerometer bias.
 This augmentation allows the estimator to directly reconstruct both
-instantaneous and cumulative kinematic quantities in the world frame,
-rather than relying on separate numerical integration.
+instantaneous and cumulative kinematic quantities in the world frame.
 
 \subsection*{Stochastic Forcing and the OU Acceleration Model}
 
