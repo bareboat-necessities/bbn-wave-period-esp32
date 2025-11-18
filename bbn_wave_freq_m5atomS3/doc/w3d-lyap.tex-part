@@ -1,16 +1,12 @@
-% --- Safe guards (put anywhere before this section, e.g., right above it) ---
+% --- Safe guards (leave as-is) ---
 \makeatletter
-% If you're not already loading amsthm in the preamble, make sure you do:
-% \usepackage{amsthm}
 \@ifundefined{remark}{\theoremstyle{remark}\newtheorem{remark}{Remark}}{}
 \@ifundefined{lemma}{\theoremstyle{plain}\newtheorem{lemma}{Lemma}}{}
 \@ifundefined{theorem}{\theoremstyle{plain}\newtheorem{theorem}{Theorem}}{}
-% Unnumbered theorem, used as theorem*
 \@ifundefined{theorem*}{\newtheorem*{theorem*}{Theorem}}{}
 \makeatother
-% Provide a harmless default for \fitcol if not already defined
 \providecommand{\fitcol}[1]{#1}
-% ---------------------------------------------------------------------------
+% ----------------------------------
 
 \section*{Lyapunov / ISS Stability of the Adaptive Law $R_S \propto \sigma_a \tau^3$}
 \label{sec:lyap-iss}
@@ -42,6 +38,13 @@ linearization error is Lipschitz on the compact set considered.
 \item[A2] \textbf{Noise moments (SDE sense).}
 Sensor noises have finite second moments (e.g., sub-Gaussian). The OU driver $w$ is standard white noise
 in the SDE sense; discrete innovations are zero-mean with finite covariance.
+
+\item[A2$'$] \textbf{Disturbance decomposition (residuals allowed).}
+There exist $\bar d\ge 0$ and $L_d\ge 0$ such that the aggregate disturbance satisfies
+\[
+\|d_k\|\;\le\;\bar d + L_d\,\|e_k\|\qquad\text{for all }k.
+\]
+(When $d_k$ is exogenous, take $L_d=0$ and $\bar d=\sup_k\|d_k\|$.)
 
 \item[A3] \textbf{Parameter compactness via projection.}
 \[
@@ -77,50 +80,73 @@ Regressors driving $\nabla_\theta\mathcal{L}$ are persistently exciting on $\The
 Let $e:=x-x^\star$ denote the stacked estimation error for the linear translational
 subsystem (including $a_w$), with $x^\star$ the true OU-driven state.
 Let $\tilde\theta:=\hat\theta-\theta^\star$ be parameter error relative to the
-stationary values $(\sigma_a^\star,\tau^\star)$. Disturbances $d_k$ aggregate process/measurement noise,
-linearization residue, and bounded coupling from attitude.
+stationary values $(\sigma_a^\star,\tau^\star)$.
 
-\begin{lemma}[One-step Lyapunov decrement]\label{lem:onestep}
-Under \textup{A1} and \textup{A6}, with $V(e)=e^\top P e$ and $P,\mu$ as in \eqref{eq:cqlf},
-the time-varying update $e_{k+1}=A(\theta_k)e_k+d_k$ satisfies
-\begin{equation}\label{eq:Vdec}
-V(e_{k+1}) \;\le\; (1-\mu)\,V(e_k) + c_d\,\|d_k\|^2,
+\begin{lemma}[One-step Lyapunov decrement with disturbance]\label{lem:onestep}
+Under \textup{A1}, \textup{A2$'$}, and \textup{A6}, with $V(e)=e^\top P e$ and $P,\mu$ as in \eqref{eq:cqlf},
+the update $e_{k+1}=A(\theta_k)e_k+d_k$ satisfies, for any $\varepsilon\in(0,\mu)$,
+\begin{equation}\label{eq:Vdec-eps}
+V(e_{k+1}) \;\le\; \big(1-\mu+\varepsilon+c_0 L_d^2\big)\,V(e_k) \;+\; c_1\,\bar d^{\,2},
 \end{equation}
-where $c_d>0$ depends on bounds of $A(\theta)$ and $P$ on $\Theta$.
+where
+\[
+c_0 \;=\; \frac{\lambda_{\max}(P)}{\varepsilon\,\lambda_{\min}(P)}\,\|A(\theta_k)\|_P^2,\qquad
+c_1 \;=\; \lambda_{\max}(P)\Big(1+\tfrac{1}{\varepsilon}\Big),
+\]
+and $\|A\|_P:=\sqrt{\lambda_{\max}(P^{-1/2}A^\top P A P^{-1/2})}$. In particular,
+if $c_0 L_d^2 < \mu-\varepsilon$, then the coefficient on $V(e_k)$ is strictly $<1$.
 \end{lemma}
 
 \begin{proof}
-From \eqref{eq:cqlf},
-$e_k^\top A(\theta_k)^\top P A(\theta_k) e_k \le (1-\mu)\,e_k^\top P e_k$.
-Expanding $V(e_{k+1})$ and applying Young’s inequality to the cross term with $d_k$
-yields \eqref{eq:Vdec}.
+Write
+\[
+V(e_{k+1}) = e_k^\top A_k^\top P A_k e_k + 2 e_k^\top A_k^\top P d_k + d_k^\top P d_k,
+\]
+with $A_k:=A(\theta_k)$. By \eqref{eq:cqlf}, the first term $\le (1-\mu)V(e_k)$. For the cross term,
+Young’s inequality gives, for any $\varepsilon\in(0,\mu)$,
+\[
+2 e_k^\top A_k^\top P d_k \;\le\; \varepsilon\,V(e_k)
++ \frac{1}{\varepsilon}\,d_k^\top P A_k P^{-1} A_k^\top P d_k
+\;\le\; \varepsilon\,V(e_k) + \frac{\lambda_{\max}(P)\|A_k\|_P^2}{\varepsilon\,\lambda_{\min}(P)}\|d_k\|^2 .
+\]
+Adding $d_k^\top P d_k\le \lambda_{\max}(P)\|d_k\|^2$ and using A2$'$:
+$\|d_k\|^2 \le 2 L_d^2 \|e_k\|^2 + 2 \bar d^{\,2} \le \tfrac{2 L_d^2}{\lambda_{\min}(P)}V(e_k)+2\bar d^{\,2}$,
+which yields \eqref{eq:Vdec-eps} with the stated $c_0,c_1$.
 \end{proof}
 
-\begin{theorem*}[ISS of the adaptive estimator]\label{thm:iss-aug}
-Let $V(e)=e^\top P e$ with $P\succ0$ satisfying \eqref{eq:cqlf}. Under \textup{A1–A3} and \textup{A6},
-for any parameter sequence $\{\theta_k\}\subset\Theta$ produced by the projected update \textup{(A7)},
-the error satisfies
+\begin{theorem*}[ISS and small-gain condition]\label{thm:iss-aug}
+Let $V(e)=e^\top P e$ with $P\succ0$ satisfying \eqref{eq:cqlf}. Suppose \textup{A1–A3}, \textup{A2$'$}, \textup{A6}, and \textup{A7} hold.
+If there exists $\varepsilon\in(0,\mu)$ such that
 \[
-\|e_k\|\;\le\; \beta(\|e_0\|,k) \;+\; \gamma\!\Big(\sup_{0\le j<k}\|d_j\|\Big)
+\boxed{\;\;c_0 L_d^2 \;<\; \mu-\varepsilon\;\;}
+\]
+uniformly on $\Theta$, then the error satisfies the ISS bound
+\[
+\|e_k\|\;\le\; \beta(\|e_0\|,k) \;+\; \gamma(\bar d)
 \]
 for some class-$\mathcal{KL}$ function $\beta$ and class-$\mathcal{K}$ function $\gamma$.
-Moreover, $\tilde\theta_k$ remains bounded by projection. If, in addition, the regressors are
+Moreover, $\tilde\theta_k$ remains bounded by projection (A3). If, in addition, the regressors are
 persistently exciting \textup{(A9)} and the loss in $\theta$ satisfies a PL/strong-convexity condition on $\Theta$,
 then $\tilde\theta_k\to0$.
 \end{theorem*}
 
 \begin{proof}
-Apply Lemma~\ref{lem:onestep} recursively to get \eqref{eq:Vdec} and standard discrete ISS
-(Sontag–Wang). Boundedness of $\tilde\theta_k$ follows from projection (A3).
-Under PE and curvature of the loss surface, standard adaptive arguments give $\tilde\theta_k\to0$.
+Under the boxed small-gain condition, the coefficient of $V(e_k)$ in \eqref{eq:Vdec-eps} is \(<1\).
+Iterating \eqref{eq:Vdec-eps} gives geometric decay plus an ultimate bound proportional to $\bar d^{\,2}$;
+standard discrete-time ISS results then yield the stated estimate. Boundedness of $\tilde\theta_k$ follows from projection.
+Parameter convergence follows under PE and curvature (PL/strong convexity).
 \end{proof}
 
 \paragraph{Interpretation.}
-With a common quadratic Lyapunov function (A6), the error dynamics are uniformly stable for
-any parameter schedule produced by the projection-based update; the error is ISS with respect to disturbances.
-Projection keeps $\tilde\theta$ bounded; convergence of $\tilde\theta$ requires PE and suitable curvature
-of the loss surface. The scaling $R_S=k_i\,\sigma_a\tau^3$ preserves uniform stability as long as the
-frozen loop admits a CQLF on $\Theta$; rate limits improve transients but are not required for stability.
+A common quadratic Lyapunov function (A6) gives a uniform contraction. If $d_k$ is purely exogenous ($L_d=0$),
+we recover
+\[
+V(e_{k+1}) \le (1-\mu+\varepsilon)\,V(e_k) + c_1\bar d^{\,2},
+\]
+and thus ISS without a small-gain constraint. If $d_k$ contains state-dependent residues (linearization, cross-coupling),
+A2$'$ enforces a small-gain requirement $c_0 L_d^2 < \mu-\varepsilon$. This is met by tightening the linearization
+window (A1), narrowing $\Theta$, or increasing the pseudo-measurement weight floors so that $A(\theta)$ remains
+well damped (larger $\mu$).
 
 \subsection*{How to verify the CQLF (A6) in practice}
 Discretize a grid of $(\sigma_a,\tau)$ in $\Theta$ and solve
@@ -138,7 +164,7 @@ $P(\theta)$ (LPV).
 \item Noise floors: keep $Q\succeq q_{\min}I$, $R,R_S\succeq r_{\min}I$.
 \item Timescale separation: update $(\hat\sigma_a,\hat\tau)$ slower than $(v,p,S)$.
 \item Anisotropy: $R_S=\mathrm{diag}(k_x,k_y,k_z)\,\sigma_a\tau^3$ with $k_x,k_y\!\ll\!k_z$ when appropriate.
-\item (Optional) For $\tilde\theta_k\!\to\!0$: enforce PE (maneuvers or persistent spectral content) and ensure curvature of $\mathcal L$.
+\item (Optional) For $\tilde\theta_k\!\to\!0$: enforce PE (maneuvers/persistent spectra) and ensure curvature of $\mathcal L$.
 \end{enumerate}
 
 \section*{Why $R_S \propto \sigma_a \tau^3$ (Dimensional and Spectral Justification)}
@@ -163,7 +189,7 @@ This heuristic matches the spectral calculation below.
 \paragraph{Spectral justification with a low-frequency cutoff.}
 With $S_a(\omega)=\tfrac{2\sigma_a^2\tau}{1+\omega^2\tau^2}$ and $H_S(j\omega)=1/(j\omega)^3$,
 the variance of $S$ without a low-frequency cutoff diverges. Using a physically motivated cutoff
-$\omega_{\min}\approx 1/\tau$ (or, equivalently, detrending over windows of length $\sim\tau$), we obtain
+$\omega_{\min}\approx 1/\tau$ (or detrending over windows of length $\sim\tau$), we obtain
 \[
 \fitcol{
 \mathrm{Var}[S]
