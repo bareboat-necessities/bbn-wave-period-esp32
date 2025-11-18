@@ -558,3 +558,233 @@ The analysis above shows that $k_i$ should be thought of as a dimensionless
 \emph{spectral shape factor} which depends primarily on low-frequency
 bandwidth and tail behavior, rather than on overall sea-state energy.
 
+\section*{Spectral shape factor, comparison across spectra, and link to detrending}
+\label{sec:spec-k-i-and-cutoff}
+
+\subsection*{Dimensionless spectral shape factor and its role in $k_i$}
+
+Recall the normalized acceleration spectrum
+\[
+S_a(\omega) = \sigma_a^2\,\tau\,\Phi(\omega\tau),
+\qquad
+\frac{1}{\pi}\int_0^\infty \Phi(u)\,du = 1,
+\]
+where $\sigma_a^2$ is the vertical acceleration variance, $\tau$ is a chosen
+time scale, and $\Phi(u)$ is a dimensionless shape function (OU, PM, JONSWAP,
+etc.).
+The triple-integrator chain
+\[
+\dot v=a,\quad \dot p=v,\quad \dot S=p
+\]
+implies the transfer from $a$ to $S$ is $H_S(j\omega)=1/(j\omega)^3$, so the
+variance of $S$ with an effective low-frequency cutoff $\omega_{\min}>0$ is
+\[
+\mathrm{Var}[S]
+= \frac{1}{\pi}\int_{\omega_{\min}}^\infty \frac{S_a(\omega)}{\omega^6}\,d\omega.
+\]
+Substituting $S_a(\omega)$ and setting $u=\omega\tau$, $u_{\min}=\omega_{\min}\tau$
+gives
+\[
+\mathrm{Var}[S]
+= \sigma_a^2\tau^6\,
+\underbrace{\Bigg[\frac{1}{\pi}\int_{u_{\min}}^\infty \frac{\Phi(u)}{u^6}\,du\Bigg]}_{=:~c_{\mathrm{spec}}^2(u_{\min})},
+\]
+so
+\begin{equation}
+\label{eq:stdS-cspec-again}
+\mathrm{std}(S) = c_{\mathrm{spec}}(u_{\min})\,\sigma_a\,\tau^3,
+\qquad
+c_{\mathrm{spec}}^2(u_{\min})
+= \frac{1}{\pi}\int_{u_{\min}}^\infty \frac{\Phi(u)}{u^6}\,du.
+\end{equation}
+
+The dimensionless quantity $c_{\mathrm{spec}}(u_{\min})$ is the \emph{spectral
+shape factor}: it depends only on the normalized shape $\Phi(u)$ (OU vs.\ PM
+vs.\ JONSWAP, narrowband vs.\ broadband) and on the dimensionless low-frequency
+cutoff $u_{\min}$.
+If the pseudo-measurement standard deviation $R_S$ is chosen to match the
+natural scale of $S$, then
+\[
+R_S \approx \mathrm{std}(S)
+\quad\Longrightarrow\quad
+k_i \approx c_{\mathrm{spec}}(u_{\min})
+\]
+in the design law $R_S = k_i\,\sigma_a\tau^3$.
+
+\subsection*{OU, PM, and JONSWAP$(\gamma\approx 3.3)$: qualitative comparison}
+
+For the OU surrogate
+\[
+S_a^{\mathrm{OU}}(\omega) = \frac{2\sigma_a^2\tau}{1+\omega^2\tau^2},
+\]
+we have
+\[
+\Phi_{\mathrm{OU}}(u)=\frac{2}{1+u^2},
+\qquad
+\frac{1}{\pi}\int_0^\infty \Phi_{\mathrm{OU}}(u)\,du = 1,
+\]
+and therefore
+\[
+c_{\mathrm{spec,OU}}^2(u_{\min})
+= \frac{1}{\pi}\int_{u_{\min}}^\infty \frac{2}{(1+u^2)\,u^6}\,du.
+\]
+For $u_{\min}=1$ (i.e.\ $\omega_{\min}\approx 1/\tau$), this yields the explicit
+constant
+\[
+c_{\mathrm{spec,OU}}(1) \approx 0.16084,
+\]
+as derived in the previous section.
+
+For PM and JONSWAP, one typically starts from a displacement spectrum
+$S_\eta(\omega)$ and uses $S_a(\omega)=\omega^4S_\eta(\omega)$ to obtain
+$S_a(\omega)$ and then $\Phi(u)$ via normalization.
+The resulting normalized shapes can be denoted $\Phi_{\mathrm{PM}}(u)$ and
+$\Phi_{\mathrm{J}}(u;\gamma)$:
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item \emph{PM} is relatively broadband: it has a significant low-frequency tail
+below its peak frequency $\omega_p$. In terms of $\Phi_{\mathrm{PM}}(u)$,
+this means non-negligible mass for $u<u_0$ where $u_0\approx\omega/\omega_p$.
+\item \emph{JONSWAP} with $\gamma\approx 3.3$ is more sharply peaked: the
+spectrum concentrates energy near $\omega_p$ and reduces the high-frequency tail
+relative to PM, but still retains some energy below~$\omega_p$.
+\end{itemize}
+The shape factor \eqref{eq:stdS-cspec-again} weights $\Phi(u)$ by $1/u^6$,
+so the contribution from $u$ just above $u_{\min}$ dominates:
+\[
+c_{\mathrm{spec}}^2(u_{\min})
+= \frac{1}{\pi}\int_{u_{\min}}^\infty \frac{\Phi(u)}{u^6}\,du
+\quad\text{is strongly biased toward the lowest surviving frequencies.}
+\]
+This leads to the following qualitative picture:
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item \textbf{Effect of $u_{\min}$.} Increasing $u_{\min}$ (stronger effective
+high-pass / more aggressive clamping of slow trends) discards low-frequency
+mass and rapidly decreases $c_{\mathrm{spec}}(u_{\min})$ for \emph{all} spectra.
+For $u_{\min}\gg 1$ (cutoff well above the peak), the main lobe is largely
+removed and $c_{\mathrm{spec}}$ collapses to a small value dominated by the
+common high-frequency tail.
+\item \textbf{OU vs.\ real seas.} For small cutoffs ($u_{\min}\lesssim 1$), the
+Lorentzian OU shape has a relatively heavy low-frequency tail, so
+$c_{\mathrm{spec,OU}}(u_{\min})$ is larger than for typical wave spectra.
+This makes OU a conservative surrogate: it overestimates the sensitivity of $S$
+to slow drift compared to PM/JONSWAP with the same $(\sigma_a,\tau)$.
+\item \textbf{PM vs.\ JONSWAP$(\gamma\approx 3.3)$.} For a given cutoff
+$u_{\min}$ near~1, numerical evaluation (not reproduced here) shows
+$c_{\mathrm{spec,J}}(u_{\min};\gamma\approx 3.3)$ modestly larger than
+$c_{\mathrm{spec,PM}}(u_{\min})$. Intuitively: JONSWAP shifts more of the
+acceleration variance into a narrow band around $\omega_p$, so a larger
+fraction of $\sigma_a^2$ sits in the frequency range just above the cutoff
+that is amplified by $1/u^6$. As $\gamma\to 1$, JONSWAP reduces to PM and
+$c_{\mathrm{spec,J}}(u_{\min};\gamma)\to c_{\mathrm{spec,PM}}(u_{\min})$.
+\end{itemize}
+In summary, for realistic PM/JONSWAP shapes with an effective cutoff
+$u_{\min}$ around $1$ (i.e.\ $\omega_{\min}\sim 1/\tau$), one finds
+$c_{\mathrm{spec}}(u_{\min})$ in the range $\mathcal O(10^{-1})$, with OU
+producing a slightly larger (more conservative) value than PM or JONSWAP with
+$\gamma\approx 3.3$.
+
+\subsection*{From detrending / pseudo-measurement schedule to an implied $u_{\min}$}
+
+The analysis above treats $u_{\min}=\omega_{\min}\tau$ as a parameter. In the
+actual Q--MEKF, $\omega_{\min}$ is not chosen explicitly; instead, it is
+\emph{induced} by:
+\begin{enumerate}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item the way long-term drift is removed (detrending / finite observation
+windows),
+\item and the way the pseudo-measurement on $S$ is applied (strength and rate).
+\end{enumerate}
+It is useful to connect these implementation choices to an effective
+$\omega_{\min}$ and hence to $u_{\min}$.
+
+\paragraph{Finite-time detrending as a high-pass filter.}
+Consider a simple detrending operation that, over a sliding window of length
+$T_{\mathrm{det}}$, subtracts a local low-order polynomial fit or moving average
+from the reconstructed displacement $p(t)$ or from $S(t)$ before feeding it to
+the statistics. To first approximation, such detrending behaves like a
+high-pass filter with a corner frequency
+\[
+\omega_{\mathrm{HP,det}} \sim \frac{c_{\mathrm{det}}}{T_{\mathrm{det}}},
+\]
+where $c_{\mathrm{det}}$ is a method-dependent constant (e.g.\ $2\pi$ for a
+very crude equivalence).
+The effect is that spectral energy with $\omega\ll\omega_{\mathrm{HP,det}}$ is
+strongly attenuated and contributes little to $\mathrm{Var}[S]$; one may
+therefore identify
+\[
+\omega_{\min} \approx \omega_{\mathrm{HP,det}}
+\quad\Rightarrow\quad
+u_{\min} \approx \omega_{\mathrm{HP,det}}\tau.
+\]
+
+\paragraph{Pseudo-measurement on $S$ as a leaky integrator.}
+In the filter, the state $S$ is not a free triple integral; it is continually
+regularized by a pseudo-measurement
+\[
+y_S = 0 = S + n_S,\qquad \mathrm{Var}(n_S)=R_S^2,
+\]
+applied at each time step (or every few steps). In discrete time, with sampling
+period $h$ and repeated pseudo-updates, the $S$-subsystem behaves like a
+\emph{leaky integrator}: process noise driven by the OU chain pumps variance
+into $S$, while the pseudo-measurement continuously pulls $S$ back toward~$0$.
+In the scalar linear case, the combined effect of process and pseudo-measurement
+can be approximated by a first-order high-pass behaviour with an effective
+leak time constant $T_{\mathrm{leak}}$ and corner frequency
+\[
+\omega_{\mathrm{HP,ps}} \sim \frac{1}{T_{\mathrm{leak}}}.
+\]
+
+The detailed relationship between $(q_c,h,R_S)$ and $T_{\mathrm{leak}}$ is
+filter-specific, but qualitatively:
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item Smaller $R_S$ (stronger pseudo-measurement) $\Rightarrow$ more aggressive
+clamping of $S$ $\Rightarrow$ shorter $T_{\mathrm{leak}}$ and higher
+$\omega_{\mathrm{HP,ps}}$;
+\item Larger $R_S$ (weaker pseudo-measurement) $\Rightarrow$ slower decay of
+$S$ and lower $\omega_{\mathrm{HP,ps}}$.
+\end{itemize}
+In the regime where the pseudo-measurement is the dominant mechanism limiting
+the growth of $S$, it is reasonable to identify
+\[
+\omega_{\min} \approx \omega_{\mathrm{HP,ps}}
+\quad\Rightarrow\quad
+u_{\min} \approx \omega_{\mathrm{HP,ps}}\tau.
+\]
+
+\paragraph{Combined view and design guideline.}
+In practice, both effects coexist: detrending over a finite time window
+$T_{\mathrm{det}}$ and continuous pseudo-measurements with strength $R_S$.
+The effective cutoff $\omega_{\min}$ is then of the order of the largest of the
+two high-pass corners:
+\[
+\omega_{\min}
+\;\approx\; \max\{\omega_{\mathrm{HP,det}},\,\omega_{\mathrm{HP,ps}}\}
+\;\sim\; \max\Big\{\frac{c_{\mathrm{det}}}{T_{\mathrm{det}}},\,\frac{1}{T_{\mathrm{leak}}(R_S)}\Big\}.
+\]
+Given a choice of $\tau$ (e.g.\ $\tau\sim 1/\omega_p$ from the dominant wave
+period), this yields an implied
+\[
+u_{\min} = \omega_{\min}\tau
+\approx \max\Big\{\frac{c_{\mathrm{det}}\tau}{T_{\mathrm{det}}},\,\frac{\tau}{T_{\mathrm{leak}}(R_S)}\Big\}.
+\]
+
+The spectral analysis in \eqref{eq:stdS-cspec-again} then suggests the
+following design strategy:
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item Choose $T_{\mathrm{det}}$ and $R_S$ (hence $T_{\mathrm{leak}}$) so that
+$u_{\min}=\omega_{\min}\tau$ lies in a regime where $c_{\mathrm{spec}}(u_{\min})$
+is of moderate size (e.g.\ $u_{\min}\sim 1$), i.e.\ you suppress extremely slow
+drift but keep the bulk of the wave band.
+\item For the expected range of spectral shapes (PM and JONSWAP with
+$\gamma\approx 3.3$), evaluate or approximate $c_{\mathrm{spec}}(u_{\min})$.
+\item Set $k_i$ in
+$R_S = k_i\,\sigma_a\tau^3$ to be slightly larger than
+$\max_{\text{spectra in envelope}} c_{\mathrm{spec}}(u_{\min})$, so that the
+pseudo-measurement noise is at least as large as the natural variation of $S$
+across the sea states and cutoffs of interest.
+\end{itemize}
+In this sense, $k_i$ should be viewed as a conservative \emph{spectral shape
+factor}: it captures how the triple-integral state $S$ amplifies low-frequency
+energy for the class of spectra (OU, PM, JONSWAP) and the effective cutoff
+$u_{\min}$ induced by the detrending and pseudo-measurement schedule
+implemented in the filter.
+
