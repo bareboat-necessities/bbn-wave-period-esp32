@@ -1,4 +1,4 @@
-% --- Safe guards (leave as-is) ---
+% --- Safe guards ---
 \makeatletter
 \@ifundefined{remark}{\theoremstyle{remark}\newtheorem{remark}{Remark}}{}
 \@ifundefined{lemma}{\theoremstyle{plain}\newtheorem{lemma}{Lemma}}{}
@@ -39,12 +39,12 @@ linearization error is Lipschitz on the compact set considered.
 Sensor noises have finite second moments (e.g., sub-Gaussian). The OU driver $w$ is standard white noise
 in the SDE sense; discrete innovations are zero-mean with finite covariance.
 
-\item[A2$'$] \textbf{Disturbance decomposition (residuals allowed).}
-There exist $\bar d\ge 0$ and $L_d\ge 0$ such that the aggregate disturbance satisfies
+\item[A2$'$] \textbf{Disturbance decomposition (may depend on $e_k$).}
+There exist $\bar d\ge0$ and $L_d\ge0$ such that
 \[
 \|d_k\|\;\le\;\bar d + L_d\,\|e_k\|\qquad\text{for all }k.
 \]
-(When $d_k$ is exogenous, take $L_d=0$ and $\bar d=\sup_k\|d_k\|$.)
+(Exogenous case: $L_d=0$, $\bar d=\sup_k\|d_k\|$.)
 
 \item[A3] \textbf{Parameter compactness via projection.}
 \[
@@ -53,48 +53,27 @@ There exist $\bar d\ge 0$ and $L_d\ge 0$ such that the aggregate disturbance sat
 \]
 enforced by a projection $\Pi_\Theta(\cdot)$.
 
-\item[A4] \textbf{Rate-limited adaptation (optional for performance).}
-Optionally clamp $\|\theta_{k+1}-\theta_k\|\le\rho$ to improve transients.
-
-\item[A5] \textbf{Smooth dependence.}
-$\Phi(\theta)$ and $K(\theta)$ are Lipschitz on $\Theta$ with constants $L_\Phi,L_K$.
-
-\item[A6] \textbf{CQLF for the frozen closed loop.}
+\item[A4] \textbf{CQLF for the frozen closed loop.}
 Let $A(\theta):=\Phi(\theta)-K(\theta)C\,\Phi(\theta)$. There exist $P\succ0$ and $\mu\in(0,1)$ such that
 \begin{equation}
 \label{eq:cqlf}
 A(\theta)^\top P\,A(\theta)\;\preceq\;(1-\mu)\,P\qquad \forall\,\theta\in\Theta .
 \end{equation}
-
-\item[A7] \textbf{Explicit adaptation law.}
-$\theta_{k+1}=\Pi_\Theta\!\big(\theta_k-\Gamma\nabla_\theta\mathcal{L}(e_k,\theta_k)\big)$,
-with $\Gamma=\mathrm{diag}(\gamma_\sigma,\gamma_\tau)$.
-
-\item[A8] \textbf{Gradient regularity and small step.}
-$\nabla_\theta\mathcal{L}$ is $L_\theta$-Lipschitz; $\Gamma$ is small enough for stable updates.
-
-\item[A9] \textbf{(Optional, for parameter convergence) PE.}
-Regressors driving $\nabla_\theta\mathcal{L}$ are persistently exciting on $\Theta$.
+Denote the condition number $\kappa:=\lambda_{\max}(P)/\lambda_{\min}(P)$.
 \end{itemize}
 
-Let $e:=x-x^\star$ denote the stacked estimation error for the linear translational
-subsystem (including $a_w$), with $x^\star$ the true OU-driven state.
-Let $\tilde\theta:=\hat\theta-\theta^\star$ be parameter error relative to the
-stationary values $(\sigma_a^\star,\tau^\star)$.
+Let $e:=x-x^\star$ be the stacked estimation error for the linear translational subsystem
+(including $a_w$), with $x^\star$ the true OU-driven state.
 
-\begin{lemma}[One-step Lyapunov decrement with disturbance]\label{lem:onestep}
-Under \textup{A1}, \textup{A2$'$}, and \textup{A6}, with $V(e)=e^\top P e$ and $P,\mu$ as in \eqref{eq:cqlf},
-the update $e_{k+1}=A(\theta_k)e_k+d_k$ satisfies, for any $\varepsilon\in(0,\mu)$,
-\begin{equation}\label{eq:Vdec-eps}
-V(e_{k+1}) \;\le\; \big(1-\mu+\varepsilon+c_0 L_d^2\big)\,V(e_k) \;+\; c_1\,\bar d^{\,2},
+\begin{lemma}[One-step Lyapunov inequality with explicit constants]\label{lem:onestep}
+Under \textup{A1}, \textup{A2$'$}, and \textup{A4}, with $V(e)=e^\top P e$,
+for any $\varepsilon\in(0,\mu)$ the update $e_{k+1}=A(\theta_k)e_k+d_k$ satisfies
+\begin{equation}\label{eq:Vdec-sharp}
+V(e_{k+1})
+\;\le\;
+\Big(1-\mu+\varepsilon + 2\kappa L_d^2\big[\,1+\tfrac{1-\mu}{\varepsilon}\,\big]\Big)\,V(e_k)
+\;+\; 2\lambda_{\max}(P)\Big[\,1+\tfrac{1-\mu}{\varepsilon}\,\Big]\bar d^{\,2}.
 \end{equation}
-where
-\[
-c_0 \;=\; \frac{\lambda_{\max}(P)}{\varepsilon\,\lambda_{\min}(P)}\,\|A(\theta_k)\|_P^2,\qquad
-c_1 \;=\; \lambda_{\max}(P)\Big(1+\tfrac{1}{\varepsilon}\Big),
-\]
-and $\|A\|_P:=\sqrt{\lambda_{\max}(P^{-1/2}A^\top P A P^{-1/2})}$. In particular,
-if $c_0 L_d^2 < \mu-\varepsilon$, then the coefficient on $V(e_k)$ is strictly $<1$.
 \end{lemma}
 
 \begin{proof}
@@ -102,69 +81,87 @@ Write
 \[
 V(e_{k+1}) = e_k^\top A_k^\top P A_k e_k + 2 e_k^\top A_k^\top P d_k + d_k^\top P d_k,
 \]
-with $A_k:=A(\theta_k)$. By \eqref{eq:cqlf}, the first term $\le (1-\mu)V(e_k)$. For the cross term,
-Young’s inequality gives, for any $\varepsilon\in(0,\mu)$,
+with $A_k:=A(\theta_k)$. By \eqref{eq:cqlf}, the first term $\le (1-\mu)V(e_k)$.
+For the cross term, Young’s inequality gives, for any $\varepsilon\in(0,\mu)$,
 \[
-2 e_k^\top A_k^\top P d_k \;\le\; \varepsilon\,V(e_k)
-+ \frac{1}{\varepsilon}\,d_k^\top P A_k P^{-1} A_k^\top P d_k
-\;\le\; \varepsilon\,V(e_k) + \frac{\lambda_{\max}(P)\|A_k\|_P^2}{\varepsilon\,\lambda_{\min}(P)}\|d_k\|^2 .
+2 e_k^\top A_k^\top P d_k
+\;\le\; \varepsilon\,V(e_k)
++ \frac{1}{\varepsilon}\,d_k^\top P A_k P^{-1} A_k^\top P d_k.
 \]
-Adding $d_k^\top P d_k\le \lambda_{\max}(P)\|d_k\|^2$ and using A2$'$:
-$\|d_k\|^2 \le 2 L_d^2 \|e_k\|^2 + 2 \bar d^{\,2} \le \tfrac{2 L_d^2}{\lambda_{\min}(P)}V(e_k)+2\bar d^{\,2}$,
-which yields \eqref{eq:Vdec-eps} with the stated $c_0,c_1$.
+Since $A_k^\top P A_k \preceq (1-\mu)P$, we have
+$P^{-\!1/2}A_k^\top P A_k P^{-\!1/2}\preceq (1-\mu)I$, hence
+$P A_k P^{-1} A_k^\top P \preceq (1-\mu)\,P$ and
+\[
+2 e_k^\top A_k^\top P d_k \;\le\; \varepsilon\,V(e_k) + \frac{1-\mu}{\varepsilon}\,d_k^\top P d_k.
+\]
+Thus
+\[
+V(e_{k+1}) \le (1-\mu+\varepsilon)\,V(e_k) + \Big(1+\tfrac{1-\mu}{\varepsilon}\Big)\,d_k^\top P d_k.
+\]
+Using A2$'$, $\|d_k\|^2 \le 2L_d^2\|e_k\|^2 + 2\bar d^{\,2}
+\le \tfrac{2L_d^2}{\lambda_{\min}(P)}V(e_k) + 2\bar d^{\,2}$, and $d_k^\top P d_k\le \lambda_{\max}(P)\|d_k\|^2$,
+we obtain \eqref{eq:Vdec-sharp}.
 \end{proof}
 
-\begin{theorem*}[ISS and small-gain condition]\label{thm:iss-aug}
-Let $V(e)=e^\top P e$ with $P\succ0$ satisfying \eqref{eq:cqlf}. Suppose \textup{A1–A3}, \textup{A2$'$}, \textup{A6}, and \textup{A7} hold.
-If there exists $\varepsilon\in(0,\mu)$ such that
+\begin{theorem*}[ISS with small-gain condition; exogenous case as corollary]\label{thm:iss}
+Assume \textup{A1}, \textup{A2$'$}, and \textup{A4}. If there exists $\varepsilon\in(0,\mu)$ such that
+\begin{equation}\label{eq:small-gain}
+\boxed{\quad
+2\kappa L_d^2\Big(1+\frac{1-\mu}{\varepsilon}\Big) \;<\; \mu - \varepsilon
+\quad}
+\end{equation}
+(the inequality holding uniformly on $\Theta$), then the error satisfies the ISS estimate
 \[
-\boxed{\;\;c_0 L_d^2 \;<\; \mu-\varepsilon\;\;}
+\|e_k\|\;\le\; \beta(\|e_0\|,k) \;+\; \gamma(\bar d),
 \]
-uniformly on $\Theta$, then the error satisfies the ISS bound
-\[
-\|e_k\|\;\le\; \beta(\|e_0\|,k) \;+\; \gamma(\bar d)
-\]
-for some class-$\mathcal{KL}$ function $\beta$ and class-$\mathcal{K}$ function $\gamma$.
-Moreover, $\tilde\theta_k$ remains bounded by projection (A3). If, in addition, the regressors are
-persistently exciting \textup{(A9)} and the loss in $\theta$ satisfies a PL/strong-convexity condition on $\Theta$,
-then $\tilde\theta_k\to0$.
+for some class-$\mathcal{KL}$ function $\beta$ and class-$\mathcal{K}$ function $\gamma$ depending on $(\mu,\kappa,P)$.
+In particular, if $d_k$ is exogenous ($L_d=0$), \eqref{eq:small-gain} reduces to choosing any $\varepsilon\in(0,\mu)$,
+and ISS holds with no further restriction.
 \end{theorem*}
 
 \begin{proof}
-Under the boxed small-gain condition, the coefficient of $V(e_k)$ in \eqref{eq:Vdec-eps} is \(<1\).
-Iterating \eqref{eq:Vdec-eps} gives geometric decay plus an ultimate bound proportional to $\bar d^{\,2}$;
-standard discrete-time ISS results then yield the stated estimate. Boundedness of $\tilde\theta_k$ follows from projection.
-Parameter convergence follows under PE and curvature (PL/strong convexity).
+Under \eqref{eq:small-gain}, the coefficient of $V(e_k)$ in \eqref{eq:Vdec-sharp} is strictly $<1$.
+Iterating \eqref{eq:Vdec-sharp} yields geometric decay plus an ultimate bound proportional to $\bar d^{\,2}$.
+Standard discrete-time ISS results then imply the stated bound.
 \end{proof}
 
-\paragraph{Interpretation.}
-A common quadratic Lyapunov function (A6) gives a uniform contraction. If $d_k$ is purely exogenous ($L_d=0$),
-we recover
+\begin{remark}[Closed-form sufficient test]
+The left-hand side in \eqref{eq:small-gain} is minimized at
+\(\varepsilon^\star = \sqrt{(1-\mu)\,2\kappa}\,L_d\).
+Substituting $\varepsilon^\star$ gives the explicit condition
 \[
-V(e_{k+1}) \le (1-\mu+\varepsilon)\,V(e_k) + c_1\bar d^{\,2},
+\boxed{\qquad
+2\sqrt{2\kappa(1-\mu)}\,L_d \;+\; 2\kappa\,L_d^2 \;<\; \mu.
+\qquad}
 \]
-and thus ISS without a small-gain constraint. If $d_k$ contains state-dependent residues (linearization, cross-coupling),
-A2$'$ enforces a small-gain requirement $c_0 L_d^2 < \mu-\varepsilon$. This is met by tightening the linearization
-window (A1), narrowing $\Theta$, or increasing the pseudo-measurement weight floors so that $A(\theta)$ remains
-well damped (larger $\mu$).
+This reveals how tighter damping (larger $\mu$), better conditioning ($\kappa\!\downarrow$), or smaller residue $L_d$
+ensure ISS. In the exogenous case ($L_d=0$) the inequality is trivially satisfied.
+\end{remark}
 
-\subsection*{How to verify the CQLF (A6) in practice}
+\paragraph{Interpretation.}
+A common quadratic Lyapunov function (A4) gives a uniform contraction for the frozen loop.
+If $d_k$ is purely exogenous, we recover
+\(
+V(e_{k+1}) \le (1-\mu+\varepsilon)\,V(e_k) + 2\lambda_{\max}(P)[1+(1-\mu)/\varepsilon]\,\bar d^{\,2}
+\),
+hence ISS. If $d_k$ contains state-dependent residue, the small-gain bound above makes the contraction explicit.
+
+\subsection*{How to verify the CQLF (A4) in practice}
 Discretize a grid of $(\sigma_a,\tau)$ in $\Theta$ and solve
 \[
 A(\theta_i)^\top P A(\theta_i) \preceq (1-\mu)P,\qquad P\succ0
 \]
 for a common $P,\mu$ using an LMI solver (e.g.\ \texttt{feasp}, \texttt{CVX}, or \texttt{YALMIP}/\texttt{MOSEK}).
-If infeasible: (i) narrow $\Theta$; (ii) raise $R_S$ floors; (iii) reduce $\rho$; or (iv) allow a parameter-dependent
-$P(\theta)$ (LPV).
+If infeasible: (i) narrow $\Theta$; (ii) raise $R_S$ floors; (iii) reduce the linearization window; or
+(iv) allow a parameter-dependent $P(\theta)$ (LPV).
 
-\subsection*{Implementation checklist (A1–A9)}
+\subsection*{Implementation checklist}
 \begin{enumerate}\itemsep2pt
-\item Projection: $\hat\sigma_a\!\in[\underline\sigma,\overline\sigma]$, $\hat\tau\!\in[\underline\tau,\overline\tau]$.
-\item Rate limit (optional, improves transients): clamp $\|\theta_{k+1}-\theta_k\|\!\le\!\rho$.
-\item Noise floors: keep $Q\succeq q_{\min}I$, $R,R_S\succeq r_{\min}I$.
+\item Projection: $\hat\sigma_a\!\in[\underline\sigma,\overline\sigma]$, $\hat\tau\!\in[\underline\tau,\overline\tau]$ (A3).
+\item Noise floors: keep $Q\succeq q_{\min}I$, $R,R_S\succeq r_{\min}I$ (improves $\mu$ and $\kappa$).
 \item Timescale separation: update $(\hat\sigma_a,\hat\tau)$ slower than $(v,p,S)$.
 \item Anisotropy: $R_S=\mathrm{diag}(k_x,k_y,k_z)\,\sigma_a\tau^3$ with $k_x,k_y\!\ll\!k_z$ when appropriate.
-\item (Optional) For $\tilde\theta_k\!\to\!0$: enforce PE (maneuvers/persistent spectra) and ensure curvature of $\mathcal L$.
+\item (Optional) Rate limit $\|\theta_{k+1}-\theta_k\|\!\le\!\rho$ to improve transients; not required for stability here.
 \end{enumerate}
 
 \section*{Why $R_S \propto \sigma_a \tau^3$ (Dimensional and Spectral Justification)}
