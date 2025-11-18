@@ -911,25 +911,45 @@ T_{\mathrm{leak}} \approx \frac{R_S}{\sqrt{q_S^{\mathrm{eff}}}},
 \qquad
 u_{\min} \approx \frac{\tau\sqrt{q_S^{\mathrm{eff}}}}{R_S}.
 \end{equation}
-Dimensional analysis shows that $q_S^{\mathrm{eff}}$ must scale like
+
+In the full translational OU chain,
 \[
-q_S^{\mathrm{eff}} \;\propto\; \sigma_a^2\,\tau^5
+\dot v = a_w,\quad \dot p = v,\quad \dot S = p,\quad
+\dot a_w = -\tfrac{1}{\tau} a_w + \sqrt{q_c}\,w,
 \]
-(up to a dimensionless spectral shape factor), since $S$ is the triple
-time integral of an acceleration process with typical level $\sigma_a$ and
-correlation time~$\tau$.
-Substituting into \eqref{eq:qS-eff} gives
+the state $S$ is the triple integral of an OU process, not a simple random
+walk. At very low frequencies the combined process acts as a very red
+excitation for~$S$, and the pseudo-measurement on $S$ still induces a leak of
+the form
 \[
-u_{\min} \;\propto\;
-\frac{\tau\,\sigma_a\,\tau^{5/2}}{R_S}
-= \frac{\sigma_a\,\tau^{7/2}}{R_S},
+\dot e_S \approx -\lambda_{\mathrm{slow}}\,e_S + \text{(very low-frequency noise)},
 \]
-again up to a dimensionless constant. Inverting this relation shows that, to
-keep $u_{\min}$ approximately constant as $\sigma_a$ and $\tau$ vary,
-one should choose
+with $\lambda_{\mathrm{slow}}<0$ a real eigenvalue of the full closed-loop
+Kalman error dynamics.
+
+Rather than attempt a closed-form expression for $\lambda_{\mathrm{slow}}$ in
+terms of $(\sigma_a,\tau,R_S)$, we use the spectral analysis of
+Section~\ref{sec:spectral-Rs}:
+with an effective low-frequency cutoff $\omega_{\min}$ of order $1/\tau$ the
+variance of $S$ obeys
 \[
-R_S \;\propto\; \sigma_a\,\tau^3.
+\mathrm{Var}[S] \;\propto\; \sigma_a^2\,\tau^6
+\quad\Longrightarrow\quad
+\mathrm{std}(S) \;\propto\; \sigma_a\,\tau^3.
 \]
+Choosing the pseudo-measurement standard deviation $R_S$ to be proportional to
+this natural scale,
+\[
+R_S = k_i\,\sigma_a\,\tau^3,
+\]
+therefore keeps the pseudo-measurement noise at the same order as the
+spectrally predicted fluctuations of $S$ across sea states. The scalar leaky
+model \eqref{eq:lambda-slow-toy}--\eqref{eq:omega-min-toy} should thus be read
+as an \emph{interpretation}: the pseudo-update on $S$ induces a leak with
+some effective cutoff $\omega_{\min}\approx 1/T_{\mathrm{leak}}$, while the
+$\sigma_a\tau^3$ scaling itself comes from the PSD-based variance
+calculation rather than from a detailed random-walk reduction.
+
 This recovers the adaptation law used in the main text:
 \[
 R_S = k_i\,\sigma_a\,\tau^3,
