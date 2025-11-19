@@ -1,14 +1,16 @@
-% --- Bold helpers (put in your preamble) ---
-% Needs: \usepackage{bm}
-
 % Vectors (Latin & Greek): bold-italic
-\newcommand{\vct}[1]{\bm{#1}}
+\providecommand{\vct}[1]{\bm{#1}}
 
 % Matrices:
-\providecommand{\mat}[1]{\mathbf{#1}} % define only if not already defined
-\newcommand{\matg}[1]{\bm{#1}}      % GREEK matrices: bold-italic (Σ, Ω, Φ, Λ, etc.)
-\newcommand{\I}{\mat{I}}            % identity
-\newcommand{\R}{\mathbb{R}}         % real numbers
+\providecommand{\mat}[1]{\mathbf{#1}} % LATIN matrices: upright bold (A, P, K, R, I, ...)
+\providecommand{\matg}[1]{\bm{#1}}    % GREEK matrices: bold-italic (Σ, Ω, Φ, Λ, ...)
+
+% Common symbols
+\providecommand{\I}{\mat{I}}
+\providecommand{\R}{\mathbb{R}}
+
+% Skew-symmetric bracket using your bold macros
+\providecommand{\skew}[1]{\left[\vct{#1}\right]_\times}
 
 % -------------------------------------------
 
