@@ -182,7 +182,8 @@ with sufficiently small $L_d$, then the translational error remains ISS.
 In practice, one can satisfy the small-gain condition by
 (i) tightening the linearization window (A1),
 (ii) narrowing \(\Theta\) so that the CQLF is stronger (larger~$\mu$),
-or (iii) increasing the pseudo-measurement floors (larger damping via $R_S$).
+and (iii) choosing $R_S$ (and its adaptation law) so that the $S$-pseudo-measurement
+does not inject excessive state-dependent disturbance into the linearized model.
 
 \subsection*{How to verify the CQLF (A6) in practice}
 Discretize a grid of $(\sigma_a,\tau)$ in $\Theta$ and solve
@@ -190,7 +191,7 @@ Discretize a grid of $(\sigma_a,\tau)$ in $\Theta$ and solve
 A(\theta_i)^\top P A(\theta_i) \preceq (1-\mu)P,\qquad P\succ0
 \]
 for a common $P,\mu$ using an LMI solver (e.g.\ \texttt{feasp}, \texttt{CVX}, or \texttt{YALMIP}/\texttt{MOSEK}).
-If infeasible: (i) narrow $\Theta$; (ii) raise $R_S$ floors; (iii) reduce the
+If infeasible: (i) narrow $\Theta$; (ii) adjust the $R_S$ floors; (iii) reduce the
 adaptation rate (to shrink $L_d$); or (iv) allow a parameter-dependent
 $P(\theta)$ (LPV analysis).
 
@@ -204,56 +205,3 @@ $P(\theta)$ (LPV analysis).
 \item (Optional) For $\tilde\theta_k\!\to\!0$ in the idealized setting: enforce PE (maneuvers/persistent spectra),
   ensure curvature of $\mathcal L$, and choose small steps in $\Gamma$.
 \end{enumerate}
-
-\section*{Why $R_S \propto \sigma_a \tau^3$ (Dimensional and Spectral Justification)}
-\label{app:rs-scaling}
-
-\paragraph{Notation and units.}
-$a_w$ is OU with std.\ $\sigma_a$ and correlation $\tau$,
-\[
-\fitcol{
-\dot a_w = -\tfrac{1}{\tau}a_w + \sqrt{q_c}\,w, \qquad q_c=\tfrac{2\sigma_a^2}{\tau}.
-}
-\]
-The chain $\dot v=a_w,\;\dot p=v,\;\dot S=p$ implies $S$ is the triple time integral of $a_w$.
-$R_S$ is a standard deviation (so $R_S^2$ appears in covariance).
-
-\begin{remark}[Back-of-the-envelope scaling]\label{rem:dim}
-Over one correlation time $\tau$, each integration contributes a factor $\sim\tau$ in magnitude:
-$v=\mathcal O(\sigma_a\tau)$, $p=\mathcal O(\sigma_a\tau^2)$, $S=\mathcal O(\sigma_a\tau^3)$.
-This heuristic matches the spectral calculation below.
-\end{remark}
-
-\paragraph{Spectral justification with a low-frequency cutoff.}
-With $S_a(\omega)=\tfrac{2\sigma_a^2\tau}{1+\omega^2\tau^2}$ and $H_S(j\omega)=1/(j\omega)^3$,
-the variance of $S$ without a low-frequency cutoff diverges. Using a physically motivated cutoff
-$\omega_{\min}\approx 1/\tau$ (or detrending over windows of length $\sim\tau$), we obtain
-\[
-\fitcol{
-\mathrm{Var}[S]
-= \frac{1}{2\pi}\!\int_{\omega_{\min}}^\infty \! S_a(\omega)\,\big|H_S(j\omega)\big|^2\,d\omega
-\approx \frac{1}{2\pi}\!\int_{1/\tau}^\infty \frac{2\sigma_a^2\tau}{1+\omega^2\tau^2}\,\frac{1}{\omega^6}\,d\omega.
-}
-\]
-With the substitution $u = \omega\tau$, $d\omega = du/\tau$, this becomes
-\[
-\fitcol{
-\mathrm{Var}[S] \approx \frac{\sigma_a^2\tau^6}{\pi}\int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6}.
-}
-\]
-Symbolically,
-\[
-\int_{1}^{\infty}\frac{du}{(1+u^2)\,u^6} = \frac{13}{15} - \frac{\pi}{4}
-\quad\Rightarrow\quad
-\]
-\[
-\mathrm{std}(S)\approx 0.16084\,\sigma_a\,\tau^3.
-\]
-Thus choosing
-\[
-R_S = k_i\,\sigma_a\,\tau^3
-\quad\Longleftrightarrow\quad
-R_S^2 = k_i^2\,\sigma_a^2\,\tau^6
-\]
-keeps the innovation SNR roughly invariant to sea-state energy and correlation length, consistent with
-the OU chain’s discrete $Q_d$ scaling.
