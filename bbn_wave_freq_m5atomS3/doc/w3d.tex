@@ -39,6 +39,22 @@
 \DeclareRobustCommand{\mat}[1]{\bm{#1}}  % matrices (LATIN)
 \DeclareRobustCommand{\matg}[1]{\bm{#1}} % matrices (GREEK)
 
+% === Spaces / groups (quaternions, rotations) ===
+\newcommand{\Quat}{\mathbb{H}}        % all quaternions
+\newcommand{\Sph}{\mathbb{S}}         % spheres; unit quats live in \Sph^3
+\newcommand{\SO}{\mathrm{SO}}         % rotation group
+\newcommand{\SE}{\mathrm{SE}}         % rigid motions
+
+% === Quaternion variables ===
+% Quaternion as a 4-vector: bold italic (consistent with \vct)
+\newcommand{\quat}[1]{\vct{#1}}      
+
+% Optional helpers (use only if you like the notation)
+\newcommand{\qconj}[1]{\overline{#1}} % quaternion conjugate
+\newcommand{\qreal}[1]{\operatorname{Re}\! \left(#1\right)} % real part
+\newcommand{\qimag}[1]{\operatorname{Im}\! \left(#1\right)} % imaginary/vector part
+
+
 % Skew-symmetric bracket using your bold macros
 \providecommand{\skew}[1]{\left[\vct{#1}\right]_\times}
 
@@ -73,6 +89,12 @@
   \def\_{}%
   \def\cdot{}%
   \def\;{ }%
+  \def\I{I}%
+  \def\quat#1{#1}%
+  \def\SO{SO}%
+  \def\SE{SE}%
+  \def\Quat{H}%
+  \def\Sph{S}%
 }
 
 \AtBeginEnvironment{equation}{\small}
