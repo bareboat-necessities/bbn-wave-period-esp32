@@ -1,26 +1,3 @@
-% Vectors (Latin & Greek): bold-italic
-\providecommand{\vct}[1]{\bm{#1}}
-
-% Matrices:
-\providecommand{\mat}[1]{\mathbf{#1}} % LATIN matrices: upright bold (A, P, K, R, I, ...)
-\providecommand{\matg}[1]{\bm{#1}}    % GREEK matrices: bold-italic (Σ, Ω, Φ, Λ, ...)
-
-% Common symbols
-\providecommand{\I}{\mat{I}}
-\providecommand{\R}{\mathbb{R}}
-
-% Skew-symmetric bracket using your bold macros
-\providecommand{\skew}[1]{\left[\vct{#1}\right]_\times}
-
-\pdfstringdefDisableCommands{%
-  \def\vct#1{#1}%
-  \def\mat#1{#1}%
-  \def\matg#1{#1}%
-  \def\skew#1{[#1]x}%
-  \def\I{I}%
-}
-
-% -------------------------------------------
 
 \section{Measurement Update: Gain, Rank–3 Structure, and Block Algebra}
 \label{sec:meas-update-structure}
