@@ -81,7 +81,7 @@ Hence the gain $\mat{K}$ is \emph{entirely determined} by a single $3\times 3$ s
 \]
 This characterization makes no algorithmic assumption: it is a direct algebraic consequence of the rank--3 measurement and the block partition of $\mat{P}^{-}$.
 
-\paragraph{Magnetometer (attitude--only).}
+\paragraph{Magnetometer (attitude--only)}
 The magnetic field measurement depends on attitude only; with the standard sign fix one has
 \[
 \fitcol{
@@ -105,7 +105,7 @@ It follows that
 \]
 The posterior covariance then follows from the Joseph form, and the right--multiplicative attitude correction is applied to the quaternion, after which the attitude error subvector is reset.
 
-\paragraph{Accelerometer (attitude + latent $\vct{a}_w$ + bias $\vct{b}_a$).}
+\paragraph{Accelerometer (attitude + latent $\vct{a}_w$ + bias $\vct{b}_a$)}
 For specific force in body coordinates,
 \[
 \fitcol{
@@ -127,6 +127,17 @@ The rank--3 structure again yields
 \mat{K} \;=\; (\mat{P}\mat{C}^\top)\,\matg{\Lambda}^{-1},
 \]
 with $\mat{P}\mat{C}^\top$ assembled from the covariance blocks as above. The presence of $\vct{a}_w$ and $\vct{b}_a$ merely enlarges the nonzero columns of $\mat{C}$ but does not change the rank--3 character of $\matg{\Lambda}$.
+
+\paragraph{Attitude}
+
+After each correction, the small-angle attitude increment
+$\delta\vct{\theta}$ is converted back into a unit quaternion
+via
+\[
+q \leftarrow q \otimes \exp_q(\tfrac{1}{2}\delta\vct{\theta}),
+\qquad \delta\vct{\theta} \leftarrow \vct{0},
+\]
+closing the multiplicative EKF loop on~$SO(3)$.
 
 \subsection*{Numerical form and invariants}
 Because $\matg{\Lambda}\in\mathbb{R}^{3\times 3}$ is SPD whenever $\mat{R}\succ 0$,
