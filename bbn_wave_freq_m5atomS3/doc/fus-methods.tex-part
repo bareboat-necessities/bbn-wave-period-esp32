@@ -53,10 +53,10 @@ a_{k+1} &= a_k + w_k, \quad w_k\sim\mathcal{N}(0,q_a).
 \end{align}
 Treat $a$ as a scalar state; run a Kalman correction on $a$ using the instantaneous prediction error $\varepsilon_k=u_k-y_k$:
 \begin{align}
-\tilde a_k &= a_k, \quad P^-_k=P_{k-1}+q_a, \\
-K_k &= \frac{P^-_k\,\partial \varepsilon_k/\partial a}{(\partial \varepsilon_k/\partial a)^2 P^-_k + r}, \\
+\tilde a_k &= a_k, \quad P_k^- = P_{k-1}+q_a, \\
+K_k &= \frac{P_k^-\,\partial \varepsilon_k/\partial a}{(\partial \varepsilon_k/\partial a)^2 P_k^- + r}, \\
 a_k &\leftarrow \tilde a_k + K_k\,\varepsilon_k,\qquad
-P_k=(1-K_k\,\partial \varepsilon_k/\partial a)P^-_k,
+P_k=(1-K_k\,\partial \varepsilon_k/\partial a)P_k^-,
 \end{align}
 with $\partial \varepsilon_k/\partial a$ obtained from the standard state-sensitivity recursion. Frequency readout:
 \[
@@ -82,7 +82,6 @@ Clamp $\hat f_k \in [f_{\min}, f_{\max}]$, then apply a short EMA:
 % =======================================================
 \section{Variance-Informed Online Adaptation}
 \label{sec:adaptation}
-
 
 We adapt three key MEKF parameters---OU time constant, latent acceleration scale, and the integral pseudo-measurement covariance---based on smoothed estimates of frequency and vertical-acceleration variance. Targets are bounded for stability and blended in slowly to avoid transients.
 
@@ -118,7 +117,7 @@ R_{S,\star}(k)=c_R \,\sigma_{a,\star}(k)\,\tau_\star^3(k),
 \]
 with axis anisotropy
 \(
-R_S=\mathrm{diag}( \rho_{xy}\,R_{S,\star},\ \rho_{xy}\,R_{S,\star},\ R_{S,\star} ),\ \\
+\mat{R}_S=\mathrm{diag}( \rho_{xy}\,R_{S,\star},\ \rho_{xy}\,R_{S,\star},\ R_{S,\star} ),\ \\
 \rho_{xy}\!\in\!(0,1).
 \)
 
@@ -136,12 +135,12 @@ MEKF uses Joseph-form updates; the OU process covariance is set from $(\tau_{\ma
 \section{Horizontal Wave Direction: Angle and Sign}
 \label{sec:direction}
 
-We estimate a slowly varying horizontal acceleration amplitude vector $\mathbf{A}_k$ whose direction gives wave azimuth modulo $180^\circ$. This section first motivates the simple cosine–gain model from a standard sinusoidal representation, then shows how a 2D Kalman filter recursively recovers $\mathbf{A}_k$.
+We estimate a slowly varying horizontal acceleration amplitude vector $\vct{A}_k$ whose direction gives wave azimuth modulo $180^\circ$. This section first motivates the simple cosine–gain model from a standard sinusoidal representation, then shows how a 2D Kalman filter recursively recovers $\vct{A}_k$.
 
 \subsection{Motivation from a sinusoidal horizontal acceleration}
 Consider the world–horizontal specific force
 \[
-\mathbf{z}_k =
+\vct{z}_k =
 \begin{bmatrix}
 a_x(k)\\[2pt]
 a_y(k)
@@ -151,22 +150,22 @@ a_y(k)
 at sample time $t_k = k\,\Delta t$. For a single dominant narrow–band wave at known angular frequency $\omega$, the horizontal acceleration can be expressed as a sinusoid in some fixed direction,
 \begin{equation}
 \label{eq:dir-sinusoid}
-\mathbf{z}_k \approx \mathbf{A}\,\cos\bigl(\omega t_k + \phi_0\bigr) + \boldsymbol{\eta}_k,
+\vct{z}_k \approx \vct{A}\,\cos\bigl(\omega t_k + \phi_0\bigr) + \vct{\eta}_k,
 \end{equation}
 where
 \begin{itemize}
-  \item $\mathbf{A}\in\mathbb{R}^2$ is a constant horizontal \emph{amplitude vector} whose direction matches the wave propagation line (modulo $180^\circ$),
+  \item $\vct{A}\in\mathbb{R}^2$ is a constant horizontal \emph{amplitude vector} whose direction matches the wave propagation line (modulo $180^\circ$),
   \item $\phi_0$ is an unknown constant phase offset, and
-  \item $\boldsymbol{\eta}_k$ collects noise and model mismatch.
+  \item $\vct{\eta}_k$ collects noise and model mismatch.
 \end{itemize}
-Direction depends only on the ratio of the components of $\mathbf{z}_k$:
+Direction depends only on the ratio of the components of $\vct{z}_k$:
 \[
 \frac{a_y(k)}{a_x(k)}
 =
 \frac{A_y\cos(\omega t_k + \phi_0)}{A_x\cos(\omega t_k + \phi_0)}
 = \frac{A_y}{A_x},
 \]
-whenever $\cos(\omega t_k + \phi_0)\neq 0$. Thus any unknown constant phase merely scales the vector $\mathbf{A}$; the \emph{direction} is still encoded in $\mathbf{A}$.
+whenever $\cos(\omega t_k + \phi_0)\neq 0$. Thus any unknown constant phase merely scales the vector $\vct{A}$; the \emph{direction} is still encoded in $\vct{A}$.
 
 Expanding \eqref{eq:dir-sinusoid} using
 $\cos(\omega t_k + \phi_0)
@@ -174,47 +173,47 @@ $\cos(\omega t_k + \phi_0)
 gives
 \begin{equation}
 \label{eq:dir-cos-sin}
-\mathbf{z}_k
-\approx \mathbf{A}_c \cos(\omega t_k) + \mathbf{A}_s \sin(\omega t_k) + \boldsymbol{\eta}_k,
+\vct{z}_k
+\approx \vct{A}_c \cos(\omega t_k) + \vct{A}_s \sin(\omega t_k) + \vct{\eta}_k,
 \end{equation}
 with
-$\mathbf{A}_c = \mathbf{A}\cos\phi_0$ and
-$\mathbf{A}_s = -\mathbf{A}\sin\phi_0$.
-For a pure travelling wave, $\mathbf{A}_c$ and $\mathbf{A}_s$ are collinear and share the same direction as $\mathbf{A}$.
+$\vct{A}_c = \vct{A}\cos\phi_0$ and
+$\vct{A}_s = -\vct{A}\sin\phi_0$.
+For a pure travelling wave, $\vct{A}_c$ and $\vct{A}_s$ are collinear and share the same direction as $\vct{A}$.
 
-Now consider a least–squares estimator that fits \eqref{eq:dir-cos-sin} using \emph{only} the cosine basis function, i.e.\ that chooses $\mathbf{A}$ to minimise
+Now consider a least–squares estimator that fits \eqref{eq:dir-cos-sin} using \emph{only} the cosine basis function, i.e.\ that chooses $\vct{A}$ to minimise
 \[
-J(\mathbf{A})
+J(\vct{A})
 = \sum_{k=1}^N
-\bigl\|\mathbf{z}_k - \cos\phi_k\,\mathbf{A}\bigr\|^2,
+\bigl\|\vct{z}_k - \cos\phi_k\,\vct{A}\bigr\|^2,
 \quad \phi_k := \omega t_k.
 \]
-Setting $\partial J/\partial \mathbf{A}=0$ yields
+Setting $\partial J/\partial \vct{A}=0$ yields
 \begin{equation}
 \fitcol{
 \label{eq:A-ls}
-\sum_{k=1}^N \cos\phi_k\,\mathbf{z}_k
-= \left(\sum_{k=1}^N \cos^2\phi_k\right)\mathbf{A},
+\sum_{k=1}^N \cos\phi_k\,\vct{z}_k
+= \left(\sum_{k=1}^N \cos^2\phi_k\right)\vct{A},
 \qquad
 \Rightarrow\quad
-\mathbf{A}_{\text{LS}}
-= \frac{\sum_k \cos\phi_k\,\mathbf{z}_k}
+\vct{A}_{\text{LS}}
+= \frac{\sum_k \cos\phi_k\,\vct{z}_k}
        {\sum_k \cos^2\phi_k}.
 }
 \end{equation}
 Thus the best–fit amplitude vector is exactly the
 \emph{demodulated and averaged} signal: multiply each sample by $\cos\phi_k$ (projection onto the known carrier), sum over time, and normalise.
 
-When the phase samples $\phi_k$ are well spread over the cycle, the denominator in \eqref{eq:A-ls} behaves like a scalar constant, and $\mathbf{A}_{\text{LS}}$ is parallel to the true wave direction. The simplified measurement model
+When the phase samples $\phi_k$ are well spread over the cycle, the denominator in \eqref{eq:A-ls} behaves like a scalar constant, and $\vct{A}_{\text{LS}}$ is parallel to the true wave direction. The simplified measurement model
 \[
-\mathbf{z}_k \approx \cos\phi_k\,\mathbf{A}
+\vct{z}_k \approx \cos\phi_k\,\vct{A}
 \]
-is therefore a natural online counterpart of this cosine–projection least–squares problem: a filter that incrementally adjusts $\mathbf{A}_k$ so that $\cos\phi_k\,\mathbf{A}_k$ tracks the observed horizontal acceleration.
+is therefore a natural online counterpart of this cosine–projection least–squares problem: a filter that incrementally adjusts $\vct{A}_k$ so that $\cos\phi_k\,\vct{A}_k$ tracks the observed horizontal acceleration.
 
-In the following we adopt this model and implement the recursive least–squares estimator for $\mathbf{A}_k$ as a 2D Kalman filter.
+In the following we adopt this model and implement the recursive least–squares estimator for $\vct{A}_k$ as a 2D Kalman filter.
 
 \subsection{State and measurement model (angle modulo $180^\circ$)}
-Let $\mathbf{A}_k\in\mathbb{R}^2$ denote the \emph{horizontal acceleration amplitude vector} at step $k$. Its direction gives the wave azimuth modulo $180^\circ$, while its norm reflects the horizontal acceleration level. The phase $\phi_k$ is advanced using the tracked frequency:
+Let $\vct{A}_k\in\mathbb{R}^2$ denote the \emph{horizontal acceleration amplitude vector} at step $k$. Its direction gives the wave azimuth modulo $180^\circ$, while its norm reflects the horizontal acceleration level. The phase $\phi_k$ is advanced using the tracked frequency:
 \[
 \phi_{k+1}=\wrap_{(-\pi,\pi]}\bigl(\phi_k + \omega_k \Delta t\bigr),
 \qquad
@@ -222,57 +221,57 @@ Let $\mathbf{A}_k\in\mathbb{R}^2$ denote the \emph{horizontal acceleration ampli
 \]
 with $\bar f_k$ from \S\ref{sec:freq-tracking}. We use a simple random–walk process model
 \begin{align}
-\mathbf{A}_{k+1} &= \mathbf{A}_k + \mathbf{w}_k,
+\vct{A}_{k+1} &= \vct{A}_k + \vct{w}_k,
 \qquad
-\mathbf{w}_k\sim\mathcal{N}(0,Q),
+\vct{w}_k\sim\mathcal{N}(0,\matg{Q}),
 \end{align}
 and the cosine–gain observation model motivated above:
 \begin{align}
-\mathbf{z}_k &= \cos\phi_k\, \mathbf{A}_k + \boldsymbol{\eta}_k,
+\vct{z}_k &= \cos\phi_k\, \vct{A}_k + \vct{\eta}_k,
 \qquad
-\boldsymbol{\eta}_k\sim\mathcal{N}(0,R),
+\vct{\eta}_k\sim\mathcal{N}(0,\matg{R}),
 \end{align}
-where $\mathbf{z}_k=[a_x(k), a_y(k)]^\top$ is the world–horizontal specific force. In matrix form this is
+where $\vct{z}_k=[a_x(k), a_y(k)]^\top$ is the world–horizontal specific force. In matrix form this is
 \[
-\mathbf{z}_k = H_k \mathbf{A}_k + \boldsymbol{\eta}_k,
+\vct{z}_k = \mat{H}_k \vct{A}_k + \vct{\eta}_k,
 \qquad
-H_k = \cos\phi_k\, I_2.
+\mat{H}_k = \cos\phi_k\, \mat{I}_2.
 \]
 
-This linear–Gaussian model is exactly a recursive least–squares fit of $\mathbf{z}_k$ onto the known regressor $\cos\phi_k$ (cf.\ \eqref{eq:A-ls}), with the process noise $Q$ acting as a forgetting mechanism so that $\mathbf{A}_k$ can slowly adapt as the sea state changes.
+This linear–Gaussian model is exactly a recursive least–squares fit of $\vct{z}_k$ onto the known regressor $\cos\phi_k$ (cf.\ \eqref{eq:A-ls}), with the process noise $\matg{Q}$ acting as a forgetting mechanism so that $\vct{A}_k$ can slowly adapt as the sea state changes.
 
-We perform the usual Kalman prediction and Joseph–form update on $\mathbf{A}_k$ and its covariance $P_k$:
+We perform the usual Kalman prediction and Joseph–form update on $\vct{A}_k$ and its covariance $\mat{P}_k$:
 \begin{align}
-&\mathbf{A}_k^- = \mathbf{A}_{k-1},\qquad
-P_k^- = P_{k-1} + Q,\\[2pt]
-&K_k = P_k^- H_k^\top \bigl(H_k P_k^- H_k^\top + R\bigr)^{-1},\\
-&\mathbf{A}_k \leftarrow \mathbf{A}_k^- + K_k\bigl(\mathbf{z}_k - H_k \mathbf{A}_k^-\bigr),\\
-&P_k \leftarrow (I_2-K_k H_k)P_k^- (I_2-K_k H_k)^\top + K_k R K_k^\top.
+&\vct{A}_k^- = \vct{A}_{k-1},\qquad
+\mat{P}_k^- = \mat{P}_{k-1} + \matg{Q},\\[2pt]
+&\mat{K}_k = \mat{P}_k^- \mat{H}_k^\top \bigl(\mat{H}_k \mat{P}_k^- \mat{H}_k^\top + \matg{R}\bigr)^{-1},\\
+&\vct{A}_k \leftarrow \vct{A}_k^- + \mat{K}_k\bigl(\vct{z}_k - \mat{H}_k \vct{A}_k^-\bigr),\\
+&\mat{P}_k \leftarrow (\mat{I}_2-\mat{K}_k \mat{H}_k)\mat{P}_k^- (\mat{I}_2-\mat{K}_k \mat{H}_k)^\top + \mat{K}_k \matg{R} \mat{K}_k^\top.
 \end{align}
-When $|\cos\phi_k|<\varepsilon_{\min}$, the measurement carries almost no information about $\mathbf{A}_k$ and the update is skipped:
-$\mathbf{A}_k=\mathbf{A}_k^-$, $P_k=P_k^-$.
+When $|\cos\phi_k|<\varepsilon_{\min}$, the measurement carries almost no information about $\vct{A}_k$ and the update is skipped:
+$\vct{A}_k=\vct{A}_k^-$, $\mat{P}_k=\mat{P}_k^-$.
 This avoids injecting noise near horizontal zero crossings.
 
 \subsection{Azimuth, uncertainty, and sign disambiguation}
 
 Angle modulo $180^\circ$ is obtained from the unit vector
 \[
-\widehat{\mathbf{d}}=\frac{\mathbf{A}_k}{\|\mathbf{A}_k\|},\quad
+\widehat{\vct{d}}=\frac{\vct{A}_k}{\|\vct{A}_k\|},\quad
 \theta=\wrap_{[0,180)}\!\Big(
 \operatorname{atan2}(\widehat d_y,\widehat d_x)\cdot\frac{180}{\pi}
 \Big).
 \]
 To avoid spurious $180^\circ$ flips, we sign–stabilize against the previous estimate and apply an EWMA:
 \[
-\widehat{\mathbf{d}}
-\leftarrow \operatorname{sgn}\bigl(\widehat{\mathbf{d}}\!\cdot\!\widehat{\mathbf{d}}_{\mathrm{last}}\bigr)\,\widehat{\mathbf{d}},
+\widehat{\vct{d}}
+\leftarrow \sgn\bigl(\widehat{\vct{d}}\!\cdot\!\widehat{\vct{d}}_{\mathrm{last}}\bigr)\,\widehat{\vct{d}},
 \]
-then low–pass filter $\widehat{\mathbf{d}}$ over time.
+then low–pass filter $\widehat{\vct{d}}$ over time.
 
-For an approximate $95\%$ confidence interval, we project the covariance of $\mathbf{A}_k$ onto the tangent of the unit circle. Let $P_A$ be the $2\times 2$ covariance of $\mathbf{A}_k$, and define the unit tangent
-$\mathbf{t}=(-\widehat d_y,\widehat d_x)$. A first–order approximation gives
+For an approximate $95\%$ confidence interval, we project the covariance of $\vct{A}_k$ onto the tangent of the unit circle. Let $\mat{P}_A$ be the $2\times 2$ covariance of $\vct{A}_k$, and define the unit tangent
+$\vct{t}=(-\widehat d_y,\widehat d_x)$. A first–order approximation gives
 \[
-\sigma_\theta^2 \approx \frac{\mathbf{t}^\top P_A \mathbf{t}}{\|\mathbf{A}_k\|^2},\qquad
+\sigma_\theta^2 \approx \frac{\vct{t}^\top \mat{P}_A \vct{t}}{\|\vct{A}_k\|^2},\qquad
 \theta_{95}=2\,\sigma_\theta \cdot \frac{180}{\pi},
 \]
 reported modulo $180^\circ$.
@@ -282,7 +281,7 @@ The amplitude filter above recovers only the \emph{line} of propagation (modulo 
 
 Define a horizontal envelope and a short–horizon vertical derivative,
 \[
-r_k=\left\|\mathbf{z}_k\right\|,\qquad
+r_k=\left\|\vct{z}_k\right\|,\qquad
 d_k=\frac{a_{z,k}-a_{z,k-1}}{\Delta t}.
 \]
 We track their correlation with an EMA,
@@ -344,4 +343,3 @@ typical values $c_R\in[2.4,2.5]$, $\rho_{xy}\in[0.05,0.07]$.
     \bottomrule
   \end{tabular}
 \end{table}
-
