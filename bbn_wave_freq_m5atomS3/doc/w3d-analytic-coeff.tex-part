@@ -125,7 +125,4 @@ In short, the discrete transition and covariance used by the method's algorithm 
 \end{aligned}
 \]
 with \(\Phi_{\text{axis}},\,\phi_{va},\phi_{pa},\phi_{Sa}\) and
-\(\mathbf Q_{d,\text{axis}}=q_c\,\mathrm{sym}\,\mathcal{K}\) as given above. The
-\emph{step-by-step derivations} of \(\Phi_{\text{axis}}\) and all entries of \(\mathcal{K}\)
-(including small-\(x=h/\tau\) series) are provided in the Appendix
-(\S\ref{sec:ou-appendix}).
+\(\mathbf Q_{d,\text{axis}}=q_c\,\mathrm{sym}\,\mathcal{K}\) as given above.
