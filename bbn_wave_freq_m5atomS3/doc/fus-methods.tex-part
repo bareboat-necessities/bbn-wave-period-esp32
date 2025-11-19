@@ -205,7 +205,7 @@ $c_{\text{spec}}$ is a pure number.
 \end{remark}
 
 \paragraph{Narrowband vs.\ broadband spectra}
-For a given $(\sigma_a,\tau)$, the size of $c_{\text{spec}}$ depends mainly on
+For a given $(\sigma_a,\tau)$, the value of $c_{\text{spec}}$ depends mainly on
 how much spectral mass lies near the low frequencies emphasized by the
 $1/u^6$ weight in \eqref{eq:c-spec-def}:
 \begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
