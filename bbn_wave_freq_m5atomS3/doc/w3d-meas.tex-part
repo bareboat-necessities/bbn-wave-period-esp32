@@ -160,31 +160,3 @@ choice of $\mat{R}_S$ makes the augmented system effectively detectable:
 although $\vct{S}$ is not directly observable from real sensors, the
 pseudo-measurement provides an artificial observation that stabilizes the
 covariance and prevents drift of integrated displacement.
-
-\subsection{Unified Measurement Update}
-
-Each measurement channel is processed through the standard
-linearized Kalman update
-\begin{align}
-\vct{r} &= \vct{z} - h(\hat{\vct{x}}_{k|k-1}),\\
-\matg{\Lambda} &= \mat{C}\,\mat{P}\,\mat{C}^\top + \mat{R},\\
-\mat{K} &= \mat{P}\,\mat{C}^\top\,\matg{\Lambda}^{-1},\\
-\hat{\vct{x}}_{k|k}
- &= \hat{\vct{x}}_{k|k-1} + \mat{K}\,\vct{r},\\
-\mat{P}_{k|k}
- &= (\Id-\mat{K}\mat{C})\,\mat{P}_{k|k-1}\,
-    (\Id-\mat{K}\mat{C})^\top
-    + \mat{K}\,\mat{R}\,\mat{K}^\top,
-\end{align}
-where $\mat{C}$ is the linearized measurement Jacobian.
-The Joseph-form covariance update above ensures symmetry and
-positive semidefiniteness under finite precision.
-
-After each correction, the small-angle attitude increment
-$\delta\vct{\theta}$ is converted back into a unit quaternion
-via
-\[
-q \leftarrow q \otimes \exp_q(\tfrac{1}{2}\delta\vct{\theta}),
-\qquad \delta\vct{\theta} \leftarrow \vct{0},
-\]
-closing the multiplicative EKF loop on~$SO(3)$.
