@@ -95,6 +95,29 @@
   \DeclareUnicodeCharacter{2212}{\textminus}         % − (math minus)
 \fi
 
+% Vectors (Latin & Greek): bold-italic
+\providecommand{\vct}[1]{\bm{#1}}
+
+% Matrices:
+\providecommand{\mat}[1]{\mathbf{#1}} % LATIN matrices: upright bold (A, P, K, R, I, ...)
+\providecommand{\matg}[1]{\bm{#1}}    % GREEK matrices: bold-italic (Σ, Ω, Φ, Λ, ...)
+
+% Common symbols
+\providecommand{\I}{\mat{I}}
+\providecommand{\R}{\mathbb{R}}
+
+% Skew-symmetric bracket using your bold macros
+\providecommand{\skew}[1]{\left[\vct{#1}\right]_\times}
+
+% Make math macros harmless in PDF bookmarks
+\pdfstringdefDisableCommands{%
+  \def\vct#1{#1}%
+  \def\mat#1{#1}%
+  \def\matg#1{#1}%
+  \def\skew#1{[#1]x}%
+  \def\I{I}%
+}
+
 % Theorems: small header/body
 \newtheoremstyle{bodysmall}
   {3pt}{3pt}{\normalfont\small}{0pt}{\bfseries\small}{.}{0.5em}{}
