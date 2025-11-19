@@ -1,47 +1,47 @@
-\section{Block structure of the discrete transition \texorpdfstring{$\Phi$}{Phi} and covariance \texorpdfstring{$\mathbf Q_d$}{Qd}}
+\section{Block structure of the discrete transition \texorpdfstring{$\matg{\Phi}$}{Phi} and covariance \texorpdfstring{$\matg{Q}_d$}{Qd}}
 \label{sec:block-Phi-Qd}
 
 Let $h>0$ be the sampling step and let the error-state be ordered as in the continuous-time state model.
 We group indices into three blocks:
 \[
 \fitcol{
-\underbrace{(\delta\boldsymbol\theta,\ \mathbf b_g)}_{\text{attitude\,+\,gyro-bias}} \in \mathbb R^{N_A},\quad
-\underbrace{(\mathbf v,\ \mathbf p,\ \mathbf S,\ \mathbf a_w)}_{\text{OU-driven linear chain}} \in \mathbb R^{N_L},\quad
-\underbrace{\mathbf b_a}_{\text{accel-bias}}\in \mathbb R^{N_B},
+\underbrace{(\delta\vct{\theta},\ \vct{b}_g)}_{\text{attitude\,+\,gyro-bias}} \in \mathbb R^{N_A},\quad
+\underbrace{(\vct{v},\ \vct{p},\ \vct{S},\ \vct{a}_w)}_{\text{OU-driven linear chain}} \in \mathbb R^{N_L},\quad
+\underbrace{\vct{b}_a}_{\text{accel-bias}}\in \mathbb R^{N_B},
 }
 \]
-with $N_A=3$ or $6$ (no/with $\mathbf b_g$), $N_L=12$, $N_B=3$.
+with $N_A=3$ or $6$ (no/with $\vct{b}_g$), $N_L=12$, $N_B=3$.
 
-\paragraph{Attitude + gyro-bias block \(\Phi_{\!AA}(h)\) and \(\mathbf Q_{\!AA}(h)\)}
+\paragraph{Attitude + gyro-bias block \(\matg{\Phi}_{\!AA}(h)\) and \(\matg{Q}_{\!AA}(h)\)}
 For the attitude error + gyro-bias (size \(3{+}3\)), the algorithm uses a structured
-path that matches the Q-MEKF with piecewise-constant \(\hat{\boldsymbol\omega}=
-\boldsymbol\omega_m-\mathbf b_g\) over the step:
+path that matches the Q-MEKF with piecewise-constant \(\hat{\vct{\omega}}=
+\vct{\omega}_m-\vct{b}_g\) over the step:
 \begin{itemize}
-  \item \(\Phi_{\!AA}(h)\) implements the right-multiplicative small-angle
-        transition: the \(\delta\boldsymbol\theta\)-block is the Rodrigues
+  \item \(\matg{\Phi}_{\!AA}(h)\) implements the right-multiplicative small-angle
+        transition: the \(\delta\vct{\theta}\)-block is the Rodrigues
         expression
-        \(\Phi_{\theta\theta}(h)=\mathbf I - \sin\theta\,\mathbf D + (1-\cos\theta)\,\mathbf D^2\)
-        with \(\theta=\|\hat{\boldsymbol\omega}\|h\) and
-        \(\mathbf D=[\hat{\boldsymbol\omega}/\|\hat{\boldsymbol\omega}\|]_\times\);
-        the \(\delta\boldsymbol\theta\)–\(\mathbf b_g\) block is \(-\mathbf I\,h\).
-  \item \(\mathbf Q_{\!AA}(h)\) is built from rotation integrals:
+        \(\Phi_{\theta\theta}(h)=\Id - \sin\theta\,\mat{D} + (1-\cos\theta)\,\mat{D}^2\)
+        with \(\theta=\|\hat{\vct{\omega}}\|h\) and
+        \(\mat{D}=\Skew{\hat{\vct{\omega}}/\|\hat{\vct{\omega}}\|}\);
+        the \(\delta\vct{\theta}\)–\(\vct{b}_g\) block is \(-\Id\,h\).
+  \item \(\matg{Q}_{\!AA}(h)\) is built from rotation integrals:
         \[
-        \mathbf Q_{\theta\theta}=\int_0^{h}\! \mathbf R(s)\,\mathbf Q_g\,\mathbf R(s)^\top ds
-        \;+\; \int_0^{h}\! \mathbf B(s)\,\mathbf Q_{bg}\,\mathbf B(s)^\top ds,
+        \matg{Q}_{\theta\theta}=\int_0^{h}\! \mat{R}(s)\,\matg{Q}_g\,\mat{R}(s)^\top ds
+        \;+\; \int_0^{h}\! \mat{B}(s)\,\matg{Q}_{bg}\,\mat{B}(s)^\top ds,
         \]
-        \(\mathbf Q_{bb}=\mathbf Q_{bg}\,h\),
-        \(\mathbf Q_{\theta b}=\Big(\int_0^{h}\! \mathbf B(s)\,ds\Big)\mathbf Q_{bg}\),
-        with \(\mathbf R,\mathbf B\) the closed-form functions of \(\hat{\boldsymbol\omega}\)
-        (exact for isotropic \(\mathbf Q_g\); Simpson quadrature otherwise).
+        \(\matg{Q}_{bb}=\matg{Q}_{bg}\,h\),
+        \(\matg{Q}_{\theta b}=\Big(\int_0^{h}\! \mat{B}(s)\,ds\Big)\matg{Q}_{bg}\),
+        with \(\mat{R},\mat{B}\) the closed-form functions of \(\hat{\vct{\omega}}\)
+        (exact for isotropic \(\matg{Q}_g\); Simpson quadrature otherwise).
 \end{itemize}
 
-\paragraph{Linear OU chain block \(\Phi_{\!LL}(h)\)}
+\paragraph{Linear OU chain block \(\matg{\Phi}_{\!LL}(h)\)}
 The linear \(12\times12\) block corresponds to the stacked axes
-\([\mathbf v,\mathbf p,\mathbf S,\mathbf a_w]\) (3D). It is formed by
+\([\vct{v},\vct{p},\vct{S},\vct{a}_w]\) (3D). It is formed by
 placing three identical \(4\times4\) axis transitions on the block diagonal:
 \begin{equation}
 \begin{aligned}
-\Phi_{\!LL}(h)
+\matg{\Phi}_{\!LL}(h)
   &= \mathrm{blkdiag}\!\big(
       \Phi_{\text{axis}},
       \Phi_{\text{axis}},
@@ -70,59 +70,59 @@ expressions:
 }
 \]
 
-\paragraph{Linear OU chain covariance block \(\mathbf Q_{\!LL}(h)\). Uncorrelated axes (diagonal stationary variance)}
-      For each axis \(j\in\{x,y,z\}\) with stationary variance \(\sigma_j^2\),
-      the per-axis \(4\times4\) noise is
-      \[
-      \mathbf Q_{d,\text{axis}} \;=\; q_c\;\mathrm{sym}\,\mathcal{K},\qquad
-      q_c \equiv \frac{2\,\sigma^2}{\tau}.
-      \]
+\paragraph{Linear OU chain covariance block \(\matg{Q}_{\!LL}(h)\). Uncorrelated axes (diagonal stationary variance)}
+For each axis \(j\in\{x,y,z\}\) with stationary variance \(\sigma_j^2\),
+the per-axis \(4\times4\) noise is
+\[
+\matg{Q}_{d,\text{axis}} \;=\; q_c\;\mathrm{sym}\,\mathcal{K},\qquad
+q_c \equiv \frac{2\,\sigma^2}{\tau}.
+\]
 
-      Using \(x=h/\tau\), \(\alpha=e^{-x}\), \(e^{-2x}\), and the helper
-      \[
-      \begin{aligned}
-      A_0 &=-\tau\,(e^{-x}-1),\\
-      A_1 &=\tau^2\!\left(\!-(e^{-x}-1)-x\,\alpha\right),\\
-      A_2 &=\tau^3\!\left(\!-2(e^{-x}-1)+\alpha\,x(x{+}2)\right),\\
-      B_0 &= -\frac{\tau}{2}\,(e^{-2x}-1),\\
-      \end{aligned}
-      \]
-      the algorithm fills \(\mathcal{K}\) with the following entries
-      (all \(h\), \(\tau\)–dependent; \(\mathrm{sym}\) means \(\tfrac12(\cdot+\cdot^\top)\)):
-      \[
-      \fitcol{
-      \begin{aligned}
-      &K_{aa}=B_0,\qquad
-      K_{va}= \tau\,(A_0 - B_0),\\
-      &K_{vv}= \tau^2\!\big(h - 2A_0 + B_0\big),\\
-      &K_{pa}= \tau\,A_1 - \tau^2 A_0 + \tau^2 B_0,\\
-      &K_{pv}= \tau^2\!\Big(\tfrac12h^2 - A_1\Big) - \tau^3\!\Big(h - A_0\Big) + \tau^3\!\big(A_0 - B_0\big),\\
-      &K_{pp}= \tau^2\!\tfrac{h^3}{3} - 2\tau^3\!\tfrac{h^2}{2} + 2\tau^3 A_1 + \tau^4 h - 2\tau^4 A_0 + \tau^4 B_0,\\
-      &K_{Sa}= \tfrac12\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0,\\
-      &K_{Sv}= \tfrac12\tau^2\!\Big(\tfrac{h^3}{3} - A_2\Big) - \tau^3\!\Big(\tfrac{h^2}{2} - A_1\Big) + \tau^4\!\Big(h - A_0\Big) - \tau^4\!\big(A_0 - B_0\big),\\
-      &K_{Sp}= \tfrac12\tau^2\!\tfrac{h^4}{4} - \tfrac32\tau^3\!\tfrac{h^3}{3} + 2\tau^4\!\tfrac{h^2}{2} - \tau^5 h
-                + \tfrac12\tau^3 A_2 - 2\tau^4 A_1 + 2\tau^5 A_0 - \tau^5 B_0,\\
-      &K_{SS}= \tfrac14\tau^2\!\tfrac{h^5}{5} - \tau^3\!\tfrac{h^4}{4} + 2\tau^4\!\tfrac{h^3}{3} - 2\tau^5\!\tfrac{h^2}{2} + \tau^6 h
-                - \tau^4 A_2 + 2\tau^5 A_1 - 2\tau^6 A_0 + \tau^6 B_0.
-      \end{aligned}
-      }
-      \]
-      The full \(\mathbf Q_{\!LL}\) is the block-diagonal stacking of these
-      \(4\times4\) matrices for \(x,y,z\) (with \(\sigma^2\) set per axis).
+Using \(x=h/\tau\), \(\alpha=e^{-x}\), \(e^{-2x}\), and the helper
+\[
+\begin{aligned}
+A_0 &=-\tau\,(e^{-x}-1),\\
+A_1 &=\tau^2\!\left(\!-(e^{-x}-1)-x\,\alpha\right),\\
+A_2 &=\tau^3\!\left(\!-2(e^{-x}-1)+\alpha\,x(x{+}2)\right),\\
+B_0 &= -\frac{\tau}{2}\,(e^{-2x}-1),\\
+\end{aligned}
+\]
+the algorithm fills \(\mathcal{K}\) with the following entries
+(all \(h\), \(\tau\)–dependent; \(\mathrm{sym}\) means \(\tfrac12(\cdot+\cdot^\top)\)):
+\[
+\fitcol{
+\begin{aligned}
+&K_{aa}=B_0,\qquad
+K_{va}= \tau\,(A_0 - B_0),\\
+&K_{vv}= \tau^2\!\big(h - 2A_0 + B_0\big),\\
+&K_{pa}= \tau\,A_1 - \tau^2 A_0 + \tau^2 B_0,\\
+&K_{pv}= \tau^2\!\Big(\tfrac12h^2 - A_1\Big) - \tau^3\!\Big(h - A_0\Big) + \tau^3\!\big(A_0 - B_0\big),\\
+&K_{pp}= \tau^2\!\tfrac{h^3}{3} - 2\tau^3\!\tfrac{h^2}{2} + 2\tau^3 A_1 + \tau^4 h - 2\tau^4 A_0 + \tau^4 B_0,\\
+&K_{Sa}= \tfrac12\tau A_2 - \tau^2 A_1 + \tau^3 A_0 - \tau^3 B_0,\\
+&K_{Sv}= \tfrac12\tau^2\!\Big(\tfrac{h^3}{3} - A_2\Big) - \tau^3\!\Big(\tfrac{h^2}{2} - A_1\Big) + \tau^4\!\Big(h - A_0\Big) - \tau^4\!\big(A_0 - B_0\big),\\
+&K_{Sp}= \tfrac12\tau^2\!\tfrac{h^4}{4} - \tfrac32\tau^3\!\tfrac{h^3}{3} + 2\tau^4\!\tfrac{h^2}{2} - \tau^5 h
+          + \tfrac12\tau^3 A_2 - 2\tau^4 A_1 + 2\tau^5 A_0 - \tau^5 B_0,\\
+&K_{SS}= \tfrac14\tau^2\!\tfrac{h^5}{5} - \tau^3\!\tfrac{h^4}{4} + 2\tau^4\!\tfrac{h^3}{3} - 2\tau^5\!\tfrac{h^2}{2} + \tau^6 h
+          - \tau^4 A_2 + 2\tau^5 A_1 - 2\tau^6 A_0 + \tau^6 B_0.
+\end{aligned}
+}
+\]
+The full \(\matg{Q}_{\!LL}\) is the block-diagonal stacking of these
+\(4\times4\) matrices for \(x,y,z\) (with \(\sigma^2\) set per axis).
 
 \paragraph{Accelerometer bias block}
 The accelerometer bias random walk contributes
 \[
-\Phi_{bb}(h)=\mathbf I_3,\qquad \mathbf Q_{bb}(h)=\mathbf Q_{ba}\,h.
+\Phi_{bb}(h)=\mat{I}_3,\qquad \matg{Q}_{bb}(h)=\matg{Q}_{ba}\,h.
 \]
 
 \paragraph{Analytic coefficients summary}
 In short, the discrete transition and covariance used by the method's algorithm are
 \[
 \begin{aligned}
-\Phi(h) &=\mathrm{blkdiag}\big(\Phi_{\!AA}(h),\,\Phi_{\!LL}(h),\,\mathbf I_3\big),\qquad\\
-\mathbf Q_d(h) &=\mathrm{blkdiag}\big(\mathbf Q_{\!AA},\,\mathbf Q_{\!LL},\,\mathbf Q_{bb}\big),
+\matg{\Phi}(h) &=\mathrm{blkdiag}\big(\matg{\Phi}_{\!AA}(h),\,\matg{\Phi}_{\!LL}(h),\,\mat{I}_3\big),\qquad\\
+\matg{Q}_d(h) &=\mathrm{blkdiag}\big(\matg{Q}_{\!AA},\,\matg{Q}_{\!LL},\,\matg{Q}_{bb}\big),
 \end{aligned}
 \]
 with \(\Phi_{\text{axis}},\,\phi_{va},\phi_{pa},\phi_{Sa}\) and
-\(\mathbf Q_{d,\text{axis}}=q_c\,\mathrm{sym}\,\mathcal{K}\) as given above.
+\(\matg{Q}_{d,\text{axis}}=q_c\,\mathrm{sym}\,\mathcal{K}\) as given above.
