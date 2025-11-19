@@ -12,7 +12,7 @@ We group indices into three blocks:
 \]
 with $N_A=3$ or $6$ (no/with $\mathbf b_g$), $N_L=12$, $N_B=3$.
 
-\paragraph{Attitude + gyro-bias block \(\Phi_{\!AA}(h)\) and \(\mathbf Q_{\!AA}(h)\).}
+\paragraph{Attitude + gyro-bias block \(\Phi_{\!AA}(h)\) and \(\mathbf Q_{\!AA}(h)\)}
 For the attitude error + gyro-bias (size \(3{+}3\)), the algorithm uses a structured
 path that matches the Q-MEKF with piecewise-constant \(\hat{\boldsymbol\omega}=
 \boldsymbol\omega_m-\mathbf b_g\) over the step:
@@ -35,7 +35,7 @@ path that matches the Q-MEKF with piecewise-constant \(\hat{\boldsymbol\omega}=
         (exact for isotropic \(\mathbf Q_g\); Simpson quadrature otherwise).
 \end{itemize}
 
-\paragraph{Linear OU chain block \(\Phi_{\!LL}(h)\).}
+\paragraph{Linear OU chain block \(\Phi_{\!LL}(h)\)}
 The linear \(12\times12\) block corresponds to the stacked axes
 \([\mathbf v,\mathbf p,\mathbf S,\mathbf a_w]\) (3D). It is formed by
 placing three identical \(4\times4\) axis transitions on the block diagonal:
@@ -70,9 +70,7 @@ expressions:
 }
 \]
 
-\paragraph{Linear OU chain covariance block \(\mathbf Q_{\!LL}(h)\).}
-
-\paragraph{Uncorrelated axes (diagonal stationary variance).}
+\paragraph{Linear OU chain covariance block \(\mathbf Q_{\!LL}(h)\). Uncorrelated axes (diagonal stationary variance)}
       For each axis \(j\in\{x,y,z\}\) with stationary variance \(\sigma_j^2\),
       the per-axis \(4\times4\) noise is
       \[
@@ -112,13 +110,13 @@ expressions:
       The full \(\mathbf Q_{\!LL}\) is the block-diagonal stacking of these
       \(4\times4\) matrices for \(x,y,z\) (with \(\sigma^2\) set per axis).
 
-\paragraph{Accelerometer bias block.}
+\paragraph{Accelerometer bias block}
 The accelerometer bias random walk contributes
 \[
 \Phi_{bb}(h)=\mathbf I_3,\qquad \mathbf Q_{bb}(h)=\mathbf Q_{ba}\,h.
 \]
 
-\paragraph{Analytic coefficients summary.}
+\paragraph{Analytic coefficients summary}
 In short, the discrete transition and covariance used by the method's algorithm are
 \[
 \begin{aligned}
