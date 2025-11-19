@@ -35,10 +35,6 @@ Discrete-time (sample $k$ at $\Delta t$):
 \omega_k \in [\omega_{\min},\,\omega_{\max}].
 }
 \]
-Low-pass the readout with EMA $\alpha_f$:
-\(
-\hat f_k=(1-\alpha_f)\hat f_{k-1}+\alpha_f \frac{\omega_k}{2\pi}.
-\)
 
 \subsection{\textsc{KalmANF}: Kalman-updated adaptive notch}
 
@@ -60,9 +56,8 @@ P_k=(1-K_k\,\partial \varepsilon_k/\partial a)P_k^-,
 \end{align}
 with $\partial \varepsilon_k/\partial a$ obtained from the standard state-sensitivity recursion. Frequency readout:
 \[
-\hat\omega_k=\arccos\!\left(\tfrac{1}{2}\,\clip(a_k,-2,2)\right), \quad \hat f_k=\hat\omega_k/(2\pi),
+\hat\omega_k=\arccos\!\left(\tfrac{1}{2}\,\clip(a_k,-2,2)\right), \quad \hat f_k=\hat\omega_k/(2\pi).
 \]
-then EMA with horizon $\tau_{\mathrm{freq}}$.
 
 \subsection{Zero-crossing baseline with hysteresis}
 
