@@ -167,8 +167,8 @@ Each measurement channel is processed through the standard
 linearized Kalman update
 \begin{align}
 \mathbf{r} &= \mathbf{z} - h(\hat{\mathbf{x}}_{k|k-1}),\\
-\mathbf{S} &= \mathbf{C}\,\mathbf{P}\,\mathbf{C}^\top + \mathbf{R},\\
-\mathbf{K} &= \mathbf{P}\,\mathbf{C}^\top\,\mathbf{S}^{-1},\\
+\mathbf{\Lambda} &= \mathbf{C}\,\mathbf{P}\,\mathbf{C}^\top + \mathbf{R},\\
+\mathbf{K} &= \mathbf{P}\,\mathbf{C}^\top\,\mathbf{\Lambda}^{-1},\\
 \hat{\mathbf{x}}_{k|k}
  &= \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}\,\mathbf{r},\\
 \mathbf{P}_{k|k}
