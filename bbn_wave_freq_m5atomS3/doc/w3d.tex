@@ -34,6 +34,11 @@
 %\let\Bbbk\relax
 %\usepackage{amssymb}
 
+\DeclareRobustCommand{\vct}[1]{\bm{#1}}     % vectors (Latin & Greek): bold-italic
+\DeclareRobustCommand{\mat}[1]{\mathbf{#1}} % LATIN matrices: upright bold
+\DeclareRobustCommand{\matg}[1]{\bm{#1}}    % GREEK matrices: bold-italic
+\DeclareRobustCommand{\skew}[1]{\left[\vct{#1}\right]_\times}
+
 \usepackage{cite}
 \usepackage[breaklinks=true,hidelinks]{hyperref}
 \usepackage{bookmark}
@@ -94,17 +99,6 @@
   \DeclareUnicodeCharacter{201D}{\textquotedblright} % ”
   \DeclareUnicodeCharacter{2212}{\textminus}         % − (math minus)
 \fi
-
-% Vectors (Latin & Greek): bold-italic
-\providecommand{\vct}[1]{\bm{#1}}
-
-% Matrices:
-\providecommand{\mat}[1]{\mathbf{#1}} % LATIN matrices: upright bold (A, P, K, R, I, ...)
-\providecommand{\matg}[1]{\bm{#1}}    % GREEK matrices: bold-italic (Σ, Ω, Φ, Λ, ...)
-
-% Common symbols
-\providecommand{\I}{\mat{I}}
-\providecommand{\R}{\mathbb{R}}
 
 % Skew-symmetric bracket using your bold macros
 \providecommand{\skew}[1]{\left[\vct{#1}\right]_\times}
