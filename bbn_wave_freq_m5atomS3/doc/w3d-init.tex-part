@@ -1,7 +1,7 @@
 \section{Initialization and Reference Alignment}
 
 Accurate initialization of the filter state is essential for rapid convergence
-and numerical stability.  The procedure aligns the quaternion, biases, and
+and numerical stability. The procedure aligns the quaternion, biases, and
 latent acceleration with physically observable quantities from the
 accelerometer and magnetometer before dynamic updates commence.
 
@@ -9,18 +9,18 @@ accelerometer and magnetometer before dynamic updates commence.
 
 At rest, the accelerometer measures the apparent specific force
 \(
-\mathbf{f}_b \approx -\mathbf{R}_{wb}\,\mathbf{g}_w,
+\vct{f}_b \approx -\mat{R}_{wb}\,\vct{g}_w,
 \)
-where $\mathbf{g}_w = [0,\,0,\,g]^\top$ is the gravity vector in world
-coordinates.  The normalized accelerometer output
+where $\vct{g}_w = [0,\,0,\,g]^\top$ is the gravity vector in world
+coordinates. The normalized accelerometer output
 \[
-\hat{\mathbf{f}}_b
-= \frac{\mathbf{f}_b}{\|\mathbf{f}_b\|}
+\hat{\vct{f}}_b
+= \frac{\vct{f}_b}{\|\vct{f}_b\|}
 \]
 defines the direction of gravity in the body frame.
 The initial world-to-body quaternion $q_0$ is chosen such that
 \[
-\mathbf{R}(q_0)^\top\,\hat{\mathbf{f}}_b = -\mathbf{e}_z,
+\mat{R}(q_0)^\top\,\hat{\vct{f}}_b = -\vct{e}_z,
 \]
 that is, the body $z$-axis is aligned with the measured gravity vector.
 This provides the initial roll and pitch angles, while yaw remains
@@ -32,11 +32,11 @@ dynamic components.
 \subsection{Yaw Initialization from Magnetometer}
 
 The magnetometer provides a heading reference by observing the local
-magnetic field~$\mathbf{B}_w$ expressed in world coordinates.
-Given the measured field $\mathbf{m}_b$ in the body frame and the
+magnetic field~$\vct{B}_w$ expressed in world coordinates.
+Given the measured field $\vct{m}_b$ in the body frame and the
 known inclination~$I$ and declination~$D$, the horizontal projection is
 \[
-\mathbf{m}_{b,xy} =
+\vct{m}_{b,xy} =
 \begin{bmatrix} m_x \\[2pt] m_y \end{bmatrix}, \qquad
 \psi = \mathrm{atan2}(-m_y,\,m_x) - D.
 \]
@@ -52,38 +52,38 @@ local magnetic north.
 
 Gyroscope and accelerometer biases are initialized from pre-sampling averages:
 \[
-\mathbf{b}_{g0} = \mathrm{mean}(\boldsymbol{\omega}_b), \qquad
-\mathbf{b}_{a0} = \mathrm{mean}(\mathbf{f}_b) + \mathbf{R}(q_0)\,\mathbf{g}_w.
+\vct{b}_{g0} = \mathrm{mean}(\vct{\omega}_b), \qquad
+\vct{b}_{a0} = \mathrm{mean}(\vct{f}_b) + \mat{R}(q_0)\,\vct{g}_w.
 \]
-The latent OU acceleration $\mathbf{a}_{w0}$ is set to zero or to the
+The latent OU acceleration $\vct{a}_{w0}$ is set to zero or to the
 gravity-compensated average of recent acceleration samples, providing a
 smooth start for the translational chain:
 \[
-\mathbf{a}_{w0} = \mathbf{R}(q_0)^\top
-  \bigl(\mathrm{mean}(\mathbf{f}_b) - \mathbf{b}_{a0}\bigr) + \mathbf{g}_w.
+\vct{a}_{w0} = \mat{R}(q_0)^\top
+  \bigl(\mathrm{mean}(\vct{f}_b) - \vct{b}_{a0}\bigr) + \vct{g}_w.
 \]
-All linear states $(\mathbf{v},\mathbf{p},\mathbf{S})$ are initialized to
+All linear states $(\vct{v},\vct{p},\vct{S})$ are initialized to
 zero unless prior motion information is available.
 
 \subsection{Covariance Initialization}
 
-The initial covariance~$P_0$ is block-diagonal, reflecting independent
+The initial covariance~$\mat{P}_0$ is block-diagonal, reflecting independent
 uncertainties in attitude, biases, and linear motion:
 \[
-P_0 =
-\mathrm{diag}
-(\Sigma_{\theta0},\,
- \Sigma_{b_g0},\,
- \Sigma_{v0},\,
- \Sigma_{p0},\,
- \Sigma_{S0},\,
- \Sigma_{a_w0},\,
- \Sigma_{b_a0}).
+\mat{P}_0 =
+\diag\!\big(
+ \matg{\Sigma}_{\theta0},\,
+ \matg{\Sigma}_{b_g0},\,
+ \matg{\Sigma}_{v0},\,
+ \matg{\Sigma}_{p0},\,
+ \matg{\Sigma}_{S0},\,
+ \matg{\Sigma}_{a_w0},\,
+ \matg{\Sigma}_{b_a0}\big).
 \]
-Typical values for $\Sigma_{\theta0}$ correspond to several degrees of
-tilt uncertainty, while $\Sigma_{a_w0}$ is set to the stationary variance
+Typical values for $\matg{\Sigma}_{\theta0}$ correspond to several degrees of
+tilt uncertainty, while $\matg{\Sigma}_{a_w0}$ is set to the stationary variance
 of the OU process $\sigma_{a_w}^2$.
-This initialization ensures positive definiteness of~$P_0$ and allows
+This initialization ensures positive definiteness of~$\mat{P}_0$ and allows
 the filter to transition smoothly from the stationary prior to fully
 dynamic operation.
 
@@ -92,6 +92,6 @@ dynamic operation.
 During the first few seconds of operation, a warm-up phase validates the
 attitude alignment by monitoring the magnitude of the accelerometer residual.
 If the residual remains within tolerance, magnetic updates are enabled and
-the filter transitions to full fusion.  This staged activation prevents
+the filter transitions to full fusion. This staged activation prevents
 spurious yaw correction during initial transients and establishes a stable
 baseline for subsequent online adaptation.
