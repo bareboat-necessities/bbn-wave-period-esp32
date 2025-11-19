@@ -196,7 +196,6 @@ spectral shape (and the choice of effective low-frequency cutoff), while
 $\sigma_a$ and $\tau$ carry the physical scale.
 
 \begin{remark}[Dimensional consistency]
-The units check is immediate:
 $\sigma_a$ has units $\mathrm{m/s^2}$ and $\tau$ has units $\mathrm{s}$, so
 $\sigma_a\tau^3$ has units $\mathrm{m\cdot s}$, the same units as the
 triple-integral state $S$ (since $S$ integrates displacement $p$ once more in
