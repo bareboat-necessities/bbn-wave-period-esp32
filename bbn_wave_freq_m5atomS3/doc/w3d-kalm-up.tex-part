@@ -123,7 +123,7 @@ It follows that
 \]
 The posterior covariance then follows from the Joseph form, and the right–multiplicative attitude correction is applied to the quaternion; the attitude-error subvector is then reset.
 
-\paragraph{Accelerometer (attitude + latent \(\vct{a}_w\) + bias \(\vct{b}_a\)).}
+\paragraph{\texorpdfstring{Accelerometer (attitude + latent $\vct{a}_w$ + bias $\vct{b}_a$).}{Accelerometer (attitude + latent a_w + bias b_a).}}
 For specific force in body coordinates,
 \[
 \fitcol{
