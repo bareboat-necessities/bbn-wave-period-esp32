@@ -159,7 +159,7 @@ state $\mathbf{S}$ as ``should be near zero'' versus ``free to wander''. Proper
 choice of $\mathbf{R}_S$ makes the augmented system effectively detectable:
 although $\mathbf{S}$ is not directly observable from real sensors, the
 pseudo-measurement provides an artificial observation that stabilizes the
-covariance and prevents numerical blow-up of integrated displacement.
+covariance and prevents drift of integrated displacement.
 
 \subsection{Unified Measurement Update}
 
