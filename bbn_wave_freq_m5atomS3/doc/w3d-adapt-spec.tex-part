@@ -1,0 +1,207 @@
+% --- Safe guards (leave as-is) ---
+\makeatletter
+\@ifundefined{remark}{\theoremstyle{remark}\newtheorem{remark}{Remark}}{}
+\@ifundefined{lemma}{\theoremstyle{plain}\newtheorem{lemma}{Lemma}}{}
+\@ifundefined{theorem}{\theoremstyle{plain}\newtheorem{theorem}{Theorem}}{}
+\@ifundefined{theorem*}{\newtheorem*{theorem*}{Theorem}}{}
+\makeatother
+\providecommand{\fitcol}[1]{#1}
+% ----------------------------------
+
+\section*{Spectral scaling and pseudo-measurement on $S$}
+\label{sec:spectral-Rs}
+\label{app:rs-scaling}
+
+The pseudo-measurement on the triple-integral state
+\[
+y_S = 0 = S + n_S,\qquad n_S \sim \mathcal{N}(0,R_S^2)
+\]
+is not a physical sensor but a regularizer. Its design should reflect the
+\emph{natural} fluctuations of $S$ under a given sea state, so that $R_S$
+scales with the sea state in a physically consistent and, ideally,
+sea-state–invariant way.
+
+The key steps are:
+\begin{enumerate}\itemsep2pt
+\item Express the variance of $S$ in terms of the vertical-acceleration
+spectrum.
+\item Show that, for a broad class of spectra, the standard deviation
+$\sigma_S$ of $S$ scales as
+\[
+\sigma_S \sim c_{\text{spec}}\;\sigma_a\,\tau^3,
+\]
+where $c_{\text{spec}}$ is a dimensionless \emph{spectral shape factor}.
+\item Choose the pseudo-measurement noise $R_S$ proportional to this physical
+scale $\sigma_S$. This makes the pseudo-measurement effectively
+\emph{sea-state invariant}.
+\end{enumerate}
+
+\subsection*{Variance of $S$ from the acceleration spectrum}
+
+Let $a(t)$ denote vertical acceleration and let
+\[
+\dot v = a,\qquad \dot p = v,\qquad \dot S = p,
+\]
+so that $S$ is the triple time-integral of $a$. In the frequency domain, the
+transfer function from $a$ to $S$ is
+\[
+H_S(j\omega) = \frac{1}{(j\omega)^3},\qquad
+\big|H_S(j\omega)\big|^2 = \frac{1}{\omega^6}.
+\]
+If $a(t)$ is stationary with one-sided PSD $S_a(\omega)$, standard linear
+systems theory gives
+\[
+\mathrm{Var}[S]
+= \frac{1}{2\pi}\int_{-\infty}^{\infty}
+ S_a(\omega)\,\big|H_S(j\omega)\big|^2\,d\omega
+= \frac{1}{\pi}\int_0^\infty \frac{S_a(\omega)}{\omega^6}\,d\omega.
+\]
+
+For linear deep-water waves, displacement $\eta$ and acceleration $a$ are
+related by $a(\omega)=-(j\omega)^2\eta(\omega)$, so
+$S_a(\omega)=\omega^4 S_\eta(\omega)$ and
+\[
+\mathrm{Var}[S]
+= \frac{1}{\pi}\int_0^\infty \frac{\omega^4 S_\eta(\omega)}{\omega^6}\,d\omega
+= \frac{1}{\pi}\int_0^\infty \frac{S_\eta(\omega)}{\omega^2}\,d\omega.
+\]
+Either representation (in terms of $S_a$ or $S_\eta$) leads to the same scaling
+law once the spectrum is parameterized.
+
+\subsection*{Normalization and spectral shape factor}
+
+We now separate \emph{scale} from \emph{shape}. Let $\sigma_a^2$ denote the
+variance of vertical acceleration and let $\tau$ be a characteristic time
+scale of the sea state (e.g.\ the OU correlation time or a quantity
+proportional to the peak period). We write the acceleration spectrum in the
+normalized form
+\begin{equation}
+\label{eq:Sa-normalized}
+S_a(\omega)
+= \sigma_a^2\,\tau\,\Phi(\omega\tau),
+\end{equation}
+where $\Phi(u)$ is a dimensionless shape function and the prefactor is chosen
+so that
+\[
+\frac{1}{\pi}\int_0^\infty \Phi(u)\,du = 1
+\quad\Longleftrightarrow\quad
+\frac{1}{\pi}\int_0^\infty S_a(\omega)\,d\omega = \sigma_a^2.
+\]
+
+In practice, any realistic spectrum has negligible energy below some
+effective nonzero frequency $\omega_{\min}>0$ (finite record length, weak
+large-scale currents, mooring stiffness, etc.). We model this by
+\[
+\mathrm{Var}[S]
+= \frac{1}{\pi}\int_{\omega_{\min}}^\infty \frac{S_a(\omega)}{\omega^6}\,d\omega.
+\]
+Substituting \eqref{eq:Sa-normalized} and changing variables $u=\omega\tau$,
+$d\omega=du/\tau$, we obtain
+\begin{equation}
+\label{eq:varS-shape}
+\fitcol{
+\mathrm{Var}[S]
+= \sigma_a^2\tau^6\,
+\Bigg[\frac{1}{\pi}\int_{u_{\min}}^\infty \frac{\Phi(u)}{u^6}\,du\Bigg],
+}
+\end{equation}
+where $u_{\min}:=\omega_{\min}\tau$ is a (dimensionless) low-frequency cutoff
+in normalized coordinates.
+
+This motivates the definition
+\begin{equation}
+\label{eq:c-spec-def}
+c_{\mathrm{spec}}^{2}(u_{\min})
+:= \frac{1}{\pi}\int_{u_{\min}}^\infty \frac{\Phi(u)}{u^6}\,du,
+\end{equation}
+so that
+\begin{equation}
+\label{eq:sigmaS-scaling}
+\sigma_S(\sigma_a,\tau)
+:= \sqrt{\mathrm{Var}[S]}
+= c_{\text{spec}}(u_{\min})\,\sigma_a\,\tau^3.
+\end{equation}
+The factor $c_{\text{spec}}$ is \emph{dimensionless} and encodes only the
+spectral shape (and the choice of effective low-frequency cutoff), while
+$\sigma_a$ and $\tau$ carry the physical scale.
+
+\begin{remark}[Dimensional consistency]
+The units check is immediate:
+$\sigma_a$ has units $\mathrm{m/s^2}$ and $\tau$ has units $\mathrm{s}$, so
+$\sigma_a\tau^3$ has units $\mathrm{m\cdot s}$, the same units as the
+triple-integral state $S$ (since $S$ integrates displacement $p$ once more in
+time). Thus \eqref{eq:sigmaS-scaling} is dimensionally correct, and
+$c_{\text{spec}}$ is a pure number.
+\end{remark}
+
+\paragraph*{Narrowband vs.\ broadband spectra.}
+For a given $(\sigma_a,\tau)$, the size of $c_{\text{spec}}$ depends mainly on
+how much spectral mass lies near the low frequencies emphasized by the
+$1/u^6$ weight in \eqref{eq:c-spec-def}:
+\begin{itemize}[itemsep=1pt,topsep=1pt,leftmargin=*]
+\item A \emph{narrowband} spectrum (e.g.\ an idealized very sharp JONSWAP)
+concentrates variance near a single normalized frequency $u\approx 1$ and
+yields a relatively large $c_{\text{spec}}$.
+\item A more \emph{broadband} spectrum (e.g.\ Pierson--Moskowitz or a
+low-$\gamma$ JONSWAP) spreads energy across higher normalized frequencies.
+Because of the $1/u^6$ factor, this reduces $c_{\text{spec}}$ even though
+$\sigma_a$ and $\tau$ are kept fixed.
+\end{itemize}
+In particular, $c_{\text{spec}}$ is much more sensitive to spectral
+\emph{shape} (narrowness, bandwidth, tail behavior) than to overall energy
+($\sigma_a^2$) or peak period ($\tau$), which have already been factored out
+in \eqref{eq:sigmaS-scaling}.
+
+As a concrete example, for an OU surrogate with
+$\Phi_{\mathrm{OU}}(u)=2/(1+u^2)$ and a modest cutoff $u_{\min}\approx 1$, the
+integral \eqref{eq:c-spec-def} gives $c_{\text{spec}}\approx 0.16$.
+
+\subsection*{From physical $\sigma_S$ to pseudo-measurement $R_S$}
+
+The pseudo-measurement
+\[
+y_S = 0 = S + n_S,\qquad n_S \sim \mathcal{N}(0,R_S^2)
+\]
+encodes a prior belief that $S$ fluctuates around zero with some expected
+spread. The spectral result \eqref{eq:sigmaS-scaling} provides exactly that
+spread: the \emph{physical} standard deviation $\sigma_S(\sigma_a,\tau)$
+generated by the sea state described by $(\sigma_a,\tau)$ and by the chosen
+spectral shape.
+
+A natural Gaussian design is therefore
+\begin{equation}
+\label{eq:Rs-from-sigmaS}
+R_S(\sigma_a,\tau)
+= k_i\,\sigma_S(\sigma_a,\tau)
+= k_i\,c_{\text{spec}}(u_{\min})\,\sigma_a\,\tau^3,
+\end{equation}
+with $k_i>0$ a dimensionless “comfort factor.” Values $k_i\approx 1$ make the
+pseudo-measurement noise comparable to the natural spread of $S$, $k_i>1$ are
+more conservative, and $k_i<1$ are more aggressive.
+
+Absorbing the (unknown but bounded) shape factor $c_{\text{spec}}$ into
+$k_i$ leads to the practical adaptation law used in the filter:
+\begin{equation}
+\label{eq:Rs-sigmaa-tau3}
+R_S(\sigma_a,\tau)
+= k_i\,\sigma_a\,\tau^3,
+\end{equation}
+where $k_i$ is now understood as a \emph{spectral design coefficient}. It is
+chosen large enough to cover the expected range of realistic spectra (OU,
+Pierson--Moskowitz, JONSWAP with typical $\gamma$) and reasonable effective
+low-frequency cutoffs $u_{\min}$.
+
+\begin{remark}[Sea-state invariance]
+Under \eqref{eq:sigmaS-scaling} and \eqref{eq:Rs-from-sigmaS}, the ratio
+\[
+\frac{\sigma_S^2(\sigma_a,\tau)}{R_S^2(\sigma_a,\tau)}
+= \Big(\frac{c_{\text{spec}}(u_{\min})}{k_i}\Big)^2
+\]
+is a pure number independent of $(\sigma_a,\tau)$. In other words, $S$ is
+always measured in units of its physically expected spread for that sea
+state. This makes the pseudo-measurement \emph{sea-state invariant}: a calm
+sea and a steep sea produce innovation statistics of the same order once
+normalized by $R_S$, and the qualitative effect of the pseudo-measurement on
+the filter does not depend on wave height or period, only on the choice of
+$k_i$ and on spectral shape.
+\end{remark}
