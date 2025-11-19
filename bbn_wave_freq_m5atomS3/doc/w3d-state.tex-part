@@ -6,37 +6,37 @@ rotational attitude, linear kinematics, and stochastic acceleration subsystems w
 single nonlinear estimator. It is defined as
 \begin{equation}
 \label{eq:state-vector}
-x =
+\vct{x} =
 \begin{bmatrix}
-\delta\boldsymbol{\theta} &
-\mathbf{b}_g &
-\mathbf{v} &
-\mathbf{p} &
-\mathbf{S} &
-\mathbf{a}_w &
-\mathbf{b}_a
+\delta\vct{\theta} &
+\vct{b}_g &
+\vct{v} &
+\vct{p} &
+\vct{S} &
+\vct{a}_w &
+\vct{b}_a
 \end{bmatrix}^{\!\top},
 \end{equation}
 where each subvector has the following physical meaning:
 \begin{itemize}
-  \item $\delta\boldsymbol{\theta}\in\mathbb{R}^3$ --- small attitude-error
+  \item $\delta\vct{\theta}\in\mathbb{R}^3$ --- small attitude-error
         vector used in the multiplicative EKF formulation
         (right-multiplicative quaternion correction).
-  \item $\mathbf{b}_g\in\mathbb{R}^3$ --- gyroscope bias, modeled as a
+  \item $\vct{b}_g\in\mathbb{R}^3$ --- gyroscope bias, modeled as a
         random-walk process.
-  \item $\mathbf{v}\in\mathbb{R}^3$ --- velocity in the world (NED) frame.
-  \item $\mathbf{p}\in\mathbb{R}^3$ --- position or displacement in the world frame.
-  \item $\mathbf{S}\in\mathbb{R}^3$ --- integral of displacement,
-        $\mathbf{S}(t)=\int_0^t\mathbf{p}(\tau)\,d\tau$, used to constrain
+  \item $\vct{v}\in\mathbb{R}^3$ --- velocity in the world (NED) frame.
+  \item $\vct{p}\in\mathbb{R}^3$ --- position or displacement in the world frame.
+  \item $\vct{S}\in\mathbb{R}^3$ --- integral of displacement,
+        $\vct{S}(t)=\int_0^t\vct{p}(\tau)\,d\tau$, used to constrain
         long-term drift by a zero pseudo-measurement.
-  \item $\mathbf{a}_w\in\mathbb{R}^3$ --- latent world-frame acceleration
+  \item $\vct{a}_w\in\mathbb{R}^3$ --- latent world-frame acceleration
         following an Ornstein--Uhlenbeck (OU) process,
         \(
-           \dot{\mathbf{a}}_w = -\tfrac{1}{\tau_{a_w}}\mathbf{a}_w
-           + \boldsymbol{\eta}_{w}(t)
+           \dot{\vct{a}}_w = -\tfrac{1}{\tau_{a_w}}\vct{a}_w
+           + \vct{\eta}_{w}(t)
         \),
         representing correlated ocean-wave forcing.
-  \item $\mathbf{b}_a\in\mathbb{R}^3$ --- random-walk accelerometer bias with optional
+  \item $\vct{b}_a\in\mathbb{R}^3$ --- random-walk accelerometer bias with optional
         temperature-dependent drift.
 \end{itemize}
 
@@ -44,15 +44,14 @@ The complete state dimension is
 \[
 \fitcol{
 N_X =
-\underbrace{3}_{\delta\boldsymbol{\theta}} +
-\underbrace{3}_{\mathbf{b}_g} +
-\underbrace{3}_{\mathbf{v}} +
-\underbrace{3}_{\mathbf{p}} +
-\underbrace{3}_{\mathbf{S}} +
-\underbrace{3}_{\mathbf{a}_w} +
-\underbrace{3}_{\mathbf{b}_a}
+\underbrace{3}_{\delta\vct{\theta}} +
+\underbrace{3}_{\vct{b}_g} +
+\underbrace{3}_{\vct{v}} +
+\underbrace{3}_{\vct{p}} +
+\underbrace{3}_{\vct{S}} +
+\underbrace{3}_{\vct{a}_w} +
+\underbrace{3}_{\vct{b}_a}
 = 21,
 }
 \]
 with both gyro and accelerometer bias.
-
