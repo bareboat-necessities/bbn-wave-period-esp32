@@ -1,133 +1,133 @@
-
 \section{Measurement Update: Gain, Rank–3 Structure, and Block Algebra}
 \label{sec:meas-update-structure}
 
-Let the predicted pair be $(\hat{\vct{x}}^{-},\,\mat{P}^{-})$ and an $m$–dimensional measurement model
+Let the predicted pair be $(\hat{\boldsymbol{x}}^{-},P^{-})$ and a $m$–dimensional measurement model
 \[
-\vct{z} \;=\; h(\vct{x}) + \vct{\nu},\qquad
-\vct{\nu}\sim\mathcal{N}(\vct{0},\mat{R}),\qquad
-\mat{C} \;\coloneqq\; \left.\frac{\partial h}{\partial \vct{x}}\right|_{\hat{\vct{x}}^{-}}.
+\boldsymbol{z} \;=\; h(\boldsymbol{x}) + \boldsymbol{\nu},\qquad
+\boldsymbol{\nu}\sim\mathcal{N}(0,R),\qquad
+C \;\coloneqq\; \left.\frac{\partial h}{\partial \boldsymbol{x}}\right|_{\hat{\boldsymbol{x}}^{-}}.
 \]
-The EKF update is determined by the residual $\vct{r}=\vct{z}-h(\hat{\vct{x}}^{-})$,
+The EKF update is determined by the residual $\boldsymbol{r}=\boldsymbol{z}-h(\hat{\boldsymbol{x}}^{-})$,
 the innovation covariance
 \[
-\mat{\Lambda} \;=\; \mat{C}\,\mat{P}^{-}\,\mat{C}^\top + \mat{R} \;\in\; \R^{m\times m},
+\Lambda \;=\; C\,P^{-}\,C^\top + R \;\in\; \mathbb{R}^{m\times m},
 \]
 the Kalman gain
 \[
-\mat{K} \;=\; \mat{P}^{-}\,\mat{C}^\top\,\mat{\Lambda}^{-1} \;\in\; \R^{N\times m},
+K \;=\; P^{-}\,C^\top\,\Lambda^{-1} \;\in\; \mathbb{R}^{N\times m},
 \]
 and the posterior
 \[
-\hat{\vct{x}}^{+} \;=\; \hat{\vct{x}}^{-} + \mat{K}\,\vct{r},\qquad
-\mat{P}^{+} \;=\; \mat{P}^{-} - \mat{K}\,\mat{\Lambda}\,\mat{K}^\top.
+\hat{\boldsymbol{x}}^{+} \;=\; \hat{\boldsymbol{x}}^{-} + K\,\boldsymbol{r},\qquad
+P^{+} \;=\; P^{-} - K\,\Lambda\,K^\top.
 \]
 For numerical robustness, the Joseph form
 \[
-\mat{P}^{+} \;=\; (\I-\mat{K}\mat{C})\,\mat{P}^{-}\,(\I-\mat{K}\mat{C})^\top + \mat{K}\,\mat{R}\,\mat{K}^\top
+P^{+} \;=\; (I-KC)\,P^{-}\,(I-KC)^\top + K\,R\,K^\top
 \]
-is algebraically equivalent and preserves $\mat{P}^{+}\succeq \mat{0}$ up to roundoff.
+is algebraically equivalent and preserves $P^{+}\succeq 0$ up to roundoff.
 
 \subsection*{Structural rank and block decomposition}
 In this work the measurement dimension is $m=3$ (vector triads), so the correction is intrinsically
 \emph{rank–3}. The state is ordered as
 \[
 \begin{aligned}
-\vct{x} &= \bigl[\vct{A}^\top,\ \vct{L}^\top,\ \vct{B}^\top\bigr]^\top,\quad
-\vct{A} = (\vct{\delta\theta},\,\vct{b}_g)\in\R^{6},\\
-\vct{L} &= (\vct{v},\,\vct{p},\,\vct{S},\,\vct{a}_w)\in\R^{12},\qquad
-\vct{B} = \vct{b}_a\in\R^{3},
+\boldsymbol{x} &=\bigl[A^\top,L^\top,B^\top\bigr]^\top,\quad
+A =(\delta\boldsymbol{\theta},\mathbf{b}_g)\in\mathbb{R}^6,\;\\
+L &=(\mathbf{v},\mathbf{p},\mathbf{S},\mathbf{a}_w)\in\mathbb{R}^{12},\;\quad
+B =\mathbf{b}_a\in\mathbb{R}^3,
 \end{aligned}
 \]
 with prior covariance partitioned accordingly,
 \[
-\mat{P}^{-}=
+P^{-}=
 \begin{bmatrix}
-\mat{P}_{\!AA} & \mat{P}_{\!AL} & \mat{P}_{\!AB}\\
-\mat{P}_{\!LA} & \mat{P}_{\!LL} & \mat{P}_{\!LB}\\
-\mat{P}_{\!BA} & \mat{P}_{\!BL} & \mat{P}_{\!BB}
+P_{AA} & P_{AL} & P_{AB}\\
+P_{LA} & P_{LL} & P_{LB}\\
+P_{BA} & P_{BL} & P_{BB}
 \end{bmatrix}.
 \]
-Both magnetometer and accelerometer updates produce Jacobians $\mat{C}$ that are at most block-sparse over
+Both magnetometer and accelerometer updates produce Jacobians $C$ that are at most block-sparse over
 these three groups. The innovation covariance has the canonical form
-\[
+\begin{equation}
 \begin{aligned}
-\mat{\Lambda} &= \mat{C}\,\mat{P}^{-}\,\mat{C}^\top + \mat{R} \\
-  &= \mat{C}_{A}\,\mat{P}_{\!AA}\,\mat{C}_{A}^\top
-   + \mat{C}_{A}\,\mat{P}_{\!AL}\,\mat{C}_{L}^\top
-   + \mat{C}_{L}\,\mat{P}_{\!LA}\,\mat{C}_{A}^\top \\
+\Lambda &= C P^{-} C^\top + R \\
+  &= C_A P_{AA} C_A^\top
+   + C_A P_{AL} C_L^\top
+   + C_L P_{LA} C_A^\top \\
   &\quad
-   + \mat{C}_{L}\,\mat{P}_{\!LL}\,\mat{C}_{L}^\top
-   + \mat{C}_{B}\,\mat{P}_{\!BB}\,\mat{C}_{B}^\top
-   + \text{(cross terms)} + \mat{R}.
+   + C_L P_{LL} C_L^\top
+   + C_B P_{BB} C_B^\top
+   + \text{(cross terms)} + R .
 \end{aligned}
-\]
+\end{equation}
+
 and the cross-covariance factor
 \[
 \fitcol{
-\mat{P}\mat{C}^\top \;=\; \mat{P}^{-} \mat{C}^\top \;=\;
+PC^\top \;=\; P^{-} C^\top \;=\;
 \begin{bmatrix}
-\mat{P}_{\!AA} \mat{C}_{A}^\top + \mat{P}_{\!AL} \mat{C}_{L}^\top + \mat{P}_{\!AB} \mat{C}_{B}^\top\\
-\mat{P}_{\!LA} \mat{C}_{A}^\top + \mat{P}_{\!LL} \mat{C}_{L}^\top + \mat{P}_{\!LB} \mat{C}_{B}^\top\\
-\mat{P}_{\!BA} \mat{C}_{A}^\top + \mat{P}_{\!BL} \mat{C}_{L}^\top + \mat{P}_{\!BB} \mat{C}_{B}^\top
+P_{AA} C_A^\top + P_{AL} C_L^\top + P_{AB} C_B^\top\\
+P_{LA} C_A^\top + P_{LL} C_L^\top + P_{LB} C_B^\top\\
+P_{BA} C_A^\top + P_{BL} C_L^\top + P_{BB} C_B^\top
 \end{bmatrix}
-\;\in\; \R^{N\times 3}.
+\;\in\; \mathbb{R}^{N\times 3}.
 }
 \]
-Hence the gain \( \mat{K} \) is \emph{entirely determined} by a single $3\times 3$ solve:
+Hence the gain \(K\) is \emph{entirely determined} by a single $3\times 3$ solve:
 \[
-\mat{K} \;=\; (\mat{P}\mat{C}^\top)\,\mat{\Lambda}^{-1}.
+K \;=\; (PC^\top)\,\Lambda^{-1}.
 \]
-This characterization makes no algorithmic assumption: it is a direct algebraic consequence of the rank–3 measurement and the block partition of $\mat{P}^{-}$.
+This characterization makes no algorithmic assumption: it is a direct algebraic consequence of the rank–3 measurement and the block partition of $P^{-}$.
 
 \paragraph{Magnetometer (attitude–only).}
-The magnetic-field measurement depends on attitude only; with the standard sign fix one has
+The magnetic field measurement depends on attitude only; with the standard sign fix one has
 \[
 \fitcol{
-\vct{z}_{\text{mag}} \;=\; \mat{R}_{wb}\,\vct{B}_w + \vct{\nu}_{m},\qquad
-\mat{C}=\bigl[\,\mat{C}_{A}\ \ \mat{0}\ \ \mat{0}\,\bigr],\quad
-\mat{C}_{A} \;=\; -\,\skew{\hat{\vct{v}}_{2}}\in\R^{3\times 3}.
+\boldsymbol{z}_{\text{mag}} \;=\; R_{wb}\,\mathbf{B}_w + \boldsymbol{\nu}_m,\qquad
+C=\bigl[\,C_A\ \ 0\ \ 0\,\bigr],\quad
+C_A \;=\; -\bigl[\hat{\boldsymbol{v}}_2\bigr]_\times\in\mathbb{R}^{3\times 3}.
 }
 \]
 It follows that
 \[
 \fitcol{
-\mat{\Lambda} \;=\; \mat{C}_{A}\mat{P}_{\!AA}\mat{C}_{A}^\top + \mat{R}_{\text{mag}},\quad
-\mat{P}\mat{C}^\top \;=\; \begin{bmatrix}\mat{P}_{\!AA} \mat{C}_{A}^\top\\ \mat{P}_{\!LA} \mat{C}_{A}^\top\\ \mat{P}_{\!BA} \mat{C}_{A}^\top\end{bmatrix},
-\quad
-\mat{K} \;=\; (\mat{P}\mat{C}^\top)\, \mat{\Lambda}^{-1}.
+\Lambda \;=\; C_A P_{AA} C_A^\top + R_{\text{mag}},\qquad
+PC^\top \;=\; \begin{bmatrix}P_{AA} C_A^\top\\ P_{LA} C_A^\top\\ P_{BA} C_A^\top\end{bmatrix},
+\qquad
+K \;=\; (PC^\top) \Lambda^{-1}.
 }
 \]
-The posterior covariance then follows from the Joseph form, and the right–multiplicative attitude correction is applied to the quaternion; the attitude-error subvector is then reset.
+The posterior covariance then follows from the Joseph form, and the right–multiplicative attitude correction is applied to the quaternion, after which the attitude error subvector is reset.
 
-\paragraph{\texorpdfstring{Accelerometer (attitude + latent $\vct{a}_w$ + bias $\vct{b}_a$).}{Accelerometer (attitude + latent a_w + bias b_a).}}
+\paragraph{Accelerometer (attitude + latent $\mathbf{a}_w$ + bias $\mathbf{b}_a$).}
 For specific force in body coordinates,
 \[
 \fitcol{
-\vct{z}_{\text{acc}} \;=\; \mat{R}_{wb}\bigl(\vct{a}_w-\vct{g}\bigr) + \vct{b}_a + \vct{\nu}_{a},
+\boldsymbol{z}_{\text{acc}} \;=\; R_{wb}\bigl(\mathbf{a}_w-\mathbf{g}\bigr) + \mathbf{b}_a + \boldsymbol{\nu}_a,
 }
 \]
 the Jacobian touches three groups:
 \[
 \fitcol{
-\mat{C}=\bigl[\,\mat{C}_{A}\ \ \mat{C}_{L}\ \ \mat{C}_{B}\,\bigr],\quad
-\mat{C}_{A} = -\,\skew{\hat{\vct{f}}_b},\quad
-\mat{C}_{L} = \begin{bmatrix}\mat{0}_{3\times 9} & \mat{R}_{wb}\end{bmatrix},\quad
-\mat{C}_{B} = \I_{3}.
+C=\bigl[\,C_A\ \ C_L\ \ C_B\,\bigr],\quad
+C_A = -\bigl[\hat{\boldsymbol{f}}_b\bigr]_\times,\quad
+C_L = \begin{bmatrix}0_{3\times 9} & R_{wb}\end{bmatrix},\quad
+C_B = I_3.
 }
 \]
 The rank–3 structure again yields
 \[
-\mat{\Lambda} \;=\; \mat{C}\,\mat{P}^{-}\,\mat{C}^\top + \mat{R}_{\text{acc}},\qquad
-\mat{K} \;=\; (\mat{P}\mat{C}^\top)\,\mat{\Lambda}^{-1},
+\Lambda \;=\; C P^{-} C^\top + R_{\text{acc}},\qquad
+K \;=\; (PC^\top) \Lambda^{-1},
 \]
-with \(\mat{P}\mat{C}^\top\) assembled from the covariance blocks as above. The presence of \(\vct{a}_w\) and \(\vct{b}_a\) merely enlarges the nonzero columns of \(\mat{C}\) but does not change the rank–3 character of \(\mat{\Lambda}\).
+with \(PC^\top\) assembled from the covariance blocks as above. The presence of $\mathbf{a}_w$ and $\mathbf{b}_a$ merely enlarges the nonzero columns of \(C\) but does not change the rank-3 character of \(\Lambda\).
 
 \subsection*{Numerical form and invariants}
-Because \(\mat{\Lambda}\in\R^{3\times 3}\) is SPD whenever \(\mat{R}\succ \mat{0}\), its factorization (LDL$^\top$ or Cholesky with a diagonal bump if needed) is well-posed. 
-The gain \(\mat{K}\) is obtained by right-multiplying the \(N\times 3\) cross-covariance \(\mat{P}\mat{C}^\top\) with \(\mat{\Lambda}^{-1}\).
-The posterior covariance satisfies the usual invariants:
+Because \(\Lambda\in\mathbb{R}^{3\times 3}\) is SPD whenever \(R\succ 0\), its factorization (LDL$^\top$ or Cholesky with a diagonal bump if needed) is well-posed. 
+The gain \(K\) is obtained by right-multiplying the $N\times 3$ cross-covariance \(PC^\top\) with the \(3\times 3\) inverse of \(\Lambda\). The posterior covariance satisfies the usual invariants:
 \begin{itemize}\itemsep2pt
-\item \(\mat{P}^{+}\) is symmetric and (to numerical precision) PSD under the Joseph update.
-\item The right–multiplicative quaternion correction preserves unit norm and keeps the linearization point consistent with the reset \(\vct{\delta\theta}^{+}=\vct{0}\).
+\item \(P^{+}\) is symmetric and (to numerical precision) PSD under the Joseph update.
+\item The right–multiplicative quaternion correction preserves unit norm and keeps the linearization point consistent with the reset \(\delta\boldsymbol{\theta}^{+}=0\).
 \end{itemize}
+This is precisely the form realized by the implementation: the block algebra expresses the method’s intrinsic structure rather than a procedural recipe, and the reduction to a single rank–3 solve is a direct consequence of the measurement dimension.
