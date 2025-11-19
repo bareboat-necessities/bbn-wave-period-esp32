@@ -12,6 +12,14 @@
 % Skew-symmetric bracket using your bold macros
 \providecommand{\skew}[1]{\left[\vct{#1}\right]_\times}
 
+\pdfstringdefDisableCommands{%
+  \def\vct#1{#1}%
+  \def\mat#1{#1}%
+  \def\matg#1{#1}%
+  \def\skew#1{[#1]x}%
+  \def\I{I}%
+}
+
 % -------------------------------------------
 
 \section{Measurement Update: Gain, Rank–3 Structure, and Block Algebra}
