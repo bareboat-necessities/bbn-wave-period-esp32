@@ -4,41 +4,49 @@
 Consider a linear time–invariant SDE
 \begin{equation}
 \fitcol{
-\dot{\delta\mathbf x}(t) = \mathbf F\,\delta\mathbf x(t) + \mathbf L\,\mathbf w_c(t),
+\dot{\delta\vct{x}}(t)
+  = \mat{F}\,\delta\vct{x}(t) + \mat{L}\,\vct{w}_c(t),
 \qquad
-\mathbb E[\mathbf w_c(t)\mathbf w_c^\top(s)] = \mathbf Q_c\,\delta(t{-}s),
+\mathbb{E}\bigl[\vct{w}_c(t)\vct{w}_c^\top(s)\bigr]
+  = \matg{Q}_c\,\delta(t{-}s),
 }
 \end{equation}
-with Jacobian (linearized) dynamics matrix $\mathbf F$, noise–input matrix $\mathbf L$,
-and continuous spectral density $\mathbf Q_c$.
+with Jacobian (linearized) dynamics matrix $\mat{F}$, noise–input matrix $\mat{L}$,
+and continuous spectral density $\matg{Q}_c$.
 
 \paragraph{State transition via the matrix exponential}
 Over a small step $h>0$, the exact discrete transition of the mean is
 \begin{equation}
-\delta\mathbf x(t{+}h) \;=\; \underbrace{e^{\mathbf F h}}_{\displaystyle \Phi(h)}\,\delta\mathbf x(t)
-\;+\; \int_{0}^{h} e^{\mathbf F (h-\tau)}\,\mathbf L\,\mathbf w_c(t{+}\tau)\,d\tau.
+\delta\vct{x}(t{+}h)
+  \;=\;
+  \underbrace{e^{\mat{F} h}}_{\displaystyle \matg{\Phi}(h)}\,\delta\vct{x}(t)
+  \;+\;
+  \int_{0}^{h} e^{\mat{F} (h-\tau)}\,\mat{L}\,\vct{w}_c(t{+}\tau)\,d\tau.
 \end{equation}
 The matrix exponential is defined by the absolutely convergent series
-$e^{\mathbf F h}=\sum_{k=0}^{\infty}\frac{(\mathbf F h)^k}{k!}$ . In this setting \(\Phi(h)=e^{\mathbf F h}\) is the
+$e^{\mat{F} h}=\sum_{k=0}^{\infty}\frac{(\mat{F} h)^k}{k!}$.
+In this setting $\matg{\Phi}(h)=e^{\mat{F} h}$ is the
 \emph{discrete state transition}.
 
 \paragraph{Discrete process covariance}
-Let $\mathbf Q_d(h)$ denote the process noise accrued over $[t,t{+}h]$. From the stochastic
-variation-of-constants formula,
+Let $\matg{Q}_d(h)$ denote the process noise accrued over $[t,t{+}h]$.
+From the stochastic variation-of-constants formula,
 \begin{equation}
-\mathbf Q_d(h)
+\matg{Q}_d(h)
 \;=\;
-\int_{0}^{h} e^{\mathbf F \tau}\,\mathbf L\,\mathbf Q_c\,\mathbf L^\top\,e^{\mathbf F^\top \tau}\,d\tau.
+\int_{0}^{h}
+  e^{\mat{F} \tau}\,\mat{L}\,\matg{Q}_c\,\mat{L}^\top\,
+  e^{\mat{F}^\top \tau}\,d\tau.
 \label{eq:Qd-integral}
 \end{equation}
 
 \paragraph{Discrete Kalman prediction (time update)}
-Given $(\hat{\mathbf x}_k,\mathbf P_k)$ at $t_k$, the prediction to $t_{k+1}=t_k{+}h$ is
+Given $(\hat{\vct{x}}_k,\mat{P}_k)$ at $t_k$, the prediction to $t_{k+1}=t_k{+}h$ is
 \begin{align}
-\hat{\mathbf x}_{k+1|k} &= \Phi(h)\,\hat{\mathbf x}_k,\\
-\mathbf P_{k+1|k} &= \Phi(h)\,\mathbf P_k\,\Phi(h)^\top \;+\; \mathbf Q_d(h).
+\hat{\vct{x}}_{k+1|k} &= \matg{\Phi}(h)\,\hat{\vct{x}}_k,\\
+\mat{P}_{k+1|k} &= \matg{\Phi}(h)\,\mat{P}_k\,\matg{\Phi}(h)^\top \;+\; \matg{Q}_d(h).
 \end{align}
 These equations are the discrete counterparts of the continuous Lyapunov/Riccati
-flow with $\mathbf F$ and $\mathbf L$ the Jacobian dynamics and noise–input matrices
-defined in \S\ref{sec:lti-sde}. In our implementation, $\Phi$ and $\mathbf Q_d$
+flow with $\mat{F}$ and $\mat{L}$ the Jacobian dynamics and noise–input matrices
+defined in \S\ref{sec:lti-sde}. In our implementation, $\matg{\Phi}$ and $\matg{Q}_d$
 are computed analytically for the OU–driven kinematic blocks.
