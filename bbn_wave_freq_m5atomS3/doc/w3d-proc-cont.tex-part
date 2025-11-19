@@ -110,7 +110,7 @@ and take the block structure
 \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \Id & \mathbf 0\\
 \mathbf 0 & \mathbf 0 & \Id & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0\\
 \mathbf 0 & \mathbf 0 & \mathbf 0 & \Id & \mathbf 0 & \mathbf 0 & \mathbf 0\\
-\mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & -\tfrac{1}{\tau_a}\Id & \mathbf 0\\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & -\tfrac{1}{\tau}\Id & \mathbf 0\\
 \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0
 \end{bmatrix}
 \endgroup,
@@ -130,7 +130,7 @@ The diffusion matrix $\mathbf L$ injects the independent process noises:
 \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0\\
 \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0\\
 \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0\\
-\mathbf 0 & \mathbf 0 & \sqrt{\tfrac{2}{\tau_a}}\,\mathbf L_a & \mathbf 0\\
+\mathbf 0 & \mathbf 0 & \sqrt{\tfrac{2}{\tau}}\,\mathbf L_a & \mathbf 0\\
 \mathbf 0 & \mathbf 0 & \mathbf 0 & \Id
 \end{bmatrix}
 \endgroup,
