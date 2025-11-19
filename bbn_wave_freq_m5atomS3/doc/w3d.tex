@@ -147,6 +147,18 @@
 \DeclareMathOperator{\diag}{diag}
 \DeclareMathOperator{\sym}{sym}
 
+% === Sets and spaces ===
+\newcommand{\set}[1]{\mathcal{#1}}  % generic set, e.g. \set{X}
+\newcommand{\R}{\mathbb{R}}         % real numbers
+\newcommand{\C}{\mathbb{C}}         % complex numbers
+\newcommand{\N}{\mathbb{N}}         % natural numbers
+\newcommand{\Z}{\mathbb{Z}}         % integers
+
+% === Probability / statistics ===
+\newcommand{\E}{\mathbb{E}}         % expectation
+\DeclareMathOperator{\Var}{Var}     % variance
+\DeclareMathOperator{\Cov}{Cov}     % covariance
+
 % Two-column helper (no layout change)
 \newcommand{\fitcol}[1]{%
   \adjustbox{max width=\columnwidth}{\ensuremath{\displaystyle #1}}%
