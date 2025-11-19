@@ -4,7 +4,7 @@
 
 To estimate parameters adaptively we need a stable, real-time estimate of the dominant frequency of acceleration from the IMU. Using the vertical specific force $a_z(t)$, we normalize by gravity to form a dimensionless input $u(t)$ that drives one of three trackers. Each tracker outputs a raw frequency, which is then clamped and smoothed to produce a reliable $\bar f_k$ for downstream adaptation and direction estimation.
 
-\paragraph{Signal.}
+\paragraph{Signal}
 Track frequency from the vertical specific force $a_z(t)$ (IMU; body $\to$ world-aligned), normalized by $g$:
 \[
 u(t)=\frac{a_z(t)}{g}.
@@ -15,7 +15,7 @@ Let $\omega=2\pi f$ and $\phi(t)=\int_0^t \omega(\tau)\,d\tau$.
 
 Aranovskiy filter \cite{Bobtsov2013182} drives a lightly damped virtual resonator by $u(t)$ and adjusts its natural frequency so its output matches the input. If the resonator frequency equals the signal's, the error energy is minimized.
 
-\paragraph{Method.}
+\paragraph{Method}
 Internal lightly damped resonator:
 \begin{align}
 \ddot\xi + 2\zeta\,\omega\,\dot\xi + \omega^2 \xi &= u, \\
@@ -40,7 +40,7 @@ Discrete-time (sample $k$ at $\Delta t$):
 
 KalmANF filter \cite{Ali2023DAFx} models the signal with a second-order notch parameterized by $a=2\cos\omega$. It treats $a$ as a (slowly varying) state and updates it via a scalar Kalman step driven by the instantaneous prediction error.
 
-\paragraph{Method.}
+\paragraph{Method}
 Embed the notch with parameter $a\in(-2,2)$:
 \begin{align}
 x_{k+1} &= \begin{bmatrix} 0 & 1 \\ -1 & a_k \end{bmatrix} x_k + \begin{bmatrix} 0 \\ 1 \end{bmatrix} u_k, \qquad
@@ -63,7 +63,7 @@ with $\partial \varepsilon_k/\partial a$ obtained from the standard state-sensit
 
 Use debounced threshold crossings to estimate period directly; smooth to reduce jitter.
 
-\paragraph{Method.}
+\paragraph{Method}
 Times of upcrossings of $u$ through band $[-h,+h]$ (debounced by $T_{\mathrm{deb}}$). Period estimate
 \(
 \hat T_k=(1-\alpha_T)\hat T_{k-1}+\alpha_T (t_k-t_{k-1}), \quad \hat f_k=1/\hat T_k.
@@ -106,7 +106,7 @@ Acceleration level:
 
 The integral constraint on displacement should be weaker when waves are large/slow (motions integrate to larger excursions). A cubic scaling in $\tau_\star$ captures this.
 
-\paragraph{Law.}
+\paragraph{Law}
 \[
 R_{S,\star}(k)=c_R \,\sigma_{a,\star}(k)\,\tau_\star^3(k),
 \]
@@ -271,7 +271,7 @@ $\vct{t}=(-\widehat d_y,\widehat d_x)$. A first–order approximation gives
 \]
 reported modulo $180^\circ$.
 
-\paragraph{Travel sense (sign) via vertical–horizontal phase discriminator.}
+\paragraph{Travel sense (sign) via vertical–horizontal phase discriminator}
 The amplitude filter above recovers only the \emph{line} of propagation (modulo $180^\circ$). To decide which way along this line the waves travel, we exploit the phase relation between horizontal amplitude and vertical motion.
 
 Define a horizontal envelope and a short–horizon vertical derivative,
@@ -300,9 +300,9 @@ with $180^\circ$ periodicity handled in post–processing (e.g.\ wrapping to $[0
 
 This section provides concrete values and guards so others can reproduce the behavior and avoid unstable operating regions.
 
-\paragraph{Sampling.} IMU and estimator run at $f_s=\SI{240}{Hz}$ ($\Delta t=1/f_s$). Magnetometer updates are gated for $T_{\mathrm{mag}}=\SI{5}{s}$ after start.
+\paragraph{Sampling} IMU and estimator run at $f_s=\SI{240}{Hz}$ ($\Delta t=1/f_s$). Magnetometer updates are gated for $T_{\mathrm{mag}}=\SI{5}{s}$ after start.
 
-\paragraph{Regularization law.} With $c_R$ a dimensionless gain and XY anisotropy $\rho_{xy}\in(0,1)$:
+\paragraph{Regularization law} With $c_R$ a dimensionless gain and XY anisotropy $\rho_{xy}\in(0,1)$:
 \[
 R_{S,\star}=c_R\,\sigma_{a,\star}\,\tau_\star^3,\qquad
 R_S=\mathrm{diag}(\rho_{xy}R_{S,\star},\,\rho_{xy}R_{S,\star},\,R_{S,\star}),
