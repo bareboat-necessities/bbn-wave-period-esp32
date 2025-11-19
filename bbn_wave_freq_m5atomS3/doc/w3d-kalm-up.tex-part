@@ -10,16 +10,16 @@ C \;\coloneqq\; \left.\frac{\partial h}{\partial \boldsymbol{x}}\right|_{\hat{\b
 The EKF update is determined by the residual $\boldsymbol{r}=\boldsymbol{z}-h(\hat{\boldsymbol{x}}^{-})$,
 the innovation covariance
 \[
-S \;=\; C\,P^{-}\,C^\top + R \;\in\; \mathbb{R}^{m\times m},
+\Lambda \;=\; C\,P^{-}\,C^\top + R \;\in\; \mathbb{R}^{m\times m},
 \]
 the Kalman gain
 \[
-K \;=\; P^{-}\,C^\top\,S^{-1} \;\in\; \mathbb{R}^{N\times m},
+K \;=\; P^{-}\,C^\top\,\Lambda^{-1} \;\in\; \mathbb{R}^{N\times m},
 \]
 and the posterior
 \[
 \hat{\boldsymbol{x}}^{+} \;=\; \hat{\boldsymbol{x}}^{-} + K\,\boldsymbol{r},\qquad
-P^{+} \;=\; P^{-} - K\,S\,K^\top.
+P^{+} \;=\; P^{-} - K\,\Lambda\,K^\top.
 \]
 For numerical robustness, the Joseph form
 \[
@@ -51,7 +51,7 @@ Both magnetometer and accelerometer updates produce Jacobians $C$ that are at mo
 these three groups. The innovation covariance has the canonical form
 \begin{equation}
 \begin{aligned}
-S &= C P^{-} C^\top + R \\
+\Lambda &= C P^{-} C^\top + R \\
   &= C_A P_{AA} C_A^\top
    + C_A P_{AL} C_L^\top
    + C_L P_{LA} C_A^\top \\
@@ -76,7 +76,7 @@ P_{BA} C_A^\top + P_{BL} C_L^\top + P_{BB} C_B^\top
 \]
 Hence the gain \(K\) is \emph{entirely determined} by a single $3\times 3$ solve:
 \[
-K \;=\; (PC^\top)\,S^{-1}.
+K \;=\; (PC^\top)\,\Lambda^{-1}.
 \]
 This characterization makes no algorithmic assumption: it is a direct algebraic consequence of the rank–3 measurement and the block partition of $P^{-}$.
 
@@ -92,10 +92,10 @@ C_A \;=\; -\bigl[\hat{\boldsymbol{v}}_2\bigr]_\times\in\mathbb{R}^{3\times 3}.
 It follows that
 \[
 \fitcol{
-S \;=\; C_A P_{AA} C_A^\top + R_{\text{mag}},\qquad
+\Lambda \;=\; C_A P_{AA} C_A^\top + R_{\text{mag}},\qquad
 PC^\top \;=\; \begin{bmatrix}P_{AA} C_A^\top\\ P_{LA} C_A^\top\\ P_{BA} C_A^\top\end{bmatrix},
 \qquad
-K \;=\; (PC^\top) S^{-1}.
+K \;=\; (PC^\top) \Lambda^{-1}.
 }
 \]
 The posterior covariance then follows from the Joseph form, and the right–multiplicative attitude correction is applied to the quaternion, after which the attitude error subvector is reset.
@@ -118,13 +118,14 @@ C_B = I_3.
 \]
 The rank–3 structure again yields
 \[
-S \;=\; C P^{-} C^\top + R_{\text{acc}},\qquad
-K \;=\; (PC^\top) S^{-1},
+\Lambda \;=\; C P^{-} C^\top + R_{\text{acc}},\qquad
+K \;=\; (PC^\top) \Lambda^{-1},
 \]
-with \(PC^\top\) assembled from the covariance blocks as above. The presence of $\mathbf{a}_w$ and $\mathbf{b}_a$ merely enlarges the nonzero columns of \(C\) but does not change the rank-3 character of \(S\).
+with \(PC^\top\) assembled from the covariance blocks as above. The presence of $\mathbf{a}_w$ and $\mathbf{b}_a$ merely enlarges the nonzero columns of \(C\) but does not change the rank-3 character of \(\Lambda\).
 
 \subsection*{Numerical form and invariants}
-Because \(S\in\mathbb{R}^{3\times 3}\) is SPD whenever \(R\succ 0\), its factorization (LDL$^\top$ or Cholesky with a diagonal bump if needed) is well-posed. The gain \(K\) is obtained by right-multiplying the $N\times 3$ cross-covariance \(PC^\top\) with the \(3\times 3\) inverse of \(S\). The posterior covariance satisfies the usual invariants:
+Because \(\Lambda\in\mathbb{R}^{3\times 3}\) is SPD whenever \(R\succ 0\), its factorization (LDL$^\top$ or Cholesky with a diagonal bump if needed) is well-posed. 
+The gain \(K\) is obtained by right-multiplying the $N\times 3$ cross-covariance \(PC^\top\) with the \(3\times 3\) inverse of \(\Lambda\). The posterior covariance satisfies the usual invariants:
 \begin{itemize}\itemsep2pt
 \item \(P^{+}\) is symmetric and (to numerical precision) PSD under the Joseph update.
 \item The right–multiplicative quaternion correction preserves unit norm and keeps the linearization point consistent with the reset \(\delta\boldsymbol{\theta}^{+}=0\).
