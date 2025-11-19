@@ -4,7 +4,7 @@
 \newcommand{\mat}[1]{\bm{#1}}      % bold matrices/tensors (incl. Greek)
 \newcommand{\I}{\mat{I}}           % identity
 \newcommand{\R}{\mathbb{R}}        % real numbers
-\newcommand{\skew}[1]{\bigl[\vct{#1}\bigr]_\times}
+
 % -------------------------------------------
 
 \section{Measurement Update: Gain, Rank–3 Structure, and Block Algebra}
