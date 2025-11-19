@@ -1,9 +1,14 @@
 % --- Bold helpers (put in your preamble) ---
 % Needs: \usepackage{bm}
-\newcommand{\vct}[1]{\bm{#1}}      % bold vectors (incl. Greek)
-\newcommand{\mat}[1]{\bm{#1}}      % bold matrices/tensors (incl. Greek)
-\newcommand{\I}{\mat{I}}           % identity
-\newcommand{\R}{\mathbb{R}}        % real numbers
+
+% Vectors (Latin & Greek): bold-italic
+\newcommand{\vct}[1]{\bm{#1}}
+
+% Matrices:
+\renewcommand{\mat}[1]{\mathbf{#1}} % LATIN matrices: upright bold (C, K, P, R, I, etc.)
+\newcommand{\matg}[1]{\bm{#1}}      % GREEK matrices: bold-italic (Σ, Ω, Φ, Λ, etc.)
+\newcommand{\I}{\mat{I}}            % identity
+\newcommand{\R}{\mathbb{R}}         % real numbers
 
 % -------------------------------------------
 
