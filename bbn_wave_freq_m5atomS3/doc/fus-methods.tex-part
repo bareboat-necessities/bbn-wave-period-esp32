@@ -160,8 +160,7 @@ so that
 \]
 
 In practice, any realistic spectrum has negligible energy below some
-effective nonzero frequency $\omega_{\min}>0$ (finite record length, weak
-large-scale currents, mooring stiffness, etc.). We model this by
+effective nonzero frequency $\omega_{\min}>0$. We model this by
 \[
 \mathrm{Var}[S]
 = \frac{1}{\pi}\int_{\omega_{\min}}^\infty \frac{S_a(\omega)}{\omega^6}\,d\omega.
