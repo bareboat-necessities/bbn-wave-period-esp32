@@ -20,9 +20,9 @@ path that matches the Q-MEKF with piecewise-constant \(\hat{\boldsymbol\omega}=
   \item \(\Phi_{\!AA}(h)\) implements the right-multiplicative small-angle
         transition: the \(\delta\boldsymbol\theta\)-block is the Rodrigues
         expression
-        \(\Phi_{\theta\theta}(h)=\mathbf I - \sin\theta\,\mathbf K + (1-\cos\theta)\,\mathbf K^2\)
+        \(\Phi_{\theta\theta}(h)=\mathbf I - \sin\theta\,\mathbf D + (1-\cos\theta)\,\mathbf D^2\)
         with \(\theta=\|\hat{\boldsymbol\omega}\|h\) and
-        \(\mathbf K=[\hat{\boldsymbol\omega}/\|\hat{\boldsymbol\omega}\|]_\times\);
+        \(\mathbf D=[\hat{\boldsymbol\omega}/\|\hat{\boldsymbol\omega}\|]_\times\);
         the \(\delta\boldsymbol\theta\)–\(\mathbf b_g\) block is \(-\mathbf I\,h\).
   \item \(\mathbf Q_{\!AA}(h)\) is built from rotation integrals:
         \[
@@ -76,7 +76,7 @@ expressions:
       For each axis \(j\in\{x,y,z\}\) with stationary variance \(\sigma_j^2\),
       the per-axis \(4\times4\) noise is
       \[
-      \mathbf Q_{d,\text{axis}} \;=\; q_c\;\mathrm{sym}\,\mathbf K,\qquad
+      \mathbf Q_{d,\text{axis}} \;=\; q_c\;\mathrm{sym}\,\mathcal{K},\qquad
       q_c \equiv \frac{2\,\sigma^2}{\tau}.
       \]
 
@@ -89,7 +89,7 @@ expressions:
       B_0 &= -\frac{\tau}{2}\,(e^{-2x}-1),\\
       \end{aligned}
       \]
-      the algorithm fills \(\mathbf K\) with the following entries
+      the algorithm fills \(\mathcal{K}\) with the following entries
       (all \(h\), \(\tau\)–dependent; \(\mathrm{sym}\) means \(\tfrac12(\cdot+\cdot^\top)\)):
       \[
       \fitcol{
@@ -127,7 +127,7 @@ In short, the discrete transition and covariance used by the method's algorithm 
 \end{aligned}
 \]
 with \(\Phi_{\text{axis}},\,\phi_{va},\phi_{pa},\phi_{Sa}\) and
-\(\mathbf Q_{d,\text{axis}}=q_c\,\mathrm{sym}\,\mathbf K\) as given above. The
-\emph{step-by-step derivations} of \(\Phi_{\text{axis}}\) and all entries of \(\mathbf K\)
+\(\mathbf Q_{d,\text{axis}}=q_c\,\mathrm{sym}\,\mathcal{K}\) as given above. The
+\emph{step-by-step derivations} of \(\Phi_{\text{axis}}\) and all entries of \(\mathcal{K}\)
 (including small-\(x=h/\tau\) series) are provided in the Appendix
 (\S\ref{sec:ou-appendix}).
