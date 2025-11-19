@@ -13,7 +13,7 @@
 
 The pseudo-measurement
 \[
-y_S = 0 = S + n_S,\qquad n_S \sim \mathcal N(0,R_S^2)
+y_S = 0 = S + n_S,\qquad n_S \sim \mathcal{N}(0,R_S^2)
 \]
 is not a physical sensor but a regularizer that prevents the triple-integral
 state $S$ from drifting. Applied repeatedly, it acts like a \emph{leak} on $S$
@@ -22,12 +22,12 @@ and therefore induces an \emph{effective high-pass} in the $S$-channel.
 To see this in a scalar toy model, consider
 \begin{equation}
 \label{eq:toy-S-process}
-\dot S = w_S,\qquad \mathbb E[w_S(t)w_S(s)] = q_S\,\delta(t-s),
+\dot S = w_S,\qquad \mathbb{E}[w_S(t)w_S(s)] = q_S\,\delta(t-s),
 \end{equation}
 with pseudo-measurement
 \begin{equation}
 \label{eq:toy-S-meas}
-y_S = S + n_S,\qquad \mathbb E[n_S(t)n_S(s)] = R_S^2\,\delta(t-s).
+y_S = S + n_S,\qquad \mathbb{E}[n_S(t)n_S(s)] = R_S^2\,\delta(t-s).
 \end{equation}
 The continuous-time Kalman--Bucy filter is
 \[
@@ -205,7 +205,7 @@ recovers $c_{\mathrm{spec}}\approx 0.16084$.
 
 The pseudo-measurement
 \[
-y_S = 0 = S + n_S,\qquad n_S \sim \mathcal N(0,R_S^2)
+y_S = 0 = S + n_S,\qquad n_S \sim \mathcal{N}(0,R_S^2)
 \]
 encodes the prior belief that $S$ stays near zero but is allowed to fluctuate.
 The spectral result \eqref{eq:sigmaS-scaling} gives the \emph{physical}
