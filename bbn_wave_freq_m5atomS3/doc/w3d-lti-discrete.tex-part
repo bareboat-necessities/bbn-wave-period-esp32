@@ -12,7 +12,7 @@ Consider a linear time–invariant SDE
 with Jacobian (linearized) dynamics matrix $\mathbf F$, noise–input matrix $\mathbf L$,
 and continuous spectral density $\mathbf Q_c$.
 
-\paragraph{State transition via the matrix exponential.}
+\paragraph{State transition via the matrix exponential}
 Over a small step $h>0$, the exact discrete transition of the mean is
 \begin{equation}
 \delta\mathbf x(t{+}h) \;=\; \underbrace{e^{\mathbf F h}}_{\displaystyle \Phi(h)}\,\delta\mathbf x(t)
@@ -22,7 +22,7 @@ The matrix exponential is defined by the absolutely convergent series
 $e^{\mathbf F h}=\sum_{k=0}^{\infty}\frac{(\mathbf F h)^k}{k!}$ . In this setting \(\Phi(h)=e^{\mathbf F h}\) is the
 \emph{discrete state transition}.
 
-\paragraph{Discrete process covariance.}
+\paragraph{Discrete process covariance}
 Let $\mathbf Q_d(h)$ denote the process noise accrued over $[t,t{+}h]$. From the stochastic
 variation-of-constants formula,
 \begin{equation}
@@ -32,7 +32,7 @@ variation-of-constants formula,
 \label{eq:Qd-integral}
 \end{equation}
 
-\paragraph{Discrete Kalman prediction (time update).}
+\paragraph{Discrete Kalman prediction (time update)}
 Given $(\hat{\mathbf x}_k,\mathbf P_k)$ at $t_k$, the prediction to $t_{k+1}=t_k{+}h$ is
 \begin{align}
 \hat{\mathbf x}_{k+1|k} &= \Phi(h)\,\hat{\mathbf x}_k,\\
