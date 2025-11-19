@@ -34,10 +34,13 @@
 %\let\Bbbk\relax
 %\usepackage{amssymb}
 
-\DeclareRobustCommand{\vct}[1]{\bm{#1}}     % vectors (Latin & Greek): bold-italic
-\DeclareRobustCommand{\mat}[1]{\mathbf{#1}} % LATIN matrices: upright bold
-\DeclareRobustCommand{\matg}[1]{\bm{#1}}    % GREEK matrices: bold-italic
-\DeclareRobustCommand{\skew}[1]{\left[\vct{#1}\right]_\times}
+% Vectors and matrices: bold italic (IEEE-style)
+\DeclareRobustCommand{\vct}[1]{\bm{#1}}  % vectors (Latin & Greek)
+\DeclareRobustCommand{\mat}[1]{\bm{#1}}  % matrices (LATIN)
+\DeclareRobustCommand{\matg}[1]{\bm{#1}} % matrices (GREEK)
+
+% Skew-symmetric bracket using your bold macros
+\providecommand{\skew}[1]{\left[\vct{#1}\right]_\times}
 
 \usepackage{cite}
 \usepackage[breaklinks=true,hidelinks]{hyperref}
