@@ -11,17 +11,18 @@ We evaluate the proposed Kalman filter against several canonical wave models.
 
 \begin{table}[t]
   \centering
-  \caption{Wave scenarios synthesized for evaluation. Each run: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288,000 samples.}
+  \caption{Wave scenarios synthesized for evaluation. Each run: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288{,}000 samples.}
   \label{tab:scenarios}
   \sisetup{table-number-alignment = center}
-  \begin{tabular}{@{}lcccc@{}}
+  \setlength{\tabcolsep}{2pt}%
+  \begin{tabular}{@{}l p{3.1cm} p{0.9cm} p{0.9cm} p{2.1cm}@{}}
     \toprule
-    Scenario & Model & $H_s$ [m] & $T_p$ [s] & Directional spread \\
+    Scenario & Model & $H_s$ [m] & $T_p$ [s] & Dir.\ spread \\
     \midrule
-    W1 & \{JONSWAP, PM-Stokes\} & 0.27 & 3.0  & fixed / randomized \\
-    W2 & \{JONSWAP, PM-Stokes\} & 1.50 & 5.7  & fixed / randomized \\
-    W3 & \{JONSWAP, PM-Stokes\} & 4.00 & 8.5  & fixed / randomized \\
-    W4 & \{JONSWAP, PM-Stokes\} & 8.50 & 11.4 & fixed / randomized \\
+    W1 & \{JONSWAP, PM-Stokes\} & 0.27 & 3.0  & 30° / cos-spread \\
+    W2 & \{JONSWAP, PM-Stokes\} & 1.50 & 5.7  & 30° / cos-spread \\
+    W3 & \{JONSWAP, PM-Stokes\} & 4.00 & 8.5  & 30° / cos-spread \\
+    W4 & \{JONSWAP, PM-Stokes\} & 8.50 & 11.4 & 30° / cos-spread \\
     \bottomrule
   \end{tabular}
 \end{table}
