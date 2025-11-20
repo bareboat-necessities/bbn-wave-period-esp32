@@ -158,18 +158,6 @@ public:
         apply_tune();
     }
 
-    void setTauCoeff(float c) {
-        if (std::isfinite(c) && c > 0.0f) {
-            tau_coeff = c;
-        }
-    }
-
-    void setRSCoeff(float c) {
-        if (std::isfinite(c) && c > 0.0f) {
-            R_S_coeff = c;
-        }
-    }
-
     void initialize_from_acc(const Eigen::Vector3f& acc_world) {
         if (mekf_) mekf_->initialize_from_acc(acc_world);
     }
@@ -223,6 +211,18 @@ public:
     void setRSXYFactor(float k) {
         if (std::isfinite(k)) {
             R_S_xy_factor = std::min(std::max(k, 0.0f), 1.0f);
+        }
+    }
+
+    void setTauCoeff(float c) {
+        if (std::isfinite(c) && c > 0.0f) {
+            tau_coeff = c;
+        }
+    }
+
+    void setRSCoeff(float c) {
+        if (std::isfinite(c) && c > 0.0f) {
+            R_S_coeff = c;
         }
     }
 
