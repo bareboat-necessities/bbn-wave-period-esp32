@@ -118,14 +118,11 @@ The directional sea models produce an Euler attitude for the advected buoy.
 The full filter and simulation source code is available on GitHub in the Bareboat Necessities project, 
 implemented in modern idiomatic C++ with the embedded-friendly Eigen linear algebra library.
 
-\section{Conclusion and Further Work}
-\label{sec:furth-work}
+\section{Conclusion and Future Work}
+\label{sec:future-work}
 
-Build a comprehensive testing framework so
-different methods can be tested, scored and compared in performance
-on exactly same reference data sets. 
-This framework and data can also serve as
-training for Monte-Carlo simulations to achieve better
-tuning of each existing method. 
-
-
+A natural next direction for future work is the development of a comprehensive testing and benchmarking framework.
+Such a framework would enable the rigorous comparison of different wave kinematics algorithms by 
+evaluating their performance against standardized reference datasets. Furthermore, this infrastructure would 
+facilitate large-scale Monte Carlo simulations, providing the data necessary for the robust statistical tuning 
+of each method's parameters.
