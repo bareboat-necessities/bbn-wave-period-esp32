@@ -87,7 +87,7 @@ The magnetic field measurement depends on attitude only; with the standard sign 
 \fitcol{
 \vct{z}_{\text{mag}} \;=\; \mat{R}_{wb}\,\vct{B}_w + \vct{\nu}_m,\qquad
 \mat{C}=\bigl[\,\mat{C}_A\ \ \mat{0}\ \ \mat{0}\,\bigr],\quad
-\mat{C}_A \;=\; -\skew{\hat{v}_2}\in\mathbb{R}^{3\times 3}.
+\mat{C}_A \;=\; -\Skew{\hat{v}_2}\in\mathbb{R}^{3\times 3}.
 }
 \]
 It follows that
@@ -116,7 +116,7 @@ the Jacobian touches three groups:
 \[
 \fitcol{
 \mat{C}=\bigl[\,\mat{C}_A\ \ \mat{C}_L\ \ \mat{C}_B\,\bigr],\quad
-\mat{C}_A = -\skew{\hat{f}_b},\quad
+\mat{C}_A = -\Skew{\hat{f}_b},\quad
 \mat{C}_L = \begin{bmatrix}\mat{0}_{3\times 9} & \mat{R}_{wb}\end{bmatrix},\quad
 \mat{C}_B = \mat{I}_3.
 }
