@@ -118,3 +118,14 @@ The directional sea models produce an Euler attitude for the advected buoy.
 The full filter and simulation source code is available on GitHub in the Bareboat Necessities project, 
 implemented in modern idiomatic C++ with the embedded-friendly Eigen linear algebra library.
 
+\section{Conclusion and Further Work}
+\label{sec:furth-work}
+
+Build a comprehensive testing framework so
+different methods can be tested, scored and compared in performance
+on exactly same reference data sets. 
+This framework and data can also serve as
+training for Monte-Carlo simulations to achieve better
+tuning of each existing method. 
+
+
