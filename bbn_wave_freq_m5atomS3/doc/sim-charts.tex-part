@@ -115,4 +115,5 @@ The directional sea models produce an Euler attitude for the advected buoy.
   \end{tabular}
 \end{table}
 
+The full source code for the filter and simulations is shared on GitHub under Bareboat Necessities project.
 
