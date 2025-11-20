@@ -9,16 +9,6 @@ We evaluate the proposed Kalman filter against several canonical wave models.
     \item \textbf{Pierson–Moskowitz (PM) Stokes seas}: Fully-developed sea state with third-order bound harmonics that introduce \textit{nonlinear wave–wave interactions} and subtle phase coupling effects
 \end{itemize}
 
-Each scenario undergoes \SI{20}{min} simulation at \SI{240}{Hz}, producing time series of world-frame displacement, velocity, and 
-acceleration alongside body-frame IMU measurements (specific force and angular rate). Directional seas employ a randomized $\cos^{2s}$ spread 
-about a nominal direction, with each spectral component receiving independent phase randomization while maintaining ensemble energy consistency.
-
-\subsection{Reference and Measurements}
-For each time $t_k$, the simulator outputs world-frame reference $\big(\mathbf{p}_{\mathrm{ref}},\mathbf{v}_{\mathrm{ref}},\mathbf{a}_{\mathrm{ref}}\big)$ at 
-the surface particle (buoy) and body-frame IMU readings $\big(\mathbf{f}_b,\boldsymbol{\omega}_b\big)$, with magnetometer readings synthesis. 
-The directional sea models produce an Euler attitude for the advected buoy.
-
-
 \begin{table}[t]
   \centering
   \caption{Wave scenarios synthesized for evaluation. Each run: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288,000 samples.}
@@ -36,8 +26,10 @@ The directional sea models produce an Euler attitude for the advected buoy.
   \end{tabular}
 \end{table}
 
+Each scenario undergoes \SI{20}{min} simulation at \SI{240}{Hz}, producing time series of world-frame displacement, velocity, and 
+acceleration alongside body-frame IMU measurements (specific force and angular rate). Directional seas employ a randomized $\cos^{2s}$ spread 
+about a nominal direction, with each spectral component receiving independent phase randomization while maintaining ensemble energy consistency.
 
-% JONSWAP - medium
 \begin{figure}[!t]\centering
   \begin{minipage}{0.49\columnwidth}\centering
     \IncludePGF{spectrum_jonswap_medium_polar.pgf}
@@ -48,6 +40,14 @@ The directional sea models produce an Euler attitude for the advected buoy.
   \caption{JONSWAP: Directional spectrum (medium $H_s$). Left: polar heatmap $E(f,\theta)$; right: 3D surface.}
   \label{fig:jonswap_spec_medium}
 \end{figure}
+
+\subsection{Reference and Measurements}
+For each time $t_k$, the simulator outputs world-frame reference $\big(\mathbf{p}_{\mathrm{ref}},\mathbf{v}_{\mathrm{ref}},\mathbf{a}_{\mathrm{ref}}\big)$ at 
+the surface particle (buoy) and body-frame IMU readings $\big(\mathbf{f}_b,\boldsymbol{\omega}_b\big)$, with magnetometer readings synthesis. 
+The directional sea models produce an Euler attitude for the advected buoy.
+
+% JONSWAP - medium
+
 \begin{figure}[!t]\centering
   \IncludePGF{freqtrack_jonswap_H1.500.pgf}
   \caption{Frequency tracking comparison for JONSWAP wave, $H_s = 1.500$ m.}
