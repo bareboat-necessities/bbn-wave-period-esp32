@@ -34,7 +34,7 @@ The corresponding Jacobians, consistent with the
 right-multiplicative attitude convention, are
 \begin{align}
 \frac{\partial \vct{f}_b}{\partial \vct{\theta}}
-  &= -\skew{f_b}, &
+  &= -\Skew{f_b}, &
 \frac{\partial \vct{f}_b}{\partial \vct{a}_w}
   &= \mat{R}_{wb}, &
 \frac{\partial \vct{f}_b}{\partial \vct{b}_a}
@@ -80,7 +80,7 @@ measurement Jacobians with respect to the filter state remain identical to
 those in~\eqref{eq:acc-meas}:
 \begin{align}
 \frac{\partial \vct{f}_b}{\partial \vct{\theta}}
-  &= -\skew{f_{\mathrm{cog},b}}, &
+  &= -\Skew{f_{\mathrm{cog},b}}, &
 \frac{\partial \vct{f}_b}{\partial \vct{a}_w}
   &= \mat{R}_{wb}, &
 \frac{\partial \vct{f}_b}{\partial \vct{b}_a}
@@ -110,7 +110,7 @@ is magnetometer noise.
 Linearization yields the attitude Jacobian using matrix skew operator
 \begin{equation}
 \frac{\partial \vct{m}_b}{\partial \vct{\theta}}
-  = -\skew{m_b},
+  = -\Skew{m_b},
 \end{equation}
 providing yaw observability once roll and pitch are
 stabilized by the accelerometer channel.
