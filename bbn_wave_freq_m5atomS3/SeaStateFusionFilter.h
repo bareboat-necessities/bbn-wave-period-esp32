@@ -68,9 +68,6 @@ constexpr float MAX_SIGMA_A = 8.0f;
 constexpr float MIN_R_S     = 0.1f;
 constexpr float MAX_R_S     = 35.0f;
 
-constexpr float R_S_coeff   = 2.4f;
-constexpr float tau_coeff   = 1.6f;
-
 constexpr float ADAPT_TAU_SEC = 3.0f;
 constexpr float ADAPT_EVERY_SECS = 0.1f;
 constexpr float ONLINE_TUNE_WARMUP_SEC = 35.0f;
@@ -338,6 +335,9 @@ private:
     float tau_target_   = NAN;
     float sigma_target_ = NAN;
     float RS_target_    = NAN;
+
+    float R_S_coeff   = 2.4f;
+    float tau_coeff   = 1.6f;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
     KalmanWaveDirection dir_filter_{ 2.0f * static_cast<float>(M_PI) * FREQ_GUESS };  // FREQ_GUESS in Hz → ω0
