@@ -1,4 +1,30 @@
-%\section{Charts}
+\section{Simulation Dataset and Evaluation Protocol}
+\label{sec:sim-and-eval}
+
+\subsection{Synthetic Wave Scenarios}
+We evaluate the proposed Kalman filter against several canonical wave models.
+
+\begin{itemize}
+    \item \textbf{JONSWAP directional seas}: Realistic broadband spectra with randomized directional spreading that mimics North Sea conditions, testing the filter's ability to handle \textit{multicomponent interference} and \textit{cross-coupling} in attitude estimation
+    \item \textbf{Pierson–Moskowitz (PM) Stokes seas}: Fully-developed sea state with third-order bound harmonics that introduce \textit{nonlinear wave–wave interactions} and subtle phase coupling effects
+\end{itemize}
+
+\begin{table}[t]
+  \centering
+  \caption{Wave scenarios synthesized for evaluation. Each run: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288,000 samples.}
+  \label{tab:scenarios}
+  \sisetup{table-number-alignment = center}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Scenario & Model & $H_s$ [m] & $T_p$ [s] & Directional spread \\
+    \midrule
+    W1 & \{JONSWAP, PM-Stokes\} & 0.27 & 3.0  & fixed / randomized \\
+    W2 & \{JONSWAP, PM-Stokes\} & 1.50 & 5.7  & fixed / randomized \\
+    W3 & \{JONSWAP, PM-Stokes\} & 4.00 & 8.5  & fixed / randomized \\
+    W4 & \{JONSWAP, PM-Stokes\} & 8.50 & 11.4 & fixed / randomized \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 % JONSWAP - medium
 \begin{figure}[!t]\centering
