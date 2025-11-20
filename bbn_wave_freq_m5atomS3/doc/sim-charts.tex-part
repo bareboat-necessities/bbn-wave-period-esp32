@@ -13,6 +13,12 @@ Each scenario undergoes \SI{20}{min} simulation at \SI{240}{Hz}, producing time 
 acceleration alongside body-frame IMU measurements (specific force and angular rate). Directional seas employ a randomized $\cos^{2s}$ spread 
 about a nominal direction, with each spectral component receiving independent phase randomization while maintaining ensemble energy consistency.
 
+\subsection{Reference and Measurements}
+For each time $t_k$, the simulator outputs world-frame reference $\big(\mathbf{p}_{\mathrm{ref}},\mathbf{v}_{\mathrm{ref}},\mathbf{a}_{\mathrm{ref}}\big)$ at 
+the surface particle (buoy) and body-frame IMU readings $\big(\mathbf{f}_b,\boldsymbol{\omega}_b\big)$, with magnetometer readings synthesis. 
+The directional sea models produce an Euler attitude for the advected buoy.
+
+
 \begin{table}[t]
   \centering
   \caption{Wave scenarios synthesized for evaluation. Each run: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288,000 samples.}
