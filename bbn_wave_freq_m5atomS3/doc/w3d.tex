@@ -54,10 +54,6 @@
 \newcommand{\qreal}[1]{\operatorname{Re}\! \left(#1\right)} % real part
 \newcommand{\qimag}[1]{\operatorname{Im}\! \left(#1\right)} % imaginary/vector part
 
-
-% Skew-symmetric bracket using your bold macros
-\providecommand{\skew}[1]{\left[\vct{#1}\right]_\times}
-
 \usepackage{cite}
 \usepackage[breaklinks=true,hidelinks]{hyperref}
 \usepackage{bookmark}
@@ -125,15 +121,11 @@
   \DeclareUnicodeCharacter{2212}{\textminus}         % − (math minus)
 \fi
 
-% Skew-symmetric bracket using your bold macros
-\providecommand{\skew}[1]{\left[\vct{#1}\right]_\times}
-
 % Make math macros harmless in PDF bookmarks
 \pdfstringdefDisableCommands{%
   \def\vct#1{#1}%
   \def\mat#1{#1}%
   \def\matg#1{#1}%
-  \def\skew#1{[#1]x}%
   \def\I{I}%
 }
 
