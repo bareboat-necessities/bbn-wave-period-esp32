@@ -10,6 +10,14 @@ attitude estimation, 3D kinematics, and stochastic excitation
 modeling into a single, analytically tractable structure suitable for
 real-time implementation.
 
+Most wave measurement systems derive parameters by chaining separate motion estimation 
+and spectral analysis stages, a process prone to bias and delay. 
+Our approach instead uses a unified 21-state Kalman filter that 
+directly incorporates wave kinematics. By modeling wave acceleration 
+as an Ornstein-Uhlenbeck process and combining it with adaptive drift control 
+and a real-time directional estimator, we address key challenges like colored 
+excitation and MEMS errors in an efficient, embedded-friendly framework.
+
 \subsection*{From Standard Q-MEKF to Extended Kinematics}
 
 We start from a standard Q-MEKF \cite{Markley2003AttitudeError}, which estimates body attitude and
