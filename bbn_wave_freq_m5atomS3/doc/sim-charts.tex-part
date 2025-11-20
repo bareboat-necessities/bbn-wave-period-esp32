@@ -93,21 +93,23 @@ The directional sea models produce an Euler attitude for the advected buoy.
 \fi
 
 
+
 \begin{table}[t]
   \centering
   \caption{Comparison of SeaStateFusion with commercial marine motion sensors.}
   \label{tab:comparison_commercial}
-  \begin{tabular}{@{}lccc@{}}
+  \setlength{\tabcolsep}{2pt}% tighten horizontal padding
+  \begin{tabular}{@{}p{3.4cm}p{0.95cm}p{1.05cm}p{2.8cm}@{}}
     \toprule
     System & Vert.\ RMS [\%\,$H_s$] & Att.\ RMS [deg] & Inputs \\
     \midrule
     Sofar Spotter G2          & 5--10  & 0.2--2.0 & IMU + GPS + baro \\
-    Datawell DWR-MkIII        & 4--8   & 0.1--1.0 & Accel + tilt + compass \\
+    Datawell DWR-MkIII        & 4--8   & 0.1--1.0 & accel + tilt + compass \\
     AXYS TriAxys NextWave     & 4--7   & 0.1--1.5 & IMU + GPS RTK + mag \\
     MicroStrain 3DM-GX5-45    & 6--12  & 0.5--2.0 & IMU + mag \\
     \midrule
-    Typical commercial mean   & 5--10  & 0.2--2.0 & Mixed IMU/GPS/mag \\
-    This work (SeaStateFusion)      & 3--6   & 0.05--3.0 & IMU, mag \\
+    Typical commercial mean   & 5--10  & 0.2--2.0 & mixed IMU/GPS/mag \\
+    \textbf{This work (SeaStateFusion)} & \textbf{3--6} & \textbf{0.05--3.0} & \textbf{IMU + mag} \\
     \bottomrule
   \end{tabular}
 \end{table}
