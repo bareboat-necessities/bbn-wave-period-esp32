@@ -121,7 +121,6 @@ The main contributions of this work are:
         oscillatory kinematics with slowly varying spectra and
         high-rate inertial data measurements.
   \item Empirical validation on simulated directional sea spectra,
-        demonstrating superior drift suppression and physical fidelity
-        compared to existing methods.
+        demonstrating accurate drift suppression and physical fidelity.
 \end{itemize}
 
