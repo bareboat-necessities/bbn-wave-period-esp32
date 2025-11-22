@@ -110,10 +110,8 @@ is magnetometer noise.
 Linearization yields the attitude Jacobian using matrix skew operator
 \begin{equation}
 \frac{\partial \vct{m}_b}{\partial \vct{\theta}}
-  = -\Skew{m_b},
+  = -\Skew{m_b}.
 \end{equation}
-providing yaw observability once roll and pitch are
-stabilized by the accelerometer channel.
 
 \subsection{Integral Pseudo-Measurement}
 
