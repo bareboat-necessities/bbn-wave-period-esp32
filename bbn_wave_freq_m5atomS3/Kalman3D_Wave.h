@@ -940,7 +940,40 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     using Mat12 = Eigen::Matrix<T,12,12>;
     Mat12 F_LL; F_LL.setZero();
     Mat12 Q_LL; Q_LL.setZero();
+              
+if (exact_aw_mode_) {
+    // ------------------------------------------------------------
+    // Pure kinematic integrator for [v, p, S, a] with constant a
+    // between steps: DOES NOT depend on tau_aw / Sigma_aw_stat.
+    // State per axis: [v; p; S; a]
+    //
+    // v_{k+1} = v_k + h a_k
+    // p_{k+1} = p_k + h v_k + 0.5 h² a_k
+    // S_{k+1} = S_k + h p_k + 0.5 h² v_k + (1/6) h³ a_k
+    // a_{k+1} = a_k
+    // ------------------------------------------------------------
+    const T h  = Ts;
+    const T h2 = h*h;
+    const T h3 = h2*h;
 
+    Eigen::Matrix<T,4,4> Phi_int;
+    Phi_int <<
+        T(1),       T(0),       T(0),       h,
+        h,          T(1),       T(0),       T(0.5)*h2,
+        T(0.5)*h2,  h,          T(1),       T(1.0/6.0)*h3,
+        T(0),       T(0),       T(0),       T(1);
+
+    const int idx[4] = {0,3,6,9}; // offsets of [v,p,S,a] inside linear block
+    for (int axis = 0; axis < 3; ++axis) {
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                F_LL(idx[i] + axis, idx[j] + axis) = Phi_int(i,j);
+    }
+
+    // Deterministic integrator: no process noise in this test mode
+    Q_LL.setZero();
+
+} else {              
     // Build F_LL per axis
     for (int axis = 0; axis < 3; ++axis) {
         const T tau = std::max(T(1e-6), tau_aw);
@@ -994,7 +1027,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         }
         Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
     }
-
+}
+              
     // Mean propagation for [v,p,S,a_w]
     Eigen::Matrix<T,12,1> x_lin_prev;
     x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
