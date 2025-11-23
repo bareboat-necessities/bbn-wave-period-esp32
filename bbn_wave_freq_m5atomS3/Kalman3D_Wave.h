@@ -626,52 +626,52 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
     Racc(sigma_a.array().square().matrix().asDiagonal()),
     Rmag(sigma_m.array().square().matrix().asDiagonal())
 {
-  // quaternion init
-  qref.setIdentity();
+    // quaternion init
+    qref.setIdentity();
 
-  R_S = Matrix3::Identity() * R_S_noise;
+    R_S = Matrix3::Identity() * R_S_noise;
 
-  // initialize base / extended states
-  MatrixBaseN Pbase;
-  Pbase.setIdentity(); // default small initial cov unless user overwrites
+    // initialize base / extended states
+    MatrixBaseN Pbase;
+    Pbase.setIdentity(); // default small initial cov unless user overwrites
 
-  // initialize base covariance
-  Pbase.template topLeftCorner<3,3>() = Matrix3::Identity() * Pq0;   // attitude error covariance
-  if constexpr (with_gyro_bias) {
-      Pbase.template block<3,3>(3,3) = Matrix3::Identity() * Pb0;    // bias covariance
-  }
+    // initialize base covariance
+    Pbase.template topLeftCorner<3,3>() = Matrix3::Identity() * Pq0;   // attitude error covariance
+    if constexpr (with_gyro_bias) {
+        Pbase.template block<3,3>(3,3) = Matrix3::Identity() * Pb0;    // bias covariance
+    }
 
-  // Extended state
-  xext.setZero();
-  Pext.setZero();
+    // Extended state
+    xext.setZero();
+    Pext.setZero();
 
-  // Place original base P into top-left of Pext
-  Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
+    // Place original base P into top-left of Pext
+    Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
 
-  // Seed covariance for a_w (world acceleration)
-  Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
+    // Seed covariance for a_w (world acceleration)
+    Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
 
-  if constexpr (with_accel_bias) {
-      Pext.template block<3,3>(OFF_BA, OFF_BA) = Matrix3::Identity() * sigma_bacc0_ * sigma_bacc0_;
-  }
+    if constexpr (with_accel_bias) {
+        Pext.template block<3,3>(OFF_BA, OFF_BA) = Matrix3::Identity() * sigma_bacc0_ * sigma_bacc0_;
+    }
 
-  const T sigma_v0 = T(1.0);    // m/s
-  const T sigma_p0 = T(20.0);   // m
-  const T sigma_S0 = T(50.0);   // m·s
-  set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
+    const T sigma_v0 = T(1.0);    // m/s
+    const T sigma_p0 = T(20.0);   // m
+    const T sigma_S0 = T(50.0);   // m·s
+    set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::MatrixBaseN
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_Q(typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Vector3 sigma_g, T b0) {
-  MatrixBaseN Q; Q.setZero();
-  if constexpr (with_gyro_bias) {
-    Q.template topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal(); // gyro RW
-    Q.template bottomRightCorner<3,3>() = Matrix3::Identity() * b0;                   // bias RW
-  } else {
-    Q = sigma_g.array().square().matrix().asDiagonal();
-  }
-  return Q;
+    MatrixBaseN Q; Q.setZero();
+    if constexpr (with_gyro_bias) {
+        Q.template topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal(); // gyro RW
+        Q.template bottomRightCorner<3,3>() = Matrix3::Identity() * b0;                   // bias RW
+    } else {
+        Q = sigma_g.array().square().matrix().asDiagonal();
+    }
+    return Q;
 }
 
 template <typename T, bool with_gyro_bias, bool with_accel_bias>
