@@ -226,6 +226,10 @@ public:
         }
     }
 
+    void enableClamp(bool flag = true) {
+        enableClamp = flag;
+    }
+
     //  Exposed getters
     inline float getFreqHz()        const noexcept { return freq_hz_; }
     inline float getTauApplied()    const noexcept { return tune_.tau_applied; }
