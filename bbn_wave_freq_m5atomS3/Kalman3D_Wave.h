@@ -941,93 +941,84 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Mat12 F_LL; F_LL.setZero();
     Mat12 Q_LL; Q_LL.setZero();
               
-if (exact_aw_mode_) {
-    // ------------------------------------------------------------
-    // Pure kinematic integrator for [v, p, S, a] with constant a
-    // between steps: DOES NOT depend on tau_aw / Sigma_aw_stat.
-    // State per axis: [v; p; S; a]
-    //
-    // v_{k+1} = v_k + h a_k
-    // p_{k+1} = p_k + h v_k + 0.5 h² a_k
-    // S_{k+1} = S_k + h p_k + 0.5 h² v_k + (1/6) h³ a_k
-    // a_{k+1} = a_k
-    // ------------------------------------------------------------
-    const T h  = Ts;
-    const T h2 = h*h;
-    const T h3 = h2*h;
-
-    Eigen::Matrix<T,4,4> Phi_int;
-    Phi_int <<
-        T(1),       T(0),       T(0),       h,
-        h,          T(1),       T(0),       T(0.5)*h2,
-        T(0.5)*h2,  h,          T(1),       T(1.0/6.0)*h3,
-        T(0),       T(0),       T(0),       T(1);
-
-    const int idx[4] = {0,3,6,9}; // offsets of [v,p,S,a] inside linear block
-    for (int axis = 0; axis < 3; ++axis) {
-        for (int i = 0; i < 4; ++i)
-            for (int j = 0; j < 4; ++j)
-                F_LL(idx[i] + axis, idx[j] + axis) = Phi_int(i,j);
-    }
-
-    // Deterministic integrator: no process noise in this test mode
-    Q_LL.setZero();
-
-} else {              
-    // Build F_LL per axis
-    for (int axis = 0; axis < 3; ++axis) {
-        const T tau = std::max(T(1e-6), tau_aw);
-
-        Eigen::Matrix<T,4,4> Phi_axis;
-        PhiAxis4x1_analytic(tau, Ts, Phi_axis);
-
-        const int idx[4] = {0,3,6,9}; // [v,p,S,a] offsets
-        for (int i = 0; i < 4; ++i)
-            for (int j = 0; j < 4; ++j)
-                F_LL(idx[i] + axis, idx[j] + axis) = Phi_axis(i,j);
-    }
-
-    // Build Q_LL
-    if (has_cross_cov_a_xy) {
-        // Correlated vector-OU with shared tau: Q_LL = (Σ ⊗ Qaxis_unit)
-        // written directly in group-first order: [v(3), p(3), S(3), a(3)].
-        Eigen::Matrix<T,4,4> Qaxis_unit;
-        QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
-        Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
-    
-        // SPD, symmetric copy of Σ_aw (3x3)
-        const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
-    
-        Q_LL.setZero();
-        // group offsets in your interleaved state order
-        const int goff[4] = {0, 3, 6, 9}; // v, p, S, a
-    
-        // Blockwise assembly: each 3x3 block is Sig scaled by the 4x4 scalar
-        for (int g = 0; g < 4; ++g) {
-            for (int h = 0; h < 4; ++h) {
-                Q_LL.template block<3,3>(goff[g], goff[h]).noalias()
-                    = Sig * Qaxis_unit(g,h);
-            }
-        }
-    
-        // Symmetry + PSD cleanup
-        Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
-        project_psd<T,12>(Q_LL, T(1e-12));
-    } else {
-        // Independent axes (no cross-correlation) — per-axis Qd on the diagonal
-        const int idx[4] = {0,3,6,9};
+    if (exact_aw_mode_) {
+        // Pure kinematic integrator for [v, p, S, a] with constant a
+        // between steps: DOES NOT depend on tau_aw / Sigma_aw_stat.
+        // State per axis: [v; p; S; a]
+        // v_{k+1} = v_k + h a_k
+        // p_{k+1} = p_k + h v_k + 0.5 h² a_k
+        // S_{k+1} = S_k + h p_k + 0.5 h² v_k + (1/6) h³ a_k
+        // a_{k+1} = a_k
+        const T h  = Ts;
+        const T h2 = h*h;
+        const T h3 = h2*h;
+        Eigen::Matrix<T,4,4> Phi_int;
+        Phi_int <<
+            T(1),       T(0),       T(0),       h,
+            h,          T(1),       T(0),       T(0.5)*h2,
+            T(0.5)*h2,  h,          T(1),       T(1.0/6.0)*h3,
+            T(0),       T(0),       T(0),       T(1);
+        const int idx[4] = {0,3,6,9}; // offsets of [v,p,S,a] inside linear block
         for (int axis = 0; axis < 3; ++axis) {
-            const T tau    = std::max(T(1e-6), tau_aw);
-            const T sigma2 = Sigma_aw_stat(axis, axis);
-            Eigen::Matrix<T,4,4> Qd_axis;
-            QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
             for (int i = 0; i < 4; ++i)
                 for (int j = 0; j < 4; ++j)
-                    Q_LL(idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
+                    F_LL(idx[i] + axis, idx[j] + axis) = Phi_int(i,j);
         }
-        Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
+        // Deterministic integrator: no process noise in this test mode
+        Q_LL.setZero();
+    } else {              
+        // Build F_LL per axis
+        for (int axis = 0; axis < 3; ++axis) {
+            const T tau = std::max(T(1e-6), tau_aw);
+    
+            Eigen::Matrix<T,4,4> Phi_axis;
+            PhiAxis4x1_analytic(tau, Ts, Phi_axis);
+    
+            const int idx[4] = {0,3,6,9}; // [v,p,S,a] offsets
+            for (int i = 0; i < 4; ++i)
+                for (int j = 0; j < 4; ++j)
+                    F_LL(idx[i] + axis, idx[j] + axis) = Phi_axis(i,j);
+        }
+        // Build Q_LL
+        if (has_cross_cov_a_xy) {
+            // Correlated vector-OU with shared tau: Q_LL = (Σ ⊗ Qaxis_unit)
+            // written directly in group-first order: [v(3), p(3), S(3), a(3)].
+            Eigen::Matrix<T,4,4> Qaxis_unit;
+            QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
+            Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
+        
+            // SPD, symmetric copy of Σ_aw (3x3)
+            const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
+        
+            Q_LL.setZero();
+            // group offsets in your interleaved state order
+            const int goff[4] = {0, 3, 6, 9}; // v, p, S, a
+        
+            // Blockwise assembly: each 3x3 block is Sig scaled by the 4x4 scalar
+            for (int g = 0; g < 4; ++g) {
+                for (int h = 0; h < 4; ++h) {
+                    Q_LL.template block<3,3>(goff[g], goff[h]).noalias()
+                        = Sig * Qaxis_unit(g,h);
+                }
+            }
+            // Symmetry + PSD cleanup
+            Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
+            project_psd<T,12>(Q_LL, T(1e-12));
+        } else {
+            // Independent axes (no cross-correlation) — per-axis Qd on the diagonal
+            const int idx[4] = {0,3,6,9};
+            for (int axis = 0; axis < 3; ++axis) {
+                const T tau    = std::max(T(1e-6), tau_aw);
+                const T sigma2 = Sigma_aw_stat(axis, axis);
+                Eigen::Matrix<T,4,4> Qd_axis;
+                QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
+                for (int i = 0; i < 4; ++i)
+                    for (int j = 0; j < 4; ++j)
+                        Q_LL(idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
+            }
+            Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
+        }
     }
-}
               
     // Mean propagation for [v,p,S,a_w]
     Eigen::Matrix<T,12,1> x_lin_prev;
@@ -1071,7 +1062,6 @@ if (exact_aw_mode_) {
     // Optional accel bias RW and cross terms (F_BB = I)
     if constexpr (with_accel_bias) {
         constexpr int NB = 3;
-
         auto P_BB = Pext.template block<NB,NB>(OFF_BA,OFF_BA);
         P_BB.noalias() += Q_bacc_ * Ts; // ensure Q_bacc_ units match this convention
         Pext.template block<NB,NB>(OFF_BA,OFF_BA) = P_BB;
@@ -1263,28 +1253,26 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T,3,1>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_func(T tempC) const {
-  const Vector3 g_world(0,0,+gravity_magnitude_);
-  const Vector3 aw = xext.template segment<3>(OFF_AW);
+    const Vector3 g_world(0,0,+gravity_magnitude_);
+    const Vector3 aw = xext.template segment<3>(OFF_AW);
 
-  // CoG specific force in BODY
-  const Vector3 f_cog_b = R_wb() * (aw - g_world);
+    // CoG specific force in BODY
+    const Vector3 f_cog_b = R_wb() * (aw - g_world);
+    Vector3 fb = f_cog_b;
 
-  Vector3 fb = f_cog_b;
-
-  // Optional IMU lever-arm correction (BODY)
-  if (use_imu_lever_arm_) {
-    const Vector3& omega_b = last_gyr_bias_corrected;
-    const Vector3& alpha_b = alpha_b_;
-    const Vector3& r_imu_b = r_imu_wrt_cog_b_;
-    fb.noalias() += alpha_b.cross(r_imu_b) + omega_b.cross(omega_b.cross(r_imu_b));
-  }
-
-  if constexpr (with_accel_bias) {
-    const Vector3 ba0 = xext.template segment<3>(OFF_BA);
-    const Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref);
-    fb += ba;
-  }
-  return fb;             
+    // Optional IMU lever-arm correction (BODY)
+    if (use_imu_lever_arm_) {
+        const Vector3& omega_b = last_gyr_bias_corrected;
+        const Vector3& alpha_b = alpha_b_;
+        const Vector3& r_imu_b = r_imu_wrt_cog_b_;
+        fb.noalias() += alpha_b.cross(r_imu_b) + omega_b.cross(omega_b.cross(r_imu_b));
+    }
+    if constexpr (with_accel_bias) {
+        const Vector3 ba0 = xext.template segment<3>(OFF_BA);
+        const Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref);
+        fb += ba;
+    }
+    return fb;             
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -1295,11 +1283,11 @@ Matrix<T, 3, 1> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::magnetometer_
 // utility functions
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
-  Matrix3 M;
-  M << 0, -vec(2), vec(1),
-       vec(2), 0, -vec(0),
-      -vec(1), vec(0), 0;
-  return M;
+    Matrix3 M;
+    M << 0, -vec(2), vec(1),
+         vec(2), 0, -vec(0),
+        -vec(1), vec(0), 0;
+    return M;
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
