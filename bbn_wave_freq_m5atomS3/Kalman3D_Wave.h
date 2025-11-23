@@ -411,6 +411,9 @@ class Kalman3D_Wave {
         ).finished();
     }
 
+    // allow debug mode with exact a_w
+    void set_exact_aw_mode(bool flag) noexcept { exact_aw_mode_ = flag; }
+              
   private:
     const T gravity_magnitude_ = T(STD_GRAVITY);
 
@@ -460,6 +463,8 @@ class Kalman3D_Wave {
 
     // Optional smoothing for alpha (0 = off)
     T alpha_smooth_tau_ = T(0.05); // seconds
+
+    bool exact_aw_mode_ = false; // debug mode with exact a_w
               
     // Closed-form helpers for rotation & integrals (constant ω over [0, t])
     
