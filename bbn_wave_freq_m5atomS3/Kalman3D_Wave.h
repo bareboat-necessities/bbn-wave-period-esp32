@@ -384,19 +384,11 @@ class Kalman3D_Wave {
     // Toggle exact/structured Qd for the attitude+gyro-bias block (option 3).
     void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
 
-    void initialize_from_truth(const Eigen::Vector3f &p_ned,
-                               const Eigen::Vector3f &v_ned,
-                               const Eigen::Quaternionf &q_bw,                       
-                               const Eigen::Vector3f &a_w_ned) {
-        position_   = p_ned;
-        velocity_   = v_ned;
-        a_w_        = a_w_ned;
-        S_.setZero();
-        if constexpr (with_gyro_bias)  gyro_bias_.setZero();
-        if constexpr (with_accel_bias) accel_bias_.setZero();
-        qref_       = q_bw;
-        Pext_.setZero();
-    }
+    // Initialize full extended state from "truth"
+    void initialize_from_truth(const Vector3 &p_ned,
+                               const Vector3 &v_ned,
+                               const Eigen::Quaternion<T> &q_bw,
+                               const Vector3 &a_w_ned);
               
     // IMU lever-arm API (BODY frame)
     void set_imu_lever_arm_body(const Vector3& r_b) {
@@ -791,6 +783,40 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc(Vect
     qref.normalize();
 }
 
+template <typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
+    const Vector3 &p_ned,
+    const Vector3 &v_ned,
+    const Eigen::Quaternion<T> &q_bw,
+    const Vector3 &a_w_ned)
+{
+    // Reset entire error state to 0
+    xext.setZero();
+
+    // Load linear states directly from truth
+    xext.template segment<3>(OFF_V)  = v_ned;    // velocity (world NED)
+    xext.template segment<3>(OFF_P)  = p_ned;    // position (world NED)
+    xext.template segment<3>(OFF_S).setZero();   // integral of p, start at 0
+    xext.template segment<3>(OFF_AW) = a_w_ned;  // world acceleration (OU state)
+
+    // Bias states = 0
+    if constexpr (with_gyro_bias) {
+        xext.template segment<3>(3).setZero();       // gyro bias block
+    }
+    if constexpr (with_accel_bias) {
+        xext.template segment<3>(OFF_BA).setZero();  // accel bias block
+    }
+
+    // Orientation = body→world (NED) truth
+    qref = q_bw;
+    qref.normalize();
+
+    // Reset covariance to "almost zero" (but PSD-ish)
+    Pext.setZero();
+    const T eps = T(1e-10);
+    Pext.diagonal().array() = eps;
+}    
+              
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Vector3 const& gyr, T Ts)
