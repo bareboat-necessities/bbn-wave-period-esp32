@@ -1072,6 +1072,38 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas, T tempC)
 {
+    if (exact_aw_mode_) {
+        // Measured specific force in BODY
+        Vector3 f_b = acc_meas;
+
+        // Remove lever-arm terms if enabled (mirror accelerometer_measurement_func)
+        if (use_imu_lever_arm_) {
+            const Vector3& omega_b = last_gyr_bias_corrected;
+            const Vector3& alpha_b = alpha_b_;
+            const Vector3& r_imu_b = r_imu_wrt_cog_b_;
+            const Vector3 lever = alpha_b.cross(r_imu_b)
+                                + omega_b.cross(omega_b.cross(r_imu_b));
+            f_b.noalias() -= lever;
+        }
+
+        // Remove accelerometer bias at this temperature
+        Vector3 b_a = Vector3::Zero();
+        if constexpr (with_accel_bias) {
+            const Vector3 ba0 = xext.template segment<3>(OFF_BA);
+            b_a = ba0 + k_a_ * (tempC - tempC_ref);
+        }
+        Vector3 f_unbiased = f_b - b_a;
+
+        // Gravity in world (NED): z positive down
+        const Vector3 g_world(0,0,+gravity_magnitude_);
+
+        // a_w = g + R_bw * f_unbiased
+        const Vector3 a_w_det = g_world + R_bw() * f_unbiased;
+
+        // Overwrite latent world-acceleration state BEFORE we build Jacobians.
+        xext.template segment<3>(OFF_AW) = a_w_det;
+    }              
+              
     // Physical accelerometer measurement model
     // f_b = R_wb * (a_w - g) + b_a + noise
     const Vector3 f_pred = accelerometer_measurement_func(tempC);
