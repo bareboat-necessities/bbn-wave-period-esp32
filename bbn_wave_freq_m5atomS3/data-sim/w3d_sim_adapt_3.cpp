@@ -99,7 +99,8 @@ int wave_index_from_height(float height) {
 //  Main processing
 static void process_wave_file_for_tracker(const std::string &filename,
                                           float dt,
-                                          bool with_mag)
+                                          bool with_mag,
+                                          bool exact_mode)
 {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
@@ -113,12 +114,20 @@ static void process_wave_file_for_tracker(const std::string &filename,
         outname.replace(pos_prefix, std::string("wave_data_").size(), "w3d_");
     else outname = "w3d_" + outname;
     auto pos_ext = outname.rfind(".csv");
-    if (pos_ext != std::string::npos)
-        outname.insert(pos_ext, with_mag ? "_fusion" : "_fusion_nomag");
-    else outname += (with_mag ? "_fusion" : "_fusion_nomag") + std::string(".csv");
+    if (pos_ext != std::string::npos) {
+        outname.insert(pos_ext,
+                       with_mag ? (exact_mode ? "_fusion_exact" : "_fusion")
+                                : (exact_mode ? "_fusion_nomag_exact" : "_fusion_nomag"));
+    } else {
+        outname += (with_mag ? (exact_mode ? "_fusion_exact" : "_fusion")
+                             : (exact_mode ? "_fusion_nomag_exact" : "_fusion_nomag"))
+                   + std::string(".csv");
+    }
 
     std::cout << "Processing " << filename << " (type="
-              << EnumTraits<WaveType>::to_string(type) << ")\n";
+              << EnumTraits<WaveType>::to_string(type)
+              << ", mode=" << (exact_mode ? "EXACT" : "NORMAL")
+              << ")\n";
 
     std::ofstream ofs(outname);
     ofs << "time,roll_ref,pitch_ref,yaw_ref,"
@@ -152,6 +161,28 @@ static void process_wave_file_for_tracker(const std::string &filename,
     NoiseModel accel_noise = make_noise_model(0.03f, 0.02f, 1234);
     NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
 
+    // EXact-mode: force biases to zero and optionally ignore noise
+    if (exact_mode) {
+        accel_noise.bias.setZero();
+        gyro_noise.bias.setZero();
+    }
+
+    // EXact-mode: configure MEKF/OU to be "almost deterministic"
+    if (exact_mode) {
+        auto &mekf = filter.mekf();
+
+        // OU accel model: long τ, tiny stationary variance
+        mekf.set_aw_time_constant(10.0f);                          // slow OU → near-constant a_w
+        mekf.set_aw_stationary_std(Vector3f::Constant(0.01f));     // ≈ 0.01 m/s² per axis
+
+        // Pseudo-measurement on S: essentially disabled via huge σ
+        mekf.set_RS_noise(Vector3f::Constant(1e6f));
+
+        // Accel bias: perfectly known (zero) and no random walk
+        mekf.set_initial_acc_bias_std(0.0f);
+        mekf.set_Q_bacc_rw(Vector3f::Zero());
+    }
+
     bool first = true;
     bool mag_ref_set = false;  
     WaveDataCSVReader reader(filename);
@@ -165,7 +196,9 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // Body-frame raw sensors (Z-up body from CSV)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
-        if (add_noise) {
+
+        const bool use_noise = add_noise && !exact_mode;
+        if (use_noise) {
             acc_b = apply_noise(acc_b, accel_noise);
             gyr_b = apply_noise(gyr_b, gyro_noise);
         }
@@ -187,9 +220,29 @@ static void process_wave_file_for_tracker(const std::string &filename,
             mag_body_ned = zu_to_ned(mag_b_enu);
         }
 
-        // First-step init from body accel (specific force)
+        // First-step init:
+        //  1) Use accelerometer to initialize attitude (tilt-only; yaw arbitrary).
+        //  2) Use ground-truth p, v, a_w from the CSV to initialize MEKF linear states.
         if (first) {
+            // 1) Attitude from accel, same behavior as original runner
             filter.initialize_from_acc(acc_meas_ned);
+
+            // 2) Truth-based initialization for linear states in the MEKF
+            //
+            // rec.wave.* is in world Z-up; convert to NED to match MEKF world frame.
+            Vector3f disp_ref_zu(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
+            Vector3f vel_ref_zu (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
+            Vector3f acc_ref_zu (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
+
+            Vector3f p0_ned = zu_to_ned(disp_ref_zu);
+            Vector3f v0_ned = zu_to_ned(vel_ref_zu);
+            Vector3f a0_ned = zu_to_ned(acc_ref_zu);   // inertial world accel a_w
+
+            auto &mekf = filter.mekf();
+            Quaternionf q0_bw = mekf.quaternion();     // Kalman3D_Wave::quaternion() returns body→world
+
+            mekf.initialize_from_truth(p0_ned, v0_ned, q0_bw, a0_ned);
+
             first = false;
         }
 
@@ -208,8 +261,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
         
         // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
-        Vector3f vel_ref (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
-        Vector3f acc_ref (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
+        Vector3f vel_ref (rec.wave.vel_x, rec.wave.vel_y, rec.wave.vel_z);
+        Vector3f acc_ref (rec.wave.acc_x, rec.wave.acc_y, rec.wave.acc_z);
 
         // Estimates: MEKF state is world NED -> convert to Z-up for CSV
         Vector3f disp_est = ned_to_zu(filter.mekf().get_position());
@@ -229,10 +282,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
         errs_pitch.push_back(diffDeg(eul_est.y(), p_ref_out));
         errs_yaw.push_back(diffDeg(eul_est.z(), y_ref_out));
         
-        Vector3f acc_bias_true = accel_noise.bias;
-        Vector3f gyro_bias_true = gyro_noise.bias;
-        Vector3f acc_bias_est = filter.mekf().get_acc_bias();
-        Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
+        Vector3f acc_bias_true  = exact_mode ? Vector3f::Zero() : accel_noise.bias;
+        Vector3f gyro_bias_true = exact_mode ? Vector3f::Zero() : gyro_noise.bias;
+        Vector3f acc_bias_est   = filter.mekf().get_acc_bias();
+        Vector3f gyro_bias_est  = filter.mekf().gyroscope_bias();
     
         // CSV row
         ofs << rec.time << ","
@@ -339,17 +392,26 @@ static void process_wave_file_for_tracker(const std::string &filename,
 int main(int argc, char* argv[]) {
     float dt = 1.0f / 240.0f;
     bool with_mag = true;
+    bool exact_mode = false;
     add_noise = true;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
-        if (arg == "--nomag") with_mag = false;
-        else if (arg == "--no-noise") add_noise = false;
+        if (arg == "--nomag") {
+            with_mag = false;
+        } else if (arg == "--no-noise") {
+            add_noise = false;
+        } else if (arg == "--exact") {
+            exact_mode = true;
+            add_noise  = false;   // exact implies no noise
+        }
     }
 
     std::cout << "Simulation starting with_mag=" << (with_mag ? "true" : "false")
               << ", mag_delay=" << MAG_DELAY_SEC
-              << " sec, noise=" << (add_noise ? "true" : "false") << "\n";
+              << " sec, noise=" << (add_noise ? "true" : "false")
+              << ", mode=" << (exact_mode ? "EXACT" : "NORMAL")
+              << "\n";
 
     std::vector<std::string> files;
     for (auto &entry : std::filesystem::directory_iterator(".")) {
@@ -364,7 +426,7 @@ int main(int argc, char* argv[]) {
     std::sort(files.begin(), files.end());
 
     for (const auto& fname : files)
-        process_wave_file_for_tracker(fname, dt, with_mag);
+        process_wave_file_for_tracker(fname, dt, with_mag, exact_mode);
 
     return 0;
 }
