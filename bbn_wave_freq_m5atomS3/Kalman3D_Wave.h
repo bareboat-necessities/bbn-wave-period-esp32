@@ -1053,6 +1053,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     // Symmetry hygiene
     Pext = T(0.5) * (Pext + Pext.transpose());
 
+    // Exact a_w mode (for debug) → treat a_w as deterministic: no variance, no cross-covariances.
+    if (exact_aw_mode_) {
+        constexpr int A = OFF_AW;
+        Pext.template block<3,3>(A, A).setZero();
+        Pext.template block<3,NX>(A, 0).setZero();
+        Pext.template block<NX,3>(0, A).setZero();
+    }
+
     // Integral pseudo-measurement drift correction
     if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
         applyIntegralZeroPseudoMeas();
