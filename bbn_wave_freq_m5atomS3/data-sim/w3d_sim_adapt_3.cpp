@@ -157,23 +157,23 @@ static void process_wave_file_for_tracker(const std::string &filename,
     // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
-    // Deterministic but non-static noise — identical to old runner
+    // Deterministic noise
     NoiseModel accel_noise = make_noise_model(0.03f, 0.02f, 1234);
     NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
 
-    // EXact-mode: force biases to zero and optionally ignore noise
+    // Exact-mode: force biases to zero and optionally ignore noise
     if (exact_mode) {
         accel_noise.bias.setZero();
         gyro_noise.bias.setZero();
     }
 
-    // EXact-mode: configure MEKF/OU to be "almost deterministic"
+    // Exact-mode: configure MEKF/OU to be "almost deterministic"
     if (exact_mode) {
         auto &mekf = filter.mekf();
 
         // OU accel model: long τ, tiny stationary variance
-        mekf.set_aw_time_constant(10.0f);                          // slow OU → near-constant a_w
-        mekf.set_aw_stationary_std(Vector3f::Constant(0.01f));     // ≈ 0.01 m/s² per axis
+        mekf.set_aw_time_constant(1000.0f);                        // slow OU → near-constant a_w
+        mekf.set_aw_stationary_std(Vector3f::Constant(0.001f));     // ≈ 0.01 m/s² per axis
 
         // Pseudo-measurement on S: essentially disabled via huge σ
         mekf.set_RS_noise(Vector3f::Constant(1e6f));
