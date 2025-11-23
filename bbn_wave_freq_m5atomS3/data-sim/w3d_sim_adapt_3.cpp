@@ -169,6 +169,9 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
     // Exact-mode: configure MEKF/OU to be "almost deterministic"
     if (exact_mode) {
+        filter.setRSCoeff(1e6.0f);
+        filter.setTauCoeff(1000.0f);
+        
         auto &mekf = filter.mekf();
 
         // OU accel model: long τ, tiny stationary variance
