@@ -186,7 +186,9 @@ public:
         freq_hz_ = f_smooth;
     
         // Tuner uses the SAME smoothed freq
-        update_tuner(dt, a_z_inertial, f_smooth);
+        if (enable_tuner) {
+            update_tuner(dt, a_z_inertial, f_smooth);
+        }
     
         // Direction filter also uses the SAME smoothed freq (ω = 2πf)
         const float omega = 2.0f * static_cast<float>(M_PI) * f_smooth;
@@ -228,6 +230,9 @@ public:
 
     void enableClamp(bool flag = true) {
         enable_clamp = flag;
+    }
+    void enableTuner(bool flag = true) {
+        enable_tuner = flag;
     }
 
     //  Exposed getters
@@ -344,7 +349,8 @@ private:
     double time_, last_adapt_time_sec_;
     float freq_hz_ = FREQ_GUESS;
     bool freq_init_ = false;
-    bool enable_clamp = true;
+    bool enable_clamp = true;    
+    bool enable_tuner = true;
 
     // Runtime-configurable anisotropy knobs
     float R_S_xy_factor = 0.07f;  // [0..1] scales XY pseudo-meas vs Z
