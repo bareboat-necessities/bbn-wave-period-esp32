@@ -309,10 +309,16 @@ private:
         tuner_.update(dt, a_vert_inertial, freq_hz_smooth);
     
         if (time_ < ONLINE_TUNE_WARMUP_SEC) return;
-    
-        tau_target_   = std::min(std::max(tau_coeff * 0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
-        sigma_target_ = std::min(std::max(std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
-        RS_target_    = std::min(std::max(R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MIN_R_S), MAX_R_S);
+
+        if (enableClamp) {
+            tau_target_   = std::min(std::max(tau_coeff * 0.5f / tuner_.getFrequencyHz(), MIN_TAU_S), MAX_TAU_S);
+            sigma_target_ = std::min(std::max(std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MIN_SIGMA_A), MAX_SIGMA_A);
+            RS_target_    = std::min(std::max(R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MIN_R_S), MAX_R_S);
+        } else {
+            tau_target_   = tau_coeff * 0.5f / tuner_.getFrequencyHz();
+            sigma_target_ = std::sqrt(std::max(0.0f, tuner_.getAccelVariance()));
+            RS_target_    = R_S_coeff * sigma_target_ * tau_target_ * tau_target_ * tau_target_;
+        }      
     
         adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
@@ -334,6 +340,7 @@ private:
     double time_, last_adapt_time_sec_;
     float freq_hz_ = FREQ_GUESS;
     bool freq_init_ = false;
+    bool enableClamp = true;
 
     // Runtime-configurable anisotropy knobs
     float R_S_xy_factor = 0.07f;  // [0..1] scales XY pseudo-meas vs Z
