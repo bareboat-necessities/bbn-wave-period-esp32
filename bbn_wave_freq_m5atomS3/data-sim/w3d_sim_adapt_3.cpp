@@ -225,13 +225,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
         }
 
         // First-step init:
-        //  Use accelerometer to initialize attitude (tilt-only; yaw arbitrary).
+        // Use accelerometer to initialize attitude (tilt-only; yaw arbitrary).
         if (first) {
             // Attitude from accel
-            filter.initialize_from_acc(acc_meas_ned);
-            
-            auto &mekf = filter.mekf();
-            
+            filter.initialize_from_acc(acc_meas_ned);            
             if (exact_mode) {
                 // Truth-based initialization for linear states in the MEKF
                 // rec.wave.* is in world Z-up; convert to NED to match MEKF world frame.
@@ -243,11 +240,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 Vector3f v0_ned = zu_to_ned(vel_ref_zu);
                 Vector3f a0_ned = zu_to_ned(acc_ref_zu);   // inertial world accel a_w
                 
-                Use ground-truth p, v, a_w from the CSV to initialize MEKF linear states.
+                // Use ground-truth p, v, a_w from the CSV to initialize MEKF linear states.
+                auto &mekf = filter.mekf();
                 Quaternionf q0_bw = mekf.quaternion();     // Kalman3D_Wave::quaternion() returns body→world
                 mekf.initialize_from_truth(p0_ned, v0_ned, q0_bw, a0_ned);
             }
-
             first = false;
         }
 
