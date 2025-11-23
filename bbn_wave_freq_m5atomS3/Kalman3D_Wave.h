@@ -384,6 +384,20 @@ class Kalman3D_Wave {
     // Toggle exact/structured Qd for the attitude+gyro-bias block (option 3).
     void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
 
+    void initialize_from_truth(const Eigen::Vector3f &p_ned,
+                               const Eigen::Vector3f &v_ned,
+                               const Eigen::Quaternionf &q_bw,                       
+                               const Eigen::Vector3f &a_w_ned) {
+        position_   = p_ned;
+        velocity_   = v_ned;
+        a_w_        = a_w_ned;
+        S_.setZero();
+        if constexpr (with_gyro_bias)  gyro_bias_.setZero();
+        if constexpr (with_accel_bias) accel_bias_.setZero();
+        qref_       = q_bw;
+        Pext_.setZero();
+    }
+              
     // IMU lever-arm API (BODY frame)
     void set_imu_lever_arm_body(const Vector3& r_b) {
         r_imu_wrt_cog_b_ = r_b;
