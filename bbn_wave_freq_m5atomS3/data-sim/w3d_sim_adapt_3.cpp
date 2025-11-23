@@ -171,10 +171,9 @@ static void process_wave_file_for_tracker(const std::string &filename,
     if (exact_mode) {
         filter.enableClamp(false);
         filter.enableTuner(false);
-        filter.setRSCoeff(1e6f);
-        filter.setTauCoeff(1000.0f);
         
         auto &mekf = filter.mekf();
+        mekf.set_exact_aw_mode(true);
 
         // OU accel model: long τ, tiny stationary variance
         mekf.set_aw_time_constant(1000.0f);                        // slow OU → near-constant a_w
