@@ -171,6 +171,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     if (exact_mode) {
         filter.setRSCoeff(1e6f);
         filter.setTauCoeff(1000.0f);
+        filter.enableClamp(false);
         
         auto &mekf = filter.mekf();
 
