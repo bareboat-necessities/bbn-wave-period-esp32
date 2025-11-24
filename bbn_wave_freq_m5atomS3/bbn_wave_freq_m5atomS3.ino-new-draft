@@ -332,10 +332,10 @@ void setup(void) {
 
   // Read calibration values from NVS.
   if (!M5.Imu.loadOffsetFromNVS()) {
-    // startCalibration();   // uncomment if you want auto-calibration on boot
+    // startCalibration();   // uncomment for auto-calibration on boot
   }
 
-  // Initialize unified fusion filter (noise values matched to desktop fusion harness)
+  // Initialize unified fusion filter
   {
     Eigen::Vector3f sigma_a_init(0.30f, 0.30f, 0.30f);     // accel noise [m/s^2]
     Eigen::Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f); // gyro noise [rad/s]
