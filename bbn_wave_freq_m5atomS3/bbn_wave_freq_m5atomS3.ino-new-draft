@@ -33,11 +33,9 @@
 
 // Project headers
 #include "AngleAveraging.h"
-#include "TrochoidalWave.h"
 #include "MinMaxLemire.h"
 #include "TimeAwareSpikeFilter.h"
 #include "NmeaXDR.h"
-#include "WaveFilters.h"     // ACCEL_* constants, FREQ_LOWER/UPPER, FREQ_GUESS, etc.
 #include "M5_Calibr.h"
 #include "Kalman3D_Wave.h"
 #include "SeaStateFusionFilter.h"
