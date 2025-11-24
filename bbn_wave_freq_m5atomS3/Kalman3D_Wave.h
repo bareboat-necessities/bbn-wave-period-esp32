@@ -1,16 +1,12 @@
 #pragma once
 
 /*
+  Copyright (c) 2025 Mikhail Grushinskiy
+
   Based on: https://github.com/thomaspasser/q-mekf
   MIT License, Copyright (c) 2023 Thomas Passer
 
-  q-mekf (merged extension)
-
-  Enhancements:
-  Copyright (c) 2025 Mikhail Grushinskiy
-
-  This file merges your original Kalman3D_Wave<T,with_gyro_bias, with_accel_bias> with an extended
-  full-matrix Kalman that adds linear navigation states:
+  Full-matrix Kalman that with linear navigation states:
      v (3)   : velocity in world frame
      p (3)   : displacement/position in world frame
      S (3)   : integral of displacement (∫ p dt) — with zero pseudo-measurement for drift correction
@@ -21,7 +17,7 @@
   - The extended linear states are driven by a latent OU world-acceleration a_w
     (accelerometer input is used only in the measurement update).
   - A full extended covariance (Pext) and transition Jacobian Fext are constructed; the top-left corner
-    contains the original MEKF's P/Q blocks (attitude error + optional gyro bias).
+    contains the MEKF's P/Q blocks (attitude error + optional gyro bias).
   - Accelerometer and magnetometer inputs must be given in aerospace/NED (x north, y east, z down)
 */
 
@@ -180,7 +176,7 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class Kalman3D_Wave {
 
-    // Original base (att_err + optional gyro bias)
+    // Base (att_err + optional gyro bias)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
 
     // Extended added states: v(3), p(3), S(3), a_w(3) [+ optional b_acc(3)]
@@ -234,7 +230,7 @@ class Kalman3D_Wave {
 
     // Accessors
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
-    [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left original block
+    [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left block
     [[nodiscard]] MatrixNX covariance_full() const { return Pext; }     // full extended covariance
 
     [[nodiscard]] Vector3 gyroscope_bias() const {
@@ -381,7 +377,7 @@ class Kalman3D_Wave {
     // Model: b_a(tempC) = b_a0 + k_a * (tempC - tempC_ref)
     void set_accel_bias_temp_coeff(const Vector3& ka_per_degC) { k_a_ = ka_per_degC; }
 
-    // Toggle exact/structured Qd for the attitude+gyro-bias block (option 3).
+    // Toggle exact/structured Qd for the attitude+gyro-bias block.
     void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
 
     // Initialize full extended state from "truth"
@@ -417,7 +413,7 @@ class Kalman3D_Wave {
   private:
     const T gravity_magnitude_ = T(STD_GRAVITY);
 
-    // Original MEKF internals (kept nomenclature)
+    // MEKF internals
     Eigen::Quaternion<T> qref;
     Vector3 v2ref = Vector3::UnitX();
 
@@ -645,7 +641,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
     xext.setZero();
     Pext.setZero();
 
-    // Place original base P into top-left of Pext
+    // Place base P into top-left of Pext
     Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
 
     // Seed covariance for a_w (world acceleration)
@@ -878,7 +874,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     MatrixBaseN Q_AA; Q_AA.setZero();
     
     if (!use_exact_att_bias_Qd_) {
-        // Original fast path
+        // fast path
         Q_AA = Qbase * Ts;
     } else {
         // Structured/closed-form path for [δθ, b_g] with constant ω over the step
@@ -1374,7 +1370,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
 //   Qd_axis = (4x4) discrete covariance contribution for [v, p, S, a]
 //
 // Strategy:
-//   - For general h/tau, use your original expm1-based analytic formulas.
+//   - For general h/tau, use expm1-based analytic formulas.
 //   - For small x = h/tau < 3e-3, switch to Maclaurin series expansions to
 //     avoid catastrophic cancellation when subtracting nearly-equal terms.
 //
