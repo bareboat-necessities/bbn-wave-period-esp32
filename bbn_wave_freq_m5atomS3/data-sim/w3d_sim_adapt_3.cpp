@@ -172,8 +172,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
         auto &mekf = filter.mekf();
         mekf.set_exact_aw_mode(true);
 
-        // Pseudo-measurement on S: essentially disabled via huge σ
-        mekf.set_RS_noise(Vector3f::Constant(1e6f));
+        // Pseudo-measurement on S: little effect via huge σ
+        mekf.set_RS_noise(Vector3f::Constant(1e4f));
 
         // Accel bias: perfectly known (zero) and no random walk
         mekf.set_initial_acc_bias_std(0.0f);
