@@ -1,1 +1,313 @@
+/*
+  Copyright 2024-2025, Mikhail Grushinskiy
 
+  Estimate vessel heave (vertical displacement) in ocean waves using IMU on esp32 (m5atomS3)
+
+  See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
+
+  This version uses SeaStateFusionFilter (Kalman3D_Wave + online tuner + internal
+  frequency tracker + KalmanWaveDirection) instead of separate FFT / Zero Crossing /
+  Aranovskiy / KalmANF / Mahony / KalmanForWaveBasic / KalmanWaveNumStableAlt filters.
+
+  Ref:
+
+  1. Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul,
+     Stanislav V. Aranovskiy
+     "The New Algorithm of Sinusoidal Signal Frequency Estimation."
+     11th IFAC International Workshop on Adaptation and Learning in Control and
+     Signal Processing July 3-5, 2013. Caen, France
+
+  2. R. Ali, T. van Waterschoot
+     "A frequency tracker based on a Kalman filter update of a single parameter
+      adaptive notch filter. KalmANF"
+     Proceedings of the 26th International Conference on Digital Audio Effects
+     (DAFx23), Copenhagen, Denmark, September 2023
+*/
+
+#include <M5Unified.h>
+#include <Arduino.h>
+
+// Eigen is used by Kalman3D_Wave / SeaStateFusionFilter
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+
+// Project headers
+#include "AngleAveraging.h"
+#include "TrochoidalWave.h"
+#include "MinMaxLemire.h"
+#include "TimeAwareSpikeFilter.h"
+#include "NmeaXDR.h"
+#include "WaveFilters.h"     // ACCEL_* constants, FREQ_LOWER/UPPER, FREQ_GUESS, etc.
+#include "M5_Calibr.h"
+#include "Kalman3D_Wave.h"
+#include "SeaStateFusionFilter.h"
+
+// Global flags / state
+unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
+unsigned long got_samples = 0;
+
+TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
+
+// Sliding min/max for wave height estimation
+MinMaxLemire min_max_h;
+
+// Wave direction (only using internal KalmanWaveDirection, plus extra smoothing)
+#define WRONG_ANGLE_MARKER -360.0f
+AngleAverager angle_averager(0.004f);
+float wave_angle_deg = WRONG_ANGLE_MARKER;
+AngleEstimate wave_angle_estimate;
+
+const char* imu_name;
+
+bool produce_serial_data = true;
+bool report_nmea = true;
+
+float t = 0.0f;
+float heave_avg = 0.0f;
+
+// Unified fusion filter: MEKF + tuner + freq tracker + KalmanWaveDirection
+using FusionFilter = SeaStateFusionFilter<TrackerType::KALMANF>;
+FusionFilter fusion_filter(false);   // with_mag = false on M5AtomS3
+bool fusion_initialized = false;
+
+// Helpers
+float azimuth_deg_180(float a, float b) {
+  if (b < 0.0f) {
+    a = -a;
+    b = -b;
+  }
+  return atan2f(a, b) * 180.0f / M_PI;
+}
+
+// Main IMU processing
+void read_and_processIMU_data() {
+  auto data = M5.Imu.getImuData();
+
+  float tempC = NAN;
+  M5.Imu.getTemp(&tempC);
+
+  now = micros();
+  got_samples++;
+
+  m5::imu_3d_t accel = data.accel;
+  m5::imu_3d_t gyro  = data.gyro;
+
+  drawCalibrGraph(rect_graph_area, data);
+
+  float delta_t = (now - last_update) / 1000000.0f;  // sec
+  delta_t = clamp(delta_t, 0.001f, 0.1f);
+  last_update = now;
+
+  // Map M5 IMU to BODY NED, convert accel to m/s^2, gyro to rad/s
+  //   gyr = { gyro.y*DEG_TO_RAD,  gyro.x*DEG_TO_RAD, -gyro.z*DEG_TO_RAD };
+  //   acc = { accel.y,           accel.x,          -accel.z           } (in g)
+  Eigen::Vector3f acc_meas_ned(
+      accel.y * g_std,
+      accel.x * g_std,
+      -accel.z * g_std
+  );
+  Eigen::Vector3f gyr_meas_ned(
+      gyro.y * DEG_TO_RAD,
+      gyro.x * DEG_TO_RAD,
+      -gyro.z * DEG_TO_RAD
+  );
+
+  // First-time attitude init from accelerometer
+  if (!fusion_initialized) {
+    fusion_filter.initialize_from_acc(acc_meas_ned);
+    fusion_initialized = true;
+  }
+
+  // One fusion step: MEKF time update + accel update + tracker + tuner + dir
+  fusion_filter.updateTime(delta_t, gyr_meas_ned, acc_meas_ned, tempC);
+
+  // Attitude (nautical, degrees)
+  Eigen::Vector3f eul_deg = fusion_filter.getEulerNautical();  // roll, pitch, yaw [deg]
+  float roll  = eul_deg.x();
+  float pitch = eul_deg.y();
+  float yaw   = eul_deg.z();
+
+  (void)roll;   // currently unused, but available if you want to output
+  (void)pitch;
+  (void)yaw;
+
+  // Heave and vertical acceleration from MEKF state (world NED)
+  Eigen::Vector3f disp_ned       = fusion_filter.mekf().get_position();
+  Eigen::Vector3f vel_ned        = fusion_filter.mekf().get_velocity();
+  Eigen::Vector3f acc_world_ned  = fusion_filter.mekf().get_world_accel(); // inertial, g removed
+
+  // NED -> Z-up for vertical components: z_ned is down, so heave is -z
+  float heave     = -disp_ned.z();      // m, up
+  float heave_vel = -vel_ned.z();       // m/s, up
+  float heave_acc = -acc_world_ned.z(); // m/s^2, up
+
+  (void)heave_vel;  // not used in this sketch but available for debugging
+
+  // Vertical inertial accel in g (for spike filter and compatibility)
+  float a_noisy = heave_acc / g_std;       // in g
+  float a_band_passed = a_noisy;           // add band-pass here if desired
+  float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
+  a_no_spikes = clamp(a_no_spikes, -ACCEL_CLAMP, ACCEL_CLAMP);
+  float a = a_no_spikes;
+  (void)a; // not directly used in the new fusion-based heave, but left for compatibility
+
+  // Wave frequency from fusion filter (already smoothed inside)
+  double freq_adj = fusion_filter.getFreqHz();
+  double freq     = freq_adj;
+
+  if (!(freq_adj > 0.0 && isfinite(freq_adj))) {
+    // Tracker/tuner still warming up or data is bad; fall back to FREQ_GUESS
+    freq_adj = FREQ_GUESS;
+    freq     = FREQ_GUESS;
+  }
+
+  freq_adj = clamp(freq_adj, (double)FREQ_LOWER, (double)FREQ_UPPER);
+  double period = (freq_adj > 0.0) ? (1.0 / freq_adj) : 0.0;
+
+  // Sliding min/max for wave height from MEKF heave
+  uint32_t windowMicros = getWindowMicros(period);
+  SampleType sample = { .value = heave, .timeMicroSec = now };
+  min_max_lemire_update(&min_max_h, sample, windowMicros);
+
+  float wave_height = min_max_h.max.value - min_max_h.min.value;
+  heave_avg = 0.5f * (min_max_h.max.value + min_max_h.min.value);
+
+  // Wave direction from built-in KalmanWaveDirection in fusion_filter
+  const auto& dir_filter = fusion_filter.dir();
+
+  // Direction in [0, 180) degrees (wave propagation axis)
+  float wave_deg = dir_filter.getDirectionDegrees();
+
+  // Optional extra smoothing using your AngleAverager
+  wave_angle_estimate = angle_averager.average180(wave_deg);
+  wave_angle_deg = wave_angle_estimate.angle;
+
+  // You also have (if you want later):
+  // float dir_uncert_deg = dir_filter.getDirectionUncertaintyDegrees();
+  // float dir_conf       = dir_filter.getConfidence();
+  // float dir_amp        = dir_filter.getAmplitude();
+  // Eigen::Vector2f dir_vec = dir_filter.getDirectionUnit();
+
+  // Apparent wave parameters (from observer point of view)
+  float ap_wavelength = TrochoidalWave<float>::wavelengthFromAngularFrequency(2.0f * M_PI * freq_adj);
+  float ap_wave_number = TrochoidalWave<float>::wavenumberFromWavelength(ap_wavelength);
+  float ap_wave_speed  = TrochoidalWave<float>::waveSpeedFromWavenumber(ap_wave_number);
+
+  // NMEA / Serial output
+  const int serial_report_period_micros = 125000;
+  if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
+    if (produce_serial_data) {
+      if (report_nmea) {
+        // Do not report data for which filters clearly didn't converge
+        if (wave_height < 30.0f) {
+          gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
+        }
+        if (fabsf(heave) < 15.0f) {
+          // DRT1: heave (from MEKF)
+          gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
+        }
+        gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
+
+        // FAV1: main wave frequency (smoothed) from fusion filter
+        gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
+
+        // FRT1: raw tracker frequency (here same as freq, both from fusion)
+        gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+
+        // Sample rate
+        gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0f));
+
+        // Accel bias estimate: use MEKF Z-bias (convert to % g)
+        Eigen::Vector3f acc_bias_est = fusion_filter.mekf().get_acc_bias();
+        gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", acc_bias_est.z() * 100.0f / g_std);
+        gen_nmea0183_xdr("$BBXDR,G,%.5f,M,AP_WAVE_LENGTH", ap_wavelength);
+        gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_PERIOD", period);
+        gen_nmea0183_xdr("$BBXDR,A,%.1f,D,AP_WAVE_ANGLE", wave_angle_deg);
+
+        // AP_WAVE_DIR: discrete enum; currently 0 (unknown).
+        // You can later map sign/sector from dir_filter if you want.
+        gen_nmea0183_xdr("$BBXDR,G,%1d,,AP_WAVE_DIR", 0);
+
+        gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_SPEED", ap_wave_speed);
+      } else {
+        // Arduino Serial Plotter: show heave (cm)
+        Serial.printf(",heave_alt:%.4f", heave * 100.0f);
+        Serial.println();
+      }
+    }
+    last_refresh = now;
+    got_samples = 0;
+  }
+
+  t = (now - start_time) / 1000000.0f;  // time since start sec
+}
+
+// Main loop glue
+void repeatMe() {
+  bool pressed = M5.BtnA.wasPressed();
+  // Calibration is initiated when screen is clicked. Screen on atomS3 is a button.
+  if (pressed) {
+    startCalibration();
+  } else {
+    auto imu_update = M5.Imu.update();
+    if (imu_update) {
+      read_and_processIMU_data();
+    }
+  }
+  makeCalibrStep();
+}
+
+void setup(void) {
+  auto cfg = M5.config();
+  M5.begin(cfg);
+  Serial.begin(115200);
+
+  auto imu_type = M5.Imu.getType();
+  switch (imu_type) {
+    case m5::imu_none:        imu_name = "not found";   break;
+    case m5::imu_sh200q:      imu_name = "sh200q";      break;
+    case m5::imu_mpu6050:     imu_name = "mpu6050";     break;
+    case m5::imu_mpu6886:     imu_name = "mpu6886";     break;
+    case m5::imu_mpu9250:     imu_name = "mpu9250";     break;
+    case m5::imu_bmi270:      imu_name = "bmi270";      break;
+    default:                  imu_name = "unknown";     break;
+  };
+  disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+
+  if (imu_type == m5::imu_none) {
+    for (;;) {
+      delay(1);
+    }
+  }
+
+  initCalibrDisplay();
+
+  // Read calibration values from NVS.
+  if (!M5.Imu.loadOffsetFromNVS()) {
+    // startCalibration();   // uncomment if you want auto-calibration on boot
+  }
+
+  // Initialize unified fusion filter
+  {
+    Eigen::Vector3f sigma_a_init(0.30f, 0.30f, 0.30f);     // accel noise [m/s^2]
+    Eigen::Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f); // gyro noise [rad/s]
+    Eigen::Vector3f sigma_m(0.3f, 0.3f, 0.3f);             // mag noise (unused when with_mag=false)
+
+    fusion_filter.initialize(sigma_a_init, sigma_g, sigma_m);
+    fusion_initialized = false;
+  }
+
+  start_time = micros();
+  last_update = start_time;
+}
+
+void loop(void) {
+  unsigned long start = micros();
+  M5.update();
+  repeatMe();
+  long duration = micros() - start;
+  long delay_micros = 3900 - duration;
+  if (delay_micros > 0) {
+    delayMicroseconds(delay_micros);
+  }
+}
