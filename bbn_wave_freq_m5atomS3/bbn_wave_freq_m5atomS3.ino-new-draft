@@ -47,7 +47,7 @@ constexpr float ACCEL_CLAMP                  = 2.0f;  // max |a| in g
 // Frequency guess used when tracker is not yet valid
 constexpr float FREQ_GUESS = 0.3f;        // Hz
 
-// Frequency validity band + relative gating coefficient (old names)
+// Frequency validity band + relative gating coefficient
 constexpr float FREQ_LOWER = 0.1f;        // Hz
 constexpr float FREQ_UPPER = 5.0f;        // Hz
 constexpr float FREQ_COEF  = 0.25f;       // dimensionless
@@ -55,7 +55,7 @@ constexpr float FREQ_COEF  = 0.25f;       // dimensionless
 // Window for min/max wave-height estimate: N periods
 constexpr float HEIGHT_WINDOW_PERIODS = 3.0f;
 
-enum class TrackerType { ARANOVSKIY=0, KALMANF=1, ZEROCROSS=2 };
+enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 
 #define ZERO_CROSSINGS_SCALE          1.0f
 #define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
@@ -114,7 +114,7 @@ TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THR
 // Sliding min/max for wave height estimation
 MinMaxLemire min_max_h;
 
-// Wave direction (Kalman + old discrete detector)
+// Wave direction (Kalman)
 #define WRONG_ANGLE_MARKER -360.0f
 AngleAverager angle_averager(0.004f);
 float wave_angle_deg = WRONG_ANGLE_MARKER;
@@ -219,7 +219,7 @@ void read_and_processIMU_data() {
   // Sliding min/max for wave height from MEKF heave
   uint32_t windowMicros = getWindowMicros(period);
   SampleType sample = { .value = heave, .timeMicroSec = now };
-  min_max_lemire_update(&min_max_h, &sample, windowMicros);
+  min_max_lemire_update(&min_max_h, sample, windowMicros);
 
   float wave_height = min_max_h.max.value - min_max_h.min.value;
   heave_avg = 0.5f * (min_max_h.max.value + min_max_h.min.value);
