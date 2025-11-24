@@ -165,19 +165,12 @@ static void process_wave_file_for_tracker(const std::string &filename,
     if (exact_mode) {
         accel_noise.bias.setZero();
         gyro_noise.bias.setZero();
-    }
 
-    // Exact-mode: configure MEKF/OU to be "almost deterministic"
-    if (exact_mode) {
         filter.enableClamp(false);
         filter.enableTuner(false);
         
         auto &mekf = filter.mekf();
         mekf.set_exact_aw_mode(true);
-
-        // OU accel model: long τ, tiny stationary variance
-        mekf.set_aw_time_constant(1000.0f);                        // slow OU → near-constant a_w
-        mekf.set_aw_stationary_std(Vector3f::Constant(0.001f));     // ≈ 0.01 m/s² per axis
 
         // Pseudo-measurement on S: essentially disabled via huge σ
         mekf.set_RS_noise(Vector3f::Constant(1e6f));
