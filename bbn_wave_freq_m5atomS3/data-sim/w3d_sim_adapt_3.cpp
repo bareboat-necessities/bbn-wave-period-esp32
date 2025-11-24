@@ -114,7 +114,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     else outname = "w3d_" + outname;
     auto pos_ext = outname.rfind(".csv");
     if (pos_ext != std::string::npos) {
-        outname.insert(pos_ext, with_mag ? "_fusion" : fusion_nomag");
+        outname.insert(pos_ext, with_mag ? "_fusion" : "fusion_nomag");
     } else {
         outname += (with_mag ? "_fusion" : "_fusion_nomag") + std::string(".csv");
     }
