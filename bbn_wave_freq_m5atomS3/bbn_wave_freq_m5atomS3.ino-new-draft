@@ -55,6 +55,8 @@ constexpr float FREQ_COEF  = 0.25f;       // dimensionless
 // Window for min/max wave-height estimate: N periods
 constexpr float HEIGHT_WINDOW_PERIODS = 3.0f;
 
+enum class TrackerType { ARANOVSKIY=0, KALMANF=1, ZEROCROSS=2 };
+
 // Clamp helper
 template<typename T>
 inline T clamp_val(T x, T lo, T hi) {
