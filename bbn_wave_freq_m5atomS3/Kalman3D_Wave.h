@@ -812,8 +812,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
         xext.template segment<3>(OFF_BA).setZero();  // accel bias block
     }
 
-    // Orientation = body→world (NED) truth
-    qref = q_bw;
+    // q_bw is BODY→WORLD (NED). Internally we store WORLD→BODY.
+    qref = q_bw.conjugate();
     qref.normalize();
 
     // Reset covariance to "almost zero" (but PSD-ish)
