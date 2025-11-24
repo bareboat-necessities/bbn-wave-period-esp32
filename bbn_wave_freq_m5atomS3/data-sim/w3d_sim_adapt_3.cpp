@@ -227,23 +227,34 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // First-step init:
         // Use accelerometer to initialize attitude (tilt-only; yaw arbitrary).
         if (first) {
-            // Attitude from accel
-            filter.initialize_from_acc(acc_meas_ned);            
-            if (exact_mode) {
-                // Truth-based initialization for linear states in the MEKF
-                // rec.wave.* is in world Z-up; convert to NED to match MEKF world frame.
-                Vector3f disp_ref_zu(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
-                Vector3f vel_ref_zu (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
-                Vector3f acc_ref_zu (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
-    
-                Vector3f p0_ned = zu_to_ned(disp_ref_zu);
-                Vector3f v0_ned = zu_to_ned(vel_ref_zu);
-                Vector3f a0_ned = zu_to_ned(acc_ref_zu);   // inertial world accel a_w
+            if (!exact_mode) {
+                // Attitude from accel
+                filter.initialize_from_acc(acc_meas_ned);  
+            } else {
+
+        // 1) Build body->world NED quaternion from nautical ENU Euler.
+        // Pseudo-code, you'll plug in your actual helpers from FrameConversions.
+        Eigen::Vector3f eul_naut_deg(r_ref_out, p_ref_out, y_ref_out);
+        Eigen::Vector3f eul_naut_rad = eul_naut_deg * (M_PI/180.0f);
+
+        // Convert nautical ENU -> aerospace/NED ZYX and then to quaternion
+        // (You already have something like aero_to_nautical and zu_to_ned; reuse that.)
+        Quaternionf q_bw_truth = quat_body_to_world_from_nautical(eul_naut_rad);
+        q_bw_truth.normalize();
+
+        // 2) Truth-based linear states in NED
+        Vector3f disp_ref_zu(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
+        Vector3f vel_ref_zu (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
+        Vector3f acc_ref_zu (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
+
+        Vector3f p0_ned = zu_to_ned(disp_ref_zu);
+        Vector3f v0_ned = zu_to_ned(vel_ref_zu);
+        Vector3f a0_ned = zu_to_ned(acc_ref_zu);
+
+        auto &mekf = filter.mekf();
+        mekf.initialize_from_truth(p0_ned, v0_ned, q_bw_truth, a0_ned);
                 
-                // Use ground-truth p, v, a_w from the CSV to initialize MEKF linear states.
-                auto &mekf = filter.mekf();
-                Quaternionf q0_bw = mekf.quaternion();     // Kalman3D_Wave::quaternion() returns body→world
-                mekf.initialize_from_truth(p0_ned, v0_ned, q0_bw, a0_ned);
+            
             }
             first = false;
         }
