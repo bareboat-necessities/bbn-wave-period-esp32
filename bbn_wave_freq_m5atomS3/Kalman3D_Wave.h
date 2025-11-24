@@ -987,7 +987,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
             const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
         
             Q_LL.setZero();
-            // group offsets in your interleaved state order
+            // group offsets in interleaved state order
             const int goff[4] = {0, 3, 6, 9}; // v, p, S, a
         
             // Blockwise assembly: each 3x3 block is Sig scaled by the 4x4 scalar
