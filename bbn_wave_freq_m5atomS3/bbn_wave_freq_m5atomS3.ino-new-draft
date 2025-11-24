@@ -57,6 +57,10 @@ constexpr float HEIGHT_WINDOW_PERIODS = 3.0f;
 
 enum class TrackerType { ARANOVSKIY=0, KALMANF=1, ZEROCROSS=2 };
 
+#define ZERO_CROSSINGS_SCALE          1.0f
+#define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
+#define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
+
 // Clamp helper
 template<typename T>
 inline T clamp_val(T x, T lo, T hi) {
