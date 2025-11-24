@@ -154,7 +154,6 @@ void read_and_processIMU_data() {
 
   // Map M5 IMU to BODY NED, convert accel to m/s^2, gyro to rad/s
   //
-  // This mapping matches your previous QMEKF branch:
   //   gyr = { gyro.y*DEG_TO_RAD,  gyro.x*DEG_TO_RAD, -gyro.z*DEG_TO_RAD };
   //   acc = { accel.y,           accel.x,          -accel.z           } (in g)
   Eigen::Vector3f acc_meas_ned(
