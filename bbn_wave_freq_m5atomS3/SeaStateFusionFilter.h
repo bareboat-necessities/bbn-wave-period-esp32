@@ -142,6 +142,8 @@ struct TrackerPolicy<TrackerType::ZEROCROSS> {
 template<TrackerType trackerT>
 class SeaStateFusionFilter {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     using TrackingPolicy  = TrackerPolicy<trackerT>;
 
     explicit SeaStateFusionFilter(bool with_mag = true)
