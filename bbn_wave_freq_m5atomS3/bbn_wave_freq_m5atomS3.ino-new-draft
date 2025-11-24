@@ -27,8 +27,8 @@
 #include <M5Unified.h>
 #include <Arduino.h>
 
-// Eigen is used by Kalman3D_Wave / SeaStateFusionFilter
-#include <ArduinoEigenDense.h>
+#include <stdint.h>
+#include <ArduinoEigenDense.h> // Eigen is used by Kalman3D_Wave / SeaStateFusionFilter
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
