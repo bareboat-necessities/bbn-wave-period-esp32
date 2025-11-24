@@ -37,7 +37,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// Local constants 
+// Local constants
 
 // Standard gravity
 constexpr float g_std = 9.80665f;        // m/s^2
@@ -50,10 +50,15 @@ constexpr float ACCEL_CLAMP                  = 2.0f;  // max |a| in g
 // Frequency guess used when tracker is not yet valid
 constexpr float FREQ_GUESS = 0.3f;        // Hz
 
+// Frequency validity band + relative gating coefficient (old names)
+constexpr float FREQ_LOWER = 0.1f;        // Hz
+constexpr float FREQ_UPPER = 5.0f;        // Hz
+constexpr float FREQ_COEF  = 0.25f;       // dimensionless
+
 // Window for min/max wave-height estimate: N periods
 constexpr float HEIGHT_WINDOW_PERIODS = 3.0f;
 
-// Clamp helper (since we no longer pull it from WaveFilters.h)
+// Clamp helper
 template<typename T>
 inline T clamp_val(T x, T lo, T hi) {
   if (x < lo) return lo;
@@ -106,7 +111,7 @@ TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THR
 // Sliding min/max for wave height estimation
 MinMaxLemire min_max_h;
 
-// Wave direction (only using internal KalmanWaveDirection, plus extra smoothing)
+// Wave direction (Kalman + old discrete detector)
 #define WRONG_ANGLE_MARKER -360.0f
 AngleAverager angle_averager(0.004f);
 float wave_angle_deg = WRONG_ANGLE_MARKER;
@@ -124,8 +129,6 @@ float heave_avg = 0.0f;
 using FusionFilter = SeaStateFusionFilter<TrackerType::KALMANF>;
 FusionFilter fusion_filter(false);   // with_mag = false on M5AtomS3
 bool fusion_initialized = false;
-
-// Helpers
 
 // Main IMU processing
 void read_and_processIMU_data() {
@@ -177,10 +180,6 @@ void read_and_processIMU_data() {
   float pitch = eul_deg.y();
   float yaw   = eul_deg.z();
 
-  (void)roll;   // currently unused, but available if you want to output
-  (void)pitch;
-  (void)yaw;
-
   // Heave and vertical acceleration from MEKF state (world NED)
   Eigen::Vector3f disp_ned       = fusion_filter.mekf().get_position();
   Eigen::Vector3f vel_ned        = fusion_filter.mekf().get_velocity();
@@ -191,7 +190,7 @@ void read_and_processIMU_data() {
   float heave_vel = -vel_ned.z();       // m/s, up
   float heave_acc = -acc_world_ned.z(); // m/s^2, up
 
-  (void)heave_vel;  // not used in this sketch but available for debugging
+  (void)heave_vel;  // not used in NMEA, but available
 
   // Vertical inertial accel in g (for spike filter and compatibility)
   float a_noisy = heave_acc / g_std;       // in g
@@ -199,7 +198,7 @@ void read_and_processIMU_data() {
   float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
   a_no_spikes = clamp_val(a_no_spikes, -ACCEL_CLAMP, ACCEL_CLAMP);
   float a = a_no_spikes;
-  (void)a; // not directly used in the new fusion-based heave, but left for compatibility
+  (void)a; // currently unused, but kept for future diagnostics
 
   // Wave frequency from fusion filter (already smoothed inside)
   double freq_adj = fusion_filter.getFreqHz();
@@ -211,13 +210,13 @@ void read_and_processIMU_data() {
     freq     = FREQ_GUESS;
   }
 
-  // No extra clamp here; SeaStateFusionFilter already enforces min/max freq.
+  // Period
   double period = (freq_adj > 0.0) ? (1.0 / freq_adj) : 0.0;
 
   // Sliding min/max for wave height from MEKF heave
   uint32_t windowMicros = getWindowMicros(period);
   SampleType sample = { .value = heave, .timeMicroSec = now };
-  min_max_lemire_update(&min_max_h, sample, windowMicros);
+  min_max_lemire_update(&min_max_h, &sample, windowMicros);
 
   float wave_height = min_max_h.max.value - min_max_h.min.value;
   heave_avg = 0.5f * (min_max_h.max.value + min_max_h.min.value);
@@ -232,12 +231,6 @@ void read_and_processIMU_data() {
   wave_angle_estimate = angle_averager.average180(wave_deg);
   wave_angle_deg = wave_angle_estimate.angle;
 
-  // You also have (if you want later):
-  // float dir_uncert_deg = dir_filter.getDirectionUncertaintyDegrees();
-  // float dir_conf       = dir_filter.getConfidence();
-  // float dir_amp        = dir_filter.getAmplitude();
-  // Eigen::Vector2f dir_vec = dir_filter.getDirectionUnit();
-
   // Apparent wave parameters (from observer point of view, deep water)
   float ap_wavelength = deep_water_wavelength_from_freq(static_cast<float>(freq_adj));
   float ap_wave_speed  = deep_water_speed_from_freq(static_cast<float>(freq_adj));
@@ -247,21 +240,27 @@ void read_and_processIMU_data() {
   if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
     if (produce_serial_data) {
       if (report_nmea) {
-        // Do not report data for which filters clearly didn't converge
+        // do not report data for which filters clearly didn't converge
         if (wave_height < 30.0f) {
           gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRG1", wave_height);
         }
         if (fabsf(heave) < 15.0f) {
-          // DRT1: heave (from MEKF)
+          // DRT1: heave (main heave estimate)
           gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DRT1", heave);
         }
         gen_nmea0183_xdr("$BBXDR,D,%.5f,M,DAV1", heave_avg);
 
-        // FAV1: main wave frequency (smoothed) from fusion filter
-        gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
+        // Gating for FAV1 and DRT2 (freq vs freq_adj).
+        // Here freq and freq_adj are the same smoothed value,
+        // so the |freq - freq_adj| test always passes when freq_adj > 0.
+        if (fabs(freq - freq_adj) < FREQ_COEF * freq_adj) {
+          gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FAV1", freq_adj);
+        }
 
-        // FRT1: raw tracker frequency (here same as freq, both from fusion)
-        gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+        // Raw tracker frequency FRT1 only when within valid band
+        if (freq >= FREQ_LOWER && freq <= FREQ_UPPER) {
+          gen_nmea0183_xdr("$BBXDR,F,%.5f,H,FRT1", freq);
+        }
 
         // Sample rate
         gen_nmea0183_xdr("$BBXDR,F,%.5f,H,SRT1", got_samples / ((now - last_refresh) / 1000000.0f));
@@ -274,13 +273,16 @@ void read_and_processIMU_data() {
         gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_PERIOD", period);
         gen_nmea0183_xdr("$BBXDR,A,%.1f,D,AP_WAVE_ANGLE", wave_angle_deg);
 
-        // AP_WAVE_DIR: discrete enum; currently 0 (unknown).
-        // You can later map sign/sector from dir_filter if you want.
-        gen_nmea0183_xdr("$BBXDR,G,%1d,,AP_WAVE_DIR", 0);
+        // Uses discrete wave_dir
+        gen_nmea0183_xdr("$BBXDR,G,%1d,,AP_WAVE_DIR", (int)wave_dir);
         gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_SPEED", ap_wave_speed);
       } else {
-        // Arduino Serial Plotter: show heave (cm)
+        // report for Arduino Serial Plotter
         Serial.printf(",heave_alt:%.4f", heave * 100.0f);
+        Serial.printf(",roll_deg:%.2f",  roll);
+        Serial.printf(",pitch_deg:%.2f", pitch);
+        Serial.printf(",yaw_deg:%.2f",   yaw);
+        //Serial.printf(",ap_wave_dir_P:%.2f", wave_dir_detector.getFilteredP());
         Serial.println();
       }
     }
