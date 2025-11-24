@@ -24,14 +24,11 @@
      (DAFx23), Copenhagen, Denmark, September 2023
 */
 
-#define EIGEN_NON_ARDUINO
-
 #include <M5Unified.h>
 #include <Arduino.h>
 
 // Eigen is used by Kalman3D_Wave / SeaStateFusionFilter
-#include <Eigen/Core>
-#include <Eigen/Geometry>
+#include <ArduinoEigenDense.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
