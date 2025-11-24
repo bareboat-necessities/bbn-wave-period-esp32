@@ -231,28 +231,24 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 // Attitude from accel
                 filter.initialize_from_acc(acc_meas_ned);  
             } else {
-
-        // === Exact mode: use perfect initial states (p, v, a_w, q_bw) ===
-
-        // 1) Body->world NED quaternion from nautical (ENU) Euler
-        Quaternionf q_bw_truth =
-            quat_body_to_world_from_nautical_deg(r_ref_out, p_ref_out, y_ref_out /* = 0 in sim */);
-        q_bw_truth.normalize();
-
-        // 2) Truth-based linear states (convert world Z-up -> NED)
-        Vector3f disp_ref_zu(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
-        Vector3f vel_ref_zu (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
-        Vector3f acc_ref_zu (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
-
-        Vector3f p0_ned = zu_to_ned(disp_ref_zu);
-        Vector3f v0_ned = zu_to_ned(vel_ref_zu);
-        Vector3f a0_ned = zu_to_ned(acc_ref_zu);   // inertial world accel a_w
-
-        // 3) Initialize MEKF directly from truth
-        auto &mekf = filter.mekf();
-        mekf.initialize_from_truth(p0_ned, v0_ned, q_bw_truth, a0_ned);
-                
-            
+                // Exact mode: use perfect initial states (p, v, a_w, q_bw) 
+                // Body->world NED quaternion from nautical (ENU) Euler
+                Quaternionf q_bw_truth =
+                    quat_body_to_world_from_nautical_deg(r_ref_out, p_ref_out, y_ref_out /* = 0 in sim */);
+                q_bw_truth.normalize();
+        
+                // Truth-based linear states (convert world Z-up -> NED)
+                Vector3f disp_ref_zu(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
+                Vector3f vel_ref_zu (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
+                Vector3f acc_ref_zu (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
+        
+                Vector3f p0_ned = zu_to_ned(disp_ref_zu);
+                Vector3f v0_ned = zu_to_ned(vel_ref_zu);
+                Vector3f a0_ned = zu_to_ned(acc_ref_zu);   // inertial world accel a_w
+        
+                // Initialize MEKF directly from truth
+                auto &mekf = filter.mekf();
+                mekf.initialize_from_truth(p0_ned, v0_ned, q_bw_truth, a0_ned);
             }
             first = false;
         }
