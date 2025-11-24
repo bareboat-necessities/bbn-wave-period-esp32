@@ -232,17 +232,20 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 filter.initialize_from_acc(acc_meas_ned);  
             } else {
 
-        // 1) Build body->world NED quaternion from nautical ENU Euler.
-        // Pseudo-code, you'll plug in your actual helpers from FrameConversions.
-        Eigen::Vector3f eul_naut_deg(r_ref_out, p_ref_out, y_ref_out);
-        Eigen::Vector3f eul_naut_rad = eul_naut_deg * (M_PI/180.0f);
+        // === Exact mode: use perfect initial states ===
 
-        // Convert nautical ENU -> aerospace/NED ZYX and then to quaternion
-        // (You already have something like aero_to_nautical and zu_to_ned; reuse that.)
-        Quaternionf q_bw_truth = quat_body_to_world_from_nautical(eul_naut_rad);
+        // 1. Build quaternion with yaw = 0, roll/pitch from reference
+        float roll_rad  = rec.imu.roll_deg  * (M_PI / 180.0f);
+        float pitch_rad = rec.imu.pitch_deg * (M_PI / 180.0f);
+        float yaw_rad   = 0.0f; // your sim yaw is always zero
+
+        Eigen::AngleAxisf r_z(yaw_rad,   Eigen::Vector3f::UnitZ());
+        Eigen::AngleAxisf r_y(pitch_rad, Eigen::Vector3f::UnitY());
+        Eigen::AngleAxisf r_x(roll_rad,  Eigen::Vector3f::UnitX());
+        Quaternionf q_bw_truth = r_z * r_y * r_x; // aerospace ZYX, yaw–pitch–roll
         q_bw_truth.normalize();
 
-        // 2) Truth-based linear states in NED
+        // 2. Truth-based linear states (convert from Z-up to NED)
         Vector3f disp_ref_zu(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
         Vector3f vel_ref_zu (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
         Vector3f acc_ref_zu (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
@@ -251,6 +254,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         Vector3f v0_ned = zu_to_ned(vel_ref_zu);
         Vector3f a0_ned = zu_to_ned(acc_ref_zu);
 
+        // 3. Initialize MEKF directly from truth
         auto &mekf = filter.mekf();
         mekf.initialize_from_truth(p0_ned, v0_ned, q_bw_truth, a0_ned);
                 
