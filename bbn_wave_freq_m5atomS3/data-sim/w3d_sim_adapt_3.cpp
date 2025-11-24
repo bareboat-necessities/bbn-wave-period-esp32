@@ -232,29 +232,23 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 filter.initialize_from_acc(acc_meas_ned);  
             } else {
 
-        // === Exact mode: use perfect initial states ===
+        // === Exact mode: use perfect initial states (p, v, a_w, q_bw) ===
 
-        // 1. Build quaternion with yaw = 0, roll/pitch from reference
-        float roll_rad  = rec.imu.roll_deg  * (M_PI / 180.0f);
-        float pitch_rad = rec.imu.pitch_deg * (M_PI / 180.0f);
-        float yaw_rad   = 0.0f; // your sim yaw is always zero
-
-        Eigen::AngleAxisf r_z(yaw_rad,   Eigen::Vector3f::UnitZ());
-        Eigen::AngleAxisf r_y(pitch_rad, Eigen::Vector3f::UnitY());
-        Eigen::AngleAxisf r_x(roll_rad,  Eigen::Vector3f::UnitX());
-        Quaternionf q_bw_truth = r_z * r_y * r_x; // aerospace ZYX, yaw–pitch–roll
+        // 1) Body->world NED quaternion from nautical (ENU) Euler
+        Quaternionf q_bw_truth =
+            quat_body_to_world_from_nautical_deg(r_ref_out, p_ref_out, y_ref_out /* = 0 in sim */);
         q_bw_truth.normalize();
 
-        // 2. Truth-based linear states (convert from Z-up to NED)
+        // 2) Truth-based linear states (convert world Z-up -> NED)
         Vector3f disp_ref_zu(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
         Vector3f vel_ref_zu (rec.wave.vel_x,  rec.wave.vel_y,  rec.wave.vel_z);
         Vector3f acc_ref_zu (rec.wave.acc_x,  rec.wave.acc_y,  rec.wave.acc_z);
 
         Vector3f p0_ned = zu_to_ned(disp_ref_zu);
         Vector3f v0_ned = zu_to_ned(vel_ref_zu);
-        Vector3f a0_ned = zu_to_ned(acc_ref_zu);
+        Vector3f a0_ned = zu_to_ned(acc_ref_zu);   // inertial world accel a_w
 
-        // 3. Initialize MEKF directly from truth
+        // 3) Initialize MEKF directly from truth
         auto &mekf = filter.mekf();
         mekf.initialize_from_truth(p0_ned, v0_ned, q_bw_truth, a0_ned);
                 
