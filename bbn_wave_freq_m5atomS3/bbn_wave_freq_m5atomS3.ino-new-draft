@@ -24,6 +24,8 @@
      (DAFx23), Copenhagen, Denmark, September 2023
 */
 
+#define EIGEN_NON_ARDUINO
+
 #include <M5Unified.h>
 #include <Arduino.h>
 
@@ -31,7 +33,61 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
-// Project headers
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+// Local constants 
+
+// Standard gravity
+constexpr float g_std = 9.80665f;        // m/s^2
+
+// Spike filter parameters (signal is in "g" units here)
+constexpr int   ACCEL_SPIKE_FILTER_SIZE      = 8;
+constexpr float ACCEL_SPIKE_FILTER_THRESHOLD = 0.4f;  // g
+constexpr float ACCEL_CLAMP                  = 2.0f;  // max |a| in g
+
+// Frequency guess used when tracker is not yet valid
+constexpr float FREQ_GUESS = 0.3f;        // Hz
+
+// Window for min/max wave-height estimate: N periods
+constexpr float HEIGHT_WINDOW_PERIODS = 3.0f;
+
+// Clamp helper (since we no longer pull it from WaveFilters.h)
+template<typename T>
+inline T clamp_val(T x, T lo, T hi) {
+  if (x < lo) return lo;
+  if (x > hi) return hi;
+  return x;
+}
+
+// Min/max Lemire window length in microseconds from period
+inline uint32_t getWindowMicros(double period_sec) {
+  if (!(period_sec > 0.0)) return 0;
+  double win_sec = HEIGHT_WINDOW_PERIODS * period_sec;
+  double us = win_sec * 1e6;
+  if (us < 0.0) us = 0.0;
+  if (us > static_cast<double>(UINT32_MAX)) us = static_cast<double>(UINT32_MAX);
+  return static_cast<uint32_t>(us);
+}
+
+// Deep-water wave relations (no TrochoidalWave.h):
+//   ω^2 = g k  → k = ω^2 / g
+//   λ = 2π / k,  c = ω / k = g / ω
+inline float deep_water_wavelength_from_freq(float f_hz) {
+  if (!(f_hz > 0.0f)) return NAN;
+  float omega = 2.0f * M_PI * f_hz;
+  float k = (omega * omega) / g_std;
+  if (!(k > 0.0f)) return NAN;
+  return 2.0f * M_PI / k;  // meters
+}
+
+inline float deep_water_speed_from_freq(float f_hz) {
+  if (!(f_hz > 0.0f)) return NAN;
+  float omega = 2.0f * M_PI * f_hz;
+  return g_std / omega;    // m/s
+}
+
 #include "AngleAveraging.h"
 #include "MinMaxLemire.h"
 #include "TimeAwareSpikeFilter.h"
@@ -44,6 +100,7 @@
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
 unsigned long got_samples = 0;
 
+// Basic filters
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 // Sliding min/max for wave height estimation
@@ -55,7 +112,7 @@ AngleAverager angle_averager(0.004f);
 float wave_angle_deg = WRONG_ANGLE_MARKER;
 AngleEstimate wave_angle_estimate;
 
-const char* imu_name;
+const char* imu_name = "unknown";
 
 bool produce_serial_data = true;
 bool report_nmea = true;
@@ -69,13 +126,6 @@ FusionFilter fusion_filter(false);   // with_mag = false on M5AtomS3
 bool fusion_initialized = false;
 
 // Helpers
-float azimuth_deg_180(float a, float b) {
-  if (b < 0.0f) {
-    a = -a;
-    b = -b;
-  }
-  return atan2f(a, b) * 180.0f / M_PI;
-}
 
 // Main IMU processing
 void read_and_processIMU_data() {
@@ -93,10 +143,12 @@ void read_and_processIMU_data() {
   drawCalibrGraph(rect_graph_area, data);
 
   float delta_t = (now - last_update) / 1000000.0f;  // sec
-  delta_t = clamp(delta_t, 0.001f, 0.1f);
+  delta_t = clamp_val(delta_t, 0.001f, 0.1f);
   last_update = now;
 
   // Map M5 IMU to BODY NED, convert accel to m/s^2, gyro to rad/s
+  //
+  // This mapping matches your previous QMEKF branch:
   //   gyr = { gyro.y*DEG_TO_RAD,  gyro.x*DEG_TO_RAD, -gyro.z*DEG_TO_RAD };
   //   acc = { accel.y,           accel.x,          -accel.z           } (in g)
   Eigen::Vector3f acc_meas_ned(
@@ -145,7 +197,7 @@ void read_and_processIMU_data() {
   float a_noisy = heave_acc / g_std;       // in g
   float a_band_passed = a_noisy;           // add band-pass here if desired
   float a_no_spikes = spikeFilter.filterWithDelta(a_band_passed, delta_t);
-  a_no_spikes = clamp(a_no_spikes, -ACCEL_CLAMP, ACCEL_CLAMP);
+  a_no_spikes = clamp_val(a_no_spikes, -ACCEL_CLAMP, ACCEL_CLAMP);
   float a = a_no_spikes;
   (void)a; // not directly used in the new fusion-based heave, but left for compatibility
 
@@ -159,7 +211,7 @@ void read_and_processIMU_data() {
     freq     = FREQ_GUESS;
   }
 
-  freq_adj = clamp(freq_adj, (double)FREQ_LOWER, (double)FREQ_UPPER);
+  // No extra clamp here; SeaStateFusionFilter already enforces min/max freq.
   double period = (freq_adj > 0.0) ? (1.0 / freq_adj) : 0.0;
 
   // Sliding min/max for wave height from MEKF heave
@@ -186,10 +238,9 @@ void read_and_processIMU_data() {
   // float dir_amp        = dir_filter.getAmplitude();
   // Eigen::Vector2f dir_vec = dir_filter.getDirectionUnit();
 
-  // Apparent wave parameters (from observer point of view)
-  float ap_wavelength = TrochoidalWave<float>::wavelengthFromAngularFrequency(2.0f * M_PI * freq_adj);
-  float ap_wave_number = TrochoidalWave<float>::wavenumberFromWavelength(ap_wavelength);
-  float ap_wave_speed  = TrochoidalWave<float>::waveSpeedFromWavenumber(ap_wave_number);
+  // Apparent wave parameters (from observer point of view, deep water)
+  float ap_wavelength = deep_water_wavelength_from_freq(static_cast<float>(freq_adj));
+  float ap_wave_speed  = deep_water_speed_from_freq(static_cast<float>(freq_adj));
 
   // NMEA / Serial output
   const int serial_report_period_micros = 125000;
@@ -218,6 +269,7 @@ void read_and_processIMU_data() {
         // Accel bias estimate: use MEKF Z-bias (convert to % g)
         Eigen::Vector3f acc_bias_est = fusion_filter.mekf().get_acc_bias();
         gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", acc_bias_est.z() * 100.0f / g_std);
+
         gen_nmea0183_xdr("$BBXDR,G,%.5f,M,AP_WAVE_LENGTH", ap_wavelength);
         gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_PERIOD", period);
         gen_nmea0183_xdr("$BBXDR,A,%.1f,D,AP_WAVE_ANGLE", wave_angle_deg);
@@ -225,7 +277,6 @@ void read_and_processIMU_data() {
         // AP_WAVE_DIR: discrete enum; currently 0 (unknown).
         // You can later map sign/sector from dir_filter if you want.
         gen_nmea0183_xdr("$BBXDR,G,%1d,,AP_WAVE_DIR", 0);
-
         gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_SPEED", ap_wave_speed);
       } else {
         // Arduino Serial Plotter: show heave (cm)
@@ -236,11 +287,10 @@ void read_and_processIMU_data() {
     last_refresh = now;
     got_samples = 0;
   }
-
   t = (now - start_time) / 1000000.0f;  // time since start sec
 }
 
-// Main loop glue
+// Main loop
 void repeatMe() {
   bool pressed = M5.BtnA.wasPressed();
   // Calibration is initiated when screen is clicked. Screen on atomS3 is a button.
@@ -255,6 +305,7 @@ void repeatMe() {
   makeCalibrStep();
 }
 
+// setup / loop
 void setup(void) {
   auto cfg = M5.config();
   M5.begin(cfg);
@@ -285,7 +336,7 @@ void setup(void) {
     // startCalibration();   // uncomment if you want auto-calibration on boot
   }
 
-  // Initialize unified fusion filter
+  // Initialize unified fusion filter (noise values matched to desktop fusion harness)
   {
     Eigen::Vector3f sigma_a_init(0.30f, 0.30f, 0.30f);     // accel noise [m/s^2]
     Eigen::Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f); // gyro noise [rad/s]
@@ -294,7 +345,6 @@ void setup(void) {
     fusion_filter.initialize(sigma_a_init, sigma_g, sigma_m);
     fusion_initialized = false;
   }
-
   start_time = micros();
   last_update = start_time;
 }
