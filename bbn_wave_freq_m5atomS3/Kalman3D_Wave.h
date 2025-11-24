@@ -1086,7 +1086,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     }
 
     // Integral pseudo-measurement drift correction
-    if (!exact_aw_mode_ && (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD)) {
+    if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
         applyIntegralZeroPseudoMeas();
         pseudo_update_counter_ = 0;
     }
