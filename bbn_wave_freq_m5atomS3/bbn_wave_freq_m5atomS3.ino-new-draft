@@ -79,7 +79,7 @@ inline uint32_t getWindowMicros(double period_sec) {
   return static_cast<uint32_t>(us);
 }
 
-// Deep-water wave relations (no TrochoidalWave.h):
+// Deep-water wave relations:
 //   ω^2 = g k  → k = ω^2 / g
 //   λ = 2π / k,  c = ω / k = g / ω
 inline float deep_water_wavelength_from_freq(float f_hz) {
