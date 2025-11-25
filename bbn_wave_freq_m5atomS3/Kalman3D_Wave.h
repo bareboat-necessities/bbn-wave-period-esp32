@@ -155,22 +155,51 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
 // Helper: project a symmetric NxN to PSD
 template<typename T, int N>
 static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
-    // Ensure symmetry first
+    // Always symmetrize first (we assume S is "almost" symmetric)
     S = T(0.5) * (S + S.transpose());
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,N,N>> es(S);
-    if (es.info() != Eigen::Success) {
-        // Fallback: add small jitter on the diagonal and re-symmetrize
-        S.diagonal().array() += eps;
-        S = T(0.5) * (S + S.transpose());
-        return;
-    }
-    Eigen::Matrix<T,N,1> lam = es.eigenvalues();
+    // Scrub NaNs / infinities, keep symmetry
     for (int i = 0; i < N; ++i) {
-        if (!(lam(i) > T(0))) lam(i) = eps; // clamp negatives/NaNs to small +ve
+        for (int j = 0; j < N; ++j) {
+            if (!std::isfinite(S(i,j))) {
+                S(i,j) = (i == j) ? eps : T(0);
+            }
+        }
     }
-    S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
-    // Re-symmetrize to clean float noise
-    S = T(0.5) * (S + S.transpose());
+    if constexpr (N <= 4) {
+        // Small matrices: use exact eigen projection (stack cost is tiny here).
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,N,N>> es(S);
+        if (es.info() != Eigen::Success) {
+            // Fallback: light diagonal bump & re-symmetrize
+            S.diagonal().array() += eps;
+            S = T(0.5) * (S + S.transpose());
+            return;
+        }
+        Eigen::Matrix<T,N,1> lam = es.eigenvalues();
+        for (int i = 0; i < N; ++i) {
+            if (!(lam(i) > T(0))) lam(i) = eps;  // clamp negatives / NaNs
+        }
+        S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
+        S = T(0.5) * (S + S.transpose()); // clean float noise
+    } else {
+        // Larger matrices (6×6, 12×12, ...):
+        // enforce *strict diagonal dominance* row-by-row.
+        // For a symmetric matrix, strictly diagonally dominant with positive
+        // diagonal ⇒ SPD. This is cheap, O(N²), and uses almost no stack.
+
+        for (int i = 0; i < N; ++i) {
+            T row_sum = T(0);
+            for (int j = 0; j < N; ++j) {
+                if (j == i) continue;
+                row_sum += std::abs(S(i,j));
+            }
+            const T min_diag = row_sum + eps;
+            if (!(S(i,i) > min_diag)) {
+                S(i,i) = min_diag;
+            }
+        }
+        // Final clean symmetrization
+        S = T(0.5) * (S + S.transpose());
+    }
 }
 
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
