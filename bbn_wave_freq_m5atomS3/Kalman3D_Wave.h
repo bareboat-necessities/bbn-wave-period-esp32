@@ -1039,7 +1039,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     constexpr int NL = 12;
     
     // AA block
-    Eigen::Matrix<T,NA,NA> tmpAA;
+    MatrixBaseN& tmpAA = tmpAA_scratch_;
     
     // tmpAA = F_AA * P_AA_old
     tmpAA.noalias() = F_AA * Pext.template block<NA,NA>(0,0);
@@ -1049,7 +1049,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
     
     // LL block
-    Eigen::Matrix<T,NL,NL> tmpLL;
+    Matrix12& tmpLL = tmpLL_scratch_;
     
     // tmpLL = F_LL * P_LL_old
     tmpLL.noalias() = F_LL * Pext.template block<NL,NL>(OFF_V,OFF_V);
@@ -1059,7 +1059,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() += Q_LL;
     
     // AL block (cross-covariance)
-    Eigen::Matrix<T,NA,NL> tmpAL;
+    MatrixBaseN12& tmpAL = tmpAL_scratch_;
     
     // tmpAL = F_AA * P_AL_old
     tmpAL.noalias() = F_AA * Pext.template block<NA,NL>(0,OFF_V);
