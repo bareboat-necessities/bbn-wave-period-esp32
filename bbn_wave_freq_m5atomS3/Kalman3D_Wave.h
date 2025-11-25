@@ -652,17 +652,64 @@ class Kalman3D_Wave {
         return (ldlt.info() == Eigen::Success);
     }
     
-    // Joseph covariance update: P ← P - KCP - (KCP)ᵀ + K S Kᵀ, enforce symmetry.
-    EIGEN_STRONG_INLINE void joseph_update3_(const Eigen::Matrix<T,NX,3>& K, const Matrix3& S, const Eigen::Matrix<T,NX,3>& PCt) {
-        const Eigen::Matrix<T,3,NX> CP  = PCt.transpose();
-        const Eigen::Matrix<T,NX,NX> KCP = K * CP;
-        const Eigen::Matrix<T,NX,NX> KSKt= K * S * K.transpose();
+    // Joseph covariance update: P ← P - KCP - (KCP)ᵀ + K S Kᵀ.
+    // Stack-light version: no NX×NX temporaries, only scalar loops.
+    // Assumes Pext is symmetric on entry.
+    EIGEN_STRONG_INLINE void joseph_update3_(const Eigen::Matrix<T,NX,3>& K,
+                                             const Matrix3& S,
+                                             const Eigen::Matrix<T,NX,3>& PCt)
+    {
+        // We use that:
+        //  • PCt = P Cᵀ  (N×3)
+        //  • CP ≈ (PCt)ᵀ since P ≈ Pᵀ
+        //
+        // So:
+        //   KCP(i,j) = Σ_l K(i,l) * CP(l,j) ≈ Σ_l K(i,l) * PCt(j,l)
+        //   (KCP)ᵀ(j,i) = KCP(j,i)
+        //
+        // And K S Kᵀ is symmetric because S is symmetric.
     
-        Pext.noalias() -= KCP;
-        Pext.noalias() -= KCP.transpose();
-        Pext.noalias() += KSKt;
+        for (int i = 0; i < NX; ++i) {
+            for (int j = i; j < NX; ++j) {
     
-        // Symmetrize for numerical hygiene
+                // KCP_ij = (K C P)(i,j)
+                T KCP_ij = T(0);
+                T KCP_ji = T(0);
+                for (int l = 0; l < 3; ++l) {
+                    const T Ki_l = K(i,l);
+                    const T Kj_l = K(j,l);
+                    const T Pj_l = PCt(j,l); // CP(l,j) ≈ PCt(j,l)
+                    const T Pi_l = PCt(i,l); // CP(l,i) ≈ PCt(i,l)
+    
+                    KCP_ij += Ki_l * Pj_l;
+                    if (j != i) {
+                        KCP_ji += Kj_l * Pi_l;
+                    }
+                }
+                if (j == i) {
+                    KCP_ji = KCP_ij;
+                }
+    
+                // K S Kᵀ (i,j)
+                T KSK_ij = T(0);
+                for (int a = 0; a < 3; ++a) {
+                    const T Kia = K(i,a);
+                    for (int b = 0; b < 3; ++b) {
+                        const T Kjb = K(j,b);
+                        KSK_ij += Kia * S(a,b) * Kjb;
+                    }
+                }
+    
+                const T delta = - (KCP_ij + KCP_ji) + KSK_ij;
+    
+                // Apply symmetric update
+                Pext(i,j) += delta;
+                if (j != i) {
+                    Pext(j,i) = Pext(i,j);
+                }
+            }
+        }
+        // Final symmetry clean-up (cheap but good hygiene)
         symmetrize_Pext_();
     }
 };
