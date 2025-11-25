@@ -887,7 +887,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     const T omega = w.norm();
     const T theta = omega * Ts;
 
-    MatrixBaseN F_AA; F_AA.setIdentity();
+    MatrixBaseN& F_AA = F_AA_scratch_;
+    F_AA.setIdentity();
+
     if (theta < T(1e-5)) {
         Matrix3 Wx = skew_symmetric_matrix(w);
         F_AA.template topLeftCorner<3,3>() = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/T(2));
@@ -900,7 +902,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         F_AA.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
     }
 
-    MatrixBaseN Q_AA; Q_AA.setZero();
+    MatrixBaseN& Q_AA = Q_AA_scratch_;
+    Q_AA.setZero();
     
     if (!use_exact_att_bias_Qd_) {
         // fast path
