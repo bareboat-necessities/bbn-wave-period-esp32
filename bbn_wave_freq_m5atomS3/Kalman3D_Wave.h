@@ -152,16 +152,6 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     return c;
 }
 
-EIGEN_STRONG_INLINE void symmetrize_Pext_() {
-    for (int i = 0; i < NX; ++i) {
-        for (int j = i + 1; j < NX; ++j) {
-            const T v = T(0.5) * (Pext(i,j) + Pext(j,i));
-            Pext(i,j) = v;
-            Pext(j,i) = v;
-        }
-    }
-}
-
 // Helper: project a symmetric NxN to PSD
 template<typename T, int N>
 static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
@@ -337,7 +327,7 @@ class Kalman3D_Wave {
               + T(0.2) * Sigma_aw_stat;
         }
         // keep global symmetry
-        Pext = T(0.5) * (Pext + Pext.transpose());
+        symmetrize_Pext_();
         has_cross_cov_a_xy = true;
     }
   
@@ -466,6 +456,16 @@ class Kalman3D_Wave {
 
     // Optional smoothing for alpha (0 = off)
     T alpha_smooth_tau_ = T(0.05); // seconds
+              
+    EIGEN_STRONG_INLINE void symmetrize_Pext_() {
+        for (int i = 0; i < NX; ++i) {
+            for (int j = i + 1; j < NX; ++j) {
+                const T v = T(0.5) * (Pext(i,j) + Pext(j,i));
+                Pext(i,j) = v;
+                Pext(j,i) = v;
+            }
+        }
+    }
               
     // Closed-form helpers for rotation & integrals (constant ω over [0, t])
     
@@ -610,7 +610,7 @@ class Kalman3D_Wave {
         Pext.noalias() += KSKt;
     
         // Symmetrize for numerical hygiene
-        Pext = T(0.5) * (Pext + Pext.transpose());
+        symmetrize_Pext_();
     }
 };
 
@@ -694,7 +694,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::set_aw_stationary_cov_fu
     Pext.template block<3,3>(OFF_AW, OFF_AW) =
           T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW)
         + T(0.2) * Sigma_aw_stat;
-    Pext = T(0.5) * (Pext + Pext.transpose());
+    symmetrize_Pext_();
     has_cross_cov_a_xy = true;
 }
 
@@ -1059,7 +1059,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     }
 
     // Symmetry hygiene
-    Pext = T(0.5) * (Pext + Pext.transpose());
+    symmetrize_Pext_();
 
     // Integral pseudo-measurement drift correction
     if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
