@@ -1285,14 +1285,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     const Vector3 r = -xext.template segment<3>(off_S);
 
     // Innovation covariance S = P_SS + R_S
-    Matrix3 S_mat = Pext.template block<3,3>(off_S, off_S) + R_S;
+    Matrix3& S_mat = S_scratch_;
+    S_mat = Pext.template block<3,3>(off_S, off_S) + R_S;
 
     // Cross covariance PCᵀ = P(:,S) (NX×3)
-    Eigen::Matrix<T,NX,3> PCt = Pext.template block<NX,3>(0, off_S);
+    MatrixNX3& PCt = PCt_scratch_;
+    PCt.noalias() = Pext.template block<NX,3>(0, off_S);
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, R_S.norm())) return;
-    const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
+    MatrixNX3& K = K_scratch_;
+    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
     // State update
     xext.noalias() += K * r;
