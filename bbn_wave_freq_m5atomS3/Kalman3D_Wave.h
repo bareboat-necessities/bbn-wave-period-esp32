@@ -1119,7 +1119,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     const Matrix3 J_aw  =  R_wb();                         // ∂f/∂a_w = R_wb
               
     // Innovation covariance S = C P Cᵀ + Racc (3×3)
-    Matrix3 S_mat = Racc;
+    Matrix3& S_mat = S_scratch_;
+    S_mat = Racc;
     {
         constexpr int OFF_TH = 0;
         const int off_aw = OFF_AW;
@@ -1149,7 +1150,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     }
 
     // PCᵀ = P Cᵀ (NX×3)
-    Eigen::Matrix<T,NX,3> PCt; PCt.setZero();
+    MatrixNX3& PCt = PCt_scratch_; PCt.setZero();
     {
         constexpr int OFF_TH = 0;
         const auto P_all_th = Pext.template block<NX,3>(0, OFF_TH);
@@ -1166,7 +1167,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     // Gain
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Racc.norm())) return;
-    const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
+    MatrixNX3& K = K_scratch_;
+    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
     // State update
     xext.noalias() += K * r;
