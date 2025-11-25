@@ -1202,15 +1202,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
 
     const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
 
-    Matrix3 S_mat = Rmag;
+    Matrix3& S_mat = S_scratch_;
+    S_mat = Rmag;
     const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
     S_mat.noalias() += J_att * P_th_th * J_att.transpose();
 
-    Eigen::Matrix<T,NX,3> PCt = Pext.template block<NX,3>(0,0) * J_att.transpose();
+    MatrixNX3& PCt = PCt_scratch_;
+    PCt.noalias() = Pext.template block<NX,3>(0,0) * J_att.transpose();
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
-    const Eigen::Matrix<T,NX,3> K = PCt * ldlt.solve(Matrix3::Identity());
+    MatrixNX3& K = K_scratch_;
+    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
     xext.noalias() += K * r;
 
