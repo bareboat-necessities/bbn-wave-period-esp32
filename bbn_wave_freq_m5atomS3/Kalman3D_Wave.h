@@ -1000,28 +1000,38 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     // Covariance propagation (blockwise)
     constexpr int NA = BASE_N;
     constexpr int NL = 12;
-
-    Eigen::Matrix<T,NA,NA> P_AA = Pext.template block<NA,NA>(0,0);
-    Eigen::Matrix<T,NL,NL> P_LL = Pext.template block<NL,NL>(OFF_V,OFF_V);
-    Eigen::Matrix<T,NA,NL> P_AL = Pext.template block<NA,NL>(0,OFF_V);
-
-    // AA
-    Eigen::Matrix<T,NA,NA> tmpAA = F_AA * P_AA;
-    P_AA = tmpAA * F_AA.transpose() + Q_AA;
-
-    // LL
-    Eigen::Matrix<T,NL,NL> tmpLL = F_LL * P_LL;
-    P_LL = tmpLL * F_LL.transpose() + Q_LL;
-
-    // AL
-    Eigen::Matrix<T,NA,NL> tmpAL = F_AA * P_AL;
-    P_AL = tmpAL * F_LL.transpose();
-
-    // Write back
-    Pext.template block<NA,NA>(0,0)         = P_AA;
-    Pext.template block<NL,NL>(OFF_V,OFF_V) = P_LL;
-    Pext.template block<NA,NL>(0,OFF_V)     = P_AL;
-    Pext.template block<NL,NA>(OFF_V,0)     = P_AL.transpose();
+    
+    // AA block
+    Eigen::Matrix<T,NA,NA> tmpAA;
+    
+    // tmpAA = F_AA * P_AA_old
+    tmpAA.noalias() = F_AA * Pext.template block<NA,NA>(0,0);
+    
+    // P_AA_new = tmpAA * F_AAᵀ + Q_AA
+    Pext.template block<NA,NA>(0,0).noalias() = tmpAA * F_AA.transpose();
+    Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
+    
+    // LL block
+    Eigen::Matrix<T,NL,NL> tmpLL;
+    
+    // tmpLL = F_LL * P_LL_old
+    tmpLL.noalias() = F_LL * Pext.template block<NL,NL>(OFF_V,OFF_V);
+    
+    // P_LL_new = tmpLL * F_LLᵀ + Q_LL
+    Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() = tmpLL * F_LL.transpose();
+    Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() += Q_LL;
+    
+    // AL block (cross-covariance)
+    Eigen::Matrix<T,NA,NL> tmpAL;
+    
+    // tmpAL = F_AA * P_AL_old
+    tmpAL.noalias() = F_AA * Pext.template block<NA,NL>(0,OFF_V);
+    
+    // P_AL_new = tmpAL * F_LLᵀ
+    Pext.template block<NA,NL>(0,OFF_V).noalias() = tmpAL * F_LL.transpose();
+    
+    // Keep symmetry: P_LA = P_ALᵀ
+    Pext.template block<NL,NA>(OFF_V,0) = Pext.template block<NA,NL>(0,OFF_V).transpose();
 
     // Optional accel bias RW and cross terms (F_BB = I)
     if constexpr (with_accel_bias) {
