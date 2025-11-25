@@ -965,9 +965,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     }
     
     // Linear subsystem [v,p,S,a_w] (12×12)
-    using Mat12 = Eigen::Matrix<T,12,12>;
-    Mat12 F_LL; F_LL.setZero();
-    Mat12 Q_LL; Q_LL.setZero();
+    Matrix12& F_LL = F_LL_scratch_; F_LL.setZero();
+    Matrix12& Q_LL = Q_LL_scratch_; Q_LL.setZero();
                      
     // Build F_LL per axis
     for (int axis = 0; axis < 3; ++axis) {
@@ -1022,13 +1021,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     }
               
     // Mean propagation for [v,p,S,a_w]
-    Eigen::Matrix<T,12,1> x_lin_prev;
+    Vector12& x_lin_prev = x_lin_prev_scratch_;
     x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
     x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
     x_lin_prev.template segment<3>(6)  = xext.template segment<3>(OFF_S);
     x_lin_prev.template segment<3>(9)  = xext.template segment<3>(OFF_AW);
 
-    Eigen::Matrix<T,12,1> x_lin_next = F_LL * x_lin_prev;
+    Vector12& x_lin_next = x_lin_next_scratch_;
+    x_lin_next.noalias() = F_LL * x_lin_prev;
     xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
     xext.template segment<3>(OFF_P)  = x_lin_next.template segment<3>(3);
     xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
