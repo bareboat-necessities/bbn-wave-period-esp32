@@ -152,6 +152,16 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     return c;
 }
 
+EIGEN_STRONG_INLINE void symmetrize_Pext_() {
+    for (int i = 0; i < NX; ++i) {
+        for (int j = i + 1; j < NX; ++j) {
+            const T v = T(0.5) * (Pext(i,j) + Pext(j,i));
+            Pext(i,j) = v;
+            Pext(j,i) = v;
+        }
+    }
+}
+
 // Helper: project a symmetric NxN to PSD
 template<typename T, int N>
 static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
