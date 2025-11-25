@@ -196,6 +196,12 @@ class Kalman3D_Wave {
     typedef Matrix<T, 3, 3> Matrix3;
     typedef Matrix<T, 4, 4> Matrix4;
 
+    // Fixed-size helpers for internal scratch
+    typedef Matrix<T, 12, 12> Matrix12;
+    typedef Matrix<T, 12,  1> Vector12;
+    typedef Matrix<T, BASE_N, 12> MatrixBaseN12;
+    typedef Matrix<T, NX,  3> MatrixNX3;
+
     static constexpr T STD_GRAVITY = T(9.80665);  // standard gravity acceleration m/s²
     static constexpr T tempC_ref = T(35.0); // Reference temperature for temperature related accel bias drift °C
 
@@ -456,6 +462,24 @@ class Kalman3D_Wave {
 
     // Optional smoothing for alpha (0 = off)
     T alpha_smooth_tau_ = T(0.05); // seconds
+
+    // Scratch buffers to avoid large stack allocation in time/measurement updates
+    MatrixBaseN  F_AA_scratch_;
+    MatrixBaseN  Q_AA_scratch_;
+
+    Matrix12     F_LL_scratch_;
+    Matrix12     Q_LL_scratch_;
+    Matrix12     tmpLL_scratch_;
+
+    Vector12     x_lin_prev_scratch_;
+    Vector12     x_lin_next_scratch_;
+
+    MatrixBaseN  tmpAA_scratch_;
+    MatrixBaseN12 tmpAL_scratch_;
+
+    MatrixNX3    PCt_scratch_;
+    MatrixNX3    K_scratch_;
+    Matrix3      S_scratch_;
               
     EIGEN_STRONG_INLINE void symmetrize_Pext_() {
         for (int i = 0; i < NX; ++i) {
