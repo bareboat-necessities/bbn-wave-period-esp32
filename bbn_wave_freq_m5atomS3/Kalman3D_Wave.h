@@ -131,9 +131,15 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
         // A1 ≈ τ² (x²/2 - x³/3 + x⁴/8)
         c.A1 = tau2 * (T(0.5)*x2 - T(1.0/3.0)*x3 + T(1.0/8.0)*x4);
 
-        // A2 = τ³ (x³/3 − x⁴/4 + x⁵/10 + … )
-        c.A2 = tau3 * (T(1.0/3.0)*x3 - T(1.0/4.0)*x4 + T(1.0/10.0)*x5);
-
+        
+        // A2 = τ³ (4x - 2x² + x³/3 + x⁴/12 - x⁵/15 + …)
+        c.A2 = tau3 * (
+            T(4)        * x
+          - T(2)        * x2
+          + T(1.0/3.0)  * x3
+          + T(1.0/12.0) * x4
+          - T(1.0/15.0) * x5
+        );     
     } else {
         // General closed-form branch
         const T alpha  = std::exp(-x);
