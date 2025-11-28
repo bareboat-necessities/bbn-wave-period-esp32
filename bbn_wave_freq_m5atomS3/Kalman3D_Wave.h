@@ -1426,104 +1426,125 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
 //   sigma2  = stationary variance of a [ (m/s^2)^2 ]
 // Outputs:
 //   Qd_axis = (4x4) discrete covariance contribution for [v, p, S, a]
-//
-// Strategy:
-//   - For general h/tau, use expm1-based analytic formulas.
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
 {
-    const T inv_tau = T(1) / std::max(tau, T(1e-7));
-    const T x = h * inv_tau;
-    const T q_c = (T(2) * sigma2) * inv_tau;
+    // Scalar OU for [v, p, S, a]:
+    //   dv = a dt
+    //   dp = v dt
+    //   dS = p dt
+    //   da = -(1/τ) a dt + sqrt(q_c) dW,  q_c = 2 σ² / τ
+    //
+    // Exact discrete covariance:
+    //   Qd(h) = ∫_0^h Φ(t) G q_c Gᵀ Φ(t)ᵀ dt
+    // with closed-form entries in terms of x = h/τ and α = e^{-x}.
 
-    Eigen::Matrix<T,4,4> K; K.setZero();
+    const T tau_eff = std::max(tau, T(1e-7));  // guard tiny τ
+    const T inv_tau = T(1) / tau_eff;
+    const T x       = h * inv_tau;             // x = h/τ
 
-    // General-x branch with FMA-safe combos
-    const auto P = make_prims<T>(h, tau); // {x, alpha, em1, em1_2}
-    const T tau2 = tau*tau, tau3 = tau2*tau, tau4=tau3*tau, tau5=tau4*tau, tau6=tau5*tau;
+    // OU primitives (no need for expm1 gymnastics here; project_psd() will clean up
+    // tiny numerical asymmetries, and the formulas themselves are exact).
+    const T alpha   = std::exp(-x);            // e^{-x}
+    const T alpha2  = alpha * alpha;           // e^{-2x}
 
-    const T A0 = -tau * P.em1;  // τ(1-α)
-    const auto coeffs = safe_phi_A_coeffs<T>(h, tau); // FMA-safe A1/A2/phi_pa/phi_Sa
-    const T A1 = coeffs.A1;
-    const T A2 = coeffs.A2;
-    const T B0 = -(tau * T(0.5)) * P.em1_2;
+    // Continuous-time driving noise intensity: q_c = 2 σ² / τ
+    const T q_c     = (T(2) * sigma2) * inv_tau;
 
-    const T C0=h;
-    const T C1=T(0.5)*h*h;
-    const T C2=(h*h*h)/T(3);
-    const T C3=(h*h*h*h)/T(4);
-    const T C4=(h*h*h*h*h)/T(5);
+    const T tau2 = tau_eff * tau_eff;
+    const T tau3 = tau2 * tau_eff;
+    const T tau4 = tau3 * tau_eff;
+    const T tau5 = tau4 * tau_eff;
+    const T tau6 = tau5 * tau_eff;
+    const T tau7 = tau6 * tau_eff;
 
-    // FMA-protected differences
-    const T I1mA0   = std::fma(-T(1), A0, C0);
-    const T Ix1mA1  = std::fma(-T(1), A1, C1);
-    const T Ix21mA2 = std::fma(-T(1), A2, C2);
+    const T x2 = x * x;
+    const T x3 = x2 * x;
+    const T x4 = x3 * x;
+    const T x5 = x4 * x;
 
-    const T K_aa = B0;
+    // K = ∫_0^h φ(t) φ(t)ᵀ dt  (independent of σ²)
+    // Qd = q_c * K
+    //
+    // Entries below are the *exact* symbolic results, simplified.
+    const T K00 = tau3 * ( -alpha2 + T(4)*alpha + T(2)*x - T(3) ) / T(2);
+    const T K01 = tau4 * (  alpha2
+                          + T(2)*alpha*(x - T(1))
+                          + x2 - T(2)*x + T(1) ) / T(2);
+    const T K02 = tau5 * ( -T(3)*alpha2
+                          + T(3)*alpha*(x2 + T(4))
+                          + x3 - T(3)*x2 + T(6)*x - T(9) ) / T(6);
+    const T K03 = tau2 * (  alpha2 - T(2)*alpha + T(1) ) / T(2);
 
-    const T K_va = tau * std::fma(T(1), A0, -B0);
+    const T K11 = tau5 * ( -alpha2 / T(2)
+                          - T(2)*alpha*x
+                          + x3 / T(3)
+                          - x2
+                          + x
+                          + T(1) / T(2) );
 
-    const T K_vv = tau2 * std::fma(T(1),
-                        std::fma(T(1), C0, std::fma(-T(2), A0, B0)),
-                        T(0));
+    const T K12 = tau6 * (  alpha2 / T(2)
+                          + alpha * (-x2 + T(2)*x - T(2)) / T(2)
+                          + x4 / T(8)
+                          - x3 / T(2)
+                          + x2
+                          - x
+                          + T(1) / T(2) );
 
-    const T K_pa = std::fma(tau, A1, std::fma(-tau2, A0, tau2*B0));
+    const T K13 = tau3 * ( -alpha2
+                          - T(2)*alpha*x
+                          + T(1) ) / T(2);
 
-    const T K_pv = std::fma(tau2, Ix1mA1,
-                    std::fma(-tau3, I1mA0, tau3*(A0 - B0)));
+    const T K22 = tau7 * ( -alpha2 / T(2)
+                          + alpha * x2
+                          + T(2)*alpha
+                          + x5 / T(20)
+                          - x4 / T(4)
+                          + T(2)*x3 / T(3)
+                          - x2
+                          + x
+                          - T(3) / T(2) );
 
-    const T K_pp = std::fma(tau2, C2,
-                    std::fma(-T(2)*tau3, C1,
-                    std::fma(T(2)*tau3, A1,
-                    std::fma(tau4, C0,
-                    std::fma(-T(2)*tau4, A0, tau4*B0)))));
+    const T K23 = tau4 * (  alpha2
+                          - alpha * (x2 + T(2))
+                          + T(1) ) / T(2);
 
-    const T K_Sa = std::fma(T(0.5)*tau, A2,
-                    std::fma(-tau2, A1,
-                    std::fma(tau3, A0, -tau3*B0)));
+    const T K33 = tau_eff * ( T(1) - alpha2 ) / T(2);
 
-    const T K_Sv = std::fma(T(0.5)*tau2, Ix21mA2,
-                    std::fma(-tau3, Ix1mA1,
-                    std::fma(tau4, I1mA0, -tau4*(A0 - B0))));
+    // Assemble Qd = q_c * K
+    Qd_axis.setZero();
 
-    const T K_Sp = std::fma(T(0.5)*tau2, C3,
-                    std::fma(-T(1.5)*tau3, C2,
-                    std::fma(T(2)*tau4, C1,
-                    std::fma(-tau5, C0,
-                    std::fma(T(0.5)*tau3, A2,
-                    std::fma(-T(2)*tau4, A1,
-                    std::fma(T(2)*tau5, A0, -tau5*B0)))))));
+    Qd_axis(0,0) = q_c * K00;
+    Qd_axis(0,1) = q_c * K01;
+    Qd_axis(0,2) = q_c * K02;
+    Qd_axis(0,3) = q_c * K03;
 
-    const T K_SS = std::fma(T(0.25)*tau2, C4,
-                    std::fma(-tau3, C3,
-                    std::fma(T(2)*tau4, C2,
-                    std::fma(-T(2)*tau5, C1,
-                    std::fma(tau6, C0,
-                    std::fma(-tau4, A2,
-                    std::fma(T(2)*tau5, A1,
-                    std::fma(-T(2)*tau6, A0, tau6*B0))))))));
+    Qd_axis(1,0) = Qd_axis(0,1);
+    Qd_axis(1,1) = q_c * K11;
+    Qd_axis(1,2) = q_c * K12;
+    Qd_axis(1,3) = q_c * K13;
 
-    K(0,0)=K_vv; K(0,1)=K_pv; K(0,2)=K_Sv; K(0,3)=K_va;
-    K(1,0)=K_pv; K(1,1)=K_pp; K(1,2)=K_Sp; K(1,3)=K_pa;
-    K(2,0)=K_Sv; K(2,1)=K_Sp; K(2,2)=K_SS; K(2,3)=K_Sa;
-    K(3,0)=K_va; K(3,1)=K_pa; K(3,2)=K_Sa; K(3,3)=K_aa;
+    Qd_axis(2,0) = Qd_axis(0,2);
+    Qd_axis(2,1) = Qd_axis(1,2);
+    Qd_axis(2,2) = q_c * K22;
+    Qd_axis(2,3) = q_c * K23;
 
-    // Build final Qd, symmetrize, scrub, then project *Qd* to PSD
-    Qd_axis = (q_c * (T(0.5) * (K + K.transpose()))).eval();
+    Qd_axis(3,0) = Qd_axis(0,3);
+    Qd_axis(3,1) = Qd_axis(1,3);
+    Qd_axis(3,2) = Qd_axis(2,3);
+    Qd_axis(3,3) = q_c * K33;
 
+    // Scrub NaNs / infs and enforce PSD (same hygiene you already had)
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
-            T& v = Qd_axis(i,j);
+            T &v = Qd_axis(i,j);
             if (!std::isfinite(v)) {
-                // Preserve SPD: put a tiny positive value on the diagonal only
                 v = (i == j) ? T(1e-18) : T(0);
             }
         }
     }
-
     project_psd<T,4>(Qd_axis, T(1e-12));
-
-    for (int i=0; i<4; ++i) if (!(Qd_axis(i,i) > T(0))) Qd_axis(i,i) = T(1e-17);
     Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
 }
+              
