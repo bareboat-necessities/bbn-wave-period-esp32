@@ -115,7 +115,7 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     const T tau2 = tau*tau;
     const T tau3 = tau2*tau;
 
-    if (x < T(1e-2)) {
+    if (std::abs(x) < T(1e-2)) {
         // Maclaurin expansions
         const T x2 = x*x;
         const T x3 = x2*x;
