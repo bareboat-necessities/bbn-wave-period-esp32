@@ -1436,9 +1436,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
 //
 // Strategy:
 //   - For general h/tau, use expm1-based analytic formulas.
-//   - For small x = h/tau < 3e-3, switch to Maclaurin series expansions to
-//     avoid catastrophic cancellation when subtracting nearly-equal terms.
-//
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
