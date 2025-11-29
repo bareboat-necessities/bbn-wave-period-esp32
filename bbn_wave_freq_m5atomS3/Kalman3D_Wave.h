@@ -1438,65 +1438,28 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     // Continuous-time driving noise intensity: q_c = 2 σ² / τ
     const T q_c     = (T(2) * sigma2) * inv_tau;
 
-    const T tau2 = tau_eff * tau_eff;
-    const T tau3 = tau2 * tau_eff;
-    const T tau4 = tau3 * tau_eff;
-    const T tau5 = tau4 * tau_eff;
-    const T tau6 = tau5 * tau_eff;
-    const T tau7 = tau6 * tau_eff;
+    const T tau2 = tau_eff * tau_eff; const T tau3 = tau2 * tau_eff;
+    const T tau4 = tau3 * tau_eff;    const T tau5 = tau4 * tau_eff;
+    const T tau6 = tau5 * tau_eff;    const T tau7 = tau6 * tau_eff;
 
-    const T x2 = x * x;
-    const T x3 = x2 * x;
-    const T x4 = x3 * x;
-    const T x5 = x4 * x;
+    const T x2 = x * x;  const T x3 = x2 * x;
+    const T x4 = x3 * x; const T x5 = x4 * x;
 
     // K = ∫_0^h φ(t) φ(t)ᵀ dt  (independent of σ²)
     // Qd = q_c * K
-    //
     // Entries below are the *exact* symbolic results, simplified.
-    const T K00 = tau3 * ( -alpha2 + T(4)*alpha + T(2)*x - T(3) ) / T(2);
-    const T K01 = tau4 * (  alpha2
-                          + T(2)*alpha*(x - T(1))
-                          + x2 - T(2)*x + T(1) ) / T(2);
-    const T K02 = tau5 * ( -T(3)*alpha2
-                          + T(3)*alpha*(x2 + T(4))
-                          + x3 - T(3)*x2 + T(6)*x - T(9) ) / T(6);
-    const T K03 = tau2 * (  alpha2 - T(2)*alpha + T(1) ) / T(2);
+    const T K00 = tau3 * (-alpha2 + T(4)*alpha + T(2)*x - T(3)) / T(2);
+    const T K01 = tau4 * ( alpha2 + T(2)*alpha*(x - T(1)) + x2 - T(2)*x + T(1)) / T(2);
+    const T K02 = tau5 * (-T(3)*alpha2 + T(3)*alpha*(x2 + T(4)) + x3 - T(3)*x2 + T(6)*x - T(9)) / T(6);
+    const T K03 = tau2 * ( alpha2 - T(2)*alpha + T(1)) / T(2);
 
-    const T K11 = tau5 * ( -alpha2 / T(2)
-                          - T(2)*alpha*x
-                          + x3 / T(3)
-                          - x2
-                          + x
-                          + T(1) / T(2) );
+    const T K11 = tau5 * (-alpha2 / T(2) - T(2)*alpha*x + x3 / T(3) - x2 + x + T(1) / T(2));
+    const T K12 = tau6 * ( alpha2 / T(2) + alpha * (-x2 + T(2)*x - T(2)) / T(2) + x4 / T(8) - x3 / T(2) + x2 - x + T(1) / T(2));
+    const T K13 = tau3 * (-alpha2 - T(2)*alpha*x + T(1)) / T(2);
 
-    const T K12 = tau6 * (  alpha2 / T(2)
-                          + alpha * (-x2 + T(2)*x - T(2)) / T(2)
-                          + x4 / T(8)
-                          - x3 / T(2)
-                          + x2
-                          - x
-                          + T(1) / T(2) );
-
-    const T K13 = tau3 * ( -alpha2
-                          - T(2)*alpha*x
-                          + T(1) ) / T(2);
-
-    const T K22 = tau7 * ( -alpha2 / T(2)
-                          + alpha * x2
-                          + T(2)*alpha
-                          + x5 / T(20)
-                          - x4 / T(4)
-                          + T(2)*x3 / T(3)
-                          - x2
-                          + x
-                          - T(3) / T(2) );
-
-    const T K23 = tau4 * (  alpha2
-                          - alpha * (x2 + T(2))
-                          + T(1) ) / T(2);
-
-    const T K33 = tau_eff * ( T(1) - alpha2 ) / T(2);
+    const T K22 = tau7 * (-alpha2 / T(2) + alpha * x2 + T(2)*alpha + x5 / T(20) - x4 / T(4) + T(2)*x3 / T(3) - x2 + x - T(3) / T(2));
+    const T K23 = tau4 * ( alpha2 - alpha * (x2 + T(2)) + T(1)) / T(2);
+    const T K33 = tau_eff * (T(1) - alpha2) / T(2);
 
     // Assemble Qd = q_c * K
     Qd_axis.setZero();
