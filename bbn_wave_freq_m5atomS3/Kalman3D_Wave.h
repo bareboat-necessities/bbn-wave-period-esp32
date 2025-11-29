@@ -103,8 +103,6 @@ template<typename T>
 struct OUDiscreteCoeffs {
     T phi_pa; // coefficient for position vs. accel
     T phi_Sa; // coefficient for S vs. accel
-    T A1;     // helper for Qd
-    T A2;     // helper for Qd
 };
 
 template<typename T>
@@ -126,13 +124,7 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
         c.phi_pa = tau2 * (T(0.5)*x2 - T(1.0/6.0)*x3 + T(1.0/24.0)*x4);
 
         // phi_Sa ≈ τ³ (x³/6 - x⁴/24 + x⁵/120)
-        c.phi_Sa = tau3 * (T(1.0/6.0)*x3 - T(1.0/24.0)*x4 + T(1.0/120.0)*x5);
-
-        // A1 ≈ τ² (x²/2 - x³/3 + x⁴/8)
-        c.A1 = tau2 * (T(0.5)*x2 - T(1.0/3.0)*x3 + T(1.0/8.0)*x4);
-
-        // A2 = τ³ (4x - 2x² + x³/3 + x⁴/12 - x⁵/15 + …)
-        c.A2 = tau3 * (T(4)*x  - T(2)*x2 + T(1.0/3.0)*x3 + T(1.0/12.0)*x4 - T(1.0/15.0)*x5);     
+        c.phi_Sa = tau3 * (T(1.0/6.0)*x3 - T(1.0/24.0)*x4 + T(1.0/120.0)*x5);  
     } else {
         // General closed-form branch
         const T alpha  = std::exp(-x);
@@ -143,10 +135,6 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
 
         c.phi_pa = phi_pa;
         c.phi_Sa = phi_Sa;
-
-        // A1, A2 in terms of primitives
-        c.A1 = tau2 * (-em1 - x*alpha);
-        c.A2 = tau3 * (-T(2)*em1 + alpha*(x*(x+T(2))));
     }
     return c;
 }
