@@ -178,7 +178,7 @@ public:
     
         // Raw freq from tracker, clamp
         const double f_raw = tracker_policy_.run(a_z_inertial, dt);
-        const float  f_clamped = std::min(std::max(static_cast<float>(f_raw), MIN_FREQ_HZ), MAX_FREQ_HZ);
+        f_clamped = std::min(std::max(static_cast<float>(f_raw), MIN_FREQ_HZ), MAX_FREQ_HZ);
     
         // Smooth ONCE here
         if (!freq_init_) { freqSmoother.setInitial(f_clamped); freq_init_ = true; }
@@ -239,6 +239,7 @@ public:
 
     //  Exposed getters
     inline float getFreqHz()        const noexcept { return freq_hz_; }
+    inline float getFreqRawHz()     const noexcept { return f_clamped; }
     inline float getTauApplied()    const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied()  const noexcept { return tune_.sigma_applied; }
     inline float getRSApplied()     const noexcept { return tune_.RS_applied; }
@@ -350,6 +351,7 @@ private:
     bool with_mag_;
     double time_, last_adapt_time_sec_;
     float freq_hz_ = FREQ_GUESS;
+    float f_clamped = FREQ_GUESS;
     bool freq_init_ = false;
     bool enable_clamp = true;    
     bool enable_tuner = true;
