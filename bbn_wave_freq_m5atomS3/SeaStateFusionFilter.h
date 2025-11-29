@@ -116,7 +116,7 @@ struct TrackerPolicy<TrackerType::KALMANF> {
     Tracker t = Tracker();
     double run(float a, float dt) {
         double e;
-        double freq = t.process((double)a / g_std, (double)dt, &e);
+        double freq = t.process((double)a, (double)dt, &e);
         return freq;
     }
 };
