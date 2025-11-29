@@ -176,16 +176,15 @@ public:
         // Tracker input: vertical inertial (BODY)
         const float a_z_inertial = acc.z() + g_std;
     
-        // Raw freq from tracker, clamp
-        const double f_raw = tracker_policy_.run(a_z_inertial, dt);
-        f_clamped = std::min(std::max(static_cast<float>(f_raw), MIN_FREQ_HZ), MAX_FREQ_HZ);
+        // Raw freq from tracker
+        f_raw = (float) tracker_policy_.run(a_z_inertial, dt);
     
         // Smooth ONCE here
-        if (!freq_init_) { freqSmoother.setInitial(f_clamped); freq_init_ = true; }
-        const float f_smooth = freqSmoother.update(f_clamped);
+        if (!freq_init_) { freqSmoother.setInitial(f_raw); freq_init_ = true; }
+        const float f_smooth = freqSmoother.update(f_raw);
     
-        // Store the smoothed “truth” for everyone to reuse
-        freq_hz_ = f_smooth;
+        // Clamp the smoothed “truth”
+        freq_hz_ = std::min(std::max(static_cast<float>(f_smooth), MIN_FREQ_HZ), MAX_FREQ_HZ);
     
         // Tuner uses the SAME smoothed freq
         if (enable_tuner) {
@@ -239,7 +238,7 @@ public:
 
     //  Exposed getters
     inline float getFreqHz()        const noexcept { return freq_hz_; }
-    inline float getFreqRawHz()     const noexcept { return f_clamped; }
+    inline float getFreqRawHz()     const noexcept { return f_raw; }
     inline float getTauApplied()    const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied()  const noexcept { return tune_.sigma_applied; }
     inline float getRSApplied()     const noexcept { return tune_.RS_applied; }
@@ -351,7 +350,7 @@ private:
     bool with_mag_;
     double time_, last_adapt_time_sec_;
     float freq_hz_ = FREQ_GUESS;
-    float f_clamped = FREQ_GUESS;
+    float f_raw = FREQ_GUESS;
     bool freq_init_ = false;
     bool enable_clamp = true;    
     bool enable_tuner = true;
