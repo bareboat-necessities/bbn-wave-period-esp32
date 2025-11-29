@@ -168,14 +168,14 @@ public:
     void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc, float tempC = 35.0f) {
         if (!mekf_) return;
         time_ += dt;
-    
+
+        // Tracker input: vertical inertial (BODY)
+        const float a_z_inertial = acc.z() + g_std;
+      
         // MEKF
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
-    
-        // Tracker input: vertical inertial (BODY)
-        const float a_z_inertial = acc.z() + g_std;
-    
+        
         // Raw freq from tracker
         f_raw = (float) tracker_policy_.run(a_z_inertial, dt);
     
