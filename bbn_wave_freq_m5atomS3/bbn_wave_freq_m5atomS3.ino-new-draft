@@ -233,7 +233,7 @@ void read_and_processIMU_data() {
   // Direction in [0, 180) degrees (wave propagation axis)
   float wave_deg = dir_filter.getDirectionDegrees();
 
-  // Optional extra smoothing using your AngleAverager
+  // Optional extra smoothing using AngleAverager
   wave_angle_estimate = angle_averager.average180(wave_deg);
   wave_angle_deg = wave_angle_estimate.angle;
 
