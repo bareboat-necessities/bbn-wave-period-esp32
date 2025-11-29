@@ -46,7 +46,6 @@ struct OUPrims {
     T x;        // h/tau
     T alpha;    // e^{-x}
     T em1;      // expm1(-x) = e^{-x} - 1  (negative)
-    T em1_2;    // expm1(-2x) = e^{-2x} - 1 (negative)
 };
 
 template<typename T>
@@ -55,8 +54,7 @@ inline OUPrims<T> make_prims(T h, T tau) {
     const T x = h * inv_tau;
     const T alpha  = std::exp(-x);
     const T em1    = std::expm1(-x);    // high-accuracy for small x
-    const T em1_2  = std::expm1(-T(2)*x);
-    return {x, alpha, em1, em1_2};
+    return {x, alpha, em1};
 }
 
 // Full exponential-map correction (Rodrigues in quaternion form).
@@ -98,7 +96,7 @@ inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dt
 }
 
 // Safe expansions for OU discrete coefficients.
-// Provides phi_pa, phi_Sa, A1, A2 with series fallback for small x = h/tau.
+// Provides phi_pa, phi_Sa with series fallback for small x = h/tau.
 template<typename T>
 struct OUDiscreteCoeffs {
     T phi_pa; // coefficient for position vs. accel
