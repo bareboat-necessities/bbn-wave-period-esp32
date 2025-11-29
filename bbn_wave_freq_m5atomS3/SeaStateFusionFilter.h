@@ -104,7 +104,7 @@ struct TrackerPolicy<TrackerType::ARANOVSKIY> {
     }
 
     double run(float a, float dt) {
-        t.update((double)a / g_std, (double)dt);
+        t.update((double)a, (double)dt);
         return t.getFrequencyHz();
     }
 };
