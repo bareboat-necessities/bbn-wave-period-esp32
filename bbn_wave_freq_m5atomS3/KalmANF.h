@@ -57,12 +57,12 @@ private:
 
   // Kalman parameters
   Real p_cov = Real(1);  // Kalman error covariance
-  Real q = Real(1e-3);  // Process noise covariance
-  Real r = Real(1e+0);   // Measurement noise covariance
+  Real q = Real(1e-4);  // Process noise covariance
+  Real r = Real(1e+1);   // Measurement noise covariance
 
 public:
   // Initialize the filter
-  void init(Real rho = defaultRho, Real q_ = Real(1e-3), Real r_ = Real(1e+0), Real p_cov_ = Real(1),
+  void init(Real rho = defaultRho, Real q_ = Real(1e-4), Real r_ = Real(1e+1), Real p_cov_ = Real(1),
             Real s_prev1 = Real(0), Real s_prev2 = Real(0), Real a_ = default_a) {
     q = q_;
     r = r_;
