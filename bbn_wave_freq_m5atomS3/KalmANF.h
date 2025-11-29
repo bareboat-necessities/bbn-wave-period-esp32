@@ -62,7 +62,7 @@ private:
 
 public:
   // Initialize the filter
-  void init(Real rho = defaultRho, Real q_ = Real(1e-6), Real r_ = Real(1e+5), Real p_cov_ = Real(1),
+  void init(Real rho = defaultRho, Real q_ = Real(1e-3), Real r_ = Real(1e+0), Real p_cov_ = Real(1),
             Real s_prev1 = Real(0), Real s_prev2 = Real(0), Real a_ = default_a) {
     q = q_;
     r = r_;
