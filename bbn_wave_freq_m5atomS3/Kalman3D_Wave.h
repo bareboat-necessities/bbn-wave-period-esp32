@@ -1416,6 +1416,97 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
 {
+    // Guard very small tau
+    const T tau_eff = std::max(tau, T(1e-7));
+    const T inv_tau = T(1) / tau_eff;
+    const T x       = h * inv_tau;      // x = h/τ
+
+    // Small-x series branch (|h/τ| ≪ 1)
+    // Derived from Qd = ∫_0^h Φ(t) G q_c Gᵀ Φ(t)ᵀ dt with
+    //   q_c = 2 σ² / τ,  a is OU with corr. time τ, stat. var σ².
+    //
+    // Series in h up to O(h^5) (equivalently O(x^5)):
+    //
+    //   Q_vv ≈ σ² (  2 h^3/(3 τ)  −  h^4/(2 τ²)   +  7 h^5/(30 τ^3)     )
+    //   Q_vp ≈ σ² (    h^4/(4 τ)  −  h^5/(6 τ²)                         )
+    //   Q_vS ≈ σ² (    h^5/(15 τ)                                       )
+    //   Q_va ≈ σ² (    h^2/τ  −  h^3/τ² + 7 h^4/(12 τ^3) − h^5/(4 τ^4)  )
+    //   Q_pp ≈ σ² (    h^5/(10 τ)                                       )
+    //   Q_pa ≈ σ² (    h^3/(3 τ) − h^4/(3 τ²) + 11 h^5/(60 τ^3)         )
+    //   Q_Sa ≈ σ² (    h^4/(12 τ) − h^5/(12 τ²)                         )
+    //   Q_aa ≈ σ² ( 2 h/τ − 2 h^2/τ² + 4 h^3/(3 τ^3)
+    //                         − 2 h^4/(3 τ^4) + 4 h^5/(15 τ^5) )
+    //         
+    // and Q is symmetric.  Terms like Q_pS, Q_SS are O(h^6..h^7) and
+    // safely negligible in the x≲1e−2 regime.
+
+    if (std::abs(x) < T(1e-2)) {
+        const T inv_tau2 = inv_tau * inv_tau;
+        const T inv_tau3 = inv_tau2 * inv_tau;
+        const T inv_tau4 = inv_tau3 * inv_tau;
+        const T inv_tau5 = inv_tau4 * inv_tau;
+
+        const T h2 = h * h;
+        const T h3 = h2 * h;
+        const T h4 = h3 * h;
+        const T h5 = h4 * h;
+
+        const T s = sigma2;
+
+        Qd_axis.setZero();
+
+        // Row 0: v
+        Qd_axis(0,0) = s * ( (T(2) / T(3)) * h3 * inv_tau
+                           - T(1) / T(2)   * h4 * inv_tau2
+                           + T(7) / T(30)  * h5 * inv_tau3 );
+        Qd_axis(0,1) = s * (  T(1) / T(4)  * h4 * inv_tau
+                           - T(1) / T(6)   * h5 * inv_tau2 );
+        Qd_axis(0,2) = s * (  T(1) / T(15) * h5 * inv_tau );
+        Qd_axis(0,3) = s * (  h2 * inv_tau
+                           -  h3 * inv_tau2
+                           + (T(7) / T(12)) * h4 * inv_tau3
+                           -  T(1) / T(4)   * h5 * inv_tau4 );
+
+        // Row 1: p
+        Qd_axis(1,0) = Qd_axis(0,1);
+        Qd_axis(1,1) = s * (  T(1) / T(10) * h5 * inv_tau );
+        Qd_axis(1,2) = T(0); // O(h^6) and smaller, negligible here
+        Qd_axis(1,3) = s * (  T(1) / T(3)  * h3 * inv_tau
+                           -  T(1) / T(3)  * h4 * inv_tau2
+                           + T(11) / T(60) * h5 * inv_tau3 );
+
+        // Row 2: S
+        Qd_axis(2,0) = Qd_axis(0,2);
+        Qd_axis(2,1) = Qd_axis(1,2); // = 0
+        Qd_axis(2,2) = T(0);         // leading term is O(h^7)
+        Qd_axis(2,3) = s * (  T(1) / T(12) * h4 * inv_tau
+                           -  T(1) / T(12) * h5 * inv_tau2 );
+
+        // Row 3: a
+        Qd_axis(3,0) = Qd_axis(0,3);
+        Qd_axis(3,1) = Qd_axis(1,3);
+        Qd_axis(3,2) = Qd_axis(2,3);
+        Qd_axis(3,3) = s * (  T(2)        * h  * inv_tau
+                           -  T(2)        * h2 * inv_tau2
+                           + (T(4) / T(3))  * h3 * inv_tau3
+                           - (T(2) / T(3))  * h4 * inv_tau4
+                           + (T(4) / T(15)) * h5 * inv_tau5 );
+
+        // Scrub NaNs / infs and enforce PSD
+        for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 4; ++j) {
+                T &v = Qd_axis(i,j);
+                if (!std::isfinite(v)) {
+                    v = (i == j) ? T(1e-18) : T(0);
+                }
+            }
+        }
+        project_psd<T,4>(Qd_axis, T(1e-12));
+        Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
+        return;
+    }
+
+    // General closed-form branch
     // Scalar OU for [v, p, S, a]:
     //   dv = a dt
     //   dp = v dt
@@ -1425,45 +1516,38 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     // Exact discrete covariance:
     //   Qd(h) = ∫_0^h Φ(t) G q_c Gᵀ Φ(t)ᵀ dt
     // with closed-form entries in terms of x = h/τ and α = e^{-x}.
+    const T x_full  = x;
+    const T alpha   = std::exp(-x_full);
+    const T alpha2  = alpha * alpha;
 
-    const T tau_eff = std::max(tau, T(1e-7));  // guard tiny τ
-    const T inv_tau = T(1) / tau_eff;
-    const T x       = h * inv_tau;             // x = h/τ
-
-    // OU primitives (no need for expm1 gymnastics here; project_psd() will clean up
-    // tiny numerical asymmetries, and the formulas themselves are exact).
-    const T alpha   = std::exp(-x);            // e^{-x}
-    const T alpha2  = alpha * alpha;           // e^{-2x}
-
-    // Continuous-time driving noise intensity: q_c = 2 σ² / τ
     const T q_c     = (T(2) * sigma2) * inv_tau;
 
     const T tau2 = tau_eff * tau_eff; const T tau3 = tau2 * tau_eff;
     const T tau4 = tau3 * tau_eff;    const T tau5 = tau4 * tau_eff;
     const T tau6 = tau5 * tau_eff;    const T tau7 = tau6 * tau_eff;
 
-    const T x2 = x * x;  const T x3 = x2 * x;
-    const T x4 = x3 * x; const T x5 = x4 * x;
+    const T x2 = x_full * x_full;  const T x3 = x2 * x_full;
+    const T x4 = x3 * x_full;      const T x5 = x4 * x_full;
 
-    // K = ∫_0^h φ(t) φ(t)ᵀ dt  (independent of σ²)
-    // Qd = q_c * K
-    // Entries below are the *exact* symbolic results, simplified.
-    const T K00 = tau3 * (-alpha2 + T(4)*alpha + T(2)*x - T(3)) / T(2);
-    const T K01 = tau4 * ( alpha2 + T(2)*alpha*(x - T(1)) + x2 - T(2)*x + T(1)) / T(2);
-    const T K02 = tau5 * (-T(3)*alpha2 + T(3)*alpha*(x2 + T(4)) + x3 - T(3)*x2 + T(6)*x - T(9)) / T(6);
+    const T K00 = tau3 * (-alpha2 + T(4)*alpha + T(2)*x_full - T(3)) / T(2);
+    const T K01 = tau4 * ( alpha2 + T(2)*alpha*(x_full - T(1)) + x2 - T(2)*x_full + T(1)) / T(2);
+    const T K02 = tau5 * (-T(3)*alpha2 + T(3)*alpha*(x2 + T(4)) + x3 - T(3)*x2 + T(6)*x_full - T(9)) / T(6);
     const T K03 = tau2 * ( alpha2 - T(2)*alpha + T(1)) / T(2);
 
-    const T K11 = tau5 * (-alpha2 / T(2) - T(2)*alpha*x + x3 / T(3) - x2 + x + T(1) / T(2));
-    const T K12 = tau6 * ( alpha2 / T(2) + alpha * (-x2 + T(2)*x - T(2)) / T(2) + x4 / T(8) - x3 / T(2) + x2 - x + T(1) / T(2));
-    const T K13 = tau3 * (-alpha2 - T(2)*alpha*x + T(1)) / T(2);
+    const T K11 = tau5 * (-alpha2/T(2) - T(2)*alpha*x_full + x3/T(3) - x2 + x_full + T(1)/T(2));
+    const T K12 = tau6 * ( alpha2/T(2)
+                         + alpha * (-x2 + T(2)*x_full - T(2)) / T(2)
+                         + x4/T(8) - x3/T(2) + x2 - x_full + T(1)/T(2));
+    const T K13 = tau3 * (-alpha2 - T(2)*alpha*x_full + T(1)) / T(2);
 
-    const T K22 = tau7 * (-alpha2 / T(2) + alpha * x2 + T(2)*alpha + x5 / T(20) - x4 / T(4) + T(2)*x3 / T(3) - x2 + x - T(3) / T(2));
+    const T K22 = tau7 * (-alpha2/T(2)
+                         + alpha * x2 + T(2)*alpha
+                         + x5/T(20) - x4/T(4) + T(2)*x3/T(3)
+                         - x2 + x_full - T(3)/T(2));
     const T K23 = tau4 * ( alpha2 - alpha * (x2 + T(2)) + T(1)) / T(2);
     const T K33 = tau_eff * (T(1) - alpha2) / T(2);
 
-    // Assemble Qd = q_c * K
     Qd_axis.setZero();
-
     Qd_axis(0,0) = q_c * K00;
     Qd_axis(0,1) = q_c * K01;
     Qd_axis(0,2) = q_c * K02;
