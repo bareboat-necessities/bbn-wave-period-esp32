@@ -1523,7 +1523,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     Qd_axis(3,2) = Qd_axis(2,3);
     Qd_axis(3,3) = q_c * K33;
 
-    // Scrub NaNs / infs and enforce PSD (same hygiene you already had)
+    // Scrub NaNs / infs and enforce PSD
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
             T &v = Qd_axis(i,j);
