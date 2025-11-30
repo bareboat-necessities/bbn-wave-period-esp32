@@ -233,6 +233,11 @@ public:
         }
     }
 
+    // Configure engine-reject LPF on vertical accel for tracker input
+    void setFreqInputCutoffHz(float fc) {
+        freq_input_lpf_.setCutoff(fc);
+    }
+
     void enableClamp(bool flag = true) {
         enable_clamp = flag;
     }
