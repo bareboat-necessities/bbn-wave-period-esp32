@@ -172,17 +172,20 @@ public:
         if (!mekf_) return;
         time_ += dt;
 
-        // Tracker input: vertical inertial (BODY)
+        // Tracker input: vertical inertial (BODY, m/s^2)
         const float a_z_inertial = acc.z() + g_std;
         const float a_x = acc.x(), a_y = acc.y();
-      
+
+        // LPF to suppress engine band (8–37 Hz) before tracker
+        const float a_z_inertial_lp = freq_input_lpf_.step(a_z_inertial, dt);
+
         // MEKF
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
-        
-        // Raw freq from tracker
-        f_raw = (float) tracker_policy_.run(a_z_inertial, dt);
     
+        // Raw freq from tracker (run() still does /g_std inside)
+        f_raw = static_cast<float>(tracker_policy_.run(a_z_inertial_lp, dt));
+      
         // Smooth ONCE here
         if (!freq_init_) { freqSmoother.setInitial(f_raw); freq_init_ = true; }
         const float f_smooth = freqSmoother.update(f_raw);
