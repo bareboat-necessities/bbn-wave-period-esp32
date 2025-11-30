@@ -149,7 +149,10 @@ public:
     explicit SeaStateFusionFilter(bool with_mag = true)
         : with_mag_(with_mag), tuner_(),
           time_(0.0), last_adapt_time_sec_(0.0), freq_hz_(NAN)
-    {}
+    {
+        // Default cutoff ~5 Hz: passes waves, kills 8–37 Hz engine band
+        freq_input_lpf_.setCutoff(5.0f);
+    }
 
     void initialize(const Eigen::Vector3f& sigma_a,
                     const Eigen::Vector3f& sigma_g,
