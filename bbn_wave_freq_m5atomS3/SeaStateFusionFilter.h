@@ -293,6 +293,42 @@ public:
     inline const WaveDirectionDetector<float>& dir_sign() const noexcept { return dir_sign_; }
 
 private:
+
+    // Simple first-order low-pass filter for vertical accel → tracker input
+    struct FreqInputLPF {
+        float state       = 0.0f;
+        float fc_hz       = 1.0f;   // cutoff in Hz
+        bool  initialized = false;
+
+        void setCutoff(float fc) {
+            if (std::isfinite(fc) && fc > 0.0f) {
+                fc_hz = fc;
+            }
+        }
+
+        void reset(float x0 = 0.0f) {
+            state       = x0;
+            initialized = false;
+        }
+
+        float step(float x, float dt) {
+            // y' = -2π fc (y - x)
+            // discrete: y_n = (1 - alpha)*x_n + alpha*y_{n-1}
+            const float alpha = std::exp(-2.0f * static_cast<float>(M_PI) * fc_hz * dt);
+
+            if (!initialized) {
+                state       = x;
+                initialized = true;
+                return state;
+            }
+
+            state = (1.0f - alpha) * x + alpha * state;
+            return state;
+        }
+    };
+
+    FreqInputLPF freq_input_lpf_;   // LPF used only for tracker input
+
     //  Internal tuning and adaptation
     void apply_tune() {
         if (!mekf_) return;
