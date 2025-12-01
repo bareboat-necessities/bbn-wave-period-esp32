@@ -79,7 +79,6 @@ private:
   static constexpr Real default_a  = Real(1.9999);
 
   // “numerical stability” hook for low frequencies,
-  // does not affect adaptation in this implementation.
   static constexpr Real TIME_SCALE = Real(100);
 
   class ANFResonator {
