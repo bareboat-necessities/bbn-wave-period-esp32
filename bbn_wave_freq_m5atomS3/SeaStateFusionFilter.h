@@ -196,9 +196,9 @@ public:
         // Clamp the smoothed “truth”
         freq_hz_ = std::min(std::max(static_cast<float>(f_smooth), MIN_FREQ_HZ), MAX_FREQ_HZ);
     
-        // Tuner uses the SAME smoothed freq
+        // Tuner uses the SAME freq_hz_
         if (enable_tuner) {
-            update_tuner(dt, a_z_inertial, f_smooth);
+            update_tuner(dt, a_z_inertial, freq_hz_);
         }
     
         // Direction filter uses freq (ω = 2πf)
