@@ -133,7 +133,7 @@ public:
   // y: input sample, in *whatever* units (but tune q,r for that scale)
   // dt: actual sample period (seconds)
   Real process(Real y, Real dt, Real* e_out = nullptr) {
-    Real delta_t = dt / TIME_SCALE;  // has no effect on adaptation, only on the freq formula
+    Real delta_t = dt / TIME_SCALE; 
 
     // 1. resonator
     Real s = res.compute_s(y);
