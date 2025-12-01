@@ -340,6 +340,72 @@ private:
 
     FreqInputLPF freq_input_lpf_;   // LPF used only for tracker input
 
+    // Detect “stillness” from vertical accel and relax frequency when still.
+    struct FreqStillnessAdapter {
+        float energy_ema      = 0.0f;   // EMA of (a_z/g)^2
+        float energy_alpha    = 0.01f;  // smoothing for energy EMA
+        float energy_thresh   = 1e-4f;  // below this ⇒ effectively still
+        float still_time_sec  = 0.0f;   // accumulated still time
+        float still_thresh_s  = 10.0f;  // seconds of low energy before relaxing
+        float relax_tau_sec   = 10.0f;  // time constant for freq relaxation
+        float target_freq_hz  = MIN_FREQ_HZ; // relaxed target (could also be FREQ_GUESS)
+
+        void setTargetFreq(float f) {
+            if (std::isfinite(f) && f > 0.0f) {
+                target_freq_hz = f;
+            }
+        }
+
+        // Optionally tweak thresholds at runtime if needed
+        void setParams(float energyAlpha,
+                       float energyThresh,
+                       float stillThreshSec,
+                       float relaxTauSec)
+        {
+            if (energyAlpha > 0.0f && energyAlpha < 1.0f) energy_alpha = energyAlpha;
+            if (energyThresh > 0.0f)                      energy_thresh = energyThresh;
+            if (stillThreshSec > 0.0f)                    still_thresh_s = stillThreshSec;
+            if (relaxTauSec > 0.0f)                       relax_tau_sec = relaxTauSec;
+        }
+
+        // a_z_inertial_lp: vertical inertial accel (m/s²), low-passed
+        // dt             : timestep (s)
+        // freq_in        : frequency from tracker (already smoothed/clamped)
+        // Returns adjusted frequency (relaxed toward target when still).
+        float step(float a_z_inertial_lp, float dt, float freq_in) {
+            if (!(dt > 0.0f) || !std::isfinite(freq_in)) {
+                return freq_in;
+            }
+
+            // Normalize by g → dimensionless
+            const float a_norm = a_z_inertial_lp / g_std;
+            const float inst_energy = a_norm * a_norm; // (a_z/g)^2
+
+            // EWMA of energy
+            energy_ema = (1.0f - energy_alpha) * energy_ema
+                       + energy_alpha * inst_energy;
+
+            // Track how long we've been below the energy threshold
+            if (energy_ema < energy_thresh) {
+                still_time_sec += dt;
+            } else {
+                still_time_sec = 0.0f;
+            }
+
+            float freq = freq_in;
+
+            // After enough “still” time, relax freq toward target_freq_hz
+            if (still_time_sec > still_thresh_s) {
+                const float relax_alpha = 1.0f - std::exp(-dt / relax_tau_sec);
+                freq += relax_alpha * (target_freq_hz - freq);
+            }
+
+            return freq;
+        }
+    };
+
+    FreqStillnessAdapter freq_stillness_;
+
     //  Internal tuning and adaptation
     void apply_tune() {
         if (!mekf_) return;
