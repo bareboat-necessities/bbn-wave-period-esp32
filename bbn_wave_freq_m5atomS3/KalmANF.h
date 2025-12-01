@@ -112,7 +112,7 @@ private:
 
   // Kalman parameters
   Real p_cov = Real(1);
-  Real q     = Real(1e-6);
+  Real q     = Real(1e-5);
   Real r     = Real(1e+3);
 
 public:
