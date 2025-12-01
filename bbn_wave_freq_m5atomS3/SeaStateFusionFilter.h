@@ -371,7 +371,7 @@ private:
 
         // a_z_inertial_lp: vertical inertial accel (m/s²), low-passed
         // dt             : timestep (s)
-        // freq_in        : frequency from tracker (already smoothed/clamped)
+        // freq_in        : frequency from tracker
         // Returns adjusted frequency (relaxed toward target when still).
         float step(float a_z_inertial_lp, float dt, float freq_in) {
             if (!(dt > 0.0f) || !std::isfinite(freq_in)) {
