@@ -59,7 +59,7 @@
 
 // Shared constants
 constexpr float MIN_FREQ_HZ = 0.1f;
-constexpr float MAX_FREQ_HZ = 5.0f;
+constexpr float MAX_FREQ_HZ = 2.0f;
 
 constexpr float MIN_TAU_S   = 0.5f;
 constexpr float MAX_TAU_S   = 8.5f;
@@ -150,8 +150,8 @@ public:
         : with_mag_(with_mag), tuner_(),
           time_(0.0), last_adapt_time_sec_(0.0), freq_hz_(NAN)
     {
-        // Default cutoff ~5 Hz: passes waves, kills 8–37 Hz engine band
-        freq_input_lpf_.setCutoff(5.0f);
+        // Default cutoff ~1 Hz: passes waves, kills 8–37 Hz engine band
+        freq_input_lpf_.setCutoff(1.0f);
     }
 
     void initialize(const Eigen::Vector3f& sigma_a,
