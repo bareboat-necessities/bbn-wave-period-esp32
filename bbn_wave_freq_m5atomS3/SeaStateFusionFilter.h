@@ -320,11 +320,6 @@ private:
             }
         }
 
-        void reset(float x0 = 0.0f) {
-            state       = x0;
-            initialized = false;
-        }
-
         float step(float x, float dt) {
             // y' = -2π fc (y - x)
             // discrete: y_n = (1 - alpha)*x_n + alpha*y_{n-1}
@@ -358,24 +353,6 @@ private:
         // Internal frequency state (this is the key!)
         bool  freq_init       = false;
         float freq_state      = FREQ_GUESS;
-
-        void setTargetFreq(float f) {
-            if (std::isfinite(f) && f > 0.0f) {
-                target_freq_hz = f;
-            }
-        }
-
-        // Optionally tweak thresholds at runtime if needed
-        void setParams(float energyAlpha,
-                       float energyThresh,
-                       float stillThreshSec,
-                       float relaxTauSec)
-        {
-            if (energyAlpha > 0.0f && energyAlpha < 1.0f) energy_alpha   = energyAlpha;
-            if (energyThresh > 0.0f)                      energy_thresh  = energyThresh;
-            if (stillThreshSec > 0.0f)                    still_thresh_s = stillThreshSec;
-            if (relaxTauSec > 0.0f)                       relax_tau_sec  = relaxTauSec;
-        }
 
         // a_z_inertial_lp: vertical inertial accel (m/s²), low-passed
         // dt             : timestep (s)
