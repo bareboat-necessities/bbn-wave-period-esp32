@@ -130,6 +130,23 @@ public:
     res.init(rho, a_, s_prev1_, s_prev2_);
   }
 
+  // Convenience initializer: seed a from a frequency guess in Hz.
+  // f_guess_hz : initial frequency guess (Hz)
+  // dt         : sample period (s)
+  // rho, q_, r_, p_cov_ behave as in init().
+  void initFromFreqGuess(Real f_guess_hz,
+                         Real dt,
+                         Real rho      = defaultRho,
+                         Real q_       = Real(1e-6),
+                         Real r_       = Real(1e+3),
+                         Real p_cov_   = Real(1))
+  {
+    // ω_d (rad/sample) = 2π f / f_s = 2π f · dt
+    const Real omega_d = Real(2) * Real(M_PI) * f_guess_hz * dt;
+    const Real a_init  = Real(2) * std::cos(omega_d);
+    init(rho, q_, r_, p_cov_, Real(0), Real(0), a_init);
+  }
+
   // y: input sample, in *whatever* units (but tune q,r for that scale)
   // dt: actual sample period (seconds)
   Real process(Real y, Real dt, Real* e_out = nullptr) {
