@@ -99,7 +99,8 @@ The algorithm uses the exact discrete covariance
 \]
 implemented in two numerically stable branches.
 
-\subparagraph*{Small-\(x\) series (\(|x|\le x_0\))}
+\medskip
+\noindent\textbf{Small-\(x\) series (\(|x|\le x_0\))}
 For \(|x|\le x_0\) with \(x_0 \approx 10^{-2}\), the code uses a
 Maclaurin expansion in \(h\) up to \(O(h^5)\) (equivalently \(O(x^5)\)).
 Writing \(h^k/\tau^\ell\) explicitly, the nonzero entries are
@@ -158,7 +159,8 @@ All omitted entries are of order \(O(h^6)\) or higher in \(h\) and are
 set to zero in the implementation. The matrix is then projected to the
 nearest PSD matrix (and symmetrized) to remove roundoff.
 
-\subparagraph*{General closed form (\(|x|>x_0\))}
+\medskip
+\noindent\textbf{General closed form (\(|x|>x_0\))}
 For \(|x|>x_0\) the algorithm uses the exact coefficients
 \(\mathcal{K}\) with entries \(K_{ij}\) (\(i,j\in\{v,p,S,a\}\)),
 and constructs
@@ -208,7 +210,8 @@ All other entries of \(\mathcal{K}\) follow by symmetry,
 \(K_{ij}=K_{ji}\). As in the small-\(x\) branch, \(\matg{Q}_{d,\text{axis}}\)
 is post-processed by a PSD projection and symmetrization.
 
-\subparagraph*{Assembly of \(\matg{Q}_{\!LL}(h)\)}
+\medskip
+\noindent\textbf{Assembly of \(\matg{Q}_{\!LL}(h)\)}
 For uncorrelated axes with diagonal stationary covariance
 \(\Sigma_{\!a_w} = \mathrm{diag}(\sigma_x^2,\sigma_y^2,\sigma_z^2)\)
 the full linear-block covariance is the block-diagonal stacking
