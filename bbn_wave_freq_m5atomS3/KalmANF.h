@@ -1,7 +1,7 @@
 #ifndef KALMANF_H
 #define KALMANF_H
 
-#include <cmath.h>
+#include <cmath>
 #include <limits>
 
 /*
