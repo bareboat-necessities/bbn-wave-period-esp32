@@ -349,7 +349,7 @@ private:
         float still_time_sec  = 0.0f;   // accumulated still time
         float still_thresh_s  = 10.0f;  // seconds of low energy before relaxing
         float relax_tau_sec   = 10.0f;  // time constant for freq relaxation
-        float target_freq_hz  = MIN_FREQ_HZ; // relaxed target (could also be FREQ_GUESS)
+        float target_freq_hz  = MIN_FREQ_HZ; // relaxed target 
 
         void setTargetFreq(float f) {
             if (std::isfinite(f) && f > 0.0f) {
