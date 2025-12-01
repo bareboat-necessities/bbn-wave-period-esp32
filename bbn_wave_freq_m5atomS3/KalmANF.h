@@ -66,10 +66,7 @@
 
        f̂ = (ω̂_d / Δt) / (2π),
 
-   where Δt is the effective sample period. In this implementation a TIME_SCALE
-   factor is retained for compatibility, but it cancels algebraically in the
-   final expression for f̂ and does not affect adaptation dynamics.
-   
+   where Δt is the effective sample period. 
 */
 
 template <typename Real = double>
