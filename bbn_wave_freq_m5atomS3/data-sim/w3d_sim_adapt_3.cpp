@@ -140,7 +140,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
 
     // Initialize unified fusion filter
-    using Fusion = SeaStateFusionFilter<TrackerType::ARANOVSKIY>;
+    using Fusion = SeaStateFusionFilter<TrackerType::ZEROCROSS>;
     Fusion filter(with_mag);
 
     const Vector3f sigma_a_init(0.30f, 0.30f, 0.30f);
