@@ -171,7 +171,7 @@ public:
 
     if (e_out) *e_out = e;
 
-    // undo TIME_SCALE for compatibility
+    // undo TIME_SCALE
     return f_est / TIME_SCALE;
   }
 
