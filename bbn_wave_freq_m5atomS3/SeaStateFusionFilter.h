@@ -185,6 +185,9 @@ public:
     
         // Raw freq from tracker (run() still does /g_std inside)
         f_raw = static_cast<float>(tracker_policy_.run(a_z_inertial_lp, dt));
+
+        // Adjust for stillness: same logic for ALL trackers
+        f_raw = freq_stillness_.step(a_z_inertial_lp, dt, f_raw);     
       
         // Smooth ONCE here
         if (!freq_init_) { freqSmoother.setInitial(f_raw); freq_init_ = true; }
