@@ -150,8 +150,8 @@ public:
         : with_mag_(with_mag), tuner_(),
           time_(0.0), last_adapt_time_sec_(0.0), freq_hz_(NAN)
     {
-        // Default cutoff ~1 Hz: passes waves, kills 8–37 Hz engine band
-        freq_input_lpf_.setCutoff(1.0f);
+        // Default cutoff ~MAX_FREQ_HZ Hz: passes waves, kills 8–37 Hz engine band
+        freq_input_lpf_.setCutoff(MAX_FREQ_HZ);
     }
 
     void initialize(const Eigen::Vector3f& sigma_a,
