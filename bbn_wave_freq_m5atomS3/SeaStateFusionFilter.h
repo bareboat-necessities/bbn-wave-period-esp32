@@ -345,10 +345,10 @@ private:
     struct FreqStillnessAdapter {
         float energy_ema      = 0.0f;   // EMA of (a_z/g)^2
         float energy_alpha    = 0.05f;  // smoothing for energy EMA
-        float energy_thresh   = 5e-4f;  // below this ⇒ effectively still
+        float energy_thresh   = 8e-4f;  // below this ⇒ effectively still
         float still_time_sec  = 0.0f;   // accumulated still time
-        float still_thresh_s  = 3.0f;   // seconds of low energy before relaxing
-        float relax_tau_sec   = 4.0f;   // time constant for freq relaxation
+        float still_thresh_s  = 2.0f;   // seconds of low energy before relaxing
+        float relax_tau_sec   = 1.0f;   // time constant for freq relaxation
         float target_freq_hz  = MIN_FREQ_HZ; // relaxed target 
 
         void setTargetFreq(float f) {
