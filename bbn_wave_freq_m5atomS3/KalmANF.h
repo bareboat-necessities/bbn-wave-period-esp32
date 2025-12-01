@@ -42,10 +42,13 @@
        – a ≈ −2  ⇒ near Nyquist (f_s / 2).
 
    • q – process noise variance on a (Q ≈ q)
-       – Controls how quickly a is allowed to wander between samples.
-       – Larger q: faster adaptation, more responsive to changes, but noisier.
-       – Smaller q: very smooth / “sticky”, but slow to follow genuine frequency shifts.
-
+       – Controls how quickly the filter “forgets” its previous estimate of a.
+       – Larger q: p grows faster between samples → larger Kalman gain → a adapts
+         quickly (forgets history faster), but the frequency can become noisier.
+       – Smaller q: p grows slowly → smaller Kalman gain → very smooth and
+         “sticky” behaviour (remembers history longer), but slower to follow
+         genuine frequency shifts.
+         
    • r – measurement noise variance on e[n] (R ≈ r)
        – Models how noisy / unreliable the error e[n] is.
        – Larger r: smaller Kalman gain, smoother and slower updates.
