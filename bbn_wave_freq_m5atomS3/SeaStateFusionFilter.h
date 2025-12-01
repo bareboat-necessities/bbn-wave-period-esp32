@@ -201,8 +201,8 @@ public:
             update_tuner(dt, a_z_inertial, f_smooth);
         }
     
-        // Direction filter also uses the SAME smoothed freq (ω = 2πf)
-        const float omega = 2.0f * static_cast<float>(M_PI) * f_smooth;
+        // Direction filter uses freq (ω = 2πf)
+        const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
         dir_filter_.update(a_x, a_y, omega, dt);
         dir_sign_state_ = dir_sign_.update(a_x, a_y, a_z_inertial, dt);  
     }
