@@ -343,13 +343,21 @@ private:
 
     // Detect “stillness” from vertical accel and relax frequency when still.
     struct FreqStillnessAdapter {
+        // Stillness detection
         float energy_ema      = 0.0f;   // EMA of (a_z/g)^2
         float energy_alpha    = 0.05f;  // smoothing for energy EMA
         float energy_thresh   = 8e-4f;  // below this ⇒ effectively still
+
         float still_time_sec  = 0.0f;   // accumulated still time
         float still_thresh_s  = 2.0f;   // seconds of low energy before relaxing
+
+        // Relaxation behaviour
         float relax_tau_sec   = 1.0f;   // time constant for freq relaxation
-        float target_freq_hz  = MIN_FREQ_HZ; // relaxed target 
+        float target_freq_hz  = MIN_FREQ_HZ; // relaxed target (could also be FREQ_GUESS)
+
+        // Internal frequency state (this is the key!)
+        bool  freq_init       = false;
+        float freq_state      = FREQ_GUESS;
 
         void setTargetFreq(float f) {
             if (std::isfinite(f) && f > 0.0f) {
@@ -363,45 +371,59 @@ private:
                        float stillThreshSec,
                        float relaxTauSec)
         {
-            if (energyAlpha > 0.0f && energyAlpha < 1.0f) energy_alpha = energyAlpha;
-            if (energyThresh > 0.0f)                      energy_thresh = energyThresh;
+            if (energyAlpha > 0.0f && energyAlpha < 1.0f) energy_alpha   = energyAlpha;
+            if (energyThresh > 0.0f)                      energy_thresh  = energyThresh;
             if (stillThreshSec > 0.0f)                    still_thresh_s = stillThreshSec;
-            if (relaxTauSec > 0.0f)                       relax_tau_sec = relaxTauSec;
+            if (relaxTauSec > 0.0f)                       relax_tau_sec  = relaxTauSec;
         }
 
         // a_z_inertial_lp: vertical inertial accel (m/s²), low-passed
         // dt             : timestep (s)
-        // freq_in        : frequency from tracker
-        // Returns adjusted frequency (relaxed toward target when still).
+        // freq_in        : raw tracker freq (Hz)
+        //
+        // Returns adjusted frequency:
+        //   – follows tracker when not still
+        //   – decays toward target_freq_hz when still for long enough
         float step(float a_z_inertial_lp, float dt, float freq_in) {
             if (!(dt > 0.0f) || !std::isfinite(freq_in)) {
                 return freq_in;
             }
 
+            // Initialize internal state from tracker on first valid call
+            if (!freq_init || !std::isfinite(freq_state)) {
+                freq_state = freq_in;
+                freq_init  = true;
+            }
+
             // Normalize by g → dimensionless
-            const float a_norm = a_z_inertial_lp / g_std;
+            const float a_norm      = a_z_inertial_lp / g_std;
             const float inst_energy = a_norm * a_norm; // (a_z/g)^2
 
             // EWMA of energy
             energy_ema = (1.0f - energy_alpha) * energy_ema
                        + energy_alpha * inst_energy;
 
-            // Track how long we've been below the energy threshold
-            if (energy_ema < energy_thresh) {
+            const bool is_still = (energy_ema < energy_thresh);
+
+            if (is_still) {
+                // Count how long we've been still
                 still_time_sec += dt;
+                if (still_time_sec > 60.0f) still_time_sec = 60.0f;
+
+                // After some time still, relax INTERNAL freq_state toward target
+                if (still_time_sec > still_thresh_s) {
+                    const float relax_alpha = 1.0f - std::exp(-dt / relax_tau_sec);
+                    freq_state += relax_alpha * (target_freq_hz - freq_state);
+                } else {
+                    // before threshold, just track the tracker
+                    freq_state = freq_in;
+                }
             } else {
+                // Not still: reset still timer and follow tracker tightly
                 still_time_sec = 0.0f;
+                freq_state     = freq_in;
             }
-
-            float freq = freq_in;
-
-            // After enough “still” time, relax freq toward target_freq_hz
-            if (still_time_sec > still_thresh_s) {
-                const float relax_alpha = 1.0f - std::exp(-dt / relax_tau_sec);
-                freq += relax_alpha * (target_freq_hz - freq);
-            }
-
-            return freq;
+            return freq_state;
         }
     };
 
