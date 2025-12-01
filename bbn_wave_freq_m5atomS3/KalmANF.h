@@ -117,7 +117,7 @@ private:
 
 public:
   void init(Real rho      = defaultRho,
-            Real q_       = Real(1e-6),
+            Real q_       = Real(1e-5),
             Real r_       = Real(1e+3),
             Real p_cov_   = Real(1),
             Real s_prev1_ = Real(0),
