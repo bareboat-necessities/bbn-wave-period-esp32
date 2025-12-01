@@ -2,7 +2,6 @@
 #define ARANOVSKIY_FILTER_H
 
 #include <cmath>
-#include <algorithm>
 
 /*
   Copyright 2024-2025, Mikhail Grushinskiy
@@ -109,7 +108,7 @@ public:
   Real getPhase() const { return phase; }
 
 private:
-  Real clamp_value(const Real& val, const Real& low, const Real& high) {
+  static constexpr Real clamp_value(const Real& val, const Real& low, const Real& high) {
     return (val < low) ? low : (val > high) ? high : val;
   }
 };
