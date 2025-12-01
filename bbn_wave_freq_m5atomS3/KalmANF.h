@@ -11,6 +11,65 @@
 
    See: R. Ali, T. van Waterschoot, "A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter", 
    Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23), Copenhagen, Denmark, September 2023
+
+   Conceptual model
+   ----------------
+   The algorithm tracks the dominant sinusoidal component of a real-valued signal y[n]
+   by adapting the coefficient a in a second-order resonator / notch filter. The
+   resonator is parameterized as
+
+       s[n] = y[n] + ρ · a · s[n−1] − ρ² · s[n−2],
+
+   where a = 2 cos(ω_d), and ω_d is the (digital) radian frequency per sample.
+
+   The scalar state a is updated by a 1-D Kalman filter driven by the notch error e[n]:
+
+       e[n] = s[n] − a[n−1] · s[n−1] + s[n−2],
+       a[n] = a[n−1] + K[n] · e[n],
+
+   with K[n] chosen according to a scalar Kalman update.
+
+   Parameters (conceptual roles)
+   -----------------------------
+   • ρ (rho) – pole radius of the resonator, 0 < ρ < 1
+       – ρ → 1.0  : high-Q, narrowband, long memory, more selective.
+       – smaller ρ: more damping, broader bandwidth, less selective, more robust.
+
+   • a – adaptive notch coefficient, a = 2 cos(ω_d)
+       – Encodes the tracked digital frequency ω_d.
+       – a ≈  2  ⇒ very low frequency (near DC).
+       – a ≈  0  ⇒ mid-band (around f_s / 4).
+       – a ≈ −2  ⇒ near Nyquist (f_s / 2).
+
+   • q – process noise variance on a (Q ≈ q)
+       – Controls how quickly a is allowed to wander between samples.
+       – Larger q: faster adaptation, more responsive to changes, but noisier.
+       – Smaller q: very smooth / “sticky”, but slow to follow genuine frequency shifts.
+
+   • r – measurement noise variance on e[n] (R ≈ r)
+       – Models how noisy / unreliable the error e[n] is.
+       – Larger r: smaller Kalman gain, smoother and slower updates.
+       – Smaller r: larger Kalman gain, more aggressive and jitter-prone.
+
+   • p – p_cov, Kalman error covariance on a
+       – Internal state tracking the uncertainty in a.
+       – Larger p → larger gain K (we believe a is uncertain).
+       – Smaller p → smaller gain K (we believe a is well known).
+
+   Mapping back to Hz
+   ------------------
+   Once the updated a is available, the instantaneous digital frequency is
+
+       ω̂_d = arccos(a / 2),
+
+   and the physical frequency in Hz is
+
+       f̂ = (ω̂_d / Δt) / (2π),
+
+   where Δt is the effective sample period. In this implementation a TIME_SCALE
+   factor is retained for compatibility, but it cancels algebraically in the
+   final expression for f̂ and does not affect adaptation dynamics.
+   
 */
 
 template <typename Real = double>
