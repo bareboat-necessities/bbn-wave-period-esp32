@@ -115,13 +115,13 @@ private:
 
   // Kalman parameters
   Real p_cov = Real(1);
-  Real q     = Real(5e-6);
-  Real r     = Real(10.0);
+  Real q     = Real(1e-6);
+  Real r     = Real(1e+3);
 
 public:
   void init(Real rho      = defaultRho,
-            Real q_       = Real(5e-6),
-            Real r_       = Real(10.0),
+            Real q_       = Real(1e-6),
+            Real r_       = Real(1e+3),
             Real p_cov_   = Real(1),
             Real s_prev1_ = Real(0),
             Real s_prev2_ = Real(0),
