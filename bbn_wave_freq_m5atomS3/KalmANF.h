@@ -78,9 +78,6 @@ private:
   static constexpr Real defaultRho = Real(0.995);
   static constexpr Real default_a  = Real(1.9999);
 
-  // “numerical stability” hook for low frequencies,
-  static constexpr Real TIME_SCALE = Real(100);
-
   class ANFResonator {
   public:
     Real s_prev1 = Real(0);
@@ -136,7 +133,7 @@ public:
   // y: input sample, in *whatever* units (but tune q,r for that scale)
   // dt: actual sample period (seconds)
   Real process(Real y, Real dt, Real* e_out = nullptr) {
-    Real delta_t = dt / TIME_SCALE; 
+    Real delta_t = dt; 
 
     // 1. resonator
     Real s = res.compute_s(y);
@@ -174,8 +171,7 @@ public:
 
     if (e_out) *e_out = e;
 
-    // undo TIME_SCALE
-    return f_est / TIME_SCALE;
+    return f_est;
   }
 
   Real get_phase() const { return res.get_phase(); }
