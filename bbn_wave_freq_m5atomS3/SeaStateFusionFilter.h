@@ -82,8 +82,8 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
 struct TuneState {
     float tau_applied   = 0.97f;  // s
-    float sigma_applied = 0.65f;  // m/s²
-    float RS_applied    = 0.87f;  // m*s
+    float sigma_applied = 0.0f;   // m/s²
+    float RS_applied    = 0.0f;   // m*s
 };
 
 //  Tracker policy traits
