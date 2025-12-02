@@ -73,7 +73,7 @@ constexpr float MAX_FREQ_HZ = 5.0f;
 constexpr float MIN_TAU_S   = 0.01f;
 constexpr float MAX_TAU_S   = 8.5f;
 constexpr float MAX_SIGMA_A = 8.0f;
-constexpr float MIN_R_S     = 0.01f;
+constexpr float MIN_R_S     = 0.05f;
 constexpr float MAX_R_S     = 100.0f;
 
 constexpr float ADAPT_TAU_SEC            = 0.3f;
