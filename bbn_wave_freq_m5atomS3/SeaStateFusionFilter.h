@@ -471,8 +471,11 @@ private:
     float R_S_xy_factor = 0.07f;  // [0..1] scales XY pseudo-meas vs Z
     float S_factor = 1.3f;       // (>0) scales Σ_aw horizontal std vs vertical
 
+    constexpr float DT = 1.0f / 240.0f;
+
     TrackingPolicy tracker_policy_{};  // one instance of frequency tracker per filter
-    FrequencySmoother<float> freqSmoother;
+    FirstOrderIIRSmoother<float> freq_fast_smoother(DT, 1.0f);
+    FirstOrderIIRSmoother<float> freq_slow_smoother(DT, 10.0f);
     SeaStateAutoTuner tuner_;
     TuneState tune_;
 
