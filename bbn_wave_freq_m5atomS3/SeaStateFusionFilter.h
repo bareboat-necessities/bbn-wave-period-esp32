@@ -417,9 +417,7 @@ private:
             const float inst_energy = a_norm * a_norm; // (a_z/g)^2
 
             // EWMA of energy
-            energy_ema = (1.0f - energy_alpha) * energy_ema
-                       + energy_alpha * inst_energy;
-
+            energy_ema = (1.0f - energy_alpha) * energy_ema + energy_alpha * inst_energy;
             const bool is_still = (energy_ema < energy_thresh);
 
             if (is_still) {
@@ -477,7 +475,7 @@ private:
         // Fixed noise floor variance
         const float var_noise = ACC_NOISE_FLOOR_SIGMA * ACC_NOISE_FLOOR_SIGMA;
         // Wave-only variance (never negative)
-        const float var_wave  = std::max(0.0f, var_total - var_noise);
+        const float var_wave  = std::max(1e-12f, var_total - var_noise);
 
         // Wave-only sigma; if var_wave ~ 0, this goes to 0 → flat sea mode
         float sigma_wave = (var_wave > 0.0f) ? std::sqrt(var_wave) : 0.0f;
