@@ -85,8 +85,8 @@ public:
     inline void setTauFreq(float t) { tau_freq = std::max(1e-3f, t); last_dt = -1.0f; }
 
 private:
-    float tau_var  = 60.0f;
-    float tau_freq = 5.0f;
+    float tau_var  = 15.0f;
+    float tau_freq = 0.5f;
     float last_dt  = -1.0f;
     float alpha_var = 0.0f;
     float alpha_freq = 0.0f;
