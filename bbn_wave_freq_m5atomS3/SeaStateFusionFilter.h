@@ -85,8 +85,8 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
 struct TuneState {
     float tau_applied   = 0.97f;    // s
-    float sigma_applied = 1e-12f;   // m/s²
-    float RS_applied    = 1e-12f;   // m*s
+    float sigma_applied = 1e-4f;    // m/s²
+    float RS_applied    = 1e-2f;    // m*s
 };
 
 //  Tracker policy traits
@@ -544,7 +544,7 @@ private:
     float RS_target_    = NAN;
 
     float R_S_coeff_    = 2.1f;
-    float tau_coeff_    = 1.1f;
+    float tau_coeff_    = 1.3f;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
     KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
