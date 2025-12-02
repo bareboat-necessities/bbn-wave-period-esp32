@@ -75,7 +75,7 @@ constexpr float MAX_TAU_S   = 8.5f;
 constexpr float MAX_SIGMA_A = 8.0f;
 constexpr float MAX_R_S     = 100.0f;
 
-constexpr float ADAPT_TAU_SEC            = 3.0f;
+constexpr float ADAPT_TAU_SEC            = 0.3f;
 constexpr float ADAPT_EVERY_SECS         = 0.1f;
 constexpr float ONLINE_TUNE_WARMUP_SEC   = 35.0f;
 constexpr float MAG_DELAY_SEC            = 5.0f;
