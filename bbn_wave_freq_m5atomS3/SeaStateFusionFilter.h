@@ -226,7 +226,7 @@ public:
         freq_hz_slow_  = f_slow;
 
         // Tuner uses the SLOW branch
-        if (enable_tuner) {
+        if (enable_tuner_) {
             update_tuner(dt, a_z_inertial, freq_hz_slow_);
         }
 
