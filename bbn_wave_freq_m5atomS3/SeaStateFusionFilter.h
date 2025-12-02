@@ -544,7 +544,7 @@ private:
     float RS_target_    = NAN;
 
     float R_S_coeff_    = 2.1f;
-    float tau_coeff_    = 1.3f;
+    float tau_coeff_    = 1.1f;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
     KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
