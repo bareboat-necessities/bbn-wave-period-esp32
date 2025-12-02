@@ -73,6 +73,7 @@ constexpr float MAX_FREQ_HZ = 5.0f;
 constexpr float MIN_TAU_S   = 0.01f;
 constexpr float MAX_TAU_S   = 8.5f;
 constexpr float MAX_SIGMA_A = 8.0f;
+constexpr float MIN_R_S     = 0.01f;
 constexpr float MAX_R_S     = 100.0f;
 
 constexpr float ADAPT_TAU_SEC            = 0.3f;
@@ -85,8 +86,8 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
 struct TuneState {
     float tau_applied   = 0.97f;    // s
-    float sigma_applied = 1e-3f;    // m/s²
-    float RS_applied    = 1e-1f;    // m*s
+    float sigma_applied = 1e-4f;    // m/s²
+    float RS_applied    = 0.3f;     // m*s
 };
 
 //  Tracker policy traits
@@ -475,7 +476,7 @@ private:
         // Fixed noise floor variance
         const float var_noise = ACC_NOISE_FLOOR_SIGMA * ACC_NOISE_FLOOR_SIGMA;
         // Wave-only variance
-        const float var_wave  = std::max(1e-6f, var_total - var_noise);
+        const float var_wave  = std::max(1e-12f, var_total - var_noise);
 
         // Wave-only sigma; 
         float sigma_wave = std::sqrt(var_wave);
@@ -492,11 +493,10 @@ private:
         }
 
         // Rₛ from (wave-only) σ and τ³
-        float RS_raw = R_S_coeff_ * sigma_target_
-                     * tau_target_ * tau_target_ * tau_target_;
+        float RS_raw = R_S_coeff_ * sigma_target_ * tau_target_ * tau_target_ * tau_target_;
 
         if (enable_clamp_) {
-            RS_target_ = std::min(RS_raw, MAX_R_S);
+            RS_target_ = std::min(std::max(RS_raw, MIN_R_S), MAX_R_S);
         } else {
             RS_target_ = RS_raw;
         }
