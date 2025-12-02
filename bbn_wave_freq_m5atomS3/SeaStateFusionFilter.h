@@ -68,7 +68,7 @@
 constexpr float ACC_NOISE_FLOOR_SIGMA = 0.16f; 
 
 constexpr float MIN_FREQ_HZ = 0.1f;
-constexpr float MAX_FREQ_HZ = 8.0f;
+constexpr float MAX_FREQ_HZ = 16.0f;
 
 constexpr float MIN_TAU_S   = 0.01f;
 constexpr float MAX_TAU_S   = 8.5f;
