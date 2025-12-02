@@ -543,7 +543,7 @@ private:
     float sigma_target_ = NAN;
     float RS_target_    = NAN;
 
-    float R_S_coeff_    = 2.1f;
+    float R_S_coeff_    = 1.7f;
     float tau_coeff_    = 1.5f;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
