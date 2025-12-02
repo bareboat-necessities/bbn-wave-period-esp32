@@ -98,7 +98,7 @@ struct TrackerPolicy<TrackerType::ARANOVSKIY> {
 
     TrackerPolicy() : t() {
         double omega_up   = (FREQ_GUESS * 2.0) * (2.0 * M_PI);  // upper angular frequency
-        double k_gain     = 20.0;                               // Higher = faster, but risk overflow if too high
+        double k_gain     = 20.0;                               // higher = faster, but risk overflow if too high
         double x1_0       = 0.0;
         double omega_init = (FREQ_GUESS / 1.5) * 2.0 * M_PI;
         double theta_0    = -(omega_init * omega_init);
@@ -120,9 +120,7 @@ struct TrackerPolicy<TrackerType::KALMANF> {
     Tracker t = Tracker();
     double run(float a, float dt) {
         double e;
-        double freq = t.process(static_cast<double>(a) / g_std,
-                                static_cast<double>(dt),
-                                &e);
+        double freq = t.process(static_cast<double>(a) / g_std, static_cast<double>(dt), &e);
         return freq;
     }
 };
@@ -370,7 +368,6 @@ private:
                 initialized = true;
                 return state;
             }
-
             state = (1.0f - alpha) * x + alpha * state;
             return state;
         }
@@ -476,19 +473,15 @@ private:
         if (enable_clamp_) {
             tau_target_   = std::min(std::max(tau_coeff_ * 0.5f / f_tune, MIN_TAU_S),   MAX_TAU_S);
             sigma_target_ = std::min(std::max(std::sqrt(std::max(0.0f, tuner_.getAccelVariance())),
-                                              MIN_SIGMA_A),
-                                     MAX_SIGMA_A);
+                                              MIN_SIGMA_A), MAX_SIGMA_A);
             RS_target_    = std::min(std::max(R_S_coeff_ * sigma_target_ *
                                               tau_target_ * tau_target_ * tau_target_,
-                                              MIN_R_S),
-                                     MAX_R_S);
+                                              MIN_R_S), MAX_R_S);
         } else {
             tau_target_   = tau_coeff_ * 0.5f / f_tune;
             sigma_target_ = std::sqrt(std::max(0.0f, tuner_.getAccelVariance()));
-            RS_target_    = R_S_coeff_ * sigma_target_ *
-                            tau_target_ * tau_target_ * tau_target_;
+            RS_target_    = R_S_coeff_ * sigma_target_ * tau_target_ * tau_target_ * tau_target_;
         }
-    
         adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
     
@@ -534,12 +527,12 @@ private:
     float R_S_coeff_    = 2.4f;
     float tau_coeff_    = 1.6f;
 
-    std::unique_ptr<Kalman3D_Wave<float,true,true>> mekf_;
+    std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
     KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
 
     FreqInputLPF            freq_input_lpf_;   // LPF used only for tracker input
     FreqStillnessAdapter    freq_stillness_;   // Detector of "still" mode
 
-    WaveDirectionDetector<float> dir_sign_{0.002f, 0.005f}; // smoothing, sensitivity
+    WaveDirectionDetector<float> dir_sign_{0.002f, 0.005f};   // smoothing, sensitivity
     WaveDirection                dir_sign_state_ = UNCERTAIN;
 };
