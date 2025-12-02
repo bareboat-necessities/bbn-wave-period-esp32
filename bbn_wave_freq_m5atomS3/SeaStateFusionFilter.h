@@ -84,9 +84,9 @@ constexpr float MAG_DELAY_SEC            = 5.0f;
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
 struct TuneState {
-    float tau_applied   = 0.97f;  // s
-    float sigma_applied = 0.0f;   // m/s²
-    float RS_applied    = 0.0f;   // m*s
+    float tau_applied   = 0.97f;    // s
+    float sigma_applied = 1e-12f;   // m/s²
+    float RS_applied    = 1e-12f;   // m*s
 };
 
 //  Tracker policy traits
