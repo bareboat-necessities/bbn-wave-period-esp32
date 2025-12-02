@@ -67,9 +67,7 @@ constexpr float MAX_FREQ_HZ = 2.0f;
 
 constexpr float MIN_TAU_S   = 0.5f;
 constexpr float MAX_TAU_S   = 8.5f;
-constexpr float MIN_SIGMA_A = 0.0f;
 constexpr float MAX_SIGMA_A = 8.0f;
-constexpr float MIN_R_S     = 0.0f;
 constexpr float MAX_R_S     = 120.0f;
 
 constexpr float ADAPT_TAU_SEC            = 3.0f;
@@ -455,7 +453,7 @@ private:
         mekf_->set_aw_stationary_std(a_w_std); 
     
         // WORLD-frame pseudo-measurement noise for S (anisotropic diagonal).
-        const float RSb = std::min(std::max(tune_.RS_applied, MIN_R_S), MAX_R_S);
+        const float RSb = std::min(std::max(tune_.RS_applied, 0.0f), MAX_R_S);
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,   // world X
             RSb * R_S_xy_factor_,   // world Y
@@ -472,11 +470,8 @@ private:
 
         if (enable_clamp_) {
             tau_target_   = std::min(std::max(tau_coeff_ * 0.5f / f_tune, MIN_TAU_S),   MAX_TAU_S);
-            sigma_target_ = std::min(std::max(std::sqrt(std::max(0.0f, tuner_.getAccelVariance())),
-                                              MIN_SIGMA_A), MAX_SIGMA_A);
-            RS_target_    = std::min(std::max(R_S_coeff_ * sigma_target_ *
-                                              tau_target_ * tau_target_ * tau_target_,
-                                              MIN_R_S), MAX_R_S);
+            sigma_target_ = std::min(std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MAX_SIGMA_A);
+            RS_target_    = std::min(R_S_coeff_ * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MAX_R_S);
         } else {
             tau_target_   = tau_coeff_ * 0.5f / f_tune;
             sigma_target_ = std::sqrt(std::max(0.0f, tuner_.getAccelVariance()));
