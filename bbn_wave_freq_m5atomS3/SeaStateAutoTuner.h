@@ -28,7 +28,7 @@ struct DebiasedEMA {
 
 class SeaStateAutoTuner {
 public:
-    explicit SeaStateAutoTuner(float tau_var_sec = 20.0f,   // variance EWMA horizon
+    explicit SeaStateAutoTuner(float tau_var_sec  = 0.5f,   // variance EWMA horizon
                                float tau_freq_sec = 0.5f)   // frequency smoothing horizon
     : tau_var(tau_var_sec), tau_freq(tau_freq_sec) {
         reset();
@@ -85,7 +85,7 @@ public:
     inline void setTauFreq(float t) { tau_freq = std::max(1e-3f, t); last_dt = -1.0f; }
 
 private:
-    float tau_var  = 20.0f;
+    float tau_var  = 0.5f;
     float tau_freq = 0.5f;
     float last_dt  = -1.0f;
     float alpha_var = 0.0f;
