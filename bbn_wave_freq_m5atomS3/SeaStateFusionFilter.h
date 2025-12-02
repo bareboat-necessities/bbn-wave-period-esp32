@@ -226,9 +226,9 @@ public:
         // Slow branch used for adaptation / moment-like quantities
         freq_hz_slow_  = f_slow;
 
-        // Tuner uses the SLOW branch
+        // Tuner uses own smoothing
         if (enable_tuner_) {
-            update_tuner(dt, a_z_inertial, freq_hz_slow_);
+            update_tuner(dt, a_z_inertial, f_after_still);
         }
 
         // Direction filter uses fast frequency (ω = 2πf_fast)
