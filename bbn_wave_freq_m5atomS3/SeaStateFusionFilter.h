@@ -62,6 +62,11 @@
 #include "WaveDirectionDetector.h"
 
 // Shared constants
+
+// Estimated vertical accel noise floor (1σ), m/s².
+// Tweak from bench data with IMU sitting still.
+constexpr float ACC_NOISE_FLOOR_SIGMA = 0.03f; // e.g. ≈3 mg
+
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 2.0f;
 
@@ -466,17 +471,38 @@ private:
     
         if (time_ < ONLINE_TUNE_WARMUP_SEC) return;
 
-        const float f_tune = tuner_.getFrequencyHz();
+        const float f_tune    = tuner_.getFrequencyHz();
+        const float var_total = std::max(0.0f, tuner_.getAccelVariance());
+
+        // Fixed noise floor variance
+        const float var_noise = ACC_NOISE_FLOOR_SIGMA * ACC_NOISE_FLOOR_SIGMA;
+        // Wave-only variance (never negative)
+        const float var_wave  = std::max(0.0f, var_total - var_noise);
+
+        // Wave-only sigma; if var_wave ~ 0, this goes to 0 → flat sea mode
+        float sigma_wave = (var_wave > 0.0f) ? std::sqrt(var_wave) : 0.0f;
+
+        // τ target from frequency
+        float tau_raw = tau_coeff_ * 0.5f / f_tune;
 
         if (enable_clamp_) {
-            tau_target_   = std::min(std::max(tau_coeff_ * 0.5f / f_tune, MIN_TAU_S),   MAX_TAU_S);
-            sigma_target_ = std::min(std::sqrt(std::max(0.0f, tuner_.getAccelVariance())), MAX_SIGMA_A);
-            RS_target_    = std::min(R_S_coeff_ * sigma_target_ * tau_target_ * tau_target_ * tau_target_, MAX_R_S);
+            tau_target_   = std::min(std::max(tau_raw,  MIN_TAU_S), MAX_TAU_S);
+            sigma_target_ = std::min(sigma_wave,        MAX_SIGMA_A);
         } else {
-            tau_target_   = tau_coeff_ * 0.5f / f_tune;
-            sigma_target_ = std::sqrt(std::max(0.0f, tuner_.getAccelVariance()));
-            RS_target_    = R_S_coeff_ * sigma_target_ * tau_target_ * tau_target_ * tau_target_;
+            tau_target_   = tau_raw;
+            sigma_target_ = sigma_wave;
         }
+
+        // Rₛ from (wave-only) σ and τ³
+        float RS_raw = R_S_coeff_ * sigma_target_
+                     * tau_target_ * tau_target_ * tau_target_;
+
+        if (enable_clamp_) {
+            RS_target_ = std::min(RS_raw, MAX_R_S);
+        } else {
+            RS_target_ = RS_raw;
+        }
+
         adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
     
