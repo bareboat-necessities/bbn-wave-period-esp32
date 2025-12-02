@@ -77,7 +77,7 @@ constexpr float MAX_R_S     = 100.0f;
 
 constexpr float ADAPT_TAU_SEC            = 0.3f;
 constexpr float ADAPT_EVERY_SECS         = 0.1f;
-constexpr float ONLINE_TUNE_WARMUP_SEC   = 35.0f;
+constexpr float ONLINE_TUNE_WARMUP_SEC   = 10.0f;
 constexpr float MAG_DELAY_SEC            = 5.0f;
 
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
@@ -85,8 +85,8 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
 struct TuneState {
     float tau_applied   = 0.97f;    // s
-    float sigma_applied = 1e-4f;    // m/s²
-    float RS_applied    = 1e-2f;    // m*s
+    float sigma_applied = 1e-3f;    // m/s²
+    float RS_applied    = 1e-1f;    // m*s
 };
 
 //  Tracker policy traits
@@ -474,11 +474,11 @@ private:
 
         // Fixed noise floor variance
         const float var_noise = ACC_NOISE_FLOOR_SIGMA * ACC_NOISE_FLOOR_SIGMA;
-        // Wave-only variance (never negative)
-        const float var_wave  = std::max(1e-12f, var_total - var_noise);
+        // Wave-only variance
+        const float var_wave  = std::max(1e-6f, var_total - var_noise);
 
-        // Wave-only sigma; if var_wave ~ 0, this goes to 0 → flat sea mode
-        float sigma_wave = (var_wave > 0.0f) ? std::sqrt(var_wave) : 0.0f;
+        // Wave-only sigma; 
+        float sigma_wave = std::sqrt(var_wave);
 
         // τ target from frequency
         float tau_raw = tau_coeff_ * 0.5f / f_tune;
