@@ -476,7 +476,7 @@ private:
         // Fixed noise floor variance
         const float var_noise = ACC_NOISE_FLOOR_SIGMA * ACC_NOISE_FLOOR_SIGMA;
         // Wave-only variance
-        const float var_wave  = std::max(1e-12f, var_total - var_noise);
+        const float var_wave  = std::max(1e-6f, var_total - var_noise);
 
         // Wave-only sigma; 
         float sigma_wave = std::sqrt(var_wave);
