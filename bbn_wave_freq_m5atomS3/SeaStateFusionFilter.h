@@ -451,7 +451,7 @@ private:
         mekf_->set_aw_time_constant(tune_.tau_applied);
     
         // WORLD-frame stationary covariance for a_w (XY equal, Z separate).
-        const float sZ = std::max(1e-6f, tune_.sigma_applied);
+        const float sZ = std::max(1e-5f, tune_.sigma_applied);
         const float sH = sZ * S_factor_;
         Eigen::Vector3f a_w_std(sH, sH, sZ);
         mekf_->set_aw_stationary_std(a_w_std); 
