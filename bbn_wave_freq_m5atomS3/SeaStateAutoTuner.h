@@ -10,6 +10,11 @@
     • Estimate acceleration variance σ_a² (time-domain EWMA)
     • Smooth externally provided frequency f_in (Hz) via EMA
     • Compute R_S estimate = σ_a τ³ where τ = 1 / (2f) (half period)
+
+  Notes:
+    • K_periods is a dimensionless factor controlling the variance horizon:
+        τ_var_dyn ≈ K_periods * T_eff,
+      where T_eff = 1 / f_eff and f_eff is the smoothed frequency.
 */
 
 struct DebiasedEMA {
@@ -28,14 +33,17 @@ struct DebiasedEMA {
 
 class SeaStateAutoTuner {
 public:
-    explicit SeaStateAutoTuner(float tau_var_sec  = 20.0f,  // variance EWMA horizon
-                               float tau_freq_sec = 0.5f)   // frequency smoothing horizon
-    : tau_var(tau_var_sec), tau_freq(tau_freq_sec) {
+    // K_periods: dimensionless horizon in periods.
+    //   τ_var_dyn ≈ K_periods * T_eff,  T_eff = 1 / f_eff
+    // Default K_periods ≈ 1.5 → ~4.5 periods for ~95% response.
+    explicit SeaStateAutoTuner(float K_periods_    = 1.5f,
+                               float tau_freq_sec = 0.5f)   // frequency smoothing horizon (seconds)
+    : K_periods(K_periods_), tau_freq(tau_freq_sec) {
         reset();
     }
 
     inline void reset() {
-        last_dt = -1.0f;
+        last_dt_freq = -1.0f;
         alpha_var = alpha_freq = 0.0f;
         A_mean.reset(); A_sq.reset(); A_var.reset();
         Freq_smoothed.reset();
@@ -46,17 +54,37 @@ public:
         if (!(dt_s > 0.0f) || !std::isfinite(accel) || !std::isfinite(f_input_hz))
             return;
 
-        updateAlphas(dt_s);
+        // 1) Update alpha for frequency smoothing (fixed horizon in seconds)
+        updateAlphaFreq(dt_s);
 
-        // time-domain EWMA variance
+        // 2) Smooth incoming frequency first
+        Freq_smoothed.update(f_input_hz, alpha_freq);
+
+        // Effective frequency for variance horizon (use smoothed if ready)
+        float f_eff = Freq_smoothed.isReady() ? Freq_smoothed.get() : f_input_hz;
+        // Clamp to avoid insane horizons at tiny/zero frequency
+        const float F_MIN = 0.05f;   // 20 s period max
+        const float F_MAX = 5.0f;    // avoid crazy high freq
+        if (!std::isfinite(f_eff)) f_eff = F_MIN;
+        f_eff = std::max(F_MIN, std::min(F_MAX, f_eff));
+
+        const float T_eff = 1.0f / f_eff;
+
+        // 3) Dynamic variance time constant: a few periods
+        const float TAU_MIN = 0.3f;       // seconds: don't go *too* twitchy
+        const float TAU_MAX = 60.0f;      // seconds: don't be glacial
+        const float tau_var_dyn = std::max(TAU_MIN,
+                                           std::min(TAU_MAX, K_periods * T_eff));
+
+        // Compute alpha for variance based on dynamic tau
+        alpha_var = 1.0f - std::exp(-dt_s / tau_var_dyn);
+
+        // 4) Time-domain EWMA variance
         A_mean.update(accel, alpha_var);
         A_sq.update(accel * accel, alpha_var);
-        const float mu  = A_mean.get();
-        const float var = std::max(0.0f, A_sq.get() - mu * mu);
-        A_var.update(var, alpha_var);
-
-        // smooth incoming frequency
-        Freq_smoothed.update(f_input_hz, alpha_freq);
+        const float mu       = A_mean.get();
+        const float var_inst = std::max(0.0f, A_sq.get() - mu * mu);
+        A_var.update(var_inst, alpha_var);
     }
 
     // accessors
@@ -81,23 +109,30 @@ public:
     inline bool isReady() const { return A_var.isReady() && Freq_smoothed.isReady(); }
 
     // Optional runtime tuning
-    inline void setTauVar(float t)  { tau_var  = std::max(1e-3f, t); last_dt = -1.0f; }
-    inline void setTauFreq(float t) { tau_freq = std::max(1e-3f, t); last_dt = -1.0f; }
+    inline void setKPeriods(float k) { K_periods = std::max(0.1f, k); }   // >= 0.1 periods
+
+    // Backward-compat alias if you still call setTauVar(...) somewhere
+    inline void setTauVar(float t) { setKPeriods(t); }
+
+    inline void setTauFreq(float t) {
+        tau_freq = std::max(1e-3f, t);
+        last_dt_freq = -1.0f;  // force recompute on next update
+    }
 
 private:
-    float tau_var  = 20.0f;
-    float tau_freq = 0.5f;
-    float last_dt  = -1.0f;
-    float alpha_var = 0.0f;
+    // K_periods: dimensionless factor such that τ_var_dyn ≈ K_periods * T_eff
+    float K_periods = 1.5f;
+    float tau_freq  = 0.5f;   // seconds
+    float last_dt_freq  = -1.0f;
+    float alpha_var  = 0.0f;
     float alpha_freq = 0.0f;
 
     DebiasedEMA A_mean, A_sq, A_var;
     DebiasedEMA Freq_smoothed;
 
-    inline void updateAlphas(float dt_s) {
-        if (dt_s == last_dt) return;
-        last_dt = dt_s;
-        alpha_var  = 1.0f - std::exp(-dt_s / tau_var);
+    inline void updateAlphaFreq(float dt_s) {
+        if (dt_s == last_dt_freq) return;
+        last_dt_freq = dt_s;
         alpha_freq = 1.0f - std::exp(-dt_s / tau_freq);
     }
 };
@@ -106,12 +141,14 @@ private:
 #include <iostream>
 
 static inline void SeaStateAutoTuner_test() {
-    constexpr float Fs = 240.0f;
-    constexpr float DT = 1.0f / Fs;
+    constexpr float Fs   = 240.0f;
+    constexpr float DT   = 1.0f / Fs;
     constexpr float F_HZ = 0.5f;
     const float omega = 2.0f * 3.14159265358979323846f * F_HZ;
 
-    SeaStateAutoTuner tuner(30.0f, 3.0f);
+    // K_periods ≈ 1.5 → τ_var_dyn ≈ 1.5 * T = 3 s at 0.5 Hz
+    // ~9 s (~4.5 periods) for 95% response
+    SeaStateAutoTuner tuner(1.5f, 3.0f);
 
     float t = 0.0f;
     for (int n = 0; n < int(20.0f / DT); ++n) {
