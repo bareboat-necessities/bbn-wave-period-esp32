@@ -378,7 +378,7 @@ private:
     };
 
     // Detect “stillness” from vertical accel and relax frequency when still.
-    struct FreqStillnessAdapter {
+    struct StillnessAdapter {
         // Stillness detection
         float energy_ema      = 0.0f;   // EMA of (a_z/g)^2
         float energy_alpha    = 0.05f;  // smoothing for energy EMA
@@ -550,7 +550,7 @@ private:
     KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
 
     FreqInputLPF            freq_input_lpf_;   // LPF used only for tracker input
-    FreqStillnessAdapter    freq_stillness_;   // Detector of "still" mode
+    StillnessAdapter    freq_stillness_;   // Detector of "still" mode
 
     WaveDirectionDetector<float> dir_sign_{0.002f, 0.005f};   // smoothing, sensitivity
     WaveDirection                dir_sign_state_ = UNCERTAIN;
