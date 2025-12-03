@@ -77,6 +77,7 @@ constexpr float MIN_R_S     = 0.5f;
 constexpr float MAX_R_S     = 35.0f;
 
 constexpr float ADAPT_TAU_SEC            = 0.3f;
+constexpr float ADAPT_R_S_SEC            = 4.0f;
 constexpr float ADAPT_EVERY_SECS         = 0.1f;
 constexpr float ONLINE_TUNE_WARMUP_SEC   = 10.0f;
 constexpr float MAG_DELAY_SEC            = 5.0f;
@@ -545,10 +546,11 @@ private:
     
     void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
         const float alpha = 1.0f - std::exp(-dt / ADAPT_TAU_SEC);
+        const float alpha_RS = 1.0f - std::exp(-dt / ADAPT_R_S_SEC);
 
         tune_.tau_applied   += alpha * (tau_t   - tune_.tau_applied);
         tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
-        tune_.RS_applied    += alpha * (RS_t    - tune_.RS_applied);
+        tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
 
         if (time_ - last_adapt_time_sec_ > ADAPT_EVERY_SECS) {
             apply_tune();
