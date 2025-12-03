@@ -395,6 +395,9 @@ private:
         bool  freq_init       = false;
         float freq_state      = FREQ_GUESS;
 
+        // Last stillness flag (for external inspection)
+        bool  last_is_still   = false;
+
         // a_z_inertial_lp: vertical inertial accel (m/s²), low-passed
         // dt             : timestep (s)
         // freq_in        : raw tracker freq (Hz)
@@ -420,6 +423,7 @@ private:
             // EWMA of energy
             energy_ema = (1.0f - energy_alpha) * energy_ema + energy_alpha * inst_energy;
             const bool is_still = (energy_ema < energy_thresh);
+            last_is_still = is_still;
 
             if (is_still) {
                 // Count how long we've been still
@@ -441,6 +445,11 @@ private:
             }
             return freq_state;
         }
+
+        // Expose stillness info to tuner
+        bool  isStill()       const { return last_is_still; }
+        float getStillTime()  const { return still_time_sec; }
+        float getEnergyEma()  const { return energy_ema; }
     };
 
     //  Internal tuning and adaptation
