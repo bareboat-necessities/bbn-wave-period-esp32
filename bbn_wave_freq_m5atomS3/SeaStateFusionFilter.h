@@ -476,18 +476,47 @@ private:
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_slow) {
         tuner_.update(dt, a_vert_inertial, freq_hz_slow);
-    
-        if (time_ < ONLINE_TUNE_WARMUP_SEC) return;
 
-        const float f_tune    = tuner_.getFrequencyHz();
+        if (time_ < ONLINE_TUNE_WARMUP_SEC) return;
+        if (!tuner_.isReady())              return;
+
+        // Frequency as seen by the tuner (already includes stillness relaxation)
+        float f_tune = tuner_.getFrequencyHz();
+        if (!std::isfinite(f_tune) || f_tune < MIN_FREQ_HZ) {
+            f_tune = MIN_FREQ_HZ;
+        }
+        if (f_tune > MAX_FREQ_HZ) {
+            f_tune = MAX_FREQ_HZ;
+        }
+
         const float var_total = std::max(0.0f, tuner_.getAccelVariance());
 
         // Fixed noise floor variance
         const float var_noise = ACC_NOISE_FLOOR_SIGMA * ACC_NOISE_FLOOR_SIGMA;
-        // Wave-only variance
-        const float var_wave  = std::max(1e-6f, var_total - var_noise);
+        // Wave-only variance (can be zero if below noise)
+        float var_wave  = var_total - var_noise;
+        if (var_wave < 0.0f) var_wave = 0.0f;
 
-        // Wave-only sigma; 
+        // --- Stillness-aware attenuation of wave variance --------------------
+        //
+        // When stillness is detected, we want σ_a (and thus R_S) to collapse
+        // roughly as fast as frequency is being relaxed, instead of lagging
+        // behind and inflating R_S.
+        //
+        if (freq_stillness_.isStill()) {
+            const float still_t = std::max(0.0f, freq_stillness_.getStillTime());
+            // Time constant for sigma collapse in stillness (seconds)
+            constexpr float STILL_VAR_DECAY_SEC = 1.0f;
+            float atten = std::exp(-still_t / STILL_VAR_DECAY_SEC);
+            if (atten < 0.0f) atten = 0.0f;
+            if (atten > 1.0f) atten = 1.0f;
+            var_wave *= atten;
+        }
+
+        // Keep a small positive floor to avoid degeneracy
+        var_wave = std::max(var_wave, 1e-6f);
+
+        // Wave-only sigma
         float sigma_wave = std::sqrt(var_wave);
 
         // τ target from frequency
@@ -502,7 +531,8 @@ private:
         }
 
         // Rₛ from (wave-only) σ and τ³
-        float RS_raw = R_S_coeff_ * sigma_target_ * tau_target_ * tau_target_ * tau_target_;
+        float RS_raw = R_S_coeff_ * sigma_target_
+                       * tau_target_ * tau_target_ * tau_target_;
 
         if (enable_clamp_) {
             RS_target_ = std::min(std::max(RS_raw, MIN_R_S), MAX_R_S);
