@@ -71,7 +71,7 @@ constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 16.0f;
 
 constexpr float MIN_TAU_S   = 0.01f;
-constexpr float MAX_TAU_S   = 1.9f;
+constexpr float MAX_TAU_S   = 2.2f;
 constexpr float MAX_SIGMA_A = 8.0f;
 constexpr float MIN_R_S     = 0.1f;
 constexpr float MAX_R_S     = 35.0f;
@@ -544,7 +544,7 @@ private:
     float RS_target_    = NAN;
 
     float R_S_coeff_    = 1.5f;
-    float tau_coeff_    = 1.4f;
+    float tau_coeff_    = 1.45f;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
     KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
