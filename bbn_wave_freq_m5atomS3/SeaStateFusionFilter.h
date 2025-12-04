@@ -167,8 +167,9 @@ public:
           freq_hz_(FREQ_GUESS),
           freq_hz_slow_(FREQ_GUESS)
     {
-        // Default cutoff ~MAX_FREQ_HZ Hz: passes waves, kills 8–37 Hz engine band
-        freq_input_lpf_.setCutoff(MAX_FREQ_HZ);
+        // Default cutoff ~max_freq_hz_ Hz: passes waves, kills 8–37 Hz engine band
+        freq_input_lpf_.setCutoff(max_freq_hz_);
+        freq_stillness_.setTargetFreqHz(min_freq_hz_);
     }
 
     void initialize(const Eigen::Vector3f& sigma_a,
