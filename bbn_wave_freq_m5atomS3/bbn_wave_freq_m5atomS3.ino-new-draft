@@ -389,8 +389,9 @@ void setup(void) {
     fusion_filter.setRSCoeff(1.5f);
     fusion_filter.setAccNoiseFloorSigma(0.15f);
   
-    // Enable online τ / σₐ / Rₛ adaptation
+    // Enable/disable online τ / σₐ / Rₛ adaptation
     fusion_filter.enableTuner(false);
+    fusion_filter.enableClamp(false);
 
     // OU parameters: moderate correlation & variance
     const float tau_fixed   = 2.5f;    // seconds
