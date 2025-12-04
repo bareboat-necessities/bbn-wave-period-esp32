@@ -351,32 +351,19 @@ void setup(void) {
 
   // Initialize unified fusion filter
   {
-    // Kalman3D_Wave ctor defaults (make them explicit here)
-    constexpr float K3D_PQ0_DEFAULT = 1e-6f;   // attitude error covariance
-    constexpr float K3D_PB0_DEFAULT = 1e-1f;   // gyro bias covariance
-    constexpr float K3D_B0_DEFAULT  = 1e-12f;  // gyro bias RW (Q_b)
-    constexpr float K3D_RS_DEFAULT  = 1.5f;    // S pseudo-meas noise (scalar)
-    constexpr float K3D_G_DEFAULT   = g_std;   // gravity magnitude (m/s^2)
-    
-    constexpr float R_S_XY_FACTOR_DEFAULT = 0.07f;
-    constexpr float S_FACTOR_DEFAULT      = 1.3f;
-    constexpr float TAU_COEFF_DEFAULT     = 1.45f;
-    constexpr float R_S_COEFF_DEFAULT     = 1.5f;
-    constexpr float ACC_NOISE_FLOOR_SIGMA = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
-
-    Eigen::Vector3f sigma_a_init(0.60f, 0.60f, 0.60f);     // accel noise [m/s^2]
+    Eigen::Vector3f sigma_a(0.60f, 0.60f, 0.60f);          // accel noise [m/s^2]
     Eigen::Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f); // gyro noise [rad/s]
     Eigen::Vector3f sigma_m(0.3f, 0.3f, 0.3f);             // mag noise (unused when with_mag=false)
   
     fusion_filter.initialize_ext(
-        sigma_a_init,
-        sigma_g,
-        sigma_m,
-        K3D_PQ0_DEFAULT,
-        K3D_PB0_DEFAULT,
-        K3D_B0_DEFAULT,
-        K3D_RS_DEFAULT,
-        K3D_G_DEFAULT
+        sigma_a,   // accel noise [m/s^2]
+        sigma_g,   // gyro noise [rad/s]
+        sigma_m,   // mag noise (unused when with_mag=false)
+        1e-6f,     // attitude error covariance
+        1e-1f,     // gyro bias covariance
+        1e-12f,    // gyro bias noise RW (Q_b)
+        1.5f,      // S pseudo-meas noise (scalar)
+        g_std      // gravity magnitude (m/s^2)
     );
 
     auto &mekf = fusion_filter.mekf();
@@ -385,24 +372,24 @@ void setup(void) {
     // 0.3 m/s² ≈ 3% of g  → we admit we don't know bias very well
     mekf.set_initial_acc_bias_std(0.3f);
   
-    // Optionally start bias at 0 (your M5 calibration should already remove most)
+    // Start bias at 0 (M5 calibration should already remove most)
     mekf.set_initial_acc_bias(Eigen::Vector3f::Zero());
   
     // Let bias *wander* more: random-walk σ per sqrt(second)
     // 0.003–0.005 m/s²/√s; tune by looking at heave drift.
-    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.008f));
+    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.01f));
   
     // Temperature model
     mekf.set_accel_bias_temp_coeff(Eigen::Vector3f::Zero());
   
-    // SeaStateFusionFilter runtime tuning knobs (all explicit from sketch)
-    fusion_filter.setRSXYFactor(R_S_XY_FACTOR_DEFAULT);
-    fusion_filter.setSFactor(S_FACTOR_DEFAULT);
-    fusion_filter.setTauCoeff(TAU_COEFF_DEFAULT);
-    fusion_filter.setRSCoeff(R_S_COEFF_DEFAULT);
-    fusion_filter.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA);
+    // SeaStateFusionFilter runtime tuning knobs
+    fusion_filter.setRSXYFactor(0.07f);
+    fusion_filter.setSFactor(1.3f);
+    fusion_filter.setTauCoeff(1.45f);
+    fusion_filter.setRSCoeff(1.5f);
+    fusion_filter.setAccNoiseFloorSigma(0.15f);
   
-    // Fixed-parameter MEKF: enable online τ / σₐ / Rₛ adaptation
+    // Enable online τ / σₐ / Rₛ adaptation
     fusion_filter.enableTuner(true);
   
     fusion_initialized = false;
