@@ -1390,7 +1390,92 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoM
     // Apply quaternion correction (attitude may get nudged via cross-covariances)
     applyQuaternionCorrectionFromErrorState();
 }
+              
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_position_pseudo(
+    const Vector3& p_meas,
+    const Vector3& sigma_meas)
+{
+    constexpr int off_P = OFF_P; // position block
 
+    // Predicted position (world, NED)
+    const Vector3 p_pred = xext.template segment<3>(off_P);
+    Vector3 r = p_meas - p_pred;          // innovation (meters)
+
+    if (!r.allFinite()) {
+        return;
+    }
+
+    // Innovation covariance S = H P Hᵀ + R, with H selecting the p-block.
+    // Here H is [0 ... I_3 ... 0], so:
+    //
+    //   S = P_pp + R
+    //
+    Matrix3& S_mat = S_scratch_;
+    S_mat = Pext.template block<3,3>(off_P, off_P);
+
+    Matrix3 R_meas = Matrix3::Zero();
+    const T sx = std::max(T(0), sigma_meas.x());
+    const T sy = std::max(T(0), sigma_meas.y());
+    const T sz = std::max(T(0), sigma_meas.z());
+    R_meas(0,0) = sx * sx;
+    R_meas(1,1) = sy * sy;
+    R_meas(2,2) = sz * sz;
+    S_mat.noalias() += R_meas;
+
+    // Cross-covariance PCᵀ = P(:,p) (N×3)
+    MatrixNX3& PCt = PCt_scratch_;
+    PCt.noalias() = Pext.template block<NX,3>(0, off_P);
+
+    // Gain K = PCᵀ S⁻¹
+    Eigen::LDLT<Matrix3> ldlt;
+    const T noise_scale = R_meas.norm();
+    if (!safe_ldlt3_(S_mat, ldlt, noise_scale)) {
+        return;
+    }
+
+    MatrixNX3& K = K_scratch_;
+    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+
+    // State update
+    xext.noalias() += K * r;
+
+    // Covariance update (Joseph form, 3D)
+    joseph_update3_(K, S_mat, PCt);
+
+    // Attitude may have been nudged via cross-covariance → apply correction
+    applyQuaternionCorrectionFromErrorState();
+}
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_position_from_acc_omega(
+    const Vector3& a, T omega, const Vector3& sigma_disp_meas, T omega_min)
+{
+    if (!std::isfinite(omega)) {
+        return;
+    }
+
+    const T abs_omega = std::abs(omega);
+    if (!(abs_omega > omega_min)) {
+        // Too low frequency: 1/ω² would blow up, skip
+        return;
+    }
+
+    const T w2 = omega * omega;
+    if (!(w2 > T(0))) {
+        return;
+    }
+
+    // First-order approximation: p ≈ -a/ω² on all axes
+    Vector3 p_meas = -a / w2;
+
+    if (!p_meas.allFinite()) {
+        return;
+    }
+
+    measurement_update_position_pseudo(p_meas, sigma_disp_meas);
+}              
+              
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
