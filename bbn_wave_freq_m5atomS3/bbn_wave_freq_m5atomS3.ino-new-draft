@@ -356,6 +356,13 @@ void setup(void) {
     Eigen::Vector3f sigma_m(0.3f, 0.3f, 0.3f);             // mag noise (unused when with_mag=false)
 
     fusion_filter.initialize(sigma_a_init, sigma_g, sigma_m);
+
+    fusion_filter.setRSXYFactor(R_S_XY_FACTOR_DEFAULT);
+    fusion_filter.setSFactor(S_FACTOR_DEFAULT);
+    fusion_filter.setTauCoeff(TAU_COEFF_DEFAULT);
+    fusion_filter.setRSCoeff(R_S_COEFF_DEFAULT);
+    fusion_filter.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA);
+
     fusion_initialized = false;
   }
   start_time = micros();
