@@ -474,6 +474,12 @@ private:
         // Last stillness flag (for external inspection)
         bool  last_is_still   = false;
 
+        void setTargetFreqHz(float f) {
+            if (std::isfinite(f) && f > 0.0f) {
+                target_freq_hz = f;
+            }
+        }
+
         // a_z_inertial_lp: vertical inertial accel (m/s²), low-passed
         // dt             : timestep (s)
         // freq_in        : raw tracker freq (Hz)
