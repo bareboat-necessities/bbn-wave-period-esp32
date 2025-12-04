@@ -351,23 +351,49 @@ void setup(void) {
 
   // Initialize unified fusion filter
   {
-    Eigen::Vector3f sigma_a_init(0.60f, 0.60f, 0.60f);     // accel noise [m/s^2]
-    Eigen::Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f); // gyro noise [rad/s]
-    Eigen::Vector3f sigma_m(0.3f, 0.3f, 0.3f);             // mag noise (unused when with_mag=false)
 
-    fusion_filter.initialize(sigma_a_init, sigma_g, sigma_m);
+// Kalman3D_Wave ctor defaults (make them explicit here)
+constexpr float K3D_PQ0_DEFAULT = 1e-6f;   // attitude error covariance
+constexpr float K3D_PB0_DEFAULT = 1e-1f;   // gyro bias covariance
+constexpr float K3D_B0_DEFAULT  = 1e-12f;  // gyro bias RW (Q_b)
+constexpr float K3D_RS_DEFAULT  = 1.5f;    // S pseudo-meas noise (scalar)
+constexpr float K3D_G_DEFAULT   = g_std;   // gravity magnitude (m/s^2)
 
-    fusion_filter.setRSXYFactor(R_S_XY_FACTOR_DEFAULT);
-    fusion_filter.setSFactor(S_FACTOR_DEFAULT);
-    fusion_filter.setTauCoeff(TAU_COEFF_DEFAULT);
-    fusion_filter.setRSCoeff(R_S_COEFF_DEFAULT);
-    fusion_filter.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA);
+constexpr float R_S_XY_FACTOR_DEFAULT = 0.07f;
+constexpr float S_FACTOR_DEFAULT      = 1.3f;
+constexpr float TAU_COEFF_DEFAULT     = 1.45f;
+constexpr float R_S_COEFF_DEFAULT     = 1.5f;
+constexpr float ACC_NOISE_FLOOR_SIGMA = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    // Disable online τ / σₐ / Rₛ adaptation (fixed-parameter MEKF)
-    fusion_filter.enableTuner(false);
+  Eigen::Vector3f sigma_a_init(0.60f, 0.60f, 0.60f);     // accel noise [m/s^2]
+  Eigen::Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f); // gyro noise [rad/s]
+  Eigen::Vector3f sigma_m(0.3f, 0.3f, 0.3f);             // mag noise (unused when with_mag=false)
 
-    fusion_initialized = false;
-  }
+  fusion_filter.initialize_ext(
+      sigma_a_init,
+      sigma_g,
+      sigma_m,
+      K3D_PQ0_DEFAULT,
+      K3D_PB0_DEFAULT,
+      K3D_B0_DEFAULT,
+      K3D_RS_DEFAULT,
+      K3D_G_DEFAULT
+  );
+
+  // SeaStateFusionFilter runtime tuning knobs (all explicit from sketch)
+  fusion_filter.setRSXYFactor(R_S_XY_FACTOR_DEFAULT);
+  fusion_filter.setSFactor(S_FACTOR_DEFAULT);
+  fusion_filter.setTauCoeff(TAU_COEFF_DEFAULT);
+  fusion_filter.setRSCoeff(R_S_COEFF_DEFAULT);
+  fusion_filter.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA);
+
+  // Fixed-parameter MEKF: disable online τ / σₐ / Rₛ adaptation
+  fusion_filter.enableTuner(false);
+  // (optional) if you want *zero* clamping too:
+  // fusion_filter.enableClamp(false);
+
+  fusion_initialized = false;
+}
   start_time = micros();
   last_update = start_time;
 }
