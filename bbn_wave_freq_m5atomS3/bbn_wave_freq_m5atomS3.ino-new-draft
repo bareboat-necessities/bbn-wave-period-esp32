@@ -370,14 +370,14 @@ void setup(void) {
   
     // Start with a *looser* prior on accel bias
     // 0.3 m/s² ≈ 3% of g  → we admit we don't know bias very well
-    mekf.set_initial_acc_bias_std(0.3f);
+    mekf.set_initial_acc_bias_std(0.2f);
   
     // Start bias at 0 (M5 calibration should already remove most)
     mekf.set_initial_acc_bias(Eigen::Vector3f::Zero());
   
     // Let bias *wander* more: random-walk σ per sqrt(second)
     // 0.003–0.005 m/s²/√s; tune by looking at heave drift.
-    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.003f));
+    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.005f));
   
     // Temperature model
     mekf.set_accel_bias_temp_coeff(Eigen::Vector3f::Zero());
@@ -387,30 +387,30 @@ void setup(void) {
     fusion_filter.setSFactor(1.3f);
     fusion_filter.setTauCoeff(1.45f);
     fusion_filter.setRSCoeff(1.5f);
-    fusion_filter.setAccNoiseFloorSigma(0.15f);
+    fusion_filter.setAccNoiseFloorSigma(0.1f);
   
-    // Enable/disable online τ / σₐ / Rₛ adaptation
-    fusion_filter.enableTuner(false);
-    fusion_filter.enableClamp(false);
-
     // OU parameters: moderate correlation & variance
-    const float tau_fixed   = 2.5f;    // seconds
-    const float sigma_fixed = 0.4f;    // m/s^2 (typical vertical sea accel)
+    const float tau_init   = 0.1f;    // seconds
+    const float sigma_init = 0.3f;    // m/s^2 (typical vertical sea accel)
 
-    mekf.set_aw_time_constant(tau_fixed);
-    mekf.set_aw_stationary_std(Eigen::Vector3f::Constant(sigma_fixed));
+    mekf.set_aw_time_constant(tau_init);
+    mekf.set_aw_stationary_std(Eigen::Vector3f::Constant(sigma_init));
 
     // Strong integral pseudo-measure on S to clamp low-f drift
     // This is *std* of S pseudo-meas; smaller = stronger drift suppression.
     // Start pretty aggressive.
-    Eigen::Vector3f RS_std(0.3f, 0.3f, 0.3f);  // units: m·s
+    Eigen::Vector3f RS_std(1.1f, 1.1f, 1.1f);  // units: m·s
     mekf.set_RS_noise(RS_std);
-    
+
+    // Enable/disable online τ / σₐ / Rₛ adaptation
+    fusion_filter.enableTuner(true);
+    fusion_filter.enableClamp(true);
+
     fusion_filter.setFreqBounds(0.05f, 8.0f);
     fusion_filter.setTauBounds(0.02f, 3.0f);
     fusion_filter.setMaxSigmaA(6.0f);
     fusion_filter.setRSBounds(0.1f, 35.0f);
-    fusion_filter.setAdaptationTimeConstants(2.5f, 3.0f);
+    fusion_filter.setAdaptationTimeConstants(2.0f, 2.0f);
     fusion_filter.setAdaptationUpdatePeriod(0.1f);
     fusion_filter.setOnlineTuneWarmupSec(20.0f);
     fusion_filter.setMagDelaySec(8.0f);
