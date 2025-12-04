@@ -477,7 +477,7 @@ private:
         mekf_->set_aw_stationary_std(a_w_std); 
     
         // WORLD-frame pseudo-measurement noise for S (anisotropic diagonal).
-        const float RSb = std::min(std::max(tune_.RS_applied, 0.0f), MAX_R_S);
+        const float RSb = std::min(std::max(tune_.RS_applied, MIN_R_S), MAX_R_S);
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,   // world X
             RSb * R_S_xy_factor_,   // world Y
@@ -603,7 +603,7 @@ private:
     std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
     KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
 
-    FreqInputLPF            freq_input_lpf_;   // LPF used only for tracker input
+    FreqInputLPF        freq_input_lpf_;   // LPF used only for tracker input
     StillnessAdapter    freq_stillness_;   // Detector of "still" mode
 
     WaveDirectionDetector<float> dir_sign_{0.002f, 0.005f};   // smoothing, sensitivity
