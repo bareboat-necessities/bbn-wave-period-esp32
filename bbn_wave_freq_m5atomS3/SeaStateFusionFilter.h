@@ -260,7 +260,7 @@ public:
         Eigen::Vector3f sigma_disp_meas;
         sigma_disp_meas << 10.0f, 10.0f, 10.0f; // m 1σ in N,E,D
 
-        // apply the 3D pseudo-measurement in one call
+        // apply the 3D pseudo-measurement
         mekf_->measurement_update_position_from_acc_omega(a_in, omega_raw, sigma_disp_meas);
       
         dir_filter_.update(a_x, a_y, omega, dt);
