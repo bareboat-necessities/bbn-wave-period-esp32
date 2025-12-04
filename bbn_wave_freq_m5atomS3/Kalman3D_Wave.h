@@ -259,11 +259,11 @@ class Kalman3D_Wave {
     // Convenience wrapper: infer p_meas from inertial acceleration and
     // angular frequency ω [rad/s] via p ≈ -a/ω² on all 3 axes.
     //
-    // a: inertial acceleration (gravity removed), m/s²
+    // a: inertial acceleration (NED), m/s²
     // omega  : angular frequency, rad/s (use 2π f from frequency tracker)
     // sigma_disp_meas: per-axis std of the resulting displacement measurement [m]
     // omega_min: minimum |ω| to avoid insane amplification at very low freq
-    void measurement_update_position_from_acc_omega(const Vector3& a_world,
+    void measurement_update_position_from_acc_omega(const Vector3& a,
                                                     T omega,
                                                     const Vector3& sigma_disp_meas,
                                                     T omega_min = T(2.0 * M_PI * 0.05));
