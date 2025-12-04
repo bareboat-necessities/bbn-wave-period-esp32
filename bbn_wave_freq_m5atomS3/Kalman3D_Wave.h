@@ -425,20 +425,7 @@ class Kalman3D_Wave {
             B * cI * sD,   // E
             B * sI         // D (down positive)
         ).finished();
-    }
-
-    void initialize_ext(const Eigen::Vector3f& sigma_a,
-                        const Eigen::Vector3f& sigma_g,
-                        const Eigen::Vector3f& sigma_m,
-                        float Pq0, float Pb0,
-                        float b0, float R_S_noise,
-                        float gravity_magnitude) 
-    {
-        mekf_ = std::make_unique<Kalman3D_Wave<float,true,true>>(
-            sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_S_noise, gravity_magnitude);
-        mekf_->set_exact_att_bias_Qd(true);
-        apply_tune();
-    }             
+    }            
 
   private:
     const T gravity_magnitude_ = T(STD_GRAVITY);
