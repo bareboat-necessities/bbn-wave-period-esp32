@@ -627,14 +627,14 @@ private:
     }
     
     void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
-        const float alpha = 1.0f - std::exp(-dt / ADAPT_TAU_SEC);
-        const float alpha_RS = 1.0f - std::exp(-dt / ADAPT_R_S_SEC);
+        const float alpha    = 1.0f - std::exp(-dt / adapt_tau_sec_);
+        const float alpha_RS = 1.0f - std::exp(-dt / adapt_R_S_sec_);
 
-        tune_.tau_applied   += alpha * (tau_t   - tune_.tau_applied);
-        tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
+        tune_.tau_applied   += alpha    * (tau_t   - tune_.tau_applied);
+        tune_.sigma_applied += alpha    * (sigma_t - tune_.sigma_applied);
         tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
 
-        if (time_ - last_adapt_time_sec_ > ADAPT_EVERY_SECS) {
+        if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
             apply_tune();
             last_adapt_time_sec_ = time_;
         }
