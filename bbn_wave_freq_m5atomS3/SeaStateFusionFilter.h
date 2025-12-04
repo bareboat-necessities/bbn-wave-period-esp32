@@ -65,7 +65,7 @@
 
 // Estimated vertical accel noise floor (1σ), m/s².
 // Tweak from bench data with IMU sitting still.
-constexpr float ACC_NOISE_FLOOR_SIGMA = 0.6f; 
+constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.2f; 
 
 constexpr float MIN_FREQ_HZ = 0.1f;
 constexpr float MAX_FREQ_HZ = 16.0f;
@@ -270,6 +270,16 @@ public:
         if (std::isfinite(c) && c > 0.0f) {
             R_S_coeff_ = c;
         }
+    }
+
+    void setAccNoiseFloorSigma(float s) {
+        if (std::isfinite(s) && s > 0.0f) {
+            acc_noise_floor_sigma_ = s;
+        }
+    }
+
+    float getAccNoiseFloorSigma() const noexcept {
+        return acc_noise_floor_sigma_;
     }
 
     // Configure engine-reject LPF on vertical accel for tracker input
@@ -492,13 +502,13 @@ private:
 
         const float var_total = std::max(0.0f, tuner_.getAccelVariance());
 
-        // Fixed noise floor variance
-        const float var_noise = ACC_NOISE_FLOOR_SIGMA * ACC_NOISE_FLOOR_SIGMA;
+        // Fixed noise floor variance (configurable at runtime)
+        const float var_noise = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
         // Wave-only variance (can be zero if below noise)
-        float var_wave  = var_total - var_noise;
+        float var_wave = var_total - var_noise;
         if (var_wave < 0.0f) var_wave = 0.0f;
 
-        // --- Stillness-aware attenuation of wave variance --------------------
+        // Stillness-aware attenuation of wave variance
         //
         // When stillness is detected, we want σ_a (and thus R_S) to collapse
         // roughly as fast as frequency is being relaxed, instead of lagging
@@ -583,6 +593,9 @@ private:
     float tau_target_   = NAN;
     float sigma_target_ = NAN;
     float RS_target_    = NAN;
+
+    // Runtime-configurable accel noise floor (1σ), m/s²
+    float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
     float R_S_coeff_    = 1.5f;
     float tau_coeff_    = 1.45f;
