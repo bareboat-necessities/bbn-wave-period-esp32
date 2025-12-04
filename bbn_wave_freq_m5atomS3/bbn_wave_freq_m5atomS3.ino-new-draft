@@ -390,7 +390,20 @@ void setup(void) {
     fusion_filter.setAccNoiseFloorSigma(0.15f);
   
     // Enable online τ / σₐ / Rₛ adaptation
-    fusion_filter.enableTuner(true);
+    fusion_filter.enableTuner(false);
+
+    // OU parameters: moderate correlation & variance
+    const float tau_fixed   = 2.5f;    // seconds
+    const float sigma_fixed = 0.4f;    // m/s^2 (typical vertical sea accel)
+
+    mekf.set_aw_time_constant(tau_fixed);
+    mekf.set_aw_stationary_std(Eigen::Vector3f::Constant(sigma_fixed));
+
+    // Strong integral pseudo-measure on S to clamp low-f drift
+    // This is *std* of S pseudo-meas; smaller = stronger drift suppression.
+    // Start pretty aggressive.
+    Eigen::Vector3f RS_std(0.3f, 0.3f, 0.3f);  // units: m·s
+    mekf.set_RS_noise(RS_std);
     
     fusion_filter.setFreqBounds(0.05f, 8.0f);
     fusion_filter.setTauBounds(0.02f, 3.0f);
