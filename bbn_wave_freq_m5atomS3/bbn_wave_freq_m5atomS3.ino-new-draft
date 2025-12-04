@@ -403,7 +403,7 @@ void setup(void) {
     fusion_filter.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA);
   
     // Fixed-parameter MEKF: enable online τ / σₐ / Rₛ adaptation
-    fusion_filter.enableTuner(false);
+    fusion_filter.enableTuner(true);
   
     fusion_initialized = false;
   }
