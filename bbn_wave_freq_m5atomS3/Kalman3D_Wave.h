@@ -248,6 +248,26 @@ class Kalman3D_Wave {
     // Apply zero pseudo-measurement on S (integral drift correction)
     void applyIntegralZeroPseudoMeas();
 
+    // 3D pseudo-measurement on position p (world, NED):
+    //   p_meas ≈ p (meters), with per-axis std sigma_meas.
+    //
+    // This does a full 3x3 Joseph update on the position block and its
+    // cross-covariances in one shot.
+    void measurement_update_position_pseudo(const Vector3& p_meas,
+                                            const Vector3& sigma_meas);
+
+    // Convenience wrapper: infer p_meas from inertial acceleration and
+    // angular frequency ω [rad/s] via p ≈ -a/ω² on all 3 axes.
+    //
+    // a: inertial acceleration (gravity removed), m/s²
+    // omega  : angular frequency, rad/s (use 2π f from frequency tracker)
+    // sigma_disp_meas: per-axis std of the resulting displacement measurement [m]
+    // omega_min: minimum |ω| to avoid insane amplification at very low freq
+    void measurement_update_position_from_acc_omega(const Vector3& a_world,
+                                                    T omega,
+                                                    const Vector3& sigma_disp_meas,
+                                                    T omega_min = T(2.0 * M_PI * 0.05));
+
     // Accessors
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
     [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left block
