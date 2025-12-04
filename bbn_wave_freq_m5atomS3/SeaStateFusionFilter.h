@@ -247,6 +247,20 @@ public:
             update_tuner(dt, a_z_inertial, f_after_still);
         }
 
+        // inertial acceleration (NED)
+        Eigen::Vector3f a_in; 
+        a_in << a_x, a_y, a_z_inertial;
+
+        // angular frequency from tracker
+        const float omega = 2.0f * float(M_PI) * f_fast; 
+
+        // measurement std for displacement (per axis)
+        Eigen::Vector3f sigma_disp_meas;
+        sigma_disp_meas << 2.5f, 2.5f, 2.5f; // m 1σ in N,E,D
+
+        // apply the 3D pseudo-measurement in one call
+        mekf_->measurement_update_position_from_acc_omega(a_in, omega, sigma_disp_meas);
+      
         // Direction filter uses fast frequency (ω = 2πf_fast)
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
         dir_filter_.update(a_x, a_y, omega, dt);
