@@ -251,8 +251,8 @@ public:
         Eigen::Vector3f a_in; 
         a_in << a_x, a_y, a_z_inertial;
 
-        // angular frequency from tracker
-        const float omega = 2.0f * float(M_PI) * f_fast; 
+        // angular frequency using fast frequency from tracker (ω = 2πf_fast)
+        const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
 
         // measurement std for displacement (per axis)
         Eigen::Vector3f sigma_disp_meas;
@@ -261,8 +261,6 @@ public:
         // apply the 3D pseudo-measurement in one call
         mekf_->measurement_update_position_from_acc_omega(a_in, omega, sigma_disp_meas);
       
-        // Direction filter uses fast frequency (ω = 2πf_fast)
-        const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
         dir_filter_.update(a_x, a_y, omega, dt);
         dir_sign_state_ = dir_sign_.update(a_x, a_y, a_z_inertial, dt);
     }
