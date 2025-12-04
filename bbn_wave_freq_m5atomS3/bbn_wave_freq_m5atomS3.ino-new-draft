@@ -391,7 +391,16 @@ void setup(void) {
   
     // Enable online τ / σₐ / Rₛ adaptation
     fusion_filter.enableTuner(true);
-  
+    
+    fusion_filter.setFreqBounds(0.05f, 8.0f);
+    fusion_filter.setTauBounds(0.02f, 3.0f);
+    fusion_filter.setMaxSigmaA(6.0f);
+    fusion_filter.setRSBounds(0.2f, 50.0f);
+    fusion_filter.setAdaptationTimeConstants(0.5f, 3.0f);
+    fusion_filter.setAdaptationUpdatePeriod(0.2f);
+    fusion_filter.setOnlineTuneWarmupSec(20.0f);
+    fusion_filter.setMagDelaySec(8.0f);
+
     fusion_initialized = false;
   }
   start_time = micros();
