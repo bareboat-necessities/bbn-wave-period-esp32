@@ -256,7 +256,7 @@ public:
 
         // measurement std for displacement (per axis)
         Eigen::Vector3f sigma_disp_meas;
-        sigma_disp_meas << 2.5f, 2.5f, 2.5f; // m 1σ in N,E,D
+        sigma_disp_meas << 4.5f, 4.5f, 5.5f; // m 1σ in N,E,D
 
         // apply the 3D pseudo-measurement in one call
         mekf_->measurement_update_position_from_acc_omega(a_in, omega, sigma_disp_meas);
