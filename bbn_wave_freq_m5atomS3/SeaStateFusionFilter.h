@@ -180,6 +180,19 @@ public:
         apply_tune();
     }
 
+    void initialize_ext(const Eigen::Vector3f& sigma_a,
+                        const Eigen::Vector3f& sigma_g,
+                        const Eigen::Vector3f& sigma_m,
+                        float Pq0, float Pb0,
+                        float b0, float R_S_noise,
+                        float gravity_magnitude) 
+    {
+        mekf_ = std::make_unique<Kalman3D_Wave<float,true,true>>(
+            sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_S_noise, gravity_magnitude);
+        mekf_->set_exact_att_bias_Qd(true);
+        apply_tune();
+    } 
+
     void initialize_from_acc(const Eigen::Vector3f& acc_world) {
         if (mekf_) {
             mekf_->initialize_from_acc(acc_world);
