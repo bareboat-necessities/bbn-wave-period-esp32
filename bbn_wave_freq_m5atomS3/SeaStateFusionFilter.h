@@ -307,6 +307,58 @@ public:
         enable_tuner_ = flag;
     }
 
+    // Tunable adaptation bounds and time constants
+    void setFreqBounds(float min_hz, float max_hz) {
+        if (!std::isfinite(min_hz) || !std::isfinite(max_hz)) return;
+        if (min_hz <= 0.0f || max_hz <= min_hz) return;
+        min_freq_hz_ = min_hz;
+        max_freq_hz_ = max_hz;
+        // stillness target is conceptually "relax toward min freq"
+        freq_stillness_.setTargetFreqHz(min_freq_hz_);
+    }
+
+    void setTauBounds(float min_tau_s, float max_tau_s) {
+        if (!std::isfinite(min_tau_s) || !std::isfinite(max_tau_s)) return;
+        if (min_tau_s <= 0.0f || max_tau_s <= min_tau_s) return;
+        min_tau_s_ = min_tau_s;
+        max_tau_s_ = max_tau_s;
+    }
+
+    void setMaxSigmaA(float max_sigma_a) {
+        if (!std::isfinite(max_sigma_a) || max_sigma_a <= 0.0f) return;
+        max_sigma_a_ = max_sigma_a;
+    }
+
+    void setRSBounds(float min_RS, float max_RS) {
+        if (!std::isfinite(min_RS) || !std::isfinite(max_RS)) return;
+        if (min_RS <= 0.0f || max_RS <= min_RS) return;
+        min_R_S_ = min_RS;
+        max_R_S_ = max_RS;
+    }
+
+    void setAdaptationTimeConstants(float tau_sec, float RS_sec) {
+        if (std::isfinite(tau_sec) && tau_sec > 0.0f)   adapt_tau_sec_   = tau_sec;
+        if (std::isfinite(RS_sec)  && RS_sec  > 0.0f)   adapt_R_S_sec_   = RS_sec;
+    }
+
+    void setAdaptationUpdatePeriod(float every_sec) {
+        if (std::isfinite(every_sec) && every_sec > 0.0f) {
+            adapt_every_secs_ = every_sec;
+        }
+    }
+
+    void setOnlineTuneWarmupSec(float warmup_sec) {
+        if (std::isfinite(warmup_sec) && warmup_sec >= 0.0f) {
+            online_tune_warmup_sec_ = warmup_sec;
+        }
+    }
+
+    void setMagDelaySec(float delay_sec) {
+        if (std::isfinite(delay_sec) && delay_sec >= 0.0f) {
+            mag_delay_sec_ = delay_sec;
+        }
+    }
+
     //  Exposed getters
     inline float getFreqHz()        const noexcept { return freq_hz_; }        // fast branch
     inline float getFreqSlowHz()    const noexcept { return freq_hz_slow_; }   // slow branch
@@ -592,6 +644,20 @@ private:
 
     bool  enable_clamp_  = true;
     bool  enable_tuner_  = true;
+
+    // Tunable adaptation parameters (initialized from global constexpr defaults)
+    float min_freq_hz_            = MIN_FREQ_HZ;
+    float max_freq_hz_            = MAX_FREQ_HZ;
+    float min_tau_s_              = MIN_TAU_S;
+    float max_tau_s_              = MAX_TAU_S;
+    float max_sigma_a_            = MAX_SIGMA_A;
+    float min_R_S_                = MIN_R_S;
+    float max_R_S_                = MAX_R_S;
+    float adapt_tau_sec_          = ADAPT_TAU_SEC;
+    float adapt_R_S_sec_          = ADAPT_R_S_SEC;
+    float adapt_every_secs_       = ADAPT_EVERY_SECS;
+    float online_tune_warmup_sec_ = ONLINE_TUNE_WARMUP_SEC;
+    float mag_delay_sec_          = MAG_DELAY_SEC;
 
     // Runtime-configurable anisotropy knobs
     float R_S_xy_factor_ = 0.07f;  // [0..1] scales XY pseudo-meas vs Z
