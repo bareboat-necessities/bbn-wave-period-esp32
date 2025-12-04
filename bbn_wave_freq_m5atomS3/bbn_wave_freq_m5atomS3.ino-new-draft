@@ -380,13 +380,15 @@ void setup(void) {
     mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.005f));
   
     // Temperature model
-    mekf.set_accel_bias_temp_coeff(Eigen::Vector3f::Zero());
+    // Rough magnitude from datasheet, sign guessed as positive
+    Eigen::Vector3f k_a(0.0075f, 0.0075f, 0.012f);  // m/s^2 per °C
+    mekf.set_accel_bias_temp_coeff(k_a);
   
     // SeaStateFusionFilter runtime tuning knobs
     fusion_filter.setRSXYFactor(0.07f);
     fusion_filter.setSFactor(1.3f);
     fusion_filter.setTauCoeff(1.45f);
-    fusion_filter.setRSCoeff(1.5f);
+    fusion_filter.setRSCoeff(1.9f);
     fusion_filter.setAccNoiseFloorSigma(0.1f);
   
     // OU parameters: moderate correlation & variance
