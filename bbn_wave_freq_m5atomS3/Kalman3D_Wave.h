@@ -380,7 +380,10 @@ class Kalman3D_Wave {
     }
 
     void set_initial_acc_bias_std(T s) {
-        if constexpr (with_accel_bias) sigma_bacc0_ = std::max(T(0), s);
+        if constexpr (with_accel_bias) {
+            sigma_bacc0_ = std::max(T(0), s);
+            Pext.template block<3,3>(OFF_BA, OFF_BA) = Matrix3::Identity() * sigma_bacc0_ * sigma_bacc0_;
+        }
     }
 
     void set_Q_bacc_rw(const Vector3& rw_std_per_sqrt_s) {
