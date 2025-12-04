@@ -390,7 +390,7 @@ void setup(void) {
   
     // Let bias *wander* more: random-walk σ per sqrt(second)
     // 0.003–0.005 m/s²/√s; tune by looking at heave drift.
-    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.003f));
+    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.008f));
   
     // Temperature model
     mekf.set_accel_bias_temp_coeff(Eigen::Vector3f::Zero());
