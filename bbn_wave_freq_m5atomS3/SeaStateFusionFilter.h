@@ -234,8 +234,8 @@ public:
         float f_slow = freq_slow_smoother_.update(f_fast);
 
         // Clamp both
-        f_fast = std::min(std::max(f_fast, MIN_FREQ_HZ), MAX_FREQ_HZ);
-        f_slow = std::min(std::max(f_slow, MIN_FREQ_HZ), MAX_FREQ_HZ);
+        f_fast = std::min(std::max(f_fast, min_freq_hz_), max_freq_hz_);
+        f_slow = std::min(std::max(f_slow, min_freq_hz_), max_freq_hz_);
 
         // Fast branch used for demod / direction
         freq_hz_       = f_fast;
@@ -255,7 +255,7 @@ public:
 
     //  Magnetometer correction
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
-        if (with_mag_ && mekf_ && time_ >= MAG_DELAY_SEC) {
+        if (with_mag_ && mekf_ && time_ >= mag_delay_sec_) {
             mekf_->measurement_update_mag_only(mag_body_ned);
         }
     }
@@ -549,7 +549,7 @@ private:
         mekf_->set_aw_stationary_std(a_w_std); 
     
         // WORLD-frame pseudo-measurement noise for S (anisotropic diagonal).
-        const float RSb = std::min(std::max(tune_.RS_applied, MIN_R_S), MAX_R_S);
+        const float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,   // world X
             RSb * R_S_xy_factor_,   // world Y
@@ -560,16 +560,16 @@ private:
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_slow) {
         tuner_.update(dt, a_vert_inertial, freq_hz_slow);
 
-        if (time_ < ONLINE_TUNE_WARMUP_SEC) return;
-        if (!tuner_.isReady())              return;
+        if (time_ < online_tune_warmup_sec_) return;
+        if (!tuner_.isReady())               return;
 
         // Frequency as seen by the tuner (already includes stillness relaxation)
         float f_tune = tuner_.getFrequencyHz();
-        if (!std::isfinite(f_tune) || f_tune < MIN_FREQ_HZ) {
-            f_tune = MIN_FREQ_HZ;
+        if (!std::isfinite(f_tune) || f_tune < min_freq_hz_) {
+            f_tune = min_freq_hz_;
         }
-        if (f_tune > MAX_FREQ_HZ) {
-            f_tune = MAX_FREQ_HZ;
+        if (f_tune > max_freq_hz_) {
+            f_tune = max_freq_hz_;
         }
 
         const float var_total = std::max(0.0f, tuner_.getAccelVariance());
@@ -606,8 +606,8 @@ private:
         float tau_raw = tau_coeff_ * 0.5f / f_tune;
 
         if (enable_clamp_) {
-            tau_target_   = std::min(std::max(tau_raw,  MIN_TAU_S), MAX_TAU_S);
-            sigma_target_ = std::min(sigma_wave,        MAX_SIGMA_A);
+            tau_target_   = std::min(std::max(tau_raw,  min_tau_s_), max_tau_s_);
+            sigma_target_ = std::min(sigma_wave,        max_sigma_a_);
         } else {
             tau_target_   = tau_raw;
             sigma_target_ = sigma_wave;
@@ -618,11 +618,11 @@ private:
                        * tau_target_ * tau_target_ * tau_target_;
 
         if (enable_clamp_) {
-            RS_target_ = std::min(std::max(RS_raw, MIN_R_S), MAX_R_S);
+            RS_target_ = std::min(std::max(RS_raw, min_R_S_), max_R_S_);
         } else {
             RS_target_ = RS_raw;
         }
-
+      
         adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
     
