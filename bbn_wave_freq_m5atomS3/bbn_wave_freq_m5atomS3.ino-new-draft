@@ -363,6 +363,9 @@ void setup(void) {
     fusion_filter.setRSCoeff(R_S_COEFF_DEFAULT);
     fusion_filter.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA);
 
+    // Disable online τ / σₐ / Rₛ adaptation (fixed-parameter MEKF)
+    fusion_filter.enableTuner(false);
+
     fusion_initialized = false;
   }
   start_time = micros();
