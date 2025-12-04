@@ -378,6 +378,22 @@ void setup(void) {
         K3D_RS_DEFAULT,
         K3D_G_DEFAULT
     );
+
+  auto &mekf = fusion_filter.mekf();
+
+  // 1) Start with a *looser* prior on accel bias
+  //    0.3 m/s² ≈ 3% of g  → we admit we don't know bias very well
+  mekf.set_initial_acc_bias_std(0.3f);
+
+  // Optionally start bias at 0 (your M5 calibration should already remove most)
+  mekf.set_initial_acc_bias(Eigen::Vector3f::Zero());
+
+  // 2) Let bias *wander* more: random-walk σ per sqrt(second)
+  //    Try 0.003–0.005 m/s²/√s; tune by looking at ABI1 and heave drift.
+  mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.003f));
+
+  // 3) For now, don't force a temperature model until you measure it
+  mekf.set_accel_bias_temp_coeff(Eigen::Vector3f::Zero());
   
     // SeaStateFusionFilter runtime tuning knobs (all explicit from sketch)
     fusion_filter.setRSXYFactor(R_S_XY_FACTOR_DEFAULT);
@@ -386,7 +402,7 @@ void setup(void) {
     fusion_filter.setRSCoeff(R_S_COEFF_DEFAULT);
     fusion_filter.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA);
   
-    // Fixed-parameter MEKF: disable online τ / σₐ / Rₛ adaptation
+    // Fixed-parameter MEKF: enable online τ / σₐ / Rₛ adaptation
     fusion_filter.enableTuner(false);
   
     fusion_initialized = false;
