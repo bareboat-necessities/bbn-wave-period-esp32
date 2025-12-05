@@ -254,14 +254,16 @@ public:
         // angular frequency using fast frequency from tracker (ω = 2πf_fast)
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
 
-        const float omega_raw = 2.0f * static_cast<float>(M_PI) * f_tracker;
-
-        // measurement std for displacement (per axis)
-        Eigen::Vector3f sigma_disp_meas;
-        sigma_disp_meas << 10.0f, 10.0f, 10.0f; // m 1σ in N,E,D
-
-        // apply the 3D pseudo-measurement
-        mekf_->measurement_update_position_from_acc_omega(a_in, omega_raw, sigma_disp_meas);
+        if (enable_extra_drift_correction_) {
+            const float omega_raw = 2.0f * static_cast<float>(M_PI) * f_tracker;
+    
+            // measurement std for displacement (per axis)
+            Eigen::Vector3f sigma_disp_meas;
+            sigma_disp_meas << 10.0f, 10.0f, 10.0f; // m 1σ in N,E,D
+    
+            // apply the 3D pseudo-measurement
+            mekf_->measurement_update_position_from_acc_omega(a_in, omega_raw, sigma_disp_meas);
+        }
       
         dir_filter_.update(a_x, a_y, omega, dt);
         dir_sign_state_ = dir_sign_.update(a_x, a_y, a_z_inertial, dt);
@@ -663,8 +665,9 @@ private:
     float freq_hz_slow_  = FREQ_GUESS; // slow branch
     float f_raw          = FREQ_GUESS;
 
-    bool  enable_clamp_  = true;
-    bool  enable_tuner_  = true;
+    bool enable_clamp_ = true;
+    bool enable_tuner_ = true;
+    bool enable_extra_drift_correction_ = false;
 
     // Tunable adaptation parameters (initialized from global constexpr defaults)
     float min_freq_hz_            = MIN_FREQ_HZ;
