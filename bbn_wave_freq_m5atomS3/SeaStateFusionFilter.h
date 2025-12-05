@@ -256,14 +256,34 @@ void updateTime(float dt,
 
     const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
 
-    if (enable_extra_drift_correction_) {
-        // We use a_world_proxy (measurement-based)
-        Eigen::Vector3f sigma_disp_meas(10.0f, 10.0f, 10.0f);
+if (enable_extra_drift_correction_) {
+    // Use a *frequency-gated*, sigma_a/tau-scaled displacement std.
+    //
+    // Harmonic model: a(t) ≈ −A ω² sin(ωt+φ)  ⇒  A ≈ σ_a / ω².
+    // Using τ ≈ 0.5/f gives ω ~ π/τ, so A ~ σ_a τ² / π².
+    // We fold 1/π² into a dimensionless gain.
+    const float f_for_drift     = freq_hz_;
+    const float f_min_for_drift = min_freq_hz_;   // or e.g. 0.15f
+
+    if (std::isfinite(f_for_drift) && f_for_drift > f_min_for_drift) {
+        const float sigma_a = std::max(tune_.sigma_applied, 1e-4f);
+        const float tau     = std::max(tune_.tau_applied,  min_tau_s_);
+
+        // Vertical displacement std ~ k * σ_a * τ²
+        const float sigma_disp_vert  = extra_drift_gain_ * sigma_a * tau * tau;
+        // Horizontal a_w is already scaled by S_factor_; do same here
+        const float sigma_disp_horiz = sigma_disp_vert * S_factor_;
+
+        Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
+                                        sigma_disp_horiz,
+                                        sigma_disp_vert);
+
         mekf_->measurement_update_position_from_acc_omega(a_world_proxy,
                                                           omega,
                                                           sigma_disp_meas);
     }
-
+}
+  
     // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
     dir_filter_.update(a_x_body, a_y_body, omega, dt);
     dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_world_up, dt);
@@ -376,6 +396,13 @@ void updateTime(float dt,
     void setMagDelaySec(float delay_sec) {
         if (std::isfinite(delay_sec) && delay_sec >= 0.0f) {
             mag_delay_sec_ = delay_sec;
+        }
+    }
+
+    // Scale factor for extra drift correction: σ_p ≈ k * σ_a * τ²
+    void setExtraDriftGain(float k) {
+        if (std::isfinite(k) && k > 0.0f) {
+            extra_drift_gain_ = k;
         }
     }
 
@@ -671,6 +698,10 @@ private:
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
     bool enable_extra_drift_correction_ = false;
+
+    // Dimensionless gain for extra drift correction (vertical).
+    // Rough guideline: 0.2–1.0. Start modest and adjust by looking at heave drift vs noise.
+    float extra_drift_gain_ = 0.5f;
 
     // Tunable adaptation parameters (initialized from global constexpr defaults)
     float min_freq_hz_            = MIN_FREQ_HZ;
