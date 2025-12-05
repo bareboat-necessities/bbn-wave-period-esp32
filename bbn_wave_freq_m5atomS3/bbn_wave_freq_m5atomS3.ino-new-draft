@@ -287,6 +287,7 @@ void read_and_processIMU_data() {
         Serial.printf(",tau:%.4f", fusion_filter.getTauApplied());
         Serial.printf(",R_S:%.4f", fusion_filter.getRSApplied());
         Serial.printf(",sigma:%.6f", fusion_filter.getSigmaApplied());
+        //Serial.printf(",accel.z_ned:%.6f", -accel.z * g_std);
         //Serial.printf(",roll_deg:%.2f",  roll);
         //Serial.printf(",pitch_deg:%.2f", pitch);
         //Serial.printf(",yaw_deg:%.2f",   yaw);
@@ -407,6 +408,7 @@ void setup(void) {
     // Enable/disable online τ / σₐ / Rₛ adaptation
     fusion_filter.enableTuner(true);
     fusion_filter.enableClamp(true);
+    fusion_filter.enableExtraDriftCorrection(true);
 
     fusion_filter.setFreqBounds(0.05f, 8.0f);
     fusion_filter.setTauBounds(0.02f, 3.0f);
