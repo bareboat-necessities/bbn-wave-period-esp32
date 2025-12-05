@@ -321,6 +321,9 @@ public:
     void enableTuner(bool flag = true) {
         enable_tuner_ = flag;
     }
+    void enableExtraDriftCorrection(bool flag = true) {
+        enable_extra_drift_correction_ = flag;
+    }
 
     // Tunable adaptation bounds and time constants
     void setFreqBounds(float min_hz, float max_hz) {
