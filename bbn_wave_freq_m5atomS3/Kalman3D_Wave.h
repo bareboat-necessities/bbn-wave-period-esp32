@@ -266,7 +266,7 @@ class Kalman3D_Wave {
     void measurement_update_position_from_acc_omega(const Vector3& a,
                                                     T omega,
                                                     const Vector3& sigma_disp_meas,
-                                                    T omega_min = T(2.0 * M_PI * 0.15));
+                                                    T omega_min = T(2.0 * M_PI * 0.05));
 
     // Accessors
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
