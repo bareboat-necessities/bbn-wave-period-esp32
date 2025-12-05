@@ -388,20 +388,20 @@ void setup(void) {
     // SeaStateFusionFilter runtime tuning knobs
     fusion_filter.setRSXYFactor(0.07f);
     fusion_filter.setSFactor(1.3f);
-    fusion_filter.setTauCoeff(1.45f);
+    fusion_filter.setTauCoeff(1.6f);
     fusion_filter.setRSCoeff(2.4f);
-    fusion_filter.setAccNoiseFloorSigma(0.15f);
+    fusion_filter.setAccNoiseFloorSigma(0.2f);
   
     // OU parameters: moderate correlation & variance
-    const float tau_init   = 0.1f;    // seconds
-    const float sigma_init = 0.3f;    // m/s^2 (typical vertical sea accel)
+    const float tau_init   = 0.3f;    // seconds
+    const float sigma_init = 0.5f;    // m/s^2 (typical vertical sea accel)
     mekf.set_aw_time_constant(tau_init);
     mekf.set_aw_stationary_std(Eigen::Vector3f::Constant(sigma_init));
 
     // Strong integral pseudo-measure on S to clamp low-f drift
     // This is *std* of S pseudo-meas; smaller = stronger drift suppression.
     // Start pretty aggressive.
-    Eigen::Vector3f RS_std(1.1f, 1.1f, 1.1f);  // units: m·s
+    Eigen::Vector3f RS_std(1.2f, 1.2f, 1.2f);  // units: m·s
     mekf.set_RS_noise(RS_std);
 
     // Enable/disable online τ / σₐ / Rₛ adaptation
@@ -409,13 +409,13 @@ void setup(void) {
     fusion_filter.enableClamp(true);
     fusion_filter.enableExtraDriftCorrection(true);
 
-    fusion_filter.setFreqBounds(0.05f, 8.0f);
-    fusion_filter.setTauBounds(0.02f, 2.5f);
-    fusion_filter.setMaxSigmaA(6.0f);
-    fusion_filter.setRSBounds(0.2f, 40.0f);
+    fusion_filter.setFreqBounds(0.05f, 12.0f);
+    fusion_filter.setTauBounds(0.02f, 3.0f);
+    fusion_filter.setMaxSigmaA(8.0f);
+    fusion_filter.setRSBounds(0.2f, 50.0f);
     fusion_filter.setAdaptationTimeConstants(2.0f, 2.0f);
     fusion_filter.setAdaptationUpdatePeriod(0.1f);
-    fusion_filter.setOnlineTuneWarmupSec(20.0f);
+    fusion_filter.setOnlineTuneWarmupSec(10.0f);
     fusion_filter.setMagDelaySec(8.0f);
 
     fusion_initialized = false;
