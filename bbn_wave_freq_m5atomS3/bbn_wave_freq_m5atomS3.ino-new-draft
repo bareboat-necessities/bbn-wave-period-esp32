@@ -378,7 +378,7 @@ void setup(void) {
   
     // Let bias *wander* more: random-walk σ per sqrt(second)
     // 0.003–0.005 m/s²/√s; tune by looking at heave drift.
-    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.005f));
+    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(0.004f));
   
     // Temperature model
     // Rough magnitude from datasheet, sign guessed as positive
@@ -389,13 +389,12 @@ void setup(void) {
     fusion_filter.setRSXYFactor(0.07f);
     fusion_filter.setSFactor(1.3f);
     fusion_filter.setTauCoeff(1.45f);
-    fusion_filter.setRSCoeff(1.9f);
-    fusion_filter.setAccNoiseFloorSigma(0.1f);
+    fusion_filter.setRSCoeff(2.4f);
+    fusion_filter.setAccNoiseFloorSigma(0.15f);
   
     // OU parameters: moderate correlation & variance
     const float tau_init   = 0.1f;    // seconds
     const float sigma_init = 0.3f;    // m/s^2 (typical vertical sea accel)
-
     mekf.set_aw_time_constant(tau_init);
     mekf.set_aw_stationary_std(Eigen::Vector3f::Constant(sigma_init));
 
@@ -411,9 +410,9 @@ void setup(void) {
     fusion_filter.enableExtraDriftCorrection(true);
 
     fusion_filter.setFreqBounds(0.05f, 8.0f);
-    fusion_filter.setTauBounds(0.02f, 3.0f);
+    fusion_filter.setTauBounds(0.02f, 2.5f);
     fusion_filter.setMaxSigmaA(6.0f);
-    fusion_filter.setRSBounds(0.1f, 35.0f);
+    fusion_filter.setRSBounds(0.2f, 40.0f);
     fusion_filter.setAdaptationTimeConstants(2.0f, 2.0f);
     fusion_filter.setAdaptationUpdatePeriod(0.1f);
     fusion_filter.setOnlineTuneWarmupSec(20.0f);
