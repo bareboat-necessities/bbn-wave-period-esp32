@@ -247,22 +247,35 @@ public:
             update_tuner(dt, a_z_inertial, f_after_still);
         }
 
-        // inertial acceleration (NED)
-        Eigen::Vector3f a_in; 
-        a_in << a_x, a_y, a_z_inertial;
-
         // angular frequency using fast frequency from tracker (ω = 2πf_fast)
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
 
         if (enable_extra_drift_correction_) {
+            // World-frame inertial acceleration (NED) from BODY specific force + MEKF attitude
+
+            // BODY specific force
+            Eigen::Vector3f acc_body(acc.x(), acc.y(), acc.z());
+
+            // q_bw: body→world (Kalman3D_Wave::quaternion() already returns qref.conjugate())
+            Eigen::Quaternionf q_bw = mekf_->quaternion();
+            q_bw.normalize();
+
+            // Rotate specific force into WORLD (NED)
+            Eigen::Vector3f f_world = q_bw * acc_body;
+
+            // Add gravity in WORLD NED to get inertial acceleration
+            Eigen::Vector3f g_world(0.0f, 0.0f, g_std);
+            Eigen::Vector3f a_world = f_world + g_world;
+
             // measurement std for displacement (per axis)
             Eigen::Vector3f sigma_disp_meas;
             sigma_disp_meas << 10.0f, 10.0f, 10.0f; // m 1σ in N,E,D
-    
-            // apply the 3D pseudo-measurement
-            mekf_->measurement_update_position_from_acc_omega(a_in, omega, sigma_disp_meas);
+
+            // apply the 3D pseudo-measurement in WORLD NED
+            mekf_->measurement_update_position_from_acc_omega(a_world, omega, sigma_disp_meas);
         }
-      
+
+        // Direction filter / sign detector still run on BODY accelerations
         dir_filter_.update(a_x, a_y, omega, dt);
         dir_sign_state_ = dir_sign_.update(a_x, a_y, a_z_inertial, dt);
     }
