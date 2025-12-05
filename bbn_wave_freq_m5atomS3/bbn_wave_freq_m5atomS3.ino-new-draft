@@ -413,7 +413,7 @@ void setup(void) {
     fusion_filter.setTauBounds(0.02f, 3.0f);
     fusion_filter.setMaxSigmaA(8.0f);
     fusion_filter.setRSBounds(0.2f, 50.0f);
-    fusion_filter.setAdaptationTimeConstants(2.0f, 2.0f);
+    fusion_filter.setAdaptationTimeConstants(1.0f, 4.0f);
     fusion_filter.setAdaptationUpdatePeriod(0.1f);
     fusion_filter.setOnlineTuneWarmupSec(10.0f);
     fusion_filter.setMagDelaySec(8.0f);
