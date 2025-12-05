@@ -201,84 +201,73 @@ public:
     }
 
     // Time update (IMU integration + frequency tracking)
-    void updateTime(float dt,
-                    const Eigen::Vector3f& gyro,
-                    const Eigen::Vector3f& acc,
-                    float tempC = 35.0f)
-    {
-        if (!mekf_) return;
-        time_ += dt;
+void updateTime(float dt,
+                const Eigen::Vector3f& gyro,
+                const Eigen::Vector3f& acc,
+                float tempC = 35.0f)
+{
+    if (!mekf_) return;
+    time_ += dt;
 
-        // Tracker input: vertical inertial (BODY, m/s^2)
-        const float a_z_inertial = acc.z() + g_std;
-        const float a_x = acc.x();
-        const float a_y = acc.y();
+    // Keep BODY horizontal components around for direction/sign
+    const float a_x_body = acc.x();
+    const float a_y_body = acc.y();
 
-        // LPF to suppress engine band (8–37 Hz) before tracker
-        const float a_z_inertial_lp = freq_input_lpf_.step(a_z_inertial, dt);
+    // MEKF updates first (attitude + latent a_w)
+    mekf_->time_update(gyro, dt);
+    mekf_->measurement_update_acc_only(acc, tempC);
 
-        // MEKF updates
-        mekf_->time_update(gyro, dt);
-        mekf_->measurement_update_acc_only(acc, tempC);
+    // Build a *measurement-based* WORLD inertial accel from raw accel + attitude
+    Eigen::Quaternionf q_bw = mekf_->quaternion();  // BODY → WORLD (NED)
+    q_bw.normalize();
 
-        // Raw freq from tracker
-        const float f_tracker = static_cast<float>(tracker_policy_.run(a_z_inertial_lp, dt));
-        f_raw = f_tracker;
+    Eigen::Vector3f acc_body(acc.x(), acc.y(), acc.z());        // specific force (BODY)
+    Eigen::Vector3f f_world = q_bw * acc_body;                  // specific force (WORLD)
+    Eigen::Vector3f g_world(0.0f, 0.0f, g_std);
+    Eigen::Vector3f a_world_proxy = f_world + g_world;          // inertial accel (WORLD, NED)
 
-        // Adjust for stillness (same logic for all trackers)
-        const float f_after_still = freq_stillness_.step(a_z_inertial_lp, dt, f_tracker);
+    // WORLD vertical (up positive): z_ned is down, so a_up = -a_world.z
+    const float a_vert_world_up = -a_world_proxy.z();
 
-        // Fast frequency smoother (≈1 s to ~90% of a step)
-        float f_fast = freq_fast_smoother_.update(f_after_still);
-        // Slow frequency smoother (≈10 s to ~90% of a step)
-        float f_slow = freq_slow_smoother_.update(f_fast);
+    // LPF on vertical WORLD inertial accel for tracker input
+    const float a_vert_lp = freq_input_lpf_.step(a_vert_world_up, dt);
 
-        // Clamp both
-        f_fast = std::min(std::max(f_fast, min_freq_hz_), max_freq_hz_);
-        f_slow = std::min(std::max(f_slow, min_freq_hz_), max_freq_hz_);
+    // Raw freq from tracker driven by WORLD vertical accel, not body-z+g
+    const float f_tracker = static_cast<float>(tracker_policy_.run(a_vert_lp, dt));
+    f_raw = f_tracker;
 
-        // Fast branch used for demod / direction
-        freq_hz_       = f_fast;
-        // Slow branch used for adaptation / moment-like quantities
-        freq_hz_slow_  = f_slow;
+    // Stillness detector also sees WORLD vertical
+    const float f_after_still = freq_stillness_.step(a_vert_lp, dt, f_tracker);
 
-        // Tuner uses own smoothing
-        if (enable_tuner_) {
-            update_tuner(dt, a_z_inertial, f_after_still);
-        }
+    // Fast & slow smoothed frequencies
+    float f_fast = freq_fast_smoother_.update(f_after_still);
+    float f_slow = freq_slow_smoother_.update(f_fast);
 
-        // angular frequency using fast frequency from tracker (ω = 2πf_fast)
-        const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
+    f_fast = std::min(std::max(f_fast, min_freq_hz_), max_freq_hz_);
+    f_slow = std::min(std::max(f_slow, min_freq_hz_), max_freq_hz_);
 
-        if (enable_extra_drift_correction_) {
-            // World-frame inertial acceleration (NED) from BODY specific force + MEKF attitude
+    freq_hz_      = f_fast;   // demod / direction
+    freq_hz_slow_ = f_slow;   // tuner / moments
 
-            // BODY specific force
-            Eigen::Vector3f acc_body(acc.x(), acc.y(), acc.z());
-
-            // q_bw: body→world (Kalman3D_Wave::quaternion() already returns qref.conjugate())
-            Eigen::Quaternionf q_bw = mekf_->quaternion();
-            q_bw.normalize();
-
-            // Rotate specific force into WORLD (NED)
-            Eigen::Vector3f f_world = q_bw * acc_body;
-
-            // Add gravity in WORLD NED to get inertial acceleration
-            Eigen::Vector3f g_world(0.0f, 0.0f, g_std);
-            Eigen::Vector3f a_world = f_world + g_world;
-
-            // measurement std for displacement (per axis)
-            Eigen::Vector3f sigma_disp_meas;
-            sigma_disp_meas << 10.0f, 10.0f, 10.0f; // m 1σ in N,E,D
-
-            // apply the 3D pseudo-measurement in WORLD NED
-            mekf_->measurement_update_position_from_acc_omega(a_world, omega, sigma_disp_meas);
-        }
-
-        // Direction filter / sign detector still run on BODY accelerations
-        dir_filter_.update(a_x, a_y, omega, dt);
-        dir_sign_state_ = dir_sign_.update(a_x, a_y, a_z_inertial, dt);
+    // Tuner gets WORLD vertical measurement proxy, not latent a_w
+    if (enable_tuner_) {
+        update_tuner(dt, a_vert_world_up, f_after_still);
     }
+
+    const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
+
+    if (enable_extra_drift_correction_) {
+        // We use a_world_proxy (measurement-based)
+        Eigen::Vector3f sigma_disp_meas(10.0f, 10.0f, 10.0f);
+        mekf_->measurement_update_position_from_acc_omega(a_world_proxy,
+                                                          omega,
+                                                          sigma_disp_meas);
+    }
+
+    // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
+    dir_filter_.update(a_x_body, a_y_body, omega, dt);
+    dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_world_up, dt);
+}
 
     //  Magnetometer correction
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
