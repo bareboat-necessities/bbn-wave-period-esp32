@@ -249,9 +249,9 @@ void updateTime(float dt,
     freq_hz_      = f_fast;   // demod / direction
     freq_hz_slow_ = f_slow;   // tuner / moments
 
-    // Tuner gets WORLD vertical measurement proxy, not latent a_w
+    // Tuner gets WORLD vertical measurement proxy
     if (enable_tuner_) {
-        update_tuner(dt, a_vert_world_up, f_after_still);
+        update_tuner(dt, a_vert_world_up, f_fast);
     }
 
     const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -576,13 +576,13 @@ private:
         ));
     }
 
-    void update_tuner(float dt, float a_vert_inertial, float freq_hz_slow) {
-        tuner_.update(dt, a_vert_inertial, freq_hz_slow);
+    void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
+        tuner_.update(dt, a_vert_inertial, freq_hz_for_tuner);
 
         if (time_ < online_tune_warmup_sec_) return;
         if (!tuner_.isReady())               return;
 
-        // Frequency as seen by the tuner (already includes stillness relaxation)
+        // Frequency as seen by the tuner
         float f_tune = tuner_.getFrequencyHz();
         if (!std::isfinite(f_tune) || f_tune < min_freq_hz_) {
             f_tune = min_freq_hz_;
