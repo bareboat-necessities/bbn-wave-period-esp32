@@ -251,7 +251,7 @@ void updateTime(float dt,
 
     // Tuner gets WORLD vertical measurement proxy
     if (enable_tuner_) {
-        update_tuner(dt, a_vert_world_up, f_fast);
+        update_tuner(dt, a_vert_world_up, f_after_still);
     }
 
     const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
