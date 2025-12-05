@@ -417,6 +417,7 @@ void setup(void) {
     fusion_filter.setAdaptationUpdatePeriod(0.1f);
     fusion_filter.setOnlineTuneWarmupSec(10.0f);
     fusion_filter.setMagDelaySec(8.0f);
+    fusion_filter.setExtraDriftGain(0.5f);
 
     fusion_initialized = false;
   }
