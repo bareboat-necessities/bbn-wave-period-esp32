@@ -77,7 +77,7 @@ constexpr float MIN_R_S     = 0.5f;
 constexpr float MAX_R_S     = 35.0f;
 
 constexpr float ADAPT_TAU_SEC            = 0.3f;
-constexpr float ADAPT_R_S_SEC            = 10.0f;
+constexpr float ADAPT_R_S_SEC            = 15.0f;
 constexpr float ADAPT_EVERY_SECS         = 0.1f;
 constexpr float ONLINE_TUNE_WARMUP_SEC   = 20.0f;
 constexpr float MAG_DELAY_SEC            = 5.0f;
@@ -746,7 +746,7 @@ private:
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_S_coeff_    = 2.3f;
+    float R_S_coeff_    = 2.2f;
     float tau_coeff_    = 1.6f;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
