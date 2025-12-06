@@ -1455,16 +1455,12 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_posit
         return;
     }
 
-    const T abs_omega = std::abs(omega);
+    T abs_omega = std::abs(omega);
     if (!(abs_omega > omega_min)) {
-        // Too low frequency: 1/ω² would blow up, skip
-        return;
+        // Too low frequency: 1/ω² would blow up
+        abs_omega = omega_min;
     }
-
     const T w2 = omega * omega;
-    if (!(w2 > T(0))) {
-        return;
-    }
 
     // First-order approximation: p ≈ -a/ω² on all axes
     Vector3 p_meas = -a / w2;
