@@ -256,45 +256,43 @@ void updateTime(float dt,
 
     const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
 
-if (enable_extra_drift_correction_) {
-    const float f_for_drift     = freq_hz_;
-    const float f_min_for_drift = 0.15f;              // > MIN_FREQ_HZ, tuned
-    const float sigma_a         = tune_.sigma_applied;
-
-    // Only use extra drift when clearly in wave regime
-    const float SIGMA_A_MIN_FOR_DRIFT = 0.25f;        // ~2.5% g; tune on bench
-
-    const bool wavey_enough =
-        std::isfinite(f_for_drift) &&
-        f_for_drift > f_min_for_drift &&
-        std::isfinite(sigma_a) &&
-        sigma_a > SIGMA_A_MIN_FOR_DRIFT &&
-        !freq_stillness_.isStill() &&
-        tuner_.isReady() &&
-        time_ > online_tune_warmup_sec_;
-
-    if (wavey_enough) {
-        const float tau = std::max(tune_.tau_applied,  min_tau_s_);
-
-        // Vertical displacement std ~ k * σ_a * τ²
-        float sigma_disp_vert  = extra_drift_gain_ * sigma_a * tau * tau;
-        float sigma_disp_horiz = sigma_disp_vert * S_factor_;
-
-        // Never let this pseudo-measurement get *too* confident
-        const float SIGMA_P_MIN = 0.05f;  // 5 cm
-        const float SIGMA_P_MAX = 5.0f;   // 5 m, safety upper bound
-        sigma_disp_vert  = std::min(std::max(sigma_disp_vert,  SIGMA_P_MIN), SIGMA_P_MAX);
-        sigma_disp_horiz = std::min(std::max(sigma_disp_horiz, SIGMA_P_MIN), SIGMA_P_MAX);
-
-        Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
-                                        sigma_disp_horiz,
-                                        sigma_disp_vert);
-
-        mekf_->measurement_update_position_from_acc_omega(a_world_proxy,
-                                                          omega,
-                                                          sigma_disp_meas);
+    if (enable_extra_drift_correction_) {
+        const float f_for_drift     = freq_hz_;
+        const float f_min_for_drift = 0.15f;              // > MIN_FREQ_HZ, tuned
+        const float sigma_a         = tune_.sigma_applied;
+    
+        // Only use extra drift when clearly in wave regime
+        const float SIGMA_A_MIN_FOR_DRIFT = 0.25f;        // ~2.5% g; tune on bench
+    
+        const bool wavey_enough =
+            std::isfinite(f_for_drift) &&
+            f_for_drift > f_min_for_drift &&
+            std::isfinite(sigma_a) &&
+            sigma_a > SIGMA_A_MIN_FOR_DRIFT &&
+            !freq_stillness_.isStill() &&
+            tuner_.isReady() &&
+            time_ > online_tune_warmup_sec_;
+    
+        if (wavey_enough) {
+            const float tau = std::max(tune_.tau_applied,  min_tau_s_);
+    
+            // Vertical displacement std ~ k * σ_a * τ²
+            float sigma_disp_vert  = extra_drift_gain_ * sigma_a * tau * tau;
+            float sigma_disp_horiz = sigma_disp_vert * S_factor_;
+    
+            // Never let this pseudo-measurement get *too* confident
+            const float SIGMA_P_MIN = 0.05f;  // 5 cm
+            const float SIGMA_P_MAX = 5.0f;   // 5 m, safety upper bound
+            sigma_disp_vert  = std::min(std::max(sigma_disp_vert,  SIGMA_P_MIN), SIGMA_P_MAX);
+            sigma_disp_horiz = std::min(std::max(sigma_disp_horiz, SIGMA_P_MIN), SIGMA_P_MAX);
+    
+            Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
+                                            sigma_disp_horiz,
+                                            sigma_disp_vert);   
+            mekf_->measurement_update_position_from_acc_omega(a_world_proxy,
+                                                              omega, sigma_disp_meas);
+        }
     }
-}
   
     // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
     dir_filter_.update(a_x_body, a_y_body, omega, dt);
