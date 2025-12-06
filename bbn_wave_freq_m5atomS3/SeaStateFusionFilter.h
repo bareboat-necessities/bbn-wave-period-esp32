@@ -256,51 +256,45 @@ void updateTime(float dt,
 
     const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
 
-    if (enable_extra_drift_correction_) {
-        // Use a *frequency-gated*, sigma_a/tau-scaled displacement std.
-        //
-        // Harmonic model: a(t) ≈ −A ω² sin(ωt+φ)  ⇒  A ≈ σ_a / ω².
-        // Using τ ≈ 0.5/f gives ω ~ π/τ, so A ~ σ_a τ² / π².
-        // We fold 1/π² into a dimensionless gain.
-        const float f_for_drift = freq_hz_;
+if (enable_extra_drift_correction_) {
+    const float f_for_drift     = freq_hz_;
+    const float f_min_for_drift = 0.15f;              // > MIN_FREQ_HZ, tuned
+    const float sigma_a         = tune_.sigma_applied;
 
-        // --- HARD GATES ---
-        // 1) Only when we are NOT in stillness
-        // 2) Only when "sea sigma" is above a minimum (otherwise we are fitting noise)
-        // 3) Only when frequency is in a sane band
-        const float SIGMA_EXTRA_MIN = 0.4f;      // ~0.04 g; tune this
-        const float F_MIN_EXTRA     = min_freq_hz_;  // or e.g. 0.15f
+    // Only use extra drift when clearly in wave regime
+    const float SIGMA_A_MIN_FOR_DRIFT = 0.25f;        // ~2.5% g; tune on bench
 
-        const float sigma_a = tune_.sigma_applied;
+    const bool wavey_enough =
+        std::isfinite(f_for_drift) &&
+        f_for_drift > f_min_for_drift &&
+        std::isfinite(sigma_a) &&
+        sigma_a > SIGMA_A_MIN_FOR_DRIFT &&
+        !freq_stillness_.isStill() &&
+        tuner_.isReady() &&
+        time_ > online_tune_warmup_sec_;
 
-        if (!freq_stillness_.isStill() &&
-            std::isfinite(f_for_drift) &&
-            f_for_drift > F_MIN_EXTRA &&
-            sigma_a > SIGMA_EXTRA_MIN)
-        {
-            const float tau = std::max(tune_.tau_applied,  min_tau_s_);
+    if (wavey_enough) {
+        const float tau = std::max(tune_.tau_applied,  min_tau_s_);
 
-            // Vertical displacement std ~ k * σ_a * τ²
-            float sigma_disp_vert  = extra_drift_gain_ * sigma_a * tau * tau;
+        // Vertical displacement std ~ k * σ_a * τ²
+        float sigma_disp_vert  = extra_drift_gain_ * sigma_a * tau * tau;
+        float sigma_disp_horiz = sigma_disp_vert * S_factor_;
 
-            // Optional clamp to avoid insane stiffness
-            const float SIGMA_DISP_VERT_MAX = 50.0f;   // m, very loose upper bound
-            if (sigma_disp_vert > SIGMA_DISP_VERT_MAX) {
-                sigma_disp_vert = SIGMA_DISP_VERT_MAX;
-            }
+        // Never let this pseudo-measurement get *too* confident
+        const float SIGMA_P_MIN = 0.05f;  // 5 cm
+        const float SIGMA_P_MAX = 5.0f;   // 5 m, safety upper bound
+        sigma_disp_vert  = std::min(std::max(sigma_disp_vert,  SIGMA_P_MIN), SIGMA_P_MAX);
+        sigma_disp_horiz = std::min(std::max(sigma_disp_horiz, SIGMA_P_MIN), SIGMA_P_MAX);
 
-            // Horizontal a_w is already scaled by S_factor_; do same here
-            const float sigma_disp_horiz = sigma_disp_vert * S_factor_;
+        Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
+                                        sigma_disp_horiz,
+                                        sigma_disp_vert);
 
-            Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
-                                            sigma_disp_horiz,
-                                            sigma_disp_vert);
-
-            mekf_->measurement_update_position_from_acc_omega(a_world_proxy,
-                                                              omega,
-                                                              sigma_disp_meas);
-        }
+        mekf_->measurement_update_position_from_acc_omega(a_world_proxy,
+                                                          omega,
+                                                          sigma_disp_meas);
     }
+}
   
     // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
     dir_filter_.update(a_x_body, a_y_body, omega, dt);
