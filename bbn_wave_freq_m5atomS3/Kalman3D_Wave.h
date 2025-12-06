@@ -1456,7 +1456,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_posit
     }
 
     T abs_omega = std::abs(omega);
-    if (!(abs_omega > omega_min)) {
+    if (abs_omega < omega_min) {
         // Too low frequency: 1/ω² would blow up
         abs_omega = omega_min;
     }
