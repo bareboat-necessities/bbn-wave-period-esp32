@@ -728,7 +728,7 @@ private:
     float freq_hz_slow_  = FREQ_GUESS; // slow branch
     float f_raw          = FREQ_GUESS;
 
-    float a_vert_up; // accel vertical (Z-up)
+    float a_vert_up = 0.0f; // accel vertical (Z-up)
 
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
