@@ -289,8 +289,7 @@ void updateTime(float dt,
             Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
                                             sigma_disp_horiz,
                                             sigma_disp_vert);   
-            mekf_->measurement_update_position_from_acc_omega(a_world_proxy,
-                                                              omega, sigma_disp_meas);
+            mekf_->updatePositionFromAccOmega(a_world_proxy, omega, sigma_disp_meas);
         }
     }
   
@@ -304,6 +303,37 @@ void updateTime(float dt,
         if (with_mag_ && mekf_ && time_ >= mag_delay_sec_) {
             mekf_->measurement_update_mag_only(mag_body_ned);
         }
+    }
+
+    // Convenience wrapper: infer p_meas from inertial acceleration and
+    // angular frequency ω [rad/s] via p ≈ -a/ω² on all 3 axes.
+    //
+    // a: inertial acceleration (NED), m/s²
+    // omega  : angular frequency, rad/s (use 2π f from frequency tracker)
+    // sigma_disp_meas: per-axis std of the resulting displacement measurement [m]
+    // omega_min: minimum |ω| to avoid insane amplification at very low freq
+    void updatePositionFromAccOmega(
+        const Vector3& a, T omega, const Vector3& sigma_disp_meas, T omega_min = T(2.0 * M_PI * 0.06)) 
+    {
+        if (!std::isfinite(omega)) {
+            return;
+        }
+    
+        T abs_omega = std::abs(omega);
+        if (abs_omega < omega_min) {
+            // Too low frequency: 1/ω² would blow up
+            abs_omega = omega_min;
+        }
+        const T w2 = omega * omega;
+    
+        // First-order approximation: p ≈ -a/ω² on all axes
+        Vector3 p_meas = -a / w2;
+    
+        if (!p_meas.allFinite()) {
+            return;
+        }
+    
+        mekf_->measurement_update_position_pseudo(p_meas, sigma_disp_meas);
     }
 
     // Anisotropy configuration (runtime)
