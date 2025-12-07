@@ -226,7 +226,7 @@ public:
         const float f_tracker = static_cast<float>(tracker_policy_.run(a_vert_lp, dt));
         f_raw = f_tracker;
     
-        // Stillness detector also sees WORLD vertical
+        // Stillness detector also sees vertical Z accel
         const float f_after_still = freq_stillness_.step(a_vert_lp, dt, f_tracker);
     
         // Fast & slow smoothed frequencies
@@ -282,7 +282,7 @@ public:
             }
         }
       
-        // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
+        // Direction filters run on BODY accel, "sign" uses vertical acceleration
         dir_filter_.update(a_x_body, a_y_body, omega, dt);
         dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_up, dt);
     }
