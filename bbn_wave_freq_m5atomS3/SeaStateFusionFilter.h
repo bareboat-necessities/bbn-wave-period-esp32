@@ -624,6 +624,53 @@ private:
         float getEnergyEma()  const { return energy_ema; }
     };
 
+    float adjustRSWithHeave(float RS_in) const noexcept {
+        // Base clamp into global RS range
+        float RS_base = std::min(std::max(RS_in, min_R_S_), max_R_S_);
+
+        // If disabled or not initialized, just use the smoothed value
+        if (!enable_heave_RS_gating_ || !mekf_) {
+            return RS_base;
+        }
+
+        // Expected displacement scale from (σ, τ)
+        const float disp_scale = getDisplacementScale();
+        if (!(disp_scale > 0.0f) || !std::isfinite(disp_scale)) {
+            return RS_base;
+        }
+
+        // Actual vertical heave magnitude (note: mekf_ already checked above)
+        const float heave_abs = getHeaveAbs();
+        if (!std::isfinite(heave_abs)) {
+            return RS_base;
+        }
+
+        // If we're within scale, don't touch R_S
+        const float ratio = heave_abs / disp_scale;
+        if (!(ratio > 1.0f)) {
+            return RS_base;
+        }
+
+        // Excess factor above "expected" envelope
+        const float r = ratio - 1.0f;
+
+        // Smooth, aggressive shrinkage:
+        //   gate(r) = 1 / (1 + k * r²), with a floor.
+        //   r = 0  → gate = 1
+        //   r ↑    → gate ↓ smoothly and more aggressively at large r
+        const float k        = 0.9f;   // aggressiveness
+        const float min_gate = 0.10f;  // don't go totally insane
+        float gate = 1.0f / (1.0f + k * r * r);
+        if (gate < min_gate) gate = min_gate;
+
+        float RS_adj = RS_base * gate;
+
+        // Ensure we stay in the usual [min_R_S_, max_R_S_] range
+        if (RS_adj < min_R_S_) RS_adj = min_R_S_;
+        if (RS_adj > max_R_S_) RS_adj = max_R_S_;
+        return RS_adj;
+    }
+
     //  Internal tuning and adaptation
     void apply_tune() {
         if (!mekf_) return;
