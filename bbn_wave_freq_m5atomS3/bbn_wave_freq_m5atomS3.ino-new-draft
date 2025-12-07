@@ -409,7 +409,7 @@ void setup(void) {
     fusion_filter.setSigmaCoeff(0.3f); // tame sigma inflated by IMU noise and estimation from body frame to scale OU sigma to the sea state scale
     fusion_filter.setTauCoeff(1.5f);
     fusion_filter.setRSCoeff(1.7f);
-    fusion_filter.setExtraDriftGain(2.0f); // trust in extra drift measure based on first order wave approximation with frequency
+    fusion_filter.setExtraDriftGain(10.0f); // trust in extra drift measure based on first order wave approximation with frequency (higher value reduces trust)
     fusion_filter.setAccNoiseFloorSigma(0.2f);
     fusion_filter.setFreqBounds(0.05f, 8.0f);
     fusion_filter.setTauBounds(0.02f, 3.0f); // let R_S adapt a bit faster
