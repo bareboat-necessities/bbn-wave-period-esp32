@@ -215,22 +215,13 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
     
-        // Build a *measurement-based* WORLD inertial accel from raw accel + attitude
-        Eigen::Quaternionf q_bw = mekf_->quaternion();  // BODY → WORLD (NED)
-        q_bw.normalize();
+        // vertical (up positive)
+        a_vert_up = -(acc.z() + g_std);
     
-        Eigen::Vector3f acc_body(acc.x(), acc.y(), acc.z());        // specific force (BODY)
-        Eigen::Vector3f f_world = q_bw * acc_body;                  // specific force (WORLD)
-        Eigen::Vector3f g_world(0.0f, 0.0f, g_std);
-        Eigen::Vector3f a_world_proxy = f_world + g_world;          // inertial accel (WORLD, NED)
+        // LPF on vertical accel for tracker input
+        const float a_vert_lp = freq_input_lpf_.step(a_vert_up, dt);
     
-        // WORLD vertical (up positive): z_ned is down, so a_up = -a_world.z
-        a_vert_world_up = -a_world_proxy.z();
-    
-        // LPF on vertical WORLD inertial accel for tracker input
-        const float a_vert_lp = freq_input_lpf_.step(a_vert_world_up, dt);
-    
-        // Raw freq from tracker driven by WORLD vertical accel, not body-z+g
+        // Raw freq from tracker
         const float f_tracker = static_cast<float>(tracker_policy_.run(a_vert_lp, dt));
         f_raw = f_tracker;
     
@@ -247,9 +238,9 @@ public:
         freq_hz_      = f_fast;   // demod / direction
         freq_hz_slow_ = f_slow;   // tuner / moments
     
-        // Tuner gets WORLD vertical measurement proxy
+        // Tuner gets vertical accel
         if (enable_tuner_) {
-            update_tuner(dt, a_vert_world_up, f_after_still);
+            update_tuner(dt, a_vert_up, f_after_still);
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -293,7 +284,7 @@ public:
       
         // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
         dir_filter_.update(a_x_body, a_y_body, omega, dt);
-        dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_world_up, dt);
+        dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_up, dt);
     }
 
     //  Magnetometer correction
@@ -737,7 +728,7 @@ private:
     float freq_hz_slow_  = FREQ_GUESS; // slow branch
     float f_raw          = FREQ_GUESS;
 
-    float a_vert_world_up; // accel vertical (WORLD, Z-up)
+    float a_vert_up; // accel vertical (Z-up)
 
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
