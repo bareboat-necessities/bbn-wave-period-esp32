@@ -250,11 +250,8 @@ class Kalman3D_Wave {
 
     // 3D pseudo-measurement on position p (world, NED):
     //   p_meas ≈ p (meters), with per-axis std sigma_meas.
-    //
-    // This does a full 3x3 Joseph update on the position block and its
-    // cross-covariances in one shot.
-    void measurement_update_position_pseudo(const Vector3& p_meas,
-                                            const Vector3& sigma_meas);
+    // This does a full 3x3 Joseph update on the position block and its cross-covariances.
+    void measurement_update_position_pseudo(const Vector3& p_meas, const Vector3& sigma_meas);
 
     // Accessors
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
