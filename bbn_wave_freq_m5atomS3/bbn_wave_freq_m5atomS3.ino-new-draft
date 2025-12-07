@@ -402,6 +402,7 @@ void setup(void) {
     // Enable/disable online τ / σₐ / Rₛ adaptation
     fusion_filter.enableTuner(true);
     fusion_filter.enableClamp(true);
+    fusion_filter.enableHeaveRSGating(true);
     fusion_filter.enableExtraDriftCorrection(false);
 
     // SeaStateFusionFilter runtime tuning knobs
@@ -418,7 +419,7 @@ void setup(void) {
     fusion_filter.setRSBounds(0.4f, 20.0f); // do not let R_S grow too much
     fusion_filter.setAdaptationTimeConstants(2.5f, 2.5f);
     fusion_filter.setAdaptationUpdatePeriod(0.1f);
-    fusion_filter.setOnlineTuneWarmupSec(10.0f);s
+    fusion_filter.setOnlineTuneWarmupSec(10.0f);
     fusion_filter.setMagDelaySec(8.0f);
 
     fusion_initialized = false;
