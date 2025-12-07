@@ -679,12 +679,9 @@ private:
         mekf_->set_aw_stationary_std(a_w_std); 
     
         // WORLD-frame pseudo-measurement noise for S (anisotropic diagonal).
-        const float RSb;
-        if (enable_heave_RS_gating_) {
-            RSb = adjustRSWithHeave(tune_.RS_applied);
-        } else {
-            RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
-        }
+        const float RSb = enable_heave_RS_gating_ ?
+            adjustRSWithHeave(tune_.RS_applied) :
+            std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,   // world X
             RSb * R_S_xy_factor_,   // world Y
