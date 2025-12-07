@@ -207,9 +207,10 @@ public:
         if (!mekf_) return;
         time_ += dt;
     
-        // Keep BODY horizontal components around for direction/sign
+        // Keep BODY components around for direction/sign
         const float a_x_body = acc.x();
         const float a_y_body = acc.y();
+        const float a_z_inertial = acc.z() + g_std;
     
         // MEKF updates first (attitude + latent a_w)
         mekf_->time_update(gyro, dt);
@@ -275,16 +276,15 @@ public:
                 sigma_disp_vert  = std::min(std::max(sigma_disp_vert,  SIGMA_P_MIN), SIGMA_P_MAX);
                 sigma_disp_horiz = std::min(std::max(sigma_disp_horiz, SIGMA_P_MIN), SIGMA_P_MAX);
         
-                Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
-                                                sigma_disp_horiz,
-                                                sigma_disp_vert);   
-                updatePositionFromAccOmega(acc, omega, sigma_disp_meas);
+                Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz, sigma_disp_horiz, sigma_disp_vert);   
+                Eigen::Vector3f acc_in(a_x_body, a_y_body, a_z_inertial);
+                updatePositionFromAccOmega(acc_in, omega, sigma_disp_meas);
             }
         }
       
         // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
         dir_filter_.update(a_x_body, a_y_body, omega, dt);
-        dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_up, dt);
+        dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_z_inertial, dt);
     }
 
     //  Magnetometer correction
