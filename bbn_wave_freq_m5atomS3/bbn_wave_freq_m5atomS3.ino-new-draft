@@ -405,17 +405,17 @@ void setup(void) {
 
     // SeaStateFusionFilter runtime tuning knobs
     fusion_filter.setRSXYFactor(0.07f);
-    fusion_filter.setSFactor(0.8f);
+    fusion_filter.setSFactor(1.3f);
     fusion_filter.setSigmaCoeff(0.3f); // tame sigma inflated by IMU noise and estimation from body frame to scale OU sigma to the sea state scale
-    fusion_filter.setTauCoeff(1.6f);
-    fusion_filter.setRSCoeff(1.9f);
-    fusion_filter.setExtraDriftGain(0.5f); // more trust in extra drift measure based on first order wave approximation with frequency
+    fusion_filter.setTauCoeff(1.5f);
+    fusion_filter.setRSCoeff(1.7f);
+    fusion_filter.setExtraDriftGain(2.0f); // trust in extra drift measure based on first order wave approximation with frequency
     fusion_filter.setAccNoiseFloorSigma(0.2f);
     fusion_filter.setFreqBounds(0.05f, 8.0f);
     fusion_filter.setTauBounds(0.02f, 3.0f); // let R_S adapt a bit faster
     fusion_filter.setMaxSigmaA(6.0f);
-    fusion_filter.setRSBounds(0.4f, 25.0f); // do not let R_S grow too much
-    fusion_filter.setAdaptationTimeConstants(1.0f, 3.0f);
+    fusion_filter.setRSBounds(0.4f, 22.0f); // do not let R_S grow too much
+    fusion_filter.setAdaptationTimeConstants(1.0f, 5.0f);
     fusion_filter.setAdaptationUpdatePeriod(0.1f);
     fusion_filter.setOnlineTuneWarmupSec(10.0f);
     fusion_filter.setMagDelaySec(8.0f);
