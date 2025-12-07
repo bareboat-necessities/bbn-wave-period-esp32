@@ -757,7 +757,8 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::MatrixBaseN
-Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_Q(typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Vector3 sigma_g, T b0) {
+Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_Q(
+              typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Vector3 sigma_g, T b0) {
     MatrixBaseN Q; Q.setZero();
     if constexpr (with_gyro_bias) {
         Q.template topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal(); // gyro RW
@@ -785,8 +786,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::set_aw_stationary_cov_fu
 
     // Reseed/merge Pext a_w block
     Pext.template block<3,3>(OFF_AW, OFF_AW) =
-          T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW)
-        + T(0.2) * Sigma_aw_stat;
+          T(0.2) * Pext.template block<3,3>(OFF_AW, OFF_AW)
+        + T(0.8) * Sigma_aw_stat;
     symmetrize_Pext_();
     has_cross_cov_a_xy = true;
 }
