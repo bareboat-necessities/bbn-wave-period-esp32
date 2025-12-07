@@ -353,7 +353,11 @@ public:
             tau_coeff_ = c;
         }
     }
-
+    void setSigmaCoeff(float c) {
+        if (std::isfinite(c) && c > 0.0f) {
+            sigma_coeff_ = c;
+        }
+    }
     void setRSCoeff(float c) {
         if (std::isfinite(c) && c > 0.0f) {
             R_S_coeff_ = c;
@@ -365,7 +369,6 @@ public:
             acc_noise_floor_sigma_ = s;
         }
     }
-
     float getAccNoiseFloorSigma() const noexcept {
         return acc_noise_floor_sigma_;
     }
@@ -692,7 +695,7 @@ private:
 
         if (enable_clamp_) {
             tau_target_   = std::min(std::max(tau_raw,  min_tau_s_), max_tau_s_);
-            sigma_target_ = std::min(sigma_wave,        max_sigma_a_);
+            sigma_target_ = std::min(sigma_wave * sigma_coeff_,        max_sigma_a_);
         } else {
             tau_target_   = tau_raw;
             sigma_target_ = sigma_wave;
@@ -777,6 +780,7 @@ private:
 
     float R_S_coeff_    = 2.2f;
     float tau_coeff_    = 1.6f;
+    float sigma_coeff_  = 1.0f;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
     KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
