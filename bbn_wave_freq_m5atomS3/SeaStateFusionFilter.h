@@ -277,7 +277,7 @@ public:
                 sigma_disp_horiz = std::min(std::max(sigma_disp_horiz, SIGMA_P_MIN), SIGMA_P_MAX);
         
                 Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz, sigma_disp_horiz, sigma_disp_vert);   
-                Eigen::Vector3f acc_in(a_x_body, a_y_body, a_z_inertial);
+                Eigen::Vector3f acc_in(0, 0, a_z_inertial);
                 updatePositionFromAccOmega(acc_in, omega, sigma_disp_meas);
             }
         }
