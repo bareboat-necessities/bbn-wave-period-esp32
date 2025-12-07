@@ -375,6 +375,9 @@ public:
     void enableTuner(bool flag = true) {
         enable_tuner_ = flag;
     }
+    void enableHeaveRSGating(bool flag = true) {
+        enable_heave_RS_gating_ = flag;
+    }
     void enableExtraDriftCorrection(bool flag = true) {
         enable_extra_drift_correction_ = flag;
     }
@@ -739,6 +742,7 @@ private:
 
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
+    bool enable_heave_RS_gating_ = false; 
     bool enable_extra_drift_correction_ = false;
 
     // Dimensionless gain for extra drift correction (vertical).
