@@ -38,7 +38,7 @@ public:
     //   τ_var_dyn ≈ K_periods * T_eff,  T_eff = 1 / f_eff
     // Default K_periods ≈ 2.0 → ~6.0 periods for ~95% response.
     explicit SeaStateAutoTuner(float K_periods_   = 2.0f,
-                               float tau_freq_sec = 0.8f)   // frequency smoothing horizon (seconds)
+                               float tau_freq_sec = 1.0f)   // frequency smoothing horizon (seconds)
     : K_periods(K_periods_), tau_freq(tau_freq_sec) {
         reset();
     }
@@ -119,7 +119,7 @@ public:
 private:
     // K_periods: dimensionless factor such that τ_var_dyn ≈ K_periods * T_eff
     float K_periods = 2.0f;
-    float tau_freq  = 0.8f;   // seconds
+    float tau_freq  = 1.0f;   // seconds
     float last_dt_freq  = -1.0f;
     float alpha_var  = 0.0f;
     float alpha_freq = 0.0f;
