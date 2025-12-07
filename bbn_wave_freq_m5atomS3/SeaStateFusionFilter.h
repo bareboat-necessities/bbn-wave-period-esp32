@@ -225,7 +225,7 @@ public:
         Eigen::Vector3f a_world_proxy = f_world + g_world;          // inertial accel (WORLD, NED)
     
         // WORLD vertical (up positive): z_ned is down, so a_up = -a_world.z
-        const float a_vert_world_up = -a_world_proxy.z();
+        a_vert_world_up = -a_world_proxy.z();
     
         // LPF on vertical WORLD inertial accel for tracker input
         const float a_vert_lp = freq_input_lpf_.step(a_vert_world_up, dt);
@@ -461,6 +461,7 @@ public:
     }
 
     inline float getAccelVariance() const noexcept { return tuner_.getAccelVariance(); }
+    inline float getAccelVertical() const noexcept { return a_vert_world_up; }
 
     inline WaveDirection getDirSignState() const noexcept { return dir_sign_state_; }
 
@@ -732,6 +733,8 @@ private:
     float freq_hz_       = FREQ_GUESS; // fast branch
     float freq_hz_slow_  = FREQ_GUESS; // slow branch
     float f_raw          = FREQ_GUESS;
+
+    float a_vert_world_up; // accel vertical (WORLD, Z-up)
 
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
