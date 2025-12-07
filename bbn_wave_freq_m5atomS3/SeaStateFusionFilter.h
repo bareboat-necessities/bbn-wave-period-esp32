@@ -278,7 +278,7 @@ public:
                 Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
                                                 sigma_disp_horiz,
                                                 sigma_disp_vert);   
-                updatePositionFromAccOmega(a_world_proxy, omega, sigma_disp_meas);
+                updatePositionFromAccOmega(acc, omega, sigma_disp_meas);
             }
         }
       
