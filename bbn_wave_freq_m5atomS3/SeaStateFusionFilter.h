@@ -201,102 +201,100 @@ public:
     }
 
     // Time update (IMU integration + frequency tracking)
-void updateTime(float dt,
-                const Eigen::Vector3f& gyro,
-                const Eigen::Vector3f& acc,
-                float tempC = 35.0f)
-{
-    if (!mekf_) return;
-    time_ += dt;
-
-    // Keep BODY horizontal components around for direction/sign
-    const float a_x_body = acc.x();
-    const float a_y_body = acc.y();
-
-    // MEKF updates first (attitude + latent a_w)
-    mekf_->time_update(gyro, dt);
-    mekf_->measurement_update_acc_only(acc, tempC);
-
-    // Build a *measurement-based* WORLD inertial accel from raw accel + attitude
-    Eigen::Quaternionf q_bw = mekf_->quaternion();  // BODY → WORLD (NED)
-    q_bw.normalize();
-
-    Eigen::Vector3f acc_body(acc.x(), acc.y(), acc.z());        // specific force (BODY)
-    Eigen::Vector3f f_world = q_bw * acc_body;                  // specific force (WORLD)
-    Eigen::Vector3f g_world(0.0f, 0.0f, g_std);
-    Eigen::Vector3f a_world_proxy = f_world + g_world;          // inertial accel (WORLD, NED)
-
-    // WORLD vertical (up positive): z_ned is down, so a_up = -a_world.z
-    const float a_vert_world_up = -a_world_proxy.z();
-
-    // LPF on vertical WORLD inertial accel for tracker input
-    const float a_vert_lp = freq_input_lpf_.step(a_vert_world_up, dt);
-
-    // Raw freq from tracker driven by WORLD vertical accel, not body-z+g
-    const float f_tracker = static_cast<float>(tracker_policy_.run(a_vert_lp, dt));
-    f_raw = f_tracker;
-
-    // Stillness detector also sees WORLD vertical
-    const float f_after_still = freq_stillness_.step(a_vert_lp, dt, f_tracker);
-
-    // Fast & slow smoothed frequencies
-    float f_fast = freq_fast_smoother_.update(f_after_still);
-    float f_slow = freq_slow_smoother_.update(f_fast);
-
-    f_fast = std::min(std::max(f_fast, min_freq_hz_), max_freq_hz_);
-    f_slow = std::min(std::max(f_slow, min_freq_hz_), max_freq_hz_);
-
-    freq_hz_      = f_fast;   // demod / direction
-    freq_hz_slow_ = f_slow;   // tuner / moments
-
-    // Tuner gets WORLD vertical measurement proxy
-    if (enable_tuner_) {
-        update_tuner(dt, a_vert_world_up, f_after_still);
-    }
-
-    const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
-
-    if (enable_extra_drift_correction_) {
-        const float f_for_drift     = freq_hz_;
-        const float f_min_for_drift = 0.15f;              // > MIN_FREQ_HZ, tuned
-        const float sigma_a         = tune_.sigma_applied;
+    void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc,
+                    float tempC = 35.0f)
+    {
+        if (!mekf_) return;
+        time_ += dt;
     
-        // Only use extra drift when clearly in wave regime
-        const float SIGMA_A_MIN_FOR_DRIFT = 0.25f;        // ~2.5% g; tune on bench
+        // Keep BODY horizontal components around for direction/sign
+        const float a_x_body = acc.x();
+        const float a_y_body = acc.y();
     
-        const bool wavey_enough =
-            std::isfinite(f_for_drift) &&
-            f_for_drift > f_min_for_drift &&
-            std::isfinite(sigma_a) &&
-            sigma_a > SIGMA_A_MIN_FOR_DRIFT &&
-            !freq_stillness_.isStill() &&
-            tuner_.isReady() &&
-            time_ > online_tune_warmup_sec_;
+        // MEKF updates first (attitude + latent a_w)
+        mekf_->time_update(gyro, dt);
+        mekf_->measurement_update_acc_only(acc, tempC);
     
-        if (wavey_enough) {
-            const float tau = std::max(tune_.tau_applied,  min_tau_s_);
+        // Build a *measurement-based* WORLD inertial accel from raw accel + attitude
+        Eigen::Quaternionf q_bw = mekf_->quaternion();  // BODY → WORLD (NED)
+        q_bw.normalize();
     
-            // Vertical displacement std ~ k * σ_a * τ²
-            float sigma_disp_vert  = extra_drift_gain_ * sigma_a * tau * tau;
-            float sigma_disp_horiz = sigma_disp_vert * S_factor_;
+        Eigen::Vector3f acc_body(acc.x(), acc.y(), acc.z());        // specific force (BODY)
+        Eigen::Vector3f f_world = q_bw * acc_body;                  // specific force (WORLD)
+        Eigen::Vector3f g_world(0.0f, 0.0f, g_std);
+        Eigen::Vector3f a_world_proxy = f_world + g_world;          // inertial accel (WORLD, NED)
     
-            // Never let this pseudo-measurement get *too* confident
-            const float SIGMA_P_MIN = 0.05f;  // 5 cm
-            const float SIGMA_P_MAX = 5.0f;   // 5 m, safety upper bound
-            sigma_disp_vert  = std::min(std::max(sigma_disp_vert,  SIGMA_P_MIN), SIGMA_P_MAX);
-            sigma_disp_horiz = std::min(std::max(sigma_disp_horiz, SIGMA_P_MIN), SIGMA_P_MAX);
+        // WORLD vertical (up positive): z_ned is down, so a_up = -a_world.z
+        const float a_vert_world_up = -a_world_proxy.z();
     
-            Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
-                                            sigma_disp_horiz,
-                                            sigma_disp_vert);   
-            mekf_->updatePositionFromAccOmega(a_world_proxy, omega, sigma_disp_meas);
+        // LPF on vertical WORLD inertial accel for tracker input
+        const float a_vert_lp = freq_input_lpf_.step(a_vert_world_up, dt);
+    
+        // Raw freq from tracker driven by WORLD vertical accel, not body-z+g
+        const float f_tracker = static_cast<float>(tracker_policy_.run(a_vert_lp, dt));
+        f_raw = f_tracker;
+    
+        // Stillness detector also sees WORLD vertical
+        const float f_after_still = freq_stillness_.step(a_vert_lp, dt, f_tracker);
+    
+        // Fast & slow smoothed frequencies
+        float f_fast = freq_fast_smoother_.update(f_after_still);
+        float f_slow = freq_slow_smoother_.update(f_fast);
+    
+        f_fast = std::min(std::max(f_fast, min_freq_hz_), max_freq_hz_);
+        f_slow = std::min(std::max(f_slow, min_freq_hz_), max_freq_hz_);
+    
+        freq_hz_      = f_fast;   // demod / direction
+        freq_hz_slow_ = f_slow;   // tuner / moments
+    
+        // Tuner gets WORLD vertical measurement proxy
+        if (enable_tuner_) {
+            update_tuner(dt, a_vert_world_up, f_after_still);
         }
+    
+        const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
+    
+        if (enable_extra_drift_correction_) {
+            const float f_for_drift     = freq_hz_;
+            const float f_min_for_drift = 0.15f;              // > MIN_FREQ_HZ, tuned
+            const float sigma_a         = tune_.sigma_applied;
+        
+            // Only use extra drift when clearly in wave regime
+            const float SIGMA_A_MIN_FOR_DRIFT = 0.25f;        // ~2.5% g; tune on bench
+        
+            const bool wavey_enough =
+                std::isfinite(f_for_drift) &&
+                f_for_drift > f_min_for_drift &&
+                std::isfinite(sigma_a) &&
+                sigma_a > SIGMA_A_MIN_FOR_DRIFT &&
+                !freq_stillness_.isStill() &&
+                tuner_.isReady() &&
+                time_ > online_tune_warmup_sec_;
+        
+            if (wavey_enough) {
+                const float tau = std::max(tune_.tau_applied,  min_tau_s_);
+        
+                // Vertical displacement std ~ k * σ_a * τ²
+                float sigma_disp_vert  = extra_drift_gain_ * sigma_a * tau * tau;
+                float sigma_disp_horiz = sigma_disp_vert * S_factor_;
+        
+                // Never let this pseudo-measurement get *too* confident
+                const float SIGMA_P_MIN = 0.05f;  // 5 cm
+                const float SIGMA_P_MAX = 5.0f;   // 5 m, safety upper bound
+                sigma_disp_vert  = std::min(std::max(sigma_disp_vert,  SIGMA_P_MIN), SIGMA_P_MAX);
+                sigma_disp_horiz = std::min(std::max(sigma_disp_horiz, SIGMA_P_MIN), SIGMA_P_MAX);
+        
+                Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz,
+                                                sigma_disp_horiz,
+                                                sigma_disp_vert);   
+                updatePositionFromAccOmega(a_world_proxy, omega, sigma_disp_meas);
+            }
+        }
+      
+        // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
+        dir_filter_.update(a_x_body, a_y_body, omega, dt);
+        dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_world_up, dt);
     }
-  
-    // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
-    dir_filter_.update(a_x_body, a_y_body, omega, dt);
-    dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_world_up, dt);
-}
 
     //  Magnetometer correction
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
