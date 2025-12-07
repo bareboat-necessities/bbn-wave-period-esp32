@@ -811,7 +811,7 @@ private:
     float S_factor_      = 1.3f;   // (>0) scales Σ_aw horizontal std vs vertical
 
     TrackingPolicy                  tracker_policy_{};
-    FirstOrderIIRSmoother<float>    freq_fast_smoother_{FREQ_SMOOTHER_DT, 1.0f};   // ~1 s to 90% step
+    FirstOrderIIRSmoother<float>    freq_fast_smoother_{FREQ_SMOOTHER_DT, 2.0f};   // ~2 s to 90% step
     FirstOrderIIRSmoother<float>    freq_slow_smoother_{FREQ_SMOOTHER_DT, 10.0f};  // ~10 s to 90% step
     SeaStateAutoTuner               tuner_;
     TuneState                       tune_;
