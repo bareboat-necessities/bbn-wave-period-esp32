@@ -217,7 +217,7 @@ public:
         mekf_->measurement_update_acc_only(acc, tempC);
     
         // vertical (up positive)
-        a_vert_up = -(acc.z() + g_std);
+        a_vert_up = -a_z_inertial;
     
         // LPF on vertical accel for tracker input
         const float a_vert_lp = freq_input_lpf_.step(a_vert_up, dt);
@@ -284,7 +284,7 @@ public:
       
         // Direction filters run on BODY accel, but vertical "sign" uses WORLD vertical
         dir_filter_.update(a_x_body, a_y_body, omega, dt);
-        dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_z_inertial, dt);
+        dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_up, dt);
     }
 
     //  Magnetometer correction
