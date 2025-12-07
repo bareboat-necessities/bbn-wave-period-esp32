@@ -642,7 +642,7 @@ private:
 
         // If we're within scale, don't touch R_S
         const float ratio = heave_abs / disp_scale;
-        if (ratio <= 1.0f) {
+        if (ratio <= 1.7f) {
             return RS_base;
         }
 
