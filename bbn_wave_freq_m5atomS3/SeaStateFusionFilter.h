@@ -628,18 +628,13 @@ private:
         // Base clamp into global RS range
         float RS_base = std::min(std::max(RS_in, min_R_S_), max_R_S_);
 
-        // If disabled or not initialized, just use the smoothed value
-        if (!enable_heave_RS_gating_ || !mekf_) {
-            return RS_base;
-        }
-
         // Expected displacement scale from (σ, τ)
         const float disp_scale = getDisplacementScale();
-        if (!(disp_scale > 0.0f) || !std::isfinite(disp_scale)) {
+        if (!std::isfinite(disp_scale)) {
             return RS_base;
         }
 
-        // Actual vertical heave magnitude (note: mekf_ already checked above)
+        // Vertical heave magnitude 
         const float heave_abs = getHeaveAbs();
         if (!std::isfinite(heave_abs)) {
             return RS_base;
@@ -647,7 +642,7 @@ private:
 
         // If we're within scale, don't touch R_S
         const float ratio = heave_abs / disp_scale;
-        if (!(ratio > 1.0f)) {
+        if (ratio <= 1.0f) {
             return RS_base;
         }
 
@@ -666,8 +661,7 @@ private:
         float RS_adj = RS_base * gate;
 
         // Ensure we stay in the usual [min_R_S_, max_R_S_] range
-        if (RS_adj < min_R_S_) RS_adj = min_R_S_;
-        if (RS_adj > max_R_S_) RS_adj = max_R_S_;
+        RS_adj = std::min(std::max(RS_adj, min_R_S_), max_R_S_);
         return RS_adj;
     }
 
@@ -685,9 +679,11 @@ private:
         mekf_->set_aw_stationary_std(a_w_std); 
     
         // WORLD-frame pseudo-measurement noise for S (anisotropic diagonal).
-        float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+        const float RSb;
         if (enable_heave_RS_gating_) {
             RSb = adjustRSWithHeave(tune_.RS_applied);
+        } else {
+            RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
         }
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,   // world X
