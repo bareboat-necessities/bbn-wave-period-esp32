@@ -313,21 +313,21 @@ void updateTime(float dt,
     // sigma_disp_meas: per-axis std of the resulting displacement measurement [m]
     // omega_min: minimum |ω| to avoid insane amplification at very low freq
     void updatePositionFromAccOmega(
-        const Vector3& a, T omega, const Vector3& sigma_disp_meas, T omega_min = T(2.0 * M_PI * 0.06)) 
+        const Vector3f& a, float omega, const Vector3f& sigma_disp_meas, float omega_min = (2.0f * M_PI * 0.06f)) 
     {
         if (!std::isfinite(omega)) {
             return;
         }
     
-        T abs_omega = std::abs(omega);
+        float abs_omega = std::abs(omega);
         if (abs_omega < omega_min) {
             // Too low frequency: 1/ω² would blow up
             abs_omega = omega_min;
         }
-        const T w2 = omega * omega;
+        const float w2 = omega * omega;
     
         // First-order approximation: p ≈ -a/ω² on all axes
-        Vector3 p_meas = -a / w2;
+        Vector3f p_meas = -a / w2;
     
         if (!p_meas.allFinite()) {
             return;
