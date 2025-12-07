@@ -401,12 +401,12 @@ void setup(void) {
     // Enable/disable online τ / σₐ / Rₛ adaptation
     fusion_filter.enableTuner(true);
     fusion_filter.enableClamp(true);
-    fusion_filter.enableExtraDriftCorrection(true);
+    fusion_filter.enableExtraDriftCorrection(false);
 
     // SeaStateFusionFilter runtime tuning knobs
     fusion_filter.setRSXYFactor(0.07f);
-    fusion_filter.setSFactor(1.3f);
-    fusion_filter.setSigmaCoeff(0.2f); // tame sigma inflated by IMU noise to scale OU sigma to the sea state scale
+    fusion_filter.setSFactor(0.8f);
+    fusion_filter.setSigmaCoeff(0.5f); // tame sigma inflated by IMU noise to scale OU sigma to the sea state scale
     fusion_filter.setTauCoeff(1.6f);
     fusion_filter.setRSCoeff(0.3f);
     fusion_filter.setExtraDriftGain(0.05f); // more trust in extra drift measure based on first order wave approximation with frequency
