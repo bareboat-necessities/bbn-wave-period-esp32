@@ -455,7 +455,7 @@ public:
     }
 
     inline float getAccelVariance() const noexcept { return tuner_.getAccelVariance(); }
-    inline float getAccelVertical() const noexcept { return a_vert_world_up; }
+    inline float getAccelVertical() const noexcept { return a_vert_up; }
 
     inline WaveDirection getDirSignState() const noexcept { return dir_sign_state_; }
 
