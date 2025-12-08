@@ -1302,20 +1302,23 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(
     const Vector3& mag_meas_body)
 {
+    // De-heel magnetometer into B'
+    const Vector3 mag_meas = deheel_vector_(mag_meas_body);
+          
     // Predicted magnetic field in body frame
     const Vector3 v2hat = magnetometer_measurement_func();
 
     // Gating on norms
-    const T n_meas = mag_meas_body.norm();
+    const T n_meas = mag_meas.norm();
     const T n_pred = v2hat.norm();
     if (n_meas < T(1e-6) || n_pred < T(1e-6)) return;
 
     // Unit vectors for dot product check
-    Vector3 meas_n = mag_meas_body / n_meas;
+    Vector3 meas_n = mag_meas / n_meas;
     Vector3 pred_n = v2hat       / n_pred;
     T dotp = meas_n.dot(pred_n);
 
-    const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas_body : -mag_meas_body;
+    const Vector3 meas_fixed = (dotp >= T(0)) ? mag_meas : -mag_meas;
     const Vector3 r = meas_fixed - v2hat;
 
     const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
