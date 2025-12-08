@@ -961,8 +961,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
               
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
-    Vector3 const& gyr, T Ts)
+    Vector3 const& gyr_body, T Ts)
 {
+    // De-heel gyro into virtual frame B' using current wind_heel_rad_
+    const Vector3 gyr = deheel_vector_(gyr_body);
+
     // Attitude propagation
     Vector3 gyro_bias;
     if constexpr (with_gyro_bias) {
