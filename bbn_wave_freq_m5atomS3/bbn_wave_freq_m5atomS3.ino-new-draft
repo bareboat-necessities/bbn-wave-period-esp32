@@ -283,12 +283,13 @@ void read_and_processIMU_data() {
         gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_SPEED", ap_wave_speed);
       } else {
         // report for Arduino Serial Plotter
-        Serial.printf(",heave_alt_cm:%.4f", heave * 100);
+        Serial.printf(",heave_alt_cm:%.4f", heave * 100.0f);
         Serial.printf(",tau:%.4f", fusion_filter.getTauApplied());
         Serial.printf(",R_S:%.4f", fusion_filter.getRSApplied());
         Serial.printf(",sigma:%.6f", fusion_filter.getSigmaApplied());        
         Serial.printf(",fakeHs:%.6f", fusion_filter.getDisplacementScale());
-        //Serial.printf(",accel_vert:%.6f", fusion_filter.getAccelVertical());
+        Serial.printf(",accel_vert:%.6f", fusion_filter.getAccelVertical());
+        Serial.printf(",raw_accel_norm:%.6f", sqrtf(accel.x*accel.x + accel.y*accel.y + accel.z*accel.z));
         //Serial.printf(",roll_deg:%.2f",  roll);
         //Serial.printf(",pitch_deg:%.2f", pitch);
         //Serial.printf(",yaw_deg:%.2f",   yaw);
