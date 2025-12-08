@@ -259,17 +259,18 @@ class Kalman3D_Wave {
     [[nodiscard]] MatrixNX covariance_full() const { return Pext; }     // full extended covariance
 
     [[nodiscard]] Eigen::Quaternion<T> quaternion_boat() const {
-        // q_bw' = B'→W (stored)
+        // q_bw' = B'→W (virtual un-heeled body → world)
         Eigen::Quaternion<T> q_bw_prime = quaternion();
 
-        // q_BB' = rotation that maps B' to B (roll about X by +wind_heel)
-        const T half = wind_heel_rad_ * T(0.5);
+        // q_B'B = rotation that maps B → B' (roll about X by -wind_heel)
+        // (this matches deheel_vector_: R_x(-heel) * v_B = v_B')
+        const T half = T(-0.5) * wind_heel_rad_;
         const T c = std::cos(half);
         const T s = std::sin(half);
-        Eigen::Quaternion<T> q_BBprime(c, s, 0, 0); // (w, x, y, z)
+        Eigen::Quaternion<T> q_BprimeB(c, s, 0, 0); // (w, x, y, z), angle = -heel
 
-        // B→W = (B'→W) ∘ (B→B') = q_bw' * q_BB'
-        return q_bw_prime * q_BBprime;
+        // B→W = (B'→W) ∘ (B→B') = q_bw' * q_B'B
+        return q_bw_prime * q_BprimeB;
     }
 
     [[nodiscard]] Vector3 gyroscope_bias() const {
