@@ -1212,8 +1212,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
-    Vector3 const& acc_meas, T tempC)
-{              
+    Vector3 const& acc_meas_body, T tempC)
+{  
+    // De-heel measured accel into B'
+    const Vector3 acc_meas = deheel_vector_(acc_meas_body);
+          
     // Physical accelerometer measurement model
     // f_b = R_wb * (a_w - g) + b_a + noise
     const Vector3 f_pred = accelerometer_measurement_func(tempC);
