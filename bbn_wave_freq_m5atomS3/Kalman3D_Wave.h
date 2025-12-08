@@ -845,16 +845,22 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc_mag(
     Vector3 const& acc_body,
     Vector3 const& mag_body)
 {
+    const Vector3 acc = deheel_vector_(acc_body);
+    const Vector3 mag = deheel_vector_(mag_body);
+
+    // use acc & mag as if they are BODY-frame
+    // (now interpreted as B').
+  
     // Normalize accelerometer
-    T anorm = acc_body.norm();
+    T anorm = acc.norm();
     if (anorm < T(1e-8)) {
         throw std::runtime_error("Invalid accelerometer vector: norm too small for initialization");
     }
-    Vector3 acc_n = acc_body / anorm;
+    Vector3 acc_n = acc / anorm;
 
     // Build WORLD axes expressed in BODY coords
     Vector3 z_world = -acc_n;                         // world Z (down) in body coord
-    Vector3 mag_h   = mag_body - (mag_body.dot(z_world)) * z_world;
+    Vector3 mag_h   = mag - (mag.dot(z_world)) * z_world;
     if (mag_h.norm() < T(1e-8)) {
         throw std::runtime_error("Magnetometer vector parallel to gravity — cannot initialize yaw");
     }
@@ -873,7 +879,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc_mag(
     qref.normalize();
 
     // Store reference magnetic vector in world frame
-    v2ref = R_bw() * mag_body;  // body to world, keep µT
+    v2ref = R_bw() * mag;  // body to world, µT
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
