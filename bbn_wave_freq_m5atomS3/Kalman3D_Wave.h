@@ -258,19 +258,20 @@ class Kalman3D_Wave {
     [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left block
     [[nodiscard]] MatrixNX covariance_full() const { return Pext; }     // full extended covariance
 
+    // Boat attitude in the *physical* heeled frame B → W (NED).
     [[nodiscard]] Eigen::Quaternion<T> quaternion_boat() const {
-        // q_bw' = B'→W (virtual un-heeled body → world)
-        Eigen::Quaternion<T> q_bw_prime = quaternion();
+        // Internal quaternion() = B'→W (un-heeled frame to world)
+        const Eigen::Quaternion<T> q_WBprime = quaternion();
 
-        // q_B'B = rotation that maps B → B' (roll about X by -wind_heel)
-        // (this matches deheel_vector_: R_x(-heel) * v_B = v_B')
-        const T half = T(-0.5) * wind_heel_rad_;
+        // q_B'B = rotation that maps physical body B to un-heeled frame B'
+        // Roll of -wind_heel about X: B'←B ("un-heel").
+        const T half = -wind_heel_rad_ * T(0.5);
         const T c = std::cos(half);
         const T s = std::sin(half);
-        Eigen::Quaternion<T> q_BprimeB(c, s, 0, 0); // (w, x, y, z), angle = -heel
+        const Eigen::Quaternion<T> q_BprimeB(c, s, 0, 0); // (w, x, y, z)
 
-        // B→W = (B'→W) ∘ (B→B') = q_bw' * q_B'B
-        return q_bw_prime * q_BprimeB;
+        // Composition: B→W = (B'→W) ∘ (B→B') = q_WB' * q_B'B
+        return q_WBprime * q_BprimeB;
     }
 
     [[nodiscard]] Vector3 gyroscope_bias() const {
@@ -429,15 +430,18 @@ class Kalman3D_Wave {
                                const Eigen::Quaternion<T> &q_bw,
                                const Vector3 &a_w_ned);
               
-    // IMU lever-arm API (BODY frame)
+    // IMU lever-arm API
+    // r_b: IMU position w.r.t. CoG in the *physical* BODY frame B [m].
+    // Internally we de-heel this into B' each step when applying lever-arm kinematics.
     void set_imu_lever_arm_body(const Vector3& r_b) {
-        r_imu_wrt_cog_b_ = r_b;
+        r_imu_wrt_cog_body_phys_ = r_b;
         use_imu_lever_arm_ = (r_b.squaredNorm() > T(0));
     }
     void clear_imu_lever_arm() {
-        r_imu_wrt_cog_b_.setZero();
+        r_imu_wrt_cog_body_phys_.setZero();
         use_imu_lever_arm_ = false;
     }
+
     void set_alpha_smoothing_tau(T tau_sec) { alpha_smooth_tau_ = std::max(T(0), tau_sec); }
 
     // Set / update steady wind heel (roll about BODY X, rad).
@@ -445,14 +449,7 @@ class Kalman3D_Wave {
     // calling time_update/measurement_update_* for the next step.
     void update_wind_heel(T heel_rad) {
         wind_heel_rad_ = heel_rad;
-        if (std::abs(heel_rad) < T(1e-9)) {
-            cos_unheel_x_ = T(1);
-            sin_unheel_x_ = T(0);
-        } else {
-            const T angle = -heel_rad;
-            cos_unheel_x_ = std::cos(angle);
-            sin_unheel_x_ = std::sin(angle);
-        }
+        update_unheel_trig_();
     }
               
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
@@ -504,12 +501,13 @@ class Kalman3D_Wave {
     bool use_exact_att_bias_Qd_ = true;
 
     // IMU lever-arm (off-CoG) support
-    bool use_imu_lever_arm_ = false;
-    Vector3 r_imu_wrt_cog_b_ = Vector3::Zero(); // IMU position w.r.t. CoG, BODY frame [m]
+    bool   use_imu_lever_arm_       = false;
+    // Lever arm in *physical* BODY frame B (what you measure on the boat).
+    Vector3 r_imu_wrt_cog_body_phys_ = Vector3::Zero();
 
-    // Cached kinematics (BODY)
-    Vector3 prev_omega_b_ = Vector3::Zero();
-    Vector3 alpha_b_      = Vector3::Zero();
+    // Cached kinematics in the virtual un-heeled frame B'
+    Vector3 prev_omega_b_ = Vector3::Zero(); // ω^{B'}
+    Vector3 alpha_b_      = Vector3::Zero(); // α^{B'}
     bool    have_prev_omega_ = false;
 
     // Optional smoothing for alpha (0 = off)
@@ -643,8 +641,8 @@ class Kalman3D_Wave {
     }
         
     // convenience getters
-    Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body
-    Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body→world
+    Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body'
+    Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body'→world
 
     // Helpers
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
@@ -745,9 +743,14 @@ class Kalman3D_Wave {
     T sin_unheel_x_   = T(0);  // sin(-wind_heel)
 
     EIGEN_STRONG_INLINE void update_unheel_trig_() {
-        const T angle = -wind_heel_rad_;
-        cos_unheel_x_ = std::cos(angle);
-        sin_unheel_x_ = std::sin(angle);
+        if (std::abs(wind_heel_rad_) < T(1e-9)) {
+            cos_unheel_x_ = T(1);
+            sin_unheel_x_ = T(0);
+        } else {
+            const T angle = -wind_heel_rad_;
+            cos_unheel_x_ = std::cos(angle);
+            sin_unheel_x_ = std::sin(angle);
+        }
     }
 
     // Rotate a BODY-frame vector into the virtual un-heeled frame B'
@@ -972,7 +975,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
         xext.template segment<3>(OFF_BA).setZero();  // accel bias block
     }
 
-    // q_bw is BODY→WORLD (NED). Internally we store WORLD→BODY.
+    // q_bw is BODY→WORLD (NED). Internally we store WORLD→BODY'.
     qref = q_bw.conjugate();
     qref.normalize();
 
@@ -987,7 +990,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Vector3 const& gyr_body, T Ts)
 {
     // De-heel gyro into virtual frame B' using current wind_heel_rad_
-    const Vector3 gyr = deheel_vector_(gyr_body);
+    const Vector3 gyr = deheel_vector_(gyr_body);   // ω^{B'}
 
     // Attitude propagation
     Vector3 gyro_bias;
@@ -998,7 +1001,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     }
     last_gyr_bias_corrected = gyr - gyro_bias;
 
-    // IMU lever-arm: estimate angular acceleration α_b (from bias-corrected ω_b)
+    // IMU lever-arm: estimate angular acceleration α^{B'} (from bias-corrected ω^{B'})
     const Vector3 omega_b = last_gyr_bias_corrected;
     if (have_prev_omega_ && Ts > T(0)) {
         const Vector3 alpha_raw = (omega_b - prev_omega_b_) / Ts;
@@ -1241,7 +1244,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     const Vector3 acc_meas = deheel_vector_(acc_meas_body);
           
     // Physical accelerometer measurement model
-    // f_b = R_wb * (a_w - g) + b_a + noise
+    // f_b' = R_wb (a_w - g) + a_lever^{B'} + b_a(temp) + noise
     const Vector3 f_pred = accelerometer_measurement_func(tempC);
     const Vector3 f_meas = acc_meas;
     const Vector3 r = f_meas - f_pred; // innovation in true units (m/s²)
@@ -1367,26 +1370,29 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_o
     applyQuaternionCorrectionFromErrorState();
 }
 
-// specific force prediction (BODY):
-//   f_b = R_wb (a_w − g) + α_b × r_imu + ω_b × (ω_b × r_imu) + b_a(temp)
-// with temp correction: b_a(temp) = b_a0 + k_a * (tempC − tempC_ref)
+// specific force prediction (BODY'):
+//   f_b' = R_wb (a_w − g) + α^{B'} × r_imu^{B'} + ω^{B'} × (ω^{B'} × r_imu^{B'}) + b_a(temp)
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T,3,1>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_func(T tempC) const {
     const Vector3 g_world(0,0,+gravity_magnitude_);
     const Vector3 aw = xext.template segment<3>(OFF_AW);
 
-    // CoG specific force in BODY
+    // CoG specific force in B'
     const Vector3 f_cog_b = R_wb() * (aw - g_world);
     Vector3 fb = f_cog_b;
 
-    // Optional IMU lever-arm correction (BODY)
+    // Optional IMU lever-arm correction:
+    // Use ω^{B'}, α^{B'} and r_imu expressed in B' (via de-heel).
     if (use_imu_lever_arm_) {
-        const Vector3& omega_b = last_gyr_bias_corrected;
-        const Vector3& alpha_b = alpha_b_;
-        const Vector3& r_imu_b = r_imu_wrt_cog_b_;
-        fb.noalias() += alpha_b.cross(r_imu_b) + omega_b.cross(omega_b.cross(r_imu_b));
+        const Vector3& omega_bprime = last_gyr_bias_corrected; // ω^{B'}
+        const Vector3& alpha_bprime = alpha_b_;                // α^{B'}
+        const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+
+        fb.noalias() += alpha_bprime.cross(r_imu_bprime)
+                     +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));
     }
+
     if constexpr (with_accel_bias) {
         const Vector3 ba0 = xext.template segment<3>(OFF_BA);
         const Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref);
@@ -1561,7 +1567,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     const T x       = h * inv_tau;      // x = h/τ
 
     // Small-x series branch (|h/τ| ≪ 1)
-    // Derived from Qd = ∫_0^h Φ(t) G q_c Gᵀ Φ(t)ᵀ dt with
+    // Derived from Qd = ∫_0^h Φ(t) G q_c Gᵀ dt with
     //   q_c = 2 σ² / τ,  a is OU with corr. time τ, stat. var σ².
     //
     // Series in h up to O(h^5) (equivalently O(x^5)):
@@ -1719,4 +1725,3 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     project_psd<T,4>(Qd_axis, T(1e-12));
     Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
 }
-              
