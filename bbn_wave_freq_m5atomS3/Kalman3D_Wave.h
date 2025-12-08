@@ -425,10 +425,8 @@ class Kalman3D_Wave {
     void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
 
     // Initialize full extended state from "truth"
-    void initialize_from_truth(const Vector3 &p_ned,
-                               const Vector3 &v_ned,
-                               const Eigen::Quaternion<T> &q_bw,
-                               const Vector3 &a_w_ned);
+    void initialize_from_truth(const Vector3 &p_ned, const Vector3 &v_ned,
+                               const Eigen::Quaternion<T> &q_bw, const Vector3 &a_w_ned);
               
     // IMU lever-arm API
     // r_b: IMU position w.r.t. CoG in the *physical* BODY frame B [m].
@@ -953,10 +951,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc(Vect
 
 template <typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
-    const Vector3 &p_ned,
-    const Vector3 &v_ned,
-    const Eigen::Quaternion<T> &q_bw,
-    const Vector3 &a_w_ned)
+    const Vector3 &p_ned, const Vector3 &v_ned,
+    const Eigen::Quaternion<T> &q_bw, const Vector3 &a_w_ned)
 {
     // Reset entire error state to 0
     xext.setZero();
@@ -979,10 +975,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
     qref = q_bw.conjugate();
     qref.normalize();
 
-    // Reset covariance to "almost zero" (but PSD-ish)
+    // Reset covariance
     Pext.setZero();
-    const T eps = T(1e-10);
-    Pext.diagonal().array() = eps;
+    const T p_0 = T(1e-5);
+    Pext.diagonal().array() = p_0;
 }    
               
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
