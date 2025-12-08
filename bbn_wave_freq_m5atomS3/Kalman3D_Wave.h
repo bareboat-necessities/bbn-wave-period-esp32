@@ -258,6 +258,20 @@ class Kalman3D_Wave {
     [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left block
     [[nodiscard]] MatrixNX covariance_full() const { return Pext; }     // full extended covariance
 
+    [[nodiscard]] Eigen::Quaternion<T> quaternion_boat() const {
+        // q_bw' = B'→W (stored)
+        Eigen::Quaternion<T> q_bw_prime = quaternion();
+
+        // q_BB' = rotation that maps B' to B (roll about X by +wind_heel)
+        const T half = wind_heel_rad_ * T(0.5);
+        const T c = std::cos(half);
+        const T s = std::sin(half);
+        Eigen::Quaternion<T> q_BBprime(c, s, 0, 0); // (w, x, y, z)
+
+        // B→W = (B'→W) ∘ (B→B') = q_bw' * q_BB'
+        return q_bw_prime * q_BBprime;
+    }
+
     [[nodiscard]] Vector3 gyroscope_bias() const {
         if constexpr (with_gyro_bias) {
             return xext.template segment<3>(3);
