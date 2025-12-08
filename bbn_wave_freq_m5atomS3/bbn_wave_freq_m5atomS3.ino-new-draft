@@ -155,16 +155,13 @@ void read_and_processIMU_data() {
   delta_t = clamp_val(delta_t, 0.001f, 0.1f);
   last_update = now;
 
-  // Map M5 IMU to BODY NED, convert accel to m/s^2, gyro to rad/s
-  //
-  //   gyr = { gyro.y*DEG_TO_RAD,  gyro.x*DEG_TO_RAD, -gyro.z*DEG_TO_RAD };
-  //   acc = { accel.y,           accel.x,          -accel.z           } (in g)
-  Eigen::Vector3f acc_meas_ned(
+  // Map M5 IMU to BODY NED, convert accel to m/s^2, gyro to rad/s (M5Stack AtomS3R with BMI270 screen face up)
+  Eigen::Vector3f acc_meas_ned(  
       accel.y * g_std,
       accel.x * g_std,
       -accel.z * g_std
   );
-  Eigen::Vector3f gyr_meas_ned(
+  Eigen::Vector3f gyr_meas_ned(  
       gyro.y * DEG_TO_RAD,
       gyro.x * DEG_TO_RAD,
       -gyro.z * DEG_TO_RAD
@@ -289,10 +286,16 @@ void read_and_processIMU_data() {
         Serial.printf(",sigma:%.6f", fusion_filter.getSigmaApplied());        
         Serial.printf(",fakeHs:%.6f", fusion_filter.getDisplacementScale());
         Serial.printf(",accel_vert:%.6f", fusion_filter.getAccelVertical());
-        Serial.printf(",raw_accel_norm:%.6f", sqrtf(accel.x*accel.x + accel.y*accel.y + accel.z*accel.z));
-        //Serial.printf(",roll_deg:%.2f",  roll);
-        //Serial.printf(",pitch_deg:%.2f", pitch);
-        //Serial.printf(",yaw_deg:%.2f",   yaw);
+        //Serial.printf(",amp_accel:%.6f", g_std * sqrtf(accel.x*accel.x + accel.y*accel.y + accel.z*accel.z));
+        //Serial.printf(",accel.x:%.6f", accel.x);
+        //Serial.printf(",accel.y:%.6f", accel.y);
+        //Serial.printf(",accel.z:%.6f", accel.z);
+        //Serial.printf(",gyro.x:%.6f", gyro.x);
+        //Serial.printf(",gyro.y:%.6f", gyro.y);
+        //Serial.printf(",gyro.z:%.6f", gyro.z);
+        Serial.printf(",roll_deg:%.2f",  roll);
+        Serial.printf(",pitch_deg:%.2f", pitch);
+        Serial.printf(",yaw_deg:%.2f",   yaw);
         //Serial.printf(",freqRaw:%.3f",     fusion_filter.getFreqRawHz());
         //Serial.printf(",freq:%.3f",        freq);
         //Serial.printf(",accel.z:%.3f",   accel.z);        
