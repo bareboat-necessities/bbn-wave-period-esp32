@@ -424,6 +424,21 @@ class Kalman3D_Wave {
         use_imu_lever_arm_ = false;
     }
     void set_alpha_smoothing_tau(T tau_sec) { alpha_smooth_tau_ = std::max(T(0), tau_sec); }
+
+    // Set / update steady wind heel (roll about BODY X, rad).
+    // Call this periodically (e.g. when your wind model changes) *before*
+    // calling time_update/measurement_update_* for the next step.
+    void update_wind_heel(T heel_rad) {
+        wind_heel_rad_ = heel_rad;
+        if (std::abs(heel_rad) < T(1e-9)) {
+            cos_unheel_x_ = T(1);
+            sin_unheel_x_ = T(0);
+        } else {
+            const T angle = -heel_rad;
+            cos_unheel_x_ = std::cos(angle);
+            sin_unheel_x_ = std::sin(angle);
+        }
+    }
               
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
         const T cI = std::cos(I_rad), sI = std::sin(I_rad);
@@ -705,6 +720,33 @@ class Kalman3D_Wave {
         // Final symmetry clean-up (cheap but good hygiene)
         symmetrize_Pext_();
     }
+
+    // Steady wind heel model (roll about BODY X)
+    // wind_heel_rad_ : current steady heel in radians (hull frame)
+    // Internally we work in a virtual "un-heeled" body frame B'
+    // with rotation R_x(-wind_heel_rad_). We cache cos/sin for speed.
+    T wind_heel_rad_  = T(0);
+    T cos_unheel_x_   = T(1);  // cos(-wind_heel)
+    T sin_unheel_x_   = T(0);  // sin(-wind_heel)
+
+    EIGEN_STRONG_INLINE void update_unheel_trig_() {
+        const T angle = -wind_heel_rad_;
+        cos_unheel_x_ = std::cos(angle);
+        sin_unheel_x_ = std::sin(angle);
+    }
+
+    // Rotate a BODY-frame vector into the virtual un-heeled frame B'
+    EIGEN_STRONG_INLINE Vector3 deheel_vector_(const Vector3& v_body) const {
+        // R_x(-heel) * v
+        if (std::abs(wind_heel_rad_) < T(1e-9)) {
+            return v_body;
+        }
+        Vector3 v;
+        v.x() = v_body.x();
+        v.y() = cos_unheel_x_ * v_body.y() - sin_unheel_x_ * v_body.z();
+        v.z() = sin_unheel_x_ * v_body.y() + cos_unheel_x_ * v_body.z();
+        return v;
+    }             
 };
 
 // Implementation
