@@ -85,14 +85,15 @@ void read_and_processIMU_data() {
   );
 
   if (kalm_w_first) {
-    mekf.initialize_from_acc(acc_meas_body);
+    //mekf.initialize_from_acc(acc_meas_body);
+    mekf.initialize_from_acc_mag(acc_meas_body, mag_body);
     kalm_w_first = false;
   }
 
   // *** SAME ORDER AS OLD WORKING CODE: predict then correct ***
   mekf.time_update(gyr_meas_body, delta_t);
-  mekf.measurement_update_acc_only(acc_meas_body);
-  // mekf.measurement_update(acc_meas_body, mag_body); // later if you want mag
+  //mekf.measurement_update_acc_only(acc_meas_body);
+  mekf.measurement_update(acc_meas_body, mag_body); // later if you want mag
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
   auto qvec = mekf.quaternion();
