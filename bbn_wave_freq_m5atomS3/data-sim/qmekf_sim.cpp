@@ -123,7 +123,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
         // Initialization (accel-only)
         if (first) {
-            mekf.initialize_from_acc(Vector3f(0.0f, 0.0f, g_std)/*acc_f*/);
+            mekf.initialize_from_acc(acc_f);
             first = false;
         }
 
