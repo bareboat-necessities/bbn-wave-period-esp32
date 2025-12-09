@@ -195,7 +195,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // First-step init
         if (first) {
             // Attitude from accel
-            filter.initialize_from_acc(acc_meas_ned);  
+            filter.initialize_from_acc(Vector3f(0.0f, 0.0f, g_std) /*acc_meas_ned*/);  
             first = false;
         }
 
