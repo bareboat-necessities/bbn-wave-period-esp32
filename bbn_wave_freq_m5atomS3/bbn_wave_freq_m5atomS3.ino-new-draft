@@ -157,13 +157,13 @@ void read_and_processIMU_data() {
 
   // Map M5 IMU to BODY NED, convert accel to m/s^2, gyro to rad/s (M5Stack AtomS3R with BMI270 screen face up)
   Eigen::Vector3f acc_meas_ned(  
-      accel.y * g_std,
-      accel.x * g_std,
+      -accel.y * g_std,
+      -accel.x * g_std,
       -accel.z * g_std
   );
   Eigen::Vector3f gyr_meas_ned(  
-      gyro.y * DEG_TO_RAD,
-      gyro.x * DEG_TO_RAD,
+      -gyro.y * DEG_TO_RAD,
+      -gyro.x * DEG_TO_RAD,
       -gyro.z * DEG_TO_RAD
   );
 
