@@ -33,7 +33,7 @@ float t = 0.0f;
 using Vector3f = Eigen::Matrix<float,3,1>;
 
 // Same noise params as old working code:
-static Vector3f sigma_a = {6.0e-3f, 3.0e-3f, 6.0e-3f};
+static Vector3f sigma_a = {0.025f, 0.025f, 0.025f};
 static Vector3f sigma_g = {0.15f * M_PI / 180.0f,
                            0.4f  * M_PI / 180.0f,
                            0.15f * M_PI / 180.0f};
@@ -61,16 +61,16 @@ void read_and_processIMU_data() {
   m5::imu_3d_t mag   = data.mag;
 
   float delta_t = (now - last_update) / 1000000.0f;  // sec
-  // match old code: clamp dt
+  // clamp dt
   if (delta_t < 0.001f) delta_t = 0.001f;
   if (delta_t > 0.1f)   delta_t = 0.1f;
   last_update = now;
 
-  // Map IMU to BODY NED frame, **in g units** (no g_std here!)
+  // Map IMU to BODY NED frame
   Eigen::Vector3f acc_meas_body(
-    accel.y,        // X_body = sensor Y
-    accel.x,        // Y_body = sensor X
-    -accel.z        // Z_body = -sensor Z
+    accel.y * g_std,       // X_body = sensor Y
+    accel.x * g_std,       // Y_body = sensor X
+    -accel.z * g_std,      // Z_body = -sensor Z
   );
   Eigen::Vector3f gyr_meas_body(
     gyro.y * DEG_TO_RAD,
@@ -85,15 +85,14 @@ void read_and_processIMU_data() {
   );
 
   if (kalm_w_first) {
-    //mekf.initialize_from_acc(acc_meas_body);
-    mekf.initialize_from_acc_mag(acc_meas_body, mag_body);
+    mekf.initialize_from_acc(acc_meas_body);
+    //mekf.initialize_from_acc_mag(acc_meas_body, mag_body);
     kalm_w_first = false;
   }
 
-  // *** SAME ORDER AS OLD WORKING CODE: predict then correct ***
   mekf.time_update(gyr_meas_body, delta_t);
-  //mekf.measurement_update_acc_only(acc_meas_body);
-  mekf.measurement_update(acc_meas_body, mag_body); // later if you want mag
+  mekf.measurement_update_acc_only(acc_meas_body);
+  //mekf.measurement_update(acc_meas_body, mag_body); // later if you want mag
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
   auto qvec = mekf.quaternion();
