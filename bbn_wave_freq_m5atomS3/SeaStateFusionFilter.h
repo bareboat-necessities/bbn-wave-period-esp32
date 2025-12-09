@@ -472,8 +472,8 @@ public:
     Eigen::Vector3f getEulerNautical() const {
         if (!mekf_) return {NAN, NAN, NAN};
 
-        // q_bw: body→world (Kalman3D_Wave::quaternion() already returns qref.conjugate())
-        Eigen::Quaternionf q_bw = mekf_->quaternion();
+        // q_bw: body→world 
+        Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
         q_bw.normalize();
 
         const float x = q_bw.x();
