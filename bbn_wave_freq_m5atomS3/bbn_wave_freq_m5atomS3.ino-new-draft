@@ -357,7 +357,7 @@ void setup(void) {
 
   // Initialize unified fusion filter
   {
-    Eigen::Vector3f sigma_a(0.25f, 0.25f, 0.25f);          // accel noise [m/s^2]
+    Eigen::Vector3f sigma_a(0.18f, 0.18f, 0.18f);          // accel noise [m/s^2]
     Eigen::Vector3f sigma_g(0.003f, 0.003f, 0.003f);       // gyro noise [rad/s]
     Eigen::Vector3f sigma_m(0.3f, 0.3f, 0.3f);             // mag noise (unused when with_mag=false)
   
@@ -365,9 +365,9 @@ void setup(void) {
         sigma_a,   // accel noise [m/s^2]
         sigma_g,   // gyro noise [rad/s]
         sigma_m,   // mag noise (unused when with_mag=false)
-        1e-6f,     // attitude error covariance
+        0.002f,     // attitude error covariance
         1e-1f,     // gyro bias covariance
-        1e-12f,    // gyro bias noise RW (Q_b)
+        1e-8f,    // gyro bias noise RW (Q_b)
         1.5f,      // S pseudo-meas noise (scalar)
         g_std      // gravity magnitude (m/s^2)
     );
@@ -383,7 +383,7 @@ void setup(void) {
   
     // Let bias *wander* more: random-walk σ per sqrt(second)
     // 0.003–0.005 m/s²/√s; tune by looking at heave drift.
-    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(1e-6f));
+    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(1e-4f));
   
     // Temperature model
     // Rough magnitude from datasheet, sign guessed as positive
