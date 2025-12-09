@@ -823,7 +823,7 @@ private:
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_S_coeff_    = 2.4f;
+    float R_S_coeff_    = 2.2f;
     float tau_coeff_    = 1.6f;
     float sigma_coeff_  = 1.0f;
 
