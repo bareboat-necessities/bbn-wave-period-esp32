@@ -37,7 +37,7 @@ static Vector3f sigma_a = {0.025f, 0.025f, 0.025f};
 static Vector3f sigma_g = {0.15f * M_PI / 180.0f,
                            0.4f  * M_PI / 180.0f,
                            0.15f * M_PI / 180.0f};
-static Vector3f sigma_m = {3.2e-3f, 3.2e-3f, 3.2e-3f};
+static Vector3f sigma_m = {3.2e-1f, 3.2e-1f, 3.2e-1f};
 float Pq0 = 1e-2f;
 float Pb0 = 1e-2f;
 float b0  = 1e-12f;
