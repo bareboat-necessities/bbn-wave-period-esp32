@@ -1491,6 +1491,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_posit
     const Vector3& p_meas,
     const Vector3& sigma_meas)
 {
+    if (!linear_block_enabled_) {
+        return;
+    }
+    
     constexpr int off_P = OFF_P; // position block
 
     // Predicted position (world, NED)
