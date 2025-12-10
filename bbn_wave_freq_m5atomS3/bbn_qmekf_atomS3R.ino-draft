@@ -68,9 +68,9 @@ void read_and_processIMU_data() {
 
   // Map IMU to BODY NED frame
   Eigen::Vector3f acc_meas_body(
-    accel.y,       // X_body = sensor Y
-    accel.x,       // Y_body = sensor X
-    -accel.z       // Z_body = -sensor Z
+    accel.y * g_std,       // X_body = sensor Y
+    accel.x * g_std,       // Y_body = sensor X
+    -accel.z * g_std       // Z_body = -sensor Z
   );
   Eigen::Vector3f gyr_meas_body(
     gyro.y * DEG_TO_RAD,
