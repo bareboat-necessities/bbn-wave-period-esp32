@@ -74,7 +74,7 @@ constexpr float MIN_TAU_S   = 0.02f;
 constexpr float MAX_TAU_S   = 3.0f;
 constexpr float MAX_SIGMA_A = 6.0f;
 constexpr float MIN_R_S     = 0.5f;
-constexpr float MAX_R_S     = 35.0f;
+constexpr float MAX_R_S     = 30.0f;
 
 constexpr float ADAPT_TAU_SEC            = 2.5f;
 constexpr float ADAPT_R_S_SEC            = 8.0f;
