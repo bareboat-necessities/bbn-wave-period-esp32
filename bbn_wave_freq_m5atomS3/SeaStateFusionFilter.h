@@ -852,8 +852,8 @@ private:
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_S_coeff_    = 2.6f;
-    float tau_coeff_    = 1.8f;
+    float R_S_coeff_    = 1.9f;
+    float tau_coeff_    = 1.45f;
     float sigma_coeff_  = 1.0f;
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
