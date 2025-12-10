@@ -1,5 +1,8 @@
 /*
   Minimal Q-MEKF yaw/pitch/roll demo, matching the old working code path
+
+  for atomS3R from m5stack
+  
 */
 
 #include <M5Unified.h>
@@ -93,8 +96,8 @@ void read_and_processIMU_data() {
   }
 
   mekf.time_update(gyr_meas_body, delta_t);
-  //mekf.measurement_update_acc_only(acc_meas_body);
-  mekf.measurement_update(acc_meas_body, mag_body); // later if you want mag
+  mekf.measurement_update_acc_only(acc_meas_body);
+  mekf.measurement_update_mag_only(mag_body); 
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
   auto qvec = mekf.quaternion();
@@ -181,7 +184,7 @@ void loop(void) {
   unsigned long start = micros();
   M5.update();
   repeatMe();
-  long duration = micros() - start + 5;
+  long duration = micros() - start + 1;
   long delay_micros = 10000 - duration;  // ~100 Hz
   if (delay_micros > 0) {
     delayMicroseconds(delay_micros);
