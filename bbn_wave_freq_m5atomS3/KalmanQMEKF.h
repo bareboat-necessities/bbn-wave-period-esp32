@@ -136,23 +136,25 @@ constexpr QuaternionMEKF<T, with_bias>::QuaternionMEKF(T const sigma_a[3], T con
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag) {
   T const anorm = acc.norm();
+  if (anorm < std::numeric_limits<T>::epsilon()) {
+    v1ref << 0, 0, -1;
+    qref.setIdentity();
+    v2ref = mag.normalized();
+    return;
+  }
+
   v1ref << 0, 0, -anorm;
 
   Vector3 const acc_normalized = acc / anorm;
   Vector3 const mag_normalized = mag.normalized();
-
   Vector3 const Rz = -acc_normalized;
   Vector3 const Ry = Rz.cross(mag_normalized).normalized();
   Vector3 const Rx = Ry.cross(Rz).normalized();
-
-  // Construct the rotation matrix
   Matrix3 const R = (Matrix3() << Rx, Ry, Rz).finished();
-
-  // Convert it to a quaternion
   qref = Eigen::Quaternion<T>(R.transpose());
 
-  // Reference magnetic field vector
-  v2ref = qref * mag;
+  // world-frame mag ref
+  v2ref = qref * mag;        
 }
 
 template<typename T, bool with_bias>
@@ -184,8 +186,19 @@ Eigen::Quaternion<T> QuaternionMEKF<T, with_bias>::quaternion_from_acc(Vector3 c
 template<typename T, bool with_bias>
 void QuaternionMEKF<T, with_bias>::initialize_from_acc(Vector3 const& acc) {
   T const anorm = acc.norm();
+  if (anorm < std::numeric_limits<T>::epsilon()) {
+    // degenerate accel, keep identity or bail
+    v1ref << 0, 0, -1;
+    qref.setIdentity();
+    return;
+  }
+
+  // v1ref magnitude = ‖acc‖
   v1ref << 0, 0, -anorm;
-  qref = quaternion_from_acc(acc);
+
+  // BUT the quaternion initializer must see a *unit* vector:
+  Vector3 acc_norm = acc / anorm;
+  qref = quaternion_from_acc(acc_norm);
 }
 
 template<typename T, bool with_bias>
