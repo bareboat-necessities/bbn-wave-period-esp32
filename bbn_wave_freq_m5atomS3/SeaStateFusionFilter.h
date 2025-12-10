@@ -309,8 +309,7 @@ public:
                 std::isfinite(sigma_a) &&
                 sigma_a > SIGMA_A_MIN_FOR_DRIFT &&
                 !freq_stillness_.isStill() &&
-                tuner_.isReady() &&
-                time_ > online_tune_warmup_sec_;
+                (startup_stage_ == StartupStage::Live);
         
             if (wavey_enough) {
                 const float tau = std::max(tune_.tau_applied,  min_tau_s_);
