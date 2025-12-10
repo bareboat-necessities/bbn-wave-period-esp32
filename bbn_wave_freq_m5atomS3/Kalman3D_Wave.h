@@ -1223,15 +1223,19 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     if constexpr (with_accel_bias) {
         constexpr int NB = 3;
         auto P_BB = Pext.template block<NB,NB>(OFF_BA,OFF_BA);
-        P_BB.noalias() += Q_bacc_ * Ts; // ensure Q_bacc_ units match this convention
+        P_BB.noalias() += Q_bacc_ * Ts;
         Pext.template block<NB,NB>(OFF_BA,OFF_BA) = P_BB;
 
         Eigen::Matrix<T,NA,NB> tmpAB = F_AA * Pext.template block<NA,NB>(0,OFF_BA);
-        Eigen::Matrix<T,NL,NB> tmpLB = F_LL * Pext.template block<NL,NB>(OFF_V,OFF_BA);
         Pext.template block<NA,NB>(0,OFF_BA) = tmpAB;
-        Pext.template block<NL,NB>(OFF_V,OFF_BA) = tmpLB;
         Pext.template block<NB,NA>(OFF_BA,0) = tmpAB.transpose();
-        Pext.template block<NB,NL>(OFF_BA,OFF_V) = tmpLB.transpose();
+
+        if (linear_block_enabled_) {
+            constexpr int NL = 12;
+            Eigen::Matrix<T,NL,NB> tmpLB = F_LL * Pext.template block<NL,NB>(OFF_V,OFF_BA);
+            Pext.template block<NL,NB>(OFF_V,OFF_BA) = tmpLB;
+            Pext.template block<NB,NL>(OFF_BA,OFF_V) = tmpLB.transpose();
+        }
     }
 
     // Symmetry hygiene
