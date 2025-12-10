@@ -33,7 +33,7 @@ float t = 0.0f;
 using Vector3f = Eigen::Matrix<float,3,1>;
 
 // Same noise params as old working code:
-static Vector3f sigma_a = {0.025f, 0.025f, 0.025f};
+static Vector3f sigma_a = {0.025f * g_std, 0.025f * g_std, 0.025f * g_std};
 static Vector3f sigma_g = {0.15f * M_PI / 180.0f,
                            0.4f  * M_PI / 180.0f,
                            0.15f * M_PI / 180.0f};
