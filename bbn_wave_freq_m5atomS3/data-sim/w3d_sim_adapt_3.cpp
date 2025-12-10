@@ -145,7 +145,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
     const Vector3f sigma_a_init(0.25f, 0.25f, 0.25f);
     const Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f);
-    const Vector3f sigma_m(0.12f, 0.12f, 0.12f);
+    const Vector3f sigma_m(0.15f, 0.15f, 0.15f);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
 
     // Magnetic reference (same each run)
