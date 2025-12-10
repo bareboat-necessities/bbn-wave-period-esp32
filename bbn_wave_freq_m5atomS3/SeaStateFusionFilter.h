@@ -842,8 +842,8 @@ private:
     float mag_delay_sec_          = MAG_DELAY_SEC;
 
     // Runtime-configurable anisotropy knobs
-    float R_S_xy_factor_ = 0.07f;  // [0..1] scales XY pseudo-meas vs Z
-    float S_factor_      = 2.0f;   // (>0) scales Σ_aw horizontal std vs vertical
+    float R_S_xy_factor_ = 0.06f;  // [0..1] scales XY pseudo-meas vs Z
+    float S_factor_      = 1.4f;   // (>0) scales Σ_aw horizontal std vs vertical
 
     TrackingPolicy                  tracker_policy_{};
     FirstOrderIIRSmoother<float>    freq_fast_smoother_{FREQ_SMOOTHER_DT, 3.5f};   // ~3.5 s to 90% step
