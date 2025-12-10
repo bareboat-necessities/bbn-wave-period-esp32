@@ -123,7 +123,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
 
         // Initialization (accel-only)
         if (first) {
-            mekf.initialize_from_acc(acc_f);
+            mekf.initialize_from_acc(acc_f / g_std);
             first = false;
         }
 
@@ -140,14 +140,14 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag) {
             }
 
             // Always update accel
-            mekf.measurement_update_acc_only(acc_f);
+            mekf.measurement_update_acc_only(acc_f / g_std);
 
             // Update mag only every 3rd iteration
             if (iter % 3 == 0) {
                 mekf.measurement_update_mag_only(mag_f);
             }
         } else {
-            mekf.measurement_update_acc_only(acc_f);
+            mekf.measurement_update_acc_only(acc_f / g_std);
         }
 
         // Extract quaternion estimate...
