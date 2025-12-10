@@ -217,26 +217,42 @@ public:
         mekf_->measurement_update_acc_only(acc, tempC);
 
         if (with_mag_) {          
-            // Tilt watchdog
             // Body→world quaternion (boat frame, with heel)
             Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
             q_bw.normalize();
-    
+
             // Body Z-down axis expressed in world (NED)
             Eigen::Vector3f z_body_down_world = q_bw * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
-            Eigen::Vector3f z_world_down(0.0f, 0.0f, 1.0f);
-    
+            const Eigen::Vector3f z_world_down(0.0f, 0.0f, 1.0f);
+
             float cos_tilt = z_body_down_world.normalized().dot(z_world_down);
             cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
-            float tilt_rad = std::acos(cos_tilt);
-            float tilt_deg = tilt_rad * 57.295779513f;
-    
-            // If tilt goes crazy (past ~vertical), re-lock attitude to gravity
-            constexpr float TILT_RESET_DEG = 25.0f;  
+            const float tilt_rad = std::acos(cos_tilt);
+            const float tilt_deg = tilt_rad * 57.295779513f;
+
+            // If tilt goes crazy, re-lock attitude to gravity and reset
+            // the "slow" machinery that depended on the old, bad attitude.
+            constexpr float TILT_RESET_DEG = 45.0f;  
             if (tilt_deg > TILT_RESET_DEG) {
-                // Use current BODY accel to reinitialize roll/pitch (yaw stays arbitrary)
+                // Rebuild roll/pitch from current BODY accel (yaw stays arbitrary).
                 mekf_->initialize_from_acc(acc);
-                // TODO: make state more consistent
+
+                // Re-apply OU / pseudo-measurement tuning so that a_w / S
+                // are consistent with the current tune_ values.
+                apply_tune();
+
+                // Reset vertical accel pre-processing and stillness detector so
+                // they don't keep using energy stats from the bad-tilt phase.
+                freq_input_lpf_ = FreqInputLPF{};   // will re-init on next step
+                freq_stillness_ = StillnessAdapter{}; // resets energy_ema, timers
+
+                // Re-seed the fast/slow frequency smoothers from the current
+                // raw estimate so they don't drag the tracker back toward the pre-reset (wrong) value.
+                freq_fast_smoother_.reset(freq_hz_);
+                freq_slow_smoother_.reset(freq_hz_slow_);
+
+                // Flush the auto-tuner statistics; it will warm up again using the new, corrected tilt.
+                tuner_.reset();
             }
         }
     
