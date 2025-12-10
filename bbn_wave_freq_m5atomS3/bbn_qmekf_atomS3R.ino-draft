@@ -181,7 +181,7 @@ void loop(void) {
   unsigned long start = micros();
   M5.update();
   repeatMe();
-  long duration = micros() - start + 10;
+  long duration = micros() - start + 5;
   long delay_micros = 10000 - duration;  // ~100 Hz
   if (delay_micros > 0) {
     delayMicroseconds(delay_micros);
