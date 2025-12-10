@@ -189,7 +189,11 @@ public:
     {
         mekf_ = std::make_unique<Kalman3D_Wave<float,true,true>>(sigma_a, sigma_g, sigma_m);
         mekf_->set_exact_att_bias_Qd(true);
-        apply_tune();
+    
+        // Start as pure QMEKF: no v/p/S/a_w block yet
+        mekf_->set_linear_block_enabled(false);
+    
+        apply_tune();  // pre-load OU/RS params so they're ready when we enable the block
     }
 
     void initialize_ext(const Eigen::Vector3f& sigma_a,
@@ -202,6 +206,10 @@ public:
         mekf_ = std::make_unique<Kalman3D_Wave<float,true,true>>(
             sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_S_noise, gravity_magnitude);
         mekf_->set_exact_att_bias_Qd(true);
+    
+        // QMEKF-only at boot
+        mekf_->set_linear_block_enabled(false);
+    
         apply_tune();
     } 
 
@@ -250,22 +258,21 @@ public:
             // the "slow" machinery that depended on the old, bad attitude.
             constexpr float TILT_RESET_DEG = 45.0f;  
             if (tilt_deg > TILT_RESET_DEG) {
-                // Rebuild roll/pitch from current BODY accel (yaw stays arbitrary).
+                // Rebuild roll/pitch from accel
                 mekf_->initialize_from_acc(acc);
-
-                // Re-apply OU / pseudo-measurement tuning so that a_w / S
-                // are consistent with the current tune_ values.
+            
+                // Drop back to QMEKF-only
+                mekf_->set_linear_block_enabled(false);
+            
+                // Keep tune_ values, just don't use the linear block yet
                 apply_tune();
-
-                // Reset vertical accel pre-processing and stillness detector so
-                // they don't keep using energy stats from the bad-tilt phase.
-                freq_input_lpf_ = FreqInputLPF{};   // will re-init on next step
-                freq_stillness_ = StillnessAdapter{}; // resets energy_ema, timers
-
-                // Flush the auto-tuner statistics; it will warm up again using the new, corrected tilt.
+            
+                // Reset slow/statistical machinery
+                freq_input_lpf_ = FreqInputLPF{};
+                freq_stillness_ = StillnessAdapter{};
                 tuner_.reset();
-
-                // Treat this like a fresh startup for adaptation
+            
+                // Treat as a fresh boot
                 startup_stage_   = StartupStage::Cold;
                 startup_stage_t_ = 0.0f;
             }
@@ -745,32 +752,34 @@ private:
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
         tuner_.update(dt, a_vert_inertial, freq_hz_for_tuner);
-
-        // Startup stage
+    
+        // Startup stage logic
         switch (startup_stage_) {
         case StartupStage::Cold:
-            // Give the system some basic time to run before we even consider adapting.
+            // Only track time; no adaptation, no linear block.
             if (startup_stage_t_ >= online_tune_warmup_sec_) {
                 startup_stage_   = StartupStage::TunerWarm;
                 startup_stage_t_ = 0.0f;
             }
-            // In Cold we never adapt.
-            return;
-
+            return; // remain QMEKF-only
+    
         case StartupStage::TunerWarm:
-            // We’re letting the tuner collect stats. Only when it says "ready"
-            // do we move to Live.
-            if (tuner_.isReady()) {
-                startup_stage_   = StartupStage::Live;
-                startup_stage_t_ = 0.0f;
-            } else {
-                // Still not ready → no adaptation yet.
-                return;
+            // Let tuner accumulate stats; only when it is ready do we switch on the linear block.
+            if (!tuner_.isReady()) {
+                return; // still QMEKF-only
             }
-            // fallthrough to Live once we flip
-
+    
+            // Transition to full wave filter: enable linear block and push current tune.
+            if (mekf_) {
+                mekf_->set_linear_block_enabled(true);
+                apply_tune();   // now τ/σ/R_S actually configure the v/p/S/a_w block
+            }
+    
+            startup_stage_   = StartupStage::Live;
+            startup_stage_t_ = 0.0f;
+            // fallthrough into Live
+    
         case StartupStage::Live:
-            // Live: full adaptation allowed
             break;
         }
 
