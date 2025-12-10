@@ -170,6 +170,8 @@ public:
         // Default cutoff ~max_freq_hz_ Hz: passes waves, kills 8–37 Hz engine band
         freq_input_lpf_.setCutoff(max_freq_hz_);
         freq_stillness_.setTargetFreqHz(min_freq_hz_);
+        startup_stage_   = StartupStage::Cold;
+        startup_stage_t_ = 0.0f;
     }
 
     void initialize(const Eigen::Vector3f& sigma_a,
@@ -806,6 +808,15 @@ private:
             last_adapt_time_sec_ = time_;
         }
     }
+
+    enum class StartupStage {
+        Cold,        // just booted or just had a big tilt reset
+        TunerWarm,   // MEKF + freq running, tuner collecting stats
+        Live         // tuner is trusted; full adaptation & extras allowed
+    };
+
+    StartupStage startup_stage_    = StartupStage::Cold;
+    float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
 
     //  Members
     bool   with_mag_;
