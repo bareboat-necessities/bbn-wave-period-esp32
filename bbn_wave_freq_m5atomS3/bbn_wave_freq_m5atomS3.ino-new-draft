@@ -133,7 +133,7 @@ float heave_avg = 0.0f;
 
 // Unified fusion filter: MEKF + tuner + freq tracker + KalmanWaveDirection
 using FusionFilter = SeaStateFusionFilter<TrackerType::KALMANF>;
-FusionFilter fusion_filter(false);   // with_mag = false on M5AtomS3
+FusionFilter fusion_filter(true);   // with_mag = true on M5AtomS3R
 bool fusion_initialized = false;
 
 // Main IMU processing
@@ -148,6 +148,7 @@ void read_and_processIMU_data() {
 
   m5::imu_3d_t accel = data.accel;
   m5::imu_3d_t gyro  = data.gyro;
+  m5::imu_3d_t mag   = data.mag;
 
   drawCalibrGraph(rect_graph_area, data);
 
@@ -157,19 +158,24 @@ void read_and_processIMU_data() {
 
   // Map M5 IMU to BODY NED, convert accel to m/s^2, gyro to rad/s (M5Stack AtomS3R with BMI270 screen face up)
   Eigen::Vector3f acc_meas_ned(  
-      -accel.y * g_std,
-      -accel.x * g_std,
+       accel.y * g_std,
+       accel.x * g_std,
       -accel.z * g_std
   );
   Eigen::Vector3f gyr_meas_ned(  
-      -gyro.y * DEG_TO_RAD,
-      -gyro.x * DEG_TO_RAD,
+       gyro.y * DEG_TO_RAD,
+       gyro.x * DEG_TO_RAD,
       -gyro.z * DEG_TO_RAD
+  );
+  Eigen::Vector3f mag_meas_ned(
+       mag.y / 10.0f,
+       mag.x / 10.0f,
+      -mag.z / 10.0f
   );
 
   // First-time attitude init from accelerometer
   if (!fusion_initialized) {
-    fusion_filter.initialize_from_acc(acc_meas_ned);
+    fusion_filter.initialize_from_acc_mag(acc_meas_ned, mag_meas_ned);
     fusion_initialized = true;
   }
 
@@ -280,6 +286,7 @@ void read_and_processIMU_data() {
         gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_SPEED", ap_wave_speed);
       } else {
         // report for Arduino Serial Plotter
+        Serial.printf(",delta_t:%.6f", delta_t);
         Serial.printf(",heave_alt_cm:%.4f", heave * 100.0f);
         Serial.printf(",tau:%.4f", fusion_filter.getTauApplied());
         Serial.printf(",R_S:%.4f", fusion_filter.getRSApplied());
@@ -357,9 +364,9 @@ void setup(void) {
 
   // Initialize unified fusion filter
   {
-    Eigen::Vector3f sigma_a(0.18f, 0.18f, 0.18f);          // accel noise [m/s^2]
-    Eigen::Vector3f sigma_g(0.003f, 0.003f, 0.003f);       // gyro noise [rad/s]
-    Eigen::Vector3f sigma_m(0.3f, 0.3f, 0.3f);             // mag noise (unused when with_mag=false)
+    Eigen::Vector3f sigma_a(0.025f, 0.025f, 0.025f);       // accel noise [m/s^2]
+    Eigen::Vector3f sigma_g(0.12f * M_PI / 180.0f, 0.12f * M_PI / 180.0f, 0.12f * M_PI / 180.0f);       // gyro noise [rad/s]
+    Eigen::Vector3f sigma_m(9.3f, 9.3f, 9.3f);             // mag noise (unused when with_mag=false)
   
     fusion_filter.initialize_ext(
         sigma_a,   // accel noise [m/s^2]
@@ -376,20 +383,19 @@ void setup(void) {
   
     // Start with a *looser* prior on accel bias
     // 0.3 m/s² ≈ 3% of g  → we admit we don't know bias very well
-    mekf.set_initial_acc_bias_std(0.05f);
+    mekf.set_initial_acc_bias_std(0.03f);
   
     // Start bias at 0 (M5 calibration should already remove most)
     mekf.set_initial_acc_bias(Eigen::Vector3f::Zero());
   
     // Let bias *wander* more: random-walk σ per sqrt(second)
     // 0.003–0.005 m/s²/√s; tune by looking at heave drift.
-    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(1e-4f));
+    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(3e-3f));
   
     // Temperature model
     // Rough magnitude from datasheet, sign guessed as positive
-    Eigen::Vector3f k_a(0.0075f, 0.0075f, 0.012f);  // m/s^2 per °C
+    Eigen::Vector3f k_a(0.0075f, 0.0075f, 0.0075f);  // m/s^2 per °C
     mekf.set_accel_bias_temp_coeff(k_a);
-  
   
     // OU parameters: moderate correlation & variance
     const float tau_init   = 0.15f;    // seconds
@@ -437,7 +443,7 @@ void loop(void) {
   M5.update();
   repeatMe();
   long duration = micros() - start;
-  long delay_micros = 3900 - duration;
+  long delay_micros = 10000 - duration;
   if (delay_micros > 0) {
     delayMicroseconds(delay_micros);
   }
