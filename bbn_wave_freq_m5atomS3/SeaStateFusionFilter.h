@@ -216,7 +216,7 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
 
-        if (with_mag_) {          
+        if (!with_mag_) {          
             // Body→world quaternion (boat frame, with heel)
             Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
             q_bw.normalize();
@@ -245,11 +245,6 @@ public:
                 // they don't keep using energy stats from the bad-tilt phase.
                 freq_input_lpf_ = FreqInputLPF{};   // will re-init on next step
                 freq_stillness_ = StillnessAdapter{}; // resets energy_ema, timers
-
-                // Re-seed the fast/slow frequency smoothers from the current
-                // raw estimate so they don't drag the tracker back toward the pre-reset (wrong) value.
-                freq_fast_smoother_.reset(freq_hz_);
-                freq_slow_smoother_.reset(freq_hz_slow_);
 
                 // Flush the auto-tuner statistics; it will warm up again using the new, corrected tilt.
                 tuner_.reset();
