@@ -33,10 +33,10 @@ float t = 0.0f;
 using Vector3f = Eigen::Matrix<float,3,1>;
 
 // Same noise params as old working code:
-static Vector3f sigma_a = {0.025f * g_std, 0.025f * g_std, 0.025f * g_std};
-static Vector3f sigma_g = {0.2f * M_PI / 180.0f,
-                           0.2f * M_PI / 180.0f,
-                           0.2f * M_PI / 180.0f};
+static Vector3f sigma_a = {0.03f * g_std, 0.03f * g_std, 0.03f * g_std};
+static Vector3f sigma_g = {0.12f * M_PI / 180.0f,
+                           0.12f * M_PI / 180.0f,
+                           0.12f * M_PI / 180.0f};
 static Vector3f sigma_m = {9.5f, 9.5f, 9.5f};
 float Pq0 = 0.5f;
 float Pb0 = 1e-2f;
@@ -53,6 +53,8 @@ void read_and_processIMU_data() {
   float tempC = NAN;
   M5.Imu.getTemp(&tempC);
 
+  drawCalibrGraph(rect_graph_area, data);
+  
   now = micros();
   got_samples++;
 
@@ -113,9 +115,9 @@ void read_and_processIMU_data() {
   if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
     if (produce_serial_data) {
       Serial.printf(",delta_t:%.6f", delta_t);
-      Serial.printf(",accel.x:%.6f", accel.x);
-      Serial.printf(",accel.y:%.6f", accel.y);
-      Serial.printf(",accel.z:%.6f", accel.z);
+      //Serial.printf(",accel.x:%.6f", accel.x);
+      //Serial.printf(",accel.y:%.6f", accel.y);
+      //Serial.printf(",accel.z:%.6f", accel.z);
       Serial.printf(",roll_deg:%5.2f",  roll_deg);
       Serial.printf(",pitch_deg:%5.2f", pitch_deg);
       Serial.printf(",yaw_deg:%5.2f",   yaw_deg);
@@ -164,6 +166,13 @@ void setup(void) {
     }
   }
 
+  initCalibrDisplay();
+
+  // Read calibration values from NVS.
+  if (!M5.Imu.loadOffsetFromNVS()) {
+    //startCalibration();
+  }
+  
   start_time  = micros();
   last_update = start_time;
 }
@@ -172,7 +181,7 @@ void loop(void) {
   unsigned long start = micros();
   M5.update();
   repeatMe();
-  long duration = micros() - start;
+  long duration = micros() - start + 10;
   long delay_micros = 10000 - duration;  // ~100 Hz
   if (delay_micros > 0) {
     delayMicroseconds(delay_micros);
