@@ -290,6 +290,13 @@ class Kalman3D_Wave {
         }
     }
 
+    // Enable/disable propagation & drift-correction of linear states [v,p,S,a_w].
+    // When disabled, the filter behaves like a pure attitude/bias MEKF:
+    //  • [v,p,S,a_w] are frozen (no process, no S pseudo-measurements),
+    //  • attitude & biases still propagate and accept accel/mag updates.
+    void set_linear_block_enabled(bool on) { linear_block_enabled_ = on; }
+    bool linear_block_enabled() const      { return linear_block_enabled_; }
+
     // Velocity in world (NED)
     [[nodiscard]] Vector3 get_velocity() const {
         // velocity state at offset BASE_N
@@ -495,6 +502,8 @@ class Kalman3D_Wave {
     int pseudo_update_counter_ = 0;   // counts time_update calls
     static constexpr int PSEUDO_UPDATE_PERIOD = 3; // every N-th update
 
+    bool linear_block_enabled_ = true;
+              
     bool has_cross_cov_a_xy = false;
     bool use_exact_att_bias_Qd_ = true;
 
@@ -1104,109 +1113,112 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     // Linear subsystem [v,p,S,a_w] (12×12)
     Matrix12& F_LL = F_LL_scratch_; F_LL.setZero();
     Matrix12& Q_LL = Q_LL_scratch_; Q_LL.setZero();
-                     
-    // Build F_LL per axis
-    for (int axis = 0; axis < 3; ++axis) {
-        const T tau = std::max(T(1e-6), tau_aw);
 
-        Eigen::Matrix<T,4,4> Phi_axis;
-        PhiAxis4x1_analytic(tau, Ts, Phi_axis);
-
-        const int idx[4] = {0,3,6,9}; // [v,p,S,a] offsets
-        for (int i = 0; i < 4; ++i)
-            for (int j = 0; j < 4; ++j)
-                F_LL(idx[i] + axis, idx[j] + axis) = Phi_axis(i,j);
-    }
-    // Build Q_LL
-    if (has_cross_cov_a_xy) {
-        // Correlated vector-OU with shared tau: Q_LL = (Σ ⊗ Qaxis_unit)
-        // written directly in group-first order: [v(3), p(3), S(3), a(3)].
-        Eigen::Matrix<T,4,4> Qaxis_unit;
-        QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
-        Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
-    
-        // SPD, symmetric copy of Σ_aw (3x3)
-        const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
-    
-        Q_LL.setZero();
-        // group offsets in interleaved state order
-        const int goff[4] = {0, 3, 6, 9}; // v, p, S, a
-    
-        // Blockwise assembly: each 3x3 block is Sig scaled by the 4x4 scalar
-        for (int g = 0; g < 4; ++g) {
-            for (int h = 0; h < 4; ++h) {
-                Q_LL.template block<3,3>(goff[g], goff[h]).noalias()
-                    = Sig * Qaxis_unit(g,h);
-            }
-        }
-        // Symmetry + PSD cleanup
-        Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
-        project_psd<T,12>(Q_LL, T(1e-12));
-    } else {
-        // Independent axes (no cross-correlation) — per-axis Qd on the diagonal
-        const int idx[4] = {0,3,6,9};
+    if (linear_block_enabled_) {
+          
+        // Build F_LL per axis
         for (int axis = 0; axis < 3; ++axis) {
-            const T tau    = std::max(T(1e-6), tau_aw);
-            const T sigma2 = Sigma_aw_stat(axis, axis);
-            Eigen::Matrix<T,4,4> Qd_axis;
-            QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
+            const T tau = std::max(T(1e-6), tau_aw);
+    
+            Eigen::Matrix<T,4,4> Phi_axis;
+            PhiAxis4x1_analytic(tau, Ts, Phi_axis);
+    
+            const int idx[4] = {0,3,6,9}; // [v,p,S,a] offsets
             for (int i = 0; i < 4; ++i)
                 for (int j = 0; j < 4; ++j)
-                    Q_LL(idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
+                    F_LL(idx[i] + axis, idx[j] + axis) = Phi_axis(i,j);
         }
-        Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
+        // Build Q_LL
+        if (has_cross_cov_a_xy) {
+            // Correlated vector-OU with shared tau: Q_LL = (Σ ⊗ Qaxis_unit)
+            // written directly in group-first order: [v(3), p(3), S(3), a(3)].
+            Eigen::Matrix<T,4,4> Qaxis_unit;
+            QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
+            Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
+        
+            // SPD, symmetric copy of Σ_aw (3x3)
+            const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
+        
+            Q_LL.setZero();
+            // group offsets in interleaved state order
+            const int goff[4] = {0, 3, 6, 9}; // v, p, S, a
+        
+            // Blockwise assembly: each 3x3 block is Sig scaled by the 4x4 scalar
+            for (int g = 0; g < 4; ++g) {
+                for (int h = 0; h < 4; ++h) {
+                    Q_LL.template block<3,3>(goff[g], goff[h]).noalias()
+                        = Sig * Qaxis_unit(g,h);
+                }
+            }
+            // Symmetry + PSD cleanup
+            Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
+            project_psd<T,12>(Q_LL, T(1e-12));
+        } else {
+            // Independent axes (no cross-correlation) — per-axis Qd on the diagonal
+            const int idx[4] = {0,3,6,9};
+            for (int axis = 0; axis < 3; ++axis) {
+                const T tau    = std::max(T(1e-6), tau_aw);
+                const T sigma2 = Sigma_aw_stat(axis, axis);
+                Eigen::Matrix<T,4,4> Qd_axis;
+                QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
+                for (int i = 0; i < 4; ++i)
+                    for (int j = 0; j < 4; ++j)
+                        Q_LL(idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
+            }
+            Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
+        }
+                  
+        // Mean propagation for [v,p,S,a_w]
+        Vector12& x_lin_prev = x_lin_prev_scratch_;
+        x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
+        x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
+        x_lin_prev.template segment<3>(6)  = xext.template segment<3>(OFF_S);
+        x_lin_prev.template segment<3>(9)  = xext.template segment<3>(OFF_AW);
+    
+        Vector12& x_lin_next = x_lin_next_scratch_;
+        x_lin_next.noalias() = F_LL * x_lin_prev;
+        xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
+        xext.template segment<3>(OFF_P)  = x_lin_next.template segment<3>(3);
+        xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
+        xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
+    
+        // Covariance propagation (blockwise)
+        constexpr int NA = BASE_N;
+        constexpr int NL = 12;
+        
+        // AA block
+        MatrixBaseN& tmpAA = tmpAA_scratch_;
+        
+        // tmpAA = F_AA * P_AA_old
+        tmpAA.noalias() = F_AA * Pext.template block<NA,NA>(0,0);
+        
+        // P_AA_new = tmpAA * F_AAᵀ + Q_AA
+        Pext.template block<NA,NA>(0,0).noalias() = tmpAA * F_AA.transpose();
+        Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
+        
+        // LL block
+        Matrix12& tmpLL = tmpLL_scratch_;
+        
+        // tmpLL = F_LL * P_LL_old
+        tmpLL.noalias() = F_LL * Pext.template block<NL,NL>(OFF_V,OFF_V);
+        
+        // P_LL_new = tmpLL * F_LLᵀ + Q_LL
+        Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() = tmpLL * F_LL.transpose();
+        Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() += Q_LL;
+        
+        // AL block (cross-covariance)
+        MatrixBaseN12& tmpAL = tmpAL_scratch_;
+        
+        // tmpAL = F_AA * P_AL_old
+        tmpAL.noalias() = F_AA * Pext.template block<NA,NL>(0,OFF_V);
+        
+        // P_AL_new = tmpAL * F_LLᵀ
+        Pext.template block<NA,NL>(0,OFF_V).noalias() = tmpAL * F_LL.transpose();
+        
+        // Keep symmetry: P_LA = P_ALᵀ
+        Pext.template block<NL,NA>(OFF_V,0) = Pext.template block<NA,NL>(0,OFF_V).transpose();
     }
-              
-    // Mean propagation for [v,p,S,a_w]
-    Vector12& x_lin_prev = x_lin_prev_scratch_;
-    x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
-    x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
-    x_lin_prev.template segment<3>(6)  = xext.template segment<3>(OFF_S);
-    x_lin_prev.template segment<3>(9)  = xext.template segment<3>(OFF_AW);
-
-    Vector12& x_lin_next = x_lin_next_scratch_;
-    x_lin_next.noalias() = F_LL * x_lin_prev;
-    xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
-    xext.template segment<3>(OFF_P)  = x_lin_next.template segment<3>(3);
-    xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
-    xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
-
-    // Covariance propagation (blockwise)
-    constexpr int NA = BASE_N;
-    constexpr int NL = 12;
-    
-    // AA block
-    MatrixBaseN& tmpAA = tmpAA_scratch_;
-    
-    // tmpAA = F_AA * P_AA_old
-    tmpAA.noalias() = F_AA * Pext.template block<NA,NA>(0,0);
-    
-    // P_AA_new = tmpAA * F_AAᵀ + Q_AA
-    Pext.template block<NA,NA>(0,0).noalias() = tmpAA * F_AA.transpose();
-    Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
-    
-    // LL block
-    Matrix12& tmpLL = tmpLL_scratch_;
-    
-    // tmpLL = F_LL * P_LL_old
-    tmpLL.noalias() = F_LL * Pext.template block<NL,NL>(OFF_V,OFF_V);
-    
-    // P_LL_new = tmpLL * F_LLᵀ + Q_LL
-    Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() = tmpLL * F_LL.transpose();
-    Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() += Q_LL;
-    
-    // AL block (cross-covariance)
-    MatrixBaseN12& tmpAL = tmpAL_scratch_;
-    
-    // tmpAL = F_AA * P_AL_old
-    tmpAL.noalias() = F_AA * Pext.template block<NA,NL>(0,OFF_V);
-    
-    // P_AL_new = tmpAL * F_LLᵀ
-    Pext.template block<NA,NL>(0,OFF_V).noalias() = tmpAL * F_LL.transpose();
-    
-    // Keep symmetry: P_LA = P_ALᵀ
-    Pext.template block<NL,NA>(OFF_V,0) = Pext.template block<NA,NL>(0,OFF_V).transpose();
-
+          
     // Optional accel bias RW and cross terms (F_BB = I)
     if constexpr (with_accel_bias) {
         constexpr int NB = 3;
