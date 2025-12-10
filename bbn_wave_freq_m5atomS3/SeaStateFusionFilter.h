@@ -216,10 +216,7 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
 
-    // -------------------------------
-    // TILT WATCHDOG (here)
-    // -------------------------------
-    {
+        // Tilt watchdog
         // Body→world quaternion (boat frame, with heel)
         Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
         q_bw.normalize();
@@ -234,16 +231,11 @@ public:
         float tilt_deg = tilt_rad * 57.295779513f;
 
         // If tilt goes crazy (past ~vertical), re-lock attitude to gravity
-        constexpr float TILT_RESET_DEG = 70.0f;   // tune to taste
+        constexpr float TILT_RESET_DEG = 65.0f;  
         if (tilt_deg > TILT_RESET_DEG) {
             // Use current BODY accel to reinitialize roll/pitch (yaw stays arbitrary)
             mekf_->initialize_from_acc(acc);
-
-            // Optional: you *could* also damp velocities / OU state here if needed,
-            // but I'd start with just the attitude reset.
         }
-    }
-    // -------------------------------
       
         // vertical (up positive)
         a_vert_up = -a_z_inertial;
