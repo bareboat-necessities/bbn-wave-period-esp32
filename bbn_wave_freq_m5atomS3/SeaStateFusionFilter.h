@@ -174,6 +174,9 @@ public:
         startup_stage_t_ = 0.0f;
     }
 
+    StartupStage getStartupStage() const noexcept { return startup_stage_; }
+    bool isAdaptiveLive() const noexcept { return startup_stage_ == StartupStage::Live; }
+
     void initialize(const Eigen::Vector3f& sigma_a,
                     const Eigen::Vector3f& sigma_g,
                     const Eigen::Vector3f& sigma_m)
