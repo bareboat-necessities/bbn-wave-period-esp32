@@ -37,10 +37,10 @@ static Vector3f sigma_a = {0.025f * g_std, 0.025f * g_std, 0.025f * g_std};
 static Vector3f sigma_g = {0.15f * M_PI / 180.0f,
                            0.4f  * M_PI / 180.0f,
                            0.15f * M_PI / 180.0f};
-static Vector3f sigma_m = {3.2e-1f, 3.2e-1f, 3.2e-1f};
-float Pq0 = 1e-2f;
+static Vector3f sigma_m = {8.5f, 8.5f, 8.5f};
+float Pq0 = 0.5f;
 float Pb0 = 1e-2f;
-float b0  = 1e-12f;
+float b0  = 1e-9f;
 
 QuaternionMEKF<float,true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
 
@@ -79,20 +79,20 @@ void read_and_processIMU_data() {
   );
   // Mag mapping if you later want it:
   Eigen::Vector3f mag_body(
-    mag.y,
-    mag.x,
-    -mag.z
+    mag.y / 10.0f,
+    mag.x / 10.0f,
+    -mag.z / 10.0f
   );
 
   if (kalm_w_first) {
-    mekf.initialize_from_acc(acc_meas_body);
-    //mekf.initialize_from_acc_mag(acc_meas_body, mag_body);
+    //mekf.initialize_from_acc(acc_meas_body);
+    mekf.initialize_from_acc_mag(acc_meas_body, mag_body);
     kalm_w_first = false;
   }
 
   mekf.time_update(gyr_meas_body, delta_t);
-  mekf.measurement_update_acc_only(acc_meas_body);
-  //mekf.measurement_update(acc_meas_body, mag_body); // later if you want mag
+  //mekf.measurement_update_acc_only(acc_meas_body);
+  mekf.measurement_update(acc_meas_body, mag_body); // later if you want mag
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
   auto qvec = mekf.quaternion();
