@@ -216,6 +216,7 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
 
+  /*
         // Tilt watchdog
         // Body→world quaternion (boat frame, with heel)
         Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
@@ -236,7 +237,7 @@ public:
             // Use current BODY accel to reinitialize roll/pitch (yaw stays arbitrary)
             mekf_->initialize_from_acc(acc);
         }
-      
+  */    
         // vertical (up positive)
         a_vert_up = -a_z_inertial;
     
