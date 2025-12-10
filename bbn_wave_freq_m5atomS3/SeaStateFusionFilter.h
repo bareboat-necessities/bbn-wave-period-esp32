@@ -160,6 +160,12 @@ public:
 
     using TrackingPolicy = TrackerPolicy<trackerT>;
 
+    enum class StartupStage {
+        Cold,        // just booted or just had a big tilt reset
+        TunerWarm,   // MEKF + freq running, tuner collecting stats
+        Live         // tuner is trusted; full adaptation & extras allowed
+    };
+
     explicit SeaStateFusionFilter(bool with_mag = true)
         : with_mag_(with_mag),
           time_(0.0),
@@ -830,12 +836,6 @@ private:
             last_adapt_time_sec_ = time_;
         }
     }
-
-    enum class StartupStage {
-        Cold,        // just booted or just had a big tilt reset
-        TunerWarm,   // MEKF + freq running, tuner collecting stats
-        Live         // tuner is trusted; full adaptation & extras allowed
-    };
 
     StartupStage startup_stage_    = StartupStage::Cold;
     float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
