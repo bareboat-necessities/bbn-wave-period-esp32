@@ -258,6 +258,10 @@ public:
 
                 // Flush the auto-tuner statistics; it will warm up again using the new, corrected tilt.
                 tuner_.reset();
+
+                // Treat this like a fresh startup for adaptation
+                startup_stage_   = StartupStage::Cold;
+                startup_stage_t_ = 0.0f;
             }
         }
     
@@ -737,9 +741,35 @@ private:
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
         tuner_.update(dt, a_vert_inertial, freq_hz_for_tuner);
 
-        if (time_ < online_tune_warmup_sec_) return;
-        if (!tuner_.isReady())               return;
+        // Startup stage
+        switch (startup_stage_) {
+        case StartupStage::Cold:
+            // Give the system some basic time to run before we even consider adapting.
+            if (startup_stage_t_ >= online_tune_warmup_sec_) {
+                startup_stage_   = StartupStage::TunerWarm;
+                startup_stage_t_ = 0.0f;
+            }
+            // In Cold we never adapt.
+            return;
 
+        case StartupStage::TunerWarm:
+            // We’re letting the tuner collect stats. Only when it says "ready"
+            // do we move to Live.
+            if (tuner_.isReady()) {
+                startup_stage_   = StartupStage::Live;
+                startup_stage_t_ = 0.0f;
+            } else {
+                // Still not ready → no adaptation yet.
+                return;
+            }
+            // fallthrough to Live once we flip
+
+        case StartupStage::Live:
+            // Live: full adaptation allowed
+            break;
+        }
+
+        // From here on, we are in Live stage.
         // Frequency as seen by the tuner
         float f_tune = tuner_.getFrequencyHz();
         if (!std::isfinite(f_tune) || f_tune < min_freq_hz_) {
@@ -751,46 +781,31 @@ private:
 
         const float var_total = std::max(0.0f, tuner_.getAccelVariance());
 
-        // Fixed noise floor variance (configurable at runtime)
         const float var_noise = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
-        // Wave-only variance (can be zero if below noise)
         float var_wave = var_total - var_noise;
         if (var_wave < 0.0f) var_wave = 0.0f;
 
-        // Stillness-aware attenuation of wave variance
-        //
-        // When stillness is detected, we want σ_a (and thus R_S) to collapse
-        // roughly as fast as frequency is being relaxed, instead of lagging
-        // behind and inflating R_S.
-        //
         if (freq_stillness_.isStill()) {
             const float still_t = std::max(0.0f, freq_stillness_.getStillTime());
-            // Time constant for sigma collapse in stillness (seconds)
             constexpr float STILL_VAR_DECAY_SEC = 1.0f;
             float atten = std::exp(-still_t / STILL_VAR_DECAY_SEC);
-            if (atten < 0.0f) atten = 0.0f;
-            if (atten > 1.0f) atten = 1.0f;
+            atten = std::min(std::max(atten, 0.0f), 1.0f);
             var_wave *= atten;
         }
 
-        // Keep a small positive floor to avoid degeneracy
         var_wave = std::max(var_wave, 1e-6f);
-
-        // Wave-only sigma
         float sigma_wave = std::sqrt(var_wave);
 
-        // τ target from frequency
         float tau_raw = tau_coeff_ * 0.5f / f_tune;
 
         if (enable_clamp_) {
             tau_target_   = std::min(std::max(tau_raw,  min_tau_s_), max_tau_s_);
-            sigma_target_ = std::min(sigma_wave * sigma_coeff_,        max_sigma_a_);
+            sigma_target_ = std::min(sigma_wave * sigma_coeff_,      max_sigma_a_);
         } else {
             tau_target_   = tau_raw;
             sigma_target_ = sigma_wave;
         }
 
-        // Rₛ from (wave-only) σ and τ³
         float RS_raw = R_S_coeff_ * sigma_target_
                        * tau_target_ * tau_target_ * tau_target_;
 
@@ -799,7 +814,7 @@ private:
         } else {
             RS_target_ = RS_raw;
         }
-      
+
         adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
     
