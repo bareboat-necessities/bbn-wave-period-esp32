@@ -97,7 +97,14 @@ void read_and_processIMU_data() {
 
   mekf.time_update(gyr_meas_body, delta_t);
   mekf.measurement_update_acc_only(acc_meas_body);
-  mekf.measurement_update_mag_only(mag_body); 
+
+  // Magnetometer update every 3rd IMU step
+  static int mag_step = 0;
+  mag_step++;
+  if (mag_step >= 3) {
+    mekf.measurement_update_mag_only(mag_body);
+    mag_step = 0;
+  }
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
   auto qvec = mekf.quaternion();
