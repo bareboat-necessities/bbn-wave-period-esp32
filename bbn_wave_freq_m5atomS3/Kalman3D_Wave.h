@@ -1226,6 +1226,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         P_BB.noalias() += Q_bacc_ * Ts;
         Pext.template block<NB,NB>(OFF_BA,OFF_BA) = P_BB;
 
+        constexpr int NA = BASE_N;
         Eigen::Matrix<T,NA,NB> tmpAB = F_AA * Pext.template block<NA,NB>(0,OFF_BA);
         Pext.template block<NA,NB>(0,OFF_BA) = tmpAB;
         Pext.template block<NB,NA>(OFF_BA,0) = tmpAB.transpose();
