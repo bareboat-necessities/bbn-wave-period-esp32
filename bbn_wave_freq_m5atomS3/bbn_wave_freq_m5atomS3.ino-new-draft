@@ -175,12 +175,20 @@ void read_and_processIMU_data() {
 
   // First-time attitude init from accelerometer
   if (!fusion_initialized) {
-    fusion_filter.initialize_from_acc_mag(acc_meas_ned, mag_meas_ned);
+    fusion_filter.mekf().initialize_from_acc_mag(acc_meas_ned, mag_meas_ned);
     fusion_initialized = true;
   }
 
   // One fusion step: MEKF time update + accel update + tracker + tuner + dir
   fusion_filter.updateTime(delta_t, gyr_meas_ned, acc_meas_ned, tempC);
+
+  // Magnetometer update every 3rd IMU step
+  static int mag_step = 0;
+  mag_step++;
+  if (mag_step >= 3) {
+    fusion_filter.updateMag(mag_meas_ned);
+    mag_step = 0;
+  }
 
   // Attitude (nautical, degrees)
   Eigen::Vector3f eul_deg = fusion_filter.getEulerNautical();  // roll, pitch, yaw [deg]
