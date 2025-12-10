@@ -212,6 +212,11 @@ public:
         if (!mekf_) return;
         time_ += dt;
     
+        // Track time spent in current startup stage
+        if (dt > 0.0f && std::isfinite(dt)) {
+            startup_stage_t_ += dt;
+        }
+    
         // Keep BODY components around for direction/sign
         const float a_x_body = acc.x();
         const float a_y_body = acc.y();
