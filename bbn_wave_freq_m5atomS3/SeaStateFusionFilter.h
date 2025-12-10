@@ -216,7 +216,7 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
 
-        if constexpr (with_mag_) {          
+        if (with_mag_) {          
             // Tilt watchdog
             // Body→world quaternion (boat frame, with heel)
             Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
