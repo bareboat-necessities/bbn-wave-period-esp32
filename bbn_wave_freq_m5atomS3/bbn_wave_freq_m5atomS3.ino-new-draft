@@ -374,15 +374,15 @@ void setup(void) {
   {
     Eigen::Vector3f sigma_a(0.025f, 0.025f, 0.025f);       // accel noise [m/s^2]
     Eigen::Vector3f sigma_g(0.12f * M_PI / 180.0f, 0.12f * M_PI / 180.0f, 0.12f * M_PI / 180.0f);       // gyro noise [rad/s]
-    Eigen::Vector3f sigma_m(9.3f, 9.3f, 9.3f);             // mag noise (unused when with_mag=false)
+    Eigen::Vector3f sigma_m(9.3f, 9.3f, 9.3f);             // mag noise 
   
     fusion_filter.initialize_ext(
         sigma_a,   // accel noise [m/s^2]
         sigma_g,   // gyro noise [rad/s]
-        sigma_m,   // mag noise (unused when with_mag=false)
-        0.002f,     // attitude error covariance
-        1e-1f,     // gyro bias covariance
-        1e-8f,    // gyro bias noise RW (Q_b)
+        sigma_m,   // mag noise 
+        0.5f,      // attitude error covariance
+        1e-2f,     // gyro bias covariance
+        1e-8f,     // gyro bias noise RW (Q_b)
         1.5f,      // S pseudo-meas noise (scalar)
         g_std      // gravity magnitude (m/s^2)
     );
@@ -398,7 +398,7 @@ void setup(void) {
   
     // Let bias *wander* more: random-walk σ per sqrt(second)
     // 0.003–0.005 m/s²/√s; tune by looking at heave drift.
-    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(3e-3f));
+    mekf.set_Q_bacc_rw(Eigen::Vector3f::Constant(4e-3f));
   
     // Temperature model
     // Rough magnitude from datasheet, sign guessed as positive
@@ -425,16 +425,16 @@ void setup(void) {
 
     // SeaStateFusionFilter runtime tuning knobs
     fusion_filter.setRSXYFactor(0.07f);
-    fusion_filter.setSFactor(1.0f);
+    fusion_filter.setSFactor(1.3f);
     fusion_filter.setSigmaCoeff(0.35f); // tame sigma inflated by IMU noise and estimation from body frame to scale OU sigma to the sea state scale
-    fusion_filter.setTauCoeff(1.6f);
+    fusion_filter.setTauCoeff(1.5f);
     fusion_filter.setRSCoeff(1.8f);
-    fusion_filter.setAccNoiseFloorSigma(0.07f);
+    fusion_filter.setAccNoiseFloorSigma(0.05f);
     fusion_filter.setFreqBounds(0.05f, 8.0f);
     fusion_filter.setTauBounds(0.02f, 2.0f); // let R_S adapt a bit faster
     fusion_filter.setMaxSigmaA(3.0f);
     fusion_filter.setRSBounds(0.2f, 10.0f); // do not let R_S grow too much
-    fusion_filter.setAdaptationTimeConstants(3.0f, 5.0f);
+    fusion_filter.setAdaptationTimeConstants(2.5f, 7.0f);
     fusion_filter.setAdaptationUpdatePeriod(0.1f);
     fusion_filter.setOnlineTuneWarmupSec(5.0f);
     fusion_filter.setMagDelaySec(3.0f);
