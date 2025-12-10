@@ -216,28 +216,30 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
 
-  /*
-        // Tilt watchdog
-        // Body→world quaternion (boat frame, with heel)
-        Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
-        q_bw.normalize();
-
-        // Body Z-down axis expressed in world (NED)
-        Eigen::Vector3f z_body_down_world = q_bw * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
-        Eigen::Vector3f z_world_down(0.0f, 0.0f, 1.0f);
-
-        float cos_tilt = z_body_down_world.normalized().dot(z_world_down);
-        cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
-        float tilt_rad = std::acos(cos_tilt);
-        float tilt_deg = tilt_rad * 57.295779513f;
-
-        // If tilt goes crazy (past ~vertical), re-lock attitude to gravity
-        constexpr float TILT_RESET_DEG = 65.0f;  
-        if (tilt_deg > TILT_RESET_DEG) {
-            // Use current BODY accel to reinitialize roll/pitch (yaw stays arbitrary)
-            mekf_->initialize_from_acc(acc);
+        if constexpr (with_mag) {          
+            // Tilt watchdog
+            // Body→world quaternion (boat frame, with heel)
+            Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
+            q_bw.normalize();
+    
+            // Body Z-down axis expressed in world (NED)
+            Eigen::Vector3f z_body_down_world = q_bw * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
+            Eigen::Vector3f z_world_down(0.0f, 0.0f, 1.0f);
+    
+            float cos_tilt = z_body_down_world.normalized().dot(z_world_down);
+            cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
+            float tilt_rad = std::acos(cos_tilt);
+            float tilt_deg = tilt_rad * 57.295779513f;
+    
+            // If tilt goes crazy (past ~vertical), re-lock attitude to gravity
+            constexpr float TILT_RESET_DEG = 25.0f;  
+            if (tilt_deg > TILT_RESET_DEG) {
+                // Use current BODY accel to reinitialize roll/pitch (yaw stays arbitrary)
+                mekf_->initialize_from_acc(acc);
+                // TODO: make state more consistent
+            }
         }
-  */    
+    
         // vertical (up positive)
         a_vert_up = -a_z_inertial;
     
