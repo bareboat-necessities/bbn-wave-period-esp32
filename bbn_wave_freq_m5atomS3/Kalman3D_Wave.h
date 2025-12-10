@@ -1241,9 +1241,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     // Symmetry hygiene
     symmetrize_Pext_();
 
-    // Integral pseudo-measurement drift correction
-    if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
-        applyIntegralZeroPseudoMeas();
+    // Integral pseudo-measurement drift correction (only if linear block is live)
+    if (linear_block_enabled_) {
+        if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
+            applyIntegralZeroPseudoMeas();
+            pseudo_update_counter_ = 0;
+        }
+    } else {
+        // avoid weird cadence when re-enabling
         pseudo_update_counter_ = 0;
     }
 }
