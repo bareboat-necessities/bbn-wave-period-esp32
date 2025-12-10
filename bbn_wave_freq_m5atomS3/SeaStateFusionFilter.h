@@ -77,7 +77,7 @@ constexpr float MIN_R_S     = 0.5f;
 constexpr float MAX_R_S     = 27.0f;
 
 constexpr float ADAPT_TAU_SEC            = 2.5f;
-constexpr float ADAPT_R_S_SEC            = 8.0f;
+constexpr float ADAPT_R_S_SEC            = 10.0f;
 constexpr float ADAPT_EVERY_SECS         = 0.1f;
 constexpr float ONLINE_TUNE_WARMUP_SEC   = 5.0f;
 constexpr float MAG_DELAY_SEC            = 3.0f;
