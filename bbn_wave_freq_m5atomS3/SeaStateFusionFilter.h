@@ -375,7 +375,7 @@ public:
     // Use it as very soft correction with very high sigma_disp_meas or when
     // you know that the sea state is close to harrowband harmonic. 
     void updatePositionFromAccOmega(
-        const Vector3f& a, float omega, const Vector3f& sigma_disp_meas, float omega_min = (2.0f * M_PI * 0.06f)) 
+        const Eigen::Vector3f& a, float omega, const Eigen::Vector3f& sigma_disp_meas, float omega_min = (2.0f * M_PI * 0.06f)) 
     {
         if (!std::isfinite(omega)) {
             return;
@@ -389,7 +389,7 @@ public:
         const float w2 = abs_omega * abs_omega;
     
         // First-order approximation: p ≈ -a/ω² on all axes
-        Vector3f p_meas = -a / w2;
+        Eigen::Vector3f p_meas = -a / w2;
     
         if (!p_meas.allFinite()) {
             return;
