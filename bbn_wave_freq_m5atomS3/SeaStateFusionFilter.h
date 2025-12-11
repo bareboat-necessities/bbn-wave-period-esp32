@@ -386,7 +386,7 @@ public:
             // Too low frequency: 1/ω² would blow up
             abs_omega = omega_min;
         }
-        const float w2 = omega * omega;
+        const float w2 = abs_omega * abs_omega;
     
         // First-order approximation: p ≈ -a/ω² on all axes
         Vector3f p_meas = -a / w2;
