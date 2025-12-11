@@ -455,6 +455,26 @@ public:
         enable_extra_drift_correction_ = flag;
     }
 
+    // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
+    //
+    // When flag == false:
+    //   • Kalman3D_Wave::set_linear_block_enabled(false) is enforced,
+    //   • startup stages still progress (Cold → TunerWarm → Live),
+    //   • tuner still runs and exposes tau/sigma/R_S targets & metrics,
+    //   • but OU / v/p/S/a_w propagation and S-pseudo-measurements are never used.
+    //
+    // When flag == true (default):
+    //   • behavior is unchanged from your current implementation:
+    //     the linear block is enabled once the tuner is ready in TunerWarm.
+    void enableLinearBlock(bool flag = true) {
+        enable_linear_block_ = flag;
+        if (mekf_) {
+            // Only actually *use* the block in Live stage; Cold/TunerWarm are QMEKF-only.
+            const bool on_now = flag && (startup_stage_ == StartupStage::Live);
+            mekf_->set_linear_block_enabled(on_now);
+        }
+    }
+
     // Tunable adaptation bounds and time constants
     void setFreqBounds(float min_hz, float max_hz) {
         if (!std::isfinite(min_hz) || !std::isfinite(max_hz)) return;
@@ -876,6 +896,12 @@ private:
     bool enable_tuner_ = true;
     bool enable_heave_RS_gating_ = false; 
     bool enable_extra_drift_correction_ = false;
+
+    // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
+    // is ever enabled. When false, the underlying filter runs as a pure
+    // attitude/bias QMEKF (linear states frozen, no OU, no S pseudo-measurements),
+    // while all frequency tracking / tuner / direction logic still operates.
+    bool enable_linear_block_ = true;
 
     // Dimensionless gain for extra drift correction (vertical).
     // Rough guideline: 0.2–1.0. Start modest and adjust by looking at heave drift vs noise.
