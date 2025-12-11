@@ -878,7 +878,10 @@ private:
         tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
 
         if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-            apply_tune();
+            if (enable_linear_block_) {
+                // Only push τ/σ/R_S into the MEKF when the linear block is in use.
+                apply_tune();
+            }
             last_adapt_time_sec_ = time_;
         }
     }
