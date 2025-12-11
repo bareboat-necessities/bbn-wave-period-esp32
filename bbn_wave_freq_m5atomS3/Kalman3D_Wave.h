@@ -227,6 +227,18 @@ class Kalman3D_Wave {
                   T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(1.5),
                   T gravity_magnitude = T(STD_GRAVITY));
 
+    void initialize_from_acc_body(const Eigen::Vector3f& acc_body) {
+        Eigen::Vector3f z_world(0, 0, 1);
+        Eigen::Quaternionf q_bw;
+        // Align body-Z with measured acceleration (normalize first)
+        Eigen::Vector3f z_body = acc_body.normalized();
+        Eigen::Vector3f v = z_world.cross(z_body);
+        float c = z_world.dot(z_body);
+        q_bw.w() = std::sqrt((1.0f + c) * 0.5f);
+        q_bw.vec() = v.normalized() * std::sqrt((1.0f - c) * 0.5f);
+        this->set_quaternion(q_bw);
+    }
+
     // Initialization / measurement API
     void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
     void initialize_from_acc(Vector3 const& acc);
