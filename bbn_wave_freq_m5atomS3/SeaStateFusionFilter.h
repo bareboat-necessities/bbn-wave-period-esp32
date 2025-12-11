@@ -336,7 +336,7 @@ public:
                 // When displacement returns to normal range R_S needs to
                 // be restored to normal value predicted by adaptation
                 // also relatively fast and smooth. 
-                float sigma_disp_vert  = extra_drift_gain_ * sigma_a * tau * tau;
+                float sigma_disp_vert  = extra_drift_gain_ * getDisplacementScale();
                 float sigma_disp_horiz = sigma_disp_vert * S_factor_;
         
                 // Never let this pseudo-measurement get *too* confident
