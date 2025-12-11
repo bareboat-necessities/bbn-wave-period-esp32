@@ -366,7 +366,7 @@ int main(int argc, char* argv[]) {
               << ", noise=" << (add_noise ? "true" : "false")
               << ", dt=" << dt << " s\n";
 
-    auto fusion = make_fusion(tracker_name, /*with_mag*/ false);
+    auto fusion = make_fusion(tracker_name, /*with_mag*/ true);
 
     std::vector<std::string> files;
     for (auto &entry : std::filesystem::directory_iterator(".")) {
