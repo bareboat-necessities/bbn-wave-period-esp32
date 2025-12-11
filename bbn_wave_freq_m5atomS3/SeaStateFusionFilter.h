@@ -16,8 +16,8 @@
           – SchmittTrigger       (zero-cross event detector)
 
     • Dual-stage frequency smoothing:
-          – Fast 1st-order IIR (≈ 1 s, ~90% step) for demodulation / direction
-          – Slow 1st-order IIR (≈ 10 s, ~90% step) for auto-tuning / moments
+          – Fast 1st-order IIR (≈ few s, ~90% step) for demodulation / direction
+          – Slow 1st-order IIR (≈ longer s, ~90% step) for auto-tuning / moments
 
     • Online auto-tuning of Kalman filter parameters (τ, σₐ, Rₛ) through
       SeaStateAutoTuner, which estimates acceleration variance and applies the
