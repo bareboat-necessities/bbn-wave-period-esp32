@@ -328,6 +328,14 @@ public:
                 const float tau = std::max(tune_.tau_applied,  min_tau_s_);
         
                 // Vertical displacement std ~ k * σ_a * τ²
+                // 
+                // σ_a * τ² is decent estimate of amplitude
+                // For noisy or biased sensors this can be used
+                // to drop R_S when displacement estimate from
+                // filter exceeds it. This drop needs to be relatively smooth and fast.
+                // When displacement returns to normal range R_S needs to
+                // be restored to normal value predicted by adaptation
+                // also relatively fast and smooth. 
                 float sigma_disp_vert  = extra_drift_gain_ * sigma_a * tau * tau;
                 float sigma_disp_horiz = sigma_disp_vert * S_factor_;
         
