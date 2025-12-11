@@ -180,7 +180,7 @@ struct FusionWrap : IFusion {
     WaveDirection dir_sign_state() const override { return f.getDirSignState(); }
 };
 
-static std::unique_ptr<IFusion> make_fusion(const std::string& name, bool with_mag=false) {
+static std::unique_ptr<IFusion> make_fusion(const std::string& name, bool with_mag=true) {
     (void)with_mag; // currently unused; SeaStateFusionFilter ctor has with_mag arg if you want it
     if (name == "aran") return std::make_unique<FusionWrap<TrackerType::ARANOVSKIY>>();
     if (name == "zc")   return std::make_unique<FusionWrap<TrackerType::ZEROCROSS>>();
