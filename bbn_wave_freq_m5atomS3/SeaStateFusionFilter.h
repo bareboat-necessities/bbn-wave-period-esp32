@@ -362,6 +362,10 @@ public:
     // omega  : angular frequency, rad/s (use 2π f from frequency tracker)
     // sigma_disp_meas: per-axis std of the resulting displacement measurement [m]
     // omega_min: minimum |ω| to avoid insane amplification at very low freq
+    // 
+    // This correction assumes very narrowband regime. 
+    // Use it as very soft correction with very high sigma_disp_meas or when
+    // you know that the sea state is close to harrowband harmonic. 
     void updatePositionFromAccOmega(
         const Vector3f& a, float omega, const Vector3f& sigma_disp_meas, float omega_min = (2.0f * M_PI * 0.06f)) 
     {
