@@ -388,6 +388,7 @@ void setup(void) {
     );
 
     auto &mekf = fusion_filter.mekf();
+    fusion_filter.enableLinearBlock(false);
   
     // Start with a *looser* prior on accel bias
     // 0.3 m/s² ≈ 3% of g  → we admit we don't know bias very well
