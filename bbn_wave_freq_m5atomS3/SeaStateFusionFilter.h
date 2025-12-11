@@ -796,21 +796,26 @@ private:
             return; // remain QMEKF-only
     
         case StartupStage::TunerWarm:
-            // Let tuner accumulate stats; only when it is ready do we switch on the linear block.
+            // Let tuner accumulate stats; only when it is ready do we consider enabling the linear block.
             if (!tuner_.isReady()) {
                 return; // still QMEKF-only
             }
-    
-            // Transition to full wave filter: enable linear block and push current tune.
+
             if (mekf_) {
-                mekf_->set_linear_block_enabled(true);
-                apply_tune();   // now τ/σ/R_S actually configure the v/p/S/a_w block
+                if (enable_linear_block_) {
+                    // Normal behavior: transition to full OU/linear mode.
+                    mekf_->set_linear_block_enabled(true);
+                    apply_tune();   // now τ/σ/R_S actually configure the v/p/S/a_w block
+                } else {
+                    // QMEKF-only mode: keep linear states disabled forever.
+                    mekf_->set_linear_block_enabled(false);
+                }
             }
-    
+
             startup_stage_   = StartupStage::Live;
             startup_stage_t_ = 0.0f;
             // fallthrough into Live
-    
+
         case StartupStage::Live:
             break;
         }
