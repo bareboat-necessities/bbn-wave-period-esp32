@@ -442,6 +442,7 @@ void setup(void) {
 
     fusion_initialized = false;
   }
+  delay(3000);
   start_time = micros();
   last_update = start_time;
 }
