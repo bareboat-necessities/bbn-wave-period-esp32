@@ -182,7 +182,8 @@ void setup(void) {
   if (!M5.Imu.loadOffsetFromNVS()) {
     //startCalibration();
   }
-  
+
+  delay(2000);
   start_time  = micros();
   last_update = start_time;
 }
