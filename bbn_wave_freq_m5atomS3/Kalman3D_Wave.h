@@ -588,6 +588,8 @@ class Kalman3D_Wave {
     Vector3 alpha_b_      = Vector3::Zero(); // α^{B'}
     bool    have_prev_omega_ = false;
 
+    T last_dt_ = T(1.0/240);
+
     // Optional smoothing for alpha (0 = off)
     T alpha_smooth_tau_ = T(0.05); // seconds
 
@@ -1077,6 +1079,9 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bi
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_update(
     Vector3 const& gyr_body, T Ts)
 {
+    // Remember last dt
+    last_dt_ = Ts;
+                
     // De-heel gyro into virtual frame B' using current wind_heel_rad_
     const Vector3 gyr = deheel_vector_(gyr_body);   // ω^{B'}
 
