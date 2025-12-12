@@ -356,6 +356,10 @@ class Kalman3D_Wave {
     void set_aw_stationary_std(const Vector3& std_aw) {
         Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
         has_cross_cov_a_xy = false;
+
+        // keep P consistent with the new stationary prior
+        Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
+        symmetrize_Pext_();
     }
 
     // Accept a full 3×3 SPD stationary covariance for a_w.
