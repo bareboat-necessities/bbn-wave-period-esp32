@@ -1153,7 +1153,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
             project_psd<T,3>(Q_AA, T(1e-12));
         }
     }
-    
+
+// Always propagate attitude(+gyro-bias) covariance
+{
+    constexpr int NA = BASE_N;
+    MatrixBaseN& tmpAA = tmpAA_scratch_;
+
+    tmpAA.noalias() = F_AA * Pext.template block<NA,NA>(0,0);
+    Pext.template block<NA,NA>(0,0).noalias() = tmpAA * F_AA.transpose();
+    Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
+}
+              
     // Linear subsystem [v,p,S,a_w] (12×12)
     Matrix12& F_LL = F_LL_scratch_; F_LL.setZero();
     Matrix12& Q_LL = Q_LL_scratch_; Q_LL.setZero();
@@ -1229,17 +1239,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
         // Covariance propagation (blockwise)
         constexpr int NA = BASE_N;
         constexpr int NL = 12;
-        
-        // AA block
-        MatrixBaseN& tmpAA = tmpAA_scratch_;
-        
-        // tmpAA = F_AA * P_AA_old
-        tmpAA.noalias() = F_AA * Pext.template block<NA,NA>(0,0);
-        
-        // P_AA_new = tmpAA * F_AAᵀ + Q_AA
-        Pext.template block<NA,NA>(0,0).noalias() = tmpAA * F_AA.transpose();
-        Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
-        
+                
         // LL block
         Matrix12& tmpLL = tmpLL_scratch_;
         
