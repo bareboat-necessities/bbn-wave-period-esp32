@@ -1522,6 +1522,10 @@ S_mat = Racc;
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
+if (!linear_block_enabled_) {
+    freeze_linear_rows_(K);                
+}
+                
     // State update
     xext.noalias() += K * r;
 
