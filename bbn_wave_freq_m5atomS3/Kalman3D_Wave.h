@@ -1430,51 +1430,50 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     // De-heel magnetometer into B'
     const Vector3 mag_meas = deheel_vector_(mag_meas_body);
           
-// Predicted magnetic field in body frame (now includes bias if enabled)
-const Vector3 zhat = magnetometer_measurement_func();
-
-// Innovation
-const Vector3 r = mag_meas - zhat;
-
-// Jacobians
-const Vector3 v2hat_no_bias = R_wb() * v2ref;               // for attitude jacobian
-const Matrix3 J_att = -skew_symmetric_matrix(v2hat_no_bias);
-
-// Innovation covariance S = C P Cᵀ + R
-Matrix3& S_mat = S_scratch_;
-S_mat = Rmag;
-
-const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
-S_mat.noalias() += J_att * P_th_th * J_att.transpose();
-
-if constexpr (with_mag_bias) {
-    const Matrix3 P_th_bm = Pext.template block<3,3>(0, OFF_BM);
-    const Matrix3 P_bm_bm = Pext.template block<3,3>(OFF_BM, OFF_BM);
-
-    S_mat.noalias() += J_att * P_th_bm;                      // J_bm = I
-    S_mat.noalias() += P_th_bm.transpose() * J_att.transpose();
-    S_mat.noalias() += P_bm_bm;
-}
-
-// PCᵀ = P Cᵀ
-MatrixNX3& PCt = PCt_scratch_;
-PCt.setZero();
-PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
-if constexpr (with_mag_bias) {
-    PCt.noalias() += Pext.template block<NX,3>(0, OFF_BM);  // J_bm = I
-}
-
-Eigen::LDLT<Matrix3> ldlt;
-if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
-
-MatrixNX3& K = K_scratch_;
-K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-
-// State + covariance update
-xext.noalias() += K * r;
-joseph_update3_(K, S_mat, PCt);
-applyQuaternionCorrectionFromErrorState();
-          
+    // Predicted magnetic field in body frame (now includes bias if enabled)
+    const Vector3 zhat = magnetometer_measurement_func();
+    
+    // Innovation
+    const Vector3 r = mag_meas - zhat;
+    
+    // Jacobians
+    const Vector3 v2hat_no_bias = R_wb() * v2ref;               // for attitude jacobian
+    const Matrix3 J_att = -skew_symmetric_matrix(v2hat_no_bias);
+    
+    // Innovation covariance S = C P Cᵀ + R
+    Matrix3& S_mat = S_scratch_;
+    S_mat = Rmag;
+    
+    const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
+    S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+    
+    if constexpr (with_mag_bias) {
+        const Matrix3 P_th_bm = Pext.template block<3,3>(0, OFF_BM);
+        const Matrix3 P_bm_bm = Pext.template block<3,3>(OFF_BM, OFF_BM);
+    
+        S_mat.noalias() += J_att * P_th_bm;                      // J_bm = I
+        S_mat.noalias() += P_th_bm.transpose() * J_att.transpose();
+        S_mat.noalias() += P_bm_bm;
+    }
+    
+    // PCᵀ = P Cᵀ
+    MatrixNX3& PCt = PCt_scratch_;
+    PCt.setZero();
+    PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
+    if constexpr (with_mag_bias) {
+        PCt.noalias() += Pext.template block<NX,3>(0, OFF_BM);  // J_bm = I
+    }
+    
+    Eigen::LDLT<Matrix3> ldlt;
+    if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
+    
+    MatrixNX3& K = K_scratch_;
+    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+    
+    // State + covariance update
+    xext.noalias() += K * r;
+    joseph_update3_(K, S_mat, PCt);
+    applyQuaternionCorrectionFromErrorState();          
 }
 
 // specific force prediction (BODY'):
@@ -1508,7 +1507,9 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::accelerometer_
     return fb;             
 }
 
-Matrix<T, 3, 1> magnetometer_measurement_func() const {
+template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
+typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::Vector3
+Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::magnetometer_measurement_func() const {
     Vector3 pred = R_wb() * v2ref;
     if constexpr (with_mag_bias) {
         pred += xext.template segment<3>(OFF_BM); // b_m in BODY' (µT)
