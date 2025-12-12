@@ -547,7 +547,7 @@ void set_aw_stationary_std(const Vector3& std_aw) {
     // Last gyro
     Vector3 last_gyr_bias_corrected{};
 
-    T sigma_bacc0_ = T(0.1); // initial accel bias std
+    T sigma_bacc0_ = T(1.0); // initial accel bias std
     Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-8);
 
     // Accelerometer bias temperature coefficient (per-axis), units: m/s^2 per °C.
