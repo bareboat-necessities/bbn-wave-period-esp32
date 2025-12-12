@@ -187,22 +187,32 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
     }
 }
 
-template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
+template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true, bool with_mag_bias = true>
 class Kalman3D_Wave {
 
     // Base (att_err + optional gyro bias)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
 
-    // Extended added states: v(3), p(3), S(3), a_w(3) [+ optional b_acc(3)]
-    static constexpr int EXT_ADD = with_accel_bias ? 15 : 12;
-    static constexpr int NX      = BASE_N + EXT_ADD;
+// Extended added states: v(3), p(3), S(3), a_w(3) [+ b_acc(3)] [+ b_mag(3)]
+static constexpr int EXT_ADD =
+      12
+    + (with_accel_bias ? 3 : 0)
+    + (with_mag_bias   ? 3 : 0);
 
-    // Offsets (always defined)
-    static constexpr int OFF_V   = BASE_N + 0;
-    static constexpr int OFF_P   = BASE_N + 3;
-    static constexpr int OFF_S   = BASE_N + 6;
-    static constexpr int OFF_AW  = BASE_N + 9;
-    static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 12) : -1; // -1 = not present
+static constexpr int NX = BASE_N + EXT_ADD;
+
+// Offsets (always defined)
+static constexpr int OFF_V   = BASE_N + 0;
+static constexpr int OFF_P   = BASE_N + 3;
+static constexpr int OFF_S   = BASE_N + 6;
+static constexpr int OFF_AW  = BASE_N + 9;
+
+static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 12) : -1;
+
+// mag bias comes after accel bias if present, otherwise after a_w
+static constexpr int OFF_BM  = with_mag_bias
+    ? (BASE_N + 12 + (with_accel_bias ? 3 : 0))
+    : -1;
 
     typedef Matrix<T, 3, 1> Vector3;
     typedef Matrix<T, BASE_N, BASE_N> MatrixBaseN;
@@ -237,6 +247,28 @@ class Kalman3D_Wave {
     void set_mag_world_ref(const Vector3& B_world) {
         v2ref = B_world;    // keep µT magnitude
     }
+
+[[nodiscard]] Vector3 get_mag_bias() const {
+    if constexpr (with_mag_bias) return xext.template segment<3>(OFF_BM);
+    else return Vector3::Zero();
+}
+
+void set_initial_mag_bias_std(T s_uT) {
+    if constexpr (with_mag_bias) {
+        sigma_bmag0_ = std::max(T(0), s_uT);
+        Pext.template block<3,3>(OFF_BM, OFF_BM) =
+            Matrix3::Identity() * sigma_bmag0_ * sigma_bmag0_;
+    }
+}
+
+void set_initial_mag_bias(const Vector3& b_uT) {
+    if constexpr (with_mag_bias) xext.template segment<3>(OFF_BM) = b_uT;
+}
+
+void set_Q_bmag_rw(const Vector3& rw_std_uT_per_sqrt_s) {
+    if constexpr (with_mag_bias)
+        Q_bmag_ = rw_std_uT_per_sqrt_s.array().square().matrix().asDiagonal();
+}
 
     void time_update(Vector3 const& gyr, T Ts);
 
@@ -488,6 +520,9 @@ class Kalman3D_Wave {
     // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
     Vector3 k_a_ = Vector3::Constant(T(0.003));
 
+T sigma_bmag0_ = T(10.0);                 // µT (start loose so it can learn)
+Matrix3 Q_bmag_ = Matrix3::Identity() * T(1e-6); // (µT^2)/s  (tune)
+              
     // Constant matrices
     Matrix3 Rmag;
     MatrixBaseN Qbase; // Q for attitude & bias
@@ -816,6 +851,12 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
         Pext.template block<3,3>(OFF_BA, OFF_BA) = Matrix3::Identity() * sigma_bacc0_ * sigma_bacc0_;
     }
 
+if constexpr (with_mag_bias) {
+    Pext.template block<3,3>(OFF_BM, OFF_BM) =
+        Matrix3::Identity() * sigma_bmag0_ * sigma_bmag0_;
+    xext.template segment<3>(OFF_BM).setZero();
+}
+              
     const T sigma_v0 = T(1.0);    // m/s
     const T sigma_p0 = T(20.0);   // m
     const T sigma_S0 = T(50.0);   // m·s
@@ -1239,6 +1280,35 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         }
     }
 
+// Optional mag bias RW and cross terms (F_BM = I)
+if constexpr (with_mag_bias) {
+    constexpr int NB = 3;
+
+    // P_BM_BM += Q_bmag * Ts
+    auto P_BM = Pext.template block<NB,NB>(OFF_BM, OFF_BM);
+    P_BM.noalias() += Q_bmag_ * Ts;
+    Pext.template block<NB,NB>(OFF_BM, OFF_BM) = P_BM;
+
+    // Cross-covariances: AB, LB propagate with F_AA / F_LL
+    constexpr int NA = BASE_N;
+    Eigen::Matrix<T,NA,NB> tmpAM = F_AA * Pext.template block<NA,NB>(0, OFF_BM);
+    Pext.template block<NA,NB>(0, OFF_BM) = tmpAM;
+    Pext.template block<NB,NA>(OFF_BM, 0) = tmpAM.transpose();
+
+    if (linear_block_enabled_) {
+        constexpr int NL = 12;
+        Eigen::Matrix<T,NL,NB> tmpLM = F_LL * Pext.template block<NL,NB>(OFF_V, OFF_BM);
+        Pext.template block<NL,NB>(OFF_V, OFF_BM) = tmpLM;
+        Pext.template block<NB,NL>(OFF_BM, OFF_V) = tmpLM.transpose();
+    }
+
+    // If accel-bias exists too, keep BA<->BM symmetry (F=I for both)
+    if constexpr (with_accel_bias) {
+        // nothing to do: both are constant states; cross-cov stays as-is
+        // (your symmetrize_Pext_() will keep it clean)
+    }
+}          
+          
     // Symmetry hygiene
     symmetrize_Pext_();
 
