@@ -1579,26 +1579,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
 
-// Predicted (no bias) and estimated bias (in BODY')
-const Vector3 pred0 = R_wb() * v2ref;
+// NIS gate: rᵀ S⁻¹ r  ~ χ²(df=3) if consistent
+const Vector3 Sinv_r = ldlt.solve(r);
+const T nis = r.dot(Sinv_r);
 
-Vector3 bm_est = Vector3::Zero();
-if constexpr (with_mag_bias) bm_est = xext.template segment<3>(OFF_BM);
-
-// Bias-corrected measurement (what "earth field" would be)
-const Vector3 mag_corr = mag_meas - bm_est;
-
-const T B0 = pred0.norm();
-const T Bm = mag_corr.norm();
-if (!(B0 > T(1e-6)) || !(Bm > T(1e-6))) return;
-
-// relative magnitude gate
-const T rel = std::abs(Bm - B0) / B0;
-if (rel > T(0.35)) return;
-
-// yaw observability gate: use corrected measurement (or pred0)
-const T horiz = std::sqrt(mag_corr.x()*mag_corr.x() + mag_corr.y()*mag_corr.y());
-if (horiz < T(0.05) * Bm) return;
+// Choose a threshold (df=3):
+//  p=0.99  -> 11.34
+//  p=0.999 -> 16.27
+//  p=0.9999-> 21.11
+const T nis_thresh = T(16.27); // very conservative, good starting point
+if (!(nis <= nis_thresh)) {
+    return; // reject outlier mag sample
+}   
         
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
