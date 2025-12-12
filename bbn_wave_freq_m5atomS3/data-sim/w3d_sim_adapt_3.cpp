@@ -234,7 +234,15 @@ static void process_wave_file_for_tracker(const std::string &filename,
     // Deterministic noise
     NoiseModel accel_noise = make_noise_model(0.03f, 0.2f, 1234);
     NoiseModel gyro_noise  = make_noise_model(0.0018f, 0.002f, 5678);
-
+    // Magnetometer noise model (units: uT)
+    MagNoiseModel mag_noise = make_mag_noise_model(
+        0.8f,   // sigma ~0.8 uT per sample
+        50.0f,  // hard-iron bias ±50 uT
+        0.05f,  // scale error up to ±5%
+        3.0f,   // misalignment up to ±3 deg
+        9012    // seed
+    );
+    
     bool first = true;
     bool mag_ref_set = false;  
     WaveDataCSVReader reader(filename);
