@@ -814,12 +814,17 @@ class Kalman3D_Wave {
         symmetrize_Pext_();
     }
 
-  void zero_AL_cross_cov_once_() {
-      constexpr int NA = BASE_N;
-      constexpr int NL = 12; // [v,p,S,a_w]
-      Pext.template block<NA,NL>(0, OFF_V).setZero();
-      Pext.template block<NL,NA>(OFF_V, 0).setZero();
-  }
+    void zero_AL_cross_cov_once_() {
+        constexpr int NA = BASE_N;
+        constexpr int NL = 12; // [v,p,S,a_w]
+        Pext.template block<NA,NL>(0, OFF_V).setZero();
+        Pext.template block<NL,NA>(OFF_V, 0).setZero();
+    }
+
+    EIGEN_STRONG_INLINE void freeze_linear_rows_(MatrixNX3& M) const {
+        // Linear block is [v,p,S,a_w] = 12 states starting at OFF_V
+        M.template block<12,3>(OFF_V, 0).setZero();
+    }               
               
     // Steady wind heel model (roll about BODY X)
     // wind_heel_rad_ : current steady heel in radians (hull frame)
