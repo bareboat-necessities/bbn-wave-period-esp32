@@ -1279,34 +1279,34 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
         }
     }
 
-// Optional mag bias RW and cross terms (F_BM = I)
-if constexpr (with_mag_bias) {
-    constexpr int NB = 3;
-
-    // P_BM_BM += Q_bmag * Ts
-    auto P_BM = Pext.template block<NB,NB>(OFF_BM, OFF_BM);
-    P_BM.noalias() += Q_bmag_ * Ts;
-    Pext.template block<NB,NB>(OFF_BM, OFF_BM) = P_BM;
-
-    // Cross-covariances: AB, LB propagate with F_AA / F_LL
-    constexpr int NA = BASE_N;
-    Eigen::Matrix<T,NA,NB> tmpAM = F_AA * Pext.template block<NA,NB>(0, OFF_BM);
-    Pext.template block<NA,NB>(0, OFF_BM) = tmpAM;
-    Pext.template block<NB,NA>(OFF_BM, 0) = tmpAM.transpose();
-
-    if (linear_block_enabled_) {
-        constexpr int NL = 12;
-        Eigen::Matrix<T,NL,NB> tmpLM = F_LL * Pext.template block<NL,NB>(OFF_V, OFF_BM);
-        Pext.template block<NL,NB>(OFF_V, OFF_BM) = tmpLM;
-        Pext.template block<NB,NL>(OFF_BM, OFF_V) = tmpLM.transpose();
-    }
-
-    // If accel-bias exists too, keep BA<->BM symmetry (F=I for both)
-    if constexpr (with_accel_bias) {
-        // nothing to do: both are constant states; cross-cov stays as-is
-        // (your symmetrize_Pext_() will keep it clean)
-    }
-}          
+    // Optional mag bias RW and cross terms (F_BM = I)
+    if constexpr (with_mag_bias) {
+        constexpr int NB = 3;
+    
+        // P_BM_BM += Q_bmag * Ts
+        auto P_BM = Pext.template block<NB,NB>(OFF_BM, OFF_BM);
+        P_BM.noalias() += Q_bmag_ * Ts;
+        Pext.template block<NB,NB>(OFF_BM, OFF_BM) = P_BM;
+    
+        // Cross-covariances: AB, LB propagate with F_AA / F_LL
+        constexpr int NA = BASE_N;
+        Eigen::Matrix<T,NA,NB> tmpAM = F_AA * Pext.template block<NA,NB>(0, OFF_BM);
+        Pext.template block<NA,NB>(0, OFF_BM) = tmpAM;
+        Pext.template block<NB,NA>(OFF_BM, 0) = tmpAM.transpose();
+    
+        if (linear_block_enabled_) {
+            constexpr int NL = 12;
+            Eigen::Matrix<T,NL,NB> tmpLM = F_LL * Pext.template block<NL,NB>(OFF_V, OFF_BM);
+            Pext.template block<NL,NB>(OFF_V, OFF_BM) = tmpLM;
+            Pext.template block<NB,NL>(OFF_BM, OFF_V) = tmpLM.transpose();
+        }
+    
+        // If accel-bias exists too, keep BA<->BM symmetry (F=I for both)
+        if constexpr (with_accel_bias) {
+            // nothing to do: both are constant states; cross-cov stays as-is
+            // (your symmetrize_Pext_() will keep it clean)
+        }
+    }          
           
     // Symmetry hygiene
     symmetrize_Pext_();
