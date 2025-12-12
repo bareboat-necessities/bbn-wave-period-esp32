@@ -1519,7 +1519,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     if constexpr (with_mag_bias) {
         PCt.noalias() += Pext.template block<NX,3>(0, OFF_BM);  // J_bm = I
     }
-    
+
+    if (!linear_block_enabled_) {
+        freeze_linear_rows_(PCt);
+    }
+                
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
     
