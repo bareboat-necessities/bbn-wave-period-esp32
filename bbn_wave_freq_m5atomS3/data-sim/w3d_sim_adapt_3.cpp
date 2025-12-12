@@ -83,6 +83,86 @@ Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
     return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
 }
 
+struct MagNoiseModel {
+    std::mt19937 rng;
+    std::normal_distribution<float> dist;
+    Vector3f bias;          // hard-iron bias [uT]
+    Eigen::Matrix3f Mis;    // soft-iron + misalignment matrix
+};
+
+MagNoiseModel make_mag_noise_model(float sigma_uT,
+                                   float bias_range_uT,
+                                   float scale_err_max,
+                                   float misalign_deg_max,
+                                   unsigned seed)
+{
+    MagNoiseModel m;
+    m.rng  = std::mt19937(seed);
+    m.dist = std::normal_distribution<float>(0.0f, sigma_uT);
+
+    // Hard-iron bias
+    std::uniform_real_distribution<float> ub(-bias_range_uT, bias_range_uT);
+    m.bias = Vector3f(ub(m.rng), ub(m.rng), ub(m.rng));
+
+    // Soft-iron + misalignment: build as R * S
+    m.Mis.setIdentity();
+
+    // Scale errors (diagonal)
+    std::uniform_real_distribution<float> us(1.0f - scale_err_max,
+                                             1.0f + scale_err_max);
+    Eigen::Matrix3f S = Eigen::Matrix3f::Identity();
+    S(0,0) = us(m.rng);
+    S(1,1) = us(m.rng);
+    S(2,2) = us(m.rng);
+
+    // Small random rotations around each axis
+    auto deg2rad = [](float d){ return d * float(M_PI/180.0); };
+    std::uniform_real_distribution<float> ua(-misalign_deg_max, misalign_deg_max);
+    float rx = deg2rad(ua(m.rng));
+    float ry = deg2rad(ua(m.rng));
+    float rz = deg2rad(ua(m.rng));
+
+    auto Rx = [&](float a) {
+        Eigen::Matrix3f R;
+        float c = std::cos(a), s = std::sin(a);
+        R << 1, 0, 0,
+             0, c,-s,
+             0, s, c;
+        return R;
+    };
+    auto Ry = [&](float a) {
+        Eigen::Matrix3f R;
+        float c = std::cos(a), s = std::sin(a);
+        R <<  c, 0, s,
+              0, 1, 0,
+             -s, 0, c;
+        return R;
+    };
+    auto Rz = [&](float a) {
+        Eigen::Matrix3f R;
+        float c = std::cos(a), s = std::sin(a);
+        R << c,-s, 0,
+             s, c, 0,
+             0, 0, 1;
+        return R;
+    };
+
+    Eigen::Matrix3f R = Rz(rz) * Ry(ry) * Rx(rx);
+    m.Mis = R * S;  // apply scale then misalignment
+
+    return m;
+}
+
+Vector3f apply_mag_noise(const Vector3f& ideal_mag_uT_body, MagNoiseModel& m)
+{
+    // Hard/soft iron
+    Vector3f distorted = m.Mis * ideal_mag_uT_body + m.bias;
+
+    // Add white noise
+    Vector3f n(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
+    return distorted + n;
+}
+
 //  Example wave parameter list
 const std::vector<WaveParameters> waveParamsList = {
     {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 30.0f},
