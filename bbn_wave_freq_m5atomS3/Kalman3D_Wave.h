@@ -1435,8 +1435,6 @@ const Vector3 r = f_meas - f_pred;
     }
               
     // Jacobians from linearization at CoG-only part (lever-arm is attitude-independent)
-const Vector3 g_world(0,0,+gravity_magnitude_);
-
 Matrix3 J_att;
 Matrix3 J_aw;
 
@@ -1493,13 +1491,12 @@ S_mat = Racc;
         }
     }
 }
-
+                
     // PCᵀ = P Cᵀ (NX×3)
     MatrixNX3& PCt = PCt_scratch_; PCt.setZero();
     {
         constexpr int OFF_TH = 0;
         const auto P_all_th = Pext.template block<NX,3>(0, OFF_TH);
-        const auto P_all_aw = Pext.template block<NX,3>(0, OFF_AW);
         PCt.noalias() += P_all_th * J_att.transpose();
 
         if (linear_block_enabled_) {
@@ -1657,6 +1654,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyQuat
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyIntegralZeroPseudoMeas()
 {
+    if (!linear_block_enabled_) return;
+                
     constexpr int off_S = OFF_S;   // offset of S block (3 states)
 
     // Innovation: target S = 0
