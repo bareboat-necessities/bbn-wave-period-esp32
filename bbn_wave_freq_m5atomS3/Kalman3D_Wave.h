@@ -4,7 +4,7 @@
     TODO:
 
     R_S in contructor treated as var instead of std?
-    Level arm correction logic wrong in many places.
+    Level arm correction logic wrong in many places. Lever-arm model: Jacobians are incomplete if you ever want to estimate gyro bias tightly
     PSD projection for N=12 (find better pattern)
     linear_block_enabled_ == false does NOT actually freeze the linear block
     
