@@ -3,10 +3,8 @@
 /*
     TODO:
 
-    Magnetomer gating.
     R_S in contructor treated as var instead of std?
     Level arm correction logic wrong in many places.
-    Blending in set_aw_stationary_std
     PSD projection for N=12 (find better pattern)
     linear_block_enabled_ == false does NOT actually freeze the linear block
     
@@ -381,16 +379,8 @@ class Kalman3D_Wave {
     // OU stationary std [m/s²] for a_w (per axis)
 void set_aw_stationary_std(const Vector3& std_aw) {
     Matrix3 Snew = std_aw.array().square().matrix().asDiagonal();
-
     Sigma_aw_stat = Snew;
     has_cross_cov_a_xy = false;
-
-    // Soft merge (prevents discontinuity)
-    Pext.template block<3,3>(OFF_AW, OFF_AW) =
-        T(0.2) * Pext.template block<3,3>(OFF_AW, OFF_AW) +
-        T(0.8) * Sigma_aw_stat;
-
-    symmetrize_Pext_();
 }
         
     // Accept a full 3×3 SPD stationary covariance for a_w.
