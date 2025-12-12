@@ -280,13 +280,13 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 r_ref_out, p_ref_out, y_ref_out);
 
             // Add realistic noise / bias / misalignment in ENU body frame
-            if (add_noise) {
-            mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise);
-        }
+            if (false /* TODO: add_noise */) {
+                mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise);
+            }
 
-        // Axis map Z-up ENU body -> NED body
-        mag_body_ned = zu_to_ned(mag_b_enu);
-    }
+            // Axis map Z-up ENU body -> NED body
+            mag_body_ned = zu_to_ned(mag_b_enu);
+        }
         
         // First-step init
         if (first) {
