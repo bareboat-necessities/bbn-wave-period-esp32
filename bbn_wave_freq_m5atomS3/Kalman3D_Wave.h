@@ -236,7 +236,7 @@ class Kalman3D_Wave {
 
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                  T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise = T(1.5),
+                  T Pq0 = T(1e-6), T Pb0 = T(1e-1), T b0 = T(1e-12), T R_S_noise_var = T(1.5),
                   T gravity_magnitude = T(STD_GRAVITY));
 
     // Initialization / measurement API
@@ -854,7 +854,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::Kalman3D_Wave(
     Vector3 const& sigma_a,
     Vector3 const& sigma_g,
     Vector3 const& sigma_m,
-    T Pq0, T Pb0, T b0, T R_S_noise, T gravity_magnitude)
+    T Pq0, T Pb0, T b0, T R_S_noise_var, T gravity_magnitude)
   : Qbase(initialize_Q(sigma_g, b0)),
     gravity_magnitude_(gravity_magnitude),
     Racc(sigma_a.array().square().matrix().asDiagonal()),
@@ -863,7 +863,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::Kalman3D_Wave(
     // quaternion init
     qref.setIdentity();
 
-    R_S = Matrix3::Identity() * R_S_noise;
+    R_S = Matrix3::Identity() * R_S_noise_var;
 
     // initialize base / extended states
     MatrixBaseN Pbase;
