@@ -275,11 +275,19 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // Simulated magnetometer (BODY, then axis-map to NED body)
         Vector3f mag_body_ned(0,0,0);
         if (with_mag) {
+            // Ideal body-frame mag (Z-up ENU body)
             Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(
                 r_ref_out, p_ref_out, y_ref_out);
-            mag_body_ned = zu_to_ned(mag_b_enu);
+
+            // Add realistic noise / bias / misalignment in ENU body frame
+            if (add_noise) {
+            mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise);
         }
 
+        // Axis map Z-up ENU body -> NED body
+        mag_body_ned = zu_to_ned(mag_b_enu);
+    }
+        
         // First-step init
         if (first) {
             // Attitude from accel
