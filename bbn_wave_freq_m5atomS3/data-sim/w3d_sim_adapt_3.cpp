@@ -238,8 +238,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
     MagNoiseModel mag_noise = make_mag_noise_model(
         0.3f,   // sigma uT per sample
         15.0f,  // hard-iron bias uT
-        0.01f,  // scale error up 
-        0.2f,   // misalignment deg
+        0.0f,  // scale error up 
+        0.0f,   // misalignment deg
         9012    // seed
     );
     
