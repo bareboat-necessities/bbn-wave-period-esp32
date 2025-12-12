@@ -1383,11 +1383,39 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     const Vector3 acc_meas = deheel_vector_(acc_meas_body);
           
     // Physical accelerometer measurement model
-    // f_b' = R_wb (a_w - g) + a_lever^{B'} + b_a(temp) + noise
-    const Vector3 f_pred = accelerometer_measurement_func(tempC);
-    const Vector3 f_meas = acc_meas;
-    const Vector3 r = f_meas - f_pred; // innovation in true units (m/s²)
+const Vector3 g_world(0,0,+gravity_magnitude_);
 
+// Lever-arm term (same as in accelerometer_measurement_func)
+Vector3 lever = Vector3::Zero();
+if (use_imu_lever_arm_) {
+    const Vector3& omega_bprime = last_gyr_bias_corrected; // ω^{B'}
+    const Vector3& alpha_bprime = alpha_b_;                // α^{B'}
+    const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+
+    lever.noalias() += alpha_bprime.cross(r_imu_bprime)
+                    +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));
+}
+
+// Accel bias term (temp-dependent)
+Vector3 ba_term = Vector3::Zero();
+if constexpr (with_accel_bias) {
+    const Vector3 ba0 = xext.template segment<3>(OFF_BA);
+    ba_term = ba0 + k_a_ * (tempC - tempC_ref);
+}
+
+// Predicted specific force
+Vector3 f_pred;
+if (linear_block_enabled_) {
+    const Vector3 aw = xext.template segment<3>(OFF_AW);
+    f_pred = R_wb() * (aw - g_world) + lever + ba_term;
+} else {
+    // marginalize aw => don't use it in the mean
+    f_pred = R_wb() * (Vector3::Zero() - g_world) + lever + ba_term;
+}
+
+const Vector3 f_meas = acc_meas;
+const Vector3 r = f_meas - f_pred;
+                
     // Residual gate: only reject clearly insane outliers.
     // r is in m/s², gravity_magnitude_ is ~9.80665.
     const T sigma_r = std::sqrt(Racc.trace() / T(3));
@@ -1406,43 +1434,65 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         return;
     }
               
-    // Proper Jacobians from linearization at CoG-only part (lever-arm is attitude-independent)
-    const Vector3 g_world(0,0,+gravity_magnitude_);
+    // Jacobians from linearization at CoG-only part (lever-arm is attitude-independent)
+const Vector3 g_world(0,0,+gravity_magnitude_);
+
+Matrix3 J_att;
+Matrix3 J_aw;
+
+if (linear_block_enabled_) {
     const Vector3 aw = xext.template segment<3>(OFF_AW);
     const Vector3 f_cog_b = R_wb() * (aw - g_world);
-    const Matrix3 J_att = -skew_symmetric_matrix(f_cog_b); // ∂f/∂θ = -[f_cog_b]_×
-    const Matrix3 J_aw  =  R_wb();                         // ∂f/∂a_w = R_wb
-              
+    J_att = -skew_symmetric_matrix(f_cog_b);
+    J_aw  =  R_wb();
+} else {
+    // gravity-only linearization
+    const Vector3 f_grav_b = R_wb() * (Vector3::Zero() - g_world);
+    J_att = -skew_symmetric_matrix(f_grav_b);
+    J_aw.setZero(); // <-- IMPORTANT: no aw Jacobian when linear is OFF
+}
+                
     // Innovation covariance S = C P Cᵀ + Racc (3×3)
     Matrix3& S_mat = S_scratch_;
-    S_mat = Racc;
-    {
-        constexpr int OFF_TH = 0;
-        const int off_aw = OFF_AW;
-        const int off_ba = OFF_BA;
+S_mat = Racc;
+{
+    constexpr int OFF_TH = 0;
+    const int off_aw = OFF_AW;
+    const int off_ba = OFF_BA;
 
-        const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
+    const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
+    S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+
+    if (linear_block_enabled_) {
+        // normal full model terms
         const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, off_aw);
         const Matrix3 P_aw_aw = Pext.template block<3,3>(off_aw,  off_aw);
 
-        S_mat.noalias() += J_att * P_th_th * J_att.transpose();
         S_mat.noalias() += J_att * P_th_aw * J_aw.transpose();
         S_mat.noalias() += J_aw  * P_th_aw.transpose() * J_att.transpose();
         S_mat.noalias() += J_aw  * P_aw_aw * J_aw.transpose();
+    } else {
+        // Option A: marginalize aw as extra measurement noise
+        // Use stationary covariance (recommended), not the frozen P_aw_aw.
+        const Matrix3 Sig_aw = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
+        S_mat.noalias() += R_wb() * Sig_aw * R_wb().transpose();
+    }
 
-        if constexpr (with_accel_bias) {
-            const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
-            const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw,  off_ba);
-            const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba,  off_ba);
+    if constexpr (with_accel_bias) {
+        const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
+        const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba,  off_ba);
 
-            S_mat.noalias() += J_att * P_th_ba; // J_ba = ∂f/∂b_a = I
-            S_mat.noalias() += J_aw  * P_aw_ba;
-
-            S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
+        S_mat.noalias() += J_att * P_th_ba;                 // + J_ba*P_ba_th, J_ba=I
+        S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
+        S_mat.noalias() += P_ba_ba;
+        // NOTE: when linear is OFF, we intentionally do NOT include P_aw_ba terms.
+        if (linear_block_enabled_) {
+            const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw, off_ba);
+            S_mat.noalias() += J_aw * P_aw_ba;
             S_mat.noalias() += P_aw_ba.transpose() * J_aw.transpose();
-            S_mat.noalias() += P_ba_ba;
         }
     }
+}
 
     // PCᵀ = P Cᵀ (NX×3)
     MatrixNX3& PCt = PCt_scratch_; PCt.setZero();
@@ -1451,12 +1501,15 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         const auto P_all_th = Pext.template block<NX,3>(0, OFF_TH);
         const auto P_all_aw = Pext.template block<NX,3>(0, OFF_AW);
         PCt.noalias() += P_all_th * J_att.transpose();
-        PCt.noalias() += P_all_aw * J_aw.transpose();
 
+        if (linear_block_enabled_) {
+            const auto P_all_aw = Pext.template block<NX,3>(0, OFF_AW);
+            PCt.noalias() += P_all_aw * J_aw.transpose();
+        }
         if constexpr (with_accel_bias) {
             const auto P_all_ba = Pext.template block<NX,3>(0, OFF_BA);
-            PCt.noalias() += P_all_ba; // J_ba = ∂f/∂b_a = I
-        }
+            PCt.noalias() += P_all_ba; // J_ba = I
+        }                
     }
 
     if (!linear_block_enabled_) {
