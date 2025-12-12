@@ -1579,30 +1579,27 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
 
-const T B0 = v2ref.norm();            // expected field magnitude in world (µT)
-const T Bm = mag_meas.norm();         // measured magnitude (µT)
+// Predicted (no bias) and estimated bias (in BODY')
+const Vector3 pred0 = R_wb() * v2ref;
+
+Vector3 bm_est = Vector3::Zero();
+if constexpr (with_mag_bias) bm_est = xext.template segment<3>(OFF_BM);
+
+// Bias-corrected measurement (what "earth field" would be)
+const Vector3 mag_corr = mag_meas - bm_est;
+
+const T B0 = pred0.norm();
+const T Bm = mag_corr.norm();
 if (!(B0 > T(1e-6)) || !(Bm > T(1e-6))) return;
 
-// relative magnitude gate (tune 0.25–0.50 depending on install)
+// relative magnitude gate
 const T rel = std::abs(Bm - B0) / B0;
 if (rel > T(0.35)) return;
 
-// yaw observability gate (avoid updates when mag almost vertical)
-const Vector3 zhat0 = R_wb() * v2ref;             // predicted (no bias)
-const T horiz = std::sqrt(zhat0.x()*zhat0.x() + zhat0.y()*zhat0.y());
-if (horiz < T(0.05) * B0) return;                 // 5% of magnitude
-
-const Vector3 Sinv_r = ldlt.solve(r);
-const T d2 = r.dot(Sinv_r);
-
-// Chi-square thresholds for dof=3:
-// 99%  ≈ 11.345
-// 99.9% ≈ 16.266
-if (d2 > T(16.266)) return;              
-
-const T m = mag_meas.norm();
-if (!(m > T(1e-6)) || !std::isfinite(m)) return;
-                
+// yaw observability gate: use corrected measurement (or pred0)
+const T horiz = std::sqrt(mag_corr.x()*mag_corr.x() + mag_corr.y()*mag_corr.y());
+if (horiz < T(0.05) * Bm) return;
+        
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
     
