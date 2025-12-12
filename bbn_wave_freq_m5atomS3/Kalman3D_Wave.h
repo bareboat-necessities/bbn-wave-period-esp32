@@ -1573,7 +1573,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
                 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
-    
+
+const Vector3 Sinv_r = ldlt.solve(r);
+const T d2 = r.dot(Sinv_r);
+
+// Chi-square thresholds for dof=3:
+// 99%  ≈ 11.345
+// 99.9% ≈ 16.266
+if (d2 > T(16.266)) return;              
+
+const T m = mag_meas.norm();
+if (!(m > T(1e-6)) || !std::isfinite(m)) return;
+                
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
     
