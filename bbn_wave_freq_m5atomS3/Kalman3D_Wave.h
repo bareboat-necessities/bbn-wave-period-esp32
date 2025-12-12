@@ -8,6 +8,7 @@
     Level arm correction with mag bias missing terms.
     Blending in set_aw_stationary_std
     PSD projection for N=12 (find better pattern)
+    linear_block_enabled_ == false does NOT actually freeze the linear block
     
 */
 
