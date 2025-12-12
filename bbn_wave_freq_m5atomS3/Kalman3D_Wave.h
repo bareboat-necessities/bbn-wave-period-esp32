@@ -379,15 +379,20 @@ class Kalman3D_Wave {
     void set_aw_time_constant(T tau_seconds) { tau_aw = std::max(T(1e-3), tau_seconds); }
 
     // OU stationary std [m/s²] for a_w (per axis)
-    void set_aw_stationary_std(const Vector3& std_aw) {
-        Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
-        has_cross_cov_a_xy = false;
+void set_aw_stationary_std(const Vector3& std_aw) {
+    Matrix3 Snew = std_aw.array().square().matrix().asDiagonal();
 
-        // keep P consistent with the new stationary prior
-        Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;
-        symmetrize_Pext_();
-    }
+    Sigma_aw_stat = Snew;
+    has_cross_cov_a_xy = false;
 
+    // Soft merge (prevents discontinuity)
+    Pext.template block<3,3>(OFF_AW, OFF_AW) =
+        T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW) +
+        T(0.2) * Sigma_aw_stat;
+
+    symmetrize_Pext_();
+}
+        
     // Accept a full 3×3 SPD stationary covariance for a_w.
     void set_aw_stationary_cov_full(const Matrix3& Sigma);
 
