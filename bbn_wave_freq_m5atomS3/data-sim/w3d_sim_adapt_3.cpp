@@ -233,7 +233,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
     // Deterministic noise
     NoiseModel accel_noise = make_noise_model(0.03f, 0.2f, 1234);
-    NoiseModel gyro_noise  = make_noise_model(0.0018f, 0.002f, 5678);
+    NoiseModel gyro_noise  = make_noise_model(0.0018f, 0.02f, 5678);
     // Magnetometer noise model (units: uT)
     MagNoiseModel mag_noise = make_mag_noise_model(
         0.8f,   // sigma ~0.8 uT per sample
