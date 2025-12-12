@@ -1459,6 +1459,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         }
     }
 
+    if (!linear_block_enabled_) {
+        freeze_linear_rows_(PCt);
+    }       
+
     // Gain
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Racc.norm())) return;
