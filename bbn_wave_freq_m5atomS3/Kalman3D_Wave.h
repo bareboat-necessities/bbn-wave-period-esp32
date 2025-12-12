@@ -5,7 +5,7 @@
 
     Magnetomer gating.
     R_S in contructor treated as var instead of std?
-    Level arm correction with mag bias missing terms.
+    Level arm correction logic wrong in many places.
     Blending in set_aw_stationary_std
     PSD projection for N=12 (find better pattern)
     linear_block_enabled_ == false does NOT actually freeze the linear block
