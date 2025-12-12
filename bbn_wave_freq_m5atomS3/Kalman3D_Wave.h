@@ -1501,9 +1501,12 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_fun
     return fb;             
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-Matrix<T, 3, 1> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::magnetometer_measurement_func() const {
-    return R_wb() * v2ref;
+Matrix<T, 3, 1> magnetometer_measurement_func() const {
+    Vector3 pred = R_wb() * v2ref;
+    if constexpr (with_mag_bias) {
+        pred += xext.template segment<3>(OFF_BM); // b_m in BODY' (µT)
+    }
+    return pred;
 }
 
 // utility functions
