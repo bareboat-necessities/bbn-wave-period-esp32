@@ -232,14 +232,14 @@ static void process_wave_file_for_tracker(const std::string &filename,
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
     // Deterministic noise
-    NoiseModel accel_noise = make_noise_model(0.03f, 0.2f, 1234);
-    NoiseModel gyro_noise  = make_noise_model(0.0018f, 0.02f, 5678);
+    NoiseModel accel_noise = make_noise_model(0.01f, 0.05f, 1234);
+    NoiseModel gyro_noise  = make_noise_model(0.0012f, 0.01f, 5678);
     // Magnetometer noise model (units: uT)
     MagNoiseModel mag_noise = make_mag_noise_model(
-        0.8f,   // sigma ~0.8 uT per sample
-        15.0f,  // hard-iron bias ±50 uT
-        0.03f,  // scale error up to ±5%
-        2.5f,   // misalignment up to ±3 deg
+        0.4f,   // sigma uT per sample
+        30.0f,  // hard-iron bias uT
+        0.02f,  // scale error up 
+        2.0f,   // misalignment deg
         9012    // seed
     );
     
