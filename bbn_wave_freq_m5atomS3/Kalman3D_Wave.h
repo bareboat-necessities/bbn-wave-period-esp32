@@ -193,26 +193,25 @@ class Kalman3D_Wave {
     // Base (att_err + optional gyro bias)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
 
-// Extended added states: v(3), p(3), S(3), a_w(3) [+ b_acc(3)] [+ b_mag(3)]
-static constexpr int EXT_ADD =
-      12
-    + (with_accel_bias ? 3 : 0)
-    + (with_mag_bias   ? 3 : 0);
-
-static constexpr int NX = BASE_N + EXT_ADD;
-
-// Offsets (always defined)
-static constexpr int OFF_V   = BASE_N + 0;
-static constexpr int OFF_P   = BASE_N + 3;
-static constexpr int OFF_S   = BASE_N + 6;
-static constexpr int OFF_AW  = BASE_N + 9;
-
-static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 12) : -1;
-
-// mag bias comes after accel bias if present, otherwise after a_w
-static constexpr int OFF_BM  = with_mag_bias
-    ? (BASE_N + 12 + (with_accel_bias ? 3 : 0))
-    : -1;
+    // Extended added states: v(3), p(3), S(3), a_w(3) [+ b_acc(3)] [+ b_mag(3)]
+    static constexpr int EXT_ADD = 12
+        + (with_accel_bias ? 3 : 0)
+        + (with_mag_bias   ? 3 : 0);
+    
+    static constexpr int NX = BASE_N + EXT_ADD;
+    
+    // Offsets (always defined)
+    static constexpr int OFF_V   = BASE_N + 0;
+    static constexpr int OFF_P   = BASE_N + 3;
+    static constexpr int OFF_S   = BASE_N + 6;
+    static constexpr int OFF_AW  = BASE_N + 9;
+    
+    static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 12) : -1;
+    
+    // mag bias comes after accel bias if present, otherwise after a_w
+    static constexpr int OFF_BM  = with_mag_bias
+        ? (BASE_N + 12 + (with_accel_bias ? 3 : 0))
+        : -1;
 
     typedef Matrix<T, 3, 1> Vector3;
     typedef Matrix<T, BASE_N, BASE_N> MatrixBaseN;
@@ -248,27 +247,27 @@ static constexpr int OFF_BM  = with_mag_bias
         v2ref = B_world;    // keep µT magnitude
     }
 
-[[nodiscard]] Vector3 get_mag_bias() const {
-    if constexpr (with_mag_bias) return xext.template segment<3>(OFF_BM);
-    else return Vector3::Zero();
-}
-
-void set_initial_mag_bias_std(T s_uT) {
-    if constexpr (with_mag_bias) {
-        sigma_bmag0_ = std::max(T(0), s_uT);
-        Pext.template block<3,3>(OFF_BM, OFF_BM) =
-            Matrix3::Identity() * sigma_bmag0_ * sigma_bmag0_;
+    [[nodiscard]] Vector3 get_mag_bias() const {
+        if constexpr (with_mag_bias) return xext.template segment<3>(OFF_BM);
+        else return Vector3::Zero();
     }
-}
-
-void set_initial_mag_bias(const Vector3& b_uT) {
-    if constexpr (with_mag_bias) xext.template segment<3>(OFF_BM) = b_uT;
-}
-
-void set_Q_bmag_rw(const Vector3& rw_std_uT_per_sqrt_s) {
-    if constexpr (with_mag_bias)
-        Q_bmag_ = rw_std_uT_per_sqrt_s.array().square().matrix().asDiagonal();
-}
+    
+    void set_initial_mag_bias_std(T s_uT) {
+        if constexpr (with_mag_bias) {
+            sigma_bmag0_ = std::max(T(0), s_uT);
+            Pext.template block<3,3>(OFF_BM, OFF_BM) =
+                Matrix3::Identity() * sigma_bmag0_ * sigma_bmag0_;
+        }
+    }
+    
+    void set_initial_mag_bias(const Vector3& b_uT) {
+        if constexpr (with_mag_bias) xext.template segment<3>(OFF_BM) = b_uT;
+    }
+    
+    void set_Q_bmag_rw(const Vector3& rw_std_uT_per_sqrt_s) {
+        if constexpr (with_mag_bias)
+            Q_bmag_ = rw_std_uT_per_sqrt_s.array().square().matrix().asDiagonal();
+    }
 
     void time_update(Vector3 const& gyr, T Ts);
 
@@ -520,8 +519,8 @@ void set_Q_bmag_rw(const Vector3& rw_std_uT_per_sqrt_s) {
     // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
     Vector3 k_a_ = Vector3::Constant(T(0.003));
 
-T sigma_bmag0_ = T(10.0);                 // µT (start loose so it can learn)
-Matrix3 Q_bmag_ = Matrix3::Identity() * T(1e-6); // (µT^2)/s  (tune)
+    T sigma_bmag0_ = T(10.0);                 // µT (start loose so it can learn)
+    Matrix3 Q_bmag_ = Matrix3::Identity() * T(1e-6); // (µT^2)/s  (tune)
               
     // Constant matrices
     Matrix3 Rmag;
