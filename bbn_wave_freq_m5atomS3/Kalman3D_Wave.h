@@ -1,6 +1,17 @@
 #pragma once
 
 /*
+    TODO:
+
+    Magnetomer gating.
+    R_S in contructor treated as var instead of std?
+    Level arm correction with mag bias missing terms.
+    Blending in set_aw_stationary_std
+    PSD projection for N=12 (find better pattern)
+    
+*/
+
+/*
   Copyright (c) 2025 Mikhail Grushinskiy
 
   Based on: https://github.com/thomaspasser/q-mekf
