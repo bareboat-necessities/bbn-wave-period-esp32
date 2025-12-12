@@ -153,7 +153,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
     // Deterministic noise
     NoiseModel accel_noise = make_noise_model(0.03f, 0.02f, 1234);
-    NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
+    NoiseModel gyro_noise  = make_noise_model(0.0018f, 0.0004f, 5678);
 
     bool first = true;
     bool mag_ref_set = false;  
