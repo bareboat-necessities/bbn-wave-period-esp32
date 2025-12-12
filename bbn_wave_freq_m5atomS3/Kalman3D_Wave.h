@@ -178,24 +178,17 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
         S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
         S = T(0.5) * (S + S.transpose()); // clean float noise
     } else {
-        // Larger matrices (6×6, 12×12, ...):
-        // enforce *strict diagonal dominance* row-by-row.
-        // For a symmetric matrix, strictly diagonally dominant with positive
-        // diagonal ⇒ SPD. This is cheap, O(N²), and uses almost no stack.
-
+        // Larger matrices: Gershgorin shift to make strictly diagonally dominant (SPD)
+        T worst = T(0);
         for (int i = 0; i < N; ++i) {
             T row_sum = T(0);
-            for (int j = 0; j < N; ++j) {
-                if (j == i) continue;
-                row_sum += std::abs(S(i,j));
-            }
-            const T min_diag = row_sum + eps;
-            if (!(S(i,i) > min_diag)) {
-                S(i,i) = min_diag;
-            }
+            for (int j = 0; j < N; ++j) if (j != i) row_sum += std::abs(S(i,j));
+            worst = std::max(worst, row_sum - S(i,i));
         }
-        // Final clean symmetrization
-        S = T(0.5) * (S + S.transpose());
+        if (worst > T(0)) {
+            S.diagonal().array() += (worst + eps);
+        }
+        S = T(0.5) * (S + S.transpose());       
     }
 }
 
