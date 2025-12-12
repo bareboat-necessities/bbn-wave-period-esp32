@@ -325,28 +325,28 @@ class Kalman3D_Wave {
     // When disabled, the filter behaves like a pure attitude/bias MEKF:
     //  • [v,p,S,a_w] are frozen (no process, no S pseudo-measurements),
     //  • attitude & biases still propagate and accept accel/mag updates.
-  void set_linear_block_enabled(bool on) {
-      if (linear_block_enabled_ && !on) {
-          // Just disabled: decouple base (A) from linear (L)
-          zero_AL_cross_cov_once_();
-
-          // Optional: also decouple accel/mag biases from the linear block
-          // if you consider those part of the "A" subsystem when linear is off.
-          if constexpr (with_accel_bias) {
-              Pext.template block<12,3>(OFF_V, OFF_BA).setZero();
-              Pext.template block<3,12>(OFF_BA, OFF_V).setZero();
-          }
-          if constexpr (with_mag_bias) {
-              Pext.template block<12,3>(OFF_V, OFF_BM).setZero();
-              Pext.template block<3,12>(OFF_BM, OFF_V).setZero();
-          }
-
-          // keep cadence sane
-          pseudo_update_counter_ = 0;
-      }
-
-      linear_block_enabled_ = on;
-  }
+    void set_linear_block_enabled(bool on) {
+        if (linear_block_enabled_ && !on) {
+            // Just disabled: decouple base (A) from linear (L)
+            zero_AL_cross_cov_once_();
+  
+            // Optional: also decouple accel/mag biases from the linear block
+            // if you consider those part of the "A" subsystem when linear is off.
+            if constexpr (with_accel_bias) {
+                Pext.template block<12,3>(OFF_V, OFF_BA).setZero();
+                Pext.template block<3,12>(OFF_BA, OFF_V).setZero();
+            }
+            if constexpr (with_mag_bias) {
+                Pext.template block<12,3>(OFF_V, OFF_BM).setZero();
+                Pext.template block<3,12>(OFF_BM, OFF_V).setZero();
+            }
+  
+            // keep cadence sane
+            pseudo_update_counter_ = 0;
+        }
+  
+        linear_block_enabled_ = on;
+    }
     bool linear_block_enabled() const      { return linear_block_enabled_; }
 
     // Velocity in world (NED)
