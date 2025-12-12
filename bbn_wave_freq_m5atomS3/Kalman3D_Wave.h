@@ -387,8 +387,8 @@ void set_aw_stationary_std(const Vector3& std_aw) {
 
     // Soft merge (prevents discontinuity)
     Pext.template block<3,3>(OFF_AW, OFF_AW) =
-        T(0.8) * Pext.template block<3,3>(OFF_AW, OFF_AW) +
-        T(0.2) * Sigma_aw_stat;
+        T(0.2) * Pext.template block<3,3>(OFF_AW, OFF_AW) +
+        T(0.8) * Sigma_aw_stat;
 
     symmetrize_Pext_();
 }
