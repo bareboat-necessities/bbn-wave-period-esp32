@@ -1552,20 +1552,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     }
                 
     Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
-
-    // NIS gate: rᵀ S⁻¹ r  ~ χ²(df=3) if consistent
-    const Vector3 Sinv_r = ldlt.solve(r);
-    const T nis = r.dot(Sinv_r);
-    
-    // Choose a threshold (df=3):
-    //  p=0.99  -> 11.34
-    //  p=0.999 -> 16.27
-    //  p=0.9999-> 21.11
-    const T nis_thresh = T(16.27); // very conservative, good starting point
-    if (!(nis <= nis_thresh)) {
-        return; // reject outlier mag sample
-    }   
+    if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;  
         
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
