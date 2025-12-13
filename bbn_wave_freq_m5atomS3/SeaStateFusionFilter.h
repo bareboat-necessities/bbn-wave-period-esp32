@@ -79,8 +79,8 @@ constexpr float MAX_R_S     = 35.0f;
 constexpr float ADAPT_TAU_SEC            = 1.5f;
 constexpr float ADAPT_R_S_SEC            = 10.0f;
 constexpr float ADAPT_EVERY_SECS         = 0.1f;
-constexpr float ONLINE_TUNE_WARMUP_SEC   = 8.0f;
-constexpr float MAG_DELAY_SEC            = 8.0f;
+constexpr float ONLINE_TUNE_WARMUP_SEC   = 5.0f;
+constexpr float MAG_DELAY_SEC            = 3.0f;
 
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
@@ -930,8 +930,8 @@ private:
     float mag_delay_sec_          = MAG_DELAY_SEC;
 
     // Runtime-configurable anisotropy knobs
-    float R_S_xy_factor_ = 0.07f;  // [0..1] scales XY pseudo-meas vs Z
-    float S_factor_      = 1.3f;   // (>0) scales Σ_aw horizontal std vs vertical
+    float R_S_xy_factor_ = 0.06f;  // [0..1] scales XY pseudo-meas vs Z
+    float S_factor_      = 0.9f;   // (>0) scales Σ_aw horizontal std vs vertical
 
     TrackingPolicy                  tracker_policy_{};
     FirstOrderIIRSmoother<float>    freq_fast_smoother_{FREQ_SMOOTHER_DT, 3.5f};   // ~3.5 s to 90% step
