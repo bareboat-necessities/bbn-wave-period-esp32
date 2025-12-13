@@ -306,9 +306,9 @@ Vector3f mag_body_ned_hold = Vector3f::Zero();
     const Vector3f sigma_a_init(2.1*acc_sigma, 2.1*acc_sigma, 2.1*acc_sigma);
     const float sqrt_dt = std::sqrt(dt);
     // gyr_sigma is per-sample std (rad/s) in your current sim
-    const Vector3f sigma_g(2.1f * gyr_sigma * sqrt_dt,
-                           2.1f * gyr_sigma * sqrt_dt,
-                           2.1f * gyr_sigma * sqrt_dt);    
+    const Vector3f sigma_g(5.1f * gyr_sigma * sqrt_dt,
+                           5.1f * gyr_sigma * sqrt_dt,
+                           5.1f * gyr_sigma * sqrt_dt);    
     const float sigma_m_uT = 1.2f * mag_sigma_uT;   // a bit conservative
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
