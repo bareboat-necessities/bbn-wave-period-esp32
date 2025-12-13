@@ -1673,6 +1673,15 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyInte
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_S);
 
+// ---- NEW: restrict pseudo-meas to linear block only ----
+// Block rows: [0 .. BASE_N-1] are (δθ [+ gyro bias]) → forbid updates
+PCt.template block<BASE_N,3>(0,0).setZero();
+
+// Also forbid accel/mag bias updates from this pseudo-meas
+if constexpr (with_accel_bias) PCt.template block<3,3>(OFF_BA,0).setZero();
+if constexpr (with_mag_bias)   PCt.template block<3,3>(OFF_BM,0).setZero();
+// --------------------------------------------------------
+                
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, R_S.norm())) return;
     MatrixNX3& K = K_scratch_;
