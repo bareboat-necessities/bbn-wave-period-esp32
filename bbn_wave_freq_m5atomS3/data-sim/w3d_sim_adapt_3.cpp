@@ -307,7 +307,8 @@ Vector3f mag_body_ned_hold = Vector3f::Zero();
     // Filter
     const Vector3f sigma_a_init(2.1*acc_sigma, 2.1*acc_sigma, 2.1*acc_sigma);
     const Vector3f sigma_g(2.1*gyr_sigma, 2.1*gyr_sigma, 2.1*gyr_sigma);
-    const Vector3f sigma_m(0.15f, 0.15f, 0.15f);
+    const float sigma_m_uT = 1.2f * mag_sigma_uT;   // a bit conservative
+    const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
     
     bool first = true;
