@@ -107,37 +107,52 @@ Vector3f apply_imu_noise(const Vector3f& truth, ImuNoiseModel& m, float dt)
 
 struct MagNoiseModel {
     std::mt19937 rng;
-    std::normal_distribution<float> dist;
-    Vector3f bias;          // hard-iron bias [uT]
-    Eigen::Matrix3f Mis;    // soft-iron + misalignment matrix
+    std::normal_distribution<float> w_uT;   // white noise [uT] per *mag sample*
+    std::normal_distribution<float> n01;    // N(0,1) for RW
+
+    Vector3f bias0_uT;      // residual hard-iron after calibration [uT]
+    Vector3f bias_rw_uT;    // slowly drifting residual [uT]
+    float sigma_bias_rw_uT_sqrt_s = 0.0f;   // [uT]/sqrt(s)
+
+    Eigen::Matrix3f Mis;    // residual soft-iron + misalignment (close to I)
 };
 
-MagNoiseModel make_mag_noise_model(float sigma_uT,
-                                   float bias_range_uT,
-                                   float scale_err_max,
-                                   float misalign_deg_max,
-                                   unsigned seed)
-{
+MagNoiseModel make_mag_noise_model(
+    float sigma_white_uT,          // per mag sample RMS
+    float bias_residual_range_uT,  // residual hard-iron half-range (calibrated)
+    float sigma_bias_rw_uT_sqrt_s, // slow drift
+    float scale_err_max,           // residual scale error (e.g. 0.01 = 1%)
+    float cross_axis_max,          // residual cross-axis coupling (e.g. 0.01)
+    float misalign_deg_max,        // residual misalignment (deg)
+    unsigned seed
+){
     MagNoiseModel m;
     m.rng  = std::mt19937(seed);
-    m.dist = std::normal_distribution<float>(0.0f, sigma_uT);
+    m.w_uT = std::normal_distribution<float>(0.0f, sigma_white_uT);
+    m.n01  = std::normal_distribution<float>(0.0f, 1.0f);
 
-    // Hard-iron bias
-    std::uniform_real_distribution<float> ub(-bias_range_uT, bias_range_uT);
-    m.bias = Vector3f(ub(m.rng), ub(m.rng), ub(m.rng));
+    // Residual hard-iron (post-calibration, should be small)
+    std::uniform_real_distribution<float> ub(-bias_residual_range_uT, bias_residual_range_uT);
+    m.bias0_uT = Vector3f(ub(m.rng), ub(m.rng), ub(m.rng));
+    m.bias_rw_uT.setZero();
+    m.sigma_bias_rw_uT_sqrt_s = sigma_bias_rw_uT_sqrt_s;
 
-    // Soft-iron + misalignment: build as R * S
-    m.Mis.setIdentity();
+    // Residual soft-iron / cross-axis coupling (near identity)
+    std::uniform_real_distribution<float> us(1.0f - scale_err_max, 1.0f + scale_err_max);
+    std::uniform_real_distribution<float> uc(-cross_axis_max, cross_axis_max);
 
-    // Scale errors (diagonal)
-    std::uniform_real_distribution<float> us(1.0f - scale_err_max,
-                                             1.0f + scale_err_max);
-    Eigen::Matrix3f S = Eigen::Matrix3f::Identity();
-    S(0,0) = us(m.rng);
-    S(1,1) = us(m.rng);
-    S(2,2) = us(m.rng);
+    Eigen::Matrix3f A = Eigen::Matrix3f::Identity();
+    A(0,0) = us(m.rng);
+    A(1,1) = us(m.rng);
+    A(2,2) = us(m.rng);
 
-    // Small random rotations around each axis
+    // small symmetric cross-axis terms
+    float a01 = uc(m.rng), a02 = uc(m.rng), a12 = uc(m.rng);
+    A(0,1) = A(1,0) = a01;
+    A(0,2) = A(2,0) = a02;
+    A(1,2) = A(2,1) = a12;
+
+    // small misalignment rotation
     auto deg2rad = [](float d){ return d * float(M_PI/180.0); };
     std::uniform_real_distribution<float> ua(-misalign_deg_max, misalign_deg_max);
     float rx = deg2rad(ua(m.rng));
@@ -170,19 +185,23 @@ MagNoiseModel make_mag_noise_model(float sigma_uT,
     };
 
     Eigen::Matrix3f R = Rz(rz) * Ry(ry) * Rx(rx);
-    m.Mis = R * S;  // apply scale then misalignment
+
+    // Mis = R * A  (still close to I)
+    m.Mis = R * A;
 
     return m;
 }
 
-Vector3f apply_mag_noise(const Vector3f& ideal_mag_uT_body, MagNoiseModel& m)
+// measurement = Mis * truth + (bias0 + bias_rw) + white
+Vector3f apply_mag_noise(const Vector3f& ideal_mag_uT_body, MagNoiseModel& m, float dt_mag)
 {
-    // Hard/soft iron
-    Vector3f distorted = m.Mis * ideal_mag_uT_body + m.bias;
+    if (m.sigma_bias_rw_uT_sqrt_s > 0.0f) {
+        const float s = m.sigma_bias_rw_uT_sqrt_s * std::sqrt(dt_mag);
+        m.bias_rw_uT += Vector3f(s * m.n01(m.rng), s * m.n01(m.rng), s * m.n01(m.rng));
+    }
 
-    // Add white noise
-    Vector3f n(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
-    return distorted + n;
+    Vector3f white(m.w_uT(m.rng), m.w_uT(m.rng), m.w_uT(m.rng));
+    return (m.Mis * ideal_mag_uT_body) + (m.bias0_uT + m.bias_rw_uT) + white;
 }
 
 //  Example wave parameter list
@@ -264,14 +283,23 @@ const float gyr_bias_rw = 0.00001f;  // rad/s / sqrt(s)
 ImuNoiseModel accel_noise = make_imu_noise_model(acc_sigma, acc_bias_range, acc_bias_rw, 1234);
 ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_bias_rw, 5678);
 
-    // Magnetometer noise model (units: uT)
-    MagNoiseModel mag_noise = make_mag_noise_model(
-        0.3f,   // sigma uT per sample
-        15.0f,  // hard-iron bias uT
-        0.0f,  // scale error up 
-        0.0f,   // misalignment deg
-        9012    // seed
-    );
+// --- BMM150-like magnetometer behavior (AtomS3R) ---
+constexpr float MAG_ODR_HZ = 100.0f;                 // 100 (regular) or 20 (high-accuracy)
+constexpr float MAG_DT     = 1.0f / MAG_ODR_HZ;
+const int MAG_STRIDE = std::max(1, int(std::lround(MAG_DT / dt)));
+
+const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet RMS noise  [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf)
+
+// “Decently calibrated” residuals (small!)
+MagNoiseModel mag_noise = make_mag_noise_model(
+    mag_sigma_uT,  // white RMS per mag sample
+    2.0f,          // residual hard-iron half-range [uT] (post-cal)
+    0.02f,         // slow drift [uT]/sqrt(s)
+    0.015f,        // <= 1.5% residual scale
+    0.010f,        // <= 1% cross-axis coupling
+    1.0f,          // <= 1 deg residual misalignment
+    9012
+);
 
     // Filter
     const Vector3f sigma_a_init(2.1*acc_sigma, 2.1*acc_sigma, 2.1*acc_sigma);
