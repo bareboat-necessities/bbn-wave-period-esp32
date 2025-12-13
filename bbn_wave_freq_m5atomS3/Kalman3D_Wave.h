@@ -1615,12 +1615,33 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyQuaternionCorrectionFromErrorState() {
-    Eigen::Quaternion<T> corr = quat_from_delta_theta((xext.template segment<3>(0)).eval());
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyQuaternionCorrectionFromErrorState()
+{
+    // Save the correction BEFORE zeroing it
+    const Vector3 dtheta = xext.template segment<3>(0);
+
+    // 1) Inject into quaternion
+    Eigen::Quaternion<T> corr = quat_from_delta_theta(dtheta);
     qref = qref * corr;
     qref.normalize();
 
-    // Clear error-state attitude correction after applying
+    // 2) Covariance reset: P <- G P G^T
+    //    G ≈ I - 0.5*[dθ]x   (optionally + 1/12*[dθ]x^2)
+    const Matrix3 A = skew_symmetric_matrix(dtheta);
+    Matrix3 G3 = Matrix3::Identity() - T(0.5) * A;
+    // Optional 2nd order (often helps if corrections are not tiny):
+    // G3 += (T(1)/T(12)) * (A * A);
+
+    // Efficiently apply to full Pext without NX×NX temporaries:
+    // Left-multiply first 3 rows by G3
+    Pext.template block<3,NX>(0,0) = G3 * Pext.template block<3,NX>(0,0);
+    // Right-multiply first 3 cols by G3^T
+    Pext.template block<NX,3>(0,0) = Pext.template block<NX,3>(0,0) * G3.transpose();
+
+    // Symmetry hygiene (important after finite precision ops)
+    symmetrize_Pext_();
+
+    // 3) Clear error-state attitude after applying
     xext.template head<3>().setZero();
 }
 
