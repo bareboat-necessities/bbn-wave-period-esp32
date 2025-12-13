@@ -1210,14 +1210,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
     Matrix12& Q_LL = Q_LL_scratch_; Q_LL.setZero();
 
     if (linear_block_enabled_) {
-          
         // Build F_LL per axis
         for (int axis = 0; axis < 3; ++axis) {
             const T tau = std::max(T(1e-6), tau_aw);
-    
+
             Eigen::Matrix<T,4,4> Phi_axis;
             PhiAxis4x1_analytic(tau, Ts, Phi_axis);
-    
+
             const int idx[4] = {0,3,6,9}; // [v,p,S,a] offsets
             for (int i = 0; i < 4; ++i)
                 for (int j = 0; j < 4; ++j)
@@ -1691,13 +1690,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyInte
               
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_position_pseudo(
-    const Vector3& p_meas,
-    const Vector3& sigma_meas)
+    const Vector3& p_meas, const Vector3& sigma_meas)
 {
     if (!linear_block_enabled_) {
         return;
     }
-    
     constexpr int off_P = OFF_P; // position block
 
     // Predicted position (world, NED)
