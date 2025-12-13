@@ -1407,24 +1407,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     
     const Vector3 f_meas = acc_meas;
     const Vector3 r = f_meas - f_pred;
-                    
-    // Residual gate: only reject clearly insane outliers.
-    // r is in m/s², gravity_magnitude_ is ~9.80665.
-    const T sigma_r = std::sqrt(Racc.trace() / T(3));
-    if (!std::isfinite(sigma_r) || sigma_r <= T(0)) {
-        // If noise is bogus, skip this update entirely.
-        return;
-    }
-        
-    // Use a physically-based threshold: e.g. 2 g of residual.
-    // That’s huge; normal sea-state mismatch should be well below this.
-    const T g = gravity_magnitude_;
-    const T thresh = T(2.0) * g;   // ~19.6 m/s²
-    
-    if (r.norm() > thresh) {
-        // Only bail out on completely inconsistent samples
-        return;
-    }
                   
     // Jacobians from linearization at CoG-only part (lever-arm is attitude-independent)
     Matrix3 J_att;
