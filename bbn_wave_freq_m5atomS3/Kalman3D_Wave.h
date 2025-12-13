@@ -1598,7 +1598,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 // specific force prediction (BODY'):
 //   f_b' = R_wb (a_w − g) + α^{B'} × r_imu^{B'} + ω^{B'} × (ω^{B'} × r_imu^{B'}) + b_a(temp)
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::Vector3
+Matrix<T,3,1>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::accelerometer_measurement_func(T tempC) const {
     const Vector3 g_world(0,0,+gravity_magnitude_);
     const Vector3 aw = xext.template segment<3>(OFF_AW);
@@ -1627,7 +1627,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::accelerometer_
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::Vector3
+Matrix<T,3,1>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::magnetometer_measurement_func() const {
     Vector3 pred = R_wb() * v2ref;
     if constexpr (with_mag_bias) {
