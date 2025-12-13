@@ -280,7 +280,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 r_ref_out, p_ref_out, y_ref_out);
 
             // Add realistic noise / bias / misalignment in ENU body frame
-            if (add_noise) {
+            if (false /* TODO: add_noise*/) {
                 mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise);
             }
 
