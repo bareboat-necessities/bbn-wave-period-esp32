@@ -223,17 +223,17 @@ static void process_wave_file_for_tracker(const std::string &filename,
     using Fusion = SeaStateFusionFilter<TrackerType::KALMANF>;
     Fusion filter(with_mag);
 
-    const Vector3f sigma_a_init(0.025f, 0.025f, 0.025f);
-    const Vector3f sigma_g(0.00134f, 0.00134f, 0.00134f);
-    const Vector3f sigma_m(0.85f, 0.85f, 0.85f);
+    const Vector3f sigma_a_init(0.25f, 0.25f, 0.25f);
+    const Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f);
+    const Vector3f sigma_m(0.15f, 0.15f, 0.15f);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
 
     // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
     // Deterministic noise
-    NoiseModel accel_noise = make_noise_model(0.01f, 0.05f, 1234);
-    NoiseModel gyro_noise  = make_noise_model(0.0012f, 0.01f, 5678);
+    NoiseModel accel_noise = make_noise_model(0.03f, 0.02f, 1234);
+    NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
     // Magnetometer noise model (units: uT)
     MagNoiseModel mag_noise = make_mag_noise_model(
         0.3f,   // sigma uT per sample
