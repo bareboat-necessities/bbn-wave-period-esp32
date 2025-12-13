@@ -286,10 +286,9 @@ ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_
 // --- BMM150-like magnetometer behavior (AtomS3R) ---
 constexpr float MAG_ODR_HZ = 100.0f;                 // 100 (regular) or 20 (high-accuracy)
 constexpr float MAG_DT     = 1.0f / MAG_ODR_HZ;
-const int MAG_STRIDE = std::max(1, int(std::lround(MAG_DT / dt)));
-
+// Phase accumulator for exact mag rate
+float mag_phase_s = 0.0f;
 const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet RMS noise  [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf)
-
 // “Decently calibrated” residuals (small!)
 MagNoiseModel mag_noise = make_mag_noise_model(
     mag_sigma_uT,  // white RMS per mag sample
@@ -300,7 +299,6 @@ MagNoiseModel mag_noise = make_mag_noise_model(
     1.0f,          // <= 1 deg residual misalignment
     9012
 );
-
 // Hold-last-sample value (persistent across loop iterations)
 Vector3f mag_body_ned_hold = Vector3f::Zero();
        
@@ -358,30 +356,28 @@ Vector3f mag_body_ned_hold = Vector3f::Zero();
 
 // Simulated magnetometer (BODY, then axis-map to NED body)
 Vector3f mag_body_ned(0,0,0);
-
 if (with_mag) {
-    const bool mag_tick = (sample_idx % MAG_STRIDE == 0);
-
+    // Exact-rate mag tick using a phase accumulator
+    mag_phase_s += dt;
+    bool mag_tick = false;
+    if (mag_phase_s >= MAG_DT) {
+        while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
+        mag_tick = true;
+    }
     if (mag_tick) {
-        // Ideal body-frame mag (Z-up ENU body)
         Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(
             r_ref_out, p_ref_out, y_ref_out);
 
-        // Add noise only when we take a new mag sample
         if (add_noise) {
             mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
         }
 
-        // Axis map Z-up ENU body -> NED body, and HOLD it
         mag_body_ned_hold = zu_to_ned(mag_b_enu);
 
-        // Do the mag update only when a new mag sample arrives
         if (rec.time >= MAG_DELAY_SEC) {
             filter.updateMag(mag_body_ned_hold);
         }
     }
-
-    // Always output the held mag vector (even between updates)
     mag_body_ned = mag_body_ned_hold;
 }
         
