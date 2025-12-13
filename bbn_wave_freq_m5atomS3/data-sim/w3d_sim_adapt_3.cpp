@@ -254,19 +254,17 @@ static void process_wave_file_for_tracker(const std::string &filename,
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
 // --- BMI270-like noise (per-axis), “normal mode” order ---
-// Accel: 1.51 mg RMS  -> m/s^2
-const float acc_sigma = 1.51e-3f * g_std;                  // ~0.0148 m/s^2
-// Gyro: 0.09 dps RMS -> rad/s
-const float gyr_sigma = 0.09f * float(M_PI / 180.0f);      // ~0.00157 rad/s
+// White noise (per-sample RMS, per axis)
+const float acc_sigma = 1.51e-3f * g_std;                 // 1.51 mg-rms -> ~0.0148 m/s^2   [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
+const float gyr_sigma = 0.09f * float(M_PI/180.0f);        // 0.09 dps-rms -> ~0.00157 rad/s  [oai_citation:7‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
 
-// Bias half-ranges (lifetime-ish)
-const float acc_bias_range = 20e-3f * g_std;               // 20 mg -> ~0.196 m/s^2
-const float gyr_bias_range = 0.5f * float(M_PI / 180.0f);  // 0.5 dps -> ~0.00873 rad/s
+// “Decently calibrated” residual constant bias half-ranges
+const float acc_bias_range = 5e-3f * g_std;                // 5 mg -> ~0.049 m/s^2
+const float gyr_bias_range = 0.05f * float(M_PI/180.0f);    // 0.05 dps -> ~0.00087 rad/s
 
-// Optional slow drift (set to 0 if you don’t want drift)
-// (Not specified in datasheet; keep small so it doesn’t dominate.)
-const float acc_bias_rw = 0.002f;   // m/s^2 / sqrt(s)  (tweak)
-const float gyr_bias_rw = 0.00005f; // rad/s / sqrt(s)  (tweak)
+// Optional very-slow drift (keep tiny; set 0 if you don’t want drift)
+const float acc_bias_rw = 0.0005f;   // m/s^2 / sqrt(s)
+const float gyr_bias_rw = 0.00001f;  // rad/s / sqrt(s)
 
 ImuNoiseModel accel_noise = make_imu_noise_model(acc_sigma, acc_bias_range, acc_bias_rw, 1234);
 ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_bias_rw, 5678);
