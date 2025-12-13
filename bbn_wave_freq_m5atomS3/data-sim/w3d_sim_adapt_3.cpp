@@ -408,11 +408,18 @@ if (with_mag) {
         errs_pitch.push_back(diffDeg(eul_est.y(), p_ref_out));
         errs_yaw.push_back(diffDeg(eul_est.z(), y_ref_out));
         
-        Vector3f acc_bias_true  = accel_noise.bias0 + accel_noise.bias_rw;
-        Vector3f gyro_bias_true = gyro_noise.bias0 + gyro_noise.bias_rw;        
-        Vector3f acc_bias_est   = filter.mekf().get_acc_bias();
-        Vector3f gyro_bias_est  = filter.mekf().gyroscope_bias();
-    
+// True biases are generated in the same frame as gyr_b/acc_b (BODY Z-up from CSV)
+Vector3f acc_bias_true_zu  = accel_noise.bias0 + accel_noise.bias_rw;
+Vector3f gyro_bias_true_zu = gyro_noise.bias0  + gyro_noise.bias_rw;
+
+// Convert to the frame used by the filter (BODY-NED), same as acc_meas_ned/gyr_meas_ned
+Vector3f acc_bias_true_ned  = zu_to_ned(acc_bias_true_zu);
+Vector3f gyro_bias_true_ned = zu_to_ned(gyro_bias_true_zu);
+
+// Estimated biases (these are in BODY-NED in your filter pipeline)
+Vector3f acc_bias_est  = filter.mekf().get_acc_bias();
+Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
+        
         // CSV row
         ofs << rec.time << ","
             << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
@@ -423,10 +430,10 @@ if (with_mag) {
             << disp_est.x() << "," << disp_est.y() << "," << disp_est.z() << ","
             << vel_est.x()  << "," << vel_est.y()  << "," << vel_est.z() << ","
             << acc_est.x()  << "," << acc_est.y()  << "," << acc_est.z() << ","
-            << acc_bias_true.x() << "," << acc_bias_true.y() << "," << acc_bias_true.z() << ","
-            << gyro_bias_true.x() << "," << gyro_bias_true.y() << "," << gyro_bias_true.z() << ","
-            << acc_bias_est.x()  << "," << acc_bias_est.y()  << "," << acc_bias_est.z()  << ","
-            << gyro_bias_est.x() << "," << gyro_bias_est.y() << "," << gyro_bias_est.z() << ","
+            << acc_bias_true_ned.x() << "," << acc_bias_true_ned.y() << "," << acc_bias_true_ned.z() << ","
+            << gyro_bias_true_ned.x() << "," << gyro_bias_true_ned.y() << "," << gyro_bias_true_ned.z() << ","
+            << acc_bias_est_ned.x()  << "," << acc_bias_est_ned.y()  << "," << acc_bias_est_ned.z()  << ","
+            << gyro_bias_est_ned.x() << "," << gyro_bias_est_ned.y() << "," << gyro_bias_est_ned.z() << ","
             << filter.getTauApplied() << ","
             << filter.getSigmaApplied() << ","
             << filter.getRSApplied() << ","
