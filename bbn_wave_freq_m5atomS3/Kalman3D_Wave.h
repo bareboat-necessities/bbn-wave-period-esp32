@@ -190,7 +190,7 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
     }
 }
 
-template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true, bool with_mag_bias = true>
+template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true, bool with_mag_bias = false>
 class Kalman3D_Wave {
 
     // Base (att_err + optional gyro bias)
