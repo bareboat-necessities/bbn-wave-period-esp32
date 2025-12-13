@@ -274,8 +274,8 @@ ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_
     );
 
     // Filter
-    const Vector3f sigma_a_init(4*acc_sigma, 4*acc_sigma, 4*acc_sigma);
-    const Vector3f sigma_g(2*gyr_sigma, 2*gyr_sigma, 2*gyr_sigma);
+    const Vector3f sigma_a_init(1.5*acc_sigma, 1.5*acc_sigma, 1.5*acc_sigma);
+    const Vector3f sigma_g(1.5*gyr_sigma, 1.5*gyr_sigma, 1.5*gyr_sigma);
     const Vector3f sigma_m(0.15f, 0.15f, 0.15f);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
     
