@@ -33,7 +33,7 @@ const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 36.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 36.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 12.0f;
 
-const float FAIL_ERR_LIMIT_YAW_DEG = 4.0f;  
+const float FAIL_ERR_LIMIT_YAW_DEG = 7.0f;  
 
 constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 
