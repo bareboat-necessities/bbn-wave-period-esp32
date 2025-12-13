@@ -948,7 +948,7 @@ private:
 
     float R_S_coeff_    = 2.4f;
     float tau_coeff_    = 1.6f;
-    float sigma_coeff_  = 0.7f;
+    float sigma_coeff_  = 0.7f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
     std::unique_ptr<Kalman3D_Wave<float,true,true>>  mekf_;
     KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
