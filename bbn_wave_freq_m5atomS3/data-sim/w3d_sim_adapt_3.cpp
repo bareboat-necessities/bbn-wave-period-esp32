@@ -66,21 +66,43 @@ private:
 
 //  Noise model
 bool add_noise = true;
-struct NoiseModel {
+
+struct ImuNoiseModel {
     std::mt19937 rng;
-    std::normal_distribution<float> dist;
-    Vector3f bias;
+    std::normal_distribution<float> w;      // white noise (per-sample std)
+    std::normal_distribution<float> n01;    // N(0,1) for RW
+    Vector3f bias0;                         // fixed bias
+    Vector3f bias_rw;                       // drifting component
+    float sigma_bias_rw = 0.0f;             // units / sqrt(s)
 };
-NoiseModel make_noise_model(float sigma, float bias_range, unsigned seed) {
-    NoiseModel m{std::mt19937(seed),
-                 std::normal_distribution<float>(0.0f, sigma),
-                 Vector3f::Zero()};
-    std::uniform_real_distribution<float> ub(-bias_range, bias_range);
-    m.bias = Vector3f(ub(m.rng), ub(m.rng), ub(m.rng));
+
+ImuNoiseModel make_imu_noise_model(float sigma_white,
+                                  float bias_half_range,
+                                  float sigma_bias_rw,
+                                  unsigned seed)
+{
+    ImuNoiseModel m;
+    m.rng  = std::mt19937(seed);
+    m.w    = std::normal_distribution<float>(0.0f, sigma_white);
+    m.n01  = std::normal_distribution<float>(0.0f, 1.0f);
+    m.bias0.setZero();
+    m.bias_rw.setZero();
+    m.sigma_bias_rw = sigma_bias_rw;
+
+    std::uniform_real_distribution<float> ub(-bias_half_range, bias_half_range);
+    m.bias0 = Vector3f(ub(m.rng), ub(m.rng), ub(m.rng));
     return m;
 }
-Vector3f apply_noise(const Vector3f& v, NoiseModel& m) {
-    return v - m.bias + Vector3f(m.dist(m.rng), m.dist(m.rng), m.dist(m.rng));
+
+// measurement = truth + bias + noise
+Vector3f apply_imu_noise(const Vector3f& truth, ImuNoiseModel& m, float dt)
+{
+    if (m.sigma_bias_rw > 0.0f) {
+        const float s = m.sigma_bias_rw * std::sqrt(dt);
+        m.bias_rw += Vector3f(s * m.n01(m.rng), s * m.n01(m.rng), s * m.n01(m.rng));
+    }
+    Vector3f white(m.w(m.rng), m.w(m.rng), m.w(m.rng));
+    return truth + (m.bias0 + m.bias_rw) + white;
 }
 
 struct MagNoiseModel {
@@ -231,9 +253,24 @@ static void process_wave_file_for_tracker(const std::string &filename,
     // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
-    // Deterministic noise
-    NoiseModel accel_noise = make_noise_model(0.03f, 0.02f, 1234);
-    NoiseModel gyro_noise  = make_noise_model(0.001f, 0.0004f, 5678);
+// --- BMI270-like noise (per-axis), “normal mode” order ---
+// Accel: 1.51 mg RMS  -> m/s^2
+const float acc_sigma = 1.51e-3f * g_std;                  // ~0.0148 m/s^2
+// Gyro: 0.09 dps RMS -> rad/s
+const float gyr_sigma = 0.09f * float(M_PI / 180.0f);      // ~0.00157 rad/s
+
+// Bias half-ranges (lifetime-ish)
+const float acc_bias_range = 20e-3f * g_std;               // 20 mg -> ~0.196 m/s^2
+const float gyr_bias_range = 0.5f * float(M_PI / 180.0f);  // 0.5 dps -> ~0.00873 rad/s
+
+// Optional slow drift (set to 0 if you don’t want drift)
+// (Not specified in datasheet; keep small so it doesn’t dominate.)
+const float acc_bias_rw = 0.002f;   // m/s^2 / sqrt(s)  (tweak)
+const float gyr_bias_rw = 0.00005f; // rad/s / sqrt(s)  (tweak)
+
+ImuNoiseModel accel_noise = make_imu_noise_model(acc_sigma, acc_bias_range, acc_bias_rw, 1234);
+ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_bias_rw, 5678);
+
     // Magnetometer noise model (units: uT)
     MagNoiseModel mag_noise = make_mag_noise_model(
         0.3f,   // sigma uT per sample
@@ -259,8 +296,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         const bool use_noise = add_noise;
         if (use_noise) {
-            acc_b = apply_noise(acc_b, accel_noise);
-            gyr_b = apply_noise(gyr_b, gyro_noise);
+            acc_b = apply_imu_noise(acc_b, accel_noise, dt);
+            gyr_b = apply_imu_noise(gyr_b, gyro_noise, dt);       
         }
 
         // Map body Z-up -> body NED axes (still BODY, not world)
@@ -331,8 +368,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
         errs_pitch.push_back(diffDeg(eul_est.y(), p_ref_out));
         errs_yaw.push_back(diffDeg(eul_est.z(), y_ref_out));
         
-        Vector3f acc_bias_true  = accel_noise.bias;
-        Vector3f gyro_bias_true = gyro_noise.bias;
+        Vector3f acc_bias_true  = accel_noise.bias0 + accel_noise.bias_rw;
+        Vector3f gyro_bias_true = gyro_noise.bias0 + gyro_noise.bias_rw;        
         Vector3f acc_bias_est   = filter.mekf().get_acc_bias();
         Vector3f gyro_bias_est  = filter.mekf().gyroscope_bias();
     
