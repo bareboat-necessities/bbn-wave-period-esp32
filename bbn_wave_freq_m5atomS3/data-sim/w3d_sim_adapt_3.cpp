@@ -245,11 +245,6 @@ static void process_wave_file_for_tracker(const std::string &filename,
     using Fusion = SeaStateFusionFilter<TrackerType::KALMANF>;
     Fusion filter(with_mag);
 
-    const Vector3f sigma_a_init(0.25f, 0.25f, 0.25f);
-    const Vector3f sigma_g(0.00234f, 0.00234f, 0.00234f);
-    const Vector3f sigma_m(0.15f, 0.15f, 0.15f);
-    filter.initialize(sigma_a_init, sigma_g, sigma_m);
-
     // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
@@ -277,6 +272,12 @@ ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_
         0.0f,   // misalignment deg
         9012    // seed
     );
+
+    // Filter
+    const Vector3f sigma_a_init(3*acc_sigma, 3*acc_sigma, 3*acc_sigma);
+    const Vector3f sigma_g(gyr_sigma, gyr_sigma, gyr_sigma);
+    const Vector3f sigma_m(0.15f, 0.15f, 0.15f);
+    filter.initialize(sigma_a_init, sigma_g, sigma_m);
     
     bool first = true;
     bool mag_ref_set = false;  
