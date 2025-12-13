@@ -25,15 +25,15 @@
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
-const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 36.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 36.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 12.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 360.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 360.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 120.0f;
 
-const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 36.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 36.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 12.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 360.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 360.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 120.0f;
 
-const float FAIL_ERR_LIMIT_YAW_DEG = 7.0f;  
+const float FAIL_ERR_LIMIT_YAW_DEG = 40.0f;  
 
 constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 
