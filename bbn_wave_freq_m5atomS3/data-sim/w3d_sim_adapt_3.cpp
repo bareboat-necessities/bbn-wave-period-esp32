@@ -25,15 +25,15 @@
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
-const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 360.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 360.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 120.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 38.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 38.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 22.0f;
 
-const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 360.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 360.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 120.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 38.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 38.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 22.0f;
 
-const float FAIL_ERR_LIMIT_YAW_DEG = 40.0f;  
+const float FAIL_ERR_LIMIT_YAW_DEG = 10.0f;  
 
 constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 
@@ -274,8 +274,8 @@ ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_
     );
 
     // Filter
-    const Vector3f sigma_a_init(5.1*acc_sigma, 5.1*acc_sigma, 5.1*acc_sigma);
-    const Vector3f sigma_g(1.1*gyr_sigma, 1.1*gyr_sigma, 1.1*gyr_sigma);
+    const Vector3f sigma_a_init(2.1*acc_sigma, 2.1*acc_sigma, 2.1*acc_sigma);
+    const Vector3f sigma_g(2.1*gyr_sigma, 2.1*gyr_sigma, 2.1*gyr_sigma);
     const Vector3f sigma_m(0.15f, 0.15f, 0.15f);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
     
