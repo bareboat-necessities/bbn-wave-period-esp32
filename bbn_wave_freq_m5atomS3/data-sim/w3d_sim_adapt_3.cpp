@@ -294,7 +294,7 @@ const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet 
 MagNoiseModel mag_noise = make_mag_noise_model(
     mag_sigma_uT,  // white RMS per mag sample
     2.0f,          // residual hard-iron half-range [uT] (post-cal)
-    0.02f,         // slow drift [uT]/sqrt(s)
+    0.01f,         // slow drift [uT]/sqrt(s)
     0.015f,        // <= 1.5% residual scale
     0.010f,        // <= 1% cross-axis coupling
     1.0f,          // <= 1 deg residual misalignment
