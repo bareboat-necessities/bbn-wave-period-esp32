@@ -301,6 +301,9 @@ MagNoiseModel mag_noise = make_mag_noise_model(
     9012
 );
 
+// Hold-last-sample value (persistent across loop iterations)
+Vector3f mag_body_ned_hold = Vector3f::Zero();
+       
     // Filter
     const Vector3f sigma_a_init(2.1*acc_sigma, 2.1*acc_sigma, 2.1*acc_sigma);
     const Vector3f sigma_g(2.1*gyr_sigma, 2.1*gyr_sigma, 2.1*gyr_sigma);
@@ -335,22 +338,6 @@ MagNoiseModel mag_noise = make_mag_noise_model(
         float r_ref_out = rec.imu.roll_deg;
         float p_ref_out = rec.imu.pitch_deg;
         float y_ref_out = rec.imu.yaw_deg;
-
-        // Simulated magnetometer (BODY, then axis-map to NED body)
-        Vector3f mag_body_ned(0,0,0);
-        if (with_mag) {
-            // Ideal body-frame mag (Z-up ENU body)
-            Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(
-                r_ref_out, p_ref_out, y_ref_out);
-
-            // Add realistic noise / bias / misalignment in ENU body frame
-            if (add_noise) {
-                mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise);
-            }
-
-            // Axis map Z-up ENU body -> NED body
-            mag_body_ned = zu_to_ned(mag_b_enu);
-        }
         
         // First-step init
         if (first) {
@@ -368,9 +355,34 @@ MagNoiseModel mag_noise = make_mag_noise_model(
         // One time update per sample (propagate + accel update)
         filter.updateTime(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
 
-        // Yaw correction after mag is available
-        if (with_mag && rec.time >= MAG_DELAY_SEC && (sample_idx % 3 == 0))
-            filter.updateMag(mag_body_ned);
+// Simulated magnetometer (BODY, then axis-map to NED body)
+Vector3f mag_body_ned(0,0,0);
+
+if (with_mag) {
+    const bool mag_tick = (sample_idx % MAG_STRIDE == 0);
+
+    if (mag_tick) {
+        // Ideal body-frame mag (Z-up ENU body)
+        Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(
+            r_ref_out, p_ref_out, y_ref_out);
+
+        // Add noise only when we take a new mag sample
+        if (add_noise) {
+            mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
+        }
+
+        // Axis map Z-up ENU body -> NED body, and HOLD it
+        mag_body_ned_hold = zu_to_ned(mag_b_enu);
+
+        // Do the mag update only when a new mag sample arrives
+        if (rec.time >= MAG_DELAY_SEC) {
+            filter.updateMag(mag_body_ned_hold);
+        }
+    }
+
+    // Always output the held mag vector (even between updates)
+    mag_body_ned = mag_body_ned_hold;
+}
         
         // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
