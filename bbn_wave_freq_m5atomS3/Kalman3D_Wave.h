@@ -377,11 +377,10 @@ class Kalman3D_Wave {
     void set_aw_time_constant(T tau_seconds) { tau_aw = std::max(T(1e-3), tau_seconds); }
 
     // OU stationary std [m/s²] for a_w (per axis)
-void set_aw_stationary_std(const Vector3& std_aw) {
-    Matrix3 Snew = std_aw.array().square().matrix().asDiagonal();
-    Sigma_aw_stat = Snew;
-    has_cross_cov_a_xy = false;
-}
+    void set_aw_stationary_std(const Vector3& std_aw) {
+        Sigma_aw_stat = std_aw.array().square().matrix().asDiagonal();
+        has_cross_cov_a_xy = false;
+    }
         
     // Accept a full 3×3 SPD stationary covariance for a_w.
     void set_aw_stationary_cov_full(const Matrix3& Sigma);
@@ -928,7 +927,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::set_aw_st
         Matrix3 D = S.diagonal().cwiseMax(T(1e-12)).asDiagonal();
         Sigma_aw_stat = D;
     }
-
     // Reseed/merge Pext a_w block
     Pext.template block<3,3>(OFF_AW, OFF_AW) =
           T(0.2) * Pext.template block<3,3>(OFF_AW, OFF_AW)
@@ -1371,39 +1369,39 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     const Vector3 acc_meas = deheel_vector_(acc_meas_body);
           
     // Physical accelerometer measurement model
-const Vector3 g_world(0,0,+gravity_magnitude_);
+    const Vector3 g_world(0,0,+gravity_magnitude_);
 
-// Lever-arm term (same as in accelerometer_measurement_func)
-Vector3 lever = Vector3::Zero();
-if (use_imu_lever_arm_) {
-    const Vector3& omega_bprime = last_gyr_bias_corrected; // ω^{B'}
-    const Vector3& alpha_bprime = alpha_b_;                // α^{B'}
-    const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+    // Lever-arm term (same as in accelerometer_measurement_func)
+    Vector3 lever = Vector3::Zero();
+    if (use_imu_lever_arm_) {
+        const Vector3& omega_bprime = last_gyr_bias_corrected; // ω^{B'}
+        const Vector3& alpha_bprime = alpha_b_;                // α^{B'}
+        const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+    
+        lever.noalias() += alpha_bprime.cross(r_imu_bprime)
+                        +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));
+    }
 
-    lever.noalias() += alpha_bprime.cross(r_imu_bprime)
-                    +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));
-}
+    // Accel bias term (temp-dependent)
+    Vector3 ba_term = Vector3::Zero();
+    if constexpr (with_accel_bias) {
+        const Vector3 ba0 = xext.template segment<3>(OFF_BA);
+        ba_term = ba0 + k_a_ * (tempC - tempC_ref);
+    }
 
-// Accel bias term (temp-dependent)
-Vector3 ba_term = Vector3::Zero();
-if constexpr (with_accel_bias) {
-    const Vector3 ba0 = xext.template segment<3>(OFF_BA);
-    ba_term = ba0 + k_a_ * (tempC - tempC_ref);
-}
-
-// Predicted specific force
-Vector3 f_pred;
-if (linear_block_enabled_) {
-    const Vector3 aw = xext.template segment<3>(OFF_AW);
-    f_pred = R_wb() * (aw - g_world) + lever + ba_term;
-} else {
-    // marginalize aw => don't use it in the mean
-    f_pred = R_wb() * (Vector3::Zero() - g_world) + lever + ba_term;
-}
-
-const Vector3 f_meas = acc_meas;
-const Vector3 r = f_meas - f_pred;
-                
+    // Predicted specific force
+    Vector3 f_pred;
+    if (linear_block_enabled_) {
+        const Vector3 aw = xext.template segment<3>(OFF_AW);
+        f_pred = R_wb() * (aw - g_world) + lever + ba_term;
+    } else {
+        // marginalize aw => don't use it in the mean
+        f_pred = R_wb() * (Vector3::Zero() - g_world) + lever + ba_term;
+    }
+    
+    const Vector3 f_meas = acc_meas;
+    const Vector3 r = f_meas - f_pred;
+                    
     // Residual gate: only reject clearly insane outliers.
     // r is in m/s², gravity_magnitude_ is ~9.80665.
     const T sigma_r = std::sqrt(Racc.trace() / T(3));
@@ -1411,7 +1409,7 @@ const Vector3 r = f_meas - f_pred;
         // If noise is bogus, skip this update entirely.
         return;
     }
-    
+        
     // Use a physically-based threshold: e.g. 2 g of residual.
     // That’s huge; normal sea-state mismatch should be well below this.
     const T g = gravity_magnitude_;
@@ -1421,64 +1419,63 @@ const Vector3 r = f_meas - f_pred;
         // Only bail out on completely inconsistent samples
         return;
     }
-              
+                  
     // Jacobians from linearization at CoG-only part (lever-arm is attitude-independent)
-Matrix3 J_att;
-Matrix3 J_aw;
+    Matrix3 J_att;
+    Matrix3 J_aw;
 
-if (linear_block_enabled_) {
-    const Vector3 aw = xext.template segment<3>(OFF_AW);
-    const Vector3 f_cog_b = R_wb() * (aw - g_world);
-    J_att = -skew_symmetric_matrix(f_cog_b);
-    J_aw  =  R_wb();
-} else {
-    // gravity-only linearization
-    const Vector3 f_grav_b = R_wb() * (Vector3::Zero() - g_world);
-    J_att = -skew_symmetric_matrix(f_grav_b);
-    J_aw.setZero(); // <-- IMPORTANT: no aw Jacobian when linear is OFF
-}
+    if (linear_block_enabled_) {
+        const Vector3 aw = xext.template segment<3>(OFF_AW);
+        const Vector3 f_cog_b = R_wb() * (aw - g_world);
+        J_att = -skew_symmetric_matrix(f_cog_b);
+        J_aw  =  R_wb();
+    } else {
+        // gravity-only linearization
+        const Vector3 f_grav_b = R_wb() * (Vector3::Zero() - g_world);
+        J_att = -skew_symmetric_matrix(f_grav_b);
+        J_aw.setZero(); // <-- IMPORTANT: no aw Jacobian when linear is OFF
+    }
                 
     // Innovation covariance S = C P Cᵀ + Racc (3×3)
     Matrix3& S_mat = S_scratch_;
-S_mat = Racc;
-{
-    constexpr int OFF_TH = 0;
-    const int off_aw = OFF_AW;
-    const int off_ba = OFF_BA;
-
-    const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
-    S_mat.noalias() += J_att * P_th_th * J_att.transpose();
-
-    if (linear_block_enabled_) {
-        // normal full model terms
-        const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, off_aw);
-        const Matrix3 P_aw_aw = Pext.template block<3,3>(off_aw,  off_aw);
-
-        S_mat.noalias() += J_att * P_th_aw * J_aw.transpose();
-        S_mat.noalias() += J_aw  * P_th_aw.transpose() * J_att.transpose();
-        S_mat.noalias() += J_aw  * P_aw_aw * J_aw.transpose();
-    } else {
-        // Option A: marginalize aw as extra measurement noise
-        // Use stationary covariance (recommended), not the frozen P_aw_aw.
-        const Matrix3 Sig_aw = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
-        S_mat.noalias() += R_wb() * Sig_aw * R_wb().transpose();
-    }
-
-    if constexpr (with_accel_bias) {
-        const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
-        const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba,  off_ba);
-
-        S_mat.noalias() += J_att * P_th_ba;                 // + J_ba*P_ba_th, J_ba=I
-        S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
-        S_mat.noalias() += P_ba_ba;
-        // NOTE: when linear is OFF, we intentionally do NOT include P_aw_ba terms.
+    S_mat = Racc;
+    {
+        constexpr int OFF_TH = 0;
+        const int off_aw = OFF_AW;
+        const int off_ba = OFF_BA;
+    
+        const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
+        S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+    
         if (linear_block_enabled_) {
-            const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw, off_ba);
-            S_mat.noalias() += J_aw * P_aw_ba;
-            S_mat.noalias() += P_aw_ba.transpose() * J_aw.transpose();
+            // normal full model terms
+            const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, off_aw);
+            const Matrix3 P_aw_aw = Pext.template block<3,3>(off_aw,  off_aw);
+    
+            S_mat.noalias() += J_att * P_th_aw * J_aw.transpose();
+            S_mat.noalias() += J_aw  * P_th_aw.transpose() * J_att.transpose();
+            S_mat.noalias() += J_aw  * P_aw_aw * J_aw.transpose();
+        } else {
+            // Option A: marginalize aw as extra measurement noise
+            // Use stationary covariance (recommended), not the frozen P_aw_aw.
+            const Matrix3 Sig_aw = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
+            S_mat.noalias() += R_wb() * Sig_aw * R_wb().transpose();
+        }
+        if constexpr (with_accel_bias) {
+            const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
+            const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba,  off_ba);
+    
+            S_mat.noalias() += J_att * P_th_ba;                 // + J_ba*P_ba_th, J_ba=I
+            S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
+            S_mat.noalias() += P_ba_ba;
+            // NOTE: when linear is OFF, we intentionally do NOT include P_aw_ba terms.
+            if (linear_block_enabled_) {
+                const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw, off_ba);
+                S_mat.noalias() += J_aw * P_aw_ba;
+                S_mat.noalias() += P_aw_ba.transpose() * J_aw.transpose();
+            }
         }
     }
-}
                 
     // PCᵀ = P Cᵀ (NX×3)
     MatrixNX3& PCt = PCt_scratch_; PCt.setZero();
@@ -1507,9 +1504,9 @@ S_mat = Racc;
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
-if (!linear_block_enabled_) {
-    freeze_linear_rows_(K);                
-}
+    if (!linear_block_enabled_) {
+        freeze_linear_rows_(K);                
+    }
                 
     // State update
     xext.noalias() += K * r;
@@ -1569,18 +1566,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;
 
-// NIS gate: rᵀ S⁻¹ r  ~ χ²(df=3) if consistent
-const Vector3 Sinv_r = ldlt.solve(r);
-const T nis = r.dot(Sinv_r);
-
-// Choose a threshold (df=3):
-//  p=0.99  -> 11.34
-//  p=0.999 -> 16.27
-//  p=0.9999-> 21.11
-const T nis_thresh = T(16.27); // very conservative, good starting point
-if (!(nis <= nis_thresh)) {
-    return; // reject outlier mag sample
-}   
+    // NIS gate: rᵀ S⁻¹ r  ~ χ²(df=3) if consistent
+    const Vector3 Sinv_r = ldlt.solve(r);
+    const T nis = r.dot(Sinv_r);
+    
+    // Choose a threshold (df=3):
+    //  p=0.99  -> 11.34
+    //  p=0.999 -> 16.27
+    //  p=0.9999-> 21.11
+    const T nis_thresh = T(16.27); // very conservative, good starting point
+    if (!(nis <= nis_thresh)) {
+        return; // reject outlier mag sample
+    }   
         
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
