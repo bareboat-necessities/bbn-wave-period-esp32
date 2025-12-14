@@ -271,7 +271,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 // --- BMI270-like noise (per-axis), “normal mode” order ---
 // White noise (per-sample RMS, per axis)
 const float acc_sigma = 1.51e-3f * g_std;                 // 1.51 mg-rms -> ~0.0148 m/s^2   [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
-const float gyr_sigma = 0.00157;        // 0.09 dps-rms -> ~0.00157 rad/s  [oai_citation:7‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
+const float gyr_sigma = 0.00157f;        // 0.09 dps-rms -> ~0.00157 rad/s  [oai_citation:7‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
 
 // “Decently calibrated” residual constant bias half-ranges
 const float acc_bias_range = 5e-3f * g_std;                // 5 mg -> ~0.049 m/s^2
@@ -304,10 +304,8 @@ MagNoiseModel mag_noise = make_mag_noise_model(
 Vector3f mag_body_ned_hold = Vector3f::Zero();
        
     // Filter
-    const Vector3f sigma_a_init(2.1*acc_sigma, 2.1*acc_sigma, 2.1*acc_sigma);
-    const Vector3f sigma_g(1.5f * gyr_sigma,
-                           1.5f * gyr_sigma,
-                           1.5f * gyr_sigma);    
+    const Vector3f sigma_a_init(2.0f * acc_sigma, 2.0f * acc_sigma, 2.0f * acc_sigma);
+    const Vector3f sigma_g(2.0f * gyr_sigma, 2.0f * gyr_sigma, 2.0f * gyr_sigma);    
     const float sigma_m_uT = 1.2f * mag_sigma_uT;   // a bit conservative
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
