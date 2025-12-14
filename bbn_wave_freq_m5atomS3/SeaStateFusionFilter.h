@@ -187,7 +187,7 @@ public:
                     const Eigen::Vector3f& sigma_g,
                     const Eigen::Vector3f& sigma_m)
     {
-        mekf_ = std::make_unique<Kalman3D_Wave<float,true,false>>(sigma_a, sigma_g, sigma_m);
+        mekf_ = std::make_unique<Kalman3D_Wave<float>>(sigma_a, sigma_g, sigma_m);
         mekf_->set_exact_att_bias_Qd(true);
     
         // Start as pure QMEKF: no v/p/S/a_w block yet
@@ -203,7 +203,7 @@ public:
                         float b0, float R_S_noise,
                         float gravity_magnitude) 
     {
-        mekf_ = std::make_unique<Kalman3D_Wave<float,true,false>>(
+        mekf_ = std::make_unique<Kalman3D_Wave<float>>(
             sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_S_noise, gravity_magnitude);
         mekf_->set_exact_att_bias_Qd(true);
     
@@ -950,7 +950,7 @@ private:
     float tau_coeff_    = 1.6f;
     float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
-    std::unique_ptr<Kalman3D_Wave<float,true,false>>  mekf_;
+    std::unique_ptr<Kalman3D_Wave<float>>  mekf_;
     KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
 
     FreqInputLPF        freq_input_lpf_;   // LPF used only for tracker input
