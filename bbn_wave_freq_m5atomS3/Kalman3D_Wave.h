@@ -543,15 +543,15 @@ class Kalman3D_Wave {
     // Last gyro
     Vector3 last_gyr_bias_corrected{};
 
-    T sigma_bacc0_ = T(0.002); // initial accel bias std
+    T sigma_bacc0_ = T(0.003); // initial accel bias std
     Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-8);
 
     // Accelerometer bias temperature coefficient (per-axis), units: m/s^2 per °C.
     // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
-    Vector3 k_a_ = Vector3::Constant(T(0.003));
+    Vector3 k_a_ = Vector3::Constant(T(0.002));
 
     T sigma_bmag0_ = T(8.0);                 // µT 
-    Matrix3 Q_bmag_ = Matrix3::Identity() * T(1e-7); // (µT^2)/s  (tune)
+    Matrix3 Q_bmag_ = Matrix3::Identity() * T(1e-8); // (µT^2)/s  (tune)
               
     // Constant matrices
     Matrix3 Rmag;
@@ -561,8 +561,8 @@ class Kalman3D_Wave {
     Matrix3 R_S;  // Triple integration measurement noise
 
     // World-acceleration OU process a_w dynamics parameters
-    T tau_aw = T(2.3);            // correlation time [s], tune 1–5 s for sea states
-    Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(2.4*2.4); // stationary variance diag [ (m/s^2)^2 ]
+    T tau_aw = T(2.1);            // correlation time [s], tune 1–3.5 s for sea states
+    Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(2.2*2.2); // stationary variance diag [ (m/s^2)^2 ]
 
     int pseudo_update_counter_ = 0;   // counts time_update calls
     static constexpr int PSEUDO_UPDATE_PERIOD = 3; // every N-th update
