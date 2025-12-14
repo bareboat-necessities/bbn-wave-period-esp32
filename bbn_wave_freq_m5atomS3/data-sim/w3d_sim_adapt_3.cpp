@@ -315,6 +315,9 @@ Vector3f mag_body_ned_hold = Vector3f::Zero();
     WaveDataCSVReader reader(filename);
     
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
+    // Bias estimation error history (est - true), BODY-NED frame
+std::vector<float> accb_err_x, accb_err_y, accb_err_z;
+std::vector<float> gyrb_err_x, gyrb_err_y, gyrb_err_z;
 
     int sample_idx = -1;
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
@@ -416,6 +419,18 @@ Vector3f gyro_bias_true_ned = zu_to_ned(gyro_bias_true_zu);
 // Estimated biases (these are in BODY-NED in your filter pipeline)
 Vector3f acc_bias_est  = filter.mekf().get_acc_bias();
 Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
+
+// Bias estimation errors (est - true)
+Vector3f acc_bias_err  = acc_bias_est  - acc_bias_true_ned;
+Vector3f gyro_bias_err = gyro_bias_est - gyro_bias_true_ned;
+
+accb_err_x.push_back(acc_bias_err.x());
+accb_err_y.push_back(acc_bias_err.y());
+accb_err_z.push_back(acc_bias_err.z());
+
+gyrb_err_x.push_back(gyro_bias_err.x());
+gyrb_err_y.push_back(gyro_bias_err.y());
+gyrb_err_z.push_back(gyro_bias_err.z());        
         
         // CSV row
         ofs << rec.time << ","
@@ -447,15 +462,26 @@ Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
     if (errs_z.size() > static_cast<size_t>(N_last)) {
         size_t start = errs_z.size() - N_last;
 
-        RMSReport rms_x, rms_y, rms_z, rms_roll, rms_pitch, rms_yaw;
-        for (size_t i = start; i < errs_z.size(); ++i) {
-            rms_x.add(errs_x[i]);
-            rms_y.add(errs_y[i]);
-            rms_z.add(errs_z[i]);
-            rms_roll.add(errs_roll[i]);
-            rms_pitch.add(errs_pitch[i]);
-            rms_yaw.add(errs_yaw[i]);
-        }
+RMSReport rms_x, rms_y, rms_z, rms_roll, rms_pitch, rms_yaw;
+RMSReport rms_accb_x, rms_accb_y, rms_accb_z;
+RMSReport rms_gyrb_x, rms_gyrb_y, rms_gyrb_z;
+
+for (size_t i = start; i < errs_z.size(); ++i) {
+    rms_x.add(errs_x[i]);
+    rms_y.add(errs_y[i]);
+    rms_z.add(errs_z[i]);
+    rms_roll.add(errs_roll[i]);
+    rms_pitch.add(errs_pitch[i]);
+    rms_yaw.add(errs_yaw[i]);
+
+    rms_accb_x.add(accb_err_x[i]);
+    rms_accb_y.add(accb_err_y[i]);
+    rms_accb_z.add(accb_err_z[i]);
+
+    rms_gyrb_x.add(gyrb_err_x[i]);
+    rms_gyrb_y.add(gyrb_err_y[i]);
+    rms_gyrb_z.add(gyrb_err_z[i]);
+}
 
         float x_rms = rms_x.rms(), y_rms = rms_y.rms(), z_rms = rms_z.rms();
         float x_pct = 100.f * x_rms / wp.height;
@@ -469,6 +495,32 @@ Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
                   << " Pitch=" << rms_pitch.rms()
                   << " Yaw=" << rms_yaw.rms() << "\n";
 
+// Bias error RMS (vector RMS = sqrt(mean(||e||^2)) = sqrt(rms_x^2 + rms_y^2 + rms_z^2))
+auto vec_rms = [](float rx, float ry, float rz) {
+    return std::sqrt(rx*rx + ry*ry + rz*rz);
+};
+
+const float accb_rx = rms_accb_x.rms(), accb_ry = rms_accb_y.rms(), accb_rz = rms_accb_z.rms();
+const float gyrb_rx = rms_gyrb_x.rms(), gyrb_ry = rms_gyrb_y.rms(), gyrb_rz = rms_gyrb_z.rms();
+
+const float accb_r3 = vec_rms(accb_rx, accb_ry, accb_rz);
+const float gyrb_r3 = vec_rms(gyrb_rx, gyrb_ry, gyrb_rz);
+
+std::cout << "Bias error RMS (acc, m/s^2): "
+          << "X=" << accb_rx << " Y=" << accb_ry << " Z=" << accb_rz
+          << " |3D|=" << accb_r3 << "\n";
+
+std::cout << "Bias error RMS (gyro, rad/s): "
+          << "X=" << gyrb_rx << " Y=" << gyrb_ry << " Z=" << gyrb_rz
+          << " |3D|=" << gyrb_r3 << "\n";
+
+// Optional: gyro bias RMS also in deg/s for readability
+const float rad2deg = 180.0f / float(M_PI);
+std::cout << "Bias error RMS (gyro, deg/s): "
+          << "X=" << (gyrb_rx*rad2deg) << " Y=" << (gyrb_ry*rad2deg) << " Z=" << (gyrb_rz*rad2deg)
+          << " |3D|=" << (gyrb_r3*rad2deg) << "\n";
+
+        
         // Extended diagnostic summary
         float tau_target   = filter.getTauTarget();
         float sigma_target = filter.getSigmaTarget();
