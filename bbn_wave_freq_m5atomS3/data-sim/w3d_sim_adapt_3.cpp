@@ -270,7 +270,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 // --- BMI270-like noise (per-axis), “normal mode” order ---
 // White noise (per-sample RMS, per axis)
 const float acc_sigma = 1.51e-3f * g_std;                 // 1.51 mg-rms -> ~0.0148 m/s^2   [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
-const float gyr_sigma = 0.09f * float(M_PI/180.0f);        // 0.09 dps-rms -> ~0.00157 rad/s  [oai_citation:7‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
+const float gyr_sigma = 0.00125;        // 0.09 dps-rms -> ~0.00157 rad/s  [oai_citation:7‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
 
 // “Decently calibrated” residual constant bias half-ranges
 const float acc_bias_range = 5e-3f * g_std;                // 5 mg -> ~0.049 m/s^2
