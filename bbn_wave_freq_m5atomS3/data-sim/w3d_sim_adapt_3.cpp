@@ -263,7 +263,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     // Initialize unified fusion filter
     using Fusion = SeaStateFusionFilter<TrackerType::KALMANF>;
     Fusion filter(with_mag);
-    filter.enableLinearBlock(true);
+    //filter.enableLinearBlock(true);
 
     // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
