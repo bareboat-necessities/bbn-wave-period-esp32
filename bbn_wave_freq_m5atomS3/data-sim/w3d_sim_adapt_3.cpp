@@ -67,6 +67,8 @@ private:
 //  Noise model
 bool add_noise = true;
 
+bool attitude_only = false;
+
 struct ImuNoiseModel {
     std::mt19937 rng;
     std::normal_distribution<float> w;      // white noise (per-sample std)
@@ -263,7 +265,6 @@ static void process_wave_file_for_tracker(const std::string &filename,
     // Initialize unified fusion filter
     using Fusion = SeaStateFusionFilter<TrackerType::KALMANF>;
     Fusion filter(with_mag);
-    filter.enableLinearBlock(true);
 
     // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
@@ -309,7 +310,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
     const float sigma_m_uT = 1.2f * mag_sigma_uT;   // a bit conservative
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
-    if (!filter.mekf().linear_block_enabled()) {
+    if (attitude_only) {
+        filter.enableLinearBlock(true);
         filter.mekf().set_initial_acc_bias(Vector3f::Zero());
         filter.mekf().set_initial_acc_bias_std(0.0f);
         filter.mekf().set_Q_bacc_rw(Vector3f::Zero());
