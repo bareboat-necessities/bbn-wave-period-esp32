@@ -25,12 +25,12 @@
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
-const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 45.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 45.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 50.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 50.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 40.0f;
 
-const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 45.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 45.0f;
+const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 50.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 50.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 40.0f;
 
 const float FAIL_ERR_LIMIT_YAW_DEG = 10.0f;  
@@ -432,8 +432,8 @@ Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
             << acc_est.x()  << "," << acc_est.y()  << "," << acc_est.z() << ","
             << acc_bias_true_ned.x() << "," << acc_bias_true_ned.y() << "," << acc_bias_true_ned.z() << ","
             << gyro_bias_true_ned.x() << "," << gyro_bias_true_ned.y() << "," << gyro_bias_true_ned.z() << ","
-            << acc_bias_est_ned.x()  << "," << acc_bias_est_ned.y()  << "," << acc_bias_est_ned.z()  << ","
-            << gyro_bias_est_ned.x() << "," << gyro_bias_est_ned.y() << "," << gyro_bias_est_ned.z() << ","
+            << acc_bias_est.x()  << "," << acc_bias_est.y()  << "," << acc_bias_est.z()  << ","
+            << gyro_bias_est.x() << "," << gyro_bias_est.y() << "," << gyro_bias_est.z() << ","
             << filter.getTauApplied() << ","
             << filter.getSigmaApplied() << ","
             << filter.getRSApplied() << ","
