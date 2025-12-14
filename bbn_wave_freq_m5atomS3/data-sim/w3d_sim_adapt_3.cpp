@@ -311,7 +311,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
     filter.initialize(sigma_a_init, sigma_g, sigma_m);
     if (attitude_only) {
-        filter.enableLinearBlock(true);
+        filter.enableLinearBlock(false);
         filter.mekf().set_initial_acc_bias(Vector3f::Zero());
         filter.mekf().set_initial_acc_bias_std(0.0f);
         filter.mekf().set_Q_bacc_rw(Vector3f::Zero());
