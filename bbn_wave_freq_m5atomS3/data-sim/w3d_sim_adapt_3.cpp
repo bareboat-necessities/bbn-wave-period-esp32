@@ -268,40 +268,40 @@ static void process_wave_file_for_tracker(const std::string &filename,
     // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
 
-// --- BMI270-like noise (per-axis), “normal mode” order ---
-// White noise (per-sample RMS, per axis)
-const float acc_sigma = 1.51e-3f * g_std;                 // 1.51 mg-rms -> ~0.0148 m/s^2   [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
-const float gyr_sigma = 0.00157f;        // 0.09 dps-rms -> ~0.00157 rad/s  [oai_citation:7‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
-
-// “Decently calibrated” residual constant bias half-ranges
-const float acc_bias_range = 5e-3f * g_std;                // 5 mg -> ~0.049 m/s^2
-const float gyr_bias_range = 0.05f * float(M_PI/180.0f);    // 0.05 dps -> ~0.00087 rad/s
-
-// Optional very-slow drift (keep tiny; set 0 if you don’t want drift)
-const float acc_bias_rw = 0.0005f;   // m/s^2 / sqrt(s)
-const float gyr_bias_rw = 0.00001f;  // rad/s / sqrt(s)
-
-ImuNoiseModel accel_noise = make_imu_noise_model(acc_sigma, acc_bias_range, acc_bias_rw, 1234);
-ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_bias_rw, 5678);
-
-// --- BMM150-like magnetometer behavior (AtomS3R) ---
-constexpr float MAG_ODR_HZ = 100.0f;                 // 100 (regular) or 20 (high-accuracy)
-constexpr float MAG_DT     = 1.0f / MAG_ODR_HZ;
-// Phase accumulator for exact mag rate
-float mag_phase_s = 0.0f;
-const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet RMS noise  [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf)
-// “Decently calibrated” residuals (small!)
-MagNoiseModel mag_noise = make_mag_noise_model(
-    mag_sigma_uT,  // white RMS per mag sample
-    2.0f,          // residual hard-iron half-range [uT] (post-cal)
-    0.01f,         // slow drift [uT]/sqrt(s)
-    0.015f,        // <= 1.5% residual scale
-    0.010f,        // <= 1% cross-axis coupling
-    1.0f,          // <= 1 deg residual misalignment
-    9012
-);
-// Hold-last-sample value (persistent across loop iterations)
-Vector3f mag_body_ned_hold = Vector3f::Zero();
+    // BMI270-like noise (per-axis), “normal mode” order
+    // White noise (per-sample RMS, per axis)
+    const float acc_sigma = 1.51e-3f * g_std;  // 1.51 mg-rms -> ~0.0148 m/s^2   [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
+    const float gyr_sigma = 0.00157f;         // 0.09 dps-rms -> ~0.00157 rad/s  [oai_citation:7‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
+    
+    // “Decently calibrated” residual constant bias half-ranges
+    const float acc_bias_range = 5e-3f * g_std;                // 5 mg -> ~0.049 m/s^2
+    const float gyr_bias_range = 0.05f * float(M_PI/180.0f);   // 0.05 dps -> ~0.00087 rad/s
+    
+    // Optional very-slow drift (keep tiny; set 0 if you don’t want drift)
+    const float acc_bias_rw = 0.0005f;   // m/s^2 / sqrt(s)
+    const float gyr_bias_rw = 0.00001f;  // rad/s / sqrt(s)
+    
+    ImuNoiseModel accel_noise = make_imu_noise_model(acc_sigma, acc_bias_range, acc_bias_rw, 1234);
+    ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_bias_rw, 5678);
+    
+    // BMM150-like magnetometer behavior (AtomS3R)
+    constexpr float MAG_ODR_HZ = 100.0f;                 // 100 (regular) or 20 (high-accuracy)
+    constexpr float MAG_DT     = 1.0f / MAG_ODR_HZ;
+    // Phase accumulator for exact mag rate
+    float mag_phase_s = 0.0f;
+    const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet RMS noise  [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf)
+    // “Decently calibrated” residuals (small!)
+        MagNoiseModel mag_noise = make_mag_noise_model(
+        mag_sigma_uT,  // white RMS per mag sample
+        2.0f,          // residual hard-iron half-range [uT] (post-cal)
+        0.01f,         // slow drift [uT]/sqrt(s)
+        0.015f,        // <= 1.5% residual scale
+        0.010f,        // <= 1% cross-axis coupling
+        1.0f,          // <= 1 deg residual misalignment
+        9012
+    );
+    // Hold-last-sample value (persistent across loop iterations)
+    Vector3f mag_body_ned_hold = Vector3f::Zero();
        
     // Filter
     const Vector3f sigma_a_init(2.0f * acc_sigma, 2.0f * acc_sigma, 2.0f * acc_sigma);
@@ -316,8 +316,8 @@ Vector3f mag_body_ned_hold = Vector3f::Zero();
     
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
     // Bias estimation error history (est - true), BODY-NED frame
-std::vector<float> accb_err_x, accb_err_y, accb_err_z;
-std::vector<float> gyrb_err_x, gyrb_err_y, gyrb_err_z;
+    std::vector<float> accb_err_x, accb_err_y, accb_err_z;
+    std::vector<float> gyrb_err_x, gyrb_err_y, gyrb_err_z;
 
     int sample_idx = -1;
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
@@ -358,32 +358,28 @@ std::vector<float> gyrb_err_x, gyrb_err_y, gyrb_err_z;
         // One time update per sample (propagate + accel update)
         filter.updateTime(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
 
-// Simulated magnetometer (BODY, then axis-map to NED body)
-Vector3f mag_body_ned(0,0,0);
-if (with_mag) {
-    // Exact-rate mag tick using a phase accumulator
-    mag_phase_s += dt;
-    bool mag_tick = false;
-    if (mag_phase_s >= MAG_DT) {
-        while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
-        mag_tick = true;
-    }
-    if (mag_tick) {
-        Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(
-            r_ref_out, p_ref_out, y_ref_out);
-
-        if (add_noise) {
-            mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
+        // Simulated magnetometer (BODY, then axis-map to NED body)
+        Vector3f mag_body_ned(0,0,0);
+        if (with_mag) {
+            // Exact-rate mag tick using a phase accumulator
+            mag_phase_s += dt;
+            bool mag_tick = false;
+            if (mag_phase_s >= MAG_DT) {
+                while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
+                mag_tick = true;
+            }
+            if (mag_tick) {
+                Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
+                if (add_noise) {
+                    mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
+                }
+                mag_body_ned_hold = zu_to_ned(mag_b_enu);
+                if (rec.time >= MAG_DELAY_SEC) {
+                    filter.updateMag(mag_body_ned_hold);
+                }
+            }
+            mag_body_ned = mag_body_ned_hold;
         }
-
-        mag_body_ned_hold = zu_to_ned(mag_b_enu);
-
-        if (rec.time >= MAG_DELAY_SEC) {
-            filter.updateMag(mag_body_ned_hold);
-        }
-    }
-    mag_body_ned = mag_body_ned_hold;
-}
         
         // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
@@ -408,29 +404,29 @@ if (with_mag) {
         errs_pitch.push_back(diffDeg(eul_est.y(), p_ref_out));
         errs_yaw.push_back(diffDeg(eul_est.z(), y_ref_out));
         
-// True biases are generated in the same frame as gyr_b/acc_b (BODY Z-up from CSV)
-Vector3f acc_bias_true_zu  = accel_noise.bias0 + accel_noise.bias_rw;
-Vector3f gyro_bias_true_zu = gyro_noise.bias0  + gyro_noise.bias_rw;
-
-// Convert to the frame used by the filter (BODY-NED), same as acc_meas_ned/gyr_meas_ned
-Vector3f acc_bias_true_ned  = zu_to_ned(acc_bias_true_zu);
-Vector3f gyro_bias_true_ned = zu_to_ned(gyro_bias_true_zu);
-
-// Estimated biases (these are in BODY-NED in your filter pipeline)
-Vector3f acc_bias_est  = filter.mekf().get_acc_bias();
-Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
-
-// Bias estimation errors (est - true)
-Vector3f acc_bias_err  = acc_bias_est  - acc_bias_true_ned;
-Vector3f gyro_bias_err = gyro_bias_est - gyro_bias_true_ned;
-
-accb_err_x.push_back(acc_bias_err.x());
-accb_err_y.push_back(acc_bias_err.y());
-accb_err_z.push_back(acc_bias_err.z());
-
-gyrb_err_x.push_back(gyro_bias_err.x());
-gyrb_err_y.push_back(gyro_bias_err.y());
-gyrb_err_z.push_back(gyro_bias_err.z());        
+        // True biases are generated in the same frame as gyr_b/acc_b (BODY Z-up from CSV)
+        Vector3f acc_bias_true_zu  = accel_noise.bias0 + accel_noise.bias_rw;
+        Vector3f gyro_bias_true_zu = gyro_noise.bias0  + gyro_noise.bias_rw;
+        
+        // Convert to the frame used by the filter (BODY-NED), same as acc_meas_ned/gyr_meas_ned
+        Vector3f acc_bias_true_ned  = zu_to_ned(acc_bias_true_zu);
+        Vector3f gyro_bias_true_ned = zu_to_ned(gyro_bias_true_zu);
+        
+        // Estimated biases (these are in BODY-NED in your filter pipeline)
+        Vector3f acc_bias_est  = filter.mekf().get_acc_bias();
+        Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
+        
+        // Bias estimation errors (est - true)
+        Vector3f acc_bias_err  = acc_bias_est  - acc_bias_true_ned;
+        Vector3f gyro_bias_err = gyro_bias_est - gyro_bias_true_ned;
+        
+        accb_err_x.push_back(acc_bias_err.x());
+        accb_err_y.push_back(acc_bias_err.y());
+        accb_err_z.push_back(acc_bias_err.z());
+        
+        gyrb_err_x.push_back(gyro_bias_err.x());
+        gyrb_err_y.push_back(gyro_bias_err.y());
+        gyrb_err_z.push_back(gyro_bias_err.z());        
         
         // CSV row
         ofs << rec.time << ","
@@ -462,26 +458,26 @@ gyrb_err_z.push_back(gyro_bias_err.z());
     if (errs_z.size() > static_cast<size_t>(N_last)) {
         size_t start = errs_z.size() - N_last;
 
-RMSReport rms_x, rms_y, rms_z, rms_roll, rms_pitch, rms_yaw;
-RMSReport rms_accb_x, rms_accb_y, rms_accb_z;
-RMSReport rms_gyrb_x, rms_gyrb_y, rms_gyrb_z;
-
-for (size_t i = start; i < errs_z.size(); ++i) {
-    rms_x.add(errs_x[i]);
-    rms_y.add(errs_y[i]);
-    rms_z.add(errs_z[i]);
-    rms_roll.add(errs_roll[i]);
-    rms_pitch.add(errs_pitch[i]);
-    rms_yaw.add(errs_yaw[i]);
-
-    rms_accb_x.add(accb_err_x[i]);
-    rms_accb_y.add(accb_err_y[i]);
-    rms_accb_z.add(accb_err_z[i]);
-
-    rms_gyrb_x.add(gyrb_err_x[i]);
-    rms_gyrb_y.add(gyrb_err_y[i]);
-    rms_gyrb_z.add(gyrb_err_z[i]);
-}
+        RMSReport rms_x, rms_y, rms_z, rms_roll, rms_pitch, rms_yaw;
+        RMSReport rms_accb_x, rms_accb_y, rms_accb_z;
+        RMSReport rms_gyrb_x, rms_gyrb_y, rms_gyrb_z;
+        
+        for (size_t i = start; i < errs_z.size(); ++i) {
+            rms_x.add(errs_x[i]);
+            rms_y.add(errs_y[i]);
+            rms_z.add(errs_z[i]);
+            rms_roll.add(errs_roll[i]);
+            rms_pitch.add(errs_pitch[i]);
+            rms_yaw.add(errs_yaw[i]);
+        
+            rms_accb_x.add(accb_err_x[i]);
+            rms_accb_y.add(accb_err_y[i]);
+            rms_accb_z.add(accb_err_z[i]);
+        
+            rms_gyrb_x.add(gyrb_err_x[i]);
+            rms_gyrb_y.add(gyrb_err_y[i]);
+            rms_gyrb_z.add(gyrb_err_z[i]);
+        }
 
         float x_rms = rms_x.rms(), y_rms = rms_y.rms(), z_rms = rms_z.rms();
         float x_pct = 100.f * x_rms / wp.height;
@@ -495,32 +491,27 @@ for (size_t i = start; i < errs_z.size(); ++i) {
                   << " Pitch=" << rms_pitch.rms()
                   << " Yaw=" << rms_yaw.rms() << "\n";
 
-// Bias error RMS (vector RMS = sqrt(mean(||e||^2)) = sqrt(rms_x^2 + rms_y^2 + rms_z^2))
-auto vec_rms = [](float rx, float ry, float rz) {
-    return std::sqrt(rx*rx + ry*ry + rz*rz);
-};
-
-const float accb_rx = rms_accb_x.rms(), accb_ry = rms_accb_y.rms(), accb_rz = rms_accb_z.rms();
-const float gyrb_rx = rms_gyrb_x.rms(), gyrb_ry = rms_gyrb_y.rms(), gyrb_rz = rms_gyrb_z.rms();
-
-const float accb_r3 = vec_rms(accb_rx, accb_ry, accb_rz);
-const float gyrb_r3 = vec_rms(gyrb_rx, gyrb_ry, gyrb_rz);
-
-std::cout << "Bias error RMS (acc, m/s^2): "
-          << "X=" << accb_rx << " Y=" << accb_ry << " Z=" << accb_rz
-          << " |3D|=" << accb_r3 << "\n";
-
-std::cout << "Bias error RMS (gyro, rad/s): "
-          << "X=" << gyrb_rx << " Y=" << gyrb_ry << " Z=" << gyrb_rz
-          << " |3D|=" << gyrb_r3 << "\n";
-
-// Optional: gyro bias RMS also in deg/s for readability
-const float rad2deg = 180.0f / float(M_PI);
-std::cout << "Bias error RMS (gyro, deg/s): "
-          << "X=" << (gyrb_rx*rad2deg) << " Y=" << (gyrb_ry*rad2deg) << " Z=" << (gyrb_rz*rad2deg)
-          << " |3D|=" << (gyrb_r3*rad2deg) << "\n";
-
+        // Bias error RMS (vector RMS = sqrt(mean(||e||^2)) = sqrt(rms_x^2 + rms_y^2 + rms_z^2))
+        auto vec_rms = [](float rx, float ry, float rz) {
+            return std::sqrt(rx*rx + ry*ry + rz*rz);
+        };
+        const float accb_rx = rms_accb_x.rms(), accb_ry = rms_accb_y.rms(), accb_rz = rms_accb_z.rms();
+        const float gyrb_rx = rms_gyrb_x.rms(), gyrb_ry = rms_gyrb_y.rms(), gyrb_rz = rms_gyrb_z.rms();
+        const float accb_r3 = vec_rms(accb_rx, accb_ry, accb_rz);
+        const float gyrb_r3 = vec_rms(gyrb_rx, gyrb_ry, gyrb_rz);
         
+        std::cout << "Bias error RMS (acc, m/s^2): "
+                  << "X=" << accb_rx << " Y=" << accb_ry << " Z=" << accb_rz
+                  << " |3D|=" << accb_r3 << "\n";
+        std::cout << "Bias error RMS (gyro, rad/s): "
+                  << "X=" << gyrb_rx << " Y=" << gyrb_ry << " Z=" << gyrb_rz
+                  << " |3D|=" << gyrb_r3 << "\n";
+        // gyro bias RMS also in deg/s for readability
+        const float rad2deg = 180.0f / float(M_PI);
+        std::cout << "Bias error RMS (gyro, deg/s): "
+                  << "X=" << (gyrb_rx*rad2deg) << " Y=" << (gyrb_ry*rad2deg) << " Z=" << (gyrb_rz*rad2deg)
+                  << " |3D|=" << (gyrb_r3*rad2deg) << "\n";
+
         // Extended diagnostic summary
         float tau_target   = filter.getTauTarget();
         float sigma_target = filter.getSigmaTarget();
