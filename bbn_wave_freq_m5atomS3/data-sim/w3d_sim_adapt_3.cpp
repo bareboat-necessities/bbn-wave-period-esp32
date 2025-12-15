@@ -449,7 +449,9 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         // True magnetometer additive bias in BODY Z-up (ENU from MagSim), then map to BODY-NED.
         // (This is ONLY the additive hard-iron residual + drift, not Mis.)
-        Vector3f mag_bias_true_zu  = (with_mag ? (mag_noise.bias0_uT + mag_noise.bias_rw_uT) : Vector3f::Zero());
+        Vector3f mag_bias_true_zu = with_mag
+            ? (mag_noise.bias0_uT + mag_noise.bias_rw_uT).eval()
+            : Vector3f::Zero().eval();
         Vector3f mag_bias_true_ned = zu_to_ned(mag_bias_true_zu);
 
         // Estimated magnetometer bias in BODY-NED (uT), if your filter exposes it
