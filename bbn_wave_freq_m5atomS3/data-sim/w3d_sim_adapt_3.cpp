@@ -506,6 +506,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         RMSReport rms_x, rms_y, rms_z, rms_roll, rms_pitch, rms_yaw;
         RMSReport rms_accb_x, rms_accb_y, rms_accb_z;
         RMSReport rms_gyrb_x, rms_gyrb_y, rms_gyrb_z;
+        RMSReport rms_magb_x, rms_magb_y, rms_magb_z;
         
         for (size_t i = start; i < errs_z.size(); ++i) {
             rms_x.add(errs_x[i]);
@@ -522,6 +523,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
             rms_gyrb_x.add(gyrb_err_x[i]);
             rms_gyrb_y.add(gyrb_err_y[i]);
             rms_gyrb_z.add(gyrb_err_z[i]);
+
+            rms_magb_x.add(magb_err_x[i]);
+            rms_magb_y.add(magb_err_y[i]);
+            rms_magb_z.add(magb_err_z[i]);
         }
 
         float x_rms = rms_x.rms(), y_rms = rms_y.rms(), z_rms = rms_z.rms();
@@ -556,6 +561,12 @@ static void process_wave_file_for_tracker(const std::string &filename,
         std::cout << "Bias error RMS (gyro, deg/s): "
                   << "X=" << (gyrb_rx*rad2deg) << " Y=" << (gyrb_ry*rad2deg) << " Z=" << (gyrb_rz*rad2deg)
                   << " |3D|=" << (gyrb_r3*rad2deg) << "\n";
+
+        const float magb_rx = rms_magb_x.rms(), magb_ry = rms_magb_y.rms(), magb_rz = rms_magb_z.rms();
+        const float magb_r3 = vec_rms(magb_rx, magb_ry, magb_rz);
+        std::cout << "Bias error RMS (mag, uT): "
+                  << "X=" << magb_rx << " Y=" << magb_ry << " Z=" << magb_rz
+                  << " |3D|=" << magb_r3 << "\n";        
 
         // Extended diagnostic summary
         float tau_target   = filter.getTauTarget();
