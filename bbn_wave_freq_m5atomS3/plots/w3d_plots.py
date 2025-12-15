@@ -244,3 +244,42 @@ for fname in files:
         ax.legend(loc="upper right")
     axes[-1].set_xlabel("Time (s)")
     finalize_plot(fig, outbase, "_gyro_bias")
+
+    # === Magnetometer bias estimates vs true (+ errors) ===
+    mag_pairs = [
+        ("mag_bias_x", "mag_bias_est_x", "Mag bias X"),
+        ("mag_bias_y", "mag_bias_est_y", "Mag bias Y"),
+        ("mag_bias_z", "mag_bias_est_z", "Mag bias Z"),
+    ]
+
+    # Only plot if the required columns exist
+    needed = [c for t,e,_ in mag_pairs for c in (t,e)]
+    if all(c in df.columns for c in needed):
+        nrows = 2 * len(mag_pairs) if PLOT_ERRORS else len(mag_pairs)
+        fig, axes = make_subplots(nrows, latex_safe(basename) + " (Magnetometer Biases)")
+
+        for i, (true_col, est_col, label) in enumerate(mag_pairs):
+            if PLOT_ERRORS:
+                ax_val = axes[2*i]
+                ax_err = axes[2*i + 1]
+            else:
+                ax_val = axes[i]
+                ax_err = None
+
+            ax_val.plot(time, df[true_col], label="True", linewidth=1.5)
+            ax_val.plot(time, df[est_col], label="Estimated", linestyle="--", linewidth=1.0)
+            ax_val.set_ylabel(latex_safe(label) + r" [$\mu$T]")
+            ax_val.grid(True)
+            ax_val.legend(loc="upper right")
+
+            if PLOT_ERRORS:
+                err = df[est_col] - df[true_col]
+                ax_err.plot(time, err, color="tab:red")
+                ax_err.set_ylabel(r"Error [$\mu$T]")
+                ax_err.grid(True)
+
+        axes[-1].set_xlabel("Time (s)")
+        finalize_plot(fig, outbase, "_mag_bias")
+    else:
+        missing = [c for c in needed if c not in df.columns]
+        print(f"  (skip mag bias plots; missing columns: {missing})")
