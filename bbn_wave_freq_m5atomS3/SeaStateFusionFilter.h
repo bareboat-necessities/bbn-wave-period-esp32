@@ -1,5 +1,12 @@
 #pragma once
 
+/* 
+   TODO: 
+
+   It learns wrong accel bias before going to LIVE
+   
+*/
+
 /*
 
   SeaStateFusionFilter
