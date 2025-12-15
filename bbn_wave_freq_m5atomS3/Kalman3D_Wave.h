@@ -551,7 +551,7 @@ class Kalman3D_Wave {
     Vector3 k_a_ = Vector3::Constant(T(0.002));
 
     T sigma_bmag0_ = T(8.0);                 // µT 
-    Matrix3 Q_bmag_ = Matrix3::Identity() * T(5e-6); // (µT^2)/s  (tune)
+    Matrix3 Q_bmag_ = Matrix3::Identity() * T(5e-7); // (µT^2)/s  (tune)
               
     // Constant matrices
     Matrix3 Rmag;
