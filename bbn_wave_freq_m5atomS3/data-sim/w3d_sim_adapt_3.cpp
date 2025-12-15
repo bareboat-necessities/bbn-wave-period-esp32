@@ -272,11 +272,13 @@ static void process_wave_file_for_tracker(const std::string &filename,
         << "disp_est_x,disp_est_y,disp_est_z,"
         << "vel_est_x,vel_est_y,vel_est_z,"
         << "acc_est_x,acc_est_y,acc_est_z,"
-        << "acc_bias_x,acc_bias_y,acc_bias_z,"
-        << "gyro_bias_est_x,gyro_bias_est_y,gyro_bias_est_z,"
-        << "mag_bias_x,mag_bias_y,mag_bias_z,"                    // TRUE (uT), BODY-NED
-        << "mag_bias_est_x,mag_bias_est_y,mag_bias_est_z,"        // EST  (uT), BODY-NED
-        << "mag_bias_err_x,mag_bias_err_y,mag_bias_err_z,"        // EST-TRUE (uT)
+        << "acc_bias_x,acc_bias_y,acc_bias_z,"                          // TRUE (m/s^2), BODY-NED
+        << "gyro_bias_x,gyro_bias_y,gyro_bias_z,"                       // TRUE (rad/s), BODY-NED
+        << "acc_bias_est_x,acc_bias_est_y,acc_bias_est_z,"              // EST  (m/s^2), BODY-NED
+        << "gyro_bias_est_x,gyro_bias_est_y,gyro_bias_est_z,"           // EST  (rad/s), BODY-NED
+        << "mag_bias_x,mag_bias_y,mag_bias_z,"                          // TRUE (uT), BODY-NED
+        << "mag_bias_est_x,mag_bias_est_y,mag_bias_est_z,"              // EST  (uT), BODY-NED
+        << "mag_bias_err_x,mag_bias_err_y,mag_bias_err_z,"              // EST-TRUE (uT)       
         << "tau_applied,sigma_a_applied,R_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
 
