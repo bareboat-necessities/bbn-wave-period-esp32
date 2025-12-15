@@ -548,7 +548,7 @@ class Kalman3D_Wave {
     // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
     Vector3 k_a_ = Vector3::Constant(T(0.002));
 
-    T sigma_bmag0_ = T(4.0);                 // µT 
+    T sigma_bmag0_ = T(2.0);                 // µT 
     Matrix3 Q_bmag_ = Matrix3::Identity() * T(1e-6); // (µT^2)/s  (tune)
               
     // Constant matrices
