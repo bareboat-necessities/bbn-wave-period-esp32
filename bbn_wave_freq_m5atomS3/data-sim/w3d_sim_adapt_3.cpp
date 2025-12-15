@@ -347,6 +347,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
     std::vector<float> accb_err_x, accb_err_y, accb_err_z;
     std::vector<float> gyrb_err_x, gyrb_err_y, gyrb_err_z;
     std::vector<float> magb_err_x, magb_err_y, magb_err_z;  // [uT]
+    // TRUE bias history (for last-window max), BODY-NED frame
+    std::vector<float> accb_true_x, accb_true_y, accb_true_z;
+    std::vector<float> gyrb_true_x, gyrb_true_y, gyrb_true_z;
+    std::vector<float> magb_true_x, magb_true_y, magb_true_z; // [uT]
     
     int sample_idx = -1;
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
@@ -473,6 +477,18 @@ static void process_wave_file_for_tracker(const std::string &filename,
         gyrb_err_x.push_back(gyro_bias_err.x());
         gyrb_err_y.push_back(gyro_bias_err.y());
         gyrb_err_z.push_back(gyro_bias_err.z());        
+
+        accb_true_x.push_back(acc_bias_true_ned.x());
+        accb_true_y.push_back(acc_bias_true_ned.y());
+        accb_true_z.push_back(acc_bias_true_ned.z());
+
+        gyrb_true_x.push_back(gyro_bias_true_ned.x());
+        gyrb_true_y.push_back(gyro_bias_true_ned.y());
+        gyrb_true_z.push_back(gyro_bias_true_ned.z());
+
+        magb_true_x.push_back(mag_bias_true_ned.x());
+        magb_true_y.push_back(mag_bias_true_ned.y());
+        magb_true_z.push_back(mag_bias_true_ned.z());
         
         // CSV row
         ofs << rec.time << ","
