@@ -541,14 +541,14 @@ class Kalman3D_Wave {
     // Last gyro
     Vector3 last_gyr_bias_corrected{};
 
-    T sigma_bacc0_ = T(0.003); // initial accel bias std
+    T sigma_bacc0_ = T(0.002); // initial accel bias std
     Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-6);
 
     // Accelerometer bias temperature coefficient (per-axis), units: m/s^2 per °C.
     // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
     Vector3 k_a_ = Vector3::Constant(T(0.002));
 
-    T sigma_bmag0_ = T(8.0);                 // µT 
+    T sigma_bmag0_ = T(4.0);                 // µT 
     Matrix3 Q_bmag_ = Matrix3::Identity() * T(1e-6); // (µT^2)/s  (tune)
               
     // Constant matrices
