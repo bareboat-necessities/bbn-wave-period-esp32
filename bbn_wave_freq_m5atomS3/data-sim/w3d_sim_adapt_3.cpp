@@ -206,6 +206,23 @@ Vector3f apply_mag_noise(const Vector3f& ideal_mag_uT_body, MagNoiseModel& m, fl
     return (m.Mis * ideal_mag_uT_body) + (m.bias0_uT + m.bias_rw_uT) + white;
 }
 
+template <class MekfT>
+static inline Vector3f get_mag_bias_est_uT(const MekfT& mekf)
+{
+    // Try a few likely accessor names. If none exist, return zeros.
+    if constexpr (requires { mekf.get_mag_bias_uT(); }) {
+        return mekf.get_mag_bias_uT();
+    } else if constexpr (requires { mekf.get_mag_bias(); }) {
+        return mekf.get_mag_bias();
+    } else if constexpr (requires { mekf.magnetometer_bias_uT(); }) {
+        return mekf.magnetometer_bias_uT();
+    } else if constexpr (requires { mekf.magnetometer_bias(); }) {
+        return mekf.magnetometer_bias();
+    } else {
+        return Vector3f::Zero();
+    }
+}
+
 //  Example wave parameter list
 const std::vector<WaveParameters> waveParamsList = {
     {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 30.0f},
