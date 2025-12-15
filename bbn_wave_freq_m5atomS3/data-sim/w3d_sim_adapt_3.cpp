@@ -344,7 +344,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
     // Bias estimation error history (est - true), BODY-NED frame
     std::vector<float> accb_err_x, accb_err_y, accb_err_z;
     std::vector<float> gyrb_err_x, gyrb_err_y, gyrb_err_z;
-
+    std::vector<float> magb_err_x, magb_err_y, magb_err_z;  // [uT]
+    
     int sample_idx = -1;
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         ++sample_idx;
@@ -445,6 +446,21 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // Bias estimation errors (est - true)
         Vector3f acc_bias_err  = acc_bias_est  - acc_bias_true_ned;
         Vector3f gyro_bias_err = gyro_bias_est - gyro_bias_true_ned;
+
+        // True magnetometer additive bias in BODY Z-up (ENU from MagSim), then map to BODY-NED.
+        // (This is ONLY the additive hard-iron residual + drift, not Mis.)
+        Vector3f mag_bias_true_zu  = (with_mag ? (mag_noise.bias0_uT + mag_noise.bias_rw_uT) : Vector3f::Zero());
+        Vector3f mag_bias_true_ned = zu_to_ned(mag_bias_true_zu);
+
+        // Estimated magnetometer bias in BODY-NED (uT), if your filter exposes it
+        Vector3f mag_bias_est_ned = with_mag ? get_mag_bias_est_uT(filter.mekf()) : Vector3f::Zero();
+
+        // Error (est - true)
+        Vector3f mag_bias_err = mag_bias_est_ned - mag_bias_true_ned;
+
+        magb_err_x.push_back(mag_bias_err.x());
+        magb_err_y.push_back(mag_bias_err.y());
+        magb_err_z.push_back(mag_bias_err.z());
         
         accb_err_x.push_back(acc_bias_err.x());
         accb_err_y.push_back(acc_bias_err.y());
