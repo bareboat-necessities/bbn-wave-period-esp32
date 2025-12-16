@@ -374,18 +374,28 @@ static void process_wave_file_for_tracker(const std::string &filename,
         float r_ref_out = rec.imu.roll_deg;
         float p_ref_out = rec.imu.pitch_deg;
         float y_ref_out = rec.imu.yaw_deg;
+
+        boolean const init_mag_ref_from_meas = true;
         
         // First-step init
         if (first) {
-            // Attitude from accel
-            filter.initialize_from_acc(acc_meas_ned);  
+            if (init_mag_ref_from_meas) {
+                // Attitude from accel
+                filter.initialize_from_acc(acc_meas_ned);  
+            } else {
+                // Attitude from accel, mag
+                filter.initialize_from_acc_mag(acc_meas_ned, mag_meas_ned);  
+                mag_ref_set = true; 
+            }
             first = false;
         }
 
-        // One-time world magnetic reference before using magnetometer
-        if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
-            filter.mekf().set_mag_world_ref(mag_world_a);
-            mag_ref_set = true; 
+        if (init_mag_ref_from_meas) {
+            // One-time world magnetic reference before using magnetometer
+            if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
+                filter.mekf().set_mag_world_ref(mag_world_a);
+                mag_ref_set = true; 
+            }
         }
 
         // One time update per sample (propagate + accel update)
