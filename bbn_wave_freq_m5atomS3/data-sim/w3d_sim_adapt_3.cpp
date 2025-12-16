@@ -401,12 +401,12 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // First-step init
         if (first) {
             if (init_mag_ref_from_meas) {
-                // Attitude from accel
-                filter.initialize_from_acc(acc_meas_ned);  
-            } else {
                 // Attitude from accel, mag
                 filter.initialize_from_acc_mag(acc_meas_ned, mag_body_ned_hold);  
                 mag_ref_set = true; 
+            } else {
+                // Attitude from accel
+                filter.initialize_from_acc(acc_meas_ned);  
             }
             first = false;
         }
