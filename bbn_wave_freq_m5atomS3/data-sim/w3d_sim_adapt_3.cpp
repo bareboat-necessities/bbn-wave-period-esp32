@@ -415,7 +415,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 // Use current attitude + last measured BODY-NED mag
                 // to define the WORLD magnetic reference vector.
                 if (mag_body_ned_hold.squaredNorm() > 1e-6f) {
-                    // quaternion() returns body->world (q_bw) in your baseline
+                    // quaternion() returns body->world (q_bw)
                     Eigen::Quaternionf q_bw = filter.mekf().quaternion();
                     Eigen::Vector3f mag_world_est = q_bw * mag_body_ned_hold; // BODY->WORLD
 
