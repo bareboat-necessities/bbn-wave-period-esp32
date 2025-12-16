@@ -413,7 +413,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
             first = false;
         }
 
-        if (init_mag_ref_from_meas) {
+        if (!init_mag_ref_from_meas) {
             // One-time world magnetic reference before using magnetometer
             if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
                 filter.mekf().set_mag_world_ref(mag_world_a);
