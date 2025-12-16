@@ -407,7 +407,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 filter.initialize_from_acc(acc_meas_ned);  
             } else {
                 // Attitude from accel, mag
-                filter.initialize_from_acc_mag(acc_meas_ned, mag_meas_ned);  
+                filter.initialize_from_acc_mag(acc_meas_ned, mag_body_ned_hold);  
                 mag_ref_set = true; 
             }
             first = false;
