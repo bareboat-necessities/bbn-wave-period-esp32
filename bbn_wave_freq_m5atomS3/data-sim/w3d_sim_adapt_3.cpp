@@ -379,60 +379,54 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // Simulated magnetometer (BODY, then axis-map to NED body)
         Vector3f mag_body_ned(0,0,0);
         if (with_mag) {
-            if (first && init_mag_ref_from_meas) {
-                // For the very first sample when we want to init from a measured mag,
-                // force-generate one mag measurement, ignoring ODR phase & mag_ref_set.
+            // BMM150-style ODR, independent of whether the filter is using mag yet.
+            mag_phase_s += dt;
+            bool mag_tick = false;
+            if (mag_phase_s >= MAG_DT) {
+                while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
+                mag_tick = true;
+            }
+
+            if (mag_tick) {
                 Vector3f mag_b_enu =
                     MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
                 if (add_noise) {
                     mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
                 }
                 mag_body_ned_hold = zu_to_ned(mag_b_enu);
-                // Don't call updateMag() yet; attitude is not initialized.
-            } else {
-                // Normal ODR-based mag ticks
-                mag_phase_s += dt;
-                bool mag_tick = false;
-                if (mag_phase_s >= MAG_DT) {
-                    while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
-                    mag_tick = true;
-                }
-                if (mag_tick) {
-                    Vector3f mag_b_enu =
-                        MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
-                    if (add_noise) {
-                        mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
-                    }
-                    mag_body_ned_hold = zu_to_ned(mag_b_enu);
 
-                    // Only feed the filter once the mag reference is configured
-                    // and after the warmup delay.
-                    if (mag_ref_set && rec.time >= MAG_DELAY_SEC) {
-                        filter.updateMag(mag_body_ned_hold);
-                    }
+                // Only feed the filter once the world mag reference is configured
+                // and after the warmup delay.
+                if (mag_ref_set && rec.time >= MAG_DELAY_SEC) {
+                    filter.updateMag(mag_body_ned_hold);
                 }
             }
             mag_body_ned = mag_body_ned_hold;
         }
         
-        // First-step init
+        // First-step init: always tilt-only from accelerometer.
         if (first) {
-            if (init_mag_ref_from_meas && with_mag) {
-                // We know mag_body_ned was just forced to a valid measurement above
-                filter.initialize_from_acc_mag(acc_meas_ned, mag_body_ned);
-                mag_ref_set = true;
-            } else {
-                // Attitude from accel only (mag_world_ref set later via WMM)
-                filter.initialize_from_acc(acc_meas_ned);
-            }
+            filter.initialize_from_acc(acc_meas_ned);
             first = false;
         }
 
-        if (!init_mag_ref_from_meas) {
-            // One-time world magnetic reference before using magnetometer
-            if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
+        // One-time world magnetic reference before using magnetometer
+        if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
+            if (init_mag_ref_from_meas) {
+                // Use current attitude + last measured BODY-NED mag
+                // to define the WORLD magnetic reference vector.
+                if (mag_body_ned_hold.squaredNorm() > 1e-6f) {
+                    // quaternion() returns body->world (q_bw) in your baseline
+                    Eigen::Quaternionf q_bw = filter.mekf().quaternion();
+                    Eigen::Vector3f mag_world_est = q_bw * mag_body_ned_hold; // BODY->WORLD
+
+                    filter.mekf().set_mag_world_ref(mag_world_est);
+                    mag_ref_set = true;
+                }
+            } else {
+                // Use WMM-based world mag reference
                 filter.mekf().set_mag_world_ref(mag_world_a);
-                mag_ref_set = true; 
+                mag_ref_set = true;
             }
         }
 
