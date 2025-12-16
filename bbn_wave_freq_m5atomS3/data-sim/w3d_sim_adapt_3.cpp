@@ -615,41 +615,36 @@ static void process_wave_file_for_tracker(const std::string &filename,
                   << "X=" << magb_rx << " Y=" << magb_ry << " Z=" << magb_rz
                   << " |3D|=" << magb_r3 << "\n";        
 
-auto pct_of_max = [](float rms, float maxv) -> float {
-    return (maxv > 1e-12f && std::isfinite(rms)) ? (100.f * rms / maxv) : NAN;
-};
+        auto pct_of_max = [](float rms, float maxv) -> float {
+            return (maxv > 1e-12f && std::isfinite(rms)) ? (100.f * rms / maxv) : NAN;
+        };
+        // Print max TRUE bias used for normalization
+        std::cout << "Max TRUE bias in window (acc, m/s^2): "
+                  << "X=" << acc_true_max_x << " Y=" << acc_true_max_y << " Z=" << acc_true_max_z
+                  << " |3D|=" << acc_true_max_3d << "\n";
+        std::cout << "Max TRUE bias in window (gyro, rad/s): "
+                  << "X=" << gyr_true_max_x << " Y=" << gyr_true_max_y << " Z=" << gyr_true_max_z
+                  << " |3D|=" << gyr_true_max_3d << "\n";
+        std::cout << "Max TRUE bias in window (mag, uT): "
+                  << "X=" << mag_true_max_x << " Y=" << mag_true_max_y << " Z=" << mag_true_max_z
+                  << " |3D|=" << mag_true_max_3d << "\n";  
+        // Print bias error RMS as % of max TRUE bias (same window)
+        std::cout << "Bias error RMS (% of max TRUE bias) (acc): "
+                  << "X=" << pct_of_max(accb_rx, acc_true_max_x) << "% "
+                  << "Y=" << pct_of_max(accb_ry, acc_true_max_y) << "% "
+                  << "Z=" << pct_of_max(accb_rz, acc_true_max_z) << "% "
+                  << "|3D|=" << pct_of_max(accb_r3, acc_true_max_3d) << "%\n";
+        std::cout << "Bias error RMS (% of max TRUE bias) (gyro): "
+                  << "X=" << pct_of_max(gyrb_rx, gyr_true_max_x) << "% "
+                  << "Y=" << pct_of_max(gyrb_ry, gyr_true_max_y) << "% "
+                  << "Z=" << pct_of_max(gyrb_rz, gyr_true_max_z) << "% "
+                  << "|3D|=" << pct_of_max(gyrb_r3, gyr_true_max_3d) << "%\n";
+        std::cout << "Bias error RMS (% of max TRUE bias) (mag): "
+                  << "X=" << pct_of_max(magb_rx, mag_true_max_x) << "% "
+                  << "Y=" << pct_of_max(magb_ry, mag_true_max_y) << "% "
+                  << "Z=" << pct_of_max(magb_rz, mag_true_max_z) << "% "
+                  << "|3D|=" << pct_of_max(magb_r3, mag_true_max_3d) << "%\n";
 
-// Print max TRUE bias used for normalization
-std::cout << "Max TRUE bias in window (acc, m/s^2): "
-          << "X=" << acc_true_max_x << " Y=" << acc_true_max_y << " Z=" << acc_true_max_z
-          << " |3D|=" << acc_true_max_3d << "\n";
-std::cout << "Max TRUE bias in window (gyro, rad/s): "
-          << "X=" << gyr_true_max_x << " Y=" << gyr_true_max_y << " Z=" << gyr_true_max_z
-          << " |3D|=" << gyr_true_max_3d << "\n";
-std::cout << "Max TRUE bias in window (mag, uT): "
-          << "X=" << mag_true_max_x << " Y=" << mag_true_max_y << " Z=" << mag_true_max_z
-          << " |3D|=" << mag_true_max_3d << "\n";
-
-// Print bias error RMS as % of max TRUE bias (same window)
-std::cout << "Bias error RMS (% of max TRUE bias) (acc): "
-          << "X=" << pct_of_max(accb_rx, acc_true_max_x) << "% "
-          << "Y=" << pct_of_max(accb_ry, acc_true_max_y) << "% "
-          << "Z=" << pct_of_max(accb_rz, acc_true_max_z) << "% "
-          << "|3D|=" << pct_of_max(accb_r3, acc_true_max_3d) << "%\n";
-
-std::cout << "Bias error RMS (% of max TRUE bias) (gyro): "
-          << "X=" << pct_of_max(gyrb_rx, gyr_true_max_x) << "% "
-          << "Y=" << pct_of_max(gyrb_ry, gyr_true_max_y) << "% "
-          << "Z=" << pct_of_max(gyrb_rz, gyr_true_max_z) << "% "
-          << "|3D|=" << pct_of_max(gyrb_r3, gyr_true_max_3d) << "%\n";
-
-std::cout << "Bias error RMS (% of max TRUE bias) (mag): "
-          << "X=" << pct_of_max(magb_rx, mag_true_max_x) << "% "
-          << "Y=" << pct_of_max(magb_ry, mag_true_max_y) << "% "
-          << "Z=" << pct_of_max(magb_rz, mag_true_max_z) << "% "
-          << "|3D|=" << pct_of_max(magb_r3, mag_true_max_3d) << "%\n";
-
-        
         // Extended diagnostic summary
         float tau_target   = filter.getTauTarget();
         float sigma_target = filter.getSigmaTarget();
