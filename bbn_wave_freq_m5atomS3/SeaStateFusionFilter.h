@@ -226,6 +226,12 @@ public:
         }
     }
 
+    void initialize_from_acc_mag(const Eigen::Vector3f& acc, const Eigen::Vector3f& mag) {
+        if (mekf_) {
+            mekf_->initialize_from_acc_mag(acc, mag);
+        }
+    }
+
     // Time update (IMU integration + frequency tracking)
     void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc,
                     float tempC = 35.0f)
