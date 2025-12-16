@@ -954,7 +954,7 @@ private:
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
     float R_S_coeff_    = 1.2f;
-    float tau_coeff_    = 1.6f;
+    float tau_coeff_    = 1.4f;
     float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
     std::unique_ptr<Kalman3D_Wave<float>>  mekf_;
