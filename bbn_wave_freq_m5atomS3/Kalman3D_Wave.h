@@ -257,6 +257,14 @@ class Kalman3D_Wave {
         v2ref = B_world;    // keep µT magnitude
     }
 
+    void initialize_mag_bias_from_measurement(const Vector3& mag_meas_body) {
+        if constexpr (with_mag_bias) {
+            const Vector3 mag = deheel_vector_(mag_meas_body);
+            const Vector3 pred_no_bias = R_wb() * v2ref;
+            xext.template segment<3>(OFF_BM) = mag - pred_no_bias;
+        }
+    }
+
     [[nodiscard]] Vector3 get_mag_bias() const {
         if constexpr (with_mag_bias) return xext.template segment<3>(OFF_BM);
         else return Vector3::Zero();
