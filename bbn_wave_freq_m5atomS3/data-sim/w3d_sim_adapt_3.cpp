@@ -33,6 +33,7 @@ const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 50.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 50.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 12.0f;
 
+const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT = 300.0f;
 const float FAIL_ERR_LIMIT_YAW_DEG = 4.0f;  
 
 constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
@@ -551,28 +552,28 @@ static void process_wave_file_for_tracker(const std::string &filename,
             rms_magb_y.add(magb_err_y[i]);
             rms_magb_z.add(magb_err_z[i]);
 
-// max TRUE bias in the same window (per-axis abs max + max vector norm)
-{
-    const float ax = accb_true_x[i], ay = accb_true_y[i], az = accb_true_z[i];
-    acc_true_max_x = std::max(acc_true_max_x, std::abs(ax));
-    acc_true_max_y = std::max(acc_true_max_y, std::abs(ay));
-    acc_true_max_z = std::max(acc_true_max_z, std::abs(az));
-    acc_true_max_3d = std::max(acc_true_max_3d, std::sqrt(ax*ax + ay*ay + az*az));
-}
-{
-    const float gx = gyrb_true_x[i], gy = gyrb_true_y[i], gz = gyrb_true_z[i];
-    gyr_true_max_x = std::max(gyr_true_max_x, std::abs(gx));
-    gyr_true_max_y = std::max(gyr_true_max_y, std::abs(gy));
-    gyr_true_max_z = std::max(gyr_true_max_z, std::abs(gz));
-    gyr_true_max_3d = std::max(gyr_true_max_3d, std::sqrt(gx*gx + gy*gy + gz*gz));
-}
-{
-    const float mx = magb_true_x[i], my = magb_true_y[i], mz = magb_true_z[i];
-    mag_true_max_x = std::max(mag_true_max_x, std::abs(mx));
-    mag_true_max_y = std::max(mag_true_max_y, std::abs(my));
-    mag_true_max_z = std::max(mag_true_max_z, std::abs(mz));
-    mag_true_max_3d = std::max(mag_true_max_3d, std::sqrt(mx*mx + my*my + mz*mz));
-}           
+            // max TRUE bias in the same window (per-axis abs max + max vector norm)
+            {
+                const float ax = accb_true_x[i], ay = accb_true_y[i], az = accb_true_z[i];
+                acc_true_max_x = std::max(acc_true_max_x, std::abs(ax));
+                acc_true_max_y = std::max(acc_true_max_y, std::abs(ay));
+                acc_true_max_z = std::max(acc_true_max_z, std::abs(az));
+                acc_true_max_3d = std::max(acc_true_max_3d, std::sqrt(ax*ax + ay*ay + az*az));
+            }
+            {
+                const float gx = gyrb_true_x[i], gy = gyrb_true_y[i], gz = gyrb_true_z[i];
+                gyr_true_max_x = std::max(gyr_true_max_x, std::abs(gx));
+                gyr_true_max_y = std::max(gyr_true_max_y, std::abs(gy));
+                gyr_true_max_z = std::max(gyr_true_max_z, std::abs(gz));
+                gyr_true_max_3d = std::max(gyr_true_max_3d, std::sqrt(gx*gx + gy*gy + gz*gz));
+            }
+            {
+                const float mx = magb_true_x[i], my = magb_true_y[i], mz = magb_true_z[i];
+                mag_true_max_x = std::max(mag_true_max_x, std::abs(mx));
+                mag_true_max_y = std::max(mag_true_max_y, std::abs(my));
+                mag_true_max_z = std::max(mag_true_max_z, std::abs(mz));
+                mag_true_max_3d = std::max(mag_true_max_3d, std::sqrt(mx*mx + my*my + mz*mz));
+            }           
         }
 
         float x_rms = rms_x.rms(), y_rms = rms_y.rms(), z_rms = rms_z.rms();
@@ -617,6 +618,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         auto pct_of_max = [](float rms, float maxv) -> float {
             return (maxv > 1e-12f && std::isfinite(rms)) ? (100.f * rms / maxv) : NAN;
         };
+        
         // Print max TRUE bias used for normalization
         std::cout << "Max TRUE bias in window (acc, m/s^2): "
                   << "X=" << acc_true_max_x << " Y=" << acc_true_max_y << " Z=" << acc_true_max_z
@@ -626,23 +628,29 @@ static void process_wave_file_for_tracker(const std::string &filename,
                   << " |3D|=" << gyr_true_max_3d << "\n";
         std::cout << "Max TRUE bias in window (mag, uT): "
                   << "X=" << mag_true_max_x << " Y=" << mag_true_max_y << " Z=" << mag_true_max_z
-                  << " |3D|=" << mag_true_max_3d << "\n";  
+                  << " |3D|=" << mag_true_max_3d << "\n";
+        
+        // cache 3D percentages for bias error
+        float accb_r3_pct = pct_of_max(accb_r3, acc_true_max_3d);
+        float gyrb_r3_pct = pct_of_max(gyrb_r3, gyr_true_max_3d);
+        float magb_r3_pct = pct_of_max(magb_r3, mag_true_max_3d); // optional, for diagnostics
+        
         // Print bias error RMS as % of max TRUE bias (same window)
         std::cout << "Bias error RMS (% of max TRUE bias) (acc): "
                   << "X=" << pct_of_max(accb_rx, acc_true_max_x) << "% "
                   << "Y=" << pct_of_max(accb_ry, acc_true_max_y) << "% "
                   << "Z=" << pct_of_max(accb_rz, acc_true_max_z) << "% "
-                  << "|3D|=" << pct_of_max(accb_r3, acc_true_max_3d) << "%\n";
+                  << "|3D|=" << accb_r3_pct << "%\n";
         std::cout << "Bias error RMS (% of max TRUE bias) (gyro): "
                   << "X=" << pct_of_max(gyrb_rx, gyr_true_max_x) << "% "
                   << "Y=" << pct_of_max(gyrb_ry, gyr_true_max_y) << "% "
                   << "Z=" << pct_of_max(gyrb_rz, gyr_true_max_z) << "% "
-                  << "|3D|=" << pct_of_max(gyrb_r3, gyr_true_max_3d) << "%\n";
+                  << "|3D|=" << gyrb_r3_pct << "%\n";
         std::cout << "Bias error RMS (% of max TRUE bias) (mag): "
                   << "X=" << pct_of_max(magb_rx, mag_true_max_x) << "% "
                   << "Y=" << pct_of_max(magb_ry, mag_true_max_y) << "% "
                   << "Z=" << pct_of_max(magb_rz, mag_true_max_z) << "% "
-                  << "|3D|=" << pct_of_max(magb_r3, mag_true_max_3d) << "%\n";
+                  << "|3D|=" << magb_r3_pct << "%\n";
 
         // Extended diagnostic summary
         float tau_target   = filter.getTauTarget();
@@ -690,10 +698,22 @@ static void process_wave_file_for_tracker(const std::string &filename,
                       << " deg). Failing.\n";
             std::exit(EXIT_FAILURE);
         }
+        // 3D bias error fail gates at % of max TRUE bias
+        if (std::isfinite(accb_r3_pct) && accb_r3_pct > FAIL_ERR_LIMIT_BIAS_3D_PERCENT) {
+            std::cerr << "ERROR: 3D accel bias error RMS above limit ("
+                      << accb_r3_pct << "% > " << FAIL_ERR_LIMIT_BIAS_3D_PERCENT
+                      << "% of max TRUE bias). Failing.\n";
+            std::exit(EXIT_FAILURE);
+        }        
+        if (std::isfinite(gyrb_r3_pct) && gyrb_r3_pct > FAIL_ERR_LIMIT_BIAS_3D_PERCENT) {
+            std::cerr << "ERROR: 3D gyro bias error RMS above limit ("
+                      << gyrb_r3_pct << "% > " << FAIL_ERR_LIMIT_BIAS_3D_PERCENT
+                      << "% of max TRUE bias). Failing.\n";
+            std::exit(EXIT_FAILURE);
+        }        
     }
 }
 
-//  Main
 int main(int argc, char* argv[]) {
     float dt = 1.0f / 240.0f;
     bool with_mag = true;
