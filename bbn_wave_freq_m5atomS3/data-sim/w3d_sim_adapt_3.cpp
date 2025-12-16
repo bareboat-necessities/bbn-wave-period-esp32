@@ -598,34 +598,31 @@ static void process_wave_file_for_tracker(const std::string &filename,
             }           
         }
 
-float x_rms = rms_x.rms(), y_rms = rms_y.rms(), z_rms = rms_z.rms();
-
-// Per-axis % still relative to Hs if you want to keep those:
-float x_pct = 100.f * x_rms / wp.height;
-float y_pct = 100.f * y_rms / wp.height;
-float z_pct = 100.f * z_rms / wp.height;
-
-// TRUE displacement RMS per axis
-float ref_x_rms = rms_ref_x.rms();
-float ref_y_rms = rms_ref_y.rms();
-float ref_z_rms = rms_ref_z.rms();
-
-// 3D RMS(error) and 3D RMS(signal)
-float rms_3d_err = std::sqrt(x_rms * x_rms + y_rms * y_rms + z_rms * z_rms);
-float rms_3d_ref = std::sqrt(ref_x_rms * ref_x_rms +
-                              ref_y_rms * ref_y_rms +
-                              ref_z_rms * ref_z_rms);
-
-// 3D relative error in %
-float pct_3d = std::isfinite(rms_3d_ref) && rms_3d_ref > 1e-12f
-                 ? 100.f * rms_3d_err / rms_3d_ref
-                 : NAN;
+        float x_rms = rms_x.rms(), y_rms = rms_y.rms(), z_rms = rms_z.rms();
+        
+        // Per-axis % still relative to Hs if you want to keep those:
+        float x_pct = 100.f * x_rms / wp.height;
+        float y_pct = 100.f * y_rms / wp.height;
+        float z_pct = 100.f * z_rms / wp.height;
+        
+        // TRUE displacement RMS per axis
+        float ref_x_rms = rms_ref_x.rms();
+        float ref_y_rms = rms_ref_y.rms();
+        float ref_z_rms = rms_ref_z.rms();
+        
+        // 3D RMS(error) and 3D RMS(signal)
+        float rms_3d_err = std::sqrt(x_rms * x_rms + y_rms * y_rms + z_rms * z_rms);
+        float rms_3d_ref = std::sqrt(ref_x_rms * ref_x_rms + ref_y_rms * ref_y_rms + ref_z_rms * ref_z_rms);
+        
+        // 3D relative error in %
+        float pct_3d = std::isfinite(rms_3d_ref) && rms_3d_ref > 1e-12f
+                         ? 100.f * rms_3d_err / rms_3d_ref : NAN;
 
         std::cout << "=== Last 60 s RMS summary for " << outname << " ===\n";
 
-std::cout << "XYZ RMS (m): X=" << x_rms << " Y=" << y_rms << " Z=" << z_rms << "\n";
-std::cout << "XYZ RMS (%Hs): X=" << x_pct << "% Y=" << y_pct << "% Z=" << z_pct << "% (Hs=" << wp.height << ")\n";
-std::cout << "3D RMS (m): " << rms_3d_err << " (3D rel err=%" << pct_3d << " of 3D true RMS)\n";
+        std::cout << "XYZ RMS (m): X=" << x_rms << " Y=" << y_rms << " Z=" << z_rms << "\n";
+        std::cout << "XYZ RMS (%Hs): X=" << x_pct << "% Y=" << y_pct << "% Z=" << z_pct << "% (Hs=" << wp.height << ")\n";
+        std::cout << "3D RMS (m): " << rms_3d_err << " (3D rel err=%" << pct_3d << " of 3D true RMS)\n";
 
         // Bias error RMS (vector RMS = sqrt(mean(||e||^2)) = sqrt(rms_x^2 + rms_y^2 + rms_z^2))
         auto vec_rms = [](float rx, float ry, float rz) {
