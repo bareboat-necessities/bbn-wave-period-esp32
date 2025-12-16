@@ -312,7 +312,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     float mag_phase_s = 0.0f;
     const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet RMS noise  [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf)
     // “Decently calibrated” residuals (small!)
-        MagNoiseModel mag_noise = make_mag_noise_model(
+    MagNoiseModel mag_noise = make_mag_noise_model(
         mag_sigma_uT,  // white RMS per mag sample
         2.0f,          // residual hard-iron half-range [uT] (post-cal)
         0.01f,         // slow drift [uT]/sqrt(s)
@@ -360,8 +360,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
         Vector3f gyr_b(rec.imu.gyro_x, rec.imu.gyro_y, rec.imu.gyro_z);
 
-        const bool use_noise = add_noise;
-        if (use_noise) {
+        if (add_noise) {
             acc_b = apply_imu_noise(acc_b, accel_noise, dt);
             gyr_b = apply_imu_noise(gyr_b, gyro_noise, dt);       
         }
