@@ -339,6 +339,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     
     bool first = true;
     bool mag_ref_set = false;  
+    bool const init_mag_ref_from_meas = true;
     WaveDataCSVReader reader(filename);
     
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
@@ -397,8 +398,6 @@ static void process_wave_file_for_tracker(const std::string &filename,
             }
             mag_body_ned = mag_body_ned_hold;
         }
-
-        bool const init_mag_ref_from_meas = true;
         
         // First-step init
         if (first) {
