@@ -613,24 +613,26 @@ static void process_wave_file_for_tracker(const std::string &filename,
         float y_pct = 100.f * y_rms / wp.height;
         float z_pct = 100.f * z_rms / wp.height;
         
-        // TRUE displacement RMS per axis
+        // TRUE displacement RMS per axis (still available if you want them)
         float ref_x_rms = rms_ref_x.rms();
         float ref_y_rms = rms_ref_y.rms();
         float ref_z_rms = rms_ref_z.rms();
-        
-        // 3D RMS(error) and 3D RMS(signal)
+
+        // 3D RMS(error)
         float rms_3d_err = std::sqrt(x_rms * x_rms + y_rms * y_rms + z_rms * z_rms);
-        float rms_3d_ref = std::sqrt(ref_x_rms * ref_x_rms + ref_y_rms * ref_y_rms + ref_z_rms * ref_z_rms);
-        
-        // 3D relative error in %
-        float pct_3d = std::isfinite(rms_3d_ref) && rms_3d_ref > 1e-12f
-                         ? 100.f * rms_3d_err / rms_3d_ref : NAN;
+
+        // 3D error as % of max TRUE 3D displacement amplitude in the same window
+        float pct_3d = (disp_true_max_3d > 1e-12f && std::isfinite(rms_3d_err))
+                         ? 100.f * rms_3d_err / disp_true_max_3d
+                         : NAN;
 
         std::cout << "=== Last 60 s RMS summary for " << outname << " ===\n";
 
         std::cout << "XYZ RMS (m): X=" << x_rms << " Y=" << y_rms << " Z=" << z_rms << "\n";
         std::cout << "XYZ RMS (%Hs): X=" << x_pct << "% Y=" << y_pct << "% Z=" << z_pct << "% (Hs=" << wp.height << ")\n";
-        std::cout << "3D RMS (m): " << rms_3d_err << " (3D rel err=%" << pct_3d << " of 3D true RMS)\n";
+        std::cout << "3D RMS (m): " << rms_3d_err
+                  << " (3D % of max |disp_ref|_3D = " << pct_3d << "%, max |disp_ref|_3D = "
+                  << disp_true_max_3d << " m)\n";
 
         // Bias error RMS (vector RMS = sqrt(mean(||e||^2)) = sqrt(rms_x^2 + rms_y^2 + rms_z^2))
         auto vec_rms = [](float rx, float ry, float rz) {
