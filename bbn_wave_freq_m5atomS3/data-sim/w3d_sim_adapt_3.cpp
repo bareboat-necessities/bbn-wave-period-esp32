@@ -25,11 +25,11 @@
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
-const float FAIL_ERR_LIMIT_PERCENT_3D_HIGH = 50.0f; // JONSWAP
-const float FAIL_ERR_LIMIT_PERCENT_3D_LOW  = 50.0f; // PMSTOKES
+const float FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP   = 50.0f;
+const float FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES  = 50.0f;
 
-const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 18.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 18.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP   = 12.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES  = 18.0f;
 
 const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT = 800.0f;
 const float FAIL_ERR_LIMIT_YAW_DEG = 4.0f;  
@@ -688,11 +688,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         // Failure criteria 
         float limit_z  = (type == WaveType::JONSWAP)
-                           ? FAIL_ERR_LIMIT_PERCENT_Z_HIGH
-                           : FAIL_ERR_LIMIT_PERCENT_Z_LOW;
+                           ? FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP
+                           : FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES;
         float limit_3d = (type == WaveType::JONSWAP)
-                           ? FAIL_ERR_LIMIT_PERCENT_3D_HIGH
-                           : FAIL_ERR_LIMIT_PERCENT_3D_LOW;
+                           ? FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP
+                           : FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES;
 
         auto fail_if = [&](const char* label, float pct, float limit) {
             if (pct > limit) {
