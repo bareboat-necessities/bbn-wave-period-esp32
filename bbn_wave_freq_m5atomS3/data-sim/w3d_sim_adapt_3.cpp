@@ -25,12 +25,10 @@
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
-const float FAIL_ERR_LIMIT_PERCENT_X_HIGH = 50.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_HIGH = 50.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 12.0f;
+const float FAIL_ERR_LIMIT_PERCENT_3D_HIGH = 50.0f; // JONSWAP
+const float FAIL_ERR_LIMIT_PERCENT_3D_LOW  = 50.0f; // PMSTOKES
 
-const float FAIL_ERR_LIMIT_PERCENT_X_LOW  = 50.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Y_LOW  = 50.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_HIGH = 12.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_LOW  = 12.0f;
 
 const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT = 800.0f;
@@ -591,12 +589,14 @@ static void process_wave_file_for_tracker(const std::string &filename,
         float y_pct = 100.f * y_rms / wp.height;
         float z_pct = 100.f * z_rms / wp.height;
 
+        // 3D displacement RMS
+        float rms_3d = std::sqrt(x_rms * x_rms + y_rms * y_rms + z_rms * z_rms);
+        float pct_3d = 100.f * rms_3d / wp.height;
+
         std::cout << "=== Last 60 s RMS summary for " << outname << " ===\n";
         std::cout << "XYZ RMS (m): X=" << x_rms << " Y=" << y_rms << " Z=" << z_rms << "\n";
         std::cout << "XYZ RMS (%Hs): X=" << x_pct << "% Y=" << y_pct << "% Z=" << z_pct << "% (Hs=" << wp.height << ")\n";
-        std::cout << "Angles RMS (deg): Roll=" << rms_roll.rms()
-                  << " Pitch=" << rms_pitch.rms()
-                  << " Yaw=" << rms_yaw.rms() << "\n";
+        std::cout << "3D RMS (m): " << rms_3d << " (3D %Hs=" << pct_3d << "%)\n";
 
         // Bias error RMS (vector RMS = sqrt(mean(||e||^2)) = sqrt(rms_x^2 + rms_y^2 + rms_z^2))
         auto vec_rms = [](float rx, float ry, float rz) {
@@ -687,20 +687,25 @@ static void process_wave_file_for_tracker(const std::string &filename,
         std::cout << "=============================================\n\n";
 
         // Failure criteria 
-        float limit_x = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_X_HIGH : FAIL_ERR_LIMIT_PERCENT_X_LOW;
-        float limit_y = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_Y_HIGH : FAIL_ERR_LIMIT_PERCENT_Y_LOW;
-        float limit_z = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_Z_HIGH : FAIL_ERR_LIMIT_PERCENT_Z_LOW;
+        float limit_z  = (type == WaveType::JONSWAP)
+                           ? FAIL_ERR_LIMIT_PERCENT_Z_HIGH
+                           : FAIL_ERR_LIMIT_PERCENT_Z_LOW;
+        float limit_3d = (type == WaveType::JONSWAP)
+                           ? FAIL_ERR_LIMIT_PERCENT_3D_HIGH
+                           : FAIL_ERR_LIMIT_PERCENT_3D_LOW;
 
-        auto fail_if = [&](const char* axis, float pct, float limit) {
+        auto fail_if = [&](const char* label, float pct, float limit) {
             if (pct > limit) {
-                std::cerr << "ERROR: " << axis << " RMS above limit ("
-                          << pct << "% > " << limit << "%). Failing.\n";
+                std::cerr << "ERROR: " << label << " RMS above limit ("<< pct << "% > " << limit << "%). Failing.\n";
                 std::exit(EXIT_FAILURE);
             }
         };
-        fail_if("X", x_pct, limit_x);
-        fail_if("Y", y_pct, limit_y);
-        fail_if("Z", z_pct, limit_z);
+
+        // Keep tight vertical gate
+        fail_if("Z",  z_pct,  limit_z);
+        // New 3D displacement gate instead of X/Y axis gates
+        fail_if("3D", pct_3d, limit_3d);
+
 
         if (rms_yaw.rms() > FAIL_ERR_LIMIT_YAW_DEG) {
             std::cerr << "ERROR: Yaw RMS above limit ("
