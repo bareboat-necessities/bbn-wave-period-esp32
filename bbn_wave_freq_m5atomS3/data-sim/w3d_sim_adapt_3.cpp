@@ -643,6 +643,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
                   << " (3D % of max |disp_ref|_3D = " << pct_3d << "%, max |disp_ref|_3D = "
                   << disp_true_max_3d << " m)\n";
 
+        std::cout << "Angles RMS (deg): Roll=" << rms_roll.rms()
+                  << " Pitch=" << rms_pitch.rms()
+                  << " Yaw=" << rms_yaw.rms() << "\n";
+        
         // Bias error RMS (vector RMS = sqrt(mean(||e||^2)) = sqrt(rms_x^2 + rms_y^2 + rms_z^2))
         auto vec_rms = [](float rx, float ry, float rz) {
             return std::sqrt(rx*rx + ry*ry + rz*rz);
