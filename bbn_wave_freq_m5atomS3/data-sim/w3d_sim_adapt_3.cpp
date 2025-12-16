@@ -398,7 +398,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
             mag_body_ned = mag_body_ned_hold;
         }
 
-        bool const init_mag_ref_from_meas = false;
+        bool const init_mag_ref_from_meas = true;
         
         // First-step init
         if (first) {
