@@ -195,7 +195,7 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
     }
 }
 
-// Use with_mag_bias = true when mag reference is initialized from world absolute to detect hard iron mag bias,
+// Use with_mag_bias = true when mag reference is initialized from world absolute (set_mag_world_ref()) to detect hard iron mag bias,
 // if mag reference is initialized from a measurement (like initialize_from_acc_mag()) then it already bakes that bias inside - use with_mag_bias = false
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true, bool with_mag_bias = false>
 class Kalman3D_Wave {
