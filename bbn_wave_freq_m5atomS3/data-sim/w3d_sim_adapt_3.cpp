@@ -379,21 +379,37 @@ static void process_wave_file_for_tracker(const std::string &filename,
         // Simulated magnetometer (BODY, then axis-map to NED body)
         Vector3f mag_body_ned(0,0,0);
         if (with_mag) {
-            // Exact-rate mag tick using a phase accumulator
-            mag_phase_s += dt;
-            bool mag_tick = false;
-            if (mag_phase_s >= MAG_DT) {
-                while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
-                mag_tick = true;
-            }
-            if (mag_tick && mag_ref_set) {
-                Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
+            if (first && init_mag_ref_from_meas) {
+                // For the very first sample when we want to init from a measured mag,
+                // force-generate one mag measurement, ignoring ODR phase & mag_ref_set.
+                Vector3f mag_b_enu =
+                    MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
                 if (add_noise) {
                     mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
                 }
                 mag_body_ned_hold = zu_to_ned(mag_b_enu);
-                if (rec.time >= MAG_DELAY_SEC) {
-                    filter.updateMag(mag_body_ned_hold);
+                // Don't call updateMag() yet; attitude is not initialized.
+            } else {
+                // Normal ODR-based mag ticks
+                mag_phase_s += dt;
+                bool mag_tick = false;
+                if (mag_phase_s >= MAG_DT) {
+                    while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
+                    mag_tick = true;
+                }
+                if (mag_tick) {
+                    Vector3f mag_b_enu =
+                        MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
+                    if (add_noise) {
+                        mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
+                    }
+                    mag_body_ned_hold = zu_to_ned(mag_b_enu);
+
+                    // Only feed the filter once the mag reference is configured
+                    // and after the warmup delay.
+                    if (mag_ref_set && rec.time >= MAG_DELAY_SEC) {
+                        filter.updateMag(mag_body_ned_hold);
+                    }
                 }
             }
             mag_body_ned = mag_body_ned_hold;
@@ -401,13 +417,13 @@ static void process_wave_file_for_tracker(const std::string &filename,
         
         // First-step init
         if (first) {
-            if (init_mag_ref_from_meas) {
-                // Attitude from accel, mag
-                filter.initialize_from_acc_mag(acc_meas_ned, mag_body_ned_hold);  
-                mag_ref_set = true; 
+            if (init_mag_ref_from_meas && with_mag) {
+                // We know mag_body_ned was just forced to a valid measurement above
+                filter.initialize_from_acc_mag(acc_meas_ned, mag_body_ned);
+                mag_ref_set = true;
             } else {
-                // Attitude from accel
-                filter.initialize_from_acc(acc_meas_ned);  
+                // Attitude from accel only (mag_world_ref set later via WMM)
+                filter.initialize_from_acc(acc_meas_ned);
             }
             first = false;
         }
