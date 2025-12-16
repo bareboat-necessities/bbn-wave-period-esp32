@@ -198,7 +198,7 @@ public:
         mekf_->set_exact_att_bias_Qd(true);
     
         // Start as pure QMEKF: no v/p/S/a_w block yet
-        mekf_->set_linear_block_enabled(true);
+        mekf_->set_linear_block_enabled(false);
     
         apply_tune();  // pre-load OU/RS params so they're ready when we enable the block
     }
@@ -215,7 +215,7 @@ public:
         mekf_->set_exact_att_bias_Qd(true);
     
         // QMEKF-only at boot
-        mekf_->set_linear_block_enabled(true);
+        mekf_->set_linear_block_enabled(false);
     
         apply_tune();
     } 
@@ -269,7 +269,7 @@ public:
                 mekf_->initialize_from_acc(acc);
             
                 // Drop back to QMEKF-only
-                mekf_->set_linear_block_enabled(true);
+                mekf_->set_linear_block_enabled(false);
             
                 // Keep tune_ values, just don't use the linear block yet
                 apply_tune();
@@ -815,7 +815,7 @@ private:
                     apply_tune();   // now τ/σ/R_S actually configure the v/p/S/a_w block
                 } else {
                     // QMEKF-only mode: keep linear states disabled forever.
-                    mekf_->set_linear_block_enabled(true);
+                    mekf_->set_linear_block_enabled(false);
                 }
             }
 
