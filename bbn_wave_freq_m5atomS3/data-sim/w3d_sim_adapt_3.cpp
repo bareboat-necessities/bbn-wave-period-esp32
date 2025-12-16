@@ -396,8 +396,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 mag_body_ned_hold = zu_to_ned(mag_b_enu);
 
                 // Only feed the filter once the world mag reference is configured
-                // and after the warmup delay.
-                if (mag_ref_set && rec.time >= MAG_DELAY_SEC) {
+                if (mag_ref_set) {
                     filter.updateMag(mag_body_ned_hold);
                 }
             }
