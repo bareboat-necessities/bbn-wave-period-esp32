@@ -342,6 +342,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
     WaveDataCSVReader reader(filename);
     
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
+    // TRUE displacement history (for 3D ref RMS)
+    std::vector<float> ref_x, ref_y, ref_z;    
     // Bias estimation error history (est - true), BODY-NED frame
     std::vector<float> accb_err_x, accb_err_y, accb_err_z;
     std::vector<float> gyrb_err_x, gyrb_err_y, gyrb_err_z;
@@ -441,6 +443,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
         errs_x.push_back(disp_err.x());
         errs_y.push_back(disp_err.y());
         errs_z.push_back(disp_err.z());
+
+        ref_x.push_back(disp_ref.x());
+        ref_y.push_back(disp_ref.y());
+        ref_z.push_back(disp_ref.z());
+        
         errs_roll.push_back(diffDeg(eul_est.x(), r_ref_out));
         errs_pitch.push_back(diffDeg(eul_est.y(), p_ref_out));
         errs_yaw.push_back(diffDeg(eul_est.z(), y_ref_out));
@@ -532,6 +539,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         size_t start = errs_z.size() - N_last;
 
         RMSReport rms_x, rms_y, rms_z, rms_roll, rms_pitch, rms_yaw;
+        RMSReport rms_ref_x, rms_ref_y, rms_ref_z;
         RMSReport rms_accb_x, rms_accb_y, rms_accb_z;
         RMSReport rms_gyrb_x, rms_gyrb_y, rms_gyrb_z;
         RMSReport rms_magb_x, rms_magb_y, rms_magb_z;
@@ -544,6 +552,12 @@ static void process_wave_file_for_tracker(const std::string &filename,
             rms_x.add(errs_x[i]);
             rms_y.add(errs_y[i]);
             rms_z.add(errs_z[i]);
+
+            // TRUE displacement RMS
+            rms_ref_x.add(ref_x[i]);
+            rms_ref_y.add(ref_y[i]);
+            rms_ref_z.add(ref_z[i]);
+            
             rms_roll.add(errs_roll[i]);
             rms_pitch.add(errs_pitch[i]);
             rms_yaw.add(errs_yaw[i]);
@@ -584,19 +598,34 @@ static void process_wave_file_for_tracker(const std::string &filename,
             }           
         }
 
-        float x_rms = rms_x.rms(), y_rms = rms_y.rms(), z_rms = rms_z.rms();
-        float x_pct = 100.f * x_rms / wp.height;
-        float y_pct = 100.f * y_rms / wp.height;
-        float z_pct = 100.f * z_rms / wp.height;
+float x_rms = rms_x.rms(), y_rms = rms_y.rms(), z_rms = rms_z.rms();
 
-        // 3D displacement RMS
-        float rms_3d = std::sqrt(x_rms * x_rms + y_rms * y_rms + z_rms * z_rms);
-        float pct_3d = 100.f * rms_3d / wp.height;
+// Per-axis % still relative to Hs if you want to keep those:
+float x_pct = 100.f * x_rms / wp.height;
+float y_pct = 100.f * y_rms / wp.height;
+float z_pct = 100.f * z_rms / wp.height;
+
+// TRUE displacement RMS per axis
+float ref_x_rms = rms_ref_x.rms();
+float ref_y_rms = rms_ref_y.rms();
+float ref_z_rms = rms_ref_z.rms();
+
+// 3D RMS(error) and 3D RMS(signal)
+float rms_3d_err = std::sqrt(x_rms * x_rms + y_rms * y_rms + z_rms * z_rms);
+float rms_3d_ref = std::sqrt(ref_x_rms * ref_x_rms +
+                              ref_y_rms * ref_y_rms +
+                              ref_z_rms * ref_z_rms);
+
+// 3D relative error in %
+float pct_3d = std::isfinite(rms_3d_ref) && rms_3d_ref > 1e-12f
+                 ? 100.f * rms_3d_err / rms_3d_ref
+                 : NAN;
 
         std::cout << "=== Last 60 s RMS summary for " << outname << " ===\n";
-        std::cout << "XYZ RMS (m): X=" << x_rms << " Y=" << y_rms << " Z=" << z_rms << "\n";
-        std::cout << "XYZ RMS (%Hs): X=" << x_pct << "% Y=" << y_pct << "% Z=" << z_pct << "% (Hs=" << wp.height << ")\n";
-        std::cout << "3D RMS (m): " << rms_3d << " (3D %Hs=" << pct_3d << "%)\n";
+
+std::cout << "XYZ RMS (m): X=" << x_rms << " Y=" << y_rms << " Z=" << z_rms << "\n";
+std::cout << "XYZ RMS (%Hs): X=" << x_pct << "% Y=" << y_pct << "% Z=" << z_pct << "% (Hs=" << wp.height << ")\n";
+std::cout << "3D RMS (m): " << rms_3d_err << " (3D rel err=%" << pct_3d << " of 3D true RMS)\n";
 
         // Bias error RMS (vector RMS = sqrt(mean(||e||^2)) = sqrt(rms_x^2 + rms_y^2 + rms_z^2))
         auto vec_rms = [](float rx, float ry, float rz) {
