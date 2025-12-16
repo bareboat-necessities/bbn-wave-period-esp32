@@ -241,7 +241,7 @@ class Kalman3D_Wave {
 
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                  T Pq0 = T(5e-4), T Pb0 = T(1e-6), T b0 = T(1e-10), T R_S_noise_var = T(1.5),
+                  T Pq0 = T(5e-4), T Pb0 = T(1e-6), T b0 = T(1e-11), T R_S_noise_var = T(1.5),
                   T gravity_magnitude = T(STD_GRAVITY));
 
     // Initialization / measurement API
