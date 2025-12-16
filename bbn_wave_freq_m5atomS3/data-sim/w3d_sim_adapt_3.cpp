@@ -547,6 +547,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         float acc_true_max_x = 0.f, acc_true_max_y = 0.f, acc_true_max_z = 0.f, acc_true_max_3d = 0.f;
         float gyr_true_max_x = 0.f, gyr_true_max_y = 0.f, gyr_true_max_z = 0.f, gyr_true_max_3d = 0.f;
         float mag_true_max_x = 0.f, mag_true_max_y = 0.f, mag_true_max_z = 0.f, mag_true_max_3d = 0.f;
+        float disp_true_max_3d = 0.f;
         
         for (size_t i = start; i < errs_z.size(); ++i) {
             rms_x.add(errs_x[i]);
@@ -557,6 +558,13 @@ static void process_wave_file_for_tracker(const std::string &filename,
             rms_ref_x.add(ref_x[i]);
             rms_ref_y.add(ref_y[i]);
             rms_ref_z.add(ref_z[i]);
+
+            // Max TRUE 3D displacement amplitude in window
+            const float dx = ref_x[i];
+            const float dy = ref_y[i];
+            const float dz = ref_z[i];
+            const float r  = std::sqrt(dx*dx + dy*dy + dz*dz);
+            disp_true_max_3d = std::max(disp_true_max_3d, r);
             
             rms_roll.add(errs_roll[i]);
             rms_pitch.add(errs_pitch[i]);
