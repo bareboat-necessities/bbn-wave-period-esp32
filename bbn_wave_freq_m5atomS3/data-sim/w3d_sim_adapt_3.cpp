@@ -375,7 +375,30 @@ static void process_wave_file_for_tracker(const std::string &filename,
         float p_ref_out = rec.imu.pitch_deg;
         float y_ref_out = rec.imu.yaw_deg;
 
-        boolean const init_mag_ref_from_meas = true;
+        // Simulated magnetometer (BODY, then axis-map to NED body)
+        Vector3f mag_body_ned(0,0,0);
+        if (with_mag) {
+            // Exact-rate mag tick using a phase accumulator
+            mag_phase_s += dt;
+            bool mag_tick = false;
+            if (mag_phase_s >= MAG_DT) {
+                while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
+                mag_tick = true;
+            }
+            if (mag_tick && mag_ref_set) {
+                Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
+                if (false /*add_noise*/) {
+                    mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
+                }
+                mag_body_ned_hold = zu_to_ned(mag_b_enu);
+                if (rec.time >= MAG_DELAY_SEC) {
+                    filter.updateMag(mag_body_ned_hold);
+                }
+            }
+            mag_body_ned = mag_body_ned_hold;
+        }
+
+        bool const init_mag_ref_from_meas = true;
         
         // First-step init
         if (first) {
@@ -400,29 +423,6 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         // One time update per sample (propagate + accel update)
         filter.updateTime(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
-
-        // Simulated magnetometer (BODY, then axis-map to NED body)
-        Vector3f mag_body_ned(0,0,0);
-        if (with_mag) {
-            // Exact-rate mag tick using a phase accumulator
-            mag_phase_s += dt;
-            bool mag_tick = false;
-            if (mag_phase_s >= MAG_DT) {
-                while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
-                mag_tick = true;
-            }
-            if (mag_tick) {
-                Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
-                if (false /*add_noise*/) {
-                    mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
-                }
-                mag_body_ned_hold = zu_to_ned(mag_b_enu);
-                if (rec.time >= MAG_DELAY_SEC) {
-                    filter.updateMag(mag_body_ned_hold);
-                }
-            }
-            mag_body_ned = mag_body_ned_hold;
-        }
         
         // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
