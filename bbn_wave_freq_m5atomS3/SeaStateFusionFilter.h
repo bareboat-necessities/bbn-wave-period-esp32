@@ -1045,7 +1045,13 @@ public:
 
   void begin(const Config& cfg) {
     cfg_ = cfg;
-    impl_ = SeaStateFusionFilter<trackerT>(cfg.with_mag);
+
+impl_ = SeaStateFusionFilter<trackerT>(cfg.with_mag);
+impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
+impl_.setWarmupRacc(cfg.Racc_warmup);
+impl_.setMagDelaySec(cfg.mag_delay_sec);
+impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
+impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
 
     impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
 
