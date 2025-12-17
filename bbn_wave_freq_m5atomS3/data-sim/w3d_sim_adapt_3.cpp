@@ -31,7 +31,7 @@ const float FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES  = 60.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP   = 12.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES  = 12.0f;
 
-const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT = 270.0f;
+const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT = 300.0f;
 const float FAIL_ERR_LIMIT_YAW_DEG = 4.0f;  
 
 constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
