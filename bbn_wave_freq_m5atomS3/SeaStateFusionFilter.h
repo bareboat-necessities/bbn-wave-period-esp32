@@ -399,6 +399,10 @@ public:
         mekf_->measurement_update_position_pseudo(p_meas, sigma_disp_meas);
     }
 
+    void setWithMag(bool with_mag) {
+        with_mag_ = with_mag;
+    }
+
     // Anisotropy configuration (runtime)
     // S-factor scales horizontal vs vertical stationary std of a_w.
     // RS XY factor scales pseudo-measurement noise in X/Y vs Z.
