@@ -831,7 +831,13 @@ class Kalman3D_Wave {
         // Linear block is [v,p,S,a_w] = 12 states starting at OFF_V
         M.template block<12,3>(OFF_V, 0).setZero();
     }               
-              
+
+    EIGEN_STRONG_INLINE void freeze_acc_bias_rows_(MatrixNX3& M) const {
+        if constexpr (with_accel_bias) {
+            M.template block<3,3>(OFF_BA, 0).setZero();
+        }
+    }
+                
     // Steady wind heel model (roll about BODY X)
     // wind_heel_rad_ : current steady heel in radians (hull frame)
     // Internally we work in a virtual "un-heeled" body frame B'
@@ -1319,7 +1325,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
     if constexpr (with_accel_bias) {
         constexpr int NB = 3;
         auto P_BB = Pext.template block<NB,NB>(OFF_BA,OFF_BA);
-        P_BB.noalias() += Q_bacc_ * Ts;
+        if (acc_bias_updates_enabled_) {
+            P_BB.noalias() += Q_bacc_ * Ts;     // only diffuse if we intend to estimate it
+        }
         Pext.template block<NB,NB>(OFF_BA,OFF_BA) = P_BB;
 
         constexpr int NA = BASE_N;
@@ -1383,6 +1391,8 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bi
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas_body, T tempC)
 {  
+    const bool use_ba = (with_accel_bias && acc_bias_updates_enabled_);
+                
     // De-heel measured accel into B'
     const Vector3 acc_meas = deheel_vector_(acc_meas_body);
           
@@ -1404,7 +1414,12 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     Vector3 ba_term = Vector3::Zero();
     if constexpr (with_accel_bias) {
         const Vector3 ba0 = xext.template segment<3>(OFF_BA);
+        // Always *model* it in the mean, but only *estimate* it when use_ba==true.
         ba_term = ba0 + k_a_ * (tempC - tempC_ref);
+        if (!use_ba) {
+            // If you prefer “pure attitude warmup”, uncomment this:
+            // ba_term.setZero();
+        }
     }
 
     // Predicted specific force
