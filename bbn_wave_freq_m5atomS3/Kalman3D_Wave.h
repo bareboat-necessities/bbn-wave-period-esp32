@@ -21,6 +21,16 @@ The marginalization step is mathematically defensible, but choosing Σ_aw_stat a
 For N>4: enforce strict diagonal dominance row-by-row
 That large-N path is a pragmatic heuristic (it can distort the intended covariance a lot).
 
+
+Nice-to-have improvements
+	•	Add a single “mode struct” (AttitudeOnly / FullINS / Warmup) that configures:
+	•	linear block enabled
+	•	accel bias updates enabled
+	•	mag bias enabled
+	•	pseudo-measurements enabled
+	•	lever-arm enabled
+so you don’t have scattered conditionals
+
     
 */
 
