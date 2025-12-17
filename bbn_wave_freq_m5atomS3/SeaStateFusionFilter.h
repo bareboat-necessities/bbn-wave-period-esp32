@@ -240,6 +240,20 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
 
+ if (!with_mag_) {
+    Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
+    q_bw.normalize();
+
+    const Eigen::Vector3f z_body_down_world = q_bw * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
+    const Eigen::Vector3f z_world_down(0.0f, 0.0f, 1.0f);
+
+    float cos_tilt = z_body_down_world.normalized().dot(z_world_down);
+    cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
+    const float tilt_deg = std::acos(cos_tilt) * 57.295779513f;
+
+    constexpr float TILT_RESET_DEG = 45.0f;
+      
+       
  if (tilt_deg > TILT_RESET_DEG) {
     // 1) Re-lock attitude to gravity
     mekf_->initialize_from_acc(acc);
@@ -269,7 +283,8 @@ public:
 
     // Done: do NOT also set startup_stage_ manually here
 }
-    
+
+ }    
         // vertical (up positive)
         a_vert_up = -a_z_inertial;
     
