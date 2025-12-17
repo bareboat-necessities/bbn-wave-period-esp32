@@ -359,9 +359,6 @@ if (attitude_only) {
     f.mekf().set_Racc(Vector3f::Constant(0.5f));
 }
     
-    bool first = true;
-    bool mag_ref_set = false;  
-    bool const init_mag_ref_from_meas = false;
     WaveDataCSVReader reader(filename);
     
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
@@ -417,42 +414,20 @@ if (attitude_only) {
                 }
                 mag_body_ned_hold = zu_to_ned(mag_b_enu);
 
-                // Only feed the filter once the world mag reference is configured
-                if (mag_ref_set) {
-                    filter.updateMag(mag_body_ned_hold);
-                }
+            // Wrapper decides if/when it’s allowed to use mag
+    fusion.updateMag(mag_body_ned_hold);
+
             }
             mag_body_ned = mag_body_ned_hold;
         }
         
-        // First-step init: always tilt-only from accelerometer.
-        if (first) {
-            filter.initialize_from_acc(acc_meas_ned);
-            first = false;
-        }
+  
 
-        // One-time world magnetic reference before using magnetometer
-        if (with_mag && !mag_ref_set && rec.time >= MAG_DELAY_SEC) {
-            if (init_mag_ref_from_meas) {
-                // Use current attitude + last measured BODY-NED mag
-                // to define the WORLD magnetic reference vector.
-                if (mag_body_ned_hold.squaredNorm() > 1e-6f) {
-                    // quaternion() returns body->world (q_bw)
-                    Eigen::Quaternionf q_bw = filter.mekf().quaternion();
-                    Eigen::Vector3f mag_world_est = q_bw * mag_body_ned_hold; // BODY->WORLD
 
-                    filter.mekf().set_mag_world_ref(mag_world_est);
-                    mag_ref_set = true;
-                }
-            } else {
-                // Use WMM-based world mag reference
-                filter.mekf().set_mag_world_ref(mag_world_a);
-                mag_ref_set = true;
-            }
-        }
 
         // One time update per sample (propagate + accel update)
-        filter.updateTime(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
+        fusion.updateTime(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
+        auto& filter = fusion.raw();
         
         // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
