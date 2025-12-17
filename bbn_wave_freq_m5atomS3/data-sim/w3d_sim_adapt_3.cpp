@@ -348,15 +348,16 @@ cfg.freeze_acc_bias_until_live = true;
 cfg.Racc_warmup = 0.5f;
 
 fusion.begin(cfg);
+auto& filter = fusion.raw();
+
 
 // Optional: attitude-only mode tweaks (via raw() escape hatch)
 if (attitude_only) {
-    auto& f = fusion.raw();
-    f.enableLinearBlock(false);
-    f.mekf().set_initial_acc_bias(Vector3f::Zero());
-    f.mekf().set_initial_acc_bias_std(0.0f);
-    f.mekf().set_Q_bacc_rw(Vector3f::Zero());
-    f.mekf().set_Racc(Vector3f::Constant(0.5f));
+    filter.enableLinearBlock(false);
+    filter.mekf().set_initial_acc_bias(Vector3f::Zero());
+    filter.mekf().set_initial_acc_bias_std(0.0f);
+    filter.mekf().set_Q_bacc_rw(Vector3f::Zero());
+    filter.mekf().set_Racc(Vector3f::Constant(0.5f));
 }
     
     WaveDataCSVReader reader(filename);
