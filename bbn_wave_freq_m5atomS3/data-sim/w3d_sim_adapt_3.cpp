@@ -63,10 +63,8 @@ private:
     size_t count_ = 0;
 };
 
-//  Noise model
-bool add_noise = true;
-
-bool attitude_only = false;
+bool add_noise = true;       //  Noise model
+bool attitude_only = false;  //  No OU
 
 struct ImuNoiseModel {
     std::mt19937 rng;
@@ -200,7 +198,6 @@ Vector3f apply_mag_noise(const Vector3f& ideal_mag_uT_body, MagNoiseModel& m, fl
         const float s = m.sigma_bias_rw_uT_sqrt_s * std::sqrt(dt_mag);
         m.bias_rw_uT += Vector3f(s * m.n01(m.rng), s * m.n01(m.rng), s * m.n01(m.rng));
     }
-
     Vector3f white(m.w_uT(m.rng), m.w_uT(m.rng), m.w_uT(m.rng));
     return (m.Mis * ideal_mag_uT_body) + (m.bias0_uT + m.bias_rw_uT) + white;
 }
@@ -236,9 +233,7 @@ int wave_index_from_height(float height) {
 }
 
 //  Main processing
-static void process_wave_file_for_tracker(const std::string &filename,
-                                          float dt,
-                                          bool with_mag)
+static void process_wave_file_for_tracker(const std::string &filename, float dt, bool with_mag)
 {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
@@ -309,6 +304,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     // Phase accumulator for exact mag rate
     float mag_phase_s = 0.0f;
     const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet RMS noise  [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf)
+
     // “Decently calibrated” residuals (small!)
     MagNoiseModel mag_noise = make_mag_noise_model(
         mag_sigma_uT,  // white RMS per mag sample
@@ -403,7 +399,6 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 while (mag_phase_s >= MAG_DT) mag_phase_s -= MAG_DT;
                 mag_tick = true;
             }
-
             if (mag_tick) {
                 Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
                 if (add_noise) {
@@ -585,15 +580,13 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 acc_true_max_y = std::max(acc_true_max_y, std::abs(ay));
                 acc_true_max_z = std::max(acc_true_max_z, std::abs(az));
                 acc_true_max_3d = std::max(acc_true_max_3d, std::sqrt(ax*ax + ay*ay + az*az));
-            }
-            {
+
                 const float gx = gyrb_true_x[i], gy = gyrb_true_y[i], gz = gyrb_true_z[i];
                 gyr_true_max_x = std::max(gyr_true_max_x, std::abs(gx));
                 gyr_true_max_y = std::max(gyr_true_max_y, std::abs(gy));
                 gyr_true_max_z = std::max(gyr_true_max_z, std::abs(gz));
                 gyr_true_max_3d = std::max(gyr_true_max_3d, std::sqrt(gx*gx + gy*gy + gz*gz));
-            }
-            {
+
                 const float mx = magb_true_x[i], my = magb_true_y[i], mz = magb_true_z[i];
                 mag_true_max_x = std::max(mag_true_max_x, std::abs(mx));
                 mag_true_max_y = std::max(mag_true_max_y, std::abs(my));
@@ -623,13 +616,11 @@ static void process_wave_file_for_tracker(const std::string &filename,
                          : NAN;
 
         std::cout << "=== Last 60 s RMS summary for " << outname << " ===\n";
-
         std::cout << "XYZ RMS (m): X=" << x_rms << " Y=" << y_rms << " Z=" << z_rms << "\n";
         std::cout << "XYZ RMS (%Hs): X=" << x_pct << "% Y=" << y_pct << "% Z=" << z_pct << "% (Hs=" << wp.height << ")\n";
         std::cout << "3D RMS (m): " << rms_3d_err
                   << " (3D % of max |disp_ref|_3D = " << pct_3d << "%, max |disp_ref|_3D = "
                   << disp_true_max_3d << " m)\n";
-
         std::cout << "Angles RMS (deg): Roll=" << rms_roll.rms()
                   << " Pitch=" << rms_pitch.rms()
                   << " Yaw=" << rms_yaw.rms() << "\n";
@@ -723,12 +714,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
         std::cout << "=============================================\n\n";
 
         // Failure criteria 
-        float limit_z  = (type == WaveType::JONSWAP)
-                           ? FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP
-                           : FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES;
-        float limit_3d = (type == WaveType::JONSWAP)
-                           ? FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP
-                           : FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES;
+        float limit_z  = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP : FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES;
+        float limit_3d = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP : FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES;
 
         auto fail_if = [&](const char* label, float pct, float limit) {
             if (pct > limit) {
@@ -736,12 +723,9 @@ static void process_wave_file_for_tracker(const std::string &filename,
                 std::exit(EXIT_FAILURE);
             }
         };
-
-        // Keep tight vertical gate
-        fail_if("Z",  z_pct,  limit_z);
-        // New 3D displacement gate instead of X/Y axis gates
-        fail_if("3D", pct_3d, limit_3d);
-
+  
+        fail_if("Z",  z_pct,  limit_z);   // Keep tight vertical gate
+        fail_if("3D", pct_3d, limit_3d);  // 3D displacement gate instead of X/Y axis gates
 
         if (rms_yaw.rms() > FAIL_ERR_LIMIT_YAW_DEG) {
             std::cerr << "ERROR: Yaw RMS above limit ("
@@ -798,6 +782,5 @@ int main(int argc, char* argv[]) {
 
     for (const auto& fname : files)
         process_wave_file_for_tracker(fname, dt, with_mag);
-
     return 0;
 }
