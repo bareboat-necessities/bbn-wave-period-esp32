@@ -107,6 +107,8 @@ public:
     }
 
     inline bool isReady() const { return A_var.isReady() && Freq_smoothed.isReady(); }
+    inline bool isFreqReady() const { return Freq_smoothed.isReady(); }
+    inline bool isVarReady()  const { return A_var.isReady(); }
 
     // Optional runtime tuning
     inline void setKPeriods(float k) { K_periods = std::max(0.1f, k); }   // >= 0.1 periods
