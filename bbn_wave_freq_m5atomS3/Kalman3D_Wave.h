@@ -1477,17 +1477,25 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
             S_mat.noalias() += R_wb() * Sig_aw * R_wb().transpose();
         }
         if constexpr (with_accel_bias) {
-            const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
-            const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba,  off_ba);
-    
-            S_mat.noalias() += J_att * P_th_ba;                 // + J_ba*P_ba_th, J_ba=I
-            S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
-            S_mat.noalias() += P_ba_ba;
-            // NOTE: when linear is OFF, we intentionally do NOT include P_aw_ba terms.
-            if (linear_block_enabled_) {
-                const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw, off_ba);
-                S_mat.noalias() += J_aw * P_aw_ba;
-                S_mat.noalias() += P_aw_ba.transpose() * J_aw.transpose();
+            if (use_ba) {
+                const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
+                const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba,  off_ba);
+
+                S_mat.noalias() += J_att * P_th_ba;
+                S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
+                S_mat.noalias() += P_ba_ba;
+
+                if (linear_block_enabled_) {
+                    const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw, off_ba);
+                    S_mat.noalias() += J_aw * P_aw_ba;
+                    S_mat.noalias() += P_aw_ba.transpose() * J_aw.transpose();
+                }
+            } else {
+                // If BA is frozen, treat its current uncertainty as extra measurement noise (optional).
+                // This keeps attitude from over-trusting accel when BA is “unknown”.
+                // Uncomment if you want that behavior:
+                // const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba, off_ba);
+                // S_mat.noalias() += P_ba_ba;
             }
         }
     }
@@ -1504,8 +1512,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
             PCt.noalias() += P_all_aw * J_aw.transpose();
         }
         if constexpr (with_accel_bias) {
-            const auto P_all_ba = Pext.template block<NX,3>(0, OFF_BA);
-            PCt.noalias() += P_all_ba; // J_ba = I
+            if (use_ba) {
+                const auto P_all_ba = Pext.template block<NX,3>(0, OFF_BA);
+                PCt.noalias() += P_all_ba; // J_ba = I
+            }
         }                
     }
 
