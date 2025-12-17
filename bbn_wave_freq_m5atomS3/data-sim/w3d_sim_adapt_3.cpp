@@ -510,7 +510,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         size_t start = errs_z.size() - N_last;
 
         RMSReport rms_x, rms_y, rms_z, rms_roll, rms_pitch, rms_yaw;
-        RMSReport rms_ref_x, rms_ref_y, rms_ref_z;
         RMSReport rms_accb_x, rms_accb_y, rms_accb_z;
         RMSReport rms_gyrb_x, rms_gyrb_y, rms_gyrb_z;
         RMSReport rms_magb_x, rms_magb_y, rms_magb_z;
@@ -524,11 +523,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
             rms_x.add(errs_x[i]);
             rms_y.add(errs_y[i]);
             rms_z.add(errs_z[i]);
-
-            // TRUE displacement RMS
-            rms_ref_x.add(ref_x[i]);
-            rms_ref_y.add(ref_y[i]);
-            rms_ref_z.add(ref_z[i]);
 
             // Max TRUE 3D displacement amplitude in window
             const float dx = ref_x[i];
