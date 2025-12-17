@@ -1,7 +1,8 @@
 #pragma once
 
-
 /*
+  Copyright (c) 2025  Mikhail Grushinskiy  
+  Released under the MIT License 
 
   SeaStateFusionFilter
   
@@ -37,9 +38,6 @@
   • Quaternion-consistent Euler conversion (aerospace → nautical, ENU frame)
   • Magnetometer yaw correction with configurable startup delay
   • Fully compatible with Arduino or native Eigen builds
-
-  Copyright (c) 2025  Mikhail Grushinskiy  
-  Released under the MIT License 
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -468,8 +466,7 @@ public:
     //   • but OU / v/p/S/a_w propagation and S-pseudo-measurements are never used.
     //
     // When flag == true (default):
-    //   • behavior is unchanged from your current implementation:
-    //     the linear block is enabled once the tuner is ready in TunerWarm.
+    //   • the linear block is enabled once the tuner is ready in TunerWarm.
     void enableLinearBlock(bool flag = true) {
         enable_linear_block_ = flag;
         if (mekf_) {
@@ -1012,7 +1009,7 @@ public:
     float online_tune_warmup_sec = ONLINE_TUNE_WARMUP_SEC;
 
     // If you want: fixed world mag ref (WMM), or “learn from measurement”
-    bool  use_fixed_mag_world_ref = true;
+    bool  use_fixed_mag_world_ref = false;
     Eigen::Vector3f mag_world_ref = Eigen::Vector3f(0,0,0); // set to WMM result by caller if desired
 
     // Bias freeze behavior
