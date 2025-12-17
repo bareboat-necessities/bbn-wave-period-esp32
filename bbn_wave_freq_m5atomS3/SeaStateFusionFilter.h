@@ -961,9 +961,10 @@ if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
             warmup_Racc_active_ = false;
         }
     
-        // Push the latest τ/σ/R_S now that linear block may be ON
-        if (enable_linear_block_) apply_tune();
-    }
+        // Push the latest τ/σ/R_S 
+        apply_ou_tune_();                 // always useful
+        if (enable_linear_block_) apply_RS_tune_();
+     }
 
     StartupStage startup_stage_    = StartupStage::Cold;
     float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
