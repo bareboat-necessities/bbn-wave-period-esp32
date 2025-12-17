@@ -254,6 +254,11 @@ public:
                 // Reset *all* slow/statistical machinery (not just some of it)
                 freq_input_lpf_       = FreqInputLPF{};
                 freq_stillness_       = StillnessAdapter{};
+
+freq_input_lpf_.setCutoff(max_freq_hz_);
+freq_stillness_.setTargetFreqHz(min_freq_hz_);
+
+              
                 tuner_.reset();
             
                 freq_fast_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 3.5f);
