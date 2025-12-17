@@ -1119,7 +1119,7 @@ public:
             } else {
                 // learn-from-measurement: only possible once we’ve seen a mag sample
                 if (mag_body_hold_.squaredNorm() > 1e-6f) {
-                    const Eigen::Quaternionf q_bw = impl_.raw().mekf().quaternion_boat();
+                    const Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat();
                     impl_.mekf().set_mag_world_ref(q_bw * mag_body_hold_);                  
                     mag_ref_set_ = true;
                 }
