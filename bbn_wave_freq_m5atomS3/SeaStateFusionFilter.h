@@ -195,6 +195,12 @@ public:
                     const Eigen::Vector3f& sigma_m)
     {
         mekf_ = std::make_unique<Kalman3D_Wave<float>>(sigma_a, sigma_g, sigma_m);
+
+       
+
+enterCold_();      // <-- actually applies freeze + warmup Racc + disables linear block
+apply_tune();      // ok to preload
+
         mekf_->set_exact_att_bias_Qd(true);
     
         // Start as pure QMEKF: no v/p/S/a_w block yet
@@ -212,6 +218,12 @@ public:
     {
         mekf_ = std::make_unique<Kalman3D_Wave<float>>(
             sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_S_noise, gravity_magnitude);
+
+       
+
+enterCold_();      // <-- actually applies freeze + warmup Racc + disables linear block
+apply_tune();      // ok to preload
+
         mekf_->set_exact_att_bias_Qd(true);
     
         // QMEKF-only at boot
@@ -273,7 +285,9 @@ public:
             
                 // Keep tune_ values, just don't use the linear block yet
                 apply_tune();
-            
+
+               enterCold_();
+               
                 // Reset slow/statistical machinery
                 freq_input_lpf_ = FreqInputLPF{};
                 freq_stillness_ = StillnessAdapter{};
@@ -808,26 +822,11 @@ private:
             }
             return; // remain QMEKF-only
     
-        case StartupStage::TunerWarm:
-            // Let tuner accumulate stats; only when it is ready do we consider enabling the linear block.
-            if (!tuner_.isReady()) {
-                return; // still QMEKF-only
-            }
 
-            if (mekf_) {
-                if (enable_linear_block_) {
-                    // Normal behavior: transition to full OU/linear mode.
-                    mekf_->set_linear_block_enabled(true);
-                    apply_tune();   // now τ/σ/R_S actually configure the v/p/S/a_w block
-                } else {
-                    // QMEKF-only mode: keep linear states disabled forever.
-                    mekf_->set_linear_block_enabled(false);
-                }
-            }
-
-            startup_stage_   = StartupStage::Live;
-            startup_stage_t_ = 0.0f;
-            // fallthrough into Live
+case StartupStage::TunerWarm:
+    if (!tuner_.isReady()) return;
+    enterLive_();     // <-- do not manually set stage / enable block here
+    break;            // now Live, continue with adaptation
 
         case StartupStage::Live:
             break;
@@ -1056,8 +1055,7 @@ impl_.setWarmupRacc(cfg.Racc_warmup);
 // Optional: if you want auto-restore Racc
 // impl_.setNominalRacc(Eigen::Vector3f(/* your normal accel R */));
      
-    // Force QMEKF-only at boot (you already do this)
-    impl_.enableLinearBlock(false);
+   
 
     // Optional: bias freeze + big Racc during warmup
     warmup_bias_frozen_ = cfg.freeze_acc_bias_until_live;
