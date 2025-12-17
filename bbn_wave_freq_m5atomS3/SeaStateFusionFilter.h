@@ -565,8 +565,9 @@ freq_stillness_.setTargetFreqHz(min_freq_hz_);
 
     inline float getHeaveAbs() const noexcept { if (!mekf_) return NAN; return std::fabs(mekf_->get_position().z()); }
 
-    inline float getDisplacementScale() const noexcept {                 // Longuet-Higgins / Rayleigh
-        constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);  // ≈ 0.28658
+    inline float getDisplacementScale() const noexcept {
+        if (!std::isfinite(sigma_target_) || !std::isfinite(tau_target_)) return NAN;
+        constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);
         return C_HS * sigma_target_ * tau_target_ * tau_target_;
     }
 
