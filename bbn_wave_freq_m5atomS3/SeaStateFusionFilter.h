@@ -828,10 +828,20 @@ void apply_RS_tune_() {
                }
                return; // remain QMEKF-only
        
-           case StartupStage::TunerWarm:
-               if (!tuner_.isReady()) return;
-               enterLive_();     // do not manually set stage / enable block here
-               break;            // now Live, continue with adaptation
+ case StartupStage::TunerWarm:
+    // Start tuning as soon as frequency smoothing is "ready"
+    // (tau depends only on f).
+    if (!tuner_.isFreqReady()) return;
+
+    // Only enter Live once BOTH freq + variance are ready
+    // (so bias unfreeze / linear enable still waits for a sane sigma estimate).
+    if (tuner_.isReady()) {
+        enterLive_();
+        // fallthrough to Live adaptation below
+    }
+    break;
+          
+          // now Live, continue with adaptation
    
            case StartupStage::Live:
                break;
