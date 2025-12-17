@@ -216,12 +216,10 @@ public:
                     float tempC = 35.0f)
     {
         if (!mekf_) return;
+        if (!(dt > 0.0f) || !std::isfinite(dt)) return;
         time_ += dt;
-    
         // Track time spent in current startup stage
-        if (dt > 0.0f && std::isfinite(dt)) {
-            startup_stage_t_ += dt;
-        }
+        startup_stage_t_ += dt;
     
         // Keep BODY components around for direction/sign
         const float a_x_body = acc.x();
@@ -1087,6 +1085,7 @@ public:
                 const Eigen::Vector3f& acc_body_ned,
                 float tempC = 35.0f)
     {
+        if (!(dt > 0.0f) || !std::isfinite(dt)) return;
         if (!implReady_()) return;
         t_ += dt;
     
