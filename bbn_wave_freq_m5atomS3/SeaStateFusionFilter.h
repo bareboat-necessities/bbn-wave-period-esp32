@@ -188,7 +188,7 @@ public:
     {
         mekf_ = std::make_unique<Kalman3D_Wave<float>>(sigma_a, sigma_g, sigma_m);
         enterCold_();      // applies freeze + warmup Racc + disables linear block
-        apply_tune();      // ok to preload
+        apply_ou_tune_();
         mekf_->set_exact_att_bias_Qd(true);
     }
 
@@ -201,7 +201,7 @@ public:
     {
         mekf_ = std::make_unique<Kalman3D_Wave<float>>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_S_noise, gravity_magnitude);
         enterCold_();      // applies freeze + warmup Racc + disables linear block
-        apply_tune();      // ok to preload
+        apply_ou_tune_();
         mekf_->set_exact_att_bias_Qd(true);
     } 
 
