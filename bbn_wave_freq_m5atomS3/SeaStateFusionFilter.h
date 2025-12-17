@@ -796,15 +796,6 @@ void apply_RS_tune_() {
     ));
 }
 
-    //  Internal tuning and adaptation
-
-void apply_tune() {
-    apply_ou_tune_();
-    if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
-        apply_RS_tune_();
-    }
-}
-
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
         tuner_.update(dt, a_vert_inertial, freq_hz_for_tuner);
     
