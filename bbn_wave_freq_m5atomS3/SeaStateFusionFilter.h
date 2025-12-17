@@ -392,7 +392,6 @@ public:
         if (!p_meas.allFinite()) {
             return;
         }
-    
         mekf_->measurement_update_position_pseudo(p_meas, sigma_disp_meas);
     }
 
@@ -1034,7 +1033,7 @@ public:
       impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
   
       // Optional: auto-restore Racc
-      // impl_.setNominalRacc(Eigen::Vector3f(/* your normal accel R */));
+      // impl_.setNominalRacc(Eigen::Vector3f(/* normal accel R */));
   
       t_ = 0.0f;
       stage_ = Stage::Uninitialized;
@@ -1059,7 +1058,7 @@ public:
       stage_t_ += dt;
     }
 
-    // run your normal IMU fusion (time + accel + tracker + tuner + direction, etc.)
+    // run normal IMU fusion (time + accel + tracker + tuner + direction, etc.)
     impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
 
     if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
@@ -1093,7 +1092,7 @@ public:
     }
   }
 
-  // Minimal getters your client likely needs
+  // Minimal getters client likely needs
   bool isLive() const { return stage_ == Stage::Live; }
   float freqHz() const { return impl_.getFreqHz(); }
   Eigen::Vector3f eulerNauticalDeg() const { return impl_.getEulerNautical(); }
@@ -1103,7 +1102,7 @@ public:
 private:
   enum class Stage { Uninitialized, Warming, Live };
 
-  bool implReady_() const { return true; } // if you want to guard begin()
+  bool implReady_() const { return true; } // to guard begin()
 
   Config cfg_{};
   SeaStateFusionFilter<trackerT> impl_{false};
