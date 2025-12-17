@@ -367,6 +367,8 @@ class Kalman3D_Wave {
     }
     bool linear_block_enabled() const      { return linear_block_enabled_; }
 
+    void set_acc_bias_updates_enabled(bool en) { acc_bias_updates_enabled_ = en; } // TODO: handle
+
     // Velocity in world (NED)
     [[nodiscard]] Vector3 get_velocity() const {
         // velocity state at offset BASE_N
@@ -579,6 +581,8 @@ class Kalman3D_Wave {
               
     bool has_cross_cov_a_xy = false;
     bool use_exact_att_bias_Qd_ = true;
+
+    bool acc_bias_updates_enabled_ = true;            
 
     // IMU lever-arm (off-CoG) support
     bool   use_imu_lever_arm_       = false;
