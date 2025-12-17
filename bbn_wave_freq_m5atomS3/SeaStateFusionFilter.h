@@ -250,6 +250,7 @@ public:
                 enterCold_();
             
                 // Reset *all* slow/statistical machinery (not just some of it)
+                tracker_policy_       = TrackingPolicy{};
                 freq_input_lpf_       = FreqInputLPF{};
                 freq_stillness_       = StillnessAdapter{};
 
