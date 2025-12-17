@@ -581,11 +581,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         float x_pct = 100.f * x_rms / wp.height;
         float y_pct = 100.f * y_rms / wp.height;
         float z_pct = 100.f * z_rms / wp.height;
-        
-        // TRUE displacement RMS per axis (still available if needed)
-        float ref_x_rms = rms_ref_x.rms();
-        float ref_y_rms = rms_ref_y.rms();
-        float ref_z_rms = rms_ref_z.rms();
 
         // 3D RMS(error)
         float rms_3d_err = std::sqrt(x_rms * x_rms + y_rms * y_rms + z_rms * z_rms);
