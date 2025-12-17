@@ -408,16 +408,14 @@ if (attitude_only) {
             }
 
             if (mag_tick) {
-                Vector3f mag_b_enu =
-                    MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
+                Vector3f mag_b_enu = MagSim_WMM::simulate_mag_from_euler_nautical(r_ref_out, p_ref_out, y_ref_out);
                 if (add_noise) {
                     mag_b_enu = apply_mag_noise(mag_b_enu, mag_noise, MAG_DT);
                 }
                 mag_body_ned_hold = zu_to_ned(mag_b_enu);
 
-            // Wrapper decides if/when it’s allowed to use mag
-    fusion.updateMag(mag_body_ned_hold);
-
+                // Wrapper decides if/when it’s allowed to use mag
+                fusion.updateMag(mag_body_ned_hold);
             }
             mag_body_ned = mag_body_ned_hold;
         }
