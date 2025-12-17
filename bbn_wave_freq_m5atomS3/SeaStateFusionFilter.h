@@ -232,7 +232,7 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
 
-        if (!with_mag_) {
+        {
             Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
             q_bw.normalize();
         
@@ -243,7 +243,7 @@ public:
             cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
             const float tilt_deg = std::acos(cos_tilt) * 57.295779513f;
         
-            constexpr float TILT_RESET_DEG = 45.0f;
+            constexpr float TILT_RESET_DEG = 65.0f;
             if (tilt_deg > TILT_RESET_DEG) {
                 // Re-lock attitude to gravity
                 mekf_->initialize_from_acc(acc);
@@ -837,7 +837,7 @@ void apply_tune() {
                break;
         }
 
-        // From here on, we are in Live stage.
+        // From here on, we are in TunerWarm or Live: compute targets and adapt.
         // Frequency as seen by the tuner
         float f_tune = tuner_.getFrequencyHz();
         if (!std::isfinite(f_tune) || f_tune < min_freq_hz_) {
