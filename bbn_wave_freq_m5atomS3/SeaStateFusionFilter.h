@@ -1076,6 +1076,7 @@ public:
         impl_.setMagDelaySec(cfg.mag_delay_sec);
         impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
         impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
+        begun_ = true;
     
         // Optional: auto-restore Racc
         // impl_.setNominalRacc(Eigen::Vector3f(/* normal accel R */));
@@ -1147,11 +1148,13 @@ public:
 private:
     enum class Stage { Uninitialized, Warming, Live };
   
-    bool implReady_() const { return true; } // to guard begin()
+    bool implReady_() const { return begun_; } // to guard begin()
   
     Config cfg_{};
     SeaStateFusionFilter<trackerT> impl_{false};
-  
+
+    bool begun_ = false;
+
     Stage stage_ = Stage::Uninitialized;
     float t_ = 0.0f;
     float stage_t_ = 0.0f;
