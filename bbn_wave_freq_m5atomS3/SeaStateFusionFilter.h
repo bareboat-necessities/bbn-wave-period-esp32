@@ -469,7 +469,7 @@ freq_stillness_.setTargetFreqHz(min_freq_hz_);
     //   • but OU / v/p/S/a_w propagation and S-pseudo-measurements are never used.
     //
     // When flag == true (default):
-    //   • the linear block is enabled once the tuner is ready in TunerWarm.
+    //   • the linear block is enabled 
     void enableLinearBlock(bool flag = true) {
         enable_linear_block_ = flag;
         if (mekf_) {
