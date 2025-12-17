@@ -320,7 +320,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
     
     // mag ref policy
     cfg.mag_delay_sec = MAG_DELAY_SEC;
-    cfg.use_fixed_mag_world_ref = true;   // TODO: switch to false (it needs to learn it by itself)
+    cfg.use_fixed_mag_world_ref = false;   // TODO: switch to false (it needs to learn it by itself)
     cfg.mag_world_ref = mag_world_a;
     
     // warmup policy 
