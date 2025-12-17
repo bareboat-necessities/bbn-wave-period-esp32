@@ -426,7 +426,7 @@ if (attitude_only) {
 
 
         // One time update per sample (propagate + accel update)
-        fusion.updateTime(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
+        fusion.update(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
         auto& filter = fusion.raw();
         
         // Reference (world Z-up)
