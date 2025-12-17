@@ -1062,19 +1062,9 @@ public:
     // 2) run your normal IMU fusion (time + accel + tracker + tuner + direction, etc.)
     impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
 
-    // 3) decide when we’re “LIVE” and release things (also hidden)
-    if (stage_ == Stage::Warming) {
-      const bool live = impl_.isAdaptiveLive(); // your StartupStage::Live
-      if (live) {
-        stage_ = Stage::Live;
-
-        if (warmup_bias_frozen_) {
-          impl_.mekf().set_acc_bias_updates_enabled(true);
-          // restore normal accel R (or let your existing configuration stand)
-          // impl_.mekf().set_Racc(...);
-        }
-      }
-    }
+if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
+    stage_ = Stage::Live;
+}
 
     // 4) set mag world ref once (hidden)
     if (cfg_.with_mag && !mag_ref_set_ && t_ >= cfg_.mag_delay_sec) {
