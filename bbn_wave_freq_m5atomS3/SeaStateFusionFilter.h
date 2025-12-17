@@ -857,8 +857,13 @@ void apply_RS_tune_() {
             f_tune = max_freq_hz_;
         }
 
-        const float var_total = std::max(0.0f, tuner_.getAccelVariance());
+// If variance isn't ready yet, treat it as "noise floor only" so sigma doesn't go crazy.
+float var_total = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
+if (tuner_.isVarReady()) {
+    var_total = std::max(0.0f, tuner_.getAccelVariance());
+}
 
+      
         const float var_noise = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
         float var_wave = var_total - var_noise;
         if (var_wave < 0.0f) var_wave = 0.0f;
