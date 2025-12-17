@@ -998,119 +998,118 @@ private:
 template<TrackerType trackerT>
 class SeaStateFusion {
 public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  struct Config {
-    bool with_mag = true;
-
-    // Init / staging
-    float mag_delay_sec          = MAG_DELAY_SEC;
-    float online_tune_warmup_sec = ONLINE_TUNE_WARMUP_SEC;
-
-    // If you want: fixed world mag ref (WMM), or “learn from measurement”
-    bool  use_fixed_mag_world_ref = false;
-    Eigen::Vector3f mag_world_ref = Eigen::Vector3f(0,0,0); // set to WMM result by caller if desired
-
-    // Bias freeze behavior
-    bool  freeze_acc_bias_until_live = true;
-    float Racc_warmup = 0.5f;   // large accel noise during warmup to avoid eating motion as bias
-
-    // Sensor noise
-    Eigen::Vector3f sigma_a = Eigen::Vector3f(0.2f,0.2f,0.2f);
-    Eigen::Vector3f sigma_g = Eigen::Vector3f(0.01f,0.01f,0.01f);
-    Eigen::Vector3f sigma_m = Eigen::Vector3f(0.3f,0.3f,0.3f);
-  };
-
-  void begin(const Config& cfg) {
-      cfg_ = cfg;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   
-      // Reconfigure existing impl_ instead of reassigning it
-      impl_.setWithMag(cfg.with_mag);
-      impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
-      impl_.setWarmupRacc(cfg.Racc_warmup);
-      impl_.setMagDelaySec(cfg.mag_delay_sec);
-      impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
-      impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
+    struct Config {
+        bool with_mag = true;
+    
+        // Init / staging
+        float mag_delay_sec          = MAG_DELAY_SEC;
+        float online_tune_warmup_sec = ONLINE_TUNE_WARMUP_SEC;
+    
+        // If you want: fixed world mag ref (WMM), or “learn from measurement”
+        bool  use_fixed_mag_world_ref = false;
+        Eigen::Vector3f mag_world_ref = Eigen::Vector3f(0,0,0); // set to WMM result by caller if desired
+    
+        // Bias freeze behavior
+        bool  freeze_acc_bias_until_live = true;
+        float Racc_warmup = 0.5f;   // large accel noise during warmup to avoid eating motion as bias
+    
+        // Sensor noise
+        Eigen::Vector3f sigma_a = Eigen::Vector3f(0.2f,0.2f,0.2f);
+        Eigen::Vector3f sigma_g = Eigen::Vector3f(0.01f,0.01f,0.01f);
+        Eigen::Vector3f sigma_m = Eigen::Vector3f(0.3f,0.3f,0.3f);
+    };
   
-      // Optional: auto-restore Racc
-      // impl_.setNominalRacc(Eigen::Vector3f(/* normal accel R */));
-  
-      t_ = 0.0f;
-      stage_ = Stage::Uninitialized;
-      mag_ref_set_ = false;
-  }
-
-  // One IMU sample
-  void update(float dt,
-              const Eigen::Vector3f& gyro_body_ned,
-              const Eigen::Vector3f& acc_body_ned,
-              float tempC = 35.0f)
-  {
-    if (!implReady_()) return;
-    t_ += dt;
-
-    // auto tilt-init on first IMU sample (hidden from client)
-    if (stage_ == Stage::Uninitialized) {
-      impl_.initialize_from_acc(acc_body_ned);
-      stage_ = Stage::Warming;
-      stage_t_ = 0.0f;
-    } else {
-      stage_t_ += dt;
+    void begin(const Config& cfg) {
+        cfg_ = cfg;
+    
+        // Reconfigure existing impl_ instead of reassigning it
+        impl_.setWithMag(cfg.with_mag);
+        impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
+        impl_.setWarmupRacc(cfg.Racc_warmup);
+        impl_.setMagDelaySec(cfg.mag_delay_sec);
+        impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
+        impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
+    
+        // Optional: auto-restore Racc
+        // impl_.setNominalRacc(Eigen::Vector3f(/* normal accel R */));
+    
+        t_ = 0.0f;
+        stage_ = Stage::Uninitialized;
+        mag_ref_set_ = false;
     }
-
-    // run normal IMU fusion (time + accel + tracker + tuner + direction, etc.)
-    impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
-
-    if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
-        stage_ = Stage::Live;
-    }
-
-    // set mag world ref once (hidden)
-    if (cfg_.with_mag && !mag_ref_set_ && t_ >= cfg_.mag_delay_sec) {
-      if (cfg_.use_fixed_mag_world_ref) {
-        impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
-        mag_ref_set_ = true;
-      } else {
-        // learn-from-measurement: only possible once we’ve seen a mag sample
-        if (mag_body_hold_.squaredNorm() > 1e-6f) {
-          const Eigen::Quaternionf q_bw = impl_.mekf().quaternion(); // body->world
-          impl_.mekf().set_mag_world_ref(q_bw * mag_body_hold_);
-          mag_ref_set_ = true;
+  
+    // One IMU sample
+    void update(float dt,
+                const Eigen::Vector3f& gyro_body_ned,
+                const Eigen::Vector3f& acc_body_ned,
+                float tempC = 35.0f)
+    {
+        if (!implReady_()) return;
+        t_ += dt;
+    
+        // auto tilt-init on first IMU sample (hidden from client)
+        if (stage_ == Stage::Uninitialized) {
+            impl_.initialize_from_acc(acc_body_ned);
+            stage_ = Stage::Warming;
+            stage_t_ = 0.0f;
+        } else {
+            stage_t_ += dt;
         }
-      }
+    
+        // run normal IMU fusion (time + accel + tracker + tuner + direction, etc.)
+        impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
+    
+        if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
+            stage_ = Stage::Live;
+        }
+    
+        // set mag world ref once (hidden)
+        if (cfg_.with_mag && !mag_ref_set_ && t_ >= cfg_.mag_delay_sec) {
+            if (cfg_.use_fixed_mag_world_ref) {
+                impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
+                mag_ref_set_ = true;
+            } else {
+                // learn-from-measurement: only possible once we’ve seen a mag sample
+                if (mag_body_hold_.squaredNorm() > 1e-6f) {
+                    const Eigen::Quaternionf q_bw = impl_.mekf().quaternion(); // body->world
+                    impl_.mekf().set_mag_world_ref(q_bw * mag_body_hold_);
+                    mag_ref_set_ = true;
+                }
+            }
+        }
     }
-  }
-
-  // Mag sample (can be called at different ODR)
-  void updateMag(const Eigen::Vector3f& mag_body_ned) {
-    if (!implReady_()) return;
-    mag_body_hold_ = mag_body_ned;
-
-    // Only feed mag once reference is set AND delay passed
-    if (cfg_.with_mag && mag_ref_set_) {
-      impl_.updateMag(mag_body_ned);
+  
+    // Mag sample (can be called at different ODR)
+    void updateMag(const Eigen::Vector3f& mag_body_ned) {
+        if (!implReady_()) return;
+        mag_body_hold_ = mag_body_ned;
+        // Only feed mag once reference is set AND delay passed
+        if (cfg_.with_mag && mag_ref_set_) {
+            impl_.updateMag(mag_body_ned);
+        }
     }
-  }
-
-  // Minimal getters client likely needs
-  bool isLive() const { return stage_ == Stage::Live; }
-  float freqHz() const { return impl_.getFreqHz(); }
-  Eigen::Vector3f eulerNauticalDeg() const { return impl_.getEulerNautical(); }
-
-  SeaStateFusionFilter<trackerT>& raw() { return impl_; } // optional “expert escape hatch”
+  
+    // Minimal getters client likely needs
+    bool isLive() const { return stage_ == Stage::Live; }
+    float freqHz() const { return impl_.getFreqHz(); }
+    Eigen::Vector3f eulerNauticalDeg() const { return impl_.getEulerNautical(); }
+  
+    SeaStateFusionFilter<trackerT>& raw() { return impl_; } // optional “expert escape hatch”
 
 private:
-  enum class Stage { Uninitialized, Warming, Live };
-
-  bool implReady_() const { return true; } // to guard begin()
-
-  Config cfg_{};
-  SeaStateFusionFilter<trackerT> impl_{false};
-
-  Stage stage_ = Stage::Uninitialized;
-  float t_ = 0.0f;
-  float stage_t_ = 0.0f;
-
-  bool mag_ref_set_ = false;
-  Eigen::Vector3f mag_body_hold_ = Eigen::Vector3f::Zero();
+    enum class Stage { Uninitialized, Warming, Live };
+  
+    bool implReady_() const { return true; } // to guard begin()
+  
+    Config cfg_{};
+    SeaStateFusionFilter<trackerT> impl_{false};
+  
+    Stage stage_ = Stage::Uninitialized;
+    float t_ = 0.0f;
+    float stage_t_ = 0.0f;
+  
+    bool mag_ref_set_ = false;
+    Eigen::Vector3f mag_body_hold_ = Eigen::Vector3f::Zero();
 };
