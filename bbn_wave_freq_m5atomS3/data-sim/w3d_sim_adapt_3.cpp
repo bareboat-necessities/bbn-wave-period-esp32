@@ -421,14 +421,9 @@ if (attitude_only) {
             }
             mag_body_ned = mag_body_ned_hold;
         }
-        
-  
-
-
 
         // One time update per sample (propagate + accel update)
         fusion.update(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
-        auto& filter = fusion.raw();
         
         // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
