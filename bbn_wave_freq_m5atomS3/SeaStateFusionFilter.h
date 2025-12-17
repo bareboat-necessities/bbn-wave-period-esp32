@@ -877,44 +877,44 @@ private:
         }
     }
 
-void enterCold_() {
-    startup_stage_   = StartupStage::Cold;
-    startup_stage_t_ = 0.0f;
-
-    if (!mekf_) return;
-
-    mekf_->set_linear_block_enabled(false);
-
-    if (freeze_acc_bias_until_live_) {
-        mekf_->set_acc_bias_updates_enabled(false, true);
-        // Big Racc so early motion doesn't back-drive attitude too hard either
-        mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
-        warmup_Racc_active_ = true;
-    }
-}
-
-void enterLive_() {
-    startup_stage_   = StartupStage::Live;
-    startup_stage_t_ = 0.0f;
-
-    if (!mekf_) return;
-
-    // Enable linear block only if user wants it
-    mekf_->set_linear_block_enabled(enable_linear_block_);
-
-    if (freeze_acc_bias_until_live_) {
-        mekf_->set_acc_bias_updates_enabled(true, true);
-
-        // Restore nominal Racc if provided, otherwise leave whatever caller set
-        if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-            mekf_->set_Racc(Racc_nominal_);
+    void enterCold_() {
+        startup_stage_   = StartupStage::Cold;
+        startup_stage_t_ = 0.0f;
+    
+        if (!mekf_) return;
+    
+        mekf_->set_linear_block_enabled(false);
+    
+        if (freeze_acc_bias_until_live_) {
+            mekf_->set_acc_bias_updates_enabled(false);
+            // Big Racc so early motion doesn't back-drive attitude too hard either
+            mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
+            warmup_Racc_active_ = true;
         }
-        warmup_Racc_active_ = false;
     }
-
-    // Push the latest τ/σ/R_S now that linear block may be ON
-    if (enable_linear_block_) apply_tune();
-}
+    
+    void enterLive_() {
+        startup_stage_   = StartupStage::Live;
+        startup_stage_t_ = 0.0f;
+    
+        if (!mekf_) return;
+    
+        // Enable linear block only if user wants it
+        mekf_->set_linear_block_enabled(enable_linear_block_);
+    
+        if (freeze_acc_bias_until_live_) {
+            mekf_->set_acc_bias_updates_enabled(true);
+    
+            // Restore nominal Racc if provided, otherwise leave whatever caller set
+            if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+                mekf_->set_Racc(Racc_nominal_);
+            }
+            warmup_Racc_active_ = false;
+        }
+    
+        // Push the latest τ/σ/R_S now that linear block may be ON
+        if (enable_linear_block_) apply_tune();
+    }
 
     StartupStage startup_stage_    = StartupStage::Cold;
     float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
