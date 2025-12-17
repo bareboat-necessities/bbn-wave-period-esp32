@@ -44,12 +44,12 @@ constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 using Eigen::Vector3f;
 using Eigen::Quaternionf;
 
-inline float wrapDeg(float a){
+inline float wrapDeg(float a) {
     a = std::fmod(a + 180.0f, 360.0f);
     if (a < 0) a += 360.0f;
     return a - 180.0f;
 }
-inline float diffDeg(float est_deg, float ref_deg){
+inline float diffDeg(float est_deg, float ref_deg) {
     return wrapDeg(est_deg - ref_deg);
 }
 
