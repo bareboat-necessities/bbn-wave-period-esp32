@@ -4,7 +4,8 @@
     TODO:
 
     Level arm correction logic wrong in many places. Lever-arm model: Jacobians are incomplete if you ever want to estimate gyro bias tightly
-    linear_block_enabled_ == false does NOT actually freeze the linear block
+    Right now lever-arm effects in the mean but not in the Jacobian, so the filter can “attribute” lever-arm residuals 
+    to attitude/bias in the wrong way.
     
 */
 
