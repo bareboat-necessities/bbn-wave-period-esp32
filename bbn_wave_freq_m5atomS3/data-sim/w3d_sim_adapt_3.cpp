@@ -42,7 +42,6 @@ constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 #include "SeaStateFusionFilter.h"
 
 using Eigen::Vector3f;
-using Eigen::Quaternionf;
 
 inline float wrapDeg(float a) {
     a = std::fmod(a + 180.0f, 360.0f);
@@ -219,19 +218,6 @@ static inline Vector3f get_mag_bias_est_uT(const MekfT& mekf)
     }
 }
 
-//  Example wave parameter list
-const std::vector<WaveParameters> waveParamsList = {
-    {3.0f,   0.27f, static_cast<float>(M_PI/3.0), 30.0f},
-    {5.7f,   1.5f,  static_cast<float>(M_PI/1.5), 30.0f},
-    {8.5f,   4.0f,  static_cast<float>(M_PI/6.0), 30.0f},
-    {11.4f,  8.5f,  static_cast<float>(M_PI/2.5), 30.0f}
-};
-int wave_index_from_height(float height) {
-    for (size_t i = 0; i < waveParamsList.size(); i++)
-        if (std::abs(waveParamsList[i].height - height) < 1e-3f) return int(i);
-    return -1;
-}
-
 //  Main processing
 static void process_wave_file_for_tracker(const std::string &filename, float dt, bool with_mag)
 {
@@ -367,9 +353,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
     std::vector<float> gyrb_true_x, gyrb_true_y, gyrb_true_z;
     std::vector<float> magb_true_x, magb_true_y, magb_true_z; // [uT]
     
-    int sample_idx = -1;
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        ++sample_idx;
 
         // Body-frame raw sensors (Z-up body from CSV)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
@@ -390,7 +374,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         float y_ref_out = rec.imu.yaw_deg;
 
         // Simulated magnetometer (BODY, then axis-map to NED body)
-        Vector3f mag_body_ned(0,0,0);
         if (with_mag) {
             // BMM150-style ODR, independent of whether the filter is using mag yet.
             mag_phase_s += dt;
@@ -409,7 +392,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                 // Wrapper decides if/when it’s allowed to use mag
                 fusion.updateMag(mag_body_ned_hold);
             }
-            mag_body_ned = mag_body_ned_hold;
         }
 
         // One time update per sample (propagate + accel update)
@@ -428,8 +410,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         Eigen::Vector3f eul_est = filter.getEulerNautical(); // roll,pitch,yaw (deg)
 
         Vector3f disp_err = disp_est - disp_ref;
-        Vector3f vel_err  = vel_est  - vel_ref;
-        Vector3f acc_err  = acc_est  - acc_ref;
 
         errs_x.push_back(disp_err.x());
         errs_y.push_back(disp_err.y());
