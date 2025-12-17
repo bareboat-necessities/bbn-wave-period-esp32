@@ -240,45 +240,35 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
 
-        if (!with_mag_) {          
-            // Body→world quaternion (boat frame, with heel)
-            Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
-            q_bw.normalize();
+ if (tilt_deg > TILT_RESET_DEG) {
+    // 1) Re-lock attitude to gravity
+    mekf_->initialize_from_acc(acc);
 
-            // Body Z-down axis expressed in world (NED)
-            Eigen::Vector3f z_body_down_world = q_bw * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
-            const Eigen::Vector3f z_world_down(0.0f, 0.0f, 1.0f);
+    // 2) Return to Cold stage (this disables linear block + applies warmup bias policy)
+    enterCold_();
 
-            float cos_tilt = z_body_down_world.normalized().dot(z_world_down);
-            cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
-            const float tilt_rad = std::acos(cos_tilt);
-            const float tilt_deg = tilt_rad * 57.295779513f;
+    // 3) Reset *all* slow/statistical machinery (not just some of it)
+    freq_input_lpf_       = FreqInputLPF{};
+    freq_stillness_       = StillnessAdapter{};
+    tuner_.reset();
 
-            // If tilt goes crazy, re-lock attitude to gravity and reset
-            // the "slow" machinery that depended on the old, bad attitude.
-            constexpr float TILT_RESET_DEG = 45.0f;  
-            if (tilt_deg > TILT_RESET_DEG) {
-                // Rebuild roll/pitch from accel
-                mekf_->initialize_from_acc(acc);
-            
-                // Drop back to QMEKF-only
-                mekf_->set_linear_block_enabled(false);
-            
-                // Keep tune_ values, just don't use the linear block yet
-                apply_tune();
+    freq_fast_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 3.5f);
+    freq_slow_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 10.0f);
 
-               enterCold_();
-               
-                // Reset slow/statistical machinery
-                freq_input_lpf_ = FreqInputLPF{};
-                freq_stillness_ = StillnessAdapter{};
-                tuner_.reset();
-            
-                // Treat as a fresh boot
-                startup_stage_   = StartupStage::Cold;
-                startup_stage_t_ = 0.0f;
-            }
-        }
+    freq_hz_ = FREQ_GUESS;
+    freq_hz_slow_ = FREQ_GUESS;
+    f_raw = FREQ_GUESS;
+
+    // Optional but recommended: reset direction state too
+    dir_filter_ = KalmanWaveDirection(2.0f * static_cast<float>(M_PI) * FREQ_GUESS);
+    dir_sign_ = WaveDirectionDetector<float>(0.002f, 0.005f);
+    dir_sign_state_ = UNCERTAIN;
+
+    // Optional: avoid immediate adapt burst after reset
+    last_adapt_time_sec_ = time_;
+
+    // Done: do NOT also set startup_stage_ manually here
+}
     
         // vertical (up positive)
         a_vert_up = -a_z_inertial;
