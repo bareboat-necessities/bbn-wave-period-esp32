@@ -253,10 +253,8 @@ public:
                 tracker_policy_       = TrackingPolicy{};
                 freq_input_lpf_       = FreqInputLPF{};
                 freq_stillness_       = StillnessAdapter{};
-
-freq_input_lpf_.setCutoff(max_freq_hz_);
-freq_stillness_.setTargetFreqHz(min_freq_hz_);
-
+                freq_input_lpf_.setCutoff(max_freq_hz_);
+                freq_stillness_.setTargetFreqHz(min_freq_hz_);
               
                 tuner_.reset();
             
@@ -327,8 +325,6 @@ freq_stillness_.setTargetFreqHz(min_freq_hz_);
                 (startup_stage_ == StartupStage::Live);
         
             if (wavey_enough) {
-                const float tau = std::max(tune_.tau_applied,  min_tau_s_);
-        
                 // Vertical displacement std ~ k * σ_a * τ²
                 // 
                 // σ_a * τ² is decent estimate of amplitude
