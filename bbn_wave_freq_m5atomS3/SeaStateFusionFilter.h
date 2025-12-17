@@ -909,13 +909,21 @@ if (tuner_.isVarReady()) {
         tune_.sigma_applied += alpha    * (sigma_t - tune_.sigma_applied);
         tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
 
-        if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-            if (enable_linear_block_) {
-                // Only push τ/σ/R_S into the MEKF when the linear block is in use.
-                apply_tune();
-            }
-            last_adapt_time_sec_ = time_;
-        }
+if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
+    // Push OU τ/σ whenever frequency has been learned by the tuner,
+    // even in attitude-only mode (linear block OFF).
+    if (tuner_.isFreqReady()) {
+        apply_ou_tune_();
+    }
+
+    // Push R_S only when S pseudo-measurements are actually in play.
+    if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
+        apply_RS_tune_();
+    }
+
+    last_adapt_time_sec_ = time_;
+}
+
     }
 
     void enterCold_() {
