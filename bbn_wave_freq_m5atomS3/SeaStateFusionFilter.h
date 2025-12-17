@@ -878,6 +878,11 @@ if (tuner_.isVarReady()) {
             sigma_target_ = sigma_wave;
         }
 
+// Keep published sigma_target_ sane before variance is ready
+if (!tuner_.isVarReady()) {
+    sigma_target_ = std::max(sigma_target_, std::max(0.05f, acc_noise_floor_sigma_));
+}
+      
         float RS_raw = R_S_coeff_ * sigma_target_
                        * tau_target_ * tau_target_ * tau_target_;
 
