@@ -7,7 +7,7 @@
     Right now lever-arm effects in the mean but not in the Jacobian, so the filter can “attribute” lever-arm residuals 
     to attitude/bias in the wrong way.
 
-    
+   is learning wrong biases early on still an issue? 
 
 most dangerous heuristics (the ones most likely to change filter behavior or cause bias blow-ups): it’s basically (1) large-N PSD enforcement via 
 diagonal dominance, (2) pseudo-measurement cadence + strength (R_S convention), and (3) lever-arm mean without Jacobian when you’re also 
