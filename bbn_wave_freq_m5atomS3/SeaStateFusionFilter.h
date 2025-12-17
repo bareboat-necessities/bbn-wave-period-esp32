@@ -1035,14 +1035,6 @@ public:
 
     // Optional: auto-restore Racc
     // impl_.setNominalRacc(Eigen::Vector3f(/* your normal accel R */));
-     
-    // Optional: bias freeze + big Racc during warmup
-    warmup_bias_frozen_ = cfg.freeze_acc_bias_until_live;
-    if (warmup_bias_frozen_) {
-        // preferred: real “freeze bias updates” (see section 2)
-        impl_.mekf().set_acc_bias_updates_enabled(false);
-        impl_.mekf().set_Racc(Eigen::Vector3f::Constant(cfg.Racc_warmup));
-    }
 
     t_ = 0.0f;
     stage_ = Stage::Uninitialized;
@@ -1132,6 +1124,4 @@ private:
 
   bool mag_ref_set_ = false;
   Eigen::Vector3f mag_body_hold_ = Eigen::Vector3f::Zero();
-
-  bool warmup_bias_frozen_ = false;
 };
