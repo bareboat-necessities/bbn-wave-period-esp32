@@ -195,18 +195,9 @@ public:
                     const Eigen::Vector3f& sigma_m)
     {
         mekf_ = std::make_unique<Kalman3D_Wave<float>>(sigma_a, sigma_g, sigma_m);
-
-       
-
-enterCold_();      // <-- actually applies freeze + warmup Racc + disables linear block
-apply_tune();      // ok to preload
-
+        enterCold_();      // applies freeze + warmup Racc + disables linear block
+        apply_tune();      // ok to preload
         mekf_->set_exact_att_bias_Qd(true);
-    
-        // Start as pure QMEKF: no v/p/S/a_w block yet
-        mekf_->set_linear_block_enabled(false);
-    
-        apply_tune();  // pre-load OU/RS params so they're ready when we enable the block
     }
 
     void initialize_ext(const Eigen::Vector3f& sigma_a,
@@ -216,20 +207,10 @@ apply_tune();      // ok to preload
                         float b0, float R_S_noise,
                         float gravity_magnitude) 
     {
-        mekf_ = std::make_unique<Kalman3D_Wave<float>>(
-            sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_S_noise, gravity_magnitude);
-
-       
-
-enterCold_();      // <-- actually applies freeze + warmup Racc + disables linear block
-apply_tune();      // ok to preload
-
+        mekf_ = std::make_unique<Kalman3D_Wave<float>>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_S_noise, gravity_magnitude);
+        enterCold_();      // applies freeze + warmup Racc + disables linear block
+        apply_tune();      // ok to preload
         mekf_->set_exact_att_bias_Qd(true);
-    
-        // QMEKF-only at boot
-        mekf_->set_linear_block_enabled(false);
-    
-        apply_tune();
     } 
 
     void initialize_from_acc(const Eigen::Vector3f& acc_world) {
@@ -555,11 +536,11 @@ apply_tune();      // ok to preload
         }
     }
 
-void setFreezeAccBiasUntilLive(bool en) { freeze_acc_bias_until_live_ = en; }
-void setWarmupRacc(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_ = r; }
+    void setFreezeAccBiasUntilLive(bool en) { freeze_acc_bias_until_live_ = en; }
+    void setWarmupRacc(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_ = r; }
 
-// Optional: if you want SeaStateFusionFilter to restore Racc automatically
-void setNominalRacc(const Eigen::Vector3f& r) { Racc_nominal_ = r; }
+    // For SeaStateFusionFilter to restore Racc automatically
+    void setNominalRacc(const Eigen::Vector3f& r) { Racc_nominal_ = r; }
 
     //  Exposed getters
     inline float getFreqHz()        const noexcept { return freq_hz_; }        // fast branch
@@ -814,22 +795,21 @@ private:
     
         // Startup stage logic
         switch (startup_stage_) {
-        case StartupStage::Cold:
-            // Only track time; no adaptation, no linear block.
-            if (startup_stage_t_ >= online_tune_warmup_sec_) {
-                startup_stage_   = StartupStage::TunerWarm;
-                startup_stage_t_ = 0.0f;
-            }
-            return; // remain QMEKF-only
-    
-
-case StartupStage::TunerWarm:
-    if (!tuner_.isReady()) return;
-    enterLive_();     // <-- do not manually set stage / enable block here
-    break;            // now Live, continue with adaptation
-
-        case StartupStage::Live:
-            break;
+           case StartupStage::Cold:
+               // Only track time; no adaptation, no linear block.
+               if (startup_stage_t_ >= online_tune_warmup_sec_) {
+                   startup_stage_   = StartupStage::TunerWarm;
+                   startup_stage_t_ = 0.0f;
+               }
+               return; // remain QMEKF-only
+       
+           case StartupStage::TunerWarm:
+               if (!tuner_.isReady()) return;
+               enterLive_();     // do not manually set stage / enable block here
+               break;            // now Live, continue with adaptation
+   
+           case StartupStage::Live:
+               break;
         }
 
         // From here on, we are in Live stage.
@@ -940,12 +920,12 @@ void enterLive_() {
     StartupStage startup_stage_    = StartupStage::Cold;
     float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
 
-// Warmup behavior
-bool  freeze_acc_bias_until_live_ = true;
-float Racc_warmup_               = 0.5f;   // big accel noise during warmup
-bool  warmup_Racc_active_         = false;
-Eigen::Vector3f Racc_nominal_     = Eigen::Vector3f::Constant(0.0f); // 0 => don't touch
-
+    // Warmup behavior
+    bool  freeze_acc_bias_until_live_ = true;
+    float Racc_warmup_               = 0.5f;   // big accel noise during warmup
+    bool  warmup_Racc_active_         = false;
+    Eigen::Vector3f Racc_nominal_     = Eigen::Vector3f::Constant(0.0f); // 0 => don't touch
+   
     //  Members
     bool   with_mag_;
     double time_;
@@ -1046,29 +1026,22 @@ public:
   void begin(const Config& cfg) {
     cfg_ = cfg;
 
-impl_ = SeaStateFusionFilter<trackerT>(cfg.with_mag);
-impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
-impl_.setWarmupRacc(cfg.Racc_warmup);
-impl_.setMagDelaySec(cfg.mag_delay_sec);
-impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
-impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
-
+    impl_ = SeaStateFusionFilter<trackerT>(cfg.with_mag);
+    impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
+    impl_.setWarmupRacc(cfg.Racc_warmup);
+    impl_.setMagDelaySec(cfg.mag_delay_sec);
+    impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
     impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
 
-impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
-impl_.setWarmupRacc(cfg.Racc_warmup);
-
-// Optional: if you want auto-restore Racc
-// impl_.setNominalRacc(Eigen::Vector3f(/* your normal accel R */));
+    // Optional: auto-restore Racc
+    // impl_.setNominalRacc(Eigen::Vector3f(/* your normal accel R */));
      
-   
-
     // Optional: bias freeze + big Racc during warmup
     warmup_bias_frozen_ = cfg.freeze_acc_bias_until_live;
     if (warmup_bias_frozen_) {
-      // preferred: real “freeze bias updates” (see section 2)
-      impl_.mekf().set_acc_bias_updates_enabled(false);
-      impl_.mekf().set_Racc(Eigen::Vector3f::Constant(cfg.Racc_warmup));
+        // preferred: real “freeze bias updates” (see section 2)
+        impl_.mekf().set_acc_bias_updates_enabled(false);
+        impl_.mekf().set_Racc(Eigen::Vector3f::Constant(cfg.Racc_warmup));
     }
 
     t_ = 0.0f;
