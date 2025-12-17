@@ -234,51 +234,50 @@ public:
         mekf_->time_update(gyro, dt);
         mekf_->measurement_update_acc_only(acc, tempC);
 
- if (!with_mag_) {
-    Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
-    q_bw.normalize();
-
-    const Eigen::Vector3f z_body_down_world = q_bw * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
-    const Eigen::Vector3f z_world_down(0.0f, 0.0f, 1.0f);
-
-    float cos_tilt = z_body_down_world.normalized().dot(z_world_down);
-    cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
-    const float tilt_deg = std::acos(cos_tilt) * 57.295779513f;
-
-    constexpr float TILT_RESET_DEG = 45.0f;
-      
-       
- if (tilt_deg > TILT_RESET_DEG) {
-    // 1) Re-lock attitude to gravity
-    mekf_->initialize_from_acc(acc);
-
-    // 2) Return to Cold stage (this disables linear block + applies warmup bias policy)
-    enterCold_();
-
-    // 3) Reset *all* slow/statistical machinery (not just some of it)
-    freq_input_lpf_       = FreqInputLPF{};
-    freq_stillness_       = StillnessAdapter{};
-    tuner_.reset();
-
-    freq_fast_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 3.5f);
-    freq_slow_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 10.0f);
-
-    freq_hz_ = FREQ_GUESS;
-    freq_hz_slow_ = FREQ_GUESS;
-    f_raw = FREQ_GUESS;
-
-    // Optional but recommended: reset direction state too
-    dir_filter_ = KalmanWaveDirection(2.0f * static_cast<float>(M_PI) * FREQ_GUESS);
-    dir_sign_ = WaveDirectionDetector<float>(0.002f, 0.005f);
-    dir_sign_state_ = UNCERTAIN;
-
-    // Optional: avoid immediate adapt burst after reset
-    last_adapt_time_sec_ = time_;
-
-    // Done: do NOT also set startup_stage_ manually here
-}
-
- }    
+        if (!with_mag_) {
+            Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
+            q_bw.normalize();
+        
+            const Eigen::Vector3f z_body_down_world = q_bw * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
+            const Eigen::Vector3f z_world_down(0.0f, 0.0f, 1.0f);
+        
+            float cos_tilt = z_body_down_world.normalized().dot(z_world_down);
+            cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
+            const float tilt_deg = std::acos(cos_tilt) * 57.295779513f;
+        
+            constexpr float TILT_RESET_DEG = 45.0f;
+            if (tilt_deg > TILT_RESET_DEG) {
+                // Re-lock attitude to gravity
+                mekf_->initialize_from_acc(acc);
+            
+                // Return to Cold stage (this disables linear block + applies warmup bias policy)
+                enterCold_();
+            
+                // Reset *all* slow/statistical machinery (not just some of it)
+                freq_input_lpf_       = FreqInputLPF{};
+                freq_stillness_       = StillnessAdapter{};
+                tuner_.reset();
+            
+                freq_fast_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 3.5f);
+                freq_slow_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 10.0f);
+            
+                freq_hz_      = FREQ_GUESS;
+                freq_hz_slow_ = FREQ_GUESS;
+                f_raw         = FREQ_GUESS;
+            
+                // Optional but recommended: reset direction state too
+                dir_filter_      = KalmanWaveDirection(2.0f * static_cast<float>(M_PI) * FREQ_GUESS);
+                // dir_sign_ is not re-assigned here because WaveDirectionDetector has const members
+                // and is not assignable; if you want a logical reset, add a reset() method to
+                // WaveDirectionDetector and call it instead.
+                dir_sign_state_  = UNCERTAIN;
+            
+                // Optional: avoid immediate adapt burst after reset
+                last_adapt_time_sec_ = time_;
+            
+                // Done: do NOT also set startup_stage_ manually here
+            }
+        }    
         // vertical (up positive)
         a_vert_up = -a_z_inertial;
     
