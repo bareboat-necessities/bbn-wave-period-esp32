@@ -1030,6 +1030,7 @@ public:
     cfg_ = cfg;
 
     impl_ = SeaStateFusionFilter<trackerT>(cfg.with_mag);
+    impl_.setWithMag(cfg.with_mag);
     impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
     impl_.setWarmupRacc(cfg.Racc_warmup);
     impl_.setMagDelaySec(cfg.mag_delay_sec);
@@ -1053,7 +1054,7 @@ public:
     if (!implReady_()) return;
     t_ += dt;
 
-    // 1) auto tilt-init on first IMU sample (hidden from client)
+    // auto tilt-init on first IMU sample (hidden from client)
     if (stage_ == Stage::Uninitialized) {
       impl_.initialize_from_acc(acc_body_ned);
       stage_ = Stage::Warming;
@@ -1062,14 +1063,14 @@ public:
       stage_t_ += dt;
     }
 
-    // 2) run your normal IMU fusion (time + accel + tracker + tuner + direction, etc.)
+    // run your normal IMU fusion (time + accel + tracker + tuner + direction, etc.)
     impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
 
-if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
-    stage_ = Stage::Live;
-}
+    if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
+        stage_ = Stage::Live;
+    }
 
-    // 4) set mag world ref once (hidden)
+    // set mag world ref once (hidden)
     if (cfg_.with_mag && !mag_ref_set_ && t_ >= cfg_.mag_delay_sec) {
       if (cfg_.use_fixed_mag_world_ref) {
         impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
