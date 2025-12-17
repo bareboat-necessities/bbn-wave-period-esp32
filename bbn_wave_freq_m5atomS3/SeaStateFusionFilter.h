@@ -563,7 +563,7 @@ freq_stillness_.setTargetFreqHz(min_freq_hz_);
     inline float getAccelVariance() const noexcept { return tuner_.getAccelVariance(); }
     inline float getAccelVertical() const noexcept { return a_vert_up; }
 
-    inline float getHeaveAbs() const noexcept { return std::fabs(mekf_->get_position().z()); }
+    inline float getHeaveAbs() const noexcept { if (!mekf_) return NAN; return std::fabs(mekf_->get_position().z()); }
 
     inline float getDisplacementScale() const noexcept {                 // Longuet-Higgins / Rayleigh
         constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);  // ≈ 0.28658
