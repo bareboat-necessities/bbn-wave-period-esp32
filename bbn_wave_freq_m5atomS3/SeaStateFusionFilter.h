@@ -541,6 +541,12 @@ public:
         }
     }
 
+void setFreezeAccBiasUntilLive(bool en) { freeze_acc_bias_until_live_ = en; }
+void setWarmupRacc(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_ = r; }
+
+// Optional: if you want SeaStateFusionFilter to restore Racc automatically
+void setNominalRacc(const Eigen::Vector3f& r) { Racc_nominal_ = r; }
+
     //  Exposed getters
     inline float getFreqHz()        const noexcept { return freq_hz_; }        // fast branch
     inline float getFreqSlowHz()    const noexcept { return freq_hz_slow_; }   // slow branch
@@ -893,8 +899,53 @@ private:
         }
     }
 
+void enterCold_() {
+    startup_stage_   = StartupStage::Cold;
+    startup_stage_t_ = 0.0f;
+
+    if (!mekf_) return;
+
+    mekf_->set_linear_block_enabled(false);
+
+    if (freeze_acc_bias_until_live_) {
+        mekf_->set_acc_bias_updates_enabled(false, true);
+        // Big Racc so early motion doesn't back-drive attitude too hard either
+        mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
+        warmup_Racc_active_ = true;
+    }
+}
+
+void enterLive_() {
+    startup_stage_   = StartupStage::Live;
+    startup_stage_t_ = 0.0f;
+
+    if (!mekf_) return;
+
+    // Enable linear block only if user wants it
+    mekf_->set_linear_block_enabled(enable_linear_block_);
+
+    if (freeze_acc_bias_until_live_) {
+        mekf_->set_acc_bias_updates_enabled(true, true);
+
+        // Restore nominal Racc if provided, otherwise leave whatever caller set
+        if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+            mekf_->set_Racc(Racc_nominal_);
+        }
+        warmup_Racc_active_ = false;
+    }
+
+    // Push the latest τ/σ/R_S now that linear block may be ON
+    if (enable_linear_block_) apply_tune();
+}
+
     StartupStage startup_stage_    = StartupStage::Cold;
     float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
+
+// Warmup behavior
+bool  freeze_acc_bias_until_live_ = true;
+float Racc_warmup_               = 0.5f;   // big accel noise during warmup
+bool  warmup_Racc_active_         = false;
+Eigen::Vector3f Racc_nominal_     = Eigen::Vector3f::Constant(0.0f); // 0 => don't touch
 
     //  Members
     bool   with_mag_;
@@ -999,6 +1050,12 @@ public:
 
     impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
 
+impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
+impl_.setWarmupRacc(cfg.Racc_warmup);
+
+// Optional: if you want auto-restore Racc
+// impl_.setNominalRacc(Eigen::Vector3f(/* your normal accel R */));
+     
     // Force QMEKF-only at boot (you already do this)
     impl_.enableLinearBlock(false);
 
