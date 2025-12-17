@@ -253,7 +253,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     else outname = "w3d_" + outname;
     auto pos_ext = outname.rfind(".csv");
     if (pos_ext != std::string::npos) {
-        outname.insert(pos_ext, with_mag ? "_fusion" : "fusion_nomag");
+        outname.insert(pos_ext, with_mag ? "_fusion" : "_fusion_nomag");
     } else {
         outname += (with_mag ? "_fusion" : "_fusion_nomag") + std::string(".csv");
     }
@@ -281,10 +281,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
         << "tau_applied,sigma_a_applied,R_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
 
-using Fusion = SeaStateFusion<TrackerType::KALMANF>;
-Fusion fusion;
-
-
+    using Fusion = SeaStateFusion<TrackerType::KALMANF>;
+    Fusion fusion;
 
     // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
@@ -330,35 +328,34 @@ Fusion fusion;
     const float sigma_m_uT = 1.2f * mag_sigma_uT;   // a bit conservative
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
 
-Fusion::Config cfg;
-cfg.with_mag = with_mag;
-
-// pass your init sigmas
-cfg.sigma_a = sigma_a_init;
-cfg.sigma_g = sigma_g;
-cfg.sigma_m = sigma_m;
-
-// mag ref policy
-cfg.mag_delay_sec = MAG_DELAY_SEC;
-cfg.use_fixed_mag_world_ref = true;
-cfg.mag_world_ref = mag_world_a;
-
-// warmup policy (matches your new header intent)
-cfg.freeze_acc_bias_until_live = true;
-cfg.Racc_warmup = 0.5f;
-
-fusion.begin(cfg);
-auto& filter = fusion.raw();
-
-
-// Optional: attitude-only mode tweaks (via raw() escape hatch)
-if (attitude_only) {
-    filter.enableLinearBlock(false);
-    filter.mekf().set_initial_acc_bias(Vector3f::Zero());
-    filter.mekf().set_initial_acc_bias_std(0.0f);
-    filter.mekf().set_Q_bacc_rw(Vector3f::Zero());
-    filter.mekf().set_Racc(Vector3f::Constant(0.5f));
-}
+    Fusion::Config cfg;
+    cfg.with_mag = with_mag;
+    
+    // pass your init sigmas
+    cfg.sigma_a = sigma_a_init;
+    cfg.sigma_g = sigma_g;
+    cfg.sigma_m = sigma_m;
+    
+    // mag ref policy
+    cfg.mag_delay_sec = MAG_DELAY_SEC;
+    cfg.use_fixed_mag_world_ref = true;
+    cfg.mag_world_ref = mag_world_a;
+    
+    // warmup policy (matches your new header intent)
+    cfg.freeze_acc_bias_until_live = true;
+    cfg.Racc_warmup = 0.5f;
+    
+    fusion.begin(cfg);
+    auto& filter = fusion.raw();
+    
+    // Optional: attitude-only mode tweaks (via raw() escape hatch)
+    if (attitude_only) {
+        filter.enableLinearBlock(false);
+        filter.mekf().set_initial_acc_bias(Vector3f::Zero());
+        filter.mekf().set_initial_acc_bias_std(0.0f);
+        filter.mekf().set_Q_bacc_rw(Vector3f::Zero());
+        filter.mekf().set_Racc(Vector3f::Constant(0.5f));
+    }
     
     WaveDataCSVReader reader(filename);
     
