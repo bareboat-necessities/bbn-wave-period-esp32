@@ -764,6 +764,33 @@ private:
         return RS_adj;
     }
 
+void apply_ou_tune_() {
+    if (!mekf_) return;
+
+    mekf_->set_aw_time_constant(tune_.tau_applied);
+
+    // In attitude-only mode (linear frozen), Σ_aw still matters (marginalization path),
+    // so don’t let sigma collapse to ~0.
+    const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
+    const float sZ = std::max(sigma_floor, tune_.sigma_applied);
+    const float sH = sZ * S_factor_;
+    mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
+}
+
+void apply_RS_tune_() {
+    if (!mekf_) return;
+
+    const float RSb = enable_heave_RS_gating_
+        ? adjustRSWithHeave(tune_.RS_applied)
+        : std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+
+    mekf_->set_RS_noise(Eigen::Vector3f(
+        RSb * R_S_xy_factor_,
+        RSb * R_S_xy_factor_,
+        RSb
+    ));
+}
+
     //  Internal tuning and adaptation
     void apply_tune() {
         if (!mekf_) return;
