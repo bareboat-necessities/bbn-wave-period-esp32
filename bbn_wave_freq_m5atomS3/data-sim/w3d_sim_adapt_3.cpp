@@ -281,9 +281,10 @@ static void process_wave_file_for_tracker(const std::string &filename,
         << "tau_applied,sigma_a_applied,R_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
 
-    // Initialize unified fusion filter
-    using Fusion = SeaStateFusionFilter<TrackerType::KALMANF>;
-    Fusion filter(with_mag);
+using Fusion = SeaStateFusion<TrackerType::KALMANF>;
+Fusion fusion;
+
+
 
     // Magnetic reference (same each run)
     const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
@@ -328,14 +329,35 @@ static void process_wave_file_for_tracker(const std::string &filename,
     const Vector3f sigma_g(2.0f * gyr_sigma, 2.0f * gyr_sigma, 2.0f * gyr_sigma);    
     const float sigma_m_uT = 1.2f * mag_sigma_uT;   // a bit conservative
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
-    filter.initialize(sigma_a_init, sigma_g, sigma_m);
-    if (attitude_only) {
-        filter.enableLinearBlock(false);
-        filter.mekf().set_initial_acc_bias(Vector3f::Zero());
-        filter.mekf().set_initial_acc_bias_std(0.0f);
-        filter.mekf().set_Q_bacc_rw(Vector3f::Zero());
-        filter.mekf().set_Racc(Vector3f::Constant(0.5f)); // Increase accel noise to absorb unmodelled motion
-    }
+
+Fusion::Config cfg;
+cfg.with_mag = with_mag;
+
+// pass your init sigmas
+cfg.sigma_a = sigma_a_init;
+cfg.sigma_g = sigma_g;
+cfg.sigma_m = sigma_m;
+
+// mag ref policy
+cfg.mag_delay_sec = MAG_DELAY_SEC;
+cfg.use_fixed_mag_world_ref = true;
+cfg.mag_world_ref = mag_world_a;
+
+// warmup policy (matches your new header intent)
+cfg.freeze_acc_bias_until_live = true;
+cfg.Racc_warmup = 0.5f;
+
+fusion.begin(cfg);
+
+// Optional: attitude-only mode tweaks (via raw() escape hatch)
+if (attitude_only) {
+    auto& f = fusion.raw();
+    f.enableLinearBlock(false);
+    f.mekf().set_initial_acc_bias(Vector3f::Zero());
+    f.mekf().set_initial_acc_bias_std(0.0f);
+    f.mekf().set_Q_bacc_rw(Vector3f::Zero());
+    f.mekf().set_Racc(Vector3f::Constant(0.5f));
+}
     
     bool first = true;
     bool mag_ref_set = false;  
