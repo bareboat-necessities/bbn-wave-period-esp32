@@ -797,28 +797,13 @@ void apply_RS_tune_() {
 }
 
     //  Internal tuning and adaptation
-    void apply_tune() {
-        if (!mekf_) return;
-    
-        // OU time constant
-        mekf_->set_aw_time_constant(tune_.tau_applied);
-    
-        // WORLD-frame stationary covariance for a_w (XY equal, Z separate).
-        const float sZ = std::max(1e-5f, tune_.sigma_applied);
-        const float sH = sZ * S_factor_;
-        Eigen::Vector3f a_w_std(sH, sH, sZ);
-        mekf_->set_aw_stationary_std(a_w_std); 
-    
-        // WORLD-frame pseudo-measurement noise for S (anisotropic diagonal).
-        const float RSb = enable_heave_RS_gating_ ?
-            adjustRSWithHeave(tune_.RS_applied) :
-            std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
-        mekf_->set_RS_noise(Eigen::Vector3f(
-            RSb * R_S_xy_factor_,   // world X
-            RSb * R_S_xy_factor_,   // world Y
-            RSb                     // world Z
-        ));
+
+void apply_tune() {
+    apply_ou_tune_();
+    if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
+        apply_RS_tune_();
     }
+}
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
         tuner_.update(dt, a_vert_inertial, freq_hz_for_tuner);
