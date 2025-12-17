@@ -296,7 +296,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     const float acc_bias_range = 5e-3f * g_std;                // 5 mg -> ~0.049 m/s^2
     const float gyr_bias_range = 0.05f * float(M_PI/180.0f);   // 0.05 dps -> ~0.00087 rad/s
     
-    // Optional very-slow drift (keep tiny; set 0 if you don’t want drift)
+    // Optional very-slow drift (keep tiny; set 0 if we don’t want drift)
     const float acc_bias_rw = 0.0005f;   // m/s^2 / sqrt(s)
     const float gyr_bias_rw = 0.00001f;  // rad/s / sqrt(s)
     
@@ -331,17 +331,17 @@ static void process_wave_file_for_tracker(const std::string &filename,
     Fusion::Config cfg;
     cfg.with_mag = with_mag;
     
-    // pass your init sigmas
+    // pass init sigmas
     cfg.sigma_a = sigma_a_init;
     cfg.sigma_g = sigma_g;
     cfg.sigma_m = sigma_m;
     
     // mag ref policy
     cfg.mag_delay_sec = MAG_DELAY_SEC;
-    cfg.use_fixed_mag_world_ref = true;
+    cfg.use_fixed_mag_world_ref = false;
     cfg.mag_world_ref = mag_world_a;
     
-    // warmup policy (matches your new header intent)
+    // warmup policy 
     cfg.freeze_acc_bias_until_live = true;
     cfg.Racc_warmup = 0.5f;
     
@@ -456,7 +456,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
         Vector3f acc_bias_true_ned  = zu_to_ned(acc_bias_true_zu);
         Vector3f gyro_bias_true_ned = zu_to_ned(gyro_bias_true_zu);
         
-        // Estimated biases (these are in BODY-NED in your filter pipeline)
+        // Estimated biases (these are in BODY-NED in the filter pipeline)
         Vector3f acc_bias_est  = filter.mekf().get_acc_bias();
         Vector3f gyro_bias_est = filter.mekf().gyroscope_bias();
         
@@ -471,7 +471,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
             : Vector3f::Zero().eval();
         Vector3f mag_bias_true_ned = zu_to_ned(mag_bias_true_zu);
 
-        // Estimated magnetometer bias in BODY-NED (uT), if your filter exposes it
+        // Estimated magnetometer bias in BODY-NED (uT), if the filter exposes it
         Vector3f mag_bias_est_ned = with_mag ? get_mag_bias_est_uT(filter.mekf()) : Vector3f::Zero();
 
         // Error (est - true)
@@ -604,12 +604,12 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
         float x_rms = rms_x.rms(), y_rms = rms_y.rms(), z_rms = rms_z.rms();
         
-        // Per-axis % still relative to Hs if you want to keep those:
+        // Per-axis % still relative to Hs:
         float x_pct = 100.f * x_rms / wp.height;
         float y_pct = 100.f * y_rms / wp.height;
         float z_pct = 100.f * z_rms / wp.height;
         
-        // TRUE displacement RMS per axis (still available if you want them)
+        // TRUE displacement RMS per axis (still available if needed)
         float ref_x_rms = rms_ref_x.rms();
         float ref_y_rms = rms_ref_y.rms();
         float ref_z_rms = rms_ref_z.rms();
