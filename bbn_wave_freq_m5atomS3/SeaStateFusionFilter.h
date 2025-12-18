@@ -908,48 +908,45 @@ private:
         }
     }
 
-void enterCold_() {
-    startup_stage_   = StartupStage::Cold;
-    startup_stage_t_ = 0.0f;
-    if (!mekf_) return;
+    void enterCold_() {
+        startup_stage_   = StartupStage::Cold;
+        startup_stage_t_ = 0.0f;
 
-    mekf_->set_linear_block_enabled(false);
-
-    accel_bias_locked_   = with_mag_;
-    mag_updates_applied_ = 0;          
-    // optionally: warmup_Racc_active_ 
-    if (freeze_acc_bias_until_live_) {
-        mekf_->set_acc_bias_updates_enabled(false);
-        mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
-        warmup_Racc_active_ = true;
-    }
-}
-
-void enterLive_() {
-    startup_stage_   = StartupStage::Live;
-    startup_stage_t_ = 0.0f;
-
-    if (!mekf_) return;
-
-    mekf_->set_linear_block_enabled(enable_linear_block_);
-
-    if (freeze_acc_bias_until_live_) {
-        // Only enable bias updates if we are NOT locked.
-        const bool allow_bias = !accel_bias_locked_;
-        mekf_->set_acc_bias_updates_enabled(allow_bias);
-
-        // Only restore nominal Racc when bias is allowed to learn.
-        if (allow_bias) {
-            if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-                mekf_->set_Racc(Racc_nominal_);
-            }
-            warmup_Racc_active_ = false;
+        if (!mekf_) return;
+        mekf_->set_linear_block_enabled(false);
+    
+        accel_bias_locked_   = with_mag_;
+        mag_updates_applied_ = 0;          
+        // optionally: warmup_Racc_active_ 
+        if (freeze_acc_bias_until_live_) {
+            mekf_->set_acc_bias_updates_enabled(false);
+            mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
+            warmup_Racc_active_ = true;
         }
     }
 
-    apply_ou_tune_();
-    if (enable_linear_block_) apply_RS_tune_();
-}
+    void enterLive_() {
+        startup_stage_   = StartupStage::Live;
+        startup_stage_t_ = 0.0f;
+    
+        if (!mekf_) return;
+        mekf_->set_linear_block_enabled(enable_linear_block_);
+    
+        if (freeze_acc_bias_until_live_) {
+            // Only enable bias updates if we are NOT locked.
+            const bool allow_bias = !accel_bias_locked_;
+            mekf_->set_acc_bias_updates_enabled(allow_bias);
+            // Only restore nominal Racc when bias is allowed to learn.
+            if (allow_bias) {
+                if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+                    mekf_->set_Racc(Racc_nominal_);
+                }
+                warmup_Racc_active_ = false;
+            }
+        }
+        apply_ou_tune_();
+        if (enable_linear_block_) apply_RS_tune_();
+    }
 
     StartupStage startup_stage_    = StartupStage::Cold;
     float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
