@@ -1168,8 +1168,8 @@ private:
 
         // Gravity-ish regime: |f| should be near g, not tiny or huge
         const float f_norm = acc_body_ned.norm();
-        constexpr float G_MIN = 0.85f * g_std;  // 0.5 g
-        constexpr float G_MAX = 1.15f * g_std;  // 1.5 g
+        const float G_MIN = 0.85f * g_std;  // 0.5 g
+        const float G_MAX = 1.15f * g_std;  // 1.5 g
         if (!(f_norm > G_MIN && f_norm < G_MAX)) {
             return false;
         }
