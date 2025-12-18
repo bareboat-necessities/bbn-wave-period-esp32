@@ -1,20 +1,6 @@
 #pragma once
 
 /*
-    TODO:
-	
-Nice-to-have improvements
-	•	Add a single “mode struct” (AttitudeOnly / FullINS / Warmup) that configures:
-	•	linear block enabled
-	•	accel bias updates enabled
-	•	mag bias enabled
-	•	pseudo-measurements enabled
-	•	lever-arm enabled
-so you don’t have scattered conditionals
-
-*/
-
-/*
   Copyright (c) 2025 Mikhail Grushinskiy
 
   Based on: https://github.com/thomaspasser/q-mekf
