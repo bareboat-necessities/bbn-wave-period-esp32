@@ -3,24 +3,14 @@
 /*
     TODO:
 
-    Level arm correction logic wrong in many places. Lever-arm model: Jacobians are incomplete if you ever want to estimate gyro bias tightly
-    Right now lever-arm effects in the mean but not in the Jacobian, so the filter can “attribute” lever-arm residuals 
-    to attitude/bias in the wrong way.
-
    is learning wrong biases early on still an issue? 
 
 most dangerous heuristics (the ones most likely to change filter behavior or cause bias blow-ups): it’s basically (1) large-N PSD enforcement via 
 diagonal dominance, (2) pseudo-measurement cadence + strength (R_S convention), and (3) lever-arm mean without Jacobian when you’re also 
 estimating gyro bias.
 
-
-In accel update when linear off: you drop a_w from the mean, set J_aw=0,
-and inflate measurement noise by adding R_wb Σ_aw R_wbᵀ
-The marginalization step is mathematically defensible, but choosing Σ_aw_stat as the marginal covariance (and not, say, P_aw) is a design heuristic that affects behavior.
-
 For N>4: enforce strict diagonal dominance row-by-row
 That large-N path is a pragmatic heuristic (it can distort the intended covariance a lot).
-
 
 Nice-to-have improvements
 	•	Add a single “mode struct” (AttitudeOnly / FullINS / Warmup) that configures:
