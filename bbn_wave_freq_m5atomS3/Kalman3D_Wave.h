@@ -5,13 +5,6 @@
 
    is learning wrong biases early on still an issue? 
 
-most dangerous heuristics (the ones most likely to change filter behavior or cause bias blow-ups): it’s basically (1) large-N PSD enforcement via 
-diagonal dominance, (2) pseudo-measurement cadence + strength (R_S convention), and (3) lever-arm mean without Jacobian when you’re also 
-estimating gyro bias.
-
-For N>4: enforce strict diagonal dominance row-by-row
-That large-N path is a pragmatic heuristic (it can distort the intended covariance a lot).
-
 Nice-to-have improvements
 	•	Add a single “mode struct” (AttitudeOnly / FullINS / Warmup) that configures:
 	•	linear block enabled
@@ -21,7 +14,6 @@ Nice-to-have improvements
 	•	lever-arm enabled
 so you don’t have scattered conditionals
 
-    
 */
 
 /*
