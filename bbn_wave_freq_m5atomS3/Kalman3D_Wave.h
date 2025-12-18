@@ -1683,7 +1683,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     }
     const Vector3 r = mag_meas - zhat;
 
-    // Jacobian uses the no-bias predicted vector that you actually used
+    // Jacobian uses the no-bias predicted vector
     const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
 				    
     // Innovation covariance S = C P Cᵀ + R
@@ -1713,13 +1713,27 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     if (!linear_block_enabled_) {
         freeze_linear_rows_(PCt);
     }
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) {
+            freeze_acc_bias_rows_(PCt);
+        }
+    }				
                 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;  
         
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-    
+
+    if (!linear_block_enabled_) {
+        freeze_linear_rows_(K);
+    }
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) {
+            freeze_acc_bias_rows_(K);
+        }
+    }
+				
     // State + covariance update
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
