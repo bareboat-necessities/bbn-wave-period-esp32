@@ -26,7 +26,7 @@ using Eigen::Vector3f;
 #endif
 
 // Standard gravity (NED, +Z down)
-const float g_std = 9.80665f;
+constexpr float g_std = 9.80665f;
 
 #ifndef FREQ_GUESS
 #define FREQ_GUESS 0.3f   // Hz (for initial ω inside filters that use it)
