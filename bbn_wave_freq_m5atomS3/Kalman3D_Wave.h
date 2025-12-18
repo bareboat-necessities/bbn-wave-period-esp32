@@ -388,7 +388,21 @@ class Kalman3D_Wave {
         if (on) clear_imu_lever_arm();                 // optional: safest during warmup
     }
 
-    void set_acc_bias_updates_enabled(bool en) { acc_bias_updates_enabled_ = en; } // TODO: handle
+	void set_acc_bias_updates_enabled(bool en) {
+	    if (acc_bias_updates_enabled_ == en) return;
+	    // Turning *on* accel-bias adaptation: ensure P_ba_ba is not over-confident.
+	    if (en) {
+	        if constexpr (with_accel_bias) {
+	            auto Pba = Pext.template block<3,3>(OFF_BA, OFF_BA);
+	            const T target_var = sigma_bacc0_ * sigma_bacc0_;
+	            for (int i = 0; i < 3; ++i) {
+	                Pba(i,i) = std::max(Pba(i,i), target_var);
+	            }
+	            Pext.template block<3,3>(OFF_BA, OFF_BA) = Pba;
+	        }
+	    }
+	    acc_bias_updates_enabled_ = en;
+	}
 
     // Velocity in world (NED)
     [[nodiscard]] Vector3 get_velocity() const {
