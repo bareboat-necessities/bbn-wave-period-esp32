@@ -1663,17 +1663,29 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 {
     // De-heel magnetometer into B'
     const Vector3 mag_meas = deheel_vector_(mag_meas_body);
-          
-    // Predicted magnetic field in body frame (now includes bias if enabled)
-    const Vector3 zhat = magnetometer_measurement_func();
-    
-    // Innovation
+
+    // Basic sanity gate
+    if (!mag_meas.allFinite()) return;
+    const T mag_norm = mag_meas.norm();
+    if (!(mag_norm > T(1e-6))) return;
+
+    // Predicted no-bias field for Jacobian
+    Vector3 v2hat = R_wb() * v2ref;
+
+    // Optional dot-product sign fix (helps if ref polarity is off or "horizontal only" is used)
+    if (v2hat.dot(mag_meas) < T(0)) {
+        v2hat = -v2hat;
+    }				
+				
+    Vector3 zhat = v2hat;
+    if constexpr (with_mag_bias) {
+        zhat += xext.template segment<3>(OFF_BM);
+    }
     const Vector3 r = mag_meas - zhat;
-    
-    // Jacobians
-    const Vector3 v2hat_no_bias = R_wb() * v2ref;               // for attitude jacobian
-    const Matrix3 J_att = -skew_symmetric_matrix(v2hat_no_bias);
-    
+
+    // Jacobian uses the no-bias predicted vector that you actually used
+    const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
+				    
     // Innovation covariance S = C P Cᵀ + R
     Matrix3& S_mat = S_scratch_;
     S_mat = Rmag;
