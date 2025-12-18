@@ -2,9 +2,7 @@
 
 /*
     TODO:
-
-   is learning wrong biases early on still an issue? 
-
+	
 Nice-to-have improvements
 	•	Add a single “mode struct” (AttitudeOnly / FullINS / Warmup) that configures:
 	•	linear block enabled
