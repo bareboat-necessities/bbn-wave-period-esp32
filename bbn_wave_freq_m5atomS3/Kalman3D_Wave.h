@@ -1465,34 +1465,33 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
                         +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));				
     }
 
-Matrix3 J_bg = Matrix3::Zero();
-if constexpr (with_gyro_bias) {
-    if (use_imu_lever_arm_) {
-        const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-        const Vector3& w = last_gyr_bias_corrected; // ω = gyr - b_g
-
-        // dω/db_g = -I
-        // dα/db_g ≈ -(kα) I, with kα ~ 1/dt (or smoothed)
-        T k_alpha = T(0);
-        if (have_prev_omega_ && last_dt_ > T(0)) {
-            if (alpha_smooth_tau_ > T(0)) {
-                const T a = T(1) - std::exp(-last_dt_ / alpha_smooth_tau_);
-                k_alpha = a / last_dt_;
-            } else {
-                k_alpha = T(1) / last_dt_;
-            }
-        }
-
-        // lever = α×r + ω×(ω×r)
-        // ∂(α×r)/∂b_g = (+kα)[r]×    (since α depends on ω and ω depends on b_g)
-        const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
-
-        // ∂(ω×(ω×r))/∂b_g = - ∂(...)/∂ω
-        const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(w, r_imu_bprime);
-
-        J_bg = J_alpha_part - J_omega_part;
-    }
-}				
+	Matrix3 J_bg = Matrix3::Zero();
+	if constexpr (with_gyro_bias) {
+	    if (use_imu_lever_arm_) {
+	        const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+	        const Vector3& w = last_gyr_bias_corrected; // ω = gyr - b_g
+	
+	        // dω/db_g = -I
+	        // dα/db_g ≈ -(kα) I, with kα ~ 1/dt (or smoothed)
+	        T k_alpha = T(0);
+	        if (have_prev_omega_ && last_dt_ > T(0)) {
+	            if (alpha_smooth_tau_ > T(0)) {
+	                const T a = T(1) - std::exp(-last_dt_ / alpha_smooth_tau_);
+	                k_alpha = a / last_dt_;
+	            } else {
+	                k_alpha = T(1) / last_dt_;
+	            }
+	        }
+	        // lever = α×r + ω×(ω×r)
+	        // ∂(α×r)/∂b_g = (+kα)[r]×    (since α depends on ω and ω depends on b_g)
+	        const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
+	
+	        // ∂(ω×(ω×r))/∂b_g = - ∂(...)/∂ω
+	        const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(w, r_imu_bprime);
+	
+	        J_bg = J_alpha_part - J_omega_part;
+	    }
+	}				
 				
     // Accel bias term (temp-dependent)
     Vector3 ba_term = Vector3::Zero();
@@ -1582,36 +1581,31 @@ if constexpr (with_gyro_bias) {
                 // S_mat.noalias() += P_ba_ba;
             }
         }
-
-if constexpr (with_gyro_bias) {
-    if (use_imu_lever_arm_) {
-        constexpr int OFF_BG = 3;
-
-        const Matrix3 P_th_bg = Pext.template block<3,3>(0, OFF_BG);
-        const Matrix3 P_bg_bg = Pext.template block<3,3>(OFF_BG, OFF_BG);
-
-        S_mat.noalias() += J_att * P_th_bg * J_bg.transpose();
-        S_mat.noalias() += J_bg  * P_th_bg.transpose() * J_att.transpose();
-        S_mat.noalias() += J_bg  * P_bg_bg * J_bg.transpose();
-
-        if (linear_block_enabled_) {
-            const Matrix3 P_aw_bg = Pext.template block<3,3>(OFF_AW, OFF_BG);
-            S_mat.noalias() += J_aw * P_aw_bg * J_bg.transpose();
-            S_mat.noalias() += J_bg * P_aw_bg.transpose() * J_aw.transpose();
-        }
-        if constexpr (with_accel_bias) {
-            if (use_ba) {
-                const Matrix3 P_bg_ba = Pext.template block<3,3>(OFF_BG, OFF_BA);
-                S_mat.noalias() += J_bg * P_bg_ba; // J_ba = I
-                S_mat.noalias() += P_bg_ba.transpose() * J_bg.transpose();
-            }
-        }
-    }
-				}
-				
-
-				
-
+		if constexpr (with_gyro_bias) {
+		    if (use_imu_lever_arm_) {
+		        constexpr int OFF_BG = 3;
+		
+		        const Matrix3 P_th_bg = Pext.template block<3,3>(0, OFF_BG);
+		        const Matrix3 P_bg_bg = Pext.template block<3,3>(OFF_BG, OFF_BG);
+		
+		        S_mat.noalias() += J_att * P_th_bg * J_bg.transpose();
+		        S_mat.noalias() += J_bg  * P_th_bg.transpose() * J_att.transpose();
+		        S_mat.noalias() += J_bg  * P_bg_bg * J_bg.transpose();
+		
+		        if (linear_block_enabled_) {
+		            const Matrix3 P_aw_bg = Pext.template block<3,3>(OFF_AW, OFF_BG);
+		            S_mat.noalias() += J_aw * P_aw_bg * J_bg.transpose();
+		            S_mat.noalias() += J_bg * P_aw_bg.transpose() * J_aw.transpose();
+		        }
+		        if constexpr (with_accel_bias) {
+		            if (use_ba) {
+		                const Matrix3 P_bg_ba = Pext.template block<3,3>(OFF_BG, OFF_BA);
+		                S_mat.noalias() += J_bg * P_bg_ba; // J_ba = I
+		                S_mat.noalias() += P_bg_ba.transpose() * J_bg.transpose();
+		            }
+		        }
+		    }
+		}
     }
                 
     // PCᵀ = P Cᵀ (NX×3)
@@ -1631,14 +1625,12 @@ if constexpr (with_gyro_bias) {
                 PCt.noalias() += P_all_ba; // J_ba = I
             }
         }
-
-if constexpr (with_gyro_bias) {
-    if (use_imu_lever_arm_) {
-        const auto P_all_bg = Pext.template block<NX,3>(0, 3);
-        PCt.noalias() += P_all_bg * J_bg.transpose();
-    }
-				}
-				
+		if constexpr (with_gyro_bias) {
+		    if (use_imu_lever_arm_) {
+		        const auto P_all_bg = Pext.template block<NX,3>(0, 3);
+		        PCt.noalias() += P_all_bg * J_bg.transpose();
+		    }
+        }		
     }
 
     if (!linear_block_enabled_) {
