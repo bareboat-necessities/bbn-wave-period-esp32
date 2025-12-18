@@ -357,20 +357,13 @@ public:
     //  Magnetometer correction
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
         if (!with_mag_ || !mekf_) return;
-
-        // store last mag, etc...
-
-        if (!mag_ref_set_) return;
         if (time_ < mag_delay_sec_) return;
-
         mekf_->measurement_update_mag_only(mag_body_ned);
         mag_updates_applied_++;
-
         if (accel_bias_locked_ && mag_updates_applied_ >= MAG_UPDATES_TO_UNLOCK) {
             accel_bias_locked_ = false;
             mekf_->set_acc_bias_updates_enabled(true);
-
-            // restore nominal Racc if you have it
+            // restore nominal Racc
             if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
                 mekf_->set_Racc(Racc_nominal_);
             }
