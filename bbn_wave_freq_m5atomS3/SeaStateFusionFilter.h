@@ -1111,7 +1111,8 @@ public:
                 mag_ref_set_ = true;
             } else {
                 // learn-from-measurement: only possible once we’ve seen a mag sample
-                if (mag_body_hold_.squaredNorm() > 1e-6f) {
+                if (mag_body_hold_.squaredNorm() > 1e-6f &&
+                    trustAttitudeForMagRef_(acc_body_ned)) {     
                     const Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat();
                     impl_.mekf().set_mag_world_ref(q_bw * mag_body_hold_);                  
                     mag_ref_set_ = true;
