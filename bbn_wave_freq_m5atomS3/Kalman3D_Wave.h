@@ -725,12 +725,6 @@ class Kalman3D_Wave {
         const T s = w.dot(r);
         return Matrix3::Identity() * s + (w * r.transpose()) - T(2) * (r * w.transpose());
     }
-
-    EIGEN_STRONG_INLINE void freeze_gyro_bias_rows_(MatrixNX3& M) const {
-        if constexpr (with_gyro_bias) {
-            M.template block<3,3>(3,0).setZero(); // gyro bias block at xext[3..5]
-        }
-    }				
 				
     // Simpson’s rule for ∫_0^T R(s) Q R(s)^T ds (fast, excellent for anisotropic Q)
     EIGEN_STRONG_INLINE Matrix3 simpson_R_Q_RT_(const Vector3& w, T Tstep, const Matrix3& Q) const {
