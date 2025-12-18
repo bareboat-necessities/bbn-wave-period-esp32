@@ -181,75 +181,45 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
         }
         S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
         S = T(0.5) * (S + S.transpose()); // clean float noise
-	} else {
-	    // Large matrices: try low-distortion fixes first (LDLT / small diagonal bump),
-	    // fall back to strict symmetric diagonal dominance (guaranteed SPD).
-	    S = T(0.5) * (S + S.transpose());
-	
-	    // Scale-aware epsilon (prevents "eps too tiny" on large covariances)
-	    T scale = T(0);
-	    for (int i = 0; i < N; ++i) scale = std::max(scale, std::abs(S(i,i)));
-	    if (!(scale > T(0))) {
-	        for (int i = 0; i < N; ++i)
-	            for (int j = 0; j < N; ++j)
-	                scale = std::max(scale, std::abs(S(i,j)));
-	    }
-	    const T eps_use = std::max(eps, T(10) * std::numeric_limits<T>::epsilon() * (scale + T(1)));
-	
-	    auto ldlt_has_strictly_pos_pivots = [&](const Eigen::LDLT<Eigen::Matrix<T,N,N>>& ldlt) -> bool {
-	        // Works on Eigen + ArduinoEigenDense: vectorD() exists.
-	        const auto D = ldlt.vectorD();
-	        for (int i = 0; i < N; ++i) {
-	            // strict positivity with margin
-	            if (!(D(i) > eps_use)) return false;
-	        }
-	        return true;
-	    };
-	    // Try LDLT as-is (no distortion if already SPD enough)
-	    {
-	        Eigen::LDLT<Eigen::Matrix<T,N,N>> ldlt;
-	        ldlt.compute(S);
-	        if (ldlt.info() == Eigen::Success && ldlt_has_strictly_pos_pivots(ldlt)) {
-	            // already SPD (up to eps_use)
-	            return;
-	        }
-	    }
-	    // Minimal global Gershgorin bump: shift all diagonals by the same amount
-	    // so that min_i (Sii - sum_{j!=i}|Sij|) >= eps_use.
-	    {
-	        T min_lb = std::numeric_limits<T>::infinity();
-	        for (int i = 0; i < N; ++i) {
-	            T row_sum = T(0);
-	            for (int j = 0; j < N; ++j) {
-	                if (j == i) continue;
-	                row_sum += std::abs(S(i,j));
-	            }
-	            const T lb = S(i,i) - row_sum;
-	            if (lb < min_lb) min_lb = lb;
-	        }
-	        if (!(min_lb >= eps_use)) {
-	            const T bump = (eps_use - min_lb);
-	            S.diagonal().array() += bump;
-	            S = T(0.5) * (S + S.transpose());
-	        }
-	        Eigen::LDLT<Eigen::Matrix<T,N,N>> ldlt;
-	        ldlt.compute(S);
-	        if (ldlt.info() == Eigen::Success && ldlt_has_strictly_pos_pivots(ldlt)) {
-	            return;
-	        }
-	    }
-	    // Last resort: enforce strict symmetric diagonal dominance row-by-row (guaranteed SPD)
-	    for (int i = 0; i < N; ++i) {
-	        T row_sum = T(0);
-	        for (int j = 0; j < N; ++j) {
-	            if (j == i) continue;
-	            row_sum += std::abs(S(i,j));
-	        }
-	        const T min_diag = row_sum + eps_use;
-	        if (!std::isfinite(S(i,i)) || S(i,i) < min_diag) S(i,i) = min_diag;
-	    }
-	    S = T(0.5) * (S + S.transpose());
+
+} else {
+    // Large matrices: enforce symmetric strict diagonal dominance (SSD).
+    // This guarantees SPD for symmetric S (Gershgorin), is O(N^2), and is ESP32-friendly.
+    // Tradeoff: can distort covariance more than eigen projection.
+
+    // Symmetrize again (cheap hygiene)
+    S = T(0.5) * (S + S.transpose());
+
+    // Choose an eps that scales with matrix magnitude (prevents "eps too tiny" issues)
+    T scale = T(0);
+    for (int i = 0; i < N; ++i) {
+        scale = std::max(scale, std::abs(S(i,i)));
+    }
+    // If diag is tiny, fall back to max absolute entry scale
+    if (!(scale > T(0))) {
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+                scale = std::max(scale, std::abs(S(i,j)));
+    }
+    const T eps_use = std::max(eps, T(10) * std::numeric_limits<T>::epsilon() * (scale + T(1)));
+
+    // Row-by-row strict diagonal dominance: S_ii >= sum_{j!=i} |S_ij| + eps_use
+    for (int i = 0; i < N; ++i) {
+        T row_sum = T(0);
+        for (int j = 0; j < N; ++j) {
+            if (j == i) continue;
+            row_sum += std::abs(S(i,j));
+        }
+        const T min_diag = row_sum + eps_use;
+
+        if (!std::isfinite(S(i,i))) S(i,i) = min_diag;
+        else if (S(i,i) < min_diag) S(i,i) = min_diag;
+    }
+
+    // Final symmetry hygiene
+    S = T(0.5) * (S + S.transpose());
 	}
+		
 }
 
 // Use with_mag_bias = true when mag reference is initialized from world absolute (set_mag_world_ref()) to detect hard iron mag bias,
