@@ -588,7 +588,7 @@ class Kalman3D_Wave {
     // Last gyro
     Vector3 last_gyr_bias_corrected{};
 
-    T sigma_bacc0_ = T(0.003); // initial accel bias std
+    T sigma_bacc0_ = T(0.005); // initial accel bias std
     Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-6);
 
     // Accelerometer bias temperature coefficient (per-axis), units: m/s^2 per °C.
