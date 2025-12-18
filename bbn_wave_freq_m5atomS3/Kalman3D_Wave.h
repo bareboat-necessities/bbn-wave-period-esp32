@@ -181,38 +181,33 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
         }
         S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
 	} else {
-		// Large matrices: enforce symmetric strict diagonal dominance (SSD).
-		// This guarantees SPD for symmetric S (Gershgorin), is O(N^2), and is ESP32-friendly.
-		// Tradeoff: can distort covariance more than eigen projection.
+	    // Try LDLT first; if it fails, apply a Gershgorin diagonal bump and retry.
+	    Eigen::LDLT<Eigen::Matrix<T,N,N>> ldlt;
+	    ldlt.compute(S);
+	    if (ldlt.info() != Eigen::Success) {
+	        // Gershgorin bump
+	        T min_lb = std::numeric_limits<T>::infinity();
+	        for (int i = 0; i < N; ++i) {
+	            T row_sum = T(0);
+	            for (int j = 0; j < N; ++j) {
+	                if (j == i) continue;
+	                row_sum += std::abs(S(i,j));
+	            }
+	            const T lb = S(i,i) - row_sum;
+	            if (lb < min_lb) min_lb = lb;
+	        }
+	        if (!(min_lb > eps)) {
+	            const T bump = (eps - min_lb);
+	            S.diagonal().array() += bump;
+	        }
 	
-		// Symmetrize again (cheap hygiene)
-		S = T(0.5) * (S + S.transpose());
-	
-		// Choose an eps that scales with matrix magnitude (prevents "eps too tiny" issues)
-		T scale = T(0);
-		for (int i = 0; i < N; ++i) {
-			scale = std::max(scale, std::abs(S(i,i)));
-		}
-		// If diag is tiny, fall back to max absolute entry scale
-		if (!(scale > T(0))) {
-			for (int i = 0; i < N; ++i)
-				for (int j = 0; j < N; ++j)
-					scale = std::max(scale, std::abs(S(i,j)));
-		}
-		const T eps_use = std::max(eps, T(10) * std::numeric_limits<T>::epsilon() * (scale + T(1)));
-	
-		// Row-by-row strict diagonal dominance: S_ii >= sum_{j!=i} |S_ij| + eps_use
-		for (int i = 0; i < N; ++i) {
-			T row_sum = T(0);
-			for (int j = 0; j < N; ++j) {
-				if (j == i) continue;
-				row_sum += std::abs(S(i,j));
-			}
-			const T min_diag = row_sum + eps_use;
-	
-			if (!std::isfinite(S(i,i))) S(i,i) = min_diag;
-			else if (S(i,i) < min_diag) S(i,i) = min_diag;
-		}
+	        // retry
+	        ldlt.compute(S);
+	        if (ldlt.info() != Eigen::Success) {
+	            // last resort: slightly bigger uniform bump
+	            S.diagonal().array() += (T(10) * eps);
+	        }
+	    }
 	}
     S = T(0.5) * (S + S.transpose()); // clean float noise
 }
