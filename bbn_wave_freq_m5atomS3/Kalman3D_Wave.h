@@ -654,7 +654,7 @@ class Kalman3D_Wave {
     }
               
     // Closed-form helpers for rotation & integrals (constant ω over [0, t])
-    
+
     // Rodrigues rotation and the integral B(t) = -∫_0^t exp(-[ω]× τ) dτ
     EIGEN_STRONG_INLINE void rot_and_B_from_wt_(const Vector3& w, T t, Matrix3& R, Matrix3& B) const {
         const T wnorm = w.norm();
@@ -712,7 +712,20 @@ class Kalman3D_Wave {
     
         IB = -( termI - termW + termW2 );
     }
-    
+
+    // d/dω of (ω×(ω×r)) = (ω·r) I + ω rᵀ - 2 r ωᵀ
+    EIGEN_STRONG_INLINE Matrix3 d_omega_x_omega_x_r_domega_(const Vector3& w,
+                                                            const Vector3& r) const {
+        const T s = w.dot(r);
+        return Matrix3::Identity() * s + (w * r.transpose()) - T(2) * (r * w.transpose());
+    }
+
+    EIGEN_STRONG_INLINE void freeze_gyro_bias_rows_(MatrixNX3& M) const {
+        if constexpr (with_gyro_bias) {
+            M.template block<3,3>(3,0).setZero(); // gyro bias block at xext[3..5]
+        }
+    }				
+				
     // Simpson’s rule for ∫_0^T R(s) Q R(s)^T ds (fast, excellent for anisotropic Q)
     EIGEN_STRONG_INLINE Matrix3 simpson_R_Q_RT_(const Vector3& w, T Tstep, const Matrix3& Q) const {
         Matrix3 R0, Btmp, Rm, R1;
@@ -1433,7 +1446,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
     
         lever.noalias() += alpha_bprime.cross(r_imu_bprime)
-                        +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));
+                        +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));				
     }
 
     // Accel bias term (temp-dependent)
