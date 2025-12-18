@@ -765,32 +765,31 @@ private:
         return RS_adj;
     }
 
-void apply_ou_tune_() {
-    if (!mekf_) return;
+    void apply_ou_tune_() {
+        if (!mekf_) return;
+        mekf_->set_aw_time_constant(tune_.tau_applied);
+    
+        // In attitude-only mode (linear frozen), Σ_aw still matters (marginalization path),
+        // so don’t let sigma collapse to ~0.
+        const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
+        const float sZ = std::max(sigma_floor, tune_.sigma_applied);
+        const float sH = sZ * S_factor_;
+        mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
+    }
 
-    mekf_->set_aw_time_constant(tune_.tau_applied);
-
-    // In attitude-only mode (linear frozen), Σ_aw still matters (marginalization path),
-    // so don’t let sigma collapse to ~0.
-    const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
-    const float sZ = std::max(sigma_floor, tune_.sigma_applied);
-    const float sH = sZ * S_factor_;
-    mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
-}
-
-void apply_RS_tune_() {
-    if (!mekf_) return;
-
-    const float RSb = enable_heave_RS_gating_
-        ? adjustRSWithHeave(tune_.RS_applied)
-        : std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
-
-    mekf_->set_RS_noise(Eigen::Vector3f(
-        RSb * R_S_xy_factor_,
-        RSb * R_S_xy_factor_,
-        RSb
-    ));
-}
+    void apply_RS_tune_() {
+        if (!mekf_) return;
+    
+        const float RSb = enable_heave_RS_gating_
+            ? adjustRSWithHeave(tune_.RS_applied)
+            : std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+    
+        mekf_->set_RS_noise(Eigen::Vector3f(
+            RSb * R_S_xy_factor_,
+            RSb * R_S_xy_factor_,
+            RSb
+        ));
+    }
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
         tuner_.update(dt, a_vert_inertial, freq_hz_for_tuner);
@@ -805,21 +804,20 @@ void apply_RS_tune_() {
                }
                return; // remain QMEKF-only
        
- case StartupStage::TunerWarm:
-    // Start tuning as soon as frequency smoothing is "ready"
-    // (tau depends only on f).
-    if (!tuner_.isFreqReady()) return;
-
-    // Only enter Live once BOTH freq + variance are ready
-    // (so bias unfreeze / linear enable still waits for a sane sigma estimate).
-    if (tuner_.isReady()) {
-        enterLive_();
-        // fallthrough to Live adaptation below
-    }
-    break;
+          case StartupStage::TunerWarm:
+              // Start tuning as soon as frequency smoothing is "ready"
+              // (tau depends only on f).
+              if (!tuner_.isFreqReady()) return;
           
-          // now Live, continue with adaptation
-   
+              // Only enter Live once BOTH freq + variance are ready
+              // (so bias unfreeze / linear enable still waits for a sane sigma estimate).
+              if (tuner_.isReady()) {
+                  enterLive_();
+                  // fallthrough to Live adaptation below
+              }
+              break;
+          
+           // now Live, continue with adaptation
            case StartupStage::Live:
                break;
         }
@@ -834,13 +832,11 @@ void apply_RS_tune_() {
             f_tune = max_freq_hz_;
         }
 
-// If variance isn't ready yet, treat it as "noise floor only" so sigma doesn't go crazy.
-float var_total = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
-if (tuner_.isVarReady()) {
-    var_total = std::max(0.0f, tuner_.getAccelVariance());
-}
-
-      
+        // If variance isn't ready yet, treat it as "noise floor only" so sigma doesn't go crazy.
+        float var_total = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
+        if (tuner_.isVarReady()) {
+            var_total = std::max(0.0f, tuner_.getAccelVariance());
+        }
         const float var_noise = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
         float var_wave = var_total - var_noise;
         if (var_wave < 0.0f) var_wave = 0.0f;
@@ -855,7 +851,6 @@ if (tuner_.isVarReady()) {
 
         var_wave = std::max(var_wave, 1e-6f);
         float sigma_wave = std::sqrt(var_wave);
-
         float tau_raw = tau_coeff_ * 0.5f / f_tune;
 
         if (enable_clamp_) {
@@ -865,11 +860,10 @@ if (tuner_.isVarReady()) {
             tau_target_   = tau_raw;
             sigma_target_ = sigma_wave;
         }
-
-// Keep published sigma_target_ sane before variance is ready
-if (!tuner_.isVarReady()) {
-    sigma_target_ = std::max(sigma_target_, std::max(0.05f, acc_noise_floor_sigma_));
-}
+        // Keep published sigma_target_ sane before variance is ready
+        if (!tuner_.isVarReady()) {
+            sigma_target_ = std::max(sigma_target_, std::max(0.05f, acc_noise_floor_sigma_));
+        }
       
         float RS_raw = R_S_coeff_ * sigma_target_
                        * tau_target_ * tau_target_ * tau_target_;
@@ -879,7 +873,6 @@ if (!tuner_.isVarReady()) {
         } else {
             RS_target_ = RS_raw;
         }
-
         adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
     
@@ -891,21 +884,18 @@ if (!tuner_.isVarReady()) {
         tune_.sigma_applied += alpha    * (sigma_t - tune_.sigma_applied);
         tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
 
-if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-    // Push OU τ/σ whenever frequency has been learned by the tuner,
-    // even in attitude-only mode (linear block OFF).
-    if (tuner_.isFreqReady()) {
-        apply_ou_tune_();
-    }
-
-    // Push R_S only when S pseudo-measurements are actually in play.
-    if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
-        apply_RS_tune_();
-    }
-
-    last_adapt_time_sec_ = time_;
-}
-
+        if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
+            // Push OU τ/σ whenever frequency has been learned by the tuner,
+            // even in attitude-only mode (linear block OFF).
+            if (tuner_.isFreqReady()) {
+                apply_ou_tune_();
+            }
+            // Push R_S only when S pseudo-measurements are actually in play.
+            if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
+                apply_RS_tune_();
+            }
+            last_adapt_time_sec_ = time_;
+        }
     }
 
     void enterCold_() {
