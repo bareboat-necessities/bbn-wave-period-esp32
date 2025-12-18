@@ -911,14 +911,13 @@ private:
 void enterCold_() {
     startup_stage_   = StartupStage::Cold;
     startup_stage_t_ = 0.0f;
-
     if (!mekf_) return;
 
     mekf_->set_linear_block_enabled(false);
 
-    // If mag is enabled, bias should start locked.
-    accel_bias_locked_ = with_mag_;
-
+    accel_bias_locked_   = with_mag_;
+    mag_updates_applied_ = 0;          
+    // optionally: warmup_Racc_active_ 
     if (freeze_acc_bias_until_live_) {
         mekf_->set_acc_bias_updates_enabled(false);
         mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
