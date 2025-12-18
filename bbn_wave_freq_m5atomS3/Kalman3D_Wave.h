@@ -388,21 +388,27 @@ class Kalman3D_Wave {
         if (on) clear_imu_lever_arm();                 // optional: safest during warmup
     }
 
-	void set_acc_bias_updates_enabled(bool en) {
-	    if (acc_bias_updates_enabled_ == en) return;
-	    // Turning *on* accel-bias adaptation: ensure P_ba_ba is not over-confident.
-	    if (en) {
-	        if constexpr (with_accel_bias) {
-	            auto Pba = Pext.template block<3,3>(OFF_BA, OFF_BA);
-	            const T target_var = sigma_bacc0_ * sigma_bacc0_;
-	            for (int i = 0; i < 3; ++i) {
-	                Pba(i,i) = std::max(Pba(i,i), target_var);
-	            }
-	            Pext.template block<3,3>(OFF_BA, OFF_BA) = Pba;
-	        }
-	    }
-	    acc_bias_updates_enabled_ = en;
-	}
+    void set_acc_bias_updates_enabled(bool en) {
+        if (acc_bias_updates_enabled_ == en) return;
+        if constexpr (with_accel_bias) {
+            if (!en) {
+                // Prevent BA from being driven by other updates via cross-cov
+                Pext.template block<3,BASE_N>(OFF_BA, 0).setZero();
+                Pext.template block<BASE_N,3>(0, OFF_BA).setZero();
+
+                // Also decouple from linear block (optional but consistent)
+                Pext.template block<3,12>(OFF_BA, OFF_V).setZero();
+                Pext.template block<12,3>(OFF_V, OFF_BA).setZero();
+            } else {
+                // inflate P_ba logic
+                auto Pba = Pext.template block<3,3>(OFF_BA, OFF_BA);
+                const T target_var = sigma_bacc0_ * sigma_bacc0_;
+                for (int i = 0; i < 3; ++i) Pba(i,i) = std::max(Pba(i,i), target_var);
+                Pext.template block<3,3>(OFF_BA, OFF_BA) = Pba;
+            }
+        }
+        acc_bias_updates_enabled_ = en;
+    }
 
     // Velocity in world (NED)
     [[nodiscard]] Vector3 get_velocity() const {
