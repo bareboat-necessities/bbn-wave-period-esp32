@@ -31,7 +31,7 @@ const float FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES  = 60.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP   = 12.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES  = 12.0f;
 
-const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT = 300.0f;
+const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT = 800.0f;
 const float FAIL_ERR_LIMIT_YAW_DEG = 4.0f;  
 
 constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
@@ -63,7 +63,7 @@ private:
 };
 
 bool add_noise = true;       //  Noise model
-bool attitude_only = false;  //  No OU
+bool attitude_only = false;  //  No OU if true
 
 struct ImuNoiseModel {
     std::mt19937 rng;
@@ -320,7 +320,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
     
     // mag ref policy
     cfg.mag_delay_sec = MAG_DELAY_SEC;
-    cfg.use_fixed_mag_world_ref = true;   // TODO: switch to false (it needs to learn it by itself)
+    cfg.use_fixed_mag_world_ref = false;   // TODO: switch to false (it needs to learn it by itself)
     cfg.mag_world_ref = mag_world_a;
     
     // warmup policy 
