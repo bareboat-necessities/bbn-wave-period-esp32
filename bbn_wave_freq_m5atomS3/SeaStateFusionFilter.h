@@ -1160,8 +1160,7 @@ private:
         float abs_roll  = std::fabs(euler_deg.x());
         float abs_pitch = std::fabs(euler_deg.y());
 
-        // You can tune this; 40–45° is a decent default
-        constexpr float TILT_MAX_FOR_MAG_REF_DEG = 35.0f;
+        constexpr float TILT_MAX_FOR_MAG_REF_DEG = 12.0f;
         if (abs_roll > TILT_MAX_FOR_MAG_REF_DEG || abs_pitch > TILT_MAX_FOR_MAG_REF_DEG) {
             return false;
         }
