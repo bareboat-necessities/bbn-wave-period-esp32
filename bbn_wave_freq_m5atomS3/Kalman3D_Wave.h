@@ -761,6 +761,7 @@ class Kalman3D_Wave {
     // Helpers
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
     Vector3 magnetometer_measurement_func() const;
+	Vector3 accelerometer_measurement_func(T tempC) const;
 
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
 
@@ -1426,45 +1427,45 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     // Physical accelerometer measurement model
     const Vector3 g_world(0,0,+gravity_magnitude_);
 
-    // Lever-arm term
+    // Lever-arm term (for non-full-model branches and J_bg)
     Vector3 lever = Vector3::Zero();
     if (use_imu_lever_arm_) {
         const Vector3& omega_bprime = last_gyr_bias_corrected; // ω^{B'}
         const Vector3& alpha_bprime = alpha_b_;                // α^{B'}
         const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-    
+
         lever.noalias() += alpha_bprime.cross(r_imu_bprime)
                         +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));				
     }
 
-	Matrix3 J_bg = Matrix3::Zero();
-	if constexpr (with_gyro_bias) {
-	    if (use_imu_lever_arm_) {
-	        const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-	        const Vector3& w = last_gyr_bias_corrected; // ω = gyr - b_g
-	
-	        // dω/db_g = -I
-	        // dα/db_g ≈ -(kα) I, with kα ~ 1/dt (or smoothed)
-	        T k_alpha = T(0);
-	        if (have_prev_omega_ && last_dt_ > T(0)) {
-	            if (alpha_smooth_tau_ > T(0)) {
-	                const T a = T(1) - std::exp(-last_dt_ / alpha_smooth_tau_);
-	                k_alpha = a / last_dt_;
-	            } else {
-	                k_alpha = T(1) / last_dt_;
-	            }
-	        }
-	        // lever = α×r + ω×(ω×r)
-	        // ∂(α×r)/∂b_g = (+kα)[r]×    (since α depends on ω and ω depends on b_g)
-	        const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
-	
-	        // ∂(ω×(ω×r))/∂b_g = - ∂(...)/∂ω
-	        const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(w, r_imu_bprime);
-	
-	        J_bg = J_alpha_part - J_omega_part;
-	    }
-	}				
-				
+    Matrix3 J_bg = Matrix3::Zero();
+    if constexpr (with_gyro_bias) {
+        if (use_imu_lever_arm_) {
+            const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+            const Vector3& w = last_gyr_bias_corrected; // ω = gyr - b_g
+
+            // dω/db_g = -I
+            // dα/db_g ≈ -(kα) I, with kα ~ 1/dt (or smoothed)
+            T k_alpha = T(0);
+            if (have_prev_omega_ && last_dt_ > T(0)) {
+                if (alpha_smooth_tau_ > T(0)) {
+                    const T a = T(1) - std::exp(-last_dt_ / alpha_smooth_tau_);
+                    k_alpha = a / last_dt_;
+                } else {
+                    k_alpha = T(1) / last_dt_;
+                }
+            }
+            // lever = α×r + ω×(ω×r)
+            // ∂(α×r)/∂b_g = (+kα)[r]×    (since α depends on ω and ω depends on b_g)
+            const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
+
+            // ∂(ω×(ω×r))/∂b_g = - ∂(...)/∂ω
+            const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(w, r_imu_bprime);
+
+            J_bg = J_alpha_part - J_omega_part;
+        }
+    }				
+
     // Accel bias term (temp-dependent)
     Vector3 ba_term = Vector3::Zero();
     if constexpr (with_accel_bias) {
@@ -1480,10 +1481,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     // Predicted specific force
     Vector3 f_pred;
     if (linear_block_enabled_) {
-        const Vector3 aw = xext.template segment<3>(OFF_AW);
-        f_pred = R_wb() * (aw - g_world) + lever + ba_term;
+        if (use_ba) {
+            // Full model: a_w + lever + temp-compensated accel bias
+            // (same formula as accelerometer_measurement_func)
+            f_pred = accelerometer_measurement_func(tempC);
+        } else {
+            // No accel-bias learning active → ignore BA in the mean
+            const Vector3 aw = xext.template segment<3>(OFF_AW);
+            f_pred = R_wb() * (aw - g_world) + lever + ba_term; // ba_term==0 here
+        }
     } else {
-        // marginalize aw => don't use it in the mean
+        // linear block disabled → marginalize a_w in the mean,
+        // keep optional BA term exactly as before
         f_pred = R_wb() * (Vector3::Zero() - g_world) + lever + ba_term;
     }
     
@@ -1547,37 +1556,36 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
                 }
             } else {
                 // If BA is frozen, treat its current uncertainty as extra measurement noise (optional).
-                // This keeps attitude from over-trusting accel when BA is “unknown”.
                 // Uncomment if you want that behavior:
                 // const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba, off_ba);
                 // S_mat.noalias() += P_ba_ba;
             }
         }
-		if constexpr (with_gyro_bias) {
-		    if (use_imu_lever_arm_) {
-		        constexpr int OFF_BG = 3;
-		
-		        const Matrix3 P_th_bg = Pext.template block<3,3>(0, OFF_BG);
-		        const Matrix3 P_bg_bg = Pext.template block<3,3>(OFF_BG, OFF_BG);
-		
-		        S_mat.noalias() += J_att * P_th_bg * J_bg.transpose();
-		        S_mat.noalias() += J_bg  * P_th_bg.transpose() * J_att.transpose();
-		        S_mat.noalias() += J_bg  * P_bg_bg * J_bg.transpose();
-		
-		        if (linear_block_enabled_) {
-		            const Matrix3 P_aw_bg = Pext.template block<3,3>(OFF_AW, OFF_BG);
-		            S_mat.noalias() += J_aw * P_aw_bg * J_bg.transpose();
-		            S_mat.noalias() += J_bg * P_aw_bg.transpose() * J_aw.transpose();
-		        }
-		        if constexpr (with_accel_bias) {
-		            if (use_ba) {
-		                const Matrix3 P_bg_ba = Pext.template block<3,3>(OFF_BG, OFF_BA);
-		                S_mat.noalias() += J_bg * P_bg_ba; // J_ba = I
-		                S_mat.noalias() += P_bg_ba.transpose() * J_bg.transpose();
-		            }
-		        }
-		    }
-		}
+        if constexpr (with_gyro_bias) {
+            if (use_imu_lever_arm_) {
+                constexpr int OFF_BG = 3;
+        
+                const Matrix3 P_th_bg = Pext.template block<3,3>(0, OFF_BG);
+                const Matrix3 P_bg_bg = Pext.template block<3,3>(OFF_BG, OFF_BG);
+        
+                S_mat.noalias() += J_att * P_th_bg * J_bg.transpose();
+                S_mat.noalias() += J_bg  * P_th_bg.transpose() * J_att.transpose();
+                S_mat.noalias() += J_bg  * P_bg_bg * J_bg.transpose();
+        
+                if (linear_block_enabled_) {
+                    const Matrix3 P_aw_bg = Pext.template block<3,3>(OFF_AW, OFF_BG);
+                    S_mat.noalias() += J_aw * P_aw_bg * J_bg.transpose();
+                    S_mat.noalias() += J_bg * P_aw_bg.transpose() * J_aw.transpose();
+                }
+                if constexpr (with_accel_bias) {
+                    if (use_ba) {
+                        const Matrix3 P_bg_ba = Pext.template block<3,3>(OFF_BG, OFF_BA);
+                        S_mat.noalias() += J_bg * P_bg_ba; // J_ba = I
+                        S_mat.noalias() += P_bg_ba.transpose() * J_bg.transpose();
+                    }
+                }
+            }
+        }
     }
                 
     // PCᵀ = P Cᵀ (NX×3)
@@ -1597,11 +1605,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
                 PCt.noalias() += P_all_ba; // J_ba = I
             }
         }
-		if constexpr (with_gyro_bias) {
-		    if (use_imu_lever_arm_) {
-		        const auto P_all_bg = Pext.template block<NX,3>(0, 3);
-		        PCt.noalias() += P_all_bg * J_bg.transpose();
-		    }
+        if constexpr (with_gyro_bias) {
+            if (use_imu_lever_arm_) {
+                const auto P_all_bg = Pext.template block<NX,3>(0, 3);
+                PCt.noalias() += P_all_bg * J_bg.transpose();
+            }
         }		
     }
 
@@ -1692,6 +1700,36 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     applyQuaternionCorrectionFromErrorState();          
 }
 
+// specific force prediction (BODY'):
+//   f_b' = R_wb (a_w − g) + α^{B'} × r_imu^{B'} + ω^{B'} × (ω^{B'} × r_imu^{B'}) + b_a(temp)
+template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
+Matrix<T,3,1>
+Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::accelerometer_measurement_func(T tempC) const {
+    const Vector3 g_world(0,0,+gravity_magnitude_);
+    const Vector3 aw = xext.template segment<3>(OFF_AW);
+
+    // CoG specific force in B'
+    const Vector3 f_cog_b = R_wb() * (aw - g_world);
+    Vector3 fb = f_cog_b;
+
+    // Optional IMU lever-arm correction:
+    // Use ω^{B'}, α^{B'} and r_imu expressed in B' (via de-heel).
+    if (use_imu_lever_arm_) {
+        const Vector3& omega_bprime = last_gyr_bias_corrected; // ω^{B'}
+        const Vector3& alpha_bprime = alpha_b_;                // α^{B'}
+        const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+
+        fb.noalias() += alpha_bprime.cross(r_imu_bprime)
+                     +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));
+    }
+    if constexpr (with_accel_bias) {
+        const Vector3 ba0 = xext.template segment<3>(OFF_BA);
+        const Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref);
+        fb += ba;
+    }
+    return fb;             
+}
+				
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
 Matrix<T,3,1>
 Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::magnetometer_measurement_func() const {
