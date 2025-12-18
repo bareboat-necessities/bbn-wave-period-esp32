@@ -1141,6 +1141,40 @@ private:
     enum class Stage { Uninitialized, Warming, Live };
   
     bool implReady_() const { return begun_; } // to guard begin()
+
+private:
+    // Decide whether we trust the current attitude enough to use it
+    // for learning the magnetometer world reference.
+    //
+    // Heuristics:
+    //  - roll/pitch within reasonable range (avoid learning during extreme heel)
+    //  - accel magnitude roughly near 1 g (not in a crazy dynamic / free-fall)
+    bool trustAttitudeForMagRef_(const Eigen::Vector3f& acc_body_ned) const {
+        if (!implReady_()) {
+            return false;
+        }
+
+        // Tilt sanity check: use nautical Euler angles from MEKF
+        Eigen::Vector3f euler_deg = impl_.getEulerNautical(); // [roll, pitch, yaw] in deg
+        float abs_roll  = std::fabs(euler_deg.x());
+        float abs_pitch = std::fabs(euler_deg.y());
+
+        // You can tune this; 40–45° is a decent default
+        constexpr float TILT_MAX_FOR_MAG_REF_DEG = 35.0f;
+        if (abs_roll > TILT_MAX_FOR_MAG_REF_DEG || abs_pitch > TILT_MAX_FOR_MAG_REF_DEG) {
+            return false;
+        }
+
+        // Gravity-ish regime: |f| should be near g, not tiny or huge
+        const float f_norm = acc_body_ned.norm();
+        constexpr float G_MIN = 0.85f * g_std;  // 0.5 g
+        constexpr float G_MAX = 1.15f * g_std;  // 1.5 g
+        if (!(f_norm > G_MIN && f_norm < G_MAX)) {
+            return false;
+        }
+
+        return true;
+    }
   
     Config cfg_{};
     SeaStateFusionFilter<trackerT> impl_{false};
