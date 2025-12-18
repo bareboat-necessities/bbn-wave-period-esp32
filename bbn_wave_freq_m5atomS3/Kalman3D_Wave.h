@@ -404,6 +404,12 @@ class Kalman3D_Wave {
     }
     bool linear_block_enabled() const      { return linear_block_enabled_; }
 
+    void set_warmup_mode(bool on) {
+        set_linear_block_enabled(!on);                 // off during warmup
+        set_acc_bias_updates_enabled(!on);             // freeze BA during warmup
+        if (on) clear_imu_lever_arm();                 // optional: safest during warmup
+    }
+
     void set_acc_bias_updates_enabled(bool en) { acc_bias_updates_enabled_ = en; } // TODO: handle
 
     // Velocity in world (NED)
@@ -1496,8 +1502,8 @@ if constexpr (with_gyro_bias) {
         // Always *model* it in the mean, but only *estimate* it when use_ba==true.
         ba_term = ba0 + k_a_ * (tempC - tempC_ref);
         if (!use_ba) {
-            // If you prefer “pure attitude warmup”, uncomment this:
-            // ba_term.setZero();
+            // “pure attitude warmup”
+            ba_term.setZero();
         }
     }
 
@@ -1625,7 +1631,15 @@ if constexpr (with_gyro_bias) {
                 const auto P_all_ba = Pext.template block<NX,3>(0, OFF_BA);
                 PCt.noalias() += P_all_ba; // J_ba = I
             }
-        }                
+        }
+
+if constexpr (with_gyro_bias) {
+    if (use_imu_lever_arm_) {
+        const auto P_all_bg = Pext.template block<NX,3>(0, 3);
+        PCt.noalias() += P_all_bg * J_bg.transpose();
+    }
+				}
+				
     }
 
     if (!linear_block_enabled_) {
