@@ -356,8 +356,25 @@ public:
 
     //  Magnetometer correction
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
-        if (with_mag_ && mekf_ && time_ >= mag_delay_sec_) {
-            mekf_->measurement_update_mag_only(mag_body_ned);
+        if (!with_mag_ || !mekf_) return;
+
+        // store last mag, etc...
+
+        if (!mag_ref_valid_) return;
+        if (time_ < mag_delay_sec_) return;
+
+        mekf_->measurement_update_mag_only(mag_body_ned);
+        mag_updates_applied_++;
+
+        if (accel_bias_locked_ && mag_updates_applied_ >= MAG_UPDATES_TO_UNLOCK) {
+            accel_bias_locked_ = false;
+            mekf_->set_acc_bias_updates_enabled(true);
+
+            // restore nominal Racc if you have it
+            if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+                mekf_->set_Racc(Racc_nominal_);
+            }
+            warmup_Racc_active_ = false;
         }
     }
 
@@ -946,7 +963,11 @@ private:
     float Racc_warmup_               = 0.5f;   // big accel noise during warmup
     bool  warmup_Racc_active_         = false;
     Eigen::Vector3f Racc_nominal_     = Eigen::Vector3f::Constant(0.0f); // 0 => don't touch
-   
+
+    bool accel_bias_locked_ = true;
+    int  mag_updates_applied_ = 0;
+    static constexpr int MAG_UPDATES_TO_UNLOCK = 5;  // ~50 ms at 100 Hz, tune as you like
+
     //  Members
     bool   with_mag_;
     double time_;
