@@ -1719,7 +1719,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     if (!linear_block_enabled_) {
         freeze_linear_rows_(PCt);
     }
-    if constexpr (with_accel_bias) 
+    if constexpr (with_accel_bias) {
 		freeze_acc_bias_rows_(PCt);
     }				
                 
