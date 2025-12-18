@@ -78,8 +78,8 @@ constexpr float MAX_R_S     = 35.0f;
 constexpr float ADAPT_TAU_SEC            = 1.5f;
 constexpr float ADAPT_R_S_SEC            = 8.0f;
 constexpr float ADAPT_EVERY_SECS         = 0.1f;
-constexpr float ONLINE_TUNE_WARMUP_SEC   = 8.0f;
-constexpr float MAG_DELAY_SEC            = 7.0f;
+constexpr float ONLINE_TUNE_WARMUP_SEC   = 5.0f;
+constexpr float MAG_DELAY_SEC            = 8.0f;
 
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
@@ -1160,7 +1160,7 @@ private:
         float abs_roll  = std::fabs(euler_deg.x());
         float abs_pitch = std::fabs(euler_deg.y());
 
-        constexpr float TILT_MAX_FOR_MAG_REF_DEG = 13.0f;
+        constexpr float TILT_MAX_FOR_MAG_REF_DEG = 12.0f;
         if (abs_roll > TILT_MAX_FOR_MAG_REF_DEG || abs_pitch > TILT_MAX_FOR_MAG_REF_DEG) {
             return false;
         }
