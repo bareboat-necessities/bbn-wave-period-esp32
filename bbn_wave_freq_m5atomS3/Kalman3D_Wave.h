@@ -1719,10 +1719,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     if (!linear_block_enabled_) {
         freeze_linear_rows_(PCt);
     }
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) {
-            freeze_acc_bias_rows_(PCt);
-        }
+    if constexpr (with_accel_bias) 
+		freeze_acc_bias_rows_(PCt);
     }				
                 
     Eigen::LDLT<Matrix3> ldlt;
@@ -1735,9 +1733,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         freeze_linear_rows_(K);
     }
     if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) {
-            freeze_acc_bias_rows_(K);
-        }
+		freeze_acc_bias_rows_(K);
     }
 				
     // State + covariance update
