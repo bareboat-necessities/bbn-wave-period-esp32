@@ -360,7 +360,7 @@ public:
 
         // store last mag, etc...
 
-        if (!mag_ref_valid_) return;
+        if (!mag_ref_set_) return;
         if (time_ < mag_delay_sec_) return;
 
         mekf_->measurement_update_mag_only(mag_body_ned);
@@ -915,45 +915,49 @@ private:
         }
     }
 
-    void enterCold_() {
-        startup_stage_   = StartupStage::Cold;
-        startup_stage_t_ = 0.0f;
-    
-        if (!mekf_) return;
-    
-        mekf_->set_linear_block_enabled(false);
-    
-        if (freeze_acc_bias_until_live_) {
-            mekf_->set_acc_bias_updates_enabled(false);
-            // Big Racc so early motion doesn't back-drive attitude too hard either
-            mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
-            warmup_Racc_active_ = true;
-        }
+void enterCold_() {
+    startup_stage_   = StartupStage::Cold;
+    startup_stage_t_ = 0.0f;
+
+    if (!mekf_) return;
+
+    mekf_->set_linear_block_enabled(false);
+
+    // If mag is enabled, bias should start locked.
+    accel_bias_locked_ = with_mag_;
+
+    if (freeze_acc_bias_until_live_) {
+        mekf_->set_acc_bias_updates_enabled(false);
+        mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
+        warmup_Racc_active_ = true;
     }
-    
-    void enterLive_() {
-        startup_stage_   = StartupStage::Live;
-        startup_stage_t_ = 0.0f;
-    
-        if (!mekf_) return;
-    
-        // Enable linear block only if user wants it
-        mekf_->set_linear_block_enabled(enable_linear_block_);
-    
-        if (freeze_acc_bias_until_live_) {
-            mekf_->set_acc_bias_updates_enabled(true);
-    
-            // Restore nominal Racc if provided, otherwise leave whatever caller set
+}
+
+void enterLive_() {
+    startup_stage_   = StartupStage::Live;
+    startup_stage_t_ = 0.0f;
+
+    if (!mekf_) return;
+
+    mekf_->set_linear_block_enabled(enable_linear_block_);
+
+    if (freeze_acc_bias_until_live_) {
+        // Only enable bias updates if we are NOT locked.
+        const bool allow_bias = !accel_bias_locked_;
+        mekf_->set_acc_bias_updates_enabled(allow_bias);
+
+        // Only restore nominal Racc when bias is allowed to learn.
+        if (allow_bias) {
             if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
                 mekf_->set_Racc(Racc_nominal_);
             }
             warmup_Racc_active_ = false;
         }
-    
-        // Push the latest τ/σ/R_S 
-        apply_ou_tune_();                 // always useful
-        if (enable_linear_block_) apply_RS_tune_();
-     }
+    }
+
+    apply_ou_tune_();
+    if (enable_linear_block_) apply_RS_tune_();
+}
 
     StartupStage startup_stage_    = StartupStage::Cold;
     float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
