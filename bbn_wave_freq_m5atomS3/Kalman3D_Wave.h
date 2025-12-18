@@ -199,36 +199,35 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
         }
         S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
         S = T(0.5) * (S + S.transpose()); // clean float noise
-} else {
-    // Try LDLT first; if it fails, apply a Gershgorin diagonal bump and retry.
-    Eigen::LDLT<Eigen::Matrix<T,N,N>> ldlt;
-    ldlt.compute(S);
-    if (ldlt.info() != Eigen::Success) {
-        // Gershgorin bump
-        T min_lb = std::numeric_limits<T>::infinity();
-        for (int i = 0; i < N; ++i) {
-            T row_sum = T(0);
-            for (int j = 0; j < N; ++j) {
-                if (j == i) continue;
-                row_sum += std::abs(S(i,j));
-            }
-            const T lb = S(i,i) - row_sum;
-            if (lb < min_lb) min_lb = lb;
-        }
-        if (!(min_lb > eps)) {
-            const T bump = (eps - min_lb);
-            S.diagonal().array() += bump;
-        }
-
-        // retry
-        ldlt.compute(S);
-        if (ldlt.info() != Eigen::Success) {
-            // last resort: slightly bigger uniform bump
-            S.diagonal().array() += (T(10) * eps);
-        }
-    }
-
-    S = T(0.5) * (S + S.transpose());
+	} else {
+	    // Try LDLT first; if it fails, apply a Gershgorin diagonal bump and retry.
+	    Eigen::LDLT<Eigen::Matrix<T,N,N>> ldlt;
+	    ldlt.compute(S);
+	    if (ldlt.info() != Eigen::Success) {
+	        // Gershgorin bump
+	        T min_lb = std::numeric_limits<T>::infinity();
+	        for (int i = 0; i < N; ++i) {
+	            T row_sum = T(0);
+	            for (int j = 0; j < N; ++j) {
+	                if (j == i) continue;
+	                row_sum += std::abs(S(i,j));
+	            }
+	            const T lb = S(i,i) - row_sum;
+	            if (lb < min_lb) min_lb = lb;
+	        }
+	        if (!(min_lb > eps)) {
+	            const T bump = (eps - min_lb);
+	            S.diagonal().array() += bump;
+	        }
+	
+	        // retry
+	        ldlt.compute(S);
+	        if (ldlt.info() != Eigen::Success) {
+	            // last resort: slightly bigger uniform bump
+	            S.diagonal().array() += (T(10) * eps);
+	        }
+	    }
+	    S = T(0.5) * (S + S.transpose());
 	}
 }
 
