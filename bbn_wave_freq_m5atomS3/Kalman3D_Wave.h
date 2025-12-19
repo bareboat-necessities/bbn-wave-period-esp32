@@ -43,7 +43,6 @@ inline T safe_inv_tau(T tau) {
 
 template<typename T>
 struct OUPrims {
-    T x;        // h/tau
     T alpha;    // e^{-x}
     T em1;      // expm1(-x) = e^{-x} - 1  (negative)
 };
@@ -54,7 +53,7 @@ inline OUPrims<T> make_prims(T h, T tau) {
     const T x = h * inv_tau;
     const T alpha  = std::exp(-x);
     const T em1    = std::expm1(-x);    // high-accuracy for small x
-    return {x, alpha, em1};
+    return {alpha, em1};
 }
 
 // Full exponential-map correction (Rodrigues in quaternion form).
