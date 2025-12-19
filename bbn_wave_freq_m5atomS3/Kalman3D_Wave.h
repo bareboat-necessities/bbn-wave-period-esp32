@@ -228,7 +228,6 @@ class Kalman3D_Wave {
     typedef Matrix<T, BASE_N, BASE_N> MatrixBaseN;
     typedef Matrix<T, NX, NX> MatrixNX;
     typedef Matrix<T, 3, 3> Matrix3;
-    typedef Matrix<T, 4, 4> Matrix4;
 
     // Fixed-size helpers for internal scratch
     typedef Matrix<T, 12, 12> Matrix12;
