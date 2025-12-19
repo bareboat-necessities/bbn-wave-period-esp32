@@ -597,17 +597,25 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         const float dir_amp    = d.getAmplitude();
         const Vector2f dir_vec = d.getDirection();
         const Vector2f dfilt   = d.getFilteredSignal();
-        const float dir_deg    = dirDegGeneratorSignedFromVec(dir_vec);
+        // Axis angle from KalmanWaveDirection (axial, 180° ambiguous)
+        const float dir_axis_deg = std::fabs(dirDegGeneratorSignedFromVec(dir_vec));
         
+        // Sense (TOWARD/AWAY) MUST come from the WaveDirectionDetector inside the filter
         WaveDirection sign = UNCERTAIN;
         int sign_num = 0;
+        
         // Only report a sign when direction is "good"
         constexpr float CONF_THRESH = 20.0f;
         constexpr float AMP_THRESH  = 0.08f;
+        
         if (dir_conf > CONF_THRESH && dir_amp > AMP_THRESH) {
-            sign = (dir_deg < 0.0f) ? BACKWARD : FORWARD;
-            sign_num = (sign == FORWARD) ? +1 : -1;
+            sign     = filter.getDirSignState();   // <-- key fix
+            sign_num = wave_dir_to_num(sign);      // +1 / -1 / 0
         }
+        
+        // Signed “sim-style” angle: ±axis
+        const float dir_deg = (sign_num != 0) ? (float(sign_num) * dir_axis_deg) : NAN;
+        
         const char* sign_str = wave_dir_to_cstr(sign);
 
         dir_phase_hist.push_back(dir_phase);
