@@ -544,17 +544,17 @@ class Kalman3D_Wave {
     // Set / update steady wind heel (roll about BODY X, rad).
     // Call this periodically (e.g. when your wind model changes) *before*
     // calling time_update/measurement_update_* for the next step.
-void update_wind_heel(T heel_rad) {
-    const T old = wind_heel_rad_;
-    if (heel_rad == old) return;
-
-    // Retarget internal B' frame FIRST (uses Δheel = new-old)
-    retarget_bodyprime_frame_(heel_rad - old);
-
-    // Now store new heel and update trig used by deheel_vector_()
-    wind_heel_rad_ = heel_rad;
-    update_unheel_trig_();
-}
+	void update_wind_heel(T heel_rad) {
+	    const T old = wind_heel_rad_;
+	    if (heel_rad == old) return;
+	
+	    // Retarget internal B' frame FIRST (uses Δheel = new-old)
+	    retarget_bodyprime_frame_(heel_rad - old);
+	
+	    // Now store new heel and update trig used by deheel_vector_()
+	    wind_heel_rad_ = heel_rad;
+	    update_unheel_trig_();
+	}
               
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
         const T cI = std::cos(I_rad), sI = std::sin(I_rad);
@@ -899,65 +899,63 @@ void update_wind_heel(T heel_rad) {
         return v;
     }
 
-EIGEN_STRONG_INLINE Matrix3 Rx_(T angle_rad) const {
-    const T c = std::cos(angle_rad);
-    const T s = std::sin(angle_rad);
-    Matrix3 R;
-    R << T(1), T(0), T(0),
-         T(0),    c,   -s,
-         T(0),    s,    c;
-    return R;
-}
+	EIGEN_STRONG_INLINE Matrix3 Rx_(T angle_rad) const {
+	    const T c = std::cos(angle_rad);
+	    const T s = std::sin(angle_rad);
+	    Matrix3 R;
+	    R << T(1), T(0), T(0),
+	         T(0),    c,   -s,
+	         T(0),    s,    c;
+	    return R;
+	}
 
-// Retarget internal B' frame after heel changes.
-// Keeps the *physical* attitude and bias meaning continuous.
-void retarget_bodyprime_frame_(T delta_heel_rad)
-{
-    if (std::abs(delta_heel_rad) < T(1e-12)) return;
-
-    // R = Rx(-Δheel): maps old B' coordinates -> new B' coordinates.
-    const Matrix3 R = Rx_(-delta_heel_rad);
-
-    // 1) Rotate the attitude reference: R_wb' := R * R_wb'
-    // qref is world->B'. Left-multiply by the frame change.
-    const Eigen::Quaternion<T> qR(R);
-    qref = qR * qref;
-    qref.normalize();
-
-    // 2) Rotate any vector states that live in B' coordinates
-    xext.template segment<3>(0) = R * xext.template segment<3>(0); // δθ (error state)
-
-    if constexpr (with_gyro_bias) {
-        xext.template segment<3>(3) = R * xext.template segment<3>(3); // b_g
-    }
-    if constexpr (with_accel_bias) {
-        xext.template segment<3>(OFF_BA) = R * xext.template segment<3>(OFF_BA); // b_a (as stored)
-    }
-    if constexpr (with_mag_bias) {
-        xext.template segment<3>(OFF_BM) = R * xext.template segment<3>(OFF_BM); // b_m
-    }
-
-    // 3) Rotate cached B' kinematics
-    last_gyr_bias_corrected = R * last_gyr_bias_corrected;
-    prev_omega_b_           = R * prev_omega_b_;
-    alpha_b_                = R * alpha_b_;
-
-    // 4) Similarity-transform covariance for the rotated state blocks.
-    // Since NX is small (~18), do the safe full similarity update (only on heel change).
-    MatrixNX Tm = MatrixNX::Identity();
-    Tm.template block<3,3>(0,0) = R;
-    if constexpr (with_gyro_bias)  Tm.template block<3,3>(3,3)      = R;
-    if constexpr (with_accel_bias) Tm.template block<3,3>(OFF_BA,OFF_BA) = R;
-    if constexpr (with_mag_bias)   Tm.template block<3,3>(OFF_BM,OFF_BM) = R;
-
-    Pext = Tm * Pext * Tm.transpose();
-    symmetrize_Pext_();
-
-    // Optional: α cache is now in new B' but it was computed using old dt history.
-    // If you want ultra-conservative behavior:
-    // have_prev_omega_ = false; alpha_b_.setZero();
-}
-				
+	// Retarget internal B' frame after heel changes.
+	// Keeps the *physical* attitude and bias meaning continuous.
+	void retarget_bodyprime_frame_(T delta_heel_rad)
+	{
+	    if (std::abs(delta_heel_rad) < T(1e-12)) return;
+	
+	    // R = Rx(-Δheel): maps old B' coordinates -> new B' coordinates.
+	    const Matrix3 R = Rx_(-delta_heel_rad);
+	
+	    // Rotate the attitude reference: R_wb' := R * R_wb'
+	    // qref is world->B'. Left-multiply by the frame change.
+	    const Eigen::Quaternion<T> qR(R);
+	    qref = qR * qref;
+	    qref.normalize();
+	
+	    // Rotate any vector states that live in B' coordinates
+	    xext.template segment<3>(0) = R * xext.template segment<3>(0); // δθ (error state)
+	
+	    if constexpr (with_gyro_bias) {
+	        xext.template segment<3>(3) = R * xext.template segment<3>(3); // b_g
+	    }
+	    if constexpr (with_accel_bias) {
+	        xext.template segment<3>(OFF_BA) = R * xext.template segment<3>(OFF_BA); // b_a (as stored)
+	    }
+	    if constexpr (with_mag_bias) {
+	        xext.template segment<3>(OFF_BM) = R * xext.template segment<3>(OFF_BM); // b_m
+	    }
+	
+	    // Rotate cached B' kinematics
+	    last_gyr_bias_corrected = R * last_gyr_bias_corrected;
+	    prev_omega_b_           = R * prev_omega_b_;
+	    alpha_b_                = R * alpha_b_;
+	
+	    // Similarity-transform covariance for the rotated state blocks.
+	    // Since NX is small (~18), do the safe full similarity update (only on heel change).
+	    MatrixNX Tm = MatrixNX::Identity();
+	    Tm.template block<3,3>(0,0) = R;
+	    if constexpr (with_gyro_bias)  Tm.template block<3,3>(3,3)      = R;
+	    if constexpr (with_accel_bias) Tm.template block<3,3>(OFF_BA,OFF_BA) = R;
+	    if constexpr (with_mag_bias)   Tm.template block<3,3>(OFF_BM,OFF_BM) = R;
+	
+	    Pext = Tm * Pext * Tm.transpose();
+	    symmetrize_Pext_();
+	
+	    // Optional: α cache is now in new B' but it was computed using old dt history.
+	    // have_prev_omega_ = false; alpha_b_.setZero();
+	}
 };
 
 // Implementation
