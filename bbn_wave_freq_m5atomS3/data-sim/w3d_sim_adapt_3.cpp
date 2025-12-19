@@ -597,10 +597,9 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         const float dir_amp    = d.getAmplitude();
         const Vector2f dir_vec = d.getDirection();
         const Vector2f dfilt   = d.getFilteredSignal();
-        // Axis angle from KalmanWaveDirection (axial, 180° ambiguous)
-        const float dir_axis_deg = std::fabs(dirDegGeneratorSignedFromVec(dir_vec));
+        const float dir_deg_gen = dirDegGeneratorSignedFromVec(dir_vec);
         
-        // Sense (TOWARD/AWAY) MUST come from the WaveDirectionDetector inside the filter
+        // Sense (TOWARD/AWAY) comes from WaveDirectionDetector inside the filter
         WaveDirection sign = UNCERTAIN;
         int sign_num = 0;
         
@@ -609,17 +608,15 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         constexpr float AMP_THRESH  = 0.08f;
         
         if (dir_conf > CONF_THRESH && dir_amp > AMP_THRESH) {
-            sign     = filter.getDirSignState();   // <-- key fix
-            sign_num = wave_dir_to_num(sign);      // +1 / -1 / 0
+            sign     = filter.getDirSignState();
+            sign_num = wave_dir_to_num(sign); // +1 / -1 / 0
         }
         
-        // Signed “sim-style” angle: ±axis
-        const float dir_deg = (sign_num != 0) ? (float(sign_num) * dir_axis_deg) : NAN;
-        
         const char* sign_str = wave_dir_to_cstr(sign);
-
+        
+        // Histories: store the *angle* separately from the *sense*
         dir_phase_hist.push_back(dir_phase);
-        dir_deg_hist.push_back(dir_deg);
+        dir_deg_hist.push_back(dir_deg_gen);   // <-- THIS is what circular stats should use
         dir_unc_hist.push_back(dir_unc);
         dir_conf_hist.push_back(dir_conf);
         dir_amp_hist.push_back(dir_amp);
