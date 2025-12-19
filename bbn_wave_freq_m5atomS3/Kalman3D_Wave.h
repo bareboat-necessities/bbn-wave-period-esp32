@@ -766,7 +766,6 @@ class Kalman3D_Wave {
 
     // Helpers
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
-    Vector3 magnetometer_measurement_func() const;
 	Vector3 accelerometer_measurement_func(T tempC) const;
 
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
