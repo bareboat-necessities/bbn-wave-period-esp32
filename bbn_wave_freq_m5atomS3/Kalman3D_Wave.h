@@ -183,7 +183,6 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
 	            const T bump = (eps - min_lb);
 	            S.diagonal().array() += bump;
 	        }
-	
 	        // retry
 	        ldlt.compute(S);
 	        if (ldlt.info() != Eigen::Success) {
@@ -219,9 +218,7 @@ class Kalman3D_Wave {
     static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 12) : -1;
     
     // mag bias comes after accel bias if present, otherwise after a_w
-    static constexpr int OFF_BM  = with_mag_bias
-        ? (BASE_N + 12 + (with_accel_bias ? 3 : 0))
-        : -1;
+    static constexpr int OFF_BM  = with_mag_bias ? (BASE_N + 12 + (with_accel_bias ? 3 : 0)) : -1;
 
     typedef Matrix<T, 3, 1> Vector3;
     typedef Matrix<T, BASE_N, BASE_N> MatrixBaseN;
@@ -357,11 +354,9 @@ class Kalman3D_Wave {
                 Pext.template block<12,3>(OFF_V, OFF_BM).setZero();
                 Pext.template block<3,12>(OFF_BM, OFF_V).setZero();
             }
-  
             // keep cadence sane
             pseudo_update_counter_ = 0;
         }
-  
         linear_block_enabled_ = on;
     }
     bool linear_block_enabled() const      { return linear_block_enabled_; }
@@ -575,8 +570,7 @@ class Kalman3D_Wave {
     Matrix<T, NX, 1> xext; // [ δθ(3), (gyro bias 3 optional), v(3), p(3), S(3), a_w(3), (accel bias 3 optional) ]          
     MatrixNX Pext;
 
-    // Last gyro
-    Vector3 last_gyr_bias_corrected{};
+    Vector3 last_gyr_bias_corrected{};  // Last gyro
 
     T sigma_bacc0_ = T(0.004); // initial accel bias std
     Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-6);
@@ -603,11 +597,10 @@ class Kalman3D_Wave {
     static constexpr int PSEUDO_UPDATE_PERIOD = 3; // every N-th update
 
     bool linear_block_enabled_ = true;
+    bool acc_bias_updates_enabled_ = true;       
               
     bool has_cross_cov_a_xy = false;
     bool use_exact_att_bias_Qd_ = true;
-
-    bool acc_bias_updates_enabled_ = true;            
 
     // IMU lever-arm (off-CoG) support
     bool   use_imu_lever_arm_       = false;
@@ -837,7 +830,6 @@ class Kalman3D_Wave {
                         KSK_ij += Kia * S(a,b) * Kjb;
                     }
                 }
-    
                 const T delta = - (KCP_ij + KCP_ji) + KSK_ij;
     
                 // Apply symmetric update
@@ -915,8 +907,7 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::Kalman3D_Wave(
     Racc(sigma_a.array().square().matrix().asDiagonal()),
     Rmag(sigma_m.array().square().matrix().asDiagonal())
 {
-    // quaternion init
-    qref.setIdentity();
+    qref.setIdentity();  // quaternion init
 
     R_S = Matrix3::Identity() * R_S_noise_var;
 
@@ -990,8 +981,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::set_aw_st
     symmetrize_Pext_();
     has_cross_cov_a_xy = true;
 }
-
-// initialization helpers
 
 // Initialization from accelerometer + magnetometer
 // Inputs:
@@ -1402,9 +1391,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
             // (your symmetrize_Pext_() will keep it clean)
         }
     }          
-          
-    // Symmetry hygiene
-    symmetrize_Pext_();
+
+    symmetrize_Pext_();   // Symmetry hygiene
 
     // Integral pseudo-measurement drift correction (only if linear block is live)
     if (linear_block_enabled_) {
@@ -1822,10 +1810,9 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bi
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_position_pseudo(
     const Vector3& p_meas, const Vector3& sigma_meas)
 {
-    if (!linear_block_enabled_) {
-        return;
-    }
-    constexpr int off_P = OFF_P; // position block
+    if (!linear_block_enabled_) return;
+
+	constexpr int off_P = OFF_P; // position block
 
     // Predicted position (world, NED)
     const Vector3 p_pred = xext.template segment<3>(off_P);
@@ -1974,7 +1961,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::QdAxis4x1
                            -  h3 * inv_tau2
                            + (T(7) / T(12)) * h4 * inv_tau3
                            -  T(1) / T(4)   * h5 * inv_tau4 );
-
         // Row 1: p
         Qd_axis(1,0) = Qd_axis(0,1);
         Qd_axis(1,1) = s * (  T(1) / T(10) * h5 * inv_tau );
@@ -1982,14 +1968,12 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::QdAxis4x1
         Qd_axis(1,3) = s * (  T(1) / T(3)  * h3 * inv_tau
                            -  T(1) / T(3)  * h4 * inv_tau2
                            + T(11) / T(60) * h5 * inv_tau3 );
-
         // Row 2: S
         Qd_axis(2,0) = Qd_axis(0,2);
         Qd_axis(2,1) = Qd_axis(1,2); // = 0
         Qd_axis(2,2) = T(0);         // leading term is O(h^7)
         Qd_axis(2,3) = s * (  T(1) / T(12) * h4 * inv_tau
                            -  T(1) / T(12) * h5 * inv_tau2 );
-
         // Row 3: a
         Qd_axis(3,0) = Qd_axis(0,3);
         Qd_axis(3,1) = Qd_axis(1,3);
