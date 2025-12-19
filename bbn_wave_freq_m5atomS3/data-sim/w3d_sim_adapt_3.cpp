@@ -789,7 +789,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         std::cout << "f_hz=" << f_hz
                   << ", Tp_tuner=" << Tp_tuner
                   << ", accel_var=" << accel_var << "\n";
-        std::cout << "=============================================\n\n";
 
         // Direction Report
         {
