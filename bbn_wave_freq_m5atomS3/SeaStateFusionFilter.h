@@ -385,9 +385,7 @@ public:
     void updatePositionFromAccOmega(
         const Eigen::Vector3f& a, float omega, const Eigen::Vector3f& sigma_disp_meas, float omega_min = (2.0f * M_PI * 0.06f)) 
     {
-        if (!std::isfinite(omega)) {
-            return;
-        }
+        if (!std::isfinite(omega)) return;
     
         float abs_omega = std::abs(omega);
         if (abs_omega < omega_min) {
@@ -398,10 +396,8 @@ public:
     
         // First-order approximation: p ≈ -a/ω² on all axes
         Eigen::Vector3f p_meas = -a / w2;
-    
-        if (!p_meas.allFinite()) {
-            return;
-        }
+        if (!p_meas.allFinite()) return;
+
         mekf_->measurement_update_position_pseudo(p_meas, sigma_disp_meas);
     }
 
@@ -1023,7 +1019,7 @@ private:
     float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
     std::unique_ptr<Kalman3D_Wave<float>>  mekf_;
-    KalmanWaveDirection                              dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
+    KalmanWaveDirection                    dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
 
     FreqInputLPF        freq_input_lpf_;   // LPF used only for tracker input
     StillnessAdapter    freq_stillness_;   // Detector of "still" mode
@@ -1172,7 +1168,6 @@ private:
         if (!(f_norm > G_MIN && f_norm < G_MAX)) {
             return false;
         }
-
         return true;
     }
   
