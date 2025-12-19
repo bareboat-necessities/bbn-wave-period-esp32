@@ -1581,7 +1581,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         }
 if constexpr (with_accel_bias) {
     const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba, off_ba);
-
     if (use_ba) {
         const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
 
@@ -1596,7 +1595,19 @@ if constexpr (with_accel_bias) {
             S_mat.noalias() += P_aw_ba.transpose() * J_aw.transpose();
         }
     } else {
-        // BA is not being estimated → marginalize its uncertainty into measurement noise.
+        // BA frozen: marginalize its uncertainty (and any existing cross-cov) into S.
+        // (If code already zeroed P_th_ba/P_aw_ba when disabling BA updates, these are 0 anyway.)
+        const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
+
+        // J_ba = I
+        S_mat.noalias() += J_att * P_th_ba;
+        S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
+
+        if (linear_block_enabled_) {
+            const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw, off_ba);
+            S_mat.noalias() += J_aw * P_aw_ba;
+            S_mat.noalias() += P_aw_ba.transpose() * J_aw.transpose();
+        }
         S_mat.noalias() += P_ba_ba;
     }
 } 
