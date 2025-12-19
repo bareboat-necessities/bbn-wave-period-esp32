@@ -849,6 +849,21 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                 
                 auto cs = circular_stats_180(vd);
 
+                // Count sign states + "good" samples in this window
+                int nToward = 0, nAway = 0, nUnc = 0;
+                size_t good = 0;
+                constexpr float CONF_THRESH = 20.0f;
+                constexpr float AMP_THRESH  = 0.08f;
+                
+                for (size_t k = i0; k < i1; ++k) {
+                    const int s = dir_sign_num_hist[k];
+                    if (s > 0) ++nToward;
+                    else if (s < 0) ++nAway;
+                    else ++nUnc;
+                
+                    if (dir_conf_hist[k] > CONF_THRESH && dir_amp_hist[k] > AMP_THRESH)
+                        ++good;
+                }                
                 const int nWin = int(i1 - i0);
                 auto pct = [&](int n){ return (nWin > 0) ? (100.0 * double(n) / double(nWin)) : 0.0; };
 
