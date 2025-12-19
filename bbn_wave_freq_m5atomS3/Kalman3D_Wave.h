@@ -1732,16 +1732,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     applyQuaternionCorrectionFromErrorState();          
 }
 				
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-Matrix<T,3,1>
-Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::magnetometer_measurement_func() const {
-    Vector3 pred = R_wb() * v2ref;
-    if constexpr (with_mag_bias) {
-        pred += xext.template segment<3>(OFF_BM); // b_m in BODY' (µT)
-    }
-    return pred;
-}
-
 // utility functions
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
 Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
