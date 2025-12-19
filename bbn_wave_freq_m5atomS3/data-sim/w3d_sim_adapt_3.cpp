@@ -841,25 +841,12 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                 std::vector<float> vu(dir_unc_hist.begin()+i0,    dir_unc_hist.begin()+i1);
                 std::vector<float> vc(dir_conf_hist.begin()+i0,   dir_conf_hist.begin()+i1);
                 std::vector<float> va(dir_amp_hist.begin()+i0,    dir_amp_hist.begin()+i1);
-
-                int nToward=0, nAway=0, nUnc=0;
-                size_t good = 0;
-                constexpr float CONF_THRESH = 20.0f;
-                constexpr float AMP_THRESH  = 0.08f;
-
-                for (size_t k=i0; k<i1; ++k){
-                    const int s = dir_sign_num_hist[k];
-                    if (s > 0) ++nToward; else if (s < 0) ++nAway; else ++nUnc;
-
-                    if (dir_conf_hist[k] > CONF_THRESH && dir_amp_hist[k] > AMP_THRESH)
-                        ++good;
-                }
-                std::vector<float> vd;
-                vd.reserve(i1 - i0);
-                for (size_t k = i0; k < i1; ++k) {
-                    const float a = dir_deg_hist[k];
-                    if (std::isfinite(a)) vd.push_back(a);
-                }
+                
+                // Drop NaNs/Infs from vd so circular stats can't become NaN
+                vd.erase(std::remove_if(vd.begin(), vd.end(),
+                                        [](float a){ return !std::isfinite(a); }),
+                         vd.end());
+                
                 auto cs = circular_stats_180(vd);
 
                 const int nWin = int(i1 - i0);
