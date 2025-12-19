@@ -599,9 +599,16 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         const Vector2f dfilt   = d.getFilteredSignal();
         const float dir_deg    = dirDegGeneratorSignedFromVec(dir_vec);
         
-        const WaveDirection sign = filter.getDirSignState();
+        WaveDirection sign = UNCERTAIN;
+        int sign_num = 0;
+        // Only report a sign when direction is "good"
+        constexpr float CONF_THRESH = 20.0f;
+        constexpr float AMP_THRESH  = 0.08f;
+        if (dir_conf > CONF_THRESH && dir_amp > AMP_THRESH) {
+            sign = (dir_deg < 0.0f) ? BACKWARD : FORWARD;
+            sign_num = (sign == FORWARD) ? +1 : -1;
+        }
         const char* sign_str = wave_dir_to_cstr(sign);
-        const int   sign_num = wave_dir_to_num(sign);
 
         dir_phase_hist.push_back(dir_phase);
         dir_deg_hist.push_back(dir_deg);
