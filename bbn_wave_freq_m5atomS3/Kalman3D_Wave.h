@@ -1521,29 +1521,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     Vector3 ba_term = Vector3::Zero();
     if constexpr (with_accel_bias) {
         const Vector3 ba0 = xext.template segment<3>(OFF_BA);
-        // Always *model* it in the mean, but only *estimate* it when use_ba==true.
+        // Always model BA in the mean (even if we freeze its estimation).
         ba_term = ba0 + k_a_ * (tempC - tempC_ref);
-        if (!use_ba) {
-            // “pure attitude warmup”
-            ba_term.setZero();
-        }
     }
 
     // Predicted specific force
     Vector3 f_pred;
     if (linear_block_enabled_) {
-        if (use_ba) {
-            // Full model: a_w + lever + temp-compensated accel bias
-            // (same formula as accelerometer_measurement_func)
-            f_pred = accelerometer_measurement_func(tempC);
-        } else {
-            // No accel-bias learning active → ignore BA in the mean
-            const Vector3 aw = xext.template segment<3>(OFF_AW);
-            f_pred = R_wb() * (aw - g_world) + lever + ba_term; // ba_term==0 here
-        }
+        const Vector3 aw = xext.template segment<3>(OFF_AW);
+        f_pred = R_wb() * (aw - g_world) + lever + ba_term;
     } else {
-        // linear block disabled → marginalize a_w in the mean,
-        // keep optional BA term exactly as before
+        // linear block disabled → marginalize aw in S, mean uses gravity only
         f_pred = R_wb() * (Vector3::Zero() - g_world) + lever + ba_term;
     }
     
