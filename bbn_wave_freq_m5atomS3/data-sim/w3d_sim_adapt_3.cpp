@@ -42,6 +42,79 @@ constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 #include "SeaStateFusionFilter.h"
 
 using Eigen::Vector3f;
+using Eigen::Vector2f;
+
+// Direction report helpers
+template<typename T>
+static T mean_vec(const std::vector<T>& v){
+    if (v.empty()) return T(NAN);
+    T s = 0; for (auto& x : v) s += x; return s / T(v.size());
+}
+template<typename T>
+static T median_vec(std::vector<T> v){
+    if (v.empty()) return T(NAN);
+    size_t n = v.size(); std::nth_element(v.begin(), v.begin()+n/2, v.end());
+    if (n%2) return v[n/2];
+    auto lo = *std::max_element(v.begin(), v.begin()+n/2);
+    auto hi = v[n/2];
+    return (lo+hi)/T(2);
+}
+template<typename T>
+static T percentile_vec(std::vector<T> v, double p01){
+    if (v.empty()) return T(NAN);
+    if (p01 <= 0) return *std::min_element(v.begin(), v.end());
+    if (p01 >= 1) return *std::max_element(v.begin(), v.end());
+    std::sort(v.begin(), v.end());
+    double idx = p01 * (v.size()-1);
+    size_t i = size_t(std::floor(idx));
+    double frac = idx - double(i);
+    if (i+1 >= v.size()) return v[i];
+    return T(v[i]*(1.0-frac) + v[i+1]*frac);
+}
+static inline float deg_to_rad(float d){ return d * float(M_PI/180.0); }
+static inline float rad_to_deg(float r){ return r * float(180.0/M_PI); }
+
+struct CircStats {
+    float mean_deg = NAN;
+    float std_deg  = NAN;
+};
+static CircStats circular_stats_180(const std::vector<float>& degs){
+    CircStats cs;
+    if (degs.empty()) return cs;
+    double C=0, S=0;
+    for (float d : degs){
+        const double a2 = 2.0 * deg_to_rad(d);
+        C += std::cos(a2);
+        S += std::sin(a2);
+    }
+    C /= double(degs.size());
+    S /= double(degs.size());
+    const double R = std::sqrt(C*C + S*S);
+    const double a2_mean = std::atan2(S, C);
+    double a_mean  = 0.5 * a2_mean;
+    float md = float(rad_to_deg(a_mean));
+    if (md < 0) md += 180.0f;
+    cs.mean_deg = md;
+    cs.std_deg = (R > 1e-9)
+        ? float(rad_to_deg(0.5 * std::sqrt(std::max(0.0, -2.0*std::log(R)))))
+        : 90.0f;
+    return cs;
+}
+
+static inline const char* wave_dir_to_cstr(WaveDirection w){
+    switch (w){
+        case FORWARD:  return "TOWARD";
+        case BACKWARD: return "AWAY";
+        default:       return "UNCERTAIN";
+    }
+}
+static inline int wave_dir_to_num(WaveDirection w){
+    switch (w){
+        case FORWARD:  return +1;
+        case BACKWARD: return -1;
+        default:       return 0;
+    }
+}
 
 inline float wrapDeg(float a) {
     a = std::fmod(a + 180.0f, 360.0f);
@@ -260,7 +333,12 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         << "mag_bias_est_x,mag_bias_est_y,mag_bias_est_z,"              // EST  (uT), BODY-NED
         << "mag_bias_err_x,mag_bias_err_y,mag_bias_err_z,"              // EST-TRUE (uT)       
         << "tau_applied,sigma_a_applied,R_S_applied,"
-        << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
+        << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner,"
+        << "dir_phase,"
+        << "dir_deg,dir_uncert_deg,dir_conf,dir_amp,"
+        << "dir_sign,dir_sign_num,"
+        << "dir_vec_x,dir_vec_y,"
+        << "dfilt_ax,dfilt_ay\n";
 
     using Fusion = SeaStateFusion<TrackerType::KALMANF>;
     Fusion fusion;
@@ -352,6 +430,10 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
     std::vector<float> accb_true_x, accb_true_y, accb_true_z;
     std::vector<float> gyrb_true_x, gyrb_true_y, gyrb_true_z;
     std::vector<float> magb_true_x, magb_true_y, magb_true_z; // [uT]
+    // Direction histories
+    std::vector<float> freq_hist;
+    std::vector<float> dir_deg_hist, dir_unc_hist, dir_conf_hist, dir_amp_hist, dir_phase_hist;
+    std::vector<int>   dir_sign_num_hist;
     
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
 
@@ -475,7 +557,31 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         magb_true_x.push_back(mag_bias_true_ned.x());
         magb_true_y.push_back(mag_bias_true_ned.y());
         magb_true_z.push_back(mag_bias_true_ned.z());
-        
+
+        //  Direction telemetry
+        const float f_hz = filter.getFreqHz();
+        freq_hist.push_back(f_hz);
+
+        auto& d = filter.dir();  // KalmanWaveDirection
+        const float dir_phase  = d.getPhase();
+        const float dir_deg    = d.getDirectionDegrees();              // [0,180)
+        const float dir_unc    = d.getDirectionUncertaintyDegrees();   // ~95% (2σ)
+        const float dir_conf   = d.getLastStableConfidence();
+        const float dir_amp    = d.getAmplitude();
+        const Vector2f dir_vec = d.getDirection();
+        const Vector2f dfilt   = d.getFilteredSignal();
+
+        const WaveDirection sign = filter.getDirSignState();
+        const char* sign_str = wave_dir_to_cstr(sign);
+        const int   sign_num = wave_dir_to_num(sign);
+
+        dir_phase_hist.push_back(dir_phase);
+        dir_deg_hist.push_back(dir_deg);
+        dir_unc_hist.push_back(dir_unc);
+        dir_conf_hist.push_back(dir_conf);
+        dir_amp_hist.push_back(dir_amp);
+        dir_sign_num_hist.push_back(sign_num);
+
         // CSV row
         ofs << rec.time << ","
             << r_ref_out << "," << p_ref_out << "," << y_ref_out << ","
@@ -498,7 +604,10 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
             << filter.getRSApplied() << ","
             << filter.getFreqHz() << ","
             << filter.getPeriodSec() << ","
-            << filter.getAccelVariance() << "\n";
+            << filter.getAccelVariance() << ","
+            << dir_phase << "," << dir_deg << "," << dir_unc << "," << dir_conf  << "," << dir_amp << ","
+            << sign_str << "," << sign_num << "," << dir_vec.x()  << "," << dir_vec.y()  << "," << dfilt.x()  << ","
+            << dfilt.y() << "\n";
     });
     
     ofs.close();
@@ -681,6 +790,59 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                   << ", Tp_tuner=" << Tp_tuner
                   << ", accel_var=" << accel_var << "\n";
         std::cout << "=============================================\n\n";
+
+        // Direction Report
+        {
+            const size_t i0 = start;
+            const size_t i1 = errs_z.size();
+
+            if (i0 < i1 && i1 <= dir_deg_hist.size()) {
+                std::vector<float> vf(freq_hist.begin()+i0,       freq_hist.begin()+i1);
+                std::vector<float> vd(dir_deg_hist.begin()+i0,    dir_deg_hist.begin()+i1);
+                std::vector<float> vu(dir_unc_hist.begin()+i0,    dir_unc_hist.begin()+i1);
+                std::vector<float> vc(dir_conf_hist.begin()+i0,   dir_conf_hist.begin()+i1);
+                std::vector<float> va(dir_amp_hist.begin()+i0,    dir_amp_hist.begin()+i1);
+
+                int nToward=0, nAway=0, nUnc=0;
+                size_t good = 0;
+                constexpr float CONF_THRESH = 20.0f;
+                constexpr float AMP_THRESH  = 0.08f;
+
+                for (size_t k=i0; k<i1; ++k){
+                    const int s = dir_sign_num_hist[k];
+                    if (s > 0) ++nToward; else if (s < 0) ++nAway; else ++nUnc;
+
+                    if (dir_conf_hist[k] > CONF_THRESH && dir_amp_hist[k] > AMP_THRESH)
+                        ++good;
+                }
+                auto cs = circular_stats_180(vd);
+
+                const int nWin = int(i1 - i0);
+                auto pct = [&](int n){ return (nWin > 0) ? (100.0 * double(n) / double(nWin)) : 0.0; };
+
+                std::cout << "=== Direction Report (last 60 s only) for " << outname << " ===\n";
+                std::cout << "window_s: " << (float(i1 - i0) * dt) << "\n";
+                std::cout << "samples: " << (i1 - i0) << "\n";
+                std::cout << "freq_hz: mean=" << mean_vec(vf)
+                          << " median=" << median_vec(vf)
+                          << " p05=" << percentile_vec(vf,0.05)
+                          << " p95=" << percentile_vec(vf,0.95) << "\n";
+                std::cout << "dir_deg (0..180): mean_circ=" << cs.mean_deg
+                          << " circ_std≈" << cs.std_deg << " deg\n";
+                std::cout << "uncert_deg: mean=" << mean_vec(vu)
+                          << " median=" << median_vec(vu)
+                          << " p95=" << percentile_vec(vu,0.95) << "\n";
+                std::cout << "confidence: mean=" << mean_vec(vc)
+                          << " >" << CONF_THRESH << " count=" << good
+                          << " (" << (100.0 * double(good)/double(i1-i0)) << "%)\n";
+                std::cout << "amplitude: mean=" << mean_vec(va)
+                          << " median=" << median_vec(va) << "\n";
+                std::cout << "sign: TOWARD=" << nToward << " (" << pct(nToward) << "%)"
+                          << " AWAY=" << nAway << " (" << pct(nAway) << "%)"
+                          << " UNCERTAIN=" << nUnc << " (" << pct(nUnc) << "%)\n";
+                std::cout << "=============================================\n\n";
+            }
+        }
 
         // Failure criteria 
         float limit_z  = (type == WaveType::JONSWAP) ? FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP : FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES;
