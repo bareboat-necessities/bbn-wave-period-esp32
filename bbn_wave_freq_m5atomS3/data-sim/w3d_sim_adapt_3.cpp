@@ -74,6 +74,25 @@ static T percentile_vec(std::vector<T> v, double p01){
 static inline float deg_to_rad(float d){ return d * float(M_PI/180.0); }
 static inline float rad_to_deg(float r){ return r * float(180.0/M_PI); }
 
+// Axial angle wrap to [-90, +90] (180° ambiguity)
+inline float wrapAxialDeg90(float a) {
+    a = std::fmod(a + 180.0f, 360.0f);
+    if (a < 0) a += 360.0f;
+    a -= 180.0f;                 // [-180,180)
+    if (a >  90.0f) a -= 180.0f;  // fold axial
+    if (a < -90.0f) a += 180.0f;
+    return a;                    // [-90,90]
+}
+
+// Generator / nautical-style direction from unit vector:
+// 0° = +Y, clockwise positive; then fold axial => [-90,90]
+inline float dirDegGeneratorSignedFromVec(const Vector2f& v) {
+    // Note: this is atan2(x,y), not atan2(y,x).
+    // This converts "math angle from +X CCW" into "heading from +Y CW".
+    float deg = rad_to_deg(std::atan2(v.x(), v.y())); // (-180,180]
+    return wrapAxialDeg90(deg);
+}
+
 struct CircStats {
     float mean_deg = NAN;
     float std_deg  = NAN;
@@ -81,6 +100,8 @@ struct CircStats {
 static CircStats circular_stats_180(const std::vector<float>& degs){
     CircStats cs;
     if (degs.empty()) return cs;
+
+    // Axial stats: use doubled angles
     double C=0, S=0;
     for (float d : degs){
         const double a2 = 2.0 * deg_to_rad(d);
@@ -89,15 +110,22 @@ static CircStats circular_stats_180(const std::vector<float>& degs){
     }
     C /= double(degs.size());
     S /= double(degs.size());
+
     const double R = std::sqrt(C*C + S*S);
     const double a2_mean = std::atan2(S, C);
-    double a_mean  = 0.5 * a2_mean;
-    float md = float(rad_to_deg(a_mean));
-    if (md < 0) md += 180.0f;
+
+    // Mean for axial data (halve the doubled-angle mean), then wrap to [-90,90]
+    float md = float(rad_to_deg(0.5 * a2_mean));
+    md = wrapAxialDeg90(md);
     cs.mean_deg = md;
-    cs.std_deg = (R > 1e-9)
+
+    // Axial circular std (radians): 0.5 * sqrt(-2 ln R)
+    cs.std_deg = (R > 1e-12)
         ? float(rad_to_deg(0.5 * std::sqrt(std::max(0.0, -2.0*std::log(R)))))
         : 90.0f;
+
+    // Clamp to the meaningful axial range
+    cs.std_deg = std::min(cs.std_deg, 90.0f);
     return cs;
 }
 
@@ -564,13 +592,13 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
 
         auto& d = filter.dir();  // KalmanWaveDirection
         const float dir_phase  = d.getPhase();
-        const float dir_deg    = d.getDirectionDegrees();              // [0,180)
         const float dir_unc    = d.getDirectionUncertaintyDegrees();   // ~95% (2σ)
         const float dir_conf   = d.getLastStableConfidence();
         const float dir_amp    = d.getAmplitude();
         const Vector2f dir_vec = d.getDirection();
         const Vector2f dfilt   = d.getFilteredSignal();
-
+        const float dir_deg    = dirDegGeneratorSignedFromVec(dir_vec);
+        
         const WaveDirection sign = filter.getDirSignState();
         const char* sign_str = wave_dir_to_cstr(sign);
         const int   sign_num = wave_dir_to_num(sign);
@@ -826,7 +854,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                           << " median=" << median_vec(vf)
                           << " p05=" << percentile_vec(vf,0.05)
                           << " p95=" << percentile_vec(vf,0.95) << "\n";
-                std::cout << "dir_deg (0..180): mean_circ=" << cs.mean_deg
+                std::cout << "dir_deg_gen ([-90,90], 0=+Y CW): mean_circ=" << cs.mean_deg
                           << " circ_std≈" << cs.std_deg << " deg\n";
                 std::cout << "uncert_deg: mean=" << mean_vec(vu)
                           << " median=" << median_vec(vu)
