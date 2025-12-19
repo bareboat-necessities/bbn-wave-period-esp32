@@ -1731,36 +1731,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     joseph_update3_(K, S_mat, PCt);
     applyQuaternionCorrectionFromErrorState();          
 }
-
-// specific force prediction (BODY'):
-//   f_b' = R_wb (a_w − g) + α^{B'} × r_imu^{B'} + ω^{B'} × (ω^{B'} × r_imu^{B'}) + b_a(temp)
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-Matrix<T,3,1>
-Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::accelerometer_measurement_func(T tempC) const {
-    const Vector3 g_world(0,0,+gravity_magnitude_);
-    const Vector3 aw = xext.template segment<3>(OFF_AW);
-
-    // CoG specific force in B'
-    const Vector3 f_cog_b = R_wb() * (aw - g_world);
-    Vector3 fb = f_cog_b;
-
-    // Optional IMU lever-arm correction:
-    // Use ω^{B'}, α^{B'} and r_imu expressed in B' (via de-heel).
-    if (use_imu_lever_arm_) {
-        const Vector3& omega_bprime = last_gyr_bias_corrected; // ω^{B'}
-        const Vector3& alpha_bprime = alpha_b_;                // α^{B'}
-        const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-
-        fb.noalias() += alpha_bprime.cross(r_imu_bprime)
-                     +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));
-    }
-    if constexpr (with_accel_bias) {
-        const Vector3 ba0 = xext.template segment<3>(OFF_BA);
-        const Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref);
-        fb += ba;
-    }
-    return fb;             
-}
 				
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
 Matrix<T,3,1>
