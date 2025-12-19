@@ -64,6 +64,11 @@ enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 #define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
 
+// Magnetometer cadence (match desktop runner style)
+constexpr float MAG_ODR_HZ = 100.0f;          // desired mag ODR (Hz)
+constexpr float MAG_DT     = 1.0f / MAG_ODR_HZ;
+static float   mag_phase_s = 0.0f;           // accumulates IMU dt until MAG_DT
+
 // Clamp helper
 template<typename T>
 inline T clamp_val(T x, T lo, T hi) {
@@ -182,12 +187,17 @@ void read_and_processIMU_data() {
   // One fusion step: MEKF time update + accel update + tracker + tuner + dir
   fusion_filter.updateTime(delta_t, gyr_meas_ned, acc_meas_ned, tempC);
 
-  // Magnetometer update every 3rd IMU step
-  static int mag_step = 0;
-  mag_step++;
-  if (mag_step >= 3) {
+  // Magnetometer update with explicit ODR (MAG_ODR_HZ) like the desktop runner
+  mag_phase_s += delta_t;
+  bool mag_tick = false;
+  if (mag_phase_s >= MAG_DT) {
+    while (mag_phase_s >= MAG_DT) {
+      mag_phase_s -= MAG_DT;
+    }
+    mag_tick = true;
+  }
+  if (mag_tick) {
     fusion_filter.updateMag(mag_meas_ned);
-    mag_step = 0;
   }
 
   // Attitude (nautical, degrees)
@@ -376,12 +386,8 @@ void setup(void) {
   const float gyr_sigma = 0.00157f;         // 0.09 dps-rms -> ~0.00157 rad/s  [oai_citation:7‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
 
   // BMM150-like magnetometer behavior (AtomS3R)
-  constexpr float MAG_ODR_HZ = 100.0f;                 // 100 (regular) or 20 (high-accuracy)
-  constexpr float MAG_DT     = 1.0f / MAG_ODR_HZ;
-  // Phase accumulator for exact mag rate
-  float mag_phase_s = 0.0f;
-  const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet RMS noise  [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf)
-
+  // MAG_ODR_HZ, MAG_DT, mag_phase_s are globals (shared with update loop)
+  const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet RMS noise
 
   // Initialize unified fusion filter
   {
