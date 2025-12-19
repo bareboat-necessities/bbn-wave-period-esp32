@@ -64,7 +64,7 @@ enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 #define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
 
-// Magnetometer cadence (match desktop runner style)
+// Magnetometer cadence (BMM150-style ODR, same pattern as desktop runner)
 constexpr float MAG_ODR_HZ = 100.0f;          // desired mag ODR (Hz)
 constexpr float MAG_DT     = 1.0f / MAG_ODR_HZ;
 static float   mag_phase_s = 0.0f;           // accumulates IMU dt until MAG_DT
@@ -136,9 +136,11 @@ bool report_nmea = false;
 float t = 0.0f;
 float heave_avg = 0.0f;
 
-// Unified fusion filter: MEKF + tuner + freq tracker + KalmanWaveDirection
-using FusionFilter = SeaStateFusionFilter<TrackerType::KALMANF>;
-FusionFilter fusion_filter(true);   // with_mag = true on M5AtomS3R
+// Unified fusion wrapper: SeaStateFusion (MEKF + tuner + freq tracker + KalmanWaveDirection)
+// Underlying filter is SeaStateFusionFilter (same as desktop runner)
+using Fusion = SeaStateFusion<TrackerType::KALMANF>;
+Fusion fusion;                      // wrapper (handles updates + mag gating, etc.)
+auto& fusion_filter = fusion.raw(); // underlying SeaStateFusionFilter
 bool fusion_initialized = false;
 
 // Main IMU processing
@@ -178,14 +180,15 @@ void read_and_processIMU_data() {
       -mag.z / 10.0f
   );
 
-  // First-time attitude init from accelerometer
+  // First-time attitude init from accelerometer + mag
   if (!fusion_initialized) {
     fusion_filter.mekf().initialize_from_acc_mag(acc_meas_ned, mag_meas_ned);
     fusion_initialized = true;
   }
 
   // One fusion step: MEKF time update + accel update + tracker + tuner + dir
-  fusion_filter.updateTime(delta_t, gyr_meas_ned, acc_meas_ned, tempC);
+  // (through SeaStateFusion wrapper, as in desktop runner)
+  fusion.update(delta_t, gyr_meas_ned, acc_meas_ned, tempC);
 
   // Magnetometer update with explicit ODR (MAG_ODR_HZ) like the desktop runner
   mag_phase_s += delta_t;
@@ -197,7 +200,7 @@ void read_and_processIMU_data() {
     mag_tick = true;
   }
   if (mag_tick) {
-    fusion_filter.updateMag(mag_meas_ned);
+    fusion.updateMag(mag_meas_ned);
   }
 
   // Attitude (nautical, degrees)
@@ -382,38 +385,38 @@ void setup(void) {
 
   // BMI270-like noise (per-axis), “normal mode” order
   // White noise (per-sample RMS, per axis)
-  const float acc_sigma = 1.51e-3f * g_std;  // 1.51 mg-rms -> ~0.0148 m/s^2   [oai_citation:6‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
-  const float gyr_sigma = 0.00157f;         // 0.09 dps-rms -> ~0.00157 rad/s  [oai_citation:7‡Bosch Sensortec](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf)
+  const float acc_sigma = 1.51e-3f * g_std;  // 1.51 mg-rms -> ~0.0148 m/s^2
+  const float gyr_sigma = 0.00157f;         // 0.09 dps-rms -> ~0.00157 rad/s
 
   // BMM150-like magnetometer behavior (AtomS3R)
   // MAG_ODR_HZ, MAG_DT, mag_phase_s are globals (shared with update loop)
   const float mag_sigma_uT = (MAG_ODR_HZ <= 20.0f) ? 0.30f : 0.60f;  // datasheet RMS noise
 
-  // Initialize unified fusion filter
+  // Initialize unified fusion wrapper (SeaStateFusion) like desktop runner
   {
     const Vector3f sigma_a_init(2.0f * acc_sigma, 2.0f * acc_sigma, 2.0f * acc_sigma);
     const Vector3f sigma_g(2.0f * gyr_sigma, 2.0f * gyr_sigma, 2.0f * gyr_sigma);    
     const float sigma_m_uT = 1.2f * mag_sigma_uT;   // a bit conservative
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
-    fusion_filter.initialize(sigma_a_init, sigma_g, sigma_m);
+
+    Fusion::Config fcfg;
+    fcfg.with_mag = true;               // M5AtomS3R has magnetometer
+    fcfg.sigma_a  = sigma_a_init;
+    fcfg.sigma_g  = sigma_g;
+    fcfg.sigma_m  = sigma_m;
+
+    // mag ref / warmup policy (mirroring desktop runner’s pattern)
+    fcfg.mag_delay_sec              = 5.0f;   // wait a few seconds before using mag
+    fcfg.use_fixed_mag_world_ref    = false;  // learn mag world ref online
+    fcfg.freeze_acc_bias_until_live = true;
+    fcfg.Racc_warmup                = 0.5f;
+
+    fusion.begin(fcfg);
 
  /*
-    fusion_filter.initialize_ext(
-        sigma_a,   // accel noise [m/s^2]
-        sigma_g,   // gyro noise [rad/s]
-        sigma_m,   // mag noise 
-        0.5f,      // attitude error covariance
-        1e-2f,     // gyro bias covariance
-        1e-8f,     // gyro bias noise RW (Q_b)
-        1.5f,      // S pseudo-meas noise (scalar)
-        g_std      // gravity magnitude (m/s^2)
-    );
-*/
-
     auto &mekf = fusion_filter.mekf();
     //fusion_filter.enableLinearBlock(false);
 
- /* 
     // Start with a *looser* prior on accel bias
     // 0.3 m/s² ≈ 3% of g  → we admit we don't know bias very well
     mekf.set_initial_acc_bias_std(0.03f);
