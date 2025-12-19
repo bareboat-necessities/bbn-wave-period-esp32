@@ -87,29 +87,11 @@ inline uint32_t getWindowMicros(double period_sec) {
   return static_cast<uint32_t>(us);
 }
 
-// Deep-water wave relations:
-//   ω^2 = g k  → k = ω^2 / g
-//   λ = 2π / k,  c = ω / k = g / ω
-inline float deep_water_wavelength_from_freq(float f_hz) {
-  if (!(f_hz > 0.0f)) return NAN;
-  float omega = 2.0f * M_PI * f_hz;
-  float k = (omega * omega) / g_std;
-  if (!(k > 0.0f)) return NAN;
-  return 2.0f * M_PI / k;  // meters
-}
-
-inline float deep_water_speed_from_freq(float f_hz) {
-  if (!(f_hz > 0.0f)) return NAN;
-  float omega = 2.0f * M_PI * f_hz;
-  return g_std / omega;    // m/s
-}
-
 #include "AngleAveraging.h"
 #include "MinMaxLemire.h"
 #include "TimeAwareSpikeFilter.h"
 #include "NmeaXDR.h"
 #include "M5_Calibr.h"
-#include "Kalman3D_Wave.h"
 #include "SeaStateFusionFilter.h"
 
 // Global flags / state
@@ -260,10 +242,6 @@ void read_and_processIMU_data() {
   wave_angle_estimate = angle_averager.average180(wave_deg);
   wave_angle_deg = wave_angle_estimate.angle;
 
-  // Apparent wave parameters (from observer point of view, deep water)
-  float ap_wavelength = deep_water_wavelength_from_freq(static_cast<float>(freq_adj));
-  float ap_wave_speed  = deep_water_speed_from_freq(static_cast<float>(freq_adj));
-
   // NMEA / Serial output
   const int serial_report_period_micros = 125000;
   if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
@@ -298,13 +276,11 @@ void read_and_processIMU_data() {
         Eigen::Vector3f acc_bias_est = fusion_filter.mekf().get_acc_bias();
         gen_nmea0183_xdr("$BBXDR,N,%.5f,P,ABI1", acc_bias_est.z() * 100.0f / g_std);
 
-        gen_nmea0183_xdr("$BBXDR,G,%.5f,M,AP_WAVE_LENGTH", ap_wavelength);
         gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_PERIOD", period);
         gen_nmea0183_xdr("$BBXDR,A,%.1f,D,AP_WAVE_ANGLE", wave_angle_deg);
 
         // Uses discrete wave_dir
         gen_nmea0183_xdr("$BBXDR,G,%1d,,AP_WAVE_DIR", (int) 0 ); // TODO:
-        gen_nmea0183_xdr("$BBXDR,G,%.5f,,AP_WAVE_SPEED", ap_wave_speed);
       } else {
         // report for Arduino Serial Plotter
         Serial.printf(",delta_t:%.6f", delta_t);
