@@ -820,8 +820,8 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                 auto pct = [&](int n){ return (nWin > 0) ? (100.0 * double(n) / double(nWin)) : 0.0; };
 
                 std::cout << "=== Direction Report (last 60 s only) for " << outname << " ===\n";
-                std::cout << "window_s: " << (float(i1 - i0) * dt) << "\n";
-                std::cout << "samples: " << (i1 - i0) << "\n";
+                std::cout << "window_s: " << (float(i1 - i0) * dt)
+                          << " samples: " << (i1 - i0) << "\n";
                 std::cout << "freq_hz: mean=" << mean_vec(vf)
                           << " median=" << median_vec(vf)
                           << " p05=" << percentile_vec(vf,0.05)
@@ -834,8 +834,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                 std::cout << "confidence: mean=" << mean_vec(vc)
                           << " >" << CONF_THRESH << " count=" << good
                           << " (" << (100.0 * double(good)/double(i1-i0)) << "%)\n";
-                std::cout << "amplitude: mean=" << mean_vec(va)
-                          << " median=" << median_vec(va) << "\n";
                 std::cout << "sign: TOWARD=" << nToward << " (" << pct(nToward) << "%)"
                           << " AWAY=" << nAway << " (" << pct(nAway) << "%)"
                           << " UNCERTAIN=" << nUnc << " (" << pct(nUnc) << "%)\n";
