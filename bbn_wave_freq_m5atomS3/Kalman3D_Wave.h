@@ -572,7 +572,7 @@ class Kalman3D_Wave {
 
     Vector3 last_gyr_bias_corrected{};  // Last gyro
 
-    T sigma_bacc0_ = T(0.004); // initial accel bias std
+    T sigma_bacc0_ = T(0.004);          // initial accel bias std
     Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-6);
 
     // Accelerometer bias temperature coefficient (per-axis), units: m/s^2 per °C.
@@ -691,7 +691,7 @@ class Kalman3D_Wave {
                   + (W*W)*(T(1.0/24.0)*T4) );
             return;
         }
-    
+
         const T theta = wnorm * Tstep;
         const T s = std::sin(theta), c = std::cos(theta);
         const T invw  = T(1) / wnorm;
@@ -706,8 +706,7 @@ class Kalman3D_Wave {
     }
 
     // d/dω of (ω×(ω×r)) = (ω·r) I + ω rᵀ - 2 r ωᵀ
-    EIGEN_STRONG_INLINE Matrix3 d_omega_x_omega_x_r_domega_(const Vector3& w,
-                                                            const Vector3& r) const {
+    EIGEN_STRONG_INLINE Matrix3 d_omega_x_omega_x_r_domega_(const Vector3& w, const Vector3& r) const {
         const T s = w.dot(r);
         return Matrix3::Identity() * s + (w * r.transpose()) - T(2) * (r * w.transpose());
     }
@@ -820,7 +819,7 @@ class Kalman3D_Wave {
                 if (j == i) {
                     KCP_ji = KCP_ij;
                 }
-    
+
                 // K S Kᵀ (i,j)
                 T KSK_ij = T(0);
                 for (int a = 0; a < 3; ++a) {
@@ -994,9 +993,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::initializ
     const Vector3 acc = deheel_vector_(acc_body);
     const Vector3 mag = deheel_vector_(mag_body);
 
-    // use acc & mag as if they are BODY-frame
-    // (now interpreted as B').
-  
+    // use acc & mag as if they are BODY-frame (interpreted as B').
     // Normalize accelerometer
     T anorm = acc.norm();
     if (anorm < T(1e-8)) {
@@ -1115,8 +1112,7 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bi
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_update(
     Vector3 const& gyr_body, T Ts)
 {
-    // Remember last dt
-    last_dt_ = Ts;
+    last_dt_ = Ts;   // Remember last dt
                 
     // De-heel gyro into virtual frame B' using current wind_heel_rad_
     const Vector3 gyr = deheel_vector_(gyr_body);   // ω^{B'}
@@ -1401,8 +1397,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
             pseudo_update_counter_ = 0;
         }
     } else {
-        // avoid weird cadence when re-enabling
-        pseudo_update_counter_ = 0;
+        pseudo_update_counter_ = 0;   // avoid weird cadence when re-enabling
     }
 }
 
@@ -1624,11 +1619,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         if (!use_ba) freeze_acc_bias_rows_(K);
     }     
                 
-    // State update
-    xext.noalias() += K * r;
-
-    // Covariance update
-    joseph_update3_(K, S_mat, PCt);
+    xext.noalias() += K * r;          // State update
+    joseph_update3_(K, S_mat, PCt);   // Covariance update
 
     // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
@@ -1796,11 +1788,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyInte
         if (!acc_bias_updates_enabled_) freeze_acc_bias_rows_(K);
     }
 
-    // State update
-    xext.noalias() += K * r;
-
-    // Covariance update
-    joseph_update3_(K, S_mat, PCt);
+    xext.noalias() += K * r;            // State update
+    joseph_update3_(K, S_mat, PCt);     // Covariance update
 
     // Apply quaternion correction (attitude may get nudged via cross-covariances)
     applyQuaternionCorrectionFromErrorState();
@@ -1853,11 +1842,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
-    // State update
-    xext.noalias() += K * r;
-
-    // Covariance update (Joseph form, 3D)
-    joseph_update3_(K, S_mat, PCt);
+    xext.noalias() += K * r;           // State update
+    joseph_update3_(K, S_mat, PCt);    // Covariance update (Joseph form, 3D)
 
     // Attitude may have been nudged via cross-covariance → apply correction
     applyQuaternionCorrectionFromErrorState();
