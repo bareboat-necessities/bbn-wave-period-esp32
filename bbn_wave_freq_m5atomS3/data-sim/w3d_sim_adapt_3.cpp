@@ -645,7 +645,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
             << filter.getFreqHz() << ","
             << filter.getPeriodSec() << ","
             << filter.getAccelVariance() << ","
-            << dir_phase << "," << dir_deg << "," << dir_unc << "," << dir_conf  << "," << dir_amp << ","
+            << dir_phase << "," << dir_deg_gen << "," << dir_unc << "," << dir_conf  << "," << dir_amp << ","
             << sign_str << "," << sign_num << "," << dir_vec.x()  << "," << dir_vec.y()  << "," << dfilt.x()  << ","
             << dfilt.y() << "\n";
     });
@@ -853,6 +853,12 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
 
                     if (dir_conf_hist[k] > CONF_THRESH && dir_amp_hist[k] > AMP_THRESH)
                         ++good;
+                }
+                std::vector<float> vd;
+                vd.reserve(i1 - i0);
+                for (size_t k = i0; k < i1; ++k) {
+                    const float a = dir_deg_hist[k];
+                    if (std::isfinite(a)) vd.push_back(a);
                 }
                 auto cs = circular_stats_180(vd);
 
