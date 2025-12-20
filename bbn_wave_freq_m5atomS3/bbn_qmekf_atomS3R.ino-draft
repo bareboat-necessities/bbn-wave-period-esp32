@@ -39,7 +39,7 @@ static Vector3f sigma_a = {0.03f * g_std, 0.03f * g_std, 0.03f * g_std};
 static Vector3f sigma_g = {0.12f * M_PI / 180.0f,
                            0.12f * M_PI / 180.0f,
                            0.12f * M_PI / 180.0f};
-static Vector3f sigma_m = {9.5f, 9.5f, 9.5f};
+static Vector3f sigma_m = {1.5f, 1.5f, 1.5f};
 float Pq0 = 0.5f;
 float Pb0 = 1e-2f;
 float b0  = 1e-9f;
@@ -91,9 +91,9 @@ void read_and_processIMU_data(uint32_t mask) {
   );
   // Mag mapping if you later want it:
   Eigen::Vector3f mag_body(
-    mag.x / 10.0f,
-    mag.y / 10.0f,
-    mag.z / 10.0f
+    mag.x,
+    mag.y,
+    mag.z
   );
 
   if (kalm_w_first) {
