@@ -22,8 +22,7 @@
 constexpr float g_std = 9.80665f;  // m/s^2
 
 #include "M5_Calibr.h"
-#include "KalmanQMEKF.h"
-#include "Quaternion.h"  
+#include "KalmanQMEKF.h"  
 
 // Global flags / state
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
@@ -106,31 +105,30 @@ void read_and_processIMU_data(uint32_t mask) {
   mekf.time_update(gyr_meas_body, delta_t);
   mekf.measurement_update_acc_only(acc_meas_body);
 
-// Magnetometer update ONLY when the mag sample actually changes
-if (!have_last_mag) {
-  last_mag_body = mag_body;
-  have_last_mag = true;
-} else {
-  float dm = (mag_body - last_mag_body).norm();
-  if (dm > MAG_CHANGE_EPS) {
-    mekf.measurement_update_mag_only(mag_body);
-    last_mag_body = mag_body;
-  }
+// Mag update ONLY when mag sensor actually produced a new sample.
+// (This prevents repeatedly "correcting" toward stale mag data.)
+if (mask & (uint32_t)m5::sensor_mask_mag) {
+  mekf.measurement_update_mag_only(mag_body);
 }
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
-  auto qvec = mekf.quaternion();
+auto qvec = mekf.quaternion();
 
-  // Convert to your Quaternion.h type (w,x,y,z), as before:
-  Quaternion q;
-  Quaternion_set(qvec.w(), qvec.x(), qvec.y(), qvec.z(), &q);
+// q_wb = world -> body (MEKF internal)
+Eigen::Quaternionf q_wb(qvec.w(), qvec.x(), qvec.y(), qvec.z());
 
-  // Get ZYX Euler (roll, pitch, yaw) in radians, same as old code:
-  float euler[3];
-  Quaternion_toEulerZYX(&q, euler);
-  float roll_deg  = euler[0] * RAD_TO_DEG;
-  float pitch_deg = euler[1] * RAD_TO_DEG;
-  float yaw_deg   = euler[2] * RAD_TO_DEG;
+// convert to body -> world for standard yaw/pitch/roll
+Eigen::Quaternionf q_bw = q_wb.conjugate();
+Eigen::Matrix3f R = q_bw.toRotationMatrix();
+
+// ZYX extraction (yaw, pitch, roll)
+float yaw   = std::atan2(R(1,0), R(0,0));
+float pitch = -std::asin(std::max(-1.0f, std::min(1.0f, R(2,0))));
+float roll  = std::atan2(R(2,1), R(2,2));
+
+float roll_deg  = roll  * RAD_TO_DEG;
+float pitch_deg = pitch * RAD_TO_DEG;
+float yaw_deg   = yaw   * RAD_TO_DEG;
 
   // NMEA / Serial output
   const int serial_report_period_micros = 125000;
