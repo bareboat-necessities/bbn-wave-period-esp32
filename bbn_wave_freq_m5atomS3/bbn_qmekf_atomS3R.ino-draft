@@ -48,14 +48,6 @@ QuaternionMEKF<float,true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
 
 bool kalm_w_first = true;
 
-static Eigen::Vector3f last_mag_body = Eigen::Vector3f::Zero();
-static bool have_last_mag = false;
-
-// change threshold: depends on your mag units.
-// If your mag is in uT, 0.05–0.2 is reasonable.
-// If it's in mG or raw units, increase.
-static constexpr float MAG_CHANGE_EPS = 0.10f;
-
 // Main IMU processing
 void read_and_processIMU_data(uint32_t mask) {  
   auto data = M5.Imu.getImuData();
@@ -168,11 +160,10 @@ void setup(void) {
   M5.begin(cfg);
   Serial.begin(115200);
 
-// Make M5Unified output in the BODY frame you want (right-handed)
-// Your old mapping was: X=+Y, Y=+X, Z=-Z
-// If `m5::axis_*` doesn't compile, remove the `m5::` prefix.
-bool ok = M5.Imu.setAxisOrderRightHanded(m5::axis_y_pos, m5::axis_x_pos);
-Serial.printf("setAxisOrderRightHanded: %s\n", ok ? "OK" : "FAIL");
+// QMEKF expects body frame with Z DOWN (NED convention)
+// Your old manual mapping implied: X=+Y, Y=+X, Z=-Z
+bool ok = M5.Imu.setAxisOrder(m5::axis_y_pos, m5::axis_x_pos, m5::axis_z_neg);
+Serial.printf("setAxisOrder (Y,X,-Z): %s\n", ok ? "OK" : "FAIL");
 
   auto imu_type = M5.Imu.getType();
   switch (imu_type) {
