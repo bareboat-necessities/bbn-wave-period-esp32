@@ -76,7 +76,7 @@ public:
         const float tau_var_dyn = std::max(TAU_MIN, std::min(TAU_MAX, K_periods * T_eff));
 
         // Compute alpha for variance based on dynamic tau
-        float alpha_var = 1.0f - std::exp(-dt_s / tau_var_dyn);
+        const float alpha_var = 1.0f - std::exp(-dt_s / tau_var_dyn);
 
         // Time-domain EWMA variance
         A_mean.update(accel, alpha_var);
