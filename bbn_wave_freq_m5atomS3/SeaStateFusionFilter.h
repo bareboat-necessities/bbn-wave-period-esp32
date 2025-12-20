@@ -76,8 +76,8 @@ constexpr float MIN_R_S     = 0.5f;
 constexpr float MAX_R_S     = 35.0f;
 
 constexpr float ADAPT_TAU_SEC            = 1.5f;
-constexpr float ADAPT_R_S_SEC            = 8.0f;
 constexpr float ADAPT_EVERY_SECS         = 0.1f;
+constexpr float ADAPT_RS_MULT            = 6.0f;   // dimensionless 
 constexpr float ONLINE_TUNE_WARMUP_SEC   = 5.0f;
 constexpr float MAG_DELAY_SEC            = 8.0f;
 
@@ -510,10 +510,9 @@ public:
         max_R_S_ = max_RS;
     }
 
-    void setAdaptationTimeConstants(float tau_sec, float RS_sec) {
+    void setAdaptationTimeConstants(float tau_sec) {
         if (std::isfinite(tau_sec) && tau_sec > 0.0f)   adapt_tau_sec_   = tau_sec;
-        if (std::isfinite(RS_sec)  && RS_sec  > 0.0f)   adapt_R_S_sec_   = RS_sec;
-    }
+     }
 
     void setAdaptationUpdatePeriod(float every_sec) {
         if (std::isfinite(every_sec) && every_sec > 0.0f) {
@@ -882,27 +881,27 @@ private:
         adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
     
-    void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
-        const float alpha    = 1.0f - std::exp(-dt / adapt_tau_sec_);
-        const float alpha_RS = 1.0f - std::exp(-dt / adapt_R_S_sec_);
+void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
+    const float alpha = 1.0f - std::exp(-dt / adapt_tau_sec_);
 
-        tune_.tau_applied   += alpha    * (tau_t   - tune_.tau_applied);
-        tune_.sigma_applied += alpha    * (sigma_t - tune_.sigma_applied);
-        tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
+    // R_S smoothing depends on tau (tau_t is already clamped upstream)
+    const float RS_sec   = ADAPT_RS_MULT * tau_t;     // or tune_.tau_applied if preferred
+    const float alpha_RS = 1.0f - std::exp(-dt / RS_sec);
 
-        if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-            // Push OU τ/σ whenever frequency has been learned by the tuner,
-            // even in attitude-only mode (linear block OFF).
-            if (tuner_.isFreqReady()) {
-                apply_ou_tune_();
-            }
-            // Push R_S only when S pseudo-measurements are actually in play.
-            if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
-                apply_RS_tune_();
-            }
-            last_adapt_time_sec_ = time_;
+    tune_.tau_applied   += alpha    * (tau_t   - tune_.tau_applied);
+    tune_.sigma_applied += alpha    * (sigma_t - tune_.sigma_applied);
+    tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
+
+    if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
+        if (tuner_.isFreqReady()) {
+            apply_ou_tune_();
         }
+        if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
+            apply_RS_tune_();
+        }
+        last_adapt_time_sec_ = time_;
     }
+}
 
     void enterCold_() {
         startup_stage_   = StartupStage::Cold;
@@ -992,7 +991,6 @@ private:
     float min_R_S_                = MIN_R_S;
     float max_R_S_                = MAX_R_S;
     float adapt_tau_sec_          = ADAPT_TAU_SEC;
-    float adapt_R_S_sec_          = ADAPT_R_S_SEC;
     float adapt_every_secs_       = ADAPT_EVERY_SECS;
     float online_tune_warmup_sec_ = ONLINE_TUNE_WARMUP_SEC;
     float mag_delay_sec_          = MAG_DELAY_SEC;
