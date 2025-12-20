@@ -24,6 +24,9 @@ constexpr float g_std = 9.80665f;  // m/s^2
 #include "M5_Calibr.h"
 #include "KalmanQMEKF.h"  
 
+using M5_IMU = decltype(M5.Imu);
+
+
 // Global flags / state
 unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
 unsigned long got_samples = 0;
@@ -99,7 +102,7 @@ void read_and_processIMU_data(uint32_t mask) {
 
 // Mag update ONLY when mag sensor actually produced a new sample.
 // (This prevents repeatedly "correcting" toward stale mag data.)
-if (mask & (uint32_t)m5::sensor_mask_mag) {
+if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
   mekf.measurement_update_mag_only(mag_body);
 }
 
@@ -162,7 +165,7 @@ void setup(void) {
 
 // QMEKF expects body frame with Z DOWN (NED convention)
 // Your old manual mapping implied: X=+Y, Y=+X, Z=-Z
-bool ok = M5.Imu.setAxisOrder(m5::axis_y_pos, m5::axis_x_pos, m5::axis_z_neg);
+bool ok = M5.Imu.setAxisOrder(M5_IMU::axis_y_pos, M5_IMU::axis_x_pos, M5_IMU::axis_z_neg);
 Serial.printf("setAxisOrder (Y,X,-Z): %s\n", ok ? "OK" : "FAIL");
 
   auto imu_type = M5.Imu.getType();
