@@ -45,7 +45,7 @@ public:
 
     inline void reset() {
         last_dt_freq = -1.0f;
-        alpha_var = alpha_freq = 0.0f;
+        alpha_freq = 0.0f;
         A_mean.reset(); A_sq.reset(); A_var.reset();
         Freq_smoothed.reset();
     }
@@ -78,7 +78,7 @@ public:
                                            std::min(TAU_MAX, K_periods * T_eff));
 
         // Compute alpha for variance based on dynamic tau
-        alpha_var = 1.0f - std::exp(-dt_s / tau_var_dyn);
+        float alpha_var = 1.0f - std::exp(-dt_s / tau_var_dyn);
 
         // Time-domain EWMA variance
         A_mean.update(accel, alpha_var);
@@ -123,7 +123,6 @@ private:
     float K_periods = 2.0f;
     float tau_freq  = 1.0f;   // seconds
     float last_dt_freq  = -1.0f;
-    float alpha_var  = 0.0f;
     float alpha_freq = 0.0f;
 
     DebiasedEMA A_mean, A_sq, A_var;
