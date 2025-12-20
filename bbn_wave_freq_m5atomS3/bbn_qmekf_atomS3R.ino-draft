@@ -49,6 +49,14 @@ QuaternionMEKF<float,true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
 
 bool kalm_w_first = true;
 
+static Eigen::Vector3f last_mag_body = Eigen::Vector3f::Zero();
+static bool have_last_mag = false;
+
+// change threshold: depends on your mag units.
+// If your mag is in uT, 0.05–0.2 is reasonable.
+// If it's in mG or raw units, increase.
+static constexpr float MAG_CHANGE_EPS = 0.10f;
+
 // Main IMU processing
 void read_and_processIMU_data() {
   auto data = M5.Imu.getImuData();
@@ -98,13 +106,17 @@ void read_and_processIMU_data() {
   mekf.time_update(gyr_meas_body, delta_t);
   mekf.measurement_update_acc_only(acc_meas_body);
 
-  // Magnetometer update every 3rd IMU step
-  static int mag_step = 0;
-  mag_step++;
-  if (mag_step >= 3) {
+// Magnetometer update ONLY when the mag sample actually changes
+if (!have_last_mag) {
+  last_mag_body = mag_body;
+  have_last_mag = true;
+} else {
+  float dm = (mag_body - last_mag_body).norm();
+  if (dm > MAG_CHANGE_EPS) {
     mekf.measurement_update_mag_only(mag_body);
-    mag_step = 0;
+    last_mag_body = mag_body;
   }
+}
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
   auto qvec = mekf.quaternion();
