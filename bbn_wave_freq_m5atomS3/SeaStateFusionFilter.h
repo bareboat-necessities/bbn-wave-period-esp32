@@ -881,28 +881,28 @@ private:
         adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
     }
     
-void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
-    const float alpha = 1.0f - std::exp(-dt / adapt_tau_sec_);
-
-    // R_S smoothing depends on tau (tau_t is already clamped upstream)
-    const float RS_sec   = ADAPT_RS_MULT * tau_t;     // or tune_.tau_applied if preferred
-    const float alpha_RS = 1.0f - std::exp(-dt / RS_sec);
-
-    tune_.tau_applied   += alpha    * (tau_t   - tune_.tau_applied);
-    tune_.sigma_applied += alpha    * (sigma_t - tune_.sigma_applied);
-    tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
-
-    if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-        if (tuner_.isFreqReady()) {
-            apply_ou_tune_();
+    void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
+        const float alpha = 1.0f - std::exp(-dt / adapt_tau_sec_);
+    
+        // R_S smoothing depends on tau (tau_t is already clamped upstream)
+        const float RS_sec   = ADAPT_RS_MULT * tau_t;     // or tune_.tau_applied if preferred
+        const float alpha_RS = 1.0f - std::exp(-dt / RS_sec);
+    
+        tune_.tau_applied   += alpha    * (tau_t   - tune_.tau_applied);
+        tune_.sigma_applied += alpha    * (sigma_t - tune_.sigma_applied);
+        tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
+    
+        if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
+            if (tuner_.isFreqReady()) {
+                apply_ou_tune_();
+            }
+            if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
+                apply_RS_tune_();
+            }
+            last_adapt_time_sec_ = time_;
         }
-        if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
-            apply_RS_tune_();
-        }
-        last_adapt_time_sec_ = time_;
     }
-}
-
+    
     void enterCold_() {
         startup_stage_   = StartupStage::Cold;
         startup_stage_t_ = 0.0f;
