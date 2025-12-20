@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <algorithm>
-#include <limits>
 
 /*
   SeaStateAutoTuner — minimal online acceleration stats
@@ -74,8 +73,7 @@ public:
         // Dynamic variance time constant: a few periods
         const float TAU_MIN = 0.3f;       // seconds: don't go *too* twitchy
         const float TAU_MAX = 60.0f;      // seconds: don't be glacial
-        const float tau_var_dyn = std::max(TAU_MIN,
-                                           std::min(TAU_MAX, K_periods * T_eff));
+        const float tau_var_dyn = std::max(TAU_MIN, std::min(TAU_MAX, K_periods * T_eff));
 
         // Compute alpha for variance based on dynamic tau
         float alpha_var = 1.0f - std::exp(-dt_s / tau_var_dyn);
@@ -109,9 +107,6 @@ public:
     inline bool isReady() const { return A_var.isReady() && Freq_smoothed.isReady(); }
     inline bool isFreqReady() const { return Freq_smoothed.isReady(); }
     inline bool isVarReady()  const { return A_var.isReady(); }
-
-    // Optional runtime tuning
-    inline void setKPeriods(float k) { K_periods = std::max(0.1f, k); }   // >= 0.1 periods
 
     inline void setTauFreq(float t) {
         tau_freq = std::max(1e-3f, t);
