@@ -128,7 +128,8 @@ Eigen::Vector3f mag_corr = (mag_body - mag_bias).cwiseProduct(mag_scale);
 
 // Use accelerometer direction to project mag into horizontal plane (tilt compensation).
 // Your accel_meas_body is specific force; at rest it points UP. So DOWN is -acc_norm.
-Eigen::Vector3f down_b = -acc_meas_body.normalized();
+float an = acc_meas_body.norm();
+Eigen::Vector3f down_b = (an > 1e-6f) ? (-acc_meas_body / an) : Eigen::Vector3f(0,0,1);
 Eigen::Vector3f mag_h  = mag_corr - down_b * (mag_corr.dot(down_b));  // remove vertical component
 
 // Normalize for MEKF (unit vector measurement)
