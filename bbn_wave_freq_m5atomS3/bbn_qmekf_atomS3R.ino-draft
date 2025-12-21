@@ -104,7 +104,7 @@ void read_and_processIMU_data(uint32_t mask) {
   );
 
   // Only update mag calibration when we truly received a new mag sample
-  if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
+  if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && !mag_cal_ready) {
     mag_min = mag_min.cwiseMin(mag_body);
     mag_max = mag_max.cwiseMax(mag_body);
     mag_bias = 0.5f * (mag_min + mag_max);
@@ -119,8 +119,7 @@ void read_and_processIMU_data(uint32_t mask) {
       (half_range.z() > 1e-6f) ? (avg / half_range.z()) : 1.0f
     );
   
-    mag_samples++;
-    if (mag_samples >= MAG_CAL_MIN_SAMPLES) mag_cal_ready = true;
+    if (++mag_samples >= MAG_CAL_MIN_SAMPLES) mag_cal_ready = true;
   }
 
   // Apply bias+scale
@@ -132,8 +131,10 @@ void read_and_processIMU_data(uint32_t mask) {
   if (mn > 1e-6f) mag_u = mag_corr / mn;
   
   if (kalm_w_first) {
-    if (mn > 1e-6f) mekf.initialize_from_acc_mag(acc_meas_body, mag_u);
-    else            mekf.initialize_from_acc(acc_meas_body);
+    if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && (mn > 1e-6f))
+      mekf.initialize_from_acc_mag(acc_meas_body, mag_u);
+    else
+      mekf.initialize_from_acc(acc_meas_body);
     kalm_w_first = false;
   }
   
