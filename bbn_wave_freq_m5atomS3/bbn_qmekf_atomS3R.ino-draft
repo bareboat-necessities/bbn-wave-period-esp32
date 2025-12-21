@@ -51,7 +51,7 @@ QuaternionMEKF<float,true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
 
 bool kalm_w_first = true;
 
-// --- Simple on-line mag calibration (hard-iron + soft-iron approx) ---
+// Simple on-line mag calibration (hard-iron + soft-iron approx)
 static Eigen::Vector3f mag_min = Eigen::Vector3f( 1e9f, 1e9f, 1e9f);
 static Eigen::Vector3f mag_max = Eigen::Vector3f(-1e9f,-1e9f,-1e9f);
 static Eigen::Vector3f mag_bias = Eigen::Vector3f::Zero();
@@ -103,81 +103,81 @@ void read_and_processIMU_data(uint32_t mask) {
     -mag.z
   );
 
-// Only update mag calibration when we truly received a new mag sample
-if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
-  mag_min = mag_min.cwiseMin(mag_body);
-  mag_max = mag_max.cwiseMax(mag_body);
-  mag_bias = 0.5f * (mag_min + mag_max);
+  // Only update mag calibration when we truly received a new mag sample
+  if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
+    mag_min = mag_min.cwiseMin(mag_body);
+    mag_max = mag_max.cwiseMax(mag_body);
+    mag_bias = 0.5f * (mag_min + mag_max);
+  
+    // soft-iron scale: equalize axis ranges (very common quick fix)
+    Eigen::Vector3f half_range = 0.5f * (mag_max - mag_min);
+    float avg = (half_range.x() + half_range.y() + half_range.z()) / 3.0f;
+    // avoid divide-by-zero if an axis hasn't moved yet
+    mag_scale = Eigen::Vector3f(
+      (half_range.x() > 1e-6f) ? (avg / half_range.x()) : 1.0f,
+      (half_range.y() > 1e-6f) ? (avg / half_range.y()) : 1.0f,
+      (half_range.z() > 1e-6f) ? (avg / half_range.z()) : 1.0f
+    );
+  
+    mag_samples++;
+    if (mag_samples >= MAG_CAL_MIN_SAMPLES) mag_cal_ready = true;
+  }
 
-  // soft-iron scale: equalize axis ranges (very common quick fix)
-  Eigen::Vector3f half_range = 0.5f * (mag_max - mag_min);
-  float avg = (half_range.x() + half_range.y() + half_range.z()) / 3.0f;
-  // avoid divide-by-zero if an axis hasn't moved yet
-  mag_scale = Eigen::Vector3f(
-    (half_range.x() > 1e-6f) ? (avg / half_range.x()) : 1.0f,
-    (half_range.y() > 1e-6f) ? (avg / half_range.y()) : 1.0f,
-    (half_range.z() > 1e-6f) ? (avg / half_range.z()) : 1.0f
-  );
+  // Apply bias+scale (even before "ready" it helps; when not ready it's mostly identity)
+  Eigen::Vector3f mag_corr = (mag_body - mag_bias).cwiseProduct(mag_scale);
+  
+  // Use accelerometer direction to project mag into horizontal plane (tilt compensation).
+  // Your accel_meas_body is specific force; at rest it points UP. So DOWN is -acc_norm.
+  float an = acc_meas_body.norm();
+  Eigen::Vector3f down_b = (an > 1e-6f) ? (-acc_meas_body / an) : Eigen::Vector3f(0,0,1);
+  Eigen::Vector3f mag_h  = mag_corr - down_b * (mag_corr.dot(down_b));  // remove vertical component
+  
+  // Normalize for MEKF (unit vector measurement)
+  float mh = mag_h.norm();
+  if (mh > MAG_H_NORM_MIN) {
+    mag_h /= mh;
+  } else {
+    // degenerate; don't use mag this cycle
+    mag_h.setZero();
+  }
 
-  mag_samples++;
-  if (mag_samples >= MAG_CAL_MIN_SAMPLES) mag_cal_ready = true;
-}
-
-// Apply bias+scale (even before "ready" it helps; when not ready it's mostly identity)
-Eigen::Vector3f mag_corr = (mag_body - mag_bias).cwiseProduct(mag_scale);
-
-// Use accelerometer direction to project mag into horizontal plane (tilt compensation).
-// Your accel_meas_body is specific force; at rest it points UP. So DOWN is -acc_norm.
-float an = acc_meas_body.norm();
-Eigen::Vector3f down_b = (an > 1e-6f) ? (-acc_meas_body / an) : Eigen::Vector3f(0,0,1);
-Eigen::Vector3f mag_h  = mag_corr - down_b * (mag_corr.dot(down_b));  // remove vertical component
-
-// Normalize for MEKF (unit vector measurement)
-float mh = mag_h.norm();
-if (mh > MAG_H_NORM_MIN) {
-  mag_h /= mh;
-} else {
-  // degenerate; don't use mag this cycle
-  mag_h.setZero();
-}
-
-if (kalm_w_first) {
-  if (mn > 1e-6f) mekf.initialize_from_acc_mag(acc_meas_body, mag_u);
-  else            mekf.initialize_from_acc(acc_meas_body);
-  kalm_w_first = false;
-}
+  if (kalm_w_first) {
+    if (mn > 1e-6f) mekf.initialize_from_acc_mag(acc_meas_body, mag_u);
+    else            mekf.initialize_from_acc(acc_meas_body);
+    kalm_w_first = false;
+  }
 
   mekf.time_update(gyr_meas_body, delta_t);
   mekf.measurement_update_acc_only(acc_meas_body);
 
-// Mag update ONLY when mag sensor actually produced a new sample.
-if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
-  Eigen::Vector3f mag_corr = (mag_body - mag_bias).cwiseProduct(mag_scale);
-  float mn = mag_corr.norm();
-  if (mn > 1e-6f) {
-    Eigen::Vector3f mag_u = mag_corr / mn;   // FULL 3D unit vector
-    mekf.measurement_update_mag_only(mag_u);
+  // Mag update ONLY when mag sensor actually produced a new sample.
+  if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
+    Eigen::Vector3f mag_corr = (mag_body - mag_bias).cwiseProduct(mag_scale);
+    float mn = mag_corr.norm();
+    if (mn > 1e-6f) {
+      Eigen::Vector3f mag_u = mag_corr / mn;   // FULL 3D unit vector
+      mekf.measurement_update_mag_only(mag_u);
+    }
   }
-}
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
-auto qvec = mekf.quaternion();
-
-// q_wb = world -> body (MEKF internal)
-Eigen::Quaternionf q_wb(qvec.w(), qvec.x(), qvec.y(), qvec.z());
-
-// convert to body -> world for standard yaw/pitch/roll
-Eigen::Quaternionf q_bw = q_wb.conjugate();
-Eigen::Matrix3f R = q_bw.toRotationMatrix();
-
-// ZYX extraction (yaw, pitch, roll)
-float yaw   = std::atan2(R(1,0), R(0,0));
-float pitch = -std::asin(std::max(-1.0f, std::min(1.0f, R(2,0))));
-float roll  = std::atan2(R(2,1), R(2,2));
-
-float roll_deg  = roll  * RAD_TO_DEG;
-float pitch_deg = pitch * RAD_TO_DEG;
-float yaw_deg   = yaw   * RAD_TO_DEG;
+  auto qvec = mekf.quaternion();
+  
+  // q_wb = world -> body (MEKF internal)
+  Eigen::Quaternionf q_wb(qvec.w(), qvec.x(), qvec.y(), qvec.z());
+  
+  // convert to body -> world for standard yaw/pitch/roll
+  Eigen::Quaternionf q_bw = q_wb.conjugate();
+  Eigen::Matrix3f R = q_bw.toRotationMatrix();
+  
+  // ZYX extraction (yaw, pitch, roll)
+  float yaw   = std::atan2(R(1,0), R(0,0));
+  float pitch = -std::asin(std::max(-1.0f, std::min(1.0f, R(2,0))));
+  float roll  = std::atan2(R(2,1), R(2,2));
+  
+  float roll_deg  = roll  * RAD_TO_DEG;
+  float pitch_deg = pitch * RAD_TO_DEG;
+  float yaw_deg   = yaw   * RAD_TO_DEG;
 
   // NMEA / Serial output
   const int serial_report_period_micros = 125000;
@@ -226,10 +226,10 @@ void setup(void) {
   M5.begin(cfg);
   Serial.begin(115200);
 
-// QMEKF expects body frame with Z DOWN (NED convention)
-// Your old manual mapping implied: X=+Y, Y=+X, Z=-Z
-//bool ok = M5.Imu.setAxisOrder(M5_IMU::axis_y_pos, M5_IMU::axis_x_pos, M5_IMU::axis_z_neg);
-//Serial.printf("setAxisOrder (Y,X,-Z): %s\n", ok ? "OK" : "FAIL");
+  // QMEKF expects body frame with Z DOWN (NED convention)
+  // Old manual mapping implied: X=+Y, Y=+X, Z=-Z
+  //bool ok = M5.Imu.setAxisOrder(M5_IMU::axis_y_pos, M5_IMU::axis_x_pos, M5_IMU::axis_z_neg);
+  //Serial.printf("setAxisOrder (Y,X,-Z): %s\n", ok ? "OK" : "FAIL");
 
   auto imu_type = M5.Imu.getType();
   switch (imu_type) {
