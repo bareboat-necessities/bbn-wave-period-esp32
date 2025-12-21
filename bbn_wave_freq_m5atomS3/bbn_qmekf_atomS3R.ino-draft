@@ -98,9 +98,9 @@ void read_and_processIMU_data(uint32_t mask) {
   );
   // Mag mapping if you later want it:
   Eigen::Vector3f mag_body(
-    mag.y,
     mag.x,
-    -mag.z
+    mag.y,
+    mag.z
   );
 
   // Only update mag calibration when we truly received a new mag sample
@@ -142,7 +142,8 @@ void read_and_processIMU_data(uint32_t mask) {
   mekf.measurement_update_acc_only(acc_meas_body);
   
   // Mag update ONLY when mag sensor actually produced a new sample AND mag is valid
-  if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && (mn > 1e-6f)) {
+  const bool mag_new = (mask & (uint32_t)M5_IMU::sensor_mask_mag);
+  if (mag_new && mag_cal_ready && (mn > 1e-6f)) {
     mekf.measurement_update_mag_only(mag_u);
   }
   
