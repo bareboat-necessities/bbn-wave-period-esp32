@@ -42,7 +42,7 @@ static Vector3f sigma_a = {0.03f * g_std, 0.03f * g_std, 0.03f * g_std};
 static Vector3f sigma_g = {0.12f * M_PI / 180.0f,
                            0.12f * M_PI / 180.0f,
                            0.12f * M_PI / 180.0f};
-static Vector3f sigma_m = {0.05f, 0.05f, 0.05f};
+static Vector3f sigma_m = {0.005f, 0.005f, 0.005f};
 float Pq0 = 0.5f;
 float Pb0 = 1e-2f;
 float b0  = 1e-9f;
@@ -87,9 +87,9 @@ void read_and_processIMU_data(uint32_t mask) {
 
   // Map IMU to BODY NED frame
   Eigen::Vector3f acc_meas_body(
-    accel.y * g_std,       // X_body = sensor Y
-    accel.x * g_std,       // Y_body = sensor X
-    -accel.z * g_std       // Z_body = -sensor Z
+    accel.y * g_std,       
+    accel.x * g_std,       
+    -accel.z * g_std       
   );
   Eigen::Vector3f gyr_meas_body(
     gyro.y * DEG_TO_RAD,
@@ -98,9 +98,9 @@ void read_and_processIMU_data(uint32_t mask) {
   );
   // Mag mapping if you later want it:
   Eigen::Vector3f mag_body(
-    mag.x,
     mag.y,
-    mag.z
+    mag.x,
+    -mag.z
   );
 
   // Only update mag calibration when we truly received a new mag sample
@@ -123,7 +123,7 @@ void read_and_processIMU_data(uint32_t mask) {
   }
 
   // Apply bias+scale
-  Eigen::Vector3f mag_corr = (mag_body - mag_bias).cwiseProduct(mag_scale);
+  Eigen::Vector3f mag_corr = mag_corr = (mag_body - mag_bias);   // no .cwiseProduct(mag_scale)
   
   // Compute full 3D unit mag vector ONCE (for init + update)
   float mn = mag_corr.norm();
@@ -147,21 +147,276 @@ void read_and_processIMU_data(uint32_t mask) {
     mekf.measurement_update_mag_only(mag_u);
   }
   
-  // Get quaternion from MEKF (Vector4 [x,y,z,w])
-  auto qvec = mekf.quaternion();
+  // Get quaternion from MEKF: Eigen coeffs are [x,y,z,w]
+  // In this implementation qref is BODY -> WORLD
+  auto qvec = mekf.quaternion();                  // Vector4: [x,y,z,w]
+  Eigen::Quaternionf q_bw(qvec(3), qvec(0), qvec(1), qvec(2));  // (w,x,y,z)
   
-  // q_wb = world -> body (MEKF internal)
-  Eigen::Quaternionf q_wb(qvec.w(), qvec.x(), qvec.y(), qvec.z());
-  
-  // convert to body -> world for standard yaw/pitch/roll
-  Eigen::Quaternionf q_bw = q_wb.conjugate();
+  // Use BODY -> WORLD rotation for yaw/pitch/roll
   Eigen::Matrix3f R = q_bw.toRotationMatrix();
   
   // ZYX extraction (yaw, pitch, roll)
   float yaw   = std::atan2(R(1,0), R(0,0));
   float pitch = -std::asin(std::max(-1.0f, std::min(1.0f, R(2,0))));
   float roll  = std::atan2(R(2,1), R(2,2));
+
+  float roll_deg  = roll  * RAD_TO_DEG;
+  float pitch_deg = pitch * RAD_TO_DEG;
+  float yaw_deg   = yaw   * RAD_TO_DEG;
+
+  // NMEA / Serial output
+  const int serial_report_period_micros = 125000;
+  if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
+    if (produce_serial_data) {
+      Serial.printf(",delta_t:%.6f", delta_t);
+      //Serial.printf(",accel.x:%.6f", accel.x);
+      //Serial.printf(",accel.y:%.6f", accel.y);
+      //Serial.printf(",accel.z:%.6f", accel.z);
+      Serial.printf(",roll_deg:%5.2f",  roll_deg);
+      Serial.printf(",pitch_deg:%5.2f", pitch_deg);
+      Serial.printf(",yaw_deg:%5.2f",   yaw_deg);
+      Serial.printf(",accel.x:%7.4f",  accel.x);
+      Serial.printf(",accel.y:%7.4f", accel.y);
+      Serial.printf(",accel.z:%7.4f",   accel.z);
+      Serial.printf(",gyro.x:%7.4f",  gyro.x);
+      Serial.printf(",gyro.y:%7.4f", gyro.y);
+      Serial.printf(",gyro.z:%7.4f",   gyro.z);
+      Serial.printf(",mag.x:%7.4f",  mag.x);
+      Serial.printf(",mag.y:%7.4f", mag.y);
+      Serial.printf(",mag.z:%7.4f",   mag.z);
+      Serial.println();
+    }
+    last_refresh = now;
+    got_samples = 0;
+  }
+  t = (now - start_time) / 1000000.0f;  // time since start sec
+}
+
+// Main loop
+void repeatMe() {
+  bool pressed = M5.BtnA.wasPressed();
+  if (pressed) {
+    startCalibration();
+  } else {
+    auto mask = M5.Imu.update();
+    if (mask) {
+      read_and_processIMU_data(mask);
+    }
+  }
+  makeCalibrStep();
+}
+
+void setup(void) {
+  auto cfg = M5.config();
+  M5.begin(cfg);
+  Serial.begin(115200);
+
+  // QMEKF expects body frame with Z DOWN (NED convention)
+  // Old manual mapping implied: X=+Y, Y=+X, Z=-Z
+  //bool ok = M5.Imu.setAxisOrder(M5_IMU::axis_y_pos, M5_IMU::axis_x_pos, M5_IMU::axis_z_neg);
+  //Serial.printf("setAxisOrder (Y,X,-Z): %s\n", ok ? "OK" : "FAIL");
+
+  auto imu_type = M5.Imu.getType();
+  switch (imu_type) {
+    case m5::imu_none:        imu_name = "not found";   break;
+    case m5::imu_sh200q:      imu_name = "sh200q";      break;
+    case m5::imu_mpu6050:     imu_name = "mpu6050";     break;
+    case m5::imu_mpu6886:     imu_name = "mpu6886";     break;
+    case m5::imu_mpu9250:     imu_name = "mpu9250";     break;
+    case m5::imu_bmi270:      imu_name = "bmi270";      break;
+    default:                  imu_name = "unknown";     break;
+  };
+  disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+
+  if (imu_type == m5::imu_none) {
+    for (;;) {
+      delay(1);
+    }
+  }
+
+  initCalibrDisplay();
+
+  // Read calibration values from NVS.
+  if (!M5.Imu.loadOffsetFromNVS()) {
+    //startCalibration();
+  }
+
+  delay(2000);
+  start_time  = micros();
+  last_update = start_time;
+}
+
+void loop(void) {
+  unsigned long start = micros();
+  M5.update();
+  repeatMe();
+  long duration = micros() - start + 1;
+  long delay_micros = 10000 - duration;  // ~100 Hz
+  if (delay_micros > 0) {
+    delayMicroseconds(delay_micros);
+  }
+}/*
+  Minimal Q-MEKF yaw/pitch/roll demo, matching the old working code path
+
+  for atomS3R from m5stack
   
+*/
+
+#include <M5Unified.h>
+#include <Arduino.h>
+
+#include <stdint.h>
+
+#ifndef EIGEN_STACK_ALLOCATION_LIMIT
+#define EIGEN_STACK_ALLOCATION_LIMIT 0
+#endif
+#include <ArduinoEigenDense.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+constexpr float g_std = 9.80665f;  // m/s^2
+
+#include "M5_Calibr.h"
+#include "KalmanQMEKF.h"  
+
+using M5_IMU = decltype(M5.Imu);
+
+
+// Global flags / state
+unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
+unsigned long got_samples = 0;
+
+const char* imu_name = "unknown";
+bool produce_serial_data = true;
+float t = 0.0f;
+
+using Vector3f = Eigen::Matrix<float,3,1>;
+
+// Same noise params as old working code:
+static Vector3f sigma_a = {0.03f * g_std, 0.03f * g_std, 0.03f * g_std};
+static Vector3f sigma_g = {0.12f * M_PI / 180.0f,
+                           0.12f * M_PI / 180.0f,
+                           0.12f * M_PI / 180.0f};
+static Vector3f sigma_m = {0.005f, 0.005f, 0.005f};
+float Pq0 = 0.5f;
+float Pb0 = 1e-2f;
+float b0  = 1e-9f;
+
+QuaternionMEKF<float,true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
+
+bool kalm_w_first = true;
+
+// Simple on-line mag calibration (hard-iron + soft-iron approx)
+static Eigen::Vector3f mag_min = Eigen::Vector3f( 1e9f, 1e9f, 1e9f);
+static Eigen::Vector3f mag_max = Eigen::Vector3f(-1e9f,-1e9f,-1e9f);
+static Eigen::Vector3f mag_bias = Eigen::Vector3f::Zero();
+static Eigen::Vector3f mag_scale = Eigen::Vector3f::Ones();
+static bool mag_cal_ready = false;
+static uint32_t mag_samples = 0;
+
+// Require a bit of motion before trusting min/max (tweak if needed)
+static constexpr uint32_t MAG_CAL_MIN_SAMPLES = 200;  // ~2s at 100Hz if mag updates often
+static constexpr float    MAG_H_NORM_MIN      = 1e-3f;
+
+// Main IMU processing
+void read_and_processIMU_data(uint32_t mask) {  
+  auto data = M5.Imu.getImuData();
+
+  float tempC = NAN;
+  M5.Imu.getTemp(&tempC);
+
+  drawCalibrGraph(rect_graph_area, data);
+  
+  now = micros();
+  got_samples++;
+
+  m5::imu_3d_t accel = data.accel;
+  m5::imu_3d_t gyro  = data.gyro;
+  m5::imu_3d_t mag   = data.mag;
+
+  float delta_t = (now - last_update) / 1000000.0f;  // sec
+  // clamp dt
+  if (delta_t < 0.001f) delta_t = 0.001f;
+  if (delta_t > 0.1f)   delta_t = 0.1f;
+  last_update = now;
+
+  // Map IMU to BODY NED frame
+  Eigen::Vector3f acc_meas_body(
+    accel.y * g_std,       
+    accel.x * g_std,       
+    -accel.z * g_std       
+  );
+  Eigen::Vector3f gyr_meas_body(
+    gyro.y * DEG_TO_RAD,
+    gyro.x * DEG_TO_RAD,
+    -gyro.z * DEG_TO_RAD
+  );
+  // Mag mapping if you later want it:
+  Eigen::Vector3f mag_body(
+    mag.y,
+    mag.x,
+    -mag.z
+  );
+
+  // Only update mag calibration when we truly received a new mag sample
+  if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && !mag_cal_ready) {
+    mag_min = mag_min.cwiseMin(mag_body);
+    mag_max = mag_max.cwiseMax(mag_body);
+    mag_bias = 0.5f * (mag_min + mag_max);
+  
+    // soft-iron scale: equalize axis ranges (very common quick fix)
+    Eigen::Vector3f half_range = 0.5f * (mag_max - mag_min);
+    float avg = (half_range.x() + half_range.y() + half_range.z()) / 3.0f;
+    // avoid divide-by-zero if an axis hasn't moved yet
+    mag_scale = Eigen::Vector3f(
+      (half_range.x() > 1e-6f) ? (avg / half_range.x()) : 1.0f,
+      (half_range.y() > 1e-6f) ? (avg / half_range.y()) : 1.0f,
+      (half_range.z() > 1e-6f) ? (avg / half_range.z()) : 1.0f
+    );
+  
+    if (++mag_samples >= MAG_CAL_MIN_SAMPLES) mag_cal_ready = true;
+  }
+
+  // Apply bias+scale
+  Eigen::Vector3f mag_corr = mag_corr = (mag_body - mag_bias);   // no .cwiseProduct(mag_scale)
+  
+  // Compute full 3D unit mag vector ONCE (for init + update)
+  float mn = mag_corr.norm();
+  Eigen::Vector3f mag_u = Eigen::Vector3f::Zero();
+  if (mn > 1e-6f) mag_u = mag_corr / mn;
+  
+  if (kalm_w_first) {
+    if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && (mn > 1e-6f))
+      mekf.initialize_from_acc_mag(acc_meas_body, mag_u);
+    else
+      mekf.initialize_from_acc(acc_meas_body);
+    kalm_w_first = false;
+  }
+  
+  mekf.time_update(gyr_meas_body, delta_t);
+  mekf.measurement_update_acc_only(acc_meas_body);
+  
+  // Mag update ONLY when mag sensor actually produced a new sample AND mag is valid
+  const bool mag_new = (mask & (uint32_t)M5_IMU::sensor_mask_mag);
+  if (mag_new && mag_cal_ready && (mn > 1e-6f)) {
+    mekf.measurement_update_mag_only(mag_u);
+  }
+  
+  // Get quaternion from MEKF: Eigen coeffs are [x,y,z,w]
+  // In this implementation qref is BODY -> WORLD
+  auto qvec = mekf.quaternion();                  // Vector4: [x,y,z,w]
+  Eigen::Quaternionf q_bw(qvec(3), qvec(0), qvec(1), qvec(2));  // (w,x,y,z)
+  
+  // Use BODY -> WORLD rotation for yaw/pitch/roll
+  Eigen::Matrix3f R = q_bw.toRotationMatrix();
+  
+  // ZYX extraction (yaw, pitch, roll)
+  float yaw   = std::atan2(R(1,0), R(0,0));
+  float pitch = -std::asin(std::max(-1.0f, std::min(1.0f, R(2,0))));
+  float roll  = std::atan2(R(2,1), R(2,2));
+
   float roll_deg  = roll  * RAD_TO_DEG;
   float pitch_deg = pitch * RAD_TO_DEG;
   float yaw_deg   = yaw   * RAD_TO_DEG;
