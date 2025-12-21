@@ -152,8 +152,8 @@ else                            mekf.initialize_from_acc(acc_meas_body);
 
 // Mag update ONLY when mag sensor actually produced a new sample.
 // (This prevents repeatedly "correcting" toward stale mag data.)
-if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
-  mekf.measurement_update_mag_only(mag_body);
+if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && (mag_h.squaredNorm() > 0.0f)) {
+  mekf.measurement_update_mag_only(mag_h);
 }
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
