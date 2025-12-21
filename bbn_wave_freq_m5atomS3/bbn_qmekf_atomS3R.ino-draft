@@ -42,7 +42,7 @@ static Vector3f sigma_a = {0.03f * g_std, 0.03f * g_std, 0.03f * g_std};
 static Vector3f sigma_g = {0.12f * M_PI / 180.0f,
                            0.12f * M_PI / 180.0f,
                            0.12f * M_PI / 180.0f};
-static Vector3f sigma_m = {1.5f, 1.5f, 1.5f};
+static Vector3f sigma_m = {0.05f, 0.05f, 0.05f};
 float Pq0 = 0.5f;
 float Pb0 = 1e-2f;
 float b0  = 1e-9f;
@@ -50,6 +50,18 @@ float b0  = 1e-9f;
 QuaternionMEKF<float,true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
 
 bool kalm_w_first = true;
+
+// --- Simple on-line mag calibration (hard-iron + soft-iron approx) ---
+static Eigen::Vector3f mag_min = Eigen::Vector3f( 1e9f, 1e9f, 1e9f);
+static Eigen::Vector3f mag_max = Eigen::Vector3f(-1e9f,-1e9f,-1e9f);
+static Eigen::Vector3f mag_bias = Eigen::Vector3f::Zero();
+static Eigen::Vector3f mag_scale = Eigen::Vector3f::Ones();
+static bool mag_cal_ready = false;
+static uint32_t mag_samples = 0;
+
+// Require a bit of motion before trusting min/max (tweak if needed)
+static constexpr uint32_t MAG_CAL_MIN_SAMPLES = 200;  // ~2s at 100Hz if mag updates often
+static constexpr float    MAG_H_NORM_MIN      = 1e-3f;
 
 // Main IMU processing
 void read_and_processIMU_data(uint32_t mask) {  
@@ -91,9 +103,47 @@ void read_and_processIMU_data(uint32_t mask) {
     mag.z
   );
 
+// Only update mag calibration when we truly received a new mag sample
+if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
+  mag_min = mag_min.cwiseMin(mag_body);
+  mag_max = mag_max.cwiseMax(mag_body);
+  mag_bias = 0.5f * (mag_min + mag_max);
+
+  // soft-iron scale: equalize axis ranges (very common quick fix)
+  Eigen::Vector3f half_range = 0.5f * (mag_max - mag_min);
+  float avg = (half_range.x() + half_range.y() + half_range.z()) / 3.0f;
+  // avoid divide-by-zero if an axis hasn't moved yet
+  mag_scale = Eigen::Vector3f(
+    (half_range.x() > 1e-6f) ? (avg / half_range.x()) : 1.0f,
+    (half_range.y() > 1e-6f) ? (avg / half_range.y()) : 1.0f,
+    (half_range.z() > 1e-6f) ? (avg / half_range.z()) : 1.0f
+  );
+
+  mag_samples++;
+  if (mag_samples >= MAG_CAL_MIN_SAMPLES) mag_cal_ready = true;
+}
+
+// Apply bias+scale (even before "ready" it helps; when not ready it's mostly identity)
+Eigen::Vector3f mag_corr = (mag_body - mag_bias).cwiseProduct(mag_scale);
+
+// Use accelerometer direction to project mag into horizontal plane (tilt compensation).
+// Your accel_meas_body is specific force; at rest it points UP. So DOWN is -acc_norm.
+Eigen::Vector3f down_b = -acc_meas_body.normalized();
+Eigen::Vector3f mag_h  = mag_corr - down_b * (mag_corr.dot(down_b));  // remove vertical component
+
+// Normalize for MEKF (unit vector measurement)
+float mh = mag_h.norm();
+if (mh > MAG_H_NORM_MIN) {
+  mag_h /= mh;
+} else {
+  // degenerate; don't use mag this cycle
+  mag_h.setZero();
+}
+
   if (kalm_w_first) {
-    //mekf.initialize_from_acc(acc_meas_body);
-    mekf.initialize_from_acc_mag(acc_meas_body, mag_body);
+// If mag_h is zero early, fall back to accel-only init
+if (mag_h.squaredNorm() > 0.0f) mekf.initialize_from_acc_mag(acc_meas_body, mag_h);
+else                            mekf.initialize_from_acc(acc_meas_body);
     kalm_w_first = false;
   }
 
