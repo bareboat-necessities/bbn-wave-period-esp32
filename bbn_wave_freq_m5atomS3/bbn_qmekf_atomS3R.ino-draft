@@ -141,20 +141,23 @@ if (mh > MAG_H_NORM_MIN) {
   mag_h.setZero();
 }
 
-  if (kalm_w_first) {
-// If mag_h is zero early, fall back to accel-only init
-if (mag_h.squaredNorm() > 0.0f) mekf.initialize_from_acc_mag(acc_meas_body, mag_h);
-else                            mekf.initialize_from_acc(acc_meas_body);
-    kalm_w_first = false;
-  }
+if (kalm_w_first) {
+  if (mn > 1e-6f) mekf.initialize_from_acc_mag(acc_meas_body, mag_u);
+  else            mekf.initialize_from_acc(acc_meas_body);
+  kalm_w_first = false;
+}
 
   mekf.time_update(gyr_meas_body, delta_t);
   mekf.measurement_update_acc_only(acc_meas_body);
 
 // Mag update ONLY when mag sensor actually produced a new sample.
-// (This prevents repeatedly "correcting" toward stale mag data.)
-if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && (mag_h.squaredNorm() > 0.0f)) {
-  mekf.measurement_update_mag_only(mag_h);
+if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
+  Eigen::Vector3f mag_corr = (mag_body - mag_bias).cwiseProduct(mag_scale);
+  float mn = mag_corr.norm();
+  if (mn > 1e-6f) {
+    Eigen::Vector3f mag_u = mag_corr / mn;   // FULL 3D unit vector
+    mekf.measurement_update_mag_only(mag_u);
+  }
 }
 
   // Get quaternion from MEKF (Vector4 [x,y,z,w])
