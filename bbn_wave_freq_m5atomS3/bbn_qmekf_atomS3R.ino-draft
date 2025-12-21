@@ -104,23 +104,22 @@ void read_and_processIMU_data(uint32_t mask) {
   );
 
 // Only update mag calibration when we truly received a new mag sample
-if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
-  mag_min = mag_min.cwiseMin(mag_body);
-  mag_max = mag_max.cwiseMax(mag_body);
-  mag_bias = 0.5f * (mag_min + mag_max);
+if (mask & (uint32_t)m5::sensor_mask_mag) {
+  if (!mag_cal_ready) {
+    mag_min = mag_min.cwiseMin(mag_body);
+    mag_max = mag_max.cwiseMax(mag_body);
+    mag_bias = 0.5f * (mag_min + mag_max);
 
-  // soft-iron scale: equalize axis ranges (very common quick fix)
-  Eigen::Vector3f half_range = 0.5f * (mag_max - mag_min);
-  float avg = (half_range.x() + half_range.y() + half_range.z()) / 3.0f;
-  // avoid divide-by-zero if an axis hasn't moved yet
-  mag_scale = Eigen::Vector3f(
-    (half_range.x() > 1e-6f) ? (avg / half_range.x()) : 1.0f,
-    (half_range.y() > 1e-6f) ? (avg / half_range.y()) : 1.0f,
-    (half_range.z() > 1e-6f) ? (avg / half_range.z()) : 1.0f
-  );
+    Eigen::Vector3f half_range = 0.5f * (mag_max - mag_min);
+    float avg = (half_range.x() + half_range.y() + half_range.z()) / 3.0f;
+    mag_scale = Eigen::Vector3f(
+      (half_range.x() > 1e-6f) ? (avg / half_range.x()) : 1.0f,
+      (half_range.y() > 1e-6f) ? (avg / half_range.y()) : 1.0f,
+      (half_range.z() > 1e-6f) ? (avg / half_range.z()) : 1.0f
+    );
 
-  mag_samples++;
-  if (mag_samples >= MAG_CAL_MIN_SAMPLES) mag_cal_ready = true;
+    if (++mag_samples >= MAG_CAL_MIN_SAMPLES) mag_cal_ready = true;
+  }
 }
 
 // Apply bias+scale (even before "ready" it helps; when not ready it's mostly identity)
