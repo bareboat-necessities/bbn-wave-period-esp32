@@ -1158,7 +1158,7 @@ void updateMag(const Eigen::Vector3f& mag_body_ned) {
     // Do nothing until mag delay has elapsed (wrapper time)
     if (t_ < cfg_.mag_delay_sec) return;
 
-    // --- SET WORLD MAG REF HERE (at mag sample time) ---
+    // SET WORLD MAG REF HERE (at mag sample time)
     if (!mag_ref_set_) {
         if (cfg_.use_fixed_mag_world_ref) {
             impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
@@ -1166,11 +1166,8 @@ void updateMag(const Eigen::Vector3f& mag_body_ned) {
         } else {
 
 
-// Baseline: set ref from ONE mag sample (BUT: tilt-only, no yaw)
-if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-6f) {
-    Eigen::Vector3f mag_u = mag_body_ned;
-    const float mn = mag_u.norm();
-    mag_u = (std::isfinite(mn) && mn > 1e-6f) ? (mag_u / mn) : Eigen::Vector3f(1,0,0);
+// Baseline: set ref from ONE mag sample (tilt-only, no yaw) -- KEEP uT SCALE
+if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-3f) {
 
     Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
     q_bw.normalize();
@@ -1193,14 +1190,14 @@ if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-6f) {
         Eigen::AngleAxisf(roll,  Eigen::Vector3f::UnitX());
     q_tilt.normalize();
 
-    Eigen::Vector3f mag_world_ref = q_tilt * mag_u;
-    const float n = mag_world_ref.norm();
-    if (std::isfinite(n) && n > 1e-6f) {
-        mag_world_ref /= n;
-        impl_.mekf().set_mag_world_ref(mag_world_ref);
+    // IMPORTANT: rotate RAW uT vector (do NOT normalize)
+    Eigen::Vector3f mag_world_ref_uT = q_tilt * mag_body_ned;
+
+    if (mag_world_ref_uT.allFinite() && mag_world_ref_uT.norm() > 1e-3f) {
+        impl_.mekf().set_mag_world_ref(mag_world_ref_uT);
         mag_ref_set_ = true;
     }
-}          
+}         
 
 
         }
