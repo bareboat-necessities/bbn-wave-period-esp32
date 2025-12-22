@@ -1051,6 +1051,12 @@ public:
         Eigen::Vector3f sigma_a = Eigen::Vector3f(0.2f,0.2f,0.2f);
         Eigen::Vector3f sigma_g = Eigen::Vector3f(0.01f,0.01f,0.01f);
         Eigen::Vector3f sigma_m = Eigen::Vector3f(0.3f,0.3f,0.3f);
+
+        // how long after mag_delay we’re willing to wait for MagAutoTuner
+        float mag_ref_timeout_sec = 2.0f;     // “don’t break sim” guard
+
+        // used only if dt_mag can’t be inferred (or you don’t pass it)
+        float mag_odr_guess_hz = 100.0f;
     };
   
     void begin(const Config& cfg) {
@@ -1075,6 +1081,8 @@ public:
         t_ = 0.0f;
         stage_ = Stage::Uninitialized;
         mag_ref_set_ = false;
+
+        mag_ref_deadline_sec_ = cfg_.mag_delay_sec + cfg_.mag_ref_timeout_sec;
     }
   
     // One IMU sample
@@ -1103,47 +1111,69 @@ public:
             stage_ = Stage::Live;
         }
     
-        // set mag world ref once
-        if (cfg_.with_mag && !mag_ref_set_ && t_ >= cfg_.mag_delay_sec) {
-            if (!cfg_.use_fixed_mag_world_ref) {
-                if (mag_new_) {
-                    mag_new_ = false;
 
-// dt_mag_sec_ is derived from updateMag() timestamps, but t_ only advances in update().
-// So it can be NAN/0 early-on. Use a conservative fallback mag ODR when unknown.
-constexpr float DT_MAG_FALLBACK_SEC = 1.0f / 100.0f; // assume ~100 Hz mag
-const float dt_for_mag =
-    (std::isfinite(dt_mag_sec_) && dt_mag_sec_ > 1e-5f) ? dt_mag_sec_ : DT_MAG_FALLBACK_SEC;
-                  
-                    if (mag_auto_.addMagSample(dt_for_mag, acc_body_ned, mag_body_hold_, gyro_body_ned)) {
+// set mag world ref once
+if (cfg_.with_mag && !mag_ref_set_ && t_ >= cfg_.mag_delay_sec) {
 
-Eigen::Vector3f acc_mean, mag_u_mean;
-if (mag_auto_.getResult(acc_mean, mag_u_mean)) {
-    // Use current attitude (body->world) to map averaged BODY unit mag into WORLD
-    Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
-    q_bw.normalize();
-
-    Eigen::Vector3f mag_world_ref = q_bw * mag_u_mean;
-    const float n = mag_world_ref.norm();
-    if (std::isfinite(n) && n > 1e-6f) {
-        mag_world_ref /= n;
-
-        // Set reference without reinitializing the filter state
-        impl_.mekf().set_mag_world_ref(mag_world_ref);
+    if (cfg_.use_fixed_mag_world_ref) {
+        impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
         mag_ref_set_ = true;
+    } else {
+        // Prefer MagAutoTuner (averaging improves sim)
+        if (mag_new_) {
+            mag_new_ = false;
 
-        // Optionally apply one mag update immediately
-        impl_.updateMag(mag_body_hold_);
-    }
-}
-                      
+            float dt_for_mag = dt_mag_sec_;
+            if (!(std::isfinite(dt_for_mag) && dt_for_mag > 0.0f)) {
+                // fallback guess (so t_good_ accumulates; won’t stall)
+                dt_for_mag = (cfg_.mag_odr_guess_hz > 1e-3f) ? (1.0f / cfg_.mag_odr_guess_hz) : dt;
+            }
+
+            if (mag_auto_.addMagSample(dt_for_mag, acc_body_ned, mag_body_hold_, gyro_body_ned)) {
+                Eigen::Vector3f acc_mean, mag_u_mean;
+                if (mag_auto_.getResult(acc_mean, mag_u_mean)) {
+                    Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
+                    q_bw.normalize();
+
+                    Eigen::Vector3f mag_world_ref = q_bw * mag_u_mean;
+                    const float n = mag_world_ref.norm();
+                    if (std::isfinite(n) && n > 1e-6f) {
+                        mag_world_ref /= n;
+                        impl_.mekf().set_mag_world_ref(mag_world_ref);
+                        mag_ref_set_ = true;
+
+                        // optional immediate update
+                        impl_.updateMag(mag_body_hold_);
                     }
                 }
-            } else {
-                impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
-                mag_ref_set_ = true;
             }
         }
+
+        // NEW: deterministic timeout fallback so sim never “breaks”
+        if (!mag_ref_set_ && std::isfinite(mag_ref_deadline_sec_) && t_ >= mag_ref_deadline_sec_) {
+            Eigen::Vector3f mag_u = mag_body_hold_;
+            const float mn = mag_u.norm();
+            if (std::isfinite(mn) && mn > 1e-6f) mag_u /= mn;
+            else mag_u = Eigen::Vector3f(1,0,0);
+
+            Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat();
+            q_bw.normalize();
+
+            Eigen::Vector3f mag_world_ref = q_bw * mag_u;
+            const float n = mag_world_ref.norm();
+            if (std::isfinite(n) && n > 1e-6f) {
+                mag_world_ref /= n;
+                impl_.mekf().set_mag_world_ref(mag_world_ref);
+                mag_ref_set_ = true;
+
+                // optional immediate update
+                impl_.updateMag(mag_body_hold_);
+            }
+        }
+    }
+}     
+
+
     }
   
     // Mag sample (can be called at different ODR)
@@ -1200,6 +1230,8 @@ private:
     // Mag sample timing (dt_mag)
     float last_mag_time_sec_ = NAN;   // in SeaStateFusion timebase (t_)
     float dt_mag_sec_        = NAN;   // last observed mag dt
+
+    float mag_ref_deadline_sec_ = NAN;
 
     MagAutoTuner mag_auto_;
     bool mag_new_ = false;
