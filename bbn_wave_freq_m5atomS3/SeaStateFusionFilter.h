@@ -363,9 +363,17 @@ void updateMag(const Eigen::Vector3f& mag_body_ned) {
     mekf_->measurement_update_mag_only(mag_body_ned);
     mag_updates_applied_++;
 
+if (!std::isfinite(first_mag_update_time_)) {
+    first_mag_update_time_ = static_cast<float>(time_);
+}
+ 
     // We can "unlock" once mag has had a few updates, but we DO NOT
     // enable accel-bias learning or restore Racc unless we're already Live.
-    if (accel_bias_locked_ && mag_updates_applied_ >= MAG_UPDATES_TO_UNLOCK) {
+    if (accel_bias_locked_ &&
+        mag_updates_applied_ >= MAG_UPDATES_TO_UNLOCK &&
+        std::isfinite(first_mag_update_time_) &&
+        (static_cast<float>(time_) - first_mag_update_time_) > 1.0f) // 1s guard
+    {
         accel_bias_locked_ = false;
 
         // Only allow accel bias to start learning once the system is Live.
@@ -972,6 +980,8 @@ private:
     bool   with_mag_;
     double time_;
     double last_adapt_time_sec_;
+
+    float first_mag_update_time_ = NAN;
 
     float freq_hz_       = FREQ_GUESS; // fast branch
     float freq_hz_slow_  = FREQ_GUESS; // slow branch
