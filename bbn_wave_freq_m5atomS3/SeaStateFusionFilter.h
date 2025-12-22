@@ -1113,11 +1113,27 @@ public:
                         (std::isfinite(dt_mag_sec_) && dt_mag_sec_ > 0.0f) ? dt_mag_sec_ : dt;
 
                     if (mag_auto_.addMagSample(dt_for_mag, acc_body_ned, mag_body_hold_, gyro_body_ned)) {
-                        Eigen::Vector3f acc_mean, mag_u_mean;
-                        if (mag_auto_.getResult(acc_mean, mag_u_mean)) {
-                            impl_.mekf().initialize_from_acc_mag(acc_mean, mag_u_mean);
-                            mag_ref_set_ = true;
-                        }
+
+Eigen::Vector3f acc_mean, mag_u_mean;
+if (mag_auto_.getResult(acc_mean, mag_u_mean)) {
+    // Use current attitude (body->world) to map averaged BODY unit mag into WORLD
+    Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
+    q_bw.normalize();
+
+    Eigen::Vector3f mag_world_ref = q_bw * mag_u_mean;
+    const float n = mag_world_ref.norm();
+    if (std::isfinite(n) && n > 1e-6f) {
+        mag_world_ref /= n;
+
+        // Set reference without reinitializing the filter state
+        impl_.mekf().set_mag_world_ref(mag_world_ref);
+        mag_ref_set_ = true;
+
+        // Optionally apply one mag update immediately
+        impl_.updateMag(mag_body_hold_);
+    }
+}
+                      
                     }
                 }
             } else {
