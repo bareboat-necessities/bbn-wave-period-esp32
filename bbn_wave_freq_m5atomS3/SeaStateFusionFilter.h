@@ -1118,11 +1118,12 @@ public:
     // Mag sample (can be called at different ODR)
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
         if (!implReady_()) return;
-        mag_body_hold_ = mag_body_ned;
-        // Only feed mag once reference is set AND delay passed
-        if (cfg_.with_mag && mag_ref_set_) {
-            impl_.updateMag(mag_body_ned);
-        }
+         mag_body_hold_ = mag_body_ned;
+         mag_new_ = true;
+
+         if (cfg_.with_mag && mag_ref_set_) {
+             impl_.updateMag(mag_body_ned);
+         }
     }
   
     // Minimal getters client likely needs
@@ -1180,4 +1181,7 @@ private:
   
     bool mag_ref_set_ = false;
     Eigen::Vector3f mag_body_hold_ = Eigen::Vector3f::Zero();
+
+    MagAutoTuner mag_auto_;
+    bool mag_new_ = false;
 };
