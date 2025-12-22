@@ -1055,6 +1055,10 @@ public:
   
     void begin(const Config& cfg) {
         cfg_ = cfg;
+
+        mag_auto_.reset();
+        mag_new_ = false;
+        mag_body_hold_.setZero();
     
         // Reconfigure existing impl_ instead of reassigning it
         impl_.setWithMag(cfg.with_mag);
