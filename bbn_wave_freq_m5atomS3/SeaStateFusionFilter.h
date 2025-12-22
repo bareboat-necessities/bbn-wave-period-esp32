@@ -1154,23 +1154,45 @@ void updateMag(const Eigen::Vector3f& mag_body_ned) {
             impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
             mag_ref_set_ = true;
         } else {
-            // Baseline: set ref from ONE mag sample immediately
-            if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-6f) {
-                Eigen::Vector3f mag_u = mag_body_ned;
-                const float mn = mag_u.norm();
-                mag_u = (std::isfinite(mn) && mn > 1e-6f) ? (mag_u / mn) : Eigen::Vector3f(1,0,0);
 
-                Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
-                q_bw.normalize();
 
-                Eigen::Vector3f mag_world_ref = q_bw * mag_u;
-                const float n = mag_world_ref.norm();
-                if (std::isfinite(n) && n > 1e-6f) {
-                    mag_world_ref /= n;
-                    impl_.mekf().set_mag_world_ref(mag_world_ref);
-                    mag_ref_set_ = true;
-                }
-            }
+// Baseline: set ref from ONE mag sample (BUT: tilt-only, no yaw)
+if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-6f) {
+    Eigen::Vector3f mag_u = mag_body_ned;
+    const float mn = mag_u.norm();
+    mag_u = (std::isfinite(mn) && mn > 1e-6f) ? (mag_u / mn) : Eigen::Vector3f(1,0,0);
+
+    Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
+    q_bw.normalize();
+
+    // Extract roll/pitch from q_bw (ZYX) and rebuild a yaw-free (tilt-only) quaternion.
+    const float x = q_bw.x(), y = q_bw.y(), z = q_bw.z(), w = q_bw.w();
+    const float two = 2.0f;
+
+    float s_pitch = two * std::fma(w, y, -z * x);
+    s_pitch = std::max(-1.0f, std::min(1.0f, s_pitch));
+    const float pitch = std::asin(s_pitch);
+
+    const float s_roll = two * std::fma(w, x,  y * z);
+    const float c_roll = 1.0f - two * std::fma(x, x,  y * y);
+    const float roll   = std::atan2(s_roll, c_roll);
+
+    // q_tilt = Ry(pitch) * Rx(roll) (yaw = 0)
+    Eigen::Quaternionf q_tilt =
+        Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()) *
+        Eigen::AngleAxisf(roll,  Eigen::Vector3f::UnitX());
+    q_tilt.normalize();
+
+    Eigen::Vector3f mag_world_ref = q_tilt * mag_u;
+    const float n = mag_world_ref.norm();
+    if (std::isfinite(n) && n > 1e-6f) {
+        mag_world_ref /= n;
+        impl_.mekf().set_mag_world_ref(mag_world_ref);
+        mag_ref_set_ = true;
+    }
+}          
+
+
         }
     }
 
