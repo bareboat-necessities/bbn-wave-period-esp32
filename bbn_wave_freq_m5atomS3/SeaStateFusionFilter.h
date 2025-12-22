@@ -1053,10 +1053,10 @@ public:
         Eigen::Vector3f sigma_m = Eigen::Vector3f(0.3f,0.3f,0.3f);
 
         // how long after mag_delay we’re willing to wait for MagAutoTuner
-        float mag_ref_timeout_sec = 2.0f;     // “don’t break sim” guard
+        float mag_ref_timeout_sec = 1.5f;     // “don’t break sim” guard
 
-        // used only if dt_mag can’t be inferred (or you don’t pass it)
-        float mag_odr_guess_hz = 100.0f;
+        // used only if dt_mag can’t be inferred 
+        float mag_odr_guess_hz = 80.0f;
     };
   
     void begin(const Config& cfg) {
