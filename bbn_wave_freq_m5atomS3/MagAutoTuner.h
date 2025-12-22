@@ -240,3 +240,55 @@ private:
   Eigen::Vector3f acc_dir_ema_ = Eigen::Vector3f::Zero();
   bool acc_dir_ema_valid_ = false;
 };
+
+static inline MagAutoTuner::Config makeDefaultMagInitCfg(float mag_odr_hz) {
+    MagAutoTuner::Config c{};
+
+    // Clamp odr to a sane range
+    float odr = mag_odr_hz;
+    if (!std::isfinite(odr) || odr <= 1.0f) odr = 80.0f;
+    odr = std::min(std::max(odr, 10.0f), 200.0f);
+
+    // --- Acc gating ---
+    // Accept |a| close to g (allows mild motion / small waves while still rejecting big dynamics).
+    c.accel_norm_min = 0.90f;
+    c.accel_norm_max = 1.10f;
+
+    // Heel-safe: require accel *direction* stability (current a_unit close to EMA).
+    // Convert desired time constant -> per-sample alpha.
+    const float tau_acc_dir_sec = 0.6f;
+    c.acc_dir_ema_alpha = 1.0f - std::exp(-1.0f / (odr * tau_acc_dir_sec));
+    c.acc_dir_ema_alpha = std::min(std::max(c.acc_dir_ema_alpha, 0.01f), 0.08f);
+
+    // Tight enough to reject rocking during init, but not insane.
+    // 0.9985 ~ 3.0 deg.
+    c.acc_dir_cos_min = 0.9985f;
+
+    // Gyro “not rotating” gate (helps a lot)
+    c.use_gyro_gate = true;
+    c.gyro_norm_max = 10.0f * float(M_PI) / 180.0f; // 10 deg/s
+
+    // --- Mag gating ---
+    // Units-agnostic. Reject near-zero vectors (sensor not ready / all-zeros).
+    c.mag_norm_min = 1e-3f;
+
+    // Norm stability gate (EMA of norm). Narrower than your 0.65..1.55 to reject disturbances.
+    c.mag_ema_ratio_min = 0.80f;
+    c.mag_ema_ratio_max = 1.25f;
+
+    // Per-sample alpha from desired time constant
+    const float tau_mag_norm_sec = 1.0f;
+    c.mag_norm_ema_alpha = 1.0f - std::exp(-1.0f / (odr * tau_mag_norm_sec));
+    c.mag_norm_ema_alpha = std::min(std::max(c.mag_norm_ema_alpha, 0.005f), 0.05f);
+
+    // Require about ~0.7 s of good data, but cap samples so 100 Hz doesn’t wait forever.
+    c.min_good_time_sec = 0.70f;
+    c.min_good_samples  = (int)std::ceil(c.min_good_time_sec * odr);
+    c.min_good_samples  = std::min(std::max(c.min_good_samples, 12), 70);
+
+    // Safety cap: ~6x the target window
+    c.max_total_samples = std::min(400, std::max(80, 6 * c.min_good_samples));
+
+    return c;
+}
+
