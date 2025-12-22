@@ -1064,6 +1064,7 @@ public:
 
         mag_auto_.reset();
         mag_new_ = false;
+        mag_ref_refined_ = false;
         mag_body_hold_.setZero();
     
         // Reconfigure existing impl_ instead of reassigning it
@@ -1236,4 +1237,5 @@ private:
 
     MagAutoTuner mag_auto_;
     bool mag_new_ = false;
+    bool mag_ref_refined_ = false;
 };
