@@ -55,6 +55,7 @@
 #include "SchmittTriggerFrequencyDetector.h"
 #include "FirstOrderIIRSmoother.h"
 #include "SeaStateAutoTuner.h"
+#include "MagAutoTuner.h"
 #include "Kalman3D_Wave.h"
 #include "FrameConversions.h"
 #include "KalmanWaveDirection.h"
