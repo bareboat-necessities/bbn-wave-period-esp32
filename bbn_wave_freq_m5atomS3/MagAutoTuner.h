@@ -29,7 +29,7 @@ public:
 
     // Optional “not rotating” gating (helps a lot)
     bool  use_gyro_gate = true;
-    float gyro_norm_max = 6.0f * float(M_PI) / 180.0f; // 6 deg/s
+    float gyro_norm_max = 8.0f * float(M_PI) / 180.0f; // 6 deg/s
 
     // Mag gating (units-agnostic): just “not tiny / not insane” + stability by EMA
     float mag_norm_min = 1e-6f;
@@ -38,11 +38,11 @@ public:
     float mag_norm_ema_alpha = 0.02f;
 
     // How many accepted samples we require
-    int   min_good_samples = 60;    // e.g. 0.6s @ 100 Hz mag
+    int   min_good_samples = 40;    // e.g. 0.6s @ 100 Hz mag
     int   max_total_samples = 400;  // safety cap
 
     // Optional extra: require some time span of “good” samples
-    float min_good_time_sec = 0.3f;
+    float min_good_time_sec = 0.45f;
   };
 
   MagAutoTuner() : cfg_(Config{}) { reset(); }
