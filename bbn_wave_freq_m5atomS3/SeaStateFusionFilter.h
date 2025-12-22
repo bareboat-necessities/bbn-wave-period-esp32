@@ -1121,31 +1121,58 @@ public:
         }
     }
   
-    // Mag sample (can be called at different ODR)
-    void updateMag(const Eigen::Vector3f& mag_body_ned) {
-        if (!implReady_()) return;
+void updateMag(const Eigen::Vector3f& mag_body_ned) {
+    if (!implReady_()) return;
 
-        // Hold latest mag
-        mag_body_hold_ = mag_body_ned;
-        mag_new_ = true;
+    // Hold latest mag
+    mag_body_hold_ = mag_body_ned;
+    mag_new_ = true;
 
-        // Estimate dt_mag in the same timebase as update() uses (t_)
-        // Note: t_ is advanced in update(), so if updateMag() happens before the first update(),
-        // last_mag_time_sec_ stays NAN and we’ll fall back to dt in update().
-        if (std::isfinite(last_mag_time_sec_)) {
-            const float d = t_ - last_mag_time_sec_;
-            // sanity clamp: accept only reasonable mag dt
-            if (std::isfinite(d) && d > 1e-4f && d < 1.0f) {
-                dt_mag_sec_ = d;
-            }
-        }
-        last_mag_time_sec_ = t_;
-
-        // Feed mag only after reference is set
-        if (cfg_.with_mag && mag_ref_set_) {
-            impl_.updateMag(mag_body_ned);
+    // Estimate dt_mag in wrapper timebase (optional; not used if we disable refinement)
+    if (std::isfinite(last_mag_time_sec_)) {
+        const float d = t_ - last_mag_time_sec_;
+        if (std::isfinite(d) && d > 1e-4f && d < 1.0f) {
+            dt_mag_sec_ = d;
         }
     }
+    last_mag_time_sec_ = t_;
+
+    if (!cfg_.with_mag) return;
+
+    // Do nothing until mag delay has elapsed (wrapper time)
+    if (t_ < cfg_.mag_delay_sec) return;
+
+    // --- SET WORLD MAG REF HERE (at mag sample time) ---
+    if (!mag_ref_set_) {
+        if (cfg_.use_fixed_mag_world_ref) {
+            impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
+            mag_ref_set_ = true;
+        } else {
+            // Baseline: set ref from ONE mag sample immediately
+            if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-6f) {
+                Eigen::Vector3f mag_u = mag_body_ned;
+                const float mn = mag_u.norm();
+                mag_u = (std::isfinite(mn) && mn > 1e-6f) ? (mag_u / mn) : Eigen::Vector3f(1,0,0);
+
+                Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
+                q_bw.normalize();
+
+                Eigen::Vector3f mag_world_ref = q_bw * mag_u;
+                const float n = mag_world_ref.norm();
+                if (std::isfinite(n) && n > 1e-6f) {
+                    mag_world_ref /= n;
+                    impl_.mekf().set_mag_world_ref(mag_world_ref);
+                    mag_ref_set_ = true;
+                }
+            }
+        }
+    }
+
+    // Now apply the mag update only if reference is set
+    if (mag_ref_set_) {
+        impl_.updateMag(mag_body_ned);
+    }
+}
   
     // Minimal getters client likely needs
     bool isLive() const { return stage_ == Stage::Live; }
