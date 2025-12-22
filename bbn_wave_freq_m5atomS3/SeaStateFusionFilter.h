@@ -1111,58 +1111,34 @@ public:
             stage_ = Stage::Live;
         }
     
-
 // set mag world ref once
 if (cfg_.with_mag && !mag_ref_set_ && t_ >= cfg_.mag_delay_sec) {
 
     if (cfg_.use_fixed_mag_world_ref) {
         impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
         mag_ref_set_ = true;
+
+        // optional immediate update
+        impl_.updateMag(mag_body_hold_);
+
     } else {
-        // Prefer MagAutoTuner (averaging improves sim)
-        if (mag_new_) {
-            mag_new_ = false;
+        // --- BASELINE FALLBACK (old behavior): set ref from ONE sample immediately ---
+        // Requires that we have *some* mag sample held.
+        if (mag_body_hold_.allFinite() && mag_body_hold_.norm() > 1e-6f) {
 
-            float dt_for_mag = dt_mag_sec_;
-            if (!(std::isfinite(dt_for_mag) && dt_for_mag > 0.0f)) {
-                // Sim ODR is fixed at 80 Hz: do NOT stall the tuner due to timing inference
-                dt_for_mag = 1.0f / cfg_.mag_odr_guess_hz;   // = 0.0125 s
-            }
-
-            if (mag_auto_.addMagSample(dt_for_mag, acc_body_ned, mag_body_hold_, gyro_body_ned)) {
-                Eigen::Vector3f acc_mean, mag_u_mean;
-                if (mag_auto_.getResult(acc_mean, mag_u_mean)) {
-                    Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
-                    q_bw.normalize();
-
-                    Eigen::Vector3f mag_world_ref = q_bw * mag_u_mean;
-                    const float n = mag_world_ref.norm();
-                    if (std::isfinite(n) && n > 1e-6f) {
-                        mag_world_ref /= n;
-                        impl_.mekf().set_mag_world_ref(mag_world_ref);
-                        mag_ref_set_ = true;
-
-                        // optional immediate update
-                        impl_.updateMag(mag_body_hold_);
-                    }
-                }
-            }
-        }
-
-        // NEW: deterministic timeout fallback so sim never “breaks”
-        if (!mag_ref_set_ && std::isfinite(mag_ref_deadline_sec_) && t_ >= mag_ref_deadline_sec_) {
             Eigen::Vector3f mag_u = mag_body_hold_;
             const float mn = mag_u.norm();
-            if (std::isfinite(mn) && mn > 1e-6f) mag_u /= mn;
-            else mag_u = Eigen::Vector3f(1,0,0);
+            mag_u = (std::isfinite(mn) && mn > 1e-6f) ? (mag_u / mn) : Eigen::Vector3f(1,0,0);
 
-            Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat();
+            Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
             q_bw.normalize();
 
             Eigen::Vector3f mag_world_ref = q_bw * mag_u;
             const float n = mag_world_ref.norm();
             if (std::isfinite(n) && n > 1e-6f) {
                 mag_world_ref /= n;
+
+                // Set reference without reinitializing filter state
                 impl_.mekf().set_mag_world_ref(mag_world_ref);
                 mag_ref_set_ = true;
 
@@ -1170,9 +1146,34 @@ if (cfg_.with_mag && !mag_ref_set_ && t_ >= cfg_.mag_delay_sec) {
                 impl_.updateMag(mag_body_hold_);
             }
         }
-    }
-}     
 
+        // --- OPTIONAL: keep MagAutoTuner running for refinement later (does NOT block baseline) ---
+        if (!mag_ref_refined_ && mag_new_) {
+            mag_new_ = false;
+
+            float dt_for_mag = dt_mag_sec_;
+            if (!(std::isfinite(dt_for_mag) && dt_for_mag > 0.0f)) {
+                dt_for_mag = 1.0f / cfg_.mag_odr_guess_hz; // sim ODR=80 => 0.0125s
+            }
+
+            if (mag_auto_.addMagSample(dt_for_mag, acc_body_ned, mag_body_hold_, gyro_body_ned)) {
+                Eigen::Vector3f acc_mean, mag_u_mean;
+                if (mag_auto_.getResult(acc_mean, mag_u_mean)) {
+                    Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat();
+                    q_bw.normalize();
+
+                    Eigen::Vector3f mag_world_ref = q_bw * mag_u_mean;
+                    const float n = mag_world_ref.norm();
+                    if (std::isfinite(n) && n > 1e-6f) {
+                        mag_world_ref /= n;
+                        impl_.mekf().set_mag_world_ref(mag_world_ref);
+                        mag_ref_refined_ = true;
+                    }
+                }
+            }
+        }
+    }
+}
 
     }
   
