@@ -45,7 +45,9 @@ public:
     float min_good_time_sec = 0.3f;
   };
 
-  explicit MagAutoTuner(const Config& cfg = Config()) : cfg_(cfg) { reset(); }
+  MagAutoTuner() : cfg_(Config{}) { reset(); }
+
+  explicit MagAutoTuner(const Config& cfg) : cfg_(cfg) { reset(); }
 
   void reset() {
     t_good_ = 0.0f;
