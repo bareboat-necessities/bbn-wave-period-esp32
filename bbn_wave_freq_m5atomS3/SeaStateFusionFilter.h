@@ -1109,9 +1109,12 @@ public:
                 if (mag_new_) {
                     mag_new_ = false;
 
-                    const float dt_for_mag =
-                        (std::isfinite(dt_mag_sec_) && dt_mag_sec_ > 0.0f) ? dt_mag_sec_ : dt;
-
+// dt_mag_sec_ is derived from updateMag() timestamps, but t_ only advances in update().
+// So it can be NAN/0 early-on. Use a conservative fallback mag ODR when unknown.
+constexpr float DT_MAG_FALLBACK_SEC = 1.0f / 100.0f; // assume ~100 Hz mag
+const float dt_for_mag =
+    (std::isfinite(dt_mag_sec_) && dt_mag_sec_ > 1e-5f) ? dt_mag_sec_ : DT_MAG_FALLBACK_SEC;
+                  
                     if (mag_auto_.addMagSample(dt_for_mag, acc_body_ned, mag_body_hold_, gyro_body_ned)) {
 
 Eigen::Vector3f acc_mean, mag_u_mean;
