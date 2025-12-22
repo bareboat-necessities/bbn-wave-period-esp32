@@ -1134,6 +1134,15 @@ public:
     
         // run normal IMU fusion (time + accel + tracker + tuner + direction, etc.)
         impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
+
+
+// If the internal filter fell back to Cold (tilt reset), force mag ref re-learn.
+if (impl_.getStartupStage() == SeaStateFusionFilter<trackerT>::StartupStage::Cold) {
+    mag_ref_set_ = false;
+    mag_auto_.reset();
+    last_mag_time_sec_ = NAN;
+    dt_mag_sec_ = NAN;
+}     
     
         if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
             stage_ = Stage::Live;
