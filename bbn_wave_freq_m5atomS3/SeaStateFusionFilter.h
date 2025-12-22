@@ -931,7 +931,9 @@ private:
         mekf_->set_linear_block_enabled(false);
     
         accel_bias_locked_   = with_mag_;
-        mag_updates_applied_ = 0;          
+        mag_updates_applied_ = 0;  
+        first_mag_update_time_  = NAN;
+      
         // optionally: warmup_Racc_active_ 
         if (freeze_acc_bias_until_live_) {
             mekf_->set_acc_bias_updates_enabled(false);
