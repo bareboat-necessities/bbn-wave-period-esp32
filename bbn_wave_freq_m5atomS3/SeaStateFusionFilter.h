@@ -370,6 +370,7 @@ if (!std::isfinite(first_mag_update_time_)) {
     // We can "unlock" once mag has had a few updates, but we DO NOT
     // enable accel-bias learning or restore Racc unless we're already Live.
     if (accel_bias_locked_ &&
+        startup_stage_ == StartupStage::Live &&
         mag_updates_applied_ >= MAG_UPDATES_TO_UNLOCK &&
         std::isfinite(first_mag_update_time_) &&
         (static_cast<float>(time_) - first_mag_update_time_) > 1.0f) // 1s guard
