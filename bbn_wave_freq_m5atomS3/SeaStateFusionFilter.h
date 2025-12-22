@@ -1055,75 +1055,91 @@ template<TrackerType trackerT>
 class SeaStateFusion {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  
+
     struct Config {
         bool with_mag = true;
-    
+
         // Init / staging
         float mag_delay_sec          = MAG_DELAY_SEC;
         float online_tune_warmup_sec = ONLINE_TUNE_WARMUP_SEC;
-    
+
         // If you want: fixed world mag ref (WMM), or “learn from measurement”
         bool  use_fixed_mag_world_ref = false;
-        Eigen::Vector3f mag_world_ref = Eigen::Vector3f(0,0,0); // set to WMM result by caller if desired
-    
+        Eigen::Vector3f mag_world_ref = Eigen::Vector3f(0,0,0); // caller sets (e.g. WMM)
+
         // Bias freeze behavior
         bool  freeze_acc_bias_until_live = true;
-        float Racc_warmup = 0.5f;   // large accel noise during warmup to avoid eating motion as bias
-    
+        float Racc_warmup = 0.5f;
+
         // Sensor noise
         Eigen::Vector3f sigma_a = Eigen::Vector3f(0.2f,0.2f,0.2f);
         Eigen::Vector3f sigma_g = Eigen::Vector3f(0.01f,0.01f,0.01f);
         Eigen::Vector3f sigma_m = Eigen::Vector3f(0.3f,0.3f,0.3f);
 
-        // how long after mag_delay we’re willing to wait for MagAutoTuner
-        float mag_ref_timeout_sec = 1.5f;     // “don’t break sim” guard
+        // How long after mag_delay we’re willing to wait for MagAutoTuner
+        float mag_ref_timeout_sec = 1.5f; // fallback guard
 
-        // used only if dt_mag can’t be inferred 
+        // Used only if dt_mag can’t be inferred
         float mag_odr_guess_hz = 80.0f;
+
+        // MagAutoTuner config override (optional)
+        bool use_custom_mag_tuner_cfg = false;
+        MagAutoTuner::Config mag_tuner_cfg{};
     };
-  
+
     void begin(const Config& cfg) {
         cfg_ = cfg;
 
-        mag_auto_.reset();
-        mag_new_ = false;
-        mag_ref_refined_ = false;
+        // Reset wrapper state
+        begun_ = true;
+        stage_ = Stage::Uninitialized;
+        t_ = 0.0f;
+        stage_t_ = 0.0f;
+
+        mag_ref_set_ = false;
         mag_body_hold_.setZero();
-    
-        // Reconfigure existing impl_ instead of reassigning it
+        last_mag_time_sec_ = NAN;
+        dt_mag_sec_ = NAN;
+        mag_ref_deadline_sec_ = cfg_.mag_delay_sec + cfg_.mag_ref_timeout_sec;
+
+        // Reset tuner
+        if (cfg_.use_custom_mag_tuner_cfg) {
+            mag_auto_.setConfig(cfg_.mag_tuner_cfg);
+        } else {
+            mag_auto_.reset();
+        }
+
+        // Track last IMU samples for gating
+        last_acc_body_ned_.setZero();
+        last_gyro_body_ned_.setZero();
+        last_imu_dt_ = NAN;
+        have_last_imu_ = false;
+
+        // Configure internal impl without reassign
         impl_.setWithMag(cfg.with_mag);
         impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
         impl_.setWarmupRacc(cfg.Racc_warmup);
         impl_.setMagDelaySec(cfg.mag_delay_sec);
         impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
-        impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
-        // IMPORTANT: give SeaStateFusionFilter a real nominal Racc so warmup can restore.
-        // (Assumes mekf_->set_Racc takes per-axis accel std, matching your usage.)
-        impl_.setNominalRacc(cfg.sigma_a);
-        begun_ = true;
-    
-        // Optional: auto-restore Racc
-        // impl_.setNominalRacc(Eigen::Vector3f(/* normal accel R */));
-    
-        t_ = 0.0f;
-        stage_ = Stage::Uninitialized;
-        mag_ref_set_ = false;
 
-        mag_ref_deadline_sec_ = cfg_.mag_delay_sec + cfg_.mag_ref_timeout_sec;
+        impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
+
+        // IMPORTANT: allow warmup to restore nominal accel measurement noise
+        impl_.setNominalRacc(cfg.sigma_a);
     }
-  
+
     // One IMU sample
     void update(float dt,
                 const Eigen::Vector3f& gyro_body_ned,
                 const Eigen::Vector3f& acc_body_ned,
                 float tempC = 35.0f)
     {
+        if (!begun_) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
-        if (!implReady_()) return;
+
         t_ += dt;
-    
-        // auto tilt-init on first IMU sample (hidden from client)
+
+        // auto tilt-init on first IMU sample
         if (stage_ == Stage::Uninitialized) {
             impl_.initialize_from_acc(acc_body_ned);
             stage_ = Stage::Warming;
@@ -1131,109 +1147,182 @@ public:
         } else {
             stage_t_ += dt;
         }
-    
-        // run normal IMU fusion (time + accel + tracker + tuner + direction, etc.)
+
+        // Store last IMU samples for MagAutoTuner gating
+        last_acc_body_ned_  = acc_body_ned;
+        last_gyro_body_ned_ = gyro_body_ned;
+        last_imu_dt_        = dt;
+        have_last_imu_      = true;
+
+        // Normal IMU fusion
         impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
 
+        // If internal filter fell back to Cold (tilt reset), force mag ref re-learn
+        if (impl_.getStartupStage() == SeaStateFusionFilter<trackerT>::StartupStage::Cold) {
+            mag_ref_set_ = false;
+            mag_auto_.reset();
+            last_mag_time_sec_ = NAN;
+            dt_mag_sec_ = NAN;
+        }
 
-// If the internal filter fell back to Cold (tilt reset), force mag ref re-learn.
-if (impl_.getStartupStage() == SeaStateFusionFilter<trackerT>::StartupStage::Cold) {
-    mag_ref_set_ = false;
-    mag_auto_.reset();
-    last_mag_time_sec_ = NAN;
-    dt_mag_sec_ = NAN;
-}     
-    
         if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
             stage_ = Stage::Live;
         }
     }
-  
-void updateMag(const Eigen::Vector3f& mag_body_ned) {
-    if (!implReady_()) return;
 
-    // Hold latest mag
-    mag_body_hold_ = mag_body_ned;
-    mag_new_ = true;
+    // MAG sample (call only when you have a new mag sample)
+    void updateMag(const Eigen::Vector3f& mag_body_ned) {
+        if (!begun_) return;
 
-    // Estimate dt_mag in wrapper timebase (optional; not used if we disable refinement)
-    if (std::isfinite(last_mag_time_sec_)) {
-        const float d = t_ - last_mag_time_sec_;
-        if (std::isfinite(d) && d > 1e-4f && d < 1.0f) {
-            dt_mag_sec_ = d;
+        // Hold latest mag
+        mag_body_hold_ = mag_body_ned;
+
+        // Estimate dt_mag in wrapper timebase
+        if (std::isfinite(last_mag_time_sec_)) {
+            const float d = t_ - last_mag_time_sec_;
+            if (std::isfinite(d) && d > 1e-4f && d < 1.0f) {
+                dt_mag_sec_ = d;
+            }
+        }
+        last_mag_time_sec_ = t_;
+
+        if (!cfg_.with_mag) return;
+
+        // Do nothing until mag delay has elapsed (wrapper time)
+        if (t_ < cfg_.mag_delay_sec) return;
+
+        // SET WORLD MAG REF at mag sample time
+        if (!mag_ref_set_) {
+            if (cfg_.use_fixed_mag_world_ref) {
+                impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
+                mag_ref_set_ = true;
+            } else {
+                // Use MagAutoTuner windowing (preferred)
+                float dtm = dt_mag_sec_;
+                if (!std::isfinite(dtm) || dtm <= 0.0f) {
+                    const float odr = std::max(1.0f, cfg_.mag_odr_guess_hz);
+                    dtm = 1.0f / odr;
+                }
+
+                // Need a recent IMU sample for gating
+                if (have_last_imu_) {
+                    const bool ready = mag_auto_.addMagSample(
+                        dtm,
+                        last_acc_body_ned_,
+                        mag_body_ned,
+                        last_gyro_body_ned_
+                    );
+
+                    if (ready) {
+                        Eigen::Vector3f acc_mean, mag_raw_mean, mag_unit_mean;
+                        if (mag_auto_.getResult(acc_mean, mag_raw_mean, mag_unit_mean)) {
+                            // Improve tilt init using averaged accel (optional but helps)
+                            impl_.initialize_from_acc(acc_mean);
+
+                            // Compute tilt-only quaternion from acc_mean (yaw-free), then rotate RAW µT
+                            const Eigen::Quaternionf q_tilt = tiltOnlyQuatFromAccel_(acc_mean);
+                            Eigen::Vector3f mag_world_ref_uT = q_tilt * mag_raw_mean;
+
+                            if (mag_world_ref_uT.allFinite() && mag_world_ref_uT.norm() > 1e-3f) {
+                                impl_.mekf().set_mag_world_ref(mag_world_ref_uT);
+                                mag_ref_set_ = true;
+                            }
+                        }
+                    }
+                }
+
+                // Timeout fallback: use your previous one-shot method
+                if (!mag_ref_set_ && std::isfinite(mag_ref_deadline_sec_) && t_ > mag_ref_deadline_sec_) {
+                    if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-3f) {
+                        Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
+                        q_bw.normalize();
+
+                        // Extract roll/pitch from q_bw (ZYX) and rebuild yaw-free quaternion.
+                        const float x = q_bw.x(), y = q_bw.y(), z = q_bw.z(), w = q_bw.w();
+                        const float two = 2.0f;
+
+                        float s_pitch = two * std::fma(w, y, -z * x);
+                        s_pitch = std::max(-1.0f, std::min(1.0f, s_pitch));
+                        const float pitch = std::asin(s_pitch);
+
+                        const float s_roll = two * std::fma(w, x,  y * z);
+                        const float c_roll = 1.0f - two * std::fma(x, x,  y * y);
+                        const float roll   = std::atan2(s_roll, c_roll);
+
+                        Eigen::Quaternionf q_tilt =
+                            Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()) *
+                            Eigen::AngleAxisf(roll,  Eigen::Vector3f::UnitX());
+                        q_tilt.normalize();
+
+                        Eigen::Vector3f mag_world_ref_uT = q_tilt * mag_body_ned;
+                        if (mag_world_ref_uT.allFinite() && mag_world_ref_uT.norm() > 1e-3f) {
+                            impl_.mekf().set_mag_world_ref(mag_world_ref_uT);
+                            mag_ref_set_ = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Apply mag update only if reference is set
+        if (mag_ref_set_) {
+            impl_.updateMag(mag_body_ned);
         }
     }
-    last_mag_time_sec_ = t_;
 
-    if (!cfg_.with_mag) return;
-
-    // Do nothing until mag delay has elapsed (wrapper time)
-    if (t_ < cfg_.mag_delay_sec) return;
-
-    // SET WORLD MAG REF HERE (at mag sample time)
-    if (!mag_ref_set_) {
-        if (cfg_.use_fixed_mag_world_ref) {
-            impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
-            mag_ref_set_ = true;
-        } else {
-
-
-// Baseline: set ref from ONE mag sample (tilt-only, no yaw) -- KEEP uT SCALE
-if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-3f) {
-
-    Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
-    q_bw.normalize();
-
-    // Extract roll/pitch from q_bw (ZYX) and rebuild a yaw-free (tilt-only) quaternion.
-    const float x = q_bw.x(), y = q_bw.y(), z = q_bw.z(), w = q_bw.w();
-    const float two = 2.0f;
-
-    float s_pitch = two * std::fma(w, y, -z * x);
-    s_pitch = std::max(-1.0f, std::min(1.0f, s_pitch));
-    const float pitch = std::asin(s_pitch);
-
-    const float s_roll = two * std::fma(w, x,  y * z);
-    const float c_roll = 1.0f - two * std::fma(x, x,  y * y);
-    const float roll   = std::atan2(s_roll, c_roll);
-
-    // q_tilt = Ry(pitch) * Rx(roll) (yaw = 0)
-    Eigen::Quaternionf q_tilt =
-        Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()) *
-        Eigen::AngleAxisf(roll,  Eigen::Vector3f::UnitX());
-    q_tilt.normalize();
-
-    // IMPORTANT: rotate RAW uT vector (do NOT normalize)
-    Eigen::Vector3f mag_world_ref_uT = q_tilt * mag_body_ned;
-
-    if (mag_world_ref_uT.allFinite() && mag_world_ref_uT.norm() > 1e-3f) {
-        impl_.mekf().set_mag_world_ref(mag_world_ref_uT);
-        mag_ref_set_ = true;
-    }
-}         
-
-
-        }
-    }
-
-    // Now apply the mag update only if reference is set
-    if (mag_ref_set_) {
-        impl_.updateMag(mag_body_ned);
-    }
-}
-  
-    // Minimal getters client likely needs
-    bool isLive() const { return stage_ == Stage::Live; }
+    // Minimal getters
+    bool  isLive() const { return stage_ == Stage::Live; }
     float freqHz() const { return impl_.getFreqHz(); }
     Eigen::Vector3f eulerNauticalDeg() const { return impl_.getEulerNautical(); }
-  
-    SeaStateFusionFilter<trackerT>& raw() { return impl_; } // optional “expert escape hatch”
+
+    SeaStateFusionFilter<trackerT>& raw() { return impl_; }
 
 private:
     enum class Stage { Uninitialized, Warming, Live };
-  
-    bool implReady_() const { return begun_; } // to guard begin()
 
-private:  
+    // Tilt-only (yaw-free) quaternion body->world from accel.
+    // We assume “rest accel” direction represents gravity (up to sign convention),
+    // so we align BODY measured down with WORLD down (NED: +Z down).
+    static Eigen::Quaternionf tiltOnlyQuatFromAccel_(const Eigen::Vector3f& acc_body_ned) {
+        // At rest, specific force typically points ~ -g in world coordinates.
+        // But your code already deals with sign mismatches elsewhere, so we do:
+        //   body_down ≈ -(acc / |acc|)
+        Eigen::Vector3f a = acc_body_ned;
+        const float an = a.norm();
+        if (!(an > 1e-6f) || !a.allFinite()) {
+            return Eigen::Quaternionf::Identity();
+        }
+
+        Eigen::Vector3f body_down = (-a / an);              // body frame "down" direction
+        const Eigen::Vector3f world_down(0.0f, 0.0f, 1.0f); // NED down
+
+        // Quaternion from vector u -> v (shortest arc)
+        const float d = std::max(-1.0f, std::min(1.0f, body_down.dot(world_down)));
+        Eigen::Vector3f axis = body_down.cross(world_down);
+        const float axis_n = axis.norm();
+
+        if (axis_n < 1e-6f) {
+            // parallel or anti-parallel
+            if (d > 0.0f) {
+                return Eigen::Quaternionf::Identity();
+            } else {
+                // 180 deg flip around any axis perpendicular to body_down
+                Eigen::Vector3f ortho = std::fabs(body_down.z()) < 0.9f
+                    ? Eigen::Vector3f(0,0,1).cross(body_down)
+                    : Eigen::Vector3f(0,1,0).cross(body_down);
+                ortho.normalize();
+                return Eigen::Quaternionf(Eigen::AngleAxisf(float(M_PI), ortho));
+            }
+        }
+
+        axis /= axis_n;
+        const float angle = std::acos(d);
+        Eigen::Quaternionf q(Eigen::AngleAxisf(angle, axis));
+        q.normalize();
+        return q;
+    }
+
+private:
     Config cfg_{};
     SeaStateFusionFilter<trackerT> impl_{false};
 
@@ -1242,17 +1331,20 @@ private:
     Stage stage_ = Stage::Uninitialized;
     float t_ = 0.0f;
     float stage_t_ = 0.0f;
-  
+
+    // Mag init state
     bool mag_ref_set_ = false;
     Eigen::Vector3f mag_body_hold_ = Eigen::Vector3f::Zero();
 
-    // Mag sample timing (dt_mag)
-    float last_mag_time_sec_ = NAN;   // in SeaStateFusion timebase (t_)
-    float dt_mag_sec_        = NAN;   // last observed mag dt
-
+    float last_mag_time_sec_ = NAN;
+    float dt_mag_sec_ = NAN;
     float mag_ref_deadline_sec_ = NAN;
 
+    // Last IMU samples (for MagAutoTuner gating)
+    Eigen::Vector3f last_acc_body_ned_  = Eigen::Vector3f::Zero();
+    Eigen::Vector3f last_gyro_body_ned_ = Eigen::Vector3f::Zero();
+    float last_imu_dt_ = NAN;
+    bool  have_last_imu_ = false;
+
     MagAutoTuner mag_auto_;
-    bool mag_new_ = false;
-    bool mag_ref_refined_ = false;
 };
