@@ -1108,7 +1108,11 @@ public:
             if (!cfg_.use_fixed_mag_world_ref) {
                 if (mag_new_) {
                     mag_new_ = false;
-                    if (mag_auto_.addMagSample(dt, acc_body_ned, mag_body_hold_, gyro_body_ned)) {
+
+                    const float dt_for_mag =
+                        (std::isfinite(dt_mag_sec_) && dt_mag_sec_ > 0.0f) ? dt_mag_sec_ : dt;
+
+                    if (mag_auto_.addMagSample(dt_for_mag, acc_body_ned, mag_body_hold_, gyro_body_ned)) {
                         Eigen::Vector3f acc_mean, mag_u_mean;
                         if (mag_auto_.getResult(acc_mean, mag_u_mean)) {
                             impl_.mekf().initialize_from_acc_mag(acc_mean, mag_u_mean);
