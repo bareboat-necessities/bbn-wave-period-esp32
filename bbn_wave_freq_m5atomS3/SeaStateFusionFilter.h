@@ -1159,6 +1159,10 @@ private:
     bool mag_ref_set_ = false;
     Eigen::Vector3f mag_body_hold_ = Eigen::Vector3f::Zero();
 
+    // Mag sample timing (dt_mag)
+    float last_mag_time_sec_ = NAN;   // in SeaStateFusion timebase (t_)
+    float dt_mag_sec_        = NAN;   // last observed mag dt
+
     MagAutoTuner mag_auto_;
     bool mag_new_ = false;
 };
