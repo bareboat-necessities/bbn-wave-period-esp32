@@ -361,15 +361,20 @@ public:
         if (time_ < mag_delay_sec_) return;
         mekf_->measurement_update_mag_only(mag_body_ned);
         mag_updates_applied_++;
-        if (accel_bias_locked_ && mag_updates_applied_ >= MAG_UPDATES_TO_UNLOCK) {
-            accel_bias_locked_ = false;
-            mekf_->set_acc_bias_updates_enabled(true);
-            // restore nominal Racc
-            if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-                mekf_->set_Racc(Racc_nominal_);
-            }
+if (accel_bias_locked_ && mag_updates_applied_ >= MAG_UPDATES_TO_UNLOCK) {
+    accel_bias_locked_ = false;
+    mekf_->set_acc_bias_updates_enabled(true);
+
+    // Restore nominal Racc ONLY if we actually have one.
+    // If we don't, keep warmup_Racc_active_ true so we don't "forget" we're still in warmup.
+    if (warmup_Racc_active_) {
+        if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+            mekf_->set_Racc(Racc_nominal_);
             warmup_Racc_active_ = false;
         }
+        // else: stay in warmup_Racc_active_ (do NOT clear)
+    }
+}
     }
 
     // Convenience wrapper: infer p_meas from inertial acceleration and
@@ -1074,6 +1079,9 @@ public:
         impl_.setMagDelaySec(cfg.mag_delay_sec);
         impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
         impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
+        // IMPORTANT: give SeaStateFusionFilter a real nominal Racc so warmup can restore.
+        // (Assumes mekf_->set_Racc takes per-axis accel std, matching your usage.)
+        impl_.setNominalRacc(cfg.sigma_a);
         begun_ = true;
     
         // Optional: auto-restore Racc
