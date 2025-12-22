@@ -1125,8 +1125,8 @@ if (cfg_.with_mag && !mag_ref_set_ && t_ >= cfg_.mag_delay_sec) {
 
             float dt_for_mag = dt_mag_sec_;
             if (!(std::isfinite(dt_for_mag) && dt_for_mag > 0.0f)) {
-                // fallback guess (so t_good_ accumulates; won’t stall)
-                dt_for_mag = (cfg_.mag_odr_guess_hz > 1e-3f) ? (1.0f / cfg_.mag_odr_guess_hz) : dt;
+                // Sim ODR is fixed at 80 Hz: do NOT stall the tuner due to timing inference
+                dt_for_mag = 1.0f / cfg_.mag_odr_guess_hz;   // = 0.0125 s
             }
 
             if (mag_auto_.addMagSample(dt_for_mag, acc_body_ned, mag_body_hold_, gyro_body_ned)) {
