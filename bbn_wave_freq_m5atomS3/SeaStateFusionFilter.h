@@ -1126,12 +1126,27 @@ public:
     // Mag sample (can be called at different ODR)
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
         if (!implReady_()) return;
-         mag_body_hold_ = mag_body_ned;
-         mag_new_ = true;
 
-         if (cfg_.with_mag && mag_ref_set_) {
-             impl_.updateMag(mag_body_ned);
-         }
+        // Hold latest mag
+        mag_body_hold_ = mag_body_ned;
+        mag_new_ = true;
+
+        // Estimate dt_mag in the same timebase as update() uses (t_)
+        // Note: t_ is advanced in update(), so if updateMag() happens before the first update(),
+        // last_mag_time_sec_ stays NAN and we’ll fall back to dt in update().
+        if (std::isfinite(last_mag_time_sec_)) {
+            const float d = t_ - last_mag_time_sec_;
+            // sanity clamp: accept only reasonable mag dt
+            if (std::isfinite(d) && d > 1e-4f && d < 1.0f) {
+                dt_mag_sec_ = d;
+            }
+        }
+        last_mag_time_sec_ = t_;
+
+        // Feed mag only after reference is set
+        if (cfg_.with_mag && mag_ref_set_) {
+            impl_.updateMag(mag_body_ned);
+        }
     }
   
     // Minimal getters client likely needs
