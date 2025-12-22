@@ -1104,11 +1104,13 @@ public:
 
         // Reset tuner
         if (cfg_.use_custom_mag_tuner_cfg) {
-            mag_auto_.setConfig(cfg_.mag_tuner_cfg);
+            mag_auto_.setConfig(cfg_.mag_tuner_cfg);    
         } else {
             mag_auto_.reset();
+            cfg_.mag_tuner_cfg = makeDefaultMagInitCfg(cfg_.mag_odr_guess_hz);   
+            mag_auto_.setConfig(cfg_.mag_tuner_cfg);
         }
-
+            
         // Track last IMU samples for gating
         last_acc_body_ned_.setZero();
         last_gyro_body_ned_.setZero();
