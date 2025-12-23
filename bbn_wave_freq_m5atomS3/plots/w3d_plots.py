@@ -283,3 +283,58 @@ for fname in files:
     else:
         missing = [c for c in needed if c not in df.columns]
         print(f"  (skip mag bias plots; missing columns: {missing})")
+
+# === Frequency / Tuner ===
+tuner_cols = [
+    ("freq_tracker_hz", "Frequency (Hz)"),
+    ("Tp_tuner_s",      "Period (s)"),
+    ("accel_var_tuner", r"Accel variance ($m^2/s^4$)"),
+    ("tau_applied",     r"$\tau$ applied (s)"),
+    ("sigma_a_applied", r"$\sigma_a$ applied ($m/s^2$)"),
+    ("R_S_applied",     r"$R_S$ applied (m$\cdot$s)"),
+]
+
+fig, axes = make_subplots(len(tuner_cols), latex_safe(basename) + " (Frequency / Tuner)")
+for ax, (col, ylabel) in zip(axes, tuner_cols):
+    if col not in df.columns:
+        ax.text(0.01, 0.5, f"Missing: {col}", transform=ax.transAxes)
+        ax.set_axis_off()
+        continue
+    ax.plot(time, df[col], linewidth=1.2)
+    ax.set_ylabel(ylabel)
+    ax.grid(True)
+
+axes[-1].set_xlabel("Time (s)")
+finalize_plot(fig, outbase, "_tuner")
+
+# === Direction ===
+dir_cols = [
+    ("dir_deg",        r"Dir (deg, axial)"),
+    ("dir_uncert_deg", r"Uncert (deg, ~95%)"),
+    ("dir_conf",       "Confidence"),
+    ("dir_amp",        "Amplitude"),
+    ("dir_sign_num",   "Sign (+1/-1/0)"),
+    ("dir_vec_x",      r"Dir vec $x$"),
+    ("dir_vec_y",      r"Dir vec $y$"),
+]
+
+fig, axes = make_subplots(len(dir_cols), latex_safe(basename) + " (Direction)")
+for ax, (col, ylabel) in zip(axes, dir_cols):
+    if col not in df.columns:
+        ax.text(0.01, 0.5, f"Missing: {col}", transform=ax.transAxes)
+        ax.set_axis_off()
+        continue
+
+    # Make sign plot look nicer (step-like)
+    if col == "dir_sign_num":
+        ax.step(time, df[col], where="post", linewidth=1.2)
+        ax.set_yticks([-1, 0, 1])
+    else:
+        ax.plot(time, df[col], linewidth=1.2)
+
+    ax.set_ylabel(ylabel)
+    ax.grid(True)
+
+axes[-1].set_xlabel("Time (s)")
+finalize_plot(fig, outbase, "_dir")
+
