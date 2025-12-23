@@ -249,7 +249,6 @@ static inline MagAutoTuner::Config makeDefaultMagInitCfg(float mag_odr_hz) {
     if (!std::isfinite(odr) || odr <= 1.0f) odr = 80.0f;
     odr = std::min(std::max(odr, 10.0f), 200.0f);
 
-    // --- Acc gating ---
     // Accept |a| close to g (allows mild motion / small waves while still rejecting big dynamics).
     c.accel_norm_min = 0.90f;
     c.accel_norm_max = 1.10f;
@@ -268,7 +267,6 @@ static inline MagAutoTuner::Config makeDefaultMagInitCfg(float mag_odr_hz) {
     c.use_gyro_gate = true;
     c.gyro_norm_max = 10.0f * float(M_PI) / 180.0f; // 10 deg/s
 
-    // --- Mag gating ---
     // Units-agnostic. Reject near-zero vectors (sensor not ready / all-zeros).
     c.mag_norm_min = 1e-3f;
 
