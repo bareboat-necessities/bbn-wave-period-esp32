@@ -336,3 +336,30 @@ for fname in files:
 
     axes[-1].set_xlabel("Time (s)")
     finalize_plot(fig, outbase, "_tuner")
+
+    # === Direction ===
+    dir_cols = [
+        ("dir_deg",        r"Dir (deg, axial)"),
+        ("dir_uncert_deg", r"Uncert (deg, $\sim 95\%$)"),
+        ("dir_conf",       "Confidence"),
+        ("dir_sign_num",   "Sign (+1/-1/0)"),
+    ]
+
+    fig, axes = make_subplots(len(dir_cols), latex_safe(basename) + " (Direction)")
+    for ax, (col, ylabel) in zip(axes, dir_cols):
+        if col not in df.columns:
+            ax.text(0.01, 0.5, f"Missing: {col}", transform=ax.transAxes)
+            ax.set_axis_off()
+            continue
+
+        if col == "dir_sign_num":
+            ax.step(time, df[col], where="post", linewidth=1.2)
+            ax.set_yticks([-1, 0, 1])
+        else:
+            ax.plot(time, df[col], linewidth=1.2)
+
+        ax.set_ylabel(ylabel)
+        ax.grid(True)
+
+    axes[-1].set_xlabel("Time (s)")
+    finalize_plot(fig, outbase, "_dir")
