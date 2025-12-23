@@ -645,7 +645,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
             << filter.getFreqHz() << ","
             << filter.getPeriodSec() << ","
             << filter.getAccelVariance() << ","
-            << dir_phase << "," << dir_deg_gen << "," << dir_unc << "," << dir_conf  << "," << dir_amp << ","
+            << dir_phase << "," << d.getDirectionDegrees() << "," << dir_unc << "," << dir_conf  << "," << dir_amp << ","
             << sign_str << "," << sign_num << "," << dir_vec.x()  << "," << dir_vec.y()  << "," << dfilt.x()  << ","
             << dfilt.y() << "\n";
     });
