@@ -1233,6 +1233,72 @@ public:
 private:
     enum class Stage { Uninitialized, Warming, Live };
 
+    struct AccInitAverager {
+        float g = g_std;
+    
+        float accel_norm_min = 0.92f;
+        float accel_norm_max = 1.08f;
+    
+        bool  use_gyro_gate = true;
+        float gyro_norm_max = 10.0f * float(M_PI) / 180.0f; // rad/s
+    
+        float acc_dir_ema_alpha = 0.03f;
+        float acc_dir_cos_min   = 0.9985f; // ~3 deg
+    
+        float min_good_time_sec = 1.5f;
+    
+        void reset() {
+            good_time = 0.0f;
+            have_ema  = false;
+            acc_sum.setZero();
+            good_count = 0;
+        }
+    
+        bool add(float dt, const Eigen::Vector3f& acc, const Eigen::Vector3f& gyro) {
+            if (!(dt > 0.0f) || !acc.allFinite() || !gyro.allFinite()) return false;
+    
+            const float an = acc.norm();
+            if (!(an > accel_norm_min * g && an < accel_norm_max * g)) return false;
+    
+            if (use_gyro_gate && gyro.norm() > gyro_norm_max) return false;
+    
+            Eigen::Vector3f a_unit = acc / std::max(1e-9f, an);
+    
+            if (!have_ema) {
+                ema = a_unit;
+                have_ema = true;
+            } else {
+                // keep sign consistent (avoid occasional flip)
+                if (a_unit.dot(ema) < 0.0f) a_unit = -a_unit;
+    
+                const float cosang = a_unit.dot(ema) / std::max(1e-9f, ema.norm());
+                if (cosang < acc_dir_cos_min) return false;
+    
+                // EMA update + renormalize
+                ema = (1.0f - acc_dir_ema_alpha) * ema + acc_dir_ema_alpha * a_unit;
+                const float en = ema.norm();
+                if (en > 1e-9f) ema /= en;
+            }
+    
+            acc_sum += acc;
+            good_count++;
+            good_time += dt;
+    
+            return (good_time >= min_good_time_sec && good_count >= 20);
+        }
+    
+        Eigen::Vector3f meanAcc() const {
+            if (good_count <= 0) return Eigen::Vector3f(0,0,-g);
+            return acc_sum / float(good_count);
+        }
+    
+        float good_time = 0.0f;
+        int   good_count = 0;
+        bool  have_ema = false;
+        Eigen::Vector3f ema = Eigen::Vector3f::Zero();
+        Eigen::Vector3f acc_sum = Eigen::Vector3f::Zero();
+    };
+
     // Tilt-only (yaw-free) quaternion body->world from accel.
     // We assume “rest accel” direction represents gravity (up to sign convention),
     // so we align BODY measured down with WORLD down (NED: +Z down).
@@ -1299,5 +1365,6 @@ private:
     float last_imu_dt_ = NAN;
     bool  have_last_imu_ = false;
 
+    AccInitAverager acc_init_;
     MagAutoTuner mag_auto_;
 };
