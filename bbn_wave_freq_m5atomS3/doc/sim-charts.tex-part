@@ -58,17 +58,18 @@ The directional sea models produce an Euler attitude for the advected buoy.
   \IncludePGF{w3d_jonswap_medium.pgf}
   \caption{Kalman 3D filter Euler angle comparison -- JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium}
-\end{figure}\begin{figure}[!t]\centering
+\end{figure}
+\begin{figure}[!t]\centering
   \IncludePGF{w3d_jonswap_medium_zkin.pgf}
   \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration) -- JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium_zkin}
 \end{figure}
-\end{figure}\begin{figure}[!t]\centering
+\begin{figure}[!t]\centering
   \IncludePGF{w3d_jonswap_medium_tuner.pgf}
   \caption{Kalman 3D filter frequency and auto-tuner traces -- JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium_tuner}
 \end{figure}
-\end{figure}\begin{figure}[!t]\centering
+\begin{figure}[!t]\centering
   \IncludePGF{w3d_jonswap_medium_dir.pgf}
   \caption{Kalman 3D filter wave direction -- JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium_dir}
