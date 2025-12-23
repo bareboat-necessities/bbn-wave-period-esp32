@@ -1172,101 +1172,52 @@ public:
         }
     }
 
-    // MAG sample (call only when you have a new mag sample)
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
-        if (!begun_) return;
-
-        // Hold latest mag
+        if (!begun_ || !cfg_.with_mag) return;
+    
         mag_body_hold_ = mag_body_ned;
-
-        // Estimate dt_mag in wrapper timebase
-        if (std::isfinite(last_mag_time_sec_)) {
-            const float d = t_ - last_mag_time_sec_;
-            if (std::isfinite(d) && d > 1e-4f && d < 1.0f) {
-                dt_mag_sec_ = d;
-            }
-        }
-        last_mag_time_sec_ = t_;
-
-        if (!cfg_.with_mag) return;
-
-        // Do nothing until mag delay has elapsed (wrapper time)
         if (t_ < cfg_.mag_delay_sec) return;
-
-        // SET WORLD MAG REF at mag sample time
+    
+        // Set ref immediately (same as your good short version)
         if (!mag_ref_set_) {
             if (cfg_.use_fixed_mag_world_ref) {
                 impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
                 mag_ref_set_ = true;
-            } else {
-                // Use MagAutoTuner windowing (preferred)
-                float dtm = dt_mag_sec_;
-                if (!std::isfinite(dtm) || dtm <= 0.0f) {
-                    const float odr = std::max(1.0f, cfg_.mag_odr_guess_hz);
-                    dtm = 1.0f / odr;
-                }
-
-                // Need a recent IMU sample for gating
-                if (have_last_imu_) {
-                    const bool ready = mag_auto_.addMagSample(
-                        dtm,
-                        last_acc_body_ned_,
-                        mag_body_ned,
-                        last_gyro_body_ned_
-                    );
-
-                    if (ready) {
-                        Eigen::Vector3f acc_mean, mag_raw_mean, mag_unit_mean;
-                        if (mag_auto_.getResult(acc_mean, mag_raw_mean, mag_unit_mean)) {
-                            // Improve tilt init using averaged accel (optional but helps)
-                            impl_.initialize_from_acc(acc_mean);
-
-                            // Compute tilt-only quaternion from acc_mean (yaw-free), then rotate RAW µT
-                            const Eigen::Quaternionf q_tilt = tiltOnlyQuatFromAccel_(acc_mean);
-                            Eigen::Vector3f mag_world_ref_uT = q_tilt * mag_raw_mean;
-
-                            if (mag_world_ref_uT.allFinite() && mag_world_ref_uT.norm() > 1e-3f) {
-                                impl_.mekf().set_mag_world_ref(mag_world_ref_uT);
-                                mag_ref_set_ = true;
-                            }
-                        }
-                    }
-                }
-
-                // Timeout fallback: use your previous one-shot method
-                if (!mag_ref_set_ && std::isfinite(mag_ref_deadline_sec_) && t_ > mag_ref_deadline_sec_) {
-                    if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-3f) {
-                        Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat(); // body -> world
-                        q_bw.normalize();
-
-                        // Extract roll/pitch from q_bw (ZYX) and rebuild yaw-free quaternion.
-                        const float x = q_bw.x(), y = q_bw.y(), z = q_bw.z(), w = q_bw.w();
-                        const float two = 2.0f;
-
-                        float s_pitch = two * std::fma(w, y, -z * x);
-                        s_pitch = std::max(-1.0f, std::min(1.0f, s_pitch));
-                        const float pitch = std::asin(s_pitch);
-
-                        const float s_roll = two * std::fma(w, x,  y * z);
-                        const float c_roll = 1.0f - two * std::fma(x, x,  y * y);
-                        const float roll   = std::atan2(s_roll, c_roll);
-
-                        Eigen::Quaternionf q_tilt =
-                            Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()) *
-                            Eigen::AngleAxisf(roll,  Eigen::Vector3f::UnitX());
-                        q_tilt.normalize();
-
-                        Eigen::Vector3f mag_world_ref_uT = q_tilt * mag_body_ned;
-                        if (mag_world_ref_uT.allFinite() && mag_world_ref_uT.norm() > 1e-3f) {
-                            impl_.mekf().set_mag_world_ref(mag_world_ref_uT);
-                            mag_ref_set_ = true;
-                        }
-                    }
+            } else if (mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-3f) {
+                Eigen::Quaternionf q_bw = impl_.mekf().quaternion_boat();
+                q_bw.normalize();
+    
+                // yaw-free tilt from MEKF roll/pitch (same as your short version)
+                const float x=q_bw.x(), y=q_bw.y(), z=q_bw.z(), w=q_bw.w();
+                const float two = 2.0f;
+    
+                float s_pitch = two * std::fma(w, y, -z * x);
+                s_pitch = std::max(-1.0f, std::min(1.0f, s_pitch));
+                const float pitch = std::asin(s_pitch);
+    
+                const float s_roll = two * std::fma(w, x,  y * z);
+                const float c_roll = 1.0f - two * std::fma(x, x,  y * y);
+                const float roll   = std::atan2(s_roll, c_roll);
+    
+                Eigen::Quaternionf q_tilt =
+                    Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()) *
+                    Eigen::AngleAxisf(roll,  Eigen::Vector3f::UnitX());
+                q_tilt.normalize();
+    
+                Eigen::Vector3f mag_world_ref_uT = q_tilt * mag_body_ned; // keep raw uT
+                if (mag_world_ref_uT.allFinite() && mag_world_ref_uT.norm() > 1e-3f) {
+                    impl_.mekf().set_mag_world_ref(mag_world_ref_uT);
+                    mag_ref_set_ = true;
                 }
             }
         }
-
-        // Apply mag update only if reference is set
+    
+        // Feed MagAutoTuner if you want stats, but DON'T block / reinit / refine
+        if (have_last_imu_) {
+            float dtm = dt_mag_sec_;
+            if (!std::isfinite(dtm) || dtm <= 0.0f) dtm = 1.0f / std::max(1.0f, cfg_.mag_odr_guess_hz);
+            (void)mag_auto_.addMagSample(dtm, last_acc_body_ned_, mag_body_ned, last_gyro_body_ned_);
+        }    
         if (mag_ref_set_) {
             impl_.updateMag(mag_body_ned);
         }
