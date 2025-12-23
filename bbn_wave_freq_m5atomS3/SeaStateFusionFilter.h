@@ -229,42 +229,9 @@ public:
     
         // MEKF updates first (attitude + latent a_w)
         mekf_->time_update(gyro, dt);
-        
-        // During Cold/TunerWarm (warmup_Racc_active_), inflate Racc when accel is not gravity-like.
-        // This prevents wave accel from tilting the attitude estimate.
         if (warmup_Racc_active_) {
-            float Racc_dyn = Racc_warmup_;
-        
-            const float an = acc.norm();
-            if (std::isfinite(an) && an > 1e-6f) {
-                // 1) norm deviation (vertical waves etc.)
-                const float dev_norm = std::fabs(an - g_std);
-                Racc_dyn += Racc_dev_mult_ * dev_norm;
-        
-                // 2) direction mismatch vs expected gravity-only specific force direction
-                Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
-                q_bw.normalize();
-        
-                const Eigen::Vector3f world_down(0.0f, 0.0f, 1.0f); // NED down
-                Eigen::Vector3f f_grav_dir_body = -(q_bw.conjugate() * world_down); // body dir for -g
-                const float gn = f_grav_dir_body.norm();
-                if (gn > 1e-6f) f_grav_dir_body /= gn;
-        
-                Eigen::Vector3f a_dir = acc / an;
-                float cos_dir = a_dir.dot(f_grav_dir_body);
-                cos_dir = std::max(-1.0f, std::min(1.0f, cos_dir));
-        
-                const float ang_deg = std::acos(cos_dir) * 57.295779513f;
-                if (std::isfinite(ang_deg) && ang_deg > Racc_dir_gate_deg_) {
-                    const float excess = (ang_deg - Racc_dir_gate_deg_) / 20.0f; // scaled
-                    Racc_dyn *= (1.0f + Racc_dir_mult_ * std::max(0.0f, excess));
-                }
-            }
-        
-            Racc_dyn = std::min(std::max(Racc_dyn, Racc_warmup_), Racc_warmup_max_);
-            mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_dyn));
+            mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
         }
-        
         mekf_->measurement_update_acc_only(acc, tempC);
       
         {
