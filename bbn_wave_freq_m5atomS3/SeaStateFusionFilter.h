@@ -1186,6 +1186,15 @@ public:
         if (!begun_ || !cfg_.with_mag) return;
     
         mag_body_hold_ = mag_body_ned;
+
+        // estimate mag sample dt
+        if (std::isfinite(last_mag_time_sec_)) {
+            dt_mag_sec_ = t_ - last_mag_time_sec_;
+        }
+        last_mag_time_sec_ = t_;
+        if (!std::isfinite(dt_mag_sec_) || dt_mag_sec_ <= 0.0f) {
+            dt_mag_sec_ = 1.0f / std::max(1.0f, cfg_.mag_odr_guess_hz);
+        }
         if (t_ < cfg_.mag_delay_sec) return;
     
         // Set ref immediately (same as your good short version)
