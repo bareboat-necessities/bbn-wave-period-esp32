@@ -285,55 +285,53 @@ for fname in files:
         print(f"  (skip mag bias plots; missing columns: {missing})")
 
     # === Frequency / Tuner ===
-    tuner_cols = [
+    # We plot accel std-dev (sqrt variance) and sigma_a on the same axis.
+    tuner_panels = [
         ("freq_tracker_hz", "Frequency (Hz)"),
-        #("Tp_tuner_s",      "Period (s)"),
-        ("accel_var_tuner", r"Accel variance ($m^2/s^4$)"),
+        ("accel_std_combo", r"Accel std and $\sigma_a$ applied ($m/s^2$)"),
         ("tau_applied",     r"$\tau$ applied (s)"),
-        ("sigma_a_applied", r"$\sigma_a$ applied ($m/s^2$)"),
         ("R_S_applied",     r"$R_S$ applied (m$\cdot$s)"),
     ]
 
-    fig, axes = make_subplots(len(tuner_cols), latex_safe(basename) + " (Frequency / Tuner)")
-    for ax, (col, ylabel) in zip(axes, tuner_cols):
-        if col not in df.columns:
-            ax.text(0.01, 0.5, f"Missing: {col}", transform=ax.transAxes)
+    fig, axes = make_subplots(len(tuner_panels), latex_safe(basename) + " (Frequency / Tuner)")
+    for ax, (key, ylabel) in zip(axes, tuner_panels):
+
+        if key == "accel_std_combo":
+            have_any = False
+
+            # Prefer accel_std_tuner if it exists; otherwise compute sqrt(accel_var_tuner)
+            if "accel_std_tuner" in df.columns:
+                ax.plot(time, df["accel_std_tuner"], linewidth=1.2, label=r"Accel std (tuner)")
+                have_any = True
+            elif "accel_var_tuner" in df.columns:
+                var = df["accel_var_tuner"].to_numpy()
+                std = np.sqrt(np.clip(var, 0.0, None))
+                ax.plot(time, std, linewidth=1.2, label=r"Accel std ($\sqrt{\mathrm{var}}$)")
+                have_any = True
+            else:
+                ax.text(0.01, 0.60, "Missing: accel_std_tuner or accel_var_tuner", transform=ax.transAxes)
+
+            if "sigma_a_applied" in df.columns:
+                ax.plot(time, df["sigma_a_applied"], linewidth=1.2, linestyle="--", label=r"$\sigma_a$ applied")
+                have_any = True
+            else:
+                ax.text(0.01, 0.40, "Missing: sigma_a_applied", transform=ax.transAxes)
+
+            ax.set_ylabel(ylabel)
+            ax.grid(True)
+            if have_any:
+                ax.legend(loc="upper right", fontsize=8)
+            continue
+
+        # Normal single-series panels
+        if key not in df.columns:
+            ax.text(0.01, 0.5, f"Missing: {key}", transform=ax.transAxes)
             ax.set_axis_off()
             continue
-        ax.plot(time, df[col], linewidth=1.2)
+
+        ax.plot(time, df[key], linewidth=1.2)
         ax.set_ylabel(ylabel)
         ax.grid(True)
 
     axes[-1].set_xlabel("Time (s)")
     finalize_plot(fig, outbase, "_tuner")
-
-    # === Direction ===
-    dir_cols = [
-        ("dir_deg",        r"Dir (deg, axial)"),
-        ("dir_uncert_deg", r"Uncert (deg, ~95%)"),
-        ("dir_conf",       "Confidence"),
-        #("dir_amp",        "Amplitude"),
-        ("dir_sign_num",   "Sign (+1/-1/0)"),
-        #("dir_vec_x",      r"Dir vec $x$"),
-        #("dir_vec_y",      r"Dir vec $y$"),
-    ]
-
-    fig, axes = make_subplots(len(dir_cols), latex_safe(basename) + " (Direction)")
-    for ax, (col, ylabel) in zip(axes, dir_cols):
-        if col not in df.columns:
-            ax.text(0.01, 0.5, f"Missing: {col}", transform=ax.transAxes)
-            ax.set_axis_off()
-            continue
-
-        if col == "dir_sign_num":
-            ax.step(time, df[col], where="post", linewidth=1.2)
-            ax.set_yticks([-1, 0, 1])
-        else:
-            ax.plot(time, df[col], linewidth=1.2)
-
-        ax.set_ylabel(ylabel)
-        ax.grid(True)
-
-    axes[-1].set_xlabel("Time (s)")
-    finalize_plot(fig, outbase, "_dir")
-    
