@@ -368,7 +368,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         << "dir_vec_x,dir_vec_y,"
         << "dfilt_ax,dfilt_ay\n";
 
-    using Fusion = SeaStateFusion<TrackerType::ARANOVSKIY>;
+    using Fusion = SeaStateFusion<TrackerType::KALMANF>;
     Fusion fusion;
 
     // Magnetic reference (same each run)
