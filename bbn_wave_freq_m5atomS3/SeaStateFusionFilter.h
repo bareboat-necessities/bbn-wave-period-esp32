@@ -229,11 +229,8 @@ public:
     
         // MEKF updates first (attitude + latent a_w)
         mekf_->time_update(gyro, dt);
-        if (warmup_Racc_active_) {
-            mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
-        }
         mekf_->measurement_update_acc_only(acc, tempC);
-      
+
         {
             Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
             q_bw.normalize();
@@ -366,9 +363,9 @@ void updateMag(const Eigen::Vector3f& mag_body_ned) {
     mekf_->measurement_update_mag_only(mag_body_ned);
     mag_updates_applied_++;
 
-    if (!std::isfinite(first_mag_update_time_)) {
-        first_mag_update_time_ = static_cast<float>(time_);
-    }
+if (!std::isfinite(first_mag_update_time_)) {
+    first_mag_update_time_ = static_cast<float>(time_);
+}
  
     // We can "unlock" once mag has had a few updates, but we DO NOT
     // enable accel-bias learning or restore Racc unless we're already Live.
@@ -383,6 +380,14 @@ void updateMag(const Eigen::Vector3f& mag_body_ned) {
         // Only allow accel bias to start learning once the system is Live.
         if (freeze_acc_bias_until_live_ && startup_stage_ == StartupStage::Live) {
             mekf_->set_acc_bias_updates_enabled(true);
+
+            // Restore nominal Racc only when bias learning is allowed.
+            if (warmup_Racc_active_) {
+                if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+                    mekf_->set_Racc(Racc_nominal_);
+                    warmup_Racc_active_ = false;
+                }
+            }
         }
     }
 }
@@ -922,16 +927,15 @@ private:
     void enterCold_() {
         startup_stage_   = StartupStage::Cold;
         startup_stage_t_ = 0.0f;
-    
+
         if (!mekf_) return;
         mekf_->set_linear_block_enabled(false);
     
-        accel_bias_locked_      = with_mag_;
-        mag_updates_applied_    = 0;
+        accel_bias_locked_   = with_mag_;
+        mag_updates_applied_ = 0;  
         first_mag_update_time_  = NAN;
-    
-        warmup_Racc_active_ = false;            
       
+        // optionally: warmup_Racc_active_ 
         if (freeze_acc_bias_until_live_) {
             mekf_->set_acc_bias_updates_enabled(false);
             mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
@@ -946,23 +950,21 @@ private:
         if (!mekf_) return;
         mekf_->set_linear_block_enabled(enable_linear_block_);
     
-        // Always end warmup Racc when entering Live
-        if (warmup_Racc_active_) {
-            if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-                mekf_->set_Racc(Racc_nominal_);
-            }
-            warmup_Racc_active_ = false;
-        }
-    
         if (freeze_acc_bias_until_live_) {
+            // Only enable bias updates if we are NOT locked.
             const bool allow_bias = !accel_bias_locked_;
             mekf_->set_acc_bias_updates_enabled(allow_bias);
+            // Only restore nominal Racc when bias is allowed to learn.
+            if (allow_bias) {
+                if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+                    mekf_->set_Racc(Racc_nominal_);
+                }
+                warmup_Racc_active_ = false;
+            }
         }
-    
         apply_ou_tune_();
         if (enable_linear_block_) apply_RS_tune_();
     }
-
 
     StartupStage startup_stage_    = StartupStage::Cold;
     float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
@@ -1067,7 +1069,7 @@ public:
 
         // Bias freeze behavior
         bool  freeze_acc_bias_until_live = true;
-        float Racc_warmup = 0.25f;
+        float Racc_warmup = 0.5f;
 
         // Sensor noise
         Eigen::Vector3f sigma_a = Eigen::Vector3f(0.2f,0.2f,0.2f);
@@ -1114,7 +1116,6 @@ public:
         last_gyro_body_ned_.setZero();
         last_imu_dt_ = NAN;
         have_last_imu_ = false;
-        acc_init_.reset();
 
         // Configure internal impl without reassign
         impl_.setWithMag(cfg.with_mag);
@@ -1140,15 +1141,11 @@ public:
 
         t_ += dt;
 
-        // tilt-init only after accel direction is stable (prevents wave accel from biasing tilt)
+        // auto tilt-init on first IMU sample
         if (stage_ == Stage::Uninitialized) {
-            if (acc_init_.add(dt, acc_body_ned, gyro_body_ned)) {
-                impl_.initialize_from_acc(acc_init_.meanAcc());
-                stage_ = Stage::Warming;
-                stage_t_ = 0.0f;
-            } else {
-                stage_t_ = 0.0f;
-            }
+            impl_.initialize_from_acc(acc_body_ned);
+            stage_ = Stage::Warming;
+            stage_t_ = 0.0f;
         } else {
             stage_t_ += dt;
         }
@@ -1164,15 +1161,10 @@ public:
 
         // If internal filter fell back to Cold (tilt reset), force mag ref re-learn
         if (impl_.getStartupStage() == SeaStateFusionFilter<trackerT>::StartupStage::Cold) {
-            // re-arm BOTH mag ref learn and tilt init learn
             mag_ref_set_ = false;
             mag_auto_.reset();
             last_mag_time_sec_ = NAN;
             dt_mag_sec_ = NAN;
-        
-            stage_   = Stage::Uninitialized;
-            stage_t_ = 0.0f;
-            acc_init_.reset();
         }
 
         if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
@@ -1184,15 +1176,6 @@ public:
         if (!begun_ || !cfg_.with_mag) return;
     
         mag_body_hold_ = mag_body_ned;
-
-        // estimate mag sample dt
-        if (std::isfinite(last_mag_time_sec_)) {
-            dt_mag_sec_ = t_ - last_mag_time_sec_;
-        }
-        last_mag_time_sec_ = t_;
-        if (!std::isfinite(dt_mag_sec_) || dt_mag_sec_ <= 0.0f) {
-            dt_mag_sec_ = 1.0f / std::max(1.0f, cfg_.mag_odr_guess_hz);
-        }
         if (t_ < cfg_.mag_delay_sec) return;
     
         // Set ref immediately (same as your good short version)
@@ -1249,72 +1232,6 @@ public:
 
 private:
     enum class Stage { Uninitialized, Warming, Live };
-
-    struct AccInitAverager {
-        float g = g_std;
-    
-        float accel_norm_min = 0.92f;
-        float accel_norm_max = 1.08f;
-    
-        bool  use_gyro_gate = true;
-        float gyro_norm_max = 10.0f * float(M_PI) / 180.0f; // rad/s
-    
-        float acc_dir_ema_alpha = 0.03f;
-        float acc_dir_cos_min   = 0.9985f; // ~3 deg
-    
-        float min_good_time_sec = 1.5f;
-    
-        void reset() {
-            good_time = 0.0f;
-            have_ema  = false;
-            acc_sum.setZero();
-            good_count = 0;
-        }
-    
-        bool add(float dt, const Eigen::Vector3f& acc, const Eigen::Vector3f& gyro) {
-            if (!(dt > 0.0f) || !acc.allFinite() || !gyro.allFinite()) return false;
-    
-            const float an = acc.norm();
-            if (!(an > accel_norm_min * g && an < accel_norm_max * g)) return false;
-    
-            if (use_gyro_gate && gyro.norm() > gyro_norm_max) return false;
-    
-            Eigen::Vector3f a_unit = acc / std::max(1e-9f, an);
-    
-            if (!have_ema) {
-                ema = a_unit;
-                have_ema = true;
-            } else {
-                // keep sign consistent (avoid occasional flip)
-                if (a_unit.dot(ema) < 0.0f) a_unit = -a_unit;
-    
-                const float cosang = a_unit.dot(ema) / std::max(1e-9f, ema.norm());
-                if (cosang < acc_dir_cos_min) return false;
-    
-                // EMA update + renormalize
-                ema = (1.0f - acc_dir_ema_alpha) * ema + acc_dir_ema_alpha * a_unit;
-                const float en = ema.norm();
-                if (en > 1e-9f) ema /= en;
-            }
-    
-            acc_sum += acc;
-            good_count++;
-            good_time += dt;
-    
-            return (good_time >= min_good_time_sec && good_count >= 20);
-        }
-    
-        Eigen::Vector3f meanAcc() const {
-            if (good_count <= 0) return Eigen::Vector3f(0,0,-g);
-            return acc_sum / float(good_count);
-        }
-    
-        float good_time = 0.0f;
-        int   good_count = 0;
-        bool  have_ema = false;
-        Eigen::Vector3f ema = Eigen::Vector3f::Zero();
-        Eigen::Vector3f acc_sum = Eigen::Vector3f::Zero();
-    };
 
     // Tilt-only (yaw-free) quaternion body->world from accel.
     // We assume “rest accel” direction represents gravity (up to sign convention),
@@ -1382,6 +1299,5 @@ private:
     float last_imu_dt_ = NAN;
     bool  have_last_imu_ = false;
 
-    AccInitAverager acc_init_;
     MagAutoTuner mag_auto_;
 };
