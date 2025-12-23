@@ -922,15 +922,16 @@ private:
     void enterCold_() {
         startup_stage_   = StartupStage::Cold;
         startup_stage_t_ = 0.0f;
-
+    
         if (!mekf_) return;
         mekf_->set_linear_block_enabled(false);
     
-        accel_bias_locked_   = with_mag_;
-        mag_updates_applied_ = 0;  
+        accel_bias_locked_      = with_mag_;
+        mag_updates_applied_    = 0;
         first_mag_update_time_  = NAN;
-      
-        // optionally: warmup_Racc_active_ 
+    
+        warmup_Racc_active_ = false;              // <-- add this
+    
         if (freeze_acc_bias_until_live_) {
             mekf_->set_acc_bias_updates_enabled(false);
             mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
@@ -945,24 +946,23 @@ private:
         if (!mekf_) return;
         mekf_->set_linear_block_enabled(enable_linear_block_);
     
+        // Always end warmup Racc when entering Live
+        if (warmup_Racc_active_) {
+            if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+                mekf_->set_Racc(Racc_nominal_);
+            }
+            warmup_Racc_active_ = false;
+        }
+    
         if (freeze_acc_bias_until_live_) {
-            // Bias updates only when unlocked.
             const bool allow_bias = !accel_bias_locked_;
             mekf_->set_acc_bias_updates_enabled(allow_bias);
-        
-            // Restore nominal Racc as soon as we enter Live (linear block is enabled now),
-            // regardless of whether accel-bias learning is unlocked yet.
-            if (warmup_Racc_active_) {
-                if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-                    mekf_->set_Racc(Racc_nominal_);
-                }
-                warmup_Racc_active_ = false;
-            }
         }
-
+    
         apply_ou_tune_();
         if (enable_linear_block_) apply_RS_tune_();
     }
+
 
     StartupStage startup_stage_    = StartupStage::Cold;
     float        startup_stage_t_  = 0.0f;   // seconds since entering this stage
