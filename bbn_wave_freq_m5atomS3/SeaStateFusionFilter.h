@@ -1069,7 +1069,7 @@ public:
 
         // Bias freeze behavior
         bool  freeze_acc_bias_until_live = true;
-        float Racc_warmup = 0.5f;
+        float Racc_warmup = 2.0f;
 
         // Sensor noise
         Eigen::Vector3f sigma_a = Eigen::Vector3f(0.2f,0.2f,0.2f);
