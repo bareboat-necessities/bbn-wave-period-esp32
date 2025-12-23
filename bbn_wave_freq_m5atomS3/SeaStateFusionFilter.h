@@ -356,41 +356,41 @@ public:
     }
 
     //  Magnetometer correction
-void updateMag(const Eigen::Vector3f& mag_body_ned) {
-    if (!with_mag_ || !mekf_) return;
-    if (time_ < mag_delay_sec_) return;
-
-    mekf_->measurement_update_mag_only(mag_body_ned);
-    mag_updates_applied_++;
-
-if (!std::isfinite(first_mag_update_time_)) {
-    first_mag_update_time_ = static_cast<float>(time_);
-}
- 
-    // We can "unlock" once mag has had a few updates, but we DO NOT
-    // enable accel-bias learning or restore Racc unless we're already Live.
-    if (accel_bias_locked_ &&
-        startup_stage_ == StartupStage::Live &&
-        mag_updates_applied_ >= MAG_UPDATES_TO_UNLOCK &&
-        std::isfinite(first_mag_update_time_) &&
-        (static_cast<float>(time_) - first_mag_update_time_) > 1.0f) // 1s guard
-    {
-        accel_bias_locked_ = false;
-
-        // Only allow accel bias to start learning once the system is Live.
-        if (freeze_acc_bias_until_live_ && startup_stage_ == StartupStage::Live) {
-            mekf_->set_acc_bias_updates_enabled(true);
-
-            // Restore nominal Racc only when bias learning is allowed.
-            if (warmup_Racc_active_) {
-                if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-                    mekf_->set_Racc(Racc_nominal_);
-                    warmup_Racc_active_ = false;
+    void updateMag(const Eigen::Vector3f& mag_body_ned) {
+        if (!with_mag_ || !mekf_) return;
+        if (time_ < mag_delay_sec_) return;
+    
+        mekf_->measurement_update_mag_only(mag_body_ned);
+        mag_updates_applied_++;
+    
+        if (!std::isfinite(first_mag_update_time_)) {
+            first_mag_update_time_ = static_cast<float>(time_);
+        }
+     
+        // We can "unlock" once mag has had a few updates, but we DO NOT
+        // enable accel-bias learning or restore Racc unless we're already Live.
+        if (accel_bias_locked_ &&
+            startup_stage_ == StartupStage::Live &&
+            mag_updates_applied_ >= MAG_UPDATES_TO_UNLOCK &&
+            std::isfinite(first_mag_update_time_) &&
+            (static_cast<float>(time_) - first_mag_update_time_) > 1.0f) // 1s guard
+        {
+            accel_bias_locked_ = false;
+    
+            // Only allow accel bias to start learning once the system is Live.
+            if (freeze_acc_bias_until_live_ && startup_stage_ == StartupStage::Live) {
+                mekf_->set_acc_bias_updates_enabled(true);
+    
+                // Restore nominal Racc only when bias learning is allowed.
+                if (warmup_Racc_active_) {
+                    if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+                        mekf_->set_Racc(Racc_nominal_);
+                        warmup_Racc_active_ = false;
+                    }
                 }
             }
         }
     }
-}
 
     // Convenience wrapper: infer p_meas from inertial acceleration and
     // angular frequency ω [rad/s] via p ≈ -a/ω² on all 3 axes.
