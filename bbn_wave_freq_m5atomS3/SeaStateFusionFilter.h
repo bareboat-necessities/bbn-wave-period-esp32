@@ -1116,6 +1116,7 @@ public:
         last_gyro_body_ned_.setZero();
         last_imu_dt_ = NAN;
         have_last_imu_ = false;
+        acc_init_.reset();
 
         // Configure internal impl without reassign
         impl_.setWithMag(cfg.with_mag);
@@ -1141,11 +1142,15 @@ public:
 
         t_ += dt;
 
-        // auto tilt-init on first IMU sample
+        // tilt-init only after accel direction is stable (prevents wave accel from biasing tilt)
         if (stage_ == Stage::Uninitialized) {
-            impl_.initialize_from_acc(acc_body_ned);
-            stage_ = Stage::Warming;
-            stage_t_ = 0.0f;
+            if (acc_init_.add(dt, acc_body_ned, gyro_body_ned)) {
+                impl_.initialize_from_acc(acc_init_.meanAcc());
+                stage_ = Stage::Warming;
+                stage_t_ = 0.0f;
+            } else {
+                stage_t_ = 0.0f;
+            }
         } else {
             stage_t_ += dt;
         }
@@ -1161,10 +1166,15 @@ public:
 
         // If internal filter fell back to Cold (tilt reset), force mag ref re-learn
         if (impl_.getStartupStage() == SeaStateFusionFilter<trackerT>::StartupStage::Cold) {
+            // re-arm BOTH mag ref learn and tilt init learn
             mag_ref_set_ = false;
             mag_auto_.reset();
             last_mag_time_sec_ = NAN;
             dt_mag_sec_ = NAN;
+        
+            stage_   = Stage::Uninitialized;
+            stage_t_ = 0.0f;
+            acc_init_.reset();
         }
 
         if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
