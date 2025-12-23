@@ -287,7 +287,7 @@ for fname in files:
     # === Frequency / Tuner ===
     tuner_cols = [
         ("freq_tracker_hz", "Frequency (Hz)"),
-        ("Tp_tuner_s",      "Period (s)"),
+        #("Tp_tuner_s",      "Period (s)"),
         ("accel_var_tuner", r"Accel variance ($m^2/s^4$)"),
         ("tau_applied",     r"$\tau$ applied (s)"),
         ("sigma_a_applied", r"$\sigma_a$ applied ($m/s^2$)"),
@@ -312,10 +312,10 @@ for fname in files:
         ("dir_deg",        r"Dir (deg, axial)"),
         ("dir_uncert_deg", r"Uncert (deg, ~95%)"),
         ("dir_conf",       "Confidence"),
-        ("dir_amp",        "Amplitude"),
+        #("dir_amp",        "Amplitude"),
         ("dir_sign_num",   "Sign (+1/-1/0)"),
-        ("dir_vec_x",      r"Dir vec $x$"),
-        ("dir_vec_y",      r"Dir vec $y$"),
+        #("dir_vec_x",      r"Dir vec $x$"),
+        #("dir_vec_y",      r"Dir vec $y$"),
     ]
 
     fig, axes = make_subplots(len(dir_cols), latex_safe(basename) + " (Direction)")
