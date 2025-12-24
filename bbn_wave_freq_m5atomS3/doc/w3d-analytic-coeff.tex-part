@@ -58,7 +58,7 @@ placing three identical \(4\times4\) axis transitions on the block diagonal:
 \end{aligned}
 \end{equation}
 
-where \(x=h/\tau\), \(\alpha=e^{-x}\), and the algorithm uses the following 
+where \(x=h/\tau\), \(\alpha=e^{-x}\), and the algorithm uses the following
 expressions:
 \[
 \fitcol{
@@ -161,8 +161,10 @@ nearest PSD matrix (and symmetrized) to remove roundoff.
 
 \medskip
 \noindent\textbf{General closed form (\(|x|>x_0\))}
-For \(|x|>x_0\) the algorithm uses the exact coefficients
-\(\mathcal{K}\) with entries \(K_{ij}\) (\(i,j\in\{v,p,S,a\}\)),
+For \(|x|>x_0\) the algorithm uses the exact coefficient matrix
+\[
+\mathcal{K} \;=\; [\kappa_{ij}]_{i,j\in\{v,p,S,a\}},
+\]
 and constructs
 \[
 \matg{Q}_{d,\text{axis}}(h) = q_c\,\mathrm{sym}\,\mathcal{K},
@@ -171,8 +173,6 @@ and constructs
 \]
 Let
 \[
-\tau^k \equiv \tau^k,\qquad
-x^k \equiv x^k,\qquad
 \alpha = e^{-x},\quad
 \alpha_2 = e^{-2x}.
 \]
@@ -180,34 +180,34 @@ The code uses the following expressions:
 \[
 \fitcol{
 \begin{aligned}
-K_{vv} &= \tfrac12\tau^3\bigl(-\alpha_2 + 4\alpha + 2x - 3\bigr),\\
-K_{vp} &= \tfrac12\tau^4\bigl(\alpha_2 + 2\alpha(x-1) + x^2 - 2x + 1\bigr),\\
-K_{vS} &= \tfrac16\tau^5\bigl(-3\alpha_2 + 3\alpha(x^2+4)
+\kappa_{vv} &= \tfrac12\tau^3\bigl(-\alpha_2 + 4\alpha + 2x - 3\bigr),\\
+\kappa_{vp} &= \tfrac12\tau^4\bigl(\alpha_2 + 2\alpha(x-1) + x^2 - 2x + 1\bigr),\\
+\kappa_{vS} &= \tfrac16\tau^5\bigl(-3\alpha_2 + 3\alpha(x^2+4)
                               + x^3 - 3x^2 + 6x - 9\bigr),\\
-K_{va} &= \tfrac12\tau^2\bigl(\alpha_2 - 2\alpha + 1\bigr),\\[4pt]
-K_{pp} &= \tau^5\Bigl(
+\kappa_{va} &= \tfrac12\tau^2\bigl(\alpha_2 - 2\alpha + 1\bigr),\\[4pt]
+\kappa_{pp} &= \tau^5\Bigl(
            -\tfrac12\alpha_2 - 2\alpha x
            + \tfrac13 x^3 - x^2 + x + \tfrac12
          \Bigr),\\
-K_{pS} &= \tau^6\Bigl(
+\kappa_{pS} &= \tau^6\Bigl(
            \tfrac12\alpha_2
            + \tfrac12\alpha(-x^2 + 2x - 2)
            + \tfrac18 x^4 - \tfrac12 x^3 + x^2 - x + \tfrac12
          \Bigr),\\
-K_{pa} &= \tfrac12\tau^3\bigl(-\alpha_2 - 2\alpha x + 1\bigr),\\[4pt]
-K_{SS} &= \tau^7\Bigl(
+\kappa_{pa} &= \tfrac12\tau^3\bigl(-\alpha_2 - 2\alpha x + 1\bigr),\\[4pt]
+\kappa_{SS} &= \tau^7\Bigl(
            -\tfrac12\alpha_2
            + \alpha(x^2 + 2)
            + \tfrac1{20}x^5 - \tfrac14 x^4 + \tfrac23 x^3
            - x^2 + x - \tfrac32
          \Bigr),\\
-K_{Sa} &= \tfrac12\tau^4\bigl(\alpha_2 - \alpha(x^2+2) + 1\bigr),\\
-K_{aa} &= \tfrac12\tau\bigl(1 - \alpha_2\bigr).
+\kappa_{Sa} &= \tfrac12\tau^4\bigl(\alpha_2 - \alpha(x^2+2) + 1\bigr),\\
+\kappa_{aa} &= \tfrac12\tau\bigl(1 - \alpha_2\bigr).
 \end{aligned}
 }
 \]
 All other entries of \(\mathcal{K}\) follow by symmetry,
-\(K_{ij}=K_{ji}\). As in the small-\(x\) branch, \(\matg{Q}_{d,\text{axis}}\)
+\(\kappa_{ij}=\kappa_{ji}\). As in the small-\(x\) branch, \(\matg{Q}_{d,\text{axis}}\)
 is post-processed by a PSD projection and symmetrization.
 
 \medskip
