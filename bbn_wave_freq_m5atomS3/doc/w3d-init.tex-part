@@ -1,97 +1,107 @@
 \section{Initialization and Reference Alignment}
+\label{sec:init_alignment}
 
-Accurate initialization of the filter state is essential for rapid convergence
-and numerical stability. The procedure aligns the quaternion, biases, and
-latent acceleration with physically observable quantities from the
-accelerometer and magnetometer before dynamic updates commence.
+This implementation uses a staged startup that prioritizes a robust
+tilt (roll/pitch) lock from the accelerometer, delays magnetometer yaw
+corrections until a reliable magnetic reference is established, and
+keeps the extended linear navigation block disabled until the online
+tuner has reached a trusted state.
 
-\subsection{Attitude Initialization from Accelerometer}
-
-At rest, the accelerometer measures the apparent specific force
-\(
-\vct{f}_b \approx -\mat{R}_{wb}\,\vct{g}_w,
-\)
-where $\vct{g}_w = [0,\,0,\,g]^\top$ is the gravity vector in world
-coordinates. The normalized accelerometer output
+\subsection{Boot Sequence and Tilt-Only Attitude Initialization}
+On the first IMU sample, the filter initializes attitude from the
+accelerometer only (yaw-free). In the world NED convention used here,
+$\vct{e}_z = [0,\,0,\,1]^\top$ points \emph{down}. Let $\vct{a}_b$ denote
+the measured accelerometer vector in the body frame (units: \si{m/s^2}).
+A normalized ``down'' direction in the body frame is formed as
 \[
-\hat{\vct{f}}_b
-= \frac{\vct{f}_b}{\|\vct{f}_b\|}
+\vct{d}_b \;\triangleq\; -\frac{\vct{a}_b}{\|\vct{a}_b\|},
+\qquad
+\vct{d}_w \;\triangleq\; \vct{e}_z.
 \]
-defines the direction of gravity in the body frame.
-The initial world-to-body quaternion $q_0$ is chosen such that
+The initial quaternion $q_{bw,0}$ (body $\to$ world) is chosen as the
+shortest-arc rotation mapping $\vct{d}_b \mapsto \vct{d}_w$, i.e.,
 \[
-\mat{R}(q_0)^\top\,\hat{\vct{f}}_b = -\vct{e}_z,
+\mat{R}(q_{bw,0})\,\vct{d}_b = \vct{d}_w,
 \]
-that is, the body $z$-axis is aligned with the measured gravity vector.
-This provides the initial roll and pitch angles, while yaw remains
-undetermined until magnetometer data are available.
-If the initial condition is not strictly static, an averaged
-low-pass filtered accelerometer reading is used to suppress transient
-dynamic components.
+which fixes roll and pitch while leaving yaw unconstrained. This is
+exactly the ``tilt-only'' alignment used throughout the startup logic;
+no declination/inclination model is required at this stage.
 
-\subsection{Yaw Initialization from Magnetometer}
+\subsection{Startup Stages and Warm-Up Policy}
+After tilt initialization, the system enters a staged mode schedule:
+\begin{enumerate}[label=(\roman*), leftmargin=*]
+  \item \textbf{Cold:} entered at boot and after a large-tilt reset. The
+  extended linear block is disabled (attitude/bias MEKF only). If enabled,
+  accelerometer-bias learning is frozen and the accelerometer measurement
+  noise is inflated to a warm-up value.
+  \item \textbf{TunerWarm:} the frequency tracker and variance estimator
+  collect statistics. Adaptation targets $(\tau,\sigma_a,R_S)$ are computed,
+  but the filter does not yet rely on the full linear block.
+  \item \textbf{Live:} once frequency and variance estimates are deemed
+  ready, the linear block can be enabled and the OU/pseudo-measurement tuning
+  is applied periodically.
+\end{enumerate}
+The warm-up duration is configurable (default \texttt{ONLINE\_TUNE\_WARMUP\_SEC}),
+and the transition to Live additionally requires that the tuner reports readiness
+for both frequency and variance estimates.
 
-The magnetometer provides a heading reference by observing the local
-magnetic field~$\vct{B}_w$ expressed in world coordinates.
-Given the measured field $\vct{m}_b$ in the body frame and the
-known inclination~$I$ and declination~$D$, the horizontal projection is
-\[
-\vct{m}_{b,xy} =
-\begin{bmatrix} m_x \\[2pt] m_y \end{bmatrix}, \qquad
-\psi = \mathrm{atan2}(-m_y,\,m_x) - D.
-\]
-The initial quaternion is then completed by a rotation about the world
-$z$-axis through angle~$\psi$, appended to the tilt-corrected orientation:
-\[
-q_0 \leftarrow q_{\mathrm{acc}} \otimes q_z(\psi).
-\]
-This establishes full three-axis attitude alignment consistent with
-local magnetic north.
+\subsection{Magnetometer Reference Alignment (Yaw-Free Tilt Projection)}
+Magnetometer updates are delayed by a fixed startup time
+(default \texttt{MAG\_DELAY\_SEC}) to avoid injecting yaw corrections during
+initial transients. When magnetometer data become available, the filter first
+establishes a \emph{world-frame magnetic reference} $\vct{B}_w$ in one of two ways:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Fixed reference (optional):} the caller may provide a known
+  $\vct{B}_w$ (e.g., from a geomagnetic model).
+  \item \textbf{Learned-from-measurement reference (default):} use the current
+  tilt-only attitude (roll/pitch, yaw $=0$) to rotate the measured magnetic
+  field $\vct{m}_b$ into the world frame,
+  \[
+  q_{\text{tilt}} \;\triangleq\; q_y(\theta)\,\otimes\,q_x(\phi),\qquad
+  \vct{B}_w \;\leftarrow\; \mat{R}(q_{\text{tilt}})\,\vct{m}_b,
+  \]
+  where $(\phi,\theta)$ are the current roll and pitch implied by the MEKF
+  quaternion, and $q_x(\cdot),q_y(\cdot)$ are axis-angle quaternions. Importantly,
+  $\vct{m}_b$ is not normalized in this step: the reference preserves the raw
+  sensor units (e.g., \si{\micro\tesla}), which keeps the subsequent measurement
+  model consistent in scale.
+\end{itemize}
+Only after $\vct{B}_w$ is set does the filter apply magnetometer measurement
+updates (yaw correction) using the internal model $\hat{\vct{m}}_b =
+\mat{R}_{wb}\,\vct{B}_w$.
 
-\subsection{Bias and Latent State Initialization}
+\paragraph{Optional quality gating (MagAutoTuner).}
+A heel-safe magnetometer initializer can be used to accept only ``good''
+samples for reference establishment. It gates on (i) $\|\vct{a}_b\|\approx g$,
+(ii) stability of the \emph{direction} of $\vct{a}_b$ via an EMA on the unit
+vector, (iii) optional low angular-rate (gyro) condition, and (iv) stability of
+the magnetometer norm via an EMA ratio test. This improves robustness when the
+platform is heeled or gently moving.
 
-Gyroscope and accelerometer biases are initialized from pre-sampling averages:
-\[
-\vct{b}_{g0} = \mathrm{mean}(\vct{\omega}_b), \qquad
-\vct{b}_{a0} = \mathrm{mean}(\vct{f}_b) + \mat{R}(q_0)\,\vct{g}_w.
-\]
-The latent OU acceleration $\vct{a}_{w0}$ is set to zero or to the
-gravity-compensated average of recent acceleration samples, providing a
-smooth start for the translational chain:
-\[
-\vct{a}_{w0} = \mat{R}(q_0)^\top
-  \bigl(\mathrm{mean}(\vct{f}_b) - \vct{b}_{a0}\bigr) + \vct{g}_w.
-\]
-All linear states $(\vct{v},\vct{p},\vct{S})$ are initialized to
-zero unless prior motion information is available.
+\subsection{Bias Warm-Up and Unlock Conditions}
+To avoid corrupting accelerometer-bias estimates before yaw is stabilized, the
+implementation optionally freezes accelerometer-bias updates during Cold/TunerWarm
+and inflates the accelerometer measurement noise $\mat{R}_{a}$ to a warm-up level.
+Bias learning is only enabled once:
+\begin{enumerate}[label=(\roman*), leftmargin=*]
+  \item the system is in \textbf{Live} stage,
+  \item a minimum number of magnetometer updates have been applied
+  (default \texttt{MAG\_UPDATES\_TO\_UNLOCK}),
+  \item and an additional small time guard after the first mag update has elapsed.
+\end{enumerate}
+At that point the nominal $\mat{R}_{a}$ is restored and accelerometer-bias updates
+are enabled.
 
-\subsection{Covariance Initialization}
-
-The initial covariance~$\mat{P}_0$ is block-diagonal, reflecting independent
-uncertainties in attitude, biases, and linear motion:
-\[
-\mat{P}_0 =
-\diag\!\big(
- \matg{\Sigma}_{\theta0},\,
- \matg{\Sigma}_{b_g0},\,
- \matg{\Sigma}_{v0},\,
- \matg{\Sigma}_{p0},\,
- \matg{\Sigma}_{S0},\,
- \matg{\Sigma}_{a_w0},\,
- \matg{\Sigma}_{b_a0}\big).
-\]
-Typical values for $\matg{\Sigma}_{\theta0}$ correspond to several degrees of
-tilt uncertainty, while $\matg{\Sigma}_{a_w0}$ is set to the stationary variance
-of the OU process $\sigma_{a_w}^2$.
-This initialization ensures positive definiteness of~$\mat{P}_0$ and allows
-the filter to transition smoothly from the stationary prior to fully
-dynamic operation.
-
-\subsection{Alignment Verification and Warm-Up}
-
-During the first few seconds of operation, a warm-up phase validates the
-attitude alignment by monitoring the magnitude of the accelerometer residual.
-If the residual remains within tolerance, magnetic updates are enabled and
-the filter transitions to full fusion. This staged activation prevents
-spurious yaw correction during initial transients and establishes a stable
-baseline for subsequent online adaptation.
+\subsection{Automatic Tilt Reset and Re-Initialization}
+During operation, the filter continuously monitors the tilt angle between the
+estimated body-down axis and world-down. If the tilt exceeds a safety threshold
+(default $\approx 65^\circ$), the system performs a recovery:
+\begin{itemize}[leftmargin=*]
+  \item re-initialize attitude from the accelerometer (tilt-only),
+  \item re-enter the \textbf{Cold} stage (linear block disabled),
+  \item reset frequency tracking, smoothers, tuner statistics, and direction state,
+  \item and postpone any adaptation burst by resetting the adaptation timer.
+\end{itemize}
+This mechanism makes the overall system resilient to large disturbances (e.g.,
+handling events or abrupt heel changes) by reverting to a conservative, observable
+tilt lock before resuming full fusion.
