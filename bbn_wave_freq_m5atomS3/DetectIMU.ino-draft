@@ -1,950 +1,837 @@
 /*
-  AtomS3R IMU Serial-Guided Auto Detection:
-   - Detect accel/gyro/mag axis mapping (signed permutation) and unit scales
-   - Auto-capture by detecting stillness + pose changes + yaw rotation
-   - Convert to SI (m/s^2, rad/s) and magnetometer in uT
-   - Output in NED-like convention: N=+X_dev, E=+Y_dev, D=-Z_dev
+  AtomS3R (M5Unified) — Auto-detect IMU axis mappings + unit scales
+  - Accel: find signed-permutation mapping and scale to m/s^2
+  - Gyro : find scale to rad/s (deg/s vs rad/s) using mag heading change
+  - Mag  : find signed-permutation mapping and scale to uT
 
-  Requires: M5Unified
+  OUTPUT FRAME:
+    We define a "BODY_NED-like" frame tied to the device screen:
+      +X = screen-right
+      +Y = screen-top
+      +Z = screen-down  (so screen-up flat => accel reads +g in -Z_out => mapped becomes +g in +Z_down)
+    This is convenient for NED-style filters (Z down).
 */
 
 #include <M5Unified.h>
-#include <math.h>
 
 #ifndef EIGEN_STACK_ALLOCATION_LIMIT
 #define EIGEN_STACK_ALLOCATION_LIMIT 0
 #endif
-#include <ArduinoEigenDense.h>
 
-using Vec3 = Eigen::Matrix<float,3,1>;
-using Mat3 = Eigen::Matrix<float,3,3>;
+#ifdef EIGEN_NON_ARDUINO
+  #include <Eigen/Dense>
+#else
+  #include <ArduinoEigenDense.h>
+#endif
+
+#include <cmath>
+#include <cstdint>
+#include <algorithm>
+
+using Vec3 = Eigen::Matrix<float, 3, 1>;
 
 static constexpr float G_STD = 9.80665f;
 
-// ---------------------------- USER CONFIG ----------------------------
-static constexpr float TARGET_ACC_GYRO_HZ = 200.0f;  // loop schedule for accel+gyro
-static constexpr float TARGET_MAG_HZ      = 50.0f;   // separate schedule for mag
-static constexpr int   ROT_SAMPLES_MAX    = 300;     // storage cap (your requirement)
+// ------------------------------ Config ------------------------------
+static constexpr float ACC_GYR_RATE_HZ = 200.0f;  // user config
+static constexpr float MAG_RATE_HZ     = 50.0f;   // user config (requested mag sampling rate)
+static constexpr uint32_t POSE_CAPTURE_MS = 1400; // stable-hold duration per pose
 
-// How long we “average” each still pose once detected stable:
-static constexpr uint32_t POSE_CAPTURE_MS = 1200;
-static constexpr uint32_t MIN_STILL_MS    = 900;     // must be still this long before capture
+static constexpr int MAX_ROT_SAMPLES = 300;       // store up to 300 samples for rotation stage
 
-// Rotation capture settings:
-static constexpr uint32_t ROT_MAX_MS      = 5000;    // stop after 5s if needed
-static constexpr uint32_t ROT_MIN_MS      = 1500;    // minimum time in rotation before accepting
-static constexpr float    ROT_MIN_HEADING_CHANGE_RAD = 1.3f; // ~75 deg (on some candidate mapping)
+// Stillness gates (scale-independent where possible)
+static constexpr float STILL_COS_MIN = 0.9995f;   // accel direction stability (≈ 1.8°)
+static constexpr float STILL_GYRO_REL = 0.55f;    // gyro norm must be < STILL_GYRO_REL * gyro_ema
+static constexpr float STILL_GYRO_FLOOR_RAW = 0.05f; // raw units, fallback
 
-// Stillness thresholds (in RAW units, so kept forgiving):
-static constexpr float GYRO_STILL_THRESH_RAW = 1.5f;  // if raw is deg/s, 1.5 is small; if rad/s, also small
-static constexpr float ACC_NORM_STABLE_FRAC  = 0.03f; // accel norm relative stability
-
-// Pose distinctness: dominant axis must change (raw frame) and magnitude must be meaningful
-static constexpr float DOMINANT_RATIO = 1.4f;         // dominant component must exceed next by this ratio
-
-// Soft Earth-field sanity (only used to choose among mag scale candidates)
-static constexpr float EXPECT_FIELD_uT = 50.0f;
-// --------------------------------------------------------------------
-
-static inline float clampf(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
-static inline float rad2deg(float r) { return r * (180.0f / (float)M_PI); }
-
-static inline float norm3(const Vec3& v) { return sqrtf(v.dot(v)); }
-static inline Vec3  safe_unit(const Vec3& v) { float n = norm3(v); return (n > 1e-9f) ? (v / n) : Vec3(0,0,0); }
+// ------------------------------ Utilities ------------------------------
+static inline float clampf(float x, float a, float b) { return std::max(a, std::min(b, x)); }
 
 static inline float wrap_pi(float a) {
-  while (a >  (float)M_PI) a -= 2.0f*(float)M_PI;
-  while (a < -(float)M_PI) a += 2.0f*(float)M_PI;
+  while (a >  (float)M_PI) a -= 2.0f * (float)M_PI;
+  while (a < -(float)M_PI) a += 2.0f * (float)M_PI;
   return a;
 }
-static inline float unwrap_step(float prev, float cur) {
-  float d = wrap_pi(cur - prev);
-  return prev + d;
+
+static inline float safe_norm(const Vec3& v) {
+  float n = v.norm();
+  return (std::isfinite(n) && n > 1e-12f) ? n : 0.0f;
 }
 
-struct RateStats {
-  uint32_t last_us = 0;
-  uint32_t count = 0;
-  double sum_dt = 0, sum_dt2 = 0;
+static inline Vec3 safe_unit(const Vec3& v, const Vec3& fallback = Vec3(0,0,1)) {
+  float n = safe_norm(v);
+  return (n > 0.0f) ? (v / n) : fallback;
+}
 
-  void reset() { last_us = 0; count = 0; sum_dt = 0; sum_dt2 = 0; }
-  void push(uint32_t now_us) {
-    if (!last_us) { last_us = now_us; count = 1; return; }
-    uint32_t du = now_us - last_us;
-    last_us = now_us;
-    double dt = du * 1e-6;
-    sum_dt  += dt;
-    sum_dt2 += dt*dt;
-    count++;
-  }
-  void print(const char* name) const {
-    if (count < 20) return;
-    double n = (double)(count - 1);
-    double mean = sum_dt / n;
-    double var  = (sum_dt2 / n) - mean*mean;
-    if (var < 0) var = 0;
-    double std  = sqrt(var);
-    double hz   = (mean > 0) ? (1.0 / mean) : 0;
-    Serial.printf("%s: %.2f Hz  (dt mean %.6fs, jitter std %.6fs, n=%u)\n",
-                  name, hz, mean, std, (unsigned)count);
-  }
-};
+// ------------------------------ Core Types (MUST be above functions) ------------------------------
 
-// Signed permutation mapping: v_dev = M * v_raw
+// Signed axis permutation: out[i] = sgn[i] * in[idx[i]]
 struct SignedPerm {
-  Mat3 M = Mat3::Zero();
-  bool valid = false;
-  Vec3 apply(const Vec3& vraw) const { return M * vraw; }
-  float det() const { return M.determinant(); }
+  int8_t idx[3] = {0,1,2};
+  int8_t sgn[3] = {+1,+1,+1};
+  int8_t det = +1; // +1 or -1
 };
 
-static SignedPerm make_signed_perm(int ix, int sx, int iy, int sy, int iz, int sz) {
+static inline Vec3 apply_perm(const SignedPerm& p, const Vec3& v) {
+  Vec3 o;
+  o(0) = (float)p.sgn[0] * v((int)p.idx[0]);
+  o(1) = (float)p.sgn[1] * v((int)p.idx[1]);
+  o(2) = (float)p.sgn[2] * v((int)p.idx[2]);
+  return o;
+}
+
+// parity of permutation indices: +1 even, -1 odd
+static inline int perm_parity3(int a, int b, int c) {
+  // count inversions
+  int inv = 0;
+  int arr[3] = {a,b,c};
+  for (int i=0;i<3;i++) for (int j=i+1;j<3;j++) if (arr[i] > arr[j]) inv++;
+  return (inv % 2 == 0) ? +1 : -1;
+}
+
+static inline SignedPerm make_perm(int ix,int sx,int iy,int sy,int iz,int sz) {
   SignedPerm p;
-  p.M.setZero();
-  p.M(0, ix) = (float)sx;
-  p.M(1, iy) = (float)sy;
-  p.M(2, iz) = (float)sz;
-  p.valid = true;
+  p.idx[0]= (int8_t)ix; p.sgn[0]= (int8_t)sx;
+  p.idx[1]= (int8_t)iy; p.sgn[1]= (int8_t)sy;
+  p.idx[2]= (int8_t)iz; p.sgn[2]= (int8_t)sz;
+  int parity = perm_parity3(ix,iy,iz);
+  int sprod  = sx * sy * sz;
+  p.det = (int8_t)(parity * sprod);
   return p;
 }
 
-static int enumerate_signed_perms(SignedPerm* out, int max_out, bool det_pos_only) {
-  int idx = 0;
-  int axes[3] = {0,1,2};
-  for (int a0=0;a0<3;a0++) for (int a1=0;a1<3;a1++) if (a1!=a0) {
-    int a2 = 3 - a0 - a1;
-    int perm[3] = {axes[a0], axes[a1], axes[a2]};
-    for (int sx=-1; sx<=1; sx+=2)
-    for (int sy=-1; sy<=1; sy+=2)
-    for (int sz=-1; sz<=1; sz+=2) {
-      SignedPerm p = make_signed_perm(perm[0], sx, perm[1], sy, perm[2], sz);
-      if (det_pos_only && p.det() < 0.5f) continue;
-      if (idx < max_out) out[idx] = p;
-      idx++;
+static int enumerate_perms(SignedPerm* out, int max_out, bool det_pos_only) {
+  int n = 0;
+  const int perms[6][3] = {
+    {0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}
+  };
+  const int sgns[8][3] = {
+    {+1,+1,+1},{+1,+1,-1},{+1,-1,+1},{+1,-1,-1},
+    {-1,+1,+1},{-1,+1,-1},{-1,-1,+1},{-1,-1,-1}
+  };
+  for (int pi=0; pi<6; ++pi) {
+    for (int si=0; si<8; ++si) {
+      SignedPerm p = make_perm(perms[pi][0], sgns[si][0],
+                               perms[pi][1], sgns[si][1],
+                               perms[pi][2], sgns[si][2]);
+      if (det_pos_only && p.det < 0) continue;
+      if (n < max_out) out[n++] = p;
     }
   }
-  return idx;
+  return n;
 }
 
-static void print_mapping(const char* name, const SignedPerm& p) {
-  Serial.printf("%s mapping (raw -> device):\n", name);
+static void print_perm(const char* name, const SignedPerm& p) {
+  Serial.printf("%s idx=[%d %d %d] sgn=[%d %d %d] det=%d\n",
+                name, p.idx[0],p.idx[1],p.idx[2], p.sgn[0],p.sgn[1],p.sgn[2], p.det);
+  // matrix form
+  int M[3][3] = {{0,0,0},{0,0,0},{0,0,0}};
+  M[0][p.idx[0]] = p.sgn[0];
+  M[1][p.idx[1]] = p.sgn[1];
+  M[2][p.idx[2]] = p.sgn[2];
+  Serial.printf("%s M=\n", name);
   for (int r=0;r<3;r++) {
-    Serial.printf("  [ %+.0f %+.0f %+.0f ]\n", p.M(r,0), p.M(r,1), p.M(r,2));
+    Serial.printf("  [%2d %2d %2d]\n", M[r][0],M[r][1],M[r][2]);
   }
-  Serial.printf("  det=%.0f\n", p.det());
 }
 
-// NED-like from device
-static Vec3 to_NED_like(const Vec3& dev) { return Vec3(dev.x(), dev.y(), -dev.z()); }
-
-// ------------------- IMU sampling + scheduling -------------------
 struct IMUSample {
-  Vec3 a_raw;
-  Vec3 w_raw;
-  Vec3 m_raw;
-  bool have_mag = false;
   uint32_t t_us = 0;
+  Vec3 acc = Vec3::Zero(); // raw
+  Vec3 gyr = Vec3::Zero(); // raw
+  Vec3 mag = Vec3::Zero(); // raw
+  bool have_mag = false;
 };
 
+struct Stillness {
+  Vec3 a_unit_ema = Vec3(0,0,1);
+  float gyro_ema  = 0.0f;
+
+  void reset() {
+    a_unit_ema = Vec3(0,0,1);
+    gyro_ema   = 0.0f;
+  }
+
+  bool update_and_check(const Vec3& a_raw, const Vec3& g_raw, float dt_s) {
+    const float alpha_dir  = clampf(dt_s / 0.30f, 0.005f, 0.20f); // ~0.3s time constant
+    const float alpha_gyro = clampf(dt_s / 0.40f, 0.005f, 0.25f);
+
+    Vec3 a_u = safe_unit(a_raw, a_unit_ema);
+    a_unit_ema = safe_unit((1.0f - alpha_dir) * a_unit_ema + alpha_dir * a_u, a_u);
+
+    float gn = safe_norm(g_raw);
+    gyro_ema = (1.0f - alpha_gyro) * gyro_ema + alpha_gyro * gn;
+
+    float cos_sim = clampf(a_u.dot(a_unit_ema), -1.0f, 1.0f);
+    float gyro_th = std::max(STILL_GYRO_FLOOR_RAW, STILL_GYRO_REL * gyro_ema);
+
+    return (cos_sim > STILL_COS_MIN) && (gn < gyro_th);
+  }
+};
+
+struct PoseAvg {
+  Vec3 acc_sum = Vec3::Zero();
+  Vec3 gyr_sum = Vec3::Zero();
+  Vec3 mag_sum = Vec3::Zero();
+  int n = 0;
+  int nmag = 0;
+
+  void reset() { acc_sum.setZero(); gyr_sum.setZero(); mag_sum.setZero(); n=0; nmag=0; }
+  void add(const IMUSample& s) {
+    acc_sum += s.acc;
+    gyr_sum += s.gyr;
+    n++;
+    if (s.have_mag) { mag_sum += s.mag; nmag++; }
+  }
+
+  Vec3 acc_mean() const { return (n>0) ? (acc_sum / (float)n) : Vec3::Zero(); }
+  Vec3 gyr_mean() const { return (n>0) ? (gyr_sum / (float)n) : Vec3::Zero(); }
+  Vec3 mag_mean() const { return (nmag>0) ? (mag_sum / (float)nmag) : Vec3::Zero(); }
+};
+
+// Rotation capture buffer (flat rotation)
+struct RotCap {
+  IMUSample s[MAX_ROT_SAMPLES];
+  int n = 0;
+  void reset() { n = 0; }
+  void push(const IMUSample& x) {
+    if (n < MAX_ROT_SAMPLES) s[n++] = x;
+  }
+};
+
+// ------------------------------ IMU polling + rate check ------------------------------
+static uint32_t g_last_us = 0;
 static uint32_t g_next_acc_us = 0;
 static uint32_t g_next_mag_us = 0;
 
-static RateStats g_rate_acc, g_rate_mag_success;
+static uint32_t g_acc_period_us = 0;
+static uint32_t g_mag_period_us = 0;
 
-static bool read_acc_gyro(Vec3& a, Vec3& w) {
-  float ax,ay,az,gx,gy,gz;
-  if (!M5.Imu.getAccel(&ax,&ay,&az)) return false;
-  if (!M5.Imu.getGyro(&gx,&gy,&gz))  return false;
-  a = Vec3(ax,ay,az);
-  w = Vec3(gx,gy,gz);
+static IMUSample g_last_sample;
+
+static uint32_t g_acc_count_1s = 0, g_mag_count_1s = 0;
+static uint32_t g_rate_t0_ms = 0;
+
+static bool read_imu_once(IMUSample& out) {
+  // Update M5 peripherals + IMU
+  M5.update();
+  (void)M5.Imu.update();
+
+  auto d = M5.Imu.getImuData(); // accel/gyro/mag
+  // NOTE: M5Unified units depend on device; we detect scale later.
+  out.t_us = micros();
+  out.acc  = Vec3(d.accel.x, d.accel.y, d.accel.z);
+  out.gyr  = Vec3(d.gyro.x,  d.gyro.y,  d.gyro.z);
+  out.mag  = Vec3(d.mag.x,   d.mag.y,   d.mag.z);
+
+  // Some boards return zeros if no mag; we treat "non-trivial vector" as having mag.
+  out.have_mag = (std::isfinite(out.mag.x()) && std::isfinite(out.mag.y()) && std::isfinite(out.mag.z()) &&
+                  (std::fabs(out.mag.x()) + std::fabs(out.mag.y()) + std::fabs(out.mag.z()) > 1e-6f));
+
   return true;
 }
-static bool read_mag(Vec3& m) {
-  float mx,my,mz;
-  if (!M5.Imu.getMag(&mx,&my,&mz)) return false;
-  m = Vec3(mx,my,mz);
-  return true;
+
+static bool scheduled_poll(IMUSample& out, bool& got_acc, bool& got_mag) {
+  got_acc = false; got_mag = false;
+  uint32_t now_us = micros();
+
+  // Always refresh last sample frequently; use it for both schedules
+  read_imu_once(g_last_sample);
+
+  if ((int32_t)(now_us - g_next_acc_us) >= 0) {
+    g_next_acc_us = now_us + g_acc_period_us;
+    got_acc = true;
+    g_acc_count_1s++;
+  }
+
+  if ((int32_t)(now_us - g_next_mag_us) >= 0) {
+    g_next_mag_us = now_us + g_mag_period_us;
+    got_mag = true;
+    if (g_last_sample.have_mag) g_mag_count_1s++;
+  }
+
+  if (got_acc || got_mag) out = g_last_sample;
+  return (got_acc || got_mag);
 }
 
-static bool scheduled_poll(IMUSample& out) {
-  uint32_t now = micros();
-  bool did_any = false;
-
-  // Mag schedule
-  if ((int32_t)(now - g_next_mag_us) >= 0) {
-    g_next_mag_us = now + (uint32_t)(1e6f / TARGET_MAG_HZ);
-    M5.Imu.update();
-    Vec3 m;
-    if (read_mag(m)) {
-      out.m_raw = m;
-      out.have_mag = true;
-      g_rate_mag_success.push(now);
-      did_any = true;
-    }
+static void print_rate_report_if_ready() {
+  uint32_t now_ms = millis();
+  if (g_rate_t0_ms == 0) { g_rate_t0_ms = now_ms; return; }
+  if (now_ms - g_rate_t0_ms >= 1000) {
+    float acc_hz = (float)g_acc_count_1s;
+    float mag_hz = (float)g_mag_count_1s;
+    Serial.printf("[RATE] acc/gyro observed ~%.1f Hz (target %.1f)\n", acc_hz, ACC_GYR_RATE_HZ);
+    Serial.printf("[RATE] mag observed     ~%.1f Hz (target %.1f) %s\n",
+                  mag_hz, MAG_RATE_HZ, (mag_hz>1.0f ? "" : "(mag may be unavailable)"));
+    g_acc_count_1s = 0;
+    g_mag_count_1s = 0;
+    g_rate_t0_ms = now_ms;
   }
-
-  // Acc/Gyro schedule
-  if ((int32_t)(now - g_next_acc_us) >= 0) {
-    g_next_acc_us = now + (uint32_t)(1e6f / TARGET_ACC_GYRO_HZ);
-    M5.Imu.update();
-    Vec3 a,w;
-    if (read_acc_gyro(a,w)) {
-      out.a_raw = a;
-      out.w_raw = w;
-      out.t_us = now;
-      g_rate_acc.push(now);
-      did_any = true;
-    }
-  }
-
-  return did_any;
 }
 
-// ------------------- Stillness + pose detection -------------------
-struct Stillness {
-  float a_norm_ema = 0;
-  float a_norm2_ema = 0;
-  float g_norm_ema = 0;
-  uint32_t still_since_ms = 0;
-  bool inited = false;
-
-  void reset() { *this = Stillness(); }
-
-  void update(const Vec3& a, const Vec3& w) {
-    float an = norm3(a);
-    float gn = norm3(w);
-    const float alpha = 0.05f;
-
-    if (!inited) {
-      a_norm_ema = an;
-      a_norm2_ema = an*an;
-      g_norm_ema = gn;
-      inited = true;
-      still_since_ms = 0;
-      return;
-    }
-    a_norm_ema  = (1-alpha)*a_norm_ema  + alpha*an;
-    a_norm2_ema = (1-alpha)*a_norm2_ema + alpha*an*an;
-    g_norm_ema  = (1-alpha)*g_norm_ema  + alpha*gn;
-
-    float var = a_norm2_ema - a_norm_ema*a_norm_ema;
-    if (var < 0) var = 0;
-    float std = sqrtf(var);
-
-    bool still = (g_norm_ema < GYRO_STILL_THRESH_RAW) &&
-                 (std < ACC_NORM_STABLE_FRAC * (fabsf(a_norm_ema) + 1e-6f));
-
-    uint32_t now = millis();
-    if (still) {
-      if (!still_since_ms) still_since_ms = now;
-    } else {
-      still_since_ms = 0;
-    }
-  }
-
-  bool is_still_for(uint32_t ms) const {
-    if (!still_since_ms) return false;
-    return (millis() - still_since_ms) >= ms;
-  }
-};
-
-static void dominant_axis_info(const Vec3& a, int& idx, int& sgn, float& dom_ratio) {
-  float ax = fabsf(a.x()), ay = fabsf(a.y()), az = fabsf(a.z());
-  // find largest and second largest
-  float v[3] = {ax, ay, az};
-  idx = 0;
-  if (v[1] > v[idx]) idx = 1;
-  if (v[2] > v[idx]) idx = 2;
-  float dom = v[idx];
-  float sec = 0;
-  for (int i=0;i<3;i++) if (i!=idx) sec = fmaxf(sec, v[i]);
-  dom_ratio = (sec > 1e-6f) ? (dom / sec) : 99.0f;
-
-  float val = (idx==0)? a.x() : (idx==1)? a.y() : a.z();
-  sgn = (val >= 0) ? +1 : -1;
-}
-
-struct PoseAvg {
-  Vec3 a = Vec3::Zero();
-  Vec3 w = Vec3::Zero();
-  Vec3 m = Vec3::Zero();
-  int n  = 0;
-  int dom_idx = -1;
-  int dom_sgn = 0;
-};
-
+// ------------------------------ Pose capture helper ------------------------------
 static bool capture_pose_auto(PoseAvg& out, Stillness& still, uint32_t capture_ms) {
-  out = PoseAvg();
+  out.reset();
+  still.reset();
 
-  uint32_t t0 = millis();
-  uint32_t t_end = t0 + capture_ms;
+  uint32_t stable_start_ms = 0;
+  uint32_t last_us = micros();
 
-  // capture over scheduled acc ticks
-  while ((int32_t)(millis() - t_end) < 0) {
+  while (true) {
     IMUSample s;
-    if (scheduled_poll(s)) {
-      still.update(s.a_raw, s.w_raw);
-      if (still.is_still_for(MIN_STILL_MS)) {
-        // Accumulate
-        out.a += s.a_raw;
-        out.w += s.w_raw;
-        if (s.have_mag) out.m += s.m_raw;
-        out.n++;
-      }
-    }
-    delay(0);
-  }
+    bool got_acc=false, got_mag=false;
+    if (!scheduled_poll(s, got_acc, got_mag)) { delay(0); continue; }
 
-  if (out.n < 40) return false;
-  out.a /= (float)out.n;
-  out.w /= (float)out.n;
-  if (out.n > 0) out.m /= (float)out.n;
+    uint32_t now_us = micros();
+    float dt_s = (now_us - last_us) * 1e-6f;
+    last_us = now_us;
 
-  float ratio;
-  dominant_axis_info(out.a, out.dom_idx, out.dom_sgn, ratio);
-  if (ratio < DOMINANT_RATIO) return false;
+    // Use accel+gyro stability (scale independent mostly)
+    bool stable = still.update_and_check(s.acc, s.gyr, dt_s);
 
-  return true;
-}
-
-// ------------------- Solvers (same idea as before) -------------------
-
-// Build mapping from 3 poses: we assume user followed prompts:
-//  Pose1: screen up  -> +Z_device is up (accel points +Z_dev for most IMUs)
-//  Pose2: top edge up -> +X_device up
-//  Pose3: right edge up -> +Y_device up
-//
-// Even if IMU accel sign convention differs, we solve signed-permutation anyway.
-// We use dominant axes in RAW space from each pose and assign them to device axes.
-static bool build_mapping_from_3poses(const PoseAvg& pZ, const PoseAvg& pX, const PoseAvg& pY, SignedPerm& out_map) {
-  int iz = pZ.dom_idx, sz = pZ.dom_sgn;
-  int ix = pX.dom_idx, sx = pX.dom_sgn;
-  int iy = pY.dom_idx, sy = pY.dom_sgn;
-
-  if (ix<0 || iy<0 || iz<0) return false;
-  if (ix==iy || ix==iz || iy==iz) return false;
-
-  out_map = make_signed_perm(ix, sx, iy, sy, iz, sz);
-
-  // fix handedness to det=+1 by flipping Z row if needed
-  if (out_map.det() < 0.5f) out_map.M.row(2) *= -1.0f;
-  out_map.valid = true;
-  return true;
-}
-
-// accel unit scale: raw -> m/s^2
-static float detect_acc_scale_to_SI(float a_norm_raw) {
-  if (a_norm_raw > 0.6f && a_norm_raw < 1.6f) return G_STD;             // g
-  if (a_norm_raw > 6.0f && a_norm_raw < 14.0f) return 1.0f;             // already m/s^2
-  if (a_norm_raw > 600.0f && a_norm_raw < 1600.0f) return G_STD/1000.0f; // mg
-  return (a_norm_raw > 1e-6f) ? (G_STD / a_norm_raw) : G_STD;
-}
-
-// mag unit scale: raw -> uT
-static float detect_mag_scale_to_uT(float m_norm_raw) {
-  if (m_norm_raw > 10.0f && m_norm_raw < 200.0f) return 1.0f; // likely uT
-
-  if (m_norm_raw > 10000.0f && m_norm_raw < 200000.0f) return 1e-3f; // nT
-
-  const float candidates[] = {0.01f, 0.1f, 1.0f, 10.0f, 100.0f, 1e-3f};
-  float best = 1.0f, best_err = 1e9f;
-  for (float c : candidates) {
-    float est = c * m_norm_raw;
-    float err = fabsf(est - EXPECT_FIELD_uT);
-    if (err < best_err) { best_err = err; best = c; }
-  }
-  return best;
-}
-
-// Rotation capture storage
-struct RotCap {
-  Vec3 a_raw[ROT_SAMPLES_MAX];
-  Vec3 w_raw[ROT_SAMPLES_MAX];
-  Vec3 m_raw[ROT_SAMPLES_MAX];
-  uint32_t t_us[ROT_SAMPLES_MAX];
-  int n = 0;
-};
-
-// Auto-detect yaw rotation while staying roughly flat.
-// We start capture when gyro norm rises and accel direction stays near initial “flat” direction.
-// We stop when enough samples collected and mag heading change is large enough (rough heuristic).
-static bool capture_rotation_auto(RotCap& cap, const PoseAvg& flatPose, Stillness& still) {
-  cap.n = 0;
-
-  Vec3 a_ref = safe_unit(flatPose.a);
-  const float cos_max_tilt = cosf(25.0f * (float)M_PI / 180.0f);
-
-  bool rotating = false;
-  uint32_t rot_start_ms = 0;
-
-  float heading0 = 0;
-  float heading_prev = 0;
-  float heading_unwrapped = 0;
-  bool heading_inited = false;
-
-  uint32_t t0 = millis();
-  while ((millis() - t0) < ROT_MAX_MS) {
-    IMUSample s;
-    if (!scheduled_poll(s)) { delay(0); continue; }
-
-    still.update(s.a_raw, s.w_raw);
-
-    // Require roughly-flat (based on accel direction similarity)
-    Vec3 au = safe_unit(s.a_raw);
-    float c = au.dot(a_ref);
-
-    float gnorm = norm3(s.w_raw);
-
-    // crude heading directly in raw mag XY (we don't know mapping yet; only used to detect “some” rotation)
-    // if mag not available, just keep going
-    float h = 0.0f;
-    bool have_heading = false;
-    if (s.have_mag) {
-      Vec3 m = s.m_raw;
-      h = atan2f(m.y(), m.x());
-      have_heading = true;
-    }
-
-    if (!rotating) {
-      // Start when:
-      // - not still anymore (gyro rises)
-      // - still roughly flat (c high)
-      if (c > cos_max_tilt && gnorm > (GYRO_STILL_THRESH_RAW * 4.0f)) {
-        rotating = true;
-        rot_start_ms = millis();
-        cap.n = 0;
-        heading_inited = false;
-        Serial.println("Detected rotation start. Keep rotating smoothly (yaw).");
-      }
+    if (!stable) {
+      stable_start_ms = 0;
+      out.reset();
       continue;
     }
 
-    // If started, require still roughly flat; if not, abort and ask again
-    if (c < cos_max_tilt) {
-      Serial.println("Rotation aborted: too much tilt. Keep screen-up/flat and rotate in yaw.");
-      return false;
-    }
+    if (stable_start_ms == 0) stable_start_ms = millis();
+    out.add(s);
 
-    // record
-    if (cap.n < ROT_SAMPLES_MAX) {
-      cap.a_raw[cap.n] = s.a_raw;
-      cap.w_raw[cap.n] = s.w_raw;
-      cap.m_raw[cap.n] = s.have_mag ? s.m_raw : Vec3::Zero();
-      cap.t_us[cap.n]  = s.t_us;
-      cap.n++;
-    }
-
-    // update heading change heuristic
-    if (have_heading) {
-      if (!heading_inited) {
-        heading0 = h;
-        heading_prev = h;
-        heading_unwrapped = h;
-        heading_inited = true;
-      } else {
-        heading_unwrapped = unwrap_step(heading_unwrapped, h);
-      }
-    }
-
-    // stop conditions
-    uint32_t dt_ms = millis() - rot_start_ms;
-    if (dt_ms > ROT_MIN_MS && cap.n >= 120) {
-      float dh = heading_inited ? fabsf(heading_unwrapped - heading0) : 0.0f;
-      if (dh > ROT_MIN_HEADING_CHANGE_RAD || cap.n >= ROT_SAMPLES_MAX) {
-        Serial.printf("Rotation capture complete. Stored %d samples. Rough mag heading change = %.1f deg\n",
-                      cap.n, rad2deg(dh));
-        return true;
-      }
+    if (millis() - stable_start_ms >= capture_ms && out.n > 20) {
+      return true;
     }
   }
-
-  Serial.println("Rotation capture timed out. Try rotating faster and longer.");
-  return false;
 }
 
-// Choose gyro scale (raw->rad/s) from {1, pi/180} using mag-heading vs gyro-yaw consistency.
-// Needs a provisional mag mapping; we’ll first try mag mapping = accgyro mapping.
-static float choose_gyro_scale_radps(
-  const RotCap& cap,
-  const SignedPerm& map_accgyro,
-  const SignedPerm& map_mag,
-  float acc_scale_SI,
-  float mag_scale_uT)
-{
-  const float candidates[] = {1.0f, (float)M_PI/180.0f};
-
-  // Build device-frame arrays
-  static Vec3 acc_dev_SI[ROT_SAMPLES_MAX];
-  static Vec3 gyro_dev_raw[ROT_SAMPLES_MAX];
-  static Vec3 mag_dev_uT[ROT_SAMPLES_MAX];
-
-  int n = cap.n;
-  for (int i=0;i<n;i++) {
-    acc_dev_SI[i]  = map_accgyro.apply(cap.a_raw[i]) * acc_scale_SI;
-    gyro_dev_raw[i] = map_accgyro.apply(cap.w_raw[i]);
-    mag_dev_uT[i]   = map_mag.apply(cap.m_raw[i]) * mag_scale_uT;
-  }
-
-  // unwrapped heading from mag in device frame using down-projection from accel
-  Eigen::VectorXf heading(n);
-  for (int i=0;i<n;i++) {
-    Vec3 down = -safe_unit(acc_dev_SI[i]);
-    Vec3 m = mag_dev_uT[i];
-    Vec3 mh = m - down * (m.dot(down));
-    float h = atan2f(mh.y(), mh.x());
-    if (i==0) heading[i] = h;
-    else heading[i] = unwrap_step(heading[i-1], h);
-  }
-
-  float best_s = candidates[0];
-  float best_cost = 1e30f;
-
-  for (float s : candidates) {
-    float yaw = 0.0f;
-    double err2 = 0.0;
-    int k = 0;
-
-    for (int i=1;i<n;i++) {
-      float dt = (cap.t_us[i] - cap.t_us[i-1]) * 1e-6f;
-      Vec3 down = -safe_unit(acc_dev_SI[i]);
-      float w_down = (gyro_dev_raw[i] * s).dot(down);
-      float dyaw = w_down * dt;
-      yaw += dyaw;
-
-      // compare delta heading to delta yaw (allow sign)
-      float dheading = heading[i] - heading[i-1];
-      float e1 = (dheading - dyaw);
-      float e2 = (dheading + dyaw);
-      float e = (fabsf(e1) < fabsf(e2)) ? e1 : e2;
-
-      err2 += (double)e * (double)e;
-      k++;
-    }
-
-    float rms = (k>0) ? sqrtf((float)(err2 / (double)k)) : 1e9f;
-
-    // Prefer whichever makes yaw & heading track tightly
-    float cost = rms;
-    if (cost < best_cost) { best_cost = cost; best_s = s; }
-  }
-
-  return best_s;
+// ------------------------------ Solve accel mapping from 3-4 poses ------------------------------
+// We ask user to produce expected +g directions in a "device screen frame":
+//  - Screen UP (flat):    +g should point +Z_out   (proper acceleration up out of screen)
+//  - Right edge DOWN:     +g should point +X_right
+//  - Top edge DOWN:       +g should point +Y_top
+//
+// But final output wants Z down => we’ll flip Z at the end to form BODY_NED-like.
+static float score_dir(const Vec3& v, const Vec3& target_unit) {
+  Vec3 u = safe_unit(v);
+  return u.dot(target_unit); // in [-1,1], higher is better
 }
 
-// Find best mag mapping (det=+1 signed-perm) by minimizing delta-heading vs delta-yaw error.
-static SignedPerm find_best_mag_mapping(
-  const RotCap& cap,
-  const SignedPerm& map_accgyro,
-  float acc_scale_SI,
-  float mag_scale_uT,
-  float gyro_scale_radps)
+static bool build_mapping_from_poses(const PoseAvg& pZ_up,
+                                    const PoseAvg& pX_right,
+                                    const PoseAvg& pY_top,
+                                    SignedPerm& out_map)
 {
+  Vec3 aZ = pZ_up.acc_mean();
+  Vec3 aX = pX_right.acc_mean();
+  Vec3 aY = pY_top.acc_mean();
+
+  // Targets in screen frame (X right, Y top, Z out of screen)
+  Vec3 tZ(0,0,1);
+  Vec3 tX(1,0,0);
+  Vec3 tY(0,1,0);
+
   SignedPerm perms[64];
-  int nperm = enumerate_signed_perms(perms, 64, true);
+  int nperm = enumerate_perms(perms, 64, false);
 
-  int n = cap.n;
+  float best = -1e9f;
+  SignedPerm bestp;
 
-  // Precompute accel & gyro device
-  static Vec3 acc_dev_SI[ROT_SAMPLES_MAX];
-  static Vec3 gyro_dev_raw[ROT_SAMPLES_MAX];
-  for (int i=0;i<n;i++) {
-    acc_dev_SI[i]  = map_accgyro.apply(cap.a_raw[i]) * acc_scale_SI;
-    gyro_dev_raw[i] = map_accgyro.apply(cap.w_raw[i]);
+  for (int i=0;i<nperm;i++) {
+    Vec3 mz = apply_perm(perms[i], aZ);
+    Vec3 mx = apply_perm(perms[i], aX);
+    Vec3 my = apply_perm(perms[i], aY);
+
+    // Score: align each pose with its expected axis (softly penalize off-axis by using dot only)
+    float sc = 0.0f;
+    sc += 2.5f * score_dir(mz, tZ);
+    sc += 2.0f * score_dir(mx, tX);
+    sc += 2.0f * score_dir(my, tY);
+
+    // Small penalty if norms differ wildly (bad pose)
+    float nz = safe_norm(mz), nx = safe_norm(mx), ny = safe_norm(my);
+    float nmean = (nz+nx+ny)/3.0f;
+    float nvar = (nz-nmean)*(nz-nmean) + (nx-nmean)*(nx-nmean) + (ny-nmean)*(ny-nmean);
+    sc -= 0.15f * nvar / (nmean*nmean + 1e-6f);
+
+    if (sc > best) { best = sc; bestp = perms[i]; }
   }
 
-  float best_cost = 1e30f;
-  SignedPerm best = perms[0];
+  out_map = bestp;
+  return (best > 3.0f); // heuristic: should be strong alignment
+}
 
-  for (int pi=0; pi<nperm; pi++) {
-    SignedPerm mm = perms[pi];
+// ------------------------------ Detect accel scale to SI ------------------------------
+static float choose_acc_scale_mps2(const SignedPerm& map_screen, const PoseAvg& pZ_up, const PoseAvg& pX, const PoseAvg& pY) {
+  // Map to screen frame first, then measure magnitude in raw units.
+  float mags[3] = {
+    safe_norm(apply_perm(map_screen, pZ_up.acc_mean())),
+    safe_norm(apply_perm(map_screen, pX.acc_mean())),
+    safe_norm(apply_perm(map_screen, pY.acc_mean()))
+  };
+  float m = (mags[0] + mags[1] + mags[2]) / 3.0f;
 
-    // mag device uT
-    static Vec3 mag_dev_uT[ROT_SAMPLES_MAX];
-    for (int i=0;i<n;i++) mag_dev_uT[i] = mm.apply(cap.m_raw[i]) * mag_scale_uT;
+  // Typical outcomes:
+  //  - if raw in "g": m ~ 1
+  //  - if raw in "m/s^2": m ~ 9.8
+  //  - if odd scaling: choose factor to make it G_STD
+  if (m > 0.4f && m < 2.2f) return G_STD;      // g -> m/s^2
+  if (m > 4.0f && m < 15.0f) return 1.0f;      // already m/s^2
+  // fallback: normalize to g_std
+  return (m > 1e-6f) ? (G_STD / m) : 1.0f;
+}
 
-    // Compare delta heading vs delta yaw (about down)
-    bool heading_inited = false;
-    float heading_prev_u = 0.0f;
-    float heading_u = 0.0f;
+// ------------------------------ Rotation capture (flat, clockwise) ------------------------------
+static bool capture_rotation_auto(RotCap& cap, Stillness& still, uint32_t ms_total) {
+  cap.reset();
+  still.reset();
 
-    double err2 = 0.0;
+  uint32_t t0 = millis();
+  uint32_t last_us = micros();
+
+  // We accept motion; but require device stays roughly flat (acc direction stable-ish).
+  Vec3 a_unit_ref(0,0,1);
+  bool have_ref = false;
+
+  while (millis() - t0 < ms_total) {
+    IMUSample s;
+    bool got_acc=false, got_mag=false;
+    if (!scheduled_poll(s, got_acc, got_mag)) { delay(0); continue; }
+
+    uint32_t now_us = micros();
+    float dt_s = (now_us - last_us) * 1e-6f;
+    last_us = now_us;
+
+    // Track accel direction reference (flatness)
+    Vec3 au = safe_unit(s.acc, Vec3(0,0,1));
+    if (!have_ref) { a_unit_ref = au; have_ref = true; }
+
+    float cos_flat = clampf(au.dot(a_unit_ref), -1.0f, 1.0f);
+    bool flat_enough = (cos_flat > 0.995f); // ~5.7 degrees
+
+    // We don't require stillness; we require "not being violently shaken"
+    float gyro_n = safe_norm(s.gyr);
+    bool not_crazy = std::isfinite(gyro_n) && gyro_n < 1000.0f;
+
+    if (flat_enough && not_crazy) cap.push(s);
+
+    (void)still.update_and_check(s.acc, s.gyr, dt_s);
+  }
+
+  return cap.n >= 50;
+}
+
+// ------------------------------ Find best mag mapping using gyro↔heading-rate correlation ------------------------------
+static float corrcoef(const float* x, const float* y, int n) {
+  if (n < 10) return 0.0f;
+  double sx=0, sy=0, sxx=0, syy=0, sxy=0;
+  for (int i=0;i<n;i++) { sx += x[i]; sy += y[i]; }
+  double mx = sx / n, my = sy / n;
+  for (int i=0;i<n;i++) {
+    double dx = x[i]-mx, dy = y[i]-my;
+    sxx += dx*dx; syy += dy*dy; sxy += dx*dy;
+  }
+  if (sxx <= 1e-12 || syy <= 1e-12) return 0.0f;
+  return (float)(sxy / std::sqrt(sxx*syy));
+}
+
+static SignedPerm find_best_mag_mapping(const RotCap& cap,
+                                        const SignedPerm& map_acc_screen,
+                                        float& out_heading_total_rad,
+                                        float& out_mag_norm_mean_raw,
+                                        float& out_corr_abs)
+{
+  // Candidate mag mappings: usually right-handed only is nicer, but we allow all and pick by score.
+  SignedPerm perms[64];
+  int nperm = enumerate_perms(perms, 64, true); // det positive only
+
+  float bestScore = -1e9f;
+  SignedPerm bestP = perms[0];
+
+  // Precompute mapped gyro z (in screen frame) time series (raw)
+  float wz[MAX_ROT_SAMPLES];
+  float dt[MAX_ROT_SAMPLES];
+
+  int n = cap.n;
+  if (n > MAX_ROT_SAMPLES) n = MAX_ROT_SAMPLES;
+
+  for (int i=1;i<n;i++) {
+    uint32_t t0 = cap.s[i-1].t_us;
+    uint32_t t1 = cap.s[i].t_us;
+    float dts = (t1 - t0) * 1e-6f;
+    dt[i] = (dts > 1e-6f && dts < 0.2f) ? dts : 0.0f;
+
+    Vec3 g_scr = apply_perm(map_acc_screen, cap.s[i].gyr);
+    wz[i] = g_scr.z(); // z in screen frame
+  }
+
+  float best_corr_abs = 0.0f;
+  float best_heading_total = 0.0f;
+  float best_mag_norm_mean = 0.0f;
+
+  for (int pi=0; pi<nperm; ++pi) {
+    float hrate[MAX_ROT_SAMPLES];
+    float wz_use[MAX_ROT_SAMPLES];
+
+    float psi_prev = 0.0f;
+    bool psi_init = false;
+    float psi_unwrap = 0.0f;
+    float psi_total = 0.0f;
+
+    double mag_norm_sum = 0.0;
+    int mag_norm_n = 0;
+
     int k = 0;
-
     for (int i=1;i<n;i++) {
-      float dt = (cap.t_us[i] - cap.t_us[i-1]) * 1e-6f;
-      Vec3 down = -safe_unit(acc_dev_SI[i]);
+      if (!cap.s[i].have_mag) continue;
+      if (dt[i] <= 0.0f) continue;
 
-      // yaw increment
-      float w_down = (gyro_dev_raw[i] * gyro_scale_radps).dot(down);
-      float dyaw = w_down * dt;
+      Vec3 m_scr = apply_perm(perms[pi], cap.s[i].mag);
 
-      // heading from mag projected to horizontal plane
-      Vec3 m = mag_dev_uT[i];
-      Vec3 mh = m - down * (m.dot(down));
-      float h = atan2f(mh.y(), mh.x());
+      float mn = safe_norm(m_scr);
+      if (mn > 1e-6f) { mag_norm_sum += mn; mag_norm_n++; }
 
-      if (!heading_inited) {
-        heading_prev_u = h;
-        heading_u = h;
-        heading_inited = true;
+      float psi = std::atan2(m_scr.y(), m_scr.x());
+
+      if (!psi_init) {
+        psi_prev = psi;
+        psi_unwrap = psi;
+        psi_init = true;
         continue;
       }
-      heading_u = unwrap_step(heading_u, h);
-      float dheading = heading_u - heading_prev_u;
-      heading_prev_u = heading_u;
 
-      float e1 = (dheading - dyaw);
-      float e2 = (dheading + dyaw);
-      float e = (fabsf(e1) < fabsf(e2)) ? e1 : e2;
+      float dpsi = wrap_pi(psi - psi_prev);
+      psi_prev = psi;
+      psi_unwrap += dpsi;
+      psi_total += std::fabs(dpsi);
 
-      err2 += (double)e * (double)e;
+      hrate[k] = dpsi / dt[i];
+      wz_use[k] = wz[i];
       k++;
+      if (k >= MAX_ROT_SAMPLES) break;
     }
 
-    float rms = (k>0) ? sqrtf((float)(err2 / (double)k)) : 1e9f;
+    if (k < 20 || mag_norm_n < 20) continue;
 
-    // soft field magnitude sanity
-    double mag_sum = 0.0;
-    for (int i=0;i<n;i++) mag_sum += norm3(mag_dev_uT[i]);
-    float mag_mean = (float)(mag_sum / n);
-    float mag_pen = fabsf(mag_mean - EXPECT_FIELD_uT) * 0.01f;
+    float c = corrcoef(wz_use, hrate, k);
+    float cabs = std::fabs(c);
 
-    float cost = rms + mag_pen;
+    float mag_norm_mean = (float)(mag_norm_sum / std::max(1, mag_norm_n));
 
-    if (cost < best_cost) {
-      best_cost = cost;
-      best = mm;
+    // score: prefer high correlation magnitude, and prefer strong total heading change
+    float score = 3.0f * cabs + 0.002f * psi_total;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestP = perms[pi];
+      best_corr_abs = cabs;
+      best_heading_total = psi_unwrap; // signed unwrap total
+      best_mag_norm_mean = mag_norm_mean;
     }
   }
 
+  out_heading_total_rad = best_heading_total;
+  out_mag_norm_mean_raw = best_mag_norm_mean;
+  out_corr_abs = best_corr_abs;
+  return bestP;
+}
+
+// ------------------------------ Choose mag scale to uT ------------------------------
+static float choose_mag_scale_uT(float mag_norm_mean_raw) {
+  // Earth field typical ~25..65 uT (varies). We'll accept 20..90 uT as plausible.
+  const float candidates[] = { 1.0f, 0.1f, 10.0f, 0.01f, 100.0f, 0.001f };
+  float best = candidates[0];
+  float bestCost = 1e9f;
+  for (float s : candidates) {
+    float muT = mag_norm_mean_raw * s;
+    float cost = 0.0f;
+    if (muT < 20.0f) cost += (20.0f - muT) * (20.0f - muT);
+    if (muT > 90.0f) cost += (muT - 90.0f) * (muT - 90.0f);
+    cost += 0.02f * (muT - 50.0f) * (muT - 50.0f); // mild preference
+    if (cost < bestCost) { bestCost = cost; best = s; }
+  }
   return best;
 }
 
-// ------------------- State machine -------------------
-enum class Stage {
-  Intro,
-  Rates,
-  Pose1_Zup,
-  Pose2_Xup,
-  Pose3_Yup,
-  Rotation,
-  Solve,
-  Done_Stream
+// ------------------------------ Choose gyro scale to rad/s ------------------------------
+static float choose_gyro_scale_radps(float heading_total_rad, float gyro_int_raw) {
+  // scale = (true radians) / (raw_integral_units)
+  if (!std::isfinite(heading_total_rad) || !std::isfinite(gyro_int_raw) || std::fabs(gyro_int_raw) < 1e-6f) {
+    // fallback: decide deg/s vs rad/s by magnitude
+    // If a user rotated ~1 turn, gyro_int_raw will be ~360 if deg, ~6.28 if rad.
+    float a = std::fabs(gyro_int_raw);
+    if (a > 30.0f) return (float)M_PI / 180.0f;
+    return 1.0f;
+  }
+  float s = heading_total_rad / gyro_int_raw;
+  // If the user rotated clockwise vs our sign conventions, s may be negative; keep sign in mapping, not scale:
+  return std::fabs(s);
+}
+
+// ------------------------------ Convert screen-frame mapping to BODY_NED-like ------------------------------
+// Our screen frame uses Z_out. NED-like wants Z_down = -Z_out.
+// This is equivalent to flipping the mapped Z sign.
+static SignedPerm screen_to_body_ned_like(const SignedPerm& p_screen) {
+  SignedPerm p = p_screen;
+  p.sgn[2] = (int8_t)(-p.sgn[2]); // flip Z
+  p.det = (int8_t)(-p.det);       // flip determinant sign (acceptable; we’re just defining frame)
+  return p;
+}
+
+// ------------------------------ State Machine ------------------------------
+enum Stage {
+  ST_INTRO = 0,
+  ST_POSE_Z_UP,
+  ST_POSE_Z_DOWN,
+  ST_POSE_X_RIGHT,
+  ST_POSE_Y_TOP,
+  ST_SOLVE_ACCEL,
+  ST_ROTATE_FLAT,
+  ST_SOLVE_MAG_GYRO,
+  ST_DONE
 };
 
-static Stage g_stage = Stage::Intro;
+static Stage g_stage = ST_INTRO;
+
+static PoseAvg g_poseZup, g_poseZdown, g_poseX, g_poseY;
 static Stillness g_still;
+static RotCap g_rot;
 
-static PoseAvg g_poseZ, g_poseX, g_poseY;
-static RotCap  g_rot;
+// Results:
+static SignedPerm g_map_acc_screen;
+static SignedPerm g_map_mag_screen;
 
-static SignedPerm g_map_accgyro;
-static SignedPerm g_map_mag;
+static float g_acc_scale_mps2 = 1.0f;   // multiply mapped raw accel by this => m/s^2
+static float g_mag_scale_uT   = 1.0f;   // multiply mapped raw mag by this => uT
+static float g_gyro_scale_radps = 1.0f; // multiply mapped raw gyro by this => rad/s
 
-static float g_acc_scale_SI = 1.0f;
-static float g_mag_scale_uT = 1.0f;
-static float g_gyro_scale_radps = 1.0f;
+static bool g_have_mag = false;
 
-static void print_intro() {
-  Serial.println("\n====================================================");
-  Serial.println(" AtomS3R IMU AUTO-DETECT (Serial-guided)");
-  Serial.println("  - Axis mapping (accel/gyro/mag) + unit scales");
-  Serial.println("  - Auto-captures when it detects your motion");
-  Serial.println("");
-  Serial.println("Device frame prompts assume:");
-  Serial.println("  +X_device = TOP of screen");
-  Serial.println("  +Y_device = RIGHT of screen");
-  Serial.println("  +Z_device = OUT of screen (toward your face)");
-  Serial.println("");
-  Serial.println("It will output NED-like:");
-  Serial.println("  N=+X_dev, E=+Y_dev, D=-Z_dev");
-  Serial.println("====================================================\n");
+static void print_user_prompt(const char* msg) {
+  Serial.println();
+  Serial.println("============================================================");
+  Serial.println(msg);
+  Serial.println("============================================================");
 }
 
-static void print_rate_request() {
-  Serial.printf("Target scheduling: accel/gyro=%.1f Hz, mag=%.1f Hz\n", TARGET_ACC_GYRO_HZ, TARGET_MAG_HZ);
-  Serial.println("Measuring actual produced timing for ~2 seconds...");
-}
+static void setup_rates() {
+  g_acc_period_us = (uint32_t)std::max(1000.0f, 1e6f / ACC_GYR_RATE_HZ);
+  g_mag_period_us = (uint32_t)std::max(1000.0f, 1e6f / MAG_RATE_HZ);
 
-static void print_pose_prompt(int pose_num) {
-  if (pose_num == 1) {
-    Serial.println("\nSTEP 1/4: Put device SCREEN UP (flat).");
-    Serial.println("Hold still. I will auto-detect stillness and capture.");
-  } else if (pose_num == 2) {
-    Serial.println("\nSTEP 2/4: Put device TOP EDGE UP (stand it on bottom edge).");
-    Serial.println("Hold still. I will auto-detect and capture.");
-  } else if (pose_num == 3) {
-    Serial.println("\nSTEP 3/4: Put device RIGHT EDGE UP (stand it on left edge).");
-    Serial.println("Hold still. I will auto-detect and capture.");
-  }
-}
-
-static void print_rotation_prompt() {
-  Serial.println("\nSTEP 4/4: Keep device SCREEN UP (flat) and rotate in YAW.");
-  Serial.println("Rotate smoothly left/right (like turning a compass).");
-  Serial.println("I will auto-detect rotation start and stop after enough data.");
-}
-
-static void print_final_results() {
-  Serial.println("\n================ FINAL RESULTS ================");
-  Serial.println("Conversion pipeline:");
-  Serial.println("  a_dev = M_accgyro * a_raw");
-  Serial.println("  w_dev = M_accgyro * w_raw");
-  Serial.println("  m_dev = M_mag     * m_raw");
-  Serial.println("  a_SI  = acc_scale_SI * a_dev          (m/s^2)");
-  Serial.println("  w_SI  = gyro_scale_radps * w_dev      (rad/s)");
-  Serial.println("  m_uT  = mag_scale_uT * m_dev          (uT)");
-  Serial.println("Then device->NED-like:");
-  Serial.println("  NED = [ +X_dev, +Y_dev, -Z_dev ]");
-  Serial.println("----------------------------------------------");
-
-  Serial.printf("acc_scale_SI     = %.8f (m/s^2 per raw)\n", g_acc_scale_SI);
-  Serial.printf("gyro_scale_radps = %.8f (rad/s per raw)\n", g_gyro_scale_radps);
-  Serial.printf("mag_scale_uT     = %.8f (uT per raw)\n", g_mag_scale_uT);
-
-  Serial.println("\nACC+GYRO mapping M_accgyro (raw->device):");
-  print_mapping("ACC+GYRO", g_map_accgyro);
-
-  Serial.println("\nMAG mapping M_mag (raw->device):");
-  print_mapping("MAG", g_map_mag);
-
-  Serial.println("==============================================\n");
+  uint32_t now = micros();
+  g_next_acc_us = now + g_acc_period_us;
+  g_next_mag_us = now + g_mag_period_us;
 }
 
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
-  Serial.begin(115200);
-  delay(200);
 
-  if (!M5.Imu.isEnabled()) {
-    Serial.println("ERROR: IMU not enabled via M5Unified.");
-    while (1) delay(100);
+  Serial.begin(115200);
+  delay(300);
+
+  setup_rates();
+
+  print_user_prompt(
+    "IMU Auto-Detect Wizard\n"
+    "We will detect axis mappings and unit scales.\n"
+    "Follow prompts. Keep the device steady when asked.\n"
+    "We will also report observed sample rates vs your targets."
+  );
+
+  g_stage = ST_POSE_Z_UP;
+  print_user_prompt("STEP 1/5: Place device SCREEN UP on a flat surface. Hold still...");
+}
+
+static void solve_and_print_final(float heading_total_rad, float mag_norm_mean_raw, float corr_abs) {
+  SignedPerm map_acc_body = screen_to_body_ned_like(g_map_acc_screen);
+  SignedPerm map_mag_body = screen_to_body_ned_like(g_map_mag_screen);
+
+  Serial.println();
+  Serial.println("########################### RESULTS ###########################");
+  Serial.printf("Mag availability: %s\n", g_have_mag ? "YES" : "NO (mag looks unavailable or always zero)");
+  Serial.printf("Mag correlation score |corr| ~ %.3f (higher is better)\n", corr_abs);
+
+  Serial.println("\nAccel mapping (RAW -> SCREEN frame):");
+  print_perm("acc_screen", g_map_acc_screen);
+
+  Serial.println("\nAccel mapping (RAW -> BODY_NED-like: X right, Y top, Z down):");
+  print_perm("acc_bodyNED", map_acc_body);
+  Serial.printf("acc_scale_mps2 = %.9g  (multiply mapped raw accel by this)\n", g_acc_scale_mps2);
+
+  Serial.println("\nGyro: assuming SAME axis mapping as accel (common for IMU).");
+  Serial.printf("gyro_scale_radps = %.9g  (multiply mapped raw gyro by this)\n", g_gyro_scale_radps);
+
+  if (g_have_mag) {
+    Serial.println("\nMag mapping (RAW -> SCREEN frame):");
+    print_perm("mag_screen", g_map_mag_screen);
+
+    Serial.println("\nMag mapping (RAW -> BODY_NED-like):");
+    print_perm("mag_bodyNED", map_mag_body);
+    Serial.printf("mag_scale_uT = %.9g  (multiply mapped raw mag by this)\n", g_mag_scale_uT);
+    Serial.printf("Rotation heading total (mag unwrap) ~ %.2f rad (%.1f deg)\n",
+                  heading_total_rad, heading_total_rad * 180.0f / (float)M_PI);
   }
 
-  g_next_acc_us = micros();
-  g_next_mag_us = micros();
-  g_rate_acc.reset();
-  g_rate_mag_success.reset();
+  Serial.println();
+  Serial.println("=== Paste this block into your project ===");
+  Serial.println("/*");
+  Serial.println("  RAW -> BODY_NED-like conversion:");
+  Serial.println("    BODY_NED-like axes are tied to the device screen:");
+  Serial.println("      +X = screen-right, +Y = screen-top, +Z = screen-down");
+  Serial.println("*/");
+  Serial.println("struct AxisMap { int8_t idx[3]; int8_t sgn[3]; };");
+  Serial.println("static inline Eigen::Matrix<float,3,1> apply_map(const AxisMap& m, const Eigen::Matrix<float,3,1>& v){");
+  Serial.println("  Eigen::Matrix<float,3,1> o;");
+  Serial.println("  o(0) = (float)m.sgn[0]*v((int)m.idx[0]);");
+  Serial.println("  o(1) = (float)m.sgn[1]*v((int)m.idx[1]);");
+  Serial.println("  o(2) = (float)m.sgn[2]*v((int)m.idx[2]);");
+  Serial.println("  return o;");
+  Serial.println("}");
+  Serial.printf("static constexpr AxisMap ACC_MAP = {{%d,%d,%d},{%d,%d,%d}};\n",
+                map_acc_body.idx[0], map_acc_body.idx[1], map_acc_body.idx[2],
+                map_acc_body.sgn[0], map_acc_body.sgn[1], map_acc_body.sgn[2]);
+  Serial.printf("static constexpr float   ACC_SCALE_MPS2 = %.9g;\n", g_acc_scale_mps2);
+  Serial.printf("static constexpr float   GYRO_SCALE_RADPS = %.9g;\n", g_gyro_scale_radps);
+  if (g_have_mag) {
+    Serial.printf("static constexpr AxisMap MAG_MAP = {{%d,%d,%d},{%d,%d,%d}};\n",
+                  map_mag_body.idx[0], map_mag_body.idx[1], map_mag_body.idx[2],
+                  map_mag_body.sgn[0], map_mag_body.sgn[1], map_mag_body.sgn[2]);
+    Serial.printf("static constexpr float   MAG_SCALE_UT = %.9g;\n", g_mag_scale_uT);
+  }
+  Serial.println("/*");
+  Serial.println("Usage:");
+  Serial.println("  Vec3 acc_raw(ax,ay,az), gyr_raw(gx,gy,gz), mag_raw(mx,my,mz);");
+  Serial.println("  Vec3 acc_si  = apply_map(ACC_MAP, acc_raw) * ACC_SCALE_MPS2;");
+  Serial.println("  Vec3 gyr_si  = apply_map(ACC_MAP, gyr_raw) * GYRO_SCALE_RADPS;");
+  Serial.println("  Vec3 mag_uT  = apply_map(MAG_MAP, mag_raw) * MAG_SCALE_UT; // if mag available");
+  Serial.println("*/");
+  Serial.println();
 
-  print_intro();
-  g_stage = Stage::Rates;
-  g_still.reset();
-  print_rate_request();
+  Serial.println("DONE.");
+  Serial.println("###############################################################");
 }
 
 void loop() {
-  // Poll scheduler
-  IMUSample s;
-  bool got = scheduled_poll(s);
-  if (got) {
-    g_still.update(s.a_raw, s.w_raw);
-  }
-
-  static uint32_t stage_t0 = millis();
+  // show rate report continuously
+  print_rate_report_if_ready();
 
   switch (g_stage) {
-    case Stage::Rates: {
-      // collect stats for ~2s
-      if (millis() - stage_t0 > 2000) {
-        Serial.println("\nMeasured timing:");
-        g_rate_acc.print("Accel/Gyro scheduled");
-        g_rate_mag_success.print("Mag getMag() success");
-        Serial.println("Note: 'Mag getMag() success' may be lower than requested if the driver/ODR is lower.");
-        g_stage = Stage::Pose1_Zup;
-        stage_t0 = millis();
-        g_still.reset();
-        print_pose_prompt(1);
+    case ST_POSE_Z_UP: {
+      if (capture_pose_auto(g_poseZup, g_still, POSE_CAPTURE_MS)) {
+        Serial.println("[OK] Captured SCREEN UP pose.");
+        g_stage = ST_POSE_Z_DOWN;
+        print_user_prompt("STEP 2/5: Flip device SCREEN DOWN on same flat surface. Hold still...");
       }
     } break;
 
-    case Stage::Pose1_Zup: {
-      if (g_still.is_still_for(MIN_STILL_MS)) {
-        Serial.println("Stillness detected. Capturing Pose 1...");
-        PoseAvg p;
-        Stillness tmpStill = g_still; // keep reference
-        if (capture_pose_auto(p, tmpStill, POSE_CAPTURE_MS)) {
-          g_poseZ = p;
-          Serial.printf("Captured Pose1: n=%d, accel avg=(%.4f %.4f %.4f)\n",
-                        p.n, p.a.x(), p.a.y(), p.a.z());
-          g_stage = Stage::Pose2_Xup;
-          stage_t0 = millis();
-          g_still.reset();
-          print_pose_prompt(2);
-        } else {
-          Serial.println("Pose1 capture failed (not dominant axis / not enough stable samples). Try again: hold still longer.");
-          g_still.reset();
-        }
-      } else {
-        // occasional hint
-        static uint32_t last_hint = 0;
-        if (millis() - last_hint > 1200) {
-          last_hint = millis();
-          Serial.println("Waiting: hold still (low gyro, stable accel) ...");
-        }
+    case ST_POSE_Z_DOWN: {
+      if (capture_pose_auto(g_poseZdown, g_still, POSE_CAPTURE_MS)) {
+        Serial.println("[OK] Captured SCREEN DOWN pose.");
+        g_stage = ST_POSE_X_RIGHT;
+        print_user_prompt(
+          "STEP 3/5: Stand device on its RIGHT EDGE (screen facing you; right edge on table).\n"
+          "Hold still..."
+        );
       }
     } break;
 
-    case Stage::Pose2_Xup: {
-      if (g_still.is_still_for(MIN_STILL_MS)) {
-        Serial.println("Stillness detected. Capturing Pose 2...");
-        PoseAvg p;
-        Stillness tmpStill = g_still;
-        if (capture_pose_auto(p, tmpStill, POSE_CAPTURE_MS)) {
-          // ensure pose differs from Pose1 by dominant axis
-          if (p.dom_idx == g_poseZ.dom_idx) {
-            Serial.println("Pose2 looks too similar to Pose1 (same dominant raw axis). Move to TOP EDGE UP more clearly.");
-            g_still.reset();
-            break;
-          }
-          g_poseX = p;
-          Serial.printf("Captured Pose2: n=%d, accel avg=(%.4f %.4f %.4f)\n",
-                        p.n, p.a.x(), p.a.y(), p.a.z());
-          g_stage = Stage::Pose3_Yup;
-          stage_t0 = millis();
-          g_still.reset();
-          print_pose_prompt(3);
-        } else {
-          Serial.println("Pose2 capture failed. Hold still longer / ensure it's truly on TOP EDGE.");
-          g_still.reset();
-        }
+    case ST_POSE_X_RIGHT: {
+      if (capture_pose_auto(g_poseX, g_still, POSE_CAPTURE_MS)) {
+        Serial.println("[OK] Captured RIGHT EDGE DOWN pose.");
+        g_stage = ST_POSE_Y_TOP;
+        print_user_prompt(
+          "STEP 4/5: Stand device on its TOP EDGE (screen facing you; top edge on table).\n"
+          "Hold still..."
+        );
       }
     } break;
 
-    case Stage::Pose3_Yup: {
-      if (g_still.is_still_for(MIN_STILL_MS)) {
-        Serial.println("Stillness detected. Capturing Pose 3...");
-        PoseAvg p;
-        Stillness tmpStill = g_still;
-        if (capture_pose_auto(p, tmpStill, POSE_CAPTURE_MS)) {
-          if (p.dom_idx == g_poseZ.dom_idx || p.dom_idx == g_poseX.dom_idx) {
-            Serial.println("Pose3 not distinct enough (dominant raw axis repeats). Put RIGHT EDGE UP more clearly.");
-            g_still.reset();
-            break;
-          }
-          g_poseY = p;
-          Serial.printf("Captured Pose3: n=%d, accel avg=(%.4f %.4f %.4f)\n",
-                        p.n, p.a.x(), p.a.y(), p.a.z());
-
-          // build acc/gyro mapping
-          if (!build_mapping_from_3poses(g_poseZ, g_poseX, g_poseY, g_map_accgyro)) {
-            Serial.println("ERROR: Could not build accel/gyro mapping. Restarting pose steps.");
-            g_stage = Stage::Pose1_Zup;
-            g_still.reset();
-            print_pose_prompt(1);
-            break;
-          }
-
-          // detect accel units from Pose1 in device frame
-          float a_norm_mapped = norm3(g_map_accgyro.apply(g_poseZ.a));
-          g_acc_scale_SI = detect_acc_scale_to_SI(a_norm_mapped);
-
-          // mag scale from Pose1 magnitude (raw)
-          float m_norm_raw = norm3(g_poseZ.m);
-          g_mag_scale_uT = detect_mag_scale_to_uT(m_norm_raw);
-
-          Serial.println("\n== Preliminary results after 3 poses ==");
-          print_mapping("ACC+GYRO", g_map_accgyro);
-          Serial.printf("Accel norm (mapped) ~ %.4f  => acc_scale_SI=%.6f\n", a_norm_mapped, g_acc_scale_SI);
-          Serial.printf("Mag norm (raw) ~ %.4f       => mag_scale_uT=%.6f\n", m_norm_raw, g_mag_scale_uT);
-
-          g_stage = Stage::Rotation;
-          stage_t0 = millis();
-          g_still.reset();
-          print_rotation_prompt();
-        } else {
-          Serial.println("Pose3 capture failed. Hold still longer / ensure RIGHT EDGE UP.");
-          g_still.reset();
-        }
+    case ST_POSE_Y_TOP: {
+      if (capture_pose_auto(g_poseY, g_still, POSE_CAPTURE_MS)) {
+        Serial.println("[OK] Captured TOP EDGE DOWN pose.");
+        g_stage = ST_SOLVE_ACCEL;
       }
     } break;
 
-    case Stage::Rotation: {
-      // Wait until device is still for a moment before accepting a “flat reference”
-      if (!g_still.is_still_for(400)) {
-        static uint32_t last_hint = 0;
-        if (millis() - last_hint > 1200) {
-          last_hint = millis();
-          Serial.println("Waiting for flat/still start position (screen up) ...");
-        }
+    case ST_SOLVE_ACCEL: {
+      SignedPerm map_screen;
+      bool ok = build_mapping_from_poses(g_poseZup, g_poseX, g_poseY, map_screen);
+      if (!ok) {
+        print_user_prompt("Could not confidently solve accel mapping. Try again (poses were inconsistent).");
+        g_stage = ST_POSE_Z_UP;
+        print_user_prompt("STEP 1/5: Place device SCREEN UP. Hold still...");
         break;
       }
 
-      Serial.println("Flat/still detected. Now begin yaw rotation when ready (I will auto-detect start).");
-      if (capture_rotation_auto(g_rot, g_poseZ, g_still)) {
-        g_stage = Stage::Solve;
-        stage_t0 = millis();
+      g_map_acc_screen = map_screen;
+      g_acc_scale_mps2 = choose_acc_scale_mps2(g_map_acc_screen, g_poseZup, g_poseX, g_poseY);
+
+      Serial.println("\n[ACCEL] Solved mapping + scale.");
+      print_perm("acc_screen", g_map_acc_screen);
+      Serial.printf("acc_scale_mps2 = %.9g\n", g_acc_scale_mps2);
+
+      g_stage = ST_ROTATE_FLAT;
+      print_user_prompt(
+        "STEP 5/5: Place device SCREEN UP (flat).\n"
+        "Now ROTATE it CLOCKWISE (viewed from above) slowly for ~8 seconds.\n"
+        "Keep it flat while rotating."
+      );
+    } break;
+
+    case ST_ROTATE_FLAT: {
+      if (capture_rotation_auto(g_rot, g_still, 8000)) {
+        Serial.printf("[OK] Captured rotation samples: %d (max %d)\n", g_rot.n, MAX_ROT_SAMPLES);
+        g_stage = ST_SOLVE_MAG_GYRO;
       } else {
-        Serial.println("Rotation capture failed. Try again: keep it flatter and rotate longer.");
-        g_still.reset();
+        print_user_prompt("Rotation capture failed (not enough samples). Try again.");
+        g_stage = ST_ROTATE_FLAT;
       }
     } break;
 
-    case Stage::Solve: {
-      Serial.println("\nSolving gyro units + mag mapping ...");
+    case ST_SOLVE_MAG_GYRO: {
+      // Check mag presence in rotation buffer
+      int magCount = 0;
+      for (int i=0;i<g_rot.n;i++) if (g_rot.s[i].have_mag) magCount++;
+      g_have_mag = (magCount > 25);
 
-      // First: provisional mag mapping = accgyro mapping, choose gyro units
-      SignedPerm mag_prov = g_map_accgyro;
-      g_gyro_scale_radps = choose_gyro_scale_radps(g_rot, g_map_accgyro, mag_prov, g_acc_scale_SI, g_mag_scale_uT);
+      float heading_total_rad = 0.0f;
+      float mag_norm_mean_raw = 0.0f;
+      float corr_abs = 0.0f;
 
-      if (fabsf(g_gyro_scale_radps - 1.0f) < 1e-6f) {
-        Serial.println("Gyro appears to already be in rad/s.");
+      if (g_have_mag) {
+        g_map_mag_screen = find_best_mag_mapping(g_rot, g_map_acc_screen, heading_total_rad, mag_norm_mean_raw, corr_abs);
+        g_mag_scale_uT = choose_mag_scale_uT(mag_norm_mean_raw);
       } else {
-        Serial.println("Gyro appears to be in deg/s -> converting with pi/180.");
+        g_map_mag_screen = make_perm(0,+1, 1,+1, 2,+1);
+        g_mag_scale_uT = 1.0f;
       }
-      Serial.printf("gyro_scale_radps=%.8f\n", g_gyro_scale_radps);
 
-      // Then: find best mag mapping using chosen gyro units
-      g_map_mag = find_best_mag_mapping(g_rot, g_map_accgyro, g_acc_scale_SI, g_mag_scale_uT, g_gyro_scale_radps);
+      // Integrate gyro z in screen frame (raw units) over the same rotation window
+      double gyro_int = 0.0;
+      for (int i=1;i<g_rot.n;i++) {
+        float dt_s = (g_rot.s[i].t_us - g_rot.s[i-1].t_us) * 1e-6f;
+        if (!(dt_s > 1e-6f && dt_s < 0.2f)) continue;
+        Vec3 g_scr = apply_perm(g_map_acc_screen, g_rot.s[i].gyr);
+        gyro_int += (double)g_scr.z() * (double)dt_s;
+      }
 
-      Serial.println("Mag mapping selected.");
-      print_mapping("MAG", g_map_mag);
+      if (g_have_mag) {
+        g_gyro_scale_radps = choose_gyro_scale_radps(heading_total_rad, (float)gyro_int);
+      } else {
+        // fallback heuristic if no mag
+        float a = std::fabs((float)gyro_int);
+        g_gyro_scale_radps = (a > 20.0f) ? ((float)M_PI / 180.0f) : 1.0f;
+      }
 
-      print_final_results();
-
-      Serial.println("Now streaming converted NED-like SI values as CSV:");
-      Serial.println("t_us, ax,ay,az (m/s^2), gx,gy,gz (rad/s), mx,my,mz (uT)");
-      g_stage = Stage::Done_Stream;
-      stage_t0 = millis();
+      solve_and_print_final(heading_total_rad, mag_norm_mean_raw, corr_abs);
+      g_stage = ST_DONE;
     } break;
 
-    case Stage::Done_Stream: {
-      // Stream using latest scheduled samples
-      static Vec3 last_mag = Vec3::Zero();
-      static bool have_mag = false;
-
-      if (got) {
-        if (s.have_mag) { last_mag = s.m_raw; have_mag = true; }
-
-        // Only output on accel/gyro tick (we detect that by presence of t_us)
-        if (s.t_us != 0) {
-          Vec3 a_dev = g_map_accgyro.apply(s.a_raw) * g_acc_scale_SI;
-          Vec3 w_dev = g_map_accgyro.apply(s.w_raw) * g_gyro_scale_radps;
-          Vec3 m_dev = have_mag ? (g_map_mag.apply(last_mag) * g_mag_scale_uT) : Vec3::Zero();
-
-          Vec3 a_ned = to_NED_like(a_dev);
-          Vec3 w_ned = to_NED_like(w_dev);
-          Vec3 m_ned = to_NED_like(m_dev);
-
-          Serial.printf("%u, %.6f,%.6f,%.6f, %.6f,%.6f,%.6f, %.3f,%.3f,%.3f\n",
-            (unsigned)s.t_us,
-            a_ned.x(), a_ned.y(), a_ned.z(),
-            w_ned.x(), w_ned.y(), w_ned.z(),
-            m_ned.x(), m_ned.y(), m_ned.z()
-          );
-        }
-      }
-
-      // Periodically remind measured rates
-      static uint32_t last_rate_print = 0;
-      if (millis() - last_rate_print > 5000) {
-        last_rate_print = millis();
-        Serial.println("\n[Rate report]");
-        g_rate_acc.print("Accel/Gyro scheduled");
-        g_rate_mag_success.print("Mag getMag() success");
-      }
+    case ST_DONE: {
+      // idle, keep printing rate report
+      delay(10);
     } break;
+
+    default: break;
   }
-
-  delay(0);
 }
