@@ -1,22 +1,26 @@
-// imu_ellipsoid_calibration.h
-// Header-only, heap-free (fixed-size) ellipsoid calibration for ESP32-S3 + Eigen.
-// Calibrates:
-//   - Accelerometer: bias + 3x3 soft matrix (scale + cross-axis) by fitting to ||M(a-b)|| = g (auto-detected units)
-//   - Magnetometer: hard-iron + soft-iron by fitting to ||M(m-b)|| = r (r estimated; units don’t matter)
-//   - Gyro: stillness-based bias estimate (ellipsoid is not the right model without a rotation reference)
+// imu_ellipsoid_calibration_rates.h
+// Header-only, heap-free ellipsoid calibration with configurable sample rates
+// for ESP32-S3 + Eigen.
 //
-// Usage:
-//   1) Accumulate up to 300 samples (acc, mag) while rotating through many orientations.
-//   2) Optionally accumulate still gyro samples for bias.
-//   3) Call calibrate().
-//   4) Apply:
-//        a_cal = acc.M * (a_raw - acc.bias)
-//        m_cal = mag.M * (m_raw - mag.bias)
-//        w_cal = w_raw - gyro_bias
+// Calibrates:
+//   - Accelerometer: bias + 3x3 soft matrix by fitting ||M(a-b)|| = g (auto-detect units)
+//   - Magnetometer: hard-iron + soft-iron by fitting ||M(m-b)|| = r (r estimated)
+//   - Gyro: stillness-based bias (recommended for embedded)
+//
+// Key feature requested: configurable rates
+//   - accel+gyro effective calibration sampling rate (acc_gyro_cal_hz)
+//   - magnetometer effective calibration sampling rate (mag_cal_hz)
+// You can call update() at your high-rate loop; internally it down-samples.
+//
+// Apply:
+//   a_cal = acc.M * (a_raw - acc.bias)
+//   m_cal = mag.M * (m_raw - mag.bias)
+//   w_cal = w_raw - gyro_bias
 //
 // Notes:
-//   - Includes automatic accel unit detection (g, m/s^2, mg, or unknown -> uses median norm as radius)
-//   - Includes coverage/spread gating so it won’t fit on a “flat” dataset.
+//   - No heap allocations (fixed MaxN buffers, fixed-size matrices).
+//   - Includes coverage gating so it won’t fit from a “flat” dataset.
+//   - Auto accel unit detect (g, m/s^2, mg). If unknown: targets median norm.
 
 #pragma once
 #include <cmath>
@@ -42,9 +46,6 @@ static inline T huber_weight(T r, T k) {
   return k / a;
 }
 
-// -----------------------------------------------------------------------------
-// Fixed-capacity sample buffer (no heap)
-// -----------------------------------------------------------------------------
 template <typename T, int MaxN>
 struct SampleBuffer3 {
   using Vec3 = Eigen::Matrix<T,3,1>;
@@ -62,9 +63,6 @@ struct SampleBuffer3 {
   const Vec3& operator[](int i) const { return data[i]; }
 };
 
-// -----------------------------------------------------------------------------
-// Norm stats: median and MAD (robust). Heap-free quickselect.
-// -----------------------------------------------------------------------------
 template <typename T, int MaxN>
 struct NormStats {
   T norms[MaxN];
@@ -126,29 +124,22 @@ struct NormStats {
   }
 };
 
-// -----------------------------------------------------------------------------
-// Simple spherical coverage bins: (elevation, azimuth) quantized.
-// This is cheap and works well as a “do we have enough orientation diversity?” gate.
-// -----------------------------------------------------------------------------
+// Cheap spherical coverage bins: quantize direction (theta/phi)
 template <typename T, int ElevBins, int AzimBins>
 struct CoverageBins {
   bool bins[ElevBins * AzimBins];
 
-  void clear() {
-    for (int i=0;i<ElevBins*AzimBins;i++) bins[i] = false;
-  }
+  void clear() { for (int i=0;i<ElevBins*AzimBins;i++) bins[i] = false; }
 
   static inline T rad2deg(T r) { return r * T(57.29577951308232); }
 
-  // v must be non-zero; uses direction only.
   void add_dir(const Eigen::Matrix<T,3,1>& v) {
     const T n = v.norm();
     if (n < T(1e-6)) return;
     const Eigen::Matrix<T,3,1> u = v / n;
 
-    // elevation: 0..180 (theta), azimuth: -180..180
-    const T theta = rad2deg(std::acos(clamp(u.z(), T(-1), T(1))));   // 0..180
-    const T phi   = rad2deg(std::atan2(u.y(), u.x()));              // -180..180
+    const T theta = rad2deg(std::acos(clamp(u.z(), T(-1), T(1)))); // 0..180
+    const T phi   = rad2deg(std::atan2(u.y(), u.x()));             // -180..180
 
     int ti = int((theta / T(180)) * T(ElevBins));
     ti = std::min(std::max(ti, 0), ElevBins-1);
@@ -167,20 +158,16 @@ struct CoverageBins {
   }
 };
 
-// -----------------------------------------------------------------------------
-// Unit detection (accel) and heuristic mag classification (mostly for thresholds)
-// -----------------------------------------------------------------------------
 enum class AccelUnits : uint8_t { G, MPS2, MG, UNKNOWN };
 enum class MagUnits   : uint8_t { UT_LIKE, NORMALIZED, COUNTS, UNKNOWN };
 
 template <typename T>
 static inline AccelUnits detect_accel_units(T med_norm) {
-  if (med_norm > T(0.6) && med_norm < T(1.6))   return AccelUnits::G;      // ~1g
-  if (med_norm > T(6.0) && med_norm < T(13.0))  return AccelUnits::MPS2;   // ~9.8
-  if (med_norm > T(600) && med_norm < T(1600))  return AccelUnits::MG;     // ~1000 mg
+  if (med_norm > T(0.6) && med_norm < T(1.6))   return AccelUnits::G;
+  if (med_norm > T(6.0) && med_norm < T(13.0))  return AccelUnits::MPS2;
+  if (med_norm > T(600) && med_norm < T(1600))  return AccelUnits::MG;
   return AccelUnits::UNKNOWN;
 }
-
 template <typename T>
 static inline T accel_radius_for_units(AccelUnits u) {
   switch (u) {
@@ -190,21 +177,16 @@ static inline T accel_radius_for_units(AccelUnits u) {
     default:               return T(-1);
   }
 }
-
 template <typename T>
 static inline MagUnits detect_mag_units(T med_norm) {
-  if (med_norm > T(5) && med_norm < T(200))      return MagUnits::UT_LIKE;     // µT-ish
-  if (med_norm > T(0.2) && med_norm < T(2.5))    return MagUnits::NORMALIZED;  // ~unit
-  if (med_norm > T(200) && med_norm < T(100000)) return MagUnits::COUNTS;      // raw counts
+  if (med_norm > T(5) && med_norm < T(200))      return MagUnits::UT_LIKE;
+  if (med_norm > T(0.2) && med_norm < T(2.5))    return MagUnits::NORMALIZED;
+  if (med_norm > T(200) && med_norm < T(100000)) return MagUnits::COUNTS;
   return MagUnits::UNKNOWN;
 }
 
 // -----------------------------------------------------------------------------
-// Ellipsoid fitter (LM / Gauss-Newton), heap-free fixed-size matrices.
-// Model: || L (x - b) || ~= r
-// L is lower-triangular with positive diagonal via exp(logdiag).
-// Parameters:
-//   b(3), offdiag(3) = [l10, l20, l21], logdiag(3) = [log l00, log l11, log l22], and optional r.
+// Ellipsoid fitter: ||L(x-b)|| ~= r, with L lower-triangular diag>0 via exp(logd).
 // -----------------------------------------------------------------------------
 template <typename T, int MaxN>
 class EllipsoidFitter {
@@ -215,7 +197,7 @@ public:
   struct Result {
     bool ok = false;
     Vec3 bias = Vec3::Zero();
-    Mat3 M = Mat3::Identity(); // apply y = M*(x-bias)
+    Mat3 M = Mat3::Identity();
     T radius = T(1);
     T rms = T(0);
     int iters = 0;
@@ -223,12 +205,10 @@ public:
 
   void clear() {
     samples_.clear();
-    b_.setZero();
-    off_.setZero();
-    logd_.setZero();
-    r_ = T(1);
+    b_.setZero(); off_.setZero(); logd_.setZero();
     estimate_radius_ = false;
     r_fixed_ = T(1);
+    r_ = T(1);
     max_iters_ = 15;
     lambda0_ = T(1e-3);
     huber_k_ = T(0.05);
@@ -243,7 +223,6 @@ public:
   void setLambda0(T lam) { lambda0_ = lam; }
   void setHuberK(T k) { huber_k_ = std::max(T(1e-9), k); }
 
-  // Initialize b as mean, and L scale so average norm matches target radius (if fixed).
   void initializeFromData() {
     const int N = samples_.size();
     if (N <= 0) return;
@@ -259,7 +238,7 @@ public:
 
     if (estimate_radius_) {
       r_ = avg_norm;
-      logd_.setZero(); // identity
+      logd_.setZero();
     } else {
       r_ = r_fixed_;
       const T s = std::max(T(1e-6), r_fixed_ / avg_norm);
@@ -269,16 +248,8 @@ public:
   }
 
   Result fit() {
-    Result out;
-    const int N = samples_.size();
-    if (N < 12) return out;
-
-    if (estimate_radius_) {
-      out = fit_impl_10_();
-    } else {
-      out = fit_impl_9_();
-    }
-    return out;
+    if (samples_.size() < (estimate_radius_ ? 12 : 12)) return Result{};
+    return estimate_radius_ ? fit10_() : fit9_();
   }
 
 private:
@@ -293,14 +264,13 @@ private:
     return L;
   }
 
-  Result finalize_result_() const {
+  Result finalize_() const {
     Result out;
     out.ok = true;
     out.bias = b_;
     out.M = buildL_();
     out.radius = r_;
 
-    // RMS
     const Mat3 L = out.M;
     T sum2 = T(0);
     int used = 0;
@@ -316,12 +286,12 @@ private:
     return out;
   }
 
-  Result fit_impl_9_() {
+  Result fit9_() {
     using Mat9 = Eigen::Matrix<T,9,9>;
     using Vec9 = Eigen::Matrix<T,9,1>;
 
-    Result out;
     T lambda = lambda0_;
+    int last_it = 0;
 
     for (int it=0; it<max_iters_; ++it) {
       Mat9 JTJ = Mat9::Zero();
@@ -340,22 +310,18 @@ private:
 
         const T e = s - r_fixed_;
         const T w = huber_weight(e, huber_k_);
-        const T we = w * e;
-        cost += we * we;
+        cost += (w*e)*(w*e);
         used++;
 
         const Vec3 u = y / s;
 
-        // Jacobians
         const Vec3 j_b = -(L.transpose() * u);
-
         const T j_l10 = u(1) * v(0);
         const T j_l20 = u(2) * v(0);
         const T j_l21 = u(2) * v(1);
-
-        const T j_d0 = (u(0) * v(0)) * L(0,0);
-        const T j_d1 = (u(1) * v(1)) * L(1,1);
-        const T j_d2 = (u(2) * v(2)) * L(2,2);
+        const T j_d0  = (u(0) * v(0)) * L(0,0);
+        const T j_d1  = (u(1) * v(1)) * L(1,1);
+        const T j_d2  = (u(2) * v(2)) * L(2,2);
 
         Vec9 J;
         J << j_b(0), j_b(1), j_b(2),
@@ -366,7 +332,6 @@ private:
         JTJ.noalias() += ww * (J * J.transpose());
         JTr.noalias() += ww * (J * e);
       }
-
       if (used < 9) break;
 
       Mat9 A = JTJ;
@@ -377,19 +342,17 @@ private:
       const Vec9 dx = ldlt.solve(-JTr);
       if (ldlt.info() != Eigen::Success) break;
 
-      // Save
       const Vec3 b0 = b_;
       const Vec3 off0 = off_;
       const Vec3 logd0 = logd_;
 
-      // Apply
       b_ += dx.template segment<3>(0);
       off_(0) += dx(3); off_(1) += dx(4); off_(2) += dx(5);
       logd_(0) += dx(6); logd_(1) += dx(7); logd_(2) += dx(8);
       for (int k=0;k<3;k++) logd_(k) = clamp(logd_(k), T(-6), T(6));
       r_ = r_fixed_;
 
-      // Evaluate
+      // evaluate quickly
       const Mat3 Lnew = buildL_();
       T new_cost = T(0);
       int used2 = 0;
@@ -406,26 +369,26 @@ private:
 
       if (new_cost < cost) {
         lambda = std::max(lambda * T(0.3), T(1e-12));
-        out.iters = it+1;
+        last_it = it+1;
         if (dx.norm() < T(1e-6)) break;
       } else {
-        // reject
         b_ = b0; off_ = off0; logd_ = logd0;
         lambda = std::min(lambda * T(10), T(1e6));
       }
     }
 
-    out = finalize_result_();
+    Result out = finalize_();
     out.radius = r_fixed_;
+    out.iters = last_it;
     return out;
   }
 
-  Result fit_impl_10_() {
+  Result fit10_() {
     using Mat10 = Eigen::Matrix<T,10,10>;
     using Vec10 = Eigen::Matrix<T,10,1>;
 
-    Result out;
     T lambda = lambda0_;
+    int last_it = 0;
 
     for (int it=0; it<max_iters_; ++it) {
       Mat10 JTJ = Mat10::Zero();
@@ -444,33 +407,29 @@ private:
 
         const T e = s - r_;
         const T w = huber_weight(e, huber_k_);
-        const T we = w * e;
-        cost += we * we;
+        cost += (w*e)*(w*e);
         used++;
 
         const Vec3 u = y / s;
 
         const Vec3 j_b = -(L.transpose() * u);
-
         const T j_l10 = u(1) * v(0);
         const T j_l20 = u(2) * v(0);
         const T j_l21 = u(2) * v(1);
-
-        const T j_d0 = (u(0) * v(0)) * L(0,0);
-        const T j_d1 = (u(1) * v(1)) * L(1,1);
-        const T j_d2 = (u(2) * v(2)) * L(2,2);
+        const T j_d0  = (u(0) * v(0)) * L(0,0);
+        const T j_d1  = (u(1) * v(1)) * L(1,1);
+        const T j_d2  = (u(2) * v(2)) * L(2,2);
 
         Vec10 J;
         J << j_b(0), j_b(1), j_b(2),
              j_l10, j_l20, j_l21,
              j_d0, j_d1, j_d2,
-             T(-1); // de/dr
+             T(-1);
 
         const T ww = w*w;
         JTJ.noalias() += ww * (J * J.transpose());
         JTr.noalias() += ww * (J * e);
       }
-
       if (used < 10) break;
 
       Mat10 A = JTJ;
@@ -481,13 +440,11 @@ private:
       const Vec10 dx = ldlt.solve(-JTr);
       if (ldlt.info() != Eigen::Success) break;
 
-      // Save
       const Vec3 b0 = b_;
       const Vec3 off0 = off_;
       const Vec3 logd0 = logd_;
       const T r0 = r_;
 
-      // Apply
       b_ += dx.template segment<3>(0);
       off_(0) += dx(3); off_(1) += dx(4); off_(2) += dx(5);
       logd_(0) += dx(6); logd_(1) += dx(7); logd_(2) += dx(8);
@@ -495,7 +452,6 @@ private:
       r_ += dx(9);
       r_ = std::max(T(1e-6), r_);
 
-      // Evaluate
       const Mat3 Lnew = buildL_();
       T new_cost = T(0);
       int used2 = 0;
@@ -512,37 +468,33 @@ private:
 
       if (new_cost < cost) {
         lambda = std::max(lambda * T(0.3), T(1e-12));
-        out.iters = it+1;
+        last_it = it+1;
         if (dx.norm() < T(1e-6)) break;
       } else {
-        // reject
         b_ = b0; off_ = off0; logd_ = logd0; r_ = r0;
         lambda = std::min(lambda * T(10), T(1e6));
       }
     }
 
-    out = finalize_result_();
+    Result out = finalize_();
+    out.iters = last_it;
     return out;
   }
 
   SampleBuffer3<T, MaxN> samples_;
-
   bool estimate_radius_ = false;
   T r_fixed_ = T(1);
-
   int max_iters_ = 15;
   T lambda0_ = T(1e-3);
   T huber_k_ = T(0.05);
 
   Vec3 b_ = Vec3::Zero();
-  Vec3 off_ = Vec3::Zero();   // l10, l20, l21
-  Vec3 logd_ = Vec3::Zero();  // log diag
+  Vec3 off_ = Vec3::Zero();
+  Vec3 logd_ = Vec3::Zero();
   T    r_ = T(1);
 };
 
-// -----------------------------------------------------------------------------
-// Gyro bias estimator (stillness-based). Heap-free.
-// -----------------------------------------------------------------------------
+// Gyro bias estimator (stillness-only)
 template <typename T>
 class GyroBiasEstimator {
 public:
@@ -568,9 +520,7 @@ private:
   Vec3 m2_   = Vec3::Zero();
 };
 
-// -----------------------------------------------------------------------------
-// Auto unit detection + threshold selection + spread/coverage gating
-// -----------------------------------------------------------------------------
+// Auto config: unit detect + thresholds + coverage gates
 template <typename T, int MaxN>
 struct AutoConfig {
   using Vec3 = Eigen::Matrix<T,3,1>;
@@ -585,17 +535,14 @@ struct AutoConfig {
   T acc_huber_k = T(0.05);
   T mag_huber_k = T(0.5);
 
-  // Spread gating thresholds (tunable defaults)
+  // Coverage gate defaults
   int min_samples_acc = 80;
-  int min_samples_mag = 80;
+  int min_samples_mag = 60;
 
-  // Coverage bins: 9 elevation x 18 azimuth = 162 bins
-  // Require a decent fraction to be hit (roughly “rotated around”).
-  int min_bins_acc = 36; // ~20-25% of bins
-  int min_bins_mag = 54; // mag usually needs more coverage
+  int min_bins_acc = 36; // 9x18 bins -> require >=36
+  int min_bins_mag = 54; // require more mag diversity
 
-  // Norm gating for coverage (reject norms far from median)
-  T acc_norm_gate_sigma = T(4); // accept if |norm - med| <= sigma * MAD + 0.08*med
+  T acc_norm_gate_sigma = T(4);
   T mag_norm_gate_sigma = T(4);
 
   void finalize() {
@@ -606,10 +553,7 @@ struct AutoConfig {
     mag_units = detect_mag_units(mag_med);
 
     T r = accel_radius_for_units<T>(acc_units);
-    if (r <= T(0)) {
-      // Unknown accel units: keep native scale; target median norm.
-      r = (acc_med > T(1e-6)) ? acc_med : T(1);
-    }
+    if (r <= T(0)) r = (acc_med > T(1e-6)) ? acc_med : T(1);
     acc_radius = r;
 
     const T acc_mad = acc_stats.mad();
@@ -633,7 +577,6 @@ struct AutoConfig {
     f.setHuberK(mag_huber_k);
   }
 
-  // Coverage/spread check using binned directions with norm gating.
   template <int ElevBins, int AzimBins>
   bool accel_has_coverage(const SampleBuffer3<T, MaxN>& acc_samples) const {
     if (acc_samples.size() < min_samples_acc) return false;
@@ -672,13 +615,32 @@ struct AutoConfig {
 };
 
 // -----------------------------------------------------------------------------
-// One-stop IMU calibrator: accumulates up to 300 samples and runs both fits.
+// Rate-controlled IMU calibrator
 // -----------------------------------------------------------------------------
 template <typename T, int MaxN>
 class ImuEllipsoidCalibrator {
 public:
   using Vec3 = Eigen::Matrix<T,3,1>;
   using Mat3 = Eigen::Matrix<T,3,3>;
+
+  struct Rates {
+    // Desired *calibration sampling* rates (not your sensor ODR).
+    // You can call update() at any frequency; internally it downsamples.
+    T acc_gyro_cal_hz = T(50); // e.g., collect 50 Hz worth of unique orientations
+    T mag_cal_hz      = T(20); // mag often 20-100 Hz ODR; you may want 10-25 Hz for cal
+
+    // Minimum dt guard (avoid division by 0)
+    T min_dt = T(1e-4);
+  };
+
+  struct Stillness {
+    // Used only for gyro bias accumulation:
+    // - require accel norm near expected (computed from auto-detected units once ready)
+    // - require gyro magnitude small
+    T gyro_max_norm = T(0.08);     // rad/s (tune)
+    T accel_norm_tol_frac = T(0.06); // fraction of expected |a| (6%)
+    int min_still_samples = 300;   // ~ few seconds worth
+  };
 
   struct CalResult {
     bool ok_acc = false;
@@ -692,6 +654,10 @@ public:
 
     AccelUnits accel_units = AccelUnits::UNKNOWN;
     MagUnits   mag_units   = MagUnits::UNKNOWN;
+
+    // Coverage diagnostics (bins hit)
+    int acc_bins = 0;
+    int mag_bins = 0;
   };
 
   void reset() {
@@ -701,41 +667,76 @@ public:
     cfg_ = AutoConfig<T, MaxN>();
     acc_samples_.clear();
     mag_samples_.clear();
+    t_acc_ = T(0);
+    t_mag_ = T(0);
+    last_expected_acc_norm_ = T(0);
   }
 
-  // Add raw samples (you decide gating before calling these if you want).
-  bool add_accel(const Vec3& a) {
-    cfg_.acc_stats.add_vec(a);
-    acc_samples_.push(a);
-    return acc_fit_.addSample(a);
-  }
+  Rates& rates() { return rates_; }
+  Stillness& stillness() { return still_; }
+  AutoConfig<T, MaxN>& config() { return cfg_; }
 
-  bool add_mag(const Vec3& m) {
-    cfg_.mag_stats.add_vec(m);
-    mag_samples_.push(m);
-    return mag_fit_.addSample(m);
-  }
+  // Call this in your main loop.
+  // dt_sec: elapsed time since last call in seconds.
+  // mag_valid: true only when you actually have a new mag sample (if you run mag at lower ODR).
+  void update(const Vec3& accel_raw,
+              const Vec3& gyro_raw,
+              bool mag_valid,
+              const Vec3& mag_raw,
+              T dt_sec)
+  {
+    dt_sec = std::max(dt_sec, rates_.min_dt);
 
-  // Gyro stillness samples
-  void add_gyro_still(const Vec3& w) { gyro_bias_.addStillSample(w); }
+    // --- rate-controlled accel/gyro sampling ---
+    t_acc_ += dt_sec;
+    const T acc_period = (rates_.acc_gyro_cal_hz > T(1e-6)) ? (T(1) / rates_.acc_gyro_cal_hz) : T(1e9);
+
+    while (t_acc_ >= acc_period && acc_samples_.size() < MaxN) {
+      t_acc_ -= acc_period;
+
+      // store accel sample
+      cfg_.acc_stats.add_vec(accel_raw);
+      acc_samples_.push(accel_raw);
+      acc_fit_.addSample(accel_raw);
+
+      // try to accumulate gyro bias if "still"
+      maybe_add_gyro_still_(accel_raw, gyro_raw);
+    }
+
+    // --- rate-controlled magnetometer sampling ---
+    if (mag_valid) {
+      t_mag_ += dt_sec;
+      const T mag_period = (rates_.mag_cal_hz > T(1e-6)) ? (T(1) / rates_.mag_cal_hz) : T(1e9);
+
+      while (t_mag_ >= mag_period && mag_samples_.size() < MaxN) {
+        t_mag_ -= mag_period;
+
+        cfg_.mag_stats.add_vec(mag_raw);
+        mag_samples_.push(mag_raw);
+        mag_fit_.addSample(mag_raw);
+      }
+    }
+  }
 
   int accel_count() const { return acc_samples_.size(); }
   int mag_count() const { return mag_samples_.size(); }
   int gyro_still_count() const { return gyro_bias_.count(); }
 
-  AutoConfig<T, MaxN>& config() { return cfg_; }
-  const AutoConfig<T, MaxN>& config() const { return cfg_; }
-
   CalResult calibrate() {
     CalResult out;
 
-    // 1) finalize auto units / thresholds
+    // 1) finalize auto units + thresholds (uses norms from collected samples)
     cfg_.finalize();
     out.accel_units = cfg_.acc_units;
     out.mag_units = cfg_.mag_units;
 
-    // 2) coverage gating
-    // 9x18 bins are a good compromise for embedded.
+    // expected accel norm for stillness check (now meaningful)
+    last_expected_acc_norm_ = cfg_.acc_radius;
+
+    // 2) coverage gating + diagnostics (9x18)
+    out.acc_bins = compute_bins_<9,18>(acc_samples_, cfg_.acc_stats, /*is_accel=*/true);
+    out.mag_bins = compute_bins_<9,18>(mag_samples_, cfg_.mag_stats, /*is_accel=*/false);
+
     const bool acc_ok = cfg_.template accel_has_coverage<9,18>(acc_samples_);
     const bool mag_ok = cfg_.template mag_has_coverage<9,18>(mag_samples_);
 
@@ -756,7 +757,7 @@ public:
     }
 
     // 5) gyro bias
-    if (gyro_bias_.ready(300)) {
+    if (gyro_bias_.ready(still_.min_still_samples)) {
       out.gyro_bias = gyro_bias_.bias();
       out.ok_gyro = true;
     }
@@ -764,54 +765,102 @@ public:
     return out;
   }
 
-  // Apply helpers
+  // Apply helper
   static inline Vec3 apply_cal(const typename EllipsoidFitter<T, MaxN>::Result& r, const Vec3& x) {
     return r.M * (x - r.bias);
   }
 
 private:
+  // Minimal stillness detector for gyro bias:
+  // - accel norm near expected (once expected known; else use current median proxy)
+  // - gyro magnitude small
+  void maybe_add_gyro_still_(const Vec3& accel_raw, const Vec3& gyro_raw) {
+    const T wnorm = gyro_raw.norm();
+    if (wnorm > still_.gyro_max_norm) return;
+
+    // Determine expected accel norm:
+    // If we haven't finalized, use running median if available; else accept none.
+    T expected = last_expected_acc_norm_;
+    if (expected <= T(0)) {
+      if (cfg_.acc_stats.size() < 20) return;
+      expected = cfg_.acc_stats.median();
+      if (expected <= T(1e-6)) return;
+    }
+
+    const T an = accel_raw.norm();
+    const T tol = std::max(T(0.02) * expected, still_.accel_norm_tol_frac * expected);
+    if (std::abs(an - expected) > tol) return;
+
+    gyro_bias_.addStillSample(gyro_raw);
+  }
+
+  template <int EB, int AB>
+  int compute_bins_(const SampleBuffer3<T, MaxN>& samples, const NormStats<T, MaxN>& stats, bool is_accel) const {
+    CoverageBins<T, EB, AB> cov; cov.clear();
+    const T med = stats.median();
+    const T mad = stats.mad();
+    if (stats.size() < 10) return 0;
+
+    const T gate = (is_accel ? (cfg_.acc_norm_gate_sigma * mad + T(0.08) * med)
+                             : (cfg_.mag_norm_gate_sigma * mad + T(0.15) * med));
+
+    for (int i=0;i<samples.size();i++) {
+      const Vec3 v = samples[i];
+      const T n = v.norm();
+      if (std::abs(n - med) > gate) continue;
+      cov.add_dir(v);
+    }
+    return cov.count();
+  }
+
+  Rates rates_;
+  Stillness still_;
   AutoConfig<T, MaxN> cfg_;
 
-  // Keep sample buffers for coverage checks
   SampleBuffer3<T, MaxN> acc_samples_;
   SampleBuffer3<T, MaxN> mag_samples_;
 
   EllipsoidFitter<T, MaxN> acc_fit_;
   EllipsoidFitter<T, MaxN> mag_fit_;
   GyroBiasEstimator<T>     gyro_bias_;
+
+  // time accumulators for rate-controlled sampling
+  T t_acc_ = T(0);
+  T t_mag_ = T(0);
+
+  // once calibrate() has run, we keep expected accel norm for stillness gate
+  T last_expected_acc_norm_ = T(0);
 };
 
 } // namespace imu_cal
 
 // -----------------------------------------------------------------------------
-// Example (pseudo-usage):
+// Example usage:
 //
 // imu_cal::ImuEllipsoidCalibrator<float, 300> cal;
 // cal.reset();
 //
-// while (collecting) {
-//   // Read raw IMU in your chosen units
-//   Eigen::Vector3f a = acc_raw;
-//   Eigen::Vector3f m = mag_raw;
-//   Eigen::Vector3f w = gyro_raw;
+// // Configure your desired *calibration sampling* rates:
+// cal.rates().acc_gyro_cal_hz = 60.0f;  // downsample accel+gyro samples used for cal
+// cal.rates().mag_cal_hz      = 20.0f;  // downsample mag samples used for cal
 //
-//   cal.add_accel(a);
-//   cal.add_mag(m);
+// // Stillness tuning (gyro bias):
+// cal.stillness().gyro_max_norm = 0.06f;      // rad/s
+// cal.stillness().accel_norm_tol_frac = 0.05f; // 5%
 //
-//   // Stillness detection (you should implement):
-//   // if (abs(|a|-median_g) small && |w| small) cal.add_gyro_still(w);
+// loop:
+//   dt = seconds since last loop
+//   accel_raw (Vec3), gyro_raw (Vec3)
+//   mag_valid = true only when you got a fresh mag sample (if mag ODR lower)
+//   mag_raw (Vec3) if mag_valid
+//   cal.update(accel_raw, gyro_raw, mag_valid, mag_raw, dt);
 //
-//   // Stop when you have ~300 samples and good orientation coverage.
-// }
+// When you think you have enough coverage (e.g. accel_count ~ 250, mag_count ~ 200):
+//   auto res = cal.calibrate();
 //
-// auto res = cal.calibrate();
-// if (res.ok_acc) {
-//   Eigen::Vector3f a_cal = imu_cal::ImuEllipsoidCalibrator<float,300>::apply_cal(res.accel, acc_raw);
-// }
-// if (res.ok_mag) {
-//   Eigen::Vector3f m_cal = imu_cal::ImuEllipsoidCalibrator<float,300>::apply_cal(res.mag, mag_raw);
-// }
-// if (res.ok_gyro) {
-//   Eigen::Vector3f w_cal = gyro_raw - res.gyro_bias;
-// }
+// Apply:
+//   if (res.ok_acc) a_cal = ImuEllipsoidCalibrator<float,300>::apply_cal(res.accel, accel_raw);
+//   if (res.ok_mag) m_cal = ImuEllipsoidCalibrator<float,300>::apply_cal(res.mag, mag_raw);
+//   if (res.ok_gyro) w_cal = gyro_raw - res.gyro_bias;
 // -----------------------------------------------------------------------------
+
