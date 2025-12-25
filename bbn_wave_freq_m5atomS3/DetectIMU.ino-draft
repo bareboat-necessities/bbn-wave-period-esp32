@@ -30,6 +30,12 @@
 
 using Vec3 = Eigen::Matrix<float, 3, 1>;
 
+struct SignedPerm;
+struct IMUSample;
+struct PoseAvg;
+struct Stillness;
+struct RotCap;
+
 static constexpr float G_STD = 9.80665f;
 
 // ------------------------------ Config ------------------------------
@@ -184,9 +190,10 @@ struct PoseAvg {
     if (s.have_mag) { mag_sum += s.mag; nmag++; }
   }
 
-  Vec3 acc_mean() const { return (n>0) ? (acc_sum / (float)n) : Vec3::Zero(); }
-  Vec3 gyr_mean() const { return (n>0) ? (gyr_sum / (float)n) : Vec3::Zero(); }
-  Vec3 mag_mean() const { return (nmag>0) ? (mag_sum / (float)nmag) : Vec3::Zero(); }
+  Vec3 acc_mean() const { if (n > 0) return (acc_sum / (float)n); return Vec3::Zero(); }
+  Vec3 gyr_mean() const { if (n > 0) return (gyr_sum / (float)n); return Vec3::Zero(); }
+  Vec3 mag_mean() const { if (nmag > 0) return (mag_sum / (float)nmag); return Vec3::Zero(); }
+
 };
 
 // Rotation capture buffer (flat rotation)
