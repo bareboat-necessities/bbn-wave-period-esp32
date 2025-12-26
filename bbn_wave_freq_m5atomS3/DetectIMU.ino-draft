@@ -901,70 +901,54 @@ private:
   }
 
   // ------------------------------ Mag mapping (quality gated) ------------------------------
-  float corrcoef_(const float* x, const float* y, int n) const {
-    if (n < 16) return 0.0f;
-    double sx=0, sy=0, sxx=0, syy=0, sxy=0;
-    for (int i=0;i<n;i++) { sx += x[i]; sy += y[i]; }
-    double mx = sx / n, my = sy / n;
-    for (int i=0;i<n;i++) {
-      double dx = x[i]-mx, dy = y[i]-my;
-      sxx += dx*dx; syy += dy*dy; sxy += dx*dy;
-    }
-    if (sxx <= 1e-12 || syy <= 1e-12) return 0.0f;
-    return (float)(sxy / std::sqrt(sxx*syy));
-  }
-
-  bool find_best_mag_mapping_quality_gated_(const RotCap& cap,
-                                           const SignedPerm& map_raw_to_ned,
-                                           const Vec3& g_unit_ref_raw, // gravity dir in RAW
-                                           SignedPerm& out_best_perm,
-                                           float& out_heading_unwrap_rad,
-                                           float& out_mag_norm_mean_raw,
-                                           float& out_corr_abs) const
+  // Stack-safe: streaming correlation (no big arrays on the stack)
+  SignedPerm find_best_mag_mapping_(const RotCap& cap,
+                                   const SignedPerm& map_acc_screen,
+                                   float& out_heading_unwrap_rad,
+                                   float& out_mag_norm_mean_raw,
+                                   float& out_corr_abs) const
   {
+    struct CorrAcc {
+      double sx=0, sy=0, sxx=0, syy=0, sxy=0;
+      int n=0;
+      inline void reset(){ sx=sy=sxx=syy=sxy=0; n=0; }
+      inline void add(double x, double y){
+        sx += x; sy += y;
+        sxx += x*x; syy += y*y;
+        sxy += x*y;
+        n++;
+      }
+      inline float corr() const {
+        if (n < 12) return 0.0f;
+        const double mx = sx / (double)n;
+        const double my = sy / (double)n;
+        const double vx = sxx - (double)n * mx * mx;
+        const double vy = syy - (double)n * my * my;
+        const double c  = sxy - (double)n * mx * my;
+        const double denom = std::sqrt(std::max(0.0, vx) * std::max(0.0, vy));
+        if (!(denom > 1e-12)) return 0.0f;
+        return (float)(c / denom);
+      }
+    };
+
     SignedPerm perms[64];
-    int nperm = enumerate_perms_(perms, 64, true); // det+ only
+    const int nperm = enumerate_perms_(perms, 64, true);
 
-    const int n = cap.n;
-    if (n < 60) return false;
-
-    // wz = gyro D-rate in NED (uses accel/gyro map)
-    float wz[MAX_ROT_SAMPLES];
-    float dt[MAX_ROT_SAMPLES];
-    for (int i=0;i<n;i++) { wz[i]=0.0f; dt[i]=0.0f; }
-
-    for (int i=1;i<n;i++) {
-      float dts = (float)((cap.s[i].t_us - cap.s[i-1].t_us) * 1e-6);
-      dt[i] = (dts > 1e-6f && dts < 0.2f) ? dts : 0.0f;
-      Vec3 g_ned = apply_perm_(map_raw_to_ned, cap.s[i].gyr);
-      wz[i] = g_ned.z(); // D axis
+    const int n = std::min(cap.n, MAX_ROT_SAMPLES);
+    if (n < 20) {
+      out_heading_unwrap_rad = 0.0f;
+      out_mag_norm_mean_raw  = 0.0f;
+      out_corr_abs           = 0.0f;
+      return make_perm_(0,+1, 1,+1, 2,+1);
     }
 
     float bestScore = -1e9f;
-    float bestCorrAbs = 0.0f;
-    float bestUnwrap = 0.0f;
-    float bestMagNormMean = 0.0f;
     SignedPerm bestP = perms[0];
+    float best_corr_abs = 0.0f;
+    float best_heading_unwrap = 0.0f;
+    float best_mag_norm_mean = 0.0f;
 
     for (int pi=0; pi<nperm; ++pi) {
-      // IMPORTANT: gravity direction must be expressed in THIS candidate mag frame:
-      Vec3 ghat = safe_unit(apply_perm_(perms[pi], g_unit_ref_raw), Vec3(0,0,1));
-
-      // Mean mag in this candidate frame (hard-iron removal)
-      Vec3 mmean = Vec3::Zero();
-      int mN = 0;
-      for (int i=0;i<n;i++) {
-        if (!cap.s[i].have_mag) continue;
-        Vec3 m = apply_perm_(perms[pi], cap.s[i].mag);
-        mmean += m;
-        mN++;
-      }
-      if (mN < 60) continue;
-      mmean /= (float)mN;
-
-      float hrate[MAX_ROT_SAMPLES];
-      float wz_use[MAX_ROT_SAMPLES];
-
       bool psi_init = false;
       float psi_prev = 0.0f;
       float psi_unwrap = 0.0f;
@@ -973,22 +957,28 @@ private:
       double mag_norm_sum = 0.0;
       int mag_norm_n = 0;
 
-      int k = 0;
+      CorrAcc acc;
+      acc.reset();
+
       for (int i=1;i<n;i++) {
-        if (!cap.s[i].have_mag) continue;
-        if (dt[i] <= 0.0f) continue;
+        const IMUSample& s0 = cap.s[i-1];
+        const IMUSample& s1 = cap.s[i];
 
-        // mag in candidate NED, with mean removed
-        Vec3 m = apply_perm_(perms[pi], cap.s[i].mag) - mmean;
+        const float dt = (float)((s1.t_us - s0.t_us) * 1e-6);
+        if (!(dt > 1e-6f && dt < 0.2f)) continue;
+        if (!s1.have_mag) continue;
 
-        // horizontal component (remove gravity-axis component)
-        Vec3 mh = m - ghat * (ghat.dot(m));
+        // wz (gyro z in SCREEN frame) from accel-mapping (gyro shares accel mapping)
+        const Vec3 g_scr = apply_perm_(map_acc_screen, s1.gyr);
+        const float wz = g_scr.z();
 
-        float mn = safe_norm(mh);
-        if (mn > 1e-6f) { mag_norm_sum += mn; mag_norm_n++; }
+        // mag in candidate SCREEN frame
+        const Vec3 m_scr = apply_perm_(perms[pi], s1.mag);
 
-        // heading in NED: atan2(E, N) => atan2(y, x)
-        float psi = std::atan2(mh.y(), mh.x());
+        const float mn = safe_norm(m_scr);
+        if (mn > 1e-6f) { mag_norm_sum += (double)mn; mag_norm_n++; }
+
+        const float psi = std::atan2(m_scr.y(), m_scr.x());
 
         if (!psi_init) {
           psi_prev = psi;
@@ -997,42 +987,37 @@ private:
           continue;
         }
 
-        float dpsi = wrap_pi_(psi - psi_prev);
+        const float dpsi = wrap_pi_(psi - psi_prev);
         psi_prev = psi;
         psi_unwrap += dpsi;
         psi_total_abs += std::fabs(dpsi);
 
-        hrate[k] = dpsi / dt[i];
-        wz_use[k] = wz[i];
-        k++;
-        if (k >= MAX_ROT_SAMPLES) break;
+        const float hrate = dpsi / dt;   // heading rate (rad/s)
+        acc.add((double)wz, (double)hrate);
       }
 
-      if (k < 40 || mag_norm_n < 40) continue;
+      if (acc.n < 24 || mag_norm_n < 24) continue;
 
-      float c = corrcoef_(wz_use, hrate, k);
-      float cabs = std::fabs(c);
-      float mag_norm_mean = (float)(mag_norm_sum / std::max(1, mag_norm_n));
+      const float c = acc.corr();
+      const float cabs = std::fabs(c);
+      const float mag_norm_mean = (float)(mag_norm_sum / (double)mag_norm_n);
 
-      float score = 3.2f * cabs + 0.0018f * psi_total_abs;
+      // score: prefer strong correlation + sufficient turning
+      const float score = 3.0f * cabs + 0.0015f * psi_total_abs;
 
       if (score > bestScore) {
         bestScore = score;
         bestP = perms[pi];
-        bestCorrAbs = cabs;
-        bestUnwrap = psi_unwrap;
-        bestMagNormMean = mag_norm_mean;
+        best_corr_abs = cabs;
+        best_heading_unwrap = psi_unwrap;
+        best_mag_norm_mean = mag_norm_mean;
       }
     }
 
-    out_best_perm = bestP;
-    out_heading_unwrap_rad = bestUnwrap;
-    out_mag_norm_mean_raw = bestMagNormMean;
-    out_corr_abs = bestCorrAbs;
-
-    if (!(bestCorrAbs >= MAG_CORR_MIN)) return false;
-    if (!(std::fabs(bestUnwrap) >= MAG_UNWRAP_MIN_RAD)) return false;
-    return true;
+    out_heading_unwrap_rad = best_heading_unwrap;
+    out_mag_norm_mean_raw  = best_mag_norm_mean;
+    out_corr_abs           = best_corr_abs;
+    return bestP;
   }
 
   float choose_mag_scale_uT_(float mag_norm_mean_raw) const {
