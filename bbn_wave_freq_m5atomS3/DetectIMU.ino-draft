@@ -310,7 +310,7 @@ private:
     Serial.println("============================================================");
   }
 
-  void print_banner_() const {
+  void print_banner_() {
     print_sep_();
     Serial.println("IMU Auto-Detect Wizard");
     Serial.println("Commands: 'r' restart, 'v' verbose toggle");
