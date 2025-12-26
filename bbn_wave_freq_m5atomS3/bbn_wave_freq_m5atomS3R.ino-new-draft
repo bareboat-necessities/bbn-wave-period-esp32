@@ -358,6 +358,7 @@ void setup(void) {
   if (!M5.Imu.loadOffsetFromNVS()) {
     // startCalibration();   // uncomment for auto-calibration on boot
   }
+  M5.Imu.setCalibration(0, 0, 64); // keep mag auto calibrate
 
   // BMI270-like noise (per-axis), “normal mode” order
   // White noise (per-sample RMS, per axis)
