@@ -92,6 +92,7 @@ Bias learning is only enabled once:
 At that point the nominal $\mat{R}_{a}$ is restored and accelerometer-bias updates
 are enabled.
 
+\iffalse
 \subsection{Automatic Tilt Reset and Re-Initialization}
 During operation, the filter continuously monitors the tilt angle between the
 estimated body-down axis and world-down. If the tilt exceeds a safety threshold
@@ -105,3 +106,5 @@ estimated body-down axis and world-down. If the tilt exceeds a safety threshold
 This mechanism makes the overall system resilient to large disturbances (e.g.,
 handling events or abrupt heel changes) by reverting to a conservative, observable
 tilt lock before resuming full fusion.
+\fi
+
