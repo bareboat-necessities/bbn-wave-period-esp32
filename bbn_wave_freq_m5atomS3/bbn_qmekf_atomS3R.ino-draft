@@ -100,7 +100,7 @@ void read_and_processIMU_data(uint32_t mask) {
   Eigen::Vector3f mag_body(
     mag.y / 10.0f,
     mag.x / 10.0f,
-    mag.z / 10.0f 
+    -mag.z / 10.0f 
   );
 
   // Only update mag calibration when we truly received a new mag sample
