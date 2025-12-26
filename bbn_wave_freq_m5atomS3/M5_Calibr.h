@@ -165,10 +165,10 @@ void updateCalibration(uint32_t c, bool clear = false) {
     }
     else { 
       // Stop calibration. (Continue calibration only for the geomagnetic sensor)
-      //M5.Imu.setCalibration(0, 0, calib_value);
+      M5.Imu.setCalibration(0, 0, calib_value);
 
       // If you want to stop all calibration, write this.
-      M5.Imu.setCalibration(0, 0, 0);
+      //M5.Imu.setCalibration(0, 0, 0);
 
       // save calibration values.
       M5.Imu.saveOffsetToNVS();
