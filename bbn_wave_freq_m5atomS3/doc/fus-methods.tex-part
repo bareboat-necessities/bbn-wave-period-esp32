@@ -59,6 +59,7 @@ with $\partial \varepsilon_k/\partial a$ obtained from the standard state-sensit
 \hat\omega_k=\arccos\!\left(\tfrac{1}{2}\,\clip(a_k,-2,2)\right), \quad \hat f_k=\hat\omega_k/(2\pi).
 \]
 
+\iffalse
 \subsection{Zero-crossing baseline with hysteresis}
 
 Use debounced threshold crossings to estimate period directly; smooth to reduce jitter.
@@ -73,6 +74,7 @@ Clamp $\hat f_k \in [f_{\min}, f_{\max}]$, then apply a short EMA:
 \(
 \bar f_k=(1-\alpha_s)\bar f_{k-1}+\alpha_s \hat f_k.
 \)
+\fi
 
 % =======================================================
 \section{Variance-Informed Online Adaptation}
