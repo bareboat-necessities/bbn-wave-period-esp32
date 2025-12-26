@@ -1,16 +1,16 @@
 /*
-  AtomS3R (M5Unified) — Pose Wizard (PROMPT -> CHANGE POSE -> STEADY -> CAPTURE)
+  AtomS3R (M5Unified) — Pose Wizard (PROMPT -> CHANGE POSE -> SETTLE -> CAPTURE)
 
-  What it does (exactly as you asked):
-    1) Prompts for SCREEN UP first
-    2) Waits until you ACTUALLY change pose appropriately
-    3) Requires that new pose stays steady for SETTLE_MS
-    4) Captures stable samples for CAPTURE_MS
-    5) Only then advances to next pose
+  Serial commands:
+    - Send 'r' to restart to STEP 1
+    - Send 'h' to print help
 
-  Important:
-    - Step labels are instructions, not classification.
-    - Press BtnA anytime to restart to STEP 1 (helpful if you opened Serial late).
+  Key behavior:
+    - STEP 1 is ALWAYS SCREEN UP first
+    - It will NOT advance until:
+        (A) pose changed appropriately, AND
+        (B) the new pose is held steady for SETTLE_MS, AND
+        (C) then stable samples are collected for CAPTURE_MS
 */
 
 #include <M5Unified.h>
@@ -31,36 +31,32 @@
   #include "esp_timer.h"
 #endif
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
 class IMUWizard {
 public:
   using Vec3 = Eigen::Matrix<float,3,1>;
 
-  // ----------- Config -----------
+  // ---------------- Config ----------------
   static constexpr float    ACC_GYR_RATE_HZ = 200.0f;
   static constexpr float    MAG_RATE_HZ     = 50.0f;
 
-  static constexpr uint32_t SETTLE_MS       = 2500;   // must be steady this long after pose-change detected
+  static constexpr uint32_t SETTLE_MS       = 2500;   // must be steady this long after pose-change
   static constexpr uint32_t CAPTURE_MS      = 1400;   // capture duration once settled
   static constexpr uint32_t STEP_TIMEOUT_MS = 60000;  // per-step timeout
-  static constexpr uint32_t PROMPT_REPRINT_MS = 2500; // keep repeating prompt so you never "miss" step 1
+  static constexpr uint32_t PROMPT_REPRINT_MS = 2500; // reprint prompt periodically
 
-  // Pose-change relation thresholds vs previous captured gravity direction (unit accel)
-  static constexpr float DOT_OPPOSITE_MAX   = -0.92f;  // must be <= this to count as "flipped"
-  static constexpr float DOT_ORTHO_ABS_MAX  = 0.35f;   // must be <= this to count as "edge/orthogonal"
+  // Pose-change thresholds (unit accel dot products)
+  // - Opposite: dot <= this (more negative is "more opposite")
+  static constexpr float DOT_OPPOSITE_MAX   = -0.85f;
+  // - Orthogonal-ish: |dot| <= this (0 = perfect 90deg)
+  static constexpr float DOT_ORTHO_ABS_MAX  = 0.50f;
 
   // "hold still" gating
-  static constexpr float HOLD_COS_MIN       = 0.9992f; // ~2.3 deg
-  static constexpr float ACC_NORM_REL_MAX   = 0.03f;   // 3%
-  static constexpr float GYRO_ABS_MAX_RAW   = 8.0f;
+  static constexpr float HOLD_COS_MIN       = 0.9988f; // slightly looser than before (~2.8 deg)
+  static constexpr float ACC_NORM_REL_MAX   = 0.04f;   // 4%
+  static constexpr float GYRO_ABS_MAX_RAW   = 10.0f;
   static constexpr float GYRO_FLOOR_RAW     = 0.35f;
 
-  // ----------- Types -----------
-  enum PoseRel { REL_ANY=0, REL_OPPOSITE, REL_ORTHO };
-
+  // ---------------- Types ----------------
   struct IMUSample {
     int64_t t_us = 0;
     Vec3 acc = Vec3::Zero();
@@ -86,40 +82,22 @@ public:
     Vec3 acc_mean() const { return (n>0) ? (acc_sum / (float)n) : Vec3(0,0,0); }
   };
 
-  // Mapping types (kept to stay close to your wizard flow)
+  // Minimal mapping placeholders (you can re-add full solve later)
   struct SignedPerm {
     int8_t idx[3] = {0,1,2};
     int8_t sgn[3] = {+1,+1,+1};
     int8_t det    = +1;
   };
 
-  // ----------- Public API -----------
   void begin() {
     setup_rates_();
-    stage_ = ST_STEP1;
-    prev_pose_valid_ = false;
-
-    Serial.println();
-    Serial.println("============================================================");
-    Serial.println("IMU Pose Wizard");
-    Serial.println("STEP 1 is ALWAYS SCREEN UP first.");
-    Serial.println("It will NOT advance until you change pose correctly + hold steady.");
-    Serial.println("Press BtnA anytime to restart to STEP 1.");
-    Serial.println("============================================================");
-
-    enter_step_(1,
-      "Place device SCREEN UP on a flat surface.\n"
-      "Wait for pose detection, then hold still...",
-      "SCREEN UP (flat)", REL_ANY);
+    restart_();
+    print_help_();
   }
 
   void update() {
     M5.update();
-    if (M5.BtnA.wasPressed()) {
-      Serial.println("[USER] BtnA pressed -> Restarting to STEP 1.");
-      restart_();
-      return;
-    }
+    handle_serial_cmds_();
 
     IMUSample s;
     bool got_acc=false, got_mag=false;
@@ -130,14 +108,13 @@ public:
   }
 
 private:
-  // ----------- Stage enum -----------
+  // ---------------- Stage enum ----------------
   enum Stage { ST_STEP1=0, ST_STEP2, ST_STEP3, ST_STEP4, ST_SOLVE, ST_DONE };
   Stage stage_ = ST_STEP1;
 
-  // ----------- Step context -----------
+  // ---------------- Step context ----------------
   int step_idx_ = 1;
   const char* step_pose_name_ = nullptr;
-  PoseRel step_rel_ = REL_ANY;
 
   int64_t step_start_us_    = 0;
   int64_t settle_start_us_  = 0;
@@ -146,17 +123,17 @@ private:
   int64_t last_prompt_reprint_us_ = 0;
   int64_t last_status_print_us_   = 0;
 
+  // Pose averages + stored pose unit directions
+  PoseAvg step_avg_;
+  PoseAvg pose_[4];
+  Vec3    pose_unit_[4] = { Vec3(0,0,1), Vec3(0,0,-1), Vec3(1,0,0), Vec3(0,1,0) };
+  bool    pose_valid_[4] = { false, false, false, false };
+
+  // "hold still" reference for within-pose stability
   Vec3 hold_ref_unit_ = Vec3(0,0,1);
   bool hold_ref_valid_ = false;
 
-  PoseAvg step_avg_;
-  PoseAvg pose1_, pose2_, pose3_, pose4_;
-
-  // Previous captured pose gravity direction (unit accel)
-  Vec3 prev_pose_unit_ = Vec3(0,0,1);
-  bool prev_pose_valid_ = false;
-
-  // ----------- Scheduler -----------
+  // ---------------- Scheduler ----------------
   int64_t next_acc_us_ = 0;
   int64_t next_mag_us_ = 0;
   int64_t acc_period_us_ = 0;
@@ -170,11 +147,7 @@ private:
   IMUSample last_sample_;
   int64_t last_sample_us_ = 0;
 
-  // ----------- Solve outputs (minimal) -----------
-  SignedPerm map_acc_screen_;
-  float acc_scale_mps2_ = 1.0f;
-
-  // ----------- Utilities -----------
+  // ---------------- Utilities ----------------
   static inline int64_t now_us_() {
   #ifdef ARDUINO_ARCH_ESP32
     return (int64_t)esp_timer_get_time();
@@ -182,21 +155,47 @@ private:
     return (int64_t)micros();
   #endif
   }
-  static inline float clampf(float x, float a, float b) { return std::max(a, std::min(b, x)); }
+
+  static inline float clampf_(float x, float a, float b) { return std::max(a, std::min(b, x)); }
 
   static inline float safe_norm_(const Vec3& v) {
     float n = v.norm();
     return (std::isfinite(n) && n > 1e-12f) ? n : 0.0f;
   }
+
   static inline Vec3 safe_unit_(const Vec3& v, const Vec3& fallback=Vec3(0,0,1)) {
     float n = safe_norm_(v);
     return (n > 0.0f) ? (v / n) : fallback;
   }
 
-  void enter_step_(int idx, const char* prompt, const char* pose_name, PoseRel rel) {
+  void print_help_() {
+    Serial.println();
+    Serial.println("============================================================");
+    Serial.println("IMU Pose Wizard");
+    Serial.println("Commands:");
+    Serial.println("  r  -> restart to STEP 1");
+    Serial.println("  h  -> help");
+    Serial.println("Notes:");
+    Serial.println("  Step labels are instructions, not the code claiming your pose.");
+    Serial.println("  It will not advance until pose-change + settle + capture complete.");
+    Serial.println("============================================================");
+  }
+
+  void handle_serial_cmds_() {
+    while (Serial.available() > 0) {
+      char c = (char)Serial.read();
+      if (c == 'r' || c == 'R') {
+        Serial.println("[SERIAL] Restart requested (r).");
+        restart_();
+      } else if (c == 'h' || c == 'H') {
+        print_help_();
+      }
+    }
+  }
+
+  void enter_step_(int idx, const char* prompt, const char* pose_name) {
     step_idx_ = idx;
     step_pose_name_ = pose_name;
-    step_rel_ = rel;
 
     step_start_us_ = now_us_();
     settle_start_us_ = 0;
@@ -210,20 +209,25 @@ private:
     Serial.println();
     Serial.println("============================================================");
     Serial.printf("STEP %d/5:\n%s\n", idx, prompt);
+    Serial.println("Type 'r' to restart at any time.");
     Serial.println("============================================================");
   }
 
   void restart_() {
     stage_ = ST_STEP1;
-    prev_pose_valid_ = false;
     last_sample_us_ = 0;
+    hold_ref_valid_ = false;
+    step_avg_.reset();
+
+    for (int i=0;i<4;i++) pose_valid_[i] = false;
+
     enter_step_(1,
       "Place device SCREEN UP on a flat surface.\n"
       "Wait for pose detection, then hold still...",
-      "SCREEN UP (flat)", REL_ANY);
+      "SCREEN UP (flat)");
   }
 
-  // ----------- IMU read -----------
+  // ---------------- IMU read ----------------
   bool read_imu_once_(IMUSample& out) {
     (void)M5.Imu.update();
     auto d = M5.Imu.getImuData();
@@ -303,27 +307,19 @@ private:
     return true;
   }
 
-  // ----------- Simple EWMAs for steadiness -----------
-  struct Ema {
-    float v = 0.0f;
-    bool init = false;
-    void reset(){ v=0; init=false; }
-    float update(float x, float a){
-      if (!init){ v=x; init=true; return v; }
-      v = (1.0f-a)*v + a*x;
-      return v;
-    }
-  };
+  // ---------------- Stillness gating ----------------
+  struct Ema { float v=0.0f; bool init=false; void reset(){v=0;init=false;} float update(float x,float a){ if(!init){v=x;init=true;return v;} v=(1-a)*v+a*x; return v; } };
   Ema acc_norm_ema_;
   Ema gyro_norm_ema_;
 
   bool steady_enough_(const IMUSample& s, const Vec3& unit_now, float dt_s,
                       float* out_cos_ref, float* out_gn, float* out_th, float* out_an_rel)
   {
-    const float alpha = clampf(dt_s / 0.35f, 0.01f, 0.25f);
+    float alpha = clampf_(dt_s / 0.35f, 0.01f, 0.25f);
 
     float an = safe_norm_(s.acc);
     float gn = safe_norm_(s.gyr);
+
     float an_ema = acc_norm_ema_.update(an, alpha);
     float gn_ema = gyro_norm_ema_.update(gn, alpha);
 
@@ -335,7 +331,7 @@ private:
       hold_ref_valid_ = true;
     }
 
-    float cos_ref = clampf(unit_now.dot(hold_ref_unit_), -1.0f, 1.0f);
+    float cos_ref = clampf_(unit_now.dot(hold_ref_unit_), -1.0f, 1.0f);
 
     bool ok = (cos_ref > HOLD_COS_MIN) &&
               (gn < gyro_th) &&
@@ -347,7 +343,7 @@ private:
     if (out_th) *out_th = gyro_th;
     if (out_an_rel) *out_an_rel = an_rel;
 
-    // If it drifted, reset reference so "steady" means steady *now*
+    // keep reference local if drifting
     if (cos_ref < HOLD_COS_MIN) {
       hold_ref_unit_ = unit_now;
       hold_ref_valid_ = true;
@@ -355,20 +351,49 @@ private:
     return ok;
   }
 
-  bool relation_ok_(PoseRel rel, const Vec3& unit_now, float* out_dotPrev, float* out_absDotPrev) {
-    float dotPrev = 0.0f, absDotPrev = 0.0f;
-    if (prev_pose_valid_) {
-      dotPrev = clampf(unit_now.dot(prev_pose_unit_), -1.0f, 1.0f);
-      absDotPrev = std::fabs(dotPrev);
+  // ---------------- Pose-change rules per step ----------------
+  bool pose_change_ok_(int step_idx, const Vec3& unit_now,
+                      float* d1=nullptr, float* d2=nullptr, float* d3=nullptr)
+  {
+    // step 1: no dependency
+    if (step_idx == 1) return true;
+
+    // we depend on earlier poses being captured
+    auto dot_with = [&](int poseIndex1based)->float {
+      int i = poseIndex1based - 1;
+      if (i < 0 || i >= 4 || !pose_valid_[i]) return 2.0f; // invalid sentinel
+      return clampf_(unit_now.dot(pose_unit_[i]), -1.0f, 1.0f);
+    };
+
+    float dot1 = dot_with(1);
+    float dot2 = dot_with(2);
+    float dot3 = dot_with(3);
+
+    if (d1) *d1 = dot1;
+    if (d2) *d2 = dot2;
+    if (d3) *d3 = dot3;
+
+    if (step_idx == 2) {
+      // must be opposite to STEP 1
+      if (dot1 > 1.5f) return false;
+      return (dot1 <= DOT_OPPOSITE_MAX);
     }
-    if (out_dotPrev) *out_dotPrev = dotPrev;
-    if (out_absDotPrev) *out_absDotPrev = absDotPrev;
 
-    if (rel == REL_ANY) return true;
-    if (!prev_pose_valid_) return false;
+    if (step_idx == 3) {
+      // must be "edge": orthogonal to flat (Step 1)
+      if (dot1 > 1.5f) return false;
+      return (std::fabs(dot1) <= DOT_ORTHO_ABS_MAX);
+    }
 
-    if (rel == REL_OPPOSITE) return (dotPrev <= DOT_OPPOSITE_MAX);
-    return (absDotPrev <= DOT_ORTHO_ABS_MAX);
+    if (step_idx == 4) {
+      // must be edge AND different from Step 3:
+      // orthogonal to flat (Step 1) AND orthogonal to right-edge (Step 3)
+      if (dot1 > 1.5f || dot3 > 1.5f) return false;
+      return (std::fabs(dot1) <= DOT_ORTHO_ABS_MAX) &&
+             (std::fabs(dot3) <= DOT_ORTHO_ABS_MAX);
+    }
+
+    return false;
   }
 
   void maybe_reprint_prompt_() {
@@ -380,11 +405,7 @@ private:
     Serial.println();
     Serial.println("------------------------------------------------------------");
     Serial.printf("CURRENT STEP %d/5: %s\n", step_idx_, step_pose_name_);
-    if (step_idx_ == 1) Serial.println("Instruction: Put it SCREEN UP and hold still.");
-    if (step_idx_ == 2) Serial.println("Instruction: Flip to SCREEN DOWN (must be opposite of Step 1).");
-    if (step_idx_ == 3) Serial.println("Instruction: Stand on RIGHT EDGE (must be orthogonal to Step 2).");
-    if (step_idx_ == 4) Serial.println("Instruction: Stand on TOP EDGE (must be orthogonal to Step 3).");
-    Serial.println("Press BtnA to restart if you missed Step 1.");
+    Serial.println("Type 'r' to restart. Type 'h' for help.");
     Serial.println("------------------------------------------------------------");
   }
 
@@ -401,48 +422,55 @@ private:
 
     Vec3 unit_now = safe_unit_(s.acc, Vec3(0,0,1));
 
-    float dotPrev=0, absDotPrev=0;
-    bool rel_ok = relation_ok_(step_rel_, unit_now, &dotPrev, &absDotPrev);
+    float dot1=0, dot2=0, dot3=0;
+    bool change_ok = pose_change_ok_(step_idx_, unit_now, &dot1, &dot2, &dot3);
 
     float cos_ref=0, gn=0, th=0, an_rel=0;
     bool steady_ok = steady_enough_(s, unit_now, dt_s, &cos_ref, &gn, &th, &an_rel);
 
-    // 1) WAIT FOR POSE CHANGE (if required)
-    if (!rel_ok) {
-      // Hard stop: do not start settle/capture
+    // 1) WAIT FOR POSE CHANGE
+    if (!change_ok) {
       settle_start_us_ = 0;
       capture_start_us_ = 0;
       hold_ref_valid_ = false;
       step_avg_.reset();
 
-      if (now_us_() - last_status_print_us_ > 900000) {
-        last_status_print_us_ = now_us_();
-        if (step_rel_ == REL_OPPOSITE) {
-          Serial.printf("[POSE] %s  waiting_pose_change: need dotPrev <= %.2f (flip). dotPrev=%.3f\n",
-                        step_pose_name_, DOT_OPPOSITE_MAX, dotPrev);
-        } else if (step_rel_ == REL_ORTHO) {
-          Serial.printf("[POSE] %s  waiting_pose_change: need |dotPrev| <= %.2f (edge). |dotPrev|=%.3f\n",
-                        step_pose_name_, DOT_ORTHO_ABS_MAX, absDotPrev);
-        } else {
-          Serial.printf("[POSE] %s  waiting_pose_change\n", step_pose_name_);
+      int64_t tnow = now_us_();
+      if (tnow - last_status_print_us_ > 900000) {
+        last_status_print_us_ = tnow;
+
+        Serial.printf("[POSE] %s  waiting_pose_change  a_unit=[%.3f %.3f %.3f]\n",
+                      step_pose_name_, unit_now.x(), unit_now.y(), unit_now.z());
+
+        if (step_idx_ == 2) {
+          Serial.printf("       need dot(step1) <= %.2f (flip). dot1=%.3f\n",
+                        DOT_OPPOSITE_MAX, dot1);
+        } else if (step_idx_ == 3) {
+          Serial.printf("       need |dot(step1)| <= %.2f (edge). |dot1|=%.3f\n",
+                        DOT_ORTHO_ABS_MAX, std::fabs(dot1));
+        } else if (step_idx_ == 4) {
+          Serial.printf("       need |dot(step1)|<=%.2f AND |dot(step3)|<=%.2f (top edge).\n",
+                        DOT_ORTHO_ABS_MAX, DOT_ORTHO_ABS_MAX);
+          Serial.printf("       |dot1|=%.3f  |dot3|=%.3f\n", std::fabs(dot1), std::fabs(dot3));
         }
+        Serial.println("       (If this never changes, your accel vector isn’t changing with orientation!)");
       }
 
-      if ((now_us_() - step_start_us_) > (int64_t)STEP_TIMEOUT_MS * 1000) {
-        Serial.printf("[POSE] TIMEOUT in %s -> restarting.\n", step_pose_name_);
-        restart_();
+      if ((tnow - step_start_us_) > (int64_t)STEP_TIMEOUT_MS * 1000) {
+        Serial.printf("[POSE] TIMEOUT in %s -> type 'r' to restart.\n", step_pose_name_);
       }
       return;
     }
 
-    // 2) POSE CHANGED ENOUGH; NOW REQUIRE STEADY FOR SETTLE_MS
+    // 2) POSE CHANGED; REQUIRE STEADY FOR SETTLE_MS
     if (!steady_ok) {
       settle_start_us_ = 0;
       capture_start_us_ = 0;
       step_avg_.reset();
 
-      if (now_us_() - last_status_print_us_ > 900000) {
-        last_status_print_us_ = now_us_();
+      int64_t tnow = now_us_();
+      if (tnow - last_status_print_us_ > 900000) {
+        last_status_print_us_ = tnow;
         Serial.printf("[POSE] %s  pose OK, but moving: cos=%.4f gyro=%.3f<th=%.3f aRel=%.3f\n",
                       step_pose_name_, cos_ref, gn, th, an_rel);
       }
@@ -460,15 +488,16 @@ private:
 
     uint32_t settle_ms = (uint32_t)((now_us_() - settle_start_us_) / 1000);
     if (settle_ms < SETTLE_MS) {
-      if (now_us_() - last_status_print_us_ > 900000) {
-        last_status_print_us_ = now_us_();
+      int64_t tnow = now_us_();
+      if (tnow - last_status_print_us_ > 900000) {
+        last_status_print_us_ = tnow;
         Serial.printf("[POSE] %s  settling... %ums/%ums\n",
                       step_pose_name_, settle_ms, (unsigned)SETTLE_MS);
       }
       return;
     }
 
-    // 3) SETTLED; NOW CAPTURE FOR CAPTURE_MS
+    // 3) SETTLED; CAPTURE FOR CAPTURE_MS
     if (capture_start_us_ == 0) {
       capture_start_us_ = now_us_();
       step_avg_.reset();
@@ -476,7 +505,7 @@ private:
                     step_pose_name_, (unsigned)CAPTURE_MS);
     }
 
-    // if we lose steadiness during capture, restart capture window
+    // if it becomes unstable during capture, restart capture window
     if (!steady_ok) {
       capture_start_us_ = now_us_();
       step_avg_.reset();
@@ -488,24 +517,21 @@ private:
     uint32_t cap_ms = (uint32_t)((now_us_() - capture_start_us_) / 1000);
     if (cap_ms >= CAPTURE_MS && step_avg_.n > 30) {
       Vec3 a_mean = step_avg_.acc_mean();
-      prev_pose_unit_ = safe_unit_(a_mean, unit_now);
-      prev_pose_valid_ = true;
+      Vec3 u_mean = safe_unit_(a_mean, unit_now);
 
-      Serial.printf("[POSE] OK: %s  samples=%d (mag_samples=%d)\n",
-                    step_pose_name_, step_avg_.n, step_avg_.nmag);
+      int idx = step_idx_ - 1;
+      if (idx >= 0 && idx < 4) {
+        pose_[idx] = step_avg_;
+        pose_unit_[idx] = u_mean;
+        pose_valid_[idx] = true;
+      }
 
-      if (stage_ == ST_STEP1) pose1_ = step_avg_;
-      if (stage_ == ST_STEP2) pose2_ = step_avg_;
-      if (stage_ == ST_STEP3) pose3_ = step_avg_;
-      if (stage_ == ST_STEP4) pose4_ = step_avg_;
+      Serial.printf("[POSE] OK: %s  samples=%d (mag_samples=%d)  mean_unit=[%.3f %.3f %.3f]\n",
+                    step_pose_name_, step_avg_.n, step_avg_.nmag,
+                    u_mean.x(), u_mean.y(), u_mean.z());
 
       advance_stage_();
       return;
-    }
-
-    if ((now_us_() - step_start_us_) > (int64_t)STEP_TIMEOUT_MS * 1000) {
-      Serial.printf("[POSE] TIMEOUT in %s -> restarting.\n", step_pose_name_);
-      restart_();
     }
   }
 
@@ -520,146 +546,38 @@ private:
       enter_step_(2,
         "Flip device SCREEN DOWN on the same flat surface.\n"
         "It will wait until you actually flipped, then you hold still...",
-        "SCREEN DOWN (flat)", REL_OPPOSITE);
+        "SCREEN DOWN (flat)");
       return;
     }
     if (stage_ == ST_STEP2) {
       stage_ = ST_STEP3;
       enter_step_(3,
         "Stand device on its RIGHT EDGE (screen facing you; right edge on table).\n"
-        "It will wait until pose is orthogonal, then you hold still...",
-        "RIGHT EDGE DOWN", REL_ORTHO);
+        "It will wait until it is an EDGE pose (not flat), then you hold still...",
+        "RIGHT EDGE DOWN");
       return;
     }
     if (stage_ == ST_STEP3) {
       stage_ = ST_STEP4;
       enter_step_(4,
         "Stand device on its TOP EDGE (screen facing you; top edge on table).\n"
-        "It will wait until pose is orthogonal, then you hold still...",
-        "TOP EDGE DOWN", REL_ORTHO);
+        "It will wait until it is EDGE AND different from right-edge, then you hold still...",
+        "TOP EDGE DOWN");
       return;
     }
     if (stage_ == ST_STEP4) {
-      stage_ = ST_SOLVE;
-      solve_accel_mapping_();
       stage_ = ST_DONE;
-      Serial.println("[DONE] Press BtnA to restart.");
+      Serial.println();
+      Serial.println("============================================================");
+      Serial.println("[DONE] Captured 4 poses. (Mapping solve can be re-added next.)");
+      Serial.println("Type 'r' to restart.");
+      Serial.println("============================================================");
       return;
     }
-  }
-
-  // ----------- Mapping solve (minimal; same concept) -----------
-  int perm_parity3_(int a, int b, int c) const {
-    int inv=0; int arr[3]={a,b,c};
-    for(int i=0;i<3;i++) for(int j=i+1;j<3;j++) if(arr[i]>arr[j]) inv++;
-    return (inv%2==0)?+1:-1;
-  }
-  SignedPerm make_perm_(int ix,int sx,int iy,int sy,int iz,int sz) const {
-    SignedPerm p;
-    p.idx[0]=(int8_t)ix; p.sgn[0]=(int8_t)sx;
-    p.idx[1]=(int8_t)iy; p.sgn[1]=(int8_t)sy;
-    p.idx[2]=(int8_t)iz; p.sgn[2]=(int8_t)sz;
-    int parity = perm_parity3_(ix,iy,iz);
-    int sprod  = sx*sy*sz;
-    p.det = (int8_t)(parity*sprod);
-    return p;
-  }
-  int enumerate_perms_(SignedPerm* out, int max_out) const {
-    int n=0;
-    const int perms[6][3]={{0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}};
-    const int sgns[8][3]={
-      {+1,+1,+1},{+1,+1,-1},{+1,-1,+1},{+1,-1,-1},
-      {-1,+1,+1},{-1,+1,-1},{-1,-1,+1},{-1,-1,-1}
-    };
-    for(int pi=0;pi<6;pi++) for(int si=0;si<8;si++){
-      if(n>=max_out) break;
-      out[n++] = make_perm_(perms[pi][0],sgns[si][0], perms[pi][1],sgns[si][1], perms[pi][2],sgns[si][2]);
-    }
-    return n;
-  }
-  Vec3 apply_perm_(const SignedPerm& p, const Vec3& v) const {
-    Vec3 o;
-    o(0) = (float)p.sgn[0] * v((int)p.idx[0]);
-    o(1) = (float)p.sgn[1] * v((int)p.idx[1]);
-    o(2) = (float)p.sgn[2] * v((int)p.idx[2]);
-    return o;
-  }
-  float score_dir_(const Vec3& v, const Vec3& t_unit) const {
-    Vec3 u = safe_unit_(v);
-    return u.dot(t_unit);
-  }
-
-  void solve_accel_mapping_() {
-    Serial.println();
-    Serial.println("============================================================");
-    Serial.println("STEP 5/5: Solving accel mapping from the 4 captured poses...");
-    Serial.println("============================================================");
-
-    Vec3 aZu = pose1_.acc_mean();
-    Vec3 aZd = pose2_.acc_mean();
-    Vec3 aX  = pose3_.acc_mean();
-    Vec3 aY  = pose4_.acc_mean();
-
-    // expected +g in SCREEN frame (your original assumption)
-    const Vec3 tZu(0,0, 1);
-    const Vec3 tZd(0,0,-1);
-    const Vec3 tX (-1,0,0);
-    const Vec3 tY (0,-1,0);
-
-    SignedPerm perms[64];
-    int nperm = enumerate_perms_(perms, 64);
-
-    float best=-1e9f, second=-1e9f;
-    SignedPerm bestp = perms[0];
-
-    for (int i=0;i<nperm;i++) {
-      Vec3 mZu = apply_perm_(perms[i], aZu);
-      Vec3 mZd = apply_perm_(perms[i], aZd);
-      Vec3 mX  = apply_perm_(perms[i], aX);
-      Vec3 mY  = apply_perm_(perms[i], aY);
-
-      float sc = 0.0f;
-      sc += 2.8f * score_dir_(mZu, tZu);
-      sc += 2.3f * score_dir_(mZd, tZd);
-      sc += 2.0f * score_dir_(mX,  tX);
-      sc += 2.0f * score_dir_(mY,  tY);
-
-      if (sc > best) { second = best; best = sc; bestp = perms[i]; }
-      else if (sc > second) { second = sc; }
-    }
-
-    float margin = best - second;
-    Serial.printf("[ACCEL] solve score best=%.3f second=%.3f margin=%.3f\n", best, second, margin);
-
-    if (!(best > 6.0f && margin > 0.20f)) {
-      Serial.println("[ACCEL] Could not solve confidently. Press BtnA to restart.");
-      return;
-    }
-
-    map_acc_screen_ = bestp;
-
-    float m = 0.25f * (
-      safe_norm_(apply_perm_(map_acc_screen_, aZu)) +
-      safe_norm_(apply_perm_(map_acc_screen_, aZd)) +
-      safe_norm_(apply_perm_(map_acc_screen_, aX)) +
-      safe_norm_(apply_perm_(map_acc_screen_, aY))
-    );
-
-    const float G_STD = 9.80665f;
-    if (m > 0.35f && m < 2.3f) acc_scale_mps2_ = G_STD;
-    else if (m > 4.0f && m < 15.0f) acc_scale_mps2_ = 1.0f;
-    else acc_scale_mps2_ = (m > 1e-6f) ? (G_STD / m) : 1.0f;
-
-    Serial.println("[ACCEL] Solved mapping (RAW -> SCREEN frame):");
-    Serial.printf("idx=[%d %d %d] sgn=[%d %d %d] det=%d\n",
-      map_acc_screen_.idx[0], map_acc_screen_.idx[1], map_acc_screen_.idx[2],
-      map_acc_screen_.sgn[0], map_acc_screen_.sgn[1], map_acc_screen_.sgn[2],
-      map_acc_screen_.det);
-    Serial.printf("acc_scale_mps2 = %.9g\n", acc_scale_mps2_);
   }
 };
 
-// ----------- Global instance -----------
+// ---------------- Global wizard ----------------
 static IMUWizard g_wiz;
 
 void setup() {
