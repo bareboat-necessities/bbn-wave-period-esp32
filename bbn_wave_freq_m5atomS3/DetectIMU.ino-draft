@@ -32,6 +32,14 @@ struct Vec3 {
 static inline float dot3(const Vec3& a, const Vec3& b){ return a.x*b.x + a.y*b.y + a.z*b.z; }
 static inline float norm3(const Vec3& a){ return sqrtf(dot3(a,a)); }
 
+static inline Vec3 cross3(const Vec3& a, const Vec3& b){
+  return Vec3{
+    a.y*b.z - a.z*b.y,
+    a.z*b.x - a.x*b.z,
+    a.x*b.y - a.y*b.x
+  };
+}
+
 static inline Vec3 normalize3(const Vec3& a){
   float n = norm3(a);
   if (!(n > 1e-12f) || !isfinite(n)) return {0,0,0};
@@ -76,6 +84,20 @@ static inline AxisMap make_map_(int ix,int sx,int iy,int sy,int iz,int sz){
   m.idx[2]=(uint8_t)iz; m.sgn[2]=(int8_t)sz;
   return m;
 }
+
+// reject left-handed reflections (det < 0)
+static inline int perm_parity3(uint8_t a, uint8_t b, uint8_t c){
+  int inv = 0;
+  uint8_t v[3] = {a,b,c};
+  for(int i=0;i<3;i++) for(int j=i+1;j<3;j++) if (v[i] > v[j]) inv++;
+  return (inv % 2 == 0) ? +1 : -1;
+}
+static inline int det_sign(const AxisMap& m){
+  int parity = perm_parity3(m.idx[0], m.idx[1], m.idx[2]);
+  int s = (int)m.sgn[0] * (int)m.sgn[1] * (int)m.sgn[2];
+  return parity * s;
+}
+static inline bool is_right_handed(const AxisMap& m){ return det_sign(m) > 0; }
 
 // ---------------------------- wizard ----------------------------
 class IMUWizard {
@@ -126,6 +148,11 @@ private:
   static constexpr float    MAG_CORR_MIN   = 0.35f;
   static constexpr float    MAG_ROTABS_MIN = 3.0f;
 
+  // M5Unified update() mask bits (common M5Unified convention)
+  static constexpr uint32_t IMU_MASK_ACCEL = (1u<<0);
+  static constexpr uint32_t IMU_MASK_GYRO  = (1u<<1);
+  static constexpr uint32_t IMU_MASK_MAG   = (1u<<2);
+
   // ---------- data ----------
   enum class State : uint8_t { POSES, SOLVE_A, ROT, SOLVE_M, DONE };
   State state_ = State::POSES;
@@ -135,7 +162,13 @@ private:
     Vec3 acc_sum{0,0,0}, gyr_sum{0,0,0}, mag_sum{0,0,0};
     float acc_norm_sum=0;
 
-    void reset(){ n=0; nmag=0; acc_sum=gyr_sum=mag_sum={0,0,0}; acc_norm_sum=0; }
+    void reset(){
+      n=0; nmag=0;
+      acc_sum = Vec3{0,0,0};
+      gyr_sum = Vec3{0,0,0};
+      mag_sum = Vec3{0,0,0};
+      acc_norm_sum=0;
+    }
     void add(const Vec3& a, const Vec3& g, const Vec3& m, bool haveMag){
       n++;
       acc_sum = acc_sum + a;
@@ -175,8 +208,9 @@ private:
   float dt_s_ = 0.01f;
   Vec3 acc_raw_{0,0,0}, gyr_raw_{0,0,0}, mag_raw_{0,0,0};
   bool have_mag_ = false;
+  bool mag_fresh_ = false;
 
-  // rotation buffers (global storage, not stack)
+  // rotation buffers
   Vec3  rot_mag_[ROT_MAX];
   Vec3  rot_gyr_[ROT_MAX];
   float rot_dt_[ROT_MAX];
@@ -188,6 +222,7 @@ private:
   uint32_t rot_phase_t0_ms_ = 0;
   uint32_t rot_t0_ms_ = 0;
   uint32_t rot_last_store_ms_ = 0;
+  uint32_t rot_prev_store_ms_ = 0;
 
   bool verbose_ = false;
   uint32_t last_status_ms_ = 0;
@@ -262,6 +297,7 @@ private:
     rot_phase_t0_ms_ = millis();
     rot_t0_ms_ = 0;
     rot_last_store_ms_ = 0;
+    rot_prev_store_ms_ = 0;
 
     accel_ok_=gyro_ok_=mag_ok_=false;
     acc_map_screen_ = {{0,1,2},{+1,+1,+1}};
@@ -294,8 +330,8 @@ private:
     if (now - rate_t0_ms_ < 1000) return;
     float dt = (now - rate_t0_ms_) * 1e-3f;
     if (!(dt > 0)) dt = 1.0f;
-    Serial.printf("[RATE] acc/gyro observed ~%.1f Hz\n", rate_acc_n_/dt);
-    Serial.printf("[RATE] mag observed     ~%.1f Hz %s\n", rate_mag_n_/dt, have_mag_ ? "" : "(mag unavailable?)");
+    Serial.printf("[RATE] acc/gyro updates ~%.1f Hz\n", rate_acc_n_/dt);
+    Serial.printf("[RATE] mag updates     ~%.1f Hz %s\n", rate_mag_n_/dt, have_mag_ ? "" : "(mag unavailable?)");
     rate_t0_ms_ = now;
     rate_acc_n_ = rate_mag_n_ = 0;
   }
@@ -311,7 +347,7 @@ private:
     if (!(dt > 0.0005f && dt < 0.2f)) dt = 0.01f;
     dt_s_ = dt;
 
-    (void)M5.Imu.update();
+    uint32_t mask = (uint32_t)M5.Imu.update();
     auto d = M5.Imu.getImuData();
 
     acc_raw_ = Vec3(d.accel.x, d.accel.y, d.accel.z);
@@ -322,8 +358,10 @@ private:
       isfinite(mag_raw_.x) && isfinite(mag_raw_.y) && isfinite(mag_raw_.z) &&
       (fabsf(mag_raw_.x) + fabsf(mag_raw_.y) + fabsf(mag_raw_.z) > 1e-6f);
 
-    rate_acc_n_++;
-    if (have_mag_) rate_mag_n_++;
+    mag_fresh_ = have_mag_ && ((mask & IMU_MASK_MAG) != 0);
+
+    if (mask & (IMU_MASK_ACCEL | IMU_MASK_GYRO)) rate_acc_n_++;
+    if (mag_fresh_) rate_mag_n_++;
   }
 
   void reset_stability_(){
@@ -434,7 +472,7 @@ private:
     bool ok = update_stable_(acc_raw_, gyr_raw_, &cos_sim, &gn, &th, &arel);
 
     if (ok) {
-      pose_[pose_i_].add(acc_raw_, gyr_raw_, mag_raw_, have_mag_);
+      pose_[pose_i_].add(acc_raw_, gyr_raw_, mag_raw_, mag_fresh_);
       if (stable_ms_ >= STABLE_NEED_MS && pose_[pose_i_].n > 60) {
         Serial.printf("[POSE] OK: %s  samples=%u (mag_samples=%u)\n",
                       pose_name_[pose_i_], (unsigned)pose_[pose_i_].n, (unsigned)pose_[pose_i_].nmag);
@@ -508,6 +546,8 @@ private:
                               perms[pi][1], sgns[si][1],
                               perms[pi][2], sgns[si][2]);
 
+        if (!is_right_handed(m)) continue;
+
         Vec3 m0 = apply_map3(m, a0);
         Vec3 m1 = apply_map3(m, a1);
         Vec3 m2 = apply_map3(m, a2);
@@ -519,6 +559,11 @@ private:
         sc += 2.0f * score_dir(m2,t2);
         sc += 2.0f * score_dir(m3,t3);
 
+        // E × N should align D in [E,N,D]
+        Vec3 u2 = normalize3(m2), u3 = normalize3(m3), u0 = normalize3(m0);
+        float chir = dot3(normalize3(cross3(u2,u3)), u0);
+        sc += 0.35f * chir;
+
         if (sc > best) { second = best; best = sc; bestM = m; }
         else if (sc > second) { second = sc; }
       }
@@ -528,7 +573,7 @@ private:
     Serial.println();
     Serial.printf("[ACCEL] solve score best=%.3f second=%.3f margin=%.3f\n", best, second, margin);
 
-    if (!(best > 6.0f && margin > 0.25f)) {
+    if (!(best > 6.2f && margin > 0.20f)) {
       Serial.println("[ACCEL] FAILED: mapping ambiguous. Type 'r' to restart.");
       state_ = State::DONE;
       return;
@@ -537,16 +582,17 @@ private:
     accel_ok_ = true;
     acc_map_screen_ = bestM;
 
-    // detect accel scale (g vs m/s^2)
-    float m0 = norm3(apply_map3(acc_map_screen_, a0));
-    float m1 = norm3(apply_map3(acc_map_screen_, a1));
-    float m2 = norm3(apply_map3(acc_map_screen_, a2));
-    float m3 = norm3(apply_map3(acc_map_screen_, a3));
-    float m = 0.25f*(m0+m1+m2+m3);
+    // accel scale: map average magnitude to 1g
+    float m0n = norm3(apply_map3(acc_map_screen_, a0));
+    float m1n = norm3(apply_map3(acc_map_screen_, a1));
+    float m2n = norm3(apply_map3(acc_map_screen_, a2));
+    float m3n = norm3(apply_map3(acc_map_screen_, a3));
+    float m = 0.25f*(m0n+m1n+m2n+m3n);
+    acc_scale_mps2_ = (m > 1e-6f && isfinite(m)) ? (kGStd / m) : 1.0f;
 
-    if (m > 0.35f && m < 2.3f)      acc_scale_mps2_ = kGStd;  // g -> m/s^2
-    else if (m > 4.0f && m < 15.0f) acc_scale_mps2_ = 1.0f;   // already m/s^2
-    else                           acc_scale_mps2_ = (m>1e-6f)? (kGStd/m) : 1.0f;
+    // Keep gyro axes consistent with accel (common on IMU dies)
+    gyr_map_screen_ = acc_map_screen_;
+    gyro_ok_ = true;
 
     rebuild_ned_maps_();
 
@@ -595,13 +641,14 @@ private:
         rot_phase_ = RotPhase::CAPTURE;
         rot_t0_ms_ = now;
         rot_last_store_ms_ = now;
+        rot_prev_store_ms_ = now;
         rot_n_ = 0;
         Serial.println("[ROT] Capture started. Rotate CLOCKWISE now (8s), keep it flat.");
       }
       return;
     }
 
-    // CAPTURE for FULL 8 seconds
+    // CAPTURE
     uint32_t elapsed = now - rot_t0_ms_;
     if (elapsed >= ROT_CAPTURE_MS) {
       Serial.printf("[ROT] Done. Stored samples: %d (max %d)\n", rot_n_, ROT_MAX);
@@ -609,13 +656,18 @@ private:
       return;
     }
 
+    // store at ~50 Hz; dt is between STORED samples
     if (now - rot_last_store_ms_ >= ROT_STORE_MS) {
-      rot_last_store_ms_ += ROT_STORE_MS;
+      rot_last_store_ms_ = now;
+
       if (up_dot > ROT_UP_DOT_TH_CAP && rot_n_ < ROT_MAX) {
+        float dt_store = (rot_n_ == 0) ? 0.0f : (float)(now - rot_prev_store_ms_) * 1e-3f;
+        rot_prev_store_ms_ = now;
+
         rot_gyr_[rot_n_] = gyr_raw_;
         rot_mag_[rot_n_] = mag_raw_;
-        rot_haveMag_[rot_n_] = have_mag_;
-        rot_dt_[rot_n_] = dt_s_;
+        rot_haveMag_[rot_n_] = mag_fresh_;
+        rot_dt_[rot_n_] = dt_store;
         rot_n_++;
       }
       if (verbose_ && should_status_(now, 900)) {
@@ -632,71 +684,37 @@ private:
       return;
     }
 
-    // Solve gyro mapping: rotation should be mostly about SCREEN D-axis (z)
+    // Gyro mapping already set to accel mapping
+    rebuild_ned_maps_();
+
+    // Integrate yaw using STORED dt (dt between stored samples)
+    double gyro_int_raw = 0.0;
+    double gyro_sq = 0.0;
+    int gyro_n = 0;
+    for(int i=1;i<rot_n_;++i){
+      float dt = rot_dt_[i];
+      if (!(dt > 1e-6f && dt < 0.2f)) continue;
+      Vec3 gS = apply_map3(gyr_map_screen_, rot_gyr_[i]);
+      gyro_int_raw += (double)gS.z * (double)dt;
+      gyro_sq += (double)gS.z*(double)gS.z;
+      gyro_n++;
+    }
+    float gyro_rms = (gyro_n>0) ? sqrtf((float)(gyro_sq / (double)gyro_n)) : 0.0f;
+
+    // -------- MAG solve (find mapping maximizing heading-rate correlation + "flatness") --------
     const int perms[6][3] = {{0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}};
     const int sgns[8][3]  = {
       {+1,+1,+1},{+1,+1,-1},{+1,-1,+1},{+1,-1,-1},
       {-1,+1,+1},{-1,+1,-1},{-1,-1,+1},{-1,-1,-1}
     };
 
-    AxisMap bestG = {{0,1,2},{+1,+1,+1}};
-    float bestScore = -1e9f;
-
-    for(int pi=0; pi<6; ++pi){
-      for(int si=0; si<8; ++si){
-        AxisMap m = make_map_(perms[pi][0], sgns[si][0],
-                              perms[pi][1], sgns[si][1],
-                              perms[pi][2], sgns[si][2]);
-        double sxx=0, syy=0, szz=0;
-        for(int i=0;i<rot_n_;++i){
-          Vec3 g = apply_map3(m, rot_gyr_[i]);
-          sxx += (double)g.x*(double)g.x;
-          syy += (double)g.y*(double)g.y;
-          szz += (double)g.z*(double)g.z;
-        }
-        float rx = sqrtf((float)(sxx/rot_n_));
-        float ry = sqrtf((float)(syy/rot_n_));
-        float rz = sqrtf((float)(szz/rot_n_));
-        float sc = rz - 0.35f*(rx+ry);
-        if (sc > bestScore) { bestScore = sc; bestG = m; }
-      }
-    }
-
-    gyr_map_screen_ = bestG;
-    gyro_ok_ = true;
-
-    double gyro_int_raw = 0.0;
-    double gyro_sq = 0.0;
-    for(int i=0;i<rot_n_;++i){
-      Vec3 gS = apply_map3(gyr_map_screen_, rot_gyr_[i]);
-      float dt = rot_dt_[i];
-      gyro_int_raw += (double)gS.z * (double)dt;
-      gyro_sq += (double)gS.z*(double)gS.z;
-    }
-    float gyro_rms = sqrtf((float)(gyro_sq / (double)rot_n_));
-
-    // gyro scale: decide deg/s vs rad/s
-    {
-      const float DEG2RAD = kPi / 180.0f;
-      float cand0 = 1.0f;
-      float cand1 = DEG2RAD;
-      auto cost = [&](float s)->float{
-        float ang = (float)fabs(gyro_int_raw) * s;
-        float c=0;
-        if (ang < 2.0f) c += (2.0f-ang)*(2.0f-ang);
-        if (ang > 10.0f) c += (ang-10.0f)*(ang-10.0f);
-        c += 0.04f*(ang-6.0f)*(ang-6.0f);
-        return c;
-      };
-      gyro_scale_radps_ = (cost(cand1) < cost(cand0)) ? cand1 : cand0;
-    }
-
-    // mag solve: correlation between gyro_z and heading rate
     AxisMap bestM = {{0,1,2},{+1,+1,+1}};
+    float bestScore = -1e9f;
     float bestCorrAbs = 0.0f;
     float bestPsiUnwrap = 0.0f;
     float bestAbsSum = 0.0f;
     float bestMagNormMean = 0.0f;
+    float bestFlatMetric = 0.0f;
 
     for(int pi=0; pi<6; ++pi){
       for(int si=0; si<8; ++si){
@@ -704,6 +722,39 @@ private:
                               perms[pi][1], sgns[si][1],
                               perms[pi][2], sgns[si][2]);
 
+        if (!is_right_handed(m)) continue;
+
+        // pass 1: mean/variance + norm mean
+        double mx=0,my=0,mz=0;
+        double mxx=0,myy=0,mzz=0;
+        double magNormSum=0.0;
+        int magN=0;
+
+        for(int i=0;i<rot_n_;++i){
+          if (!rot_haveMag_[i]) continue;
+          Vec3 mS = apply_map3(m, rot_mag_[i]);
+          float mn = norm3(mS);
+          if (!(mn > 1e-9f) || !isfinite(mn)) continue;
+
+          mx += mS.x; my += mS.y; mz += mS.z;
+          mxx += (double)mS.x*(double)mS.x;
+          myy += (double)mS.y*(double)mS.y;
+          mzz += (double)mS.z*(double)mS.z;
+          magNormSum += mn;
+          magN++;
+        }
+        if (magN < 30) continue;
+
+        double invN = 1.0 / (double)magN;
+        double meanx = mx*invN, meany = my*invN, meanz = mz*invN;
+        double varz = (mzz*invN) - meanz*meanz;
+        double varx = (mxx*invN) - meanx*meanx;
+        double vary = (myy*invN) - meany*meany;
+        double varxy = fmax(0.0, varx + vary);
+
+        float flatMetric = (float)(varxy / (varz + 1e-9 + 0.02*varxy));
+
+        // pass 2: correlation between gyro_z and heading rate using centered XY
         bool psi_init=false;
         float psi_prev=0.0f;
         float psi_unwrap=0.0f;
@@ -712,10 +763,7 @@ private:
         double sx=0, sy=0, sxx=0, syy=0, sxy=0;
         int n=0;
 
-        double magNormSum=0.0;
-        int magNormN=0;
-
-        for(int i=0;i<rot_n_;++i){
+        for(int i=1;i<rot_n_;++i){
           if (!rot_haveMag_[i]) continue;
           float dt = rot_dt_[i];
           if (!(dt > 1e-6f && dt < 0.2f)) continue;
@@ -723,10 +771,13 @@ private:
           Vec3 gS = apply_map3(gyr_map_screen_, rot_gyr_[i]);
           Vec3 mS = apply_map3(m, rot_mag_[i]);
 
-          float mn = norm3(mS);
-          if (mn > 1e-6f) { magNormSum += mn; magNormN++; }
+          float cx = (float)(mS.x - meanx);
+          float cy = (float)(mS.y - meany);
 
-          float psi = atan2f(mS.y, mS.x);
+          float r2 = cx*cx + cy*cy;
+          if (!(r2 > 1e-6f) || !isfinite(r2)) continue;
+
+          float psi = atan2f(cy, cx);
           if (!psi_init){
             psi_prev = psi;
             psi_unwrap = psi;
@@ -739,8 +790,8 @@ private:
           psi_unwrap += dpsi;
           absSum += fabsf(dpsi);
 
-          float y = dpsi / dt;
-          float x = gS.z;
+          float y = dpsi / dt;   // heading rate
+          float x = gS.z;        // gyro yaw
 
           sx += x; sy += y;
           sxx += (double)x*(double)x;
@@ -749,7 +800,7 @@ private:
           n++;
         }
 
-        if (n < 30 || magNormN < 30) continue;
+        if (n < 30) continue;
 
         double denomx = (n*sxx - sx*sx);
         double denomy = (n*syy - sy*sy);
@@ -757,16 +808,23 @@ private:
 
         double corr = (n*sxy - sx*sy) / sqrt(denomx*denomy);
         float cabs = (float)fabs(corr);
-        float magNormMean = (float)(magNormSum / (double)magNormN);
+        float magNormMean = (float)(magNormSum * invN);
 
-        float score = cabs + 0.06f * (absSum / (2.0f*kPi));
-        float bestScore2 = bestCorrAbs + 0.06f * (bestAbsSum / (2.0f*kPi));
-        if (score > bestScore2) {
+        float turns = absSum / (2.0f*kPi);
+
+        float flatClamped = clampf(flatMetric, 0.0f, 200.0f);
+        float flatNorm = logf(1.0f + flatClamped) / logf(1.0f + 200.0f);
+
+        float score = cabs + 0.06f*turns + 0.22f*flatNorm;
+
+        if (score > bestScore) {
+          bestScore = score;
           bestM = m;
           bestCorrAbs = cabs;
           bestPsiUnwrap = psi_unwrap;
           bestAbsSum = absSum;
           bestMagNormMean = magNormMean;
+          bestFlatMetric = flatMetric;
         }
       }
     }
@@ -774,9 +832,37 @@ private:
     mag_ok_ = (bestCorrAbs >= MAG_CORR_MIN && bestAbsSum >= MAG_ROTABS_MIN);
     if (mag_ok_) mag_map_screen_ = bestM;
 
-    // mag scale: choose to land 15..100 uT-ish
+    // -------- gyro scale --------
+    {
+      const float DEG2RAD = kPi / 180.0f;
+      float s_est = 1.0f;
+
+      if (mag_ok_ && fabsf((float)gyro_int_raw) > 1e-6f && isfinite(bestPsiUnwrap)) {
+        s_est = fabsf(bestPsiUnwrap) / fabsf((float)gyro_int_raw);
+      } else {
+        auto cost = [&](float s)->float{
+          float ang = (float)fabs(gyro_int_raw) * s;
+          float c=0;
+          if (ang < 2.0f) c += (2.0f-ang)*(2.0f-ang);
+          if (ang > 10.0f) c += (ang-10.0f)*(ang-10.0f);
+          c += 0.04f*(ang-6.0f)*(ang-6.0f);
+          return c;
+        };
+        s_est = (cost(DEG2RAD) < cost(1.0f)) ? DEG2RAD : 1.0f;
+      }
+
+      float d0 = fabsf(s_est - 1.0f);
+      float d1 = fabsf(s_est - DEG2RAD);
+      gyro_scale_radps_ = (d1 < d0) ? DEG2RAD : 1.0f;
+      if (fminf(d0,d1) > 0.02f) gyro_scale_radps_ = s_est;
+    }
+
+    // -------- mag scale --------
     auto choose_mag_scale = [&](float magNormRaw)->float{
-      const float candidates[] = {1.0f,0.1f,10.0f,0.01f,100.0f,0.001f};
+      const float candidates[] = {
+        1e-6f,1e-5f,1e-4f,1e-3f,1e-2f,1e-1f,
+        1.0f,10.0f,100.0f,1000.0f,1e4f,1e5f,1e6f
+      };
       float bestS = 1.0f, bestCost = 1e9f;
       for(float s: candidates){
         float uT = magNormRaw * s;
@@ -786,13 +872,19 @@ private:
         c += 0.015f*(uT-50.0f)*(uT-50.0f);
         if (c < bestCost){ bestCost=c; bestS=s; }
       }
+      if (magNormRaw > 1e-9f && isfinite(magNormRaw)) {
+        float s_cont = 50.0f / magNormRaw;
+        if (isfinite(s_cont)) {
+          if (fabsf(s_cont - bestS) / fmaxf(bestS, 1e-9f) > 0.15f) bestS = s_cont;
+        }
+      }
       return bestS;
     };
-    mag_scale_ut_ = mag_ok_ ? choose_mag_scale(bestMagNormMean) : 1.0f;
+    mag_scale_ut_ = (mag_ok_ && bestMagNormMean > 1e-9f) ? choose_mag_scale(bestMagNormMean) : 1.0f;
 
     rebuild_ned_maps_();
 
-    // Print report
+    // -------- report --------
     Serial.println();
     Serial.println("########################### RESULTS ###########################");
     Serial.printf("Mag availability: %s\n", have_mag_ ? "YES" : "NO");
@@ -827,7 +919,8 @@ private:
     Serial.printf("  mag corr |corr| ~ %.3f  (>= %.2f recommended)\n", bestCorrAbs, MAG_CORR_MIN);
     Serial.printf("  abs sum dpsi ~ %.2f rad (>= %.2f rad recommended)\n", bestAbsSum, MAG_ROTABS_MIN);
     Serial.printf("  heading unwrap ~ %.2f rad (%.1f deg)\n", bestPsiUnwrap, bestPsiUnwrap * 180.0f / kPi);
-    Serial.printf("  mag norm mean raw=%.3f => scaled=%.2f uT\n", bestMagNormMean, bestMagNormMean * mag_scale_ut_);
+    Serial.printf("  flat metric ~ %.2f (bigger is better)\n", bestFlatMetric);
+    Serial.printf("  mag norm mean raw=%.6f => scaled=%.2f uT\n", bestMagNormMean, bestMagNormMean * mag_scale_ut_);
     Serial.printf("  gyro integral raw (screen yaw) = %.6f (raw_units*s)\n", (float)gyro_int_raw);
     Serial.printf("  gyro yaw rms raw=%.3f\n", gyro_rms);
 
