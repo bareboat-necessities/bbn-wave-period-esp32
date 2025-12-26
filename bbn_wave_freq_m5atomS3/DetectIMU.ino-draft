@@ -108,9 +108,18 @@ public:
       n++;
       if (s.have_mag) { mag_sum += s.mag; nmag++; }
     }
-    Vec3 acc_mean() const { return (n>0) ? (acc_sum/(float)n) : Vec3::Zero(); }
-    Vec3 gyr_mean() const { return (n>0) ? (gyr_sum/(float)n) : Vec3::Zero(); }
-    Vec3 mag_mean() const { return (nmag>0) ? (mag_sum/(float)nmag) : Vec3::Zero(); }
+    Vec3 acc_mean() const {
+      if (n > 0) return acc_sum / (float)n;
+      return Vec3::Zero();
+    }
+    Vec3 gyr_mean() const {
+      if (n > 0) return gyr_sum / (float)n;
+      return Vec3::Zero();
+    }
+    Vec3 mag_mean() const {
+      if (nmag > 0) return mag_sum / (float)nmag;
+      return Vec3::Zero();
+    }
   };
 
   struct RotCap {
@@ -341,7 +350,8 @@ private:
   }
   static inline Vec3 safe_unit(const Vec3& v, const Vec3& fallback = Vec3(0,0,1)) {
     float n = safe_norm(v);
-    return (n > 0.0f) ? (v / n) : fallback;
+    if (n > 0.0f) return v / n;
+    return fallback;
   }
   static inline float wrap_pi_(float a) {
     while (a >  (float)M_PI) a -= 2.0f*(float)M_PI;
