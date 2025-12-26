@@ -89,12 +89,12 @@ void read_and_processIMU_data(uint32_t mask) {
   Eigen::Vector3f acc_meas_body(
     accel.y * g_std,       
     accel.x * g_std,       
-    -accel.z * g_std       
+   -accel.z * g_std       
   );
   Eigen::Vector3f gyr_meas_body(
     gyro.y * DEG_TO_RAD,
     gyro.x * DEG_TO_RAD,
-    -gyro.z * DEG_TO_RAD
+   -gyro.z * DEG_TO_RAD
   );
   // Mag mapping if you later want it:
   Eigen::Vector3f mag_body(
@@ -240,6 +240,7 @@ void setup(void) {
   if (!M5.Imu.loadOffsetFromNVS()) {
     //startCalibration();
   }
+  M5.Imu.setCalibration(0, 0, 64); // keep mag auto calibrate
 
   delay(2000);
   start_time  = micros();
