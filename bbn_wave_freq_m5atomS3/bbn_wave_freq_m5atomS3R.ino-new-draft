@@ -159,7 +159,7 @@ void read_and_processIMU_data() {
   Eigen::Vector3f mag_meas_ned(
        mag.y / 10.0f,
        mag.x / 10.0f,
-      -mag.z / 10.0f
+       mag.z / 10.0f
   );
 
   // First-time attitude init from accelerometer + mag
