@@ -70,7 +70,7 @@ Only after $\vct{B}_w$ is set does the filter apply magnetometer measurement
 updates (yaw correction) using the internal model $\hat{\vct{m}}_b =
 \mat{R}_{wb}\,\vct{B}_w$.
 
-\paragraph{Optional quality gating (MagAutoTuner).}
+\paragraph{Quality gating.}
 A heel-safe magnetometer initializer can be used to accept only ``good''
 samples for reference establishment. It gates on (i) $\|\vct{a}_b\|\approx g$,
 (ii) stability of the \emph{direction} of $\vct{a}_b$ via an EMA on the unit
