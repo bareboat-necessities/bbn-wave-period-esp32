@@ -89,12 +89,14 @@ z \equiv [v,\,p,\,S,\,a]^\top.
 \)
 The algorithm uses the exact discrete covariance
 \[
+\fitcol{
 \matg{Q}_{d,\text{axis}}(h)
 = \int_0^h \Phi_{\text{axis}}(t)\,
     \mat{G}\,q_c\,\mat{G}^\top
     \Phi_{\text{axis}}(t)^\top dt,
-\qquad
+\quad
 \mat{G} = [0,\,0,\,0,\,1]^\top,
+}
 \]
 implemented in two numerically stable branches.
 
