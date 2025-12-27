@@ -58,7 +58,7 @@ placing three identical \(4\times4\) axis transitions on the block diagonal:
 \end{aligned}
 \end{equation}
 
-where \(x=h/\tau\), \(\alpha=e^{-x}\), and the algorithm uses the following
+where \(x \equiv \frac{h}{\tau}), and the algorithm uses the following
 expressions:
 \[
 \fitcol{
@@ -75,7 +75,6 @@ expressions:
 For a single axis with OU correlation time \(\tau>0\), stationary variance
 \(\sigma^2\), and sampling step \(h\), we write
 \[
-x \equiv \frac{h}{\tau},\qquad
 \alpha \equiv e^{-x},\qquad
 \alpha_2 \equiv e^{-2x},\qquad
 q_c \equiv \frac{2\sigma^2}{\tau}.
@@ -144,7 +143,7 @@ The method uses the following expressions:
 
 \medskip
 \noindent\textbf{Small-\(x\) series (\(|x|\le x_0\))}
-For \(|x|\le x_0\), the code uses a
+For \(|x|\le x_0\), the implementation uses a
 Maclaurin expansion in \(h\) up to \(O(h^5)\) (equivalently \(O(x^5)\)).
 Writing \(h^k/\tau^\ell\) explicitly, the nonzero entries are
 \[
