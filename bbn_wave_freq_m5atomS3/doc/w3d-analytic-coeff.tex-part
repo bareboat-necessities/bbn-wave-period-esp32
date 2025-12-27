@@ -58,7 +58,7 @@ placing three identical \(4\times4\) axis transitions on the block diagonal:
 \end{aligned}
 \end{equation}
 
-where \(x \equiv \frac{h}{\tau}), and the algorithm uses the following
+where \(x \equiv \frac{h}{\tau}\), and the algorithm uses the following
 expressions:
 \[
 \fitcol{
