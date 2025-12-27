@@ -100,8 +100,51 @@ The algorithm uses the exact discrete covariance
 implemented in two numerically stable branches.
 
 \medskip
+\noindent\textbf{General closed form (\(|x|>x_0\))}
+For \(|x|>x_0\) with \(x_0 \approx 10^{-2}\) the algorithm uses the exact coefficient matrix
+\[
+\mathcal{K} \;=\; [\kappa_{ij}]_{i,j\in\{v,p,S,a\}},
+\]
+and constructs
+\[
+\matg{Q}_{d,\text{axis}}(h) = q_c\,\mathrm{sym}\,\mathcal{K},
+\qquad
+\mathrm{sym}(\mathcal{K}) \equiv \tfrac12(\mathcal{K}+\mathcal{K}^\top).
+\]
+The method uses the following expressions:
+\[
+\fitcol{
+\begin{aligned}
+\kappa_{vv} &= \tfrac12\tau^3\bigl(-\alpha_2 + 4\alpha + 2x - 3\bigr),\\
+\kappa_{vp} &= \tfrac12\tau^4\bigl(\alpha_2 + 2\alpha(x-1) + x^2 - 2x + 1\bigr),\\
+\kappa_{vS} &= \tfrac16\tau^5\bigl(-3\alpha_2 + 3\alpha(x^2+4)
+                              + x^3 - 3x^2 + 6x - 9\bigr),\\
+\kappa_{va} &= \tfrac12\tau^2\bigl(\alpha_2 - 2\alpha + 1\bigr),\\[4pt]
+\kappa_{pp} &= \tau^5\Bigl(
+           -\tfrac12\alpha_2 - 2\alpha x
+           + \tfrac13 x^3 - x^2 + x + \tfrac12
+         \Bigr),\\
+\kappa_{pS} &= \tau^6\Bigl(
+           \tfrac12\alpha_2
+           + \tfrac12\alpha(-x^2 + 2x - 2)
+           + \tfrac18 x^4 - \tfrac12 x^3 + x^2 - x + \tfrac12
+         \Bigr),\\
+\kappa_{pa} &= \tfrac12\tau^3\bigl(-\alpha_2 - 2\alpha x + 1\bigr),\\[4pt]
+\kappa_{SS} &= \tau^7\Bigl(
+           -\tfrac12\alpha_2
+           + \alpha(x^2 + 2)
+           + \tfrac1{20}x^5 - \tfrac14 x^4 + \tfrac23 x^3
+           - x^2 + x - \tfrac32
+         \Bigr),\\
+\kappa_{Sa} &= \tfrac12\tau^4\bigl(\alpha_2 - \alpha(x^2+2) + 1\bigr),\\
+\kappa_{aa} &= \tfrac12\tau\bigl(1 - \alpha_2\bigr).
+\end{aligned}
+}
+\]
+
+\medskip
 \noindent\textbf{Small-\(x\) series (\(|x|\le x_0\))}
-For \(|x|\le x_0\) with \(x_0 \approx 10^{-2}\), the code uses a
+For \(|x|\le x_0\), the code uses a
 Maclaurin expansion in \(h\) up to \(O(h^5)\) (equivalently \(O(x^5)\)).
 Writing \(h^k/\tau^\ell\) explicitly, the nonzero entries are
 \[
@@ -159,48 +202,7 @@ All omitted entries are of order \(O(h^6)\) or higher in \(h\) and are
 set to zero in the implementation. The matrix is then projected to the
 nearest PSD matrix (and symmetrized) to remove roundoff.
 
-\medskip
-\noindent\textbf{General closed form (\(|x|>x_0\))}
-For \(|x|>x_0\) the algorithm uses the exact coefficient matrix
-\[
-\mathcal{K} \;=\; [\kappa_{ij}]_{i,j\in\{v,p,S,a\}},
-\]
-and constructs
-\[
-\matg{Q}_{d,\text{axis}}(h) = q_c\,\mathrm{sym}\,\mathcal{K},
-\qquad
-\mathrm{sym}(\mathcal{K}) \equiv \tfrac12(\mathcal{K}+\mathcal{K}^\top).
-\]
-The method uses the following expressions:
-\[
-\fitcol{
-\begin{aligned}
-\kappa_{vv} &= \tfrac12\tau^3\bigl(-\alpha_2 + 4\alpha + 2x - 3\bigr),\\
-\kappa_{vp} &= \tfrac12\tau^4\bigl(\alpha_2 + 2\alpha(x-1) + x^2 - 2x + 1\bigr),\\
-\kappa_{vS} &= \tfrac16\tau^5\bigl(-3\alpha_2 + 3\alpha(x^2+4)
-                              + x^3 - 3x^2 + 6x - 9\bigr),\\
-\kappa_{va} &= \tfrac12\tau^2\bigl(\alpha_2 - 2\alpha + 1\bigr),\\[4pt]
-\kappa_{pp} &= \tau^5\Bigl(
-           -\tfrac12\alpha_2 - 2\alpha x
-           + \tfrac13 x^3 - x^2 + x + \tfrac12
-         \Bigr),\\
-\kappa_{pS} &= \tau^6\Bigl(
-           \tfrac12\alpha_2
-           + \tfrac12\alpha(-x^2 + 2x - 2)
-           + \tfrac18 x^4 - \tfrac12 x^3 + x^2 - x + \tfrac12
-         \Bigr),\\
-\kappa_{pa} &= \tfrac12\tau^3\bigl(-\alpha_2 - 2\alpha x + 1\bigr),\\[4pt]
-\kappa_{SS} &= \tau^7\Bigl(
-           -\tfrac12\alpha_2
-           + \alpha(x^2 + 2)
-           + \tfrac1{20}x^5 - \tfrac14 x^4 + \tfrac23 x^3
-           - x^2 + x - \tfrac32
-         \Bigr),\\
-\kappa_{Sa} &= \tfrac12\tau^4\bigl(\alpha_2 - \alpha(x^2+2) + 1\bigr),\\
-\kappa_{aa} &= \tfrac12\tau\bigl(1 - \alpha_2\bigr).
-\end{aligned}
-}
-\]
+
 All other entries of \(\mathcal{K}\) follow by symmetry,
 \(\kappa_{ij}=\kappa_{ji}\). As in the small-\(x\) branch, \(\matg{Q}_{d,\text{axis}}\)
 is post-processed by a PSD projection and symmetrization.
