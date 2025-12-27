@@ -144,7 +144,9 @@ The method uses the following expressions:
 \medskip
 \noindent\textbf{Small-\(x\) series (\(|x|\le x_0\))}
 For \(|x|\le x_0\), the implementation uses a
-Maclaurin expansion in \(h\) up to \(O(h^5)\) (equivalently \(O(x^5)\)).
+Maclaurin expansion in \(h\) up to \(O(h^5)\).
+
+\iffalse
 Writing \(h^k/\tau^\ell\) explicitly, the nonzero entries are
 \[
 \fitcol{
@@ -200,7 +202,7 @@ Q_{aa}
 All omitted entries are of order \(O(h^6)\) or higher in \(h\) and are
 set to zero in the implementation. The matrix is then projected to the
 nearest PSD matrix (and symmetrized) to remove roundoff.
-
+\fi
 
 All other entries of \(\mathcal{K}\) follow by symmetry,
 \(\kappa_{ij}=\kappa_{ji}\). As in the small-\(x\) branch, \(\matg{Q}_{d,\text{axis}}\)
