@@ -6,7 +6,7 @@ Consider a linear time–invariant SDE
 \fitcol{
 \dot{\delta\vct{x}}(t)
   = \mat{F}\,\delta\vct{x}(t) + \mat{L}\,\vct{w}_c(t),
-\qquad
+\quad
 \mathbb{E}\bigl[\vct{w}_c(t)\vct{w}_c^\top(s)\bigr]
   = \matg{Q}_c\,\delta(t{-}s),
 }
