@@ -392,7 +392,7 @@ Setting $\partial J/\partial \vct{A}=0$ yields
 \label{eq:A-ls}
 \sum_{k=1}^N \cos\phi_k\,\vct{z}_k
 = \left(\sum_{k=1}^N \cos^2\phi_k\right)\vct{A},
-\qquad
+\quad
 \Rightarrow\quad
 \vct{A}_{\text{LS}}
 = \frac{\sum_k \cos\phi_k\,\vct{z}_k}
