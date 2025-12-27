@@ -11,6 +11,30 @@ u(t)=\frac{a_z(t)}{g}.
 \]
 Let $\omega=2\pi f$ and $\phi(t)=\int_0^t \omega(\tau)\,d\tau$.
 
+\subsection{\textsc{KalmANF}: Kalman-updated adaptive notch}
+
+KalmANF filter \cite{Ali2023DAFx} models the signal with a second-order notch parameterized by $a=2\cos\omega$. It treats $a$ as a (slowly varying) state and updates it via a scalar Kalman step driven by the instantaneous prediction error.
+
+\paragraph{Method}
+Embed the notch with parameter $a\in(-2,2)$:
+\begin{align}
+x_{k+1} &= \begin{bmatrix} 0 & 1 \\ -1 & a_k \end{bmatrix} x_k + \begin{bmatrix} 0 \\ 1 \end{bmatrix} u_k, \qquad
+y_k = \begin{bmatrix} 1 & 0 \end{bmatrix} x_k,\\
+a_{k+1} &= a_k + w_k, \quad w_k\sim\mathcal{N}(0,q_a).
+\end{align}
+Treat $a$ as a scalar state; run a Kalman correction on $a$ using the instantaneous prediction error $\varepsilon_k=u_k-y_k$:
+\begin{align}
+\tilde a_k &= a_k, \quad P_k^- = P_{k-1}+q_a, \\
+K_k &= \frac{P_k^-\,\partial \varepsilon_k/\partial a}{(\partial \varepsilon_k/\partial a)^2 P_k^- + r}, \\
+a_k &\leftarrow \tilde a_k + K_k\,\varepsilon_k,\qquad
+P_k=(1-K_k\,\partial \varepsilon_k/\partial a)P_k^-,
+\end{align}
+with $\partial \varepsilon_k/\partial a$ obtained from the standard state-sensitivity recursion. Frequency readout:
+\[
+\hat\omega_k=\arccos\!\left(\tfrac{1}{2}\,\clip(a_k,-2,2)\right), \quad \hat f_k=\hat\omega_k/(2\pi).
+\]
+
+
 \subsection{Aranovskiy-type adaptive resonator}
 
 Aranovskiy filter \cite{Bobtsov2013182} drives a lightly damped virtual resonator by $u(t)$ and adjusts its natural frequency so its output matches the input. If the resonator frequency equals the signal's, the error energy is minimized.
@@ -36,28 +60,6 @@ Discrete-time (sample $k$ at $\Delta t$):
 }
 \]
 
-\subsection{\textsc{KalmANF}: Kalman-updated adaptive notch}
-
-KalmANF filter \cite{Ali2023DAFx} models the signal with a second-order notch parameterized by $a=2\cos\omega$. It treats $a$ as a (slowly varying) state and updates it via a scalar Kalman step driven by the instantaneous prediction error.
-
-\paragraph{Method}
-Embed the notch with parameter $a\in(-2,2)$:
-\begin{align}
-x_{k+1} &= \begin{bmatrix} 0 & 1 \\ -1 & a_k \end{bmatrix} x_k + \begin{bmatrix} 0 \\ 1 \end{bmatrix} u_k, \qquad
-y_k = \begin{bmatrix} 1 & 0 \end{bmatrix} x_k,\\
-a_{k+1} &= a_k + w_k, \quad w_k\sim\mathcal{N}(0,q_a).
-\end{align}
-Treat $a$ as a scalar state; run a Kalman correction on $a$ using the instantaneous prediction error $\varepsilon_k=u_k-y_k$:
-\begin{align}
-\tilde a_k &= a_k, \quad P_k^- = P_{k-1}+q_a, \\
-K_k &= \frac{P_k^-\,\partial \varepsilon_k/\partial a}{(\partial \varepsilon_k/\partial a)^2 P_k^- + r}, \\
-a_k &\leftarrow \tilde a_k + K_k\,\varepsilon_k,\qquad
-P_k=(1-K_k\,\partial \varepsilon_k/\partial a)P_k^-,
-\end{align}
-with $\partial \varepsilon_k/\partial a$ obtained from the standard state-sensitivity recursion. Frequency readout:
-\[
-\hat\omega_k=\arccos\!\left(\tfrac{1}{2}\,\clip(a_k,-2,2)\right), \quad \hat f_k=\hat\omega_k/(2\pi).
-\]
 
 \iffalse
 \subsection{Zero-crossing baseline with hysteresis}
