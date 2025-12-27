@@ -171,12 +171,7 @@ and constructs
 \qquad
 \mathrm{sym}(\mathcal{K}) \equiv \tfrac12(\mathcal{K}+\mathcal{K}^\top).
 \]
-Let
-\[
-\alpha = e^{-x},\quad
-\alpha_2 = e^{-2x}.
-\]
-The code uses the following expressions:
+The method uses the following expressions:
 \[
 \fitcol{
 \begin{aligned}
