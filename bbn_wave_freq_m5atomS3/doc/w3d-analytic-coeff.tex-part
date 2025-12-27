@@ -204,6 +204,7 @@ set to zero in the implementation. The matrix is then projected to the
 nearest PSD matrix (and symmetrized) to remove roundoff.
 \fi
 
+\medskip
 All other entries of \(\mathcal{K}\) follow by symmetry,
 \(\kappa_{ij}=\kappa_{ji}\). As in the small-\(x\) branch, \(\matg{Q}_{d,\text{axis}}\)
 is post-processed by a PSD projection and symmetrization.
