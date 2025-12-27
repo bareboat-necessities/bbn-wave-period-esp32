@@ -78,9 +78,8 @@ Different wave spectra, however, exhibit distinct dominant frequencies
 and energy levels. To maintain performance across conditions, we
 introduce an online adaptation mechanism that continuously estimates and
 tunes these parameters. Three alternative embedded frequency trackers
-are supported: the \textit{Aranovskiy frequency estimator}, the
-\textit{KalmANF adaptive notch filter}, and a
-\textit{Zero-Crossing detector}. The dominant frequency inferred from
+are supported: the \textit{KalmANF adaptive notch filter}, 
+and the \textit{Aranovskiy frequency estimator}. The dominant frequency inferred from
 these modules provides an updated correlation time \(\tau\), while the
 stationary variance \(\sigma_{aw}^2\) is estimated directly in the time
 domain from the exponentially weighted acceleration variance. The
