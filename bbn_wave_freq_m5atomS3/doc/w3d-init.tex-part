@@ -41,19 +41,19 @@ After tilt initialization, the system enters a staged mode schedule:
   ready, the linear block can be enabled and the OU/pseudo-measurement tuning
   is applied periodically.
 \end{enumerate}
-The warm-up duration is configurable (default \texttt{ONLINE\_TUNE\_WARMUP\_SEC}),
+The warm-up duration is configurable,
 and the transition to Live additionally requires that the tuner reports readiness
 for both frequency and variance estimates.
 
 \subsection{Magnetometer Reference Alignment (Yaw-Free Tilt Projection)}
 Magnetometer updates are delayed by a fixed startup time
-(default \texttt{MAG\_DELAY\_SEC}) to avoid injecting yaw corrections during
+to avoid injecting yaw corrections during
 initial transients. When magnetometer data become available, the filter first
 establishes a \emph{world-frame magnetic reference} $\vct{B}_w$ in one of two ways:
 \begin{itemize}[leftmargin=*]
   \item \textbf{Fixed reference (optional):} the caller may provide a known
   $\vct{B}_w$ (e.g., from a geomagnetic model).
-  \item \textbf{Learned-from-measurement reference (default):} use the current
+  \item \textbf{Learned-from-measurement reference:} use the current
   tilt-only attitude (roll/pitch, yaw $=0$) to rotate the measured magnetic
   field $\vct{m}_b$ into the world frame,
   \[
@@ -85,8 +85,7 @@ and inflates the accelerometer measurement noise $\mat{R}_{a}$ to a warm-up leve
 Bias learning is only enabled once:
 \begin{enumerate}[label=(\roman*), leftmargin=*]
   \item the system is in \textbf{Live} stage,
-  \item a minimum number of magnetometer updates have been applied
-  (default \texttt{MAG\_UPDATES\_TO\_UNLOCK}),
+  \item a minimum number of magnetometer updates have been applied,
   \item and an additional small time guard after the first mag update has elapsed.
 \end{enumerate}
 At that point the nominal $\mat{R}_{a}$ is restored and accelerometer-bias updates
