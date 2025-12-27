@@ -149,10 +149,12 @@ and, when \(\vct{b}_m\) is estimated,
 \frac{\partial \vct{m}_b}{\partial \vct{b}_m}=\mat{I}_3.
 \)
 
+\iffalse
 \paragraph{Implementation note.}
 For robustness when the reference polarity may be ambiguous, the implementation
 applies a dot-product sign check and flips the predicted vector if needed so that
 \(\hat{\vct{m}}_b^{\top}\vct{m}_b \ge 0\) prior to forming the innovation.
+\fi
 
 \subsection{Integral Pseudo-Measurement}
 
