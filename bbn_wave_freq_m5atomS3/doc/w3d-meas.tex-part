@@ -53,6 +53,7 @@ The accelerometer update corrects both attitude and the OU acceleration
 state, maintaining the physical coupling between tilt, gravity alignment,
 and translational excitation.
 
+\iffalse
 \paragraph{Attitude-only / marginalized-acceleration mode.}
 When the linear navigation block is disabled (i.e., \(\vct{a}_w\) is not explicitly
 propagated as a state), the filter treats the latent excitation as an
@@ -67,6 +68,7 @@ by the stationary OU acceleration covariance:
 \mat{R}_{wb}\,\Sigma_{a_w}^{\mathrm{stat}}\,\mat{R}_{wb}^{\top},
 \end{equation}
 which is equivalent to marginalizing \(\vct{a}_w\) in the measurement update.
+\fi
 
 \subsection{Optional IMU Lever-Arm Model}
 
