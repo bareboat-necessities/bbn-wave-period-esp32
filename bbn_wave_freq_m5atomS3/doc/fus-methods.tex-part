@@ -280,54 +280,144 @@ $k_i$ and on spectral shape.
 \end{remark}
 
 
+\subsection{Implementation: staged online adaptation and application}
+\label{sec:adapt-impl}
 
-We adapt three key MEKF parameters---OU time constant, latent acceleration scale, and the integral pseudo-measurement covariance---based on smoothed estimates of frequency and vertical-acceleration variance. Targets are bounded for stability and blended in slowly to avoid transients.
+The implementation adapts three MEKF parameters online:
+(i) OU time constant $\tau$, (ii) OU stationary acceleration scale $\sigma_a$,
+and (iii) the $S$ pseudo-measurement noise $R_S$.
+The adaptation is driven by smoothed dominant frequency and debiased vertical-acceleration variance,
+with explicit warmup stages and safety bounds.
 
-\subsection{Debiased variance and frequency smoothers}
-With step $\Delta t$, define debiased EMAs for mean and second moment:
-\begin{align}
-\alpha_{\mathrm{var}} &= 1-e^{-\Delta t/\tau_{\mathrm{var}}}, \qquad
-\alpha_{\mathrm{freq}} = 1-e^{-\Delta t/\tau_{\mathrm{freq}}}, \\
-m_k &\leftarrow (1-\alpha_{\mathrm{var}})m_{k-1}+\alpha_{\mathrm{var}} u_k, \\
-s_k &\leftarrow (1-\alpha_{\mathrm{var}})s_{k-1}+\alpha_{\mathrm{var}} u_k^2, \\
-w_k &\leftarrow (1-\alpha_{\mathrm{var}})w_{k-1}+\alpha_{\mathrm{var}}, \\
-\widehat{\sigma}_a^2(k) &= \max\!\Big\{0,\ \frac{s_k}{w_k}-\Big(\frac{m_k}{w_k}\Big)^2 \Big\}\, g^2, \\
-\bar f_k &\leftarrow (1-\alpha_{\mathrm{freq}})\bar f_{k-1}+\alpha_{\mathrm{freq}}\hat f_k.
-\end{align}
-
-\subsection{Targets and bounds}
-Half-period target for OU time constant:
+\paragraph{Signals used.}
+Let $a_{z,\text{inert}} = a_z + g$ denote vertical inertial acceleration in the body/NED convention used by the filter.
+The code uses the \emph{up-positive} vertical signal
 \[
-\tau_\star(k)=\frac{1}{2\,\bar f_k}, \qquad \tau_\star \in [\tau_{\min},\tau_{\max}].
+a_{\uparrow} := -a_{z,\text{inert}}.
 \]
-Acceleration level:
-\(
-\sigma_{a,\star}(k)=\clip\big(\sqrt{\widehat{\sigma}_a^2(k)},\, \sigma_{\min},\sigma_{\max}\big).
-\)
+Before frequency tracking, $a_{\uparrow}$ is low-pass filtered (engine/noise rejection) to obtain $a_{\uparrow,\text{LP}}$.
 
-\subsection{Integral pseudo-measurement covariance}
-
-The integral constraint on displacement should be weaker when waves are large/slow (motions integrate to larger excursions). A cubic scaling in $\tau_\star$ captures this.
-
-\paragraph{Law}
+\subsubsection{Frequency tracking with stillness relaxation and dual smoothers}
+A tracker (Aranovskiy/KalmANF/zero-cross) produces a raw estimate $f_{\text{trk}}$ from $a_{\uparrow,\text{LP}}$.
+A stillness detector monitors an EMA of normalized energy $(a_{\uparrow}/g)^2$; if the system is still for long enough
+(about a couple of seconds), the internal frequency state relaxes toward a low target frequency (typically $f_{\min}$).
+Denote the stillness-adjusted output by
 \[
-R_{S,\star}(k)=c_R \,\sigma_{a,\star}(k)\,\tau_\star^3(k),
+f_{\text{still}} = \mathcal{S}\!\left(a_{\uparrow,\text{LP}}, f_{\text{trk}}\right).
 \]
-with axis anisotropy
-\(
-\mat{R}_S=\mathrm{diag}( \rho_{xy}\,R_{S,\star},\ \rho_{xy}\,R_{S,\star},\ R_{S,\star} ),\ \\
-\rho_{xy}\!\in\!(0,1).
-\)
 
-\subsection{Application to the MEKF}
-Apply targets with slow EWMA (time constant $\tau_{\mathrm{apply}}$; update every $\Delta t_{\mathrm{apply}}$):
-\begin{align}
-\tau_{\mathrm{appl}} &\leftarrow (1-\beta)\tau_{\mathrm{appl}}+\beta \tau_\star, \\
-\sigma_{a,\mathrm{appl}} &\leftarrow (1-\beta)\sigma_{a,\mathrm{appl}}+\beta \sigma_{a,\star}, \\
-R_{S,\mathrm{appl}} &\leftarrow (1-\beta)R_{S,\mathrm{appl}}+\beta R_{S,\star}, \qquad
-\beta=1-e^{-\Delta t_{\mathrm{apply}}/\tau_{\mathrm{apply}}}.
-\end{align}
-MEKF uses Joseph-form updates; the OU process covariance is set from $(\tau_{\mathrm{appl}},\sigma_{a,\mathrm{appl}})$; the integral pseudo-measurement uses $R_{S,\mathrm{appl}}$.
+Two additional first-order smoothers are then applied:
+a \emph{fast} branch for demodulation/direction and a \emph{slow} branch for tuning/moments,
+\[
+f_{\text{fast}} = \mathrm{LP}_\text{fast}(f_{\text{still}}),\qquad
+f_{\text{slow}} = \mathrm{LP}_\text{slow}(f_{\text{fast}}),
+\]
+followed by clamping to $[f_{\min},f_{\max}]$.
+The direction estimator uses $f_{\text{fast}}$, while the tuner uses a frequency signal derived from $f_{\text{still}}$
+(and its own internal debiased smoothing).
+
+\subsubsection{Debiased variance estimate and noise-floor subtraction}
+The tuner maintains debiased EMAs of mean and second moment of $a_{\uparrow}$ to estimate total variance
+$\widehat{\sigma}^2_{\text{tot}}$.
+A configured vertical acceleration noise floor $\sigma_{\text{nf}}$ is subtracted in variance:
+\[
+\widehat{\sigma}^2_{\text{wave}}
+= \max\!\bigl\{0,\ \widehat{\sigma}^2_{\text{tot}} - \sigma_{\text{nf}}^2\bigr\}.
+\]
+During detected stillness, the wave variance is additionally attenuated by an exponential factor that depends on still time,
+so that tuning collapses smoothly toward the noise-floor regime when the platform is not wave-excited.
+
+If variance is not yet statistically reliable (startup), the implementation enforces a conservative floor on the published
+$\sigma$ target so it does not collapse spuriously below the noise floor.
+
+\subsubsection{Targets and bounds}
+Let $f_{\text{tune}}$ be the tuner’s internal smoothed frequency (clamped to $[f_{\min},f_{\max}]$).
+The OU time-constant target is proportional to the half-period:
+\begin{equation}
+\label{eq:tau-target-impl}
+\tau_\star
+= c_{\tau}\,\frac{1}{2 f_{\text{tune}}},
+\end{equation}
+where $c_{\tau}$ is a dimensionless coefficient (\texttt{tau\_coeff\_}).
+The acceleration-scale target is taken from the wave-only variance,
+\begin{equation}
+\label{eq:sigma-target-impl}
+\sigma_{a,\star}
+= c_{\sigma}\,\sqrt{\max(\widehat{\sigma}^2_{\text{wave}},\epsilon)},
+\end{equation}
+with $c_{\sigma}$ a dimensionless reduction factor (\texttt{sigma\_coeff\_}) compensating for
+known inflation of raw variance under real sensor noise and model mismatch.
+
+The integral pseudo-measurement target follows the cubic scaling law,
+\begin{equation}
+\label{eq:Rs-target-impl}
+R_{S,\star}
+= c_R\,\sigma_{a,\star}\,\tau_\star^3,
+\end{equation}
+where $c_R$ corresponds to \texttt{R\_S\_coeff\_}.
+Optionally, targets are clamped to stability bounds:
+\[
+\tau_\star\in[\tau_{\min},\tau_{\max}],\quad
+\sigma_{a,\star}\in(0,\sigma_{\max}],\quad
+R_{S,\star}\in[R_{S,\min},R_{S,\max}].
+\]
+
+\subsubsection{Staged startup logic (Cold $\rightarrow$ TunerWarm $\rightarrow$ Live)}
+The implementation uses a three-stage state machine:
+\begin{itemize}[itemsep=1pt,topsep=2pt,leftmargin=*]
+\item \textbf{Cold:} just booted (or after a large tilt reset). No adaptation is applied and the MEKF linear block
+(v/p/S/a) is forced \emph{disabled}. Optionally, accelerometer-bias learning is frozen and a large $R_{\text{acc}}$
+is applied as a warmup guard.
+\item \textbf{TunerWarm:} frequency and variance statistics are accumulated until the tuner declares readiness.
+The system may compute targets, but still keeps the linear block disabled.
+\item \textbf{Live:} the tuner is trusted. The linear block may be enabled (if configured), and the $S$ pseudo-measurement
+noise is applied/updated. Additional “extras” (e.g.\ drift correction) are permitted only in this stage.
+\end{itemize}
+
+\subsubsection{Application to the MEKF: two-rate smoothing, with $\tau$-dependent $R_S$ time constant}
+Targets are blended into applied parameters continuously, but only \emph{committed} to the MEKF every $\Delta t_{\text{apply}}$
+(\texttt{adapt\_every\_secs\_}).
+The OU parameters $(\tau,\sigma_a)$ share a fixed adaptation time constant $\tau_{\text{adapt}}$
+(\texttt{adapt\_tau\_sec\_}):
+\[
+\alpha = 1-e^{-\Delta t/\tau_{\text{adapt}}},\qquad
+\tau_{\text{appl}}\leftarrow \tau_{\text{appl}} + \alpha(\tau_\star-\tau_{\text{appl}}),\qquad
+\sigma_{a,\text{appl}}\leftarrow \sigma_{a,\text{appl}} + \alpha(\sigma_{a,\star}-\sigma_{a,\text{appl}}).
+\]
+In contrast, $R_S$ is smoothed with a \emph{time constant proportional to the current wave time scale}:
+\begin{equation}
+\label{eq:Rs-smoothing-taudep}
+\tau_{R_S} = m_{R_S}\,\tau_\star,\qquad
+\alpha_{R_S}=1-e^{-\Delta t/\tau_{R_S}},\qquad
+R_{S,\text{appl}}\leftarrow R_{S,\text{appl}} + \alpha_{R_S}(R_{S,\star}-R_{S,\text{appl}}),
+\end{equation}
+with $m_{R_S}$ dimensionless (\texttt{ADAPT\_RS\_MULT}).
+This makes $R_S$ respond faster for short-period seas and more slowly for long-period swell, reducing tuning chatter.
+
+\paragraph{Anisotropy.}
+When committing parameters, the MEKF uses an anisotropic OU stationary standard deviation
+\[
+\Sigma_{a_w}^{1/2}=\mathrm{diag}(S\,\sigma_{a,\text{appl}},\ S\,\sigma_{a,\text{appl}},\ \sigma_{a,\text{appl}}),
+\]
+where $S>0$ is \texttt{S\_factor\_}, and an anisotropic $S$ pseudo-measurement noise
+\[
+\mat{R}_S
+= \mathrm{diag}(\rho_{xy} R_{S,\text{appl}},\ \rho_{xy} R_{S,\text{appl}},\ R_{S,\text{appl}}),
+\qquad \rho_{xy}\in[0,1],
+\]
+with $\rho_{xy}$ corresponding to \texttt{R\_S\_xy\_factor\_}.
+A minimum floor is enforced on the OU scale (at least the configured noise floor) so that attitude-only marginalization
+does not become numerically brittle.
+
+\paragraph{Optional heave-based $R_S$ gating.}
+If enabled, the applied $R_S$ is additionally reduced when the estimated heave magnitude $|p_z|$
+exceeds an expected displacement envelope proportional to $\sigma_{a,\star}\tau_\star^2$.
+This acts as a smooth safety valve against large drift excursions by temporarily strengthening the integral regularizer.
+
+\paragraph{Conditional application.}
+In code, OU parameters may be applied once frequency is ready; the integral pseudo-measurement is only applied in the
+\textbf{Live} stage and only when the MEKF linear block is enabled.
+
 
 % =======================================================
 \section{Horizontal Wave Direction: Angle and Sign}
