@@ -1,11 +1,11 @@
-\section{GPS Fusion}
+\subsection{GPS Fusion}
 \label{sec:gps_fusion}
 
 The filter already maintains world-frame navigation states
 $\bm v\in\R^3$ and $\bm p\in\R^3$, so GNSS/GPS can be fused as a
 low-rate absolute reference to control long-term drift.
 
-\subsection{Local frame and measurement preprocessing}
+\subsubsection{Local frame and measurement preprocessing}
 \label{sec:gps_ned_short}
 
 Assume a local-level world frame $\mathcal{W}$ with NED axes. A GNSS fix is typically given in
@@ -26,7 +26,7 @@ A convenient parameterization is $\bm R_p=\diag(\sigma_N^2,\sigma_E^2,\sigma_D^2
 $\bm R_v=\diag(\sigma_{vN}^2,\sigma_{vE}^2,\sigma_{vD}^2)$, typically with
 $\sigma_D>\sigma_N\approx\sigma_E$.
 
-\subsection{Lever-arm model (antenna not at the reference point)}
+\subsubsection{Lever-arm model (antenna not at the reference point)}
 \label{sec:gps_leverarm_short}
 
 Let the GNSS antenna be displaced from the filter reference point by a known lever arm
@@ -61,7 +61,7 @@ Linearizing the lever-arm term gives the standard attitude Jacobians
 \ \ \bm u\triangleq\bm\omega^{\mathcal{B}}\times\bm r_{\text{gps}}^{\mathcal{B}}.
 \end{equation}
 
-\subsection{Centripetal acceleration during maneuvers}
+\subsubsection{Centripetal acceleration during maneuvers}
 \label{sec:gps_centripetal_short}
 
 During aggressive boat maneuvers or with a long lever arm, the antenna experiences additional
@@ -82,7 +82,7 @@ $\bm\alpha^{\mathcal{B}}$ is the angular acceleration. Even when only position/v
 these terms explain why lever-arm compensation matters most under high $\|\bm\omega\|$ and large
 $\|\bm r_{\text{gps}}\|$.
 
-\subsection{Timestamp alignment}
+\subsubsection{Timestamp alignment}
 \label{sec:gps_time_short}
 
 GNSS updates are asynchronous (typically 1--10~Hz) relative to the IMU. For best results, apply each
