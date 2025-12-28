@@ -182,6 +182,47 @@ $\bm\alpha\times\bm r$.
 lever-arm effect (the antenna position rotates with attitude). No explicit centripetal term is
 needed because GPS position is not an acceleration measurement.
 
+\paragraph{Linearization and Jacobians (velocity update).}
+Using the lever-arm compensated GNSS velocity model \eqref{eq:gps_v_lever}, define
+\begin{equation}
+\bm u \;\triangleq\; \bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}},\qquad
+\hat{\bm z}_v \;=\; \hat{\bm v} \;+\; \hat{\bm R}_{bw}\,\bm u .
+\end{equation}
+For the right-multiplicative MEKF used here, a small attitude error $\delta\bm\theta$ induces the
+first-order perturbation
+\begin{equation}
+\delta\!\left(\hat{\bm R}_{bw}\bm u\right)
+\;\approx\; \skew\!\left(\hat{\bm R}_{bw}\bm u\right)\,\delta\bm\theta,
+\end{equation}
+so the velocity measurement Jacobian has the sparse structure
+\begin{equation}
+\bm C_v
+\;=\;
+\begin{bmatrix}
+\underbrace{\skew\!\left(\hat{\bm R}_{bw}\bm u\right)}_{\text{attitude }(\delta\bm\theta)}
+&
+\cdots
+&
+\underbrace{\bm I_3}_{\text{velocity }(\bm v)}
+&
+\cdots
+\end{bmatrix}.
+\end{equation}
+
+If the gyro bias $\bm b_g$ is estimated and the angular rate is formed as
+$\bm\omega^{\mathcal{B}}=\bm\omega_{\text{meas}}^{\mathcal{B}}-\bm b_g$, then $\bm u$ depends on
+$\bm b_g$ via $\bm u=\bm\omega\times\bm r = -\skew(\bm r)\bm\omega$, giving
+\begin{equation}
+\frac{\partial \hat{\bm z}_v}{\partial \bm b_g}
+\;=\;
+\hat{\bm R}_{bw}\,\skew\!\left(\bm r_{\text{gps}}^{\mathcal{B}}\right).
+\end{equation}
+Including this block allows GNSS velocity residuals to inform the gyro-bias estimate when the lever arm
+is significant. If $\bm\alpha$ is noisy (finite-differenced gyro), it is often preferable to treat
+$\bm\omega$ and $\bm\alpha$ as known inputs and absorb modeling errors by inflating $\bm R_v$ (or by
+gating the update at high angular-rate noise).
+
+
 \item \textbf{Velocity fusion (recommended when available).} If GNSS provides velocity (Doppler),
 use \eqref{eq:gps_v_lever} as the measurement model:
 \begin{equation}
