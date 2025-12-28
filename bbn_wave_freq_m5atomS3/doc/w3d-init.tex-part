@@ -64,6 +64,7 @@ Only after $\vct{B}_w$ is set does the filter apply magnetometer measurement
 updates (yaw correction) using the internal model $\hat{\vct{m}}_b =
 \mat{R}_{wb}\,\vct{B}_w$.
 
+\iffalse
 \paragraph{Quality gating.}
 A heel-safe magnetometer initializer can be used to accept only ``good''
 samples for reference establishment. It gates on (i) $\|\vct{a}_b\|\approx g$,
@@ -71,6 +72,7 @@ samples for reference establishment. It gates on (i) $\|\vct{a}_b\|\approx g$,
 vector, (iii) optional low angular-rate (gyro) condition, and (iv) stability of
 the magnetometer norm via an EMA ratio test. This improves robustness when the
 platform is heeled or gently moving.
+\fi
 
 \subsection{Bias Warm-Up and Unlock Conditions}
 To avoid corrupting accelerometer-bias estimates before yaw is stabilized, the
