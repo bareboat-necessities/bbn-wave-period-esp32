@@ -30,7 +30,7 @@ no declination/inclination model is required at this stage.
 \subsection{Startup Stages and Warm-Up Policy}
 After tilt initialization, the system enters a staged mode schedule:
 \begin{enumerate}[label=(\roman*), leftmargin=*]
-  \item \textbf{Cold:} entered at boot and after a large-tilt reset. The
+  \item \textbf{Cold:} entered at boot. The
   extended linear block is disabled (attitude/bias MEKF only). If enabled,
   accelerometer-bias learning is frozen and the accelerometer measurement
   noise is inflated to a warm-up value.
@@ -38,11 +38,10 @@ After tilt initialization, the system enters a staged mode schedule:
   collect statistics. Adaptation targets $(\tau,\sigma_a,R_S)$ are computed,
   but the filter does not yet rely on the full linear block.
   \item \textbf{Live:} once frequency and variance estimates are deemed
-  ready, the linear block can be enabled and the OU/pseudo-measurement tuning
+  ready, the linear block is enabled and the OU/pseudo-measurement tuning
   is applied periodically.
 \end{enumerate}
-The warm-up duration is configurable,
-and the transition to Live additionally requires that the tuner reports readiness
+The transition to Live additionally requires that the tuner reports readiness
 for both frequency and variance estimates.
 
 \subsection{Magnetometer Reference Alignment (Yaw-Free Tilt Projection)}
