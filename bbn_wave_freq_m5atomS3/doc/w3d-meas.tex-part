@@ -75,6 +75,24 @@ which is equivalent to marginalizing \(\vct{a}_w\) in the measurement update.
 The predicted magnetic field in the body frame is
 \begin{equation}
 \label{eq:mag-meas}
+\vct{m}_b = \mat{R}_{wb}\,\vct{B}_w + \vct{n}_m,
+\end{equation}
+where $\vct{B}_w$ is the calibrated magnetic reference vector
+expressed in world coordinates (usually defined by local
+declination~$D$ and inclination~$I$), and
+$\vct{n}_m \sim \mathcal{N}(\vct{0},\,\mat{R}_m)$
+is magnetometer noise.
+
+Linearization yields the attitude Jacobian using matrix skew operator
+\begin{equation}
+\frac{\partial \vct{m}_b}{\partial \vct{\theta}}
+  = -\Skew{m_b}.
+\end{equation}
+
+\iffalse
+The predicted magnetic field in the body frame is
+\begin{equation}
+\label{eq:mag-meas}
 \vct{m}_b
 =
 \mat{R}_{wb}\,\vct{B}_w
@@ -88,7 +106,7 @@ declination~$D$ and inclination~$I$), \(\vct{b}_m\) is an optional
 $\vct{n}_m \sim \mathcal{N}(\vct{0},\,\mat{R}_m)$
 is magnetometer noise.
 
-Linearization yields the attitude Jacobian
+Linearization yields the attitude Jacobian using matrix skew operator
 \begin{equation}
 \frac{\partial \vct{m}_b}{\partial \vct{\theta}}
   = -\Skew{\hat{\vct{m}}_b},
@@ -98,7 +116,6 @@ and, when \(\vct{b}_m\) is estimated,
 \frac{\partial \vct{m}_b}{\partial \vct{b}_m}=\mat{I}_3.
 \)
 
-\iffalse
 \paragraph{Implementation note.}
 For robustness when the reference polarity may be ambiguous, the implementation
 applies a dot-product sign check and flips the predicted vector if needed so that
