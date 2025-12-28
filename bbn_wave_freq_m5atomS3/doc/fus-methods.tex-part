@@ -357,9 +357,6 @@ A configured vertical acceleration noise floor $\sigma_{\text{nf}}$ is subtracte
 During detected stillness, the wave variance is additionally attenuated by an exponential factor that depends on still time,
 so that tuning collapses smoothly toward the noise-floor regime when the platform is not wave-excited.
 
-If variance is not yet statistically reliable (startup), the implementation enforces a conservative floor on the published
-$\sigma$ target so it does not collapse spuriously below the noise floor.
-
 \subsubsection{Targets and bounds}
 Let $f_{\text{tune}}$ be the tuner’s internal smoothed frequency (clamped to $[f_{\min},f_{\max}]$).
 The OU time-constant target is proportional to the half-period:
@@ -390,18 +387,6 @@ Optionally, targets are clamped to stability bounds:
 \sigma_{a,\star}\in(0,\sigma_{\max}],\quad
 R_{S,\star}\in[R_{S,\min},R_{S,\max}].
 \]
-
-\subsubsection{Staged startup logic (Cold $\rightarrow$ TunerWarm $\rightarrow$ Live)}
-The implementation uses a three-stage state machine:
-\begin{itemize}[itemsep=1pt,topsep=2pt,leftmargin=*]
-\item \textbf{Cold:} just booted (or after a large tilt reset). No adaptation is applied and the MEKF linear block
-(v/p/S/a) is forced \emph{disabled}. Optionally, accelerometer-bias learning is frozen and a large $R_{\text{acc}}$
-is applied as a warmup guard.
-\item \textbf{TunerWarm:} frequency and variance statistics are accumulated until the tuner declares readiness.
-The system may compute targets, but still keeps the linear block disabled.
-\item \textbf{Live:} the tuner is trusted. The linear block may be enabled (if configured), and the $S$ pseudo-measurement
-noise is applied/updated. Additional “extras” (e.g.\ drift correction) are permitted only in this stage.
-\end{itemize}
 
 \subsubsection{Application to the MEKF: two-rate smoothing, with $\tau$-dependent $R_S$ time constant}
 Targets are blended into applied parameters continuously, but only \emph{committed} to the MEKF every $\Delta t_{\text{apply}}$
