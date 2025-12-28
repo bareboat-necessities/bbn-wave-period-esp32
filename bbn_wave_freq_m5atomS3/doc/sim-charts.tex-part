@@ -47,15 +47,6 @@ For each time $t_k$, the simulator outputs world-frame reference $\big(\mathbf{p
 the surface particle (buoy) and body-frame IMU readings $\big(\mathbf{f}_b,\boldsymbol{\omega}_b\big)$, with magnetometer readings synthesis. 
 The directional sea models produce an Euler attitude for the advected buoy.
 
-\subsection{Testing and simulation methodology}
-All experiments are executed by a deterministic batch runner that processes a directory of synthetic wave
-scenarios stored as CSV files (\texttt{wave\_data\_*.csv}). Each file contains time-stamped ground truth
-(world-frame displacement/velocity/acceleration and reference Euler angles) together with idealized body-frame
-IMU triads. The runner applies a fixed sample period of $h=\Delta t=1/240~\mathrm{s}$ for the inertial loop and
-writes a corresponding output CSV (\texttt{w3d\_*\_fusion.csv} or \texttt{w3d\_*\_fusion\_nomag.csv}) containing both
-reference and estimated signals, including linear states, attitude, bias estimates, and tuning telemetry
-($f$, $\tau$, $\sigma_a$, $R_S$), as well as wave-direction diagnostics.
-
 \paragraph{Sensor synthesis, axis conventions, and update schedule.}
 The simulator streams ideal body-frame specific force $\vct{f}_b$ and angular rate $\vct{\omega}_b$ at the inertial
 rate (240~Hz). Because the archived CSV uses a body $Z$--up convention, each IMU triad is mapped into the filter's
@@ -85,15 +76,13 @@ with small random scale errors, cross-axis coupling, and a small random rotation
 white noise per magnetometer sample. This separation allows evaluation of both additive-bias estimation and sensitivity
 to mild multiplicative distortion.
 
-\paragraph{Scoring window, metrics, and automated failure gates.}
+\paragraph{Scoring window, metrics.}
 Performance is summarized over a fixed trailing window of $T_{\mathrm{RMS}}=60$~s. In that window the runner computes
 RMS displacement errors per axis and a 3D RMS error
 $\mathrm{RMS}_{3D}=\sqrt{\mathrm{RMS}_x^2+\mathrm{RMS}_y^2+\mathrm{RMS}_z^2}$.
 To avoid penalizing scenarios with small significant wave height $H_s$, the primary displacement score normalizes the
 3D error by the maximum true 3D displacement magnitude observed in the same window.
-Attitude performance is reported as RMS roll/pitch/yaw error (with wrapped yaw difference), and bias learning is
-reported as RMS estimation error relative to the maximum true bias magnitude encountered in the window (computed for
-accelerometer, gyroscope, and magnetometer). 
+Attitude performance is reported as RMS roll/pitch/yaw error. 
 
 \paragraph{Direction and tuner telemetry.}
 Alongside state accuracy, the runner logs and summarizes the dominant-frequency estimate and auto-tuner outputs
@@ -101,8 +90,6 @@ Alongside state accuracy, the runner logs and summarizes the dominant-frequency 
 circular statistics over the last window by computing a mean direction and circular standard deviation using doubled-angle
 axial statistics, and it reports the fraction of samples deemed ``good'' by internal confidence/amplitude thresholds.
 A separate sign classifier produces the ``toward/away'' label, and its class counts are also reported over the scoring window.
-These diagnostics allow separating failures due to poor frequency tracking, poor linear-state convergence, or low directional
-signal-to-noise.
 
 % JONSWAP - medium
 
