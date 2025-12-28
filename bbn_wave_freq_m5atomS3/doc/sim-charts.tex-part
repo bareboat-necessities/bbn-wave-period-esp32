@@ -85,15 +85,6 @@ with small random scale errors, cross-axis coupling, and a small random rotation
 white noise per magnetometer sample. This separation allows evaluation of both additive-bias estimation and sensitivity
 to mild multiplicative distortion.
 
-\paragraph{Initialization and ablation toggles.}
-Each run begins with a known configuration: the estimator is initialized with conservative prior noise levels
-$(\sigma_a,\sigma_g,\sigma_m)$ and a fixed dominant-frequency guess ($f_0=0.3$~Hz) for frequency-linked subsystems.
-A magnetometer delay stage controls when the filter is permitted to use magnetometer updates; prior to that time, the
-estimator operates in an inertial-only mode. The runner supports two key ablations: \texttt{--nomag} disables magnetometer
-updates entirely, and \texttt{--no-noise} disables all synthetic noise/bias injection for a near-deterministic convergence
-check. An additional ``attitude-only'' mode can disable the OU-driven linear block and bias learning to isolate attitude
-behavior.
-
 \paragraph{Scoring window, metrics, and automated failure gates.}
 Performance is summarized over a fixed trailing window of $T_{\mathrm{RMS}}=60$~s. In that window the runner computes
 RMS displacement errors per axis and a 3D RMS error
@@ -102,12 +93,7 @@ To avoid penalizing scenarios with small significant wave height $H_s$, the prim
 3D error by the maximum true 3D displacement magnitude observed in the same window.
 Attitude performance is reported as RMS roll/pitch/yaw error (with wrapped yaw difference), and bias learning is
 reported as RMS estimation error relative to the maximum true bias magnitude encountered in the window (computed for
-accelerometer, gyroscope, and magnetometer). Runs are treated as pass/fail by strict gates:
-(i) a tight vertical displacement RMS gate (as \% of $H_s$),
-(ii) a 3D displacement gate (as \% of max $|\vct{p}_{\text{ref}}|$ in the window),
-(iii) a yaw RMS gate, and
-(iv) a 3D bias-error gate (as \% of max true bias). Any gate violation triggers an immediate failure, making the batch
-runner suitable for regression testing.
+accelerometer, gyroscope, and magnetometer). 
 
 \paragraph{Direction and tuner telemetry.}
 Alongside state accuracy, the runner logs and summarizes the dominant-frequency estimate and auto-tuner outputs
