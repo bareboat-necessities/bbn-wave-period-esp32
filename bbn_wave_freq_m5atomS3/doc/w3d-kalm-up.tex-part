@@ -17,7 +17,7 @@ the signals enter the estimator as follows:
       (Sec.~\ref{sec:...}).
 \end{itemize}
 
-\paragraph{Gyroscope usage (time update, not a rank--3 measurement)}
+\paragraph{Gyroscope usage (time update)}
 The gyroscope does not enter the rank--3 correction formulas above because it is treated as a
 \emph{control/propagation} input. With (optional) gyro bias $\vct{b}_g$ and white noise $\vct{\eta}_g$,
 \[
