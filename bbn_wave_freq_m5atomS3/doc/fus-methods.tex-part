@@ -428,10 +428,6 @@ If enabled, the applied $R_S$ is additionally reduced when the estimated heave m
 exceeds an expected displacement envelope proportional to $\sigma_{a,\star}\tau_\star^2$.
 This acts as a smooth safety valve against large drift excursions by temporarily strengthening the integral regularizer.
 
-\paragraph{Conditional application.}
-In code, OU parameters may be applied once frequency is ready; the integral pseudo-measurement is only applied in the
-\textbf{Live} stage and only when the MEKF linear block is enabled.
-
 % =======================================================
 \section{Horizontal Wave Direction: Angle and Sign}
 \label{sec:direction}
