@@ -41,8 +41,6 @@ After tilt initialization, the system enters a staged mode schedule:
   ready, the linear block is enabled and the OU/pseudo-measurement tuning
   is applied periodically.
 \end{enumerate}
-The transition to Live additionally requires that the tuner reports readiness
-for both frequency and variance estimates.
 
 \subsection{Magnetometer Reference Alignment (Yaw-Free Tilt Projection)}
 Magnetometer updates are delayed by a fixed startup time
