@@ -288,7 +288,7 @@ and (iii) the $S$ pseudo-measurement noise $R_S$.
 The adaptation is driven by smoothed dominant frequency and debiased vertical-acceleration variance,
 with explicit warmup stages, stillness handling, and safety bounds.
 
-\paragraph{Signals used.}
+\paragraph{Signals used}
 Let $a_{z,\text{inert}} = a_z + g$ denote vertical inertial acceleration in the body/NED convention used by the filter.
 The code uses the \emph{up-positive} vertical signal
 \[
@@ -399,7 +399,7 @@ R_{S,\text{appl}}\leftarrow R_{S,\text{appl}} + \alpha_{R_S}(R_{S,\star}-R_{S,\t
 with $m_{R_S}$ dimensionless.
 This makes $R_S$ respond faster for short-period seas and more slowly for long-period swell, reducing tuning chatter.
 
-\paragraph{Anisotropy.}
+\paragraph{Anisotropy}
 When committing parameters, the MEKF uses an anisotropic OU stationary standard deviation
 \[
 \Sigma_{a_w}^{1/2}=\mathrm{diag}(S_{\sigma}\,\sigma_{a,\text{appl}},\ S_{\sigma}\,\sigma_{a,\text{appl}},\ \sigma_{a,\text{appl}}),
@@ -414,7 +414,7 @@ where $S_{\sigma}>0$, and an anisotropic $S$ pseudo-measurement noise
 A minimum floor is enforced on the OU scale (at least the configured noise floor) so that attitude-only marginalization
 does not become numerically brittle.
 
-\paragraph{Optional heave-based $R_S$ gating.}
+\paragraph{Optional heave-based $R_S$ gating}
 If enabled, the applied $R_S$ is additionally reduced when the estimated heave magnitude $|p_z|$
 exceeds an expected displacement envelope proportional to $\sigma_{a,\star}\tau_\star^2$.
 This acts as a smooth safety valve against large drift excursions by temporarily strengthening the integral regularizer.
