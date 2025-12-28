@@ -279,7 +279,7 @@ the filter does not depend on wave height or period, only on the choice of
 $k_i$ and on spectral shape.
 \end{remark}
 
-\subsection{Implementation: staged online adaptation and application}
+\subsection{Online Adaptation Implementation}
 \label{sec:adapt-impl}
 
 The implementation adapts three MEKF parameters online:
@@ -297,7 +297,7 @@ a_{\uparrow} := -a_{z,\text{inert}}.
 Before frequency tracking, $a_{\uparrow}$ is low-pass filtered (engine/noise rejection) to obtain $a_{\uparrow,\text{LP}}$.
 
 \subsubsection{Frequency tracking with stillness relaxation and dual smoothers}
-A tracker (Aranovskiy/KalmANF/zero-cross) produces a raw estimate $f_{\text{trk}}$ from $a_{\uparrow,\text{LP}}$.
+A tracker (Aranovskiy/KalmANF) produces a raw estimate $f_{\text{trk}}$ from $a_{\uparrow,\text{LP}}$.
 A stillness detector monitors an EMA of normalized energy $(a_{\uparrow}/g)^2$; if the system is still for long enough
 (about a couple of seconds), the internal frequency state relaxes toward a low target frequency (typically $f_{\min}$).
 Denote the stillness-adjusted output by
@@ -365,28 +365,21 @@ The OU time-constant target is proportional to the half-period:
 \tau_\star
 = c_{\tau}\,\frac{1}{2 f_{\text{tune}}},
 \end{equation}
-where $c_{\tau}$ is a dimensionless coefficient (\texttt{tau\_coeff\_}).
+where $c_{\tau}$ is a dimensionless coefficient.
 The acceleration-scale target is taken from the wave-only variance,
 \begin{equation}
 \label{eq:sigma-target-impl}
 \sigma_{a,\star}
 = c_{\sigma}\,\sqrt{\max(\widehat{\sigma}^2_{\text{wave}},\epsilon)},
 \end{equation}
-with $c_{\sigma}$ a dimensionless reduction factor (\texttt{sigma\_coeff\_}) compensating for
+with $c_{\sigma}$ a dimensionless reduction factor compensating for
 known inflation of raw variance under real sensor noise and model mismatch.
 The integral pseudo-measurement target follows the cubic scaling law,
 \begin{equation}
 \label{eq:Rs-target-impl}
 R_{S,\star}
-= c_R\,\sigma_{a,\star}\,\tau_\star^3,
+= c_R\,\sigma_{a,\star}\,\tau_\star^3
 \end{equation}
-where $c_R$ corresponds to \texttt{R\_S\_coeff\_}.
-Optionally, targets are clamped to stability bounds:
-\[
-\tau_\star\in[\tau_{\min},\tau_{\max}],\quad
-\sigma_{a,\star}\in(0,\sigma_{\max}],\quad
-R_{S,\star}\in[R_{S,\min},R_{S,\max}].
-\]
 
 \subsubsection{Application to the MEKF: two-rate smoothing, with $\tau$-dependent $R_S$ time constant}
 Targets are blended into applied parameters continuously, but only \emph{committed} to the MEKF every $\Delta t_{\text{apply}}$.
