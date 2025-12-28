@@ -389,10 +389,8 @@ R_{S,\star}\in[R_{S,\min},R_{S,\max}].
 \]
 
 \subsubsection{Application to the MEKF: two-rate smoothing, with $\tau$-dependent $R_S$ time constant}
-Targets are blended into applied parameters continuously, but only \emph{committed} to the MEKF every $\Delta t_{\text{apply}}$
-(\texttt{adapt\_every\_secs\_}).
-The OU parameters $(\tau,\sigma_a)$ share a fixed adaptation time constant $\tau_{\text{adapt}}$
-(\texttt{adapt\_tau\_sec\_}):
+Targets are blended into applied parameters continuously, but only \emph{committed} to the MEKF every $\Delta t_{\text{apply}}$.
+The OU parameters $(\tau,\sigma_a)$ share a fixed adaptation time constant $\tau_{\text{adapt}}$:
 \[
 \alpha = 1-e^{-\Delta t/\tau_{\text{adapt}}},\qquad
 \tau_{\text{appl}}\leftarrow \tau_{\text{appl}} + \alpha(\tau_\star-\tau_{\text{appl}}),\qquad
@@ -405,7 +403,7 @@ In contrast, $R_S$ is smoothed with a \emph{time constant proportional to the cu
 \alpha_{R_S}=1-e^{-\Delta t/\tau_{R_S}},\qquad
 R_{S,\text{appl}}\leftarrow R_{S,\text{appl}} + \alpha_{R_S}(R_{S,\star}-R_{S,\text{appl}}),
 \end{equation}
-with $m_{R_S}$ dimensionless (\texttt{ADAPT\_RS\_MULT}).
+with $m_{R_S}$ dimensionless.
 This makes $R_S$ respond faster for short-period seas and more slowly for long-period swell, reducing tuning chatter.
 
 \paragraph{Anisotropy.}
@@ -419,7 +417,7 @@ where $S>0$ is \texttt{S\_factor\_}, and an anisotropic $S$ pseudo-measurement n
 = \mathrm{diag}(\rho_{xy} R_{S,\text{appl}},\ \rho_{xy} R_{S,\text{appl}},\ R_{S,\text{appl}}),
 \qquad \rho_{xy}\in[0,1],
 \]
-with $\rho_{xy}$ corresponding to \texttt{R\_S\_xy\_factor\_}.
+with $\rho_{xy}$.
 A minimum floor is enforced on the OU scale (at least the configured noise floor) so that attitude-only marginalization
 does not become numerically brittle.
 
