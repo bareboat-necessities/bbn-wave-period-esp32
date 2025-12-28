@@ -86,10 +86,10 @@ Linearizing \eqref{eq:gps_pos_lever} about the current attitude estimate yields
 \end{equation}
 with an attitude-error Jacobian of the generic form
 \begin{equation}
-\bm C_{\delta\theta} \;\approx\; \skew\!\big(\hat{\bm R}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}\big),
+\bm C_{\delta\theta} \;\approx\; \Skew\!\big(\hat{\bm R}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}\big),
 \end{equation}
-where $\skew(\bm u)$ is the $3\times 3$ cross-product matrix such that
-$\skew(\bm u)\bm x = \bm u\times \bm x$.
+where $\Skew(\bm u)$ is the $3\times 3$ cross-product matrix such that
+$\Skew(\bm u)\bm x = \bm u\times \bm x$.
 This couples GPS position residuals into attitude (and any correlated states) in a physically
 meaningful way. A similar tight model can be written for GPS velocity by accounting for
 rotational motion of the lever arm (optionally using the bias-corrected gyro):
@@ -192,14 +192,14 @@ For the right-multiplicative MEKF used here, a small attitude error $\delta\bm\t
 first-order perturbation
 \begin{equation}
 \delta\!\left(\hat{\bm R}_{bw}\bm u\right)
-\;\approx\; \skew\!\left(\hat{\bm R}_{bw}\bm u\right)\,\delta\bm\theta,
+\;\approx\; \Skew\!\left(\hat{\bm R}_{bw}\bm u\right)\,\delta\bm\theta,
 \end{equation}
 so the velocity measurement Jacobian has the sparse structure
 \begin{equation}
 \bm C_v
 \;=\;
 \begin{bmatrix}
-\underbrace{\skew\!\left(\hat{\bm R}_{bw}\bm u\right)}_{\text{attitude }(\delta\bm\theta)}
+\underbrace{\Skew\!\left(\hat{\bm R}_{bw}\bm u\right)}_{\text{attitude }(\delta\bm\theta)}
 &
 \cdots
 &
@@ -211,11 +211,11 @@ so the velocity measurement Jacobian has the sparse structure
 
 If the gyro bias $\bm b_g$ is estimated and the angular rate is formed as
 $\bm\omega^{\mathcal{B}}=\bm\omega_{\text{meas}}^{\mathcal{B}}-\bm b_g$, then $\bm u$ depends on
-$\bm b_g$ via $\bm u=\bm\omega\times\bm r = -\skew(\bm r)\bm\omega$, giving
+$\bm b_g$ via $\bm u=\bm\omega\times\bm r = -\Skew(\bm r)\bm\omega$, giving
 \begin{equation}
 \frac{\partial \hat{\bm z}_v}{\partial \bm b_g}
 \;=\;
-\hat{\bm R}_{bw}\,\skew\!\left(\bm r_{\text{gps}}^{\mathcal{B}}\right).
+\hat{\bm R}_{bw}\,\Skew\!\left(\bm r_{\text{gps}}^{\mathcal{B}}\right).
 \end{equation}
 Including this block allows GNSS velocity residuals to inform the gyro-bias estimate when the lever arm
 is significant. If $\bm\alpha$ is noisy (finite-differenced gyro), it is often preferable to treat
