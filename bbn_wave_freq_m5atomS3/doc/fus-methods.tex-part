@@ -402,15 +402,15 @@ This makes $R_S$ respond faster for short-period seas and more slowly for long-p
 \paragraph{Anisotropy.}
 When committing parameters, the MEKF uses an anisotropic OU stationary standard deviation
 \[
-\Sigma_{a_w}^{1/2}=\mathrm{diag}(S\,\sigma_{a,\text{appl}},\ S\,\sigma_{a,\text{appl}},\ \sigma_{a,\text{appl}}),
+\Sigma_{a_w}^{1/2}=\mathrm{diag}(S_{\sigma}\,\sigma_{a,\text{appl}},\ S_{\sigma}\,\sigma_{a,\text{appl}},\ \sigma_{a,\text{appl}}),
 \]
-where $S>0$ is \texttt{S\_factor\_}, and an anisotropic $S$ pseudo-measurement noise
+where $S_{\sigma}>0$, and an anisotropic $S$ pseudo-measurement noise
 \[
 \mat{R}_S
 = \mathrm{diag}(\rho_{xy} R_{S,\text{appl}},\ \rho_{xy} R_{S,\text{appl}},\ R_{S,\text{appl}}),
-\qquad \rho_{xy}\in[0,1],
+\qquad \rho_{xy}\in[0,1]
 \]
-with $\rho_{xy}$.
+
 A minimum floor is enforced on the OU scale (at least the configured noise floor) so that attitude-only marginalization
 does not become numerically brittle.
 
