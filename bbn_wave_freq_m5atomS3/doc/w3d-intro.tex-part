@@ -77,7 +77,7 @@ particular sea-state regime, determined by its assumed correlation time
 Different wave spectra, however, exhibit distinct dominant frequencies
 and energy levels. To maintain performance across conditions, we
 introduce an online adaptation mechanism that continuously estimates and
-tunes these parameters. Three alternative embedded frequency trackers
+tunes these parameters. Two alternative embedded frequency trackers
 are supported: the \textit{KalmANF adaptive notch filter}, 
 and the \textit{Aranovskiy frequency estimator}. The dominant frequency inferred from
 these modules provides an updated correlation time \(\tau\), while the
