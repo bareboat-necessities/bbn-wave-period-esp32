@@ -151,7 +151,7 @@ although $\vct{S}$ is not directly observable from real sensors, the
 pseudo-measurement provides an artificial observation that stabilizes the
 covariance and prevents drift of integrated displacement.
 
-\subsection{Optional IMU Lever-Arm Model}
+\subsection{IMU Lever-Arm Model}
 
 In many installations the IMU is not located at the vessel's center of gravity
 but at a fixed lever arm $\vct{r}_b \in \mathbb{R}^3$ expressed in the
