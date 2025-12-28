@@ -1,7 +1,7 @@
 \section{Measurement Update: Gain, Rank--3 Structure, and Block Algebra}
 \label{sec:meas-update-structure}
 
-\paragraph{From raw IMU streams to measurement vectors.}
+\paragraph{From raw IMU streams to measurement vectors}
 At each IMU time step the hardware provides body-frame triads:
 gyroscope angular rate $\vct{\omega}_{\text{meas}}$ (rad/s), accelerometer specific force
 $\vct{f}_{\text{meas}}$ (m/s$^2$), and (optionally) magnetometer field $\vct{m}_{\text{meas}}$ (e.g.\ $\mu$T).
@@ -17,7 +17,7 @@ the signals enter the estimator as follows:
       (Sec.~\ref{sec:...}).
 \end{itemize}
 
-\paragraph{Gyroscope usage (time update, not a rank--3 measurement).}
+\paragraph{Gyroscope usage (time update, not a rank--3 measurement)}
 The gyroscope does not enter the rank--3 correction formulas above because it is treated as a
 \emph{control/propagation} input. With (optional) gyro bias $\vct{b}_g$ and white noise $\vct{\eta}_g$,
 \[
@@ -114,7 +114,7 @@ Hence the gain $\mat{K}$ is \emph{entirely determined} by a single $3\times 3$ s
 \]
 This characterization makes no algorithmic assumption: it is a direct algebraic consequence of the rank--3 measurement and the block partition of $\mat{P}^{-}$.
 
-\paragraph{Magnetometer (attitude--only).}
+\paragraph{Magnetometer (attitude--only)}
 For a world-frame reference field $\vct{B}_w$ (in physical units), the measurement vector is
 $\vct{z}_{\text{mag}}=\vct{m}_{\text{meas}}$ and the model (with the standard sign fix) is
 \[
@@ -139,7 +139,7 @@ It follows that
 \]
 The posterior covariance then follows from the Joseph form, and the right--multiplicative attitude correction is applied to the quaternion, after which the attitude error subvector is reset.
 
-\paragraph{Accelerometer (attitude + latent $\vct{a}_w$ + bias $\vct{b}_a$).}
+\paragraph{Accelerometer (attitude + latent $\vct{a}_w$ + bias $\vct{b}_a$)}
 For specific force in body coordinates, the measurement vector is $\vct{z}_{\text{acc}}=\vct{f}_{\text{meas}}$ and
 \[
 \fitcol{
@@ -167,7 +167,7 @@ since $\partial h_{\text{acc}}/\partial \vct{a}_w = \mat{R}_{wb}$, the correctio
 $\hat{\vct{x}}^{+}=\hat{\vct{x}}^{-}+\mat{K}\vct{r}$ contains a nonzero $\delta\vct{a}_w$ block,
 i.e.\ $\delta\vct{a}_w=(\mat{K}\vct{r})_{\vct{a}_w}$.
 
-\paragraph{Attitude.}
+\paragraph{Attitude}
 After each correction, the small-angle attitude increment
 $\delta\vct{\theta}$ is converted back into a unit quaternion
 via
