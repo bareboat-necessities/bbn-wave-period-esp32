@@ -141,3 +141,64 @@ adding an analogous \texttt{measurement\_update\_velocity\_pseudo} for $\bm v$.
 For tighter coupling with a GPS antenna lever arm, extend the position update to use the model
 \eqref{eq:gps_pos_lever} with the attitude Jacobian $\bm C_{\delta\theta}$, while keeping the
 same Joseph-form covariance update used throughout the filter.
+
+\subsection{Accounting for centripetal acceleration (rotating GPS lever arm)}
+\label{sec:gps_centripetal}
+
+If the GPS antenna is displaced from the filter reference point (e.g., CoG) by a known
+lever arm $\bm r_{\text{gps}}^{\mathcal{B}}$ expressed in the physical body frame, then
+rotation of the vessel produces additional \emph{relative} kinematics between the antenna
+and the reference point. These effects are often described as tangential and centripetal
+acceleration terms and become important when (i) $\|\bm r_{\text{gps}}\|$ is large, or
+(ii) angular rates are non-negligible.
+
+Let $\bm R_{bw}$ map body to world (NED). Let $\bm\omega^{\mathcal{B}}$ be the body angular
+rate (bias-corrected gyro) and $\bm\alpha^{\mathcal{B}}$ the body angular acceleration
+(e.g., from finite differences or a low-pass differentiated gyro). Then, in world frame,
+the antenna kinematics satisfy
+\begin{align}
+\bm p_{\text{gps}}^{\mathcal{W}}
+&= \bm p^{\mathcal{W}} + \bm R_{bw}\,\bm r_{\text{gps}}^{\mathcal{B}},
+\label{eq:gps_p_lever}
+\\
+\bm v_{\text{gps}}^{\mathcal{W}}
+&= \bm v^{\mathcal{W}} + \bm R_{bw}\big(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}\big),
+\label{eq:gps_v_lever}
+\\
+\bm a_{\text{gps}}^{\mathcal{W}}
+&= \bm a^{\mathcal{W}} + \bm R_{bw}\Big(
+\bm\alpha^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}
++ \bm\omega^{\mathcal{B}}\times\big(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}\big)
+\Big),
+\label{eq:gps_a_lever}
+\end{align}
+where the last term in \eqref{eq:gps_a_lever} is the \emph{centripetal} acceleration
+$\bm\omega\times(\bm\omega\times\bm r)$ and the first is the tangential acceleration
+$\bm\alpha\times\bm r$.
+
+\paragraph{How this enters GPS fusion.}
+\begin{itemize}
+\item \textbf{Position-only fusion.} Using \eqref{eq:gps_p_lever} already captures the dominant
+lever-arm effect (the antenna position rotates with attitude). No explicit centripetal term is
+needed because GPS position is not an acceleration measurement.
+
+\item \textbf{Velocity fusion (recommended when available).} If GNSS provides velocity (Doppler),
+use \eqref{eq:gps_v_lever} as the measurement model:
+\begin{equation}
+\bm z_v = \bm v_{\text{gps}}^{\mathcal{W}} + \bm n_v
+\;\approx\; \bm v^{\mathcal{W}} + \bm R_{bw}\big(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}\big)
++ \bm n_v.
+\end{equation}
+This compensates the rotational contribution to antenna velocity; without it, the filter can
+misinterpret $\bm\omega\times\bm r$ as translational motion.
+
+\item \textbf{Acceleration/jerk fusion (optional).} If you derive acceleration from GNSS (usually noisy)
+or fuse a higher-grade GNSS/INS output, then \eqref{eq:gps_a_lever} becomes directly relevant.
+In that case the centripetal term should be included explicitly in the measurement prediction.
+\end{itemize}
+
+\paragraph{Implementation note.}
+The same $\bm\omega$ and $\bm\alpha$ used for your IMU lever-arm correction can be reused here.
+In particular, if $\bm\alpha$ is obtained from finite-differencing, applying light smoothing is
+often necessary to avoid injecting high-frequency noise into the GNSS update model.
+
