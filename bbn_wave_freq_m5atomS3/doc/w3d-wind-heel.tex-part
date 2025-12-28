@@ -1,4 +1,4 @@
-\subsection{Steady wind-heel correction}
+\subsection{Steady Wind-Heel Correction}
 \label{sec:heel}
 
 In many sailing applications the hull experiences a slowly varying \emph{steady wind heel},
@@ -8,7 +8,7 @@ magnetometer residuals, and (through cross-covariances) perturb the coupled navi
 states. To mitigate this, the filter optionally introduces a \emph{virtual un-heeled body frame}
 $\mathcal{B}'$ and performs all inertial and magnetic measurement modeling in $\mathcal{B}'$.
 
-\paragraph{Frames and heel transform.}
+\paragraph{Frames and heel transform}
 Let $\mathcal{B}$ denote the \emph{physical} IMU/body frame mounted in the heeled boat, and
 let $\mathcal{B}'$ be an auxiliary frame obtained by applying the inverse heel rotation about
 the body $x$-axis. With a steady heel angle $\phi_h$ (radians), define the rotation
