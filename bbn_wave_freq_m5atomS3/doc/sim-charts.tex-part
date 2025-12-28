@@ -49,8 +49,7 @@ The directional sea models produce an Euler attitude for the advected buoy.
 
 \paragraph{Sensor synthesis, axis conventions, and update schedule.}
 The simulator streams ideal body-frame specific force $\vct{f}_b$ and angular rate $\vct{\omega}_b$ at the inertial
-rate (240~Hz). Because the archived CSV uses a body $Z$--up convention, each IMU triad is mapped into the filter's
-body--NED convention via a fixed axis transform before being passed to the estimator. Magnetometer measurements are
+rate (240~Hz). Magnetometer measurements are
 generated from the ground-truth nautical Euler angles using a geomagnetic field model in physical units (e.g.\ $\mu$T),
 and are delivered at an independent output data rate (ODR) of 100~Hz with a hold-last-sample scheme between ticks.
 The filter is stepped once per inertial sample: a time update driven by $\vct{\omega}_{\text{meas}}$ and a rank--3
