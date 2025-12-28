@@ -70,59 +70,6 @@ by the stationary OU acceleration covariance:
 which is equivalent to marginalizing \(\vct{a}_w\) in the measurement update.
 \fi
 
-\subsection{Optional IMU Lever-Arm Model}
-
-In many installations the IMU is not located at the vessel's center of gravity
-but at a fixed lever arm $\vct{r}_b \in \mathbb{R}^3$ expressed in the
-body frame. The accelerometer then measures the specific force at the IMU
-location, which differs from the specific force at the center of gravity
-(CoG) by contributions due to angular motion.
-
-Let $\vct{\omega}_b$ denote the body-frame angular velocity from the
-gyroscope after bias correction, and let $\vct{\alpha}_b$ be an
-estimate of the angular acceleration, obtained by finite differences and
-optionally low-pass filtered. The specific force at the CoG in the body
-frame is
-\[
-\vct{f}_{\mathrm{cog},b}
-  = \mat{R}_{wb}\,(\vct{a}_w - \vct{g}_w),
-\]
-and the specific force at the IMU becomes
-\begin{equation}
-\label{eq:acc-meas-lever}
-\vct{f}_b
-  = \vct{f}_{\mathrm{cog},b}
-    + \vct{\alpha}_b \times \vct{r}_b
-    + \vct{\omega}_b \times
-      \bigl(\vct{\omega}_b \times \vct{r}_b\bigr)
-    + \vct{b}_a(T)
-    + \vct{n}_a.
-\end{equation}
-
-The lever-arm term is purely kinematic and depends only on
-\((\vct{\omega}_b,\vct{\alpha}_b,\vct{r}_b)\), which are treated as known inputs
-rather than estimated states. In the implemented filter, this term is applied
-to the predicted measurement but is not included in the attitude Jacobian
-(i.e., second-order coupling of the lever-arm term through attitude uncertainty
-is neglected). Consequently, the measurement Jacobians with respect to the
-filter state remain identical to those in~\eqref{eq:acc-meas}, with
-\(\Skew{\hat{\vct{f}}_{\mathrm{cog},b}}\) computed from the CoG prediction:
-\begin{align}
-\frac{\partial \vct{f}_b}{\partial \vct{\theta}}
-  &= -\Skew{\hat{\vct{f}}_{\mathrm{cog},b}}, &
-\frac{\partial \vct{f}_b}{\partial \vct{a}_w}
-  &= \mat{R}_{wb}, &
-\frac{\partial \vct{f}_b}{\partial \vct{b}_a}
-  &= \mat{I}_3,
-\end{align}
-while
-\[
-\frac{\partial \vct{f}_b}{\partial \vct{x}_\text{other}} = \mat{0}
-\]
-for all remaining state components. Setting $\vct{r}_b = \vct{0}$
-recovers the CoG model~\eqref{eq:acc-meas} and disables the lever-arm
-correction.
-
 \subsection{Magnetometer Model}
 
 The predicted magnetic field in the body frame is
@@ -203,3 +150,56 @@ choice of $\mat{R}_S$ makes the augmented system effectively detectable:
 although $\vct{S}$ is not directly observable from real sensors, the
 pseudo-measurement provides an artificial observation that stabilizes the
 covariance and prevents drift of integrated displacement.
+
+\subsection{Optional IMU Lever-Arm Model}
+
+In many installations the IMU is not located at the vessel's center of gravity
+but at a fixed lever arm $\vct{r}_b \in \mathbb{R}^3$ expressed in the
+body frame. The accelerometer then measures the specific force at the IMU
+location, which differs from the specific force at the center of gravity
+(CoG) by contributions due to angular motion.
+
+Let $\vct{\omega}_b$ denote the body-frame angular velocity from the
+gyroscope after bias correction, and let $\vct{\alpha}_b$ be an
+estimate of the angular acceleration, obtained by finite differences and
+optionally low-pass filtered. The specific force at the CoG in the body
+frame is
+\[
+\vct{f}_{\mathrm{cog},b}
+  = \mat{R}_{wb}\,(\vct{a}_w - \vct{g}_w),
+\]
+and the specific force at the IMU becomes
+\begin{equation}
+\label{eq:acc-meas-lever}
+\vct{f}_b
+  = \vct{f}_{\mathrm{cog},b}
+    + \vct{\alpha}_b \times \vct{r}_b
+    + \vct{\omega}_b \times
+      \bigl(\vct{\omega}_b \times \vct{r}_b\bigr)
+    + \vct{b}_a(T)
+    + \vct{n}_a.
+\end{equation}
+
+The lever-arm term is purely kinematic and depends only on
+\((\vct{\omega}_b,\vct{\alpha}_b,\vct{r}_b)\), which are treated as known inputs
+rather than estimated states. In the implemented filter, this term is applied
+to the predicted measurement but is not included in the attitude Jacobian
+(i.e., second-order coupling of the lever-arm term through attitude uncertainty
+is neglected). Consequently, the measurement Jacobians with respect to the
+filter state remain identical to those in~\eqref{eq:acc-meas}, with
+\(\Skew{\hat{\vct{f}}_{\mathrm{cog},b}}\) computed from the CoG prediction:
+\begin{align}
+\frac{\partial \vct{f}_b}{\partial \vct{\theta}}
+  &= -\Skew{\hat{\vct{f}}_{\mathrm{cog},b}}, &
+\frac{\partial \vct{f}_b}{\partial \vct{a}_w}
+  &= \mat{R}_{wb}, &
+\frac{\partial \vct{f}_b}{\partial \vct{b}_a}
+  &= \mat{I}_3,
+\end{align}
+while
+\[
+\frac{\partial \vct{f}_b}{\partial \vct{x}_\text{other}} = \mat{0}
+\]
+for all remaining state components. Setting $\vct{r}_b = \vct{0}$
+recovers the CoG model~\eqref{eq:acc-meas} and disables the lever-arm
+correction.
