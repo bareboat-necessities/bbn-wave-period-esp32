@@ -279,7 +279,6 @@ the filter does not depend on wave height or period, only on the choice of
 $k_i$ and on spectral shape.
 \end{remark}
 
-
 \subsection{Implementation: staged online adaptation and application}
 \label{sec:adapt-impl}
 
@@ -287,7 +286,7 @@ The implementation adapts three MEKF parameters online:
 (i) OU time constant $\tau$, (ii) OU stationary acceleration scale $\sigma_a$,
 and (iii) the $S$ pseudo-measurement noise $R_S$.
 The adaptation is driven by smoothed dominant frequency and debiased vertical-acceleration variance,
-with explicit warmup stages and safety bounds.
+with explicit warmup stages, stillness handling, and safety bounds.
 
 \paragraph{Signals used.}
 Let $a_{z,\text{inert}} = a_z + g$ denote vertical inertial acceleration in the body/NED convention used by the filter.
@@ -316,8 +315,39 @@ followed by clamping to $[f_{\min},f_{\max}]$.
 The direction estimator uses $f_{\text{fast}}$, while the tuner uses a frequency signal derived from $f_{\text{still}}$
 (and its own internal debiased smoothing).
 
-\subsubsection{Debiased variance estimate and noise-floor subtraction}
-The tuner maintains debiased EMAs of mean and second moment of $a_{\uparrow}$ to estimate total variance
+\subsubsection{Debiased frequency smoothing and period-tied variance horizon}
+The tuner maintains \emph{debiased} EMAs (value+weight) so that estimates do not depend on initial conditions during warmup.
+Given the input frequency $f_{\text{still}}$, the tuner forms an internal smoothed frequency $f_{\text{tune}}$ using a
+fixed time constant $\tau_{\text{freq}}$ (seconds):
+\begin{equation}
+\label{eq:alpha-freq-impl}
+\alpha_{\text{freq}} = 1-e^{-\Delta t/\tau_{\text{freq}}},\qquad
+f_{\text{tune}}\leftarrow \mathrm{EMA}_{\text{debias}}(f_{\text{still}};\alpha_{\text{freq}}).
+\end{equation}
+For the variance horizon, the tuner converts the (ready) smoothed frequency into an effective period
+$T_{\text{eff}}=1/f_{\text{tune}}$ (with internal clamping to avoid pathological horizons at tiny/huge frequencies),
+and chooses a \emph{dynamic} variance time constant proportional to a small number of periods:
+\begin{equation}
+\label{eq:tau-var-dyn-impl}
+\tau_{\text{var}}(k)
+=
+\clip\!\Big(K_{\text{periods}}\,T_{\text{eff}}(k),\ \tau_{\text{var,min}},\ \tau_{\text{var,max}}\Big),
+\qquad
+\alpha_{\text{var}}(k) = 1-e^{-\Delta t/\tau_{\text{var}}(k)}.
+\end{equation}
+Here $K_{\text{periods}}$ is a dimensionless “horizon in periods” parameter.
+Since an EMA reaches $\approx95\%$ in about $3\tau_{\text{var}}$, $K_{\text{periods}}\approx2$ corresponds to
+roughly $\sim6$ effective periods for a $\sim95\%$ response, yielding consistent variance behavior across both chop and swell.
+
+\subsubsection{Debiased variance estimate, noise-floor subtraction, and stillness attenuation}
+Using $\alpha_{\text{var}}(k)$, the tuner maintains debiased EMAs of the mean and second moment of $a_{\uparrow}$ and forms
+an instantaneous variance estimate,
+\[
+\widehat{\mu}\leftarrow \mathrm{EMA}_{\text{debias}}(a_{\uparrow};\alpha_{\text{var}}),\qquad
+\widehat{m}_2\leftarrow \mathrm{EMA}_{\text{debias}}(a_{\uparrow}^2;\alpha_{\text{var}}),\qquad
+\widehat{\sigma}^2_{\text{inst}}=\max\{0,\ \widehat{m}_2-\widehat{\mu}^{\,2}\},
+\]
+which is itself low-passed by another debiased EMA (same $\alpha_{\text{var}}$) to produce a total variance estimate
 $\widehat{\sigma}^2_{\text{tot}}$.
 A configured vertical acceleration noise floor $\sigma_{\text{nf}}$ is subtracted in variance:
 \[
@@ -347,7 +377,6 @@ The acceleration-scale target is taken from the wave-only variance,
 \end{equation}
 with $c_{\sigma}$ a dimensionless reduction factor (\texttt{sigma\_coeff\_}) compensating for
 known inflation of raw variance under real sensor noise and model mismatch.
-
 The integral pseudo-measurement target follows the cubic scaling law,
 \begin{equation}
 \label{eq:Rs-target-impl}
@@ -392,7 +421,7 @@ In contrast, $R_S$ is smoothed with a \emph{time constant proportional to the cu
 R_{S,\text{appl}}\leftarrow R_{S,\text{appl}} + \alpha_{R_S}(R_{S,\star}-R_{S,\text{appl}}),
 \end{equation}
 with $m_{R_S}$ dimensionless (\texttt{ADAPT\_RS\_MULT}).
-This makes $R_S$ respond faster for short-period seas and more slowly for long-period swell, reducing tuning chatter.
+This makes $R_S respond faster for short-period seas and more slowly for long-period swell, reducing tuning chatter.
 
 \paragraph{Anisotropy.}
 When committing parameters, the MEKF uses an anisotropic OU stationary standard deviation
@@ -417,7 +446,6 @@ This acts as a smooth safety valve against large drift excursions by temporarily
 \paragraph{Conditional application.}
 In code, OU parameters may be applied once frequency is ready; the integral pseudo-measurement is only applied in the
 \textbf{Live} stage and only when the MEKF linear block is enabled.
-
 
 % =======================================================
 \section{Horizontal Wave Direction: Angle and Sign}
