@@ -421,7 +421,7 @@ In contrast, $R_S$ is smoothed with a \emph{time constant proportional to the cu
 R_{S,\text{appl}}\leftarrow R_{S,\text{appl}} + \alpha_{R_S}(R_{S,\star}-R_{S,\text{appl}}),
 \end{equation}
 with $m_{R_S}$ dimensionless (\texttt{ADAPT\_RS\_MULT}).
-This makes $R_S respond faster for short-period seas and more slowly for long-period swell, reducing tuning chatter.
+This makes $R_S$ respond faster for short-period seas and more slowly for long-period swell, reducing tuning chatter.
 
 \paragraph{Anisotropy.}
 When committing parameters, the MEKF uses an anisotropic OU stationary standard deviation
