@@ -40,7 +40,7 @@ After tilt initialization, the system enters a staged mode schedule:
   is applied periodically.
 \end{enumerate}
 
-\subsection{Magnetometer Reference Alignment (Yaw-Free Tilt Projection)}
+\subsection{Magnetometer Reference Alignment}
 Magnetometer updates are delayed by a fixed startup time
 to avoid injecting yaw corrections during
 initial transients. When magnetometer data become available, the filter first
