@@ -58,10 +58,7 @@ establishes a \emph{world-frame magnetic reference} $\vct{B}_w$ in one of two wa
   \vct{B}_w \;\leftarrow\; \mat{R}(q_{\text{tilt}})\,\vct{m}_b,
   \]
   where $(\phi,\theta)$ are the current roll and pitch implied by the MEKF
-  quaternion, and $q_x(\cdot),q_y(\cdot)$ are axis-angle quaternions. Importantly,
-  $\vct{m}_b$ is not normalized in this step: the reference preserves the raw
-  sensor units (e.g., \si{\micro\tesla}), which keeps the subsequent measurement
-  model consistent in scale.
+  quaternion, and $q_x(\cdot),q_y(\cdot)$ are axis-angle quaternions.
 \end{itemize}
 Only after $\vct{B}_w$ is set does the filter apply magnetometer measurement
 updates (yaw correction) using the internal model $\hat{\vct{m}}_b =
