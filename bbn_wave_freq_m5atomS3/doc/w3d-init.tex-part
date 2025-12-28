@@ -74,6 +74,7 @@ the magnetometer norm via an EMA ratio test. This improves robustness when the
 platform is heeled or gently moving.
 \fi
 
+\iffalse
 \subsection{Bias Warm-Up and Unlock Conditions}
 To avoid corrupting accelerometer-bias estimates before yaw is stabilized, the
 implementation optionally freezes accelerometer-bias updates during Cold/TunerWarm
@@ -86,6 +87,7 @@ Bias learning is only enabled once:
 \end{enumerate}
 At that point the nominal $\mat{R}_{a}$ is restored and accelerometer-bias updates
 are enabled.
+\fi
 
 \iffalse
 \subsection{Automatic Tilt Reset and Re-Initialization}
