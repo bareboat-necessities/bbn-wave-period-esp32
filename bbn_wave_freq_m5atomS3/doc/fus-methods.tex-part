@@ -616,20 +616,6 @@ The reported directed azimuth is then
 $\Theta_k=\mathrm{sign}_k\cdot \theta$,
 with $180^\circ$ periodicity handled in post–processing (e.g.\ wrapping to $[0,360)$). Intuitively, $\theta$ specifies the wave line, while $\mathrm{sign}_k$ chooses which direction along that line is currently active.
 
-\section{Implementation and Parameterization}
-\label{sec:impl}
-
-This section provides concrete values and guards so others can reproduce the behavior and avoid unstable operating regions.
-
-\paragraph{Sampling} IMU and estimator run at $f_s=\SI{240}{Hz}$ ($\Delta t=1/f_s$). Magnetometer updates are gated for $T_{\mathrm{mag}}=\SI{5}{s}$ after start.
-
-\paragraph{Regularization law} With $c_R$ a dimensionless gain and XY anisotropy $\rho_{xy}\in(0,1)$:
-\[
-R_{S,\star}=c_R\,\sigma_{a,\star}\,\tau_\star^3,\qquad
-R_S=\mathrm{diag}(\rho_{xy}R_{S,\star},\,\rho_{xy}R_{S,\star},\,R_{S,\star}),
-\]
-typical values $c_R\in[2.4,2.5]$, $\rho_{xy}\in[0.05,0.07]$.
-
 % --- Reproducibility table (single-column friendly) ---
 \begin{table}[htbp]
   \centering
