@@ -47,6 +47,77 @@ For each time $t_k$, the simulator outputs world-frame reference $\big(\mathbf{p
 the surface particle (buoy) and body-frame IMU readings $\big(\mathbf{f}_b,\boldsymbol{\omega}_b\big)$, with magnetometer readings synthesis. 
 The directional sea models produce an Euler attitude for the advected buoy.
 
+\subsection{Testing and simulation methodology}
+All experiments are executed by a deterministic batch runner that processes a directory of synthetic wave
+scenarios stored as CSV files (\texttt{wave\_data\_*.csv}). Each file contains time-stamped ground truth
+(world-frame displacement/velocity/acceleration and reference Euler angles) together with idealized body-frame
+IMU triads. The runner applies a fixed sample period of $h=\Delta t=1/240~\mathrm{s}$ for the inertial loop and
+writes a corresponding output CSV (\texttt{w3d\_*\_fusion.csv} or \texttt{w3d\_*\_fusion\_nomag.csv}) containing both
+reference and estimated signals, including linear states, attitude, bias estimates, and tuning telemetry
+($f$, $\tau$, $\sigma_a$, $R_S$), as well as wave-direction diagnostics.
+
+\paragraph{Sensor synthesis, axis conventions, and update schedule.}
+The simulator streams ideal body-frame specific force $\vct{f}_b$ and angular rate $\vct{\omega}_b$ at the inertial
+rate (240~Hz). Because the archived CSV uses a body $Z$--up convention, each IMU triad is mapped into the filter's
+body--NED convention via a fixed axis transform before being passed to the estimator. Magnetometer measurements are
+generated from the ground-truth nautical Euler angles using a geomagnetic field model in physical units (e.g.\ $\mu$T),
+and are delivered at an independent output data rate (ODR) of 100~Hz with a hold-last-sample scheme between ticks.
+The filter is stepped once per inertial sample: a time update driven by $\vct{\omega}_{\text{meas}}$ and a rank--3
+accelerometer measurement update driven by $\vct{f}_{\text{meas}}$ are executed every $\Delta t$, while magnetometer
+updates are injected only on magnetometer ticks and only after a configured delay window used for magnetometer
+initialization and gating.
+
+\paragraph{Noise and bias models (repeatable Monte Carlo).}
+To evaluate robustness to realistic IMU errors, the runner optionally perturbs each ideal triad with a composite model
+\[
+\vct{y}_{\text{meas}}(t_k)
+= \vct{y}_{\text{true}}(t_k) + \vct{b}_0 + \vct{b}_{\mathrm{rw}}(t_k) + \vct{w}(t_k),
+\]
+where $\vct{w}$ is zero-mean white noise (per-sample RMS), $\vct{b}_0$ is a fixed residual bias drawn uniformly from a
+specified half-range (representing imperfect calibration), and $\vct{b}_{\mathrm{rw}}$ is a slowly drifting random-walk bias
+with increment standard deviation proportional to $\sqrt{\Delta t}$. Independent, fixed random seeds are used for the
+accelerometer and gyroscope generators to ensure bitwise-repeatable runs. For the magnetometer, the measurement model
+also includes residual soft-iron and misalignment via a near-identity matrix $\mat{M}_{\mathrm{is}}$:
+\[
+\vct{m}_{\text{meas}} = \mat{M}_{\mathrm{is}}\,\vct{m}_{\text{true}} + \vct{b}_{m,0} + \vct{b}_{m,\mathrm{rw}} + \vct{w}_m,
+\]
+with small random scale errors, cross-axis coupling, and a small random rotation, plus additive hard-iron residual and
+white noise per magnetometer sample. This separation allows evaluation of both additive-bias estimation and sensitivity
+to mild multiplicative distortion.
+
+\paragraph{Initialization and ablation toggles.}
+Each run begins with a known configuration: the estimator is initialized with conservative prior noise levels
+$(\sigma_a,\sigma_g,\sigma_m)$ and a fixed dominant-frequency guess ($f_0=0.3$~Hz) for frequency-linked subsystems.
+A magnetometer delay stage controls when the filter is permitted to use magnetometer updates; prior to that time, the
+estimator operates in an inertial-only mode. The runner supports two key ablations: \texttt{--nomag} disables magnetometer
+updates entirely, and \texttt{--no-noise} disables all synthetic noise/bias injection for a near-deterministic convergence
+check. An additional ``attitude-only'' mode can disable the OU-driven linear block and bias learning to isolate attitude
+behavior.
+
+\paragraph{Scoring window, metrics, and automated failure gates.}
+Performance is summarized over a fixed trailing window of $T_{\mathrm{RMS}}=60$~s. In that window the runner computes
+RMS displacement errors per axis and a 3D RMS error
+$\mathrm{RMS}_{3D}=\sqrt{\mathrm{RMS}_x^2+\mathrm{RMS}_y^2+\mathrm{RMS}_z^2}$.
+To avoid penalizing scenarios with small significant wave height $H_s$, the primary displacement score normalizes the
+3D error by the maximum true 3D displacement magnitude observed in the same window.
+Attitude performance is reported as RMS roll/pitch/yaw error (with wrapped yaw difference), and bias learning is
+reported as RMS estimation error relative to the maximum true bias magnitude encountered in the window (computed for
+accelerometer, gyroscope, and magnetometer). Runs are treated as pass/fail by strict gates:
+(i) a tight vertical displacement RMS gate (as \% of $H_s$),
+(ii) a 3D displacement gate (as \% of max $|\vct{p}_{\text{ref}}|$ in the window),
+(iii) a yaw RMS gate, and
+(iv) a 3D bias-error gate (as \% of max true bias). Any gate violation triggers an immediate failure, making the batch
+runner suitable for regression testing.
+
+\paragraph{Direction and tuner telemetry.}
+Alongside state accuracy, the runner logs and summarizes the dominant-frequency estimate and auto-tuner outputs
+($f$, $T_p$, $\tau$, $\sigma_a$, $R_S$) as time series. For wave direction, the runner reports axial (180$^\circ$-ambiguous)
+circular statistics over the last window by computing a mean direction and circular standard deviation using doubled-angle
+axial statistics, and it reports the fraction of samples deemed ``good'' by internal confidence/amplitude thresholds.
+A separate sign classifier produces the ``toward/away'' label, and its class counts are also reported over the scoring window.
+These diagnostics allow separating failures due to poor frequency tracking, poor linear-state convergence, or low directional
+signal-to-noise.
+
 % JONSWAP - medium
 
 \begin{figure}[!t]\centering
