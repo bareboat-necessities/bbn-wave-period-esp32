@@ -169,6 +169,7 @@ A separate sign classifier produces the ``toward/away'' label, and its class cou
   \end{tabular}
 \end{table}
 
+\medskip
 The full filter and simulation source code is available on GitHub in the Bareboat Necessities project, 
 implemented in modern idiomatic C++ with the embedded-friendly Eigen linear algebra library.
 
