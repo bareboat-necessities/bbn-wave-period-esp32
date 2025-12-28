@@ -23,9 +23,7 @@ shortest-arc rotation mapping $\vct{d}_b \mapsto \vct{d}_w$, i.e.,
 \[
 \mat{R}(q_{bw,0})\,\vct{d}_b = \vct{d}_w,
 \]
-which fixes roll and pitch while leaving yaw unconstrained. This is
-exactly the ``tilt-only'' alignment used throughout the startup logic;
-no declination/inclination model is required at this stage.
+which fixes roll and pitch while leaving yaw unconstrained.
 
 \subsection{Startup Stages and Warm-Up Policy}
 After tilt initialization, the system enters a staged mode schedule:
