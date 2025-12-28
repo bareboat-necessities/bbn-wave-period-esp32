@@ -2,7 +2,7 @@
 \label{sec:gps_fusion}
 
 The filter already maintains world-frame navigation states
-$\bm v\in\R^3$ and $\bm p\in\R^3$ (along with attitude), so GNSS/GPS can be fused as a
+$\bm v\in\R^3$ and $\bm p\in\R^3$, so GNSS/GPS can be fused as a
 low-rate absolute reference to control long-term drift.
 
 \subsection{Local frame and measurement preprocessing}
