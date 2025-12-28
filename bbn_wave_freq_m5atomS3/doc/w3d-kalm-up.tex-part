@@ -16,6 +16,19 @@ the signals enter the estimator as follows:
 \item The drift-control channel is a rank--3 \emph{pseudo}-measurement $\vct{z}_S=\vct{0}$ on the integral state $\vct{S}$
       (Sec.~\ref{sec:...}).
 \end{itemize}
+
+\paragraph{Gyroscope usage (time update, not a rank--3 measurement).}
+The gyroscope does not enter the rank--3 correction formulas above because it is treated as a
+\emph{control/propagation} input. With (optional) gyro bias $\vct{b}_g$ and white noise $\vct{\eta}_g$,
+\[
+\vct{\omega}_{\text{meas}} = \vct{\omega}_{\text{true}} + \vct{b}_g + \vct{\eta}_g,
+\qquad
+\hat{\vct{\omega}} \;=\; \vct{\omega}_{\text{meas}} - \hat{\vct{b}}_g .
+\]
+The nominal quaternion is advanced by $\hat{\vct{\omega}}$ via the discrete kinematics
+(e.g.\ $q^- = q^+ \otimes \exp_q(\tfrac{1}{2}\hat{\vct{\omega}}\,h)$), while the gyro noise and bias random walk
+enter the \emph{process} covariance $\mat{Q}_d$ of the attitude/bias block (Sec.~\ref{sec:block-Phi-Qd}).
+
 If an ``un-heeled'' effective body frame $B'$ is enabled, the measured triads are first mapped as
 $\vct{f}^{\,B'}_{\text{meas}}=\mat{R}_x(-h)\vct{f}^{\,B}_{\text{meas}}$ and
 $\vct{m}^{\,B'}_{\text{meas}}=\mat{R}_x(-h)\vct{m}^{\,B}_{\text{meas}}$; the attitude state is then interpreted as
