@@ -1,0 +1,143 @@
+\section{Possible GPS Fusion}
+\label{sec:gps_fusion}
+
+The filter already maintains world-frame navigation states
+$\bm v\in\mathbb{R}^3$, $\bm p\in\mathbb{R}^3$, and $\bm S=\int \bm p\,dt\in\mathbb{R}^3$
+alongside attitude (MEKF) and the latent OU world-acceleration $\bm a_w$.
+This makes it straightforward to incorporate GNSS/GPS as an additional, low-rate absolute
+measurement source that anchors long-term drift in $\bm v$ and $\bm p$.
+
+\subsection{Local NED frame and measurement preprocessing}
+\label{sec:gps_ned}
+
+Assume the filter operates in a local-level world frame $\mathcal{W}$ with NED axes
+($x$ North, $y$ East, $z$ Down). A raw GPS fix is typically available in geodetic
+coordinates (latitude, longitude, altitude). To fuse with the state $\bm p$,
+convert the GPS fix to a local tangent plane displacement about a chosen origin
+(e.g., the first accepted fix):
+\begin{equation}
+\bm z_p^{\mathcal{W}} = \mathrm{LLAtoNED}(\mathrm{LLA}_{\text{gps}};\ \mathrm{LLA}_0),
+\end{equation}
+with a corresponding covariance $\bm R_p$ derived from the receiver-reported accuracy
+(e.g., $\mathrm{HDOP}/\mathrm{VDOP}$, or provided $\sigma_N,\sigma_E,\sigma_D$).
+Velocity (if available) can be treated similarly:
+\begin{equation}
+\bm z_v^{\mathcal{W}} = \bm v_{\text{gps}}^{\mathcal{W}}, \qquad \bm R_v \succeq \bm 0.
+\end{equation}
+Because GNSS updates are asynchronous (e.g., 1--10 Hz) relative to the IMU rate,
+the usual pattern is: propagate with IMU to the measurement timestamp, then apply
+a measurement update using $\bm z_p$ (and optionally $\bm z_v$).
+
+\subsection{Loose coupling: direct position and velocity pseudo-measurements}
+\label{sec:gps_loose}
+
+The simplest fusion is \emph{loose coupling}: treat GPS position as a direct
+measurement of the position state,
+\begin{equation}
+\bm z_p = \bm p + \bm n_p, \qquad \bm n_p \sim \mathcal{N}(\bm 0,\bm R_p),
+\label{eq:gps_pos_loose}
+\end{equation}
+with measurement matrix selecting the $\bm p$ block:
+\begin{equation}
+\bm C_p \;=\; \begin{bmatrix} \bm 0 & \cdots & \bm I_{3} & \cdots & \bm 0 \end{bmatrix},
+\end{equation}
+so that the standard Kalman update applies (Joseph form recommended for symmetry/PSD):
+\begin{align}
+\bm r_p &= \bm z_p - \hat{\bm p},\\
+\bm S_p &= \bm C_p \bm P \bm C_p^\top + \bm R_p,\\
+\bm K_p &= \bm P \bm C_p^\top \bm S_p^{-1},\\
+\hat{\bm x}^+ &= \hat{\bm x} + \bm K_p \bm r_p,\\
+\bm P^+ &= (\bm I-\bm K_p\bm C_p)\bm P(\bm I-\bm K_p\bm C_p)^\top + \bm K_p\bm R_p\bm K_p^\top.
+\end{align}
+This update is exactly what \texttt{measurement\_update\_position\_pseudo(...)} implements
+for $\bm p$ (with diagonal $\bm R_p$ specified via per-axis standard deviations).
+
+If GPS velocity is available (Doppler or fused GNSS velocity), a second update can be added:
+\begin{equation}
+\bm z_v = \bm v + \bm n_v,\qquad \bm n_v\sim\mathcal{N}(\bm 0,\bm R_v),
+\label{eq:gps_vel_loose}
+\end{equation}
+with $\bm C_v$ selecting the $\bm v$ block. This typically improves short-term convergence
+and reduces the burden on the accelerometer model, especially during maneuvers.
+
+\paragraph{When loose coupling is sufficient.}
+For many small craft, the attitude-induced lever-arm effects between the GPS antenna
+and the filter reference point are modest relative to GNSS noise (meter-level),
+so \eqref{eq:gps_pos_loose}--\eqref{eq:gps_vel_loose} often perform well while keeping
+the implementation minimal and robust.
+
+\subsection{Tighter coupling: GPS antenna lever arm}
+\label{sec:gps_leverarm}
+
+If the filter state $\bm p$ represents the vessel reference point (e.g., CoG) while the GPS
+position is measured at an antenna displaced by a known lever arm $\bm r_{\text{gps}}^{\mathcal{B}}$
+in the physical body frame, a more accurate position measurement model is
+\begin{equation}
+\bm z_p \;=\; \bm p \;+\; \bm R_{bw}\,\bm r_{\text{gps}}^{\mathcal{B}} \;+\; \bm n_p,
+\label{eq:gps_pos_lever}
+\end{equation}
+where $\bm R_{bw}$ maps body (or the internal un-heeled body frame) to world.
+Linearizing \eqref{eq:gps_pos_lever} about the current attitude estimate yields
+\begin{equation}
+\bm r_p \approx
+\bm z_p - \left(\hat{\bm p} + \hat{\bm R}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}\right),
+\qquad
+\bm C_p = \big[\, \bm C_{\delta\theta}\;\; \cdots\;\; \bm I_3\;\; \cdots \big],
+\end{equation}
+with an attitude-error Jacobian of the generic form
+\begin{equation}
+\bm C_{\delta\theta} \;\approx\; \skew\!\big(\hat{\bm R}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}\big),
+\end{equation}
+where $\skew(\bm u)$ is the $3\times 3$ cross-product matrix such that
+$\skew(\bm u)\bm x = \bm u\times \bm x$.
+This couples GPS position residuals into attitude (and any correlated states) in a physically
+meaningful way. A similar tight model can be written for GPS velocity by accounting for
+rotational motion of the lever arm (optionally using the bias-corrected gyro):
+\begin{equation}
+\bm z_v \;\approx\; \bm v \;+\; \bm R_{bw}\big(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}\big)\;+\;\bm n_v,
+\end{equation}
+which is most useful when the antenna is far from the reference point or the craft exhibits
+large angular rates.
+
+\subsection{Practical considerations}
+\label{sec:gps_practical}
+
+\paragraph{Covariance selection and adaptivity.}
+Set $\bm R_p$ and $\bm R_v$ from GNSS-reported uncertainty (or empirical tuning). A common
+approach is to inflate the vertical variance (Down) relative to horizontal:
+$\sigma_D > \sigma_N \approx \sigma_E$.
+
+\paragraph{Outlier rejection and gating.}
+GNSS can produce occasional jumps (multipath, bad fixes). Gate updates by the normalized
+innovation squared (NIS):
+\begin{equation}
+\mathrm{NIS} = \bm r^\top \bm S^{-1} \bm r,
+\end{equation}
+and reject or down-weight updates above a $\chi^2$ threshold for 3 DoF.
+
+\paragraph{Interplay with the $\bm S$ pseudo-measurement.}
+With reliable GPS, the integral-drift pseudo-measurement on $\bm S$ can be weakened
+(increase $\bm R_S$) because GPS already anchors $\bm p$. Without GPS (or during outages),
+the $\bm S$ constraint remains valuable for bounding long-time drift in the wave-integration
+subsystem.
+
+\paragraph{Timestamp alignment.}
+For best results, apply GPS updates at the correct time. If the IMU is propagated at a fixed
+rate, it is usually sufficient to (i) buffer IMU samples, (ii) propagate to the GPS timestamp,
+(iii) apply the GNSS update, then (iv) replay IMU samples up to ``now'' (or accept a small latency).
+
+\paragraph{Position meaning: absolute vs.\ displacement.}
+If the application primarily cares about displacement/heave rather than global position,
+it is often preferable to define $\bm p$ as local displacement from an arbitrary origin
+(first fix) and fuse only the relative NED displacement. This avoids large geodetic numbers
+and keeps the covariance well-scaled.
+
+\subsection{Implementation sketch}
+\label{sec:gps_impl}
+
+In a loose-coupled configuration, GPS fusion can be as simple as calling
+\texttt{measurement\_update\_position\_pseudo(z\_p, sigma\_p)} when a fix arrives, and optionally
+adding an analogous \texttt{measurement\_update\_velocity\_pseudo} for $\bm v$.
+For tighter coupling with a GPS antenna lever arm, extend the position update to use the model
+\eqref{eq:gps_pos_lever} with the attitude Jacobian $\bm C_{\delta\theta}$, while keeping the
+same Joseph-form covariance update used throughout the filter.
