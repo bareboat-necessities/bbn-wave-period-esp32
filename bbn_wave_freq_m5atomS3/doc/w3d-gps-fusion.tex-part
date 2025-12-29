@@ -30,34 +30,34 @@ $\sigma_D>\sigma_N\approx\sigma_E$.
 \label{sec:gps_leverarm_short}
 
 Let the GNSS antenna be displaced from the filter reference point by a known lever arm
-$\bm r_{\text{gps}}^{\mathcal{B}}$ expressed in the body frame. With $\bm R_{bw}$ mapping body to
+$\bm r_{\text{gps}}^{\mathcal{B}}$ expressed in the body frame. With $\Rot_{bw}$ mapping body to
 world, the generic kinematics are
 \begin{align}
 \bm p_{\text{gps}}^{\mathcal{W}}
-&= \bm p^{\mathcal{W}} + \bm R_{bw}\,\bm r_{\text{gps}}^{\mathcal{B}},
+&= \bm p^{\mathcal{W}} + \Rot_{bw}\,\bm r_{\text{gps}}^{\mathcal{B}},
 \label{eq:gps_p_lever_short}
 \\
 \bm v_{\text{gps}}^{\mathcal{W}}
-&= \bm v^{\mathcal{W}} + \bm R_{bw}\big(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}\big),
+&= \bm v^{\mathcal{W}} + \Rot_{bw}\big(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}\big),
 \label{eq:gps_v_lever_short}
 \end{align}
 where $\bm\omega^{\mathcal{B}}$ is the body angular rate (ideally bias-corrected).
 
 These models are used as measurement predictions for position and velocity updates:
 \begin{equation}
-\bm z_p = \hat{\bm p} + \hat{\bm R}_{bw}\bm r_{\text{gps}}^{\mathcal{B}} + \bm n_p,
+\bm z_p = \hat{\bm p} + \hat{\Rot}_{bw}\bm r_{\text{gps}}^{\mathcal{B}} + \bm n_p,
 \qquad
-\bm z_v = \hat{\bm v} + \hat{\bm R}_{bw}(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}) + \bm n_v.
+\bm z_v = \hat{\bm v} + \hat{\Rot}_{bw}(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}) + \bm n_v.
 \end{equation}
 Linearizing the lever-arm term gives the standard attitude Jacobians
 \begin{equation}
-\frac{\partial}{\partial\,\delta\bm\theta}\!\left(\hat{\bm R}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}\right)
+\frac{\partial}{\partial\,\delta\bm\theta}\!\left(\hat{\Rot}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}\right)
 \approx
-\Skew{\hat{\bm R}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}},
+\Skew{\hat{\Rot}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}},
 \qquad
-\frac{\partial}{\partial\,\delta\bm\theta}\!\left(\hat{\bm R}_{bw}\bm u\right)
+\frac{\partial}{\partial\,\delta\bm\theta}\!\left(\hat{\Rot}_{bw}\bm u\right)
 \approx
-\Skew{\hat{\bm R}_{bw}\bm u},
+\Skew{\hat{\Rot}_{bw}\bm u},
 \ \ \bm u\triangleq\bm\omega^{\mathcal{B}}\times\bm r_{\text{gps}}^{\mathcal{B}}.
 \end{equation}
 
@@ -71,7 +71,7 @@ During aggressive boat maneuvers or with a long lever arm, the antenna experienc
 =
 \bm a^{\mathcal{W}}
 +
-\bm R_{bw}\Big(
+\Rot_{bw}\Big(
 \bm\alpha^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}
 +
 \bm\omega^{\mathcal{B}}\times(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}})
