@@ -29,8 +29,8 @@ which fixes roll and pitch while leaving yaw unconstrained.
 After tilt initialization, the system enters a staged mode schedule:
 \begin{enumerate}[label=(\roman*), leftmargin=*]
   \item \textbf{Cold:} entered at boot. The
-  extended linear block is disabled (attitude/bias MEKF only). If enabled,
-  accelerometer-bias learning is frozen and the accelerometer measurement
+  extended linear block is disabled (attitude/bias MEKF only). Accelerometer-bias 
+  learning is frozen and the accelerometer measurement
   noise is inflated to a warm-up value.
   \item \textbf{TunerWarm:} the frequency tracker and variance estimator
   collect statistics. Adaptation targets $(\tau,\sigma_a,R_S)$ are computed,
