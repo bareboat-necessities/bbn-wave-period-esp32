@@ -13,13 +13,13 @@ The specific force measured in the body frame is modeled as
 \begin{equation}
 \label{eq:acc-meas}
 \vct{f}_b
-= \mat{R}_{wb}\,(\vct{a}_w - \vct{g}_w)
+= \Rot_{wb}\,(\vct{a}_w - \vct{g}_w)
   + \vct{b}_a(T)
   + \vct{n}_a,
 \end{equation}
 where
 \begin{itemize}
-  \item $\mat{R}_{wb}$ is the world-to-body rotation matrix
+  \item $\Rot_{wb}$ is the world-to-body rotation matrix
         corresponding to quaternion~$q$,
   \item $\vct{g}_w = [0,\,0,\,g]^\top$ is the gravity vector
         in world coordinates ($g=9.80665~\mathrm{m/s^2}$),
@@ -37,14 +37,14 @@ right-multiplicative attitude convention, are
 \frac{\partial \vct{f}_b}{\partial \vct{\theta}}
   &= -\Skew{\hat{\vct{f}}_{\mathrm{cog},b}}, &
 \frac{\partial \vct{f}_b}{\partial \vct{a}_w}
-  &= \mat{R}_{wb}, &
+  &= \Rot_{wb}, &
 \frac{\partial \vct{f}_b}{\partial \vct{b}_a}
   &= \mat{I}_3,
 \end{align}
 where
 \(
 \hat{\vct{f}}_{\mathrm{cog},b}
-=\mat{R}_{wb}\,(\hat{\vct{a}}_w-\vct{g}_w)
+=\Rot_{wb}\,(\hat{\vct{a}}_w-\vct{g}_w)
 \)
 is the predicted center-of-gravity specific force
 (excluding the lever-arm term).
@@ -65,7 +65,7 @@ by the stationary OU acceleration covariance:
 \;\leftarrow\;
 \mat{S}_a
 +
-\mat{R}_{wb}\,\Sigma_{a_w}^{\mathrm{stat}}\,\mat{R}_{wb}^{\top},
+\Rot_{wb}\,\Sigma_{a_w}^{\mathrm{stat}}\,\Rot_{wb}^{\top},
 \end{equation}
 which is equivalent to marginalizing \(\vct{a}_w\) in the measurement update.
 \fi
@@ -75,7 +75,7 @@ which is equivalent to marginalizing \(\vct{a}_w\) in the measurement update.
 The predicted magnetic field in the body frame is
 \begin{equation}
 \label{eq:mag-meas}
-\vct{m}_b = \mat{R}_{wb}\,\vct{B}_w + \vct{n}_m,
+\vct{m}_b = \Rot_{wb}\,\vct{B}_w + \vct{n}_m,
 \end{equation}
 where $\vct{B}_w$ is the calibrated magnetic reference vector
 expressed in world coordinates (usually defined by local
@@ -95,7 +95,7 @@ The predicted magnetic field in the body frame is
 \label{eq:mag-meas}
 \vct{m}_b
 =
-\mat{R}_{wb}\,\vct{B}_w
+\Rot_{wb}\,\vct{B}_w
 + \vct{b}_m
 + \vct{n}_m,
 \end{equation}
@@ -183,7 +183,7 @@ optionally low-pass filtered. The specific force at the CoG in the body
 frame is
 \[
 \vct{f}_{\mathrm{cog},b}
-  = \mat{R}_{wb}\,(\vct{a}_w - \vct{g}_w),
+  = \Rot_{wb}\,(\vct{a}_w - \vct{g}_w),
 \]
 and the specific force at the IMU becomes
 \begin{equation}
@@ -209,7 +209,7 @@ filter state remain identical to those in~\eqref{eq:acc-meas}, with
 \frac{\partial \vct{f}_b}{\partial \vct{\theta}}
   &= -\Skew{\hat{\vct{f}}_{\mathrm{cog},b}}, &
 \frac{\partial \vct{f}_b}{\partial \vct{a}_w}
-  &= \mat{R}_{wb}, &
+  &= \Rot_{wb}, &
 \frac{\partial \vct{f}_b}{\partial \vct{b}_a}
   &= \mat{I}_3,
 \end{align}
