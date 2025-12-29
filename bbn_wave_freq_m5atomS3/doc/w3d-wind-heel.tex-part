@@ -10,7 +10,7 @@ $\mathcal{B}'$ and performs all inertial and magnetic measurement modeling in $\
 \paragraph{Frames and heel transform}
 Let $\mathcal{B}$ denote the \emph{physical} IMU/body frame mounted in the heeled boat, and
 let $\mathcal{B}'$ be an auxiliary frame obtained by applying the inverse heel rotation about
-the body $x$-axis. With a steady heel angle $\phi_h$ (radians), define the rotation
+the body $x$-axis. With a steady heel angle $\phi_h$, define the rotation
 \begin{equation}
 \mathbf{R}_{x}(-\phi_h) \;=\;
 \begin{bmatrix}
