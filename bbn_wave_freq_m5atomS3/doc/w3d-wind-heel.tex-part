@@ -1,11 +1,10 @@
 \subsection{Steady Wind-Heel Correction}
 \label{sec:heel}
 
-In many sailing applications the hull experiences a slowly varying \emph{steady wind heel},
+For a sailing vessel the hull experiences a slowly varying \emph{steady wind heel},
 well-approximated as a rotation about the physical body $x$-axis. If unmodeled, this
-quasi-static roll bias can leak into the attitude solution, distort accelerometer and
-magnetometer residuals, and (through cross-covariances) perturb the coupled navigation
-states. To mitigate this, the filter optionally introduces a \emph{virtual un-heeled body frame}
+quasi-static roll bias can leak into the attitude solution. 
+To mitigate this, the filter optionally introduces a \emph{virtual un-heeled body frame}
 $\mathcal{B}'$ and performs all inertial and magnetic measurement modeling in $\mathcal{B}'$.
 
 \paragraph{Frames and heel transform}
