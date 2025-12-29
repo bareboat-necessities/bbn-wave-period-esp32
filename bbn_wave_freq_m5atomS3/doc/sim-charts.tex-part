@@ -67,9 +67,9 @@ where $\vct{w}$ is zero-mean white noise (per-sample RMS), $\vct{b}_0$ is a fixe
 specified half-range (representing imperfect calibration), and $\vct{b}_{\mathrm{rw}}$ is a slowly drifting random-walk bias
 with increment standard deviation proportional to $\sqrt{\Delta t}$. Independent, fixed random seeds are used for the
 accelerometer and gyroscope generators to ensure bitwise-repeatable runs. For the magnetometer, the measurement model
-also includes residual soft-iron and misalignment via a near-identity matrix $\mat{M}_{\mathrm{is}}$:
+also includes residual soft-iron and misalignment via a near-identity matrix $\mat{M}_{\mathrm{mis}}$:
 \[
-\vct{m}_{\text{meas}} = \mat{M}_{\mathrm{is}}\,\vct{m}_{\text{true}} + \vct{b}_{m,0} + \vct{b}_{m,\mathrm{rw}} + \vct{w}_m,
+\vct{m}_{\text{meas}} = \mat{M}_{\mathrm{mis}}\,\vct{m}_{\text{true}} + \vct{b}_{m,0} + \vct{b}_{m,\mathrm{rw}} + \vct{w}_m,
 \]
 with small random scale errors, cross-axis coupling, and a small random rotation, plus additive hard-iron residual and
 white noise per magnetometer sample. This separation allows evaluation of both additive-bias estimation and sensitivity
