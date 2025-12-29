@@ -12,7 +12,7 @@ Let $\mathcal{B}$ denote the \emph{physical} IMU/body frame mounted in the heele
 let $\mathcal{B}'$ be an auxiliary frame obtained by applying the inverse heel rotation about
 the body $x$-axis. With a steady heel angle $\phi_h$, define the rotation
 \begin{equation}
-\mathbf{R}_{x}(-\phi_h) \;=\;
+\Rot_{x}(-\phi_h) \;=\;
 \begin{bmatrix}
 1 & 0 & 0\\
 0 & \cos(-\phi_h) & -\sin(-\phi_h)\\
@@ -22,11 +22,11 @@ the body $x$-axis. With a steady heel angle $\phi_h$, define the rotation
 Any physical-frame vector $\mathbf{v}_{\mathcal{B}}$ (accelerometer, magnetometer, or lever arm)
 is mapped to the virtual frame by
 \begin{equation}
-\mathbf{v}_{\mathcal{B}'} \;=\; \mathbf{R}_{x}(-\phi_h)\,\mathbf{v}_{\mathcal{B}}.
+\mathbf{v}_{\mathcal{B}'} \;=\; \Rot_{x}(-\phi_h)\,\mathbf{v}_{\mathcal{B}}.
 \label{eq:deheel}
 \end{equation}
 The attitude state maintained by the filter is the rotation from world (NED) to the
-virtual frame, $\mathbf{R}_{w b'}$, with the corresponding quaternion stored internally as
+virtual frame, $\Rot_{w b'}$, with the corresponding quaternion stored internally as
 $q_{w b'}$ (world$\rightarrow\mathcal{B}'$). The physical boat attitude
 (world$\rightarrow\mathcal{B}$, or $\mathcal{B}\rightarrow$world) can be recovered by composing
 with the heel rotation if desired; however, the measurement updates themselves are
@@ -37,12 +37,12 @@ Let $\mathbf{a}_w \in \mathbb{R}^3$ denote the latent world-frame inertial accel
 and $\mathbf{g}_w = [0,0,g]^\top$ be gravity in NED (down-positive). Ignoring lever-arm and
 bias terms for clarity, the specific force prediction in $\mathcal{B}'$ is
 \begin{equation}
-\hat{\mathbf{f}}_{\mathcal{B}'} \;=\; \mathbf{R}_{w b'}\left(\mathbf{a}_w - \mathbf{g}_w\right).
+\hat{\mathbf{f}}_{\mathcal{B}'} \;=\; \Rot_{w b'}\left(\mathbf{a}_w - \mathbf{g}_w\right).
 \label{eq:acc_pred_heel}
 \end{equation}
 The measured accelerometer vector is first \emph{de-heeled} using \eqref{eq:deheel},
 \begin{equation}
-\mathbf{f}^{\text{meas}}_{\mathcal{B}'} \;=\; \mathbf{R}_{x}(-\phi_h)\,\mathbf{f}^{\text{meas}}_{\mathcal{B}},
+\mathbf{f}^{\text{meas}}_{\mathcal{B}'} \;=\; \Rot_{x}(-\phi_h)\,\mathbf{f}^{\text{meas}}_{\mathcal{B}},
 \end{equation}
 and the innovation is formed as $\mathbf{r}_a = \mathbf{f}^{\text{meas}}_{\mathcal{B}'} -
 \hat{\mathbf{f}}_{\mathcal{B}'}$.
@@ -52,9 +52,8 @@ Similarly, the magnetometer measurement is mapped into $\mathcal{B}'$ before for
 residual. With a world-frame reference field $\mathbf{B}_w$,
 the predicted field in the virtual frame is
 \begin{equation}
-\hat{\mathbf{m}}_{\mathcal{B}'} \;=\; \mathbf{R}_{w b'}\,\mathbf{B}_w.
+\hat{\mathbf{m}}_{\mathcal{B}'} \;=\; \Rot_{w b'}\,\mathbf{B}_w.
 \end{equation}
 The measurement is de-heeled as
-$\mathbf{m}^{\text{meas}}_{\mathcal{B}'} = \mathbf{R}_{x}(-\phi_h)\,\mathbf{m}^{\text{meas}}_{\mathcal{B}}$,
+$\mathbf{m}^{\text{meas}}_{\mathcal{B}'} = \Rot_{x}(-\phi_h)\,\mathbf{m}^{\text{meas}}_{\mathcal{B}}$,
 and the innovation is $\mathbf{r}_m = \mathbf{m}^{\text{meas}}_{\mathcal{B}'} - \hat{\mathbf{m}}_{\mathcal{B}'}$.
-
