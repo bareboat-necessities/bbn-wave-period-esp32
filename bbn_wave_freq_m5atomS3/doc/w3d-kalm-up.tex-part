@@ -19,7 +19,7 @@ the signals enter the estimator as follows:
 
 \paragraph{Gyroscope usage (time update)}
 The gyroscope does not enter the rank--3 correction formulas above because it is treated as a
-\emph{control/propagation} input. With (optional) gyro bias $\vct{b}_g$ and white noise $\vct{\eta}_g$,
+\emph{control/propagation} input. With gyro bias $\vct{b}_g$ and white noise $\vct{\eta}_g$,
 \[
 \vct{\omega}_{\text{meas}} = \vct{\omega}_{\text{true}} + \vct{b}_g + \vct{\eta}_g,
 \qquad
