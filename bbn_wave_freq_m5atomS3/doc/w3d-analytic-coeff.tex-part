@@ -31,7 +31,9 @@ path that matches the Q-MEKF with piecewise-constant \(\hat{\vct{\omega}}=
         \]
         \(\matg{Q}_{bb}=\matg{Q}_{bg}\,h\),
         \(\matg{Q}_{\theta b}=\Big(\int_0^{h}\! \mat{B}(s)\,ds\Big)\matg{Q}_{bg}\),
-        with \(\Rot,\mat{B}\) the closed-form functions of \(\hat{\vct{\omega}}\)
+        with \(\Rot(s)\triangleq \exp\!\bigl(-\Skew{\hat{\vct{\omega}}}\,s\bigr)\in SO(3)\) the
+        attitude-error rotation (Rodrigues form for constant \(\hat{\vct{\omega}}\)),
+        and \(\mat{B}(s)\) the associated closed-form gyro-bias coupling term
         (exact for isotropic \(\matg{Q}_g\); Simpson quadrature otherwise).
 \end{itemize}
 
