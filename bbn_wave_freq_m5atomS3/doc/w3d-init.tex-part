@@ -21,7 +21,7 @@ A normalized ``down'' direction in the body frame is formed as
 The initial quaternion $q_{bw,0}$ (body $\to$ world) is chosen as the
 shortest-arc rotation mapping $\vct{d}_b \mapsto \vct{d}_w$, i.e.,
 \[
-\mat{R}(q_{bw,0})\,\vct{d}_b = \vct{d}_w,
+\Rot(q_{bw,0})\,\vct{d}_b = \vct{d}_w,
 \]
 which fixes roll and pitch while leaving yaw unconstrained.
 
@@ -53,14 +53,14 @@ establishes a \emph{world-frame magnetic reference} $\vct{B}_w$ in one of two wa
   field $\vct{m}_b$ into the world frame,
   \[
   q_{\text{tilt}} \;\triangleq\; q_y(\theta)\,\otimes\,q_x(\phi),\qquad
-  \vct{B}_w \;\leftarrow\; \mat{R}(q_{\text{tilt}})\,\vct{m}_b,
+  \vct{B}_w \;\leftarrow\; \Rot(q_{\text{tilt}})\,\vct{m}_b,
   \]
   where $(\phi,\theta)$ are the current roll and pitch implied by the MEKF
   quaternion, and $q_x(\cdot),q_y(\cdot)$ are axis-angle quaternions.
 \end{itemize}
 Only after $\vct{B}_w$ is set does the filter apply magnetometer measurement
 updates (yaw correction) using the internal model $\hat{\vct{m}}_b =
-\mat{R}_{wb}\,\vct{B}_w$.
+\Rot_{wb}\,\vct{B}_w$.
 
 \iffalse
 \paragraph{Quality gating.}
@@ -102,4 +102,3 @@ This mechanism makes the overall system resilient to large disturbances (e.g.,
 handling events or abrupt heel changes) by reverting to a conservative, observable
 tilt lock before resuming full fusion.
 \fi
-
