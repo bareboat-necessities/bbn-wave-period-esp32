@@ -11,7 +11,7 @@ tuner has reached a trusted state.
 On the first IMU sample, the filter initializes attitude from the
 accelerometer only (yaw-free). In the world NED convention used here,
 $\vct{e}_z = [0,\,0,\,1]^\top$ points \emph{down}. Let $\vct{a}_b$ denote
-the measured accelerometer vector in the body frame (units: \si{m/s^2}).
+the measured accelerometer vector in the body frame.
 A normalized ``down'' direction in the body frame is formed as
 \[
 \vct{d}_b \;\triangleq\; -\frac{\vct{a}_b}{\|\vct{a}_b\|},
