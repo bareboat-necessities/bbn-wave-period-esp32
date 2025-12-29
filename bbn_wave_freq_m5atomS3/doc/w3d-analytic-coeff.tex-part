@@ -26,12 +26,12 @@ path that matches the Q-MEKF with piecewise-constant \(\hat{\vct{\omega}}=
         the \(\delta\vct{\theta}\)–\(\vct{b}_g\) block is \(-\Id\,h\).
   \item \(\matg{Q}_{\!AA}(h)\) is built from rotation integrals:
         \[
-        \matg{Q}_{\theta\theta}=\int_0^{h}\! \mat{R}(s)\,\matg{Q}_g\,\mat{R}(s)^\top ds
+        \matg{Q}_{\theta\theta}=\int_0^{h}\! \Rot(s)\,\matg{Q}_g\,\Rot(s)^\top ds
         \;+\; \int_0^{h}\! \mat{B}(s)\,\matg{Q}_{bg}\,\mat{B}(s)^\top ds,
         \]
         \(\matg{Q}_{bb}=\matg{Q}_{bg}\,h\),
         \(\matg{Q}_{\theta b}=\Big(\int_0^{h}\! \mat{B}(s)\,ds\Big)\matg{Q}_{bg}\),
-        with \(\mat{R},\mat{B}\) the closed-form functions of \(\hat{\vct{\omega}}\)
+        with \(\Rot,\mat{B}\) the closed-form functions of \(\hat{\vct{\omega}}\)
         (exact for isotropic \(\matg{Q}_g\); Simpson quadrature otherwise).
 \end{itemize}
 
