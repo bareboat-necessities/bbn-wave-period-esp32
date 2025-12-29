@@ -42,7 +42,7 @@ Linearizing the attitude error dynamics gives the standard Q--MEKF form
 \vct{n}_g\sim\mathcal N(\vct{0},\ \matg{Q}_g),
 \label{eq:att-error}
 \end{equation}
-where $\matg{Q}_g$ is the gyro white–noise spectral density in rad$^2$/s.
+where $\matg{Q}_g$ is the gyro white–noise spectral density.
 
 \subsection{Linear kinematic chain with OU acceleration}
 Let $\vct{a}_w$ be the latent world–frame acceleration (NED). Along each axis
