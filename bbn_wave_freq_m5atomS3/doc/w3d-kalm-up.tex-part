@@ -14,7 +14,7 @@ the signals enter the estimator as follows:
 \item $\vct{m}_{\text{meas}}$ is a rank--3 EKF measurement with $\vct{z}_{\text{mag}}=\vct{m}_{\text{meas}}$
       when magnetometer updates are enabled/available.
 \item The drift-control channel is a rank--3 \emph{pseudo}-measurement $\vct{z}_S=\vct{0}$ on the integral state $\vct{S}$
-      (Sec.~\ref{sec:...}).
+      (Sec.~\ref{sec:measurement_model}).
 \end{itemize}
 
 \paragraph{Gyroscope usage (time update)}
