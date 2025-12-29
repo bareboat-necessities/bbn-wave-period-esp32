@@ -3,8 +3,8 @@
 
 \paragraph{From raw IMU streams to measurement vectors}
 At each IMU time step the hardware provides body-frame triads:
-gyroscope angular rate $\vct{\omega}_{\text{meas}}$ (rad/s), accelerometer specific force
-$\vct{f}_{\text{meas}}$ (m/s$^2$), and (optionally) magnetometer field $\vct{m}_{\text{meas}}$ (e.g.\ $\mu$T).
+gyroscope angular rate $\vct{\omega}_{\text{meas}}$, accelerometer specific force
+$\vct{f}_{\text{meas}}$, and magnetometer field $\vct{m}_{\text{meas}}$.
 After calibration (scale and axis mapping, hard/soft-iron correction, and fixed sensor offsets),
 the signals enter the estimator as follows:
 \begin{itemize}\itemsep2pt
