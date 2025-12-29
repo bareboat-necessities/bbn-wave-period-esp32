@@ -30,9 +30,9 @@ The nominal quaternion is advanced by $\hat{\vct{\omega}}$ via the discrete kine
 enter the \emph{process} covariance $\mat{Q}_d$ of the attitude/bias block (Sec.~\ref{sec:block-Phi-Qd}).
 
 If an ``un-heeled'' effective body frame $B'$ is enabled, the measured triads are first mapped as
-$\vct{f}^{\,B'}_{\text{meas}}=\mat{R}_x(-h)\vct{f}^{\,B}_{\text{meas}}$ and
-$\vct{m}^{\,B'}_{\text{meas}}=\mat{R}_x(-h)\vct{m}^{\,B}_{\text{meas}}$; the attitude state is then interpreted as
-world$\to B'$. For notational simplicity we continue to write $\mat{R}_{wb}$ for the world$\to$(effective body) rotation
+$\vct{f}^{\,B'}_{\text{meas}}=\Rot_x(-h)\vct{f}^{\,B}_{\text{meas}}$ and
+$\vct{m}^{\,B'}_{\text{meas}}=\Rot_x(-h)\vct{m}^{\,B}_{\text{meas}}$; the attitude state is then interpreted as
+world$\to B'$. For notational simplicity we continue to write $\Rot_{wb}$ for the world$\to$(effective body) rotation
 used by the measurement models.
 
 Let the predicted pair be $(\hat{\vct{x}}^{-},\mat{P}^{-})$ and an $m$–dimensional measurement model
@@ -119,7 +119,7 @@ For a world-frame reference field $\vct{B}_w$ (in physical units), the measureme
 $\vct{z}_{\text{mag}}=\vct{m}_{\text{meas}}$ and the model (with the standard sign fix) is
 \[
 \fitcol{
-\vct{z}_{\text{mag}} \;=\; \mat{R}_{wb}\,\vct{B}_w + \vct{\nu}_m,\qquad
+\vct{z}_{\text{mag}} \;=\; \Rot_{wb}\,\vct{B}_w + \vct{\nu}_m,\qquad
 \mat{C}=\bigl[\,\mat{C}_A\ \ \mat{0}\ \ \mat{0}\,\bigr],\quad
 \mat{C}_A \;=\; -\Skew{\hat{v}_2}\in\mathbb{R}^{3\times 3}.
 }
@@ -143,7 +143,7 @@ The posterior covariance then follows from the Joseph form, and the right--multi
 For specific force in body coordinates, the measurement vector is $\vct{z}_{\text{acc}}=\vct{f}_{\text{meas}}$ and
 \[
 \fitcol{
-\vct{z}_{\text{acc}} \;=\; \mat{R}_{wb}\bigl(\vct{a}_w-\vct{g}\bigr) + \vct{b}_a + \vct{\nu}_a,
+\vct{z}_{\text{acc}} \;=\; \Rot_{wb}\bigl(\vct{a}_w-\vct{g}\bigr) + \vct{b}_a + \vct{\nu}_a,
 }
 \]
 (optionally with a known lever-arm kinematic term added to the predicted measurement).
@@ -152,7 +152,7 @@ The Jacobian touches three groups:
 \fitcol{
 \mat{C}=\bigl[\,\mat{C}_A\ \ \mat{C}_L\ \ \mat{C}_B\,\bigr],\quad
 \mat{C}_A = -\Skew{\hat{f}_b},\quad
-\mat{C}_L = \begin{bmatrix}\mat{0}_{3\times 9} & \mat{R}_{wb}\end{bmatrix},\quad
+\mat{C}_L = \begin{bmatrix}\mat{0}_{3\times 9} & \Rot_{wb}\end{bmatrix},\quad
 \mat{C}_B = \mat{I}_3.
 }
 \]
@@ -163,7 +163,7 @@ The rank--3 structure again yields
 \]
 with $\mat{P}\mat{C}^\top$ assembled from the covariance blocks as above.
 \emph{This is precisely how the body-frame accelerometer residual updates the world-frame latent acceleration:}
-since $\partial h_{\text{acc}}/\partial \vct{a}_w = \mat{R}_{wb}$, the correction
+since $\partial h_{\text{acc}}/\partial \vct{a}_w = \Rot_{wb}$, the correction
 $\hat{\vct{x}}^{+}=\hat{\vct{x}}^{-}+\mat{K}\vct{r}$ contains a nonzero $\delta\vct{a}_w$ block,
 i.e.\ $\delta\vct{a}_w=(\mat{K}\vct{r})_{\vct{a}_w}$.
 
