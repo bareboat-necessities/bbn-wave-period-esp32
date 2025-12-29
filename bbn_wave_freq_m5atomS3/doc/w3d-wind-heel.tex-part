@@ -52,9 +52,9 @@ Similarly, the magnetometer measurement is mapped into $\mathcal{B}'$ before for
 residual. With a world-frame reference field $\mathbf{B}_w$,
 the predicted field in the virtual frame is
 \begin{equation}
-\hat{\mathbf{m}}_{\mathcal{B}'} \;=\; \mathbf{R}_{w b'}\,\mathbf{B}_w \;(+\, \mathbf{b}_m),
+\hat{\mathbf{m}}_{\mathcal{B}'} \;=\; \mathbf{R}_{w b'}\,\mathbf{B}_w.
 \end{equation}
-where $\mathbf{b}_m$ is an optional hard-iron bias state. The measurement is de-heeled as
+The measurement is de-heeled as
 $\mathbf{m}^{\text{meas}}_{\mathcal{B}'} = \mathbf{R}_{x}(-\phi_h)\,\mathbf{m}^{\text{meas}}_{\mathcal{B}}$,
 and the innovation is $\mathbf{r}_m = \mathbf{m}^{\text{meas}}_{\mathcal{B}'} - \hat{\mathbf{m}}_{\mathcal{B}'}$.
 
