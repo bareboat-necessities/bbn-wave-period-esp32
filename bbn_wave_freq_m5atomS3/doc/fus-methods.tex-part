@@ -5,7 +5,7 @@
 To estimate parameters adaptively we need a stable, real-time estimate of the dominant frequency of acceleration from the IMU. Using the vertical specific force $a_z(t)$, we normalize by gravity to form a dimensionless input $u(t)$ that drives one of three trackers. Each tracker outputs a raw frequency, which is then clamped and smoothed to produce a reliable $\bar f_k$ for downstream adaptation and direction estimation.
 
 \paragraph{Signal}
-Track frequency from the vertical specific force $a_z(t)$ (IMU; body $\to$ world-aligned), normalized by $g$:
+Track frequency from the vertical specific force $a_z(t)$ (IMU; body), normalized by $g$:
 \[
 u(t)=\frac{a_z(t)}{g}.
 \]
