@@ -1,4 +1,5 @@
 \section{Measurement Model}
+\label{sec:measurement_model}
 
 The filter employs three complementary measurement channels:
 the accelerometer, the magnetometer, and a zero-valued
