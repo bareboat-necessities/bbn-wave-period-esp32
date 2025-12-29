@@ -81,8 +81,7 @@ are supported: the \textit{KalmANF adaptive notch filter},
 and the \textit{Aranovskiy frequency estimator}. The dominant frequency inferred from
 these modules provides an updated correlation time \(\tau\), while the
 stationary variance \(\sigma_{aw}^2\) is estimated directly in the time
-domain from the exponentially weighted acceleration variance. The
-pseudo-measurement noise \(R_S\) is then adapted through a spectrally
+domain. The pseudo-measurement noise \(R_S\) is then adapted through a spectrally
 motivated regularization law,
 \[
 R_S \propto \sigma_{aw} \tau^3,
