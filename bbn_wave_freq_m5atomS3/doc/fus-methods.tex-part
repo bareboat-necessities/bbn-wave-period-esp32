@@ -298,13 +298,18 @@ A dominant frequency estimate $f$ is tracked from $a_{\uparrow}$ (Aranovskiy or 
 then clamped and smoothed to an internal tuning frequency $f_{\text{tune}}\in[f_{\min},f_{\max}]$.
 To make the acceleration scale adapt with comparable responsiveness across chop and swell,
 the variance of $a_{\uparrow}$ is estimated over a \emph{fixed number of periods}:
-\[
-T_{\text{eff}}=\frac{1}{f_{\text{tune}}},
-\qquad
-\tau_{\text{var}}=\clip\!\Big(K_{\text{periods}}\,T_{\text{eff}},\ \tau_{\text{var,min}},\ \tau_{\text{var,max}}\Big),
-\qquad
-\alpha_{\text{var}}=1-e^{-\Delta t/\tau_{\text{var}}}.
-\]
+\begin{equation}
+\begin{aligned}
+T_{\text{eff}} &= \frac{1}{f_{\text{tune}}},\\
+\tau_{\text{var}} &=
+\clip\!\Big(
+K_{\text{periods}}\,T_{\text{eff}},
+\ \tau_{\text{var,min}},
+\ \tau_{\text{var,max}}
+\Big),\\
+\alpha_{\text{var}} &= 1 - \exp\!\bigl(-\Delta t/\tau_{\text{var}}\bigr).
+\end{aligned}
+\end{equation}
 Using $\alpha_{\text{var}}$, the tuner maintains an online estimate $\widehat{\sigma}^2_{\text{tot}}\approx\mathrm{Var}[a_{\uparrow}]$.
 
 \paragraph{Noise-floor subtraction.}
@@ -316,32 +321,36 @@ A configured acceleration noise floor $\sigma_{\text{nf}}$ is subtracted in vari
 
 \paragraph{Targets (half-period scaling).}
 Targets follow the half-period rule and the cubic $R_S$ scaling:
-\[
-\tau_\star = c_{\tau}\,\frac{1}{2f_{\text{tune}}},
-\qquad
-\sigma_{a,\star} = c_{\sigma}\,\sqrt{\max(\widehat{\sigma}^2_{\text{wave}},\epsilon)},
-\qquad
-R_{S,\star}=c_R\,\sigma_{a,\star}\,\tau_\star^3.
-\]
+\begin{equation}\label{eq:tuner-targets}
+\begin{aligned}
+\tau_\star &= c_{\tau}\,\frac{1}{2f_{\text{tune}}},\\
+\sigma_{a,\star} &= c_{\sigma}\,\sqrt{\max\!\bigl(\widehat{\sigma}^2_{\text{wave}},\epsilon\bigr)},\\
+R_{S,\star} &= c_R\,\sigma_{a,\star}\,\tau_\star^3.
+\end{aligned}
+\end{equation}
 
 \paragraph{Smoothing.}
 Applied $(\tau,\sigma_a)$ are first-order filtered toward their targets with a fixed adaptation time constant
 $\tau_{\text{adapt}}$:
-\[
-\alpha=1-e^{-\Delta t/\tau_{\text{adapt}}},
-\quad
-\tau_{\text{appl}}\!\leftarrow\!\tau_{\text{appl}}+\alpha(\tau_\star-\tau_{\text{appl}}),
-\quad
-\sigma_{a,\text{appl}}\!\leftarrow\!\sigma_{a,\text{appl}}+\alpha(\sigma_{a,\star}-\sigma_{a,\text{appl}}).
-\]
+\begin{equation}\label{eq:adapt-ewma}
+\begin{aligned}
+\alpha &= 1 - \exp\!\bigl(-\Delta t/\tau_{\text{adapt}}\bigr),\\
+\tau_{\text{appl}} &\leftarrow \tau_{\text{appl}} + \alpha\bigl(\tau_\star - \tau_{\text{appl}}\bigr),\\
+\sigma_{a,\text{appl}} &\leftarrow \sigma_{a,\text{appl}}
+  + \alpha\bigl(\sigma_{a,\star} - \sigma_{a,\text{appl}}\bigr).
+\end{aligned}
+\end{equation}
+
 In contrast, $R_S$ is smoothed with a time constant proportional to the current wave time scale:
-\[
-\tau_{R_S}=m_{R_S}\,\tau_\star,
-\qquad
-\alpha_{R_S}=1-e^{-\Delta t/\tau_{R_S}},
-\qquad
-R_{S,\text{appl}}\leftarrow R_{S,\text{appl}}+\alpha_{R_S}(R_{S,\star}-R_{S,\text{appl}}).
-\]
+\begin{equation}\label{eq:adapt-RS}
+\begin{aligned}
+\tau_{R_S} &= m_{R_S}\,\tau_\star,\\
+\alpha_{R_S} &= 1 - \exp\!\bigl(-\Delta t/\tau_{R_S}\bigr),\\
+R_{S,\text{appl}} &\leftarrow R_{S,\text{appl}}
+ + \alpha_{R_S}\bigl(R_{S,\star} - R_{S,\text{appl}}\bigr).
+\end{aligned}
+\end{equation}
+
 Thus $R_S$ responds faster for short-period seas and more slowly for long-period swell.
 All parameters are clamped to configured safety bounds and enabled only after warm-up.
 
