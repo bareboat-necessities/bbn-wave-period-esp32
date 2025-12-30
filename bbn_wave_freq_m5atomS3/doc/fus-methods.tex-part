@@ -323,7 +323,7 @@ A configured acceleration noise floor $\sigma_{\text{nf}}$ is subtracted in vari
 Targets follow the half-period rule and the cubic $R_S$ scaling:
 \begin{equation}\label{eq:tuner-targets}
 \begin{aligned}
-\tau_\star &= c_{\tau}\,\frac{1}{2f_{\text{tune}}},\\
+\tau_\star = c_{\tau}\,\frac{1}{2f_{\text{tune}}},\qquad
 \sigma_{a,\star} &= c_{\sigma}\,\sqrt{\max\!\bigl(\widehat{\sigma}^2_{\text{wave}},\epsilon\bigr)},\\
 R_{S,\star} &= c_R\,\sigma_{a,\star}\,\tau_\star^3.
 \end{aligned}
@@ -344,7 +344,7 @@ $\tau_{\text{adapt}}$:
 In contrast, $R_S$ is smoothed with a time constant proportional to the current wave time scale:
 \begin{equation}\label{eq:adapt-RS}
 \begin{aligned}
-\tau_{R_S} &= m_{R_S}\,\tau_\star,\\
+\tau_{R_S} = m_{R_S}\,\tau_\star,\qquad
 \alpha_{R_S} &= 1 - \exp\!\bigl(-\Delta t/\tau_{R_S}\bigr),\\
 R_{S,\text{appl}} &\leftarrow R_{S,\text{appl}}
  + \alpha_{R_S}\bigl(R_{S,\star} - R_{S,\text{appl}}\bigr).
