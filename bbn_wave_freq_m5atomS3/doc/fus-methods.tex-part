@@ -364,7 +364,7 @@ and the $S$ pseudo-measurement uses anisotropic noise
 \]
 
 \subsubsection{Optional drift correction via a displacement envelope}
-An extra drift correction be enabled to damp rare large heave drift excursions using a
+An extra drift correction can be enabled to damp large heave drift excursions using a
 \emph{displacement envelope} derived from the current targets $(\sigma_{a,\star},\tau_\star)$.
 Approximating the dominant motion as narrowband with $\omega\approx\pi/\tau_\star$,
 a sinusoid gives $\sigma_\eta \approx \sigma_{a,\star}/\omega^2 \approx \sigma_{a,\star}\tau_\star^2/\pi^2$.
