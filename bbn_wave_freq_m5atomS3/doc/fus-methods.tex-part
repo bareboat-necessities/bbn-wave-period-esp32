@@ -283,141 +283,103 @@ $k_i$ and on spectral shape.
 \label{sec:adapt-impl}
 
 The implementation adapts three MEKF parameters online:
-(i) OU time constant $\tau$, (ii) OU stationary acceleration scale $\sigma_a$,
-and (iii) the $S$ pseudo-measurement noise $R_S$.
-The adaptation is driven by smoothed dominant frequency and debiased vertical-acceleration variance,
-with explicit warmup stages, stillness handling, and safety bounds.
+the OU time constant $\tau$, the OU stationary acceleration scale $\sigma_a$,
+and the integral pseudo-measurement level $R_S$.
 
-\paragraph{Signals used}
-Let $a_{z,\text{inert}} = a_z + g$ denote vertical inertial acceleration in the body/NED convention used by the filter.
-The code uses the \emph{up-positive} vertical signal
+\paragraph{Vertical signal.}
+Let $a_{z,\text{inert}}=a_z+g$ denote vertical inertial acceleration in the body/NED convention.
+We use the up-positive signal
 \[
-a_{\uparrow} := -a_{z,\text{inert}}.
-\]
-Before frequency tracking, $a_{\uparrow}$ is low-pass filtered (engine/noise rejection) to obtain $a_{\uparrow,\text{LP}}$.
-
-\subsubsection{Frequency tracking with stillness relaxation and dual smoothers}
-A tracker (Aranovskiy/KalmANF) produces a raw estimate $f_{\text{trk}}$ from $a_{\uparrow,\text{LP}}$.
-A stillness detector monitors an EMA of normalized energy $(a_{\uparrow}/g)^2$; if the system is still for long enough
-(about a couple of seconds), the internal frequency state relaxes toward a low target frequency (typically $f_{\min}$).
-Denote the stillness-adjusted output by
-\[
-f_{\text{still}} = \mathcal{S}\!\left(a_{\uparrow,\text{LP}}, f_{\text{trk}}\right).
+a_{\uparrow}:=-a_{z,\text{inert}}.
 \]
 
-Two additional first-order smoothers are then applied:
-a \emph{fast} branch for demodulation/direction and a \emph{slow} branch for tuning/moments,
+\paragraph{Frequency and period-tied variance horizon.}
+A dominant frequency estimate $f$ is tracked from $a_{\uparrow}$ (Aranovskiy or \textsc{KalmANF}),
+then clamped and smoothed to an internal tuning frequency $f_{\text{tune}}\in[f_{\min},f_{\max}]$.
+To make the acceleration scale adapt with comparable responsiveness across chop and swell,
+the variance of $a_{\uparrow}$ is estimated over a \emph{fixed number of periods}:
 \[
-f_{\text{fast}} = \mathrm{LP}_\text{fast}(f_{\text{still}}),\qquad
-f_{\text{slow}} = \mathrm{LP}_\text{slow}(f_{\text{fast}}),
-\]
-followed by clamping to $[f_{\min},f_{\max}]$.
-The direction estimator uses $f_{\text{fast}}$, while the tuner uses a frequency signal derived from $f_{\text{still}}$
-(and its own internal debiased smoothing).
-
-\subsubsection{Debiased frequency smoothing and period-tied variance horizon}
-The tuner maintains \emph{debiased} EMAs (value+weight) so that estimates do not depend on initial conditions during warmup.
-Given the input frequency $f_{\text{still}}$, the tuner forms an internal smoothed frequency $f_{\text{tune}}$ using a
-fixed time constant $\tau_{\text{freq}}$ (seconds):
-\begin{equation}
-\label{eq:alpha-freq-impl}
-\alpha_{\text{freq}} = 1-e^{-\Delta t/\tau_{\text{freq}}},\qquad
-f_{\text{tune}}\leftarrow \mathrm{EMA}_{\text{debias}}(f_{\text{still}};\alpha_{\text{freq}}).
-\end{equation}
-For the variance horizon, the tuner converts the (ready) smoothed frequency into an effective period
-$T_{\text{eff}}=1/f_{\text{tune}}$ (with internal clamping to avoid pathological horizons at tiny/huge frequencies),
-and chooses a \emph{dynamic} variance time constant proportional to a small number of periods:
-\begin{equation}
-\label{eq:tau-var-dyn-impl}
-\tau_{\text{var}}(k)
-=
-\clip\!\Big(K_{\text{periods}}\,T_{\text{eff}}(k),\ \tau_{\text{var,min}},\ \tau_{\text{var,max}}\Big),
+T_{\text{eff}}=\frac{1}{f_{\text{tune}}},
 \qquad
-\alpha_{\text{var}}(k) = 1-e^{-\Delta t/\tau_{\text{var}}(k)}.
-\end{equation}
-Here $K_{\text{periods}}$ is a dimensionless “horizon in periods” parameter.
-Since an EMA reaches $\approx95\%$ in about $3\tau_{\text{var}}$, $K_{\text{periods}}\approx2$ corresponds to
-roughly $\sim6$ effective periods for a $\sim95\%$ response, yielding consistent variance behavior across both chop and swell.
-
-\subsubsection{Debiased variance estimate, noise-floor subtraction, and stillness attenuation}
-Using $\alpha_{\text{var}}(k)$, the tuner maintains debiased EMAs of the mean and second moment of $a_{\uparrow}$ and forms
-an instantaneous variance estimate,
-\[
-\widehat{\mu}\leftarrow \mathrm{EMA}_{\text{debias}}(a_{\uparrow};\alpha_{\text{var}}),\qquad
-\widehat{m}_2\leftarrow \mathrm{EMA}_{\text{debias}}(a_{\uparrow}^2;\alpha_{\text{var}}),\qquad
-\widehat{\sigma}^2_{\text{inst}}=\max\{0,\ \widehat{m}_2-\widehat{\mu}^{\,2}\},
+\tau_{\text{var}}=\clip\!\Big(K_{\text{periods}}\,T_{\text{eff}},\ \tau_{\text{var,min}},\ \tau_{\text{var,max}}\Big),
+\qquad
+\alpha_{\text{var}}=1-e^{-\Delta t/\tau_{\text{var}}}.
 \]
-which is itself low-passed by another debiased EMA (same $\alpha_{\text{var}}$) to produce a total variance estimate
-$\widehat{\sigma}^2_{\text{tot}}$.
-A configured vertical acceleration noise floor $\sigma_{\text{nf}}$ is subtracted in variance:
+Using $\alpha_{\text{var}}$, the tuner maintains an online estimate $\widehat{\sigma}^2_{\text{tot}}\approx\mathrm{Var}[a_{\uparrow}]$.
+
+\paragraph{Noise-floor subtraction.}
+A configured acceleration noise floor $\sigma_{\text{nf}}$ is subtracted in variance:
 \[
 \widehat{\sigma}^2_{\text{wave}}
-= \max\!\bigl\{0,\ \widehat{\sigma}^2_{\text{tot}} - \sigma_{\text{nf}}^2\bigr\}.
+=\max\{0,\ \widehat{\sigma}^2_{\text{tot}}-\sigma_{\text{nf}}^2\}.
 \]
-During detected stillness, the wave variance is additionally attenuated by an exponential factor that depends on still time,
-so that tuning collapses smoothly toward the noise-floor regime when the platform is not wave-excited.
 
-\subsubsection{Targets and bounds}
-Let $f_{\text{tune}}$ be the tuner’s internal smoothed frequency (clamped to $[f_{\min},f_{\max}]$).
-The OU time-constant target is proportional to the half-period:
-\begin{equation}
-\label{eq:tau-target-impl}
-\tau_\star
-= c_{\tau}\,\frac{1}{2 f_{\text{tune}}},
-\end{equation}
-where $c_{\tau}$ is a dimensionless coefficient.
-The acceleration-scale target is taken from the wave-only variance,
-\begin{equation}
-\label{eq:sigma-target-impl}
-\sigma_{a,\star}
-= c_{\sigma}\,\sqrt{\max(\widehat{\sigma}^2_{\text{wave}},\epsilon)},
-\end{equation}
-with $c_{\sigma}$ a dimensionless reduction factor compensating for
-known inflation of raw variance under real sensor noise and model mismatch.
-The integral pseudo-measurement target follows the cubic scaling law,
-\begin{equation}
-\label{eq:Rs-target-impl}
-R_{S,\star}
-= c_R\,\sigma_{a,\star}\,\tau_\star^3
-\end{equation}
-
-\subsubsection{Application to the MEKF: two-rate smoothing, with $\tau$-dependent $R_S$ time constant}
-Targets are blended into applied parameters continuously, but only \emph{committed} to the MEKF every $\Delta t_{\text{apply}}$.
-The OU parameters $(\tau,\sigma_a)$ share a fixed adaptation time constant $\tau_{\text{adapt}}$:
+\paragraph{Targets (half-period scaling).}
+Targets follow the half-period rule and the cubic $R_S$ scaling:
 \[
-\alpha = 1-e^{-\Delta t/\tau_{\text{adapt}}},\qquad
-\tau_{\text{appl}}\leftarrow \tau_{\text{appl}} + \alpha(\tau_\star-\tau_{\text{appl}}),\qquad
-\sigma_{a,\text{appl}}\leftarrow \sigma_{a,\text{appl}} + \alpha(\sigma_{a,\star}-\sigma_{a,\text{appl}}).
+\tau_\star = c_{\tau}\,\frac{1}{2f_{\text{tune}}},
+\qquad
+\sigma_{a,\star} = c_{\sigma}\,\sqrt{\max(\widehat{\sigma}^2_{\text{wave}},\epsilon)},
+\qquad
+R_{S,\star}=c_R\,\sigma_{a,\star}\,\tau_\star^3.
 \]
-In contrast, $R_S$ is smoothed with a \emph{time constant proportional to the current wave time scale}:
-\begin{equation}
-\label{eq:Rs-smoothing-taudep}
-\tau_{R_S} = m_{R_S}\,\tau_\star,\qquad
-\alpha_{R_S}=1-e^{-\Delta t/\tau_{R_S}},\qquad
-R_{S,\text{appl}}\leftarrow R_{S,\text{appl}} + \alpha_{R_S}(R_{S,\star}-R_{S,\text{appl}}),
-\end{equation}
-with $m_{R_S}$ dimensionless.
-This makes $R_S$ respond faster for short-period seas and more slowly for long-period swell, reducing tuning chatter.
 
-\paragraph{Anisotropy}
-When committing parameters, the MEKF uses an anisotropic OU stationary standard deviation
+\paragraph{Smoothing.}
+Applied $(\tau,\sigma_a)$ are first-order filtered toward their targets with a fixed adaptation time constant
+$\tau_{\text{adapt}}$:
 \[
-\Sigma_{a_w}^{1/2}=\mathrm{diag}(S_{\sigma}\,\sigma_{a,\text{appl}},\ S_{\sigma}\,\sigma_{a,\text{appl}},\ \sigma_{a,\text{appl}}),
+\alpha=1-e^{-\Delta t/\tau_{\text{adapt}}},
+\quad
+\tau_{\text{appl}}\!\leftarrow\!\tau_{\text{appl}}+\alpha(\tau_\star-\tau_{\text{appl}}),
+\quad
+\sigma_{a,\text{appl}}\!\leftarrow\!\sigma_{a,\text{appl}}+\alpha(\sigma_{a,\star}-\sigma_{a,\text{appl}}).
 \]
-where $S_{\sigma}>0$, and an anisotropic $S$ pseudo-measurement noise
+In contrast, $R_S$ is smoothed with a time constant proportional to the current wave time scale:
 \[
-\mat{R}_S
-= \mathrm{diag}(\rho_{xy} R_{S,\text{appl}},\ \rho_{xy} R_{S,\text{appl}},\ R_{S,\text{appl}}),
-\qquad \rho_{xy}\in[0,1]
+\tau_{R_S}=m_{R_S}\,\tau_\star,
+\qquad
+\alpha_{R_S}=1-e^{-\Delta t/\tau_{R_S}},
+\qquad
+R_{S,\text{appl}}\leftarrow R_{S,\text{appl}}+\alpha_{R_S}(R_{S,\star}-R_{S,\text{appl}}).
+\]
+Thus $R_S$ responds faster for short-period seas and more slowly for long-period swell.
+All parameters are clamped to configured safety bounds and enabled only after warm-up.
+
+\paragraph{Anisotropy.}
+When applied to the MEKF, the OU stationary standard deviation is set anisotropically,
+\[
+\Sigma_{a_w}^{1/2}=\diag(S_{\sigma}\sigma_{a,\text{appl}},\ S_{\sigma}\sigma_{a,\text{appl}},\ \sigma_{a,\text{appl}}),
+\]
+and the $S$ pseudo-measurement uses anisotropic noise
+\[
+\mat{R}_S=\diag(\rho_{xy}R_{S,\text{appl}},\ \rho_{xy}R_{S,\text{appl}},\ R_{S,\text{appl}}).
 \]
 
-A minimum floor is enforced on the OU scale (at least the configured noise floor) so that attitude-only marginalization
-does not become numerically brittle.
+\paragraph{Optional drift correction via a displacement envelope.}
+An additional safety valve can be enabled to damp rare large heave drift excursions using a
+\emph{displacement envelope} derived from the current targets $(\sigma_{a,\star},\tau_\star)$.
+Approximating the dominant motion as narrowband with $\omega\approx\pi/\tau_\star$,
+a sinusoid gives $\sigma_\eta \approx \sigma_{a,\star}/\omega^2 \approx \sigma_{a,\star}\tau_\star^2/\pi^2$.
+Using the Longuet--Higgins convention $H_s\approx 4\sigma_\eta$, the crest-to-trough scale
+$H_s/\sqrt{2}$ yields the envelope
+\[
+p_{\text{env}}
+\;\triangleq\;
+\frac{H_s}{\sqrt{2}}
+\;\approx\;
+\underbrace{\frac{2\sqrt{2}}{\pi^2}}_{C_{HS}}\;\sigma_{a,\star}\,\tau_\star^2.
+\]
+When the estimated heave magnitude exceeds a multiple of this envelope
+(e.g.\ $|p_z|>\kappa\,p_{\text{env}}$), the filter applies a soft pseudo-measurement on $p_z$
+(equivalently, temporarily strengthens drift control) with noise set from the same scale,
+for example $\sigma_p=k_p\,p_{\text{env}}$. This correction is gated and inactive under nominal motion.
 
-\paragraph{Optional heave-based $R_S$ gating}
-If enabled, the applied $R_S$ is additionally reduced when the estimated heave magnitude $|p_z|$
-exceeds an expected displacement envelope proportional to $\sigma_{a,\star}\tau_\star^2$.
-This acts as a smooth safety valve against large drift excursions by temporarily strengthening the integral regularizer.
+\paragraph{Implementation note (readiness, clamping, and floors).}
+All tuner statistics are maintained with \emph{debiased} EMAs (value+weight) so that early-time estimates do not depend on initial conditions.
+Tuning is enabled only once the debiasing weights exceed a small readiness threshold (warm-up complete).
+For safety and numerical robustness, the internal frequency $f_{\text{tune}}$ and all targets $(\tau_\star,\sigma_{a,\star},R_{S,\star})$
+are clipped to configured bounds before smoothing, and the applied acceleration scale is floored
+(e.g.\ $\sigma_{a,\text{appl}}\leftarrow \max(\sigma_{a,\text{appl}},\sigma_{\text{nf}})$) to prevent ill-conditioning in very calm seas.
 
 % =======================================================
 \section{Horizontal Wave Direction: Angle and Sign}
