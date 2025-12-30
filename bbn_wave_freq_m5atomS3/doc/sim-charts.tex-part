@@ -114,7 +114,7 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     Cross-axis bound & $\le 1.0\%$ & sym coupling ($\mat{M}_{\mathrm{mis}}$) \\
     Misalignment bound & $\le \SI{1}{\degree}$ & rotation in $\mat{M}_{\mathrm{mis}}$ \\
     \midrule
-    \multicolumn{3}{@{}l}{\emph{Filter initialization (measurement std)}} \\
+    \multicolumn{3}{@{}l}{\emph{Filter initialization (measurement noise std)}} \\
     $\sigma_a$ init & $2.8\,\sigma_{a,\mathrm{white}}$ & per-axis \\
     $\sigma_g$ init & $2.0\,\sigma_{g,\mathrm{white}}$ & per-axis \\
     $\sigma_m$ init & $1.2\,\sigma_{m,\mathrm{white}}$ & per-axis \\
