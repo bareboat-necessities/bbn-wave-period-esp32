@@ -286,14 +286,14 @@ The implementation adapts three MEKF parameters online:
 the OU time constant $\tau$, the OU stationary acceleration scale $\sigma_a$,
 and the integral pseudo-measurement level $R_S$.
 
-\paragraph{Vertical signal.}
+\paragraph{Vertical signal}
 Let $a_{z,\text{inert}}=a_z+g$ denote vertical inertial acceleration in the body/NED convention.
 We use the up-positive signal
 \[
 a_{\uparrow}:=-a_{z,\text{inert}}.
 \]
 
-\paragraph{Frequency and period-tied variance horizon.}
+\paragraph{Frequency and period-tied variance horizon}
 A dominant frequency estimate $f$ is tracked from $a_{\uparrow}$ (Aranovskiy or KalmANF),
 then clamped and smoothed to an internal tuning frequency $f_{\text{tune}}\in[f_{\min},f_{\max}]$.
 To make the acceleration scale adapt with comparable responsiveness across chop and swell,
@@ -312,14 +312,14 @@ K_{\text{periods}}\,T_{\text{eff}},
 \end{equation}
 Using $\alpha_{\text{var}}$, the tuner maintains an online estimate $\widehat{\sigma}^2_{\text{tot}}\approx\mathrm{Var}[a_{\uparrow}]$.
 
-\paragraph{Noise-floor subtraction.}
+\paragraph{Noise-floor subtraction}
 A configured acceleration noise floor $\sigma_{\text{nf}}$ is subtracted in variance:
 \[
 \widehat{\sigma}^2_{\text{wave}}
 =\max\{0,\ \widehat{\sigma}^2_{\text{tot}}-\sigma_{\text{nf}}^2\}.
 \]
 
-\paragraph{Targets (half-period scaling).}
+\paragraph{Targets (half-period scaling)}
 Targets follow the half-period rule and the cubic $R_S$ scaling:
 \begin{equation}\label{eq:tuner-targets}
 \begin{aligned}
@@ -329,7 +329,7 @@ R_{S,\star} &= c_R\,\sigma_{a,\star}\,\tau_\star^3.
 \end{aligned}
 \end{equation}
 
-\paragraph{Smoothing.}
+\paragraph{Smoothing}
 Applied $(\tau,\sigma_a)$ are first-order filtered toward their targets with a fixed adaptation time constant
 $\tau_{\text{adapt}}$:
 \begin{equation}\label{eq:adapt-ewma}
@@ -354,7 +354,7 @@ R_{S,\text{appl}} &\leftarrow R_{S,\text{appl}}
 Thus $R_S$ responds faster for short-period seas and more slowly for long-period swell.
 All parameters are clamped to configured safety bounds and enabled only after warm-up.
 
-\paragraph{Anisotropy.}
+\paragraph{Anisotropy}
 When applied to the MEKF, the OU stationary standard deviation is set anisotropically,
 \[
 \Sigma_{a_w}^{1/2}=\diag(S_{\sigma}\sigma_{a,\text{appl}},\ S_{\sigma}\sigma_{a,\text{appl}},\ \sigma_{a,\text{appl}}),
@@ -364,7 +364,7 @@ and the $S$ pseudo-measurement uses anisotropic noise
 \mat{R}_S=\diag(\rho_{xy}R_{S,\text{appl}},\ \rho_{xy}R_{S,\text{appl}},\ R_{S,\text{appl}}).
 \]
 
-\paragraph{Optional drift correction via a displacement envelope.}
+\paragraph{Optional drift correction via a displacement envelope}
 An additional safety valve can be enabled to damp rare large heave drift excursions using a
 \emph{displacement envelope} derived from the current targets $(\sigma_{a,\star},\tau_\star)$.
 Approximating the dominant motion as narrowband with $\omega\approx\pi/\tau_\star$,
@@ -383,7 +383,7 @@ When the estimated heave magnitude exceeds a multiple of this envelope
 (equivalently, temporarily strengthens drift control) with noise set from the same scale,
 for example $\sigma_p=k_p\,p_{\text{env}}$. This correction is gated and inactive under nominal motion.
 
-\paragraph{Implementation note (readiness, clamping, and floors).}
+\paragraph{Implementation note (readiness, clamping, and floors)}
 All tuner statistics are maintained with \emph{debiased} EMAs (value+weight) so that early-time estimates do not depend on initial conditions.
 Tuning is enabled only once the debiasing weights exceed a small readiness threshold (warm-up complete).
 For safety and numerical robustness, the internal frequency $f_{\text{tune}}$ and all targets $(\tau_\star,\sigma_{a,\star},R_{S,\star})$
@@ -561,7 +561,7 @@ with $180^\circ$ periodicity handled in post–processing (e.g.\ wrapping to $[0
 % --- Reproducibility table (single-column friendly) ---
 \begin{table}[htbp]
   \centering
-  \caption{Parameters used in all simulations.}
+  \caption{Parameters used in all simulations}
   \label{tab:params}
   % tighter spacing + wrapping columns
   \footnotesize
