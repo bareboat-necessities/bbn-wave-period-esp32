@@ -111,7 +111,7 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     Hard-iron residual half-range & \SI{2.0}{\micro\tesla} & uniform \\
     Bias random-walk & \SI{0.01}{\micro\tesla\per\second\tothe{0.5}} & additive drift \\
     Scale error bound & $\le 1.5\%$ & diag scale in $\mat{M}_{\mathrm{mis}}$ \\
-    Cross-axis bound & $\le 1.0\%$ & sym coupling in $\mat{M}_{\mathrm{mis}}$ \\
+    Cross-axis bound & $\le 1.0\%$ & sym coupling ($\mat{M}_{\mathrm{mis}}$) \\
     Misalignment bound & $\le \SI{1}{\degree}$ & rotation in $\mat{M}_{\mathrm{mis}}$ \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Filter initialization (measurement std)}} \\
