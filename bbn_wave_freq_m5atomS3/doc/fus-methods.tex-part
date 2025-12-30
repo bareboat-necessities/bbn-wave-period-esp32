@@ -557,32 +557,3 @@ The reported directed azimuth is then
 $\Theta_k=\mathrm{sign}_k\cdot \theta$,
 with $180^\circ$ periodicity handled in post–processing (e.g.\ wrapping to $[0,360)$). Intuitively, $\theta$ specifies the wave line, while $\mathrm{sign}_k$ chooses which direction along that line is currently active.
 
-% --- Reproducibility table (single-column friendly) ---
-\begin{table}[htbp]
-  \centering
-  \caption{Parameters used in all simulations}
-  \label{tab:params}
-  % tighter spacing + wrapping columns
-  \footnotesize
-  \setlength{\tabcolsep}{4pt}
-  \renewcommand{\arraystretch}{1.05}
-  \begin{tabular}{@{}p{0.56\columnwidth}p{0.38\columnwidth}@{}}
-    \toprule
-    \textbf{Quantity} & \textbf{Value} \\
-    \midrule
-    Sampling rate $f_s$ & \SI{240}{Hz} \\
-    Frequency bounds $(f_{\min},f_{\max})$ & \SIrange{0.1}{5.0}{Hz} \\
-    OU time constant bounds $(\tau_{\min},\tau_{\max})$ & \SIrange{0.5}{8.5}{s} \\
-    Accel std bounds $(\sigma_{\min},\sigma_{\max})$ & \SIrange{0.3}{8.0}{m/s^2} \\
-    $R_S$ bounds $(R_{S,\min},R_{S,\max})$ & 0.1–35 \\
-    Variance horizon $\tau_{\mathrm{var}}$ & \SI{60}{s} \\
-    Freq horizon $\tau_{\mathrm{freq}}$ & \SI{5}{s} \\
-    Apply cadence / time const &
-      $\Delta t_{\mathrm{apply}}=\SI{0.1}{s}$; $\tau_{\mathrm{apply}}=\SI{3}{s}$ \\
-    Warm-up; mag gate & \SI{35}{s}; \SI{5}{s} \\
-    Regularization $(c_R,\rho_{xy})$ & $2.4$–$2.5$;\ $0.05$–$0.07$ \\
-    Direction KF $(Q,R)$ & $(10^{-6}I_2,\ 10^{-2}I_2)$ \\
-    Dir smoothing $\alpha_\theta$; gate & $0.05$; $|\cos\phi|<10^{-3}$ \\
-    \bottomrule
-  \end{tabular}
-\end{table}
