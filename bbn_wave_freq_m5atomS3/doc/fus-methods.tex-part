@@ -352,7 +352,6 @@ R_{S,\text{appl}} &\leftarrow R_{S,\text{appl}}
 \end{equation}
 
 Thus $R_S$ responds faster for short-period seas and more slowly for long-period swell.
-All parameters are clamped to configured safety bounds and enabled only after warm-up.
 
 \subsubsection{Anisotropy}
 When applied to the MEKF, the OU stationary standard deviation is set anisotropically,
