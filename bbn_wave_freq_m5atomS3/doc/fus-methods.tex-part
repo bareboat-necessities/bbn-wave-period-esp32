@@ -330,7 +330,7 @@ R_{S,\star} &= c_R\,\sigma_{a,\star}\,\tau_\star^3.
 \end{equation}
 
 \subsubsection{Smoothing}
-Applied $(\tau,\sigma_a)$ are first-order filtered toward their targets with a fixed adaptation time constant
+Applied $(\tau,\sigma_a)$ are EMA filtered toward their targets with a fixed adaptation time constant
 $\tau_{\text{adapt}}$:
 \begin{equation}\label{eq:adapt-ewma}
 \begin{aligned}
@@ -341,7 +341,7 @@ $\tau_{\text{adapt}}$:
 \end{aligned}
 \end{equation}
 
-In contrast, $R_S$ is smoothed with a time constant proportional to the current wave time scale:
+In contrast, $R_S$ is EMA-smoothed with a time constant proportional to the current wave time scale:
 \begin{equation}\label{eq:adapt-RS}
 \begin{aligned}
 \tau_{R_S} &= m_{R_S}\,\tau_\star,\qquad
@@ -365,7 +365,7 @@ and the $S$ pseudo-measurement uses anisotropic noise
 \]
 
 \subsubsection{Optional drift correction via a displacement envelope}
-An additional safety valve can be enabled to damp rare large heave drift excursions using a
+An extra drift correction be enabled to damp rare large heave drift excursions using a
 \emph{displacement envelope} derived from the current targets $(\sigma_{a,\star},\tau_\star)$.
 Approximating the dominant motion as narrowband with $\omega\approx\pi/\tau_\star$,
 a sinusoid gives $\sigma_\eta \approx \sigma_{a,\star}/\omega^2 \approx \sigma_{a,\star}\tau_\star^2/\pi^2$.
@@ -381,7 +381,7 @@ p_{\text{env}}
 When the estimated heave magnitude exceeds a multiple of this envelope
 (e.g.\ $|p_z|>\kappa\,p_{\text{env}}$), the filter applies a soft pseudo-measurement on $p_z$
 (equivalently, temporarily strengthens drift control) with noise set from the same scale,
-for example $\sigma_p=k_p\,p_{\text{env}}$. This correction is gated and inactive under nominal motion.
+for example $\sigma_p=k_p\,p_{\text{env}}$.
 
 \subsubsection{Implementation note (readiness, clamping, and floors)}
 All tuner statistics are maintained with \emph{debiased} EMAs (value+weight) so that early-time estimates do not depend on initial conditions.
