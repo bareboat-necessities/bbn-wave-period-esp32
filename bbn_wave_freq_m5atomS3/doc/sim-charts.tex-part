@@ -180,6 +180,55 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
 \end{figure}
 \fi
 
+% Requires: \usepackage{booktabs,siunitx}
+\begin{table}[t]
+  \centering
+  \caption{Simulation results (last \SI{60}{s} RMS window), \texttt{with\_mag=true},
+  \texttt{mag\_delay}=\SI{8}{s}, \texttt{noise=true}. Bias statistics omitted.}
+  \label{tab:sim_results_rms_dir_basic}
+  \setlength{\tabcolsep}{3.5pt}
+  \renewcommand{\arraystretch}{1.12}
+  \sisetup{detect-all}
+  \begin{tabular}{@{}l
+                  S[table-format=1.3]
+                  S[table-format=1.4]
+                  S[table-format=2.2]
+                  S[table-format=2.3]
+                  S[table-format=2.3]
+                  S[table-format=2.3]
+                  S[table-format=2.2]
+                  l
+                  @{}}
+    \toprule
+    {Case} &
+    {$H_s$ (m)} &
+    {Z RMS (m)} &
+    {Z RMS (\%$H_s$)} &
+    {Roll RMS (deg)} &
+    {Pitch RMS (deg)} &
+    {Yaw RMS (deg)} &
+    {$\bar\theta$ (deg)} &
+    {Sign (Toward/Away/Unc.)} \\
+    \midrule
+    JONSWAP & 0.270 & 0.0142 & 5.26  & 0.181 & 0.971 & 0.303 & 30.58  & 99.34/0.00/0.66 \\
+    JONSWAP & 1.500 & 0.0437 & 2.91  & 0.334 & 1.694 & 0.656 & -35.57 & 99.89/0.00/0.11 \\
+    JONSWAP & 4.000 & 0.2942 & 7.35  & 2.293 & 0.697 & 0.572 & 28.89  & 98.94/0.98/0.08 \\
+    JONSWAP & 8.500 & 0.4166 & 4.90  & 0.259 & 0.855 & 0.588 & -31.80 & 97.72/2.01/0.26 \\
+    \addlinespace
+    PM+Stokes & 0.270 & 0.0129 & 4.77  & 1.217 & 0.659 & 0.572 & 32.25  & 98.74/0.00/1.26 \\
+    PM+Stokes & 1.500 & 0.0771 & 5.14  & 1.605 & 1.515 & 1.545 & -28.47 & 99.78/0.00/0.22 \\
+    PM+Stokes & 4.000 & 0.4162 & 10.41 & 2.858 & 1.322 & 2.920 & 27.56  & 99.86/0.00/0.14 \\
+    PM+Stokes & 8.500 & 0.8339 & 9.81  & 1.893 & 2.928 & 4.234 & -25.29 & 100.00/0.00/0.00 \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{2pt}
+  \footnotesize
+  Direction convention: $\theta\in[-90^\circ,90^\circ]$, $0^\circ$ is $+\hat{\bm y}$ (clockwise positive).
+  $\bar\theta$ is circular mean over the last \SI{60}{s}. ``Sign'' reports the percentage of samples classified
+  as Toward/Away/Uncertain in the same window.
+\end{table}
+
 
 
 \begin{table}[t]
