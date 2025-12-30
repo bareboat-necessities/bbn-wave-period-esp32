@@ -11,7 +11,7 @@ We evaluate the proposed Kalman filter against several canonical wave models.
 
 \begin{table}[t]
   \centering
-  \caption{Wave scenarios. Each run: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288{,}000 samples.}
+  \caption{Wave scenarios. Runs: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288{,}000 samples.}
   \label{tab:scenarios}
   \sisetup{table-number-alignment = center}
   \setlength{\tabcolsep}{2pt}%
