@@ -49,17 +49,15 @@ These models are used as measurement predictions for position and velocity updat
 \qquad
 \bm z_v = \hat{\bm v} + \hat{\Rot}_{bw}(\bm\omega^{\mathcal{B}}\times \bm r_{\text{gps}}^{\mathcal{B}}) + \bm n_v.
 \end{equation}
-Linearizing the lever-arm term gives the standard attitude Jacobians
-\begin{equation}
+Linearizing the lever-arm term gives the attitude Jacobians
+\begin{align}
 \frac{\partial}{\partial\,\delta\bm\theta}\!\left(\hat{\Rot}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}\right)
-\approx
-\Skew{\hat{\Rot}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}},
-\qquad
+&\approx \Skew{\hat{\Rot}_{bw}\bm r_{\text{gps}}^{\mathcal{B}}}, \label{eq:dRr_dth}\\
 \frac{\partial}{\partial\,\delta\bm\theta}\!\left(\hat{\Rot}_{bw}\bm u\right)
-\approx
-\Skew{\hat{\Rot}_{bw}\bm u},
-\ \ \bm u\triangleq\bm\omega^{\mathcal{B}}\times\bm r_{\text{gps}}^{\mathcal{B}}.
-\end{equation}
+&\approx \Skew{\hat{\Rot}_{bw}\bm u}, \qquad
+\bm u \triangleq \bm\omega^{\mathcal{B}}\times\bm r_{\text{gps}}^{\mathcal{B}}.
+\label{eq:dRu_dth}
+\end{align}
 
 \subsubsection{Centripetal acceleration during maneuvers}
 \label{sec:gps_centripetal_short}
