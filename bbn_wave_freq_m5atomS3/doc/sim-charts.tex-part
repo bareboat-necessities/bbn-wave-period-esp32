@@ -51,7 +51,7 @@ in physical units (e.g.\ $\mu$T). This provides both estimator inputs and ground
 
 \paragraph{Multi-rate timing and update schedule (condition under test: asynchrony)}
 The inertial channels $\vct{f}_b$ and $\boldsymbol{\omega}_b$ are streamed at $240$~Hz.
-Magnetometer samples are produced at an independent ODR of $100$~Hz and delivered with hold-last-sample
+Magnetometer samples are produced at an independent ODR of $80$~Hz and delivered with hold-last-sample
 between magnetometer ticks. The filter is stepped once per IMU sample: each step performs a time update
 driven by $\vct{\omega}_{\text{meas}}$ and a rank--3 accelerometer update driven by $\vct{f}_{\text{meas}}$,
 while magnetometer updates are injected only on magnetometer ticks and only after a configured startup delay
