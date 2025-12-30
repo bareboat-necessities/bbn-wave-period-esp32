@@ -55,8 +55,7 @@ Magnetometer samples are produced at an independent ODR of $80$~Hz and delivered
 between magnetometer ticks. The filter is stepped once per IMU sample: each step performs a time update
 driven by $\vct{\omega}_{\text{meas}}$ and a rank--3 accelerometer update driven by $\vct{f}_{\text{meas}}$,
 while magnetometer updates are injected only on magnetometer ticks and only after a configured startup delay
-used for magnetic reference initialization/gating. This explicitly tests robustness to multi-rate, asynchronous sensing
-and startup transients.
+used for magnetic reference initialization/gating.
 
 \paragraph{Noise, residual bias, and drifting bias (condition under test: realistic IMU errors)}
 Optionally, each sensor channel is corrupted by a composite error model
@@ -75,8 +74,7 @@ The magnetometer model includes both additive and multiplicative effects:
 \]
 Here $\mat{M}_{\mathrm{mis}}\approx \mat{I}$ is a near-identity distortion matrix capturing residual soft-iron/scale error,
 cross-axis coupling, and a small misalignment rotation; $\vct{b}_{m,0}$ and $\vct{b}_{m,\mathrm{rw}}$ represent residual
-hard-iron bias and slow drift, and $\vct{w}_m$ is per-sample white noise. This setup tests sensitivity to mild
-multiplicative calibration errors in addition to additive bias and noise.
+hard-iron bias and slow drift, and $\vct{w}_m$ is per-sample white noise.
 
 \paragraph{Scoring window}
 Performance is summarized over a trailing window $T_{\mathrm{RMS}}=60$~s using RMS displacement error (per-axis and 3D)
