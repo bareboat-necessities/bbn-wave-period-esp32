@@ -300,8 +300,8 @@ To make the acceleration scale adapt with comparable responsiveness across chop 
 the variance of $a_{\uparrow}$ is estimated over a \emph{fixed number of periods}:
 \begin{equation}
 \begin{aligned}
-T_{\text{eff}} &= \frac{1}{f_{\text{tune}}}, \qquad
-\tau_{\text{var}} =
+T_{\text{eff}} = \frac{1}{f_{\text{tune}}}, \qquad
+\tau_{\text{var}} &=
 \clip\!\Big(
 K_{\text{periods}}\,T_{\text{eff}},
 \ \tau_{\text{var,min}},
