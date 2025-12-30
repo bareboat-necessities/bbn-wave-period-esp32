@@ -186,8 +186,7 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
 % Requires: \usepackage{booktabs,siunitx}
 \begin{table}[t]
   \centering
-  \caption{Simulation results (last \SI{60}{s} RMS window), \texttt{with\_mag=true},
-  \texttt{mag\_delay}=\SI{8}{s}, \texttt{noise=true}. Bias statistics omitted.}
+  \caption{Simulation results (last \SI{60}{s} RMS window)}
   \label{tab:sim_results_rms_dir_basic}
   \setlength{\tabcolsep}{3.5pt}
   \renewcommand{\arraystretch}{1.12}
