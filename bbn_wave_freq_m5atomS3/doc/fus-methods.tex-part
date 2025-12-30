@@ -300,14 +300,14 @@ To make the acceleration scale adapt with comparable responsiveness across chop 
 the variance of $a_{\uparrow}$ is estimated over a \emph{fixed number of periods}:
 \begin{equation}
 \begin{aligned}
-T_{\text{eff}} &= \frac{1}{f_{\text{tune}}},\\
-\tau_{\text{var}} &=
+T_{\text{eff}} &= \frac{1}{f_{\text{tune}}}, \qquad
+\tau_{\text{var}} =
 \clip\!\Big(
 K_{\text{periods}}\,T_{\text{eff}},
 \ \tau_{\text{var,min}},
 \ \tau_{\text{var,max}}
 \Big),\\
-\alpha_{\text{var}} &= 1 - \exp\!\bigl(-\Delta t/\tau_{\text{var}}\bigr).
+\alpha_{\text{var}} &= 1 - e^{-\Delta t/\tau_{\text{var}}}.
 \end{aligned}
 \end{equation}
 Using $\alpha_{\text{var}}$, the tuner maintains an online estimate $\widehat{\sigma}^2_{\text{tot}}\approx\mathrm{Var}[a_{\uparrow}]$.
