@@ -43,52 +43,44 @@ about a nominal direction, with each spectral component receiving independent ph
 \end{figure}
 
 \subsection{Reference and Measurements}
-For each time $t_k$, the simulator outputs world-frame reference $\big(\mathbf{p}_{\mathrm{ref}},\mathbf{v}_{\mathrm{ref}},\mathbf{a}_{\mathrm{ref}}\big)$ at 
-the surface particle (buoy) and body-frame IMU readings $\big(\mathbf{f}_b,\boldsymbol{\omega}_b\big)$, with magnetometer readings synthesis. 
-The directional sea models produce an Euler attitude for the advected buoy.
+For each time $t_k$, the simulator outputs world-frame reference kinematics
+$\big(\mathbf{p}_{\mathrm{ref}},\mathbf{v}_{\mathrm{ref}},\mathbf{a}_{\mathrm{ref}}\big)$ for the surface particle (buoy),
+and ideal body-frame IMU triads $\big(\vct{f}_b,\boldsymbol{\omega}_b\big)$.
+Magnetometer readings are synthesized from the ground-truth attitude and a world magnetic field $\vct{B}_w$
+in physical units (e.g.\ $\mu$T). This provides both estimator inputs and ground-truth for scoring.
 
-\paragraph{Sensor synthesis, axis conventions, and update schedule.}
-The simulator streams ideal body-frame specific force $\vct{f}_b$ and angular rate $\vct{\omega}_b$ at the inertial
-rate (240~Hz). Magnetometer measurements are
-generated from the ground-truth nautical Euler angles using a geomagnetic field model in physical units (e.g.\ $\mu$T),
-and are delivered at an independent output data rate (ODR) of 100~Hz with a hold-last-sample scheme between ticks.
-The filter is stepped once per inertial sample: a time update driven by $\vct{\omega}_{\text{meas}}$ and a rank--3
-accelerometer measurement update driven by $\vct{f}_{\text{meas}}$ are executed every $\Delta t$, while magnetometer
-updates are injected only on magnetometer ticks and only after a configured delay window used for magnetometer
-initialization and gating.
+\paragraph{Multi-rate timing and update schedule (condition under test: asynchrony).}
+The inertial channels $\vct{f}_b$ and $\boldsymbol{\omega}_b$ are streamed at $240$~Hz.
+Magnetometer samples are produced at an independent ODR of $100$~Hz and delivered with hold-last-sample
+between magnetometer ticks. The filter is stepped once per IMU sample: each step performs a time update
+driven by $\vct{\omega}_{\text{meas}}$ and a rank--3 accelerometer update driven by $\vct{f}_{\text{meas}}$,
+while magnetometer updates are injected only on magnetometer ticks and only after a configured startup delay
+used for magnetic reference initialization/gating. This explicitly tests robustness to multi-rate, asynchronous sensing
+and startup transients.
 
-\paragraph{Noise and bias models (repeatable Monte Carlo).}
-To evaluate robustness to realistic IMU errors, the runner optionally perturbs each ideal triad with a composite model
+\paragraph{Noise, residual bias, and drifting bias (condition under test: realistic IMU errors).}
+Optionally, each sensor channel is corrupted by a composite error model
 \[
 \vct{y}_{\text{meas}}(t_k)
 = \vct{y}_{\text{true}}(t_k) + \vct{b}_0 + \vct{b}_{\mathrm{rw}}(t_k) + \vct{w}(t_k),
 \]
-where $\vct{w}$ is zero-mean white noise (per-sample RMS), $\vct{b}_0$ is a fixed residual bias drawn uniformly from a
-specified half-range (representing imperfect calibration), and $\vct{b}_{\mathrm{rw}}$ is a slowly drifting random-walk bias
-with increment standard deviation proportional to $\sqrt{\Delta t}$. Independent, fixed random seeds are used for the
-accelerometer and gyroscope generators to ensure bitwise-repeatable runs. For the magnetometer, the measurement model
-also includes residual soft-iron and misalignment via a near-identity matrix $\mat{M}_{\mathrm{mis}}$:
+where $\vct{w}$ is per-sample white noise (RMS set to sensor-like levels), $\vct{b}_0$ is a fixed residual bias drawn from
+a specified half-range (imperfect calibration), and $\vct{b}_{\mathrm{rw}}$ is a slowly drifting random-walk bias whose
+increments scale with $\sqrt{\Delta t}$. Independent fixed random seeds are used per stream so runs are repeatable.
+
+\paragraph{Magnetometer distortion realism (condition under test: non-ideal compass).}
+The magnetometer model includes both additive and multiplicative effects:
 \[
-\vct{m}_{\text{meas}} = \mat{M}_{\mathrm{mis}}\,\vct{m}_{\text{true}} + \vct{b}_{m,0} + \vct{b}_{m,\mathrm{rw}} + \vct{w}_m,
+\vct{m}_{\text{meas}} = \mat{M}_{\mathrm{mis}}\,\vct{m}_{\text{true}} + \vct{b}_{m,0} + \vct{b}_{m,\mathrm{rw}} + \vct{w}_m.
 \]
-with small random scale errors, cross-axis coupling, and a small random rotation, plus additive hard-iron residual and
-white noise per magnetometer sample. This separation allows evaluation of both additive-bias estimation and sensitivity
-to mild multiplicative distortion.
+Here $\mat{M}_{\mathrm{mis}}\approx \mat{I}$ is a near-identity distortion matrix capturing residual soft-iron/scale error,
+cross-axis coupling, and a small misalignment rotation; $\vct{b}_{m,0}$ and $\vct{b}_{m,\mathrm{rw}}$ represent residual
+hard-iron bias and slow drift, and $\vct{w}_m$ is per-sample white noise. This setup tests sensitivity to mild
+multiplicative calibration errors in addition to additive bias and noise.
 
-\paragraph{Scoring window, metrics.}
-Performance is summarized over a fixed trailing window of $T_{\mathrm{RMS}}=60$~s. In that window the runner computes
-RMS displacement errors per axis and a 3D RMS error
-$\mathrm{RMS}_{3D}=\sqrt{\mathrm{RMS}_x^2+\mathrm{RMS}_y^2+\mathrm{RMS}_z^2}$.
-To avoid penalizing scenarios with small significant wave height $H_s$, the primary displacement score normalizes the
-3D error by the maximum true 3D displacement magnitude observed in the same window.
-Attitude performance is reported as RMS roll/pitch/yaw error. 
-
-\paragraph{Direction and tuner telemetry.}
-Alongside state accuracy, the runner logs and summarizes the dominant-frequency estimate and auto-tuner outputs
-($f$, $T_p$, $\tau$, $\sigma_a$, $R_S$) as time series. For wave direction, the runner reports axial (180$^\circ$-ambiguous)
-circular statistics over the last window by computing a mean direction and circular standard deviation using doubled-angle
-axial statistics, and it reports the fraction of samples deemed ``good'' by internal confidence/amplitude thresholds.
-A separate sign classifier produces the ``toward/away'' label, and its class counts are also reported over the scoring window.
+\paragraph{Scoring window.}
+Performance is summarized over a trailing window $T_{\mathrm{RMS}}=60$~s using RMS displacement error (per-axis and 3D)
+and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $(f,\tau,\sigma_a,R_S)$ for diagnostics.
 
 % JONSWAP - medium
 
