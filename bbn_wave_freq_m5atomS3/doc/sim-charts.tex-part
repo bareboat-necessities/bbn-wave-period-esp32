@@ -112,7 +112,7 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     Bias random-walk & \SI{1e-5}{\radian\per\second\per\second\tothe{0.5}} & increment std $\propto \sqrt{\Delta t}$ \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Magnetometer model (per mag sample)}} \\
-    White noise (RMS) & \SI{0.60}{\micro\tesla} & (at \SI{80}{\hertz}) \\
+    White noise (RMS) & \SI{0.60}{\micro\tesla} & at \SI{80}{\hertz} \\
     Hard-iron residual half-range & \SI{2.0}{\micro\tesla} & uniform \\
     Bias random-walk & \SI{0.01}{\micro\tesla\per\second\tothe{0.5}} & additive drift \\
     Scale error bound & $\le 1.5\%$ & diagonal scale in $\mat{M}_{\mathrm{mis}}$ \\
