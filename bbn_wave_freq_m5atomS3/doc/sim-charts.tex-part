@@ -96,31 +96,31 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     \textbf{Quantity} & \textbf{Value} & \textbf{Notes} \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Timing / protocol}} \\
-    IMU sample rate & \SI{240}{Hz} & $\Delta t = 1/240$ \\
-    Magnetometer ODR & \SI{100}{Hz} & ZOH hold-last-sample between ticks \\
-    Gravity constant & \SI{9.80665}{m/s^2} & $g_{\mathrm{std}}$ \\
-    RMS scoring window & \SI{60}{s} & trailing window \\
+    IMU sample rate & \SI{240}{\hertz} & $\Delta t = 1/240$ \\
+    Magnetometer ODR & \SI{100}{\hertz} & ZOH hold-last-sample between ticks \\
+    Gravity constant & \SI{9.80665}{\meter\per\second\squared} & $g_{\mathrm{std}}$ \\
+    RMS scoring window & \SI{60}{\second} & trailing window \\
     Temperature (filter input) & \SI{35}{\celsius} & constant \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Accelerometer noise/bias model (per axis)}} \\
-    White noise (RMS per sample) & $1.51\times10^{-3}g$ & $\approx \SI{0.0148}{m/s^2}$ \\
-    Residual bias half-range & $5\times10^{-3}g$ & $\approx \SI{0.049}{m/s^2}$, uniform \\
-    Bias random-walk & \SI{5e-4}{m/s^2/\sqrt{s}} & increment std $\propto\sqrt{\Delta t}$ \\
+    White noise (RMS per sample) & $1.51\times10^{-3}g$ & $\approx \SI{0.0148}{\meter\per\second\squared}$ \\
+    Residual bias half-range & $5\times10^{-3}g$ & $\approx \SI{0.049}{\meter\per\second\squared}$, uniform \\
+    Bias random-walk & \SI{5e-4}{\meter\per\second\squared\per\sqrt{\second}} & increment std $\propto \sqrt{\Delta t}$ \\
     RNG seed & 1234 & independent stream \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Gyroscope noise/bias model (per axis)}} \\
-    White noise (RMS per sample) & \SI{0.00157}{rad/s} & $\approx \SI{0.09}{deg/s}$ \\
-    Residual bias half-range & \SI{8.73e-4}{rad/s} & $0.05$ deg/s, uniform \\
-    Bias random-walk & \SI{1e-5}{rad/s/\sqrt{s}} & increment std $\propto\sqrt{\Delta t}$ \\
+    White noise (RMS per sample) & \SI{0.00157}{\radian\per\second} & $\approx \SI{0.09}{\degree\per\second}$ \\
+    Residual bias half-range & \SI{8.73e-4}{\radian\per\second} & \SI{0.05}{\degree\per\second}, uniform \\
+    Bias random-walk & \SI{1e-5}{\radian\per\second\per\sqrt{\second}} & increment std $\propto \sqrt{\Delta t}$ \\
     RNG seed & 5678 & independent stream \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Magnetometer model (per mag sample)}} \\
-    White noise (RMS) & \SI{0.60}{\micro T} & (at \SI{100}{Hz}); \SI{0.30}{\micro T} if \SI{20}{Hz} \\
-    Hard-iron residual half-range & \SI{2.0}{\micro T} & uniform \\
-    Bias random-walk & \SI{0.01}{\micro T/\sqrt{s}} & additive drift \\
+    White noise (RMS) & \SI{0.60}{\micro\tesla} & (at \SI{100}{\hertz}); \SI{0.30}{\micro\tesla} if \SI{20}{\hertz} \\
+    Hard-iron residual half-range & \SI{2.0}{\micro\tesla} & uniform \\
+    Bias random-walk & \SI{0.01}{\micro\tesla\per\sqrt{\second}} & additive drift \\
     Scale error bound & $\le 1.5\%$ & diagonal scale in $\mat{M}_{\mathrm{mis}}$ \\
     Cross-axis bound & $\le 1.0\%$ & symmetric coupling in $\mat{M}_{\mathrm{mis}}$ \\
-    Misalignment bound & $\le \SI{1}{deg}$ & small rotation in $\mat{M}_{\mathrm{mis}}$ \\
+    Misalignment bound & $\le \SI{1}{\degree}$ & small rotation in $\mat{M}_{\mathrm{mis}}$ \\
     RNG seed & 9012 & mag stream (bias + $\mat{M}_{\mathrm{mis}}$ + noise) \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Filter initialization (measurement std)}} \\
@@ -129,13 +129,14 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     $\sigma_m$ init & $1.2\,\sigma_{m,\mathrm{white}}$ & per-axis \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Evaluation gates (runner failure criteria)}} \\
-    Vertical error limit & \SI{13}{\%}$H_s$ & JONSWAP and PM--Stokes \\
-    3D error limit & \SI{55}{\%} / \SI{60}{\%} & of max $\|\mathbf{p}_{\mathrm{ref}}\|_{3D}$ in window (JONSWAP/PM) \\
-    Yaw RMS limit & \SI{4.5}{deg} & trailing window \\
-    Bias-error limit & \SI{800}{\%} & 3D RMS bias error / max true bias (acc, gyro) \\
+    Vertical error limit & \SI{13}{\percent}$\,H_s$ & JONSWAP and PM--Stokes \\
+    3D error limit & \SI{55}{\percent} / \SI{60}{\percent} & of max $\|\mathbf{p}_{\mathrm{ref}}\|_{3D}$ in window (JONSWAP/PM) \\
+    Yaw RMS limit & \SI{4.5}{\degree} & trailing window \\
+    Bias-error limit & \SI{800}{\percent} & 3D RMS bias error / max true bias (acc, gyro) \\
     \bottomrule
   \end{tabular}
 \end{table}
+
 
 
 % JONSWAP - medium
