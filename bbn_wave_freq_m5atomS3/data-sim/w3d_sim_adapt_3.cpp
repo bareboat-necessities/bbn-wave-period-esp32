@@ -391,7 +391,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
     ImuNoiseModel gyro_noise  = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_bias_rw, 5678);
     
     // BMM150-like magnetometer behavior (AtomS3R)
-    constexpr float MAG_ODR_HZ = 100.0f;                 // 100 (regular) or 20 (high-accuracy)
+    constexpr float MAG_ODR_HZ = 80.0f;                 
     constexpr float MAG_DT     = 1.0f / MAG_ODR_HZ;
     // Phase accumulator for exact mag rate
     float mag_phase_s = 0.0f;
