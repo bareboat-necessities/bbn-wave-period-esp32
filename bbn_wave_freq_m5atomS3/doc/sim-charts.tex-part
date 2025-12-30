@@ -186,49 +186,51 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
 % Requires: \usepackage{booktabs,siunitx}
 \begin{table}[t]
   \centering
-  \caption{Simulation results (last \SI{60}{s} RMS window)}
+  \caption{Simulation results (last \SI{60}{s} RMS window).}
   \label{tab:sim_results_rms_dir_basic}
-  \setlength{\tabcolsep}{3.5pt}
-  \renewcommand{\arraystretch}{1.12}
+  \setlength{\tabcolsep}{2.2pt}
+  \renewcommand{\arraystretch}{1.08}
+  \footnotesize
   \sisetup{detect-all}
+
   \begin{tabular}{@{}l
+                  S[table-format=1.2]
                   S[table-format=1.3]
-                  S[table-format=1.4]
-                  S[table-format=2.2]
-                  S[table-format=2.3]
-                  S[table-format=2.3]
-                  S[table-format=2.3]
-                  S[table-format=2.2]
+                  S[table-format=2.1]
+                  S[table-format=1.2]
+                  S[table-format=1.2]
+                  S[table-format=1.2]
+                  S[table-format=2.1]
                   l
                   @{}}
     \toprule
     {Case} &
-    {$H_s$ (m)} &
-    {Z RMS (m)} &
-    {Z RMS (\%$H_s$)} &
-    {Roll RMS (deg)} &
-    {Pitch RMS (deg)} &
-    {Yaw RMS (deg)} &
-    {$\bar\theta$ (deg)} &
-    {Sign (Toward/Away/Unc.)} \\
+    {$H_s$} &
+    {Z RMS} &
+    {Z\%$H_s$} &
+    {R} &
+    {P} &
+    {Y} &
+    {$\bar\theta$} &
+    {T/A/U} \\
     \midrule
-    JONSWAP & 0.270 & 0.0142 & 5.26  & 0.181 & 0.971 & 0.303 & 30.58  & 99.34/0.00/0.66 \\
-    JONSWAP & 1.500 & 0.0437 & 2.91  & 0.334 & 1.694 & 0.656 & -35.57 & 99.89/0.00/0.11 \\
-    JONSWAP & 4.000 & 0.2942 & 7.35  & 2.293 & 0.697 & 0.572 & 28.89  & 98.94/0.98/0.08 \\
-    JONSWAP & 8.500 & 0.4166 & 4.90  & 0.259 & 0.855 & 0.588 & -31.80 & 97.72/2.01/0.26 \\
+    JON  & 0.27 & 0.014 & 5.3  & 0.18 & 0.97 & 0.30 & 30.6  & 99.3/0.0/0.7 \\
+    JON  & 1.50 & 0.044 & 2.9  & 0.33 & 1.69 & 0.66 & -35.6 & 99.9/0.0/0.1 \\
+    JON  & 4.00 & 0.294 & 7.4  & 2.29 & 0.70 & 0.57 & 28.9  & 98.9/1.0/0.1 \\
+    JON  & 8.50 & 0.417 & 4.9  & 0.26 & 0.86 & 0.59 & -31.8 & 97.7/2.0/0.3 \\
     \addlinespace
-    PM+Stokes & 0.270 & 0.0129 & 4.77  & 1.217 & 0.659 & 0.572 & 32.25  & 98.74/0.00/1.26 \\
-    PM+Stokes & 1.500 & 0.0771 & 5.14  & 1.605 & 1.515 & 1.545 & -28.47 & 99.78/0.00/0.22 \\
-    PM+Stokes & 4.000 & 0.4162 & 10.41 & 2.858 & 1.322 & 2.920 & 27.56  & 99.86/0.00/0.14 \\
-    PM+Stokes & 8.500 & 0.8339 & 9.81  & 1.893 & 2.928 & 4.234 & -25.29 & 100.00/0.00/0.00 \\
+    PMS  & 0.27 & 0.013 & 4.8  & 1.22 & 0.66 & 0.57 & 32.2  & 98.7/0.0/1.3 \\
+    PMS  & 1.50 & 0.077 & 5.1  & 1.61 & 1.52 & 1.54 & -28.5 & 99.8/0.0/0.2 \\
+    PMS  & 4.00 & 0.416 & 10.4 & 2.86 & 1.32 & 2.92 & 27.6  & 99.9/0.0/0.1 \\
+    PMS  & 8.50 & 0.834 & 9.8  & 1.89 & 2.93 & 4.23 & -25.3 & 100/0/0 \\
     \bottomrule
   \end{tabular}
 
-  \vspace{2pt}
+  \vspace{1pt}
   \footnotesize
-  Direction convention: $\theta\in[-90^\circ,90^\circ]$, $0^\circ$ is $+\hat{\bm y}$ (clockwise positive).
-  $\bar\theta$ is circular mean over the last \SI{60}{s}. ``Sign'' reports the percentage of samples classified
-  as Toward/Away/Uncertain in the same window.
+  Case: JON=JONSWAP, PMS=PM+Stokes. R/P/Y are roll/pitch/yaw RMS in degrees.
+  Direction $\theta\in[-90^\circ,90^\circ]$ with $0^\circ$ at $+\hat{\bm y}$ (CW positive);
+  T/A/U = Toward/Away/Uncertain (\% of samples).
 \end{table}
 
 \medskip
