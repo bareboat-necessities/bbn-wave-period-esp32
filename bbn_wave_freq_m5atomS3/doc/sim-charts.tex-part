@@ -11,7 +11,7 @@ We evaluate the proposed Kalman filter against several canonical wave models.
 
 \begin{table}[t]
   \centering
-  \caption{Wave scenarios synthesized for evaluation. Each run: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288{,}000 samples.}
+  \caption{Wave scenarios. Each run: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288{,}000 samples.}
   \label{tab:scenarios}
   \sisetup{table-number-alignment = center}
   \setlength{\tabcolsep}{2pt}%
@@ -19,10 +19,10 @@ We evaluate the proposed Kalman filter against several canonical wave models.
     \toprule
     Scenario & Model & $H_s$ [m] & $T_p$ [s] & Dir.\ spread \\
     \midrule
-    W1 & \{JONSWAP, PM-Stokes\} & 0.27 & 3.0  & 30° / cos-spread \\
-    W2 & \{JONSWAP, PM-Stokes\} & 1.50 & 5.7  & 30° / cos-spread \\
-    W3 & \{JONSWAP, PM-Stokes\} & 4.00 & 8.5  & 30° / cos-spread \\
-    W4 & \{JONSWAP, PM-Stokes\} & 8.50 & 11.4 & 30° / cos-spread \\
+    W1 & \{JONSWAP, PM-Stokes\} & 0.27 & 3.0  & +30° / cos-spread \\
+    W2 & \{JONSWAP, PM-Stokes\} & 1.50 & 5.7  & -30° / cos-spread \\
+    W3 & \{JONSWAP, PM-Stokes\} & 4.00 & 8.5  & +30° / cos-spread \\
+    W4 & \{JONSWAP, PM-Stokes\} & 8.50 & 11.4 & -30° / cos-spread \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -51,11 +51,10 @@ in physical units (e.g.\ $\mu$T). This provides both estimator inputs and ground
 
 \paragraph{Multi-rate timing and update schedule (condition under test: asynchrony)}
 The inertial channels $\vct{f}_b$ and $\boldsymbol{\omega}_b$ are streamed at $240$~Hz.
-Magnetometer samples are produced at an independent ODR of $80$~Hz and delivered with hold-last-sample
+Magnetometer samples are produced at an independent ODR of $100$~Hz and delivered with hold-last-sample
 between magnetometer ticks. The filter is stepped once per IMU sample: each step performs a time update
 driven by $\vct{\omega}_{\text{meas}}$ and a rank--3 accelerometer update driven by $\vct{f}_{\text{meas}}$,
-while magnetometer updates are injected only on magnetometer ticks and only after a configured startup delay
-used for magnetic reference initialization/gating.
+while magnetometer updates are injected only on magnetometer ticks.
 
 \paragraph{Noise, residual bias, and drifting bias (condition under test: realistic IMU errors)}
 Optionally, each sensor channel is corrupted by a composite error model
@@ -65,7 +64,7 @@ Optionally, each sensor channel is corrupted by a composite error model
 \]
 where $\vct{w}$ is per-sample white noise (RMS set to sensor-like levels), $\vct{b}_0$ is a fixed residual bias drawn from
 a specified half-range (imperfect calibration), and $\vct{b}_{\mathrm{rw}}$ is a slowly drifting random-walk bias whose
-increments scale with $\sqrt{\Delta t}$. Independent fixed random seeds are used per stream so runs are repeatable.
+increments scale with $\sqrt{\Delta t}$.
 
 \paragraph{Magnetometer distortion realism (condition under test: non-ideal compass)}
 The magnetometer model includes both additive and multiplicative effects:
@@ -95,9 +94,8 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     \midrule
     \multicolumn{3}{@{}l}{\emph{Timing / protocol}} \\
     IMU sample rate & \SI{240}{\hertz} & $\Delta t = 1/240$ \\
-    Magnetometer ODR & \SI{80}{\hertz} & hold-last-sample between ticks \\
+    Magnetometer ODR & \SI{100}{\hertz} & hold-last-sample \\
     RMS scoring window & \SI{60}{\second} & trailing window \\
-    Temperature (filter input) & \SI{35}{\celsius} & constant \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Accelerometer noise/bias model (per axis)}} \\
     White noise (RMS) & $1.51\times10^{-3}g$ & $\approx \SI{0.0148}{\meter\per\second\squared}$ \\
@@ -110,15 +108,15 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     Bias random-walk & \SI{1e-5}{\radian\per\second\per\second\tothe{0.5}} & increment std $\propto \sqrt{\Delta t}$ \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Magnetometer model (per mag sample)}} \\
-    White noise (RMS) & \SI{0.60}{\micro\tesla} & at \SI{80}{\hertz} \\
+    White noise (RMS) & \SI{0.60}{\micro\tesla} & at \SI{100}{\hertz} \\
     Hard-iron residual half-range & \SI{2.0}{\micro\tesla} & uniform \\
     Bias random-walk & \SI{0.01}{\micro\tesla\per\second\tothe{0.5}} & additive drift \\
-    Scale error bound & $\le 1.5\%$ & diagonal scale in $\mat{M}_{\mathrm{mis}}$ \\
-    Cross-axis bound & $\le 1.0\%$ & symmetric coupling in $\mat{M}_{\mathrm{mis}}$ \\
-    Misalignment bound & $\le \SI{1}{\degree}$ & small rotation in $\mat{M}_{\mathrm{mis}}$ \\
+    Scale error bound & $\le 1.5\%$ & diag scale in $\mat{M}_{\mathrm{mis}}$ \\
+    Cross-axis bound & $\le 1.0\%$ & sym coupling in $\mat{M}_{\mathrm{mis}}$ \\
+    Misalignment bound & $\le \SI{1}{\degree}$ & rotation in $\mat{M}_{\mathrm{mis}}$ \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Filter initialization (measurement std)}} \\
-    $\sigma_a$ init & $2.8\,\sigma_{a,\mathrm{white}}$ & per-axis; conservative \\
+    $\sigma_a$ init & $2.8\,\sigma_{a,\mathrm{white}}$ & per-axis \\
     $\sigma_g$ init & $2.0\,\sigma_{g,\mathrm{white}}$ & per-axis \\
     $\sigma_m$ init & $1.2\,\sigma_{m,\mathrm{white}}$ & per-axis \\
     \bottomrule
