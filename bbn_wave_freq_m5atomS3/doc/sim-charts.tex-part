@@ -83,7 +83,7 @@ Performance is summarized over a trailing window $T_{\mathrm{RMS}}=60$~s using R
 and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $(f,\tau,\sigma_a,R_S)$ for diagnostics.
 
 
-% Requires: \usepackage{booktabs,siunitx}
+% Requires: \usepackage{booktabs,siunitx,array}
 \begin{table}[t]
   \centering
   \caption{Simulation timing, sensor error models, initialization, and evaluation constants (runner defaults).}
@@ -91,7 +91,7 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
   \setlength{\tabcolsep}{3pt}
   \renewcommand{\arraystretch}{1.15}
   \sisetup{detect-all}
-  \begin{tabular}{@{}p{3.25cm} p{2.25cm} p{2.45cm}@{}}
+  \begin{tabular}{@{}p{3.25cm} p{2.25cm} >{\raggedright\arraybackslash}p{2.45cm}@{}}
     \toprule
     \textbf{Quantity} & \textbf{Value} & \textbf{Notes} \\
     \midrule
@@ -105,19 +105,19 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     \multicolumn{3}{@{}l}{\emph{Accelerometer noise/bias model (per axis)}} \\
     White noise (RMS per sample) & $1.51\times10^{-3}g$ & $\approx \SI{0.0148}{\meter\per\second\squared}$ \\
     Residual bias half-range & $5\times10^{-3}g$ & $\approx \SI{0.049}{\meter\per\second\squared}$, uniform \\
-    Bias random-walk & \SI{5e-4}{\meter\per\second\squared\per\sqrt{\second}} & increment std $\propto \sqrt{\Delta t}$ \\
+    Bias random-walk & \SI{5e-4}{\meter\per\second\squared\per\second\tothe{0.5}} & increment std $\propto \sqrt{\Delta t}$ \\
     RNG seed & 1234 & independent stream \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Gyroscope noise/bias model (per axis)}} \\
     White noise (RMS per sample) & \SI{0.00157}{\radian\per\second} & $\approx \SI{0.09}{\degree\per\second}$ \\
     Residual bias half-range & \SI{8.73e-4}{\radian\per\second} & \SI{0.05}{\degree\per\second}, uniform \\
-    Bias random-walk & \SI{1e-5}{\radian\per\second\per\sqrt{\second}} & increment std $\propto \sqrt{\Delta t}$ \\
+    Bias random-walk & \SI{1e-5}{\radian\per\second\per\second\tothe{0.5}} & increment std $\propto \sqrt{\Delta t}$ \\
     RNG seed & 5678 & independent stream \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Magnetometer model (per mag sample)}} \\
     White noise (RMS) & \SI{0.60}{\micro\tesla} & (at \SI{100}{\hertz}); \SI{0.30}{\micro\tesla} if \SI{20}{\hertz} \\
     Hard-iron residual half-range & \SI{2.0}{\micro\tesla} & uniform \\
-    Bias random-walk & \SI{0.01}{\micro\tesla\per\sqrt{\second}} & additive drift \\
+    Bias random-walk & \SI{0.01}{\micro\tesla\per\second\tothe{0.5}} & additive drift \\
     Scale error bound & $\le 1.5\%$ & diagonal scale in $\mat{M}_{\mathrm{mis}}$ \\
     Cross-axis bound & $\le 1.0\%$ & symmetric coupling in $\mat{M}_{\mathrm{mis}}$ \\
     Misalignment bound & $\le \SI{1}{\degree}$ & small rotation in $\mat{M}_{\mathrm{mis}}$ \\
@@ -136,7 +136,6 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     \bottomrule
   \end{tabular}
 \end{table}
-
 
 
 % JONSWAP - medium
