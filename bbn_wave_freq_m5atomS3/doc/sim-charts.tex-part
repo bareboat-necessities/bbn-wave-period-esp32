@@ -83,7 +83,7 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
 % Requires: \usepackage{booktabs,siunitx,array}
 \begin{table}[t]
   \centering
-  \caption{Simulation timing, sensor error models, initialization, and evaluation constants (runner defaults).}
+  \caption{Simulation parameters, timing, sensor error models.}
   \label{tab:sim_constants}
   \setlength{\tabcolsep}{3pt}
   \renewcommand{\arraystretch}{1.15}
@@ -95,7 +95,6 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     \multicolumn{3}{@{}l}{\emph{Timing / protocol}} \\
     IMU sample rate & \SI{240}{\hertz} & $\Delta t = 1/240$ \\
     Magnetometer ODR & \SI{100}{\hertz} & hold-last-sample \\
-    RMS scoring window & \SI{60}{\second} & trailing window \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Accelerometer noise/bias model (per axis)}} \\
     White noise (RMS) & $1.51\times10^{-3}g$ & $\approx \SI{0.0148}{\meter\per\second\squared}$ \\
