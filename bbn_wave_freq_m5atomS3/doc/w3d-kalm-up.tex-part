@@ -190,4 +190,5 @@ satisfies the usual invariants:
 \end{itemize}
 This is precisely the form realized by the implementation: the block algebra expresses the method’s intrinsic
 structure rather than a procedural recipe, and the reduction to a single rank--3 solve is a direct consequence
-of the measurement dimension.
+of the measurement dimension. The rank-3 structure substantially lowers computational cost and makes the filter 
+practical for low-power microcontrollers.
