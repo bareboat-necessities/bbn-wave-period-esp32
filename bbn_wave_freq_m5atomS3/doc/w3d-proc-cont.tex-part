@@ -60,6 +60,19 @@ $\dot{\vct{S}}=\vct{p}$ is driven by a vector OU process
 Here $\tau>0$ is the correlation time and $\matg{\Sigma}_{aw}\succ0$ the stationary
 covariance (diagonal or correlated).
 
+\paragraph{Why an OU prior is ``right enough''}
+We do not claim that wave-induced platform acceleration is exactly OU; instead,
+\eqref{eq:ou-ct} is used as a low-order \emph{stationary Gauss--Markov prior} that captures
+the key property relevant to inertial drift: the effective wave-driven acceleration is
+\emph{colored} with a finite memory on the order of the dominant wave time scale. The
+correlation time $\tau$ acts as a physically interpretable ``memory length,'' while the
+stationary covariance $\matg{\Sigma}_{aw}$ sets the typical acceleration energy level; both
+parameters can be tuned (or adapted online) to match the observed variance and time scale
+of the measured specific force. From an estimation standpoint, OU is the simplest
+continuous-time model that is Markov (minimal state), mean-reverting with bounded variance
+(avoiding random-walk growth under integration), and admits closed-form discretization for
+$\matg{\Phi}(h)$ and $\matg{Q}_d(h)$.
+
 In the frequency domain, each scalar OU component has PSD
 \(
 S_a(\omega)=\tfrac{2\sigma_a^2\tau}{1+\omega^2\tau^2}
