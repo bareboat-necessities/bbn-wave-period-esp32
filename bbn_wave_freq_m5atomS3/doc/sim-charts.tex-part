@@ -117,13 +117,6 @@ Here $\mat{M}_{\mathrm{mis}}\approx \mat{I}$ is a near-identity distortion matri
 cross-axis coupling, and a small misalignment rotation; $\vct{b}_{m,0}$ and $\vct{b}_{m,\mathrm{rw}}$ represent residual
 hard-iron bias and slow drift, and $\vct{w}_m$ is per-sample white noise.
 
-\paragraph{Scoring window}
-Performance is summarized over a trailing window $T_{\mathrm{RMS}}=60$~s using RMS displacement error (per-axis and 3D)
-and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $(f,\tau,\sigma_a,R_S)$ for diagnostics.
-
-
-
-
 % JONSWAP - medium
 
 \iffalse
@@ -183,6 +176,10 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
   \label{fig:w3d_pmstokes_medium}
 \end{figure}
 \fi
+
+\paragraph{Scoring window}
+Performance is summarized over a trailing window $T_{\mathrm{RMS}}=60$~s using RMS displacement error (per-axis and 3D)
+and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $(f,\tau,\sigma_a,R_S)$ for diagnostics.
 
 % Requires: \usepackage{booktabs,siunitx}
 \begin{table}[t]
