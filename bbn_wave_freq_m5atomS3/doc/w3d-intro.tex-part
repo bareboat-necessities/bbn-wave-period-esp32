@@ -87,7 +87,8 @@ motivated regularization law,
 R_S \propto \sigma_{aw} \tau^3,
 \]
 which links displacement drift suppression to the stochastic excitation
-strength.
+strength. Without online adaptation the integration drift produces heave errors 
+that exceed practical tolerances.
 
 \subsection*{Validation}
 
