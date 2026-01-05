@@ -60,8 +60,8 @@ $\dot{\vct{S}}=\vct{p}$ is driven by a vector OU process
 Here $\tau>0$ is the correlation time and $\matg{\Sigma}_{aw}\succ0$ the stationary
 covariance (diagonal or correlated).
 
-\paragraph{Motivation for an OU acceleration prior}
-We do not claim that wave-induced platform acceleration is exactly OU; instead,
+\paragraph
+The sea wave-induced floating body acceleration is not OU; instead,
 \eqref{eq:ou-ct} is used as a low-order \emph{stationary Gauss--Markov prior} that captures
 a key property for inertial drift control: the effective wave-driven acceleration is
 \emph{colored} with a finite correlation time on the order of the dominant wave time scale.
