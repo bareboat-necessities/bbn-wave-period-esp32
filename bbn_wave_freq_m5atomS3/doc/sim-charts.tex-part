@@ -194,12 +194,12 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
   \sisetup{detect-all}
 
   \begin{tabular}{@{}l
-                  S[table-format=1.2]
+                  S[table-format=1.6]
+                  S[table-format=1.1]
                   S[table-format=1.3]
-                  S[table-format=2.1]
                   S[table-format=1.2]
                   S[table-format=1.2]
-                  S[table-format=1.2]
+                  S[table-format=1.4]
                   S[table-format=2.1]
                   l
                   @{}}
@@ -214,22 +214,22 @@ and RMS roll/pitch/yaw error; the runner also logs frequency and tuning traces $
     {$\bar\theta$} &
     {T/A/U} \\
     \midrule
-    JON  & 0.27 & 0.014 & 5.3  & 0.18 & 0.97 & 0.30 & 30.6  & 99.3/0.0/0.7 \\
-    JON  & 1.50 & 0.044 & 2.9  & 0.33 & 1.69 & 0.66 & -35.6 & 99.9/0.0/0.1 \\
-    JON  & 4.00 & 0.294 & 7.4  & 2.29 & 0.70 & 0.57 & 28.9  & 98.9/1.0/0.1 \\
-    JON  & 8.50 & 0.417 & 4.9  & 0.26 & 0.86 & 0.59 & -31.8 & 97.7/2.0/0.3 \\
+    JONSWAP  & 0.27 & 0.014 & 5.3  & 0.18 & 0.97 & 0.30 & 30.6  & 99.3/0.0/0.7 \\
+    JONSWAP  & 1.50 & 0.044 & 2.9  & 0.33 & 1.69 & 0.66 & -35.6 & 99.9/0.0/0.1 \\
+    JONSWAP  & 4.00 & 0.294 & 7.4  & 2.29 & 0.70 & 0.57 & 28.9  & 98.9/1.0/0.1 \\
+    JONSWAP  & 8.50 & 0.417 & 4.9  & 0.26 & 0.86 & 0.59 & -31.8 & 97.7/2.0/0.3 \\
     \addlinespace
-    PMS  & 0.27 & 0.013 & 4.8  & 1.22 & 0.66 & 0.57 & 32.2  & 98.7/0.0/1.3 \\
-    PMS  & 1.50 & 0.077 & 5.1  & 1.61 & 1.52 & 1.54 & -28.5 & 99.8/0.0/0.2 \\
-    PMS  & 4.00 & 0.416 & 10.4 & 2.86 & 1.32 & 2.92 & 27.6  & 99.9/0.0/0.1 \\
-    PMS  & 8.50 & 0.834 & 9.8  & 1.89 & 2.93 & 4.23 & -25.3 & 100/0/0 \\
+    PM+Stokes  & 0.27 & 0.013 & 4.8  & 1.22 & 0.66 & 0.57 & 32.2  & 98.7/0.0/1.3 \\
+    PM+Stokes  & 1.50 & 0.077 & 5.1  & 1.61 & 1.52 & 1.54 & -28.5 & 99.8/0.0/0.2 \\
+    PM+Stokes  & 4.00 & 0.416 & 10.4 & 2.86 & 1.32 & 2.92 & 27.6  & 99.9/0.0/0.1 \\
+    PM+Stokes  & 8.50 & 0.834 & 9.8  & 1.89 & 2.93 & 4.23 & -25.3 & 100/0/0 \\
     \bottomrule
   \end{tabular}
 
   \vspace{1pt}
   \footnotesize
-  Case: JON=JONSWAP, PMS=PM+Stokes. R/P/Y are roll/pitch/yaw RMS in degrees.
-  Direction $\theta\in[-90^\circ,90^\circ]$ with $0^\circ$ at $+\hat{\bm y}$ (CW positive);
+  R/P/Y are roll/pitch/yaw RMS in degrees.
+  Direction $\theta\in[-90^\circ,90^\circ]$;
   T/A/U = Toward/Away/Uncertain (\% of samples).
 \end{table}
 
