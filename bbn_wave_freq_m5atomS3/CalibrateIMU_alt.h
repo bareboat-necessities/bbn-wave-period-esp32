@@ -29,11 +29,12 @@ static constexpr int IMU_CAL_MAX_SAMPLES = 400;
 template <typename T>
 static inline T clamp(T x, T lo, T hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
-static inline bool finitef(float x) { return std::isfinite(x); }
+template <typename T>
+static inline bool finiteT(T x) { return std::isfinite((double)x); }
 
 template <typename T>
 static inline bool isfinite3(const Eigen::Matrix<T,3,1>& v) {
-  return finitef((float)v.x()) && finitef((float)v.y()) && finitef((float)v.z());
+  return finiteT(v.x()) && finiteT(v.y()) && finiteT(v.z());
 }
 
 template <typename T>
