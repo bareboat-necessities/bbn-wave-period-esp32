@@ -612,7 +612,20 @@ struct MagCalibrator {
   bool fit(MagCalibration<T>& out, int robust_iters = 3, T trim_frac = T(0.15)) const {
     if (buf.n < 80) return false;
 
-    auto fit0 = ellipsoid_to_sphere_robust<T>(buf.v, buf.n, T(1), robust_iters, trim_frac);
+    // Degeneracy check radius estimate in µT space: median ||m - mean(m)||
+    Vec3 mu = Vec3::Zero();
+    for (int i = 0; i < buf.n; ++i) mu += buf.v[i];
+    mu *= (T(1) / (T)buf.n);
+
+    T rad_mu[IMU_CAL_MAX_SAMPLES];
+    for (int i = 0; i < buf.n; ++i) rad_mu[i] = (buf.v[i] - mu).norm();
+    T B_est = median_of_array(rad_mu, buf.n);
+
+    auto fit0 = ellipsoid_to_sphere_robust<T>(
+    buf.v, buf.n, T(1),
+    robust_iters, trim_frac,
+    T(1e-6), // ridge_rel (matches default)
+    B_est);  // expected_radius_for_checks in µT space    
     if (!fit0.ok) return false;
 
     // Estimate field magnitude from median radius in raw µT space
