@@ -43,8 +43,8 @@ static inline bool isfinite3(const Eigen::Matrix<T,3,1>& v) {
 template <typename T>
 static inline bool project_spd_3x3(
     Eigen::Matrix<T,3,3>& M,
-    T eps_rel = T(1e-6),
-    T eps_abs = T(1e-9))
+    T eps_rel = T(1e-5),
+    T eps_abs = T(1e-7))
 {
   using Mat3 = Eigen::Matrix<T,3,3>;
   // Symmetrize first
@@ -358,7 +358,7 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     M = T(0.5) * (M + M.transpose());
 
     // project to SPD to avoid borderline LLT failures
-    if (!project_spd_3x3<T>(M, T(1e-6), T(1e-9))) return false;
+    if (!project_spd_3x3<T>(M, T(1e-5), T(1e-7))) return false;
 
     // Cholesky: M = U^T U
     Eigen::LLT<Eigen::Matrix<T,3,3>> llt(M);
