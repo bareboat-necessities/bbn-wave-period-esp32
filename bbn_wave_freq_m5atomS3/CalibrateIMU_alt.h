@@ -11,7 +11,7 @@
 */
 
 #include <stdint.h>
-#include <math.h>
+#include <cmath>
 
 #ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
@@ -29,7 +29,7 @@ static constexpr int IMU_CAL_MAX_SAMPLES = 400;
 template <typename T>
 static inline T clamp(T x, T lo, T hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
-static inline bool finitef(float x) { return isfinite(x); }
+static inline bool finitef(float x) { return std::isfinite(x); }
 
 template <typename T>
 static inline bool isfinite3(const Eigen::Matrix<T,3,1>& v) {
