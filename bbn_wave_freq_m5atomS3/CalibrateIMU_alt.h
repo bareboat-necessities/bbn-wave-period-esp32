@@ -466,6 +466,19 @@ struct AccelCalibrator {
   T max_gyro_for_static = T(0.35);  // rad/s
   T accel_mag_tol = T(1.0);         // m/s^2, accept if | |a| - g | < tol
 
+  // Workspace to reduce stack use in fit()
+  struct Workspace {
+    uint16_t idx[K_TBINS][N];
+    int      nbin[K_TBINS];
+    T        tsum[K_TBINS];
+    Vec3     xscratch[N];
+    Vec3     centers[K_TBINS];
+    T        temps[K_TBINS];
+  };
+
+  // fit() is const, so workspace must be mutable
+  mutable Workspace ws_;
+
   void clear() { buf.clear(); }
 
   bool addSample(const Vec3& a_raw, const Vec3& w_raw, T tempC) {
@@ -489,10 +502,13 @@ struct AccelCalibrator {
     const T trange = tmax - tmin;
     const T binW = (trange > T(1e-3)) ? (trange / (T)K_TBINS) : T(1);
 
-    // Bin indices instead of Vec3[K][N] (saves stack/RAM)
-    uint16_t idx[K_TBINS][N];
-    int      nbin[K_TBINS];
-    T        tsum[K_TBINS];
+    // Use reusable workspace (reduces stack)
+    auto& idx   = ws_.idx;
+    auto& nbin  = ws_.nbin;
+    auto& tsum  = ws_.tsum;
+    auto& xs    = ws_.xscratch;
+    auto& centers = ws_.centers;
+    auto& temps   = ws_.temps;
 
     for (int k = 0; k < K_TBINS; ++k) { nbin[k] = 0; tsum[k] = T(0); }
 
@@ -510,31 +526,25 @@ struct AccelCalibrator {
       }
     }
 
-    // Fits per bin, store centers for temp regression
-    Vec3 centers[K_TBINS];
-    T temps[K_TBINS];
     int nb = 0;
 
     // Choose S from best bin
     T best_score = T(1e30);
     Eigen::Matrix<T,3,3> bestS = Eigen::Matrix<T,3,3>::Identity();
     T best_rms = T(0);
-    Vec3 best_center = Vec3::Zero();
-
-    // scratch buffer to feed fitter
-    Vec3 xscratch[N];
+    Vec3 best_center = Vec3::Zero();    
 
     for (int k = 0; k < K_TBINS; ++k) {
       if (nbin[k] < 30) continue;
 
       for (int j = 0; j < nbin[k]; ++j) {
-        xscratch[j] = buf.v[(int)idx[k][j]];
+        xs[j] = buf.v[(int)idx[k][j]];
       }
 
       const T tmean = tsum[k] / (T)nbin[k];
 
       auto fitk = ellipsoid_to_sphere_robust<T>(
-        xscratch, nbin[k], g,
+        xs, nbin[k], g,
         robust_iters, trim_frac,
         T(1e-6), // ridge_rel (matches default)
         g);      // expected_radius_for_checks
@@ -542,7 +552,7 @@ struct AccelCalibrator {
 
       centers[nb] = fitk.b;
       temps[nb]   = tmean;
-      nb++;
+      nb++;      
 
       // score: rms + small penalty for fewer used points
       T score = fitk.rms + T(0.2) * (T(50) / (T)fitk.used);
