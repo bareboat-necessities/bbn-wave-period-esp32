@@ -117,7 +117,7 @@ static inline bool degeneracy_check_coverage3(
 
   // Determinant collapses to ~0 if samples are planar/linear in direction space.
   const T detC = C.determinant();
-  if (!finitef((float)detC) || detC < min_cov_det) return false;
+  if (!finiteT(detC) || detC < min_cov_det) return false;
 
   return true;
 }
@@ -170,7 +170,7 @@ struct SampleBuffer3 {
 
   bool push(const Vec3& x, T tC = T(0)) {
     if (n >= N) return false;
-    if (!isfinite3(x) || !finitef((float)tC)) return false;
+    if (!isfinite3(x) || !finiteT(tC)) return false;
     v[n] = x;
     tempC[n] = tC;
     ++n;
@@ -533,7 +533,7 @@ struct AccelCalibrator {
   void clear() { buf.clear(); }
 
   bool addSample(const Vec3& a_raw, const Vec3& w_raw, T tempC) {
-    if (!isfinite3(a_raw) || !isfinite3(w_raw) || !finitef((float)tempC)) return false;
+    if (!isfinite3(a_raw) || !isfinite3(w_raw) || !finiteT(tempC)) return false;
     const T amag = a_raw.norm();
     const T wmag = w_raw.norm();
     if ((T)fabs((double)(amag - g)) > accel_mag_tol) return false;
@@ -726,7 +726,7 @@ struct GyroCalibrator {
   void clear() { buf.clear(); }
 
   bool addSample(const Vec3& w_raw, const Vec3& a_raw, T tempC) {
-    if (!isfinite3(w_raw) || !isfinite3(a_raw) || !finitef((float)tempC)) return false;
+    if (!isfinite3(w_raw) || !isfinite3(a_raw) || !finiteT(tempC)) return false;
     if (w_raw.norm() > max_gyro_norm) return false;
     if ((T)fabs((double)(a_raw.norm() - g)) > max_accel_dev) return false;
     return buf.push(w_raw, tempC);
