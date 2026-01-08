@@ -54,6 +54,24 @@ def latex_safe(s: str) -> str:
     return s.replace("_", r"\_")
 
 # === Helpers ===
+def plot_envelope(ax, t, env, label=r"Envelope $\pm$ disp\_scale", shade=True):
+    """
+    Plot +/- envelope around zero.
+    env can contain NaNs; they will be masked out.
+    """
+    env = np.asarray(env, dtype=float)
+    m = np.isfinite(env)
+    if not np.any(m):
+        return
+
+    # dashed lines
+    ax.plot(t[m],  env[m], linestyle=":", linewidth=1.0, label=label)
+    ax.plot(t[m], -env[m], linestyle=":", linewidth=1.0)
+
+    # optional shading
+    if shade:
+        ax.fill_between(t[m], -env[m], env[m], alpha=0.12)
+
 def make_subplots(nrows: int, title: str, width: float = 10.0, row_height: float = 2.5, sharex: bool = True):
     """
     Create a figure with nrows stacked subplots, auto-scaling height.
@@ -173,9 +191,23 @@ for fname in files:
 
         ax_val.plot(time, df[f"{prefix}_ref_z"], label="Ref")
         ax_val.plot(time, df[f"{prefix}_est_z"], label="Est", linestyle="--")
+
+        # --- ADD ENVELOPE ON DISPLACEMENT PANEL ONLY ---
+        if prefix == "disp":
+            if "disp_scale_m" in df.columns:
+                plot_envelope(ax_val, time.to_numpy(), df["disp_scale_m"].to_numpy(),
+                              label=r"Envelope $\pm$ disp\_scale", shade=True)
+            else:
+                ax_val.text(0.01, 0.10, "Missing: disp_scale_m", transform=ax_val.transAxes)
+
         ax_val.set_ylabel(f"{prefix.capitalize()} Z")
-        ax_val.legend()
         ax_val.grid(True)
+        ax_val.legend(loc="upper right", fontsize=8)
+
+        if PLOT_ERRORS:
+            ax_err.plot(time, df[f"{prefix}_err_z"], color="tab:red")
+            ax_err.set_ylabel("Error")
+            ax_err.grid(True)
 
         if PLOT_ERRORS:
             ax_err.plot(time, df[f"{prefix}_err_z"], color="tab:red")
