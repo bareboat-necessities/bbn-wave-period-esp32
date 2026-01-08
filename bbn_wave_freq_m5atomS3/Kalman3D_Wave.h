@@ -1493,6 +1493,9 @@ template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bi
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas_body, T tempC)
 {  
+    last_acc_diag_ = MeasDiag3{};
+    last_acc_diag_.accepted = false;
+				
     const bool use_ba = (with_accel_bias && acc_bias_updates_enabled_);
                 
     // De-heel measured accel into B'
@@ -1560,7 +1563,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     
     const Vector3 f_meas = acc_meas;
     const Vector3 r = f_meas - f_pred;
-                  
+
+    last_acc_diag_.r = r;
+				
     // Jacobians from linearization at CoG-only part (lever-arm is attitude-independent)
     Matrix3 J_att;
     Matrix3 J_aw;
@@ -1694,10 +1699,19 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 
     // Gain
     Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, Racc.norm())) return;
+    if (!safe_ldlt3_(S_mat, ldlt, Racc.norm())) {
+        // provide what we have
+        last_acc_diag_.S = S_mat;
+        last_acc_diag_.nis = std::numeric_limits<T>::quiet_NaN();
+        last_acc_diag_.accepted = false;
+        return;
+    }
+    // record final S + NIS
+    last_acc_diag_.S = S_mat;
+    last_acc_diag_.nis = nis3_from_ldlt_(ldlt, r);
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-
+				
     if (!linear_block_enabled_) {
         freeze_linear_rows_(K);                
     }
@@ -1710,12 +1724,16 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 
     // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
+    last_acc_diag_.accepted = true;			
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_mag_only(
     const Vector3& mag_meas_body)
 {
+    last_mag_diag_ = MeasDiag3{};
+    last_mag_diag_.accepted = false;
+				
     // De-heel magnetometer into B'
     const Vector3 mag_meas = deheel_vector_(mag_meas_body);
 
@@ -1737,6 +1755,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         zhat += xext.template segment<3>(OFF_BM);
     }
     const Vector3 r = mag_meas - zhat;
+    last_mag_diag_.r = r;				
 
     // Jacobian uses the no-bias predicted vector
     const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
@@ -1775,11 +1794,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     }				
                 
     Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) return;  
-        
+    if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) {
+        last_mag_diag_.S = S_mat;
+        last_mag_diag_.nis = std::numeric_limits<T>::quiet_NaN();
+        last_mag_diag_.accepted = false;
+        return;
+    }
+    last_mag_diag_.S = S_mat;
+    last_mag_diag_.nis = nis3_from_ldlt_(ldlt, r);
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-
+				
     if (!linear_block_enabled_) {
         freeze_linear_rows_(K);
     }
@@ -1792,7 +1817,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     // State + covariance update
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
-    applyQuaternionCorrectionFromErrorState();          
+    applyQuaternionCorrectionFromErrorState(); 
+	last_mag_diag_.accepted = true;			
 }
 
 // specific force prediction (BODY'):
