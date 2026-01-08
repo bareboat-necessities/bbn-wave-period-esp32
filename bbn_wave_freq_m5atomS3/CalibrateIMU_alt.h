@@ -1,11 +1,14 @@
 #pragma once
-// Modern embedded-friendly IMU calibration for Arduino + Eigen.
-// Units:
-//   accel: m/s^2
-//   mag:   uT
-//   gyro:  rad/s
-//
-// Dependencies: ArduinoEigenDense (fixed-size Eigen subset), <cmath>, <stdint.h>
+
+/*
+  Copyright 2026, Mikhail Grushinskiy
+
+  Modern embedded-friendly IMU calibration for Arduino + Eigen.
+  Units:
+    accel: m/s^2
+    mag:   uT
+    gyro:  rad/s
+*/
 
 #include <stdint.h>
 #include <math.h>
@@ -13,14 +16,10 @@
 
 namespace imu_cal {
 
-// ============================
 // Config / limits
-// ============================
 static constexpr int IMU_CAL_MAX_SAMPLES = 400;
 
-// ============================
 // Utilities
-// ============================
 template <typename T>
 static inline T clamp(T x, T lo, T hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
@@ -143,9 +142,7 @@ static inline T robust_mad(T* residuals, int n) {
   return mad;
 }
 
-// ============================
 // Fixed-capacity sample buffer
-// ============================
 template <typename T, int N>
 struct SampleBuffer3 {
   static_assert(N > 0, "N must be positive");
@@ -169,7 +166,6 @@ struct SampleBuffer3 {
   }
 };
 
-// ============================
 // Ellipsoid -> sphere robust fit (FIXED)
 // Implicit model matching build_row_d():
 //    x^T Q x + 2 q^T x + c = 0
@@ -182,7 +178,6 @@ struct SampleBuffer3 {
 //   Then: (x-b)^T (Q/s) (x-b) = 1
 // Whitening A_unit from chol(Q/s): ||A_unit(x-b)|| ≈ 1
 // Then scale A = A_unit * R_target so ||A(x-b)|| ≈ R_target.
-// ============================
 template <typename T>
 struct EllipsoidSphereFit {
   bool ok = false;
@@ -366,10 +361,8 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
   return out;
 }
 
-// ============================
 // Temperature model: bias(T) = b0 + k*(T - T0)
 // Fit per-axis with simple LS.
-// ============================
 template <typename T>
 struct TempBias3 {
   bool ok = false;
@@ -406,9 +399,7 @@ static TempBias3<T> fit_temp_bias3(const Eigen::Matrix<T,3,1>(&b)[N], const T(&t
   return out;
 }
 
-// ============================
 // Calibration outputs
-// ============================
 template <typename T>
 struct AccelCalibration {
   bool ok = false;
@@ -446,15 +437,13 @@ struct GyroCalibration {
   }
 };
 
-// ============================
-// Calibrator: Accel (FIXED stack usage)
+// Calibrator: Accel
 // Strategy:
 //  - Collect ~400 quasi-static accel samples across orientations.
 //  - Bin by temperature into up to K bins.
 //  - For each bin: robust ellipsoid->sphere fit => center b_bin and S_bin.
 //  - Choose S from best bin (low rms, enough samples).
 //  - Regress b_bin vs temperature => bias(T).
-// ============================
 template <typename T, int N, int K_TBINS = 8>
 struct AccelCalibrator {
   static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
@@ -583,13 +572,11 @@ struct AccelCalibrator {
   }
 };
 
-// ============================
 // Calibrator: Magnetometer
 // Strategy:
 //  - Collect mag samples across orientations.
 //  - Robust ellipsoid->unit sphere gives (b, A_unit).
 //  - Preserve µT magnitude by scaling so median(||m_raw-b||) is maintained.
-// ============================
 template <typename T, int N>
 struct MagCalibrator {
   static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
@@ -648,13 +635,11 @@ struct MagCalibrator {
   }
 };
 
-// ============================
 // Calibrator: Gyroscope bias(T)
 // Strategy:
 //  - Collect stationary gyro samples while not moving.
 //  - Bin by temperature and estimate mean bias per bin.
 //  - Fit bias(T) via regression.
-// ============================
 template <typename T, int N, int K_TBINS = 8>
 struct GyroCalibrator {
   static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
