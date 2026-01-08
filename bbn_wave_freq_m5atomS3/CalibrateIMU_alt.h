@@ -314,29 +314,30 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     if (llt.info() != Eigen::Success) return out;
     A_unit = llt.matrixU();
 
-    // Compute abs residuals for ALL points (not ratcheting only inliers)
+    // Compute signed residuals e = r - 1 for ALL points (not ratcheting only inliers)
+    // and robustly gate with MAD: thr = k * MAD(e), k ~= 5.2 (~3.5σ for Gaussian).
+    T e[IMU_CAL_MAX_SAMPLES];
     for (int i = 0; i < n; ++i) {
       const T r = (A_unit * (x[i] - b)).norm();
-      absr[i] = (T)fabs((double)(r - T(1)));
-      if (!finitef((float)absr[i])) absr[i] = T(1e9);
+      e[i] = r - T(1);
+      if (!finitef((float)e[i])) e[i] = (e[i] >= T(0) ? T(1e9) : -T(1e9));
     }
 
-    // Determine trim threshold at (1-trim_frac) quantile
+    // MAD = median(|e - median(e)|)
     T tmp[IMU_CAL_MAX_SAMPLES];
-    for (int i = 0; i < n; ++i) tmp[i] = absr[i];
-    sort_small(tmp, n);
+    for (int i = 0; i < n; ++i) tmp[i] = e[i];
+    const T mad = robust_mad(tmp, n);
 
-    int keep = (int)floor((double)n * (double)(T(1) - trim_frac));
-    keep = clamp<int>(keep, 10, n);
-    const T thr = tmp[keep - 1];
+    // Threshold on |e|
+    const T thr = T(5.2) * mad + T(1e-6);
 
     // Update inlier mask
     int used = 0;
     for (int i = 0; i < n; ++i) {
-      inlier[i] = (absr[i] <= thr);
+      inlier[i] = ((T)fabs((double)e[i]) <= thr);
       if (inlier[i]) ++used;
     }
-    if (used < 10) return out;
+    if (used < 10) return out;    
   }
 
   // Final scale A to target radius
