@@ -37,6 +37,39 @@ static inline bool isfinite3(const Eigen::Matrix<T,3,1>& v) {
   return finiteT(v.x()) && finiteT(v.y()) && finiteT(v.z());
 }
 
+// SPD projection for 3x3 symmetric matrices
+// Clamps eigenvalues to enforce positive-definiteness.
+// Returns false if eigendecomposition fails or result is non-finite.
+template <typename T>
+static inline bool project_spd_3x3(
+    Eigen::Matrix<T,3,3>& M,
+    T eps_rel = T(1e-6),
+    T eps_abs = T(1e-9))
+{
+  using Mat3 = Eigen::Matrix<T,3,3>;
+  // Symmetrize first
+  M = T(0.5) * (M + M.transpose());
+
+  Eigen::SelfAdjointEigenSolver<Mat3> es(M);
+  if (es.info() != Eigen::Success) return false;
+
+  Eigen::Matrix<T,3,1> eval = es.eigenvalues();
+  Mat3 evec = es.eigenvectors();
+  if (!(eval.array().isFinite().all()) || !(evec.array().isFinite().all())) return false;
+
+  const T max_e = eval.maxCoeff();
+  const T floor_e = (max_e > T(0)) ? (eps_rel * max_e) : eps_abs;
+  const T min_e = (floor_e > eps_abs) ? floor_e : eps_abs;
+
+  eval.x() = (eval.x() < min_e ? min_e : eval.x());
+  eval.y() = (eval.y() < min_e ? min_e : eval.y());
+  eval.z() = (eval.z() < min_e ? min_e : eval.z());
+
+  M = evec * eval.asDiagonal() * evec.transpose();
+  M = T(0.5) * (M + M.transpose());
+  return (M.array().isFinite().all());
+}
+
 template <typename T>
 static inline bool degeneracy_check_coverage3(
     const Eigen::Matrix<T,3,1>* x, int n,
@@ -221,14 +254,20 @@ static bool solve_ellipsoid_params_trimmed(
   using Mat10 = Eigen::Matrix<T,10,10>;
   using Vec10 = Eigen::Matrix<T,10,1>;
 
+  if (!x || n <= 0) return false;
+
   Mat10 H = Mat10::Zero();
   Vec10 g = Vec10::Zero();
 
   int used = 0;
   for (int i = 0; i < n; ++i) {
     if (inlier && !inlier[i]) continue;
+    if (!isfinite3<T>(x[i])) continue;              // <-- DROP-IN: skip non-finite
+
     Vec10 d;
     build_row_d(x[i], d);
+    if (!(d.array().isFinite().all())) continue;    // paranoia
+
     H.noalias() += d * d.transpose();
     g.noalias() += d; // D^T * 1
     ++used;
@@ -318,11 +357,14 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     Eigen::Matrix<T,3,3> M = Q / s;
     M = T(0.5) * (M + M.transpose());
 
+    // project to SPD to avoid borderline LLT failures
+    if (!project_spd_3x3<T>(M, T(1e-6), T(1e-9))) return false;
+
     // Cholesky: M = U^T U
     Eigen::LLT<Eigen::Matrix<T,3,3>> llt(M);
     if (llt.info() != Eigen::Success) return false;
     A_unit = llt.matrixU();
-    return true;
+    return true;    
   };
 
   for (int it = 0; it < robust_iters; ++it) {
