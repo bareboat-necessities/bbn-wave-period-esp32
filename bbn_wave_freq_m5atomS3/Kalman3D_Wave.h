@@ -1551,7 +1551,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         // gravity-only linearization
         const Vector3 f_grav_b = R_wb() * (Vector3::Zero() - g_world);
         J_att = -skew_symmetric_matrix(f_grav_b);
-        J_aw.setZero(); // <-- IMPORTANT: no aw Jacobian when linear is OFF
+        J_aw.setZero(); // no aw Jacobian when linear is OFF
     }
                 
     // Innovation covariance S = C P Cᵀ + Racc (3×3)
