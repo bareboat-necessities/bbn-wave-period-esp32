@@ -249,11 +249,25 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     T R_target,
     int robust_iters = 3,
     T trim_frac = T(0.15),     // drop worst 15% residuals each iteration
-    T ridge_rel = T(1e-6))
+    T ridge_rel = T(1e-6),
+    T expected_radius_for_checks = T(0)) // <-- NEW (optional)
 {
   EllipsoidSphereFit<T> out;
   if (n < 12) return out;
   if (n > IMU_CAL_MAX_SAMPLES) return out;
+
+  // Optional early degeneracy check (coverage/planarity)
+  if (expected_radius_for_checks > T(0)) {
+    if (!degeneracy_check_coverage3<T>(
+          x, n,
+          expected_radius_for_checks,
+          T(0.90),   // min axis span ~0.90*R
+          T(0.08),   // require both sides ~8%
+          T(1e-3)))  // direction covariance determinant threshold
+    {
+      return out;
+    }
+  }
 
   bool inlier[IMU_CAL_MAX_SAMPLES];
   for (int i = 0; i < n; ++i) inlier[i] = true;
