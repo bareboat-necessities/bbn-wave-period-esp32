@@ -285,7 +285,7 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
   for (int it = 0; it < robust_iters; ++it) {
     if (!solve_ellipsoid_params_trimmed<T>(x, n, inlier, p, ridge_rel)) return out;
 
-    // Build Q, q, c for: x^T Q x + 2 q^T x + c = 0
+    // Build Q, q, c for: x^T Q x + 2 q^T x + c = 1
     Eigen::Matrix<T,3,3> Q;
     Q << p(0), p(3), p(4),
          p(3), p(1), p(5),
