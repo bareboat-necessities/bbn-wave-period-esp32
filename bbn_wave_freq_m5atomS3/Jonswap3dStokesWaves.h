@@ -160,7 +160,7 @@ class EIGEN_ALIGN_MAX JonswapSpectrum {
         S_ = S0 * alpha;
         A_ = (2.0 * S_.cwiseProduct(df_)).cwiseSqrt();
 
-        // --- Enforce Hs by bisection (same as PM spectrum) ---
+        // Enforce Hs by bisection
         auto m0_from_beta = [&](double beta) {
             Eigen::Matrix<double, N_FREQ, 1> A_beta = beta * A_;
             double sum_sq = A_beta.squaredNorm();
