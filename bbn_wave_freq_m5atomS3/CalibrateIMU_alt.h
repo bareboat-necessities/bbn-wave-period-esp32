@@ -66,9 +66,13 @@ static inline bool degeneracy_check_coverage3(
   Mat3 C = Mat3::Zero();
   int m = 0;
 
+  int valid = 0; // count of finite centered samples used for sign/span tests
+
   for (int i = 0; i < n; ++i) {
     Vec3 d = x[i] - mu;
     if (!isfinite3(d)) continue;
+
+    ++valid;
 
     // track min/max
     mn.x() = (d.x() < mn.x() ? d.x() : mn.x());
@@ -93,6 +97,7 @@ static inline bool degeneracy_check_coverage3(
     ++m;
   }
 
+  if (valid < 12) return false;
   if (m < 12) return false;
 
   // Axis span must be large enough (requires coverage in each direction).
@@ -102,7 +107,7 @@ static inline bool degeneracy_check_coverage3(
   if (!(span.x() > min_span && span.y() > min_span && span.z() > min_span)) return false;
 
   // Must have both positive and negative samples on each axis (after centering).
-  const int min_side = (int)ceil((double)n * (double)min_sign_frac);
+  const int min_side = (int)ceil((double)valid * (double)min_sign_frac);
   for (int a = 0; a < 3; ++a) {
     if (pos[a] < min_side || neg[a] < min_side) return false;
   }
