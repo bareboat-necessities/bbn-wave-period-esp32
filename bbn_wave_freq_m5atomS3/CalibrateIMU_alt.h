@@ -12,7 +12,13 @@
 
 #include <stdint.h>
 #include <math.h>
+
+#ifdef EIGEN_NON_ARDUINO
 #include <Eigen/Dense>
+#include <Eigen/Eigenvalues>
+#else
+#include <ArduinoEigenDense.h>
+#endif
 
 namespace imu_cal {
 
