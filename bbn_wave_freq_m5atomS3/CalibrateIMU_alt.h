@@ -250,13 +250,14 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     const Eigen::Matrix<T,3,1>* x, int n,
     T R_target,
     int robust_iters = 3,
-    T trim_frac = T(0.15),     // drop worst 15% residuals each iteration
+    T trim_frac = T(0.15),     // drop worst ~15% by |e| each iteration (now implemented)
     T ridge_rel = T(1e-6),
-    T expected_radius_for_checks = T(0)) // <-- NEW (optional)
+    T expected_radius_for_checks = T(0)) // optional early coverage check
 {
   EllipsoidSphereFit<T> out;
-  if (n < 12) return out;
+  if (!x || n < 12) return out;
   if (n > IMU_CAL_MAX_SAMPLES) return out;
+  if (!(R_target > T(0))) return out;
 
   // Optional early degeneracy check (coverage/planarity)
   if (expected_radius_for_checks > T(0)) {
@@ -274,75 +275,118 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
   bool inlier[IMU_CAL_MAX_SAMPLES];
   for (int i = 0; i < n; ++i) inlier[i] = true;
 
+  // Working state
   Eigen::Matrix<T,10,1> p;
-  Eigen::Matrix<T,3,1> b = Eigen::Matrix<T,3,1>::Zero();
-  Eigen::Matrix<T,3,3> A_unit = Eigen::Matrix<T,3,3>::Identity();
+  Eigen::Matrix<T,3,1>  b = Eigen::Matrix<T,3,1>::Zero();
+  Eigen::Matrix<T,3,3>  A_unit = Eigen::Matrix<T,3,3>::Identity();
 
-  T absr[IMU_CAL_MAX_SAMPLES];
-
+  // Robust params
   robust_iters = (robust_iters <= 0 ? 1 : robust_iters);
   trim_frac = clamp<T>(trim_frac, T(0), T(0.45));
 
-  for (int it = 0; it < robust_iters; ++it) {
-    if (!solve_ellipsoid_params_trimmed<T>(x, n, inlier, p, ridge_rel)) return out;
+  // Residual buffers (unit-sphere space): e = r - 1
+  T e[IMU_CAL_MAX_SAMPLES];
+  T abs_e[IMU_CAL_MAX_SAMPLES];
+  T tmp[IMU_CAL_MAX_SAMPLES];
 
-    // Build Q, q, c for: x^T Q x + 2 q^T x + c = 1
+  // Helper: rebuild b/A_unit from p and validate
+  auto build_model_from_p = [&](const Eigen::Matrix<T,10,1>& p_in) -> bool {
     Eigen::Matrix<T,3,3> Q;
-    Q << p(0), p(3), p(4),
-         p(3), p(1), p(5),
-         p(4), p(5), p(2);
+    Q << p_in(0), p_in(3), p_in(4),
+         p_in(3), p_in(1), p_in(5),
+         p_in(4), p_in(5), p_in(2);
     Eigen::Matrix<T,3,1> q;
-    q << p(6), p(7), p(8);
-    const T c = p(9);
+    q << p_in(6), p_in(7), p_in(8);
+    const T c = p_in(9);
 
     // b = -Q^{-1} q
     Eigen::FullPivLU<Eigen::Matrix<T,3,3>> lu(Q);
-    if (!lu.isInvertible()) return out;
+    if (!lu.isInvertible()) return false;
     b = -lu.solve(q);
-    if (!isfinite3(b)) return out;
+    if (!isfinite3(b)) return false;
 
-    // Model is: x^T Q x + 2 q^T x + c = 1
     // s = 1 + b^T Q b - c  (must be > 0)
-    const T s = T(1) + b.dot(Q*b) - c;    
-    if (!finitef((float)s) || s <= T(0)) return out;
+    const T s = T(1) + b.dot(Q * b) - c;
+    if (!finiteT(s) || s <= T(0)) return false;
 
     // M = Q / s, symmetrize
     Eigen::Matrix<T,3,3> M = Q / s;
     M = T(0.5) * (M + M.transpose());
 
-    // Cholesky: M = U^T U -> ||U(x-b)|| = 1
+    // Cholesky: M = U^T U
     Eigen::LLT<Eigen::Matrix<T,3,3>> llt(M);
-    if (llt.info() != Eigen::Success) return out;
+    if (llt.info() != Eigen::Success) return false;
     A_unit = llt.matrixU();
+    return true;
+  };
 
-    // Compute signed residuals e = r - 1 for ALL points (not ratcheting only inliers)
-    // and robustly gate with MAD: thr = k * MAD(e), k ~= 5.2 (~3.5σ for Gaussian).
-    T e[IMU_CAL_MAX_SAMPLES];
+  for (int it = 0; it < robust_iters; ++it) {
+    if (!solve_ellipsoid_params_trimmed<T>(x, n, inlier, p, ridge_rel)) return out;
+    if (!build_model_from_p(p)) return out;
+
+    // Compute residuals for ALL points: e = ||A_unit(x-b)|| - 1
     for (int i = 0; i < n; ++i) {
       const T r = (A_unit * (x[i] - b)).norm();
-      e[i] = r - T(1);
-      if (!finitef((float)e[i])) e[i] = (e[i] >= T(0) ? T(1e9) : -T(1e9));
+      T ei = r - T(1);
+      if (!finiteT(ei)) {
+        // mark as huge outlier
+        ei = T(1e9);
+      }
+      e[i] = ei;
+      abs_e[i] = (T)fabs((double)ei);
     }
 
-    // MAD = median(|e - median(e)|)
-    T tmp[IMU_CAL_MAX_SAMPLES];
+    // Robust scale via MAD
     for (int i = 0; i < n; ++i) tmp[i] = e[i];
     const T mad = robust_mad(tmp, n);
 
-    // Threshold on |e|
-    const T thr = T(5.2) * mad + T(1e-6);
+    // MAD floor to avoid mad->0 making thr ~ 1e-6
+    // (units are "fractional radius" since r is near 1)
+    const T mad_floor = T(1e-4);
+    const T mad_eff   = (mad > mad_floor ? mad : mad_floor);
 
-    // Update inlier mask
+    // MAD threshold
+    const T thr_mad = T(5.2) * mad_eff + T(1e-6);
+
+    // Quantile trim threshold (drop worst trim_frac)
+    T thr_trim = thr_mad; // default if trim_frac==0
+    if (trim_frac > T(0)) {
+      for (int i = 0; i < n; ++i) tmp[i] = abs_e[i];
+      sort_small(tmp, n);
+      int keep = (int)floor((double)((T(1) - trim_frac) * (T)n));
+      keep = clamp<int>(keep, 10, n);
+      thr_trim = tmp[keep - 1];
+    }
+
+    // Combine: be conservative (tighter) first
+    T thr = (thr_trim < thr_mad ? thr_trim : thr_mad);
+
+    // Update inliers
     int used = 0;
     for (int i = 0; i < n; ++i) {
-      inlier[i] = ((T)fabs((double)e[i]) <= thr);
+      inlier[i] = (abs_e[i] <= thr);
       if (inlier[i]) ++used;
     }
-    if (used < 10) return out;    
+
+    // If we got too aggressive, relax to the looser of the two thresholds
+    if (used < 10) {
+      thr = (thr_trim > thr_mad ? thr_trim : thr_mad);
+      used = 0;
+      for (int i = 0; i < n; ++i) {
+        inlier[i] = (abs_e[i] <= thr);
+        if (inlier[i]) ++used;
+      }
+      if (used < 10) return out;
+    }
   }
 
+  // IMPORTANT: final solve using FINAL inlier mask,
+  // so the model matches the mask we score with.
+  if (!solve_ellipsoid_params_trimmed<T>(x, n, inlier, p, ridge_rel)) return out;
+  if (!build_model_from_p(p)) return out;
+
   // Final scale A to target radius
-  Eigen::Matrix<T,3,3> A = A_unit * R_target;
+  const Eigen::Matrix<T,3,3> A = A_unit * R_target;
 
   int used = 0;
   T sum_e2 = 0;
@@ -351,11 +395,11 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
   for (int i = 0; i < n; ++i) {
     if (!inlier[i]) continue;
     const T r = (A * (x[i] - b)).norm();
-    if (!finitef((float)r)) continue;
+    if (!finiteT(r)) continue;
     radii[used] = r;
-    const T e = r - R_target;
-    sum_e2 += e*e;
-    used++;
+    const T er = r - R_target;
+    sum_e2 += er * er;
+    ++used;
   }
   if (used < 10) return out;
 
