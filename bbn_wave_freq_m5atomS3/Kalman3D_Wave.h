@@ -237,6 +237,16 @@ class Kalman3D_Wave {
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
+    struct MeasDiag3 {
+        Vector3 r = Vector3::Zero();   // residual
+        Matrix3 S = Matrix3::Zero();   // innovation covariance
+        T nis = std::numeric_limits<T>::quiet_NaN(); // r^T S^-1 r
+        bool accepted = false;         // update actually applied?
+    };
+
+    const MeasDiag3& lastAccDiag() const noexcept { return last_acc_diag_; }
+    const MeasDiag3& lastMagDiag() const noexcept { return last_mag_diag_; }
+
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
                   T Pq0 = T(5e-4), T Pb0 = T(1e-6), T b0 = T(1e-11), T R_S_noise_var = T(1.5),
@@ -641,7 +651,10 @@ class Kalman3D_Wave {
     MatrixNX3    PCt_scratch_;
     MatrixNX3    K_scratch_;
     Matrix3      S_scratch_;
-              
+				
+    MeasDiag3 last_acc_diag_;
+    MeasDiag3 last_mag_diag_;
+				
     EIGEN_STRONG_INLINE void symmetrize_Pext_() {
         for (int i = 0; i < NX; ++i) {
             for (int j = i + 1; j < NX; ++j) {
@@ -788,7 +801,17 @@ class Kalman3D_Wave {
         ldlt.compute(S);
         return (ldlt.info() == Eigen::Success);
     }
-    
+
+    EIGEN_STRONG_INLINE T nis3_from_ldlt_(const Eigen::LDLT<Matrix3>& ldlt,
+                                          const Vector3& r) const
+    {
+        // Solve S x = r, nis = r^T x
+        Vector3 x = ldlt.solve(r);
+        if (!x.allFinite()) return std::numeric_limits<T>::quiet_NaN();
+        const T v = r.dot(x);
+        return std::isfinite(v) ? v : std::numeric_limits<T>::quiet_NaN();
+    }
+				
     // Joseph covariance update: P ← P - KCP - (KCP)ᵀ + K S Kᵀ.
     // Stack-light version: no NX×NX temporaries, only scalar loops.
     // Assumes Pext is symmetric on entry.
