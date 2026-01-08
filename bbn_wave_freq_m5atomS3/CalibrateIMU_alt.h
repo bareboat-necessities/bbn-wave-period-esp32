@@ -172,15 +172,15 @@ struct SampleBuffer3 {
   }
 };
 
-// Ellipsoid -> sphere robust fit (FIXED)
+// Ellipsoid -> sphere robust fit
 // Implicit model matching build_row_d():
-//    x^T Q x + 2 q^T x + c = 0
+//    x^T Q x + 2 q^T x + c = 1
 // Row d = [x^2 y^2 z^2 2xy 2xz 2yz 2x 2y 2z 1]
 // Solve LS: D p ≈ 1 (i.e., minimize ||D p - 1||).
 //
 // Recover:
 //   b = -Q^{-1} q
-//   s = b^T Q b - c   (must be > 0)
+//   s = 1 + b^T Q b - c   (must be > 0)
 //   Then: (x-b)^T (Q/s) (x-b) = 1
 // Whitening A_unit from chol(Q/s): ||A_unit(x-b)|| ≈ 1
 // Then scale A = A_unit * R_target so ||A(x-b)|| ≈ R_target.
@@ -300,8 +300,9 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     b = -lu.solve(q);
     if (!isfinite3(b)) return out;
 
-    // s = b^T Q b - c  (must be > 0)
-    const T s = b.dot(Q*b) - c;
+    // Model is: x^T Q x + 2 q^T x + c = 1
+    // s = 1 + b^T Q b - c  (must be > 0)
+    const T s = T(1) + b.dot(Q*b) - c;    
     if (!finitef((float)s) || s <= T(0)) return out;
 
     // M = Q / s, symmetrize
