@@ -537,7 +537,11 @@ struct AccelCalibrator {
 
       const T tmean = tsum[k] / (T)nbin[k];
 
-      auto fitk = ellipsoid_to_sphere_robust<T>(xscratch, nbin[k], g, robust_iters, trim_frac);
+      auto fitk = ellipsoid_to_sphere_robust<T>(
+        xscratch, nbin[k], g,
+        robust_iters, trim_frac,
+        T(1e-6), // ridge_rel (matches default)
+        g);      // expected_radius_for_checks
       if (!fitk.ok) continue;
 
       centers[nb] = fitk.b;
