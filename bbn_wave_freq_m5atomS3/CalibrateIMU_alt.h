@@ -14,6 +14,11 @@
 namespace imu_cal {
 
 // ============================
+// Config / limits
+// ============================
+static constexpr int IMU_CAL_MAX_SAMPLES = 400;
+
+// ============================
 // Utilities
 // ============================
 template <typename T>
@@ -31,7 +36,7 @@ static inline T sqr(T x) { return x*x; }
 
 template <typename T>
 static inline void sort_small(T* a, int n) {
-  // Simple insertion sort (n<=400)
+  // Simple insertion sort (n <= ~400)
   for (int i = 1; i < n; ++i) {
     T key = a[i];
     int j = i - 1;
@@ -63,6 +68,9 @@ static inline T robust_mad(T* residuals, int n) {
 // ============================
 template <typename T, int N>
 struct SampleBuffer3 {
+  static_assert(N > 0, "N must be positive");
+  static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
+
   using Vec3 = Eigen::Matrix<T,3,1>;
 
   Vec3 v[N];
@@ -82,12 +90,18 @@ struct SampleBuffer3 {
 };
 
 // ============================
-// Ellipsoid -> sphere robust fit
-// Model: x^T Q x + q^T x + c = 0
+// Ellipsoid -> sphere robust fit (FIXED)
+// Implicit model matching build_row_d():
+//    x^T Q x + 2 q^T x + c = 0
 // Row d = [x^2 y^2 z^2 2xy 2xz 2yz 2x 2y 2z 1]
-// Solve (weighted/trimmed) least squares for p s.t. D p ≈ 1.
-// Then recover center b and whitening A such that ||A(x-b)||≈1.
-// Then scale A to desired output radius.
+// Solve LS: D p ≈ 1 (i.e., minimize ||D p - 1||).
+//
+// Recover:
+//   b = -Q^{-1} q
+//   s = b^T Q b - c   (must be > 0)
+//   Then: (x-b)^T (Q/s) (x-b) = 1
+// Whitening A_unit from chol(Q/s): ||A_unit(x-b)|| ≈ 1
+// Then scale A = A_unit * R_target so ||A(x-b)|| ≈ R_target.
 // ============================
 template <typename T>
 struct EllipsoidSphereFit {
@@ -115,7 +129,7 @@ static bool solve_ellipsoid_params_trimmed(
     const Eigen::Matrix<T,3,1>* x, int n,
     const bool* inlier,
     Eigen::Matrix<T,10,1>& p_out,
-    T ridge)
+    T ridge_rel)
 {
   using Mat10 = Eigen::Matrix<T,10,10>;
   using Vec10 = Eigen::Matrix<T,10,1>;
@@ -134,11 +148,14 @@ static bool solve_ellipsoid_params_trimmed(
   }
   if (used < 10) return false;
 
+  // Scale ridge by feature energy for better invariance
+  const T tr = H.trace() / T(10);
+  const T ridge = ridge_rel * (tr + T(1e-12));
   H.diagonal().array() += ridge;
 
-  // Solve H p = g
   Eigen::LDLT<Mat10> ldlt(H);
   if (ldlt.info() != Eigen::Success) return false;
+
   Vec10 p = ldlt.solve(g);
   if (!(p.array().isFinite().all())) return false;
 
@@ -152,26 +169,28 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     T R_target,
     int robust_iters = 3,
     T trim_frac = T(0.15),     // drop worst 15% residuals each iteration
-    T ridge = T(1e-6))
+    T ridge_rel = T(1e-6))
 {
   EllipsoidSphereFit<T> out;
   if (n < 12) return out;
+  if (n > IMU_CAL_MAX_SAMPLES) return out;
 
-  bool inlier[400]; // n <= 400 by your constraint
-  if (n > 400) return out;
+  bool inlier[IMU_CAL_MAX_SAMPLES];
   for (int i = 0; i < n; ++i) inlier[i] = true;
 
   Eigen::Matrix<T,10,1> p;
-
   Eigen::Matrix<T,3,1> b = Eigen::Matrix<T,3,1>::Zero();
   Eigen::Matrix<T,3,3> A_unit = Eigen::Matrix<T,3,3>::Identity();
 
-  T residuals[400];
+  T absr[IMU_CAL_MAX_SAMPLES];
+
+  robust_iters = (robust_iters <= 0 ? 1 : robust_iters);
+  trim_frac = clamp<T>(trim_frac, T(0), T(0.45));
 
   for (int it = 0; it < robust_iters; ++it) {
-    if (!solve_ellipsoid_params_trimmed<T>(x, n, inlier, p, ridge)) return out;
+    if (!solve_ellipsoid_params_trimmed<T>(x, n, inlier, p, ridge_rel)) return out;
 
-    // Build Q, q, c
+    // Build Q, q, c for: x^T Q x + 2 q^T x + c = 0
     Eigen::Matrix<T,3,3> Q;
     Q << p(0), p(3), p(4),
          p(3), p(1), p(5),
@@ -180,67 +199,61 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     q << p(6), p(7), p(8);
     const T c = p(9);
 
-    // b = -0.5 Q^{-1} q
+    // b = -Q^{-1} q
     Eigen::FullPivLU<Eigen::Matrix<T,3,3>> lu(Q);
     if (!lu.isInvertible()) return out;
-    b = T(-0.5) * lu.solve(q);
+    b = -lu.solve(q);
+    if (!isfinite3(b)) return out;
 
-    // k = c + b^T Q b + q^T b  (should be negative)
-    const T k = c + b.dot(Q*b) + q.dot(b);
-    if (!finitef((float)k) || k >= T(0)) return out;
+    // s = b^T Q b - c  (must be > 0)
+    const T s = b.dot(Q*b) - c;
+    if (!finitef((float)s) || s <= T(0)) return out;
 
-    Eigen::Matrix<T,3,3> M = Q / (-k);
+    // M = Q / s, symmetrize
+    Eigen::Matrix<T,3,3> M = Q / s;
     M = T(0.5) * (M + M.transpose());
 
+    // Cholesky: M = U^T U -> ||U(x-b)|| = 1
     Eigen::LLT<Eigen::Matrix<T,3,3>> llt(M);
     if (llt.info() != Eigen::Success) return out;
+    A_unit = llt.matrixU();
 
-    A_unit = llt.matrixU(); // so that ||A_unit(x-b)|| ~ 1
-
-    // Compute residuals on inliers
-    int m = 0;
+    // Compute abs residuals for ALL points (not ratcheting only inliers)
     for (int i = 0; i < n; ++i) {
-      if (!inlier[i]) continue;
       const T r = (A_unit * (x[i] - b)).norm();
-      residuals[m++] = r - T(1);
+      absr[i] = (T)fabs((double)(r - T(1)));
+      if (!finitef((float)absr[i])) absr[i] = T(1e9);
     }
-    if (m < 10) return out;
 
-    // Trim worst residuals
-    // Use absolute residual ranking by threshold from MAD or by quantile.
-    // Here: quantile trim (simple, stable).
-    T absr[400];
-    for (int i = 0; i < m; ++i) absr[i] = (T)fabs((double)residuals[i]);
-    T thr = T(0);
+    // Determine trim threshold at (1-trim_frac) quantile
+    T tmp[IMU_CAL_MAX_SAMPLES];
+    for (int i = 0; i < n; ++i) tmp[i] = absr[i];
+    sort_small(tmp, n);
 
-    // Find trim threshold as (1-trim_frac) quantile of abs residuals
-    sort_small(absr, m);
-    int keep = (int)floor((double)m * (double)(T(1) - trim_frac));
-    keep = clamp<int>(keep, 10, m);
-    thr = absr[keep - 1];
+    int keep = (int)floor((double)n * (double)(T(1) - trim_frac));
+    keep = clamp<int>(keep, 10, n);
+    const T thr = tmp[keep - 1];
 
-    // Update inlier mask using threshold on abs residual in original indexing
-    int idx = 0;
+    // Update inlier mask
+    int used = 0;
     for (int i = 0; i < n; ++i) {
-      if (!inlier[i]) continue;
-      const T r = (A_unit * (x[i] - b)).norm();
-      const T e = (T)fabs((double)(r - T(1)));
-      // keep those within threshold
-      bool keepi = (e <= thr);
-      inlier[i] = keepi;
-      idx++;
+      inlier[i] = (absr[i] <= thr);
+      if (inlier[i]) ++used;
     }
+    if (used < 10) return out;
   }
 
-  // Final metrics + scale A to target radius
+  // Final scale A to target radius
   Eigen::Matrix<T,3,3> A = A_unit * R_target;
 
   int used = 0;
   T sum_e2 = 0;
-  T radii[400];
+  T radii[IMU_CAL_MAX_SAMPLES];
+
   for (int i = 0; i < n; ++i) {
     if (!inlier[i]) continue;
     const T r = (A * (x[i] - b)).norm();
+    if (!finitef((float)r)) continue;
     radii[used] = r;
     const T e = r - R_target;
     sum_e2 += e*e;
@@ -248,7 +261,8 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
   }
   if (used < 10) return out;
 
-  T medr = median_of_array(radii, used);
+  const T medr = median_of_array(radii, used);
+
   out.ok = true;
   out.b = b;
   out.A = A;
@@ -339,16 +353,19 @@ struct GyroCalibration {
 };
 
 // ============================
-// Calibrator: Accel
+// Calibrator: Accel (FIXED stack usage)
 // Strategy:
-//  - You collect ~400 quasi-static accel samples across orientations.
-//  - We auto-bin samples by temperature into up to K bins.
-//  - For each bin, robust ellipsoid->sphere fit => get center b_bin and S_bin.
-//  - Use the best bin (most samples, best rms) for S.
+//  - Collect ~400 quasi-static accel samples across orientations.
+//  - Bin by temperature into up to K bins.
+//  - For each bin: robust ellipsoid->sphere fit => center b_bin and S_bin.
+//  - Choose S from best bin (low rms, enough samples).
 //  - Regress b_bin vs temperature => bias(T).
 // ============================
 template <typename T, int N, int K_TBINS = 8>
 struct AccelCalibrator {
+  static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
+  static_assert(K_TBINS > 0 && K_TBINS <= 16, "K_TBINS unreasonable");
+
   using Vec3 = Eigen::Matrix<T,3,1>;
   SampleBuffer3<T, N> buf;
 
@@ -362,7 +379,6 @@ struct AccelCalibrator {
   void clear() { buf.clear(); }
 
   bool addSample(const Vec3& a_raw, const Vec3& w_raw, T tempC) {
-    // quasi-static gate: accel magnitude close to g and gyro small
     if (!isfinite3(a_raw) || !isfinite3(w_raw) || !finitef((float)tempC)) return false;
     const T amag = a_raw.norm();
     const T wmag = w_raw.norm();
@@ -374,18 +390,22 @@ struct AccelCalibrator {
   bool fit(AccelCalibration<T>& out, int robust_iters = 3, T trim_frac = T(0.15)) const {
     if (buf.n < 80) return false;
 
-    // Temperature bins by range
+    // Temperature range
     T tmin = buf.tempC[0], tmax = buf.tempC[0];
-    for (int i = 1; i < buf.n; ++i) { tmin = (buf.tempC[i] < tmin ? buf.tempC[i] : tmin); tmax = (buf.tempC[i] > tmax ? buf.tempC[i] : tmax); }
+    for (int i = 1; i < buf.n; ++i) {
+      tmin = (buf.tempC[i] < tmin ? buf.tempC[i] : tmin);
+      tmax = (buf.tempC[i] > tmax ? buf.tempC[i] : tmax);
+    }
     const T trange = tmax - tmin;
     const T binW = (trange > T(1e-3)) ? (trange / (T)K_TBINS) : T(1);
 
-    Vec3 xbin[K_TBINS][N];
-    T    tbin[K_TBINS];
-    int  nbin[K_TBINS];
-    for (int k = 0; k < K_TBINS; ++k) { nbin[k] = 0; tbin[k] = tmin + (T(k) + T(0.5))*binW; }
+    // Bin indices instead of Vec3[K][N] (saves stack/RAM)
+    uint16_t idx[K_TBINS][N];
+    int      nbin[K_TBINS];
+    T        tsum[K_TBINS];
 
-    // assign
+    for (int k = 0; k < K_TBINS; ++k) { nbin[k] = 0; tsum[k] = T(0); }
+
     for (int i = 0; i < buf.n; ++i) {
       int k = 0;
       if (trange > T(1e-3)) {
@@ -393,27 +413,41 @@ struct AccelCalibrator {
         k = clamp<int>(k, 0, K_TBINS - 1);
       }
       int& nk = nbin[k];
-      if (nk < N) xbin[k][nk++] = buf.v[i];
+      if (nk < N) {
+        idx[k][nk] = (uint16_t)i;
+        tsum[k] += buf.tempC[i];
+        ++nk;
+      }
     }
 
-    // Fit each non-empty bin
+    // Fits per bin, store centers for temp regression
     Vec3 centers[K_TBINS];
     T temps[K_TBINS];
     int nb = 0;
 
-    // Choose S from the "best" bin (lowest rms, enough samples)
+    // Choose S from best bin
     T best_score = T(1e30);
     Eigen::Matrix<T,3,3> bestS = Eigen::Matrix<T,3,3>::Identity();
     T best_rms = T(0);
     Vec3 best_center = Vec3::Zero();
 
+    // scratch buffer to feed fitter
+    Vec3 xscratch[N];
+
     for (int k = 0; k < K_TBINS; ++k) {
       if (nbin[k] < 30) continue;
-      auto fitk = ellipsoid_to_sphere_robust<T>(xbin[k], nbin[k], g, robust_iters, trim_frac);
+
+      for (int j = 0; j < nbin[k]; ++j) {
+        xscratch[j] = buf.v[(int)idx[k][j]];
+      }
+
+      const T tmean = tsum[k] / (T)nbin[k];
+
+      auto fitk = ellipsoid_to_sphere_robust<T>(xscratch, nbin[k], g, robust_iters, trim_frac);
       if (!fitk.ok) continue;
 
       centers[nb] = fitk.b;
-      temps[nb]   = tbin[k];
+      temps[nb]   = tmean;
       nb++;
 
       // score: rms + small penalty for fewer used points
@@ -431,8 +465,6 @@ struct AccelCalibrator {
     // Fit bias(T) from bin centers
     TempBias3<T> biasT;
     if (nb >= 2) {
-      // pack into fixed array form for template
-      // (K_TBINS is small; we can just do a tiny copy)
       Eigen::Matrix<T,3,1> btmp[K_TBINS];
       T ttmp[K_TBINS];
       for (int i = 0; i < nb; ++i) { btmp[i] = centers[i]; ttmp[i] = temps[i]; }
@@ -456,13 +488,13 @@ struct AccelCalibrator {
 // ============================
 // Calibrator: Magnetometer
 // Strategy:
-//  - Collect ~400 mag samples across orientations (rotate in 3D).
+//  - Collect mag samples across orientations.
 //  - Robust ellipsoid->unit sphere gives (b, A_unit).
-//  - Preserve µT magnitude by scaling output so that median(||m_raw-b||) is maintained.
-//    This is practical when your magnetometer already reports µT scale reasonably.
+//  - Preserve µT magnitude by scaling so median(||m_raw-b||) is maintained.
 // ============================
 template <typename T, int N>
 struct MagCalibrator {
+  static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
   using Vec3 = Eigen::Matrix<T,3,1>;
   SampleBuffer3<T, N> buf;
 
@@ -475,7 +507,7 @@ struct MagCalibrator {
   bool addSample(const Vec3& m_raw_uT) {
     if (!isfinite3(m_raw_uT)) return false;
     const T nrm = m_raw_uT.norm();
-    if (nrm < min_norm_uT || nrm > max_norm_uT) return false; // likely bad read/saturation
+    if (nrm < min_norm_uT || nrm > max_norm_uT) return false;
     return buf.push(m_raw_uT, T(0));
   }
 
@@ -485,20 +517,20 @@ struct MagCalibrator {
     auto fit0 = ellipsoid_to_sphere_robust<T>(buf.v, buf.n, T(1), robust_iters, trim_frac);
     if (!fit0.ok) return false;
 
-    // Estimate field magnitude in µT from fitted center (robust median radius)
-    T radii[400];
+    // Estimate field magnitude from median radius in raw µT space
+    T radii[IMU_CAL_MAX_SAMPLES];
     int m = 0;
     for (int i = 0; i < buf.n; ++i) {
       radii[m++] = (buf.v[i] - fit0.b).norm();
     }
     T B_med = median_of_array(radii, m);
+
     // Typical Earth field is ~25-65 uT; allow broad
     if (B_med < T(12) || B_med > T(120)) return false;
 
-    // Scale to preserve µT magnitude
     out.ok = true;
     out.b = fit0.b;
-    out.A = fit0.A * B_med; // fit0.A maps to unit sphere; multiply by B_med -> µT-like output
+    out.A = fit0.A * B_med;     // map to µT-like magnitude
     out.field_uT = B_med;
     out.rms = fit0.rms * B_med;
     return true;
@@ -508,12 +540,15 @@ struct MagCalibrator {
 // ============================
 // Calibrator: Gyroscope bias(T)
 // Strategy:
-//  - Collect stationary gyro samples (w_raw) while not moving.
+//  - Collect stationary gyro samples while not moving.
 //  - Bin by temperature and estimate mean bias per bin.
 //  - Fit bias(T) via regression.
 // ============================
 template <typename T, int N, int K_TBINS = 8>
 struct GyroCalibrator {
+  static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
+  static_assert(K_TBINS > 0 && K_TBINS <= 16, "K_TBINS unreasonable");
+
   using Vec3 = Eigen::Matrix<T,3,1>;
   SampleBuffer3<T, N> buf;
 
@@ -521,7 +556,7 @@ struct GyroCalibrator {
 
   // stationary gate thresholds
   T max_gyro_norm = T(0.08);   // rad/s
-  T max_accel_dev = T(1.0);    // m/s^2 (requires caller to supply accel too)
+  T max_accel_dev = T(1.0);    // m/s^2
   T g = T(9.80665);
 
   void clear() { buf.clear(); }
@@ -536,16 +571,19 @@ struct GyroCalibrator {
   bool fit(GyroCalibration<T>& out) const {
     if (buf.n < 80) return false;
 
-    // temp bins
+    // Temperature range
     T tmin = buf.tempC[0], tmax = buf.tempC[0];
-    for (int i = 1; i < buf.n; ++i) { tmin = (buf.tempC[i] < tmin ? buf.tempC[i] : tmin); tmax = (buf.tempC[i] > tmax ? buf.tempC[i] : tmax); }
+    for (int i = 1; i < buf.n; ++i) {
+      tmin = (buf.tempC[i] < tmin ? buf.tempC[i] : tmin);
+      tmax = (buf.tempC[i] > tmax ? buf.tempC[i] : tmax);
+    }
     const T trange = tmax - tmin;
     const T binW = (trange > T(1e-3)) ? (trange / (T)K_TBINS) : T(1);
 
-    Eigen::Matrix<T,3,1> meanB[K_TBINS];
-    T temps[K_TBINS];
+    Eigen::Matrix<T,3,1> sumB[K_TBINS];
+    T sumT[K_TBINS];
     int cnt[K_TBINS];
-    for (int k = 0; k < K_TBINS; ++k) { meanB[k].setZero(); cnt[k]=0; temps[k]=tmin + (T(k)+T(0.5))*binW; }
+    for (int k = 0; k < K_TBINS; ++k) { sumB[k].setZero(); sumT[k]=T(0); cnt[k]=0; }
 
     for (int i = 0; i < buf.n; ++i) {
       int k = 0;
@@ -553,8 +591,9 @@ struct GyroCalibrator {
         k = (int)floor((double)((buf.tempC[i] - tmin) / binW));
         k = clamp<int>(k, 0, K_TBINS - 1);
       }
-      meanB[k] += buf.v[i];
-      cnt[k] += 1;
+      sumB[k] += buf.v[i];
+      sumT[k] += buf.tempC[i];
+      cnt[k]  += 1;
     }
 
     Eigen::Matrix<T,3,1> bcenters[K_TBINS];
@@ -562,8 +601,8 @@ struct GyroCalibrator {
     int nb = 0;
     for (int k = 0; k < K_TBINS; ++k) {
       if (cnt[k] < 20) continue;
-      bcenters[nb] = meanB[k] / (T)cnt[k];
-      tcenters[nb] = temps[k];
+      bcenters[nb] = sumB[k] / (T)cnt[k];
+      tcenters[nb] = sumT[k] / (T)cnt[k];
       nb++;
     }
     if (nb < 1) return false;
