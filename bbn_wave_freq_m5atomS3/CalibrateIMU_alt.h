@@ -32,6 +32,86 @@ static inline bool isfinite3(const Eigen::Matrix<T,3,1>& v) {
 }
 
 template <typename T>
+static inline bool degeneracy_check_coverage3(
+    const Eigen::Matrix<T,3,1>* x, int n,
+    T expected_radius,                 // e.g. g for accel, ~B for mag
+    T min_axis_span_mult = T(0.90),    // require span >= 0.90*R on each axis (after centering)
+    T min_sign_frac      = T(0.08),    // require >=8% of samples on both +/- side per axis (after centering)
+    T min_cov_det        = T(1e-3))    // covariance determinant threshold for unit directions
+{
+  if (!x || n < 12) return false;
+  if (!(expected_radius > T(0))) return false;
+
+  using Vec3 = Eigen::Matrix<T,3,1>;
+  using Mat3 = Eigen::Matrix<T,3,3>;
+
+  // Mean-center to remove bias offsets.
+  Vec3 mu = Vec3::Zero();
+  for (int i = 0; i < n; ++i) mu += x[i];
+  mu *= (T(1) / (T)n);
+
+  // Axis span and sign balance checks (centered).
+  Vec3 mn = Vec3::Constant( T(1e30));
+  Vec3 mx = Vec3::Constant(-T(1e30));
+  int pos[3] = {0,0,0};
+  int neg[3] = {0,0,0};
+
+  // Direction covariance on unit vectors u = (x-mu)/||x-mu||
+  Mat3 C = Mat3::Zero();
+  int m = 0;
+
+  for (int i = 0; i < n; ++i) {
+    Vec3 d = x[i] - mu;
+    if (!isfinite3(d)) continue;
+
+    // track min/max
+    mn.x() = (d.x() < mn.x() ? d.x() : mn.x());
+    mn.y() = (d.y() < mn.y() ? d.y() : mn.y());
+    mn.z() = (d.z() < mn.z() ? d.z() : mn.z());
+    mx.x() = (d.x() > mx.x() ? d.x() : mx.x());
+    mx.y() = (d.y() > mx.y() ? d.y() : mx.y());
+    mx.z() = (d.z() > mx.z() ? d.z() : mx.z());
+
+    // sign counts
+    if (d.x() > T(0)) pos[0]++; else if (d.x() < T(0)) neg[0]++;
+    if (d.y() > T(0)) pos[1]++; else if (d.y() < T(0)) neg[1]++;
+    if (d.z() > T(0)) pos[2]++; else if (d.z() < T(0)) neg[2]++;
+
+    const T dn = d.norm();
+    if (!(dn > T(1e-9))) continue;
+
+    Vec3 u = d / dn;
+    if (!isfinite3(u)) continue;
+
+    C.noalias() += u * u.transpose();
+    ++m;
+  }
+
+  if (m < 12) return false;
+
+  // Axis span must be large enough (requires coverage in each direction).
+  const Vec3 span = mx - mn;
+  const T min_span = min_axis_span_mult * expected_radius;
+
+  if (!(span.x() > min_span && span.y() > min_span && span.z() > min_span)) return false;
+
+  // Must have both positive and negative samples on each axis (after centering).
+  const int min_side = (int)ceil((double)n * (double)min_sign_frac);
+  for (int a = 0; a < 3; ++a) {
+    if (pos[a] < min_side || neg[a] < min_side) return false;
+  }
+
+  // Normalize covariance; for uniform sphere C ~ (1/3)I, det ~ 1/27 ≈ 0.037.
+  C *= (T(1) / (T)m);
+
+  // Determinant collapses to ~0 if samples are planar/linear in direction space.
+  const T detC = C.determinant();
+  if (!finitef((float)detC) || detC < min_cov_det) return false;
+
+  return true;
+}
+
+template <typename T>
 static inline T sqr(T x) { return x*x; }
 
 template <typename T>
