@@ -527,12 +527,12 @@ static bool run_calibration_wizard() {
     const char* setup_msg;
     const char* short_label;
   } faces[6] = {
-    {"FACE 1/6:\nDISPLAY UP\n(screen facing up)",          "1/6: DISPLAY UP"},
-    {"FACE 2/6:\nDISPLAY DOWN\n(screen on table)",         "2/6: DISPLAY DOWN"},
-    {"FACE 3/6:\nUSB-C DOWN\n(port on table)",             "3/6: USB-C DOWN"},
-    {"FACE 4/6:\nUSB-C UP\n(port to ceiling)",             "4/6: USB-C UP"},
-    {"FACE 5/6:\nLEFT EDGE DOWN\n(when screen faces you)", "5/6: LEFT EDGE DOWN"},
-    {"FACE 6/6:\nRIGHT EDGE DOWN\n(when screen faces you)","6/6: RIGHT EDGE DOWN"},
+    {"1/6:\nDISPLAY UP\n(screen facing up)",          "1/6: DISPLAY UP"},
+    {"2/6:\nDISPLAY DOWN\n(screen on table)",         "2/6: DISPLAY DOWN"},
+    {"3/6:\nUSB-C DOWN\n(port on table)",             "3/6: USB-C DOWN"},
+    {"4/6:\nUSB-C UP\n(port to ceiling)",             "4/6: USB-C UP"},
+    {"5/6:\nLEFT EDGE DOWN\n(when screen faces you)", "5/6: LEFT EDGE DOWN"},
+    {"6/6:\nRIGHT EDGE DOWN\n(when screen faces you)","6/6: RIGHT EDGE DOWN"},
   };
 
   for (int i = 0; i < 6; ++i) {
