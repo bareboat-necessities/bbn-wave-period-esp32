@@ -10,7 +10,7 @@
     - M5Unified library
     - ESP32 Arduino core (Preferences)
     - ArduinoEigenDense
-    - Your header: imu_calibration.h (the code you posted)
+    - CalibrateIMU_alt.h
 
   Units:
     accel: m/s^2
