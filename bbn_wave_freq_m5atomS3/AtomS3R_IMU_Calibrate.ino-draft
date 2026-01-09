@@ -1,18 +1,18 @@
 /*
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
-  HUMAN-FRIENDLY behavior (no “robot 2 seconds”):
-  - Each face step shows a plain-English instruction like:
-      "FACE 2/6: DISPLAY DOWN (screen on table)"
-  - Sampling starts AUTOMATICALLY after a long countdown (so you can flip/place it).
-    If you *can* press BtnA, pressing it starts immediately — but it’s never required.
-  - Timeouts are generous (45s per accel face, 35s gyro, 90s mag).
-  - During face-down steps you do NOT need to press anything.
+  Fixes:
+  - "Cal comes up NONE" even after calibration:
+      * load_cal_from_nvs() now returns TRUE if blob exists + CRC OK (even if ok-flags are 0).
+      * Status screen shows BLOB presence + per-sensor ok flags.
+  - Accidental erase right after wizard:
+      * Ignore erase long-press for 5s after wizard/boot.
+      * Erase requires long hold + confirmation screen.
 
-  Notes:
-  - Clears M5Unified IMU offsets from NVS: M5.Imu.clearOffsetData()
-  - Saves our own calibration blob to NVS (Preferences namespace "imu_cal")
-  - Provides applyAccel/applyGyro/applyMag helpers for later use
+  Human-friendly wizard:
+  - Each face step shows plain English.
+  - Auto-start countdown gives you time to place it (no button required).
+  - Generous timeouts.
 
   REQUIREMENTS:
     - M5Unified library
@@ -42,7 +42,6 @@ struct CalBlobV1;
 #endif
 #include <ArduinoEigenDense.h>
 
-// For sensor_mask_mag
 using M5_IMU = decltype(M5.Imu);
 
 #include "CalibrateIMU_alt.h"
@@ -56,12 +55,15 @@ static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
 // ----------------------------
 // Human-friendly timing knobs
 // ----------------------------
-static constexpr uint32_t STEP_COUNTDOWN_MS        = 12000;  // 12s “get it placed” time before sampling
-static constexpr uint32_t ACCEL_FACE_TIMEOUT_MS    = 45000;  // 45s per accel face
-static constexpr uint32_t GYRO_TIMEOUT_MS          = 35000;  // 35s
-static constexpr uint32_t MAG_TIMEOUT_MS           = 90000;  // 90s
-static constexpr uint32_t BETWEEN_STEP_PAUSE_MS    = 1500;   // 1.5s "captured" pause
-static constexpr uint32_t CANCEL_HOLD_MS           = 1500;   // hold BtnA to cancel
+static constexpr uint32_t STEP_COUNTDOWN_MS        = 12000;  // 12s “get it placed”
+static constexpr uint32_t ACCEL_FACE_TIMEOUT_MS    = 60000;  // 60s per accel face
+static constexpr uint32_t GYRO_TIMEOUT_MS          = 45000;  // 45s
+static constexpr uint32_t MAG_TIMEOUT_MS           = 120000; // 120s
+static constexpr uint32_t BETWEEN_STEP_PAUSE_MS    = 1500;
+
+static constexpr uint32_t CANCEL_HOLD_MS           = 1500;   // hold BtnA to cancel wizard steps
+static constexpr uint32_t ERASE_HOLD_MS            = 4000;   // hold BtnA to request erase (safer)
+static constexpr uint32_t ERASE_GUARD_MS           = 5000;   // ignore erase holds after wizard/boot
 
 // ----------------------------
 // Axis mapping (MATCH YOUR EXISTING CODE PATH)
@@ -142,7 +144,11 @@ struct CalBlobV1 {
 };
 
 static Preferences prefs;
-static bool have_cal = false;
+
+// “Blob exists + CRC ok”
+static bool have_blob = false;
+
+// ok flags come from blob; used for apply()
 static CalBlobV1 cal_blob;
 
 // runtime cal objects
@@ -211,7 +217,7 @@ static bool load_cal_from_nvs() {
 
   cal_blob = tmp;
   rebuild_runtime_cals_from_blob();
-  return (g_acc_cal.ok || g_gyr_cal.ok || g_mag_cal.ok);
+  return true; // IMPORTANT: blob valid even if ok-flags are 0
 }
 
 static bool save_cal_to_nvs(const CalBlobV1& blob_in) {
@@ -255,9 +261,7 @@ static inline Vector3f applyMag(const Vector3f& m_raw_uT_body) {
 // ----------------------------
 static auto& disp = M5.Display;
 
-static void ui_clear(uint16_t bg = TFT_BLACK) {
-  disp.fillScreen(bg);
-}
+static void ui_clear(uint16_t bg = TFT_BLACK) { disp.fillScreen(bg); }
 
 static void ui_title(const char* s) {
   disp.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -295,23 +299,13 @@ static bool cancel_requested() {
   M5.update();
   if (M5.BtnA.isPressed()) {
     if (t_down == 0) t_down = millis();
-    if (millis() - t_down >= CANCEL_HOLD_MS) {
-      t_down = 0;
-      return true;
-    }
+    if (millis() - t_down >= CANCEL_HOLD_MS) { t_down = 0; return true; }
   } else {
     t_down = 0;
   }
   return false;
 }
 
-static void serial_step(const char* stage, const char* msg) {
-  Serial.printf("\n[%s] %s\n", stage, msg);
-  Serial.flush();
-}
-
-// Countdown screen: auto-start after N ms.
-// Press BtnA starts immediately (if you can reach it), but it is NOT required.
 static bool countdown_to_start(const char* title, const char* msg, uint32_t ms) {
   ui_clear();
   ui_title(title);
@@ -320,8 +314,6 @@ static bool countdown_to_start(const char* title, const char* msg, uint32_t ms) 
   ui_line("Auto-start soon...");
   ui_line("BtnA = start now");
   ui_line("Hold BtnA = cancel");
-
-  serial_step(title, msg);
 
   uint32_t t0 = millis();
   uint32_t last_draw = 0;
@@ -334,14 +326,12 @@ static bool countdown_to_start(const char* title, const char* msg, uint32_t ms) 
     uint32_t now = millis();
     if (now - last_draw > 100) {
       last_draw = now;
-
       uint32_t elapsed = now - t0;
       if (elapsed >= ms) return true;
 
       uint32_t remain_ms = ms - elapsed;
       uint32_t remain_s = (remain_ms + 999) / 1000;
 
-      // update a small region near bottom
       int y = disp.height() - 36;
       disp.fillRect(0, y, disp.width(), 36, TFT_BLACK);
       disp.setCursor(0, y);
@@ -350,12 +340,24 @@ static bool countdown_to_start(const char* title, const char* msg, uint32_t ms) 
       disp.setTextColor(TFT_WHITE, TFT_BLACK);
       disp.println("Hold still when placed.");
     }
-
     delay(10);
   }
 }
 
-// Quick “captured” message
+static void show_msg_wait_btn(const char* title, const char* line1, const char* line2 = "") {
+  ui_clear();
+  ui_title(title);
+  ui_line(line1);
+  if (line2 && line2[0]) ui_line(line2);
+  ui_line("");
+  ui_line("BtnA = continue");
+  while (true) {
+    M5.update();
+    if (M5.BtnA.wasPressed()) break;
+    delay(10);
+  }
+}
+
 static void show_captured(const char* what) {
   ui_clear();
   ui_title("OK");
@@ -381,9 +383,9 @@ static bool read_sensors(Vector3f& a_raw_body, Vector3f& w_raw_body, Vector3f& m
   tempC = NAN;
   M5.Imu.getTemp(&tempC);
 
-  a_raw_body     = map_acc_to_body_ned(data.accel);
-  w_raw_body     = map_gyr_to_body_ned(data.gyro);
-  m_raw_uT_body  = map_mag_to_body_uT(data.mag);
+  a_raw_body    = map_acc_to_body_ned(data.accel);
+  w_raw_body    = map_gyr_to_body_ned(data.gyro);
+  m_raw_uT_body = map_mag_to_body_uT(data.mag);
   return true;
 }
 
@@ -392,11 +394,8 @@ static bool collect_accel_samples(const char* face_label, int need, uint32_t tim
   ui_title("ACCEL");
   ui_line(face_label);
   ui_line("");
-  ui_line("Just HOLD STILL.");
-  ui_line("(It ignores motion.)");
+  ui_line("Hold still.");
   ui_line("Hold BtnA=cancel");
-
-  serial_step("ACCEL", face_label);
 
   uint32_t t0 = millis();
   int got0 = accelCal.buf.n;
@@ -418,11 +417,7 @@ static bool collect_accel_samples(const char* face_label, int need, uint32_t tim
     delay(5);
   }
 
-  ui_clear();
-  ui_title("TIMEOUT");
-  ui_line("Accel step timed out.");
-  ui_line("Try steadier hold.");
-  delay(1500);
+  show_msg_wait_btn("TIMEOUT", "Accel step timed out.", "Try steadier hold.");
   return false;
 }
 
@@ -432,8 +427,6 @@ static bool collect_gyro_samples(uint32_t timeout_ms) {
   ui_line("DISPLAY UP on table.");
   ui_line("Do NOT touch it.");
   ui_line("Hold BtnA=cancel");
-
-  serial_step("GYRO", "Place DISPLAY UP on table. Do not touch it.");
 
   uint32_t t0 = millis();
   int got0 = gyroCal.buf.n;
@@ -455,23 +448,16 @@ static bool collect_gyro_samples(uint32_t timeout_ms) {
     delay(5);
   }
 
-  ui_clear();
-  ui_title("TIMEOUT");
-  ui_line("Gyro step timed out.");
-  ui_line("Was it moving?");
-  delay(1500);
+  show_msg_wait_btn("TIMEOUT", "Gyro step timed out.", "Was it moving?");
   return false;
 }
 
 static bool collect_mag_samples(uint32_t timeout_ms) {
   ui_clear();
   ui_title("MAG");
-  ui_line("Pick up device.");
   ui_line("Rotate slowly:");
-  ui_line("big circles / figure-8");
+  ui_line("big loops / figure-8");
   ui_line("Hold BtnA=cancel");
-
-  serial_step("MAG", "Rotate slowly in all directions (big loops / figure-8).");
 
   uint32_t t0 = millis();
   int got0 = magCal.buf.n;
@@ -484,9 +470,7 @@ static bool collect_mag_samples(uint32_t timeout_ms) {
     uint32_t mask;
     if (!read_sensors(a, w, m, tempC, mask)) { delay(2); continue; }
 
-    if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
-      magCal.addSample(m);
-    }
+    if (mask & (uint32_t)M5_IMU::sensor_mask_mag) magCal.addSample(m);
 
     int got = magCal.buf.n - got0;
     ui_progress("Samples", got, 250);
@@ -495,11 +479,7 @@ static bool collect_mag_samples(uint32_t timeout_ms) {
     delay(5);
   }
 
-  ui_clear();
-  ui_title("TIMEOUT");
-  ui_line("Mag step timed out.");
-  ui_line("Rotate longer/wider.");
-  delay(1500);
+  show_msg_wait_btn("TIMEOUT", "Mag step timed out.", "Rotate longer/wider.");
   return false;
 }
 
@@ -509,53 +489,29 @@ static void show_fit_results(const imu_cal::AccelCalibration<float>& ac,
 {
   ui_clear();
   ui_title("CAL DONE");
-
   disp.setTextColor(TFT_WHITE, TFT_BLACK);
-  disp.printf("ACC ok:%d  rms|g|:%.4f\n", (int)ac.ok, (double)ac.rms_mag);
+  disp.printf("ACC ok:%d rms|g|:%.4f\n", (int)ac.ok, (double)ac.rms_mag);
   disp.printf("GYR ok:%d\n", (int)gc.ok);
-  disp.printf("MAG ok:%d  B:%.1f uT  rms:%.2f\n", (int)mc.ok, (double)mc.field_uT, (double)mc.rms);
-
+  disp.printf("MAG ok:%d B:%.1f uT rms:%.2f\n", (int)mc.ok, (double)mc.field_uT, (double)mc.rms);
   disp.println();
   disp.println("Press BtnA to return");
-  while (true) {
-    M5.update();
-    if (M5.BtnA.wasPressed()) break;
-    delay(10);
-  }
+  while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
 }
 
 static bool wizard_intro() {
   ui_clear();
   ui_title("IMU CAL");
-  ui_line("Do 6 poses.");
-  ui_line("Each pose:");
-  ui_line("- Place as shown");
-  ui_line("- Wait (auto-start)");
-  ui_line("- Hold still");
+  ui_line("6 accel faces + gyro + mag.");
+  ui_line("Auto-start countdown each step.");
+  ui_line("Hold BtnA=cancel step.");
   ui_line("");
-  ui_line("BtnA=continue");
-  ui_line("Hold BtnA=cancel");
-
-  Serial.println("\n=== IMU CAL WIZARD ===");
-  Serial.println("ACCEL faces (6):");
-  Serial.println(" 1) DISPLAY UP (screen up)");
-  Serial.println(" 2) DISPLAY DOWN (screen on table)");
-  Serial.println(" 3) USB-C DOWN (port to table)");
-  Serial.println(" 4) USB-C UP (port to ceiling)");
-  Serial.println(" 5) LEFT EDGE DOWN (when screen faces you)");
-  Serial.println(" 6) RIGHT EDGE DOWN (when screen faces you)");
-  Serial.println("Auto-start countdown gives you time to place it.");
-  Serial.println("Hold BtnA ~1.5s anytime to cancel.\n");
-  Serial.flush();
-
-  while (true) {
-    M5.update();
-    if (M5.BtnA.wasPressed()) return true;
-    if (cancel_requested()) return false;
-    delay(10);
-  }
+  ui_line("BtnA=begin");
+  while (true) { M5.update(); if (M5.BtnA.wasPressed()) return true; delay(10); }
 }
 
+// ----------------------------
+// Wizard
+// ----------------------------
 static bool run_calibration_wizard() {
   // wipe M5 offsets + disable M5 internal calibration influence
   M5.Imu.setCalibration(0, 0, 0);
@@ -567,72 +523,54 @@ static bool run_calibration_wizard() {
 
   if (!wizard_intro()) return false;
 
-  // Plain-English face prompts (no “flip to next face”)
   const struct {
-    const char* screen_msg;  // what appears on device
-    const char* short_label; // used during sampling/progress
+    const char* setup_msg;
+    const char* short_label;
   } faces[6] = {
-    {"FACE 1/6:\nDISPLAY UP\n(screen facing up)",       "Face 1/6: DISPLAY UP"},
-    {"FACE 2/6:\nDISPLAY DOWN\n(screen on table)",      "Face 2/6: DISPLAY DOWN"},
-    {"FACE 3/6:\nUSB-C DOWN\n(port on table)",          "Face 3/6: USB-C DOWN"},
-    {"FACE 4/6:\nUSB-C UP\n(port to ceiling)",          "Face 4/6: USB-C UP"},
+    {"FACE 1/6:\nDISPLAY UP\n(screen facing up)",          "Face 1/6: DISPLAY UP"},
+    {"FACE 2/6:\nDISPLAY DOWN\n(screen on table)",         "Face 2/6: DISPLAY DOWN"},
+    {"FACE 3/6:\nUSB-C DOWN\n(port on table)",             "Face 3/6: USB-C DOWN"},
+    {"FACE 4/6:\nUSB-C UP\n(port to ceiling)",             "Face 4/6: USB-C UP"},
     {"FACE 5/6:\nLEFT EDGE DOWN\n(when screen faces you)", "Face 5/6: LEFT EDGE DOWN"},
-    {"FACE 6/6:\nRIGHT EDGE DOWN\n(when screen faces you)", "Face 6/6: RIGHT EDGE DOWN"},
+    {"FACE 6/6:\nRIGHT EDGE DOWN\n(when screen faces you)","Face 6/6: RIGHT EDGE DOWN"},
   };
 
   for (int i = 0; i < 6; ++i) {
-    // Show instruction + long countdown; you can ignore BtnA entirely.
-    if (!countdown_to_start("ACCEL SETUP", faces[i].screen_msg, STEP_COUNTDOWN_MS)) return false;
-
-    if (!collect_accel_samples(faces[i].short_label, /*need=*/60, /*timeout_ms=*/ACCEL_FACE_TIMEOUT_MS))
-      return false;
-
+    if (!countdown_to_start("ACCEL SETUP", faces[i].setup_msg, STEP_COUNTDOWN_MS)) return false;
+    if (!collect_accel_samples(faces[i].short_label, /*need=*/60, ACCEL_FACE_TIMEOUT_MS)) return false;
     show_captured(faces[i].short_label);
   }
 
   imu_cal::AccelCalibration<float> acc_out;
-  if (!accelCal.fit(acc_out, /*robust_iters=*/3, /*trim_frac=*/0.15f) || !acc_out.ok) {
-    ui_clear();
-    ui_title("ACCEL FAIL");
-    ui_line("Not enough coverage.");
-    ui_line("Try steadier holds.");
-    delay(2500);
+  if (!accelCal.fit(acc_out, /*robust_iters=*/3, /*trim_frac=*/0.15f)) {
+    show_msg_wait_btn("ACCEL FAIL", "Fit failed.", "Try steadier holds.");
     return false;
   }
 
-  // GYRO
-  if (!countdown_to_start("GYRO SETUP", "Place DISPLAY UP on table.\nDon't touch it.", STEP_COUNTDOWN_MS))
-    return false;
-
+  if (!countdown_to_start("GYRO SETUP", "Place DISPLAY UP on table.\nDon't touch it.", STEP_COUNTDOWN_MS)) return false;
   if (!collect_gyro_samples(GYRO_TIMEOUT_MS)) return false;
 
   imu_cal::GyroCalibration<float> gyr_out;
-  if (!gyroCal.fit(gyr_out) || !gyr_out.ok) {
-    ui_clear();
-    ui_title("GYRO FAIL");
-    ui_line("Too much motion?");
-    delay(2500);
+  if (!gyroCal.fit(gyr_out)) {
+    show_msg_wait_btn("GYRO FAIL", "Fit failed.", "Try more stillness.");
     return false;
   }
 
-  // MAG
-  if (!countdown_to_start("MAG SETUP", "Pick up and start rotating.\nBig loops / figure-8.", 5000))
-    return false;
-
+  if (!countdown_to_start("MAG SETUP", "Pick up and rotate slowly.\nBig loops / figure-8.", 5000)) return false;
   if (!collect_mag_samples(MAG_TIMEOUT_MS)) return false;
 
   imu_cal::MagCalibration<float> mag_out;
-  if (!magCal.fit(mag_out, /*robust_iters=*/3, /*trim_frac=*/0.15f) || !mag_out.ok) {
-    ui_clear();
-    ui_title("MAG FAIL");
-    ui_line("Try larger rotations,");
-    ui_line("away from metal.");
-    delay(2500);
+  if (!magCal.fit(mag_out, /*robust_iters=*/3, /*trim_frac=*/0.15f)) {
+    show_msg_wait_btn("MAG FAIL", "Fit failed.", "Rotate longer/wider.");
     return false;
   }
 
-  // Save blob
+  // Build blob (ZERO IT to avoid padding weirdness)
   CalBlobV1 blob;
+  memset(&blob, 0, sizeof(blob));
+  blob.magic = IMU_CAL_MAGIC;
+  blob.version = IMU_CAL_VERSION;
+  blob.size_bytes = sizeof(CalBlobV1);
 
   // accel
   blob.accel_ok = acc_out.ok ? 1 : 0;
@@ -657,44 +595,90 @@ static bool run_calibration_wizard() {
   blob.mag_rms = mag_out.rms;
 
   if (!save_cal_to_nvs(blob)) {
-    ui_clear();
-    ui_title("SAVE FAIL");
-    ui_line("NVS write failed.");
-    delay(2500);
+    show_msg_wait_btn("SAVE FAIL", "NVS write failed.");
     return false;
   }
 
-  cal_blob = blob;
-  rebuild_runtime_cals_from_blob();
-  have_cal = true;
+  // VERIFY by reading back immediately (this is the key debug)
+  have_blob = load_cal_from_nvs();
+  if (!have_blob) {
+    show_msg_wait_btn("SAVE FAIL", "Saved but readback failed.", "NVS/CRC mismatch.");
+    return false;
+  }
 
+  // show results
   show_fit_results(acc_out, gyr_out, mag_out);
   return true;
 }
 
 // ----------------------------
-// Runtime status / demo
+// Status / erase logic
 // ----------------------------
+static uint32_t ignore_erase_until_ms = 0;
 static uint32_t last_print_ms = 0;
 
 static void draw_status() {
   ui_clear();
   ui_title("IMU CAL");
 
-  disp.printf("Our cal: %s\n", have_cal ? "LOADED" : "NONE");
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.printf("BLOB: %s\n", have_blob ? "YES" : "NO");
+  disp.printf("ACC ok:%d  GYR ok:%d  MAG ok:%d\n",
+              (int)g_acc_cal.ok, (int)g_gyr_cal.ok, (int)g_mag_cal.ok);
+
   disp.println();
   disp.println("BtnA: calibrate");
-  disp.println("Hold BtnA ~2s: erase cal");
+  disp.println("Erase: hold BtnA 4s");
+  disp.println("(then confirm)");
+  disp.println();
   disp.println();
 }
 
-static bool btnA_longpress_erase() {
-  static bool was_down = false;
+static bool request_erase_longhold() {
+  if (millis() < ignore_erase_until_ms) return false;
+
   static uint32_t t_down = 0;
-  bool down = M5.BtnA.isPressed();
-  if (down && !was_down) { was_down = true; t_down = millis(); }
-  if (!down && was_down) { was_down = false; }
-  if (down && was_down && (millis() - t_down) > 2000) return true;
+  M5.update();
+
+  if (M5.BtnA.isPressed()) {
+    if (t_down == 0) t_down = millis();
+
+    uint32_t held = millis() - t_down;
+    if (held >= ERASE_HOLD_MS) {
+      t_down = 0;
+      return true;
+    }
+
+    // Optional: show a tiny hold progress
+    int y = disp.height() - 36;
+    disp.fillRect(0, y, disp.width(), 36, TFT_BLACK);
+    disp.setCursor(0, y);
+    disp.setTextColor(TFT_YELLOW, TFT_BLACK);
+    disp.printf("Hold to erase: %lus\n", (unsigned long)((ERASE_HOLD_MS - held + 999) / 1000));
+    disp.setTextColor(TFT_WHITE, TFT_BLACK);
+    disp.println("Release to cancel");
+  } else {
+    t_down = 0;
+  }
+
+  return false;
+}
+
+static bool confirm_erase_screen() {
+  ui_clear();
+  ui_title("ERASE?");
+  ui_line("This will delete");
+  ui_line("saved calibration.");
+  ui_line("");
+  ui_line("BtnA = CONFIRM");
+  ui_line("Wait 5s = cancel");
+
+  uint32_t t0 = millis();
+  while (millis() - t0 < 5000) {
+    M5.update();
+    if (M5.BtnA.wasPressed()) return true;
+    delay(10);
+  }
   return false;
 }
 
@@ -705,7 +689,8 @@ void setup() {
 
   M5.Imu.setCalibration(0, 0, 0);
 
-  have_cal = load_cal_from_nvs();
+  have_blob = load_cal_from_nvs();
+  ignore_erase_until_ms = millis() + ERASE_GUARD_MS;
   draw_status();
 
   if (!M5.Imu.isEnabled()) {
@@ -719,24 +704,35 @@ void setup() {
 void loop() {
   M5.update();
 
-  if (btnA_longpress_erase()) {
-    ui_clear();
-    ui_title("ERASING...");
-    erase_our_cal_from_nvs();
-    M5.Imu.clearOffsetData();
-    have_cal = false;
-    memset(&cal_blob, 0, sizeof(cal_blob));
-    rebuild_runtime_cals_from_blob();
-    ui_line("Done.");
-    delay(800);
+  // Erase flow (guarded + confirm)
+  if (request_erase_longhold()) {
+    if (confirm_erase_screen()) {
+      ui_clear();
+      ui_title("ERASING...");
+      erase_our_cal_from_nvs();
+      M5.Imu.clearOffsetData();
+
+      have_blob = false;
+      memset(&cal_blob, 0, sizeof(cal_blob));
+      rebuild_runtime_cals_from_blob();
+
+      ignore_erase_until_ms = millis() + ERASE_GUARD_MS;
+      ui_line("Done.");
+      delay(800);
+    }
     draw_status();
   }
 
+  // Run wizard
   if (M5.BtnA.wasPressed()) {
-    (void)run_calibration_wizard();
+    bool ok = run_calibration_wizard();
+    (void)ok;
+    have_blob = load_cal_from_nvs();              // refresh (in case)
+    ignore_erase_until_ms = millis() + ERASE_GUARD_MS; // prevent immediate erase
     draw_status();
   }
 
+  // Live read / print
   Vector3f a_raw, w_raw, m_raw;
   float tempC;
   uint32_t mask;
