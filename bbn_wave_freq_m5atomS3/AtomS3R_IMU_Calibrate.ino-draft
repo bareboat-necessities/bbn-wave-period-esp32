@@ -527,8 +527,8 @@ static void show_fit_results(const imu_cal::AccelCalibration<float>& ac,
 static bool wizard_intro() {
   ui_clear();
   ui_title("IMU CAL");
-  ui_line("You will do 6 ACCEL faces.");
-  ui_line("Each face:");
+  ui_line("Do 6 poses.");
+  ui_line("Each pose:");
   ui_line("- Place as shown");
   ui_line("- Wait (auto-start)");
   ui_line("- Hold still");
@@ -679,14 +679,13 @@ static uint32_t last_print_ms = 0;
 
 static void draw_status() {
   ui_clear();
-  ui_title("AtomS3R IMU CAL");
+  ui_title("IMU CAL");
 
   disp.printf("Our cal: %s\n", have_cal ? "LOADED" : "NONE");
   disp.println();
-  disp.println("BtnA: run calibration");
+  disp.println("BtnA: calibrate");
   disp.println("Hold BtnA ~2s: erase cal");
   disp.println();
-  disp.println("Serial: raw+cal values");
 }
 
 static bool btnA_longpress_erase() {
