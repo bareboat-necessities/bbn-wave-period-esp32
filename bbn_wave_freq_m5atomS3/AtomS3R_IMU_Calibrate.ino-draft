@@ -2,8 +2,8 @@
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
   Controls:
-  - Tap: start / advance
-  - Triple-tap on home: erase
+  - Tap (screen or BtnA): start / advance
+  - Triple-tap (screen or BtnA) on home: erase (with confirm)
 
   Units:
     accel: m/s^2
@@ -39,8 +39,7 @@ struct ImuCalCfg {
   static constexpr float g_std   = 9.80665f;
   static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
 
-  // UI rotation:
-  // ROT_READ = how you like it while holding/reading prompts.
+  // UI rotation: how you like it when reading prompts normally
   static constexpr uint8_t ROT_READ = 1;
 
   static constexpr uint32_t PLACE_TIME_MS    = 9000;
@@ -61,6 +60,49 @@ struct ImuCalCfg {
   static constexpr uint32_t FIT_TIMEOUT_MS   = 25000;
 
   static constexpr uint32_t TAP_WINDOW_MS    = 650;
+
+  // Speaker
+  static constexpr uint8_t  BEEP_VOLUME      = 200;  // 0..255
+  static constexpr uint32_t BEEP_GAP_MS      = 40;
+};
+
+// Input: Touch tap OR BtnA press
+class Input {
+public:
+  // Call once per loop, after M5.update()
+  static void update() {
+    tap_edge_ = false;
+
+    // Always include BtnA as a tap (fallback)
+    if (M5.BtnA.wasPressed()) {
+      tap_edge_ = true;
+    }
+
+    // Touch path A: M5.Touch detail edge
+    // Works on many M5Unified targets with touch panels.
+    {
+      auto d = M5.Touch.getDetail();
+      if (d.wasPressed()) {
+        tap_edge_ = true;
+        touching_prev_ = true;
+        return;
+      }
+    }
+
+    // Touch path B: edge detect from getTouch() (fallback)
+    uint16_t x=0, y=0;
+    bool touching = M5.Display.getTouch(&x, &y);
+    if (touching && !touching_prev_) {
+      tap_edge_ = true;
+    }
+    touching_prev_ = touching;
+  }
+
+  static bool tapPressed() { return tap_edge_; }
+
+private:
+  static inline bool tap_edge_ = false;
+  static inline bool touching_prev_ = false;
 };
 
 // Cal blob + CRC
@@ -172,7 +214,7 @@ public:
   }
 };
 
-// Runtime calibration state (apply + rebuild-from-blob)
+// Runtime calibration state
 struct RuntimeCals {
   imu_cal::AccelCalibration<float> acc{};
   imu_cal::GyroCalibration<float>  gyr{};
@@ -256,7 +298,45 @@ private:
   }
 };
 
-// UI: M5 screen + rotation lock 
+// Speaker helper (robust beeps)
+class Beeper {
+public:
+  static void begin() {
+    // Ensure speaker is enabled and audible
+    // M5Unified supports config.speaker_enable and volume.
+    // Some boards default to speaker disabled.
+    M5.Speaker.begin();
+    M5.Speaker.setVolume(ImuCalCfg::BEEP_VOLUME);
+
+    // Quick boot chirp (also confirms speaker works)
+    tone(1800, 60);
+    delay(ImuCalCfg::BEEP_GAP_MS);
+    tone(2200, 60);
+  }
+
+  static void ok() {
+    tone(2200, 80);
+    delay(ImuCalCfg::BEEP_GAP_MS);
+    tone(2600, 80);
+  }
+
+  static void bad() {
+    tone(400, 120);
+    delay(ImuCalCfg::BEEP_GAP_MS);
+    tone(300, 160);
+  }
+
+private:
+  static void tone(uint16_t hz, uint16_t ms) {
+    // M5Unified speaker: tone(frequency, duration_ms)
+    // On some builds, tone() is quiet unless volume is set & speaker begun.
+    M5.Speaker.tone(hz, ms);
+    delay(ms);
+    M5.Speaker.stop();
+  }
+};
+
+// UI: M5 screen + rotation lock + tap waiting
 class M5Ui {
 public:
   explicit M5Ui(uint8_t rot_read) : rot_read_(rot_read), rot_active_(rot_read) {}
@@ -300,18 +380,22 @@ public:
     M5.Display.fillRect(x+1, y+1, fillw, h-2, TFT_GREEN);
   }
 
-  void beepOk()  { M5.Speaker.tone(2200, 60); delay(80); M5.Speaker.tone(2600, 60); }
-  void beepBad() { M5.Speaker.tone(400, 120); delay(140); M5.Speaker.tone(300, 160); }
+  void beepOk()  { Beeper::ok(); }
+  void beepBad() { Beeper::bad(); }
 
   void waitTap(const char* titleText, const char* l1, const char* l2=nullptr) {
-    // Do NOT force read rotation if locked (pose capture wants its own rotation).
     if (!rot_locked_) setReadRotation();
     title(titleText);
     line(l1);
     if (l2) line(l2);
     line("");
     line("Tap to continue");
-    while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
+    while (true) {
+      M5.update();
+      Input::update();
+      if (Input::tapPressed()) break;
+      delay(10);
+    }
   }
 
   void fail(const char* where, const char* why) {
@@ -322,7 +406,12 @@ public:
     line("");
     line("Tap to return");
     beepBad();
-    while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
+    while (true) {
+      M5.update();
+      Input::update();
+      if (Input::tapPressed()) break;
+      delay(10);
+    }
   }
 
   bool eraseConfirm() {
@@ -334,7 +423,8 @@ public:
     uint32_t t0 = millis();
     while (millis() - t0 < 4500) {
       M5.update();
-      if (M5.BtnA.wasPressed()) return true;
+      Input::update();
+      if (Input::tapPressed()) return true;
       delay(10);
     }
     return false;
@@ -398,7 +488,6 @@ public:
     float ph = 0.f;
     while (!job->done) {
       if (millis() - t0 > timeoutMs) {
-        // Optional: add cancellation plumbing; for now fail.
         ui_.fail("FIT", "Timeout");
         delete job;
         return false;
@@ -432,7 +521,6 @@ public:
   ImuCalWizard(M5Ui& ui, M5ImuSource& imu, ImuCalStoreNvs& store, FitRunner& fit)
     : ui_(ui), imu_(imu), store_(store), fit_(fit) {}
 
-  // outputs for building blob
   imu_cal::AccelCalibration<float> acc_out{};
   imu_cal::GyroCalibration<float>  gyr_out{};
   imu_cal::MagCalibration<float>   mag_out{};
@@ -451,7 +539,7 @@ public:
     ui_.unlockRotation();
     ui_.waitTap("IMU CAL", "6 poses", "Tap each step");
 
-    // If text orientation is wrong for your hardware, change the rotations here.
+    // Adjust these rotations if any pose text isn't upright.
     const Pose poses[6] = {
       {"1/6 SCREEN UP",     nullptr, ImuCalCfg::ROT_READ},
       {"2/6 SCREEN DOWN",   "Wait for beep", ImuCalCfg::ROT_READ},
@@ -500,7 +588,6 @@ public:
           return ok && mag_out.ok;
         })) return false;
 
-    // Save blob and readback verify
     ImuCalBlobV1 blob{};
     fillBlob(blob);
 
@@ -519,8 +606,9 @@ public:
       return false;
     }
 
+    ui_.unlockRotation();
     ui_.title("DONE");
-    ui_.line("BLOB: YES");
+    ui_.line("Saved OK");
     ui_.line("Tap to return");
     ui_.beepOk();
     ui_.waitTap("DONE", "Saved OK", nullptr);
@@ -529,14 +617,13 @@ public:
 
 private:
   bool captureAccelPose(const Pose& p) {
-    // Pre-pose prompt: normal reading orientation
     ui_.unlockRotation();
     ui_.waitTap("ACCEL", p.name, p.note);
 
-    // Place delay: also in read orientation
     ui_.unlockRotation();
     placeDelay("ACCEL", p.name, ImuCalCfg::PLACE_TIME_MS);
 
+    // Lock rotation during capture + OK screen for this pose
     ui_.lockRotation(p.rot_capture);
 
     int start_n = accelCal_.buf.n;
@@ -567,13 +654,19 @@ private:
 
       ui_.bar((float)(n - start_n) / (float)ImuCalCfg::ACCEL_NEED_POSE);
       if (n >= target_n) {
-        // Still locked rotation here, so "OK" page is upright in pose.
         ui_.title("OK");
         ui_.line(p.name);
         ui_.line("");
         ui_.line("Tap for next");
         ui_.beepOk();
-        while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
+
+        while (true) {
+          M5.update();
+          Input::update();
+          if (Input::tapPressed()) break;
+          delay(10);
+        }
+
         ui_.unlockRotation();
         return true;
       }
@@ -625,7 +718,13 @@ private:
         ui_.line("");
         ui_.line("Tap for next");
         ui_.beepOk();
-        while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
+
+        while (true) {
+          M5.update();
+          Input::update();
+          if (Input::tapPressed()) break;
+          delay(10);
+        }
         return true;
       }
 
@@ -675,11 +774,19 @@ private:
         ui_.line("");
         ui_.line("Tap for next");
         ui_.beepOk();
-        while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
+
+        while (true) {
+          M5.update();
+          Input::update();
+          if (Input::tapPressed()) break;
+          delay(10);
+        }
         return true;
       }
+
       delay(5);
     }
+
     ui_.fail("MAG", "Timeout");
     return false;
   }
@@ -733,13 +840,22 @@ private:
   imu_cal::MagCalibrator<float,   400>    magCal_{};
 };
 
-// Application (home screen + tap counting + serial streaming)
+// App (home screen + tap counting + serial streaming)
 class ImuCalApp {
 public:
   void begin() {
     auto cfg = M5.config();
+
+    // Make sure speaker is enabled (important for AtomS3R)
+    cfg.speaker_enable = true;
+    // If your core supports it, this helps touch too:
+    // cfg.external_speaker.hat_spk = true; // (leave commented unless you know you need it)
+
     M5.begin(cfg);
     Serial.begin(115200);
+
+    // Speaker init + audible chirp
+    Beeper::begin();
 
     // Disable M5 internal calibration influence
     M5.Imu.setCalibration(0, 0, 0);
@@ -750,22 +866,19 @@ public:
       while (true) delay(100);
     }
 
-    // Load blob (if any) and build runtime cals
     have_blob_ = store_.load(blob_);
-    if (have_blob_) {
-      runtime_.rebuildFromBlob(blob_);
-    } else {
-      memset(&blob_, 0, sizeof(blob_));
-      runtime_.rebuildFromBlob(blob_);
-    }
+    if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
+    runtime_.rebuildFromBlob(blob_);
+
     drawHome();
   }
 
   void tick() {
     M5.update();
+    Input::update();
 
     // tap counting (single = start, triple = erase)
-    if (M5.BtnA.wasPressed()) {
+    if (Input::tapPressed()) {
       tap_count_++;
       tap_deadline_ms_ = millis() + ImuCalCfg::TAP_WINDOW_MS;
     }
@@ -776,28 +889,24 @@ public:
           store_.erase();
           M5.Imu.clearOffsetData();
           have_blob_ = store_.load(blob_);
-          if (!have_blob_) {
-            memset(&blob_, 0, sizeof(blob_));
-          }
+          if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
           runtime_.rebuildFromBlob(blob_);
         }
         drawHome();
       } else {
-        // run wizard
         ImuCalWizard wiz(ui_, imu_, store_, fit_);
-        bool ok = wiz.run();
+        (void)wiz.run();
 
-        // reload saved blob and rebuild runtime cals
         have_blob_ = store_.load(blob_);
         if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
         runtime_.rebuildFromBlob(blob_);
 
-        (void)ok;
         drawHome();
       }
       tap_count_ = 0;
       tap_deadline_ms_ = 0;
     }
+
     streamSerial();
     delay(5);
   }
@@ -836,13 +945,11 @@ private:
   }
 
 private:
-  // services
   M5Ui ui_{ImuCalCfg::ROT_READ};
   M5ImuSource imu_{};
   ImuCalStoreNvs store_{};
   FitRunner fit_{ui_};
 
-  // state
   bool have_blob_ = false;
   ImuCalBlobV1 blob_{};
   RuntimeCals runtime_{};
@@ -852,7 +959,7 @@ private:
   uint32_t last_print_ms_ = 0;
 };
 
-// Arduino entrypoints (non-static app instance)
+// Arduino entrypoints
 static ImuCalApp g_app;
 
 void setup() {
