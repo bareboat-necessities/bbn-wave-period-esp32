@@ -18,6 +18,8 @@
     mag:   uT
 */
 
+struct CalBlobV1;
+
 #include <M5Unified.h>
 #include <Arduino.h>
 #include <Preferences.h>
@@ -30,6 +32,8 @@
 #define EIGEN_STACK_ALLOCATION_LIMIT 0
 #endif
 #include <ArduinoEigenDense.h>
+
+using M5_IMU = decltype(M5.Imu);
 
 #include "CalibrateIMU_alt.h"   
 
@@ -375,7 +379,7 @@ static bool collect_mag_samples(uint32_t timeout_ms) {
     if (!read_sensors(a, w, m, tempC, mask)) { delay(2); continue; }
 
     // Only count when mag sensor actually updated (mask includes mag)
-    if (mask & (uint32_t)decltype(M5.Imu)::sensor_mask_mag) {
+    if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
       magCal.addSample(m);
     }
 
