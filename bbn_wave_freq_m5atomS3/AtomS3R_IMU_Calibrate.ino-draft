@@ -1,11 +1,6 @@
 /*
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
-  Refactor goals:
-  - Separate wizard logic from UI and storage.
-  - Remove "everything static" god-class.
-  - Keep text upright during each pose capture (fix rotation "snaps back").
-
   Rotation bug root cause (most likely):
   - UI helper functions (ui_wait_tap_, ui_fail_, done_and_wait_next_, etc.) always force ROT_READ.
   - During capture, you set pose rotation once, but later UI calls set it back.
