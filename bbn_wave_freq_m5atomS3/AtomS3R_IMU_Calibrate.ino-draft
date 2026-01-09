@@ -249,4 +249,644 @@ static inline Vector3f applyGyro(const Vector3f& w_raw_body, float tempC) {
   return g_gyr_cal.apply(w_raw_body, tempC);
 }
 static inline Vector3f applyMag(const Vector3f& m_raw_uT_body) {
-  if (!g
+  if (!g_mag_cal.ok) return m_raw_uT_body;
+  return g_mag_cal.apply(m_raw_uT_body);
+}
+
+// ----------------------------
+// UI helpers
+// ----------------------------
+static auto& disp = M5.Display;
+
+static void ui_clear(uint16_t bg = TFT_BLACK) { disp.fillScreen(bg); }
+
+static void ui_title(const char* s) {
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.setCursor(0, 0);
+  disp.setTextSize(2);
+  disp.println(s);
+  disp.setTextSize(1);
+  disp.println();
+}
+
+static void ui_line(const char* s) {
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.println(s);
+}
+
+static void ui_progress(const char* label, int done, int total) {
+  if (total <= 0) total = 1;
+  if (done < 0) done = 0;
+  if (done > total) done = total;
+  int w = disp.width() - 10;
+  int x = 5;
+  int y = disp.height() - 18;
+  int h = 10;
+  disp.fillRect(0, y - 14, disp.width(), 32, TFT_BLACK);
+  disp.setCursor(0, y - 14);
+  disp.setTextColor(TFT_CYAN, TFT_BLACK);
+  disp.printf("%s %d/%d\n", label, done, total);
+  disp.drawRect(x, y, w, h, TFT_DARKGREY);
+  int fillw = (w - 2) * done / total;
+  disp.fillRect(x + 1, y + 1, fillw, h - 2, TFT_GREEN);
+}
+
+static bool cancel_requested() {
+  static uint32_t t_down = 0;
+  M5.update();
+  if (M5.BtnA.isPressed()) {
+    if (t_down == 0) t_down = millis();
+    if (millis() - t_down >= CANCEL_HOLD_MS) { t_down = 0; return true; }
+  } else {
+    t_down = 0;
+  }
+  return false;
+}
+
+// ----------------------------
+// Calibrators & sensor read
+// ----------------------------
+static imu_cal::AccelCalibrator<float, 400, 8> accelCal;
+static imu_cal::GyroCalibrator<float, 400, 8>  gyroCal;
+static imu_cal::MagCalibrator<float, 400>      magCal;
+
+static bool read_sensors(Vector3f& a_raw_body, Vector3f& w_raw_body, Vector3f& m_raw_uT_body,
+                         float& tempC, uint32_t& mask_out, float& a_mag, float& w_mag, Vector3f& g_dir)
+{
+  mask_out = M5.Imu.update();
+  if (!mask_out) return false;
+
+  auto data = M5.Imu.getImuData();
+  tempC = NAN;
+  M5.Imu.getTemp(&tempC);
+
+  a_raw_body    = map_acc_to_body_ned_scaled(data.accel);
+  w_raw_body    = map_gyr_to_body_ned(data.gyro);
+  m_raw_uT_body = map_mag_to_body_uT_scaled(data.mag);
+
+  a_mag = a_raw_body.norm();
+  w_mag = w_raw_body.norm();
+  if (a_mag > 1e-3f) g_dir = a_raw_body / a_mag;
+  else g_dir = Vector3f(0,0,1);
+
+  return true;
+}
+
+static bool is_still(float a_mag, float w_mag) {
+  const float a_rel = fabsf(a_mag - g_std) / g_std;
+  return (w_mag <= STILL_W_RAD_S) && (a_rel <= STILL_A_REL);
+}
+
+// ----------------------------
+// Auto-detect unit scaling
+// ----------------------------
+static void autodetect_scales() {
+  float a_norm_avg = 0.0f;
+  float m_norm_avg = 0.0f;
+  int n = 0;
+
+  uint32_t t0 = millis();
+  while (millis() - t0 < 900) {
+    uint32_t mask = M5.Imu.update();
+    if (!mask) { delay(5); continue; }
+    auto d = M5.Imu.getImuData();
+    const float a0 = sqrtf(d.accel.x*d.accel.x + d.accel.y*d.accel.y + d.accel.z*d.accel.z);
+    const float m0 = sqrtf(d.mag.x*d.mag.x + d.mag.y*d.mag.y + d.mag.z*d.mag.z);
+    a_norm_avg += a0;
+    m_norm_avg += m0;
+    n++;
+    delay(10);
+  }
+  if (n <= 0) return;
+  a_norm_avg /= (float)n;
+  m_norm_avg /= (float)n;
+
+  if (a_norm_avg > 4.0f) g_acc_scale = 1.0f;  // likely already m/s^2
+  else                   g_acc_scale = g_std; // likely in g units
+
+  if (m_norm_avg > 120.0f) g_mag_scale = 0.1f; // likely needs /10
+  else                     g_mag_scale = 1.0f; // likely already uT-ish
+}
+
+// ----------------------------
+// Pose-change gate (prevents instant looping)
+// ----------------------------
+static bool wait_for_pose_change(const Vector3f& prev_gdir, uint32_t limit_ms) {
+  ui_clear();
+  ui_title("NEXT POSE");
+  ui_line("Pick it up now.");
+  ui_line("Rotate to next face.");
+  ui_line("");
+  ui_line("Hold BtnA 2s = cancel");
+
+  uint32_t t0 = millis();
+  uint32_t t_move0 = 0;
+  uint32_t last_ui = 0;
+
+  while (millis() - t0 < limit_ms) {
+    if (cancel_requested()) return false;
+
+    Vector3f a, w, m, gdir;
+    float tempC, amag, wmag;
+    uint32_t mask;
+    if (!read_sensors(a, w, m, tempC, mask, amag, wmag, gdir)) { delay(2); continue; }
+
+    const bool still = is_still(amag, wmag);
+    const float dot = gdir.dot(prev_gdir);
+    const bool changed = (!still) || (dot < POSE_DOT_THRESH);
+
+    if (changed) {
+      if (t_move0 == 0) t_move0 = millis();
+      if (millis() - t_move0 >= MOVE_DETECT_HOLD_MS) return true;
+    } else {
+      t_move0 = 0;
+    }
+
+    if (millis() - last_ui > UI_REFRESH_MS) {
+      last_ui = millis();
+      disp.setCursor(0, 110);
+      disp.fillRect(0, 110, disp.width(), 40, TFT_BLACK);
+      disp.setTextColor(TFT_YELLOW, TFT_BLACK);
+      disp.printf("|a|=%.2f |w|=%.3f\n", (double)amag, (double)wmag);
+      disp.printf("dot=%.3f  MOVE:%s\n", (double)dot, changed ? "YES" : "NO");
+    }
+    delay(8);
+  }
+
+  ui_clear();
+  ui_title("TIMEOUT");
+  ui_line("Didn't detect movement.");
+  delay(1500);
+  return false;
+}
+
+static bool reposition_countdown(const char* pose_title, const char* pose_text, uint32_t ms) {
+  ui_clear();
+  ui_title(pose_title);
+  ui_line(pose_text);
+  ui_line("");
+  ui_line("Place it now.");
+  ui_line("Capture starts after");
+  ui_line("countdown + stillness.");
+  ui_line("Hold BtnA 2s = cancel");
+
+  uint32_t t0 = millis();
+  uint32_t last_ui = 0;
+
+  while (millis() - t0 < ms) {
+    if (cancel_requested()) return false;
+
+    if (millis() - last_ui > UI_REFRESH_MS) {
+      last_ui = millis();
+      uint32_t remain = ms - (millis() - t0);
+      uint32_t s = (remain + 999) / 1000;
+      int y = disp.height() - 36;
+      disp.fillRect(0, y, disp.width(), 36, TFT_BLACK);
+      disp.setCursor(0, y);
+      disp.setTextColor(TFT_CYAN, TFT_BLACK);
+      disp.printf("Starting in %lus\n", (unsigned long)s);
+      disp.setTextColor(TFT_WHITE, TFT_BLACK);
+      disp.println("Then HOLD STILL");
+    }
+
+    delay(10);
+  }
+  return true;
+}
+
+static bool wait_until_still_for_capture(uint32_t time_limit_ms) {
+  uint32_t t0 = millis();
+  uint32_t t_still0 = 0;
+  uint32_t last_ui = 0;
+
+  while (millis() - t0 < time_limit_ms) {
+    if (cancel_requested()) return false;
+
+    Vector3f a, w, m, gdir;
+    float tempC, amag, wmag;
+    uint32_t mask;
+    if (!read_sensors(a, w, m, tempC, mask, amag, wmag, gdir)) { delay(2); continue; }
+
+    const bool still = is_still(amag, wmag);
+    if (still) {
+      if (t_still0 == 0) t_still0 = millis();
+      if (millis() - t_still0 >= STILL_HOLD_MS) return true;
+    } else {
+      t_still0 = 0;
+    }
+
+    if (millis() - last_ui > UI_REFRESH_MS) {
+      last_ui = millis();
+      disp.setCursor(0, 110);
+      disp.fillRect(0, 110, disp.width(), 40, TFT_BLACK);
+      disp.setTextColor(TFT_YELLOW, TFT_BLACK);
+      disp.printf("|a|=%.2f |w|=%.3f\n", (double)amag, (double)wmag);
+      disp.printf("STILL: %s\n", still ? "YES (holding...)" : "NO");
+    }
+    delay(8);
+  }
+
+  ui_clear();
+  ui_title("TIMEOUT");
+  ui_line("Could not get still.");
+  delay(1500);
+  return false;
+}
+
+// Capture accel face (slow + minimum time)
+static bool capture_accel_face(const char* face_label, int need, uint32_t timeout_ms, Vector3f& out_gdir) {
+  ui_clear();
+  ui_title("ACCEL CAPTURE");
+  ui_line(face_label);
+  ui_line("");
+  ui_line("Hold still...");
+  ui_line("Hold BtnA 2s = cancel");
+
+  const uint32_t t0 = millis();
+  uint32_t last_ui = 0;
+  uint32_t last_sample = 0;
+  uint32_t first_accept_ms = 0;
+
+  const int start_n = accelCal.buf.n;
+  Vector3f gdir_last(0,0,1);
+
+  while (millis() - t0 < timeout_ms) {
+    if (cancel_requested()) return false;
+
+    Vector3f a, w, m, gdir;
+    float tempC, amag, wmag;
+    uint32_t mask;
+    if (!read_sensors(a, w, m, tempC, mask, amag, wmag, gdir)) { delay(2); continue; }
+    gdir_last = gdir;
+
+    const uint32_t now = millis();
+    if (now - last_sample >= SAMPLE_PERIOD_MS) {
+      last_sample = now;
+      const int before = accelCal.buf.n;
+      accelCal.addSample(a, w, tempC);
+      const int after = accelCal.buf.n;
+      if (after > before && first_accept_ms == 0) first_accept_ms = now;
+    }
+
+    const int got = accelCal.buf.n - start_n;
+    ui_progress("Accepted", got, need);
+
+    if (millis() - last_ui > UI_REFRESH_MS) {
+      last_ui = millis();
+      disp.setCursor(0, 110);
+      disp.fillRect(0, 110, disp.width(), 40, TFT_BLACK);
+      disp.setTextColor(TFT_YELLOW, TFT_BLACK);
+      disp.printf("|a|=%.2f |w|=%.3f\n", (double)amag, (double)wmag);
+      disp.printf("STILL: %s\n", is_still(amag, wmag) ? "YES" : "NO");
+    }
+
+    // Require both enough samples AND minimum capture duration
+    if (got >= need && first_accept_ms != 0) {
+      if (now - first_accept_ms >= MIN_FACE_CAPTURE_MS) {
+        out_gdir = gdir_last;
+        return true;
+      }
+    }
+
+    delay(5);
+  }
+
+  ui_clear();
+  ui_title("ACCEL TIMEOUT");
+  ui_line("Not enough accepted");
+  ui_line("samples in time.");
+  delay(1500);
+  return false;
+}
+
+static bool capture_gyro(uint32_t timeout_ms) {
+  ui_clear();
+  ui_title("GYRO CAPTURE");
+  ui_line("DISPLAY UP on table.");
+  ui_line("Don't touch it.");
+  ui_line("Hold BtnA 2s = cancel");
+
+  const uint32_t t0 = millis();
+  uint32_t last_sample = 0;
+  const int start_n = gyroCal.buf.n;
+
+  while (millis() - t0 < timeout_ms) {
+    if (cancel_requested()) return false;
+
+    Vector3f a, w, m, gdir;
+    float tempC, amag, wmag;
+    uint32_t mask;
+    if (!read_sensors(a, w, m, tempC, mask, amag, wmag, gdir)) { delay(2); continue; }
+
+    const uint32_t now = millis();
+    if (now - last_sample >= SAMPLE_PERIOD_MS) {
+      last_sample = now;
+      gyroCal.addSample(w, a, tempC);
+    }
+
+    const int got = gyroCal.buf.n - start_n;
+    ui_progress("Accepted", got, GYRO_NEED);
+    if (got >= GYRO_NEED) return true;
+
+    delay(5);
+  }
+
+  ui_clear();
+  ui_title("GYRO TIMEOUT");
+  ui_line("Not enough samples.");
+  delay(1500);
+  return false;
+}
+
+static bool capture_mag(uint32_t timeout_ms) {
+  ui_clear();
+  ui_title("MAG CAPTURE");
+  ui_line("Rotate slowly:");
+  ui_line("big loops / figure-8");
+  ui_line("Hold BtnA 2s = cancel");
+
+  const uint32_t t0 = millis();
+  uint32_t last_sample = 0;
+  const int start_n = magCal.buf.n;
+
+  while (millis() - t0 < timeout_ms) {
+    if (cancel_requested()) return false;
+
+    Vector3f a, w, m, gdir;
+    float tempC, amag, wmag;
+    uint32_t mask;
+    if (!read_sensors(a, w, m, tempC, mask, amag, wmag, gdir)) { delay(2); continue; }
+
+    const uint32_t now = millis();
+    if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && (now - last_sample >= 25)) {
+      last_sample = now;
+      magCal.addSample(m);
+    }
+
+    const int got = magCal.buf.n - start_n;
+    ui_progress("Accepted", got, MAG_NEED);
+    if (got >= MAG_NEED) return true;
+
+    delay(5);
+  }
+
+  ui_clear();
+  ui_title("MAG TIMEOUT");
+  ui_line("Not enough samples.");
+  delay(1500);
+  return false;
+}
+
+static void show_final_result(bool fit_ok, bool save_ok, bool readback_ok,
+                              const imu_cal::AccelCalibration<float>& ac,
+                              const imu_cal::GyroCalibration<float>&  gc,
+                              const imu_cal::MagCalibration<float>&   mc)
+{
+  ui_clear();
+  ui_title("RESULT");
+
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.printf("FIT: %s\n", fit_ok ? "OK" : "FAIL");
+  disp.printf("SAVE: %s\n", save_ok ? "OK" : "FAIL");
+  disp.printf("READBACK: %s\n", readback_ok ? "OK" : "FAIL");
+  disp.println();
+
+  disp.printf("BLOB: %s\n", have_blob ? "YES" : "NO");
+  disp.printf("ACC ok:%d rms|g|:%.4f\n", (int)ac.ok, (double)ac.rms_mag);
+  disp.printf("GYR ok:%d\n", (int)gc.ok);
+  disp.printf("MAG ok:%d B:%.1f rms:%.2f\n", (int)mc.ok, (double)mc.field_uT, (double)mc.rms);
+
+  disp.println();
+  disp.setTextColor(TFT_YELLOW, TFT_BLACK);
+  disp.printf("acc_scale=%s  mag_scale=%s\n",
+              (g_acc_scale == g_std) ? "*g" : "1x",
+              (g_mag_scale == 0.1f) ? "/10" : "1x");
+
+  uint32_t t0 = millis();
+  while (millis() - t0 < END_SCREEN_MIN_MS) { M5.update(); delay(20); }
+}
+
+static bool run_calibration_wizard() {
+  // disable M5 internal calibration offsets
+  M5.Imu.setCalibration(0, 0, 0);
+  M5.Imu.clearOffsetData();
+
+  accelCal.clear();
+  gyroCal.clear();
+  magCal.clear();
+
+  ui_clear();
+  ui_title("IMU CAL");
+  ui_line("You will do 6 poses.");
+  ui_line("Between poses: PICK UP");
+  ui_line("and rotate it.");
+  ui_line("");
+  ui_line("No button needed.");
+  ui_line("Hold BtnA 2s = cancel");
+  delay(2500);
+
+  struct Face { const char* title; const char* text; } faces[6] = {
+    {"ACCEL 1/6", "DISPLAY UP\n(screen up)"},
+    {"ACCEL 2/6", "DISPLAY DOWN\n(screen on table)"},
+    {"ACCEL 3/6", "USB-C DOWN\n(port on table)"},
+    {"ACCEL 4/6", "USB-C UP\n(port to ceiling)"},
+    {"ACCEL 5/6", "LEFT EDGE DOWN\n(when screen faces you)"},
+    {"ACCEL 6/6", "RIGHT EDGE DOWN\n(when screen faces you)"},
+  };
+
+  Vector3f prev_gdir(0,0,1);
+  bool have_prev = false;
+
+  for (int i = 0; i < 6; ++i) {
+    if (have_prev) {
+      if (!wait_for_pose_change(prev_gdir, 60000)) return false; // 60s to move it
+    }
+
+    if (!reposition_countdown(faces[i].title, faces[i].text, REPOSITION_COUNTDOWN_MS)) return false;
+
+    ui_clear();
+    ui_title("HOLD STILL");
+    ui_line("Capture starts when");
+    ui_line("stillness is detected.");
+    ui_line("Hold BtnA 2s = cancel");
+
+    if (!wait_until_still_for_capture(45000)) return false; // 45s to become still
+
+    Vector3f gdir_this = prev_gdir;
+    if (!capture_accel_face(faces[i].title, ACC_FACE_NEED, FACE_TIME_LIMIT_MS, gdir_this)) return false;
+
+    prev_gdir = gdir_this;
+    have_prev = true;
+
+    ui_clear();
+    ui_title("OK");
+    ui_line(faces[i].title);
+    ui_line("Captured.");
+    delay(900);
+  }
+
+  imu_cal::AccelCalibration<float> acc_out;
+  const bool acc_fit = accelCal.fit(acc_out, /*robust_iters=*/3, /*trim_frac=*/0.15f);
+  if (!acc_fit || !acc_out.ok) {
+    ui_clear();
+    ui_title("ACCEL FAIL");
+    ui_line("Fit did not validate.");
+    ui_line("Try steadier holds.");
+    delay(1700);
+    return false;
+  }
+
+  if (!reposition_countdown("GYRO SETUP", "Place DISPLAY UP on table.\nDon't touch it.", 8000)) return false;
+  if (!wait_until_still_for_capture(45000)) return false;
+  if (!capture_gyro(GYRO_TIME_LIMIT_MS)) return false;
+
+  imu_cal::GyroCalibration<float> gyr_out;
+  const bool gyr_fit = gyroCal.fit(gyr_out);
+  if (!gyr_fit || !gyr_out.ok) {
+    ui_clear();
+    ui_title("GYRO FAIL");
+    ui_line("Fit did not validate.");
+    delay(1700);
+    return false;
+  }
+
+  ui_clear();
+  ui_title("MAG");
+  ui_line("Pick it up now.");
+  ui_line("Rotate slowly.");
+  ui_line("Big loops / figure-8");
+  ui_line("Hold BtnA 2s = cancel");
+  delay(1600);
+
+  if (!capture_mag(MAG_TIME_LIMIT_MS)) return false;
+
+  imu_cal::MagCalibration<float> mag_out;
+  const bool mag_fit = magCal.fit(mag_out, /*robust_iters=*/3, /*trim_frac=*/0.15f);
+  if (!mag_fit || !mag_out.ok) {
+    ui_clear();
+    ui_title("MAG FAIL");
+    ui_line("Fit did not validate.");
+    delay(1700);
+    return false;
+  }
+
+  const bool fit_ok = (acc_out.ok && gyr_out.ok && mag_out.ok);
+
+  CalBlobV1 blob;
+  memset(&blob, 0, sizeof(blob));
+  blob.magic = IMU_CAL_MAGIC;
+  blob.version = IMU_CAL_VERSION;
+  blob.size_bytes = sizeof(CalBlobV1);
+
+  blob.accel_ok = 1;
+  blob.accel_g = acc_out.g;
+  mat_to_rowmajor9(acc_out.S, blob.accel_S);
+  blob.accel_T0 = acc_out.biasT.T0;
+  blob.accel_b0[0]=acc_out.biasT.b0.x(); blob.accel_b0[1]=acc_out.biasT.b0.y(); blob.accel_b0[2]=acc_out.biasT.b0.z();
+  blob.accel_k[0]=acc_out.biasT.k.x();   blob.accel_k[1]=acc_out.biasT.k.y();   blob.accel_k[2]=acc_out.biasT.k.z();
+  blob.accel_rms_mag = acc_out.rms_mag;
+
+  blob.gyro_ok = 1;
+  blob.gyro_T0 = gyr_out.biasT.T0;
+  blob.gyro_b0[0]=gyr_out.biasT.b0.x(); blob.gyro_b0[1]=gyr_out.biasT.b0.y(); blob.gyro_b0[2]=gyr_out.biasT.b0.z();
+  blob.gyro_k[0]=gyr_out.biasT.k.x();   blob.gyro_k[1]=gyr_out.biasT.k.y();   blob.gyro_k[2]=gyr_out.biasT.k.z();
+
+  blob.mag_ok = 1;
+  mat_to_rowmajor9(mag_out.A, blob.mag_A);
+  blob.mag_b[0]=mag_out.b.x(); blob.mag_b[1]=mag_out.b.y(); blob.mag_b[2]=mag_out.b.z();
+  blob.mag_field_uT = mag_out.field_uT;
+  blob.mag_rms = mag_out.rms;
+
+  const bool save_ok = fit_ok && save_cal_to_nvs(blob);
+
+  have_blob = load_cal_from_nvs();
+  const bool readback_ok = have_blob;
+
+  show_final_result(fit_ok, save_ok, readback_ok, acc_out, gyr_out, mag_out);
+  return (fit_ok && save_ok && readback_ok);
+}
+
+// ----------------------------
+// Status + runtime loop
+// ----------------------------
+static uint32_t last_print_ms = 0;
+
+static void draw_status() {
+  ui_clear();
+  ui_title("IMU CAL");
+
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.printf("BLOB: %s\n", have_blob ? "YES" : "NO");
+  disp.printf("ACC ok:%d  GYR ok:%d  MAG ok:%d\n",
+              (int)g_acc_cal.ok, (int)g_gyr_cal.ok, (int)g_mag_cal.ok);
+
+  disp.println();
+  disp.setTextColor(TFT_YELLOW, TFT_BLACK);
+  disp.printf("acc_scale=%s  mag_scale=%s\n",
+              (g_acc_scale == g_std) ? "*g" : "1x",
+              (g_mag_scale == 0.1f) ? "/10" : "1x");
+
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.println();
+  disp.println("Tap BtnA: start wizard");
+  disp.println("Hold BtnA 2s in wizard:");
+  disp.println("cancel step");
+}
+
+void setup() {
+  auto cfg = M5.config();
+  M5.begin(cfg);
+  Serial.begin(115200);
+
+  M5.Imu.setCalibration(0, 0, 0);
+
+  autodetect_scales();
+  have_blob = load_cal_from_nvs();
+  draw_status();
+
+  if (!M5.Imu.isEnabled()) {
+    ui_clear();
+    ui_title("IMU FAIL");
+    ui_line("IMU not found.");
+    while (true) delay(100);
+  }
+}
+
+void loop() {
+  M5.update();
+
+  if (M5.BtnA.wasPressed()) {
+    (void)run_calibration_wizard();
+    have_blob = load_cal_from_nvs();
+    draw_status();
+  }
+
+  Vector3f a_raw, w_raw, m_raw, gdir;
+  float tempC, amag, wmag;
+  uint32_t mask;
+
+  if (read_sensors(a_raw, w_raw, m_raw, tempC, mask, amag, wmag, gdir)) {
+    Vector3f a_cal = applyAccel(a_raw, tempC);
+    Vector3f w_cal = applyGyro(w_raw, tempC);
+    Vector3f m_cal = applyMag(m_raw);
+
+    uint32_t now = millis();
+    if (now - last_print_ms > 300) {
+      last_print_ms = now;
+
+      Serial.printf("temp:%.2f, |a|:%.2f |w|:%.3f, ",
+        (double)tempC, (double)a_raw.norm(), (double)w_raw.norm());
+      Serial.printf("a_raw:%+.3f,%+.3f,%+.3f, a_cal:%+.3f,%+.3f,%+.3f, ",
+        (double)a_raw.x(), (double)a_raw.y(), (double)a_raw.z(),
+        (double)a_cal.x(), (double)a_cal.y(), (double)a_cal.z());
+      Serial.printf("w_raw:%+.4f,%+.4f,%+.4f, w_cal:%+.4f,%+.4f,%+.4f, ",
+        (double)w_raw.x(), (double)w_raw.y(), (double)w_raw.z(),
+        (double)w_cal.x(), (double)w_cal.y(), (double)w_cal.z());
+      Serial.printf("m_raw:%+.1f,%+.1f,%+.1f, m_cal:%+.1f,%+.1f,%+.1f\n",
+        (double)m_raw.x(), (double)m_raw.y(), (double)m_raw.z(),
+        (double)m_cal.x(), (double)m_cal.y(), (double)m_cal.z());
+    }
+  }
+
+  delay(5);
+}
