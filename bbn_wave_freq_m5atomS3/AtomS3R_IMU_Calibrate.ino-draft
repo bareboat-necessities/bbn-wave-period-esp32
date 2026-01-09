@@ -1,10 +1,6 @@
 /*
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
-  Rotation bug root cause (most likely):
-  - UI helper functions (ui_wait_tap_, ui_fail_, done_and_wait_next_, etc.) always force ROT_READ.
-  - During capture, you set pose rotation once, but later UI calls set it back.
-
   Controls:
   - Tap: start / advance
   - Triple-tap on home: erase
