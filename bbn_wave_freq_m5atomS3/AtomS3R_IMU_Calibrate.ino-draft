@@ -1,114 +1,93 @@
 /*
-  AtomS3R IMU calibration wizard (Accel + Gyro + optional Mag) using imu_cal::* calibrators.
+  AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
-  KEY FIXES:
-  - Arduino .ino auto-prototype safe:
-      * No custom types (enum/struct) in function signatures that the IDE prototypes early.
-      * Uses uint8_t fail codes + raw byte save/load.
-  - Human UI:
-      * 15s reposition per pose (no buttons needed).
-      * Won't start sampling until STILLNESS is detected for 1.5s.
-      * Shows WHY it isn't accepting samples.
-      * USB-C DOWN pose explicitly warns to UNPLUG the cable.
-  - Reliable save:
-      * Writes CRC’d blob to NVS (Preferences namespace "imu_cal")
-      * Reads back immediately and verifies CRC.
+  UI goals:
+    - Simple, short prompts
+    - Auto flow (no button needed during poses; screen may be down)
+    - Only show progress + what to do
+    - Debug numbers go to Serial, not screen
+
+  Start:
+    - Tap screen (BtnA) on STATUS screen, OR Serial 'S'
+  Erase:
+    - Serial 'E' only
 
   REQUIREMENTS:
     - M5Unified
-    - ESP32 Arduino core (Preferences)
+    - Preferences (ESP32 Arduino)
     - ArduinoEigenDense
-    - CalibrateIMU_alt.h (imu_cal::AccelCalibrator/GyroCalibrator/MagCalibrator)
-
-  Units:
-    accel: m/s^2
-    gyro:  rad/s
-    mag:   uT
+    - CalibrateIMU_alt.h
 */
+
+// IMPORTANT: Arduino .ino auto-prototypes need this:
+struct CalBlobV1;
 
 #include <M5Unified.h>
 #include <Arduino.h>
 #include <Preferences.h>
-
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <stddef.h>   // offsetof
 
 #ifndef EIGEN_STACK_ALLOCATION_LIMIT
 #define EIGEN_STACK_ALLOCATION_LIMIT 0
 #endif
 #include <ArduinoEigenDense.h>
 
+using M5_IMU = decltype(M5.Imu);
 #include "CalibrateIMU_alt.h"
 
-// ----------------------------
-// Types / aliases
-// ----------------------------
 using Vector3f = Eigen::Matrix<float,3,1>;
 using Matrix3f = Eigen::Matrix<float,3,3>;
-using M5_IMU = decltype(M5.Imu);
 
-// ----------------------------
-// Constants / knobs
-// ----------------------------
 static constexpr float g_std   = 9.80665f;
 static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
 
-// Human pacing
-static constexpr uint32_t IMUWIZ_REPOSITION_MS          = 15000;   // time to change pose
-static constexpr uint32_t IMUWIZ_STILL_SETTLE_MS        = 1500;    // must be still this long before sampling
-static constexpr uint32_t IMUWIZ_ACCEL_FACE_TIMEOUT_MS  = 90000;   // 90s per face
-static constexpr uint32_t IMUWIZ_GYRO_TIMEOUT_MS        = 60000;   // 60s
-static constexpr uint32_t IMUWIZ_MAG_TIMEOUT_MS         = 150000;  // 150s
+// ----------------------------
+// Human timing knobs
+// ----------------------------
+static constexpr uint32_t POSE_SETUP_MS      = 12000;
+static constexpr uint32_t POSE_CAPTURE_MS    = 120000;
+static constexpr uint32_t POSE_DONE_PAUSE_MS = 1200;
 
-static constexpr uint32_t IMUWIZ_CANCEL_HOLD_MS         = 1500;    // hold BtnA to cancel a step
-static constexpr uint32_t IMUWIZ_ERASE_HOLD_MS          = 6000;    // hold BtnA to request erase
-static constexpr uint32_t IMUWIZ_ERASE_GUARD_MS         = 15000;   // ignore erase holds after boot/wizard
+static constexpr uint32_t GYRO_SETUP_MS      = 8000;
+static constexpr uint32_t GYRO_CAPTURE_MS    = 70000;
 
-// Stillness thresholds (relax these if needed)
-static constexpr float IMUWIZ_STILL_GYRO_MAX_RAD_S      = 0.18f;   // ~10 deg/s
-static constexpr float IMUWIZ_STILL_ACCEL_ERR_MAX_MS2   = 0.8f;    // | |a| - g | < 0.8
+static constexpr uint32_t MAG_SETUP_MS       = 6000;
+static constexpr uint32_t MAG_CAPTURE_MS     = 200000;
 
-static constexpr int IMUWIZ_ACC_FACE_NEED = 50;
+static constexpr int ACC_FACE_NEED = 60;
+static constexpr int GYRO_NEED     = 250;
+static constexpr int MAG_NEED      = 350;
 
-// NVS blob constants
-static constexpr uint32_t IMUWIZ_CAL_MAGIC   = 0x434C554D; // 'MULC'
-static constexpr uint16_t IMUWIZ_CAL_VERSION = 1;
+// simple internal stillness gating
+static constexpr float STILL_GYRO_RAD_S     = 0.15f;
+static constexpr float STILL_AMAG_ERR_MPS2  = 0.70f;
+static constexpr uint32_t STILL_REQUIRED_MS = 700;
+
+static constexpr uint32_t HINT_AFTER_MS = 15000;
 
 // ----------------------------
-// Axis mapping (MATCH your existing pipeline)
-// acc_body = ( ay, ax, -az ) * g
-// gyr_body = ( gy, gx, -gz ) * deg2rad
-// mag_body = ( my, mx, -mz ) * (1/10)
+// Axis mapping (MATCH YOUR EXISTING PATH)
 // ----------------------------
-static inline Vector3f imuwiz_map_acc_to_body_ned(const m5::imu_3d_t& a_g_units) {
-  return Vector3f(
-    a_g_units.y * g_std,
-    a_g_units.x * g_std,
-   -a_g_units.z * g_std
-  );
+static inline Vector3f map_acc_to_body_ned(const m5::imu_3d_t& a_g_units) {
+  return Vector3f(a_g_units.y * g_std, a_g_units.x * g_std, -a_g_units.z * g_std);
 }
-
-static inline Vector3f imuwiz_map_gyr_to_body_ned(const m5::imu_3d_t& w_deg_s) {
-  return Vector3f(
-    w_deg_s.y * DEG2RAD,
-    w_deg_s.x * DEG2RAD,
-   -w_deg_s.z * DEG2RAD
-  );
+static inline Vector3f map_gyr_to_body_ned(const m5::imu_3d_t& w_deg_s) {
+  return Vector3f(w_deg_s.y * DEG2RAD, w_deg_s.x * DEG2RAD, -w_deg_s.z * DEG2RAD);
 }
-
-static inline Vector3f imuwiz_map_mag_to_body_uT(const m5::imu_3d_t& m_raw) {
-  return Vector3f(
-    m_raw.y / 10.0f,
-    m_raw.x / 10.0f,
-   -m_raw.z / 10.0f
-  );
+static inline Vector3f map_mag_to_body_uT(const m5::imu_3d_t& m_raw) {
+  return Vector3f(m_raw.y / 10.0f, m_raw.x / 10.0f, -m_raw.z / 10.0f);
 }
 
 // ----------------------------
-// CRC32
+// NVS blob + CRC (safe w/ padding)
 // ----------------------------
-static uint32_t imuwiz_crc32_ieee(const uint8_t* data, size_t n) {
+static constexpr uint32_t IMU_CAL_MAGIC    = 0x434C554D; // 'MULC'
+static constexpr uint16_t IMU_CAL_VERSION  = 1;
+
+static uint32_t crc32_ieee(const uint8_t* data, size_t n) {
   uint32_t crc = 0xFFFFFFFFu;
   for (size_t i = 0; i < n; ++i) {
     crc ^= (uint32_t)data[i];
@@ -120,814 +99,695 @@ static uint32_t imuwiz_crc32_ieee(const uint8_t* data, size_t n) {
   return ~crc;
 }
 
-// ----------------------------
-// Calibration blob (stored raw)
-// ----------------------------
-struct ImuWizCalBlobV1 {
+struct CalBlobV1 {
   uint32_t magic;
   uint16_t version;
   uint16_t size_bytes;
 
-  // accel
   uint8_t  accel_ok;
+  uint8_t  _pad0[3];
   float    accel_g;
-  float    accel_S[9];     // row-major 3x3
+  float    accel_S[9];
   float    accel_T0;
   float    accel_b0[3];
   float    accel_k[3];
   float    accel_rms_mag;
 
-  // gyro
   uint8_t  gyro_ok;
+  uint8_t  _pad1[3];
   float    gyro_T0;
   float    gyro_b0[3];
   float    gyro_k[3];
 
-  // mag
   uint8_t  mag_ok;
+  uint8_t  _pad2[3];
   float    mag_A[9];
   float    mag_b[3];
   float    mag_field_uT;
   float    mag_rms;
 
-  uint32_t crc; // computed over all bytes with crc field set to 0
+  uint32_t crc;
 };
 
-// ----------------------------
-// Globals
-// ----------------------------
-static Preferences imuwiz_prefs;
-static bool imuwiz_have_blob = false;
-static ImuWizCalBlobV1 imuwiz_blob;
+static constexpr size_t CAL_CRC_LEN = offsetof(CalBlobV1, crc);
 
-static imu_cal::AccelCalibration<float> imuwiz_acc_cal;
-static imu_cal::GyroCalibration<float>  imuwiz_gyr_cal;
-static imu_cal::MagCalibration<float>   imuwiz_mag_cal;
+static Preferences prefs;
+static bool have_blob = false;
+static CalBlobV1 cal_blob;
 
-static imu_cal::AccelCalibrator<float, 400, 8> imuwiz_accelCal;
-static imu_cal::GyroCalibrator<float, 400, 8>  imuwiz_gyroCal;
-static imu_cal::MagCalibrator<float, 400>      imuwiz_magCal;
-
-static uint32_t imuwiz_ignore_erase_until_ms = 0;
-static uint32_t imuwiz_last_print_ms = 0;
-
-// ----------------------------
-// Fail codes (uint8_t to avoid Arduino prototype issues)
-// ----------------------------
-static constexpr uint8_t IMUWIZ_FAIL_NONE            = 0;
-static constexpr uint8_t IMUWIZ_FAIL_CANCEL          = 1;
-static constexpr uint8_t IMUWIZ_FAIL_FACE_TIMEOUT    = 2;
-static constexpr uint8_t IMUWIZ_FAIL_FACE_ZERO       = 3;
-static constexpr uint8_t IMUWIZ_FAIL_ACC_FIT         = 4;
-static constexpr uint8_t IMUWIZ_FAIL_GYRO_TIMEOUT    = 5;
-static constexpr uint8_t IMUWIZ_FAIL_GYRO_FIT         = 6;
-static constexpr uint8_t IMUWIZ_FAIL_MAG_TIMEOUT     = 7;
-static constexpr uint8_t IMUWIZ_FAIL_MAG_FIT         = 8;
-static constexpr uint8_t IMUWIZ_FAIL_SAVE            = 9;
-static constexpr uint8_t IMUWIZ_FAIL_READBACK        = 10;
-
-static uint8_t imuwiz_last_fail = IMUWIZ_FAIL_NONE;
-static char    imuwiz_last_fail_detail[64] = {0};
-
-static inline const char* imuwiz_fail_str(uint8_t f) {
-  switch (f) {
-    case IMUWIZ_FAIL_NONE:         return "NONE";
-    case IMUWIZ_FAIL_CANCEL:       return "CANCEL";
-    case IMUWIZ_FAIL_FACE_TIMEOUT: return "FACE_TIMEOUT";
-    case IMUWIZ_FAIL_FACE_ZERO:    return "FACE_ZERO_ACCEPT";
-    case IMUWIZ_FAIL_ACC_FIT:      return "ACC_FIT_FAIL";
-    case IMUWIZ_FAIL_GYRO_TIMEOUT: return "GYRO_TIMEOUT";
-    case IMUWIZ_FAIL_GYRO_FIT:     return "GYRO_FIT_FAIL";
-    case IMUWIZ_FAIL_MAG_TIMEOUT:  return "MAG_TIMEOUT";
-    case IMUWIZ_FAIL_MAG_FIT:      return "MAG_FIT_FAIL";
-    case IMUWIZ_FAIL_SAVE:         return "SAVE_FAIL";
-    case IMUWIZ_FAIL_READBACK:     return "READBACK_FAIL";
-    default:                       return "UNKNOWN";
-  }
-}
-
-static void imuwiz_set_fail(uint8_t f, const char* detail = "") {
-  imuwiz_last_fail = f;
-  strncpy(imuwiz_last_fail_detail, detail ? detail : "", sizeof(imuwiz_last_fail_detail) - 1);
-  imuwiz_last_fail_detail[sizeof(imuwiz_last_fail_detail) - 1] = 0;
-  Serial.printf("[IMUWIZ_FAIL] %s : %s\n", imuwiz_fail_str(f), imuwiz_last_fail_detail);
-}
+static imu_cal::AccelCalibration<float> g_acc_cal;
+static imu_cal::GyroCalibration<float>  g_gyr_cal;
+static imu_cal::MagCalibration<float>   g_mag_cal;
 
 // ----------------------------
 // Matrix helpers
 // ----------------------------
-static Matrix3f imuwiz_mat_from_rowmajor9(const float a[9]) {
+static Matrix3f mat_from_rowmajor9(const float a[9]) {
   Matrix3f M;
   M << a[0], a[1], a[2],
        a[3], a[4], a[5],
        a[6], a[7], a[8];
   return M;
 }
-
-static void imuwiz_mat_to_rowmajor9(const Matrix3f& M, float a[9]) {
+static void mat_to_rowmajor9(const Matrix3f& M, float a[9]) {
   a[0]=M(0,0); a[1]=M(0,1); a[2]=M(0,2);
   a[3]=M(1,0); a[4]=M(1,1); a[5]=M(1,2);
   a[6]=M(2,0); a[7]=M(2,1); a[8]=M(2,2);
 }
 
-static void imuwiz_rebuild_runtime_cals_from_blob() {
-  // accel
-  imuwiz_acc_cal.ok = (imuwiz_blob.accel_ok != 0);
-  imuwiz_acc_cal.g  = imuwiz_blob.accel_g;
-  imuwiz_acc_cal.S  = imuwiz_mat_from_rowmajor9(imuwiz_blob.accel_S);
-  imuwiz_acc_cal.biasT.ok = imuwiz_acc_cal.ok;
-  imuwiz_acc_cal.biasT.T0 = imuwiz_blob.accel_T0;
-  imuwiz_acc_cal.biasT.b0 = Vector3f(imuwiz_blob.accel_b0[0], imuwiz_blob.accel_b0[1], imuwiz_blob.accel_b0[2]);
-  imuwiz_acc_cal.biasT.k  = Vector3f(imuwiz_blob.accel_k[0],  imuwiz_blob.accel_k[1],  imuwiz_blob.accel_k[2]);
-  imuwiz_acc_cal.rms_mag  = imuwiz_blob.accel_rms_mag;
+static void rebuild_runtime_cals_from_blob() {
+  g_acc_cal.ok = (cal_blob.accel_ok != 0);
+  g_acc_cal.g  = cal_blob.accel_g;
+  g_acc_cal.S  = mat_from_rowmajor9(cal_blob.accel_S);
+  g_acc_cal.biasT.ok = g_acc_cal.ok;
+  g_acc_cal.biasT.T0 = cal_blob.accel_T0;
+  g_acc_cal.biasT.b0 = Vector3f(cal_blob.accel_b0[0], cal_blob.accel_b0[1], cal_blob.accel_b0[2]);
+  g_acc_cal.biasT.k  = Vector3f(cal_blob.accel_k[0],  cal_blob.accel_k[1],  cal_blob.accel_k[2]);
+  g_acc_cal.rms_mag  = cal_blob.accel_rms_mag;
 
-  // gyro
-  imuwiz_gyr_cal.ok = (imuwiz_blob.gyro_ok != 0);
-  imuwiz_gyr_cal.S  = Matrix3f::Identity();
-  imuwiz_gyr_cal.biasT.ok = imuwiz_gyr_cal.ok;
-  imuwiz_gyr_cal.biasT.T0 = imuwiz_blob.gyro_T0;
-  imuwiz_gyr_cal.biasT.b0 = Vector3f(imuwiz_blob.gyro_b0[0], imuwiz_blob.gyro_b0[1], imuwiz_blob.gyro_b0[2]);
-  imuwiz_gyr_cal.biasT.k  = Vector3f(imuwiz_blob.gyro_k[0],  imuwiz_blob.gyro_k[1],  imuwiz_blob.gyro_k[2]);
+  g_gyr_cal.ok = (cal_blob.gyro_ok != 0);
+  g_gyr_cal.S  = Matrix3f::Identity();
+  g_gyr_cal.biasT.ok = g_gyr_cal.ok;
+  g_gyr_cal.biasT.T0 = cal_blob.gyro_T0;
+  g_gyr_cal.biasT.b0 = Vector3f(cal_blob.gyro_b0[0], cal_blob.gyro_b0[1], cal_blob.gyro_b0[2]);
+  g_gyr_cal.biasT.k  = Vector3f(cal_blob.gyro_k[0],  cal_blob.gyro_k[1],  cal_blob.gyro_k[2]);
 
-  // mag
-  imuwiz_mag_cal.ok = (imuwiz_blob.mag_ok != 0);
-  imuwiz_mag_cal.A  = imuwiz_mat_from_rowmajor9(imuwiz_blob.mag_A);
-  imuwiz_mag_cal.b  = Vector3f(imuwiz_blob.mag_b[0], imuwiz_blob.mag_b[1], imuwiz_blob.mag_b[2]);
-  imuwiz_mag_cal.field_uT = imuwiz_blob.mag_field_uT;
-  imuwiz_mag_cal.rms      = imuwiz_blob.mag_rms;
+  g_mag_cal.ok = (cal_blob.mag_ok != 0);
+  g_mag_cal.A  = mat_from_rowmajor9(cal_blob.mag_A);
+  g_mag_cal.b  = Vector3f(cal_blob.mag_b[0], cal_blob.mag_b[1], cal_blob.mag_b[2]);
+  g_mag_cal.field_uT = cal_blob.mag_field_uT;
+  g_mag_cal.rms      = cal_blob.mag_rms;
 }
 
-// ----------------------------
-// NVS raw save/load (no CalBlob type in signature)
-// ----------------------------
-static bool imuwiz_load_from_nvs() {
-  imuwiz_prefs.begin("imu_cal", true);
-  size_t n = imuwiz_prefs.getBytesLength("blob");
-  if (n != sizeof(ImuWizCalBlobV1)) { imuwiz_prefs.end(); return false; }
+static bool load_cal_from_nvs() {
+  prefs.begin("imu_cal", true);
+  size_t n = prefs.getBytesLength("blob");
+  if (n != sizeof(CalBlobV1)) { prefs.end(); return false; }
 
-  ImuWizCalBlobV1 tmp;
-  size_t got = imuwiz_prefs.getBytes("blob", &tmp, sizeof(tmp));
-  imuwiz_prefs.end();
+  CalBlobV1 tmp;
+  size_t got = prefs.getBytes("blob", &tmp, sizeof(tmp));
+  prefs.end();
   if (got != sizeof(tmp)) return false;
 
-  if (tmp.magic != IMUWIZ_CAL_MAGIC || tmp.version != IMUWIZ_CAL_VERSION || tmp.size_bytes != sizeof(ImuWizCalBlobV1))
+  if (tmp.magic != IMU_CAL_MAGIC || tmp.version != IMU_CAL_VERSION || tmp.size_bytes != sizeof(CalBlobV1))
     return false;
 
   uint32_t want = tmp.crc;
   tmp.crc = 0;
-  uint32_t have = imuwiz_crc32_ieee((const uint8_t*)&tmp, sizeof(tmp));
+  uint32_t have = crc32_ieee((const uint8_t*)&tmp, CAL_CRC_LEN);
   if (have != want) return false;
 
-  imuwiz_blob = tmp;
-  imuwiz_rebuild_runtime_cals_from_blob();
+  cal_blob = tmp;
+  rebuild_runtime_cals_from_blob();
   return true;
 }
 
-static bool imuwiz_save_to_nvs_raw(const uint8_t* data, size_t len) {
-  if (!data || len != sizeof(ImuWizCalBlobV1)) return false;
+static bool save_cal_to_nvs(const CalBlobV1& in_blob) {
+  CalBlobV1 tmp;
+  memset(&tmp, 0, sizeof(tmp));
 
-  ImuWizCalBlobV1 tmp;
-  memcpy(&tmp, data, sizeof(tmp));
+  tmp.magic = IMU_CAL_MAGIC;
+  tmp.version = IMU_CAL_VERSION;
+  tmp.size_bytes = sizeof(CalBlobV1);
 
-  tmp.magic = IMUWIZ_CAL_MAGIC;
-  tmp.version = IMUWIZ_CAL_VERSION;
-  tmp.size_bytes = (uint16_t)sizeof(ImuWizCalBlobV1);
+  tmp.accel_ok = in_blob.accel_ok;
+  tmp.accel_g = in_blob.accel_g;
+  memcpy(tmp.accel_S, in_blob.accel_S, sizeof(tmp.accel_S));
+  tmp.accel_T0 = in_blob.accel_T0;
+  memcpy(tmp.accel_b0, in_blob.accel_b0, sizeof(tmp.accel_b0));
+  memcpy(tmp.accel_k,  in_blob.accel_k,  sizeof(tmp.accel_k));
+  tmp.accel_rms_mag = in_blob.accel_rms_mag;
+
+  tmp.gyro_ok = in_blob.gyro_ok;
+  tmp.gyro_T0 = in_blob.gyro_T0;
+  memcpy(tmp.gyro_b0, in_blob.gyro_b0, sizeof(tmp.gyro_b0));
+  memcpy(tmp.gyro_k,  in_blob.gyro_k,  sizeof(tmp.gyro_k));
+
+  tmp.mag_ok = in_blob.mag_ok;
+  memcpy(tmp.mag_A, in_blob.mag_A, sizeof(tmp.mag_A));
+  memcpy(tmp.mag_b, in_blob.mag_b, sizeof(tmp.mag_b));
+  tmp.mag_field_uT = in_blob.mag_field_uT;
+  tmp.mag_rms      = in_blob.mag_rms;
+
   tmp.crc = 0;
-  tmp.crc = imuwiz_crc32_ieee((const uint8_t*)&tmp, sizeof(tmp));
+  tmp.crc = crc32_ieee((const uint8_t*)&tmp, CAL_CRC_LEN);
 
-  imuwiz_prefs.begin("imu_cal", false);
-  bool ok = (imuwiz_prefs.putBytes("blob", &tmp, sizeof(tmp)) == sizeof(tmp));
-  imuwiz_prefs.end();
+  prefs.begin("imu_cal", false);
+  bool ok = (prefs.putBytes("blob", &tmp, sizeof(tmp)) == sizeof(tmp));
+  prefs.end();
   return ok;
 }
 
-static void imuwiz_erase_nvs() {
-  imuwiz_prefs.begin("imu_cal", false);
-  imuwiz_prefs.remove("blob");
-  imuwiz_prefs.end();
+static void erase_our_cal_from_nvs() {
+  prefs.begin("imu_cal", false);
+  prefs.remove("blob");
+  prefs.end();
 }
 
 // ----------------------------
-// Apply (drop-ins)
+// Apply helpers
 // ----------------------------
-static inline Vector3f imuwiz_applyAccel(const Vector3f& a_raw_body, float tempC) {
-  if (!imuwiz_acc_cal.ok) return a_raw_body;
-  return imuwiz_acc_cal.apply(a_raw_body, tempC);
+static inline Vector3f applyAccel(const Vector3f& a_raw_body, float tempC) {
+  if (!g_acc_cal.ok) return a_raw_body;
+  return g_acc_cal.apply(a_raw_body, tempC);
 }
-
-static inline Vector3f imuwiz_applyGyro(const Vector3f& w_raw_body, float tempC) {
-  if (!imuwiz_gyr_cal.ok) return w_raw_body;
-  return imuwiz_gyr_cal.apply(w_raw_body, tempC);
+static inline Vector3f applyGyro(const Vector3f& w_raw_body, float tempC) {
+  if (!g_gyr_cal.ok) return w_raw_body;
+  return g_gyr_cal.apply(w_raw_body, tempC);
 }
-
-static inline Vector3f imuwiz_applyMag(const Vector3f& m_raw_uT_body) {
-  if (!imuwiz_mag_cal.ok) return m_raw_uT_body;
-  return imuwiz_mag_cal.apply(m_raw_uT_body);
+static inline Vector3f applyMag(const Vector3f& m_raw_uT_body) {
+  if (!g_mag_cal.ok) return m_raw_uT_body;
+  return g_mag_cal.apply(m_raw_uT_body);
 }
 
 // ----------------------------
-// UI helpers
+// UI (simple)
 // ----------------------------
-static auto& imuwiz_disp = M5.Display;
+static auto& disp = M5.Display;
 
-static void imuwiz_ui_clear(uint16_t bg = TFT_BLACK) {
-  imuwiz_disp.fillScreen(bg);
-  imuwiz_disp.setTextWrap(true, true);
+static void ui_clear(uint16_t bg = TFT_BLACK) { disp.fillScreen(bg); }
+
+static void ui_title(const char* s) {
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.setCursor(0, 0);
+  disp.setTextSize(2);
+  disp.println(s);
+  disp.setTextSize(1);
+  disp.println();
 }
 
-static void imuwiz_ui_title(const char* s) {
-  imuwiz_disp.setTextColor(TFT_WHITE, TFT_BLACK);
-  imuwiz_disp.setCursor(0, 0);
-  imuwiz_disp.setTextSize(2);
-  imuwiz_disp.println(s);
-  imuwiz_disp.setTextSize(1);
-  imuwiz_disp.println();
+static void ui_line(const char* s) {
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.println(s);
 }
 
-static void imuwiz_ui_line(const char* s) {
-  imuwiz_disp.setTextColor(TFT_WHITE, TFT_BLACK);
-  imuwiz_disp.println(s);
-}
-
-static void imuwiz_ui_progress(const char* label, int done, int total) {
+static void ui_progress_bar(int done, int total) {
   if (total <= 0) total = 1;
   if (done < 0) done = 0;
   if (done > total) done = total;
 
-  int w = imuwiz_disp.width() - 10;
+  int w = disp.width() - 10;
   int x = 5;
-  int y = imuwiz_disp.height() - 16;
+  int y = disp.height() - 16;
   int h = 10;
 
-  imuwiz_disp.fillRect(0, y - 14, imuwiz_disp.width(), 30, TFT_BLACK);
-  imuwiz_disp.setCursor(0, y - 14);
-  imuwiz_disp.setTextColor(TFT_CYAN, TFT_BLACK);
-  imuwiz_disp.printf("%s %d/%d\n", label, done, total);
-
-  imuwiz_disp.drawRect(x, y, w, h, TFT_DARKGREY);
+  disp.drawRect(x, y, w, h, TFT_DARKGREY);
   int fillw = (w - 2) * done / total;
-  imuwiz_disp.fillRect(x + 1, y + 1, fillw, h - 2, TFT_GREEN);
+  disp.fillRect(x + 1, y + 1, fillw, h - 2, TFT_GREEN);
 }
 
-static void imuwiz_ui_bottom(const char* s) {
-  int y = imuwiz_disp.height() - 34;
-  imuwiz_disp.fillRect(0, y, imuwiz_disp.width(), 34, TFT_BLACK);
-  imuwiz_disp.setCursor(0, y);
-  imuwiz_disp.setTextColor(TFT_YELLOW, TFT_BLACK);
-  imuwiz_disp.println(s);
+static void ui_progress_text(int done, int total) {
+  disp.setTextColor(TFT_CYAN, TFT_BLACK);
+  disp.setCursor(0, disp.height() - 32);
+  disp.printf("Progress: %d/%d\n", done, total);
 }
 
-static bool imuwiz_cancel_hold() {
-  static uint32_t t_down = 0;
-  M5.update();
-  if (M5.BtnA.isPressed()) {
-    if (t_down == 0) t_down = millis();
-    if (millis() - t_down >= IMUWIZ_CANCEL_HOLD_MS) { t_down = 0; return true; }
-  } else {
-    t_down = 0;
+static void ui_big_center(const char* s) {
+  ui_clear();
+  ui_title(s);
+}
+
+static bool serial_cmd(char& out) {
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') continue;
+    out = c;
+    return true;
   }
   return false;
 }
 
-static void imuwiz_msg_wait(const char* title, const char* l1, const char* l2 = "", uint32_t ms = 6000) {
-  imuwiz_ui_clear();
-  imuwiz_ui_title(title);
-  imuwiz_ui_line(l1);
-  if (l2 && l2[0]) imuwiz_ui_line(l2);
-  imuwiz_ui_line("");
-  imuwiz_disp.setTextColor(TFT_WHITE, TFT_BLACK);
-  imuwiz_disp.printf("Continuing in %lus...\n", (unsigned long)((ms + 999) / 1000));
-  uint32_t t0 = millis();
-  while (millis() - t0 < ms) { M5.update(); delay(10); }
-}
-
-static void imuwiz_msg_btn(const char* title, const char* l1, const char* l2 = "") {
-  imuwiz_ui_clear();
-  imuwiz_ui_title(title);
-  imuwiz_ui_line(l1);
-  if (l2 && l2[0]) imuwiz_ui_line(l2);
-  imuwiz_ui_line("");
-  imuwiz_ui_line("Press BtnA");
-  while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
-}
-
-static void imuwiz_reposition_countdown(const char* title, const char* msg, uint32_t ms) {
-  imuwiz_ui_clear();
-  imuwiz_ui_title(title);
-  imuwiz_ui_line(msg);
-  imuwiz_ui_line("");
-  imuwiz_ui_line("No buttons needed.");
-  imuwiz_ui_line("Sampling starts AFTER timer");
-  imuwiz_ui_line("once STILLNESS is detected.");
-  imuwiz_ui_line("Hold BtnA = cancel");
-
-  uint32_t t0 = millis();
-  while (millis() - t0 < ms) {
-    if (imuwiz_cancel_hold()) return;
-    uint32_t remain = ms - (millis() - t0);
-    char buf[48];
-    snprintf(buf, sizeof(buf), "Reposition: %lus left", (unsigned long)((remain + 999) / 1000));
-    imuwiz_ui_bottom(buf);
-    delay(20);
-  }
-}
-
 // ----------------------------
-// Sensor read + stillness
+// Calibrators & sensor read
 // ----------------------------
-static bool imuwiz_read_sensors(Vector3f& a_raw_body, Vector3f& w_raw_body, Vector3f& m_raw_uT_body,
-                                float& tempC, uint32_t& mask_out)
+static imu_cal::AccelCalibrator<float, 400, 8> accelCal;
+static imu_cal::GyroCalibrator<float, 400, 8>  gyroCal;
+static imu_cal::MagCalibrator<float, 400>      magCal;
+
+static bool read_sensors(Vector3f& a_raw_body, Vector3f& w_raw_body, Vector3f& m_raw_uT_body,
+                         float& tempC, uint32_t& mask_out)
 {
   mask_out = M5.Imu.update();
   if (!mask_out) return false;
 
   auto data = M5.Imu.getImuData();
-
   tempC = NAN;
   M5.Imu.getTemp(&tempC);
 
-  a_raw_body    = imuwiz_map_acc_to_body_ned(data.accel);
-  w_raw_body    = imuwiz_map_gyr_to_body_ned(data.gyro);
-  m_raw_uT_body = imuwiz_map_mag_to_body_uT(data.mag);
+  a_raw_body    = map_acc_to_body_ned(data.accel);
+  w_raw_body    = map_gyr_to_body_ned(data.gyro);
+  m_raw_uT_body = map_mag_to_body_uT(data.mag);
   return true;
 }
 
-static bool imuwiz_is_still(const Vector3f& a, const Vector3f& w, float& a_err_out, float& w_norm_out) {
-  float a_mag = a.norm();
-  float w_mag = w.norm();
-  float a_err = fabsf(a_mag - g_std);
-  a_err_out = a_err;
-  w_norm_out = w_mag;
-  return (w_mag <= IMUWIZ_STILL_GYRO_MAX_RAD_S) && (a_err <= IMUWIZ_STILL_ACCEL_ERR_MAX_MS2);
-}
-
-// ----------------------------
-// Accel step: wait for STILL then collect accepted samples
-// ----------------------------
-static bool imuwiz_collect_accel_face(const char* face_short, int need, uint32_t timeout_ms) {
-  imuwiz_ui_clear();
-  imuwiz_ui_title("ACCEL");
-  imuwiz_ui_line(face_short);
-  imuwiz_ui_line("");
-  imuwiz_ui_line("Waiting for STILLNESS...");
-  imuwiz_ui_line("Hold BtnA = cancel");
-
+static bool detect_mag_present() {
   uint32_t t0 = millis();
-  uint32_t still_start = 0;
-  int accepted0 = imuwiz_accelCal.buf.n;
-
-  while (millis() - t0 < timeout_ms) {
-    if (imuwiz_cancel_hold()) { imuwiz_set_fail(IMUWIZ_FAIL_CANCEL, face_short); return false; }
-
+  while (millis() - t0 < 1200) {
     Vector3f a, w, m;
-    float tempC;
+    float tC;
     uint32_t mask;
-    if (!imuwiz_read_sensors(a, w, m, tempC, mask)) { delay(5); continue; }
-
-    float a_err, w_norm;
-    bool still = imuwiz_is_still(a, w, a_err, w_norm);
-
-    // Live reason display
-    {
-      int y = 64;
-      imuwiz_disp.fillRect(0, y, imuwiz_disp.width(), 52, TFT_BLACK);
-      imuwiz_disp.setCursor(0, y);
-      imuwiz_disp.setTextColor(TFT_WHITE, TFT_BLACK);
-      imuwiz_disp.printf("|w|=%.3f (<=%.2f)\n", (double)w_norm, (double)IMUWIZ_STILL_GYRO_MAX_RAD_S);
-      imuwiz_disp.printf("||a|-g|=%.3f (<=%.2f)\n", (double)a_err, (double)IMUWIZ_STILL_ACCEL_ERR_MAX_MS2);
-      imuwiz_disp.setTextColor(still ? TFT_GREEN : TFT_RED, TFT_BLACK);
-      imuwiz_disp.println(still ? "STILL: YES" : "STILL: NO");
+    if (read_sensors(a, w, m, tC, mask)) {
+      if (mask & (uint32_t)M5_IMU::sensor_mask_mag) return true;
     }
-
-    if (still) {
-      if (still_start == 0) still_start = millis();
-      if (millis() - still_start >= IMUWIZ_STILL_SETTLE_MS) {
-        imuwiz_accelCal.addSample(a, w, tempC);
-        int accepted = imuwiz_accelCal.buf.n - accepted0;
-        imuwiz_ui_progress("Accepted", accepted, need);
-        if (accepted >= need) return true;
-        imuwiz_ui_bottom("Sampling...");
-      } else {
-        imuwiz_ui_bottom("Hold still... (settling)");
-      }
-    } else {
-      still_start = 0;
-      imuwiz_ui_bottom("Not still enough (wobble/cable/hand)");
-    }
-
     delay(5);
   }
-
-  int accepted = imuwiz_accelCal.buf.n - accepted0;
-  if (accepted == 0) imuwiz_set_fail(IMUWIZ_FAIL_FACE_ZERO, face_short);
-  else              imuwiz_set_fail(IMUWIZ_FAIL_FACE_TIMEOUT, face_short);
   return false;
 }
 
 // ----------------------------
-// Gyro step: wait for STILL then collect samples
+// Friendly pages
 // ----------------------------
-static bool imuwiz_collect_gyro(uint32_t timeout_ms) {
-  imuwiz_ui_clear();
-  imuwiz_ui_title("GYRO");
-  imuwiz_ui_line("DISPLAY UP on table");
-  imuwiz_ui_line("Do NOT touch it.");
-  imuwiz_ui_line("Hold BtnA = cancel");
+static bool setup_page_auto(const char* title,
+                            const char* line1,
+                            const char* line2,
+                            const char* line3,
+                            uint32_t ms)
+{
+  ui_clear();
+  ui_title(title);
+  ui_line(line1);
+  if (line2 && line2[0]) ui_line(line2);
+  if (line3 && line3[0]) ui_line(line3);
+  disp.println();
+  ui_line("Auto start...");
 
   uint32_t t0 = millis();
-  uint32_t still_start = 0;
-  int accepted0 = imuwiz_gyroCal.buf.n;
+  uint32_t last_draw = 0;
 
-  while (millis() - t0 < timeout_ms) {
-    if (imuwiz_cancel_hold()) { imuwiz_set_fail(IMUWIZ_FAIL_CANCEL, "GYRO"); return false; }
+  while (true) {
+    M5.update();
 
-    Vector3f a, w, m;
-    float tempC;
-    uint32_t mask;
-    if (!imuwiz_read_sensors(a, w, m, tempC, mask)) { delay(5); continue; }
-
-    float a_err, w_norm;
-    bool still = imuwiz_is_still(a, w, a_err, w_norm);
-
-    if (still) {
-      if (still_start == 0) still_start = millis();
-      if (millis() - still_start >= IMUWIZ_STILL_SETTLE_MS) {
-        imuwiz_gyroCal.addSample(w, a, tempC);
-        int accepted = imuwiz_gyroCal.buf.n - accepted0;
-        imuwiz_ui_progress("Accepted", accepted, 200);
-        if (accepted >= 200) return true;
-        imuwiz_ui_bottom("Sampling...");
-      } else {
-        imuwiz_ui_bottom("Hold still... (settling)");
-      }
-    } else {
-      still_start = 0;
-      imuwiz_ui_bottom("Waiting for stillness");
+    char cmd;
+    if (serial_cmd(cmd)) {
+      if (cmd == 'Q' || cmd == 'q') return false;
+      if (cmd == 'S' || cmd == 's') return true; // start now
     }
 
-    delay(5);
-  }
+    uint32_t now = millis();
+    if (now - last_draw > 200) {
+      last_draw = now;
+      uint32_t elapsed = now - t0;
+      if (elapsed >= ms) return true;
 
-  imuwiz_set_fail(IMUWIZ_FAIL_GYRO_TIMEOUT, "GYRO");
-  return false;
+      uint32_t remain_s = (ms - elapsed + 999) / 1000;
+      disp.setTextColor(TFT_YELLOW, TFT_BLACK);
+      disp.setCursor(0, disp.height() - 32);
+      disp.printf("Starting in %lus   \n", (unsigned long)remain_s);
+    }
+
+    delay(10);
+  }
+}
+
+static void ok_page(const char* title, const char* msg, uint32_t ms) {
+  ui_clear();
+  ui_title(title);
+  ui_line(msg);
+  delay(ms);
+}
+
+static void fail_page(const char* title, const char* msg, const char* hint) {
+  ui_clear();
+  ui_title(title);
+  ui_line(msg);
+  if (hint && hint[0]) { disp.println(); ui_line(hint); }
+  delay(3500);
 }
 
 // ----------------------------
-// Mag step: optional (skip if no mag detected)
+// Capture loops
 // ----------------------------
-static bool imuwiz_collect_mag(uint32_t timeout_ms, bool& mag_present_out) {
-  imuwiz_ui_clear();
-  imuwiz_ui_title("MAG");
-  imuwiz_ui_line("Rotate slowly:");
-  imuwiz_ui_line("big loops / figure-8");
-  imuwiz_ui_line("Hold BtnA = cancel");
+static bool collect_accel_face(const char* stepName, const char* hint, int need, uint32_t timeout_ms) {
+  ui_clear();
+  ui_title(stepName);
+  ui_line("Hold still.");
+  disp.println();
 
-  mag_present_out = false;
-
-  // detect mag presence for up to 2.5s
-  uint32_t tdet = millis();
-  while (millis() - tdet < 2500) {
-    if (imuwiz_cancel_hold()) { imuwiz_set_fail(IMUWIZ_FAIL_CANCEL, "MAG"); return false; }
-    Vector3f a, w, m;
-    float tempC;
-    uint32_t mask;
-    if (!imuwiz_read_sensors(a, w, m, tempC, mask)) { delay(5); continue; }
-    if (mask & (uint32_t)M5_IMU::sensor_mask_mag) { mag_present_out = true; break; }
-    delay(5);
-  }
-
-  if (!mag_present_out) {
-    imuwiz_msg_wait("MAG", "No magnetometer detected.", "Skipping mag calibration.", 5000);
-    return true;
-  }
-
+  int start_n = accelCal.buf.n;
   uint32_t t0 = millis();
-  int accepted0 = imuwiz_magCal.buf.n;
+  uint32_t last_ms = millis();
+  uint32_t stable_ms = 0;
+  bool hint_shown = false;
 
   while (millis() - t0 < timeout_ms) {
-    if (imuwiz_cancel_hold()) { imuwiz_set_fail(IMUWIZ_FAIL_CANCEL, "MAG"); return false; }
+    char cmd;
+    if (serial_cmd(cmd)) if (cmd=='Q' || cmd=='q') return false;
 
     Vector3f a, w, m;
     float tempC;
     uint32_t mask;
-    if (!imuwiz_read_sensors(a, w, m, tempC, mask)) { delay(5); continue; }
+    if (!read_sensors(a, w, m, tempC, mask)) { delay(2); continue; }
 
-    if (mask & (uint32_t)M5_IMU::sensor_mask_mag) imuwiz_magCal.addSample(m);
+    uint32_t now = millis();
+    uint32_t dt = now - last_ms;
+    last_ms = now;
 
-    int accepted = imuwiz_magCal.buf.n - accepted0;
-    imuwiz_ui_progress("Accepted", accepted, 250);
-    if (accepted >= 250) return true;
+    float gyro_norm = w.norm();
+    float amag_err = fabsf(a.norm() - g_std);
 
-    delay(5);
+    bool still = (gyro_norm < STILL_GYRO_RAD_S) && (amag_err < STILL_AMAG_ERR_MPS2);
+    if (still) stable_ms += dt; else stable_ms = 0;
+
+    if (stable_ms >= STILL_REQUIRED_MS) {
+      accelCal.addSample(a, w, tempC);
+    }
+
+    int accepted = accelCal.buf.n - start_n;
+
+    disp.setCursor(0, 48);
+    disp.setTextColor(TFT_WHITE, TFT_BLACK);
+    disp.printf("%-16s\n", (stable_ms >= STILL_REQUIRED_MS) ? "Capturing..." : "Hold still...");
+
+    ui_progress_text(accepted, need);
+    ui_progress_bar(accepted, need);
+
+    if (!hint_shown && (now - t0) > HINT_AFTER_MS && accepted == 0) {
+      hint_shown = true;
+      disp.setCursor(0, 88);
+      disp.setTextColor(TFT_YELLOW, TFT_BLACK);
+      disp.println("Hint:");
+      disp.setTextColor(TFT_WHITE, TFT_BLACK);
+      disp.println(hint);
+    }
+
+    if (accepted >= need) return true;
+    delay(6);
   }
 
-  imuwiz_set_fail(IMUWIZ_FAIL_MAG_TIMEOUT, "MAG");
+  return false;
+}
+
+static bool collect_gyro(int need, uint32_t timeout_ms) {
+  ui_clear();
+  ui_title("GYRO");
+  ui_line("Display UP.");
+  ui_line("Do not touch.");
+  disp.println();
+
+  int start_n = gyroCal.buf.n;
+  uint32_t t0 = millis();
+  uint32_t last_ms = millis();
+  uint32_t stable_ms = 0;
+
+  while (millis() - t0 < timeout_ms) {
+    char cmd;
+    if (serial_cmd(cmd)) if (cmd=='Q' || cmd=='q') return false;
+
+    Vector3f a, w, m;
+    float tempC;
+    uint32_t mask;
+    if (!read_sensors(a, w, m, tempC, mask)) { delay(2); continue; }
+
+    uint32_t now = millis();
+    uint32_t dt = now - last_ms;
+    last_ms = now;
+
+    float gyro_norm = w.norm();
+    float amag_err = fabsf(a.norm() - g_std);
+    bool still = (gyro_norm < STILL_GYRO_RAD_S) && (amag_err < STILL_AMAG_ERR_MPS2);
+    if (still) stable_ms += dt; else stable_ms = 0;
+
+    if (stable_ms >= STILL_REQUIRED_MS) {
+      gyroCal.addSample(w, a, tempC);
+    }
+
+    int accepted = gyroCal.buf.n - start_n;
+
+    disp.setCursor(0, 64);
+    disp.setTextColor(TFT_WHITE, TFT_BLACK);
+    disp.printf("%-16s\n", (stable_ms >= STILL_REQUIRED_MS) ? "Capturing..." : "Hold still...");
+
+    ui_progress_text(accepted, need);
+    ui_progress_bar(accepted, need);
+
+    if (accepted >= need) return true;
+    delay(6);
+  }
+
+  return false;
+}
+
+static bool collect_mag(int need, uint32_t timeout_ms) {
+  ui_clear();
+  ui_title("MAG");
+  ui_line("Rotate slowly.");
+  ui_line("Big loops / 8s.");
+  disp.println();
+
+  int start_n = magCal.buf.n;
+  uint32_t t0 = millis();
+
+  while (millis() - t0 < timeout_ms) {
+    char cmd;
+    if (serial_cmd(cmd)) if (cmd=='Q' || cmd=='q') return false;
+
+    Vector3f a, w, m;
+    float tempC;
+    uint32_t mask;
+    if (!read_sensors(a, w, m, tempC, mask)) { delay(2); continue; }
+
+    if (mask & (uint32_t)M5_IMU::sensor_mask_mag) magCal.addSample(m);
+
+    int accepted = magCal.buf.n - start_n;
+
+    disp.setCursor(0, 64);
+    disp.setTextColor(TFT_WHITE, TFT_BLACK);
+    disp.printf("%-16s\n", "Capturing...");
+
+    ui_progress_text(accepted, need);
+    ui_progress_bar(accepted, need);
+
+    if (accepted >= need) return true;
+    delay(8);
+  }
+
   return false;
 }
 
 // ----------------------------
 // Wizard
 // ----------------------------
-static bool imuwiz_intro() {
-  imuwiz_ui_clear();
-  imuwiz_ui_title("IMU CAL");
-  imuwiz_ui_line("6 accel poses + gyro + mag*");
-  imuwiz_ui_line("*mag skipped if not present");
-  imuwiz_ui_line("");
-  imuwiz_ui_line("IMPORTANT:");
-  imuwiz_ui_line("- USB-C DOWN: unplug cable!");
-  imuwiz_ui_line("- Use flat surface (no wobble)");
-  imuwiz_ui_line("");
-  imuwiz_ui_line("Press BtnA to begin");
-  while (true) { M5.update(); if (M5.BtnA.wasPressed()) return true; delay(10); }
-}
+static bool run_calibration_wizard(bool has_mag) {
+  Serial.println("[WIZ] start");
 
-static bool imuwiz_run() {
-  imuwiz_last_fail = IMUWIZ_FAIL_NONE;
-  imuwiz_last_fail_detail[0] = 0;
-
-  // wipe M5 offsets + disable internal influence
   M5.Imu.setCalibration(0, 0, 0);
   M5.Imu.clearOffsetData();
 
-  imuwiz_accelCal.clear();
-  imuwiz_gyroCal.clear();
-  imuwiz_magCal.clear();
+  accelCal.clear();
+  gyroCal.clear();
+  magCal.clear();
 
-  if (!imuwiz_intro()) return false;
+  struct Face {
+    const char* setupTitle;
+    const char* l1;
+    const char* l2;
+    const char* l3;
+    const char* stepName;
+    const char* hint;
+  };
 
-  struct Face { const char* setup; const char* shortname; const char* tip; };
   const Face faces[6] = {
-    { "POSE 1/6:\nDISPLAY UP\n(screen facing up)\nPlace on table.", "1/6 DISPLAY UP", "" },
-    { "POSE 2/6:\nDISPLAY DOWN\n(screen on table)", "2/6 DISPLAY DOWN", "" },
-    { "POSE 3/6:\nUSB-C DOWN\n(port toward table)\nUNPLUG USB cable!", "3/6 USB-C DOWN",
-      "If it wobbles, use 2 coins/spacers so port points down stably." },
-    { "POSE 4/6:\nUSB-C UP\n(port toward ceiling)", "4/6 USB-C UP", "" },
-    { "POSE 5/6:\nLEFT SIDE DOWN\n(when screen upright,\nleft edge touches table)", "5/6 LEFT DOWN", "" },
-    { "POSE 6/6:\nRIGHT SIDE DOWN\n(when screen upright,\nright edge touches table)", "6/6 RIGHT DOWN", "" },
+    {"POSE 1/6", "DISPLAY UP",   "Screen up.",         "",                 "ACC 1/6 UP",   "Just keep it still."},
+    {"POSE 2/6", "DISPLAY DOWN", "Screen down.",       "(no touch)",       "ACC 2/6 DOWN", "Let it rest flat."},
+    {"POSE 3/6", "USB DOWN",     "Port on table.",     "Cable slack.",     "ACC 3/6 USB-", "Cable may push it. Put near edge so cable hangs."},
+    {"POSE 4/6", "USB UP",       "Port to ceiling.",   "Stable.",          "ACC 4/6 USB+", "Hold it steady then let go."},
+    {"POSE 5/6", "LEFT DOWN",    "Left edge down.",    "Stable.",          "ACC 5/6 LEFT", "Make sure it doesn't rock."},
+    {"POSE 6/6", "RIGHT DOWN",   "Right edge down.",   "Stable.",          "ACC 6/6 RIGHT","Make sure it doesn't rock."},
   };
 
   for (int i = 0; i < 6; ++i) {
-    imuwiz_reposition_countdown("ACCEL POSE", faces[i].setup, IMUWIZ_REPOSITION_MS);
-    if (faces[i].tip && faces[i].tip[0]) imuwiz_msg_wait("TIP", faces[i].tip, "", 7000);
+    if (!setup_page_auto(faces[i].setupTitle, faces[i].l1, faces[i].l2, faces[i].l3, POSE_SETUP_MS)) return false;
 
-    if (!imuwiz_collect_accel_face(faces[i].shortname, IMUWIZ_ACC_FACE_NEED, IMUWIZ_ACCEL_FACE_TIMEOUT_MS)) {
-      imuwiz_msg_btn("ACCEL FAILED", imuwiz_fail_str(imuwiz_last_fail), imuwiz_last_fail_detail);
+    bool ok = collect_accel_face(faces[i].stepName, faces[i].hint, ACC_FACE_NEED, POSE_CAPTURE_MS);
+    if (!ok) {
+      fail_page("ACC FAIL", "No samples captured.", "Try again, more stable.");
       return false;
     }
-    imuwiz_msg_wait("CAPTURED", faces[i].shortname, "Reposition for next pose...", 2000);
+
+    ok_page("OK", "Captured.", POSE_DONE_PAUSE_MS);
   }
 
   imu_cal::AccelCalibration<float> acc_out;
-  if (!imuwiz_accelCal.fit(acc_out, /*robust_iters=*/3, /*trim_frac=*/0.15f) || !acc_out.ok) {
-    imuwiz_set_fail(IMUWIZ_FAIL_ACC_FIT, "accelCal.fit");
-    imuwiz_msg_btn("ACC FIT FAIL", "Not enough coverage or too noisy.", "Try steadier holds.");
+  if (!accelCal.fit(acc_out, 3, 0.15f) || !acc_out.ok) {
+    fail_page("ACC FAIL", "Fit failed.", "Moves were not distinct/stable.");
     return false;
   }
 
-  imuwiz_reposition_countdown("GYRO SETUP", "Place DISPLAY UP on table.\nDo NOT touch it.", IMUWIZ_REPOSITION_MS);
-  if (!imuwiz_collect_gyro(IMUWIZ_GYRO_TIMEOUT_MS)) {
-    imuwiz_msg_btn("GYRO FAILED", imuwiz_fail_str(imuwiz_last_fail), imuwiz_last_fail_detail);
+  if (!setup_page_auto("GYRO", "DISPLAY UP", "Hands off.", "", GYRO_SETUP_MS)) return false;
+  if (!collect_gyro(GYRO_NEED, GYRO_CAPTURE_MS)) {
+    fail_page("GYRO FAIL", "No samples captured.", "Any vibration ruins it.");
     return false;
   }
 
   imu_cal::GyroCalibration<float> gyr_out;
-  if (!imuwiz_gyroCal.fit(gyr_out) || !gyr_out.ok) {
-    imuwiz_set_fail(IMUWIZ_FAIL_GYRO_FIT, "gyroCal.fit");
-    imuwiz_msg_btn("GYRO FIT FAIL", "Was it moving/vibrating?", "");
-    return false;
-  }
-
-  bool mag_present = false;
-  imuwiz_reposition_countdown("MAG SETUP", "Pick up device.\nRotate slowly in big loops.", 5000);
-  if (!imuwiz_collect_mag(IMUWIZ_MAG_TIMEOUT_MS, mag_present)) {
-    imuwiz_msg_btn("MAG FAILED", imuwiz_fail_str(imuwiz_last_fail), imuwiz_last_fail_detail);
+  if (!gyroCal.fit(gyr_out) || !gyr_out.ok) {
+    fail_page("GYRO FAIL", "Fit failed.", "Try steadier table.");
     return false;
   }
 
   imu_cal::MagCalibration<float> mag_out;
-  if (mag_present) {
-    if (!imuwiz_magCal.fit(mag_out, /*robust_iters=*/3, /*trim_frac=*/0.15f) || !mag_out.ok) {
-      imuwiz_set_fail(IMUWIZ_FAIL_MAG_FIT, "magCal.fit");
-      imuwiz_msg_btn("MAG FIT FAIL", "Rotate longer/wider, away from metal.", "");
+  if (has_mag) {
+    if (!setup_page_auto("MAG", "ROTATE SLOW", "Big loops.", "", MAG_SETUP_MS)) return false;
+    if (!collect_mag(MAG_NEED, MAG_CAPTURE_MS)) {
+      fail_page("MAG FAIL", "Not enough samples.", "Rotate longer/wider.");
+      return false;
+    }
+    if (!magCal.fit(mag_out, 3, 0.15f) || !mag_out.ok) {
+      fail_page("MAG FAIL", "Fit failed.", "Move away from metal.");
       return false;
     }
   } else {
-    memset(&mag_out, 0, sizeof(mag_out));
     mag_out.ok = false;
+    mag_out.A = Matrix3f::Identity();
+    mag_out.b = Vector3f::Zero();
+    mag_out.field_uT = 0.0f;
+    mag_out.rms = 0.0f;
   }
 
-  // Build blob (memset avoids padding surprises)
-  ImuWizCalBlobV1 blob;
+  CalBlobV1 blob;
   memset(&blob, 0, sizeof(blob));
-  blob.magic = IMUWIZ_CAL_MAGIC;
-  blob.version = IMUWIZ_CAL_VERSION;
-  blob.size_bytes = (uint16_t)sizeof(ImuWizCalBlobV1);
+  blob.magic = IMU_CAL_MAGIC;
+  blob.version = IMU_CAL_VERSION;
+  blob.size_bytes = sizeof(CalBlobV1);
 
-  // accel
   blob.accel_ok = acc_out.ok ? 1 : 0;
   blob.accel_g = acc_out.g;
-  imuwiz_mat_to_rowmajor9(acc_out.S, blob.accel_S);
+  mat_to_rowmajor9(acc_out.S, blob.accel_S);
   blob.accel_T0 = acc_out.biasT.T0;
   blob.accel_b0[0]=acc_out.biasT.b0.x(); blob.accel_b0[1]=acc_out.biasT.b0.y(); blob.accel_b0[2]=acc_out.biasT.b0.z();
   blob.accel_k[0]=acc_out.biasT.k.x();   blob.accel_k[1]=acc_out.biasT.k.y();   blob.accel_k[2]=acc_out.biasT.k.z();
   blob.accel_rms_mag = acc_out.rms_mag;
 
-  // gyro
   blob.gyro_ok = gyr_out.ok ? 1 : 0;
   blob.gyro_T0 = gyr_out.biasT.T0;
   blob.gyro_b0[0]=gyr_out.biasT.b0.x(); blob.gyro_b0[1]=gyr_out.biasT.b0.y(); blob.gyro_b0[2]=gyr_out.biasT.b0.z();
   blob.gyro_k[0]=gyr_out.biasT.k.x();   blob.gyro_k[1]=gyr_out.biasT.k.y();   blob.gyro_k[2]=gyr_out.biasT.k.z();
 
-  // mag
-  blob.mag_ok = (mag_present && mag_out.ok) ? 1 : 0;
-  if (blob.mag_ok) {
-    imuwiz_mat_to_rowmajor9(mag_out.A, blob.mag_A);
-    blob.mag_b[0]=mag_out.b.x(); blob.mag_b[1]=mag_out.b.y(); blob.mag_b[2]=mag_out.b.z();
-    blob.mag_field_uT = mag_out.field_uT;
-    blob.mag_rms = mag_out.rms;
-  }
+  blob.mag_ok = (has_mag && mag_out.ok) ? 1 : 0;
+  mat_to_rowmajor9(mag_out.A, blob.mag_A);
+  blob.mag_b[0]=mag_out.b.x(); blob.mag_b[1]=mag_out.b.y(); blob.mag_b[2]=mag_out.b.z();
+  blob.mag_field_uT = mag_out.field_uT;
+  blob.mag_rms      = mag_out.rms;
 
-  // Save
-  if (!imuwiz_save_to_nvs_raw((const uint8_t*)&blob, sizeof(blob))) {
-    imuwiz_set_fail(IMUWIZ_FAIL_SAVE, "putBytes failed");
-    imuwiz_msg_btn("SAVE FAIL", "NVS write failed.", "");
+  ui_big_center("SAVING");
+  if (!save_cal_to_nvs(blob)) {
+    fail_page("SAVE FAIL", "NVS write failed.", "");
+    return false;
+  }
+  have_blob = load_cal_from_nvs();
+  if (!have_blob) {
+    fail_page("SAVE FAIL", "Readback failed.", "NVS/CRC mismatch.");
     return false;
   }
 
-  // Read back verify
-  imuwiz_have_blob = imuwiz_load_from_nvs();
-  if (!imuwiz_have_blob) {
-    imuwiz_set_fail(IMUWIZ_FAIL_READBACK, "CRC/size mismatch");
-    imuwiz_msg_btn("SAVE FAIL", "Saved but readback failed.", "");
-    return false;
-  }
+  ui_clear();
+  ui_title("SAVED");
+  ui_line("Calibration saved.");
+  disp.println();
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.printf("ACC %s\n", g_acc_cal.ok ? "OK" : "FAIL");
+  disp.printf("GYR %s\n", g_gyr_cal.ok ? "OK" : "FAIL");
+  if (has_mag) disp.printf("MAG %s\n", g_mag_cal.ok ? "OK" : "FAIL");
+  else         disp.printf("MAG (none)\n");
+  delay(3500);
 
-  // Show result
-  imuwiz_ui_clear();
-  imuwiz_ui_title("CAL DONE");
-  imuwiz_disp.setTextColor(TFT_WHITE, TFT_BLACK);
-  imuwiz_disp.printf("BLOB: YES\n");
-  imuwiz_disp.printf("ACC ok:%d  rms|g|:%.4f\n", (int)imuwiz_acc_cal.ok, (double)imuwiz_acc_cal.rms_mag);
-  imuwiz_disp.printf("GYR ok:%d\n", (int)imuwiz_gyr_cal.ok);
-  imuwiz_disp.printf("MAG ok:%d\n", (int)imuwiz_mag_cal.ok);
-  imuwiz_disp.println();
-  imuwiz_ui_line("Press BtnA to return");
-  while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
+  Serial.printf("[WIZ] done: blob=%d acc=%d gyr=%d mag=%d\n",
+                (int)have_blob, (int)g_acc_cal.ok, (int)g_gyr_cal.ok, (int)g_mag_cal.ok);
 
   return true;
 }
 
 // ----------------------------
-// Status / erase
+// STATUS
 // ----------------------------
-static void imuwiz_draw_status() {
-  imuwiz_ui_clear();
-  imuwiz_ui_title("IMU CAL STATUS");
+static bool g_has_mag = true;
+static uint32_t last_print_ms = 0;
 
-  imuwiz_disp.setTextColor(TFT_WHITE, TFT_BLACK);
-  imuwiz_disp.printf("BLOB: %s\n", imuwiz_have_blob ? "YES" : "NO");
-  imuwiz_disp.printf("ACC ok:%d  GYR ok:%d  MAG ok:%d\n", (int)imuwiz_acc_cal.ok, (int)imuwiz_gyr_cal.ok, (int)imuwiz_mag_cal.ok);
-  imuwiz_disp.println();
+static void draw_status() {
+  ui_clear();
+  ui_title("IMU CAL");
 
-  imuwiz_disp.printf("LAST: %s\n", imuwiz_fail_str(imuwiz_last_fail));
-  if (imuwiz_last_fail_detail[0]) imuwiz_disp.printf("  %s\n", imuwiz_last_fail_detail);
+  disp.setTextColor(TFT_WHITE, TFT_BLACK);
+  disp.printf("Saved: %s\n", have_blob ? "YES" : "NO");
+  disp.printf("ACC:%s  GYR:%s\n", g_acc_cal.ok ? "OK" : "--", g_gyr_cal.ok ? "OK" : "--");
+  if (g_has_mag) disp.printf("MAG:%s\n", g_mag_cal.ok ? "OK" : "--");
+  else           disp.printf("MAG:(none)\n");
 
-  imuwiz_disp.println();
-  imuwiz_ui_line("Press BtnA: start wizard");
-  imuwiz_ui_line("Hold BtnA 6s: erase cal");
+  disp.println();
+  ui_line("Tap screen: START");
+  ui_line("Serial: S=start  E=erase");
+  ui_line("Serial: Q=abort wizard");
 }
 
-static bool imuwiz_request_erase_hold() {
-  if (millis() < imuwiz_ignore_erase_until_ms) return false;
-
-  static uint32_t t_down = 0;
-  M5.update();
-
-  if (M5.BtnA.isPressed()) {
-    if (t_down == 0) t_down = millis();
-
-    uint32_t held = millis() - t_down;
-    uint32_t remain = (held >= IMUWIZ_ERASE_HOLD_MS) ? 0 : (IMUWIZ_ERASE_HOLD_MS - held);
-
-    char buf[48];
-    snprintf(buf, sizeof(buf), "Hold to erase: %lus", (unsigned long)((remain + 999) / 1000));
-    imuwiz_ui_bottom(buf);
-
-    if (held >= IMUWIZ_ERASE_HOLD_MS) {
-      t_down = 0;
-      return true;
-    }
-  } else {
-    t_down = 0;
-  }
-  return false;
-}
-
-static bool imuwiz_confirm_erase() {
-  imuwiz_ui_clear();
-  imuwiz_ui_title("ERASE?");
-  imuwiz_ui_line("Delete saved calibration?");
-  imuwiz_ui_line("");
-  imuwiz_ui_line("Press BtnA = CONFIRM");
-  imuwiz_ui_line("Wait 8s = cancel");
-
-  uint32_t t0 = millis();
-  while (millis() - t0 < 8000) {
-    M5.update();
-    if (M5.BtnA.wasPressed()) return true;
-    delay(10);
-  }
-  return false;
-}
-
-// ----------------------------
-// Arduino
-// ----------------------------
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
   Serial.begin(115200);
 
-  // disable M5 internal offsets (we apply ours)
   M5.Imu.setCalibration(0, 0, 0);
 
-  imuwiz_have_blob = imuwiz_load_from_nvs();
-  imuwiz_ignore_erase_until_ms = millis() + IMUWIZ_ERASE_GUARD_MS;
-  imuwiz_draw_status();
-
   if (!M5.Imu.isEnabled()) {
-    imuwiz_ui_clear();
-    imuwiz_ui_title("IMU FAIL");
-    imuwiz_ui_line("IMU not found.");
+    ui_clear();
+    ui_title("IMU FAIL");
+    ui_line("IMU not found.");
     while (true) delay(100);
   }
+
+  g_has_mag = detect_mag_present();
+  have_blob = load_cal_from_nvs();
+  if (!have_blob) {
+    memset(&cal_blob, 0, sizeof(cal_blob));
+    rebuild_runtime_cals_from_blob();
+  }
+
+  draw_status();
+  Serial.println("IMU CAL: Tap screen to start. Serial S=start E=erase Q=abort.");
 }
 
 void loop() {
   M5.update();
 
-  // erase flow
-  if (imuwiz_request_erase_hold()) {
-    if (imuwiz_confirm_erase()) {
-      imuwiz_ui_clear();
-      imuwiz_ui_title("ERASING...");
-      imuwiz_erase_nvs();
+  char cmd;
+  if (serial_cmd(cmd)) {
+    if (cmd == 'E' || cmd == 'e') {
+      Serial.println("[CAL] erase");
+      erase_our_cal_from_nvs();
       M5.Imu.clearOffsetData();
-
-      imuwiz_have_blob = false;
-      memset(&imuwiz_blob, 0, sizeof(imuwiz_blob));
-      imuwiz_rebuild_runtime_cals_from_blob();
-
-      imuwiz_ignore_erase_until_ms = millis() + IMUWIZ_ERASE_GUARD_MS;
-      imuwiz_msg_wait("DONE", "Calibration erased.", "", 1200);
+      have_blob = false;
+      memset(&cal_blob, 0, sizeof(cal_blob));
+      rebuild_runtime_cals_from_blob();
+      draw_status();
+    } else if (cmd == 'S' || cmd == 's') {
+      bool ok = run_calibration_wizard(g_has_mag);
+      Serial.printf("[WIZ] ok=%d\n", (int)ok);
+      have_blob = load_cal_from_nvs();
+      draw_status();
     }
-    imuwiz_draw_status();
   }
 
-  // start wizard
   if (M5.BtnA.wasPressed()) {
-    imuwiz_ignore_erase_until_ms = millis() + IMUWIZ_ERASE_GUARD_MS;
-
-    bool ok = imuwiz_run();
-    (void)ok;
-
-    imuwiz_have_blob = imuwiz_load_from_nvs();
-    imuwiz_ignore_erase_until_ms = millis() + IMUWIZ_ERASE_GUARD_MS;
-    imuwiz_draw_status();
+    bool ok = run_calibration_wizard(g_has_mag);
+    Serial.printf("[WIZ] ok=%d\n", (int)ok);
+    have_blob = load_cal_from_nvs();
+    draw_status();
   }
 
-  // live serial print (raw + calibrated)
   Vector3f a_raw, w_raw, m_raw;
   float tempC;
   uint32_t mask;
-  if (imuwiz_read_sensors(a_raw, w_raw, m_raw, tempC, mask)) {
-    Vector3f a_cal = imuwiz_applyAccel(a_raw, tempC);
-    Vector3f w_cal = imuwiz_applyGyro(w_raw, tempC);
-    Vector3f m_cal = imuwiz_applyMag(m_raw);
+  if (read_sensors(a_raw, w_raw, m_raw, tempC, mask)) {
+    Vector3f a_cal = applyAccel(a_raw, tempC);
+    Vector3f w_cal = applyGyro(w_raw, tempC);
+    Vector3f m_cal = applyMag(m_raw);
 
     uint32_t now = millis();
-    if (now - imuwiz_last_print_ms > 200) {
-      imuwiz_last_print_ms = now;
-
-      Serial.printf("tempC:%.2f,", (double)tempC);
-
-      Serial.printf("a_raw:%+.4f,%+.4f,%+.4f,",
-        (double)a_raw.x(), (double)a_raw.y(), (double)a_raw.z());
-      Serial.printf("a_cal:%+.4f,%+.4f,%+.4f,|a|:%.4f,",
-        (double)a_cal.x(), (double)a_cal.y(), (double)a_cal.z(), (double)a_cal.norm());
-
-      Serial.printf("w_raw:%+.5f,%+.5f,%+.5f,",
-        (double)w_raw.x(), (double)w_raw.y(), (double)w_raw.z());
-      Serial.printf("w_cal:%+.5f,%+.5f,%+.5f,",
-        (double)w_cal.x(), (double)w_cal.y(), (double)w_cal.z());
-
-      Serial.printf("m_raw:%+.2f,%+.2f,%+.2f,",
-        (double)m_raw.x(), (double)m_raw.y(), (double)m_raw.z());
-      Serial.printf("m_cal:%+.2f,%+.2f,%+.2f,|m|:%.2f",
-        (double)m_cal.x(), (double)m_cal.y(), (double)m_cal.z(), (double)m_cal.norm());
-
-      Serial.println();
+    if (now - last_print_ms > 300) {
+      last_print_ms = now;
+      Serial.printf("t:%.2f a:%+.3f,%+.3f,%+.3f w:%+.4f,%+.4f,%+.4f m:%+.2f,%+.2f,%+.2f\n",
+        (double)tempC,
+        (double)a_cal.x(), (double)a_cal.y(), (double)a_cal.z(),
+        (double)w_cal.x(), (double)w_cal.y(), (double)w_cal.z(),
+        (double)m_cal.x(), (double)m_cal.y(), (double)m_cal.z());
     }
   }
 
