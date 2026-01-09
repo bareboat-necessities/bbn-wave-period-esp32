@@ -34,12 +34,10 @@ using Vector3f = Eigen::Matrix<float,3,1>;
 using Matrix3f = Eigen::Matrix<float,3,3>;
 using M5_IMU   = decltype(M5.Imu);
 
-// Settings / constants
 struct ImuCalCfg {
   static constexpr float g_std   = 9.80665f;
   static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
 
-  // UI rotation: how you like it when reading prompts normally
   static constexpr uint8_t ROT_READ = 1;
 
   static constexpr uint32_t PLACE_TIME_MS    = 9000;
@@ -56,31 +54,26 @@ struct ImuCalCfg {
   static constexpr int GYRO_MIN_TO_FIT       = 120;
   static constexpr int MAG_MIN_TO_FIT        = 120;
 
-  static constexpr uint32_t FIT_STACK_WORDS  = 16384; // FreeRTOS stack depth units
+  static constexpr uint32_t FIT_STACK_WORDS  = 16384;
   static constexpr uint32_t FIT_TIMEOUT_MS   = 25000;
 
   static constexpr uint32_t TAP_WINDOW_MS    = 650;
 
-  // Speaker
   static constexpr uint8_t  BEEP_VOLUME      = 200;  // 0..255
   static constexpr uint32_t BEEP_GAP_MS      = 40;
 };
 
-// Input: Touch tap OR BtnA press
 class Input {
 public:
-  // Call once per loop, after M5.update()
   static void update() {
     tap_edge_ = false;
 
-    // Always include BtnA as a tap (fallback)
     if (M5.BtnA.wasPressed()) {
       tap_edge_ = true;
     }
 
-    // Touch path A: M5.Touch detail edge
-    // Works on many M5Unified targets with touch panels.
-    {
+#if defined(M5UNIFIED_HPP) || defined(_M5UNIFIED_H_)
+    if (M5.Touch.isEnabled()) {
       auto d = M5.Touch.getDetail();
       if (d.wasPressed()) {
         tap_edge_ = true;
@@ -88,8 +81,8 @@ public:
         return;
       }
     }
+#endif
 
-    // Touch path B: edge detect from getTouch() (fallback)
     uint16_t x=0, y=0;
     bool touching = M5.Display.getTouch(&x, &y);
     if (touching && !touching_prev_) {
@@ -105,7 +98,6 @@ private:
   static inline bool touching_prev_ = false;
 };
 
-// Cal blob + CRC
 struct ImuCalBlobV1 {
   static constexpr uint32_t IMU_CAL_MAGIC   = 0x434C554D; // 'MULC'
   static constexpr uint16_t IMU_CAL_VERSION = 1;
@@ -162,7 +154,6 @@ static void mat_to_rowmajor9(const Matrix3f& M, float a[9]) {
   a[6]=M(2,0); a[7]=M(2,1); a[8]=M(2,2);
 }
 
-// NVS store (only persistence)
 class ImuCalStoreNvs {
 public:
   bool load(ImuCalBlobV1& out) {
@@ -214,7 +205,6 @@ public:
   }
 };
 
-// Runtime calibration state
 struct RuntimeCals {
   imu_cal::AccelCalibration<float> acc{};
   imu_cal::GyroCalibration<float>  gyr{};
@@ -244,22 +234,15 @@ struct RuntimeCals {
     mag.rms      = b.mag_rms;
   }
 
-  Vector3f applyAccel(const Vector3f& a_raw, float tempC) const {
-    return acc.ok ? acc.apply(a_raw, tempC) : a_raw;
-  }
-  Vector3f applyGyro(const Vector3f& w_raw, float tempC) const {
-    return gyr.ok ? gyr.apply(w_raw, tempC) : w_raw;
-  }
-  Vector3f applyMag(const Vector3f& m_raw) const {
-    return mag.ok ? mag.apply(m_raw) : m_raw;
-  }
+  Vector3f applyAccel(const Vector3f& a_raw, float tempC) const { return acc.ok ? acc.apply(a_raw, tempC) : a_raw; }
+  Vector3f applyGyro (const Vector3f& w_raw, float tempC) const { return gyr.ok ? gyr.apply(w_raw, tempC) : w_raw; }
+  Vector3f applyMag  (const Vector3f& m_raw) const { return mag.ok ? mag.apply(m_raw) : m_raw; }
 };
 
-// IMU source (read + map) only
 struct ImuSample {
-  Vector3f a;   // m/s^2 in BODY NED
-  Vector3f w;   // rad/s in BODY NED
-  Vector3f m;   // uT in BODY
+  Vector3f a;
+  Vector3f w;
+  Vector3f m;
   float tempC;
   uint32_t mask;
 };
@@ -298,50 +281,40 @@ private:
   }
 };
 
-// Speaker helper (robust beeps)
 class Beeper {
 public:
   static void begin() {
-    // Ensure speaker is enabled and audible
-    // M5Unified supports config.speaker_enable and volume.
-    // Some boards default to speaker disabled.
     M5.Speaker.begin();
     M5.Speaker.setVolume(ImuCalCfg::BEEP_VOLUME);
-
-    // Quick boot chirp (also confirms speaker works)
     tone(1800, 60);
     delay(ImuCalCfg::BEEP_GAP_MS);
     tone(2200, 60);
   }
 
   static void ok() {
-    tone(2200, 80);
+    tone(2200, 90);
     delay(ImuCalCfg::BEEP_GAP_MS);
-    tone(2600, 80);
+    tone(2600, 90);
   }
 
   static void bad() {
-    tone(400, 120);
+    tone(400, 140);
     delay(ImuCalCfg::BEEP_GAP_MS);
-    tone(300, 160);
+    tone(300, 180);
   }
 
 private:
   static void tone(uint16_t hz, uint16_t ms) {
-    // M5Unified speaker: tone(frequency, duration_ms)
-    // On some builds, tone() is quiet unless volume is set & speaker begun.
     M5.Speaker.tone(hz, ms);
     delay(ms);
     M5.Speaker.stop();
   }
 };
 
-// UI: M5 screen + rotation lock + tap waiting
 class M5Ui {
 public:
   explicit M5Ui(uint8_t rot_read) : rot_read_(rot_read), rot_active_(rot_read) {}
 
-  // Rotation control
   void setReadRotation() { setRotationInternal_(rot_read_); }
   void lockRotation(uint8_t rot) { rot_locked_ = true; setRotationInternal_(rot); }
   void unlockRotation() { rot_locked_ = false; setRotationInternal_(rot_read_); }
@@ -435,10 +408,7 @@ private:
     rot_active_ = rot;
     applyRotation_();
   }
-
-  void applyRotation_() {
-    M5.Display.setRotation(rot_active_);
-  }
+  void applyRotation_() { M5.Display.setRotation(rot_active_); }
 
 private:
   uint8_t rot_read_;
@@ -446,7 +416,6 @@ private:
   bool rot_locked_ = false;
 };
 
-// FitRunner: run fit() on big-stack FreeRTOS task
 class FitRunner {
 public:
   explicit FitRunner(M5Ui& ui) : ui_(ui) {}
@@ -509,7 +478,6 @@ private:
   M5Ui& ui_;
 };
 
-// Wizard logic
 struct Pose {
   const char* name;
   const char* note;
@@ -528,7 +496,6 @@ public:
   bool run() {
     Serial.println("[WIZ] start");
 
-    // wipe M5 offsets + disable M5 internal calibration
     M5.Imu.setCalibration(0,0,0);
     M5.Imu.clearOffsetData();
 
@@ -539,7 +506,6 @@ public:
     ui_.unlockRotation();
     ui_.waitTap("IMU CAL", "6 poses", "Tap each step");
 
-    // Adjust these rotations if any pose text isn't upright.
     const Pose poses[6] = {
       {"1/6 SCREEN UP",     nullptr, ImuCalCfg::ROT_READ},
       {"2/6 SCREEN DOWN",   "Wait for beep", ImuCalCfg::ROT_READ},
@@ -623,7 +589,6 @@ private:
     ui_.unlockRotation();
     placeDelay("ACCEL", p.name, ImuCalCfg::PLACE_TIME_MS);
 
-    // Lock rotation during capture + OK screen for this pose
     ui_.lockRotation(p.rot_capture);
 
     int start_n = accelCal_.buf.n;
@@ -798,6 +763,8 @@ private:
     ui_.line("Don't touch");
     uint32_t t0 = millis();
     while (millis() - t0 < ms) {
+      M5.update();
+      Input::update();
       ui_.bar((float)(millis() - t0) / (float)ms);
       delay(30);
     }
@@ -840,24 +807,19 @@ private:
   imu_cal::MagCalibrator<float,   400>    magCal_{};
 };
 
-// App (home screen + tap counting + serial streaming)
 class ImuCalApp {
 public:
   void begin() {
     auto cfg = M5.config();
 
-    // Make sure speaker is enabled (important for AtomS3R)
-    cfg.speaker_enable = true;
-    // If your core supports it, this helps touch too:
-    // cfg.external_speaker.hat_spk = true; // (leave commented unless you know you need it)
-
+    // IMPORTANT:
+    // Your M5Unified doesn't have cfg.speaker_enable, so do NOT touch speaker fields here.
+    // Just begin() and then explicitly init the speaker.
     M5.begin(cfg);
     Serial.begin(115200);
 
-    // Speaker init + audible chirp
     Beeper::begin();
 
-    // Disable M5 internal calibration influence
     M5.Imu.setCalibration(0, 0, 0);
 
     if (!M5.Imu.isEnabled()) {
@@ -877,7 +839,6 @@ public:
     M5.update();
     Input::update();
 
-    // tap counting (single = start, triple = erase)
     if (Input::tapPressed()) {
       tap_count_++;
       tap_deadline_ms_ = millis() + ImuCalCfg::TAP_WINDOW_MS;
@@ -900,7 +861,6 @@ public:
         have_blob_ = store_.load(blob_);
         if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
         runtime_.rebuildFromBlob(blob_);
-
         drawHome();
       }
       tap_count_ = 0;
@@ -959,12 +919,7 @@ private:
   uint32_t last_print_ms_ = 0;
 };
 
-// Arduino entrypoints
 static ImuCalApp g_app;
 
-void setup() {
-  g_app.begin();
-}
-void loop() {
-  g_app.tick();
-}
+void setup() { g_app.begin(); }
+void loop()  { g_app.tick(); }
