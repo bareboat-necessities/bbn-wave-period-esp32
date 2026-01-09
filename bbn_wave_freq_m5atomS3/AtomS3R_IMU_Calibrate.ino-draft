@@ -38,9 +38,7 @@ using Vector3f = Eigen::Matrix<float,3,1>;
 using Matrix3f = Eigen::Matrix<float,3,3>;
 using M5_IMU   = decltype(M5.Imu);
 
-// ============================================================
 // Settings / constants
-// ============================================================
 struct ImuCalCfg {
   static constexpr float g_std   = 9.80665f;
   static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
@@ -69,9 +67,7 @@ struct ImuCalCfg {
   static constexpr uint32_t TAP_WINDOW_MS    = 650;
 };
 
-// ============================================================
 // Cal blob + CRC (moved out of App)
-// ============================================================
 struct ImuCalBlobV1 {
   static constexpr uint32_t IMU_CAL_MAGIC   = 0x434C554D; // 'MULC'
   static constexpr uint16_t IMU_CAL_VERSION = 1;
@@ -128,9 +124,7 @@ static void mat_to_rowmajor9(const Matrix3f& M, float a[9]) {
   a[6]=M(2,0); a[7]=M(2,1); a[8]=M(2,2);
 }
 
-// ============================================================
 // NVS store (only persistence)
-// ============================================================
 class ImuCalStoreNvs {
 public:
   bool load(ImuCalBlobV1& out) {
@@ -182,9 +176,7 @@ public:
   }
 };
 
-// ============================================================
 // Runtime calibration state (apply + rebuild-from-blob)
-// ============================================================
 struct RuntimeCals {
   imu_cal::AccelCalibration<float> acc{};
   imu_cal::GyroCalibration<float>  gyr{};
@@ -225,9 +217,7 @@ struct RuntimeCals {
   }
 };
 
-// ============================================================
 // IMU source (read + map) only
-// ============================================================
 struct ImuSample {
   Vector3f a;   // m/s^2 in BODY NED
   Vector3f w;   // rad/s in BODY NED
@@ -270,9 +260,7 @@ private:
   }
 };
 
-// ============================================================
-// UI: M5 screen + rotation lock (fixes your snapping rotation)
-// ============================================================
+// UI: M5 screen + rotation lock 
 class M5Ui {
 public:
   explicit M5Ui(uint8_t rot_read) : rot_read_(rot_read), rot_active_(rot_read) {}
@@ -377,9 +365,7 @@ private:
   bool rot_locked_ = false;
 };
 
-// ============================================================
 // FitRunner: run fit() on big-stack FreeRTOS task
-// ============================================================
 class FitRunner {
 public:
   explicit FitRunner(M5Ui& ui) : ui_(ui) {}
@@ -443,9 +429,7 @@ private:
   M5Ui& ui_;
 };
 
-// ============================================================
 // Wizard logic (no home screen / tap counting; just workflow)
-// ============================================================
 struct Pose {
   const char* name;
   const char* note;
@@ -762,9 +746,7 @@ private:
   imu_cal::MagCalibrator<float,   400>    magCal_{};
 };
 
-// ============================================================
 // Application (home screen + tap counting + serial streaming)
-// ============================================================
 class ImuCalApp {
 public:
   void begin() {
@@ -886,9 +868,7 @@ private:
   uint32_t last_print_ms_ = 0;
 };
 
-// ============================================================
 // Arduino entrypoints (non-static app instance)
-// ============================================================
 static ImuCalApp g_app;
 
 void setup() {
