@@ -1,13 +1,16 @@
 /*
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
-  - Wipes M5Unified's built-in IMU offset calibration from NVS:
-      M5.Imu.clearOffsetData();   (per M5Unified docs)   [oai_citation:1‡M5Stack Docs](https://docs.m5stack.com/en/arduino/m5unified/imu_class)
-  - Stores our own calibration blob to NVS (Preferences, namespace "imu_cal")
-  - Provides applyAccel/applyGyro/applyMag helpers for later use
+  What it does:
+  - Clears M5Unified's built-in IMU offsets from NVS (M5.Imu.clearOffsetData()).
+  - Runs a HUMAN-FRIENDLY calibration wizard:
+      * Each step waits for YOU to press BtnA to start sampling (no 2-second robot timer).
+      * Hold BtnA ~1.2s during wizard steps to cancel.
+  - Stores our calibration blob to NVS (Preferences namespace "imu_cal").
+  - Provides applyAccel/applyGyro/applyMag helpers for later use.
 
-  REQUIREMENTS:
-    - M5Unified library
+  Requirements:
+    - M5Unified
     - ESP32 Arduino core (Preferences)
     - ArduinoEigenDense
     - CalibrateIMU_alt.h
@@ -18,6 +21,7 @@
     mag:   uT
 */
 
+// IMPORTANT: forward-declare for Arduino auto-prototypes
 struct CalBlobV1;
 
 #include <M5Unified.h>
@@ -33,22 +37,32 @@ struct CalBlobV1;
 #endif
 #include <ArduinoEigenDense.h>
 
+// For sensor_mask_mag (enum in M5 IMU class)
 using M5_IMU = decltype(M5.Imu);
 
-#include "CalibrateIMU_alt.h"   
+#include "CalibrateIMU_alt.h"
 
 using Vector3f = Eigen::Matrix<float,3,1>;
 using Matrix3f = Eigen::Matrix<float,3,3>;
 
-static constexpr float  g_std = 9.80665f;
+static constexpr float  g_std   = 9.80665f;
 static constexpr float  DEG2RAD = 3.14159265358979323846f / 180.0f;
+
+// ----------------------------
+// Human-friendly timing knobs
+// ----------------------------
+static constexpr uint32_t FACE_PAUSE_READ_MS      = 0;      // not used (we now use BtnA-to-start)
+static constexpr uint32_t ACCEL_FACE_TIMEOUT_MS   = 45000;  // 45s per face (accepted samples)
+static constexpr uint32_t GYRO_TIMEOUT_MS         = 35000;  // 35s
+static constexpr uint32_t MAG_TIMEOUT_MS          = 90000;  // 90s
+static constexpr uint32_t CANCEL_HOLD_MS          = 1200;   // hold BtnA to cancel in wizard
 
 // ----------------------------
 // Axis mapping (MATCH YOUR EXISTING CODE PATH)
 // Raw M5 data comes in device axes; you mapped to BODY-NED like:
 //   acc_body = ( ay, ax, -az ) * g
 //   gyr_body = ( gy, gx, -gz ) * deg2rad
-//   mag_body = ( my, mx, -mz ) * (1/10)  // per your example
+//   mag_body = ( my, mx, -mz ) * (1/10)
 // Keep this consistent for BOTH calibration and later application.
 // ----------------------------
 static inline Vector3f map_acc_to_body_ned(const m5::imu_3d_t& a_g_units) {
@@ -121,7 +135,7 @@ struct CalBlobV1 {
   float    mag_field_uT = 0.0f;
   float    mag_rms = 0.0f;
 
-  // crc at end (computed over everything BEFORE crc)
+  // crc at end (computed over everything BEFORE crc; we zero crc then compute over full struct)
   uint32_t crc = 0;
 };
 
@@ -276,9 +290,37 @@ static void ui_progress(const char* label, int done, int total) {
   disp.fillRect(x + 1, y + 1, fillw, h - 2, TFT_GREEN);
 }
 
-static bool btn_pressed() {
+// Hold BtnA to cancel (wizard steps). Avoids accidental tap-cancel.
+static bool cancel_requested() {
+  static uint32_t t_down = 0;
   M5.update();
-  return M5.BtnA.wasPressed();
+  if (M5.BtnA.isPressed()) {
+    if (t_down == 0) t_down = millis();
+    if (millis() - t_down >= CANCEL_HOLD_MS) {
+      t_down = 0;
+      return true;
+    }
+  } else {
+    t_down = 0;
+  }
+  return false;
+}
+
+// Show a step screen until user presses BtnA to start (or holds to cancel).
+static bool wait_btnA_to_start(const char* title, const char* msg) {
+  ui_clear();
+  ui_title(title);
+  ui_line(msg);
+  ui_line("");
+  ui_line("Press BtnA to START");
+  ui_line("Hold BtnA to CANCEL");
+
+  while (true) {
+    M5.update();
+    if (M5.BtnA.wasPressed()) return true;
+    if (cancel_requested()) return false;
+    delay(10);
+  }
 }
 
 // ----------------------------
@@ -288,7 +330,9 @@ static imu_cal::AccelCalibrator<float, 400, 8> accelCal;
 static imu_cal::GyroCalibrator<float, 400, 8>  gyroCal;
 static imu_cal::MagCalibrator<float, 400>      magCal;
 
-static bool read_sensors(Vector3f& a_raw_body, Vector3f& w_raw_body, Vector3f& m_raw_uT_body, float& tempC, uint32_t& mask_out) {
+static bool read_sensors(Vector3f& a_raw_body, Vector3f& w_raw_body, Vector3f& m_raw_uT_body,
+                         float& tempC, uint32_t& mask_out)
+{
   mask_out = M5.Imu.update();
   if (!mask_out) return false;
 
@@ -302,47 +346,56 @@ static bool read_sensors(Vector3f& a_raw_body, Vector3f& w_raw_body, Vector3f& m
   return true;
 }
 
-// Collect N accepted accel samples (using AccelCalibrator::addSample gates) with timeout.
+// Collect N accepted accel samples (AccelCalibrator gates acceptance internally) with a generous timeout.
 static bool collect_accel_samples(const char* prompt, int need, uint32_t timeout_ms) {
   ui_clear();
   ui_title("ACCEL CAL");
   ui_line(prompt);
-  ui_line("Hold still...");
-  ui_line("BtnA cancels");
+  ui_line("");
+  ui_line("Hold STILL until bar fills.");
+  ui_line("Hold BtnA = cancel.");
 
   uint32_t t0 = millis();
   int got0 = accelCal.buf.n;
+
   while ((millis() - t0) < timeout_ms) {
-    if (btn_pressed()) return false;
+    if (cancel_requested()) return false;
 
     Vector3f a, w, m;
     float tempC;
     uint32_t mask;
     if (!read_sensors(a, w, m, tempC, mask)) { delay(2); continue; }
 
-    // feed calibrator (it decides if it accepts)
     accelCal.addSample(a, w, tempC);
 
     int got = accelCal.buf.n - got0;
     ui_progress("Samples", got, need);
     if (got >= need) return true;
 
-    delay(8);
+    delay(5);
   }
+
+  ui_clear();
+  ui_title("ACCEL TIMEOUT");
+  ui_line("Not enough accepted samples.");
+  ui_line("Try holding steadier.");
+  delay(1500);
   return false;
 }
 
-// Collect gyro samples (stationary) with timeout.
+// Collect gyro samples (stationary) with generous timeout.
 static bool collect_gyro_samples(uint32_t timeout_ms) {
   ui_clear();
   ui_title("GYRO CAL");
-  ui_line("Place on desk, still.");
-  ui_line("BtnA cancels");
+  ui_line("Place on desk. VERY still.");
+  ui_line("");
+  ui_line("Hold BtnA = cancel.");
 
   uint32_t t0 = millis();
   int got0 = gyroCal.buf.n;
+
   while ((millis() - t0) < timeout_ms) {
-    if (btn_pressed()) return false;
+    if (cancel_requested()) return false;
 
     Vector3f a, w, m;
     float tempC;
@@ -355,30 +408,37 @@ static bool collect_gyro_samples(uint32_t timeout_ms) {
     ui_progress("Samples", got, 200);
     if (got >= 200) return true;
 
-    delay(8);
+    delay(5);
   }
+
+  ui_clear();
+  ui_title("GYRO TIMEOUT");
+  ui_line("Not enough accepted samples.");
+  ui_line("Was it moving?");
+  delay(1500);
   return false;
 }
 
-// Collect mag samples while rotating.
+// Collect mag samples while rotating (only counts when mag updates).
 static bool collect_mag_samples(uint32_t timeout_ms) {
   ui_clear();
   ui_title("MAG CAL");
-  ui_line("Rotate slowly in");
-  ui_line("all directions.");
-  ui_line("BtnA cancels");
+  ui_line("Rotate slowly in ALL directions.");
+  ui_line("Big loops / figure-8 helps.");
+  ui_line("");
+  ui_line("Hold BtnA = cancel.");
 
   uint32_t t0 = millis();
   int got0 = magCal.buf.n;
+
   while ((millis() - t0) < timeout_ms) {
-    if (btn_pressed()) return false;
+    if (cancel_requested()) return false;
 
     Vector3f a, w, m;
     float tempC;
     uint32_t mask;
     if (!read_sensors(a, w, m, tempC, mask)) { delay(2); continue; }
 
-    // Only count when mag sensor actually updated (mask includes mag)
     if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
       magCal.addSample(m);
     }
@@ -387,8 +447,14 @@ static bool collect_mag_samples(uint32_t timeout_ms) {
     ui_progress("Samples", got, 250);
     if (got >= 250) return true;
 
-    delay(8);
+    delay(5);
   }
+
+  ui_clear();
+  ui_title("MAG TIMEOUT");
+  ui_line("Not enough mag samples.");
+  ui_line("Rotate wider/longer.");
+  delay(1500);
   return false;
 }
 
@@ -405,7 +471,7 @@ static void show_fit_results(const imu_cal::AccelCalibration<float>& ac,
   disp.printf("MAG ok:%d  B:%.1f uT  rms:%.2f\n", (int)mc.ok, (double)mc.field_uT, (double)mc.rms);
 
   disp.println();
-  disp.println("BtnA to exit");
+  disp.println("Press BtnA to return");
   while (true) {
     M5.update();
     if (M5.BtnA.wasPressed()) break;
@@ -415,7 +481,6 @@ static void show_fit_results(const imu_cal::AccelCalibration<float>& ac,
 
 static bool run_calibration_wizard() {
   // 1) wipe M5 offsets from NVS + disable M5 internal calibration
-  // clearOffsetData() clears IMU offset values in NVS per docs  [oai_citation:2‡M5Stack Docs](https://docs.m5stack.com/en/arduino/m5unified/imu_class)
   M5.Imu.setCalibration(0, 0, 0);
   M5.Imu.clearOffsetData();
 
@@ -424,32 +489,26 @@ static bool run_calibration_wizard() {
   gyroCal.clear();
   magCal.clear();
 
-  // 3) ACCEL: 6 faces (just instructions; your robust fit needs coverage)
+  // 3) ACCEL: 6 faces
   // We grab ~60 accepted samples per face => ~360 total (fits within 400 max).
   const struct { const char* msg; } faces[6] = {
-    {"Face 1/6: screen UP\n(hold still)"},
-    {"Face 2/6: screen DOWN\n(hold still)"},
-    {"Face 3/6: USB DOWN\n(hold still)"},
-    {"Face 4/6: USB UP\n(hold still)"},
-    {"Face 5/6: left side DOWN\n(hold still)"},
-    {"Face 6/6: right side DOWN\n(hold still)"},
+    {"Face 1/6: SCREEN UP\nHold still."},
+    {"Face 2/6: SCREEN DOWN\nHold still."},
+    {"Face 3/6: USB DOWN\nHold still."},
+    {"Face 4/6: USB UP\nHold still."},
+    {"Face 5/6: LEFT SIDE DOWN\nHold still."},
+    {"Face 6/6: RIGHT SIDE DOWN\nHold still."},
   };
 
   for (int i = 0; i < 6; ++i) {
-    // small pause so user can reposition
-    ui_clear();
-    ui_title("ACCEL CAL");
-    ui_line(faces[i].msg);
-    ui_line("BtnA cancels");
-    ui_line("Starting in 2s...");
-    uint32_t t0 = millis();
-    while (millis() - t0 < 2000) {
-      if (btn_pressed()) return false;
-      delay(10);
-    }
+    if (!wait_btnA_to_start("ACCEL CAL", faces[i].msg)) return false;
 
-    if (!collect_accel_samples(faces[i].msg, /*need=*/60, /*timeout_ms=*/12000))
+    if (!collect_accel_samples(faces[i].msg, /*need=*/60, /*timeout_ms=*/ACCEL_FACE_TIMEOUT_MS))
       return false;
+
+    if (i != 5) {
+      if (!wait_btnA_to_start("ACCEL CAL", "Face captured.\nFlip to NEXT face.")) return false;
+    }
   }
 
   imu_cal::AccelCalibration<float> acc_out;
@@ -457,14 +516,15 @@ static bool run_calibration_wizard() {
     ui_clear();
     ui_title("ACCEL FAIL");
     ui_line("Not enough coverage.");
-    ui_line("Try slower moves /");
+    ui_line("Try steadier holds /");
     ui_line("more distinct faces.");
     delay(2500);
     return false;
   }
 
   // 4) GYRO
-  if (!collect_gyro_samples(/*timeout_ms=*/15000)) return false;
+  if (!wait_btnA_to_start("GYRO CAL", "Place on desk, VERY still.\nPress BtnA to start.")) return false;
+  if (!collect_gyro_samples(GYRO_TIMEOUT_MS)) return false;
 
   imu_cal::GyroCalibration<float> gyr_out;
   if (!gyroCal.fit(gyr_out) || !gyr_out.ok) {
@@ -476,7 +536,8 @@ static bool run_calibration_wizard() {
   }
 
   // 5) MAG
-  if (!collect_mag_samples(/*timeout_ms=*/25000)) return false;
+  if (!wait_btnA_to_start("MAG CAL", "Rotate slowly.\nPress BtnA to start.")) return false;
+  if (!collect_mag_samples(MAG_TIMEOUT_MS)) return false;
 
   imu_cal::MagCalibration<float> mag_out;
   if (!magCal.fit(mag_out, /*robust_iters=*/3, /*trim_frac=*/0.15f) || !mag_out.ok) {
@@ -490,6 +551,7 @@ static bool run_calibration_wizard() {
 
   // 6) Save blob
   CalBlobV1 blob;
+
   // accel
   blob.accel_ok = acc_out.ok ? 1 : 0;
   blob.accel_g = acc_out.g;
@@ -562,9 +624,6 @@ void setup() {
   M5.begin(cfg);
   Serial.begin(115200);
 
-  // Optional: force a known rotation/orientation for display
-  // disp.setRotation(0);
-
   // Disable M5 internal calibration influence (we apply ours in software)
   M5.Imu.setCalibration(0, 0, 0);
 
@@ -587,7 +646,7 @@ void loop() {
     ui_clear();
     ui_title("ERASING...");
     erase_our_cal_from_nvs();
-    M5.Imu.clearOffsetData();   // wipe M5 offsets in NVS  [oai_citation:3‡M5Stack Docs](https://docs.m5stack.com/en/arduino/m5unified/imu_class)
+    M5.Imu.clearOffsetData(); // wipe M5 offsets in NVS
     have_cal = false;
     memset(&cal_blob, 0, sizeof(cal_blob));
     rebuild_runtime_cals_from_blob();
@@ -598,8 +657,7 @@ void loop() {
 
   // Run wizard
   if (M5.BtnA.wasPressed()) {
-    bool ok = run_calibration_wizard();
-    (void)ok;
+    (void)run_calibration_wizard();
     draw_status();
   }
 
