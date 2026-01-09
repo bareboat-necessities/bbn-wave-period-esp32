@@ -63,7 +63,7 @@ struct ImuCalCfg {
   static constexpr uint32_t TAP_WINDOW_MS    = 650;
 };
 
-// Cal blob + CRC (moved out of App)
+// Cal blob + CRC
 struct ImuCalBlobV1 {
   static constexpr uint32_t IMU_CAL_MAGIC   = 0x434C554D; // 'MULC'
   static constexpr uint16_t IMU_CAL_VERSION = 1;
@@ -261,15 +261,11 @@ class M5Ui {
 public:
   explicit M5Ui(uint8_t rot_read) : rot_read_(rot_read), rot_active_(rot_read) {}
 
-  // Rotation control:
-  // - setReadRotation: preferred for normal prompts
-  // - lockRotation: keep this rotation until unlockRotation
+  // Rotation control
   void setReadRotation() { setRotationInternal_(rot_read_); }
   void lockRotation(uint8_t rot) { rot_locked_ = true; setRotationInternal_(rot); }
   void unlockRotation() { rot_locked_ = false; setRotationInternal_(rot_read_); }
 
-  // IMPORTANT: all UI drawing calls use rot_active_ (not hard-coded ROT_READ),
-  // so we don't accidentally flip rotation mid-capture.
   void clear() {
     applyRotation_();
     M5.Display.fillScreen(TFT_BLACK);
@@ -351,7 +347,6 @@ private:
   }
 
   void applyRotation_() {
-    // Keep display rotation consistent and centralized.
     M5.Display.setRotation(rot_active_);
   }
 
@@ -403,7 +398,7 @@ public:
     float ph = 0.f;
     while (!job->done) {
       if (millis() - t0 > timeoutMs) {
-        // Optional: add cancellation plumbing if you want; for now fail.
+        // Optional: add cancellation plumbing; for now fail.
         ui_.fail("FIT", "Timeout");
         delete job;
         return false;
@@ -425,7 +420,7 @@ private:
   M5Ui& ui_;
 };
 
-// Wizard logic (no home screen / tap counting; just workflow)
+// Wizard logic
 struct Pose {
   const char* name;
   const char* note;
@@ -457,7 +452,6 @@ public:
     ui_.waitTap("IMU CAL", "6 poses", "Tap each step");
 
     // If text orientation is wrong for your hardware, change the rotations here.
-    // Rule: rot_capture is the rotation you want during BOTH capture and UI for that pose.
     const Pose poses[6] = {
       {"1/6 SCREEN UP",     nullptr, ImuCalCfg::ROT_READ},
       {"2/6 SCREEN DOWN",   "Wait for beep", ImuCalCfg::ROT_READ},
@@ -539,11 +533,10 @@ private:
     ui_.unlockRotation();
     ui_.waitTap("ACCEL", p.name, p.note);
 
-    // Place delay: also in read orientation (or you can lock here too)
+    // Place delay: also in read orientation
     ui_.unlockRotation();
     placeDelay("ACCEL", p.name, ImuCalCfg::PLACE_TIME_MS);
 
-    // Capture: LOCK rotation for the entire capture UI
     ui_.lockRotation(p.rot_capture);
 
     int start_n = accelCal_.buf.n;
@@ -685,10 +678,8 @@ private:
         while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
         return true;
       }
-
       delay(5);
     }
-
     ui_.fail("MAG", "Timeout");
     return false;
   }
@@ -767,7 +758,6 @@ public:
       memset(&blob_, 0, sizeof(blob_));
       runtime_.rebuildFromBlob(blob_);
     }
-
     drawHome();
   }
 
@@ -805,11 +795,9 @@ public:
         (void)ok;
         drawHome();
       }
-
       tap_count_ = 0;
       tap_deadline_ms_ = 0;
     }
-
     streamSerial();
     delay(5);
   }
