@@ -591,7 +591,7 @@ public:
         const float tau = smoothed ? tune_.tau_applied : tau_target_;
         const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
         if (!std::isfinite(sigma) || !std::isfinite(tau)) return NAN;
-        constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);  // by Longuet–Higgins
+        constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);  // Longuet–Higgins envelope for wave height
         return C_HS * sigma * tau * tau;
     }
 
