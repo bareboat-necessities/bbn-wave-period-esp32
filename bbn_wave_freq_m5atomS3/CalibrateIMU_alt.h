@@ -8,6 +8,13 @@
     accel: m/s^2
     mag:   uT
     gyro:  rad/s
+
+  CHANGE (2026-01):
+    - Added enum failure reasons for *fit* paths.
+    - All fit() methods can now optionally return a reason code:
+        bool ok = cal.fit(out, iters, trim, &reason);
+      Also available:
+        FitFail reason = cal.lastFail();
 */
 
 #include <stdint.h>
@@ -22,8 +29,58 @@
 
 namespace imu_cal {
 
+// ----------------------------
 // Config / limits
+// ----------------------------
 static constexpr int IMU_CAL_MAX_SAMPLES = 400;
+
+// ----------------------------
+// Failure reasons
+// ----------------------------
+enum class FitFail : uint8_t {
+  OK = 0,
+
+  // Generic / inputs
+  BAD_ARG,
+  TOO_FEW_SAMPLES,
+  NON_FINITE_INPUT,
+
+  // Coverage / geometry
+  DEGENERATE_COVERAGE,
+
+  // Linear algebra / model reconstruction
+  SOLVE_LDLT_FAIL,
+  MODEL_LU_NOT_INVERTIBLE,
+  MODEL_S_NONPOSITIVE,
+  MODEL_SPD_PROJECT_FAIL,
+  MODEL_CHOLESKY_FAIL,
+
+  // Robust loop / scoring
+  INLIERS_TOO_FEW,
+
+  // Domain-specific
+  MAG_FIELD_OUT_OF_RANGE,
+  TEMP_BINS_EMPTY,
+};
+
+static inline const char* fitFailStr(FitFail f) {
+  switch (f) {
+    case FitFail::OK: return "OK";
+    case FitFail::BAD_ARG: return "BAD_ARG";
+    case FitFail::TOO_FEW_SAMPLES: return "TOO_FEW_SAMPLES";
+    case FitFail::NON_FINITE_INPUT: return "NON_FINITE_INPUT";
+    case FitFail::DEGENERATE_COVERAGE: return "DEGENERATE_COVERAGE";
+    case FitFail::SOLVE_LDLT_FAIL: return "SOLVE_LDLT_FAIL";
+    case FitFail::MODEL_LU_NOT_INVERTIBLE: return "MODEL_LU_NOT_INVERTIBLE";
+    case FitFail::MODEL_S_NONPOSITIVE: return "MODEL_S_NONPOSITIVE";
+    case FitFail::MODEL_SPD_PROJECT_FAIL: return "MODEL_SPD_PROJECT_FAIL";
+    case FitFail::MODEL_CHOLESKY_FAIL: return "MODEL_CHOLESKY_FAIL";
+    case FitFail::INLIERS_TOO_FEW: return "INLIERS_TOO_FEW";
+    case FitFail::MAG_FIELD_OUT_OF_RANGE: return "MAG_FIELD_OUT_OF_RANGE";
+    case FitFail::TEMP_BINS_EMPTY: return "TEMP_BINS_EMPTY";
+    default: return "UNKNOWN";
+  }
+}
 
 // Utilities
 template <typename T>
@@ -212,20 +269,11 @@ struct SampleBuffer3 {
 };
 
 // Ellipsoid -> sphere robust fit
-// Implicit model matching build_row_d():
-//    x^T Q x + 2 q^T x + c = 1
-// Row d = [x^2 y^2 z^2 2xy 2xz 2yz 2x 2y 2z 1]
-// Solve LS: D p ≈ 1 (i.e., minimize ||D p - 1||).
-//
-// Recover:
-//   b = -Q^{-1} q
-//   s = 1 + b^T Q b - c   (must be > 0)
-//   Then: (x-b)^T (Q/s) (x-b) = 1
-// Whitening A_unit from chol(Q/s): ||A_unit(x-b)|| ≈ 1
-// Then scale A = A_unit * R_target so ||A(x-b)|| ≈ R_target.
 template <typename T>
 struct EllipsoidSphereFit {
   bool ok = false;
+  FitFail reason = FitFail::BAD_ARG;
+
   Eigen::Matrix<T,3,1> b = Eigen::Matrix<T,3,1>::Zero();
   Eigen::Matrix<T,3,3> A = Eigen::Matrix<T,3,3>::Identity(); // scaled whitening
 
@@ -245,7 +293,7 @@ static inline void build_row_d(const Eigen::Matrix<T,3,1>& x, Eigen::Matrix<T,10
 }
 
 template <typename T>
-static bool solve_ellipsoid_params_trimmed(
+static FitFail solve_ellipsoid_params_trimmed_ex(
     const Eigen::Matrix<T,3,1>* x, int n,
     const bool* inlier,
     Eigen::Matrix<T,10,1>& p_out,
@@ -254,7 +302,7 @@ static bool solve_ellipsoid_params_trimmed(
   using Mat10 = Eigen::Matrix<T,10,10>;
   using Vec10 = Eigen::Matrix<T,10,1>;
 
-  if (!x || n <= 0) return false;
+  if (!x || n <= 0) return FitFail::BAD_ARG;
 
   Mat10 H = Mat10::Zero();
   Vec10 g = Vec10::Zero();
@@ -262,17 +310,17 @@ static bool solve_ellipsoid_params_trimmed(
   int used = 0;
   for (int i = 0; i < n; ++i) {
     if (inlier && !inlier[i]) continue;
-    if (!isfinite3<T>(x[i])) continue;              // <-- DROP-IN: skip non-finite
+    if (!isfinite3<T>(x[i])) continue;
 
     Vec10 d;
     build_row_d(x[i], d);
-    if (!(d.array().isFinite().all())) continue;    // paranoia
+    if (!(d.array().isFinite().all())) continue;
 
     H.noalias() += d * d.transpose();
     g.noalias() += d; // D^T * 1
     ++used;
   }
-  if (used < 10) return false;
+  if (used < 10) return FitFail::TOO_FEW_SAMPLES;
 
   // Scale ridge by feature energy for better invariance
   const T tr = H.trace() / T(10);
@@ -280,13 +328,13 @@ static bool solve_ellipsoid_params_trimmed(
   H.diagonal().array() += ridge;
 
   Eigen::LDLT<Mat10> ldlt(H);
-  if (ldlt.info() != Eigen::Success) return false;
+  if (ldlt.info() != Eigen::Success) return FitFail::SOLVE_LDLT_FAIL;
 
   Vec10 p = ldlt.solve(g);
-  if (!(p.array().isFinite().all())) return false;
+  if (!(p.array().isFinite().all())) return FitFail::NON_FINITE_INPUT;
 
   p_out = p;
-  return true;
+  return FitFail::OK;
 }
 
 template <typename T>
@@ -294,24 +342,28 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     const Eigen::Matrix<T,3,1>* x, int n,
     T R_target,
     int robust_iters = 3,
-    T trim_frac = T(0.15),     // drop worst ~15% by |e| each iteration (now implemented)
+    T trim_frac = T(0.15),     // drop worst ~15% by |e| each iteration
     T ridge_rel = T(1e-6),
     T expected_radius_for_checks = T(0)) // optional early coverage check
 {
   EllipsoidSphereFit<T> out;
-  if (!x || n < 12) return out;
-  if (n > IMU_CAL_MAX_SAMPLES) return out;
-  if (!(R_target > T(0))) return out;
+  out.ok = false;
+  out.reason = FitFail::BAD_ARG;
+
+  if (!x || n < 12) { out.reason = FitFail::TOO_FEW_SAMPLES; return out; }
+  if (n > IMU_CAL_MAX_SAMPLES) { out.reason = FitFail::BAD_ARG; return out; }
+  if (!(R_target > T(0))) { out.reason = FitFail::BAD_ARG; return out; }
 
   // Optional early degeneracy check (coverage/planarity)
   if (expected_radius_for_checks > T(0)) {
     if (!degeneracy_check_coverage3<T>(
           x, n,
           expected_radius_for_checks,
-          T(0.90),   // min axis span ~0.90*R
-          T(0.08),   // require both sides ~8%
-          T(1e-3)))  // direction covariance determinant threshold
+          T(0.90),
+          T(0.08),
+          T(1e-3)))
     {
+      out.reason = FitFail::DEGENERATE_COVERAGE;
       return out;
     }
   }
@@ -334,7 +386,7 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
   T tmp[IMU_CAL_MAX_SAMPLES];
 
   // Helper: rebuild b/A_unit from p and validate
-  auto build_model_from_p = [&](const Eigen::Matrix<T,10,1>& p_in) -> bool {
+  auto build_model_from_p = [&](const Eigen::Matrix<T,10,1>& p_in) -> FitFail {
     Eigen::Matrix<T,3,3> Q;
     Q << p_in(0), p_in(3), p_in(4),
          p_in(3), p_in(1), p_in(5),
@@ -343,40 +395,49 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     q << p_in(6), p_in(7), p_in(8);
     const T c = p_in(9);
 
+    if (!(Q.array().isFinite().all()) || !(q.array().isFinite().all()) || !finiteT(c)) {
+      return FitFail::NON_FINITE_INPUT;
+    }
+
     // b = -Q^{-1} q
     Eigen::FullPivLU<Eigen::Matrix<T,3,3>> lu(Q);
-    if (!lu.isInvertible()) return false;
+    if (!lu.isInvertible()) return FitFail::MODEL_LU_NOT_INVERTIBLE;
     b = -lu.solve(q);
-    if (!isfinite3(b)) return false;
+    if (!isfinite3(b)) return FitFail::NON_FINITE_INPUT;
 
     // s = 1 + b^T Q b - c  (must be > 0)
     const T s = T(1) + b.dot(Q * b) - c;
-    if (!finiteT(s) || s <= T(0)) return false;
+    if (!finiteT(s) || s <= T(0)) return FitFail::MODEL_S_NONPOSITIVE;
 
     // M = Q / s, symmetrize
     Eigen::Matrix<T,3,3> M = Q / s;
     M = T(0.5) * (M + M.transpose());
 
     // project to SPD to avoid borderline LLT failures
-    if (!project_spd_3x3<T>(M, T(1e-5), T(1e-7))) return false;
+    if (!project_spd_3x3<T>(M, T(1e-5), T(1e-7))) return FitFail::MODEL_SPD_PROJECT_FAIL;
 
     // Cholesky: M = U^T U
     Eigen::LLT<Eigen::Matrix<T,3,3>> llt(M);
-    if (llt.info() != Eigen::Success) return false;
+    if (llt.info() != Eigen::Success) return FitFail::MODEL_CHOLESKY_FAIL;
     A_unit = llt.matrixU();
-    return true;    
+    return FitFail::OK;
   };
 
   for (int it = 0; it < robust_iters; ++it) {
-    if (!solve_ellipsoid_params_trimmed<T>(x, n, inlier, p, ridge_rel)) return out;
-    if (!build_model_from_p(p)) return out;
+    {
+      FitFail fr = solve_ellipsoid_params_trimmed_ex<T>(x, n, inlier, p, ridge_rel);
+      if (fr != FitFail::OK) { out.reason = fr; return out; }
+    }
+    {
+      FitFail fr = build_model_from_p(p);
+      if (fr != FitFail::OK) { out.reason = fr; return out; }
+    }
 
     // Compute residuals for ALL points: e = ||A_unit(x-b)|| - 1
     for (int i = 0; i < n; ++i) {
       const T r = (A_unit * (x[i] - b)).norm();
       T ei = r - T(1);
       if (!finiteT(ei)) {
-        // mark as huge outlier
         ei = T(1e9);
       }
       e[i] = ei;
@@ -387,16 +448,12 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     for (int i = 0; i < n; ++i) tmp[i] = e[i];
     const T mad = robust_mad(tmp, n);
 
-    // MAD floor to avoid mad->0 making thr ~ 1e-6
-    // (units are "fractional radius" since r is near 1)
     const T mad_floor = T(1e-4);
     const T mad_eff   = (mad > mad_floor ? mad : mad_floor);
-
-    // MAD threshold
     const T thr_mad = T(5.2) * mad_eff + T(1e-6);
 
     // Quantile trim threshold (drop worst trim_frac)
-    T thr_trim = thr_mad; // default if trim_frac==0
+    T thr_trim = thr_mad;
     if (trim_frac > T(0)) {
       for (int i = 0; i < n; ++i) tmp[i] = abs_e[i];
       sort_small(tmp, n);
@@ -405,7 +462,7 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
       thr_trim = tmp[keep - 1];
     }
 
-    // Combine: be conservative (tighter) first
+    // Combine thresholds
     T thr = (thr_trim < thr_mad ? thr_trim : thr_mad);
 
     // Update inliers
@@ -415,7 +472,7 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
       if (inlier[i]) ++used;
     }
 
-    // If we got too aggressive, relax to the looser of the two thresholds
+    // If too aggressive, relax to looser threshold
     if (used < 10) {
       thr = (thr_trim > thr_mad ? thr_trim : thr_mad);
       used = 0;
@@ -423,14 +480,19 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
         inlier[i] = (abs_e[i] <= thr);
         if (inlier[i]) ++used;
       }
-      if (used < 10) return out;
+      if (used < 10) { out.reason = FitFail::INLIERS_TOO_FEW; return out; }
     }
   }
 
-  // IMPORTANT: final solve using FINAL inlier mask,
-  // so the model matches the mask we score with.
-  if (!solve_ellipsoid_params_trimmed<T>(x, n, inlier, p, ridge_rel)) return out;
-  if (!build_model_from_p(p)) return out;
+  // Final solve using FINAL inlier mask
+  {
+    FitFail fr = solve_ellipsoid_params_trimmed_ex<T>(x, n, inlier, p, ridge_rel);
+    if (fr != FitFail::OK) { out.reason = fr; return out; }
+  }
+  {
+    FitFail fr = build_model_from_p(p);
+    if (fr != FitFail::OK) { out.reason = fr; return out; }
+  }
 
   // Final scale A to target radius
   const Eigen::Matrix<T,3,3> A = A_unit * R_target;
@@ -448,11 +510,12 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     sum_e2 += er * er;
     ++used;
   }
-  if (used < 10) return out;
+  if (used < 10) { out.reason = FitFail::INLIERS_TOO_FEW; return out; }
 
   const T medr = median_of_array(radii, used);
 
   out.ok = true;
+  out.reason = FitFail::OK;
   out.b = b;
   out.A = A;
   out.rms = (T)sqrt((double)(sum_e2 / (T)used));
@@ -462,7 +525,6 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
 }
 
 // Temperature model: bias(T) = b0 + k*(T - T0)
-// Fit per-axis with simple LS.
 template <typename T>
 struct TempBias3 {
   bool ok = false;
@@ -537,13 +599,9 @@ struct GyroCalibration {
   }
 };
 
+// ----------------------------
 // Calibrator: Accel
-// Strategy:
-//  - Collect ~400 quasi-static accel samples across orientations.
-//  - Bin by temperature into up to K bins.
-//  - For each bin: robust ellipsoid->sphere fit => center b_bin and S_bin.
-//  - Choose S from best bin (low rms, enough samples).
-//  - Regress b_bin vs temperature => bias(T).
+// ----------------------------
 template <typename T, int N, int K_TBINS = 8>
 struct AccelCalibrator {
   static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
@@ -568,9 +626,11 @@ struct AccelCalibrator {
     Vec3     centers[K_TBINS];
     T        temps[K_TBINS];
   };
-
-  // fit() is const, so workspace must be mutable
   mutable Workspace ws_;
+
+  // last failure
+  mutable FitFail last_fail_ = FitFail::OK;
+  FitFail lastFail() const { return last_fail_; }
 
   void clear() { buf.clear(); }
 
@@ -583,8 +643,12 @@ struct AccelCalibrator {
     return buf.push(a_raw, tempC);
   }
 
-  bool fit(AccelCalibration<T>& out, int robust_iters = 3, T trim_frac = T(0.15)) const {
-    if (buf.n < 80) return false;
+  // NEW: optional reason out
+  bool fit(AccelCalibration<T>& out, int robust_iters = 3, T trim_frac = T(0.15), FitFail* reason_out = nullptr) const {
+    last_fail_ = FitFail::OK;
+    out.ok = false;
+
+    if (buf.n < 80) { last_fail_ = FitFail::TOO_FEW_SAMPLES; if (reason_out) *reason_out = last_fail_; return false; }
 
     // Temperature range
     T tmin = buf.tempC[0], tmax = buf.tempC[0];
@@ -595,7 +659,6 @@ struct AccelCalibrator {
     const T trange = tmax - tmin;
     const T binW = (trange > T(1e-3)) ? (trange / (T)K_TBINS) : T(1);
 
-    // Use reusable workspace (reduces stack)
     auto& idx   = ws_.idx;
     auto& nbin  = ws_.nbin;
     auto& tsum  = ws_.tsum;
@@ -625,7 +688,9 @@ struct AccelCalibrator {
     T best_score = T(1e30);
     Eigen::Matrix<T,3,3> bestS = Eigen::Matrix<T,3,3>::Identity();
     T best_rms = T(0);
-    Vec3 best_center = Vec3::Zero();    
+    Vec3 best_center = Vec3::Zero();
+
+    FitFail worst_bin_reason = FitFail::TEMP_BINS_EMPTY;
 
     for (int k = 0; k < K_TBINS; ++k) {
       if (nbin[k] < 30) continue;
@@ -633,19 +698,19 @@ struct AccelCalibrator {
       for (int j = 0; j < nbin[k]; ++j) {
         xs[j] = buf.v[(int)idx[k][j]];
       }
-
       const T tmean = tsum[k] / (T)nbin[k];
 
       auto fitk = ellipsoid_to_sphere_robust<T>(
         xs, nbin[k], g,
         robust_iters, trim_frac,
-        T(1e-6), // ridge_rel (matches default)
-        g);      // expected_radius_for_checks
-      if (!fitk.ok) continue;
+        T(1e-6),
+        g);
+
+      if (!fitk.ok) { worst_bin_reason = fitk.reason; continue; }
 
       centers[nb] = fitk.b;
       temps[nb]   = tmean;
-      nb++;      
+      nb++;
 
       // score: rms + small penalty for fewer used points
       T score = fitk.rms + T(0.2) * (T(50) / (T)fitk.used);
@@ -657,7 +722,12 @@ struct AccelCalibrator {
       }
     }
 
-    if (nb < 1) return false;
+    if (nb < 1) {
+      last_fail_ = worst_bin_reason;
+      if (last_fail_ == FitFail::OK) last_fail_ = FitFail::TEMP_BINS_EMPTY;
+      if (reason_out) *reason_out = last_fail_;
+      return false;
+    }
 
     // Fit bias(T) from bin centers
     TempBias3<T> biasT;
@@ -666,6 +736,13 @@ struct AccelCalibrator {
       T ttmp[K_TBINS];
       for (int i = 0; i < nb; ++i) { btmp[i] = centers[i]; ttmp[i] = temps[i]; }
       biasT = fit_temp_bias3<T, K_TBINS>(btmp, ttmp, nb, T0);
+      // If regression ill-conditioned, we still succeed but keep k=0 fallback:
+      if (!biasT.ok) {
+        biasT.ok = true;
+        biasT.T0 = T0;
+        biasT.b0 = best_center;
+        biasT.k.setZero();
+      }
     } else {
       biasT.ok = true;
       biasT.T0 = T0;
@@ -678,15 +755,16 @@ struct AccelCalibrator {
     out.S = bestS;
     out.biasT = biasT;
     out.rms_mag = best_rms;
+
+    last_fail_ = FitFail::OK;
+    if (reason_out) *reason_out = FitFail::OK;
     return true;
   }
 };
 
+// ----------------------------
 // Calibrator: Magnetometer
-// Strategy:
-//  - Collect mag samples across orientations.
-//  - Robust ellipsoid->unit sphere gives (b, A_unit).
-//  - Preserve µT magnitude by scaling so median(||m_raw-b||) is maintained.
+// ----------------------------
 template <typename T, int N>
 struct MagCalibrator {
   static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
@@ -697,6 +775,9 @@ struct MagCalibrator {
   T min_norm_uT = T(5);
   T max_norm_uT = T(200);
 
+  mutable FitFail last_fail_ = FitFail::OK;
+  FitFail lastFail() const { return last_fail_; }
+
   void clear() { buf.clear(); }
 
   bool addSample(const Vec3& m_raw_uT) {
@@ -706,8 +787,11 @@ struct MagCalibrator {
     return buf.push(m_raw_uT, T(0));
   }
 
-  bool fit(MagCalibration<T>& out, int robust_iters = 3, T trim_frac = T(0.15)) const {
-    if (buf.n < 80) return false;
+  bool fit(MagCalibration<T>& out, int robust_iters = 3, T trim_frac = T(0.15), FitFail* reason_out = nullptr) const {
+    last_fail_ = FitFail::OK;
+    out.ok = false;
+
+    if (buf.n < 80) { last_fail_ = FitFail::TOO_FEW_SAMPLES; if (reason_out) *reason_out = last_fail_; return false; }
 
     // Degeneracy check radius estimate in µT space: median ||m - mean(m)||
     Vec3 mu = Vec3::Zero();
@@ -719,37 +803,41 @@ struct MagCalibrator {
     T B_est = median_of_array(rad_mu, buf.n);
 
     auto fit0 = ellipsoid_to_sphere_robust<T>(
-    buf.v, buf.n, T(1),
-    robust_iters, trim_frac,
-    T(1e-6), // ridge_rel (matches default)
-    B_est);  // expected_radius_for_checks in µT space    
-    if (!fit0.ok) return false;
+      buf.v, buf.n, T(1),
+      robust_iters, trim_frac,
+      T(1e-6),
+      B_est);
+
+    if (!fit0.ok) { last_fail_ = fit0.reason; if (reason_out) *reason_out = last_fail_; return false; }
 
     // Estimate field magnitude from median radius in raw µT space
     T radii[IMU_CAL_MAX_SAMPLES];
     int m = 0;
-    for (int i = 0; i < buf.n; ++i) {
-      radii[m++] = (buf.v[i] - fit0.b).norm();
-    }
+    for (int i = 0; i < buf.n; ++i) radii[m++] = (buf.v[i] - fit0.b).norm();
     T B_med = median_of_array(radii, m);
 
     // Typical Earth field is ~25-65 uT; allow broad
-    if (B_med < T(12) || B_med > T(120)) return false;
+    if (B_med < T(12) || B_med > T(120)) {
+      last_fail_ = FitFail::MAG_FIELD_OUT_OF_RANGE;
+      if (reason_out) *reason_out = last_fail_;
+      return false;
+    }
 
     out.ok = true;
     out.b = fit0.b;
     out.A = fit0.A * B_med;     // map to µT-like magnitude
     out.field_uT = B_med;
     out.rms = fit0.rms * B_med;
+
+    last_fail_ = FitFail::OK;
+    if (reason_out) *reason_out = FitFail::OK;
     return true;
   }
 };
 
+// ----------------------------
 // Calibrator: Gyroscope bias(T)
-// Strategy:
-//  - Collect stationary gyro samples while not moving.
-//  - Bin by temperature and estimate mean bias per bin.
-//  - Fit bias(T) via regression.
+// ----------------------------
 template <typename T, int N, int K_TBINS = 8>
 struct GyroCalibrator {
   static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
@@ -765,6 +853,9 @@ struct GyroCalibrator {
   T max_accel_dev = T(1.0);    // m/s^2
   T g = T(9.80665);
 
+  mutable FitFail last_fail_ = FitFail::OK;
+  FitFail lastFail() const { return last_fail_; }
+
   void clear() { buf.clear(); }
 
   bool addSample(const Vec3& w_raw, const Vec3& a_raw, T tempC) {
@@ -774,8 +865,11 @@ struct GyroCalibrator {
     return buf.push(w_raw, tempC);
   }
 
-  bool fit(GyroCalibration<T>& out) const {
-    if (buf.n < 80) return false;
+  bool fit(GyroCalibration<T>& out, FitFail* reason_out = nullptr) const {
+    last_fail_ = FitFail::OK;
+    out.ok = false;
+
+    if (buf.n < 80) { last_fail_ = FitFail::TOO_FEW_SAMPLES; if (reason_out) *reason_out = last_fail_; return false; }
 
     // Temperature range
     T tmin = buf.tempC[0], tmax = buf.tempC[0];
@@ -811,11 +905,22 @@ struct GyroCalibrator {
       tcenters[nb] = sumT[k] / (T)cnt[k];
       nb++;
     }
-    if (nb < 1) return false;
+    if (nb < 1) {
+      last_fail_ = FitFail::TEMP_BINS_EMPTY;
+      if (reason_out) *reason_out = last_fail_;
+      return false;
+    }
 
     TempBias3<T> biasT;
     if (nb >= 2) {
       biasT = fit_temp_bias3<T, K_TBINS>(bcenters, tcenters, nb, T0);
+      if (!biasT.ok) {
+        // fallback: still succeed with constant bias
+        biasT.ok = true;
+        biasT.T0 = T0;
+        biasT.b0 = bcenters[0];
+        biasT.k.setZero();
+      }
     } else {
       biasT.ok = true;
       biasT.T0 = T0;
@@ -826,6 +931,9 @@ struct GyroCalibrator {
     out.ok = true;
     out.S = Eigen::Matrix<T,3,3>::Identity();
     out.biasT = biasT;
+
+    last_fail_ = FitFail::OK;
+    if (reason_out) *reason_out = FitFail::OK;
     return true;
   }
 };
