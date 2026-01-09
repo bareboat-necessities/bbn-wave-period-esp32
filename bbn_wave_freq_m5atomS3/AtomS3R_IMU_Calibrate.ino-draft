@@ -1,28 +1,18 @@
 /*
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
-  Fixes:
-  - Stack-canary crash during accelCal.fit(): run fit() in a dedicated FreeRTOS task with large stack.
-  - UI: human prompts, short text, no “press while screen is down”.
-  - Cable-safe 6-pose set (NO USB-down):
-      1 Screen Up
-      2 Screen Down
-      3 Left Edge Down
-      4 Right Edge Down
-      5 Top Edge Down
-      6 Bottom Edge Down
-  - Pace control: Tap to start each pose; capture; BEEP; then Tap for next pose.
-  - Save + immediate readback verify.
+  Refactor goals:
+  - Separate wizard logic from UI and storage.
+  - Remove "everything static" god-class.
+  - Keep text upright during each pose capture (fix rotation "snaps back").
 
-  Controls (AtomS3R: BtnA is the screen button):
-  - Tap: start calibration / advance steps
-  - Triple-tap on home: erase saved calibration (with confirm)
+  Rotation bug root cause (most likely):
+  - UI helper functions (ui_wait_tap_, ui_fail_, done_and_wait_next_, etc.) always force ROT_READ.
+  - During capture, you set pose rotation once, but later UI calls set it back.
 
-  REQUIREMENTS:
-    - M5Unified
-    - ESP32 Arduino core (Preferences)
-    - ArduinoEigenDense
-    - CalibrateIMU_alt.h
+  Controls:
+  - Tap: start / advance
+  - Triple-tap on home: erase
 
   Units:
     accel: m/s^2
@@ -35,7 +25,7 @@
 #include <Preferences.h>
 
 #include <stdint.h>
-#include <stddef.h>     // offsetof
+#include <stddef.h> // offsetof
 #include <string.h>
 #include <math.h>
 
@@ -53,255 +43,277 @@ using Vector3f = Eigen::Matrix<float,3,1>;
 using Matrix3f = Eigen::Matrix<float,3,3>;
 using M5_IMU   = decltype(M5.Imu);
 
-class ImuCalApp {
-public:
-  static void begin() {
-    auto cfg = M5.config();
-    M5.begin(cfg);
-    Serial.begin(115200);
-
-    // Default “reading” rotation (you can change 0/1/2/3 if you want)
-    M5.Display.setRotation(ROT_READ);
-
-    // Disable M5 internal calibration influence
-    M5.Imu.setCalibration(0, 0, 0);
-
-    if (!M5.Imu.isEnabled()) {
-      ui_fail_("IMU", "Not found");
-      while (true) delay(100);
-    }
-
-    have_blob_ = load_cal_from_nvs_();
-    draw_home_();
-  }
-
-  static void tick() {
-    M5.update();
-
-    // tap counting (single = start, triple = erase)
-    if (M5.BtnA.wasPressed()) {
-      tap_count_++;
-      tap_deadline_ms_ = millis() + TAP_WINDOW_MS;
-    }
-
-    if (tap_count_ > 0 && (int32_t)(millis() - tap_deadline_ms_) > 0) {
-      if (tap_count_ >= 3) {
-        if (erase_confirm_()) {
-          erase_our_cal_from_nvs_();
-          M5.Imu.clearOffsetData();
-          have_blob_ = load_cal_from_nvs_();
-          if (!have_blob_) {
-            memset(&cal_blob_, 0, sizeof(cal_blob_));
-            rebuild_runtime_cals_from_blob_();
-          }
-        }
-        draw_home_();
-      } else {
-        (void)run_wizard_();
-        have_blob_ = load_cal_from_nvs_();
-        draw_home_();
-      }
-      tap_count_ = 0;
-      tap_deadline_ms_ = 0;
-    }
-
-    stream_serial_();
-    delay(5);
-  }
-
-private:
-  // ----------------------------
-  // Tuning knobs
-  // ----------------------------
+// ============================================================
+// Settings / constants
+// ============================================================
+struct ImuCalCfg {
   static constexpr float g_std   = 9.80665f;
   static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
 
   // UI rotation:
   // ROT_READ = how you like it while holding/reading prompts.
-  // pose rotations = used during capture so text is upright in that pose.
   static constexpr uint8_t ROT_READ = 1;
 
   static constexpr uint32_t PLACE_TIME_MS    = 9000;
   static constexpr uint32_t ACCEL_TIMEOUT_MS = 80000;
   static constexpr uint32_t GYRO_TIMEOUT_MS  = 50000;
   static constexpr uint32_t MAG_TIMEOUT_MS   = 140000;
-
   static constexpr uint32_t STUCK_MS         = 15000;
 
   static constexpr int ACCEL_NEED_POSE       = 60;
   static constexpr int GYRO_NEED             = 220;
   static constexpr int MAG_NEED              = 260;
 
-  // Never call fit() unless we have enough accepted samples (avoids crashes in some implementations)
   static constexpr int ACCEL_MIN_TO_FIT      = 220;
   static constexpr int GYRO_MIN_TO_FIT       = 120;
   static constexpr int MAG_MIN_TO_FIT        = 120;
 
-  // Fit tasks (big stack to avoid stack canary crash)
-  static constexpr uint32_t FIT_STACK_WORDS  = 16384;   // FreeRTOS stack depth units (large on purpose)
+  static constexpr uint32_t FIT_STACK_WORDS  = 16384; // FreeRTOS stack depth units
   static constexpr uint32_t FIT_TIMEOUT_MS   = 25000;
 
   static constexpr uint32_t TAP_WINDOW_MS    = 650;
+};
 
-  // ----------------------------
-  // Axis mapping (your pipeline)
-  // ----------------------------
-  static inline Vector3f map_acc_to_body_ned_(const m5::imu_3d_t& a_g_units) {
-    return Vector3f(a_g_units.y * g_std, a_g_units.x * g_std, -a_g_units.z * g_std);
-  }
-  static inline Vector3f map_gyr_to_body_ned_(const m5::imu_3d_t& w_deg_s) {
-    return Vector3f(w_deg_s.y * DEG2RAD, w_deg_s.x * DEG2RAD, -w_deg_s.z * DEG2RAD);
-  }
-  static inline Vector3f map_mag_to_body_uT_(const m5::imu_3d_t& m_raw) {
-    return Vector3f(m_raw.y / 10.0f, m_raw.x / 10.0f, -m_raw.z / 10.0f);
-  }
+// ============================================================
+// Cal blob + CRC (moved out of App)
+// ============================================================
+struct ImuCalBlobV1 {
+  static constexpr uint32_t IMU_CAL_MAGIC   = 0x434C554D; // 'MULC'
+  static constexpr uint16_t IMU_CAL_VERSION = 1;
 
-  // ----------------------------
-  // NVS blob + CRC
-  // ----------------------------
-  static constexpr uint32_t IMU_CAL_MAGIC    = 0x434C554D; // 'MULC'
-  static constexpr uint16_t IMU_CAL_VERSION  = 1;
+  uint32_t magic = IMU_CAL_MAGIC;
+  uint16_t version = IMU_CAL_VERSION;
+  uint16_t size_bytes = sizeof(ImuCalBlobV1);
 
-  struct CalBlobV1 {
-    uint32_t magic = IMU_CAL_MAGIC;
-    uint16_t version = IMU_CAL_VERSION;
-    uint16_t size_bytes = sizeof(CalBlobV1);
+  uint8_t  accel_ok = 0;
+  float    accel_g = ImuCalCfg::g_std;
+  float    accel_S[9]{};
+  float    accel_T0 = 25.0f;
+  float    accel_b0[3]{};
+  float    accel_k[3]{};
+  float    accel_rms_mag = 0.0f;
 
-    uint8_t  accel_ok = 0;
-    float    accel_g = g_std;
-    float    accel_S[9];
-    float    accel_T0 = 25.0f;
-    float    accel_b0[3];
-    float    accel_k[3];
-    float    accel_rms_mag = 0.0f;
+  uint8_t  gyro_ok = 0;
+  float    gyro_T0 = 25.0f;
+  float    gyro_b0[3]{};
+  float    gyro_k[3]{};
 
-    uint8_t  gyro_ok = 0;
-    float    gyro_T0 = 25.0f;
-    float    gyro_b0[3];
-    float    gyro_k[3];
+  uint8_t  mag_ok = 0;
+  float    mag_A[9]{};
+  float    mag_b[3]{};
+  float    mag_field_uT = 0.0f;
+  float    mag_rms = 0.0f;
 
-    uint8_t  mag_ok = 0;
-    float    mag_A[9];
-    float    mag_b[3];
-    float    mag_field_uT = 0.0f;
-    float    mag_rms = 0.0f;
+  uint32_t crc = 0;
+};
+static constexpr size_t IMU_CAL_CRC_LEN = offsetof(ImuCalBlobV1, crc);
 
-    uint32_t crc = 0;
-  };
-  static constexpr size_t CRC_LEN = offsetof(CalBlobV1, crc);
-
-  static uint32_t crc32_ieee_(const uint8_t* data, size_t n) {
-    uint32_t crc = 0xFFFFFFFFu;
-    for (size_t i = 0; i < n; ++i) {
-      crc ^= (uint32_t)data[i];
-      for (int k = 0; k < 8; ++k) {
-        uint32_t mask = -(crc & 1u);
-        crc = (crc >> 1) ^ (0xEDB88320u & mask);
-      }
+static uint32_t crc32_ieee(const uint8_t* data, size_t n) {
+  uint32_t crc = 0xFFFFFFFFu;
+  for (size_t i = 0; i < n; ++i) {
+    crc ^= (uint32_t)data[i];
+    for (int k = 0; k < 8; ++k) {
+      uint32_t mask = -(crc & 1u);
+      crc = (crc >> 1) ^ (0xEDB88320u & mask);
     }
-    return ~crc;
   }
+  return ~crc;
+}
 
-  static Matrix3f mat_from_rowmajor9_(const float a[9]) {
-    Matrix3f M;
-    M << a[0], a[1], a[2],
-         a[3], a[4], a[5],
-         a[6], a[7], a[8];
-    return M;
-  }
-  static void mat_to_rowmajor9_(const Matrix3f& M, float a[9]) {
-    a[0]=M(0,0); a[1]=M(0,1); a[2]=M(0,2);
-    a[3]=M(1,0); a[4]=M(1,1); a[5]=M(1,2);
-    a[6]=M(2,0); a[7]=M(2,1); a[8]=M(2,2);
-  }
+static Matrix3f mat_from_rowmajor9(const float a[9]) {
+  Matrix3f M;
+  M << a[0], a[1], a[2],
+       a[3], a[4], a[5],
+       a[6], a[7], a[8];
+  return M;
+}
+static void mat_to_rowmajor9(const Matrix3f& M, float a[9]) {
+  a[0]=M(0,0); a[1]=M(0,1); a[2]=M(0,2);
+  a[3]=M(1,0); a[4]=M(1,1); a[5]=M(1,2);
+  a[6]=M(2,0); a[7]=M(2,1); a[8]=M(2,2);
+}
 
-  static void rebuild_runtime_cals_from_blob_() {
-    g_acc_cal_.ok = (cal_blob_.accel_ok != 0);
-    g_acc_cal_.g  = cal_blob_.accel_g;
-    g_acc_cal_.S  = mat_from_rowmajor9_(cal_blob_.accel_S);
-    g_acc_cal_.biasT.ok = g_acc_cal_.ok;
-    g_acc_cal_.biasT.T0 = cal_blob_.accel_T0;
-    g_acc_cal_.biasT.b0 = Vector3f(cal_blob_.accel_b0[0], cal_blob_.accel_b0[1], cal_blob_.accel_b0[2]);
-    g_acc_cal_.biasT.k  = Vector3f(cal_blob_.accel_k[0],  cal_blob_.accel_k[1],  cal_blob_.accel_k[2]);
-    g_acc_cal_.rms_mag  = cal_blob_.accel_rms_mag;
+// ============================================================
+// NVS store (only persistence)
+// ============================================================
+class ImuCalStoreNvs {
+public:
+  bool load(ImuCalBlobV1& out) {
+    Preferences prefs;
+    prefs.begin("imu_cal", true);
+    size_t n = prefs.getBytesLength("blob");
+    if (n != sizeof(ImuCalBlobV1)) { prefs.end(); return false; }
 
-    g_gyr_cal_.ok = (cal_blob_.gyro_ok != 0);
-    g_gyr_cal_.S  = Matrix3f::Identity();
-    g_gyr_cal_.biasT.ok = g_gyr_cal_.ok;
-    g_gyr_cal_.biasT.T0 = cal_blob_.gyro_T0;
-    g_gyr_cal_.biasT.b0 = Vector3f(cal_blob_.gyro_b0[0], cal_blob_.gyro_b0[1], cal_blob_.gyro_b0[2]);
-    g_gyr_cal_.biasT.k  = Vector3f(cal_blob_.gyro_k[0],  cal_blob_.gyro_k[1],  cal_blob_.gyro_k[2]);
-
-    g_mag_cal_.ok = (cal_blob_.mag_ok != 0);
-    g_mag_cal_.A  = mat_from_rowmajor9_(cal_blob_.mag_A);
-    g_mag_cal_.b  = Vector3f(cal_blob_.mag_b[0], cal_blob_.mag_b[1], cal_blob_.mag_b[2]);
-    g_mag_cal_.field_uT = cal_blob_.mag_field_uT;
-    g_mag_cal_.rms      = cal_blob_.mag_rms;
-  }
-
-  static bool load_cal_from_nvs_() {
-    prefs_.begin("imu_cal", true);
-    size_t n = prefs_.getBytesLength("blob");
-    if (n != sizeof(CalBlobV1)) { prefs_.end(); return false; }
-
-    CalBlobV1 tmp;
-    size_t got = prefs_.getBytes("blob", &tmp, sizeof(tmp));
-    prefs_.end();
+    ImuCalBlobV1 tmp;
+    size_t got = prefs.getBytes("blob", &tmp, sizeof(tmp));
+    prefs.end();
     if (got != sizeof(tmp)) return false;
 
-    if (tmp.magic != IMU_CAL_MAGIC || tmp.version != IMU_CAL_VERSION || tmp.size_bytes != sizeof(CalBlobV1))
+    if (tmp.magic != ImuCalBlobV1::IMU_CAL_MAGIC ||
+        tmp.version != ImuCalBlobV1::IMU_CAL_VERSION ||
+        tmp.size_bytes != sizeof(ImuCalBlobV1)) {
       return false;
+    }
 
     uint32_t want = tmp.crc;
     tmp.crc = 0;
-    uint32_t have = crc32_ieee_((const uint8_t*)&tmp, CRC_LEN);
+    uint32_t have = crc32_ieee((const uint8_t*)&tmp, IMU_CAL_CRC_LEN);
     if (have != want) return false;
 
-    cal_blob_ = tmp;
-    rebuild_runtime_cals_from_blob_();
+    out = tmp;
     return true;
   }
 
-  static bool save_cal_to_nvs_(const CalBlobV1& in_blob) {
-    CalBlobV1 tmp = in_blob;
-    tmp.magic = IMU_CAL_MAGIC;
-    tmp.version = IMU_CAL_VERSION;
-    tmp.size_bytes = sizeof(CalBlobV1);
+  bool save(const ImuCalBlobV1& in) {
+    ImuCalBlobV1 tmp = in;
+    tmp.magic = ImuCalBlobV1::IMU_CAL_MAGIC;
+    tmp.version = ImuCalBlobV1::IMU_CAL_VERSION;
+    tmp.size_bytes = sizeof(ImuCalBlobV1);
     tmp.crc = 0;
-    tmp.crc = crc32_ieee_((const uint8_t*)&tmp, CRC_LEN);
+    tmp.crc = crc32_ieee((const uint8_t*)&tmp, IMU_CAL_CRC_LEN);
 
-    prefs_.begin("imu_cal", false);
-    size_t wrote = prefs_.putBytes("blob", &tmp, sizeof(tmp));
-    prefs_.end();
+    Preferences prefs;
+    prefs.begin("imu_cal", false);
+    size_t wrote = prefs.putBytes("blob", &tmp, sizeof(tmp));
+    prefs.end();
     return (wrote == sizeof(tmp));
   }
 
-  static void erase_our_cal_from_nvs_() {
-    prefs_.begin("imu_cal", false);
-    prefs_.remove("blob");
-    prefs_.end();
+  void erase() {
+    Preferences prefs;
+    prefs.begin("imu_cal", false);
+    prefs.remove("blob");
+    prefs.end();
+  }
+};
+
+// ============================================================
+// Runtime calibration state (apply + rebuild-from-blob)
+// ============================================================
+struct RuntimeCals {
+  imu_cal::AccelCalibration<float> acc{};
+  imu_cal::GyroCalibration<float>  gyr{};
+  imu_cal::MagCalibration<float>   mag{};
+
+  void rebuildFromBlob(const ImuCalBlobV1& b) {
+    acc.ok = (b.accel_ok != 0);
+    acc.g  = b.accel_g;
+    acc.S  = mat_from_rowmajor9(b.accel_S);
+    acc.biasT.ok = acc.ok;
+    acc.biasT.T0 = b.accel_T0;
+    acc.biasT.b0 = Vector3f(b.accel_b0[0], b.accel_b0[1], b.accel_b0[2]);
+    acc.biasT.k  = Vector3f(b.accel_k[0],  b.accel_k[1],  b.accel_k[2]);
+    acc.rms_mag  = b.accel_rms_mag;
+
+    gyr.ok = (b.gyro_ok != 0);
+    gyr.S  = Matrix3f::Identity();
+    gyr.biasT.ok = gyr.ok;
+    gyr.biasT.T0 = b.gyro_T0;
+    gyr.biasT.b0 = Vector3f(b.gyro_b0[0], b.gyro_b0[1], b.gyro_b0[2]);
+    gyr.biasT.k  = Vector3f(b.gyro_k[0],  b.gyro_k[1],  b.gyro_k[2]);
+
+    mag.ok = (b.mag_ok != 0);
+    mag.A  = mat_from_rowmajor9(b.mag_A);
+    mag.b  = Vector3f(b.mag_b[0], b.mag_b[1], b.mag_b[2]);
+    mag.field_uT = b.mag_field_uT;
+    mag.rms      = b.mag_rms;
   }
 
-  // ----------------------------
-  // UI helpers (short)
-  // ----------------------------
-  static void ui_clear_() {
+  Vector3f applyAccel(const Vector3f& a_raw, float tempC) const {
+    return acc.ok ? acc.apply(a_raw, tempC) : a_raw;
+  }
+  Vector3f applyGyro(const Vector3f& w_raw, float tempC) const {
+    return gyr.ok ? gyr.apply(w_raw, tempC) : w_raw;
+  }
+  Vector3f applyMag(const Vector3f& m_raw) const {
+    return mag.ok ? mag.apply(m_raw) : m_raw;
+  }
+};
+
+// ============================================================
+// IMU source (read + map) only
+// ============================================================
+struct ImuSample {
+  Vector3f a;   // m/s^2 in BODY NED
+  Vector3f w;   // rad/s in BODY NED
+  Vector3f m;   // uT in BODY
+  float tempC;
+  uint32_t mask;
+};
+
+class M5ImuSource {
+public:
+  bool read(ImuSample& out) {
+    out.mask = M5.Imu.update();
+    if (!out.mask) return false;
+
+    auto data = M5.Imu.getImuData();
+    out.tempC = NAN;
+    M5.Imu.getTemp(&out.tempC);
+
+    out.a = map_acc_to_body_ned_(data.accel);
+    out.w = map_gyr_to_body_ned_(data.gyro);
+    out.m = map_mag_to_body_uT_(data.mag);
+    return true;
+  }
+
+private:
+  static Vector3f map_acc_to_body_ned_(const m5::imu_3d_t& a_g_units) {
+    return Vector3f(a_g_units.y * ImuCalCfg::g_std,
+                    a_g_units.x * ImuCalCfg::g_std,
+                   -a_g_units.z * ImuCalCfg::g_std);
+  }
+  static Vector3f map_gyr_to_body_ned_(const m5::imu_3d_t& w_deg_s) {
+    return Vector3f(w_deg_s.y * ImuCalCfg::DEG2RAD,
+                    w_deg_s.x * ImuCalCfg::DEG2RAD,
+                   -w_deg_s.z * ImuCalCfg::DEG2RAD);
+  }
+  static Vector3f map_mag_to_body_uT_(const m5::imu_3d_t& m_raw) {
+    return Vector3f(m_raw.y / 10.0f,
+                    m_raw.x / 10.0f,
+                   -m_raw.z / 10.0f);
+  }
+};
+
+// ============================================================
+// UI: M5 screen + rotation lock (fixes your snapping rotation)
+// ============================================================
+class M5Ui {
+public:
+  explicit M5Ui(uint8_t rot_read) : rot_read_(rot_read), rot_active_(rot_read) {}
+
+  // Rotation control:
+  // - setReadRotation: preferred for normal prompts
+  // - lockRotation: keep this rotation until unlockRotation
+  void setReadRotation() { setRotationInternal_(rot_read_); }
+  void lockRotation(uint8_t rot) { rot_locked_ = true; setRotationInternal_(rot); }
+  void unlockRotation() { rot_locked_ = false; setRotationInternal_(rot_read_); }
+
+  // IMPORTANT: all UI drawing calls use rot_active_ (not hard-coded ROT_READ),
+  // so we don't accidentally flip rotation mid-capture.
+  void clear() {
+    applyRotation_();
     M5.Display.fillScreen(TFT_BLACK);
     M5.Display.setCursor(0,0);
   }
-  static void ui_title_(const char* t) {
-    ui_clear_();
+
+  void title(const char* t) {
+    clear();
     M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
     M5.Display.setTextSize(2);
     M5.Display.println(t);
     M5.Display.setTextSize(1);
     M5.Display.println();
   }
-  static void ui_line_(const char* s) {
+
+  void line(const char* s) {
+    applyRotation_();
     M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
     M5.Display.println(s);
   }
-  static void ui_bar_(float t01) {
+
+  void bar(float t01) {
+    applyRotation_();
     if (t01 < 0) t01 = 0;
     if (t01 > 1) t01 = 1;
     int x = 6;
@@ -312,36 +324,38 @@ private:
     int fillw = (int)((w-2) * t01);
     M5.Display.fillRect(x+1, y+1, fillw, h-2, TFT_GREEN);
   }
-  static void beep_ok_()  { M5.Speaker.tone(2200, 60); delay(80); M5.Speaker.tone(2600, 60); }
-  static void beep_bad_() { M5.Speaker.tone(400, 120); delay(140); M5.Speaker.tone(300, 160); }
 
-  static void ui_wait_tap_(const char* title, const char* l1, const char* l2=nullptr) {
-    M5.Display.setRotation(ROT_READ);
-    ui_title_(title);
-    ui_line_(l1);
-    if (l2) ui_line_(l2);
-    ui_line_("");
-    ui_line_("Tap to continue");
+  void beepOk()  { M5.Speaker.tone(2200, 60); delay(80); M5.Speaker.tone(2600, 60); }
+  void beepBad() { M5.Speaker.tone(400, 120); delay(140); M5.Speaker.tone(300, 160); }
+
+  void waitTap(const char* titleText, const char* l1, const char* l2=nullptr) {
+    // Do NOT force read rotation if locked (pose capture wants its own rotation).
+    if (!rot_locked_) setReadRotation();
+    title(titleText);
+    line(l1);
+    if (l2) line(l2);
+    line("");
+    line("Tap to continue");
     while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
   }
 
-  static void ui_fail_(const char* where, const char* why) {
-    M5.Display.setRotation(ROT_READ);
-    ui_title_("FAILED");
-    ui_line_(where);
-    ui_line_(why);
-    ui_line_("");
-    ui_line_("Tap to return");
-    beep_bad_();
+  void fail(const char* where, const char* why) {
+    if (!rot_locked_) setReadRotation();
+    title("FAILED");
+    line(where);
+    line(why);
+    line("");
+    line("Tap to return");
+    beepBad();
     while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
   }
 
-  static bool erase_confirm_() {
-    M5.Display.setRotation(ROT_READ);
-    ui_title_("ERASE?");
-    ui_line_("Delete saved cal");
-    ui_line_("Tap = confirm");
-    ui_line_("Wait = cancel");
+  bool eraseConfirm() {
+    setReadRotation();
+    title("ERASE?");
+    line("Delete saved cal");
+    line("Tap = confirm");
+    line("Wait = cancel");
     uint32_t t0 = millis();
     while (millis() - t0 < 4500) {
       M5.update();
@@ -351,276 +365,109 @@ private:
     return false;
   }
 
-  static void draw_home_() {
-    M5.Display.setRotation(ROT_READ);
-    ui_title_("IMU CAL");
-    M5.Display.printf("BLOB: %s\n", have_blob_ ? "YES" : "NO");
-    M5.Display.printf("A:%d  G:%d  M:%d\n", (int)g_acc_cal_.ok, (int)g_gyr_cal_.ok, (int)g_mag_cal_.ok);
-    ui_line_("");
-    ui_line_("Tap: calibrate");
-    ui_line_("Tap x3: erase");
+private:
+  void setRotationInternal_(uint8_t rot) {
+    rot_active_ = rot;
+    applyRotation_();
   }
 
-  static void place_delay_(const char* title, const char* line, uint32_t ms) {
-    ui_title_(title);
-    ui_line_(line);
-    ui_line_("Place it now");
-    ui_line_("Don't touch");
-    uint32_t t0 = millis();
-    while (millis() - t0 < ms) {
-      ui_bar_((float)(millis() - t0) / (float)ms);
-      delay(30);
-    }
+  void applyRotation_() {
+    // Keep display rotation consistent and centralized.
+    M5.Display.setRotation(rot_active_);
   }
 
-  static void done_and_wait_next_(const char* msg) {
-    M5.Display.setRotation(ROT_READ);
-    ui_title_("OK");
-    ui_line_(msg);
-    ui_line_("");
-    ui_line_("Tap for next");
-    beep_ok_();
-    while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
-  }
+private:
+  uint8_t rot_read_;
+  uint8_t rot_active_;
+  bool rot_locked_ = false;
+};
 
-  // ----------------------------
-  // Sensors
-  // ----------------------------
-  static bool read_sensors_(Vector3f& a, Vector3f& w, Vector3f& m, float& tempC, uint32_t& mask_out) {
-    mask_out = M5.Imu.update();
-    if (!mask_out) return false;
-    auto data = M5.Imu.getImuData();
-    tempC = NAN;
-    M5.Imu.getTemp(&tempC);
+// ============================================================
+// FitRunner: run fit() on big-stack FreeRTOS task
+// ============================================================
+class FitRunner {
+public:
+  explicit FitRunner(M5Ui& ui) : ui_(ui) {}
 
-    a = map_acc_to_body_ned_(data.accel);
-    w = map_gyr_to_body_ned_(data.gyro);
-    m = map_mag_to_body_uT_(data.mag);
-    return true;
-  }
-
-  // ----------------------------
-  // Capture steps (tap -> place -> capture -> beep -> tap next)
-  // ----------------------------
-  struct Pose {
-    const char* name;
-    const char* note;
-    uint8_t rot_capture;
-  };
-
-  static bool capture_accel_pose_(const Pose& p) {
-    ui_wait_tap_("ACCEL", p.name, p.note);
-    place_delay_("ACCEL", p.name, PLACE_TIME_MS);
-
-    // Rotate during capture so text is upright in that physical pose
-    M5.Display.setRotation(p.rot_capture);
-
-    int start_n = accelCal_.buf.n;
-    int target_n = start_n + ACCEL_NEED_POSE;
-
-    ui_title_("ACCEL");
-    ui_line_(p.name);
-
-    uint32_t t0 = millis();
-    uint32_t last_change = millis();
-    int last_n = accelCal_.buf.n;
-
-    while (millis() - t0 < ACCEL_TIMEOUT_MS) {
-      Vector3f a,w,m;
-      float T;
-      uint32_t mask;
-      if (!read_sensors_(a,w,m,T,mask)) { delay(2); continue; }
-
-      accelCal_.addSample(a, w, T);
-
-      int n = accelCal_.buf.n;
-      if (n != last_n) { last_n = n; last_change = millis(); }
-
-      if (millis() - last_change > STUCK_MS) {
-        Serial.printf("[ACC] stuck pose='%s' got=%d\n", p.name, accelCal_.buf.n - start_n);
-        M5.Display.setRotation(ROT_READ);
-        ui_fail_("ACCEL", "No samples accepted");
-        return false;
+  template <class Fn>
+  bool run(const char* what, uint32_t stackWords, uint32_t timeoutMs, Fn&& fn) {
+    struct JobBase {
+      virtual ~JobBase() = default;
+      virtual bool run() = 0;
+      volatile bool done = false;
+      volatile bool ok   = false;
+      static void trampoline(void* p) {
+        JobBase* j = (JobBase*)p;
+        j->ok = j->run();
+        j->done = true;
+        vTaskDelete(nullptr);
       }
+    };
 
-      ui_bar_((float)(n - start_n) / (float)ACCEL_NEED_POSE);
-      if (n >= target_n) {
-        M5.Display.setRotation(ROT_READ);
-        done_and_wait_next_(p.name);
-        return true;
-      }
+    struct Job : JobBase {
+      Fn fn;
+      explicit Job(Fn&& f) : fn(std::move(f)) {}
+      bool run() override { return fn(); }
+    };
 
-      delay(5);
-    }
+    auto* job = new Job(std::forward<Fn>(fn));
 
-    Serial.printf("[ACC] timeout pose='%s' got=%d\n", p.name, accelCal_.buf.n - start_n);
-    M5.Display.setRotation(ROT_READ);
-    ui_fail_("ACCEL", "Timeout");
-    return false;
-  }
+    ui_.unlockRotation();
+    ui_.title("FIT");
+    ui_.line(what);
 
-  static bool capture_gyro_() {
-    ui_wait_tap_("GYRO", "SCREEN UP", "On table, still");
-    place_delay_("GYRO", "SCREEN UP", PLACE_TIME_MS);
-
-    M5.Display.setRotation(ROT_READ);
-
-    int start_n = gyroCal_.buf.n;
-    int target_n = start_n + GYRO_NEED;
-
-    ui_title_("GYRO");
-    ui_line_("Capturing");
-
-    uint32_t t0 = millis();
-    uint32_t last_change = millis();
-    int last_n = gyroCal_.buf.n;
-
-    while (millis() - t0 < GYRO_TIMEOUT_MS) {
-      Vector3f a,w,m;
-      float T;
-      uint32_t mask;
-      if (!read_sensors_(a,w,m,T,mask)) { delay(2); continue; }
-
-      gyroCal_.addSample(w, a, T);
-
-      int n = gyroCal_.buf.n;
-      if (n != last_n) { last_n = n; last_change = millis(); }
-
-      if (millis() - last_change > STUCK_MS) {
-        Serial.printf("[GYR] stuck got=%d\n", gyroCal_.buf.n - start_n);
-        ui_fail_("GYRO", "No samples accepted");
-        return false;
-      }
-
-      ui_bar_((float)(n - start_n) / (float)GYRO_NEED);
-      if (n >= target_n) {
-        done_and_wait_next_("GYRO done");
-        return true;
-      }
-
-      delay(5);
-    }
-
-    ui_fail_("GYRO", "Timeout");
-    return false;
-  }
-
-  static bool capture_mag_() {
-    ui_wait_tap_("MAG", "Rotate slow", "Big loops");
-    M5.Display.setRotation(ROT_READ);
-
-    int start_n = magCal_.buf.n;
-    int target_n = start_n + MAG_NEED;
-
-    ui_title_("MAG");
-    ui_line_("Rotate now");
-
-    uint32_t t0 = millis();
-    uint32_t last_change = millis();
-    int last_n = magCal_.buf.n;
-
-    while (millis() - t0 < MAG_TIMEOUT_MS) {
-      Vector3f a,w,m;
-      float T;
-      uint32_t mask;
-      if (!read_sensors_(a,w,m,T,mask)) { delay(2); continue; }
-
-      if (mask & (uint32_t)M5_IMU::sensor_mask_mag) {
-        magCal_.addSample(m);
-      }
-
-      int n = magCal_.buf.n;
-      if (n != last_n) { last_n = n; last_change = millis(); }
-
-      if (millis() - last_change > STUCK_MS) {
-        Serial.printf("[MAG] stuck got=%d\n", magCal_.buf.n - start_n);
-        ui_fail_("MAG", "No mag samples");
-        return false;
-      }
-
-      ui_bar_((float)(n - start_n) / (float)MAG_NEED);
-      if (n >= target_n) {
-        done_and_wait_next_("MAG done");
-        return true;
-      }
-
-      delay(5);
-    }
-
-    ui_fail_("MAG", "Timeout");
-    return false;
-  }
-
-  // ----------------------------
-  // Fit in big-stack task (prevents stack-canary crash)
-  // ----------------------------
-  static volatile bool fit_done_;
-  static volatile bool fit_ok_;
-
-  static imu_cal::AccelCalibration<float> acc_out_;
-  static imu_cal::GyroCalibration<float>  gyr_out_;
-  static imu_cal::MagCalibration<float>   mag_out_;
-
-  static void acc_fit_task_(void*) {
-    bool ok = accelCal_.fit(acc_out_, 3, 0.15f);
-    fit_ok_ = ok && acc_out_.ok;
-    fit_done_ = true;
-    vTaskDelete(nullptr);
-  }
-  static void gyr_fit_task_(void*) {
-    bool ok = gyroCal_.fit(gyr_out_);
-    fit_ok_ = ok && gyr_out_.ok;
-    fit_done_ = true;
-    vTaskDelete(nullptr);
-  }
-  static void mag_fit_task_(void*) {
-    bool ok = magCal_.fit(mag_out_, 3, 0.15f);
-    fit_ok_ = ok && mag_out_.ok;
-    fit_done_ = true;
-    vTaskDelete(nullptr);
-  }
-
-  static bool run_fit_task_(TaskFunction_t fn, const char* what) {
-    fit_done_ = false;
-    fit_ok_   = false;
-
-    ui_title_("FIT");
-    ui_line_(what);
-
-    BaseType_t r = xTaskCreatePinnedToCore(fn, what, FIT_STACK_WORDS, nullptr, 1, nullptr, 1);
-    if (r != pdPASS) {
-      ui_fail_("FIT", "Task create failed");
+    if (xTaskCreatePinnedToCore(&JobBase::trampoline, what, stackWords, job, 1, nullptr, 1) != pdPASS) {
+      delete job;
+      ui_.fail("FIT", "Task create failed");
       return false;
     }
 
     uint32_t t0 = millis();
-    float phase = 0.0f;
-
-    while (!fit_done_) {
-      if (millis() - t0 > FIT_TIMEOUT_MS) {
-        ui_fail_("FIT", "Timeout");
+    float ph = 0.f;
+    while (!job->done) {
+      if (millis() - t0 > timeoutMs) {
+        // Optional: add cancellation plumbing if you want; for now fail.
+        ui_.fail("FIT", "Timeout");
+        delete job;
         return false;
       }
-      // little animated bar
-      phase += 0.07f;
-      float v = 0.5f + 0.5f * sinf(phase);
-      ui_bar_(v);
+      ph += 0.07f;
+      ui_.bar(0.5f + 0.5f * sinf(ph));
       delay(30);
     }
 
-    if (!fit_ok_) {
-      ui_fail_("FIT", "Fit failed");
-      return false;
-    }
+    bool ok = job->ok;
+    delete job;
 
-    beep_ok_();
+    if (!ok) { ui_.fail("FIT", "Fit failed"); return false; }
+    ui_.beepOk();
     return true;
   }
 
-  // ----------------------------
-  // Wizard
-  // ----------------------------
-  static bool run_wizard_() {
+private:
+  M5Ui& ui_;
+};
+
+// ============================================================
+// Wizard logic (no home screen / tap counting; just workflow)
+// ============================================================
+struct Pose {
+  const char* name;
+  const char* note;
+  uint8_t rot_capture;
+};
+
+class ImuCalWizard {
+public:
+  ImuCalWizard(M5Ui& ui, M5ImuSource& imu, ImuCalStoreNvs& store, FitRunner& fit)
+    : ui_(ui), imu_(imu), store_(store), fit_(fit) {}
+
+  // outputs for building blob
+  imu_cal::AccelCalibration<float> acc_out{};
+  imu_cal::GyroCalibration<float>  gyr_out{};
+  imu_cal::MagCalibration<float>   mag_out{};
+
+  bool run() {
     Serial.println("[WIZ] start");
 
     // wipe M5 offsets + disable M5 internal calibration
@@ -631,142 +478,396 @@ private:
     gyroCal_.clear();
     magCal_.clear();
 
-    ui_wait_tap_("IMU CAL", "6 poses", "Tap each step");
+    ui_.unlockRotation();
+    ui_.waitTap("IMU CAL", "6 poses", "Tap each step");
 
-    // Best-effort rotations for “upright text” in each pose.
-    // If one edge reads upside-down, swap 0<->2 for that pose.
+    // If text orientation is wrong for your hardware, change the rotations here.
+    // Rule: rot_capture is the rotation you want during BOTH capture and UI for that pose.
     const Pose poses[6] = {
-      {"1/6 SCREEN UP",     nullptr,  ROT_READ},
-      {"2/6 SCREEN DOWN",   "Wait for beep", ROT_READ},
-      {"3/6 LEFT EDGE",     nullptr,  0},
-      {"4/6 RIGHT EDGE",    nullptr,  2},
-      {"5/6 TOP EDGE",      nullptr,  0},
-      {"6/6 BOTTOM EDGE",   nullptr,  2},
+      {"1/6 SCREEN UP",     nullptr, ImuCalCfg::ROT_READ},
+      {"2/6 SCREEN DOWN",   "Wait for beep", ImuCalCfg::ROT_READ},
+      {"3/6 LEFT EDGE",     nullptr, 0},
+      {"4/6 RIGHT EDGE",    nullptr, 2},
+      {"5/6 TOP EDGE",      nullptr, 0},
+      {"6/6 BOTTOM EDGE",   nullptr, 2},
     };
 
     for (int i = 0; i < 6; ++i) {
-      if (!capture_accel_pose_(poses[i])) return false;
+      if (!captureAccelPose(poses[i])) return false;
     }
 
-    int acc_n = accelCal_.buf.n;
-    Serial.printf("[ACC] accepted=%d\n", acc_n);
-    if (acc_n < ACCEL_MIN_TO_FIT) {
-      ui_fail_("ACCEL", "Too few accepted");
+    if (accelCal_.buf.n < ImuCalCfg::ACCEL_MIN_TO_FIT) {
+      ui_.unlockRotation();
+      ui_.fail("ACCEL", "Too few accepted");
       return false;
     }
 
-    if (!run_fit_task_(acc_fit_task_, "ACCEL")) return false;
-    Serial.printf("[ACC] ok=%d rms=%.5f\n", (int)acc_out_.ok, (double)acc_out_.rms_mag);
+    if (!fit_.run("ACCEL", ImuCalCfg::FIT_STACK_WORDS, ImuCalCfg::FIT_TIMEOUT_MS, [&]{
+          bool ok = accelCal_.fit(acc_out, 3, 0.15f);
+          return ok && acc_out.ok;
+        })) return false;
 
-    if (!capture_gyro_()) return false;
-
-    int gyr_n = gyroCal_.buf.n;
-    Serial.printf("[GYR] accepted=%d\n", gyr_n);
-    if (gyr_n < GYRO_MIN_TO_FIT) {
-      ui_fail_("GYRO", "Too few accepted");
+    if (!captureGyro()) return false;
+    if (gyroCal_.buf.n < ImuCalCfg::GYRO_MIN_TO_FIT) {
+      ui_.unlockRotation();
+      ui_.fail("GYRO", "Too few accepted");
       return false;
     }
 
-    if (!run_fit_task_(gyr_fit_task_, "GYRO")) return false;
-    Serial.printf("[GYR] ok=%d\n", (int)gyr_out_.ok);
+    if (!fit_.run("GYRO", ImuCalCfg::FIT_STACK_WORDS, ImuCalCfg::FIT_TIMEOUT_MS, [&]{
+          bool ok = gyroCal_.fit(gyr_out);
+          return ok && gyr_out.ok;
+        })) return false;
 
-    if (!capture_mag_()) return false;
-
-    int mag_n = magCal_.buf.n;
-    Serial.printf("[MAG] accepted=%d\n", mag_n);
-    if (mag_n < MAG_MIN_TO_FIT) {
-      ui_fail_("MAG", "Too few accepted");
+    if (!captureMag()) return false;
+    if (magCal_.buf.n < ImuCalCfg::MAG_MIN_TO_FIT) {
+      ui_.unlockRotation();
+      ui_.fail("MAG", "Too few accepted");
       return false;
     }
 
-    if (!run_fit_task_(mag_fit_task_, "MAG")) return false;
-    Serial.printf("[MAG] ok=%d B=%.2f rms=%.3f\n",
-                  (int)mag_out_.ok, (double)mag_out_.field_uT, (double)mag_out_.rms);
+    if (!fit_.run("MAG", ImuCalCfg::FIT_STACK_WORDS, ImuCalCfg::FIT_TIMEOUT_MS, [&]{
+          bool ok = magCal_.fit(mag_out, 3, 0.15f);
+          return ok && mag_out.ok;
+        })) return false;
 
-    // Build blob ONLY after all fits succeeded
-    CalBlobV1 blob;
-    memset(&blob, 0, sizeof(blob));
-    blob.magic = IMU_CAL_MAGIC;
-    blob.version = IMU_CAL_VERSION;
-    blob.size_bytes = sizeof(CalBlobV1);
+    // Save blob and readback verify
+    ImuCalBlobV1 blob{};
+    fillBlob(blob);
 
-    blob.accel_ok = 1;
-    blob.accel_g = acc_out_.g;
-    mat_to_rowmajor9_(acc_out_.S, blob.accel_S);
-    blob.accel_T0 = acc_out_.biasT.T0;
-    blob.accel_b0[0]=acc_out_.biasT.b0.x(); blob.accel_b0[1]=acc_out_.biasT.b0.y(); blob.accel_b0[2]=acc_out_.biasT.b0.z();
-    blob.accel_k[0]=acc_out_.biasT.k.x();   blob.accel_k[1]=acc_out_.biasT.k.y();   blob.accel_k[2]=acc_out_.biasT.k.z();
-    blob.accel_rms_mag = acc_out_.rms_mag;
+    ui_.unlockRotation();
+    ui_.title("SAVE");
+    ui_.line("Writing...");
 
-    blob.gyro_ok = 1;
-    blob.gyro_T0 = gyr_out_.biasT.T0;
-    blob.gyro_b0[0]=gyr_out_.biasT.b0.x(); blob.gyro_b0[1]=gyr_out_.biasT.b0.y(); blob.gyro_b0[2]=gyr_out_.biasT.b0.z();
-    blob.gyro_k[0]=gyr_out_.biasT.k.x();   blob.gyro_k[1]=gyr_out_.biasT.k.y();   blob.gyro_k[2]=gyr_out_.biasT.k.z();
+    bool wrote = store_.save(blob);
+    ImuCalBlobV1 rb{};
+    bool okrb = store_.load(rb);
 
-    blob.mag_ok = 1;
-    mat_to_rowmajor9_(mag_out_.A, blob.mag_A);
-    blob.mag_b[0]=mag_out_.b.x(); blob.mag_b[1]=mag_out_.b.y(); blob.mag_b[2]=mag_out_.b.z();
-    blob.mag_field_uT = mag_out_.field_uT;
-    blob.mag_rms = mag_out_.rms;
+    Serial.printf("[SAVE] wrote=%d readback=%d\n", (int)wrote, (int)okrb);
 
-    ui_title_("SAVE");
-    ui_line_("Writing...");
-    bool wrote = save_cal_to_nvs_(blob);
-    bool rb = load_cal_from_nvs_();
-    have_blob_ = rb;
-
-    Serial.printf("[SAVE] wrote=%d readback=%d\n", (int)wrote, (int)rb);
-
-    if (!wrote || !rb) {
-      ui_fail_("SAVE", "Write/readback failed");
+    if (!wrote || !okrb) {
+      ui_.fail("SAVE", "Write/readback failed");
       return false;
     }
 
-    ui_title_("DONE");
-    M5.Display.printf("BLOB: YES\n");
-    M5.Display.printf("A:%d  G:%d  M:%d\n", (int)g_acc_cal_.ok, (int)g_gyr_cal_.ok, (int)g_mag_cal_.ok);
-    ui_line_("");
-    ui_line_("Tap to return");
-    beep_ok_();
-    while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
-
+    ui_.title("DONE");
+    ui_.line("BLOB: YES");
+    ui_.line("Tap to return");
+    ui_.beepOk();
+    ui_.waitTap("DONE", "Saved OK", nullptr);
     return true;
   }
 
-  // ----------------------------
-  // Serial streaming (raw + cal)
-  // ----------------------------
-  static inline Vector3f applyAccel_(const Vector3f& a_raw, float tempC) {
-    if (!g_acc_cal_.ok) return a_raw;
-    return g_acc_cal_.apply(a_raw, tempC);
-  }
-  static inline Vector3f applyGyro_(const Vector3f& w_raw, float tempC) {
-    if (!g_gyr_cal_.ok) return w_raw;
-    return g_gyr_cal_.apply(w_raw, tempC);
-  }
-  static inline Vector3f applyMag_(const Vector3f& m_raw) {
-    if (!g_mag_cal_.ok) return m_raw;
-    return g_mag_cal_.apply(m_raw);
+private:
+  bool captureAccelPose(const Pose& p) {
+    // Pre-pose prompt: normal reading orientation
+    ui_.unlockRotation();
+    ui_.waitTap("ACCEL", p.name, p.note);
+
+    // Place delay: also in read orientation (or you can lock here too)
+    ui_.unlockRotation();
+    placeDelay("ACCEL", p.name, ImuCalCfg::PLACE_TIME_MS);
+
+    // Capture: LOCK rotation for the entire capture UI
+    ui_.lockRotation(p.rot_capture);
+
+    int start_n = accelCal_.buf.n;
+    int target_n = start_n + ImuCalCfg::ACCEL_NEED_POSE;
+
+    ui_.title("ACCEL");
+    ui_.line(p.name);
+
+    uint32_t t0 = millis();
+    uint32_t last_change = millis();
+    int last_n = accelCal_.buf.n;
+
+    while (millis() - t0 < ImuCalCfg::ACCEL_TIMEOUT_MS) {
+      ImuSample s;
+      if (!imu_.read(s)) { delay(2); continue; }
+
+      accelCal_.addSample(s.a, s.w, s.tempC);
+
+      int n = accelCal_.buf.n;
+      if (n != last_n) { last_n = n; last_change = millis(); }
+
+      if (millis() - last_change > ImuCalCfg::STUCK_MS) {
+        Serial.printf("[ACC] stuck pose='%s' got=%d\n", p.name, accelCal_.buf.n - start_n);
+        ui_.unlockRotation();
+        ui_.fail("ACCEL", "No samples accepted");
+        return false;
+      }
+
+      ui_.bar((float)(n - start_n) / (float)ImuCalCfg::ACCEL_NEED_POSE);
+      if (n >= target_n) {
+        // Still locked rotation here, so "OK" page is upright in pose.
+        ui_.title("OK");
+        ui_.line(p.name);
+        ui_.line("");
+        ui_.line("Tap for next");
+        ui_.beepOk();
+        while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
+        ui_.unlockRotation();
+        return true;
+      }
+
+      delay(5);
+    }
+
+    Serial.printf("[ACC] timeout pose='%s' got=%d\n", p.name, accelCal_.buf.n - start_n);
+    ui_.unlockRotation();
+    ui_.fail("ACCEL", "Timeout");
+    return false;
   }
 
-  static void stream_serial_() {
-    Vector3f a_raw, w_raw, m_raw;
-    float tempC;
-    uint32_t mask;
+  bool captureGyro() {
+    ui_.unlockRotation();
+    ui_.waitTap("GYRO", "SCREEN UP", "On table, still");
+    placeDelay("GYRO", "SCREEN UP", ImuCalCfg::PLACE_TIME_MS);
 
-    if (!read_sensors_(a_raw, w_raw, m_raw, tempC, mask)) return;
+    ui_.unlockRotation();
+    int start_n = gyroCal_.buf.n;
+    int target_n = start_n + ImuCalCfg::GYRO_NEED;
 
-    Vector3f a_cal = applyAccel_(a_raw, tempC);
-    Vector3f w_cal = applyGyro_(w_raw, tempC);
-    Vector3f m_cal = applyMag_(m_raw);
+    ui_.title("GYRO");
+    ui_.line("Capturing");
+
+    uint32_t t0 = millis();
+    uint32_t last_change = millis();
+    int last_n = gyroCal_.buf.n;
+
+    while (millis() - t0 < ImuCalCfg::GYRO_TIMEOUT_MS) {
+      ImuSample s;
+      if (!imu_.read(s)) { delay(2); continue; }
+
+      gyroCal_.addSample(s.w, s.a, s.tempC);
+
+      int n = gyroCal_.buf.n;
+      if (n != last_n) { last_n = n; last_change = millis(); }
+
+      if (millis() - last_change > ImuCalCfg::STUCK_MS) {
+        Serial.printf("[GYR] stuck got=%d\n", gyroCal_.buf.n - start_n);
+        ui_.fail("GYRO", "No samples accepted");
+        return false;
+      }
+
+      ui_.bar((float)(n - start_n) / (float)ImuCalCfg::GYRO_NEED);
+      if (n >= target_n) {
+        ui_.title("OK");
+        ui_.line("GYRO done");
+        ui_.line("");
+        ui_.line("Tap for next");
+        ui_.beepOk();
+        while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
+        return true;
+      }
+
+      delay(5);
+    }
+
+    ui_.fail("GYRO", "Timeout");
+    return false;
+  }
+
+  bool captureMag() {
+    ui_.unlockRotation();
+    ui_.waitTap("MAG", "Rotate slow", "Big loops");
+
+    ui_.unlockRotation();
+    int start_n = magCal_.buf.n;
+    int target_n = start_n + ImuCalCfg::MAG_NEED;
+
+    ui_.title("MAG");
+    ui_.line("Rotate now");
+
+    uint32_t t0 = millis();
+    uint32_t last_change = millis();
+    int last_n = magCal_.buf.n;
+
+    while (millis() - t0 < ImuCalCfg::MAG_TIMEOUT_MS) {
+      ImuSample s;
+      if (!imu_.read(s)) { delay(2); continue; }
+
+      if (s.mask & (uint32_t)M5_IMU::sensor_mask_mag) {
+        magCal_.addSample(s.m);
+      }
+
+      int n = magCal_.buf.n;
+      if (n != last_n) { last_n = n; last_change = millis(); }
+
+      if (millis() - last_change > ImuCalCfg::STUCK_MS) {
+        Serial.printf("[MAG] stuck got=%d\n", magCal_.buf.n - start_n);
+        ui_.fail("MAG", "No mag samples");
+        return false;
+      }
+
+      ui_.bar((float)(n - start_n) / (float)ImuCalCfg::MAG_NEED);
+      if (n >= target_n) {
+        ui_.title("OK");
+        ui_.line("MAG done");
+        ui_.line("");
+        ui_.line("Tap for next");
+        ui_.beepOk();
+        while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
+        return true;
+      }
+
+      delay(5);
+    }
+
+    ui_.fail("MAG", "Timeout");
+    return false;
+  }
+
+  void placeDelay(const char* title, const char* line, uint32_t ms) {
+    ui_.title(title);
+    ui_.line(line);
+    ui_.line("Place it now");
+    ui_.line("Don't touch");
+    uint32_t t0 = millis();
+    while (millis() - t0 < ms) {
+      ui_.bar((float)(millis() - t0) / (float)ms);
+      delay(30);
+    }
+  }
+
+  void fillBlob(ImuCalBlobV1& blob) {
+    memset(&blob, 0, sizeof(blob));
+    blob.magic = ImuCalBlobV1::IMU_CAL_MAGIC;
+    blob.version = ImuCalBlobV1::IMU_CAL_VERSION;
+    blob.size_bytes = sizeof(ImuCalBlobV1);
+
+    blob.accel_ok = 1;
+    blob.accel_g = acc_out.g;
+    mat_to_rowmajor9(acc_out.S, blob.accel_S);
+    blob.accel_T0 = acc_out.biasT.T0;
+    blob.accel_b0[0]=acc_out.biasT.b0.x(); blob.accel_b0[1]=acc_out.biasT.b0.y(); blob.accel_b0[2]=acc_out.biasT.b0.z();
+    blob.accel_k[0]=acc_out.biasT.k.x();   blob.accel_k[1]=acc_out.biasT.k.y();   blob.accel_k[2]=acc_out.biasT.k.z();
+    blob.accel_rms_mag = acc_out.rms_mag;
+
+    blob.gyro_ok = 1;
+    blob.gyro_T0 = gyr_out.biasT.T0;
+    blob.gyro_b0[0]=gyr_out.biasT.b0.x(); blob.gyro_b0[1]=gyr_out.biasT.b0.y(); blob.gyro_b0[2]=gyr_out.biasT.b0.z();
+    blob.gyro_k[0]=gyr_out.biasT.k.x();   blob.gyro_k[1]=gyr_out.biasT.k.y();   blob.gyro_k[2]=gyr_out.biasT.k.z();
+
+    blob.mag_ok = 1;
+    mat_to_rowmajor9(mag_out.A, blob.mag_A);
+    blob.mag_b[0]=mag_out.b.x(); blob.mag_b[1]=mag_out.b.y(); blob.mag_b[2]=mag_out.b.z();
+    blob.mag_field_uT = mag_out.field_uT;
+    blob.mag_rms = mag_out.rms;
+  }
+
+private:
+  M5Ui& ui_;
+  M5ImuSource& imu_;
+  ImuCalStoreNvs& store_;
+  FitRunner& fit_;
+
+  imu_cal::AccelCalibrator<float, 400, 8> accelCal_{};
+  imu_cal::GyroCalibrator<float,  400, 8> gyroCal_{};
+  imu_cal::MagCalibrator<float,   400>    magCal_{};
+};
+
+// ============================================================
+// Application (home screen + tap counting + serial streaming)
+// ============================================================
+class ImuCalApp {
+public:
+  void begin() {
+    auto cfg = M5.config();
+    M5.begin(cfg);
+    Serial.begin(115200);
+
+    // Disable M5 internal calibration influence
+    M5.Imu.setCalibration(0, 0, 0);
+
+    if (!M5.Imu.isEnabled()) {
+      ui_.unlockRotation();
+      ui_.fail("IMU", "Not found");
+      while (true) delay(100);
+    }
+
+    // Load blob (if any) and build runtime cals
+    have_blob_ = store_.load(blob_);
+    if (have_blob_) {
+      runtime_.rebuildFromBlob(blob_);
+    } else {
+      memset(&blob_, 0, sizeof(blob_));
+      runtime_.rebuildFromBlob(blob_);
+    }
+
+    drawHome();
+  }
+
+  void tick() {
+    M5.update();
+
+    // tap counting (single = start, triple = erase)
+    if (M5.BtnA.wasPressed()) {
+      tap_count_++;
+      tap_deadline_ms_ = millis() + ImuCalCfg::TAP_WINDOW_MS;
+    }
+
+    if (tap_count_ > 0 && (int32_t)(millis() - tap_deadline_ms_) > 0) {
+      if (tap_count_ >= 3) {
+        if (ui_.eraseConfirm()) {
+          store_.erase();
+          M5.Imu.clearOffsetData();
+          have_blob_ = store_.load(blob_);
+          if (!have_blob_) {
+            memset(&blob_, 0, sizeof(blob_));
+          }
+          runtime_.rebuildFromBlob(blob_);
+        }
+        drawHome();
+      } else {
+        // run wizard
+        ImuCalWizard wiz(ui_, imu_, store_, fit_);
+        bool ok = wiz.run();
+
+        // reload saved blob and rebuild runtime cals
+        have_blob_ = store_.load(blob_);
+        if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
+        runtime_.rebuildFromBlob(blob_);
+
+        (void)ok;
+        drawHome();
+      }
+
+      tap_count_ = 0;
+      tap_deadline_ms_ = 0;
+    }
+
+    streamSerial();
+    delay(5);
+  }
+
+private:
+  void drawHome() {
+    ui_.unlockRotation();
+    ui_.title("IMU CAL");
+    M5.Display.printf("BLOB: %s\n", have_blob_ ? "YES" : "NO");
+    M5.Display.printf("A:%d  G:%d  M:%d\n",
+                      (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok);
+    ui_.line("");
+    ui_.line("Tap: calibrate");
+    ui_.line("Tap x3: erase");
+  }
+
+  void streamSerial() {
+    ImuSample s;
+    if (!imu_.read(s)) return;
+
+    Vector3f a_cal = runtime_.applyAccel(s.a, s.tempC);
+    Vector3f w_cal = runtime_.applyGyro(s.w, s.tempC);
+    Vector3f m_cal = runtime_.applyMag(s.m);
 
     uint32_t now = millis();
     if (now - last_print_ms_ > 250) {
       last_print_ms_ = now;
-      Serial.printf("T:%.2f ", (double)tempC);
-      Serial.printf("a:%+.3f,%+.3f,%+.3f ", (double)a_raw.x(), (double)a_raw.y(), (double)a_raw.z());
-      Serial.printf("w:%+.4f,%+.4f,%+.4f ", (double)w_raw.x(), (double)w_raw.y(), (double)w_raw.z());
-      Serial.printf("m:%+.2f,%+.2f,%+.2f | ", (double)m_raw.x(), (double)m_raw.y(), (double)m_raw.z());
+      Serial.printf("T:%.2f ", (double)s.tempC);
+      Serial.printf("a:%+.3f,%+.3f,%+.3f ", (double)s.a.x(), (double)s.a.y(), (double)s.a.z());
+      Serial.printf("w:%+.4f,%+.4f,%+.4f ", (double)s.w.x(), (double)s.w.y(), (double)s.w.z());
+      Serial.printf("m:%+.2f,%+.2f,%+.2f | ", (double)s.m.x(), (double)s.m.y(), (double)s.m.z());
       Serial.printf("aC:%+.3f,%+.3f,%+.3f ", (double)a_cal.x(), (double)a_cal.y(), (double)a_cal.z());
       Serial.printf("wC:%+.4f,%+.4f,%+.4f ", (double)w_cal.x(), (double)w_cal.y(), (double)w_cal.z());
       Serial.printf("mC:%+.2f,%+.2f,%+.2f\n", (double)m_cal.x(), (double)m_cal.y(), (double)m_cal.z());
@@ -774,46 +875,30 @@ private:
   }
 
 private:
-  static Preferences prefs_;
-  static bool have_blob_;
-  static CalBlobV1 cal_blob_;
+  // services
+  M5Ui ui_{ImuCalCfg::ROT_READ};
+  M5ImuSource imu_{};
+  ImuCalStoreNvs store_{};
+  FitRunner fit_{ui_};
 
-  static imu_cal::AccelCalibration<float> g_acc_cal_;
-  static imu_cal::GyroCalibration<float>  g_gyr_cal_;
-  static imu_cal::MagCalibration<float>   g_mag_cal_;
+  // state
+  bool have_blob_ = false;
+  ImuCalBlobV1 blob_{};
+  RuntimeCals runtime_{};
 
-  static imu_cal::AccelCalibrator<float, 400, 8> accelCal_;
-  static imu_cal::GyroCalibrator<float,  400, 8> gyroCal_;
-  static imu_cal::MagCalibrator<float,   400>    magCal_;
-
-  static int tap_count_;
-  static uint32_t tap_deadline_ms_;
-  static uint32_t last_print_ms_;
+  int tap_count_ = 0;
+  uint32_t tap_deadline_ms_ = 0;
+  uint32_t last_print_ms_ = 0;
 };
 
-// Static storage
-Preferences ImuCalApp::prefs_;
-bool ImuCalApp::have_blob_ = false;
-ImuCalApp::CalBlobV1 ImuCalApp::cal_blob_;
+// ============================================================
+// Arduino entrypoints (non-static app instance)
+// ============================================================
+static ImuCalApp g_app;
 
-imu_cal::AccelCalibration<float> ImuCalApp::g_acc_cal_;
-imu_cal::GyroCalibration<float>  ImuCalApp::g_gyr_cal_;
-imu_cal::MagCalibration<float>   ImuCalApp::g_mag_cal_;
-
-imu_cal::AccelCalibrator<float, 400, 8> ImuCalApp::accelCal_;
-imu_cal::GyroCalibrator<float,  400, 8> ImuCalApp::gyroCal_;
-imu_cal::MagCalibrator<float,   400>    ImuCalApp::magCal_;
-
-volatile bool ImuCalApp::fit_done_ = false;
-volatile bool ImuCalApp::fit_ok_   = false;
-imu_cal::AccelCalibration<float> ImuCalApp::acc_out_;
-imu_cal::GyroCalibration<float>  ImuCalApp::gyr_out_;
-imu_cal::MagCalibration<float>   ImuCalApp::mag_out_;
-
-int ImuCalApp::tap_count_ = 0;
-uint32_t ImuCalApp::tap_deadline_ms_ = 0;
-uint32_t ImuCalApp::last_print_ms_ = 0;
-
-// Arduino entrypoints
-void setup() { ImuCalApp::begin(); }
-void loop()  { ImuCalApp::tick(); }
+void setup() {
+  g_app.begin();
+}
+void loop() {
+  g_app.tick();
+}
