@@ -587,10 +587,12 @@ public:
 
     inline float getHeaveAbs() const noexcept { if (!mekf_) return NAN; return std::fabs(mekf_->get_position().z()); }
 
-    inline float getDisplacementScale() const noexcept {
-        if (!std::isfinite(tune_.sigma_applied) || !std::isfinite(tune_.tau_applied)) return NAN;
-        constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);
-        return C_HS * tune_.sigma_applied * tune_.tau_applied * tune_.tau_applied;
+    inline float getDisplacementScale(bool smoothed = true) const noexcept {
+        const float tau = smoothed ? tune_.tau_applied : tau_target_;
+        const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
+        if (!std::isfinite(sigma) || !std::isfinite(tau)) return NAN;
+        constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);  // by Longuet–Higgins
+        return C_HS * sigma * tau * tau;
     }
 
     inline WaveDirection getDirSignState() const noexcept { return dir_sign_state_; }
