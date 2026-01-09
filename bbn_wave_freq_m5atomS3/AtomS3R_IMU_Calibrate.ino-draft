@@ -2,8 +2,8 @@
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
   Controls:
-  - Tap (screen or BtnA): start / advance
-  - Triple-tap (screen or BtnA) on home: erase (with confirm)
+  - Tap (button): start / advance
+  - Triple-tap (button) on home: erase (with confirm)
 
   Units:
     accel: m/s^2
@@ -59,19 +59,32 @@ struct ImuCalCfg {
 
   static constexpr uint32_t TAP_WINDOW_MS    = 650;
 
-  static constexpr uint8_t  BEEP_VOLUME      = 200;  // 0..255
+  static constexpr uint8_t  BEEP_VOLUME      = 220;  // 0..255
   static constexpr uint32_t BEEP_GAP_MS      = 40;
+
+  static constexpr uint8_t  LCD_BRIGHTNESS   = 200;  // 0..255 (forces back after dim)
 };
+
+static void console_begin_() {
+  Serial.begin(115200);
+  delay(200); // give USB-serial a moment
+  Serial.println();
+  Serial.println("[BOOT] imu cal starting");
+}
 
 class Input {
 public:
   static void update() {
     tap_edge_ = false;
 
-    if (M5.BtnA.wasPressed()) {
+    // AtomS3/S3R commonly uses BtnPWR as the only physical button.
+    // We also keep BtnA if present on your build/board.
+    if (read_btnpwr_() || read_btna_()) {
       tap_edge_ = true;
+      return;
     }
 
+    // Touch support (harmless if no touch hardware)
 #if defined(M5UNIFIED_HPP) || defined(_M5UNIFIED_H_)
     if (M5.Touch.isEnabled()) {
       auto d = M5.Touch.getDetail();
@@ -85,13 +98,29 @@ public:
 
     uint16_t x=0, y=0;
     bool touching = M5.Display.getTouch(&x, &y);
-    if (touching && !touching_prev_) {
-      tap_edge_ = true;
-    }
+    if (touching && !touching_prev_) tap_edge_ = true;
     touching_prev_ = touching;
   }
 
   static bool tapPressed() { return tap_edge_; }
+
+private:
+  static bool read_btnpwr_() {
+    // If your M5Unified build has BtnPWR, use it. If not, this compiles out.
+#if defined(M5UNIFIED_HPP) || defined(_M5UNIFIED_H_)
+    // Many M5Unified builds provide BtnPWR. If yours doesn’t, you’ll get a compile error here.
+    // For AtomS3R it should exist.
+    if (M5.BtnPWR.wasPressed()) return true;
+#endif
+    return false;
+  }
+
+  static bool read_btna_() {
+#if defined(M5UNIFIED_HPP) || defined(_M5UNIFIED_H_)
+    if (M5.BtnA.wasPressed()) return true;
+#endif
+    return false;
+  }
 
 private:
   static inline bool tap_edge_ = false;
@@ -169,9 +198,7 @@ public:
 
     if (tmp.magic != ImuCalBlobV1::IMU_CAL_MAGIC ||
         tmp.version != ImuCalBlobV1::IMU_CAL_VERSION ||
-        tmp.size_bytes != sizeof(ImuCalBlobV1)) {
-      return false;
-    }
+        tmp.size_bytes != sizeof(ImuCalBlobV1)) return false;
 
     uint32_t want = tmp.crc;
     tmp.crc = 0;
@@ -284,23 +311,24 @@ private:
 class Beeper {
 public:
   static void begin() {
+    // On AtomS3/S3R this is usually enough; no config.speaker_enable needed.
     M5.Speaker.begin();
     M5.Speaker.setVolume(ImuCalCfg::BEEP_VOLUME);
-    tone(1800, 60);
+    tone(1800, 50);
     delay(ImuCalCfg::BEEP_GAP_MS);
-    tone(2200, 60);
+    tone(2200, 50);
   }
 
   static void ok() {
-    tone(2200, 90);
+    tone(2200, 70);
     delay(ImuCalCfg::BEEP_GAP_MS);
-    tone(2600, 90);
+    tone(2600, 70);
   }
 
   static void bad() {
-    tone(400, 140);
+    tone(400, 120);
     delay(ImuCalCfg::BEEP_GAP_MS);
-    tone(300, 180);
+    tone(300, 150);
   }
 
 private:
@@ -811,14 +839,16 @@ class ImuCalApp {
 public:
   void begin() {
     auto cfg = M5.config();
-
-    // IMPORTANT:
-    // Your M5Unified doesn't have cfg.speaker_enable, so do NOT touch speaker fields here.
-    // Just begin() and then explicitly init the speaker.
     M5.begin(cfg);
-    Serial.begin(115200);
 
+    // Force brightness back (so the system “dim” doesn’t win)
+    M5.Display.setBrightness(ImuCalCfg::LCD_BRIGHTNESS);
+
+    console_begin_();
     Beeper::begin();
+
+    Serial.printf("[BOOT] Touch enabled: %d\n", (int)M5.Touch.isEnabled());
+    Serial.println("[BOOT] Ready");
 
     M5.Imu.setCalibration(0, 0, 0);
 
@@ -839,22 +869,44 @@ public:
     M5.update();
     Input::update();
 
+    // keep brightness up even if firmware dims it on multi-click
+    M5.Display.setBrightness(ImuCalCfg::LCD_BRIGHTNESS);
+
     if (Input::tapPressed()) {
       tap_count_++;
       tap_deadline_ms_ = millis() + ImuCalCfg::TAP_WINDOW_MS;
+
+      // immediate user feedback so it doesn't feel dead:
+      if (!pending_feedback_drawn_) {
+        pending_feedback_drawn_ = true;
+        drawHomePending();
+        Beeper::ok(); // short chirp on first tap
+      } else {
+        // update tap counter display quickly
+        drawHomePending();
+      }
+
+      Serial.printf("[TAP] count=%d\n", tap_count_);
     }
 
     if (tap_count_ > 0 && (int32_t)(millis() - tap_deadline_ms_) > 0) {
+      pending_feedback_drawn_ = false;
+
       if (tap_count_ >= 3) {
+        Serial.println("[HOME] triple tap => erase?");
         if (ui_.eraseConfirm()) {
           store_.erase();
           M5.Imu.clearOffsetData();
           have_blob_ = store_.load(blob_);
           if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
           runtime_.rebuildFromBlob(blob_);
+          Serial.println("[HOME] erased");
+        } else {
+          Serial.println("[HOME] erase canceled");
         }
         drawHome();
       } else {
+        Serial.println("[HOME] single tap => run wizard");
         ImuCalWizard wiz(ui_, imu_, store_, fit_);
         (void)wiz.run();
 
@@ -881,6 +933,18 @@ private:
     ui_.line("");
     ui_.line("Tap: calibrate");
     ui_.line("Tap x3: erase");
+  }
+
+  void drawHomePending() {
+    ui_.unlockRotation();
+    ui_.title("IMU CAL");
+    M5.Display.printf("Tap count: %d\n", tap_count_);
+    ui_.line("");
+    ui_.line("Wait a moment...");
+    ui_.line("Tap 3x => ERASE");
+    ui_.line("Tap 1x => CAL");
+    float t01 = 1.0f - (float)max<int32_t>(0, (int32_t)(tap_deadline_ms_ - millis())) / (float)ImuCalCfg::TAP_WINDOW_MS;
+    ui_.bar(t01);
   }
 
   void streamSerial() {
@@ -917,6 +981,8 @@ private:
   int tap_count_ = 0;
   uint32_t tap_deadline_ms_ = 0;
   uint32_t last_print_ms_ = 0;
+
+  bool pending_feedback_drawn_ = false;
 };
 
 static ImuCalApp g_app;
