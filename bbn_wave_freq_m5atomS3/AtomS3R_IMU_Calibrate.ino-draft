@@ -490,9 +490,11 @@ static void show_fit_results(const imu_cal::AccelCalibration<float>& ac,
   ui_clear();
   ui_title("CAL DONE");
   disp.setTextColor(TFT_WHITE, TFT_BLACK);
-  disp.printf("ACC ok:%d rms|g|:%.4f\n", (int)ac.ok, (double)ac.rms_mag);
-  disp.printf("GYR ok:%d\n", (int)gc.ok);
-  disp.printf("MAG ok:%d B:%.1f uT rms:%.2f\n", (int)mc.ok, (double)mc.field_uT, (double)mc.rms);
+  disp.printf("ACC ok:%d rms|g|:%.4f", (int)ac.ok, (double)ac.rms_mag);
+  disp.println();
+  disp.printf("GYR ok:%d", (int)gc.ok);
+  disp.println();
+  disp.printf("MAG ok:%d B:%.1f uT rms:%.2f", (int)mc.ok, (double)mc.field_uT, (double)mc.rms);
   disp.println();
   disp.println("Press BtnA to return");
   while (true) { M5.update(); if (M5.BtnA.wasPressed()) break; delay(10); }
