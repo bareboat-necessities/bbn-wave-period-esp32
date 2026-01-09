@@ -501,7 +501,7 @@ static void show_fit_results(const imu_cal::AccelCalibration<float>& ac,
 static bool wizard_intro() {
   ui_clear();
   ui_title("IMU CAL");
-  ui_line("6 accel faces + gyro + mag.");
+  ui_line("6 accel poses + gyro + mag.");
   ui_line("Auto-start countdown each step.");
   ui_line("Hold BtnA=cancel step.");
   ui_line("");
