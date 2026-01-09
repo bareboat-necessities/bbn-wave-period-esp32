@@ -617,25 +617,22 @@ public:
     ui_.setRotation(ImuCalCfg::ROT_HOME);
     ui_.waitTap("IMU CAL", "Tap to begin");
 
-    const uint8_t R0 = ImuCalCfg::ROT_HOME;
+    const uint8_t R0 = ImuCalCfg::ROT_HOME;   // HOME: USB is DOWN, text upright
 
-    // Poses chosen so they’re understandable and don’t require reading upside-down.
-    // IMPORTANT: You tap BEFORE placing it. No tapping while screen-down.
-    //
-    // Rotation notes:
-    // - SCREEN UP/DOWN: readable in home orientation.
-    // - USB UP/DOWN: rotate 180 for one of them to keep text upright while on that edge.
-    // - LEFT/RIGHT edge: rotate ±90 to keep text horizontal.
-    //
-    // If any pose still reads sideways on your unit, tweak the rot_add_() offsets.
     const Pose poses[6] = {
       {"1/6 SCREEN UP",    "Screen faces up",    R0},
       {"2/6 SCREEN DOWN",  "Screen faces table", R0},
+
+      // USB UP: device is flipped 180° relative to HOME
       {"3/6 USB UP",       "USB points up",      rot_add_(R0, +2)},
+
+      // USB DOWN: same as HOME
       {"4/6 USB DOWN",     "USB points down",    R0},
-      {"5/6 LEFT DOWN",    "Left edge down",     rot_add_(R0, +1)},
-      {"6/6 RIGHT DOWN",   "Right edge down",    rot_add_(R0, -1)},
-    };
+
+      // Edge poses: rotate 90° so text stays horizontal for that pose
+      {"5/6 LEFT DOWN",    "Left edge down",     rot_add_(R0, -1)},
+      {"6/6 RIGHT DOWN",   "Right edge down",    rot_add_(R0, +1)},
+    };    
 
     for (int i = 0; i < 6; ++i) {
       if (!captureAccelPose_(poses[i])) { ui_.setRotation(rot_saved); return false; }
