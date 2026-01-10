@@ -1,0 +1,214 @@
+/*
+  AtomS3R IMU Calibration App (fresh sketch)
+  - Uses AtomS3R_ImuCal.h for blob/store/runtime mapping + clearM5UnifiedImuCalibration()
+  - Uses AtomS3R_ImuCalWizard.h for UI + wizard capture/fit/save
+
+  Boot flow:
+    1) M5.begin()
+    2) clearM5UnifiedImuCalibration()   (prevents calibration stacking/collisions)
+    3) load our saved blob from NVS
+       - if present: print + apply
+       - if missing: start wizard, save, print + apply
+*/
+
+#include <Arduino.h>
+#include <M5Unified.h>
+
+#include "AtomS3R_ImuCal.h"
+#include "AtomS3R_ImuCalWizard.h"
+
+using namespace atoms3r_ical;
+
+// -------------------------
+// App (home screen + taps)
+// -------------------------
+class ImuCalApp {
+public:
+  ImuCalApp() : wizard_(ui_, store_) {}
+
+  void begin() {
+    Serial.begin(115200);
+    delay(150);
+    Serial.println();
+    Serial.println("[BOOT] AtomS3R IMU Cal App");
+
+    auto cfg = M5.config();
+    M5.begin(cfg);
+
+    // 1) Critical: clear M5Unified’s own cal/offsets so it can’t stack with ours.
+    clearM5UnifiedImuCalibration();
+
+    ui_.begin();
+
+    if (!M5.Imu.isEnabled()) {
+      Serial.println("[BOOT] IMU not found / not enabled");
+      ui_.fail("IMU", "Not found");
+      while (true) delay(100);
+    }
+
+    // 2) Load our calibration blob
+    reloadBlobAndRuntime_();
+
+    // 3) If missing, immediately run wizard once (optional but matches your requested flow)
+    if (!have_blob_) {
+      Serial.println("[BOOT] No saved calibration. Starting wizard...");
+      ImuCalBlobV1 saved{};
+      if (wizard_.runAndSave(saved)) {
+        Serial.println("[BOOT] Wizard saved calibration. Loaded:");
+        printBlobSummary(Serial, saved);
+        printBlobDetail(Serial, saved);
+        // rebuild runtime from the saved blob (already validated by load())
+        blob_ = saved;
+        have_blob_ = true;
+        runtime_.rebuildFromBlob(blob_);
+      } else {
+        Serial.println("[BOOT] Wizard did not save calibration.");
+      }
+    } else {
+      Serial.println("[BOOT] Found saved calibration:");
+      printBlobSummary(Serial, blob_);
+      printBlobDetail(Serial, blob_);
+    }
+
+    drawHome_();
+  }
+
+  void tick() {
+    Input::update();
+
+    if (Input::tapPressed()) {
+      tap_count_++;
+      tap_deadline_ms_ = millis() + ImuCalWizardCfg::TAP_WINDOW_MS;
+      drawHomePending_();
+      Serial.printf("[TAP] count=%d\n", tap_count_);
+    }
+
+    if (tap_count_ > 0 && (int32_t)(millis() - tap_deadline_ms_) > 0) {
+      if (tap_count_ >= 3) {
+        handleErase_();
+      } else {
+        handleRunWizard_();
+      }
+      tap_count_ = 0;
+      tap_deadline_ms_ = 0;
+      drawHome_();
+    }
+
+    streamSerial_();
+    delay(5);
+  }
+
+private:
+  void reloadBlobAndRuntime_() {
+    have_blob_ = store_.load(blob_);
+    if (!have_blob_) {
+      memset(&blob_, 0, sizeof(blob_));
+    }
+    runtime_.rebuildFromBlob(blob_);
+  }
+
+  void handleErase_() {
+    Serial.println("[HOME] triple tap => ERASE");
+
+    if (!ui_.eraseConfirm()) {
+      Serial.println("[HOME] erase cancelled");
+      return;
+    }
+
+    // Erase our blob from NVS
+    store_.erase();
+
+    // Also clear M5Unified offsets so nothing stale lingers
+    clearM5UnifiedImuCalibration();
+
+    reloadBlobAndRuntime_();
+    Serial.println("[HOME] erased blob + cleared M5Unified cal");
+  }
+
+  void handleRunWizard_() {
+    Serial.println("[HOME] single tap => RUN WIZARD");
+
+    ImuCalBlobV1 saved{};
+    bool ok = wizard_.runAndSave(saved);
+    if (!ok) {
+      ui_.notSavedNotice();
+      return;
+    }
+
+    Serial.println("[HOME] new calibration saved:");
+    printBlobSummary(Serial, saved);
+    printBlobDetail(Serial, saved);
+
+    blob_ = saved;
+    have_blob_ = true;
+    runtime_.rebuildFromBlob(blob_);
+  }
+
+  void drawHome_() {
+    ui_.setReadRotation();
+    ui_.title("IMU CAL");
+    M5.Display.printf("BLOB: %s\n", have_blob_ ? "YES" : "NO");
+    M5.Display.printf("A:%d G:%d M:%d\n",
+                      (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok);
+    ui_.line("");
+    ui_.line("Tap: calibrate");
+    ui_.line("Tap x3: erase");
+  }
+
+  void drawHomePending_() {
+    ui_.setReadRotation();
+    ui_.title("IMU CAL");
+    M5.Display.printf("Tap count: %d\n", tap_count_);
+    ui_.line("");
+    ui_.line("Wait...");
+    ui_.line("1 tap=CAL");
+    ui_.line("3 taps=ERASE");
+
+    int32_t remain = (int32_t)(tap_deadline_ms_ - millis());
+    remain = i32_max_(0, remain);
+    float t01 = 1.0f - (float)remain / (float)ImuCalWizardCfg::TAP_WINDOW_MS;
+    ui_.bar01(t01);
+  }
+
+  void streamSerial_() {
+    ImuSample s;
+    if (!readImuMapped(M5.Imu, s)) return;
+
+    // Apply our runtime cal to ALL measurements
+    Vector3f a_cal = runtime_.applyAccel(s.a, s.tempC);
+    Vector3f w_cal = runtime_.applyGyro (s.w, s.tempC);
+    Vector3f m_cal = runtime_.applyMag  (s.m);
+
+    uint32_t now = millis();
+    if (now - last_print_ms_ > 300) {
+      last_print_ms_ = now;
+      Serial.printf("T:%.2f ", (double)s.tempC);
+
+      Serial.printf("a:%+.3f,%+.3f,%+.3f ", (double)s.a.x(), (double)s.a.y(), (double)s.a.z());
+      Serial.printf("w:%+.4f,%+.4f,%+.4f ", (double)s.w.x(), (double)s.w.y(), (double)s.w.z());
+      Serial.printf("m:%+.2f,%+.2f,%+.2f | ", (double)s.m.x(), (double)s.m.y(), (double)s.m.z());
+
+      Serial.printf("aC:%+.3f,%+.3f,%+.3f ", (double)a_cal.x(), (double)a_cal.y(), (double)a_cal.z());
+      Serial.printf("wC:%+.4f,%+.4f,%+.4f ", (double)w_cal.x(), (double)w_cal.y(), (double)w_cal.z());
+      Serial.printf("mC:%+.2f,%+.2f,%+.2f\n", (double)m_cal.x(), (double)m_cal.y(), (double)m_cal.z());
+    }
+  }
+
+private:
+  M5Ui ui_{};
+  ImuCalStoreNvs store_{};
+  ImuCalWizard wizard_;
+
+  bool have_blob_ = false;
+  ImuCalBlobV1 blob_{};
+  RuntimeCals runtime_{};
+
+  int tap_count_ = 0;
+  uint32_t tap_deadline_ms_ = 0;
+  uint32_t last_print_ms_ = 0;
+};
+
+static ImuCalApp g_app;
+
+void setup() { g_app.begin(); }
+void loop()  { g_app.tick(); }
