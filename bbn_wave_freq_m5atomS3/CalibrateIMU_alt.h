@@ -407,8 +407,10 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     
     // s = 1 + b^T Q b - c  (must be > 0)
     // Compute in double to avoid float cancellation / tiny-negative s.
-    const double btQb = (b.cast<double>().dot(Q.cast<double>() * b.cast<double>()));
-    const double sD   = 1.0 + btQb - (double)c;
+    const double btQb =
+        b.template cast<double>().dot(
+            Q.template cast<double>() * b.template cast<double>());
+    const double sD = 1.0 + btQb - (double)c;
     
     // If s is tiny/negative, model is invalid (or numerically unstable)
     if (!std::isfinite(sD) || sD <= 1e-12) return FitFail::MODEL_S_NONPOSITIVE;
