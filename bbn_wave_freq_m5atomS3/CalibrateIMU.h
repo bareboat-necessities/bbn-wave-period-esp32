@@ -11,7 +11,18 @@
 
   NOTE:
   - Keep away from metal during MAG (boat rails, desk legs, speakers, USB cables, etc).
-  
+
+  IMPORTANT FIX (Jan 2026):
+  - Prevent accelerometer calibration from "rotating axes".
+  - Ellipsoid->sphere whitening has an inherent rotation ambiguity: A and (R*A) produce the same norms.
+    If you directly use A as S, you can accidentally rotate the sensor frame, breaking roll/pitch and
+    tilt-compensated compass.
+  - We fix this by:
+      (1) extracting the symmetric SPD "shape" factor via polar decomposition:
+            S_spd = sqrt(A^T A)
+      (2) optionally forcing S to be diagonal-only (recommended for attitude)
+      (3) rejecting unphysical S (diag range, off-diagonal RMS, condition number)
+
 */
 
 #include <stdint.h>
@@ -54,6 +65,9 @@ enum class FitFail : uint8_t {
   // Domain-specific
   MAG_FIELD_OUT_OF_RANGE,
   TEMP_BINS_EMPTY,
+
+  // Accel-specific: fitted S would rotate axes / be unphysical
+  ACCEL_S_UNPHYSICAL,
 };
 
 static inline const char* fitFailStr(FitFail f) {
@@ -71,6 +85,7 @@ static inline const char* fitFailStr(FitFail f) {
     case FitFail::INLIERS_TOO_FEW: return "INLIERS_TOO_FEW";
     case FitFail::MAG_FIELD_OUT_OF_RANGE: return "MAG_FIELD_OUT_OF_RANGE";
     case FitFail::TEMP_BINS_EMPTY: return "TEMP_BINS_EMPTY";
+    case FitFail::ACCEL_S_UNPHYSICAL: return "ACCEL_S_UNPHYSICAL";
     default: return "UNKNOWN";
   }
 }
@@ -237,6 +252,71 @@ static inline T robust_mad(T* residuals, int n) {
   return mad;
 }
 
+// --- NEW: helpers to prevent accel axis rotation ---
+
+// Off-diagonal RMS for a 3x3 matrix (6 off-diagonal entries)
+template <typename T>
+static inline T offdiag_rms_3x3(const Eigen::Matrix<T,3,3>& M) {
+  const T s2 =
+      M(0,1)*M(0,1) + M(0,2)*M(0,2) +
+      M(1,0)*M(1,0) + M(1,2)*M(1,2) +
+      M(2,0)*M(2,0) + M(2,1)*M(2,1);
+  return (T)std::sqrt((double)(s2 / T(6)));
+}
+
+// SPD condition number using eigenvalues (assumes SPD or nearly SPD)
+template <typename T>
+static inline bool cond_spd_3x3(const Eigen::Matrix<T,3,3>& M, T& cond_out) {
+  using Mat3 = Eigen::Matrix<T,3,3>;
+  Mat3 S = T(0.5) * (M + M.transpose());
+  Eigen::SelfAdjointEigenSolver<Mat3> es(S);
+  if (es.info() != Eigen::Success) return false;
+  auto ev = es.eigenvalues();
+  if (!(ev.array().isFinite().all())) return false;
+  const T emax = ev.maxCoeff();
+  const T emin = ev.minCoeff();
+  if (!(emin > T(0))) return false;
+  cond_out = emax / emin;
+  return finiteT(cond_out);
+}
+
+// Polar SPD factor: P = sqrt(A^T A). Removes any rotation from A.
+template <typename T>
+static inline bool polar_spd_factor_3x3(const Eigen::Matrix<T,3,3>& A, Eigen::Matrix<T,3,3>& P_out) {
+  using Mat3 = Eigen::Matrix<T,3,3>;
+  Mat3 G = A.transpose() * A;
+  G = T(0.5) * (G + G.transpose());
+
+  if (!project_spd_3x3<T>(G, T(1e-5), T(1e-7))) return false;
+
+  Eigen::SelfAdjointEigenSolver<Mat3> es(G);
+  if (es.info() != Eigen::Success) return false;
+
+  auto V = es.eigenvectors();
+  auto d = es.eigenvalues();
+  if (!(V.array().isFinite().all()) || !(d.array().isFinite().all())) return false;
+
+  d.x() = (T)std::sqrt((double)d.x());
+  d.y() = (T)std::sqrt((double)d.y());
+  d.z() = (T)std::sqrt((double)d.z());
+
+  Mat3 P = V * d.asDiagonal() * V.transpose();
+  P = T(0.5) * (P + P.transpose());
+  if (!(P.array().isFinite().all())) return false;
+
+  P_out = P;
+  return true;
+}
+
+template <typename T>
+static inline Eigen::Matrix<T,3,3> diag_only_from(const Eigen::Matrix<T,3,3>& M) {
+  Eigen::Matrix<T,3,3> D = Eigen::Matrix<T,3,3>::Zero();
+  D(0,0) = M(0,0);
+  D(1,1) = M(1,1);
+  D(2,2) = M(2,2);
+  return D;
+}
+
 // Fixed-capacity sample buffer
 template <typename T, int N>
 struct SampleBuffer3 {
@@ -397,19 +477,19 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     if (!lu.isInvertible()) return FitFail::MODEL_LU_NOT_INVERTIBLE;
     b = -lu.solve(q);
     if (!isfinite3(b)) return FitFail::NON_FINITE_INPUT;
-    
+
     const double btQb =
         b.template cast<double>().dot(
             Q.template cast<double>() * b.template cast<double>());
     const double sD = 1.0 + btQb - (double)c;
-    
+
     // Accept either sign; only reject near-zero (degenerate scaling / numerical collapse)
     if (!std::isfinite(sD) || fabs(sD) <= 1e-12) return FitFail::MODEL_S_NONPOSITIVE;
-    
+
     // IMPORTANT: use signed s so that if Q is negative definite and s is negative,
     // M = Q/s is still positive definite.
     const T s = (T)sD;
-    
+
     // M = Q / s (SIGNED), then symmetrize
     Eigen::Matrix<T,3,3> M = Q / s;
     M = T(0.5) * (M + M.transpose());
@@ -616,6 +696,18 @@ struct AccelCalibrator {
   T max_gyro_for_static = T(0.35);  // rad/s
   T accel_mag_tol = T(1.0);         // m/s^2, accept if | |a| - g | < tol
 
+  // --- NEW knobs: prevent axis rotation ---
+  enum class AccelSMode : uint8_t { PolarSPD = 0, DiagonalOnly = 1 };
+
+  // Recommended default for compass/attitude: DiagonalOnly
+  AccelSMode accel_S_mode = AccelSMode::DiagonalOnly;
+
+  // Plausibility gates (dimensionless)
+  T accel_diag_lo = T(0.80);
+  T accel_diag_hi = T(1.25);
+  T accel_max_offdiag_rms = T(0.03); // only used in PolarSPD mode
+  T accel_max_cond = T(2.5);
+
   // Workspace to reduce stack use in fit()
   struct Workspace {
     uint16_t idx[K_TBINS][N];
@@ -642,7 +734,7 @@ struct AccelCalibrator {
     return buf.push(a_raw, tempC);
   }
 
-  // NEW: optional reason out
+  // optional reason out
   bool fit(AccelCalibration<T>& out, int robust_iters = 3, T trim_frac = T(0.15), FitFail* reason_out = nullptr) const {
     last_fail_ = FitFail::OK;
     out.ok = false;
@@ -711,11 +803,53 @@ struct AccelCalibrator {
       temps[nb]   = tmean;
       nb++;
 
-      // score: rms + small penalty for fewer used points
+      // --- NEW: convert fit matrix to axis-safe S ---
+      // 1) Strip rotation using polar SPD factor
+      Eigen::Matrix<T,3,3> S_spd;
+      if (!polar_spd_factor_3x3<T>(fitk.A, S_spd)) {
+        worst_bin_reason = FitFail::MODEL_SPD_PROJECT_FAIL;
+        continue;
+      }
+
+      // 2) Optionally force diagonal-only
+      Eigen::Matrix<T,3,3> S_use = (accel_S_mode == AccelSMode::DiagonalOnly)
+                                   ? diag_only_from<T>(S_spd)
+                                   : S_spd;
+
+      // 3) Plausibility gates
+      const T d0 = S_use(0,0), d1 = S_use(1,1), d2 = S_use(2,2);
+      if (!(d0 >= accel_diag_lo && d0 <= accel_diag_hi &&
+            d1 >= accel_diag_lo && d1 <= accel_diag_hi &&
+            d2 >= accel_diag_lo && d2 <= accel_diag_hi))
+      {
+        worst_bin_reason = FitFail::ACCEL_S_UNPHYSICAL;
+        continue;
+      }
+
+      T condv = T(0);
+      if (!cond_spd_3x3<T>(S_spd, condv) || condv > accel_max_cond) {
+        worst_bin_reason = FitFail::ACCEL_S_UNPHYSICAL;
+        continue;
+      }
+
+      if (accel_S_mode != AccelSMode::DiagonalOnly) {
+        const T offr = offdiag_rms_3x3<T>(S_use);
+        if (offr > accel_max_offdiag_rms) {
+          worst_bin_reason = FitFail::ACCEL_S_UNPHYSICAL;
+          continue;
+        }
+      }
+
+      // score: rms + small penalty for fewer used points + tiny penalty for cond/offdiag
       T score = fitk.rms + T(0.2) * (T(50) / (T)fitk.used);
+      score += T(0.02) * (condv - T(1));
+      if (accel_S_mode != AccelSMode::DiagonalOnly) {
+        score += T(0.15) * offdiag_rms_3x3<T>(S_use);
+      }
+
       if (score < best_score) {
         best_score = score;
-        bestS = fitk.A;
+        bestS = S_use;           // <<<<< axis-safe S stored here
         best_rms = fitk.rms;
         best_center = fitk.b;
       }
@@ -751,7 +885,7 @@ struct AccelCalibrator {
 
     out.ok = true;
     out.g = g;
-    out.S = bestS;
+    out.S = bestS;          // <<<<< axis-safe S used here
     out.biasT = biasT;
     out.rms_mag = best_rms;
 
@@ -792,18 +926,18 @@ struct MagCalibrator {
   {
     last_fail_ = FitFail::OK;
     out.ok = false;
-  
+
     if (buf.n < 80) {
       last_fail_ = FitFail::TOO_FEW_SAMPLES;
       if (reason_out) *reason_out = last_fail_;
       return false;
     }
-  
+
     // Mean (for B_est)
     Vec3 mu = Vec3::Zero();
     for (int i = 0; i < buf.n; ++i) mu += buf.v[i];
     mu *= (T(1) / (T)buf.n);
-  
+
     // Robust radius estimate in raw uT space
     T rad_mu[IMU_CAL_MAX_SAMPLES];
     for (int i = 0; i < buf.n; ++i) rad_mu[i] = (buf.v[i] - mu).norm();
@@ -813,10 +947,10 @@ struct MagCalibrator {
       if (reason_out) *reason_out = last_fail_;
       return false;
     }
-  
+
     // SCALE SAMPLES: x' = x / B_est (brings values ~O(1))
     for (int i = 0; i < buf.n; ++i) xs_[i] = buf.v[i] / B_est;
-  
+
     // Fit in scaled space (expected radius ~1)
     auto fit0 = ellipsoid_to_sphere_robust<T>(
       xs_, buf.n, T(1),
@@ -824,38 +958,38 @@ struct MagCalibrator {
       T(1e-6),
       T(1)   // expected_radius_for_checks in scaled space
     );
-  
+
     if (!fit0.ok) {
       last_fail_ = fit0.reason;
       if (reason_out) *reason_out = last_fail_;
       return false;
     }
-  
+
     // Unscale to uT space:
     // We want A_uT such that A_uT*(x_uT - b_uT) = fit0.A*(x_uT/B_est - fit0.b)
     // => b_uT = fit0.b * B_est, A_uT = fit0.A / B_est
     const Vec3 b_uT = fit0.b * B_est;
     const Eigen::Matrix<T,3,3> A_unit_uTinv = fit0.A / B_est;
-  
+
     // Estimate field magnitude from median radius in raw uT space
     T radii[IMU_CAL_MAX_SAMPLES];
     int m = 0;
     for (int i = 0; i < buf.n; ++i) radii[m++] = (buf.v[i] - b_uT).norm();
     T B_med = median_of_array(radii, m);
-  
+
     // Typical Earth field is ~25-65 uT; allow broad
     if (B_med < T(12) || B_med > T(120)) {
       last_fail_ = FitFail::MAG_FIELD_OUT_OF_RANGE;
       if (reason_out) *reason_out = last_fail_;
       return false;
     }
-  
+
     out.ok = true;
     out.b = b_uT;
     out.A = A_unit_uTinv * B_med;  // calibrated output ~uT magnitude
     out.field_uT = B_med;
     out.rms = fit0.rms * B_med;
-  
+
     last_fail_ = FitFail::OK;
     if (reason_out) *reason_out = FitFail::OK;
     return true;
