@@ -168,11 +168,12 @@ static inline uint32_t crc32_ieee_(const uint8_t* data, size_t n) {
 
 static inline Matrix3f mat_from_rowmajor9_(const float a[9]) {
   Matrix3f M;
-  M << a[0], a[1], a[2],
-       a[3], a[4], a[5],
-       a[6], a[7], a[8];
+  M(0,0)=a[0]; M(0,1)=a[1]; M(0,2)=a[2];
+  M(1,0)=a[3]; M(1,1)=a[4]; M(1,2)=a[5];
+  M(2,0)=a[6]; M(2,1)=a[7]; M(2,2)=a[8];
   return M;
 }
+
 static inline void mat_to_rowmajor9_(const Matrix3f& M, float a[9]) {
   a[0]=M(0,0); a[1]=M(0,1); a[2]=M(0,2);
   a[3]=M(1,0); a[4]=M(1,1); a[5]=M(1,2);
