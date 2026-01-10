@@ -275,37 +275,80 @@ struct RuntimeCals {
   Vector3f applyMag  (const Vector3f& m_raw) const { return mag.ok ? mag.apply(m_raw) : m_raw; }
 };
 
+// Pretty 3x3 print from row-major float[9].
+static inline void printMat3RowMajor(Print& out, const float a[9], int prec = 9) {
+  for (int r = 0; r < 3; ++r) {
+    out.print("      [");
+    for (int c = 0; c < 3; ++c) {
+      out.print(a[3 * r + c], prec);
+      if (c < 2) out.print(", ");
+    }
+    out.println("]");
+  }
+}
+
+// Print quick diag + off-diagonal RMS, so you can instantly see "not identity".
+static inline void printMatDiagOffDiagRms(Print& out, const float a[9]) {
+  const float d0 = a[0], d1 = a[4], d2 = a[8];
+  const float off2 =
+      a[1]*a[1] + a[2]*a[2] +
+      a[3]*a[3] + a[5]*a[5] +
+      a[6]*a[6] + a[7]*a[7];
+  const float off_rms = sqrtf(off2 / 6.0f);
+  out.printf("      diag=[%.6f %.6f %.6f], offdiag_rms=%.6f\n", (double)d0, (double)d1, (double)d2, (double)off_rms);
+}
+
+// Identity matrix in row-major storage.
+static inline const float* mat3_identity_rowmajor_() {
+  static const float I[9] = {1,0,0, 0,1,0, 0,0,1};
+  return I;
+}
+
+// Optional: print a matrix header line with a consistent style.
+static inline void printMatHeader(Print& out, const char* name, const char* meaning) {
+  out.print("    ");
+  out.print(name);
+  if (meaning && meaning[0]) {
+    out.print(" (");
+    out.print(meaning);
+    out.print(")");
+  }
+  out.println(":");
+}
+
 // Print helpers (startup serial)
 static inline void printBlobSummary(Print& out, const ImuCalBlobV1& b) {
   out.printf("  ok: A=%d G=%d M=%d\n", (int)b.accel_ok, (int)b.gyro_ok, (int)b.mag_ok);
-  out.printf("  crc: 0x%08lX (valid=%d)\n", (unsigned long)b.crc, (int)validateBlob(b));
-}
-
-static inline void printMat3RowMajor(Print& out, const float a[9], int prec = 6) {
-  auto p = [&](float v) {
-    out.print(v, prec);
-  };
-  out.print("[["); p(a[0]); out.print(", "); p(a[1]); out.print(", "); p(a[2]); out.println("],");
-  out.print(" ["); p(a[3]); out.print(", "); p(a[4]); out.print(", "); p(a[5]); out.println("],");
-  out.print(" ["); p(a[6]); out.print(", "); p(a[7]); out.print(", "); p(a[8]); out.println("]]");
 }
 
 static inline void printBlobDetail(Print& out, const ImuCalBlobV1& b) {
+  // ACCEL 
   out.printf("  accel: g=%.6f T0=%.2f rms_mag=%.4f\n", (double)b.accel_g, (double)b.accel_T0, (double)b.accel_rms_mag);
   out.printf("    b0=[%.5f %.5f %.5f]\n", (double)b.accel_b0[0], (double)b.accel_b0[1], (double)b.accel_b0[2]);
-  out.printf("    k =[%.6f %.6f %.6f]\n", (double)b.accel_k[0],  (double)b.accel_k[1],  (double)b.accel_k[2]);
-  out.println("    S =");
-  printMat3RowMajor(out, b.accel_S, 7);
+  out.printf("    k =[%.6f %.6f %.6f]\n", (double)b.accel_k[0], (double)b.accel_k[1], (double)b.accel_k[2]);
 
+  printMatHeader(out, "S", "a_cal = S*(a_raw - bias(T))");
+  printMat3RowMajor(out, b.accel_S, 9);
+  printMatDiagOffDiagRms(out, b.accel_S);
+
+  // GYRO
   out.printf("  gyro:  T0=%.2f\n", (double)b.gyro_T0);
   out.printf("    b0=[%.6f %.6f %.6f]\n", (double)b.gyro_b0[0], (double)b.gyro_b0[1], (double)b.gyro_b0[2]);
-  out.printf("    k =[%.6f %.6f %.6f]\n", (double)b.gyro_k[0],  (double)b.gyro_k[1],  (double)b.gyro_k[2]);
-  out.println("    S = (identity; not stored in blob)");
+  out.printf("    k =[%.6f %.6f %.6f]\n", (double)b.gyro_k[0], (double)b.gyro_k[1], (double)b.gyro_k[2]);
 
+  // Gyro calibrator *always* sets S=I (stationary-only).
+  printMatHeader(out, "S", "w_cal = S*(w_raw - bias(T)) ; S=I (stationary bias-only fit)");
+  const float* I = mat3_identity_rowmajor_();
+  printMat3RowMajor(out, I, 3);
+  printMatDiagOffDiagRms(out, I);
+
+  // MAG
   out.printf("  mag: field_uT=%.3f rms=%.4f\n", (double)b.mag_field_uT, (double)b.mag_rms);
   out.printf("    b=[%.3f %.3f %.3f]\n", (double)b.mag_b[0], (double)b.mag_b[1], (double)b.mag_b[2]);
-  out.println("    A =");
-  printMat3RowMajor(out, b.mag_A, 7);
+
+  printMatHeader(out, "A", "m_cal = A*(m_raw - b)");
+  printMat3RowMajor(out, b.mag_A, 9);
+  printMatDiagOffDiagRms(out, b.mag_A);
 }
 
 // IMU sample + mapped read
