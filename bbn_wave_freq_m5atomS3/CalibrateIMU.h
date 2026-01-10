@@ -12,17 +12,6 @@
   NOTE:
   - Keep away from metal during MAG (boat rails, desk legs, speakers, USB cables, etc).
 
-  IMPORTANT FIX (Jan 2026):
-  - Prevent accelerometer calibration from "rotating axes".
-  - Ellipsoid->sphere whitening has an inherent rotation ambiguity: A and (R*A) produce the same norms.
-    If you directly use A as S, you can accidentally rotate the sensor frame, breaking roll/pitch and
-    tilt-compensated compass.
-  - We fix this by:
-      (1) extracting the symmetric SPD "shape" factor via polar decomposition:
-            S_spd = sqrt(A^T A)
-      (2) optionally forcing S to be diagonal-only (recommended for attitude)
-      (3) rejecting unphysical S (diag range, off-diagonal RMS, condition number)
-
 */
 
 #include <stdint.h>
