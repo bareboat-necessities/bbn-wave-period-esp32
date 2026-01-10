@@ -1,11 +1,11 @@
 /*
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
-  MAG reliability fixes:
-  - If MAG capture/fit fails, you can retry MAG ONLY (keeps accel+gyro results).
-  - MAG fail menu DOES NOT TIME OUT (prevents silent abort).
-  - FIT tasks pinned to core 0 (reduces WDT/reboot risk during heavy fit).
-  - If wizard ends without saving, app shows "NOT SAVED" and waits for tap.
+  MAG fixes in this version:
+  - MAG capture is time-based + downsampled, so it lasts long enough (not "done in 3 seconds").
+  - Requires minimum capture time AND sufficient axis span before allowing fit.
+  - "Model S NonPositive" is treated as a coverage issue: offers clear retry instructions.
+  - MAG retry menu has NO timeout (cannot silently exit to home).
 
   Units:
     accel: m/s^2
@@ -30,7 +30,7 @@
 #endif
 #include <ArduinoEigenDense.h>
 
-#include "CalibrateIMU_alt.h"   // imu_cal::AccelCalibrator / GyroCalibrator / MagCalibrator + FitFail
+#include "CalibrateIMU_alt.h"   // imu_cal::* + FitFail
 
 using Vector3f = Eigen::Matrix<float,3,1>;
 using Matrix3f = Eigen::Matrix<float,3,3>;
@@ -43,11 +43,9 @@ struct ImuCalCfg {
   static constexpr float g_std   = 9.80665f;
   static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
 
-  // You said: "Up is USB down" -> choose ROT_READ so that USB-down reads normally.
-  // If you still see 90° wrong, change this to 1 or 3.
+  // If text is rotated wrong initially, change this to 1 or 3.
   static constexpr uint8_t ROT_READ = 0;
 
-  // Keep-awake: refresh brightness & wake display periodically while inside long loops.
   static constexpr uint32_t KEEP_AWAKE_EVERY_MS = 200;
 
   // Step pacing
@@ -57,31 +55,38 @@ struct ImuCalCfg {
   static constexpr uint32_t GYRO_TIMEOUT_MS     = 70000;
   static constexpr uint32_t MAG_TIMEOUT_MS      = 180000;
 
-  // “stuck” detection: if no new accepted samples for this long => fail
   static constexpr uint32_t STUCK_MS            = 12000;
 
-  // Sample goals
-  static constexpr int ACCEL_NEED_PER_POSE      = 60;   // 6 poses => 360
+  // Sample goals (NOTE: Mag buffer capacity is 400 in MagCalibrator below)
+  static constexpr int ACCEL_NEED_PER_POSE      = 60;
   static constexpr int GYRO_NEED               = 220;
-  static constexpr int MAG_NEED                = 260;
+
+  // MAG: we intentionally target near-buffer-full, but we SLOW acceptance so this takes ~20–30s.
+  static constexpr int MAG_NEED                = 360;   // <= 400
 
   // Minimums before fitting
   static constexpr int ACCEL_MIN_TO_FIT         = 220;
   static constexpr int GYRO_MIN_TO_FIT          = 120;
-  static constexpr int MAG_MIN_TO_FIT           = 120;
+  static constexpr int MAG_MIN_TO_FIT           = 220;
 
-  // FIT task sizing (stack depth is in WORDS, not bytes)
-  static constexpr uint32_t FIT_STACK_WORDS     = 16384;  // 16384 words ~ 64 KB
+  // MAG timing / downsample:
+  // Only accept a mag sample at most every N ms => spreads buffer over time.
+  static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 60;     // ~16.7 Hz accepted max
+  static constexpr uint32_t MAG_MIN_TIME_MS       = 20000;  // require at least 20 seconds of motion
+
+  // MAG dataset span requirements (uT) — prevents planar “flat” data that causes NONPOSITIVE.
+  static constexpr float MAG_MIN_SPAN_MIN_AXIS_uT   = 12.0f;  // weakest axis must span at least this much
+  static constexpr float MAG_MIN_SPAN_MID_AXIS_uT   = 22.0f;
+  static constexpr float MAG_MIN_SPAN_MAX_AXIS_uT   = 30.0f;
+
+  static constexpr uint32_t FIT_STACK_WORDS     = 16384;
   static constexpr uint32_t FIT_TIMEOUT_MS      = 30000;
 
-  // Home tap detection window (triple tap)
   static constexpr uint32_t TAP_WINDOW_MS       = 700;
 
-  // Audio & screen
   static constexpr uint8_t  BEEP_VOLUME         = 180;
   static constexpr uint8_t  LCD_BRIGHTNESS      = 200;
 
-  // Tap grouping window for MAG fail menu (tap / double tap / triple tap)
   static constexpr uint32_t MENU_TAP_WINDOW_MS  = 650;
 };
 
@@ -95,6 +100,12 @@ static inline uint8_t rot_add_(uint8_t base, int delta) {
   r %= 4;
   if (r < 0) r += 4;
   return (uint8_t)r;
+}
+
+static inline float clamp01_(float x) {
+  if (x < 0.f) return 0.f;
+  if (x > 1.f) return 1.f;
+  return x;
 }
 
 // ----------------------------
@@ -375,8 +386,7 @@ public:
   }
 
   void bar01(float t01) {
-    if (t01 < 0) t01 = 0;
-    if (t01 > 1) t01 = 1;
+    t01 = clamp01_(t01);
     int x = 6;
     int w = M5.Display.width() - 12;
     int h = 10;
@@ -479,12 +489,10 @@ public:
   }
 
 private:
-  // Wait indefinitely for first tap, then collect taps for window_ms.
   static uint8_t waitTapGroupNoTimeout_(uint32_t window_ms) {
     uint8_t count = 0;
     uint32_t deadline = 0;
 
-    // wait for first tap
     while (true) {
       Input::update();
       if (Input::tapPressed()) {
@@ -495,12 +503,11 @@ private:
       delay(10);
     }
 
-    // collect more taps inside the window
     while (true) {
       Input::update();
       if (Input::tapPressed()) {
         count++;
-        deadline = millis() + window_ms; // extend window
+        deadline = millis() + window_ms;
       }
       if ((int32_t)(millis() - deadline) > 0) break;
       delay(10);
@@ -531,7 +538,6 @@ public:
     for (;;) {
       bool redo_all = false;
 
-      // Disable M5 built-in offsets influence
       M5.Imu.setCalibration(0,0,0);
       M5.Imu.clearOffsetData();
 
@@ -579,14 +585,16 @@ public:
 
         const char* cap_why = nullptr;
         if (!captureMag_(cap_why)) {
-          auto act = ui_.magFailMenu(cap_why ? cap_why : "Capture failed");
+          auto act = ui_.magFailMenu(cap_why ? cap_why : "Capture failed",
+                                     "Do big 3D loops");
           if (act == M5Ui::MagFailAction::RETRY_MAG) continue;
           if (act == M5Ui::MagFailAction::REDO_ALL) { redo_all = true; break; }
           return false;
         }
 
         if (magCal_.buf.n < ImuCalCfg::MAG_MIN_TO_FIT) {
-          auto act = ui_.magFailMenu("Too few accepted", "Rotate bigger loops");
+          auto act = ui_.magFailMenu("Too few accepted",
+                                     "Rotate longer / bigger");
           if (act == M5Ui::MagFailAction::RETRY_MAG) continue;
           if (act == M5Ui::MagFailAction::REDO_ALL) { redo_all = true; break; }
           return false;
@@ -594,19 +602,24 @@ public:
 
         if (!runFitTask_(FitKind::MAG, "MAG", false)) {
           const char* why = imu_cal::fitFailStr(fit_.reason);
-          auto act = ui_.magFailMenu(why ? why : "Fit failed", "Try bigger 3D motion");
+
+          const char* hint = "Try bigger 3D motion";
+          if (why && (strstr(why, "NONPOSITIVE") || strstr(why, "NON POSITIVE") || strstr(why, "MODEL_S"))) {
+            hint = "Coverage too flat: spin in ALL axes";
+          }
+
+          auto act = ui_.magFailMenu(why ? why : "Fit failed", hint);
           if (act == M5Ui::MagFailAction::RETRY_MAG) continue;
           if (act == M5Ui::MagFailAction::REDO_ALL) { redo_all = true; break; }
           return false;
         }
 
-        // MAG succeeded
-        break;
+        break; // MAG succeeded
       }
 
       if (redo_all) {
         Serial.println("[WIZ] redo all requested");
-        continue; // restart outer loop
+        continue;
       }
 
       // Save
@@ -720,7 +733,7 @@ private:
       default:             fn = &ImuCalWizard::fitTaskGyro_;  break;
     }
 
-    // IMPORTANT: pin FIT to core 0 (loopTask is usually core 1)
+    // Pin FIT to core 0 (avoid starving loopTask on core 1)
     BaseType_t rc = xTaskCreatePinnedToCore(
       fn,
       what,
@@ -887,10 +900,11 @@ private:
     return false;
   }
 
+  // ---- MAG capture with downsample + min time + span checks ----
   bool captureMag_(const char*& out_why) {
     out_why = nullptr;
 
-    ui_.waitTap("MAG", "Rotate slowly", "Tap to start");
+    ui_.waitTap("MAG", "Rotate 20+ sec", "Tap to start");
 
     int start_n  = magCal_.buf.n;
     int target_n = start_n + ImuCalCfg::MAG_NEED;
@@ -898,11 +912,17 @@ private:
     ui_.setReadRotation();
     ui_.title("MAG");
     ui_.line("Rotate now");
-    ui_.line("Big loops");
+    ui_.line("Big 3D loops");
+    ui_.line("20+ seconds");
 
     uint32_t tcap0 = millis();
     uint32_t last_change = millis();
     int last_n = magCal_.buf.n;
+
+    uint32_t last_add_ms = 0;
+
+    Vector3f vmin(+1e9f, +1e9f, +1e9f);
+    Vector3f vmax(-1e9f, -1e9f, -1e9f);
 
     while (millis() - tcap0 < ImuCalCfg::MAG_TIMEOUT_MS) {
       Input::update();
@@ -911,7 +931,18 @@ private:
       if (!imu_.read(s)) { delay(2); continue; }
 
       if (s.mask & (uint32_t)M5_IMU::sensor_mask_mag) {
-        magCal_.addSample(s.m);
+        uint32_t now = millis();
+        if (last_add_ms == 0 || (uint32_t)(now - last_add_ms) >= ImuCalCfg::MAG_SAMPLE_SPACING_MS) {
+          int before = magCal_.buf.n;
+          magCal_.addSample(s.m);
+          int after = magCal_.buf.n;
+
+          if (after > before) {
+            last_add_ms = now;
+            vmin = vmin.cwiseMin(s.m);
+            vmax = vmax.cwiseMax(s.m);
+          }
+        }
       }
 
       int n = magCal_.buf.n;
@@ -923,9 +954,34 @@ private:
         return false;
       }
 
-      ui_.bar01((float)(n - start_n) / (float)ImuCalCfg::MAG_NEED);
+      uint32_t elapsed = (uint32_t)(millis() - tcap0);
 
-      if (n >= target_n) {
+      float pS = (float)(n - start_n) / (float)ImuCalCfg::MAG_NEED;
+      float pT = (float)elapsed / (float)ImuCalCfg::MAG_MIN_TIME_MS;
+      float p  = (pS < pT) ? pS : pT; // show limiting progress
+      ui_.bar01(p);
+
+      if (n >= target_n && elapsed >= ImuCalCfg::MAG_MIN_TIME_MS) {
+        Vector3f span = vmax - vmin;
+
+        float a = span.x(), b = span.y(), c = span.z();
+        // sort spans: min, mid, max (simple)
+        float smin = a, smid = b, smax = c;
+        if (smin > smid) { float t=smin; smin=smid; smid=t; }
+        if (smid > smax) { float t=smid; smid=smax; smax=t; }
+        if (smin > smid) { float t=smin; smin=smid; smid=t; }
+
+        Serial.printf("[MAG] n=%d elapsed=%lu span=(%.1f,%.1f,%.1f)\n",
+                      n - start_n, (unsigned long)elapsed,
+                      (double)span.x(), (double)span.y(), (double)span.z());
+
+        if (smin < ImuCalCfg::MAG_MIN_SPAN_MIN_AXIS_uT ||
+            smid < ImuCalCfg::MAG_MIN_SPAN_MID_AXIS_uT ||
+            smax < ImuCalCfg::MAG_MIN_SPAN_MAX_AXIS_uT) {
+          out_why = "Coverage too flat";
+          return false;
+        }
+
         ui_.showOkAuto("MAG", "Captured");
         return true;
       }
@@ -969,6 +1025,7 @@ private:
   ImuCalStoreNvs& store_;
 
 public:
+  // Stored inside wizard => not on stack
   imu_cal::AccelCalibrator<float, 400, 1> accelCal_{};
   imu_cal::GyroCalibrator<float,  400, 8> gyroCal_{};
   imu_cal::MagCalibrator<float,   400>    magCal_{};
@@ -1039,10 +1096,7 @@ public:
       } else {
         Serial.println("[HOME] single tap => wizard");
         bool ok = wizard_.run();
-        if (!ok) {
-          Serial.println("[HOME] wizard returned false (no save)");
-          ui_.notSavedNotice(); // prevents "silent back to home"
-        }
+        if (!ok) ui_.notSavedNotice();
 
         have_blob_ = store_.load(blob_);
         if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
