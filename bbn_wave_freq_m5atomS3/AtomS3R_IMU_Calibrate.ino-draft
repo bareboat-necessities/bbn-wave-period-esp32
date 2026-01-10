@@ -94,7 +94,6 @@ struct ImuCalCfg {
 
   static constexpr uint32_t TAP_WINDOW_MS       = 700;
 
-  static constexpr uint8_t  BEEP_VOLUME         = 180;
   static constexpr uint8_t  LCD_BRIGHTNESS      = 200;
 
   static constexpr uint32_t MENU_TAP_WINDOW_MS  = 650;
@@ -323,26 +322,6 @@ public:
 };
 
 // ----------------------------
-// Beeps
-// ----------------------------
-class Beeper {
-public:
-  static void begin() {
-    M5.Speaker.begin();
-    M5.Speaker.setVolume(ImuCalCfg::BEEP_VOLUME);
-  }
-  static void ok()  { tone_(2200, 55); }
-  static void bad() { tone_( 400, 120); }
-
-private:
-  static void tone_(uint16_t hz, uint16_t ms) {
-    M5.Speaker.tone(hz, ms);
-    delay(ms);
-    M5.Speaker.stop();
-  }
-};
-
-// ----------------------------
 // Input: BtnA ONLY + keep-awake
 // ----------------------------
 class Input {
@@ -433,7 +412,6 @@ public:
     title("OK");
     if (l1) line(l1);
     if (l2) line(l2);
-    Beeper::ok();
     uint32_t t0 = millis();
     while (millis() - t0 < ImuCalCfg::OK_PAUSE_MS) {
       Input::update();
@@ -449,7 +427,6 @@ public:
     line(why);
     line("");
     line("Tap BtnA");
-    Beeper::bad();
     while (true) {
       Input::update();
       if (Input::tapPressed()) break;
@@ -483,7 +460,6 @@ public:
     line("Tap: retry MAG");
     line("Tap x2: redo ALL");
     line("Tap x3: abort");
-    Beeper::bad();
 
     uint8_t taps = waitTapGroupNoTimeout_(ImuCalCfg::MENU_TAP_WINDOW_MS);
 
@@ -499,7 +475,6 @@ public:
     line("See Serial log");
     line("");
     line("Tap BtnA");
-    Beeper::bad();
     while (true) {
       Input::update();
       if (Input::tapPressed()) break;
@@ -665,7 +640,6 @@ public:
       ui_.line("Saved OK");
       ui_.line("");
       ui_.line("Tap BtnA");
-      Beeper::ok();
       while (true) { Input::update(); if (Input::tapPressed()) break; delay(10); }
 
       Serial.println("[WIZ] done");
@@ -816,8 +790,6 @@ private:
       if (show_fail) ui_.fail(what, imu_cal::fitFailStr(fit_.reason));
       return false;
     }
-
-    Beeper::ok();
     return true;
   }
 
@@ -1155,7 +1127,6 @@ public:
     M5.begin(cfg);
 
     ui_.begin();
-    Beeper::begin();
 
     Serial.begin(115200);
     delay(150);
@@ -1184,7 +1155,6 @@ public:
       tap_count_++;
       tap_deadline_ms_ = millis() + ImuCalCfg::TAP_WINDOW_MS;
       drawHomePending_();
-      Beeper::ok();
       Serial.printf("[TAP] count=%d\n", tap_count_);
     }
 
