@@ -9,6 +9,9 @@
     mag:   uT
     gyro:  rad/s
 
+  NOTE:
+  - Keep away from metal during MAG (boat rails, desk legs, speakers, USB cables, etc).
+  
 */
 
 #include <stdint.h>
