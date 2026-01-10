@@ -281,17 +281,31 @@ static inline void printBlobSummary(Print& out, const ImuCalBlobV1& b) {
   out.printf("  crc: 0x%08lX (valid=%d)\n", (unsigned long)b.crc, (int)validateBlob(b));
 }
 
+static inline void printMat3RowMajor(Print& out, const float a[9], int prec = 6) {
+  auto p = [&](float v) {
+    out.print(v, prec);
+  };
+  out.print("[["); p(a[0]); out.print(", "); p(a[1]); out.print(", "); p(a[2]); out.println("],");
+  out.print(" ["); p(a[3]); out.print(", "); p(a[4]); out.print(", "); p(a[5]); out.println("],");
+  out.print(" ["); p(a[6]); out.print(", "); p(a[7]); out.print(", "); p(a[8]); out.println("]]");
+}
+
 static inline void printBlobDetail(Print& out, const ImuCalBlobV1& b) {
   out.printf("  accel: g=%.6f T0=%.2f rms_mag=%.4f\n", (double)b.accel_g, (double)b.accel_T0, (double)b.accel_rms_mag);
   out.printf("    b0=[%.5f %.5f %.5f]\n", (double)b.accel_b0[0], (double)b.accel_b0[1], (double)b.accel_b0[2]);
   out.printf("    k =[%.6f %.6f %.6f]\n", (double)b.accel_k[0],  (double)b.accel_k[1],  (double)b.accel_k[2]);
+  out.println("    S =");
+  printMat3RowMajor(out, b.accel_S, 7);
 
   out.printf("  gyro:  T0=%.2f\n", (double)b.gyro_T0);
   out.printf("    b0=[%.6f %.6f %.6f]\n", (double)b.gyro_b0[0], (double)b.gyro_b0[1], (double)b.gyro_b0[2]);
   out.printf("    k =[%.6f %.6f %.6f]\n", (double)b.gyro_k[0],  (double)b.gyro_k[1],  (double)b.gyro_k[2]);
+  out.println("    S = (identity; not stored in blob)");
 
   out.printf("  mag: field_uT=%.3f rms=%.4f\n", (double)b.mag_field_uT, (double)b.mag_rms);
   out.printf("    b=[%.3f %.3f %.3f]\n", (double)b.mag_b[0], (double)b.mag_b[1], (double)b.mag_b[2]);
+  out.println("    A =");
+  printMat3RowMajor(out, b.mag_A, 7);
 }
 
 // IMU sample + mapped read
