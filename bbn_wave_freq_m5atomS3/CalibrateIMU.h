@@ -911,6 +911,7 @@ struct MagCalibrator {
   bool fit(MagCalibration<T>& out,
            int robust_iters = 3,
            T trim_frac = T(0.15),
+           T ridge_rel = T(1e-6),
            FitFail* reason_out = nullptr) const
   {
     last_fail_ = FitFail::OK;
@@ -944,7 +945,7 @@ struct MagCalibrator {
     auto fit0 = ellipsoid_to_sphere_robust<T>(
       xs_, buf.n, T(1),
       robust_iters, trim_frac,
-      T(1e-6),
+      ridge_rel,
       T(1)   // expected_radius_for_checks in scaled space
     );
 
