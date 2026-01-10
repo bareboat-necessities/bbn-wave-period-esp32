@@ -1,5 +1,9 @@
 #pragma once
+
 /*
+
+  Copyright 2026, Mikhail Grushinskiy
+
   AtomS3R reusable IMU calibration plumbing (NVS blob + CRC, runtime apply, axis mapping,
   and M5Unified-calibration clearing).
 
@@ -7,9 +11,7 @@
     - the calibration wizard sketch
     - your "real" application firmware
 
-  ---------------------------------------------------------------------------
-  Example boot flow (matches what you requested)
-  ---------------------------------------------------------------------------
+  Example boot flow:
 
     #include <M5Unified.h>
     #include "AtomS3R_ImuCal.h"
@@ -27,7 +29,7 @@
       M5.begin(cfg);
 
       // 1) Clear M5Unified's own IMU calibration/offset data so it can't "stack"
-      //    with YOUR calibration (prevents two different calibrations colliding).
+      //    with our calibration (prevents two different calibrations colliding).
       atoms3r_ical::clearM5UnifiedImuCalibration();
 
       if (!M5.Imu.isEnabled()) {
@@ -94,17 +96,13 @@ namespace atoms3r_ical {
 using Vector3f = Eigen::Matrix<float,3,1>;
 using Matrix3f = Eigen::Matrix<float,3,3>;
 
-// -------------------------
 // Config/constants (shared)
-// -------------------------
 struct ImuCalCfg {
   static constexpr float g_std   = 9.80665f;
   static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
 };
 
-// -------------------------
 // Axis mapping (AtomS3R)
-// -------------------------
 // acc_body = ( ay, ax, -az ) * g
 // gyr_body = ( gy, gx, -gz ) * deg2rad
 // mag_body = ( my, mx, -mz ) * (1/10)
@@ -124,9 +122,7 @@ static inline Vector3f map_mag_to_body_uT_(const m5::imu_3d_t& m_raw) {
                  -m_raw.z / 10.0f);
 }
 
-// -------------------------
 // Blob + CRC utilities
-// -------------------------
 struct ImuCalBlobV1 {
   static constexpr uint32_t IMU_CAL_MAGIC   = 0x434C554D; // 'MULC'
   static constexpr uint16_t IMU_CAL_VERSION = 1;
@@ -197,9 +193,7 @@ static inline bool validateBlob(const ImuCalBlobV1& b) {
   return (computeBlobCrc(b) == want);
 }
 
-// -------------------------
 // NVS store (Preferences)
-// -------------------------
 class ImuCalStoreNvs {
 public:
   // Namespace/key kept stable so different sketches share the same saved cal.
@@ -246,9 +240,7 @@ public:
   }
 };
 
-// -------------------------
 // Runtime calibration objects
-// -------------------------
 struct RuntimeCals {
   imu_cal::AccelCalibration<float> acc{};
   imu_cal::GyroCalibration<float>  gyr{};
@@ -283,9 +275,7 @@ struct RuntimeCals {
   Vector3f applyMag  (const Vector3f& m_raw) const { return mag.ok ? mag.apply(m_raw) : m_raw; }
 };
 
-// -------------------------
 // Print helpers (startup serial)
-// -------------------------
 static inline void printBlobSummary(Print& out, const ImuCalBlobV1& b) {
   out.printf("  ok: A=%d G=%d M=%d\n", (int)b.accel_ok, (int)b.gyro_ok, (int)b.mag_ok);
   out.printf("  crc: 0x%08lX (valid=%d)\n", (unsigned long)b.crc, (int)validateBlob(b));
@@ -304,9 +294,7 @@ static inline void printBlobDetail(Print& out, const ImuCalBlobV1& b) {
   out.printf("    b=[%.3f %.3f %.3f]\n", (double)b.mag_b[0], (double)b.mag_b[1], (double)b.mag_b[2]);
 }
 
-// -------------------------
 // IMU sample + mapped read
-// -------------------------
 struct ImuSample {
   Vector3f a;     // m/s^2 (mapped to body NED per AtomS3R mapping)
   Vector3f w;     // rad/s  (mapped to body NED)
@@ -333,10 +321,8 @@ static inline bool readImuMapped(decltype(M5.Imu)& imu, ImuSample& out) {
   return true;
 }
 
-// -------------------------
 // "No collisions" helper
-// -------------------------
-// Clears *M5Unified's* internal calibration/offset data, so you can safely apply your own calibration
+// Clears *M5Unified's* internal calibration/offset data, so we can safely apply our own calibration
 // (stored in ImuCalStoreNvs) without them stacking.
 static inline void clearM5UnifiedImuCalibration() {
   // Clears runtime offsets and any stored "offset data" M5Unified may apply.
