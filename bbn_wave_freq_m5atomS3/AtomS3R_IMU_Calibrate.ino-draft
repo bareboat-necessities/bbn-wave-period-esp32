@@ -117,6 +117,41 @@ static inline bool finite3_(const Vector3f& v) {
   return isfinite(v.x()) && isfinite(v.y()) && isfinite(v.z());
 }
 
+static float unit_dir_cov_det_(const Vector3f* x, int n) {
+  if (!x || n < 20) return 0.0f;
+
+  // Mean-center
+  Vector3f mu = Vector3f::Zero();
+  int n_mu = 0;
+  for (int i = 0; i < n; ++i) {
+    if (!finite3_(x[i])) continue;
+    mu += x[i];
+    ++n_mu;
+  }
+  if (n_mu < 20) return 0.0f;
+  mu *= 1.0f / (float)n_mu;
+
+  // C = mean(u u^T), u = (x-mu)/||x-mu||
+  Matrix3f C = Matrix3f::Zero();
+  int m = 0;
+  for (int i = 0; i < n; ++i) {
+    if (!finite3_(x[i])) continue;
+    Vector3f d = x[i] - mu;
+    float dn = d.norm();
+    if (!(dn > 1e-6f)) continue;
+    Vector3f u = d / dn;
+    if (!finite3_(u)) continue;
+    C.noalias() += u * u.transpose();
+    ++m;
+  }
+  if (m < 20) return 0.0f;
+
+  C *= 1.0f / (float)m;
+  float detC = C.determinant();
+  if (!isfinite(detC)) return 0.0f;
+  return detC;
+}
+
 // Axis mapping
 // acc_body = ( ay, ax, -az ) * g
 // gyr_body = ( gy, gx, -gz ) * deg2rad
@@ -1024,10 +1059,18 @@ private:
 
         // Coverage tests:
         if (smax < 1e-3f) { out_why = "MAG not changing"; return false; }
-        if (rmin < ImuCalCfg::MAG_SPAN_MIN_FRAC || rmid < ImuCalCfg::MAG_SPAN_MID_FRAC) {
+        // True "planarity" test. For uniform-ish 3D coverage, det(C) ~ 0.037. Planar collapses toward 0.
+        const float detC = unit_dir_cov_det_(magCal_.buf.v, n);
+        
+        // Print it so you we tune once and forget
+        Serial.printf("[MAG] detC=%.6f\n", (double)detC);
+        
+        // Threshold: conservative; if you still see false rejects indoors, lower to 2e-4.
+        if (detC < 2.0e-4f) {
           out_why = "Coverage too flat";
           return false;
         }
+
         int axes_ok = 0;
         if (ur.x() >= ImuCalCfg::MAG_URANGE_TARGET) axes_ok++;
         if (ur.y() >= ImuCalCfg::MAG_URANGE_TARGET) axes_ok++;
